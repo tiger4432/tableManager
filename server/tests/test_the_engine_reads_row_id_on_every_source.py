@@ -86,8 +86,11 @@ def test_a_source_reading_a_relation_without_one_asks_for_none(document, catalog
     ⚠️ THE ABSENCE IS CORRECT, NOT TOLERATED. Nothing writes an outbox DELETE for a view, so
     there is no delete to follow and nothing the index could have done. What must not happen
     is the delete step going quiet about it, and it names the source instead."""
+    # ⚠️ THE RELATION MOVED UNDER THIS CASE (S-100 ⓐ): `dt_job` reads `dt_job_rollup` now,
+    # so popping `dt_log`'s column would leave this asserting about a relation the source no
+    # longer reads - green, and measuring nothing.
     without = json.loads(json.dumps(catalog))
-    without["dt_log"]["columns"].pop("row_id")
+    without["dt_job_rollup"]["columns"].pop("row_id")
     snapshot = compiled(document, without)
     assert snapshot.source_plans["dt_job"].frame_row_id is None
     assert source_preparation.FRAME_ROW_ID_COLUMN not in         source_preparation.base_select_columns(snapshot.source_plans["dt_job"])
@@ -181,9 +184,15 @@ def test_a_declaration_edit_still_moves_the_one_it_should(document, catalog, sna
 
 def test_the_atoms_are_byte_identical_with_the_column_in_the_frame(snapshot):
     """🔴 ㉰. A column the declaration never named is now in every frame a mapper sees, so
-    the question is whether any mapper reacts to it. Measured on `dt_job`'s CODE mapper --
-    the one most likely to -- by translating the same row twice, once with the column and
-    once without."""
+    the question is whether any mapper reacts to it - translated twice, once with the column
+    and once without.
+
+    ⚠️ IT WAS MEASURED ON `dt_job`'s CODE MAPPER, "the one most likely to react", AND THAT
+    MAPPER IS GONE (S-100 ⓐ): the count moved to the chain and this source now goes through
+    the generic declarative mapper like every other. The case still scores something real -
+    the declarative mapper is what all fifteen sources use - but it is no longer the
+    adversarial one it was written to be. The remaining python mapper is `lot-event-role`,
+    and its own source's tests are where that half now lives."""
     import pandas as pd
     from ledger.envelope import source_event_identity
     from ledger.implementations import role_mapper_registry
@@ -193,7 +202,7 @@ def test_the_atoms_are_byte_identical_with_the_column_in_the_frame(snapshot):
     occurred = pd.Timestamp("2026-09-08T01:00:00+00:00")
 
     def atoms(extra):
-        row = {"dt_job": "J1", "dt_index": 3, "dt_eqp": "E7",
+        row = {"dt_job": "J1", "netdie_count": 3, "dt_eqp": "E7",
                "event_time": occurred.to_pydatetime()}
         row.update(extra)
         frame = pd.DataFrame([row])

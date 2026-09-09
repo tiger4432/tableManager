@@ -1,0 +1,131 @@
+"""dt_log -> dt_job_rollup: one row per dt_job carrying how many rows it has.
+
+[Deployment shape - read this first] `server/mappers/` is gitignored; only this `.sample` is
+tracked, and the live `dt_job_rollup_mapper.py` beside it exists on one machine and in no
+repository. THIS FILE AND THAT ONE ARE KEPT BYTE-IDENTICAL DELIBERATELY - nothing syncs them
+and nothing checks that they agree. If you change one, change the other in the same edit, or
+the change exists nowhere outside that machine. (Board item O7, and the same sentence every
+other mapper sample here carries.)
+
+WHY THIS EXISTS (S-100 ⓐ, 판정 197 · 211)
+-----------------------------------------
+A ledger declaration is LOCAL and CALCULATION-FREE: one atom comes from one molecule, and its
+value is a column value or a constant. A dt_job's netdie count is neither - it exists only
+once rows are grouped - so the ledger used to reach for a PYTHON role mapper (`dt-job-role`)
+that counted the group itself. That mapper was the ledger computing, which the design rule
+forbids, and it made the declaration beside it a decoy: `bind.counted.value` named `dt_index`
+and the mapper ignored it, emitting `len(unit)` instead.
+
+So the arithmetic moves HERE, where it is allowed: the chain computes and writes a table, and
+the ledger reads that table with the generic declarative mapper. Nothing about the atoms
+changes - same predicate, same subject, same number - only who computes it.
+
+⛔ THE COUNT IS OF THE WHOLE JOB, NOT OF THE BATCH. A trigger carries the rows that just
+arrived, and writing `len(payloads)` per job would make the number mean "how many arrived
+together", which is not what `has_netdie` says and would fall the moment a job arrived in two
+files. So the affected jobs are named from the batch and then RE-COUNTED against the source
+table - the same idempotence enrichment's own recount has, for the same reason: re-ingesting
+a file must not double anything.
+
+⚠️ NOT `enrichment_mapper._recount_affected_keys`, and this is a judgement rather than an
+oversight. That one resolves a DECISION KEY of one-to-many columns, some of which may be
+blank, and partitions its query by which components are missing - machinery this has no use
+for, since `dt_job` is one column and a row without it is not a job. If a second chain mapper
+ever needs a grouped count, THAT is when the two become one function; today there is one
+caller and a shared helper would be a layer built for a plural that does not exist.
+"""
+from __future__ import annotations
+
+import chain_bindings
+
+#: Whose write this is, in the cell-source layer. A name that is not a person, because no
+#: person typed these values.
+SOURCE_NAME = "chain_ingestion"
+UPDATED_BY = "chain_worker"
+
+#: The grouping column, and it is the identity of a row in the target table.
+JOB_COLUMN = "dt_job"
+#: Where the count lands. Declared in `table_config` and read by the ledger's `dt_job` source.
+COUNT_COLUMN = "netdie_count"
+#: Carried, not computed - one row's value stands for the job, which is what a GROUP already
+#: did for these two under the old mapper.
+#:
+#: `dt_eqp` is an ATTRIBUTE of `dtjob@1`, so it rides on the register atom's qualifiers;
+#: leaving it out would change the atoms, and "the atoms do not change" is the whole claim of
+#: moving the arithmetic here.
+#:
+#: `event_time` is carried because both sentences REQUIRE an `occurred_at` role and its
+#: binding is checked against the relation's columns. ⚠️ It is a 판정 179 DEAD CELL
+#: either way: this source declares `read.occurred_at.basis` ("ingested"), so the compiler
+#: fills the time from the preparation boundary and never reads this column. Carrying it keeps
+#: the declaration loadable without changing when anything is said to have happened.
+CARRIED_COLUMNS = ("dt_eqp", "event_time")
+
+
+def _payload_jobs(payloads):
+    """The dt_jobs this batch touched, in first-seen order and without blanks.
+
+    `{dt_job: {carried column: value}}`. A row with no `dt_job` names no job: it cannot be
+    counted into one and it cannot make a row in the target, so it is skipped here rather
+    than becoming an empty identity downstream.
+    """
+    jobs = {}
+    for payload in payloads or ():
+        data = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(data, dict):
+            continue
+        raw = data.get(JOB_COLUMN)
+        job = str(raw).strip() if raw is not None else ""
+        if job and job not in jobs:
+            jobs[job] = {column: data.get(column) for column in CARRIED_COLUMNS}
+    return jobs
+
+
+def build_dt_job_rollup_rows(db, payloads, rule=None):
+    """`{"updates": [...]}` - one item per dt_job the batch touched.
+
+    🔴 A DICT, NOT A LIST. `chain_replay` wraps an `is_batch` mapper's return in a list of its
+    own and then reads `.get("updates")` on each element, so returning a list of batches
+    produces a list where a dict is expected - and the chain reports zero items rather than an
+    error. `target_table` is not ours to state either; the RULE declares it.
+    """
+    from sqlalchemy import func
+
+    from database import models
+
+    jobs = _payload_jobs(payloads)
+    if not jobs:
+        return {"updates": []}
+
+    source_table = chain_bindings.resolve_table(rule, "trigger_table")
+    model = models.DYNAMIC_TABLES.get(source_table)
+    if model is None:
+        raise RuntimeError(
+            f"chain rule names trigger_table {source_table!r}, which has no model; "
+            f"declare it in config/table_config.json and restart the worker")
+    column = getattr(model, JOB_COLUMN)
+
+    counts = dict(
+        db.query(column, func.count())
+        .filter(column.in_(jobs))
+        .group_by(column)
+        .all())
+
+    updates = []
+    for job, carried in jobs.items():
+        values = {column: value for column, value in carried.items() if value is not None}
+        updates.append({
+            "business_key_val": job,
+            "updates": {
+                JOB_COLUMN: job,
+                **values,
+                # ⚠️ `counts.get(job, 0)` IS NOT A DEFAULT HERE. Every job in `jobs` came
+                # from a row of the source, so the query found it; a 0 would mean the rows
+                # were deleted between the trigger and this query, and writing 0 is then the
+                # true answer rather than a fallback.
+                COUNT_COLUMN: int(counts.get(job, 0)),
+            },
+            "source_name": SOURCE_NAME,
+            "updated_by": UPDATED_BY,
+        })
+    return {"updates": updates}

@@ -1377,5 +1377,15 @@
       "event_type",
       "event_time"
     ]
+  },
+  "dt_job_rollup": {
+    "__comment": "[S-100 ⓐ] dt_log 의 한 dt_job 당 한 행 — 체인이 셈 값을 씁니다. 원장 선언은 «국소적·무계산» 이므로 집계는 원장이 아니라 체인의 일입니다(판정 197·211). 원장의 `dt_job` 소스가 이 표를 declarative-role 로 읽습니다. 쓰는 자: chain rule `dt_log_to_dt_job_rollup`.",
+    "business_key": "dt_job",
+    "column_types": {
+      "dt_job": "string",
+      "netdie_count": "number",
+      "dt_eqp": "string",
+      "event_time": "string"
+    }
   }
 }

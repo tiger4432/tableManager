@@ -1,7 +1,23 @@
 """Ledger v2 Role mapper for one dt_job's worth of dt_log rows.
 
-A dt_job is not one row: the count only exists once the rows are grouped, which is why
-this needs a mapper at all rather than the generic declarative one.
+⚰️ RETIRED IN THE DECLARATION, KEPT FOR ONE DEPLOY (S-100 ⓐ, 판정 211). The shipped sample no
+longer names this: the count is computed by the chain rule `dt_log_to_dt_job_rollup` and read
+declaratively from `dt_job_rollup`, because a ledger declaration is local and
+calculation-free and this mapper was the ledger computing.
+
+⛔ IT IS NOT DELETED YET, AND THE REASON IS DEPLOYMENT ORDER RATHER THAN DOUBT. A trusted
+implementation is derived from the classes that EXIST, so removing this class makes every
+deployment whose `ledger_config.json` still says `dt-job-role` fail to compile - and that is
+not one source stopping, it is the whole setup refusing. Measured 2026-09-09: deleting it
+turned six `test_ledger_setup_boundary` cases red on this box alone, because the box's own
+(gitignored) declaration still names it. Production has its own such file.
+
+So the order is: this declaration ships -> each deployment's own declaration moves to
+`dt_job_rollup` -> THEN the class goes. Deleting it first is the same shape as the self-edge
+check that refused the live setup on 2026-09-09 and had to be narrowed the same day.
+
+A dt_job is not one row: the count only exists once the rows are grouped, which is why this
+needed a mapper at all rather than the generic declarative one.
 """
 from __future__ import annotations
 

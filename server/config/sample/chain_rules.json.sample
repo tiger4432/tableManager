@@ -155,6 +155,16 @@
       "lot_column": "lot_id",
       "time_column": "event_time",
       "event_type_column": "event_type"
+    },
+    {
+      "__comment": "[S-100 \u24d0] dt_job \ub2f9 \ud55c \ud589\uc5d0 \uadf8 job \uc758 \ud589 \uc218\ub97c \uc501\ub2c8\ub2e4. \uc6d0\uc7a5\uc740 \uc9d1\uacc4\ub97c \ubabb \ud558\ubbc0\ub85c(\uad6d\uc18c\uc801\u00b7\ubb34\uacc4\uc0b0) \uadf8 \uc148\uc774 \uc5ec\uae30\uc11c \ub3d5\ub2c8\ub2e4 \u2014 \uc608\uc804\uc5d4 \uc6d0\uc7a5\uc758 \ud30c\uc774\uc36c \ub9f5\ud37c `dt-job-role` \uc774 len(unit) \uc744 \uc148\uc5c8\uace0, \uadf8 \uc606 \uc120\uc5b8\uc740 dt_index \ub97c \uac00\ub9ac\ud0a4\ub294 \ud5c8\uc218\uc600\uc2b5\ub2c8\ub2e4(\ud310\uc815 197\u00b7211).",
+      "name": "dt_log_to_dt_job_rollup",
+      "trigger_table": "dt_log",
+      "target_table": "dt_job_rollup",
+      "mapper_module": "mappers.dt_job_rollup_mapper",
+      "mapper_function": "build_dt_job_rollup_rows",
+      "is_batch": true,
+      "enabled": true
     }
   ]
 }

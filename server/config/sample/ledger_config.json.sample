@@ -740,37 +740,25 @@
       }
     },
     "dt_job": {
-      "relation": "dt_log",
+      "relation": "dt_job_rollup",
       "read": {
-        "unit": "group",
+        "unit": "row",
         "identity": [
           "dt_job"
         ],
-        "group_by": [
+        "group_by": [],
+        "order_by": [
           "dt_job"
         ],
-        "order_by": [
-          "dt_job",
-          "dt_cell_key"
-        ],
+        "cursor": {
+          "columns": [
+            "dt_job"
+          ]
+        },
         "occurred_at": {
           "basis": "ingested",
           "timezone": "Asia/Seoul"
-        },
-        "cursor": {
-          "columns": [
-            "dt_job",
-            "dt_cell_key"
-          ]
-        },
-        "registration_probe": [
-          {
-            "entity_type": "dtjob@1",
-            "columns": [
-              "dt_job"
-            ]
-          }
-        ]
+        }
       },
       "prepare": {
         "implementation_id": "direct-join",
@@ -781,18 +769,15 @@
         "inherit_virtual_join_rules": []
       },
       "map": {
-        "implementation_id": "dt-job-role",
+        "implementation_id": "declarative-role",
         "implementation_version": 1,
         "unit": {
-          "kind": "group_by",
-          "columns": [
-            "dt_job"
-          ]
+          "kind": "row"
         },
         "input_columns": [
-          "dt_eqp",
-          "dt_index",
           "dt_job",
+          "netdie_count",
+          "dt_eqp",
           "event_time"
         ]
       },
@@ -829,7 +814,7 @@
               },
               "value": {
                 "kind": "column",
-                "column": "dt_index",
+                "column": "netdie_count",
                 "approval_status": "approved"
               }
             },
