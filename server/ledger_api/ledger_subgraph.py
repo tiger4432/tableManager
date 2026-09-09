@@ -212,11 +212,54 @@ def _atom_from_row(row):
 class SqlEvidenceLookup:
     """Exact, batched reads against the ledger; no ranking or inference."""
 
-    def __init__(self, connection, relation="ledger_events"):
+    def __init__(self, connection, relation="ledger_events", since=None, until=None):
         if not _IDENTIFIER.match(relation or ""):
             raise ValueError("relation must be a bare identifier")
         self.connection = connection
         self.relation = relation
+        # 🔴 S-98. THE INTERVAL LIVES ON THE LOOKUP, not on each method. The walk asks
+        # three different queries, and an argument threaded through each would let them hold
+        # three different intervals for one request.
+        self.since = since
+        self.until = until
+        #: How many claims this walk did NOT fetch because they fall outside the interval,
+        #: summed over hops (ruling 208).
+        #:
+        #: ⚠️ A CUT IS NOT AN ABSENCE. Without this number a narrowed walk and an
+        #: empty one render identically - the failure this repository has already had to name
+        #: in five other shapes. `None` while no interval was asked for, so the response
+        #: leaves the key OUT rather than publishing a zero that reads as "nothing was
+        #: excluded" when nothing was excluded because nothing was asked.
+        self.interval_excluded = None if (since is None and until is None) else 0
+
+    def _interval_clause(self, params):
+        """The rows the interval KEEPS. Empty string when no interval was asked for.
+
+        🔴 IT BELONGS IN THE SQL for `follow`'s reason, stated in its docstring below: a
+        claim filtered here is never fetched and therefore never spends the budget.
+        """
+        kept = []
+        if self.since is not None:
+            params["since"] = self.since
+            kept.append("e.occurred_at >= %(since)s")
+        if self.until is not None:
+            params["until"] = self.until
+            kept.append("e.occurred_at < %(until)s")
+        return " AND ".join(kept)
+
+    def _outside_clause(self, params):
+        """The rows the interval EXCLUDES - the complement of `_interval_clause`, and it has
+        to be built from the same two bounds or the count would answer a third question."""
+        kept = []
+        if self.since is not None:
+            params["since"] = self.since
+            kept.append("e.occurred_at < %(since)s")
+        if self.until is not None:
+            params["until"] = self.until
+            kept.append("e.occurred_at >= %(until)s")
+        if not kept:
+            return ""
+        return "(" + " OR ".join(kept) + ")"
 
     def _execute(self, sql, params):
         return ledger_trace._fetch(self.connection, sql, params)
@@ -251,35 +294,63 @@ class SqlEvidenceLookup:
             kept = [item for item in conditions if item]
             return ("WHERE " + " AND ".join(kept)) if kept else ""
 
-        arms = []
-        if direction in ("outgoing", "both"):
-            arms.append(f"""
-                SELECT {EVIDENCE_COLUMNS} FROM frontier f
-                JOIN {self.relation} e
-                  ON e.subject_type = f.type AND e.subject_keys = f.keys
-                {_where(
-                        follow_clause)}
-            """)
-        if direction in ("incoming", "both"):
-            arms.append(f"""
-                SELECT {EVIDENCE_COLUMNS} FROM frontier f
-                JOIN {self.relation} e
-                  ON e.object_kind = 'entity_ref'
-                 AND e.object_payload->>'type' = f.type
-                 AND e.object_payload->'keys' = f.keys
-                {_where(follow_clause)}
-            """)
-        union = " UNION ".join(arms)
-        rows = self._execute(f"""
+        # 🔴 ONE ARM BUILDER, TWO QUESTIONS (ruling 208). The fetch asks for the claims
+        # INSIDE the interval and the census asks how many fall OUTSIDE it; they must differ
+        # in nothing but that clause, or the number reported is about a different set of rows
+        # than the walk actually skipped.
+        def _arms(extra_clause):
+            built = []
+            if direction in ("outgoing", "both"):
+                built.append(f"""
+                    SELECT {EVIDENCE_COLUMNS} FROM frontier f
+                    JOIN {self.relation} e
+                      ON e.subject_type = f.type AND e.subject_keys = f.keys
+                    {_where(follow_clause, extra_clause)}
+                """)
+            if direction in ("incoming", "both"):
+                built.append(f"""
+                    SELECT {EVIDENCE_COLUMNS} FROM frontier f
+                    JOIN {self.relation} e
+                      ON e.object_kind = 'entity_ref'
+                     AND e.object_payload->>'type' = f.type
+                     AND e.object_payload->'keys' = f.keys
+                    {_where(follow_clause, extra_clause)}
+                """)
+            return " UNION ".join(built)
+
+        frontier_cte = """
             WITH frontier AS (
                 SELECT type, keys FROM jsonb_to_recordset(CAST(%(frontier)s AS jsonb))
                      AS item(type text, keys jsonb)
             )
-            SELECT * FROM ({union}) claims
+        """
+        rows = self._execute(f"""
+            {frontier_cte}
+            SELECT * FROM ({_arms(self._interval_clause(params))}) claims
             ORDER BY occurred_at DESC, id DESC
             LIMIT %(fetch)s
         """, params)
+        self._count_excluded(frontier_cte, _arms, params)
         return self._bounded(rows, limit)
+
+    def _count_excluded(self, frontier_cte, arms, params):
+        """One aggregate per hop, and ONLY when an interval was asked for (ruling 208).
+
+        ⚠️ THE COST IS VISIBLE AND BOUNDED: `MAX_HOPS` caps the walk, so this is at most
+        that many extra queries, and it runs not at all for a request that named no interval.
+        A boolean would have been free and would not answer the question an operator asks -
+        「how many did I not see」.
+        """
+        if self.interval_excluded is None:
+            return
+        outside = self._outside_clause(params)
+        if not outside:
+            return
+        rows = self._execute(f"""
+            {frontier_cte}
+            SELECT count(*) FROM ({arms(outside)}) claims
+        """, params)
+        self.interval_excluded += int(rows[0][0]) if rows else 0
 
     def claims_by_ids(self, claims, limit):
         if not claims or limit <= 0:
@@ -303,8 +374,19 @@ class SqlEvidenceLookup:
 class InMemoryEvidenceLookup:
     """Contract double used to prove traversal independently of PostgreSQL."""
 
-    def __init__(self, atoms):
+    def __init__(self, atoms, since=None, until=None):
         self.atoms = list(atoms)
+        # 🔴 THE SAME TWO ARGUMENTS AND THE SAME ACCUMULATOR AS THE SQL LOOKUP. A double
+        # thinner than the thing it stands in for is more permissive than production, and a
+        # test suite driving this one would then score only the SQL side of the interval.
+        self.since = since
+        self.until = until
+        self.interval_excluded = None if (since is None and until is None) else 0
+
+    def _outside(self, atom):
+        if self.since is not None and atom.occurred_at < self.since:
+            return True
+        return self.until is not None and atom.occurred_at >= self.until
 
     @staticmethod
     def _result(rows, limit):
@@ -324,6 +406,12 @@ class InMemoryEvidenceLookup:
             if ((direction in ("outgoing", "both") and subject in wanted)
                     or (direction in ("incoming", "both")
                         and atom.object_kind == "entity_ref" and target in wanted)):
+                # Counted where it is skipped, so the census and the filter cannot come to
+                # disagree about which claims the interval left out.
+                if self._outside(atom):
+                    if self.interval_excluded is not None:
+                        self.interval_excluded += 1
+                    continue
                 rows.append(atom)
         return self._result(rows, limit)
 
@@ -1406,6 +1494,12 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             "depth": depth_cut, "nodes": node_cut, "edges": edge_cut,
             "claims": claim_cut, "actions": action_cut,
             "reason": ", ".join(reasons) if reasons else None,
+            # 🔴 S-98 / ruling 208. Present ONLY when an interval was asked for - a key
+            # that is absent says 「this question was not put」, and a 0 would say 「it was put
+            # and nothing was excluded」. Those are different answers and a reader cannot
+            # recover the difference from a zero.
+            **({} if getattr(lookup, "interval_excluded", None) is None
+               else {"interval_excluded": lookup.interval_excluded}),
         },
         "message": None if found else "선택한 노드에 연결된 원장 증거가 없습니다",
     }

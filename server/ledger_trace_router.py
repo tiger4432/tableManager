@@ -88,6 +88,10 @@ def evidence_subgraph(
     hops: int = Query(12, ge=1, le=40, description="증거 그래프 탐색 깊이"),
     direction: str = Query("both", pattern="^(outgoing|incoming|both)$",
                            description="Entity 주장 방향; 구조 엣지는 항상 양쪽 보존"),
+    since: str | None = Query(
+        None, description="이 시각 «이상»의 원자만 (ISO 8601). 없으면 전 구간"),
+    until: str | None = Query(
+        None, description="이 시각 «미만»의 원자만 (ISO 8601). 없으면 전 구간"),
     node_limit: int = Query(400, ge=10, le=1000, description="응답 노드 상한"),
     edge_limit: int = Query(
         1200, ge=20, le=ledger_subgraph.MAX_EDGE_LIMIT,
@@ -147,13 +151,34 @@ def evidence_subgraph(
                 "declared": sorted(followable),
                 "message": "선언에 없는 술어입니다: " + ", ".join(unknown),
             })
+    interval = {}
+    for name, raw in (("since", since), ("until", until)):
+        # ⚠️ NOT `is None`. This endpoint is also CALLED DIRECTLY, by tests and by
+        # neighbouring code, and an argument left out there arrives as FastAPI's `Query`
+        # default object rather than as `None` - so a bare `is None` test refused every such
+        # call with `interval_not_iso8601`. A string is a bound and is parsed or refused;
+        # anything else means the caller did not supply one.
+        if not isinstance(raw, str) or not raw.strip():
+            continue
+        try:
+            interval[name] = _instant_arg(raw)
+        except ValueError:
+            # \u26d4 REFUSED BY NAME, not silently ignored. An unparsable bound that is
+            # dropped would answer the WHOLE history to a caller who asked for a window, and
+            # they would read that as 「there is nothing outside my window」.
+            raise HTTPException(status_code=422, detail={
+                "reason": "interval_not_iso8601", "argument": name, "value": raw,
+                "message": f"{name} 는 ISO 8601 시각이어야 합니다: {raw}"})
+    if len(interval) == 2 and interval["since"] >= interval["until"]:
+        raise HTTPException(status_code=422, detail={
+            "reason": "interval_empty", "message": "since 는 until 보다 앞서야 합니다"})
     try:
         return _evidence_graph(
             db.connection(), node_id=_signed_start(node_id, positive, negative),
             hops=hops, direction=direction,
             node_limit=node_limit, edge_limit=edge_limit, follow=follow,
             follow_keys=follow_keys, backbone_hops=backbone_hops,
-            collect=collect)
+            collect=collect, **interval)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail={
             "reason": "subgraph_request_invalid", "message": str(exc)})
@@ -303,10 +328,23 @@ def _static_step_predicates():
     return names
 
 
+def _instant_arg(raw):
+    """One ISO 8601 bound, as a timezone-aware instant. Raises `ValueError` if it is not.
+
+    \u26a0\ufe0f A NAIVE VALUE IS READ AS UTC rather than refused: the ledger stores
+    `timestamptz`, so a bound with no zone has to mean SOMETHING, and every other instant this
+    module renders is UTC. Refusing it would make the ordinary `?since=2026-09-01` a 422.
+    """
+    from datetime import datetime, timezone
+
+    parsed = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
 def _evidence_graph(connection, *, node_id, hops, direction,
                     node_limit, edge_limit, follow=None, follow_keys=None,
                     backbone_hops=ledger_subgraph.DEFAULT_BACKBONE_HOPS,
-                    collect=None):
+                    collect=None, since=None, until=None):
     if not ledger_trace.relation_exists(connection, LEDGER_RELATION):
         raise _relation_absent()
     missing = _subgraph_contract_state(connection)
@@ -319,7 +357,7 @@ def _evidence_graph(connection, *, node_id, hops, direction,
         })
     return ledger_subgraph.subgraph(
         node_id, ledger_subgraph.SqlEvidenceLookup(
-        connection, relation=LEDGER_RELATION),
+        connection, relation=LEDGER_RELATION, since=since, until=until),
         hops=hops, direction=direction,
         node_limit=node_limit, edge_limit=edge_limit, follow=follow,
         follow_keys=follow_keys,
