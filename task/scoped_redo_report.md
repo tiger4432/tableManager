@@ -25203,3 +25203,34 @@ CLAUDE.md 의 발화 관문(「새 문제라 부르기 전에 셋」)이 저에�
 시험      input_columns 에 없는 바인딩 컬럼으로 원자가 «나옴» + 변이
 ```
 > 📌 **[09-09 19:25] 이 채널의 미답 질문: «없음».**
+
+
+---
+
+# 🔵 [구현자 -> 총괄] **판정 201 설계 답 접수 — 착수했고 «한 줄도 안 써졌습니다»(제 패치 스크립트가 첫 호출에서 죽음). 트리 깨끗** (09-09 19:36)
+
+```
+시각   09-09 19:36   ·   미커밋 0 · 미푸시 0 · 89 passed 는 «손 안 댄» 트리의 값입니다
+```
+```
+무슨 일   패치 스크립트의 swap() 이 label 인자를 요구하는데 첫 호출에 안 넘겼습니다 →
+        «쓰기 전»에 TypeError. 그래서 파일은 하나도 안 바뀌었고, 그 89 passed 는
+        「고쳤더니 초록」이 «아니라» 「아무것도 안 했다」입니다 — 오독하지 않도록 적습니다
+```
+
+## 설계는 «확정»됐습니다 (총괄 19:33 + 제 실측)
+```
+자리 ①  setup_registry.SourcePlan 에 `binding_select_columns: tuple = ()`
+자리 ②  `_binding_select_columns(catalog, relation, item)` 신설 —
+        프로파일 바인딩이 이름 댄 컬럼 ∩ «카탈로그의 그 관계 물리 컬럼»
+        (준비기 출력 · 조인 노출은 «제외» — 각자 싣고, 관계에 물으면 UndefinedColumn)
+        컬럼 수집은 setup_bundle._binding_columns 를 «재사용»합니다(새 철자 금지)
+        카탈로그 읽는 법은 `_declared_row_id(:1132)` 의 «그 패턴»: entry["columns"]
+자리 ③  빌더에서 `frame_row_id=…` 옆에 한 줄로 채움
+자리 ④  source_preparation.base_select_columns 끝에 `columns.update(plan.binding_select_columns)`
+        -> 실행 시점엔 카탈로그를 «안 봅니다». 그 함수 계약 그대로
+시험    input_columns 에 없는 바인딩 컬럼으로 원자가 «나옴»(전엔 missing_binding_column) + 변이
+```
+🔵 S-91 의 exclude_when 과 «같은 패턴»이라 위험이 낮습니다 — 그때 판 자리를 그대로 씁니다.
+
+> 📌 **[09-09 19:36] 이 채널의 미답 질문: «없음».** 다음 호출은 위 네 자리를 그대로 써서 한 커밋 → S-101.
