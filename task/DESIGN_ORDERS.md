@@ -24736,3 +24736,6 @@ S-50 클라 `contracts/config_resolve_report` 의 클라 하니스가 새 낱말
 
 
 > 🔴 **[09-09 19:55] C-49 (S-92 의 «화면 절반», 지금)** — 시험 실행 응답의 `refused` 가 이미 `{count, reasons, samples}` 를 싣는데(서버 backfill `refused_samples`, 최대 20 · `refused_samples_capped`), `ontology_explorer_view.js:renderTestRun` 은 `refusalSummary(run.refused.reasons)` 로 «건수만» 그린다. 소유자가 오늘 「체크한 로우들 줄 수 있나」를 물었고 그 표본이 답의 절반이다. 고침: 거절 줄 «밑»에 표본 표 하나 — 열 = 사유 · 분자 키(rows[N] 또는 group_by 값) · 서버가 준 주소(path) — `refusal_cell.js` 가 이미 표본을 그릴 줄 아니(«같은 함수», 소스 목록과 한 철자) 그것을 쓴다. 절단이면 「20 건까지」를 값으로(«20 이 전부»와 «20 까지만 봤다»는 다른 답). 문구 상설(설명 금지). 빌드·dist 같은 커밋 → design. 서버 변경 0. 읽은 행 자체(값)는 서버 절반(S-92 서버)이 뒤에**
+
+
+> ✅ **[09-09 20:18] C-49 «닫음»** — `7b48f217` main 병합(`1e499532`), 라이브가 새 번들(admin-DMSKcoYV.js, 표본 코드 포함)을 냄. 시험 실행 패널은 관리자 토큰 뒤라 화면 클릭은 제가 안 함 — 근거는 당신 하니스(refusal_cell 78 줄). 🔴 **C-50 (지금, 작음)**: `node scripts/check_harnesses.mjs` 가 main 에서 `declaration_attribute_seats_harness.mjs` R1·R3 빨강 — C-49 탓이 아니라 그 하니스가 «샘플의 내용»(dtjob@1 에 attributes 가 없음)을 전제하는데 오늘 서버 쪽 샘플 편집이 dtjob@1 에 `dt_eqp` 속성을 넣음 → 「4 줄 추가 · 나머지 무변」 가정이 깨짐. 고침: 표적을 «속성이 없는 바인딩»으로 «찾아서» 고르거나(전제를 하니스가 스스로 확인), 새 엔티티 바인딩을 픽스처 안에서 만들어 편집. KNOWN_RED ⛔. 그다음 대기**
