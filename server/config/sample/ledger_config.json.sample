@@ -876,7 +876,7 @@
                 "keys": {
                   "lot": {
                     "approval_status": "approved",
-                    "column": "lot",
+                    "column": "child_lot",
                     "kind": "column"
                   }
                 },
@@ -888,7 +888,7 @@
                 "keys": {
                   "lot": {
                     "approval_status": "approved",
-                    "column": "lot",
+                    "column": "parent_lot",
                     "kind": "column"
                   }
                 },

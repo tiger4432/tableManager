@@ -1545,7 +1545,7 @@ def _entity_key_columns(binding: Any) -> set:
     return out
 
 
-def _validate_no_self_edge(profile, path, problems) -> None:
+def _validate_no_self_edge(profile, path, problems, *, executed: bool) -> None:
     """S-105 ③. An entity-to-entity sentence may not read the same identity at both ends.
 
     🔴 AVAILABILITY IS NOT MEANING, and this is the half that catches it. The defect
@@ -1564,6 +1564,18 @@ def _validate_no_self_edge(profile, path, problems) -> None:
     needs to say a thing relates to itself, that is a declaration to design rather than a
     shape to permit by leaving this unchecked - nothing declares one today.
     """
+    if not executed:
+        # 🔴 SCORED ONLY WHERE THE BINDINGS ARE EXECUTED. A source whose role mapper is
+        # PYTHON never reads these - they are placeholders the mapper replaces - so scoring
+        # them refuses declarations that are correct BECAUSE nobody executes them. Measured
+        # 2026-09-09: written without this distinction, the check refused the LIVE setup on
+        # a placeholder that had stood harmlessly for weeks.
+        #
+        # ⚠️ THE SKIP IS ANNOUNCED, and not from here. This module may not import `logging`
+        # (its own gate allowlists the imports, which is how that was found), and the ruling
+        # asked for a LOADER line anyway: `setup.load_setup` says which sources went
+        # unscored, beside the dead-cell sentence it already prints.
+        return
     mappings = profile.get("mappings")
     if not isinstance(mappings, Mapping):
         return
@@ -2055,7 +2067,10 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
             # function rather than a second opinion about what a column is.
             # S-105 ③. Reads nothing but the profile, so it is independent of the
             # `bindable` question and lands ahead of it.
-            _validate_no_self_edge(profile, path, problems)
+            _mapper = source.get("map") if isinstance(source.get("map"), Mapping) else {}
+            _validate_no_self_edge(
+                profile, path, problems,
+                executed=_mapper.get("implementation_id") == "declarative-role")
             profile_mappings = profile.get("mappings")
             for sentence in sorted(profile_mappings if isinstance(profile_mappings, Mapping)
                                    else {}, key=str):

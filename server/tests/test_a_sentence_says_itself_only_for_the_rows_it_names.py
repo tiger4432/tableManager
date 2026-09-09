@@ -226,6 +226,8 @@ def test_a_sentence_may_not_read_the_same_identity_at_both_ends():
     question and needs its own check.
     """
     raw = logical_bundle()
+    # Scored only where the mapper EXECUTES the bindings (S-105 / the live-setup refusal).
+    raw["sources"]["input_rows"]["map"]["implementation_id"] = "declarative-role"
     mapping = _mappings(raw)[sorted(_mappings(raw))[0]]
     mapping["bind"]["subject"] = _entity("source_id")
     mapping["bind"]["target"] = _entity("source_id", "OutputEntity@1", "output_id")
@@ -240,6 +242,7 @@ def test_sharing_one_key_column_of_several_is_not_a_self_edge():
     """⚠️ EQUALITY, NOT OVERLAP. Two entities of one type may legitimately share SOME key
     column; refusing on overlap would refuse ordinary declarations."""
     raw = logical_bundle()
+    raw["sources"]["input_rows"]["map"]["implementation_id"] = "declarative-role"
     name = sorted(_mappings(raw))[0]
     mapping = _mappings(raw)[name]
     mapping["bind"]["subject"] = _entity("source_id")
