@@ -17,11 +17,17 @@ WHAT THE CONSTRAINTS ARE FOR
 -----------------------------
 Each CHECK below is a rule from the design that would otherwise live only in prose:
 
-  * `ck_ledger_register_has_no_object` - the design says `register`'s object is ∅, and
-    the pinned `object_kind` enum has no spelling for ∅. The resolution (stated in
-    `vocabulary.py`) is `object_kind IS NULL`, and this constraint makes that legal for
-    `register` and for nothing else, in BOTH directions - a register with an object and
-    a non-register without one are equally refused.
+  * ⚰️ `ck_ledger_register_has_no_object` IS GONE (S-77, 2026-09-09). It read
+    `(predicate = 'register') = (object_kind IS NULL)` -- a DOMAIN WORD in the storage
+    layer, and the storage layer is the one place that cannot be changed by editing a
+    declaration. Which predicates are objectless is a DECLARED fact (`object.kind:
+    none`), and `roleframe` already refuses an emission whose object kind disagrees
+    with its vocabulary signature -- in both directions, by config path. So the check
+    was a second, narrower spelling of a rule that already had an author, and its
+    narrowness was the bug: a second objectless predicate (`retire@1`) could be
+    declared, compiled, emitted, and then REFUSED BY THE DATABASE. What remains here
+    is the structural invariant that owes nothing to any vocabulary:
+    `ck_ledger_objectless_carries_only_qualifiers`.
   * `ck_ledger_subject_keys_is_object` - §3's `subject` row. The incident was a
     concatenated key collapsing when a piece was blank; storing a bare string here would
     reintroduce it at the storage layer, below every Python check.
@@ -119,6 +125,20 @@ OBJECTLESS_PAYLOAD_CHECK = """(
 #: can tell "this install predates attributes" from "somebody dropped a constraint".
 RETIRED_OBJECTLESS_CONSTRAINT = "ck_ledger_objectless_has_no_payload"
 
+#: 🪦 S-77. `CHECK ((predicate = 'register') = (object_kind IS NULL))` -- the storage
+#: layer naming a predicate. 🔴 「코드에 도메인 낱말이 «없다»」 is an ARCHITECTURE rule,
+#: not a style one, and this is why: the rule it enforced was already declared
+#: (`object.kind: none`) and already checked where the declaration can answer back
+#: (`roleframe` refuses an emission that disagrees with its vocabulary signature, in both
+#: directions, by config path). Being NARROWER than the declaration is what made it a
+#: defect rather than redundancy: declare a SECOND objectless predicate and the atom
+#: compiles, emits, and is refused by the database -- three layers from the line an
+#: operator wrote.
+#:
+#: ⚠️ KEPT AS A NAME so a reader can tell 「this install predates S-77」 from 「somebody
+#: dropped a constraint」, exactly as `RETIRED_OBJECTLESS_CONSTRAINT` is.
+RETIRED_REGISTER_OBJECT_CONSTRAINT = "ck_ledger_register_has_no_object"
+
 CREATE_LEDGER = f"""
 CREATE TABLE IF NOT EXISTS {LEDGER_TABLE} (
     id                    UUID        NOT NULL,
@@ -137,8 +157,6 @@ CREATE TABLE IF NOT EXISTS {LEDGER_TABLE} (
     source_event_state    TEXT        NOT NULL,
     CONSTRAINT ck_ledger_object_kind CHECK (
         object_kind IS NULL OR object_kind IN ('value', 'entity_ref', 'event_ref')),
-    CONSTRAINT ck_ledger_register_has_no_object CHECK (
-        (predicate = 'register') = (object_kind IS NULL)),
     CONSTRAINT {OBJECTLESS_PAYLOAD_CONSTRAINT} CHECK {OBJECTLESS_PAYLOAD_CHECK},
     CONSTRAINT ck_ledger_subject_keys_is_object CHECK (
         jsonb_typeof(subject_keys) = 'object'),
@@ -381,6 +399,31 @@ def constraint_exists(cursor, table: str, name: str) -> bool:
     return cursor.fetchone() is not None
 
 
+def ensure_register_object_constraint_dropped(cursor) -> bool:
+    """Drop S-77's retired constraint on an install that predates the removal.
+
+    Returns whether it did anything. Idempotent: a fresh install never creates it, so the
+    catalogue is asked and no DDL is issued -- which matters because `ensure_schema` runs at
+    the start of every backfill.
+
+    🔴 A DROP CANNOT FAIL ON EXISTING DATA, which is the whole safety argument. Removing a
+    CHECK weakens the table: every row that satisfied it still satisfies what remains, there
+    is no scan, and there is nothing to fix before or after. That is the opposite of the
+    widening below, which had to argue its way to the same place.
+
+    ⚠️ WHAT IS NOT DROPPED WITH IT: `ck_ledger_objectless_carries_only_qualifiers`. That
+    one is structural -- an objectless atom carries qualifiers and nothing else -- and it
+    names no predicate, so it stays true whatever any declaration says.
+    """
+    if not constraint_exists(cursor, LEDGER_TABLE, RETIRED_REGISTER_OBJECT_CONSTRAINT):
+        return False
+    logger.info("[Ledger] dropping %s (S-77: the storage layer stops naming a predicate)",
+                RETIRED_REGISTER_OBJECT_CONSTRAINT)
+    cursor.execute(f"ALTER TABLE {LEDGER_TABLE} "
+                   f"DROP CONSTRAINT {RETIRED_REGISTER_OBJECT_CONSTRAINT}")
+    return True
+
+
 def ensure_objectless_payload_constraint(cursor) -> bool:
     """Widen the objectless-payload rule on an install that predates attributes.
 
@@ -496,6 +539,7 @@ def ensure_schema(connection):
         # An install that predates attributes still carries the narrow rule, and the
         # translator is about to write an atom the narrow rule refuses. See the function.
         ensure_objectless_payload_constraint(cursor)
+        ensure_register_object_constraint_dropped(cursor)
         cursor.execute(CREATE_CURSOR)
         ensure_row_ref_table(cursor)
         for column, statement in LEDGER_ADDITIONS:
