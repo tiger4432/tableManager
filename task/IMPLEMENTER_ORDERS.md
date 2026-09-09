@@ -37185,3 +37185,22 @@ crud.py:3704 도스트링 「Replay safety: guarded on neither id nor key」 →
 
 
 > ✅ **[09-09 14:19] 판정 190 «검증» — `a3f347ab`: 오라클 41 passed / 1 xfailed(남은 xfail = is_new, ③ 의 것) + 재생 시험 초록(제가 돌림). 복합 키 xfail 뒤집힘 확인. 122 파일 넓은 훑기는 «제가 지금 배경으로 돌립니다»(빨강이면 이름 대어 이 채널에) — 당신은 «③ 집합 연산(183/184/187)을 지금 시작»하십시오. 「다음 창」은 없습니다(소유자 13:57) — 같은 창, 계속. 재기동은 제가 합니다(190 코드 라이브)**
+
+
+> 🔴 **[09-09 14:32] 118 파일 훑기(2,815 passed · 15 failed · 98 skipped · 2 xfailed, 9 분) — 15 = 기지 8(S-32 모집단 7 + 하트비트) + «190 이전부터» 빨강 4(trace_fixture · void_base_join ×2 · dt_alignment 라이브 맵퍼 — `a3f347ab~1` 내보내기 + 라이브 config 로 재확인, 픽스처/박스 부류, 당신 것 아님) + **190 의 것 3**:**
+```
+① tests/test_composite_key_prefetch_budget.py::test_the_guard_refuses_to_assemble[item1 …explicit business key…]
+② …::test_the_guard_assembles_when_and_only_when_it_should       ← 둘 다 «옛 guard»를 단언하는 이웃 시험. 190 의 뜻으로 고쳐 쓴다(row_id 만 거절 · 보낸 키는 조립됨)
+③ tests/test_set_based_write_path.py::test_a_rename_inside_one_batch_does_not_orphan_the_old_key   ← 🔴 «진짜 회귀» (S-90)
+   항목 A = business_key_val «RN_01_1_1»(기존 행의 키) + updates 에 cx 1→2 (부품이 바뀜)
+   190 전: 보낸 키로 행을 «찾고» → 쓰기 뒤 B 가 재키잉(RN_01_2_1)  → 행 1
+   190 후: 조립이 update_item.business_key_val 을 «덮어써» RN_01_2_1 로 조회 → 없음 → 새 행 → 옛 행 고아  → 행 2
+```
+## 판정 191 — 보낸 키는 «권고»이면서 «이름 바꾸기의 주소»다. 둘은 양립한다: 조회는 «조립 키 먼저, 보낸 키 다음»
+```
+규칙   조립 키로 행이 있으면 그 행(188 그대로: 조립이 신원). 없고 보낸 키가 조립과 «다르며» 그 키로 행이 있으면 «그 행»을 집어 재키잉(B 의 is_src_changed 길이 그대로 처리 — 충돌 병합 포함). 둘 다 없으면 새 행(조립 키로)
+구현   조립이 보낸 키를 «덮어쓰지 않고 곁에 둔다»(예: item 에 supplied 값 보존) → 프리페치 필터의 `business_key_val IN (…)` 에 «둘 다» 싣고 → _get_or_create_row 가 «조립 → 보낸» 순으로 본다. 그 뒤 B 가 부품 변경을 보고 재키잉. probed_identity 의 뺄셈은 그대로
+⛔ 아닌 것   「보낸 키가 있으면 조립 안 함」으로 돌아가기(190 무름) · 보낸 키를 «버리기»(이름 바꾸기 죽음)
+게이트   ③ 초록 · ①② 190 뜻으로 재작성 · 오라클 41 그대로 · 재생 초록 · 「보낸 키 ≠ 조립, 둘 다 행 있음 → 조립 행 이김 + 보낸 키 행 손 안 댐」 단언 하나(188 의 경계)
+```
+> 📌 **[09-09 14:32] 이 채널의 미답 질문: «없음».** 이 셋은 ③ 집합 연산 «앞»입니다(main 에 회귀가 열려 있음). 이 창이 못 하면 새 창의 «첫 줄»
