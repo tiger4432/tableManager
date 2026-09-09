@@ -27815,3 +27815,10 @@ map_alignment._resolve_reference(db, cfg, spec, source_maps, cap, cache=None)
 ```
 > 📌 **[09-10] 이 채널의 미답 질문: 위 2 의 ⓐ/ⓑ 하나.** 답 없으면 ①②(재는 것)까지 하고 멈춥니다 —
 > 짓기 전에 「이득이 0 일 수 있다」를 먼저 재는 것이 오늘 세 번 옳았습니다
+
+> ⚠️ **[09-10] 정정 — 바로 위 보고 커밋(`69c85129`)의 «메시지»가 손상됐습니다.** 백틱을 `-m` 안에
+> 써서 셸이 두 식별자를 «실행»했고, 메시지에서 사라졌습니다: 「Read by the lead PM: ␣takes a
+> cache …␣creates a fresh one per call」 — 주어 둘이 빈칸입니다. 제 상설(「백틱이 들어가면 `-F`」)을
+> 제가 어겼습니다. 푸시된 뒤라 강제 푸시 없이는 못 고치므로 «여기에» 적습니다:
+> **빠진 주어는 `map_alignment._resolve_reference` 와 `map_alignment.build_alignment_view`** 입니다.
+> 내용(위 절)은 온전합니다 — 손상된 것은 그 커밋의 메시지뿐입니다.
