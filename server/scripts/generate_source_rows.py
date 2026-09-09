@@ -38,12 +38,14 @@ import datetime
 import json
 import os
 import sys
-import time
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _SERVER = os.path.abspath(os.path.join(_HERE, ".."))
-if _SERVER not in sys.path:
-    sys.path.insert(0, _SERVER)
+for _p in (_SERVER, _HERE):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+import product_door                                                  # noqa: E402
 
 #: A map is 20x20 by the owner's production shape, and each map is a different material.
 MAP_SIDE = 20
@@ -350,66 +352,36 @@ def _value_for(column: str, declared_type: str, key: int,
     return f"GEN-{column}-{key:08d}"
 
 
-#: Ruling 170: rows go in through the PRODUCT DOOR, never straight into the table.
-#: A direct insert carries no envelope, and an envelope-less write breaks `read = fold(E)`
-#: (S-78) as well as leaving the load with no `write⁻¹`. The HTTP batch is also the shape
-#: production runs -- thousands of rows per transaction -- so the load exercises the path
-#: it is meant to measure instead of a private one.
-PRODUCT_DOOR = "/tables/{table}/data/updates"
-#: Ruling 170 caps a request at this. Not a tuning knob: it is the batch size the chain
-#: is specified to carry, so a larger one would measure something production never does.
-MAX_ROWS_PER_REQUEST = 1000
-DEFAULT_BASE_URL = "http://127.0.0.1:8000"
 #: The generator's own layer name, so its rows are attributable and removable as a set.
 SOURCE_NAME = "row_generator"
 
-
-def _opener():
-    """A urllib opener with proxies disabled FOR THIS OPENER ONLY.
-
-    🔴 NOT `NO_PROXY`. Setting that environment variable disables the proxy registry
-    process-wide and has broken unrelated lookups here before; the surgical form is an
-    empty `ProxyHandler` on one opener. It matters at all because a corporate proxy will
-    happily accept `127.0.0.1` and answer for it, which reads as "the server is down".
-    """
-    import urllib.request
-
-    return urllib.request.build_opener(urllib.request.ProxyHandler({}))
+#: 🔴 THE DOOR ITSELF LIVES IN `product_door`, AND THIS FILE HAD A SECOND COPY OF IT.
+#: Until 2026-09-09 this module carried its own route constant, its own batch cap, its own
+#: proxy-free opener and its own request loop, which is 「같은 기능인데 두 경로」 - and the
+#: two had already drifted: ruling 192 made `updated_count` mean "rows this request
+#: CHANGED", `product_door.put_rows` began reporting it, and this path did not, so the gate
+#: report the lead asked for (「보낸 N · 바뀜 M」) could not be produced here at all. The copy
+#: is gone. What stays is what is particular to a GENERATED row: which column carries its
+#: identity, and the layer name it is written under.
 
 
-def _jsonable(value):
-    if isinstance(value, datetime.datetime):
-        return value.isoformat()
-    return value
+def row_items(plan: Plan, rows):
+    """The plan's rows as door items, one per row.
 
+    🔴 `business_key_val` IS SUPPLIED PER ROW AND THAT IS NOT OPTIONAL. `dt_log` declares
+    a composite key over columns this source does not name, so a payload without an explicit
+    key leaves every row's identity blank - and `crud._update_row_business_key` records what
+    happens then: blank-keyed rows in one batch collide WITH EACH OTHER, the IntegrityError
+    recovery cannot resolve rows that were never committed, and the batch is REFUSED after
+    the retries. The generated business key is the source's own key column, so the two
+    spellings agree by construction rather than by luck.
 
-def request_body(plan: Plan, rows) -> dict:
-    """One product-door request.
-
-    🔴 `business_key_val` IS SUPPLIED PER ROW AND THAT IS NOT OPTIONAL. `dt_log` declares a
-    composite key over columns this source does not name, so a payload without an explicit
-    key leaves every row's identity blank -- and `crud._update_row_business_key` records
-    what happens then: blank-keyed rows in one batch collide WITH EACH OTHER, the
-    IntegrityError recovery cannot resolve rows that were never committed, and the batch is
-    REFUSED after the retries. The generated business key is the source's own key column,
-    so the two spellings agree by construction rather than by luck.
-
-    🔴 NO `effort`. `EffortReport` says in as many words that an automatic path must not
-    send it: absent means "not measured", and a zero would dilute the human-effort average
-    that is this product's first core value. A load generator is exactly that path.
+    The key column also stays among the values: `business_key_val` is framework-owned but is
+    not in `crud`'s `system_cols`, so the column is written like any other.
     """
     key_column = _key_column(plan)
-    items = []
     for row in rows:
-        payload = {name: _jsonable(value) for name, value in row.items()}
-        items.append({
-            "business_key_val": payload[key_column],
-            "updates": payload,
-            "source_name": SOURCE_NAME,
-            "updated_by": SOURCE_NAME,
-        })
-    # `silent` stays false: the broadcast is part of the path being measured.
-    return {"updates": items, "silent": False}
+        yield product_door.row_item(row[key_column], row, source_name=SOURCE_NAME)
 
 
 def _key_column(plan: Plan) -> str:
@@ -425,52 +397,34 @@ def _key_column(plan: Plan) -> str:
         f"without one collide with each other and the batch is refused.")
 
 
-def write_rows(plan: Plan, *, base_url: str = DEFAULT_BASE_URL, timeout: float = 60.0,
-               log=print) -> dict:
+def write_rows(plan: Plan, *, base_url: str = product_door.DEFAULT_BASE_URL,
+               timeout: float = 60.0, log=print) -> dict:
     """Push the plan's rows through the product door, in requests of at most 1,000.
 
     Returns the numbers the gate asks for. Timing is per REQUEST because ruling 170's gate
     is stated per request ("<= 1 s"), and an average over a whole run would hide the one
     slow request that is the actual finding.
+
+    🔴 `rows_changed` IS THE ONE THAT SAYS WHETHER THIS WAS A MEASUREMENT AT ALL. It is
+    the server's `updated_count`, which since ruling 192 counts only rows the request
+    actually created or altered. A run whose `rows_changed` is 0 re-sent rows that were
+    already what it asked for, wrote nothing, and therefore measured nothing - which is not
+    hypothetical: on 2026-09-09 a re-run of this generator with unchanged knobs answered in
+    0.38s and was nearly reported as a hundredfold improvement. `--start` is how a run gets
+    new rows to write; this number is how its report shows that it did.
+
+    The rows are a GENERATOR all the way to the socket, so a ten-million-row run never
+    builds a ten-million-item list.
     """
-    import urllib.error
-    import urllib.request
-
-    opener = _opener()
-    url = base_url.rstrip("/") + PRODUCT_DOOR.format(table=plan.target_table)
-    sent, batches, seconds = 0, [], []
-    buffer = []
-
-    def _flush():
-        if not buffer:
-            return
-        body = json.dumps(request_body(plan, buffer)).encode("utf-8")
-        request = urllib.request.Request(
-            url, data=body, method="PUT",
-            headers={"Content-Type": "application/json"})
-        started = time.monotonic()
-        with opener.open(request, timeout=timeout) as response:
-            answer = json.loads(response.read().decode("utf-8") or "{}")
-        elapsed = time.monotonic() - started
-        seconds.append(elapsed)
-        batches.append(len(buffer))
-        log(f"  request {len(batches):>4}  rows {len(buffer):>5}  {elapsed:6.2f}s"
-            + (f"  effort_error={answer.get('effort_error')}"
-               if answer.get("effort_error") else ""))
-        buffer.clear()
-
-    for row in rows_for(plan, start=plan.start):
-        buffer.append(row)
-        sent += 1
-        if len(buffer) >= MAX_ROWS_PER_REQUEST:
-            _flush()
-    _flush()
-
+    result = product_door.put_rows(
+        plan.target_table, row_items(plan, rows_for(plan, start=plan.start)),
+        base_url=base_url, timeout=timeout, log=log)
     return {
-        "rows_sent": sent,
-        "requests": len(batches),
-        "seconds_total": round(sum(seconds), 2),
-        "seconds_max": round(max(seconds), 2) if seconds else 0.0,
+        "rows_sent": result["rows"],
+        "rows_changed": result["changed"],
+        "requests": result["requests"],
+        "seconds_total": result["seconds_total"],
+        "seconds_max": result["seconds_max"],
         "atoms_expected": plan.atoms,
     }
 
@@ -504,8 +458,8 @@ def main(argv=None) -> int:
                               "to generate NEW rows."))
     parser.add_argument("--apply", action="store_true",
                         help="actually write, through the product door")
-    parser.add_argument("--url", default=DEFAULT_BASE_URL,
-                        help=f"server base url (default {DEFAULT_BASE_URL})")
+    parser.add_argument("--url", default=product_door.DEFAULT_BASE_URL,
+                        help=f"server base url (default {product_door.DEFAULT_BASE_URL})")
     parser.add_argument("--dry-run", action="store_true",
                         help="say the rows, the table and the months, and write NOTHING")
     parser.add_argument("--json", action="store_true", help="print the plan as JSON")
@@ -532,7 +486,8 @@ def main(argv=None) -> int:
         print("\nnothing written -- pass --apply to write through the product door")
         return 0
 
-    print(f"\nwriting through {args.url}{PRODUCT_DOOR.format(table=plan.target_table)}")
+    print(f"\nwriting through "
+          f"{args.url}{product_door.PUT_ROWS.format(table=plan.target_table)}")
     try:
         result = write_rows(plan, base_url=args.url)
     except GeneratorRefusal as refusal:
