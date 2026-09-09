@@ -65,6 +65,12 @@ ROLLBACK = (
     r"AND map_id ~ '_[1-9]$';")
 
 
+import product_door
+
+#: The layer name this edit lands under.
+SOURCE_NAME = "respell_syn_frame_map_ids"
+
+
 def plan():
     """(old, new) for every frame this fixture registers, taken FROM THE FIXTURE.
 
@@ -95,6 +101,8 @@ def main(argv=None):
     ap.add_argument("--apply", action="store_true", help="write; default is a dry run")
     ap.add_argument("--i-accept-writing-to-owner-database", dest="allow_owner",
                     action="store_true")
+    ap.add_argument("--url", default=product_door.DEFAULT_BASE_URL,
+                    help="server base url the edit is written through")
     args = ap.parse_args(argv)
 
     pairs = plan()
@@ -139,16 +147,33 @@ def main(argv=None):
             print("\n--apply needs --i-accept-writing-to-owner-database")
             return 1
 
-    with db.engine.begin() as c:
+    # 🔴 A RENAME IS ONE EDIT PER ROW, ADDRESSED BY `row_id` (ruling 185). The row cannot be
+    # addressed by the identity it is losing, and `row_id` does not move. All three identity
+    # columns are sent explicitly: `assemble_composite_business_key` returns early on an item
+    # carrying a `row_id`, so nothing recomputes them - which is correct, because deciding
+    # the new identity is what a rename IS.
+    #
+    # ⚠️ `business_key_val` survives the trip: it is framework-owned but absent from `crud`'s
+    # `system_cols`, so it is written like any other column. That was measured before relying
+    # on it - a silently dropped key would leave the rename half-applied.
+    moved = 0
+    with db.engine.connect() as c:
         c.execute(text("SET statement_timeout = '60s'"))
-        moved = 0
-        for old, new in pairs:
-            r = c.execute(text("UPDATE wafer_map_metadata SET map_id = :new, "
-                               "map_pk = replace(map_pk, :old, :new), "
-                               "business_key_val = replace(business_key_val, :old, :new) "
-                               "WHERE target_table = 'bonding_log' AND map_id = :old"),
-                          {"old": old, "new": new})
-            moved += r.rowcount
+        items = []
+        for old_id, new_id in pairs:
+            for row_id, map_pk, bkv in c.execute(text(
+                    "SELECT row_id, map_pk, business_key_val FROM wafer_map_metadata "
+                    "WHERE target_table = 'bonding_log' AND map_id = :old"),
+                    {"old": old_id}).fetchall():
+                items.append(product_door.row_item_by_id(row_id, {
+                    "map_id": new_id,
+                    "map_pk": (map_pk or "").replace(old_id, new_id),
+                    "business_key_val": (bkv or "").replace(old_id, new_id),
+                }, source_name=SOURCE_NAME))
+    if items:
+        result = product_door.put_rows("wafer_map_metadata", items, base_url=args.url,
+                                       log=lambda *_: None)
+        moved = result["rows"]
 
     with db.engine.connect() as c:
         after = count(c)

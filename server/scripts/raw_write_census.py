@@ -65,6 +65,24 @@ def classify(path):
                   and isinstance(n.value.value, str))
     prints = _spans(tree, lambda n: isinstance(n, ast.Call)
                     and isinstance(n.func, ast.Name) and n.func.id == "print")
+    # 🔴 A CONSTANT THAT IS ONLY EVER PRINTED IS NOT A WRITE. `respell_syn_frame_map_ids`
+    # keeps its undo as a module-level string and prints it three times; the first version
+    # of this gate counted that definition as a write site, which would have pushed someone
+    # to delete the operator's rollback instructions to reach zero. The name is followed to
+    # its uses: if every load of it sits inside a `print`, its definition is prose.
+    printed_only = set()
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant)
+                and isinstance(node.value.value, str) and SQL.search(node.value.value)):
+            continue
+        names = [t.id for t in node.targets if isinstance(t, ast.Name)]
+        for name in names:
+            loads = [n for n in ast.walk(tree)
+                     if isinstance(n, ast.Name) and n.id == name and isinstance(n.ctx, ast.Load)]
+            if loads and all(any(lo <= n.lineno <= hi for lo, hi in prints) for n in loads):
+                printed_only.add((node.value.lineno, getattr(node.value, "end_lineno",
+                                                             node.value.lineno)))
+
     writes, printed, docstring = [], [], []
     for number, line in enumerate(source.split("\n"), 1):
         if not SQL.search(line):
@@ -72,6 +90,8 @@ def classify(path):
         entry = (number, line.strip()[:72])
         if any(lo <= number <= hi for lo, hi in docs):
             docstring.append(entry)
+        elif any(lo <= number <= hi for lo, hi in printed_only):
+            printed.append(entry)
         elif any(lo <= number <= hi for lo, hi in prints):
             printed.append(entry)
         else:
