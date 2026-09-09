@@ -367,11 +367,22 @@ def test_the_assembled_key_wins_and_the_supplied_key_s_row_is_left_alone(db_sess
         "the supplied key is a fallback address, never a way to retarget a live row"
 
 
-def test_collision_merge_still_fires_against_a_row_outside_the_prefetch(db_session):
-    """The collision probe's fast path may only skip when the prefetch covered the
-    ASSEMBLED key. Here it did not: the payload arrives with an explicit
-    `business_key_val` that is NOT the key its own columns assemble to, so the probe
-    must still run and merge onto the row that already owns the assembled key."""
+def test_a_supplied_key_that_names_nothing_still_resolves_onto_the_assembled_row(db_session):
+    """A payload whose explicit `business_key_val` is NOT the key its own columns
+    assemble to still lands on the row that owns the ASSEMBLED key.
+
+    🔴 RENAMED AND RE-STATED BECAUSE WHAT IT MEASURES MOVED, and that was MEASURED
+    rather than reasoned (2026-09-09, 판정 191). It used to be the collision-merge test:
+    the assembly returned early on a supplied key, so the payload was looked up under
+    "SOMETHING_ELSE", missed, and `_find_business_key_conflict` had to run and merge.
+    Since 190/191 the assembly runs anyway and the prefetch carries the assembled key,
+    so this row now comes back from `row_cache` and the merge is never reached. Stubbing
+    `_find_business_key_conflict` to return None leaves this test GREEN - its old
+    docstring claimed the opposite, which is why the claim is not simply repeated here.
+
+    ⚠️ THE MERGE ARM IS NOT UNCOVERED, also measured with that same stub:
+    `test_a_collision_merge_leaves_history.py` (5 red) and `test_composite_business_key.py`
+    (2 red) both ring on it. What is gone is this scenario's ability to reach it."""
     model = models.DYNAMIC_TABLES[TABLE]
     victim = model(row_id="MERGE_TARGET", business_key_val="MG_01_5_5",
                    lot="MG", slot="01", cx=5, cy=5, bn="old")
