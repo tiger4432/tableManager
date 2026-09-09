@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import ast
 import io
+import tokenize
 import os
 import re
 import subprocess
@@ -60,6 +61,17 @@ def classify(path):
         # A file this tool cannot parse is REPORTED, never skipped silently - a parse
         # failure is the one case where "no hits" and "not looked at" would be the same.
         raise
+    # 🔴 A `#` COMMENT IS NOT CODE, AND THE AST CANNOT SEE ONE. Comments are discarded
+    # before parsing, so a comment explaining why a DELETE moved to the door counted as a
+    # DELETE - measured on this very file's own explanation. `tokenize` keeps them.
+    comment_lines = set()
+    try:
+        for token in tokenize.generate_tokens(io.StringIO(source).readline):
+            if token.type == tokenize.COMMENT and SQL.search(token.string):
+                comment_lines.add(token.start[0])
+    except (tokenize.TokenError, IndentationError):
+        pass
+
     docs = _spans(tree, lambda n: isinstance(n, ast.Expr)
                   and isinstance(n.value, ast.Constant)
                   and isinstance(n.value.value, str))
@@ -88,7 +100,9 @@ def classify(path):
         if not SQL.search(line):
             continue
         entry = (number, line.strip()[:72])
-        if any(lo <= number <= hi for lo, hi in docs):
+        if number in comment_lines:
+            docstring.append(entry)
+        elif any(lo <= number <= hi for lo, hi in docs):
             docstring.append(entry)
         elif any(lo <= number <= hi for lo, hi in printed_only):
             printed.append(entry)
