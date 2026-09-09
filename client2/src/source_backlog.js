@@ -9,12 +9,13 @@
 //    contract was `rows_past_cursor` · `rows_before_cursor` · `caught_up`, and every one of
 //    those words belonged to a cursor world that the S-76 round retired. Renaming them would
 //    have kept the old question alive under new spelling; they are GONE and the place now
-//    holds what the source actually has:
-//        rows_total      the table's rows
-//        rows_indexed    how many of them the ledger has taken
-//        rows_remaining  what is left
+//    holds what the source actually has, spelled as the SERVER spells it (ruling 177 — the
+//    order's `rows_total`/`rows_indexed`/`rows_remaining` are retired, code is the authority):
+//        relation_rows   the table's rows                 (backfill.rows_not_yet_translated)
+//        indexed_rows    how many of them the ledger has taken
+//        not_yet         what is left
 //
-// 🔴 `rows_remaining` IS READ, NEVER COMPUTED. It is N − M today and that is exactly why the
+// 🔴 `not_yet` IS READ, NEVER COMPUTED. It is N − M today and that is exactly why the
 //    temptation is there — and the day the server's definition stops being plain subtraction
 //    (an index that lags, rows a view excludes, a filtered scope) a client that did the
 //    arithmetic would go on drawing a confident number that disagrees with the ledger, with
@@ -34,17 +35,17 @@
  *
  * 🔴 화면이 이름을 «번역하지 않습니다». 라벨은 서버가 보낼 키 그대로이고, 이름을 옮기면
  *    서버가 키를 바꾸는 날 화면이 «옛 이름으로» 옳아 보입니다.
- * ⚠️ 오늘 서버는 이 셋을 «아직 안 보냅니다»(S-58 과 합쳐 구현자 ②·⑦ 사이). 그래서 이 파일은
- *    계약이고, 픽스처가 그 계약의 «유일한 재료»입니다 — 배선은 서버가 실은 뒤입니다.
- *
- * 🔴 그리고 «이름이 갈릴 수 있습니다» — 판정으로 올렸습니다. 지시(09-09 08:33)는 위 셋을
- *    지목했는데, 여섯 분 뒤 서버가 착지시킨 것은 다른 철자입니다:
- *      `d91fba43  ledger/backfill  report["relation_rows"] · ["indexed_rows"] · ["not_yet"]`
- *    그쪽은 CLI 보고의 낱말이고 이 줄이 읽을 «선언 응답»은 아직 없으므로 둘이 같은 이름이
- *    될지 «정해지지 않았습니다». 이 배열이 그 답의 «유일한 자리»라 바꾸는 것은 한 줄입니다 —
- *    다른 어떤 파일에도 이 낱말들이 적혀 있지 않습니다.
+ * 🔴 이 줄이 읽는 레코드에는 «아직 이 셋이 없습니다» — 실측(2026-09-09):
+ *      `config_explorer_service.py::_verification_view` 가 내는 칸은
+ *      target_key · status · ran_at · rows_read · molecules · atoms · stale  «일곱»뿐입니다.
+ *      셋이 사는 곳은 `ledger/backfill.rows_not_yet_translated()` 이고, HTTP 로 나오는 곳은
+ *      `retroactive.py:388` 의 `extra` 인데 거기서는 셋째가 `not_yet_translated` 로 «철자가
+ *      다릅니다». 그러니 「응답에 이미 있다」는 «이 라우트에 대해서는» 아직 참이 아닙니다.
+ * ⚠️ 그래서 이 파일은 «배선된 채로 비어» 있습니다 — 서버가 `_verification_view` 에 셋을
+ *    더하는 순간 줄이 «편집 0 으로» 뜹니다. 그때까지 빈 칸인 것은 결함이 아니라
+ *    「아직 아무도 안 셌다」의 정직한 그림입니다.
  */
-export const BACKLOG_FIELDS = Object.freeze(['rows_total', 'rows_indexed', 'rows_remaining']);
+export const BACKLOG_FIELDS = Object.freeze(['relation_rows', 'indexed_rows', 'not_yet']);
 
 /**
  * @param {object} status 소스별 현황 레코드, 서버가 준 그대로
