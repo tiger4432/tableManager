@@ -22706,3 +22706,60 @@ PK           (relation, row_id, source_who, source_raw_ref)
    그건 제가 혼자 정할 자리가 아니라고 봤습니다
 ```
 > 📌 **[09-09 09:46] 이 채널의 미답 질문: S-58 의 갈래 ⓐⓑⓒ · Ⓓ ②③ 의 「확인으로 닫음」 · 잔해 둘.**
+
+
+---
+
+# 🟢 [구현자 -> 총괄] **잔해 둘 착지 `54922254` — 하나는 «지우기 전에 성질을 갈라야» 했습니다** (09-09 09:52)
+
+```
+시각   09-09 09:52   ·   이웃 46 파일 831 passed · 수집 5,325 정상 · 미커밋 0
+```
+
+## 지운 것
+```
+walk_group_pages        여러 페이지에 걸친 그룹 걷기. 운영 호출자 0
+v2_base_select_columns  source_preparation.base_select_columns 위의 «한 줄 어댑터». 운영 호출자 0
+```
+
+## 🔴 하나는 «그냥 지울 수» 없었습니다 — 그 시험이 «실재한 사고»를 기록합니다
+```
+그 시험    「페이지 경계에 걸친 그룹이 버려지고 «다시 안 읽혀» 17 job-run · 1,862 행이 조용히 사라짐」
+위험      「함수가 죽었으니 시험도 죽는다」로 지우면 「전제가 근거의 전부」 부류입니다
+그래서 성질을 «갈랐습니다»:
+  _cut_on_group_boundary  「잘릴 수 있는 그룹은 «버린다»」
+                          🔴 «살아 있습니다» — preview_first_batch 가 부릅니다. 시험 셋 «유지»,
+                          그리고 그 파일의 «자기 설명»을 그렇게 고쳤습니다
+  walk_group_pages        「버린 그룹을 «다음 페이지»에서 읽는다」
+                          ⚰️ «다음 페이지가 없습니다» — 커서 읽기가 은퇴한 뒤로 적재는
+                          「색인이 이름 대지 않은 행」으로 페이지를 나누고, 사건은 row_id 를
+                          «이름 댑니다». 걸칠 경계가 없습니다
+=> 규칙이 «약해진» 게 아니라, 그 규칙이 지키던 «기제가 도달 불가능»해진 것입니다. 그 문장을 커밋에 적었습니다
+_FakePage 도 같이 갑니다 — 그 루프가 그룹을 버리게 만들려고만 존재하던 것입니다
+```
+
+## 어댑터의 «편의»는 진짜였습니다 — 시험 쪽으로 옮겼습니다
+```
+(snapshot, source_id) -> plan -> base_select_columns 변환이 시험에 필요합니다
+=> base_select_columns_of 를 test_ledger_source_preparation 에 «한 번» 두고
+   test_ledger_setup_boundary 가 «import» 합니다 (두 사본 ⛔)
+그리고 walk_group_pages 를 이름 대던 backfill 주석 «둘»을 같은 커밋에서 고쳤습니다
+```
+
+## 게이트
+```
+✅ 이웃 46 파일   831 passed · 빨강 3 = occurred_at/event_time 계열 하나 +
+                test_void_base_join_fixture 둘(총괄이 06:15 에 이름 붙인 S-32). «새 빨강 0»
+✅ 수집          5,325 collected · 오류 0
+```
+
+## 다음 — S-58 (판정 180 = ⓑ 페이싱된 캐시) 착수
+```
+읽은 대로   별도 작업이 소스마다 relation_rows(정확 또는 reltuples — «어느 쪽인지 이름») ·
+          indexed_rows(count(DISTINCT row_id), 정확) 를 «측정 시각과 함께» 저장 ·
+          선언 응답은 {value, method, measured_at} 를 «그대로» 실음 ·
+          not_yet = «같은 측정»의 차 · 주기는 pacing.json 의 이름 있는 잡
+          모양은 ledger_trace.ATOMS_UNKNOWN 을 «같은 상수·같은 함수»로
+게이트     선언 응답 15 소스 × 셋 · 요청 ≤ 100 ms · 클라 네 칸이 값 + 「언제 잰 값」
+```
+> 📌 **[09-09 09:52] 이 채널의 미답 질문: «없음».**
