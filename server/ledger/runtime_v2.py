@@ -129,9 +129,12 @@ def _row_ref_index(source_plan, event_frames, event_results):
         if (FRAME_ROW_ID_COLUMN not in frame.columns
                 or SOURCE_ROW_REF_COLUMN not in frame.columns):
             continue
-        for index in range(len(frame)):
-            row_id = frame.iloc[index][FRAME_ROW_ID_COLUMN]
-            row_ref = frame.iloc[index][SOURCE_ROW_REF_COLUMN]
+        # ⚠️ TWO COLUMNS, READ ONCE EACH (S-64-b). This said `frame.iloc[index][...]`
+        # TWICE per row - two pandas Series built to reach two cells of the SAME row, which
+        # is the shape `roleframe` names at its own repair site. `.tolist()` on the column
+        # is the spelling already used for this very column in `_frame_row_refs`.
+        for row_id, row_ref in zip(frame[FRAME_ROW_ID_COLUMN].tolist(),
+                                   frame[SOURCE_ROW_REF_COLUMN].tolist()):
             if row_id is None or row_ref is None:
                 continue
             row_id_of[str(row_ref)] = str(row_id)
