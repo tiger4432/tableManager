@@ -140,6 +140,20 @@ OBJECT_KINDS = frozenset({"none", "entity_ref", "value", "event_ref"})
 VALUE_TYPES = frozenset({"number", "string", "boolean", "timestamp"})
 DEFAULT_VALUE_TYPE = "number"
 
+#: What the EMITTER can honour today, which is not the same set (판정 178).
+#:
+#: 🔴 A WORD THE GRAMMAR ACCEPTS AND THE EMITTER REFUSES IS A TRAP, and the first
+#: version of `VALUE_TYPES` was exactly that: the validator took `string`, the form
+#: OFFERED it, and every atom built from it was then refused because the compiler pins
+#: a value object to `quantity`. 「가드는 도달 가능해지는 날 틀린다」 -- except here the
+#: day was the day it shipped.
+#:
+#: ⚠️ THE WIDER SET STAYS, because the refusal that reads 「declared, but the emitter
+#: does not read it yet (S-84)」 is a different sentence from 「that is not a word」 --
+#: one names a debt with a number, the other tells an operator they made a typo. When
+#: S-84 lands, this line is the change.
+EMITTABLE_VALUE_TYPES = frozenset({"number"})
+
 #: How many objects one subject may hold on this predicate. Without it an aggregate can
 #: count a subject twice and NOTHING refuses -- the quiet arithmetic error this project
 #: keeps naming. ABSENCE MEANS `many`, because that is what every predicate on disk is
@@ -288,6 +302,41 @@ def _adapt_physical_catalog(document: Mapping[str, Any]) -> Mapping[str, Any]:
         if "row_id" in relation["columns"]:
             relation.setdefault("indexes", []).append(
                 {"columns": ["row_id"], "unique": True})
+        # 🔴 THE UNIT A JUDGEMENT IS MADE ON, and it is a property of the TABLE (ruling
+        # 151, placed here 2026-09-09). It is not always the row and not always the
+        # business key: a value may be recorded per slot while the decision it feeds is
+        # made per (lot, slot), and nothing in the grammar could say so -- which is how a
+        # subset view came to fill a row whose key was already complete.
+        #
+        # ⛔ NO DEFAULT. A wrong judgement unit is a wrong answer that LOOKS right, so a
+        # reader that needs one and does not find it must refuse by name rather than
+        # assume the row. Nothing reads it yet: this builds the place, not the reader.
+        #
+        # ⚠️ REFUSED BY PATH, LIKE `kind` IS. A column that is not declared, a repeat, or
+        # a blank would each read as "the operator meant something" while selecting
+        # nothing -- the permanently-false filter this file already carries a note about.
+        if "decision_key" in declared:
+            columns = declared.get("decision_key")
+            if not isinstance(columns, list) or not columns:
+                raise LedgerSetupValidationError(
+                    "invalid_catalog", f"{table_id}.decision_key",
+                    "decision_key must be a non-empty list of declared column names")
+            seen = []
+            for column in columns:
+                if not isinstance(column, str) or not column.strip():
+                    raise LedgerSetupValidationError(
+                        "invalid_catalog", f"{table_id}.decision_key",
+                        "every decision_key entry must be a non-blank column name")
+                if column in seen:
+                    raise LedgerSetupValidationError(
+                        "invalid_catalog", f"{table_id}.decision_key",
+                        f"column {column!r} is named twice")
+                if column not in relation["columns"]:
+                    raise LedgerSetupValidationError(
+                        "invalid_catalog", f"{table_id}.decision_key",
+                        f"column {column!r} is not declared on {table_id!r}")
+                seen.append(column)
+            relation["decision_key"] = list(columns)
         business_key = declared.get("business_key")
         if (isinstance(business_key, str) and business_key.strip()
                 and business_key in relation["columns"]):
@@ -1113,6 +1162,13 @@ def _validate_vocabulary(section: Mapping[str, Any], problems: _Problems) -> Non
                       or obj["value_type"] not in VALUE_TYPES):
                     problems.add("invalid_predicate", f"{path}.object.value_type",
                                  f"must be one of {sorted(VALUE_TYPES)} (absent means {DEFAULT_VALUE_TYPE!r})")
+                elif obj["value_type"] not in EMITTABLE_VALUE_TYPES:
+                    problems.add(
+                        "unsupported_value_type", f"{path}.object.value_type",
+                        f"{obj['value_type']!r} can be declared but the emitter does "
+                        f"not read it yet, so every atom built from it would be "
+                        f"refused as a quantity (S-84). Until then the emittable set "
+                        f"is {sorted(EMITTABLE_VALUE_TYPES)}.")
             qualifiers = obj.get("qualifiers")
             qpath = f"{path}.object.qualifiers"
             if problems.exact(
@@ -1516,7 +1572,7 @@ def _validate_sources(section: Mapping[str, Any], problems: _Problems) -> None:
         source = section[source_id]
         if not problems.exact(
                 source, path, required=("relation", "read", "prepare", "map", "bind"),
-                optional=("status", "decision_key")):
+                optional=("status",)):
             continue
         _nonblank_text(source.get("relation"), f"{path}.relation", problems)
         # 🔴 SAME TWO WORDS AGAIN. Retiring a source is deleting it today, and the exact
@@ -1526,16 +1582,12 @@ def _validate_sources(section: Mapping[str, Any], problems: _Problems) -> None:
         if not isinstance(source_status, str) or source_status not in LIFECYCLE_STATES:
             problems.add("invalid_driver", f"{path}.status",
                          f"must be one of {sorted(LIFECYCLE_STATES)} (absent means {DEFAULT_LIFECYCLE!r})")
-        # 🔴 THE UNIT A JUDGEMENT IS MADE ON, which is NOT always the row and NOT always
-        # the business key (ruling 151). ⛔ NO DEFAULT: a wrong decision unit is a wrong
-        # answer that looks right, so a reader that needs one and does not find it must
-        # REFUSE BY NAME rather than guess the row. Nothing reads it yet -- this round
-        # builds the place, not the reader.
-        if "decision_key" in source:
-            _nonblank_list(source["decision_key"], f"{path}.decision_key", problems)
-            if _has_duplicate_strings(source.get("decision_key")):
-                problems.add("duplicate_id", f"{path}.decision_key",
-                             "decision key columns must be unique")
+        # ⚰️ `decision_key` IS NOT HERE (ruling, 2026-09-09 08:54). The judgement unit is a
+        # property of the TABLE, and the readers that need it -- the virtual join and the
+        # enrichment resolver -- read the CATALOG, not this bundle. Declaring it on the
+        # ledger source would have made two places for one fact. It lives beside `kind`
+        # in the catalog adapter above, and this validator reads it from there if it ever
+        # needs to.
         # Each clause is judged on its own: one malformed clause must not silence the
         # other three, or an author fixes four rounds of one refusal at a time.
         _validate_profile(source.get("bind"), f"{path}.bind", problems)

@@ -76,6 +76,7 @@ from .source_preparation import locked_select_columns
 from .setup_bundle import (
     _MAPPER_UNITS,
     CARDINALITIES,
+    EMITTABLE_VALUE_TYPES,
     LIFECYCLE_STATES,
     OBJECT_KINDS,
     _OCCURRED_AT_BASES,
@@ -562,7 +563,10 @@ def closed_lists(sources: Any = None) -> dict[str, Any]:
     return {
         **schema,
         "lifecycle_status": list(LIFECYCLE_STATUSES),
-        "value_type": sorted(VALUE_TYPES),
+        # ⛔ THE FORM OFFERS WHAT THE EMITTER CAN HONOUR, NOT WHAT THE GRAMMAR PARSES
+        # (판정 178). Offering `string` while the compiler pins a value to a quantity
+        # is the screen recommending a refusal.
+        "value_type": sorted(EMITTABLE_VALUE_TYPES),
         "cardinality": sorted(CARDINALITIES),
         "object_kind": sorted(OBJECT_KINDS),
         "role_kind": sorted(_ROLE_KINDS),

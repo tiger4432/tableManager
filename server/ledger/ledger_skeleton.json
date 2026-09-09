@@ -751,21 +751,6 @@
                   "hint": "choice",
                   "list": "lifecycle_status"
                 }
-              },
-              {
-                "key": "decision_key",
-                "required": false,
-                "label": "결정 단위",
-                "node": {
-                  "kind": "map",
-                  "keyed_by": "index",
-                  "member": "컬럼",
-                  "of": {
-                    "kind": "leaf",
-                    "hint": "column",
-                    "universe": "relation"
-                  }
-                }
               }
             ]
           }

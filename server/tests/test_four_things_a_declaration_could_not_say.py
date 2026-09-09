@@ -72,16 +72,37 @@ def test_the_defaults_are_named_values_rather_than_behaviour_nobody_can_read():
     assert not hasattr(setup_bundle, "DEFAULT_DECISION_KEY")
 
 
-def test_a_value_object_may_say_it_holds_text():
+def test_the_emittable_set_is_narrower_than_the_grammar_and_says_so():
+    """🔴 판정 178 — A WORD THE GRAMMAR TAKES AND THE EMITTER REFUSES IS A TRAP. The first
+    version of this round accepted `string`, and the form OFFERED it, while the compiler
+    pins a value object to a quantity: every atom built from it would have been refused.
+    The refusal now names the debt (S-84) rather than the operator's spelling."""
+    assert setup_bundle.EMITTABLE_VALUE_TYPES < setup_bundle.VALUE_TYPES
+    assert setup_bundle.DEFAULT_VALUE_TYPE in setup_bundle.EMITTABLE_VALUE_TYPES
+
     bundle = logical_bundle()
-    before = clean(bundle)
     predicate = predicate_of(bundle)
-    if predicate["object"]["kind"] != "value":
-        predicate["object"] = {"kind": "value", "qualifiers":
-                               {"required": [], "optional": []}}
-        before = clean(bundle)
+    predicate["object"] = {"kind": "value", "qualifiers": {"required": [], "optional": []}}
+    before = clean(bundle)
+    predicate["object"]["value_type"] = "number"
+    assert only_new(before, bundle) == [], "the emittable type must pass"
+
     predicate["object"]["value_type"] = "string"
-    assert only_new(before, bundle) == []
+    issues = [i for i in validate_bundle_errors(bundle, catalog=logical_catalog())
+              if i.path.endswith(".object.value_type")]
+    assert len(issues) == 1
+    assert issues[0].code == "unsupported_value_type"
+    # ⛔ 「that is not a word」 and 「not read yet」 are different sentences, and only one of
+    # them tells an operator to go and change their spelling.
+    assert "S-84" in issues[0].message
+
+
+def test_the_form_offers_only_what_the_emitter_can_honour():
+    """The screen recommending a refusal is worse than the screen offering nothing."""
+    from ledger import config_authoring
+
+    offered = set(config_authoring.closed_lists()["value_type"])
+    assert offered == set(setup_bundle.EMITTABLE_VALUE_TYPES)
 
 
 def test_a_value_type_outside_the_closed_set_is_refused_by_path():
@@ -158,27 +179,55 @@ def test_the_three_places_spell_the_lifecycle_the_same_way():
 
 
 # ------------------------------------------------------------ Ⓐ4 decision key
-
-def test_a_source_may_name_the_columns_its_judgement_is_made_on():
-    bundle = logical_bundle()
-    before = clean(bundle)
-    source_of(bundle)["decision_key"] = ["lot", "slot"]
-    assert only_new(before, bundle) == []
-
-
-def test_a_decision_key_that_repeats_a_column_is_refused():
-    bundle = logical_bundle()
-    before = clean(bundle)
-    source_of(bundle)["decision_key"] = ["lot", "lot"]
-    new = only_new(before, bundle)
-    assert len(new) == 1 and new[0].endswith(".decision_key")
+#
+# ⚰️ IT IS NOT ON THE LEDGER SOURCE (ruling, 2026-09-09 08:54). The first draft put it there
+# and the lead PM moved it: the judgement unit is a property of the TABLE, and the readers
+# that will need it -- the virtual join, the enrichment resolver -- read the CATALOG rather
+# than this bundle. Declaring it on the source would have made two places for one fact.
 
 
-def test_a_blank_decision_key_column_is_refused():
-    bundle = logical_bundle()
-    before = clean(bundle)
-    source_of(bundle)["decision_key"] = ["lot", "  "]
-    assert only_new(before, bundle), "a blank column name must not pass as a decision unit"
+#: A `table_config.json` entry, in the shape the ADAPTER reads -- which is not the shape
+#: `logical_catalog()` returns. That fixture is already adapted (`columns`), so testing the
+#: adapter through it would have scored nothing at all.
+def raw_table(**extra):
+    return {"parts": dict({"column_types": {"lot": "string", "slot": "number"}}, **extra)}
+
+
+def adapt(**extra):
+    return setup_bundle._adapt_physical_catalog(raw_table(**extra))
+
+
+def refusal_for(decision_key):
+    try:
+        adapt(decision_key=decision_key)
+    except setup_bundle.LedgerSetupValidationError as caught:
+        return caught
+    return None
+
+
+def test_a_table_may_name_the_columns_its_judgement_is_made_on():
+    built = adapt(decision_key=["lot", "slot"])
+    assert built["parts"]["decision_key"] == ["lot", "slot"]
+
+
+def test_a_decision_key_naming_an_undeclared_column_is_refused_by_path():
+    """⛔ A COLUMN NOBODY DECLARED selects nothing while reading as a decision -- the
+    permanently-false filter, wearing an operator's intent."""
+    caught = refusal_for(["lot", "wafer"])
+    assert caught is not None
+    assert caught.code == "invalid_catalog" and caught.path.endswith(".decision_key")
+    assert "wafer" in caught.message
+
+
+def test_a_repeated_a_blank_and_an_empty_decision_key_are_all_refused():
+    for bad in (["lot", "lot"], ["  "], [], "lot"):
+        assert refusal_for(bad) is not None, bad
+
+
+def test_a_table_that_names_none_carries_no_decision_key_at_all():
+    """⛔ NOT AN EMPTY LIST EITHER. 「없음」 and 「없다고 선언함」 must stay different, because
+    a reader that needs one has to refuse by name rather than read an empty unit."""
+    assert "decision_key" not in adapt()["parts"]
 
 
 # ------------------------------------------------- the promise F-0 made about drift
