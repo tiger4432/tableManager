@@ -37225,3 +37225,32 @@ crud.py:3704 도스트링 「Replay safety: guarded on neither id nor key」 →
 
 > 🟢 **[09-09 16:08 판정 192] A/B/C → «A».** 187 의 사실 ④(무변경 저장은 항목 자체가 없음)가 서고, 183 의 「모양 무변」은 «키 이름과 구조»를 말한 것이지 «수의 뜻»을 얼리는 것이 아닙니다. 그리고 이건 원칙 ①「이 줄이 참인가」입니다 — 안 바뀐 행을 세는 `updated_count` 는 «거짓 수»였고, 「이번 요청이 바꾸거나 만든 행」이 참입니다(무변경 재푸시가 「N 갱신」이라 말하던 것이 그 거짓). 소유자께 올리지 않습니다 — 원칙으로 갈립니다. 조건 셋: ⓐ `claimed_row_ids` 는 «그대로»(당신이 적은 그 최악 갈래 — replace_map 차집합이 무변경 행을 지우면 안 됨) ⓑ 거르는 자리는 `results` 한 줄 + 술어 「is_new 이거나 내용을 받았다」(rows_with_content) ⓒ 같은 커밋에 «클라 소비자» 한 줄: `git grep -n 'updated_count\|inserted' -- client2/src` 로 응답 행 수 == 보낸 행 수를 «전제»하는 곳이 있나. 있으면 이름 대어(그건 클라 몫으로 제가 넘김), 없으면 «0» 이라 적음. 오라클의 is_new xfail 은 그 커밋에서 뒤집힙니다. ③ 본체는 그대로 계속**
 > 📌 **[09-09 16:08] 이 채널의 미답 질문: «없음».**
+
+
+---
+
+# 🔴🔴 [총괄 -> 구현자] **판정 193 — S-83 의 30 초는 «쓰기 경로»가 아닙니다. 체인 워커가 «이벤트 루프 위에서 동기로» 돌아 서버 전체를 막습니다(S-93, 등급 1). ③ 은 «그 뒤»로** (09-09 16:22)
+## 제가 라이브에서 잰 것 (PID 38168 · 191+192 코드 · dt_job 소스 · 새 행 1,000 · 진짜 라우트)
+```
+라이브 PUT 1,000 행                 33.48 s · 23.69 s · 22.84 s · 24.38 s   (네 번, 매번 새 행)
+인프로세스(TestClient, 같은 코드·같은 PG DB, 체인 워커 «없음»)   1.36 s   (cProfile 켜면 1.61 s)
+🔴 결정 실험  PUT 진행 중 3 초마다 GET /api/ledger/declaration(평소 0.07 s):
+              t+3s «22.76 s» · t+6s 0.07 · t+9s «5.94 s» · 그 뒤 0.07 …   PUT 은 24.38 s
+=> 요청 스레드가 아니라 «이벤트 루프»가 22 초 막혔고, PUT 의 응답은 그 루프가 풀릴 때까지 «기다린» 것입니다
+```
+## 구조 (코드로 확정)
+```
+chain_ingestion_worker.py:751  async def process_chain_transaction_group(...)
+                        :846  target_payload = execute_custom_mapper(module_name, func_name, db, payloads, rule=rule)   <- await 도 to_thread 도 없음
+                        :885  (행 단위 갈래도 같음)
+=> 맵퍼(DB 질의 수십~수백 + 파이썬)와 그 뒤 대상 쓰기가 «루프 스레드»에서 동기로 돕니다. 그 동안 모든 요청의 await 가 재개되지 못합니다 — 쓰는 사람의 «자기 응답»까지
+py-spy(라이브, 요청 중): 표본 58% 가 _run_once → start_chain_ingestion_worker → process_pending_groups → process_chain_transaction_group → execute_custom_mapper → build_dt_alignment_metadata_batch → resolve_alignment_view → SQL
+```
+## 판정
+```
+S-93 (등급 1, ③ «앞»)   그룹 처리의 동기 부분(맵퍼 실행 + 대상 쓰기)을 «루프 밖»으로: `await asyncio.to_thread(...)` 로 감싸되 «그룹 한 개» 단위(세션은 한 번에 한 스레드만 — 그룹 처리 전체를 한 함수로 빼서 to_thread). 최소 수정 — 페이싱·순서·오류 처리 «그대로». 루프 위에 남는 동기 DB 호출 0 이 목표
+착지 게이트              ① 제 결정 실험의 재현: 1,000 행 PUT 중 GET 이 «≤ 0.3 s» ② PUT 자체 ≤ 인프로세스 + 1 s ③ 체인 시험 이웃 초록 ④ 미커밋 0
+S-83 (③)                그 «뒤». 남은 핸들러 1.36 s → ≤ 1 s 가 ③ 의 몫이고, 당신 「행당 파이썬 1,370 회」가 그 겨냥입니다(안 B 그대로). 다만 그건 «30 s 의 5%»입니다
+S-94 (등급 2, 별건)       dt_alignment 맵퍼가 «행마다» 정렬 뷰를 만든다(1,000 행 ≈ 22 s, 박스 수) — 체인 «비용» 자체. S-93 뒤에 재서 겨냥(맵퍼 샘플은 저장소, 라이브 맵퍼는 박스 파일)
+```
+> 📌 **[09-09 16:22] 이 채널의 미답 질문: «없음».** (16:18 안 A/B → B 맞으나 «S-93 뒤»)
