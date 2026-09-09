@@ -35,10 +35,9 @@ from ledger import dry_run, schema                                   # noqa: E40
 # (S-104). It goes now, with the v1 declaration it named.
 from test_ledger_l1_pg import (BASE_ROWS, SOURCE_DDL, _declared_as_test_database,
                                _resolve_url, _seed)                  # noqa: E402
+from tests.support.isolated_pg import scratch_schema                 # noqa: E402
 
-SCRATCH_SCHEMA = "assy_ledger_dryrun_pytest" + (
-    "_" + os.environ["PYTEST_XDIST_WORKER"]
-    if os.environ.get("PYTEST_XDIST_WORKER") else "")
+SCRATCH_SCHEMA = scratch_schema("assy_ledger_dryrun_pytest")
 
 
 @pytest.fixture(scope="module")

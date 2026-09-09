@@ -20,6 +20,27 @@ import os
 #: suites and their skip messages cannot disagree about which one it is.
 PG_TEST_URL_ENV = "ASSY_PG_TEST_DATABASE_URL"
 
+#: What makes one process's scratch schema ITS OWN (S-116).
+#:
+#: 🔴 THE SUITES SHARE A DATABASE, AND TWO OF THEM SHARED A NAME. Each drops its scratch
+#: schema on the way in ("reclaim a leftover from a run that was killed mid-suite") and on
+#: the way out, so two processes running the same file at once took turns deleting each
+#: other's tables - `no partition of relation ledger_events` on an insert that was correct,
+#: green and red from the same HEAD minutes apart. `test_ledger_v2_pg.py` had put the pid in
+#: its name all along and was the one that never flapped; three siblings, two spellings, and
+#: the lenient one is the one that loses.
+#:
+#: The xdist worker id is kept beside the pid rather than replaced by it: workers are
+#: separate processes, so the pid alone would do, and a name that says which worker owns a
+#: leftover schema is worth the eight characters.
+RUN_TOKEN = f"{os.getpid()}_{os.environ.get('PYTEST_XDIST_WORKER', 'gw0')}"
+
+
+def scratch_schema(prefix: str) -> str:
+    """`<prefix>_<pid>_<worker>` - a schema name no other process will drop."""
+    return f"{prefix}_{RUN_TOKEN}"
+
+
 
 def declared_qa_database():
     """The QA database `dev_env` declares, or `None` if that module cannot say.

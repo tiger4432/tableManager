@@ -37,11 +37,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from ledger import gate, observability, schema, store as ledger_store   # noqa: E402
 from ledger import backfill                                             # noqa: E402
 
-PG_TEST_URL_ENV = "ASSY_PG_TEST_DATABASE_URL"
-SCRATCH_SCHEMA = "assy_ledger_l1_pytest" + (
-    "_" + os.environ["PYTEST_XDIST_WORKER"]
-    if os.environ.get("PYTEST_XDIST_WORKER") else "")
-
 
 # --------------------------------------------------------------------------- isolation
 # TOMBSTONE: THE GATE MOVED OUT (S-115). `_resolve_url`, `_declared_qa_database` and the
@@ -53,7 +48,14 @@ from tests.support.isolated_pg import (       # noqa: E402
     PG_TEST_URL_ENV,
     declared_as_test_database as _declared_as_test_database,
     resolve_url as _resolve_url,
+    scratch_schema,
 )
+
+#: 🔴 PROCESS-UNIQUE (S-116). This was a fixed name plus the xdist worker id, so two
+#: PROCESSES running this file against the same isolated database took turns dropping each
+#: other's schema on the way in - an insert that was correct failed with `no partition of
+#: relation ledger_events`, and the same HEAD went green and red minutes apart.
+SCRATCH_SCHEMA = scratch_schema("assy_ledger_l1_pytest")
 
 
 #: \U0001f534 THE SUBJECT OF THESE PROOFS IS THE STORAGE LAYER (판정 219): partitions, jsonb,

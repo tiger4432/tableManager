@@ -47,10 +47,15 @@ from tests.support.isolated_pg import (       # noqa: E402
     PG_TEST_URL_ENV,
     declared_as_test_database as _declared,
     resolve_url as _resolve_url,
+    scratch_schema,
 )
 
-RUN_TOKEN = f"{os.getpid()}_{os.environ.get('PYTEST_XDIST_WORKER', 'gw0')}"
-SCRATCH_SCHEMA = f"assy_ledger_v2_s6_{RUN_TOKEN}"
+#: Process-unique already before S-116 - this file put the pid in the name and was the one
+#: of the three that never flapped. It now says it through the shared helper.
+SCRATCH_SCHEMA = scratch_schema("assy_ledger_v2_s6")
+RUN_TOKEN = SCRATCH_SCHEMA.split("assy_ledger_v2_s6_", 1)[1]
+
+
 SOURCE_TABLE = f"v2s6_input_rows_{RUN_TOKEN}"
 RIGHT_TABLE = f"v2s6_reference_rows_{RUN_TOKEN}"
 UNIQUE_INDEX = f"uq_v2s6_reference_{RUN_TOKEN}"
