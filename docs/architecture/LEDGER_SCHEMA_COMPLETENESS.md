@@ -90,7 +90,7 @@
 | 삭제 겨눔 | ① | `ledger_source_row_ref` (`schema.py:69`, 키 `(relation, row_id, source_who, source_raw_ref)`) · `backfill.sources_without_row_index` :915 · `index_existing_refs` :936 · `withdraw_deleted_rows` :1056 | |
 | 삭제 — row_id 없는 뷰 | ② | 🔵 «이름 대어» 남는다 — `sources_without_row_index` 가 그 소스를 «센다». 뷰가 base 의 `row_id` 를 흘려 주면 그 뷰는 겨눌 수 있다(:246 주석, 샘플 뷰 10 중 5) | |
 | 🔴 **행 선택·제외** (S-91, 09-09 17:10 **닫힘**) | ✅ **①** | `sources.<s>.prepare.exclude_when: [{column, blank:true}]` — 검증 `setup_bundle.py:1351` `_validate_exclude_when` · 미지 컬럼은 :1903 에서 이름 대어 거절 · `direct-join` 이 아닌 준비기에는 :1913 이 「그 준비기는 이것을 안 읽는다」로 거절 · 레지스트리 `setup_registry.py:310` · 읽는 곳 `source_preparation.py:459` · 스켈레톤 `:576`(폼이 그림) · 출하 샘플 `:1781`. ⚠️ **착지 전 상태를 기록으로 남깁니다** — 기제는 있었으나 «파이썬 준비기»만 냈습니다 — `SOURCE_ROW_EXCLUDED_COLUMN = "__source_row_excluded"` (`source_preparation.py:47`), `setup_bundle.py` 에 «0회». 소유자 실측(09-09 15:59): 신원 키 부품이 빈 행 «하나»가 전부-아니면-전무로 995 행을 막습니다. ⚠️ 출하 카탈로그 주석이 2026-08-23 에 «이미» 이 자리를 적어 뒀습니다(「the only row-exclusion mechanism … is emitted by a preparer implementation」) | 목록(조건) |
-| **소스 은퇴** | 🔴 **③** | `_validate_sources` 는 `required=("relation","read","prepare","map","bind")` 를 `exact` 로 잰다 — **그 밖의 키는 전부 거절**(:1466). `status`/`enabled` 를 «적을 수 없다». 소스를 끄는 길은 «지우는 것»뿐 | |
+| **소스 은퇴** | 🔴 **③′** (09-09 18:2x 정정) | ⚰️ 옛 판정(「`exact` 가 `status` 를 거절한다 — 적을 수 없다」)은 «낡았습니다». 오늘 `setup_bundle.py:1611` 이 `optional=("status",)` 이고 값도 검증됩니다(:1617, `{active, retired}`). 🔴 그러나 «읽는 쪽이 없습니다** — 엔티티·소스 서술자에 `status` 필드가 없어 레지스트리에 안 실립니다(술어는 실리고 `roleframe.py:1381` 이 읽습니다). 적어도 아무 일도 안 일어납니다. 자세히 D-7-6 | |
 
 ---
 
@@ -996,3 +996,116 @@ Q-짝짓기  «분자 안의 위치» — 같은 분자의 «다른 행/다른 �
    => 넷을 채우면 그때의 0 은 공허하지 않다. 그것이 이 재계산이 산 것이다
 ⚠️ 09-12 라는 날짜에 대해서는 아무 말도 하지 않는다 — 넷의 «크기»는 총괄이 판정할 자리다
 ```
+
+---
+
+# D-7. 판정 196 뒤 — 두 전제가 «규칙»이 되면 셈이 바뀝니다. 그리고 제 판정 하나가 틀렸고 닫힘 하나가 깨집니다 (09-09 18:2x)
+
+> 판정 196: 「§2-0 의 두 전제는 «규칙»이다. ③ 넷 중 «문장 선택(S-99)»만 문법 구멍이고, 값 변환·그룹 집계·짝짓기는 문법에 «만들지 않는다» — S-100 부채(파이썬 셋을 「체인 규칙 + 표」로)」
+
+## D-7-1. 🔴 정정 — 「다중 목적어 타입 = ①」은 제가 «틀렸습니다». 총괄 닫힘 주장이 맞습니다
+```
+제가 잰 것   `object.types` 가 «목록»이다 (`setup_bundle.py:1149` `_nonblank_list`)     <- 참
+제가 답한 것  「그러므로 한 술어의 목적어가 여러 타입일 수 있다」 = ①                     <- «다른 질문의 답»
+🔴 물음은 «소스»의 것이었습니다   「행마다 목적어 «타입»이 달라질 수 있나」
+   실측: 엔티티 바인딩의 `entity_type` 은 «상수»입니다 — `_versioned_id(value.get("entity_type"))`
+        (`setup_bundle.py:1554`, 허용 키 `("kind","entity_type","keys","attributes")` :1540).
+        컬럼일 수 «없습니다». 그래서 한 문장은 «한 타입»만 냅니다
+=> `types` 목록은 «술어가 허용하는 것»이고, «소스가 고르는 것»이 아닙니다.
+   행마다 다르려면 문장 둘 + 선택 ⇒ **S-99**. 판정 196 의 닫힘이 맞고 제 ① 이 틀렸습니다
+🔴 부류: 「뜻이 겹치는 칸이 둘이면 «코드가 걷는» 쪽을 고른다」의 판 — 저는 «술어 선언»을 재고
+        «소스 선언»에 대해 답했습니다. 같은 낱말(타입)이 두 자리에 있었습니다
+```
+
+## D-7-2. ✅ 「처음 본 주어인가」 — 칸이 «있습니다». 제 「전제 밖」도 틀렸습니다
+```
+실측   `read.registration_probe` 가 문법 칸입니다(`required: false`) — 검증 `_validate_registration_probe`,
+      읽는 곳 `backfill.py:1573` (`plan.driver.registration_probe`), 폼·작성기 `config_authoring.py:1751~1772`
+      («미지의 모양»은 `unsupported_registration_probe` 로 이름 대어 거절)
+🔵 그리고 «누가 쓰나»가 이 축의 증거입니다 — 출하 샘플에서 이 칸을 쓰는 소스는 «둘»(:734 dt_job · :980 lot_event),
+   즉 파이썬 매퍼를 쓰는 «바로 그 둘»입니다. 비국소성이 칸으로 «이미 표현»돼 있었습니다
+=> 판정 196 대로 «규칙의 명시된 예외»입니다. 제가 「국소성 전제 밖」이라 올린 것은 «칸을 못 찾은 것»이었습니다
+```
+
+## D-7-3. 🔴 반증 «성공» — 닫힘 넷 중 「철회」가 깨집니다 (filter 가 바뀌면 옛 원자가 남습니다)
+```
+닫힘 주장(§2-0)   「행 삭제 → 철회: σ 는 행이 아니라 «사건»(문의 delete)이 정한다 — 번역 인자 아님」
+반증             σ 는 «filter»(번역 인자!)에도 달려 있습니다. 제외가 «나중에» 참이 되면 옛 원자가 «남습니다»
+경로 (코드 읽기)
+  ① 제외는 «프레임에서 떨굽니다» — `source_preparation.py:860` `out = out.loc[[not v for v in excluded]]`.
+     그 자리 주석이 스스로 적어 뒀습니다: 「the base page is read off `rows_missing_from_the_index`,
+     never off what survives here, so the excluded rows are passed over once and not re-read」
+  ② 철회는 «사라진 행»만 겨눕니다 — `withdraw_deleted_rows(…, row_ids)` 는 표에서 «없어진» row_id 로 돕니다.
+     제외된 행은 «표에 그대로 있으므로» 이 경로에 들어오지 않습니다
+  ③ 범위 재번역도 못 걷습니다 — 그 범위의 행이 전부 제외되면 프레임이 비고 `backfill.py:727` 이
+     `scope_empty` 로 «먼저 반환»합니다. `withdraw_refs` 는 계산됐지만 «적용 전»입니다
+=> 선언에 `exclude_when` 을 «더하는» 배포는, 그 조건에 걸리는 행들의 «이미 쓴 원자»를 그대로 둡니다.
+   원장은 「이 소스의 행이 아니다」라고 선언하면서 그 행의 사실을 «계속 들고 있습니다»
+```
+```
+⚠️ 제가 «안 한 것**: 재현. 라이브 선언은 ⛔(기록자는 총괄 하나)이고, 재현하려면 선언을 바꿔야 합니다.
+   그래서 이것은 «코드 경로 읽기»이고, 확정 실험은 한 줄로 말할 수 있습니다 —
+   「제외 안 된 상태로 한 번 번역 → 선언에 `exclude_when` 추가 → 재도장 → 그 행의 원자 수를 센다.
+     안 줄면 확정」. 격리 DB 에서면 제가 돌릴 수 있습니다(지시 주시면)
+🔵 크기는 «작을» 수 있습니다 — 새 소스는 처음부터 제외되므로 이 자리는 «기존 소스에 조건을 더할 때»만 열립니다.
+   그러나 S-91 이 «바로 그 용도»로 들어왔습니다(신원 키 부품이 빈 옛 행 995). 즉 첫 사용자가 이 경로입니다
+```
+
+## D-7-4. 표 A 의 A4 부축 → §2-0 다섯 인자로 «재매김» (지시 ①)
+| 표 A 의 칸 | §2-0 인자 | |
+|---|---|---|
+| `relation` · `read.columns` · `order_by`/커서 · 페이지 | **read** | ① |
+| `prepare.exclude_when` | **filter** | ① (S-91) |
+| `map.unit.kind` (row·event·group_by) · `unit.columns` | **unit** | ① |
+| — | **select** | 🔴 ③ **S-99** |
+| `bind.mappings.<s>.bind` (키 조립 · entity_ref · value · 수식어 · 상수) | **emit** | ① |
+| `read.occurred_at.column` \| `basis` (+`timezone`) | **emit** 의 t | ① |
+| `list_separator` | **emit** 의 다중 | ① |
+| `object.value_type` | **emit** 의 정의역 | ② (number 만 · 그 밖은 S-84 를 대며 거절) |
+| `entities.*.allow_null` | **emit** 의 부재 | ② |
+| `read.registration_probe` | **규칙의 «명시된 예외»**(비국소) | ① |
+| `decision_key` | 번역 인자 «아님** — 표의 판단 단위(판정 165) | ① |
+| `prepare.accepts_verified_join_rules` · `inherit_virtual_join_rules` | **규칙 «밖»**(조인) | 칸 있음 · 샘플 소비 0 → S-100 |
+| `status` (술어) | 번역 인자 «아님** — 선언의 수명 | ✅ ① — «읽힙니다**(`roleframe.py:1381` `predicate.status != "active"` 면 발행 안 함) |
+| `status` (엔티티·소스) | 번역 인자 «아님** | 🔴 **③′** — 적을 수 «있고»(:1611 `optional=("status",)`) 검증도 되는데 **레지스트리에 안 실립니다** (D-7-6) |
+```
+🔴 다섯 인자에 대해서는 ③ 이 «하나»(select = S-99).
+   다만 표 A 의 ③ 이 그것 «하나»는 아닙니다 — 「소스 은퇴」는 번역 인자가 «아니라서» 이 셈 밖에 남아 있습니다.
+   문법 동결 술어는 «문법 칸 전체»를 말하므로 그 행도 동결의 대상입니다
+```
+
+## D-7-5. 🔵 그래서 문법 동결 문장 — 판정 196 판 (D-6-6 을 대체)
+```
+술어   「모든 «문법 칸»이 어느 생성자의 인자로 유도된다」 ∧ 「모든 «규칙 안의 인자»가 칸을 갖는다」
+방향 ①  ✅ 참 — 문법 칸 중 인자로 안 가는 것 «0» (D-4)
+방향 ②  🔴 «하나» 남음 — select(문장 선택) = S-99.
+        값 변환 · 그룹 집계 · 짝짓기는 «규칙 밖»이므로 동결 대상이 아니라 S-100 «부채»다
+        「처음 본 주어」는 규칙의 명시된 예외이고 칸이 있다(`read.registration_probe`)
+🔴 그리고 이 셈 «밖»에 둘이 더 있다 — 「엔티티·소스의 수명」(③′, D-7-6) ·
+   그리고 D-7-3 이 연 「제외된 행의 옛 원자」(칸의 문제가 아니라 «기제»의 문제)
+=> 2026-09-09 18:2x 기준: 번역 인자의 ③ = «1»(S-99). 문법 칸 전체로는 ③′ 이 «하나» 더(수명).
+   S-99 가 닫히고 수명이 읽히면 그때의 0 은 «분해에 대한 0» 이라 공허하지 않다
+```
+
+## D-7-6. 🔴 표 A 의 「소스 은퇴 ③」이 «낡았습니다» — 그리고 실제 상태는 더 조용한 종류입니다
+```
+표 A 가 적은 것   「`_validate_sources` 는 다섯 키를 `exact` 로 재고 그 밖을 전부 거절 —
+                 `status`/`enabled` 를 «적을 수 없다». 소스를 끄는 길은 «지우는 것»뿐」
+오늘             `setup_bundle.py:1611` `optional=("status",)` — **적을 수 있습니다**.
+                 값도 검증됩니다(:1617, `LIFECYCLE_STATES = {"active","retired"}`, 없으면 `active`)
+⚠️ 그 위 두 줄 주석(:1614~1616)이 «자기 코드보다 낡았습니다** — 「the exact check then refuses
+   every other key -- so a source that has stopped being read cannot be left on record saying so」.
+   제 표 A 행이 그 주석에서 왔습니다(상설: 「주석은 «의도»의 증거이지 «동작»의 증거가 아니다」)
+```
+```
+🔴 그런데 «고쳐진 것도 아닙니다» — 상태는 ③ 이 아니라 ③′ 입니다:
+   술어      ✅ 읽힙니다 — `roleframe.py:1381` 「`predicate.status != "active"` 면 그 문장을 안 냅니다」
+   엔티티·소스  🔴 «레지스트리에 안 실립니다** — `PredicateDescriptor` 에는 `status` 가 있는데
+              (`setup_registry.py:154` · `:888`) 엔티티·소스 쪽 서술자에는 «필드가 없습니다».
+              훑은 범위(server/ledger 의 `.status` 소비자 전부)에서 읽는 곳 «0»
+=> 「은퇴」라고 적을 수는 있고, 적어도 «아무 일도 일어나지 않습니다». 소스는 여전히 읽히고 엔티티는 여전히 씁니다.
+   이건 「칸이 없다」보다 조용한 고장입니다 — 폼이 그리고, 검증이 통과시키고, 운영자는 «껐다고 믿습니다»
+```
+> 큐 행 초안 — **Q-수명**: 「운영에서는 소스나 엔티티에 `status: "retired"` 를 적으면 됩니다.
+> 그러면 그 소스는 «더 읽지 않고», 이미 쓴 원자는 «그대로 남습니다»(참인 역사).」
+> 술어가 이미 그렇게 돕니다(`roleframe.py:1381`) — 같은 술어를 나머지 둘에 «잇는» 일이지 새 기제가 아닙니다.
