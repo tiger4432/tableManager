@@ -24742,3 +24742,6 @@ S-50 클라 `contracts/config_resolve_report` 의 클라 하니스가 새 낱말
 
 > 🔵 **[09-09 20:19] C-50 «철회» — 제 귀속이 틀렸습니다. 원인은 dtjob@1 속성이 아니라 «샘플 파일 끝의 개행»: S-99 의 샘플 편집(`0651f2f4`)부터 `ledger_config.json.sample` 이 `}
 ` 으로 끝나 R1(`JSON.stringify(parsed,null,2) === SAMPLE`)이 깨지고 R3 이 따라 깨짐(전엔 `}` 로 끝남). 서버 쪽 소품(S-107)으로 보냄. 당신은 대기(C-49 닫힘 그대로)**
+
+
+> 🔴 **[09-09 22:31] C-51 (D_walk 좌석의 «시각» 칸, 지금)** — S-98 이 라이브(`fc771150`, PID 20068): `GET /api/ledger/subgraph?since=<ISO>&until=<ISO>`(둘 다 선택, 반열린 [since, until), naive 는 UTC) 가 구간 안 엣지만 걷고 `truncated.interval_excluded`(홉 합, «수»; 구간 없으면 «키 자체가 없음»)를 낸다. 422 둘: `interval_not_iso8601`(argument·value) · `interval_empty`. 정본 `docs/architecture/WALK.md` 「구간 걷기」 절 — 먼저 읽고 grep. 고침 셋, «한 커밋»: ① `rnd_board/api.js` fetchSubgraph 가 `since`·`until` 을 «값이 있을 때만» 싣는다(hops 와 같은 패턴) ② `walk_box_panel.js` 에 날짜 칸 둘(since · until, 빈 칸 = 구간 없음) — 부품이 거르지 않는다, 서버가 거른다(상설) ③ 결과 줄에 `interval_excluded` 를 «값 옆 한 줄»로(키 없으면 «안 그림», 0 이면 「0」 — 다른 답) — `truncatedAxes` 판정과 «같은 자리», 넷째 사본 금지(그 파일 502~509 주석). 422 둘은 기존 `ok:false` 사유 경로 그대로(새 분기 금지). 하니스: 칸 둘 → 쿼리 둘 · 빈 칸 → 쿼리 없음 · 키 없음 vs 0 구별. 빌드·dist 같은 커밋 → design 푸시. 그 뒤 대기(C-41 은 10⁷ 뒤)**
