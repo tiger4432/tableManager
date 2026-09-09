@@ -58,7 +58,15 @@ def pg():
     with _declared_as_test_database(url):
         engine = create_engine(
             url, poolclass=NullPool,
-            connect_args={"options": f"-csearch_path={SCRATCH_SCHEMA}"})
+            # ⚠️ `public` IS ON THE READ PATH (S-64-b), scratch still FIRST. Same
+            # reason as `test_ledger_l1_pg.py`, and `test_ledger_v2_pg.py` has said
+            # `{SCRATCH_SCHEMA},public` all along - three sibling suites, two spellings, and
+            # the one that survived a database where `pg_trgm` already lives in `public` is
+            # the one with this comma. `CREATE EXTENSION IF NOT EXISTS ... WITH SCHEMA` is a
+            # silent no-op when the extension exists elsewhere, and every `gin_trgm_ops`
+            # index then fails.
+            connect_args={
+                "options": f"-csearch_path={SCRATCH_SCHEMA},public"})
         try:
             with engine.connect() as conn:
                 conn.execute(text("SELECT 1"))

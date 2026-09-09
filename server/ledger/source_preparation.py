@@ -31,6 +31,7 @@ from .roleframe import (
     SOURCE_EVENT_INCOMPLETE_ATTR,
     SOURCE_OCCURRED_AT_COLUMN,
     SOURCE_ROW_REF_COLUMN,
+    read_columns_once,
 )
 from .setup_registry import (
     ImplementationKey,
@@ -937,7 +938,7 @@ def _aware_time(value: Any, timezone_name: str, path: str) -> datetime:
     return value
 
 
-def _molecule_key(driver, prepared, positions) -> str:
+def _molecule_key(driver, cells, positions) -> str:
     """What the operator has to look up to find this molecule.
 
     `group_by` when the source declares one - that IS the molecule's name there. A
@@ -946,13 +947,13 @@ def _molecule_key(driver, prepared, positions) -> str:
     """
     if driver.group_by:
         return _canonical(
-            {column: _plain(prepared.iloc[positions[0]][column])
+            {column: _plain(cells[column][positions[0]])
              for column in driver.group_by},
             path="event_frame.molecule")
     return f"rows[{positions[0]}]"
 
 
-def _refuse_molecule(context, prepared, positions) -> "MoleculeRefusal | None":
+def _refuse_molecule(context, cells, positions) -> "MoleculeRefusal | None":
     """The empty declared value that stops THIS molecule, or None.
 
     🔴 THE UNIT IS THE MOLECULE, FOR BOTH FACTS (ruling 116). Time forces it: the event's
@@ -972,7 +973,7 @@ def _refuse_molecule(context, prepared, positions) -> "MoleculeRefusal | None":
 
     plan = context.source_plan
     driver = plan.driver
-    key = _molecule_key(driver, prepared, positions)
+    key = _molecule_key(driver, cells, positions)
 
     def _empty(value) -> bool:
         return _is_missing(value) or (isinstance(value, str) and not value.strip())
@@ -983,10 +984,10 @@ def _refuse_molecule(context, prepared, positions) -> "MoleculeRefusal | None":
     )
     for reason, columns in checks:
         for column in columns:
-            if column not in prepared.columns:
+            if column not in cells:
                 continue
             for position in positions:
-                if not _empty(prepared.iloc[position][column]):
+                if not _empty(cells[column][position]):
                     continue
                 path = f"event_frame.rows[{position}].{column}"
                 return MoleculeRefusal(
@@ -1008,6 +1009,19 @@ def _event_frames(
 ) -> tuple[pd.DataFrame, ...]:
     plan = context.source_plan
     driver = plan.driver
+    # 🔴 THE PAGE IS READ ONCE, HERE (S-64-b). Every line below used to reach a cell
+    # with `prepared.iloc[position][column]`, which builds a pandas Series for that row -
+    # and with a mixed-dtype page that means `find_common_type` and a copy, per read. There
+    # were nine such sites and they ran about ten times per molecule; profiled on a
+    # 2,000-row page they were roughly a third of the whole translation.
+    #
+    # ⚠️ `roleframe` ALREADY MADE THIS REPAIR AND WROTE IT DOWN (「READ THE COLUMNS
+    # ONCE」), so this calls that same function rather than spelling it a second time.
+    # ⚠️ NAMED `cells`, NOT `columns`: `_refuse_molecule` below already binds
+    # `columns` to a tuple of COLUMN NAMES in its own loop, and the first version of
+    # this change shadowed it - `cells[column]` became a tuple indexed by a string and
+    # every page refused. Two things called `columns` in one file is enough.
+    cells = read_columns_once(prepared)
     if driver.unit == "row":
         groups = [[position] for position in range(len(prepared))]
     else:
@@ -1015,7 +1029,7 @@ def _event_frames(
         for position in range(len(prepared)):
             identity = {}
             for column in driver.group_by:
-                value = prepared.iloc[position][column]
+                value = cells[column][position]
                 if _is_missing(value) or (isinstance(value, str) and not value.strip()):
                     raise SourcePreparationError(
                         "source_preparation_incomplete",
@@ -1031,7 +1045,7 @@ def _event_frames(
         groups = list(grouped.values())
     events = []
     for positions in groups:
-        refusal = _refuse_molecule(context, prepared, positions)
+        refusal = _refuse_molecule(context, cells, positions)
         if refusal is not None:
             # Counted and named, never raised: the rest of this page still lands. The
             # caller decides whether this is recorded (execute) or reported (preview).
@@ -1056,7 +1070,7 @@ def _event_frames(
             # second copy of it here could only disagree. Disagreeing on ONE identity
             # value below is a different fact and still refuses the page.
             values = {
-                _canonical(prepared.iloc[position][column],
+                _canonical(cells[column][position],
                            path=f"source_batch.rows[{position}].{column}")
                 for position in positions
             }
@@ -1065,12 +1079,12 @@ def _event_frames(
                     "source_preparation_incomplete", f"event_frame.identity.{column}",
                     "one source event has more than one identity value",
                 )
-            identity[column] = prepared.iloc[positions[0]][column]
+            identity[column] = cells[column][positions[0]]
         # ONE read of the declared time origin. Both the published cell and the instant
         # the event id is minted from come off this list, so they cannot be a pair of
         # reads that disagree.
         occurred_cells = [
-            prepared.iloc[position][driver.occurred_at.column]
+            cells[driver.occurred_at.column][position]
             for position in positions
         ]
         occurred_values = [
@@ -1114,7 +1128,7 @@ def _event_frames(
             )
         row_refs = []
         for position in positions:
-            order = {column: prepared.iloc[position][column]
+            order = {column: cells[column][position]
                      for column in driver.order_by}
             row_refs.append(
                 f"{plan.relation}:" + _canonical(order, path="source_row_ref"))

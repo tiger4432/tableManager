@@ -260,7 +260,7 @@ class BaseLedgerMapper:
         emissions: list[RoleEmission] = []
         for unit_index, unit in enumerate(
                 _partition_units(context, event_frame, descriptor)):
-            unit_columns = _unit_columns(unit)
+            unit_columns = read_columns_once(unit)
             try:
                 produced = self.interpret_unit(context, unit, profile)
             except RoleFrameError:
@@ -317,7 +317,7 @@ class DeclarativeRoleMapper(BaseLedgerMapper):
         profile: ProfileDescriptor,
     ) -> Sequence[RoleEmission]:
         refs = _source_row_refs(unit)
-        unit_columns = _unit_columns(unit)
+        unit_columns = read_columns_once(unit)
         out = []
         for sentence, mapping in profile.mappings.items():
             # S-99. The declaration says WHEN this sentence applies; a unit that does not
@@ -789,7 +789,7 @@ def _partition_units(
         unit.attrs[UNIT_SOURCE_ROW_REFS_ATTR] = _frame_row_refs(frame)
         return (unit,)
     if kind == "row":
-        frame_columns = _unit_columns(frame)
+        frame_columns = read_columns_once(frame)
         ordered = sorted(
             range(len(frame)),
             key=lambda position: _row_sort_token(
@@ -809,7 +809,7 @@ def _partition_units(
             raise RoleFrameError(
                 "invalid_mapper_unit", "mapper.unit.group_by",
                 "MapperDescriptor group_by columns must exist in EventFrame")
-        frame_columns = _unit_columns(frame)
+        frame_columns = read_columns_once(frame)
         groups: dict[str, list[int]] = {}
         for position in range(len(frame)):
             token = _canonical(
@@ -864,8 +864,14 @@ def _unit_says(unit_columns: Mapping[Any, tuple], when: Mapping[str, Any]) -> bo
     return True
 
 
-def _unit_columns(frame: pd.DataFrame) -> dict[Any, tuple]:
-    """One mapper unit's values, read once, column by column.
+def read_columns_once(frame: pd.DataFrame) -> dict[Any, tuple]:
+    """One frame's values, read once, column by column.
+
+    🔴 PUBLIC BECAUSE `source_preparation` READS IT TOO (S-64-b). It was
+    `_unit_columns` and private, and the file beside this one went on paying the exact
+    cost this fixes - `prepared.iloc[position][column]`, nine sites, ten reads per
+    molecule. A second spelling of the repair would have been the second path this
+    project forbids, so the repair got a name instead.
 
     🔴 THE POINT IS THAT NO PANDAS OBJECT IS BUILT. `unit.iloc[index][column]` made a Series
     per row and pandas copied the frame's `attrs` through `__finalize__` on the way, and it
@@ -926,7 +932,7 @@ def _evaluate_binding(binding: Mapping[str, Any], unit: pd.DataFrame, *, path: s
     # bindings said `approved`, so the gate could not fire and the field could not be
     # withheld.  A permission that is never withheld is not a permission; it retired.
     if columns is None:
-        columns = _unit_columns(unit)
+        columns = read_columns_once(unit)
     kind = binding.get("kind")
     if kind == "column":
         column = binding.get("column")
@@ -1021,7 +1027,7 @@ def _attribute_value(binding: Mapping[str, Any], unit: pd.DataFrame, *, path: st
     binding.
     """
     if columns is None:
-        columns = _unit_columns(unit)
+        columns = read_columns_once(unit)
     if binding.get("kind") == "column":
         column = binding.get("column")
         if column in columns and all(_is_missing(value) for value in columns[column]):

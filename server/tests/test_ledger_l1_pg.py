@@ -257,7 +257,18 @@ def pg():
         # cannot reach a real table even if one of these tests is wrong.
         engine = create_engine(
             url, poolclass=NullPool,
-            connect_args={"options": f"-csearch_path={SCRATCH_SCHEMA}"})
+            # ⚠️ `public` IS ON THE READ PATH, AND ONLY FOR READING (S-64-b). The
+            # scratch schema stays FIRST, so everything this suite creates is still created
+            # in it and still dropped with it. What changed is that `pg_trgm` may already
+            # exist in this database - `schema.py` says the live box had it installed by
+            # hand and nobody recorded it, and any other process running `ensure_schema`
+            # against the same isolated database installs it into `public` too. When it
+            # does, the `CREATE EXTENSION IF NOT EXISTS ... WITH SCHEMA` below is a silent
+            # no-op and every index using `gin_trgm_ops` then fails with `UndefinedObject`
+            # - a premise that is invisible wherever it already holds, which is the exact
+            # sentence `_ensure_trigram` was written to answer.
+            connect_args={
+                "options": f"-csearch_path={SCRATCH_SCHEMA},public"})
         try:
             with engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
