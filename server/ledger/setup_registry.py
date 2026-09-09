@@ -165,7 +165,6 @@ class EntityTypeDescriptor:
     entity_type_id: str
     version: int
     identity_keys: tuple[str, ...]
-    key_types: Mapping[str, str]
     allow_null: bool
     config_path: str
 
@@ -903,7 +902,6 @@ def _compile_entities(section: Mapping[str, Any]) -> EntityTypeRegistry:
             entity_type_id=entity_id,
             version=version,
             identity_keys=tuple(item["keys"]),
-            key_types=_freeze(item.get("key_types", {})),
             allow_null=item.get("allow_null", False),
             config_path=f"bundle.entities.{entity_id}",
         ))

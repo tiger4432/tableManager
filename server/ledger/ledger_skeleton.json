@@ -180,19 +180,6 @@
                 }
               },
               {
-                "key": "key_types",
-                "required": false,
-                "node": {
-                  "kind": "map",
-                  "keyed_by": "name",
-                  "member": "식별키",
-                  "of": {
-                    "kind": "leaf",
-                    "hint": "free"
-                  }
-                }
-              },
-              {
                 "key": "allow_null",
                 "required": false,
                 "node": {

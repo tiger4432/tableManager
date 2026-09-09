@@ -733,43 +733,6 @@ def test_entity_binding_requires_exact_registered_identity_keys():
     assert error.path.endswith("bind.subject.keys")
 
 
-@pytest.mark.parametrize("invalid", [
-    {"bad": True}, [], None, True, 1, "", "   ", " string ",
-])
-def test_entity_key_types_values_are_trimmed_nonblank_strings(invalid):
-    bundle = logical_bundle()
-    bundle["entities"]["InputEntity@1"]["key_types"] = {"input_id": invalid}
-
-    errors = validate_bundle_errors(bundle)
-
-    assert_structured_errors(errors)
-    assert any(
-        error.path == "bundle.entities.InputEntity@1.key_types.input_id"
-        and error.code == "invalid_type"
-        for error in errors)
-
-
-@pytest.mark.parametrize("invalid", [[], None, True, 1, "string"])
-def test_entity_key_types_optional_branch_requires_an_object(invalid):
-    bundle = logical_bundle()
-    bundle["entities"]["InputEntity@1"]["key_types"] = invalid
-
-    errors = validate_bundle_errors(bundle)
-
-    assert_structured_errors(errors)
-    assert any(
-        error.path == "bundle.entities.InputEntity@1.key_types"
-        and error.code == "invalid_type"
-        for error in errors)
-
-
-def test_entity_key_types_optional_branch_accepts_matching_string_types():
-    bundle = logical_bundle()
-    bundle["entities"]["InputEntity@1"]["key_types"] = {"input_id": "string"}
-    bundle["entities"]["OutputEntity@1"]["key_types"] = {"output_id": "string"}
-    assert validate_bundle_errors(bundle) == ()
-
-
 def test_a_binding_endpoint_the_predicate_does_not_admit_is_rejected():
     """The subject half of `test_pack_vocabulary_subject_and_object_mismatch_...`, MOVED.
 
@@ -1271,7 +1234,11 @@ def test_followup_validation_errors_have_deterministic_order():
     profile["mappings"]["main_transition"]["bind"]["subject"]["entity_type"] = "Missing@1"
     profile["mappings"]["main_transition"]["bind"]["subject"]["keys"]["input_id"][
         "column"] = "missing_column"
-    bundle["entities"]["InputEntity@1"]["key_types"] = {"input_id": {"bad": True}}
+    # ⚰️ was `key_types` (retired 2026-09-09, no reader). It is still an error source
+    # here -- an unknown field now rather than a bad key type -- but naming a field the
+    # grammar never had would make the ordering depend on a typo. `allow_null` is a
+    # real optional slot with a real type rule, so the error stays deliberate.
+    bundle["entities"]["InputEntity@1"]["allow_null"] = {"bad": True}
     bundle["sources"]["input_rows"]["read"]["order_by"] = ["event_at"]
     # was `bundle["chains"]["bad"]`; that section is gone, the follow-up error it
     # contributed is not -- any additional error source exercises the ordering.

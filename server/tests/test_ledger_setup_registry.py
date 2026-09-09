@@ -217,7 +217,11 @@ def test_registries_and_descriptors_are_recursively_immutable():
     with pytest.raises(TypeError):
         compiled.entities._items["Other@1"] = compiled.entities["InputEntity@1"]
     with pytest.raises(TypeError):
-        compiled.entities["InputEntity@1"].key_types["input_id"] = "integer"
+        # `key_types` was retired 2026-09-09 (no reader, ever). `keys` is its
+        # replacement HERE for the reason that matters to this test: it is a frozen
+        # SEQUENCE on the same descriptor, so the recursive-immutability claim is still
+        # scored one level below the entity rather than at it.
+        compiled.entities["InputEntity@1"].identity_keys[0] = "integer"
     with pytest.raises(TypeError):
         compiled.profiles["input_rows"].mappings["main_transition"].bindings["new"] = {}
     with pytest.raises(FrozenInstanceError):
@@ -737,7 +741,6 @@ def test_registry_builder_refuses_add_after_seal():
         entity_type_id="Example@1",
         version=1,
         identity_keys=("id",),
-        key_types={},
         allow_null=False,
         config_path="bundle.entities.Example@1",
     )

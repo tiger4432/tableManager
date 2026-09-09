@@ -400,7 +400,11 @@ def test_registry_semantic_changes_reach_snapshot_and_provenance(change):
         # else, so this parameter still moves ONE registry.
         raw["vocabulary"]["moves_to@1"]["subjects"] = ["InputEntity@1", "OutputEntity@1"]
     else:
-        raw["entities"]["InputEntity@1"]["key_types"] = {"input_id": "string"}
+        # ⚰️ `key_types` was the semantic change this arm used until 2026-09-09, when it
+        # was retired for having no reader. `class` replaces it for the same reason the
+        # comment above gives for `subjects`: it lands on `EntityDescriptor` and nowhere
+        # else, so this arm still moves exactly ONE registry.
+        raw["entities"]["InputEntity@1"]["class"] = "static"
     changed = snapshot(raw)
 
     result = dry_run_event_frame(

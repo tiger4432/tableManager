@@ -1216,7 +1216,7 @@ def _validate_entities(section: Mapping[str, Any], problems: _Problems) -> None:
         #: the SAME entity; `keys` alone decide that, here and in the compiler.
         if not problems.exact(
                 item, path, required=("keys",),
-                optional=("key_types", "allow_null", "references", "class",
+                optional=("allow_null", "references", "class",
                           "attributes", "status")):
             continue
         if "class" in item and item["class"] not in ("static", "dynamic"):
@@ -1234,21 +1234,16 @@ def _validate_entities(section: Mapping[str, Any], problems: _Problems) -> None:
         _nonblank_list(keys, f"{path}.keys", problems)
         if _has_duplicate_strings(keys):
             problems.add("duplicate_id", f"{path}.keys", "identity keys must be unique")
-        if "key_types" in item:
-            if not isinstance(item["key_types"], Mapping):
-                problems.add("invalid_type", f"{path}.key_types", "must be an object")
-            else:
-                if (_is_list(keys)
-                        and set(item["key_types"]) != set(_column_values(keys))):
-                    problems.add("invalid_entity_ref", f"{path}.key_types",
-                                 "key_types must name exactly the identity keys")
-                for key in sorted(item["key_types"], key=str):
-                    value = item["key_types"][key]
-                    if (not isinstance(value, str) or not value.strip()
-                            or value != value.strip()):
-                        problems.add(
-                            "invalid_type", f"{path}.key_types.{key}",
-                            "key type must be a non-blank trimmed string")
+        # ⚰️ `key_types` IS RETIRED (판정 165 A1-3, 2026-09-09). It let an author declare
+        # each identity key's TYPE and no layer ever read it -- measured: `.key_types` has
+        # zero consumers in `server/`. A declaration slot with no reader is not a contract,
+        # it is a copy, and the two relevant standing rules say to delete rather than to
+        # build a reader: 「착지는 배선이 아니다」 and 「닿을 수 없으면 선언도 닿지 않는다 --
+        # 자유도 0 인 선언은 계약이 아니라 사본」.
+        #
+        # ⚠️ WHAT WOULD HAVE READ IT, had a reader been built: a domain check, an ordering,
+        # a range query. None of those exists, and table B's seed resolution -- the one
+        # place that looked like a candidate -- was measured and does not use a key's type.
         if "attributes" in item:
             attributes = item["attributes"]
             _nonblank_list(attributes, f"{path}.attributes", problems)
