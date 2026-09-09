@@ -26504,3 +26504,53 @@ tests/test_ledger_l1_pg.py + dry_run_pg   21 failed · 8 passed · 8 skipped (�
 21 중 20 = 시그니처 한 부류 · 1 = ③(같은 원인, 다른 문구)
 ```
 > 📌 **[09-10 01:3x] 이 채널의 미답 질문: «하나» — ⓑ 를 ⓑ-1/ⓑ-2 로 자를지, 아니면 20 전부 옮길지.**
+
+---
+
+# 🔴 [구현자 -> 총괄] **ⓑ-1 을 «지어 봤고», 출하 선언이 이 시나리오를 «거절»합니다. 되돌리고 실측만 올립니다** (09-10 00:1x)
+
+## 지어 본 것 (전부 되돌림 — 트리 깨끗)
+```
+SOURCE_DDL      출하 카탈로그의 lot_event(txn_seq·row_id·lot_id·slotnumbers·waferids)로
+씨앗/행 빌더    같은 철자로
+run() 헬퍼      backfill.run(engine, source=…, ontology_root=«출하 샘플 루트») 로
+ledger 픽스처   매 시험 «오늘의 ledger.schema» 로 스키마 생성(판정 216) + ROW_REF_TABLE 드롭
+backfill.run    catalog= 인자 하나(기본 라이브) — 판정 212 와 «같은 모양»
+```
+🔵 여기까지로 **시그니처 실패가 20 → 7 로 줄었습니다**(남은 7 = `backfill.run(ledger, cfg, …)`
+   를 «직접» 부르는 ⓑ-2 후보들). 나머지 실패는 «진짜 v5 경로 차이»로 바뀌었습니다:
+```
+KeyError: 'refused_molecules'                       결과 dict 모양이 다름 (3)
+DID NOT RAISE RuntimeError                          (3)
+run().start_from / run().reset_cursor 이 «거절»     「커서 경로의 «위치»를 이름 대던 인자인데
+                                                     그 위치가 더는 없다」 -> 이 둘의 주어도 «은퇴»
+assert 0 > 0                                        원자가 «하나도» 안 들어옴  <- 아래
+```
+
+## 🔴 멈춘 자리 — 출하 `lot_event` 선언이 이 시나리오를 «거절»합니다
+```
+게이트 문구(실측)
+  reason=no_identity | molecule {"event_group_key":["split","2026-05-03 02:17:00","P","C",null]}
+  declares 'child_lot' and the row at event_frame.rows[1].child_lot leaves it empty
+  … 그리고 track_in 행도 같은 이유로 거절
+=> 이 파일의 시나리오(split 두 행 + track_in 한 행)는 출하 선언 아래서 «원자를 0 개» 만듭니다.
+   씨앗을 고치려면 「출하 선언에서 track_in 행은 어떻게 생겼나 · child_lot 없는 사건이 가능한가」를
+   정해야 하고, 그건 «도메인 사실»입니다 — dt_log 때 멈춘 그 선입니다
+```
+⛔ 그래서 **되돌렸습니다.** 반쯤 바꾼 시험 파일과 «소비자 0 인» catalog 인자를 트리에 두는 것보다
+   되돌리고 실측을 올리는 쪽을 골랐습니다(「착지는 배선이 아니다」·「자막 단 실패도 실패다」).
+   현재 상태는 착지분 그대로: **21 failed · 8 passed · 8 skipped**.
+
+## 그래서 ⓑ 의 «진짜» 모양 — 세 무리입니다
+```
+ⓑ-1 (주어 삶)   run() 헬퍼만 쓰는 것들. 헬퍼·DDL·씨앗을 출하 선언에 맞추면 됩니다
+                 «다만» 씨앗 시나리오를 출하 선언이 받아들이게 «다시 짜야» 합니다(위 거절)
+ⓑ-2 (v1 낱말)   backfill.run(ledger, cfg, …) 직접 호출 7 + chain_mapper/subject_types/
+                 vocabulary.lineage 변형 — 묘비
+ⓑ-3 (새로 드러남) start_from · reset_cursor 를 재던 것들: 그 인자가 「커서 경로의 위치」를
+                 이름 대는데 그 위치가 «없어졌다»고 오늘 코드가 «이름 대어 거절»합니다.
+                 ①②③ 과 같은 부류(주어 은퇴)로 보이나, «제가 정하지 않고» 올립니다
+```
+> 📌 **[09-10 00:1x] 이 채널의 미답 질문: «둘»**
+> — ① 출하 `lot_event` 선언에서 「child_lot 없는 사건」(track_in)이 표현 가능한가(도메인 사실)
+> — ② ⓑ-3(start_from·reset_cursor) 을 묘비로 볼지
