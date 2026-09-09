@@ -209,10 +209,19 @@ def test_retry_count_is_bounded_by_the_declared_constant(monkeypatch):
 # single pass and only shows up on attempt 2.
 
 class FakeItem:
+    """The three identity fields `assemble_composite_business_key` writes, and no more.
+
+    🔴 `_supplied_business_key_val` IS NOT OPTIONAL HERE (판정 191). A fake thinner
+    than the real `GeneralUpdateItem` does not fail loudly at the seam it is thin at - it
+    simply never walks that arm, so the snapshot/restore of the third field would go
+    unmeasured while these tests stayed green.
+    """
+
     def __init__(self, updates, business_key_val=None, row_id=None):
         self.updates = dict(updates)
         self.business_key_val = business_key_val
         self.row_id = row_id
+        self._supplied_business_key_val = None
 
 
 class MapBatch:

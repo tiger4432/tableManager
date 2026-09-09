@@ -332,6 +332,41 @@ def test_a_rename_inside_one_batch_does_not_orphan_the_old_key(db_session):
     assert rows[0].row_id == "RN_ROW"
 
 
+def test_the_assembled_key_wins_and_the_supplied_key_s_row_is_left_alone(db_session):
+    """🔴 판정 188's BOUNDARY, and the one case where the two keys of 판정 191 disagree
+    about a row that EXISTS on both sides.
+
+    191 lets a supplied key resolve a row so a rename keeps its address (S-90). This
+    pins the price of that: the fallback is a FALLBACK. When the assembled key already
+    names a row, that row is the identity and wins; the row carrying the supplied key is
+    not read, not written and not renamed. Reversing the order would let any caller
+    retarget somebody else's row by sending its key - the defect 190 closed, re-opened
+    through the door 191 had to leave ajar.
+    """
+    model = models.DYNAMIC_TABLES[TABLE]
+    owner = model(row_id="BD_ROW", business_key_val="BD_01_9_9",
+                  lot="BD", slot="01", cx=9, cy=9, bn="owner")
+    bystander = model(row_id="OLD_ROW", business_key_val="OLD_HANDLE",
+                      lot="ZZ", slot="99", cx=0, cy=0, bn="untouched")
+    db_session.add_all([owner, bystander])
+    db_session.commit()
+
+    item = schemas.GeneralUpdateItem(
+        business_key_val="OLD_HANDLE",
+        updates={"lot": "BD", "slot": "01", "cx": 9, "cy": 9, "bn": "written"},
+        source_name="probe.csv", updated_by="watcher")
+    crud.apply_batch_updates(db_session, TABLE, _batch([item]))
+
+    assert db_session.query(model).count() == 2, "no third row was minted"
+    assert db_session.query(model).filter(
+        model.row_id == "BD_ROW").one().bn == "written", \
+        "the assembled key names a row, so that row is the one written"
+
+    left = db_session.query(model).filter(model.row_id == "OLD_ROW").one()
+    assert (left.bn, left.business_key_val) == ("untouched", "OLD_HANDLE"), \
+        "the supplied key is a fallback address, never a way to retarget a live row"
+
+
 def test_collision_merge_still_fires_against_a_row_outside_the_prefetch(db_session):
     """The collision probe's fast path may only skip when the prefetch covered the
     ASSEMBLED key. Here it did not: the payload arrives with an explicit

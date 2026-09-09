@@ -14,7 +14,10 @@ The intent was already proven in exactly one caller: `enrichment_mapper` pre-ass
 the key itself with the comment that the bulk prefetch is keyed on
 `business_key_val`. Every other caller paid.
 
-WHAT MOVED IS *WHEN*, NOT *WHAT*. Same function and same guard. For the historical
+WHAT MOVED IS *WHEN*, NOT *WHAT*. Same function, same two side effects; the GUARD has
+since narrowed to `row_id` alone (판정 190) and a supplied key that differs from the
+assembled one is now kept aside as the address a rename came in under (판정 191, S-90).
+For the historical
 shape that declares a physical `business_key` column it keeps both side effects (it
 sets `business_key_val` AND writes the key into `updates[key_col]`). A source-exact
 shape may now omit that synthetic physical column; its identity is stored only in the
@@ -242,8 +245,6 @@ def test_source_exact_composite_key_still_refuses_an_incomplete_tuple(key_db):
 @pytest.mark.parametrize("item, why", [
     ({"row_id": "R1", "updates": {"base": "A", "x": "1", "y": "2"}},
      "an explicit row_id already names the row"),
-    ({"business_key_val": "EXPLICIT", "updates": {"base": "A", "x": "1", "y": "2"}},
-     "an explicit business key already names the row"),
     ({"updates": {"base": "A", "x": "1"}},
      "a source column is missing entirely"),
     ({"updates": {"base": "A", "x": "1", "y": ""}},
@@ -253,6 +254,12 @@ def test_source_exact_composite_key_still_refuses_an_incomplete_tuple(key_db):
 ])
 def test_the_guard_refuses_to_assemble(key_db, item, why):
     """Every arm of the guard, on the function itself.
+
+    🔴 THE SUPPLIED-KEY ARM IS GONE FROM THIS LIST (판정 190), NOT FORGOTTEN. A caller
+    that sends a `business_key_val` used to switch the assembly off, so its row was
+    stored under a key that is not the table's identity - which is how two payloads with
+    the same composite columns became two rows. What happens to a supplied key now is
+    pinned by `test_a_supplied_key_is_assembled_over_and_kept_as_a_rename_address`.
 
     The last three matter most: a PARTIAL key must not be joined. `A_1_` would be a
     second spelling of a row's identity, and two spellings is how one row silently
@@ -279,9 +286,43 @@ def test_the_guard_assembles_when_and_only_when_it_should(key_db):
     assert update_item.updates["pkg_id"] == "A_1_2", \
         "the key is also written back as a column value"
 
-    # Idempotent: a second call is a no-op, which is what lets the batch path call it
-    # up front while `apply_row_update_internal` keeps calling it for itself.
-    assert crud.assemble_composite_business_key(DECLARED, update_item) is False
+    # 🔴 CALLING IT TWICE IS SAFE BECAUSE THE FUNCTION IS PURE, NOT BECAUSE A GUARD
+    # STOPS THE SECOND CALL (판정 190). It assembles again and lands on the same value,
+    # which is what lets the batch path call it up front while
+    # `apply_row_update_internal` keeps calling it for itself.
+    assert crud.assemble_composite_business_key(DECLARED, update_item) is True
+    assert update_item.business_key_val == "A_1_2"
+    assert update_item._supplied_business_key_val is None, (
+        "the second pass sees the key the FIRST one assembled. Filing that as a rename "
+        "address would put a phantom key in the batch prefetch and, worse, make the "
+        "lookup fall back onto a key nobody supplied")
+
+
+def test_a_supplied_key_is_assembled_over_and_kept_as_a_rename_address(key_db):
+    """🔴 판정 190 AND 191 TOGETHER, on the function itself.
+
+    190: a supplied key no longer switches the assembly off - the assembled key is the
+    identity. 191: the supplied key is not DISCARDED either. A rename names the row by
+    the key it is LOSING while sending the new key parts in the same item, so the value
+    190 overwrites here is the only handle on the row the caller means. Measured
+    2026-09-09 (S-90): the assembled key named no row, a second row was minted, and the
+    row being renamed was orphaned.
+    """
+    renaming = schemas.GeneralUpdateItem(
+        business_key_val="OLD_HANDLE", updates={"base": "A", "x": "1", "y": "2"})
+
+    assert crud.assemble_composite_business_key(DECLARED, renaming) is True
+    assert renaming.business_key_val == "A_1_2", "the assembled key is the identity"
+    assert renaming._supplied_business_key_val == "OLD_HANDLE", \
+        "and the key it is renaming FROM is still addressable"
+
+    # A supplied key that AGREES with the assembly files nothing: there is no other row
+    # to look for, and carrying it would widen the prefetch filter for a duplicate.
+    agreeing = schemas.GeneralUpdateItem(
+        business_key_val="A_1_2", updates={"base": "A", "x": "1", "y": "2"})
+
+    assert crud.assemble_composite_business_key(DECLARED, agreeing) is True
+    assert agreeing._supplied_business_key_val is None
 
 
 def test_an_incomplete_composite_source_still_writes_the_row_unkeyed(key_db):

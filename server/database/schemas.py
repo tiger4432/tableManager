@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, PrivateAttr, field_validator
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 import datetime as dt_pkg
@@ -172,6 +172,19 @@ class GeneralUpdateItem(BaseModel):
     updates: Dict[str, Any]                # { "column_name": value }
     source_name: str = "user"
     updated_by: Optional[str] = "system"
+
+    # 🔴 판정 191. THE KEY THE CALLER SENT, once `business_key_val` has been
+    # overwritten by the one the row's own columns assemble to.
+    #
+    # A PrivateAttr on purpose: this is not a request field and must never be settable
+    # from JSON or reach a response. `crud.assemble_composite_business_key` is its only
+    # writer and it fills it only when the two keys DIFFER - which happens on exactly one
+    # shape, a caller renaming a row by naming its OLD key while sending new key parts.
+    # `crud._get_or_create_row` reads the assembled key first and this one only when that
+    # named no row, so the identity ruling (188/190) stands and the rename keeps its
+    # address (S-90).
+    _supplied_business_key_val: Optional[Any] = PrivateAttr(default=None)
+
 
 class EffortReport(BaseModel):
     """[V1 계기] 이 트랜잭션 한 건을 완료하는 데 사람이 쓴 **원시 상호작용 카운트**.

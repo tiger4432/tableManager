@@ -2229,12 +2229,28 @@ def _engine_minted_row_id(supplied: Any, table_name: str) -> str:
 def _get_or_create_row(db: Session, table_model: Any, update_item: schemas.GeneralUpdateItem, row_cache: dict, table_name: str,
                        probed_identity: "ProbedIdentity" = None) -> tuple[Any, bool]:
     """대상 행 객체를 캐시 또는 DB에서 획득하고, 존재하지 않으면 신규 생성합니다."""
+    # 🔴 판정 191. TWO KEYS MAY NAME ONE ROW, AND THE ORDER IS THE RULING.
+    # `business_key_val` is the ASSEMBLED identity (188/190). `_supplied_business_key_val`
+    # holds what the caller sent when it differs - which is a rename naming the row by its
+    # OLD key. Asking the assembled key ALONE mints a duplicate and orphans that row
+    # (S-90); asking the supplied key alone is 190 undone. Assembled first means identity
+    # still wins wherever both name a row, and the old key is consulted only when the new
+    # identity is nobody's.
+    bk_candidates = []
+    for candidate in (update_item.business_key_val,
+                      update_item._supplied_business_key_val):
+        if candidate and candidate not in bk_candidates:
+            bk_candidates.append(candidate)
+
     row = None
     if row_cache is not None:
         if update_item.row_id and update_item.row_id in row_cache:
             row = row_cache[update_item.row_id]
-        elif update_item.business_key_val and update_item.business_key_val in row_cache:
-            row = row_cache[update_item.business_key_val]
+        else:
+            for candidate in bk_candidates:
+                if candidate in row_cache:
+                    row = row_cache[candidate]
+                    break
 
     if not row:
         # [P3] Both lookups below are skipped ONLY when the batch's prefetch already
@@ -2244,15 +2260,17 @@ def _get_or_create_row(db: Session, table_model: Any, update_item: schemas.Gener
         probed_bks = probed_identity.business_keys if probed_identity else None
         if update_item.row_id and not _absence_is_proven(update_item.row_id, probed_ids):
             row = db.query(table_model).filter(table_model.row_id == update_item.row_id).first()
-        if not row and update_item.business_key_val:
+        for candidate in bk_candidates:
+            if row:
+                break
             # STRIPPED, because that is the only spelling the proof is about:
             # `get_row_by_business_key` strips before comparing and the prefetch filter
             # was built from stripped values. Testing the RAW value here would leave a
             # padded key permanently unproven - slower, never wrong - while testing the
             # stripped one is exactly the question the prefetch answered.
-            probe_bk = str(update_item.business_key_val).strip()
+            probe_bk = str(candidate).strip()
             if not _absence_is_proven(probe_bk, probed_bks):
-                row = get_row_by_business_key(db, table_name, update_item.business_key_val)
+                row = get_row_by_business_key(db, table_name, candidate)
 
         if row and row_cache is not None:
             row_cache[row.row_id] = row
@@ -2345,10 +2363,17 @@ def assemble_composite_business_key(table_name: str, update_item: schemas.Genera
     """Fill in `business_key_val` from the payload's own column values, for a table
     whose business key is a join of other columns (`composite_key_source`).
 
-    Returns True if it set one. Idempotent: an item that already carries a `row_id` or
-    a `business_key_val` is left alone, so calling this twice is a no-op the second
-    time. That is what lets `apply_batch_updates` call it up front while
+    Returns True if it set one. Calling it twice is safe because this is a PURE
+    FUNCTION of the payload's own columns - the second call assembles again and lands on
+    the same value - which is what lets `apply_batch_updates` call it up front while
     `apply_row_update_internal` keeps calling it for its own protection.
+
+    ⚠️ THAT SAFETY USED TO BE CREDITED TO A GUARD (「an item that already carries a
+    row_id OR a business_key_val is left alone」) and the credit was misplaced; 판정 190
+    removed the business-key half, because a supplied key switching the assembly off is
+    how two payloads with the same composite columns became two rows under one identity.
+    Only `row_id` still stops it: a caller naming a row by id is not asking about
+    identity. A supplied key is kept instead - see 판정 191 below.
 
     It always sets the framework-owned `update_item.business_key_val`. When the table
     ALSO declares a physical `business_key` column, it keeps the historical second
@@ -2390,6 +2415,24 @@ def assemble_composite_business_key(table_name: str, update_item: schemas.Genera
     # The blank check above is THIS caller's policy; the join below is everyone's.
     computed_key = compose_business_key(
         table_name, [update_item.updates.get(col) for col in composite_src])
+
+    # 🔴 판정 191. THE SUPPLIED KEY MOVES ASIDE; IT IS NOT DISCARDED. 190 made the
+    # assembled key the identity, and the line below overwrites whatever the caller sent.
+    # For every caller that sends the key its own columns assemble to that is a no-op.
+    # For ONE shape it is not: a rename addresses a row BY ITS OLD KEY and sends the NEW
+    # key parts in the same item, so the value being overwritten is the only handle on
+    # the row the caller means. Measured 2026-09-09 (S-90): the assembled key named no
+    # row, a second row was minted, and the row being renamed was orphaned.
+    #
+    # ⛔ AND THE ANSWER IS NOT "DO NOT ASSEMBLE WHEN A KEY WAS SENT" - that is 190
+    # undone, and it is how 1,000 rows hid from three cleanups. The two live together
+    # because they are ORDERED: `_get_or_create_row` asks the assembled key first and
+    # reaches this one only when the assembled key names nothing.
+    supplied = update_item.business_key_val
+    if supplied is not None and str(supplied).strip() not in ("", computed_key):
+        # Stripped, because that is the one spelling this seam uses: the prefetch filter
+        # is built from stripped values and `get_row_by_business_key` strips to compare.
+        update_item._supplied_business_key_val = str(supplied).strip()
     update_item.business_key_val = computed_key
     if key_col and key_col not in update_item.updates:
         update_item.updates[key_col] = computed_key
@@ -3635,19 +3678,26 @@ def _replay_sensitive_key_column(table_name: str, batch) -> Optional[str]:
 
 
 def _snapshot_payload_identity(batch, key_col: str) -> list:
-    """Exactly the two fields `assemble_composite_business_key` writes, per item.
+    """Exactly the three fields `assemble_composite_business_key` writes, per item.
 
     Not a deep copy. A `replace_map` push can carry tens of thousands of cells and this
-    runs on every one of them before the first attempt, so it holds three references per
+    runs on every one of them before the first attempt, so it holds four references per
     item, not a duplicated object graph.
+
+    ⚠️ `_supplied_business_key_val` (판정 191) is restored rather than left alone even
+    though re-assembling would re-derive the same value: this function's contract is that
+    the caller's payload comes back unchanged, and an assembler arm that stops writing it
+    would otherwise leave attempt 1's memo standing into attempt 2.
     """
-    return [(it, it.business_key_val, key_col in it.updates) for it in batch.updates]
+    return [(it, it.business_key_val, it._supplied_business_key_val,
+             key_col in it.updates) for it in batch.updates]
 
 
 def _restore_payload_identity(snapshot: list, key_col: str):
     """Put the payload back the way the caller handed it over."""
-    for item, business_key_val, had_key_col in snapshot:
+    for item, business_key_val, supplied_bk_val, had_key_col in snapshot:
         item.business_key_val = business_key_val
+        item._supplied_business_key_val = supplied_bk_val
         if not had_key_col:
             item.updates.pop(key_col, None)
 
@@ -3921,8 +3971,10 @@ def _apply_batch_updates_once(db: Session, table_name: str,
         # `_get_or_create_row` fell through to one full-model SELECT per row. Measured on
         # a 200-cell update: 201 SELECTs on the data table where 1 is enough.
         #
-        # ⚠️ THIS MOVES WHEN THE KEY IS COMPUTED, NOT WHAT IT IS. Same function, same
-        # guard (only when neither id nor key is supplied), same two side effects.
+        # ⚠️ THIS MOVES WHEN THE KEY IS COMPUTED, NOT WHAT IT IS. Same function and the
+        # same two side effects. The GUARD has since narrowed to `row_id` alone (판정 190)
+        # and a supplied key that differs from the assembled one is now kept aside rather
+        # than overwritten (판정 191) - both of which this block reads, never decides.
         #
         # ⚠️ AND IT DOES NOTHING FOR A `replace_map` PUSH - which is what the map editor
         # sends. The purge above already deleted the scope's rows and flushed, so the
@@ -3946,7 +3998,17 @@ def _apply_batch_updates_once(db: Session, table_name: str,
             assemble_composite_business_key(table_name, item)
 
         target_ids = [u.row_id for u in batch.updates if u.row_id]
-        target_bks = [str(u.business_key_val).strip() for u in batch.updates if u.business_key_val]
+        # 🔴 판정 191. BOTH of an item's identities, because `_get_or_create_row`
+        # may resolve on either: the assembled key, and - only when a caller sent a
+        # different one - the key it is renaming FROM. Asking about one of the two leaves
+        # the other unprefetched, and worse: the assembled key of a rename would enter
+        # `probed_identity` as "asked and absent" (true, and the right answer) while the
+        # supplied key it actually resolves on was never asked about at all.
+        target_bks = []
+        for u in batch.updates:
+            for value in (u.business_key_val, u._supplied_business_key_val):
+                if value:
+                    target_bks.append(str(value).strip())
 
         from sqlalchemy import or_
         existing_rows_list = db.query(table_model).filter(
