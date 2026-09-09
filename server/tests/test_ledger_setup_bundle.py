@@ -66,6 +66,14 @@ def logical_catalog(*, source_name="input_rows", prefix=""):
             "columns": {
                 record: "string", event: "string", occurred: "datetime",
                 source_key: "string", join_key: "string",
+                # 🔴 DECLARED AND SELECTED BY NOTHING (판정 204). Every other column here is
+                # pulled into the read by an identity, a cursor or a declared input, so a
+                # test asking "does naming a column in a clause make it arrive" had no
+                # column that could be ABSENT - the assertion passed whatever the code did.
+                # Three SELECT gates (S-91's exclude_when, S-99's when, ruling 201's
+                # bindings) hit that wall separately and each took a detour. This is the
+                # one column their mutations can actually move.
+                prefix + "unselected_note": "string",
             },
             "business_key": record,
         },

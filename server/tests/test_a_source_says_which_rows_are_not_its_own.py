@@ -39,6 +39,7 @@ from test_ledger_setup_bundle import (                                # noqa: E4
 from ledger.setup_registry import TrustedImplementationCatalog        # noqa: E402
 from ledger.source_preparation import locked_select_columns           # noqa: E402
 from test_ledger_setup_registry import snapshot                       # noqa: E402
+from test_ledger_source_preparation import base_select_columns_of  # noqa: E402
 from ledger.source_preparation import (                               # noqa: E402
     DirectJoinSourcePreparer, SourcePreparerImplementationRegistry)
 from test_ledger_source_preparation import (                          # noqa: E402
@@ -114,25 +115,24 @@ def test_a_declared_blank_column_excludes_that_row_and_the_rest_still_land():
 
 
 def test_a_column_named_only_by_the_clause_still_reaches_the_read():
-    """🔴 THE QUIET ONE, AND IT IS WHY THIS FILE EXISTS AT ALL.
+    """🔴 THE QUIET ONE. A column named ONLY by `exclude_when` is neither an identity, a
+    cursor column, nor anybody's declared input, so nothing else would select it and the
+    preparer would be handed a frame without the column it was told to judge.
 
-    The read selects identity, group_by, order_by, cursor, occurred_at, the preparer's and
-    mapper's inputs, and `row_id`. A column named ONLY by `exclude_when` is in none of
-    those, so without this term the preparer is handed a frame that does not contain the
-    column it was told to judge.
-
-    ⚠️ THE OWNER'S OWN CASE WOULD HAVE HIDDEN IT. There the column is `core_x`, an identity
-    part, so it arrives by luck - and every column of THIS fixture's relation is selected
-    too, which is why the term is asserted on the function rather than through a bundle:
-    neither world can show the gap, and a test that cannot fail would just look green.
+    ⚠️ THIS ASSERTION COULD NOT FAIL UNTIL 판정 204. Every physical column of this fixture's
+    relation was already pulled into the read by something, so there was no column whose
+    ABSENCE the test could observe - it passed whatever the code did. `unselected_note` is
+    declared in the catalogue and selected by nothing, which is what makes the mutation
+    below real.
     """
-    without = locked_select_columns(identity=["event_key"])
-    assert "kept_only_by_the_clause" not in without
+    plain = base_select_columns_of(snapshot(logical_bundle()), SOURCE)
+    assert "unselected_note" not in plain, "precondition: nothing else selects it"
 
-    with_clause = locked_select_columns(
-        identity=["event_key"], exclude_when_columns=["kept_only_by_the_clause"])
-    assert "kept_only_by_the_clause" in with_clause
-    assert set(without) <= set(with_clause), "the term ADDS; it may not take anything away"
+    compiled = snapshot(_with_exclusion([{"column": "unselected_note", "blank": True}],
+                                        direct=True), direct_join_trusted())
+
+    assert "unselected_note" in base_select_columns_of(compiled, SOURCE), (
+        "a column named only by the clause must still be read")
 
 
 def test_blank_is_spelled_once_for_the_clause_and_for_the_census():
