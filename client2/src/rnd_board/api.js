@@ -344,7 +344,7 @@ export function compositionModel(result) {
 export async function fetchSubgraph(params) {
   const { apiBase, nodeId, fetchImpl, positive, negative,
           node_limit: nodeLimit, hops, follow, direction,
-          backbone_hops: backboneHops } = params || {};
+          backbone_hops: backboneHops, since, until } = params || {};
   // 🔴 THE GATE (contract §4). Refused HERE rather than at the server, because the server
   //    would answer 200 with an empty walk and the screen would read that as 「없다」.
   //    A refusal is CONTENT: `subgraphModel` already renders `ok:false` with its reason.
@@ -380,6 +380,14 @@ export async function fetchSubgraph(params) {
   //    and a request that names neither is byte-identical to before.
   if (nodeLimit !== undefined && nodeLimit !== null) query.set('node_limit', String(nodeLimit));
   if (hops !== undefined && hops !== null) query.set('hops', String(hops));
+  // 🔴 C-51 / S-98. 구간은 «둘 다 선택»이고 반열린 [since, until) 입니다. 예산과 «같은 규율»:
+  //    안 고르면 «안 싣고», 안 실으면 서버가 전체 역사를 걷습니다 — 그래서 구간을 안 쓰는
+  //    호출의 요청은 이 줄이 붙어도 «한 글자도» 안 바뀝니다.
+  // ⚠️ 예산과 달리 «빈 문자열»도 안 싣습니다. 빈 날짜 칸은 「구간 없음」이지 「1970」이 아니고,
+  //    빈 값을 실으면 서버가 422(`interval_not_iso8601`)로 «옳게» 거절합니다 — 화면은 그것을
+  //    「고장」으로 그리고, 운영자는 «안 고른 것»을 오류로 읽습니다.
+  if (since) query.set('since', String(since));
+  if (until) query.set('until', String(until));
   // 🔴 «백본 예산»은 선언한 부품만 싣습니다 (라운드 ③, 2026-08-29). follow 와 «같은 모양»:
   //    없으면 안 싣고, 안 실으면 서버 기본이라 오늘과 «완전히 같은» 답입니다.
   //
@@ -517,6 +525,25 @@ function truncationAxes(raw, options) {
   const hopsChosen = !!(options && options.hopsChosen);
   return Object.keys(raw)
     .filter((key) => raw[key] === true && !(key === 'depth' && hopsChosen));
+}
+
+// 🔴 C-51 / S-98. 「구간 밖이라 안 가져온 수」 — `truncated.interval_excluded`, 홉 합.
+//
+// 🔴 THE ABSENT KEY AND THE ZERO ARE DIFFERENT ANSWERS, and the server keeps them apart on
+//    purpose (WALK.md 「구간 걷기」): no interval was asked -> the key is NOT THERE; an
+//    interval was asked and nothing fell outside it -> `0`. Drawing the first as 0 says
+//    「물었고 제외된 게 없다」 about a question nobody asked, which is the same collapse the
+//    axes above refuse for `truncated` itself (「부재는 false 가 아니다」).
+// ⚠️ 이 파일에서 절단을 읽는 자리는 «여기 하나»입니다 — 판정을 부품에서 다시 하면 그것이
+//    「네 번째 사본」이고, 그 주석이 `walk_box_panel.js:505` 에 이미 적혀 있습니다.
+// ⚠️ 「키가 있나」로 «묻지 않습니다» — 없는 키는 `undefined` 이고 그 자체로 수가 아니라,
+//    그 물음이 답을 하나도 안 바꿉니다(변이가 그것을 증명했습니다: 그 줄을 지워도 전부 초록).
+//    ⛔ 대신 «수인가»를 타입으로 봅니다. `Number(null)` 은 «0 이고 유한»해서, 값으로만 재면
+//    서버가 보낸 `null`(「말 안 함」)이 「물었고 제외 없음」으로 «조용히 승격»됩니다.
+function intervalExcluded(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const n = raw.interval_excluded;
+  return typeof n === 'number' && Number.isFinite(n) ? n : null;
 }
 
 export function subgraphModel(result) {
@@ -1831,7 +1858,8 @@ export function createWalkBoxWalk(deps) {
   const { apiBase, fetchImpl } = deps || {};
   const doFetch = fetchImpl || fetch;
   return async function walkBoxWalk(spec) {
-    const { type, keys, follow, collect, direction, hops, node_limit: nodeLimit } = spec || {};
+    const { type, keys, follow, collect, direction, hops, node_limit: nodeLimit,
+            since, until } = spec || {};
     if (!type) return { ok: false, message: '노드 타입을 먼저 고르십시오' };
     const query = new URLSearchParams();
     query.set('id', entitySeedId(type, keys));
@@ -1847,6 +1875,12 @@ export function createWalkBoxWalk(deps) {
     if (direction) query.set('direction', String(direction));
     if (hops) query.set('hops', String(hops));
     if (nodeLimit) query.set('node_limit', String(nodeLimit));
+    // 🔴 C-51 / S-98. 같은 규율로 둘 더 — 빈 칸은 「구간 없음」이라 «안 싣습니다». 실으면
+    //    서버가 422 로 옳게 거절하고, 화면은 「안 고른 것」을 고장으로 그립니다.
+    // ⛔ 여기서 «거르지 않습니다». 구간으로 거르는 것은 walk 의 일이고(상설: 부품이 거르면
+    //    어긴 것), 부품이 받은 것을 다시 자르면 「무엇을 못 봤는지」를 말할 수 없게 됩니다.
+    if (since) query.set('since', String(since));
+    if (until) query.set('until', String(until));
     try {
       const res = await doFetch(`${apiBase || ''}/api/ledger/subgraph?${query}`);
       const body = await res.json().catch(() => null);
@@ -1887,6 +1921,10 @@ export function createWalkBoxWalk(deps) {
         // 「무엇에서 잘렸나」를 이름으로도 냅니다 -- 화면이 `reason` 을 그대로 쓰면 «자르지 않은»
         // depth 까지 문장에 실립니다.
         truncatedAxes: cutAxes,
+        // 🔴 C-51. 「구간 밖이라 안 가져온 수」. «같은 자리»에서 읽습니다 — 부품이 응답을
+        //    다시 읽으면 그것이 절단 판정의 네 번째 사본입니다(`walk_box_panel.js:505`).
+        //    키가 없으면 `null`(안 그림) · `0` 이면 0(그림). 그 둘은 다른 답입니다.
+        intervalExcluded: intervalExcluded(truncated),
         cut: !!(cutAxes && cutAxes.length),
         // 🔴 S-13: 「이 답이 «언제» 것인가」. 서버가 `generated_at` 을 «항상» 보내는데 읽는
         //    자리가 «0» 이었습니다 (실측 2026-09-07: 소스 0 · 번들 0 — 클라 전체에서 유일한

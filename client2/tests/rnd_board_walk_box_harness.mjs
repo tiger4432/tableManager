@@ -422,6 +422,66 @@ async function suite(mods) {
       node && node.id === sent.id && got.nodes.length === 1);
   }
 
+  // ══ C-51. 「언제부터 언제까지」 — 칸 둘, 그리고 돌아온 수 ═══════════════════════════
+  //
+  // 🔴 THE COMPONENT DOES NOT FILTER. These two boxes are a QUESTION; the walk answers it
+  //    (standing: 「부품이 거르면 어긴 것」). So what is measured here is what the panel PUTS
+  //    IN THE SPEC and what it DRAWS — never a narrowing of its own.
+  console.log(`${LF}-- V. the interval: two boxes, an empty one is not an interval --`);
+  {
+    const names = () => byAttr(host, 'data-interval').map((e) => e.getAttribute('data-interval'));
+    eq('V1 two date boxes, named as the route names them', names().join(','), 'since,until');
+    asked.length = 0;
+    panel.setType('wafer@1');
+    await panel.run();
+    const bare = asked[asked.length - 1] || {};
+    ok('V2 empty boxes put NOTHING in the spec — 「구간 없음」 is not 「1970」',
+      !('since' in bare) && !('until' in bare), JSON.stringify(bare));
+    panel.since = '2026-09-01';
+    panel.until = '2026-09-08';
+    asked.length = 0;
+    await panel.run();
+    const filled = asked[asked.length - 1] || {};
+    eq('V3 a filled box travels', `${filled.since}|${filled.until}`, '2026-09-01|2026-09-08');
+    // 🔴 ONE END IS A LEGAL QUESTION, and a panel that only ever sent pairs would pass V3.
+    panel.until = '';
+    asked.length = 0;
+    await panel.run();
+    const oneEnd = asked[asked.length - 1] || {};
+    ok('V4 one end alone still travels, and the other stays out',
+      oneEnd.since === '2026-09-01' && !('until' in oneEnd), JSON.stringify(oneEnd));
+    panel.since = '';
+  }
+
+  console.log(`${LF}-- W-bis. 「구간 밖 N」 — absent is not zero, on the SCREEN --`);
+  {
+    const drawWith = async (result) => {
+      const d = makeDoc();
+      const h = d.createElement('div');
+      const p = new WalkBoxPanel(h, {
+        doc: d, markings: new MarkingStore(), reads: 'marking:1', writes: 'marking:2',
+        loadDeclaration: () => Promise.resolve(DECL),
+        walk: () => Promise.resolve({ ok: true, nodes: NODES, ...result }),
+      });
+      p.mount();
+      await settle();
+      p.setType('wafer@1');
+      await p.run();
+      return h;
+    };
+    const textOf = (h) => h.textContent;
+    ok('X1 a measured zero is SAID — 「물었고 제외된 게 없다」 is an answer',
+      /구간 밖 0/.test(textOf(await drawWith({ intervalExcluded: 0 }))));
+    ok('X2 a real count is said', /구간 밖 37/.test(textOf(await drawWith({ intervalExcluded: 37 }))));
+    // 🔴 THE DISCRIMINANT: no interval asked -> the line is NOT DRAWN. Without this, X1 is
+    //    satisfied by a panel that prints the line unconditionally.
+    ok('X3 an unasked interval draws NO line at all',
+      !/구간 밖/.test(textOf(await drawWith({ intervalExcluded: null }))),
+      textOf(await drawWith({ intervalExcluded: null })).slice(0, 80));
+    ok('X4 ...and neither does a walk that never carried the field',
+      !/구간 밖/.test(textOf(await drawWith({}))));
+  }
+
   return { ran, failed: failedList.slice() };
 }
 
