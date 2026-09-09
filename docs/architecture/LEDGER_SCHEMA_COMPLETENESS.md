@@ -89,6 +89,7 @@
 | **결정 단위** `decision_key` | 🔴 **③** | 🔴 **원장 선언에도 표 카탈로그에도 없다.** 실측: 카탈로그 항목의 키 = `{business_key, column_types, composite_key_separator, composite_key_source, display_columns, kind, map_key_columns, workspace_name}` (샘플 44 표 전수). ⚠️ **`decision_key` 는 «다른 선언 언어»에 산다** — `enrichment_rules.json` 의 규칙마다(`enrichment_config` · `alignment_view_service.py:53` · `chain_bindings.resolve_decision_column`). 🔵 **판정 165: 이름은 «같게» 둔다** — 뜻이 같고 «범위»만 다르다(규칙의 판단 단위 / 표의 판단 단위). 관계를 적는다: 규칙 칸이 있으면 규칙 · 없으면 표 · 둘 다 없으면 «이름 대어 거절» | 목록(컬럼들) |
 | 삭제 겨눔 | ① | `ledger_source_row_ref` (`schema.py:69`, 키 `(relation, row_id, source_who, source_raw_ref)`) · `backfill.sources_without_row_index` :915 · `index_existing_refs` :936 · `withdraw_deleted_rows` :1056 | |
 | 삭제 — row_id 없는 뷰 | ② | 🔵 «이름 대어» 남는다 — `sources_without_row_index` 가 그 소스를 «센다». 뷰가 base 의 `row_id` 를 흘려 주면 그 뷰는 겨눌 수 있다(:246 주석, 샘플 뷰 10 중 5) | |
+| 🔴 **행 선택·제외** (S-91) | 🔴 **③** | 「이 행은 «이 소스의» 행이 아니다」를 적을 자리가 «없습니다». 기제는 있으나 «파이썬 준비기»만 냅니다 — `SOURCE_ROW_EXCLUDED_COLUMN = "__source_row_excluded"` (`source_preparation.py:47`), `setup_bundle.py` 에 «0회». 소유자 실측(09-09 15:59): 신원 키 부품이 빈 행 «하나»가 전부-아니면-전무로 995 행을 막습니다. ⚠️ 출하 카탈로그 주석이 2026-08-23 에 «이미» 이 자리를 적어 뒀습니다(「the only row-exclusion mechanism … is emitted by a preparer implementation」) | 목록(조건) |
 | **소스 은퇴** | 🔴 **③** | `_validate_sources` 는 `required=("relation","read","prepare","map","bind")` 를 `exact` 로 잰다 — **그 밖의 키는 전부 거절**(:1466). `status`/`enabled` 를 «적을 수 없다». 소스를 끄는 길은 «지우는 것»뿐 | |
 
 ---
@@ -795,7 +796,8 @@ DB       제약 없음                                                          
 | D_Π 의 수명 | `sources.<s>.status`, 기본 `active` | ✅ |
 | D_Π 의 판단 단위 | 표 카탈로그의 `decision_key`, 기본 «없음» | ✅ |
 | 목적어 없는 술어 «여럿** | 저장 층이 술어 이름을 «안 댐**(S-77) | ✅ |
-| | **문법 구멍** | 🔵 **0** |
+| 🔴 행 선택·제외 | **없음** (S-91) | ③ |
+| | **문법 구멍** | 🔴 **1** — 아래 정정 |
 
 ### 방향 ①(칸 → 인자) — 문법 칸이 «전부» 인자로 유도되나
 ```
@@ -809,11 +811,29 @@ label 「keys 앞 둘」  ② 로 적힌 «표면 규칙» — 판정 169 로 �
                   문법 칸 = «0**
 ```
 
+## 🔴 정정 — 동결 문장이 «과장»이었습니다 (S-91, 2026-09-09 16:0x)
+
+```
+제가 쓴 것   「문법의 ③ 은 «0» 이다」 (D-4)
+반증        소유자 실측이 «축 하나»를 찾았습니다 — 「이 행이 이 소스의 행인가」(행 선택·제외).
+           제외 기제는 «있는데»(`__source_row_excluded`) 파이썬 준비기만 내고 문법에 «0회»입니다
+🔴 왜 못 봤나  제 표 A 의 A4 부축 목록을 «BASIS 의 축 목록»에서 받아 왔는데, 그 문서에도 이 축이 «없었습니다».
+           그래서 「칸이 없다」가 아니라 «축이 없다»였고, 축이 없으면 제 표는 그 자리를 «묻지도» 않습니다
+           => 「모든 생성자 인자가 칸을 갖는다」는 «인자 목록이 완전할 때만» 검사입니다. 목록이 짧으면 통과는 «공허»합니다
+🔵 그리고 «단서가 있었습니다** — 출하 카탈로그 주석이 2026-08-23 에 이미 적어 뒀습니다:
+           「the only row-exclusion mechanism (`__source_row_excluded`) is emitted by a preparer
+             implementation -- the live config declares zero `source_preparers`」
+           제가 그 파일을 여러 번 읽고도 그 문장을 «축»으로 읽지 않았습니다
+조치        BASIS §2.3 의 D_Π 에 「행 선택」을 넣고, 표 A 에 행을 넣고, 아래 문장을 고칩니다
+```
+
 ## 🔵 그래서 — 문법 동결 문장
 
 ```
-2026-09-09 기준, 원장 «문법»의 모든 칸은 어느 생성자의 인자로 유도되고,
-표기 기저(BASIS §2)의 모든 인자는 칸을 가진다. 문법의 ③ 은 «0» 이다.
+🔴 이 문장은 «S-91 로 무효»가 됐습니다. 고쳐 적으면:
+2026-09-09 기준, 원장 «문법»의 모든 칸은 어느 생성자의 인자로 유도된다(방향 ① 참).
+그러나 «모든 인자가 칸을 갖는다»는 «거짓»이다 — 「행 선택」에 칸이 없다(S-91).
+문법의 ③ 은 «0 이 아니라 1» 이다.
 ⚠️ 남은 정의역 빚 «하나»는 «이름이 붙어» 있다 — 값 타입이 오늘 `number` 만 발행되고,
    그 밖은 「S-84」를 대며 거절된다. 침묵이 아니라 «번호 붙은 빚»이다
 ```

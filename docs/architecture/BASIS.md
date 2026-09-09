@@ -63,6 +63,8 @@ fact : N × P × (∅ | V | N) × Q × τ × Π → α                   원장�
 D_T   타입 선언      keys · attributes(이름 · «읽기 규칙» 단수/집합) · class · status
 D_P   술어 선언      subjects · object.kind(∅|V|N) · V 의 «타입» · qualifiers(이름 · 타입) · «제약»(카디널리티 · 필수) · status
 D_Π   출처 선언      소스 = 표/뷰 → fact 로 가는 «번역»(read · prepare · map · bind) · decision_key(판단 단위) · status
+                 · 🔴 **행 선택** 「이 행이 «이 소스의» 행인가」 — S-91 로 «축이 빠져 있던 것»이 드러남(09-09).
+                   제외 기제는 있으나 «파이썬 준비기»만 낸다(`__source_row_excluded`) — 선언 칸 «없음»
 D_L   원장 선언      리비전(세대) · 파티션 · 지문
 규칙  «모든 선언 항목은 status 를 가진다»(수명) — 술어에 있고 타입·소스에 없는 것은 «패턴 위반»이지 새 축이 아니다
 ```
