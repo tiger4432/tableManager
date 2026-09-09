@@ -16,7 +16,7 @@
 // Run: node client2/tests/walk_wire_harness.mjs
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createWalkBoxWalk, entitySeedId } from '../src/rnd_board/api.js';
+import { createWalkBoxWalk, entitySeedId, fetchSubgraph } from '../src/rnd_board/api.js';
 import { loadWithProbe } from './lib/probe.mjs';
 
 let pass = 0;
@@ -92,6 +92,78 @@ console.log('\n[3] what the caller did not choose does not go');
   const r = recorder();
   await createWalkBoxWalk({ apiBase: '', fetchImpl: r.fetchImpl })({ type: 'wafer@1', keys: {} });
   eq('with nothing chosen, only the seed goes', [...r.params().keys()], ['id']);
+}
+
+// ═══ ③-bis C-51 — 구간 «둘», 그리고 빈 칸은 «안 간다» ═══════════════════════════════
+//
+// 🔴 AN EMPTY DATE BOX IS 「구간 없음」, NOT 「1970」. Sent empty, the server refuses it
+//    CORRECTLY (422 `interval_not_iso8601`) and the screen draws 「고장」 over a box the
+//    operator simply did not fill. The budget arguments already obey this rule; the
+//    interval joins them rather than growing its own.
+console.log('\n[3-bis] the interval, and the empty box that is not one');
+{
+  const r = recorder();
+  await createWalkBoxWalk({ apiBase: '', fetchImpl: r.fetchImpl })(
+    { ...PANEL, since: '2026-09-01', until: '2026-09-08' });
+  const q = r.params();
+  eq('since is on the wire', q.get('since'), '2026-09-01');
+  eq('until is on the wire', q.get('until'), '2026-09-08');
+}
+{
+  // 🔴 ONE END IS A LEGAL QUESTION. `[since, ∞)` is the ordinary 「이후로」, and a screen
+  //    that required both would make the common case unaskable.
+  const r = recorder();
+  await createWalkBoxWalk({ apiBase: '', fetchImpl: r.fetchImpl })({ ...PANEL, since: '2026-09-01' });
+  const q = r.params();
+  eq('one end alone still travels', q.get('since'), '2026-09-01');
+  eq('...and the other stays absent', q.has('until'), false);
+}
+{
+  const r = recorder();
+  await createWalkBoxWalk({ apiBase: '', fetchImpl: r.fetchImpl })({ ...PANEL, since: '', until: '' });
+  const q = r.params();
+  ok('empty boxes send NOTHING — not an empty value',
+    !q.has('since') && !q.has('until'), [...q.keys()].join(','));
+}
+{
+  // 🔴 THE SAME RULE ON THE OTHER BUILDER. This route has TWO request builders in this file
+  //    (`fetchSubgraph` for the board's seats, `createWalkBoxWalk` for the walk box) and
+  //    criterion ④ is 「둘이 갈라질 수 있나」 -- so the seat path is measured too.
+  const r = recorder();
+  await fetchSubgraph({ apiBase: '', fetchImpl: r.fetchImpl, nodeId: 'ledger-entity:v1:x',
+                        since: '2026-09-01', until: '2026-09-08' });
+  const q = r.params();
+  eq('the seat builder carries since too', q.get('since'), '2026-09-01');
+  eq('...and until', q.get('until'), '2026-09-08');
+  const r2 = recorder();
+  await fetchSubgraph({ apiBase: '', fetchImpl: r2.fetchImpl, nodeId: 'ledger-entity:v1:x',
+                        since: '', until: '' });
+  ok('...and drops the empty ones, like the other builder',
+    !r2.params().has('since') && !r2.params().has('until'));
+}
+
+// ═══ ④-ter C-51 — 「안 물었다」와 「물었고 0」 ══════════════════════════════════════
+//
+// 🔴 THE SERVER KEEPS THESE APART ON PURPOSE (WALK.md 「구간 걷기」): no interval asked ->
+//    the key is NOT PRESENT; asked and nothing fell outside -> `0`. Collapsed, the screen
+//    tells an operator who asked nothing that nothing was excluded.
+console.log('\n[4-ter] the excluded count: absent is not zero');
+{
+  const walkWith = async (truncated) => {
+    const r = recorder({ ok: true, json: async () => ({ nodes: [], edges: [], truncated }) });
+    return createWalkBoxWalk({ apiBase: '', fetchImpl: r.fetchImpl })(PANEL);
+  };
+  eq('a measured zero is a zero', (await walkWith({ interval_excluded: 0 })).intervalExcluded, 0);
+  eq('a real count is the count', (await walkWith({ interval_excluded: 37 })).intervalExcluded, 37);
+  // 🔴 THE DISCRIMINANT: same shape, key removed. `0` and `null` must not be one pixel.
+  eq('no interval asked leaves NO number', (await walkWith({ nodes: true })).intervalExcluded, null);
+  eq('...and so does a response with no truncated at all',
+    (await walkWith(null)).intervalExcluded, null);
+  ok('the two are different values',
+    (await walkWith({ interval_excluded: 0 })).intervalExcluded
+      !== (await walkWith({ nodes: true })).intervalExcluded);
+  eq('a non-numeric value is not read as a count',
+    (await walkWith({ interval_excluded: 'lots' })).intervalExcluded, null);
 }
 
 // ═══ ④ 응답을 «버리지» 않는다 ═════════════════════════════════════════════════════════
@@ -328,8 +400,44 @@ async function truncationSuite(M) {
   return { failed: failures.length - before };
 }
 
+// 🔴 C-51. THE INTERVAL, ON BOTH SIDES OF THE CALL: what goes out, and how the number that
+//    comes back is read. Scored against a MUTATED module below, so each of these has to be
+//    the assertion that reddens rather than a sentence beside one that does.
+async function intervalSuite(M) {
+  const before = failures.length;
+  const wire = async (spec) => {
+    const r = recorder(BODY(T({})));
+    await M.createWalkBoxWalk({ apiBase: '', fetchImpl: r.fetchImpl })(
+      { type: 'wafer@1', keys: { wafer: 'W-1' }, ...spec });
+    return r.params();
+  };
+  const both = await wire({ since: '2026-09-01', until: '2026-09-08' });
+  ok('I1 both ends travel', both.get('since') === '2026-09-01' && both.get('until') === '2026-09-08',
+    `${both.get('since')} / ${both.get('until')}`);
+  // 🔴 THE OTHER ARM. Without it, a builder that ALWAYS sets both would pass I1.
+  const none = await wire({ since: '', until: '' });
+  ok('I2 empty boxes are not an interval — nothing goes',
+    !none.has('since') && !none.has('until'), [...none.keys()].join(','));
+
+  const excluded = async (truncated) =>
+    (await cutOf(M, {}, truncated)).intervalExcluded;
+  ok('I3 a measured zero survives as zero', (await excluded(T({ interval_excluded: 0 }))) === 0);
+  ok('I4 a real count survives', (await excluded(T({ interval_excluded: 37 }))) === 37);
+  // 🔴 THE DISCRIMINANT of this block: absent must NOT become 0, and 0 must not become absent.
+  ok('I5 an unasked interval leaves no number at all',
+    (await excluded(T({}))) === null, String(await excluded(T({}))));
+  // 🔴 `Number(null)` IS 0 AND FINITE, so a value-only check turns 「말 안 함」 into a
+  //    measured zero. This is the assertion the re-anchored mutant reddens.
+  ok('I6 a null count is 「말 안 함」, not a measured zero',
+    (await excluded(T({ interval_excluded: null }))) === null,
+    String(await excluded(T({ interval_excluded: null }))));
+  return { failed: failures.length - before };
+}
+
 console.log('\n[10] what counts as a truncation');
 await truncationSuite(await import('../src/rnd_board/api.js'));
+console.log('\n[10-bis] the interval, out and back');
+await intervalSuite(await import('../src/rnd_board/api.js'));
 
 const base = { pass, failed: failures.length };
 
@@ -351,6 +459,30 @@ const TRUNCATION_DEFECTS = [
   ['nothing is ever a cut, which would satisfy the first two assertions alone',
     (src) => src.replace("    .filter((key) => raw[key] === true && !(key === 'depth' && hopsChosen));",
       '    .filter(() => false);')],
+];
+// C-51. 🔴 THE INTERVAL'S FOUR WAYS TO GO WRONG, and each is a live shape rather than a
+//    typo: an empty box that travels (the server then refuses a question nobody asked), an
+//    end that is silently dropped, an absent count read as zero, and a zero read as absent.
+const INTERVAL_DEFECTS = [
+  ['an empty date box travels, so the server refuses a question nobody asked',
+    (src) => src.replace("    if (since) query.set('since', String(since));\n"
+      + "    if (until) query.set('until', String(until));",
+    "    if (since !== undefined) query.set('since', String(since));\n"
+      + "    if (until !== undefined) query.set('until', String(until));")],
+  ['one end is dropped, so [since, until) silently becomes [since, ∞)',
+    (src) => src.replace("    if (until) query.set('until', String(until));", '')],
+  // 🔴 RE-ANCHORED. The first version of this mutant deleted a `hasOwnProperty` guard and
+  //    ESCAPED — an absent key is `undefined`, which the number check already rejects, so
+  //    the guard changed no answer and was dead code. Chasing it with a vacuous assertion
+  //    would have been the wrong repair; the SOURCE lost the dead line, and the mutant now
+  //    aims at the live decider. What that decider actually prevents is `Number(null) === 0`
+  //    quietly promoting 「말 안 함」 to 「물었고 제외 없음」.
+  ['the value is read by coercion, so a null count becomes a measured zero',
+    (src) => src.replace("  return typeof n === 'number' && Number.isFinite(n) ? n : null;",
+      '  return Number.isFinite(Number(n)) ? Number(n) : null;')],
+  ['a measured zero becomes absent, so 「제외 없음」 stops being said at all',
+    (src) => src.replace("  return typeof n === 'number' && Number.isFinite(n) ? n : null;",
+      "  return typeof n === 'number' && Number.isFinite(n) && n !== 0 ? n : null;")],
 ];
 const RENAME_CONTROLS = [
   ['comments stripped', (src) => src.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n')],
@@ -385,6 +517,18 @@ for (const [name, mutate] of TRUNCATION_DEFECTS) {
   if (r.failed > 0) { caught++; console.log(`  caught  ${name}`); }
   else { wrong.push(name); console.log(`  ESCAPED ${name}`); }
 }
+for (const [name, mutate] of INTERVAL_DEFECTS) {
+  let r;
+  try { r = await intervalSuite((await loadWithProbe(API_PATH, { mutate, tag: 'iv' })).module); }
+  catch (e) {
+    if (/did not mutate|unchanged/.test(String(e && e.message))) {
+      console.error(`  anchor GONE: ${name} — ${e.message}`); process.exit(2);
+    }
+    r = { failed: 1 };
+  }
+  if (r.failed > 0) { caught++; console.log(`  caught  ${name}`); }
+  else { wrong.push(name); console.log(`  ESCAPED ${name}`); }
+}
 for (const [name, mutate] of RENAME_CONTROLS) {
   const r = await score(name, mutate, 'rnc');
   if (r.failed === 0) console.log(`  escaped ${name}`);
@@ -395,6 +539,6 @@ pass = base.pass;
 failures.length = base.failed;
 
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
-console.log(`MUTANTS ${caught}/${RENAME_DEFECTS.length + TRUNCATION_DEFECTS.length} caught, ${wrong.length} wrong`);
+console.log(`MUTANTS ${caught}/${RENAME_DEFECTS.length + TRUNCATION_DEFECTS.length + INTERVAL_DEFECTS.length} caught, ${wrong.length} wrong`);
 console.log(`ASSERTIONS ${pass + failures.length} ${failures.length}`);
 process.exit(failures.length === 0 && wrong.length === 0 ? 0 : 1);

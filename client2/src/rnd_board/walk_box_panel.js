@@ -56,6 +56,10 @@ export class WalkBoxPanel extends Panel {
     this.nodeType = options.nodeType || null;
     this.keyValues = {};
     this.follow = new Set();
+    // 🔴 C-51. 구간은 «둘 다 선택»이고 빈 칸이 「구간 없음」입니다 — 그래서 기본값이 빈
+    //    문자열이지 `null` 도 오늘 날짜도 아닙니다. 채우면 그것이 질문이고, 비우면 «안 묻습니다».
+    this.since = '';
+    this.until = '';
 
     this.result = null;
     this.walkState = 'idle';
@@ -228,6 +232,11 @@ export class WalkBoxPanel extends Panel {
     //    3홉 경로를 물으면 답이 «0» 인데, 그 0 은 「없다」가 아니라 「못 갔다」입니다 --
     //    화면에서는 «같은 0» 이라 구별이 안 됩니다. 그래서 경로가 hops 를 «데리고» 옵니다.
     if (this.hops) spec.hops = this.hops;
+    // 🔴 C-51. 빈 칸은 «구간 없음»입니다 — 안 싣습니다. 그리고 여기서 «거르지 않습니다»:
+    //    구간으로 자르는 것은 walk 의 일이고(상설), 부품이 받은 것을 다시 좁히면
+    //    「무엇을 못 봤는지」를 화면이 말할 수 없게 됩니다.
+    if (this.since) spec.since = this.since;
+    if (this.until) spec.until = this.until;
     const got = await this.walkFn(spec);
     this.result = got || null;
     this.walkState = got && got.ok ? 'ready' : 'refused';
@@ -264,6 +273,7 @@ export class WalkBoxPanel extends Panel {
     root.appendChild(this._keyRow());
     root.appendChild(this._destinationRow());
     root.appendChild(this._followRow());
+    root.appendChild(this._intervalRow());
     root.appendChild(this._runRow());
     root.appendChild(this._resultBox());
     root.appendChild(this._historyBox());
@@ -428,6 +438,32 @@ export class WalkBoxPanel extends Panel {
     return box;
   }
 
+  /**
+   * C-51 — 「언제부터 언제까지」. 반열린 구간 [since, until), 둘 다 선택.
+   *
+   * ⛔ 부품이 «거르지 않습니다». 이 두 칸은 질문이고, 답을 자르는 것은 walk 입니다(상설).
+   * ⛔ 설명 문구 없음 — 빈 칸이 「구간 없음」이라는 것은 «빈 칸이 말합니다»(상설 2026-09-04).
+   */
+  _intervalRow() {
+    const doc = this.doc;
+    const box = this._field('WHEN');
+    for (const [name, label] of [['since', 'since'], ['until', 'until']]) {
+      const wrap = doc.createElement('div');
+      wrap.className = 'rb-walkbox-key';
+      wrap.setAttribute('data-interval', name);
+      const lab = doc.createElement('label');
+      lab.textContent = label;
+      const input = doc.createElement('input');
+      input.setAttribute('type', 'date');
+      input.setAttribute('data-interval-input', name);
+      input.setAttribute('value', this[name] || '');
+      input.addEventListener('input', (e) => { this[name] = (e && e.target && e.target.value) || ''; });
+      wrap.append(lab, input);
+      box.appendChild(wrap);
+    }
+    return box;
+  }
+
   _keyRow() {
     const doc = this.doc;
     const box = this._field('KEY');
@@ -512,6 +548,15 @@ export class WalkBoxPanel extends Panel {
     //    같은 상자에 붙이면 표가 그려지는 순간 «조용히 지워집니다» -- 오류도 안 나고 픽셀만
     //    사라집니다. 하니스 T1 이 그것을 잡았습니다.
     if (cut) box.appendChild(this._note(`예산에서 끊겼습니다 — ${cut}. 이게 전부가 아닙니다`, 'is-cut'));
+    // 🔴 C-51. 「구간 밖이라 안 가져온 수」 — «값 옆 한 줄». 판정은 `createWalkBoxWalk` 가
+    //    이미 했습니다(`intervalExcluded`); 여기서 응답을 다시 읽으면 네 번째 사본입니다.
+    // 🔴 키가 «없으면» 안 그립니다(구간을 안 물었다). `0` 은 «그립니다» — 「물었고 제외된 게
+    //    없다」이고, 그 둘은 운영자에게 다른 답입니다. 그래서 참/거짓이 아니라 `null` 로 갈립니다.
+    const excluded = this.walkState === 'ready' && this.result
+      ? this.result.intervalExcluded : null;
+    if (excluded !== null && excluded !== undefined) {
+      box.appendChild(this._note(`구간 밖 ${excluded}`, 'is-interval'));
+    }
     const tableHost = doc.createElement('div');
     box.appendChild(tableHost);
     const table = new TablePart(tableHost, {

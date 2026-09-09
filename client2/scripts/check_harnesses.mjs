@@ -1277,13 +1277,13 @@ const FLOORS = new Map([
   // the board part: reach
   ['rnd_board_reach_harness.mjs', 63],
   // the board part: the walk box
-  ['rnd_board_walk_box_harness.mjs', 54],
+  ['rnd_board_walk_box_harness.mjs', 62],
   // the board part: the walk itself
   ['rnd_board_walk_harness.mjs', 32],
   // 🔴 the walk REQUEST, not the walk return. `createWalkBoxWalk` accepted `spec.hops` and
   //    never put it on the wire, so the screen wrote 「3홉」 while the server walked 12 -- with
   //    no error and no warning. A harness that scores the RETURN is green throughout that.
-  ['walk_wire_harness.mjs', 53],
+  ['walk_wire_harness.mjs', 73],
   // a cut-off count says it was cut off -- 「끊김 != 없음」
   // 12 -> 32. The floor had not been raised since the file was written; the gate has been
   // naming it as running above its floor for a while. The new assertions are 클라 7 ㉯ — the
