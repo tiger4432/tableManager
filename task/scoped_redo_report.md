@@ -26302,3 +26302,49 @@ ledger.config.load(path, catalog=None)
                                 ontology_config_explorer(S-32) — «새 것 없음»
 ```
 > 📌 **[09-10 00:0x] 이 채널의 미답 질문: «하나» — test_trace_fixture 의 철자 불일치 ⓐ/ⓑ/ⓒ (제 기본값 ⓒ).**
+
+---
+
+# ⚠️ [구현자 -> 총괄] **판정 213 착지 `9a8db097` — lot_event 는 맞췄고 «초록은 못 만들었습니다». 뒤에 «둘째 어긋남»이 있었습니다** (09-10 00:2x)
+
+## 한 것 (213 그대로)
+```
+lot / slot_numbers / wafer_ids  ->  lot_id / slotnumbers / waferids   (출하 카탈로그 철자)
+equipment                        ->  «안 냄» (카탈로그에 그 컬럼이 없음). 인자는 남겨 둠
+txn_seq                          ->  «냄». 카탈로그의 business_key 라, 없으면 그 파일은
+                                     business key 도 composite source 도 없어 std_parser 가 err/ 로 뺍니다
+그 시험                          ->  «출하 카탈로그»를 읽게 (판정 212)
+```
+
+## 🔴 그런데 초록이 «안 됩니다» — 첫째가 가리고 있던 «둘째 어긋남»
+```
+lot_event 가 통과하니 루프가 dt_log 에 닿았고, 거기서 멈춥니다:
+   픽스처가 내는 dt_log 컬럼   dt_job · dt_eqp · product · dt_x · dt_y · core_wafer · core_x · core_y
+   카탈로그의 display_columns  «그중 하나도 없음» — column_types 엔 다 있는데 display 엔 없습니다
+   🔴 그리고 이건 «라이브 카탈로그에서도 똑같습니다» (제가 둘 다 쟀습니다)
+=> 카탈로그를 옮겨서 생긴 것이 «아니고», 옮겨서 고칠 수 있는 것도 «아닙니다».
+   원래 있었고 lot_event 실패에 «가려져» 있었습니다
+```
+
+## ⛔ dt_log 까지 이름을 바꾸지 «않았습니다» — 그건 철자가 아니라 «뜻»입니다
+```
+출하 카탈로그의 dt_log 철자   dt_job_id · b_wx · b_wy · core_wafer_id · c_wx …
+픽스처의 것                   dt_job · dt_x · dt_y · core_wafer · core_x …
+=> dt_x 가 b_wx 인지, c_wx 인지, 아니면 display 에서 빠진 다른 무엇인지는 «도메인 판단»입니다.
+   추측해서 매핑하면 그건 철자 정리가 아니라 «데이터를 지어내는 것»입니다. 그래서 멈췄습니다
+```
+🔵 갈래(제 의견 없이 올립니다 — 도메인 사실이 필요합니다):
+```
+ⓐ dt_log 도 카탈로그 철자로 (누가 무엇인지 «알려 주시면» 그대로 옮깁니다)
+ⓑ 카탈로그의 dt_log display_columns 를 넓힌다 (그 목록의 «주인»이 누구인지에 달림)
+ⓒ 그 시험의 loadable 판정을 display_columns 가 아니라 column_types 로 (판정: 파서가 «정말»
+   display_columns 로 싣나 — 그 문장이 참인지부터)
+```
+
+## 실행
+```
+픽스처 + 원장 config 이웃   87 passed · 빨강 1(위 dt_log)
+픽스처의 다른 소비자 다섯    295 passed · 빨강 1 = test_job_column_from_config
+                            (KeyError 'scope' — 09:08 에 「처음 봄」이라 하신 그것, 제 것 아님)
+```
+> 📌 **[09-10 00:2x] 이 채널의 미답 질문: «하나» — dt_log 어긋남 ⓐ/ⓑ/ⓒ (도메인 사실 필요).**
