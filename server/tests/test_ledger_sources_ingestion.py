@@ -42,55 +42,99 @@ class _Cursor:
                 for source, row in self.rows.items()]
 
 
-def wrote(atoms=10, molecules=5, refused=0, reasons=None):
-    return {"translator_ver": "ledger-v2:abc", "molecules_done": molecules,
-            "atoms_written": atoms, "atoms_deduped": 0, "molecules_refused": refused,
-            "refusal_reasons": reasons, "updated_at": None}
+def wrote(indexed=10, refused=0, reasons=None, measured=True):
+    """One registry row, in the shape a writer leaves it (S-113 ⓒ).
+
+    ⚠️ `indexed` IS THE CENSUS, NOT A COUNTER. The row used to carry `atoms_written` and
+    the view read it to decide whether the source had done anything; since S-76 nothing
+    writes that column, so the discriminator is now the paced measurement of how many of
+    the relation's rows the index names. `measured=False` is the third answer: a row whose
+    census has not been taken says nothing, which is not the same as saying zero.
+    """
+    census = ({"source": "s", "relation": "r", "measured_at": "2026-09-10T00:00:00+00:00",
+               "indexed_rows": {"estimate": indexed}} if measured else None)
+    return {"translator_ver": "ledger-v2:abc", "molecules_refused": refused,
+            "refusal_reasons": reasons, "row_census": census, "updated_at": None}
 
 
 def states(view):
     return {row["source"]: row["state"] for row in view["sources"]}
 
 
-def test_the_four_states_are_values_not_something_a_reader_infers():
-    """🔴 EACH OF THESE IS A DIFFERENT INSTRUCTION TO AN OPERATOR, and three of the four
-    are invisible on the box this shipped from, so they are fed in.
+def test_each_state_is_a_value_and_each_is_a_different_instruction():
+    """🔴 EACH OF THESE IS A DIFFERENT INSTRUCTION TO AN OPERATOR, and most are invisible
+    on the box this shipped from, so they are fed in.
 
         ran_and_wrote      nothing to do
         ran_wrote_nothing  the source is wired and produced nothing - look at the source
-        never_ran          the translator has not been pointed at it yet
-        orphan             a cursor row whose source is no longer declared
+        never_ran          the index names none of its rows and nothing was refused
+        orphan             a registry row whose source is no longer declared
+        not_measured       the census has not reached it - 「모른다」, not 「없다」
 
-    The middle two are the pair that matters: both are "zero" to anyone reading a count,
-    and they need opposite actions.
+    The middle pair is what matters: both are "zero" to anyone reading a count, and they
+    need opposite actions.
+
+    ⚰️ `never_ran` USED TO MEAN 「NO ROW」 and that stopped being true at S-76: nothing
+    creates a row on the live path any more, so every source declared after it read as
+    never having run however much it had translated. The discriminator is the census now,
+    and 「no row」 became `not_measured` - which is what an unwritten row actually says.
     """
     view = ledger_admin.ingestion_view(
-        _Cursor({"alive": wrote(), "empty": wrote(atoms=0), "gone": wrote()}),
-        declared=["alive", "empty", "quiet"])
+        _Cursor({"alive": wrote(), "empty": wrote(indexed=0, refused=3),
+                 "quiet": wrote(indexed=0), "pending": wrote(measured=False),
+                 "gone": wrote()}),
+        declared=["alive", "empty", "quiet", "pending", "absent"])
     assert states(view) == {"alive": "ran_and_wrote",
                             "empty": "ran_wrote_nothing",
                             "quiet": "never_ran",
+                            "pending": "not_measured",
+                            "absent": "not_measured",
                             "gone": "orphan"}
+
+
+def test_a_census_that_refused_to_count_is_not_a_zero():
+    """⛔ 「셀 수 없다」 AND 「한 것이 없다」 ARE DIFFERENT SENTENCES. A relation that was
+    dropped makes the census refuse, and reading that as `indexed_rows = 0` would report
+    the source as never having run - the oldest recurring defect in this repository, an
+    absence and a correct zero rendering identically."""
+    row = wrote(indexed=0)
+    row["row_census"] = {"source": "s", "relation": "r", "refused": "relation is gone",
+                         "remedy": "declare it or drop the source"}
+    view = ledger_admin.ingestion_view(_Cursor({"broken": row}), declared=["broken"])
+    assert view["sources"][0]["state"] == "not_measured"
 
 
 def test_a_source_that_ran_and_wrote_nothing_still_carries_its_numbers():
     """Its zero is the ANSWER, so it arrives as a number rather than as a missing key -
-    otherwise the row is indistinguishable from the one that never ran."""
-    view = ledger_admin.ingestion_view(_Cursor({"empty": wrote(atoms=0, molecules=90)}),
-                                       declared=["empty"])
+    otherwise the row is indistinguishable from the one nobody has measured."""
+    view = ledger_admin.ingestion_view(
+        _Cursor({"empty": wrote(indexed=0, refused=90, reasons={})}), declared=["empty"])
     row = view["sources"][0]
-    assert row["atoms_written"] == 0 and row["molecules_done"] == 90
+    assert row["molecules_refused"] == 90
+    assert row["row_census"]["indexed_rows"]["estimate"] == 0
     assert row["state"] == "ran_wrote_nothing"
 
 
-def test_the_source_that_never_ran_carries_no_invented_zeros():
+def test_the_source_with_no_row_carries_no_invented_zeros():
     """The opposite rule, and the reason the states are values: there is no row, so there
-    is no count. Emitting `atoms_written: 0` here would state something nobody measured.
-    """
+    is no count. Emitting `molecules_refused: 0` here would state something nobody
+    measured."""
     view = ledger_admin.ingestion_view(_Cursor({}), declared=["quiet"])
     row = view["sources"][0]
-    assert row["state"] == "never_ran"
-    assert "atoms_written" not in row, row
+    assert row["state"] == "not_measured"
+    assert "molecules_refused" not in row and "row_census" not in row, row
+
+
+def test_the_answer_carries_what_each_state_means():
+    """The screen renders what it was told rather than keeping its own copy of the rule
+    (ruling 223) - so a state that changes meaning cannot go on being drawn the old way."""
+    view = ledger_admin.ingestion_view(_Cursor({"alive": wrote()}), declared=["alive"])
+    assert set(view["states"]) == {
+        ledger_admin.SOURCE_RAN_AND_WROTE, ledger_admin.SOURCE_RAN_WROTE_NOTHING,
+        ledger_admin.SOURCE_NEVER_RAN, ledger_admin.SOURCE_ORPHAN,
+        ledger_admin.SOURCE_NOT_MEASURED}
+    assert view["states"][states(view)["alive"]], view["states"]
+    assert all(view["states"].values()), view["states"]
 
 
 def test_an_unreadable_cursor_is_named_and_never_rendered_as_never_ran():

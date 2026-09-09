@@ -90,9 +90,9 @@ def _record_refusals(source_id: str, preview: "CursorBatchPreview") -> None:
 
     🔴 CALLED FROM THE EXECUTE DOORS AND NOWHERE ELSE, WHICH IS WHAT MAKES A PREVIEW A
     PREVIEW. `preview_cursor_batch` computes exactly the same refusals and touches no
-    counter, so a test run answers with the same values while `gate.refusal_report()`
-    stays byte-identical across it. One judge, two readers - rather than a second
-    predicate somewhere that knows it is "in dry-run mode".
+    counter, so a test run answers with the same values while `gate.refusals()` stays
+    identical across it. One judge, two readers - rather than a second predicate somewhere
+    that knows it is "in dry-run mode".
 
     Both doors, for the same reason: `execute_scoped_batch` is where an operator re-runs
     the molecule they just fixed, so a refusal it hits has to land in the same counters

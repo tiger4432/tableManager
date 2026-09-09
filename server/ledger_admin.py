@@ -917,6 +917,11 @@ SOURCE_RAN_AND_WROTE = "ran_and_wrote"
 SOURCE_RAN_WROTE_NOTHING = "ran_wrote_nothing"
 SOURCE_NEVER_RAN = "never_ran"
 SOURCE_ORPHAN = "orphan"
+#: 🔴 「모른다」 IS NOT 「없다」, AND THIS FILE SAYS SO TWICE ALREADY (see `ingestion_view`
+#: on an unreadable cursor table, and the three states of a breakdown below). The census is
+#: a PACED job, so a source declared minutes ago has not been counted yet - and calling that
+#: `never_ran` is the very false state S-113 ⓒ exists to remove, in new clothes.
+SOURCE_NOT_MEASURED = "not_measured"
 
 #: 🔴 SHIPPED WITH THE NUMBERS, NOT LEFT TO THE READER. `atoms_written` is what the
 #: translator RECORDED WRITING, and nothing decrements it: deleting atoms or rebuilding
@@ -941,14 +946,55 @@ INGESTION_NOTE = (
 #: they are written per source in one statement with the aggregate - but the only code
 #: that read them hung off `ledger_trace.coverage`, whose route retired on 2026-08-28 and
 #: took the read with it.
-_CURSOR_FIELDS = ("translator_ver", "molecules_done", "atoms_written",
-                  "atoms_deduped", "molecules_refused", "refusal_reasons",
-                  "updated_at")
+#: ⚰️ FIVE PROGRESS FIELDS LEFT THIS LIST (S-113 ⓒ, ruling 223): `molecules_done`,
+#: `atoms_written`, `atoms_deduped`, and with them the `cursor_value` and
+#: `incomplete_molecules` the view never carried. They describe HOW FAR THE FORWARD SCAN
+#: GOT, and since S-76 the live path drains through events and writes no position - so the
+#: numbers on the screen were whatever the last pre-S-76 run left, frozen, for as long as
+#: the source has existed. A frozen number is worse than an absent one: it reads as current.
+#: The column is not dropped - that is a migration - the READ is.
+#:
+#: 🔴 WHAT IS LEFT IS WHAT A WRITER STILL OWNS: `translator_ver` (which declaration this
+#: source's atoms were made under, written by the census tick, moved only by S-87's
+#: re-stamp), `molecules_refused` + `refusal_reasons` (written by the translating process in
+#: the atoms' own transaction, S-114), `row_census` (the paced measurement, S-58) and
+#: `updated_at`.
+_CURSOR_FIELDS = ("translator_ver", "molecules_refused", "refusal_reasons",
+                  "row_census", "updated_at")
+
+#: What each source state MEANS, shipped with the answer so the screen does not keep its
+#: own copy of the vocabulary (ruling 223). A client that renders `states[entry.state]`
+#: cannot drift from the rule that produced it, and a state added here arrives explained.
+SOURCE_STATE_MEANINGS = {
+    SOURCE_RAN_AND_WROTE: "행 색인이 이 소스의 행을 이름 대고 있습니다 — 번역된 행이 있습니다",
+    SOURCE_RAN_WROTE_NOTHING: "색인된 행이 0 인데 거절이 있습니다 — 돌았고, 아무것도 안 남았습니다",
+    SOURCE_NEVER_RAN: "색인된 행이 0 이고 거절도 없습니다",
+    SOURCE_ORPHAN: "선언에 없는 소스인데 등록부에 행이 있습니다",
+    SOURCE_NOT_MEASURED: "아직 세지 않았습니다 — 「없다」가 아니라 「모른다」입니다",
+}
 
 #: The three states of a breakdown, as VALUES.
 REFUSALS_NONE = "none"                  # `{}` - the writer owned this row, nothing refused
 REFUSALS_NAMED = "named"                # a breakdown exists
 REFUSALS_UNKNOWABLE = "unknowable"      # NULL - the row predates the column
+
+
+def _indexed_rows(census):
+    """How many of this source's rows the index names, or `None` when nothing said.
+
+    ⚠️ `None` IS A THIRD ANSWER AND IT IS NOT ZERO. A census that REFUSED to count (its
+    relation is gone, a permission changed) carries `refused` and no numbers, and a source
+    the paced job has not reached yet carries no census at all. Reading either as 0 would
+    put 「셀 수 없다」 and 「한 것이 없다」 on one pixel - the distinction
+    `rows_not_yet_translated` refuses at the other end for the same reason.
+    """
+    if not isinstance(census, dict) or census.get("refused"):
+        return None
+    measured = census.get("indexed_rows")
+    if not isinstance(measured, dict):
+        return None
+    estimate = measured.get("estimate")
+    return estimate if isinstance(estimate, int) else None
 
 
 def ingestion_view(db, declared) -> dict:
@@ -989,12 +1035,20 @@ def ingestion_view(db, declared) -> dict:
             entry = {"source": name, "declared": name in declared}
             row = cursor.get(name)
             if row is None:
-                entry["state"] = SOURCE_NEVER_RAN
+                # 🔴 AN ABSENT ROW IS NO LONGER A STATE (S-113 ⓒ). It used to mean
+                # `never_ran`, which was true while `_advance_cursor` created every row;
+                # after S-76 it created none, so every source declared since read as
+                # "never ran" however much it had translated. What answers now is the
+                # census, and a source with no row has simply not been measured.
+                entry["state"] = SOURCE_NOT_MEASURED
             else:
-                written = row.get("atoms_written") or 0
-                entry["state"] = (SOURCE_ORPHAN if name not in declared
-                                  else SOURCE_RAN_AND_WROTE if written
-                                  else SOURCE_RAN_WROTE_NOTHING)
+                indexed = _indexed_rows(row.get("row_census"))
+                entry["state"] = (
+                    SOURCE_ORPHAN if name not in declared
+                    else SOURCE_NOT_MEASURED if indexed is None
+                    else SOURCE_RAN_AND_WROTE if indexed
+                    else SOURCE_RAN_WROTE_NOTHING if (row.get("molecules_refused") or 0)
+                    else SOURCE_NEVER_RAN)
                 for field in _CURSOR_FIELDS:
                     value = row.get(field)
                     entry[field] = (value.isoformat() if hasattr(value, "isoformat")
@@ -1015,7 +1069,8 @@ def ingestion_view(db, declared) -> dict:
                 entry["refusals_unaccounted"] = _unaccounted(
                     {"molecules_refused": row.get("molecules_refused")}, reasons)
             rows.append(entry)
-    return {"note": INGESTION_NOTE, "sources": rows, "unavailable": unavailable}
+    return {"note": INGESTION_NOTE, "sources": rows, "unavailable": unavailable,
+            "states": dict(SOURCE_STATE_MEANINGS)}
 
 
 def sources_view(db=None) -> dict:

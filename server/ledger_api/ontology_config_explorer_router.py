@@ -55,16 +55,20 @@ def explorer_view(
         raise _refusal(exc) from exc
 
 
-@router.get("/refusals", dependencies=[Depends(require_admin_token)])
-def explorer_refusals() -> dict[str, Any]:
-    """문지기가 «왜» 거절했나 — 소스별·사유별 수와 표본.
-
-    읽기뿐이다: DB 를 안 건드리고 새로 저장하는 것이 없다. 문지기가 이 프로세스 안에
-    이미 들고 있는 수를 그대로 낸다(`since` 가 「언제부터」를 같이 말한다).
-    """
-    from ledger import gate
-
-    return gate.refusal_report()
+# ⚰️ `GET /refusals` — 문지기의 «프로세스 카운터»를 내던 라우트. 은퇴(S-114, 판정 223).
+#
+# 🔴 왜: 운영은 `DECOUPLED=True` 라 번역이 «체인 워커 프로세스»에서 돌고 이 라우트는 «웹
+# 프로세스»가 답했다. 즉 「한 번도 번역하지 않은 프로세스」의 카운터를 냈다 — 거절이 나는
+# 동안 «0 에 가까운 수»를 그렸다. 단일 프로세스 박스에서만 참이라 아무도 못 봤다.
+# 클라 소비자도 «0» 이었다.
+#
+# ⚠️ S-39 가 이 라우트를 지은 사유(「사유를 내놓는 라우트가 하나도 없어 운영자가 짐작으로
+# 시간 선언을 의심했다」)는 «유효하고, 이제 다른 길이 잇는다»: 번역하는 프로세스가 사유를
+# 등록부 행에 쓰고(S-114 `store._record_refusals`), `ledger_admin.ingestion_view` 가 그 행을
+# 실어 소스 패널이 그린다. 한 진실·한 경로.
+#
+# 문지기의 프로세스 카운터와 표본은 «그대로»다 — `backfill` 의 실행 보고(`refused_total`,
+# `refused_samples`)와 로그 줄이 그 독자다.
 
 
 @router.get("/columns", dependencies=[Depends(require_admin_token)])
