@@ -24321,3 +24321,61 @@ S-91 의 최소 «닫힌» 커밋 = 문법 + 검증 + 계획 + 실행 + 스켈�
 
 > 📌 **[09-09 16:44] 이 채널의 미답 질문: «셋».** 위 ㉠㉡㉢ (전부 제 답이 있으니 «다를 때만» 답 주십시오)
 > 그리고 16:35 의 둘(S-93 구조적 그물 · 정련 픽스처)은 여전히 열려 있습니다.
+
+
+---
+
+# 🟢 [구현자 -> 총괄] **S-96 착지 `f8318f5c` — 콘솔은 «끌 수 있고» 파일은 «못 끕니다». 그리고 S-91 착수 중 «조용히 실패했을 자리» 하나를 찾았습니다** (09-09 16:50)
+
+```
+시각   09-09 16:50   ·   test_map_alignment 248 passed / 3 skipped · 변이 둘 다 RINGS · 미커밋 0 · 미푸시 0
+```
+
+## S-96 — 지시대로, 그리고 「없음」이라 적힌 주석이 «참»이 됐습니다
+```
+스위치   ASSY_ALIGN_DIAG_CONSOLE  (기존 접두 ASSY_DATA_ROOT · ASSY_API_PORT 와 같은 규약)
+끄는 값   "0" · "off" · "false"  ·  «그 밖 전부»(미설정 포함)는 켜짐 = 오늘과 동일
+파일      align.log 는 «스위치 없음». 그대로 붙습니다
+주석      「No flag, no config key, no environment variable — one behaviour」를
+         「파일은 항상 · 콘솔은 스위치」로 고쳤습니다 — 그 문장이 참이던 것이 이 결함의 «원인»입니다
+```
+### 시험 하나 + 변이 둘
+```
+시험이 «양쪽»을 한 자리에서 단언합니다 — 「로그 꺼」의 뻔한 오구현이 «둘 다 떼는 것»이고,
+그러면 사건을 재구성할 것이 안 남습니다
+변이 ① 스위치 무시(항상 붙임)    -> RINGS
+변이 ② 콘솔을 아예 안 붙임        -> RINGS  (기본값이 바뀌는 것도 잡힙니다)
+```
+> 운영 두 줄: **「서버를 띄우는 환경에 `ASSY_ALIGN_DIAG_CONSOLE=0` 을 두면 됩니다. `align.log` 는 그대로 기록됩니다.」**
+
+## 🔴 S-91 — 착수했고, 판정 194 가 «안 덮은» 자리를 하나 더 찾았습니다 (조용히 실패할 자리)
+```
+문제   exclude_when 이 지목한 컬럼이 «SELECT 에 없을 수» 있습니다.
+      base_select_columns(:546) 는 identity · group_by · order_by · cursor · occurred_at ·
+      preparer/mapper input · frame_row_id «만» 싣습니다
+      -> 그 컬럼이 그 목록에 없으면 준비기가 base_frame 에서 «못 찾습니다»
+🔵 소유자의 실제 사례는 core_x, 즉 «신원 부품»이라 «우연히» 실려 옵니다.
+   그래서 그 케이스만 보고 지으면 «돌고», 다른 소스에서 조용히 깨집니다
+   — 「사례 하나에서 뽑은 규칙은 그 사례의 묘사다」의 교과서적인 자리입니다
+```
+### 그리고 이 저장소가 «같은 결정을 이미 한 번» 했습니다 — 그 사유가 답을 갈랐습니다
+```
+source_preparation.py:69  frame_row_id 는 「base_select_columns 에 넣고 locked_select_columns 에는 «안» 넣는다」
+그 사유    「작성자가 «고르지 않은» 컬럼이라, 화면에 잠긴 칩으로 그리면 «없는 결정»을 제시하게 된다」
+🔴 exclude_when 은 «작성자가 고른» 컬럼입니다. 그래서 같은 사유가 «반대» 방향을 가리킵니다 —
+   locked_select_columns 에 인자를 하나 더해 «양쪽 호출자»가 넘깁니다(그 함수 주석이
+   「한 문장으로 쓰고 두 번 부른다 · 두 번째 철자를 만들면 드리프트한다」고 스스로 적어 뒀습니다)
+=> 그 파일의 «자기 판정»을 근거로 갈랐고, 새 원칙을 만들지 않았습니다
+```
+
+## S-91 착지 계획 (닫힌 커밋 «하나», 지시대로) — 자리 «여섯»
+```
+① setup_bundle:1360   exact(..., optional=("exclude_when",)) + 모양 검증(목록 · {column, blank:true} · blank 만)
+② setup_bundle:1840   physical 집합이 그 자리에 있음 -> 컬럼 존재 검증 · direct-join 아닌 준비기면 «거절»(㉡)
+③ setup_registry:304  SourcePreparationPlan.exclude_when 신설 -> :1174 에서 채움(preparation 이 이미 그 스코프에 있음)
+④ source_preparation  공용 blank 술어(㉢) · locked_select_columns 에 인자 추가(위 발견) ·
+                     DirectJoin 이 표지 계산 · _assemble_prepared_frame 이 허용 집합에 표지 추가(㉠)
+⑤ backfill:1403      count_rows_missing 이 그 공용 술어를 부름 (두 철자 -> 하나)
+⑥ 스켈레톤 + 샘플 한 소스 + 게이트 시험 여섯
+```
+> 📌 **[09-09 16:50] 이 채널의 미답 질문: «없음».** (16:46 의 답 다섯 접수 — 그대로 갑니다)
