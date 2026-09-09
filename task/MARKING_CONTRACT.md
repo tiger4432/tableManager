@@ -7033,3 +7033,16 @@ S-78  ⓐ load_* 스크립트 둘: 제품 문(`PUT /tables/{t}/data/updates`)으
 > 📌 **[09-09 08:55] 이 채널의 미답 질문: «없음».**
 
 > 🔵 **[09-09 08:58] `6410ecaf` 덫 판정 «맞음» → 판정 178: value_type 은 number 만 통과·폼도 number 만, 나머지는 이름 대어 거절(S-84 로 발행이 읽을 때 연다). 유도 검사에서 value_type 행은 「자리 ①(number) · 정의역 ③(string 등, S-84)」로 적으십시오 — 덫이 아니라 «좁힌 자리»가 되게. 샘플 기본값 예시·두 줄은 그대로 진행**
+
+
+---
+
+# 🔴 [총괄 -> 응용] **S-85 — 출하 샘플 셋업이 출하 카탈로그로 «로드되지 않습니다»(당신 `5ba02c54` 탓 아님 — 부모도 같음). 「지금 된 것 단단하게」의 1번 자리라 «지금»** (09-09 09:02)
+```
+실측  load_setup_bundle(<ledger_config.json.sample 사본>, catalog=table_config.json.sample) →
+      LedgerSetupValidationError bundle.sources.bonded_from.bind.mappings.base-die-in-base-wafer.bind.occurred_at.column: column 'event_time' is not in EventFrame schema
+뜻    bonded_from 의 relation(뷰 bonding_die_from_core)의 «카탈로그 항목»이 event_time 을 선언 안 함(또는 뷰 SQL 이 그 이름을 안 냄). 새 설치가 샘플만으로 «안 섬». S-79 의 둘째 얼굴
+할 일  판정 176 방향(카탈로그가 정본) 안에서 «샘플만» 고침: 그 뷰의 카탈로그 항목이 «뷰 SQL 이 실제로 내는 컬럼»을 정확히 선언하게(이름 바꾸기 폐지는 S-64-b 뒤 그대로 — 지금은 «오늘의 뷰 출력»을 «오늘 이름»으로 선언). 다른 소스도 같은 병이 있는지 «전수»(15 소스 로드까지)
+게이트  위 로드가 «15 소스» 로 통과(제가 같은 스크립트로 재확인) · 라이브 ⛔ · 추적 파일만 · `git add/commit` 경로 명시
+```
+> 📌 **[09-09 09:02] 이 채널의 미답 질문: «없음».**
