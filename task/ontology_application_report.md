@@ -15629,3 +15629,50 @@ seed_syn_world.py 2 · lowercase_entity_types.py 1 · purge_outbox_backlog.py 1 
 ## 다음
 지시 없으면 seed_syn_world(2) → seed_syn_complex_composite(11, 그중 여럿은 원장 정리라 ㉠ 부류) 순으로 계속합니다.
 > 「판정 대기」 ㉡ 개명의 두 물음 · ㉠ 다섯의 처리 · 🔁 이월: 47
+
+
+---
+
+# 🟢 [응용 -> 총괄] **S-78: 게이트 «32 → 8». 남은 여덟은 «전부» 판정 185 ㉠ 부류(원장·아웃박스)입니다 — 제품 문으로 갈 것은 «다 갔습니다»** (09-09 12:0x)
+
+## 착지 (파일마다 커밋)
+```
+`4e0fe45e` seed_syn_aug_material       문 + 보상                32 → 25
+`afa68823` seed_syn_cx_void_density    문 + 보상                25 → 23
+`2a0d1798` seed_syn_step_defects       문                       23 → 20
+`ddf080a8` respell_syn_frame_map_ids   문 EDIT (row_id 지목)      20 → 18
+`2ce12a21` seed_syn_world              문 (세 문장 → 한 번)        18 → 16
+`e69b0e58` seed_syn_complex_composite  문 (되돌리기) + 술어 dict   16 →  9
+`<이 커밋>` 게이트가 «주석»을 안 셈                                 9 →  8
+```
+
+## 🔵 판정 185 ㉡ 확인 — 문이 개명을 «표현합니다»(발견 아님)
+```
+row_id 로 지목       row_id 는 «안 움직이므로» 잃는 신원으로 지목할 필요가 없습니다
+키 셋을 «명시»       assemble_composite_business_key 는 row_id 를 든 항목에서 «일찍 반환»합니다 —
+                   그래서 map_id · map_pk · business_key_val 을 다 보냅니다. 「새 신원을 정하는 것」이 개명이니 맞습니다
+business_key_val    crud 의 system_cols(created_at·updated_at·row_id·id·updated_by)에 «없어서» 보통 컬럼처럼 써집니다
+                   🔴 이걸 «먼저 쟀습니다» — system_cols 에 있었으면 조용히 빠져 개명이 «반쪽»으로 남았을 자리입니다
+```
+
+## 🔴 남은 «여덟» — 전부 ㉠ 부류이고, 제품 문으로는 «구조적으로» 못 갑니다
+```
+seed_syn_complex_composite (3)  ledger_events · ledger_translator_cursor · cell_sources(층)
+drop_retired_bonded_from_atoms (2)  ledger_events · cursor
+lowercase_entity_types (1)  ledger_events   ·  purge_outbox_backlog (1)  ·  setup_db_performance (1)
+```
+⚠️ **판정 185 ㉠ 의 이름 규약이 «셋»에는 안 닿습니다** — composite 의 것은 «씨앗 스크립트 안에 인라인»이라
+   파일을 `migrate_*`/`ops_*` 로 옮길 수가 없습니다(그 파일은 씨앗입니다). 두 갈래로 보입니다:
+   ⓐ 그 되돌리기의 «원장 절반»을 `migrate_*` 헬퍼로 빼내고 씨앗이 그것을 부른다
+   ⓑ 규약을 «파일»이 아니라 «함수/블록» 단위로 정한다
+   제가 «고르지 않습니다» — 규약은 총괄 자리입니다
+
+## 게이트 자체도 두 번 고쳤습니다 (제 거짓 양성)
+```
+① 출력 전용 상수   respell 의 ROLLBACK 을 «쓰기»로 셌습니다 — 0 을 좇는 사람이 «운영자의 되돌리기 안내»를
+                 지우게 만들 뻔했습니다. 이제 이름을 «쓰임»까지 따라가 print 뿐이면 산문입니다
+② 주석            AST 는 주석을 «못 봅니다». 「이 DELETE 를 문으로 옮겼다」는 제 주석이 DELETE 로 세어졌습니다.
+                 tokenize 로 잡습니다
+🔵 둘 다 「계측기가 자기 고장에서 눈이 먼다」의 실물이고, 둘 다 «제가 만든 것»입니다
+```
+> 「판정 대기」 인라인 원장 정리의 규약(ⓐ/ⓑ) · 🔁 이월: 47
