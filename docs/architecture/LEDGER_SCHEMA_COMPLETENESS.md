@@ -1186,12 +1186,33 @@ lot-event-live-frame (준비기)  같은 부류
                emit ①(t ① · 다중 ① · 정의역 ② · 부재 ②)
                규칙의 «명시된 예외» registration_probe ① (비국소성이 칸으로 이미 표현돼 있다)
 
-=> **2026-09-09 18:33 기준: 번역 인자의 ③ = «0». 그리고 이 0 은 공허하지 않다**
+넷째 항  ✅ 참   **출하 샘플이 «혼자» 선다** (판정 09-03 의 문법 동결 정의 ④ · 실측 19:0x)
+               한 파일 루트에 `ledger_config.json.sample` «하나»만 두고 제품의 진입점으로:
+               `load_setup(root, catalog=load_physical_catalog(table_config.json.sample))`
+               -> 소스 15 · 엔티티 9 · 클레임 16. 「새 설치가 샘플만으로 선다」가 오늘 참이다
+               🔴 카탈로그는 «제품이 짓는 방식»으로 지어야 한다 — 아래 경고 참조
+
+=> **2026-09-09 19:0x 기준: 번역 인자의 ③ = «0». 그리고 이 0 은 공허하지 않다**
    (분해가 「이것이 전부」를 증명하므로 — 09:46 의 0 이 공허했던 이유가 정확히 그것이 없어서였다)
 🔵 오늘 «두 번» 0 이 나왔고 두 0 은 «다른 문장»이다:
    09:46 의 0   내 산문 목록에 대한 0. 목록이 짧아서 참이었고, 같은 날 축 둘이 그 밖에서 나왔다
    18:33 의 0   BASIS §2-0 의 구조 정리에 대한 0. 목록이 «닫혀» 있으므로 밖이 없다
    => 하루에 축 넷을 찾고(S-91 · S-99 · 집계 · 짝짓기) 그중 «규칙 안의 둘»을 채워서 닫힌 0 이다
+```
+
+## ⚠️ 넷째 항을 잴 때의 «계측기 경고» — 같은 오류가 «두 번» 났습니다
+```
+날것 카탈로그   `json.load('table_config.json.sample')` 를 그대로 `catalog=` 로 넘기면 «거절»됩니다:
+              「bundle.sources.bonded_from.bind.mappings.base-die-in-base-wafer.bind.occurred_at.column:
+                column 'event_time' is not in EventFrame schema」
+제품 카탈로그   `load_physical_catalog(...)` 는 «번역»합니다 — `column_types` -> `columns` ·
+              `composite_key_source` -> `composite_key`. 날것 dict 에는 `columns` 키가 «아예 없습니다»
+              (실측: 날것 키 = {__comment, column_types, composite_key_separator, composite_key_source, kind})
+=> 그래서 「샘플이 안 뜬다」는 대개 «카탈로그를 어떻게 지었나»의 문제입니다. 두 경로를 «나란히» 돌린
+   결과가 위입니다: 제품 경로 = LOADS(15) · 날것 경로 = REFUSED(같은 메시지)
+🔴 이 메시지는 «오늘 두 번째»입니다 — 09-09 아침에 S-85 로 열렸다가 09:11 에 「계측기 오류」로 닫혔고,
+   같은 문장이 저녁에 다시 나왔습니다. **그래서 이 경고를 여기 둡니다** — 다음 사람이 세 번째로
+   같은 것을 열지 않게. 넷째 항을 재는 «정본 호출»은 위 D-9 의 두 줄입니다
 ```
 
 ## 동결 술어 «밖»에 남는 셋 — 관문이 아니라 «같이 읽어야 하는 것»
