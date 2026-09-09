@@ -832,7 +832,18 @@ const FLOORS = new Map([
   // never why. What this floor holds is THREE PIXELS: not measured / measured and zero /
   // measured and N. Collapsing the middle one makes 「nothing was refused」 and 「nobody asked」
   // identical on screen, and those are opposite instructions.
-  ['refusal_cell_harness.mjs', 25],
+  // 🔴 RAISED 25 -> 40 ON 2026-09-09 WITH C-49. The test run's `refused` carried
+  //    `samples` all along and the screen drew only the count, so 「몇 건」 was on screen
+  //    and 「어느 행이」 was not. Fifteen assertions and six mutants cover the new half;
+  //    the truncation pair is the one to keep — this envelope carries NO capped flag
+  //    (backfill's `refused_samples_capped` is a DIFFERENT envelope), so 「20 이 전부」
+  //    and 「20 까지만 봤다」 are told apart by counting, and two mutants ring on it.
+  ['refusal_cell_harness.mjs', 40],
+  // New 2026-09-09 with C-49's other half. Floor is the count it reports on the commit
+  // that introduces it. 🔴 THE PURE FUNCTION BEING RIGHT IS NOT THE SCREEN DRAWING IT --
+  //    that is the gap this defect lived in. Both controls are paired runs differing in
+  //    ONE field, so 「a box appeared」 cannot stand in for 「the samples made it appear」.
+  ['test_run_samples_harness.mjs', 18],
   //
   // S-46. Three states behind one word. The badge said 미검증 for both「never run」and「run
   // against different text」, and those are opposite next actions - run it once, versus fix

@@ -17,6 +17,8 @@
 //    정반대의 지시입니다(하나는 「좋다」, 하나는 「이 프로세스는 아직 아무것도 안 했다」).
 // ═══════════════════════════════════════════════════════════════════════════════
 
+import { isCount } from './absent.js';
+
 const MARK = '거절';
 const SINCE_MARK = '이 프로세스가 뜬 뒤';
 /** 준비기가 «자기 표지로» 뺀 행. 거절과 다른 사실이라 다른 낱말이다. */
@@ -58,6 +60,55 @@ export function excludedNote(excluded) {
   const rows = Number(excluded.rows);
   if (!Number.isFinite(rows) || rows <= 0) return '';
   return `${EXCLUDED_MARK} ${rows}`;
+}
+
+/** 「N 건까지」 — «자른 것은 개수»라는 사실. 문장이 아니라 값 옆의 낱말입니다. */
+const CAP_MARK = '건까지';
+
+/**
+ * C-49. 시험 실행의 «표본»을 표의 행으로. 「몇 건」 옆에 「어느 행이」.
+ *
+ * 🔴 낱말은 여기 «한 파일»에 삽니다 — 시험 실행 화면이 자기 철자를 쓰기 시작하면 「거절」이
+ *    두 벌이 되고, 한쪽만 고쳐지는 날 두 화면이 같은 사실을 다르게 말합니다(오류는 «안 납니다»).
+ *    ⚠️ 봉투의 «모양»은 다릅니다 — 문지기는 `{사유: {count, samples}}`, 시험 실행은
+ *    `{count, reasons, samples[]}` 의 «평평한 목록»입니다. 같은 것은 낱말이지 모양이 아닙니다.
+ *
+ * 🔴 서버가 이 봉투에 «절단 플래그를 안 싣습니다»(backfill 의 `refused_samples_capped` 는
+ *    «다른» 봉투의 것입니다). 그래서 «세어서» 압니다: `count` > 표본 수. 안 세면
+ *    「거절이 20건이었다」와 「20건까지만 봤다」가 화면에서 «같아 보입니다».
+ *
+ * ⛔ 문장을 «다시 쓰지» 않습니다. `detail` 은 문지기가 쓴 그대로이고, 그 안에 «분자 키»가
+ *    들어 있습니다 — 서버가 그것을 «자기 칸»으로 내놓기 전까지 화면이 문장을 파서 꺼내면
+ *    그 문장의 두 번째 저자가 됩니다.
+ *
+ * @param {object} refused 시험 실행 응답의 `refused`, 그대로
+ * @returns {{rows: {reason,rows,path,detail}[], capped: boolean, note: string}}
+ */
+export function refusalSamples(refused) {
+  const src = refused && typeof refused === 'object' ? refused : {};
+  const items = (Array.isArray(src.samples) ? src.samples : [])
+    .filter(s => s && typeof s === 'object')
+    .map(s => {
+      // 주소는 «첫 번째»입니다 — 거절 하나가 여럿을 들 수 있고, 읽는 쪽의 모양은 하나이며
+      // `gate.MoleculeRefused` 도 같은 자리에서 `code`·`path` 를 고릅니다.
+      const first = (Array.isArray(s.addresses) ? s.addresses : [])
+        .find(a => a && typeof a === 'object') || {};
+      return Object.freeze({
+        reason: s.reason == null ? '' : String(s.reason),
+        // 「행 N」은 이 분자가 «덮은 소스 행 수»입니다. 수가 아니면 «빈 칸» — 0 이 아닙니다.
+        // ⚠️ `Number(null)` 은 «0 이고 유한합니다». 「수인가」의 철자는 `absent.js` 하나뿐이고,
+        //    그것을 안 쓰면 「안 셌다」가 「0 행」으로 그려집니다 — 이 하니스가 그 자리를 잡았습니다.
+        rows: isCount(s.rows) ? String(Number(s.rows)) : '',
+        path: first.path == null ? '' : String(first.path),
+        detail: s.detail == null ? '' : String(s.detail),
+      });
+    });
+  const capped = isCount(src.count) && Number(src.count) > items.length;
+  return Object.freeze({
+    rows: Object.freeze(items),
+    capped,
+    note: capped ? `${items.length} ${CAP_MARK}` : '',
+  });
 }
 
 /**

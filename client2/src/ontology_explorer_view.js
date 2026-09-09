@@ -7,7 +7,7 @@ import {
 import { closedListChoice, renderClosedList } from './closed_list.js';
 import { orderingVerdicts, UNIQUENESS_UNREAD } from './uniqueness.js';
 import { demandState } from './form_demand.js';
-import { refusalCell, refusalSummary, excludedNote } from './refusal_cell.js';
+import { refusalCell, refusalSummary, excludedNote, refusalSamples } from './refusal_cell.js';
 import { verificationNote } from './verification_note.js';
 import { backlogCells, hasBacklog, censusRefusal } from './source_backlog.js';
 
@@ -852,6 +852,27 @@ function renderTestRun(state) {
   else if (run.blocks_activation === true) head.append(h('span', 'oe-testrun-note', '저장 차단'));
   box.append(head);
   if (run.refusal) box.append(renderTestRunRefusal(run.refusal));
+  // 🔴 C-49. 「거절 N」 아래에 «어느 행이», 값으로. 수만으로는 「내 선언이 틀렸다」와 「내
+  //    소스의 이 행이 비었다」가 구별되지 않고, 그 둘은 정반대의 다음 행동입니다. 응답은
+  //    표본을 «이미» 싣고 있었고 화면이 건수만 그렸습니다.
+  // ⛔ 문장은 «툴팁»입니다 — 문지기가 쓴 그대로이고, 표에 펼치면 이 패널이 설명문이 됩니다.
+  //    (소유자 상설: 「ui에 설명 문구 주저리주저리 금지」)
+  const samples = refusalSamples(run.refused);
+  if (samples.rows.length) {
+    const list = h('div', 'oe-testrun-samples');
+    // 🔴 「20 이 전부」와 「20 까지만 봤다」는 «다른 답»입니다. 값으로 말합니다.
+    if (samples.note) list.append(h('span', 'oe-testrun-note', samples.note));
+    for (const s of samples.rows) {
+      const line = h('div', 'oe-testrun-sample');
+      line.title = s.detail;
+      line.dataset.reason = s.reason;
+      line.append(h('span', 'oe-testrun-why', s.reason));
+      if (s.rows) line.append(h('span', 'oe-testrun-rows', s.rows));
+      if (s.path) line.append(h('code', 'oe-testrun-path', s.path));
+      list.append(line);
+    }
+    box.append(list);
+  }
   if (run.status === 'empty') {
     box.append(h('div', 'oe-testrun-why', '이 테이블에서 읽은 행이 없습니다.'));
   }

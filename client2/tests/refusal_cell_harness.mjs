@@ -36,7 +36,8 @@ const reason = (count, details = []) => ({
 async function score(mutate) {
   pass = 0; failures.length = 0;
   const { probe } = await loadWithProbe(SRC, {
-    expose: ['refusalCell', 'refusalSummary', 'excludedNote'], mutate, tag: 'refusalcell',
+    expose: ['refusalCell', 'refusalSummary', 'excludedNote', 'refusalSamples'],
+    mutate, tag: 'refusalcell',
   });
   const C = probe.refusalCell;
   const S = probe.refusalSummary;
@@ -123,6 +124,59 @@ async function score(mutate) {
   eq('B8 0 도 그리지 않는다 — 그릴 것이 없다', '', X({ rows: 0 }));
   eq('B9 수가 아니면 조용하다', '', X({ rows: null }));
 
+  // ══ C-49 표본 — 「몇 건」 옆에 「어느 행이」 ═════════════════════════════════════════
+  // 🔴 픽스처는 «서버가 실제로 짓는 모양»입니다, 설명이 아니라. 값은
+  //    `config_explorer_service.py:723` 이 `MoleculeRefusal`(reason·detail·rows·addresses)
+  //    에서 조립하고, 주소는 `source_preparation.py:991` 이 짓는
+  //    `event_frame.rows[N].<column>` 입니다.
+  // 🔴 그리고 이 봉투에는 «절단 플래그가 없습니다» — backfill 의 `refused_samples_capped` 는
+  //    «다른» 봉투의 것입니다. 그래서 절단은 «세어서» 압니다.
+  const P = probe.refusalSamples;
+  const sample = (over = {}) => ({
+    reason: 'missing_occurred_at',
+    detail: "molecule ('DTJ-1',) declares 'event_time' and the row at "
+      + 'event_frame.rows[3].event_time leaves it empty',
+    rows: 2,
+    addresses: [{ code: 'source_preparation_incomplete',
+                  path: 'event_frame.rows[3].event_time' }],
+    ...over,
+  });
+  const RUN = { count: 2, reasons: { missing_occurred_at: 2 },
+                samples: [sample(), sample({ reason: 'no_identity', rows: 1,
+                  addresses: [{ code: 'source_preparation_incomplete',
+                                path: 'event_frame.rows[7].dt_job' }] })] };
+
+  eq('C1 한 표본이 한 행', 2, P(RUN).rows.length);
+  eq('C2 사유는 응답의 낱말 그대로', 'missing_occurred_at', P(RUN).rows[0].reason);
+  eq('C3 주소는 «서버가 준» 것이지 조립한 것이 아니다',
+    'event_frame.rows[3].event_time', P(RUN).rows[0].path);
+  eq('C4 둘째 행은 자기 주소를 갖는다 — 첫 행이 복제되지 않는다',
+    'event_frame.rows[7].dt_job', P(RUN).rows[1].path);
+  eq('C5 「행 N」은 이 분자가 덮은 소스 행 수', '2', P(RUN).rows[0].rows);
+  // 🔴 문장은 «그대로». 분자 키가 그 안에 살고, 자르면 「어느 이벤트」가 사라집니다.
+  eq('C6 문지기의 문장은 한 글자도 안 바뀐다', sample().detail, P(RUN).rows[0].detail);
+
+  // ── 절단: 「20 이 전부」와 「20 까지만 봤다」는 «다른 답» ──────────────────────────
+  const CAPPED = { ...RUN, count: 40 };
+  ok('C7 count 가 표본보다 많으면 «잘린» 것이다', P(CAPPED).capped === true);
+  eq('C8 ...그리고 그것을 «값으로» 말한다', '2 건까지', P(CAPPED).note);
+  // 🔴 THE DISCRIMINANT: 같은 표본 둘인데 `count` 만 다릅니다. 절단을 표본 «수»로만 재면
+  //    두 경우가 같은 픽셀이 되고, 그것이 이 칸이 있는 이유입니다.
+  ok('C9 안 잘렸으면 아무 말도 안 한다', P(RUN).capped === false && P(RUN).note === '');
+  // ⚠️ `count` 가 «없으면» 「안 물어봤다」입니다 — 잘렸다고도 아니라고도 말하지 않습니다.
+  ok('C10 count 가 없으면 절단을 «주장하지» 않는다',
+    P({ samples: [sample()] }).capped === false && P({ samples: [sample()] }).note === '');
+
+  // ── 없는 것을 지어내지 않는다 ────────────────────────────────────────────────────
+  eq('C11 표본이 없으면 행도 없다', 0, P({ count: 3, reasons: {}, samples: [] }).rows.length);
+  eq('C12 주소가 없는 표본은 «빈 주소» — 문장에서 캐내지 않는다', '',
+    P({ samples: [sample({ addresses: [] })] }).rows[0].path);
+  // 🔴 「행」이 수가 아니면 «빈 칸»입니다. 0 으로 그리면 「세 봤더니 0행」이 됩니다.
+  eq('C13 행 수가 수가 아니면 빈 칸이지 0 이 아니다', '',
+    P({ samples: [sample({ rows: null })] }).rows[0].rows);
+  eq('C14 봉투가 없어도 던지지 않는다', 0, P(undefined).rows.length);
+  eq('C15 ...모양이 틀려도 같다', 0, P({ samples: 'nope' }).rows.length);
+
   return { pass, failures: failures.slice() };
 }
 
@@ -161,6 +215,28 @@ const MUTATIONS = [
   ['M8 an unmeasured exclusion is drawn as zero',
    s => s.replace('  if (!Number.isFinite(rows) || rows <= 0) return \'\';',
                   '  if (!Number.isFinite(rows)) return `${EXCLUDED_MARK} 0`;')],
+  // ── C-49 ──────────────────────────────────────────────────────────────────────
+  ['M9 truncation is never claimed, so 「20 까지만 봤다」 reads as 「20 이 전부」',
+   s => s.replace('  const capped = isCount(src.count) && Number(src.count) > items.length;',
+                  '  const capped = false;')],
+  ['M10 ...and the other way: it is claimed on the sample count alone, so an untruncated '
+   + 'run also says 「까지」',
+   s => s.replace('  const capped = isCount(src.count) && Number(src.count) > items.length;',
+                  '  const capped = items.length > 0;')],
+  ['M11 the gatekeeper\'s sentence is clipped, so the molecule key inside it is lost',
+   s => s.replace('        detail: s.detail == null ? \'\' : String(s.detail),',
+                  '        detail: s.detail == null ? \'\' : String(s.detail).slice(0, 20),')],
+  ['M12 every row takes the FIRST sample\'s address, so two refusals point at one row',
+   s => s.replace('      const first = (Array.isArray(s.addresses) ? s.addresses : [])\n'
+                  + '        .find(a => a && typeof a === \'object\') || {};',
+                  '      const first = (Array.isArray(refused.samples[0].addresses)\n'
+                  + '        ? refused.samples[0].addresses : []).find(a => a) || {};')],
+  ['M13 a missing row count is drawn as 0, so 「안 셌다」 becomes 「0 행」',
+   s => s.replace('        rows: isCount(s.rows) ? String(Number(s.rows)) : \'\',',
+                  '        rows: String(Number(s.rows) || 0),')],
+  ['M14 the address is composed from the sentence instead of read from the server',
+   s => s.replace('        path: first.path == null ? \'\' : String(first.path),',
+                  '        path: String(s.detail || \'\').slice(0, 12),')],
 ];
 
 if (process.argv.includes('--mutate')) {
