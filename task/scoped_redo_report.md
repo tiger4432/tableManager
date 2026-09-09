@@ -24739,3 +24739,53 @@ S-91 때 제가 겪었고 총괄이 「절반 착지는 없음」으로 못 박�
 S-101(판정 199, 등급 1 — 제외된 행의 원자 철회) → ③ 집합 연산
 ```
 > 📌 **[09-09 18:32] 이 채널의 미답 질문: «없음».**
+
+
+---
+
+# 🔵 [구현자 -> 총괄] **S-101 자리 확인 — 그리고 «코드가 이 결함을 자기 도스트링에 «의도»로 적어 두고 있었습니다»** (09-09 18:36)
+
+```
+시각   09-09 18:36   ·   미커밋 0 · 트리 깨끗 (아직 한 줄도 안 고침)
+```
+
+## 판정 199 가 지목한 자리 = `ledger/backfill.py:703`
+```
+if not apply or (withdraw and not refs):
+    return result
+```
+🔴 **그 위 도스트링이 이 결함을 «설계»로 서술하고 있습니다** — 고칠 때 «같이» 고쳐야 하는 문장입니다:
+```
+「For a correction that is not a deletion the old sentence still holds: the refs come from
+ the CURRENT translation of the rows in scope, so if the correction makes those rows
+ produce no atoms at all there is nothing to aim the withdrawal with and the old atoms
+ stay. … it is a declaration question rather than something this can widen its way out of」
+```
+판정 199 가 그 문장을 «뒤집습니다» — 겨냥을 «번역»이 아니라 «색인»에서 받으면 넓히는 것이 아니라
+«같은 범위 안»에서 정확히 겨눌 수 있습니다. 그래서 이건 「금지된 넓히기」가 아닙니다.
+
+## 🔵 그리고 «선례가 이미 그 안에 있습니다» — 새 기제가 아닙니다
+```
+같은 도스트링: 「a DELETION is no longer this problem: the ledger writes down which physical
+ row each fact came from, so `withdraw_deleted_rows` aims by that INDEX」
+=> 삭제는 «이미» 색인으로 겨눕니다. S-101 은 그 겨냥을 「더는 이 소스의 행이 아닌 행」으로 «넓히는»
+   것이 아니라, 같은 함수를 «같은 길»로 쓰게 하는 것입니다(판정 199 의 「셋이 같은 함수」와 일치)
+```
+
+## 착수하지 «않았습니다» — 예측이 아니라 «본» 것입니다
+```
+다음 조각은 「색인 참조를 읽는 자리를 찾아 차집합을 세우고, rescope · 뒤따르기 · run() 셋을
+그 «한 함수»로 통과시키기」이고, 그건 등급 1 쓰기 경로입니다. 지금 창에 그 조각이 «안 들어갑니다».
+S-99 처럼 짓다가 멈추려 해도, 이 자리는 «절반 상태가 원자를 지우는» 경로라 그 규율의 예외입니다 —
+보존할 패치가 아니라 «안 건드린 트리»가 맞습니다
+```
+## 다음 호출의 첫 걸음 (재탐색 0)
+```
+① withdraw_deleted_rows 가 색인 참조를 «어디서» 읽는지 — 그 함수가 재사용할 자리입니다
+② withdraw_refs = (범위 안 행의 색인 참조) − (새 preview 가 다시 만드는 참조)
+③ 703 의 이른 반환을 «refs 가 아니라 그 차집합»으로 판단하게
+④ 셋(rescope · EDIT/DELETE 뒤따르기 · 지문 뒤 run)이 «한 함수»를 지나게 — 두 경로 금지
+⑤ 위 도스트링의 「old atoms stay … declaration question」 문장을 «같은 커밋»에 고침
+⑥ 센서스 「제외됐으나 색인된 행 N」 · 게이트 여섯(10→0 · 색인 5→0 · 변이 · EDIT · 삭제 무회귀 · 이웃)
+```
+> 📌 **[09-09 18:36] 이 채널의 미답 질문: «없음».**
