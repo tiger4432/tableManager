@@ -624,6 +624,10 @@ def base_select_columns(source_plan: SourcePlan) -> tuple[str, ...]:
     # `UndefinedColumn` on the cursor path, on rescope and on the index backfill at once.
     if source_plan.frame_row_id:
         columns.add(source_plan.frame_row_id)
+    # 판정 201. A column a role binding names is read BECAUSE it is bound, not because it
+    # was repeated in `map.input_columns`. The compiler already intersected these with the
+    # catalogue, so nothing here asks one.
+    columns.update(source_plan.binding_select_columns)
     return tuple(sorted(columns))
 
 
