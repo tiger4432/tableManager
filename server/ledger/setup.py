@@ -172,6 +172,40 @@ def _dead_time_cells(sources):
     return dead
 
 
+#: S-97. Which dead-cell sentences this PROCESS has already said.
+#:
+#: 🔴 THE COMMENT BELOW SAID "once" AND THE CODE SAID IT EVERY LOAD. `load_setup` is called
+#: by the census job (per tick, per source), by the follow-up drain loop, by the declaration
+#: routes and by retroactive runs, so an operator watching the ledger log saw the same
+#: sentence hundreds of times (owner, 2026-09-09: 「원장 로그에 dead cell 이 계속 뜬다」). A
+#: line that repeats that often is one nobody reads, which is the same failure the sentence
+#: was written to avoid.
+#:
+#: ⚠️ KEYED BY THE CELLS THEMSELVES, not by a counter. Change the declaration so a different
+#: cell goes dead and the key changes and it is said again -- which is exactly when an
+#: operator needs to see it. Saying it once per process and never again would trade a noisy
+#: truth for a quiet one.
+_DEAD_CELLS_ANNOUNCED: set = set()
+
+
+def _announce_dead_cells(dead) -> bool:
+    """Say it once per process per distinct set of cells. Returns whether it was said.
+
+    🔴 ONE LINE, EVERY CELL NAMED (판정 179 ⓑ). A count would be the silence this says
+    nothing about; a warning per load would fire every backfill on a condition that is
+    EXPECTED. So: info, once, with the paths -- and "once" is now true.
+    """
+    if not dead:
+        return False
+    key = tuple(dead)
+    if key in _DEAD_CELLS_ANNOUNCED:
+        return False
+    _DEAD_CELLS_ANNOUNCED.add(key)
+    logger.info("[Ledger] dead cell: %s ignored -- the time role is filled from the "
+                "source's declared basis", "; ".join(dead))
+    return True
+
+
 def load_setup(
     root: str | Path = DEFAULT_ONTOLOGY_ROOT,
     *,
@@ -190,14 +224,7 @@ def load_setup(
         dict(live_physical_catalog()) if catalog is None else dict(catalog))
     bundle = require_ready_bundle(
         load_setup_bundle(root_path, catalog=resolved_catalog))
-    # 🔴 ONE LINE, EVERY CELL NAMED (판정 179 ⓑ). A count would be the silence this
-    # says nothing about; a warning per load would fire every backfill on a condition that
-    # is EXPECTED, and a warning that always fires is one nobody reads. So: info, once,
-    # with the paths.
-    dead = _dead_time_cells(bundle.section("sources"))
-    if dead:
-        logger.info("[Ledger] dead cell: %s ignored -- the time role is filled from the "
-                    "source's declared basis", "; ".join(dead))
+    _announce_dead_cells(_dead_time_cells(bundle.section("sources")))
     snapshot = compile_setup_snapshot(
         bundle, trusted_implementations(), verified_joins,
         catalog=resolved_catalog)

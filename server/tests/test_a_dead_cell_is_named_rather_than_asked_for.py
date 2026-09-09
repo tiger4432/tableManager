@@ -87,3 +87,31 @@ def test_the_form_shows_the_time_row_as_decided_elsewhere_rather_than_asking():
     # ⛔ NOT DROPPED. The row survives, so a declaration that already carries a column here
     # keeps its square instead of losing it without explanation.
     assert 'state="derived"' in body
+
+
+# --------------------------------------------------------------------------- S-97
+
+def test_the_dead_cell_line_is_said_once_per_process_and_again_if_it_changes():
+    """S-97. The comment claimed "once" and the code said it on EVERY `load_setup`.
+
+    `load_setup` is called by the census job (per tick, per source), the follow-up drain
+    loop, the declaration routes and retroactive runs, so the same sentence reached the
+    ledger log hundreds of times. A line repeated that often is one nobody reads - the very
+    failure the sentence exists to prevent.
+
+    ⚠️ THE KEY IS THE CELLS, NOT A FLAG. Silencing it forever after one load would trade a
+    noisy truth for a quiet one: when a declaration changes so that a DIFFERENT cell goes
+    dead, that is exactly when an operator needs to be told.
+    """
+    setup._DEAD_CELLS_ANNOUNCED.clear()
+    try:
+        assert setup._announce_dead_cells(["a.b.occurred_at"]) is True
+        assert setup._announce_dead_cells(["a.b.occurred_at"]) is False, (
+            "the same sentence must not be said twice in one process")
+
+        assert setup._announce_dead_cells(["c.d.occurred_at"]) is True, (
+            "a different dead cell is a different fact and has to be said")
+
+        assert setup._announce_dead_cells([]) is False, "nothing dead, nothing said"
+    finally:
+        setup._DEAD_CELLS_ANNOUNCED.clear()
