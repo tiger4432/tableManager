@@ -26843,3 +26843,98 @@ store.restamp_decision 의 absent 사유:
    워커 생존이 갈립니다
 ```
 > 📌 **[09-10 자정 이후] 이 채널의 미답 질문: 위 셋.** 코드 0 줄 · 트리 깨끗 · S-103 은 판정 뒤
+
+---
+
+# [구현자 → 총괄] ✅ **S-113 ⓑ-1 + ⓐ 착지(`14cb6818`) — 센서스 틱이 «행을 만드는 한 자리»가 됐고, 커서 실행기 둘이 은퇴했습니다**
+
+```
+판정 221    ⓑ-1(표는 소스 등록부 · 행 생성 UPSERT 한 자리 · translator_ver 와 한 문장) + ⓐ(실행기 둘 + 시험) 「같은 커밋」
+게이트      ① 새 소스가 첫 센서스 틱에 행을 얻음 ② 재도장이 그 행에 닿음 ③ 이웃 초록 ④ 지문 무이동
+결과        넷 다 초록. 145 passed · 1 실패(«HEAD 에서 이미 빨강», 아래 ⑤)
+```
+
+## ⓑ-1 — 「한 자리 · 한 문장」이 어디인가
+```
+store.write_row_census   UPDATE -> «UPSERT», translator_ver 를 «키워드 필수»로 받습니다
+   INSERT (source, translator_ver, cursor_value, row_census) VALUES (%s,%s,'null'::jsonb,%s::jsonb)
+   ON CONFLICT (source) DO UPDATE SET row_census = EXCLUDED.row_census, updated_at = now()
+🔴 충돌 시 translator_ver 를 «안 건드립니다» — 재도장은 restamp_cursor 의 판단이고 «expect 한 문자열만»
+   옮깁니다(S-87). 틱이 지문을 덮으면 그것이 바로 그 관문이 막으려던 «무인 조용한 이동»입니다
+⚠️ cursor_value 는 'null'::jsonb — 컬럼이 NOT NULL 이고 «위치는 은퇴»했습니다.
+   제약 해제는 마이그레이션이라 판정대로 «안 했습니다». 읽는 쪽은 observability 의 `or {}` 뿐이라 안전합니다
+backfill.measure_and_store   「재고 → 말한다」의 한 자리. 워커 틱 · 전수 스윕 · CLI 셋이 이걸 부릅니다
+   -> 지문 계산이 «세 군데»로 갈라지지 않습니다(깔끔 ④)
+```
+🔴 **옛 독스트링의 거절 사유가 «옳았고», 그래서 답이 「행을 안 만든다」가 아니라 「버전을 같은 문장에 쓴다」였습니다** — 「존재하지 않는 번역기 버전 옆의 센서스」가 그 사유였고, 그것이 이제 성립하지 않습니다.
+
+## ⓐ — 은퇴한 것과 «안» 한 것
+```
+은퇴   runtime_v2.execute_cursor_batch · setup.execute_selected_cursor_batch (묘비 + 사유)
+안 함  store._advance_cursor · write_batch(advance_cursor=True)
+       -> 씨앗 스크립트 «일곱»이 여전히 이 문을 씁니다(reasons={} · advance_cursor 기본 True).
+          그건 상설이 이미 이름 댄 «둘째 문»이고 소급 전환은 «별도 판정»입니다 — 지시 밖이라 안 건드렸습니다
+🔴 그래서 「위치 필드 쓰기 은퇴」는 «제품 코드에서» 참이고, 씨앗까지 포함하면 아직 아닙니다. 수를 밝힙니다
+```
+
+## 죽은 이름을 «갈아끼우지» 않고 다시 쟀습니다
+```
+setup_registry.cursor_translator_version 독스트링
+   전: 「reader(_run_via_events)와 writer(execute_cursor_batch)가 부른다」  <- writer 가 죽음
+   후: 오늘 부르는 «넷»을 적음 — 원자를 찍는 preview · 행을 «만드는» 센서스 틱 · 기동 재도장 · 재도장 스크립트
+backfill:276 「write boundary 가 재검사한다」의 주어를 살아 있는 문(execute_selected_scoped_batch)으로.
+   그 문이 실제로 _require_declared_source 를 부르는지 «확인하고» 바꿨습니다
+```
+
+## 시험 — 「축과 값을 같이 죽이지 않는다」로 갈랐습니다
+```
+살아남은 성질 -> «라이브 문»으로 옮김  (드라이런 동일성 · 문지기 거절 · 준비 실패 · 저장 실패 ·
+   재생 dedupe · 한 컴파일러 한 트랜잭션 · 행 색인 · 선택 래퍼의 위임)
+주어가 «커서 문»이던 것 -> 묘비, 각자 한 줄
+```
+🔴 **묘비 «둘»이 「읽는 이를 잃은 성질」을 이름으로 답니다 — 이게 이번 라운드의 발견입니다:**
+```
+① 배치에 커서 컬럼이 «없을» 때: 라이브 문은 그 컬럼으로 정렬하므로 «맨 pandas KeyError» 를 냅니다
+   (은퇴한 문은 invalid_cursor_batch 라는 «구조화된» 거절이었습니다)
+   라이브 길은 관계에서 배치를 만들므로 «도달 불가»입니다 -> 결함이 아니라 «계약의 구멍», 판정거리
+② 「선언 지문이 저장된 것과 다르면 «거절»한다」 를 «오늘 아무도 안 잽니다»
+   그 관문(_advance_cursor 의 WHERE)이 은퇴한 문 뒤에 있었고, S-113 전수대로 지문 거절을 «던지는» 코드도 없습니다
+   오늘 지문을 다루는 것은 S-87 «기동 재도장» 뿐이고 그건 «수리»이지 «거절»이 아닙니다
+   -> 그것으로 충분한가는 ⓔ 의 열린 절반입니다. 은퇴 커밋이 정할 것이 아니라 판단하고 «안 정했습니다»
+```
+
+## 새 시험 하나 — 판정의 게이트를 «한 실행»에
+`test_the_census_tick_creates_the_registry_row_and_never_moves_a_fingerprint`
+```
+① 행 없음 -> 틱 -> 행이 생기고 translator_ver 가 «오늘 지문» · row_census 가 있음
+② 이물 지문으로 재도장한 뒤 «틱을 또» -> 이물 지문이 «그대로» (틱은 지문을 안 덮는다)
+④ 그 행에 restamp_decision 이 「restamp」를 내고 재도장이 «닿는다» -> 지문이 제자리로
+```
+
+## 실행
+```
+145 passed · 1 failed        (QA DB 로, 이 라운드가 건드린 파일 «전부» + 센서스 이웃)
+5,403 collected · 오류 0
+```
+
+## ⑤ 그 실패 하나 — 제 것이 «아닙니다». 그리고 S-104 의 «쌍둥이»입니다
+```
+tests/test_ledger_v2_pg.py::test_stage7_manifest_selected_lot_event_uses_existing_store_cursor_transaction
+HEAD:517  backfill.run(case["runtime"], {}, source="lot_event", …)   <- v1 cfg dict 위치 인자
+          = S-76 뒤 시그니처. 제가 «안 건드린» 시험이고 HEAD 에서 확인했습니다
+🔴 그리고 같은 파일에서 «또 하나» 나왔습니다: `ledger_trace.trace` 를 부르는 줄이 있었는데
+   그 함수는 «존재하지 않습니다». ASSY_PG_TEST_DATABASE_URL 없으면 통째 skip 이라 그 NameError 를
+   «아무도 못 봤습니다» — S-104 가 test_ledger_l1_pg.py 에서 닫은 «거짓 초록» 그대로입니다
+   제가 지운 건 그 죽은 호출뿐이고(이름을 지어 갈아끼우지 않았습니다), 나머지는 그대로 둡니다
+=> 이 파일은 S-104 의 쌍둥이입니다: 기본 skip + 두 건의 S-76 이전 부패. 큐거리로 올립니다
+```
+
+## 다음 / 미답
+```
+순서(판정 221)   ⓓ-2(S-114) -> ⓒ 서버 절반 -> 클라 절반 -> S-103
+🔴 판정 필요 ①   위 「읽는 이를 잃은 성질」 둘 — ② 는 특히 «지문 관문이 오늘 아무 데도 없다»는 뜻입니다.
+                 ⓔ 를 「재도장으로 충분」으로 닫으실지, 관문을 라이브 문에 «세울지»
+🔴 판정 필요 ②   씨앗 스크립트 일곱의 advance_cursor=True — 「위치 필드 쓰기 은퇴」를 끝까지 갈지
+⚠️ 큐거리       test_ledger_v2_pg.py = S-104 쌍둥이(기본 skip · 시그니처 하나 빨강)
+```
+> 📌 **[09-10] 이 채널의 미답 질문: 위 둘 + 큐거리 하나.** 다음은 ⓓ-2(S-114) 로 «바로» 들어갑니다
