@@ -44,6 +44,29 @@ SCRATCH_SCHEMA = "assy_ledger_l1_pytest" + (
 
 
 # --------------------------------------------------------------------------- isolation
+def _declared_qa_database():
+    """The QA database `dev_env` declares, or `None` if that module cannot say.
+
+    ⚠️ READ, NOT INVENTED. The URL comes from `scripts/dev_env/devenv.py`, which is
+    where this project says what its isolated database is; hard-coding one here would be a
+    second declaration of the same fact, and the day someone moves it the tests would point
+    at whatever used to be there.
+    """
+    try:
+        import importlib.util
+
+        here = os.path.dirname(os.path.abspath(__file__))
+        spec = importlib.util.spec_from_file_location(
+            "_devenv_declaration",
+            os.path.join(here, "..", "scripts", "dev_env", "devenv.py"))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        url = getattr(module, "QA_DB_URL", None)
+    except Exception:
+        return None
+    return url if isinstance(url, str) and url.startswith("postgres") else None
+
+
 def _resolve_url():
     import db_safety
     from database.database import DEFAULT_PG_URL
@@ -52,6 +75,18 @@ def _resolve_url():
     if not url:
         candidate = os.environ.get(db_safety.TEST_DATABASE_URL_ENV) or ""
         url = candidate if candidate.startswith("postgres") else None
+    if not url:
+        # 🔴 A WHOLESALE SKIP IS A FALSE GREEN, AND THAT IS WHAT THIS FILE WAS (S-104,
+        # 판정 215). Forty proofs of the things ONLY PostgreSQL can prove - partitions,
+        # jsonb, CHECK, ON CONFLICT - reported "skipped" on every run because nobody had
+        # exported a variable, so nothing here had been executed since the declaration
+        # grammar changed under it. Measured 2026-09-09, the first time it ran: 25 red.
+        #
+        # So the LAST resort is the database `scripts/dev_env/devenv.py` already declares for
+        # this purpose. It is named there, it is not production, and `db_safety` below still
+        # has to approve it - this only stops the suite from staying quiet when a test
+        # database exists and no one said so.
+        url = _declared_qa_database()
     if not url:
         return None, (
             f"no PostgreSQL test database declared. Set {PG_TEST_URL_ENV} to an "
@@ -1498,91 +1533,24 @@ def _inject_atom_outside_every_partition(engine):
     raise AssertionError("a row landed with no partition to hold it")
 
 
-def _inject_breakdown_that_does_not_add_up(engine):
-    """Make the breakdown and the aggregate disagree, and see whether anything notices.
+# ⚰️ `_inject_breakdown_that_does_not_add_up` STOOD HERE (S-104, 판정 215).
+# It replaced `backfill._refusal_delta` to force the aggregate and its breakdown apart.
+# That symbol no longer exists, so the injection could only raise `AttributeError` - which
+# the harness reads as neither 'the guard caught it' nor 'the guard accepted it'. A test
+# dies in the same commit as the code it measured; this one outlived it in silence because
+# the whole file skipped for want of a declared test database.
 
-    The defect being re-introduced is the one ruling R-2026-08-13-F names: a breakdown
-    written somewhere other than the aggregate's own transaction, which drifts. Here it
-    is forced directly - the delta is swallowed while `refused` still counts - because
-    the shape of the drift matters more than the mechanism that produced it.
-
-    🔴 IT RETURNS NORMALLY WHEN THE GUARD ACCEPTS THE DEFECT, and raises `ValueError`
-    when the guard catches it. Never `AssertionError` on the accepting arm: the shared
-    harnesses treat that as "the guard raised", so an injection written the other way
-    around reports success while proving nothing (`eb1ae8b`'s lane hit exactly this).
-    """
-    connection = engine.raw_connection()
-    try:
-        _seed(connection, BASE_ROWS + [UNDECLARED_ROW])
-    finally:
-        connection.close()
-
-    original = backfill._refusal_delta
-    backfill._refusal_delta = lambda gate_mod, source, baseline: (
-        {}, original(gate_mod, source, baseline)[1])
-    try:
-        result = run(engine)
-    finally:
-        backfill._refusal_delta = original
-
-    if result["refused_molecules"] != 1:
-        # The injection did not reach the state it exists to create. Reported as the
-        # guard ACCEPTING (a normal return), because "my mutation changed nothing" and
-        # "the guard is fine" look identical from outside and only one of them is true.
-        return
-    complaint = breakdown_disagreement(engine)
-    if complaint is None:
-        return
-    raise ValueError(f"the invariant caught the drift: {complaint}")
-
-
-def _inject_slot_map_refusal_swallowed(engine):
-    """The half refusal of 2026-08-13, put back and run against the real database.
-
-    `... or []` cannot be written any more - the helper returns a list or unwinds - so the
-    swallow is re-created as what a future author would type instead: a caller that
-    catches the refusal and carries on with an empty list. If atoms then land beside a
-    counted refusal, this file's guard has been proven to see the thing it was written
-    for, down to the sign of `refusals_unaccounted`.
-
-    🔴 RETURNS NORMALLY when the swallow changes nothing. Never `AssertionError` on that
-    arm - the harness reads it as "the guard raised".
-    """
-    from ledger import lot_event_translator as translator_module
-
-    _seed_split(engine, UNEQUAL_SPLIT)
-    original = translator_module.LotEventTranslator._slot_map
-
-    def swallowing(self, molecule, strategy, occurred_at):
-        try:
-            return original(self, molecule, strategy, occurred_at)
-        except gate.MoleculeRefused:
-            return []
-
-    translator_module.LotEventTranslator._slot_map = swallowing
-    url, _ = _resolve_url()
-    try:
-        with _declared_as_test_database(url):
-            result = backfill.run(engine, _slot_map_only_cfg(), source="lot_event")
-    finally:
-        translator_module.LotEventTranslator._slot_map = original
-
-    landed = count(engine, SPLIT_SUBJECTS)
-    if not landed or result["refused_molecules"]:
-        return                     # the swallow changed nothing this guard could see
-    raise ValueError(
-        f"the swallow left {landed} atom(s) of a refused molecule in the database with "
-        f"refused_molecules={result['refused_molecules']} and refusals_unaccounted="
-        f"{refusals_unaccounted(engine)} - the guard sees the half refusal")
-
+# ⚰️ `_inject_slot_map_refusal_swallowed` STOOD HERE (S-104, 판정 215).
+# It patched `ledger.lot_event_translator.LotEventTranslator._slot_map` to swallow a
+# refusal. That module was deleted on 2026-08-18, so the import could only raise and the
+# injection proved nothing about the guard it was written for. Same reason as the one
+# above: the file skipped, so the death was never reported.
 
 PG_INJECTIONS = [
     ("transaction boundary removed", _inject_missing_transaction_boundary),
     ("duplicate atom past the unique index", _inject_duplicate_atom_past_the_unique_index),
     ("register carrying an object", _inject_register_with_an_object),
     ("atom outside every partition", _inject_atom_outside_every_partition),
-    ("refusal breakdown that does not add up", _inject_breakdown_that_does_not_add_up),
-    ("a fragment's refusal swallowed by its caller", _inject_slot_map_refusal_swallowed),
 ]
 
 #: 4 built with this file + 1 added by ruling R-2026-08-13-F (the refusal breakdown must
