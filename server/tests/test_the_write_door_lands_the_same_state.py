@@ -25,8 +25,13 @@ WHAT IS PINNED, and each is a different way the rewrite can go wrong:
     outbox            collapsed (S-82): one event per (table, event_type), naming row_ids —
                       and the bulk statements ㉡ introduces are exactly what `before_flush`
                       cannot see, so this is the assertion that catches a silent one
-    response          `results` and their `is_new` — 판정 187's meaning, pinned as a
-                      STRICT xfail because today's value is wrong and ㉡ fixes it
+    response          `results` and their `is_new` — 판정 187's meaning. This was a STRICT
+                      xfail until 판정 192; the marker is GONE because it flipped, which
+                      is what strict is for. Two halves fixed it and only one was ㉡'s:
+                      판정 190 made `is_new` itself true, and measuring that (rather than
+                      re-reading the marker's own reason text, which had gone stale) is
+                      what showed the remainder was fact ④ — an unchanged save has no
+                      item in the answer at all
 """
 import os
 import sys
@@ -204,15 +209,6 @@ def is_new_by_key(results):
 EXPECTED_IS_NEW = {"K2": False, "K3": True}
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "판정 187, pinned AHEAD of the fix. Measured 2026-09-09: `_get_or_create_row` reports "
-    "is_new True for every row it inserts and `apply_batch_updates` returns False for all "
-    "of them, so an inserted row reaches the screen labelled as an update. Where the value "
-    "flips is inside the 658-line per-row function, which ㉡ rewrites — so it is fixed "
-    "there, not patched here. `strict` is the point: the moment ㉡ makes this true the "
-    "marker turns RED and has to be removed, which is what stops a fixed defect from "
-    "keeping its xfail forever."
-))
 def test_is_new_says_whether_this_request_inserted_the_row(door):
     write(door, FIRST, tx="s83-first")
     door.commit()

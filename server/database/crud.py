@@ -4323,7 +4323,23 @@ def _apply_batch_updates_once(db: Session, table_name: str,
             # both classes are in one list that distinction is not recoverable from it.
             deleted_row_ids = list(deleted_row_ids) + adopted_row_ids
 
-        results = list(unique_results.values())
+        # 🔴 판정 187 사실 ④ / 판정 192. AN UNCHANGED SAVE HAS NO ITEM AT ALL: a row this
+        # request neither inserted nor changed does not appear in the answer. It used to,
+        # and `updated_count` counted it - so an unchanged re-push reported "N updated"
+        # while changing nothing. That is a FALSE number, not a generous one.
+        #
+        # ⛔ `unique_results` ITSELF IS NOT FILTERED, and that is the whole care here.
+        # `claimed_row_ids` is built from its KEYS, so filtering there would make a
+        # replace_map re-push read every unchanged row as unclaimed and DELETE it - the
+        # worst branch available on this path. The filter lives on this line and nowhere
+        # earlier; `adopted_row_ids` reads the unfiltered mapping too.
+        #
+        # The predicate is per ROW and not per item, which is why `rows_with_content` is
+        # the right set rather than a per-item flag: item 1 can drop every key of a row
+        # that item 2 then fills, and that row did change.
+        results = [(row, was_new)
+                   for r_id, (row, was_new) in unique_results.items()
+                   if was_new or r_id in rows_with_content]
         return results, total_changed_cells, serialized_logs, deleted_row_ids
 
 def create_empty_row(db: Session, table_name: str):

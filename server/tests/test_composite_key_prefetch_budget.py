@@ -346,6 +346,41 @@ def test_an_incomplete_composite_source_still_writes_the_row_unkeyed(key_db):
 # The ordering constraint this change had to respect
 # ---------------------------------------------------------------------------
 
+def test_an_unchanged_replace_map_repush_deletes_nothing(key_db):
+    """🔴 THE NET UNDER 판정 192's CONDITION ⓐ, and it did not exist until the day the
+    filter it guards was written.
+
+    판정 192 removes rows this request neither inserted nor changed from `results`. The
+    filter must sit on `results` ALONE. `claimed_row_ids` is built from
+    `unique_results`' keys, and a `replace_map` write deletes the scope MINUS what was
+    claimed - so applying the same predicate one step earlier turns every unchanged row
+    into an unclaimed one and the diff deletes it.
+
+    ⚠️ THAT WAS REASONING UNTIL IT WAS MEASURED, and the measurement is why this test is
+    here. Moving the filter onto `claimed_row_ids` left the whole existing `replace_map`
+    suite GREEN; run against THIS scenario the same mutant reported `deleted: 3` and left
+    0 rows where 3 stood. A re-push of an unchanged map is the most ordinary thing a
+    watcher does, and nothing was watching it.
+    """
+    def push():
+        report = {}
+        crud.apply_batch_updates(key_db, DECLARED, _batch(_cells("L0", n=3),
+                                                          replace_map=True),
+                                 replace_report=report)
+        key_db.commit()
+        return report
+
+    push()
+    assert key_db.query(_model(DECLARED)).count() == 3
+
+    report = push()
+
+    assert key_db.query(_model(DECLARED)).count() == 3, (
+        "an unchanged re-push destroyed rows: the scope diff read them as unclaimed")
+    assert report.get("deleted") == 0, (
+        f"nothing may be deleted by a re-push that changed nothing; got {report}")
+
+
 def test_replace_map_still_purges_the_whole_map_and_not_one_row(key_db):
     """🔴 THE DANGEROUS ONE.
 
