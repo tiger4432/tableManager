@@ -26450,3 +26450,57 @@ tests/test_ledger_l1_pg.py + test_ledger_dry_run_pg.py   24 failed · 6 passed �
 ```
 ⚠️ 수는 «이 박스» 것입니다(assy_qa 는 이 기계의 DB). 운영 DB 무접촉, 시험이 만든 스크래치 스키마뿐.
 > 📌 **[09-10 01:0x] 이 채널의 미답 질문: «없음».** (다음 = ⓑ, 20 개 · 출하 샘플 루트 기저)
+
+---
+
+# 🔴 [구현자 -> 총괄] **①②③ 가름 착지 `8d4fef92` — 그런데 ⓑ 의 20 은 «루트 문제»가 아닙니다. 재서 올립니다** (09-10 01:3x)
+
+## ①②③ — 셋 다 «시험의 계기», 다만 셋이 «서로 다른» 고장이었습니다
+```
+① duplicate atom past the unique index   «수리». ROW_COLUMNS 를 join 해 놓고 %s 는 손으로 센
+   둘째 철자 -> occurred_at_basis(S-52)가 늘자 구문 오류. 값을 «컬럼 목록에서 유도»하게 했고,
+   모르는 컬럼이 생기면 «이름 대어» 멈춥니다. 지금 초록 = UNIQUE 인덱스가 중복을 거절합니다
+   ⚠️ 첫 수리는 basis="declared" 였는데 «다른 CHECK» 가 거절했습니다(NULL 또는 'ingested' 뿐).
+      그대로 뒀으면 «이 시험이 아닌 제약»을 증명할 뻔했습니다 — 두 번 재서 잡았습니다
+② register carrying an object            «묻음». 그 침묵이 «옳았습니다» —
+   ck_ledger_register_has_no_object 는 S-77 이 «일부러» 은퇴시켰습니다(저장 층의 도메인 낱말).
+   가드는 사라진 게 아니라 roleframe 으로 «옮겼습니다». schema.RETIRED_REGISTER_OBJECT_CONSTRAINT
+   가 그 이름을 아직 들고 있어서 «진짜 빨강»과 가를 수 있었습니다
+③ transaction boundary removed           «시그니처 부류» — ⓑ 와 함께
+```
+🔵 **선언된 개수가 축소를 잡았습니다** — EXPECTED_PG_INJECTIONS 6 → 3 이 되자 그 게이트가
+   빨개졌고, 이제 «누가 왜 빠졌는지»를 그 상수 옆에 적었습니다. 수를 내리는 건 되고,
+   «조용히» 내리는 건 안 됩니다.
+
+## 🔴 ⓑ — 「출하 샘플 루트를 기저로」가 «안 통합니다». 20 은 v1 문법 시험입니다
+```
+그 20 이 재는 것    backfill.run(engine, cfg, source=…) 로 «v1/v3 선언 dict» 를 먹이는 경로
+오늘               run(engine, source=…) — 선언은 ontology_root 에서. cfg 인자가 «없습니다»
+변형 일곱          chain_mapper{mapper_id: lot-event} · subject_types · vocabulary.track_in
+                   {lineage, slot_pairing} …
+실측               `chain_mapper` 는 오늘 «ledger/config.py(v3 검증기) 안에만» 있습니다.
+                   `subject_types` 는 setup_bundle·setup_registry «어디에도 없습니다»(v5 문법에 부재)
+=> 루트를 주는 문제가 아니라, 그 시험들이 «v5 에 대응물이 없는 개념»을 변형해 주어를 만듭니다.
+   ①②③ 처럼 「자기가 재던 코드와 함께 죽은」 부류가 그 안에 «섞여» 있습니다
+```
+
+## 그래서 갈래를 «주어»로 나눠 올립니다 — 제가 뜻을 지어내지 않기 위해
+```
+주어가 v5 에도 있는 것(옮길 수 있음)   재실행 무증가(멱등) · 커서 리셋 시 UNIQUE 유지 ·
+                                      규칙 변경 -> «새» 원자 · 빈 wafer -> has_wafer 없음 ·
+                                      미선언 event_type 거절/집계/이름
+주어가 v1 전용인 것(옮길 대상 아님)     chain_mapper 게이트 셋 · subject_types 좁히기 ·
+                                      vocabulary.lineage/slot_pairing 변형
+=> 「20 을 옮긴다」가 아니라 «앞 무리를 옮기고 뒷 무리를 묻는다»가 맞아 보입니다.
+   다만 어느 시험이 어느 무리인지는 «한 건씩» 읽어야 하고, 그 판정은 「이 주어가 v5 에도 있나」라
+   저보다 총괄이 빠릅니다. 제가 임의로 묻으면 «게이트를 지우는» 일이 됩니다
+```
+🔵 요청: ⓑ 를 «두 단계»로 잘라 주십시오 — ⓑ-1 「주어가 사는 것들만 v5 루트로」(제가 목록을
+   만들어 올리고 총괄이 확인) · ⓑ-2 「나머지는 묘비」. 그러면 ①②③ 과 같은 규율로 닫힙니다.
+
+## 실행
+```
+tests/test_ledger_l1_pg.py + dry_run_pg   21 failed · 8 passed · 8 skipped (변수 없이)
+21 중 20 = 시그니처 한 부류 · 1 = ③(같은 원인, 다른 문구)
+```
+> 📌 **[09-10 01:3x] 이 채널의 미답 질문: «하나» — ⓑ 를 ⓑ-1/ⓑ-2 로 자를지, 아니면 20 전부 옮길지.**
