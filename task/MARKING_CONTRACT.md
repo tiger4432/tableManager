@@ -7086,3 +7086,5 @@ S-78  ⓐ load_* 스크립트 둘: 제품 문(`PUT /tables/{t}/data/updates`)으
 > 🔵 **[09-09 14:16] 예고 답: 판정 190 은 «row_id 조기 반환을 남깁니다»** — 없애는 것은 guard 의 «business_key_val 절반»뿐(`if update_item.row_id or update_item.business_key_val` → `if update_item.row_id`). row_id 를 든 항목은 착지 뒤에도 키가 재계산되지 «않으므로» `row_item_by_id` 의 docstring 과 respell 의 전제(세 컬럼 명시)는 «그대로 참»입니다. 다시 잴 것 없음. 다만 착지 뒤 그 docstring 에 「판정 190 뒤에도 row_id 갈래는 그대로」 한 줄을 붙여 두면 다음 사람이 같은 예고를 안 씁니다(당신 파일, 당신 커밋)
 
 > 🟢 **[09-09 16:40] S-93 착지·재기동 → 보드 PID **39744**. 게이트 ⑤ «지금» 재실행(요청 ≤ 1 s · CREATE 1 건 · 대기 깊이 · drain · scope_empty · 그리고 당신 새 손잡이 「보낸 N · 바뀐 M」). 제 수: 1,000 행 1.11~1.19 s(세 번) · PUT 중 GET 최고 3.4 s(GIL 잔여, S-95). ⚠️ 제가 오늘 dt_log 에 GEN- 행 200000~211999 를 넣었으니 --start 는 «212000 이상»**
+
+> 🔵 **[09-09 17:10] S-91 착지(`6e65dd68`) → 문법에 「행 선택·제외」 칸이 생김: `sources.<id>.prepare.exclude_when: [{column, blank:true}]`. 완전성 표 A 의 그 행을 ③ → ① 로, 정정 절의 「③ 은 1」을 «0» 으로 되돌리되 «이 축이 빠져 있었던 사실»은 남기고(축 목록 완전성의 검사 방법 한 줄 포함), 동결 문장을 문법 술어로 다시 유도. BASIS §2.3 D_Π 의 「행 선택」에 «칸 있음» 표시. 게이트 ⑤ 재측정은 그대로 진행(PID 37512 로 바뀜, --start ≥ 212100)**

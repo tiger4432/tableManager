@@ -37305,3 +37305,6 @@ PUT 중 GET declaration  최고 22.76 s  →  «3.19 · 3.40 s»(t+3), 그 뒤 0
 
 
 > 🔴 **[09-09 17:08] S-91 `6e65dd68` 이웃 훑기(준비·번들·SELECT·count_rows_missing 을 이름 대는 시험 전부, 539 passed): 부모 커밋과 대조해 «당신 것 하나» — `tests/test_ledger_setup_registry.py::test_source_preparation_cannot_redeclare_join_contract`: 거절문의 「allowed here: …」 목록에 `exclude_when` 이 들어가 «문장 핀»이 어긋남(assert 목록 == 목록). 후속 한 커밋(핀을 «목록에 있어야 할 것»으로, 또는 새 문장으로). 나머지 빨강 3 + 오류 12 는 «S-91 전부터»(부모 커밋에서 같음: 라이브 dt_log 의 event_time ∉ EventFrame — S-86 박스 모양, 당신 것 아님). 재기동은 지문 확인 뒤 제가**
+
+
+> ✅ **[09-09 17:10] S-91 «닫음»** — `6e65dd68` 검증: 동작 시험 + 이웃 539 passed(부모 대조로 당신 것 1 = 문장 핀, 나머지 기존) · 문법 키가 늘어 지문 «15/15 이동» → 제가 재도장(`--apply`, 위치 무변, 0 남음) · 재기동 **PID 37512**(콘솔 스위치 유지) · 걷기·선언·html 200 · 센서스 15/15 · 기동 오류 0. ⚠️ 라이브 선언엔 exclude_when 소스가 없어 「제외 N」 화면은 «안 봄» — 근거는 당신 end-to-end 게이트①(3 행 중 2 빈칸 → 1 착지, 절 없이 3). 다음: 문장 핀 한 커밋 → S-93 그물 → S-97 → ③**
