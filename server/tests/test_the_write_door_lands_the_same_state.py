@@ -46,10 +46,23 @@ TX = "s83-oracle"
 
 #: The prefix cannot exist in a real user config — conftest claims the live config at import
 #: time on a shared sqlite, so a colliding name would pin the wrong table's behaviour.
+#: A SECOND shape, because the door does not treat the two the same. A table with
+#: `composite_key_source` has its `business_key_val` REASSEMBLED from column values, so the
+#: key the caller sent is not a handle on the row — measured 2026-09-09, and it is how 1,000
+#: seeded rows survived a cleanup that filtered on the key I had supplied.
+COMPOSITE = "s83oracle_composite"
+
 CONFIG = {
     TABLE: {
         "business_key": "key_id",
         "column_types": {"key_id": "string", "lot": "string", "qty": "number"},
+    },
+    COMPOSITE: {
+        "business_key": "split_key",
+        "composite_key_source": ["ref_table", "map_key"],
+        "composite_key_separator": "|",
+        "column_types": {"split_key": "string", "ref_table": "string",
+                         "map_key": "string", "qty": "number"},
     },
 }
 
@@ -244,3 +257,66 @@ def test_the_oracle_notices_a_dropped_row(door):
     assert observed != EXPECTED_AFTER_SECOND
     assert "K3" not in observed["rows"]
     assert observed["events"] == [("EDIT", 1)], "no CREATE event without the created row"
+
+
+# --------------------------------------------------- the key the caller sent is not the key
+
+def test_a_composite_key_table_rewrites_the_key_the_caller_sent(door):
+    """🔴 THE DOOR DOES NOT PRESERVE THE CALLER'S BUSINESS KEY on a table that declares
+    `composite_key_source`: it assembles one from the column values instead.
+
+    ⚠️ THIS IS NOT A COSMETIC DETAIL. It means a caller cannot find its own row by the key it
+    sent — measured the hard way on 2026-09-09, when 1,000 seeded rows survived three cleanups
+    that all filtered on the supplied key while the rows were stored under the assembled one.
+    ㉡ must keep this behaviour, and the oracle had no assertion for it because its only
+    fixture table has no composite key.
+    """
+    model = models.DYNAMIC_TABLES[COMPOSITE]
+    with outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED):
+        crud.apply_batch_updates(
+            door, COMPOSITE,
+            schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
+                business_key_val="SENT-1",
+                updates={"split_key": "SENT-1", "ref_table": "T", "map_key": "M",
+                         "qty": 1},
+                source_name="ingest", updated_by="oracle")],
+                transaction_id="s83-composite", silent=True))
+    door.commit()
+
+    keys = [r.business_key_val for r in door.query(model).all()]
+    assert keys == ["T|M"], "the assembled key is what lands"
+    assert "SENT-1" not in keys, (
+        "the key the caller sent is NOT a handle on the row — a cleanup or a lookup that "
+        "assumes it is will silently miss the row")
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "OBSERVED, AND I COULD NOT SETTLE IT. Two requests carrying the SAME composite columns "
+    "under DIFFERENT supplied keys produce TWO rows sharing one assembled key. Either the "
+    "lookup runs on the supplied key before the assembly rewrites it, or a caller is never "
+    "supposed to send a different key for the same columns and this input is unreal. I did "
+    "not determine which, and the difference decides whether it is a defect or a fixture "
+    "fault — so it is pinned rather than asserted. `strict` so that whoever settles it has "
+    "to remove the marker. Related: this is the shape that let 1,000 seeded rows hide from "
+    "a cleanup filtering on the supplied key (2026-09-09)."
+))
+def test_the_assembled_key_is_the_one_a_second_write_matches_on(door):
+    """⛔ THE EXPECTATION: a second request carrying the same columns lands on the SAME row.
+    Otherwise a save inserts a duplicate under a key that already exists, which is the
+    failure the assembly exists to prevent."""
+    model = models.DYNAMIC_TABLES[COMPOSITE]
+    for value in (1, 2):
+        with outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED):
+            crud.apply_batch_updates(
+                door, COMPOSITE,
+                schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
+                    business_key_val=f"SENT-{value}",
+                    updates={"split_key": f"SENT-{value}", "ref_table": "T",
+                             "map_key": "M", "qty": value},
+                    source_name="ingest", updated_by="oracle")],
+                    transaction_id=f"s83-composite-{value}", silent=True))
+        door.commit()
+
+    rows = door.query(model).all()
+    assert len(rows) == 1, "two writes of the same columns must not make two rows"
+    assert rows[0].qty == 2.0
