@@ -29,7 +29,11 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from ledger import dry_run, schema                                   # noqa: E402
-from test_ledger_l1_pg import (BASE_ROWS, CFG, SOURCE_DDL, _declared_as_test_database,
+# ⚠️ `CFG` WAS STILL IMPORTED AND NOTHING HERE READ IT. The third assertion described
+# above was the only user and it went on 2026-08-18; the import outlived it and would have
+# gone on outliving it, because this file skipped for want of a declared test database
+# (S-104). It goes now, with the v1 declaration it named.
+from test_ledger_l1_pg import (BASE_ROWS, SOURCE_DDL, _declared_as_test_database,
                                _resolve_url, _seed)                  # noqa: E402
 
 SCRATCH_SCHEMA = "assy_ledger_dryrun_pytest" + (

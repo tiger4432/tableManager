@@ -226,7 +226,8 @@ def _cut_on_group_boundary(rows, page_limit, key="event_time"):
 
 def run(engine, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
         reset_cursor=False, start_from=None, max_batches=None,
-        ontology_root=None, retranslate=None, checkpoint=None, pace=None):
+        ontology_root=None, retranslate=None, checkpoint=None, pace=None,
+        catalog=None):
     """Translate every row this source has not translated yet, down the LIVE path.
 
     🔴 ONE EXECUTION PATH (owner ruling, 2026-08-18: "remove legacy")
@@ -264,8 +265,14 @@ def run(engine, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
             f"source must be a source id string, got {type(source).__name__}; "
             f"run() no longer takes a legacy config as its second positional argument",
         )
+    # 🔴 `catalog` NAMES THE PHYSICAL SCHEMA THIS DECLARATION IS CHECKED AGAINST, and
+    # omitting it keeps production's answer exactly: the deployment's own `table_config.json`.
+    # Same reason `ledger.config.load` grew one (판정 212) - a proof that drives the SHIPPED
+    # declaration must be checked against the SHIPPED catalogue, or it is measuring whether
+    # this box happens to have adopted it.
     cutover = load_setup(
-        DEFAULT_ONTOLOGY_ROOT if ontology_root is None else ontology_root)
+        DEFAULT_ONTOLOGY_ROOT if ontology_root is None else ontology_root,
+        **({} if catalog is None else {"catalog": catalog}))
     # 🔴 Checked HERE and not left to the write boundary. `execute_selected_cursor_batch`
     # does re-check, but only once a batch exists: an empty source would then return a
     # clean zero instead of the refusal, and a selector left on `legacy` would look like a

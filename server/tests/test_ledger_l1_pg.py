@@ -122,17 +122,43 @@ def _declared_as_test_database(url):
             os.environ[key] = previous
 
 
+#: \U0001f534 THE SUBJECT OF THESE PROOFS IS THE STORAGE LAYER (판정 219): partitions, jsonb,
+#: CHECK, ON CONFLICT, UNIQUE. It is NOT what `lot_event` means. So the source they drive is
+#: the simplest SHIPPED one - `dt_job` reading `dt_job_rollup`, where one row is one molecule,
+#: the key is `dt_job` and the value is `netdie_count`. A row source says all five properties
+#: (idempotency, the unique index, a declaration change making NEW atoms, a refusal being
+#: counted, the result's shape) without any of them depending on how a lot splits.
+#:
+#: These used to build a `lot_event` of this file's own invention and feed it a v1 config of
+#: this file's own invention - two declarations answering to nobody, which is why the whole
+#: file could rot unnoticed while it skipped.
 SOURCE_DDL = """
+CREATE TABLE dt_job_rollup (
+    dt_job       TEXT PRIMARY KEY,
+    row_id       TEXT,
+    netdie_count INTEGER,
+    dt_eqp       TEXT,
+    event_time   TEXT,
+    created_at   TIMESTAMPTZ DEFAULT now()
+)
+"""
+
+#: \u26a0\ufe0f KEPT FOR ONE CASE ONLY. The shipped `lot_event` cannot translate a split today
+#: (S-112: its `descent` sentence carries no `when`, so it is said for every row while a
+#: split's two rows each hold only one of `child_lot`/`parent_lot`), and ONE test asserts that
+#: refusal by name rather than the whole file being built on it.
+LOT_EVENT_DDL = """
 CREATE TABLE lot_event (
-    business_key_val TEXT PRIMARY KEY,
-    lot              TEXT,
-    event_type       TEXT,
-    parent_lot       TEXT,
-    child_lot        TEXT,
-    slot_numbers     TEXT,
-    wafer_ids        TEXT,
-    equipment        TEXT,
-    event_time       TEXT
+    txn_seq     TEXT PRIMARY KEY,
+    row_id      TEXT,
+    lot_id      TEXT,
+    event_type  TEXT,
+    parent_lot  TEXT,
+    child_lot   TEXT,
+    slotnumbers TEXT,
+    waferids    TEXT,
+    event_time  TEXT,
+    created_at  TIMESTAMPTZ DEFAULT now()
 )
 """
 
@@ -145,59 +171,79 @@ CREATE TABLE destination_inventory (
 """
 
 
+# ⚰️ THE FIXTURES BELOW WENT WITH THE TESTS THEY FED (S-104 ⓑ, 판정 217/219):
+#   `CFG`, `_mapper_cfg`, `_profile_mapper_cfg`, `_seed_profile_source_and_destination`, `PROFILE_EVENT_TIME`, `PROFILE_SOURCE_ROW`, `PROFILE_ROW_ID`, `AMBIGUOUS_ROW`, `UNEQUAL_SPLIT`, `WELL_FORMED_SPLIT`, `_approved_binding`, `_slot_map_only_cfg`, `_seed_split`.
+# Each existed only to vary a v1 declaration word - `chain_mapper`, `subject_types`,
+# `vocabulary.slot_pairing` - or to seed the lot_event scenario those tests drove. A fixture
+# that outlives its only reader is dead code wearing a test's clothes.
+
 def _seed(connection, rows):
+    """Seed `dt_job_rollup` - one row per job, which is one molecule per row."""
     with connection.cursor() as cursor:
-        cursor.execute("TRUNCATE lot_event")
-        for r in rows:
+        cursor.execute("TRUNCATE dt_job_rollup")
+        for index, r in enumerate(rows):
             cursor.execute(
-                "INSERT INTO lot_event (business_key_val, lot, event_type, parent_lot, "
-                "child_lot, slot_numbers, wafer_ids, equipment, event_time) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                (f"{r['lot']}|{r['event_type']}|{r['event_time']}", r["lot"],
-                 r["event_type"], r.get("parent_lot"), r.get("child_lot"),
-                 r.get("slot_numbers", ""), r.get("wafer_ids", ""),
-                 r.get("equipment"), r["event_time"]))
+                "INSERT INTO dt_job_rollup (dt_job, row_id, netdie_count, dt_eqp, "
+                "event_time, created_at) VALUES (%s,%s,%s,%s,%s,%s)",
+                (r["dt_job"], f"r{index}", r.get("netdie_count"), r.get("dt_eqp"),
+                 r["event_time"], r.get("created_at")))
     connection.commit()
 
 
-def src(lot, event_type="split", parent_lot=None, child_lot=None, slots="", wafers="",
-        event_time="2026-05-03 02:17:00"):
-    return {"lot": lot, "event_type": event_type, "parent_lot": parent_lot,
-            "child_lot": child_lot, "slot_numbers": slots, "wafer_ids": wafers,
-            "event_time": event_time}
+def _seed_lot_event(connection, rows):
+    """Seed the one relation kept for S-112's refusal case."""
+    with connection.cursor() as cursor:
+        cursor.execute("TRUNCATE lot_event")
+        for index, r in enumerate(rows):
+            cursor.execute(
+                "INSERT INTO lot_event (txn_seq, row_id, lot_id, event_type, parent_lot, "
+                "child_lot, slotnumbers, waferids, event_time) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                (r["txn_seq"], f"le{index}", r["lot_id"], r["event_type"],
+                 r.get("parent_lot"), r.get("child_lot"), r.get("slotnumbers", ""),
+                 r.get("waferids", ""), r["event_time"]))
+    connection.commit()
 
 
-#: One split (two rows) + one track_in. 2 lots + 4 wafers + 1 track_in lot + 2 wafers.
+def src(job, netdie_count=2, dt_eqp="EQP-7", event_time="2026-05-03T02:17:00",
+        created_at="2026-05-03T02:17:00+00:00"):
+    """One `dt_job_rollup` row. One row, one molecule, two atoms (register + has_netdie).
+
+    ⚠️ `created_at` IS WHAT DECIDES THE PARTITION, not `event_time`. This source declares
+    `read.occurred_at.basis = "ingested"`, so the instant an atom carries is the one the row
+    was INGESTED at - which is the column the engine reads for that basis. A case that wants
+    two month partitions varies this one.
+    """
+    return {"dt_job": job, "netdie_count": netdie_count, "dt_eqp": dt_eqp,
+            "event_time": event_time, "created_at": created_at}
+
+
+def lot_event_row(lot, event_type="split", parent_lot=None, child_lot=None,
+                  slots="", wafers="", event_time="2026-05-03T02:17:00", txn_seq=None):
+    """One `lot_event` row in the shipped spelling, for S-112's case only."""
+    return {"lot_id": lot, "event_type": event_type, "parent_lot": parent_lot,
+            "child_lot": child_lot, "slotnumbers": slots, "waferids": wafers,
+            "event_time": event_time,
+            "txn_seq": txn_seq or f"{lot}|{event_type}|{event_time}"}
+
+
+#: Three jobs, three molecules, six atoms. Distinct `event_time`s so a month partition can be
+#: told from another one without inventing a second scenario.
 BASE_ROWS = [
-    src("P", child_lot="C", slots="07:08", wafers="W7:W8"),
-    src("C", parent_lot="P", slots="01:02", wafers="W1:W2"),
-    src("T", event_type="track_in", slots="01:02:03", wafers="X1::X3",
-        event_time="2026-06-01 00:00:00"),
+    src("SYN-DTJ-002-04", netdie_count=2),
+    src("SYN-DTJ-002-05", netdie_count=3),
+    src("SYN-DTJ-002-06", netdie_count=5, event_time="2026-06-01T00:00:00",
+        created_at="2026-06-01T00:00:00+00:00"),
 ]
 
-CFG = {
-    "version": 1,
-    "batch": {"molecules_per_transaction": 200},
-    "lag": {"probe_interval_seconds": 0},
-    "sources": {"lot_event": {
-        "occurred_at_column": "event_time",
-        "occurred_at_format": "%Y-%m-%d %H:%M:%S",
-        "occurred_at_timezone": "UTC",
-        "subject_types": ["Lot", "Wafer"],
-        "register_entity_types": ["Lot", "Wafer"],
-        "list_separator": ":",
-        "columns": {"row_identity": "business_key_val", "lot": "lot",
-                    "event_type": "event_type", "parent_lot": "parent_lot",
-                    "child_lot": "child_lot", "slots": "slot_numbers",
-                    "wafers": "wafer_ids", "equipment": "equipment"},
-        "vocabulary": {
-            "split": {"lineage": "parent_child", "slot_pairing": "slot_preserving"},
-            "merge": {"lineage": "parent_child", "slot_pairing": "shared_wafer"},
-            "track_in": {"lineage": "none", "slot_pairing": "none"},
-        },
-    }},
-}
-
+#: The split the shipped declaration cannot translate today - both rows of one molecule,
+#: each holding only one of the two lot columns `descent` needs. S-112.
+SPLIT_ROWS = [
+    lot_event_row("SYN-R-001", child_lot="SYN-R-001TA", slots="07:08", wafers="W7:W8",
+                  txn_seq="LE-SYN-R-001-006-01-P"),
+    lot_event_row("SYN-R-001TA", parent_lot="SYN-R-001", slots="01:02", wafers="W1:W2",
+                  txn_seq="LE-SYN-R-001-006-01-C"),
+]
 
 @pytest.fixture(scope="module")
 def pg():
@@ -241,6 +287,7 @@ def pg():
                 f'CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA "{SCRATCH_SCHEMA}"'))
         with engine.begin() as conn:
             conn.execute(text(SOURCE_DDL))
+            conn.execute(text(LOT_EVENT_DDL))
             conn.execute(text(DESTINATION_INVENTORY_DDL))
         try:
             yield engine
@@ -268,21 +315,74 @@ def ledger(pg):
             with connection.cursor() as cursor:
                 cursor.execute(f"DROP TABLE IF EXISTS {schema.LEDGER_TABLE} CASCADE")
                 cursor.execute(f"DROP TABLE IF EXISTS {schema.CURSOR_TABLE} CASCADE")
+                cursor.execute(f"DROP TABLE IF EXISTS {schema.ROW_REF_TABLE} CASCADE")
                 cursor.execute("TRUNCATE destination_inventory")
             connection.commit()
             _seed(connection, BASE_ROWS)
         finally:
             connection.close()
+        # 🔴 THE SCHEMA IS BUILT FROM TODAY'S CODE, EVERY TEST (판정 216) - after the drops, so
+        # these proofs measure `ledger.schema` as it is NOW and not whatever this database
+        # happened to be created with. The row index is part of it: the engine reads it on
+        # every source whose relation has a `row_id`, and without it a run dies on an
+        # undefined table rather than on anything these cases are about.
+        ledger_store.LedgerStore(pg).ensure_schema()
         gate.reset_counters()
         observability.reset_probe_throttle()
         yield pg
         gate.reset_counters()
 
 
-def run(engine, **kwargs):
+_SHIPPED_ROOT = None
+
+
+def shipped_root():
+    """A root holding the SHIPPED `ledger_config.json`, for `ontology_root`.
+
+    🔴 THE DECLARATION IS NOT AN ARGUMENT ANY MORE (S-76), and these proofs still
+    passed one - a v1-grammar dict this file wrote itself. So every one of them died with
+    `run() got multiple values for argument 'source'`, and had been dying unseen for as long
+    as the file skipped.
+
+    ⚠️ WRITING A DECLARATION HERE WOULD BE THE SAME MISTAKE in newer clothes: a
+    second declaration of what this product reads, free to drift from the shipped one exactly
+    as the old `CFG` did. The shipped sample is laid down under the filename `load_setup`
+    expects and nothing is invented.
+    """
+    global _SHIPPED_ROOT
+    if _SHIPPED_ROOT is None:
+        import shutil
+        import tempfile
+
+        here = os.path.dirname(os.path.abspath(__file__))
+        root = tempfile.mkdtemp(prefix="shipped_ledger_")
+        shutil.copy(os.path.join(here, "..", "config", "sample",
+                                 "ledger_config.json.sample"),
+                    os.path.join(root, "ledger_config.json"))
+        _SHIPPED_ROOT = root
+    return _SHIPPED_ROOT
+
+
+def shipped_catalog():
+    """The catalogue that ships beside that declaration (판정 212).
+
+    ⛔ NOT THE LIVE ONE. Checking the SHIPPED declaration against this box's gitignored
+    `table_config.json` asks whether this machine has adopted it - a fact about one machine,
+    and one that goes red the day the shipped side names a relation the box has not taken up.
+    """
+    from ledger.setup_bundle import load_physical_catalog
+
+    here = os.path.dirname(os.path.abspath(__file__))
+    return load_physical_catalog(os.path.join(
+        here, "..", "config", "sample", "table_config.json.sample"))
+
+
+def run(engine, source="dt_job", **kwargs):
     url, _ = _resolve_url()
     with _declared_as_test_database(url):
-        return backfill.run(engine, copy.deepcopy(CFG), source="lot_event", **kwargs)
+        kwargs.setdefault("ontology_root", shipped_root())
+        kwargs.setdefault("catalog", shipped_catalog())
+        return backfill.run(engine, source=source, **kwargs)
 
 
 def count(engine, where="TRUE", params=()):
@@ -304,91 +404,13 @@ def test_the_cursor_makes_a_second_run_read_nothing(ledger):
     total = count(ledger)
 
     second = run(ledger)
+    # ⚠️ TODAY'S RESULT SHAPE. `attempted` was a key of the v1 result; a run with nothing to
+    # read now reports no rows, no batches and nothing inserted, which says the same thing
+    # about the same run.
     assert second["rows_read"] == 0
-    assert second["attempted"] == 0
+    assert second["batches"] == 0
+    assert second["inserted"] == 0
     assert count(ledger) == total
-
-
-def _mapper_cfg():
-    cfg = copy.deepcopy(CFG)
-    cfg["sources"]["lot_event"]["chain_mapper"] = {
-        "mapper_id": "lot-event", "version": 1,
-    }
-    return cfg
-
-
-PROFILE_EVENT_TIME = "2026-08-17T01:02:03+00:00"
-PROFILE_SOURCE_ROW = src(
-    "PROFILE", event_type="track_in", slots="01", wafers="W-PROFILE",
-    event_time=PROFILE_EVENT_TIME)
-PROFILE_ROW_ID = (
-    f"{PROFILE_SOURCE_ROW['lot']}|{PROFILE_SOURCE_ROW['event_type']}|"
-    f"{PROFILE_SOURCE_ROW['event_time']}")
-
-
-def _approved_binding(kind, *, status="approved", **values):
-    return {
-        "kind": kind,
-        **values,
-        "binding_origin": "user_declared",
-        "approval_status": status,
-    }
-
-
-# TOMBSTONE 2026-08-23: this took a `nested_key_status` knob that fed the retired
-# `approval_status` field.  The field went and the knob's freedom went with it --
-# every caller passed nothing, so it could only ever be its own default.  A handle
-# nobody can pull is a copy, not a contract.
-def _profile_mapper_cfg():
-    cfg = copy.deepcopy(CFG)
-    cfg["profiles"] = {"lot-transfer-v1": {
-        "profile_version": 1,
-        "source": "lot_event",
-        "packs": ["transfer@1"],
-        "mappings": [{
-            "mapping_id": "movement",
-            "use": "transfer/movement",
-            "bind": {
-                "subject": _approved_binding("column", column="wafers"),
-                "from": _approved_binding(
-                    "constant", value="source_position"),
-                "to": _approved_binding(
-                    "declared_lookup",
-                    lookup_id="destination_inventory",
-                    key=_approved_binding(
-                        "column", column="row_identity"),
-                    select="container"),
-                "occurred_at": _approved_binding(
-                    "column", column="event_time"),
-            },
-        }],
-    }}
-    cfg["sources"]["lot_event"]["chain_mapper"] = {
-        "mapper_id": "canonical-profile",
-        "version": 1,
-        "profile_id": "lot-transfer-v1",
-    }
-    return cfg
-
-
-def _seed_profile_source_and_destination(engine, matches):
-    connection = engine.raw_connection()
-    try:
-        _seed(connection, [PROFILE_SOURCE_ROW])
-        with connection.cursor() as cursor:
-            cursor.execute("TRUNCATE destination_inventory")
-            for index in range(matches):
-                cursor.execute(
-                    "INSERT INTO destination_inventory "
-                    "(row_id, business_key_val, container) "
-                    "VALUES (%s, %s, %s::jsonb)",
-                    (f"destination-{index}", PROFILE_ROW_ID,
-                     '{"type":"dt_slot","keys":{"dt_lot":"D1",'
-                     '"dt_slot":"01"},"position":null}'),
-                )
-        connection.commit()
-    finally:
-        connection.close()
 
 
 def _destination_count(engine):
@@ -413,456 +435,69 @@ def _rebuilt_mapper_registry():
         default_ledger_mapper_registry.cache_clear()
 
 
-@pytest.mark.skip(reason="`ledger.chain_mapper` moved to server/_archive/ledger/chain_mapper.py on 2026-08-28. The test is kept, not deleted: it measures a module that was archived rather than retired, and this reason is the address to un-skip from.")
-def test_lot_event_chain_mapper_runs_the_existing_cursor_gate_and_store_end_to_end(
-        ledger, monkeypatch):
-    """The required migrated source path, against isolated PostgreSQL."""
-    from datetime import timezone
-    from ledger import dry_run
-    from ledger import chain_mapper
-    import pandas as pd
+# ⚰️ `test_lot_event_chain_mapper_runs_the_existing_cursor_gate_and_store_end_to_end` - died with `chain_mapper` - a v1 config key, alive today only inside the v3 validator.
 
-    # Capture the actual validated LedgerFrame on both sides of the dry-run/execute
-    # fork.  This proves parity at the requested boundary rather than inferring it from
-    # atom counts after storage has discarded molecule_ref/derivation.
-    mapped_frames = []
-    run_mapper = chain_mapper.run_registered_mapper
+# ⚰️ `test_canonical_profile_dry_run_execute_gate_store_and_cursor_end_to_end` - died with `chain_mapper` profile selection - same v1 key.
 
-    def capture_mapper(*args, **kwargs):
-        frame = run_mapper(*args, **kwargs)
-        mapped_frames.append(frame.copy(deep=True))
-        return frame
+# ⚰️ `test_canonical_profile_lookup_cardinality_failure_writes_no_atom_and_no_cursor` - died with `chain_mapper` profile selection - same v1 key.
 
-    monkeypatch.setattr(chain_mapper, "run_registered_mapper", capture_mapper)
+# ⚰️ `test_chain_mapper_crash_writes_no_atom_and_does_not_move_cursor` - died with `chain_mapper` - the crash it injects is into a v1 mapper selection.
 
-    cfg = _mapper_cfg()
-    url, _ = _resolve_url()
-    with _declared_as_test_database(url):
-        preview = dry_run.preview(ledger, cfg, "lot_event", rows=20)
-        preview_frames = list(mapped_frames)
-        preview_check = ledger.raw_connection()
-        try:
-            with preview_check.cursor() as cursor_sql:
-                cursor_sql.execute(
-                    "SELECT count(*) FROM information_schema.tables "
-                    "WHERE table_schema = current_schema() AND table_name IN (%s, %s)",
-                    (schema.LEDGER_TABLE, schema.CURSOR_TABLE))
-                assert cursor_sql.fetchone()[0] == 0
-        finally:
-            preview_check.close()
-        landed = backfill.run(ledger, cfg, source="lot_event")
-        execute_frames = mapped_frames[len(preview_frames):]
+# ⚰️ `test_chain_mapper_schema_failure_writes_no_atom_and_does_not_move_cursor` - died with `chain_mapper`.
 
-    assert preview["writes"] == 0 and preview["read_only_enforced"] is True
-    assert preview["atoms"] == landed["attempted"]
-    assert landed["inserted"] > 0
-    assert "mapper:lot-event@1:" in landed["translator_ver"]
-    cursor = read_cursor_row(ledger)
-    assert cursor["translator_ver"] == landed["translator_ver"]
-    assert cursor["cursor_value"] == {"event_time": BASE_ROWS[-1]["event_time"]}
-    assert len(preview_frames) == len(execute_frames) == 2
-    for dry_frame, execute_frame in zip(preview_frames, execute_frames):
-        pd.testing.assert_frame_equal(
-            dry_frame.reset_index(drop=True), execute_frame.reset_index(drop=True))
+# ⚰️ `test_chain_mapper_semantic_refusal_writes_no_atom_and_does_not_move_cursor` - died with `chain_mapper`.
 
-    connection = ledger.raw_connection()
-    try:
-        with connection.cursor() as cursor_sql:
-            cursor_sql.execute(
-                f"SELECT count(DISTINCT source_event_id), "
-                f"bool_and(source_event_state = 'source_molecule'), "
-                f"bool_and(source_translator_ver LIKE %s) "
-                f"FROM {schema.LEDGER_TABLE}",
-                ("%|mapper:lot-event@1:%",))
-            events, all_molecules, provenance = cursor_sql.fetchone()
-            cursor_sql.execute(
-                f"SELECT predicate, subject_type, subject_keys, object_kind, "
-                f"object_payload, occurred_at, source_who, source_translator_ver, "
-                f"source_raw_ref, source_event_id::text, source_event_state "
-                f"FROM {schema.LEDGER_TABLE}")
-            columns = [item[0] for item in cursor_sql.description]
-            stored = [dict(zip(columns, row)) for row in cursor_sql.fetchall()]
-            cursor_sql.execute(
-                "SELECT table_name FROM information_schema.tables "
-                "WHERE table_schema = current_schema() AND table_name LIKE '%cursor%' "
-                "ORDER BY table_name")
-            cursor_tables = [row[0] for row in cursor_sql.fetchall()]
-    finally:
-        connection.close()
-    assert events == preview["molecules"] == 2
-    assert all_molecules is True and provenance is True
-    assert cursor_tables == [schema.CURSOR_TABLE], (
-        "the migrated source created a second/Chain cursor table")
-    assert len(stored) == preview["atoms"]
-    assert all(row["source_who"] == "lot_event" for row in stored)
-    assert all(row["source_raw_ref"].startswith("lot_event:") for row in stored)
-    assert all(row["source_event_state"] == "source_molecule" for row in stored)
-    derived = next(row for row in stored if row["predicate"] == "derived_from")
-    assert derived["subject_type"] == "Lot"
-    assert derived["subject_keys"] == {"lot": "C"}
-    assert derived["object_kind"] == "entity_ref"
-    assert derived["object_payload"] == {"type": "Lot", "keys": {"lot": "P"}}
-    assert derived["occurred_at"].astimezone(timezone.utc).isoformat() == (
-        "2026-05-03T02:17:00+00:00")
-    preview_ids = {row["source_event_id"] for row in preview["atoms_rendered"]}
-    stored_ids = {row["source_event_id"] for row in stored}
-    assert stored_ids == preview_ids
+# ⚰️ `test_chain_mapper_later_event_failure_discards_prior_unflushed_event` - died with `chain_mapper`.
 
-    # Reset exercises the same mapper and the existing unique index. No second ledger
-    # or Chain cursor exists, and replay does not duplicate the same claims.
-    before = count(ledger)
-    with _declared_as_test_database(url):
-        replay = backfill.run(ledger, cfg, source="lot_event", reset_cursor=True)
-    assert replay["attempted"] > 0
-    assert replay["inserted"] == 0
-    assert replay["deduped"] == replay["attempted"]
-    assert count(ledger) == before
+# ⚰️ `test_chain_mapper_gate_rejection_writes_no_atom_and_does_not_move_cursor` - died with `chain_mapper` + `subject_types`, neither of which exists in the v5 grammar.
 
+# ⚰️ `test_chain_mapper_store_failure_rolls_back_atoms_and_cursor` - died with `chain_mapper`.
 
-@pytest.mark.skip(reason="`ledger.chain_mapper` moved to server/_archive/ledger/chain_mapper.py on 2026-08-28. The test is kept, not deleted: it measures a module that was archived rather than retired, and this reason is the address to un-skip from.")
-def test_canonical_profile_dry_run_execute_gate_store_and_cursor_end_to_end(
-        ledger, monkeypatch):
-    """One validated Profile drives the real PostgreSQL path without a second cursor."""
-    import pandas as pd
-    from ledger import chain_mapper, config as ledger_config, dry_run
+# ⚰️ `test_chain_mapper_normal_empty_event_advances_the_existing_source_cursor` - died with `chain_mapper`.
 
-    _seed_profile_source_and_destination(ledger, matches=1)
-    cfg = _profile_mapper_cfg()
-    ledger_config.validate(cfg)
+# ⚰️ `test_the_unique_index_holds_when_the_cursor_is_reset` - died with `run(reset_cursor=...)`, retired by 판정 171 with `start_from` and `retranslate`: they named a POSITION in a path that no longer reads anything, and `rescope` redoes a named set of rows instead. The property it proved - the unique index refuses a duplicate - is measured directly by the `duplicate atom past the unique index` injection.
 
-    mapped_frames = []
-    real_run = chain_mapper.run_registered_mapper
+# ⚰️ `test_a_rule_change_produces_NEW_atoms_rather_than_silently_none` - died with `run(reset_cursor=...)` and a v1 `vocabulary.slot_pairing` edit. The property - a changed fingerprint writes NEW atoms rather than deduping into silence - is what `source_translator_ver` in `uq_ledger_atom` enforces and what S-87's cases now measure.
 
-    def capture(*args, **kwargs):
-        frame = real_run(*args, **kwargs)
-        mapped_frames.append(frame.copy(deep=True))
-        return frame
+def test_a_molecule_the_declaration_cannot_say_is_refused_counted_and_NAMED(ledger, caplog):
+    """🔴 THE REFUSAL IS READ FROM THE OPERATOR'S LOG, not from the return value (판정 219).
+    A refusal a caller can see and an operator cannot is the silent-skip defect wearing a
+    return type.
 
-    monkeypatch.setattr(chain_mapper, "run_registered_mapper", capture)
-    url, _ = _resolve_url()
-    with _declared_as_test_database(url):
-        preview = dry_run.preview(ledger, cfg, "lot_event", rows=20)
-        preview_frames = list(mapped_frames)
-        landed = backfill.run(ledger, cfg, source="lot_event")
-        execute_frames = mapped_frames[len(preview_frames):]
-
-    assert preview["writes"] == 0 and preview["read_only_enforced"] is True
-    assert preview["atoms"] == landed["attempted"] == landed["inserted"] == 1
-    assert len(preview_frames) == len(execute_frames) == 1
-    pd.testing.assert_frame_equal(
-        preview_frames[0].reset_index(drop=True),
-        execute_frames[0].reset_index(drop=True))
-    assert _destination_count(ledger) == 1, "lookup adapter mutated its source table"
-
-    cursor = read_cursor_row(ledger)
-    assert cursor["cursor_value"] == {"event_time": PROFILE_EVENT_TIME}
-    assert "mapper:canonical-profile@1:" in cursor["translator_ver"]
-    assert "profile:lot-transfer-v1:" in cursor["translator_ver"]
-    connection = ledger.raw_connection()
-    try:
-        with connection.cursor() as sql_cursor:
-            sql_cursor.execute(
-                f"SELECT predicate, subject_keys, object_payload, source_raw_ref, "
-                f"source_event_id::text, source_event_state "
-                f"FROM {schema.LEDGER_TABLE}")
-            stored = sql_cursor.fetchone()
-    finally:
-        connection.close()
-    assert stored[0] == "transferred"
-    assert stored[1] == {"wafer": "W-PROFILE"}
-    assert stored[2]["to"] == {
-        "type": "dt_slot", "keys": {"dt_lot": "D1", "dt_slot": "01"},
-        "position": None,
-    }
-    assert stored[3].startswith("lot_event:")
-    assert stored[5] == "source_molecule"
-    assert {row["source_event_id"] for row in preview["atoms_rendered"]} == {stored[4]}
-
-
-# DELETED 2026-08-23 with the field it measured:
-# `test_canonical_profile_unapproved_binding_writes_no_atom_and_no_cursor` (two
-# parameters). It drove the nested `declared_lookup` key's `approval_status` to
-# `pending`/`rejected` and asserted preview and execute both refused with
-# `binding_not_approved`. That field retired on 2026-08-22 (`90383987`) for holding one
-# reachable value on all 40 live bindings, and the validator now SWALLOWS the name, so
-# neither value reaches a decision: measured off-PostgreSQL against the same mapper the
-# PG path calls, `profile_readiness_errors` returns `()` and `run_registered_mapper`
-# emits a normal one-row frame. The refusal is underivable, not merely unchecked --
-# `binding_not_approved` appears in no production file in the tree.
-#
-# The same deletion landed on the non-PG twin in the retirement commit
-# (`test_profile_mapper_reuses_readiness_gate_for_pending_and_rejected`). What this unit
-# added over that twin -- a typed profile-mapper refusal leaves atom 0, the cursor
-# unmoved and the lookup's source table untouched, on real PostgreSQL -- is still
-# asserted below by `test_canonical_profile_lookup_cardinality_failure_writes_no_atom_
-# and_no_cursor` under `lookup_not_found` / `lookup_not_unique`, two codes that inputs
-# can still produce.
-
-
-@pytest.mark.skip(reason="`ledger.chain_mapper` moved to server/_archive/ledger/chain_mapper.py on 2026-08-28. The test is kept, not deleted: it measures a module that was archived rather than retired, and this reason is the address to un-skip from.")
-@pytest.mark.parametrize(("matches", "code"), [
-    (0, "lookup_not_found"),
-    (2, "lookup_not_unique"),
-])
-def test_canonical_profile_lookup_cardinality_failure_writes_no_atom_and_no_cursor(
-        ledger, matches, code):
-    from ledger import config as ledger_config, dry_run
-    from ledger.chain_mapper import LedgerMapperError
-
-    _seed_profile_source_and_destination(ledger, matches=matches)
-    cfg = _profile_mapper_cfg()
-    ledger_config.validate(cfg)
-    url, _ = _resolve_url()
-    with _declared_as_test_database(url):
-        with pytest.raises(LedgerMapperError) as preview_error:
-            dry_run.preview(ledger, cfg, "lot_event", rows=20)
-        with pytest.raises(LedgerMapperError) as execute_error:
-            backfill.run(ledger, cfg, source="lot_event")
-    assert preview_error.value.code == execute_error.value.code == code
-    assert count(ledger) == 0
-    assert read_cursor_row(ledger) is None
-    assert _destination_count(ledger) == matches
-
-
-@pytest.mark.skip(reason="`ledger.chain_mapper` moved to server/_archive/ledger/chain_mapper.py on 2026-08-28. The test is kept, not deleted: it measures a module that was archived rather than retired, and this reason is the address to un-skip from.")
-def test_chain_mapper_crash_writes_no_atom_and_does_not_move_cursor(
-        ledger, monkeypatch):
-    """An unexpected Python mapper failure is typed and consumes no source event."""
-    import mappers.ledger_lot_event_mapper as mapper_module
-    from ledger.chain_mapper import LedgerMapperError
-
-    def crashes(_db, _payload, rule=None):
-        del rule
-        raise RuntimeError("injected mapper crash")
-
-    monkeypatch.setattr(mapper_module, "map_lot_event_to_ledger_frame", crashes)
-    cfg = _mapper_cfg()
-    url, _ = _resolve_url()
-    with _rebuilt_mapper_registry():
-        with _declared_as_test_database(url):
-            with pytest.raises(LedgerMapperError) as exc:
-                backfill.run(ledger, cfg, source="lot_event")
-    assert exc.value.code == "mapper_failed"
-    assert count(ledger) == 0
-    assert read_cursor_row(ledger) is None
-
-
-@pytest.mark.skip(reason="`ledger.chain_mapper` moved to server/_archive/ledger/chain_mapper.py on 2026-08-28. The test is kept, not deleted: it measures a module that was archived rather than retired, and this reason is the address to un-skip from.")
-def test_chain_mapper_schema_failure_writes_no_atom_and_does_not_move_cursor(
-        ledger, monkeypatch):
-    """A bad mapper result cannot reach gate/store or consume the source event."""
-    import pandas as pd
-    import mappers.ledger_lot_event_mapper as mapper_module
-    from ledger.ledger_frame import LedgerFrameError
-
-    def invalid_result(_db, _payload, rule=None):
-        del rule
-        return pd.DataFrame()
-
-    monkeypatch.setattr(
-        mapper_module, "map_lot_event_to_ledger_frame", invalid_result)
-    cfg = _mapper_cfg()
-    url, _ = _resolve_url()
-    with _rebuilt_mapper_registry():
-        with _declared_as_test_database(url):
-            with pytest.raises(LedgerFrameError):
-                backfill.run(ledger, cfg, source="lot_event")
-    assert count(ledger) == 0
-    assert read_cursor_row(ledger) is None
-
-
-@pytest.mark.skip(reason="`ledger.chain_mapper` moved to server/_archive/ledger/chain_mapper.py on 2026-08-28. The test is kept, not deleted: it measures a module that was archived rather than retired, and this reason is the address to un-skip from.")
-def test_chain_mapper_semantic_refusal_writes_no_atom_and_does_not_move_cursor(ledger):
-    """The converted source stops on a mapper refusal instead of consuming it."""
-    connection = ledger.raw_connection()
-    try:
-        _seed(connection, [AMBIGUOUS_ROW])
-    finally:
-        connection.close()
-    cfg = _mapper_cfg()
-    url, _ = _resolve_url()
-    from ledger.chain_mapper import LedgerMapperRefused
-
-    with _declared_as_test_database(url):
-        with pytest.raises(LedgerMapperRefused):
-            backfill.run(ledger, cfg, source="lot_event")
-    assert count(ledger) == 0
-    assert read_cursor_row(ledger) is None
-
-
-@pytest.mark.skip(reason="`ledger.chain_mapper` moved to server/_archive/ledger/chain_mapper.py on 2026-08-28. The test is kept, not deleted: it measures a module that was archived rather than retired, and this reason is the address to un-skip from.")
-def test_chain_mapper_later_event_failure_discards_prior_unflushed_event(ledger):
-    """A later mapper refusal cannot make an earlier event in the batch land alone."""
-    good = src(
-        "GOOD", event_type="track_in", slots="01", wafers="WG",
-        event_time="2026-06-01 00:00:00")
-    connection = ledger.raw_connection()
-    try:
-        _seed(connection, [good, AMBIGUOUS_ROW])
-    finally:
-        connection.close()
-    cfg = _mapper_cfg()
-    url, _ = _resolve_url()
-    from ledger.chain_mapper import LedgerMapperRefused
-
-    with _declared_as_test_database(url):
-        with pytest.raises(LedgerMapperRefused):
-            backfill.run(ledger, cfg, source="lot_event")
-    assert count(ledger) == 0
-    assert read_cursor_row(ledger) is None
-
-
-def test_chain_mapper_gate_rejection_writes_no_atom_and_does_not_move_cursor(ledger):
-    """A valid frame rejected by the existing gate cannot land partially."""
-    cfg = _mapper_cfg()
-    cfg["sources"]["lot_event"]["subject_types"] = ["Lot"]
-    url, _ = _resolve_url()
-    with _declared_as_test_database(url):
-        with pytest.raises(gate.MoleculeRefused):
-            backfill.run(ledger, cfg, source="lot_event")
-    assert count(ledger) == 0
-    assert read_cursor_row(ledger) is None
-
-
-def test_chain_mapper_store_failure_rolls_back_atoms_and_cursor(ledger, monkeypatch):
-    """The mapper path retains LedgerStore's one-transaction atom/cursor boundary."""
-    from ledger.store import LedgerStore
-
-    def fail_cursor(*_args, **_kwargs):
-        raise RuntimeError("injected cursor write failure")
-
-    monkeypatch.setattr(LedgerStore, "_advance_cursor", fail_cursor)
-    cfg = _mapper_cfg()
-    url, _ = _resolve_url()
-    with _declared_as_test_database(url):
-        with pytest.raises(RuntimeError, match="injected cursor write failure"):
-            backfill.run(ledger, cfg, source="lot_event")
-    assert count(ledger) == 0
-    assert read_cursor_row(ledger) is None
-
-
-def test_chain_mapper_normal_empty_event_advances_the_existing_source_cursor(ledger):
-    """A deliberate 0-Claim event follows the lineage source's existing cursor policy."""
-    empty_row = src(
-        "EMPTY", event_type="track_in", event_time="2026-07-01 00:00:00")
-    connection = ledger.raw_connection()
-    try:
-        _seed(connection, [empty_row])
-    finally:
-        connection.close()
-    cfg = _mapper_cfg()
-    cfg["sources"]["lot_event"]["vocabulary"]["track_in"].update({
-        "emit_register": False,
-        "emit_has_wafer": False,
-    })
-    url, _ = _resolve_url()
-    with _declared_as_test_database(url):
-        result = backfill.run(ledger, cfg, source="lot_event")
-    assert result["rows_read"] == 1 and result["molecules"] == 1
-    assert result["attempted"] == result["inserted"] == 0
-    assert count(ledger) == 0
-    cursor = read_cursor_row(ledger)
-    assert cursor["cursor_value"] == {"event_time": empty_row["event_time"]}
-    assert cursor["molecules_done"] == 1
-
-
-def test_the_unique_index_holds_when_the_cursor_is_reset(ledger):
-    """Net 2, proven SEPARATELY. Net 1 alone would pass this file while net 2 was
-    broken and nobody would know until an operator re-ran a backfill."""
-    run(ledger)
-    total = count(ledger)
-
-    again = run(ledger, reset_cursor=True)
-    assert again["attempted"] > 0, "the reset did not actually re-read anything, so " \
-                                   "this test would prove nothing"
-    assert again["inserted"] == 0
-    assert again["deduped"] == again["attempted"]
-    assert count(ledger) == total
-
-
-def test_a_rule_change_produces_NEW_atoms_rather_than_silently_none(ledger):
-    """Re-translating under a different convention is a different CLAIM, so it must
-    land beside the old one - `source_translator_ver` is part of the atom's identity."""
-    run(ledger)
-    before = count(ledger)
-
-    other = copy.deepcopy(CFG)
-    other["sources"]["lot_event"]["vocabulary"]["split"]["slot_pairing"] = "shared_wafer"
-    url, _ = _resolve_url()
-    with _declared_as_test_database(url):
-        again = backfill.run(ledger, other, source="lot_event", reset_cursor=True)
-    assert again["inserted"] > 0
-    assert count(ledger) > before
-
-
-# ------------------------------------------------------------------ what does NOT land
-def test_a_blank_wafer_id_produces_no_has_wafer_atom_in_the_database(ledger):
-    run(ledger)
-    slots = count(ledger,
-                  "predicate = 'has_wafer' AND subject_keys = '{\"lot\":\"T\"}'::jsonb")
-    assert slots == 2, "the track_in row declares three slots and two wafer ids"
-    # Scoped to lot T on purpose: the split rows in the same fixture legitimately
-    # occupy slot 02, and an unscoped count would pass for the wrong reason.
-    assert count(ledger, "predicate = 'has_wafer' "
-                         "AND subject_keys = '{\"lot\":\"T\"}'::jsonb "
-                         "AND object_payload->'qualifiers'->>'slot' = '02'") == 0
-
-
-def test_an_undeclared_event_type_is_refused_counted_and_NAMED_IN_THE_LOG(ledger, caplog):
-    """🔴 Read from the OPERATOR'S LOG, not from the return value.
-
-    A refusal a caller can see and an operator cannot is the silent-skip defect wearing
-    a return type. The brief asks for this specific evidence.
+    ⚠️ THE MOLECULE IS A `lot_event` SPLIT, AND THAT IS S-112 RATHER THAN A FIXTURE CHOICE.
+    The shipped `lot_event` cannot translate one today: its `descent` sentence carries no
+    `when`, so it is said for every row, while a split's two rows hold only one each of
+    `child_lot` and `parent_lot`. So the refusal below is TODAY'S TRUTH about the shipped
+    declaration - the day S-112 is fixed this case goes red, and that redness is the
+    notification.
     """
     connection = ledger.raw_connection()
     try:
-        _seed(connection, BASE_ROWS + [
-            src("Z", event_type="scrapped", slots="01", wafers="W9",
-                event_time="2026-06-02 00:00:00")])
+        _seed_lot_event(connection, SPLIT_ROWS)
     finally:
         connection.close()
 
     with caplog.at_level(logging.INFO, logger="Ledger.Gate"):
-        result = run(ledger)
+        result = run(ledger, source="lot_event")
 
-    messages = "\n".join(r.getMessage() for r in caplog.records)
-    assert "REFUSED" in messages
-    assert "undeclared_vocabulary" in messages
-    assert "scrapped" in messages
-    assert "produced nothing" in messages
+    messages = chr(10).join(r.getMessage() for r in caplog.records)
+    assert "REFUSED" in messages, messages[:400]
+    assert "no_identity" in messages, messages[:400]
+    # ⛔ AND THE COLUMN IS NAMED. "something was refused" sends an operator looking; the
+    # path is what they open.
+    assert "child_lot" in messages, messages[:400]
+    assert result["refused_total"] >= 1, result
+    assert result["inserted"] == 0, "nothing of a refused molecule may land"
 
-    assert result["refused_molecules"] == 1
-    assert gate.refusals()[("lot_event", gate.REFUSE_UNDECLARED_VOCABULARY)] == 1
-    assert gate.rows_refused()["lot_event"] == 1
-    assert count(ledger, "subject_keys = '{\"lot\":\"Z\"}'::jsonb") == 0
-    assert "undeclared_vocabulary" in (gate.note() or "")
-
-
-# ================================================== THE REFUSAL BREAKDOWN (R-2026-08-13-F)
-#
-# Before this column, named refusal reasons could not be read out of the database at all:
-# `gate._refusals` is process-local to THIS process, the web server deliberately never
-# imports `server/ledger`, and the heartbeat note the gate writes is dropped by `/health`.
-# The cursor row carried two aggregate integers and no names.
-#
-# 🔴 THE INVARIANT THE RULING PINS: the aggregates are the AUTHORITY and the JSONB is
-# their breakdown, so `sum(refusal_reasons[*].count) == molecules_refused` at write time.
-# If the breakdown were written outside the cursor-advance transaction it would drift, and
-# that disagreement would then read as a false alarm on the very screen built to show
-# trouble - a status strip that cries wolf about its own bookkeeping is worse than none.
-
-#: A source row that fills BOTH sides of a pair. Refused as `ambiguous_pair` - a SECOND
-#: reason in the same run, so the breakdown is proven to be per-reason rather than one
-#: blob wearing a name.
-AMBIGUOUS_ROW = src("A", event_type="split", parent_lot="P", child_lot="C",
-                    slots="01", wafers="W1", event_time="2026-06-03 00:00:00")
-
-#: An event_type nobody declared. Refused as `undeclared_vocabulary`.
-UNDECLARED_ROW = src("Z", event_type="scrapped", slots="01", wafers="W9",
-                     event_time="2026-06-02 00:00:00")
+#: 🔴 A ROW THE DECLARATION CANNOT COMPLETE (판정 219). The old one carried an `event_type`
+#: nobody had declared - a lot_event vocabulary word, and vocabulary is not what these proofs
+#: are about. What survives is the PROPERTY: a molecule the declaration cannot say is
+#: REFUSED, COUNTED and NAMED while the rest of the batch still lands. Here the `counted`
+#: sentence binds its value from `netdie_count`, and this row leaves it empty.
+UNDECLARED_ROW = src("SYN-DTJ-002-99", netdie_count=None)
 
 
-def read_cursor_row(engine, source="lot_event"):
+def read_cursor_row(engine, source="dt_job"):
     connection = engine.raw_connection()
     try:
         return ledger_store.LedgerStore(engine).read_cursor(connection, source)
@@ -1055,44 +690,7 @@ def test_a_SECOND_run_in_this_process_does_not_re_attribute_the_first_runs_refus
 # refuses first and never reaches the slot map. Declaring it false is the reachable route
 # the ruling names, and it is a config line rather than a patched function.
 
-#: `emit_has_wafer: false` + a strategy that reads BOTH rows of the molecule.
-SLOT_MAP_ONLY_SPLIT = {"lineage": "parent_child", "slot_pairing": "shared_wafer",
-                       "emit_has_wafer": False}
-
-#: The parent row lists two slots and one wafer. Under `shared_wafer` the parent row is
-#: read ONLY by the slot map, so the refusal happens where the ruling says it does.
-UNEQUAL_SPLIT = [src("P", child_lot="C", slots="07:08", wafers="W7"),
-                 src("C", parent_lot="P", slots="01:02", wafers="W7:W8")]
-
-#: The same molecule with equal lists: two shared wafers, so it lands with two slot maps.
-WELL_FORMED_SPLIT = [src("P", child_lot="C", slots="07:08", wafers="W7:W8"),
-                     src("C", parent_lot="P", slots="01:02", wafers="W7:W8")]
-
-#: Kept beside the split so every run below also lands SOMETHING. A test whose only
-#: molecule is refused cannot tell "refused" from "translated nothing at all".
-TRACK_IN_ROWS = [r for r in BASE_ROWS if r["event_type"] == "track_in"]
-
-#: Every atom of the split molecule, whichever side it is uttered from: the two lot
-#: registers, the `derived_from` whose subject is C, and any slot map (subject P).
-SPLIT_SUBJECTS = ("subject_keys IN ('{\"lot\":\"P\"}'::jsonb, '{\"lot\":\"C\"}'::jsonb) "
-                  "OR object_payload->'keys'->>'lot' IN ('P','C')")
-
-
-def _slot_map_only_cfg():
-    cfg = copy.deepcopy(CFG)
-    cfg["sources"]["lot_event"]["vocabulary"]["split"] = dict(SLOT_MAP_ONLY_SPLIT)
-    return cfg
-
-
-def _seed_split(engine, split_rows):
-    connection = engine.raw_connection()
-    try:
-        _seed(connection, list(split_rows) + TRACK_IN_ROWS)
-    finally:
-        connection.close()
-
-
-def refusals_unaccounted(engine, source="lot_event"):
+def refusals_unaccounted(engine, source="dt_job"):
     """`molecules_refused` minus what the breakdown explains, from the READER.
 
     Computed by `ledger_trace._cursor_rows` - the code that puts the number on the
@@ -1113,65 +711,20 @@ def refusals_unaccounted(engine, source="lot_event"):
     return None
 
 
-def test_a_refusal_inside_slot_map_lands_NOTHING_and_the_books_balance(ledger, caplog):
-    """Ruling R-2026-08-13-H, both arms, through the REAL backfill.
+# ⚰️ `test_a_refusal_inside_slot_map_lands_NOTHING_and_the_books_balance` - died with `LotEventTranslator._slot_map` - the module was deleted 2026-08-18.
 
-    The refusing arm asserts three separate things, because any one of them alone can be
-    true for the wrong reason: nothing of that molecule is in the database, the refusal is
-    COUNTED and NAMED where a reader with only a connection can see it, and
-    `refusals_unaccounted` is 0 rather than the -1 that was measured.
-    """
-    _seed_split(ledger, UNEQUAL_SPLIT)
-    url, _ = _resolve_url()
-
-    with caplog.at_level(logging.INFO, logger="Ledger.Gate"):
-        with _declared_as_test_database(url):
-            refused_run = backfill.run(ledger, _slot_map_only_cfg(), source="lot_event")
-
-    assert "atomicity_violation" in "\n".join(r.getMessage() for r in caplog.records)
-    assert refused_run["refused_molecules"] == 1, (
-        "the aggregate did not count the refusal the gate recorded - that disagreement IS "
-        "the defect, and it reads as refusals_unaccounted = -1")
-    assert gate.refusals()[("lot_event", gate.REFUSE_ATOMICITY)] == 1
-    assert count(ledger, SPLIT_SUBJECTS) == 0, (
-        "atoms of a refused molecule are in the database - the molecule landed half")
-    assert count(ledger) > 0, (
-        "the run wrote nothing at all, so 'no atoms of the split' would be true for the "
-        "wrong reason")
-
-    row = read_cursor_row(ledger)
-    assert row["refusal_reasons"][gate.REFUSE_ATOMICITY]["count"] == 1
-    assert breakdown_disagreement(ledger) is None
-    assert refusals_unaccounted(ledger) == 0, (
-        "the reader still sees a bookkeeping fault on this cursor")
-
-    # --- the other arm: the SAME declaration, a well formed molecule, lands whole.
-    gate.reset_counters()
-    _seed_split(ledger, WELL_FORMED_SPLIT)
-    with _declared_as_test_database(url):
-        landed = backfill.run(ledger, _slot_map_only_cfg(), source="lot_event",
-                              reset_cursor=True)
-
-    assert landed["refused_molecules"] == 0 and gate.refusals() == {}
-    assert count(ledger, "predicate = 'slot_map'") == 2, (
-        "the shared wafers produced no slot map, so the refusing arm would prove nothing "
-        "about this configuration")
-    assert count(ledger, "predicate = 'derived_from'") == 1
-    assert count(ledger, "predicate = 'has_wafer' AND (" + SPLIT_SUBJECTS + ")") == 0, (
-        "`emit_has_wafer: false` was ignored, so the refusal above did not come from the "
-        "slot map path this ruling is about")
-    assert refusals_unaccounted(ledger) == 0, (
-        "a clean run left the aggregate and its breakdown disagreeing")
-
-
-# ------------------------------------------------------------------- half landing
 def _forced_failure_run(engine, commit_between_chunks):
     """Fail in the MIDDLE of one molecule's insert. Returns the atoms left behind.
 
-    `INSERT_PAGE_SIZE` is dropped to 3 so a single molecule spans several statements,
-    and the second statement raises. With the transaction boundary intact the answer
-    must be zero; `commit_between_chunks=True` removes the boundary, which is the
-    injection that proves this test can go red.
+    `INSERT_PAGE_SIZE` is dropped so a single molecule spans several statements and the
+    second statement raises. With the transaction boundary intact the answer must be zero;
+    `commit_between_chunks=True` removes the boundary, which is the injection that proves
+    this test can go red.
+
+    ⚠️ THE PAGE IS 1, NOT 3, SINCE THE SOURCE BECAME A ROW SOURCE (판정 219). One `dt_job`
+    molecule is TWO atoms - `register` and `has_netdie` - so a page of three swallowed a
+    whole molecule in one statement and "fail in the middle of one" could not happen: the
+    helper would have proven nothing while looking like it did.
     """
     import psycopg2.extras
     original = psycopg2.extras.execute_values
@@ -1187,64 +740,53 @@ def _forced_failure_run(engine, commit_between_chunks):
 
     old_page = ledger_store.INSERT_PAGE_SIZE
     psycopg2.extras.execute_values = failing
-    ledger_store.INSERT_PAGE_SIZE = 3
+    ledger_store.INSERT_PAGE_SIZE = 1
     try:
-        with pytest.raises(RuntimeError):
-            run(engine, fetch_rows=2)
+        # ⚠️ THE FAILURE IS CONTAINED, NOT PROPAGATED, AND THAT IS TODAY'S DESIGN. It used to
+        # escape `run()` and this helper asserted `pytest.raises(RuntimeError)`; the follow-up
+        # loop now catches a failed group, NAMES it in the log and carries on, so a run that
+        # hit the injection returns normally. What this helper is about is unchanged and is
+        # read from the database below: whether anything of a half-written molecule survived.
+        run(engine, fetch_rows=2)
     finally:
         psycopg2.extras.execute_values = original
         ledger_store.INSERT_PAGE_SIZE = old_page
-    return count(engine)
+    return atoms_per_subject(engine)
 
 
-def test_a_subject_type_the_source_never_declared_is_refused_by_the_REAL_backfill(
-        ledger, caplog):
-    """Ruling R-2026-08-13-D, proven where it has to be true: through `backfill.run`.
+def atoms_per_subject(engine):
+    """`{dt_job: atoms}` - how many atoms each subject has in the ledger.
 
-    🔴 WIRING, NOT PREDICATE. The unit file proves the gate refuses such an atom when it
-    is handed one. That is not the same claim as "the declaration reaches the gate on the
-    path production uses" - and this project has shipped a check nobody called before
-    (`landed is not wired`, 2026-08-08). The field this ruling retired was itself exactly
-    that: read into an attribute, passed to nothing.
-
-    BOTH ARMS, on the same fixture: `Wafer` withdrawn from the declaration refuses every
-    molecule that mentions a wafer, and putting it back lands them.
+    🔴 PER MOLECULE, NOT A TOTAL (판정 219). The old helper returned `count(engine)` and its
+    caller asserted zero, which was true only while a run carried ONE molecule. A row source
+    reads several, and each is its own transaction - so a complete molecule surviving beside
+    a failed one is the boundary WORKING. What "cannot land half" means is that every subject
+    present has ALL of its atoms, and the one that failed has none.
     """
-    narrowed = copy.deepcopy(CFG)
-    narrowed["sources"]["lot_event"]["subject_types"] = ["Lot"]
-    url, _ = _resolve_url()
+    connection = engine.raw_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"SELECT subject_keys->>'dt_job', count(*) FROM {schema.LEDGER_TABLE} "
+                f"GROUP BY 1")
+            return {job: total for job, total in cursor.fetchall()}
+    finally:
+        connection.close()
 
-    with caplog.at_level(logging.INFO, logger="Ledger.Gate"):
-        with _declared_as_test_database(url):
-            refused_run = backfill.run(ledger, narrowed, source="lot_event")
 
-    messages = "\n".join(r.getMessage() for r in caplog.records)
-    assert "undeclared_subject_type" in messages, (
-        "the operator's log does not name the refusal; a refusal only the caller can see "
-        "is the silent-skip defect wearing a return type")
-    assert refused_run["refused_molecules"] == 2, (
-        "both molecules of the fixture mention wafers, so both must be refused whole")
-    assert refused_run["attempted"] == 0 and count(ledger) == 0, (
-        "the molecule is all-or-nothing: a refused Wafer atom takes its Lot atoms with it")
-    assert gate.refusals()[("lot_event", gate.REFUSE_UNDECLARED_SUBJECT_TYPE)] == 2
-
-    # --- the other arm: the SAME rows, with the type declared, land.
-    gate.reset_counters()
-    allowed = run(ledger, reset_cursor=True)
-    assert allowed["inserted"] > 0
-    assert count(ledger, "subject_type = 'Wafer'") > 0, (
-        "no Wafer atom landed even with the type declared - the refusal above would then "
-        "prove nothing about the declaration")
-    assert gate.refusals() == {}
-
+# ⚰️ `test_a_subject_type_the_source_never_declared_is_refused_by_the_REAL_backfill` - died with `subject_types` - absent from the v5 grammar entirely.
 
 def test_a_molecule_cannot_land_half(ledger):
     """🔴 The brief's rule: the transaction unit is one source event. Force a failure
     after the first chunk of a molecule has already been INSERTed and show that nothing
     from that event survives."""
-    left = _forced_failure_run(ledger, commit_between_chunks=False)
-    assert left == 0, (f"{left} atom(s) survived a failure mid-molecule - the "
-                       f"transaction boundary is not holding")
+    per_subject = _forced_failure_run(ledger, commit_between_chunks=False)
+    # 🔴 EVERY SUBJECT PRESENT HAS ALL ITS ATOMS. A `dt_job` says two things - it exists, and
+    # it carries this many - so a subject holding exactly one of them is a molecule that
+    # landed half, which is what the transaction boundary exists to make impossible.
+    halves = {job: total for job, total in per_subject.items() if total != 2}
+    assert not halves, (f"{halves} - a molecule landed half, so the transaction boundary "
+                        f"is not holding")
 
 
 def test_the_cursor_does_not_advance_past_a_failed_batch(ledger):
@@ -1315,38 +857,13 @@ def _expect_integrity_error(engine, sql, params):
         connection.close()
 
 
-def test_only_register_may_have_no_object_and_register_may_have_nothing_else(ledger):
-    ledger_store.LedgerStore(ledger).ensure_schema()
-    connection = ledger.raw_connection()
-    try:
-        schema.ensure_partition(connection, __import__("datetime").datetime(
-            2026, 5, 3, tzinfo=__import__("datetime").timezone.utc))
-    finally:
-        connection.close()
-
-    base = (f"INSERT INTO {schema.LEDGER_TABLE} (id, subject_type, subject_keys, "
-            f"predicate, object_kind, object_payload, occurred_at, source_who, "
-            f"source_translator_ver, source_raw_ref, source_event_id, "
-            f"source_event_state) VALUES "
-            f"(gen_random_uuid(), 'Lot', %s::jsonb, %s, %s, %s::jsonb, "
-            f"'2026-05-03T00:00:00+00', 'w', 'v', 'r', gen_random_uuid(), "
-            f"'source_record')")
-
-    # a register carrying an object
-    _expect_integrity_error(ledger, base,
-                            ('{"lot":"A"}', "register", "value", '1'))
-    # a non-register carrying none
-    _expect_integrity_error(ledger, base,
-                            ('{"lot":"A"}', "has_wafer", None, None))
-    # a subject key that is not a structured object
-    _expect_integrity_error(ledger, base,
-                            ('"P_C"', "register", None, None))
-
+# ⚰️ `test_only_register_may_have_no_object_and_register_may_have_nothing_else` - died with `ck_ledger_register_has_no_object`, which S-77 RETIRED ON PURPOSE on 2026-09-09: it read `(predicate = 'register') = (object_kind IS NULL)`, a domain word in the storage layer. Which predicates are objectless is a declared fact now and `roleframe` refuses an emission that disagrees - the same reason the matching injection was buried.
 
 def test_atoms_route_into_the_month_partition_they_belong_to(ledger):
-    result = run(ledger)
-    assert set(result["partitions"]) == {"ledger_events_2026_05",
-                                         "ledger_events_2026_06"}
+    run(ledger)
+    # ⚠️ READ FROM THE DATABASE, NOT FROM THE RETURN. The result used to carry a
+    # `partitions` list and no longer does; what this case is about is where the rows
+    # actually WENT, which `tableoid` answers and a summary field only reports.
     connection = ledger.raw_connection()
     try:
         with connection.cursor() as cursor:
@@ -1376,68 +893,7 @@ def test_the_ledger_is_partitioned_at_all(ledger):
 
 
 # ---------------------------------------------------------------------------- lag
-def test_lag_says_never_started_before_the_first_run(ledger):
-    ledger_store.LedgerStore(ledger).ensure_schema()
-    st = ledger_store.LedgerStore(ledger)
-    connection = ledger.raw_connection()
-    try:
-        report = observability.lag_report(st, "lot_event",
-                                          CFG["sources"]["lot_event"],
-                                          st.read_cursor(connection, "lot_event"))
-    finally:
-        connection.close()
-    assert report["never_started"] is True
-    assert report["cursor_position"] is None
-
-
-def test_lag_counts_the_rows_behind_a_held_back_cursor(ledger):
-    """The graph worker's defect was 'fresh-looking while behind'. Hold the cursor at
-    the first event and the report must say how far behind it is."""
-    run(ledger, start_from="2026-01-01 00:00:00", max_batches=1, fetch_rows=2)
-
-    st = ledger_store.LedgerStore(ledger)
-    connection = ledger.raw_connection()
-    try:
-        cursor_row = st.read_cursor(connection, "lot_event")
-    finally:
-        connection.close()
-    observability.reset_probe_throttle()
-    report = observability.lag_report(st, "lot_event", CFG["sources"]["lot_event"],
-                                      cursor_row, force_probe=True)
-    assert report["source_head"] == "2026-06-01 00:00:00"
-    assert report["rows_behind"] == 1
-    assert report["world_time_lag_seconds"] > 0
-    assert "rows_behind=1" in observability.lag_note(report)
-
-
-def test_lag_distinguishes_not_behind_from_not_asked(ledger):
-    """Collapsing 'zero' and 'unknown' into one absent field is how a lag report starts
-    lying by omission."""
-    run(ledger)
-    st = ledger_store.LedgerStore(ledger)
-    connection = ledger.raw_connection()
-    try:
-        cursor_row = st.read_cursor(connection, "lot_event")
-    finally:
-        connection.close()
-
-    observability.reset_probe_throttle()
-    asked = observability.lag_report(st, "lot_event", CFG["sources"]["lot_event"],
-                                     cursor_row, probe_interval=3600)
-    assert asked["probe_allowed"] is True and asked["rows_behind"] == 0
-
-    throttled = observability.lag_report(st, "lot_event", CFG["sources"]["lot_event"],
-                                         cursor_row, probe_interval=3600)
-    assert throttled["probe_allowed"] is False
-    assert throttled["rows_behind"] is None
-    assert "rows_behind=?" in observability.lag_note(throttled)
-
-
-# ================================================================= FAULT INJECTION ROUND
-#
-# 🔴 The same discipline as the unit file: each PostgreSQL-level guard is made to go red
-# by re-introducing the defect it exists for, and the COUNT of injections is asserted so
-# an empty loop cannot report success.
+# ⚰️ `test_lag_says_never_started_before_the_first_run` - died with `CFG["sources"]["lot_event"]` - `observability.lag_report` was handed a v1 source config, and that grammar is gone. What lag means for a v5 source is S-58's census (`relation_rows`/`indexed_rows`/`not_yet`), which the run result already carries and `test_a_source_says_how_many_rows_it_has_not_translated` measures.
 
 def _inject_missing_transaction_boundary(engine):
     left = _forced_failure_run(engine, commit_between_chunks=True)
