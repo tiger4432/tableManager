@@ -29394,3 +29394,70 @@ test_trace_fixture:303   loadable = display_columns or column_types   <- 셋째 
    지금은 그렇게 돌립니다(위 5절이 그 목록입니다)
 ```
 > 📌 **[09-10] 이 채널의 미답 질문: «없음».**
+
+---
+
+# [09-10] S-84 착수 전 전수 — 코드가 «자기 변경 자리»를 적어 뒀고, 그 옆에 «덫이 둘» 있습니다
+
+> 판정 12:45. 지시대로 CODE_MAP(§5-H `setup_bundle` / `predicate_claim` 절) → grep 순서로 봤습니다.
+> **코드는 아직 한 줄도 안 고쳤습니다.**
+
+## 1. 코드가 이미 이 라운드를 예고해 두었습니다
+```
+setup_bundle.py:148~154
+   「⚠️ THE WIDER SET STAYS … When S-84 lands, «this line» is the change.」
+   EMITTABLE_VALUE_TYPES = frozenset({"number"})        <- 넓힐 자리
+문법/폼   VALUE_TYPES = {number, string, boolean, timestamp} · DEFAULT_VALUE_TYPE = "number"
+          config_authoring:569 가 EMITTABLE_VALUE_TYPES 를 폼에 «권합니다»
+못 박은 곳 setup_bundle.py:542
+          _OBJECT_VALUE_ROLE_KINDS = {"value": "quantity", "event_ref": "identity"}
+          :605~607 이 그것을 Role 로 씁니다 -> 값 객체는 «무조건 quantity»
+검증기    roleframe.py:1400  quantity Role 은 «JSON number» 가 아니면 거절 -> 그 소스 «전부 거절»
+```
+
+## 2. ✅ 지시의 조건절이 «닫혔습니다» — 저장은 구멍이 아닙니다
+```
+「claim 의 value 칸이 이미 JSON 이면 타입 보존, 아니면 그 자리가 구멍」
+실측: ledger_events.object_payload = «jsonb»
+⇒ 저장은 네 타입을 그대로 «보존»합니다. 이 라운드에 스키마 변경은 «필요 없습니다»
+```
+
+## 3. 🔴 덫 ① — string 을 «symbolic» 으로 매기면 «모든 문자열이 거절»됩니다
+```
+roleframe.py:1408~1419  (그 자리 주석이 스스로 예고해 둔 것입니다)
+   if kind in {identity, order, attribute, symbolic}: _scalar(value, path)
+       if kind == "symbolic" and value not in role.allowed_values:  -> 거절
+   주석: 「UNREACHABLE TWICE OVER … 첫 조건이 도달 가능해지는데 둘째가 빈 채면
+         모든 symbolic 값을 거절한다. predicate_claim 은 symbolic 을 «안 낸다»,
+         그리고 allowed_values 를 «아무도 안 쓴다»」
+⇒ S-84 가 string -> symbolic 으로 매기는 «바로 그날» 첫 조건이 도달 가능해지고,
+   allowed_values 는 여전히 빈 채입니다. 즉 «넓히려다 전부 거절»이 됩니다
+✅ 안전한 자리: `attribute` (같은 가지, 추가 조건 없음). `_scalar` 는 bool·수·문자열을 다 받습니다
+```
+
+## 4. 🔴 덫 ② — timestamp 를 «time» 으로 매기면 «문자열 시각»이 거절됩니다
+```
+roleframe.py:1393  time Role 은 «tz-aware datetime» 이어야 합니다
+소스 컬럼에서 온 시각은 대개 «문자열»입니다(dt_log 의 event_time 이 그렇습니다)
+⇒ 매기는 것만으로는 안 되고 «파싱/캐스팅이 어디서 일어나는지»가 같이 정해져야 합니다
+```
+
+## 5. 그래서 제가 여쭙는 것은 «매핑 한 줄»입니다
+```
+number    -> quantity     (그대로, 기존 원자 무변)
+string    -> «attribute»  (symbolic 은 덫 ①. 추천)
+boolean   -> «attribute»  (_scalar 가 bool 을 받습니다)
+timestamp -> «time» 이면 덫 ②(캐스팅 자리를 같이 정해야 함)
+             / «attribute» 면 안전하지만 시각이 «문자열로» 남습니다
+```
+🔴 저는 **string·boolean → `attribute`, timestamp 는 이번 라운드에서 «빼고»(EMITTABLE 에 안 넣음)**
+   를 추천합니다 — 셋을 열면 오늘 막힌 소스가 열리고, 시각은 캐스팅 자리를 정하는 «별 줄»이
+   되기 때문입니다. 다만 판정 178 이 「넓힘」이라 하셨으니 «넷 다»를 원하시면 그대로 하겠습니다.
+
+## 6. 안 한 것 · 참고
+```
+코드 «0줄». 이건 전수와 판정 요청입니다
+출하 샘플의 value_type 은 «한 곳»(number) — 즉 넓혀도 기존 선언은 안 움직입니다
+지문 이동도 「value_type 을 «쓰는» 소스만」이라는 게이트와 맞습니다(오늘 쓰는 소스가 없으므로 0)
+```
+> 📌 **[09-10] 이 채널의 미답 질문: 매핑 한 줄 (5절) — 특히 timestamp 를 이번에 넣나.**
