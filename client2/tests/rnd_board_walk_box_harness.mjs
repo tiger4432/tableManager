@@ -26,6 +26,7 @@ import { scoreMutants } from './lib/mutation_scorer.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BOARD_DIR = path.join(HERE, '..', 'src', 'rnd_board');
+const WALK_DIR = path.join(HERE, '..', 'src', 'walk');
 const LF = String.fromCharCode(10);
 const CRLF = String.fromCharCode(13, 10);
 const dataUrl = (src) => `data:text/javascript;base64,${Buffer.from(src, 'utf8').toString('base64')}`;
@@ -84,13 +85,21 @@ async function loadModules(mutate = {}) {
   //    타입 그래프를 쓰려고 `./api.js` 를 import 하는데, 그 줄이 재배선 목록에 없으면
   //    「Failed to resolve module specifier」로 «하니스가 통째로» 죽습니다 -- 단언 하나가
   //    아니라 전부입니다. main.js 머리가 그 경고를 적어 둔 자리이고, 실제로 밟았습니다.
+  // 🔴 C-70. `walk/derive.js` 도 재배선 목록에 «있어야» 합니다 -- 걷기 상자가 구획과 컬럼을
+  //    거기서 받으므로, 빠지면 위 경고 그대로 「Failed to resolve module specifier」로 하니스가
+  //    통째로 죽습니다. 그리고 그 URL 을 «단언에도» 그대로 씁니다: 화면이 부르는 함수와 채점이
+  //    부르는 함수가 «같은 모듈 인스턴스»여야 「같은 함수에서 나온다」가 검사가 됩니다.
+  const deriveUrl = dataUrl(readFileSync(path.join(WALK_DIR, 'derive.js'), 'utf8')
+    .replace(/\r\n/g, '\n').split(CRLF).join(LF));
   const apiUrl = dataUrl(read('api.js'));
   const boxUrl = dataUrl(read('walk_box_panel.js')
     .split("'./panel.js'").join(`'${panelUrl}'`)
     .split("'./marking_store.js'").join(`'${storeUrl}'`)
     .split("'./table_part.js'").join(`'${tableUrl}'`)
-    .split("'./api.js'").join(`'${apiUrl}'`));
-  return { store: await import(storeUrl), box: await import(boxUrl), api: await import(apiUrl) };
+    .split("'./api.js'").join(`'${apiUrl}'`)
+    .split("'../walk/derive.js'").join(`'${deriveUrl}'`));
+  return { store: await import(storeUrl), box: await import(boxUrl), api: await import(apiUrl),
+    derive: await import(deriveUrl) };
 }
 
 /** A document just large enough for selects, inputs and buttons. No jsdom, no globals. */
@@ -216,6 +225,62 @@ async function suite(mods) {
   eq('R2 clicking a row marks that node', markings.count('marking:2'), 1);
   eq('R3 under the name this instance declared it writes',
     markings.signOf('marking:2', NODES[0].id), SIGN.CASE);
+  console.log(`${LF}-- P. C-70: sections AND columns come from the walk PAGE's function --`);
+  {
+    const { sectionsByType, sectionHeading, tableColumns, COLUMNS } = mods.derive;
+    // 🔴 MIXED TYPES ON PURPOSE, AND THAT IS THE DISCRIMINANT. This box sends no `collect`, so
+    //    the server default returns everything the walk reached. A flat table naming its own
+    //    three columns passes a single-type fixture and is WRONG here -- the declared key names
+    //    differ per type, so `wafer@1` under `die@1`'s columns would draw empty cells and raise
+    //    nothing. The old fixture was two `die@1` rows, which could not tell the two apart.
+    const MIXED = [
+      { id: 'n:1', type: 'die@1', label: 'D-1',
+        keys: { mat_id: 'M-1', x: 1, y: 2, mat_type: 'Wafer' } },
+      { id: 'n:2', type: 'die@1', label: 'D-2',
+        keys: { mat_id: 'M-2', x: 3, y: 4, mat_type: 'Wafer' } },
+      { id: 'n:3', type: 'wafer@1', label: 'W-1', keys: { wafer: 'SYN-1' } },
+    ];
+    const doc2 = makeDoc();
+    const host2 = doc2.createElement('div');
+    const panel2 = new WalkBoxPanel(host2, {
+      doc: doc2, markings: new MarkingStore(), reads: 'marking:1', writes: 'marking:2',
+      loadDeclaration: () => Promise.resolve(DECL),
+      walk: () => Promise.resolve({ ok: true, nodes: MIXED }),
+    });
+    panel2.mount();
+    await settle();
+    panel2.setType('die@1');
+    await panel2.run();
+    await settle();
+
+    const titles = walkAll(host2).filter((e) => (e.className || '').includes('rb-part-title'))
+      .map((e) => e.textContent);
+    eq('P1 one section head per type, worded by the shared function, in the walk\'s order',
+      titles.join(' | '),
+      [...sectionsByType(MIXED)].map(([t, n]) => sectionHeading(t, n.length)).join(' | '));
+
+    // 🔴 THE GATE. Not 「the headers look right」 but 「the headers ARE that function's answer」.
+    //    A second author here would have to reproduce the order too, and this compares both.
+    const headLabels = walkAll(host2)
+      .filter((e) => (e.className || '').includes('rb-table-cell--head'))
+      .map((e) => e.textContent);
+    eq('P2 every column label is the walk page function\'s answer, in its order',
+      headLabels.join(','),
+      [...sectionsByType(MIXED)].map(([t]) => tableColumns(DECL.entities, t, [],
+        COLUMNS.FOR_PICKING).map((c) => c.name).join(',')).join(','));
+
+    const rows2 = walkAll(host2).filter((e) => (e.className || '').includes('rb-table-row'));
+    eq('P3 sectioning neither drops a node nor invents one', rows2.length, MIXED.length);
+    const cellsOf = (row) => row.children.map((c) => c.textContent);
+    eq('P4 a declared key reaches its own cell', cellsOf(rows2[0]).join('|'), 'M-1|1|2|Wafer|D-1');
+    // 🔴 THIS ONE FAILS IF THE COLUMNS ARE HARD-CODED ANYWHERE. Under `label · type · id` the
+    //    wafer row reads 「W-1|wafer@1|n:3」; under its OWN declaration it reads its key then
+    //    its label. Same rows, same count, different truth.
+    eq('P5 a row of another type is drawn under THAT type\'s declared keys',
+      cellsOf(rows2[2]).join('|'), 'SYN-1|W-1');
+    eq('P6 clicking a row in a later section still marks THAT node',
+      (() => { rows2[2].click({}); return panel2.markings.signOf('marking:2', 'n:3'); })(), SIGN.CASE);
+  }
 
   console.log(`${LF}-- S. the seed id is base64URL, and the server requires it --`);
   {
@@ -501,6 +566,18 @@ const MUTANTS = [
     from: "      const nodes = Array.isArray(body.nodes) ? body.nodes : [];",
     to: "      const nodes = (body.nodes || []).map((n) => ({ id: n.id, type: n.type,"
         + " label: n.label, keys: n.keys || null, depth: n.depth }));" },
+  // 🔴 C-70. The screen naming its own columns is the defect this round closed, so it is the
+  //    mutant. Under a hard-coded list the ROW COUNT is unchanged and nothing throws -- P2 and
+  //    P5 are what tell a screen following the declaration from one repeating it.
+  { name: 'the-picking-list-names-its-own-columns', catches: ['P2', 'P5'],
+    from: "      const cols = tableColumns(entities, type, [], COLUMNS.FOR_PICKING);",
+    to: "      const cols = [{ name: 'label', kind: 'label' }, { name: 'type', kind: 'type' },"
+        + " { name: 'id', kind: 'id' }];" },
+  // 🔴 And the other half: without sections there is no per-type place to ask the declaration
+  //    from, so a flat list silently draws every type under the SEED type's keys.
+  { name: 'the-result-is-not-sectioned-by-type', catches: ['P1', 'P5'],
+    from: "    const sections = sectionsByType(rows);",
+    to: "    const sections = new Map(rows.length ? [[this.nodeType, rows]] : []);" },
   // ① the gate the order names: a fixed four-field form.
   { name: 'the-key-form-is-four-fixed-fields', catches: ['A2', 'A3', 'A4'],
     from: "    return (found && found.keys) || [];",

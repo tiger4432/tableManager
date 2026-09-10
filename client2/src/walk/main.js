@@ -32,7 +32,7 @@ import { fetchDeclaration, createWalkBoxWalk, pathsBetween, fetchKeyValues }
 import { ensureWalkStyles } from './styles.js';
 import {
   bareName, followFromRoute, followChoices, keepWalkableRoutes, tableColumns, cellSource,
-  cutBudgets,
+  cutBudgets, sectionsByType, sectionHeading,
 } from './derive.js';
 
 /** 서버가 받는 값 그대로. 화면이 «자기 이름»을 만들지 않습니다. */
@@ -385,17 +385,13 @@ export function boot(doc, host, deps) {
       qualsByNode.set(e.target, at);
     }
 
-    // 타입별 구획. 서버 순서를 유지하려고 «처음 나온 순서»로 담습니다.
-    const sections = new Map();
-    for (const n of shown) {
-      const t = n.type || '';
-      if (!sections.has(t)) sections.set(t, []);
-      sections.get(t).push(n);
-    }
+    // 🔴 C-70. 구획도 «derive.js» 가 정합니다 — 걷기 검색창이 같은 함수를 부릅니다. 여기
+    //    여섯 줄로 다시 적으면 두 표가 구획에서 갈라지고, 그 갈라짐은 오류를 안 냅니다.
+    const sections = sectionsByType(shown);
 
     for (const [type, rows] of sections) {
       const sec = el(doc, 'div', 'wk-sec');
-      sec.append(el(doc, 'div', 'wk-sechead', `${type || '타입 없음'} · ${rows.length}`));
+      sec.append(el(doc, 'div', 'wk-sechead', sectionHeading(type, rows.length)));
 
       // 컬럼은 «선언 + 온 것»에서. 규칙과 사유는 `derive.js` 에 있고 하니스가 그 함수를 잽니다.
       const qualNames = [];

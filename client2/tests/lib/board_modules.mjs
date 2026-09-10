@@ -58,7 +58,13 @@ export async function loadBoardModules(mutate = {}) {
     .replaceAll("'./panel.js'", `'${panelUrl}'`)
     .replaceAll("'./marking_store.js'", `'${storeUrl}'`)
     .replaceAll("'./table_part.js'", `'${tableUrl}'`)
-    .replaceAll("'./api.js'", `'${apiUrl}'`));
+    .replaceAll("'./api.js'", `'${apiUrl}'`)
+    // 🔴 C-70. `walk_box_panel.js` now takes its columns and its sectioning from the WALK
+    //    PAGE's `derive.js`, so that specifier has to be rewired too. It is not under mutation
+    //    here, so it points at the real file. Forgetting it is not one red assertion: the
+    //    import throws before any check runs, and the runner reports 「it used to assert and
+    //    now measures nothing」 — which is exactly how this landed on two harnesses at once.
+    .replaceAll("'../walk/derive.js'", `'${srcUrl('walk/derive.js')}'`));
   const headUrl = partUrl('head_summary_panel.js');
   const compUrl = partUrl('composition_panel.js');
   const candUrl = partUrl('candidate_list_panel.js');

@@ -36,6 +36,10 @@ import { Panel } from './panel.js';
 import { SIGN } from './marking_store.js';
 import { TablePart } from './table_part.js';
 import { typeGraph, pathsBetween } from './api.js';
+// 🔴 C-70. 구획과 컬럼을 «걷기 페이지와 같은 함수»에서 받습니다. 이 파일이 컬럼 셋을 자기
+//    소스에 적고 있던 동안 두 걷기 표는 «갈라질 수» 있었고, 갈라져도 오류가 안 납니다.
+import { sectionsByType, sectionHeading, tableColumns, cellSource, COLUMNS }
+  from '../walk/derive.js';
 
 /** `wafer@1` -> `wafer`. 선언은 버전을 달고 타입 그래프는 안 답니다. */
 function bareTypeName(value) {
@@ -557,24 +561,44 @@ export class WalkBoxPanel extends Panel {
     if (excluded !== null && excluded !== undefined) {
       box.appendChild(this._note(`구간 밖 ${excluded}`, 'is-interval'));
     }
-    const tableHost = doc.createElement('div');
-    box.appendChild(tableHost);
-    const table = new TablePart(tableHost, {
-      doc,
-      markings: this.markings,
-      reads: this.reads,
-      writes: this.writes,
-      rowKey: 'id',
-      emptyText: this._emptyText(),
-      columns: [
-        { key: 'label', label: 'label', width: 'minmax(0, 1fr)' },
-        { key: 'type', label: 'type', width: '8rem', kind: 'mono' },
-        { key: 'id', label: 'id', width: 'minmax(0, 1.4fr)', kind: 'mono' },
-      ],
-      rows: rows.map((n) => ({ id: n.id, type: n.type, label: n.label })),
-      onRowClick: (id) => { this.mark(id, SIGN.CASE, 'replace'); this.render(); },
-    });
-    table.mount();
+    // 🔴 C-70. 걷기 결과는 «한 타입이 아닙니다» — 이 부품은 `collect` 를 안 싣고 서버 기본값은
+    //    「닿은 것 전부」입니다. 타입마다 선언된 키가 다르므로 «구획»이 컬럼을 선언에서 가져올
+    //    수 있게 하는 자리이고, 구획도 컬럼도 `walk/derive.js` 가 정합니다. 좁은 것은 그대로
+    //    입니다 — 프리셋이 고르는 것은 «폭»이지 «정하는 쪽»이 아닙니다.
+    const entities = (this.declaration && this.declaration.entities) || [];
+    const sections = sectionsByType(rows);
+    // 부재는 여전히 «표 하나»가 말합니다. 구획이 없을 때 문장을 잃으면 「걷는 중」·「거절」·
+    //    「걸었는데 없음」 셋이 같은 빈 화면이 됩니다.
+    if (!sections.size) {
+      const emptyHost = doc.createElement('div');
+      box.appendChild(emptyHost);
+      new TablePart(emptyHost, {
+        doc,
+        markings: this.markings,
+        reads: this.reads,
+        writes: this.writes,
+        columns: tableColumns(entities, this.nodeType, [], COLUMNS.FOR_PICKING).map(partColumn),
+        rows: [],
+        emptyText: this._emptyText(),
+      }).mount();
+      return box;
+    }
+    for (const [type, nodes] of sections) {
+      const host = doc.createElement('div');
+      box.appendChild(host);
+      const cols = tableColumns(entities, type, [], COLUMNS.FOR_PICKING);
+      new TablePart(host, {
+        doc,
+        markings: this.markings,
+        reads: this.reads,
+        writes: this.writes,
+        rowKey: 'id',
+        title: sectionHeading(type, nodes.length),
+        columns: cols.map(partColumn),
+        rows: nodes.map((node) => partRow(cols, node)),
+        onRowClick: (id) => { this.mark(id, SIGN.CASE, 'replace'); this.render(); },
+      }).mount();
+    }
     return box;
   }
 
@@ -590,4 +614,34 @@ export class WalkBoxPanel extends Panel {
     // ① 아직 안 골랐다 / 안 걸었다.
     return this.nodeType ? '「걷기」를 누르면 결과가 여기 나옵니다' : '타입을 고르고 걸으십시오';
   }
+}
+
+/**
+ * `derive.js` 의 컬럼 서술자를 `TablePart` 의 컬럼 «표기»로 옮깁니다.
+ *
+ * 🔴 옮기는 것뿐입니다 — «무엇이 서는지»도 «어떤 순서인지»도 여기서 정하지 않습니다. 그 둘을
+ *    여기서 만지면 이 파일이 다시 두 번째 저자가 됩니다.
+ * ⚠️ `key` 는 서술자에서 «유도»합니다. 손으로 적으면 타입마다 다른 키 이름과 어긋납니다.
+ */
+function columnId(col) {
+  return col.key ? `${col.kind}:${col.key}` : col.kind;
+}
+
+function partColumn(col) {
+  return {
+    key: columnId(col),
+    label: col.name,
+    width: col.kind === 'label' ? 'minmax(0, 1fr)' : 'minmax(0, 0.7fr)',
+  };
+}
+
+/**
+ * 🔴 값도 `derive.js` 가 읽습니다(`cellSource`). 수식어는 «안 묻습니다» — 좁은 프리셋에
+ *    수식어 컬럼이 없으므로 물을 것이 없고, 여기서 지어내면 그것이 세 번째 저자입니다.
+ * ⚠️ `id` 는 «컬럼이 아니지만» 행에 실립니다 — `TablePart` 의 `rowKey` 가 그것으로 마킹합니다.
+ */
+function partRow(cols, node) {
+  const row = { id: node.id };
+  for (const col of cols) row[columnId(col)] = cellSource(col, node, {});
+  return row;
 }

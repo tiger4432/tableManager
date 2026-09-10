@@ -44,6 +44,40 @@ export function followChoices(fromStartType, declaredNames, selected) {
 }
 
 /**
+ * WHICH TABLE IS ASKING — and it is a WIDTH, not a second author.
+ *
+ * 🔴 `FOR_PICKING` carries its own reason in its name: that list is PICKED FROM, not read. The
+ *    walk box runs a walk and you click a row to mark it; depth, qualifiers, attributes and the
+ *    long id are for the page you read, and putting them in a picking list buys nothing.
+ * 🔴 What it must NOT do is decide the columns itself. It named `label · type · id` in its own
+ *    source until 2026-09-10, and the two walk tables were then free to drift apart with no
+ *    error to say so — a declared key reached one screen and not the other (기준 ④).
+ */
+export const COLUMNS = Object.freeze({ FULL: 'full', FOR_PICKING: 'for_picking' });
+
+/**
+ * 타입별 구획 — 「처음 나온 순서」로. 서버가 실어 온 순서가 답의 일부이므로 정렬하지 않는다.
+ *
+ * 🔴 두 걷기 표가 «이 함수 하나»를 부른다. 걷기 결과는 «한 타입이 아니고»(collect 를 안 실으면
+ *    서버 기본값이 「닿은 것 전부」다) 타입마다 선언된 키가 다르므로, 구획이 없으면 컬럼을
+ *    선언에서 가져올 자리 자체가 없다. 그래서 이것과 `tableColumns` 는 «한 짝»이다.
+ */
+export function sectionsByType(nodes) {
+  const sections = new Map();
+  for (const node of nodes || []) {
+    const type = (node && node.type) || '';
+    if (!sections.has(type)) sections.set(type, []);
+    sections.get(type).push(node);
+  }
+  return sections;
+}
+
+/** 구획 머리 «한 줄» — 타입과 수. 문장이 아니다(설명 문구 금지 상설). */
+export function sectionHeading(type, count) {
+  return `${type || '타입 없음'} · ${count}`;
+}
+
+/**
  * The result table's columns for one type section — each one saying WHERE its value comes from.
  *
  * 🔴 NO KEY NAME IS WRITTEN HERE OR ANYWHERE IN THIS CLIENT. The identity columns come from the
@@ -69,14 +103,19 @@ export function followChoices(fromStartType, declaredNames, selected) {
  *    paragraph said the opposite until today: it was true when written and the server caught up,
  *    which is why the slot was built before anything could fill it.
  */
-export function tableColumns(entities, type, qualifierNames) {
+export function tableColumns(entities, type, qualifierNames, preset = COLUMNS.FULL) {
   const bare = bareName(type);
   const found = (entities || []).find((e) => e && bareName(e.type) === bare);
   const declared = (found && found.keys) || [];
   const attributes = (found && found.attributes) || [];
+  const identity = declared.map((key) => ({ name: key, kind: 'key', key }));
+  // 🔴 THE PRESET CHOOSES THE WIDTH. IT NEVER CHOOSES THE AUTHOR. Both presets read the same
+  //    declaration for the same type, so a key added to the declaration reaches BOTH screens
+  //    with no edit — which is the whole reason the narrow list stopped naming its own three.
+  if (preset === COLUMNS.FOR_PICKING) return [...identity, { name: '라벨', kind: 'label' }];
   return [
     { name: '깊이', kind: 'depth' },
-    ...declared.map((key) => ({ name: key, kind: 'key', key })),
+    ...identity,
     ...(qualifierNames || []).map((key) => ({ name: key, kind: 'qualifier', key })),
     ...attributes.map((key) => ({ name: key, kind: 'attribute', key })),
     // 🔴 THE DISAGREEMENT COLUMN EXISTS WHEN ATTRIBUTES ARE DECLARED, NOT WHEN ONE IS FOUND.

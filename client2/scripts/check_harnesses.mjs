@@ -1274,7 +1274,7 @@ const FLOORS = new Map([
   // a value carrying markup does not come back out as markup, and the backlog has a ceiling
   ['escaping_harness.mjs', 56],
   // clicking a derived route fills follow, and a later-hop predicate stays visible
-  ['walk_route_fill_harness.mjs', 45],
+  ['walk_route_fill_harness.mjs', 54],
   // New 2026-09-08 with C-40 ② (the declaration form's three attribute seats). Floor is
   // the count it reports on the commit that introduces it -- there is no earlier tree to
   // measure it against. 🔴 IT READS THE SHIPPED SKELETON AND THE SHIPPED SAMPLE, so a seat
@@ -1348,7 +1348,7 @@ const FLOORS = new Map([
   // the board part: reach
   ['rnd_board_reach_harness.mjs', 63],
   // the board part: the walk box
-  ['rnd_board_walk_box_harness.mjs', 62],
+  ['rnd_board_walk_box_harness.mjs', 68],
   // the board part: the walk itself
   ['rnd_board_walk_harness.mjs', 32],
   // 🔴 the walk REQUEST, not the walk return. `createWalkBoxWalk` accepted `spec.hops` and
