@@ -102,3 +102,59 @@ def test_the_launcher_hands_the_selection_to_the_supervisor():
     src = _io.open(_os.path.join(root, "run_decoupled_app.py"), encoding="utf-8").read()
 
     assert "supervisor.console_names = args.console_names" in src
+
+
+# ── ② each child in its own window (S-138 ②, 판정 257) ───────────────────────
+
+def test_the_flag_parses_and_defaults_off():
+    assert parse_launcher_args(["--own-window"]).own_window
+    assert not parse_launcher_args(["--server-only"]).own_window
+    assert parse_launcher_args(["--own_window"]).is_refusal, "underscore is still a typo"
+
+
+def test_the_window_is_titled_with_the_child_name():
+    """게이트: 창 제목 = 자식 이름. `STARTUPINFO` 가 `lpTitle` 을 안 내주므로 `cmd /c title`
+    이 그 이름을 붙이는 «유일한» 자리다."""
+    import inspect
+
+    body = inspect.getsource(Supervisor._spawn_in_own_window)
+
+    assert '"title", title' in body
+    assert "spec.name" in body
+    assert "CREATE_NEW_CONSOLE" in body
+
+
+def test_the_pipe_is_given_up_and_that_is_the_whole_trade():
+    """🔴 프로세스의 stdout 은 «하나»다. 자기 창에 쓰면 감독 파이프로는 안 온다 - 그래서
+    이 갈래는 `stdout=PIPE` 를 «안 쓴다». 둘 다 되는 척하면 로그가 조용히 빈다."""
+    import inspect
+
+    body = inspect.getsource(Supervisor._spawn_in_own_window)
+
+    assert "subprocess.PIPE" not in body
+
+
+def test_the_ordinary_spawn_is_untouched_when_the_flag_is_off():
+    """⚠️ 안 켜면 오늘 그대로 — 파이프도 파일도 그대로다."""
+    import inspect
+
+    body = inspect.getsource(Supervisor._default_spawn)
+
+    assert 'getattr(self, "own_window", False)' in body
+    assert 'os.name == "nt"' in body, "Windows 전용임이 코드에 있어야 한다"
+    assert "stdout=subprocess.PIPE" in body, "기본 갈래는 여전히 파이프"
+
+
+def test_the_launcher_names_which_files_go_empty_and_why():
+    """🔴 판정 257 의 정정된 게이트. 빈 로그를 인시던트에서 「부재의 증거」로 읽는 것을
+    막는 것이 이 한 줄의 일이다."""
+    import io as _io
+    import os as _os
+
+    root = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..", ".."))
+    src = _io.open(_os.path.join(root, "run_decoupled_app.py"), encoding="utf-8").read()
+
+    assert "supervisor.own_window = args.own_window" in src
+    assert "stay EMPTY" in src
+    assert "writes its OWN log file" in src, "무엇이 «안» 바뀌는지도 같이 말해야 한다"
+    assert "s.log_file" in src, "파일 이름을 specs 에서 «세어» 말한다"

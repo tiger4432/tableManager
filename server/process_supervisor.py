@@ -632,6 +632,8 @@ class Supervisor:
         merged = os.environ.copy()
         if spec.env:
             merged.update(spec.env)
+        if getattr(self, "own_window", False) and os.name == "nt":
+            return self._spawn_in_own_window(spec, merged)
         if not spec.log_file:
             return subprocess.Popen(spec.cmd, cwd=spec.cwd, env=merged)
         # PYTHONUNBUFFERED is not a nicety here. With stdout on a pipe instead of
@@ -660,6 +662,24 @@ class Supervisor:
         if not wanted:
             return True
         return (name or "").strip().lower() in wanted
+
+    def _spawn_in_own_window(self, spec, env):
+        """이 자식을 «자기 콘솔 창»에 띄운다. Windows 전용 (S-138 ②, 판정 257).
+
+        🔴 파이프를 «포기하는» 것이 이 모드의 값이자 대가다. 프로세스의 stdout 은 하나라,
+        자식이 자기 창에 쓰면 감독의 파이프에는 아무것도 안 온다 — 그 자식의
+        `*_stdout.log` 는 «안 채워진다». 자식의 «자기 로그 파일»은 그대로다(각 자식이
+        `logging.FileHandler` 로 직접 쓴다). 런처가 켤 때 어느 파일이 왜 비는지 말한다.
+
+        ⚠️ 제목은 `cmd /c title` 로 붙인다 — Python 의 `STARTUPINFO` 는 `lpTitle` 을
+        노출하지 않으므로, 창 제목을 «자식 이름»으로 만들 다른 자리가 없다.
+        """
+        title = (spec.name or "child").replace('"', "'")
+        quoted = subprocess.list2cmdline(list(spec.cmd))
+        return subprocess.Popen(
+            ["cmd", "/c", "title", title, "&", "cmd", "/c", quoted],
+            cwd=spec.cwd, env=env,
+            creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
 
     def _attach_log_pump(self, child):
         """Tee a child's merged stdout/stderr to the console AND to its own file.

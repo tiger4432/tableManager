@@ -158,14 +158,18 @@ class LauncherArgs(object):
     """
 
     __slots__ = ("server_only", "reload", "preflight_only", "console_names",
+                 "own_window",
                  "exit_code", "lines", "is_refusal", "unknown")
 
     def __init__(self, server_only=False, reload=False, preflight_only=False,
-                 console_names=(), exit_code=None, lines=(), is_refusal=False,
-                 unknown=()):
+                 console_names=(), own_window=False, exit_code=None, lines=(),
+                 is_refusal=False, unknown=()):
         self.server_only = server_only
         #: [S-138] 콘솔에 tee 할 자식 이름(소문자). 비어 있으면 «전부» = 오늘 그대로.
         self.console_names = frozenset(console_names)
+        #: [S-138 ②] 자식마다 «자기 창». Windows 전용이고, 켜면 그 자식의
+        #: `*_stdout.log` 는 «안 채워진다» — 런처가 켤 때 그 사실을 말한다.
+        self.own_window = own_window
         self.reload = reload
         self.preflight_only = preflight_only
         self.exit_code = exit_code
@@ -196,6 +200,7 @@ def parse_launcher_args(argv):
     server_only = False
     reload_ = False
     preflight_only = False
+    own_window = False
     wants_help = False
     unknown = []
 
@@ -219,6 +224,8 @@ def parse_launcher_args(argv):
             server_only = True
         elif argument == "--reload":
             reload_ = True
+        elif argument == "--own-window":
+            own_window = True
         elif argument == "--preflight-only":
             preflight_only = True
         elif argument in ("--help", "-h"):
@@ -237,4 +244,5 @@ def parse_launcher_args(argv):
         return LauncherArgs(exit_code=0, lines=help_lines())
     return LauncherArgs(server_only=server_only, reload=reload_,
                         preflight_only=preflight_only,
-                        console_names=console_names)
+                        console_names=console_names,
+                        own_window=own_window)

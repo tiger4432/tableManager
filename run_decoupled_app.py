@@ -357,6 +357,16 @@ def main():
     # [S-138] 콘솔에 흘릴 자식 선택. 비어 있으면 «전부» — 오늘 그대로.
     # 🔴 파일 로그는 이 값과 «무관»하다: 넷 다 자기 파일에 그대로 쓴다.
     supervisor.console_names = args.console_names
+    supervisor.own_window = args.own_window
+    if args.own_window:
+        # 🔴 켤 때 «어느 파일이 왜 비는지» 말한다 (판정 257). 비어 있는 로그를
+        # 인시던트에서 「부재의 증거」로 읽는 것이 이 한 줄이 막는 것이다.
+        emptied = [os.path.basename(s.log_file) for s in specs if s.log_file]
+        log_launcher(
+            "--own-window: each child gets its own console, so the supervisor's "
+            "stdout pipe is given up and these stay EMPTY: %s. Each child still "
+            "writes its OWN log file through its logger - those are unaffected."
+            % ", ".join(emptied), level="WARNING")
 
     # Graceful shutdown handler
     def shutdown_all(signum=None, frame=None):
