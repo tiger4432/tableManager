@@ -72,6 +72,25 @@ export async function scoreMutants(mutants, run, opts = {}) {
     }
 
     const failures = Array.isArray(out && out.failures) ? out.failures.map(String) : [];
+
+    // 🔴 A MUTANT THAT REMOVES ASSERTIONS INSTEAD OF FAILING THEM. Caught is not the whole
+    //    verdict: a mutation can send a branch out of reach, so checks do not FAIL, they do not
+    //    RUN -- and the corpus reports a clean catch while coverage silently shrank. Measured on
+    //    `frame_declaration`: M13 is caught by the assertion it names AND quietly takes four
+    //    others with it. This is the last quiet corner of the "crashed its way to a verdict"
+    //    class, so the shrink is printed BY NUMBER beside the verdict.
+    // ⚠️ REPORTED, NOT SCORED. Fewer assertions is not by itself wrong -- an axis that stops
+    //    being reachable can be correct. What must not happen is that nobody is told. A mutant
+    //    that declares `drops: <n>` has been looked at, and a matching shrink folds; a shrink
+    //    that does not match what was declared is always said out loud.
+    // 🔵 OPT-IN: only a caller whose `run` returns `ran` and who passes `baselineRan` is
+    //    measured here. Nothing else changes shape to gain it.
+    let shrunk = '';
+    if (typeof (out && out.ran) === 'number' && typeof opts.baselineRan === 'number'
+        && out.ran < opts.baselineRan) {
+      const lost = opts.baselineRan - out.ran;
+      shrunk = lost === m.drops ? '' : `  SHRUNK(-${lost} assertions never ran)`;
+    }
     // A defect is caught only by the assertion it names. A control must wake nothing at all, so
     // for it ANY new failure is the wrong answer -- naming one would be asking which assertion
     // was allowed to be wrong.
@@ -95,14 +114,14 @@ export async function scoreMutants(mutants, run, opts = {}) {
       if (mustCatch) caught += 1;
       verdicts.push({ id, verdict: mustCatch ? VERDICT.CAUGHT : VERDICT.ESCAPED });
       log(mustCatch
-        ? `  caught  ${id} ${what}  (${named.join("/")})`
-        : `  escaped ${id} ${what}`);
+        ? `  caught  ${id} ${what}  (${named.join("/")})${shrunk}`
+        : `  escaped ${id} ${what}${shrunk}`);
     } else {
       wrong += 1;
       verdicts.push({ id, verdict: mustCatch ? VERDICT.ESCAPED : VERDICT.CAUGHT,
         why: mustCatch ? named.join("/") + " stayed green" : failures.slice(0, 2).join(' | ') });
       log(mustCatch
-        ? `  ESCAPED ${id} ${what}  -- ${named.join("/")} stayed green`
+        ? `  ESCAPED ${id} ${what}  -- ${named.join("/")} stayed green${shrunk}`
         : `  CAUGHT  ${id} ${what}  <- a control woke: ${failures.slice(0, 2).join(' | ')}`);
     }
   }

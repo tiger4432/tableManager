@@ -858,8 +858,20 @@ if (base.failures.length > 25) console.log(`   ... and ${base.failures.length - 
     M19: 'B1[chipx_garbage_suffix/chipX]',        M20: 'G3[data]',
     M21: 'G2',                                    M22: 'H1',
   };
+  // 🔴 A DECLARED SHRINK IS A LOOKED-AT SHRINK. M13 sends the startX/startY axes out of reach
+  //    of a branch, so four assertions do not FAIL -- they do not RUN:
+  //      B3. startX is a measurement axis: an invented-looking value is still declared
+  //      B3. startX: the marker is the only witness
+  //      B3. startY ... (the same pair)
+  //    The Lead PM ruled the subject's control flow is not a defect to chase here (an axis that
+  //    stops being reachable under that mutation can be right), so the number is DECLARED rather
+  //    than repaired. Declaring it is not silencing it: the scorer folds only an EXACT match, so
+  //    the day this becomes 3 or 5 the warning comes back with the new number.
+  const DROPS = { M13: 4 };
   const withCatches = MUTANTS.map((m) => ({
-    ...m, catches: CATCHES[String(m.name).split(' ')[0]] }));
+    ...m,
+    catches: CATCHES[String(m.name).split(' ')[0]],
+    drops: DROPS[String(m.name).split(' ')[0]] }));
   const isControl = (m) => String(m.name).startsWith('CONTROL');
 
   // 🔴 ONE APPLY, AND AN UNAPPLIED MUTANT STILL STOPS THE RUN. `apply` throwing means the
@@ -874,17 +886,17 @@ if (base.failures.length > 25) console.log(`   ... and ${base.failures.length - 
     }
     const url = 'data:text/javascript;base64,' + Buffer.from(src, 'utf8').toString('base64');
     const out = run(await import(url));
-    // A mutant that ran fewer assertions than the baseline crashed its way to a verdict.
-    if (out.compared < base.compared) {
-      console.log(`            [WARNING: ran ${out.compared} of ${base.compared} assertions]`);
-    }
-    return { failures: out.failures };
+    // The shrink is judged by `lib/mutation_scorer.mjs` now -- one place, and it folds when
+    // the mutant DECLARES the drop. Handing over `ran` is all this side does.    return { failures: out.failures, ran: out.compared };
   };
 
   const defects = await scoreMutants(withCatches.filter((m) => !isControl(m)), runMutant,
-    { title: '\n  DEFECT MUTANTS -- each must be caught by the assertion it names.\n' });
+    { baselineRan: base.compared,
+      title: '\n  DEFECT MUTANTS -- each must be caught by the assertion it names.\n' });
   const controls = await scoreMutants(withCatches.filter(isControl), runMutant,
-    { mustCatch: false, title: '\n  CONTROLS -- each must wake nothing.\n' });
+    { mustCatch: false,
+      baselineRan: base.compared,
+      title: '\n  CONTROLS -- each must wake nothing.\n' });
   const scored = MUTANTS.length - defects.wrong - controls.wrong;
   console.log(`\n  ${scored}/${MUTANTS.length} scored as intended.`);
   // 🔴 ONE LINE, COUNTING BOTH. `ran` is the baseline assertions PLUS one per mutant verdict;
