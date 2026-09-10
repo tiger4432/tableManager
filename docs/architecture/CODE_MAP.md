@@ -3633,6 +3633,42 @@ python -m chain  replay    [옵션]   -> scripts/chain_replay_cli.py        main
 > 🔴 **양쪽 절반을 다 가진 계약과 «한쪽만» 가진 계약이 섞여 있고, 그것이 결함이 아니다** — `legend_map_scope` 는 클라 단독이고(벡터 파일도 없다), `notation_fold`·`temporal_text` 는 파이썬 단독이다(재는 이음매의 반대쪽이 **SQL** 이라 node 가 채점할 것이 없다). ⚠️ **그래서 「계약 수」를 인용하려면 «어느 철자로 셌는지»를 같이 적어라** — 이 절이 한 수만 들고 있어서 세 번 낡았다.
 > ⚠️ **아래 하니스 전수 채점 블록(2026-07-31 실행)은 «실행 결과»라 이 패스가 다시 돌리지 않았다** — `check_harnesses.mjs` 가 스캔하는 철자(`client2/tests/` 의 **최상위 파일** 중 `.mjs`)로 지금 **82개**이고, 그 블록의 「16 harnesses」는 **파일 수부터** 낡았다. ⚠️ **철자를 함께 적는다** — 하위 디렉터리(`lib/`·`oracle/`·`fixtures/`)까지 세면 **89** 이고 러너는 그것들을 «안 돌린다». **수를 인용하려면 라벨이 아니라 실행에서 가져와라**(그 블록 자신이 적어 둔 규율이다).
 
+> 🔴🔴 **[2026-09-10 D-2 · `000df857`] 이 절의 수가 «또» 낡았고(넷째다), 바로 아래 문단의 「하니스 공통 규율」은 오늘 «절반이 거짓»이다.**
+>
+> **① 재계수** — `ls contracts` · `contracts/*/client_harness.mjs` · `server/tests/test_*_contract.py` · `client2/tests/*.mjs` 전건:
+>
+> ```
+> 계약 «디렉터리»            13   (구 표기 9)   🆕 declaration_tokens · ledger_receipt · test_run_rows  (셋 다 09-10)
+>                                              🆕 walk_node_shape (09-08)
+> client_harness.mjs          8   (구 표기 7)   늘어난 것은 walk_node_shape «하나»
+>                                              -> check_contracts.mjs 가 «발견»하는 수가 이것이다
+> test_*_contract.py          9                 ⚠️ 그중 «둘»(test_ledger_source_contract.py ·
+>                                              test_ledger_trace_contract.py)은 contracts/ 디렉터리가 «없다»
+>                                              -- 파일 «이름»으로 세면 계약 아닌 것을 센다
+> client2/tests 최상위 .mjs 117   (구 표기 82)  <- check_harnesses.mjs 가 실제로 «도는» 수
+> 하위까지 세면             127   (구 표기 89)  <- 러너는 lib/·oracle/·fixtures/ 를 «안 돈다»
+> ```
+>
+> 🔴 **그리고 «넷째 철자»가 오늘 생겼다 — 계약 벡터를 «`client2/tests/` 의 최상위 하니스»가 읽는 것.** `declaration_tokens`(`client2/tests/frame_declaration_harness.mjs:75`) · `ledger_receipt`(`client2/tests/ledger_receipt_timeline_harness.mjs:20`) · `test_run_rows`(`client2/tests/test_run_rows_harness.mjs:21`). 🔴 **이 셋은 `contracts/<이름>/client_harness.mjs` 가 «없어서» `check_contracts.mjs` 가 못 본다** — 대신 `client2/scripts/check_harnesses.mjs` 의 «바닥값»이 잡는다(각각 4104 · 22 · 21 — `client2/scripts/check_harnesses.mjs:342` · `:897` · `:904`). ⚠️ **그래서 「이 계약이 게이트에 걸렸나」와 「계약 게이트가 이것을 세나」는 «다른 질문»이다** — 셋은 앞에 예, 뒤에 아니오다. 수를 인용할 때 «어느 철자인지»를 같이 적어야 하는 이유가 하나 더 늘었다.
+>
+> **② 「하니스 공통 규율: 소스 텍스트에서 함수 선언을 잘라내 `node:vm` 에서 평가한다」는 «공통이 아니다».** 여덟을 전건으로 열어 재면 대상에 닿는 방식이 «넷»이다:
+>
+> ```
+> vm 으로 «잘라» 돌린다      2   band_arithmetic(101) · doe_band_rules(142)   <- 소유자 상설이 겨눈 남은 자리
+> 프로브로 «덧붙여» import   2   legend_map_scope · map_seam  (loadWithProbe)
+> 그냥 «동적 import»         3   config_resolve_report · map2_seam · walk_node_shape
+> 클라 «대상이 없다»         1   blank_predicate  (벡터 대 파이썬/SQL — node 가 채점할 것이 없다)
+> ```
+>
+> 🔴 **`contracts/legend_map_scope/client_harness.mjs:44` 와 `contracts/map_seam/client_harness.mjs:38` 은 `import vm from 'node:vm'` 을 아직 이고 있는데 «한 번도 안 쓴다»** — 프로브로 전환하고 남은 «죽은 import» 다. 지우는 것은 코드 변경이라 이 라운드가 안 한다. **이름을 대어 둔다.**
+> 📎 **잘라쓰기 금지·덧붙이기 다리·import 정본·변이 채점기 계약의 «어떻게»는 [`docs/guide/HARNESS_DISCIPLINE_GUIDE.md`](../guide/HARNESS_DISCIPLINE_GUIDE.md)(2026-09-10 신설)가 정본이다.** 이 절은 「계약이 몇이고 무엇이 게이트에 걸리나」만 적는다 — 같은 규율을 두 곳에 적으면 «갈라진다»(기준 ④).
+>
+> **③ 🆕 변이 채점기 «정본»과 프로브 «거울» (C-65~68 · 2026-09-10)**
+> - **`client2/tests/lib/mutation_scorer.mjs`(158줄, `1dd83a6a` 신설)** — `export const VERDICT`(`client2/tests/lib/mutation_scorer.mjs:35`) · `export async function scoreMutants(mutants, run, opts)`(`:48`). 🔴 **`rnd_board_walk` 의 루프에서 «출력이 바이트 동일»함을 증명하고 뽑았다** — 채점기를 옮기는 커밋이 판정을 바꾸면 그 뒤의 모든 수가 못 믿을 것이 된다. 부르는 하니스 «일곱»: `frame_declaration` · `map_key_datalist` · `map_spec_only_save` · `redo_banner` · `rnd_board_composition` · `rnd_board_walk_box` · `rnd_board_walk`.
+> - 🔴 **`AMBIGUOUS` 는 «접두 하나»마다 묻는다**(`client2/tests/lib/mutation_scorer.mjs:111`~`:119`) — 배열 `catches` 는 「여러 줄을 «일부러» 가리킨다」는 설계라, 배열의 히트를 «함께» 세면 정상을 결함으로 읽는다. 실측: 그 철자가 옳은 배열 «일곱»을 충돌로 신고했다.
+> - **`client2/tests/lib/probe.mjs`(373줄) — 사본이 «제품 트리를 떠났다»(C-67).** `mirrorDirFor(dir)`(`client2/tests/lib/probe.mjs:49`)가 `client2/.tmp/probe/<src 기준 상대경로>` 로 보내고, `loadWithProbe`(`:276`)의 `workDir`(`:291`)이 그것을 쓴다. 훅은 원본을 «경로에서 유도»한다 — `client2/tests/lib/probe_hooks.mjs` 의 `MIRROR_RE`(`client2/tests/lib/probe_hooks.mjs:33`) · `originalDirOf(copyDir)`(`:34`) · 생성 스텁의 형제 지정자를 위한 `STUB_RE`(`:44`). 🔴 **훅은 «다른 스레드»에서 돌아 아무것도 «알려 줄» 수가 없다** — 그래서 유도여야 하고, 그것이 거울 디렉터리의 «구조적» 사유다.
+> - 🔴 **게이트가 그것을 «단언»한다** — `client2/scripts/check_harnesses.mjs:1642` 는 `client2/src` 에 프로브 산출물이 «하나라도» 있으면 빌드를 세운다. ⚠️ **술어가 프로브 자신의 `isProbeArtifact` 다** — 쓰는 쪽과 금지하는 쪽이 «같은 철자»여야 「무엇이 산출물인가」가 안 갈린다. 그리고 이 검사는 하니스 루프 «앞»에 선다: 잔해가 남아 있으면 무엇을 돌리든 «무작위로» 빨개진다(실측: 네 번 중 세 번, 매번 다른 하니스).
+> - ⚠️ **`MIRROR_MARK`(`client2/tests/lib/probe.mjs:48`)는 소비자가 «0» 이다** — 등장 «하나»가 자기 정의다. C-67 이 넣었고 훅은 자기 정규식을 쓴다. 이 라운드는 코드 0줄이라 «지우지 않고 이름만» 댄다.
 **`0f8d35f` 신설 — 루트 최상위 디렉터리, ~~현재 **6계약**~~(위 🆕⑳ 재계수 참조 — `f3fd785`로 `config_resolve_report`, 🆕 `5be96f5`로 **`blank_predicate`**). `server/`도 `client2/`도 아닌 곳에 있는 이유가 곧 정의다: **어느 한쪽의 테스트 자산이 아니라 양쪽이 각각 대조당하는 명세**다. 서버와 클라를 서로 대조하면 둘 다 틀렸을 때 통과한다. 하니스 공통 규율: 대상 함수가 module-private이므로 소스 텍스트에서 함수 선언을 잘라내 `node:vm` 샌드박스에서 평가하고, **추출 실패는 exit 2로 시끄럽게 죽는다**(함수를 못 찾고도 조용히 통과하는 하니스의 초록불은 "양쪽이 일치한다"는 증거로 인용되기 때문). 종료코드 `0` 일치 / `1` divergence / `2` 하니스 자체 실패.
 
 > ✅ **[`5a14e77`] 계약 빌드 게이트 — `client2/scripts/check_contracts.mjs`(73줄).** `pytest server/tests/`는 서버 절반만 채점하고 `client2/package.json`에는 하니스용 스크립트가 없었다. **아무도 돌리지 않는 계약은 주석이다.**
