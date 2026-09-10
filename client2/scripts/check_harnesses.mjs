@@ -847,6 +847,16 @@ const FLOORS = new Map([
   //    proving it, and it was re-anchored onto `refusalSummary` (B0). A floor lowered
   //    without that sentence is a retreat.
   ['refusal_cell_harness.mjs', 24],
+  // New 2026-09-10 with C-56, and it is the gap a production ReferenceError came through.
+  // 🔴 THE CONTROLLER HAD NO HARNESS BECAUSE IT COULD NOT BE IMPORTED: `ontology_explorer.js`
+  //    opens with a CSS import, so node refused the file and every gate stayed green while
+  //    `loadCensus` lost its definition and kept its call site. `lib/css_loader.mjs` resolves
+  //    the CSS specifier to nothing and the module is imported BYTE-FOR-BYTE as it ships.
+  // ⚠️ AND 「던지나」 IS NOT THE ASSERTION THAT BITES -- measured, not assumed: the call sits
+  //    inside the load's own try/catch, so the error was swallowed into the failure state.
+  //    What separates them is whether the open ENDED IN AN ERROR STATE. Four of the eight
+  //    redden against the shipped bundle.
+  ['explorer_open_path_harness.mjs', 8],
   // New 2026-09-09 with C-49's other half. Floor is the count it reports on the commit
   // that introduces it. 🔴 THE PURE FUNCTION BEING RIGHT IS NOT THE SCREEN DRAWING IT --
   //    that is the gap this defect lived in. Both controls are paired runs differing in

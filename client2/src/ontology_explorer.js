@@ -759,6 +759,26 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
   // The authoring plan is fetched per selection (the server filters it) and the closed
   // lists exactly once -- they change only when the validator's constants change, which
   // is a deploy, not a click. Failure never blanks the panel; it annotates it.
+  // 🔴 C-56. 복원. C-54 가 은퇴한 `/refusals` 사슬을 지우면서 «그 사이에 있던» 이 함수의
+  //    정의까지 «구간으로» 잘라 갔고, :739 의 호출은 남았습니다 — 탐색기를 여는 순간
+  //    `loadCensus is not defined` 이고, 그 번들이 운영에 갔습니다.
+  //    ⚠️ 지운 것은 «이름 단위»가 아니라 «주석 블록부터 함수 끝까지»의 구간이었습니다.
+  //    구간으로 지우면 그 안에 든 «남의 이름»이 같이 갑니다. 그리고 이 파일은 CSS 를 import
+  //    해서 node 가 못 읽으므로, 하니스 어느 것도 그 자리를 보지 못했습니다.
+  // 🔴 THE CENSUS ONLY. `/refusals` 는 404 이고 이 함수는 그것과 무관합니다 — 선언 라우트는
+  //    공개(토큰 없음)이고, 실패하면 «빈 지도»로 조용합니다: 소스마다 「안 쟀다」이지
+  //    「세 봤더니 0」이 아닙니다. 봉투를 푸는 것은 `censusBySource` «하나»입니다(C-47).
+  const loadCensus = async () => {
+    try {
+      const res = await fetch(`${apiBase}/api/ledger/declaration`);
+      if (!res.ok) return;
+      const body = await res.json().catch(() => null);
+      dispatch({ type: 'CENSUS_RECEIVED', bySource: censusBySource(body) });
+    } catch (error) {
+      void error;                       // the line simply does not appear — see above
+    }
+  };
+
   const loadAuthoring = async (selection) => {
     try {
       const params = new URLSearchParams();
