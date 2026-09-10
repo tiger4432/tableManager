@@ -21,9 +21,15 @@ cost is charged to the write stage's remainder, NOT to the parse line. Reading t
 line as "parsing costs this much" would be reading a proxy as the property.
 
 🔴 WHY THE FILE IS BUILT FROM THE DECLARATION. The columns, the key group and the map
-identity are read from the catalogue entry - `display_columns`, `composite_key_source` or
-`business_key`, `map_key_columns`, `column_types`. No column name appears in this file. A
+identity are read from the catalogue entry - `crud.loadable_columns`, `composite_key_source`
+or `business_key`, `map_key_columns`, `column_types`. No column name appears in this file. A
 box declaring something else gets a file shaped for that instead, with no code change.
+
+⚠️ THE COLUMN SET WIDENED ON 2026-09-10 (S-119) AND A WALL CLOCK FROM BEFORE IS NOT
+COMPARABLE WITH ONE FROM AFTER. This used to build from `display_columns`; the loadable
+axis is now `column_types`, which on the box measured for S-118 is 23 columns where it was
+14. More columns is more cells is more of the cost this probe exists to split, so a paired
+before/after has to be taken on the same side of that change.
 
 ⚠️ IT WRITES ROWS AND DELETES NOTHING. Every run leaves its rows in the target table, on
 purpose (deleting is destructive, and a measurement is not a reason to delete). The run
@@ -166,9 +172,11 @@ def plan_file(entry: dict):
     axis columns are the rest of the key. That is the whole domain model this file has,
     and it is read, not written.
     """
-    columns = [str(c) for c in (entry.get("display_columns") or []) if str(c).strip()]
+    from database import crud
+
+    columns = [str(c) for c in crud.loadable_columns(entry) if str(c).strip()]
     if not columns:
-        raise ProbeRefusal("the catalogue entry declares no `display_columns` - there is "
+        raise ProbeRefusal("the catalogue entry declares no loadable columns - there is "
                            "no file to write")
     keys = key_columns(entry)
     if not keys:
@@ -177,8 +185,8 @@ def plan_file(entry: dict):
     missing = [c for c in keys if c not in columns]
     if missing:
         raise ProbeRefusal(
-            f"key column(s) {missing} are not in `display_columns`, so the write path "
-            f"would drop them and every row would land without a key")
+            f"key column(s) {missing} are not loadable, so the write path would drop "
+            f"them and every row would land without a key")
     map_columns = [c for c in keys if c in (entry.get("map_key_columns") or [])]
     axis_columns = [c for c in keys if c not in map_columns]
     return columns, keys, map_columns, axis_columns

@@ -455,6 +455,14 @@ def test_the_refusal_count_reaches_another_process_through_the_heartbeat(db, mon
     cross-process channel `/health` already reads for `undeclared_column_drops()`, so no
     third channel is built.
     """
+    # 🔴 A CLEAN WORKER HAS TO BE ARRANGED, NOT ASSUMED (S-119). `_worker_note` reads
+    # several module-global queues, and any earlier test in the session that wrote a row
+    # leaves the ledger follow-up queue holding an item - so this assertion was measuring
+    # what the rest of the suite happened to leave behind. Found when a widened loadable
+    # filter made one more write produce one more event; the leak predates it.
+    from ledger import followup as _followup
+    _followup._queue.clear()
+
     assert worker._worker_note() is None, "a clean worker's beat must stay byte-identical"
 
     _run_chain(db, monkeypatch, [_rule(CELLS)], {"updates": [

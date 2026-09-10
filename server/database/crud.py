@@ -481,10 +481,13 @@ def _same_source_content_differs(db, table_name, row, update_item, config, versi
     composite key assembled mid-batch) is still read from the database, as it must be. It
     only runs on the equal-version arm, which is the re-drop case.
     """
-    col_types = config.get("column_types", {})
+    # The same loadable answer as the write itself; the dict beside it answers a
+    # DIFFERENT question (what type is this column), which is not a filter.
+    loadable = loadable_columns(config)
+    col_types = (config or {}).get("column_types") or {}
     differing = []
     for col_name, val in update_item.updates.items():
-        if col_name == version_col or col_name not in col_types:
+        if col_name == version_col or col_name not in loadable:
             continue
         col_type = col_types.get(col_name, "string")
         try:
@@ -1414,6 +1417,30 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None, ta
     val_data = sources[top_source]
     val = val_data["value"] if isinstance(val_data, dict) and "value" in val_data else val_data
     return val, top_source
+
+def loadable_columns(table_info: dict) -> tuple:
+    """The columns a write may land in this table, in declaration order (S-119, 판정 12:20).
+
+    🔴 ONE ANSWER FOR EVERY ROUTE, BECAUSE THERE WERE TWO. The file watcher filtered by
+    `display_columns` and dropped what was not there BEFORE this module ever saw the row;
+    this module filtered by `column_types`. So a column declared in one and not the other
+    landed through the API and was silently discarded through the watcher - measured on
+    `dt_log`, whose `dt_job` the API writes and the watcher drops. Same table, same file,
+    two answers depending on which door it came through.
+
+    🔴 `column_types` IS THE LOADABLE AXIS AND `display_columns` IS THE SHOWING ONE.
+    A column can exist and be written without being on a screen; a screen cannot show a
+    column that does not exist. Loading therefore asks "does this exist", which is the
+    question `column_types` answers. `display_columns` keeps its own job -
+    `GET /tables/{t}/schema` and the grid - and is not consulted here.
+
+    ⚠️ AN EMPTY DECLARATION STILL MEANS NOTHING LOADS, and that is unchanged on both
+    sides: this module already dropped every column of a table with no `column_types`, and
+    the watcher already dropped every column of one with no `display_columns`. What is new
+    is that they now say it about the SAME declaration.
+    """
+    return tuple((table_info or {}).get("column_types") or ())
+
 
 def create_audit_log(db: Session, table_name: str, row_id: str, col_name: str, old_val: Any, new_val: Any, source: str, user: str, transaction_id: str = None, business_key: str = None, add_to_cache: bool = True):
     """감사 로그를 기록합니다. (저장 전 인코딩 정제 수행)
@@ -2856,8 +2883,10 @@ def apply_row_update_internal(
                                      col_name, DROP_SYSTEM_COLUMN)
             continue
 
-        col_types = config.get("column_types", {})
-        if col_name not in col_types:
+        # The one answer, so this path and the watcher's cannot drift (S-119). The
+        # type dict below answers a DIFFERENT question - what this column IS, not whether
+        # it may be written - so it is read where it is used, not used as a filter.
+        if col_name not in loadable_columns(config):
             # Drop behaviour is deliberately unchanged: rejecting the write would turn a
             # lagging config into an outage. Only the silence is fixed.
             # ⚠️ Despite the name this COUNTS every drop and re-announces at each power
@@ -2875,7 +2904,7 @@ def apply_row_update_internal(
         col_srcs, ow = _load_metadata_row_cell(db, table_name, row.row_id, col_name, is_new, sources_cache, overwrites_cache, cell_sources_to_upsert, cell_overwrites_to_upsert, prefetched_row_ids)
 
         # 3. 소스 데이터 upsert
-        col_type = col_types.get(col_name, "string")
+        col_type = (config.get("column_types") or {}).get(col_name, "string")
         clean_val = cast_value_by_type(val, col_type, col_name)
         
         src_obj = next((s for s in col_srcs if s.source_name == update_item.source_name), None)

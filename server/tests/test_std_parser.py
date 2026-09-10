@@ -250,17 +250,27 @@ def test_key_groups_bk_or_composite_either_suffices(tmp_path):
 # [F5] 헤더 검증 기준 = 적재 필터(display_columns)와 동일 집합
 # ---------------------------------------------------------------------------
 
-def test_header_validation_uses_display_columns(tmp_path):
-    """column_types에만 있고 display_columns에 없는 컬럼은 미지 컬럼 취급(무음 탈락 방지)."""
+def test_header_validation_uses_the_loadable_columns(tmp_path):
+    """🔴 적재 기준이 «있음(column_types)»으로 바뀜었다 (S-119, 판정 09-10 12:20).
+
+    ⚰️ 이 케이스는 반대를 재고 있었다: 「column_types 에만 있고 display_columns 에 없는 컴럼은
+    미지 컴럼 취급(무음 탈락 방지)」. 그 «사유»는 여전히 옳다 — 검증이 통과시킨 컴럼이 적재에서
+    조용히 떨어지면 안 된다. 바뀌 것은 «수단»이다: 두 쪽이 함께 «거절»하는 대신 두 쪽이
+    함께 «받는다». 실물은 워처와 API 가 갈라져 있었다는 것이었고(dt_log 의 dt_job — API 는
+    쓰고 워처는 버렸다), 두 집합이 하나가 된 지금 무음 탈락의 창 자체가 없다.
+    """
     info = dict(INVENTORY_INFO)
     info["column_types"] = dict(INVENTORY_INFO["column_types"], internal_note="string")
-    # display_columns는 그대로 → internal_note는 적재 불가 컬럼
+    # display_columns 는 그대로 — 즉 이 컴럼은 «화면에 없고 존재는 한다»
     p = _write(tmp_path / "inv.csv", "part_no,internal_note,category\nP-1,secret,Cap\n")
     rows_iter, total, skipped = parse_std_file(p, info, "inventory_master")
     rows = list(rows_iter)
     assert total == 1
-    assert rows[0] == {"part_no": "P-1", "category": "Cap"}
-    assert "internal_note" not in rows[0]
+    assert rows[0] == {"part_no": "P-1", "internal_note": "secret", "category": "Cap"}
+
+    from database import crud
+    assert "internal_note" in crud.loadable_columns(info), (
+        "the parser took a column the loader would drop - the defect this closed")
 
 
 # ---------------------------------------------------------------------------

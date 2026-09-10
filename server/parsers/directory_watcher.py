@@ -103,12 +103,12 @@ MAX_DROPPED_COLUMNS_REPORTED = 64
 # table_name -> {column names already announced at WARNING in this process}.
 # Kept here rather than reusing crud's registry because this is a different gate on a
 # different config key: crud watches `column_types` per cell, this watches
-# `display_columns` per file, and a column dropped here never reaches crud at all.
+# the loadable set per file, and a column dropped here never reaches crud at all.
 _dropped_column_announced = {}
 
 
 def _announce_dropped_columns(t_name, dropped_value_counts, defined_cols, filename, row_count):
-    """Report columns the display_columns filter discarded before the write.
+    """Report columns the loadable-column filter discarded before the write.
 
     Dropping is often the CORRECT outcome - a file carrying fields of a superseded
     scheme should not grow the table. The problem this closes is narrower and real: a
@@ -134,7 +134,7 @@ def _announce_dropped_columns(t_name, dropped_value_counts, defined_cols, filena
     if first_seen:
         announced.update(first_seen)
         logger.warning(
-            f"[{t_name}] Column(s) absent from display_columns are dropped before the "
+            f"[{t_name}] Column(s) absent from the declaration are dropped before the "
             f"write, so NO per-cell record is created for them: {', '.join(first_seen)}. "
             f"First sighting in this process, carried by '{filename or '?'}'. If the drop "
             f"is intended (a field of a superseded scheme) this is the expected state; "
@@ -152,7 +152,7 @@ def _announce_dropped_columns(t_name, dropped_value_counts, defined_cols, filena
     logger.info(
         f"[{t_name}] Dropped {len(dropped_value_counts)} undeclared column(s) over "
         f"{row_count} row(s) of '{filename or '?'}': {named} (name=non-blank values "
-        f"discarded). display_columns={defined_cols}.{capped}"
+        f"discarded). Declared columns={list(defined_cols)}.{capped}"
     )
 
 # [Std Ingestion] 워크스페이스 자동 생성에서 제외하는 시스템 내부 테이블.
@@ -2660,7 +2660,11 @@ class IngestionHandler(FileSystemEventHandler):
         # 3. 비즈니스 키 및 컬럼 매핑 정보 획득
         table_info = table_info or {}
         bk_col = table_info.get("business_key", "id")
-        defined_cols = table_info.get("display_columns", [])
+        # 🔴 THE SAME FUNCTION THE WRITE PATH ASKS (S-119, 판정 09-10 12:20). This read
+        # `display_columns` while `crud` read `column_types`, so a column declared in one
+        # and not the other landed through the API and was dropped here: the same file
+        # loading a different column set depending on which door it came through.
+        defined_cols = crud.loadable_columns(table_info)
         
         # Determine source_name based on real original filename
         if source_name:
@@ -2726,7 +2730,7 @@ class IngestionHandler(FileSystemEventHandler):
                            _pace_err)
             _chunks_per_cycle, _rest_seconds = None, 0
 
-        # [Drop visibility] The display_columns filter below runs BEFORE crud sees the
+        # [Drop visibility] The loadable-column filter below runs BEFORE crud sees the
         # row, so crud._warn_undeclared_column_once can never fire for a column dropped
         # here - the drop leaves no record of any kind and the file still reports SUCCESS
         # with an empty error_message. Not writing the column is frequently the correct

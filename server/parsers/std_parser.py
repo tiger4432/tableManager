@@ -52,14 +52,22 @@ def _build_header_map(header: list, table_info: dict, table_name: str, file_path
     - 알려진 컬럼만 채택(대소문자 무시 매칭), 미지 컬럼은 warning 후 무시(None 슬롯).
     - business_key 컬럼(또는 composite_key_source 전체)이 헤더에 없으면 ValueError로 처리 거부
       → 호출측(process_with_retry)에서 err/ 이동 + FileIngestionLog FAILED 기록.
-    - [F5] 검증 기준은 적재 필터(`_send_to_upsert`의 `display_columns` 교집합)와 **동일 집합**이어야
-      한다. column_types 기준으로 검증하면 column_types에만 있는 컬럼이 검증은 통과하고
-      적재 단계에서 무음 탈락하는 불일치가 생긴다. display_columns가 비어 있는 비정상 config에서만
-      column_types로 폴백한다(이 경우 적재도 어차피 전무 — 기존 파이프라인 경로와 동일한 전제).
+    - [F5] 검증 기준은 적재 필터와 **동일 집합**이어야 한다. 다른 기준으로 검증하면 검증은
+      통과하고 적재 단계에서 «무음 탈락»하는 불일치가 생긴다. 이 요구는 그대로 유효하고,
+      🔴 S-119(판정 09-10 12:20) 에서 «구조»가 됐다 — 두 파일이 각자 다른 키를 읽고
+      「같아야 한다」고 약속하는 대신, 양쪽이 `crud.loadable_columns` «한 함수»를 부른다.
+      ⚰️ 낡은 문장(기록): 이 줄은 「`display_columns` 교집합, 빈 config 에서만 column_types
+      폴백」이라 적고 있었다. 그 두 키가 실제로 갈라졌고(dt_log 의 dt_job 은 API 로는 들어가고
+      워처로는 버려졌다) 약속이 지켜지지 않는다는 것이 S-119 의 실물이다.
     """
     basename = os.path.basename(file_path)
-    column_types = table_info.get("column_types", {}) or {}
-    loadable_cols = table_info.get("display_columns") or list(column_types.keys())
+    # 🔴 THE SAME FUNCTION THE LOADER ASKS (S-119, 판정 12:20). F5 below is right that
+    # this set has to equal the load filter's; what it could not guarantee was that two
+    # files reading two DIFFERENT keys would stay equal. Now there is one key and one
+    # function, so the guarantee is structural rather than a promise in a comment.
+    from database import crud
+
+    loadable_cols = crud.loadable_columns(table_info)
     canonical = {str(c).strip().lower(): c for c in loadable_cols}
 
     header_map = []
@@ -74,7 +82,7 @@ def _build_header_map(header: list, table_info: dict, table_name: str, file_path
     if unknown:
         logger.warning(
             f"[{table_name}] Std parser: ignoring unknown column(s) not loadable for "
-            f"table (display_columns 기준) '{basename}': {unknown}"
+            f"table (적재 대상 컬럼 기준) '{basename}': {unknown}"
         )
 
     known = {c for c in header_map if c is not None}
