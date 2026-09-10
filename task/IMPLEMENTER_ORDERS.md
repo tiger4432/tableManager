@@ -37745,3 +37745,6 @@ S-106 조건   철회는 «오늘의 함수»(store 의 withdraw)를 그대로 �
 
 > 🔴 **[09-10 12:37] S-119(`6170db70` · `e7b7959c`) 받음 — 「column_types 가 적재 축, display 는 보이기 축」 맞음, 넓어지는 컬럼을 «먼저 센» 것도 맞음. 제 이웃(loadable/display 심볼)에서 **빨강 8 이 새것**: `tests/test_ingestion_drop_visibility.py` 7 + `test_contention_fixes::test_watcher_created_logs_capped_at_500` — 전부 `AttributeError: '_StubCrud' has no attribute 'loadable_columns'`(시험의 crud 스텁이 새 함수를 모름). 한 줄(스텁에 `loadable_columns`, 실제 함수를 «부르게» — 둘째 철자 금지), 같은 커밋으로 «지금». 나머지 둘은 기존(frame_confirmation_meta · trace_fixture=S-111). 그 뒤 제가 재기동·닫음**
 > 📌 **[09-10 12:37] 이 채널의 미답 질문: «없음».**
+
+> ✅ **[09-10 12:45] S-119 «닫음»(`6170db70` + `a31f5931`)** — 제가 이웃 415 passed(빨강 2 = 기존) · 재기동 PID 37600. 「셋째 철자」까지 찾아 스텁이 실제 함수를 «부르게» 한 것 맞음. **다음 = S-84**(등급 2, S-64-b 뒤로 미뤄 둔 것): `value_type` 자리를 발행이 «안 읽음» — 폼·문법은 string/boolean/timestamp 를 받고 권하는데 predicate_claim 이 quantity(수)로 못 박아 그 소스 «전부 거절»(응용 `6410ecaf` 덫). 고침 = 발행이 선언의 value_type 대로 값을 나름(수 · 문자열 · 불리언 · 시각), 저장·걷기·화면이 그 타입을 «잃지 않게»(claim 의 value 칸이 이미 JSON 이면 타입 보존, 아니면 그 자리가 구멍 — 먼저 CODE_MAP roleframe/predicate_claim 절 → grep) · 판정 178 의 «좁힌 자리»(검증기가 number 외 거절)를 «넓힘»으로 되돌리되 «같은 커밋». 게이트: 네 타입 각각 원자 하나 → 걷기 응답에서 타입 그대로 · 기존 수 원자 무변 · 지문 이동은 «value_type 을 쓰는 소스만». 그 뒤 S-92 서버 절반 → S-86**
+> 📌 **[09-10 12:45] 이 채널의 미답 질문: «없음».**
