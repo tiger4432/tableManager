@@ -224,7 +224,10 @@ def test_the_timing_line_says_whether_a_search_was_set_and_never_what_it_was():
     import main
 
     body = inspect.getsource(main.get_table_data)
-    assert "q={'set' if q else '-'}" in body, body[-1200:]
+    # ⚰️ THE FLAG GREW A NUMBER (S-125, 판정 255). `set` alone could not say WHICH scope
+    # answered, and the scope is now declarable - so two searches of the same table could
+    # build 3 arms or 31 and read identically here. The term itself still never appears.
+    assert "q={'set/' + str(search_scope.get('arms', 0)) if q else '-'}" in body, body[-1400:]
     assert "q={q}" not in body
 
 
