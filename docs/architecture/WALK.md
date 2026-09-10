@@ -54,7 +54,7 @@ client2/src/rnd_board/walk_box_panel.js
 ## 3. 라우트 — 데이터에 답하는 것은 «하나»
 
 ```
-GET /api/ledger/subgraph     걷기. 아래 인자 «열둘»
+GET /api/ledger/subgraph     걷기. 아래 인자 «열셋»
 GET /api/ledger/declaration  무엇을 물을 수 있나 (entities · predicates · sources)
 GET /api/ledger/gaps
 ```
@@ -62,11 +62,13 @@ GET /api/ledger/gaps
 id(alias)  hops 1–40 (기본 12)  direction outgoing|incoming|both  node_limit 10–1000
 edge_limit 20–MAX  positive[]  negative[]  follow[]  collect[]  backbone_hops 0–40
 since  until      ISO 시각 둘. 반열린 구간 [since, until) — 아래 「구간 걷기」 절
+include_superseded  기본 false. 대체된 원자도 그릴지 (S-141)
 ```
 ⚰️ **여기 「아홉」이라 적혀 있었고 목록은 «열» 이었습니다**(2026-09-10 D-3 실측).
 셈이 하나 어긋난 채로, S-98 이 더한 `since`·`until` 이 «둘 다» 빠져 있었습니다 —
 문서 아래쪽에 그 둘의 절이 «있는데» 인자 목록만 그 사실을 모르고 있었습니다.
-근거는 라우트 서명 하나입니다(`ledger_trace_router.evidence_subgraph` 의 `Query(...)` 열둘).
+근거는 라우트 서명 하나입니다(`ledger_trace_router.evidence_subgraph` 의 `Query(...)`).
+🔵 09-10 저녁에 `include_superseded` 가 붙어 «열셋»이 됐습니다(S-141).
 ⚠️ `backbone_hops` 는 「같은 자재를 따라가는 걸음」에 주는 «별도» 예산이다 — 그걸 일반 홉과
 같이 세면 진짜 탐색이 예산을 못 쓴다.
 
@@ -102,23 +104,23 @@ propagation  🔴 «닿은 노드 전부»를 두 부호의 «도달 대비»로
              순위는 내부에서 전부 본다. 두 축이 안 부딪힌다
 walk/state   모드·방향·시작 부호 수 / ready|empty
 ```
-### 🔴 정정·철회는 «걷기에서» 아직 안 떨어진다 (2026-09-10 D-3 실측)
+### ⚰️ 정정·철회 — 걷기가 «현재만» 그린다 (S-141 착지 `6aa21c25`, 2026-09-10)
 
 ```
-쓰는 쪽   ✅ 오늘 생겼다 — `ledger/runtime_v2._stamp_supersedes` 가 「원장의 «첫» supersedes writer」다
-         (S-133 ①, 판정 256). `cardinality: one` 인 술어에서 새 원자가 앞 원자를 «가리킨다»
-읽는 쪽   ✅ 있다 — `ledger_trace.live_claims(claims)` 가 「나중 원자가 대체한 것」을 뺀다
-걷기      🔴 **그 둘이 아직 «안 만난다».** `/api/ledger/subgraph` 는 `supersedes` 를 «읽어 오지만»
-         (`ATOM_COLUMNS` 에 있고 `EvidenceAtom.supersedes` 로 들어온다) 그 값을 «쓰지 않는다» —
-         모듈 전체에 `live_claims` 호출도, 대체된 id 를 거르는 자리도 «없다»
+쓰는 쪽   `ledger/runtime_v2._stamp_supersedes` — 원장의 «첫» supersedes writer (S-133 ①)
+읽는 쪽   `ledger_trace.live_claims` — 나중 원자가 대체한 것을 뺀다
+걷기      ✅ **이제 지난다.** `_split_superseded(atoms)` 가 `live_claims` 를 부르고,
+         걷기는 «자기 필터를 안 짓는다» — 「어느 주장이 현재인가」를 정하는 자리가 둘이면
+         둘이 어긋나도 «오류가 안 나고», 한쪽이 조용히 대체된 사실을 그리기 시작한다
+뺀 수     `walk.superseded_dropped` — «0 일 때도» 실린다. 「이 걷기는 대체된 것을 하나도
+         안 만났다」도 사실이고, 가끔만 있는 키는 독자를 「건너뛰게」 길들인다(절단과 같은 규율)
+둘 다 보기 `?include_superseded=true` → 대체된 엣지도 그리되 «`superseded_by` 표지»가 붙는다.
+         「보인다」와 「현재다」는 다른 사실이라, 둘을 보자고 한 사람도 둘을 가를 수 있어야 한다
 ```
-🔴 **그러므로 오늘 걷기는 «대체된 엣지와 대체한 엣지를 둘 다» 그린다.** 엣지 id 는
-`(술어, 출발, 도착)` 의 해시라 목적지가 다르면 «다른 엣지»이고, 둘 다 응답에 남는다.
-⚠️ 판정 256 의 게이트 「`live_claims` 가 대체된 원자를 실제로 뺌(걷기 응답에서 사라짐)」은
-**함수를 «직접» 부르는 단언으로 채워졌다**(`test_live_claims_drops_the_atom_a_later_one_replaced`).
-그 단언은 참이지만 «걷기 응답»에 대한 문장은 아니다 — 「기제가 있다」 ≠ 「이 경로가 그것을 지난다」.
-📌 이 절은 «고쳐지면 지운다». 지금 여기 있는 이유는, 이것이 안 적히면 다음 사람이
-`cardinality: one` 을 보고 「그러니 하나만 보이겠지」로 읽기 때문이다.
+🪦 **여기 「아직 안 떨어진다」가 적혀 있었습니다**(같은 날 아침 D-3 실측). 그때 참이었고
+오늘 저녁 닫혔습니다 — 절은 지우지 않고 «닫힘»으로 남깁니다. 이 자리가 남는 이유는 하나입니다:
+**판정 256 의 게이트가 `live_claims` 를 «직접 불러» 초록이었습니다.** 그것은 «필터»를 증명하고
+«배선»을 증명하지 않습니다(「착지는 배선이 아니다」). 응답 층에서 재야 했고, 지금은 그렇게 잽니다.
 
 🔵 **이것을 «어떻게 선언하나» — 두 줄 (판정 124 정정본)**
 ```

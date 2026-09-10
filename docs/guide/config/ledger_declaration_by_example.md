@@ -174,8 +174,10 @@ Link type    inspected  Wafer -> Die                              backing datase
 ```
 ⚠️ **소급은 «안 합니다»** — 이미 여러 원자가 살아 있는 (주어, `one` 술어)는 «다음 새 원자부터»
 대체됩니다. 과거 정리는 재번역(rescope)의 일입니다.
-🔴 그리고 «걷기는 아직 대체된 것을 안 지웁니다** — 대체한 엣지와 대체된 엣지가 «둘 다» 그려집니다
-(`docs/architecture/WALK.md` 의 「정정·철회는 걷기에서 아직 안 떨어진다」). 적을 때 이것을 아셔야 합니다.
+✅ **걷기는 «현재만» 그립니다**(S-141, 2026-09-10 저녁). 대체된 엣지는 빠지고, 몇 개를 뺐는지는
+`walk.superseded_dropped` 가 «0 일 때도» 말합니다. 둘 다 보려면 `?include_superseded=true` 이고
+그때는 엣지에 `superseded_by` 표지가 붙습니다.
+🪦 이 자리에 아침까지 「걷기가 아직 안 지웁니다」라고 적혀 있었습니다 — 같은 날 닫혔습니다.
 
 ### ③ 수명 — `entities.<타입>.status` · `sources.<소스>.status`
 ```
