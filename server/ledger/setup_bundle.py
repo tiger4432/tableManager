@@ -155,16 +155,13 @@ DEFAULT_VALUE_TYPE = "number"
 #: 🔴 S-84 LANDED THREE OF THE FOUR (판정 249). `number`, `string` and `boolean` are read
 #: by the emitter now - see `_OBJECT_VALUE_ROLE_KINDS`.
 #:
-#: ⛔ `timestamp` IS DELIBERATELY STILL OUT, and the reason is a measurement rather than a
-#: preference. A `time` Role must be a timezone-AWARE datetime, and a time read out of a
-#: source column is usually a string; the one function that turns the second into the
-#: first is `source_preparation._aware_time`, which needs the timezone the source declares
-#: on its `occurred_at`. Reaching it from the emitter would mean importing across a
-#: boundary that runs the other way (`source_preparation` reads `roleframe`, not the
-#: reverse) AND plumbing a declaration from another axis into the value binding's scope.
-#: That is a round, not a line - so the refusal below still names `timestamp`, with a
-#: number, which is the whole point of keeping the two sentences apart.
-EMITTABLE_VALUE_TYPES = frozenset({"number", "string", "boolean"})
+#: ⚰️ `timestamp` JOINED THEM IN S-84-b (판정 09-10 13:44), and what unblocked it was a
+#: DECLARATION rather than a clever import. A `time` Role must be timezone-AWARE and a
+#: source column usually holds a string; the cast needs to know what a NAIVE reading means,
+#: which is a fact about the source. Borrowing the timezone declared on `occurred_at` would
+#: have been the compiler guessing, so the VALUE BINDING says it - one grammar field - and
+#: the parse itself moved to `roleframe.aware_time`, which both readers already reach.
+EMITTABLE_VALUE_TYPES = frozenset({"number", "string", "boolean", "timestamp"})
 
 #: How many objects one subject may hold on this predicate. Without it an aggregate can
 #: count a subject twice and NOTHING refuses -- the quiet arithmetic error this project
@@ -567,13 +564,18 @@ _OBJECT_VALUE_ROLE_KINDS = {"event_ref": "identity"}
 #: so it maps to the neighbouring kind that shares the branch and adds no condition.
 #: `boolean` joins it because `_scalar` already admits bools.
 #:
-#: ⚠️ `timestamp` IS ABSENT, not defaulted - see `EMITTABLE_VALUE_TYPES` for why. An
-#: absent key here would be a silent fallback to a wrong kind, so the lookup below refuses
-#: by name instead.
+#: ⚠️ AN UNKNOWN TYPE IS STILL NOT DEFAULTED HERE. A silent fallback to a wrong kind is
+#: how a value lands as something the Role validator then refuses, which is the defect this
+#: whole item is about.
 _VALUE_TYPE_ROLE_KINDS = {
     "number": "quantity",
     "string": "attribute",
     "boolean": "attribute",
+    # ⚠️ `time` CARRIES A REQUIREMENT THE OTHERS DO NOT: the Role validator wants a
+    # timezone-aware datetime, so a `timestamp` value's binding must declare a `timezone`
+    # and the validator refuses one that does not. That refusal is the whole reason this
+    # type could join the emittable set at all.
+    "timestamp": "time",
 }
 
 
@@ -1679,7 +1681,13 @@ def _validate_binding(value: Any, path: str, problems: _Problems) -> None:
         return
     kind = value.get("kind")
     if kind == "column":
-        allowed = ("kind", "column")
+        # 🔴 `timezone` SAYS WHAT A NAIVE READING MEANS (S-84-b, 판정 09-10 13:44). A
+        # `timestamp` value's Role must be timezone-aware, and the column usually holds a
+        # string; what the compiler cannot know is which zone an unqualified reading is
+        # in, because that is a fact about the SOURCE. Optional here and required by the
+        # value-type check below, so a column binding that carries no timestamp is
+        # unchanged - which is every binding on disk today.
+        allowed = ("kind", "column", "timezone")
         required = ("kind", "column")
     elif kind == "constant":
         allowed = ("kind", "value")
@@ -1696,6 +1704,8 @@ def _validate_binding(value: Any, path: str, problems: _Problems) -> None:
                    ignored=_RETIRED_BINDING_FIELDS)
     if kind == "column":
         _nonblank_text(value.get("column"), f"{path}.column", problems)
+        if "timezone" in value:
+            _nonblank_text(value.get("timezone"), f"{path}.timezone", problems)
     elif kind == "constant" and "value" in value:
         _deterministic_json(value["value"], f"{path}.value", problems)
     elif kind == "entity":
@@ -2264,6 +2274,29 @@ def _cross_profile_contract(path: str, profile: Mapping[str, Any],
                 if bindings[role].get("kind") not in allowed:
                     problems.add("invalid_binding", f"{mpath}.bind.{role}.kind",
                                  f"binding kind is not allowed for role {role!r}")
+                # 🔴 A `time` ROLE FILLED FROM A COLUMN MUST SAY ITS TIMEZONE (S-84-b).
+                # The Role validator wants a timezone-aware datetime and a column usually
+                # holds a string; without this the declaration would compile and every
+                # atom built from it would then be refused at translation - which is the
+                # exact trap 판정 178 narrowed the form to avoid. Refused HERE, where an
+                # author can still fix it, and named rather than implied.
+                # ⚠️ THE VALUE ROLE ONLY, AND `occurred_at` IS THE REASON THE SCOPE HAS
+                # TO BE NAMED. It is a `time` role too, and it already has a timezone -
+                # the source declares it on `read.occurred_at`, which is what makes that
+                # declaration mean "the timezone of this source's naive values". Its
+                # binding's column is documented as ignored ALWAYS. Requiring the field
+                # there refused every existing declaration - measured, fifty reds on the
+                # first run - so the requirement belongs to the role that has no other
+                # place to get one.
+                if (role == VALUE_ROLE
+                        and roles[role].get("kind") == "time"
+                        and bindings[role].get("kind") == "column"
+                        and not str(bindings[role].get("timezone") or "").strip()):
+                    problems.add(
+                        "missing_timezone", f"{mpath}.bind.{role}.timezone",
+                        f"role {role!r} carries a timestamp, so its column binding must "
+                        f"declare the timezone a naive reading is in - the compiler "
+                        f"cannot know it and every atom would be refused without it")
                 if (roles[role].get("kind") == "symbolic"
                         and bindings[role].get("kind") == "constant"
                         and bindings[role].get("value") not in

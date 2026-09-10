@@ -15,11 +15,11 @@ alone - the value must be in `role.allowed_values` - and nothing in the system w
 second still empty, EVERY symbolic value is refused. Mapping `string` there would have been
 that day.
 
-⚠️ `timestamp` IS STILL OUT, by measurement too: a `time` Role must be a timezone-aware
-datetime, the one function that makes one out of a source string needs the timezone
-declared on `occurred_at`, and reaching it from the emitter means importing across a
-boundary that runs the other way. That is a round, not a line, and the validator goes on
-naming it with a number.
+⚰️ `timestamp` JOINED THEM IN S-84-b (판정 09-10 13:44), and a DECLARATION is what let it:
+a `time` Role must be timezone-aware and a source column usually holds a string, so the
+cast needs to know what a naive reading means - a fact about the SOURCE. The value binding
+now says it, the parse moved to `roleframe.aware_time` where both readers reach it, and a
+timestamp binding that declares no timezone is refused where an author can still fix it.
 """
 import os
 import sys
@@ -91,16 +91,29 @@ def test_the_roles_these_map_to_accept_the_values_they_are_for():
         roleframe._validate_role_value(None, _Role("quantity"), True, path="p")
 
 
-def test_timestamp_is_declarable_and_not_yet_emittable():
-    """⚠️ TWO SENTENCES, KEPT APART ON PURPOSE. 「that is not a word」 tells an author they
-    made a typo; 「declared, but the emitter does not read it yet (S-84)」 names a debt with
-    a number. Folding them would lose the difference."""
+def test_a_timestamp_value_must_declare_the_timezone_a_naive_reading_is_in():
+    """🔴 S-84-b CLOSED THE LAST TYPE, AND A DECLARATION IS WHAT CLOSED IT.
+
+    A `time` Role must be timezone-aware and a source column usually holds a string, so
+    the cast has to know what an unqualified reading means - a fact about the SOURCE that
+    no compiler can infer. Borrowing the zone declared on `occurred_at` would have been
+    the compiler guessing, so the value BINDING says it.
+
+    ⛔ AND A BINDING THAT DOES NOT SAY IT IS REFUSED WHERE AN AUTHOR CAN STILL FIX IT.
+    Without this the declaration would compile and every atom built from it would be
+    refused at translation - which is exactly the trap 판정 178 narrowed the form to avoid.
+    """
     assert "timestamp" in VALUE_TYPES
-    assert "timestamp" not in EMITTABLE_VALUE_TYPES
+    assert "timestamp" in EMITTABLE_VALUE_TYPES
+    assert _value_role("timestamp") == {"kind": "time", "required": True}
 
 
-def test_the_emittable_set_is_exactly_the_three_that_landed():
-    assert EMITTABLE_VALUE_TYPES == frozenset({"number", "string", "boolean"})
+def test_the_emittable_set_is_now_the_whole_grammar():
+    """⚰️ THE TRAP IS CLOSED, SO THE ASSERTION CHANGES SHAPE RATHER THAN GOING AWAY.
+    While the emitter honoured less than the grammar accepted, this pinned the gap and the
+    refusal that named it. The two sets are equal now - and a type added to the grammar
+    without the emitter turns this red, which is the same guard pointing forward."""
+    assert EMITTABLE_VALUE_TYPES == VALUE_TYPES
 
 
 def test_the_authoring_form_offers_what_the_emitter_honours():

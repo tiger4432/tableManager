@@ -26,6 +26,7 @@ from verified_join_contract import (
     is_physically_verified_descriptor,
 )
 from .envelope import source_event_identity
+from .roleframe import aware_time as roleframe_aware_time
 from .roleframe import (
     EVENT_FRAME_REQUIRED_ATTRS,
     SOURCE_EVENT_INCOMPLETE_ATTR,
@@ -903,39 +904,21 @@ def _required_entity_columns(source_plan: SourcePlan) -> tuple[str, ...]:
 
 
 def _aware_time(value: Any, timezone_name: str, path: str) -> datetime:
-    # A varchar time column arrives here as `str`, and the two halves of reading one
-    # already existed APART: `profile_chain_mapper._aware_time` parses ISO and honours an
-    # explicit offset but refuses naive, while this one localizes naive with the declared
-    # timezone and refused every string.  Measured 2026-08-21 against the three spellings
-    # `dt_log.event_time` actually holds -- `...Z`, `...+09:00`, and a naive
-    # `2026-05-11 00:00:00` -- so the parse below is the chain's, character for character,
-    # and the localization further down stays exactly as it was.  An offset written in the
-    # text WINS; `timezone_name` answers only for a value that carries none, which is what
-    # makes that declaration mean "the timezone of this source's naive values".
-    #
-    # A string this cannot read falls through to the refusal rather than being replaced by
-    # ingestion time: a value we could not read is not a value we may invent.
-    if isinstance(value, str):
-        try:
-            value = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        except ValueError:
-            pass
-    if isinstance(value, pd.Timestamp):
-        value = value.to_pydatetime()
-    if not isinstance(value, datetime):
-        raise SourcePreparationError(
-            "source_preparation_incomplete", path,
-            "occurred_at value must be datetime",
-        )
-    if value.tzinfo is None:
-        try:
-            value = value.replace(tzinfo=ZoneInfo(timezone_name))
-        except Exception as exc:
-            raise SourcePreparationError(
-                "source_preparation_incomplete", path,
-                f"declared timezone {timezone_name!r} cannot be applied",
-            ) from exc
-    return value
+    """The `occurred_at` reading, in this layer's refusal vocabulary.
+
+    🔴 THE LOGIC MOVED AND DID NOT FORK (S-84-b, 판정 09-10 13:44). A `timestamp` VALUE
+    needs exactly the reading this column has had since 2026-08-21, and the seat that
+    evaluates a value binding is in `roleframe` - which this module already imports, while
+    the reverse would be a cycle. So the parse lives there and this stays as the thin
+    boundary that names the refusal the way `source_preparation`'s callers expect: two
+    layers refusing in their own words, one function deciding what a timestamp IS.
+    """
+    return roleframe_aware_time(
+        value, timezone_name, path,
+        error=lambda code, at, message: SourcePreparationError(
+            "source_preparation_incomplete", at,
+            "occurred_at value must be datetime" if code == "invalid_time_value"
+            and "datetime" in message else message))
 
 
 def _molecule_key(driver, cells, positions) -> str:

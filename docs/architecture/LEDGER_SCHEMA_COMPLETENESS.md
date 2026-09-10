@@ -625,7 +625,7 @@ B6 대조        「③ — 순위표가 클라」  -> 🔵 «대부분 ①» (�
 
 | # | 무엇 | 선언 | 코드 층 | 소급 |
 |---|---|---|---|---|
-| 1 | **값 목적어의 «타입»** (구멍 ①) | `vocabulary.<p>.object.value_type` 한 칸 | 문법(setup_bundle) + 발행(`_OBJECT_VALUE_ROLE_KINDS` 를 «선언에서» 읽게) + 스켈레톤 한 줄 | 🔵 **0** — 기존 value 술어는 수인 채로 그대로. 새로 적는 술어만 |
+| 1 | ✅ **값 목적어의 «타입»** (구멍 ① — S-84 · S-84-b 로 «닫힘») | `vocabulary.<p>.object.value_type` 한 칸 + timestamp 면 `bind.<role>.timezone` 한 칸 | 문법(setup_bundle) + 발행(`_VALUE_TYPE_ROLE_KINDS` 가 «선언에서» 읽음) + 캐스트 한 자리(`roleframe.aware_time`) | 🔵 **0** — 기존 value 술어는 수인 채로 그대로(바이트 동일). 새로 적는 술어만 |
 | 2 | **카디널리티** (구멍 ②) | `object.cardinality` 한 칸 | 문법(검증)만. 읽는 쪽은 집계(B5)가 «생길 때» | 🔵 **0** — 제약은 새 원자에만 |
 | 3 | **status 패턴** (구멍 ③④) | `entities.<t>.status` · `sources.<s>.status` — 술어의 것을 «일반화» | 문법 + 걷기가 retired 타입을 뺄지(한 줄) | 🔵 **0** |
 | 4 | **decision_key** (구멍 ⑤) | 표 카탈로그에 `decision_key: [컬럼들]` (판정 151·165, 이름 «하나») | 문법 + 판정 120/122 의 뷰 결정 자리 | 🔵 **0** |
@@ -723,7 +723,7 @@ delete_cell_source_batch        crud.py:4402 -> `compute_priority_value(...)` �
 
 | 표 A 의 ③ | 착지 뒤 | 자리 | 정의역 | 읽는 쪽 |
 |---|---|---|---|---|
-| A2-1 값 목적어의 타입 | `vocabulary.<p>.object.value_type` | ① | ✅ **② (S-84 닫힘, 09-10 13:0x 확인)** — `EMITTABLE_VALUE_TYPES` 가 오늘 `{number, string, boolean}` «셋»입니다. 남은 하나 `timestamp` 는 «S-84-b» 로 이름이 있고, 문법이 받는 넷(`VALUE_TYPES`)과의 차이는 그대로 «이름 대어» 거절됩니다 | ⚰️ 그때: 발행 «0» · `number` 만 통과(판정 178) |
+| A2-1 값 목적어의 타입 | `vocabulary.<p>.object.value_type` | ① | ✅ **① (S-84-b 닫힘, 09-10 13:5x)** — `EMITTABLE_VALUE_TYPES == VALUE_TYPES` 입니다: 넷 다 발행됩니다(`number`→quantity · `string`/`boolean`→attribute · `timestamp`→time). 🔴 마지막 하나를 연 것은 «영리한 import 가 아니라 선언»입니다 — `time` Role 은 tz-aware 를 요구하고 소스 컬럼은 대개 문자열이라, 「naive 한 읽기가 어느 시간대인가」를 «값 바인딩»이 말합니다(`bind.<role>.timezone`). 파스는 `roleframe.aware_time` «하나»이고 `occurred_at` 이 쓰던 그것입니다. timezone 을 안 적은 timestamp 바인딩은 «작성 시점에» `missing_timezone` 으로 거절됩니다(번역에서 전부 거절되는 옛 덫을 그 자리에서 막음) | ⚰️ 그때: 발행 «0» · `number` 만 통과(판정 178) |
 | A2-3 카디널리티 | `vocabulary.<p>.cardinality` ∈ {one, many}, 기본 `many` | ① | ① | «0» — 무해(검사하는 쪽이 없을 뿐) |
 | A1-1 엔티티 은퇴 | `entities.<t>.status` ∈ {active, retired}, 기본 `active` | ① | ① | «0» — 무해 |
 | A4-2 소스 은퇴 | `sources.<s>.status` 같음 | ① | ① | 🔴 «0» — ⚠️ **무해하지 않음**: retired 로 적어도 «계속 번역»합니다 |
@@ -845,7 +845,7 @@ label 「keys 앞 둘」  ② 로 적힌 «표면 규칙» — 판정 169 로 �
 ⚠️ 남은 정의역 빚 «하나»는 «이름이 붙어» 있다 — 값 타입이 오늘 `number` 만 발행되고,
    그 밖은 「S-84」를 대며 거절된다. 침묵이 아니라 «번호 붙은 빚»이다
    ⚰️ **09-10: S-84 가 닫혔습니다** — 발행이 `{number, string, boolean}` 셋을 읽고,
-      남은 `timestamp` 는 S-84-b 로 이름이 옮겨졌습니다. 빚이 «줄었고 여전히 번호가 있습니다»
+      그리고 `timestamp` 도 S-84-b 로 닫혔습니다 — 이 줄의 빚은 «없습니다»
 ```
 🔴 **걷기·행동 관문(09-16)은 «따로»입니다** — 거기 남은 ③: 시각 · 집합 읽기 · 수식 · M 대수 · 진위(B12) · 대조의 둘(B6) · 행동의 넷(C).
 
@@ -964,7 +964,7 @@ unit    ①  map.unit.kind(row|event|group_by)                 select  ③  «�
 emit    ①  키 조립 · entity_ref · value · 수식어 · 상수        emit 안의 계산  ③ ③ ③               -> 값 변환 · 그룹 집계 · 짝짓기/위치
 time    ①  occurred_at.column | basis (+ timezone)            multi   ①  list_separator (한 셀만)
 π       ②  엔진의 것(row_id · 그룹 키) — 칸 없음이 «맞다»       σ       —  인자 아님(문의 삭제 사건)
-정의역   ②  value_type = number 만 발행, 그 밖은 «S-84 를 대며» 거절
+정의역   ①  value_type 넷 다 발행(S-84 · S-84-b). timestamp 는 바인딩의 `timezone` 을 요구
 => 🔴 번역 기저의 ③ = «넷» (문장 선택 S-99 · 값 변환 · 그룹 집계 · 짝짓기/위치)   + 전제 재검토 «하나»(국소성)
 ```
 🔴 **09:46 에 제가 「문법의 ③ 은 0」이라고 쓴 자리에, 목록을 기저에서 받으니 «넷»이 있습니다.**
@@ -1080,7 +1080,7 @@ Q-짝짓기  «분자 안의 위치» — 같은 분자의 «다른 행/다른 �
 | `bind.mappings.<s>.bind` (키 조립 · entity_ref · value · 수식어 · 상수) | **emit** | ① |
 | `read.occurred_at.column` \| `basis` (+`timezone`) | **emit** 의 t | ① |
 | `list_separator` | **emit** 의 다중 | ① |
-| `object.value_type` | **emit** 의 정의역 | ② (number 만 · 그 밖은 S-84 를 대며 거절) |
+| `object.value_type` | **emit** 의 정의역 | ① (넷 다 · timestamp 는 바인딩 `timezone` 필요) |
 | `entities.*.allow_null` | **emit** 의 부재 | ② |
 | `read.registration_probe` | **규칙의 «명시된 예외»**(비국소) | ① |
 | `decision_key` | 번역 인자 «아님** — 표의 판단 단위(판정 165) | ① |

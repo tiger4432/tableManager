@@ -72,40 +72,27 @@ def test_the_defaults_are_named_values_rather_than_behaviour_nobody_can_read():
     assert not hasattr(setup_bundle, "DEFAULT_DECISION_KEY")
 
 
-def test_the_emittable_set_is_narrower_than_the_grammar_and_says_so():
-    """🔴 판정 178 — A WORD THE GRAMMAR TAKES AND THE EMITTER REFUSES IS A TRAP. The first
-    version of that round accepted `string`, and the form OFFERED it, while the compiler
-    pinned a value object to a quantity: every atom built from it would have been refused.
+def test_the_emitter_now_honours_the_whole_grammar():
+    """⚰️ 판정 178 NARROWED THE FORM BECAUSE THE EMITTER HONOURED LESS THAN THE GRAMMAR
+    ACCEPTED - a word offered and then refused is a trap. S-84 and S-84-b closed the gap
+    from the other side, so what this case pins has changed shape rather than gone away:
+    the two sets are EQUAL, and a type added to the grammar without the emitter turns this
+    red - the same guard, pointing forward.
 
-    ⚰️ S-84 (판정 249) MOVED THE LINE BUT DID NOT REMOVE IT. `string` and `boolean` are
-    emittable now, so the word this case uses had to change - what it pins is the SHAPE:
-    the emitter honours less than the grammar accepts, and the refusal for the remainder
-    names a debt with a number instead of telling an operator they mistyped.
+    ⛔ THE REFUSAL IT USED TO EXERCISE IS STILL THERE and still says S-84, because the
+    day someone declares a fifth type it is the sentence they need: 「declared, but the
+    emitter does not read it yet」 is a debt with a number, not a spelling mistake.
     """
-    assert setup_bundle.EMITTABLE_VALUE_TYPES < setup_bundle.VALUE_TYPES
+    assert setup_bundle.EMITTABLE_VALUE_TYPES == setup_bundle.VALUE_TYPES
     assert setup_bundle.DEFAULT_VALUE_TYPE in setup_bundle.EMITTABLE_VALUE_TYPES
 
     bundle = logical_bundle()
     predicate = predicate_of(bundle)
     predicate["object"] = {"kind": "value", "qualifiers": {"required": [], "optional": []}}
     before = clean(bundle)
-    predicate["object"]["value_type"] = "number"
-    assert only_new(before, bundle) == [], "the emittable type must pass"
-
-    predicate["object"]["value_type"] = "string"
-    assert only_new(before, bundle) == [], "S-84 made this one emittable too"
-
-    # The one still outside, and it is outside for a measured reason: a `time` Role wants
-    # a timezone-aware datetime and the cast that makes one lives behind a boundary that
-    # runs the other way. See `EMITTABLE_VALUE_TYPES`.
-    predicate["object"]["value_type"] = "timestamp"
-    issues = [i for i in validate_bundle_errors(bundle, catalog=logical_catalog())
-              if i.path.endswith(".object.value_type")]
-    assert len(issues) == 1
-    assert issues[0].code == "unsupported_value_type"
-    # ⛔ 「that is not a word」 and 「not read yet」 are different sentences, and only one of
-    # them tells an operator to go and change their spelling.
-    assert "S-84" in issues[0].message
+    for value_type in sorted(setup_bundle.VALUE_TYPES):
+        predicate["object"]["value_type"] = value_type
+        assert only_new(before, bundle) == [], f"{value_type} is emittable now"
 
 
 def test_the_form_offers_only_what_the_emitter_can_honour():

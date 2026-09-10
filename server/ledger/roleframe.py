@@ -20,6 +20,8 @@ from types import MappingProxyType
 from typing import Any, final
 import uuid
 
+from zoneinfo import ZoneInfo
+
 import pandas as pd
 
 from database.crud import clean_str_value
@@ -962,6 +964,42 @@ def _frame_row_refs(frame: pd.DataFrame) -> tuple[str, ...]:
     return tuple(refs)
 
 
+def aware_time(value: Any, timezone_name: str, path: str, error=None) -> datetime:
+    """A timezone-AWARE datetime out of whatever a source column holds. One spelling.
+
+    🔴 IT LIVES HERE SO BOTH READERS CAN REACH IT (S-84-b, 판정 09-10 13:44). The
+    `occurred_at` column has been read this way since 2026-08-21; a `timestamp` VALUE needs
+    exactly the same reading, and `source_preparation` already imports this module while the
+    reverse would be a cycle. A second copy beside the value binding is the shape that
+    drifts: the two would then disagree about a string the day one of them learns a format.
+
+    An offset written in the text WINS; `timezone_name` answers only for a value that
+    carries none, which is what makes that declaration mean "the timezone of this value's
+    naive readings".
+
+    A string this cannot read falls through to the refusal rather than being replaced by
+    ingestion time: a value we could not read is not a value we may invent.
+    """
+    refuse = error or (lambda code, at, message: RoleFrameError(code, at, message))
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            pass
+    if isinstance(value, pd.Timestamp):
+        value = value.to_pydatetime()
+    if not isinstance(value, datetime):
+        raise refuse("invalid_time_value", path,
+                     "a timestamp value must be a datetime")
+    if value.tzinfo is None:
+        try:
+            value = value.replace(tzinfo=ZoneInfo(timezone_name))
+        except Exception as exc:
+            raise refuse("invalid_time_value", path,
+                         f"declared timezone {timezone_name!r} cannot be applied") from exc
+    return value
+
+
 def _evaluate_binding(binding: Mapping[str, Any], unit: pd.DataFrame, *, path: str,
                       columns: Mapping[Any, tuple] | None = None) -> Any:
     # `approval_status` gated this call until 2026-08-21.  It refused any binding that did
@@ -987,6 +1025,15 @@ def _evaluate_binding(binding: Mapping[str, Any], unit: pd.DataFrame, *, path: s
             raise RoleFrameError(
                 "ambiguous_binding_value", f"{path}.column",
                 f"column {column!r} has multiple values in one mapper unit")
+        # 🔴 THE DECLARATION SAYS WHICH TIMEZONE, AND THAT IS WHY THIS CAN BE HERE AT ALL
+        # (S-84-b). A `time` Role must be timezone-aware and a source column usually holds
+        # a string; the cast that turns one into the other needs to know what a NAIVE
+        # reading means, which is a fact about the source and not about the compiler. With
+        # the binding carrying it, this is a lookup rather than a guess - and it is the
+        # same function `occurred_at` has always used.
+        timezone_name = binding.get("timezone")
+        if timezone_name:
+            return aware_time(values[0], str(timezone_name), f"{path}.column")
         return values[0]
     if kind == "constant":
         return _plain(binding.get("value"))
