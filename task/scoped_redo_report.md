@@ -29461,3 +29461,69 @@ timestamp -> «time» 이면 덫 ②(캐스팅 자리를 같이 정해야 함)
 지문 이동도 「value_type 을 «쓰는» 소스만」이라는 게이트와 맞습니다(오늘 쓰는 소스가 없으므로 0)
 ```
 > 📌 **[09-10] 이 채널의 미답 질문: 매핑 한 줄 (5절) — 특히 timestamp 를 이번에 넣나.**
+
+---
+
+# [09-10] S-84 착지 — 값은 «선언이 말한 타입»으로 실립니다 (`ad3478fc`)
+
+> 판정 249 그대로. 「timestamp 조건부」의 조건을 «재서» 판정했고, 결과는 «별 줄»입니다.
+
+## 1. 조건을 어떻게 판정했나 — 「한 줄인가」를 실제로 봤습니다
+```
+캐스트     source_preparation._aware_time(value, timezone_name, path)  <- 그 함수 하나
+필요한 것   ① 값 객체의 emit 자리(roleframe:1581)에서 그것을 «부를 수» 있나
+           ② 그 자리에 «선언된 timezone» 이 있나
+실측       roleframe 은 source_preparation 을 «import 하지 않습니다» —
+           의존은 반대 방향입니다(source_preparation 이 roleframe 을 읽습니다, :870 주석)
+           그리고 roleframe 전체에 `timezone` 이 «없습니다»(있는 건 거절문 한 줄뿐)
+⇒ 경계를 뒤집고 «다른 축의 선언»(occurred_at 의 timezone)을 값 바인딩 스코프로 끌어와야 합니다
+⇒ «한 줄이 아닙니다». 판정 249 의 조건대로 timestamp 는 EMITTABLE 에서 «빼고» 이름 대어 남겼습니다
+```
+
+## 2. 착지한 것
+```
+EMITTABLE_VALUE_TYPES  {number} -> {number, string, boolean}
+_OBJECT_VALUE_ROLE_KINDS 의 "value": "quantity" 못 박음 -> «선언 타입 조회»로
+   number -> quantity  ·  string -> attribute  ·  boolean -> attribute
+폼        config_authoring:569 가 EMITTABLE 을 읽으므로 판정 178 의 좁힘이 «자동으로» 풀립니다
+          (고칠 둘째 자리가 없으니 잊을 둘째 자리도 없습니다)
+거절문     "refused as a quantity" -> "refused" (이제 quantity 만이 아니므로 — 그 줄이 거짓이 됩니다)
+```
+
+## 3. 🔴 「왜 symbolic 이 아닌가」 — 그 자리에 한 줄 적었습니다 (판정 249 요구)
+```
+symbolic 은 스칼라 가지에서 «조건이 하나 더» 붙는 유일한 종류입니다:
+   value not in role.allowed_values -> 거절
+그리고 allowed_values 를 «아무도 안 씁니다». 그 자리 주석이 스스로 적어 둔 그대로,
+첫 조건이 도달 가능해지는 «그날» 둘째가 빈 채면 «모든 문자열이 거절»됩니다.
+string 을 거기 매기는 것이 바로 그날이었을 것입니다 — 넓히려다 «전부 거절»
+✅ attribute 는 같은 가지에 조건이 «없고», _scalar 가 bool·수·문자열을 다 받습니다
+```
+
+## 4. 게이트
+```
+✅ number · 타입 무선언  -> 클레임 «바이트 동일»(기존 수 원자 무변)
+✅ string · boolean      -> attribute
+✅ 검증기 직접 호출       -> 각 종류가 «자기 타입»을 받고, quantity 는 문자열·불리언을 «여전히 거절»
+                          (그 거절이 바로 옛 못 박음이 하던 일입니다)
+✅ timestamp             -> 선언은 되고 발행은 «아직», 거절문에 S-84 번호
+✅ 폼                    -> closed_lists()["value_type"] == EMITTABLE
+✅ 지문 이동 0           -> 출하 샘플의 value_type 은 한 곳(number), 오늘 쓰는 소스 없음
+✅ 훑기                  -> 바뀐 심볼을 부르는 시험 «전부» 562 passed
+```
+
+## 5. 남은 빨강 셋 + 오류 열둘은 «제 것이 아닙니다» — 추측이 아니라 «재서» 갈랐습니다
+```
+방법   S-84 와 S-119 를 각각 «프로세스 안»에서 옛 의미로 되돌려 같은 스위트를 돌렸습니다
+결과   수가 «똑같았습니다»(3 failed / 12 errors) -> 둘 다 원인이 아닙니다
+정체   `dt_log … bind.occurred_at.column: column 'event_time' is not in EventFrame schema`
+      = 이 박스의 «gitignore 된 선언»에서 나오는 것입니다. 저장소 사실이 아닙니다
+```
+⚠️ 트리를 stash 하지 «않았습니다» — 앞 라운드에서 배운 그 방법(프로세스 안 되돌림)으로 했습니다.
+
+## 6. 다음
+```
+판정 249 의 「그 뒤 S-92 서버 절반 → S-86」
+그리고 timestamp 는 «별 줄»로 남겨 뒀습니다 — 캐스트를 어디에 둘지가 그 라운드의 주제입니다
+```
+> 📌 **[09-10] 이 채널의 미답 질문: «없음».**
