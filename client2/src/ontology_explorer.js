@@ -11,6 +11,14 @@ import {
 import { declarationShape, emptyOf, shapeAt } from './ontology_skeleton.js';
 import { censusBySource } from './source_backlog.js';
 
+/**
+ * C-59 — 시험 실행이 «어느 행»을 읽었는지 볼 만큼. 서버 상한은 100 이고 기본이 10 입니다.
+ *
+ * 🔴 화면이 «보내는» 값이지 사용자가 «고르는» 축이 아닙니다. 고르게 만들면 그 수가 무엇을
+ *    뜻하는지 설명해야 하고, 설명이 필요한 컨트롤은 대개 설계가 안 끝난 자리입니다.
+ */
+const TEST_RUN_SAMPLE_ROWS = 10;
+
 let controller = null;
 
 function chooseDirtyNavigation(root) {
@@ -1144,7 +1152,10 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       try {
         const result = await jsonRequest('/test-run', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ source_id: sourceId }),
+          // 🔴 C-59. 「몇 행」 옆에 「어느 행」을 그리려면 표본을 «물어야» 합니다. 화면이
+          //    기본 10 을 «보내고», 사용자가 바꾸는 축은 «안 만듭니다»(지금은) — 고를 수
+          //    있게 하면 그 수가 무엇을 뜻하는지 설명해야 하고, 그건 이 화면의 일이 아닙니다.
+          body: JSON.stringify({ source_id: sourceId, sample_rows: TEST_RUN_SAMPLE_ROWS }),
         });
         dispatch({ type: 'TEST_RUN_RECEIVED', result });
         // Only a PASS changes what the tree says about this source, and only the server

@@ -862,6 +862,13 @@ const FLOORS = new Map([
   // route: the receipt has TWO envelopes and the failed one carries no counts at all, so a
   // harness built from the description would have scored three blanks and called it correct.
   ['ledger_receipt_timeline_harness.mjs', 22],
+  // New 2026-09-10 with C-59 (S-92's screen half). Floor is the count it reports on the
+  // commit that introduces it. 🔴 THE TWO CASES HAVE DIFFERENT COLUMNS -- that is the whole
+  // discriminant: a hard-coded table passes one and dies on the other, and the columns come
+  // from the declaration, which differs per source. 🔴 And re-capturing the vector caught
+  // that `values` lives INSIDE `row_key`, not beside the sample: read as a sibling that
+  // branch would never run and never error.
+  ['test_run_rows_harness.mjs', 21],
   // New 2026-09-09 with C-49's other half. Floor is the count it reports on the commit
   // that introduces it. 🔴 THE PURE FUNCTION BEING RIGHT IS NOT THE SCREEN DRAWING IT --
   //    that is the gap this defect lived in. Both controls are paired runs differing in

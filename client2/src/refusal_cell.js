@@ -111,6 +111,65 @@ export function refusalSamples(refused) {
   });
 }
 
+/**
+ * C-59 / S-92 — 시험 실행이 «어느 행»을 읽었나. 표 하나의 «열과 행»만 냅니다(그리기는 표 부품).
+ *
+ * 🔴 열은 `rows_sample[0]` 의 «키에서» 나옵니다. 선언마다 읽는 컬럼이 다르므로 하드코딩이
+ *    있을 수 없고, 픽스처 둘이 «서로 다른 열»을 가진 것이 그 판별식입니다
+ *    (dt_job·dt_cell_key·created_at / event_time·row_id).
+ *
+ * 🔴 거절은 «같은 표의 행»입니다. 별도 표로 빼면 「이 행이 읽혔고 이 행이 거절됐다」를
+ *    나란히 못 봅니다 — 그 나란함이 이 표의 쓸모입니다.
+ * ⛔ `row_key` 가 «없는» 거절은 «안 그립니다» — 행을 안 가리키는 거절이고, 표에 넣으면
+ *    가리키지 않는 자리를 가리키는 것처럼 보입니다(그 거절은 위의 표본 목록이 이미 말합니다).
+ * 🔴 `values` 가 «있으면 그것을 먼저» 그립니다 — 판정 251 이 거절에 키 값을 실었습니다.
+ *    ⚠️ 오늘 캡처된 벡터엔 그 칸이 «없습니다». 그래서 그 갈래는 「있으면」으로만 섭니다.
+ *
+ * @param {object} run 시험 실행 응답, 그대로
+ * @returns {{columns: {key,label}[], rows: object[]}}
+ */
+export function testRunRows(run) {
+  const src = run && typeof run === 'object' ? run : {};
+  const sample = (Array.isArray(src.rows_sample) ? src.rows_sample : [])
+    .filter((r) => r && typeof r === 'object' && !Array.isArray(r));
+  const first = sample[0] || null;
+  const names = first ? Object.keys(first) : [];
+  if (!names.length) return Object.freeze({ columns: Object.freeze([]), rows: Object.freeze([]) });
+
+  // 첫 열이 「무엇인지」를 말하는 자리입니다 — 읽은 행이면 비고, 거절이면 사유가 섭니다.
+  const columns = Object.freeze([
+    Object.freeze({ key: MARK_COLUMN, label: '' }),
+    ...names.map((k) => Object.freeze({ key: k, label: k })),
+  ]);
+
+  const rows = sample.map((r) => Object.freeze({ [MARK_COLUMN]: '', ...r, [KIND_FIELD]: 'read' }));
+
+  const refused = (src.refused && Array.isArray(src.refused.samples) ? src.refused.samples : [])
+    .filter((s) => s && typeof s === 'object' && s.row_key && typeof s.row_key === 'object');
+  for (const s of refused) {
+    const where = `${s.row_key.frame == null ? '' : s.row_key.frame}`
+      + `[${s.row_key.position == null ? '' : s.row_key.position}]`;
+    // 🔴 `values` 는 «`row_key` 안»에 삽니다 — 지시는 표본의 형제 칸으로 적었고, 실제 응답은
+    //    한 겹 더 안쪽입니다(`{frame, position, values}`). 형제로 읽었으면 이 갈래가 «영원히»
+    //    안 돌면서 오류도 안 났을 것입니다. 픽스처를 다시 뜬 것이 그것을 잡았습니다.
+    const raw = s.row_key.values;
+    const values = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : null;
+    const cells = {};
+    for (const k of names) cells[k] = values && Object.prototype.hasOwnProperty.call(values, k)
+      ? values[k] : '';
+    rows.push(Object.freeze({
+      [MARK_COLUMN]: `${MARK} ${s.reason == null ? '' : s.reason} · ${where}`,
+      ...cells, [KIND_FIELD]: 'refused',
+    }));
+  }
+  return Object.freeze({ columns, rows: Object.freeze(rows) });
+}
+
+/** 첫 열의 키 — 값이 아니라 «자리»입니다. 화면과 하니스가 같은 이름을 씁니다. */
+export const MARK_COLUMN = '_mark';
+/** 행이 «읽힌 것»인지 «거절»인지. 표 부품이 쓰는 값이 아니라 이 표의 사실입니다. */
+export const KIND_FIELD = '_kind';
+
 // ⚰️ C-54. `refusalCell` 은 «은퇴했습니다». 그것이 읽던 라우트
 //    `GET /admin/ontology-explorer/refusals` 가 404 가 됐고(S-113/S-114: 거절 분해는 이제
 //    등록부 행의 `refusal_reasons` 로 오며, 그것을 그리는 자리는 소스 상태 패널입니다).

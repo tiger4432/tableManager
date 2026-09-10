@@ -7,7 +7,10 @@ import {
 import { closedListChoice, renderClosedList } from './closed_list.js';
 import { orderingVerdicts, UNIQUENESS_UNREAD } from './uniqueness.js';
 import { demandState } from './form_demand.js';
-import { refusalSummary, excludedNote, refusalSamples } from './refusal_cell.js';
+import { refusalSummary, excludedNote, refusalSamples, testRunRows } from './refusal_cell.js';
+// 🔴 C-59. 표는 «새로 쓰지 않습니다» — 구성·순위 표와 같은 부품입니다(상설: 근원 템플릿
+//    요소 개발 후 데이터 갈아끼우기). 실측 2026-09-10: 마킹 저장소 없이도 그립니다.
+import { TablePart } from './rnd_board/table_part.js';
 import { verificationNote } from './verification_note.js';
 import { backlogCells, hasBacklog, censusRefusal } from './source_backlog.js';
 
@@ -836,6 +839,22 @@ function renderTestRun(state) {
   //    표본을 «이미» 싣고 있었고 화면이 건수만 그렸습니다.
   // ⛔ 문장은 «툴팁»입니다 — 문지기가 쓴 그대로이고, 표에 펼치면 이 패널이 설명문이 됩니다.
   //    (소유자 상설: 「ui에 설명 문구 주저리주저리 금지」)
+  // 🔴 C-59 / S-92. 「행 N」 옆에 «어느 행». 수만으로는 「내 선언이 저 표를 읽고 있나」에
+  //    답할 수 없고, 그 물음이 이 패널의 첫 물음입니다.
+  // 🔴 표 코드를 «새로 쓰지 않습니다» — 구성·순위 표와 «같은 부품»(`TablePart`)을 씁니다
+  //    (상설: 근원 템플릿 요소 개발 후 데이터 갈아끼우기). 실측 2026-09-10: 마킹 저장소 «없이»
+  //    그립니다. 열은 `rows_sample[0]` 의 «키에서» 나옵니다 — 선언마다 다르므로 하드코딩 0.
+  const readRows = testRunRows(run);
+  if (readRows.columns.length) {
+    const host = h('div', 'oe-testrun-rows');
+    box.append(host);
+    new TablePart(host, {
+      doc: document,
+      columns: readRows.columns,
+      rows: readRows.rows,
+      emptyText: '읽은 행이 없습니다',
+    }).render();
+  }
   const samples = refusalSamples(run.refused);
   if (samples.rows.length) {
     const list = h('div', 'oe-testrun-samples');
