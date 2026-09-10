@@ -74,9 +74,14 @@ def test_the_defaults_are_named_values_rather_than_behaviour_nobody_can_read():
 
 def test_the_emittable_set_is_narrower_than_the_grammar_and_says_so():
     """🔴 판정 178 — A WORD THE GRAMMAR TAKES AND THE EMITTER REFUSES IS A TRAP. The first
-    version of this round accepted `string`, and the form OFFERED it, while the compiler
-    pins a value object to a quantity: every atom built from it would have been refused.
-    The refusal now names the debt (S-84) rather than the operator's spelling."""
+    version of that round accepted `string`, and the form OFFERED it, while the compiler
+    pinned a value object to a quantity: every atom built from it would have been refused.
+
+    ⚰️ S-84 (판정 249) MOVED THE LINE BUT DID NOT REMOVE IT. `string` and `boolean` are
+    emittable now, so the word this case uses had to change - what it pins is the SHAPE:
+    the emitter honours less than the grammar accepts, and the refusal for the remainder
+    names a debt with a number instead of telling an operator they mistyped.
+    """
     assert setup_bundle.EMITTABLE_VALUE_TYPES < setup_bundle.VALUE_TYPES
     assert setup_bundle.DEFAULT_VALUE_TYPE in setup_bundle.EMITTABLE_VALUE_TYPES
 
@@ -88,6 +93,12 @@ def test_the_emittable_set_is_narrower_than_the_grammar_and_says_so():
     assert only_new(before, bundle) == [], "the emittable type must pass"
 
     predicate["object"]["value_type"] = "string"
+    assert only_new(before, bundle) == [], "S-84 made this one emittable too"
+
+    # The one still outside, and it is outside for a measured reason: a `time` Role wants
+    # a timezone-aware datetime and the cast that makes one lives behind a boundary that
+    # runs the other way. See `EMITTABLE_VALUE_TYPES`.
+    predicate["object"]["value_type"] = "timestamp"
     issues = [i for i in validate_bundle_errors(bundle, catalog=logical_catalog())
               if i.path.endswith(".object.value_type")]
     assert len(issues) == 1

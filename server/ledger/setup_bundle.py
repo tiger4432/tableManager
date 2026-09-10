@@ -150,9 +150,21 @@ DEFAULT_VALUE_TYPE = "number"
 #:
 #: ⚠️ THE WIDER SET STAYS, because the refusal that reads 「declared, but the emitter
 #: does not read it yet (S-84)」 is a different sentence from 「that is not a word」 --
-#: one names a debt with a number, the other tells an operator they made a typo. When
-#: S-84 lands, this line is the change.
-EMITTABLE_VALUE_TYPES = frozenset({"number"})
+#: one names a debt with a number, the other tells an operator they made a typo.
+#:
+#: 🔴 S-84 LANDED THREE OF THE FOUR (판정 249). `number`, `string` and `boolean` are read
+#: by the emitter now - see `_OBJECT_VALUE_ROLE_KINDS`.
+#:
+#: ⛔ `timestamp` IS DELIBERATELY STILL OUT, and the reason is a measurement rather than a
+#: preference. A `time` Role must be a timezone-AWARE datetime, and a time read out of a
+#: source column is usually a string; the one function that turns the second into the
+#: first is `source_preparation._aware_time`, which needs the timezone the source declares
+#: on its `occurred_at`. Reaching it from the emitter would mean importing across a
+#: boundary that runs the other way (`source_preparation` reads `roleframe`, not the
+#: reverse) AND plumbing a declaration from another axis into the value binding's scope.
+#: That is a round, not a line - so the refusal below still names `timestamp`, with a
+#: number, which is the whole point of keeping the two sentences apart.
+EMITTABLE_VALUE_TYPES = frozenset({"number", "string", "boolean"})
 
 #: How many objects one subject may hold on this predicate. Without it an aggregate can
 #: count a subject twice and NOTHING refuses -- the quiet arithmetic error this project
@@ -536,10 +548,33 @@ OCCURRED_AT_ROLE = "occurred_at"
 TARGET_ROLE = "target"
 VALUE_ROLE = "value"
 
-#: `object.kind` -> the Role kind that carries the object, for the two kinds that carry one
-#: in a Role rather than in an entity reference.  `value` is `quantity` because that is what
-#: the only live value predicate (`has_netdie@1`) declared while a Claim still said so.
-_OBJECT_VALUE_ROLE_KINDS = {"value": "quantity", "event_ref": "identity"}
+#: `object.kind` -> the Role kind that carries the object, for the ONE kind that carries
+#: one in a Role rather than in an entity reference and does not depend on a declared type.
+_OBJECT_VALUE_ROLE_KINDS = {"event_ref": "identity"}
+
+#: A `value` object's declared type -> the Role kind that carries it (S-84, 판정 249).
+#:
+#: 🔴 THIS USED TO BE THE CONSTANT `quantity`, and that is the defect: the grammar and the
+#: authoring form accepted `string`/`boolean`/`timestamp` while the compiler pinned every
+#: value object to a number, so a source declaring one of them had EVERY atom refused as
+#: an invalid quantity. The type the declaration states is now the type the Role carries.
+#:
+#: ⛔ `string` IS `attribute` AND NOT `symbolic`, and that is not a naming preference.
+#: `roleframe`'s scalar branch carries an extra condition for `symbolic` alone - the value
+#: must be in `role.allowed_values` - and NOTHING writes `allowed_values`. Its own comment
+#: says so and says what follows: the day the first half becomes reachable with the second
+#: still empty, every symbolic value is refused. Mapping `string` here is exactly that day,
+#: so it maps to the neighbouring kind that shares the branch and adds no condition.
+#: `boolean` joins it because `_scalar` already admits bools.
+#:
+#: ⚠️ `timestamp` IS ABSENT, not defaulted - see `EMITTABLE_VALUE_TYPES` for why. An
+#: absent key here would be a silent fallback to a wrong kind, so the lookup below refuses
+#: by name instead.
+_VALUE_TYPE_ROLE_KINDS = {
+    "number": "quantity",
+    "string": "attribute",
+    "boolean": "attribute",
+}
 
 
 def predicate_claim(predicate_id: str, predicate: Any,
@@ -602,6 +637,18 @@ def predicate_claim(predicate_id: str, predicate: Any,
     if object_kind == "entity_ref":
         roles[TARGET_ROLE] = {"kind": "entity", "required": True}
         emit_object["entity"] = f"${TARGET_ROLE}"
+    elif object_kind == "value":
+        # Tolerant of a half-written predicate, like the rest of this function: an
+        # undeclared type means `number`, which is what every declaration on disk means,
+        # and a type this cannot honour falls back to it as well rather than raising -
+        # the VALIDATOR is what tells an author that word is not emittable yet, and it
+        # says so with a number (S-84).
+        declared = obj.get("value_type") or DEFAULT_VALUE_TYPE
+        roles[VALUE_ROLE] = {
+            "kind": _VALUE_TYPE_ROLE_KINDS.get(declared,
+                                               _VALUE_TYPE_ROLE_KINDS[DEFAULT_VALUE_TYPE]),
+            "required": True}
+        emit_object["value"] = f"${VALUE_ROLE}"
     elif object_kind in _OBJECT_VALUE_ROLE_KINDS:
         roles[VALUE_ROLE] = {
             "kind": _OBJECT_VALUE_ROLE_KINDS[object_kind], "required": True}
@@ -1167,8 +1214,8 @@ def _validate_vocabulary(section: Mapping[str, Any], problems: _Problems) -> Non
                         "unsupported_value_type", f"{path}.object.value_type",
                         f"{obj['value_type']!r} can be declared but the emitter does "
                         f"not read it yet, so every atom built from it would be "
-                        f"refused as a quantity (S-84). Until then the emittable set "
-                        f"is {sorted(EMITTABLE_VALUE_TYPES)}.")
+                        f"refused (S-84). Until then the emittable set is "
+                        f"{sorted(EMITTABLE_VALUE_TYPES)}.")
             qualifiers = obj.get("qualifiers")
             qpath = f"{path}.object.qualifiers"
             if problems.exact(
