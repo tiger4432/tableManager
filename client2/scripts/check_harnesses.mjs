@@ -857,6 +857,11 @@ const FLOORS = new Map([
   //    What separates them is whether the open ENDED IN AN ERROR STATE. Four of the eight
   //    redden against the shipped bundle.
   ['explorer_open_path_harness.mjs', 8],
+  // New 2026-09-10 with C-55 (S-117's screen half). Floor is the count it reports on the
+  // commit that introduces it. 🔴 THE FIXTURE IS THE CONTRACT VECTOR, captured off the live
+  // route: the receipt has TWO envelopes and the failed one carries no counts at all, so a
+  // harness built from the description would have scored three blanks and called it correct.
+  ['ledger_receipt_timeline_harness.mjs', 22],
   // New 2026-09-09 with C-49's other half. Floor is the count it reports on the commit
   // that introduces it. 🔴 THE PURE FUNCTION BEING RIGHT IS NOT THE SCREEN DRAWING IT --
   //    that is the gap this defect lived in. Both controls are paired runs differing in

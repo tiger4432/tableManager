@@ -1,5 +1,5 @@
 import { API_BASE, pageLimit } from './config.js';
-import { ABSENT } from './absent.js';
+import { ABSENT, isCount } from './absent.js';
 import { escapeHtml } from './utils.js';
 import { narrowingTail } from './narrowing.js';
 import { state } from './state.js';
@@ -268,13 +268,62 @@ function auditVal(value, isOld) {
   return formatVal(value, isOld);
 }
 
+/** 서버가 원장 배치 영수증을 적는 칸. 이 낱말은 «응답의 키»이고 화면이 짓지 않습니다. */
+export const LEDGER_BATCH_COLUMN = 'ledger_batch';
+/** 체인 없이 들어온 배치가 모이는 버킷 이름 — 라우트가 내는 값 그대로. */
+export const NO_TRANSACTION_BUCKET = 'no_tid';
+
+/**
+ * C-55 / S-117 — 원장 배치 영수증 «한 줄». 값들이지 문장이 아닙니다.
+ *
+ * 🔴 봉투가 «둘»입니다. 실측 픽스처(`contracts/ledger_receipt/vectors.json`, 라이브에서 뜬 것):
+ *      ok      {rows, molecules, atoms_written, atoms_deduped, atoms_withdrawn, refused,
+ *               reasons, translator_ver, status:'ok', error:null}
+ *      failed  {source, status:'failed', error:'RuntimeError: …'}   ← «수가 하나도 없습니다»
+ *    실패 쪽을 수 자리로 그리면 셋이 빈 칸이 되고, 빈 칸은 「안 쟀다」로 읽힙니다 — 그래서
+ *    가르는 것은 `status` 이고, 실패는 «상태와 사유»로 그립니다(C-42 의 거절과 같은 부류).
+ *
+ * ⛔ 낱말은 «응답의 키 그대로»입니다(판정 177). 번역하면 서버가 키를 바꾸는 날 화면이
+ *    «옛 이름으로» 옳아 보입니다.
+ * ⛔ `error` 는 «이름»만 — 문장 전체를 타임라인 줄에 펴면 그 줄이 설명문이 됩니다
+ *    (소유자 상설 2026-09-04). 전문이 필요하면 펼친 자리에 있습니다.
+ */
+export function ledgerReceiptLine(newValue) {
+  const v = newValue && typeof newValue === 'object' && !Array.isArray(newValue) ? newValue : null;
+  if (!v) return '';
+  const status = v.status == null ? '' : String(v.status);
+  if (status && status !== 'ok') {
+    // 🔴 「RuntimeError: a translator blew up」 -> 「RuntimeError」. 이름이 조작자가 찾는 것이고,
+    //    문장은 이 줄의 자리가 아닙니다.
+    const name = v.error == null ? '' : String(v.error).split(':')[0].trim();
+    return [status, v.source == null ? '' : String(v.source), name].filter(Boolean).join(' · ');
+  }
+  const parts = [];
+  for (const key of ['atoms_written', 'atoms_deduped', 'refused']) {
+    // ⚠️ 「수가 아니면」 그 마디를 «안 만듭니다» — 0 으로 그리면 「세 봤더니 0」이 되고,
+    //    이 봉투에서 키가 없는 것은 「안 보냈다」입니다. 철자는 `absent.js` 하나뿐입니다.
+    if (isCount(v[key])) parts.push(`${key} ${Number(v[key])}`);
+  }
+  if (status) parts.push(status);
+  return parts.join(' · ');
+}
+
 function auditKind(group, baseLog, isSummary) {
   if (isSummary) {
+    // 🔴 C-55. 원장 배치가 먼저입니다 — 안 그러면 실패 영수증(로그 둘)이 「BATCH」로 접히고,
+    //    종류 필터에서 «표 셀 변경»과 같은 칸에 앉습니다. `every` 인 것은 DELETE·CREATE 와
+    //    같은 이유입니다: 섞인 트랜잭션을 한쪽 이름으로 부르지 않습니다.
+    if (group.logs.every(log => log.column_name === LEDGER_BATCH_COLUMN)) {
+      return { label: 'LEDGER', cls: 'kind-ledger' };
+    }
     if (group.logs.every(log => log.column_name === 'DELETE')) return { label: 'DELETE', cls: 'kind-delete' };
     if (group.logs.every(log => log.column_name === 'CREATE')) return { label: 'CREATE', cls: 'kind-create' };
     return { label: 'BATCH', cls: 'kind-batch' };
   }
   const col = baseLog.column_name;
+  // 🔴 C-55. 종전엔 여기까지 흘러 «SYSTEM» 이 됐습니다 — 원장 배치가 다른 시스템 행과
+  //    «같은 픽셀»이었고, 필터에서 갈라낼 방법이 없었습니다.
+  if (col === LEDGER_BATCH_COLUMN) return { label: 'LEDGER', cls: 'kind-ledger' };
   if (col === 'CREATE') return { label: 'CREATE', cls: 'kind-create' };
   if (col === 'DELETE') return { label: 'DELETE', cls: 'kind-delete' };
 
@@ -350,8 +399,17 @@ export function createGlobalTimelineItemDom(group) {
   if (isSummary) {
     const allDeletes = group.logs.every(log => log.column_name === 'DELETE');
     const allCreates = group.logs.every(log => log.column_name === 'CREATE');
+    // 🔴 C-55. 원장 배치가 «먼저»입니다 — 실패 영수증은 로그가 둘이라 여기로 오고,
+    //    안 가르면 「N건 변경」으로 접혀 표 셀 변경과 같은 문장이 됩니다.
+    const allLedger = group.logs.every(log => log.column_name === LEDGER_BATCH_COLUMN);
 
-    if (allDeletes) {
+    if (allLedger) {
+      // ③ 'no_tid' 는 «이름»이지 빈 칸이 아닙니다 — 백필·소급은 체인 트랜잭션이 «없는» 것입니다.
+      const chainless = txId === NO_TRANSACTION_BUCKET;
+      displayTitle = `📒 원장 배치 ${group.total_count} · ${baseLog.table_name}`
+        + `${chainless ? ' · 체인 없이 들어온 배치' : ''}`;
+      colorClass = 'color-ledger';
+    } else if (allDeletes) {
       displayTitle = `🗑️ [${user}] 님 | ${baseLog.table_name} | ${group.total_count}행 삭제`;
       colorClass = 'color-delete';
     } else if (allCreates) {
@@ -373,6 +431,14 @@ export function createGlobalTimelineItemDom(group) {
     } else if (col === 'ROW_UPDATE') {
       displayTitle = `🤖 [${user}] 님이 ${baseLog.table_name} (${targetId}) 자동 업데이트`;
       colorClass = baseLog.is_row_deleted ? 'color-deleted-row' : 'color-auto';
+    } else if (col === LEDGER_BATCH_COLUMN) {
+      // 🔴 C-55 / S-117. 원장 배치는 «표의 셀 하나»가 바뀐 것이 아니라 배치 하나가 돈 것이라,
+      //    「누가 어느 칸을 고쳤다」 문장을 쓰면 그 줄이 거짓이 됩니다.
+      // 🔴 ③ 'no_tid' 는 «빈 칸이 아니라 이름»입니다 — 백필·소급은 체인 트랜잭션이 «없는»
+      //    것이고, 「자료 없음」과 섞으면 조작자가 없는 트랜잭션을 찾아다닙니다.
+      const chainless = txId === NO_TRANSACTION_BUCKET;
+      displayTitle = `📒 원장 배치 · ${baseLog.table_name}${chainless ? ' · 체인 없이 들어온 배치' : ''}`;
+      colorClass = 'color-ledger';
     } else {
       displayTitle = `🔄 [${user}] 님이 ${baseLog.table_name} (${targetId}) 의 ${col} 수정`;
       colorClass = baseLog.is_row_deleted ? 'color-deleted-row' : (baseLog.source_name === 'user' ? 'color-user-edit' : 'color-parser-edit');
@@ -388,6 +454,10 @@ export function createGlobalTimelineItemDom(group) {
   // `.expand-indicator`, and all four are still here. Only the layout changed.
   li.classList.add('audit-row');
   const kind = auditKind(group, baseLog, isSummary);
+  // 🔴 C-55 ②. 원장 배치의 영수증만 이 줄을 얻습니다. 다른 종류는 «한 글자도» 안 바뀝니다 —
+  //    빈 문자열이면 아래가 종전 값 칸을 그대로 그립니다.
+  const receiptLine = baseLog.column_name === LEDGER_BATCH_COLUMN
+    ? ledgerReceiptLine(baseLog.new_value) : '';
   // △소유자: 「변경이력 문구에서 맨앞에 ., -, -> 빼줘」. A row that CREATED a value has no
   // 「from」, so a dash and an arrow in front of it are punctuation standing in for nothing.
   const hadOldValue = baseLog.old_value !== null && baseLog.old_value !== undefined && baseLog.old_value !== '';
@@ -421,7 +491,12 @@ export function createGlobalTimelineItemDom(group) {
       </div>
       <div class="audit-cell audit-change">
         ${hadOldValue ? `<span class="val-old">${escapeHtml(auditVal(baseLog.old_value, true))}</span><span class="val-arrow">→</span>` : ''}
-        <span class="val-new">${escapeHtml(auditVal(baseLog.new_value, false))}</span>
+        ${receiptLine
+          // 🔴 C-55 ②. 원장 배치는 «값 옆 한 줄»입니다 — 봉투를 JSON 으로 펴면 그 칸이
+          //    읽을 수 없고, 그렇다고 「배치」 한 낱말만 두면 조작자가 펼쳐야 수를 봅니다.
+          //    수는 여기, 문장(문지기의 error 전문)은 펼친 자리에 그대로 남습니다.
+          ? `<span class="val-new val-receipt">${escapeHtml(receiptLine)}</span>`
+          : `<span class="val-new">${escapeHtml(auditVal(baseLog.new_value, false))}</span>`}
       </div>
       ${txId ? `<div class="audit-cell audit-tx tx-tag" data-tx-id="${txId}"><span class="filter-tx-btn" data-tx-id="${txId}" title="이 트랜잭션만 보기">…${txId.slice(-8)}</span>${isSummary ? '<span class="expand-indicator">▶</span>' : ''}</div>` : '<div class="audit-cell audit-tx"></div>'}
     </div>
