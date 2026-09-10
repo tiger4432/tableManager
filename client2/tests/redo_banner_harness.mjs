@@ -548,6 +548,7 @@ async function score(list, mustCatch, heading) {
   let hit = 0;
   for (const [name, mutate] of list) {
     let bad = false;
+    const woke = [];   // the NAMED checks that did not hold -- ⓐ of C-66
     try {
       const M = load(mutate(SOURCE));
       const rows = [envelope({ lot_id: 'L1', wafer_id: 'W1' }),
@@ -661,33 +662,83 @@ async function score(list, mustCatch, heading) {
       const unread = chainText(null);
       const declaredEmpty = chainText([]);
 
-      bad = buttons(empty.host).some((b) => b.disabled !== true)
-        || buttons(notSource.host).map((b) => b.dataset.redo).join(',') !== 'chain'
-        || !(lines[0] || '').includes('2 groups from 3 rows')
-        || !ledgerHanded || ledgerHanded.groups.length !== 2
-        || ledgerHanded.groups[0].params.scope_values !== 'L1,L2'
-        || byClass(holed.host, 'redo-panel__group')
-          .filter((n) => n.textContent.startsWith('wafer_id'))
-          .some((n) => !n.textContent.includes('no value'))
-        || !handed || handed.groups !== undefined
-        || handed.businessKeys.join(',') !== 'L1,L2'
-        || groupsShown(partial.host)[1]
-           !== 'wafer_id \u2014 1 group from 1 row \u00b7 2 without a value'
-        || armedClosed !== 0 || armedOpen === 0 || armedAfter !== 0 || !closedByEsc
-        || !survivedInsideClick || !survivedOtherKey
-        || calls.length !== 1 || calls[0].op !== 'ledger_rescope'
-        || calls[0].params.scope_column !== 'lot_id'
-        || calls[0].params.scope_values !== 'L1,L2'
-        || !saidWhilePressed.includes('running')
-        || !saidAfter.includes('queued')
-        || byClass(noToken, 'redo-panel__nogo').length !== 1
-        || unread === declaredEmpty
-        || !sameClassBothWays || !wearsTheShell;
+      // \ud83d\udd34 C-66 \u2461\u24d0. THIS WAS ONE ANONYMOUS DISJUNCTION \u2014 `bad = A || B || \u2026 `, twenty-four
+      //    clauses, no names. It answered \u300csomething is wrong\u300d and could not answer \u300cWHAT\u300d, so
+      //    every mutant in this file scored `caught` without anyone being able to say which
+      //    fact noticed it. A mutant caught for an unrelated reason is a mutant nobody is
+      //    measuring: the line it was written to protect can rot away underneath it while the
+      //    corpus stays green. The clauses are the same clauses, in the same order, with the
+      //    same meaning \u2014 each now carries the name of the fact it checks, and states it
+      //    POSITIVELY (true = the screen is right), because a list of negations is read wrong.
+      // \u26a0\ufe0f EACH CHECK RUNS IN ITS OWN TRY. In the disjunction a dereference of something a
+      //    defect had removed (`calls[0].params`, `ledgerHanded.groups[0]`) threw out of the
+      //    whole scoring block, and the throw was folded into `bad = true` \u2014 a crash banked as a
+      //    catch. A check that cannot run has not passed; it fails, by name, and the rest still
+      //    get to speak.
+      const CHECKS = [
+        ['R1 nothing selected leaves every button dead',
+          () => buttons(empty.host).every((b) => b.disabled === true)],
+        ['R2 a table that is not a source offers chain only',
+          () => buttons(notSource.host).map((b) => b.dataset.redo).join(',') === 'chain'],
+        ['R3 the group line counts distinct values, not rows',
+          () => (lines[0] || '').includes('2 groups from 3 rows')],
+        ['R4 the ledger hand-off carries the groups',
+          () => !!ledgerHanded && ledgerHanded.groups.length === 2],
+        ['R5 ...with the scope values joined the way the route reads them',
+          () => ledgerHanded.groups[0].params.scope_values === 'L1,L2'],
+        ['R6 a column with no values says so instead of going out as an empty scope',
+          () => byClass(holed.host, 'redo-panel__group')
+            .filter((n) => n.textContent.startsWith('wafer_id'))
+            .every((n) => n.textContent.includes('no value'))],
+        ['R7 the chain hand-off invents no rule grouping',
+          () => !!handed && handed.groups === undefined],
+        ['R8 ...and carries the business keys verbatim',
+          () => handed.businessKeys.join(',') === 'L1,L2'],
+        ['R9 rows without a value are counted apart from the ones that have it',
+          () => groupsShown(partial.host)[1]
+            === 'wafer_id \u2014 1 group from 1 row \u00b7 2 without a value'],
+        ['R10 a closed panel arms no document listener', () => armedClosed === 0],
+        ['R11 opening arms them', () => armedOpen !== 0],
+        ['R12 closing disarms them again', () => armedAfter === 0],
+        ['R13 Escape closes it', () => closedByEsc === true],
+        ['R14 a click INSIDE the panel does not close it', () => survivedInsideClick === true],
+        ['R15 another key does not close it', () => survivedOtherKey === true],
+        ['R16 pressing a line runs it once, under the op the route reads',
+          () => calls.length === 1 && calls[0].op === 'ledger_rescope'],
+        ['R17 ...with the column', () => calls[0].params.scope_column === 'lot_id'],
+        ['R18 ...and the values', () => calls[0].params.scope_values === 'L1,L2'],
+        ['R19 the line says it is running while it is', () => saidWhilePressed.includes('running')],
+        ['R20 ...and says what came back', () => saidAfter.includes('queued')],
+        ['R21 no token is said, not shown as a grey line',
+          () => byClass(noToken, 'redo-panel__nogo').length === 1],
+        ['R22 an unread rule list and a declared-empty one are different sentences',
+          () => unread !== declaredEmpty],
+        ['R23 the line wears the same class with a token and without one',
+          () => sameClassBothWays === true],
+        ['R24 the panel wears the shell rather than styling itself', () => wearsTheShell === true],
+      ];
+      for (const [checkName, fn] of CHECKS) {
+        let held = false;
+        try { held = fn() === true; } catch (e) { held = false; }
+        if (!held) woke.push(checkName);
+      }
+      bad = woke.length > 0;
     } catch (e) {
+      // The SETUP above the checks threw -- the panel could not even be built. That is still a
+      // catch for now; \u24d1 routes this loop through `lib/mutation_scorer.mjs`, where it becomes
+      // INERT and stops counting as one.
       bad = true;
+      woke.push(`threw before the checks ran: ${String(e && e.message).slice(0, 70)}`);
     }
-    if (bad === mustCatch) { hit++; console.log(`  ${mustCatch ? 'caught ' : 'escaped'} ${name}`); }
-    else { failed++; console.log(`  ${mustCatch ? 'ESCAPED' : 'CAUGHT '} ${name}  <- wrong`); }
+    if (bad === mustCatch) {
+      hit++;
+      console.log(`  ${mustCatch ? 'caught ' : 'escaped'} ${name}`
+        + (mustCatch && woke.length ? `\n            by ${woke[0]}` : ''));
+    } else {
+      failed++;
+      console.log(`  ${mustCatch ? 'ESCAPED' : 'CAUGHT '} ${name}  <- wrong`
+        + (woke.length ? `\n            ${woke.slice(0, 3).join('\n            ')}` : ''));
+    }
   }
   return hit;
 }
