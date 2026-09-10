@@ -2042,6 +2042,33 @@ def _ensure_alignment_decision_key_indexes_sync(db_session_factory):
         logger.info("[Chain] alignment decision-key indexes are already in place.")
 
 
+def _ensure_dynamic_table_indexes_sync(db_session_factory):
+    """Build the indexes a dynamic table's model declares but its database lacks (S-124).
+
+    🔴 A TABLE MADE BEFORE THE DECLARATION KEEPS RUNNING WITHOUT IT. `create_all` adds
+    indexes only while it creates a table, so a relation older than either of these two
+    never got them - and nothing said so, because the model reads correctly and only the
+    database disagrees. The grid's page query orders by `updated_at`, so on such a table it
+    sorts the whole relation instead of walking an index.
+
+    ⚠️ IT ONLY WEAKENS, so it needs no surplus count: neither index is unique, and building
+    one cannot make a query wrong. What it can do is find nothing to build, which is the
+    ordinary outcome on every boot after the first - and it says so either way.
+    """
+    from database import models
+
+    db = db_session_factory()
+    try:
+        created = models.ensure_dynamic_table_indexes(db.get_bind())
+    finally:
+        db.close()
+    if created:
+        logger.info("[Chain] built %d dynamic-table index(es): %s",
+                    len(created), ", ".join(created))
+    else:
+        logger.info("[Chain] dynamic-table indexes are already in place.")
+
+
 def _ensure_human_claims_index_sync(db_session_factory):
     """Build the human-claims index, and NAME the full-table one it replaces (판정 245-b).
 
@@ -2205,6 +2232,15 @@ async def start_chain_ingestion_worker(db_session_factory):
     except Exception as exc:
         logger.error("[Chain] the human-claims index could not be ensured, so an "
                      "interactive withdraw may scan instead: %s", exc)
+    # 🔴 S-124 ①. Same seat, same builder: what a model declares and an existing table
+    # lacks is invisible until a query is slow, and the grid's page query is the one that
+    # goes slow.
+    try:
+        await asyncio.to_thread(_ensure_dynamic_table_indexes_sync, db_session_factory)
+    except Exception as exc:
+        logger.error("[Chain] the dynamic-table indexes could not be ensured, so a table "
+                     "older than the declaration may still sort instead of scanning: %s",
+                     exc)
 
     # 🔴 ONE LOOP PER QUEUE, AND IT SAYS SO WHEN IT STANDS DOWN. Two loops on one outbox
     # pick the same rows up twice and write one heartbeat file between them, so neither

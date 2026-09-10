@@ -1271,6 +1271,18 @@ def _ensure_one_index(engine, name, statement, what):
     try:
         with engine.connect().execution_options(
                 isolation_level="AUTOCOMMIT") as connection:
+            # 🔴 "THE STATEMENT RAN" IS NOT "AN INDEX WAS MADE" (S-124, caught by its own
+            # gate). Every caller appends this function's `True` to a list it then reports
+            # as what it BUILT, and `IF NOT EXISTS` succeeds loudly on an index that was
+            # already there - so a second boot announced sixty-eight fresh indexes and
+            # issued sixty-eight pointless CONCURRENTLY builds. A line that says the same
+            # thing whether or not anything happened is the log equivalent of no line.
+            already = connection.execute(_text(
+                "SELECT i.indisvalid FROM pg_class c "
+                "  JOIN pg_index i ON i.indexrelid = c.oid "
+                " WHERE c.relname = :name AND c.relkind = 'i'"), {"name": name}).first()
+            if already is not None and already[0]:
+                return False
             invalid = connection.execute(_text(
                 "SELECT 1 FROM pg_class c JOIN pg_index i ON i.indexrelid = c.oid "
                 " WHERE c.relname = :name AND NOT i.indisvalid"), {"name": name}
@@ -1318,6 +1330,60 @@ def alignment_decision_key_index_ddl(rule, entry):
     quoted = ", ".join(f'"{column}"' for column in columns)
     return name, (f'CREATE INDEX CONCURRENTLY IF NOT EXISTS "{name}" '
                   f'ON "{table_name}" ({quoted})')
+
+
+def dynamic_table_index_ddls(table_name: str, entry) -> list:
+    """The indexes the dynamic-table model declares, as `(name, CREATE)` pairs (S-124).
+
+    🔴 DECLARED IS NOT BUILT ON A TABLE THAT ALREADY EXISTS. `create_all` adds indexes only
+    while it is creating the table, so a relation made before either of these was declared
+    keeps running without them and nothing says so - the model looks right and the database
+    disagrees. That is the same gap the business-key and decision-key ensures close, at the
+    same seat and through the same builder.
+
+    ⚠️ BOTH, EVEN THOUGH ONE IS A PREFIX OF THE OTHER. `(updated_at)` and
+    `(updated_at, row_id)` are declared together on purpose: the grid's page query orders by
+    both, and the migration that retires prefix-redundant indexes states the reason for
+    keeping such a pair - a small hot index replaced by a much larger one is a slower read,
+    not a saving. An ensure that quietly built one of them would be a third opinion.
+
+    ⚠️ A VIEW GETS NOTHING, the same refusal the neighbours make and for the same reason.
+    """
+    if (entry or {}).get("kind") == "view":
+        return []
+    name = str(table_name or "").strip()
+    if not name:
+        return []
+    single = f"ix_{name}_updated_at"[:63]
+    pair = f"idx_{name}_updated"[:63]
+    return [
+        (single, f'CREATE INDEX CONCURRENTLY IF NOT EXISTS "{single}" '
+                 f'ON "{name}" ("updated_at")'),
+        (pair, f'CREATE INDEX CONCURRENTLY IF NOT EXISTS "{pair}" '
+               f'ON "{name}" ("updated_at", "row_id")'),
+    ]
+
+
+def ensure_dynamic_table_indexes(engine, config=None):
+    """Build every dynamic table's declared indexes that are missing. Returns the names.
+
+    Beside `ensure_map_key_indexes` and `ensure_alignment_decision_key_indexes`, for the
+    same reasons: CONCURRENTLY, outside a transaction, at boot, never in a request, and a
+    failure on one table must not stop the others.
+    """
+    from database import crud as _catalog_owner
+
+    # ⚠️ THE CATALOGUE IS RESOLVED, NOT ASSUMED, and this is the second time the bare name
+    # was written here: `models` has no module-level `TABLE_CONFIG`, so the fallback that
+    # every RELOAD path avoids by passing one is exactly the path a BOOT takes - it died
+    # with `NameError` on its first run, the same way the decision-key ensure did.
+    catalog = config if config is not None else _catalog_owner.TABLE_CONFIG
+    created = []
+    for table_name, entry in sorted((catalog or {}).items()):
+        for name, statement in dynamic_table_index_ddls(table_name, entry):
+            if _ensure_one_index(engine, name, statement, "dynamic-table"):
+                created.append(name)
+    return created
 
 
 def ensure_alignment_decision_key_indexes(engine, config=None, rules=None):

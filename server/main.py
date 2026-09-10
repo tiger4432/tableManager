@@ -2123,7 +2123,12 @@ def get_table_data(
         f"Count: {t_count:.3f}s | ID Scan: {t_id_scan:.3f}s | "
         f"Entity Fetch: {t_row_scan:.3f}s | Layer Merge: {t_dict:.3f}s | "
         f"Other: {t_other:.3f}s | table={table_name} rows={len(data_list)} "
-        f"skip={skip}, limit={limit}, order={order_by}, q={q}")
+        # ⛔ THE SEARCH TERM IS MASKED, NOT LOGGED (판정 09-10 13:09). This line is now
+        # always on, and `q` is a string a PERSON typed - so logging its content would put
+        # user-typed values in a permanent file, which is what 「payload 본문 로그 금지」
+        # protects against even though a search box is not a payload body. What a
+        # diagnosis needs from it is whether a filter was in play at all.
+        f"skip={skip}, limit={limit}, order={order_by}, q={'set' if q else '-'}")
     
     return _table_data_response({
         "table_name": table_name, "total": total_count, "skip": skip, "limit": limit,

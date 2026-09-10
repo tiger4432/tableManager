@@ -159,11 +159,28 @@ def test_a_cardinality_outside_the_closed_set_is_refused():
 
 def test_an_entity_may_be_retired_instead_of_deleted():
     """🔴 DELETION REMOVES THE NAME EVERY STORED ATOM POINTS AT. 「투영은 지워도 기록은
-    안 된다」, applied to the grammar rather than to the ledger."""
+    안 된다」, applied to the grammar rather than to the ledger.
+
+    ⚠️ AND RETIRING ONE A LIVE SOURCE STILL SPEAKS ABOUT IS REFUSED BY NAME (S-103).
+    This case used to assert that retiring produced NOTHING, which was true only while
+    nothing checked - and a retirement that silently leaves a source translating into the
+    retired type is the deletion this test exists to prevent, wearing a softer word. What
+    the grammar owes an author is the NAME of the type and the mapping that still uses
+    it, which is what it now says.
+    """
     bundle = logical_bundle()
     before = clean(bundle)
     entity_of(bundle)["status"] = "retired"
-    assert only_new(before, bundle) == []
+
+    raised = [i for i in validate_bundle_errors(bundle, catalog=logical_catalog())
+              if i.code == "inactive_entity_type"]
+    assert raised, "retiring a type a source still binds must not pass in silence"
+    assert all("retired" in i.message for i in raised), [i.message for i in raised]
+
+    # ⛔ AND IT IS THE ONLY THING RAISED: retirement is not deletion, so the grammar must
+    # not also start reporting the type as unknown, missing or malformed.
+    assert {i.code for i in validate_bundle_errors(bundle, catalog=logical_catalog())}
+    assert only_new(before, bundle) == [i.path for i in raised]
 
 
 def test_a_source_may_be_retired_instead_of_deleted():

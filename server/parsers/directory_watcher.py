@@ -107,6 +107,45 @@ MAX_DROPPED_COLUMNS_REPORTED = 64
 _dropped_column_announced = {}
 
 
+def _analyze_after_load(table_name: str, rows: int) -> bool:
+    """`ANALYZE` one table after a load big enough to have moved its statistics.
+
+    ⚠️ ITS OWN SESSION, AND OUTSIDE THE LOAD'S TRANSACTIONS. `ANALYZE` takes no lock that
+    blocks readers or writers, but it must not ride inside a chunk's transaction: that
+    would make a statistics refresh able to roll a committed load back.
+
+    ⚠️ AND IT NEVER RAISES. The rows are already durable by the time this runs; a failure
+    to re-analyse makes the next query slower, and letting that failure escape would turn a
+    slow query into a file reported as FAILED - trading a small cost for a large lie.
+    """
+    threshold = analyze_after_rows()
+    if threshold <= 0 or not table_name or rows < threshold:
+        return False
+    db = SessionLocal()
+    try:
+        started = time.time()
+        # Autocommit: `ANALYZE` cannot run inside this session's implicit transaction
+        # block and stay outside the caller's, which is the whole point of the seat.
+        connection = db.connection().engine.raw_connection()
+        try:
+            connection.set_isolation_level(0)
+            with connection.cursor() as cursor:
+                cursor.execute(f'ANALYZE "{table_name}"')
+        finally:
+            connection.close()
+        logger.info("[%s] statistics re-analysed after %d row(s) in %.3fs - the planner "
+                    "was costing this table as it was BEFORE the load.",
+                    table_name, rows, time.time() - started)
+        return True
+    except Exception as err:                                           # noqa: BLE001
+        logger.warning("[%s] could not re-analyse after %d row(s): %s - the rows landed, "
+                       "the statistics are stale, and a page query may sort instead of "
+                       "scanning until autovacuum catches up.", table_name, rows, err)
+        return False
+    finally:
+        db.close()
+
+
 def _announce_dropped_columns(t_name, dropped_value_counts, defined_cols, filename, row_count):
     """Report columns the loadable-column filter discarded before the write.
 
@@ -432,6 +471,32 @@ def warn_invalid_heavy_threshold_once(value):
         f"Ignoring invalid 'heavy_file_mb' value {value!r} in ingestion_settings.json — "
         f"expected a positive number (MB). Falling back to default {DEFAULT_HEAVY_FILE_MB}MB."
     )
+
+
+#: How many rows one file must land before its table is re-analysed (S-124 ②).
+#:
+#: 🔴 A PROCEDURE A PERSON HAS TO REMEMBER IS A HOLE. After a large load the table's
+#: statistics describe the table as it was BEFORE it, so the planner costs an
+#: `ORDER BY updated_at ... LIMIT` against a row count that no longer exists and picks a
+#: sequential scan and a sort over an index it has. Measured by the owner on a 440,000-row
+#: load: the grid's page query spent 0.7 s choosing ids. Nothing is broken - the statistics
+#: are simply old - and "run ANALYZE after a big load" is exactly the kind of step that
+#: works until the day somebody is busy.
+#:
+#: ⚠️ A DEFAULT THAT MATCHES TODAY'S BEHAVIOUR FOR SMALL FILES. Under this many rows
+#: nothing extra runs, so the ordinary drip of small files costs what it costs now.
+DEFAULT_ANALYZE_AFTER_ROWS = 10000
+
+
+def analyze_after_rows() -> int:
+    """The declared threshold, or the default. Zero or below turns it off."""
+    value = load_ingestion_settings().get("analyze_after_rows",
+                                          DEFAULT_ANALYZE_AFTER_ROWS)
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        warn_invalid_heavy_threshold_once(value)
+        return DEFAULT_ANALYZE_AFTER_ROWS
 
 
 def get_heavy_threshold_bytes() -> int:
@@ -2857,6 +2922,14 @@ class IngestionHandler(FileSystemEventHandler):
                     except Exception as pe:
                         logger.warning(f"Progress callback failed: {pe}")
                     
+            # 🔴 THE STATISTICS ARE PART OF THE LOAD (S-124 ②). After the last chunk
+            # commits, this table's row count is one the planner has never seen, and the
+            # grid's page query is costed against the old one - measured by the owner on a
+            # 440,000-row load, 0.7 s spent choosing a page of ids over an index that was
+            # there all along. Run here rather than left in a runbook: 「사람이 기억해야 하는
+            # 절차는 구멍이다」.
+            _analyze_after_load(t_name, processed_rows)
+
             # [Drop visibility] Individual silence, named aggregate - one report per file.
             _announce_dropped_columns(
                 t_name, dropped_value_counts, defined_cols, filename, processed_rows
