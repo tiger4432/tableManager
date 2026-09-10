@@ -33,9 +33,14 @@ class FakeDriver:
 
 
 class FakePlan:
-    def __init__(self, relation, cursor_columns, identity):
+    def __init__(self, relation, cursor_columns, identity, status="active"):
         self.relation = relation
         self.driver = FakeDriver(cursor_columns, identity)
+        # S-103: `followup.sources_for_table` asks a plan whether it is retired before it
+        # offers the plan a row, so a double standing in for one has to answer. A fake
+        # thinner than the thing it stands in for is more permissive than production - the
+        # sentence this file's neighbour already wrote about its own driver.
+        self.status = status
 
 
 class FakeSetup:
