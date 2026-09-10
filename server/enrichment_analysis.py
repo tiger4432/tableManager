@@ -234,7 +234,7 @@ def _typed_key_values(rule: dict, keys: dict) -> tuple:
 def _source_target_presence(db, rule: dict, target_field: str, key_raw_values: dict) -> dict:
     """Per key: how many SOURCE rows carry a NON-BLANK value for `target_field`?
 
-    Sibling of `enrichment_mapper._recount_affected_keys` - same chunked
+    Sibling of `enrichment_mapper._aggregate_affected_keys` - same chunked
     `(k1,..) IN (...) GROUP BY` shape, same reason (the affected key set is far
     smaller than the row set, and no full scan is ever issued). Returns {} when
     the source table has no such column, which is the honest answer to "did the
@@ -366,9 +366,18 @@ def classify_queue(db, rule: dict, max_keys: int = 200, limit: int = None,
         key_raw.setdefault(clean, raw)
         row_key[r["row_id"]] = clean
 
-    from enrichment_mapper import _recount_affected_keys
-    total_per_key = _recount_affected_keys(
-        db, rule["source_table"], rule["decision_key"], key_raw) if key_raw else {}
+    # ⚠️ THIS ASKS FOR THE ROW TOTAL, NOT FOR THE RULE'S DECLARED AGGREGATES (S-129).
+    # The mapper's function grew from `count` to `count|min|max`, so it now takes the
+    # specs; the answer wanted here is the same one it always gave. Calling the same
+    # function with a count spec keeps the blank-key partitioning in ONE place - the
+    # comment above already says why a second copy of it goes wrong.
+    from enrichment_mapper import _aggregate_affected_keys
+
+    _ROW_TOTAL = "__rows__"
+    totals = _aggregate_affected_keys(
+        db, rule["source_table"], rule["decision_key"], key_raw,
+        {_ROW_TOTAL: {"fn": "count", "column": None}}) if key_raw else {}
+    total_per_key = {k: v[_ROW_TOTAL] for k, v in totals.items()}
     presence = {t: _source_target_presence(db, rule, t, key_raw) for t in same_name_targets}
 
     # 2) Per row: cheap classes first, reference probe only for what survives.

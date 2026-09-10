@@ -161,7 +161,11 @@ def test_loader_valid_rule_normalized():
     r = rules[0]
     assert r["name"] == "r1"
     assert r["decision_key"] == ["equipment", "event_time"]
-    assert r["aggregations"] == {"chip_count": "count"}
+    # ⚰️ THE DECLARATION STILL SAYS `"count"`; the NORMALIZED form is now one shape
+    # (S-129 ①). Two spellings surviving past the loader is what the parser exists to
+    # prevent - every consumer would have to understand both. The input above is
+    # unchanged, which is the compatibility this pins.
+    assert r["aggregations"] == {"chip_count": {"fn": "count", "column": None}}
     # 표시용 행 상한: 기본값과 천장이 이제 **선언값**이다(코드 상수 아님).
     caps = enrichment_config.load_read_caps({})
     assert r["reference_views"][0]["limit"] == enrichment_config.cap_value(

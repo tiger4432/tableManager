@@ -889,7 +889,11 @@ class AutoConfirmCollector:
                 bk = item.get("business_key_val", bk)
             if not isinstance(updates, dict):
                 continue
-            keys = {k: updates.get(k) for k in decision_key}
+            # 🔴 판단키 ∪ 집계 이름 (S-129 ③). 뷰가 그 lot 그룹의 min 으로 조회하려면
+            # 그 값을 «물을 수» 있어야 하고, 둘 다 파생행의 컬럼이라 출처가 하나다.
+            # ⚠️ 아래 두 술어(`key_is_wholly_blank`·`blank_key_columns`)는 규칙의
+            # decision_key 만 훑으므로 이름이 늘어도 판정이 바뀌지 않는다 — 실측함.
+            keys = enrichment_config.view_bind_values(self.rule, updates)
             if enrichment_config.key_is_wholly_blank(self.rule, keys):
                 # NOTHING survives - not "part of the key is missing". A partial
                 # key is worked on what remains [2026-08-05 ruling]; a wholly

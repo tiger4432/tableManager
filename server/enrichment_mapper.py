@@ -35,14 +35,24 @@ def _cell_value(data: dict, col: str):
     return cell
 
 
-def _recount_affected_keys(db, source_table: str, decision_key: list, key_raw_values: dict) -> dict:
-    """영향받은 판단키들만 대상으로 원본 테이블 건수를 재계산한다(멱등 count).
+def _aggregate_affected_keys(db, source_table: str, decision_key: list,
+                             key_raw_values: dict, aggregations: dict) -> dict:
+    """영향받은 판단키들만 대상으로 원본 테이블 집계를 재계산한다(멱등).
+
+    반환 `{clean_key_tuple: {집계이름: 값}}`.
+
+    🔴 모집단은 «그 키의 커밋된 소스 행 전체»이지 이번 트랜잭션 조각이 아니다 (S-129 ②,
+    실측 2026-09-10). 배치가 정하는 것은 「어느 키를 다시 계산하나」뿐이고, 세는 대상은
+    아래 `db.query(...).filter(key IN ...).group_by(...)` 가 소스 표에서 직접 읽는다.
+    그래서 늦게 도착한 «더 이른» 행은 자기 배치가 그 키를 깨울 때 min 을 «내린다» —
+    이 성질은 count 가 이미 갖고 있었고, min/max 가 그것을 물려받는다.
 
     key_raw_values: {clean_key_tuple: typed_raw_tuple} — typed 값으로 바인딩해 컬럼 타입과 일치시킨다.
     빈 판단키 컬럼의 raw 값은 None이며, 그 컬럼은 **동등 비교에 실리지 않는다**(아래).
     확장성: 유니크 키 수는 배치 행 수보다 훨씬 작다(압축비). 키 500개 청크의
     `(k1,..) IN (...) GROUP BY` 쿼리만 수행 — 전량 스캔 없음. 판단키 컬럼 인덱스 권장
     (가이드 참조: docs/guide/chain_ingestion_guide.md §Enrichment).
+    ⚠️ 집계가 여럿이어도 «쿼리는 그대로 하나»다 — SELECT 목록에 열이 붙을 뿐이다.
 
     A BLANK KEY COLUMN CANNOT BE MATCHED BY EQUALITY  [2026-08-05, partial-key ruling]
     Since a partial decision key produces a derived identity, some keys arrive
@@ -72,12 +82,31 @@ def _recount_affected_keys(db, source_table: str, decision_key: list, key_raw_va
         raise ValueError(f"Source table model '{source_table}' is not initialized.")
     cols = [getattr(model, k) for k in decision_key]
 
+    # 이름 순서를 «한 번» 고정한다 — SELECT 목록과 결과 읽기가 같은 순서를 써야 한다.
+    names = sorted(aggregations)
+    exprs = []
+    for name in names:
+        spec = aggregations[name]
+        fn = spec["fn"] if isinstance(spec, dict) else spec
+        column = spec.get("column") if isinstance(spec, dict) else None
+        if fn == "count":
+            exprs.append(func.count())
+            continue
+        source_col = getattr(model, column, None)
+        if source_col is None:
+            # 선언 검증이 이미 소스 컬럼을 확인하지만, 모델이 다시 로드되는 사이에
+            # 어긋날 수 있다. 조용히 0을 쓰지 않고 이름을 대고 던진다.
+            raise ValueError(
+                f"aggregation '{name}' reads column '{column}', which table "
+                f"'{source_table}' does not have")
+        exprs.append(func.min(source_col) if fn == "min" else func.max(source_col))
+
     by_pattern = {}
     for clean_key, raw in key_raw_values.items():
         blank_at = tuple(i for i, v in enumerate(clean_key) if v == "")
         by_pattern.setdefault(blank_at, []).append(raw)
 
-    counts = {}
+    results = {}
     for blank_at, raws in by_pattern.items():
         blank_idx = set(blank_at)
         live_cols = [c for i, c in enumerate(cols) if i not in blank_idx]
@@ -93,16 +122,34 @@ def _recount_affected_keys(db, source_table: str, decision_key: list, key_raw_va
                     conds.append(live_cols[0].in_([v[0] for v in live]))
                 else:
                     conds.append(tuple_(*live_cols).in_(live))
-            rows = (db.query(*cols, func.count().label("cnt"))
+            rows = (db.query(*cols, *exprs)
                     .filter(and_(*conds)).group_by(*cols).all())
             for row in rows:
-                key = tuple(crud.clean_str_value(v) for v in row[:-1])
-                # ACCUMULATE, not assign. `NULL` and `''` are two SQL groups and
-                # one decision key: `clean_str_value` folds them, so a blank
-                # component makes the GROUP BY hand back two rows for the same
-                # key. Assignment silently reported whichever storage came last.
-                counts[key] = counts.get(key, 0) + int(row[-1])
-    return counts
+                key = tuple(crud.clean_str_value(v) for v in row[:len(cols)])
+                # FOLD, not assign. `NULL` and `''` are two SQL groups and one
+                # decision key: `clean_str_value` folds them, so a blank component
+                # makes the GROUP BY hand back two rows for the same key.
+                # Assignment silently reported whichever storage came last.
+                #
+                # 🔴 AND EACH FUNCTION FOLDS ITSELF. count adds; min takes the
+                # smaller; max the larger. Summing a min would be arithmetic on
+                # two answers to the same question.
+                bucket = results.setdefault(key, {})
+                for name, value in zip(names, row[len(cols):]):
+                    bucket[name] = _fold(aggregations[name], bucket.get(name), value)
+    return results
+
+
+def _fold(spec, running, value):
+    """같은 키의 두 SQL 그룹을 하나로 접는다. 함수마다 접는 법이 다르다."""
+    fn = spec["fn"] if isinstance(spec, dict) else spec
+    if fn == "count":
+        return int(running or 0) + int(value or 0)
+    if value is None:
+        return running
+    if running is None:
+        return value
+    return min(running, value) if fn == "min" else max(running, value)
 
 
 def _result(updates, skipped_no_key: int, partial_keys: int,
@@ -194,7 +241,7 @@ def map_enrichment_dedup(db, payloads, rule=None):
             unexpressible += 1
             continue
         # 빈 컬럼의 raw는 None이다 — 타입 캐스트를 태우지 않는다. 재계산 쿼리가 그
-        # 컬럼을 동등 비교가 아니라 공백 술어로 묻기 때문이며(`_recount_affected_keys`),
+        # 컬럼을 동등 비교가 아니라 공백 술어로 묻기 때문이며(`_aggregate_affected_keys`),
         # 빈 문자열을 number 컬럼 타입으로 캐스트하는 무의미한 경로도 함께 사라진다.
         raw_vals = [
             None if sv == ""
@@ -231,11 +278,13 @@ def map_enrichment_dedup(db, payloads, rule=None):
     if not groups:
         return _result([], skipped, 0, unexpressible)
 
-    # 2) count 집계 — 영향 키 한정 재계산(멱등: 재인제션에도 이중 카운트 없음)
-    counts = {}
-    count_cols = [c for c, fn in aggregations.items() if fn == "count"]
-    if count_cols:
-        counts = _recount_affected_keys(db, source_table, decision_key, key_raw_values)
+    # 2) 집계 — 영향 키 한정 재계산(멱등: 재인제션에도 이중 카운트 없음)
+    #    🔴 모집단은 «그 키의 커밋된 소스 행 전체»다 (S-129 ②) — 배치는 「어느 키를」만
+    #    정하고, 세는 것은 소스 표를 직접 읽는다. 그래서 늦게 온 더 이른 행이 min 을 내린다.
+    aggregated = {}
+    if aggregations:
+        aggregated = _aggregate_affected_keys(
+            db, source_table, decision_key, key_raw_values, aggregations)
 
     # 3) 키당 1행 upsert 아이템 구성 — target_fields는 절대 포함하지 않는다.
     #    기존 키: decision/list 컬럼 값이 동일하면 has_changed=False로 무변경 처리되고,
@@ -255,9 +304,13 @@ def map_enrichment_dedup(db, payloads, rule=None):
         for col, v in g["reps"].items():
             if col in derived_cols and col not in target_fields:
                 upd_cols[col] = v
-        for col in count_cols:
+        for col, spec in aggregations.items():
             if col in derived_cols and col not in target_fields:
-                upd_cols[col] = counts.get(key, 0)
+                # ⚠️ count 가 없으면 «0», min/max 가 없으면 «None». 0 은 「그 키의
+                # 행이 없다」는 참인 답이지만, 값 집계에서 0 은 지어낸 값이다.
+                fn = spec["fn"] if isinstance(spec, dict) else spec
+                default = 0 if fn == "count" else None
+                upd_cols[col] = (aggregated.get(key) or {}).get(col, default)
 
         item = {
             "updates": upd_cols,

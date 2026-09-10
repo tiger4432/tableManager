@@ -16,7 +16,10 @@
     "decision_key":  ["equipment", "event_time"],  // 필수: 판단키(1..N 컬럼)
     "target_fields": ["wafer_id"],             // 필수: 사람이 채울 필드(파생 테이블 컬럼)
     "list_columns":  ["chip_count", "lot_hint"],   // 선택: 워크리스트 표시 단서
-    "aggregations":  { "chip_count": "count" },    // 선택(서버 전용): 집계 컬럼. v1은 count만
+    "aggregations":  { "chip_count": "count",                 // 선택(서버 전용): 파생행에 두는 그룹 집계
+                       "bonding_time_min": {"fn": "min",      // count | min | max
+                                            "column": "bonding_time"} },  // min/max 는 소스 컬럼을 읽는다
+                     // 이 이름들은 참조뷰에서 `:이름` 으로 바인드할 수 있다 (판단키와 같이)
     "enabled": true,                            // 선택(기본 true)
     "reference_views": [                        // 선택: 참조뷰 — 쿼리는 서버에만, 클라엔 label만 노출
       { "label": "lot event",
@@ -269,11 +272,79 @@ def _resolve_view_query(view: dict) -> tuple:
     return None, "reference view requires 'query' or 'query_ref'"
 
 
-def _validate_view_sql(sql: str, decision_key: list) -> str:
+#: 집계로 쓸 수 있는 함수. `count` 는 행을 세므로 «컬럼이 없어도» 되고, 나머지는 «있어야» 한다.
+AGGREGATION_FUNCTIONS = ("count", "min", "max")
+#: 컬럼 없이 설 수 있는 유일한 함수 — 세는 대상이 「행」이라서다.
+AGGREGATIONS_WITHOUT_COLUMN = ("count",)
+
+
+def _parse_aggregation(name: str, spec):
+    """`(normalized, None)` 또는 `(None, 사유)`. 정규형은 `{"fn":…, "column":…|None}`.
+
+    🔴 두 모양을 «읽고 하나로 저장한다» (S-129, 판정 16:05). 기존 선언 `{"chip_count":
+    "count"}` 은 글자 그대로 계속 읽히고, 새 모양은 `{"bonding_time_min": {"fn": "min",
+    "column": "bonding_time"}}` 이다. 소비자가 둘을 «각각» 이해하게 두면 같은 질문에 두 답이
+    생기므로, 갈래는 여기서 «한 번» 접힌다.
+
+    ⛔ 집계는 «키가 아니다». 늦게 도착한 더 이른 행이 min 을 내리면 키였을 경우 그 행의
+    정체성이 바뀌고, 이미 확정된 값이 고아가 된다. 키는 lot 이고 집계는 그 그룹의 «값»이다.
+    """
+    if isinstance(spec, str):
+        spec = {"fn": spec}
+    if not isinstance(spec, dict):
+        return None, (f"aggregation '{name}' must be \"count\" or "
+                      f"{{\"fn\": ..., \"column\": ...}}, not {type(spec).__name__}")
+
+    fn = spec.get("fn")
+    if fn not in AGGREGATION_FUNCTIONS:
+        return None, (f"aggregation '{name}' declares fn={fn!r}; supported: "
+                      f"{', '.join(AGGREGATION_FUNCTIONS)}")
+
+    column = spec.get("column")
+    if fn in AGGREGATIONS_WITHOUT_COLUMN:
+        # `{"fn": "count", "column": "x"}` 은 「x 가 빈 행은 안 센다」로 읽힐 수 있는데
+        # 이 판은 그렇게 세지 않는다. 조용히 무시하면 선언과 동작이 갈리므로 거절한다.
+        if column is not None:
+            return None, (f"aggregation '{name}': fn='count' counts ROWS and takes no "
+                          f"'column' (got {column!r}) - remove it, or use min/max")
+        return {"fn": fn, "column": None}, None
+
+    if not isinstance(column, str) or not column.strip():
+        return None, (f"aggregation '{name}': fn={fn!r} needs a source 'column' to "
+                      f"aggregate - it has no meaning over rows alone")
+    return {"fn": fn, "column": column.strip()}, None
+
+
+def aggregation_names(rule: dict) -> tuple:
+    """이 규칙이 파생행에 두는 집계 컬럼 이름들."""
+    return tuple((rule.get("aggregations") or {}).keys())
+
+
+def view_bind_names(rule: dict) -> set:
+    """참조뷰·후보 프로브가 «바인드해도 되는» 이름 (S-129 ③).
+
+    판단키 ∪ 집계 이름. 둘 다 «파생행의 컬럼»이라 값을 한 곳에서 읽을 수 있고, 그것이
+    이 집합이 하나인 이유다 — 뷰가 물을 수 있는 것은 「이 파생행이 아는 것」뿐이다.
+    """
+    return set(rule.get("decision_key") or ()) | set(aggregation_names(rule))
+
+
+def view_bind_values(rule: dict, row_values: dict) -> dict:
+    """파생행의 값에서 바인드 dict 를 짓는다. 없는 이름은 «싣지 않는다».
+
+    ⚠️ 빠진 것을 `None` 으로 채우지 않는다 — `missing_binds` 가 「못 물어본다」를 이름 대어
+    돌려주는 것이 그 자리이고, `None` 을 실으면 그 거절이 «빈 결과»로 바뀐다.
+    """
+    return {name: row_values[name] for name in view_bind_names(rule)
+            if name in (row_values or {})}
+
+def _validate_view_sql(sql: str, allowed_binds) -> str:
     """참조뷰 SQL 안전성 검증. 통과 시 None, 실패 시 사유 문자열 반환.
 
     - 단일 SELECT(또는 WITH … SELECT)문만 허용, ';' 다중 스테이트먼트 금지.
-    - 바인드 파라미터는 decision_key 컬럼명만 허용(경계 계약: params도 동일 제약).
+    - 바인드 파라미터는 «판단키 ∪ 집계 이름»만 허용(경계 계약: params도 동일 제약).
+      집계가 들어온 이유는 S-129 다 — 그 lot 그룹의 min/max 로 조회하려면 뷰가 그
+      값을 물을 수 있어야 하고, 두 이름 다 «파생행의 컬럼»이라 출처가 하나다.
     실행 시엔 SQLAlchemy text() 바인딩만 사용하므로 값 주입(injection)은 구조적으로 불가.
     """
     body = sql.strip().rstrip(";").strip()
@@ -285,9 +356,10 @@ def _validate_view_sql(sql: str, decision_key: list) -> str:
     if not (head.startswith("select") or head.startswith("with")):
         return "only SELECT (or WITH ... SELECT) statements are allowed"
     binds = set(_BIND_PARAM_RE.findall(body))
-    invalid = sorted(binds - set(decision_key))
+    invalid = sorted(binds - set(allowed_binds))
     if invalid:
-        return f"bind params must be decision_key columns only; invalid: {invalid}"
+        return (f"bind params must be decision_key columns or aggregation names; "
+                f"invalid: {invalid}")
     return None
 
 
@@ -354,7 +426,7 @@ def _normalize_candidate_for(rule_name: str, label: str, raw, target_fields: lis
 
 def _normalize_reference_views(rule_name: str, raw_views, decision_key: list,
                                target_fields: list = None, rejections: list = None,
-                               caps: dict = None) -> list:
+                               caps: dict = None, aggregations: dict = None) -> list:
     """참조뷰 목록을 정규화한다. 유효하지 않은 뷰는 **목록에서 제외**된다.
 
     주의: 제외는 로드 시점에 일어나므로 `/enrichment/rules`의 label 목록과
@@ -375,7 +447,8 @@ def _normalize_reference_views(rule_name: str, raw_views, decision_key: list,
             continue
         sql, err = _resolve_view_query(raw)
         if err is None:
-            err = _validate_view_sql(sql, decision_key)
+            err = _validate_view_sql(
+                sql, set(decision_key) | set(aggregations or {}))
         if err is not None:
             logger.warning(f"[Enrichment:{rule_name}] reference view '{raw.get('label')}' dropped: {err}")
             _record(rejections, "reference_view", f"{rule_name}/{raw.get('label')}",
@@ -580,18 +653,18 @@ def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = 
     aggregations = {}
     raw_aggs = raw.get("aggregations") or {}
     if not isinstance(raw_aggs, dict):
-        return None, "'aggregations' must be an object {column: fn}"
-    for col, fn in raw_aggs.items():
+        return None, ("'aggregations' must be an object "
+                      "{derived_column: \"count\" | {\"fn\": ..., \"column\": ...}}")
+    for col, spec in raw_aggs.items():
         # 🔴 이름 대어 거절한다 (S-102, 원장 S-84 와 같은 처리). 이 자리는 경고 한 줄을
         # 남기고 «조용히 버렸다» — 그러면 작성자가 `sum` 을 적어도 규칙은 «집계 없이» 서고,
         # 파생 표의 그 칸은 영영 비어 있으면서 선언은 채워진 것처럼 보인다. 「로그에만 있는
         # 스킵은 아무도 보지 못하는 스킵이다」는 이 모듈이 `_record` 옆에 이미 적어 둔 문장이고,
         # 그 문장은 「고쳐야 할 선언」에 대해서는 «거절»까지 간다.
-        if fn != "count":
-            return None, (
-                f"aggregation '{col}: {fn}' is not supported - 'count' is the only "
-                f"function this version applies")
-        aggregations[col] = fn
+        parsed, why = _parse_aggregation(col, spec)
+        if parsed is None:
+            return None, why
+        aggregations[col] = parsed
 
     # 테이블/컬럼 존재 검증 (table_config가 주어진 경우에만 — 순수 구조 검증과 분리)
     if known_tables is not None:
@@ -632,6 +705,16 @@ def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = 
         if missing_aggs:
             return None, (
                 f"aggregation column(s) missing in derived table: {missing_aggs}")
+        # 🔴 그리고 min/max 가 «읽는» 컬럼은 소스 표에 있어야 한다 (S-129 ④). 없으면
+        # 규칙은 «서고» 파생행을 만들 때가 되어서야 던진다 — 즉 선언의 오타가 적재
+        # 실패로 나타난다. 여기서 이름을 대는 편이 고칠 자리를 바로 가리킨다.
+        unreadable = sorted(
+            f"{name} -> {spec['column']}" for name, spec in aggregations.items()
+            if spec.get("column") and spec["column"] not in src_cols)
+        if unreadable:
+            return None, (
+                f"aggregation(s) read column(s) missing in source table "
+                f"'{source_table}': {unreadable}")
         # 파생 테이블 키 계약: dedup mapper가 판단키로 business_key_val을 조립할 수 있어야 한다.
         comp_src = drv_cfg.get("composite_key_source")
         bk_col = drv_cfg.get("business_key")
@@ -650,7 +733,7 @@ def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = 
 
     reference_views = _normalize_reference_views(
         name, raw.get("reference_views"), decision_key, target_fields,
-        rejections=rejections, caps=caps)
+        rejections=rejections, caps=caps, aggregations=aggregations)
     normalized = {
         "name": name,
         # ① auto-confirm opt-in. Carried through RAW (not coerced) so
