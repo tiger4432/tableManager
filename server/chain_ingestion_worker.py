@@ -2078,6 +2078,76 @@ def _ensure_alignment_decision_key_indexes_sync(db_session_factory):
         logger.info("[Chain] alignment decision-key indexes are already in place.")
 
 
+def _analyze_stale_tables_sync(db_session_factory):
+    """`ANALYZE` every catalogued table whose statistics the database says are stale (S-130).
+
+    🔴 S-124 ② ONLY COVERS TABLES THAT ARE LOADED AGAIN. It re-analyses after a big load,
+    so a relation that took 440,000 rows BEFORE that landed keeps planning against
+    statistics from whenever it was last analysed - and production is exactly that shape.
+    Nothing announces it: the rows are right, the index is there, and only the plan is
+    wrong.
+
+    ⚠️ THE DATABASE ALREADY KNOWS. `pg_stat_user_tables.n_mod_since_analyze` is the count
+    of rows changed since the last analyse, so this asks rather than guesses - and a table
+    under the threshold is not touched, which is every table on every boot after the first.
+
+    ⚠️ SAME FUNCTION AND SAME THRESHOLD as the load path. Two spellings of 「is this table
+    stale enough to re-analyse」 would drift, and the one that ran at boot would not be the
+    one anybody had measured.
+    """
+    from database import crud, models
+    from parsers import directory_watcher as dw
+
+    threshold = dw.analyze_after_rows()
+    if threshold <= 0:
+        logger.info("[Chain] boot ANALYZE is off by declaration (analyze_after_rows=0).")
+        return []
+
+    # 🔴 THE CATALOGUE ALONE MISSES THE TABLES THAT WERE ACTUALLY STALE. Measured on this
+    # box: of the four relations over the threshold, NONE was a catalogued dynamic table -
+    # they were `cell_sources` (1,059,219 rows modified since its last analyse) and
+    # `audit_logs`, which the grid reads on the same page as the dynamic table it is
+    # showing. Scoping this to `TABLE_CONFIG` would have made it a no-op on exactly the
+    # shape it was written for.
+    #
+    # ⚠️ STILL BOUNDED to tables THIS APPLICATION DECLARES - the dynamic catalogue plus
+    # the framework models. Not "every user table", because a shared database may carry
+    # relations that are not ours to touch.
+    tables = set(crud.TABLE_CONFIG or {}) | set(models.Base.metadata.tables)
+    if not tables:
+        return []
+
+    db = db_session_factory()
+    try:
+        from sqlalchemy import text as sql_text
+
+        rows = db.execute(sql_text(
+            "SELECT relname, n_mod_since_analyze FROM pg_stat_user_tables "
+            "WHERE n_mod_since_analyze >= :threshold"), {"threshold": threshold}).all()
+    except Exception as exc:                                           # noqa: BLE001
+        # Not PostgreSQL, or the view is unreadable. A boot must not die over statistics.
+        logger.warning("[Chain] could not read table statistics, so no boot ANALYZE ran: "
+                       "%s", exc)
+        return []
+    finally:
+        db.close()
+
+    stale = [(name, int(modified or 0)) for name, modified in rows if name in tables]
+    if not stale:
+        logger.info("[Chain] statistics are current on all %d declared table(s) "
+                    "(threshold %d modified rows).", len(tables), threshold)
+        return []
+
+    analysed = []
+    for name, modified in sorted(stale, key=lambda item: -item[1]):
+        if dw._analyze_after_load(
+                name, modified,
+                why="the planner was costing this table against statistics taken "
+                    "before those rows arrived"):
+            analysed.append(name)
+    return analysed
+
+
 def _ensure_dynamic_table_indexes_sync(db_session_factory):
     """Build the indexes a dynamic table's model declares but its database lacks (S-124).
 
@@ -2283,6 +2353,15 @@ async def start_chain_ingestion_worker(db_session_factory):
         logger.error("[Chain] the dynamic-table indexes could not be ensured, so a table "
                      "older than the declaration may still sort instead of scanning: %s",
                      exc)
+
+    # 🔴 AND THE INDEX IS NOT ENOUGH IF THE PLANNER WILL NOT COST IT (S-130). A table
+    # loaded before any of this landed still plans against statistics from before those
+    # rows, which is what the owner is looking at.
+    try:
+        await asyncio.to_thread(_analyze_stale_tables_sync, db_session_factory)
+    except Exception as exc:
+        logger.error("[Chain] stale table statistics could not be refreshed, so a page "
+                     "query may sort instead of walking its index: %s", exc)
 
     # 🔴 ONE LOOP PER QUEUE, AND IT SAYS SO WHEN IT STANDS DOWN. Two loops on one outbox
     # pick the same rows up twice and write one heartbeat file between them, so neither

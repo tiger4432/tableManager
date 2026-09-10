@@ -961,7 +961,11 @@ def in_flight(db, now=None, stall_after=None):
 
     row = (db.query(models.RetroactiveRun)
            .filter(models.RetroactiveRun.state.in_(IN_FLIGHT_STATES))
-           .order_by(models.RetroactiveRun.started_at.desc().nullslast())
+           # ⚰️ `.nullslast()` REMOVED (S-131 의 같은 부류, S-130 커밋에 같이).
+           # `DESC NULLS LAST` 는 btree 가 «뒤로 읽어» 줄 수 있는 순서가 아니라
+           # 인덱스를 못 쓰게 만든다 — 그 절이 그리드에서 0.25 s 를 먹였다.
+           # 이 표는 작아서 비용은 작지만, 남겨 두면 다음 사람이 「거기만 있었다」고 읽는다.
+           .order_by(models.RetroactiveRun.started_at.desc())
            .first())
     if row is None:
         return None

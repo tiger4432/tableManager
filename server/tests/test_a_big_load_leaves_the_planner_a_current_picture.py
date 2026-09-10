@@ -277,3 +277,125 @@ def test_a_request_that_sends_no_filter_is_answered_and_the_line_says_zero(clien
     assert response.status_code == 200, response.text
     assert any("filters=0" in record.getMessage() for record in caplog.records), \
         [record.getMessage() for record in caplog.records][-4:]
+
+
+# ── the statistics a table that is never loaded again keeps forever ──────────
+
+def test_a_table_the_database_calls_stale_is_analysed_at_boot(monkeypatch):
+    """🔴 S-124 ② ONLY REACHES TABLES THAT ARE LOADED AGAIN (S-130). It re-analyses after
+    a big load, so a relation that took its rows BEFORE that shipped plans against
+    whatever statistics it had then - and production is exactly that shape. Nothing
+    announces it: the rows are right, the index is there, only the plan is wrong.
+
+    ⚠️ THE DATABASE IS ASKED RATHER THAN GUESSED. `n_mod_since_analyze` is the count of
+    rows changed since the last analyse, so 「stale enough」 is read, not inferred.
+    """
+    import chain_ingestion_worker as worker
+    from parsers import directory_watcher as dw
+
+    monkeypatch.setattr(dw, "analyze_after_rows", lambda: 10000)
+    analysed = []
+    monkeypatch.setattr(dw, "_analyze_after_load",
+                        lambda name, rows, why=None: analysed.append((name, rows)) or True)
+
+    class _Session:
+        def execute(self, statement, params=None):
+            assert params["threshold"] == 10000
+            class _R:
+                def all(self_inner):
+                    return [("enrich_test_src", 44000), ("not_ours", 999999)]
+            return _R()
+
+        def close(self):
+            pass
+
+    monkeypatch.setitem(__import__("database").crud.TABLE_CONFIG, "enrich_test_src", {})
+
+    assert worker._analyze_stale_tables_sync(lambda: _Session()) == ["enrich_test_src"]
+    assert analysed == [("enrich_test_src", 44000)]
+
+
+def test_a_relation_this_application_did_not_declare_is_left_alone(monkeypatch):
+    """⚠️ BOUNDED. A shared database may carry relations that are not ours to touch, so
+    the set is the dynamic catalogue plus the framework models - not every user table."""
+    import chain_ingestion_worker as worker
+    from parsers import directory_watcher as dw
+
+    monkeypatch.setattr(dw, "analyze_after_rows", lambda: 10)
+    monkeypatch.setattr(dw, "_analyze_after_load",
+                        lambda name, rows, why=None: pytest.fail(f"touched {name}"))
+
+    class _Session:
+        def execute(self, statement, params=None):
+            class _R:
+                def all(self_inner):
+                    return [("some_other_apps_table", 10 ** 9)]
+            return _R()
+
+        def close(self):
+            pass
+
+    assert worker._analyze_stale_tables_sync(lambda: _Session()) == []
+
+
+def test_the_framework_tables_are_in_scope_because_the_grid_reads_them(monkeypatch):
+    """🔴 MEASURED, AND IT IS WHY THE SCOPE IS NOT JUST THE CATALOGUE. On this box the four
+    relations over the threshold were `cell_sources` (1,059,219 rows modified since its
+    last analyse), `audit_logs`, and two ledger partitions - and NOT ONE was a catalogued
+    dynamic table. A page of the grid reads `cell_sources` for its values, so scoping this
+    to `TABLE_CONFIG` would have made it a no-op on the shape it exists for."""
+    from database import models
+
+    assert "cell_sources" in models.Base.metadata.tables
+    assert "audit_logs" in models.Base.metadata.tables
+
+
+def test_a_threshold_of_zero_turns_the_boot_pass_off(monkeypatch):
+    import chain_ingestion_worker as worker
+    from parsers import directory_watcher as dw
+
+    monkeypatch.setattr(dw, "analyze_after_rows", lambda: 0)
+    monkeypatch.setattr(dw, "_analyze_after_load",
+                        lambda name, rows, why=None: pytest.fail("must not run"))
+
+    assert worker._analyze_stale_tables_sync(lambda: pytest.fail("no session either")) == []
+
+
+def test_a_database_that_cannot_answer_does_not_stop_the_boot(monkeypatch):
+    """A boot that dies reading statistics is a worse outage than a stale plan - and the
+    view does not exist outside PostgreSQL, which is where the suite runs."""
+    import chain_ingestion_worker as worker
+    from parsers import directory_watcher as dw
+
+    monkeypatch.setattr(dw, "analyze_after_rows", lambda: 10)
+
+    class _Session:
+        def execute(self, statement, params=None):
+            raise RuntimeError("no such view")
+
+        def close(self):
+            pass
+
+    assert worker._analyze_stale_tables_sync(lambda: _Session()) == []
+
+
+def test_the_boot_sequence_calls_it_too():
+    """착지는 배선이 아니다 - the same check its neighbour needed."""
+    import inspect
+
+    import chain_ingestion_worker as worker
+
+    body = inspect.getsource(worker.start_chain_ingestion_worker)
+    assert "_analyze_stale_tables_sync" in body, body[:600]
+
+
+def test_the_load_path_and_the_boot_path_share_one_function_and_one_threshold():
+    """⛔ TWO SPELLINGS OF 「stale enough」 WOULD DRIFT, and the one running at boot would
+    not be the one anybody had measured."""
+    import inspect
+
+    import chain_ingestion_worker as worker
+
+    body = inspect.getsource(worker._analyze_stale_tables_sync)
+    assert "dw._analyze_after_load(" in body, body[:800]
+    assert "dw.analyze_after_rows()" in body

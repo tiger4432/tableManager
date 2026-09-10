@@ -107,7 +107,7 @@ MAX_DROPPED_COLUMNS_REPORTED = 64
 _dropped_column_announced = {}
 
 
-def _analyze_after_load(table_name: str, rows: int) -> bool:
+def _analyze_after_load(table_name: str, rows: int, why: str = None) -> bool:
     """`ANALYZE` one table after a load big enough to have moved its statistics.
 
     ⚠️ ITS OWN SESSION, AND OUTSIDE THE LOAD'S TRANSACTIONS. `ANALYZE` takes no lock that
@@ -133,9 +133,10 @@ def _analyze_after_load(table_name: str, rows: int) -> bool:
                 cursor.execute(f'ANALYZE "{table_name}"')
         finally:
             connection.close()
-        logger.info("[%s] statistics re-analysed after %d row(s) in %.3fs - the planner "
-                    "was costing this table as it was BEFORE the load.",
-                    table_name, rows, time.time() - started)
+        logger.info("[%s] statistics re-analysed after %d row(s) in %.3fs - %s",
+                    table_name, rows, time.time() - started,
+                    why or "the planner was costing this table as it was BEFORE "
+                           "the load")
         return True
     except Exception as err:                                           # noqa: BLE001
         logger.warning("[%s] could not re-analyse after %d row(s): %s - the rows landed, "
