@@ -5805,8 +5805,9 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
     #    them apart; `_meta_of` re-reads the lost ids one at a time, which is
     #    exactly what this path did before, at exactly its old cost, and only in
     #    the already-degraded case.
-    metas, metas_complete = (({}, True) if ignore_source_metadata
-                             else _load_metas_reporting(db, map_table, ids))
+    with alignment_batch_counts.phase("meta"):
+        metas, metas_complete = (({}, True) if ignore_source_metadata
+                                 else _load_metas_reporting(db, map_table, ids))
 
     def _meta_of(mid):
         if metas_complete or mid in metas:
@@ -5873,8 +5874,9 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
     req_cache = {}
     meta_access = stamp_meta_refusal(db, source_maps, req_cache)
 
-    reference = _resolve_reference(db, cfg, reference_spec, source_maps, cell_cap,
-                                   cache=req_cache)
+    with alignment_batch_counts.phase("reference"):
+        reference = _resolve_reference(db, cfg, reference_spec, source_maps, cell_cap,
+                                       cache=req_cache)
     thresholds = load_alignment_thresholds(cfg)
     # 무게도 **문턱과 같은 선언**이다 - 같은 블록에서 같이 읽고, 없으면 없는 채로 내려간다.
     value_weights = load_alignment_value_weights(cfg)

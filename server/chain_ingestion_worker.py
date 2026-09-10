@@ -1284,11 +1284,16 @@ def _log_alignment_group_work(tx_id, summary) -> None:
     """
     if not summary or not summary.get("view_builds"):
         return
+    phases = summary.get("phases") or {}
+    named = sum(phases.values())
     logger.info(
         "[Chain] group %s: view builds %d · reference resolutions %d · distinct maps %d "
-        "· %.3f s",
+        "· %.3f s%s · unnamed %.3f s",
         tx_id, summary["view_builds"], summary["reference_resolutions"],
-        summary["distinct_maps"], summary["wall_seconds"])
+        summary["distinct_maps"], summary["wall_seconds"],
+        "".join(" · %s %.3f s" % (name, seconds)
+                for name, seconds in sorted(phases.items())),
+        max(summary["wall_seconds"] - named, 0.0))
 
 
 async def process_chain_transaction_group(tx_id, events, db, rules):

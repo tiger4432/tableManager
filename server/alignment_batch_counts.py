@@ -32,13 +32,14 @@ _COUNTS: contextvars.ContextVar = contextvars.ContextVar(
 class _Counts:
     """One group's tally. Plain attributes: this is read once, by the line that prints it."""
 
-    __slots__ = ("view_builds", "reference_resolutions", "maps", "started")
+    __slots__ = ("view_builds", "reference_resolutions", "maps", "started", "phases")
 
     def __init__(self):
         self.view_builds = 0
         self.reference_resolutions = 0
         self.maps: set = set()
         self.started = time.monotonic()
+        self.phases: dict = {}
 
     def summary(self) -> dict:
         return {
@@ -46,6 +47,8 @@ class _Counts:
             "reference_resolutions": self.reference_resolutions,
             "distinct_maps": len(self.maps),
             "wall_seconds": round(time.monotonic() - self.started, 3),
+            "phases": {name: round(seconds, 3)
+                       for name, seconds in sorted(self.phases.items())},
         }
 
 
@@ -62,6 +65,32 @@ def counting_group():
         yield counts.summary
     finally:
         _COUNTS.reset(token)
+
+
+@contextlib.contextmanager
+def phase(name: str):
+    """Charge this block's WALL CLOCK to `name` in the open scope (S-94, 판정 236).
+
+    🔴 WALL CLOCK, NOT A PROFILER. Four times this week a profiler's per-call charge
+    picked the wrong target - twenty connections that a pool never opens, an eager read
+    worth 1.5 %, 292,000 regex calls worth zero, a reference cache worth zero. The number
+    that decides where to work is the one an operator waits through, so that is the number
+    this collects, on the same line as the counts it belongs beside.
+
+    ⚠️ OVERLAPPING NAMES WOULD LIE. Each phase wraps a contiguous block and the
+    blocks do not nest, so the seconds sum to less than the build and the remainder is
+    "everything not named" - which is itself an answer about whether the named four are the
+    whole story.
+    """
+    counts = _COUNTS.get()
+    if counts is None:
+        yield
+        return
+    started = time.monotonic()
+    try:
+        yield
+    finally:
+        counts.phases[name] = counts.phases.get(name, 0.0) + (time.monotonic() - started)
 
 
 def note_view_build() -> None:
