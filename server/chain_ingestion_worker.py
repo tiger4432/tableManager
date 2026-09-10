@@ -1883,12 +1883,18 @@ async def run_ledger_row_census(db_session_factory):
             sources = []
         measured_now = 0
         lap_started = time.monotonic()
+        measured_seconds = 0.0
         for source in sources:
+            source_started = time.monotonic()
             try:
                 await asyncio.to_thread(_measure_one_source_sync, db_session_factory,
                                         source, setup)
             except Exception as exc:
                 logger.warning("[LedgerCensus] %s failed: %s", source, exc)
+            # ⚠️ THE FAILING SOURCE COSTS THE DATABASE TOO, so it is timed like any
+            # other - counting only the successes would report a lap as cheaper than
+            # it was, which is the direction a pacing number must never be wrong in.
+            measured_seconds += time.monotonic() - source_started
             measured_now += 1
             if units is not None and measured_now % max(units, 1) == 0:
                 await asyncio.sleep(rest)
@@ -1897,9 +1903,11 @@ async def run_ledger_row_census(db_session_factory):
         # its own wall clock is the value 「큐 깊이는 값으로 보임」 asks for, and it is what
         # tells an operator whether slowing the pace actually helped.
         if sources:
-            logger.info("[LedgerCensus] lap: %d source(s) in %.3fs (rest %.0fs between, "
+            logger.info("[LedgerCensus] lap: %d source(s) in %.3fs, measured %.3fs "
+                        "(rest %.0fs between, "
                         "relation rows are planner estimates - `python -m ledger census` "
-                        "counts)", len(sources), time.monotonic() - lap_started, rest)
+                        "counts)", len(sources), time.monotonic() - lap_started,
+                        measured_seconds, rest)
         await asyncio.sleep(rest if sources else max(rest, 60.0))
 
 

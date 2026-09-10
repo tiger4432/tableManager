@@ -120,3 +120,26 @@ def test_drift_is_named_rather_than_quietly_corrected():
     assert "drifted" in inspect.getsource(backfill.measure_and_store)
     plant = inspect.getsource(store.LedgerStore.plant_rows_indexed)
     assert "return None if previous is None" in plant, plant[-500:]
+
+
+def test_the_lap_line_separates_what_it_measured_from_what_it_rested():
+    """🔴 THE WALL CLOCK WAS BOTH (S-127 carry-over, 판정 14:09). The lap line reported
+    `time.monotonic() - lap_started`, which includes the pacing sleeps between units - so
+    「15 source(s) in 45.3s」 could be 45 s of database work or 0.3 s of it and 45 s of
+    deliberate rest, and those two ask an operator to do opposite things.
+
+    ⛔ THE PACE IS THE THING BEING TUNED, so a number that moves when the pace moves cannot
+    be the number used to judge the pace. `measured` does not move with `rest`.
+    """
+    import inspect
+
+    import chain_ingestion_worker as worker
+
+    body = inspect.getsource(worker._ledger_census_loop) if hasattr(
+        worker, "_ledger_census_loop") else inspect.getsource(worker)
+
+    assert "measured %.3fs" in body, "the lap line names the paused-excluded time"
+    assert "measured_seconds += time.monotonic() - source_started" in body
+    # ⚠️ Timed OUTSIDE the try, so a source that RAISED still carries its cost.
+    # Counting only the successes would report a lap as cheaper than it was.
+    assert body.index('logger.warning("[LedgerCensus] %s failed: %s", source, exc)') <         body.index("measured_seconds += time.monotonic() - source_started")

@@ -3329,6 +3329,22 @@ async def apply_batch_updates_endpoint(
         # this number. 「N rows updated」 has to be true, and a row whose every key was
         # dropped updated nothing.
         "updated_count": len(results) - int(drop_report.get("reported_only_for_drops", 0)),
+        # 🔴 THE COLUMNS THE WRITE DISCARDED, BY NAME (S-127). `drop_report` has carried
+        # them since 판정 207 and this layer read one field off it - the count to
+        # subtract - so a caller was told the number was smaller and never why. An
+        # undeclared column comes back 200 with the cell silently gone, which is the
+        # 2026-08-11 incident: the row lands without its identity and the sender cannot
+        # tell that from a clean write.
+        #
+        # ⚠️ ABSENT WHEN NOTHING DROPPED, not an empty object. A key that is always there
+        # trains a reader to ignore it; this one appears only when there is something to
+        # say, and `by_column` is already capped by `MAX_DROP_REPORT_COLUMNS`.
+        **({"dropped": {
+            "cells": drop_report["dropped_cells"],
+            "rows": drop_report["rows_affected"],
+            "columns": sorted(drop_report["by_column"]),
+            "by_reason": drop_report["by_reason"],
+        }} if drop_report.get("dropped_cells") else {}),
         "change_count": len(changed_cells),
         "deleted_row_ids": deleted_row_ids,
         # [P4] Bounded, not removed. This used to be EVERY audit log the write created -
