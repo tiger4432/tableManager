@@ -1992,6 +1992,31 @@ def _restamp_moved_fingerprints_sync(db_session_factory):
         db.close()
 
 
+def _ensure_alignment_decision_key_indexes_sync(db_session_factory):
+    """Build the index an alignment rule's per-job query needs (S-94, 판정 239).
+
+    🔴 THE BUILDER WAS WIRED ONLY INTO CONFIG RELOAD, WHICH IS NOT A BOOT. It sat
+    beside `ensure_map_key_indexes` in `create_missing_dynamic_tables`, and that runs on a
+    reload - so a deployment could restart, find the index still missing, and go on scanning
+    109,877 rows per view build. 「착지는 배선이 아니다」, measured on my own change one commit
+    after writing it down.
+
+    ⚠️ IT ONLY WEAKENS, so unlike its neighbour above it needs no surplus count: an
+    index that is not unique cannot fail on the rows already there. What it can do is find
+    nothing to build, which is the ordinary outcome on every boot after the first.
+    """
+    from database import models
+
+    db = db_session_factory()
+    try:
+        created = models.ensure_alignment_decision_key_indexes(db.get_bind())
+    finally:
+        db.close()
+    if created:
+        logger.info("[Chain] built %d alignment decision-key index(es): %s",
+                    len(created), ", ".join(created))
+
+
 def _ensure_business_key_unique_indexes_sync(db_session_factory):
     """Build the UNIQUE index that makes `business_key_val` an enforced identity.
 
@@ -2084,6 +2109,15 @@ async def start_chain_ingestion_worker(db_session_factory):
     except Exception as exc:
         logger.error("[Ledger] the business-key unique indexes could not be ensured, "
                      "so that column may not be an enforced identity here: %s", exc)
+    # 🔴 판정 239. The same seat, because "at boot" is where an index a query
+    # depends on has to appear - the reload path alone leaves a restarted deployment
+    # scanning.
+    try:
+        await asyncio.to_thread(_ensure_alignment_decision_key_indexes_sync,
+                                db_session_factory)
+    except Exception as exc:
+        logger.error("[Chain] the alignment decision-key indexes could not be ensured, "
+                     "so every alignment view build may still scan its source: %s", exc)
 
     # 🔴 ONE LOOP PER QUEUE, AND IT SAYS SO WHEN IT STANDS DOWN. Two loops on one outbox
     # pick the same rows up twice and write one heartbeat file between them, so neither

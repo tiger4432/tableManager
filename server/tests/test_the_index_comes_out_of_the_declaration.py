@@ -67,3 +67,24 @@ def test_the_map_key_builder_still_says_what_it_said():
     assert '"k1", "k2"' in ddl and 'ON "some_map"' in ddl
     assert map_key_index_ddl("v", {"kind": "view",
                                    "map_key_columns": ["k"]}) == (None, None)
+
+
+def test_the_boot_sequence_calls_the_ensure_and_not_only_the_reload_path():
+    """🔴 착지는 배선이 아니다 — AND THIS FILE'S OWN CHANGE PROVED IT ONE COMMIT LATER.
+
+    The builder was wired into `create_missing_dynamic_tables`, which runs on a CONFIG
+    RELOAD. A deployment that restarts never passes through it, so it would come up with
+    the index still missing and every alignment view build still scanning its source. The
+    seat that runs at boot is the chain worker's ensure sequence, beside the business-key
+    unique index (판정 189).
+
+    ⚠️ ASSERTED ON THE SOURCE OF THE STARTER, because the alternative is booting a worker
+    in a test - and what can go wrong here is a call being deleted, which the text sees.
+    """
+    import inspect
+
+    import chain_ingestion_worker as worker
+
+    body = inspect.getsource(worker.start_chain_ingestion_worker)
+    assert "_ensure_alignment_decision_key_indexes_sync" in body, body[:400]
+    assert hasattr(worker, "_ensure_alignment_decision_key_indexes_sync")
