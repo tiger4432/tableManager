@@ -521,7 +521,7 @@ const MUTANTS = [
     // 재는 것은 그대로입니다 -- 「안 고른 follow 를 빈 배열로 보내지 않는다」.
     from: "    if (this.follow.size) spec.follow = [...this.follow].map(bareTypeName);",
     to: "    spec.follow = [...this.follow].map(bareTypeName);" },
-  { name: 'blank-key-boxes-are-sent-as-filters', catches: ['C6'],
+  { name: 'blank-key-boxes-are-sent-as-filters', catches: ['C6 a cleared key box'],
     from: "    for (const [k, v] of Object.entries(this.keyValues)) if (v !== '' && v !== undefined) keys[k] = v;",
     to: "    for (const [k, v] of Object.entries(this.keyValues)) keys[k] = v;" },
   // ⑤ one sentence for every absence.
@@ -532,7 +532,7 @@ const MUTANTS = [
   //    IS REDUNDANT: `if (cut)` already rejects the empty string the route sends when nothing
   //    was cut, so removing `.reason` changes nothing and the mutant sat inert. The defect that
   //    IS observable is announcing a cut whenever the KEY is present -- which is every walk.
-  { name: 'a-cut-is-reported-whenever-the-key-is-present', catches: ['T4'],
+  { name: 'a-cut-is-reported-whenever-the-key-is-present', catches: ['T4 a walk that was NOT cut'],
     from: "    if (cut) box.appendChild(this._note(",
     to: "    if (this.result && this.result.truncated) box.appendChild(this._note(" },
   { name: 'every-absence-shares-one-sentence', catches: ['E4', 'E6'],

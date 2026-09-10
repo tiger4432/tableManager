@@ -277,7 +277,7 @@ const MUTANTS = [
     mutate: { 'candidate_list_panel.js': (s) => s.replace(
       "head.appendChild(this._stat('대조군 없음 — 또래를 안 쟀습니다', 'absent'));",
       "root.appendChild(this._line('대조군 없음 — 또래를 안 쟀습니다', 'refused'));") } },
-  { id: 'X2', what: 'state:empty is reported as "no cause"', catches: 'Z3',
+  { id: 'X2', what: 'state:empty is reported as "no cause"', catches: 'Z3c',
     mutate: { 'candidate_list_panel.js': (s) => s.replace(
       '원인 후보는 없습니다', '원인 없음') } },
   { id: 'X3', what: 'incomparable is collapsed into tied', catches: 'Z5',
@@ -297,7 +297,7 @@ const MUTANTS = [
     mutate: { 'api.js': (s) => s.replace(
       "      quantity: (parts[0] || '').trim() || String(row.label || ''),",
       `      quantity: String(row.label || ''),`) } },
-  { id: 'X0', what: 'the empty state denies the transfer by printing only the absence', catches: 'Z3',
+  { id: 'X0', what: 'the empty state denies the transfer by printing only the absence', catches: 'Z3 state:empty',
     mutate: { 'candidate_list_panel.js': (s) => s.replace(
       '${reached} — 원인 후보는 없습니다', '연결 없음') } },
   { id: 'X7', what: 'all evidence is expanded by default', catches: 'E1',
