@@ -1241,18 +1241,58 @@ def test_an_incomplete_trigger_key_selects_nothing_rather_than_everything(env):
     assert out["updates"] == []
 
 
-def test_all_three_declared_rules_ship_disabled():
-    """Enabling them is a separate, explicit decision that belongs with the evidence."""
+def test_the_dt_log_derivation_rule_ships_disabled():
+    """Enabling it is a separate, explicit decision that belongs with the evidence.
+
+    ⚰️ THIS COUNTED THREE AND NAMED THEIR TRIGGERS (S-100 ⓐ-2, 판정 16:20). All three of
+    its claims are false against today's shipped sample, and the drift is bigger than the
+    one rule S-100 ⓐ removed - measured 2026-09-10:
+
+        was  3 rules -> triggers {dt_log, dt_job_attribution, eqp_frame_attribution},
+             all disabled
+        now  2 rules -> triggers {dt_log, dt_inventory}; `dt_job_attribution` and
+             `eqp_frame_attribution` do not appear in the sample AT ALL, and
+             `dt_inventory_to_standard_dt_map` ships ENABLED
+
+    🔴 SO 「every declared rule ships disabled」 IS NOT THE REPLACEMENT PREDICATE - it is
+    false of the sample, both dt_map-wide (one of the two is enabled) and file-wide (five
+    of the ten shipped rules are enabled, `dt_log_to_dt_job_rollup` among them). Asserting
+    it would be forcing green on a statement the file contradicts.
+
+    What is left is the claim this test was actually written for and which still holds:
+    the dt_log -> dt_map derivation does not run on a fresh install unless somebody turns
+    it on. Whether `dt_inventory_to_standard_dt_map` SHOULD ship enabled is a ruling, not
+    an assertion, and it is named in the report rather than pinned here.
+    """
     import json
     import os
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     sample = os.path.join(here, "config", "sample", "chain_rules.json.sample")
     with open(sample, encoding="utf-8") as f:
         rules = json.load(f)["rules"]
-    dt_rules = [r for r in rules if r.get("target_table") == "dt_map"]
-    assert len(dt_rules) == 3, "expected three trigger rules, found %d" % len(dt_rules)
-    assert {r["trigger_table"] for r in dt_rules} == {
-        "dt_log", "dt_job_attribution", "eqp_frame_attribution"}
-    assert all(r["enabled"] is False for r in dt_rules)
-    assert len({r["mapper_function"] for r in dt_rules}) == 1, \
-        "the three rules must share one mapper, or the decision lives in three places"
+
+    by_name = {r.get("name"): r for r in rules}
+    rule = by_name.get("dt_log_to_dt_map")
+
+    assert rule is not None, sorted(by_name)
+    assert rule["trigger_table"] == "dt_log"
+    assert rule["target_table"] == "dt_map"
+    assert rule["enabled"] is False, "the derivation must not run on a fresh install"
+
+
+def test_the_retired_triggers_are_gone_rather_than_shipped_disabled():
+    """⚠️ ABSENT, NOT OFF - and those are different facts. A rule shipped `enabled: false`
+    is one an operator can turn on; a rule that is not in the file is one the product no
+    longer has. The two the old assertion named left the sample entirely, so a reader
+    looking for them should find this instead of finding nothing."""
+    import json
+    import os
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sample = os.path.join(here, "config", "sample", "chain_rules.json.sample")
+    with open(sample, encoding="utf-8") as f:
+        rules = json.load(f)["rules"]
+
+    triggers = {r.get("trigger_table") for r in rules}
+
+    assert "dt_job_attribution" not in triggers
+    assert "eqp_frame_attribution" not in triggers
