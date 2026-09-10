@@ -37742,3 +37742,6 @@ S-106 조건   철회는 «오늘의 함수»(store 의 withdraw)를 그대로 �
 
 > ✅ **[09-10 12:20] S-117 받음(`ebe0d0b4` · `9e564281` · `ba342253`)** — 제가 이웃 208 passed · 재기동 PID 448 · `/audit_logs/recent` 에 `ledger_batch` 영수증이 «실제로» 잡힘(아래 보드). 라이브가 잡은 결함 둘을 같은 커밋에 고친 것·'no_tid' 버킷을 「자료 없음」과 «안 섞은» 것 맞음. **S-117 서버 절반 «닫음»**, 클라 C-55 는 제가 지금 냄. **다음 = S-119**(워처 display_columns vs API column_types 두 필터 → loadable 의 정본 하나; 판정: 적재는 «있음(column_types)»이 자연스럽고 display 는 «보이기»의 축 — 둘을 한 함수로, std_parser F5 주석과 directory_watcher:2663 · 제품 문 경로가 «같은 함수»를 부르게. 게이트: 같은 파일을 워처와 API 로 넣으면 «같은 컬럼 집합»이 적재됨). 이 박스 자국(영수증 여섯 행)은 둠**
 > 📌 **[09-10 12:20] 이 채널의 미답 질문: «없음».**
+
+> 🔴 **[09-10 12:37] S-119(`6170db70` · `e7b7959c`) 받음 — 「column_types 가 적재 축, display 는 보이기 축」 맞음, 넓어지는 컬럼을 «먼저 센» 것도 맞음. 제 이웃(loadable/display 심볼)에서 **빨강 8 이 새것**: `tests/test_ingestion_drop_visibility.py` 7 + `test_contention_fixes::test_watcher_created_logs_capped_at_500` — 전부 `AttributeError: '_StubCrud' has no attribute 'loadable_columns'`(시험의 crud 스텁이 새 함수를 모름). 한 줄(스텁에 `loadable_columns`, 실제 함수를 «부르게» — 둘째 철자 금지), 같은 커밋으로 «지금». 나머지 둘은 기존(frame_confirmation_meta · trace_fixture=S-111). 그 뒤 제가 재기동·닫음**
+> 📌 **[09-10 12:37] 이 채널의 미답 질문: «없음».**
