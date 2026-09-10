@@ -3295,10 +3295,17 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 | 파일 | 줄(구 표기) | `^export` 심볼 (실측) |
 |---|---|---|
-| `client2/src/ontology_explorer.js` | **1,323**(368) | `createOntologyExplorerController({root, apiBase, adminFetch, showToast})` · `initOntologyExplorer(options)` · `refreshOntologyExplorer()`. 모듈 내부: `chooseDirtyNavigation` · `errorMessage`(문장+code+path) · `errorSentence`(문장만 — 코드를 «자기 칸»에 싣는 두 자리가 씁니다) · `seededPaths` · `ancestorPaths` |
+| `client2/src/ontology_explorer.js` | 🆕㉑ **1,403**(구 표기 1,323) | `createOntologyExplorerController({root, apiBase, adminFetch, showToast})` · `initOntologyExplorer(options)` · `refreshOntologyExplorer()`. 모듈 내부: `chooseDirtyNavigation` · `errorMessage`(문장+code+path) · `errorSentence`(문장만 — 코드를 «자기 칸»에 싣는 두 자리가 씁니다) · `seededPaths` · `ancestorPaths` |
 | `client2/src/ontology_explorer_store.js` | **465**(246) | `initialExplorerState`(frozen) · `assertOneContext` · `reduceExplorerState` · `reduceNewDeclaration` · `reduceFieldFold` · `sectionMembers` · `mirrorLoaded` · `canLeaveSelection` · `dirtyNavigationDecision` · `restoreDirtyEditorCheckpoint` · `isDraftRevisionEditable` · `declarationIdFor` |
-| `client2/src/ontology_explorer_view.js` | 🆕⑪ **2,277**(2,199 / 375) | `renderOntologyExplorer(root, state)` **하나**(🆕⑪ 재확인 — export는 여전히 이것뿐이다) |
+| `client2/src/ontology_explorer_view.js` | 🆕㉑ **2,515**(구 표기 2,277) | `renderOntologyExplorer(root, state)` **하나**(🆕⑪ 재확인 — export는 여전히 이것뿐이다) |
 | `client2/src/ontology_explorer.css` | — | |
+| 🆕㉑ `client2/src/refusal_cell.js` | **180**(신설 `e4f181f7` 09-07) | `refusalSummary(counts)`(`:40`) · `excludedNote(excluded)`(`:58`) · `refusalSamples(refused)`(`:87`) · 🆕 `testRunRows(run)`(`:131`) · `MARK_COLUMN`(`:169`) · `KIND_FIELD`(`:171`). 소비자 `ontology_explorer_view.js:10` |
+
+> 🔴🔴 **[2026-09-10 D-2] 이 표의 줄 수 둘이 낡아 있었고, 오늘 착지 둘이 등재돼 있지 않았다.**
+>
+> **C-56 (`024b36bd`) — 「구간으로 지웠다」의 실물.** `loadCensus`(`ontology_explorer.js:779`)를 C-54 가 **줄 구간으로** 지우면서 **호출부(`:747`)는 남겼다.** 번들은 빌드되고 어드민 화면은 열자마자 `loadCensus is not defined` 로 죽는다 — 그리고 그 번들이 운영에 갔다. 🔴 **소스가 그 사고를 «자기 자리»에 적어 둔다**(`:772`). ⚠️ **지울 때는 «구간»이 아니라 «이름»으로**, 그리고 그 이름을 부르는 곳을 «같은 커밋»에서 센다.
+>
+> **C-59 (`7d6ad602`·`b1d66b37`·`b111872b`) — 시험 실행이 「몇 행」이 아니라 «어느 행»을 말한다.** 🔴 **표 코드를 «한 줄도» 안 썼다** — **`client2/src/rnd_board/table_part.js` 의 `TablePart` 를 import 한다** — `client2/src/ontology_explorer_view.js:13`(적용 `:851` · 사유 주석 `:844`). 그래서 근원 템플릿이 «보드 밖»으로 나간 첫 사례다([§7-B](#7-b-rd-보드-rnd_board-2026-08-29-신설-등재) 참조). 🔴 **거절도 «같은 표의 행»이다** — 종류 칸(`refusal_cell.js` 의 `KIND_FIELD`)만 다르다. 별도 목록으로 그리면 「읽은 것」과 「못 읽은 것」이 두 표가 되고, 운영자는 둘을 «손으로» 맞춰 봐야 한다. 계약 `contracts/test_run_rows/vectors.json` · 채점 `client2/tests/test_run_rows_harness.mjs`, 게이트 바닥값 **21**(`check_harnesses.mjs:904`). ⚠️ **두 사례의 «컬럼이 다른» 것이 판별식이다** — 컬럼은 선언에서 오고 선언은 소스마다 다르므로, 손으로 박은 표는 하나를 통과하고 다른 하나에서 죽는다.
 
 ### 🆕 클라 — 어드민의 «부품» 🆕⑳ **열넷** (2026-09-04~05 신설)
 
@@ -3334,6 +3341,11 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 🔴 이 열넷이 공유하는 규율 하나: **「모름」과 「없음」을 같은 픽셀로 그리지 않는다.**
    못 읽은 수는 `—` 이고, 0 은 «그 0 이 무엇의 0 인지»를 옆에 답니다.
+> 🆕㉑ 🔴 **[2026-09-10 D-2] 같은 부류인데 «표 밖»에 있던 부품이 하나 있다 — `client2/src/chain_queue_panel.js`(**648줄**, 신설 `7e74bbf3` 09-03).** 위 표는 「2026-09-04~05 신설」 배치라 이 파일은 «하루 차이로» 어느 표에도 안 실렸다. 소비자는 `admin.js:28`(import) · `:1295`(`new ChainQueuePanel(mount)`), 채점은 `client2/tests/chain_queue_panel_harness.mjs`.
+> - `client2/src/chain_queue_panel.js` 의 `^export` **다섯**: `STATUS`(`:52`) · 🆕 `MINUTE_SECONDS = 60`(`:58`) · `formatAge(seconds)`(`:67`) · `queueView(payload, opts)`(`:160`) · `class ChainQueuePanel`(`:397`).
+> - 🔴 **[C-61 `ecd65719`] 「도는 체인 3」이 «나이»를 얻었다 — 새 라우트도 새 칸도 «0» 이다.** `running_seconds` 는 `chain_activity` 가 내내 실어 보내고 있었고 «읽는 자리»가 없었을 뿐이다. 🔴 **판별식이 이유다**: 「3이 막혀 있다」와 「3이 방금 시작했다」가 **같은 3 을 그린다** — 수만으로는 못 가른다.
+> - 🔴 **1분은 «상수 하나»이고 두 곳이 그것을 읽는다** — `client2/src/chain_queue_panel.js` 의 `formatAge` 가 「초」에서 「분」으로 넘어가는 자리(`:76`)와 `runningOld` 의 「오래 돈 것」 문턱(`:254`)이 둘 다 `MINUTE_SECONDS` 를 지난다. 갈라 놓으면 표기와 목록 기준이 «조용히» 어긋난다(기준 ④).
+> - `client2/src/chain_queue_panel.js` 의 `runningOld`(`:370`, 소비 `:463`) — 도는 항목 중 문턱을 넘은 것을 «나이와 함께 행으로» 준다. 이 파일의 「모름 ≠ 없음」 철자는 위 열넷과 같은 `absent.js` 를 쓴다(`client2/src/absent.js:3` 이 「이 철자는 이미 `chain_queue_panel.countOf` 에 있었다」고 적는다).
 
 🆕⑪ **[2026-08-23] 이 구간에 화면 결함 다섯이 닫혔고, 그중 넷이 「기본값·유도가 «언제» 사람의 일이 되는가」라는 한 질문이었다.**
 
@@ -3714,6 +3726,30 @@ Vite + Vanilla ESM + AG-Grid. 상태는 `state.js` 싱글턴(리액티브 아님
 > - ⚠️ **그래서 **아래 `map_editor.js` 절**에는 라인 계단표가 없다.** 계단표는 다음 추출에서 통째로 거짓이 되는데 **거짓이 됐다는 신호를 내지 않는다.** 심볼명이 1차 식별자이고 라인은 보조다.
 > - ⚠️ **두 신설 모듈의 module-private 심볼을 개명하지 마라** — 계약 하니스들이 그 이름들을 텍스트로 슬라이스한다. **import하는 곳이 없어도 개명하면 계약이 깨진다**([§0 ⑬](#0-묘비-목록--소스에-존재하지-않는-이름)).
 
+> 🔴🔴 **[2026-09-10 D-2 · `9f25ba04`] 이 절의 줄 수는 «열넷 중 열넷»이 낡았다.** 표기 대부분이 `64b562b6`(09-02) 기준이고 그 뒤 여드레가 지났다. HEAD 워킹트리 `wc -l` 전건(커밋 blob 과 바이트 동일 — `git status` 무변):
+>
+> ```
+> state.js         227 ->    245     effort_meter.js   599 ->    647     main.js       2,333 -> 2,296
+> api.js           587 ->    599     grid.js         1,304 ->  1,451     value_suggest 1,003 -> 1,025
+> websocket.js    ~255 ->    558     ui.js             346 ->    360     clipboard.js    897 ->   904
+> timeline.js    1,185 ->  1,322     map_editor.js  11,106 -> 11,235     push_columns     77 ->    88
+> enrichment_queue  94 ->    105     enrichment_reference_view  497 ->   530
+> ```
+>
+> 🔴 **`websocket.js` 의 「~255」는 «두 배 넘게» 틀렸다(558).** 물결표가 「대략」으로 읽히는 동안 이 수는 어느 패스에서도 다시 재지지 않았다 — **물결표는 오차의 표지가 아니라 「안 쟀다」의 표지로 읽어라.**
+> ⚠️ **줄 수는 앵커가 아니다.** 이 절의 `~NNN` 은 여전히 「밀렸다고 가정하라」이고 위치는 `git grep -n "<심볼>" -- <경로>` 로 확정한다. 아래 착지에 실린 줄 번호는 `9f25ba04` 실측이다.
+>
+> **오늘(2026-09-10) 클라 착지 — 어느 절을 읽나**
+>
+> | 착지 | 심볼이 사는 파일 | 절 |
+> |---|---|---|
+> | C-55 원장 배치의 종류 · 영수증 한 줄 | `timeline.js` | ↓ `timeline.js` |
+> | C-56 되살림(`loadCensus`) · C-59 시험 실행 «행» 표 | `ontology_explorer{,_view}.js` · 🆕 `refusal_cell.js` | [§5-H-bis](#5-h-bis-온톨로지-config-작성탐색-표면-2026-08-21-신설-등재) |
+> | C-57 끌어놓기 업로드 수리 | `main.js` | ↓ `main.js` |
+> | C-60 참조뷰 머리 띠 «한 벌» | `enrichment_reference_view.js` | ↓ 그 절 |
+> | C-61 도는 체인의 «나이» | `chain_queue_panel.js` | [§5-H-bis](#5-h-bis-온톨로지-config-작성탐색-표면-2026-08-21-신설-등재) (어드민 부품) |
+> | C-62/63 하니스 import 전환이 만든 «노출» | `clipboard.js` · `enrichment_reference_view.js` | ↓ 두 절 |
+> | C-65~68 변이 채점기 정본 · C-67 프로브 거울 · 계약 넷 | `client2/tests/lib/**` · `contracts/**` | [§6-2](#6-2-교차-구현-계약-contracts) |
 ### `state.js` (🆕⑪ **227줄** @`b3e1ec83` — 구 표기 203) — 전역 싱글턴
 
 > 🆕⑪ 🔴 **[2026-08-23] `visibleRangeColIds()`가 `grid.js`에서 «이사해 왔고 export가 됐다»**(`f7bd1dd5`). 실측 소비자 둘: `grid.js`(`extendRangeByKeyboard` 안)와 신설 `enrichment_reference_view.js`(붙여넣기가 어느 컬럼에 앉는지 계산). ⚠️ **[§7 `grid.js`](#7-client2src--웹-클라이언트) 행의 「둘 다 export가 아니다(모듈 내부) — 외부에서 이름으로 부르려 하면 없다」는 이 심볼에 대해 «거짓»이 됐다** — `grid.js`에서 grep하면 0건이고 `state.js`에서 나온다.
@@ -3758,6 +3794,7 @@ Vite + Vanilla ESM + AG-Grid. 상태는 `state.js` 싱글턴(리액티브 아님
   - **키보드 경로(~444–471)**: `Ctrl+Shift+V`는 1.5초 무장 → 브라우저가 그 코드를 붙여넣기로 바꿔 주면 바로 소비되고, **600ms 안에 아무 `paste`도 안 오면**(`smartPasteEscalationTimer`) 15초 무장으로 승격하고 `Ctrl+V`를 안내한다. **Esc는 무장을 취소한다**(~476). ⚠️ **`Ctrl+Shift+V`를 붙여넣기로 볼지는 브라우저의 재량**이라 승격 경로가 폴백이 아니라 **정규 경로의 절반**이다.
   - `showClipboardTypeModal`(**~1743**). `client2/index.html`의 메뉴 항목이 **단축키를 라벨에 적는다**(~185) — 클릭만으로는 클립보드를 못 읽으므로 그 항목은 **다음 붙여넣기를 예약할 뿐**이고, 단축키가 본동선이다.
 - ⛔ **[`90e284f`] 키보드 배선에서 Ctrl+C 분기가 삭제됐다 — 되돌리지 마라**(**~489–492**에 그 자리를 지키는 주석이 있다). 복사는 `clipboard.js`의 `copy` 리스너(~290 내부)가 `e.clipboardData`로 처리하므로 **`navigator.clipboard`가 없는 비보안 컨텍스트(평문 HTTP)에서도 동작한다.** 구 분기는 `navigator.clipboard.writeText`를 썼고 사내 평문 HTTP 배포에서는 그것이 `undefined`다 — 즉 삭제된 코드가 하던 일은 **작동하는 경로를 가로채 아무 일도 안 하는 것**이었다. `getRangeSelectedTSV` import도 함께 빠졌다(이 파일에서 더는 안 쓴다 — 여전히 `clipboard.js`가 export한다).
+- 🆕㉑ 🔴 **[2026-09-10 C-57 `a0049698`] `setupDragAndDrop()`(`client2/src/main.js:1380`, 부팅 호출 `:158`) 안의 «자유 변수» `currentTable` 넷이 `state.currentTable` 이 됐다 — 끌어놓기 업로드가 «죽어 있었다».** `#drop-overlay` 는 실재하고 배선도 부팅에 돌지만, window 핸들러 셋이 «첫 드래그마다» `ReferenceError` 로 죽어 오버레이가 한 번도 안 떴다(콘솔 한 줄 말고는 아무 신호가 없다). 같은 파일의 다른 스무 자리는 내내 `state.currentTable` 이었다. 🔴 **찾은 «계기»가 이 항목의 판정이다** — 새 하니스를 짓는 대신 이미 있던 계기 `client2/tests/undeclared_identifier_harness.mjs` 를 «겨눴다». 그것이 재는 성질이 「경로가 참조하는 식별자가 전부 선언·import·플랫폼 전역인가」이고, 이제 **node 가 import 할 수 «없는» 엔트리 셋**(`admin.js` · `main.js` · `ontology_explorer.js`)까지 훑는다 — 🔴 **런타임 하니스가 «이름 댈 수 없는» 파일이 곧 「삭제가 안 보이는」 자리이고, C-56 이 정확히 거기서 났다.**
 
 ### `api.js` (🆕⑰ **587줄** @`64b562b6` — 🆕⑪ 541 @`b3e1ec83`, 구 표기 534) — REST 소비 계층 (경계 계약의 클라이언트측)
 
@@ -3830,6 +3867,7 @@ Vite + Vanilla ESM + AG-Grid. 상태는 `state.js` 싱글턴(리액티브 아님
 - export: `isCellInRange`(~14) `refreshRange`(~35) `refreshSelectedRangeDiff`(~63) `clearRangeSelection`(~98) `commitDragSelection`(~150) `getRangeSelectedTSV`(~178) **`registerSmartPasteHandler(fn)`(**~302**)** `setupClipboardHandlers`(**~306**, copy/paste 이벤트 본체) `clearSelectedCells`(**~679**).
 - 🆕 **[`c3a5239`] 스마트 페이스트의 소비 지점** — 모듈 로컬 `smartPasteHandler`(**~300**)를 `main.js`가 1회 등록하고, `paste` 리스너 **첫 분기**(**~317**)가 `smartPasteHandler && state.smartPasteArmedUntil > Date.now()`면 **래치를 즉시 소비(0으로 리셋)한 뒤** 그 핸들러로 이벤트를 넘긴다 — 그 외에는 종전 셀 범위 붙여넣기 그대로. 🔴 **두 번째 `paste` 리스너를 만들지 않은 것이 요점이다**: 리스너가 둘이면 어느 쪽이 먼저 이벤트를 소비하는지가 등록 순서에 달리고, 그 순서는 엔트리 파일의 import 순서라 보이지 않는다.
 - **[`b35bc9f`]** TSV 인용/파싱은 자체 구현 대신 **`tsv.js`의 `parseTsv`/`serializeTsv`** import(~11).
+- 🆕㉑ 🔴 **[2026-09-10 C-62 `e27f6220`] export 가 9 → «10» 이다 — 신설 `isReferenceSidebarCopy(e)`(`clipboard.js:27`).** copy 리스너의 조건식(`:665`)에서 «그대로» 뽑아 이름을 준 것이고 판정은 한 글자도 안 바뀌었다. 🔴 **사유가 하니스다** — 그 술어가 조건식 «안»에 사는 동안은 텍스트로 잘라내야 잴 수 있었고, 이름이 생기자 하니스가 `import` 한다(정본 [`docs/guide/HARNESS_DISCIPLINE_GUIDE.md`](../guide/HARNESS_DISCIPLINE_GUIDE.md)). ⚠️ **위 export 줄의 `~NN` 앵커는 전부 밀렸다** — 실측(`^export` 전건 10): `isCellInRange:31` · `refreshRange:79` · `refreshSelectedRangeDiff:108` · `clearRangeSelection:144` · `commitDragSelection:199` · `getRangeSelectedTSV:227` · `registerSmartPasteHandler:351` · `setupClipboardHandlers:355` · `clearSelectedCells:728`(⚠️ `export async function` 이라 `^export function` 으로 세면 «안 잡힌다»).
 
 ### `timeline.js` (🆕⑰ **1,185줄** @`64b562b6` — 🆕⑯ 1,184 @`9eb30691` — 🆕⑪ 1,148 @`b3e1ec83`, 구 표기 1,008 · ⚠️ **줄 수만 재측정**) — 이력 타임라인 + 내비게이션
 
@@ -3840,6 +3878,11 @@ Vite + Vanilla ESM + AG-Grid. 상태는 `state.js` 싱글턴(리액티브 아님
 - **export**: `loadHistory()`(전역/셀·행 두 탭 분기 — 셀 탭은 매 로드마다 `beginHistorySession()`으로 **새 페이징 세션**을 연다) · 🆕🆕🆕 **`readHistoryPage(body)`**(서버 응답을 `{logs, truncated, nextCursor}`로 정규화 — **맨 배열도 받는다**: 그 경우 `not truncated, no cursor`가 「이것이 완전한 응답」이라는 참인 서술이다. `truncated`는 `nextCursor`가 있을 때만 참으로 접는다 — 커서 없는 truncated는 "클릭할 수 있어 보이는데 아무 데도 안 가는" 상태라 표현 불가능하게 만든다) · DOM 빌더 `createTimelineItemDom`/`createGlobalTimelineItemDom` · 증분 렌더 `renderTimeline`/`renderTimelineIncremental`/`renderGlobalTimelineIncremental`/`renderGlobalTimeline` · `createHistoryMoreDom()`(「더 보기」 컨트롤 — **완전한 목록은 이 컨트롤을 달지 않는다**, 그 부재 자체가 사실을 말한다) · 🆕🆕🆕 **`loadMoreHistory(btn)`**(다음 페이지를 **append**, 교체하지 않는다. `400`은 커서 만료로 별도 처리 — `markMoreLost`가 "위치 만료·새로고침"으로 안내, 일반 실패는 `markMoreFailed`가 "조회 실패·재시도") · `renderSubDetails` · `appendHistoryLocally` · 로그→셀 점프 `navigateToLog`+`navigatorStep2/3`/`navigatorFinalScroll`/`releaseNavigationGuard`.
 - **module-private**: `historyUrl(rowId, colId, cursor=null)`(행/셀 URL 조립의 유일한 철자 — `loadHistory`와 `loadMoreHistory`가 공유, 갈라지면 페이저가 사이드바와 다른 탭을 조회할 수 있다) · 🆕🆕🆕 **`beginHistorySession()`**(세션 토큰 `+=1` — 매 `await` 뒤 토큰 비교로 stale 응답을 버린다: 다른 셀을 고르거나 탭을 바꾼 사이에 도착한 이전 요청이 화면을 덮지 않도록) · `renderHistoryMore`/`historyMoreLabel`/`markMoreFailed`/`markMoreLost`.
 - 소비 API: `/audit_logs/recent`, `/audit_logs/transaction/{tx}`, `/tables/{t}/rows/{r}/history`, `/tables/{t}/rows/{r}/cells/{c}/history`.
+- 🆕㉑ 🔴 **[2026-09-10 C-55 `e05928a6`] 원장 배치가 «자기 종류»와 «영수증 한 줄»을 얻었다 — 신설 export 셋**: **`LEDGER_BATCH_COLUMN = 'ledger_batch'`(`timeline.js:272`)** · **`NO_TRANSACTION_BUCKET = 'no_tid'`(`:274`)** · **`ledgerReceiptLine(newValue)`(`:291`)**. 🔴 **낱말은 «응답의 키»이고 화면이 짓지 않는다**(소스 주석이 그것을 계약으로 적는다).
+  - 🔴 **종류 판정에서 `LEDGER_BATCH_COLUMN` 이 «먼저» 물어진다**(`client2/src/timeline.js` — 묶음 `:316` · 낱개 `:326`). 뒤로 밀면 «실패» 영수증이 「BATCH」로 접힌다 — 실패는 로그가 «둘»이라 묶음 가지로 들어오기 때문이다. **순서가 판정이다.**
+  - 🔴 **봉투가 «둘»인 것이 이 라운드의 값이다** — 성공 영수증과 실패 영수증이 «같은 칸에 다른 모양»으로 오고, 실패 쪽은 수를 «하나도» 안 싣는다. 서술에서 지은 픽스처였다면 빈칸 셋을 채점하고 맞다고 했을 것이다. 그래서 픽스처가 «라이브 라우트에서 뜬» 계약 벡터다 — `contracts/ledger_receipt/vectors.json`(`9e564281`), 채점 `client2/tests/ledger_receipt_timeline_harness.mjs`, 게이트 바닥값 **22**(`client2/scripts/check_harnesses.mjs:897`).
+  - 🔴 **영수증 줄은 `baseLog.column_name === LEDGER_BATCH_COLUMN` 일 때«만» 붙는다**(`client2/src/timeline.js:459`) — 다른 종류의 픽셀은 한 개도 안 바뀐다.
+  - **체인 없이 들어온 배치는 «이름을 받는다»**(`client2/src/timeline.js` — 묶음 `:408` · 낱개 `:439`) — `txId === NO_TRANSACTION_BUCKET` 이면 제목이 「체인 없이 들어온 배치」라고 «말한다». 빈 칸으로 두면 「모른다」와 「체인이 없다」가 같은 픽셀이 된다.
 
 ### `map_editor.js` (🆕⑰ **11,106줄** @`64b562b6` — 🆕⑯ 11,092 @`9eb30691` — 🆕⑨ 11,060 @`5359fdd`, 구 표기 11,031. ⚠️ **줄 수만 재측정** — 「코드 6,391 / 주석 3,858 / 공백 782」 분해는 `5359fdd` 기준이고 이 패스가 다시 재지 않았다) — 웨이퍼 맵 에디터 (단일 페이지 스크립트, export 없음)
 
@@ -4108,6 +4151,8 @@ Vite + Vanilla ESM + AG-Grid. 상태는 `state.js` 싱글턴(리액티브 아님
 - 🔴 **탭이 보일 조건은 선언이다** — `rule.derived_table === state.currentTable` **그리고** `rule.reference_views`가 비지 않음. 아니면 탭 자체를 `display:none`으로 숨긴다.
 - 🔴 **행 변경이 이 사이드바를 갱신하는 것은 조작자가 실제로 그것을 보고 있을 때뿐이다**(`state.activeHistoryTab === 'reference'`). 평소 이력 내비게이션은 조용하고 무변경이다.
 - ⚠️ **`installReferenceKeyboardIsolation`은 이벤트를 *막지 않고* 전파만 멈춘다** — 브라우저 텍스트 선택과 Ctrl/Cmd+C의 기본 동작을 그대로 두는 것이 의도다(이 패널은 **읽기·복사 표면**이지 두 번째 그리드 편집기가 아니다).
+- 🆕㉑ 🔴 **[2026-09-10 C-62 `e27f6220`] 위의 「export가 5 → 6」은 «낡았다» — 오늘 «여덟»이다**(`^export` 전건 8 · 530줄). 신설 둘: **`fillPlan(view, rule, payloadColumns)`(`enrichment_reference_view.js:126`)** · **`export { render as renderReferenceResults }`(`:531`)**. ⚠️ **그래서 위 문단의 module-private 목록에 `fillPlan` 이 실려 있는 것은 «오늘 거짓»이다** — 하니스가 그것을 `import` 하려고 노출했고, 그것이 이 화면의 잘라쓰기를 은퇴시킨 방법이다(정본 [`docs/guide/HARNESS_DISCIPLINE_GUIDE.md`](../guide/HARNESS_DISCIPLINE_GUIDE.md)).
+- 🆕㉑ 🔴 **[2026-09-10 C-60 `c62f5086`] 표 머리 띠는 «한 벌»이다 — `client2/src/enrichment_reference_view.js` 의 `referenceHeadBand(labelText, rowCount)`(`:342`, module-private).** 두 갈래가 «같은 함수»를 부른다: 첫째 표(`:496`)와 근거 표(`:500`). 🔴 **없던 기능이 아니라 «한쪽에만» 있던 기능이었다** — 증거가 그리드 «밑»으로 내려오면서 이름을 주던 탭이 숨었고, 첫째 표만 제목을 잃었다. 그 자리를 두 번째 코드로 메우면 그때 「같은 기능에 두 경로」가 생긴다. 🔵 **행 수도 이 함수 하나가 찍으므로 두 표의 표기가 «갈라질 수 없다».**
 
 ---
 
@@ -4529,7 +4574,7 @@ Excel 클립보드 왕복의 공용 저층 — export `parseTsv`/`serializeTsv`/
 | `board.css` | **623** | 보드 스타일 |
 | `panel.js` | **158** | 🔴 **근원 템플릿 — 모든 부품의 부모.** `export class Panel`(`constructor(host, deps)` · `mount` · `resize(width, height)` · `destroy` · `startFor(given)` · `markCount()` · `signOf(nodeId)` · `mark(nodeId, sign, mode = 'replace')` · `render()` · `onMarkingChanged()` · `onResize()`) + `export function markingIntent(event)`. **모듈 수준 상태가 없다** — 자기 mount와 deps를 생성자가 받는다 |
 | `grid_shell.js` | **128** | `export class GridShell` — `render(layout)`가 좌석 선언을 격자에 앉히고 `partOf(id)`로 되찾는다. **배치는 부품 «밖»에 있다** |
-| `table_part.js` | **158** | 🔴 **표의 근원 템플릿** — `export class TablePart extends Panel`, `setRows(rows)` + private `_template`/`_head`/`_row`/`_cell`/`_cellEl`. 구성 표와 순위 표가 **같은 코드, 다른 선언** |
+| `table_part.js` | **158** | 🔴 **표의 근원 템플릿** — `export class TablePart extends Panel`, `setRows(rows)` + private `_template`/`_head`/`_row`/`_cell`/`_cellEl`. 구성 표와 순위 표가 **같은 코드, 다른 선언**. 🆕㉑ 🔴 **[2026-09-10 C-59] 소비자가 «보드 밖»으로 나갔다** — `client2/src/ontology_explorer_view.js:13` 이 이 부품을 import 한다(어드민 탐색기의 시험 실행 표). 전건 **여섯**: 보드 다섯(`composition`·`expanded_layer`·`rank_list`·`reach`·`walk_box`) + 어드민 하나. 줄 수는 **158 무변** — 「같은 코드, 다른 선언」이 «페이지 경계»를 넘어서도 참이라는 뜻이다 |
 | `marking_store.js` | **159** | **↓ 아래 전용 항목** |
 | `marking_intersection.js` | **87** | `export function intersectMarkings(store, spec)` — 이름 붙은 마킹 여럿의 교집합 |
 | `marking_status_panel.js` | **98** | 마킹 상태 표시 |
