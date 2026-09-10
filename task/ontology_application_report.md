@@ -17100,3 +17100,72 @@ FORK 브리프   정본 목록이 08-23 이후 «셋»에서 멈춰 있었습니
 > 「판정 대기」 «둘»(위 발견 ①의 ㉠/㉡ · 발견 ②의 처리 주체) · 대기: 10⁷(총괄의 「돌려라」)
 > · 🔁 이월: 48(패키지 이동 문서 아홉 추가, S-112 는 소유자 결정으로 닫힘)
 > · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
+
+---
+
+## 📄 [09-10 22:43] D-3b — 🔴 **먼저: 그 지시의 «전제»가 제 오류였습니다**
+
+### ① 제가 틀린 것 — `75c32b50` 은 «오늘»이 아니라 **2026-08-23**
+
+22:32 보고에 「오늘 패키지 이동(`75c32b50`)을 문서가 안 따라갔다」라고 적었고, **그 커밋은
+18일 전 것입니다.** `git log -1 -- server/ledger_subgraph.py` 의 «맨 위»를 보고 「최신이니
+오늘」로 읽었습니다 — **날짜를 안 쟀습니다.** 제 상설 메모가 그 부류를 이미 이름 대고 있습니다
+(「착지 날짜를 재고 나서 공을 돌린다」). 그 문장이 22:34 지시의 전제가 됐으니 «제가 지시를
+오염시킨» 것이고, 그래서 먼저 적습니다.
+
+### ② 그래서 지시대로 하면 «거짓 포인터 17개»가 생길 뻔했습니다
+
+지시는 「나머지 일곱 파일 17곳을 `server/ledger_api/` 경로로」였는데, 열두 모듈 중
+**오늘 `ledger_api/` 에 있는 것은 «둘»**입니다.
+```
+옮김    ledger_subgraph · ontology_config_explorer_router     08-23 `75c32b50`
+       finding_kinds -> `server/scripts/support/`            08-28 `bef61462`
+보관    mechanism_gate `31d34ea0` · enrichment_actions `8fc0a996`
+🪦 삭제  ledger_catalog `20ef9a7e` · ledger_selection · ledger_kinds · ledger_identity ·
+       ledger_siblings · ledger_walk_contrast `48cc23a3` · ledger_trends ·
+       ledger_composition `cb504254` · ledger_journey `67cc2e8a`   (08-25~08-28)
+```
+🔴 즉 이 문서들이 낡은 것은 «오늘의 이동» 때문이 아니라 «2주 전의 삭제» 때문입니다.
+그래서 옮긴 것은 «진짜 경로»로, 죽은 것은 «🪦 + 지운 커밋»으로 적었습니다.
+**지시의 «목적»(문서가 없는 것을 가리키지 않게)은 그대로 달성했고, 처방만 바꿨습니다.**
+
+### ③ 센 것 (지시대로 전/후)
+
+```
+전   8 파일 · 17 줄   (지시는 「일곱 파일」 — `DOC_OWNERSHIP.md` 가 그중 «일곱 줄»을 혼자 듭니다)
+후   같은 grep 으로 «0»
+```
+🔵 그리고 게이트를 «세게» 했더니 더 나왔습니다 — 모듈 «이름 열둘»로 세는 대신
+「이 경로가 «디스크에» 있나」로 물으니 **아홉 곳**이 더 걸렸습니다:
+`ledger_structure` · `ledger_lots` · `cutover_v2` · `declared_translator` · 지워진 마이그레이션,
+그리고 **`server/ledger_api/finding_kinds.py` · `server/ledger_api/mechanism_gate.py` —
+«한 번도 없던 철자»**(누가 전에 절반만 고쳐 둔 자리입니다). 같은 방식으로 표시했고 강한 게이트도 «0».
+
+### ④ 지나가다 고친 «반대 방향» 둘 — 이쪽이 더 나쁩니다
+
+```
+TREND_DECLARATION_GUIDE   「무엇이 사라졌나」 목록에 `finding_kinds.py` 가 있었습니다 — «있습니다»(세 번째 경로)
+PRIMITIVES                「모듈이 삭제됐다」 — 지워진 것은 «하드코딩된 카탈로그»이고 모듈도 `population_ctes` 도 있습니다
+```
+🔴 없는 것을 가리키면 «찾다가 없구나»로 끝나지만, 있는 것을 「없다」고 적으면 **아무도 안 찾습니다.**
+
+### ⑤ 제 문서 둘의 정정 · 안 건드린 것
+
+`WALK.md`(`362bedca`)와 `FORK_SESSION_BRIEF.md`(`45875fdb`)에 제가 「오늘 이동」이라 적었고,
+둘 다 08-23 으로 고치고 «누구 오류인지» 적었습니다.
+⛔ `PROJECT_STATUS.md` «2곳» — 보드는 총괄 전담이라 «안 고쳤습니다**(`enrichment_actions.py`,
+4267·4556행). ⛔ `CODE_MAP.md` 2곳은 지시대로 뺐습니다. `docs/history`·`_archive` 는 그대로입니다.
+
+### ⑥ 그리고 S-141 이 착지해서 «오늘 아침 제 문장»이 낡았습니다 (`8941593b`)
+
+`6aa21c25` 로 걷기가 `live_claims` 를 지나고 `walk.superseded_dropped` 를 «0 일 때도» 싣습니다.
+D-3 에서 제가 「아직 안 떨어진다」라고 적은 세 자리(WALK · 완전성 B7 · 가이드 ②)를 «닫힘»으로
+고쳤습니다. 절은 «지우지 않았습니다» — 남긴 이유는 「게이트가 함수를 직접 불러 초록이었다」가
+다음 사람에게 필요한 문장이기 때문입니다.
+⚠️ 작은 것 하나: S-141 커밋 메시지는 `stats.superseded_dropped` 라 적었는데 응답에서 그 키는
+`walk` 밑(`claims_scanned` 옆)에 있습니다. 문서에는 «있는 경로»로 적었습니다.
+🔵 그리고 B7 의 남은 ③ 은 이제 **as-of «하나»**입니다(철회가 DELETE, 판정 210).
+
+> 「판정 대기」 «없음» · 대기: 10⁷(총괄의 「돌려라」)
+> · 🔁 이월: 2(보드 `PROJECT_STATUS.md` 의 죽은 경로 둘 — 총괄 파일이라 못 고침)
+> · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
