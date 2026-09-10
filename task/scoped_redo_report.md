@@ -30065,3 +30065,90 @@ S-127 (판정 252): table_config.json.sample 에 base_id·bx·by 선언
                  + 무덤 test_base_columns_are_declared 를 그 커밋에서 되살림
 ```
 > 📌 **[09-10 15:09] 이 채널의 미답 질문: «없음».**
+
+---
+
+# [09-10 15:20] S-127 ②·④ 착지 (`149c312d`) — 그리고 ①의 전제가 «거짓»입니다
+
+## 1. 🔴🔴 먼저 — ① 「샘플에 base_id·bx·by 셋 선언」은 «셋이 아니라 열둘»이고, 그래도 안 됩니다
+출하 `table_config.json.sample` 의 `bonding_log` 와 씨앗 `seed_syn_void_base_join.py` 를
+«집합으로» 재 봤습니다:
+```
+씨앗이 쓰는 컬럼 (15)   b_bn base_id bond_eqp bond_lot bond_slot bond_x bond_y bx by
+                       dt_x dt_y event_time · dt_lot dt_slot stack_height
+출하가 선언 (14)        b_wx b_wy base_lot base_slot base_wafer_id bonding_eqp bonding_index
+                       c_wx c_wy core_lot core_slot · dt_lot dt_slot stack_height
+
+겹치는 것              «3» (dt_lot · dt_slot · stack_height)
+선언 안 된 채 써지는 것  «12» — 판정이 말한 셋(base_id·bx·by)은 그 열둘의 «일부»입니다
+```
+🔴 **그리고 더 센 것이 있습니다 — 출하 `bonding_log` 의 복합키 다섯이 «씨앗이 한 번도 안 쓰는» 컬럼입니다:**
+```
+composite_key_source = [base_lot, base_slot, bonding_index, b_wx, b_wy]
+씨앗이 쓰는 것         = [bond_lot, bond_slot, ...]                    <- 다섯 중 «0» 개 일치
+```
+`crud.unfilled_key_columns` 는 키 컬럼이 빈 행을 «거절»합니다. 그러므로 **셋을 선언해도
+새 설치에서 씨앗은 한 행도 키를 못 얻습니다.** 게이트 「새 설치 모양에서 씨앗 한 번 → 세 컬럼이
+표에 있음」은 «통과할 수 없습니다» — 셋을 선언해도 그 행이 안 생깁니다.
+
+🔴 **진짜 모양은 「선언 셋 빠짐」이 아니라 「한 이름 아래 표가 «둘»」입니다** —
+출하는 `base_*`/`b_w*` 어휘로, 씨앗은 `bond_*` 어휘로 같은 `bonding_log` 를 말합니다.
+어느 쪽으로 맞출지(선언을 열둘로 넓힘 / 키를 바꿈 / 씨앗이 그만 씀)는 **무덤 시험이 직접
+「which one is a ruling」이라 적어 둔 자리**라, 짓지 않고 올립니다. **① 과 ③ 은 미착수입니다.**
+
+## 2. ② 는 «절반이 이미 지어져 있었습니다» — 제가 그걸 모르고 또 지을 뻔했습니다
+```
+제가 한 것    crud 에 「셀이 버려졌으면 항상 경고」를 elif 로 넣었습니다
+             근거: 4288줄 경고가 `if suppressed_row_ids:` 로 «전부 버려진 행»에만 걸림
+결과         기존 계약이 «빨개졌습니다» — test_undeclared_column_warning.py 4 failed
+             (`assert len(warnings) == 1` -> 3)
+왜           `_warn_undeclared_column_once` 가 «이미» (표, 컬럼)마다 경고하고
+             «10의 거듭제곱마다» 다시 알립니다. 40만 행 적재에 40만 줄을 안 내려고 «일부러» 그렇게 돼 있습니다
+=> 제 elif 는 배치마다 한 줄이라 «운영 규격(수천 행/트랜잭션)에서 로그 홍수»였습니다. «되돌렸습니다»
+```
+🔴 **제 진단이 틀린 이유가 진단 자체보다 중요합니다** — 제가 `logger.warning` 을 crud.py 의
+«4150~4310 구간»에서만 grep 했습니다. 등록부 경고는 «128줄»에 삽니다.
+**제 grep 창이 제 답을 정했습니다.** 상설 「«새 문제»라 부르기 전에 셋」의 ① 을 «반쪽만» 한 것입니다.
+
+## 3. 그래서 ② 의 «남은 진짜 구멍»만 메웠습니다 — 응답
+```
+있던 것   로그: 버린 컬럼 이름을 «서버 로그»에 냅니다 (2026-07-27 사고 이후)
+없던 것   응답: 쓰기를 «보낸 쪽»은 200 과 숫자만 받습니다.
+         `drop_report` 가 이 핸들러에 «이미» 이름을 들고 와 있었는데(판정 207),
+         응답층이 거기서 «한 칸»만 읽었습니다 — 뺄 숫자
+고침     응답에 `dropped: {cells, rows, columns, by_reason}`. 버린 게 없으면 «키 자체가 없습니다»
+```
+⛔ **로그가 대신할 수 없는 이유가 게이트에 적혀 있습니다**: 등록부는 10의 거듭제곱마다 알리므로
+«두 번째» 잘못된 쓰기는 «설계상 조용합니다». 요청마다의 답은 요청마다 와야 합니다.
+
+## 4. ④ 센서스 바퀴 줄 (14:09 이월)
+```
+있던 것   `lap: 15 source(s) in 45.3s (rest 30s between…)`  <- 벽시계에 «쉼»이 들어 있습니다
+문제     45 s 가 DB 일인지, 0.3 s 일이고 45 s 가 «일부러 쉰» 것인지 구별이 안 됩니다.
+        페이스를 «재는» 수가 페이스에 따라 움직이면 그 수로 페이스를 판정할 수 없습니다
+고침     `in %.3fs, measured %.3fs` — `measured` 는 `rest` 에 안 움직입니다
+        ⚠️ 던진 소스도 «잽니다». 성공만 세면 바퀴가 «실제보다 싸게» 보고되고,
+           페이싱 수치가 틀리면 «안 되는» 방향이 그쪽입니다
+```
+
+## 5. 게이트
+```
+✅ 이름으로 뽑은 이웃 24파일 -> 389 passed · 1 xfailed
+✅ 새 단언 넷: 응답이 이름 댐 · 깨끗한 쓰기엔 키 «없음» · 바퀴 줄 measured · 던진 소스도 측정
+✅ 수집 5,497
+⚠️ 빨강 «둘», 둘 다 제 자리에 «안 닿습니다»:
+   test_the_live_dt_map_declaration_is_the_physical_unit — 이 박스 gitignore 선언(`dt_slot` number)
+   test_a_graph_meta_boolean_never_reaches_the_payload… — 자기 독스트링이
+      「left failing and named instead」라 적어 둔 «의도된» 빨강
+```
+
+## 6. 다음 — 판정이 필요합니다
+```
+S-127 ①③ 미착수. 위 1절의 셋 중 하나를 골라 주십시오:
+   ⓐ 출하 bonding_log 를 씨앗 어휘로 «열둘» 선언 + 복합키를 bond_* 로 (씨앗이 새 설치에서 돎)
+   ⓑ 씨앗이 출하 어휘(base_lot·base_slot·bonding_index·b_wx·b_wy)로 «쓰도록» 고침
+   ⓒ 그 씨앗은 이 박스 전용이라 «출하가 선언할 이유가 없다»고 판정 -> 무덤 시험은 무덤에 둠
+③ 무덤 시험은 그 판정이 정한 «참인 문장»으로 되살립니다. 지금 되살리면
+   «거짓 전제 위에 초록»을 박게 됩니다
+```
+> 📌 **[09-10 15:20] 이 채널의 미답 질문: 6절의 ⓐ/ⓑ/ⓒ 하나.**
