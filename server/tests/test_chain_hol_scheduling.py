@@ -76,6 +76,11 @@ async def test_failed_head_does_not_block_different_target(monkeypatch):
     """선두 실패 그룹(target_A) 뒤의 정상 그룹(target_B)이 같은 배치에서 처리되어야 한다."""
     group_order, groups = _make_groups([("txF", "tblA_src"), ("txN", "tblB_src")])
     called = _patch_processor(monkeypatch, failing_tx_ids={"txF"})
+    # ⚠️ THESE MEASURE RETRY/HOL MECHANICS, NOT THE DEFAULT (S-139). The cap moved
+    # to 1, so the declaration keeps this test's SUBJECT intact - and doubles as
+    # the ruling's gate that 「3 을 적으면 옛 동작」 is literally true.
+    import chain_ingestion_worker as _ciw
+    monkeypatch.setattr(_ciw, "_RULES_DOCUMENT", {"max_group_attempts": 3})
     db = FakeDB()
 
     failed_any = await ciw.process_pending_groups(db, group_order, groups, RULES, lambda: FakeDB())
@@ -98,6 +103,11 @@ async def test_failed_group_defers_same_target_follower(monkeypatch):
     """선두 실패 그룹(target_A) 뒤의 동일 target(target_A) 그룹은 순서 보존을 위해 보류되어야 한다."""
     group_order, groups = _make_groups([("txF", "tblA_src"), ("txSame", "tblA_src")])
     called = _patch_processor(monkeypatch, failing_tx_ids={"txF"})
+    # ⚠️ THESE MEASURE RETRY/HOL MECHANICS, NOT THE DEFAULT (S-139). The cap moved
+    # to 1, so the declaration keeps this test's SUBJECT intact - and doubles as
+    # the ruling's gate that 「3 을 적으면 옛 동작」 is literally true.
+    import chain_ingestion_worker as _ciw
+    monkeypatch.setattr(_ciw, "_RULES_DOCUMENT", {"max_group_attempts": 3})
     db = FakeDB()
 
     failed_any = await ciw.process_pending_groups(db, group_order, groups, RULES, lambda: FakeDB())
@@ -121,6 +131,11 @@ async def test_same_target_blocked_but_other_target_proceeds(monkeypatch):
         ("txOther", "tblB_src"),
     ])
     called = _patch_processor(monkeypatch, failing_tx_ids={"txF"})
+    # ⚠️ THESE MEASURE RETRY/HOL MECHANICS, NOT THE DEFAULT (S-139). The cap moved
+    # to 1, so the declaration keeps this test's SUBJECT intact - and doubles as
+    # the ruling's gate that 「3 을 적으면 옛 동작」 is literally true.
+    import chain_ingestion_worker as _ciw
+    monkeypatch.setattr(_ciw, "_RULES_DOCUMENT", {"max_group_attempts": 3})
     db = FakeDB()
 
     failed_any = await ciw.process_pending_groups(db, group_order, groups, RULES, lambda: FakeDB())

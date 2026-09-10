@@ -17,7 +17,7 @@
   refresh entrypoint: server/database/models.py refresh_dynamic_models (empty config -> keep existing singleton)
   tests: server/tests/test_config_reload_integrity.py
   key consumers: crud.py (business_key/composite_key_*/column_types), models.py:287 (dynamic Table build),
-    parsers/directory_watcher.py:96 (workspace_name/std_parse), crud.py:247 (source_priority),
+    parsers/directory_watcher.py workspace_name/std_parse, crud.resolve_priority_map (source_priority),
     ledger/setup_bundle.py load_physical_catalog (2026-08-18; column_types ->
       relation columns, composite_key_source -> unique key, business_key -> unique key
       when it is itself a declared column. map_key_columns is deliberately NOT read.)

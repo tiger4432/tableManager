@@ -298,7 +298,13 @@ SAT 보이드 출력 하나가 **두 테이블**을 채웁니다 — `inspection
 
 ## 1.12 외부 읽기 전용 `voids.json` — 경로가 웨이퍼를 말한다 (2026-08-17)
 
-`ingestion_settings.json.external_sources`가 다른 시스템 소유 디렉터리를 기존 테이블 핸들러에 연결합니다. 현재 연결 대상은 `C:/Users/kk980/void`이고 파일 계약은 다음 하나입니다.
+`ingestion_settings.json.external_sources`가 다른 시스템 소유 디렉터리를 기존 테이블 핸들러에 연결합니다.
+
+⛔ **연결 대상 경로를 여기 적지 않습니다** (D-1 정정 2026-09-10). 종전 문장은 «이 개발 박스의»
+경로 하나를 「현재 연결 대상」이라 적고 있었는데, 그것은 gitignore 된 `ingestion_settings.json`
+의 값이라 다른 설치에 대해 아무 말도 하지 않습니다 — 운영자가 자기 경로를 그것으로 «맞추려» 하면
+그 자체가 사고입니다. 정본은 그 파일의 `external_sources` 이고, 항목별 판정은 아래 점검 명령이
+보여 줍니다. 파일 계약은 다음 하나입니다.
 
 ```text
 C:/Users/kk980/void/
@@ -342,6 +348,29 @@ JSON은 최상위 배열(`[{...}]`) 또는 객체(`{"voids": [...], "runs": [...
 **끈 상태 확인:** 등록 때 워처 로그에 `External sources declared: N (M disabled).` 한 줄이 남습니다. `enabled: false` 항목은 통과도 거절도 아니어서 종전에는 「선언 안 함」과 「꺼 둠」이 로그에서 구분되지 않았습니다. 항목별 판정은 `conda run -n assy_manager python server/scripts/check_external_sources.py`가 그대로 보여 줍니다.
 
 ---
+
+## 1.13 큰 적재 뒤에는 통계를 다시 잰다 — `analyze_after_rows` (S-124 ② · S-130, 2026-09-10)
+
+적재가 끝난 표의 «통계»가 적재 전 모습 그대로면, 플래너가 있는 인덱스를 두고 순차 스캔을
+고릅니다. 실측(2026-09-10): 44만 행이 들어간 표의 페이지 질의가 «0.7 s» 를 썼고 원인은
+인덱스 부재가 아니라 «낡은 통계»였습니다.
+
+```jsonc
+// server/config/ingestion_settings.json
+"analyze_after_rows": 10000   // 기본 10,000. 0 이하 = «끔»
+```
+
+- **적재 뒤**: 한 파일이 이 수보다 많은 행을 넣으면 그 표를 `ANALYZE` 합니다
+  (`directory_watcher.analyze_after_rows` / `_analyze_after_load`). 자기 세션이고 잠금이
+  없으며, 실패해도 «적재를 실패로 만들지 않습니다» — 행은 이미 커밋돼 있습니다.
+- **기동 때**: 그 «전»에 들어간 표는 위 경로가 닿지 않으므로, 기동이
+  `pg_stat_user_tables.n_mod_since_analyze` 를 읽어 이 임계를 넘은 표를 «같은 함수»로
+  분석합니다(`chain_ingestion_worker._analyze_stale_tables_sync`). 대상은 「이 애플리케이션이
+  선언한 표」 — 동적 카탈로그 ∪ `models.Base.metadata` ∪ 원장 표(`ledger.schema.owns_table`).
+  넘지 않는 표는 «건드리지 않고», 그렇게 한 줄로 말합니다.
+
+🔴 **임계와 함수가 «하나»입니다.** 「stale 한가」의 철자가 둘이면 기동에서 도는 쪽이
+«아무도 재 본 적 없는» 쪽이 됩니다.
 
 ## 2. 파이프라인(Pipeline) 구성 방법
 

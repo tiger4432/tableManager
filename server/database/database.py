@@ -145,10 +145,28 @@ def auto_stage_database_outbox(session, flush_context, instances):
     # [OUTBOX-4] (table_name, event_type) -> [row_id, ...] for the collapsed path.
     # Insertion-ordered so the events this flush stages come out in a stable order.
     pending_chunks = {}
+    #: [S-140] (table, event_type) -> {column name} actually set by this flush. NAMES
+    #: ONLY - a value here would put user data in the outbox, and the question a rule
+    #: asks is 「did MY column change」, not 「to what」.
+    pending_columns = {}
 
-    def _emit(event_type, obj):
+    def _changed_columns(obj):
+        """Which columns this flush set on the row. One spelling for CREATE and EDIT."""
+        try:
+            insp = inspect(obj)
+            return [attr.key for attr in insp.attrs if attr.history.has_changes()]
+        except Exception:                                              # noqa: BLE001
+            # ⚠️ 「모른다」 IS NOT 「아무것도 안 바뀌었다」. An empty list here would let a
+            # column-scoped rule skip a write it should have seen, so the caller treats
+            # an EMPTY column set as 「unknown」 and stamps no key at all.
+            return []
+
+    def _emit(event_type, obj, columns=None):
         if collapsed:
-            pending_chunks.setdefault((obj.__table__.name, event_type), []).append(obj.row_id)
+            key = (obj.__table__.name, event_type)
+            pending_chunks.setdefault(key, []).append(obj.row_id)
+            names = columns if columns is not None else _changed_columns(obj)
+            pending_columns.setdefault(key, set()).update(names)
         else:
             stage_event(session, event_type, obj.__table__.name, obj)
 
@@ -171,7 +189,7 @@ def auto_stage_database_outbox(session, flush_context, instances):
                 if all(col in graph_meta_cols for col in dirty_cols):
                     continue
 
-            _emit("EDIT", obj)
+            _emit("EDIT", obj, dirty_cols)
 
     for obj in session.deleted:
         if isinstance(obj, dynamic_classes):
@@ -183,7 +201,8 @@ def auto_stage_database_outbox(session, flush_context, instances):
             stage_event(session, "DELETE", obj.__table__.name, obj)
 
     for (table_name, event_type), row_ids in pending_chunks.items():
-        stage_collapsed_event(session, event_type, table_name, row_ids)
+        stage_collapsed_event(session, event_type, table_name, row_ids,
+                              pending_columns.get((table_name, event_type)))
 
 
 def _outbox_envelope():
@@ -207,7 +226,7 @@ def _outbox_envelope():
     )
 
 
-def stage_collapsed_event(session, event_type, table_name, row_ids):
+def stage_collapsed_event(session, event_type, table_name, row_ids, columns=None):
     """[OUTBOX-4] Stage ONE outbox event naming `row_ids` instead of N events.
 
     🔴 THE TRANSACTIONAL-OUTBOX GUARANTEE IS PRESERVED, AND HERE IS WHY IT SURVIVES
@@ -254,6 +273,15 @@ def stage_collapsed_event(session, event_type, table_name, row_ids):
                 # silently over- or under-select.
                 "row_ids": id_chunk,
                 "row_count": len(id_chunk),
+                # [S-140] WHICH COLUMNS THIS CHUNK SET - names, deduped, sorted. A rule
+                # that declares `trigger_columns` runs only when this intersects it.
+                #
+                # ⛔ THE KEY IS ABSENT WHEN THE SET IS EMPTY, and that is the whole
+                # contract: an event with no `columns` key means 「모른다」 and every rule
+                # runs. An empty LIST would read as 「nothing changed」 and silently skip
+                # every column-scoped rule - the same shape as the five zeros that look
+                # alike. Old events predate the key and land in the same 「run」 branch.
+                **({"columns": sorted(columns)} if columns else {}),
                 "table_name": table_name or "unknown",
                 "transaction_id": tx_id,
                 "updated_by": user,

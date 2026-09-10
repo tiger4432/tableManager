@@ -351,6 +351,34 @@ async def _dispatch_broadcasts(pending_broadcasts, db_session_factory):
 _RULES_DOCUMENT = {}
 
 
+#: 한 그룹이 «몇 번» 시도되고 격리되나 (S-139, 소유자 09-10 21:35 「3회 없애, 1회면 끝」).
+#: 기본 1 = 첫 실패에 바로 FAILED 로 격리하고 «이름을 댄다».
+DEFAULT_MAX_GROUP_ATTEMPTS = 1
+
+
+def max_group_attempts() -> int:
+    """선언된 상한, 없으면 기본 1. 판정·로그·격리 경계가 «이 한 수»를 본다.
+
+    🔴 상수를 값만 바꾸지 않는 이유 (S-139). 종전엔 `>= 3` 이 판정에 박혀 있고 로그가
+    「(N/3)」 를 «따로» 적었다 — 상한을 옮기면 둘이 갈라지고, 갈라진 로그는 「몇 번 남았나」에
+    대해 조용히 거짓말한다. 이제 셋이 같은 함수를 부른다.
+
+    ⚠️ 3 을 적으면 옛 동작이 «그대로» 돌아온다 — 이 변경은 기본값을 옮긴 것이지 기제를
+    없앤 것이 아니다.
+    """
+    value = (_RULES_DOCUMENT or {}).get("max_group_attempts",
+                                        DEFAULT_MAX_GROUP_ATTEMPTS)
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        logger.warning(
+            "[Chain] max_group_attempts=%r is not a number; using %d.",
+            value, DEFAULT_MAX_GROUP_ATTEMPTS)
+        return DEFAULT_MAX_GROUP_ATTEMPTS
+    # 0 이하는 「한 번도 안 시도한다」가 되어 그룹이 «영원히» 격리된다. 1 로 바닥을 둔다.
+    return parsed if parsed >= 1 else DEFAULT_MAX_GROUP_ATTEMPTS
+
+
 def load_chain_rules():
     global _RULES_DOCUMENT
     rules = []
@@ -381,6 +409,7 @@ def load_chain_rules():
         logger.error(f"[Enrichment] Failed to synthesize enrichment chain rules: {e}")
 
     _validate_chain_cascade_graph(rules)
+    _report_unwatchable_trigger_columns(rules)
     # 🔴 선언된 규칙을 «값»으로 세운다 — 처리 루프가 결과를 덮어쓰고, 한 번도 안 걸린 규칙은
     #    「아직 평가 안 됨」으로 «말해진다». 부재는 「옛 서버」 하나만 뜻해야 한다.
     #    로더 «안»이라 호출자가 둘이어도 저자는 하나다.
@@ -389,11 +418,62 @@ def load_chain_rules():
     return rules
 
 
+def rule_watches_changed_columns(rule, event) -> bool:
+    """Did this write touch a column the rule asked to be woken by? (S-140 ②③)
+
+    🔴 ABSENCE IS 「모른다」, NOT 「아무것도 아니다」. An event staged before this key
+    existed - and every non-collapsed per-row event - carries no `columns`, so it lands
+    in the RUN branch. Reading a missing key as an empty set would silently stop every
+    column-scoped rule on exactly the events nobody re-staged, which is the class where
+    five different zeros render the same.
+
+    ⚠️ A rule with no `trigger_columns` is table-scoped as it has always been.
+    """
+    wanted = rule.get("trigger_columns")
+    if not wanted:
+        return True
+    changed = get_payload_dict(event).get("columns")
+    if changed is None:
+        return True
+    return bool(set(wanted) & set(changed))
+
+
 def _rule_accepts_event(rule, event) -> bool:
     """Chain-produced events are opt-in per downstream rule, never globally live."""
     if get_payload_dict(event).get("source_name") != "chain_ingestion":
         return True
     return bool(rule.get("allow_chain_trigger"))
+
+
+def _report_unwatchable_trigger_columns(rules):
+    """Name every `trigger_columns` entry the trigger table does not declare (S-140 ④).
+
+    🔴 OTHERWISE THE RULE STANDS AND NEVER FIRES. A typo there intersects nothing, so the
+    rule is enabled, looks live, and is silently never woken - which reads as 「the chain
+    is broken」 rather than 「this name is wrong」.
+
+    ⚠️ REFUSED PER CELL, NOT PER FILE, and never raising: a load that dies over one bad
+    name would take every other rule down with it. The rule keeps running TABLE-scoped,
+    which is the behaviour it had before the cell existed.
+    """
+    from database import crud
+
+    for rule in rules or ():
+        wanted = rule.get("trigger_columns")
+        if not wanted:
+            continue
+        table = rule.get("trigger_table")
+        declared = set(((crud.TABLE_CONFIG.get(table) or {}).get("column_types") or {}))
+        if not declared:
+            # 「모른다」 — 카탈로그를 못 보는 것과 컬럼이 없는 것은 다르다.
+            continue
+        unknown = sorted(set(wanted) - declared)
+        if unknown:
+            logger.error(
+                "[Chain] rule %s declares trigger_columns %s that '%s' does not have; "
+                "that rule can never be woken by them and stays TABLE-scoped. "
+                "Fix the names or remove the cell.",
+                rule.get("name") or rule.get("target_table"), unknown, table)
 
 
 def _validate_chain_cascade_graph(rules):
@@ -676,6 +756,13 @@ def _rule_outcome_before_running(rule, events):
         if e.event_type not in ("CREATE", "EDIT"):
             continue
         if rule.get("trigger_table") != e.table_name:
+            continue
+        if not rule_watches_changed_columns(rule, e):
+            # 한 줄로 말한다 — 「안 돌았다」가 「고장났다」처럼 읽히지 않게.
+            logger.info(
+                "[Chain] rule %s skipped: none of %s changed",
+                rule.get("name") or rule.get("target_table"),
+                sorted(rule.get("trigger_columns") or ()))
             continue
         if _rule_accepts_event(rule, e):
             return None, None
@@ -1479,15 +1566,19 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
             failed_permanently_count = 0
             retrying_count = 0
             max_retry_num = 0
+            # 한 번 읽어 «판정·사유·로그»가 같은 수를 본다.
+            attempts_cap = max_group_attempts()
 
             reexpanded_rows = 0
             for event in events_in_tx:
                 event.retry_count += 1
                 max_retry_num = max(max_retry_num, event.retry_count)
-                if event.retry_count >= 3:
+                if event.retry_count >= attempts_cap:
                     pay_dict = get_payload_dict(event)
                     payload_copy = dict(pay_dict) if pay_dict else {}
-                    reason = error_reason or f"Mapper execution failed in tx group {tx_id} after 3 retries."
+                    reason = error_reason or (
+                        f"Mapper execution failed in tx group {tx_id} after "
+                        f"{attempts_cap} attempt(s).")
 
                     # [OUTBOX-4] COARSE ON THE HAPPY PATH, FINE ON THE FAILURE PATH.
                     # A collapsed event covers up to 1,000 rows, so quarantining it
@@ -1542,7 +1633,7 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
             if failed_permanently_count > 0:
                 logger.error(f"Transaction {tx_id} permanently failed: {failed_permanently_count} events moved to FAILED status.")
             if retrying_count > 0:
-                logger.warning(f"Transaction {tx_id} marked for retry: {retrying_count} events set to RETRYING status ({max_retry_num}/3).")
+                logger.warning(f"Transaction {tx_id} marked for retry: {retrying_count} events set to RETRYING status ({max_retry_num}/{attempts_cap}).")
 
             failed_any = True
             # [Latency Fix #5] break 제거 — 동일 target_table 그룹만 보류(순서 보존)하고 나머지는 계속 처리.

@@ -49,6 +49,17 @@ DECOUPLED=True                          0 절의 분리 모드 → 재기동
 ## 4. 이 장이 아직 못 말하는 것 (적어 두는 미지)
 ```
 · ⑥ 수집기의 «수와 주기»는 운영 설정에 있다 — 여기선 셀 수 없다
-· 「Graph DB Sync」 라는 낱말이 main.py 의 분리 모드 로그에 남아 있으나 그 워커 파일은 «없다» — 낡은 문구
+· ✅ 「분리 모드 런처가 무엇을 띄우나」도 답이 나왔다 — `run_decoupled_app.py` 의 `specs` 가 정본.
+  «무조건 넷»: Backend FastAPI Server(310) · File Ingestion Watcher(315) ·
+  Chained Ingestion Worker(326) · Auto Update Scheduler(329).
+  «조건부 하나»: Desktop Client UI(335) — `--server-only` 가 아닐 때만 `specs.append`.
+  🔴 그래서 「다섯 프로세스」는 «데스크톱 셸을 세었을 때»의 수다 — 서버만 띄우면 «넷»이다.
+  ⚠️ 수를 이 문서에 «박지 않는다»: 정본은 그 `specs` 이고, 여기 적으면 저자가 둘이 된다.
+· ⚰️ 「Graph DB Sync」 는 «답이 나왔다» (D-1 실측 09-10, HEAD 1972d392). 그 낱말이 사는 곳은
+  «한 줄»이다 — `server/main.py:457` 의 분리 모드 로그:
+     「Skipping inline Directory Watcher, Graph DB Sync, and Chained Ingestion workers.」
+  그 워커는 `R-2026-08-14-H` 로 은퇴했고 묘비가 `run_decoupled_app.py:318` 에 있다.
+  🔴 그러므로 그 줄은 «없는 것을 건너뛴다»고 말한다 — 운영자가 「그게 아직 있나」로 읽는다.
+  ⛔ 고치는 것은 «코드 한 줄»이라 이 문서 라운드(D-1, 코드 0줄)의 몫이 «아니다» — 큐로 올린다.
 · 이 장은 09-10 코드 기준. 고리를 «하나 더 만들 때» 이 표에 «행을 먼저» 넣는다 — 안 넣으면 다음 밤에 또 「뭐가 도나」가 된다
 ```
