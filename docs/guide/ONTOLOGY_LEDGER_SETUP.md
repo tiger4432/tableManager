@@ -569,6 +569,8 @@ JSON 블록은 모두 `ledger_config.json` 안 해당 키의 **값**이다.
 | `subjects` | 허용되는 versioned Entity ID 목록 |
 | `object.kind` | `none`, `entity_ref`, `value`, `event_ref` |
 | `object.types` | `entity_ref`일 때 허용되는 Entity ID 목록 |
+| `object.value_type` | `value`일 때 그 값의 «타입» — `number`(기본) · `string` · `boolean` · `timestamp`. 적지 않으면 `number` 다(디스크의 모든 선언이 뜻하는 것). 🔴 컴파일러가 이것으로 Role 종류를 정한다: number→`quantity` · string/boolean→`attribute` · timestamp→`time`. ⚠️ `string` 이 `symbolic` 이 «아닌» 것은 취향이 아니라 실측이다 — `symbolic` 갈래만 `allowed_values` 멤버십을 추가로 요구하는데 그것을 쓰는 코드가 «없어서», 그리로 보내면 모든 문자열이 거절된다 (S-84) |
+| `cardinality` | `many`(기본) 또는 `one`. `one` = 「한 주어에 이 술어의 목적어는 «지금» 하나」. 🔴 **키가 아니라 «값»이다** — 늦게 온 더 이른 행이 값을 바꾸면 키였을 경우 행의 정체성이 바뀌어 이미 확정된 것이 고아가 된다. 다른 배치에서 새 목적어가 오면 이전 원자를 **supersede**(원자는 남고 포인터가 붙는다), «같은 배치»에 목적어가 둘이면 어느 것이 현재인지 알 수 없어 그 분자를 `cardinality_one_violated` 로 세고 건너뛴다. 걷기 응답의 엣지가 이 값을 싣는다 (S-133) |
 | `object.qualifiers.required` | 문장이 반드시 공급해야 하는 qualifier 이름. 🔴 **각 이름이 그대로 필수 Role이 된다**(§7.5) |
 | `object.qualifiers.optional` | 선택적으로 공급할 수 있는 qualifier 이름. 각 이름이 그대로 «선택» Role이 된다 |
 

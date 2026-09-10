@@ -639,7 +639,11 @@ def map_production_plan_shortage(row_data: dict, db: Session) -> dict:
     "decision_key":  ["equipment", "event_time"],// 필수: 판단키(사람이 1회 판단하는 단위)
     "target_fields": ["wafer_id"],               // 필수: 사람이 채울 필드 — 맵퍼는 이 필드를 절대 쓰지 않음
     "list_columns":  ["chip_count", "lot_hint"], // 선택: 워크리스트 표시 단서(배치 내 대표값)
-    "aggregations":  { "chip_count": "count" },  // 선택(서버 전용): v1은 count만 — 영향 키 한정 재계산(멱등)
+    "aggregations":  {                           // 선택(서버 전용): 그 키 그룹의 집계 — 영향 키 한정 재계산(멱등)
+      "chip_count": "count",                     //   행을 센다 (컬럼 없음)
+      "bonding_time_min": {"fn": "min",          //   count | min | max (S-129, 2026-09-10)
+                           "column": "bonding_time"}   //   min/max 는 «소스» 컬럼을 읽는다
+    },
     "enabled": true,
     "reference_views": [
       { "label": "lot event",
@@ -655,8 +659,14 @@ def map_production_plan_shortage(row_data: dict, db: Session) -> dict:
 
 1. **파생 테이블 등록**: `derived_table`은 `table_config.json`의 보통 테이블이어야 합니다(레이어링·AuditLog·WS·그리드 편집이 공짜로 적용되는 이유). `decision_key`·`target_fields`·`list_columns`는 파생 테이블 컬럼이어야 하고, `decision_key`는 원본 테이블 컬럼이기도 해야 합니다.
 2. **파생 테이블 키 계약**: 파생 테이블 config는 `composite_key_source ⊆ decision_key` 이거나 `business_key ∈ decision_key` 여야 합니다(맵퍼가 판단키로 business_key_val을 결정론적으로 조립 — 키당 1행 upsert의 근거).
-3. **참조뷰 SQL**: 단일 SELECT(또는 WITH)만, `;` 다중문 금지, 바인드 파라미터(`:col`)는 decision_key 컬럼명만. 쿼리 본문은 서버에만 존재하며 클라이언트에는 label만 노출됩니다. LIMIT은 서버가 강제(기본 200, 최대 1000).
-4. **[확장성] count 집계 인덱스**: `aggregations: count`는 "영향받은 판단키 한정" `GROUP BY` 재계산(500키 청킹)을 수행합니다. 원본 테이블이 대규모(수백만 행 이상)라면 **decision_key 컬럼 복합 인덱스**를 생성하십시오(미생성 시 청크당 스캔 발생).
+3. **참조뷰 SQL**: 단일 SELECT(또는 WITH)만, `;` 다중문 금지. 바인드 파라미터(`:col`)는
+   ⚰️ **[S-136, 2026-09-10 정정 — 종전 「decision_key 컬럼명만」은 거짓]** «파생 표가 선언한
+   어느 컬럼이든» 쓸 수 있습니다(판단키·집계·`target_fields` 포함). 값은 그 파생행에서 읽습니다.
+   · 파생행에 «없는» 이름 → 로드 때 이름 대어 거절
+   · 컬럼이 «있고 값이 비었으면» → NULL 로 바인드(「없는 것」과 「비어 있는 것」은 다른 사실)
+   · 단, «판단키»가 비면 종전대로 `missing_bind` — `slot=''` 은 합법이지만 아무것도 안 맞는
+     질의를 만들고, 0행 읽기는 「그런 증거가 없다」와 구별되지 않기 때문입니다. 쿼리 본문은 서버에만 존재하며 클라이언트에는 label만 노출됩니다. LIMIT은 서버가 강제(기본 200, 최대 1000).
+4. **[확장성] 집계 인덱스**: `aggregations`(count·min·max)는 "영향받은 판단키 한정" `GROUP BY` 재계산(500키 청킹)을 수행합니다. 원본 테이블이 대규모(수백만 행 이상)라면 **decision_key 컬럼 복합 인덱스**를 생성하십시오(미생성 시 청크당 스캔 발생).
 
 ### 4.3 동작 요약 (불변식)
 
