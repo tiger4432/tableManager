@@ -66,6 +66,31 @@ def _atoms_per_sentence(preview: Any, plan: Any) -> list[dict[str, Any]]:
              "atoms": counts[sentence]} for sentence in sorted(counts)]
 
 
+def _refused_row(refusal: Any) -> dict:
+    """`{"frame": ..., "position": N}` for a refusal that names a row, else `{}` (S-92).
+
+    🔴 READ FROM THE PATH, NOT RECONSTRUCTED. A refusal addresses
+    `<frame>.rows[<n>].<column>`, so which row it happened at is already in the answer -
+    it was simply not carried out to the response. Anything else names no row: a reader
+    path, a cursor path, a source-level refusal.
+
+    ⚠️ THE POSITION IS WITHIN THE FRAME THE REFUSAL NAMES, and it is reported that way
+    rather than as an index into the sample. The two are not the same list - the sample is
+    the first `n` rows of a page and a refusal can come from further in - and a number that
+    looks like an index into what the screen is showing would point at the wrong row.
+    """
+    for address in getattr(refusal, "addresses", ()) or ():
+        text = str((address or {}).get("path") or "")
+        head, sep, _rest = text.partition("].")
+        if not sep:
+            continue
+        frame, bracket, position = head.rpartition(".rows[")
+        if not bracket or not position.isdigit():
+            continue
+        return {"frame": frame, "position": int(position)}
+    return {}
+
+
 def _refused_column(path: Any) -> str:
     """The source column a refusal path points at, or `""`.
 
@@ -578,7 +603,17 @@ class OntologyExplorerService:
     #: What a source is until a batch has actually been compiled from its rows.
     UNVERIFIED = "unverified"
 
-    def test_run(self, engine: Any, *, source_id: str) -> dict[str, Any]:
+    #: How many read rows a test run may show, and the ceiling on asking for more.
+    #:
+    #: 🔴 A REQUEST ARGUMENT AND NOT A DECLARATION FIELD (S-92, 판정 09-10 13:54). How many
+    #: rows somebody wants to LOOK at is a property of the looking, not of the source - a
+    #: declaration cell would make one operator's screen preference part of the thing every
+    #: other reader compiles.
+    DEFAULT_SAMPLE_ROWS = 10
+    MAX_SAMPLE_ROWS = 100
+
+    def test_run(self, engine: Any, *, source_id: str,
+                 sample_rows: int = DEFAULT_SAMPLE_ROWS) -> dict[str, Any]:
         """Run one write-free batch for `source_id` and report what it produced.
 
         Never raises for a declaration problem -- a refusal is the ANSWER this endpoint
@@ -635,7 +670,9 @@ class OntologyExplorerService:
             result["status"] = "refused"
             return result
         try:
-            reading = backfill.preview_first_batch(engine, setup, source_id)
+            reading = backfill.preview_first_batch(
+                engine, setup, source_id,
+                sample_rows=max(0, min(int(sample_rows), self.MAX_SAMPLE_ROWS)))
             rows_read, preview = reading.rows_read, reading.preview
         except Exception as exc:                       # noqa: BLE001 - see below
             # 🔴 EVERY EXCEPTION, NOT A LIST OF CLASSES. Nine refusal classes reach this
@@ -723,10 +760,24 @@ class OntologyExplorerService:
         result["refused"] = {
             "count": len(refused),
             "reasons": reasons,
-            "samples": [{"reason": r.reason, "detail": r.detail, "rows": r.rows,
-                         "addresses": [dict(a) for a in r.addresses]}
+            # 🔴 WHICH ROW, NOT JUST HOW MANY (S-92). A refusal already carries the path
+            # it happened at - `event_frame.rows[N].<column>` - so the row is IN the
+            # answer and was being dropped on the way out. The screen can now put the
+            # refusal beside the row instead of beside a count.
+            #
+            # ⚠️ ABSENT WHEN THE PATH NAMES NO ROW, never invented. A refusal about the
+            # source rather than a row (`verified_join_reader_required`, whose path is
+            # `source_preparation.join_reader`) has no row to point at, and a zero there
+            # would send an operator to the first row of their table for no reason.
+            "samples": [dict({"reason": r.reason, "detail": r.detail, "rows": r.rows,
+                              "addresses": [dict(a) for a in r.addresses]},
+                             **({"row_key": _refused_row(r)} if _refused_row(r) else {}))
                         for r in refused[:backfill.PREVIEW_REFUSAL_SAMPLES]],
         }
+        # 🔴 THE ROWS THIS RUN ACTUALLY READ (S-92, owner 09-09 「체크한 로우들 줄 수
+        # 있나」). The page was in memory and thrown away, so the screen could say how many
+        # and never which. No extra scan: this is the same page the compile used.
+        result["rows_sample"] = [dict(row) for row in reading.rows_sample]
         if preview.molecule_count:
             result["status"] = "passed"
             self._record_test_run(result)

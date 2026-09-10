@@ -1487,6 +1487,11 @@ class TestRunReading:
     pages: int
     preview: Any
     refusals: tuple
+    #: A few of the rows this run actually READ, as values (S-92). The owner asked for
+    #: 「체크한 로우들」 and the answer was a count: the page was in memory and thrown away.
+    #: Key columns first, then the columns the declaration reads - not the whole row, which
+    #: would put a source's every column through a screen nobody asked to see.
+    rows_sample: tuple
     #: Rows the preparer's marker removed, or `None` where this source declares no
     #: marker - "not measured" and "measured, none" are different answers.
     excluded_rows: Any
@@ -1498,7 +1503,40 @@ class TestRunReading:
     # marker at all.
 
 
-def preview_first_batch(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS):
+def _sample_columns(plan) -> tuple:
+    """The columns a sample shows: the page key first, then what the declaration reads.
+
+    🔴 NOT THE WHOLE ROW. A source relation can be forty columns wide and the question the
+    sample answers is 「which rows did you check」 - so it shows the ones that identify a row
+    and the ones the declaration actually looks at. Everything else would be a payload the
+    screen never asked for.
+    """
+    columns: list = []
+    for name in (_page_key(plan),) + tuple(plan.driver.cursor_columns):
+        if name and name not in columns:
+            columns.append(str(name))
+    occurred = getattr(plan.driver, "occurred_at", None)
+    for name in (getattr(occurred, "column", None),):
+        if name and name not in columns:
+            columns.append(str(name))
+    return tuple(columns)
+
+
+def _rows_sample(plan, rows, limit: int) -> tuple:
+    """`limit` of `rows`, cut to the sample columns. Reads nothing - `rows` is in hand."""
+    if limit <= 0 or not rows:
+        return ()
+    columns = _sample_columns(plan)
+    sample = []
+    for row in rows[:limit]:
+        if not isinstance(row, Mapping):
+            continue
+        sample.append({name: row.get(name) for name in columns if name in row})
+    return tuple(sample)
+
+
+def preview_first_batch(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS,
+                        sample_rows: int = 0):
     """Compile ONE batch of this source's FIRST page. WRITES NOTHING, MOVES NO CURSOR.
 
     Returns `(rows_read, preview_or_None)`; the preview is `None` only when the relation
@@ -1540,6 +1578,7 @@ def preview_first_batch(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS):
     page_key = _page_key(plan)
     rows_read = pages = 0
     refusals: list = []
+    sampled: tuple = ()
     excluded = None
     answered = None
     after = None
@@ -1559,6 +1598,11 @@ def preview_first_batch(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS):
                 break
             pages += 1
             rows_read += len(complete)
+            # 🔴 THE FIRST PAGE THAT ANSWERED, AND NO EXTRA READ (S-92). These rows are
+            # already in memory; the run used to count them and drop them, which is why
+            # the screen could say 「200 rows」 and not 「which 200」.
+            if sample_rows and not sampled:
+                sampled = _rows_sample(plan, complete, sample_rows)
             frame = _v2_frame(complete)
             subjects = _v2_registration_subjects(plan, frame)
             known = None if subjects is None else ()
@@ -1583,7 +1627,8 @@ def preview_first_batch(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS):
         read.rollback()
         read.close()
     return TestRunReading(rows_read=rows_read, pages=pages, preview=answered,
-                          refusals=tuple(refusals), excluded_rows=excluded)
+                          refusals=tuple(refusals), excluded_rows=excluded,
+                          rows_sample=sampled)
 
 
 def count_rows_missing(engine, setup, source, column, fetch_rows=PREVIEW_FETCH_ROWS):

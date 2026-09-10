@@ -149,8 +149,18 @@ def test_run(payload: dict[str, Any] = Body(...)):
     from database.database import engine
 
     try:
+        # 🔴 THE SAMPLE SIZE IS THE REQUEST'S, NOT THE DECLARATION'S (S-92). How many read
+        # rows somebody wants to look at is a property of the looking; a declaration cell
+        # would make one operator's screen preference part of what everyone else compiles.
+        # Clamped in the service, so a caller cannot ask for a page-sized "sample".
+        try:
+            sample_rows = int(payload.get("sample_rows",
+                                          _service.DEFAULT_SAMPLE_ROWS))
+        except (TypeError, ValueError):
+            sample_rows = _service.DEFAULT_SAMPLE_ROWS
         return _service.test_run(
-            engine, source_id=str(payload.get("source_id", "")))
+            engine, source_id=str(payload.get("source_id", "")),
+            sample_rows=sample_rows)
     except ConfigExplorerError as exc:
         raise _refusal(exc) from exc
 
