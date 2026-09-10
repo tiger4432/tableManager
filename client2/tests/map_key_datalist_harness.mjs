@@ -39,6 +39,7 @@
 // would be riding on the edit, not scoring its own axis.
 import { readFileSync } from 'node:fs';
 import { loadWithProbe } from './lib/probe.mjs';
+import { scoreMutants } from './lib/mutation_scorer.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import vm from 'node:vm';
@@ -1427,45 +1428,114 @@ function colValueKey(table, column) { return \`\${table}::\${column}\`; }`,
   },
 ];
 
+// 🔴 WHICH ASSERTION MUST CATCH WHICH MUTANT -- GENERATED, NOT TRANSCRIBED. This harness
+//    already prints 「by N assertion(s), first: …」 under every verdict, so the pairs come out
+//    of its own run rather than out of my reading of it. Writing such a table by hand is how a
+//    mutant comes to name an assertion that never fires: the corpus stays green while the line
+//    it was meant to guard goes unmeasured.
+// 🔵 TWO DETECTORS ARE SHARED BY TWO MUTANTS EACH. These names carry no case dimension to
+//    split on, so one fact broken by two mutations is correct and nothing is forced apart.
+// ⚠️ THE VALUE IS A PREFIX of the assertion name, not the whole line, so a copy edit to the
+//    tail of a message does not silently unname a mutant. It is still ONE assertion: these
+//    prefixes are unique in this file.
+const CATCHES = {
+    "M1 [HIGH] `unavailable_reason` is collapsed into an empty result":
+      "an answer with a named reason is marked unavailable",
+    "M2 [HIGH] the unavailability is cached, so the column stays dead for the session":
+      "\"could not look\" is re-asked on the next focus",
+    "M3 [HIGH] a CUT list is cached and then narrowed locally (a sample as a population)":
+      "typing over a CUT list re-asks the server",
+    "M4 [HIGH] the generated datalist is parented on the body (orphan survives the switch)":
+      "every generated field is bound to its own datalist, inside the",
+    "M5 [HIGH] the map-key list is filtered by the CANVAS table, not the overlay source":
+      "filtered by the OVERLAY SOURCE table, not by the canvas table",
+    "M6 [MEDIUM] a truncated map-key list is cached as if it were complete":
+      "a cut map-key list is marked truncated",
+    "M7 [MEDIUM] an HTTP failure is served as an empty list":
+      "an HTTP 5xx is marked unavailable, not read as an empty column",
+    "M8 [MEDIUM] a 4xx refusal is not learned, so every focus pays for it again":
+      "\"not a suggestion target\" is learned: the second focus asks no",
+    "M9 [MEDIUM] the column cache is table-blind (the switch shows the old values)":
+      "the new table's field shows the new table's values",
+    "M10 [MEDIUM] the table switch keeps the column cache":
+      "re-entering the SAME table re-asks it (the cache was dropped)",
+    "M11 [MEDIUM] the datalist writes the first candidate into the input (a validator)":
+      "a hand-typed key present in no list is left untouched",
+    "M12 [MEDIUM] `markSuggestState` destroys the input's own tooltip":
+      "the field's original tooltip survives the status note",
+    "M13 [MEDIUM] the complete snapshot is never reused (every focus pays again)":
+      "a complete column answer is cached within one table visit",
+    "M16 [HIGH] a superseded answer is allowed to overwrite the newer list":
+      "the LAST question wins even when its answer came back first",
+    "M14 [MEDIUM] the generated input loses its `list` binding":
+      "every generated field is bound to its own datalist, inside the",
+    "M15 [MEDIUM] per-node listeners are attached on every regeneration":
+      "no generated input carries a listener of its own",
+    "M16 [HIGH] the dropdown is shown even when the list is NOT the whole population":
+      "TRUNCATED with an EMPTY key -> still the text input (the POPUL",
+    "M17 [HIGH] the dropdown is shown even when the CURRENT key is not in it":
+      "a key that is NOT in a COMPLETE list still keeps the text inpu",
+    "M18 [HIGH] the empty selection carries a sentinel instead of the empty string":
+      "...and it offers the placeholder plus every listed key",
+    "M19 [MEDIUM] the dropdown is never shown at all (the request silently unimplemented)":
+      "COMPLETE + empty key -> the dropdown is the control",
+    "M20 [MEDIUM] a successful empty list goes back to silence":
+      "...but it SAYS it is genuinely empty rather than staying silen",
+    "M17 [HIGH] the candidate list is emitted in server row order (no sort)":
+      "the datalist holds exactly the returned map_ids, sorted",
+    "M18 [HIGH] the sort is plain lexicographic (_10 lands before _2)":
+      "after a source-table change the list is the NEW table's",
+    "M19 [HIGH] a map whose spec cannot be read is labelled anyway (an empty attribute)":
+      "a map whose spec cannot be read carries NO label attribute at ",
+    "M20 [HIGH] the summariser invents a shape when the dimensions are unreadable":
+      "an unreadable, absent, zero-sized or dimensionless spec summar",
+    "M21 [HIGH] every candidate is labelled with the FIRST row's spec":
+      "...and the fixture specs really do discriminate (>1 distinct l",
+    "M22 [HIGH] the label is folded into the option VALUE (the key stops being typeable)":
+      "the datalist holds exactly the returned map_ids, sorted",
+};
+
 async function sweep(list, expectCaught, heading) {
   console.log(`\n=== ${heading} ===`);
-  let applied = 0, caught = 0;
-  const notApplied = [], wrong = [];
-  for (const m of list) {
-    if (!SRC.includes(m.find)) {
-      notApplied.push(m.name);
-      console.error(`  NOT APPLIED  ${m.name}\n    search string not found`);
-      continue;
-    }
-    applied++;
+  // 🔴 NOT APPLIED IS STILL ITS OWN VERDICT, and it stays out of the scorer. A mutation whose
+  //    search string is gone was never INTRODUCED, so it is neither caught nor escaped -- it is
+  //    the harness having lost its subject, and the summary already refuses to pass on it.
+  const notApplied = [];
+  const live = list.filter((m) => {
+    if (SRC.includes(m.find)) return true;
+    notApplied.push(m.name);
+    console.error(`  NOT APPLIED  ${m.name}\n    search string not found`);
+    return false;
+  });
+
+  // 🔴 SCORED BY `lib/mutation_scorer.mjs`. This loop asked 「did anything new fail」 and folded a
+  //    THROW into that as a new failure -- a harness that stopped, banked as one that noticed.
+  //    It now asks 「did THE NAMED assertion fail」, and a throw is INERT.
+  const runMutant = async (m) => {
     const mutated = SRC.replace(m.find, m.repl);
     const before = { pass, fail, failures: failures.length };
-    let threw = null;
     quiet = true;
-    // 🔴 A FUNCTION, not the mutated text. `spec.mutate` ignores a string, so every mutant
-    //    loaded the UNMUTATED module -- 27 declared, 27 applied, ONE caught, and the
-    //    assertion count sat at 83/0 the whole time. The two-witness gate is the only thing
-    //    that can see this.
     try { await runChecks(() => mutated, { strict: true }); }
-    catch (err) { threw = err; }
-    quiet = false;
-    const broke = fail > before.fail || threw !== null;
+    finally { quiet = false; }
     const detectedBy = failures.slice(before.failures);
+    // The mutant run's own scores are not evidence about the product; only the verdict is.
     pass = before.pass; fail = before.fail; failures.length = before.failures;
+    return { failures: detectedBy };
+  };
 
-    if (broke) caught++;
-    if (broke === expectCaught) {
-      const why = threw ? `threw: ${String(threw.message).slice(0, 70)}`
-        : (broke ? `${detectedBy.length} assertion(s), first: ${detectedBy[0]}` : 'no detector fired');
-      console.log(`  ${expectCaught ? 'caught ' : 'escaped'} ${m.name}\n            by ${why}`);
-    } else {
-      wrong.push(m.name);
-      console.error(`  ${expectCaught ? 'ESCAPED' : 'CAUGHT'} ${m.name}\n    ${
-        expectCaught ? `expected to break: ${m.breaks}`
-          : `a semantics-preserving edit fired: ${detectedBy.join(' | ')}`}`);
-    }
-  }
-  return { applied, caught, notApplied, wrong, declared: list.length };
+  const scored = await scoreMutants(
+    live.map((m) => ({ ...m, catches: CATCHES[m.name] })), runMutant,
+    { mustCatch: expectCaught, log: (line) => console.log(line) });
+  const wrong = scored.verdicts
+    .filter((v) => v.verdict !== (expectCaught ? 'CAUGHT' : 'ESCAPED'))
+    .map((v) => v.id);
+  // `caught` means the same thing in both sweeps: how many mutants FIRED an assertion. For a
+  // defect that is the good number; for a control it is the bad one, and the summary line
+  // ("escaped = applied - caught") reads it that way. Getting this backwards printed
+  // 「controls ESCAPED: 0 of 2」 on a run where both had correctly escaped -- a true verdict
+  // reported as its opposite.
+  const caught = expectCaught ? scored.caught : scored.wrong;
+  return { applied: live.length, caught, notApplied, wrong, declared: list.length };
 }
 
 const mut = await sweep(MUTATIONS, true, 'MUTATION SWEEP');
