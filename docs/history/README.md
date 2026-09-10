@@ -1,13 +1,17 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **820개** 이력. (거버넌스 규칙 #4)
+> 총 **824개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-09 (September 2026)
 
+- **2026-09-10 21:01** — [The Screens Stopped Keeping Their Own Copy And Every Mutant Started Naming Its Check](./20260910_210100_the_screens_stopped_keeping_their_own_copy_and_every_mutant_started_naming_its_check.md)
+- **2026-09-10 17:12** — [Four Words The Declaration Could Write And No Reader Could See](./20260910_171200_four_words_the_declaration_could_write_and_no_reader_could_see.md)
+- **2026-09-10 16:45** — [The Queue Was Empty And Every Table Was Slow So The Cause Was The Thing That Never Rests](./20260910_164500_the_queue_was_empty_and_every_table_was_slow_so_the_cause_was_the_thing_that_never_rests.md)
+- **2026-09-10 16:27** — [Two Doors For One Question And Two Accidents That Came From Tidying](./20260910_162700_two_doors_for_one_question_and_two_accidents_that_came_from_tidying.md)
 - **2026-09-07 23:56** — [Fourteen Product Lines Landed And Two Of Them Repaired The Same Day They Broke](./20260907_235600_fourteen_product_lines_landed_and_two_of_them_repaired_the_same_day_they_broke.md)
 - **2026-09-06 18:28** — [A Bare Call Meant The Merge History Was Always Lost](./20260906_182800_a_bare_call_meant_the_merge_history_was_always_lost.md)
 - **2026-09-06 16:45** — [The One Write The Outbox Could Not See](./20260906_164500_the_one_write_the_outbox_could_not_see.md)
@@ -844,4 +848,4 @@
 - **2026-04-12 22:22** — [Ws Debug Staggered Init](./20260412_222200_ws_debug_staggered_init.md)
 - **2026-04-12 22:10** — [Phase19 Integrity And Stability Fixes](./20260412_221000_phase19_integrity_and_stability_fixes.md)
 
-*Last generated: 2026-09-08 by gen_index.py*
+*Last generated: 2026-09-10 by gen_index.py*
