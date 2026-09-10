@@ -396,8 +396,13 @@ result.failures.forEach((f) => console.log(`  FAIL  ${f}`));
 // 🔴 C-66. This loop and the walk harness's were the same loop written twice -- criterion ④,
 //    and the comment it carried even said "see the walk harness for the same repair". It lives
 //    in `lib/mutation_scorer.mjs` now and both call it, so the two cannot drift apart.
-const { wrong: escaped } = await scoreMutants(MUTANTS, async (m) => suite(await loadModules(m.mutate)),
-  { title: '\n-- defect mutants (each must be CAUGHT by its named line) -----------' });
+const { wrong: escaped } = await scoreMutants(MUTANTS, async (m) => {
+    // `ran` lets the scorer say when a mutant REMOVES assertions instead of failing them.
+    const out = await suite(await loadModules(m.mutate));
+    return { failures: out.failures, ran: out.ran.length };
+  },
+  { baselineRan: result.ran.length,
+    title: '\n-- defect mutants (each must be CAUGHT by its named line) -----------' });
 
 const total = result.ran.length + MUTANTS.length;
 const failed = result.failures.length + escaped;

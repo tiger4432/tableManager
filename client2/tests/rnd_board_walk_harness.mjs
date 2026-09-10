@@ -316,8 +316,13 @@ result.failures.forEach((f) => console.log(`  FAIL  ${f}`));
 //    decides: a throw is INERT (a hole, not a catch) and `caught` means THE NAMED assertion
 //    failed. `rnd_board_composition_harness.mjs` carried a near-identical copy, and two paths to
 //    one answer is criterion ④ -- 「둘이 갈라질 수 있나」, not 「둘이 있나」. Both call it now.
-const { wrong: escaped } = await scoreMutants(MUTANTS, async (m) => suite(await loadModules(m.mutate)),
-  { title: '\n-- defect mutants (each must be CAUGHT by its named line) -----------' });
+const { wrong: escaped } = await scoreMutants(MUTANTS, async (m) => {
+    // `ran` lets the scorer say when a mutant REMOVES assertions instead of failing them.
+    const out = await suite(await loadModules(m.mutate));
+    return { failures: out.failures, ran: out.ran.length };
+  },
+  { baselineRan: result.ran.length,
+    title: '\n-- defect mutants (each must be CAUGHT by its named line) -----------' });
 
 const total = result.ran.length + MUTANTS.length;
 const failed = result.failures.length + escaped;

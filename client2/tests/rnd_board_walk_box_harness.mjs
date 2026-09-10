@@ -576,8 +576,10 @@ const main = async () => {
     console.log = () => {};
     ran = 0; failedList = [];
     try { await suite(mods); } finally { console.log = real; }
-    return { failures: failedList };
-  }, { title: `${LF}== defect mutants (each must be CAUGHT by its named line) ==` });
+    // `ran` lets the scorer say when a mutant REMOVES assertions instead of failing them.
+    return { failures: failedList, ran };
+  }, { baselineRan: base.ran,
+       title: `${LF}== defect mutants (each must be CAUGHT by its named line) ==` });
 
   console.log(`${LF}ASSERTIONS ${base.ran} ${base.failed.length}`);
   process.exit(escaped ? 1 : 0);
