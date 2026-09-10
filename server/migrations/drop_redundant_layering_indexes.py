@@ -144,6 +144,27 @@ RETIRE_UNUSED = {
 }
 
 
+#: (index, table, the smaller index that answers the part still asked for).
+#:
+#: 🔴 WHY `idx_sources_by_source` IS HERE (S-118, 판정 245-b). It indexed all 34M rows of
+#: `cell_sources` on (table_name, source_name, column_name, row_id) so that a rare, batched
+#: "withdraw one source" could bound its scope. Measured on the QA box at 34.0M rows it was
+#: 5,164 MB - 38 % of every index byte on the table, against a 5,133 MB heap - and every
+#: ingested cell updated it. Cell writes are the ingestion path's largest single cost
+#: (54.8 % of a 20,000-row file, 94 % of that inside the driver call), so this index was
+#: being paid for thousands of times a second to serve something that runs by hand.
+#:
+#: The half of that path with a FIXED source - the human layer - moves to a partial index
+#: over 0.36 % of the rows (`models.HUMAN_CLAIMS_INDEX`). The half that takes the source as
+#: a PARAMETER falls back to a parallel Seq Scan, which is what the retired index's own
+#: comment warned about; measured here, warm: the largest source's claim count went
+#: 2.834 s with the index to 1.953 s without it (the scan is FASTER at that size), and the
+#: smallest went 0.001 s to 0.111 s. Seconds, on a path that is rare and batched.
+REPLACED = [
+    ("idx_sources_by_source", "cell_sources", "idx_sources_human_claims"),
+]
+
+
 def quote_ident(name):
     """PostgreSQL folds unquoted identifiers, so `DROP INDEX ix_Foo` asks for
     `ix_foo`; with `IF EXISTS` that miss is swallowed and the caller reports a
@@ -381,6 +402,52 @@ def run(apply=False, engine=None, readonly_engine=None):
                 print(f"      !! REFUSED: {why}")
                 refused.append((name, why))
                 continue
+            print(f"      ROLLBACK: {rollback_ddl(me['def'])}")
+            if apply:
+                if _drop(wconn, name):
+                    dropped.append(name)
+            else:
+                print(f"      would run: DROP INDEX CONCURRENTLY IF EXISTS "
+                      f"{quote_ident(name)};")
+
+        # --- section 3 ------------------------------------------------------
+        # 🔴 A DIFFERENT GATE, BECAUSE THIS IS A DIFFERENT CLAIM. Sections 1 and 2 say
+        # "nothing reads this". Section 3 says "something SMALLER reads this instead", so
+        # the counter cannot be the gate - the old index IS read, by the very path the
+        # replacement serves - and the question is only whether the replacement is there
+        # yet. Dropping first and building after would leave every interactive withdraw
+        # scanning for however long the build takes.
+        print("")
+        print("=== Section 3: replaced by a smaller index (existence-gated) ===")
+        for name, table, replacement in REPLACED:
+            f = facts.get(table, {})
+            if name not in f:
+                print(f"  -- {name}: not present in this database - nothing to do")
+                absent.append(name)
+                continue
+            me = f[name]
+            stand_in = conn.execute(text(
+                "SELECT i.indisvalid, pg_relation_size(c.oid) FROM pg_class c "
+                "  JOIN pg_index i ON i.indexrelid = c.oid "
+                " WHERE c.relname = :n AND c.relkind = 'i'"), {"n": replacement}).first()
+            print(f"  {table}.{name}  ({me['bytes']/1024/1024:.1f} MB)  "
+                  f"keys=({', '.join(me['cols'])})")
+            if stand_in is None:
+                why = (f"its replacement {replacement} does not exist here. It is built "
+                       f"by the chain worker's boot ensure - start the worker (or run "
+                       f"the CREATE it logs) and run this again")
+                print(f"      !! REFUSED: {why}")
+                refused.append((name, why))
+                continue
+            if not stand_in[0]:
+                why = (f"its replacement {replacement} exists but is INVALID - a failed "
+                       f"CONCURRENTLY build. The planner will not use it, so dropping "
+                       f"this one now would leave the reader with neither")
+                print(f"      !! REFUSED: {why}")
+                refused.append((name, why))
+                continue
+            print(f"      replacement: {replacement} "
+                  f"({stand_in[1]/1024/1024:.1f} MB, valid)")
             print(f"      ROLLBACK: {rollback_ddl(me['def'])}")
             if apply:
                 if _drop(wconn, name):

@@ -509,8 +509,12 @@ def setup_performance():
         #   overwhelming majority of this table. A non-partial index would carry
         #   all of them to answer a question none of them can be part of.
         print("\nStep 3.10: Creating cell_sources withdraw-scope index (R2)...")
-        withdraw_idx = ("idx_sources_by_source", "cell_sources",
-                        "(table_name, source_name, column_name, row_id)", "")
+        # ⚰️ THE WITHDRAW-SCOPE INDEX IS GONE FROM HERE (S-118, 판정 245-b). It was a
+        #   tuple this loop had already stopped iterating over - dead in place - and the
+        #   index itself is retired: it carried all 34M rows to serve a rare batch path,
+        #   and the human half of that path is now `models.HUMAN_CLAIMS_INDEX`, which the
+        #   chain worker's boot ensure creates. Dropping the old one is a person's
+        #   command, printed by that same ensure.
         confirm_idx = ("idx_sources_confirmation", "cell_sources",
                        "(confirmation_uid, table_name, row_id)",
                        " WHERE confirmation_uid IS NOT NULL")

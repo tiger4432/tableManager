@@ -403,74 +403,27 @@ def test_r2_unknown_column_is_refused(rep_env):
                                      columns=["nope"], log=lambda *_: None)
 
 
-# --------------------------------------------------------------------------
-# R2 cost contract: the index that bounds `_claimed_filter`.
+# ⚰️ --------------------------------------------------------------------------
+# R2 cost contract: RETIRED WITH THE INDEX IT PINNED (S-118, 판정 245-b).
 #
-# The index itself is a PostgreSQL artifact and this suite runs on sqlite, so
-# nothing here can prove a plan - `ops_setup_db_performance.py` Step 3.11 does that,
-# against real data, by EXPLAINing the statement. What CAN drift silently is the
-# pairing, and it drifts in two directions that a comment saying "fix both
-# places" does not catch:
-#   1. the definition exists in models.py AND in the builder script (create_all
-#      never adds an index to an existing table, so both are load-bearing),
-#   2. the predicate `_claimed_filter` builds must stay a PREFIX of that index -
-#      add one more filtered column and the index quietly stops bounding it while
-#      every test still passes.
+# Two cases lived here - "the definition in models.py and in the builder script have not
+# drifted" and "`_claimed_filter`'s predicate is still a PREFIX of that index". Both were
+# about `idx_sources_by_source`, and that index is gone: it carried all 34M rows of
+# `cell_sources` (5,164 MB, 38 % of every index byte on the table) so a rare, by-hand
+# withdraw could bound its scope, while every ingested cell paid to maintain it.
+#
+# 🔴 THE PREFIX INVARIANT IS NOT "STILL TRUE ELSEWHERE" - IT IS GONE. `_claimed_filter`
+# takes the source name as a PARAMETER, so no partial index can serve it; it falls back to
+# a parallel Seq Scan, ON PURPOSE, and that fallback was measured before the drop rather
+# than assumed: on this box's 34M rows the largest source's claim count went 2.834 s with
+# the index to 1.953 s without it, and the smallest went 0.001 s to 0.111 s. Keeping a case
+# that asserts a prefix relationship to a dropped index would have made the suite red for
+# the change that was correct, which is the shape of a test outliving its subject.
+#
+# What replaced it: `test_the_human_claims_index_replaces_the_full_one.py`, which pins the
+# half that DOES have an index - the fixed-source readers - and the one spelling of the
+# value its predicate is built from.
 # --------------------------------------------------------------------------
-
-WITHDRAW_INDEX = "idx_sources_by_source"
-
-
-def _withdraw_index_columns():
-    idx = [i for i in models.CellSource.__table__.indexes if i.name == WITHDRAW_INDEX]
-    assert idx, f"{WITHDRAW_INDEX} is not declared on models.CellSource"
-    return [c.name for c in idx[0].expressions]
-
-
-def test_withdraw_index_definition_matches_the_builder_script():
-    import os
-    import re
-
-    cols = _withdraw_index_columns()
-    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                        "scripts", "ops_setup_db_performance.py")
-    with open(path, "r", encoding="utf-8") as f:
-        src = f.read()
-    m = re.search(r'\("%s",\s*\n?\s*"cell_sources",\s*\n?\s*"\(([^)]*)\)"' % WITHDRAW_INDEX,
-                  src)
-    assert m, (f"{WITHDRAW_INDEX} is declared in models.py but the builder script "
-               f"does not create it - an existing database would never get it, "
-               f"because create_all only builds indices for NEW tables")
-    script_cols = [c.strip() for c in m.group(1).split(",")]
-    assert script_cols == cols, (
-        f"index definition drifted: models.py has {cols}, "
-        f"ops_setup_db_performance.py has {script_cols}")
-
-
-def test_claimed_filter_stays_a_prefix_of_the_withdraw_index():
-    """Every column `_claimed_filter` can filter on must be an index prefix.
-
-    This is the assertion that would have caught the original defect: the
-    predicate was (table_name, source_name) while the only composite index put
-    `source_name` last, so the planner fell back to a Seq Scan of the whole
-    table. Nothing failed - it was just slow.
-    """
-    cols = _withdraw_index_columns()
-
-    def _referenced(conds):
-        names = []
-        for c in conds:
-            col = getattr(c, "left", None)
-            assert col is not None and getattr(col, "name", None), \
-                f"unrecognised predicate shape: {c!r}"
-            names.append(col.name)
-        return names
-
-    # Unscoped: (table_name, source_name) - must be the leading two keys, in order.
-    assert _referenced(chain_replay._claimed_filter("t", "s")) == cols[:2]
-    # Column-scoped: adds column_name - must be the third key, so the IN list is
-    # part of the Index Cond rather than an in-index filter.
-    assert _referenced(chain_replay._claimed_filter("t", "s", ["a", "b"])) == cols[:3]
 
 
 # ---------------------------------------------------------------------------

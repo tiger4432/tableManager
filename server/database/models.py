@@ -463,6 +463,42 @@ class CellOverwrite(Base):
         Index("idx_overwrites_lookup_col", "table_name", "row_id", "column_name", unique=True),
     )
 
+#: The source layer that means "a person typed this".
+#:
+#: 🔴 ONE SPELLING FOR THE INDEX AND ITS READERS (S-118, 판정 245-b). The partial index
+#: below is only useful while its predicate is the SAME STRING the readers filter on, and
+#: the failure mode when they drift is silent: the planner simply stops choosing it and
+#: every interactive withdraw goes back to scanning. Nothing raises. So the value lives
+#: here and the two readers import it, rather than each carrying its own quotation.
+#:
+#: ⚠️ THE WRITE PATH'S OWN `"user"` CHECKS ARE NOT THIS. `crud` compares an incoming
+#: `source_name` to `"user"` in a dozen places to decide PRIORITY - a different question,
+#: answered before any row exists - and folding those in here would make one name mean two
+#: things. This constant is the index seam and nothing else.
+HUMAN_SOURCE_NAME = "user"
+
+#: The index that answers "which cells does the human layer claim on this table".
+HUMAN_CLAIMS_INDEX = "idx_sources_human_claims"
+
+#: The full-table index it replaces. Named so the boot ensure and the migration can speak
+#: about it without either of them spelling it a second time.
+RETIRED_CLAIMS_INDEX = "idx_sources_by_source"
+
+
+def human_claims_index_ddl():
+    """`(name, CREATE statement)` for the human-claims index - the one spelling.
+
+    CONCURRENTLY, because this runs at boot on a live box; `IF NOT EXISTS` because it runs
+    at every boot. The columns and the predicate are read off the same two constants the
+    model declaration uses, so a change there cannot leave the ensure building the old
+    shape under the new name.
+    """
+    return HUMAN_CLAIMS_INDEX, (
+        f'CREATE INDEX CONCURRENTLY IF NOT EXISTS "{HUMAN_CLAIMS_INDEX}" '
+        f'ON "cell_sources" ("table_name", "row_id", "column_name") '
+        f"WHERE source_name = '{HUMAN_SOURCE_NAME}'")
+
+
 class CellSource(Base):
     __tablename__ = "cell_sources"
 
@@ -514,25 +550,41 @@ class CellSource(Base):
         #   CREATE INDEX CONCURRENTLY idx_sources_lookup
         #       ON public.cell_sources USING btree (table_name, row_id, column_name);
         Index("idx_sources_lookup_source", "table_name", "row_id", "column_name", "source_name", unique=True),
-        # [R2 withdraw] The ONLY index that can bound "which cells does this source
-        # claim". `idx_sources_lookup_source` cannot: `source_name` is its LAST key,
-        # so a `(table_name, source_name)` predicate leaves it unusable and the
-        # planner falls back to a full parallel Seq Scan of the WHOLE table --
-        # measured 2026-07-31 on 13,148,355 rows: 861ms, 263,369 buffers, 13.07M
-        # rows discarded by Filter, for 75,000 matches.
+        # [S-118, 판정 245-b] HUMAN CLAIMS ONLY -- the write path must not pay for the
+        # replay path.
         #
-        # Key order: `column_name` third because `chain_replay._claimed_filter`
-        # takes an optional column list, and third position turns that from an
-        # in-index filter into part of the Index Cond. `row_id` fourth makes the
-        # scan COVERING for `withdraw_source` step 1, which selects exactly
-        # (row_id, column_name) -- without it the planner weighs one heap fetch per
-        # match against a seq scan and can go back to the seq scan.
+        # 🔴 WHAT THE FULL INDEX COST. Its retired predecessor
+        # `idx_sources_by_source (table_name, source_name, column_name, row_id)` carried
+        # EVERY row: measured on this box at 34.0M rows it was 5,164 MB against a 5,133 MB
+        # heap - 38 % of all index bytes on the table - and it had been scanned ONCE. Every
+        # ingested cell updated it, and cell writes are the ingestion path's largest cost
+        # (measured: 54.8 % of a 20,000-row file, 94 % of that inside the driver call).
         #
-        # ALSO DECLARED in server/scripts/ops_setup_db_performance.py Step 3.10 --
-        # **fix both places**. create_all does not add indices to a table that
-        # already exists, so that script is the only path onto an existing
-        # database (`idx_audit_user_recorrection` is here for the same reason).
-        Index("idx_sources_by_source", "table_name", "source_name", "column_name", "row_id"),
+        # 🔴 WHY PARTIAL, AND WHY THIS PREDICATE. Two readers filter on a FIXED source -
+        # the human layer - and between them they are the interactive path:
+        #     chain_replay._count_user_protected (table_name, row_id IN .., source_name)
+        #     enrichment_analysis (human claims) (table_name, row_id IN .., column_name IN
+        #                                         .., source_name)
+        # Both lead `(table_name, row_id)` and both select exactly (row_id, column_name),
+        # so this shape is COVERING for both. Measured on this box: 121,972 of 33,987,136
+        # rows carry that source - 0.36 % - so the index is a fraction of a percent of the
+        # retired one's size, and a parser's writes do not touch it at all.
+        #
+        # ⚠️ WHAT GOT SLOWER, AND BY HOW MUCH. `chain_replay._claimed_filter` takes the
+        # source name as a PARAMETER, so it cannot use this index and falls to a parallel
+        # Seq Scan - the same fallback the retired index's comment named. Measured here,
+        # warm, 34M rows: the largest single source's claim count went 2.834 s (index) ->
+        # 1.953 s (scan) - FASTER, because reading 6.27M index entries one at a time costs
+        # more than scanning the heap in parallel; the smallest went 0.001 s -> 0.111 s.
+        # A withdraw is rare and batched, so seconds there buys a btree off every ingest.
+        #
+        # ⚠️ REMOVING THE OLD ONE HERE DOES NOT REMOVE IT ANYWHERE. `create_all` never
+        # drops an index. An existing database keeps it until a person runs
+        # `server/migrations/drop_redundant_layering_indexes.py --apply`, whose REPLACED
+        # section refuses to drop it until this index exists and is valid. The boot ensure
+        # creates this one and NAMES the old one with its size and the command.
+        Index(HUMAN_CLAIMS_INDEX, "table_name", "row_id", "column_name",
+              postgresql_where=text("source_name = '%s'" % HUMAN_SOURCE_NAME)),
 
         # [Frame confirmation] "which cells were derived under this confirmation". PARTIAL
         # so it indexes only stamped rows -- the overwhelming majority of this table is and

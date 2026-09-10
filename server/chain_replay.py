@@ -629,7 +629,9 @@ def _count_user_protected(db, target_table: str, items: list) -> int:
         src = (db.query(models.CellSource.row_id, models.CellSource.column_name)
                .filter(models.CellSource.table_name == target_table,
                        models.CellSource.row_id.in_(list(row_to_bk)),
-                       models.CellSource.source_name == "user")
+                       # The index seam: this string and the partial index's predicate
+                       # have to be the same one, or the index quietly stops being used.
+                       models.CellSource.source_name == models.HUMAN_SOURCE_NAME)
                .all())
         for row_id, col in src:
             if col in by_key.get(row_to_bk.get(row_id), ()):

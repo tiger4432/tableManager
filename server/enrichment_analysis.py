@@ -493,7 +493,9 @@ def _human_resolved_cells(db, derived_table: str, row_ids: list, target_fields: 
                 .filter(models.CellSource.table_name == derived_table,
                         models.CellSource.row_id.in_(chunk),
                         models.CellSource.column_name.in_(list(target_fields)),
-                        models.CellSource.source_name == "user")
+                        # Same seam as `chain_replay._protected_by_user`: the partial
+                        # index's predicate is this constant, not a second quotation.
+                        models.CellSource.source_name == models.HUMAN_SOURCE_NAME)
                 .all())
         out.update(rows)
     return out

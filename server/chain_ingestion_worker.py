@@ -2037,6 +2037,61 @@ def _ensure_alignment_decision_key_indexes_sync(db_session_factory):
         logger.info("[Chain] alignment decision-key indexes are already in place.")
 
 
+def _ensure_human_claims_index_sync(db_session_factory):
+    """Build the human-claims index, and NAME the full-table one it replaces (판정 245-b).
+
+    🔴 CREATION IS AUTOMATIC, DELETION IS A PERSON'S (판정 243). Adding an index only
+    weakens - it costs disk and write time and cannot make a query wrong - so a boot may
+    build one. Dropping 5 GB is not reversible inside a maintenance window, and a box may
+    be mid-replay when this line runs, so the ensure states the name, the size and the
+    exact command and stops there.
+
+    ⚠️ AND IT SPEAKS EITHER WAY. A line only when something happens makes "nothing to do"
+    and "the ensure never ran" the same silence - which is exactly how the decision-key
+    ensure's first failure nearly went unseen.
+    """
+    from sqlalchemy import text as _text
+
+    from database import models
+
+    db = db_session_factory()
+    try:
+        engine = db.get_bind()
+        name, statement = models.human_claims_index_ddl()
+        built = models._ensure_one_index(engine, name, statement, "human-claims")
+        logger.info("[Chain] human-claims index %s: %s", name,
+                    "in place" if built else "COULD NOT BE ENSURED - see the line above")
+        # ⚠️ THE LEFTOVER LOOKUP IS A REPORT, NOT A REQUIREMENT. If it cannot run, the
+        # line above has already said whether the index this boot needed is there; letting
+        # the lookup take that line down with it would trade a fact for a warning.
+        leftover = None
+        try:
+            with engine.connect() as connection:
+                leftover = connection.execute(_text(
+                    "SELECT pg_size_pretty(pg_relation_size(c.oid)) FROM pg_class c "
+                    " WHERE c.relname = :name AND c.relkind = 'i'"),
+                    {"name": models.RETIRED_CLAIMS_INDEX}).scalar()
+        except Exception as err:                                       # noqa: BLE001
+            logger.warning("[Chain] could not check whether %s is still present: %s",
+                           models.RETIRED_CLAIMS_INDEX, err)
+    finally:
+        db.close()
+    if leftover:
+        # ⛔ NOT DROPPED HERE. The size is in the line because "an index is redundant" and
+        # "an index is costing you five gigabytes on every cell write" are read very
+        # differently by whoever decides when the window is.
+        # ⚠️ NOT "NOTHING READS IT" - that would be false and an operator would find out
+        # the hard way. The parameterised half of the replay path DOES read it, and drops
+        # to a parallel Seq Scan without it; measured on 34M rows, that costs seconds on a
+        # path that runs by hand. What is true is the trade, so the line states the trade.
+        logger.warning(
+            "[Chain] %s (%s) is retired and still present: every cell write maintains it, "
+            "and what still reads it is the by-hand replay path, which falls back to a "
+            "scan (measured: seconds). Drop it when the box is quiet with: python "
+            "migrations/drop_redundant_layering_indexes.py --apply",
+            models.RETIRED_CLAIMS_INDEX, leftover)
+
+
 def _ensure_business_key_unique_indexes_sync(db_session_factory):
     """Build the UNIQUE index that makes `business_key_val` an enforced identity.
 
@@ -2138,6 +2193,13 @@ async def start_chain_ingestion_worker(db_session_factory):
     except Exception as exc:
         logger.error("[Chain] the alignment decision-key indexes could not be ensured, "
                      "so every alignment view build may still scan its source: %s", exc)
+    # 🔴 판정 245-b. Same seat, opposite direction: this one exists so a btree can come OFF
+    # the cell write, which is the ingestion path's largest cost.
+    try:
+        await asyncio.to_thread(_ensure_human_claims_index_sync, db_session_factory)
+    except Exception as exc:
+        logger.error("[Chain] the human-claims index could not be ensured, so an "
+                     "interactive withdraw may scan instead: %s", exc)
 
     # 🔴 ONE LOOP PER QUEUE, AND IT SAYS SO WHEN IT STANDS DOWN. Two loops on one outbox
     # pick the same rows up twice and write one heartbeat file between them, so neither
