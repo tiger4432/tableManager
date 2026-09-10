@@ -564,6 +564,8 @@ const CATCHES = {
 const named = (list) => list.map(([name, mutate]) => ({
   name, mutate, catches: CATCHES[String(name).split(' ')[0]],
 }));
+/** Filled on the first mutant run; the source of the 「unexercised」 line at the end. */
+let CHECK_IDS = null;
 
 async function runMutant({ name, mutate }) {
   {
@@ -751,6 +753,10 @@ async function runMutant({ name, mutate }) {
           () => sameClassBothWays === true],
         ['R24 the panel wears the shell rather than styling itself', () => wearsTheShell === true],
       ];
+      // Recorded once, so the 「unexercised」 line below is COMPUTED from the checks that
+      // actually ran rather than typed out beside them -- a hand-written list of names drifts
+      // the first time a check is added, and drifts silently.
+      if (!CHECK_IDS) CHECK_IDS = CHECKS.map(([c]) => String(c).split(' ')[0]);
       for (const [checkName, fn] of CHECKS) {
         let held = false;
         try { held = fn() === true; } catch (e) { held = false; }
@@ -774,6 +780,19 @@ const controls = await scoreMutants(named(CONTROLS), runMutant,
 const caught = defects.caught;
 const escaped = CONTROLS.length - controls.wrong;
 failed += defects.wrong + controls.wrong;
+
+// 🔴 CHECKS NO MUTANT EXERCISES, SAID OUT LOUD (ruling, 2026-09-10). They are not dead -- they
+//    run on the baseline and would redden it -- but nothing proves they can STILL fail, so what
+//    they report is 「it passes today」 and not 「it goes red when it stops being true」. Naming
+//    them is the whole treatment: the corpus grows by one when a fact is actually broken, never
+//    by inventing a mutant per check.
+{
+  const exercised = new Set(Object.values(CATCHES));
+  const idle = (CHECK_IDS || []).filter((id) => !exercised.has(id));
+  console.log(idle.length
+    ? `\n  unexercised checks (no mutant names them): ${idle.join(' · ')}`
+    : '\n  unexercised checks: none — every check is named by a mutant');
+}
 
 console.log(`\n${passed} passed, ${failed} failed; ${caught}/${DEFECTS.length} defects caught; `
   + `${escaped}/${CONTROLS.length} controls escaped.`);
