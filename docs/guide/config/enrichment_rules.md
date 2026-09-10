@@ -178,7 +178,7 @@ conda run -n assy_manager python server/scripts/backup_config.py restore enrichm
 | `decision_key` | ✔ | 판단키 컬럼 1..N — 소스·파생 **양쪽에 같은 이름으로** 존재 (§2) |
 | `target_fields` | ✔ | 사람이 채울 필드 |
 | `list_columns` | | 워크리스트 표시 단서 |
-| `aggregations` | | 서버 전용 집계 — v1은 `"count"`만 |
+| `aggregations` | | 서버 전용 집계 — `{이름: "count"}` 또는 `{이름: {"fn": "count\|min\|max", "column": "<소스 컬럼>"}}` (S-129, 2026-09-10). `count` 는 행을 세므로 컬럼이 없고, `min`/`max` 는 소스 컬럼을 읽는다. 그 키 그룹의 «커밋된 소스 행 전체» 위에서 재계산된다 |
 | `enabled` | | 기본 `true` |
 | `auto_confirm` | | **기본 `false`** — 후보가 1개일 때 사람 없이 자동 확정(§7) |
 | `alignment` | | **맵 정렬 화면(Map Editor 2)이 다룰 수 있는 규칙**임을 선언합니다. `true`(JSON 불리언)만 인정하며 `"true"`·`1` 같은 오타는 선언이 아닙니다(`map_push_ok`와 같은 규율). `GET /enrichment/rules`가 이 값을 그대로 실어 보내고, 화면은 이 표시가 있는 규칙만 고를 수 있게 합니다.<br>🔴 **미선언 = 정렬 대상 아님**이고, 이것은 기본값이 아니라 **사실**입니다 - 아무도 그 규칙이 정렬 가능하다고 주장한 적이 없다는 뜻입니다.<br>🔴 서버는 이 값을 **유도하지 않습니다.** `target_fields` 이름에 `frame`이 들어 있다는 것은 근거가 아닙니다 - 그 추론이야말로 이 화면이 다른 모든 자리에서 거부하는 것입니다(그럴듯한 기본값이 선언을 사칭). 정렬 화면을 쓰려면 **현장이 직접 켜야 합니다.** |

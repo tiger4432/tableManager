@@ -473,6 +473,36 @@ def _entity_node(entity_type, keys):
     return node
 
 
+def _split_superseded(atoms):
+    """`(live, superseded_by)` — 대체된 원자를 «하나뿐인 필터»로 가른다 (S-141).
+
+    🔴 THE FILTER IS `ledger_trace.live_claims` AND THE WALK DOES NOT BUILD ITS OWN.
+    Two places deciding 「which claim is current」 is the class this repository keeps
+    meeting: they do not error when they disagree, one of them just starts drawing a
+    fact that was replaced.
+
+    ⚰️ AND UNTIL NOW THE WALK CALLED NOTHING. `live_claims` had zero product callers, so
+    a superseded edge and the edge that replaced it were BOTH drawn. S-133 ④ asserted the
+    function directly from a test rather than through this response, which proved the
+    filter and not the wiring - 착지는 배선이 아니다.
+
+    ⚠️ SCOPE IS THE FETCHED SET, which is what `live_claims` documents: a correction is
+    about the same subject, so the superseding atom rides in the same neighbourhood.
+    """
+    import ledger_trace
+
+    atoms = list(atoms)
+    live = ledger_trace.live_claims(atoms)
+    if len(live) == len(atoms):
+        return atoms, {}
+    kept = {str(a.id) for a in live}
+    replaced_by = {}
+    for atom in atoms:
+        if atom.supersedes:
+            replaced_by[str(atom.supersedes)] = str(atom.id)
+    return live, {k: v for k, v in replaced_by.items() if k not in kept}
+
+
 def _edge(edge_type, source, target, *, original_predicate=None,
           cardinality=None):
     """One edge. `cardinality` is what the DECLARATION says about this
@@ -922,7 +952,7 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
              action_lookup=None, follow=None,
              backbone_hops=DEFAULT_BACKBONE_HOPS, static_types=None,
              static_follow=None, follow_keys=None, collect=None,
-             cardinalities=None):
+             cardinalities=None, include_superseded=False):
     """Return a typed evidence subgraph from any public node id, or from a signed SET.
 
     `seed_id` is one opaque id as before, or `{"positive": [ids], "negative": [ids]}`.
@@ -1023,6 +1053,10 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     budgeted = 0
     budgeted_edges = 0
     claims_scanned = 0
+    #: [S-141] 대체돼서 «안 그린» 원자 수. 절단처럼 «숨기지 않고 센다».
+    superseded_dropped = 0
+    #: 대체된 원자 id -> 그것을 대체한 원자 id (include_superseded 일 때 표지로 쓴다).
+    superseded_by = {}
     actions_scanned = 0
 
     #: 🔴 THE EXEMPTION IS GONE, BECAUSE THE PLUMBING IS NO LONGER MADE OF NODES.
@@ -1099,6 +1133,11 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         edge["source_who"] = atom.source_who
         edge["basis"] = atom.source_raw_ref
         edge["qualifiers"] = dict((atom.object_payload or {}).get("qualifiers") or {})
+        # ⚠️ include_superseded 로 «일부러» 그린 엣지에만 붙는 표지 (S-141). 기본 걷기는
+        # 이 원자를 애초에 안 그리므로 이 키가 없고, 있으면 「이건 대체된 것」이다.
+        replaced = superseded_by.get(str(atom.id))
+        if replaced:
+            edge["superseded_by"] = replaced
         return edge
 
     def _record_registration(atom):
@@ -1341,6 +1380,13 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                 direction, remaining,
                 follow=group_follow)
             claims_scanned += len(batch); remaining -= len(batch); claim_cut |= cut
+            # 🔴 대체된 원자를 «여기서» 거른다 (S-141). 필터는 `live_claims` 하나이고
+            # 걷기는 자기 필터를 짓지 않는다. 뺀 수는 아래 응답이 «이름 대어» 말한다.
+            live, replaced_by = _split_superseded(batch)
+            superseded_by.update(replaced_by)
+            if not include_superseded:
+                superseded_dropped += len(batch) - len(live)
+                batch = live
             fetched.extend(batch)
             frontier_entities = {item["id"] for item in group}
             for atom in batch:
@@ -1496,6 +1542,9 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             "hops_requested": hops,
             "hops_reached": max(depths.values(), default=0),
             "claims_scanned": claims_scanned,
+            # ⚠️ 이름 대어 «뺀 수»를 말한다 — truncation 과 같은 규율. 0 이면 이 걷기가
+            # 대체된 것을 하나도 안 만났다는 뜻이고, 그것도 사실이라 늘 싣는다.
+            "superseded_dropped": superseded_dropped,
             "actions_scanned": actions_scanned,
             "enrich_actions": action_lookup is not None,
             "raw_claims": True, "resolver_applied": False,

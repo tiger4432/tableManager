@@ -115,6 +115,11 @@ def evidence_subgraph(
                            "다이를 «지나야» 하고, 지나는 것과 «실어 오는 것»은 다르다. "
                            "이름은 선언된 엔터티 타입이다 (`@` 버전은 있어도 없어도 된다)")),
     db: Session = Depends(get_db),
+    include_superseded: bool = Query(
+        False,
+        description=("대체된 원자도 그린다. 기본은 «안 그림» — 걷기는 «지금 참인 것»을 "
+                     "그리고, 뺀 수는 `stats.superseded_dropped` 가 이름 대어 말한다. "
+                     "켜면 엣지에 `superseded_by` 표지가 붙는다")),
 ):
     """어느 증거 노드에서든 Entity–Event–Claim 서브그래프를 답한다."""
     # 🔴 AN UNDECLARED PREDICATE IS REFUSED, NOT ANSWERED WITH AN EMPTY GRAPH. A filter that
@@ -178,7 +183,8 @@ def evidence_subgraph(
             hops=hops, direction=direction,
             node_limit=node_limit, edge_limit=edge_limit, follow=follow,
             follow_keys=follow_keys, backbone_hops=backbone_hops,
-            collect=collect, **interval)
+            collect=collect, include_superseded=include_superseded,
+            **interval)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail={
             "reason": "subgraph_request_invalid", "message": str(exc)})
@@ -372,6 +378,9 @@ def _instant_arg(raw):
 def _evidence_graph(connection, *, node_id, hops, direction,
                     node_limit, edge_limit, follow=None, follow_keys=None,
                     backbone_hops=ledger_subgraph.DEFAULT_BACKBONE_HOPS,
+        # [S-141] 기본은 «안 그림». true 면 대체된 원자도 그리되 엣지에
+        # `superseded_by` 표지가 붙는다 — 「보인다」와 「현재다」를 가르기 위해.
+        include_superseded: bool = False,
                     collect=None, since=None, until=None):
     if not ledger_trace.relation_exists(connection, LEDGER_RELATION):
         raise _relation_absent()
@@ -391,7 +400,8 @@ def _evidence_graph(connection, *, node_id, hops, direction,
         follow_keys=follow_keys,
         backbone_hops=backbone_hops, static_types=_static_types(),
         static_follow=_static_step_predicates(), collect=collect,
-        cardinalities=_predicate_cardinalities())
+        cardinalities=_predicate_cardinalities(),
+        include_superseded=include_superseded)
 
 
 #: How many ledger rows one key-values answer may READ. The scan is bounded, not the
