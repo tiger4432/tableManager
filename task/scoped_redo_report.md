@@ -30152,3 +30152,77 @@ S-127 ①③ 미착수. 위 1절의 셋 중 하나를 골라 주십시오:
    «거짓 전제 위에 초록»을 박게 됩니다
 ```
 > 📌 **[09-10 15:20] 이 채널의 미답 질문: 6절의 ⓐ/ⓑ/ⓒ 하나.**
+
+---
+
+# [09-10 15:28] 판정 253(ⓑ) 착수 중 «멈춤» — 추적된 마이그레이션이 ⓐ를 «글자 그대로» 지시합니다
+
+## 1. 🔴🔴 제가 253 «전»에 보고 못 드린 사실 하나 — 그리고 그게 답을 뒤집습니다
+`server/migrations/add_bonding_base_join_index.sql` 은 **추적 파일**이고, 자기 머리에 이렇게 적혀 있습니다:
+```
+🔴 ORDER. `base_id`/`bx`/`by` are physical columns on `bonding_log` in both dev
+databases already, but they were UNDECLARED until 2026-08-13 - an undeclared
+column takes a write and drops it with a 200. «Declare them in
+`table_config.json` (`column_types`, NOT `composite_key_source`)» before this
+file is worth anything.
+CREATE INDEX ... ON bonding_log (base_id, bx, by, row_id)
+```
+🔴 **저장소가 «이 세 컬럼에 대해서는» ⓐ를 지시하고 있습니다** — 「column_types 에 선언하라,
+복합키에는 «넣지 말라»」. 판정 252 와 «같은 말»이고, 253 은 이 파일을 모르고 내려졌습니다
+(제 15:20 보고에 씨앗·샘플 델타만 있고 마이그레이션이 없었습니다 — 제 누락입니다).
+
+**그 세 컬럼을 실물로 대하는 추적 산출물이 «넷»입니다:**
+```
+migrations/add_bonding_base_join_index.sql        (base_id, bx, by, row_id) 인덱스
+scripts/create_bonding_core_die_view.py           b.base_id · b.bx · b.by 를 «읽음»
+scripts/create_bonding_core_lot_view.py           같음
+scripts/create_bonding_die_from_core_view.py      같음
+그리고 출하 샘플의 다른 세 표(bonding_core_die · bonding_die_from_core · bonding_core_lot)가
+   base_id "string" · bx "number" · by "number" 를 «이미 선언»합니다 — 타입도 거기 있습니다
+```
+⛔ ⓑ대로 「씨앗이 base_id·bx·by 를 안 쓴다」로 가면 **저 넷이 전부 죽습니다** — 아무도 안 쓰는
+컬럼에 인덱스를 걸고, 아무도 안 채우는 컬럼을 뷰가 읽습니다.
+
+## 2. 🔴 그리고 ⓑ의 «대응»이 좌표에서 근거를 못 찾습니다 — 이름으로 하면 «틀립니다»
+253 이 금지한 「이름 유사로 추론」이 여기서 실제로 함정입니다:
+```
+후보      씨앗 bx·by  ->  출하 b_wx·b_wy   («b» 니까 base 처럼 보입니다)
+반증      docs/architecture/DT_CORE_FRAME_CHAINS.md:16
+         「coordinate spaces: «DT coordinates (b_wx, b_wy)» and the coordinates of the core」
+         => b_w* 는 «DT 좌표»이지 base 좌표가 아닙니다. c_w* 가 core 입니다
+```
+그리고 뜻을 «선언»에서 확인할 길도 없습니다 — 출하 `ledger_config.json.sample` 에
+`bonding_log` 를 읽는 소스가 «하나도 없습니다»(바인딩이 없으니 역할도 없습니다).
+```
+뜻이 «말해진» 대응        base_id -> base_wafer_id ?  (씨앗 주석: 「base wafer」, void_obs 가 base_wafer_id 로 조인)
+뜻이 «안 말해진» 대응     bx·by -> ?              (b_w* 는 DT 좌표라 반증됨. base 좌표를 받을 출하 컬럼이 «없습니다»)
+                        bonding_index -> ?      (씨앗에 대응 개념이 없습니다. 생성 코드가 이 말을 안 합니다)
+```
+🔴 **출하 키 다섯 중 `bonding_index`·`b_wx`·`b_wy` 는 「합성이라 값을 만들면 된다」로
+   못 넘어갑니다** — 값을 «지어내는» 것은 되지만, 그러면 그 다섯이 «뜻 없는 채움»이 되고
+   뷰·인덱스가 읽던 base 좌표는 «사라집니다». 253 이 「못 만들면 보고 항목」이라 하신 자리입니다.
+
+## 3. 제가 한 것 / 되돌린 것 — 트리는 HEAD 입니다
+```
+했음     ① 샘플 bonding_log.column_types 에 base_id/bx/by 셋 추가 (타입은 지어내지 않고
+        void_obs·bonding_core_die 가 «이미 선언한» string/number/number 를 그대로)
+        ③ 무덤 시험을 「셋이 선언됐다」+「그래도 씨앗은 못 돈다(집합 둘)」로 되살림
+쟀음     bonding_log·샘플을 건드리는 시험 «42파일» -> 1,566 passed · 3 failed
+        그 셋은 «깨끗한 트리에서도 셋 다 빨강» -> 선언 추가가 «아무것도 안 깼습니다»
+        (frame_confirmation_meta · job_column_from_config · trace_fixture)
+되돌림   253(ⓑ)이 반대 방향이라 «둘 다» 되돌렸습니다. 커밋 안 했습니다
+```
+
+## 4. 판정 요청 — 둘이 «겹치는» 답이 있어 보입니다
+```
+두 판정이 다투는 것은 «세 컬럼»뿐이고, 나머지는 다투지 않습니다:
+   세 컬럼(base_id·bx·by)  -> 마이그레이션이 「column_types 에 선언, 키에는 넣지 말 것」이라
+                            «글자 그대로» 지시. 추적 산출물 넷이 그걸 전제로 삽니다
+   나머지 아홉             -> ⓑ 그대로: 씨앗이 «안 씁니다» (조용히 버려질 것을 만들지 않음)
+   출하 키 다섯            -> 여기가 «진짜 미지»입니다. 씨앗이 채우려면 bonding_index·b_wx·b_wy 의
+                            «뜻»이 필요한데, b_w* 는 DT 좌표라 base 좌표를 넣으면 거짓이 됩니다
+🔴 그래서 제 물음 «하나»: 출하 `bonding_log` 의 복합키 다섯은 «이 합성 씨앗이 채울 수 있는
+   것»입니까? 아니면 이 씨앗은 base 좌표 축이라 «그 표의 키와 다른 단위»입니까?
+   후자면 ⓑ의 「키 다섯을 전부 채움」이 성립하지 않고, 답은 «다른 표»이거나 «다른 키»입니다
+```
+> 📌 **[09-10 15:28] 이 채널의 미답 질문: 4절의 복합키 다섯 하나. (마이그레이션 사실은 판정 253 의 재검토 사유입니다)**
