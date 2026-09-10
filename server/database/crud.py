@@ -1418,6 +1418,65 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None, ta
     val = val_data["value"] if isinstance(val_data, dict) and "value" in val_data else val_data
     return val, top_source
 
+#: The declaration cell that scopes `?q=`. Absent means "the identity" - see
+#: `resolve_search_columns`, which is the only place that spelling lives.
+SEARCH_COLUMNS_KEY = "search_columns"
+
+
+def search_scope_default(table_info: dict) -> tuple:
+    """What `?q=` searches when nothing declares otherwise: the row's IDENTITY.
+
+    🔴 MEASURED, AND THE DEFAULT IS THE WHOLE FINDING (S-125, 판정 255). The old default
+    was "every declared column, plus every virtual-join column". On `dt_log` that built 31
+    ILIKE arms over casts AND SIX aliased LEFT JOINs to `dt_inventory` on the same key -
+    2,174 ms, a sequential scan, and the filter applied only after all six joins were
+    built. A plain page and a `?cols=`-scoped search both build ZERO joins, so the cost
+    was created entirely by the unscoped default rather than by searching as such.
+
+    ⚠️ NEVER EMPTY. A scope that contributes no condition returns the WHOLE TABLE with a
+    200 while the response implies a search happened - this function's own caller carries
+    the refusal written for that incident. `row_id` and `business_key_val` are physical on
+    every dynamic table, so the last fallback cannot be empty.
+    """
+    key = (table_info or {}).get("composite_key_source") or ()
+    if key:
+        return tuple(key)
+    business_key = (table_info or {}).get("business_key")
+    if business_key:
+        return (business_key,)
+    return ("row_id", "business_key_val")
+
+
+def resolve_search_columns(table_name: str, known_columns=None) -> tuple:
+    """`(columns, unknown)` - the declared `?q=` scope for a table, and the names in it
+    that nothing can search.
+
+    🔴 ONE SPELLING, TWO READERS, AND THAT IS WHY IT RETURNS THE UNKNOWNS INSTEAD OF
+    LOGGING THEM. The search path knows the virtual-join columns from its binder; the
+    config load knows them from the rules file. Both must reach the same verdict about the
+    same declaration, so the DECISION is here and each caller says it in its own voice -
+    a second copy of this rule is how one door comes to search a column the other refuses.
+
+    ⛔ AN UNKNOWN NAME IS NOT DROPPED IN SILENCE (판정 255). It is returned so the caller
+    can name it; a `search_columns` entry that nothing matches is a declaration the
+    operator believes is in force.
+
+    `known_columns` of None means "do not judge" - the caller could not enumerate what is
+    searchable, so it must not report absences it cannot see.
+    """
+    table_info = (TABLE_CONFIG.get(table_name) or {})
+    declared = table_info.get(SEARCH_COLUMNS_KEY)
+    if not isinstance(declared, (list, tuple)) or not declared:
+        return search_scope_default(table_info), ()
+
+    columns = tuple(str(c).strip() for c in declared if str(c).strip())
+    if known_columns is None:
+        return columns, ()
+
+    known = set(known_columns) | {"row_id", "business_key_val"}
+    unknown = tuple(c for c in columns if c not in known)
+    return tuple(c for c in columns if c in known) or search_scope_default(table_info),         unknown
+
 def loadable_columns(table_info: dict) -> tuple:
     """The columns a write may land in this table, in declaration order (S-119, 판정 12:20).
 

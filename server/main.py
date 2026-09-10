@@ -1722,7 +1722,8 @@ def apply_enrichment_queue_predicate(query, table_model, table_name, rule_name, 
     return query.filter(cond)
 
 
-def apply_search_filter(query, table_model, table_name, q, cols, binder):
+def apply_search_filter(query, table_model, table_name, q, cols, binder,
+                        scope_report=None):
     """`?q=` (+ optional `?cols=` scope) -> query. Shared by the grid and the export.
 
     🔴 The `?cols=` refusal is the reason this is one function. A column named in the
@@ -1741,11 +1742,24 @@ def apply_search_filter(query, table_model, table_name, q, cols, binder):
     if cols:
         col_list = [c.strip() for c in cols.split(",") if c.strip()]
     else:
-        # A virtual_only column is not in `column_types` (it is not stored), so an
-        # unscoped search would skip it while the grid shows it. Union it in.
-        col_list = (["row_id", "business_key_val"]
-                    + [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
-                    + sorted(binder.columns - set(col_types.keys())))
+        # 🔴 THE DECLARED SCOPE, DEFAULTING TO THE IDENTITY (S-125, 판정 255). This used to
+        # be every declared column UNIONED with every virtual-join column, which on
+        # `dt_log` meant 31 ILIKE arms over casts and SIX aliased LEFT JOINs to
+        # `dt_inventory` on one key - 2,174 ms for one keystroke's worth of search. The
+        # rule lives in `crud.resolve_search_columns` because the config load has to reach
+        # the same verdict from a different set of known columns.
+        col_list, unknown_declared = crud.resolve_search_columns(
+            table_name, set(col_types) | set(binder.columns))
+        col_list = list(col_list)
+        if unknown_declared:
+            # Named, not dropped: an entry nothing matches is a scope the operator
+            # believes is in force. WARNING rather than a refusal - the fallback already
+            # searched something, and a 500 here would take the grid down over a typo.
+            logger.warning(
+                f"[Search] Table '{table_name}' declares search_columns that nothing can "
+                f"search: {sorted(unknown_declared)}. They are not in column_types and "
+                f"are not virtual-join columns; the search used {col_list}."
+            )
 
     conditions = []
     unsearchable = []
@@ -1782,6 +1796,11 @@ def apply_search_filter(query, table_model, table_name, q, cols, binder):
                        table_name, ", ".join(unsearchable))
 
     if conditions:
+        if scope_report is not None:
+            # ⚠️ THE COUNT, NEVER THE NAMES OR THE TERM (판정 255). The
+            # timing line is always on; how MANY arms a search built is the
+            # shape of the query, which is what a plan question needs.
+            scope_report["arms"] = len(conditions)
         query = query.filter(or_(*conditions))
     return query
 
@@ -1847,7 +1866,8 @@ def _table_data_response(payload, table_name: str):
 
 def narrowed_table_query(db, table_name, table_model, *, q=None, cols=None,
                          transaction_id=None, filters=None,
-                         enrichment_queue=None, enrichment_queue_scope=None):
+                         enrichment_queue=None, enrichment_queue_scope=None,
+                         scope_report=None):
     """The narrowed query AND the count-cache key that belongs to it. ONE assembly.
 
     🔴 THE ROWS AND THE COUNT OF THEM MUST BE READ FROM THE SAME SENTENCE. `/data` and
@@ -1885,7 +1905,11 @@ def narrowed_table_query(db, table_name, table_model, *, q=None, cols=None,
                                              enrichment_queue, enrichment_queue_scope)
 
     # ── [Step 0] 검색 필터 구성 (실제 컬럼 기준 ilike 다중 OR 검색) ──
-    query = apply_search_filter(query, table_model, table_name, q, cols, binder)
+    # ⚠️ AN OUT-PARAM, NOT A FOURTH RETURN VALUE. This function's own docstring
+    # says why the 3-tuple is load-bearing, and two call sites unpack it; the codebase
+    # already answers 「extra detail for the caller who asks」 with `drop_report`.
+    query = apply_search_filter(query, table_model, table_name, q, cols, binder,
+                                scope_report=scope_report)
 
     # [Fix] transaction_id 필터링 시에도 캐시 정합성을 보장하기 위해 키에 포함
     cache_key_parts = ["total_count"]
@@ -1921,8 +1945,6 @@ def cached_table_count(query, cache_key):
     return total, elapsed
 
 
-# [Phase 73.12] 대량 데이터 조회 시 Pydantic 검증 오버헤드 제거를 위해 response_model 제거
-@app.get("/tables/{table_name}/data")
 def _filtered_column_count(filters) -> int:
     """How many COLUMNS a request constrains, and nothing about what it constrains them to.
 
@@ -1944,6 +1966,8 @@ def _filtered_column_count(filters) -> int:
         return 0
 
 
+# [Phase 73.12] 대량 데이터 조회 시 Pydantic 검증 오버헤드 제거를 위해 response_model 제거
+@app.get("/tables/{table_name}/data")
 def get_table_data(
     table_name: str, 
     skip: int = 0, 
@@ -1986,10 +2010,12 @@ def get_table_data(
     if not table_model:
         raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
         
+    search_scope: dict = {}
     query, _binder, cache_key = narrowed_table_query(
         db, table_name, table_model, q=q, cols=cols, transaction_id=transaction_id,
         filters=filters, enrichment_queue=enrichment_queue,
-        enrichment_queue_scope=enrichment_queue_scope)
+        enrichment_queue_scope=enrichment_queue_scope,
+        scope_report=search_scope)
 
     # ── [Step 0] 정렬 이름을 «먼저** 해석한다 ──
     # 세는 것보다 앞이다: 모르는 이름이면 34,939행을 세고 나서 거절할 이유가 없다.
@@ -2158,7 +2184,7 @@ def get_table_data(
         # ⛔ THE COUNT, NEVER THE FILTER. `filters` is a user-authored object with their
         # values in it; how MANY columns are constrained is the shape of the query, which
         # is what a plan question needs, and the values are theirs.
-        f"skip={skip}, limit={limit}, order={order_by}, q={'set' if q else '-'}, "
+        f"skip={skip}, limit={limit}, order={order_by}, q={'set/' + str(search_scope.get('arms', 0)) if q else '-'}, "
         f"filters={_filtered_column_count(filters)}, "
         f"target={'set' if target_row_id else '-'}")
     
@@ -3329,6 +3355,22 @@ async def apply_batch_updates_endpoint(
         # this number. 「N rows updated」 has to be true, and a row whose every key was
         # dropped updated nothing.
         "updated_count": len(results) - int(drop_report.get("reported_only_for_drops", 0)),
+        # 🔴 THE COLUMNS THE WRITE DISCARDED, BY NAME (S-127). `drop_report` has carried
+        # them since 판정 207 and this layer read one field off it - the count to
+        # subtract - so a caller was told the number was smaller and never why. An
+        # undeclared column comes back 200 with the cell silently gone, which is the
+        # 2026-08-11 incident: the row lands without its identity and the sender cannot
+        # tell that from a clean write.
+        #
+        # ⚠️ ABSENT WHEN NOTHING DROPPED, not an empty object. A key that is always there
+        # trains a reader to ignore it; this one appears only when there is something to
+        # say, and `by_column` is already capped by `MAX_DROP_REPORT_COLUMNS`.
+        **({"dropped": {
+            "cells": drop_report["dropped_cells"],
+            "rows": drop_report["rows_affected"],
+            "columns": sorted(drop_report["by_column"]),
+            "by_reason": drop_report["by_reason"],
+        }} if drop_report.get("dropped_cells") else {}),
         "change_count": len(changed_cells),
         "deleted_row_ids": deleted_row_ids,
         # [P4] Bounded, not removed. This used to be EVERY audit log the write created -

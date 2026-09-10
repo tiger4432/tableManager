@@ -1253,12 +1253,15 @@ class IngestionHandler(FileSystemEventHandler):
                 return
             self.processing_files.add(abs_path)
 
-        logger.info(f"New file detected: {abs_path}")
+        # ⚰️ THE TWO 「New file detected」 LINES MOVED DOWN (S-128).
+        # A read-only external source is never archived, so every 300 s sweep sees the
+        # same files again and `_external_sweep_attempted` is process memory - after a
+        # restart the first sweep re-dispatches all of them. They are then skipped by
+        # `_try_path_stat_skip` without being read, but this line had already announced
+        # each one as NEW. It now lives past that decision, in `_process_with_retry`.
 
         # [Fix] 파일명에서 업로더 정보 추출
         uploader = self._extract_user_from_filename(os.path.basename(abs_path))
-
-        logger.info(f"[{self.table_name}] 📥 New file detected: {os.path.basename(abs_path)}")
 
         routed_heavy = False
         try:
@@ -1697,6 +1700,15 @@ class IngestionHandler(FileSystemEventHandler):
         if (not force_content_check
                 and self._try_path_stat_skip(abs_path, basename, t_name, file_stat)):
             return
+
+        # 🔴 PAST THE SKIP, SO THE WORD 「New」 IS TRUE (S-128). Above this point a
+        # file may be one this deployment already reached a terminal answer about; below
+        # it, it is genuinely about to be read. The skip itself stays at DEBUG for the
+        # reason `_try_path_stat_skip` measured and wrote down: one INFO line per hit is
+        # 22,626 lines every five minutes on an unarchived source, which buries the
+        # events somebody is actually looking for.
+        logger.info(f"New file detected: {abs_path}")
+        logger.info(f"[{t_name or self.table_name}] 📥 New file detected: {basename}")
 
         # Initial debounce to allow file copy to finish
         time.sleep(delay)

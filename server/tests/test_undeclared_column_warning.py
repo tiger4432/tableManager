@@ -270,3 +270,53 @@ def test_registry_is_bounded_and_announces_its_own_silence(db_session, warn_capt
     assert len([k for k in snap if k[1] is not None]) == 3, snap
     assert snap[("inventory_master", None)] == 7, snap
     assert sum(snap.values()) == 10, "every drop must be counted somewhere"
+
+
+def test_the_response_names_the_columns_it_dropped(client):
+    """🔴 THE ANSWER THE SENDER GETS (S-127). The log has named dropped columns since the
+    2026-07-27 incident, but it is read by whoever runs the server - not by the client that
+    issued the write. That caller got 200 and a count, and `drop_report` was already in
+    this handler carrying the names; the response layer read ONE field off it (the number
+    to subtract) and dropped the rest.
+
+    ⛔ AND THE LOG CANNOT STAND IN FOR IT. `_warn_undeclared_column_once` re-announces at
+    powers of ten - deliberately, so a 400,000-row load does not emit 400,000 lines - so
+    the second write of a bad column is silent by design. A per-request answer has to come
+    back per request.
+    """
+    payload = {
+        "updates": [{
+            "business_key_val": "PN-2001",
+            "updates": {"part_no": "PN-2001", "category": "BRACKET",
+                        "eventtime": "2026-07-27T10:00:00"},
+            "source_name": "user", "updated_by": "tester",
+        }],
+        "silent": True,
+    }
+
+    body = client.put("/tables/inventory_master/data/updates", json=payload).json()
+
+    assert body["status"] == "success", body
+    assert body["dropped"]["columns"] == ["eventtime"]
+    assert body["dropped"]["cells"] == 1
+    assert body["dropped"]["rows"] == 1
+    assert body["dropped"]["by_reason"] == {crud.DROP_UNDECLARED_COLUMN: 1}
+
+    # ⚠️ AND IT SAYS SO AGAIN, on the write the log is now silent about.
+    second = client.put("/tables/inventory_master/data/updates", json=payload).json()
+    assert second["dropped"]["columns"] == ["eventtime"], second
+
+
+def test_a_clean_write_carries_no_such_key_at_all(client):
+    """⚠️ ABSENT RATHER THAN EMPTY. A key that is always present trains every reader to
+    skip it, and a screen that shows 「dropped: 0 columns」 on every save is noise that
+    hides the save where it is not zero."""
+    body = client.put("/tables/inventory_master/data/updates", json={
+        "updates": [{"business_key_val": "PN-2002",
+                     "updates": {"part_no": "PN-2002", "category": "BRACKET"},
+                     "source_name": "user", "updated_by": "tester"}],
+        "silent": True,
+    }).json()
+
+    assert body["status"] == "success", body
+    assert "dropped" not in body, body

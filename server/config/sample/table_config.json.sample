@@ -47,6 +47,7 @@
   },
   "dt_log": {
     "__comment": "[source_config.xlsx] Ontology Class: transfer.",
+    "__search_columns": "optional string[] - which columns `?q=` searches. Absent = composite_key_source (here dt_job_id/b_wx/b_wy); `?cols=` overrides it per request. Naming every column made one search 31 ILIKE arms and 6 joins.",
     "composite_key_source": [
       "dt_job_id",
       "b_wx",
@@ -215,6 +216,9 @@
       "base_lot": "string",
       "base_slot": "number",
       "base_wafer_id": "string",
+      "base_id": "string",
+      "bx": "number",
+      "by": "number",
       "bonding_index": "number",
       "b_wx": "number",
       "b_wy": "number",

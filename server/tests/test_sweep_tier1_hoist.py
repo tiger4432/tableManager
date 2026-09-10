@@ -353,10 +353,14 @@ def test_the_hoist_is_what_made_it_cheap_and_the_cost_is_not_the_ledger(env):
     assert without["tier1_single"] == 6, "every non-forced file used to ask on its own"
     assert without["sessions"] > after["sessions"]
     assert without["config_reads"] > after["config_reads"]
-    # Each cleared file used to pay 2 config reads (`_handle_event`'s
-    # `self.table_name` plus `_process_with_retry`'s snapshot); the batch pays 1
-    # for all of them.
-    assert without["config_reads"] - after["config_reads"] >= 2 * len(CLEARED_NAMES) - 1
+    # ⚰️ THE COEFFICIENT WAS 2 AND IS NOW 1 (S-128). A cleared file used to pay TWO config
+    # reads - `_handle_event`'s `self.table_name` property plus `_process_with_retry`'s
+    # snapshot. Moving the 「New file detected」 lines past the tier-1 skip took the first
+    # one with them, which is also what `table_name`'s own docstring asks for: 「파일 처리
+    # 경로는 _snapshot_table_context가 잡은 파일 단위 스냅샷을 사용한다(D1)」. The claim is
+    # unchanged - the batch pays once for all of them - only the per-file price it is
+    # measured against.
+    assert without["config_reads"] - after["config_reads"] >= 1 * len(CLEARED_NAMES) - 1
 
 
 def test_an_unchanged_resweep_from_a_fresh_watcher_reads_nothing(env):
@@ -691,3 +695,71 @@ def test_nested_tree_still_archives_and_removes_the_folder_when_moving(env):
     env["tree"](batch)
     assert not batch.exists(), "the emptied tree should have been removed"
     assert (env["ws"] / "archives" / "m1.csv").exists()
+
+
+def test_a_file_that_will_be_skipped_is_never_announced_as_new(env, caplog, monkeypatch):
+    """🔴 「New file detected」 SAT BEFORE THE DECISION THAT MAKES IT FALSE (S-128).
+
+    A read-only external source is never archived, so every 300 s sweep sees the same
+    files again, and `_external_sweep_attempted` is process memory - after a restart the
+    first sweep re-dispatches all of them. `_try_path_stat_skip` then skips each without
+    reading it, but `_handle_event` had already announced every one as NEW. Nothing was
+    re-ingested; the log simply said something untrue, once per file, on every restart.
+
+    ⛔ AND THE SKIP ITSELF STAYS AT DEBUG. `_try_path_stat_skip`'s docstring carries the
+    measurement: one INFO line per hit is 22,626 lines every five minutes on an unarchived
+    source, which buries the events somebody is looking for. So the fix is that the NEW
+    line moved past the decision - not that a second loud line joined it.
+    """
+    import logging
+
+    handler = env["reset"]()
+    path = os.path.join(handler.raws_path, "already_concluded.csv")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("part_no\nPN-1\n")
+
+    monkeypatch.setattr(IngestionHandler, "_try_path_stat_skip",
+                        lambda self, abs_path, basename, t_name, file_stat: True)
+
+    with caplog.at_level(logging.INFO):
+        handler._process_with_retry(path)
+
+    announced = [r.getMessage() for r in caplog.records if "New file detected" in r.getMessage()]
+    assert announced == [], announced
+
+
+def test_a_file_that_is_actually_read_is_still_announced(env, caplog, monkeypatch):
+    """⚠️ THE HALF THAT MUST NOT MOVE. Moving a line past a branch is one edit away from
+    deleting it, and a genuinely new file going in silently is worse than a false line."""
+    import logging
+
+    handler = env["reset"]()
+    path = os.path.join(handler.raws_path, "genuinely_new.csv")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("part_no\nPN-2\n")
+
+    monkeypatch.setattr(IngestionHandler, "_try_path_stat_skip",
+                        lambda self, abs_path, basename, t_name, file_stat: False)
+
+    with caplog.at_level(logging.INFO):
+        handler._process_with_retry(path)
+
+    announced = [r.getMessage() for r in caplog.records if "New file detected" in r.getMessage()]
+    assert len(announced) == 2, announced
+    assert any("genuinely_new.csv" in line for line in announced)
+
+
+def test_the_announcement_no_longer_sits_in_the_dispatcher():
+    """The dispatcher cannot know - the tier-1 answer is two calls further down - so a
+    line there can only ever be a guess that is right most of the time."""
+    import inspect
+
+    body = inspect.getsource(IngestionHandler._handle_event)
+
+    # ⚠️ THE CALL, NOT THE WORDS. The dispatcher keeps a tombstone comment saying
+    # where the line went and why, so matching the phrase would fail on the explanation.
+    live = [ln for ln in body.splitlines() if not ln.strip().startswith("#")]
+    assert not [ln for ln in live if "New file detected" in ln], live
+    # And it landed past the skip rather than merely somewhere else.
+    processed = inspect.getsource(IngestionHandler._process_with_retry)
+    assert processed.index("_try_path_stat_skip") < processed.index("New file detected")

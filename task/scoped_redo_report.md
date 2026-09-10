@@ -29992,3 +29992,444 @@ os.path.join 으로 경로를 «조립»해서 그 아홉 히트에 «안 들어
 S-86(카탈로그 어댑터 모양 아니면 이름 대어 거절) — 아직 «시작 안 했습니다»
 ```
 > 📌 **[09-10] 이 채널의 미답 질문: 4절의 「씨앗이 쓰는데 샘플이 선언 안 하는 컬럼 셋」 하나.**
+
+---
+
+# [09-10 15:09] S-86 + S-123 보강 + S-84-b 착지 (`0ecbf7c2`), 그리고 «그 커밋이 낸 422 회귀» 수리 (`e3744b47`)
+
+## 0. 🔴🔴 먼저 — 제 커밋이 그리드를 «전멸»시켰고, 18분 뒤에야 착지했습니다
+```
+낸 것    `0ecbf7c2` 가 `_filtered_column_count` 를 «데코레이터와 라우트 함수 «사이»»에 넣었습니다
+         @app.get("/tables/{table_name}/data")
+         def _filtered_column_count(filters) -> int:      <- 라우트가 «헬퍼»에 붙었습니다
+         def get_table_data(...)                          <- 라우트를 «잃었습니다»
+결과     헬퍼의 `filters` 에 기본값이 없어 «필수 쿼리 인자»가 됐고,
+         그리드의 기본 요청(`?skip=0&limit=1000&order_by=updated_at`)이 «전부 422»
+수리     헬퍼를 주석·데코레이터 «위»로. 두 줄 이동. `e3744b47`
+```
+🔴 **총괄이 세 번 초인종을 눌러야 했습니다(14:33 · 14:34 · 14:51).** 원인 특정도 제가 아니라
+총괄이 하셨습니다(main.py:1925-1926). 라운드가 끝났다고 보고 «다음 것»을 보고 있었던 자리입니다.
+
+## 1. 🔴 이웃이 «이미 볼 수 있었는데 안 물었습니다» — 이게 진짜 발견입니다
+지시하신 게이트: 「데이터 라우트를 «실제 HTTP 로» 치는 시험이 이웃 580 에 없었다는 뜻」.
+**세어 보니 «있었습니다».** 그래서 뜻이 반대입니다:
+```
+tests/test_the_sort_column_is_named_or_refused.py
+   TestClient 로 `GET /tables/a6_test_row/data` 를 «filters 없이» 칩니다 — 단언 8개
+   깨진 모양에서는 그 8개가 «전부» 422 로 빨개집니다
+그런데 지난 라운드 이웃 580 에 «이 파일이 없었습니다»
+```
+🔴 **결함은 「시험이 없다」가 아니라 「제 이웃 목록이 제가 «떠올린» 것이었다」입니다.**
+이번엔 이름으로 모집단을 만들었습니다 — `git grep -l '_filtered_column_count|get_table_data|}/data' -- tests`
+→ 19파일. 그 중 «14개»가 지난 라운드 목록에 없었습니다.
+
+## 2. 게이트는 «인접»이 아니라 «결합»에 걸었습니다
+지시는 「데코레이터 바로 다음 줄이 `def get_table_data`」였는데, 그건 «대리»입니다 —
+줄 배치가 달라도 맞을 수 있고, 맞아도 안 돌 수 있습니다. 틀어진 «성질»은 「경로가 «어느 함수»를
+가리키나」라서 그걸 읽습니다:
+```
+app.routes 에서 /tables/{table_name}/data      -> get_table_data          ✅
+              /tables/{table_name}/data/count -> get_table_data_count    ✅
+두 엔드포인트의 `filters` 기본값                 -> None (필수 아님)        ✅
+그리고 브라우저의 «그 요청 모양»을 HTTP 로 쳐서 200 + 줄에 `filters=0`      ✅
+```
+
+## 3. `0ecbf7c2` 가 실은 무엇을 실었나 (아직 보고 못 드린 것)
+```
+S-86      refuse_unadapted_catalog() — 날것 table_config 를 «이름 대어» 거절.
+          거절문이 «고치는 함수 이름»을 답니다: load_physical_catalog()
+          🔴 첫 판별자가 «틀렸습니다» — business_key 로 갈랐는데 그건 날것에도 «있습니다».
+             날것이 그대로 통과했고, 게이트가 잡았습니다. {columns, composite_key} 로 좁혔습니다
+S-123 보강 타이밍 줄에 `filters=<컬럼 수>` · `target=<set|->` (값은 «절대» 안 싣습니다)
+S-84-b 구멍 제 지난 라운드가 `binding.timezone` 을 검증기는 받는데 «스켈레톤이 선언 안 했습니다».
+          그 라운드에 «제가 안 돌린» 게이트가 이번에 잡았습니다
+```
+
+## 4. 게이트
+```
+✅ 이름으로 뽑은 이웃 19파일 -> 255 passed · 1 xfailed
+✅ test_the_sort_column_is_named_or_refused.py 8 passed (이번에 «이름 대어» 넣은 것)
+✅ 새 단언 둘 포함 17 passed (S-124 파일)
+✅ 수집 5,494 (5,492 -> +2, 새 단언 둘)
+⚠️ 작업 트리 줄바꿈: 제 스크립트가 main.py 를 LF 로 남겼습니다. 커밋 blob 은 동일했고
+   («2 insertions, 2 deletions»만), 작업 트리도 CRLF 로 되돌려 HEAD 와 «바이트 동일» 확인했습니다
+```
+
+## 5. 서버 재기동이 필요합니다 — 라이브(PID 33184)는 «아직 깨진 코드»입니다
+재기동은 총괄 몫이라 손대지 않았습니다. `e3744b47` 을 pull 하고 재기동하시면 그리드가 돌아옵니다.
+
+## 6. 다음
+```
+S-127 (판정 252): table_config.json.sample 에 base_id·bx·by 선언
+                 + 적재/쓰기 응답이 «버린 컬럼 이름과 수»를 실음
+                 + 무덤 test_base_columns_are_declared 를 그 커밋에서 되살림
+```
+> 📌 **[09-10 15:09] 이 채널의 미답 질문: «없음».**
+
+---
+
+# [09-10 15:20] S-127 ②·④ 착지 (`149c312d`) — 그리고 ①의 전제가 «거짓»입니다
+
+## 1. 🔴🔴 먼저 — ① 「샘플에 base_id·bx·by 셋 선언」은 «셋이 아니라 열둘»이고, 그래도 안 됩니다
+출하 `table_config.json.sample` 의 `bonding_log` 와 씨앗 `seed_syn_void_base_join.py` 를
+«집합으로» 재 봤습니다:
+```
+씨앗이 쓰는 컬럼 (15)   b_bn base_id bond_eqp bond_lot bond_slot bond_x bond_y bx by
+                       dt_x dt_y event_time · dt_lot dt_slot stack_height
+출하가 선언 (14)        b_wx b_wy base_lot base_slot base_wafer_id bonding_eqp bonding_index
+                       c_wx c_wy core_lot core_slot · dt_lot dt_slot stack_height
+
+겹치는 것              «3» (dt_lot · dt_slot · stack_height)
+선언 안 된 채 써지는 것  «12» — 판정이 말한 셋(base_id·bx·by)은 그 열둘의 «일부»입니다
+```
+🔴 **그리고 더 센 것이 있습니다 — 출하 `bonding_log` 의 복합키 다섯이 «씨앗이 한 번도 안 쓰는» 컬럼입니다:**
+```
+composite_key_source = [base_lot, base_slot, bonding_index, b_wx, b_wy]
+씨앗이 쓰는 것         = [bond_lot, bond_slot, ...]                    <- 다섯 중 «0» 개 일치
+```
+`crud.unfilled_key_columns` 는 키 컬럼이 빈 행을 «거절»합니다. 그러므로 **셋을 선언해도
+새 설치에서 씨앗은 한 행도 키를 못 얻습니다.** 게이트 「새 설치 모양에서 씨앗 한 번 → 세 컬럼이
+표에 있음」은 «통과할 수 없습니다» — 셋을 선언해도 그 행이 안 생깁니다.
+
+🔴 **진짜 모양은 「선언 셋 빠짐」이 아니라 「한 이름 아래 표가 «둘»」입니다** —
+출하는 `base_*`/`b_w*` 어휘로, 씨앗은 `bond_*` 어휘로 같은 `bonding_log` 를 말합니다.
+어느 쪽으로 맞출지(선언을 열둘로 넓힘 / 키를 바꿈 / 씨앗이 그만 씀)는 **무덤 시험이 직접
+「which one is a ruling」이라 적어 둔 자리**라, 짓지 않고 올립니다. **① 과 ③ 은 미착수입니다.**
+
+## 2. ② 는 «절반이 이미 지어져 있었습니다» — 제가 그걸 모르고 또 지을 뻔했습니다
+```
+제가 한 것    crud 에 「셀이 버려졌으면 항상 경고」를 elif 로 넣었습니다
+             근거: 4288줄 경고가 `if suppressed_row_ids:` 로 «전부 버려진 행»에만 걸림
+결과         기존 계약이 «빨개졌습니다» — test_undeclared_column_warning.py 4 failed
+             (`assert len(warnings) == 1` -> 3)
+왜           `_warn_undeclared_column_once` 가 «이미» (표, 컬럼)마다 경고하고
+             «10의 거듭제곱마다» 다시 알립니다. 40만 행 적재에 40만 줄을 안 내려고 «일부러» 그렇게 돼 있습니다
+=> 제 elif 는 배치마다 한 줄이라 «운영 규격(수천 행/트랜잭션)에서 로그 홍수»였습니다. «되돌렸습니다»
+```
+🔴 **제 진단이 틀린 이유가 진단 자체보다 중요합니다** — 제가 `logger.warning` 을 crud.py 의
+«4150~4310 구간»에서만 grep 했습니다. 등록부 경고는 «128줄»에 삽니다.
+**제 grep 창이 제 답을 정했습니다.** 상설 「«새 문제»라 부르기 전에 셋」의 ① 을 «반쪽만» 한 것입니다.
+
+## 3. 그래서 ② 의 «남은 진짜 구멍»만 메웠습니다 — 응답
+```
+있던 것   로그: 버린 컬럼 이름을 «서버 로그»에 냅니다 (2026-07-27 사고 이후)
+없던 것   응답: 쓰기를 «보낸 쪽»은 200 과 숫자만 받습니다.
+         `drop_report` 가 이 핸들러에 «이미» 이름을 들고 와 있었는데(판정 207),
+         응답층이 거기서 «한 칸»만 읽었습니다 — 뺄 숫자
+고침     응답에 `dropped: {cells, rows, columns, by_reason}`. 버린 게 없으면 «키 자체가 없습니다»
+```
+⛔ **로그가 대신할 수 없는 이유가 게이트에 적혀 있습니다**: 등록부는 10의 거듭제곱마다 알리므로
+«두 번째» 잘못된 쓰기는 «설계상 조용합니다». 요청마다의 답은 요청마다 와야 합니다.
+
+## 4. ④ 센서스 바퀴 줄 (14:09 이월)
+```
+있던 것   `lap: 15 source(s) in 45.3s (rest 30s between…)`  <- 벽시계에 «쉼»이 들어 있습니다
+문제     45 s 가 DB 일인지, 0.3 s 일이고 45 s 가 «일부러 쉰» 것인지 구별이 안 됩니다.
+        페이스를 «재는» 수가 페이스에 따라 움직이면 그 수로 페이스를 판정할 수 없습니다
+고침     `in %.3fs, measured %.3fs` — `measured` 는 `rest` 에 안 움직입니다
+        ⚠️ 던진 소스도 «잽니다». 성공만 세면 바퀴가 «실제보다 싸게» 보고되고,
+           페이싱 수치가 틀리면 «안 되는» 방향이 그쪽입니다
+```
+
+## 5. 게이트
+```
+✅ 이름으로 뽑은 이웃 24파일 -> 389 passed · 1 xfailed
+✅ 새 단언 넷: 응답이 이름 댐 · 깨끗한 쓰기엔 키 «없음» · 바퀴 줄 measured · 던진 소스도 측정
+✅ 수집 5,497
+⚠️ 빨강 «둘», 둘 다 제 자리에 «안 닿습니다»:
+   test_the_live_dt_map_declaration_is_the_physical_unit — 이 박스 gitignore 선언(`dt_slot` number)
+   test_a_graph_meta_boolean_never_reaches_the_payload… — 자기 독스트링이
+      「left failing and named instead」라 적어 둔 «의도된» 빨강
+```
+
+## 6. 다음 — 판정이 필요합니다
+```
+S-127 ①③ 미착수. 위 1절의 셋 중 하나를 골라 주십시오:
+   ⓐ 출하 bonding_log 를 씨앗 어휘로 «열둘» 선언 + 복합키를 bond_* 로 (씨앗이 새 설치에서 돎)
+   ⓑ 씨앗이 출하 어휘(base_lot·base_slot·bonding_index·b_wx·b_wy)로 «쓰도록» 고침
+   ⓒ 그 씨앗은 이 박스 전용이라 «출하가 선언할 이유가 없다»고 판정 -> 무덤 시험은 무덤에 둠
+③ 무덤 시험은 그 판정이 정한 «참인 문장»으로 되살립니다. 지금 되살리면
+   «거짓 전제 위에 초록»을 박게 됩니다
+```
+> 📌 **[09-10 15:20] 이 채널의 미답 질문: 6절의 ⓐ/ⓑ/ⓒ 하나.**
+
+---
+
+# [09-10 15:28] 판정 253(ⓑ) 착수 중 «멈춤» — 추적된 마이그레이션이 ⓐ를 «글자 그대로» 지시합니다
+
+## 1. 🔴🔴 제가 253 «전»에 보고 못 드린 사실 하나 — 그리고 그게 답을 뒤집습니다
+`server/migrations/add_bonding_base_join_index.sql` 은 **추적 파일**이고, 자기 머리에 이렇게 적혀 있습니다:
+```
+🔴 ORDER. `base_id`/`bx`/`by` are physical columns on `bonding_log` in both dev
+databases already, but they were UNDECLARED until 2026-08-13 - an undeclared
+column takes a write and drops it with a 200. «Declare them in
+`table_config.json` (`column_types`, NOT `composite_key_source`)» before this
+file is worth anything.
+CREATE INDEX ... ON bonding_log (base_id, bx, by, row_id)
+```
+🔴 **저장소가 «이 세 컬럼에 대해서는» ⓐ를 지시하고 있습니다** — 「column_types 에 선언하라,
+복합키에는 «넣지 말라»」. 판정 252 와 «같은 말»이고, 253 은 이 파일을 모르고 내려졌습니다
+(제 15:20 보고에 씨앗·샘플 델타만 있고 마이그레이션이 없었습니다 — 제 누락입니다).
+
+**그 세 컬럼을 실물로 대하는 추적 산출물이 «넷»입니다:**
+```
+migrations/add_bonding_base_join_index.sql        (base_id, bx, by, row_id) 인덱스
+scripts/create_bonding_core_die_view.py           b.base_id · b.bx · b.by 를 «읽음»
+scripts/create_bonding_core_lot_view.py           같음
+scripts/create_bonding_die_from_core_view.py      같음
+그리고 출하 샘플의 다른 세 표(bonding_core_die · bonding_die_from_core · bonding_core_lot)가
+   base_id "string" · bx "number" · by "number" 를 «이미 선언»합니다 — 타입도 거기 있습니다
+```
+⛔ ⓑ대로 「씨앗이 base_id·bx·by 를 안 쓴다」로 가면 **저 넷이 전부 죽습니다** — 아무도 안 쓰는
+컬럼에 인덱스를 걸고, 아무도 안 채우는 컬럼을 뷰가 읽습니다.
+
+## 2. 🔴 그리고 ⓑ의 «대응»이 좌표에서 근거를 못 찾습니다 — 이름으로 하면 «틀립니다»
+253 이 금지한 「이름 유사로 추론」이 여기서 실제로 함정입니다:
+```
+후보      씨앗 bx·by  ->  출하 b_wx·b_wy   («b» 니까 base 처럼 보입니다)
+반증      docs/architecture/DT_CORE_FRAME_CHAINS.md:16
+         「coordinate spaces: «DT coordinates (b_wx, b_wy)» and the coordinates of the core」
+         => b_w* 는 «DT 좌표»이지 base 좌표가 아닙니다. c_w* 가 core 입니다
+```
+그리고 뜻을 «선언»에서 확인할 길도 없습니다 — 출하 `ledger_config.json.sample` 에
+`bonding_log` 를 읽는 소스가 «하나도 없습니다»(바인딩이 없으니 역할도 없습니다).
+```
+뜻이 «말해진» 대응        base_id -> base_wafer_id ?  (씨앗 주석: 「base wafer」, void_obs 가 base_wafer_id 로 조인)
+뜻이 «안 말해진» 대응     bx·by -> ?              (b_w* 는 DT 좌표라 반증됨. base 좌표를 받을 출하 컬럼이 «없습니다»)
+                        bonding_index -> ?      (씨앗에 대응 개념이 없습니다. 생성 코드가 이 말을 안 합니다)
+```
+🔴 **출하 키 다섯 중 `bonding_index`·`b_wx`·`b_wy` 는 「합성이라 값을 만들면 된다」로
+   못 넘어갑니다** — 값을 «지어내는» 것은 되지만, 그러면 그 다섯이 «뜻 없는 채움»이 되고
+   뷰·인덱스가 읽던 base 좌표는 «사라집니다». 253 이 「못 만들면 보고 항목」이라 하신 자리입니다.
+
+## 3. 제가 한 것 / 되돌린 것 — 트리는 HEAD 입니다
+```
+했음     ① 샘플 bonding_log.column_types 에 base_id/bx/by 셋 추가 (타입은 지어내지 않고
+        void_obs·bonding_core_die 가 «이미 선언한» string/number/number 를 그대로)
+        ③ 무덤 시험을 「셋이 선언됐다」+「그래도 씨앗은 못 돈다(집합 둘)」로 되살림
+쟀음     bonding_log·샘플을 건드리는 시험 «42파일» -> 1,566 passed · 3 failed
+        그 셋은 «깨끗한 트리에서도 셋 다 빨강» -> 선언 추가가 «아무것도 안 깼습니다»
+        (frame_confirmation_meta · job_column_from_config · trace_fixture)
+되돌림   253(ⓑ)이 반대 방향이라 «둘 다» 되돌렸습니다. 커밋 안 했습니다
+```
+
+## 4. 판정 요청 — 둘이 «겹치는» 답이 있어 보입니다
+```
+두 판정이 다투는 것은 «세 컬럼»뿐이고, 나머지는 다투지 않습니다:
+   세 컬럼(base_id·bx·by)  -> 마이그레이션이 「column_types 에 선언, 키에는 넣지 말 것」이라
+                            «글자 그대로» 지시. 추적 산출물 넷이 그걸 전제로 삽니다
+   나머지 아홉             -> ⓑ 그대로: 씨앗이 «안 씁니다» (조용히 버려질 것을 만들지 않음)
+   출하 키 다섯            -> 여기가 «진짜 미지»입니다. 씨앗이 채우려면 bonding_index·b_wx·b_wy 의
+                            «뜻»이 필요한데, b_w* 는 DT 좌표라 base 좌표를 넣으면 거짓이 됩니다
+🔴 그래서 제 물음 «하나»: 출하 `bonding_log` 의 복합키 다섯은 «이 합성 씨앗이 채울 수 있는
+   것»입니까? 아니면 이 씨앗은 base 좌표 축이라 «그 표의 키와 다른 단위»입니까?
+   후자면 ⓑ의 「키 다섯을 전부 채움」이 성립하지 않고, 답은 «다른 표»이거나 «다른 키»입니다
+```
+> 📌 **[09-10 15:28] 이 채널의 미답 질문: 4절의 복합키 다섯 하나. (마이그레이션 사실은 판정 253 의 재검토 사유입니다)**
+
+---
+
+# [09-10 15:36] S-127 ①③ 착지 (`089f8d5e`) + S-125 «측정만»
+
+## 1. ①③ — 판정 254 그대로
+```
+① bonding_log.column_types 에 base_id "string" · bx "number" · by "number"
+   복합키·display_columns «안 건드렸습니다». 타입은 void_obs·bonding_core_die 가
+   이미 선언한 것 그대로 (제가 고르지 않았습니다)
+③ test_base_columns_are_declared 되살림 + 참인 문장 «둘째»:
+   test_this_seed_still_cannot_fill_the_shipped_key_and_that_is_not_a_bug_here
+   -> 씨앗이 출하 키 다섯 중 «0» 개를 채운다는 것과, 지어내면 «뜻 없는 키»가 된다는 사유를
+      b_w* = DT 좌표 근거와 함께 시험 안에 박았습니다. 씨앗은 손대지 않았습니다
+```
+
+## 2-pre. 게이트
+```
+✅ 이웃 42파일(bonding_log · 샘플) -> 1,565 passed · 4 skipped
+✅ 수집 5,499
+⚠️ 빨강 «셋»은 기존 — 깨끗한 트리에서도 셋 다 빨강:
+   frame_confirmation_meta · job_column_from_config · trace_fixture
+⚠️ 빨강 «하나»는 «흔들립니다» — test_inv_9_1_atomic_save_event_applies_physical_alter
+   «단독으로 돌리면 통과»하고, «같은 트리 상태의 직전 실행»에서는 초록이었습니다
+   -> 제 변경을 따라가지 않습니다. 스위트 순서 오염(그 모듈들이 crud.TABLE_CONFIG 를
+      갈아끼우고 복원 안 함 — test_void_base_join_fixture 가 자기 픽스처 주석에 적어 둔 그것)
+
+## 2. S-125 «측정 먼저» — 짓지 않았습니다. 잰 것만 올립니다
+
+### ⓐ `q=` 가 «어느 컬럼»을 ILIKE 하나 — 코드에서 (구조. 어느 설치에서나 참)
+`main.apply_search_filter` (main.py:1725). `?cols=` 가 «없으면» 대상은:
+```
+row_id · business_key_val
++ column_types 의 «전부» (created_at · updated_at 만 제외)
++ 가상조인 컬럼 «전부» (column_types 에 없는 것)
+```
+각 컬럼이 `cast(col AS String) ILIKE '%q%'` 한 항이 되고 전부 «OR» 로 묶입니다.
+🔴 **그래서 대상 수가 «선언의 길이»입니다** — 운영자가 컬럼을 하나 더 선언하면 검색이 한 항 늘어납니다.
+
+### ⓑ 그 결과 — 이 박스 `dt_log`(200,215행)에서 EXPLAIN (ANALYZE, BUFFERS) 한 번
+```
+요청 모양                        dt_inventory 조인   ILIKE 항
+평범한 페이지 (q 없음)                    0              0
+q=SYN (범위 없음)                        «6»           «31»
+q=SYN&cols=dt_lot (범위 있음)             0              1
+```
+```
+Execution Time: 2,174 ms      Planning: 21.9 ms
+Seq Scan on dt_log  200,215행   <- 색인이 «구조적으로» 안 걸립니다(선두 % + cast)
+Filter 가 173,976행을 버림      <- 조인을 «다 하고 나서» 버립니다
+dt_inventory 를 «여섯 번» Seq Scan (82,429행 x 6, 해시 6개, 5.2 MB x 6)
+   여섯 조인의 조건이 «전부 같습니다»: dt_log.dt_job = dt_inventory.dt_job
+   가상 컬럼 «하나당 별칭 하나»라서 같은 표를 같은 키로 여섯 번 답니다
+```
+🔴 **여섯 조인과 서른한 항은 «범위 없는 검색»이 «혼자» 만듭니다** — 위 표의 1행과 3행이
+   둘 다 0 입니다. 즉 이건 그리드의 상시 비용이 아니라 «검색창 한 번»의 비용입니다.
+
+### ⓒ 제안 «한 줄»
+```
+선언 칸 `search_columns` 를 표마다 두고, 기본값 = «복합키 컬럼»(없으면 business_key).
+=> 범위 없는 검색이 위 표의 3행이 됩니다 (조인 0 · 항 1~n)
+```
+근거: 범위를 주면 «이미» 0 조인/1 항입니다. 즉 새 기제가 아니라 «기본값»의 문제입니다.
+
+**색인 종류 · 확장** (물어보신 것):
+```
+필요한 것   선두 와일드카드 ILIKE 는 btree 로 «안 됩니다». pg_trgm 의 GIN(gin_trgm_ops)이 그 자리
+확장 권한   🔵 구조: pg_trgm 은 PostgreSQL 13+ 에서 «trusted» 확장이라
+             CREATE EXTENSION 에 «슈퍼유저가 아니라» 그 DB 의 CREATE 권한이면 됩니다
+           ⚠️ 이 박스: PG 18.3 · pg_trgm 이미 설치됨 · 접속 롤이 superuser
+             -> 이 박스는 «비-슈퍼유저 경로를 증명하지 못합니다»
+           🔴 모르는 것: 운영 PG 버전과 앱 롤의 CREATE 권한. 13 미만이면 슈퍼유저가 필요합니다
+색인 대상   문자 컬럼은 `(col)::text` 라 컬럼 색인이 «그대로» 걸립니다
+           숫자 컬럼은 `((col)::varchar)::text` 라 «식 색인»이 따로 필요합니다
+           -> 기본값을 «키 컬럼»으로 두면 대개 문자라 이 문제를 안 만납니다
+```
+⚠️ **짓지 않았습니다.** 위는 전부 측정과 제안이고, 코드는 한 줄도 안 건드렸습니다.
+
+## 3. 다음
+```
+S-125 는 «보고까지»가 지시라 여기서 멈춥니다. 위 ⓒ 제안에 판정 주시면 짓겠습니다
+S-127-b (씨앗의 자기 표) 는 S-120 뒤 판정으로 두신 그대로 대기
+```
+> 📌 **[09-10 15:36] 이 채널의 미답 질문: 2절 ⓒ 의 `search_columns` 기본값 제안 하나.**
+
+---
+
+# [09-10 15:48] S-125 ⓒ 착지 — 기본값 하나로 2,174 ms → 117 ms
+
+## 1. 판정 255 그대로
+```
+선언 칸    search_columns (string[])
+기본값     composite_key_source -> 없으면 business_key -> 그것도 없으면 row_id·business_key_val
+          🔴 «절대 비지 않습니다». 빈 범위는 조건을 0개 만들고, 그러면 필터가 통째로
+             건너뛰어져 «표 전체»가 200 으로 돌아옵니다(그 사고의 거절문이 이미 그 함수에 있습니다)
+?cols=    지금처럼 «건별로 덮습니다» (안 건드렸습니다)
+없는 이름  «이름 대어» 거절 — 재적재 때 ERROR, 검색 때 WARNING. 조용히 무시 안 합니다
+로그 줄    q=set -> q=set/<항 수>. 값도 이름도 «안» 실립니다
+샘플·문서  dt_log 블록에 칸의 자리 한 줄 · docs/guide/config/table_config.md 에 한 행
+```
+
+## 2. 게이트 — 전부 실측
+```
+요청 모양                          조인   ILIKE 항   비고
+선언 없음 (기본 = 키 3개)             0       3      dt_job_id · b_wx · b_wy
+search_columns 2개 선언               0       2      선언한 그 집합
+없는 이름 하나 섞음                   0       1      WARNING 에 그 이름이 뜸, 나머지로 검색
+?cols=dt_lot                         0       1      덮기 그대로
+
+EXPLAIN (ANALYZE) — 이 박스 dt_log 200,215행
+   전:  2,174 ms · Planning 21.9 ms · Seq Scan · dt_inventory 를 «6번» Seq Scan
+   후:    117 ms · Planning  7.0 ms · Parallel Seq Scan · 조인 «0»
+```
+
+## 3. 🔴 짓는 도중에 «지난 사고와 같은 모양»을 하나 냈고, 게이트가 잡았습니다
+```
+낸 것    scope_report 를 채우는 자리는 narrowed_table_query 인데,
+        읽는 자리는 get_table_data 였습니다 -> 검색할 때마다 «NameError»
+잡은 것  파싱 통과 · import 통과 · 단위 시험 통과. 오직 «라우트를 HTTP 로 치는 시험»만 빨갰습니다
+고침    3-튜플 반환을 안 늘리고 out-param 으로 통과시켰습니다
+        (그 함수 독스트링이 「3-튜플이 하중을 받는다」고 적어 둔 이유 그대로,
+         그리고 이 저장소가 drop_report 로 이미 답한 부류)
+```
+⚠️ **그래서 14:33 의 422 와 «같은 부류»입니다** — 라우트를 건드린 커밋은 라우트를 «쳐 봐야»
+   압니다. 이번엔 그 시험을 «먼저» 이웃에 넣어 뒀고, 그것 하나가 잡았습니다.
+
+## 4. 한 자리에서 판정한 것 하나 — 거절의 «범위»
+지시는 「로드 때 이름 대어 «거절»」이었는데, `load_table_config_or_raise` 가 자기 독스트링에
+**「Semantic complaints must never keep a production server down」** 이라 적어 두고 있습니다.
+그래서 «파일»이 아니라 «칸»을 거절합니다 — 그 표는 기본값으로 검색하고, ERROR 가 이름을 댑니다.
+오타 하나가 «같은 파일의 스키마 편집»까지 무르게 만들면 그게 더 큰 사고라서입니다.
+
+## 5. 게이트 결과
+```
+✅ 이름으로 뽑은 이웃 22파일 -> 318 passed · 1 xfailed · 빨강 «0»
+✅ 새 시험 15 (HTTP 로 치는 것 둘 포함)
+✅ 수집 5,514
+⚠️ 제가 지난 라운드에 박은 단언 하나가 «주어가 바뀌어» 빨갰습니다 — q=set -> q=set/N.
+   무르지 않고 «새 참인 문장»으로 갱신했습니다(왜 숫자가 붙었는지 사유를 시험에 적었습니다)
+```
+
+## 6. 다음
+```
+S-125-b (trigram) 는 판정대로 «운영 PG 버전·앱 롤 CREATE 권한»을 받은 뒤. 대기
+지시하신 순서: (S-112·S-120 소유자 답 대기) → 그 사이 S-100 ⓐ-2 (파이썬 클래스 삭제)
+=> S-100 ⓐ-2 로 넘어갑니다
+```
+> 📌 **[09-10 15:48] 이 채널의 미답 질문: «없음».**
+
+---
+
+# [09-10 16:04] S-128 착지 (`5b44da71`) — 「New file」 는 «읽을 파일»에만
+
+## 1. 지시하신 두 선택지 중 «둘째»는 못 씁니다 — 그 함수가 이미 그 수를 재 놨습니다
+```
+지시   「그 두 줄을 stat-skip 판정 «뒤»로 옮기거나 / 건너뛴 경우 「seen again, skipped」 한 줄로」
+반증   _try_path_stat_skip 의 독스트링(직접 인용):
+       「조용하다 — 그리고 그게 요점이다. … 여기서 한 줄씩만 남겨도
+         «22,626줄이 5분마다» 쌓여 진짜 사건을 덮는다」
+       그리고 그 스킵은 «이미» DEBUG 로 한 줄 남깁니다
+```
+🔴 즉 둘째 선택지는 「아카이브 안 되는 소스에 INFO 한 줄」이고, 그건 이 함수가 «측정해서 막아 둔»
+   바로 그 결함입니다. 그래서 **첫째만** 했습니다 — 줄을 판정 «뒤»로 옮기고, 스킵 줄은 DEBUG 그대로.
+   게이트의 「skip 줄 1」은 그 DEBUG 줄이 답합니다.
+
+## 2. 고침 — 두 줄이 `_handle_event` 에서 `_process_with_retry` 로 내려갔습니다
+```
+전   _handle_event ─(log "New file")→ _route_and_process ─→ _process_with_retry ─→ tier-1 skip
+     즉 «판정보다 두 홉 위»에서 이미 「새 파일」이라 선언했습니다. 디스패처는 알 수가 없습니다
+후   … _process_with_retry ─→ tier-1 skip ─(빠져나감)     ← 조용함(DEBUG 한 줄)
+                            └─(통과)→ log "New file"      ← 여기서만, 그리고 «참»입니다
+```
+
+## 3. 부수 효과 하나 — 파일당 config 읽기가 «하나» 줄었습니다 (의도 밖, 좋은 쪽)
+```
+옮긴 줄이 self.table_name 을 썼는데 그건 load_global_table_config() 를 부르는 «프로퍼티»입니다
+그 프로퍼티 독스트링: 「파일 처리 경로는 _snapshot_table_context 가 잡은 파일 단위 스냅샷을 사용한다(D1)」
+=> 옛 코드가 처리 경로에서 그 프로퍼티를 파일마다 불렀습니다. 이제 스냅샷 t_name 을 씁니다
+```
+⚠️ 그래서 기존 시험 하나가 «주어가 바뀌어» 빨개졌습니다 — `test_the_hoist_is_what_made_it_cheap…`.
+   그 시험 자기 주석이 「정리된 파일 하나가 config 를 «둘» 읽는다(`_handle_event` 의 self.table_name +
+   `_process_with_retry` 의 스냅샷)」라고 적어 두고 있었고, 제가 «그 첫째»를 없앤 것입니다.
+   계수를 2 → 1 로 고치고 «왜 바뀌었는지»를 시험에 적었습니다. 주장(「배치는 한 번만 낸다」)은 그대로입니다.
+
+## 4. 게이트
+```
+✅ 새 단언 셋: 건너뛸 파일 -> 「New file」 «0» · 읽을 파일 -> «2» 그대로 ·
+   디스패처에 그 호출 «없음»(주석은 남김 — 그래서 단언을 «문구»가 아니라 «호출»에 검)
+✅ FileIngestionLog 는 «안 건드렸습니다» — 로그 줄만 옮겼습니다
+✅ 이름으로 뽑은 이웃 «95파일» -> 1,709 passed · 37 skipped
+✅ 수집 5,517
+⚠️ 빨강 셋 «전부 기존», 제 자리에 안 닿습니다 — 그리고 «둘 다 무덤 부류»입니다:
+   test_dashboard_table_isolation 둘  -> `table_stats` 를 응답에서 «뺀» 것이 `471f66f7`
+      (「drop the per-table counts nothing reads」). 시험이 «주어와 함께» 죽었습니다
+   test_all_three_declared_rules_ship_disabled -> `chain_rules.json.sample` 의 dt_map 규칙이
+      «셋 -> 둘». 마지막으로 그 파일을 바꾼 것이 `6f475bd7` = **S-100 ⓐ** 입니다
+```
+🔴 **둘째는 제 다음 큐(S-100 ⓐ-2)와 «같은 자리»입니다** — ⓐ 가 샘플에서 규칙 하나를 빼면서
+   그것을 세던 시험을 빨갛게 남겼습니다. ⓐ-2 커밋에서 «참인 문장»으로 고치거나 무덤에 넣는 것이
+   맞아 보이는데, 판정 없이 남의 라운드 산출물을 손대지 않겠습니다 — 지시 주시면 그 커밋에 같이 합니다.
+
+## 5. 다음
+```
+S-100 ⓐ-2 (파이썬 클래스 삭제, 다음 배포분) 로 넘어갑니다
+S-112 · S-120 · S-125-b 는 소유자 답 대기
+```
+> 📌 **[09-10 16:04] 이 채널의 미답 질문: 4절의 «S-100 ⓐ 가 남긴 빨강»을 ⓐ-2 에서 같이 고칠지 하나.**
