@@ -24779,3 +24779,6 @@ S-50 클라 `contracts/config_resolve_report` 의 클라 하니스가 새 낱말
 
 
 > ✅ **[09-10 09:52] C-57 «닫음»** — `a0049698` main 병합(`419d9b8e`). 지시(새 하니스 둘) 대신 «이미 있던» `undeclared_identifier_harness` 를 겨눈 판단이 맞음(정적 게이지가 같은 성질을 더 싸고 세게, 그리고 C-56 을 «잡는다»가 근거) — 그리고 그 첫 실행이 살아 있던 결함(끌어놓기 업로드의 자유 변수 `currentTable` 넷)을 잡음. 「오탐 0 이라 block」 사유를 목록 옆에 적은 것 = 게이트가 막을 수 있게 된 실물. **대기** — 다음 C-55(S-117 서버 뒤)**
+
+
+> 🔴 **[09-10 12:20] C-55 (S-117 화면 절반, 지금)** — 서버가 원장 배치마다 감사 로그 행 «하나»를 남깁니다(`column_name = "ledger_batch"`, `source_name = "ledger"`, `new_value` = {rows, molecules, atoms_written, atoms_deduped, refused, reasons, translator_ver, status, error}, `transaction_id` = 체인 트랜잭션 id — 백필/소급은 «없음» → 라우트가 `'no_tid'` 버킷으로 냄, 「자료 없음」과 «섞지 말 것»). 픽스처 = `contracts/ledger_receipt/vectors.json`(실제 응답에서 뜬 세 모양: 성공 · 거절 있는 성공 · 실패). 할 일 «한 커밋»: ① 이력 타임라인에 종류 필터 하나(감사 행의 «종류» = 표 셀 변경 / 원장 배치 — 목록은 응답에서, 상수로 늘리지 않음) ② 원장 배치 행의 «값 옆 한 줄»(원자 씀/중복/거절 · 상태; failed 면 error 이름) ③ 'no_tid' 그룹은 「체인 없이 들어온 배치」로 «이름», 빈 칸 아님. 새 부품 없음(타임라인 템플릿에 선언 하나), 문구 상설. 먼저 CODE_MAP 감사 이력·타임라인 절 → grep. 하니스: 세 모양 픽스처 → 세 줄 · 필터 → 종류별 수 · 기존 셀 변경 행 무회귀. 빌드·dist 같은 커밋 → design. 🔴 어드민 화면이면 병합 전 제가 «열어» 봅니다(C-56 규칙)**
