@@ -29339,3 +29339,58 @@ crud   :2884 (apply_row_update_internal)  column_types 로 걸러 «세고 보�
 S-118 ⓑ 는 「표적 없음」으로 닫혔습니다
 ```
 > 📌 **[09-10] 이 채널의 미답 질문: «없음».**
+
+---
+
+# [09-10] S-119 후속 — 총괄님이 잡으신 빨강 여덟, 그리고 «세 번째 철자» (`a31f5931`)
+
+## 1. 고친 것
+```
+_StubCrud       drop-visibility 스위트의 crud 스텁이 새 함수를 몰랐습니다 (빨강 7)
+                -> «진짜 함수»에 위임합니다. 「어느 컬럼이 써지나」가 그 케이스들의 «주어»라
+                   스텁이 스스로 답하면 둘째 철자입니다 — 제품과 어긋나도 초록일 수 있습니다
+픽스처 «둘»      display_columns 만 적고 column_types 가 «없었습니다» (빨강 1 + 위 7 의 일부)
+                적재 축에서 그건 「이 표엔 컬럼이 하나도 없다」는 뜻이라 «전부» 떨어졌고,
+                세는 케이스가 4 대신 9 를 봤습니다 -> «존재»도 적게 했습니다
+```
+
+## 2. 🔴 그 김에 «세 번째 철자»가 나왔습니다 — 그리고 그게 그 시험이 빨갰던 «이유»였습니다
+```
+test_trace_fixture:303   loadable = display_columns or column_types   <- 셋째 답
+   워처는 display_columns · crud 는 column_types · 이 시험은 그 둘의 «or»
+   그래서 그 단언이 보고하던 것은 «픽스처 결함»이 아니라 «분기 그 자체»였습니다
+   (dt_log 의 여덟 컬럼 — API 는 받고 워처는 버리던 바로 그것들)
+-> 한 함수를 부르게 했고, 그 절반은 «닫혔습니다»
+```
+
+## 3. ⚠️ 그 시험은 «여전히 빨갛습니다». 사유가 «바뀌었다»는 것을 적습니다
+```
+지금의 빨강   「dt_log 헤더가 business_key 도, composite 소스 셋도 안 싣는다」
+            = std_parser 가 err/ 로 보낼 파일 -> 그것이 S-111 이고 이 커밋의 주제가 아닙니다
+🔴 사유가 바뀐 것을 «안 적으면» 다음 사람이 같은 자리를 다시 팝니다. 그래서 적습니다
+```
+
+## 4. 부류로 확인했습니다 (낱개 둘로 끝내지 않았습니다)
+```
+시험 파일 중 display_columns 를 부르는 것  23
+그중 column_types 가 «아예 없는» 것        «1» (test_syn_lot_split_merge_source) -> 돌려 보니 9 passed
+=> 이 부류는 «다 봤습니다». 둘이 아니라 전부입니다
+```
+
+## 5. 게이트
+```
+✅ display_columns · _send_to_upsert · loadable_columns 를 부르는 시험 «전부»: 415 passed / 2 failed
+   빨강 둘 = trace_fixture(S-111, 사유 바뀜) · frame_confirmation_meta(기존) — 총괄님 진단과 같음
+✅ 수집 5,445
+```
+
+## 6. 제 게이트가 왜 못 봤나 (재발 방지)
+```
+제가 돌린 이웃은 「std_parser · undeclared_column_warning · api · outbox …」였고
+«정작 그 로그 문구를 재는» test_ingestion_drop_visibility 를 «안 돌렸습니다».
+제가 그 파일의 문구를 «직접 고쳤는데»도요
+🔴 규칙: 「내가 «문구·상수»를 고쳤으면 그 문구를 «단언하는» 시험을 grep 으로 찾아 돌린다」
+   이번엔 `git grep -l "display_columns" -- server/tests` 한 줄이면 23 개가 다 나왔습니다.
+   지금은 그렇게 돌립니다(위 5절이 그 목록입니다)
+```
+> 📌 **[09-10] 이 채널의 미답 질문: «없음».**
