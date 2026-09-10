@@ -30226,3 +30226,87 @@ scripts/create_bonding_die_from_core_view.py      같음
    후자면 ⓑ의 「키 다섯을 전부 채움」이 성립하지 않고, 답은 «다른 표»이거나 «다른 키»입니다
 ```
 > 📌 **[09-10 15:28] 이 채널의 미답 질문: 4절의 복합키 다섯 하나. (마이그레이션 사실은 판정 253 의 재검토 사유입니다)**
+
+---
+
+# [09-10 15:36] S-127 ①③ 착지 (`089f8d5e`) + S-125 «측정만»
+
+## 1. ①③ — 판정 254 그대로
+```
+① bonding_log.column_types 에 base_id "string" · bx "number" · by "number"
+   복합키·display_columns «안 건드렸습니다». 타입은 void_obs·bonding_core_die 가
+   이미 선언한 것 그대로 (제가 고르지 않았습니다)
+③ test_base_columns_are_declared 되살림 + 참인 문장 «둘째»:
+   test_this_seed_still_cannot_fill_the_shipped_key_and_that_is_not_a_bug_here
+   -> 씨앗이 출하 키 다섯 중 «0» 개를 채운다는 것과, 지어내면 «뜻 없는 키»가 된다는 사유를
+      b_w* = DT 좌표 근거와 함께 시험 안에 박았습니다. 씨앗은 손대지 않았습니다
+```
+
+## 2-pre. 게이트
+```
+✅ 이웃 42파일(bonding_log · 샘플) -> 1,565 passed · 4 skipped
+✅ 수집 5,499
+⚠️ 빨강 «셋»은 기존 — 깨끗한 트리에서도 셋 다 빨강:
+   frame_confirmation_meta · job_column_from_config · trace_fixture
+⚠️ 빨강 «하나»는 «흔들립니다» — test_inv_9_1_atomic_save_event_applies_physical_alter
+   «단독으로 돌리면 통과»하고, «같은 트리 상태의 직전 실행»에서는 초록이었습니다
+   -> 제 변경을 따라가지 않습니다. 스위트 순서 오염(그 모듈들이 crud.TABLE_CONFIG 를
+      갈아끼우고 복원 안 함 — test_void_base_join_fixture 가 자기 픽스처 주석에 적어 둔 그것)
+
+## 2. S-125 «측정 먼저» — 짓지 않았습니다. 잰 것만 올립니다
+
+### ⓐ `q=` 가 «어느 컬럼»을 ILIKE 하나 — 코드에서 (구조. 어느 설치에서나 참)
+`main.apply_search_filter` (main.py:1725). `?cols=` 가 «없으면» 대상은:
+```
+row_id · business_key_val
++ column_types 의 «전부» (created_at · updated_at 만 제외)
++ 가상조인 컬럼 «전부» (column_types 에 없는 것)
+```
+각 컬럼이 `cast(col AS String) ILIKE '%q%'` 한 항이 되고 전부 «OR» 로 묶입니다.
+🔴 **그래서 대상 수가 «선언의 길이»입니다** — 운영자가 컬럼을 하나 더 선언하면 검색이 한 항 늘어납니다.
+
+### ⓑ 그 결과 — 이 박스 `dt_log`(200,215행)에서 EXPLAIN (ANALYZE, BUFFERS) 한 번
+```
+요청 모양                        dt_inventory 조인   ILIKE 항
+평범한 페이지 (q 없음)                    0              0
+q=SYN (범위 없음)                        «6»           «31»
+q=SYN&cols=dt_lot (범위 있음)             0              1
+```
+```
+Execution Time: 2,174 ms      Planning: 21.9 ms
+Seq Scan on dt_log  200,215행   <- 색인이 «구조적으로» 안 걸립니다(선두 % + cast)
+Filter 가 173,976행을 버림      <- 조인을 «다 하고 나서» 버립니다
+dt_inventory 를 «여섯 번» Seq Scan (82,429행 x 6, 해시 6개, 5.2 MB x 6)
+   여섯 조인의 조건이 «전부 같습니다»: dt_log.dt_job = dt_inventory.dt_job
+   가상 컬럼 «하나당 별칭 하나»라서 같은 표를 같은 키로 여섯 번 답니다
+```
+🔴 **여섯 조인과 서른한 항은 «범위 없는 검색»이 «혼자» 만듭니다** — 위 표의 1행과 3행이
+   둘 다 0 입니다. 즉 이건 그리드의 상시 비용이 아니라 «검색창 한 번»의 비용입니다.
+
+### ⓒ 제안 «한 줄»
+```
+선언 칸 `search_columns` 를 표마다 두고, 기본값 = «복합키 컬럼»(없으면 business_key).
+=> 범위 없는 검색이 위 표의 3행이 됩니다 (조인 0 · 항 1~n)
+```
+근거: 범위를 주면 «이미» 0 조인/1 항입니다. 즉 새 기제가 아니라 «기본값»의 문제입니다.
+
+**색인 종류 · 확장** (물어보신 것):
+```
+필요한 것   선두 와일드카드 ILIKE 는 btree 로 «안 됩니다». pg_trgm 의 GIN(gin_trgm_ops)이 그 자리
+확장 권한   🔵 구조: pg_trgm 은 PostgreSQL 13+ 에서 «trusted» 확장이라
+             CREATE EXTENSION 에 «슈퍼유저가 아니라» 그 DB 의 CREATE 권한이면 됩니다
+           ⚠️ 이 박스: PG 18.3 · pg_trgm 이미 설치됨 · 접속 롤이 superuser
+             -> 이 박스는 «비-슈퍼유저 경로를 증명하지 못합니다»
+           🔴 모르는 것: 운영 PG 버전과 앱 롤의 CREATE 권한. 13 미만이면 슈퍼유저가 필요합니다
+색인 대상   문자 컬럼은 `(col)::text` 라 컬럼 색인이 «그대로» 걸립니다
+           숫자 컬럼은 `((col)::varchar)::text` 라 «식 색인»이 따로 필요합니다
+           -> 기본값을 «키 컬럼»으로 두면 대개 문자라 이 문제를 안 만납니다
+```
+⚠️ **짓지 않았습니다.** 위는 전부 측정과 제안이고, 코드는 한 줄도 안 건드렸습니다.
+
+## 3. 다음
+```
+S-125 는 «보고까지»가 지시라 여기서 멈춥니다. 위 ⓒ 제안에 판정 주시면 짓겠습니다
+S-127-b (씨앗의 자기 표) 는 S-120 뒤 판정으로 두신 그대로 대기
+```
+> 📌 **[09-10 15:36] 이 채널의 미답 질문: 2절 ⓒ 의 `search_columns` 기본값 제안 하나.**
