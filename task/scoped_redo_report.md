@@ -30841,3 +30841,43 @@ roleframe 의 거절   raise RoleFrameError(...)  -> 프레임 «전체»가 죽
 ⚠️ 빨강 하나는 기존(이 박스 gitignore 선언의 dt_slot 타입)
 ```
 > 📌 **[09-10 17:03] 이 채널의 미답 질문: «없음».**
+
+---
+
+# [09-10 17:08] S-133 ① 착지 (`ccedc59f`) — 원장이 `supersedes` 의 «첫 writer» 가 됐습니다
+
+## 1. 착지
+```
+자리   _screened_atoms «뒤», store.write_batch «앞» (둘 다 시험이 순서를 박습니다)
+       -> 거절된 분자는 «아무것도 대체하지 않고», 포인터는 그 행이 «실리기 전»에 존재합니다
+질의   store.current_atoms_for_subjects — existing_registrations 의 모양 그대로
+       청크 + (subject_type, subject_keys) IN + DISTINCT ON … ORDER BY occurred_at DESC
+       «one 술어마다 배치당 한 번». one 술어가 없으면 «연결조차 안 엽니다»
+기록   원자는 «안 지웁니다». 나중 사실이 앞 사실을 대체했다는 «포인터»만 붙습니다
+```
+「가장 최근이 곧 현재」인 이유는 데이터에 대한 «가정»이 아니라 «쓰는 방식의 성질»입니다 —
+새 원자가 직전 최신을 가리키므로 사슬이 선형이고 그 머리가 가장 최근 행입니다.
+
+## 2. 조심한 것 둘
+```
+연결   «자기 읽기 연결»을 열고 rollback + close 합니다. 이건 write_batch 가 insert·커서를
+      쥐는 트랜잭션을 열기 «전»에 도는데, 그 위로 두 번째 연결을 물고 있으면
+      쓰는 쪽이 «자기를 기다리는» 모양이 됩니다. 예외가 나도 닫습니다(시험이 겁니다)
+소급   «안 합니다»(S-133-b). 이미 live 원자가 여럿인 주어는 그대로 두고, 앞으로의 새 원자만
+      가리킵니다. 과거 정리는 rescope 의 일입니다
+```
+
+## 3. 게이트
+```
+✅ 새 단언 8 (합 17) · 이웃(이름으로 뽑음) -> 437 passed · 53 skipped · 빨강 «0»
+```
+
+## 4. 남은 것 — ④ «하나»
+```
+걷기 엣지에 cardinality. 자리는 ledger_api/ledger_subgraph.py 의 _edge/_claim_edge 인데,
+그 함수들은 atom.predicate 는 알지만 «어휘(vocabulary)» 를 모릅니다
+-> subgraph(...) 에 컴파일된 어휘를 «넘기는» 배선이 한 겹 필요합니다. 다음 커밋에 그것만
+게이트(전체): 배치 둘(A 뒤 B) -> 걷기에 B 만 · live_claims 가 A 를 «실제로» 뺌 ·
+             같은 배치 A·B -> 거절 1 · many 무변
+```
+> 📌 **[09-10 17:08] 이 채널의 미답 질문: «없음».**
