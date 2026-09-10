@@ -32,7 +32,8 @@ _COUNTS: contextvars.ContextVar = contextvars.ContextVar(
 class _Counts:
     """One group's tally. Plain attributes: this is read once, by the line that prints it."""
 
-    __slots__ = ("view_builds", "reference_resolutions", "maps", "started", "phases")
+    __slots__ = ("view_builds", "reference_resolutions", "maps", "started", "phases",
+                 "stages")
 
     def __init__(self):
         self.view_builds = 0
@@ -40,6 +41,7 @@ class _Counts:
         self.maps: set = set()
         self.started = time.monotonic()
         self.phases: dict = {}
+        self.stages: dict = {}
 
     def summary(self) -> dict:
         return {
@@ -49,6 +51,8 @@ class _Counts:
             "wall_seconds": round(time.monotonic() - self.started, 3),
             "phases": {name: round(seconds, 3)
                        for name, seconds in sorted(self.phases.items())},
+            "stages": {name: round(seconds, 3)
+                       for name, seconds in sorted(self.stages.items())},
         }
 
 
@@ -91,6 +95,37 @@ def phase(name: str):
         yield
     finally:
         counts.phases[name] = counts.phases.get(name, 0.0) + (time.monotonic() - started)
+
+
+@contextlib.contextmanager
+def stage(name: str):
+    """Charge this block's WALL CLOCK to `name` among the group's MACHINERY (S-94, 판정 241).
+
+    🔴 A SECOND LAYER, AND IT HAS TO BE A SECOND DICT. `phase` names what happens INSIDE
+    one alignment view build; this names what the group does AROUND the mapper - reading
+    the outbox, calling the mapper, writing each target table. The mapper call contains
+    every phase, so putting the two in one dict would count the same seconds twice and the
+    line's own remainder would stop being an answer.
+
+    ⚠️ WHY IT IS NOT ANOTHER `mapper_ms`. The batch loop already records a `mapper_ms`
+    for its latency budget, and that name is not true of what it measures: it brackets the
+    WHOLE group body - mapper, writes and outbox together - which is exactly why the ~15 s
+    of chain machinery could not be aimed at. This layer splits that one number, and the
+    stage names say which part is which rather than one of them borrowing the name.
+
+    ⛔ LIKE `phase`, THE BLOCKS MUST NOT NEST INSIDE EACH OTHER, or the sum stops being
+    comparable with the group's wall clock and the unnamed remainder goes negative - the
+    arithmetic saying a cost was filed under something that did not incur it.
+    """
+    counts = _COUNTS.get()
+    if counts is None:
+        yield
+        return
+    started = time.monotonic()
+    try:
+        yield
+    finally:
+        counts.stages[name] = counts.stages.get(name, 0.0) + (time.monotonic() - started)
 
 
 def in_group() -> bool:

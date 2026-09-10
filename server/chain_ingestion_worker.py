@@ -614,10 +614,15 @@ def execute_custom_mapper(module_name: str, function_name: str, db, payload, rul
         # Missing becomes None, never 0: a zero is a VALUE, and the two being confused is
         # the defect this repository spent the day removing elsewhere.
         payload = without_missing(payload)
-        if rule is not None and _mapper_accepts_rule(mapper_func):
-            result = mapper_func(db, payload, rule=rule)
-        else:
-            result = mapper_func(db, payload)
+        # 🔴 ONE SEAT FOR BOTH ARMS (S-94, 판정 241). The group line has to be able to say
+        # how much of its wall clock the MAPPER took, as opposed to the writes and the
+        # outbox read around it; timing the two arms separately would be two spellings of
+        # one number, free to disagree the day a third arm appears.
+        with alignment_batch_counts.stage("mapper"):
+            if rule is not None and _mapper_accepts_rule(mapper_func):
+                result = mapper_func(db, payload, rule=rule)
+            else:
+                result = mapper_func(db, payload)
         # The way out as well: whatever the mapper returns goes on to the write path,
         # which has its own integer columns and would hit the same conversion.
         cleaned = without_missing(result)
@@ -818,7 +823,8 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
     # where the row is read back into that shape, the way `chain_replay._to_payloads`
     # already does it. Per-row events pass through untouched, so a batch with no
     # collapsed event in it issues no query here at all.
-    expanded = outbox_expand.expand_events(db, valid_events)
+    with alignment_batch_counts.stage("outbox read"):
+        expanded = outbox_expand.expand_events(db, valid_events)
 
     # 2. Map of updates grouped by target table
     # target_table -> list of GeneralUpdateItem dicts
@@ -1033,7 +1039,11 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                 # hook that writes on a human's behalf) is how a human-visible write
                 # collapses by accident - the one thing the design says must never
                 # happen. The narrowest possible scope is the whole guarantee.
-                with outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED):
+                # Per TABLE, because a group writing several targets has to be able to
+                # say WHICH one it waited on - one number for "the writes" would leave the
+                # next question unanswerable without another round of measuring.
+                with (alignment_batch_counts.stage("write:%s" % target_table),
+                      outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED)):
                     results, changed_cells, created_logs, deleted_row_ids = crud.apply_batch_updates(
                         db, target_table, batch_data, drop_report=drop_report)
 
@@ -1285,15 +1295,19 @@ def _log_alignment_group_work(tx_id, summary) -> None:
     if not summary or not summary.get("view_builds"):
         return
     phases = summary.get("phases") or {}
-    named = sum(phases.values())
+    stages = summary.get("stages") or {}
     logger.info(
         "[Chain] group %s: view builds %d · reference resolutions %d · distinct maps %d "
-        "· %.3f s%s · unnamed %.3f s",
+        "· %.3f s · MACHINERY%s · unnamed %.3f s"
+        " · INSIDE THE VIEW%s · unnamed %.3f s",
         tx_id, summary["view_builds"], summary["reference_resolutions"],
         summary["distinct_maps"], summary["wall_seconds"],
         "".join(" · %s %.3f s" % (name, seconds)
-                for name, seconds in sorted(phases.items())),
-        max(summary["wall_seconds"] - named, 0.0))
+                for name, seconds in sorted(stages.items())) or " (none named)",
+        max(summary["wall_seconds"] - sum(stages.values()), 0.0),
+        "".join(" · %s %.3f s" % (name, seconds)
+                for name, seconds in sorted(phases.items())) or " (none named)",
+        max(stages.get("mapper", summary["wall_seconds"]) - sum(phases.values()), 0.0))
 
 
 async def process_chain_transaction_group(tx_id, events, db, rules):
