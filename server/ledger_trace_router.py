@@ -233,6 +233,34 @@ def _split_follow(follow):
     return names, keys
 
 
+def _predicate_cardinalities() -> dict:
+    """`{predicate name: "one"|"many"}` from the declaration (S-133 ④, 판정 256).
+
+    🔴 THE SCREEN HAS TO BE ABLE TO SAY 「하나」. A `one` predicate means a subject carries
+    at most one object right now, and the walk is where anybody sees that - but an edge
+    knew only `atom.predicate`, so the answer had to travel with it.
+
+    Read from the same declaration `_static_types` and `_static_step_predicates` read, and
+    keyed by the same unversioned name the edges use. Absent means `many`, which is what
+    every declaration on disk means today, so an edge is never told something the
+    declaration did not say.
+    """
+    try:
+        from ledger import config as _config
+
+        declared = _config.load() or {}
+    except Exception:                                                  # noqa: BLE001
+        # A walk must answer even when the declaration cannot be read; it simply says
+        # nothing about cardinality rather than refusing to draw the graph.
+        return {}
+    cardinalities = {}
+    for key, rule in (declared.get("vocabulary") or {}).items():
+        declared_value = (rule or {}).get("cardinality")
+        if declared_value in ("one", "many"):
+            cardinalities[str(key).split("@", 1)[0]] = declared_value
+    return cardinalities
+
+
 def _followable_predicates():
     """Every predicate a caller may name in `follow` -- read from the DECLARATION, only.
 
@@ -362,7 +390,8 @@ def _evidence_graph(connection, *, node_id, hops, direction,
         node_limit=node_limit, edge_limit=edge_limit, follow=follow,
         follow_keys=follow_keys,
         backbone_hops=backbone_hops, static_types=_static_types(),
-        static_follow=_static_step_predicates(), collect=collect)
+        static_follow=_static_step_predicates(), collect=collect,
+        cardinalities=_predicate_cardinalities())
 
 
 #: How many ledger rows one key-values answer may READ. The scan is bounded, not the

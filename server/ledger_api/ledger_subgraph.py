@@ -473,13 +473,23 @@ def _entity_node(entity_type, keys):
     return node
 
 
-def _edge(edge_type, source, target, *, original_predicate=None):
+def _edge(edge_type, source, target, *, original_predicate=None,
+          cardinality=None):
+    """One edge. `cardinality` is what the DECLARATION says about this
+    predicate (S-133 ④): `one` means the subject carries at most one object
+    right now, so a screen can say so instead of guessing from what it drew.
+
+    ⚠️ `None` MEANS 「the declaration did not say」, which is not the same as
+    `many`. A synthesised edge and an undeclared predicate both land here, and
+    telling a reader `many` about either would be inventing an answer.
+    """
     edge_id = f"ledger-evidence-edge:v1:{_token([edge_type, source, target])}"
     return {
         "id": edge_id, "source": source, "target": target,
         "predicate": edge_type, "predicate_label": edge_type,
         "original_predicate": original_predicate, "witnesses": 1,
         "rank": None, "basis": None, "sources": [], "qualifiers": {},
+        "cardinality": cardinality,
     }
 
 
@@ -911,7 +921,8 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
              node_limit=DEFAULT_NODE_LIMIT, edge_limit=DEFAULT_EDGE_LIMIT,
              action_lookup=None, follow=None,
              backbone_hops=DEFAULT_BACKBONE_HOPS, static_types=None,
-             static_follow=None, follow_keys=None, collect=None):
+             static_follow=None, follow_keys=None, collect=None,
+             cardinalities=None):
     """Return a typed evidence subgraph from any public node id, or from a signed SET.
 
     `seed_id` is one opaque id as before, or `{"positive": [ids], "negative": [ids]}`.
@@ -1080,7 +1091,9 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     #: in a graph whose nodes are things in the world.
     def _claim_edge(atom, source_id, target_id, edge_type):
         edge = _edge(edge_type, source_id, target_id,
-                     original_predicate=atom.predicate)
+                     original_predicate=atom.predicate,
+                     cardinality=(cardinalities or {}).get(
+                         str(atom.predicate).split("@", 1)[0]))
         edge["claim_id"] = atom.id
         edge["occurred_at"] = _instant(atom.occurred_at)
         edge["source_who"] = atom.source_who

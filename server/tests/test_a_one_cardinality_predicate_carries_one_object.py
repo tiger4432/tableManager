@@ -279,3 +279,86 @@ def test_the_lookup_asks_for_the_latest_and_says_why_that_is_the_live_one():
     assert "DISTINCT ON (subject_type, subject_keys)" in body
     assert "occurred_at DESC" in body
     assert "(subject_type, subject_keys) IN" in body, "one query per chunk, not per subject"
+
+
+# ── ④ the walk says which predicates carry one, and drops what was replaced ───
+
+def test_an_edge_carries_the_declared_cardinality():
+    from ledger_api import ledger_subgraph
+
+    edge = ledger_subgraph._edge("holds", "a", "b", cardinality="one")
+
+    assert edge["cardinality"] == "one"
+
+
+def test_an_undeclared_predicate_says_nothing_rather_than_many():
+    """⚠️ `None` MEANS 「the declaration did not say」. A synthesised edge and an undeclared
+    predicate both land here, and telling a reader `many` about either would be inventing
+    an answer the declaration never gave."""
+    from ledger_api import ledger_subgraph
+
+    assert ledger_subgraph._edge("holds", "a", "b")["cardinality"] is None
+
+
+def test_the_router_reads_cardinality_from_the_same_declaration_as_its_siblings():
+    """🔴 ONE SOURCE. `_static_types` and `_static_step_predicates` already read the
+    declaration for the same walk; a second reader with its own idea of what is declared is
+    how two answers about one predicate appear."""
+    import inspect
+
+    import ledger_trace_router
+
+    body = inspect.getsource(ledger_trace_router._predicate_cardinalities)
+
+    assert "from ledger import config as _config" in body
+    assert '(declared.get("vocabulary") or {})' in body
+    # Keyed by the unversioned name, which is the spelling the edges use.
+    assert 'str(key).split("@", 1)[0]' in body
+
+    call = inspect.getsource(ledger_trace_router)
+    assert "cardinalities=_predicate_cardinalities()" in call
+
+
+def test_a_declaration_that_cannot_be_read_still_draws_the_graph():
+    """A walk must answer even when the declaration is unreadable; it simply says nothing
+    about cardinality rather than refusing to draw."""
+    import inspect
+
+    import ledger_trace_router
+
+    body = inspect.getsource(ledger_trace_router._predicate_cardinalities)
+
+    assert "except Exception:" in body
+    assert body.rstrip().endswith("return cardinalities")
+
+
+def test_live_claims_drops_the_atom_a_later_one_replaced():
+    """🔴 THE HALF THAT MAKES ① VISIBLE (게이트, 판정 256). Writing `supersedes` is only
+    worth anything if the walk stops showing what it replaced - and this is the reader that
+    has been waiting for a writer since the column existed."""
+    import ledger_trace
+
+    class _Claim:
+        def __init__(self, claim_id, supersedes=None):
+            self.id = claim_id
+            self.supersedes = supersedes
+
+    old = _Claim("A")
+    new = _Claim("B", supersedes="A")
+
+    live = ledger_trace.live_claims([old, new])
+
+    assert [c.id for c in live] == ["B"], "the replaced atom is gone from the answer"
+
+
+def test_nothing_is_dropped_when_nothing_supersedes():
+    import ledger_trace
+
+    class _Claim:
+        def __init__(self, claim_id):
+            self.id = claim_id
+            self.supersedes = None
+
+    claims = [_Claim("A"), _Claim("B")]
+
+    assert len(ledger_trace.live_claims(claims)) == 2
