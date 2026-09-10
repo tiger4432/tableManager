@@ -29126,3 +29126,69 @@ dt_log  2,000 행 추가 — dt_index 8,000,000~8,001,999 (응용 6.0M · 제 �
 그리고 큐 후보 하나: 「워처가 버리는 컬럼을 API 가 받는다」 — 같은 표에 필터 둘
 ```
 > 📌 **[09-10] 이 채널의 미답 질문: S-94 ⓐ 를 닫는가 하나 (6절).**
+
+---
+
+# [09-10] S-117 착수 전 — 전수 먼저. **지시의 두 칸이 «지금 코드에서 안 맞습니다»**
+
+> 판정 247 「다음 = S-117(원장 배치 → 감사 로그, 큐의 09:19 블록 모양)」.
+> 짓기 «전»에 그 블록의 칸들을 코드에 대고 셌습니다. 여덟 칸 중 «여섯»은 그대로 있고 둘이 안 맞습니다.
+
+## 1. 그대로 있는 것 — 봉투는 «이미» 그 수를 냅니다
+```
+runtime_v2.execute_scoped_batch 가 store.write_batch 뒤에 CursorBatchExecutionResult(preview, written)
+  rows            len(base_rows)
+  molecules       preview.molecule_count
+  atoms_written   written["inserted"]
+  atoms_deduped   written["deduped"]
+  refused         len(preview.refusals)
+  reasons         _refusal_reasons(preview.refusals)
+  translator_ver  preview.translator_version
+  status/error    이 호출의 성패
+⇒ 새 계산 «없습니다». 새 표·라우트도 «없습니다» (지시대로)
+```
+
+## 2. 🔴 안 맞는 칸 ① — 「`transaction_id` = 체인 트랜잭션 id」가 **그 자리에 없습니다**
+```
+원장 후속은 «체인 그룹 안»이 아니라 «자기 루프»입니다
+   run_ledger_followup -> _drain_ledger_followup_sync -> followup.drain_once
+   그 스레드에는 request_transaction_id 가 «안 걸려» 있습니다 (transaction_context 밖)
+다만 «고칠 수 있습니다», 그리고 작습니다:
+   drain_once 는 「한 배치 = 한 «아웃박스 사건»」입니다(자기 docstring, 판정 129 ㉥)
+   그 사건을 큐에 넣는 자리가 chain_ingestion_worker.py:809 이고 «거기엔 event 객체가 있습니다»
+   -> followup.enqueue(table, row_ids, event_type) 에 «네 번째 칸»을 더해 실어 나르면 됩니다
+⚠️ 그리고 «없을 수도 있는» 칸입니다 — backfill.py:350 도 같은 큐에 넣고(소급/백필)
+   거기엔 체인 트랜잭션이 «없습니다». 그건 결함이 아니라 지시가 보이고 싶어 한 그 경우
+   (「어제 백필 자리에서 멈춤」)이므로, 빈 값을 «지어내지 않고» 그대로 비웁니다
+```
+
+## 3. 🔴 안 맞는 칸 ② — 「원자와 «같은 커밋 경계»」와 「`crud.py:1444` 와 «같은 문»」이 **서로 당깁니다**
+```
+원자 쓰기   store.write_batch 가 engine.raw_connection() 위에서 씁니다 (원시 DBAPI, 자기 commit)
+감사 쓰기   crud.create_audit_log 는 «Session» 에 db.add 하고, bulk_insert_audit_logs 도 Session 입니다
+   -> Session 은 그 원시 커넥션의 트랜잭션에 «못 들어갑니다». 둘은 다른 트랜잭션입니다
+✅ 다행인 사실 하나: LedgerStore(db.get_bind()) — 원장과 audit_logs 는 «같은 엔진·같은 DB» 입니다
+   그래서 «기술적으로는» write_batch 의 그 커넥션에서 audit_logs 에 INSERT 할 수 있습니다
+```
+제가 보는 길 셋 (총괄님 한 줄이면 바로 짓습니다):
+```
+ⓐ 같은 커밋   write_batch 에 «감사 행 하나»를 선택 인자로 받아 그 커밋 안에서 INSERT
+             내용은 crud.create_audit_log(..., add_to_cache=False) 가 «그대로» 정합니다(한 철자)
+             컬럼 목록은 models.AuditLog.__table__ 에서 읽어 «손으로 두 번 적지 않습니다»
+             ⚠️ 대신 «그 문»(상설이 지키는 원자의 문) 안에 새 INSERT 가 하나 들어갑니다
+ⓑ 바로 뒤    봉투가 돌아온 «직후» 세션으로 bulk_insert_audit_logs 한 줄
+             문은 «완전히 같은 문»이고 도어는 무접촉. 대신 커밋이 «둘»입니다
+             (원자 커밋 성공 + 감사 실패 = 기록 없는 배치. 반대는 없음 — 순서가 원자 뒤라서)
+ⓒ 기록만    감사 로그 대신 «커서 행의 컬럼»에 남김(row_census 가 이미 그 모양)
+             화면(이력 타임라인)이 못 그립니다 -> 지시의 목적을 못 이룹니다. 제 추천 아님
+```
+🔴 **저는 ⓐ 를 추천하지 않습니다**, 상설이 지키는 문이라서. **ⓑ 를 추천합니다** —
+   지시의 목적(「화면에서 보이게」)을 이루고, 문을 안 건드리고, 잃는 것은 「원자는 들어갔는데
+   기록이 없다」 한 경우뿐입니다. 그리고 그 경우는 «다음 배치의 기록»과 커서로 복원됩니다.
+   다만 「같은 커밋 경계」는 총괄님이 명시하신 칸이라 **제가 바꿔 읽지 않고 여쭙습니다.**
+
+## 4. 안 한 것
+```
+코드 «한 줄도» 안 고쳤습니다. 이건 전수와 판정 요청입니다
+```
+> 📌 **[09-10] 이 채널의 미답 질문: S-117 의 커밋 경계 ⓐ/ⓑ 하나 (3절).**
