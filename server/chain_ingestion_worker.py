@@ -2114,6 +2114,17 @@ def _analyze_stale_tables_sync(db_session_factory):
     # the framework models. Not "every user table", because a shared database may carry
     # relations that are not ours to touch.
     tables = set(crud.TABLE_CONFIG or {}) | set(models.Base.metadata.tables)
+
+    # 🔴 THE LEDGER'S OWN RELATIONS ARE IN SCOPE TOO (판정 16:36). They are declared by
+    # this application - `ledger/schema.py` holds their names and their DDL - and the
+    # walk reads them, so a stale `ledger_source_row_ref` costs the same kind of plan
+    # as a stale dynamic table. They are not in `Base.metadata` because that module
+    # creates them itself.
+    #
+    # ⚠️ THE SPELLING IS `schema.owns_table`, NOT A SECOND LIST HERE. Monthly
+    # partitions are named by month, so which ones EXIST is a fact about the
+    # database; asking it about the names it just reported is how 「existing
+    # partitions only」 is satisfied without generating a single month name.
     if not tables:
         return []
 
@@ -2132,7 +2143,10 @@ def _analyze_stale_tables_sync(db_session_factory):
     finally:
         db.close()
 
-    stale = [(name, int(modified or 0)) for name, modified in rows if name in tables]
+    from ledger import schema as ledger_schema
+
+    stale = [(name, int(modified or 0)) for name, modified in rows
+             if name in tables or ledger_schema.owns_table(name)]
     if not stale:
         logger.info("[Chain] statistics are current on all %d declared table(s) "
                     "(threshold %d modified rows).", len(tables), threshold)

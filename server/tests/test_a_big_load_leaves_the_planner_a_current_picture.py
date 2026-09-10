@@ -399,3 +399,62 @@ def test_the_load_path_and_the_boot_path_share_one_function_and_one_threshold():
     body = inspect.getsource(worker._analyze_stale_tables_sync)
     assert "dw._analyze_after_load(" in body, body[:800]
     assert "dw.analyze_after_rows()" in body
+
+
+def test_the_ledger_owns_its_table_names_and_says_which_are_its_own():
+    """🔴 ONE SPELLING (판정 16:36). Two lists of 「which tables are the ledger's」 drift,
+    and the one a maintenance pass walks is then the one nobody updated - so the module
+    that creates them is the module that names them."""
+    from ledger import schema
+
+    assert schema.FIXED_TABLES == ("ledger_events", "ledger_translator_cursor",
+                                   "ledger_source_row_ref")
+    assert schema.PARTITION_PREFIX == "ledger_events_"
+
+    for name in schema.FIXED_TABLES:
+        assert schema.owns_table(name), name
+    assert schema.owns_table("ledger_events_2026_08"), "a monthly partition is its own"
+    assert not schema.owns_table("dt_log")
+    assert not schema.owns_table("")
+    assert not schema.owns_table(None)
+
+
+def test_only_partitions_that_exist_are_reached_because_the_database_names_them(monkeypatch):
+    """⚠️ EXISTING ONLY, and it falls out of asking rather than generating. Month names are
+    never built here; what is matched is what the statistics view reported, so a month that
+    was never created cannot appear."""
+    import chain_ingestion_worker as worker
+    from parsers import directory_watcher as dw
+
+    monkeypatch.setattr(dw, "analyze_after_rows", lambda: 10000)
+    analysed = []
+    monkeypatch.setattr(dw, "_analyze_after_load",
+                        lambda name, rows, why=None: analysed.append(name) or True)
+
+    class _Session:
+        def execute(self, statement, params=None):
+            class _R:
+                def all(self_inner):
+                    return [("ledger_source_row_ref", 64178),
+                            ("ledger_events_2026_08", 44430),
+                            ("someone_elses_table", 10 ** 9)]
+            return _R()
+
+        def close(self):
+            pass
+
+    worker._analyze_stale_tables_sync(lambda: _Session())
+
+    # ⛔ THE FOREIGN RELATION IS THE POINT OF THE THIRD ROW: it is over the threshold
+    # by a mile and must still not be touched.
+    assert set(analysed) == {"ledger_source_row_ref", "ledger_events_2026_08"}, analysed
+
+
+def test_the_boot_pass_asks_the_ledger_rather_than_listing_its_tables_again():
+    import inspect
+
+    import chain_ingestion_worker as worker
+
+    body = inspect.getsource(worker._analyze_stale_tables_sync)
+    assert "ledger_schema.owns_table(name)" in body, body[-900:]
+    assert "ledger_events" not in body, "the names live in ledger/schema.py, not here"

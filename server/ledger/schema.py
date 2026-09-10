@@ -408,6 +408,29 @@ def partition_name(when: datetime) -> str:
     return f"{LEDGER_TABLE}_{month_bounds(when)[2]}"
 
 
+#: The relations this module creates and owns, by name. One spelling, because two lists of
+#: 「which tables are the ledger's」 drift and the one a maintenance pass walks would then be
+#: the one nobody updated.
+FIXED_TABLES = (LEDGER_TABLE, CURSOR_TABLE, ROW_REF_TABLE)
+
+#: Monthly partitions are named `<LEDGER_TABLE>_<YYYY_MM>` (see `partition_name`), so a
+#: caller that must recognise them without knowing WHICH months exist matches this prefix
+#: against the relations the database actually reports.
+PARTITION_PREFIX = f"{LEDGER_TABLE}_"
+
+
+def owns_table(name: str) -> bool:
+    """Is this relation one of the ledger's own?
+
+    ⚠️ EXISTING PARTITIONS ONLY, and that falls out of asking the DATABASE rather than
+    generating month names: a caller passes what `pg_class` (or a view over it) reported,
+    so a month that was never created cannot be named here.
+    """
+    if not name:
+        return False
+    return name in FIXED_TABLES or name.startswith(PARTITION_PREFIX)
+
+
 def create_partition_sql(when: datetime):
     start, end, _ = month_bounds(when)
     name = partition_name(when)
