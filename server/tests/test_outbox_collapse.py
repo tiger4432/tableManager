@@ -352,6 +352,11 @@ async def test_third_failure_reexpands_instead_of_quarantining_the_chunk(obx, mo
         return False, f"boom:{tx_id}", []
 
     monkeypatch.setattr(ciw, "process_chain_transaction_group", always_fails)
+    # ⚠️ THESE MEASURE RETRY/HOL MECHANICS, NOT THE DEFAULT (S-139). The cap moved
+    # to 1, so the declaration keeps this test's SUBJECT intact - and doubles as
+    # the ruling's gate that 「3 을 적으면 옛 동작」 is literally true.
+    import chain_ingestion_worker as _ciw
+    monkeypatch.setattr(_ciw, "_RULES_DOCUMENT", {"max_group_attempts": 3})
 
     # --- control: a per-row event still quarantines, unchanged ---
     _seed(db, "obxcol_mirror", [_row(9)], "tx-ctl")
@@ -395,6 +400,11 @@ async def test_cheap_retries_come_first(obx, monkeypatch):
         return False, "transient", []
 
     monkeypatch.setattr(ciw, "process_chain_transaction_group", always_fails)
+    # ⚠️ THESE MEASURE RETRY/HOL MECHANICS, NOT THE DEFAULT (S-139). The cap moved
+    # to 1, so the declaration keeps this test's SUBJECT intact - and doubles as
+    # the ruling's gate that 「3 을 적으면 옛 동작」 is literally true.
+    import chain_ingestion_worker as _ciw
+    monkeypatch.setattr(_ciw, "_RULES_DOCUMENT", {"max_group_attempts": 3})
     _seed(db, "obxcol_src", [_row(i) for i in range(3)], "tx-blip", mode=COLLAPSED)
     ev = _events(db, "obxcol_src", "tx-blip")[0]
 
