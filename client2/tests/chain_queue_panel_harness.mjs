@@ -19,7 +19,8 @@
 //    number that stops being drawn is rule ② with the sign flipped.
 //
 // Run: node client2/tests/chain_queue_panel_harness.mjs
-import { queueView, formatAge, STATUS, ChainQueuePanel } from '../src/chain_queue_panel.js';
+import { queueView, formatAge, STATUS, MINUTE_SECONDS, ChainQueuePanel } from '../src/chain_queue_panel.js';
+import { ABSENT } from '../src/absent.js';
 
 let pass = 0;
 const failures = [];
@@ -589,6 +590,87 @@ console.log('\n[8] the owner split, and unknown is not chain');
   //    스타일이 둘 중 하나를 «조용히» 잘못 그린다.
   eq('G10 it does not land on the pickup line class',
     byClass(drawnAs({ generated_at: AT }), 'chain-queue-headline-basis').length, 0);
+}
+
+
+// ═══ C-61: 「도는 체인 3」 이 「걸린 것 3」 과 «같은 픽셀»이었다 ═══════════════════════════
+// 🔴 소유자 09-10: 「가짜 running 3개 남아있음」. 수는 그것을 말할 수 없다 — 방금 시작한
+//    셋과, 41분째 등록부에 남아 있는 셋이 «같은 3»이다. 가르는 것은 «나이»이고, 서버는
+//    항목마다 `running_seconds` 를 이미 싣고 있었다(`chain_activity.py` `snapshot()`).
+//    그래서 이 블록이 재는 것은 「없던 것을 지었나」가 아니라 「오던 것을 읽나」다.
+// 🔴 픽스처는 «셋이 서로 다른 답을 내야» 한다: 0초(방금) · 12초(막 도는 중) · 2,460초(41분).
+//    셋이 다 같은 나이면 「최장」이 «최대»인지 «첫 항목»인지, 줄 기준이 도는지가 안 갈린다.
+{
+  const RUNNING_THREE = [
+    { rule: 'just_started', mapper: 'm1', target_table: 't', rows_in: 1, running_seconds: 0 },
+    { rule: 'warming_up', mapper: 'm2', target_table: 't', rows_in: 2, running_seconds: 12 },
+    { rule: 'stuck_since_lunch', mapper: 'm3', target_table: 't', rows_in: 3, running_seconds: 2460 },
+  ];
+  const BODY = (over) => ({
+    waiting: 0, oldest_waiting_seconds: null, waiting_by_owner: [], retried_among_waiting: 0,
+    loop_in_this_process: true, running: [], ...over,
+  });
+  const viewOf = (over) => queueView(BODY(over));
+  const drawn = (over) => {
+    const d = makeDoc();
+    const host = d.createElement('div');
+    new ChainQueuePanel(host, { doc: d }).render(BODY(over));
+    return host;
+  };
+
+  // ── the count keeps its meaning, and gains the one fact it could not carry ──
+  const three = viewOf({ running: RUNNING_THREE });
+  ok('C1 the count is still there', three.running.includes('3'), three.running);
+  ok('C2 ...and now says how old the oldest is', three.running.includes('41분'), three.running);
+  // 🔴 C3 IS THE DISCRIMINANT. `[0]` and `max` agree on the server's order, so a fixture in
+  //    server order cannot tell "took the maximum" from "took the first". Reversed, it can.
+  eq('C3 「최장」 is the MAXIMUM, not whichever came first',
+    viewOf({ running: [...RUNNING_THREE].reverse() }).running, three.running);
+  // ⚠️ 세 상태. 나이가 하나도 안 읽히면 조각이 «안 붙는다» — 「0초」도 「모름」도 아니다.
+  const ageless = viewOf({ running: [{ rule: 'r' }, { rule: 'r2' }] });
+  ok('C4 an entry with no age adds no 「최장」 at all', !ageless.running.includes('최장'),
+    ageless.running);
+  ok('C5 ...and the count of them is still drawn', ageless.running.includes('2'), ageless.running);
+  ok('C6 NEGATIVE CONTROL: an empty running list draws no 「최장」 either',
+    !viewOf({ running: [] }).running.includes('최장'), viewOf({ running: [] }).running);
+
+  // ── the lines: one per item OLDER THAN A MINUTE, and they carry the subject ──
+  eq('C7 only the ones past a minute get a line', 1, three.runningOld.length);
+  eq('C8 ...and the line names the rule, which is what an operator searches by',
+    'stuck_since_lunch', three.runningOld[0].rule);
+  eq('C9 ...beside its age', '41분', three.runningOld[0].age);
+  // 🔴 C10: the boundary is ONE constant shared with `formatAge`, so 「분 단위를 넘는다」 and
+  //    「초로 안 끝난다」 cannot drift apart. Measured AT the boundary, both sides.
+  eq('C10 exactly at the boundary counts as past it', 1,
+    viewOf({ running: [{ rule: 'r', running_seconds: MINUTE_SECONDS }] }).runningOld.length);
+  eq('C11 ...and one second under it does not', 0,
+    viewOf({ running: [{ rule: 'r', running_seconds: MINUTE_SECONDS - 1 }] }).runningOld.length);
+  // ⚠️ 이름이 안 오면 「—」다. `String(undefined)` 는 화면에 "undefined" 라는 «있지도 않은
+  //    규칙 이름»을 띄우고, 운영자를 없는 것을 찾으러 보낸다.
+  eq('C12 a rule that did not arrive is ABSENT, never the word "undefined"', ABSENT,
+    viewOf({ running: [{ running_seconds: 900 }] }).runningOld[0].rule);
+
+  // ── on the screen, not only in the view model ──
+  const lines = byClass(drawn({ running: RUNNING_THREE }), 'chain-queue-headline-running-old');
+  eq('C13 the line is painted', 1, lines.length);
+  ok('C14 ...carrying both the rule and the age',
+    !!lines[0] && lines[0].textContent.includes('stuck_since_lunch')
+      && lines[0].textContent.includes('41분'), lines[0] && lines[0].textContent);
+  eq('C15 NEGATIVE CONTROL: three fresh chains paint no such line at all', 0,
+    byClass(drawn({ running: RUNNING_THREE.slice(0, 2) }), 'chain-queue-headline-running-old').length);
+  // ⚠️ 이름 충돌 — G10 과 같은 이유. 「도는 체인」 줄 자체를 이 클래스로 잡으면 스타일이
+  //    한 줄을 두 뜻으로 그린다.
+  eq('C16 it does not land on the running-count line class', 1,
+    byClass(drawn({ running: RUNNING_THREE }), 'chain-queue-headline-running').length);
+
+  // 🔴 C17/C18 SPLIT THE SEAM. The listing rule (「분 단위를 넘으면」) and `formatAge`'s unit
+  //    switch (「초로 안 끝나면」) are the SAME boundary, and they now read one constant. A
+  //    mutation that moves the constant moves BOTH sides together and stays green — which is
+  //    exactly why the assertion is written against the constant rather than against 60: what
+  //    must be caught is the day someone writes the literal back into one of the two.
+  eq('C17 the constant IS the one formatAge switches on', '1분', formatAge(MINUTE_SECONDS));
+  eq('C18 ...and one second under it is still seconds',
+    `${MINUTE_SECONDS - 1}초`, formatAge(MINUTE_SECONDS - 1));
 }
 
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);

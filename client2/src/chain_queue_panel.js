@@ -44,12 +44,18 @@
 //    `.table-row` styles — a diagnostic panel is not a reason to grow a second table style.
 
 /** The status tokens `admin.html`'s `.health-dot` already understands. */
-import { countText } from './absent.js';
+import { ABSENT, countText } from './absent.js';
 import { countWithAbsence } from './count_with_absence.js';
 import { pickupState } from './pickup_state.js';
 import { retroactiveNote } from './retroactive_note.js';
 
 export const STATUS = Object.freeze({ OK: 'ok', NEUTRAL: 'loading', UNAVAILABLE: 'warn' });
+
+// 🔴 THE MINUTE IS ONE CONSTANT, READ FROM TWO PLACES. `formatAge` switches off 「초」
+//    here, and C-61 lists a running chain 「나이가 분 단위를 넘으면」 — the SAME question.
+//    Written as two literals they can be edited apart, and the day they are, the panel
+//    lists an item whose age it still draws in seconds.
+export const MINUTE_SECONDS = 60;
 
 /**
  * Seconds -> a duration a person reads at a glance. Total: a non-finite input is `null`,
@@ -67,7 +73,7 @@ export function formatAge(seconds) {
   const n = Number(seconds);
   if (!Number.isFinite(n) || n < 0) return null;
   const s = Math.floor(n);
-  if (s < 60) return `${s}초`;
+  if (s < MINUTE_SECONDS) return `${s}초`;
   const m = Math.floor(s / 60);
   if (m < 60) return s % 60 ? `${m}분 ${s % 60}초` : `${m}분`;
   const h = Math.floor(m / 60);
@@ -225,6 +231,34 @@ export function queueView(payload, opts = {}) {
     sees === false ? { unread: '이 프로세스에 루프 없음' }
       : sees === true ? { value: running, absence: 'truly_none' }
         : { unread: '모름' });
+  // 🔴 C-61 (소유자 09-10: 「가짜 running 3개 남아있음」). A COUNT CANNOT SEPARATE 「걸린 것」
+  //    FROM 「가짜」 — both draw the same 「도는 체인 3」. What separates them is AGE, and the
+  //    server has carried `running_seconds` on every entry all along (`chain_activity.py`
+  //    `snapshot()`); nothing read it. So there is no new route and no new field here — only
+  //    a reader.
+  // ⚠️ 세 상태 그대로: 나이가 읽히면 값 · 안 읽히면 «안 그림»(0 으로 접지 않습니다 —
+  //    「방금 시작함」은 「나이를 모름」의 반대 사실입니다) · 목록이 비면 아무것도 없음.
+  const runningItems = Array.isArray(payload.running) ? payload.running : [];
+  const runningAges = runningItems
+    .map((r) => Number(r && r.running_seconds))
+    .filter((v) => Number.isFinite(v) && v >= 0);
+  const longestRunning = runningAges.length ? formatAge(Math.max(...runningAges)) : null;
+  // 🔴 ONLY THE ONES OLDER THAN A MINUTE GET A NAME. Listing everything buries the subject
+  //    the operator is looking for (the rule name they will take to `pg_stat_activity`)
+  //    under the chains that are merely running. The server sorts `running` by `started`
+  //    ascending, so this list is ALREADY oldest-first and is not re-sorted — same rule as
+  //    the waiting list below: the server order IS the answer.
+  // ⛔ 판정 낱말 없음. 「멈춤」·「가짜」는 이 화면이 알 수 없는 것이고, 나이가 그것을 묻는
+  //    사람의 재료입니다 — 문턱을 색으로 칠하지 않는 규칙 ③ 그대로.
+  const oldRunning = runningItems
+    .filter((r) => Number(r && r.running_seconds) >= MINUTE_SECONDS)
+    .map((r) => Object.freeze({
+      // A rule that did not arrive is 「모름」, never the string "undefined" — this name is
+      // the whole point of the line, so inventing one would send someone hunting a rule
+      // that does not exist.
+      rule: r && r.rule ? String(r.rule) : ABSENT,
+      age: formatAge(r.running_seconds),
+    }));
   let headline;
   if (secs === null || secs === undefined) {
     headline = { main: '대기 없음', sub: '기다리는 행이 «없습니다». 「0초」와 다릅니다 — 0초는 '
@@ -328,7 +362,12 @@ export function queueView(payload, opts = {}) {
     reason: '',
     headline: Object.freeze(headline),
     failed,
-    running: `도는 체인 ${runningCell.text}`,
+    // 🔴 C-61. 「최장」은 수 «옆»에 붙습니다 — 따로 줄을 만들면 운영자가 수를 먼저 읽고
+    //    「3 개 돈다, 정상」으로 판정한 «뒤»에 나이를 봅니다. 나이가 읽히는 것이 하나도
+    //    없으면 이 조각은 «안 붙습니다»(0 으로도, 「모름」으로도 지어내지 않습니다).
+    running: `도는 체인 ${runningCell.text}`
+      + (longestRunning ? ` · 최장 ${longestRunning}` : ''),
+    runningOld: Object.freeze(oldRunning),
     logName: logName ? `로그 ${logName}` : '',
     // 🔴 S-20. `logName` 과 «같은 모양»입니다 — 낱말은 여기서 한 번 붙고, 빈 문자열이
     //    「안 그린다」입니다. 그리는 쪽이 다시 판정하지 않습니다.
@@ -419,6 +458,12 @@ export class ChainQueuePanel {
     // 🔴 「도는 것이 보인다」. 빈 목록이 「없다」로 읽히지 않게, 그 0 이 무엇의 0 인지가
     //    «부품»에서 같이 나옵니다. 문장이 아니라 낱말 하나입니다.
     if (view.running) head.appendChild(this._line('chain-queue-headline-running', view.running));
+    // 🔴 C-61. 「최장」이 「걸린 것이 있다」를 말하고, 이 줄들이 «어느 것인지»를 말합니다.
+    //    「주인 없음」 줄과 «같은 모양»입니다 — 이름 · 나이, 그리고 판정은 운영자의 것.
+    for (const item of view.runningOld) {
+      head.appendChild(this._line('chain-queue-headline-running-old',
+                                  `${item.rule} · ${item.age}`));
+    }
     // 🔴 「어느 프로세스인가」는 이 패널이 거절할 때 이미 말합니다. 그 «옆 칸»이 이것입니다.
     if (view.logName) head.appendChild(this._line('chain-queue-headline-log', view.logName));
     if (view.restart) head.appendChild(this._line('chain-queue-headline-restart', view.restart));
