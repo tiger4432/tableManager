@@ -1547,12 +1547,26 @@ class VirtualColumnBinder:
 def _order_by_clause(expr, tie, order_desc):
     """`ORDER BY` for one sort: the column, then `row_id` to break its ties.
 
-    🔴 AN EMPTY VALUE GOES LAST IN BOTH DIRECTIONS. Ascending, SQL puts NULLs first on
-    PostgreSQL; descending, it puts them first too - so an operator sorting a
-    half-filled column met a page of blanks whichever arrow they pressed, and the rows
-    they were looking for were on page two. "Last" is not a preference between two
-    orders: a blank is the ABSENCE of a value, so it does not belong at either end of
-    the values - it belongs after them.
+    ⚰️ THIS CARRIED A FALSE SENTENCE ABOUT POSTGRESQL AND IT COST 0.7 s A PAGE (S-131).
+    The version added by `8e462875` (A-6-c) said 「Ascending, SQL puts NULLs first on
+    PostgreSQL; descending, it puts them first too」. Both halves are wrong. PostgreSQL
+    treats NULL as LARGER than every value, so the defaults are:
+
+        ORDER BY x ASC   ->  NULLS LAST      (already what A-6-c wanted)
+        ORDER BY x DESC  ->  NULLS FIRST
+
+    So the ascending `.nullslast()` was a no-op, and the descending one asked for an
+    ordering NO INDEX PROVIDES - `idx_<t>_updated (updated_at, row_id)` can be walked
+    Backward for `DESC`, but not for `DESC NULLS LAST`. The planner therefore stopped
+    using it and sorted the table instead: the owner measured 0.6 -> 1.7 s across the
+    pull that carried that commit, and 440,000 rows spent 0.7 s choosing a page of ids
+    while the index sat there being ignored.
+
+    🔴 SO THE DEFAULT IS WHAT THIS ASKS FOR NOW - no `nullslast()` in either direction.
+    The half of A-6-c that is genuinely lost is descending order on a half-filled column,
+    where blanks come first; that is a display preference measured against 0.7 s on every
+    table, and the answer to it is an index that declares the order, not a clause that
+    forbids the index. Queued as A-6-c-b.
 
     ⚠️ ONE CLAUSE, NOT TWO. `_named_sort` and `resolve_sort` each built this list by
     hand, so the rule would have had to be written twice and could then be true in one
@@ -1560,7 +1574,7 @@ def _order_by_clause(expr, tie, order_desc):
     is the primary key and never NULL, so the tie-break needs nothing.
     """
     ordered = expr.desc() if order_desc else expr.asc()
-    return [ordered.nullslast(), tie.desc() if order_desc else tie.asc()]
+    return [ordered, tie.desc() if order_desc else tie.asc()]
 
 
 def _named_sort(table_model, order_by, order_desc):

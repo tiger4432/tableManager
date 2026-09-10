@@ -235,20 +235,55 @@ def _tail_value(env, order_desc):
     return _vals(rows, "dt_lot")[-1]
 
 
-def test_a_blank_value_sorts_last_ascending(env):
-    _push(env, [{"row_key": "BLANK_A", "core_lot": "L", "core_slot": "1"}])
+# ⚰️ THE TWO A-6-c BLANK-ORDER CASES ARE RETIRED (S-131, 판정 16:12) - and what retired
+# them is that they were measuring THE TEST ENGINE, not the product.
+#
+# They asserted that a blank lands last in BOTH directions, which `_order_by_clause`
+# delivered with `.nullslast()`. Measured 2026-09-10, the two engines are exact opposites:
+#
+#                       ORDER BY x ASC        ORDER BY x DESC
+#     SQLite (suite)    NULLs FIRST           NULLs LAST
+#     PostgreSQL (prod) NULLs LAST            NULLs FIRST
+#
+# So on PostgreSQL the ascending `.nullslast()` was a NO-OP - the default already did it -
+# while the descending one asked for an order no index provides, and the planner stopped
+# using `idx_<t>_updated` and sorted the table instead. Measured on this box's dt_log
+# (200,215 rows), same session, in-process: 211.2 ms with a Sort node against 0.257 ms on
+# an Index Only Scan Backward. The owner saw 0.6 -> 1.7 s across the pull that carried it.
+#
+# 🔴 AND THESE TWO CASES COULD NEVER HAVE CAUGHT THAT, because on SQLite they answer the
+# opposite way round: ascending passed here only because the clause was doing work this
+# engine needed and production did not. A guard whose verdict flips with the driver is not
+# measuring the product - it is the class this suite already wrote down as 「SQLite accepts
+# what Postgres refuses」, arriving from the other side.
+#
+# What replaces them is the true statement: the clause carries NO nulls directive, so the
+# engine's own default decides. The DISPLAY half that is genuinely lost - descending a
+# half-filled column opens on blanks, on PostgreSQL - is queued as A-6-c-b, whose answer is
+# an index that declares the order rather than a clause that forbids the index.
 
-    assert _tail_value(env, "false") in ("", None), (
-        "a blank must come after every value ascending")
 
+def test_the_sort_carries_no_nulls_directive_so_the_index_can_answer_it():
+    """🔴 THE PROPERTY, NOT THE ROW ORDER. Row order here would be SQLite's answer and
+    production runs PostgreSQL; what has to hold on every engine is that the clause does
+    not ask for an ordering outside the index's own."""
+    import main
+    from sqlalchemy import Column, String
+    from sqlalchemy.orm import declarative_base
 
-def test_a_blank_value_sorts_last_descending_too(env):
-    """The half that makes it a RULE rather than a direction. If "last" held only one
-    way, the other arrow would still open on a page of blanks."""
-    _push(env, [{"row_key": "BLANK_D", "core_lot": "L", "core_slot": "1"}])
+    base = declarative_base()
 
-    assert _tail_value(env, "true") in ("", None), (
-        "a blank must come after every value descending too")
+    class _Row(base):
+        __tablename__ = "a6_clause_probe"
+        row_id = Column(String, primary_key=True)
+        dt_lot = Column(String)
+
+    for descending in (True, False):
+        clause = main._order_by_clause(_Row.dt_lot, _Row.row_id, descending)
+        rendered = " ".join(str(c) for c in clause).upper()
+
+        assert "NULLS" not in rendered, rendered
+        assert len(clause) == 2, "the column, then row_id to break its ties"
 
 
 def test_a_table_with_no_blank_value_is_ordered_exactly_as_before(env):
