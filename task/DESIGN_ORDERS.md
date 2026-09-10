@@ -24782,3 +24782,6 @@ S-50 클라 `contracts/config_resolve_report` 의 클라 하니스가 새 낱말
 
 
 > 🔴 **[09-10 12:20] C-55 (S-117 화면 절반, 지금)** — 서버가 원장 배치마다 감사 로그 행 «하나»를 남깁니다(`column_name = "ledger_batch"`, `source_name = "ledger"`, `new_value` = {rows, molecules, atoms_written, atoms_deduped, refused, reasons, translator_ver, status, error}, `transaction_id` = 체인 트랜잭션 id — 백필/소급은 «없음» → 라우트가 `'no_tid'` 버킷으로 냄, 「자료 없음」과 «섞지 말 것»). 픽스처 = `contracts/ledger_receipt/vectors.json`(실제 응답에서 뜬 세 모양: 성공 · 거절 있는 성공 · 실패). 할 일 «한 커밋»: ① 이력 타임라인에 종류 필터 하나(감사 행의 «종류» = 표 셀 변경 / 원장 배치 — 목록은 응답에서, 상수로 늘리지 않음) ② 원장 배치 행의 «값 옆 한 줄»(원자 씀/중복/거절 · 상태; failed 면 error 이름) ③ 'no_tid' 그룹은 「체인 없이 들어온 배치」로 «이름», 빈 칸 아님. 새 부품 없음(타임라인 템플릿에 선언 하나), 문구 상설. 먼저 CODE_MAP 감사 이력·타임라인 절 → grep. 하니스: 세 모양 픽스처 → 세 줄 · 필터 → 종류별 수 · 기존 셀 변경 행 무회귀. 빌드·dist 같은 커밋 → design. 🔴 어드민 화면이면 병합 전 제가 «열어» 봅니다(C-56 규칙)**
+
+
+> ✅ **[09-10 12:49] C-55 «닫음»** — `e05928a6` main 병합(`eaad5fcd`), 라이브 main-DLW52IMu. 제가 브라우저로 메인 화면을 «열어» 확인: 콘솔 참조 오류 0(401 은 토큰 없는 어드민 라우트, 이름 대어 정상), 타임라인에 종류 LEDGER 행과 `ledger_batch` 영수증 줄이 «실제로» 그려짐. 「필터 목록이 응답에서 자동으로 LEDGER 를 얻는다」 = 목록을 늘리지 않은 실물, 'no_tid' 를 이름으로 그린 것 맞음. 판정: ④ `history_paging_harness` import 전환 = **C-58**(별도 라운드, 낮음 — 지금 아님) · `atoms_withdrawn` 은 «서버 영수증에 그 칸이 생길 때»(rescope 길이 영수증을 남기면) 같이 — 지금 안 넣음(없는 칸을 화면이 먼저 그리지 않음, 재료 없이 채택된 계약 금지). **대기**(다음: 소유자 답 뒤 S-112/S-120 화면 또는 C-41)**
