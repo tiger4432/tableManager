@@ -30495,3 +30495,65 @@ S-100 ⓐ-2 (파이썬 클래스 삭제, 다음 배포분) 로 넘어갑니다
    test_all_three_declared_rules_ship_disabled 를 빨갛게 남겼습니다 — ⓐ-2 에서 같이 고칠지
 ```
 > 📌 **[09-10 16:19] 이 채널의 미답 질문: S-100 ⓐ 가 남긴 빨강을 ⓐ-2 에서 같이 고칠지 하나.**
+
+---
+
+# [09-10 16:30] S-131 착지 (`9354f97c`) — 인덱스가 답할 수 있는 순서로 되돌렸습니다
+
+## 1. 고침 — 한 줄, 그리고 «틀린 문장» 정정
+```
+_order_by_clause 의 .nullslast() 제거. ASC/DESC 모두 PG 기본 = 인덱스 순서
+그 함수 독스트링의 「PostgreSQL 은 ASC 도 NULL 을 앞에 둔다」를 «무덤 주석»으로 정정
+```
+
+## 2. 인과를 «같은 세션에서» 재서 붙입니다 (in-process 되돌리기)
+이 박스 `dt_log` 200,215행, 제품 질의 모양(`resolve_sort` 가 만든 그대로), DESC:
+```
+8e462875 모양(.nullslast)   Parallel Index Only Scan + «Sort 노드»    211.204 ms
+이번 커밋                    Index Only Scan «Backward», Sort 없음        0.257 ms
+```
+🔴 인덱스를 «읽고 나서 전부 정렬»합니다 — 소유자의 「pull 뒤 0.6 → 1.7 s」와 같은 모양입니다.
+   ASC 쪽은 기본이 이미 NULLS LAST 라 «무효»였고, DESC 쪽만 인덱스를 죽였습니다.
+
+## 3. 🔴 그런데 A-6-c 의 시험 둘은 «이걸 잡을 수가 없었습니다» — 시험 엔진을 재고 있었습니다
+```
+                  ORDER BY x ASC     ORDER BY x DESC
+SQLite (스위트)    NULL «앞»          NULL «뒤»
+PostgreSQL (운영)  NULL «뒤»          NULL «앞»
+=> 정확히 «반대»입니다
+```
+그래서 `8e462875` 의 「PostgreSQL 은 ASC 도 NULL 을 앞에 둔다」는 **SQLite 를 재고 PostgreSQL 이라
+적은 문장**입니다. 그리고 오름차 시험이 스위트에서 통과한 이유는 그 절이 «SQLite 에만 필요한 일»을
+했기 때문입니다 — 운영에는 필요 없었습니다.
+🔴 **판정이 드라이버에 따라 뒤집히는 가드는 제품을 재는 것이 아닙니다.** 둘 다 은퇴시키고,
+   «어느 엔진에서나 참인 성질»로 바꿨습니다 — 「이 절은 NULLS 지시를 싣지 않는다(= 인덱스 순서가 답한다)」.
+⚠️ 진짜로 잃은 것은 「PG 에서 반만 찬 컬럼을 DESC 로 정렬하면 빈 칸이 앞」이고, 그건 지시하신 대로
+   A-6-c-b 로 큐에 있습니다(답은 «선언에 맞춘 인덱스»이지 인덱스를 막는 절이 아닙니다).
+
+## 4. 게이트
+```
+✅ 제품 질의 모양(resolve_sort 그대로) EXPLAIN:
+   DESC -> Index Only Scan «Backward» using idx_dt_log_updated · Sort 노드 «없음» · 0.591 ms
+   ASC  -> Index Only Scan using idx_dt_log_updated             · Sort 노드 «없음» · 0.223 ms
+✅ /data/count 는 정렬을 안 하므로 무접촉
+✅ 이름으로 뽑은 이웃 42파일 -> 840 passed · 3 skipped
+⚠️ 빨강 2 + 에러 12 = «전부 한 파일» test_ontology_config_explorer.py, 그리고 «기존»입니다:
+   사유 = 이 박스의 «라이브(gitignore) 원장 선언» — dt_log 의 bind 가 event_time 을 가리키는데
+   EventFrame 스키마에 그 컬럼이 없음. 제 자리에 안 닿습니다
+```
+🔴 **제 첫 계측이 틀렸던 것도 적어 둡니다** — 처음에 `resolve_sort` 의 반환 절을
+   «query 에 안 걸고» EXPLAIN 해서 ORDER BY 가 없는 계획(pkey 스캔)을 읽었습니다.
+   총괄께서 앞서 겪으신 것(손으로 쓴 질의라 NULLS LAST 가 빠짐)과 «같은 부류»입니다 —
+   계측기는 «제품이 만드는 문장»을 그대로 태워야 합니다.
+
+## 5. 안 건드린 것 «이름 대어»
+```
+retroactive.py:964 이 같은 .nullslast() 를 씁니다(관리 화면 목록, RetroactiveRun.started_at).
+지시 밖이고 그 표는 작아서 «그대로 뒀습니다» — 다음 사람이 「여기만 있었다」고 읽지 않도록 적습니다
+```
+
+## 6. 다음
+```
+S-130 → S-100 ⓐ-2(+ chain_rules.json.sample 의 빨강을 「선언된 규칙 전부 disabled 로 출하」 술어로)
+```
+> 📌 **[09-10 16:30] 이 채널의 미답 질문: «없음».**
