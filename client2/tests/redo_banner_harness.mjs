@@ -25,6 +25,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import vm from 'node:vm';
+import { scoreMutants } from './lib/mutation_scorer.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC_PATH = join(HERE, '..', 'src', 'redo_banner.js');
@@ -543,13 +544,32 @@ const CONTROLS = [
     .join('\n')],
 ];
 
-async function score(list, mustCatch, heading) {
-  console.log(`\n── ${heading} ─────────────────────────────`);
-  let hit = 0;
-  for (const [name, mutate] of list) {
+// 🔴 C-66 ②ⓑ. WHICH CHECK MUST CATCH WHICH MUTANT — MEASURED, NOT DECIDED. Every pairing here
+//    was read off ⓐ's own run (the "by R#" line it prints under each verdict), so this table
+//    records what the corpus DOES rather than what I think it ought to do. Writing it from
+//    intuition is how a mutant comes to name an assertion that never fires: the corpus stays
+//    green, and the line it was supposed to guard is unmeasured.
+// ⚠️ It sits beside the mutants rather than inside each literal on purpose -- those literals
+//    carry the commentary explaining each defect, and threading a field through them would bury
+//    it. One table, one place to look, one place to correct.
+// 🔵 EIGHT CHECKS ARE NAMED BY NOBODY: R4, R8, R10, R11, R13, R17, R18, R20. They are not dead
+//    -- they run on the baseline and would redden it -- but no mutant proves they can still
+//    fail. That is a measurement, reported rather than papered over.
+const CATCHES = {
+  M1: 'R1', M2: 'R2', M3: 'R3', M4: 'R6', M5: 'R7', M6: 'R5', M7: 'R3', M8: 'R9',
+  M9: 'R12', M10: 'R14', M11: 'R15', M12: 'R16', M13: 'R21', M14: 'R22', M15: 'R19',
+  M16: 'R23', M17: 'R24',
+};
+/** `['M1 …', fn]` -> the shape `lib/mutation_scorer.mjs` scores. */
+const named = (list) => list.map(([name, mutate]) => ({
+  name, mutate, catches: CATCHES[String(name).split(' ')[0]],
+}));
+
+async function runMutant({ name, mutate }) {
+  {
     let bad = false;
     const woke = [];   // the NAMED checks that did not hold -- ⓐ of C-66
-    try {
+    {
       const M = load(mutate(SOURCE));
       const rows = [envelope({ lot_id: 'L1', wafer_id: 'W1' }),
                     envelope({ lot_id: 'L1', wafer_id: 'W2' }),
@@ -617,20 +637,33 @@ async function score(list, mustCatch, heading) {
       });
       drop.setRelation('dt_log');
       drop.render();
+      // 🔴 C-66 ②ⓑ. TOTAL FROM HERE DOWN, AND THAT IS WHAT LETS R14/R15 SPEAK. M10 and M11 make
+      //    an inside click or a stray key CLOSE the panel -- which is exactly what those two
+      //    checks are for -- but the next line then reached into a panel that was gone and threw,
+      //    so the whole scoring block died and the crash was banked as the catch. `survived*` are
+      //    read BEFORE that point, so the facts were already known; nothing but a dereference
+      //    stood between them and being reported by name.
       const armedClosed = doc2.listenerCount();
-      const openIt = () => buttons(drop.host).find((b) => b.dataset.redo === 'ledger').click();
+      const firstGroup = () => byClass(drop.host, 'redo-panel__group')[0] || null;
+      const openIt = () => {
+        const b = buttons(drop.host).find((x) => x.dataset.redo === 'ledger');
+        if (b) b.click();
+      };
       const stillOpen = () => byClass(drop.host, 'redo-panel').length === 1;
       openIt();
       const armedOpen = doc2.listenerCount();
-      doc2.fire('mousedown', { target: byClass(drop.host, 'redo-panel__group')[0] });
+      doc2.fire('mousedown', { target: firstGroup() });
       const survivedInsideClick = stillOpen();
       doc2.fire('keydown', { key: 'a' });
       const survivedOtherKey = stillOpen();
-      byClass(drop.host, 'redo-panel__group')[0].click();
-      const saidWhilePressed = byClass(drop.host, 'redo-panel__group')[0].textContent;
+      const pressable = firstGroup();
+      if (pressable) pressable.click();
+      // A panel that is not there says nothing -- and 「(no line)」 is not 「running…」, so R19/R20
+      // fail by name rather than being skipped.
+      const saidWhilePressed = firstGroup() ? firstGroup().textContent : '(no line)';
       if (settle) settle({ ok: true, state: 'queued' });
       await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
-      const saidAfter = byClass(drop.host, 'redo-panel__group')[0].textContent;
+      const saidAfter = firstGroup() ? firstGroup().textContent : '(no line)';
       doc2.fire('keydown', { key: 'Escape' });
       const closedByEsc = !stillOpen();
       const armedAfter = doc2.listenerCount();
@@ -643,7 +676,8 @@ async function score(list, mustCatch, heading) {
           businessKey: 'lot_id', handOff: () => {} }, opts));
         p.setRelation('dt_log');
         p.render();
-        buttons(p.host).find((b) => b.dataset.redo === (opts.which || 'ledger')).click();
+        const opener = buttons(p.host).find((b) => b.dataset.redo === (opts.which || 'ledger'));
+        if (opener) opener.click();
         return p.host;
       };
       const noToken = panelOf({ hasToken: () => false, run: () => {} });
@@ -723,28 +757,23 @@ async function score(list, mustCatch, heading) {
         if (!held) woke.push(checkName);
       }
       bad = woke.length > 0;
-    } catch (e) {
-      // The SETUP above the checks threw -- the panel could not even be built. That is still a
-      // catch for now; \u24d1 routes this loop through `lib/mutation_scorer.mjs`, where it becomes
-      // INERT and stops counting as one.
-      bad = true;
-      woke.push(`threw before the checks ran: ${String(e && e.message).slice(0, 70)}`);
     }
-    if (bad === mustCatch) {
-      hit++;
-      console.log(`  ${mustCatch ? 'caught ' : 'escaped'} ${name}`
-        + (mustCatch && woke.length ? `\n            by ${woke[0]}` : ''));
-    } else {
-      failed++;
-      console.log(`  ${mustCatch ? 'ESCAPED' : 'CAUGHT '} ${name}  <- wrong`
-        + (woke.length ? `\n            ${woke.slice(0, 3).join('\n            ')}` : ''));
-    }
+    // \ud83d\udd34 \u24d1: THE SETUP NO LONGER SWALLOWS ITS OWN THROW. It used to be caught here and folded
+    //    into `bad = true` -- the panel failing to build, scored as a mutant being noticed. It
+    //    now propagates to `lib/mutation_scorer.mjs`, which reports INERT and counts it as an
+    //    escape, because a harness that stopped is not a harness that noticed.
+    void bad;
+    return { failures: woke };
   }
-  return hit;
 }
 
-const caught = await score(DEFECTS, true, 'defect mutants (each must be CAUGHT)');
-const escaped = await score(CONTROLS, false, 'control mutants (each must ESCAPE)');
+const defects = await scoreMutants(named(DEFECTS), runMutant,
+  { title: '\n\u2500\u2500 defect mutants (each must be CAUGHT by its named check) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500' });
+const controls = await scoreMutants(named(CONTROLS), runMutant,
+  { mustCatch: false, title: '\n\u2500\u2500 control mutants (each must ESCAPE) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500' });
+const caught = defects.caught;
+const escaped = CONTROLS.length - controls.wrong;
+failed += defects.wrong + controls.wrong;
 
 console.log(`\n${passed} passed, ${failed} failed; ${caught}/${DEFECTS.length} defects caught; `
   + `${escaped}/${CONTROLS.length} controls escaped.`);
