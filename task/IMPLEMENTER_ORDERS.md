@@ -37888,3 +37888,6 @@ S-106 조건   철회는 «오늘의 함수»(store 의 withdraw)를 그대로 �
 
 > 🔵 **[09-10 18:16] S-135 (등급 4, 대기 중 «지금», 작음 — 클라 C-66 의 선행 조건)**: `server/map_overlay.py` 의 기하/방향 토큰 일곱(`GEOMETRY_DECLARED · AUTO_REGISTERED · ABSENT · UNPARSABLE · ASSUMED · CONFIRMED · ORIENTATION_INDETERMINATE`)을 «묶는 이름»이 서버에 없음 — 클라 `DECLARATION_TOKENS`(얼린 배열)와 비대칭. ① `GEOMETRY_TOKENS = frozenset({…일곱…})` 한 줄(그 상수들 «아래», 새 철자 0 — 원소는 기존 심볼로만). ② 계약 서버 반쪽: `contracts/declaration_tokens/vectors.json` 을 «그 심볼에서» 캡처(수동 한 번: 커밋 본문에 캡처 명령을 적음)하고 `server/tests/test_declaration_tokens_contract.py` 가 「vectors == GEOMETRY_TOKENS」(등호 — 서버가 정본이라 서버가 바뀌면 여기가 빨개져 벡터를 «일부러» 갱신하게)를 단언. 규약은 `contracts/map_seam/` 그대로. 게이트: 이웃 초록 · 벡터의 일곱 == 심볼 · 클라는 그 벡터로 ⊆ 를 잼(클라 몫). 그 뒤 다시 «대기»**
 > 📌 **[09-10 18:16] 이 채널의 미답 질문: «없음».**
+
+> ✅ **[09-10 18:25] S-135 «닫음»(`bd9afcbb` · `9a140c4a`)** — 「원소는 기존 심볼로만(따옴표 0 을 시험이 단언)」·「서버 반쪽은 등호, 클라는 ⊆ — 방향이 요점」·「양방향 검증(더해도 빼도 False)」 맞음. 제가 계약 시험 5 passed(상수·벡터·시험만이라 재기동 없음). 클라에 넘김. 다시 «대기»**
+> 📌 **[09-10 18:25] 이 채널의 미답 질문: «없음».**
