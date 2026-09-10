@@ -1372,6 +1372,20 @@ const FLOORS = new Map([
   //    screen went back to saying 「0 rows」 for a source that is missing or broken.
   ['body_error_harness.mjs', 16],
   ['absent_listing_harness.mjs', 11],
+  // New 2026-09-10 with C-60 (owner: 「참조뷰 첫째 테이블도 타이틀 달아줘」). Floor is the
+  // count it reports on the commit that introduces it -- there is no earlier tree to measure
+  // it against.
+  //
+  // 🔴 THREE MUTANTS STAND BEHIND THIS NUMBER, and the second is why the band is inserted
+  //    INSIDE its section rather than appended beside it: as a sibling in `panels` the
+  //    index `selectView` uses goes two-per-view, so clicking tab B reveals A -- and the
+  //    one-panel strip un-hides itself, which is the very thing that hid the first title.
+  //    The third holds 「행 0」 apart from a blank: one says it was counted, the other says
+  //    nothing arrived to count.
+  // 🔴 AND IT IMPORTS ITS SUBJECT. The existing harness for this screen slices, on a reason
+  //    that is false today (「config.js touches window at module scope」) -- this file is the
+  //    measurement that says so.
+  ['reference_view_head_harness.mjs', 16],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────
