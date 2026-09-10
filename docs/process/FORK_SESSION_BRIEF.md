@@ -146,7 +146,7 @@ server/config/ontology/ledger_config.json   (파일 하나)
 | compiled graph/read model | `server/ledger/config_explorer.py` |
 | active/draft context service | `server/ledger/config_explorer_service.py` |
 | draft/review/revise/CAS activation | `server/ledger/config_drafts.py` |
-| strict Admin API | `server/ledger_api/ontology_config_explorer_router.py` — 🔵 **2026-09-10 이동**: 읽는 쪽이 `server/ledger_api/` 패키지로 묶였습니다(`75c32b50`). 같은 커밋에 `ledger_subgraph` · `ledger_catalog` · `ledger_selection` 등 열둘이 함께 갔고, «이름»은 그대로입니다 |
+| strict Admin API | `server/ledger_api/ontology_config_explorer_router.py` — 🔵 **2026-08-23 이동**(`75c32b50`): 읽는 쪽이 `server/ledger_api/` 패키지로 묶였습니다. 🔴 **정정(09-10 D-3b)**: 여기 「2026-09-10 이동」이라 적었던 것은 제 오류입니다 — 커밋 «날짜를 안 재고» 최신이라는 이유로 오늘 것으로 읽었습니다. 그리고 같이 옮겨 갔던 열둘 중 «오늘 남아 있는 것은 넷»뿐입니다(나머지는 08-25~08-28 에 삭제·보관) |
 | 단일 client state/history | `client2/src/ontology_explorer_store.js` |
 | 화면·interaction | `client2/src/ontology_explorer.js`, `ontology_explorer_view.js`, `ontology_explorer.css` |
 | file-backed 이종 계보 예제 | `server/config/sample/ontology/transfer_explorer/` |

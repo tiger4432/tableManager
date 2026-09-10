@@ -4,7 +4,7 @@
 > **연관 핵심가치:** #1 최소 공수 교정(주) · #2 온톨로지/지식 그래프 기반(직결) — [SYSTEM_OVERVIEW §1](../overview/SYSTEM_OVERVIEW.md)
 > **v1 구성 (2026-07-25, 출하 당시):** 서버(`enrichment_config.py`·`enrichment_mapper.py`·API 2종) + 클라(~~`enrichment.html` 컨베이어~~ + ~~참조뷰 탭~~ + ~~메인 그리드 결손 배지~~ — **셋 다 2026-08-11에 재배치/삭제**, 아래 참조). E2E 실동 검증 완료(스모크 규칙 `line_model_owner_attribution`). 규칙 작성법: [chain_ingestion_guide §4](../guide/chain_ingestion_guide.md).
 > **UI 현황 (2026-08-11):** 컨베이어(입력)는 **소멸**(그리드 직접 편집으로 흡수, 대체 화면 없음). 참조뷰(조회)는 **메인 그리드 History 패널의 사이드바 탭**으로 이식(`client2/src/enrichment_reference_view.js` — 셀 선택 기반, 같은 백엔드 API). 결손 배지는 **삭제**(그리드 필터 `?enrichment_queue=<규칙명>`은 URL로는 여전히 유효, 전용 UI 컨트롤 없음).
-> **2026-08-15 가산:** 선택적 `claim_contract`와 `server/enrichment_actions.py`가 착지했다. 기존 column queue는 그대로이고, 계약이 있는 rule의 결손은 Evidence Graph에서 `Claim --needs_enrichment--> Enrich Action`으로도 보인다. Action은 원장 저장물이 아닌 재계산 투영이며 통합 `/enrichment/worklist` API는 아직 미구현이다.
+> **2026-08-15 가산:** 선택적 `claim_contract`와 🪦`server/enrichment_actions.py`(08-28 보관 8fc0a996)가 착지했다. 기존 column queue는 그대로이고, 계약이 있는 rule의 결손은 Evidence Graph에서 `Claim --needs_enrichment--> Enrich Action`으로도 보인다. Action은 원장 저장물이 아닌 재계산 투영이며 통합 `/enrichment/worklist` API는 아직 미구현이다.
 
 ---
 

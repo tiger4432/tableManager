@@ -194,9 +194,9 @@ Bond/DT/Core 공급 관계는 다이별 Transfer 카드 대신 material ID 색�
 
 ## 12. 구현 정본
 
-- Trend/Selection: `server/ledger_trends.py`, `server/ledger_selection.py`
-- Identity: `server/ledger_identity.py`
-- Composition: `server/ledger_composition.py`
+- Trend/Selection: 🪦`server/ledger_trends.py`(08-27 삭제 cb504254), 🪦`server/ledger_selection.py`(08-28 삭제 48cc23a3)
+- Identity: 🪦`server/ledger_identity.py`(08-28 삭제 48cc23a3)
+- Composition: 🪦`server/ledger_composition.py`(08-27 삭제 cb504254)
 - Client state/API: `client2/src/rnd_console/state.js`, `api.js`, `main.js`
 - Chart/Table: `client2/src/rnd_console/trend_workbench.js`
 - Map/Comparison: `client2/src/rnd_console/investigation_workspace.js`

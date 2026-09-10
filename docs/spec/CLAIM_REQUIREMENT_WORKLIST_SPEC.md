@@ -3,7 +3,7 @@
 > **Status:** Partial implementation · **Last verified:** 2026-08-15
 > **관련 정본:** `ledger_events`, 선언(`server/config/ontology/ledger_config.json`),
 > `server/config/enrichment_rules.json`, `server/enrichment_config.py`,
-> `server/enrichment_actions.py`, `server/ledger_subgraph.py`,
+> 🪦`server/enrichment_actions.py`(08-28 보관 8fc0a996), `server/ledger_api/ledger_subgraph.py`,
 > `server/enrichment_candidates.py`, `server/enrichment_analysis.py`,
 > [RND Ontology Referent Model](./RND_ONTOLOGY_REFERENT_MODEL.md),
 > [Ledger Evidence Subgraph](./LEDGER_EVIDENCE_SUBGRAPH_SPEC.md)

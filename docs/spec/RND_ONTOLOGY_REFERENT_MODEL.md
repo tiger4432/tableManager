@@ -27,7 +27,7 @@
 
 > **[아래는 2026-08-15 시점의 서술이며 현재 상태가 아닙니다.]**
 > **정본 코드(당시):** 선언(`server/config/ontology/ledger_config.json`), `server/ledger_api/ledger_subgraph.py`,
-> `server/ledger_identity.py`, `server/ledger_trends.py`, `server/ledger_selection.py`
+> 🪦`server/ledger_identity.py`(08-28 삭제 48cc23a3), 🪦`server/ledger_trends.py`(08-27 삭제 cb504254), 🪦`server/ledger_selection.py`(08-28 삭제 48cc23a3)
 > — 🔴 뒤의 셋은 트리에 «없습니다».
 > **목적(당시):** 비정형 원천을 스키마 변경 없이 연결하되, 질문과 무관한 고카디널리티 노드를
 > 자동 확장하지 않는 R&D 온톨로지 문법을 정한다.

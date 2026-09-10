@@ -4,7 +4,9 @@
 > **Status:** 🗄️ Archived | **Last-verified:** 2026-08-29 | **Owner:** Server / Ledger
 >
 > 무엇이 사라졌나 — `GET /api/ledger/kinds` · `GET /api/ledger/trends` (라우트 둘 다 없음) ·
-> `server/finding_kinds.py` / `server/ledger_api/finding_kinds.py` (모듈 없음) ·
+> ⚠️ **[2026-09-10 정정] `finding_kinds.py` 는 «있습니다»** — `server/scripts/support/finding_kinds.py`
+>   (08-28 `bef61462` 로 «읽는 스크립트 옆»으로 옮겼습니다). 여기 「모듈 없음」이라 적혀 있었고,
+>   같이 적힌 `server/ledger_api/finding_kinds.py` 는 «한 번도 없던 철자»입니다 ·
 > `server/config/finding_kinds.json` (선언 없음) · 주어 타입 `WaferLeg`(선언 안 됨 — `observed@1` 의
 > 주어는 `die@1` 하나다) · 술어 `transferred`(선언 안 됨 — 살아 있는 철자는 `transfer@1`).
 > §5 의 인덱스 처방 둘은 **어느 원자도 갖지 않는 술어** 위의 부분 인덱스입니다.
@@ -29,7 +31,7 @@
 ## 1. 목적
 
 Trend 항목은 화면이나 라우터의 조건문으로 추가하지 않는다. 사용자가 관리하는
-`server/config/finding_kinds.json` 선언을 `server/finding_kinds.py`가 검증하고, 서버가 준비한
+`server/config/finding_kinds.json` 선언을 `server/scripts/support/finding_kinds.py`가 검증하고, 서버가 준비한
 유계 SQL template에 값만 bind한다. 선언에 SQL 문자열, JOIN, WHERE 조각을 넣어 실행하는 기능은
 제공하지 않는다.
 

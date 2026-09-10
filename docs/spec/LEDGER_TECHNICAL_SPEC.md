@@ -994,7 +994,7 @@ slot_map(lot -> parent, slot)  부모 랏에서 이 자리는?
 ⚠️ **`utils.time_format.LOCAL_TIMEZONE`이 아니다** — 그것은 import 시점에 해석된 **기계의 주변 존**이라 같은 계급의 결함이다.
 
 ### 4.7 ⚰️ `GET /api/ledger/structure` — **[은퇴. 아래는 역사 기록]**
-> ⚰️ **[2026-08-28 은퇴] 이 절이 서술하는 라우트도 그 모듈(`server/ledger_structure.py`)도가 «없습니다» (실측 2026-08-29). 아래는 «무엇이 있었나»의 기록이며 현재 계약이 아닙니다.** 오늘 살아 있는 읽기 라우트의 정본은 이 문서가 아니라 [backend §2](../architecture/backend.md) 입니다 — **여기에 수를 다시 적지 않습니다**(2026-08-31 에 「둘」이 「셋」이 되면서 이 문장의 사본 다섯이 한꺼번에 낡았습니다). 🔴 **선언된 절반은 살아남았습니다** — `GET /api/ledger/declaration` 이 엔터티 × 술어를 선언에서 «읽어» 냅니다. **사라진 것은 «센서스 절반»**이고, 그래서 `declared_only` / `undeclared`(드리프트)를 답하는 화면이 오늘 없습니다. 다시 만든다면 walk 의 «인자»여야지 새 라우트가 아닙니다.
+> ⚰️ **[2026-08-28 은퇴] 이 절이 서술하는 라우트도 그 모듈(🪦`server/ledger_structure.py`(08-27 삭제 cb504254))도가 «없습니다» (실측 2026-08-29). 아래는 «무엇이 있었나»의 기록이며 현재 계약이 아닙니다.** 오늘 살아 있는 읽기 라우트의 정본은 이 문서가 아니라 [backend §2](../architecture/backend.md) 입니다 — **여기에 수를 다시 적지 않습니다**(2026-08-31 에 「둘」이 「셋」이 되면서 이 문장의 사본 다섯이 한꺼번에 낡았습니다). 🔴 **선언된 절반은 살아남았습니다** — `GET /api/ledger/declaration` 이 엔터티 × 술어를 선언에서 «읽어» 냅니다. **사라진 것은 «센서스 절반»**이고, 그래서 `declared_only` / `undeclared`(드리프트)를 답하는 화면이 오늘 없습니다. 다시 만든다면 walk 의 «인자»여야지 새 라우트가 아닙니다.
 
 
 `/trace`가 **인스턴스**(이 랏의 혈통)라면 이쪽은 **유형**이다 — 랏·웨이퍼·보이드는 응답에 **한 건도 없다.**
@@ -1041,7 +1041,7 @@ slot_map(lot -> parent, slot)  부모 랏에서 이 자리는?
 제안을 그 자리에 두면 **착지한 선언으로 오독된다.** 🔴 **`ledger_link`도 «유도»된다**: 기전 노드는 `Model` 개체 타입을 통해 원장에 닿는데
 어휘가 그 타입을 선언하지 않으므로 「붙을 자리가 없다」가 답이고, **`Model`이 선언되는 날 이 문장은 스스로 거짓이 된다.**
 ✅ **[2026-08-14 · `f52628f`] 앞의 ⚠️ 문단은 «부분적으로» 낡았다** — `server/config/sample/mechanism_models.json.sample`이 착지했고(**모델 셋 · 방향만 있는 엣지 22개 · 코드 0줄 변경**)
-그 층은 더 이상 `absent`가 아니다. **[2026-08-14 밤 확정]** 라이브 config도 실재한다. 🔴 **[2026-08-23 grep 전수 재도출 정정 — 종전 이 자리의 「소비자 둘」과 「`server/ledger_api/mechanism_gate.py`가 3관문 랭킹」은 둘 다 틀렸다] 소비자는 «모듈 넷»**(`ledger_walk_contrast.py:303` · `ledger_journey.py:326`·`:1287` · `ledger_subgraph.py:1071` · 이 라우트의 `ledger_structure.py:727`)이고, **3관문 랭킹(실재·상류·기전)은 `ledger_walk_contrast.py`에 산다** — `server/ledger_api/mechanism_gate.py`는 **로더 + 기전 판정기**다. 전수 목록은 [backend §2 `/structure`](../architecture/backend.md).
+그 층은 더 이상 `absent`가 아니다. **[2026-08-14 밤 확정]** 라이브 config도 실재한다. 🔴 **[2026-08-23 grep 전수 재도출 정정 — 종전 이 자리의 「소비자 둘」과 「🪦`server/ledger_api/mechanism_gate.py`(08-28 `server/_archive/ledger_api/` 로 보관 31d34ea0)가 3관문 랭킹」은 둘 다 틀렸다] 소비자는 «모듈 넷»**(`ledger_walk_contrast.py:303` · `ledger_journey.py:326`·`:1287` · `ledger_subgraph.py:1071` · 이 라우트의 `ledger_structure.py:727`)이고, **3관문 랭킹(실재·상류·기전)은 `ledger_walk_contrast.py`에 산다** — 🪦`server/ledger_api/mechanism_gate.py`(08-28 `server/_archive/ledger_api/` 로 보관 31d34ea0)는 **로더 + 기전 판정기**다. 전수 목록은 [backend §2 `/structure`](../architecture/backend.md).
 🔴 **[2026-08-15 정정] 파일에 `models`라는 블록은 «없다»** — 최상위 예약 키는 `__doc`와 `bindings`뿐이고 **나머지 키 하나하나가 모델**이며(`mechanism_gate.KEY_DOC`/`KEY_BINDINGS`), `signatures`는 **모델 «안»의 키**이고 로더가 읽지 않는다(사람용). 모델은 방향만 나른다 — 방정식은 일부러 없다. **`bindings`**는 필드→물리량이고 🔴 **항목 목록이 아니다**(바인딩 안 된 후보는 좁혀지지 않고 `unknown`을 단다). 선언 방법은 [guide/ONTOLOGY_LEDGER_SETUP §6.1](../guide/ONTOLOGY_LEDGER_SETUP.md).
 🔴 **바인딩은 데이터가 실재하는 날 켠다**(`87374a5` — `post_bond_queue_h`가 그 실례. 공백에 바인딩을 지어내지 않는다). 부재 갈래(`no_declaration_file`)는 파일 없는 박스에서 여전히 발화한다.
 
@@ -1096,7 +1096,7 @@ slot_map(lot -> parent, slot)  부모 랏에서 이 자리는?
 🔴 **`origin`은 장식이 아니라 ①의 짝이다** — 이 응답은 손으로 적은 목록이 없다고 약속하므로 독자가 「이 낱말은 어디서 왔나」를 스스로 셀 수 없다. 그래서 응답이 말한다.
 ⚠️ **`since`로 대신 유추하지 마라** — 그것은 슬라이스 번호이지 출처가 아니다.
 ⚠️ **`origin`은 «값»이지 상태가 아니다** — ②의 `edge_state` 다섯과 직교이고, `config`라고 해서 덜 선언된 것이 아니다.
-**같은 라운드에 `server/ledger_journey.py`의 술어 조회도 병합 뷰로 옮겼다** — 안 옮겼으면 config 낱말만 자기 `label_ko`를 잃고
+**같은 라운드에 🪦`server/ledger_journey.py`(08-25 삭제 67cc2e8a)의 술어 조회도 병합 뷰로 옮겼다** — 안 옮겼으면 config 낱말만 자기 `label_ko`를 잃고
 **한국어가 원시 이름으로 조용히 강등**됐을 것이다(§3.7-quater의 폴백이 그때 잘못된 자리에서 발화한다).
 
 ### 4.8 ⚰️ `GET /api/ledger/kinds` — **[은퇴. 아래는 역사 기록]**
@@ -1120,13 +1120,13 @@ slot_map(lot -> parent, slot)  부모 랏에서 이 자리는?
   **「아무도 선언하지 않았다」와 「선언은 됐는데 백필을 아직 안 돌렸다」를 구별하지 못했다.** 운영자가 할 일이 정반대인 두 상태다.
 - 🔴 **`declared_only`와 `unmeasured`의 구별이 이 프로젝트가 이미 값을 치른 자리다**(`absent-zero-is-not-inert-zero`) —
   「번역기가 한 번도 안 돈 종류」와 「셀 수 없는 종류」를 같은 화면 기호로 그리면 둘 다 「0」으로 읽힌다.
-- ⚠️ **이 라우트는 여전히 «아무것도 선언하지 않는다».** 종류의 정의는 `server/ledger_api/finding_kinds.py`,
+- ⚠️ **이 라우트는 여전히 «아무것도 선언하지 않는다».** 종류의 정의는 🪦`server/ledger_api/finding_kinds.py`(08-28 이후 `server/scripts/support/` 가 정본 bef61462),
   어느 소스가 어느 종류를 번역하는지는 `ledger_config.json`이다 — **여기에 세 번째 목록이 생기면 드리프트가 보이지 않게 된다**
   (적히는 날엔 언제나 일치하므로).
 
 ### 4.9 ⚰️ `GET /api/ledger/journey` — **은퇴했다.** 아래는 «기록»이다
 
-> 🔴 **실측 2026-08-27**: 그 라우트는 라우트 표에 «없고» `server/ledger_journey.py` 도 디스크에 없다. **이 계약을 지킬 코드가 없으므로 여기에 새 일을 얹지 않는다.**
+> 🔴 **실측 2026-08-27**: 그 라우트는 라우트 표에 «없고» 🪦`server/ledger_journey.py`(08-25 삭제 67cc2e8a) 도 디스크에 없다. **이 계약을 지킬 코드가 없으므로 여기에 새 일을 얹지 않는다.**
 >
 > 🟢 **그런데 아래 ⓐ의 «이유»는 살아 있다** — 「해당 없는 필드는 `null` 이 아니라 «없다»」와 「부재를 이름 대어 말한다」는 지금 모든 읽기 라우트가 지는 규율이다. 그래서 절을 지우지 않고 표시만 했다. 여정이 답하던 질문(「두 장이 걸은 길은 어디서 갈라졌나」)은 지금 씨앗 둘을 각각 `GET /api/ledger/subgraph` 로 걷고 `follow` 로 공정 술어만 남겨서 답한다.
 
@@ -1463,7 +1463,7 @@ psycopg2가 첫 `SELECT`에서 트랜잭션을 암묵적으로 열고 명시적�
 생 psycopg2 경로거나 SQLAlchemy가 래핑 에러를 포맷하는 방식이 바뀌면 **배포 사실이 조용히 코드 결함처럼 읽히는 500**이 된다.
 **즉 고장나 있던 것이 아니라 «아무것도 보장하지 않는 문자열» 위에 앉아 있었다** — 그것이 옮긴 이유다.
 
-⚰️ **`GET /api/ledger/coverage` — 은퇴했다**(실측 2026-08-27, 라우트 표에 없음). 🔴 **[2026-09-02 정정] 후계로 대던 `/structure` 도 «없다»** — 그 라우트와 `server/ledger_structure.py` 가 함께 삭제됐다. 후계를 대는 문장이 «또 다른 죽은 이름»으로 갈아 끼워져 있었고, 그 모양은 문장이 살아 있는 것처럼 보이게 한다. **살아남은 규율은 오늘 `GET /api/ledger/gaps` 가 진다** — **부재·공백에도 «에러가 아니라» 200과 상태를 낸다.**
+⚰️ **`GET /api/ledger/coverage` — 은퇴했다**(실측 2026-08-27, 라우트 표에 없음). 🔴 **[2026-09-02 정정] 후계로 대던 `/structure` 도 «없다»** — 그 라우트와 🪦`server/ledger_structure.py`(08-27 삭제 cb504254) 가 함께 삭제됐다. 후계를 대는 문장이 «또 다른 죽은 이름»으로 갈아 끼워져 있었고, 그 모양은 문장이 살아 있는 것처럼 보이게 한다. **살아남은 규율은 오늘 `GET /api/ledger/gaps` 가 진다** — **부재·공백에도 «에러가 아니라» 200과 상태를 낸다.**
 이 둘이야말로 이 엔드포인트가 존재하는 이유이고, 여기서 raise하면 운영자를 **색깔만 다른 같은 빈 화면** 앞에 되돌려 놓는다.
 
 | `state` | 뜻 |
@@ -1577,7 +1577,7 @@ psycopg2가 첫 `SELECT`에서 트랜잭션을 암묵적으로 열고 명시적�
 ### 8.1 ⚰️ `declared` — **파이썬 클래스가 «없는» 문법** (2026-08-15 3차 · 브리핑 §6-2 · 갱신 트리거 ②③⑥) — 옛 §3.8
 
 
-> ⚰️ **[2026-08-18/19 은퇴] 이 절 전체가 이제 «역사»다.** `server/ledger/declared_translator.py`는
+> ⚰️ **[2026-08-18/19 은퇴] 이 절 전체가 이제 «역사»다.** 🪦`server/ledger/declared_translator.py`(08-18 삭제 e47d3251)는
 > 트리에 **없고**(`e47d325`), 그것을 고르던 `kind` 디스패치와 `_run_declared`도
 > `backfill.py`에서 빠졌다(`d7bfcd0`). 아래 ①~⑧의 계약을 **집행하는 실행 경로가 없다**
 > — `rows_matching_nothing`도 `server/`에 없다. **선언만으로 코드 0줄 소스를 세우는 오늘의
