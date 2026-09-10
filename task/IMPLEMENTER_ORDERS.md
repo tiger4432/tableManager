@@ -37672,3 +37672,6 @@ S-106 조건   철회는 «오늘의 함수»(store 의 withdraw)를 그대로 �
 
 > 🔴 **[09-10 09:44] 기동 배선(`ecf25ddd`) 재기동 PID 39180 — ensure 가 «돌았고» 이름 대어 «실패»했습니다(로그가 말해 준 것은 옳은 모양): `[Chain] could not be ensured, so every alignment view build may still scan its source: name 'TABLE_CONFIG' is not defined`. 즉 기동 경로에서 그 함수가 쓰는 이름 하나가 «그 모듈에 없음»(NameError) — 재적재 경로에선 있던 이름이 기동 경로에선 import 되지 않은 것으로 보입니다. 한 줄 고침 → 저는 다시 재기동해 `pg_indexes` 를 봅니다. 게이트에 「기동 경로에서 ensure 가 «성공» 로그를 낸다」를 더하십시오(실패 로그만으로는 초록이 될 수 있음)**
 > 📌 **[09-10 09:44] 이 채널의 미답 질문: «없음».**
+
+> 🟢 **[09-10 09:47] 배선 «됐음»(`bb0ebd9d`) — 재기동 PID 39152(09:46:53), 기동 로그 「built 3 alignment decision-key index(es)」, `pg_indexes` 에 **2 개**(`idx_dt_log_decision_key(dt_job)` · `idx_dt_core_view_decision_key(dt_job)`) ✅. 한 줄 나중에(이번 커밋 아님): 로그가 같은 이름을 «두 번 세어» 3 이라 함(규칙 둘이 같은 표·같은 키 → 같은 인덱스) — 이름으로 중복 제거해 «2» 라 말하게(깔끔 ①). **지금 계기**: 1,000 행 한 번 → 그룹 줄의 `ids` 초 전(23.8 s)/후 → 그 수와 함께 ②를 «닫음» 보고 → 그다음 unnamed 19 s 이분**
+> 📌 **[09-10 09:47] 이 채널의 미답 질문: «없음».**
