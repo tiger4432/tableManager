@@ -5830,8 +5830,9 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
     # Source cells are read ONCE for the whole request, not once per map. Map
     # ids the batch does not cover are read exactly the way they used to be, at
     # exactly the old cost, and only those.
-    cells_by_map, cells_servable = _source_rows_by_map(
-        db, key_attrs, map_key_cols, filters, q_cols, id_rows, cell_cap)
+    with alignment_batch_counts.phase("cell_prefetch"):
+        cells_by_map, cells_servable = _source_rows_by_map(
+            db, key_attrs, map_key_cols, filters, q_cols, id_rows, cell_cap)
 
     source_maps = []
     src_truncated = False
