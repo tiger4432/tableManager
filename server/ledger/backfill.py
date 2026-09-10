@@ -1487,6 +1487,9 @@ class TestRunReading:
     pages: int
     preview: Any
     refusals: tuple
+    #: The key columns of every row on the page that answered, so a refusal's position can
+    #: be turned into the key an operator looks up. Empty unless a sample was asked for.
+    page_keys: tuple
     #: A few of the rows this run actually READ, as values (S-92). The owner asked for
     #: 「체크한 로우들」 and the answer was a count: the page was in memory and thrown away.
     #: Key columns first, then the columns the declaration reads - not the whole row, which
@@ -1579,6 +1582,7 @@ def preview_first_batch(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS,
     rows_read = pages = 0
     refusals: list = []
     sampled: tuple = ()
+    page_keys: tuple = ()
     excluded = None
     answered = None
     after = None
@@ -1603,6 +1607,12 @@ def preview_first_batch(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS,
             # the screen could say 「200 rows」 and not 「which 200」.
             if sample_rows and not sampled:
                 sampled = _rows_sample(plan, complete, sample_rows)
+            # 🔴 THE WHOLE PAGE'S KEYS, SO A REFUSAL CAN BE LOOKED UP (S-92 판정 251). An
+            # operator finds a row in their table by its KEY, not by a position in a frame
+            # - and a refusal can point at a row past the end of the sample, so the sample
+            # alone cannot answer it. Keys only, never the row: this is a lookup aid.
+            if sample_rows and not page_keys:
+                page_keys = _rows_sample(plan, complete, len(complete))
             frame = _v2_frame(complete)
             subjects = _v2_registration_subjects(plan, frame)
             known = None if subjects is None else ()
@@ -1628,7 +1638,7 @@ def preview_first_batch(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS,
         read.close()
     return TestRunReading(rows_read=rows_read, pages=pages, preview=answered,
                           refusals=tuple(refusals), excluded_rows=excluded,
-                          rows_sample=sampled)
+                          rows_sample=sampled, page_keys=page_keys)
 
 
 def count_rows_missing(engine, setup, source, column, fetch_rows=PREVIEW_FETCH_ROWS):

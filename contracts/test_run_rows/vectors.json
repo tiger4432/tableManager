@@ -2,7 +2,7 @@
  "__comment": "S-92 (ruling 09-10 13:54). CAPTURED FROM THE LIVE test-run route, not written by hand: what the response carries now that it says WHICH rows it read. No new route - two fields on the answer the screen already draws.",
  "__notes": {
   "rows_sample": "The first rows of the page the compile already read - key columns and the columns the declaration reads, never the whole row. Its length is what the REQUEST asked for (`sample_rows`, default 10, capped at 100), not what the declaration says.",
-  "row_key": "On a refusal sample, and ABSENT when the refusal names no row: `{frame, position}` read out of the refusal's own address (`<frame>.rows[<n>].<column>`). `position` is an index within THAT FRAME and NOT into `rows_sample` - the sample is the first n rows of a page and a refusal can come from further in, so using it as an offset would point at the wrong row.",
+  "row_key": "On a refusal sample, and ABSENT when the refusal names no row: `{frame, position}` read out of the refusal's own address (`<frame>.rows[<n>].<column>`), plus `values` - the identifying columns of that row, which is what an operator can actually search for. `position` is an index within THAT FRAME and NOT into `rows_sample`. `values` is ABSENT rather than guessed when the row cannot be located: a role frame's rows are molecules rather than physical rows, so the same number means something else there.",
   "unchanged": "Every field that was here before is untouched; `rows_read`, `pages`, `refused.count` and `refused.reasons` mean exactly what they meant."
  },
  "cases": {
@@ -11,7 +11,7 @@
    "target_key": "source_plan|dt_job",
    "definition_hash": "31d163ab0a6d0ef90043744d67f2914fe293f789ba5270da5ce94e2292236a4f",
    "snapshot_hash": "c8bddddb4d276eef22f0437be5bcb37487ced4f91fabc7ccf5d123a61d276285",
-   "ran_at": "2026-09-10T05:09:10.406029+00:00",
+   "ran_at": "2026-09-10T05:17:43.476607+00:00",
    "relation": "dt_log",
    "fetch_rows": 200,
    "rows_read": 144,
@@ -62,7 +62,7 @@
    "target_key": "source_plan|lot_event",
    "definition_hash": "42b499a4449f1b277633bca0eb12c19bf13747cae75fb2d2230f8a961b8b4901",
    "snapshot_hash": "c8bddddb4d276eef22f0437be5bcb37487ced4f91fabc7ccf5d123a61d276285",
-   "ran_at": "2026-09-10T05:09:10.560057+00:00",
+   "ran_at": "2026-09-10T05:17:43.638011+00:00",
    "relation": "lot_event",
    "fetch_rows": 200,
    "rows_read": 198,
@@ -111,7 +111,11 @@
       ],
       "row_key": {
        "frame": "event_frame",
-       "position": 0
+       "position": 0,
+       "values": {
+        "event_time": "2026-01-01T00:00:00",
+        "row_id": "01a080bf-b9b0-7e9e-a93a-99426f0338ba"
+       }
       }
      }
     ]

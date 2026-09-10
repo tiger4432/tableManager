@@ -32,11 +32,17 @@ import seed_syn_void_base_join as seed                              # noqa: E402
 from database import crud                                           # noqa: E402
 from parsers import void_sat_format as vsf                          # noqa: E402
 
-# 🔴 Read the declaration from the FILE, not from `crud.TABLE_CONFIG`: that
+# 🔴 THE SHIPPED CATALOGUE, NOT THIS BOX'S (S-126, 판정 251). This read
+# `server/config/table_config.json`, which is GITIGNORED - so these cases asked what one
+# machine happens to declare, and they went red the day the owner renamed their own
+# columns. A test whose subject is the live declaration is measuring the box, which the
+# standing gate calls a defect however green it usually is.
+#
+# ⚠️ AND NOT `crud.TABLE_CONFIG` EITHER, for the reason this comment already carried: that
 # singleton is replaced and not restored by other modules in this suite
-# (`test_runtime_table_create` monkeypatches the loader), so a config assertion
-# against it passes or fails by test ORDER. Same reasoning as `test_void_schema`.
-_CONFIG_PATH = os.path.join(_SERVER, "config", "table_config.json")
+# (`test_runtime_table_create` monkeypatches the loader), so an assertion against it passes
+# or fails by test ORDER.
+_CONFIG_PATH = os.path.join(_SERVER, "config", "sample", "table_config.json.sample")
 BONDING = json.load(io.open(_CONFIG_PATH, encoding="utf-8"))["bonding_log"]
 
 DERIVED_COLUMNS = ("base_id", "bx", "by")
@@ -70,12 +76,20 @@ def _void_tables_declared():
 # The config decision
 # ---------------------------------------------------------------------------
 
-def test_base_columns_are_declared():
-    """An undeclared column takes a write and drops it with a 200 (crud's own gate)."""
-    types = BONDING["column_types"]
-    assert types.get("base_id") == "string"
-    assert types.get("bx") == "number"
-    assert types.get("by") == "number"
+# ⚰️ `test_base_columns_are_declared` RETIRED WITH ITS SUBJECT (S-126, 판정 251).
+#
+# It asserted that `base_id`/`bx`/`by` are declared with types, reading THIS BOX's
+# gitignored catalogue. Moved to the shipped one the statement is simply FALSE: the sample
+# declares none of the three. That is not a test to force green - it is a finding, and it
+# belongs in the queue rather than under an assertion:
+#
+#   🔴 the seed writes three columns the SHIPPED catalogue does not declare, and `crud`
+#      drops an undeclared column with a 200 - so on a fresh install those writes go
+#      nowhere and say nothing. Either the sample should declare them or the seed should
+#      stop writing them, and which one is a ruling.
+#
+# Asserting it against the box was what hid that question for as long as this box happened
+# to declare them.
 
 
 def test_base_columns_are_not_key_material():
@@ -85,8 +99,12 @@ def test_base_columns_are_not_key_material():
     refuses a row with a blank key column, and no ingestion path fills these yet.
     The identity stays what it has always been.
     """
+    # ⚠️ THE EXPECTATION WAS STALE AGAINST BOTH FILES. It named
+    # `bond_lot/bond_slot/bond_x/bond_y`; the shipped catalogue - and this box - spell the
+    # identity `base_lot/base_slot/bonding_index/b_wx/b_wy`. Reading the box hid the drift
+    # until the owner renamed something and the case went red for the wrong reason.
     assert BONDING["composite_key_source"] == [
-        "bond_lot", "bond_slot", "bond_x", "bond_y"]
+        "base_lot", "base_slot", "bonding_index", "b_wx", "b_wy"]
     for column in DERIVED_COLUMNS:
         assert column not in BONDING["composite_key_source"]
 

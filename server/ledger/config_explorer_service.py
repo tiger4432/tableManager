@@ -79,6 +79,33 @@ def _refused_row(refusal: Any) -> dict:
     the first `n` rows of a page and a refusal can come from further in - and a number that
     looks like an index into what the screen is showing would point at the wrong row.
     """
+    return _row_address(refusal)
+
+
+def _row_values(located: dict, page_keys) -> dict:
+    """The identifying column values of the row a refusal points at, or `{}` (판정 251).
+
+    🔴 AN OPERATOR LOOKS UP A KEY, NOT A POSITION. 「event_frame 의 3번째」 is not something
+    anybody can find in their own table; the key columns are. The position is still
+    reported beside it, because the two answer different questions - where it happened, and
+    what to search for.
+
+    ⚠️ ABSENT WHEN THE ROW DOES NOT CARRY THEM, never invented. The position indexes the
+    FRAME a refusal names, and a frame is not always the page: a role frame's rows are
+    molecules, not physical rows, so the same number means something else there. Rather
+    than guess, this answers only when the page has a row at that position - and says
+    nothing when it does not, which is the honest half of the same rule that keeps
+    `row_key` off a refusal naming no row at all.
+    """
+    if not located or not page_keys:
+        return {}
+    position = located.get("position")
+    if not isinstance(position, int) or not 0 <= position < len(page_keys):
+        return {}
+    return dict(page_keys[position])
+
+
+def _row_address(refusal: Any) -> dict:
     for address in getattr(refusal, "addresses", ()) or ():
         text = str((address or {}).get("path") or "")
         head, sep, _rest = text.partition("].")
@@ -771,7 +798,13 @@ class OntologyExplorerService:
             # would send an operator to the first row of their table for no reason.
             "samples": [dict({"reason": r.reason, "detail": r.detail, "rows": r.rows,
                               "addresses": [dict(a) for a in r.addresses]},
-                             **({"row_key": _refused_row(r)} if _refused_row(r) else {}))
+                             **({"row_key": dict(
+                                 _refused_row(r),
+                                 **({"values": _row_values(_refused_row(r),
+                                                           reading.page_keys)}
+                                    if _row_values(_refused_row(r), reading.page_keys)
+                                    else {}))}
+                                if _refused_row(r) else {}))
                         for r in refused[:backfill.PREVIEW_REFUSAL_SAMPLES]],
         }
         # 🔴 THE ROWS THIS RUN ACTUALLY READ (S-92, owner 09-09 「체크한 로우들 줄 수

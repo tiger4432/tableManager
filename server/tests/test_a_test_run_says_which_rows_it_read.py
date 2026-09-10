@@ -53,6 +53,32 @@ def test_the_position_is_within_the_frame_it_names_and_says_so():
     assert located == {"frame": "role_frame", "position": 3}
 
 
+def test_a_refusal_carries_the_key_an_operator_can_search_for():
+    """🔴 A POSITION IS NOT SOMETHING ANYBODY CAN LOOK UP (판정 251). 「event_frame 의 3번째」
+    cannot be found in the operator's own table; the key columns can. Both are reported,
+    because they answer different questions - where it happened, and what to search for."""
+    from ledger.config_explorer_service import _row_values
+
+    keys = ({"k": "A"}, {"k": "B"}, {"k": "C"})
+
+    assert _row_values({"frame": "event_frame", "position": 1}, keys) == {"k": "B"}
+
+
+def test_the_key_is_absent_when_the_row_cannot_be_found_rather_than_guessed():
+    """⚠️ A FRAME IS NOT ALWAYS THE PAGE. A role frame's rows are molecules, not physical
+    rows, so the same position means something else there - and a page shorter than the
+    position has no row at all. Answering anyway would put a confident wrong key in front
+    of somebody about to go and edit that row."""
+    from ledger.config_explorer_service import _row_values
+
+    keys = ({"k": "A"},)
+
+    assert _row_values({"frame": "event_frame", "position": 5}, keys) == {}
+    assert _row_values({"frame": "event_frame", "position": -1}, keys) == {}
+    assert _row_values({}, keys) == {}
+    assert _row_values({"frame": "event_frame", "position": 0}, ()) == {}
+
+
 def test_the_sample_is_the_identifying_and_declared_columns():
     """Key columns first, then what the declaration reads - and nothing else."""
     class _Occurred:
