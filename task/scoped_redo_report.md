@@ -30605,3 +30605,57 @@ S-100 ⓐ-2 (파이썬 클래스 삭제 + chain_rules.json.sample 빨강을
 ```
 > 📌 **[09-10 16:35] 이 채널의 미답 질문: 1절의 «범위» 하나 — `ledger_source_row_ref` 처럼
 > Base.metadata 밖에서 만들어지는 원장 표도 넣을지. (지금은 밖입니다)**
+
+---
+
+# [09-10 16:40] S-100 ⓐ-2 — 빨강은 고쳤고, «클래스 삭제는 전제가 안 섭니다» (`7544cd42`)
+
+## 1. 🔴 클래스 삭제 — 전제를 «재서» 안 했습니다
+지시의 조건: 「각 배포의 선언이 `dt_job_rollup` 로 옮겨진 뒤」. 그 순서는 그 파일 자기 독스트링에도
+적혀 있습니다: 「선언이 출하 → 각 배포의 선언이 옮겨짐 → «그 뒤» 클래스」.
+```
+✅ 출하 샘플            config/sample/ledger_config.json.sample -> dt-job-role «없음» (조건 하나 충족)
+❌ 이 박스 라이브 선언   config/ontology/ledger_config.json (gitignore) ->
+                       dt-job-role «있음» · dt_job_rollup «없음»
+❓ 운영                이 박스에서 «읽을 수 없습니다» (경계 그대로)
+```
+🔴 신뢰 구현 목록은 «존재하는 클래스»에서 유도되므로, 지금 지우면 이 박스의 원장 셋업이
+   «통째로» 컴파일을 거절합니다(그 독스트링의 실측: `test_ledger_setup_boundary` 여섯 개 빨강).
+   그리고 그 라이브 선언은 **소유자 파일**이라 제가 옮기지 않습니다.
+=> **삭제 미착수.** 조건이 서면 한 줄입니다.
+
+## 2. 빨강 — 지시하신 술어가 «샘플에 대해 거짓»이라 다른 참인 문장으로 바꿨습니다
+지시: 「「셋」을 세는 단언을 「선언된 규칙 «전부» disabled 로 출하」 술어로」.
+재 보니 그 술어가 성립하지 않습니다:
+```
+출하 규칙 10개 중 «다섯»이 enabled 로 출하됩니다:
+   dt_log_to_dt_alignment_metadata · dt_inventory_to_standard_dt_map
+   production_to_inventory_reservation_batch · lot_event_to_lot_slot_wafer
+   dt_log_to_dt_job_rollup            <- S-100 ⓐ 가 넣은 그 규칙입니다
+dt_map 로 좁혀도 둘 중 하나(dt_inventory_to_standard_dt_map)가 enabled 입니다
+```
+그리고 옛 단언의 «세 주장이 전부» 거짓이 돼 있었습니다 — 드리프트가 ⓐ 가 뺀 한 줄보다 큽니다:
+```
+전  3개 · 트리거 {dt_log, dt_job_attribution, eqp_frame_attribution} · 전부 disabled
+후  2개 · 트리거 {dt_log, dt_inventory} · 앞의 둘은 샘플에 «아예 없음» · 하나는 enabled
+```
+**바꾼 것**: 그 시험이 원래 재려던 것이자 «오늘도 참»인 문장 —
+「`dt_log_to_dt_map` 은 disabled 로 출하된다(새 설치에서 안 돈다)」.
+그리고 둘째 단언으로 「은퇴한 트리거 둘은 «꺼진 것»이 아니라 «없다»」를 박았습니다 —
+「꺼져 있음」과 「없음」은 다른 사실이고, 찾는 사람이 «아무것도» 못 찾는 것보다 낫습니다.
+
+## 3. 판정 필요 하나
+```
+dt_inventory_to_standard_dt_map 이 «enabled 로 출하»되는 것이 의도입니까?
+   옛 시험의 정신(「켜는 것은 별도의 명시적 결정」)에 비추면 어긋나 보이는데,
+   그건 나중에 들어온 «다른 기제»(표준 맵 파생)라 제가 판정할 자리가 아닙니다.
+   단언으로 박지 않고 여기 올립니다
+```
+
+## 4. 게이트
+```
+✅ 이웃(이름으로 뽑음) -> 564 passed · 4 skipped
+⚠️ 빨강 «하나»는 기존: test_the_live_dt_map_declaration_is_the_physical_unit
+   (이 박스 gitignore 선언이 dt_slot 을 number 로 선언 — 시험은 string 을 기대)
+```
+> 📌 **[09-10 16:40] 이 채널의 미답 질문: 3절 하나 (+ S-130 보고의 «원장 표 범위» 하나가 아직 열려 있습니다).**
