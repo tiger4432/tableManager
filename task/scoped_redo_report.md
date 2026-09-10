@@ -30758,3 +30758,47 @@ predicate_claim("says@1", {... "cardinality": "one"}) 의 결과 키 = ['emit', 
    -> 어느 쪽인지는 「원장에 무엇을 남기나」의 판정이라 제가 정하지 않습니다
 ```
 > 📌 **[09-10 16:51] 이 채널의 미답 질문: 5절 하나 (supersedes 의 첫 writer 가 될지).**
+
+---
+
+# [09-10 16:57] S-133 «0단계» 착지 (`9f17f8a9`) — 그리고 제 «모양 제안 하나를 정정»합니다
+
+## 1. 0단계 — cardinality 가 컴파일된 술어에 실립니다
+```
+PredicateDescriptor 에 cardinality: str = DEFAULT_CARDINALITY ("many")
+빌더가 item.get("cardinality", DEFAULT_CARDINALITY) 로 «선언한 낱말»을 싣습니다
+status 가 지나간 길 그대로입니다 (S-103, 판정 198 — 「선언이 나르는데 런타임이 못 읽던 낱말」)
+```
+⚠️ **이 커밋에 소비자는 «없습니다»** — 「착지는 배선이 아니다」라 그렇게 적었습니다.
+   기본이 many 라 «동작은 한 글자도 안 바뀝니다».
+
+## 2. 🔴 제 4절 모양 중 «②의 자리»가 틀렸습니다 — 실측으로 정정합니다
+제가 「②는 순수 번역이니 roleframe 에서」라고 올렸는데, 재 보니 «세고 건너뛰는» 기제가
+거기 없습니다:
+```
+roleframe 의 거절   raise RoleFrameError(...)  -> 프레임 «전체»가 죽습니다. 「건너뜀」이 아닙니다
+진짜 자리          runtime_v2._screened_atoms 의 gate.building_molecule(source_id)
+                   gate.refuse(...) 가 MoleculeRefused 를 던지고 그 컨텍스트가 «분자 하나»만
+                   접습니다 = 지시하신 「이름 대어 거절, 세고 건너뜀」이 «이미» 있는 자리
+```
+🔴 그리고 그 자리는 «배치의 분자 전부»가 보이는 자리라 ②(같은 배치 중복)의 판정에 필요한
+   시야도 거기 있습니다. 즉 ①과 ② 가 «같은 자리»에서 배치 시야를 공유합니다 — 더 낫습니다.
+
+## 3. 남은 것 (다음 커밋)
+```
+②  _screened_atoms 에서 one 술어의 «같은 배치» 중복 -> gate.refuse("cardinality_one_violated")
+①  같은 자리에서 «배치당 한 질의»로 그 주어들의 live 원자를 찾아 supersedes 를 찍음
+④  걷기 엣지에 cardinality
+게이트: 배치 둘(A 뒤 B) -> 걷기에 B 만 · live_claims 가 A 를 «실제로» 뺌 ·
+       같은 배치 A·B -> 거절 1 · many 무변 · 이웃 초록
+```
+
+## 4. 게이트 (이번 커밋)
+```
+✅ 새 단언 둘 · 이웃(이름으로 뽑음) -> 612 passed · 5 skipped
+⚠️ 빨강 3 + 에러 12 = «전부 한 뿌리», 기존입니다:
+   이 박스 라이브 선언이 dt_log 의 occurred_at 을 event_time 에 묶는데 그 컬럼이
+   EventFrame 스키마에 없습니다 (test_ledger_implementations = 판정 212 가 이미 「기존」이라
+   적은 그것 · test_ontology_config_explorer 둘)
+```
+> 📌 **[09-10 16:57] 이 채널의 미답 질문: «없음».** (2절은 «정정 보고»이지 물음이 아닙니다)
