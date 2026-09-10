@@ -1921,8 +1921,6 @@ def cached_table_count(query, cache_key):
     return total, elapsed
 
 
-# [Phase 73.12] 대량 데이터 조회 시 Pydantic 검증 오버헤드 제거를 위해 response_model 제거
-@app.get("/tables/{table_name}/data")
 def _filtered_column_count(filters) -> int:
     """How many COLUMNS a request constrains, and nothing about what it constrains them to.
 
@@ -1944,6 +1942,8 @@ def _filtered_column_count(filters) -> int:
         return 0
 
 
+# [Phase 73.12] 대량 데이터 조회 시 Pydantic 검증 오버헤드 제거를 위해 response_model 제거
+@app.get("/tables/{table_name}/data")
 def get_table_data(
     table_name: str, 
     skip: int = 0, 

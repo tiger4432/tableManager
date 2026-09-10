@@ -226,3 +226,51 @@ def test_the_timing_line_says_whether_a_search_was_set_and_never_what_it_was():
     body = inspect.getsource(main.get_table_data)
     assert "q={'set' if q else '-'}" in body, body[-1200:]
     assert "q={q}" not in body
+
+
+def test_the_decorator_is_attached_to_the_route_and_not_to_a_helper(caplog):
+    """🔴🔴 THE REGRESSION THIS COMMIT REPAIRS, PINNED AS A PROPERTY (판정 09-10 14:34).
+
+    A helper added between `@app.get("/tables/{table_name}/data")` and `def get_table_data`
+    registered THE HELPER as the route. Its `filters` argument has no default, so FastAPI
+    made `filters` a REQUIRED query parameter and every ordinary grid request - which sends
+    none - came back 422. The whole table view was blank on a running deployment.
+
+    ⛔ ASSERTED ON THE BINDING, NOT ON ADJACENCY. 「the next line is `def get_table_data`」
+    would be a proxy: it passes for any arrangement that happens to look right and fails
+    for any that does not while working. What went wrong is WHICH FUNCTION THE PATH POINTS
+    AT, so that is what is read.
+
+    ⚠️ AND THE NEIGHBOURS COULD NOT SEE IT. Eight TestClient assertions in
+    `test_the_sort_column_is_named_or_refused.py` hit this exact path without `filters` and
+    would have gone red - they were simply not in the list of tests this round ran. A gate
+    is only as wide as the population it is pointed at.
+    """
+    import inspect
+
+    import main
+
+    bound = {route.path: route.endpoint for route in main.app.routes
+             if getattr(route, "path", "") in ("/tables/{table_name}/data",
+                                               "/tables/{table_name}/data/count")}
+
+    assert bound["/tables/{table_name}/data"].__name__ == "get_table_data"
+    assert bound["/tables/{table_name}/data/count"].__name__ == "get_table_data_count"
+
+    for path, endpoint in bound.items():
+        parameter = inspect.signature(endpoint).parameters.get("filters")
+        assert parameter is not None and parameter.default is None, \
+            f"{path}: `filters` is optional - a required one 422s every grid request"
+
+
+def test_a_request_that_sends_no_filter_is_answered_and_the_line_says_zero(client, caplog):
+    """The live gate 판정 14:33 asked for, over HTTP: the browser's own request shape."""
+    import logging
+
+    with caplog.at_level(logging.INFO):
+        response = client.get("/tables/raw_table_1/data",
+                              params={"skip": 0, "limit": 10, "order_by": "updated_at"})
+
+    assert response.status_code == 200, response.text
+    assert any("filters=0" in record.getMessage() for record in caplog.records), \
+        [record.getMessage() for record in caplog.records][-4:]
