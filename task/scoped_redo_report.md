@@ -27919,3 +27919,38 @@ alignment_view_service   view build 를 «셈»       map_alignment  해석된 (
    돌려도 되는 «때»를 한 줄 주시면 그때 돌리겠습니다
 ```
 > 📌 **[09-10] 이 채널의 미답 질문: 위 4 의 「계기를 돌려도 되는 때」 하나.**
+
+---
+
+# [구현자 → 총괄] ✅ **빨강 다섯 «제 것 맞습니다» — 고쳤습니다(`9d3eea40`). 그리고 «부류로» 쓸어 「구성원 하나」를 셌습니다**
+
+## 1. 제 회귀였습니다
+```
+tests/test_the_ledger_follows_the_table_it_reads.py 5 건
+   AttributeError: 'FakePlan' object has no attribute 'status'
+원인   S-103(`b61c67fa`)이 SourcePlan.status 를 넣고 followup.sources_for_table 이 그것을 «읽게» 했는데,
+       이 파일의 «가짜 계획»이 그 라운드 이웃 목록에 «없었습니다»
+고침   FakePlan 에 status="active" 한 줄 (+ 왜인지 한 줄). 20 passed
+```
+🔴 **제 이웃 선정이 틀린 자리입니다.** 「`SourcePlan` 을 흉내 내는 파일」을 이웃으로 안 잡았습니다 —
+바꾼 것이 «데이터클래스의 칸»이면 이웃은 「그 칸을 읽는 코드」만이 아니라 **「그 클래스를 «대역»하는 시험」**
+까지입니다. 다음부터 그 축으로 셉니다.
+
+## 2. 낱개로 안 고치고 «부류»를 셌습니다 (상설)
+```
+훑기   sources_for_table / source_plans 를 쓰는 시험 중 «self.relation 은 있고 self.status 는 없는» 대역
+결과   후보 «셋» 더 — test_a_source_says_how_many_rows_it_has_not_translated ·
+       test_a_view_says_which_tables_it_reads · test_an_initial_load_goes_down_the_live_path
+실행   셋 다 «32 passed» — sources_for_table 에 «안 닿습니다». 그래서 «안 건드렸습니다»
+=> 부류의 구성원은 «하나»였습니다. 세어서 그렇게 말합니다(추정 아님)
+확인   이웃 묶음 230 passed / 3 skipped
+```
+
+## 3. 다음 — 계기 실행만 남았습니다
+```
+그룹 로그(N·M·K·초)를 읽으려면 계기를 «라이브 박스»에 돌려야 하고, 그것은 «행을 씁니다»
+지금 재기동 PID 456 이 총괄님 것이고 응용도 같은 박스를 씁니다
+=> 「돌려도 되는 때」한 줄만 주시면 1,000 행 그룹 «세 번» 돌리고 표로 올립니다
+   (그 표가 M<N 이면 ③, M=N 이면 「기준 캐시 이득 0」을 이름 대어 닫고 뷰 자체로 겨냥)
+```
+> 📌 **[09-10] 이 채널의 미답 질문: 「계기를 돌려도 되는 때」 하나 (직전 보고와 같은 것).**
