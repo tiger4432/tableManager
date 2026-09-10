@@ -330,7 +330,15 @@ const FLOORS = new Map([
   //    halves of one problem. Most of its assertions are production parity against every
   //    distinct `wafer_map_metadata` shape, so a floor drop here means production coverage
   //    was dropped, not that somebody tidied a test.
-  ['frame_declaration_harness.mjs', 4079],
+  // 🔴 RAISED 4079 -> 4104 ON 2026-09-10, AND THE 25 ARE TWO DIFFERENT THINGS. Two are new
+  //    baseline assertions (section H): the declaration vocabulary is now measured against
+  //    `contracts/declaration_tokens/vectors.json` as a SUBSET, which is what catches a token
+  //    minted on the client side. The other 23 are the MUTATION VERDICTS, which had never been
+  //    counted here because the corpus sat behind `--mutate` and the gate runs harnesses bare
+  //    -- so nobody had run it, two anchors had rotted (one of them the only CONTROL), and a
+  //    mutant was surviving unseen. Counting the verdicts is what makes this floor protect the
+  //    corpus: if it stops being applied, `ran` drops and the build blocks.
+  ['frame_declaration_harness.mjs', 4104],
   // 46 -> 62 (2026-08-04). The valid-die COMMIT-GESTURE cases: 🎯 APPLY was deleted because the
   // key control became a real <select>, and the 16 new assertions pin WHICH gesture applies in
   // each of the two controls. The fallback text input (truncated / unavailable / unlisted key)

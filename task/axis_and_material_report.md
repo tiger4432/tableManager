@@ -1,3 +1,71 @@
+# [디자인 -> 총괄] 🔵 **③ 완료 — 계약이 M22 를 잡고, 코퍼스가 «게이트에서» 돕니다. 23/23 · `ASSERTIONS 4104 0` · 전건 초록. 그리고 ㉢ 의 크기를 쟀습니다: 자리 «17» 개입니다**
+
+```
+게이트   frame_declaration 4104/0 (floor 4079 -> 4104) · 전건 초록 · GATE_EXIT 0
+        제품 소스 0줄 · dist 무변 · 코퍼스 23/23 scored as intended
+```
+
+## ① 단언 둘 — «기저»에(코퍼스 밖). 그래서 `--mutate` 없이도 매번 잽니다
+```
+단언 1 (⊆)   「H. no token is minted on this side」 — `DECLARATION_TOKENS` 의 모든 토큰이
+             `contracts/declaration_tokens/vectors.json` 안에 있나. 이것이 M22 를 잡는 자리입니다
+단언 2 (이름만) 「H. tokens the server has that this client has not borrowed: none」 —
+             evidence 줄. 판정대로 «실패로 세지 않습니다»: 안 빌려 온 토큰은 «뒤처진» 것이지
+             틀린 것이 아니고, 그건 «다른 문장»입니다
+가드 하나 더  「the contract was read at all」 — 벡터 파일이 사라지면 ⊆ 가 «공허하게 참»이 됩니다.
+             빈 계약이 초록으로 읽히는 것이 이 계약이 막으려던 바로 그 모양이라 못 박았습니다
+⛔ 어휘를 «다시 안 적었습니다»  하니스가 벡터를 읽습니다. 여기에 일곱을 타이핑하면 그것이
+             목록의 «세 번째» 진술이 됩니다
+```
+
+## ② ✅ M22 CAUGHT — 그리고 코퍼스가 23/23 입니다
+```
+전    M22 SURVIVED (「BORROW, DO NOT INVENT」가 산문뿐)
+후    CAUGHT — 단언 1 이 잡습니다. `'chosen'` 은 서버 집합에 없으니까요
+통제  SURVIVED (그것이 통제의 «정답»입니다) -> 23/23 scored as intended
+```
+
+## ③ ✅ ㉡ — 플래그를 뗐습니다. 초록이라 커밋했습니다(조건대로)
+```
+전    `if (mutate)` — 게이트는 맨몸으로 돌므로 코퍼스가 «한 번도» 안 돌았습니다
+후    무조건 돕니다. `ASSERTIONS` 는 «기저 + 변이 판정»을 셉니다 -> 4081 + 23 = «4104»
+왜 세나  안 세면 코퍼스가 조용히 멈춰도 `ran` 이 안 움직입니다 — 한 층 위의 같은 침묵입니다.
+       이제 floor 4104 가 「코퍼스가 적용되고 있나」를 지킵니다
+게이트  ✓ frame_declaration_harness.mjs (ran 4104, failed 0) · every gated harness is green
+```
+
+## ④ 🔵 ㉢ 의 크기 — «17 자리»입니다 (판정하신 대로 «먼저 수»)
+```
+방법   플래그 뗀 실행에서 변이마다 「first: …」를 뽑고, 사례 이름을 [CASE] 로 접어 중복 제거
+결과   CAUGHT 22 개가 «자리 17» 개를 깹니다 (둘이 겹칩니다)
+   4  B. synthetic[CASE] rotation.source      1  prod[CASE] seatingSnapshot.startX
+   3  B. synthetic[CASE] startX.source        1  prod[CASE] seatingSnapshot.rotation
+   1  B. synthetic[CASE] side.value           1  prod[CASE] seatingSnapshot.chipX
+   1  B. synthetic[CASE] invertY.source       1  prod[CASE] getVisualGridDimensions.visualCols
+   1  B. synthetic[CASE] cols.source          1  G. a frame chosen from the data says so
+   1  B. synthetic[CASE] chipX.source         1  G. a declared frame reports no choice
+   1  B. declared grid_cols=0 legacy …        1  E. cols
+   1  B2. …becomes indeterminate once 90 …    1  D. frame is frozen
+   1  H. no token is minted on this side      (← 이번에 생긴 자리, M22)
+=> 4,079 전수도 아니고 절 글자도 아닙니다. «17» 이 라운드의 크기입니다
+🔵 그중 «11» 이 생성 루프 안(`[CASE]`)이라 판정하신 `B1[startx_stored_zero]` 조립이 필요합니다.
+   나머지 6 은 고정 문자열이라 접두를 그냥 답니다. `B2.` 는 «이미» id 꼴입니다
+```
+
+## ⑤ 모르는 것
+```
+⚠️ M13 의 「ran 4075 of 4079」 경고는 «그대로» 있습니다  플래그를 떼도 남습니다(이번 실행에도 1 건).
+                     CAUGHT 이긴 하나 「크래시로 판정에 도달」 부류라, ㉢ 에서 그 자리에 id 를 심을 때
+                     같이 봐야 할 수 있습니다 — 어느 단언 4 개가 안 돌았는지는 아직 «안 좁혔습니다»
+⚠️ 겹치는 두 자리     rotation.source 를 넷이, startX.source 를 셋이 깹니다. 같은 id 를 넷이
+                     `catches` 로 달면 「이 변이가 이 자리를 깬다」의 결이 그만큼 굵어집니다 —
+                     사례 이름까지 넣어 갈라야 하는지는 ㉢ 착수 때 판정 부탁드립니다
+```
+
+판정 대기: ⑤ 의 「겹치는 두 자리를 사례 이름까지 갈라 볼지」 — ㉢ 착수 조건입니다.
+
+---
+
 # [디자인 -> 총괄] 🔵 **③ 대기 — 벡터가 아직 없습니다(S-135). 대기 전에 제가 올린 미지 하나를 재 뒀습니다: ㉢ 은 «개명»이 아니라 «id 를 심는» 일입니다. 코드 0줄**
 
 ```

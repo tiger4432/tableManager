@@ -69,6 +69,10 @@ const { DECLARED, AUTO_REGISTERED, ABSENT, UNPARSABLE, INDETERMINATE } = LIVE;
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const MODULE_PATH = join(HERE, '..', 'src', 'map2', 'declaration.js');
+// 🔴 THE SERVER HALF OF THE SEAM, READ FROM THE SHARED FILE. Not retyped here: a second copy
+//    of the vocabulary is the very defect this contract exists to close.
+const CONTRACT_PATH = join(HERE, '..', '..', 'contracts', 'declaration_tokens', 'vectors.json');
+const CONTRACT_TOKENS = JSON.parse(readFileSync(CONTRACT_PATH, 'utf8')).tokens;
 const FIXTURE_PATH = join(HERE, 'fixtures', 'prod_frame_metas.json');
 
 const die = (m) => {
@@ -663,6 +667,30 @@ function run(mod) {
   eq('D. dim bounds min', bounds.min, 1);
   eq('D. dim bounds max', bounds.max, 100);
 
+  // ── H. THE VOCABULARY IS BORROWED, AND NOW THAT IS MEASURED ──────────────────
+  // 🔴 WHY THESE ARE IN THE BASELINE AND NOT IN THE CORPUS. The rule they score --
+  //    「BORROW, DO NOT INVENT: every token exists on the server first and none is minted
+  //    here」 -- was stated in the subject's prose and asserted NOWHERE, which is how mutant
+  //    M22 (minting `'chosen'`) survived once its anchor was repaired. A check that only runs
+  //    under `--mutate` would leave the rule unmeasured on every gate run, which is the same
+  //    hole one level up.
+  // 🔵 THE SERVER IS CANONICAL and the contract says so: `contracts/declaration_tokens/`
+  //    captures `map_overlay.GEOMETRY_TOKENS`, the server half asserts EQUALITY against it,
+  //    and this side asserts SUBSET -- because a client that has not learned a new token yet
+  //    is BEHIND, not wrong. Those are two different sentences and they get two assertions.
+  const contractTokens = new Set(CONTRACT_TOKENS);
+  const minted = mod.DECLARATION_TOKENS.filter((t) => !contractTokens.has(t));
+  eq('H. no token is minted on this side (every DECLARATION_TOKENS entry is the server\'s)',
+    minted.join(',') || '(none)', '(none)');
+  // ⚠️ NOT A FAILURE, AND DELIBERATELY SO. A token the server has and this client does not is
+  //    "not borrowed yet" -- it becomes wrong only where something reads it, and that is a
+  //    different question from the one above. It is NAMED so nobody has to grep for it.
+  const notYetBorrowed = CONTRACT_TOKENS.filter((t) => !mod.DECLARATION_TOKENS.includes(t));
+  evidence.push(`H. tokens the server has that this client has not borrowed: `
+    + `${notYetBorrowed.length ? notYetBorrowed.join(', ') : 'none'}`);
+  eq('H. the contract was read at all (a vector file that went missing must not read as clean)',
+    CONTRACT_TOKENS.length > 0, true);
+
   return { compared, failures, evidence };
 }
 
@@ -670,17 +698,24 @@ function run(mod) {
 // MAIN
 // ═══════════════════════════════════════════════════════════════════════════════
 const verbose = process.argv.includes('--verbose');
-const mutate = process.argv.includes('--mutate');
 
 const base = run(LIVE);
-if (verbose || !mutate) base.evidence.forEach(e => console.log('  ' + e));
+base.evidence.forEach(e => console.log('  ' + e));
 console.log(`${base.failures.length === 0 ? 'PASS' : 'FAIL'} baseline: ${base.compared} assertions, `
   + `${base.failures.length} failure(s)`);
-console.log(`ASSERTIONS ${base.compared} ${base.failures.length}`);
 base.failures.slice(0, 25).forEach(f => console.log(`   x ${f}`));
 if (base.failures.length > 25) console.log(`   ... and ${base.failures.length - 25} more`);
 
-if (mutate) {
+// 🔴 C-66 ㉡. THE CORPUS IS NO LONGER BEHIND `--mutate`, AND THAT IS THE WHOLE REPAIR. It ran
+//    only when someone typed the flag, so the gate -- which runs harnesses bare -- had never
+//    executed it. `check_harnesses.mjs` states the rule in its own header ("anything behind a
+//    flag is a thing it does not run"), and the cost was measured: two anchors had rotted
+//    unnoticed, one of them the corpus's only CONTROL, and a mutant survived that nobody could
+//    see. A corpus nobody runs is a comment about testing.
+// 🔴 AND THE VERDICTS ARE IN THE `ASSERTIONS` LINE, so the floor protects them. Left out, the
+//    corpus could quietly stop being applied and `ran` would not move -- which is the same
+//    silence one level up.
+{
   // In-memory variants only. The file on disk is never written, so there is no CRLF hazard
   // and no stale artefact to forget to revert.
   const SRC = readFileSync(MODULE_PATH, 'utf8').replace(/\r\n/g, '\n');
@@ -837,7 +872,11 @@ if (mutate) {
     if (detail) console.log(`            ${detail}`);
   }
   console.log(`\n  ${scored}/${MUTANTS.length} scored as intended.`);
-  if (scored !== MUTANTS.length) process.exit(1);
+  // 🔴 ONE LINE, COUNTING BOTH. `ran` is the baseline assertions PLUS one per mutant verdict;
+  //    `failed` is baseline failures plus every mutant that did not do what it was declared to
+  //    do. A corpus that stops being applied therefore drops `ran` and the floor blocks -- the
+  //    protection that did not exist while it sat behind a flag.
+  const failed = base.failures.length + (MUTANTS.length - scored);
+  console.log(`ASSERTIONS ${base.compared + MUTANTS.length} ${failed}`);
+  process.exit(failed === 0 ? 0 : 1);
 }
-
-process.exit(base.failures.length === 0 ? 0 : 1);
