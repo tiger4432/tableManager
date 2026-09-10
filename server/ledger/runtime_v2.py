@@ -19,6 +19,7 @@ from . import gate
 from .backfill import prepare_v2_cursor_batch
 from .envelope import canonical_keys, registration_fingerprint, registration_token
 from .ledger_frame import atoms_from_ledger_rows
+from .setup_bundle import DEFAULT_CARDINALITY
 from .roleframe import (
     LedgerV2DryRunResult,
     MapperContext,
@@ -408,6 +409,46 @@ def _require_scope(base_rows: Any, scope: Any) -> None:
             f"{outside[:5]}")
 
 
+def _one_cardinality_predicates(snapshot: LedgerSetupSnapshot) -> frozenset:
+    """The predicates whose declaration says a subject carries at most one object NOW."""
+    return frozenset(
+        predicate_id for predicate_id, predicate in snapshot.vocabulary.items()
+        if getattr(predicate, "cardinality", DEFAULT_CARDINALITY) == "one")
+
+
+def _atom_subject(atom) -> tuple:
+    """The identity a `one` predicate is 「one」 PER. Keys are canonicalised because two
+    dicts spelling the same identity in a different order are the same subject."""
+    return (atom.subject_type, _canonical(atom.subject_keys or {}), atom.predicate)
+
+
+def _conflicting_subjects(snapshot: LedgerSetupSnapshot, event_atoms) -> set:
+    """Subjects this BATCH gives more than one object for, on a `one` predicate.
+
+    🔴 THE BATCH CANNOT BE ORDERED BY ITSELF (S-133 ②, 판정 256). Across batches a later
+    object supersedes an earlier one - that is a value CHANGING, and the arrival order says
+    which is current. Inside one batch there is no such order, so two objects for one
+    subject leave nobody able to say which is now true. Refusing is the only answer that
+    does not invent one.
+
+    ⚠️ COMPUTED ONCE OVER THE WHOLE BATCH, because a per-molecule screen cannot see this:
+    the second object is in a different molecule by definition.
+    """
+    one_predicates = _one_cardinality_predicates(snapshot)
+    if not one_predicates:
+        return set()
+
+    objects_by_subject: dict[tuple, set] = {}
+    for atoms in event_atoms:
+        for atom in atoms:
+            if atom.predicate not in one_predicates:
+                continue
+            objects_by_subject.setdefault(_atom_subject(atom), set()).add(
+                _canonical(atom.object_payload or {}))
+    return {subject for subject, objects in objects_by_subject.items()
+            if len(objects) > 1}
+
+
 def _screened_atoms(snapshot: LedgerSetupSnapshot, source_id: str, preview) -> list:
     """Gate every complete event and return what survives. One copy, both doors.
 
@@ -419,9 +460,24 @@ def _screened_atoms(snapshot: LedgerSetupSnapshot, source_id: str, preview) -> l
     event_atoms = _filtered_event_atoms(
         preview.event_results, preview.known_registrations)
     _stamp_occurred_at_basis(_source_plan(snapshot, source_id), event_atoms)
+    conflicting = _conflicting_subjects(snapshot, event_atoms)
     for result, atoms in zip(preview.event_results, event_atoms):
         molecule_ref = result.role_rows.attrs["molecule_ref"]
         with gate.building_molecule(source_id):
+            # ⛔ NAMED, COUNTED, SKIPPED - and it has to be here rather than in
+            # `screen_compiled_molecule` because the OTHER object is in another
+            # molecule. `gate.refuse` inside this context counts and then raises,
+            # which is what stops a caller from counting a refusal and writing the
+            # molecule anyway.
+            clashing = sorted({atom.predicate for atom in atoms
+                               if _atom_subject(atom) in conflicting})
+            if clashing:
+                gate.refuse(
+                    source_id, "cardinality_one_violated",
+                    f"this batch carries more than one object for one subject on "
+                    f"{clashing}, declared cardinality 'one' - nothing in the batch "
+                    f"says which is current, so no atom is written for it",
+                    rows=1, addresses=[molecule_ref])
             # 🔴 `_report` STAYS DISCARDED HERE, AND THAT IS MEASURED RATHER THAN LAZY.
             # This call sits inside `gate.building_molecule`, and a refusal there does not
             # return -- `gate.refuse` raises `MoleculeRefused` while a molecule is open, so
