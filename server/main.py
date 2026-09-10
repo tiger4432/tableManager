@@ -1923,6 +1923,27 @@ def cached_table_count(query, cache_key):
 
 # [Phase 73.12] 대량 데이터 조회 시 Pydantic 검증 오버헤드 제거를 위해 response_model 제거
 @app.get("/tables/{table_name}/data")
+def _filtered_column_count(filters) -> int:
+    """How many COLUMNS a request constrains, and nothing about what it constrains them to.
+
+    🔴 A SHAPE, NOT A VALUE (S-123 보강). The timing line is always on, so the filter
+    object - which carries what a person typed - must not reach it; the number of columns
+    is what tells a reader whether two slow requests were even the same query.
+
+    Tolerant on purpose: this runs beside a log line, and a malformed `filters` must
+    produce a number rather than a 500 on a request that was otherwise fine.
+    """
+    if not filters:
+        return 0
+    try:
+        import json as _json
+
+        parsed = _json.loads(filters) if isinstance(filters, str) else filters
+        return len(parsed) if isinstance(parsed, dict) else 0
+    except Exception:                                                  # noqa: BLE001
+        return 0
+
+
 def get_table_data(
     table_name: str, 
     skip: int = 0, 
@@ -2128,7 +2149,18 @@ def get_table_data(
         # user-typed values in a permanent file, which is what 「payload 본문 로그 금지」
         # protects against even though a search box is not a payload body. What a
         # diagnosis needs from it is whether a filter was in play at all.
-        f"skip={skip}, limit={limit}, order={order_by}, q={'set' if q else '-'}")
+        # 🔴 WHAT THE LINE COULD NOT SHOW (S-123 보강, 09-10 14:19). The owner read
+        # `ID Scan 0.7 s` with `order=updated_at, q=-` and the line had no way to say
+        # whether a COLUMN FILTER was in play or whether a target row was being hunted -
+        # both change which plan the id query gets, so a reader was left comparing two
+        # requests that were not the same request.
+        #
+        # ⛔ THE COUNT, NEVER THE FILTER. `filters` is a user-authored object with their
+        # values in it; how MANY columns are constrained is the shape of the query, which
+        # is what a plan question needs, and the values are theirs.
+        f"skip={skip}, limit={limit}, order={order_by}, q={'set' if q else '-'}, "
+        f"filters={_filtered_column_count(filters)}, "
+        f"target={'set' if target_row_id else '-'}")
     
     return _table_data_response({
         "table_name": table_name, "total": total_count, "skip": skip, "limit": limit,

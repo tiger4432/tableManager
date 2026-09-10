@@ -250,6 +250,67 @@ def load_physical_catalog(path: str | Path) -> Mapping[str, Any]:
     return _adapt_physical_catalog(document)
 
 
+#: The keys that tell an ADAPTED entry from the raw file it was adapted FROM.
+#:
+#: ⚠️ `business_key` IS NOT ONE OF THEM, though the adapter emits it: the raw document
+#: carries that key under the SAME NAME, so it is evidence of nothing. Measured - the first
+#: version of this guard listed it and the raw catalogue sailed through, because the first
+#: entry it looked at had a `business_key`. A discriminator has to be a key only ONE of the
+#: two shapes can have.
+ADAPTED_CATALOG_KEYS = frozenset({"columns", "composite_key"})
+
+
+def refuse_unadapted_catalog(catalog: Any, where: str = "catalog") -> None:
+    """Refuse a catalogue that never went through the adapter, BY NAME (S-86).
+
+    🔴 A WRONG INPUT THAT PRODUCES A PLAUSIBLE ANSWER IS WORSE THAN ONE THAT RAISES. This
+    parameter took a raw `table_config.json` document without a word and the validators
+    then read `column_types` as if it were `columns` - finding none, and reporting
+    「column 'x' is not in EventFrame schema」 about a perfectly good declaration. That
+    sentence is TRUE of what it was given and false about the world, which is the hardest
+    kind of wrong to chase: it sent one lane to invent a defect (S-85) out of a caller's
+    mistake, and it sent me to the same place today.
+
+    ⚠️ THE REFUSAL NAMES THE FUNCTION THAT FIXES IT. 「that is not the right shape」 leaves
+    the caller looking for a shape; `load_physical_catalog()` is the whole answer, so it is
+    in the sentence.
+
+    ⛔ SHAPE, NOT CONTENT. An adapted catalogue that happens to be EMPTY is a legitimate
+    answer (a deployment declaring no tables), so emptiness is not the test - the test is
+    whether the entries look like the adapter's output or like the file it reads.
+    """
+    if catalog is None:
+        return
+    if not isinstance(catalog, Mapping):
+        raise LedgerSetupValidationError(
+            "unadapted_physical_catalog", where,
+            f"catalog must be the mapping `load_physical_catalog()` returns, not "
+            f"{type(catalog).__name__}")
+    for table_id, entry in catalog.items():
+        if not isinstance(entry, Mapping):
+            raise LedgerSetupValidationError(
+                "unadapted_physical_catalog", f"{where}.{table_id}",
+                "entry must be an object; pass the mapping `load_physical_catalog()` "
+                "returns rather than a raw catalogue file")
+        if ADAPTED_CATALOG_KEYS & set(entry):
+            return
+        # The tell of the RAW file: the adapter's input spellings, none of its output's.
+        if {"column_types", "composite_key_source", "display_columns"} & set(entry):
+            raw_keys = sorted(set(entry) & {"column_types", "composite_key_source",
+                                            "display_columns"})
+            raise LedgerSetupValidationError(
+                "unadapted_physical_catalog", f"{where}.{table_id}",
+                f"this is a raw table_config document, not an adapted catalogue: "
+                f"{table_id!r} carries {raw_keys} and none of "
+                f"{sorted(ADAPTED_CATALOG_KEYS)}. Pass `load_physical_catalog(<path>)` - "
+                f"without it the cross-validators read no columns at all and refuse good "
+                f"declarations with 「column ... is not in EventFrame schema」")
+        raise LedgerSetupValidationError(
+            "unadapted_physical_catalog", f"{where}.{table_id}",
+            f"entry carries none of {sorted(ADAPTED_CATALOG_KEYS)}; pass the mapping "
+            f"`load_physical_catalog()` returns")
+
+
 def _adapt_physical_catalog(document: Mapping[str, Any]) -> Mapping[str, Any]:
     catalog: dict[str, dict[str, Any]] = {}
     for table_id, declared in document.items():
@@ -751,6 +812,13 @@ def validate_bundle_errors(value: Mapping[str, Any], *,
             f"validation needs the physical relation shape; pass "
             f"catalog=ledger.setup.live_physical_catalog() or an explicit "
             f"load_physical_catalog(<path to {PHYSICAL_CATALOG_FILENAME}>)"),)
+    # 🔴 AND THE SHAPE, NOT ONLY THE PRESENCE (S-86). `catalog is None` has refused by name
+    # since it cost something; a catalogue that is PRESENT but never went through the
+    # adapter was accepted in silence, and the cross-validators below then found no columns
+    # and refused good declarations with 「column ... is not in EventFrame schema」. That
+    # sentence is true of what they were given and false about the world - the shape a loud
+    # axis takes when it is standing in front of a quiet one.
+    refuse_unadapted_catalog(catalog)
     if not problems.exact(
             value, "bundle", required=("setup_version", *LOGICAL_SECTIONS),
             optional=OPTIONAL_SECTIONS):

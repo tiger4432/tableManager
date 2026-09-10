@@ -173,6 +173,47 @@ def test_the_load_path_asks_for_it_after_the_last_chunk():
 
 # ── the always-on timing line must not carry what a person typed ─────────────
 
+def test_the_line_counts_filtered_columns_and_never_reads_their_values():
+    """🔴 WHAT THE LINE COULD NOT SHOW (S-123 보강, 09-10 14:19). The owner read
+    `ID Scan 0.7 s` with `order=updated_at, q=-` and it had no way to say whether a column
+    filter was in play or a target row was being hunted - both change which plan the id
+    query gets, so a reader was comparing two requests that were not the same request.
+
+    ⛔ THE COUNT, NEVER THE FILTER. `filters` carries what a person typed; how MANY columns
+    are constrained is the shape of the query, which is what a plan question needs.
+    """
+    import main
+
+    assert main._filtered_column_count(None) == 0
+    assert main._filtered_column_count("") == 0
+    assert main._filtered_column_count(
+        '{"a":{"filter":"secret"},"b":{"filter":"also secret"}}') == 2
+    assert main._filtered_column_count({"a": 1}) == 1
+
+
+def test_a_malformed_filter_gives_a_number_rather_than_a_five_hundred():
+    """⚠️ THIS RUNS BESIDE A LOG LINE. A request that was otherwise fine must not fail
+    because its instrument could not parse something - the same rule the ingestion pace
+    follows, where a settings typo runs at full speed with a warning rather than stopping
+    the load."""
+    import main
+
+    assert main._filtered_column_count("not json at all") == 0
+    assert main._filtered_column_count("[1, 2, 3]") == 0
+    assert main._filtered_column_count(object()) == 0
+
+
+def test_the_timing_line_carries_the_shape_and_not_the_content():
+    import inspect
+
+    import main
+
+    body = inspect.getsource(main.get_table_data)
+    assert "filters={_filtered_column_count(filters)}" in body, body[-1400:]
+    assert "target={'set' if target_row_id else '-'}" in body, body[-1400:]
+    assert "filters={filters}" not in body, "the filter object must never reach the line"
+
+
 def test_the_timing_line_says_whether_a_search_was_set_and_never_what_it_was():
     """🔴 THE LINE IS ALWAYS ON NOW, so `q` would put user-typed values in a permanent
     file. 「payload 본문 로그 금지」 is about content a person supplied, and a search box is

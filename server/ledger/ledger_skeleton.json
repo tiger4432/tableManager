@@ -46,6 +46,16 @@
           }
         },
         {
+          "key": "timezone",
+          "required": false,
+          "label": "시간대 (timestamp 값일 때)",
+          "help": "이 컬럼의 «naive한» 읽기가 어느 시간대인지. 글자에 오프셋이 있으면 그쪽이 이깁니다. 값 타입이 timestamp 인 역할에는 «필수»입니다 - 없으면 번역에서 모든 원자가 거절됩니다. 예: Asia/Seoul",
+          "when": {
+            "field": "kind",
+            "is": "column"
+          }
+        },
+        {
           "key": "value",
           "required": true,
           "when": {
