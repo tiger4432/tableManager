@@ -1275,7 +1275,14 @@ def ensure_alignment_decision_key_indexes(engine, config=None, rules=None):
     transaction, at boot and at config reload, never in a request. Failures are isolated
     and reported - a box that cannot build one index must still serve.
     """
-    catalog = config if config is not None else TABLE_CONFIG
+    # 🔴 `crud.TABLE_CONFIG` IS THE SINGLETON, and this module has no name of
+    # its own for it. The bare `TABLE_CONFIG` here raised `NameError` the first time a
+    # caller left `config` out - which nobody had, because the reload path always
+    # passes one. A fallback nothing reaches is a fallback nothing checks
+    # [[a-guard-goes-wrong-the-day-it-becomes-reachable]].
+    from database import crud as _catalog_owner
+
+    catalog = config if config is not None else _catalog_owner.TABLE_CONFIG
     if rules is None:
         try:
             import enrichment_config
@@ -1313,7 +1320,14 @@ def ensure_map_key_indexes(engine, config=None):
     """
     from sqlalchemy import text as _text
 
-    catalog = config if config is not None else TABLE_CONFIG
+    # 🔴 `crud.TABLE_CONFIG` IS THE SINGLETON, and this module has no name of
+    # its own for it. The bare `TABLE_CONFIG` here raised `NameError` the first time a
+    # caller left `config` out - which nobody had, because the reload path always
+    # passes one. A fallback nothing reaches is a fallback nothing checks
+    # [[a-guard-goes-wrong-the-day-it-becomes-reachable]].
+    from database import crud as _catalog_owner
+
+    catalog = config if config is not None else _catalog_owner.TABLE_CONFIG
     created = []
     for table_name, entry in list((catalog or {}).items()):
         name, statement = map_key_index_ddl(table_name, entry)

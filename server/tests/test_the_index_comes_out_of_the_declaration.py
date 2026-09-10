@@ -88,3 +88,29 @@ def test_the_boot_sequence_calls_the_ensure_and_not_only_the_reload_path():
     body = inspect.getsource(worker.start_chain_ingestion_worker)
     assert "_ensure_alignment_decision_key_indexes_sync" in body, body[:400]
     assert hasattr(worker, "_ensure_alignment_decision_key_indexes_sync")
+
+
+def test_the_ensure_runs_with_no_config_because_boot_calls_it_that_way():
+    """🔴 THE FALLBACK NOBODY HAD REACHED. Both ensures read a bare `TABLE_CONFIG` when a
+    caller left `config` out, and this module has no such name - the reload path always
+    passes one, so it had never been evaluated. The boot wiring reached it on its first
+    run and the ensure died with `NameError`, saying so in the log.
+
+    Asserted by CALLING it the way boot does, with a database double that answers nothing:
+    what is being proved is that the function gets as far as asking the engine, not what
+    the engine says.
+    """
+    from database import models
+
+    class _Refuses:
+        def connect(self):
+            raise RuntimeError("no database here")
+
+    # Rules are supplied so the call does not read the box's own declaration.
+    created = models.ensure_alignment_decision_key_indexes(
+        _Refuses(), config={"t": {"kind": "table"}},
+        rules=[{"alignment": True, "source_table": "t", "decision_key": ["a"]}])
+    assert created == [], "a database that refuses builds nothing, and does not raise"
+
+    # And with no config at all - the shape boot uses - it must still resolve a catalogue.
+    assert models.ensure_alignment_decision_key_indexes(_Refuses(), rules=[]) == []

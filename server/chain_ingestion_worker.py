@@ -2012,9 +2012,15 @@ def _ensure_alignment_decision_key_indexes_sync(db_session_factory):
         created = models.ensure_alignment_decision_key_indexes(db.get_bind())
     finally:
         db.close()
+    # ⚠️ IT SAYS SO EITHER WAY (판정 239). A line only on the build would make
+    # "nothing was built" and "the ensure never ran" the same silence - and this round's
+    # first boot proved that matters: the ensure DID run and failed by name, and the only
+    # reason anybody saw it was that the failure spoke.
     if created:
         logger.info("[Chain] built %d alignment decision-key index(es): %s",
                     len(created), ", ".join(created))
+    else:
+        logger.info("[Chain] alignment decision-key indexes are already in place.")
 
 
 def _ensure_business_key_unique_indexes_sync(db_session_factory):
