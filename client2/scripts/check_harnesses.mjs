@@ -379,7 +379,17 @@ const FLOORS = new Map([
   //    C-58 converted this harness from slicing 24 function bodies into a vm to loading
   //    `timeline.js` WHOLE through `lib/probe.mjs`, and the count landing IDENTICAL on both
   //    sides is the evidence that the conversion moved the MECHANISM and not the coverage.
-  ['history_paging_harness.mjs', 141],
+  // 🔴 RAISED 141 -> 143 ON 2026-09-10 BY C-63, and the two are the ones the ruling asked for.
+  //    Four of the nineteen mutants were being caught by a THROW rather than by an assertion --
+  //    the harness stopping, banked as the harness noticing (owner's standing note: a mutant
+  //    that throws is a hole, not a catch). Two of the four already had an assertion that named
+  //    the fact (B2 counts the painted rows; I2c says the disclosure carries the row count), so
+  //    for those the DEREFERENCE was removed and nothing was added. The other two got one named
+  //    assertion each: D2b 「the superseded page does not crash the list it landed on」 and F0
+  //    「a live update does not throw on the state a load left behind」 -- which is the production
+  //    symptom this file was written for, said out loud instead of ending the section.
+  //    All nineteen verdicts now come from failed assertions; the run reports zero throws.
+  ['history_paging_harness.mjs', 143],
   // New 2026-08-04 with the isotropic-cell round (equal mm-per-pixel on both canvas axes, so
   // the wafer outline is a circle by construction). Same rule as the entries above: the floor
   // is the count it reports on the commit that introduces it — there is no earlier tree to

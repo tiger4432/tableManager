@@ -378,8 +378,31 @@ async function buildSandbox() {
   const subject = await subjectFor(UNDER_TEST);
   // Every call CLAIMS the world first, so a case that holds two sandboxes reads the right one.
   const ctx = {};
+  // 🔴 C-63. NO CALL MAY STALL THE GATE. The response queue is POSITIONAL, so a mutant that
+  //    changes which requests are issued also changes which scripted response each call gets —
+  //    and a `hang: true` meant for a call that never happened can be consumed by a call that IS
+  //    awaited, whose promise then nobody can resolve. Measured while closing the four throwing
+  //    mutants: the suite hung on `await sectionG()` with no output at all.
+  // ⚠️ A stall is the WORST instrument failure, worse than the crash this round is removing: a
+  //    crash names a line, a stall names nothing and the build waits forever. So a call that does
+  //    not settle becomes a rejection that SAYS WHICH CALL, and the corpus reports it by name.
+  //    The base run settles in milliseconds, so this can only fire on a defect.
+  const CALL_TIMEOUT_MS = 5000;
   for (const name of WANTED) {
-    ctx[name] = (...args) => { CURRENT = sandbox; return subject[name](...args); };
+    ctx[name] = (...args) => {
+      CURRENT = sandbox;
+      const out = subject[name](...args);
+      if (!out || typeof out.then !== 'function') return out;
+      // ⚠️ NOT `unref`ed. An unreferenced timer lets node see an empty event loop and exit with
+      //    「unsettled top-level await」 — which is the stall wearing a different hat: no verdict,
+      //    no name, no assertion count. The timer must hold the loop open long enough to reject.
+      let timer;
+      const stalled = new Promise((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`${name}() never settled (${CALL_TIMEOUT_MS}ms)`)), CALL_TIMEOUT_MS);
+      });
+      return Promise.race([out, stalled]).finally(() => clearTimeout(timer));
+    };
   }
   CURRENT = sandbox;
   sandbox.ctx = ctx;
@@ -426,6 +449,76 @@ const recentPage = (groups, cursor = null) => ({
   groups, truncated: cursor !== null, next_cursor: cursor,
   limit_groups: 100, returned: groups.length,
 });
+
+// 🔴 C-63. TOTAL, BECAUSE THE DEFECT THIS FILE EXISTS FOR PUTS AN OBJECT WHERE THE LIST IS.
+//    B1 names that (Array.isArray), and every OTHER assertion that reads the list by id must
+//    fail against it rather than die on `.map is not a function` -- a crash ends the section
+//    before B1's verdict can be believed, and gets banked as 『caught』.
+const listIds = (v, field = 'id') => (Array.isArray(v)
+  ? v.map(l => l[field])
+  : `NOT A LIST: ${JSON.stringify(v)}`);
+// 🔴 C-63. ONE TOTAL READER FOR 「what does this control say / is it live」.
+//    A control that is NOT THERE is a fact some assertion above already names by number
+//    (B4 counts the 더 보기 controls; I2c says the disclosure carries the row count). Every
+//    assertion that then describes its WORDING must fail against its absence rather than
+//    dereference it — a crash ends the section before the naming assertion is believed, and
+//    the corpus banks the crash as 「the mutant was caught」. It was not caught; the harness
+//    stopped. Four of nineteen mutants were being scored that way until this round.
+// ⚠️ The stand-in strings are deliberately not empty: `''.includes(x)` is false for every x,
+//    so an empty string would make 「absent」 and 「says the wrong thing」 the same failure text.
+const textOf = (el) => (el && typeof el.textContent === 'string' ? el.textContent : '(NO ELEMENT)');
+const says = (el, word) => textOf(el).includes(word);
+// A request that was never issued is a fact the assertion above it names by URL; reading it
+// as a string here would end the section instead.
+const urlAt = (S, i) => (typeof S.requests[i] === 'string' ? S.requests[i] : '(NO REQUEST)');
+
+/**
+ * Park a call the case believes is now IN FLIGHT, and keep a broken belief from stalling.
+ *
+ * 🔴 C-63. THE SUBJECT MAY NOT HAVE ISSUED THE REQUEST AT ALL. Under the envelope defect the
+ *    timeline paints nothing, so there is no 더 보기 control, so `loadMoreHistory(null)`
+ *    returns without fetching — and the `hang: true` the case scripted for it is STILL IN THE
+ *    QUEUE. The next call the case awaits directly then consumes that hang and waits on a
+ *    resolver this case has already walked past: the whole gate stops, with no verdict and no
+ *    assertion count. Measured while closing this round.
+ * 🔵 An async function runs to its first `await`, so `fetch` — and therefore the resolver in
+ *    `pending` — has already happened by the time the promise is handed back. An empty
+ *    `pending` here means nothing went out, full stop.
+ * ⚠️ The premise that failed (「a page is in flight」) is exactly what the assertions below
+ *    describe, so this un-hangs the queue and lets them FAIL BY NAME. It never asserts
+ *    anything itself — an instrument that scores its own repairs is scoring itself.
+ */
+function parked(S, promise) {
+  if (S.pending.length === 0) for (const spec of S.responses) spec.hang = false;
+  return promise;
+}
+
+/**
+ * Release the request a case parked, then wait for the call that was waiting on it.
+ *
+ * 🔴 C-63. A MUTANT CHANGES WHICH REQUESTS ARE ISSUED, so the hung one a case scripted may
+ *    never exist. `S.pending.shift()()` then called `undefined` and ended the section on a
+ *    crash, which the corpus banked as 「the mutant was caught」. And the obvious repair is
+ *    WORSE than the crash: awaiting a promise nobody can resolve stalls the whole gate, and a
+ *    stalled gate reports nothing at all — measured, on the first attempt at this round.
+ *    So: release what is actually pending, and only wait when there was something to release.
+ * ⚠️ The rejection is RETURNED rather than thrown. Whether the late page took the screen down
+ *    is a fact worth asserting by name (D2b), not a reason to stop reading the others.
+ */
+async function releaseAndAwait(S, promise) {
+  const release = S.pending.shift();
+  if (!release) {
+    promise.catch(() => {});
+    // Nothing went out, so there is nothing to wait for. `parked` above has already taken the
+    //    hang back out of the queue — one author for that repair, not two.
+    return { released: false, error: null };
+  }
+  release();
+  try { await promise; return { released: true, error: null }; }
+  catch (err) { return { released: true, error: err }; }
+}
+const enabled = (el) => (el ? el.disabled === false : '(NO ELEMENT)');
+const hasClass = (el, cls) => (el ? el.classList.contains(cls) : '(NO ELEMENT)');
 
 const items = (tl) => tl.children.filter(c => c.classList.contains('timeline-item'));
 const mores = (tl) => tl.children.filter(c => c.classList.contains('timeline-more'));
@@ -498,19 +591,29 @@ async function sectionB() {
   check('B3c the list itself carries no envelope fields',
     [state.cellRowHistoryData.truncated, state.cellRowHistoryData.next_cursor], [undefined, undefined]);
   check('B4 exactly one 더 보기 control', mores(S.timeline).length, 1);
+  // 🔴 C-63. WHAT THE ENVELOPE DEFECT DOES IS ALREADY NAMED — by B2 two lines up: with the
+  //    envelope assigned where the array belongs, `renderTimeline` paints NOTHING and B2 says
+  //    so, by number. What was wrong is that B4b reached into the empty list first and died on
+  //    `undefined.classList`, so the section ended before B2's verdict could be believed and a
+  //    CRASH was banked as 「the mutant was caught」. A throw says the harness stopped, not that
+  //    it noticed. So no assertion is added here — the dereference is removed.
   check('B4b ... and it is the LAST thing in the list',
-    S.timeline.children[S.timeline.children.length - 1].classList.contains('timeline-more'), true);
+    hasClass(S.timeline.children[S.timeline.children.length - 1], 'timeline-more'), true);
 
   // 🔴 THE LABEL CARRIES THE FACT, NOT ONLY THE OFFER. `더 보기` alone answers "is this the
   // whole history?" by implication, and by implication is how a capped list passes for a
   // complete one. `일부만` is this client's existing word for a server-truncated list.
-  check('B5 the control says the list is only part of the history',
-    moreBtn(S.timeline).textContent.includes('일부만'), true);
-  check('B5b ... and how much of it was paged in',
-    moreBtn(S.timeline).textContent.includes('3건'), true);
-  check('B5c ... and offers the page', moreBtn(S.timeline).textContent.includes('더 보기'), true);
-  check('B6 the control is live', moreBtn(S.timeline).disabled, false);
-  check('B7 the first request carries no cursor', S.requests[0].includes('cursor='), false);
+  // 🔴 C-63. READ ONCE, AND TOTAL. `moreBtn` answers null when there is no control, and B4 above
+  //    is the assertion that SAYS there is one — so these four describe the control's wording and
+  //    state, and a missing control must make them fail rather than end the section on a
+  //    dereference. Four separate `moreBtn(...)` calls also let the four disagree about which
+  //    control they meant, which is the same defect one layer down.
+  const more = moreBtn(S.timeline);
+  check('B5 the control says the list is only part of the history', says(more, '일부만'), true);
+  check('B5b ... and how much of it was paged in', says(more, '3건'), true);
+  check('B5c ... and offers the page', says(more, '더 보기'), true);
+  check('B6 the control is live', enabled(more), true);
+  check('B7 the first request carries no cursor', urlAt(S, 0).includes('cursor='), false);
   check('B7b ... and is the ROW endpoint on the row tab',
     S.requests[0], `${API_BASE}/tables/t1/rows/ROW-A/history`);
 
@@ -563,7 +666,7 @@ async function sectionC() {
 
   check('C1 the rows already on screen survive the page', items(S.timeline).length, 4);
   check('C1b ... in order, oldest page last',
-    state.cellRowHistoryData.map(l => l.id), [1, 2, 3, 4]);
+    listIds(state.cellRowHistoryData), [1, 2, 3, 4]);
   check('C2 the appended rows land ABOVE the control',
     S.timeline.children.map(c => c.classList.contains('timeline-more')),
     [false, false, false, false, true]);
@@ -571,8 +674,8 @@ async function sectionC() {
     S.requests[1], `${API_BASE}/tables/t1/rows/ROW-A/history?cursor=CUR1`);
   check('C4 the next cursor replaces the spent one', state.cellRowHistoryCursor, 'CUR2');
   check('C5 the paged count grows', state.cellRowHistoryLoaded, 4);
-  check('C5b ... and the label says so', btn.textContent.includes('4건'), true);
-  check('C6 the control is live again', btn.disabled, false);
+  check('C5b ... and the label says so', says(btn, '4건'), true);
+  check('C6 the control is live again', enabled(btn), true);
 
   // The last page: nothing further to page toward, so the control goes and its absence is the
   // "this is now the whole history" statement.
@@ -591,7 +694,7 @@ async function sectionC() {
   S2.responses.push({ status: 200, body: page([log(2)], null) });
   await S2.ctx.loadMoreHistory(moreBtn(S2.timeline));
   check('C8 an opaque cursor round-trips untouched',
-    S2.requests[1].endsWith(`?cursor=${OPAQUE}`), true);
+    urlAt(S2, 1).endsWith(`?cursor=${OPAQUE}`), true);
 
   // A second click while the first page is in flight must not issue a second request.
   const S3 = await buildSandbox();
@@ -600,13 +703,16 @@ async function sectionC() {
   await S3.ctx.loadHistory();
   S3.responses.push({ status: 200, body: page([log(2)], null), hang: true });
   const b3 = moreBtn(S3.timeline);
-  const inflight = S3.ctx.loadMoreHistory(b3);
-  check('C9 the control is disabled while its page is in flight', b3.disabled, true);
-  check('C9b ... and says so', b3.textContent, '조회 중…');
+  const inflight = parked(S3, S3.ctx.loadMoreHistory(b3));
+  check('C9 the control is disabled while its page is in flight', enabled(b3), false);
+  check('C9b ... and says so', textOf(b3), '조회 중…');
   await S3.ctx.loadMoreHistory(b3);          // the double click
   check('C9c a second click issues no second request', S3.requests.length, 2);
-  S3.pending.shift()();
-  await inflight;
+  // 🔴 C-63. TOTAL, AND IT MUST NOT BE ABLE TO HANG. With the envelope defect there is no
+  //    control to click, so no page was ever in flight and `pending` is empty — C9c above says
+  //    that by number. Calling `undefined` ended the section on a crash; awaiting a promise that
+  //    nobody can resolve would be worse still, because a STALLED gate reports nothing at all.
+  await releaseAndAwait(S3, inflight);
   check('C9d the in-flight page still lands', items(S3.timeline).length, 2);
 }
 
@@ -621,14 +727,13 @@ async function sectionD() {
   await S.ctx.loadHistory();
   S.responses.push({ status: 200, body: page([log(9, 'ROW-B')], null), hang: true });
   state.selectedCell = { rowId: 'ROW-B', colId: 'COL-A', value: '', rowIndex: 1 };
-  const load2 = S.ctx.loadHistory();
+  const load2 = parked(S, S.ctx.loadHistory());
   check('D1 the previous row\'s cursor is gone before the new page arrives',
     state.cellRowHistoryCursor, null);
   check('D1b ... and so is its truncation flag', state.cellRowHistoryTruncated, false);
   check('D1c ... and its paged count', state.cellRowHistoryLoaded, 0);
-  S.pending.shift()();
-  await load2;
-  check('D1d the new row renders its own page', state.cellRowHistoryData.map(l => l.row_id), ['ROW-B']);
+  await releaseAndAwait(S, load2);
+  check('D1d the new row renders its own page', listIds(state.cellRowHistoryData, 'row_id'), ['ROW-B']);
 
   // -- THE DEFECT ITSELF: 더 보기 on row A, resolved after the operator clicked row B --
   S = await buildSandbox();
@@ -637,20 +742,28 @@ async function sectionD() {
   await S.ctx.loadHistory();
   const btnA = moreBtn(S.timeline);
   S.responses.push({ status: 200, body: page([log(3), log(4)], 'CUR-A2'), hang: true });
-  const moreA = S.ctx.loadMoreHistory(btnA);
+  const moreA = parked(S, S.ctx.loadMoreHistory(btnA));
 
   // ...the operator clicks another cell while page 2 is still out.
   state.selectedCell = { rowId: 'ROW-B', colId: 'COL-A', value: '', rowIndex: 1 };
   S.responses.push({ status: 200, body: page([log(9, 'ROW-B')], null) });
   await S.ctx.loadHistory();
-  check('D2 row B shows its own single page', state.cellRowHistoryData.map(l => l.id), [9]);
+  check('D2 row B shows its own single page', listIds(state.cellRowHistoryData), [9]);
 
-  S.pending.shift()();
-  await moreA;
+  const late = await releaseAndAwait(S, moreA);
+  // 🔴 C-63. THE LATE PAGE IS CAUGHT SO THE FACTS BELOW GET TO SPEAK. With the session check
+  //    removed, row A's page 2 tries to splice itself into a list that was rebuilt for row B and
+  //    the insert dies — in this stub AND in a real browser, which raises `NotFoundError` on the
+  //    same call. So the stub is not being strict for its own sake and is not loosened. What
+  //    changes is that the crash becomes a NAMED assertion instead of ending the section: 「the
+  //    superseded page did not take the screen down」 is its own fact, and the three below it —
+  //    which are what this section exists to say — now run whatever happened here.
+  check('D2b the superseded page does not crash the list it landed on',
+    late.error === null ? null : late.error.message, null);
   // 🔴 THE ROWS WOULD ALL BE REAL. That is what makes this defect invisible on screen: correctly
   // formatted audit entries, about a different row.
   check('D3 row A\'s page 2 is NOT appended to row B\'s list',
-    state.cellRowHistoryData.map(l => l.id), [9]);
+    listIds(state.cellRowHistoryData), [9]);
   check('D3b ... and nothing was added to the DOM either', items(S.timeline).length, 1);
   check('D3c ... and row A\'s cursor did not overwrite row B\'s', state.cellRowHistoryCursor, null);
   check('D3d ... and row B\'s paged count is its own', state.cellRowHistoryLoaded, 1);
@@ -659,14 +772,13 @@ async function sectionD() {
   S = await buildSandbox();
   resetState();
   S.responses.push({ status: 200, body: page([log(1)], null), hang: true });
-  const slow = S.ctx.loadHistory();
+  const slow = parked(S, S.ctx.loadHistory());
   state.selectedCell = { rowId: 'ROW-B', colId: 'COL-A', value: '', rowIndex: 1 };
   S.responses.push({ status: 200, body: page([log(9, 'ROW-B')], null) });
   await S.ctx.loadHistory();
-  S.pending.shift()();
-  await slow;
+  await releaseAndAwait(S, slow);
   check('D4 a superseded fresh load does not replace the newer list',
-    state.cellRowHistoryData.map(l => l.id), [9]);
+    listIds(state.cellRowHistoryData), [9]);
 
   // -- the BODY can arrive late too, and that is a separate window --
   // 🔴 THIS IS WHY THERE ARE TWO SESSION CHECKS AND NOT ONE. The first guards the fetch; by the
@@ -685,7 +797,7 @@ async function sectionD() {
   });
   await S.ctx.loadMoreHistory(moreBtn(S.timeline));
   check('D6 a page whose BODY lands after the session moved is not appended',
-    state.cellRowHistoryData.map(l => l.id), [1]);
+    listIds(state.cellRowHistoryData), [1]);
   check('D6b ... and did not touch the DOM', items(S.timeline).length, 1);
   resetState();
 
@@ -715,9 +827,9 @@ async function sectionE() {
 
   check('E1 a failed page keeps every row already on screen', items(S.timeline).length, 2);
   check('E1b ... and the list behind them', state.cellRowHistoryData.length, 2);
-  check('E2 the control is NOT left disabled', btn.disabled, false);
-  check('E2b ... it offers the retry', btn.textContent.includes('재시도'), true);
-  check('E2c ... and shows it failed', btn.classList.contains('is-error'), true);
+  check('E2 the control is NOT left disabled', enabled(btn), true);
+  check('E2b ... it offers the retry', says(btn, '재시도'), true);
+  check('E2c ... and shows it failed', hasClass(btn, 'is-error'), true);
   check('E3 the cursor is untouched, so the retry has somewhere to go',
     state.cellRowHistoryCursor, 'CUR1');
 
@@ -736,7 +848,7 @@ async function sectionE() {
   S.responses.push({ status: 500, body: {} });
   btn = moreBtn(S.timeline);
   await S.ctx.loadMoreHistory(btn);
-  check('E5 a 500 is a retry', btn.textContent.includes('재시도'), true);
+  check('E5 a 500 is a retry', says(btn, '재시도'), true);
   check('E5b ... and keeps the position', state.cellRowHistoryCursor, 'CUR1');
 
   // -- 400: the POSITION is gone. Retrying the same token can only fail again. --
@@ -750,18 +862,21 @@ async function sectionE() {
 
   check('E6 a 400 keeps the rows already on screen', items(S.timeline).length, 2);
   check('E6b the control does not offer the same cursor again',
-    btn.textContent.includes('재시도'), false);
-  check('E6c it offers a reload', btn.textContent.includes('새로고침'), true);
-  check('E6d ... and says the position expired', btn.textContent.includes('위치 만료'), true);
-  check('E6e ... and is still clickable', btn.disabled, false);
+    says(btn, '재시도'), false);
+  check('E6c it offers a reload', says(btn, '새로고침'), true);
+  check('E6d ... and says the position expired', says(btn, '위치 만료'), true);
+  check('E6e ... and is still clickable', enabled(btn), true);
 
   // 🔴 CLICKING IT MUST START OVER, NOT RE-ASK. A control that loops on a dead cursor is the
   //    "looks clickable, does nothing" state wearing a label.
   S.responses.push({ status: 200, body: page([log(1)], null) });
-  btn.click();
+  // Guarded: E6c/E6d/E6e above are the assertions that say the control is there and what it
+  // offers. With no control there is nothing to click, E7 then finds no third request, and the
+  // fact is reported by the assertion that describes it rather than by a dereference.
+  if (btn) btn.click();
   await new Promise(r => setImmediate(r));
   check('E7 the reload asks page 1, with NO cursor',
-    S.requests[2], `${API_BASE}/tables/t1/rows/ROW-A/history`);
+    urlAt(S, 2), `${API_BASE}/tables/t1/rows/ROW-A/history`);
   check('E7b ... and the list is rebuilt from it', items(S.timeline).length, 1);
 
   // -- a failed FRESH load still reports, and leaves no control --
@@ -786,18 +901,29 @@ async function sectionF() {
   // the array belongs — and they break on a live WebSocket update, i.e. not while anyone is
   // looking at the code.
   const live = log(99);
-  S.ctx.appendHistoryLocally(live);
+  // 🔴 C-63. THE SUBJECT ITSELF THROWS HERE UNDER THE ENVELOPE DEFECT — `.some is not a
+  //    function` — and that IS the production symptom this section was written for: every live
+  //    WebSocket update on the sidebar dies, on a screen that otherwise looks fine. It is a fact
+  //    worth SAYING, so it is caught and named. Letting it end the section instead meant the
+  //    corpus banked a crash as 「the mutant was caught」, and F1..F5 below — which are what this
+  //    section exists to assert — never ran at all.
+  let liveFailure = null;
+  try { S.ctx.appendHistoryLocally(live); } catch (err) { liveFailure = err; }
+  check('F0 a live update does not throw on the state a load left behind',
+    liveFailure === null ? null : liveFailure.message, null);
   check('F1 appendHistoryLocally still unshifts into the list',
-    state.cellRowHistoryData.map(l => l.id), [99, 2, 1]);
+    listIds(state.cellRowHistoryData), [99, 2, 1]);
   check('F2 renderTimelineIncremental prepends it on screen', items(S.timeline).length, 3);
   checkFn('F2b ... at the TOP', 'the newest log heads the list',
     () => items(S.timeline)[0] === S.timeline.children[0], 'the first child IS the first item');
   check('F3 the 더 보기 control stays last',
-    S.timeline.children[S.timeline.children.length - 1].classList.contains('timeline-more'), true);
+    hasClass(S.timeline.children[S.timeline.children.length - 1], 'timeline-more'), true);
 
-  // A duplicate must still be rejected — the de-dupe reads the array too.
-  S.ctx.appendHistoryLocally(live);
-  check('F4 the de-dupe still works against the list', state.cellRowHistoryData.length, 3);
+  // A duplicate must still be rejected — the de-dupe reads the array too, so it dies on the
+  // same defect F0 names. Caught for the same reason: F4 below is the assertion with the words.
+  try { S.ctx.appendHistoryLocally(live); } catch { /* named by F0 */ }
+  check('F4 the de-dupe still works against the list',
+    Array.isArray(state.cellRowHistoryData) ? state.cellRowHistoryData.length : 'NOT A LIST', 3);
 
   // 🔴 THE PAGED COUNT IS NOT THE ARRAY LENGTH, ON PURPOSE. A live append is not something the
   //    pager fetched, so it must not inflate the number the control reports.
@@ -965,10 +1091,15 @@ async function sectionI() {
   check('I2 the two empty states are NOT the same text', slot.text === '기록 없음', false);
   check('I2b the cell is what is empty, and it says so', slot.note, '이 셀 기록 없음');
   checkFn('I2c the row-level count reaches the screen',
-    slot.action && slot.action.textContent,
+    textOf(slot.action),
     t => typeof t === 'string' && t.includes('225') && t.includes('101') && t.includes('건'),
     'a label carrying the 225101 count (grouped per locale) and 건');
-  check('I2d ... as the ROW history, named', slot.action.textContent.includes('행 이력'), true);
+  // 🔴 C-63. TOTAL, and I2c above is the assertion that NAMES the loss. Two mutants (the reader
+  //    dropping the row-history count, and the two empty states collapsing into one) take the
+  //    disclosure off the screen entirely; I2c is written to fail on that, but I2d used to
+  //    dereference `slot.action` first and throw, so the run ended before the naming assertion
+  //    could be believed — the verdict said 「caught」 about a harness that had crashed.
+  check('I2d ... as the ROW history, named', says(slot.action, '행 이력'), true);
   check('I2e the count is stored beside the list, not on it',
     [state.cellRowHistoryRowTotal, state.cellRowHistoryData.row_history_total], [225101, undefined]);
 
@@ -976,7 +1107,11 @@ async function sectionI() {
   // second copy of the tab switch.
   let tabClicks = 0;
   S.tabRowBtn.addEventListener('click', () => { tabClicks++; });
-  slot.action.click();
+  // 🔴 C-63. GUARDED, AND I3 IS STILL THE ASSERTION THAT SPEAKS. Two mutants take the disclosure
+  //    off the screen (I2c above fails and names that); clicking `undefined` used to end the
+  //    section here, and the crash was banked as 「caught」. With no disclosure there is no click,
+  //    so `tabClicks` stays 0 and I3 fails — by name, saying which way out is gone.
+  if (slot.action) slot.action.click();
   check('I3 one click on the disclosure reaches the Row History tab', tabClicks, 1);
 
   // -- the count is a FLOOR when the server says it is --
@@ -986,7 +1121,7 @@ async function sectionI() {
   S.responses.push({ status: 200, body: cellPage([], null, 1000, true) });
   await S.ctx.loadHistory();
   check('I4 a capped count is not presented as exact',
-    emptySlot(S.timeline).action.textContent.includes('이상'), true);
+    says(emptySlot(S.timeline).action, '이상'), true);
 
   // -- and is NOT hedged when it is exact. A small count also pins the whole label with no
   //    locale grouping in the way.
@@ -996,7 +1131,7 @@ async function sectionI() {
   S.responses.push({ status: 200, body: cellPage([], null, 3) });
   await S.ctx.loadHistory();
   check('I5 an exact count states the number plainly',
-    emptySlot(S.timeline).action.textContent, '행 이력 3건 보기');
+    textOf(emptySlot(S.timeline).action), '행 이력 3건 보기');
 
   // -- the ROW tab never shows the disclosure: it IS the destination, and the server sends
   //    `row_history_total: null` there --
