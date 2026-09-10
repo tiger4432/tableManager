@@ -2103,7 +2103,27 @@ def get_table_data(
         
     t_total = time.time() - t_total_start
     
-    logger.debug(f"[get_table_data] Total: {t_total:.3f}s | Target: {t_target:.3f}s | Count: {t_count:.3f}s | ID Scan: {t_id_scan:.3f}s | Entity Fetch: {t_row_scan:.3f}s | Dict Conv: {t_dict:.3f}s | skip={skip}, limit={limit}, order={order_by}, q={q}")
+    # 🔴 INFO, NOT DEBUG, AND NOT A SECOND INSTRUMENT (S-123). The owner read
+    # "ID Scan 0.7 s" off this very line to find the defect S-124 is about - which is the
+    # argument for it being on by default: a measurement an operator has to turn on first
+    # is a measurement nobody has when they need it. 「큰 깊이는 값으로 보임」.
+    #
+    # ⚠️ `Dict Conv` WAS NOT WHAT THAT STAGE DOES. It brackets
+    # `fetch_and_merge_metadata`, which reads `cell_sources`/`cell_overwrites` and resolves
+    # the layering - the second-largest thing this route does - and calling it a dict
+    # conversion sent a reader looking at serialisation. Renamed to what it is.
+    #
+    # ⚠️ `Other` IS NOT PADDING. The five named stages do not cover the whole span
+    # (declaration lookup, the filter build, the response wrapper), so without this term
+    # the line's parts silently fail to add up to its own total - and a reader would
+    # subtract them by hand and get a number nobody named.
+    t_other = t_total - (t_target + t_count + t_id_scan + t_row_scan + t_dict)
+    logger.info(
+        f"[get_table_data] Total: {t_total:.3f}s | Target: {t_target:.3f}s | "
+        f"Count: {t_count:.3f}s | ID Scan: {t_id_scan:.3f}s | "
+        f"Entity Fetch: {t_row_scan:.3f}s | Layer Merge: {t_dict:.3f}s | "
+        f"Other: {t_other:.3f}s | table={table_name} rows={len(data_list)} "
+        f"skip={skip}, limit={limit}, order={order_by}, q={q}")
     
     return _table_data_response({
         "table_name": table_name, "total": total_count, "skip": skip, "limit": limit,
