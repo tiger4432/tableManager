@@ -183,6 +183,45 @@ class LedgerStore:
                         keys, sort_keys=True, separators=(",", ":"), ensure_ascii=False)))
         return found
 
+    def current_atoms_for_subjects(self, connection, predicate, subjects):
+        """The atom that is CURRENTLY true for each of `subjects` on one predicate.
+
+        `subjects` is an iterable of `(subject_type, canonical_keys_json)` - the same memo
+        form `existing_registrations` takes - and the answer maps each found subject to the
+        id of its live atom, which is what a superseding atom points at.
+
+        🔴 THE LATEST ATOM IS THE LIVE ONE, and that is a property of how supersession is
+        written rather than an assumption about the data: each new atom on a `one`
+        predicate points at the previous latest, so the chain is linear and its head is the
+        most recent row. Asking 「which id is in nobody's supersedes」 would be the same
+        answer through an anti-join.
+
+        ONE query per chunk for the whole batch, exactly as `existing_registrations` does.
+        A per-subject lookup is what turns a thousand-row transaction into a thousand round
+        trips, which is the shape production actually runs.
+        """
+        wanted = sorted(set(subjects))
+        if not wanted or not predicate:
+            return {}
+        current = {}
+        with connection.cursor() as cursor:
+            for start in range(0, len(wanted), INSERT_PAGE_SIZE):
+                chunk = wanted[start:start + INSERT_PAGE_SIZE]
+                cursor.execute(
+                    f"SELECT DISTINCT ON (subject_type, subject_keys) "
+                    f"       subject_type, subject_keys, id "
+                    f"FROM {schema.LEDGER_TABLE} "
+                    f"WHERE predicate = %s "
+                    f"  AND (subject_type, subject_keys) IN %s "
+                    f"ORDER BY subject_type, subject_keys, occurred_at DESC, id DESC",
+                    (predicate,
+                     tuple((t, _json(json.loads(k))) for t, k in chunk)))
+                for subject_type, keys, atom_id in cursor.fetchall():
+                    current[(subject_type, json.dumps(
+                        keys, sort_keys=True, separators=(",", ":"),
+                        ensure_ascii=False))] = atom_id
+        return current
+
     def insert_atoms(self, connection, atoms):
         """Insert on an OPEN transaction. Returns `(attempted, inserted)`.
 

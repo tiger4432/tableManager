@@ -334,6 +334,10 @@ def execute_scoped_batch(
         snapshot, source_id, base_rows, unwritten_cursor, join_reader, preparers, mappers,
         known_registrations=known_registrations)
     kept_all = _screened_atoms(snapshot, source_id, preview)
+    # 🔴 AFTER THE SCREEN AND BEFORE THE WRITE (S-133 ①). A refused molecule
+    # must not replace anything, so this runs on what SURVIVED; and the pointer
+    # has to exist before `write_batch` inserts the row that carries it.
+    _stamp_supersedes(store, snapshot, kept_all)
     batch_id = str(uuid6.uuid7())
     try:
         written = store.write_batch(
@@ -447,6 +451,60 @@ def _conflicting_subjects(snapshot: LedgerSetupSnapshot, event_atoms) -> set:
                 _canonical(atom.object_payload or {}))
     return {subject for subject, objects in objects_by_subject.items()
             if len(objects) > 1}
+
+
+def _stamp_supersedes(store, snapshot: LedgerSetupSnapshot, atoms) -> int:
+    """Point each new `one`-predicate atom at the atom it replaces. Returns how many.
+
+    🔴 THE LEDGER'S FIRST WRITER OF `supersedes` (S-133 ①, 판정 256). The column has been
+    carried, validated and serialised since it existed, and `ledger_trace.live_claims` has
+    read it - but every construction site wrote `None`, so the reader had nothing to drop.
+
+    ⛔ THE ATOM IS NOT REMOVED, A POINTER IS ADDED. 「투영은 지워도 되고 기록은 안 된다」 -
+    what the ledger records is that a later fact replaced an earlier one, and both rows
+    stay. That is why this is a record rather than a projection.
+
+    ⚠️ ONE QUERY PER `one` PREDICATE PER BATCH, not one per atom. Production runs thousands
+    of rows in a transaction, so a per-subject lookup would be a thousand round trips.
+
+    ⚠️ AND NOTHING IS DONE RETROACTIVELY (S-133-b). A subject that already carries several
+    live atoms keeps them; only new atoms from here on point at what they replace. Tidying
+    the past is a rescope's job, not a write's.
+    """
+    one_predicates = _one_cardinality_predicates(snapshot)
+    if not one_predicates or not atoms:
+        return 0
+
+    by_predicate: dict[str, list] = {}
+    for atom in atoms:
+        if atom.predicate in one_predicates:
+            by_predicate.setdefault(atom.predicate, []).append(atom)
+    if not by_predicate:
+        return 0
+
+    stamped = 0
+    # ⚠️ READ-ONLY AND ITS OWN CONNECTION, rolled back rather than left open: this
+    # runs before `write_batch` opens the transaction that owns the insert and the
+    # cursor advance, and holding a second one across that is how a writer waits on
+    # itself. `store.connection()` hands out a raw DBAPI handle the caller closes.
+    connection = store.connection()
+    try:
+        for predicate, predicate_atoms in by_predicate.items():
+            subjects = {(atom.subject_type, _canonical(atom.subject_keys or {}))
+                        for atom in predicate_atoms}
+            current = store.current_atoms_for_subjects(connection, predicate, subjects)
+            if not current:
+                continue
+            for atom in predicate_atoms:
+                previous = current.get(
+                    (atom.subject_type, _canonical(atom.subject_keys or {})))
+                if previous is not None:
+                    atom.supersedes = str(previous)
+                    stamped += 1
+    finally:
+        connection.rollback()
+        connection.close()
+    return stamped
 
 
 def _screened_atoms(snapshot: LedgerSetupSnapshot, source_id: str, preview) -> list:
