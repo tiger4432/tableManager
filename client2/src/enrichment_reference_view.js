@@ -118,7 +118,12 @@ export function installReferenceKeyboardIsolation() {
 // it rendered before. A view with no `candidate_for` is a display-only view (the lead's
 // evidence views are deliberately empty), and guessing a fill order for one would silently
 // misalign a paste.
-function fillPlan(view, rule, payloadColumns) {
+// 🔴 C-62. EXPORTED SO IT CAN BE MEASURED WITHOUT BEING CUT OUT. `reference_grid_paste_harness`
+//    lifted this function's text into a `vm`, on the reason that this module could not be
+//    imported in node — false today (owner's standing rule 2026-09-02: if the subject cannot be
+//    imported, THAT is the defect; the converse holds too, so once it can, slicing has no reason
+//    left). Callers inside this file are unchanged.
+export function fillPlan(view, rule, payloadColumns) {
   const candidateFor = view?.candidate_for;
   if (!candidateFor || typeof candidateFor !== 'object') return null;
   const targets = Array.isArray(rule?.target_fields) ? rule.target_fields : [];

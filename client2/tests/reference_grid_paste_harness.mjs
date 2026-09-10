@@ -1,64 +1,52 @@
 // Harness — the 2b reference grid's paste contract: which columns are copied, in what order,
-// what the alignment band says about them, and whether the panel's copy survives the
-// document-level handler in `clipboard.js`.
-// Run: node client2/tests/reference_grid_paste_harness.mjs   (no node_modules — vm sandbox)
+// and whether the panel's copy survives the document-level handler in `clipboard.js`.
+// Run: node client2/tests/reference_grid_paste_harness.mjs
 //
-// WHY A SANDBOX AND NOT AN IMPORT. `enrichment_reference_view.js` imports `config.js`, which
-// touches `window` at module scope, so it cannot be imported in node. The decision functions
-// are lifted verbatim out of the source by anchor and evaluated in a vm — the same technique
-// as `virtual_column_render_harness.mjs`, for the same reason. `tsv.js` IS imported, because
-// it is pure, and using the real serializer is the point: a second TSV writer here would let
-// the harness pass while the screen wrote something else.
+// 🔴 C-62 — THIS FILE USED TO SLICE, AND THE REASON IT GAVE WAS FALSE. Verbatim, from the
+//    header it carried until today: 「`enrichment_reference_view.js` imports `config.js`, which
+//    touches `window` at module scope, so it cannot be imported in node」. Measured 2026-09-10:
+//    `node -e "await import('./src/enrichment_reference_view.js')"` and the same for
+//    `clipboard.js` BOTH succeed. The standing rule (owner, 2026-09-02) says that a subject
+//    which cannot be imported is itself the defect; the converse is what applies here — once it
+//    CAN be imported, slicing has no reason left, and a stale reason is the most durable kind.
 //
-// EVERY CHECK IS PAIRED WITH A MUTANT. The suite re-runs against deliberately broken sources
-// and FAILS if a defect still passes — a check that cannot fail proves nothing. It also runs
-// CONTROL mutants (renaming locals, stripping comments) which must ESCAPE: if a control is
-// caught, some check is reading source text rather than behaviour and its green is worthless.
+//    What slicing cost while it stood: it scores the SHAPE OF THE LETTERS. The clipboard guard
+//    was checked by looking for one anchor STRING in the file and, if present, running a
+//    predicate this harness had written itself. Re-spelling the guard would have reddened
+//    correct code; re-writing it wrongly in the same spelling would have passed. Neither is a
+//    measurement of behaviour. Both functions are now IMPORTED and CALLED.
 //
-// EXTRACTION ANCHORS ARE THE ONE PLACE SOURCE TEXT IS READ, and this file exits 2 — loudly,
-// not green — when one stops matching. A harness that goes quiet because it lost the code is
-// worse than no harness. That is not hypothetical here: moving a comment between two lines of
-// a ternary silently disarmed a mutant in this repo earlier the same day.
-import { readFileSync } from 'node:fs';
+// EVERY CHECK IS STILL PAIRED WITH A MUTANT, and the mutants changed mechanism with the
+// conversion: `lib/probe.mjs` loads the subject WHOLE with the mutation applied to its source,
+// so a mutant that fails to parse fails loudly instead of scoring as "caught". Two defects must
+// be CAUGHT, two CONTROLS (stripped comments, a consistently renamed local) must ESCAPE — if a
+// control is caught, some check is reading source text rather than behaviour.
+//
+// ⛔ The copy's 「starts with the original bytes」 assertion that the appending bridge needs is
+//    NOT here, and its absence is correct rather than a gap: the base run imports the real
+//    module directly, so there is no copy to prove anything about. The probe's own guards are
+//    scored by `probe_mechanism_harness.mjs`.
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import vm from 'node:vm';
 import { serializeTsv } from '../src/tsv.js';
+import { loadWithProbe } from './lib/probe.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = join(HERE, '..', 'src');
-const read = name => readFileSync(join(SRC, name), 'utf8').replace(/\r\n/g, '\n');
+const PANEL_PATH = join(SRC, 'enrichment_reference_view.js');
+const CLIPBOARD_PATH = join(SRC, 'clipboard.js');
 
-function die(message) {
-  console.error(`HARNESS BROKEN: ${message}`);
-  console.log('ASSERTIONS 0 0');
-  process.exit(2);
-}
-
-/** Lift `function <name>(...) { ... }` out of a source by brace matching. */
-function sliceFunction(source, declaration, what) {
-  const start = source.indexOf(declaration);
-  if (start < 0) die(`anchor is GONE: ${what} — searched for ${JSON.stringify(declaration)}`);
-  let depth = 0;
-  let index = source.indexOf('{', start);
-  if (index < 0) die(`no body for ${what}`);
-  for (let i = index; i < source.length; i++) {
-    if (source[i] === '{') depth++;
-    else if (source[i] === '}') {
-      depth--;
-      if (depth === 0) return source.slice(start, i + 1);
-    }
-  }
-  die(`unbalanced braces for ${what}`);
-}
-
-const PANEL = 'enrichment_reference_view.js';
-const CLIPBOARD = 'clipboard.js';
-
-// The clipboard guard, scored as BEHAVIOUR rather than as text. The condition is lifted and
-// run against fake events, so a rename or a comment change cannot fake a pass, and REMOVING
-// the guard is caught because the predicate stops answering true.
-const GUARD_ANCHOR = `if (e.target instanceof Element && e.target.closest('#reference-view')) {`;
+// `Element` is a browser global the guard tests against. It is installed BEFORE the subjects
+// load, and both the fake events and the subject see the SAME constructor — two identities
+// would make `instanceof` answer false for reasons that have nothing to do with the guard.
+class Element {}
+globalThis.Element = Element;
+// Both subjects reach `document` through `dom.js`'s getters at CALL time, never at load, so a
+// minimal one is enough and nothing is patched inside the subject.
+globalThis.document = globalThis.document
+  || { getElementById: () => null, querySelector: () => null, addEventListener() {},
+       createElement: () => ({ style: {}, classList: { add() {}, remove() {} },
+                               appendChild() {}, setAttribute() {}, addEventListener() {} }) };
 
 // ── The fixture. Shaped from the LIVE declaration, not invented ──────────────────────────
 // `dt_lot_slot_from_log`: target_fields ['dt_lot','dt_slot'], view[0] declares both, view[1]
@@ -85,7 +73,11 @@ function copyPayload(api, view, includeHeaders) {
   return serializeTsv(matrix);
 }
 
-const isVirtual = name => name === 'dt_x_base';
+function makeElement(insidePanel) {
+  const element = new Element();
+  element.closest = selector => (insidePanel && selector === '#reference-view') ? element : null;
+  return element;
+}
 
 function runChecks(api) {
   let pass = 0;
@@ -120,84 +112,71 @@ function runChecks(api) {
   check('fallback keeps the payload order untouched',
     copyPayload(api, EVIDENCE_VIEW, false) === '125\t25\tSYN-DT-103\n72\t11\tSYN-DT-104');
 
-  // ⑥ The clipboard guard, as behaviour.
-  const inside = { target: makeElement(true) };
-  const outside = { target: makeElement(false) };
+  // ⑥ The clipboard guard, as behaviour — the REAL exported predicate, called.
   check('clipboard.js steps aside for a copy inside the panel',
-    api.clipboardStepsAside(inside) === true);
+    api.clipboardStepsAside({ target: makeElement(true) }) === true);
   check('clipboard.js still handles a copy outside the panel',
-    api.clipboardStepsAside(outside) === false);
+    api.clipboardStepsAside({ target: makeElement(false) }) === false);
 
   return { pass, fail, failures };
 }
 
-// Built here rather than in the sandbox so both share one `Element` identity.
-let ElementCtor = null;
-function makeElement(insidePanel) {
-  const element = new ElementCtor();
-  element.closest = selector => (insidePanel && selector === '#reference-view') ? element : null;
-  return element;
-}
-
 // ── Run ──────────────────────────────────────────────────────────────────────────────────
-const ORIGINAL = { [PANEL]: read(PANEL), [CLIPBOARD]: read(CLIPBOARD) };
+// The base run is a PLAIN IMPORT of both modules. No copy, no probe, no text.
+const panelModule = await import('../src/enrichment_reference_view.js');
+const clipboardModule = await import('../src/clipboard.js');
+const REAL = {
+  fillPlan: panelModule.fillPlan,
+  clipboardStepsAside: clipboardModule.isReferenceSidebarCopy,
+};
 
-function apiFor(sources) {
-  const context = { Element: class Element {}, module: {} };
-  ElementCtor = context.Element;
-  vm.createContext(context);
-  const panel = sources[PANEL];
-  const clipboard = sources[CLIPBOARD];
-  const fillPlan = sliceFunction(panel, 'function fillPlan(', 'fillPlan');
-  const guardBody = clipboard.includes(GUARD_ANCHOR)
-    ? `if (e.target instanceof Element && e.target.closest('#reference-view')) { return true; } return false;`
-    : `return false;`;
-  new vm.Script(`
-    ${fillPlan}
-    function clipboardStepsAside(e) { ${guardBody} }
-    module.api = { fillPlan, clipboardStepsAside };
-  `).runInContext(context);
-  const api = context.module.api;
-  api.__Element__ = context.Element;
-  return api;
-}
-
-const base = runChecks(apiFor(ORIGINAL));
+const base = runChecks(REAL);
 console.log('── reference grid paste contract ──────────────────────────────────');
 console.log(`  ${base.pass} passed, ${base.fail} failed`);
 base.failures.forEach(f => console.log(`  FAIL  ${f}`));
 
-// ── Defect mutants: each MUST be caught ──────────────────────────────────────────────────
-// Newline-agnostic on purpose. These sources are CRLF on this checkout and LF elsewhere, and
-// an anchor that matches on one machine and silently vanishes on the other is a mutant that
-// quietly stops testing anything — which is the exact failure this file exists to prevent.
-const LF = String.fromCharCode(10);
-const CRLF = String.fromCharCode(13, 10);
-const toCrlf = text => text.split(LF).join(CRLF);
-const sub = (source, from, to, name) => {
-  if (source.includes(from)) return source.replace(from, to);
-  const crlf = toCrlf(from);
-  if (source.includes(crlf)) return source.replace(crlf, toCrlf(to));
-  die(`mutation anchor is GONE: ${name}`);
-};
+/**
+ * Load ONE of the two subjects with a mutation applied, and pair it with the real other one.
+ *
+ * 🔴 The probe refuses a `mutate` that matched nothing, so an anchor that stops matching is a
+ *    LOUD exit rather than a mutant that quietly stopped testing anything. That is not
+ *    hypothetical here: this file's predecessor recorded that moving a comment between two
+ *    lines of a ternary silently disarmed one of its mutants.
+ */
+async function apiWith(which, mutate, tag) {
+  const panel = which === 'panel'
+    ? (await loadWithProbe(PANEL_PATH, { mutate, tag })).module
+    : panelModule;
+  const clipboard = which === 'clipboard'
+    ? (await loadWithProbe(CLIPBOARD_PATH, { mutate, tag })).module
+    : clipboardModule;
+  return { fillPlan: panel.fillPlan, clipboardStepsAside: clipboard.isReferenceSidebarCopy };
+}
 
+// ── Defect mutants: each MUST be caught ──────────────────────────────────────────────────
 const MUTANTS = [
-  ['reverse the declared column order', s => ({ ...s,
-    [PANEL]: sub(s[PANEL], 'order: [...fillColumns,', 'order: [...fillColumns.slice().reverse(),',
-      'reverse-order') })],
-  ['remove the clipboard.js guard', s => ({ ...s,
-    [CLIPBOARD]: sub(s[CLIPBOARD], GUARD_ANCHOR, 'if (false) {', 'drop-guard') })]
+  ['reverse the declared column order', 'panel',
+    s => s.replace('order: [...fillColumns,', 'order: [...fillColumns.slice().reverse(),')],
+  ['remove the clipboard.js guard', 'clipboard',
+    s => s.replace("e.target instanceof Element && e.target.closest('#reference-view')", 'false')],
 ];
 
+// 🔴 A MUTANT THAT THROWS IS A HOLE, NOT A CATCH. The predecessor counted a throw as caught,
+//    which cannot tell 「the checks noticed the defect」 from 「the module stopped loading」 —
+//    and after the conversion the second is the likelier accident, because a mutation now
+//    reaches a whole module rather than a fragment. A throw is reported by name and scored as
+//    an ESCAPE, so it has to be fixed rather than banked.
 let escaped = 0;
 console.log('\n── defect mutants (each must be CAUGHT) ───────────────────────────');
-for (const [label, mutate] of MUTANTS) {
+for (const [label, which, mutate] of MUTANTS) {
   let caught = false;
+  let threw = null;
   try {
-    const result = runChecks(apiFor(mutate(ORIGINAL)));
+    const result = runChecks(await apiWith(which, mutate, label.replace(/\W+/g, '_')));
     caught = result.fail > base.fail;
-  } catch { caught = true; }
-  console.log(`  ${caught ? 'caught ' : 'ESCAPED'} ${label}`);
+  } catch (err) { threw = err; }
+  console.log(`  ${caught ? 'caught ' : 'ESCAPED'} ${label}`
+    + (threw ? `  ⛔ THREW instead of failing a check: ${threw.message}` : ''));
   if (!caught) escaped++;
 }
 
@@ -205,21 +184,21 @@ for (const [label, mutate] of MUTANTS) {
 // If a control is caught, a check is reading source text rather than behaviour.
 console.log('\n── control mutants (each must ESCAPE) ─────────────────────────────');
 const CONTROLS = [
-  ['every full-line comment stripped', s => ({
-    [PANEL]: s[PANEL].split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n'),
-    [CLIPBOARD]: s[CLIPBOARD].split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n')
-  })],
-  ['a local renamed consistently', s => ({ ...s,
-    [PANEL]: s[PANEL].split('sourceCols').join('copiedCols') })]
+  ['every full-line comment stripped from the panel', 'panel',
+    s => s.split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n')],
+  ['a local renamed consistently', 'panel',
+    s => s.split('fillColumns').join('declaredCols')],
 ];
 let controlsCaught = 0;
-for (const [label, mutate] of CONTROLS) {
+for (const [label, which, mutate] of CONTROLS) {
   let caught = false;
+  let threw = null;
   try {
-    const result = runChecks(apiFor(mutate(ORIGINAL)));
+    const result = runChecks(await apiWith(which, mutate, label.replace(/\W+/g, '_')));
     caught = result.fail > base.fail;
-  } catch { caught = true; }
-  console.log(`  ${caught ? 'CAUGHT ' : 'escaped'} ${label}`);
+  } catch (err) { caught = true; threw = err; }
+  console.log(`  ${caught ? 'CAUGHT ' : 'escaped'} ${label}`
+    + (threw ? `  ⛔ THREW: ${threw.message}` : ''));
   if (caught) controlsCaught++;
 }
 

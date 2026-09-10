@@ -1,5 +1,5 @@
 // Harness — THE SIDEBAR TIMELINE READS A PAGE, AND SAYS SO WHEN IT IS ONE.
-// Run: node client2/tests/history_paging_harness.mjs   (no node_modules — vm sandbox)
+// Run: node client2/tests/history_paging_harness.mjs   (no node_modules)
 //
 // WHAT WAS ACTUALLY WRONG. `GET /tables/{t}/rows/{id}/history` and its `/cells/{col}/history`
 // sibling both ended in `.order_by(...).all()` with no LIMIT, so one click loaded a row's ENTIRE
@@ -36,9 +36,25 @@
 // WHY IT EXECUTES RATHER THAN READS. Every claim above is about what happens ACROSS an await,
 // and "the state is reset before the fetch" and "after it" are the same source shape. So the
 // real `loadHistory`, `loadMoreHistory`, `readHistoryPage`, `renderTimeline`,
-// `createHistoryMoreDom`, `renderTimelineIncremental` and `appendHistoryLocally` are sliced out
-// of `timeline.js` and driven against a scripted `fetch` and a minimal document. Nothing here
-// re-implements them; re-implementing would score this file against itself.
+// `createHistoryMoreDom`, `renderTimelineIncremental` and `appendHistoryLocally` are RUN,
+// against a scripted `fetch` and a minimal document. Nothing here re-implements them;
+// re-implementing would score this file against itself.
+//
+// 🔴 C-58 — AND THEY ARE NO LONGER CUT OUT TO DO IT. Until today this file lifted 24 function
+//    bodies out of `timeline.js` by regex and evaluated them in a `vm`, which measures the shape
+//    of the letters rather than the behaviour (owner's standing rule, 2026-09-02). Its own
+//    comments recorded the bill three separate times: adding ONE import to `timeline.js` made
+//    this file throw on code that was CORRECT, and a new callee missing from the WANTED list
+//    made section H paint nothing at all — 「전부 코드가 맞는데 빨개집니다」, in this very file.
+//
+//    The module is now loaded WHOLE through `lib/probe.mjs`: its source is copied byte for byte,
+//    a probe object naming what this harness calls is APPENDED after the last line, and the copy
+//    is imported. Nothing is removed, so every reason the ban exists is gone — a new import still
+//    runs, a new `const` is still in scope, a new callee is still in the same file. WANTED stops
+//    being a list of things to CUT and becomes a list of things to REACH, and a name that is not
+//    there throws loudly instead of quietly resolving to undefined.
+//    ⚠️ A bridge, not a destination: the destination is `timeline.js` small enough that the names
+//       this file drives are simply exported. That is not this round.
 //
 // 🔴 THE `state` IS THE REAL SINGLETON, imported from `client2/src/state.js`, not a model of it.
 //    The contract under test is literally "the cursor lives BESIDE `cellRowHistoryData`, not on
@@ -50,88 +66,109 @@
 // flag — the build gate runs harnesses bare, and anything behind a flag is a thing it does not
 // run) and its verdicts are counted as assertions, so a corpus that stops being applied sinks
 // `ran` and blocks.
-import { readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
-import vm from 'node:vm';
-import { escapeHtml } from '../src/utils.js';
-import { saysTruncated } from '../src/truncation.js';
+import { loadWithProbe } from './lib/probe.mjs';
+// 🔴 THE BASE URL IS THE PRODUCT'S OWN. It was a literal here, which was fine while the subject
+//    was a fragment handed its constants — but the subject now imports `config.js` itself, and a
+//    second literal would be this harness asserting against its own idea of the route rather
+//    than against the one the screen builds.
+import { API_BASE } from '../src/config.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = (f) => join(HERE, '..', 'src', f);
-const TL0 = readFileSync(SRC('timeline.js'), 'utf8').replace(/\r\n/g, '\n');
+const TIMELINE_PATH = SRC('timeline.js');
+
+// 🔴 THE REAL CONSOLE, CAPTURED BEFORE ANYTHING IS SILENCED — and then the global one is
+//    replaced, because the subject writes to it now.
+//
+//    While this file sliced, the `vm` handed the fragments a no-op console and this harness kept
+//    the real one; loading the module WHOLE means `timeline.js` reports its own failures to
+//    whatever `console` is. Sections E and H drive a dead server ON PURPOSE, so a correct run
+//    printed 40 lines of the subject's stack traces around its own verdict — an instrument whose
+//    output is mostly someone else's noise gets read less carefully, and this file's whole job is
+//    to be read when it goes red.
+//
+// ⚠️ `OUT` is captured FIRST and every line this file prints goes through it, so silencing the
+//    global cannot silence the harness. `lib/probe.mjs` does exactly the same thing for exactly
+//    the same reason — it once had its own failure swallowed by a harness's recording console,
+//    and exited 2 with no output at all.
+const OUT = console;
+globalThis.console = { log() {}, error() {}, warn() {}, info() {}, debug() {}, trace() {} };
+// Set while a mutant runs: its assertion failures ARE the catch, so they are not printed.
+let quiet = false;
 
 function die(msg) {
-  console.error(`HARNESS FAILURE: ${msg}`);
-  console.error('(This is not a passing result. Nothing was compared.)');
-  console.log('ASSERTIONS 0 1');
+  OUT.error(`HARNESS FAILURE: ${msg}`);
+  OUT.error('(This is not a passing result. Nothing was compared.)');
+  OUT.log('ASSERTIONS 0 1');
   process.exit(2);
 }
 
 // `state.js` reads `window.location.search` at module scope, so the global has to exist before
 // the import. Set here rather than faked away, so the import is the real module.
-globalThis.window = { location: { search: '' } };
+//
+// 🔴 C-58: IT NEEDS `addEventListener` NOW, AND THAT IS THE CONVERSION SHOWING ITS WORK.
+//    `utils.js` registers a focus listener at module scope behind `typeof window !== 'undefined'`.
+//    While this file sliced, `utils.js` was imported at the TOP — before this line ran — so the
+//    guard saw no window and the registration never happened. Loading `timeline.js` WHOLE runs
+//    its import graph after this line, so the branch the browser takes is the branch taken here.
+//    A stub that answers `window` but not `window.addEventListener` is a browser that does not
+//    exist; this one is shaped like the real thing rather than like the subset one path needed.
+globalThis.window = {
+  location: { search: '' },
+  addEventListener() {}, removeEventListener() {},
+};
 const STATE_MOD = await import(pathToFileURL(SRC('state.js')).href);
-// 🔴 C-55. `ledgerReceiptLine` reads two module constants and `isCount`, and sliced code
-//    cannot resolve an import. They are taken FROM THE REAL MODULES for the same reason
-//    `escapeHtml` is below: retyping 'ledger_batch' here would put a second author on a
-//    server word, which is the exact thing the subject refuses to do.
+// 🔴 The module is imported here as well, for the constants THIS FILE reads while building
+//    fixtures. Retyping 'ledger_batch' would put a second author on a server word, which is
+//    the exact thing the subject refuses to do.
+// ⚠️ C-58: the SUBJECT no longer needs them handed to it — it imports them itself. This
+//    import stays because the harness's own fixtures are built from them.
 const TIMELINE_MOD = await import(pathToFileURL(SRC('timeline.js')).href);
 const ABSENT_MOD = await import(pathToFileURL(SRC('absent.js')).href);
 const state = STATE_MOD.state;
 if (!state || typeof state !== 'object') die('client2/src/state.js no longer exports `state`.');
 
-// ── Extraction ──────────────────────────────────────────────────────────────────
-function sliceBalanced(src, startIdx, open, close) {
-  const i = src.indexOf(open, startIdx);
-  if (i < 0) return null;
-  let depth = 0;
-  for (let j = i; j < src.length; j++) {
-    const ch = src[j];
-    if (ch === open) depth++;
-    else if (ch === close) { depth--; if (depth === 0) return src.slice(startIdx, j + 1); }
-  }
-  return null;
-}
-// Anchored at a real declaration, never at a bare name — a bare name matches its own mentions
-// in comments, which is how a sibling harness in this directory spent a round scoring the wrong
-// function.
-function fn(src, name) {
-  const m = new RegExp(`(?:export\\s+)?(?:async\\s+)?function\\s+${name}\\s*\\(`).exec(src);
-  if (!m) die(`function ${name} not found in timeline.js — renamed or reshaped.`);
-  const body = sliceBalanced(src, m.index, '{', '}');
-  if (!body) die(`unbalanced braces for ${name} in timeline.js`);
-  return body.replace(/^export\s+/, '');
-}
-
+// ── The names this harness REACHES ──────────────────────────────────────────────
+// 🔴 C-58: this list used to be the CUT LIST — every name here was carved out of the source and
+//    the rest of the file thrown away, so a function that started calling a helper not on this
+//    list threw, and a green run and a dead run looked alike. It is now `spec.expose`: the whole
+//    module is loaded and these are the handles onto it. A name that no longer exists throws on
+//    evaluation, which is the loud failure — a probe that quietly returned undefined would let a
+//    renamed function score green.
 const WANTED = [
   'loadHistory', 'historyUrl', 'beginHistorySession', 'readHistoryPage',
-  // `createHistoryEmptyDom` is sliced from source rather than stubbed because the claim under
-  // test IS what it paints: two different facts that used to share one sentence. A stub would
-  // score section I against the harness's own idea of the empty slot.
+  // `createHistoryEmptyDom` is REACHED rather than stubbed because the claim under test IS
+  // what it paints: two different facts that used to share one sentence. A stub would score
+  // section I against the harness's own idea of the empty slot.
   'renderTimeline', 'createHistoryEmptyDom', 'renderHistoryMore', 'historyMoreLabel', 'createHistoryMoreDom',
   'markMoreFailed', 'markMoreLost', 'loadMoreHistory',
   'renderTimelineIncremental', 'createTimelineItemDom', 'appendHistoryLocally', 'formatVal',
-  // The global tab, sliced for section H. `renderGlobalTimeline` is the function that dies when
-  // the envelope is assigned where the array belongs, and `createGlobalTimelineItemDom` is what
+  // The global tab, for section H. `renderGlobalTimeline` is the function that dies when the
+  // envelope is assigned where the array belongs, and `createGlobalTimelineItemDom` is what
   // actually paints an entry — stubbing the second would leave "the panel renders" asserted
   // against a stand-in rather than against the code that renders it.
-  // `auditKind` and `auditVal` are what the 2c row calls while painting. Sliced in rather than
-  // stubbed for the same reason as the two above: a stub would let the row render against the
-  // harness's idea of a kind pill. Without them the slice throws and section H paints nothing --
-  // which is exactly how this harness reported the change.
+  // `auditKind` and `auditVal` are what the 2c row calls while painting, named here for the
+  // same reason as the two above: a stub would let the row render against the harness's idea
+  // of a kind pill.
+  // ⚠️ C-58: naming a callee here is no longer LOAD-BEARING — the whole module is loaded, so a
+  //    function it calls is in the file whether or not this list mentions it. These names are
+  //    here because the harness CALLS them directly. The three notes below record the rounds
+  //    that were lost to the old rule, and are kept as the reason the rule went.
   'renderGlobalTimeline', 'createGlobalTimelineItemDom', 'auditKind', 'auditVal',
-  // The 2c filter strip's helpers. `renderGlobalTimeline` calls all four while painting, so
-  // leaving them out makes the slice throw and section H paint nothing.
+  // The 2c filter strip's helpers, called directly by cases in section H.
+  // ⚰️ Until C-58, leaving them out made the SLICE throw and section H paint nothing.
   'auditFilterState', 'groupKindLabel', 'fillAuditFilterOptions', 'auditFilterPasses',
-  // The 2c row now asks which table the transaction touched. Same story as every name
-  // above it: the row calls it while painting, so leaving it out makes the slice throw
-  // and section H paint nothing -- which is how this harness reported THAT change too.
+  // ⚰️ The 2c row asks which table the transaction touched. Leaving it out used to make the
+  //    slice throw and section H paint nothing -- which is how this harness reported THAT
+  //    change: as its own breakage, on product code that was correct.
   'auditTargetTable',
-  // C-55. The row now asks the receipt reader for its one line. Same story as every name
-  // above -- the THIRD time this file has recorded it. 🔴 그리고 이것이 그 금지의 실물입니다:
-  // 대상 코드는 «맞는데» 잘라낸 조각이 새 이름을 못 찾아 섹션 H 가 통째로 0 을 그렸습니다
-  // (소유자 상설 2026-09-02: 잘라쓰기 하니스 절대 금지 — 「전부 코드가 맞는데 빨개집니다」).
+  // ⚰️ C-55. The row asks the receipt reader for its one line -- the THIRD time this file
+  //    recorded the same breakage. 🔴 그리고 이것이 그 금지의 실물이었습니다: 대상 코드는
+  //    «맞는데» 잘라낸 조각이 새 이름을 못 찾아 섹션 H 가 통째로 0 을 그렸습니다
+  //    (소유자 상설 2026-09-02: 잘라쓰기 하니스 절대 금지 — 「전부 코드가 맞는데 빨개집니다」).
+  //    C-58 이 그 세 번을 끝냈습니다 — 이제 새 이름은 «파일 안에 그대로» 있습니다.
   'ledgerReceiptLine',
 ];
 
@@ -152,18 +189,18 @@ function check(name, actual, expected) {
   const a = JSON.stringify(actual), e = JSON.stringify(expected);
   if (a === e) { pass++; return true; }
   fail++; failures.push(name);
-  console.error(`  FAIL ${name}\n       expected ${e}\n       actual   ${a}`);
+  if (!quiet) OUT.error(`  FAIL ${name}\n       expected ${e}\n       actual   ${a}`);
   return false;
 }
 function checkFn(name, actual, pred, describe) {
   if (pred(actual)) { pass++; return true; }
   fail++; failures.push(name);
-  console.error(`  FAIL ${name}\n       expected ${describe}\n       actual   ${JSON.stringify(actual)}`);
+  if (!quiet) OUT.error(`  FAIL ${name}\n       expected ${describe}\n       actual   ${JSON.stringify(actual)}`);
   return false;
 }
 
 // ── A minimal document ──────────────────────────────────────────────────────────
-// Only what the sliced code touches. `innerHTML =` drops children exactly as the real one does,
+// Only what the subject touches. `innerHTML =` drops children exactly as the real one does,
 // which is what makes "a fresh load rebuilds the list" observable here at all.
 function makeEl(tag) {
   const cls = new Set();
@@ -241,16 +278,64 @@ function markupStub(el, sel) {
 }
 
 // ── The driver ──────────────────────────────────────────────────────────────────
-const API_BASE = 'http://x';
+//
+// 🔴 THE SUBJECT IS ONE LOADED MODULE, AND THE SANDBOX IS WHAT IT LOOKS AT. Slicing gave every
+//    sandbox its own copy of the code; a loaded module has one. So what varies per sandbox is
+//    the WORLD — the scripted `fetch` and the document `dom.js` reads its elements out of — and
+//    a sandbox claims that world when one of its functions is called. The cases in this file
+//    interleave awaits WITHIN one sandbox (section D is built on exactly that) and never across
+//    two, which is what makes one live world correct rather than a race.
+let CURRENT = null;
 
-// The text every sandbox in this run is built from. Section G swaps it for a mutant so that the
-// SAME sections re-run against the defect — a corpus that only mutated one entry point would
-// score the mutation, not the assertions.
-let UNDER_TEST = TL0;
+// `timeline.js` reaches `document` and `fetch` as GLOBALS at call time, never at load time, so
+// these are installed once and delegate to whichever sandbox is live.
+// `getElementById` answers only the three ids `dom.js` maps to nodes this harness owns. Every
+// other id is null ON PURPOSE: the 2c audit filter strip is static markup that does not exist
+// here, and every reader of it is written to cope with a missing control — stubbing one would
+// score the filter path against a stand-in the browser never sees.
+globalThis.document = {
+  createElement: makeEl,
+  getElementById: (id) => {
+    if (!CURRENT) return null;
+    if (id === 'timeline') return CURRENT.timeline;
+    if (id === 'tab-row') return CURRENT.tabRowBtn;
+    if (id === 'performance-log') return CURRENT.performanceLog;
+    return null;
+  },
+  addEventListener() {},
+  querySelector: () => null,
+};
+globalThis.fetch = (...args) => {
+  if (!CURRENT) throw new Error('fetch before any sandbox was built');
+  return CURRENT.fetchFake(...args);
+};
+
+// The mutation applied to the subject's source, or null for the product as it stands. Section G
+// swaps it so the SAME sections re-run against the defect — a corpus that only mutated one entry
+// point would score the mutation, not the assertions.
+let UNDER_TEST = null;
+
+// One load per distinct source text. The subject holds no per-run module state (its only
+// module-level `let` is a debounce timer no case here arms), so a sandbox can be a fresh WORLD
+// over an already-loaded module — which is what keeps 19 mutants × 8 sections at 20 loads
+// instead of 600.
+const LOADED = new Map();
+async function subjectFor(spec) {
+  const key = spec ? spec.name : '__base__';
+  if (!LOADED.has(key)) {
+    const opts = { expose: WANTED };
+    if (spec) {
+      opts.tag = key.replace(/\W+/g, '_').slice(0, 40);
+      opts.mutate = (text) => applyOnce(text, spec.find, spec.repl, spec.name);
+    }
+    LOADED.set(key, (await loadWithProbe(TIMELINE_PATH, opts)).probe);
+  }
+  return LOADED.get(key);
+}
 
 // One scripted request queue. Every entry is consumed in order and the URL it was asked for is
 // recorded, so "which endpoint, with which cursor" is scored rather than assumed.
-function buildSandbox(src = UNDER_TEST) {
+async function buildSandbox() {
   const timeline = makeEl('ul');
   // The Row History tab button. Real, not a spy function, because the empty cell tab's way out
   // is `elements.tabRowBtn.click()` — it reuses the tab's own listener instead of copying the
@@ -276,54 +361,29 @@ function buildSandbox(src = UNDER_TEST) {
     return Promise.resolve(res);
   };
 
-  const ctx = {
-    LEDGER_BATCH_COLUMN: TIMELINE_MOD.LEDGER_BATCH_COLUMN,
-    NO_TRANSACTION_BUCKET: TIMELINE_MOD.NO_TRANSACTION_BUCKET,
-    isCount: ABSENT_MOD.isCount,
-    state,
-    API_BASE,
-    pageLimit: 1000,
-    elements: { timeline, tabRowBtn, performanceLog: makeEl('div') },
-    // `getElementById` returns null here on purpose: the 2c audit filter strip is static
-    // markup that does not exist in this sandbox, and every reader of it is written to cope
-    // with a missing control. Stubbing an element instead would score the filter path against
-    // a stand-in the browser never sees.
-    document: { createElement: makeEl, getElementById: () => null },
-    // 🔴 sliced code cannot resolve an import, so the name is supplied here -- and it is
-    //    the REAL function from `src/utils.js`, not a copy. A copy here would put a second
-    //    author on the very fact C-14 exists to give one author.
-    escapeHtml,
-    // 🔴 THE SECOND ONE, AND THE SAME REASON. `readHistoryPage` stopped asking
-    //    `body.truncated` directly on 2026-09-07: the wire carries `truncated` in five
-    //    shapes and this route's bool was right by luck, so every reader now asks one
-    //    place whether the answer SAYS it was cut. The real function is supplied here for
-    //    the reason the line above gives - a copy would put a second author on the very
-    //    fact that one place exists to own.
-    //
-    // ⚠️ AND THIS IS WHAT A SLICING HARNESS COSTS. Adding one import to
-    //    `timeline.js` made this file throw with code that is CORRECT, which is exactly the
-    //    failure the standing ban describes (CLAUDE.md 2026-09-02). The repair here is the
-    //    one this file already uses; converting it to import is a separate round.
-    saysTruncated,
-    fetch: fetchFake,
-    Date,
-    JSON,
-    Array,
-    encodeURIComponent,
-    console: { error() {}, warn() {}, log() {} },
-    // Reached only by branches these cases do not drive; declared so an accidental reach is a
-    // loud throw rather than a silent global. (`renderGlobalTimeline` used to be one of these
-    // and is now sliced from source — see WANTED. The function declaration overrides this
-    // object's property, so nothing here can shadow the real one.)
-    renderGlobalTimelineIncremental: () => { throw new Error('global incremental not under test'); },
-    setTransactionFilter: () => {},
-    navigateToLog: () => {},
-    // Only reached from a group's expand handler, which no case here clicks.
-    renderSubDetails: () => {},
-  };
-  vm.createContext(ctx);
-  vm.runInContext(WANTED.map(n => fn(src, n)).join('\n\n'), ctx);
-  return { ctx, timeline, tabRowBtn, requests, responses, pending };
+  // 🔴 THE SEVEN NAMES THE `vm` USED TO CARRY ARE GONE, AND THAT IS THE WHOLE POINT.
+  //    `escapeHtml`, `saysTruncated`, `LEDGER_BATCH_COLUMN`, `NO_TRANSACTION_BUCKET`,
+  //    `isCount`, `API_BASE` and `pageLimit` had to be handed in because sliced code cannot
+  //    resolve an import — and each one was a place where this harness could quietly become
+  //    the second author of a product fact. The module imports them itself now. So does every
+  //    name that has not been thought of yet, which is the difference between a list that has
+  //    to be maintained and one that does not.
+  //
+  // ⚠️ The four the vm stubbed (`renderGlobalTimelineIncremental`, `setTransactionFilter`,
+  //    `navigateToLog`, `renderSubDetails`) are the REAL ones now. They sit on branches no case
+  //    here drives; if one is ever reached it does the real thing rather than a stand-in's
+  //    thing, which is strictly the better failure.
+  const sandbox = { timeline, tabRowBtn, performanceLog: makeEl('div'),
+    fetchFake, requests, responses, pending };
+  const subject = await subjectFor(UNDER_TEST);
+  // Every call CLAIMS the world first, so a case that holds two sandboxes reads the right one.
+  const ctx = {};
+  for (const name of WANTED) {
+    ctx[name] = (...args) => { CURRENT = sandbox; return subject[name](...args); };
+  }
+  CURRENT = sandbox;
+  sandbox.ctx = ctx;
+  return sandbox;
 }
 
 function resetState() {
@@ -375,7 +435,7 @@ const moreBtn = (tl) => { const m = mores(tl)[0]; return m ? m.children[0] : nul
 // A — the envelope, read once, in one place
 // ════════════════════════════════════════════════════════════════════════════════
 async function sectionA() {
-  const R = buildSandbox().ctx.readHistoryPage;
+  const R = (await buildSandbox()).ctx.readHistoryPage;
 
   const env = R(page([log(1), log(2)], 'CUR1'));
   check('A1 envelope: the list is the `logs` field', env.logs.map(l => l.id), [1, 2]);
@@ -424,7 +484,7 @@ async function sectionA() {
 // ════════════════════════════════════════════════════════════════════════════════
 async function sectionB() {
   // -- truncated page --
-  let S = buildSandbox();
+  let S = await buildSandbox();
   resetState();
   S.responses.push({ status: 200, body: page([log(1), log(2), log(3)], 'CUR1') });
   await S.ctx.loadHistory();
@@ -455,7 +515,7 @@ async function sectionB() {
     S.requests[0], `${API_BASE}/tables/t1/rows/ROW-A/history`);
 
   // -- complete page: no control at all --
-  S = buildSandbox();
+  S = await buildSandbox();
   resetState();
   S.responses.push({ status: 200, body: page([log(1), log(2)], null) });
   await S.ctx.loadHistory();
@@ -464,14 +524,14 @@ async function sectionB() {
   check('B8c ... and its rows are all there', items(S.timeline).length, 2);
 
   // -- empty history --
-  S = buildSandbox();
+  S = await buildSandbox();
   resetState();
   S.responses.push({ status: 200, body: page([], null) });
   await S.ctx.loadHistory();
   check('B9 an empty history renders no control', mores(S.timeline).length, 0);
 
   // -- the cell tab hits the cell endpoint --
-  S = buildSandbox();
+  S = await buildSandbox();
   resetState();
   state.activeHistoryTab = 'cell';
   S.responses.push({ status: 200, body: page([log(1)], 'C') });
@@ -480,7 +540,7 @@ async function sectionB() {
     S.requests[0], `${API_BASE}/tables/t1/rows/ROW-A/cells/COL-A/history`);
 
   // -- a bare array still renders (unpaged server) --
-  S = buildSandbox();
+  S = await buildSandbox();
   resetState();
   S.responses.push({ status: 200, body: [log(1), log(2)] });
   await S.ctx.loadHistory();
@@ -492,7 +552,7 @@ async function sectionB() {
 // C — 더 보기 appends. It never replaces.
 // ════════════════════════════════════════════════════════════════════════════════
 async function sectionC() {
-  const S = buildSandbox();
+  const S = await buildSandbox();
   resetState();
   S.responses.push({ status: 200, body: page([log(1), log(2)], 'CUR1') });
   await S.ctx.loadHistory();
@@ -523,7 +583,7 @@ async function sectionC() {
   check('C7c ... and clears the cursor', state.cellRowHistoryCursor, null);
 
   // A cursor is opaque: it is handed back byte for byte, never rebuilt.
-  const S2 = buildSandbox();
+  const S2 = await buildSandbox();
   resetState();
   const OPAQUE = 'MjAyNi0wOC0xMVQwNjozMzoyNi4yMDA1MzkrMDk6MDB8MjkyNDg1Nw';
   S2.responses.push({ status: 200, body: page([log(1)], OPAQUE) });
@@ -534,7 +594,7 @@ async function sectionC() {
     S2.requests[1].endsWith(`?cursor=${OPAQUE}`), true);
 
   // A second click while the first page is in flight must not issue a second request.
-  const S3 = buildSandbox();
+  const S3 = await buildSandbox();
   resetState();
   S3.responses.push({ status: 200, body: page([log(1)], 'C1') });
   await S3.ctx.loadHistory();
@@ -555,7 +615,7 @@ async function sectionC() {
 // ════════════════════════════════════════════════════════════════════════════════
 async function sectionD() {
   // -- the cursor is retired BEFORE the new request, not after it lands --
-  let S = buildSandbox();
+  let S = await buildSandbox();
   resetState();
   S.responses.push({ status: 200, body: page([log(1)], 'CUR-A') });
   await S.ctx.loadHistory();
@@ -571,7 +631,7 @@ async function sectionD() {
   check('D1d the new row renders its own page', state.cellRowHistoryData.map(l => l.row_id), ['ROW-B']);
 
   // -- THE DEFECT ITSELF: 더 보기 on row A, resolved after the operator clicked row B --
-  S = buildSandbox();
+  S = await buildSandbox();
   resetState();
   S.responses.push({ status: 200, body: page([log(1), log(2)], 'CUR-A') });
   await S.ctx.loadHistory();
@@ -596,7 +656,7 @@ async function sectionD() {
   check('D3d ... and row B\'s paged count is its own', state.cellRowHistoryLoaded, 1);
 
   // -- a superseded FRESH load must not clobber the newer one either --
-  S = buildSandbox();
+  S = await buildSandbox();
   resetState();
   S.responses.push({ status: 200, body: page([log(1)], null), hang: true });
   const slow = S.ctx.loadHistory();
@@ -613,7 +673,7 @@ async function sectionD() {
   //    time `res.json()` resolves the status line has long since arrived, so the first check has
   //    already passed and only a second one, after the body, can catch an operator who clicked
   //    away in between. Deleting the second check passes every other case in this file.
-  S = buildSandbox();
+  S = await buildSandbox();
   resetState();
   S.responses.push({ status: 200, body: page([log(1)], 'CUR-A') });
   await S.ctx.loadHistory();
@@ -630,7 +690,7 @@ async function sectionD() {
   resetState();
 
   // -- no selection: the session retires rather than leaving a cursor behind --
-  S = buildSandbox();
+  S = await buildSandbox();
   resetState();
   S.responses.push({ status: 200, body: page([log(1)], 'CUR-A') });
   await S.ctx.loadHistory();
@@ -645,7 +705,7 @@ async function sectionD() {
 // ════════════════════════════════════════════════════════════════════════════════
 async function sectionE() {
   // -- transport failure --
-  let S = buildSandbox();
+  let S = await buildSandbox();
   resetState();
   S.responses.push({ status: 200, body: page([log(1), log(2)], 'CUR1') });
   await S.ctx.loadHistory();
@@ -669,7 +729,7 @@ async function sectionE() {
     S.requests[2], `${API_BASE}/tables/t1/rows/ROW-A/history?cursor=CUR1`);
 
   // -- a 5xx is a retry, not a lost position --
-  S = buildSandbox();
+  S = await buildSandbox();
   resetState();
   S.responses.push({ status: 200, body: page([log(1)], 'CUR1') });
   await S.ctx.loadHistory();
@@ -680,7 +740,7 @@ async function sectionE() {
   check('E5b ... and keeps the position', state.cellRowHistoryCursor, 'CUR1');
 
   // -- 400: the POSITION is gone. Retrying the same token can only fail again. --
-  S = buildSandbox();
+  S = await buildSandbox();
   resetState();
   S.responses.push({ status: 200, body: page([log(1), log(2)], 'BADCUR') });
   await S.ctx.loadHistory();
@@ -705,7 +765,7 @@ async function sectionE() {
   check('E7b ... and the list is rebuilt from it', items(S.timeline).length, 1);
 
   // -- a failed FRESH load still reports, and leaves no control --
-  S = buildSandbox();
+  S = await buildSandbox();
   resetState();
   S.responses.push({ throws: true });
   await S.ctx.loadHistory();
@@ -717,7 +777,7 @@ async function sectionE() {
 // F — the array contract, run rather than typed
 // ════════════════════════════════════════════════════════════════════════════════
 async function sectionF() {
-  const S = buildSandbox();
+  const S = await buildSandbox();
   resetState();
   S.responses.push({ status: 200, body: page([log(2), log(1)], 'CUR1') });
   await S.ctx.loadHistory();
@@ -773,7 +833,7 @@ const txIds = (v) => Array.isArray(v) ? v.map(g => g.transaction_id) : `NOT AN A
 const entryHtml = (tl, i) => { const el = items(tl)[i]; return el ? el.innerHTML : '(nothing rendered)'; };
 
 async function sectionH() {
-  let S = buildSandbox();
+  let S = await buildSandbox();
   resetState();
   state.activeHistoryTab = 'global';
   S.responses.push({ status: 200, body: recentPage([
@@ -821,7 +881,7 @@ async function sectionH() {
   check('H4d ... and that group\'s count grows with it', tx1 ? tx1.total_count : null, 6);
 
   // -- a server that has NOT flipped still renders --
-  S = buildSandbox();
+  S = await buildSandbox();
   resetState();
   state.activeHistoryTab = 'global';
   S.responses.push({ status: 200, body: [group('TX-9', [log(9)])] });
@@ -830,7 +890,7 @@ async function sectionH() {
     [txIds(state.globalHistoryData), items(S.timeline).length], [['TX-9'], 1]);
 
   // -- an empty projection states itself --
-  S = buildSandbox();
+  S = await buildSandbox();
   resetState();
   state.activeHistoryTab = 'global';
   S.responses.push({ status: 200, body: recentPage([]) });
@@ -841,7 +901,7 @@ async function sectionH() {
     v => Array.isArray(v) && v.length === 0, 'an empty Array');
 
   // -- a body whose list is under some OTHER name is empty, never an object --
-  S = buildSandbox();
+  S = await buildSandbox();
   resetState();
   state.activeHistoryTab = 'global';
   S.responses.push({ status: 200, body: { logs: [group('TX-X', [log(1)])], truncated: false, next_cursor: null } });
@@ -850,7 +910,7 @@ async function sectionH() {
     state.globalHistoryData, v => Array.isArray(v) && v.length === 0, 'an empty Array');
 
   // -- and a genuinely failed load still reports as one --
-  S = buildSandbox();
+  S = await buildSandbox();
   resetState();
   state.activeHistoryTab = 'global';
   S.responses.push({ throws: true });
@@ -885,7 +945,7 @@ const emptySlot = (tl) => {
 
 async function sectionI() {
   // -- state 1: the row really has nothing --
-  let S = buildSandbox();
+  let S = await buildSandbox();
   resetState();
   state.activeHistoryTab = 'cell';
   S.responses.push({ status: 200, body: cellPage([], null, 0) });
@@ -896,7 +956,7 @@ async function sectionI() {
   check('I1c ... and is not a pager', mores(S.timeline).length, 0);
 
   // -- state 2: the records exist and THIS SCREEN cannot show them --
-  S = buildSandbox();
+  S = await buildSandbox();
   resetState();
   state.activeHistoryTab = 'cell';
   S.responses.push({ status: 200, body: cellPage([], null, 225101) });
@@ -920,7 +980,7 @@ async function sectionI() {
   check('I3 one click on the disclosure reaches the Row History tab', tabClicks, 1);
 
   // -- the count is a FLOOR when the server says it is --
-  S = buildSandbox();
+  S = await buildSandbox();
   resetState();
   state.activeHistoryTab = 'cell';
   S.responses.push({ status: 200, body: cellPage([], null, 1000, true) });
@@ -930,7 +990,7 @@ async function sectionI() {
 
   // -- and is NOT hedged when it is exact. A small count also pins the whole label with no
   //    locale grouping in the way.
-  S = buildSandbox();
+  S = await buildSandbox();
   resetState();
   state.activeHistoryTab = 'cell';
   S.responses.push({ status: 200, body: cellPage([], null, 3) });
@@ -940,7 +1000,7 @@ async function sectionI() {
 
   // -- the ROW tab never shows the disclosure: it IS the destination, and the server sends
   //    `row_history_total: null` there --
-  S = buildSandbox();
+  S = await buildSandbox();
   resetState();
   state.activeHistoryTab = 'row';
   S.responses.push({ status: 200, body: page([], null) });
@@ -950,7 +1010,7 @@ async function sectionI() {
   // -- a count must not outlive the cell it described. Same sandbox, second cell: a disclosure
   //    reading "행 이력 12건" under a row that has none is confidently wrong, which is worse
   //    than the message that was missing. --
-  S = buildSandbox();
+  S = await buildSandbox();
   resetState();
   state.activeHistoryTab = 'cell';
   S.responses.push({ status: 200, body: cellPage([], null, 12) });
@@ -965,7 +1025,7 @@ async function sectionI() {
   // -- both states stay removable by a live log. `renderTimelineIncremental` finds the empty
   //    slot by `.timeline-empty`; a disclosure that dropped the class would sit above the first
   //    real record forever. --
-  S = buildSandbox();
+  S = await buildSandbox();
   resetState();
   state.activeHistoryTab = 'cell';
   S.responses.push({ status: 200, body: cellPage([], null, 7) });
@@ -1081,11 +1141,18 @@ const MUTANTS = [
 
 async function sectionG() {
   for (const m of MUTANTS) {
-    UNDER_TEST = applyOnce(TL0, m.find, m.repl, m.name);
+    // 🔴 THE MUTANT IS A WHOLE MODULE NOW, NOT A FRAGMENT. `applyOnce` still refuses an anchor
+    //    that matches 0 or >1 times, and the probe refuses a `mutate` that changed nothing — so
+    //    a mutant that stopped being applied EXITS, rather than scoring as caught. And a mutant
+    //    that no longer parses fails at load, loudly, instead of looking like a catch.
+    UNDER_TEST = m;
     const before = { pass, fail, names: failures.length };
-    const silent = console.error;
-    console.error = () => {};
+    // A mutant run's assertion failures are expected — they ARE the catch — so they are not
+    // printed. The flag replaces the old swap of `console.error`: this file no longer reaches
+    // the global console at all, because the subject now writes to it too.
+    quiet = true;
     let caught = false;
+    let threw = null;
     try {
       await sectionA();
       await sectionB();
@@ -1096,18 +1163,25 @@ async function sectionG() {
       await sectionH();
       await sectionI();
     } catch (e) {
-      // A mutant that throws (a slice that no longer parses, a DOM operation that cannot apply)
-      // is caught just as surely as one that fails an assertion.
+      // A mutant that throws while RUNNING (a DOM operation that cannot apply, a value that is
+      // no longer the shape its reader expects) is caught as surely as one that fails an
+      // assertion — the defect stopped the screen.
+      // 🔴 BUT IT IS REPORTED SEPARATELY, because before C-58 the commonest throw was the SLICE
+      //    failing to parse — the harness losing its subject, scored as a catch. That failure
+      //    mode is gone (the probe loads a whole module and exits loudly if a mutation did not
+      //    apply), and naming the remaining throws is how it stays gone.
       caught = true;
+      threw = e;
     } finally {
-      console.error = silent;
-      UNDER_TEST = TL0;
+      quiet = false;
+      UNDER_TEST = null;
     }
     caught = caught || fail > before.fail;
     // The mutant run's own scores are not evidence about the product — the only thing carried
     // out of it is the VERDICT below. Roll the counters AND the failure names back.
     pass = before.pass; fail = before.fail; failures.length = before.names;
     check(`G/${m.defect ? 'defect' : 'control'}: ${m.name}`, caught, m.defect);
+    if (threw) OUT.log(`  ⚠️ THROWN, not asserted — ${m.name}: ${threw.message}`);
   }
 }
 
@@ -1126,9 +1200,9 @@ await sectionG();
 resetState();
 const ran = pass + fail;
 if (fail > 0) {
-  console.error(`\n  ${fail} failing assertion(s):`);
-  failures.forEach(n => console.error(`  ✗ ${n}`));
+  OUT.error(`\n  ${fail} failing assertion(s):`);
+  failures.forEach(n => OUT.error(`  ✗ ${n}`));
 } else {
-  console.log(`✓ history paging: ${beforeG.pass} behaviour assertions + ${MUTANTS.length} mutation verdicts`);
+  OUT.log(`✓ history paging: ${beforeG.pass} behaviour assertions + ${MUTANTS.length} mutation verdicts`);
 }
-console.log(`ASSERTIONS ${ran} ${fail}`);
+OUT.log(`ASSERTIONS ${ran} ${fail}`);

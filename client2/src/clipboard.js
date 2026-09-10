@@ -11,6 +11,23 @@ import { getLocalTimeString } from './utils.js';
 import { parseTsv, serializeTsv } from './tsv.js';
 import { snapshot, commitIfRecorded } from './effort_meter.js';
 
+/**
+ * 참조 사이드바 «안»에서 일어난 복사인가 — 그러면 격자는 비켜선다.
+ *
+ * The enrichment reference sidebar is intentionally a browser-native copy surface. Its text
+ * selection must not be replaced by the grid's stale range/row TSV merely because a grid
+ * selection still exists underneath.
+ *
+ * 🔴 C-62. IT IS A NAMED FUNCTION SO A HARNESS CAN CALL IT. It used to be the condition of an
+ *    `if` inside the document-level `copy` listener, where the only way to score it was to read
+ *    this file as TEXT and rebuild the predicate from an anchor string — which measures the
+ *    shape of the letters, so the guard could be deleted and re-added in another spelling with
+ *    the harness none the wiser. Now the harness runs THIS.
+ */
+export function isReferenceSidebarCopy(e) {
+  return !!(e && e.target instanceof Element && e.target.closest('#reference-view'));
+}
+
 export function isCellInRange(rowIndex, colId) {
   const key = `${rowIndex}_${colId}`;
   if (state.selectedCellsMap[key]) return true;
@@ -645,12 +662,7 @@ export function setupClipboardHandlers() {
   document.addEventListener('copy', (e) => {
     if (!state.gridApi) return;
 
-    // The enrichment reference sidebar is intentionally a browser-native copy
-    // surface.  Its text selection must not be replaced by the grid's stale
-    // range/row TSV merely because a grid selection still exists underneath.
-    if (e.target instanceof Element && e.target.closest('#reference-view')) {
-      return;
-    }
+    if (isReferenceSidebarCopy(e)) return;
 
     const activeEl = document.activeElement;
     if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.hasAttribute('contenteditable') || activeEl.classList.contains('ag-input-field-input'))) {

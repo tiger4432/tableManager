@@ -1,3 +1,100 @@
+# [디자인 -> 총괄] 🔵 **C-62 착지 — 잘라쓰기 하니스 «둘» 은퇴. 수는 «양쪽 다 그대로»(13 · 141)이고, 그것이 「기제만 옮겼다」의 증거입니다. 그리고 전환이 «숨어 있던 갈래 하나»를 드러냈습니다**
+
+```
+게이트   reference_grid_paste 13/0(전) -> 13/0(후) · history_paging 141/0(전) -> 141/0(후) ·
+        전건 초록(「every gated harness is green」) · GATE_EXIT 0 · BUILD_EXIT 0 · dist 교체(main) ·
+        프로브 잔해 «0»(src 에 `__probe__` 파일 남지 않음)
+⚠️ main 병합은 «422 회귀 수리 착지 뒤»로 두겠습니다(총괄 조건). design 까지만 밀었습니다
+```
+
+## ① 🔴 두 하니스가 댄 사유가 «둘 다 오늘 거짓»이었습니다
+```
+reference_grid_paste  「`config.js` 가 모듈 최상단에서 `window` 를 만져 import 가 안 된다」
+history_paging        「사유를 안 적음 — 다만 상수 일곱을 vm 에 «손으로» 넣고 있었음」
+실측 09-10            node -e "await import(...)" 이 셋 다 «성공»합니다:
+                      enrichment_reference_view.js · clipboard.js · timeline.js
+그리고 그 사유는 «이미 죽어 있었습니다»  `config.js` 머리에 그 이유가 적혀 있습니다 —
+   「최상단에서 window 를 읽으면 node 가 import 하는 순간 던지고, 그러면 17개 모듈을 재는
+     하니스가 전부 «텍스트로 잘라» 잴 수밖에 없습니다」 -> 그래서 그 파일은 이미 고쳐졌습니다
+=> 사유를 고친 커밋이 «하니스는 안 고쳤고», 하니스의 머리말이 그 사유를 계속 들고 있었습니다.
+   낡은 사유가 제일 오래 삽니다 — 아무도 다시 재지 않으니까
+```
+
+## ② 🔴 잘라쓰기가 «실제로» 무엇을 재고 있었나 — 이 파일들이 자기 손해를 적어 두었습니다
+```
+history_paging 의 자기 주석 «세 번»:
+   · import 를 하나 더했더니 «맞는 코드»에 이 파일이 던졌다
+   · 새 호출 대상이 WANTED 에 없어 섹션 H 가 «통째로 0» 을 그렸다 (두 번, C-55 포함)
+reference_grid_paste 의 클립보드 가드:
+   파일에서 «앵커 문자열»을 찾고, 있으면 «하니스가 직접 쓴» 술어를 돌렸습니다
+   -> 철자만 바꿔도 맞는 코드가 빨개지고, 같은 철자로 «틀리게» 고치면 통과합니다
+      둘 다 «동작의 측정이 아닙니다»
+```
+
+## ③ 무엇으로 바꿨나 — 「덧붙이기」가 아니라 «그냥 import» 인 자리부터
+```
+reference_grid_paste  기저 실행이 «맨 import» 입니다 — 사본도, 프로브도, 텍스트도 없음
+                     · `fillPlan` 을 export (호출부 무변)
+                     · 클립보드 가드를 «이름 있는 함수»로: `isReferenceSidebarCopy(e)`
+                       핸들러는 `if (isReferenceSidebarCopy(e)) return;` 한 줄 — 조건이 «불리는 것»이 됨
+                     변이만 `lib/probe.mjs`(모듈 «통째»에 변이를 먹여 로드)
+history_paging       `loadWithProbe(timeline.js, {expose: WANTED})` — 24 이름을 «닿습니다»
+                     WANTED 가 「잘라낼 목록」에서 「부를 목록」이 됐습니다.
+                     그래서 새 호출 대상은 «파일 안에 그대로» 있습니다 — 목록 관리가 사라집니다
+🔴 vm 이 손으로 먹이던 «일곱»이 사라졌습니다: escapeHtml · saysTruncated · LEDGER_BATCH_COLUMN ·
+   NO_TRANSACTION_BUCKET · isCount · API_BASE · pageLimit
+   -> 각각이 「하니스가 제품 사실의 «둘째 저자»가 될 수 있는 자리」였습니다. 이제 모듈이 스스로 import 합니다
+⚠️ 「사본이 원본 바이트로 시작」 단언은 «안 옮겼습니다» — 기저가 사본을 안 만드니 증명할 대상이 없습니다.
+   프로브 자체의 가드는 `probe_mechanism_harness` 가 잽니다(총괄 지시 그대로)
+```
+
+## ④ 🔴 전환이 «숨어 있던 갈래»를 드러냈습니다 — 이것이 이 라운드의 실물 소득입니다
+```
+utils.js:141   if (typeof window !== 'undefined') window.addEventListener('focus', sweepToasts);
+잘라쓸 때       `utils.js` 가 «파일 맨 위»에서 import 됐습니다 — 하니스가 window 를 심기 «전»에.
+               그래서 그 갈래는 «한 번도 안 돌았습니다». 브라우저는 항상 그 갈래를 탑니다
+import 하니 부터  timeline.js 의 import 그래프가 window 를 심은 «뒤»에 돕니다 -> 그 줄이 실제로 돌고,
+               제 window 스텁에 `addEventListener` 가 없어 «즉시 던졌습니다»
+=> 「하니스가 안 타던 갈래를 브라우저는 탄다」가 «실측으로» 나왔습니다. 스텁을 브라우저 모양으로
+   고쳤습니다(한 갈래가 필요로 한 «부분집합»이 아니라)
+```
+
+## ⑤ 그리고 콘솔 — 계측기의 출력이 «남의 소음»이 되지 않게
+```
+전     vm 이 조각에 «무음 콘솔»을 줬고 하니스는 진짜 콘솔을 썼습니다
+후     모듈이 자기 실패를 진짜 콘솔에 적습니다. 섹션 E·H 는 «죽은 서버»를 일부러 몹니다
+       -> 초록인 실행이 자기 판정 주위에 남의 스택 40 줄을 찍었습니다
+고침   `const OUT = console` 를 «먼저» 잡고, 전역 콘솔은 무음으로. 이 파일의 모든 출력은 OUT 으로
+       (`lib/probe.mjs` 가 자기 실패를 하니스의 녹음 콘솔에 삼켜진 적이 있어 «같은 수»를 씁니다)
+```
+
+## ⑥ 🔴 찾은 문제 — «해결 안 함», 판정 올립니다: 변이 «넷»이 단언이 아니라 «던져서» 잡힙니다
+```
+실측(전환이 보이게 만들었습니다 — 전에는 조용히 「caught」였습니다):
+   · envelope assigned where the array belongs   -> classList of undefined
+   · the reader drops the row-history count      -> textContent of undefined
+   · the two empty states collapse into one      -> textContent of undefined
+   · the paging session never advances           -> insertBefore: reference node is not a child
+읽는 법   던진 곳은 «하니스의 접근자»입니다(없어진 컨트롤을 집으려다). 결함이 «드러난» 것은 맞지만,
+         그 사실을 «이름으로 말하는 단언»이 아니라 «크래시»로 채점됩니다
+왜 지금 안 고쳤나  「13 단언 그대로 옮김」이 지시였고, 이건 코퍼스를 «강하게» 만드는 별개 일입니다.
+         전환과 섞으면 「수가 그대로」라는 이 라운드의 증거가 사라집니다
+=> 판정 필요: 이 넷을 「그 컨트롤이 있다」류 단언으로 «앞세울지» (별 라운드)
+```
+
+## ⑦ 모르는 것
+```
+🔴 화면으로 «못 엽니다»  이 라운드는 시험 코드와 export 둘뿐이라 화면 동작은 안 바뀝니다.
+                      다만 `clipboard.js` 의 «복사 핸들러»가 실제로 바뀐 유일한 제품 줄입니다 —
+                      조건이 함수 호출로 바뀌었을 뿐 «같은 술어»이고, 하니스가 그 함수를 직접 잽니다.
+                      메인 화면 복사 동작 확인은 총괄 자리입니다
+⚠️ 남은 잘라쓰기       이 둘 말고 몇 개가 더 있는지 «안 셌습니다» — 세는 것 자체가 별 라운드입니다
+```
+
+판정 대기: ⑥ 의 「던져서 잡히는 변이 넷을 단언으로 앞세울지」.
+
+---
+
 # [디자인 -> 총괄] 🔵 **C-61 착지 — 「도는 체인 3」에 «나이». 새 라우트도 새 칸도 «0»입니다 — `running_seconds` 는 내내 오고 있었고 «읽는 자리»가 없었습니다**
 
 ```
