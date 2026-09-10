@@ -258,3 +258,43 @@ def test_a_declaration_that_uses_none_of_them_is_scored_exactly_as_before():
     for issue in validate_bundle_errors(bundle, catalog=logical_catalog()):
         for word in ("value_type", "cardinality", "decision_key"):
             assert word not in issue.path
+
+
+def test_cardinality_reaches_the_compiled_predicate_instead_of_being_dropped():
+    """🔴 STEP ZERO OF S-133 (판정 256), AND IT IS A STEP THE RULING DID NOT NAME.
+
+    The grammar has accepted `cardinality` since the vocabulary existed and the authoring
+    form has offered it, but `predicate_claim` returns only `{emit, roles}` - so the value
+    was validated, shown to an author, and then DROPPED before the compiler. Measured
+    2026-09-10: zero readers, and nowhere for one to stand.
+
+    It now rides on `PredicateDescriptor` the way `status` does (S-103, ruling 198), which
+    is the same shape for the same reason: a word the declaration carries that the runtime
+    must be able to act on.
+    """
+    import dataclasses
+
+    from ledger.setup_bundle import CARDINALITIES, DEFAULT_CARDINALITY
+    from ledger.setup_registry import PredicateDescriptor
+
+    fields = {f.name: f for f in dataclasses.fields(PredicateDescriptor)}
+
+    assert "cardinality" in fields
+    assert fields["cardinality"].default == DEFAULT_CARDINALITY
+    assert DEFAULT_CARDINALITY == "many", "every declaration on disk means this"
+    assert set(CARDINALITIES) == {"one", "many"}
+
+
+def test_a_predicate_that_declares_one_compiles_carrying_it(tmp_path):
+    """⚠️ THE VALUE, NOT JUST THE FIELD. A default that never changes is the same as no
+    field at all, so the declared word has to arrive."""
+    from ledger import setup_registry
+    from ledger.setup_bundle import DEFAULT_CARDINALITY
+
+    import inspect
+
+    body = inspect.getsource(setup_registry)
+
+    assert 'cardinality=item.get("cardinality", DEFAULT_CARDINALITY)' in body, \
+        "the builder reads the declaration rather than defaulting unconditionally"
+    assert DEFAULT_CARDINALITY == "many"

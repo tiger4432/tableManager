@@ -20,6 +20,7 @@ from verified_join_contract import (
 )
 
 from .setup_bundle import (
+    DEFAULT_CARDINALITY,
     DEFAULT_LIFECYCLE,
     LedgerSetupBundle,
     LedgerSetupValidationError,
@@ -185,6 +186,13 @@ class PredicateDescriptor:
     required_qualifiers: tuple[str, ...]
     optional_qualifiers: tuple[str, ...]
     config_path: str
+    #: 🔴 `one` or `many`, and it reaches the compiled plan for the same reason
+    #: `status` does (S-133, 판정 256). The grammar has accepted this word since the
+    #: vocabulary existed and NOTHING read it: `predicate_claim` returns only
+    #: `{emit, roles}`, so the value was validated, offered by the authoring form, and
+    #: then dropped before any reader could stand anywhere. `many` when absent, which
+    #: is what every declaration on disk means today.
+    cardinality: str = DEFAULT_CARDINALITY
 
 
 @dataclass(frozen=True)
@@ -956,6 +964,7 @@ def _compile_vocabulary(section: Mapping[str, Any],
             optional_qualifiers=tuple(name for name, role in qualifiers
                                       if not role.get("required")),
             config_path=f"bundle.vocabulary.{predicate_id}",
+            cardinality=item.get("cardinality", DEFAULT_CARDINALITY),
         ))
     return builder.seal()
 
