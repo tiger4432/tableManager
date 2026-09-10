@@ -1,0 +1,106 @@
+{
+ "__comment": "S-117 (ruling 248). CAPTURED FROM THE LIVE `/audit_logs/recent`, not written by hand: the three shapes a ledger receipt takes, exactly as the route emits them. The timeline draws these with no new route and no new table - `column_name` is the mechanism word `ledger_batch`, which is what a kind filter keys on.",
+ "__notes": {
+  "grouping": "`transaction_id` is the transaction of the change that CAUSED the batch, so a receipt appears in the same group as the edit that triggered it.",
+  "empty_transaction_id": "The log's `transaction_id` is null and the ROUTE buckets it under the group key 'no_tid'. That null is a VALUE, not a gap: it says a backfill or a retroactive run produced this batch rather than somebody's edit. Do not fold it in with rows that are missing data.",
+  "is_row_deleted": "true on every receipt, and it is not about deletion: `row_id` is the BATCH's id, so no row of the table carries it and the existence probe says so. A receipt must not be drawn as a deleted row.",
+  "failed": "one receipt PER SOURCE that could not be followed, sharing the transaction id of the event. Written in a commit of its own, because the batch's own rolled back and took any receipt inside it."
+ },
+ "cases": {
+  "followed_success": {
+   "transaction_id": "S117-GATE-TX",
+   "total_count": 1,
+   "summary_columns": [
+    "ledger_batch"
+   ],
+   "logs": [
+    {
+     "id": 5747688,
+     "table_name": "dt_log",
+     "row_id": "01a0894e-a2e2-799d-8792-360fcec2203d",
+     "column_name": "ledger_batch",
+     "old_value": null,
+     "new_value": {
+      "rows": 5,
+      "molecules": 5,
+      "atoms_written": 10,
+      "atoms_deduped": 0,
+      "atoms_withdrawn": 10,
+      "refused": 0,
+      "reasons": {},
+      "translator_ver": "ledger-v2:a928def50dca48c496683cb0860fe6794368fd41df22c7e8fc8f86f18bdd7bac",
+      "status": "ok",
+      "error": null
+     },
+     "source_name": "ledger",
+     "updated_by": "ledger",
+     "transaction_id": "S117-GATE-TX",
+     "business_key": null,
+     "timestamp": "2026-09-10T12:13:47.688236+09:00",
+     "is_row_deleted": true
+    }
+   ]
+  },
+  "unfollowed_backfill": {
+   "transaction_id": "no_tid",
+   "total_count": 1,
+   "summary_columns": [
+    "ledger_batch"
+   ],
+   "logs": [
+    {
+     "id": 5747689,
+     "table_name": "dt_log",
+     "row_id": "01a0894e-a4d0-71af-b0c9-7d342ac17612",
+     "column_name": "ledger_batch",
+     "old_value": null,
+     "new_value": {
+      "rows": 5,
+      "molecules": 5,
+      "atoms_written": 0,
+      "atoms_deduped": 10,
+      "atoms_withdrawn": 0,
+      "refused": 0,
+      "reasons": {},
+      "translator_ver": "ledger-v2:a928def50dca48c496683cb0860fe6794368fd41df22c7e8fc8f86f18bdd7bac",
+      "status": "ok",
+      "error": null
+     },
+     "source_name": "ledger",
+     "updated_by": "ledger",
+     "transaction_id": null,
+     "business_key": null,
+     "timestamp": "2026-09-10T12:13:47.731775+09:00",
+     "is_row_deleted": true
+    }
+   ]
+  },
+  "failed": {
+   "transaction_id": "S117-FAIL-TX",
+   "total_count": 2,
+   "summary_columns": [
+    "ledger_batch"
+   ],
+   "logs": [
+    {
+     "id": 5747691,
+     "table_name": "dt_log",
+     "row_id": "01a0894e-e39e-7b50-ba21-09ce79006541",
+     "column_name": "ledger_batch",
+     "old_value": null,
+     "new_value": {
+      "source": "dt_transfer",
+      "status": "failed",
+      "error": "RuntimeError: a translator blew up"
+     },
+     "source_name": "ledger",
+     "updated_by": "ledger",
+     "transaction_id": "S117-FAIL-TX",
+     "business_key": null,
+     "timestamp": "2026-09-10T12:14:03.806942+09:00",
+     "is_row_deleted": true
+    }
+   ]
+  }
+ }
+}
