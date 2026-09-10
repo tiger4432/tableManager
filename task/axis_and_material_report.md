@@ -1,3 +1,63 @@
+# [디자인 -> 총괄] 🔵 **㉢ⓐ 착지 — 17 자리에 id 를 심었습니다. 판정 무변(4104/0 · 23/23). 그리고 판정하신 물음의 답: 사례까지 가르니 «겹침이 0» — 22 변이가 22 개의 «서로 다른» id 를 깹니다**
+
+```
+게이트   frame_declaration 4104/0 «무변» · 23/23 scored as intended · 전건 초록 · GATE_EXIT 0
+        제품 소스 0줄 · dist 무변 · 심은 자리 10 (템플릿 6 + 고정 4; `B2.` 는 이미 id 였음)
+```
+
+## ① 판정 답 — 「겹치면 공유, 다르면 갈라짐」에서 «전부 갈라졌습니다»
+```
+접기 전   rotation.source 를 «넷»이, startX.source 를 «셋»이 깨는 것으로 보였습니다
+사례까지  rot_stored_zero_unmarked · rot_marked_ninety · rot_negative_ninety · rot_forty_five
+         startx_marked_37 · startx_stored_zero · start_float_string
+=> «서로 다른 사례»입니다. 그래서 판정 그대로 넷·셋의 «다른 이름»이 되고, 억지로 가를 것도
+   억지로 묶을 것도 없었습니다. 결과적으로 22 변이 : 22 id, 공유 «0»
+```
+
+## ② 심은 모양 — 판정하신 `B1[사례]` 꼴, 그리고 «한 번만» 말합니다
+```
+생성 자리 여섯
+  A1[<표>/<칸>]      prod seatingSnapshot            A2[<표>]   prod getVisualGridDimensions.visualCols
+  B1[<사례>/<축>]    synthetic source                B3[<사례>/<축>]  synthetic value
+  E1[<축>]           the flat surface carries …      G3[<출처>]  a frame chosen from it says so
+고정 자리 넷
+  B4 declared grid_cols=0 …   D1 frame is frozen   G2 a declared frame reports no choice
+  H1 no token is minted …     (B2. 는 이미 id 꼴이라 그대로)
+⚠️ 이름에서 «중복을 뺐습니다»  옛 이름은 `B. synthetic[side_absent] side.value` 처럼 사례와 축을
+   두 번 말했습니다. id 가 그것을 들고 있으므로 뒤의 산문은 «무엇을 재는지»만 남겼습니다 —
+   같은 사실을 두 번 적지 않는 이 파일의 규율 그대로입니다
+```
+
+## ③ 검증 — id 가 «변이가 깨는 그 자리»에 심겼습니다
+```
+방법   심은 뒤 다시 돌려 변이마다 「처음 실패」의 접두를 뽑았습니다. 22 전건이 id 로 시작합니다
+       M1→A2[sample_map] · M4→A1[eds_fail_map/rotation] · M11→B1[rot_stored_zero_unmarked/rotation]
+       M14→B2 · M20→G3[data] · M22→H1 … (22/22)
+무변   4104/0 · 23/23 — 이름만 바뀌고 «판정은 한 건도» 안 움직였습니다. ⓐ 의 조건이 그것입니다
+```
+
+## ④ 다음(ⓑ) — 그리고 «구조 변경»이 하나 필요합니다
+```
+할 것   변이 22 개에 `catches` 를 달고, 이 하니스를 `lib/mutation_scorer.mjs` 로 이관
+🔴 지금 이 파일의 채점은 `out.failures.length > 0`(무엇이든 실패)입니다 — `catches` 를 «안 봅니다».
+   그래서 ⓑ 는 「이름 달기」 + 「채점기 이관」이 «한 몸»입니다(redo_banner ⓑ 와 같은 모양)
+같이   M13 의 「4075/4079」에서 안 돈 단언 «넷»을 이름 대어 — 판정하신 대로 ⓑ 에서 좁힙니다
+```
+
+## ⑤ 모르는 것
+```
+🔴 M13 의 넷        아직 «모릅니다». 이번 라운드에 한 번 재려다 제 계측기가 968 을 셌고
+                  하니스 계수기는 4,075 라 «제 쪽이 틀렸습니다» — 원인은 CRLF 워크트리에서
+                  `\n` 이 든 앵커가 `eq` 를 못 잡은 것(이 줄기에서 여섯 번째 같은 병)입니다.
+                  수를 내놓지 않고 파일을 바이트로 되돌렸습니다. ⓑ 에서 CRLF 안전한 계측으로 다시
+⚠️ 이름 변경의 여파  단언 이름은 «단언되지 않으므로» 게이트에 영향이 없습니다(4104/0 으로 확인).
+                  다만 이 이름들을 인용하는 «문서»가 있다면 낡습니다 — 찾아보지 않았습니다
+```
+
+판정 대기: 없음 — ⓑ 로 갑니다(등급 낮음이라 소유자 화면 지시가 오면 그것이 먼저).
+
+---
+
 # [디자인 -> 총괄] 🔵 **③ 완료 — 계약이 M22 를 잡고, 코퍼스가 «게이트에서» 돕니다. 23/23 · `ASSERTIONS 4104 0` · 전건 초록. 그리고 ㉢ 의 크기를 쟀습니다: 자리 «17» 개입니다**
 
 ```

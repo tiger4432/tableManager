@@ -308,14 +308,14 @@ function run(mod) {
     const before = failures.length;
 
     const ss = O_seatingSnapshot(dom);
-    for (const k of Object.keys(ss)) eq(`prod[${shape.table}] seatingSnapshot.${k}`, L[k], ss[k]);
+    for (const k of Object.keys(ss)) eq(`A1[${shape.table}/${k}] prod seatingSnapshot`, L[k], ss[k]);
 
     const rg = O_readGridFrameControls(dom);
     for (const k of Object.keys(rg)) eq(`prod[${shape.table}] readGridFrameControls.${k}`, L[k], rg[k]);
 
     const gv = O_getVisualGridDimensions(dom);
     const mv = vDimsLegacy(F);
-    eq(`prod[${shape.table}] getVisualGridDimensions.visualCols`, mv.visualCols, gv.visualCols);
+    eq(`A2[${shape.table}] prod getVisualGridDimensions.visualCols`, mv.visualCols, gv.visualCols);
     eq(`prod[${shape.table}] getVisualGridDimensions.visualRows`, mv.visualRows, gv.visualRows);
 
     const cc = O_currentCoordFrame(dom);
@@ -347,8 +347,8 @@ function run(mod) {
   // ── B. PROVENANCE ────────────────────────────────────────────────────────────
   for (const c of SYNTHETIC) {
     const F = mkFrame(c.meta);
-    eq(`B. synthetic[${c.id}] ${c.axis}.source`, F.axes[c.axis].source, c.want);
-    eq(`B. synthetic[${c.id}] ${c.axis}.value`, F.axes[c.axis].value, c.value);
+    eq(`B1[${c.id}/${c.axis}] synthetic source`, F.axes[c.axis].source, c.want);
+    eq(`B3[${c.id}/${c.axis}] synthetic value`, F.axes[c.axis].value, c.value);
   }
   // The four states `_rotation_of` collapses must be four tokens here.
   const rotIds = ['rot_absent', 'rot_unparsable', 'rot_stored_zero_unmarked', 'rot_marked_zero'];
@@ -419,7 +419,7 @@ function run(mod) {
   // The declared zero that the shipped `|| dflt` eats.
   const zeroCols = mkFrame(withKey('grid_cols', 0));
   eq('B. declared grid_cols=0 keeps its value', zeroCols.axes.cols.value, 0);
-  eq('B. declared grid_cols=0 legacy is the shipped fold to 10', zeroCols.axes.cols.legacy, 10);
+  eq('B4 declared grid_cols=0 legacy is the shipped fold to 10', zeroCols.axes.cols.legacy, 10);
   eq('B. foldedAxes names it', folded(zeroCols).join(','), 'cols');
   eq('B. and it is refused as a basis', usable(zeroCols).ok, false);
   // Production, measured -- not a claim, a count.
@@ -533,7 +533,7 @@ function run(mod) {
   const FOLDABLE = { cols: 10, rows: 10, waferDia: 300, chipX: 2.5, chipY: 2.5, edgeMargin: 3.0 };
   for (const [a, substitute] of Object.entries(FOLDABLE)) {
     const f = mkFrame({ ...FULL, [mod.AXIS_META_KEY[a]]: 0 });
-    eq(`E. ${a}: the flat surface carries the DECLARED zero`, f[a], 0);
+    eq(`E1[${a}] the flat surface carries the DECLARED zero`, f[a], 0);
     eq(`E. ${a}: axes.value carries the declared zero`, f.axes[a].value, 0);
     eq(`E. ${a}: legacy carries the shipped substitute`, f.legacy[a], substitute);
     ok(`E. ${a}: the two surfaces are NOT the same`, f[a] !== f.legacy[a]);
@@ -590,11 +590,11 @@ function run(mod) {
   // choice HAPPENED, exposed as one field.
   const chosenMeta = (from) => ({ ...FULL, [mod.FRAME_CHOSEN_KEY]: from });
   eq('G. the key is the one map_editor.js writes', mod.FRAME_CHOSEN_KEY, 'frame_chosen_from');
-  eq('G. a declared frame reports no choice', mkFrame(FULL).chosen, null);
+  eq('G2 a declared frame reports no choice', mkFrame(FULL).chosen, null);
   eq('G. ...and so does a meta with no keys at all', mkFrame({}).chosen, null);
   eq('G. ...and a null meta', mkFrame(null).chosen, null);
   for (const from of mod.FRAME_CHOSEN_FROM) {
-    eq(`G. a frame chosen from the ${from} says so`, mkFrame(chosenMeta(from)).chosen, from);
+    eq(`G3[${from}] a frame chosen from it says so`, mkFrame(chosenMeta(from)).chosen, from);
   }
   // WHICH choice, not merely THAT one happened: a boolean would delete the difference between a
   // bbox-derived frame and the previous map's panel residue.
@@ -645,7 +645,7 @@ function run(mod) {
   ok('D. no `document` in this process', typeof document === 'undefined');
   ok('D. no `window` in this process', typeof window === 'undefined');
   const f0 = mkFrame(FULL);
-  ok('D. frame is frozen', Object.isFrozen(f0));
+  ok('D1 frame is frozen', Object.isFrozen(f0));
   ok('D. axes bag is frozen', Object.isFrozen(f0.axes));
   ok('D. each axis is frozen', NAMES.every(n => Object.isFrozen(f0.axes[n])));
   ok('D. legacy bag is frozen', Object.isFrozen(f0.legacy));
@@ -680,7 +680,7 @@ function run(mod) {
   //    is BEHIND, not wrong. Those are two different sentences and they get two assertions.
   const contractTokens = new Set(CONTRACT_TOKENS);
   const minted = mod.DECLARATION_TOKENS.filter((t) => !contractTokens.has(t));
-  eq('H. no token is minted on this side (every DECLARATION_TOKENS entry is the server\'s)',
+  eq('H1 no token is minted on this side (every DECLARATION_TOKENS entry is the server\'s)',
     minted.join(',') || '(none)', '(none)');
   // ⚠️ NOT A FAILURE, AND DELIBERATELY SO. A token the server has and this client does not is
   //    "not borrowed yet" -- it becomes wrong only where something reads it, and that is a
