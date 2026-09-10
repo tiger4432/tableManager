@@ -1,0 +1,28 @@
+{
+  "$comment": [
+    "SHARED CONTRACT - the DECLARATION TOKENS: every word this system uses to say what a",
+    "map metadata blob DECLARES about its geometry and orientation.",
+    "",
+    "THE SERVER IS CANONICAL. These are captured FROM map_overlay.GEOMETRY_TOKENS, and the",
+    "server-side test asserts EQUALITY rather than containment: move a token on the server",
+    "and this file goes red, so the vectors are updated DELIBERATELY instead of drifting.",
+    "The client measures itself against this file as a SUBSET, because a client that has",
+    "not learned a new token yet is behind - not wrong.",
+    "",
+    "WHY IT EXISTS. The client froze these seven in DECLARATION_TOKENS; the server had no",
+    "name binding them at all. Asymmetric, one side could add a token and the other would",
+    "say nothing - which is the shape where two answers about one map quietly diverge.",
+    "",
+    "CAPTURE (manual, from the symbols - never typed by hand):",
+    "  python -c \"import json,map_overlay;print(json.dumps(sorted(map_overlay.GEOMETRY_TOKENS)))\""
+  ],
+  "tokens": [
+    "absent",
+    "assumed",
+    "auto_registered",
+    "confirmed",
+    "declared",
+    "indeterminate",
+    "unparsable"
+  ]
+}

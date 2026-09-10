@@ -903,6 +903,25 @@ def assume_grid_from(meta: dict | None, basis_meta: dict | None,
 #    단위가 아니라 컬럼 단위**이고, 순수 함수를 DB 세션에 묶는 대가로 축 단위 답을 못 얻는다.
 ORIENTATION_INDETERMINATE = "indeterminate"   # 값은 있으나 선언의 증거가 없다
 
+#: 이 서버가 기하·방위 선언에 대해 «말할 수 있는 말 전부» (S-135).
+#:
+#: 🔴 이 집합에 «새 철자가 없다» — 원소는 전부 위에 선언된 상수다. 토큰을 문자열로 다시
+#: 적으면 상수를 옮겨도 이 집합이 «옛 값을 든 채» 초록으로 남는다.
+#:
+#: ⚠️ 이름이 필요한 이유는 클라가 이미 `DECLARATION_TOKENS`(얼린 배열)로 «같은 일곱»을
+#: 들고 있는데 서버에는 그것을 «묶는 이름»이 없었기 때문이다. 비대칭이면 한쪽이 토큰을
+#: 더해도 다른 쪽은 «아무 말도 하지 않는다» — 계약이 그것을 등호로 잰다
+#: (`contracts/declaration_tokens/`, 서버가 정본).
+GEOMETRY_TOKENS = frozenset({
+    GEOMETRY_DECLARED,
+    GEOMETRY_AUTO_REGISTERED,
+    GEOMETRY_ABSENT,
+    GEOMETRY_UNPARSABLE,
+    ORIENTATION_INDETERMINATE,
+    GEOMETRY_ASSUMED,
+    GEOMETRY_CONFIRMED,
+})
+
 # 방위 축 — `frame_axes`의 앞 다섯 성분과 같은 순서다(같은 축 집합의 두 번째 철자를 만들지
 # 않기 위해 순서까지 맞춘다).
 ORIENTATION_KEYS = ("rotation", "side", "grid_y_invert", "grid_start_x", "grid_start_y")
