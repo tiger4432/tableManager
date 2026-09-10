@@ -8,17 +8,18 @@
  *
  * Read-only. It never writes to `client2/`.
  *
- * WHY THIS HALF EXISTS BEFORE THE FEATURE DOES
- *   Ruling 123 orders the walk table's attribute columns AFTER the server half lands, and
- *   until then 「`/declaration` 모양 «읽고» 하니스 픽스처만」. Measured today, code 0:
+ * WHY THIS HALF EXISTED BEFORE THE FEATURE DID — AND WHAT CHANGED
+ *   Ruling 123 ordered the walk table's attribute columns AFTER the server half landed, so this
+ *   file was written to score what it could and report the rest PENDING BY NAME.
+ *   🔵 THE SERVER CAUGHT UP (measured 2026-09-10, C-69), and this harness now reports 0 pending:
  *
- *     server/ledger_trace_router.py:~632  `/declaration` publishes {type, keys, class} per
- *                                          entity — `attributes` is NOT on the wire yet
- *     client2/src/walk/derive.js:57       `tableColumns` composes 깊이 + declared keys +
- *                                          qualifier names + 라벨 + id — no attribute column
+ *     server/ledger_trace_router.py:735~737  `/declaration` carries `attributes` per entity —
+ *                                          ABSENT, not empty, when a type declares none
+ *     client2/src/walk/derive.js:72       `tableColumns` composes 깊이 + declared keys +
+ *                                          qualifier names + declared ATTRIBUTES + 충돌 +
+ *                                          라벨 + id
  *
- *   So the positive half is reported PENDING BY NAME rather than silently passing, and the
- *   two things that CAN be scored today are scored:
+ *   The two things that were scorable before the server moved are scorable still:
  *
  *     ② the standing prohibition — no attribute NAME may appear as a source literal in the
  *        walk client. Column names come from the declaration; a name written down here makes
@@ -28,10 +29,10 @@
  *        That is true today and must stay true after the attribute columns land, so it is the
  *        one assertion here that measures the same thing before and after.
  *
- *   The switch from PENDING to SCORED needs no edit: the moment `tableColumns` returns any
- *   declared attribute name, section ③ scores all four cases strictly. "Built, but produces
- *   no attribute column at all" and "not built" are the same state, which is why that is a
- *   sound detector rather than an escape hatch.
+ *   The switch from PENDING to SCORED needed no edit AND DID NOT GET ONE: the moment
+ *   `tableColumns` returned a declared attribute name, section ③ began scoring all four cases
+ *   strictly. "Built, but produces no attribute column at all" and "not built" are the same
+ *   state, which is why that was a sound detector rather than an escape hatch.
  */
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
