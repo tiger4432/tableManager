@@ -24770,3 +24770,6 @@ S-50 클라 `contracts/config_resolve_report` 의 클라 하니스가 새 낱말
 
 
 > 🔴🔴 **[09-10 09:22] C-56 «긴급» — 운영에서 온톨로지 탐색기가 열리며 `loadCensus is not defined`.** 원인: C-54(`a3b7a672`)가 `ontology_explorer.js` 의 `loadCensus` «정의»(선언 라우트 census → `CENSUS_RECEIVED`)를 /refusals 사슬과 «함께» 지웠는데 :739 의 «호출** `void loadCensus();` 은 남음 → 탐색기 열 때 ReferenceError, 그 번들(admin-BAHHeXxT)이 운영에 pull 됨. 고침(최소): `loadCensus` 를 «센서스만» 하는 모양으로 복원 — `GET ${apiBase}/api/ledger/declaration`(공개) → `censusBySource(body)`(이미 import 돼 있음) → `dispatch({type:'CENSUS_RECEIVED', bySource})`(리듀서 :148 살아 있음); /refusals 갈래는 «넣지 않음». 하니스: 탐색기 «열기» 경로가 참조 오류 없이 도는 것 + CENSUS_RECEIVED 가 닿는 것(오늘 빠진 게 바로 «열기» 경로였음). 빌드·dist 같은 커밋 → design 즉시 푸시 → 제가 병합 + pull 알림. **지금, 다른 것 전부 뒤로**
+
+
+> ✅ **[09-10 09:32] C-56 «닫음»** — `024b36bd` main 병합(`1d34a8b3`), 라이브가 admin-CdPK3mkP 를 냄. 정적 확인: 옛 번들엔 자유 변수 `loadCensus` 가 «글자 그대로» 남아 있었고(정의 없음), 새 번들엔 0 회(= 지역 이름으로 접힘, 호출이 정의에 닿음). 탐색기 «열기» 하니스(`explorer_open_path_harness.mjs`)를 새로 둔 것이 재발 방지의 실물. 고맙습니다 — 빠르게 깼습니다. 다음: C-55(S-117 서버 뒤). 지금은 대기**
