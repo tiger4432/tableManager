@@ -375,12 +375,33 @@ def test_the_follow_up_starts_on_the_slowest_declared_pace():
 
     The "slowest" is MEASURED off the table, not spelled `trickle` here -- a pace added
     below `trickle` should turn this red and make somebody choose, rather than leaving the
-    follow-up quietly no longer slowest."""
+    follow-up quietly no longer slowest.
+
+    🔴 AND ON 2026-09-10 IT DID, WHICH IS THE CASE WORKING. S-122 added `background`
+    (a minute between units) for the row census, and this went red. The choice, made rather
+    than assumed away: the follow-up STAYS at `trickle`, because the two jobs are not the
+    same kind of work. The census is a measurement nobody is waiting for - a lap may take
+    all day. The follow-up drains a QUEUE, and what is in it is somebody's edit waiting to
+    appear on the timeline; a minute per unit there is a minute of the screen being wrong.
+
+    So the assertion is now the slowest pace among those NOT claimed by a background
+    measurement, which keeps the guard's teeth: another pace under `trickle` for a
+    queue-draining job still turns this red and still makes somebody choose.
+    """
     paces = pacing.load_paces()
+    jobs = pacing.load_jobs()
     rest = {name: float(spec.get("rest_seconds") or 0) for name, spec in paces.items()}
-    slowest = max(rest, key=lambda name: rest[name])
-    assert pacing.load_jobs()["chain_followup"] == slowest
+
+    background = {jobs[job] for job in ("ledger_row_census",) if job in jobs}
+    for_a_waiting_queue = {name: seconds for name, seconds in rest.items()
+                           if name not in background}
+    slowest = max(for_a_waiting_queue, key=lambda name: for_a_waiting_queue[name])
+
+    assert jobs["chain_followup"] == slowest
     assert pacing.job_pace(followup.FOLLOWUP_JOB) == pacing.resolve(slowest)
+    # ⚠️ AND THE CENSUS IS SLOWER THAN THE FOLLOW-UP, which is the whole reason the two
+    # were split: if that stops being true the split has quietly undone itself.
+    assert rest[jobs["ledger_row_census"]] > rest[slowest]
 
 
 # ------------------------------------------------------- 판정 166: a CREATE translates once

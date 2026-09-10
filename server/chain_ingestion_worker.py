@@ -1818,8 +1818,20 @@ def _drain_ledger_followup_sync(db_session_factory):
         db.close()
 
 
-def _measure_one_source_sync(db_session_factory, source):
-    """One source's census, in a thread. The session is this call's and closes with it."""
+def _measure_one_source_sync(db_session_factory, source, setup=None):
+    """One source's census, in a thread. The session is this call's and closes with it.
+
+    🔴 THE PACED TICK DOES NOT SCAN (S-122). `exact_rows=False` makes the relation count
+    the planner's free estimate instead of a `count(*)` over the whole relation - measured
+    on this box 1.18 s over 1.43M rows, run per source, per tick, without resting, so on a
+    production-sized table the census is never NOT scanning and every other query waits
+    behind it. The number is published AS an estimate; the exact count belongs to the
+    command a person runs.
+
+    ⚠️ `setup` IS PASSED IN, NOT LOADED HERE. Compiling the whole declaration costs 91 ms
+    on this box and it was being done once per SOURCE - fifteen times a lap for an answer
+    that cannot change inside one lap.
+    """
     from ledger import backfill as ledger_backfill
     from ledger.setup import load_setup
     from ledger.store import LedgerStore
@@ -1828,7 +1840,8 @@ def _measure_one_source_sync(db_session_factory, source):
     try:
         engine = db.get_bind()
         return ledger_backfill.measure_and_store(
-            engine, load_setup(), source, LedgerStore(engine))
+            engine, setup if setup is not None else load_setup(), source,
+            LedgerStore(engine), exact_rows=False)
     finally:
         db.close()
 
@@ -1858,30 +1871,45 @@ async def run_ledger_row_census(db_session_factory):
         except Exception as exc:
             logger.warning("[LedgerCensus] pace unreadable, using the default: %s", exc)
             units, rest = 1, 60.0
+        # 🔴 ONE COMPILE PER LAP, NOT ONE PER SOURCE (S-122). `load_setup()` compiles the
+        # whole declaration - 91 ms on this box - and it cannot change inside a lap, so
+        # fifteen sources were paying for fifteen identical answers.
+        setup = None
         try:
-            sources = sorted(await asyncio.to_thread(_declared_sources, db_session_factory))
+            setup = await asyncio.to_thread(_load_setup_sync, db_session_factory)
+            sources = sorted(setup.snapshot.source_plans)
         except Exception as exc:
             logger.warning("[LedgerCensus] the declaration could not be read: %s", exc)
             sources = []
         measured_now = 0
+        lap_started = time.monotonic()
         for source in sources:
             try:
                 await asyncio.to_thread(_measure_one_source_sync, db_session_factory,
-                                        source)
+                                        source, setup)
             except Exception as exc:
                 logger.warning("[LedgerCensus] %s failed: %s", source, exc)
             measured_now += 1
             if units is not None and measured_now % max(units, 1) == 0:
                 await asyncio.sleep(rest)
+        # 🔴 THE TICK SAYS WHAT IT COST (S-122 gate). A background job that crowds the
+        # database is invisible until somebody correlates two graphs; a line per lap with
+        # its own wall clock is the value 「큐 깊이는 값으로 보임」 asks for, and it is what
+        # tells an operator whether slowing the pace actually helped.
+        if sources:
+            logger.info("[LedgerCensus] lap: %d source(s) in %.3fs (rest %.0fs between, "
+                        "relation rows are planner estimates - `python -m ledger census` "
+                        "counts)", len(sources), time.monotonic() - lap_started, rest)
         await asyncio.sleep(rest if sources else max(rest, 60.0))
 
 
-def _declared_sources(db_session_factory):
+def _load_setup_sync(db_session_factory):
+    """The compiled declaration, once, in a thread. The session closes with the call."""
     from ledger.setup import load_setup
 
     db = db_session_factory()
     try:
-        return list(load_setup().snapshot.source_plans)
+        return load_setup()
     finally:
         db.close()
 

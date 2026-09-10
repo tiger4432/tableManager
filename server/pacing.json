@@ -6,7 +6,7 @@
   "_a_job_that_nobody_starts_by_hand_names_its_pace_here": "A backfill takes its pace from whoever pressed the button. A job that runs by itself has nobody to ask, so the answer is declared - one cell, no restart. The ledger follow-up starts on the SLOWEST declared pace on purpose: it is work nobody is waiting for, and the chain that feeds it is.",
   "jobs": {
     "chain_followup": "trickle",
-    "ledger_row_census": "trickle"
+    "ledger_row_census": "background"
   },
   "paces": {
     "fast": {
@@ -26,7 +26,13 @@
       "when": "끝나는 시각보다 «남에게 안 걸리는 것»이 중요할 때",
       "units_per_cycle": 1,
       "rest_seconds": 3.0
+    },
+    "background": {
+      "label": "백그라운드 — 재는 일이지 끝내는 일이 아닐 때",
+      "when": "센서스처럼 «상시 도는» 작업. 한 바퀴가 무한히 느려도 되고, 그 사이에 남이 느려지면 안 된다",
+      "units_per_cycle": 1,
+      "rest_seconds": 60.0
     }
   },
-  "_ledger_row_census": "S-58. The declaration screen shows 'table rows / indexed / not yet translated' per source, and both numbers are scans. D5 forbids a scan inside a request, so this job measures them on its own clock and the request reads what it stored. 'trickle' because nothing waits for it: a number a few minutes old is answered by its own measured_at, while a fast sweep would put two full counts per source onto the same database the live path is writing to."
+  "_ledger_row_census": "S-58. The declaration screen shows 'table rows / indexed / not yet translated' per source, and both numbers are scans. D5 forbids a scan inside a request, so this job measures them on its own clock and the request reads what it stored. 'trickle' because nothing waits for it: a number a few minutes old is answered by its own measured_at, while a fast sweep would put two full counts per source onto the same database the live path is writing to. 🔴 [S-122, 09-10] 분 단위로 내려왔습니다(trickle 3 s → background 60 s). 이 일은 «끝나는 시각»이 중요하지 않은 센서스이고, 짧은 쉬임은 그만큼 자주 데이터베이스를 만집니다 — 소유자 실측(09-10): 센서스 루프가 도는 동안 모든 표 조회가 느려졌습니다."
 }

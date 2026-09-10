@@ -880,7 +880,7 @@ def rows_missing_from_the_index(engine, setup, source, limit, after=None):
         connection.close()
 
 
-def rows_not_yet_translated(engine, setup, source):
+def rows_not_yet_translated(engine, setup, source, *, exact_rows=True):
     """Three values: the relation's rows, the rows the index names, and the difference.
 
     🔴 THIS IS THE LINE S-69 ASKED FOR, AND A CURSOR COULD NOT SAY IT.
@@ -912,9 +912,40 @@ def rows_not_yet_translated(engine, setup, source):
     connection = engine.raw_connection()
     try:
         with connection.cursor() as cursor:
-            cursor.execute(sql.SQL("SELECT count(*) FROM {relation}").format(
-                relation=relation))
-            total = cursor.fetchone()[0]
+            # 🔴 THE PACED CENSUS MUST NOT SCAN (S-122, 판정 09-10 12:57). This ran
+            # `count(*)` on the relation every tick, for every source, without resting -
+            # measured on this box 1.18 s over 1.43M rows, and on a production table it is
+            # never NOT scanning, so every other query queues behind it. The planner keeps
+            # a free estimate of exactly this number, and an estimate is what a census
+            # line is for: it says how big a thing is, not how many there are to the row.
+            #
+            # ⚠️ IT IS PUBLISHED AS AN ESTIMATE, not quietly swapped. `measured(exact=...)`
+            # already carries that distinction to the screen, and a number that is off by a
+            # few thousand while CLAIMING to be exact is worse than one that says what it
+            # is. The exact count is the human CLI's (`python -m ledger census`).
+            #
+            # ⚠️ AND A VIEW HAS NO `reltuples`. `pg_class` holds -1 for a relation that was
+            # never analysed and views are not analysed at all, so the scan stays for those
+            # - a view relation was already the expensive case and is now the only one.
+            estimated = None
+            from_estimate = False
+            if exact_rows is False:
+                cursor.execute(
+                    "SELECT c.reltuples::bigint FROM pg_class c "
+                    "  LEFT JOIN pg_namespace n ON n.oid = c.relnamespace "
+                    " WHERE c.relkind = 'r' AND c.relname = %s "
+                    "   AND c.reltuples >= 0 "
+                    " ORDER BY (n.nspname = current_schema()) DESC LIMIT 1",
+                    (str(plan.relation).split(".")[-1],))
+                row = cursor.fetchone()
+                estimated = None if row is None else int(row[0])
+            if estimated is None:
+                cursor.execute(sql.SQL("SELECT count(*) FROM {relation}").format(
+                    relation=relation))
+                total = cursor.fetchone()[0]
+            else:
+                total = estimated
+                from_estimate = True
             # 🔴 DISTINCT row_id, NOT count(*). The index is keyed
             # `(relation, row_id, source_who, source_raw_ref)` and its own comment says
             # why: ONE physical row appears under SEVERAL refs when a source emits
@@ -947,6 +978,7 @@ def rows_not_yet_translated(engine, setup, source):
     # it counted and stops.
     grouped = getattr(plan.driver, "unit", "row") == "group"
     report.update({"relation_rows": total, "indexed_rows": indexed,
+                   "relation_rows_estimated": from_estimate,
                    "counts": "rows vs groups" if grouped else "rows"})
     if grouped:
         report["not_comparable"] = (
@@ -973,7 +1005,7 @@ def rows_not_yet_translated(engine, setup, source):
 ROW_CENSUS_JOB = "ledger_row_census"
 
 
-def measure_row_census(engine, setup, source, now=None):
+def measure_row_census(engine, setup, source, now=None, *, exact_rows=True):
     """One source's census, STAMPED -- what was counted, how, and when.
 
     🔴 THIS IS THE JOB'S WORK, NOT THE REQUEST'S (D5, 판정 180). Both numbers are
@@ -994,7 +1026,7 @@ def measure_row_census(engine, setup, source, now=None):
 
     from ledger_trace import measured
 
-    census = rows_not_yet_translated(engine, setup, source)
+    census = rows_not_yet_translated(engine, setup, source, exact_rows=exact_rows)
     stamp = (now or datetime.now(timezone.utc)).isoformat()
     stamped = {"source": census["source"], "relation": census["relation"],
                "measured_at": stamp}
@@ -1012,9 +1044,16 @@ def measure_row_census(engine, setup, source, now=None):
             method=f"exclude_when over the first {page} rows, joined to the row index",
             measured_at=stamp)
     grouped = census.get("counts") == "rows vs groups"
+    # ⚠️ THE METHOD IS PART OF THE NUMBER (S-122). A paced tick reads the planner's free
+    # estimate and a person's `census` command counts; publishing both as `exact=True`
+    # would make a figure that is off by a few thousand indistinguishable from one that is
+    # not, which is the difference this field exists to carry.
+    estimated = census.get("relation_rows_estimated")
     stamped["relation_rows"] = measured(
-        census["relation_rows"], exact=True,
-        method="count(*) [rows]" if grouped else "count(*)", measured_at=stamp)
+        census["relation_rows"], exact=not estimated,
+        method=("pg_class.reltuples (planner estimate, no scan)" if estimated
+                else ("count(*) [rows]" if grouped else "count(*)")),
+        measured_at=stamp)
     stamped["indexed_rows"] = measured(
         census["indexed_rows"], exact=True,
         method="count(distinct row_id) [groups]" if grouped
@@ -1035,7 +1074,7 @@ def measure_row_census(engine, setup, source, now=None):
     return stamped
 
 
-def measure_and_store(engine, setup, source, store, now=None):
+def measure_and_store(engine, setup, source, store, now=None, *, exact_rows=True):
     """Measure one source's census and store it AGAINST ITS CURRENT FINGERPRINT.
 
     🔴 THE ONE SEAT (S-113 ⓑ-1, ruling 221). Three loops measure a source -- the
@@ -1047,7 +1086,7 @@ def measure_and_store(engine, setup, source, store, now=None):
     """
     from .setup_registry import cursor_translator_version
 
-    census = measure_row_census(engine, setup, source, now=now)
+    census = measure_row_census(engine, setup, source, now=now, exact_rows=exact_rows)
     store.write_row_census(
         source, census,
         translator_ver=cursor_translator_version(setup.snapshot, source))
