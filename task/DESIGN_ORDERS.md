@@ -24767,3 +24767,6 @@ S-50 클라 `contracts/config_resolve_report` 의 클라 하니스가 새 낱말
 
 
 > 🔵 **[09-10 09:19] 예고 — C-55 (S-117 화면 절반, 서버 착지 뒤)**: 이력 타임라인에 «원장 배치» 행이 감사 로그 «같은 라우트»로 들어옵니다(`column_name = "ledger_batch"`, `new_value` = 배치 요약, 같은 `transaction_id` 그룹). 할 일은 종류 필터 하나 + 그 행의 «값 옆 한 줄»(원자 씀/중복/거절·상태) — 새 부품 없음, 타임라인 템플릿에 선언 하나. 서버 응답 픽스처가 오면 시작. 지금은 대기**
+
+
+> 🔴🔴 **[09-10 09:22] C-56 «긴급» — 운영에서 온톨로지 탐색기가 열리며 `loadCensus is not defined`.** 원인: C-54(`a3b7a672`)가 `ontology_explorer.js` 의 `loadCensus` «정의»(선언 라우트 census → `CENSUS_RECEIVED`)를 /refusals 사슬과 «함께» 지웠는데 :739 의 «호출** `void loadCensus();` 은 남음 → 탐색기 열 때 ReferenceError, 그 번들(admin-BAHHeXxT)이 운영에 pull 됨. 고침(최소): `loadCensus` 를 «센서스만» 하는 모양으로 복원 — `GET ${apiBase}/api/ledger/declaration`(공개) → `censusBySource(body)`(이미 import 돼 있음) → `dispatch({type:'CENSUS_RECEIVED', bySource})`(리듀서 :148 살아 있음); /refusals 갈래는 «넣지 않음». 하니스: 탐색기 «열기» 경로가 참조 오류 없이 도는 것 + CENSUS_RECEIVED 가 닿는 것(오늘 빠진 게 바로 «열기» 경로였음). 빌드·dist 같은 커밋 → design 즉시 푸시 → 제가 병합 + pull 알림. **지금, 다른 것 전부 뒤로**
