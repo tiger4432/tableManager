@@ -31088,3 +31088,49 @@ tests/support/ontology_explorer_active_browser_app.py  (26줄)
 ⓒ 은퇴 — 격리 QA 를 이 경로로 «더는 안 한다»는 사실이 있으면. 그건 제가 모르는 사실입니다
 ```
 > 📌 **[09-10 17:28] 이 채널의 미답 질문: 4절 하나 (ⓐ/ⓑ/ⓒ).**
+
+---
+
+# [09-10 18:24] S-135 착지 (`bd9afcbb`) — 서버에 «묶는 이름», 그리고 등호로 잡는 계약
+
+## 1. ① 이름
+```
+map_overlay.GEOMETRY_TOKENS = frozenset({일곱}) — 일곱째(ORIENTATION_INDETERMINATE) «아래»
+원소   GEOMETRY_DECLARED · GEOMETRY_AUTO_REGISTERED · GEOMETRY_ABSENT · GEOMETRY_UNPARSABLE
+      · ORIENTATION_INDETERMINATE · GEOMETRY_ASSUMED · GEOMETRY_CONFIRMED
+값     declared · auto_registered · absent · unparsable · indeterminate · assumed · confirmed
+      -> 클라 DECLARATION_TOKENS 와 «정확히 같습니다»
+```
+⛔ **새 철자 «0»** — 전부 기존 상수 참조입니다. 리터럴로 적으면 상수를 옮겨도 이 집합이
+   «옛 값을 든 채» 초록으로 남습니다. 그래서 시험이 「이 집합의 소스에 «따옴표가 하나도 없다»」를
+   단언합니다. map_overlay 자신이 그 옆에 적어 두었습니다 —
+   「`GEOMETRY_CONFIRMED` 를 움직이면 `map_alignment` 의 신뢰 판정이 움직인다」.
+⚠️ 이름 하나 다릅니다: 클라는 `INDETERMINATE`, 서버는 `ORIENTATION_INDETERMINATE` — «값이 같아»
+   벡터가 둘을 묶습니다.
+
+## 2. ② 계약 — «등호»이고, 방향이 요점입니다
+```
+contracts/declaration_tokens/vectors.json  — «심볼에서 캡처»했습니다(손으로 안 적었습니다)
+   캡처 명령은 «그 파일이 만든 파일 안»에 적혀 있습니다
+server/tests/test_declaration_tokens_contract.py — vectors == GEOMETRY_TOKENS (등호)
+```
+🔴 서버가 «정본»이라 서버에서 토큰을 옮기면 «여기가 빨개집니다» → 벡터를 «일부러» 갱신하게 됩니다.
+   포함(⊆)이면 서버가 토큰을 늘려도 이 파일이 «모른 채 초록»으로 남습니다 — 계약이 잡으려던 그 드리프트입니다.
+   클라는 «같은 파일»에 대해 ⊆ 로 잽니다(아직 모르는 토큰이 있는 클라는 «틀린» 게 아니라 «뒤처진» 것이라서).
+
+## 3. 계약이 «실제로 무는지» 양방향으로 확인했습니다 (가정 아님)
+```
+출하 그대로            equal = True
+서버가 토큰 «하나 늘림»  equal = False  ✅
+서버가 토큰 «하나 줄임»  equal = False  ✅
+```
+
+## 4. 게이트
+```
+✅ 새 단언 5 · 이웃(이름으로 뽑음) -> 1,262 passed · 4 skipped
+✅ 수집 5,564 -> 5,569
+⚠️ 빨강 넷 «전부 기존»(오늘 깨끗한 트리에서 확인한 그 넷):
+   live mapper vs 샘플 · 이 박스 선언의 dt_slot 타입 · frame_confirmation_meta · job_column_from_config
+```
+🔴 클라 몫(C-66)은 «그 벡터로 ⊆ 를 재는 것»이고 제 몫이 아닙니다 — 서버 반쪽만 올렸습니다.
+> 📌 **[09-10 18:24] 이 채널의 미답 질문: «없음».** (그 뒤 다시 «대기»)
