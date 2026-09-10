@@ -19,9 +19,17 @@
 // A mutant is `{ id, what, catches, mutate }`:
 //   id       short handle for the run's output
 //   what     what the mutation does, in the words of the behaviour it breaks
-//   catches  the id PREFIX of the assertion that must fail. Required for a defect; a control
+//   catches  the id PREFIX of the assertion that must fail, or an ARRAY of them when a mutant
+//            legitimately breaks any one of several named lines. An array is still naming: what
+//            it must not become is 「something failed」. Required for a defect; a control
 //            declares none, because a control must wake nothing at all.
 //   mutate   whatever the caller's `run` needs -- this file never looks inside it.
+//
+// ⛔ OUT OF DOMAIN: A MUTANT WHOSE EXPECTED RESULT IS A THROW. `effort_instrument_harness.mjs`
+// has some, and they are right to have them -- but this file scores a throw as INERT by
+// definition, so putting them through it would redden code that is correct. That is not a gap
+// to close here; it is a different question ("does this still fail loudly?") and it belongs to
+// whatever asks it. Do not route such a corpus through this scorer.
 
 /** A verdict word, so callers and readers use the same three. */
 export const VERDICT = Object.freeze({ CAUGHT: 'CAUGHT', ESCAPED: 'ESCAPED', INERT: 'INERT' });
@@ -48,7 +56,9 @@ export async function scoreMutants(mutants, run, opts = {}) {
 
   for (const m of mutants) {
     const id = m.id || m.name || '(unnamed)';
-    const what = m.what || m.name || '';
+    // A corpus that names its mutants with one field (`name`) rather than two (`id` + `what`)
+    // must not have that one field printed twice.
+    const what = m.what || (m.name && m.name !== id ? m.name : '');
     let out = null;
     let threw = null;
     try { out = await run(m); } catch (err) { threw = err; }
@@ -65,11 +75,13 @@ export async function scoreMutants(mutants, run, opts = {}) {
     // A defect is caught only by the assertion it names. A control must wake nothing at all, so
     // for it ANY new failure is the wrong answer -- naming one would be asking which assertion
     // was allowed to be wrong.
+    const named = m.catches == null ? []
+      : (Array.isArray(m.catches) ? m.catches : [m.catches]).map(String).filter(Boolean);
     const hit = mustCatch
-      ? (m.catches ? failures.some(f => f.startsWith(m.catches)) : false)
+      ? (named.length > 0 && failures.some(f => named.some(n => f.startsWith(n))))
       : failures.length > 0;
 
-    if (mustCatch && !m.catches) {
+    if (mustCatch && named.length === 0) {
       // 🔴 LOUD, NOT LENIENT. A defect with no `catches` cannot be scored by name, and quietly
       //    accepting 「something failed」 for it would reintroduce exactly what this file exists
       //    to stop -- one mutant at a time, invisibly.
@@ -83,14 +95,14 @@ export async function scoreMutants(mutants, run, opts = {}) {
       if (mustCatch) caught += 1;
       verdicts.push({ id, verdict: mustCatch ? VERDICT.CAUGHT : VERDICT.ESCAPED });
       log(mustCatch
-        ? `  caught  ${id} ${what}  (${m.catches})`
+        ? `  caught  ${id} ${what}  (${named.join("/")})`
         : `  escaped ${id} ${what}`);
     } else {
       wrong += 1;
       verdicts.push({ id, verdict: mustCatch ? VERDICT.ESCAPED : VERDICT.CAUGHT,
-        why: mustCatch ? `${m.catches} stayed green` : failures.slice(0, 2).join(' | ') });
+        why: mustCatch ? named.join("/") + " stayed green" : failures.slice(0, 2).join(' | ') });
       log(mustCatch
-        ? `  ESCAPED ${id} ${what}  -- ${m.catches} stayed green`
+        ? `  ESCAPED ${id} ${what}  -- ${named.join("/")} stayed green`
         : `  CAUGHT  ${id} ${what}  <- a control woke: ${failures.slice(0, 2).join(' | ')}`);
     }
   }

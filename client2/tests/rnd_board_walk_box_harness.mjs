@@ -22,6 +22,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { scoreMutants } from './lib/mutation_scorer.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BOARD_DIR = path.join(HERE, '..', 'src', 'rnd_board');
@@ -495,48 +496,48 @@ const MUTANTS = [
   //    `keys`/`depth` died on 09-06 and `attributes` on 09-08 -- the server sends it, the
   //    screen draws an empty cell, and nothing raises. The mutant restores exactly the line
   //    that was there, so if anyone reintroduces it W2-W5 go red.
-  { name: 'the-node-is-rebuilt-from-a-field-list', wakes: 'W2/W3/W4', file: 'api.js',
+  { name: 'the-node-is-rebuilt-from-a-field-list', catches: ['W2', 'W3', 'W4'], file: 'api.js',
     from: "      const nodes = Array.isArray(body.nodes) ? body.nodes : [];",
     to: "      const nodes = (body.nodes || []).map((n) => ({ id: n.id, type: n.type,"
         + " label: n.label, keys: n.keys || null, depth: n.depth }));" },
   // ① the gate the order names: a fixed four-field form.
-  { name: 'the-key-form-is-four-fixed-fields', wakes: 'A2/A3/A4',
+  { name: 'the-key-form-is-four-fixed-fields', catches: ['A2', 'A3', 'A4'],
     from: "    return (found && found.keys) || [];",
     to: "    return ['mat_id', 'x', 'y', 'mat_type'];" },
-  { name: 'keys-survive-a-type-that-lacks-them', wakes: 'A5',
+  { name: 'keys-survive-a-type-that-lacks-them', catches: ['A5'],
     from: "    for (const k of keys) if (this.keyValues[k] !== undefined) kept[k] = this.keyValues[k];\n    this.keyValues = kept;",
     to: "    for (const k of keys) if (this.keyValues[k] !== undefined) kept[k] = this.keyValues[k];" },
   // ② the touchstone: an empty dropdown instead of a sentence.
-  { name: 'an-empty-follow-list-is-drawn-as-a-list', wakes: 'B4/B6',
+  { name: 'an-empty-follow-list-is-drawn-as-a-list', catches: ['B4', 'B6'],
     from: "      box.appendChild(this._note(this.nodeType",
     to: "      return box; box.appendChild(this._note(this.nodeType" },
-  { name: 'follow-is-not-narrowed-by-subjects', wakes: 'B1/B3',
+  { name: 'follow-is-not-narrowed-by-subjects', catches: ['B1', 'B3'],
     from: "    return all.filter((p) => (p.subjects || []).includes(this.nodeType)).map((p) => p.name);",
     to: "    return all.map((p) => p.name);" },
   // ③ an empty array is the OPPOSITE of the server default.
-  { name: 'unpicked-follow-is-sent-as-an-empty-array', wakes: 'C2/C5',
+  { name: 'unpicked-follow-is-sent-as-an-empty-array', catches: ['C2', 'C5'],
     // 앵커 갱신 2026-08-29 (round V): 그 줄이 전선에서 버전을 «벗기게» 바뀌었습니다.
     // 재는 것은 그대로입니다 -- 「안 고른 follow 를 빈 배열로 보내지 않는다」.
     from: "    if (this.follow.size) spec.follow = [...this.follow].map(bareTypeName);",
     to: "    spec.follow = [...this.follow].map(bareTypeName);" },
-  { name: 'blank-key-boxes-are-sent-as-filters', wakes: 'C6',
+  { name: 'blank-key-boxes-are-sent-as-filters', catches: ['C6'],
     from: "    for (const [k, v] of Object.entries(this.keyValues)) if (v !== '' && v !== undefined) keys[k] = v;",
     to: "    for (const [k, v] of Object.entries(this.keyValues)) keys[k] = v;" },
   // ⑤ one sentence for every absence.
-  { name: 'the-cut-is-not-mentioned', wakes: 'T1/T2',
+  { name: 'the-cut-is-not-mentioned', catches: ['T1', 'T2'],
     from: "    if (cut) box.appendChild(this._note(",
     to: "    if (false) box.appendChild(this._note(" },
   // 🔴 THE MUTANT TARGETS THE *RENDER* CONDITION, NOT THE `.reason` GUARD, BECAUSE THAT GUARD
   //    IS REDUNDANT: `if (cut)` already rejects the empty string the route sends when nothing
   //    was cut, so removing `.reason` changes nothing and the mutant sat inert. The defect that
   //    IS observable is announcing a cut whenever the KEY is present -- which is every walk.
-  { name: 'a-cut-is-reported-whenever-the-key-is-present', wakes: 'T4',
+  { name: 'a-cut-is-reported-whenever-the-key-is-present', catches: ['T4'],
     from: "    if (cut) box.appendChild(this._note(",
     to: "    if (this.result && this.result.truncated) box.appendChild(this._note(" },
-  { name: 'every-absence-shares-one-sentence', wakes: 'E4/E6',
+  { name: 'every-absence-shares-one-sentence', catches: ['E4', 'E6'],
     from: "    if (this.walkState === 'ready') return '걸었는데 닿은 것이 없습니다';",
     to: "    if (this.walkState === 'ready') return '타입을 고르고 걸으십시오';" },
-  { name: 'a-missing-route-reads-as-an-empty-result', wakes: 'E1',
+  { name: 'a-missing-route-reads-as-an-empty-result', catches: ['E1'],
     from: "    if (this.declState !== 'ready') {",
     to: "    if (false) {" },
 ];
@@ -550,9 +551,16 @@ const main = async () => {
     process.exit(1);
   }
 
-  console.log(`${LF}== defect mutants (each must be CAUGHT) ==`);
-  let escaped = 0;
-  for (const m of MUTANTS) {
+  // 🔴 C-66 ①. SCORED BY `lib/mutation_scorer.mjs`, AND THAT CHANGES WHAT `wakes` MEANS.
+  //    This file already PRINTED the named assertion beside every verdict — and never checked
+  //    it: `caught` was 「some assertion failed」, and a suite that THREW was folded in as
+  //    `failed: ['threw: …']`, i.e. counted as a catch. Printing a name you do not verify is the
+  //    quieter half of the same defect: the line the mutant exists to protect can rot away while
+  //    its id keeps appearing in the output. `wakes` is now `catches`, the scorer matches it, and
+  //    a throw is INERT.
+  // ⚠️ A BUILD failure still exits 2 rather than becoming INERT. 「the mutation did not apply」
+  //    is the harness losing its subject, not a mutant behaving; it must stop the run, loudly.
+  const { wrong: escaped } = await scoreMutants(MUTANTS, async (m) => {
     let mods;
     try {
       mods = await loadModules({
@@ -567,13 +575,9 @@ const main = async () => {
     const real = console.log;
     console.log = () => {};
     ran = 0; failedList = [];
-    let result;
-    try { result = await suite(mods); } catch (err) { result = { failed: ['threw: ' + err.message] }; }
-    console.log = real;
-    if (result.failed.length) {
-      real(`  caught  ${m.name}  (${m.wakes}) -- ${String(result.failed[0]).slice(0, 62)}`);
-    } else { real(`  ESCAPED ${m.name}  (${m.wakes})`); escaped += 1; }
-  }
+    try { await suite(mods); } finally { console.log = real; }
+    return { failures: failedList };
+  }, { title: `${LF}== defect mutants (each must be CAUGHT by its named line) ==` });
 
   console.log(`${LF}ASSERTIONS ${base.ran} ${base.failed.length}`);
   process.exit(escaped ? 1 : 0);
