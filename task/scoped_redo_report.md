@@ -28843,3 +28843,78 @@ by_source      5,164 MB = 인덱스 바이트의 «38.1 %», scans 1
 읽기 전용이라 지금 시작할 수 있습니다. 다른 순서를 원하시면 한 줄 주십시오
 ```
 > 📌 **[09-10] 이 채널의 미답 질문: ③ 의 모양 하나 (7절).**
+
+---
+
+# [09-10] S-118 ⓐ' — 쓰기 경로가 «손으로 도는 읽기»의 인덱스를 그만 냅니다 (`532f08f6`)
+
+> 판정 245 · 245-b. 지운 것 «없습니다» — DROP 시점은 총괄님 몫입니다.
+
+## 1. 전수 — 그 인덱스를 읽는 술어는 «두 갈래»입니다
+```
+고정 소스(사람 층)  chain_replay._count_user_protected      (table_name, row_id IN .., source_name)
+                  enrichment_analysis._human_resolved_cells (table_name, row_id IN .., column_name IN .., source_name)
+                  -> 둘 다 (table_name, row_id) 로 시작하고 둘 다 (row_id, column_name) 를 «고릅니다»
+파라미터 소스      chain_replay._claimed_filter (:676) · 삭제 (:976)   <- 부분 인덱스로 대체 «불가»
+```
+🔴 그리고 제가 처음 세운 가설은 «틀렸습니다» — 「유일 인덱스가 이미 덮는다」로 봤는데
+   EXPLAIN 이 아니라고 답했습니다(reader ①은 `ix_cell_sources_row_id` 를 타고 있었습니다).
+   재서 잡혔습니다.
+
+## 2. 잰 것 — 「느려도 된다」의 «얼마나»
+```
+사람 층 비율      121,972 / 33,987,136 행 = «0.36 %»
+새 부분 인덱스     idx_sources_human_claims (table_name, row_id, column_name) WHERE source_name='user'
+                실제 크기 «9.1 MB»  (옛 것 5,164 MB 의 0.18 %) · valid · ready
+파라미터 replay   같은 (table_name, source_name) 세기, 이 박스 34M 행, 웜:
+                가장 «큰» 소스(6.27 M 셀)  인덱스 2.834 s  ->  스캔 «1.953 s»   ← 스캔이 «더 빠릅니다»
+                가장 «작은» 소스(7,728 셀) 인덱스 0.001 s  ->  스캔 0.111 s
+⇒ 판정 245-b 의 갈래에서 «분»도 «시간»도 아니고 «초»입니다. replay 용 인덱스를 다시 세울 이유가 없습니다
+```
+⚠️ 이유는 산술입니다 — 인덱스 항목 627 만 개를 하나씩 읽는 것보다 힙을 «병렬로» 훑는 게 쌉니다.
+   그리고 이건 옛 인덱스 «자기 주석»이 경고한 바로 그 폴백입니다(2026-07-31, 13.1 M 행에서 861 ms).
+   주석은 그 폴백을 「받아들일 수 없다」고 «말하지 않았습니다». 오늘 재 보니 받아들일 수 있습니다.
+
+## 3. 착지한 자리 — 「생성은 자동, 삭제는 사람」(판정 243)
+```
+모델        Index(HUMAN_CLAIMS_INDEX, table_name, row_id, column_name) WHERE source_name=HUMAN_SOURCE_NAME
+           옛 것은 «선언에서 뺐습니다» — 새 설치가 다시 키우지 않게
+상수       models.HUMAN_SOURCE_NAME «하나». 두 reader 가 그것을 부릅니다
+           ⚠️ crud 의 `"user"` 열두 곳은 «안 건드렸습니다» — 그건 «우선순위» 판단이고 다른 질문입니다
+기동 ensure 새 것을 CONCURRENTLY «만들고», 옛 것이 남아 있으면 «이름·MB·명령»을 로그로 댑니다
+마이그레이션 section 3 «대체» — 새 것이 «있고 valid» 일 때만 DROP. 없으면 이름 대어 거절
+ops 스크립트 죽어 있던 withdraw 튜플(루프가 이미 안 돌던 것)을 «치웠습니다»
+시험       test_the_human_claims_index_replaces_the_full_one.py (7 케이스)
+⚰️ 그리고 시험 «둘»을 무덤으로 보냈습니다 — 옛 인덱스의 정의·접두 관계를 재던 것들입니다.
+   그 접두 불변식은 「다른 데서 여전히 참」이 아니라 «일부러 없앤 것»이라, 두면 «옳은 변경»이 빨개집니다
+```
+
+## 4. 게이트 — 전부 통과 (이 박스, 밝힘)
+```
+✅ reader EXPLAIN   둘 «다» Index Only Scan using idx_sources_human_claims
+✅ 마이그레이션 dry-run  「replacement: idx_sources_human_claims (9.1 MB, valid)」 → would run DROP · 쓴 것 «0»
+✅ 이웃              188 passed  ·  수집 5,425 (신규 7, 은퇴 2)
+⏳ 20k 행 벽시계 «후»  아직입니다 — DROP 이 총괄님 몫이고, «지금은 인덱스가 여덟»이라
+                    오늘 재면 전보다 «느립니다». DROP 뒤 한 번 돌리겠습니다(전 = 43.33 / 43.58 s)
+```
+
+## 5. 총괄님께 — 둘
+```
+① DROP 시점 한 줄 주시면 그 뒤 20k 행을 한 번 돌려 「전/후」를 닫겠습니다
+   명령은 기동 로그가 대는 그것입니다: python migrations/drop_redundant_layering_indexes.py --apply
+② S-94 ⓐ 의 그룹 줄: 계기는 «살아 있습니다»(11:29:50 재기동에 포함). 다만 그 뒤로
+   «정렬 그룹이 한 번도 안 돌았습니다» — 마지막 그룹 줄은 10:11:49 입니다
+   🔴 그리고 제 탐침으로는 «못 만듭니다»: 이 규칙의 결정 키는 dt_log 의 `dt_job` 인데
+      그 컬럼이 카탈로그의 display_columns 에 «없어서» 워처가 값을 «버립니다».
+      table_config.json 은 소유자 파일이라 제가 안 건드립니다.
+   ⇒ 다음 그룹(누군가 dt_log 에 dt_job 을 실어 쓰는 순간)에 줄이 나옵니다. 제가 줍겠습니다
+```
+참고 — 10:11:49 그룹 줄이 이미 표적을 보여 줍니다:
+`19.734 s 중 이름 붙은 것 7.5 s · «unnamed 12.227 s»` — 그 12.2 초가 이번 계기가 가르는 그 자리입니다.
+
+## 6. 다음
+```
+ⓑ 파이썬/ORM 34 % (apply_batch_updates 의 나머지) — 판정 245 의 순서대로 ⓐ 다음입니다
+같은 프로브(scripts/probe_ingestion_stages.py)로 이분하면 됩니다
+```
+> 📌 **[09-10] 이 채널의 미답 질문: DROP 시점 하나 · S-94 그룹 줄을 «만들지» 여부 하나 (5절).**
