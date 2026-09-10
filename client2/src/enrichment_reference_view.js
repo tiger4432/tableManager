@@ -325,6 +325,34 @@ function installSelectionKeys() {
   });
 }
 
+/**
+ * C-60 — 표 «위의 띠»: 이름 한 칸, 행 수 한 칸. 그것뿐입니다.
+ *
+ * 🔴 갈래가 «둘»(첫째 표 · 근거 표)이고 띠는 «한 벌»입니다. 근거 쪽이 자기 안에서 띠를
+ *    조립하고 있었고, 첫째에 같은 것을 «또» 조립하면 그 순간 두 표의 제목이 «갈라질 수»
+ *    있게 됩니다 — 기준 ④ 는 「둘이 있나」가 아니라 「둘이 갈라질 수 있나」입니다.
+ * ⛔ 설명 문구 없음. 수는 행 수 «하나»뿐이고, 없으면 «빈 칸»입니다 — 0 이 아닙니다
+ *    (「행 0」은 재 봤다는 뜻이고, 여기서 빈 칸은 「셀 것이 안 왔다」입니다).
+ */
+function referenceHeadBand(labelText, rowCount) {
+  const strip = document.createElement('div');
+  strip.className = 'reference-evidence-head';
+  const label = document.createElement('span');
+  label.textContent = labelText;
+  const count = document.createElement('span');
+  count.className = 'reference-evidence-count';
+  // The count is the ONLY number here. The mockup's `lot = TL26-08*` is its own fixture
+  // and inventing a live equivalent would put a filter on screen that nothing applied.
+  count.textContent = rowCount ? `${rowCount}행` : '';
+  strip.append(label, count);
+  return strip;
+}
+
+// 🔴 C-60. `render` 는 이 모듈 «밖에서 부르는 것이 아니라» 재기 위해 이름을 냅니다 —
+//    이 화면의 하니스가 잘라쓰기였고, 그 사유(「config.js 가 window 를 만져 import 안 됨」)는
+//    «오늘 거짓»입니다(실측: 이 모듈은 node 가 import 합니다). 잘라쓰기를 그만두려면
+//    재려는 것이 «이름으로» 있어야 하고, 그 이름이 이것입니다(소유자 상설 2026-09-02).
+// ⚠️ 부르는 쪽은 그대로 `render` 를 씁니다 — 호출부를 한 줄도 안 바꿉니다.
 function render(results) {
   const host = elements.referenceViewContent;
   host.replaceChildren();
@@ -454,19 +482,17 @@ function render(results) {
       tab.textContent = view.label || `Reference ${index + 1}`;
       tab.addEventListener('click', () => selectView(panelIndex));
       tabs.appendChild(tab);
+      // 🔴 C-60 (소유자 09-10: 「참조뷰 첫째 테이블도 타이틀 달아줘」). 첫째 표는 «탭»으로만
+      //    이름이 붙었는데, 패널이 하나면 탭 줄이 `display:none` 이라 그 이름이 «아무 데도»
+      //    없었습니다. 근거 뷰는 처음부터 띠를 갖고 있었고 첫째만 못 가진 것이었습니다.
+      // ⚠️ 띠는 «`section` 안»에 넣습니다 — `panels` 의 형제로 넣으면 `selectView` 의
+      //    인덱스가 뷰당 «둘»이 되어 탭이 엉뚱한 패널을 보여 줍니다(`panels.children` 1:1).
+      section.insertBefore(
+        referenceHeadBand(view.label || `Reference ${index + 1}`, payload?.rows?.length),
+        section.firstChild);
       panels.appendChild(section);
     } else {
-      const strip = document.createElement('div');
-      strip.className = 'reference-evidence-head';
-      const label = document.createElement('span');
-      label.textContent = view.label || '근거';
-      const count = document.createElement('span');
-      count.className = 'reference-evidence-count';
-      // The count is the ONLY number here. The mockup's `lot = TL26-08*` is its own fixture
-      // and inventing a live equivalent would put a filter on screen that nothing applied.
-      count.textContent = payload?.rows?.length ? `${payload.rows.length}행` : '';
-      strip.append(label, count);
-      evidence.append(strip, section);
+      evidence.append(referenceHeadBand(view.label || '근거', payload?.rows?.length), section);
     }
   });
   // One panel needs no tab strip -- the mockup's panel goes straight from the band to the
@@ -495,3 +521,6 @@ export async function showReferenceView() {
   }));
   if (sequence === requestSequence) render(results);
 }
+
+
+export { render as renderReferenceResults };
