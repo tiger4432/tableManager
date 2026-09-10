@@ -320,22 +320,53 @@ def aggregation_names(rule: dict) -> tuple:
     return tuple((rule.get("aggregations") or {}).keys())
 
 
-def view_bind_names(rule: dict) -> set:
-    """참조뷰·후보 프로브가 «바인드해도 되는» 이름 (S-129 ③).
+def derived_columns(rule: dict, known_tables: dict = None) -> set:
+    """이 규칙의 파생 표가 «선언한 컬럼 전부».
 
-    판단키 ∪ 집계 이름. 둘 다 «파생행의 컬럼»이라 값을 한 곳에서 읽을 수 있고, 그것이
-    이 집합이 하나인 이유다 — 뷰가 물을 수 있는 것은 「이 파생행이 아는 것」뿐이다.
+    ⚠️ ONE SPELLING, CALLED BY BOTH THE VALIDATOR AND THE EXECUTION (S-136). If the set the
+    SQL is checked against and the set the values are read from were built separately, a
+    view could validate on load and then be asked with a name nothing supplies - which is
+    the shape where a declaration passes and the query fails in front of an operator.
     """
+    catalogue = known_tables
+    if catalogue is None:
+        from database import crud
+
+        catalogue = crud.TABLE_CONFIG
+    table = (catalogue or {}).get(rule.get("derived_table")) or {}
+    return set((table.get("column_types") or {}).keys())
+
+
+def view_bind_names(rule: dict, known_tables: dict = None) -> set:
+    """참조뷰·후보 프로브가 «바인드해도 되는» 이름.
+
+    🔴 파생행의 «모든 컬럼»이다 (S-136, 소유자 09-10 21:11 「쿼리에 아무 컬럼 붙이는 거」).
+    판단키 ∪ 집계에서 넓혔다 — 판단키·집계·target_fields 가 전부 파생 표의 컬럼이고, 값은
+    이미 «그 행 하나»에서 읽히므로 좁혀 둘 이유가 없었다. 뷰가 물을 수 있는 것은 여전히
+    「이 파생행이 아는 것」뿐이고, 그 경계가 이제 행 전체다.
+    """
+    columns = derived_columns(rule, known_tables)
+    if columns:
+        return columns
+    # ⚠️ AN UNKNOWN DERIVED TABLE MEANS 「모른다」, NOT 「없다」. Narrowing to the empty
+    # set here would refuse every view of a rule whose table the caller could not see -
+    # so this falls back to what the RULE alone can vouch for, which is exactly the set
+    # that worked before S-136 widened it.
     return set(rule.get("decision_key") or ()) | set(aggregation_names(rule))
 
 
-def view_bind_values(rule: dict, row_values: dict) -> dict:
-    """파생행의 값에서 바인드 dict 를 짓는다. 없는 이름은 «싣지 않는다».
+def view_bind_values(rule: dict, row_values: dict,
+                     known_tables: dict = None) -> dict:
+    """파생행의 값에서 바인드 dict 를 짓는다. 파생행에 «없는» 이름은 싣지 않는다.
 
-    ⚠️ 빠진 것을 `None` 으로 채우지 않는다 — `missing_binds` 가 「못 물어본다」를 이름 대어
-    돌려주는 것이 그 자리이고, `None` 을 실으면 그 거절이 «빈 결과»로 바뀐다.
+    ⚠️ 「없는 것」과 「있고 비어 있는 것」은 다른 사실이다 (S-136). 컬럼이 파생행에 아예
+    없으면 실리지 않고 `missing_binds` 가 이름 대어 거절한다; 컬럼이 있고 값이 비어 있으면
+    «NULL 로 바인드»된다 — 그것이 그 행이 아는 사실이기 때문이다.
+
+    ⚠️ 빠진 것을 `None` 으로 «채우지» 않는 이유는 그대로다 — 채우면 그 거절이 «빈 결과»로
+    바뀐다.
     """
-    return {name: row_values[name] for name in view_bind_names(rule)
+    return {name: row_values[name] for name in view_bind_names(rule, known_tables)
             if name in (row_values or {})}
 
 def _validate_view_sql(sql: str, allowed_binds) -> str:
@@ -426,7 +457,8 @@ def _normalize_candidate_for(rule_name: str, label: str, raw, target_fields: lis
 
 def _normalize_reference_views(rule_name: str, raw_views, decision_key: list,
                                target_fields: list = None, rejections: list = None,
-                               caps: dict = None, aggregations: dict = None) -> list:
+                               caps: dict = None, aggregations: dict = None,
+                               derived_binds=None) -> list:
     """참조뷰 목록을 정규화한다. 유효하지 않은 뷰는 **목록에서 제외**된다.
 
     주의: 제외는 로드 시점에 일어나므로 `/enrichment/rules`의 label 목록과
@@ -447,8 +479,13 @@ def _normalize_reference_views(rule_name: str, raw_views, decision_key: list,
             continue
         sql, err = _resolve_view_query(raw)
         if err is None:
+            # 🔴 THE SAME SET THE EXECUTION READS FROM (S-136). `derived_binds` is
+            # `derived_columns(rule)` handed down by the validator, which already has
+            # the catalogue; falling back to key ∪ aggregations only when a caller
+            # could not supply it keeps this function usable from the pure-shape path.
             err = _validate_view_sql(
-                sql, set(decision_key) | set(aggregations or {}))
+                sql, derived_binds if derived_binds is not None
+                else set(decision_key) | set(aggregations or {}))
         if err is not None:
             logger.warning(f"[Enrichment:{rule_name}] reference view '{raw.get('label')}' dropped: {err}")
             _record(rejections, "reference_view", f"{rule_name}/{raw.get('label')}",
@@ -486,6 +523,12 @@ def _normalize_reference_views(rule_name: str, raw_views, decision_key: list,
                 rule_name, label, raw.get("candidate_for"), target_fields,
                 rejections=rejections),
             "required_binds": sorted(required_bind_params(body)),
+            # ⚠️ WHICH OF THIS VIEW'S BINDS ARE KEY COLUMNS (S-136). Blank stays
+            # 「missing」 for those and only those; every other column binds NULL when
+            # the derived row carries it empty. Stamped here because the executors take
+            # a view and params, not a rule - so the view has to know.
+            "blank_is_missing": sorted(
+                set(required_bind_params(body)) & set(decision_key or ())),
         })
     return views
 
@@ -646,6 +689,10 @@ def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = 
     if overlap:
         return None, f"decision_key and target_fields must not overlap: {overlap}"
 
+    # `None` = 「이 경로는 카탈로그를 못 본다」 -> 뷰 검증이 예전 집합(키 ∪ 집계)으로
+    # 물러난다. 없는 것을 «있다»고 말하지 않기 위해서다.
+    derived_binds = None
+
     list_columns = raw.get("list_columns") or []
     if not isinstance(list_columns, list) or not all(isinstance(c, str) for c in list_columns):
         return None, "'list_columns' must be a list of column names"
@@ -676,6 +723,10 @@ def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = 
             return None, f"derived_table '{derived_table}' is not registered in table_config.json"
         src_cols = set(src_cfg.get("column_types", {}).keys())
         drv_cols = set(drv_cfg.get("column_types", {}).keys())
+        # 🔴 EVERY COLUMN OF THE DERIVED ROW IS BINDABLE (S-136). The same set the
+        # execution reads values from, handed to the view validator so a name that
+        # will not resolve is refused HERE rather than in front of an operator.
+        derived_binds = set(drv_cols)
         missing = [c for c in decision_key if c not in src_cols]
         if missing:
             return None, f"decision_key column(s) missing in source table: {missing}"
@@ -733,7 +784,8 @@ def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = 
 
     reference_views = _normalize_reference_views(
         name, raw.get("reference_views"), decision_key, target_fields,
-        rejections=rejections, caps=caps, aggregations=aggregations)
+        rejections=rejections, caps=caps, aggregations=aggregations,
+        derived_binds=derived_binds)
     normalized = {
         "name": name,
         # ① auto-confirm opt-in. Carried through RAW (not coerced) so
@@ -1364,7 +1416,21 @@ def missing_binds(view: dict, bind_params: dict = None) -> list:
     from database import crud
 
     needed = set(view.get("required_binds") or required_bind_params(view.get("query", "")))
-    have = {k for k, v in (bind_params or {}).items() if not crud.is_blank_value(v)}
+    # 🔴 「없는 것」과 「있고 비어 있는 것」은 다른 사실이다 (S-136). A column the derived
+    # row does not HAVE cannot be asked with and is named here; a column it has whose
+    # value is empty binds as NULL, because that is what the row knows.
+    #
+    # ⚠️ EXCEPT THE DECISION KEY, WHERE BLANK STAYS MISSING - the rule above, measured:
+    # `slot=''` builds a legal query that matches nothing, and a zero-row read is
+    # indistinguishable from 「no such evidence exists」. The normalizer stamps which of
+    # a view's binds are key columns; a view that never went through it defaults to
+    # ALL of them, so an unnormalized view behaves exactly as it did before.
+    blank_is_missing = view.get("blank_is_missing")
+    if blank_is_missing is None:
+        blank_is_missing = needed
+    blank_is_missing = set(blank_is_missing)
+    have = {k for k, v in (bind_params or {}).items()
+            if k not in blank_is_missing or not crud.is_blank_value(v)}
     return sorted(needed - have)
 
 

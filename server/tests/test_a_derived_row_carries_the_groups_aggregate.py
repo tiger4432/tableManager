@@ -160,7 +160,12 @@ def test_the_reference_view_may_bind_the_aggregate_and_runs_with_its_value(env):
     assert [r[0] for r in rows] == ["B1"], "only the bond at the group's first time"
 
 
-def test_the_allowed_binds_are_the_key_and_the_aggregates_and_nothing_else():
+def test_a_rule_whose_table_is_not_catalogued_falls_back_to_key_and_aggregates():
+    """⚰️ THIS ASSERTED THE WHOLE CONTRACT UNTIL S-136 WIDENED IT to every column of the
+    derived row. What it measures now is the FALLBACK: with no `derived_table` the catalogue
+    cannot be read, and 「모른다」 must not narrow to 「없다」 - refusing every view of a rule
+    whose table the caller cannot see would be worse than the behaviour that worked before.
+    So it falls back to exactly what the rule alone can vouch for."""
     rule = {"decision_key": ["lot"], "aggregations": {"bonding_time_min": {"fn": "min"}}}
 
     assert enrichment_config.view_bind_names(rule) == {"lot", "bonding_time_min"}
