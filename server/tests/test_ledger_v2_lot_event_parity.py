@@ -455,7 +455,7 @@ def test_incomplete_pair_lands_visible_claims_and_updates_existing_cursor_metric
     class Store:
         def write_batch(self, source, translator_ver, atoms, cursor_value, molecules,
                         refused=0, incomplete=0, *, reasons, advance_cursor=True,
-                        withdraw_refs=None, row_refs=None):
+                        withdraw_refs=None, row_refs=None, receipt=None):
             calls.append({"atoms": tuple(atoms), "molecules": molecules,
                           "refused": refused, "incomplete": incomplete,
                           "advance_cursor": advance_cursor})

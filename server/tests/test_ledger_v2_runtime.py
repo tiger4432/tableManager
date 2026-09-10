@@ -50,7 +50,7 @@ class RecordingStore:
     def write_batch(self, source, translator_ver, atoms, cursor_value, molecules,
                     refused=0, incomplete=0, *, reasons,
                     enforce_translator_version=False, advance_cursor=True,
-                    withdraw_refs=None, row_refs=None):
+                    withdraw_refs=None, row_refs=None, receipt=None):
         self.calls.append({
             "advance_cursor": advance_cursor,
             # S-54-b: which physical row each `source_raw_ref` was built from, written in
@@ -377,7 +377,7 @@ def test_a_store_that_cannot_separate_the_two_statements_is_explicitly_unsupport
         def write_batch(self, source, translator_ver, atoms, cursor_value,
                         molecules, refused=0, incomplete=0, *, reasons,
                         enforce_translator_version=False, withdraw_refs=None,
-                        row_refs=None):
+                        row_refs=None, receipt=None):
             raise AssertionError("body must not run")
 
     with pytest.raises(LedgerV2RuntimeError) as caught:
@@ -388,8 +388,33 @@ def test_a_store_that_cannot_separate_the_two_statements_is_explicitly_unsupport
         "code": "unsupported_store_contract",
         "path": "store.write_batch",
         "message": "LedgerStore must be able to append atoms without moving the cursor, "
-                   "and to withdraw the generation they replace in the same transaction",
+                   "to withdraw the generation they replace in the same transaction, and "
+                   "to write this batch's receipt inside that same commit",
     }
+
+
+def test_a_store_that_cannot_take_the_receipt_is_refused_by_the_same_name():
+    """🔴 A THIRD ARM OF ONE CONTRACT, NOT A THIRD REFUSAL (S-117, 판정 248). A store that
+    silently dropped the receipt would leave the atoms standing with no record that the
+    batch happened - the history lying, which is the whole reason the receipt rides the
+    atoms' own commit. So it is refused where the other two arms are refused, and by the
+    same code, rather than being allowed through with a warning nobody reads."""
+    compiled = snapshot()
+    base = base_rows()
+
+    class NoReceiptStore:
+        def write_batch(self, source, translator_ver, atoms, cursor_value,
+                        molecules, refused=0, incomplete=0, *, reasons,
+                        enforce_translator_version=False, advance_cursor=True,
+                        withdraw_refs=None, row_refs=None):
+            raise AssertionError("body must not run")
+
+    with pytest.raises(LedgerV2RuntimeError) as caught:
+        execute_scoped_batch(
+            compiled, "input_rows", base, ("join_id", ["J-0000"]), reader_for(base),
+            preparers(), mappers(), NoReceiptStore())
+    assert caught.value.to_mapping()["code"] == "unsupported_store_contract"
+    assert "receipt" in caught.value.to_mapping()["message"]
 
 
 def test_skipping_the_cursor_step_still_commits_the_atoms_and_issues_no_cursor_statement():

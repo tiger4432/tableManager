@@ -24,6 +24,9 @@ is why "14 plus a special one" is not the shape of this.
 """
 from __future__ import annotations
 
+import contextlib
+import contextvars
+import uuid6
 import logging
 import threading
 import time
@@ -269,6 +272,12 @@ def _note_cannot_follow(done, cannot, table):
 #: The job name the pace is declared under, in `server/pacing.json`.
 FOLLOWUP_JOB = "chain_followup"
 
+#: The audit column, source layer and writer a ledger receipt carries. Imported from the
+#: one place that already names them so the failure receipt below and the success receipt
+#: in `runtime_v2` cannot describe themselves differently.
+from .runtime_v2 import RECEIPT_COLUMN, RECEIPT_SOURCE                # noqa: E402
+RECEIPT_WRITER = "ledger"
+
 #: A bound so a stalled drain cannot eat the worker's memory. Overflow is COUNTED and named
 #: in the heartbeat note rather than dropped in silence: a queue that quietly forgets is the
 #: 2026-09-04 shape, where 570 rows waited with no error anywhere.
@@ -279,15 +288,58 @@ _queue: deque = deque()
 _dropped = 0
 _failed = 0
 
+#: The chain transaction id of the event the batch running on THIS thread is following.
+#:
+#: 🔴 A CONTEXTVAR AND NOT FOUR SIGNATURES (S-117, 판정 248). The value has to reach the
+#: statement that writes the atoms, and that statement is four calls down
+#: (`rescope` -> `execute_selected_scoped_batch` -> `execute_scoped_batch` ->
+#: `write_batch`); widening all four so one leaf can read one string is the change the
+#: standing rule about touching only the layer that changes exists to prevent. Scoped the
+#: way the chain worker's own group scope is (판정 235): opened by the one loop that knows
+#: where a batch begins, invisible to anything that did not open one.
+#:
+#: ⚠️ DELIBERATELY NOT `request_transaction_id`. That one stamps every ORM write in its
+#: scope, so a batch that wrote anything through the session would silently take this id as
+#: well. This var is read by one seat and stamps nothing on its own.
+_FOLLOWING: contextvars.ContextVar = contextvars.ContextVar(
+    "assy_manager.ledger_followup.following", default=None)
+
+
+@contextlib.contextmanager
+def following(transaction_id):
+    """Mark this thread as following `transaction_id` for the duration of one batch."""
+    token = _FOLLOWING.set(str(transaction_id) if transaction_id else None)
+    try:
+        yield
+    finally:
+        _FOLLOWING.reset(token)
+
+
+def event_transaction_id():
+    """The chain transaction this batch is following, or `None`.
+
+    🔴 `None` IS A VALUE HERE, NOT A GAP. A backfill or a retroactive run fills this queue
+    with no chain transaction behind it, and that emptiness is what tells an operator on the
+    timeline that a row came from a backfill rather than from somebody's edit. Inventing an
+    id would erase exactly the distinction S-117 exists to show.
+    """
+    return _FOLLOWING.get()
+
 
 # ------------------------------------------------------------------- the chain's one line
 
-def enqueue(table_name, row_ids, event_type):
+def enqueue(table_name, row_ids, event_type, transaction_id=None):
     """Remember that rows of `table_name` changed. Returns whether anything was queued.
 
     Called from the chain worker's group step BEFORE its trigger filter, because the
-    subject of this step is the OUTBOX event, not a chain rule: a person editing a cell in
-    the grid produces the same event and must be followed the same way (ruling 129 ㉤).
+    subject of this step is the OUTBOX event, not a chain rule: a person editing a cell
+    in the grid produces the same event and must be followed the same way
+    (ruling 129 ㉤).
+
+    `transaction_id` is the chain transaction of that event, so the receipt this batch
+    writes lands in the SAME audit group as the table change that caused it (S-117,
+    판정 248). Absent for a backfill or retroactive filler, and LEFT absent - see
+    `event_transaction_id`.
     """
     global _dropped
     if event_type not in FOLLOWED_EVENT_TYPES:
@@ -299,7 +351,8 @@ def enqueue(table_name, row_ids, event_type):
         if len(_queue) >= MAX_QUEUED_EVENTS:
             _dropped += 1
             return False
-        _queue.append((str(table_name), ids, str(event_type), time.time()))
+        _queue.append((str(table_name), ids, str(event_type), time.time(),
+                       str(transaction_id) if transaction_id else None))
     return True
 
 
@@ -414,6 +467,37 @@ def _scope_values_from(connection, relation_name, column, row_ids):
         return [row[0] for row in cursor.fetchall() if row[0] is not None]
 
 
+def _write_failure_receipt(engine, relation, source, transaction_id, exc):
+    """One audit row saying this batch failed, in a commit of its own. Never raises.
+
+    ⚠️ A RECEIPT THAT CAN TAKE THE DRAIN DOWN WITH IT IS WORSE THAN NO RECEIPT. This runs
+    inside the handler for a failure that has already been named and counted; letting a
+    second failure escape from here would turn "one source could not be followed" into
+    "the follow-up loop stopped", which is the poisoned-row shape this file's docstring
+    already refuses.
+    """
+    try:
+        from database import crud
+
+        from . import store as store_module
+
+        row = crud.create_audit_log(
+            None, relation, str(uuid6.uuid7()), RECEIPT_COLUMN, None,
+            {"source": source, "status": "failed",
+             "error": f"{type(exc).__name__}: {exc}"},
+            RECEIPT_SOURCE, RECEIPT_WRITER,
+            transaction_id=transaction_id, add_to_cache=False)
+        connection = engine.raw_connection()
+        try:
+            store_module._insert_audit_row(connection, row)
+            connection.commit()
+        finally:
+            connection.close()
+    except Exception as receipt_error:                                 # noqa: BLE001
+        logger.warning("[LedgerFollowUp] the failure receipt for %s <- %s could not be "
+                       "written: %s", source, relation, receipt_error)
+
+
 def _take():
     with _lock:
         return _queue.popleft() if _queue else None
@@ -435,7 +519,7 @@ def drain_once(engine, setup):
     item = _take()
     if item is None:
         return None
-    table, row_ids, event_type, queued_at = item
+    table, row_ids, event_type, queued_at, transaction_id = item
     from . import backfill
 
     done = {"table": table, "event_type": event_type, "rows": len(row_ids),
@@ -519,8 +603,12 @@ def drain_once(engine, setup):
                 continue
             # 🔴 A CREATE IS TRANSLATED ONCE (판정 166). There is nothing to withdraw for a
             # row that has just appeared, and the preview exists only to aim a withdrawal.
-            result = backfill.rescope(engine, setup, source, column, values, apply=True,
-                                      withdraw=(event_type != "CREATE"))
+            # The scope the receipt inside that write is stamped with. Opened here
+            # because this is the one loop that knows which event a batch is following.
+            with following(transaction_id):
+                result = backfill.rescope(engine, setup, source, column, values,
+                                          apply=True,
+                                          withdraw=(event_type != "CREATE"))
             done["sources"][source] = {
                 "scope_values": len(values),
                 "withdrawn": result.get("withdrawn", 0),
@@ -531,6 +619,13 @@ def drain_once(engine, setup):
             with _lock:
                 _failed += 1
             done["sources"][source] = {"error": f"{type(exc).__name__}: {exc}"}
+            # 🔴 A FAILURE IS THE ONE AN OPERATOR MOST NEEDS TO SEE, AND IT NEEDS ITS OWN
+            # COMMIT (S-117, 판정 248). The successful receipt rides the atoms' commit so
+            # it cannot be lost while they stand; a FAILED batch has no such commit - it
+            # was rolled back, taking any receipt inside it with it - so this one is
+            # written afterwards, on its own. That is the shape rejected for the success
+            # path, used here because here there is nothing left to ride.
+            _write_failure_receipt(engine, table, source, transaction_id, exc)
             logger.warning(
                 "[LedgerFollowUp] %s <- %s (%d rows) failed: %s",
                 source, table, len(row_ids), exc)

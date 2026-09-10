@@ -13,6 +13,7 @@ from types import MappingProxyType
 from typing import Any, Mapping
 
 import pandas as pd
+import uuid6
 
 from . import gate
 from .backfill import prepare_v2_cursor_batch
@@ -83,6 +84,70 @@ def _refusal_reasons(refusals) -> dict:
     for refusal in refusals:
         counts[refusal.reason] = counts.get(refusal.reason, 0) + 1
     return counts
+
+
+#: The column an operator filters the timeline by to see ledger batches. A MECHANISM
+#: word, not a domain one: it names what this row is a record OF, and it is the same on
+#: every installation because no declaration decides it.
+RECEIPT_COLUMN = "ledger_batch"
+
+#: The layer a ledger receipt is written as. Beside `user` and a parser's file name, so the
+#: existing priority rules already know what to do with it: nothing, because it claims a
+#: column no table has.
+RECEIPT_SOURCE = "ledger"
+
+
+def _batch_receipt(store, plan, preview, rows: int, batch_id: str):
+    """A callable that turns this batch's own counts into ONE audit row (S-117, 판정 248).
+
+    🔴 IT IS CALLED INSIDE THE ATOMS' TRANSACTION, which is why it is a callable rather
+    than a dict: `atoms_written` and `atoms_deduped` are not known until the insert has
+    run, and a receipt assembled before the write would have to guess them or be written
+    after the commit - and a receipt written after the commit can be lost while the atoms
+    stand, which is the history lying.
+
+    🔴 THE ROW'S CONTENT IS DECIDED BY `crud.create_audit_log` AND NOWHERE ELSE.
+    `add_to_cache=False` is its documented way of saying "build the row, do not persist
+    it"; the persisting is the store's, on the connection the atoms are on.
+
+    ⚠️ `transaction_id` MAY BE `None` AND IS LEFT THAT WAY. It is set when a chain event
+    is being followed and absent when a backfill or a retroactive run filled the queue -
+    and that emptiness is the value: it is what separates "this moved because somebody
+    edited a cell" from "this moved because a backfill was running" on the timeline.
+    """
+    def build(written: Mapping[str, Any]) -> Mapping[str, Any]:
+        from database import crud
+
+        from . import followup
+
+        followed = followup.event_transaction_id()
+        row = crud.create_audit_log(
+            None, plan.relation, batch_id, RECEIPT_COLUMN, None,
+            {
+                "rows": rows,
+                "molecules": preview.molecule_count,
+                "atoms_written": written.get("inserted"),
+                "atoms_deduped": written.get("deduped"),
+                "atoms_withdrawn": written.get("withdrawn"),
+                "refused": len(preview.refusals),
+                "reasons": _refusal_reasons(preview.refusals),
+                "translator_ver": preview.translator_version,
+                "status": "ok",
+                "error": None,
+            },
+            RECEIPT_SOURCE, store.who,
+            transaction_id=followed, add_to_cache=False)
+        # 🔴 AND THE EMPTY FIELD SURVIVES `create_audit_log`'S DEFAULT (판정 248, measured
+        # on the first live run). That function invents a transaction id when given none,
+        # which is right for a cell edit - every human write belongs to some group - and
+        # wrong for a receipt: an invented id makes a backfill look like a group of ONE,
+        # indistinguishable on the timeline from a chain event that happened to touch a
+        # single table. The difference is exactly what this record exists to show, so the
+        # field is put back to what was followed, which may be nothing.
+        row["transaction_id"] = followed
+        return row
+
+    return build
 
 
 def _record_refusals(source_id: str, preview: "CursorBatchPreview") -> None:
@@ -268,6 +333,7 @@ def execute_scoped_batch(
         snapshot, source_id, base_rows, unwritten_cursor, join_reader, preparers, mappers,
         known_registrations=known_registrations)
     kept_all = _screened_atoms(snapshot, source_id, preview)
+    batch_id = str(uuid6.uuid7())
     try:
         written = store.write_batch(
             source_id,
@@ -281,17 +347,20 @@ def execute_scoped_batch(
             advance_cursor=False,
             withdraw_refs=withdraw_refs,
             row_refs=preview.row_refs,
+            receipt=_batch_receipt(store, plan, preview, len(base_rows), batch_id),
         )
     except TypeError as exc:
         # A store that cannot separate the two statements would advance the cursor instead,
         # and one that cannot take the withdrawal would leave it to a second transaction --
         # the shape that lost atoms. Both are refused by name, in the same shape as the
         # version-guard refusal beside them, rather than left to land as a bare TypeError.
-        if "advance_cursor" in str(exc) or "withdraw_refs" in str(exc):
+        if ("advance_cursor" in str(exc) or "withdraw_refs" in str(exc)
+                or "receipt" in str(exc)):
             raise LedgerV2RuntimeError(
                 "unsupported_store_contract", "store.write_batch",
-                "LedgerStore must be able to append atoms without moving the cursor, and "
-                "to withdraw the generation they replace in the same transaction",
+                "LedgerStore must be able to append atoms without moving the cursor, "
+                "to withdraw the generation they replace in the same transaction, and to "
+                "write this batch's receipt inside that same commit",
             ) from exc
         raise
     _record_refusals(source_id, preview)

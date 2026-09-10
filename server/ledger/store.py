@@ -76,6 +76,55 @@ def _json(value):
     return Json(value)
 
 
+def _insert_audit_row(connection, row):
+    """INSERT one audit row on `connection`, in whatever transaction it is already in.
+
+    🔴 ONE SPELLING OF THE INSERT, AND THE COLUMN LIST IS THE MODEL'S (S-117, 판정 248).
+    Both callers reach this: the receipt that rides the atoms' commit, and the failure
+    receipt that needs a commit of its own precisely because the atoms' one rolled back.
+    The columns are read off `AuditLog.__table__` rather than typed here, so a column
+    added to the model cannot leave this statement writing yesterday's shape.
+
+    ⚠️ A RAW CONNECTION, NOT A SESSION, and that is why this exists at all. The atoms are
+    written on `engine.raw_connection()`; a `Session` cannot join that transaction, so
+    `crud.bulk_insert_audit_logs` - the ordinary insert - cannot be the one used here.
+    What it CAN share, and does, is the decision about what the row says: the callers
+    build `row` with `crud.create_audit_log(..., add_to_cache=False)`.
+    """
+    if not row:
+        return 0
+    from database import models
+
+    import sqlalchemy
+    from psycopg2.extras import Json
+
+    table = models.AuditLog.__table__
+    columns = [c for c in table.columns if c.name in row and not c.primary_key]
+    if not columns:
+        return 0
+
+    def adapt(column, value):
+        # 🔴 THE COLUMN'S OWN TYPE DECIDES, AND IT HAD TO (measured, first live run).
+        # `new_value` is declared `JSON`, so the ORM serialises a dict on its way down and
+        # a raw cursor does not: psycopg2 answered `can't adapt type 'dict'` and the
+        # receipt was lost while the batch went on. Read off the model rather than named
+        # here, so a column that becomes JSON later is carried without a second edit.
+        if value is None or isinstance(value, (str, bytes)):
+            return value
+        if isinstance(column.type, sqlalchemy.JSON):
+            return Json(value)
+        return value
+
+    statement = 'INSERT INTO "%s" (%s) VALUES (%s)' % (
+        table.name,
+        ", ".join('"%s"' % column.name for column in columns),
+        ", ".join(["%s"] * len(columns)))
+    with connection.cursor() as cursor:
+        cursor.execute(statement,
+                       tuple(adapt(column, row[column.name]) for column in columns))
+    return 1
+
+
 class LedgerStore:
     """Everything that touches the two ledger tables. One object, one engine.
 
@@ -388,7 +437,7 @@ class LedgerStore:
     def write_batch(self, source, translator_ver, atoms, cursor_value, molecules,
                     refused=0, incomplete=0, *, reasons,
                     enforce_translator_version=False, advance_cursor=True,
-                    withdraw_refs=None, row_refs=None):
+                    withdraw_refs=None, row_refs=None, receipt=None):
         """🔴 The atomic unit. Atoms in, cursor forward, ONE commit, or nothing at all.
 
         🔴 `advance_cursor=False` IS THE SCOPED REDO, AND IT IS THIS SAME DOOR. Everything
@@ -457,10 +506,25 @@ class LedgerStore:
                 # counters - those describe the forward scan and this door is not it. See
                 # `_record_refusals` for why the two halves separate exactly here.
                 self._record_refusals(connection, source, translator_ver, refused, reasons)
+            written = {"attempted": attempted, "inserted": inserted,
+                       "deduped": attempted - inserted, "molecules": molecules,
+                       "withdrawn": withdrawn}
+            # 🔴 THE RECEIPT RIDES THE ATOMS' OWN COMMIT (S-117, 판정 248). A receipt
+            # written after this transaction closes can be lost while the atoms stand,
+            # and then the history says a batch never happened that did - which is the
+            # single falsehood this record exists to prevent. It is NOT an atom and it
+            # does not open a second door for one: `receipt` returns a row for a
+            # DIFFERENT table, and the atom statement above is untouched.
+            #
+            # ⚠️ AND THE STORE DOES NOT DECIDE WHAT IT SAYS. The callable is handed the
+            # counts this transaction just computed and returns the row; the one place
+            # that decides what an audit row contains is `crud.create_audit_log`, which
+            # is what the caller uses. A dict assembled here would be a second spelling
+            # of that, free to drift the day a column is added.
+            if receipt is not None:
+                _insert_audit_row(connection, receipt(written))
             connection.commit()
-            return {"attempted": attempted, "inserted": inserted,
-                    "deduped": attempted - inserted, "molecules": molecules,
-                    "withdrawn": withdrawn}
+            return written
         except Exception:
             connection.rollback()
             raise

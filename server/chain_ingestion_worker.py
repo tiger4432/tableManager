@@ -806,10 +806,15 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
     #    a chain transaction costs what it cost before this line existed; the paced task
     #    beside this loop does the work (ruling 129-bis).
     for event in events:
+        # `tx_id` and not `chain_tx_id`: the receipt this batch will write has to group
+        # with the table change that CAUSED it, and that change carries the original
+        # writer's transaction. `chain_tx_id` is what the chain's OWN writes take, one
+        # step further down (S-117, 판정 248).
         ledger_followup.enqueue(
             event.table_name,
             ledger_followup.row_ids_of(get_payload_dict(event)),
-            event.event_type)
+            event.event_type,
+            tx_id)
 
     valid_events = [e for e in events if e.event_type in ["CREATE", "EDIT"] and any(
         r.get("trigger_table") == e.table_name and r.get("enabled", True)
