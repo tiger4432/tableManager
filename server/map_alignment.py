@@ -38,6 +38,7 @@ import sys
 import time
 import uuid
 
+import alignment_batch_counts
 import event_constants
 import map_overlay
 from dt_map_derivation import parse_frame, source_meta_for_frame
@@ -5266,6 +5267,10 @@ def _memoized_reference(db, cfg, table, map_id, origin, cap, cache):
     """읽기 «하나» + 작업 단위 메모. 🔴 캐시와 캡은 «코어 밖»에 있다 — 계약이 부르는 코어
     (`map_overlay.resolve_valid_die_basis`)가 «순수»해야 벡터가 그것을 부를 수 있고,
     그 순수성이 계약의 전제다(판정 58)."""
+    # S-94 판정 235: WHICH map a reference resolved to, so a group can say whether its
+    # resolutions repeat. Counted here rather than at the call site because this is the one
+    # place the resolved `(table, map_id)` exists, cached or not.
+    alignment_batch_counts.note_reference(table, map_id)
     if cache is None:
         return _load_reference(db, cfg, table, map_id, origin, cap)
     ck = ("ref", table, map_id, origin, cap)

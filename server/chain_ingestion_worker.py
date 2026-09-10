@@ -30,6 +30,7 @@ from utils import heartbeat
 from utils.time_format import to_local_str
 
 # [C-5 확장] 통지 동봉 created_logs 상한 — 워처(directory_watcher)와 공유하는 공용 상수.
+import alignment_batch_counts
 import event_constants
 from event_constants import (MAX_NOTIFY_CREATED_LOGS, BROADCAST_ITEM_LIMIT,
                             OUTBOX_GROUP_MAX_ROWS, trim_events_to_row_budget)
@@ -1268,6 +1269,28 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
     return True, None, broadcast_messages
 
 
+def _log_alignment_group_work(tx_id, summary) -> None:
+    """One line saying how much alignment work this group asked for (S-94, 판정 235).
+
+    🔴 A VALUE, NOT AN INFERENCE. Whether a group's reference resolutions REPEAT is a
+    property of its data - no config file can answer it - and 「큰 깊이는 값으로 보임」 is the
+    standing rule that says such a depth belongs on the screen rather than in somebody's
+    arithmetic. `distinct_maps` against `reference_resolutions` is exactly the number that
+    decides whether caching the reference across a group is worth anything.
+
+    ⚠️ SILENT FOR A GROUP THAT DID NONE. Most chain groups never touch alignment, and a
+    line of zeros for each of them would bury the ones that did - the log equivalent of a
+    screen explaining what it is not showing.
+    """
+    if not summary or not summary.get("view_builds"):
+        return
+    logger.info(
+        "[Chain] group %s: view builds %d · reference resolutions %d · distinct maps %d "
+        "· %.3f s",
+        tx_id, summary["view_builds"], summary["reference_resolutions"],
+        summary["distinct_maps"], summary["wall_seconds"])
+
+
 async def process_chain_transaction_group(tx_id, events, db, rules):
     """Run one group off the event loop.
 
@@ -1388,7 +1411,13 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
 
         # Process transaction group atomically
         t_mapper_start = time.monotonic()
-        success, error_reason, broadcast_messages = await process_chain_transaction_group(tx_id, events_in_tx, db, rules)
+        # 🔴 THE GROUP IS THE BOUNDARY, AND ONLY THIS LOOP KNOWS IT (S-94, 판정 235).
+        # The scope is a `contextvars` one, so it reaches the sync body `to_thread` runs and
+        # reaches nothing else - a concurrent group or a route in this process counts into
+        # its own scope or into none.
+        with alignment_batch_counts.counting_group() as alignment_summary:
+            success, error_reason, broadcast_messages = await process_chain_transaction_group(tx_id, events_in_tx, db, rules)
+        _log_alignment_group_work(tx_id, alignment_summary())
 
         if success:
             t_mapper_done = time.monotonic()

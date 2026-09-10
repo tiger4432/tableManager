@@ -155,8 +155,6 @@ def _reference_spec_for(rule: dict, key_values: dict, job_column: str) -> str | 
 def build_dt_alignment_metadata_batch(db, payloads, rule=None):
     """Return ``wafer_map_metadata`` upserts for automatically confirmed DT maps."""
     
-    print('------------------- AUTO ALIGNMENT IS RUNNING------------------')
-    print(payloads)
     rule = rule or {}
     rule_name = rule.get("alignment_rule")
     map_table = rule.get("map_table")

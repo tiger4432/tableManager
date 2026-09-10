@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import alignment_batch_counts
 import enrichment_config
 import map_alignment
 import map_overlay
@@ -75,6 +76,9 @@ def resolve_alignment_view(db, rule_name: str, key_values: dict[str, Any] | None
         config = dict(config or {})
         config["alignment"] = dict((config or {}).get("alignment") or {})
         config["alignment"].update(alignment_thresholds)
+    # S-94 판정 235: what one chain group asked for, counted where every caller passes.
+    # Free outside a counting scope, and the mapper is not involved either way.
+    alignment_batch_counts.note_view_build()
     return map_alignment.build_alignment_view(
         db, config, decl, dict(key_values), map_table,
         reference_spec=reference_spec, include_cells=include_cells,
