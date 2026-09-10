@@ -37801,3 +37801,6 @@ S-106 조건   철회는 «오늘의 함수»(store 의 withdraw)를 그대로 �
 
 > 🔴🔴 **[09-10 14:33] 회귀 — «지금»**: `0ecbf7c2` 뒤 `GET /tables/{t}/data` 가 «전부 422**: `{"detail":[{"type":"missing","loc":["query","filters"],"msg":"Field required"}]}` — 브라우저의 기본 요청(`?skip=0&limit=1000&order_by=updated_at…`)까지 422 (이 박스 PID 33184 라이브, 그리드 전멸). `filters` 가 «필수» 인자가 된 것으로 보임(시그니처 변경 또는 `Query(...)` 기본값 소실). 한 줄: `filters` 는 «선택»(`None` 기본) 그대로, `/data/count` 도 같이 확인. 게이트: 위 요청 200 · `filters` 없이도 줄에 `filters=0`. 커밋 «즉시», 보고는 뒤에. 소유자께 pull 금지 알림 냄**
 > 📌 **[09-10 14:33] 이 채널의 미답 질문: «없음».**
+
+> 🔴 **[09-10 14:34] 회귀 원인 «특정»**: `_filtered_column_count` 가 `@app.get("/tables/{table_name}/data")` 데코레이터와 `def get_table_data` «사이»에 삽입돼 라우트가 «헬퍼»를 가리킴(main.py:1925-1926) — 헬퍼의 `filters` 인자에 기본값이 없어 필수 쿼리가 됐고 `get_table_data` 는 라우트를 잃음. 고침 = 헬퍼를 그 주석·데코레이터 «위»로 옮김(한 줄 이동). 게이트에 하나 더: 「데코레이터 바로 다음 줄이 `def get_table_data`」를 이웃 시험이 «잡지 못한» 것 — 데이터 라우트를 «실제 HTTP 로» 치는 시험이 이웃 580 에 없었다는 뜻이니, 기존 라우트 시험(TestClient) 하나를 이웃 목록에 «이름 대어» 넣고 그 커밋에 같이 돌린 결과를 보고에**
+> 📌 **[09-10 14:34] 이 채널의 미답 질문: «없음».**
