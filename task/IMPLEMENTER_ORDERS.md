@@ -37894,3 +37894,13 @@ S-106 조건   철회는 «오늘의 함수»(store 의 withdraw)를 그대로 �
 
 > 🔴 **[09-10 21:11] S-136 (등급 2, 소유자 09-10 21:11 「쿼리에 아무 컬럼 붙이는 거 — 후자 해줘」, 대기 해제 «지금»)**: 인리치 참조뷰·후보 프로브의 `:이름` 바인드 허용 집합을 «결정 키 ∪ 집계 이름»에서 **«파생행의 모든 컬럼»**(derived_table 의 column_types 전부, 결정 키·집계·target_fields 포함)으로. 값은 S-129 의 `view_bind_values` 가 «이미 파생행에서» 읽으므로 «허용 집합»과 «SQL 검증(`_validate_view_sql` 의 바인드 검사)»을 같은 한 곳에서 넓힘 — 둘째 철자 금지(허용 집합을 만드는 함수 하나를 검증·실행이 «같이» 부름). 파생행에 없는 이름은 지금처럼 로드 때 이름 대어 거절(`REASON_MISSING_BIND` 그대로). 바인드 값이 NULL 인 컬럼은 «부재»가 아니라 «NULL 로 바인드»(있는데 비어 있는 것과 없는 것은 다른 사실 — S-129 ③ 의 규칙과 어긋나지 않게: 컬럼이 «없으면» 부재, «있고 비면» NULL). 게이트: 결정 키 아닌 컬럼 `:equipment` 를 쓰는 뷰가 로드·실행 됨 · 없는 이름은 거절 · 기존 뷰 무변 · 이웃 초록 · 두 줄 「운영에서는 참조뷰 SQL 에 파생 표의 어느 컬럼이든 `:컬럼명` 으로 쓰면 됩니다」. 그 뒤 다시 «대기»**
 > 📌 **[09-10 21:11] 이 채널의 미답 질문: «없음».**
+
+> 🔴🔴 **[09-10 21:17] D-1 «문서 정비 — 빡세게» (소유자 09-10 21:17 「문서 정비 빡세게 한번 돌려라」) — 서버 몫. S-136 «뒤» 바로. HEAD=`1972d392` 기준**
+> 규율: ① «문서 읽기 → grep 검증» — 문장마다 오늘 코드에 대고 참인지 잰다(낡은 문장은 «발견»이라 이름 대어 고침, 조용히 지우지 않음) ② 코드 «0줄» ③ 커밋마다 「고친 문장 N · 지운 N · 새 N」과 대표 낡음 셋을 본문에 ④ 히스토리·CODE_MAP 은 «해시 대조»(각 절의 기준 커밋을 HEAD 로 올리며 실측).
+> 범위(서버):
+> - `docs/architecture/CODE_MAP.md` 서버 절 전부 — 오늘 착지분 반영: S-117(영수증 write_batch) · S-118(cell_sources 인덱스·마이그레이션) · S-119(loadable_columns) · S-122/122-b(센서스 추정·rows_indexed·pace background) · S-123/124/130(타이밍 줄·ANALYZE 기동/적재·dynamic-table 인덱스 ensure·`_ensure_one_index` 세 상태) · S-125(search_columns) · S-127(dropped 응답) · S-129(aggregations fn/column·view_bind_values) · S-131(정렬 NULLS) · S-133(cardinality 운반·gate 거절·supersedes 첫 writer·걷기 엣지) · S-135(GEOMETRY_TOKENS 계약) · S-84-b(timezone·roleframe.aware_time) · S-86 · S-92 서버(rows_sample·row_key) · S-128 · S-132 · S-134. 각 항목: 심볼·파일·줄(±)·판정 번호.
+> - `docs/architecture/backend.md` · `event_driven_backend.md` · `docs/overview/SYSTEM_OVERVIEW.md` 의 낡은 문장 — 알려진 것: 「run_decoupled_app.py」 경로(루트에 있음)·「Graph DB Sync」(파일 없음)·§5-J pacing(`jobs` 맵·background)·HOL(읽기 집합 포함, 제가 정정한 줄 확인)·센서스 설명(count(*) → 추정)·정렬 NULLS. «이 목록 밖»도 전수로.
+> - 가이드: `docs/guide/INGESTION_GUIDE.md`(analyze_after_rows·외부 소스 스윕 줄) · `docs/guide/config/table_config.md`(search_columns·source_priority) · enrichment 가이드(aggregations fn/column·바인드 집합 S-136 뒤 모양·query_ref) · ledger 가이드(cardinality one 의 뜻·timezone 칸·value_type 넷).
+> - `docs/architecture/RUNTIME_MAP.md` 의 「모르는 것」 셋 중 코드로 답할 수 있는 것(분리 모드 런처 실체·Graph DB Sync 낡은 문구)을 재서 채움.
+> 산출: 커밋 3~5(절별), 보고 한 번에 「낡은 문장 총수·부류 셋」. 게이트: `git grep` 로 문서가 부르는 심볼 이름 «전부» 코드에 존재(없는 이름 0). 그 뒤 «대기»
+> 📌 **[09-10 21:17] 이 채널의 미답 질문: «없음».**

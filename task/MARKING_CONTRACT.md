@@ -7148,3 +7148,13 @@ S-78  ⓐ load_* 스크립트 둘: 제품 문(`PUT /tables/{t}/data/updates`)으
 > ✅ **[09-10 08:47] 계기 받음(`e215d4c0`)** — 「빈 큐가 아니면 거절」이 오늘 당신을 문 그것을 스크립트가 막는 모양, 맞음. 구현자에게 경로를 넘겼고 S-94 전/후는 이것으로만 잽니다. **대기**(S-112 A/B · 10⁷ 은 S-94 뒤)**
 
 > 🔵 **[09-10 09:16] 계기 소품 셋(당신 파일, 대기 중 «지금», 한 커밋)** — 구현자 실측(`f94fba23`): ① `generate_source_rows.py` 기본 `--url` 이 :8000 인데 제품은 :8080(판정 172 에서 한 번 본 그 자리) → 기본값을 제품과 «같은 자리»에서 읽게(`ASSY_API_PORT`/launcher 기본 8080, 둘째 철자 금지) — 연결 거부가 «조용히 0 행»이 되지 않게 이름 대어 실패 ② `measure_ledger_followup_lag.py:132` 자식 출력 `encoding="utf-8"` → `errors="replace"`(cp949 한글 오류에 부모가 죽음) ③ `--start` 가 이미 쓴 인덱스면 rows_changed=0 인데 「0 of 0」이 성공처럼 보임 → «이름 대어» 거절(「이 인덱스는 이미 적재됨, --start 를 올리십시오」). 게이트: 세 경우 각각 한 줄 시험 또는 실행 증거. 그 뒤 대기**
+> 🔴🔴 **[09-10 21:17] D-3 «문서 정비 — 빡세게» (소유자 「문서 정비 빡세게 한번 돌려라」) — 응용 몫, 대기 해제 «지금». HEAD=`1972d392`**
+> 규율: 문서 읽기 → grep 검증 · 코드 0줄 · 커밋마다 「고친 N · 지운 N · 새 N」 · 낡은 문장은 이름 대어.
+> 범위(온톨로지·원장·이력):
+> - `docs/architecture/WALK.md` 서버 절: 걷기 엣지 `cardinality`(S-133 ④) · `live_claims` 가 supersedes 를 «실제로» 떨어뜨림(첫 writer) · since/until 걷기 · 정적 허브 규칙 — 문장마다 `ledger_subgraph.py`·`ledger_trace_router.py` 에 대고 검증.
+> - `docs/architecture/BASIS.md` §2-0 과 `LEDGER_SCHEMA_COMPLETENESS.md`: value_type 넷·timezone 칸·cardinality(읽는 쪽 생김)·supersedes writer — 표의 ①②③ 표시가 오늘 코드와 맞는지 «칸마다».
+> - 원장 선언 가이드(출하 샘플 기준): 두 줄 선언법이 오늘 것과 맞는지 — `bind.<role>.timezone` · `cardinality: one` 의 뜻(새 값이 대체) · `aggregations`(인리치 쪽은 서버 몫이나 원장 문서에서 부르면 링크만).
+> - `docs/history/`: 오늘(09-10)의 히스토리 항목 — 커밋 diff 를 읽어 «주제별 묶음»(읽기 느려짐 줄기 7 · 원장 4 · 정리 4 · 클라 10)으로 적고 인덱스 재생성. 낱개 커밋 나열 금지, 주제마다 「무엇이·왜·어디」 세 줄 + 해시.
+> - `docs/process/FORK_SESSION_BRIEF.md`: 정본 지도가 오늘 파일(RUNTIME_MAP 신설 등)을 가리키는지.
+> 산출: 커밋 3~5, 보고 한 번. 게이트: 문서가 부르는 심볼 «전부» 존재 · 히스토리 항목의 해시 «전부» `git cat-file -e`. 그 뒤 «대기»(S-112 판정은 소유자 결정으로 불필요해졌음 — 그 줄 닫음)
+> 📌 **[09-10 21:17] 이 채널의 미답 질문: «없음».**

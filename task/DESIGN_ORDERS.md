@@ -24852,3 +24852,11 @@ S-50 클라 `contracts/config_resolve_report` 의 클라 하니스가 새 낱말
 > 📌 **[09-10 20:54] 이 채널의 미답 질문: «없음».**
 > ✅ **[09-10 21:07] 접두 셋 «받음»(`a2fce0de`)** — 「기억으로 고르면 «잘못된 식구»를 가리키고도 초록」이라 «임시 줄로 재고» 고른 것 맞음, 이름 무변·수 무변·AMBIGUOUS 0×5. 제가 main 병합·전건 초록. **클라 «대기»** — 오늘 C-59~C-68 착지. 소유자 화면 지시가 오면 그것이 먼저
 > 📌 **[09-10 21:07] 이 채널의 미답 질문: «없음».**
+> 🔴🔴 **[09-10 21:17] D-2 «문서 정비 — 빡세게» (소유자 「문서 정비 빡세게 한번 돌려라」) — 클라 몫, 대기 해제 «지금». HEAD=`1972d392`**
+> 규율: 문서 읽기 → grep 검증 · 코드 0줄 · 커밋마다 「고친 N · 지운 N · 새 N」 · 낡은 문장은 이름 대어.
+> 범위(클라):
+> - `docs/architecture/CODE_MAP.md` §7(client2) 절 전부 — 오늘 착지: C-55 타임라인 LEDGER kind·영수증 · C-56/57 · C-59 시험 실행 표(`TablePart` 재사용) · C-60 참조뷰 띠 한 벌(`referenceHeadBand`) · C-61 도는 체인 나이 · C-62/63 하니스 import 전환(`isReferenceSidebarCopy` 등 노출) · C-65~68 변이 채점기 정본(`lib/mutation_scorer.mjs`: catches·INERT·SHRUNK·AMBIGUOUS·drops) · C-67 프로브 거울 디렉터리(`client2/.tmp/probe`, 훅의 원본 디렉터리 유도, 게이트의 src 산출물 0 단언) · 계약 `contracts/declaration_tokens`·`contracts/test_run_rows`. 각 항목 심볼·파일·줄·판정.
+> - 하니스 규율 문서(있으면 그 파일, 없으면 `docs/guide/` 에 «하나» 신설 — 이름은 당신이): 잘라쓰기 금지·덧붙이기 다리·import 정본·변이 채점기 계약(CAUGHT/ESCAPED/INERT/SHRUNK/AMBIGUOUS 의 «정확한 뜻»과 `catches`·`drops`·`baselineNames` 쓰는 법)·effort_instrument 제외 사유·게이트(`check_harnesses.mjs`)가 «무엇을 단언하나». CLAUDE.md 의 잘라쓰기 절이 «정본 링크»로 이 문서를 가리키게 제가 뒤에 한 줄 넣음.
+> - `docs/architecture/WALK.md` 의 클라 절: 엣지 `cardinality` 칸(S-133) · 걷기 표의 속성 열 현황(C-40 열림) 반영.
+> 산출: 커밋 2~4, 보고 한 번에 낡은 문장 총수·부류. 게이트: 문서가 부르는 export 이름 «전부» 소스에 존재. 그 뒤 «대기»
+> 📌 **[09-10 21:17] 이 채널의 미답 질문: «없음».**
