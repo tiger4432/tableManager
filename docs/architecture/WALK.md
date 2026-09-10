@@ -138,7 +138,7 @@ walk/state   모드·방향·시작 부호 수 / ready|empty
 
 | 화면 | 컬럼을 «누가» 정하나 | 속성 열 |
 |---|---|---|
-| 걷기 페이지 `client2/src/walk/` | 🔵 **선언이 정한다** — `tableColumns(entities, type, qualifierNames)`(`client2/src/walk/derive.js:71`) | ✅ **있다** — 엔티티가 선언한 attributes 이름«마다» 한 열 + 「충돌」 열 하나 |
+| 걷기 페이지 `client2/src/walk/` | 🔵 **선언이 정한다** — `tableColumns(entities, type, qualifierNames)`(`client2/src/walk/derive.js:72`) | ✅ **있다** — 엔티티가 선언한 attributes 이름«마다» 한 열 + 「충돌」 열 하나 |
 | 보드의 걷기 검색창 `walk_box_panel` | 🔴 **코드에 «셋»이 박혀 있다** — `client2/src/rnd_board/walk_box_panel.js:569` 의 `columns: [label · type · id]` | ❌ **없다** — `:574` 의 `rows.map` 이 노드를 `{id, type, label}` 로 «좁힌다» |
 
 🔴 **뒤엣것이 «두 번 실패한 그 좁힘»과 «같은 모양»이다.** 전송은 09-08 에 노드를 통째로 흘리도록 고쳐졌고, `client2/src/rnd_board/api.js:1925`~`:1927` 이 그 사고 «둘»을 이름 대어 적는다 — 09-06 에 `keys`·`depth` 가, 09-08 에 `attributes`·`attribute_conflicts` 가 «같은 자리»에서 죽었고 **두 번 다 오류가 없었다**(선언이 컬럼을 대고 표가 머리를 그리고 «셀만» 빈다). ⚠️ **그 좁힘은 사라진 게 아니라 부품으로 «옮겨 갔다»** — 서버가 보내고 부품이 버린다.
@@ -151,13 +151,13 @@ walk/state   모드·방향·시작 부호 수 / ready|empty
         server/ledger_trace_router.py:725(사유) · :735~:737(코드)
         🔴 타입이 선언 안 하면 «키가 없다» — 빈 배열이 아니다.
            「이 타입은 값이 없다」와 「이 배포는 축이 없다」를 가르기 위해서다
-화면    derive.js:71 이 그 이름마다 열을 만들고, cellSource(:103)가 n.attributes 에서 읽는다
-충돌 열  «선언되면» 선다 — 「누가 어긋났을 때」가 아니다(:81). 표 «모양»이 답의 함수가 되면
+화면    derive.js:72 가 그 이름마다 열을 만들고, cellSource(:104)가 n.attributes 에서 읽는다
+충돌 열  «선언되면» 선다 — 「누가 어긋났을 때」가 아니다(:82). 표 «모양»이 답의 함수가 되면
         같은 걷기가 두 표를 그리고, 열을 본 적 없는 운영자는 그 물음이 던져진다는 것도 모른다
-        그리고 0 은 «안 그린다»(:113) — 「아무 문제 없음」을 수로 내놓지 않는다.
+        그리고 0 은 «안 그린다»(:114) — 「아무 문제 없음」을 수로 내놓지 않는다.
         「없음」과 「안 닿음」은 «한 열 왼쪽»이 가른다(닿은 노드는 속성 칸이 차 있다)
 ```
-⛔ **그런데 `client2/src/walk/derive.js:66` 이 「`attributes` IS NOT ON THE WIRE YET — `/declaration` publishes {type, keys, class} today」라고 적고 있고, 그 문장은 «오늘 거짓»이다.** 적힐 때는 참이었고 그 뒤 서버가 따라왔다. 🔴 **주석은 «의도»의 증거이지 «동작»의 증거가 아니다** — 이 라운드는 코드 0줄이라 «이름만» 댄다.
+✅ **[C-69] `client2/src/walk/derive.js:66` 이 「`attributes` IS NOT ON THE WIRE YET」이라고 적고 있었고 «거짓»이었다 — 오늘 고쳤다.** 적힐 때는 참이었고 그 뒤 서버가 따라왔다. 🔴 **주석은 «의도»의 증거이지 «동작»의 증거가 아니다.** 같은 문장이 `contracts/walk_node_shape/client_harness.mjs` 의 머리에도 «두 번째로» 살아 있었고(그 하니스는 정작 `0 pending` 을 찍고 있었다) 같이 고쳤다. ⚠️ **그리고 그 다섯 줄 주석을 여섯 줄로 바꾸자 `derive.js` 의 «69번째 줄 뒤» 앵커가 전부 «하나씩» 밀렸다** — 위의 :72 · :82 · :104 · :114 는 그 뒤에 «다시 재서» 적은 값이다.
 
 ### 엣지 `cardinality`(S-133 ④) — 클라에서 읽는 자리 «0»
 

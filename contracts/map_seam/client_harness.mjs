@@ -35,7 +35,6 @@ import { readFileSync } from 'node:fs';
 import { loadWithProbe } from '../../client2/tests/lib/probe.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import vm from 'node:vm';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');

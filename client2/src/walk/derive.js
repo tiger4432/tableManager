@@ -63,10 +63,11 @@ export function followChoices(fromStartType, declaredNames, selected) {
  *    never reached, so the wrong screen and the right screen are the same pixels. Saying where
  *    each column reads from removes the second author instead of correcting its arithmetic.
  *
- * ⚠️ `attributes` IS NOT ON THE WIRE YET. `/declaration` publishes {type, keys, class} today, so
- *    this slot is empty on the live screen and the table is unchanged. It is filled here
- *    because a structure that cannot express the third group is the same structure that made
- *    the arithmetic look correct.
+ * 🔵 `attributes` IS ON THE WIRE (measured 2026-09-10, C-69). `/declaration` carries it per
+ *    entity (`server/ledger_trace_router.py:735`~`:737`), ABSENT rather than empty when a type
+ *    declares none — so a type without attributes still draws the table it drew before. This
+ *    paragraph said the opposite until today: it was true when written and the server caught up,
+ *    which is why the slot was built before anything could fill it.
  */
 export function tableColumns(entities, type, qualifierNames) {
   const bare = bareName(type);
