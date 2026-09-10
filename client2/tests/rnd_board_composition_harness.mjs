@@ -26,6 +26,7 @@ import { readFileSync } from 'node:fs';
 // 🔴 정규화는 «한 자리»입니다 (`readSourceText`). 사본을 각자 들면 갈립니다 —
 //    2026-09-07 실측: 그 사본이 서른셋이었고, 새 하니스는 그것을 안 들고 태어납니다.
 import { readSourceText } from './lib/probe.mjs';
+import { scoreMutants } from './lib/mutation_scorer.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -392,22 +393,11 @@ console.log('-- rnd_board composition parts ------------------------------------
 console.log(`  ${result.ran.length - result.failures.length} passed, ${result.failures.length} failed`);
 result.failures.forEach((f) => console.log(`  FAIL  ${f}`));
 
-let escaped = 0;
-console.log('\n-- defect mutants (each must be CAUGHT by its named line) -----------');
-for (const m of MUTANTS) {
-  let out;
-  try {
-    out = await suite(await loadModules(m.mutate));
-  } catch (e) {
-    // 🔴 A THROW IS A HOLE, NOT A CATCH -- see the walk harness for the same repair.
-    escaped += 1;
-    console.log(`  INERT   ${m.id} ${m.what}  -- ${String(e.message).slice(0, 60)}`);
-    continue;
-  }
-  const hit = out.failures.some((f) => f.startsWith(m.catches));
-  if (hit) console.log(`  caught  ${m.id} ${m.what}  (${m.catches})`);
-  else { escaped += 1; console.log(`  ESCAPED ${m.id} ${m.what}  -- ${m.catches} stayed green`); }
-}
+// 🔴 C-66. This loop and the walk harness's were the same loop written twice -- criterion ④,
+//    and the comment it carried even said "see the walk harness for the same repair". It lives
+//    in `lib/mutation_scorer.mjs` now and both call it, so the two cannot drift apart.
+const { wrong: escaped } = await scoreMutants(MUTANTS, async (m) => suite(await loadModules(m.mutate)),
+  { title: '\n-- defect mutants (each must be CAUGHT by its named line) -----------' });
 
 const total = result.ran.length + MUTANTS.length;
 const failed = result.failures.length + escaped;

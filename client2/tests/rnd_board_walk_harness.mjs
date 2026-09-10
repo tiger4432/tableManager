@@ -21,6 +21,7 @@ import { readFileSync } from 'node:fs';
 // 🔴 정규화는 «한 자리»입니다 (`readSourceText`). 사본을 각자 들면 갈립니다 —
 //    2026-09-07 실측: 그 사본이 서른셋이었고, 새 하니스는 그것을 안 들고 태어납니다.
 import { readSourceText } from './lib/probe.mjs';
+import { scoreMutants } from './lib/mutation_scorer.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -311,18 +312,12 @@ console.log('-- rnd_board walk parts (F candidate list, G rank list) -----------
 console.log(`  ${result.ran.length - result.failures.length} passed, ${result.failures.length} failed`);
 result.failures.forEach((f) => console.log(`  FAIL  ${f}`));
 
-let escaped = 0;
-console.log('\n-- defect mutants (each must be CAUGHT by its named line) -----------');
-for (const m of MUTANTS) {
-  let out;
-  // 🔴 A THROW IS A HOLE, NOT A CATCH. `loadModules` throws when a mutation changes nothing,
-  // and counting that as 'caught' would turn a rotted anchor into a green line -- the same
-  // silent-pass this file was hardened against, wearing a different costume.
-  try { out = await suite(await loadModules(m.mutate)); }
-  catch (e) { escaped += 1; console.log(`  INERT   ${m.id} ${m.what}  -- ${String(e.message)}`); continue; }
-  if (out.failures.some((f) => f.startsWith(m.catches))) console.log(`  caught  ${m.id} ${m.what}  (${m.catches})`);
-  else { escaped += 1; console.log(`  ESCAPED ${m.id} ${m.what}  -- ${m.catches} stayed green`); }
-}
+// 🔴 C-66. THE LOOP THAT USED TO SIT HERE IS NOW `lib/mutation_scorer.mjs`, unchanged in what it
+//    decides: a throw is INERT (a hole, not a catch) and `caught` means THE NAMED assertion
+//    failed. `rnd_board_composition_harness.mjs` carried a near-identical copy, and two paths to
+//    one answer is criterion ④ -- 「둘이 갈라질 수 있나」, not 「둘이 있나」. Both call it now.
+const { wrong: escaped } = await scoreMutants(MUTANTS, async (m) => suite(await loadModules(m.mutate)),
+  { title: '\n-- defect mutants (each must be CAUGHT by its named line) -----------' });
 
 const total = result.ran.length + MUTANTS.length;
 const failed = result.failures.length + escaped;
