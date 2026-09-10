@@ -1151,7 +1151,15 @@ const FLOORS = new Map([
   // on the commit that introduces it — there is no earlier tree to measure it against.
   ['startup_socket_gate_harness.mjs', 111],
   ['startxy_probe.mjs', 75],
-  ['undeclared_identifier_harness.mjs', 10],
+  // 🔴 RAISED 10 -> 13 ON 2026-09-10 WITH C-57. This gauge already existed and was aimed at
+  //    ONE file; run against the bundle that broke production on 09-10 it reports
+  //    `1 undeclared`, so it would have caught C-56 outright. It now also scans the three
+  //    entry files node CANNOT import (admin.js · main.js · ontology_explorer.js) -- the
+  //    files no runtime harness can name, which is exactly where a removal goes invisible.
+  //    Registered as ONE class on purpose: touch any entry point and they redden together.
+  //    ⚠️ It found a live one on the first run -- `main.js` referenced a free `currentTable`
+  //    in the drop-overlay handlers, so drag-and-drop upload had been dead.
+  ['undeclared_identifier_harness.mjs', 13],
   // New 2026-08-04 with the back-guard round. A valid-die selection set `frameTouched`
   // NOWHERE, so applying one left the frame marked clean and the next frame pop discarded it
   // in silence — screen fine, value gone. Floor is the count it reports on the commit that

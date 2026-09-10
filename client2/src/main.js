@@ -1373,6 +1373,10 @@ function setupEventListeners() {
 
 
 // Drag and Drop Log Ingestion
+// 🔴 C-57. 이 안의 네 자리가 «맨» `currentTable` 이었습니다 — 이 파일의 다른 스무 곳은 전부
+//    `state.currentTable` 입니다. 창의 드래그 핸들러 셋이 첫 드래그에 ReferenceError 로
+//    던져 오버레이가 안 뜨고 «끌어놓기 업로드가 죽어» 있었습니다(콘솔에만 남습니다).
+//    진입 파일에 미선언 식별자 게이지를 겨눈 그 라운드(C-57)가 찾았습니다.
 function setupDragAndDrop() {
   const dropOverlay = document.getElementById('drop-overlay');
   const dropTableName = document.getElementById('drop-table-name');
@@ -1383,12 +1387,12 @@ function setupDragAndDrop() {
 
   window.addEventListener('dragenter', (e) => {
     e.preventDefault();
-    if (!currentTable) return;
+    if (!state.currentTable) return;
 
     // Only trigger for files
     if (e.dataTransfer.types.includes('Files')) {
       dragCounter++;
-      dropTableName.textContent = currentTable;
+      dropTableName.textContent = state.currentTable;
       dropOverlay.style.display = 'flex';
       // Force layout calculation
       dropOverlay.offsetHeight;
@@ -1402,7 +1406,7 @@ function setupDragAndDrop() {
 
   window.addEventListener('dragleave', (e) => {
     e.preventDefault();
-    if (!currentTable) return;
+    if (!state.currentTable) return;
 
     if (e.dataTransfer.types.includes('Files')) {
       dragCounter--;
@@ -1423,7 +1427,7 @@ function setupDragAndDrop() {
     dropOverlay.classList.remove('active');
     dropOverlay.style.display = 'none';
 
-    if (!currentTable) return;
+    if (!state.currentTable) return;
 
     const files = e.dataTransfer.files;
     if (files.length === 0) return;
