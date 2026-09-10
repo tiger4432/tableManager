@@ -321,7 +321,7 @@ const { wrong: escaped } = await scoreMutants(MUTANTS, async (m) => {
     const out = await suite(await loadModules(m.mutate));
     return { failures: out.failures, ran: out.ran.length };
   },
-  { baselineRan: result.ran.length,
+  { baselineRan: result.ran.length, baselineNames: result.ran,
     title: '\n-- defect mutants (each must be CAUGHT by its named line) -----------' });
 
 const total = result.ran.length + MUTANTS.length;

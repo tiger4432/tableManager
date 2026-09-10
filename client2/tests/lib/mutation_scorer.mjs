@@ -102,13 +102,21 @@ export async function scoreMutants(mutants, run, opts = {}) {
     //    collision exists whether or not both assertions happen to fail today.
     // ⚠️ Opt-in, like the shrink above: a caller that does not hand over `baselineNames` is not
     //    measured here, and nothing changes shape to gain it.
+    // ⚠️ ASKED PER PREFIX, NOT PER MUTANT. An ARRAY of names is a mutant deliberately pointing at
+    //    several lines, so counting its matches together reports every array as ambiguous --
+    //    measured on `rnd_board_walk_box`, where that spelling turned 2 real collisions into 9.
+    //    The question is whether ONE prefix names more than one assertion; that is the thing that
+    //    silently turns 「THIS assertion」 into 「something in that family」.
     let ambiguous = '';
     if (Array.isArray(opts.baselineNames) && m.catches != null) {
       const pre = (Array.isArray(m.catches) ? m.catches : [m.catches]).map(String);
-      const hitNames = new Set(opts.baselineNames
-        .map(String).filter((n) => pre.some((p) => n.startsWith(p))));
-      if (hitNames.size > 1) {
-        ambiguous = `  AMBIGUOUS(${hitNames.size} assertions share this prefix)`;
+      const names = opts.baselineNames.map(String);
+      const worst = pre
+        .map((p) => ({ p, n: new Set(names.filter((n) => n.startsWith(p))).size }))
+        .filter((x) => x.n > 1)
+        .sort((a, b) => b.n - a.n)[0];
+      if (worst) {
+        ambiguous = `  AMBIGUOUS(${JSON.stringify(worst.p)} names ${worst.n} assertions)`;
       }
     }
     // A defect is caught only by the assertion it names. A control must wake nothing at all, so

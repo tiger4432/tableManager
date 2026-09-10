@@ -57,9 +57,10 @@ const DECL = {
 };
 
 let ran = 0;
+const NAMES = [];   // every assertion NAME, so the scorer can spot a prefix that hits two
 let failedList = [];
 const ok = (name, cond, detail) => {
-  ran += 1;
+  ran += 1; NAMES.push(name);
   if (cond) { console.log(`  ok   ${name}`); return; }
   failedList.push(detail ? `${name} -- ${detail}` : name);
   console.log(`  FAIL ${name}${detail ? ' -- ' + detail : ''}`);
@@ -545,6 +546,7 @@ const MUTANTS = [
 const main = async () => {
   console.log('== baseline ==');
   const base = await suite(await loadModules());
+  const BASE_NAMES = NAMES.slice();   // snapshot: later runs append to the same array
   console.log(`${LF}${base.ran - base.failed.length} passed, ${base.failed.length} failed.`);
   if (base.failed.length) {
     console.log(`ASSERTIONS ${base.ran} ${base.failed.length}`);
@@ -578,7 +580,7 @@ const main = async () => {
     try { await suite(mods); } finally { console.log = real; }
     // `ran` lets the scorer say when a mutant REMOVES assertions instead of failing them.
     return { failures: failedList, ran };
-  }, { baselineRan: base.ran,
+  }, { baselineRan: base.ran, baselineNames: BASE_NAMES,
        title: `${LF}== defect mutants (each must be CAUGHT by its named line) ==` });
 
   console.log(`${LF}ASSERTIONS ${base.ran} ${base.failed.length}`);

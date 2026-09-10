@@ -566,6 +566,7 @@ const named = (list) => list.map(([name, mutate]) => ({
 }));
 /** Filled on the first mutant run; the source of the 「unexercised」 line at the end. */
 let CHECK_IDS = null;
+let CHECK_NAMES = null;   // the full names, for the scorer's ambiguity check
 
 async function runMutant({ name, mutate }) {
   {
@@ -757,6 +758,7 @@ async function runMutant({ name, mutate }) {
       // actually ran rather than typed out beside them -- a hand-written list of names drifts
       // the first time a check is added, and drifts silently.
       if (!CHECK_IDS) CHECK_IDS = CHECKS.map(([c]) => String(c).split(' ')[0]);
+      if (!CHECK_NAMES) CHECK_NAMES = CHECKS.map(([c]) => String(c));
       for (const [checkName, fn] of CHECKS) {
         let held = false;
         try { held = fn() === true; } catch (e) { held = false; }
@@ -774,7 +776,7 @@ async function runMutant({ name, mutate }) {
 }
 
 const defects = await scoreMutants(named(DEFECTS), runMutant,
-  { title: '\n\u2500\u2500 defect mutants (each must be CAUGHT by its named check) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500' });
+  { baselineNames: CHECK_NAMES, title: '\n\u2500\u2500 defect mutants (each must be CAUGHT by its named check) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500' });
 const controls = await scoreMutants(named(CONTROLS), runMutant,
   { mustCatch: false, title: '\n\u2500\u2500 control mutants (each must ESCAPE) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500' });
 const caught = defects.caught;
