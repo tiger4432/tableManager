@@ -103,3 +103,6 @@ server/config_backup_*/
 # deletes them and sweeps stale ones, but a stray copy in src/ must never be committable.
 *.__probe__.*.js
 *.__probe_stub__.*.js
+
+# probe copies (C-67): mirrored out of client2/src so a harness walking src cannot see them
+client2/.tmp/

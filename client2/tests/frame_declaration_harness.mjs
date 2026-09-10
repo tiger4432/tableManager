@@ -289,11 +289,12 @@ function run(mod) {
   let compared = 0;
   const failures = [];
   const evidence = [];
+  const names = [];   // every assertion NAME, so the scorer can see a prefix that hits two
   const eq = (what, got, want) => {
-    compared++;
+    compared++; names.push(what);
     if (!Object.is(got, want)) failures.push(`${what}: got ${JSON.stringify(got)} want ${JSON.stringify(want)}`);
   };
-  const ok = (what, cond) => { compared++; if (!cond) failures.push(what); };
+  const ok = (what, cond) => { compared++; names.push(what); if (!cond) failures.push(what); };
 
   // ── A. PARITY on production shapes ───────────────────────────────────────────
   let prodRows = 0;
@@ -692,7 +693,7 @@ function run(mod) {
   eq('H. the contract was read at all (a vector file that went missing must not read as clean)',
     CONTRACT_TOKENS.length > 0, true);
 
-  return { compared, failures, evidence };
+  return { compared, failures, evidence, names };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -852,7 +853,7 @@ if (base.failures.length > 25) console.log(`   ... and ${base.failures.length - 
     M7: 'B1[cols_unparsable/cols]',               M8: 'A1[core_wafer_map/startX]',
     M9: 'D1',                                     M10: 'E1[cols]',
     M11: 'B1[rot_stored_zero_unmarked/rotation]', M12: 'B1[rot_marked_ninety/rotation]',
-    M13: 'B1[startx_stored_zero/startX]',         M14: 'B2',
+    M13: 'B1[startx_stored_zero/startX]',         M14: 'B2. ...and becomes indeterminate',
     M15: 'B1[start_float_string/startX]',         M16: 'B1[rot_negative_ninety/rotation]',
     M17: 'B1[rot_forty_five/rotation]',           M18: 'B1[invert_string_false/invertY]',
     M19: 'B1[chipx_garbage_suffix/chipX]',        M20: 'G3[data]',
@@ -891,10 +892,10 @@ if (base.failures.length > 25) console.log(`   ... and ${base.failures.length - 
   };
 
   const defects = await scoreMutants(withCatches.filter((m) => !isControl(m)), runMutant,
-    { baselineRan: base.compared,
+    { baselineRan: base.compared, baselineNames: base.names,
       title: '\n  DEFECT MUTANTS -- each must be caught by the assertion it names.\n' });
   const controls = await scoreMutants(withCatches.filter(isControl), runMutant,
-    { mustCatch: false,
+    { mustCatch: false, baselineNames: base.names,
       baselineRan: base.compared,
       title: '\n  CONTROLS -- each must wake nothing.\n' });
   const scored = MUTANTS.length - defects.wrong - controls.wrong;

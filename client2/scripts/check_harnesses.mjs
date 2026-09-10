@@ -39,6 +39,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { readdirSync, existsSync, readFileSync } from 'node:fs';
+import { isProbeArtifact } from '../tests/lib/probe.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -1613,6 +1614,37 @@ const recovered = [];
 const rose = [];        // ran above its recorded floor ― re-baseline when convenient
 const unfloored = [];   // discovered but never baselined ― cannot have regressed yet
 const shrank = [];      // came in UNDER its ceiling ― good; re-baseline when convenient
+
+// 🔴 C-67: THE PRODUCT TREE CARRIES NO PROBE ARTIFACT, AND THAT IS ASSERTED, NOT ASSUMED.
+//    Probe copies used to be written beside their subject in `client2/src`, where every harness
+//    that WALKS that tree could list one and then read it after its owner deleted it. That is
+//    not hypothetical: three gate runs out of four went red on files nobody had touched, a
+//    different harness each time. They now live in `client2/.tmp/probe/…` (gitignored, mirrored
+//    so the resolve hook can recover the original directory), and this check is what makes the
+//    move a GUARANTEE rather than a habit -- if anything ever writes one back into `src`, the
+//    build says so instead of a harness dying at random weeks later.
+// ⚠️ The predicate is `isProbeArtifact` from the probe itself, so "what is an artifact" cannot
+//    drift between the thing that writes them and the thing that forbids them here.
+{
+  const srcRoot = path.join(REPO_ROOT, 'client2', 'src');
+  const strays = [];
+  const walk = (dir) => {
+    let entries = [];
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) walk(full);
+      else if (isProbeArtifact(e.name)) strays.push(path.relative(REPO_ROOT, full));
+    }
+  };
+  walk(srcRoot);
+  if (strays.length > 0) {
+    fail(`${strays.length} probe artifact(s) are sitting in client2/src: ${strays.join(', ')}. `
+      + `They belong in client2/.tmp/probe/. A copy in the product tree is visible to every `
+      + `harness that walks src, and one that is deleted mid-walk reddens an unrelated harness `
+      + `at random ― which is exactly how this build spent an afternoon.`);
+  }
+}
 
 for (const name of harnesses) {
   const run = spawnSync(process.execPath, [path.join(TESTS_DIR, name)],

@@ -25,10 +25,28 @@
 // states: lift the logic being measured into a module that can simply be imported
 // (`truncation.js`, `match_count.js`, `dropdown.js` are that shape). Appending buys the
 // harnesses correctness tonight; it does not make a 10,000-line entry module acceptable.
-import { readFileSync, writeFileSync, rmSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, rmSync, readdirSync, mkdirSync } from 'node:fs';
 import { register } from 'node:module';
-import { dirname, join, basename } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { dirname, join, basename, relative, sep } from 'node:path';
+import { pathToFileURL, fileURLToPath } from 'node:url';
+
+// 🔴 C-67. THE COPY DOES NOT LIVE IN THE PRODUCT TREE ANY MORE, and that is structural rather
+// than tidy. A copy beside its subject is visible to every harness that WALKS `client2/src` --
+// and one did: `split_registry_harness` read `doe_bands.__probe__.p<pid>_….js` in the instant
+// between another process listing it and deleting it. The gate went red on a file nobody had
+// touched, three runs out of four, each time a different harness. Four green runs later closed
+// that as concurrency, but "no second process today" is not immunity; being unreachable is.
+//
+// A MIRROR, so the original directory is DERIVABLE FROM THE PATH. The hooks that resolve a
+// copy's imports run on another thread (`register`), so nothing can be handed to them -- the
+// path has to carry the answer. `client2/src/rnd_board/api.js` copies to
+// `client2/.tmp/probe/src/rnd_board/api.__probe__.<tag>.js`, and stripping the one marker
+// `/.tmp/probe/` gives the directory the subject's own `./sibling.js` must resolve against.
+// `client2/.tmp` is gitignored, so a walker cannot see these even mid-write.
+const LIB_DIR = dirname(fileURLToPath(import.meta.url));
+const CLIENT_DIR = join(LIB_DIR, '..', '..');
+export const MIRROR_MARK = `${sep}.tmp${sep}probe${sep}`;
+const mirrorDirFor = (dir) => join(CLIENT_DIR, '.tmp', 'probe', relative(CLIENT_DIR, dir));
 
 // The one name the appended object is bound to. Asserted ABSENT from the subject on every
 // load, so this can never shadow something the subject already had.
@@ -267,7 +285,19 @@ export async function loadWithProbe(srcPath, spec = {}) {
     + 'or the appended object has a duplicate key and the later one silently wins.');
 
   const dir = dirname(srcPath);
-  if (seq === 0) sweep(dir);
+  // Copies and stubs go to the mirror; the sweep follows them there. `client2/src` is not
+  // swept any more because nothing writes to it -- an old artifact could only come from a
+  // revision that predates this, and there are none (measured on both trees, 2026-09-10).
+  const workDir = mirrorDirFor(dir);
+  mkdirSync(workDir, { recursive: true });
+  if (seq === 0) sweep(workDir);
+  // 🔴 C-67: THE HOOK IS NOW REQUIRED ON EVERY LOAD, not only when a stub was asked for. It
+  //    used to be registered lazily because its only job was redirecting a stubbed dependency;
+  //    since the copy left `client2/src`, it is also what makes the copy's own `./sibling.js`
+  //    resolve at all. Registering it lazily meant a probe WITHOUT stubs imported a copy whose
+  //    siblings pointed into the empty mirror -- measured immediately, on the harness that
+  //    scores this mechanism.
+  if (!registered) { register('./probe_hooks.mjs', import.meta.url); registered = true; }
 
   // 🔴 `sourceText` is LF whatever the checkout did; `restore` puts the file's convention back
   //    before anything is written. Matching happens on LF so a `spec.mutate` anchor written with
@@ -300,7 +330,7 @@ export async function loadWithProbe(srcPath, spec = {}) {
   // 🔴 THE PROCESS MARK LEADS, so `OWNER` can read it straight after the infix. Without it the
   //    name is a function of the harness alone and two concurrent runs collide.
   const tag = `${PROC}_${spec.tag || 'probe'}${seq++}`.replace(/[^A-Za-z0-9_]/g, '');
-  const copyPath = join(dir, `${basename(srcPath, '.js')}${COPY_INFIX}${tag}.js`);
+  const copyPath = join(workDir, `${basename(srcPath, '.js')}${COPY_INFIX}${tag}.js`);
 
   // ── dependencies the harness wants to intercept ─────────────────────────────────────
   const stubPaths = [];
@@ -322,7 +352,7 @@ export async function loadWithProbe(srcPath, spec = {}) {
           + 'A stub for a name the subject never imported intercepts nothing, and the harness '
           + 'would go green believing it had.');
       }
-      const stubPath = join(dir, `${sib[1]}${STUB_INFIX}${tag}.js`);
+      const stubPath = join(workDir, `${sib[1]}${STUB_INFIX}${tag}.js`);
       writeFileSync(stubPath,
         stubSource(specifier, names, tag, stubs[specifier], declared));
       stubPaths.push(stubPath);

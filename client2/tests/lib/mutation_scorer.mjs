@@ -91,6 +91,26 @@ export async function scoreMutants(mutants, run, opts = {}) {
       const lost = opts.baselineRan - out.ran;
       shrunk = lost === m.drops ? '' : `  SHRUNK(-${lost} assertions never ran)`;
     }
+
+    // 🔴 A PREFIX THAT NAMES TWO ASSERTIONS NAMES NEITHER. `catches` is a prefix so that editing
+    //    the tail of a message cannot silently unname a mutant -- but the day a NEW assertion is
+    //    born under the same prefix, the mutant stops pointing at one line and starts pointing at
+    //    a group, and 「THIS assertion failed」 quietly becomes 「something in that family did」.
+    //    Nothing else in this file can see that happen: the mutant still gets caught, and the
+    //    verdict still reads green.
+    // 🔵 CHECKED AGAINST THE BASELINE'S NAMES, not against the mutant's failures, because the
+    //    collision exists whether or not both assertions happen to fail today.
+    // ⚠️ Opt-in, like the shrink above: a caller that does not hand over `baselineNames` is not
+    //    measured here, and nothing changes shape to gain it.
+    let ambiguous = '';
+    if (Array.isArray(opts.baselineNames) && m.catches != null) {
+      const pre = (Array.isArray(m.catches) ? m.catches : [m.catches]).map(String);
+      const hitNames = new Set(opts.baselineNames
+        .map(String).filter((n) => pre.some((p) => n.startsWith(p))));
+      if (hitNames.size > 1) {
+        ambiguous = `  AMBIGUOUS(${hitNames.size} assertions share this prefix)`;
+      }
+    }
     // A defect is caught only by the assertion it names. A control must wake nothing at all, so
     // for it ANY new failure is the wrong answer -- naming one would be asking which assertion
     // was allowed to be wrong.
@@ -114,14 +134,14 @@ export async function scoreMutants(mutants, run, opts = {}) {
       if (mustCatch) caught += 1;
       verdicts.push({ id, verdict: mustCatch ? VERDICT.CAUGHT : VERDICT.ESCAPED });
       log(mustCatch
-        ? `  caught  ${id} ${what}  (${named.join("/")})${shrunk}`
-        : `  escaped ${id} ${what}${shrunk}`);
+        ? `  caught  ${id} ${what}  (${named.join("/")})${shrunk}${ambiguous}`
+        : `  escaped ${id} ${what}${shrunk}${ambiguous}`);
     } else {
       wrong += 1;
       verdicts.push({ id, verdict: mustCatch ? VERDICT.ESCAPED : VERDICT.CAUGHT,
         why: mustCatch ? named.join("/") + " stayed green" : failures.slice(0, 2).join(' | ') });
       log(mustCatch
-        ? `  ESCAPED ${id} ${what}  -- ${named.join("/")} stayed green${shrunk}`
+        ? `  ESCAPED ${id} ${what}  -- ${named.join("/")} stayed green${shrunk}${ambiguous}`
         : `  CAUGHT  ${id} ${what}  <- a control woke: ${failures.slice(0, 2).join(' | ')}`);
     }
   }
