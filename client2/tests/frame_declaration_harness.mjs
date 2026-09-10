@@ -60,6 +60,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
+import { scoreMutants } from './lib/mutation_scorer.mjs';
 
 // NAMESPACE import, so `run(mod)` sees exactly the same surface for the live module and for
 // an in-memory mutant. Hand-listing the surface here once caused a silent gap: a symbol added
@@ -348,7 +349,7 @@ function run(mod) {
   for (const c of SYNTHETIC) {
     const F = mkFrame(c.meta);
     eq(`B1[${c.id}/${c.axis}] synthetic source`, F.axes[c.axis].source, c.want);
-    eq(`B3[${c.id}/${c.axis}] synthetic value`, F.axes[c.axis].value, c.value);
+    eq(`B5[${c.id}/${c.axis}] synthetic value`, F.axes[c.axis].value, c.value);
   }
   // The four states `_rotation_of` collapses must be four tokens here.
   const rotIds = ['rot_absent', 'rot_unparsable', 'rot_stored_zero_unmarked', 'rot_marked_zero'];
@@ -835,42 +836,56 @@ if (base.failures.length > 25) console.log(`   ... and ${base.failures.length - 
       '// ── the tokens ─', '// ── the tokens (vocabulary) ─'),
   ];
 
-  console.log('\n  MUTATION CONTROLS -- a surviving mutant means the check above it is inert.\n');
-  let scored = 0;
-  for (const m of MUTANTS) {
-    const isControl = m.name.startsWith('CONTROL');
-    let killed;
-    let detail = '';
-    // 🔴 AN ANCHOR THAT DOES NOT MATCH IS A HARNESS DEFECT, NOT A CAUGHT MUTANT. This bit me
-    //    while writing this file: M7's anchor was stale, `apply` threw, the throw was scored
-    //    as a kill, and the run reported 10/10 while one mutant had never been APPLIED. A
-    //    mutant that was never introduced proves exactly nothing, so it now stops the run.
+  // 🔴 WHICH ID MUST FAIL FOR EACH MUTANT -- MEASURED, NOT DECIDED. Every pairing below was
+  //    read off step 3c-a's own run: the ids were planted, the corpus re-run, and each
+  //    mutant's FIRST failing assertion recorded. Writing this table from intuition is how a
+  //    mutant comes to name an assertion that never fires -- the corpus stays green while the
+  //    line it was meant to guard goes unmeasured.
+  // 🔵 TWENTY-TWO MUTANTS, TWENTY-TWO IDS, NO SHARING. Folded to the axis it looked like four
+  //    mutants shared `rotation.source` and three shared `startX.source`; split by CASE they
+  //    are seven different cases, so they are seven different names. Nothing was forced apart
+  //    and nothing was forced together.
+  const CATCHES = {
+    M1: 'A2[sample_map]',                         M2: 'B5[side_absent/side]',
+    M3: 'B4',                                     M4: 'A1[eds_fail_map/rotation]',
+    M5: 'A1[bonding_map/chipX]',                  M6: 'B1[startx_marked_37/startX]',
+    M7: 'B1[cols_unparsable/cols]',               M8: 'A1[core_wafer_map/startX]',
+    M9: 'D1',                                     M10: 'E1[cols]',
+    M11: 'B1[rot_stored_zero_unmarked/rotation]', M12: 'B1[rot_marked_ninety/rotation]',
+    M13: 'B1[startx_stored_zero/startX]',         M14: 'B2',
+    M15: 'B1[start_float_string/startX]',         M16: 'B1[rot_negative_ninety/rotation]',
+    M17: 'B1[rot_forty_five/rotation]',           M18: 'B1[invert_string_false/invertY]',
+    M19: 'B1[chipx_garbage_suffix/chipX]',        M20: 'G3[data]',
+    M21: 'G2',                                    M22: 'H1',
+  };
+  const withCatches = MUTANTS.map((m) => ({
+    ...m, catches: CATCHES[String(m.name).split(' ')[0]] }));
+  const isControl = (m) => String(m.name).startsWith('CONTROL');
+
+  // 🔴 ONE APPLY, AND AN UNAPPLIED MUTANT STILL STOPS THE RUN. `apply` throwing means the
+  //    anchor rotted -- the harness lost its subject -- and that is not a mutant behaving.
+  //    It must not become INERT, which would only be a quieter version of the same silence.
+  const runMutant = async (m) => {
     let src;
-    try {
-      src = m.apply(SRC);
-    } catch (e) {
+    try { src = m.apply(SRC); }
+    catch (e) {
       die(`mutant "${m.name}" could not be applied: ${e.message}. `
         + `An unapplied mutant is not a caught mutant.`);
     }
-    try {
-      const url = 'data:text/javascript;base64,' + Buffer.from(src, 'utf8').toString('base64');
-      const mod = await import(url);
-      const out = run(mod);
-      killed = out.failures.length > 0;
-      detail = killed ? `${out.failures.length} failure(s), first: ${out.failures[0]}` : '';
-      // A mutant that ran fewer assertions than the baseline did not get scored; it crashed
-      // its way to a verdict. That is a harness defect, not a caught mutant.
-      if (out.compared < base.compared) {
-        detail += ` [WARNING: ran ${out.compared} of ${base.compared} assertions]`;
-      }
-    } catch (e) {
-      killed = true;
-      detail = `threw: ${String(e && e.message).slice(0, 110)}`;
+    const url = 'data:text/javascript;base64,' + Buffer.from(src, 'utf8').toString('base64');
+    const out = run(await import(url));
+    // A mutant that ran fewer assertions than the baseline crashed its way to a verdict.
+    if (out.compared < base.compared) {
+      console.log(`            [WARNING: ran ${out.compared} of ${base.compared} assertions]`);
     }
-    if (killed !== isControl) scored++;
-    console.log(`  ${killed ? 'CAUGHT  ' : 'SURVIVED'}  ${m.name}`);
-    if (detail) console.log(`            ${detail}`);
-  }
+    return { failures: out.failures };
+  };
+
+  const defects = await scoreMutants(withCatches.filter((m) => !isControl(m)), runMutant,
+    { title: '\n  DEFECT MUTANTS -- each must be caught by the assertion it names.\n' });
+  const controls = await scoreMutants(withCatches.filter(isControl), runMutant,
+    { mustCatch: false, title: '\n  CONTROLS -- each must wake nothing.\n' });
+  const scored = MUTANTS.length - defects.wrong - controls.wrong;
   console.log(`\n  ${scored}/${MUTANTS.length} scored as intended.`);
   // 🔴 ONE LINE, COUNTING BOTH. `ran` is the baseline assertions PLUS one per mutant verdict;
   //    `failed` is baseline failures plus every mutant that did not do what it was declared to
