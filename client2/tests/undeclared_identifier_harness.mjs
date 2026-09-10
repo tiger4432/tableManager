@@ -50,6 +50,11 @@ const GLOBALS = new Set(('Object Function Boolean Symbol Number BigInt Math Date
   + 'FinalizationRegistry ArrayBuffer SharedArrayBuffer DataView JSON Promise Reflect Proxy Intl '
   + 'Error AggregateError EvalError RangeError ReferenceError SyntaxError TypeError URIError '
   + 'globalThis undefined NaN Infinity arguments eval parseInt parseFloat isNaN isFinite '
+  // Vendor globals the page loads before the module runs: Monaco arrives through its AMD
+  // loader (`admin.html:14`), which defines `require` and then `monaco`. Naming them is not
+  // a widening of the check -- an unnamed vendor global is a FALSE POSITIVE, and this gate
+  // may only block while it has none.
+  + 'monaco require '
   + 'decodeURI decodeURIComponent encodeURI encodeURIComponent structuredClone queueMicrotask '
   + 'setTimeout clearTimeout setInterval clearInterval console performance crypto atob btoa '
   + 'TextEncoder TextDecoder URL URLSearchParams AbortController AbortSignal Event EventTarget '
@@ -199,6 +204,32 @@ ok(base.refs.size >= 500, `reference walk saw a plausible population (${base.ref
 ok(base.undeclared.length === 0,
   `no function body references an identifier declared nowhere (found ${base.undeclared.length})`,
   base.undeclared.map(n => `${n} (first ref at line ${lineOf(SRC, base.refs.get(n))})`).join(', '));
+
+// ═══ C-57 — THE SAME CHECK OVER THE ENTRY FILES, AS ONE CLASS ═══════════════════════
+//
+// 🔴 THIS GAUGE ALREADY EXISTED AND WAS AIMED AT ONE FILE. On 2026-09-10 a removal took a
+//    function's DEFINITION and left its CALL, the explorer threw `loadCensus is not defined`
+//    on open, and it reached production with every gate green -- run against that revision
+//    this scanner reports `1 undeclared`. It would have caught it; nothing pointed it there.
+//
+// 🔴 WHY THESE THREE. They are the files node CANNOT IMPORT (`git grep -ln "^import '.*\.css';"`),
+//    so no runtime harness can name them and this static pass is the only eye they have.
+//    Registered together on purpose: touch any entry point and they redden as one, which is
+//    what stops the next removal from being invisible in whichever file was not listed.
+// ⚠️ `MODULE_STATE` below stays about the PRIMARY subject only -- it is a ceiling on
+//    map_editor's module-level mutable bindings and means nothing about these three. One line,
+//    one meaning.
+const ENTRY_FILES = ['admin.js', 'main.js', 'ontology_explorer.js'];
+for (const name of ENTRY_FILES) {
+  const p = path.join(HERE, '..', 'src', name);
+  let text = null;
+  try { text = readFileSync(p, 'utf8'); } catch (e) { void e; }
+  if (text === null) { ok(false, `entry ${name} could be read`, p); continue; }
+  const got = scan(text);
+  ok(got.undeclared.length === 0,
+    `entry ${name}: every referenced identifier is declared, imported or a platform global`,
+    got.undeclared.map(n => `${n} (first ref at line ${lineOf(text, got.refs.get(n))})`).join(', '));
+}
 
 // 5. mutation control: a validDieListCache-shaped stale reference inside a function body
 //    MUST be flagged -- otherwise assertion 4 is inert and proves nothing.
