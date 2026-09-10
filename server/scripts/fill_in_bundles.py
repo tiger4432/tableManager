@@ -43,11 +43,20 @@ for _p in (_SERVER, _HERE):
 
 import product_door                                                  # noqa: E402
 
-#: Measured 2026-09-09 on this box, and used only to REFUSE a run that cannot fit.
-#: atoms 1,626 B each x the source's multiplier + source row 899 B + five cell-layer rows
-#: at 739 B + the row-ref index at 1,150 B. Stated per SOURCE ROW so the arithmetic below
-#: reads in the same unit the operator asked for.
-BYTES_PER_ROW_ESTIMATE = 899 + 5 * 739 + 1150 + 2 * 1626
+#: Measured on this box and used only to REFUSE a run that cannot fit. Stated per SOURCE ROW
+#: so the arithmetic below reads in the unit the operator asked for:
+#:     atoms        1,626 B each x the source's multiplier (2 for dt_job)
+#:     source row     899 B
+#:     cell layer     416 B x 5 rows, one per declared column
+#:     row-ref index 1,150 B
+#:
+#: 🔴 THE LAYER FIGURE MOVED, AND IT IS THE LARGEST LINE. On 2026-09-09 a `cell_sources` row
+#: cost 739 B and five of them made this estimate's biggest single item at 37 GB for ten
+#: million rows. S-118 (a') replaced a full-table index with a partial one on its readers'
+#: predicate and the same measurement now reads 416 B (heap 160 + index 256), so the layer
+#: line is 20.8 GB and the whole estimate falls from about 90 GB to about 74. Re-measured
+#: rather than scaled, because the split between heap and index is what changed.
+BYTES_PER_ROW_ESTIMATE = 899 + 5 * 416 + 1150 + 2 * 1626
 DEFAULT_BUNDLES = 10
 DEFAULT_ROWS = 1_000_000
 DRAIN_POLL_SECONDS = 1.0
