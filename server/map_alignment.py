@@ -5763,7 +5763,8 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
     # loses its cells to the budget was the planner's choice - measured on assy_qa,
     # 2 distinct payloads over 16 identical requests and 3 over 7 planner settings.
     # `DISTINCT` makes the projection unique, so ordering by all of it is total.
-    id_rows = db.query(*key_attrs).filter(*filters).distinct().order_by(*key_attrs).all()
+    with alignment_batch_counts.phase("ids"):
+        id_rows = db.query(*key_attrs).filter(*filters).distinct().order_by(*key_attrs).all()
     ids = [compose_map_id(r) for r in id_rows]
 
     # 🔴 좌표 컬럼은 **인자**다. 예전에는 여기서 `_binding_of`가 정본이라 `dt_log`의 선언
@@ -5775,8 +5776,9 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
     #    「이 컬럼이 번호다」라고 말할 자리가 없었다. `_same_walk`의 주석은 그 덮어쓰기
     #    경로가 있다고 **가정하고** 쓰여 있다(「좌표를 덮어쓴 실행이 바로 그 자리다」) —
     #    가정만 있고 배선이 없었다.
-    columns = resolve_source_columns(cfg, src_table, src_model, x_col, y_col, value_col,
-                                     index_col)
+    with alignment_batch_counts.phase("columns"):
+        columns = resolve_source_columns(cfg, src_table, src_model, x_col, y_col, value_col,
+                                         index_col)
     if not columns["x"]["column"] or not columns["y"]["column"]:
         raise ValueError("소스 테이블 '%s'의 좌표 컬럼을 정할 수 없습니다 - x/y를 "
                          "지정하십시오" % src_table)
