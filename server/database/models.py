@@ -1205,6 +1205,98 @@ def map_key_index_ddl(table_name, entry):
                   f'ON "{table_name}" ({quoted})')
 
 
+def _ensure_one_index(engine, name, statement, what):
+    """Build one index CONCURRENTLY, repairing an invalid leftover first. Returns ok.
+
+    🔴 ONE SPELLING, BECAUSE THE REPAIR IS THE HARD PART. A failed `CONCURRENTLY` leaves the
+    index behind marked INVALID, the planner will not use it, and `IF NOT EXISTS` then sees
+    the name and skips forever - so the ensure reports success on every later boot while
+    every query keeps scanning. That dance was written once for the map-key index and is
+    now called by both, rather than copied beside it.
+    """
+    from sqlalchemy import text as _text
+
+    try:
+        with engine.connect().execution_options(
+                isolation_level="AUTOCOMMIT") as connection:
+            invalid = connection.execute(_text(
+                "SELECT 1 FROM pg_class c JOIN pg_index i ON i.indexrelid = c.oid "
+                " WHERE c.relname = :name AND NOT i.indisvalid"), {"name": name}
+            ).first()
+            if invalid:
+                print(f"[Schema Sync] {what} index '{name}' is INVALID from an "
+                      f"earlier failure; dropping and rebuilding.")
+                connection.execute(_text(
+                    f'DROP INDEX CONCURRENTLY IF EXISTS "{name}"'))
+            connection.execute(_text(statement))
+        return True
+    except Exception as err:
+        print(f"[Schema Sync] Failed to ensure {what} index '{name}': {err}")
+        return False
+
+
+def alignment_decision_key_index_ddl(rule, entry):
+    """The index an alignment rule's per-job id query asks for, or `(None, None)`.
+
+    🔴 MEASURED, NOT GUESSED (S-94, 판정 237). Every alignment view build runs one
+    `SELECT DISTINCT <map keys> FROM <source> WHERE <decision key> = ? ORDER BY <map keys>`,
+    and the alignment mapper builds one view per job - a thousand per chain group. On this
+    box that query was a Seq Scan removing 109,877 rows to keep 88, at 21.96 ms, which is
+    23.8 s of a 44.9 s group: the single largest thing the chain does.
+
+    🔴 THE COLUMNS COME OUT OF THE DECLARATION. `decision_key` is what the rule says it
+    keys on, so an installation keying on something else gets an index on that instead,
+    with no code change. What is NOT derivable is the trailing map-key columns that would
+    make this index cover the sort as well: the map table is chosen by the mapper at call
+    time and no declaration names it. Leading with the equality column is what removes the
+    scan; the remaining sort is 88 rows.
+
+    ⚠️ A VIEW CANNOT BE INDEXED, the same reason `map_key_index_ddl` states.
+    """
+    if (entry or {}).get("kind") == "view":
+        return None, None
+    if not (rule or {}).get("alignment"):
+        return None, None
+    table_name = str((rule or {}).get("source_table") or "").strip()
+    columns = [str(name) for name in ((rule or {}).get("decision_key") or [])
+               if str(name).strip()]
+    if not table_name or not columns:
+        return None, None
+    name = f"idx_{table_name}_decision_key"[:63]
+    quoted = ", ".join(f'"{column}"' for column in columns)
+    return name, (f'CREATE INDEX CONCURRENTLY IF NOT EXISTS "{name}" '
+                  f'ON "{table_name}" ({quoted})')
+
+
+def ensure_alignment_decision_key_indexes(engine, config=None, rules=None):
+    """Create the decision-key index of every alignment rule. Returns the names made.
+
+    Beside `ensure_map_key_indexes` and for the same reasons: CONCURRENTLY, outside a
+    transaction, at boot and at config reload, never in a request. Failures are isolated
+    and reported - a box that cannot build one index must still serve.
+    """
+    catalog = config if config is not None else TABLE_CONFIG
+    if rules is None:
+        try:
+            import enrichment_config
+            from database import crud as _crud
+
+            rules = enrichment_config.load_enrichment_rules(
+                known_tables=_crud.TABLE_CONFIG)
+        except Exception as err:                       # noqa: BLE001
+            print(f"[Schema Sync] alignment rules unreadable, no decision-key index: {err}")
+            return []
+    created = []
+    for rule in rules or []:
+        name, statement = alignment_decision_key_index_ddl(
+            rule, (catalog or {}).get(str((rule or {}).get("source_table") or "")))
+        if not statement:
+            continue
+        if _ensure_one_index(engine, name, statement, "decision-key"):
+            created.append(name)
+    return created
+
+
 def ensure_map_key_indexes(engine, config=None):
     """Create the map-key index of every table that declares one. Returns the names made.
 
@@ -1227,28 +1319,8 @@ def ensure_map_key_indexes(engine, config=None):
         name, statement = map_key_index_ddl(table_name, entry)
         if not statement:
             continue
-        try:
-            with engine.connect().execution_options(
-                    isolation_level="AUTOCOMMIT") as connection:
-                # 🔴 A FAILED `CONCURRENTLY` LEAVES THE INDEX BEHIND, MARKED INVALID, and
-                # that is worse than leaving nothing: the planner will not use an invalid
-                # index, and `IF NOT EXISTS` sees a name that exists and skips forever. So
-                # the ensure would report success on every later boot while every map open
-                # kept scanning the table. Drop it first, then build again.
-                invalid = connection.execute(_text(
-                    "SELECT 1 FROM pg_class c JOIN pg_index i ON i.indexrelid = c.oid "
-                    " WHERE c.relname = :name AND NOT i.indisvalid"), {"name": name}
-                ).first()
-                if invalid:
-                    print(f"[Schema Sync] map-key index '{name}' is INVALID from an "
-                          f"earlier failure; dropping and rebuilding.")
-                    connection.execute(_text(
-                        f'DROP INDEX CONCURRENTLY IF EXISTS "{name}"'))
-                connection.execute(_text(statement))
+        if _ensure_one_index(engine, name, statement, "map-key"):
             created.append(name)
-        except Exception as err:
-            print(f"[Schema Sync] Failed to ensure map-key index on "
-                  f"'{table_name}': {err}")
     return created
 
 
@@ -1320,5 +1392,12 @@ def refresh_dynamic_models(engine=None):
         # index on the next reload rather than on the next restart -- and because it is
         # outside the request path.
         created.extend(ensure_map_key_indexes(engine, new_config))
+        # [S-94 판정 237] The same seat, for the same reason, for a different
+        # declaration: an alignment rule's `decision_key` is what its per-job id query
+        # filters on, and nothing indexed it. Measured on this box, that query was a Seq
+        # Scan at 21.96 ms and the alignment mapper runs one per job - 23.8 s of a 44.9 s
+        # chain group. A rule that starts declaring a decision key gets its index on the
+        # next reload rather than on the next restart.
+        created.extend(ensure_alignment_decision_key_indexes(engine, new_config))
         return created
     return []
