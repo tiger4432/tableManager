@@ -724,7 +724,7 @@ delete_cell_source_batch        crud.py:4402 -> `compute_priority_value(...)` �
 | 표 A 의 ③ | 착지 뒤 | 자리 | 정의역 | 읽는 쪽 |
 |---|---|---|---|---|
 | A2-1 값 목적어의 타입 | `vocabulary.<p>.object.value_type` | ① | ✅ **① (S-84-b 닫힘, 09-10 13:5x)** — `EMITTABLE_VALUE_TYPES == VALUE_TYPES` 입니다: 넷 다 발행됩니다(`number`→quantity · `string`/`boolean`→attribute · `timestamp`→time). 🔴 마지막 하나를 연 것은 «영리한 import 가 아니라 선언»입니다 — `time` Role 은 tz-aware 를 요구하고 소스 컬럼은 대개 문자열이라, 「naive 한 읽기가 어느 시간대인가」를 «값 바인딩»이 말합니다(`bind.<role>.timezone`). 파스는 `roleframe.aware_time` «하나»이고 `occurred_at` 이 쓰던 그것입니다. timezone 을 안 적은 timestamp 바인딩은 «작성 시점에» `missing_timezone` 으로 거절됩니다(번역에서 전부 거절되는 옛 덫을 그 자리에서 막음) | ⚰️ 그때: 발행 «0» · `number` 만 통과(판정 178) |
-| A2-3 카디널리티 | `vocabulary.<p>.cardinality` ∈ {one, many}, 기본 `many` | ① | 🔴 **③′ (정정 09-10 16:4x, S-133)** | «0» — 🔴 제가 이 자리를 «무해»라고 적었습니다. 사실(읽는 쪽 0)은 맞았고 «판정»이 틀렸습니다: 폼이 고르게 하고 검증이 받아들이는 칸은 운영자에게 «약속»이고, 아무도 안 읽으면 그 약속이 조용히 거짓입니다 — 이 문서가 `entity.status`·`source.status` 에 대해 «③′» 이라 부른 것과 «같은 모양»인데 이 줄만 ① 이었습니다(제 잣대가 한 칸에서 흔들린 것). S-133 이 그 자리를 다시 세웁니다 |
+| A2-3 카디널리티 | `vocabulary.<p>.cardinality` ∈ {one, many}, 기본 `many` | ① | ⚰️ **③′ 였다가 «닫힘» (S-133, 09-10 17:1x 확인)** | 읽는 곳이 «생겼습니다» — `runtime_v2._one_cardinality_predicates` 가 `cardinality == "one"` 인 술어를 모아 쓰기 경로에서 쓰고(그래서 원장이 `supersedes` 의 «첫 기록자»가 됩니다, 판정 256), 걷기의 엣지가 `cardinality` 를 «싣습니다»(`ledger_subgraph` :477~492 · :1095). 🔴 그때의 제 기록: 제가 이 자리를 «무해»라고 적었습니다. 사실(읽는 쪽 0)은 맞았고 «판정»이 틀렸습니다: 폼이 고르게 하고 검증이 받아들이는 칸은 운영자에게 «약속»이고, 아무도 안 읽으면 그 약속이 조용히 거짓입니다 — 이 문서가 `entity.status`·`source.status` 에 대해 «③′» 이라 부른 것과 «같은 모양»인데 이 줄만 ① 이었습니다(제 잣대가 한 칸에서 흔들린 것). S-133 이 그 자리를 다시 세웁니다 |
 | A1-1 엔티티 은퇴 | `entities.<t>.status` ∈ {active, retired}, 기본 `active` | ① | ① | «0» — 무해 |
 | A4-2 소스 은퇴 | `sources.<s>.status` 같음 | ① | ① | 🔴 «0» — ⚠️ **무해하지 않음**: retired 로 적어도 «계속 번역»합니다 |
 | A4-1 결정 단위 | 🔵 **표 카탈로그**의 `decision_key` (`setup_bundle.py:304~315`) — 소스에서 «옮겨졌습니다**(판정 e578eabc) | ① | ① (기본값 «없음» — 판정 151) | 미검 |
@@ -740,6 +740,8 @@ delete_cell_source_batch        crud.py:4402 -> `compute_priority_value(...)` �
 ### 방향 ①(칸 → 인자) — 🔴 «넷이 늘었습니다», 그리고 그것이 오늘의 정상입니다
 ```
 새로 「칸은 있는데 아직 어느 생성자의 인자도 아님」  value_type · cardinality · entity.status · source.status
+   ⚰️ **09-10: 넷이 «전부» 읽는 쪽을 얻었습니다** — value_type(S-84·S-84-b) · cardinality(S-133) · entity/source.status(S-103).
+      즉 이 줄은 「지금 넷이 그렇다」가 아니라 «그 부류가 어떻게 닫히는지»의 기록입니다
 기존 ③′(삭제 예정)                                key_types · supersedes
 => 「자리만」 단계에서는 이 수가 «늘어야» 맞습니다. 줄어드는 것은 «읽는 쪽»이 생기는 라운드(S-84 등)입니다
 🔴 다만 `source.status` 는 «읽는 쪽 0» 이 조용한 «불이행»이라, 나머지 셋과 같은 칸에 세지 않습니다
