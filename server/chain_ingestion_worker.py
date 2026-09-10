@@ -2090,9 +2090,15 @@ def _ensure_human_claims_index_sync(db_session_factory):
     try:
         engine = db.get_bind()
         name, statement = models.human_claims_index_ddl()
-        built = models._ensure_one_index(engine, name, statement, "human-claims")
-        logger.info("[Chain] human-claims index %s: %s", name,
-                    "in place" if built else "COULD NOT BE ENSURED - see the line above")
+        # 🔴 THE SAME WORDS THE OTHER THREE CALLERS USE. This read the builder's return as
+        # a truth value, and when `False` came to mean "already there" the boot printed
+        # `COULD NOT BE ENSURED` about an index that exists - a false line, in the opposite
+        # direction from the false line the same round had just fixed.
+        state = models._ensure_one_index(engine, name, statement, "human-claims")
+        logger.info("[Chain] human-claims index %s: %s", name, {
+            models.INDEX_BUILT: "built",
+            models.INDEX_PRESENT: "already in place",
+        }.get(state, "COULD NOT BE ENSURED - see the line above"))
         # ⚠️ THE LEFTOVER LOOKUP IS A REPORT, NOT A REQUIREMENT. If it cannot run, the
         # line above has already said whether the index this boot needed is there; letting
         # the lookup take that line down with it would trade a fact for a warning.

@@ -54,7 +54,12 @@ def test_the_count_is_what_was_built_and_not_what_was_attempted():
 
     def _fake(engine, name, statement, what):
         attempted.append(name)
-        return name.endswith("_updated")          # pretend only one of the two was missing
+        # 🔴 THREE STATES, NOT A TRUTH VALUE, and the log proved twice in one day why:
+        # `True` meaning "the statement ran" announced sixty-eight indexes nobody built,
+        # and `False` meaning "already there" made a caller print COULD NOT BE ENSURED
+        # about an index that exists. Both false, in opposite directions, from one bit.
+        return (models.INDEX_BUILT if name.endswith("_updated")
+                else models.INDEX_PRESENT)
 
     original = models._ensure_one_index
     models._ensure_one_index = _fake
@@ -66,6 +71,26 @@ def test_the_count_is_what_was_built_and_not_what_was_attempted():
 
     assert created == ["idx_t_updated"]
     assert attempted == ["ix_t_updated_at", "idx_t_updated"], attempted
+
+
+def test_every_caller_of_the_builder_speaks_the_same_three_words():
+    """⛔ FOUR CALLERS, ONE VOCABULARY. The states exist because a boolean had two things
+    to say and one bit to say them with; a caller left reading it as a truth value is the
+    regression that shipped a `COULD NOT BE ENSURED` line about an index that exists."""
+    import inspect
+
+    import chain_ingestion_worker as worker
+
+    assert {models.INDEX_BUILT, models.INDEX_PRESENT,
+            models.INDEX_FAILED} == {"built", "present", "failed"}
+
+    body = inspect.getsource(worker._ensure_human_claims_index_sync)
+    assert "models.INDEX_BUILT" in body and "models.INDEX_PRESENT" in body, body[:400]
+
+    for name in ("ensure_dynamic_table_indexes", "ensure_alignment_decision_key_indexes",
+                 "ensure_map_key_indexes"):
+        source = inspect.getsource(getattr(models, name))
+        assert "== INDEX_BUILT" in source, (name, source[:400])
 
 
 def test_the_ensure_survives_a_database_that_refuses():

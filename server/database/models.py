@@ -1257,8 +1257,24 @@ def map_key_index_ddl(table_name, entry):
                   f'ON "{table_name}" ({quoted})')
 
 
+#: What `_ensure_one_index` did, as a word rather than a truth value.
+#:
+#: 🔴 A BOOLEAN COULD NOT SAY THIS AND THE LOG PROVED IT TWICE IN ONE DAY. First `True`
+#: meant "the statement ran", so a second boot announced sixty-eight indexes it had not
+#: built. Then `False` was given the meaning "already there", and a caller still reading it
+#: as failure printed `COULD NOT BE ENSURED` about an index that exists. Both lines were
+#: FALSE, in opposite directions, from one seat that had two things to say and one bit to
+#: say them with. Three states, named, and every caller uses the same words.
+INDEX_BUILT = "built"
+INDEX_PRESENT = "present"
+INDEX_FAILED = "failed"
+
+
 def _ensure_one_index(engine, name, statement, what):
-    """Build one index CONCURRENTLY, repairing an invalid leftover first. Returns ok.
+    """Build one index CONCURRENTLY, repairing an invalid leftover first.
+
+    Returns `INDEX_BUILT`, `INDEX_PRESENT` or `INDEX_FAILED` - see those constants for why
+    it is not a boolean.
 
     🔴 ONE SPELLING, BECAUSE THE REPAIR IS THE HARD PART. A failed `CONCURRENTLY` leaves the
     index behind marked INVALID, the planner will not use it, and `IF NOT EXISTS` then sees
@@ -1282,7 +1298,7 @@ def _ensure_one_index(engine, name, statement, what):
                 "  JOIN pg_index i ON i.indexrelid = c.oid "
                 " WHERE c.relname = :name AND c.relkind = 'i'"), {"name": name}).first()
             if already is not None and already[0]:
-                return False
+                return INDEX_PRESENT
             invalid = connection.execute(_text(
                 "SELECT 1 FROM pg_class c JOIN pg_index i ON i.indexrelid = c.oid "
                 " WHERE c.relname = :name AND NOT i.indisvalid"), {"name": name}
@@ -1293,10 +1309,10 @@ def _ensure_one_index(engine, name, statement, what):
                 connection.execute(_text(
                     f'DROP INDEX CONCURRENTLY IF EXISTS "{name}"'))
             connection.execute(_text(statement))
-        return True
+        return INDEX_BUILT
     except Exception as err:
         print(f"[Schema Sync] Failed to ensure {what} index '{name}': {err}")
-        return False
+        return INDEX_FAILED
 
 
 def alignment_decision_key_index_ddl(rule, entry):
@@ -1381,7 +1397,8 @@ def ensure_dynamic_table_indexes(engine, config=None):
     created = []
     for table_name, entry in sorted((catalog or {}).items()):
         for name, statement in dynamic_table_index_ddls(table_name, entry):
-            if _ensure_one_index(engine, name, statement, "dynamic-table"):
+            if _ensure_one_index(engine, name, statement,
+                                 "dynamic-table") == INDEX_BUILT:
                 created.append(name)
     return created
 
@@ -1424,7 +1441,8 @@ def ensure_alignment_decision_key_indexes(engine, config=None, rules=None):
         # would also issue a CONCURRENTLY build for an index just made.
         if name in created:
             continue
-        if _ensure_one_index(engine, name, statement, "decision-key"):
+        if _ensure_one_index(engine, name, statement,
+                             "decision-key") == INDEX_BUILT:
             created.append(name)
     return created
 
@@ -1458,7 +1476,7 @@ def ensure_map_key_indexes(engine, config=None):
         name, statement = map_key_index_ddl(table_name, entry)
         if not statement:
             continue
-        if _ensure_one_index(engine, name, statement, "map-key"):
+        if _ensure_one_index(engine, name, statement, "map-key") == INDEX_BUILT:
             created.append(name)
     return created
 

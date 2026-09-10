@@ -132,7 +132,10 @@ def test_two_rules_over_one_table_ask_for_one_index_and_the_count_says_one():
 
     def _fake(engine, name, statement, what):
         built.append(name)
-        return True
+        # The builder answers with a WORD now, because a boolean had two things to say -
+        # "the statement ran" and "it was already there" - and each of them shipped a
+        # false log line on the day it was the one the caller assumed.
+        return models.INDEX_BUILT
 
     original = models._ensure_one_index
     models._ensure_one_index = _fake
