@@ -5904,308 +5904,315 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
     if meta_access:
         diag.append("  META ACCESS INCIDENT: %s" % _d(meta_access, 300))
 
-    candidates, excluded, ruling, stats = [], _Excluded(), {"winner": None}, {}
-    if reference["state"] == REFERENCE_RESOLVED:
-        with alignment_batch_counts.phase("scoring"):
-            candidates, excluded, ruling, stats = score_candidates(
-                source_maps, reference["cells"], reference["meta"],
-                reference_values=reference.get("values"), thresholds=thresholds,
-                assume_reference_geometry=assume_reference_geometry,
-                reference_ref={"table": reference.get("table"),
-                               "map_id": reference.get("map_id")},
-                value_weights=value_weights,
-                index_thresholds=index_thresholds, diag=diag,
-                #: 선언을 읽는 것은 «cfg 를 쥔 여기»다 — 채점기는 값만 받는다(순수성 유지).
-                slow_warn_ms=alignment_slow_warn_ms(cfg))
-        if ruling.get("winner"):
-            state = STATE_SCORED
-        elif any(c["state"] == STATE_SCORED for c in candidates):
-            state = STATE_NO_WINNER
-        else:
-            state = STATE_NOT_SCORABLE
-    else:
-        # 기준이 없으면 채점 자체가 성립하지 않는다. 그래도 **왜 제외됐는지는 센다** —
-        # 기준을 꽂았을 때 무엇이 남는지를 조작자가 미리 알아야 고칠 순서를 정할 수 있다.
-        state = STATE_NOT_SCORABLE
-        basis_undeclared = []
-        for sm in source_maps:
-            if not sm.get("cells"):
-                excluded.add(EXCLUDE_NO_CELLS, sm["map_id"])
-            elif sm.get("meta_refusal"):
-                # 서버가 못 읽은 것이지 이 맵이 미등록인 것이 아니다 — 바닥 이야기로 접으면
-                # 「기준을 선언하라」가 되고, 그것도 참이 아니다.
-                excluded.add(sm["meta_refusal"], sm["map_id"], sm.get("meta_refusal_detail"))
-            elif not sm.get("meta"):
-                # 🔴 [D4] **`meta_missing`이 아니다.** 여기서 그 낱말을 쓰면 소스 맵 N장을
-                #    고치러 보내는데, 규격 행이 없는 것은 정상이고 선언이 필요한 것은 조작자가
-                #    고를 바닥 한 장이다. 그 사실은 요청 단위로 한 번만 말한다.
-                basis_undeclared.append(sm["map_id"])
+    # 🔴 EVERYTHING FROM THE SCORING DECISION TO THE ANSWER (S-94, 판정 239).
+    # After the decision-key index the group was 12.4 s with `unnamed` 8.9 s, and the
+    # batch cell prefetch turned out to be 1.4 s of it - so the remainder is here, in the
+    # branch that runs when no reference resolved and in the payload it assembles. Named
+    # as one block rather than guessed at piece by piece: `unnamed` keeps its own line, so
+    # if this is not it the next measurement still says so.
+    with alignment_batch_counts.phase("payload"):
+        candidates, excluded, ruling, stats = [], _Excluded(), {"winner": None}, {}
+        if reference["state"] == REFERENCE_RESOLVED:
+            with alignment_batch_counts.phase("scoring"):
+                candidates, excluded, ruling, stats = score_candidates(
+                    source_maps, reference["cells"], reference["meta"],
+                    reference_values=reference.get("values"), thresholds=thresholds,
+                    assume_reference_geometry=assume_reference_geometry,
+                    reference_ref={"table": reference.get("table"),
+                                   "map_id": reference.get("map_id")},
+                    value_weights=value_weights,
+                    index_thresholds=index_thresholds, diag=diag,
+                    #: 선언을 읽는 것은 «cfg 를 쥔 여기»다 — 채점기는 값만 받는다(순수성 유지).
+                    slow_warn_ms=alignment_slow_warn_ms(cfg))
+            if ruling.get("winner"):
+                state = STATE_SCORED
+            elif any(c["state"] == STATE_SCORED for c in candidates):
+                state = STATE_NO_WINNER
             else:
-                why = map_overlay.geometry_refusal(sm["meta"])
-                if why is not None:
-                    excluded.add(EXCLUDE_GEOMETRY_REFUSED, sm["map_id"], why)
-        stats["basis_undeclared_map_ids"] = basis_undeclared
-        # 🔴 이 루프가 채점기와 **같은 세 관문**을 돌렸으므로 남은 수는 잰 값이다. 예전에는
-        #    이 갈래에서 `stats`가 비어 `usable_map_count`가 `stats.get(..., 0)`의 기본값 0으로
-        #    나갔다 - 아무것도 안 재고 「쓸 수 있는 맵 0장」이라고 말한 것이고, 기준만 꽂으면
-        #    채점될 단위를 조작자가 가망 없는 단위로 읽었다.
-        # 바닥 미선언으로 막힌 맵은 **제외 집계에 없으므로** 여기서 따로 뺀다 - 안 빼면
-        # 「쓸 수 있다」에 못 채점한 맵이 섞인다.
-        stats["source_maps_usable"] = (len(source_maps) - excluded.total()
-                                       - len(basis_undeclared))
-        diag += ["", "-- DIAGNOSIS --------------------------------------------------------"
-                     "-------",
-                 "  CAUSE: NOT SCORABLE - the scorer never ran. The reference did not "
-                 "resolve (state=%s, reason_code=%s), so there was no common floor to "
-                 "lay the source cells on. Fix the reference; the frames were never "
-                 "compared." % (reference["state"], reference.get("reason_code")),
-                 "  reference reason: %s" % _d(reference.get("reason"), 400),
-                 "  would-be-usable source maps if a reference were declared: %d"
-                 % stats["source_maps_usable"]]
-        for row in excluded.as_list():
-            diag.append("  EXCLUDED %s x%d (e.g. %s)"
-                        % (row["reason_code"], row["count"],
-                           _d(row["example_map_id"], 32)))
+                state = STATE_NOT_SCORABLE
+        else:
+            # 기준이 없으면 채점 자체가 성립하지 않는다. 그래도 **왜 제외됐는지는 센다** —
+            # 기준을 꽂았을 때 무엇이 남는지를 조작자가 미리 알아야 고칠 순서를 정할 수 있다.
+            state = STATE_NOT_SCORABLE
+            basis_undeclared = []
+            for sm in source_maps:
+                if not sm.get("cells"):
+                    excluded.add(EXCLUDE_NO_CELLS, sm["map_id"])
+                elif sm.get("meta_refusal"):
+                    # 서버가 못 읽은 것이지 이 맵이 미등록인 것이 아니다 — 바닥 이야기로 접으면
+                    # 「기준을 선언하라」가 되고, 그것도 참이 아니다.
+                    excluded.add(sm["meta_refusal"], sm["map_id"], sm.get("meta_refusal_detail"))
+                elif not sm.get("meta"):
+                    # 🔴 [D4] **`meta_missing`이 아니다.** 여기서 그 낱말을 쓰면 소스 맵 N장을
+                    #    고치러 보내는데, 규격 행이 없는 것은 정상이고 선언이 필요한 것은 조작자가
+                    #    고를 바닥 한 장이다. 그 사실은 요청 단위로 한 번만 말한다.
+                    basis_undeclared.append(sm["map_id"])
+                else:
+                    why = map_overlay.geometry_refusal(sm["meta"])
+                    if why is not None:
+                        excluded.add(EXCLUDE_GEOMETRY_REFUSED, sm["map_id"], why)
+            stats["basis_undeclared_map_ids"] = basis_undeclared
+            # 🔴 이 루프가 채점기와 **같은 세 관문**을 돌렸으므로 남은 수는 잰 값이다. 예전에는
+            #    이 갈래에서 `stats`가 비어 `usable_map_count`가 `stats.get(..., 0)`의 기본값 0으로
+            #    나갔다 - 아무것도 안 재고 「쓸 수 있는 맵 0장」이라고 말한 것이고, 기준만 꽂으면
+            #    채점될 단위를 조작자가 가망 없는 단위로 읽었다.
+            # 바닥 미선언으로 막힌 맵은 **제외 집계에 없으므로** 여기서 따로 뺀다 - 안 빼면
+            # 「쓸 수 있다」에 못 채점한 맵이 섞인다.
+            stats["source_maps_usable"] = (len(source_maps) - excluded.total()
+                                           - len(basis_undeclared))
+            diag += ["", "-- DIAGNOSIS --------------------------------------------------------"
+                         "-------",
+                     "  CAUSE: NOT SCORABLE - the scorer never ran. The reference did not "
+                     "resolve (state=%s, reason_code=%s), so there was no common floor to "
+                     "lay the source cells on. Fix the reference; the frames were never "
+                     "compared." % (reference["state"], reference.get("reason_code")),
+                     "  reference reason: %s" % _d(reference.get("reason"), 400),
+                     "  would-be-usable source maps if a reference were declared: %d"
+                     % stats["source_maps_usable"]]
+            for row in excluded.as_list():
+                diag.append("  EXCLUDED %s x%d (e.g. %s)"
+                            % (row["reason_code"], row["count"],
+                               _d(row["example_map_id"], 32)))
 
-    # ═══ 셀 배열은 **평행 배열 셋**이다 — 좌표 / 순번 / 소유 맵 ══════════════════════════
-    # 제품 소유자 요청 2026-08-06: 정렬 화면의 셀을 **순번으로 칠한다**(서펜타인 위의 무지개).
-    # 틀린 프레임은 보행 순서가 통째로 갈리므로 한눈에 보인다 — 이 축이 만들 가치가 있었던
-    # 바로 그 성질을 그림으로 옮기는 것이다.
-    #
-    # 🔴 **`cells`의 계약은 건드리지 않는다.** 셀 하나를 `[x, y, k]`로 늘리면 이미 그 배열을
-    #    읽는 자리가 전부 깨진다. 같은 순서·같은 길이의 **별도 배열**로 실어 보낸다.
-    #
-    # 🔴 **정규화된 순위를 싣는다, 원본 컬럼 값이 아니라.** base가 실제로 갈린다(`0..255` 대
-    #    `1..266`). 클라가 다시 정규화하면 **같은 수를 두 번 계산**하는 것이고, 이 프로젝트는
-    #    그 형태로 이미 값을 치렀다. 철자는 `_normalised_indices` 하나이고 채점기가 쓰는 그
-    #    함수를 그대로 부른다 — 여기서 base를 다시 구하지 않는다.
-    #
-    # 🔴 **번호 없는 행은 `null`이지 `0`이 아니다.** 0은 「1번 다이」로 칠해진다. 번호가 없는
-    #    다이도 보행에는 들어가지만 색은 없다(§_index_member의 같은 구분).
-    #
-    # 🔴 **`cell_map`은 선택 사항이 아니다.** `pooled`는 맵들을 이어 붙이는데 순번은 맵마다
-    #    1부터 다시 시작한다(제품 소유자: 「소스별로 index 매기는거잖아」). 소유 정보 없이 한
-    #    배열에 담으면 **독립된 두 보행 위에 램프 하나**를 그리게 되고, 그 그림은 자신 있게
-    #    틀린다 — 이 라운드가 채점에서 없앤 결함과 정확히 같은 것을 색으로 재현하는 셈이다.
-    pooled = []
-    pooled_raw_k = []
-    pooled_map = []
-    if include_cells:
-        for mi, sm in enumerate(source_maps):
-            if len(pooled) >= cell_cap:
-                src_truncated = True
-                break
-            ks = sm.get("indices") or []
-            for j, xy in enumerate(sm["cells"]):
+        # ═══ 셀 배열은 **평행 배열 셋**이다 — 좌표 / 순번 / 소유 맵 ══════════════════════════
+        # 제품 소유자 요청 2026-08-06: 정렬 화면의 셀을 **순번으로 칠한다**(서펜타인 위의 무지개).
+        # 틀린 프레임은 보행 순서가 통째로 갈리므로 한눈에 보인다 — 이 축이 만들 가치가 있었던
+        # 바로 그 성질을 그림으로 옮기는 것이다.
+        #
+        # 🔴 **`cells`의 계약은 건드리지 않는다.** 셀 하나를 `[x, y, k]`로 늘리면 이미 그 배열을
+        #    읽는 자리가 전부 깨진다. 같은 순서·같은 길이의 **별도 배열**로 실어 보낸다.
+        #
+        # 🔴 **정규화된 순위를 싣는다, 원본 컬럼 값이 아니라.** base가 실제로 갈린다(`0..255` 대
+        #    `1..266`). 클라가 다시 정규화하면 **같은 수를 두 번 계산**하는 것이고, 이 프로젝트는
+        #    그 형태로 이미 값을 치렀다. 철자는 `_normalised_indices` 하나이고 채점기가 쓰는 그
+        #    함수를 그대로 부른다 — 여기서 base를 다시 구하지 않는다.
+        #
+        # 🔴 **번호 없는 행은 `null`이지 `0`이 아니다.** 0은 「1번 다이」로 칠해진다. 번호가 없는
+        #    다이도 보행에는 들어가지만 색은 없다(§_index_member의 같은 구분).
+        #
+        # 🔴 **`cell_map`은 선택 사항이 아니다.** `pooled`는 맵들을 이어 붙이는데 순번은 맵마다
+        #    1부터 다시 시작한다(제품 소유자: 「소스별로 index 매기는거잖아」). 소유 정보 없이 한
+        #    배열에 담으면 **독립된 두 보행 위에 램프 하나**를 그리게 되고, 그 그림은 자신 있게
+        #    틀린다 — 이 라운드가 채점에서 없앤 결함과 정확히 같은 것을 색으로 재현하는 셈이다.
+        pooled = []
+        pooled_raw_k = []
+        pooled_map = []
+        if include_cells:
+            for mi, sm in enumerate(source_maps):
                 if len(pooled) >= cell_cap:
                     src_truncated = True
                     break
-                pooled.append([xy[0], xy[1]])
-                pooled_raw_k.append(ks[j] if j < len(ks) else None)
-                pooled_map.append(mi)
+                ks = sm.get("indices") or []
+                for j, xy in enumerate(sm["cells"]):
+                    if len(pooled) >= cell_cap:
+                        src_truncated = True
+                        break
+                    pooled.append([xy[0], xy[1]])
+                    pooled_raw_k.append(ks[j] if j < len(ks) else None)
+                    pooled_map.append(mi)
 
-    # base 정규화는 **맵마다** 돈다(`pooled_map`이 소유를 나른다). 채점기와 같은 함수다.
-    _pk, _phas, _pbases = _normalised_indices(pooled_raw_k, pooled_map)
-    # 🔴 **절단된 풀은 완전한 보행이 아니다.** 그때 이 필드는 **통째로 null**이다 — 원소가
-    #    null인 것(「이 다이는 번호가 없다」)과 필드가 null인 것(「완전한 보행을 못 준다」)은
-    #    받는 쪽에서 다른 사실이고, 접으면 잘린 램프가 완전한 램프처럼 그려진다.
-    if src_truncated or _phas is None:
-        pooled_index = None if src_truncated else [None] * len(pooled)
-    else:
-        pooled_index = [(int(_pk[i]) if _phas[i] else None) for i in range(len(pooled))]
-
-    # 단위 안에서 맵들이 **서로 다른 프레임을 적어 두고 있을 수 있다** — 그 어긋남이 이 화면이
-    # 맵 하나가 아니라 단위로 도는 이유다. 그래서 하나로 접지 않고 프레임별 개수로 낸다.
- 
-    _df_cache = {}
-
-    def _df(sm):
-        k = id(sm)
-        if k not in _df_cache:
-            _df_cache[k] = declared_frame_of(sm.get("meta"))
-        return _df_cache[k]
-
-    import collections as _c
-    tally = _c.Counter()
-    axis_tally = {"rotation": _c.Counter(), "side": _c.Counter()}
-    unattested = 0
-    for sm in source_maps:
-        info = _df(sm)
-        for ax in ("rotation", "side"):
-            axis_tally[ax][info["axes"][ax]] += 1
-        if info["source"] == map_overlay.GEOMETRY_DECLARED and info["frame"]:
-            tally[info["frame"]] += 1
+        # base 정규화는 **맵마다** 돈다(`pooled_map`이 소유를 나른다). 채점기와 같은 함수다.
+        _pk, _phas, _pbases = _normalised_indices(pooled_raw_k, pooled_map)
+        # 🔴 **절단된 풀은 완전한 보행이 아니다.** 그때 이 필드는 **통째로 null**이다 — 원소가
+        #    null인 것(「이 다이는 번호가 없다」)과 필드가 null인 것(「완전한 보행을 못 준다」)은
+        #    받는 쪽에서 다른 사실이고, 접으면 잘린 램프가 완전한 램프처럼 그려진다.
+        if src_truncated or _phas is None:
+            pooled_index = None if src_truncated else [None] * len(pooled)
         else:
-            unattested += 1
-    for c in candidates:
-        c["declared_by_maps"] = int(tally.get(c["frame"], 0))
+            pooled_index = [(int(_pk[i]) if _phas[i] else None) for i in range(len(pooled))]
 
-    # [D3] 가정의 상태 - **걸었나 · 걸 수 있나 · 무엇에서 빌리나.** 세 번째가 없으면 나중에
-    # 「이 판정은 무엇을 참이라 치고 나왔나」에 답할 수 없다.
-    assumed_ids = list(stats.get("assumed_map_ids") or ())
-    assumable_ids = list(stats.get("assumable_map_ids") or ())
-    _aligned = set(stats.get("usable_map_ids") or ())
-    a_basis = ({"table": reference.get("table"), "map_id": reference.get("map_id")}
-               if reference["state"] == REFERENCE_RESOLVED else None)
-    if assumed_ids:
-        a_state = ASSUMPTION_APPLIED
-    elif assumable_ids:
-        a_state = ASSUMPTION_AVAILABLE
-    else:
-        a_state = ASSUMPTION_UNAVAILABLE
-    a_ids = assumed_ids or assumable_ids
-    # [D4] 바닥이 선언이 아니라 **제안조차 못 한** 맵들 — 요청 단위로 한 번. 여기가 「고쳐야
-    # 할 것은 소스 맵 N장이 아니라 바닥 한 장」을 말하는 유일한 자리다.
-    if reference["state"] == REFERENCE_REFUSED:
-        basis_why = reference.get("reason")
-    elif reference["state"] == REFERENCE_ABSENT:
-        basis_why = TEXT_REFERENCE_ABSENT
-    else:
-        basis_why = map_overlay.geometry_refusal(reference.get("meta"))
-    # 🔴 `a_basis`가 아니라 **기준이 무엇이었든 그 이름**을 싣는다. 거절된 기준도 이름은
-    #    있고, 조작자에게 필요한 것이 정확히 그 이름이다("어느 맵을 선언해야 하나").
-    basis_refusal = compose_basis_refusal(
-        stats.get("basis_undeclared_map_ids"),
-        ({"table": reference.get("table"), "map_id": reference.get("map_id")}
-         if reference.get("table") else None),
-        basis_why)
-    #: 이 요청의 기준 마스크 — «한 번» 만들어 맵마다 쓴다(상자는 (프레임 축, 마스크) 단위로 캐시된다).
-    _origin_mask = (map_overlay.die_mask_from_reference(reference.get("meta"),
-                                                       reference.get("cells"))
-                    if isinstance(reference.get("meta"), dict) else frozenset())
-    assumption = {
-        "state": a_state,
-        "requested": bool(assume_reference_geometry),
-        "basis": a_basis if a_state != ASSUMPTION_UNAVAILABLE else None,
-        "map_count": len(a_ids),
-        "map_ids": a_ids,
-        "text": compose_assumption_offer(a_state, len(a_ids), a_basis),
-    }
+        # 단위 안에서 맵들이 **서로 다른 프레임을 적어 두고 있을 수 있다** — 그 어긋남이 이 화면이
+        # 맵 하나가 아니라 단위로 도는 이유다. 그래서 하나로 접지 않고 프레임별 개수로 낸다.
+ 
+        _df_cache = {}
 
-    payload = {
-        "unit": {"rule": rule.get("name"), "decision_key": dict(key_values or {}),
-                 "source_table": src_table, "map_table": map_table,
-                 "map_key_columns": map_key_cols,
-                 # 무엇을 읽었나, 그리고 **누가 정했나**. 제안(proposed)과 선택(chosen)을
-                 # 같은 모양으로 내보내면 화면이 둘을 같게 그리고 기본값이 선언을 사칭한다.
-                 "columns": columns},
-        "state": state,
-        "refusal": compose_refusal(state, reference, excluded, ruling, len(source_maps),
-                                   candidates),
-        "reference": {
-            "state": reference["state"],
-            # 이 실행이 **대조에 쓸 수 있는 것**. 소스에 값 컬럼이 없으면 기준이 값을 실어도
-            # 점유뿐이다 — 그리고 점유는 평평하다(실측: 8후보가 같은 다이를 차지). 이 값이
-            # 「승자 없음」의 사유를 가른다.
-            "kind": comparison_kind(reference.get("kind", REFERENCE_KIND_NONE),
-                                    columns["value"]["column"]),
-            # 기준 맵 **자신이** 싣고 있는 것. 위 값과 갈릴 수 있고, 갈린 이유가 소스 쪽이라는
-            # 사실을 여기서만 알 수 있다 — 접으면 조작자가 기준 맵을 의심한다.
-            "map_kind": reference.get("kind", REFERENCE_KIND_NONE),
-            "source": reference.get("source"),
-            "table": reference.get("table"), "map_id": reference.get("map_id"),
-            "count": reference.get("count", 0), "reason": reference.get("reason"),
-            # 🔴 코드도 같이 낸다. `_ref_state`는 "코드와 문장 둘 다" 내보내기로 돼 있는데
-            #    이 자리가 문장만 실어, 화면이 분기하려면 문장에서 코드를 유도해야 했다 —
-            #    그것이 두 번째 판정 구현이다. 목록(`unscorable_reasons`)은 이미 코드를 낸다.
-            "reason_code": reference.get("reason_code"),
-            "truncated": reference.get("truncated", False),
-            "cells": ([[x, y] for (x, y) in reference.get("cells") or ()]
-                      if include_cells else []),
-        },
-        "sources": {
-            "map_count": len(source_maps),
-            "usable_map_count": stats.get("source_maps_usable", 0),
-            "cell_count": sum(len(sm["cells"]) for sm in source_maps),
-            "cells": pooled, "truncated": src_truncated, "cell_cap": cell_cap,
-            # 순번 페인팅용 평행 배열(§pooled 위 블록). `cells`와 **같은 순서·같은 길이**다.
-            #   · `cell_index` — 맵 안에서 1부터인 **정규화된 순위**. 원소 null = 그 행에
-            #     번호가 없었다. **필드 자체가 null** = 풀이 잘려 완전한 보행이 아니다.
-            #   · `cell_map` — `sources.maps[]`의 첨자. 순번이 맵마다 다시 시작하므로 이것
-            #     없이는 이어 붙인 배열에 램프를 그릴 수 없다.
-            "cell_index": pooled_index,
-            "cell_map": pooled_map,
-            # `geometry`는 **이 맵이 스스로 말하는 기하 출처**이고 `geometry_basis`는
-            # **이번 실행이 실제로 무엇 위에 올렸나**다. 둘을 한 필드로 접으면 가정이
-            # 선언처럼 보이거나(I4) 가정이 사라진다. 뒤엣것의 철자는 `geometry_basis_of`
-            # 하나이고 확정 기록도 같은 함수를 부른다.
-            "maps": [dict({"map_id": sm["map_id"], "cell_count": len(sm["cells"])},
-                          declared_frame=_df(sm)["frame"],
-                          declared_frame_source=_df(sm)["source"],
-                          geometry=map_overlay.geometry_declaration(sm.get("meta")),
-                          # 🔴 「사람이 확정했나」 — «맵별» 한 칸. `geometry` 가
-                          #    「정렬 결정이 있나」를 말하고, 그 둘이 «다른 질문»인데 한
-                          #    불리언이 둘 다 답하고 있었다: 워크리스트가 「pending」이라
-                          #    부르는 맵을 오버레이가 「확정됨」이라 불렀다.
-                          # ⚠️ dict 도 사유 문자열도 사람 이름도 «아니다**. 맵마다 축 dict 를
-                          #    실으면 40맵에서 payload 가 +72% 라는 것을 이 블록이 «바로
-                          #    아래»에 적어 뒀고, 같은 논거가 여기에도 그대로 걸린다.
-                          # 🔴 판정은 `map_overlay` «한 자리»에서 온다 — 여기서 다시
-                          #    적으면 축별 답과 맵별 답이 갈릴 수 있다.
-                          confirmed_by_person=map_overlay.confirmed_by_person(
-                              sm.get("meta")),
-                          # 🔴 「이 원점이 «무엇 위에» 섰나」 — «맵별» 한 칸. 바로 아래
-                          #    `geometry_basis` 는 「«기하»가 무엇 위에 섰나」이고 둘은
-                          #    «직교»한다 — 규격이 `declared` 인 맵도 원점은 원으로 물러난다.
-                          # 🔴 판정은 `map_overlay` «한 자리»에서 온다. 여기서 다시 유도하면
-                          #    「상자」와 「그 상자의 이름」이 갈리고, 갈려도 «오류가 안 난다».
-                          # ⚠️ 마스크가 «잘렸으면»(§`reference.truncated`) 이 토큰은 «잘린
-                          #    마스크»를 말한다 — 그것이 옳다. 이 칸은 「이상적으로 무엇 위에
-                          #    섰어야 하나」가 아니라 «상자가 실제로 무엇 위에서 만들어졌나»
-                          #    이고, 상자 자신이 «같은 재료»로 만들어진다.
-                          origin_basis=map_overlay.origin_box_basis(
-                              sm.get("meta"), _origin_mask),
-                          # [D6] 바닥 메타를 함께 넘긴다 — 격자만 빌린 맵은 phys가 `declared`
-                          # 여서 이 인자 없이는 「선언 위에 섰다」고 답한다.
-                          geometry_basis=geometry_basis_of(
-                              sm.get("meta"),
-                              None if sm["map_id"] in _aligned else "not_aligned",
-                              reference.get("meta")))
-                     for sm in source_maps],
-        },
-        "candidates": candidates,
-        # [D3] 가정은 **판정 옆이 아니라 판정과 함께** 산다. `ruling.geometry_assumed`가
-        # 판정 자신의 사실이고, 이 블록은 그 가정의 내용(무엇에서, 몇 장, 제안인가)이다.
-        "assumption": assumption,
-        # [D4] 가정을 **걸 수조차 없었던** 이유 — 바닥이 선언이 아니다. `None`이면 해당 없음.
-        # 요청 단위의 사실이라 여기 하나뿐이고, 제외 집계는 이 사유로 부풀지 않는다.
-        "basis_refusal": basis_refusal,
-        # 🔴 **요청 전체의 사고**를 요청 단위에 한 번 말한다. `None`이면 정상 - 화면은
-        #    아무것도 그리지 않는다. 값이 있으면 아래 제외 집계는 데이터의 이야기가 아니고,
-        #    이번 요청에서는 **아무 맵도 규격을 빌리지 않았다**(§stamp_meta_refusal).
-        "meta_access": meta_access,
-        # 적혀 있는 것. **결정이 아니다** (§declared_frame_of).
-        "declaration": {
-            "frames": dict(tally),
-            "unanimous": len(tally) == 1 and unattested == 0,
-            "frame": (next(iter(tally)) if len(tally) == 1 and unattested == 0 else None),
-            "attested_maps": int(sum(tally.values())),
-            "unattested_maps": int(unattested),
-            # 축별 집계는 **단위 수준에만** 둔다. 맵마다 축 dict를 실으면 40맵에서 셀 없는
-            # payload가 6.5KB -> 11.2KB로 늘고(+72%), 늘어난 것은 정보가 아니라 같은 두 낱말의
-            # 40회 반복이다. 어느 맵이 미검증인지는 `maps[].declared_frame_source`가 이미 말한다.
-            "axis_sources": {ax: dict(c) for ax, c in axis_tally.items()},
-        },
-        "ruling": ruling,
-        # 문턱은 **서버 config의 선언**이다. 미선언 키는 실리지 않는다 — null로 실으면
-        # 받는 쪽의 `Number(null)`이 0이 되어 「모름」이 「문턱 0」으로 바뀐다.
-        "thresholds": thresholds,
-        "excluded": excluded.as_list(),
-        "excluded_total": excluded.total(),
-        "stats": dict(stats, build_ms=(time.monotonic() - t0) * 1000.0),
-    }
-    diag += ["",
-             "-- what the screen will show -----------------------------------------------",
-             "  state=%s  refusal=%s" % (payload["state"], _d(payload["refusal"], 300)),
-             "  reference.kind=%s (what this run can compare)   reference.map_kind=%s "
-             "(what the reference map itself carries)"
-             % (payload["reference"]["kind"], payload["reference"]["map_kind"]),
-             _DIAG_RULE,
-             "END req=%s   build=%.1fms   diagnostics file: %s"
-             % (req_id, payload["stats"]["build_ms"],
-                _DIAG_FILE_PATH or ("<console only: %s>" % _DIAG_FILE_ERROR)),
-             _DIAG_RULE, ""]
-    _emit_diag(diag)
+        def _df(sm):
+            k = id(sm)
+            if k not in _df_cache:
+                _df_cache[k] = declared_frame_of(sm.get("meta"))
+            return _df_cache[k]
+
+        import collections as _c
+        tally = _c.Counter()
+        axis_tally = {"rotation": _c.Counter(), "side": _c.Counter()}
+        unattested = 0
+        for sm in source_maps:
+            info = _df(sm)
+            for ax in ("rotation", "side"):
+                axis_tally[ax][info["axes"][ax]] += 1
+            if info["source"] == map_overlay.GEOMETRY_DECLARED and info["frame"]:
+                tally[info["frame"]] += 1
+            else:
+                unattested += 1
+        for c in candidates:
+            c["declared_by_maps"] = int(tally.get(c["frame"], 0))
+
+        # [D3] 가정의 상태 - **걸었나 · 걸 수 있나 · 무엇에서 빌리나.** 세 번째가 없으면 나중에
+        # 「이 판정은 무엇을 참이라 치고 나왔나」에 답할 수 없다.
+        assumed_ids = list(stats.get("assumed_map_ids") or ())
+        assumable_ids = list(stats.get("assumable_map_ids") or ())
+        _aligned = set(stats.get("usable_map_ids") or ())
+        a_basis = ({"table": reference.get("table"), "map_id": reference.get("map_id")}
+                   if reference["state"] == REFERENCE_RESOLVED else None)
+        if assumed_ids:
+            a_state = ASSUMPTION_APPLIED
+        elif assumable_ids:
+            a_state = ASSUMPTION_AVAILABLE
+        else:
+            a_state = ASSUMPTION_UNAVAILABLE
+        a_ids = assumed_ids or assumable_ids
+        # [D4] 바닥이 선언이 아니라 **제안조차 못 한** 맵들 — 요청 단위로 한 번. 여기가 「고쳐야
+        # 할 것은 소스 맵 N장이 아니라 바닥 한 장」을 말하는 유일한 자리다.
+        if reference["state"] == REFERENCE_REFUSED:
+            basis_why = reference.get("reason")
+        elif reference["state"] == REFERENCE_ABSENT:
+            basis_why = TEXT_REFERENCE_ABSENT
+        else:
+            basis_why = map_overlay.geometry_refusal(reference.get("meta"))
+        # 🔴 `a_basis`가 아니라 **기준이 무엇이었든 그 이름**을 싣는다. 거절된 기준도 이름은
+        #    있고, 조작자에게 필요한 것이 정확히 그 이름이다("어느 맵을 선언해야 하나").
+        basis_refusal = compose_basis_refusal(
+            stats.get("basis_undeclared_map_ids"),
+            ({"table": reference.get("table"), "map_id": reference.get("map_id")}
+             if reference.get("table") else None),
+            basis_why)
+        #: 이 요청의 기준 마스크 — «한 번» 만들어 맵마다 쓴다(상자는 (프레임 축, 마스크) 단위로 캐시된다).
+        _origin_mask = (map_overlay.die_mask_from_reference(reference.get("meta"),
+                                                           reference.get("cells"))
+                        if isinstance(reference.get("meta"), dict) else frozenset())
+        assumption = {
+            "state": a_state,
+            "requested": bool(assume_reference_geometry),
+            "basis": a_basis if a_state != ASSUMPTION_UNAVAILABLE else None,
+            "map_count": len(a_ids),
+            "map_ids": a_ids,
+            "text": compose_assumption_offer(a_state, len(a_ids), a_basis),
+        }
+
+        payload = {
+            "unit": {"rule": rule.get("name"), "decision_key": dict(key_values or {}),
+                     "source_table": src_table, "map_table": map_table,
+                     "map_key_columns": map_key_cols,
+                     # 무엇을 읽었나, 그리고 **누가 정했나**. 제안(proposed)과 선택(chosen)을
+                     # 같은 모양으로 내보내면 화면이 둘을 같게 그리고 기본값이 선언을 사칭한다.
+                     "columns": columns},
+            "state": state,
+            "refusal": compose_refusal(state, reference, excluded, ruling, len(source_maps),
+                                       candidates),
+            "reference": {
+                "state": reference["state"],
+                # 이 실행이 **대조에 쓸 수 있는 것**. 소스에 값 컬럼이 없으면 기준이 값을 실어도
+                # 점유뿐이다 — 그리고 점유는 평평하다(실측: 8후보가 같은 다이를 차지). 이 값이
+                # 「승자 없음」의 사유를 가른다.
+                "kind": comparison_kind(reference.get("kind", REFERENCE_KIND_NONE),
+                                        columns["value"]["column"]),
+                # 기준 맵 **자신이** 싣고 있는 것. 위 값과 갈릴 수 있고, 갈린 이유가 소스 쪽이라는
+                # 사실을 여기서만 알 수 있다 — 접으면 조작자가 기준 맵을 의심한다.
+                "map_kind": reference.get("kind", REFERENCE_KIND_NONE),
+                "source": reference.get("source"),
+                "table": reference.get("table"), "map_id": reference.get("map_id"),
+                "count": reference.get("count", 0), "reason": reference.get("reason"),
+                # 🔴 코드도 같이 낸다. `_ref_state`는 "코드와 문장 둘 다" 내보내기로 돼 있는데
+                #    이 자리가 문장만 실어, 화면이 분기하려면 문장에서 코드를 유도해야 했다 —
+                #    그것이 두 번째 판정 구현이다. 목록(`unscorable_reasons`)은 이미 코드를 낸다.
+                "reason_code": reference.get("reason_code"),
+                "truncated": reference.get("truncated", False),
+                "cells": ([[x, y] for (x, y) in reference.get("cells") or ()]
+                          if include_cells else []),
+            },
+            "sources": {
+                "map_count": len(source_maps),
+                "usable_map_count": stats.get("source_maps_usable", 0),
+                "cell_count": sum(len(sm["cells"]) for sm in source_maps),
+                "cells": pooled, "truncated": src_truncated, "cell_cap": cell_cap,
+                # 순번 페인팅용 평행 배열(§pooled 위 블록). `cells`와 **같은 순서·같은 길이**다.
+                #   · `cell_index` — 맵 안에서 1부터인 **정규화된 순위**. 원소 null = 그 행에
+                #     번호가 없었다. **필드 자체가 null** = 풀이 잘려 완전한 보행이 아니다.
+                #   · `cell_map` — `sources.maps[]`의 첨자. 순번이 맵마다 다시 시작하므로 이것
+                #     없이는 이어 붙인 배열에 램프를 그릴 수 없다.
+                "cell_index": pooled_index,
+                "cell_map": pooled_map,
+                # `geometry`는 **이 맵이 스스로 말하는 기하 출처**이고 `geometry_basis`는
+                # **이번 실행이 실제로 무엇 위에 올렸나**다. 둘을 한 필드로 접으면 가정이
+                # 선언처럼 보이거나(I4) 가정이 사라진다. 뒤엣것의 철자는 `geometry_basis_of`
+                # 하나이고 확정 기록도 같은 함수를 부른다.
+                "maps": [dict({"map_id": sm["map_id"], "cell_count": len(sm["cells"])},
+                              declared_frame=_df(sm)["frame"],
+                              declared_frame_source=_df(sm)["source"],
+                              geometry=map_overlay.geometry_declaration(sm.get("meta")),
+                              # 🔴 「사람이 확정했나」 — «맵별» 한 칸. `geometry` 가
+                              #    「정렬 결정이 있나」를 말하고, 그 둘이 «다른 질문»인데 한
+                              #    불리언이 둘 다 답하고 있었다: 워크리스트가 「pending」이라
+                              #    부르는 맵을 오버레이가 「확정됨」이라 불렀다.
+                              # ⚠️ dict 도 사유 문자열도 사람 이름도 «아니다**. 맵마다 축 dict 를
+                              #    실으면 40맵에서 payload 가 +72% 라는 것을 이 블록이 «바로
+                              #    아래»에 적어 뒀고, 같은 논거가 여기에도 그대로 걸린다.
+                              # 🔴 판정은 `map_overlay` «한 자리»에서 온다 — 여기서 다시
+                              #    적으면 축별 답과 맵별 답이 갈릴 수 있다.
+                              confirmed_by_person=map_overlay.confirmed_by_person(
+                                  sm.get("meta")),
+                              # 🔴 「이 원점이 «무엇 위에» 섰나」 — «맵별» 한 칸. 바로 아래
+                              #    `geometry_basis` 는 「«기하»가 무엇 위에 섰나」이고 둘은
+                              #    «직교»한다 — 규격이 `declared` 인 맵도 원점은 원으로 물러난다.
+                              # 🔴 판정은 `map_overlay` «한 자리»에서 온다. 여기서 다시 유도하면
+                              #    「상자」와 「그 상자의 이름」이 갈리고, 갈려도 «오류가 안 난다».
+                              # ⚠️ 마스크가 «잘렸으면»(§`reference.truncated`) 이 토큰은 «잘린
+                              #    마스크»를 말한다 — 그것이 옳다. 이 칸은 「이상적으로 무엇 위에
+                              #    섰어야 하나」가 아니라 «상자가 실제로 무엇 위에서 만들어졌나»
+                              #    이고, 상자 자신이 «같은 재료»로 만들어진다.
+                              origin_basis=map_overlay.origin_box_basis(
+                                  sm.get("meta"), _origin_mask),
+                              # [D6] 바닥 메타를 함께 넘긴다 — 격자만 빌린 맵은 phys가 `declared`
+                              # 여서 이 인자 없이는 「선언 위에 섰다」고 답한다.
+                              geometry_basis=geometry_basis_of(
+                                  sm.get("meta"),
+                                  None if sm["map_id"] in _aligned else "not_aligned",
+                                  reference.get("meta")))
+                         for sm in source_maps],
+            },
+            "candidates": candidates,
+            # [D3] 가정은 **판정 옆이 아니라 판정과 함께** 산다. `ruling.geometry_assumed`가
+            # 판정 자신의 사실이고, 이 블록은 그 가정의 내용(무엇에서, 몇 장, 제안인가)이다.
+            "assumption": assumption,
+            # [D4] 가정을 **걸 수조차 없었던** 이유 — 바닥이 선언이 아니다. `None`이면 해당 없음.
+            # 요청 단위의 사실이라 여기 하나뿐이고, 제외 집계는 이 사유로 부풀지 않는다.
+            "basis_refusal": basis_refusal,
+            # 🔴 **요청 전체의 사고**를 요청 단위에 한 번 말한다. `None`이면 정상 - 화면은
+            #    아무것도 그리지 않는다. 값이 있으면 아래 제외 집계는 데이터의 이야기가 아니고,
+            #    이번 요청에서는 **아무 맵도 규격을 빌리지 않았다**(§stamp_meta_refusal).
+            "meta_access": meta_access,
+            # 적혀 있는 것. **결정이 아니다** (§declared_frame_of).
+            "declaration": {
+                "frames": dict(tally),
+                "unanimous": len(tally) == 1 and unattested == 0,
+                "frame": (next(iter(tally)) if len(tally) == 1 and unattested == 0 else None),
+                "attested_maps": int(sum(tally.values())),
+                "unattested_maps": int(unattested),
+                # 축별 집계는 **단위 수준에만** 둔다. 맵마다 축 dict를 실으면 40맵에서 셀 없는
+                # payload가 6.5KB -> 11.2KB로 늘고(+72%), 늘어난 것은 정보가 아니라 같은 두 낱말의
+                # 40회 반복이다. 어느 맵이 미검증인지는 `maps[].declared_frame_source`가 이미 말한다.
+                "axis_sources": {ax: dict(c) for ax, c in axis_tally.items()},
+            },
+            "ruling": ruling,
+            # 문턱은 **서버 config의 선언**이다. 미선언 키는 실리지 않는다 — null로 실으면
+            # 받는 쪽의 `Number(null)`이 0이 되어 「모름」이 「문턱 0」으로 바뀐다.
+            "thresholds": thresholds,
+            "excluded": excluded.as_list(),
+            "excluded_total": excluded.total(),
+            "stats": dict(stats, build_ms=(time.monotonic() - t0) * 1000.0),
+        }
+        diag += ["",
+                 "-- what the screen will show -----------------------------------------------",
+                 "  state=%s  refusal=%s" % (payload["state"], _d(payload["refusal"], 300)),
+                 "  reference.kind=%s (what this run can compare)   reference.map_kind=%s "
+                 "(what the reference map itself carries)"
+                 % (payload["reference"]["kind"], payload["reference"]["map_kind"]),
+                 _DIAG_RULE,
+                 "END req=%s   build=%.1fms   diagnostics file: %s"
+                 % (req_id, payload["stats"]["build_ms"],
+                    _DIAG_FILE_PATH or ("<console only: %s>" % _DIAG_FILE_ERROR)),
+                 _DIAG_RULE, ""]
+        _emit_diag(diag)
     return payload
 
 
