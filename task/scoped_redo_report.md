@@ -31040,3 +31040,51 @@ tests/ 의 나머지 미수집 파일 «다섯»은 «살아 있는 헬퍼»입�
    계측 오류를 되풀이하지 않으려고.
 
 > 📌 **[09-10 17:25] 이 채널의 미답 질문: 3절의 둘을 은퇴시킬지 하나. (그 뒤 다시 «대기»)**
+
+---
+
+# [09-10 17:28] S-134-b — «삭제하지 않았습니다». 제가 올린 근거가 부실했습니다
+
+## 1. 🔴 먼저 — 이 판정의 전제는 «제 보고»였고, 그 보고가 얕았습니다
+제가 3절에 「참조 0, 같은 부류」라고만 적었습니다. 그 둘이 «무엇인지»는 안 열어 봤습니다.
+열어 보니 부류가 다릅니다:
+```
+tests/support/ontology_explorer_browser_app.py         (28줄)
+   """Isolated browser-QA app for the file-backed Ontology Explorer sample."""
+tests/support/ontology_explorer_active_browser_app.py  (26줄)
+   """Isolated browser-QA app for draft lifecycle against the active V2 setup."""
+둘 다 FastAPI 앱을 «세워» 브라우저 QA 로 여는 «수동 하니스»입니다
+(uvicorn 으로 «명령»이 띄우는 모양 — import 하는 소비자가 «있을 수 없습니다»)
+```
+🔴 **「참조 0」은 이 부류에서 «죽음의 증거가 아니라 정상 서명»입니다.** 상설이 이미 적어 둔
+   세 갈래(데코레이터 등록 · 시험만 씀 · 설정에 «문자열»로 이름) 중 넷째에 해당합니다 —
+   «명령줄이 이름을 든» 모듈.
+
+## 2. 그리고 주어가 «살아 있습니다» — 삭제한 셋과 결정적으로 다릅니다
+```
+삭제한 셋   import 하던 모듈이 «저장소에서 삭제됨»(84f4d364 · be27a3aa) -> 주어 없음
+이 둘       admin_auth · ledger.config_explorer_service.OntologyExplorerService ·
+           ledger_api.ontology_config_explorer_router · tests.support.ontology_explorer_sample
+           -> «전부 살아 있습니다». 마지막 것은 시험 넷이 import 하는 모듈입니다
+격리 QA 규율 자체도 살아 있습니다 — CODE_MAP 와 보드가 :8081 · devenv.py up 을 적고 있고,
+상설에도 「클라 기능 수정은 격리환경(8081) 브라우저 E2E 후 커밋」이 있습니다
+```
+⛔ **지우면 «도는 QA 도구»를 지우는 것입니다.** 그래서 지시대로 삭제하지 «않았습니다». 트리 깨끗합니다.
+
+## 3. ⚠️ 그리고 제 계측이 «또» 한 번 틀렸습니다 (스스로 잡음)
+```
+첫 훑기에서 browser_app 이 「DEAD: ontology_explorer_sample」로 나왔습니다.
+실제로는 «상대 임포트»입니다: from .ontology_explorer_sample import …
+제 검사기가 그것을 «절대 이름»으로 조회해서 없다고 답했습니다 — 모듈은 멀쩡히 있습니다
+```
+부류: 「내 게이트는 내가 떠올린 것만 잰다」. 어제 최상위 이름만 본 것과 «같은 병»이 상대 임포트로
+한 번 더 났습니다. 이번엔 커밋 전에 잡았습니다.
+
+## 4. 판정 요청
+```
+ⓐ 그대로 둠 (제 권고) — 도는 QA 하니스이고 주어가 살아 있습니다
+ⓑ tests/ 밖으로 옮김 — 「수집 안 되는데 tests/ 에 있어 커버리지처럼 보인다」가 걱정이면
+   scripts/ 나 tools/ 로. 그러면 「tests/ 의 미수집 파일」 부류 자체가 닫힙니다
+ⓒ 은퇴 — 격리 QA 를 이 경로로 «더는 안 한다»는 사실이 있으면. 그건 제가 모르는 사실입니다
+```
+> 📌 **[09-10 17:28] 이 채널의 미답 질문: 4절 하나 (ⓐ/ⓑ/ⓒ).**
