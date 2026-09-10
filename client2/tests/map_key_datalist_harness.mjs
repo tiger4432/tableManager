@@ -1262,10 +1262,23 @@ const MUTATIONS = [
     name: 'M11 [MEDIUM] the datalist writes the first candidate into the input (a validator)',
     find: `function fillDatalist(listEl, values) {
   if (!listEl) return;`,
+    // 🔴 RE-AIMED 2026-09-10, AND THE MUTANT'S OWN INTENT DECIDED IT. `breaks` says the fact
+    //    under test is 「a hand-typed value survives every answer shape」 -- nothing about the
+    //    TYPE of what gets written. The old version wrote `values[0]` raw, and `values` may hold
+    //    `{value, label}` objects (see `fillDatalist` itself, which unwraps them), so the fake
+    //    DOM received a non-string and the subject died later on `(inp.value || '').trim()`.
+    // ⛔ THAT CRASH CANNOT HAPPEN ON A SCREEN: a browser's `input.value` is always a string, so
+    //    the throw was an artifact of the stub, not a product defect (Lead PM ruling). Scoring
+    //    it as a catch meant this mutant was passing for a reason that does not exist.
+    //    It now writes what the option would carry, unwrapped the same way the subject unwraps
+    //    it, so the mutation does exactly what its name says and the fact it guards is the fact
+    //    that gets measured.
     repl: `function fillDatalist(listEl, values) {
   if (!listEl) return;
   if (values.length && listEl.parent && listEl.parent.children) {
-    listEl.parent.children.forEach(c => { if (c.tagName === 'input') c.value = values[0]; });
+    const first = values[0];
+    const written = (first && typeof first === 'object') ? first.value : first;
+    listEl.parent.children.forEach(c => { if (c.tagName === 'input') c.value = written; });
   }`,
     breaks: 'a hand-typed value survives every answer shape',
   },
