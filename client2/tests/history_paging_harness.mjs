@@ -72,6 +72,12 @@ function die(msg) {
 // the import. Set here rather than faked away, so the import is the real module.
 globalThis.window = { location: { search: '' } };
 const STATE_MOD = await import(pathToFileURL(SRC('state.js')).href);
+// 🔴 C-55. `ledgerReceiptLine` reads two module constants and `isCount`, and sliced code
+//    cannot resolve an import. They are taken FROM THE REAL MODULES for the same reason
+//    `escapeHtml` is below: retyping 'ledger_batch' here would put a second author on a
+//    server word, which is the exact thing the subject refuses to do.
+const TIMELINE_MOD = await import(pathToFileURL(SRC('timeline.js')).href);
+const ABSENT_MOD = await import(pathToFileURL(SRC('absent.js')).href);
 const state = STATE_MOD.state;
 if (!state || typeof state !== 'object') die('client2/src/state.js no longer exports `state`.');
 
@@ -122,6 +128,11 @@ const WANTED = [
   // above it: the row calls it while painting, so leaving it out makes the slice throw
   // and section H paint nothing -- which is how this harness reported THAT change too.
   'auditTargetTable',
+  // C-55. The row now asks the receipt reader for its one line. Same story as every name
+  // above -- the THIRD time this file has recorded it. 🔴 그리고 이것이 그 금지의 실물입니다:
+  // 대상 코드는 «맞는데» 잘라낸 조각이 새 이름을 못 찾아 섹션 H 가 통째로 0 을 그렸습니다
+  // (소유자 상설 2026-09-02: 잘라쓰기 하니스 절대 금지 — 「전부 코드가 맞는데 빨개집니다」).
+  'ledgerReceiptLine',
 ];
 
 function applyOnce(src, find, replace, label) {
@@ -266,6 +277,9 @@ function buildSandbox(src = UNDER_TEST) {
   };
 
   const ctx = {
+    LEDGER_BATCH_COLUMN: TIMELINE_MOD.LEDGER_BATCH_COLUMN,
+    NO_TRANSACTION_BUCKET: TIMELINE_MOD.NO_TRANSACTION_BUCKET,
+    isCount: ABSENT_MOD.isCount,
     state,
     API_BASE,
     pageLimit: 1000,

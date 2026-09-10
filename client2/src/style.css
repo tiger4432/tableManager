@@ -1081,6 +1081,16 @@ body.resizing-active .history-sidebar {
 }
 
 /* Color styling for global history timeline items */
+/* C-55. The ledger batch row: the same left-edge language as the other kinds, so it reads
+   as one of the row types rather than an annotation on somebody else’s row. */
+.timeline-card.color-ledger {
+  border-left: 3px solid var(--info) !important;
+  background: var(--info-weak);
+}
+/* The receipt is VALUES in the value cell -- monospace so the counts line up down the
+   column, and it never grows past that cell. */
+.val-receipt { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
+
 .timeline-card.color-summary {
   border-left: 3px solid var(--accent-2) !important;
   background: var(--accent-2-weak);
@@ -2685,6 +2695,10 @@ body.resizing-active .history-sidebar {
 .kind-batch     { border-color: var(--warning);       background: var(--warning-weak);  color: var(--warning); }
 .kind-create    { border-color: var(--success);       background: var(--success-weak);  color: var(--success); }
 .kind-delete    { border-color: var(--danger);        background: var(--danger-weak);   color: var(--danger); }
+/* C-55 / S-117. A ledger batch is not a cell change, so it does not borrow another pill:
+   folded into `kind-auto` it would sit in the same colour as every other system row and the
+   kind filter -- which builds its list FROM this label -- could not separate them. */
+.kind-ledger    { border-color: var(--info);          background: var(--info-weak);     color: var(--info); }
 
 /* Two lines, because the key and the column answer different questions and the mockup gives
    each its own line rather than joining them with a separator nobody can scan. */
