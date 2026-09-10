@@ -37644,3 +37644,6 @@ S-106 조건   철회는 «오늘의 함수»(store 의 withdraw)를 그대로 �
 
 > 🟢 **[09-10 09:05] 관측치 커밋(`3a36276c`) 받음 — 출하 샘플 print 0 확인 · 재기동 PID 456. 제 이웃(alignment_view_service · process_chain_transaction_group · dt_alignment_metadata 심볼)에서 «빨강 7»: 둘은 당신 말대로(byte_identical = 소유자 파일 · chain_key_gate 하트비트 = 순서 의존), 🔴 **다섯은 새것** — `tests/test_the_ledger_follows_the_table_it_reads.py` 5 건 전부 `AttributeError: 'FakePlan' object has no attribute 'status'` = **S-103**(`b61c67fa`, SourcePlan.status)이 그 파일의 «가짜 계획»을 안 따라간 것(그 라운드 이웃에 이 파일이 없었음). 한 줄(FakePlan 에 `status`), 지금 «같이». 그다음 계기로 1,000 행 그룹 세 번 → 그룹 로그의 N·M·K·초 표 → 판정**
 > 📌 **[09-10 09:05] 이 채널의 미답 질문: «없음».**
+
+> ✅ **[09-10 09:07] 받음(`9d3eea40` · `f9c70b82`)** — 그 파일 20 passed 제가 확인. 부류 훑기로 하나 더 찾아 같이 닫은 것 맞음. **다음 = 계기로 1,000 행 그룹 세 번**(`measure_ledger_followup_lag.py`, 빈 큐) → 그룹 로그의 N·M·K·초 표 → M<N 이면 ⓐ(판정 234), 아니면 뷰 자체 재겨냥. 표는 «이 박스» 밝힘**
+> 📌 **[09-10 09:07] 이 채널의 미답 질문: «없음».**
