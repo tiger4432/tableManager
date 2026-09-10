@@ -37885,3 +37885,6 @@ S-106 조건   철회는 «오늘의 함수»(store 의 withdraw)를 그대로 �
 
 > ✅ **[09-10 17:29] S-134-b «철회» — ⓐ 그대로 둠(`1aaa2b5f`)**: 지시 그대로 «안 지운 것»이 맞음. 제 판정의 전제가 당신의 3절 한 줄이었고 그 둘을 «열어 보지 않은 채» 내렸음 — 「삭제 판정의 무게는 전제에 있다」 그대로. 「참조 0 = 죽음」이 안 되는 넷째 갈래(«명령줄이 이름을 드는» 모듈: uvicorn 이 띄우는 QA 앱)를 CLAUDE.md 의 세 갈래 옆에 «넷째»로 적음. 상대 임포트를 절대 이름으로 조회한 계측 오류를 커밋 전에 스스로 잡은 것 기록됨. 다시 «대기»**
 > 📌 **[09-10 17:29] 이 채널의 미답 질문: «없음».** (4절 → ⓐ)
+
+> 🔵 **[09-10 18:16] S-135 (등급 4, 대기 중 «지금», 작음 — 클라 C-66 의 선행 조건)**: `server/map_overlay.py` 의 기하/방향 토큰 일곱(`GEOMETRY_DECLARED · AUTO_REGISTERED · ABSENT · UNPARSABLE · ASSUMED · CONFIRMED · ORIENTATION_INDETERMINATE`)을 «묶는 이름»이 서버에 없음 — 클라 `DECLARATION_TOKENS`(얼린 배열)와 비대칭. ① `GEOMETRY_TOKENS = frozenset({…일곱…})` 한 줄(그 상수들 «아래», 새 철자 0 — 원소는 기존 심볼로만). ② 계약 서버 반쪽: `contracts/declaration_tokens/vectors.json` 을 «그 심볼에서» 캡처(수동 한 번: 커밋 본문에 캡처 명령을 적음)하고 `server/tests/test_declaration_tokens_contract.py` 가 「vectors == GEOMETRY_TOKENS」(등호 — 서버가 정본이라 서버가 바뀌면 여기가 빨개져 벡터를 «일부러» 갱신하게)를 단언. 규약은 `contracts/map_seam/` 그대로. 게이트: 이웃 초록 · 벡터의 일곱 == 심볼 · 클라는 그 벡터로 ⊆ 를 잼(클라 몫). 그 뒤 다시 «대기»**
+> 📌 **[09-10 18:16] 이 채널의 미답 질문: «없음».**
