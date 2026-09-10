@@ -121,6 +121,26 @@ RETIRE_UNUSED = {
     # `Index Scan using idx_audit_row_history` with this index present AND
     # absent, same 8 buffers both ways.
     "ix_audit_logs_business_key": "audit_logs",
+    # `cell_sources.table_name` and `.column_name`. Census 2026-09-10 over
+    # `server/**`: every equality predicate that names either column names
+    # `row_id` in the SAME filter - 10 sites for `table_name`, 5 for
+    # `column_name`, all in `database/crud.py`, none anywhere else, and no raw
+    # SQL filters on them at all. So no query can want a single-column index on
+    # either, and the plans confirm it: `crud.py:2676`
+    # (table_name, row_id, column_name) takes `idx_sources_lookup_source` and
+    # `chain_replay.py:629` (table_name, row_id IN, source_name) takes
+    # `ix_cell_sources_row_id` - measured with EXPLAIN ANALYZE on this box.
+    #
+    # ⚠️ THEIR SCAN COUNTERS ARE NOT ZERO (86 and 164), and that is exactly why
+    # the counter is a refusal gate here and never the reason: the census is the
+    # reason, and the counters have an owner nobody has named. The gate will
+    # refuse if it disagrees, which is what it is for.
+    #
+    # ⛔ `ix_cell_sources_row_id` IS NOT HERE, though it was named for removal
+    # beside these two: it is 0.9 GB against their 0.4, and it is the one a plan
+    # actually chooses.
+    "ix_cell_sources_table_name": "cell_sources",
+    "ix_cell_sources_column_name": "cell_sources",
 }
 
 
