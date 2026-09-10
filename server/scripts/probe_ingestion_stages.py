@@ -231,8 +231,23 @@ def build_workspace(root: str, table: str) -> str:
     return workspace
 
 
+#: Seats inside the row loop, wrapped only under `--deep`. Per-CELL seats are marked,
+#: because their own wrapper cost is charged into the block they are splitting.
+#: ⚠️ THE LABELS DO NOT SAY "per row" OR "per cell" - the `calls` column does, and it
+#: disagreed with a first version of these names: `create_audit_log` fires ONCE for a new
+#: row, not once per cell, and `assemble_composite_business_key` fires TWICE per row.
+DEEP_SEATS = [
+    ("apply_row_update_internal", "      row loop", False),
+    ("assemble_composite_business_key", "        composite key", False),
+    ("_get_or_create_row", "        get/create row", False),
+    ("_load_metadata_row_cell", "        cell metadata", True),
+    ("compute_priority_value", "        priority compute", True),
+    ("create_audit_log", "        audit log build", True),
+]
+
+
 def run(table: str, rows: int, label: str, number_start: int, work_root: str,
-        keep_workspace: bool):
+        keep_workspace: bool, deep: bool):
     from database import crud, models
     from database.database import engine
     import ingestion_checkpoint
@@ -325,6 +340,15 @@ def run(table: str, rows: int, label: str, number_start: int, work_root: str,
              ("WRITE (whole file)", "  commit (chunk)")],
             "commit (outside the write)")
 
+        if deep:
+            # ⚠️ THESE CHANGE THE NUMBER THEY SPLIT. Three of them run once per CELL -
+            # fifteen times a row on the shipped shape - so the wrapper's own cost lands
+            # inside the block being measured. Use a deep run to RANK the seats against
+            # each other, and a plain run for the file total; comparing a deep total with
+            # a plain one is comparing two different instruments.
+            for attribute, stage_label, _per_cell in DEEP_SEATS:
+                clock.wrap(crud, attribute, stage_label)
+
         handler = dw.IngestionHandler(
             workspace_path=workspace,
             config_path=None,
@@ -355,7 +379,7 @@ def run(table: str, rows: int, label: str, number_start: int, work_root: str,
                 text("SELECT COUNT(*) FROM audit_logs WHERE transaction_id = :t"),
                 {"t": tx}).scalar() or 0
 
-    report(clock, total, rows)
+    report(clock, total, rows, deep)
     print()
     print("MARKS LEFT ON THIS BOX (nothing was deleted)")
     print(f"  table            {table}")
@@ -370,7 +394,7 @@ def run(table: str, rows: int, label: str, number_start: int, work_root: str,
         shutil.rmtree(work_root, ignore_errors=True)
 
 
-def report(clock: Clock, total: float, rows: int):
+def report(clock: Clock, total: float, rows: int, deep: bool = False):
     order = [
         "file signature (sha256)",
         "dedup lookup",
@@ -387,6 +411,7 @@ def report(clock: Clock, total: float, rows: int):
         "      driver send (audit logs)",
         "      SQL elsewhere in apply",
         "      driver send (elsewhere in apply)",
+    ] + [label for _attr, label, _cell in DEEP_SEATS] + [
         "    commit (inside apply)",
         "  checkpoint offset",
         "  commit (chunk)",
@@ -416,16 +441,25 @@ def report(clock: Clock, total: float, rows: int):
         return clock.seconds[parent] - sum(clock.seconds.get(c, 0.0) for c in children)
 
     print("-" * 70)
+    inside_rows = left_over("      row loop",
+                            [label for _a, label, _c in DEEP_SEATS[1:]])
     inside_apply = left_over("  apply_batch_updates", [
         "    bulk_upsert_cell_sources", "    bulk_upsert_cell_overwrites",
         "    bulk_insert_audit_logs", "    commit (inside apply)",
-        "      SQL elsewhere in apply", "      driver send (elsewhere in apply)"])
+        "      SQL elsewhere in apply", "      driver send (elsewhere in apply)",
+        # 🔴 A CHILD LEFT OUT OF THE SUBTRACTION IS COUNTED TWICE. The row loop nests
+        # inside apply, so omitting it here left its seconds inside apply's remainder as
+        # well as on their own line - measured, the two overlapped by the whole loop.
+        "      row loop"])
     inside_write = left_over("WRITE (whole file)", [
         "  apply_batch_updates", "  checkpoint offset", "  commit (chunk)", "  heartbeat",
         "  SQL elsewhere in the write"])
     inside_cells = left_over("    bulk_upsert_cell_sources",
                              ["      SQL in cell-source upsert",
                               "      driver send (cell sources)"])
+    if deep and inside_rows is not None:
+        print(f"{'        REST OF the row loop':34s} {inside_rows:9.3f} "
+              f"{inside_rows / total * 100:6.1f}% {'':7s} {inside_rows / rows * 1000:8.3f}")
     if inside_cells is not None:
         print(f"{'      REST OF cell upsert (python)':34s} {inside_cells:9.3f} "
               f"{inside_cells / total * 100:6.1f}% {'':7s} {inside_cells / rows * 1000:8.3f}")
@@ -459,6 +493,10 @@ def main(argv=None):
                         help="where the throwaway workspace is built (default: a temp dir)")
     parser.add_argument("--keep-workspace", action="store_true",
                         help="leave the workspace and its archived file on disk")
+    parser.add_argument("--deep", action="store_true",
+                        help="also split the row loop inside `apply_batch_updates`; three "
+                             "of those seats run per CELL, so the run ranks them against "
+                             "each other rather than totalling with a plain run")
     args = parser.parse_args(argv)
 
     label = args.label or f"PROBE-S118-{uuid.uuid4().hex[:8].upper()}"
@@ -466,7 +504,7 @@ def main(argv=None):
     os.makedirs(work_root, exist_ok=True)
     try:
         run(args.table, args.rows, label, args.number_start, work_root,
-            args.keep_workspace)
+            args.keep_workspace, args.deep)
     except ProbeRefusal as refusal:
         print(f"REFUSED: {refusal}")
         return 2
