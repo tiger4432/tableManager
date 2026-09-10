@@ -2,7 +2,7 @@
 //
 // 🔴 이 하니스가 재는 것은 «반환»이 아니라 «요청»입니다. 그 구별이 이 파일의 존재 이유입니다:
 //    `createWalkBoxWalk` 은 `spec.hops` 를 «받아 놓고» 안 꺼내던 함수입니다. 부르는 쪽은
-//    hops 를 실었고(`walk_box_panel.js:230`), 화면은 「경로 A · 3홉」이라 썼고, 전선에는
+//    hops 를 실었고(`walk_box_panel.js:238`), 화면은 「경로 A · 3홉」이라 썼고, 전선에는
 //    hops 가 «없어서» 서버 기본값 12 가 걸었습니다. 반환만 재는 시험은 그 상태에서
 //    «전부 초록»입니다 — 노드가 오긴 오니까요.
 //    => 능력은 «요청»에서 확인합니다. 「그 함수가 있나」가 아니라 「무엇이 이 이음매를 지나가나」.
@@ -46,7 +46,7 @@ const FULL = {
   type: 'wafer@1', keys: { wafer_id: 'W-1' }, follow: ['inspected@1', 'observed@1'],
   direction: 'outgoing', hops: 3, node_limit: 120,
 };
-/** 🔴 R&D 보드가 «실제로» 만드는 모양입니다 (`walk_box_panel.js:217-230`). 지어낸 것이 아닙니다. */
+/** 🔴 R&D 보드가 «실제로» 만드는 모양입니다 (`walk_box_panel.js:225-243`). 지어낸 것이 아닙니다. */
 const PANEL = { type: 'wafer@1', keys: { wafer_id: 'W-1' }, follow: ['inspected@1'], hops: 3 };
 
 // ═══ ① 계기가 «눈이 멀지» 않았는지 ═══════════════════════════════════════════════════

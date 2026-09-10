@@ -15,7 +15,7 @@
  *
  *     server/ledger_trace_router.py:735~737  `/declaration` carries `attributes` per entity —
  *                                          ABSENT, not empty, when a type declares none
- *     client2/src/walk/derive.js:72       `tableColumns` composes 깊이 + declared keys +
+ *     client2/src/walk/derive.js:106      `tableColumns` composes 깊이 + declared keys +
  *                                          qualifier names + declared ATTRIBUTES + 충돌 +
  *                                          라벨 + id
  *

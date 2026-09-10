@@ -135,6 +135,31 @@ function suite(M) {
   ok(colNames(M.tableColumns(DIE, 'die@1', [])).includes('mat_id'),
     'T6 the version suffix does not hide the declaration from the lookup');
 
+  // 🔴 C-70. 좁은 프리셋과 구획 — 걷기 «검색창»이 이 둘을 불러서 자기 컬럼을 짓습니다. 두 화면이
+  //    같은 함수를 지나는지는 그쪽 하니스가 화면으로 재고, 여기서는 그 «함수 자체»를 잽니다.
+  ok(colNames(M.tableColumns(DIE, 'die', [], M.COLUMNS.FOR_PICKING)) === 'mat_id,x,y,mat_type,라벨',
+    'G1 the picking preset is the declared keys and the label, and nothing else');
+  ok(colNames(M.tableColumns(DIE, 'die', ['gate'], M.COLUMNS.FOR_PICKING))
+    === 'mat_id,x,y,mat_type,라벨',
+    'G2 a qualifier that arrived is NOT a picking column — it is read on the other screen');
+  ok(colNames(M.tableColumns(GREW, 'die', [], M.COLUMNS.FOR_PICKING)).includes('lot'),
+    'G3 a key added to the declaration reaches the picking list too, with no edit here');
+  ok(colNames(M.tableColumns(DIE, 'die', [])) !== colNames(M.tableColumns(DIE, 'die',
+    [], M.COLUMNS.FOR_PICKING)),
+    'G4 the two presets really differ — otherwise G1 would pass on a preset that does nothing');
+  const SEC = M.sectionsByType([{ id: 'a', type: 'die@1' }, { id: 'b', type: 'wafer@1' },
+    { id: 'c', type: 'die@1' }]);
+  ok([...SEC.keys()].join(',') === 'die@1,wafer@1',
+    'G5 sections keep the order the walk returned, because that order is part of the answer');
+  ok(SEC.get('die@1').length === 2 && SEC.get('wafer@1').length === 1,
+    'G6 every node lands in exactly one section');
+  ok(M.sectionsByType([]).size === 0,
+    'G7 nothing walked is NO section rather than one empty one');
+  ok(M.sectionHeading('die@1', 3) === 'die@1 · 3',
+    'G8 the section head is the type and the count, not a sentence');
+  ok(M.sectionHeading('', 0) === '타입 없음 · 0',
+    'G9 a node whose type is missing still says so, and 0 is still drawn');
+
   // ── 판정 130-C ㉡: the layout has ONE author ────────────────────────────────────
   // 🔴 THE DEFECT THIS CLOSES WAS NOT IN THIS FILE. `main.js` re-derived the identity
   //    columns out of the name list by arithmetic — `cols.slice(1, cols.length - 2 -
@@ -236,6 +261,18 @@ failedNames.length = 0;
 // -- mutants -----------------------------------------------------------------------------
 // ③ of the Lead's gate: deleting the filling line must turn ① red.
 const DEFECTS = [
+  // 🔴 C-70. Three for the two functions the picking list now leans on. Single-line anchors on
+  //    purpose: a transform that matches nothing leaves the module intact and ESCAPES, which is
+  //    a louder failure than a green mutant but still a wasted round.
+  ['the picking preset stops being a preset and answers with the full table',
+    (s) => s.replace("  if (preset === COLUMNS.FOR_PICKING) return [...identity,"
+      + " { name: '라벨', kind: 'label' }];",
+      '  if (false) return identity;')],
+  ['sections stop keeping the order the walk returned them in',
+    (s) => s.replace('  return sections;', '  return new Map([...sections].reverse());')],
+  ['the section head drops the count and says only the type',
+    (s) => s.replace("  return `${type || '타입 없음'} · ${count}`;",
+      "  return `${type || '타입 없음'}`;")],
   ['the spellings are compared directly again, so nothing is ticked',
     (s) => s.replace('  const wanted = new Set((routeFollow || []).map(bareName));\n'
       + '  return (declaredNames || []).filter((name) => wanted.has(bareName(name)));',
