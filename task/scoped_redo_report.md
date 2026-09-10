@@ -30802,3 +30802,42 @@ roleframe 의 거절   raise RoleFrameError(...)  -> 프레임 «전체»가 죽
    적은 그것 · test_ontology_config_explorer 둘)
 ```
 > 📌 **[09-10 16:57] 이 채널의 미답 질문: «없음».** (2절은 «정정 보고»이지 물음이 아닙니다)
+
+---
+
+# [09-10 17:03] S-133 ② 착지 (`3c81682d`) — cardinality 에 «처음으로» 읽는 쪽이 생겼습니다
+
+## 1. 착지
+```
+같은 배치에서 한 주어에 목적어가 «둘» (one 술어) -> gate.refuse("cardinality_one_violated")
+   -> 세고 «건너뜁니다». building_molecule 안이라 counts-then-raises 가 그대로 걸립니다
+자리   runtime_v2._screened_atoms — 배치 «전체»가 보이는 곳. 충돌 집합은 루프 «전»에 한 번
+사유   배치 안에는 «순서가 없습니다». 배치 «사이»는 도착 순서가 무엇이 현재인지 말해 주지만,
+      한 배치 안의 둘은 아무도 못 가릅니다 — 순서를 «지어내지 않는» 유일한 답이 거절입니다
+```
+
+## 2. 안 건드린 것 / 공짜인 것
+```
+③ many  «무변». 출하 선언이 전부 many 라 오늘 동작은 한 글자도 안 바뀝니다
+비용    one 술어가 «하나도 없으면» 배치를 «걷지 않습니다» (그 순서를 시험이 박습니다) —
+        수천 행/트랜잭션에서 「찾을 게 없다」를 알아내는 데 스캔을 쓰면 안 되므로
+같은 값 두 번  «충돌 아님». 같은 말을 두 번 해도 「지금 무엇인가」의 답은 하나입니다
+키 순서       정규화합니다. {lot,slot} 과 {slot,lot} 은 «한 주어»입니다
+```
+
+## 3. 남은 것 — ①④ (다음 커밋)
+```
+①  쓰기 경로에서 «배치당 한 질의»로 그 주어들의 현재 원자를 찾아 supersedes 를 찍음
+   모양은 store.existing_registrations 그대로 (청크 + (subject_type, subject_keys) IN)
+   질의: DISTINCT ON (subject_type, subject_keys) ... ORDER BY … occurred_at DESC
+        -> 「가장 최근」이 곧 「현재」입니다(대체 사슬이 선형이므로)
+④  걷기 엣지에 cardinality
+게이트: 배치 둘(A 뒤 B) -> 걷기에 B 만 · live_claims 가 A 를 «실제로» 뺌 · 이웃 초록
+```
+
+## 4. 게이트 (이번 커밋)
+```
+✅ 새 단언 9 · 이웃(이름으로 뽑음) -> 691 passed · 4 skipped
+⚠️ 빨강 하나는 기존(이 박스 gitignore 선언의 dt_slot 타입)
+```
+> 📌 **[09-10 17:03] 이 채널의 미답 질문: «없음».**
