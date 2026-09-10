@@ -31000,3 +31000,43 @@ tests/verify_upsert.py              -> 정상
       (부류: 「내 게이트는 내가 떠올린 것만 잰다」).
 ```
 > 📌 **[09-10 17:21] 이 채널의 미답 질문: «없음».** (2절은 «이름만» 올리는 것이고 물음이 아닙니다)
+
+---
+
+# [09-10 17:25] S-134 착지 (`f8b08ea7`) — 수집되지 않던 셋 은퇴, 그리고 «둘 더» 이름만
+
+## 1. 셋, 각각 재서
+```
+verify_advanced_ingestion.py  parsers.generic_ingester   -> 84f4d364 에서 삭제됨. 주어 없음 -> 은퇴
+verify_ingestion.py           parsers.parser_inventory_a -> be27a3aa 에서 삭제됨. 주어 없음 -> 은퇴
+verify_upsert.py              🔴 «개명 후보가 아닙니다» — 취향이 아니라 실측입니다:
+                              직접 돌리면 «수집 0». test_* 함수가 «하나도 없고»
+                              verify_upsert_scenario() 뿐이며, httpx 로
+                              127.0.0.1:8000 «살아 있는 서버»에 POST 합니다
+                              개명해서 수집시키면 «아무것도 안 내거나»(함수도 개명하면)
+                              스위트가 «구동 중인 서버에 의존»하게 됩니다
+                              주어(/tables/{t}/data/updates)는 «살아 있지만» 그 라우트는
+                              test_api.py · test_undeclared_column_warning.py 가
+                              TestClient 로 «이미» 칩니다 -> 판정의 둘째 갈래대로 은퇴
+저장소 어디에서도 셋을 «참조하지 않습니다»
+```
+
+## 2. 게이트
+```
+✅ tests/ 에 verify_ 접두 파일 «0» · def verify_ «0»
+✅ 수집 5,561 -> 5,564. 🔴 그 +3 은 «S-132 의 단언 셋»이고,
+   «삭제는 수를 0 만큼 움직였습니다» — 그 자체가 「한 번도 수집된 적 없다」의 증거입니다
+```
+
+## 3. 같은 부류 «둘 더» — 지시 밖이라 이름만 올립니다
+```
+tests/support/ontology_explorer_browser_app.py         저장소 전체 참조 «0»
+tests/support/ontology_explorer_active_browser_app.py  저장소 전체 참조 «0»
+```
+tests/ 의 나머지 미수집 파일 «다섯»은 «살아 있는 헬퍼»입니다(각각 시험 1~9개가 import):
+`isolated_data_root` · `prod_import_check` · `sql_budget` · `support/isolated_pg` ·
+`support/ontology_explorer_sample`.
+⚠️ 이번엔 한 파일씩 «전체 이름»으로 저장소 전부를 훑고 셌습니다 — 지난번 최상위 이름만 본
+   계측 오류를 되풀이하지 않으려고.
+
+> 📌 **[09-10 17:25] 이 채널의 미답 질문: 3절의 둘을 은퇴시킬지 하나. (그 뒤 다시 «대기»)**
