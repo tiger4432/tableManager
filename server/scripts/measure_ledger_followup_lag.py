@@ -123,13 +123,50 @@ def refuse_dirty_queue(engine, *, allow_backlog: bool) -> int:
     return depth
 
 
+def _refuse_a_load_that_wrote_nothing(load, output: str) -> None:
+    """A run whose load wrote nothing has no lag to measure, and it LOOKS like success.
+
+    🔴 TWO WAYS TO WRITE NOTHING, AND BOTH USED TO PRINT A TIDY EMPTY TABLE. A `--start`
+    over rows that already exist re-sends identical upserts, so the server answers 200 with
+    `updated_count` 0 and no event is queued: the report then reads "handled 0 of 0", which
+    is the shape of a clean fast run rather than of a run that did not happen. A refused
+    connection does the same thing from the other end. Named here, before the table.
+    """
+    if load.poll() not in (0, None):
+        # 🔴 THE CHILD'S BYTES MUST NOT REACH THIS CONSOLE UNCHANGED, at read OR at print.
+        # Reading with `errors="replace"` stopped the parent dying on cp949 Korean, and then
+        # the U+FFFD it produced killed the parent AT THE PRINT instead - the same fault
+        # moved four lines down. What identifies the failure (`URLError`, `WinError 10061`)
+        # is ASCII, so the quoted tail is forced to ASCII and the rest costs a dot.
+        tail = " / ".join(line.strip() for line in (output or "").split("\n")
+                          if line.strip())[-300:]
+        raise MeasurementRefusal(
+            "the load failed (exit %s), so nothing was written. It said: %s"
+            % (load.poll(), tail.encode("ascii", "replace").decode("ascii")))
+    changed = None
+    if "{" in (output or ""):
+        try:
+            changed = json.loads(output[output.rindex("{"):]).get("rows_changed")
+        except ValueError:
+            changed = None
+    if changed == 0:
+        raise MeasurementRefusal(
+            "the load sent its rows and the server changed NONE of them - this --start is "
+            "over rows that already exist, so no event was queued and there is no lag to "
+            "measure. Raise --start past every generated index.")
+
+
 def run(engine, args) -> dict:
     started_at = _now()
     load = subprocess.Popen(
         [sys.executable, os.path.join(_HERE, "generate_source_rows.py"),
          "--source", args.source, "--rows", str(args.rows), "--months", "1",
          "--start", str(args.start), "--apply", "--url", args.url],
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8")
+        # 🔴 `errors="replace"`: the child's refusals are Korean and this console is cp949,
+        # so a strict decode raised in the PARENT and killed a measurement that had already
+        # run. A byte this cannot decode must cost one glyph, never the run.
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+        encoding="utf-8", errors="replace")
 
     base_atoms = atom_count(engine, args.source)
     stales, t0 = [], time.monotonic()
@@ -143,6 +180,7 @@ def run(engine, args) -> dict:
             break
         time.sleep(SAMPLE_SECONDS)
     output = load.communicate()[0] if load.poll() is not None else ""
+    _refuse_a_load_that_wrote_nothing(load, output)
 
     from sqlalchemy import text
     with engine.connect() as connection:
@@ -234,7 +272,12 @@ def main(argv=None) -> int:
     print("load          %d rows from index %d" % (args.rows, args.start))
     print("before        queue %d   oldest census %s"
           % (depth, ("%.1fs (%s)" % (stale, who)) if stale is not None else "-"))
-    report(run(engine, args), args)
+    try:
+        result = run(engine, args)
+    except MeasurementRefusal as refusal:
+        print("REFUSED: %s" % refusal)
+        return 2
+    report(result, args)
     return 0
 
 

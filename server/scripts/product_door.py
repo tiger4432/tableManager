@@ -32,12 +32,19 @@ from __future__ import annotations
 
 import datetime
 import json
+import os
 import time
 
 PUT_ROWS = "/tables/{table}/data/updates"
 DELETE_ROWS = "/tables/{table}/rows/batch_delete"
 MAX_ROWS_PER_REQUEST = 1000
-DEFAULT_BASE_URL = "http://127.0.0.1:8000"
+#: 🔴 THE PORT COMES FROM THE DEPLOYMENT'S OWN VARIABLE, NOT FROM A LITERAL HERE. This read
+#: `:8000` while every launcher in this repository binds `:8080`
+#: (`run_decoupled_app.py`: `os.environ.get("ASSY_API_PORT", "8080")`), so every tool that
+#: took the default met a connection refusal - and a refused connection is not a loud
+#: failure in a measuring script, it is zero rows that look like a fast run. Ruling 172 saw
+#: this once already at another door. One spelling: the same variable, the same default.
+DEFAULT_BASE_URL = "http://127.0.0.1:%s" % os.environ.get("ASSY_API_PORT", "8080")
 DEFAULT_TIMEOUT = 120.0
 
 
