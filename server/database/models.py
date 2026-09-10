@@ -1299,6 +1299,13 @@ def ensure_alignment_decision_key_indexes(engine, config=None, rules=None):
             rule, (catalog or {}).get(str((rule or {}).get("source_table") or "")))
         if not statement:
             continue
+        # 🔴 ONE INDEX IS ONE INDEX, HOWEVER MANY RULES ASK FOR IT. Two rules over the same
+        # table with the same decision key name the same index, and the first boot said
+        # "built 3" where the catalogue held 2 - a count that is not the number of things
+        # that exist. Skipped rather than deduplicated at the end, because the second pass
+        # would also issue a CONCURRENTLY build for an index just made.
+        if name in created:
+            continue
         if _ensure_one_index(engine, name, statement, "decision-key"):
             created.append(name)
     return created

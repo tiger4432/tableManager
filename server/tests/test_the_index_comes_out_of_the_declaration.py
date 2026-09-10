@@ -114,3 +114,36 @@ def test_the_ensure_runs_with_no_config_because_boot_calls_it_that_way():
 
     # And with no config at all - the shape boot uses - it must still resolve a catalogue.
     assert models.ensure_alignment_decision_key_indexes(_Refuses(), rules=[]) == []
+
+
+def test_two_rules_over_one_table_ask_for_one_index_and_the_count_says_one():
+    """🔴 A COUNT THAT IS NOT THE NUMBER OF THINGS THAT EXIST (깔끔 ①). The first boot
+    logged "built 3" where the catalogue held 2: three alignment rules, two of them over
+    the same table with the same decision key, so two of the three name one index.
+
+    ⛔ SKIPPED, NOT DEDUPLICATED AT THE END, because the second pass would also issue a
+    CONCURRENTLY build for an index the first pass just made."""
+    from database import models
+
+    built = []
+
+    class _Engine:
+        pass
+
+    def _fake(engine, name, statement, what):
+        built.append(name)
+        return True
+
+    original = models._ensure_one_index
+    models._ensure_one_index = _fake
+    try:
+        created = models.ensure_alignment_decision_key_indexes(
+            _Engine(), config={"t": {"kind": "table"}},
+            rules=[{"alignment": True, "source_table": "t", "decision_key": ["a"]},
+                   {"alignment": True, "source_table": "t", "decision_key": ["a"]},
+                   {"alignment": True, "source_table": "u", "decision_key": ["a"]}])
+    finally:
+        models._ensure_one_index = original
+
+    assert created == ["idx_t_decision_key", "idx_u_decision_key"]
+    assert built == created, "the duplicate must not even be attempted"
