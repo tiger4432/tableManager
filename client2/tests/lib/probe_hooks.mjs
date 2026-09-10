@@ -19,7 +19,7 @@
 // hook only asks whether that file exists. A hooks thread that had to be told about each load
 // would need a port, a protocol, and an ordering guarantee; a filename needs none of them.
 import { existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve as resolvePath } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 // `map_editor.__probe__.ovprov3.js` -> tag `ovprov3`
@@ -41,6 +41,8 @@ function originalDirOf(copyDir) {
 //    were written into `client2/src` that specifier happened to land on the real neighbour. In
 //    the mirror it lands on nothing. So a stub's siblings resolve against the ORIGINAL directory
 //    too; what a stub must never get is another stub, which would be a cycle through itself.
+/** 상대 지정자 전부 — `./x.js` 도 `../a/b.js` 도. 베어·절대 지정자는 손대지 않는다. */
+const RELATIVE_RE = /^\.\.?\//;
 const STUB_RE = /\.__probe_stub__\.([A-Za-z0-9_]+)\.js$/;
 
 export async function resolve(specifier, context, nextResolve) {
@@ -74,11 +76,19 @@ export async function resolve(specifier, context, nextResolve) {
       //    recovered from the mirror path -- one marker stripped -- which is why the mirror
       //    exists at all: these hooks run on another thread and cannot be TOLD anything, so the
       //    path has to carry the answer.
-      // ⚠️ Still scoped to a probe copy as the importer, and still only for `./name.js`. The
-      //    same specifier imported anywhere else in the process resolves normally.
-      const original = originalDirOf(copyDir);
+    }
+    // 🔴 C-72. ANY RELATIVE SPECIFIER, NOT ONLY `./name.js`. The stub branch above stays
+    //    same-directory, but the FALL-THROUGH has to cover `../other/thing.js` too: the first
+    //    subject that imported one (`walk/main.js` -> `../rnd_board/api.js`) resolved INTO the
+    //    mirror, where that directory does not exist, and died with ERR_MODULE_NOT_FOUND before
+    //    a single check ran. The mirror path carries the original, so the WHOLE specifier is
+    //    resolved against the original directory instead of one name being joined to it.
+    // ⚠️ Still scoped to a probe copy as the importer: the same specifier imported anywhere
+    //    else in the process resolves normally.
+    if (RELATIVE_RE.test(specifier)) {
+      const original = originalDirOf(dirname(fileURLToPath(parent)));
       if (original) {
-        const real = join(original, `${sib[1]}.js`);
+        const real = resolvePath(original, specifier);
         if (existsSync(real)) {
           return { url: pathToFileURL(real).href, shortCircuit: true };
         }

@@ -31,9 +31,11 @@ import { fetchDeclaration, createWalkBoxWalk, pathsBetween, fetchKeyValues }
 //    뜹니다 — 오류 없이. 그게 기준 ④ 위반입니다.
 import { ensureWalkStyles } from './styles.js';
 import {
-  bareName, followFromRoute, followChoices, keepWalkableRoutes, tableColumns, cellSource,
-  cutBudgets, sectionsByType, sectionHeading,
+  bareName, followFromRoute, followChoices, keepWalkableRoutes, cutBudgets,
 } from './derive.js';
+// 🔴 C-72. 표의 «결정»은 전부 여기 있고 이 파일에는 DOM 쓰기만 남습니다. 결정이 `boot()` 안
+//    클로저로 있는 동안은 「이 화면이 그 함수를 부르나」를 «거동으로» 잴 자리가 없었습니다.
+import { walkTableView } from './table_view.js';
 
 /** 서버가 받는 값 그대로. 화면이 «자기 이름»을 만들지 않습니다. */
 const DIRECTIONS = ['both', 'outgoing', 'incoming'];
@@ -42,12 +44,6 @@ const DIRECTIONS = ['both', 'outgoing', 'incoming'];
 //    옛 수를 보여 주고, 그게 오늘 고친 그 병(값의 저자가 둘)입니다. 비워 두면 «안 실리고»,
 //    안 실리면 서버가 정합니다 — 그리고 무엇으로 정해졌는지는 응답의 `walk` 가 말합니다.
 const SERVER_DEFAULT = '서버 기본';
-
-// 🔴 「없음」과 「0」을 «가릅니다». `v || ''` 로 쓰면 0 과 빈 문자열과 false 가 «같은 빈 칸»이
-//    되고, 좌표 0 을 가진 다이가 좌표 없는 다이처럼 보입니다.
-const valueText = (v) => (v === null || v === undefined ? '' : String(v));
-// 자릿수 정렬은 «숫자로 읽히는 칸»에만. x·y 가 세로로 안 맞으면 못 읽습니다.
-const isNumeric = (s) => s !== '' && Number.isFinite(Number(s));
 
 const el = (doc, tag, cls, text) => {
   const n = doc.createElement(tag);
@@ -367,63 +363,30 @@ export function boot(doc, host, deps) {
    * 🔴 순서는 «서버가 준 그대로». 화면이 다시 정렬하지 않습니다 -- 그 순서(깊이 -> 종류 -> 라벨)
    *    가 답의 일부입니다.
    */
+  // 🔴 C-72. 이 함수는 이제 «아무것도 정하지 않습니다» — 구획도 컬럼도 셀 글자도 못 그린
+  //    수도 `walkTableView` 가 답하고, 여기서는 그 답을 DOM 으로 옮기기만 합니다. 그래서
+  //    하니스가 이 화면을 세워 「그려진 것이 그 함수의 답인가」를 «거동으로» 물을 수 있습니다.
   function renderTable(box, r) {
-    const CAP = 200;
-    const shown = r.nodes.slice(0, CAP);
-
-    // 노드에 «닿은 엣지»가 들고 온 수식어. 엣지는 collect 로 안 걸리므로 여기 다 있습니다.
-    const qualsByNode = new Map();
-    for (const e of r.edges || []) {
-      const q = e && e.qualifiers;
-      if (!q || typeof q !== 'object') continue;
-      for (const id of [e.target, e.source]) {
-        if (!id || !qualsByNode.has(id)) qualsByNode.set(id, qualsByNode.get(id) || {});
-      }
-      // 🔴 «닿은» 쪽에만 답니다 -- 씨앗 쪽에 달면 씨앗이 모든 엣지의 수식어를 다 이고 갑니다.
-      const at = qualsByNode.get(e.target) || {};
-      Object.assign(at, q);
-      qualsByNode.set(e.target, at);
-    }
-
-    // 🔴 C-70. 구획도 «derive.js» 가 정합니다 — 걷기 검색창이 같은 함수를 부릅니다. 여기
-    //    여섯 줄로 다시 적으면 두 표가 구획에서 갈라지고, 그 갈라짐은 오류를 안 냅니다.
-    const sections = sectionsByType(shown);
-
-    for (const [type, rows] of sections) {
+    const view = walkTableView(r, entities());
+    for (const section of view.sections) {
       const sec = el(doc, 'div', 'wk-sec');
-      sec.append(el(doc, 'div', 'wk-sechead', sectionHeading(type, rows.length)));
-
-      // 컬럼은 «선언 + 온 것»에서. 규칙과 사유는 `derive.js` 에 있고 하니스가 그 함수를 잽니다.
-      const qualNames = [];
-      for (const n of rows) {
-        for (const k of Object.keys(qualsByNode.get(n.id) || {})) {
-          if (!qualNames.includes(k)) qualNames.push(k);
-        }
-      }
-      // 🔴 ONE LOOP FOR THE HEADER AND THE CELLS, so the order is stated once. The line that
-      //    used to sit here re-derived the identity columns by arithmetic
-      //    (`cols.slice(1, cols.length - 2 - qualNames.length)`) — a second author for the
-      //    layout that `derive.js` composes, and one that goes wrong SILENTLY the day a third
-      //    group of columns appears (판정 130-C ㉡).
-      const cols = tableColumns(entities(), type, qualNames);
+      sec.append(el(doc, 'div', 'wk-sechead', section.heading));
 
       const table = el(doc, 'table', 'wk-table');
       const thead = el(doc, 'thead');
       const hr = el(doc, 'tr');
-      for (const c of cols) hr.append(el(doc, 'th', '', c.name));
+      for (const column of section.columns) hr.append(el(doc, 'th', '', column.name));
       thead.append(hr);
       table.append(thead);
 
       const tbody = el(doc, 'tbody');
-      for (const n of rows) {
+      for (const row of section.rows) {
         const tr = el(doc, 'tr');
-        const q = qualsByNode.get(n.id) || {};
-        cols.forEach((c) => {
-          const v = valueText(cellSource(c, n, q));
-          const td = el(doc, 'td', isNumeric(v) ? 'wk-num' : '', v);
-          if (c.kind === 'id') td.className = 'wk-id';
+        for (const cell of row.cells) {
+          const td = el(doc, 'td', cell.numeric ? 'wk-num' : '', cell.text);
+          if (cell.kind === 'id') td.className = 'wk-id';
           tr.append(td);
-        });
+        }
         tbody.append(tr);
       }
       table.append(tbody);
@@ -431,8 +394,8 @@ export function boot(doc, host, deps) {
       box.append(sec);
     }
 
-    if (r.nodes.length > CAP) {
-      box.append(el(doc, 'div', 'wk-note', `이 아래 ${r.nodes.length - CAP} 개 안 그림`));
+    if (view.hidden) {
+      box.append(el(doc, 'div', 'wk-note', `이 아래 ${view.hidden} 개 안 그림`));
     }
   }
 

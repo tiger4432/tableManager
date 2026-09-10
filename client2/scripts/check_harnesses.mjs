@@ -1274,6 +1274,11 @@ const FLOORS = new Map([
   // a value carrying markup does not come back out as markup, and the backlog has a ceiling
   ['escaping_harness.mjs', 56],
   // clicking a derived route fills follow, and a later-hop predicate stays visible
+  // New 2026-09-10 with C-72. Floor is the count it reports on the commit that introduces
+  // it. 🔴 IT STANDS THE WALK PAGE UP. `boot(doc, host, deps)` takes an injected doc, so the
+  // page's own rendering is scored on screen rather than by trusting that its copy is gone --
+  // M1 is a copy put back, and it changes no count at all.
+  ['walk_table_harness.mjs', 15],
   ['walk_route_fill_harness.mjs', 54],
   // New 2026-09-08 with C-40 ② (the declaration form's three attribute seats). Floor is
   // the count it reports on the commit that introduces it -- there is no earlier tree to
