@@ -723,7 +723,7 @@ delete_cell_source_batch        crud.py:4402 -> `compute_priority_value(...)` �
 
 | 표 A 의 ③ | 착지 뒤 | 자리 | 정의역 | 읽는 쪽 |
 |---|---|---|---|---|
-| A2-1 값 목적어의 타입 | `vocabulary.<p>.object.value_type` | ① | 🔴 **③** — `number` «만» 통과(판정 178). string·boolean·timestamp 는 «이름 대어» 거절, 여는 것은 **S-84** | 발행 «0» (`roleframe.py` 에 `value_type` 0회 · `_OBJECT_VALUE_ROLE_KINDS` :493 이 여전히 `quantity`) |
+| A2-1 값 목적어의 타입 | `vocabulary.<p>.object.value_type` | ① | ✅ **② (S-84 닫힘, 09-10 13:0x 확인)** — `EMITTABLE_VALUE_TYPES` 가 오늘 `{number, string, boolean}` «셋»입니다. 남은 하나 `timestamp` 는 «S-84-b» 로 이름이 있고, 문법이 받는 넷(`VALUE_TYPES`)과의 차이는 그대로 «이름 대어» 거절됩니다 | ⚰️ 그때: 발행 «0» · `number` 만 통과(판정 178) |
 | A2-3 카디널리티 | `vocabulary.<p>.cardinality` ∈ {one, many}, 기본 `many` | ① | ① | «0» — 무해(검사하는 쪽이 없을 뿐) |
 | A1-1 엔티티 은퇴 | `entities.<t>.status` ∈ {active, retired}, 기본 `active` | ① | ① | «0» — 무해 |
 | A4-2 소스 은퇴 | `sources.<s>.status` 같음 | ① | ① | 🔴 «0» — ⚠️ **무해하지 않음**: retired 로 적어도 «계속 번역»합니다 |
@@ -844,6 +844,8 @@ label 「keys 앞 둘」  ② 로 적힌 «표면 규칙» — 판정 169 로 �
 문법의 ③ 은 «0 이 아니라 1» 이다.
 ⚠️ 남은 정의역 빚 «하나»는 «이름이 붙어» 있다 — 값 타입이 오늘 `number` 만 발행되고,
    그 밖은 「S-84」를 대며 거절된다. 침묵이 아니라 «번호 붙은 빚»이다
+   ⚰️ **09-10: S-84 가 닫혔습니다** — 발행이 `{number, string, boolean}` 셋을 읽고,
+      남은 `timestamp` 는 S-84-b 로 이름이 옮겨졌습니다. 빚이 «줄었고 여전히 번호가 있습니다»
 ```
 🔴 **걷기·행동 관문(09-16)은 «따로»입니다** — 거기 남은 ③: 시각 · 집합 읽기 · 수식 · M 대수 · 진위(B12) · 대조의 둘(B6) · 행동의 넷(C).
 
