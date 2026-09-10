@@ -644,6 +644,23 @@ class Supervisor:
                                 stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT)
 
+    def _tees_to_console(self, name) -> bool:
+        """이 자식의 stdout 을 콘솔에도 흘릴 것인가 (S-138 ①).
+
+        기본은 «전부» — `console_names` 가 비어 있으면 오늘과 같다.
+
+        🔴 WHY THE FILE IS NEVER GATED ON THIS. The file is the record and the console
+        is a pair of eyes; an operator choosing what to WATCH must not thereby choose
+        what gets KEPT. So this predicate reaches only the console write.
+
+        ⚠️ NAMES COME FROM `specs` VERBATIM - matching is case- and space-insensitive so
+        an operator can type them, but no second spelling of a child's name is made.
+        """
+        wanted = getattr(self, "console_names", None)
+        if not wanted:
+            return True
+        return (name or "").strip().lower() in wanted
+
     def _attach_log_pump(self, child):
         """Tee a child's merged stdout/stderr to the console AND to its own file.
 
@@ -679,7 +696,10 @@ class Supervisor:
                 handle.write(header)
                 handle.flush()
                 written = os.path.getsize(path)
-                console = getattr(sys.stdout, "buffer", None)
+                # [S-138] 콘솔에 흘릴 자식인가. 파일은 «무조건» 쓴다 — 파일이 정본이고
+                # 선택은 «보는 눈»의 문제이지 «남기는 기록»의 문제가 아니다.
+                console = (getattr(sys.stdout, "buffer", None)
+                           if self._tees_to_console(spec.name) else None)
                 for line in iter(stream.readline, b""):
                     try:
                         handle.write(line)

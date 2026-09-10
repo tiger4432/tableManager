@@ -157,12 +157,15 @@ class LauncherArgs(object):
     decision and the wording are both testable without running a launcher.
     """
 
-    __slots__ = ("server_only", "reload", "preflight_only",
+    __slots__ = ("server_only", "reload", "preflight_only", "console_names",
                  "exit_code", "lines", "is_refusal", "unknown")
 
     def __init__(self, server_only=False, reload=False, preflight_only=False,
-                 exit_code=None, lines=(), is_refusal=False, unknown=()):
+                 console_names=(), exit_code=None, lines=(), is_refusal=False,
+                 unknown=()):
         self.server_only = server_only
+        #: [S-138] 콘솔에 tee 할 자식 이름(소문자). 비어 있으면 «전부» = 오늘 그대로.
+        self.console_names = frozenset(console_names)
         self.reload = reload
         self.preflight_only = preflight_only
         self.exit_code = exit_code
@@ -174,6 +177,15 @@ class LauncherArgs(object):
     def should_start(self):
         return self.exit_code is None
 
+
+def _console_names(value):
+    """`a,b` -> ['a','b'] (소문자·공백 제거). 빈 조각은 버린다.
+
+    ⚠️ 이름은 `specs` 의 자식 이름과 «같은 것»이고, 여기서 새 철자를 만들지 않는다 —
+    비교만 대소문자·공백에 관대하다.
+    """
+    return [piece.strip().lower() for piece in (value or "").split(",")
+            if piece.strip()]
 
 def parse_launcher_args(argv):
     """``argv`` is the argument list WITHOUT the program name -> LauncherArgs.
@@ -187,7 +199,22 @@ def parse_launcher_args(argv):
     wants_help = False
     unknown = []
 
+    console_names = []
+    expecting_console = False
+
     for argument in argv:
+        # [S-138] `--console a,b` 와 `--console=a,b` 를 «둘 다» 받는다 — 운영자가 둘 중
+        # 하나를 쓸 것이고, 안 받는 쪽은 「모르는 인자」로 거절돼 기동이 안 된다.
+        if expecting_console:
+            console_names.extend(_console_names(argument))
+            expecting_console = False
+            continue
+        if argument == "--console":
+            expecting_console = True
+            continue
+        if argument.startswith("--console="):
+            console_names.extend(_console_names(argument.split("=", 1)[1]))
+            continue
         if argument in ("--server-only", "--no-client"):
             server_only = True
         elif argument == "--reload":
@@ -209,4 +236,5 @@ def parse_launcher_args(argv):
     if wants_help:
         return LauncherArgs(exit_code=0, lines=help_lines())
     return LauncherArgs(server_only=server_only, reload=reload_,
-                        preflight_only=preflight_only)
+                        preflight_only=preflight_only,
+                        console_names=console_names)

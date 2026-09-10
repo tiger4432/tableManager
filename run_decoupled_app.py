@@ -354,6 +354,9 @@ def main():
                      "reporting every heartbeat it finds." % _roster_err, level="WARNING")
 
     supervisor = Supervisor(specs, log=log_launcher)
+    # [S-138] 콘솔에 흘릴 자식 선택. 비어 있으면 «전부» — 오늘 그대로.
+    # 🔴 파일 로그는 이 값과 «무관»하다: 넷 다 자기 파일에 그대로 쓴다.
+    supervisor.console_names = args.console_names
 
     # Graceful shutdown handler
     def shutdown_all(signum=None, frame=None):
