@@ -770,15 +770,34 @@ if (mutate) {
     swap('M21 the marker is folded to a boolean (WHICH choice is lost)',
       "chosen: (m && !isSilent(m[FRAME_CHOSEN_KEY])) ? String(m[FRAME_CHOSEN_KEY]) : null,",
       'chosen: !!(m && m[FRAME_CHOSEN_KEY]),'),
-    swap('M22 the marker is minted as a seventh token instead of a record',
-      "  DECLARED, AUTO_REGISTERED, ABSENT, UNPARSABLE, INDETERMINATE, ASSUMED]);",
-      "  DECLARED, AUTO_REGISTERED, ABSENT, UNPARSABLE, INDETERMINATE, ASSUMED, 'chosen']);"),
+    // 🔴 RE-AIMED 2026-09-10, NOT RETIRED, AND THE SOURCE DECIDED WHICH. The anchor said six
+    //    tokens; the list has seven since `confirmed` was borrowed from `map_overlay.py` [D7]
+    //    on 2026-08-06. The FACT this mutant guards is untouched and the subject states it in
+    //    its own words two screens up: 「BORROW, DO NOT INVENT -- every token below exists on
+    //    the server first and none is minted here」. A token minted on this side is still the
+    //    defect, so the mutation is aimed at today's line rather than buried.
+    // ⚠️ THE ORDINAL IS OUT OF THE NAME. It said "a seventh token", which is a count written
+    //    next to a list -- the exact thing the subject's own heading comment stopped doing
+    //    ("NO COUNT IN THIS HEADING, ON PURPOSE ... a number written next to a list is a second
+    //    statement of the list, and it goes stale silently"). This name went stale for that
+    //    reason; the replacement cannot.
+    swap('M22 the marker is minted as an extra token instead of a record',
+      "  DECLARED, AUTO_REGISTERED, ABSENT, UNPARSABLE, INDETERMINATE, ASSUMED, CONFIRMED]);",
+      "  DECLARED, AUTO_REGISTERED, ABSENT, UNPARSABLE, INDETERMINATE, ASSUMED, CONFIRMED,"
+        + " 'chosen']);"),
     // ⚠️ THIS ANCHOR WAS STALE AND THE WHOLE SWEEP DIED ON IT (found 2026-08-05). It still said
     //    "the five tokens" after `assumed` made the header say six, so `--mutate` exited 2 with
     //    nothing scored — and the gate never noticed because the gate runs this harness BARE.
     //    A mutation corpus whose control cannot be applied is a corpus nobody is running.
+    // 🔴 THE ONLY CONTROL IN THIS CORPUS, AND IT HAD ROTTED -- so the sweep could not tell
+    //    「my checks measure behaviour」 from 「my checks key on source text」, and its 21/21 said
+    //    twenty-one were caught, not that they were caught for the right reason.
+    // 🔵 IT ROTTED BECAUSE THE SUBJECT WAS FIXED. The heading said "the six tokens" and the
+    //    count was DELETED on purpose ("NO COUNT IN THIS HEADING, ON PURPOSE"), so this anchor
+    //    was pointing at a defect the subject had already removed. Re-aimed at the heading as
+    //    it stands -- which now carries no number, and therefore cannot go stale the same way.
     swap('CONTROL a comment change must NOT be caught',
-      '// ── the six tokens ', '// ── the 6 tokens '),
+      '// ── the tokens ─', '// ── the tokens (vocabulary) ─'),
   ];
 
   console.log('\n  MUTATION CONTROLS -- a surviving mutant means the check above it is inert.\n');
