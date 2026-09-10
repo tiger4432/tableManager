@@ -205,7 +205,12 @@ def test_watcher_created_logs_capped_at_500(db_session, monkeypatch):
 
     def fake_load(fp, *args, **kwargs):
         if hasattr(fp, "name") and "table_config.json" in str(getattr(fp, "name", "")):
-            return {"cap_test_table": {"business_key": "k", "display_columns": ["k", "v"]}}
+            # `column_types` is what says a column EXISTS, and existence is what a write
+            # is filtered by since S-119 - a table declared only by what a screen shows
+            # loads nothing at all, which is what this fixture used to say by omission.
+            return {"cap_test_table": {"business_key": "k",
+                                       "display_columns": ["k", "v"],
+                                       "column_types": {"k": "string", "v": "string"}}}
         return original_load(fp, *args, **kwargs)
 
     monkeypatch.setattr(json_mod, "load", fake_load)

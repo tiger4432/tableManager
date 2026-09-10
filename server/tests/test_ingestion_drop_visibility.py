@@ -1,6 +1,6 @@
 """[Drop visibility] A dropped column must leave a record, without becoming noise.
 
-`_send_to_upsert` filters each row down to `display_columns` BEFORE handing it to
+`_send_to_upsert` filters each row down to the loadable columns BEFORE handing it to
 `crud`, so `crud._warn_undeclared_column_once` can never fire for anything the filter
 removes. The write still reports SUCCESS with an empty error_message, so today a drop
 produces no evidence of any kind.
@@ -38,7 +38,15 @@ WATCHER_LOGGER = "Watcher.DirectoryWatcher"
 FAKE_TABLE = "dropvis_test_table"
 FAKE_TABLE_INFO = {
     "business_key": "pkg_id",
+    # 🔴 `column_types` IS WHAT SAYS A COLUMN EXISTS, and existence is what a write is
+    # filtered by since S-119 (판정 09-10 12:20). This entry used to declare the table by
+    # what a SCREEN shows, which now means "no column of this table exists" and drops
+    # every field of every file - so the counts these cases pin came out nine instead of
+    # four. `display_columns` stays because the showing axis is still real; it is simply
+    # not the one this filter reads.
     "display_columns": ["pkg_id", "base", "x", "y", "leg"],
+    "column_types": {"pkg_id": "string", "base": "string", "x": "number",
+                     "y": "number", "leg": "string"},
 }
 
 
@@ -54,6 +62,12 @@ class _StubSession:
 
 
 class _StubCrud:
+    # 🔴 THE REAL ONE, NOT A STUB ANSWER (S-119). Which columns may be written is the
+    # subject of these cases, so a stub deciding it here would be a second spelling of the
+    # loadable axis - free to agree with the assertions while the product disagreed.
+    from database import crud as _real_crud
+    loadable_columns = staticmethod(_real_crud.loadable_columns)
+
     @staticmethod
     def apply_batch_updates(_db, _t_name, batch_obj):
         # results, changed_cells, created_logs, deleted_row_ids
@@ -208,7 +222,7 @@ def test_every_emitted_line_is_cp949_encodable(watcher, caplog):
     emitted = [r.getMessage() for r in caplog.records
                if r.name == WATCHER_LOGGER
                and ("undeclared column" in r.getMessage()
-                    or "display_columns are dropped" in r.getMessage())]
+                    or "absent from the declaration are dropped" in r.getMessage())]
     assert emitted
     for msg in emitted:
         msg.encode("cp949")

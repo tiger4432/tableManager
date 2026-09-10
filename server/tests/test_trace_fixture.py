@@ -285,8 +285,18 @@ def test_ten_percent_of_dt_lot_is_present_but_wrong(built):
 
 # ------------------------------------------------------- ingestion contract
 def test_emitted_columns_satisfy_the_ingestion_contract(built):
-    """Header must be a subset of display_columns, and must carry either the business
-    key or every composite source -- otherwise std_parser rejects the file to err/."""
+    from database import crud
+
+    """Header must be a subset of the LOADABLE columns, and must carry either the
+    business key or every composite source -- otherwise std_parser rejects the file to err/.
+
+    🔴 THIS CASE HELD A THIRD SPELLING OF THE LOADABLE RULE and it is why it was red
+    (S-111): it computed `display_columns or column_types`, the watcher computed
+    `display_columns`, and `crud` computed `column_types`. The fixture emits eight columns
+    of `dt_log` that only `column_types` declares - which the API accepted and the watcher
+    dropped - so this assertion was reporting the divergence, not a fixture defect.
+    S-119 gave the rule one home; asking that home is the fix.
+    """
     import json
     # ⛔ THE SHIPPED CATALOGUE, NOT THE LIVE ONE (판정 212). This opened
     # `config/table_config.json`, which is gitignored - so it asked whether THIS BOX happens
@@ -300,7 +310,7 @@ def test_emitted_columns_satisfy_the_ingestion_contract(built):
     for table, order in ORDER.items():
         assert table in tc, "%s is emitted but not declared in table_config" % table
         info = tc[table]
-        loadable = set(info.get("display_columns") or info.get("column_types", {}))
+        loadable = set(crud.loadable_columns(info))
         unknown = [c for c in order if c not in loadable]
         assert not unknown, "%s emits columns not loadable: %s" % (table, unknown)
 
