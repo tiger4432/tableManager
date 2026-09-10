@@ -1296,3 +1296,69 @@ def test_the_retired_triggers_are_gone_rather_than_shipped_disabled():
 
     assert "dt_job_attribution" not in triggers
     assert "eqp_frame_attribution" not in triggers
+
+
+def _shipped_rules():
+    import json
+    import os
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(here, "config", "sample", "chain_rules.json.sample"),
+              encoding="utf-8") as f:
+        return json.load(f)["rules"]
+
+
+def test_every_rule_that_ships_enabled_says_why(  ):
+    """🔴 THE ENABLED SET IS A DECLARATION OF WHAT A FRESH INSTALL STARTS BY ITSELF
+    (S-132, 판정 17:15). Read one at a time each looks defensible; read as a table it is a
+    claim about the product's out-of-box behaviour, and every member of it owes a reason.
+
+    ⛔ THE REASON MUST COME FROM THE RULE'S OWN PURPOSE, not from its name. The three that
+    ship enabled each carry one that is checkable: a test reads what one produces, an owner
+    ruling put one on the chain, and the shipped ledger declaration reads a third's target.
+    """
+    enabled = [r for r in _shipped_rules() if r.get("enabled") is not False]
+
+    assert enabled, "if this is empty the predicate below is vacuous"
+    missing = sorted(r.get("name") for r in enabled if not r.get("__why_enabled"))
+    assert not missing, f"enabled without a stated reason: {missing}"
+
+
+def test_the_dt_chain_ships_wholly_off_rather_than_broken_in_the_middle():
+    """🔴 MEASURED 2026-09-10, AND IT IS WHY TWO RULES WERE TURNED OFF. The DT derivation
+    shipped with its ENDS on and its MIDDLE off:
+
+        dt_log_to_dt_alignment_metadata  ENABLED  -> wafer_map_metadata
+        dt_metadata_to_dt_inventory      disabled <- the only rule that consumes it
+        dt_inventory_to_standard_dt_map  ENABLED  <- waits on dt_inventory
+
+    So a fresh install wrote `wafer_map_metadata` that nothing in the chain read, and kept
+    a rule armed for a table the chain never produced. Neither end carried a reason for
+    being on, and turning them off makes the set coherent - which is what
+    「enabling them is a separate, explicit decision」 meant in the first place.
+    """
+    by_name = {r.get("name"): r for r in _shipped_rules()}
+    chain = ("dt_log_to_dt_map", "dt_log_to_dt_alignment_metadata",
+             "dt_metadata_to_dt_inventory", "dt_inventory_to_standard_dt_map",
+             "dt_inventory_to_core_usage_map", "dt_log_to_core_usage_map",
+             "dt_log_to_primary_core_frame")
+
+    for name in chain:
+        assert name in by_name, name
+        assert by_name[name]["enabled"] is False, f"{name} ships enabled with no reason"
+
+
+def test_a_rule_is_not_left_armed_for_a_table_no_enabled_rule_produces():
+    """⚠️ THE GENERAL FORM OF THE ABOVE. An enabled rule whose trigger table is produced
+    ONLY by disabled rules can never fire from the chain - it reads as running and does
+    nothing, which is the least visible kind of broken."""
+    rules = _shipped_rules()
+    enabled = [r for r in rules if r.get("enabled") is not False]
+    produced_by_enabled = {r.get("target_table") for r in enabled}
+    produced_by_any = {r.get("target_table") for r in rules}
+
+    stranded = sorted(
+        r.get("name") for r in enabled
+        if r.get("trigger_table") in produced_by_any
+        and r.get("trigger_table") not in produced_by_enabled)
+
+    assert not stranded, f"enabled but unreachable through the chain: {stranded}"

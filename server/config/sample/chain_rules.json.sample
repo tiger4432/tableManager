@@ -1,6 +1,6 @@
 {
   "__comment": "Chain ingestion rules. A chain reacts to a committed write on trigger_table and projects it onto target_table through a mapper. | The production->inventory rule was removed with the demo tables it referenced (2026-08-01 fixture reset).",
-    "_max_chain_depth_comment": "체인이 체인을 깨우는 깊이의 한계. 이 수를 넘는 사건은 이름을 대고 거절되고 FAILED 로 끝납니다 (뒤가 막히지 않도록). 체인 밖에서 온 사건은 깊이가 없어 영향받지 않습니다.",
+  "_max_chain_depth_comment": "체인이 체인을 깨우는 깊이의 한계. 이 수를 넘는 사건은 이름을 대고 거절되고 FAILED 로 끝납니다 (뒤가 막히지 않도록). 체인 밖에서 온 사건은 깊이가 없어 영향받지 않습니다.",
   "max_chain_depth": 8,
   "rules": [
     {
@@ -33,7 +33,7 @@
           "reference_spec": "valid_die_ref:PRD-A_DT13"
         }
       ],
-      "enabled": true
+      "enabled": false
     },
     {
       "__comment": "BLOCKED 2026-09-06, NOT by its own condition any more. The job column it asked for IS now declared (`target_job_column: dt_job`), so the reason recorded on 2026-09-04 is spent -- but turning `enabled` on makes the LOADER refuse the whole file: `allow_chain_trigger cycle: wafer_map_metadata -> dt_inventory -> wafer_map_metadata`. Measured 2026-09-06 with the committed validator, on this file and on the sample. So enabling it is blocked on the cycle ruling, not on this rule. WHY IT WENT OFF, KEPT BECAUSE THE NUMBER IS THE REASON: disabled 2026-09-04 by lead on measured cost rather than on principle -- it refused on every event, so it contributed nothing; I first left it enabled because it is alone in its trigger group and so destroys no sibling's writes. The 50-row load run falsified the other half of that: 50 input rows became 101 outbox events, and this rule turned the 51 derived ones into 153 refusal groups at three retries each, draining at 2.5-3.5s per group. The mapper itself took 0.5s; the run took 3.5 minutes. That multiplier IS the owner's 'the chain does not tick'. If it starts refusing again, THAT is the shape to look for: a refusal here multiplies into retry groups rather than failing once. See the cycle note on the standard-map rule. | S2 identity projection. This is the explicitly allowed second hop of dt_log -> wafer_map_metadata -> dt_inventory. The worker keeps all other chain-created events blocked; allow_chain_trigger is safe only because the loader rejects cycles among such edges.",
@@ -63,7 +63,7 @@
       "allow_chain_trigger": true,
       "allow_map_metadata_upsert": true,
       "allow_retraction": true,
-      "enabled": true
+      "enabled": false
     },
     {
       "__comment": "DISABLED 2026-09-04 by lead, to stop it deleting a sibling's writes. It refuses on every event (resolve_column against dt_inventory), so it can never contribute; but a chain group commits only if the whole group succeeds, so its raise erases what dt_log_to_dt_alignment_metadata wrote in the same dt_log group. Measured as a controlled pair: 0 rows with a raising sibling, 5 rows on the same input without one. Re-enable by declaring the job column it asks for. | Core automatic frame: dt_core_view is review-only and is intentionally NOT in this chain. The mapper reads one completed dt_log job, selects the primary core by the earliest dt_index (stable lot/slot/wafer tie breakers), filters the same raw rows in the shared alignment engine, then atomically writes dt_inventory.core_frame plus core_x/y base/sign/offset equations. All material-specific policy lives below: change reference.table/map_id_template/fields when the physical defect map becomes wafer-id keyed; change accepted_metrics and alignment_thresholds without editing Python. The configured empty index_col forces defect/bin value scoring instead of transfer-order scoring.",
@@ -79,19 +79,33 @@
       "target_field": "core_frame",
       "job_column": "dt_job",
       "primary_selector": {
-        "group_columns": ["core_lot", "core_slot", "core_wafer"],
-        "order_columns": ["dt_index", "core_lot", "core_slot", "core_wafer"]
+        "group_columns": [
+          "core_lot",
+          "core_slot",
+          "core_wafer"
+        ],
+        "order_columns": [
+          "dt_index",
+          "core_lot",
+          "core_slot",
+          "core_wafer"
+        ]
       },
       "reference": {
         "table": "core_wafer_map",
         "map_id_template": "{core_wafer}",
-        "fields": ["core_wafer"]
+        "fields": [
+          "core_wafer"
+        ]
       },
       "x_col": "core_x",
       "y_col": "core_y",
       "value_col": "c_bn",
       "index_col": "",
-      "accepted_metrics": ["values", "occupancy"],
+      "accepted_metrics": [
+        "values",
+        "occupancy"
+      ],
       "assume_reference_geometry": true,
       "allow_assumed_geometry": true,
       "__alignment_thresholds_derivation": "DELIBERATE DEPARTURE from map_overlay_config.alignment (20/20) — set by the product owner, not transcribed. Read this before you delete it as an underived copy. | map_overlay_config.json's red line says 'do not transcribe these numbers, re-derive them for a different floor'. This IS the different floor, which is exactly the case that line describes: the 20 was derived against the valid_die_ref FLOOR (seed_valid_die_ref_floor.py's verify_discrimination reports that floor separates 7 non-identity frames by at least 20 dies), and this chain does not score against that floor. It scores a core wafer map (reference.table=core_wafer_map) whose reference CARRIES VALUES (value_col=c_bn), and a value-carrying reference discriminates on bin fingerprint rather than on occupancy, so the floor's occupancy resolution is not this axis's resolution. | The override is applied by alignment_view_service as a SHALLOW update on a per-invocation copy, so alignment.index (the sequence axis) keeps its own 20/20 — that key separation is deliberate and is the only thing that limited the blast radius the one time these were lowered (2026-08-05, 20 -> 1). Do not deepen that merge. | If you change reference.table or value_col, these two numbers stop being derived and must be derived again.",
@@ -138,7 +152,8 @@
       "mapper_module": "mappers.production_mapper",
       "mapper_function": "reserve_materials_batch_df",
       "is_batch": true,
-      "enabled": true
+      "enabled": true,
+      "__why_enabled": "SHIPS ENABLED because a test asserts on what it produces: this rule's own comment says it is the only live exercise of the CHAIN path and that test_api.py::test_chained_ingestion reads the outbox events it creates. Turning it off removes that coverage silently."
     },
     {
       "__comment": "lot_event -> lot_slot_wafer: the two parallel colon lists (slotnumbers, waferids) become one row per (lot, slot, wafer, time). Owner ruling 2026-08-31 - derive it from lot_event through the chain, the way production spreads derived tables. A view exists only on the box whose script ran, so a declaration pointing at one ships a source that never appears elsewhere. | list_delimiter IS DECLARED, NOT ASSUMED: a separator is a property of the feed, and a wrong one produces ROWS rather than an error - every wafer id glued into one - so nobody notices until a map is wrong. The five column names are the same kind of fact and are overridable for the same reason. | A row whose two lists DISAGREE is refused by the mapper, never trimmed to the shorter one: trimming drops wafers silently and the loss is indistinguishable from wafers that were never in the lot. Measured on the authoring box 2026-08-31: 80 rows carry both lists, 907 pairs, ZERO disagree. | SHIPS DISABLED because the target table has to exist first - a chain cannot create it, and it cannot write into a view. Enable this once lot_slot_wafer is a real table and the ledger source needs NO change at all: the table it already declares, business_key lot_slot_wafer_key, is exactly what this mapper builds. | Proven on the authoring box 2026-08-31, in this order: baseline 907 has_wafer atoms, drop the view, let the declared table stand in its place, enable, run the chain (907 rows, 5,442 cells, 907 distinct keys), re-translate the ledger source over its 25 lots, and compare - 907 atoms again, same predicate, same 238 {lot, slot} subjects. The count matching is not the proof on its own; the content matching is.",
@@ -154,17 +169,19 @@
       "wafer_list_column": "waferids",
       "lot_column": "lot_id",
       "time_column": "event_time",
-      "event_type_column": "event_type"
+      "event_type_column": "event_type",
+      "__why_enabled": "SHIPS ENABLED by owner ruling 2026-08-31, quoted in this rule's own comment: derive lot_slot_wafer from lot_event THROUGH THE CHAIN, the way production spreads derived tables. A view exists only on the box whose script ran, so shipping it off would ship a source that never appears elsewhere."
     },
     {
-      "__comment": "[S-100 \u24d0] dt_job \ub2f9 \ud55c \ud589\uc5d0 \uadf8 job \uc758 \ud589 \uc218\ub97c \uc501\ub2c8\ub2e4. \uc6d0\uc7a5\uc740 \uc9d1\uacc4\ub97c \ubabb \ud558\ubbc0\ub85c(\uad6d\uc18c\uc801\u00b7\ubb34\uacc4\uc0b0) \uadf8 \uc148\uc774 \uc5ec\uae30\uc11c \ub3d5\ub2c8\ub2e4 \u2014 \uc608\uc804\uc5d4 \uc6d0\uc7a5\uc758 \ud30c\uc774\uc36c \ub9f5\ud37c `dt-job-role` \uc774 len(unit) \uc744 \uc148\uc5c8\uace0, \uadf8 \uc606 \uc120\uc5b8\uc740 dt_index \ub97c \uac00\ub9ac\ud0a4\ub294 \ud5c8\uc218\uc600\uc2b5\ub2c8\ub2e4(\ud310\uc815 197\u00b7211).",
+      "__comment": "[S-100 ⓐ] dt_job 당 한 행에 그 job 의 행 수를 씁니다. 원장은 집계를 못 하므로(국소적·무계산) 그 셈이 여기서 돕니다 — 예전엔 원장의 파이썬 맵퍼 `dt-job-role` 이 len(unit) 을 셈었고, 그 옆 선언은 dt_index 를 가리키는 허수였습니다(판정 197·211).",
       "name": "dt_log_to_dt_job_rollup",
       "trigger_table": "dt_log",
       "target_table": "dt_job_rollup",
       "mapper_module": "mappers.dt_job_rollup_mapper",
       "mapper_function": "build_dt_job_rollup_rows",
       "is_batch": true,
-      "enabled": true
+      "enabled": true,
+      "__why_enabled": "SHIPS ENABLED because the shipped ledger declaration READS dt_job_rollup (measured 2026-09-10). The ledger is local and calculation-free so it cannot count a group; S-100 (a) moved that count here. Off, the ledger source has nothing to read."
     }
   ]
 }
