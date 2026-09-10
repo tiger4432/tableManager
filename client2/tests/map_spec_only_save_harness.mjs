@@ -44,6 +44,7 @@
 // square, unrotated, isotropic fixture cannot show a swap defect at all, and the stranded-cell
 // count it produced would be an artefact of the symmetry rather than a measurement.
 import { readFileSync } from 'node:fs';
+import { scoreMutants } from './lib/mutation_scorer.mjs';
 import { loadWithProbe } from './lib/probe.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -1004,32 +1005,58 @@ const MUTANTS = {
   console.log(`ASSERTIONS ${base.compared} ${base.failures.length}`);
   base.failures.forEach(f => console.log(`   ✗ ${f}`));
 
-  let caught = 0, total = 0;
-  for (const [name, fn] of Object.entries(MUTANTS)) {
-    const isControl = name.startsWith('__control');
-    let f = [];
-    try { f = (await run(() => fn(SRC))).failures; }
-    catch (e) { f = [`threw: ${String(e && e.message).slice(0, 80)}`]; }
-    const newOnes = f.filter(x => !base.failures.includes(x));
-    if (isControl) {
-      if (newOnes.length > 0) {
-        console.log(`   ✗ CONTROL '${name}' was CAUGHT — the assertions are keying on source `
-          + 'text, not on behaviour, and the caught count below is decoration');
-        base.failures.push(`control mutant '${name}' was caught`);
-      } else if (verbose) console.log(`   control '${name}': escaped, as required`);
-      continue;
-    }
-    total++;
-    if (newOnes.length > 0) caught++;
-    else console.log(`   ✗ mutant '${name}' was NOT caught — the assertions above do not score `
-      + 'what they claim to score');
-    // EVERY new failure, not just the first. Which assertions a mutant trips is the evidence
-    // that they score what they claim to; one truncated line cannot show that, and for the
-    // mutant that restores the unbounded write the full list IS the bug report.
-    if (verbose) {
-      console.log(`   mutant '${name}': ${newOnes.length} new failure(s)`);
-      newOnes.forEach(f => console.log(`       · ${f}`));
-    }
+  // 🔴 WHICH ASSERTION MUST CATCH WHICH MUTANT -- MEASURED, NOT DECIDED. Every name below was
+  //    read off this harness's own `--verbose` output: the mutant's FIRST NEW failure. Writing
+  //    the table from intuition is how a mutant comes to name an assertion that never fires --
+  //    the corpus stays green while the line it was meant to guard goes unmeasured.
+  // 🔵 THREE PAIRS SHARE A NAME, AND THAT IS CORRECT. `M/a`, `K1/` and `L/a` are each broken by
+  //    two mutants, and these ids carry no case dimension to split on -- one fact broken by two
+  //    mutations is not a defect, so nothing is forced apart (ruling, 2026-09-10).
+  const CATCHES = {
+    'cleared-declaration-resurrects': 'F/a cleared valid_die_ref does NOT come back',
+    'stored-fields-are-not-preserved': 'A/unmodelled stored fields survive the write',
+    'writes-over-a-read-it-could-not-confirm': 'C/no write followed a read that could not be confirmed',
+    'identity-comes-from-the-loaded-map': 'A/the row written is the CURRENTLY SET table and map id',
+    'stranded-cells-are-not-counted': 'D/the confirm carries the EXACT stranded count',
+    'foreign-identity-reports-a-misleading-zero': 'E/it says the count is UNKNOWN, not zero',
+    'new-versus-update-is-assumed': 'B/the confirm says NEW REGISTRATION, in those words',
+    'the-write-asks-nobody': 'A/exactly one confirm',
+    'auto-registration-is-lost-on-save': 'J/a a marked spec writes the flag back',
+    'auto-registration-is-written-for-everything': 'J/b an unmarked spec does NOT gain the flag',
+    'frame-choice-is-lost-on-save': 'L/a a frame chosen from the data says so in the payload',
+    'frame-choice-is-written-for-everything': 'L/c a declared frame does NOT gain the marker',
+    'frame-choice-forgets-which-choice': 'L/a a frame chosen from the data says so in the payload',
+    'frame-choice-reads-one-axis-only': 'L/d a marker on only ONE axis is not a choice',
+    'frame-choice-leaks-across-a-frame-window': 'L/f a frame carrying the mark answers for its OWN map',
+    'a-blank-box-resolves-to-zero': 'M/a a blank START box writes NOTHING',
+    'the-writer-stops-asking-about-blanks': 'M/a a blank START box writes NOTHING',
+    'the-write-has-no-response-bound': 'K1/the request carries an abort signal',
+    'the-abort-signal-is-never-wired-through': 'K1/the request carries an abort signal',
+    'the-timeout-claims-nothing-was-recorded': 'K3/the timeout does NOT claim nothing was recorded',
+    'the-network-error-claims-nothing-was-recorded': 'K4/a network error does not claim nothing was recorded',
+    'the-bound-timer-is-never-cleared': 'K5/...and the bound timer was cleared, not left armed',
+  };
+
+  // 🔴 SCORED BY `lib/mutation_scorer.mjs`. This loop asked 「did anything new fail」 and folded a
+  //    THROW into that as a new failure -- a harness that stopped, banked as a harness that
+  //    noticed. It now asks 「did THE NAMED assertion fail」, and a throw is INERT.
+  const entries = Object.entries(MUTANTS).map(([name, fn]) => ({ name, fn,
+    catches: CATCHES[name] }));
+  const isControl = (m) => m.name.startsWith('__control');
+  const runMutant = async (m) => {
+    const out = await run(() => m.fn(SRC));
+    // NEW failures only: a baseline failure is not evidence about this mutant.
+    return { failures: out.failures.filter((x) => !base.failures.includes(x)) };
+  };
+  const defects = await scoreMutants(entries.filter((m) => !isControl(m)), runMutant,
+    { title: '--- defect mutants (each must be caught by the assertion it names) ---' });
+  const controls = await scoreMutants(entries.filter(isControl), runMutant,
+    { mustCatch: false, title: '--- controls (each must wake nothing) ---' });
+  const total = entries.filter((m) => !isControl(m)).length;
+  const caught = defects.caught;
+  if (controls.wrong > 0) {
+    base.failures.push(`${controls.wrong} control mutant(s) were caught -- the assertions are `
+      + 'keying on source text, not on behaviour, and the caught count is decoration');
   }
   console.log(`--- mutation check: ${caught}/${total} defects caught ---`);
   process.exit(base.failures.length === 0 && caught === total ? 0 : 1);
