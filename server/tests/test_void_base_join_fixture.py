@@ -76,20 +76,58 @@ def _void_tables_declared():
 # The config decision
 # ---------------------------------------------------------------------------
 
-# ⚰️ `test_base_columns_are_declared` RETIRED WITH ITS SUBJECT (S-126, 판정 251).
-#
-# It asserted that `base_id`/`bx`/`by` are declared with types, reading THIS BOX's
-# gitignored catalogue. Moved to the shipped one the statement is simply FALSE: the sample
-# declares none of the three. That is not a test to force green - it is a finding, and it
-# belongs in the queue rather than under an assertion:
-#
-#   🔴 the seed writes three columns the SHIPPED catalogue does not declare, and `crud`
-#      drops an undeclared column with a 200 - so on a fresh install those writes go
-#      nowhere and say nothing. Either the sample should declare them or the seed should
-#      stop writing them, and which one is a ruling.
-#
-# Asserting it against the box was what hid that question for as long as this box happened
-# to declare them.
+def test_base_columns_are_declared():
+    """🔴 REVIVED AGAINST THE SHIPPED CATALOGUE (S-127, 판정 254). S-126 retired it because
+    it read THIS BOX's gitignored declaration; moved to the shipped one the statement was
+    FALSE - the sample declared none of the three - and that was a FINDING, not a test to
+    force green. `crud` drops an undeclared column with a 200, so on a fresh install those
+    three writes went nowhere and said nothing.
+
+    ⛔ AND THE REPOSITORY HAD ALREADY RULED, in a file nobody had read into the question:
+    `migrations/add_bonding_base_join_index.sql` builds an index on
+    `bonding_log (base_id, bx, by, row_id)` and its own header says 「Declare them in
+    table_config.json (`column_types`, NOT `composite_key_source`) before this file is
+    worth anything」. Three view scripts read the same three columns. Four tracked
+    artifacts stand on this declaration.
+
+    ⚠️ THE TYPES ARE NOT CHOSEN HERE. `void_obs` (the join partner) and `bonding_core_die`
+    already declare the same triple as string/number/number; a third opinion about one
+    column's type is how a join comes to return zero rows.
+    """
+    types = BONDING["column_types"]
+
+    for column in DERIVED_COLUMNS:
+        assert column in types, column
+    assert types["base_id"] == "string"
+    assert types["bx"] == "number" and types["by"] == "number"
+
+
+def test_this_seed_still_cannot_fill_the_shipped_key_and_that_is_not_a_bug_here():
+    """🔴 THE SECOND TRUE SENTENCE (판정 254). Declaring the three was necessary and is not
+    sufficient, and the reason is not an oversight to be tidied away.
+
+    Measured 2026-09-10: this seed writes 15 columns to `bonding_log` and the shipped
+    catalogue declares 6 of them after this round. More decisively, it fills NONE of the
+    five columns of the shipped composite key - so `crud.unfilled_key_columns` refuses
+    every row of it on a fresh install.
+
+    ⛔ AND FILLING THEM WOULD BE WORSE THAN LEAVING THEM. The shipped key is
+    `base_lot/base_slot/bonding_index/b_wx/b_wy`, and `b_wx`/`b_wy` are DT coordinates -
+    `docs/architecture/DT_CORE_FRAME_CHAINS.md` states it - while this seed's coordinates
+    are BASE ones. A synthetic value invented to satisfy the key would be a key that
+    identifies nothing, which is the failure `test_base_columns_are_not_key_material`
+    below already refuses from the other direction.
+
+    ⚰️ So the seed is not touched: it addresses a different unit than this table's
+    identity does. Where that unit should live is S-127-b, ruled after S-120 because
+    `bonding_log`'s own identity (자리 vs 웨이퍼) is that item's subject.
+    """
+    written = {"b_bn", "base_id", "bond_eqp", "bond_lot", "bond_slot", "bond_x", "bond_y",
+               "bx", "by", "dt_x", "dt_y", "event_time", "dt_lot", "dt_slot",
+               "stack_height"}
+
+    assert written - set(BONDING["column_types"]),         "if this is empty the two vocabularies have converged - re-read S-127-b"
+    assert not set(BONDING["composite_key_source"]) & written,         "the seed fills none of the key columns; a seed row cannot be keyed"
 
 
 def test_base_columns_are_not_key_material():
