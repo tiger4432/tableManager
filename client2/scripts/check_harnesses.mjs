@@ -280,7 +280,15 @@ const FLOORS = new Map([
   // things, not one: the three-state reading (value / unreadable / older server), that the
   // line REACHES the screen rather than only the view model, and that an unreadable stamp
   // never becomes a client clock -- which would make every stale panel look freshly measured.
-  ['chain_queue_panel_harness.mjs', 134],
+  // 🔴 RAISED 134 -> 152 ON 2026-09-10 BY C-61, and the 18 are new coverage, not a
+  //    re-count: 「도는 체인 3」 could not separate a stuck chain from a stale registry
+  //    entry, because both draw the same 3. Six mutants stand behind them -- 「최장」 taking
+  //    the first entry instead of the maximum, the minute threshold widened to everything,
+  //    the age fragment dropped, a missing rule name rendered as the word "undefined", an
+  //    absent age promoted to 0 -- plus ONE CONTROL that must escape: the shared minute
+  //    constant written back as a literal, which changes nothing today and is guarding a
+  //    future edit rather than a present bug.
+  ['chain_queue_panel_harness.mjs', 152],
   ['company_roundtrip_harness.mjs', 84],
   ['coord_table_paste_harness.mjs', 52],
   ['copy_header_count_harness.mjs', 151],
