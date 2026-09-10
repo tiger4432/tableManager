@@ -2798,6 +2798,17 @@ def _emit_diag(lines):
     operators clicking two units cannot braid their runs into each other. And it
     never raises: scoring is a read and a read must not fail because a log did.
     """
+    # 🔴 A PERSON'S REQUEST WRITES; THE CHAIN DOES NOT (S-94, 판정 242). This block is
+    # written so somebody can follow ONE scoring run with a pencil - the file says so
+    # itself - and the automatic chain builds a thousand views per group, forty lines
+    # each, read by nobody. Measured: 1.86 ms a build, a third of the whole mapper call.
+    #
+    # ⚠️ NOT A SECOND SWITCH. The logger, its console half and the manual route are
+    # untouched; what changed is that the automatic caller no longer asks for a block.
+    # The boundary that tells the two apart already exists and is opened by the chain's
+    # own group loop, so nothing new has to be declared or remembered.
+    if alignment_batch_counts.in_group():
+        return
     try:
         _diag_logger().info("%s", "\n".join(lines))
     except Exception:

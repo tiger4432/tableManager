@@ -93,6 +93,19 @@ def phase(name: str):
         counts.phases[name] = counts.phases.get(name, 0.0) + (time.monotonic() - started)
 
 
+def in_group() -> bool:
+    """Is a chain group's scope open around this call? (S-94, 판정 242)
+
+    🔴 ONE BOUNDARY, NOT A SECOND SWITCH. The scoring diagnostics exist so a person
+    can follow ONE scoring run with a pencil - the file says so itself - and the automatic
+    chain writes a thousand of them per group, which nobody reads and which cost a third of
+    the mapper call. The question "is this a person's request or the chain's" already has an
+    answer here, opened by the one loop that knows where a group begins, so nothing new is
+    declared: the emit site asks this instead of a flag somebody has to remember to set.
+    """
+    return _COUNTS.get() is not None
+
+
 def note_view_build() -> None:
     """One `resolve_alignment_view` call reached the view builder."""
     counts = _COUNTS.get()
