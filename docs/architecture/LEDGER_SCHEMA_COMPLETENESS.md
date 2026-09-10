@@ -31,15 +31,15 @@
 |---|---|---|---|---|
 | 타입 | ① | `entities.<type>` — id 는 `^[^@/\s]+@[1-9][0-9]*$` (`setup_bundle.py:90` `_VERSIONED_ID`, 검사 :1096) | 문자열 | 걷기 노드 `type` · 폼 |
 | 정체성 `keys` | ① | `entities.<t>.keys` :1123 — 비지 않은 목록 · 중복 ⛔ :1126 | **값 = `_scalar`**(`roleframe.py:1328`): 문자열 · 정수 · 유한 실수 · 불. null 은 `allow_null` 일 때만 :1289 → 🔵 **「keys 가 수여도 되나」 ✅ 된다.** 목록 ❌ | 원자 `subject_keys` JSONB · 노드 id · label |
-| `key_types` | 🔴 **③′** | `entities.<t>.key_types` :1129~1145 — 이름이 `keys` 와 «정확히» 일치해야 함 | 값 = trimmed 비지 않은 문자열. **타입 이름의 목록이 닫혀 있지 않다** | 🔴 **없다.** 검증기(:1129) · 폼(`ledger_skeleton.json:183`) · 레지스트리 «보관»(`setup_registry.py:168,:906`) 셋뿐. 시험·문서·아카이브를 뺀 «값을 읽는» 자리 `git grep` **0** |
+| `key_types` | ⚰️ **칸이 «없습니다»** (09-11 D-3c 재측정) — 판정 165 ㉡ 대로 «삭제»됐고, `entities.<t>` 의 optional 은 오늘 `(allow_null, references, class, attributes, status)` 입니다(`setup_bundle.py`). 남은 히트 둘은 「은퇴했다」고 적은 «주석»입니다. 그러므로 ③′ 가 아니라 «관문 밖»입니다 | `entities.<t>.key_types` :1129~1145 — 이름이 `keys` 와 «정확히» 일치해야 함 | 값 = trimmed 비지 않은 문자열. **타입 이름의 목록이 닫혀 있지 않다** | 🔴 **없다.** 검증기(:1129) · 폼(`ledger_skeleton.json:183`) · 레지스트리 «보관»(`setup_registry.py:168,:906`) 셋뿐. 시험·문서·아카이브를 뺀 «값을 읽는» 자리 `git grep` **0** |
 | `allow_null` | ① | `entities.<t>.allow_null` :1163 | 불 | `roleframe.py:1289` |
 | `class` | ① | `entities.<t>.class` ∈ {static, dynamic} :1121. 없으면 dynamic — 🔵 «안 적힌 것»과 «dynamic 이라 적은 것»을 가르려고 기본값을 «안 쓴다»(:1112 주석) | 닫힌 둘 | 걷기 — 정적 노드에 «닿되 나가지 않음» |
 | 속성 — 이름 | ① | `entities.<t>.attributes` :1147 — 목록 · 중복 ⛔ · **keys 와 이름 충돌 ⛔** :1160 | 이름 = 문자열 | `predicate_claim` :531~537 이 목적어 없는 술어의 optional qualifier 로 올린다 |
 | 속성 — 값 | ① 자리 / 🔴 **③ 정의역** | `sources.<s>.bind.entities.<t>.attributes.<name>` = `column`\|`constant` (:1821~1850). 역할 층 override 는 `…bind.<role>.attributes` :1425 | 🔴 `attribute` 역할 → `_scalar` → **스칼라 «하나»**. 목록 ❌ · 객체 ❌ · 시각 ❌. DB 는 JSONB 라 목록을 «담을 수는» 있는데 발행이 거절한다 — 층이 어긋난 자리 | 원자 `object_payload.qualifiers` · CHECK `ck_ledger_objectless_carries_only_qualifiers`(`schema.py:99`) · 걷기 노드 `attributes` · 클라 |
-| 속성 — 복수값 | 🔴 **③** | 위 정의역의 귀결. 「이 웨이퍼의 product 가 «둘»」을 적을 자리가 없다 — 두 값은 «충돌»로 읽힌다(걷기 `attribute_conflicts`) | — | — |
+| 속성 — 복수값 | 🔴 **③ — 09-11 재측정, «오늘도 참»** (`roleframe._scalar` 가 스칼라 하나만 받습니다) | 위 정의역의 귀결. 「이 웨이퍼의 product 가 «둘»」을 적을 자리가 없다 — 두 값은 «충돌»로 읽힌다(걷기 `attribute_conflicts`) | — | — |
 | 존재 — 등록 | ② | 🔴 **술어 이름이 «고정»이다: `register`.** 선언이 못 바꾼다 — `REGISTER_PREDICATE`(`config_authoring.py:101`) · DB CHECK `ck_ledger_register_has_no_object`(`schema.py`) · 부분 인덱스 `WHERE predicate = 'register'`(`store.py:117,:129`) | — | 셋 다 |
 | 존재 — 첫 목격 | ① | `sources.<s>.read.registration_probe[]` = `{entity_type, columns, list_separator?}` :1526~ | 목록 · 물리 컬럼 이름 | 드라이버가 페이지마다 store 에 묻고 «중복 register 를 억누른다» |
-| 존재 — **은퇴** | 🔴 **③** | `entities.<t>` 의 optional 목록 :1119 = `(key_types, allow_null, references, class, attributes)` — **`status` 가 없다.** 술어에는 있다(A2) | — | — |
+| 존재 — **은퇴** | ✅ **① (09-11 D-3c 재측정 — 이 행이 «거짓»이었습니다)** — `entities.<t>` 의 optional 에 `status` 가 «있고»(`setup_bundle.py`), 은퇴한 타입을 내는 문장은 `_retired_entity_types` 가 «이름 대어» 거절합니다. S-103(`b61c67fa`, 09-10 07:23)이 닫았고 이 행만 남아 있었습니다. 🪦 당시 근거: | `entities.<t>` 의 optional 목록 :1119 = `(key_types, allow_null, references, class, attributes)` — **`status` 가 없다.** 술어에는 있다(A2) | — | — |
 | 시간(속성 변경) | ① | 새 등록 원자. 걷기가 최신 `occurred_at` 을 이기고 서로 다른 값의 수를 `attribute_conflicts` 로(`WALK.md` §4) | — | 걷기 · 클라 |
 | 표면 `label` | ② | 🔴 선언 칸이 «없다» — `ledger_subgraph.py:384` 가 **`keys` 앞 «둘»을 `" / "` 로 이어** 만든다. 비면 타입 이름 | — | 화면 |
 | `references` | ① | `entities.<t>.references` :1165 — 키 하나가 다른 엔티티를 가리키면 걷기가 «엣지를 합성»한다 (:1169) | | 걷기 |
@@ -56,10 +56,10 @@
 | `object.kind` | ① | `OBJECT_KINDS = {none, entity_ref, value, event_ref}` :130, 검사 :1058 | 닫힌 넷 | DB CHECK `ck_ledger_object_kind` 는 «셋» — `none` 이 NULL 로 접힌다 |
 | `object.types` | ① | `entity_ref` 일 때만 «필수», 그 밖엔 «금지» :1061~1070 | 목록 | |
 | `qualifiers.required`/`optional` | ① 자리 | :1071~1092 — 겹침 ⛔ · `none` 목적어는 payload qualifier ⛔ | 🔴 값 = `attribute` 역할 → `_scalar` → **문자열 ✅ · 수 ✅ · 불 ✅ / 목록 ❌ · 객체 ❌ · 시각 ❌** | 원자 payload · 걷기 엣지 수식어 |
-| **값 목적어의 타입** | 🔴 **③** | 🔴 **칸이 없다.** `_OBJECT_VALUE_ROLE_KINDS = {"value": "quantity", "event_ref": "identity"}`(`setup_bundle.py:468`) 가 «코드에서» 정한다 | 🔴 `quantity` → **JSON 수 only · 유한 · 불 ⛔**(`roleframe.py:1302~1309`). **문자열 값 목적어를 «선언할 자리가 없다»** — 소유자가 물은 「수식어에 숫자만 되는 것 아니냐」의 실제 자리다: 수식어는 «되고», 값 목적어가 «안 된다» | |
+| **값 목적어의 타입** | ✅ **① (09-11 D-3c — «거짓»이었습니다)** — `EMITTABLE_VALUE_TYPES == VALUE_TYPES` 로 넷(number·string·boolean·timestamp)이 전부 발행됩니다(S-84 `ad3478fc` · S-84-b `d5450d1e`, 09-10). ⚠️ **같은 사실이 이 문서에 «세 행»이었습니다** — 여기 · A3 의 「value 목적어」 · 뒤의 표 A2-1(이미 ①). 뒤의 것이 정본이고 앞의 둘이 안 따라온 것입니다. 🪦 당시 근거: | 🔴 **칸이 없다.** `_OBJECT_VALUE_ROLE_KINDS = {"value": "quantity", "event_ref": "identity"}`(`setup_bundle.py:468`) 가 «코드에서» 정한다 | 🔴 `quantity` → **JSON 수 only · 유한 · 불 ⛔**(`roleframe.py:1302~1309`). **문자열 값 목적어를 «선언할 자리가 없다»** — 소유자가 물은 「수식어에 숫자만 되는 것 아니냐」의 실제 자리다: 수식어는 «되고», 값 목적어가 «안 된다» | |
 | `occurred_at` | ① | `sources.<s>.read.occurred_at` = `{timezone 필수, column?, basis?}` :1513~1525 · `basis` ∈ `{"ingested"}` (`_OCCURRED_AT_BASES` :135) | 시각 «순간» 하나 | 원자 `occurred_at` TIMESTAMPTZ · 월 파티션 키 · CHECK `ck_ledger_occurred_at_basis` |
-| **유효 구간** | 🔴 **③** | 순간 하나뿐 — 「언제부터 언제까지 참」을 적을 칸이 없다 | — | — |
-| **카디널리티** | 🔴 **③** | `vocabulary` 에 칸 없음. ⚠️ `virtual_joins.<r>.join_cardinality` 는 «있다» — 다른 선언 언어에만 | — | BASIS §3 대로 B5 집계의 «중복 셈»을 구조적으로 못 막는다 |
+| **유효 구간** | 🔵 **«원장 밖»** (소유자 결정, 09-10) | 순간 하나뿐인 것은 «그대로»이고, 「언제부터 언제까지 참」은 «체인이 표에 씁니다»(생애 표 — 소유자가 dt 를 별 노드 타입으로 두고 합성 `dt_wafer_id` 를 매기기로 결정). 그러므로 원장 문법의 구멍이 아니라 «체인 기저의 항목»입니다 — 동결 관문에서 «뺍니다» | 체인 | 표의 두 컬럼 |
+| **카디널리티** | ✅ **① (09-11 D-3c — «거짓»이었습니다)** — 칸 `vocabulary.<p>.cardinality` 가 있고 읽는 쪽이 «셋»입니다: 컴파일(`9f17f8a9`) · 위반 거절(`3c81682d`) · 대체 기록(`ccedc59f`) · 걷기 엣지(`118cc4f0`). S-133(09-10 16:57~17:12). 뒤의 표 A2-3 은 이미 닫혀 있었고 이 행만 남았습니다. 🪦 당시 근거: | `vocabulary` 에 칸 없음. ⚠️ `virtual_joins.<r>.join_cardinality` 는 «있다» — 다른 선언 언어에만 | — | BASIS §3 대로 B5 집계의 «중복 셈»을 구조적으로 못 막는다 |
 | 방향 | ① | 주어→목적어 «고정». 걷기는 양방향, 같은 술어 반전 ⛔ | | 걷기 |
 | **supersede** | ⚰️ **③′ 였다가 «닫힘»** (컬럼은 ①, 09-10 D-3 확인) | 컬럼 `supersedes UUID` · 검증(`ledger_frame`) · CHECK `ck_ledger_no_self_supersede` 는 그대로. 🔵 **오늘 «비-null 을 쓰는 자리»가 생겼습니다** — `ledger/runtime_v2._stamp_supersedes` 가 「원장의 «첫» supersedes writer」이고(S-133 ①, 판정 256), 그것을 «켜는 선언 칸»은 `vocabulary.<p>.cardinality: one` 입니다. `roleframe` 은 여전히 `None` 을 싣고(문장 한 개는 자기가 무엇을 대체하는지 모릅니다), 대체는 «배치가 끝난 뒤» 주어별로 찍힙니다 | | 읽는 쪽 넷(subgraph · trace · frame · dry_run) — 🔴 다만 **걷기는 이 값을 읽고도 «안 씁니다»**: `WALK.md` 「정정·철회는 걷기에서 아직 안 떨어진다」 |
 
@@ -69,7 +69,7 @@
 
 | 부축 | 상태 | 칸 · 자리 | 정의역 |
 |---|---|---|---|
-| value 목적어 | 🔴 **③** | A2 「값 목적어의 타입」과 «같은 칸» — 수만 | |
+| value 목적어 | ⚰️ **① — 위 A2 행과 «같은 칸»** (09-11 D-3c). 같은 사실을 세 번 적고 있었고, 그래서 한 곳만 고치면 나머지가 «거짓으로 남았습니다» | |
 | **단위** | ② | 선언 칸이 없다 — 수식어 «이름»(`unit` 같은)으로 «약속»한다. 스칼라라 값과 단위가 «두 칸»이 된다 | 스칼라 |
 | null | ① | 엔티티 키는 `allow_null`, 그 밖의 역할 값은 «null 금지»(`roleframe.py:1261`) | |
 
@@ -87,11 +87,11 @@
 | `prepare` · `map` | ① | :1248~1327 — `implementation_id`/`_version` · `input_columns` · `output_columns` · `unit.kind` ∈ {event, row, group_by} | 닫힘 |
 | `bind.mappings.<문장>` | ① | `{predicate, bind:{역할→바인딩}}` :1372~1382 | 바인딩 kind ∈ {column, constant, entity} :1389~1400 |
 | `bind.entities.<t>.attributes` | ① | :1821~1850 — 소스당 «한 번»(판정 124) | column\|constant. entity ⛔ (:1846 — 「엔티티 값 속성은 엣지가 옷을 갈아입은 것」) |
-| **결정 단위** `decision_key` | 🔴 **③** | 🔴 **원장 선언에도 표 카탈로그에도 없다.** 실측: 카탈로그 항목의 키 = `{business_key, column_types, composite_key_separator, composite_key_source, display_columns, kind, map_key_columns, workspace_name}` (샘플 44 표 전수). ⚠️ **`decision_key` 는 «다른 선언 언어»에 산다** — `enrichment_rules.json` 의 규칙마다(`enrichment_config` · `alignment_view_service.py:53` · `chain_bindings.resolve_decision_column`). 🔵 **판정 165: 이름은 «같게» 둔다** — 뜻이 같고 «범위»만 다르다(규칙의 판단 단위 / 표의 판단 단위). 관계를 적는다: 규칙 칸이 있으면 규칙 · 없으면 표 · 둘 다 없으면 «이름 대어 거절» | 목록(컬럼들) |
+| **결정 단위** `decision_key` | ✅ **① (09-11 D-3c — «거짓»이었습니다)** — 표 카탈로그에 칸이 있고 `setup_bundle` 이 「선언된 컬럼 이름의 비지 않은 목록」으로 검증하며 어긋나면 `invalid_catalog` 로 «이름 대어» 거절합니다. 자리가 «표»인 이유는 판정 151/165 그대로(판단 단위는 그 표의 성질). 🪦 당시 근거: | 🔴 **원장 선언에도 표 카탈로그에도 없다.** 실측: 카탈로그 항목의 키 = `{business_key, column_types, composite_key_separator, composite_key_source, display_columns, kind, map_key_columns, workspace_name}` (샘플 44 표 전수). ⚠️ **`decision_key` 는 «다른 선언 언어»에 산다** — `enrichment_rules.json` 의 규칙마다(`enrichment_config` · `alignment_view_service.py:53` · `chain_bindings.resolve_decision_column`). 🔵 **판정 165: 이름은 «같게» 둔다** — 뜻이 같고 «범위»만 다르다(규칙의 판단 단위 / 표의 판단 단위). 관계를 적는다: 규칙 칸이 있으면 규칙 · 없으면 표 · 둘 다 없으면 «이름 대어 거절» | 목록(컬럼들) |
 | 삭제 겨눔 | ① | `ledger_source_row_ref` (`schema.py:69`, 키 `(relation, row_id, source_who, source_raw_ref)`) · `backfill.sources_without_row_index` :915 · `index_existing_refs` :936 · `withdraw_deleted_rows` :1056 | |
 | 삭제 — row_id 없는 뷰 | ② | 🔵 «이름 대어» 남는다 — `sources_without_row_index` 가 그 소스를 «센다». 뷰가 base 의 `row_id` 를 흘려 주면 그 뷰는 겨눌 수 있다(:246 주석, 샘플 뷰 10 중 5) | |
 | 🔴 **행 선택·제외** (S-91, 09-09 17:10 **닫힘**) | ✅ **①** | `sources.<s>.prepare.exclude_when: [{column, blank:true}]` — 검증 `setup_bundle.py:1351` `_validate_exclude_when` · 미지 컬럼은 :1903 에서 이름 대어 거절 · `direct-join` 이 아닌 준비기에는 :1913 이 「그 준비기는 이것을 안 읽는다」로 거절 · 레지스트리 `setup_registry.py:310` · 읽는 곳 `source_preparation.py:459` · 스켈레톤 `:576`(폼이 그림) · 출하 샘플 `:1781`. ⚠️ **착지 전 상태를 기록으로 남깁니다** — 기제는 있었으나 «파이썬 준비기»만 냈습니다 — `SOURCE_ROW_EXCLUDED_COLUMN = "__source_row_excluded"` (`source_preparation.py:47`), `setup_bundle.py` 에 «0회». 소유자 실측(09-09 15:59): 신원 키 부품이 빈 행 «하나»가 전부-아니면-전무로 995 행을 막습니다. ⚠️ 출하 카탈로그 주석이 2026-08-23 에 «이미» 이 자리를 적어 뒀습니다(「the only row-exclusion mechanism … is emitted by a preparer implementation」) | 목록(조건) |
-| **소스 은퇴** | 🔴 **③′** (09-09 18:2x 정정) | ⚰️ 옛 판정(「`exact` 가 `status` 를 거절한다 — 적을 수 없다」)은 «낡았습니다». 오늘 `setup_bundle.py:1611` 이 `optional=("status",)` 이고 값도 검증됩니다(:1617, `{active, retired}`). 🔴 그러나 «읽는 쪽이 없습니다** — 엔티티·소스 서술자에 `status` 필드가 없어 레지스트리에 안 실립니다(술어는 실리고 `roleframe._emission_plan` 이 읽습니다). 적어도 아무 일도 안 일어납니다. 자세히 D-7-6 | |
+| **소스 은퇴** | ✅ **① (09-11 D-3c — ③ 에서 ③′ 로 갔다가 «닫힘»)** — 읽는 쪽이 둘 생겼습니다: 재번역이 `source_retired` 로 거절하고, 센서스가 「retired 라서 건너뜀」을 «로그에 이름 대고» 셈에서 뺍니다(S-103 `b61c67fa`). ⚠️ 이 항목은 §7 에서 ③ 목록과 ③′ 목록에 «둘 다» 있었습니다. 🪦 당시 근거: | ⚰️ 옛 판정(「`exact` 가 `status` 를 거절한다 — 적을 수 없다」)은 «낡았습니다». 오늘 `setup_bundle.py:1611` 이 `optional=("status",)` 이고 값도 검증됩니다(:1617, `{active, retired}`). 🔴 그러나 «읽는 쪽이 없습니다** — 엔티티·소스 서술자에 `status` 필드가 없어 레지스트리에 안 실립니다(술어는 실리고 `roleframe._emission_plan` 이 읽습니다). 적어도 아무 일도 안 일어납니다. 자세히 D-7-6 | |
 
 ---
 
@@ -102,8 +102,8 @@
 | `setup_version` | ① | 루트 `setup_version`, 오늘 `SETUP_VERSION = 5` (`setup_bundle.py:20`) |
 | 지문 | ① | `source_translator_ver = f"ledger-v2:{snapshot_sha256}#{sentence}"` (`roleframe.py:1422,:1517`) — 🔵 «세대 표지»가 원자의 «신원 안»에 이미 있다(`DEDUPE_COLUMNS` `schema.py:71`) |
 | 커서 지문 | ① | `f"ledger-v2:{source_cursor_fingerprint(...)}"` (`setup_registry.py:853`) — 한 자리 |
-| **세대**(born/retired · 되돌림) | 🔴 **③** (S-57) | 리비전을 «이름 지어» 고르거나 되돌릴 칸이 없다. 지문은 «달라졌음»만 말하고 «어느 세대인가»를 못 말한다 |
-| **변경 비용 미리보기** | 🔴 **③** | 「이 선언 diff 로 몇 행이 · 어느 소스가 · 얼마나 다시 도나」를 «바꾸기 전»에 답하는 자리가 없다. 있는 것은 «돌린 뒤» 세는 쪽(`retroactive` 세기 먼저 · `rescope`) |
+| **세대**(born/retired · 되돌림) | 🔴 **③ — 09-11 재측정, «오늘도 참»** (S-57. `setup_version` 은 «수»이지 「어느 세대로 되돌리나」를 고르는 칸이 아닙니다) | 리비전을 «이름 지어» 고르거나 되돌릴 칸이 없다. 지문은 «달라졌음»만 말하고 «어느 세대인가»를 못 말한다 |
+| **변경 비용 미리보기** | 🔴 **③ — 09-11 재측정, «오늘도 참»** (`backfill.preview_rescope` 는 «범위» 판이고, 「이 선언 diff 가 무엇을 다시 돌리나」를 바꾸기 «전»에 답하는 자리는 여전히 없습니다) | 「이 선언 diff 로 몇 행이 · 어느 소스가 · 얼마나 다시 도나」를 «바꾸기 전»에 답하는 자리가 없다. 있는 것은 «돌린 뒤» 세는 쪽(`retroactive` 세기 먼저 · `rescope`) |
 | 실행 금지 | ① | `_FORBIDDEN_DECLARATION_KEYS`/`_FORBIDDEN_EXECUTABLE_KEYS` :91~100 — 선언에 코드가 못 들어온다 |
 
 ---
@@ -114,10 +114,10 @@
 |---|---|---|
 | 봉투 다섯 칸 | ① | `_outbox_envelope()` (`server/database/database.py:189`) = `(transaction_id, user, source, ts, chain_depth)` — **한 자리**라 접힌 사건과 행별 사건이 «갈라질 수 없다» |
 | 파일 신원 → 데이터 행 | ① | `filename_rules` — 🔴 **자리 정정: 표 카탈로그가 «아니다».** 인제스터 선언(`AdvancedIngester(config_path)` 가 읽는 파일)의 세 계열 중 하나다(`advanced_ingester.py:180~186`). 주어는 «인제션 루트 기준 POSIX 상대경로»라 폴더명까지 본다(:267~) · 병합 서열 «경로 < 헤더 < 행». ⚠️ 출하 샘플에 이 계열을 쓰는 선언 **0** — 「관행의 부재」이지 결함이 아니다(판정 159) |
-| **봉투 없는 쓰기** | 🔴 **③** (D1) | 표에 직접 쓰는 스크립트는 세션을 안 지나 봉투가 «없고», 그래서 `write⁻¹` 도 없다 |
+| **봉투 없는 쓰기** | 🟡 **② (09-11 D-3c 재측정)** — 「칸」이 생긴 것이 아니라 «그 길이 닫혔습니다»: S-78 로 추적되는 스크립트가 전부 «제품 문»으로 쓰고(그래서 봉투가 붙고), `raw_write_census.py` 가 「직접 쓰기 0」을 «게이트»로 잡고 있습니다(오늘 0 — 출력의 6·51 은 되돌리기 «안내문»이라 남깁니다). 기본값이 덮는 자리이지 선언 칸은 아니므로 ② 입니다. 🪦 당시 근거: | 표에 직접 쓰는 스크립트는 세션을 안 지나 봉투가 «없고», 그래서 `write⁻¹` 도 없다 |
 | CREATE · EDIT · DELETE | ① | `CHAIN_OWNED_EVENT_TYPES = {"CREATE","EDIT","DELETE"}` (`event_constants.py:82`) · 접힘은 `row_ids` 로(:372) · DELETE 는 «접히지 않는다»(:362 — 지워진 행은 다시 못 읽는다) |
-| SYSTEM_RELOAD · RETROACTIVE_RUN | ① 사건 / 🔴 **③** 원장 | 사건은 있다(`event_constants.py:28,:43`). 🔴 **원장이 그것을 «사실»로 안 읽는다** — A5 「세대」와 같은 구멍의 다른 끝 |
-| **외부 응답** | 🔴 **③** | 싱크로 보낸 명령의 «답»이 봉투 사건으로 돌아오는 동사가 없다 |
+| SYSTEM_RELOAD · RETROACTIVE_RUN | ① 사건 / 🔴 **③ 원장 — 09-11 재측정, «오늘도 참»** (`server/ledger` 에서 두 이름의 히트 0) | 사건은 있다(`event_constants.py:28,:43`). 🔴 **원장이 그것을 «사실»로 안 읽는다** — A5 「세대」와 같은 구멍의 다른 끝 |
+| **외부 응답** | 🔴 **③ — 09-11 재측정, «오늘도 참»** (그런 동사의 히트 0) | 싱크로 보낸 명령의 «답»이 봉투 사건으로 돌아오는 동사가 없다 |
 | append-only · 월 파티션 | ① | `PARTITION BY RANGE (occurred_at)` (`schema.py` `CREATE_LEDGER` 끝) |
 | 표 «전체»의 버전/브랜치 | ② | 🔵 **설계 선택이지 결함이 아니다** — 우리 이력의 단위는 «사실»(원자의 occurred_at)이고 파운드리는 «데이터셋 버전»이다(소유자 정정 09-08 08:3x, `ledger_declaration_by_example.md` §1) |
 
@@ -125,25 +125,28 @@
 
 ## 7. ③ 목록 — 「무엇을 적을 자리인가」 한 줄씩
 
+🔴 **[09-11 D-3c] 아래 목록은 «09-09 의 상태»입니다. 열하나 중 «여섯»이 그 뒤 닫혔고,
+하나(A2-2)는 소유자 결정으로 «원장 밖»이 됐습니다. 각 줄 끝의 ⚰️ 를 보십시오 —
+목록을 지우지 않는 이유는 「무엇을 적을 자리였나」가 그 자체로 기록이기 때문입니다.**
 ```
-③  «열하나»
- A1-1 엔티티 은퇴          「이 타입은 더 안 쓴다」 — 술어의 status 와 «같은 모양»이면 족하다
+③  «열하나» → 🔵 **오늘 «넷»**
+ A1-1 엔티티 은퇴 ⚰️닫힘(S-103)         「이 타입은 더 안 쓴다」 — 술어의 status 와 «같은 모양»이면 족하다
  A1-2 복수값 속성           「이 이름은 값을 «여럿» 든다」 — 오늘은 목록을 넣으면 발행이 거절하고, 두 값은 «충돌»로 읽힌다
- A2-1 값 목적어의 타입       「이 술어의 값은 «문자열»이다」 — 오늘 코드가 quantity 로 못 박아 수만 받는다 (= A3 value 목적어, 한 칸)
- A2-2 유효 구간            「언제부터 언제까지 참」 — 오늘 «순간» 하나뿐
- A2-3 카디널리티           「이 술어는 주어당 «하나»」 — 없으면 집계가 중복을 셀 수 있고 아무도 안 막는다
- A4-1 결정 단위 decision_key 「이 표의 판단 단위는 이 컬럼들」 — 판정 151 이 여는 칸.
+ A2-1 값 목적어의 타입 ⚰️닫힘(S-84·84-b)       「이 술어의 값은 «문자열»이다」 — 오늘 코드가 quantity 로 못 박아 수만 받는다 (= A3 value 목적어, 한 칸)
+ A2-2 유효 구간 🔵원장 밖(소유자)            「언제부터 언제까지 참」 — 오늘 «순간» 하나뿐
+ A2-3 카디널리티 ⚰️닫힘(S-133)           「이 술어는 주어당 «하나»」 — 없으면 집계가 중복을 셀 수 있고 아무도 안 막는다
+ A4-1 결정 단위 decision_key ⚰️닫힘(칸+검증) 「이 표의 판단 단위는 이 컬럼들」 — 판정 151 이 여는 칸.
                           ⚠️ enrichment 규칙의 «같은 이름»과 뜻이 갈리지 않게
- A4-2 소스 은퇴            「이 소스는 더 안 읽는다」 — 오늘은 «지우는 것»뿐이고 exact 검증이 다른 키를 전부 거절한다
+ A4-2 소스 은퇴 ⚰️닫힘(S-103)            「이 소스는 더 안 읽는다」 — 오늘은 «지우는 것»뿐이고 exact 검증이 다른 키를 전부 거절한다
  A5-1 세대 (S-57)          「이 리비전이 어느 세대이고 어디로 되돌리나」
  A5-2 변경 비용 미리보기      「이 diff 는 몇 행이 · 어느 소스가 · 얼마나 다시 도나」 — «바꾸기 전»에
- A6-1 봉투 없는 쓰기 (D1)    「표 직접 쓰기도 봉투를 단다」 — 없으면 그 쓰기에 write⁻¹ 이 없다
+ A6-1 봉투 없는 쓰기 (D1) 🟡②(S-78 게이트 0)    「표 직접 쓰기도 봉투를 단다」 — 없으면 그 쓰기에 write⁻¹ 이 없다
  A6-2 외부 응답 동사         「보낸 명령의 답이 사건으로 돌아온다」
  A7-1 선언 사건이 원장 사실 아님  「세대가 바뀌었다」를 원장이 «사실»로 안 읽는다 — A5-1 과 «같은 구멍의 다른 끝»
                           (별도로 세지 않는다 — 위 열하나에 A5-1 로 든다)
 ```
 ```
-③′ «둘» — 칸은 있는데 «읽는 쪽»이 0
+③′ «둘» → 🔵 **오늘 «0»** (A1-3 은 칸이 «삭제»됐고, A2-4 는 «배선»됐습니다 — 결말이 다릅니다)
  A1-3 key_types           키의 «타입»을 적게 해 놓고 아무 층도 안 읽는다. 고치는 길이 «둘»이라 판정이 필요하다:
                           ㉠ 읽는 쪽을 만든다(정의역 검사 · 정렬 · 범위 질의)   ㉡ 칸을 은퇴시킨다
  A2-4 supersedes          「정정」의 컬럼 · 검증 · 읽는 쪽 넷이 다 있는데 «비-null 을 쓰는 선언 칸»이 없다:
@@ -319,6 +322,14 @@ S-65-d 뷰 삭제   A4 「삭제 — row_id 없는 뷰」   ✅ ② («이름 �
 
 ## 표 B 의 ③ — «일곱»
 
+> 🔵 **[09-11 D-3c 재측정] 표 B 는 «움직인 것이 하나»입니다** — B7 의 «세대»가 S-141 로 닫혔습니다
+> (걷기가 `live_claims` 를 지나고 뺀 수를 `walk.superseded_dropped` 로 말합니다). 나머지는 오늘도 참입니다:
+> B4 `group_by` · B5 `aggregate`/`measure` · B12 「진위」 는 걷기 모듈에서 히트가 «주석뿐»이고,
+> B11-bis 의 엣지 `sources`·`witnesses`·`rank` 는 읽는 쪽이 여전히 0 입니다(클라의 `domain.sources` 는 «다른 이름»).
+> ⚠️ 표 C 는 이번 패스에서 «안 쟀습니다** — 지시가 완전성 표 A 의 구멍을 겨눴고, C-3(15 라우트)은 한 커밋에
+> 담기지 않습니다. 안 잰 것을 「참」으로 적지 않기 위해 여기 적어 둡니다.
+
+
 ```
  B1-1 마킹 대수 (M × M → M)   「마킹1 ∖ 마킹2 를 걸어라」 — ∪ 는 이름이 없고 ∩ ∖ 부호반전은 «없다».
                             🔴 부르는 쪽으로 미룰 수 없다(위 규모 논거)
@@ -473,7 +484,10 @@ B6 대조        「③ — 순위표가 클라」  -> 🔵 «대부분 ①» (�
 그래서 아래 수는 «관문»이 아니라 «작업량»이다.
 
 ```
-표 A  ③ 11 + ③′ 2   = 13   (판정 165)   -> BASIS §2.6 이 이것을 성격별로 다시 갈랐다:
+표 A  ③ 11 + ③′ 2   = 13   (판정 165)
+      🔵 **[09-11 D-3c 재측정] = «넷»** — ③ 4(A1-2 복수값 · A5-1 세대 · A5-2 변경비용 · A6-2 외부응답) ·
+      ③′ 0. 닫힌 여섯은 S-103(둘) · S-84/84-b · S-133 · decision_key · S-78(②),
+      A2-2 유효 구간은 소유자 결정으로 «체인 기저»로 옮겨 관문에서 뺐습니다   -> BASIS §2.6 이 이것을 성격별로 다시 갈랐다:
                                           문법 수리 «다섯»(①②③④⑤, ③④는 패턴 하나) ·
                                           읽기 규칙 «셋» · 술어 한 줄 · 사건 둘 · 도구 하나 · 삭제 둘
 표 B  ③ 6                                -> §3.5: «진짜 구멍»은 시각(as-of·세대)과 M 대수 둘.
