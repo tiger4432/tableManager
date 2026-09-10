@@ -54,14 +54,19 @@ client2/src/rnd_board/walk_box_panel.js
 ## 3. 라우트 — 데이터에 답하는 것은 «하나»
 
 ```
-GET /api/ledger/subgraph     걷기. 아래 인자 아홉
+GET /api/ledger/subgraph     걷기. 아래 인자 «열둘»
 GET /api/ledger/declaration  무엇을 물을 수 있나 (entities · predicates · sources)
 GET /api/ledger/gaps
 ```
 ```
-id(alias)  hops 1–40  direction outgoing|incoming|both  node_limit 10–1000
+id(alias)  hops 1–40 (기본 12)  direction outgoing|incoming|both  node_limit 10–1000
 edge_limit 20–MAX  positive[]  negative[]  follow[]  collect[]  backbone_hops 0–40
+since  until      ISO 시각 둘. 반열린 구간 [since, until) — 아래 「구간 걷기」 절
 ```
+⚰️ **여기 「아홉」이라 적혀 있었고 목록은 «열» 이었습니다**(2026-09-10 D-3 실측).
+셈이 하나 어긋난 채로, S-98 이 더한 `since`·`until` 이 «둘 다» 빠져 있었습니다 —
+문서 아래쪽에 그 둘의 절이 «있는데» 인자 목록만 그 사실을 모르고 있었습니다.
+근거는 라우트 서명 하나입니다(`ledger_trace_router.evidence_subgraph` 의 `Query(...)` 열둘).
 ⚠️ `backbone_hops` 는 「같은 자재를 따라가는 걸음」에 주는 «별도» 예산이다 — 그걸 일반 홉과
 같이 세면 진짜 탐색이 예산을 못 쓴다.
 
@@ -78,11 +83,18 @@ nodes        {id, type, label, keys, attributes}    🔵 type 이 «도메인 �
              「어긋난다」로 보인다
 
 edges        {id, source, target, predicate, predicate_label, original_predicate, qualifiers,
-              🔵 claim_id, basis}   — 🔴 «근거가 여기 실린다»(S-75 B11, 2026-09-09):
+              🔵 claim_id, basis, occurred_at, source_who, cardinality}
+              — 🔴 «근거가 여기 실린다»(S-75 B11, 2026-09-09):
               원자에서 온 엣지는 `claim_id` = 그 원자의 id · `basis` = 그 원자의 `source_raw_ref`(어느 «물리 행»)
-              를 달고, 응답은 이 dict 를 «투영 없이» 그대로 낸다(`ledger_subgraph.py:996~999`, :1361)
+              를 달고, 응답은 이 dict 를 «투영 없이» 그대로 낸다(`_edge` 가 짓고 `_claim_edge` 가 원자 것을 더한다)
               ⚠️ 여기 「넷」이라고 적혀 있었다 — 문서가 코드보다 좁았고, 그 탓에 「근거를 안 싣는다」로 읽혔다
               ⚠️ `sources`·`witnesses`·`rank` 도 매 엣지에 있지만 «쓰는 자리가 0» 이다(③′)
+              🔵 **`cardinality`(S-133 ④, 2026-09-10 신설)** = «선언이» 이 술어에 대해 말한 것.
+              `one` 이면 「주어가 지금 목적어를 하나만 든다」라 화면이 «그린 것을 보고 짐작»하지 않아도 된다.
+              🔴 `None` 은 「선언이 말하지 않았다」이지 `many` «가 아니다» — 합성 엣지와 미선언 술어가
+              둘 다 여기로 오고, 어느 쪽에든 `many` 라고 답하면 «없는 답을 지어내는» 것이다.
+              값의 출처는 라우트의 `_predicate_cardinalities()` «하나»이고, 그것이 `_static_types` ·
+              `_static_step_predicates` 와 «같은 선언»을 읽는다(읽는 곳이 둘이면 한 술어에 답이 둘이 된다)
 seeds        씨앗과 «부호»(+/-)
 propagation  🔴 «닿은 노드 전부»를 두 부호의 «도달 대비»로 순위 매긴다
              모집단이 전부인 것은 «소유자 판정»(2026-08-28)이다 — 한 타입으로 거르면
@@ -90,6 +102,24 @@ propagation  🔴 «닿은 노드 전부»를 두 부호의 «도달 대비»로
              순위는 내부에서 전부 본다. 두 축이 안 부딪힌다
 walk/state   모드·방향·시작 부호 수 / ready|empty
 ```
+### 🔴 정정·철회는 «걷기에서» 아직 안 떨어진다 (2026-09-10 D-3 실측)
+
+```
+쓰는 쪽   ✅ 오늘 생겼다 — `ledger/runtime_v2._stamp_supersedes` 가 「원장의 «첫» supersedes writer」다
+         (S-133 ①, 판정 256). `cardinality: one` 인 술어에서 새 원자가 앞 원자를 «가리킨다»
+읽는 쪽   ✅ 있다 — `ledger_trace.live_claims(claims)` 가 「나중 원자가 대체한 것」을 뺀다
+걷기      🔴 **그 둘이 아직 «안 만난다».** `/api/ledger/subgraph` 는 `supersedes` 를 «읽어 오지만»
+         (`ATOM_COLUMNS` 에 있고 `EvidenceAtom.supersedes` 로 들어온다) 그 값을 «쓰지 않는다» —
+         모듈 전체에 `live_claims` 호출도, 대체된 id 를 거르는 자리도 «없다»
+```
+🔴 **그러므로 오늘 걷기는 «대체된 엣지와 대체한 엣지를 둘 다» 그린다.** 엣지 id 는
+`(술어, 출발, 도착)` 의 해시라 목적지가 다르면 «다른 엣지»이고, 둘 다 응답에 남는다.
+⚠️ 판정 256 의 게이트 「`live_claims` 가 대체된 원자를 실제로 뺌(걷기 응답에서 사라짐)」은
+**함수를 «직접» 부르는 단언으로 채워졌다**(`test_live_claims_drops_the_atom_a_later_one_replaced`).
+그 단언은 참이지만 «걷기 응답»에 대한 문장은 아니다 — 「기제가 있다」 ≠ 「이 경로가 그것을 지난다」.
+📌 이 절은 «고쳐지면 지운다». 지금 여기 있는 이유는, 이것이 안 적히면 다음 사람이
+`cardinality: one` 을 보고 「그러니 하나만 보이겠지」로 읽기 때문이다.
+
 🔵 **이것을 «어떻게 선언하나» — 두 줄 (판정 124 정정본)**
 ```
 운영에서는 «엔티티 선언»에 attributes 이름을 적고,
@@ -121,9 +151,28 @@ collect=banana                           🔴 거절 `node_type_not_declared` + 
 씨앗 철자  🔴 그대로 — `/declaration` 은 `wafer@1` 로 알려주는데 그 철자로 씨앗을 만들면
          «state: empty · nodes 1». `wafer` 로 만들어야 돕니다 (총괄 라이브 재확인 22:3x)
          🔵 클라는 `entitySeedId` 가 «벗겨서» 보내므로 화면에서는 안 걸립니다 -> 큐 C-25
-class     🔴 아홉 중 «여섯»이 class 미선언. 걷기가 아는 허브가 «셋»뿐이고
-         「미선언」이 곧 「동적」으로 굴러갑니다 -> 큐 C-29
+class     🔴 그대로 — **출하 샘플에서도** 아홉 중 «여섯»이 class 미선언이고 허브는 «셋»
+         (`quantity@1` · `defect_kind@1` · `recipe@1`)뿐입니다. 「미선언」이 곧 「동적」으로 굴러갑니다
+         🔵 2026-09-10 D-3: 이 줄의 근거를 «라이브 선언»에서 «출하 샘플»로 옮겼습니다 —
+            같은 수인데 이제 «저장소에 있는 것»이 근거라 다른 설치에 대해서도 말합니다 -> 큐 C-29
 ```
+### 🔵 정적 허브 규칙 — «서버»가 안 밟는 걸음 둘 (2026-09-10 검증)
+```
+규칙      정적 -> 동적 «걸음»을 안 밟는다. 정적 -> 정적은 «밟는다»
+         (`_expand_atom`: 가까운 쪽이 정적이고 먼 쪽이 아니면 그 원자를 «버린다»)
+왜        (아래 수는 «코드 주석이 든 실측»이고 이 박스 수입니다 — 규칙의 «이유»로만 인용)
+         `defect_kind` 는 원자 103,841 에 «구별되는 목적어 하나»라, 그 이름에서 한 걸음
+         밖으로 나가면 웨이퍼 747 이 딸려 와 답이 잠긴다. 반대로 정적->정적을 같이 막으면
+         인과 사슬이 통째로 죽는다 (실측: quantity{bond_pressure} + follow=leads_to 로
+         노드 18·홉 4 -> 노드 1·엣지 0). 그래서 규칙은 «노드»가 아니라 «걸음»에 걸린다
+어디서    정적 판정은 «선언 하나»에서 온다 — `_static_types()`(class: static)와
+         `_static_step_predicates()`(양 끝이 «둘 다» 정적인 술어). 읽을 수 없는 선언이면
+         후자는 «빈 집합»이라 정적 노드를 아예 안 편다(지어내지 않는다)
+두 번째    같은 술어로 «올라온 길을 도로 내려가지» 않는다 — 허브 범람의 나머지 반쪽.
+         ⚠️ 이 둘째 규칙을 «제가 읽은 자리»는 순위 계산(`_reach`)입니다. 걷기 확장 쪽에는
+            같은 이름의 가드가 «주석으로만» 언급돼 있어(키 제약 주석), 같은 걸음인지는 안 쟀습니다
+```
+
 ### ✅ 그 사이 닫힌 것 (여기 있던 문장들)
 ```
 ⚰️ 이름 충돌   클라의 행 이름 키가 `legacyRoute` 로 «개명»됐고 «옛 키는 거절»됩니다
@@ -137,6 +186,11 @@ class     🔴 아홉 중 «여섯»이 class 미선언. 걷기가 아는 허브
 ```
 
 ## 🔴 구간 걷기 — `since` · `until` (S-98, 판정 208)
+
+📎 **파일이 오늘 옮겨졌습니다** — `server/ledger_subgraph.py` -> **`server/ledger_api/ledger_subgraph.py`**
+(`75c32b50`, 읽는 쪽을 패키지로). 이 문서의 심볼 이름은 그대로이고, 그래서 이 절부터는
+«줄 번호» 대신 «심볼 이름»으로 적습니다 — 줄 번호는 공유 트리에서 하루를 못 갑니다.
+
 
 ```
 GET /api/ledger/subgraph?since=<ISO>&until=<ISO>    둘 다 선택 · 반열린 구간 [since, until)
