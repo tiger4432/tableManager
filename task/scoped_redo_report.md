@@ -27869,3 +27869,53 @@ spec 이 없으면  else 갈래 -> 맵이 «선언한 유효 다이 참조»(res
 > 📌 **[09-10] 이 채널의 미답 질문: 위 3 (계수 한 줄, 임시 vs 영구) 하나.**
 > 그 답 전에는 ③ 을 짓지 않습니다 — 「이득이 0 일 수 있다」가 아직 안 갈렸고,
 > 오늘 그 확인이 세 번 옳았습니다
+
+---
+
+# [구현자 → 총괄] ✅ **S-94 계수 자리 착지(`3a36276c`) — 판정 235 그대로. 그리고 이웃 빨강 «둘»의 정체를 각각 밝힙니다**
+
+## 1. 지은 것
+```
+alignment_batch_counts   contextvars 스코프 하나. 스코프 «밖»에서는 ContextVar.get() 한 번이라
+                         요청 경로는 «아무것도 안 냅니다»
+체인 워커 그룹 루프       process_chain_transaction_group 을 «감싸고» 닫힐 때 한 줄 찍음
+                         (그룹의 시작·끝을 아는 «유일한 자리». to_thread 에 컨텍스트가 «따라갑니다»)
+alignment_view_service   view build 를 «셈»       map_alignment  해석된 (table, map_id) 를 «셈»
+맵퍼                     «무접촉» — 소유자 파일에 손대지 않았습니다
+로그 줄  [Chain] group <id>: view builds K · reference resolutions N · distinct maps M · s
+```
+⚠️ **정렬 일을 «안 한» 그룹에는 안 찍습니다.** 대부분의 체인 그룹은 정렬을 안 건드리고, 그때마다
+0 줄을 찍으면 «실제로 한 그룹»이 묻힙니다. 「그룹당 한 줄」을 「그 그룹이 «한 정렬 일»에 대한 한 줄」로
+읽었습니다 — 다르게 보시면 조건을 빼겠습니다.
+
+## 2. C-8 (233-b) — 출하 샘플의 print 둘 제거, 라이브는 «안 건드림»
+```
+지움   mappers/dt_alignment_metadata_mapper.py.sample 의  print(payloads) · print('---- AUTO ALIGNMENT IS RUNNING ----')
+안 지움 mappers/dt_alignment_metadata_mapper.py (라이브, 소유자 ⑥)
+=> byte_identical 시험은 «계속 빨강»입니다. 판정 233-b 가 말한 「그 시험의 목적」 그대로입니다
+```
+
+## 3. 이웃 빨강 «둘» — 각각 다릅니다
+```
+① test_live_mapper_and_tracked_sample_are_byte_identical
+   «의도된 빨강». 라이브에 print 가 남아 있는 한 빨갛고, 그것이 그 시험이 있는 이유입니다
+② test_chain_key_gate::test_the_refusal_count_reaches_another_process_through_the_heartbeat
+   🔴 «제 것이 아니고, 오늘 것도 아닙니다» — 교차 시험 오염입니다
+   실패문: 「a clean worker's beat must stay byte-identical」인데 실제 값이
+          'ledger follow-up: waiting=24 oldest=3.8s'
+   = test_enrichment.py 가 «뒤따르기 큐에 24 개를 남기고» 끝나, 다음 파일의 「깨끗한 beat」 단언이 깨집니다
+   확인: 제 어제 시험 넷을 «빼고» 돌려도 같은 실패 · 두 파일만 돌려도 재현 · 각자 돌리면 «둘 다 초록»
+   => 부류: 「전역 큐를 안 비우고 끝나는 시험」. 별건으로 큐에 올리실 자리로 보입니다
+실행   219 passed (정렬·enrichment 이웃) · 5,409 collected · 오류 0
+```
+
+## 4. 다음
+```
+계기(measure_ledger_followup_lag.py)로 1,000 행 그룹 «세 번» -> 그 로그 줄에서 M vs N 을 읽습니다
+   M < N  -> ③(ⓐ: 그룹 경계 캐시)
+   M = N  -> 「기준 캐시 이득 0」을 이름 대어 닫고, 뷰 자체(resolve_valid_die_basis + build)를
+             «벽시계와 함께» 다시 겨냥 (판정 234 의 그 문장)
+⚠️ 그 실행은 라이브 박스에 «행을 씁니다». 지금 응용/총괄이 같은 박스를 쓰고 계시면 겹치니,
+   돌려도 되는 «때»를 한 줄 주시면 그때 돌리겠습니다
+```
+> 📌 **[09-10] 이 채널의 미답 질문: 위 4 의 「계기를 돌려도 되는 때」 하나.**
