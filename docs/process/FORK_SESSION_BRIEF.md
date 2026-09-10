@@ -93,6 +93,23 @@ server/config/ontology/ledger_config.json   (파일 하나)
 2. `docs/process/PROJECT_STATUS.md` 최상단
 3. `docs/guide/ONTOLOGY_LEDGER_SETUP.md` — **설정의 정본.** 파일·필드·샘플·검증 절차
 
+> 🔴 **[2026-09-10 D-3] 이 목록이 «셋»에서 멈춰 있었습니다** — 마지막 손질이 08-23 이고,
+> 그 뒤 18일 동안 «어디를 먼저 여나»에 답하는 문서가 여섯 더 생겼습니다. 목록이 낡으면
+> 새 세션은 그 여섯을 «모르는 채로» 시작해 이미 있는 것을 다시 유도합니다(상설 「«새 문제»라
+> 부르기 전에 셋」이 막으려는 바로 그것). 무엇을 물을 때 무엇을 여는지로 적습니다:
+
+| 물음 | 정본 | 왜 여기 |
+|---|---|---|
+| 「이 코드가 무엇인가」 | `docs/architecture/CODE_MAP.md` 의 «해당 절** | 손대기 «전»에 여는 것이 상설. grep 은 2순위 |
+| 「무엇이 어디서 · 어느 시계로 돈다」 | `docs/architecture/RUNTIME_MAP.md` | 09-10 신설. 루프·프로세스·클럭 한 장 |
+| 「걷기가 무엇을 하나」 | `docs/architecture/WALK.md` | 걷기를 «말하기 전»에 여는 것이 상설 — 이미 있는 것을 다시 짓지 않기 위해 |
+| 「원장 선언이 왜 이 모양인가」 | `docs/architecture/BASIS.md` | 번역·질문·체인의 «기저». §2-0 이 다섯 인자의 유일 분해 |
+| 「이 칸이 있나 · 읽는 쪽이 있나」 | `docs/architecture/LEDGER_SCHEMA_COMPLETENESS.md` | 축 × 칸 표. 스키마 동결의 관문(③ 이 0) |
+| 「이 선언을 어떻게 적나」 | `docs/guide/config/ledger_declaration_by_example.md` | 출하 샘플 기준 «두 줄» 선언법 |
+| 「하니스를 어떻게 쓰나」 | `docs/guide/HARNESS_DISCIPLINE_GUIDE.md` | 09-10 신설(D-2). 잘라쓰기 금지의 «어떻게» — CLAUDE.md 는 «왜»만 |
+
+⚠️ **이 표는 「다 읽어라」가 아닙니다.** 여는 «조건»이 왼쪽 칸이고, 조건이 없으면 안 엽니다.
+
 > 🔴 **[2026-08-21] 4~7번이던 계획서는 🗄️ [`docs/_archive/ledger_v2_redesign_plan_20260817/`](../_archive/ledger_v2_redesign_plan_20260817/README.md)로 이관됐고, «읽지 마십시오».**
 > 그 디렉터리는 **1~7단계를 끝낸 계획서**이고, 설계가 그 뒤로 여러 결정을 지나쳤습니다.
 > 특히 `CONFIG_CANON.md`는 `setup_version: 2`와 `packs`·`profiles`를 포함한 «일곱 절»을
@@ -117,7 +134,7 @@ server/config/ontology/ledger_config.json   (파일 하나)
 | RoleFrame/Pack compiler | `server/ledger/roleframe.py` |
 | verified batch preparation | `server/ledger/source_preparation.py` |
 | preview/execute와 기존 transaction 연결 | `server/ledger/runtime_v2.py` |
-| legacy↔V2 의미 비교 | `server/ledger/shadow_parity.py` |
+| ⚰️ ~~legacy↔V2 의미 비교~~ | `server/ledger/shadow_parity.py` — **파일이 «없습니다»**(2026-09-10 확인). legacy 쪽이 은퇴하면서 같이 갔고, 이 줄만 남아 있었습니다 |
 | 로드 경계(`load_setup`)와 비파괴 dry-run | `server/ledger/setup.py` |
 | 실행 드라이버(하나) | `server/ledger/backfill.py` |
 | 실행 가능한 `implementation_id` 발견 | `server/ledger/implementations.py` |
@@ -129,7 +146,7 @@ server/config/ontology/ledger_config.json   (파일 하나)
 | compiled graph/read model | `server/ledger/config_explorer.py` |
 | active/draft context service | `server/ledger/config_explorer_service.py` |
 | draft/review/revise/CAS activation | `server/ledger/config_drafts.py` |
-| strict Admin API | `server/ontology_config_explorer_router.py` |
+| strict Admin API | `server/ledger_api/ontology_config_explorer_router.py` — 🔵 **2026-09-10 이동**: 읽는 쪽이 `server/ledger_api/` 패키지로 묶였습니다(`75c32b50`). 같은 커밋에 `ledger_subgraph` · `ledger_catalog` · `ledger_selection` 등 열둘이 함께 갔고, «이름»은 그대로입니다 |
 | 단일 client state/history | `client2/src/ontology_explorer_store.js` |
 | 화면·interaction | `client2/src/ontology_explorer.js`, `ontology_explorer_view.js`, `ontology_explorer.css` |
 | file-backed 이종 계보 예제 | `server/config/sample/ontology/transfer_explorer/` |
