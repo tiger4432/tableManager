@@ -5833,40 +5833,41 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
 
     source_maps = []
     src_truncated = False
-    for mid in ids:
-        if mid in cells_servable:
-            rows = cells_by_map.get(mid, [])
-        else:
-            mfilters = list(filters)
-            for i, c in enumerate(map_key_cols):
-                part = mid if len(map_key_cols) == 1 else mid.split("_")[i]
-                mfilters.append(getattr(src_model, c) == part)
-            # [R7] This is the statement that CUTS, so it carries the total order:
-            # raster `(y, x)` so a truncated map is the top of the map, `row_id`
-            # last so duplicate coordinates (real - 2,192 groups in `dt_log` on
-            # `(core_x, core_y)`) cannot leave the choice to the planner. Same key
-            # as `_cells_of`, so the reference and the sources are cut alike.
-            rows = (db.query(*q_cols).filter(*mfilters)
-                      .order_by(y_attr, x_attr, getattr(src_model, "row_id"))
-                      .limit(cell_cap + 1).all())
-        if len(rows) > cell_cap:
-            src_truncated = True
-            rows = rows[:cell_cap]
-        cells, cvals = _to_cells([(r[0], r[1]) for r in rows],
-                                 [(r[v_at] if v_at is not None else None) for r in rows])
-        sm = {"map_id": mid, "table": map_table,
-              # dt_log's metadata describes its DT coordinates.  A core-frame
-              # chain can reuse the raw rows with core_x/core_y, but must not
-              # accidentally treat that DT declaration as core geometry.
-              "meta": (None if ignore_source_metadata
-                       else _meta_of(mid)),
-              "cells": cells, "values": cvals}
-        if k_at is not None:
-            # 🔴 순번은 좌표와 **같은 순서·같은 길이**여야 한다. `_to_cells`가 좌표를 거르면
-            #    (수가 아닌 x·y) 남은 순번이 옆 셀에 붙고, 그 오답은 개수로 안 잡힌다.
-            #    그래서 좌표와 **함께** 거른다.
-            sm["indices"] = _indices_for(rows, k_at)
-        source_maps.append(sm)
+    with alignment_batch_counts.phase("cells"):
+        for mid in ids:
+            if mid in cells_servable:
+                rows = cells_by_map.get(mid, [])
+            else:
+                mfilters = list(filters)
+                for i, c in enumerate(map_key_cols):
+                    part = mid if len(map_key_cols) == 1 else mid.split("_")[i]
+                    mfilters.append(getattr(src_model, c) == part)
+                # [R7] This is the statement that CUTS, so it carries the total order:
+                # raster `(y, x)` so a truncated map is the top of the map, `row_id`
+                # last so duplicate coordinates (real - 2,192 groups in `dt_log` on
+                # `(core_x, core_y)`) cannot leave the choice to the planner. Same key
+                # as `_cells_of`, so the reference and the sources are cut alike.
+                rows = (db.query(*q_cols).filter(*mfilters)
+                          .order_by(y_attr, x_attr, getattr(src_model, "row_id"))
+                          .limit(cell_cap + 1).all())
+            if len(rows) > cell_cap:
+                src_truncated = True
+                rows = rows[:cell_cap]
+            cells, cvals = _to_cells([(r[0], r[1]) for r in rows],
+                                     [(r[v_at] if v_at is not None else None) for r in rows])
+            sm = {"map_id": mid, "table": map_table,
+                  # dt_log's metadata describes its DT coordinates.  A core-frame
+                  # chain can reuse the raw rows with core_x/core_y, but must not
+                  # accidentally treat that DT declaration as core geometry.
+                  "meta": (None if ignore_source_metadata
+                           else _meta_of(mid)),
+                  "cells": cells, "values": cvals}
+            if k_at is not None:
+                # 🔴 순번은 좌표와 **같은 순서·같은 길이**여야 한다. `_to_cells`가 좌표를 거르면
+                #    (수가 아닌 x·y) 남은 순번이 옆 셀에 붙고, 그 오답은 개수로 안 잡힌다.
+                #    그래서 좌표와 **함께** 거른다.
+                sm["indices"] = _indices_for(rows, k_at)
+            source_maps.append(sm)
 
     # 🔴 메타가 None인 맵이 하나라도 있으면 **왜 None인지**를 요청 단위로 한 번 가른다.
     #    [D5] 이후 이것은 표찰이 아니라 관문이다 - 표지가 없어야만 아래 채점기가 규격을
@@ -5902,16 +5903,17 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
 
     candidates, excluded, ruling, stats = [], _Excluded(), {"winner": None}, {}
     if reference["state"] == REFERENCE_RESOLVED:
-        candidates, excluded, ruling, stats = score_candidates(
-            source_maps, reference["cells"], reference["meta"],
-            reference_values=reference.get("values"), thresholds=thresholds,
-            assume_reference_geometry=assume_reference_geometry,
-            reference_ref={"table": reference.get("table"),
-                           "map_id": reference.get("map_id")},
-            value_weights=value_weights,
-            index_thresholds=index_thresholds, diag=diag,
-            #: 선언을 읽는 것은 «cfg 를 쥔 여기»다 — 채점기는 값만 받는다(순수성 유지).
-            slow_warn_ms=alignment_slow_warn_ms(cfg))
+        with alignment_batch_counts.phase("scoring"):
+            candidates, excluded, ruling, stats = score_candidates(
+                source_maps, reference["cells"], reference["meta"],
+                reference_values=reference.get("values"), thresholds=thresholds,
+                assume_reference_geometry=assume_reference_geometry,
+                reference_ref={"table": reference.get("table"),
+                               "map_id": reference.get("map_id")},
+                value_weights=value_weights,
+                index_thresholds=index_thresholds, diag=diag,
+                #: 선언을 읽는 것은 «cfg 를 쥔 여기»다 — 채점기는 값만 받는다(순수성 유지).
+                slow_warn_ms=alignment_slow_warn_ms(cfg))
         if ruling.get("winner"):
             state = STATE_SCORED
         elif any(c["state"] == STATE_SCORED for c in candidates):
