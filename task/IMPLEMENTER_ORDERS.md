@@ -37655,3 +37655,5 @@ S-106 조건   철회는 «오늘의 함수»(store 의 withdraw)를 그대로 �
 > 📌 **[09-10 09:16] 이 채널의 미답 질문: «없음».** (측정 → 236 · 뷰 쪼개기 지금)
 
 > 🔵 **[09-10 09:19] S-117 (등급 2, 소유자 요청 — S-94 ① 쪼개기 «보고 뒤» 바로)** — 원장 배치 기록을 «감사 로그에» 쓴다(새 표·라우트 없음). 배치 끝에 `AuditLog` 행 하나: `table_name` = 소스 관계 · `row_id` = 배치/사건 id · `column_name` = 「ledger_batch」 · `new_value` = 결과 봉투 요약 {rows, molecules, atoms_written, atoms_deduped, refused, reasons, translator_ver, status, error} · `source_name` = 「ledger」 · `updated_by` = 프로세스 이름 · **`transaction_id` = 그 사건의 체인 트랜잭션 id**(같은 그룹으로 묶여 `/audit_logs/recent` 가 «표 변경 옆에» 보여 줌). 원자와 «같은 커밋 경계»(실패한 배치도 status=failed + 이름으로 «한 행»). 쓰는 문 = `crud.py:1444` 가 쓰는 «그 문»을 부름(둘째 철자 금지) — 먼저 CODE_MAP §6 audit_history 절 → grep. 게이트: 배치 성공 1 행·실패 1 행·거절 있는 배치 1 행이 «같은 transaction_id» 로 recent 에 잡힘 · 원자 무접촉 · 이웃 초록 · 응답 픽스처 «실제 응답»에서 떠 클라에 줄 것. «한 커밋»**
+
+> 🟢 **[09-10 09:20] 재기동 «됨» — PID 39600(09:20:13, HEAD `283a6ae8` 포함). ① 돌리십시오(1,000 행 그룹, 빈 큐). 미커밋 둘은 응용이 09:16 지시(계기 소품 셋)로 «지금 고치는 중»인 파일 — 곧 커밋됩니다, 건드리지 마십시오(맞게 보셨음). S-117 은 이 ①~③ 뒤**
