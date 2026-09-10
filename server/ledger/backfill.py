@@ -954,12 +954,34 @@ def rows_not_yet_translated(engine, setup, source, *, exact_rows=True):
             # too small -- and goes NEGATIVE on a source with two sentences, which this
             # function would then have reported as an un-withdrawn deletion. Two
             # different causes wearing one number.
-            cursor.execute(
-                sql.SQL("SELECT count(DISTINCT row_id) FROM {refs} "
-                        " WHERE relation = %s AND source_who = %s").format(
-                            refs=sql.Identifier(schema.ROW_REF_TABLE)),
-                (plan.relation, source))
-            indexed = cursor.fetchone()[0]
+            # 🔴 THE COUNTER, NOT THE SCAN (S-122-b, 판정 250). `count(DISTINCT row_id)`
+            # over the index was the last scan the paced census did - 2.055 s for the
+            # largest source on the QA box, which is not cheaper than the relation count
+            # this round already removed. The two seats that MOVE the index keep this
+            # number inside the atoms' own transaction, so it is exact by construction.
+            #
+            # ⚠️ NULL MEANS NEVER PLANTED, so it is counted ONCE - here, by whoever asks
+            # first - and maintained from then on. The exact path always counts anyway, so
+            # a person's `census` both refreshes the plant and is the drift check.
+            indexed = None
+            if exact_rows is False:
+                cursor.execute(
+                    sql.SQL("SELECT {column} FROM {cursor_table} WHERE source = %s").format(
+                        column=sql.Identifier(schema.ROWS_INDEXED_COLUMN),
+                        cursor_table=sql.Identifier(schema.CURSOR_TABLE)),
+                    (source,))
+                row = cursor.fetchone()
+                indexed = None if row is None else row[0]
+            if indexed is None:
+                cursor.execute(
+                    sql.SQL("SELECT count(DISTINCT row_id) FROM {refs} "
+                            " WHERE relation = %s AND source_who = %s").format(
+                                refs=sql.Identifier(schema.ROW_REF_TABLE)),
+                    (plan.relation, source))
+                indexed = cursor.fetchone()[0]
+                counted_now = True
+            else:
+                counted_now = False
     finally:
         connection.rollback()
         connection.close()
@@ -979,6 +1001,7 @@ def rows_not_yet_translated(engine, setup, source, *, exact_rows=True):
     grouped = getattr(plan.driver, "unit", "row") == "group"
     report.update({"relation_rows": total, "indexed_rows": indexed,
                    "relation_rows_estimated": from_estimate,
+                   "indexed_rows_counted_now": counted_now,
                    "counts": "rows vs groups" if grouped else "rows"})
     if grouped:
         report["not_comparable"] = (
@@ -1054,11 +1077,22 @@ def measure_row_census(engine, setup, source, now=None, *, exact_rows=True):
         method=("pg_class.reltuples (planner estimate, no scan)" if estimated
                 else ("count(*) [rows]" if grouped else "count(*)")),
         measured_at=stamp)
+    # ⚠️ THE METHOD SAYS WHICH ONE ANSWERED (S-122-b). A counted value maintained inside
+    # the atoms' transaction and a fresh `count(DISTINCT)` are both exact, but they are not
+    # the same act, and an operator reading a census line is entitled to know which.
+    from_counter = not census.get("indexed_rows_counted_now", True)
     stamped["indexed_rows"] = measured(
         census["indexed_rows"], exact=True,
-        method="count(distinct row_id) [groups]" if grouped
-        else "count(distinct row_id)",
+        method=("rows_indexed (counted at write time)" if from_counter
+                else ("count(distinct row_id) [groups]" if grouped
+                      else "count(distinct row_id)")),
         measured_at=stamp)
+    # 🔴 CARRIED OUT OF THE STAMPING, because `measure_and_store` is what plants the
+    # counter and this dict is all it gets. The first version left the flag on the inner
+    # report, so the plant never fired and every counter stayed NULL - which the gate
+    # caught by finding fifteen NULLs after a full lap.
+    stamped["indexed_rows_counted_now"] = bool(
+        census.get("indexed_rows_counted_now"))
     # ⛔ NO REMAINDER FOR A GROUP SOURCE, and the reason travels instead of the number.
     # `rows - groups` published 3,143 「not yet translated」 for a fully translated
     # `lot_event`; a key that is simply absent leaves the cell blank, which is the honest
@@ -1090,6 +1124,28 @@ def measure_and_store(engine, setup, source, store, now=None, *, exact_rows=True
     store.write_row_census(
         source, census,
         translator_ver=cursor_translator_version(setup.snapshot, source))
+    # 🔴 PLANTED ONCE, THEN MAINTAINED (S-122-b). A source whose counter is NULL was just
+    # counted exactly - by the tick, once in its life - so that number is written down and
+    # the two seats that move the index keep it from then on.
+    #
+    # ⚠️ AND AN EXACT RUN IS THE DRIFT CHECK. `python -m ledger census` always counts, so
+    # comparing what it counted with what the column claims is free - and a difference is
+    # NAMED rather than silently overwritten, because a counter that quietly corrects
+    # itself can never tell anybody it was wrong.
+    counted = census.get("indexed_rows")
+    if census.get("indexed_rows_counted_now") and counted is not None:
+        drifted = store.plant_rows_indexed(source, int(counted.get("estimate", 0)
+                                                       if isinstance(counted, dict)
+                                                       else counted))
+        if drifted is not None:
+            logger.warning(
+                "[Ledger] %s: rows_indexed said %d and counting says %d - the counter "
+                "drifted by %d and has been corrected. Two seats move it, both inside the "
+                "atoms' commit, so a difference means one of them was not reached.",
+                source, drifted, int(counted.get("estimate", 0)
+                                     if isinstance(counted, dict) else counted),
+                drifted - int(counted.get("estimate", 0)
+                              if isinstance(counted, dict) else counted))
     return census
 
 

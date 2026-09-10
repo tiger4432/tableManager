@@ -199,6 +199,7 @@ CREATE TABLE IF NOT EXISTS {CURSOR_TABLE} (
     source_head          JSONB,
     head_probed_at       TIMESTAMPTZ,
     row_census           JSONB,
+    rows_indexed         BIGINT,
     started_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
 )
@@ -290,11 +291,32 @@ LEDGER_ADDITIONS = (
 #: different sentence from 「zero rows」.
 ROW_CENSUS_COLUMN = "row_census"
 
+#: How many DISTINCT physical rows this source currently has an index line for.
+#:
+#: 🔴 A COUNTED VALUE, BECAUSE COUNTING IT WAS THE LAST SCAN (S-122-b, 판정 250). The
+#: census asked `count(DISTINCT row_id)` over the index for every source, every tick -
+#: measured on the QA box 2.055 s for the largest source, which is not cheaper than the
+#: relation scan the same round removed. The two seats that MOVE the index are both inside
+#: the atoms' own transaction, so a counter maintained there is exact by construction
+#: rather than by a repair job.
+#:
+#: ⚠️ `NULL` MEANS 「NOT COUNTED YET」 AND NOT 「ZERO」, the same distinction `row_census`
+#: makes beside it. A source that has never been planted gets counted exactly once - by the
+#: tick, once in its life - and is maintained from then on.
+#:
+#: ⚠️ DISTINCT ROWS, NOT REF LINES. One physical row wears several refs when a source emits
+#: more than one sentence about it, and counting lines instead is what made the remainder
+#: go negative before. So the increment counts rows gaining their FIRST line and the
+#: decrement counts rows losing their LAST.
+ROWS_INDEXED_COLUMN = "rows_indexed"
+
 CURSOR_ADDITIONS = (
     (REFUSAL_REASONS_COLUMN,
      f"ALTER TABLE {CURSOR_TABLE} ADD COLUMN {REFUSAL_REASONS_COLUMN} JSONB"),
     (ROW_CENSUS_COLUMN,
      f"ALTER TABLE {CURSOR_TABLE} ADD COLUMN {ROW_CENSUS_COLUMN} JSONB"),
+    (ROWS_INDEXED_COLUMN,
+     f"ALTER TABLE {CURSOR_TABLE} ADD COLUMN {ROWS_INDEXED_COLUMN} BIGINT"),
 )
 
 # 🔴 EVERY INDEX BELOW HAS A NAMED CONSUMER, AND THAT IS THE ADMISSION RULE.

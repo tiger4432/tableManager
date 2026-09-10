@@ -531,6 +531,38 @@ class LedgerStore:
         finally:
             connection.close()
 
+    def plant_rows_indexed(self, source, counted):
+        """Write the counted index size down. Returns what it REPLACED, if that differed.
+
+        🔴 THE COUNTER IS PLANTED ONCE AND MAINTAINED (S-122-b, 판정 250), so this is called
+        by whoever counted exactly: the tick the first time a source is seen, and every run
+        of the human `census` command after that.
+
+        ⚠️ IT RETURNS THE DIFFERENCE RATHER THAN SWALLOWING IT. Both seats that move this
+        number are inside the atoms' own transaction, so a drift is not a rounding error -
+        it means one of them was not reached, and a counter that silently corrects itself
+        can never tell anybody that. `None` when there was nothing there or nothing changed.
+        """
+        connection = self.connection()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"UPDATE {schema.CURSOR_TABLE} "
+                    f"   SET {schema.ROWS_INDEXED_COLUMN} = %s "
+                    f" WHERE source = %s "
+                    f"RETURNING (SELECT {schema.ROWS_INDEXED_COLUMN} "
+                    f"             FROM {schema.CURSOR_TABLE} c2 WHERE c2.source = %s)",
+                    (int(counted), source, source))
+                row = cursor.fetchone()
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+        previous = None if row is None else row[0]
+        return None if previous is None or int(previous) == int(counted) else int(previous)
+
     def _withdraw_refs(self, connection, source, refs):
         """Delete this source's atoms for `refs`, IN THE CALLER'S TRANSACTION. Returns how
         many.
@@ -583,7 +615,19 @@ class LedgerStore:
         touched: dict = {}
         for relation, row_id, _source, _ref in rows:
             touched.setdefault(relation, set()).add(row_id)
+        gained = 0
         with connection.cursor() as cursor:
+            # 🔴 WHICH OF THESE ROWS IS NEW TO THE INDEX (S-122-b). The counter this feeds
+            # is DISTINCT ROWS, so what it wants is the rows gaining their FIRST line -
+            # not the number of lines written, which counts a row twice when a source says
+            # two things about it. Asked BEFORE the delete below, over the named ids only,
+            # so it is an index lookup of at most one page's worth and never a scan.
+            for relation, row_ids in sorted(touched.items()):
+                cursor.execute(
+                    f"SELECT count(DISTINCT row_id) FROM {schema.ROW_REF_TABLE} "
+                    " WHERE relation = %s AND source_who = %s AND row_id = ANY(%s)",
+                    (relation, source, sorted(row_ids)))
+                gained += len(row_ids) - int(cursor.fetchone()[0] or 0)
             # 🔴 THIS SOURCE'S LINES FOR THESE ROWS ARE REPLACED, NOT MERGED. A
             # re-translation may name the same row under a DIFFERENT claim ref -- a
             # corrected `order_by` value moves it, which is what a rescope exists for --
@@ -600,6 +644,17 @@ class LedgerStore:
                 "(relation, row_id, source_who, source_raw_ref) VALUES %s "
                 "ON CONFLICT DO NOTHING",
                 rows)
+            # ⚠️ ONLY WHERE THE SOURCE HAS ALREADY BEEN COUNTED. `NULL` means 「never
+            # planted」, and `NULL + 3` is NULL in SQL - which would be the right answer by
+            # accident. It is written explicitly so nobody later "fixes" it with COALESCE
+            # and turns an unplanted source into one that claims three rows.
+            if gained:
+                cursor.execute(
+                    f"UPDATE {schema.CURSOR_TABLE} "
+                    f"   SET {schema.ROWS_INDEXED_COLUMN} = "
+                    f"       {schema.ROWS_INDEXED_COLUMN} + %s "
+                    f" WHERE source = %s AND {schema.ROWS_INDEXED_COLUMN} IS NOT NULL",
+                    (gained, source))
             return len(rows)
 
     def withdraw(self, source, refs):
@@ -695,20 +750,51 @@ class LedgerStore:
             return 0
         own = connection is None
         connection = connection or self.connection()
+        wanted = [str(item) for item in row_ids]
         try:
             with connection.cursor() as cursor:
+                # 🔴 WHICH SOURCES LOSE WHICH ROWS, BEFORE THE DELETE (S-122-b). The
+                # counter holds DISTINCT ROWS, so the decrement is "rows losing their LAST
+                # line" - and with `source=None` this statement speaks for every source at
+                # once, so the answer has to be grouped rather than a single number. Asked
+                # over the named ids only: an index lookup, never a scan.
+                if source is None:
+                    cursor.execute(
+                        f"SELECT source_who, count(DISTINCT row_id) "
+                        f"  FROM {schema.ROW_REF_TABLE} "
+                        " WHERE relation = %s AND row_id = ANY(%s) "
+                        " GROUP BY source_who", (str(relation), wanted))
+                else:
+                    cursor.execute(
+                        f"SELECT source_who, count(DISTINCT row_id) "
+                        f"  FROM {schema.ROW_REF_TABLE} "
+                        " WHERE relation = %s AND source_who = %s AND row_id = ANY(%s) "
+                        " GROUP BY source_who",
+                        (str(relation), str(source), wanted))
+                losing = cursor.fetchall()
+
                 if source is None:
                     cursor.execute(
                         f"DELETE FROM {schema.ROW_REF_TABLE} "
                         "WHERE relation = %s AND row_id = ANY(%s)",
-                        (str(relation), [str(item) for item in row_ids]))
+                        (str(relation), wanted))
                 else:
                     cursor.execute(
                         f"DELETE FROM {schema.ROW_REF_TABLE} "
                         "WHERE relation = %s AND source_who = %s AND row_id = ANY(%s)",
-                        (str(relation), str(source),
-                         [str(item) for item in row_ids]))
+                        (str(relation), str(source), wanted))
                 removed = int(cursor.rowcount or 0)
+                # Same statement's transaction, so the index and the count cannot be seen
+                # disagreeing - and `IS NOT NULL` keeps an unplanted source unplanted.
+                for who, rows_lost in losing:
+                    if rows_lost:
+                        cursor.execute(
+                            f"UPDATE {schema.CURSOR_TABLE} "
+                            f"   SET {schema.ROWS_INDEXED_COLUMN} = "
+                            f"       GREATEST({schema.ROWS_INDEXED_COLUMN} - %s, 0) "
+                            f" WHERE source = %s "
+                            f"   AND {schema.ROWS_INDEXED_COLUMN} IS NOT NULL",
+                            (int(rows_lost), who))
             if own:
                 connection.commit()
             return removed
