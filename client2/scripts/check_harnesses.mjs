@@ -373,7 +373,13 @@ const FLOORS = new Map([
   // mutation verdicts. Raised in the same lane that earned it: a floor left at 117 would let the
   // gate stay green while the disclosure is deleted and 225,101 rows go back to being told their
   // history does not exist.
-  ['history_paging_harness.mjs', 138],
+  // 🔴 RAISED 138 -> 141 ON 2026-09-10 BY C-58, AND NOT ONE ASSERTION WAS ADDED TO DO IT.
+  //    The file already ran 141 (122 behaviour + 19 mutation verdicts); the floor had simply
+  //    not been refreshed, so the three that the gate kept reporting as a rise were unheld.
+  //    C-58 converted this harness from slicing 24 function bodies into a vm to loading
+  //    `timeline.js` WHOLE through `lib/probe.mjs`, and the count landing IDENTICAL on both
+  //    sides is the evidence that the conversion moved the MECHANISM and not the coverage.
+  ['history_paging_harness.mjs', 141],
   // New 2026-08-04 with the isotropic-cell round (equal mm-per-pixel on both canvas axes, so
   // the wafer outline is a circle by construction). Same rule as the entries above: the floor
   // is the count it reports on the commit that introduces it — there is no earlier tree to
