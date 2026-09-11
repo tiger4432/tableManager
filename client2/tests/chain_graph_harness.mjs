@@ -347,6 +347,48 @@ function suite(mod) {
     ok('Z10 a 24-character table name ends before the next layer starts', fits.columns);
   }
 
+
+  console.log(`${LF}-- C-83: which cell is contested, not just how many --`);
+  {
+    // 🔴 TWO SHAPES, because the route sends two (`server/chain_graph.py`): a contested CELL
+    //    carries a column, a contested TABLE does not. Flattening them would erase the
+    //    difference between 「두 임자가 한 칸을 쓴다」 and 「한 표를 나눠 쓴다」.
+    const contested = {
+      nodes: [{ id: 'a' }], edges: [], cycles: [],
+      contested: [{ table: 'dt_a', column: 'qty', writers: ['m1', 'm2'] }],
+      contested_tables: [{ table: 'dt_b', writers: ['m3', 'm4'] }],
+    };
+    const cv = chainGraphView(contested);
+    eq('X1 both shapes reach the line', cv.contested.length, 2);
+    // WARNING READ DEFENSIVELY, on purpose: an empty list is exactly what the mutant makes,
+    //    and indexing into it would THROW rather than score (a mutant that throws is a hole).
+    const row = (i) => cv.contested[i] || { name: '(none)', writers: [] };
+    eq('X2 a contested cell names its column', row(0).name, 'dt_a.qty');
+    eq('X3 a contested table names no column', row(1).name, 'dt_b');
+    eq('X4 the writers are the server\'s, in its order', row(0).writers.join(','), 'm1,m2');
+    // 🔴 THE GATE THE ORDER NAMES: nothing contested draws NO line. 「다툼 없음」 would be a
+    //    sentence, and this panel publishes values.
+    eq('X5 nothing contested draws no line',
+      chainGraphView({ nodes: [], edges: [], contested: [], contested_tables: [] })
+        .contested.length, 0);
+    eq('X6 ...and a payload that never mentioned it is the same',
+      chainGraphView({ nodes: [], edges: [] }).contested.length, 0);
+
+    const d = makeDoc();
+    const m = d.createElement('div');
+    new ChainGraphPanel(m, { doc: d }).render(contested);
+    eq('X7 the line reaches the screen', byClass(m, 'chain-graph-contested').length, 1);
+    // Same reason as X2: with no element the mutant would kill the run instead of scoring.
+    const drawnText = (byClass(m, 'chain-graph-contested')[0] || { textContent: '' }).textContent;
+    ok('X8 ...carrying the name and the writers',
+      drawnText.includes('dt_a.qty') && drawnText.includes('m1'), drawnText);
+    const quiet = makeDoc();
+    const qm = quiet.createElement('div');
+    new ChainGraphPanel(qm, { doc: quiet }).render({ nodes: [], edges: [] });
+    eq('X9 and no line at all when nothing is contested',
+      byClass(qm, 'chain-graph-contested').length, 0);
+  }
+
   console.log(`${LF}-- a read that failed is not an empty graph --`);
   eq('U1 no payload reads as unread', chainGraphView(null).state, 'unread');
   eq('U2 an answer with an empty node list is READY',
@@ -381,8 +423,8 @@ const MUTANTS = [
     to: '    const value = 0;' },
   { id: 'M5', what: 'a failed read is folded into an empty graph',
     catches: 'U1 no payload reads as unread',
-    from: "  if (!nodes) return { state: 'unread',",
-    to: "  if (!nodes) return { state: 'ready'," },
+    from: "{ state: 'unread',",
+    to: "{ state: 'ready'," },
   { id: 'M6', what: 'the wake list stacks instead of being replaced',
     catches: 'W4 clicking another table replaces',
     from: '      this.root.replaceChild(next, this.wakesBox);',
@@ -426,6 +468,10 @@ const MUTANTS = [
     catches: 'Z2 the drawing declares its own width',
     from: "      width, height, preserveAspectRatio: 'xMinYMin meet',",
     to: "      preserveAspectRatio: 'xMinYMin meet'," },
+  { id: 'M15', what: 'the contested cells are counted but not named',
+    catches: 'X1 both shapes reach the line',
+    from: "    contested: contestedLine(payload),",
+    to: "    contested: []," },
   { id: 'M7c', what: 'CONTROL: a comment line is removed', control: true,
     from: '/** 합성된 규칙의 `origin` 은 이 접두로 시작합니다 — 뒤가 «어느 인리치에서 왔나»입니다. */',
     to: '/** */' },

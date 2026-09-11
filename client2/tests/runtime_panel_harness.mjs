@@ -18,6 +18,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadWithProbe } from './lib/probe.mjs';
 import { scoreMutants } from './lib/mutation_scorer.mjs';
+import { readFileSync } from 'node:fs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.join(HERE, '..', 'src', 'runtime_panel.js');
@@ -194,6 +195,23 @@ function suite(mod) {
   // 「못 읽음」 and 「고리 0개」 must not be the same pixel either.
   eq('U4 an answer carrying an empty list is READY, not unread',
     runtimeView({ loops: [] }).state, 'ready');
+}
+
+// ── C-83: the size this table wears is a TOKEN, and the token carries the canon's value ──
+//
+// ⚠️ TEXT AS THE SUBJECT, not as a proxy (CLAUDE.md 2026-09-03, judged per assertion). The claim
+//    is about what `tokens.css` DECLARES; there is no stylesheet engine in this harness and a
+//    DOM assertion could not see a CSS variable anyway. What it defends is real: the loop table
+//    had no size at all and inherited 16px, which is what the owner saw as 「고리 너무 커」, and
+//    the value was then set from the admin card (0.7rem) rather than from the canon (12px).
+{
+  const tokens = readFileSync(new URL('../src/tokens.css', import.meta.url), 'utf8');
+  ok('Z1 the label size is a token, declared once',
+    (tokens.match(/--fs-label\s*:/g) || []).length === 1,
+    String((tokens.match(/--fs-label\s*:/g) || []).length));
+  // 🔴 THE CANON'S VALUE (ui-design-system §2 label = 12px), by the lead's ruling 「캐논이 정본」.
+  ok('Z2 ...and its value is the canon\'s 12px', /--fs-label\s*:\s*12px\s*;/.test(tokens),
+    (tokens.match(/--fs-label[^;]*;/) || ['(absent)'])[0]);
 }
 
 const first = await loadWithProbe(SRC, {});

@@ -4733,6 +4733,13 @@ async function fetchEnrichmentStatus(force = false) {
 //                 · /admin/auto-update/status · /enrichment/rules (+blank 필터 카운트)
 // 신규 서버 API 없음. 실패 시 카드만 '조회 실패'로 두고 무음 (본문 흐름 비방해).
 
+// 🔴 「읽는 중」과 「못 읽었다」는 다른 상태입니다 (C-83, 총괄이 화면에서 봄: 거절문 옆에서
+//    로딩 표시가 계속 돌고 있었음). 넷 다 «거절 문장»을 그리면서 `loading` 으로 남아 있었고,
+//    그건 「자막 단 실패」 그대로입니다 — 글자는 실패라 말하고 상태는 아직 오는 중이라 말합니다.
+//    `unread` 는 오늘의 `loading` 과 «같은 픽셀»입니다(둘 다 기본 점). 바뀐 것은 «말»이고,
+//    그래서 이 자리가 게이트로 잴 수 있는 자리가 됩니다.
+// ⚠️ 「규칙 없음」·「수집기 없음」 둘은 «안 건드렸습니다» — 그건 읽기가 «성공»했고 없는 것이라
+//    `unread` 가 아닙니다. 이름이 틀린 것은 맞고, 보고에 올립니다.
 function setHealthCard(key, status, main, sub) {
   const card = byId(`health-card-${key}`);
   if (!card) return;
@@ -4790,7 +4797,7 @@ async function refreshFileAndAutoHealth() {
     : null;
 
   if (failedTotal === null) {
-    setHealthCard('file', 'loading', '—', activeSub || '상태 조회 실패');
+    setHealthCard('file', 'unread', '—', activeSub || '상태 조회 실패');
   } else if (failedTotal > 0) {
     setHealthCard('file', 'danger', `실패 ${failedTotal}건`,
       activeSub || '클릭 → File 탭 실패 필터로 이동');
@@ -4812,7 +4819,7 @@ async function refreshFileAndAutoHealth() {
     if (autoFailure) {
       // 200 with an error envelope. `r.data` is undefined here, so the old code drew
       // 「수집기 없음」 - 「못 물어봤다」 painted as 「등록된 것이 없다」.
-      setHealthCard('auto', 'loading', '—', autoFailure);
+      setHealthCard('auto', 'unread', '—', autoFailure);
       return;
     }
     const autoAbsent = absentPath(r);
@@ -4861,7 +4868,7 @@ async function refreshFileAndAutoHealth() {
           : `최근 실행 ${formatTimestamp(latestLastRun(collectors))}`));
     setHealthCard('auto', status, main, sub);
   } catch (e) {
-    setHealthCard('auto', 'loading', '—', '상태 조회 실패');
+    setHealthCard('auto', 'unread', '—', '상태 조회 실패');
   }
 }
 
@@ -4882,7 +4889,7 @@ async function refreshChainHealth() {
       setHealthCard('chain', 'ok', '실패 0건', '체인 파이프라인 정상');
     }
   } catch (e) {
-    setHealthCard('chain', 'loading', '—', '상태 조회 실패');
+    setHealthCard('chain', 'unread', '—', '상태 조회 실패');
   }
 }
 
@@ -4899,6 +4906,6 @@ async function refreshEnrichmentHealth() {
       setHealthCard('enrichment', 'ok', '결손 0건', `규칙 ${s.rules.length}개 · 모두 충족`);
     }
   } catch (e) {
-    setHealthCard('enrichment', 'loading', '—', '상태 조회 실패');
+    setHealthCard('enrichment', 'unread', '—', '상태 조회 실패');
   }
 }

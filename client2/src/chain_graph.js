@@ -133,9 +133,41 @@ export function countLine(counts) {
   return Object.entries(counts).map(([name, value]) => ({ name, value }));
 }
 
+/**
+ * 「같은 칸을 둘이 쓴다」 — 이름만. 없으면 «빈 목록»이고, 빈 목록은 줄이 없습니다.
+ *
+ * 🔴 이 값은 C-75 때 「라우트에 없다」고 제가 보고한 것이고, `b62b891c` 가 넣었습니다. 수는
+ *    C-79 의 머리 줄에 이미 있지만 «수만» 있으면 운영자가 「어느 칸인가」를 못 찾습니다 —
+ *    그때 남는 길은 규칙 파일을 전부 여는 것뿐입니다.
+ * 🔴 모양이 «둘»입니다(실측 `server/chain_graph.py`): 칸은 `{table, column, writers}` 이고
+ *    표는 `{table, writers}` 입니다. 「칸에 두 임자」와 「표를 둘이 나눠 쓴다」는 다른 사실이라
+ *    서버가 따로 냅니다 — 합치면 그 구별이 사라집니다.
+ * ⛔ 문장을 만들지 않습니다. 이름 · 임자들, 그것뿐입니다.
+ */
+export function contestedLine(payload) {
+  const cell = (entry) => (entry && entry.table
+    ? `${entry.table}${entry.column ? '.' + entry.column : ''}`
+    : null);
+  const writers = (entry) => (Array.isArray(entry && entry.writers) ? entry.writers : []);
+  const rows = [];
+  for (const entry of (payload && Array.isArray(payload.contested) ? payload.contested : [])) {
+    const name = cell(entry);
+    if (name) rows.push({ name, writers: writers(entry) });
+  }
+  for (const entry of (payload && Array.isArray(payload.contested_tables)
+    ? payload.contested_tables : [])) {
+    const name = cell(entry);
+    if (name) rows.push({ name, writers: writers(entry) });
+  }
+  return rows;
+}
+
 export function chainGraphView(payload) {
   const nodes = payload && Array.isArray(payload.nodes) ? payload.nodes : null;
-  if (!nodes) return { state: 'unread', nodes: [], edges: [], cycles: [], counts: [], ledgerError: null };
+  if (!nodes) {
+    return { state: 'unread', nodes: [], edges: [], cycles: [], counts: [], contested: [],
+      ledgerError: null };
+  }
   const edges = payload && Array.isArray(payload.edges) ? payload.edges : [];
   const cycles = payload && Array.isArray(payload.cycles) ? payload.cycles : [];
 
@@ -214,6 +246,9 @@ export function chainGraphView(payload) {
     // 「고리가 있다」는 사실은 표를 못 칠할 때도 «말해져야» 합니다.
     cycleNotes,
     counts: countLine(payload && payload.counts),
+    // 다투는 칸·표. «0 이면 빈 목록»이고, 빈 목록이면 아래 줄이 아예 없습니다 —
+    // 「다툼 없음」이라 적는 순간 그건 문장이지 값이 아닙니다.
+    contested: contestedLine(payload),
     // 🔴 «키가 있을 때만» 값입니다(실측: 원장이 읽히면 서버가 키를 아예 안 보냅니다).
     //    없는 것을 빈 문자열로 만들면 「할 말 없음」과 「못 읽음」이 같은 픽셀이 되고,
     //    그러면 원장 엣지 «0» 이 「원장에 아무것도 없다」로 읽힙니다 — 사실은 「못 읽었다」인데.
@@ -267,6 +302,15 @@ export class ChainGraphPanel {
       const line = this.doc.createElement('div');
       line.className = 'chain-graph-ledger-error';
       line.textContent = `원장 절반 못 읽음 · ${view.ledgerError}`;
+      this.root.appendChild(line);
+    }
+    // 🔴 머리 줄 «아래» 한 줄. 수는 위에 있고, 여기는 「어느 것인가」입니다.
+    if (view.contested.length) {
+      const line = this.doc.createElement('div');
+      line.className = 'chain-graph-contested';
+      line.textContent = `다툼 · ${view.contested
+        .map((row) => (row.writers.length ? `${row.name} ← ${row.writers.join('·')}` : row.name))
+        .join(' · ')}`;
       this.root.appendChild(line);
     }
     if (view.counts.length) {
