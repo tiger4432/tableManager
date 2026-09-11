@@ -1429,6 +1429,10 @@ const FLOORS = new Map([
   // New 2026-09-11 with C-74. Floor is the count it reports on the commit that introduces
   // it. 🔴 THE SCREEN ITSELF IS NOT SCORED -- `/runtime` is admin-gated and this lane does
   // not enter tokens, so what is scored is the module the screen is made of.
+  // New 2026-09-11 with C-75. 🔴 THE FIXTURE IS THE ORDER'S SHAPE, NOT THE ROUTE'S --
+  // `/chain/graph` (S-178) has not landed, so when it does, this fixture is the first thing
+  // to re-measure. The panel is deliberately NOT wired to the overview until then.
+  ['chain_graph_harness.mjs', 36],
   ['runtime_panel_harness.mjs', 22],
   ['reference_view_head_harness.mjs', 26],
 ]);
