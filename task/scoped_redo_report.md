@@ -33787,3 +33787,58 @@ planned=false 시스템의 낱말이다: 「나는 이것을 계획하지 못했
 
 > 📌 **[09-11 18:xx] 이 채널의 미답 질문: 5절 «가상 조인 규칙까지 격리를 넓힐지» 하나.
 > 다음: S-170(층 표 배큠 스크립트) → S-165 → S-173.**
+
+---
+
+# S-170 — 「배큠을 «명령»으로」 착지 (`6652a645`) · `server/scripts/tune_layer_tables.py`
+
+## 1. 네 모드, 전부 이 박스에서 «돌려» 봤습니다
+```
+(인자 없음)  읽기 전용 핀. 표별 live/dead · n_ins_since_vacuum · n_mod_since_analyze ·
+            last_autovacuum/autoanalyze(+누적) · 현재 autovacuum reloptions,
+            그리고 «지금 도는 것»: pg_stat_progress_vacuum 단계·heap 진행 + 워커 query 원문 + 종류
+--apply     cost_delay · cost_limit · vacuum_scale_factor (셋 다 인자로 바꿈)
+--vacuum    VACUUM (VERBOSE, ANALYZE) 한 표씩, 풀 «밖» AUTOCOMMIT 연결(S-167), VERBOSE 를 드라이버에서 읽어 출력
+--reset     --apply 가 쓸 수 있는 «모든» 옵션을 지움 (걸 수 있는데 못 푸는 옵션은 덫입니다)
+```
+🔴 **아무것도 «고르지» 않습니다.** 소유자 정정(「dead 는 거의 0」)이 쉬운 이야기를 지웠고,
+남은 후보 셋(autoANALYZE · insert 유발 VACUUM · anti-wraparound)은 «다른 손잡이»이며
+마지막 것은 «건드리면 안 되는» 것입니다. PostgreSQL 이 워커 query 에 «어느 것인지» 이미
+쓰고 있으므로 그걸 «읽고», 손잡이는 사람이 이름 댑니다 —
+그래서 `--analyze-scale-factor`·`--insert-scale-factor` 에는 **기본값이 없습니다**(기본값이
+곧 「자동 판단」이라서). 시험 하나가 그 부재를 지킵니다.
+
+## 2. 라이브 게이트 — ⚠️ 아래 수는 «이 박스»의 것입니다(운영 주장 아님)
+```
+dry-run     cell_sources live 38,807,544 · dead 301,589 · relpages 760,884
+            audit_logs   live  6,979,172 · dead   9,955
+            🔵 cell_overwrites: 수집기 live 0 vs 카탈로그 reltuples 121,099
+               -> «경고 줄이 실제 사례에서 떴습니다» (8월 diagnose_db_health 가 확신에 찬
+                  bloat 판정을 냈던 바로 그 아티팩트)
+--apply     세 표에 셋 다 붙음 -> 인자 없이 다시 읽어 «값으로» 확인
+--reset     세 표 모두 「(없음 — 서버 기본값)」으로 복귀
+--vacuum    cell_overwrites 에서 PG 의 VERBOSE 원문이 그대로 출력됨(한국어)
+🔵 박스는 «찾았을 때 그대로» 두고 나왔습니다 — 세 표 모두 reloptions 없음
+```
+
+## 3. 🔴 라이브가 «결함 셋»을 잡았습니다. 셋 다 시험으로 못 박았습니다
+```
+① autovacuum: ANALYZE … 가 「VACUUM + ANALYZE」로 읽혔습니다 — «접두어에 vacuum 이 들어 있어서».
+   부분 문자열이 아니라 «동사를 토큰으로» 읽습니다. 거울 케이스(vacuum_audit_log·analyze_queue)도 넣었습니다
+② cost_delay = 2ms 를 PG 가 거절했습니다 — 같은 이름의 GUC 는 단위를 받고 «저장 파라미터»는 안 받습니다.
+   그런데 `2ms` 는 문서와 지시서가 둘 다 쓰는 철자라 «받아서 정규화»합니다(거절하면 제가 옳고 운영자가 곤란)
+③ 첫 실행이 «자기 출력»에서 죽었습니다 — 한국어 Windows 콘솔은 cp949 이고 이 트리의
+   운영자 문구는 그 코드가 없는 글자를 씁니다. 보고서를 찍다 죽는 진단기는 「DB 가 고장났다」로 읽힙니다
+```
+⚠️ 셋 다 «단위 시험만 돌렸으면 안 잡혔습니다». 라이브 게이트가 지시서에 있던 이유입니다.
+
+## 4. 이웃
+```
+신설 단위 22 · 이웃(읽기전용 가드 · outbox_triage · prod_import_check) 68 passed · 23 skipped
+커밋 뒤   5,683 tests collected, 오류 0
+```
+
+## 5. 재기동 «불필요» — 어떤 프로세스도 이 파일을 import 하지 않습니다 (운영자가 손으로 돌립니다)
+
+> 📌 **[09-11 19:xx] 이 채널의 미답 질문: S-177 ②의 「가상 조인 규칙까지 격리를 넓힐지」 하나(계속 열려 있음).
+> 다음: S-165 ⓑ → S-173(이분 재전개) → S-176 서버 라우트.**
