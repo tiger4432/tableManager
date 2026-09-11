@@ -35637,3 +35637,54 @@ per-table count 를 «아예 안 만듭니다»). 지우지 말고 새 모양으
 
 > 📌 **[09-12 00:35] 이 채널의 미답 질문: 대시보드 둘(S-187?) «하나» — 나머지는 근거 붙였습니다.
 > 재기동 총괄 몫.**
+
+## 27. S-142 ② 설계 한 줄 — 「죽은 기록이 실어 온 칸도 죽었다」 (코드 0)
+
+### 큐 행이 말한 것 (보드 09-11 07:22)
+> `/health` 는 «이 박스» 503 — **죽은 감독의 로스터 잔재** + 통합 워처 유휴 무박동 → S-142
+
+① 은 착지했습니다(`c01f5f80`, 유휴 beat). 남은 ② 를 «재서» 가르면 이렇습니다.
+
+### 실측 (이 박스)
+```
+/health            503 · problems 둘
+  ①  「supervisor status is 145365s old - the supervisor itself is not running」
+  ②  「worker 'scheduler' has made no progress for 145362.73s」
+그런데 «같은 응답»의 workers 칸:
+  chain      supervisor_state=running  pid=31940  age=1.0s    status=ok
+  scheduler  supervisor_state=running  pid=18776  age=145385s status=stale
+  watcher    supervisor_state=running  pid=7956   age=4.7s    status=ok
+실제 python 프로세스: **42240 «하나»** — 31940·18776·7956 은 «전부 없습니다»
+로스터 파일 mtime 09-10 07:55 (약 40시간 전, 죽은 감독 PID 34872 와 같은 시각)
+```
+🔵 심박 쪽은 «정직»합니다 — chain·watcher 의 1초·4.7초는 «지금 서버(42240) 안의 스레드»가
+찍는 진짜 박동입니다. 거짓인 것은 «감독 파일이 실어 온 칸»입니다.
+
+### 🔴 그래서 결함은 「잔재가 남아 있다」가 아니라 «한 응답이 스스로와 어긋난다»입니다
+```
+같은 JSON 안에서
+  problems   「감독이 안 돈다」            ← 참
+  workers    supervisor_state: "running"  ← 그 죽은 파일에서 온 값
+             pid: 31940                   ← 없는 프로세스
+```
+운영자는 workers 표를 봅니다. 거기엔 「running」과 pid 가 있으니 «살아 있다»고 읽습니다.
+
+### 설계 한 줄
+```
+「감독 기록이 stale 이면 그 기록이 실어 온 칸(supervisor_state · pid · restarts)도 stale 이다 —
+ 파일의 나이가 «그 파일에서 온 모든 값»을 지배하고, 없는 것은 «없음»으로 낸다(지어내지 않는다).
+ 살아 있다고 말할 수 있는 것은 «심박»뿐이다.」
+```
+그러면 이 박스의 답은 「chain·watcher 는 박동으로 살아 있음 · 감독은 없음 · scheduler 는 박동 없음」이
+되고, 죽은 pid 는 «사라집니다». 503 자체는 그대로일 수 있습니다 — 감독이 정말 없으니까요.
+
+### 게이트 (짓게 되면)
+```
+ⓐ 감독 기록이 stale → workers 의 supervisor_state·pid·restarts 가 «없음»(false·0 지어내지 말 것)
+ⓑ 감독 기록이 fresh → 오늘과 «한 글자도» 안 다름
+ⓒ 심박만으로 사는 프로세스는 여전히 ok (chain·watcher 회귀 금지)
+ⓓ problems 와 workers 가 «같은 말»을 함 — 한 응답 안에서 어긋나지 않음
+```
+
+> 📌 **[09-12 00:41] 이 채널의 미답 질문: 이 한 줄로 «짓습니까». 등급 4 라 순서는 총괄 몫입니다.
+> 코드 0 — 작업 트리 깨끗(확인함).**
