@@ -20,6 +20,7 @@ that can refuse.
 """
 
 import datetime as dt_pkg
+import re
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -49,6 +50,39 @@ from zoneinfo import ZoneInfo
 #: A plain dict on purpose: this is a diagnostic counter, not a ledger, and a lost
 #: increment under a race costs a number rather than a fact.
 _NAIVE_TIME_COUNTS = {}
+
+
+#: An ISO-8601 trailing offset (`Z`, `+09:00`, `-0500`) — the thing PostgreSQL reads to
+#: decide whether it must guess. Anchored to the END so a date like `2026-09-11` cannot
+#: match its own hyphens.
+_TIME_OFFSET_RE = re.compile(r"(?:Z|[+-]\d{2}:?\d{2})$")
+
+
+def time_is_naive(value) -> bool:
+    """Whether this world-time value reached a door without saying which zone it means.
+
+    🔴 ONE PREDICATE, BECAUSE TWO DOORS MUST REFUSE THE SAME THING (판정 290). The
+    general write boundary (`crud.cast_value_by_type`) and the ledger's
+    (`store.parse_occurred_at`) both answer this question, and S-182 ⓑ turns the answer
+    into a REFUSAL at both. Two spellings of a predicate that only counts is a latent
+    disagreement; two spellings of a predicate that refuses is two different products.
+
+    ⚠️ TEXT IS JUDGED BY ITS OFFSET, NOT BY PARSING IT. PostgreSQL is what will read the
+    string, and what decides its fate there is whether an offset is present — an
+    offset-bearing string lands correctly and a naive one is reinterpreted in the session
+    TimeZone. Re-implementing a timestamp parser to answer a question about the presence
+    of a suffix would be a second spelling of something we do not need to know.
+
+    ⚠️ AND IT IS NOT `fold_time_value`. That one ANSWERS WITH A VALUE and says `None` for
+    three different reasons — not a datetime, no declaration, unusable zone — so it cannot
+    be asked 「was this naive」 without the caller guessing which reason it meant.
+    """
+    if isinstance(value, datetime):
+        return value.tzinfo is None
+    text = str(value).strip() if value is not None else ""
+    if not text or len(text) < 10:
+        return False
+    return not _TIME_OFFSET_RE.search(text)
 
 
 def fold_time_value(value, *, zone=None):

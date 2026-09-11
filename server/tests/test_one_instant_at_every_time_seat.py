@@ -75,8 +75,13 @@ def test_a_value_that_carries_its_own_offset_is_untouched():
     already carries it."""
     aware = NAIVE.replace(tzinfo=timezone.utc)
     assert tf.fold_time_value(aware, zone="Asia/Seoul") is aware
-    assert crud._time_is_naive(OFFSET_TEXT) is False
-    assert crud._time_is_naive("2026-08-13T04:12:07Z") is False
+    # 판정 290: the predicate lives beside the fold, because S-182 ⓑ makes BOTH write
+    # doors refuse on it and two spellings of a refusal are two different products.
+    assert tf.time_is_naive(OFFSET_TEXT) is False
+    assert tf.time_is_naive("2026-08-13T04:12:07Z") is False
+    assert tf.time_is_naive(NAIVE_TEXT) is True
+    assert tf.time_is_naive(NAIVE) is True
+    assert tf.time_is_naive(aware) is False
 
 
 def test_an_unusable_zone_is_not_silently_defaulted():

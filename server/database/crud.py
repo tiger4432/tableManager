@@ -24,7 +24,6 @@ import math
 import os
 import logging
 from datetime import datetime, date, timezone
-import re
 
 # The one render/fold module for world time (S-182). Stdlib-only by design, so importing
 # it here cannot pull an application module into the write path.
@@ -881,23 +880,6 @@ def normalize_stored_text(value: Any) -> Any:
     return value.strip() if isinstance(value, str) else value
 
 
-def _time_is_naive(value) -> bool:
-    """Whether this world-time value reached the write door without saying which zone.
-
-    Text is judged by its OFFSET, not by parsing it: PostgreSQL is what will read the
-    string, and what decides its fate there is whether an offset is present - an
-    offset-bearing string lands correctly and a naive one is reinterpreted in the session
-    TimeZone. Re-implementing a timestamp parser here to answer a question about the
-    presence of a suffix would be a second spelling of something we do not need to know.
-    """
-    if isinstance(value, datetime):
-        return value.tzinfo is None
-    text = str(value).strip() if value is not None else ""
-    if not text or len(text) < 10:
-        return False
-    return not _TIME_OFFSET_RE.search(text)
-
-
 def cast_value_by_type(value: Any, col_type: str, col_name: str,
                        table_name: str = None) -> Any:
     """컬럼의 타입 스펙에 맞춰 데이터를 int, float 등으로 명시적으로 형변환합니다.
@@ -928,7 +910,7 @@ def cast_value_by_type(value: Any, col_type: str, col_name: str,
         # stop every running load at once. So this seat COUNTS and passes through - 「a
         # table that declared nothing is not one character different」 - and 판정 289's
         # round ⓑ turns the count into a refusal once the owner has declared.
-        if _time_is_naive(value):
+        if time_format.time_is_naive(value):
             time_format.note_naive_time(table_name, col_name)
         return value
 
@@ -2604,11 +2586,6 @@ def assemble_composite_business_key(table_name: str, update_item: schemas.Genera
 #: who means 「deliberately empty」 writes a VALUE in the data, such as 「없음」, and that is
 #: not a product cell). Absent means 「today's behaviour」, which is why the regression gate
 #: reads 「a table with no cell is not one character different」.
-#: An ISO-8601 trailing offset (`Z`, `+09:00`, `-0500`) — the thing PostgreSQL reads to
-#: decide whether it must guess. Anchored to the END so a date like `2026-09-11` cannot
-#: match its own hyphens.
-_TIME_OFFSET_RE = re.compile(r"(?:Z|[+-]\d{2}:?\d{2})$")
-
 KEY_NULL_SKIP = "skip"
 
 
