@@ -176,6 +176,17 @@ DEFAULT_CARDINALITY = "many"
 #: once. ABSENCE MEANS `active`.
 LIFECYCLE_STATES = frozenset({"active", "retired"})
 DEFAULT_LIFECYCLE = "active"
+
+
+def is_retired(item: Any) -> bool:
+    """Whether this declaration has said 「stop reading me」 (S-177 ①).
+
+    🔴 ONE SPELLING, because the answer gates FOUR different passes -- source content,
+    cross-relation columns, the compile registries and the plan -- and a second spelling
+    is how one of them keeps validating what the other three have stopped reading.
+    """
+    return (isinstance(item, Mapping)
+            and item.get("status", DEFAULT_LIFECYCLE) == "retired")
 _SOURCE_UNITS = frozenset({"row", "group"})
 _MAPPER_UNITS = frozenset({"event", "row", "group_by"})
 # A source whose table carries no world time declares that instead of naming a column.
@@ -1381,7 +1392,14 @@ def _validate_entities(section: Mapping[str, Any], problems: _Problems) -> None:
                         f"name cannot be both.")
         if "allow_null" in item and not isinstance(item["allow_null"], bool):
             problems.add("invalid_type", f"{path}.allow_null", "must be boolean")
-        if "references" in item:
+        # 🔴 THE SAME RULE AS A RETIRED SOURCE (S-177 ①). `references` is the ONE entity
+        # clause whose truth depends on something OUTSIDE this entity -- it names another
+        # declaration, which an operator is free to delete once nothing active points at
+        # it. Every other clause here (`keys`, `attributes`, `class`) is a statement about
+        # this entity alone and stays judged, because the walk still SHOWS a retired type
+        # and reads those. An active predicate naming a retired type is refused as before,
+        # by name, in `_retired_entity_types` -- that rule is untouched.
+        if "references" in item and not is_retired(item):
             _validate_references(item["references"], f"{path}.references",
                                  keys, section, problems)
 
@@ -1850,6 +1868,20 @@ def _validate_sources(section: Mapping[str, Any], problems: _Problems) -> None:
         # ledger source would have made two places for one fact. It lives beside `kind`
         # in the catalog adapter above, and this validator reads it from there if it ever
         # needs to.
+        # 🔴 A RETIRED SOURCE IS NOT READ, SO ITS CONTENT IS NOT READ EITHER (S-177 ①,
+        # owner 2026-09-11: 「아예 못 읽는 선언은 retired 가 안 먹던데」). Retiring a source
+        # means 「this one is no longer read」, and the three clauses below all ask what
+        # WOULD BE READ -- which columns the preparer takes, which the profile binds, which
+        # mapper turns them into sentences. Judging them anyway made retirement answer a
+        # question nobody asked: a source whose relation lost a column REFUSED THE WHOLE
+        # BUNDLE, so the ledger stopped on a declaration that had already said it was done.
+        #
+        # ⚠️ THE SHAPE IS STILL JUDGED, and deliberately: `exact` above has already refused
+        # an unknown key and a missing clause, and `relation`/`status` are read below by
+        # everything that SHOWS the source. What is skipped is the CONTENT -- and only the
+        # content can be falsified by the world moving on, which is the whole defect.
+        if is_retired(source):
+            continue
         # Each clause is judged on its own: one malformed clause must not silence the
         # other three, or an author fixes four rounds of one refusal at a time.
         _validate_profile(source.get("bind"), f"{path}.bind", problems)
@@ -2021,6 +2053,8 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
     # exist, does its derived Claim declare this role -- so it is asked for every source,
     # including one whose relation is undeclared and which the loop below skips.
     for source_id, source in sources.items():
+        if is_retired(source):
+            continue
         profile = source.get("bind")
         if isinstance(profile, Mapping):
             _cross_profile_contract(
@@ -2056,16 +2090,19 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
     # ruled this way for the legacy syntax ("before the column checks, because it is the
     # ROOT refusal"); this is the same rule, not a second one.  Only the affected source
     # is skipped -- an unrelated source keeps being validated.
+    # 🔴 A RETIRED SOURCE'S RELATION MAY BE GONE, AND THAT IS NOT A FAULT (S-177 ①). The
+    # table a source stopped reading is exactly the table an operator is then free to drop,
+    # so asking the catalogue about it turns 「retired」 into 「the bundle will not load」.
     unresolved_sources = {
         source_id for source_id, source in sources.items()
-        if source.get("relation") not in tables
+        if not is_retired(source) and source.get("relation") not in tables
     }
     for source_id in sorted(unresolved_sources):
         _relation_columns(sources[source_id].get("relation"), (), tables,
                           f"bundle.sources.{source_id}.relation", problems)
 
     for source_id, source in sources.items():
-        if source_id in unresolved_sources:
+        if source_id in unresolved_sources or is_retired(source):
             continue
         path = f"bundle.sources.{source_id}"
         relation = source.get("relation")

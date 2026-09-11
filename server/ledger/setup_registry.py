@@ -25,6 +25,7 @@ from .setup_bundle import (
     LedgerSetupBundle,
     LedgerSetupValidationError,
     bundle_readiness_errors,
+    is_retired,
     predicate_claim,
     role_binding_kinds,
     validate_bundle,
@@ -410,8 +411,15 @@ class SourceDriverPlan:
 class SourcePlan:
     source_id: str
     relation: str
-    driver: SourceDriverPlan
-    profile: ProfileDescriptor
+    #: 🔴 `None` ON A RETIRED SOURCE, AND ON NOTHING ELSE (S-177 ①). A retired source is
+    #: still REGISTERED -- its atoms are facts, and the screens that show it need its name,
+    #: its relation and its status -- but it has no plan to read its table and none to turn
+    #: rows into sentences, because both were compiled from clauses the validator has
+    #: stopped reading. Everything that DOES something asks `status` first (`backfill.run`,
+    #: the census sweep, `sources_for_table`, the follow-up view index); `_require_declared
+    #: _source` is where a typed name is refused.
+    driver: SourceDriverPlan | None
+    profile: ProfileDescriptor | None
     config_path: str
     #: 🔴 `active` or `retired` (S-103, ruling 198). A retired source is NOT deleted - its
     #: atoms are facts and a ledger appends - it is a source the translator stops reading.
@@ -599,6 +607,13 @@ def snapshot_compile_errors(
     issues: list[LedgerSetupValidationError] = list(
         _verified_join_errors(validated, verified_joins))
     for source_id, source in validated.section("sources").items():
+        # 🔴 NOTHING RUNS A RETIRED SOURCE'S BODIES, SO NOTHING ASKS WHETHER THEY ARE
+        # TRUSTED (S-177 ①). The validator has already stopped reading `prepare`/`map`
+        # for it, so this loop would be the one pass still indexing clauses it may no
+        # longer assume are shaped -- and refusing the bundle over an implementation that
+        # is never called is the same stop the retirement was supposed to end.
+        if is_retired(source):
+            continue
         for kind, clause, trusted_keys in (
             ("source preparer", "prepare", trusted.source_preparers),
             ("mapper", "map", trusted.mappers),
@@ -845,6 +860,14 @@ def source_cursor_fingerprint(
     keep going".
     """
     plan = snapshot.source_plans[source_id]
+    # 🔴 A RETIRED SOURCE HAS NO FINGERPRINT, AND SAYS SO (S-177 ①). The material this
+    # closes over is the read and translate plan, and a retired source is compiled with
+    # neither - so the honest answer is a refusal with a word, not a hash of nothing and
+    # not an `AttributeError` three frames down in whichever loop asked.
+    if plan.status != "active":
+        raise LedgerSetupValidationError(
+            "source_retired", f"bundle.sources.{source_id}.status",
+            f"source {source_id!r} is retired; it has no cursor material to fingerprint")
     predicate_ids = sorted({
         mapping.predicate_id for mapping in plan.profile.mappings.values()
     })
@@ -1057,6 +1080,8 @@ def _compile_preparers(section: Mapping[str, Any]) -> SourcePreparerRegistry:
     """
     builder = _RegistryBuilder(SourcePreparerRegistry)
     for source_id, source in section.items():
+        if is_retired(source):
+            continue                     # S-177 ①: no read plan, so no preparer
         item = source["prepare"]
         builder.add(source_id, SourcePreparerDescriptor(
             preparer_id=source_id,
@@ -1075,6 +1100,8 @@ def _compile_mappers(section: Mapping[str, Any]) -> MapperRegistry:
     """One mapper per SOURCE, keyed by the source it maps -- see `_compile_preparers`."""
     builder = _RegistryBuilder(MapperRegistry)
     for source_id, source in section.items():
+        if is_retired(source):
+            continue                     # S-177 ①: no translate plan, so no mapper
         item = source["map"]
         builder.add(source_id, MapperDescriptor(
             mapper_id=source_id,
@@ -1117,6 +1144,8 @@ def _compile_profiles(section: Mapping[str, Any]) -> ProfileRegistry:
     """One profile per SOURCE, keyed by the source it maps -- see `_compile_preparers`."""
     builder = _RegistryBuilder(ProfileRegistry)
     for source_id, source in section.items():
+        if is_retired(source):
+            continue                     # S-177 ①: no translate plan, so no profile
         item = source["bind"]
         path = f"bundle.sources.{source_id}.bind"
         # 🔴 THE SOURCE'S ATTRIBUTE BINDINGS ARE FOLDED IN HERE, ONCE (S-52, ruling 124).
@@ -1278,6 +1307,20 @@ def _compile_source_plans(
     builder = _RegistryBuilder(SourcePlanRegistry)
     for source_id, item in section.items():
         path = f"bundle.sources.{source_id}"
+        if is_retired(item):
+            # 🔴 REGISTERED BY NAME, NOT COMPILED (S-177 ①). `relation` rides along because
+            # it is the one thing an operator asks a retired source ("which table did this
+            # stop reading"), it is shape-checked rather than cross-checked, and dropping
+            # it would make `sources_for_table` read `None` for a table name.
+            builder.add(source_id, SourcePlan(
+                source_id=source_id,
+                status=item.get("status", DEFAULT_LIFECYCLE),
+                relation=item["relation"],
+                driver=None,
+                profile=None,
+                config_path=path,
+            ))
+            continue
         # The COMPILED plan keeps `driver` as the name for the read clause and its two
         # bodies; only the FILE split.  Nothing downstream of the compiler asks the config
         # a question, so renaming `SourcePlan.driver` would move `backfill`,

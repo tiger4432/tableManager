@@ -2194,10 +2194,19 @@ async def run_ledger_row_census(db_session_factory):
         setup = None
         try:
             setup = await asyncio.to_thread(_load_setup_sync, db_session_factory)
-            sources = sorted(setup.snapshot.source_plans)
+            # 🔴 A RETIRED SOURCE IS COUNTED BY NAME, NOT BY ROWS (S-177 ①). Nothing
+            # arrives for it, so a remainder measured here would publish a backlog that
+            # will never move - and after S-177 its relation may not be in the catalogue
+            # at all, which would spend a lap failing once per source. The names ride on
+            # the lap line, so the skip is a value rather than a silence.
+            sources = sorted(name for name, plan in setup.snapshot.source_plans.items()
+                             if plan.status == "active")
+            retired = sorted(name for name, plan in setup.snapshot.source_plans.items()
+                             if plan.status != "active")
         except Exception as exc:
             logger.warning("[LedgerCensus] the declaration could not be read: %s", exc)
             sources = []
+            retired = []
         measured_now = 0
         lap_started = time.monotonic()
         measured_seconds = 0.0
@@ -2223,8 +2232,10 @@ async def run_ledger_row_census(db_session_factory):
             logger.info("[LedgerCensus] lap: %d source(s) in %.3fs, measured %.3fs "
                         "(rest %.0fs between, "
                         "relation rows are planner estimates - `python -m ledger census` "
-                        "counts)", len(sources), time.monotonic() - lap_started,
-                        measured_seconds, rest)
+                        "counts)%s", len(sources), time.monotonic() - lap_started,
+                        measured_seconds, rest,
+                        f" · retired (content unvalidated): {', '.join(retired)}"
+                        if retired else "")
         await asyncio.sleep(rest if sources else max(rest, 60.0))
 
 

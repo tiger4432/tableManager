@@ -407,12 +407,26 @@ def dry_run_report(setup: LedgerSetup) -> Mapping[str, Any]:
 
 
 def _require_declared_source(setup: "LedgerSetup", source_id: str) -> str:
-    """Kept as the ONE spelling of "may this source run", now that the answer is
-    "is it declared". Callers (`backfill.run`, the preview/execute entries) ask through
-    this rather than each testing membership, so a future gate lands in one place."""
+    """The ONE spelling of "may this source run": declared, and not retired.
+
+    🔴 THE SECOND HALF LANDED HERE RATHER THAN BESIDE EACH CALLER (S-177 ①). `backfill.run`
+    carried the retirement refusal itself while the preview and execute entries carried
+    none, so a retired source typed into the explorer reached a compiled plan it does not
+    have. This is the place the docstring already promised a future gate would land.
+
+    🔴 REFUSED BY NAME RATHER THAN SKIPPED, because the source was TYPED. Answering with a
+    clean zero would tell an operator the relation is empty; `status` is the answer to a
+    different question than 「is it declared」, so it is a separate refusal with its own word.
+    """
     if not isinstance(setup, LedgerSetup):
         raise TypeError("setup must be LedgerSetup")
-    return setup.require_source(source_id)
+    setup.require_source(source_id)
+    if setup.snapshot.source_plans[source_id].status != "active":
+        raise LedgerSetupError(
+            "source_retired",
+            f"source {source_id!r} is retired; its atoms stay and nothing new is read. "
+            f"Set `sources.{source_id}.status` to 'active' to read it again.")
+    return source_id
 
 
 def _resolve_cli_root(value: str | None) -> Path:

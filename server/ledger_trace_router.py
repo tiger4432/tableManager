@@ -806,13 +806,25 @@ def ledger_declaration_catalog():
                 # moving; dropping it from this list would look like the declaration lost
                 # it. The live path is what stops reading it.
                 "status": plan.status,
+                # 🔴 RETIRED MEANS 「THE CONTENT WAS NOT JUDGED」, AND THE SCREEN SAYS SO
+                # (S-177 ①). The validator stops reading a retired source's clauses, so
+                # its bindings may name a column the table no longer has -- true and
+                # harmless, but an operator reading the same panel as an active source
+                # would have no way to know the list beside it was never checked. The flag
+                # rides only when it is false, so an active source is byte-identical to
+                # what it published before.
+                **({"content_validated": False} if plan.status != "active" else {}),
                 "emits": sorted({
                     (mapping or {}).get("predicate")
                     for mapping in (((declared_sources.get(source_id) or {})
                                      .get("bind") or {}).get("mappings") or {}).values()
                     if (mapping or {}).get("predicate")
                 }),
-                "scope_columns": list(base_select_columns(plan)),
+                # ⛔ OMITTED, NOT EMPTIED, ON A RETIRED SOURCE. This list is compiled
+                # from the read plan, and a retired source has none; `[]` would say 「reads
+                # no columns」, which is a different and false fact.
+                **({"scope_columns": list(base_select_columns(plan))}
+                   if plan.status == "active" else {}),
                 **({"census": census[source_id]} if source_id in census else {}),
             }
             for source_id, plan in sorted(plans.items())
