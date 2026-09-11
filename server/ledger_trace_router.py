@@ -17,6 +17,7 @@ against it. Changing it is an escalation, not an edit.
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
 from database.database import get_db
@@ -114,6 +115,11 @@ def evidence_subgraph(
                            "오늘 동작 그대로. 걷기는 안 바뀐다: 웨이퍼에서 결함으로 가려면 "
                            "다이를 «지나야» 하고, 지나는 것과 «실어 오는 것»은 다르다. "
                            "이름은 선언된 엔터티 타입이다 (`@` 버전은 있어도 없어도 된다)")),
+    response_format: str = Query(
+        "json", alias="format",
+        description=("`json`(기본) 또는 `rows`. `rows` 는 «같은 걷기 결과»를 TSV 로 접어 "
+                     "돌려준다 — 첫 줄은 절단 표지, 그다음이 머리, 행 하나가 «닿은 노드 하나»"),
+    ),
     db: Session = Depends(get_db),
     include_superseded: bool = Query(
         False,
@@ -122,6 +128,20 @@ def evidence_subgraph(
                      "켜면 엣지에 `superseded_by` 표지가 붙는다")),
 ):
     """어느 증거 노드에서든 Entity–Event–Claim 서브그래프를 답한다."""
+    # ⛔ FIRST, BEFORE ANY OTHER ARGUMENT IS TOUCHED. A direct call leaves FastAPI's
+    # `Query` sentinels in the other parameters (this handler's own note below says so), so
+    # a refusal placed further down would raise a TypeError about an unrelated argument
+    # instead of naming the format - and a caller who asked for rows and got JSON reads the
+    # failure as 「the walk found nothing」.
+    # ⚠️ A DIRECT CALL LEAVES THE `Query` SENTINEL HERE, exactly as this handler's note
+    # below says of the other arguments. Stringifying it would make every direct caller look
+    # like they asked for a format nobody answers - which is how this refusal first broke
+    # three interval tests that never mentioned `format`.
+    wants = (response_format if isinstance(response_format, str) else "json").strip().lower()
+    if wants not in ("json", "rows"):
+        raise HTTPException(status_code=422, detail={
+            "reason": "format_unknown", "argument": "format", "value": response_format,
+            "message": f"format 은 json 또는 rows 여야 합니다: {response_format}"})
     # 🔴 AN UNDECLARED PREDICATE IS REFUSED, NOT ANSWERED WITH AN EMPTY GRAPH. A filter that
     # can never match returns exactly what "there is nothing here" returns, and the caller
     # cannot tell a typo from a fact -- the shape this repo spent a night removing from four
@@ -177,14 +197,25 @@ def evidence_subgraph(
     if len(interval) == 2 and interval["since"] >= interval["until"]:
         raise HTTPException(status_code=422, detail={
             "reason": "interval_empty", "message": "since 는 until 보다 앞서야 합니다"})
+    # \u26d4 A FORMAT WE DO NOT ANSWER IS REFUSED BY NAME. Falling back to JSON would hand a
+    # caller who asked for rows a body they cannot parse, and they would read the failure as
+    # 「the walk found nothing」 - the shape this route already refuses for an unparsable
+    # interval and an undeclared predicate.
     try:
-        return _evidence_graph(
+        payload = _evidence_graph(
             db.connection(), node_id=_signed_start(node_id, positive, negative),
             hops=hops, direction=direction,
             node_limit=node_limit, edge_limit=edge_limit, follow=follow,
             follow_keys=follow_keys, backbone_hops=backbone_hops,
             collect=collect, include_superseded=include_superseded,
+            rows=(wants == "rows"),
             **interval)
+        if wants == "rows":
+            # \U0001f534 THE SAME WALK, READ SIDEWAYS. No second route and no second traversal
+            # of the source - `rows` was folded from this payload's own structures.
+            return PlainTextResponse(payload.get("rows") or "",
+                                     media_type="text/tab-separated-values")
+        return payload
     except ValueError as exc:
         raise HTTPException(status_code=422, detail={
             "reason": "subgraph_request_invalid", "message": str(exc)})
@@ -375,13 +406,28 @@ def _instant_arg(raw):
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
+def _declared_entities():
+    """The entity declarations, read the way every other handler here reads them.
+
+    ⛔ NOT A NEW LOADER. `/declaration` already publishes these (keys and attributes)
+    through `ledger.config`, and the walk table's columns must be the SAME declaration the
+    screen draws from - a second reader is how the two come to disagree about which
+    columns exist. The import is local because every sibling handler in this module does
+    the same: importing `ledger.config` at module scope would put a refusable load on this
+    router's import path.
+    """
+    from ledger import config as _config
+
+    return (_config.load() or {}).get("entities") or {}
+
+
 def _evidence_graph(connection, *, node_id, hops, direction,
                     node_limit, edge_limit, follow=None, follow_keys=None,
                     backbone_hops=ledger_subgraph.DEFAULT_BACKBONE_HOPS,
         # [S-141] 기본은 «안 그림». true 면 대체된 원자도 그리되 엣지에
         # `superseded_by` 표지가 붙는다 — 「보인다」와 「현재다」를 가르기 위해.
         include_superseded: bool = False,
-                    collect=None, since=None, until=None):
+                    collect=None, since=None, until=None, rows=False):
     if not ledger_trace.relation_exists(connection, LEDGER_RELATION):
         raise _relation_absent()
     missing = _subgraph_contract_state(connection)
@@ -401,7 +447,11 @@ def _evidence_graph(connection, *, node_id, hops, direction,
         backbone_hops=backbone_hops, static_types=_static_types(),
         static_follow=_static_step_predicates(), collect=collect,
         cardinalities=_predicate_cardinalities(),
-        include_superseded=include_superseded)
+        include_superseded=include_superseded,
+        # The declaration is the ONLY authority for which columns exist — the same source
+        # the client reads through /declaration, so a key added to a declaration reaches
+        # both the screen and the TSV with no edit in either (S-183).
+        rows=rows, entities=_declared_entities() if rows else None)
 
 
 #: How many ledger rows one key-values answer may READ. The scan is bounded, not the
