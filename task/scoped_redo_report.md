@@ -34400,3 +34400,104 @@ NULL-or-empty 만 봅니다. 그 함수의 주석이 「trim 을 더하고 싶�
 
 > 📌 **[09-11 18:3x] 남은 미답: 5절 ⓐ(인덱스 모양 하나로) · ⓒ(canonical_key_value·원장 bind 도 지나게).
 > ⓑ 는 판정 284 보충으로 «닫혔습니다»(공백만 = 규칙 안, 오늘 술어 그대로).**
+
+## 7. S-181 착지 — 일곱 자리가 «한 함수»를 지납니다 (판정 287, 한 커밋)
+
+**한 커밋입니다** — 「일곱 자리 + 함수 하나 + 인덱스 검증기·마이그레이션 한 쌍」 그대로.
+
+```
+함수 하나   crud.fold_key_value        None if is_blank_key_part(value) else value
+정책 칸     crud.key_null_policy       null_policy: {<키 컬럼>: "skip"} · 없으면 «오늘 그대로»
+버릴지      crud.key_fold_drops_row    접힌 값이 None «이고» 정책이 skip 일 때만 True
+SQL 판      vjc.index_key_expression   coalesce(<col>, '')  ← 인덱스와 조인이 «같은 철자»
+```
+🔵 **새 술어는 «하나도» 만들지 않았습니다.** `is_blank_key_part` 가 쓰기 문의
+`is_blank_value`(contracts/blank_predicate)에 신원 경로 한 줄(비유한 float 은 신원이 아님)만
+더한 것이고, 판정 284 가 바로 그 술어의 규칙입니다 — 6절 보고 그대로입니다.
+
+### 게이트 4절
+```
+A·B 같은 답    None · '' · '  ' · '\t' 넷이 «모든» 자리에서 같은 답            ✅ 28 passed
+C 조인·인덱스   조인이 coalesce 둘로 견주고(NULL=NULL) 인덱스가 «같은 식»       ✅
+               평범한 UNIQUE 가지는 «지웠습니다» — (L1,NULL) 둘을 들여보내던 그 가지
+D skip         null_policy {"slot":"skip"} 인 표에서 네 공백 전부 drops_row=True ✅
+회귀 «한 글자도»  칸 없는 표: key_null_policy None · key_fold_drops_row False      ✅
+마이그레이션    dry-run 이 규칙마다 «기존 중복 키 수»를 먼저 찍고, 있으면 안 만듦   ✅
+```
+
+### 🔴 PostgreSQL 자신이 채점한 자리 하나 — 이게 제일 강한 근거입니다
+`test_ledger_v2_pg.py::test_postgres_right_unique_index_is_used_by_the_join_probe` 는
+격리 PG 에 인덱스를 만들고 `EXPLAIN` 으로 「그 인덱스를 «실제로» 쓰나」를 봅니다.
+```
+전   평범 UNIQUE(join_id)  + WHERE join_id = 'J-0001'            <- 게이트가 이제 거절 (설계대로)
+후   coalesce 식 인덱스     + WHERE coalesce(join_id,'') = '...'  <- Index Scan, 인덱스 «이름»까지 일치
+```
+🔵 두 철자가 어긋나면 PG 는 «실패하지 않고 조용히 순차 스캔»합니다. 그래서 이 한 줄이
+「같은 철자」 주장을 말이 아니라 «실행»으로 받칩니다. 양쪽 다 `index_key_expression` 에서 뽑습니다.
+
+### 이 박스에서 돌려 본 것 (운영 주장 아님)
+```
+dry-run → --apply   두 규칙 모두 중복 0 → 인덱스 둘 생성
+재검증              verified 2 / rejected 0
+                    dt_log_frame_from_inventory             uq_vjoin_dt_inventory_dt_job_ns
+                    dt_inventory_confirmed_from_attribution uq_vjoin_dt_job_attribution_dt_job_ns
+```
+
+### 🔴 짓는 중에 «재서» 나온 것 넷
+```
+① COALESCE vs coalesce   우리는 coalesce 로 짓고 PG 는 COALESCE 로 렌더합니다.
+                         normalize_index_expression 이 대소문자를 안 접어 «맞게 만든
+                         인덱스»를 못 알아봤고, 그러면 조인이 «전부» 미승인입니다.
+                         고침: _casefold_outside_literals — 따옴표 «밖»만 소문자.
+                         통째로 접으면 'A'→'a' 라 «다른 값»에 세운 인덱스를 받습니다
+② NULLS NOT DISTINCT     285 는 만족하는데 284 를 깹니다. 이 박스에서 재 봤습니다 —
+                         그 아래서 둘째 ('L1','') 가 «별개 키»로 거절됩니다 = 빈칸이 값.
+                         coalesce 는 «둘 다» 만족하고 버전도 안 가립니다
+③ roleframe 능력 가드     `_fold_identity_key` 를 `from database import crud` 로 썼더니
+                         「roleframe 은 DB·런타임 import 없음」 가드가 «빨개졌습니다».
+                         그 파일은 이미 `from database.crud import clean_str_value` 를
+                         씁니다 — 가드가 막는 것은 «패키지 바인딩»이지 순수 헬퍼가 아닙니다.
+                         같은 꼴로 `is_blank_key_part` 를 가져오게 고쳤습니다. 가드가 «맞았습니다»
+④ 조인 식의 «바깥 겹»      「DDL 과 질의가 한 철자」 시험이 `fold_notation_sql` «만»을 질의로
+                         봤는데, 오늘 질의는 `coalesce(fold(col),'')` 입니다. 그대로 두면
+                         「인덱스에만 coalesce 를 더한」 «진짜» 어긋남에 눈이 멉니다.
+                         양쪽을 `join_onclause` · `index_key_expression` 에서 뽑게 고쳤습니다
+```
+
+### ⚠️ 판정 필요 «하나» — 이음매의 클라 반쪽
+`canonical_key_value` 에는 클라 거울이 있습니다(`client2/src/map_key.js` `canonicalKeyValue`),
+`contracts/map_seam/vectors.json` 의 `num_empty` 가 둘을 «같은 기댓값»에 채점합니다.
+```
+그 벡터가 적던 것   '' -> ''      <- 판정 284 «이전»의 규칙
+오늘 서버의 답     '' -> null    <- 판정 284 그대로
+한 것             벡터를 null 로 고치고 «왜»를 적었습니다 (서버 쪽 58 passed)
+🔴 남은 반쪽       client_harness.mjs 는 이 벡터에서 «빨갛습니다».
+                  클라 한 줄: String(value).trim() === '' 면 null
+                  client2/src 는 «클라 레인 소유»라 안 건드렸습니다
+```
+🔵 **일부러 빨갛게 뒀습니다.** server-only 통으로 옮기면 두 쪽이 «진짜로 다른 답을 내는»
+이음매가 조용해집니다 — 「자막 단 실패」가 됩니다. 빨간 것이 그 사실의 표시입니다.
+
+### 이웃 시험 — 고친 «이름»으로 모집단을 만들었습니다 (떠올린 자리 아님)
+```
+모집단   git grep -l 로 고친 이름 열셋을 단언하는 파일 74개 + 계약 둘
+결과     1969 passed / 6 failed — 그 여섯 «전부» 제 변경 이전부터 빨간 것
+고친 시험  가상 조인 가드(대역이 2-튜플→식 인덱스 행, 이름 _ns, DDL coalesce,
+          indexprs IS NOT NULL) · 키 정규화 매트릭스 · 비유한 float · 한 철자 · PG 픽스처
+```
+🔴 **빨간 것 중 «다섯»은 제 변경 «이전부터» 빨갰습니다.** 떠올려서 그렇게 «부르지» 않고
+`git archive HEAD` 로 베이스 트리를 떠서 «같은 다섯이 같은 이유로» 빨간 것을 확인했습니다:
+```
+test_live_mapper_and_tracked_sample_are_byte_identical      라이브 매퍼(소유자 파일) 바이트 차
+test_the_live_dt_map_declaration_is_the_physical_unit       dt_slot 이 number 로 선언돼 있음
+test_standard_map_scopes_the_replace_by_the_configured_name 라이브 설정에 'scope' 없음
+test_the_confirmation_records_the_valid_die_area...         쓰이지 않은 키
+test_transfer_sample_draft_validates_unchanged...           라이브 원장 선언의 event_time
+```
+⚠️ 여섯째 `test_virtual_join_types.py::test_a_graph_meta_boolean...` 도 제 것이 아닙니다 —
+그 시험 docstring 이 「KNOWN RED SINCE 2026-09-02」와 «오늘 보이는 값»(`미상`)까지 미리
+적어 두었습니다. 손대지 않았습니다.
+
+> 📌 **[09-11 20:11] 이 채널의 미답 질문: 이음매 클라 반쪽 «하나» (위 ⚠️).
+> 판정 주시면 클라 레인 지시서 한 줄입니다. 재기동은 총괄 몫 —
+> `virtual_join_config` · `database.crud` · `ledger.roleframe` 를 import 하는 프로세스가 읽습니다.**

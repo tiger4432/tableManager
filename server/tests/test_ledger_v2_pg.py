@@ -150,9 +150,17 @@ def pg_v2(tmp_path_factory):
                     join_id TEXT NOT NULL,
                     target_id TEXT NOT NULL
                 )'''))
+            # 🔴 NULL-SAFE, AND THE EXPRESSION COMES FROM THE ONE PRODUCER
+            # (S-181, 판정 287). A plain `UNIQUE (join_id)` calls two NULLs
+            # DISTINCT, so it never enforced the uniqueness this join is approved
+            # against, and the gate stopped accepting it. Spelling the `coalesce` by
+            # hand here would put a SECOND spelling in the tree - the exact drift that
+            # turns a matching index into a sequential scan nobody ordered - so it is
+            # asked for rather than written.
             connection.execute(text(
                 f'CREATE UNIQUE INDEX "{UNIQUE_INDEX}" '
-                f'ON public."{RIGHT_TABLE}" (join_id)'))
+                f'ON public."{RIGHT_TABLE}" '
+                f'({virtual_join_config.index_key_expression("join_id")})'))
 
         raw = _bundle()
         config_path = tmp_path_factory.mktemp("ledger_v2_s6") / "virtual_joins.json"
@@ -461,11 +469,18 @@ def test_postgres_right_unique_index_is_used_by_the_join_probe(clean_pg_v2):
     _seed(case)
     with case["admin"].begin() as connection:
         connection.execute(text("SET LOCAL enable_seqscan = off"))
+        # ⚠️ THE PROBE ASKS WHAT THE JOIN ASKS. `join_onclause` compares
+        # `coalesce(col, '')` on both sides (판정 285), so probing on the bare
+        # column would prove the index unused - correctly - and prove nothing about the
+        # join. This is what scores the two halves of S-181 against PostgreSQL itself:
+        # the index is built on that expression and the query is written on it, and an
+        # expression index is used ONLY when those match.
+        probe = virtual_join_config.index_key_expression("join_id")
         plan = "\n".join(row[0] for row in connection.execute(text(
             f'EXPLAIN SELECT target_id FROM public."{RIGHT_TABLE}" '
-            "WHERE join_id = 'J-0001'")))
-    assert UNIQUE_INDEX in plan
-    assert "Index Scan" in plan
+            f"WHERE {probe} = 'J-0001'")))
+    assert UNIQUE_INDEX in plan, plan
+    assert "Index Scan" in plan, plan
 
 
 # TOMBSTONE: `test_stage7_manifest_selected_lot_event_uses_existing_store_cursor_transaction`

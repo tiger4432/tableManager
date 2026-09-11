@@ -19,6 +19,7 @@
 겹치면 import 시점 `init_dynamic_models`가 공유 sqlite에 실 스키마를 선점한다.
 """
 import json
+import re
 import os
 import sys
 
@@ -109,8 +110,19 @@ class FakeDB:
     """
 
     def __init__(self, indexes=None, dialect="postgresql"):
-        self._by_table = {t: sorted((n, list(c)) for n, c in idx.items())
-                          for t, idx in (indexes or {}).items()}
+        # 🔴 EVERY CANDIDATE IS AN EXPRESSION INDEX NOW (S-181, 판정 287), so the double
+        # answers the two questions the real catalogue read asks: the index row
+        # (name, oid, key count) and then `pg_get_indexdef` per key. Standing in with a
+        # bare column name would score the fixture against a shape `unique_index_covering`
+        # no longer accepts, and the test would be green about the wrong index.
+        self._by_table, self._by_oid = {}, {}
+        for table, idx in (indexes or {}).items():
+            rows = []
+            for name, cols in sorted(idx.items()):
+                oid = 1000 + len(self._by_oid)
+                self._by_oid[oid] = list(cols)
+                rows.append((name, oid, len(cols)))
+            self._by_table[table] = rows
         self._dialect = dialect
         self.queries = 0
         self.asked = []
@@ -125,7 +137,22 @@ class FakeDB:
 
     def execute(self, stmt, params=None, *a, **k):
         self.queries += 1
-        table = (params or {}).get("t")
+        params = params or {}
+        if "oid" in params:
+            # ⚠️ RENDERED THE WAY POSTGRESQL RENDERS IT — uppercase function name and an
+            # explicit cast — because that difference is exactly what
+            # `normalize_index_expression` exists to absorb. A double echoing our own
+            # spelling back would leave the normaliser untested here, and it was measured
+            # wrong once already: we build `coalesce`, PG renders `COALESCE`, and every
+            # join went unapproved.
+            column = self._by_oid[params["oid"]][params["i"] - 1]
+            value = "COALESCE(%s, ''::text)" % column
+
+            class S:
+                def scalar(self_inner):
+                    return value
+            return S()
+        table = params.get("t")
         self.asked.append(table)
         rows = self._by_table.get(table, [])
 
@@ -174,18 +201,28 @@ def test_non_postgres_is_refused_not_assumed_clean():
     assert db.queries == 0, "must not query a non-postgres catalog"
 
 
-def test_the_catalog_query_excludes_the_three_lookalikes():
-    """무효·부분·표현식 인덱스는 「UNIQUE 인덱스가 있다」로 읽히지만 유일성이 아니다.
+def test_the_catalog_query_excludes_the_lookalikes_and_now_requires_an_expression():
+    """무효·부분 인덱스는 「UNIQUE 인덱스가 있다」로 읽히지만 유일성이 아니다.
 
     배제가 SQL의 WHERE 절에 있으므로 그 절이 사라지면 이 테스트가 잡는다.
-    사용자 확정의 근거 전체가 이 세 조건 위에 서 있다.
+    사용자 확정의 근거 전체가 이 조건들 위에 서 있다.
+
+    🔴 `indexprs` IS THE ONE THAT FLIPPED (S-181, 판정 287). It used to be excluded because
+    an expression index is unique on the expression rather than on the column. That is
+    still true — and it is now what the gate WANTS, because every join key IS the
+    expression `coalesce(col, '')`: a plain `UNIQUE (a, b)` calls two NULLs distinct, so it
+    never enforced the uniqueness the join was approved against (measured on this box: two
+    `('L1', NULL)` rows both landed under one). Requiring it is the same sentence read the
+    other way round, and this assertion is what stops it drifting back to a shape that does
+    not enforce what it claims.
     """
     import inspect
     sql = inspect.getsource(vjc.unique_index_covering)
     assert "x.indisunique" in sql
     assert "x.indisvalid" in sql, "an INVALID index (cancelled CONCURRENTLY) would count"
     assert "x.indpred IS NULL" in sql, "a partial index is unique only inside its predicate"
-    assert "x.indexprs IS NULL" in sql, "an expression index is unique on the expression"
+    assert "x.indexprs IS NOT NULL" in sql, (
+        "a plain column index does not enforce the null-safe key the join compares on")
 
 
 def test_uniqueness_is_checked_on_the_right_side_only(monkeypatch):
@@ -222,7 +259,10 @@ def test_the_declaration_carries_the_index_the_operator_must_create():
     ddl = rules[0]["required_index_ddl"]
     assert "CREATE UNIQUE INDEX" in ddl
     assert "vjoin_wafer_map" in ddl and '"lot"' in ddl and '"slot"' in ddl
-    assert rules[0]["required_index"] == "uq_vjoin_vjoin_wafer_map_lot_slot"
+    assert ddl.count("coalesce") == 2, (
+        "the operator must be handed the null-safe index, not the one that lets "
+        "two NULL keys in")
+    assert rules[0]["required_index"] == "uq_vjoin_vjoin_wafer_map_lot_slot_ns"
 
 
 def test_the_index_name_stays_inside_the_postgres_identifier_limit():
@@ -245,7 +285,8 @@ def test_verification_report_tells_each_declaration_what_it_needs(tmp_path):
         "bad": _decl("vjoin_defect_map", "vjoin_fail_map",
                      [("lot", "lot"), ("slot", "slot")], ["metro_eqp"]),
     }), encoding="utf-8")
-    db = FakeDB({"vjoin_wafer_map": {"uq_vjoin_vjoin_wafer_map_lot_slot": ["lot", "slot"]}})
+    db = FakeDB({"vjoin_wafer_map":
+                 {"uq_vjoin_vjoin_wafer_map_lot_slot_ns": ["lot", "slot"]}})
     rep = vjc.verification_report(db, path=str(p), known_tables=TABLES)
     by = {d["name"]: d for d in rep["declarations"]}
     assert rep["accepted"] == 1 and rep["refused"] == 1
@@ -276,10 +317,15 @@ def test_the_refusal_sentence_is_wholly_korean_and_carries_the_ddl(tmp_path):
     s.encode("cp949")
     # 식별자·DDL 키워드를 뺀 나머지는 한국어여야 한다.
     allowed = (set(TABLES) | {c for t in TABLES.values() for c in t["column_types"]}
-               | {"CREATE", "UNIQUE", "INDEX", "CONCURRENTLY", "ON"}
+               | {"CREATE", "UNIQUE", "INDEX", "CONCURRENTLY", "ON", "coalesce"}
                | {vjc.required_index_name("vjoin_fail_map", ["lot", "slot"])})
-    for word in s.split():
-        bare = word.strip('.,()";').rstrip("은는이가을를의")
+    # ⚠️ SPLIT ON SQL PUNCTUATION, not merely trimmed at the ends. The DDL now carries a
+    # function call, so `(coalesce("lot",` arrived as ONE token that no keyword set could
+    # ever contain — the check would have had to be widened into meaninglessness to pass.
+    # Splitting keeps every identifier whole (`uq_..._ns`, `/admin/...`) and lets the
+    # keyword stand on its own.
+    for word in re.split(r'[\s"(),]+', s):
+        bare = word.strip(".;").rstrip("은는이가을를의")
         if bare.isascii() and bare and bare[0].isalpha() and len(bare) > 2:
             assert bare in allowed, f"English leaked into the operator sentence: {bare}"
 
@@ -303,13 +349,14 @@ def test_load_verified_rules_drops_what_has_no_index(tmp_path):
         "bad": _decl("vjoin_defect_map", "vjoin_fail_map",
                      [("lot", "lot"), ("slot", "slot")], ["metro_eqp"]),
     }), encoding="utf-8")
-    db = FakeDB({"vjoin_wafer_map": {"uq_vjoin_vjoin_wafer_map_lot_slot": ["lot", "slot"]}})
+    db = FakeDB({"vjoin_wafer_map":
+                 {"uq_vjoin_vjoin_wafer_map_lot_slot_ns": ["lot", "slot"]}})
     rej = []
     out = vjc.load_verified_rules(db, path=str(p), known_tables=TABLES, rejections=rej)
     assert [r["name"] for r in out] == ["ok"]
     assert isinstance(out[0], VerifiedJoinDescriptor)
     assert out[0]["verification_basis"] == "physical_unique_index"
-    assert out[0]["unique_index"] == "uq_vjoin_vjoin_wafer_map_lot_slot"
+    assert out[0]["unique_index"] == "uq_vjoin_vjoin_wafer_map_lot_slot_ns"
     assert _codes(rej) == [vjc.CODE_NO_UNIQUE_INDEX]
     assert rej[0]["facts"]["required_index_ddl"].startswith("CREATE UNIQUE INDEX")
 
@@ -417,8 +464,9 @@ def test_sql_identifier_shape_is_enforced_before_the_ddl_is_assembled():
 def test_the_generated_ddl_never_carries_a_caller_string():
     """DDL은 이 파일이 조립한 식별자만 싣는다 ― 형태 검증을 통과한 이름뿐이다."""
     ddl = vjc.required_index_ddl("vjoin_wafer_map", ["lot", "slot"])
-    assert ddl == ('CREATE UNIQUE INDEX CONCURRENTLY uq_vjoin_vjoin_wafer_map_lot_slot '
-                   'ON "vjoin_wafer_map" ("lot", "slot");')
+    assert ddl == (
+        'CREATE UNIQUE INDEX CONCURRENTLY uq_vjoin_vjoin_wafer_map_lot_slot_ns '
+        'ON "vjoin_wafer_map" (coalesce("lot", \'\'), coalesce("slot", \'\'));')
 
 
 def test_disabled_declaration_is_skipped_without_a_rejection():

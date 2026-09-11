@@ -450,18 +450,37 @@ def test_the_required_ddl_becomes_a_functional_index(norm_env):
 
 
 def test_the_ddl_and_the_query_expression_come_from_one_spelling():
-    """🔴 If these two ever diverge, PostgreSQL silently stops using the index."""
+    """🔴 If these two ever diverge, PostgreSQL silently stops using the index.
+
+    ⚠️ THE QUERY HALF IS `join_onclause`, NOT `fold_notation_sql` (S-181, 판정 285).
+    It used to compare the bare fold against the DDL, and those WERE the two spellings then.
+    Since the null-safe change the join compares `coalesce(fold(col), '')` - the fold is now
+    only the INNER half of the query expression - so scoring the fold alone would report a
+    disagreement that does not exist and, worse, would go quiet on the one that would: a
+    `coalesce` added to the index but not to the join. Both halves are therefore taken from
+    the functions that actually produce them.
+    """
     import virtual_join_config as vjc
+    import virtual_join_executor as vje
+    from sqlalchemy import Column, MetaData, String, Table
     from sqlalchemy.dialects import postgresql
-    from sqlalchemy import Column, String, literal_column
 
     rules = {notation_norm.RULE_SEPARATOR: True, notation_norm.RULE_CASE: True}
-    expr = notation_norm.fold_notation_sql(literal_column('"core_lot"'), rules)
-    compiled = str(expr.compile(dialect=postgresql.dialect(),
-                                compile_kwargs={"literal_binds": True}))
+    metadata = MetaData()
+    left = Table("notnorm_left", metadata, Column("core_lot", String))
+    right = Table("notnorm_right", metadata, Column("core_lot", String))
+    clause = vje.join_onclause(left.c, right.c, {"join_key": [
+        {"left": "core_lot", "right": "core_lot", "fold": rules}]})
+    compiled = str(clause.compile(dialect=postgresql.dialect(),
+                                  compile_kwargs={"literal_binds": True}))
     ddl_expr = vjc.index_key_expression("core_lot", rules)
-    assert vjc.normalize_index_expression(compiled) == \
-        vjc.normalize_index_expression(ddl_expr), (
+    wanted = vjc.normalize_index_expression(ddl_expr)
+    # The clause renders `<left expr> = <right expr>`; BOTH sides must be the index's
+    # spelling, with the table qualification PostgreSQL adds in a query and not in an
+    # index - the one difference that does not stop the match.
+    halves = [vjc.normalize_index_expression(h).replace("notnorm_left.", "")
+              .replace("notnorm_right.", "") for h in compiled.split(" = ")]
+    assert halves == [wanted, wanted], (
         f"query expression and index expression disagree:\n  query={compiled}\n"
         f"  ddl  ={ddl_expr}")
 

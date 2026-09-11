@@ -169,9 +169,16 @@ def canonical_key_value(value, col_type):
       numeric keeps its repr ('7.5'); an unreadable value keeps its trimmed
       original — the lookup misses honestly instead of inventing a key.
     - anything else (string / undeclared): trimmed as-is.
-    - None stays None (composition sites decide their own placeholder).
+    - 🔴 A BLANK IS `None`, NOT `''` (S-181, 판정 284·287). This seat used to keep `None`
+      as `None` and return `''` for `''`, which made the SAME key read as two different
+      keys depending on which of the two a row happened to carry — measured as one of the
+      five disagreeing answers this round removed. The fold is the write door's own
+      predicate (`crud.is_blank_key_part`), so 「blank」 here means exactly what it means
+      everywhere else, whitespace included.
     """
-    if value is None:
+    from database import crud
+
+    if crud.is_blank_key_part(value):
         return None
     if col_type == "number" and not isinstance(value, bool):
         if isinstance(value, int):

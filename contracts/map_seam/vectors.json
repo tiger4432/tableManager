@@ -919,8 +919,9 @@
       "name": "num_empty",
       "value": "",
       "declared_type": "number",
-      "expect": "",
-      "$source": "declared-type"
+      "expect": null,
+      "$source": "declared-type",
+      "$why": "\ud83d\udd34 CHANGED BY \ud310\uc815 284 (S-181): a length-zero string IS null, so this folds to null exactly like `none_stays_none` beside it. It used to read `''`, which is the spelling that made one key read as two \u2014 `None` and `''` arriving at the same seat got different answers. The server half folds here through `crud.is_blank_key_part`. \u26a0\ufe0f THE CLIENT HALF IS THE OPEN ONE: `map_key.js` `canonicalKeyValue` still returns `''`, so `client_harness.mjs` is RED on this vector until the client lane lands `if (String(value).trim() === '') return null;` alongside its existing null check. That red is the point \u2014 moving this case to the server-only bucket would hide a seam the two sides genuinely disagree on."
     },
     {
       "name": "str_padded",

@@ -50,7 +50,12 @@ from database import crud, models
     ("1.0", "number", "1"),        # stringified Float round-trip
     ("7.5", "number", "7.5"),      # non-integral numeric: value preserved
     ("0x10", "number", "0x10"),    # unreadable: trimmed original — no invention
-    ("", "number", ""),
+    # 🔴 판정 284 (S-181): a length-zero string IS null, so it folds to `None`
+    # exactly like the two `None` rows at the bottom of this table. It used to read
+    # `""`, and that row IS the defect the ruling names - `None` and `""` arriving
+    # at this seat got DIFFERENT keys, so one identity read as two.
+    ("", "number", None),
+    ("   ", "number", None),   # strip, then length zero - the write door's own rule
     (True, "number", "True"),      # bool is not a number — preserved, not int-cast
     # string: padding is SIGNIFICANT — only whitespace is trimmed
     ("01", "string", "01"),
@@ -70,10 +75,25 @@ def test_canonical_key_value_matrix(value, col_type, expected):
     assert map_overlay.canonical_key_value(value, col_type) == expected
 
 
-def test_nan_and_inf_are_preserved_not_invented():
-    out = map_overlay.canonical_key_value(float("nan"), "number")
-    assert out == "nan"
-    assert map_overlay.canonical_key_value(float("inf"), "number") == "inf"
+def test_a_non_finite_float_is_not_an_identity_and_is_still_not_invented():
+    """🔴 CHANGED BY S-181 (판정 287): this seat folds through `is_blank_key_part`.
+
+    It used to return the strings `"nan"` / `"inf"`, and the name said why - nothing is
+    INVENTED, the unreadable value keeps its own text so the lookup misses honestly. That
+    half is intact and is the second assertion here: no number appears where a non-finite
+    float was.
+
+    What changed is the first half. `"nan"` is a string that behaves as an identity -
+    `compose_business_key("t", ["A", nan, "C"])` is `"A_nan_C"` (measured 2026-09-04) - so
+    two rows missing a key part for unrelated reasons landed on the SAME key. `None` says
+    the honest thing instead: this is not an identity. The composition sites then do what
+    they already do with a missing part, which `compose_divergence_cases` pins.
+    """
+    assert map_overlay.canonical_key_value(float("nan"), "number") is None
+    assert map_overlay.canonical_key_value(float("inf"), "number") is None
+    # THE SENSITIVITY CONTROL: a fold that swallowed floats would pass the two above.
+    assert map_overlay.canonical_key_value(7.5, "number") == "7.5"
+    assert map_overlay.canonical_key_value("0x10", "number") == "0x10"
 
 
 # ---------------------------------------------------------------------------

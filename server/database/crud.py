@@ -2560,6 +2560,66 @@ def assemble_composite_business_key(table_name: str, update_item: schemas.Genera
     return True
 
 
+#: The one value `null_policy` may carry (판정 286: `placeholder` was removed — an operator
+#: who means 「deliberately empty」 writes a VALUE in the data, such as 「없음」, and that is
+#: not a product cell). Absent means 「today's behaviour」, which is why the regression gate
+#: reads 「a table with no cell is not one character different」.
+KEY_NULL_SKIP = "skip"
+
+
+def key_null_policy(table_name: str, column: str):
+    """`"skip"` or `None`, declared beside `column_types` as
+    `null_policy: {<key column>: "skip"}` (S-181).
+
+    ⚠️ ABSENT IS NOT A POLICY. It means every seat keeps the behaviour it has today, which
+    is what makes this cell safe to add to a live deployment: the default changes nothing,
+    and an operator opts a column in when they want a blank key to drop the row EVERYWHERE
+    rather than only at the seat that happens to refuse it.
+    """
+    policy = (TABLE_CONFIG.get(table_name) or {}).get("null_policy") or {}
+    value = policy.get(column)
+    return value if value == KEY_NULL_SKIP else None
+
+
+def fold_key_value(table_name: str, column: str, value):
+    """🔴 THE ONE FOLD FOR A KEY VALUE (S-181, 판정 284·285·287).
+
+    Null was ONE AXIS being judged separately at seven seats, and the seats disagreed —
+    measured: the composite-key render folds `None`, `''` and `'  '` together; the join's
+    `==` never matches NULL against NULL; `canonical_key_value` keeps `None` but returns
+    `''` for `''`; the ledger treats `''` as a value; and PostgreSQL's plain unique index
+    calls two NULLs distinct while calling `''` a value. Same input, five answers.
+
+    🔴 IT INVENTS NO PREDICATE. Blankness already has one name at the write door —
+    `is_blank_value`, pinned by `contracts/blank_predicate`, with a SQL twin in
+    `blank_sql_condition` — and 판정 284 is exactly that predicate's rule (strip, then
+    length zero). This calls `is_blank_key_part`, which IS that predicate plus the one
+    identity-path addition it already carries: a non-finite float is not an identity
+    (measured 2026-09-04, `compose_business_key("t", ["A", nan, "C"])` -> `"A_nan_C"`).
+    Using the narrower one here would let `nan` back in as a key.
+
+    ⚠️ THE SQL SIDE IS `coalesce(<col>, '')` AND DELIBERATELY DOES NOT TRIM, for the reason
+    `blank_sql_condition` states: storage is canonical (`normalize_stored_text`), so a
+    whitespace-only value never reaches the database, and a `btrim` here would be an
+    incomplete imitation of `str.strip()` that the next schema change invalidates.
+    `virtual_join_config.index_key_expression` is where that spelling lives, so the DDL and
+    the query expression cannot drift — a mismatch there does not fail, it silently stops
+    using the index.
+    """
+    return None if is_blank_key_part(value) else value
+
+
+def key_fold_drops_row(table_name: str, column: str, value) -> bool:
+    """Whether this blank key value means 「drop the row」 at EVERY seat (S-181).
+
+    Separate from `fold_key_value` because they answer different questions: what the value
+    IS after folding, and what to DO about it. One function returning both would make the
+    seats that only compare read a verdict they never asked for.
+    """
+    return (fold_key_value(table_name, column, value) is None
+            and key_null_policy(table_name, column) == KEY_NULL_SKIP)
+
+
 def is_blank_key_part(value) -> bool:
     """`is_blank_value`, PLUS: a non-finite float is not an identity.
 

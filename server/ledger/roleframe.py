@@ -24,7 +24,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from database.crud import clean_str_value
+from database.crud import clean_str_value, is_blank_key_part
 
 from .envelope import source_event_identity
 from .ledger_frame import (
@@ -143,6 +143,19 @@ def _canonical(value: Any, *, path: str) -> str:
             "invalid_role_value", path,
             f"value is not deterministic JSON: {exc}",
         ) from exc
+
+
+def _fold_identity_key(value: Any) -> Any:
+    """An identity key value, folded the way every other key seat folds one (S-181).
+
+    Blank -> `None`, through `is_blank_key_part` — the write door's own predicate, pinned by
+    `contracts/blank_predicate`. Taken the way this module already takes `clean_str_value`:
+    a PURE helper that happens to live in `database.crud`, which is why the capability guard
+    forbids the `database` package rather than that one import. (It forbids `from database
+    import crud` for the same reason — that binds the package, and the next reader would
+    reach through it for a session.)
+    """
+    return None if is_blank_key_part(value) else value
 
 
 def _is_missing(value: Any) -> bool:
@@ -1430,7 +1443,19 @@ def _validate_role_value(
                 "invalid_entity_ref", f"{path}.keys",
                 "entity keys must exactly match the registered identity keys")
         for key in entity.identity_keys:
-            key_value = keys[key]
+            # 🔴 FOLD FIRST, THEN ASK `allow_null` (S-181, 판정 287). This seat treated `''`
+            # as a VALUE while every other key seat treated it as absent, so one identity
+            # key could be 「present」 here and 「blank」 four functions away. The fold is the
+            # write door's own predicate, so 「blank」 means one thing across all seven.
+            #
+            # ⚠️ ONLY THE KEY PATH. `_is_missing` also judges VALUES and qualifiers below,
+            # where `''` may legitimately be a value an operator wrote; widening it there
+            # would change which atoms get emitted, which is not what was ruled.
+            #
+            # ⚰️ ATOMS ALREADY WRITTEN WITH `''` ARE RECORD AND ARE NOT TOUCHED
+            # (판정 287). This changes what a NEW translation accepts, and a ledger
+            # appends: 「투영은 지워도 기록은 안 된다」.
+            key_value = _fold_identity_key(keys[key])
             if _is_missing(key_value) and not entity.allow_null:
                 raise RoleFrameError(
                     "invalid_entity_ref", f"{path}.keys.{key}",

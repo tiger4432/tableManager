@@ -178,7 +178,12 @@ def required_index_name(table: str, columns: list, folds=None) -> str:
     유일성). 이름이 같으면 운영자가 평범한 인덱스를 이미 만들어 둔 자리에서 이름 충돌만
     보고 「이미 있다」고 읽으므로, 접히는 키에는 `_nf` 접미를 붙여 **다른 이름**을 준다.
     """
-    suffix = "_nf" if any(_folds_list(columns, folds)) else ""
+    # 🔴 THE NAME CARRIES THE SHAPE, so the old index and the new one can COEXIST while a
+    # deployment migrates (S-181). Without `_ns` the null-safe index would be asked for
+    # under the name a plain `UNIQUE (a, b)` already holds, and `CREATE` would fail with
+    # 「already exists」 — leaving the operator to drop an index blind, on a live table,
+    # to find out whether the new one even builds.
+    suffix = ("_nf" if any(_folds_list(columns, folds)) else "") + "_ns"
     base = "%s%s_%s%s" % (INDEX_PREFIX, table, "_".join(columns), suffix)
     if len(base.encode("utf-8")) <= _MAX_IDENTIFIER:
         return base
@@ -196,10 +201,27 @@ def index_key_expression(column: str, fold_rules=None) -> str:
     **쓰지 않는다** ― 함수 인덱스는 질의 식이 인덱스 식과 일치할 때만 쓰이므로, 두 철자는
     이론적 불일치가 아니라 1,000만 행 순차 스캔이 되고 테스트는 전부 통과한다.
     """
-    if not fold_rules:
-        return '"%s"' % column
-    import notation_norm
-    return notation_norm.fold_sql_text('"%s"' % column, fold_rules)
+    inner = '"%s"' % column
+    if fold_rules:
+        import notation_norm
+        inner = notation_norm.fold_sql_text(inner, fold_rules)
+    # 🔴 NULL MUST EQUAL NULL HERE, AND THE INDEX IS HALF OF THAT (S-181, 판정 285·287).
+    # A plain UNIQUE index calls two NULLs DISTINCT, so the uniqueness a virtual join is
+    # approved against was not being enforced for a NULL key at all — measured on this
+    # box: two `('L1', NULL)` rows both landed under `UNIQUE (a, b)`.
+    #
+    # ⛔ `NULLS NOT DISTINCT` IS NOT ACCEPTED, although PG15+ offers it. It fixes NULL and
+    # leaves `''` a separate key, which contradicts 판정 284 (a blank IS null) — measured:
+    # a second `('L1','')` is refused under it. `coalesce` satisfies BOTH rulings and works
+    # on every version, so it is the ONE required shape.
+    #
+    # ⚠️ NO `btrim`, for `blank_sql_condition`'s reason: storage is canonical
+    # (`normalize_stored_text`), so a whitespace-only value never reaches the database, and
+    # an incomplete imitation of `str.strip()` here would be invalidated by the next schema
+    # change. And this function is the ONE spelling: `join_onclause` builds the same
+    # expression, because a query whose expression differs from the index's silently stops
+    # using the index rather than failing.
+    return "coalesce(%s, '')" % inner
 
 
 def required_index_ddl(table: str, columns: list, folds=None) -> str:
@@ -472,6 +494,29 @@ _INDEX_EXPR_CASTS = ("::text", "::character varying", "::varchar", "::bpchar",
 _REDUNDANT_PARENS_RE = re.compile(r"\(([A-Za-z_][A-Za-z0-9_]*)\)")
 
 
+def _casefold_outside_literals(expr: str) -> str:
+    """Lowercase everything except what sits inside single quotes.
+
+    `''` inside a literal is SQL's escaped quote and closes nothing, which is why this
+    walks rather than splitting: a naive `split("'")` would treat the escape as a
+    delimiter and start lowercasing the literal's own text.
+    """
+    out, inside, index = [], False, 0
+    while index < len(expr):
+        char = expr[index]
+        if char == "'":
+            if inside and expr[index:index + 2] == "''":
+                out.append("''")
+                index += 2
+                continue
+            inside = not inside
+            out.append(char)
+        else:
+            out.append(char if inside else char.lower())
+        index += 1
+    return "".join(out)
+
+
 def normalize_index_expression(expr: str) -> str:
     """인덱스 키 식 1개를 **비교 가능한 형태**로 접는다. 순수 함수 ― 테스트가 직접 채점한다.
 
@@ -491,7 +536,14 @@ def normalize_index_expression(expr: str) -> str:
     🔴 지우지 **않는** 것: `COLLATE`. 다른 콜레이션으로 만든 인덱스는 같은 식이 아니고,
     PostgreSQL이 기본 콜레이션 비교에 그것을 쓴다는 보장도 없다. 모르면 거부다.
     """
-    out = (expr or "").strip()
+    # 🔴 FUNCTION NAMES ARE CASE-INSENSITIVE IN SQL AND STRING LITERALS ARE NOT (S-181).
+    # We build `coalesce(...)`; PostgreSQL renders it `COALESCE(...)`. Measured: the two
+    # normalised to different strings, so a correctly-built index was not recognised and
+    # every virtual join went unapproved. Folding case OUTSIDE quoted literals is the one
+    # rule that makes the comparison mean what it says — folding the whole string would
+    # change `'A'` into `'a'` and quietly accept an index built on a different value.
+    out = _casefold_outside_literals(expr or "")
+    out = out.strip()
     if out.startswith("(") and out.endswith(")"):
         # 한 겹 벗겨서 괄호가 균형을 유지하면 잉여 괄호였다.
         inner = out[1:-1]
@@ -547,27 +599,16 @@ def unique_index_covering(db, table: str, columns: list, folds=None):
         return None
     fl = _folds_list(columns, folds)
 
-    if not any(fl):
-        # 접지 않는 키 ― 2026-07-31판 그대로, 질의 1회. 식 인덱스는 컬럼에 대한 유일성이
-        # 아니므로 여전히 배제다.
-        rows = db.execute(text("""
-            SELECT i.relname AS idx, array_agg(a.attname::text) AS cols
-            FROM pg_index x
-            JOIN pg_class c ON c.oid = x.indrelid
-            JOIN pg_class i ON i.oid = x.indexrelid
-            JOIN pg_namespace n ON n.oid = c.relnamespace
-            JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = ANY(x.indkey)
-            WHERE c.relname = :t AND n.nspname = 'public'
-              AND x.indisunique AND x.indisvalid
-              AND x.indpred IS NULL AND x.indexprs IS NULL
-            GROUP BY i.relname
-        """), {"t": table}).fetchall()
-        target = set(columns)
-        for idx, cols in rows:
-            if set(cols) <= target:
-                return idx
-        return None
-
+    # ⚰️ THE PLAIN-COLUMN BRANCH IS GONE (S-181, 판정 287). It looked for a
+    # `UNIQUE (a, b)` index, and that index calls two NULLs DISTINCT — so the uniqueness a
+    # virtual join is approved against was never enforced for a NULL key. Measured on this
+    # box: two `('L1', NULL)` rows both landed under it. Every join key is now an
+    # EXPRESSION key (`coalesce(col, '')`), so there is one candidate shape and one branch.
+    #
+    # ⚠️ A DEPLOYMENT THAT HAS NOT MIGRATED LOSES ITS JOINS UNTIL IT DOES, and that is the
+    # intended direction: a join running on an index that does not enforce its uniqueness
+    # is a join returning answers nobody has checked. `migrations/add_vjoin_null_safe_indexes.py`
+    # is the pair, and it counts the existing duplicate keys BEFORE it offers to build.
     # 접히는 키 ― **식 인덱스만** 후보다.
     rows = db.execute(text("""
         SELECT i.relname AS idx, x.indexrelid AS oid, x.indnkeyatts AS nkeys
