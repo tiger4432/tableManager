@@ -470,12 +470,32 @@ def load_chain_rules():
     try:
         from database import crud
         import enrichment_config
-        enrich_rules = enrichment_config.load_enrichment_chain_rules(known_tables=crud.TABLE_CONFIG)
+        # 🔴 A NAME CLAIMED TWICE IS REFUSED BY NAME, NEVER RESOLVED (S-179 ①, 판정 292).
+        # If `chain_rules.json` declares a name a synthesized rule also produces, the rule
+        # would run TWICE and say nothing about it. Which of the two an operator meant is
+        # not a thing this product can know, so it names both and drops the synthesized
+        # half — the same posture the S-181 migration takes toward duplicate keys.
+        collisions = enrichment_config.enrichment_name_collisions(
+            [r.get("name") for r in rules], known_tables=crud.TABLE_CONFIG)
+        if collisions:
+            logger.error(
+                "[Enrichment] %s: chain_rules.json 과 enrichment_rules.json 이 «같은 이름»을 "
+                "선언합니다. 한쪽을 지우십시오 — 어느 쪽이 참인지는 제품이 고를 수 없습니다.",
+                ", ".join(collisions))
+        enrich_rules = [r for r in
+                        enrichment_config.load_enrichment_chain_rules(
+                            known_tables=crud.TABLE_CONFIG)
+                        if r.get("name") not in set(collisions)]
         if enrich_rules:
             rules = rules + enrich_rules
+            # ⚠️ IT SAYS WHICH KINDS, because it stopped being only dedup (S-179 ①). One
+            # enrichment rule now yields TWO chain rules, and a line still reading
+            # 「N dedup rule(s)」 would report 8 of a kind there are 4 of.
+            follow_ups = sum(1 for r in enrich_rules if r.get("follow_up"))
             logger.info(
-                f"[Enrichment] Synthesized {len(enrich_rules)} dedup chain rule(s) from enrichment_rules.json"
-            )
+                "[Enrichment] Synthesized %d chain rule(s) from enrichment_rules.json "
+                "(%d dedup · %d auto-confirm)",
+                len(enrich_rules), len(enrich_rules) - follow_ups, follow_ups)
     except Exception as e:
         logger.error(f"[Enrichment] Failed to synthesize enrichment chain rules: {e}")
 
@@ -511,6 +531,14 @@ def rule_watches_changed_columns(rule, event) -> bool:
 
 def _rule_accepts_event(rule, event) -> bool:
     """Chain-produced events are opt-in per downstream rule, never globally live."""
+    # 🔴 A FOLLOW-UP KIND IS NOT ON THE TRIGGER PATH AT ALL (S-179 ①, 판정 292). Its work
+    # runs on the paced follow-up lap - where it already ran before it was declared
+    # (S-151, 판정 264: inlining it cost 0.875 s per group) - so it must never be matched
+    # to an event here. This is also what makes the ping-pong guard free: the kind is a
+    # SELF-LOOP (trigger_table == target_table), and the only thing that could re-enter it
+    # is this seat.
+    if rule.get("follow_up"):
+        return False
     if get_payload_dict(event).get("source_name") != "chain_ingestion":
         return True
     return bool(rule.get("allow_chain_trigger"))
@@ -2316,10 +2344,17 @@ async def run_ledger_followup(db_session_factory):
             logger.warning("[LedgerFollowUp] pace unreadable, using the default: %s", exc)
             units, rest = None, FOLLOWUP_IDLE_SECONDS
         drained = 0
+        confirmed_total = refused_total = 0
         lap_started = time.monotonic()
         while ledger_followup.queue_depth() and (units is None or drained < units):
             try:
-                await asyncio.to_thread(_drain_ledger_followup_sync, db_session_factory)
+                # S-176 덧붙임: the batch already COUNTS what it auto-confirmed; the return
+                # value was being discarded, so the two numbers died one frame above where
+                # they were computed. Carried, not re-measured.
+                done = await asyncio.to_thread(_drain_ledger_followup_sync,
+                                               db_session_factory)
+                confirmed_total += (done or {}).get("auto_confirmed") or 0
+                refused_total += (done or {}).get("auto_refused") or 0
             except Exception as exc:
                 logger.warning("[LedgerFollowUp] batch failed: %s", exc)
             drained += 1
@@ -2341,7 +2376,13 @@ async def run_ledger_followup(db_session_factory):
             # S-176: the same three numbers, carried instead of dropped. No new
             # measurement -- `lap_seconds` and `depth_left` are the log line's own.
             heartbeat.record_lap("chain", "ledger_followup", seconds=lap_seconds,
-                                 depth=depth_left, items=drained, pace=rest)
+                                 depth=depth_left, items=drained, pace=rest,
+                                 # S-176 덧붙임 (판정 292): the auto-confirm half runs on
+                                 # THIS lap, so its two counts belong on this row. A lap
+                                 # that confirmed nothing and a lap where the sweep never
+                                 # ran are different facts — both are values here.
+                                 auto_confirmed=confirmed_total,
+                                 auto_refused=refused_total)
         await asyncio.sleep(rest if drained else max(rest, FOLLOWUP_IDLE_SECONDS))
 
 

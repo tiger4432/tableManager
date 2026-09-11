@@ -985,26 +985,108 @@ def load_enrichment_rules(path: str = None, known_tables: dict = None,
     return copy.deepcopy(rules) if stamp is not None else rules
 
 
-def load_enrichment_chain_rules(path: str = None, known_tables: dict = None) -> list:
-    """enrichment 규칙으로부터 dedup 투영용 체인 인제션 룰을 자동 파생한다.
+#: The auto-confirm half, as a chain rule KIND (S-179 ①, 판정 292). A name rather than a
+#: module/function pair because the work is the product's own, not an operator's mapper —
+#: `mapper_module`/`mapper_function` name code an operator could swap, and this one they
+#: cannot.
+AUTO_CONFIRM_MAPPER = "builtin:auto_confirm"
 
-    파생 룰은 기존 chain_rules와 완전히 동일한 형태(trigger/target/mapper/is_batch)라서
-    체인 워커 파이프라인(HOL 가드·SLO 계측·warmup·재시도)을 그대로 탄다.
-    전체 enrichment 규칙을 `enrichment` 키에 내장하여 generic mapper가 참조한다.
+#: The two names a synthesized rule can carry. Used by the collision check, so the
+#: refusal and the synthesis cannot drift into disagreeing about what a synthesized name
+#: looks like.
+DEDUP_PREFIX = "enrichment_dedup:"
+AUTO_CONFIRM_PREFIX = "enrichment_auto_confirm:"
+
+
+def synthesized_rule_names(rule_name: str) -> tuple:
+    """Both chain-rule names one enrichment rule produces."""
+    return (DEDUP_PREFIX + rule_name, AUTO_CONFIRM_PREFIX + rule_name)
+
+
+def load_enrichment_chain_rules(path: str = None, known_tables: dict = None) -> list:
+    """enrichment 규칙 하나를 체인 규칙 «둘»로 편다 — dedup 투영과 자동 확정.
+
+    🔴 ONE SYNTHESIZER, TWO KINDS (판정 292: 「두 합성기 금지」). The dedup half has been a
+    chain rule since S-178; the auto-confirm half ran as a table-keyed hook on the
+    follow-up lap, which meant enrichment was TWO LANGUAGES for one flow — the thing
+    BASIS §4.5 says must stop (「오늘 enrichment 규칙은 이 꼴로 다시 적혀야 한다」). Two
+    synthesizers would have rebuilt that split one layer down.
+
+    🔴 ALL TWELVE NORMALIZED CELLS RIDE, UNDER THEIR OWN NAMES (판정 292, 「빠지는 칸 0」).
+    `params` is the whole normalized rule, so a cell added to the enrichment vocabulary
+    tomorrow reaches both kinds without this function being edited — a hand-listed subset
+    is a list that goes stale silently, and the cell it drops is invisible until someone
+    asks why a declaration stopped working.
+
+    ⚠️ `enabled` COMES FROM THE RULE, NEVER A LITERAL. It used to read `"enabled": True`,
+    which was correct only because `_validate_rule` drops disabled rules three functions
+    upstream — move that filter and a disabled declaration becomes a running chain rule.
+    The value now flows from the declaration, so the two cannot disagree.
     """
     chain_rules = []
     for rule in load_enrichment_rules(path=path, known_tables=known_tables):
+        params = dict(rule)
+        enabled = bool(rule.get("enabled", True))
+        dedup_name, confirm_name = synthesized_rule_names(rule["name"])
+        # The cell that lets ONE loader answer per-file counts (판정 293-b). The graph used
+        # to keep a second reader so it could tell written rules from synthesized ones;
+        # that reader was the 「같은 기능 두 경로」, and this cell is what replaces it.
+        origin = "synthesized:" + rule["name"]
         chain_rules.append({
-            "name": f"enrichment_dedup:{rule['name']}",
+            "name": dedup_name,
             "trigger_table": rule["source_table"],
             "target_table": rule["derived_table"],
             "mapper_module": "enrichment_mapper",
             "mapper_function": "map_enrichment_dedup",
             "is_batch": True,
-            "enabled": True,
+            "enabled": enabled,
+            "params": params,
+            # ⚠️ KEPT BESIDE `params`, NOT INSTEAD OF IT. `map_enrichment_dedup` reads
+            # `rule["enrichment"]` today; removing it here would be a second change riding
+            # on this one, and the mapper's own round is where that key retires.
             "enrichment": rule,
+            "origin": origin,
+        })
+        chain_rules.append({
+            "name": confirm_name,
+            # 🔴 A SELF-LOOP, AND THAT IS WHAT MAKES THE PING-PONG GUARD FREE. The derived
+            # table both triggers and receives, so the only thing that could make this
+            # re-enter itself is `allow_chain_trigger` — which this kind DOES NOT DECLARE.
+            # Its own writes therefore cannot wake it, and the load-time cycle validator
+            # does not see this loop as an edge at all.
+            "trigger_table": rule["derived_table"],
+            "target_table": rule["derived_table"],
+            "mapper": AUTO_CONFIRM_MAPPER,
+            # ⚠️ THE WORK RUNS ON THE FOLLOW-UP LAP, NOT IN THE GROUP. It already did
+            # (S-151, 판정 264) — inlining it cost 0.875 s per group and that measurement
+            # is why the seat moved. This cell is what says so in the declaration instead
+            # of only in the code.
+            "follow_up": True,
+            "enabled": enabled,
+            "params": params,
+            "origin": origin,
         })
     return chain_rules
+
+
+def enrichment_name_collisions(chain_rule_names, path: str = None,
+                               known_tables: dict = None) -> list:
+    """Names declared in `chain_rules.json` that a synthesized rule would also claim.
+
+    🔴 REFUSED BY NAME, NEVER RESOLVED (판정 292). Two declarations under one name would
+    run the rule TWICE and say nothing — and which of the two an operator meant is not a
+    thing this product can know. So it names both and stops, the same posture the S-181
+    migration takes toward duplicate keys.
+    """
+    declared = set(chain_rule_names or ())
+    if not declared:
+        return []
+    collisions = []
+    for rule in load_enrichment_rules(path=path, known_tables=known_tables):
+        for name in synthesized_rule_names(rule["name"]):
+            if name in declared:
+                collisions.append(name)
+    return sorted(collisions)
 
 
 # 서버가 강제하는 LIMIT 래핑 — 참조뷰 **표시** 실행의 유일한 형태.

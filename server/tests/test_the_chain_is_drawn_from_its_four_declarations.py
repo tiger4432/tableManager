@@ -72,7 +72,10 @@ def fixture_graph(monkeypatch):
     from database import crud
 
     rules = [chain_rule()]
-    monkeypatch.setattr(chain_graph, "_chain_rule_file", lambda: rules)
+    # ⚰️ ONE READER NOW (S-179 ①, 판정 293-b). This used to patch BOTH `_chain_rule_file`
+    # and `load_chain_rules` — the two readers the graph kept so it could tell written
+    # rules from synthesized ones. That split is gone, and the fixture getting SHORTER is
+    # the evidence: there is one way in.
     monkeypatch.setattr(worker, "load_chain_rules", lambda: rules)
     monkeypatch.setattr(enrichment_config, "load_enrichment_rules",
                         lambda **kw: [{"name": "cg_enrich", "derived_table": DERIVED,
@@ -103,8 +106,14 @@ def fixture_graph(monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_each_declaration_contributes_its_own_kind(graph):
-    assert {e["kind"] for e in graph["edges"]} == {
-        "mapper", "enrich", "vjoin", "ledger"}
+    """⚰️ `enrich` USED TO BE HERE UNCONDITIONALLY (S-179 ①, 판정 292·293-b). Enrichment's
+    own arrow — the derived table feeding itself — is a CHAIN RULE now and draws as
+    `mapper`, so `enrich` is left meaning only 「this reference view reads that table」,
+    which appears when a view declares `reads:`. This fixture declares none.
+
+    🔴 The kind did not become unreachable: `test_an_undeclared_reads_is_counted_on_the_
+    rule_that_replaced_the_self_loop` and its sibling below still score it."""
+    assert {e["kind"] for e in graph["edges"]} == {"mapper", "vjoin", "ledger"}
 
 
 def test_the_counts_say_what_each_file_declared(graph):
@@ -221,16 +230,26 @@ def test_a_declared_reads_becomes_a_real_edge():
     assert "reads_unknown" not in edges[0]
 
 
-def test_an_undeclared_reads_is_counted_not_drawn():
+def test_an_undeclared_reads_is_counted_on_the_rule_that_replaced_the_self_loop():
     """⛔ COUNTED, NOT SILENT AND NOT INVENTED. 「nobody declared it」 must not render like
-    「it reads nothing」, and must never render like a guess."""
-    edges = chain_graph._enrich_edges([{
+    「it reads nothing」, and must never render like a guess.
+
+    ⚰️ IT MOVED RATHER THAN DIED (S-179 ①). This detail used to ride on the `enrich`
+    self-loop; that arrow is now the auto-confirm CHAIN RULE, so the count rides on the
+    mapper edge — carried from the rule's own `params`. Had it been left behind, the fold
+    would have been a loss of information dressed as a change of label."""
+    views = [{"label": "recent runs", "required_binds": ["job"]}]
+    edge = chain_graph._mapper_edges([{
+        "name": "enrichment_auto_confirm:cg_enrich",
+        "trigger_table": DERIVED, "target_table": DERIVED, "enabled": True,
+        "params": {"decision_key": ["job"], "reference_views": views}}])[0]
+    assert edge["reads_unknown"] == 1
+    assert edge["reference_views"][0]["reads"] is None
+    # And the reads half draws NO arrow when nobody declared one.
+    assert not [e for e in chain_graph._enrich_edges([{
         "name": "cg_enrich", "derived_table": DERIVED, "enabled": True,
-        "decision_key": ["job"],
-        "reference_views": [{"label": "recent runs", "required_binds": ["job"]}]}])
-    assert edges[0]["reads_unknown"] == 1
-    assert edges[0]["reference_views"][0]["reads"] is None
-    assert not [e for e in edges if e.get("via_reference_view")]
+        "decision_key": ["job"], "reference_views": views}])
+        if e.get("via_reference_view")]
 
 
 def test_an_unknown_table_in_reads_drops_the_view_by_name():
@@ -304,10 +323,18 @@ def test_a_shared_table_with_no_declared_column_is_the_weaker_list():
          chain_rule(name="b", target_table=TARGET)], []) == []
 
 
-def test_the_enrich_edge_is_the_table_feeding_itself(graph):
-    edge = by_kind(graph, "enrich")[0]
+def test_the_derived_table_still_feeds_itself_under_the_new_label():
+    """The fold's whole claim: the ENDPOINTS do not move, only the label. This is the
+    assertion that would catch the arrow being lost rather than relabelled."""
+    edge = chain_graph._mapper_edges([{
+        "name": "enrichment_auto_confirm:cg_enrich",
+        "trigger_table": DERIVED, "target_table": DERIVED, "enabled": True,
+        "follow_up": True, "origin": "synthesized:cg_enrich",
+        "params": {"decision_key": ["job", "slot"]}}])[0]
+    assert edge["kind"] == "mapper"
     assert edge["from"] == edge["to"] == DERIVED
     assert edge["decision_key"] == ["job", "slot"]
+    assert edge["origin"] == "synthesized:cg_enrich"
 
 
 # ---------------------------------------------------------------------------
@@ -321,7 +348,6 @@ def test_a_refused_cycle_is_shown_rather_than_hidden(monkeypatch):
                        allow_chain_trigger=True),
             chain_rule(name="b", trigger_table="t2", target_table="t1",
                        allow_chain_trigger=True)]
-    monkeypatch.setattr(chain_graph, "_chain_rule_file", lambda: loop)
     monkeypatch.setattr(worker, "load_chain_rules", lambda: loop)
     import enrichment_config
     import virtual_join_config as vjc

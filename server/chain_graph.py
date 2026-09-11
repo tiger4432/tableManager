@@ -43,27 +43,25 @@ NODE_LEDGER = "ledger"
 LEDGER_NODE_ID = "(ledger)"
 
 
-def _chain_rule_file():
-    """`chain_rules.json`'s OWN rules, without the enrichment-derived ones.
+def _chain_rules():
+    """Every rule THE WORKER RUNS — synthesized ones included (S-179 ①, 판정 293).
 
-    ⚠️ `load_chain_rules()` MERGES SYNTHESIZED RULES INTO ITS RETURN, and that is right for
-    the worker and wrong for a count. `enrichment_config.load_enrichment_chain_rules`
-    derives a dedup chain rule per enrichment rule, so a graph built off the merged list
-    would draw every enrichment rule twice and the per-file counts would not add up. The
-    synthesized rules are still VISIBLE here — they are in `wakes`, because the worker
-    really is woken by them — and that is the honest split: the file says what an operator
-    wrote, `wakes` says what runs.
+    🔴 THE PRODUCT'S LOADER, NEVER THE FILE. CODE_MAP D-10 ① is the rule — 「모든
+    노드·엣지는 «제품이 쓰는 로더»로 읽는다」 — and this seat was the exception that proved
+    why: reading `chain_rules.json` directly meant the picture could not see a synthesized
+    rule at all, so the dedup projection (`source_table` → `derived_table`) was MISSING
+    from the graph entirely while the worker ran it on every event.
+
+    ⚰️ THE OLD REASON WAS 「a merged list would draw every enrichment rule twice」, and it
+    was not true of the code it was written beside: `_enrich_edges` drew the derived
+    table's SELF-LOOP, never the dedup projection, so the two were different edges and
+    neither duplicated the other. A file read and a loader are 「같은 기능 두 경로」, and
+    this was the half that was wrong.
     """
-    import json
-    import os
-
     import chain_ingestion_worker as worker
 
-    if not os.path.exists(worker.RULES_PATH):
-        return []
     try:
-        with open(worker.RULES_PATH, "r", encoding="utf-8") as handle:
-            return (json.load(handle) or {}).get("rules") or []
+        return worker.load_chain_rules() or []
     except Exception:
         return []
 
@@ -83,9 +81,33 @@ def _mapper_edges(rules):
             "enabled": bool(rule.get("enabled", True)),
             "allow_chain_trigger": bool(rule.get("allow_chain_trigger")),
             "max_group_attempts": rule.get("max_group_attempts"),
+            # 🔴 WHICH FILE THIS CAME FROM, AS A CELL (판정 293-b). The graph used to keep a
+            # SECOND reader — the raw file — so it could tell a written rule from a
+            # synthesized one; that reader is the 「같은 기능 두 경로」 this round removes, and
+            # per-file counts come from here instead. `mapper` is the only kind where the
+            # question is ambiguous: `vjoin` and `ledger` name their own file by kind.
+            "origin": rule.get("origin") or "file",
         }
         if rule.get("trigger_columns"):
             common["trigger_columns"] = list(rule["trigger_columns"])
+        # 🔴 WHAT THE ENRICH SELF-LOOP USED TO CARRY, on the rule that replaced it (S-179 ①).
+        # Dropping the old edge without moving these would have made the fold a LOSS of
+        # information rather than a change of label — `decision_key` and the reference-view
+        # detail are what an operator reads this arrow for.
+        params = rule.get("params") or {}
+        if params.get("decision_key"):
+            common["decision_key"] = list(params["decision_key"])
+        views = params.get("reference_views") or ()
+        if views:
+            common["reference_views"] = [
+                {"label": view.get("label"),
+                 "required_binds": list(view.get("required_binds") or ()),
+                 "reads": list(view["reads"]) if view.get("reads") else None}
+                for view in views
+            ]
+            unknown = [v for v in views if not v.get("reads")]
+            if unknown:
+                common["reads_unknown"] = len(unknown)
         if rule.get("target_table"):
             edges.append(dict(common, **{"from": source, "to": rule["target_table"]}))
         # 🔴 A RULE CAN WRITE TWO TABLES, AND A PICTURE THAT SHOWS ONE IS THE HALF-GRAPH
@@ -109,12 +131,17 @@ def _enrich_edges(rules):
         derived = rule.get("derived_table")
         if not derived:
             continue
-        edge = {
-            "kind": "enrich", "from": derived, "to": derived,
-            "rule": rule.get("name"),
-            "enabled": bool(rule.get("enabled", True)),
-            "decision_key": list(rule.get("decision_key") or ()),
-        }
+        # ⚰️ THE SELF-LOOP IS NOT DRAWN HERE ANY MORE (S-179 ①, 판정 292·293). The
+        # auto-confirm rule IS a chain rule now, so `_mapper_edges` draws that same
+        # `derived → derived` arrow with `kind: "mapper"` and carries this rule's own cells
+        # on it from `params`. Drawing it in both places would be the 「같은 기능 두 경로」
+        # this round exists to remove; the endpoints do not move, only the label.
+        #
+        # ⚠️ THE `reads` EDGES BELOW STAY EXACTLY AS THEY ARE, and they keep `kind:
+        # "enrich"`. They are a 「이 표를 읽는다」 relation that NO chain rule expresses —
+        # folding them too would mean inventing a rule that does not exist. So `enrich`
+        # does not reach zero, contrary to what 판정 292 assumed when it queued C-78: the
+        # count after this round is the reference-view edges, and the report carries it.
         views = rule.get("reference_views") or ()
         if views:
             # ⚠️ THE TABLES A VIEW READS ARE DECLARED OR THEY ARE UNKNOWN — never parsed
@@ -122,16 +149,7 @@ def _enrich_edges(rules):
             # would be a possibly-wrong arrow on the picture an operator is using to
             # understand the chain. `reads` is the cell an operator writes; a view without
             # one is COUNTED as unknown rather than drawn as reading nothing.
-            edge["reference_views"] = [
-                {"label": view.get("label"),
-                 "required_binds": list(view.get("required_binds") or ()),
-                 "reads": list(view["reads"]) if view.get("reads") else None}
-                for view in views
-            ]
-            unknown = [v for v in views if not v.get("reads")]
-            if unknown:
-                edge["reads_unknown"] = len(unknown)
-        edges.append(edge)
+            pass
         # The declared half, as real edges: a table a view reads feeds the derived table.
         for view in views:
             for table in view.get("reads") or ():
@@ -140,6 +158,10 @@ def _enrich_edges(rules):
                     "rule": rule.get("name"),
                     "enabled": bool(rule.get("enabled", True)),
                     "via_reference_view": view.get("label"),
+                    # These come from enrichment_rules.json itself, not from a synthesized
+                    # chain rule — the reads relation has no chain rule to be synthesized
+                    # from (판정 293-b).
+                    "origin": "file",
                 })
     return edges
 
@@ -295,7 +317,7 @@ def chain_graph(db):
     from database import crud
 
     catalogue = crud.TABLE_CONFIG or {}
-    chain_rules = _chain_rule_file()
+    chain_rules = _chain_rules()
     try:
         enrichment_rules = enrichment_config.load_enrichment_rules(
             known_tables=catalogue) or []

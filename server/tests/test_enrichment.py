@@ -274,14 +274,23 @@ def test_loader_synthesized_chain_rule_shape(tmp_path):
     rules_path.write_text(json.dumps(RULES_FILE), encoding="utf-8")
     chain_rules = enrichment_config.load_enrichment_chain_rules(
         path=str(rules_path), known_tables=KNOWN)
-    assert len(chain_rules) == 1
-    cr = chain_rules[0]
+    # ONE RULE NOW YIELDS TWO KINDS (S-179 (1), ruling 292): the dedup projection and the
+    # auto-confirm follow-up. Picked BY NAME rather than by index - an index silently
+    # selects whichever kind the list happens to order first.
+    assert [r["name"] for r in chain_rules] == [
+        "enrichment_dedup:bonding_wafer_attribution",
+        "enrichment_auto_confirm:bonding_wafer_attribution"]
+    cr = next(r for r in chain_rules if r["name"].startswith("enrichment_dedup:"))
     assert cr["trigger_table"] == "enrich_test_src"
     assert cr["target_table"] == "enrich_test_derived"
     assert cr["mapper_module"] == "enrichment_mapper"
     assert cr["mapper_function"] == "map_enrichment_dedup"
     assert cr["is_batch"] is True and cr["enabled"] is True
     assert cr["enrichment"]["name"] == "bonding_wafer_attribution"
+    confirm = next(r for r in chain_rules
+                   if r["name"].startswith("enrichment_auto_confirm:"))
+    assert confirm["follow_up"] is True
+    assert confirm["trigger_table"] == confirm["target_table"] == "enrich_test_derived"
 
 
 # ---------------------------------------------------------------------------

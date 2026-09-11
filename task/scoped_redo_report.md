@@ -35026,3 +35026,80 @@ follow_up: true        그리고 `_rule_accepts_event` 가 follow_up 규칙을 �
 스크래치패드에 패치로 있고, 답 주시면 그대로 얹어 ⓐ~ⓖ 게이트와 함께 «한 커밋»으로 냅니다.
 
 > 📌 **[09-11 21:25] 이 채널의 미답 질문: 위 ⓧ/ⓨ «하나». 그 답이 게이트 ⓒ 의 기댓값을 정합니다.**
+
+## 14. S-179 ① 착지 — 인리치가 체인 규칙의 «한 종류»가 됩니다 (판정 292·293·293-b, 한 커밋)
+
+### 지은 것
+```
+합성기 «하나»가 둘을 냄   규칙 1 → dedup + auto_confirm. 이 박스: 4 → 8
+params                  정규화 칸 «열둘 전부», 이름 그대로. 시험이 «집합 차»로 단언 —
+                        어휘에 칸이 늘면 시험을 안 고쳐도 덮입니다
+enabled                 규칙에서. 상수 아님 (게이트 ⓕ 가 «합성기 경계»에서 잽니다)
+follow_up: true         + `_rule_accepts_event` 가 follow_up 을 «트리거 경로에서 제외»
+allow_chain_trigger     넷 다 «선언 안 함» → 자기 고리가 «구조적으로» 도달 불가
+이름 충돌               `enrichment_name_collisions` → 이름 대어 거절 + 그 규칙만 «뺌»
+/runtime                `auto_confirmed`/`auto_refused` 를 랩 행에 (S-176 덧붙임 —
+                        배치가 «이미 세던» 수인데 한 프레임 위에서 버려지고 있었습니다)
+기동 줄                 「8 dedup」이 거짓이 되므로 「8 (4 dedup · 4 auto-confirm)」
+```
+
+### 판정 293-b — 읽는 쪽 «하나» + `origin` 칸
+```
+전   chain_graph 가 «파일»을 직접 읽음 → 합성 규칙을 «못 봄»
+     = dedup 투영(source→derived)이 그래프에 «아예 없었음». 워커는 매 이벤트마다 돌고 있는데
+후   worker.load_chain_rules() «하나». `_chain_rule_file` 은 «이름째» 삭제
+     엣지마다 origin: file | synthesized:<이름>  ← 파일별 수는 이 칸으로 셈(둘째 로더 금지)
+이 박스   origin: file 12 · synthesized:* 8   ·   (from,to,rule) 중복 «0»
+```
+
+### 게이트
+```
+ⓐ 규칙마다 한 번만      ✅ (from,to,rule) 중복 0 — 변이 시험 하나가 그걸 지킴
+ⓑ 이름 충돌            ✅ 양쪽 같은 이름 → 그 이름이 거절문에. 깨끗하면 «빈 목록»(대조군)
+ⓒ 끝점 집합            ✅ 엣지 36 → 40 = +dedup 4(규칙 수와 «정확히» 같음)
+                        자기 고리 넷은 enrich → mapper 로 «라벨만» 바뀜(끝점 그대로)
+ⓔ 핑퐁                 ✅ 합성 규칙 넷 다 allow_chain_trigger 없음 + follow_up 은
+                        트리거 이벤트를 «절대» 안 받음(대조군: 평범한 규칙은 받음)
+ⓕ enabled              ✅ 꺼진 규칙을 합성기에 먹이면 enabled False 로 나옴
+ⓖ /enrichment/rules    ✅ 로더 반환 모양 불변 — 합성기는 «읽기»만 하고 규칙 객체를 안 바꿈
+이웃                   673 passed / 0 failed (30 파일 + 계약)
+```
+
+### ⚠️ 판정 292 의 전제 하나가 «틀렸습니다» — `kind enrich` 는 0 이 «아닙니다»
+```
+292 가 가정한 것   「엣지 kind enrich 가 «사라진다» → C-78 로 범례 폐기」
+실제               `enrich` 는 «두 가지»를 그리고 있었습니다:
+                   ① 자기 고리(derived→derived)  ← 접혔습니다. 이제 mapper
+                   ② 참조뷰가 «읽는 표» (표→derived) ← «그대로 둡니다»
+                      이건 「읽는다」 관계라 그걸 표현하는 체인 규칙이 «없습니다» —
+                      접으려면 «없는 규칙을 지어내야» 합니다
+이 박스 수         enrich 0 — 다만 그 이유는 «접어서»가 아니라 라이브 참조뷰가
+                   `reads:` 를 «아무도 선언 안 해서»입니다. 구조적 0 이 아닙니다
+```
+🔵 **그러므로 C-78 은 여전히 필요하지만 «뜻이 좁아집니다»** — 범례를 지우는 게 아니라
+「인리치 = 참조뷰가 읽는 표」로 «다시 쓰는» 일입니다. 클라 레인에 그대로 전해 주십시오.
+
+### 고친 이웃 시험 — 하나는 «짧아졌습니다»
+```
+test_the_chain_is_drawn…  픽스처가 `_chain_rule_file` 과 `load_chain_rules` «둘 다»
+                          패치하고 있었습니다 = 읽는 쪽이 둘이라는 증거.
+                          이제 «한 줄»입니다 — 픽스처가 짧아진 것이 그 자체로 증거입니다
+kind 집합 / 자기 고리 / reads_unknown  셋은 «옛 모양»을 단언하던 것이라 새 모양으로.
+                          reads_unknown 은 «죽지 않고 옮겼습니다»(mapper 엣지의 params)
+test_enrichment 둘        인덱스로 규칙을 고르던 자리 → «이름으로». 목록이 늘면 인덱스는
+                          조용히 다른 종류를 집습니다
+```
+
+### 짓기 전 실측 (판정 292 가 요구하신 한 줄)
+```
+규칙 층(양쪽)   name · derived_table · enabled · decision_key · alignment
+dedup          source_table · aggregations
+자동 확정       target_fields · reference_views · auto_confirm ·
+               auto_confirm_declared · list_columns · claim_contract
+`alignment` 은 «한쪽 것이 아님» — 뷰 쪽(alignment_view_service:28)과 dedup 쪽(models:1338) 둘 다 읽음
+`claim_contract` 은 «읽는 쪽 0 · 전부 _archive» — 실으나 S-184 후보(총괄 큐)
+```
+
+> 📌 **[09-11 21:41] 이 채널의 미답 질문: «없음». 재기동 총괄 몫 — enrichment_config ·
+> chain_ingestion_worker · chain_graph 를 import 하는 프로세스가 읽습니다.
+> C-78 은 «폐기»가 아니라 «좁힘»입니다(위 ⚠️).**
