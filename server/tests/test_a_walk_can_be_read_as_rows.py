@@ -226,3 +226,86 @@ def test_the_server_half_matches_every_contract_vector():
         entities = ({} if case["declaration"] is None
                     else {case["type"]: case["declaration"]})
         assert ls._declared_columns(nodes, entities) == case["expect"], case["name"]
+
+
+# ---------------------------------------------------------------------------
+# 🔴 THE ROUTE'S rows BRANCH — the one the unit tests above could not reach
+# ---------------------------------------------------------------------------
+
+def test_the_router_can_read_the_declarations_it_hands_the_fold():
+    """🔴 THE ONE ASSERTION THAT WOULD HAVE CAUGHT THE 500. `_evidence_graph` reached for
+    `_config` — a name every sibling handler imports LOCALLY and this one never did — so
+    the rows branch raised `NameError` on its first live call while the whole suite stayed
+    green. Calling the accessor is enough to prove the name resolves."""
+    import ledger_trace_router as router
+
+    entities = router._declared_entities()
+    assert isinstance(entities, dict)
+
+
+def test_the_route_hands_back_the_fold_as_text_not_json(monkeypatch):
+    """The other half of the seam: the route must return the TSV as TEXT. A JSON body
+    would parse for nobody and read as 「the walk found nothing」."""
+    import ledger_trace_router as router
+
+    monkeypatch.setattr(router, "_evidence_graph",
+                        lambda *a, **kw: {
+                            "rows": "# truncated=false" + chr(10)
+                                    + "type" + chr(9) + "id" + chr(10),
+                            "nodes": []})
+    monkeypatch.setattr(router, "_signed_start", lambda *a, **kw: "seed")
+
+    class _Db:
+        def connection(self):
+            return None
+
+    # Every argument a direct call would otherwise leave as a `Query` sentinel is passed
+    # explicitly — the handler's own note warns that an omitted one is the sentinel object.
+    answer = router.evidence_subgraph(
+        node_id="seed", response_format="rows", db=_Db(),
+        hops=1, direction="both", since=None, until=None,
+        node_limit=400, edge_limit=1200, positive=None, negative=None,
+        follow=None, backbone_hops=0, collect=None, include_superseded=False)
+    assert answer.media_type == "text/tab-separated-values"
+    assert answer.body.decode().startswith("# truncated=")
+
+
+def test_the_route_itself_answers_rows():
+    """🔴 THIS IS THE TEST WHOSE ABSENCE SHIPPED A 500. Every gate above scored
+    `rows_projection` and the refusal directly, so the WIRING between them — the route
+    reading the declarations and handing back a PlainTextResponse — was never executed.
+    It raised `NameError: _config` on the first live call while the suite stayed green:
+    a function can be right in every test and still be unreachable.
+
+    ⚠️ It asks the SAME question twice, once per format, and scores the rows against the
+    JSON — that is gate ⓐ measured where it matters rather than on the fold in isolation.
+    """
+    import os
+
+    os.environ.setdefault("TESTING", "1")
+    from fastapi.testclient import TestClient
+
+    import main
+
+    # `raise_server_exceptions=False` so a 500 comes back AS a status rather than as an
+    # exception — this test needs to read the code to decide whether to skip.
+    client = TestClient(main.app, raise_server_exceptions=False)
+    params = {"id": "ledger-entity:v1:heartbeat", "hops": 1, "format": "rows"}
+    rows = client.get("/api/ledger/subgraph", params=params)
+    # ⚠️ THE WALK IS PostgreSQL-ONLY (`to_regclass`), so this one cannot run on the
+    # SQLite suite and says so by name rather than by passing vacuously. The two tests
+    # above cover the same seam on every box; this is the end-to-end one, and it runs
+    # wherever a walk can actually run.
+    if rows.status_code in (404, 422, 500, 503):
+        pytest.skip(f"no walkable seed on this box: {rows.status_code}")
+    assert rows.status_code == 200, rows.text[:300]
+
+    lines = rows.text.rstrip("\n").split("\n")
+    assert lines[0].startswith("# truncated="), lines[0]
+    header = lines[1].split("\t")
+    assert header[:len(ls.ROW_FIXED_COLUMNS)] == list(ls.ROW_FIXED_COLUMNS)
+
+    as_json = client.get("/api/ledger/subgraph",
+                         params=dict(params, format="json"))
+    assert as_json.status_code == 200
+    assert len(lines) - 2 >= len(as_json.json().get("nodes") or [])

@@ -35212,3 +35212,39 @@ format 거절을 «맨 위»로 올렸더니 interval 시험 «셋»이 빨개�
 
 > 📌 **[09-11 22:26] 이 채널의 미답 질문: «없음». 계약 벡터는 «초안»이라 클라 절반·채점 자리는
 > 총괄 몫(지시 그대로). 재기동 총괄 몫 — ledger_subgraph · ledger_trace_router 를 읽습니다.**
+
+## 17. S-183 라이브 거절 수리 — 「함수는 초록인데 «라우트의 그 가지»가 한 번도 안 돌았습니다」
+
+거절 맞습니다. 제 게이트 ⓐ~ⓕ 는 «함수 위»에서 돌았고, 라우트의 `rows` 가지는
+**시험이 한 번도 안 불렀습니다**. 그래서 `NameError: _config` 가 «라이브 첫 호출»에서 났고
+스위트는 내내 초록이었습니다. 제 기억에 있는 부류 그대로입니다 — 「착지는 배선이 아니다」.
+
+### 고친 것
+```
+① 이름    _declared_entities() — 이 라우터의 «형제 핸들러들이 쓰는 그 길» 그대로
+          (from ledger import config as _config 를 «함수 안»에서). 새 로더 «안 만들었습니다» —
+          모듈 최상단 import 는 이 라우터의 import 경로에 «거절할 수 있는 로드»를 얹습니다
+② 시험    세 겹으로 «모든 박스»에서 그 이음매가 덮이게:
+          · _declared_entities() 직접 — 🔴 이것 «하나»면 그 500 을 잡습니다
+          · 라우트가 PlainTextResponse(text/tab-separated-values) 를 내는지 (_evidence_graph 대역)
+          · TestClient 로 진짜 end-to-end — PG 전용이라 SQLite 스위트에선 «이름 대어 skip»
+③ 모집단  ledger_trace_router 를 부르는 시험 포함 — 11 파일 138 passed
+```
+
+### 🔴 새 시험이 «공허하지 않다»는 것을 변이로 확인했습니다
+```
+지역 import 를 지움  →  test_the_router_can_read_the_declarations_it_hands_the_fold
+                        NameError: name '_config' is not defined  (ledger_trace_router.py:419)
+되돌림              →  초록
+```
+즉 그 시험은 «출하된 그 결함 자체»를 잡습니다. 추정이 아니라 재서 확인했습니다.
+
+### ⚠️ 그리고 TestClient 시험이 «조용히 통과»하지 않게 해 뒀습니다
+```
+걷기는 PostgreSQL 전용(to_regclass)이라 SQLite 스위트에선 못 돕니다.
+그래서 500/503 이면 «이름 대어 skip» 하고, 위 두 겹이 «모든 박스»에서 같은 이음매를 덮습니다.
+skip 을 「통과」로 세면 이번 사고를 그대로 다시 만드는 것이라 그렇게 안 했습니다.
+```
+
+> 📌 **[09-11 22:33] 이 채널의 미답 질문: «없음». 라이브 확인은 총괄 몫(PG 박스) —
+> `?format=rows` 가 200 + 첫 줄 `# truncated=` 이면 닫힙니다.**

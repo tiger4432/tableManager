@@ -406,6 +406,21 @@ def _instant_arg(raw):
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
+def _declared_entities():
+    """The entity declarations, read the way every other handler here reads them.
+
+    ⛔ NOT A NEW LOADER. `/declaration` already publishes these (keys and attributes)
+    through `ledger.config`, and the walk table's columns must be the SAME declaration the
+    screen draws from - a second reader is how the two come to disagree about which
+    columns exist. The import is local because every sibling handler in this module does
+    the same: importing `ledger.config` at module scope would put a refusable load on this
+    router's import path.
+    """
+    from ledger import config as _config
+
+    return (_config.load() or {}).get("entities") or {}
+
+
 def _evidence_graph(connection, *, node_id, hops, direction,
                     node_limit, edge_limit, follow=None, follow_keys=None,
                     backbone_hops=ledger_subgraph.DEFAULT_BACKBONE_HOPS,
@@ -436,7 +451,7 @@ def _evidence_graph(connection, *, node_id, hops, direction,
         # The declaration is the ONLY authority for which columns exist — the same source
         # the client reads through /declaration, so a key added to a declaration reaches
         # both the screen and the TSV with no edit in either (S-183).
-        rows=rows, entities=((_config.load() or {}).get("entities") or {}) if rows else None)
+        rows=rows, entities=_declared_entities() if rows else None)
 
 
 #: How many ledger rows one key-values answer may READ. The scan is bounded, not the
