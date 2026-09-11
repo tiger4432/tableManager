@@ -349,14 +349,8 @@ async def test_chain_at_threshold_still_builds_the_items_it_ships(db_session):
     assert item["data"]["prod_line"] == "L1"
     assert item["created_at"] and item["updated_at"]
 
-    # 🔴 A CEILING, NOT AN EQUALITY (판정 275). What this guards is that the sent
-    # items do not reload BEYOND the truncation limit - i.e. that truncation still
-    # lives. The old `==` also pinned `expire_on_commit`'s incidental per-item reload
-    # as if it were the contract, so when S-162 made the group commit ONCE and those
-    # reloads stopped happening, a saving of ~100 SELECTs per table showed up here as
-    # a failure. A budget is an upper bound; going under it is the point.
-    assert len(selects_from(recorded, CHAIN_TABLE)) <= BROADCAST_ITEM_LIMIT + 1, (
-        "the items this arm sends must not reload past the truncation limit")
+    assert len(selects_from(recorded, CHAIN_TABLE)) == BROADCAST_ITEM_LIMIT + 1, (
+        "the items this arm really sends still cost their reloads")
 
 
 # ---------------------------------------------------------------------------
