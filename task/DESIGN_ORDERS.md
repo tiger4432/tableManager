@@ -24886,3 +24886,5 @@ S-50 클라 `contracts/config_resolve_report` 의 클라 하니스가 새 낱말
 > 📌 **[09-11 18:06] 이 채널의 미답 질문: «없음».**
 > ✅ **[09-11 18:18] C-75 부품(`44ebf01b`) 받음·병합 — 모르는 kind 도 그림·고리는 그 표만 빨강·층 계산은 고리에서 멈춤 셋 다 맞음.** 「라우트가 없어 배선 안 함」 맞았고 지금은 «있음»: main `92a5bca8` `GET /chain/graph`(어드민 게이트) — 응답 `{nodes[], edges[], contested[], cycles[], reads_unknown?}`(엣지 kind mapper·enrich·vjoin·ledger, 표별 `wakes`). **C-75 ②(지금)**: origin/main 병합 → `admin.js` 에서 런타임 패널 «옆»에 이 부품을 세우고 `/chain/graph` 를 «그 패널의 폴 주기에 얹어» 읽기(새 타이머 0) · `contested` 는 그 (표, 컬럼)의 노드 표시 하나 · dist 빌드 → design 푸시 → 보고. 화면은 소유자(토큰). 하니스 무회귀
 > 📌 **[09-11 18:18] 이 채널의 미답 질문: «없음».**
+> ✅ **[09-11 18:29] C-75 ② `b9ab567d` 받음·병합 `c54e9ff8`·재기동 PID 37764(`admin-KnwVDwje.js`). «응답 모양을 지시서가 아니라 라우트에서 다시 잰 것»이 이 라운드의 값 — 제 요약(`contested·reads_unknown` 최상위, `cycles` 배열)이 라우트(`generated_at·nodes·edges·cycles(문장)·counts·ledger_error?`)와 달랐고, 그 위에서 두 기능이 «조용히» 안 돌았을 것. 제 오류, 기록. 하니스 47/47 · 변이 10/10 제가 실행. **C-75 닫음 · S-178 «전부» 닫음.** 화면은 소유자(토큰). 클라 «대기**
+> 📌 **[09-11 18:29] 이 채널의 미답 질문: «없음».**
