@@ -586,8 +586,19 @@ def test_verify_reports_every_problem_not_only_the_first(tmp_path, capsys, monke
         assert any(expected in line for line in lines), expected
     assert lines[-1].endswith(f"{len(lines) - 1} problem(s) in {root}")
 
-    # The runtime loader, on the same root, still stops at the first -- and the one it
-    # stops at is among the lines above. The two paths differ in HOW MANY, never in WHAT.
-    with pytest.raises(LedgerSetupValidationError) as refused:
+    # ⚰️ THE RUNTIME LOADER NO LONGER STOPS THE BUNDLE ON ONE DECLARATION (S-177 ②,
+    # 판정 280). It used to raise the FIRST of the list above, and that is precisely the
+    # all-or-nothing this round removed: in production one typo stood fourteen ledgers up.
+    # It now drops what is blamed and loads the rest.
+    #
+    # This sample declares ONE source, so dropping it leaves nothing to read -- and a
+    # bundle that would compile to zero plans is refused BY NAME rather than loaded as a
+    # silently empty ledger, carrying each refused source's own reason. The two paths
+    # still differ in HOW MANY and never in WHAT: the reason names a path from the list.
+    with pytest.raises(LedgerSetupError) as refused:
         setup_module.load_setup(root)
-    assert any(refused.value.path in line for line in lines)
+    assert refused.value.code == "every_source_refused"
+    assert source in refused.value.message
+    assert any(fragment in refused.value.message
+               for fragment in (f"bundle.sources.{source}", f"bundle.entities.",
+                                f"bundle.vocabulary.")), refused.value.message

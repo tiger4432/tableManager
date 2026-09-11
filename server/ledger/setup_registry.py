@@ -84,7 +84,11 @@ def _plain(value: Any) -> Any:
 #: atoms are byte-identical either way -- MEASURED on `dt_job`'s code mapper, the same row
 #: translated with and without the column in the frame. Leaving it in moved all fifteen
 #: cursor fingerprints, which is exactly the restamp cost 판정 135 chose Ⓐ over Ⓒ to avoid.
-_NOT_ATOM_MATERIAL = frozenset({"config_path", "frame_row_id"})
+#: 🔴 `planned`/`refusal` JOIN THE SET FOR THE SAME REASON `config_path` IS IN IT (S-177 ②):
+#: they say what the LOADER did, not what the author declared, so a healthy source's
+#: fingerprint must not move because a DIFFERENT source was refused. That is not a nicety -
+#: a moved fingerprint stops that source's cursor, which is the disease this round cures.
+_NOT_ATOM_MATERIAL = frozenset({"config_path", "frame_row_id", "planned", "refusal"})
 
 
 def _is_unfilled(value: Any) -> bool:
@@ -445,6 +449,27 @@ class SourcePlan:
     #: nothing the index could have done. What must not happen is the delete step going
     #: quiet about it -- it names the source instead.
     frame_row_id: str | None = None
+    #: 🔴 FALSE MEANS 「THE LOADER COULD NOT PLAN THIS」, AND IT IS NOT `status` (S-177 ②).
+    #: `status` is the OPERATOR'S word - active or retired, written by a person. This is the
+    #: SYSTEM'S word, and folding a third value into `status` would render 「retired」 and
+    #: 「broken」 as the same pixel. A refused source keeps the same reduced shape a retired
+    #: one gets (no driver, no profile) because the loader knows the same amount about both:
+    #: its name, its relation, and why it is not running.
+    planned: bool = True
+    #: `{code, path, message}` when `planned` is False, else `None`.
+    refusal: Any = None
+
+    @property
+    def runs(self) -> bool:
+        """🔴 THE ONE PREDICATE FOR 「should anything read this source」 (S-177 ②).
+
+        Two facts can stop a source and they are different facts - the operator retired it,
+        or the loader could not plan it - so every reader that asked only about `status`
+        would let a refused source through and meet `driver=None` three frames later.
+        Spelled once here rather than `and plan.planned` at six call sites, because two
+        spellings of a gate is how one of them keeps letting something through.
+        """
+        return self.status == "active" and self.planned
 
 
 @dataclass(frozen=True)
@@ -713,10 +738,16 @@ def compile_setup_snapshot(
     verified_joins: Sequence[VerifiedJoinDescriptor] = (),
     *,
     catalog: Mapping[str, Any] | None = None,
+    refused_sources: Mapping[str, Any] | None = None,
 ) -> LedgerSetupSnapshot:
     """Compile one validated, approved Bundle without source or database execution.
 
     `catalog` is the physical relation shape; see `snapshot_compile_errors`.
+
+    `refused_sources` is `{source_id: {"raw": <declaration text>, "refusal": {...}}}` for
+    sources the LOADER dropped so the rest could run (S-177 ②). They are not part of the
+    bundle being compiled -- nothing about them is validated or planned -- and they are
+    registered by name so the screens that show sources can say what happened to them.
     """
     issues = snapshot_compile_errors(
         bundle, trusted, verified_joins, catalog=catalog)
@@ -735,7 +766,7 @@ def compile_setup_snapshot(
     verified_join_registry = _compile_verified_joins(verified_joins)
     source_plans = _compile_source_plans(
         bundle.section("sources"), preparers, mappers, profiles,
-        verified_join_registry, entities, catalog)
+        verified_join_registry, entities, catalog, refused_sources)
 
     bundle_canonical_json = bundle.serialize()
     bundle_sha256 = sha256(bundle_canonical_json.encode("utf-8")).hexdigest()
@@ -864,6 +895,11 @@ def source_cursor_fingerprint(
     # closes over is the read and translate plan, and a retired source is compiled with
     # neither - so the honest answer is a refusal with a word, not a hash of nothing and
     # not an `AttributeError` three frames down in whichever loop asked.
+    if not plan.planned:
+        raise LedgerSetupValidationError(
+            "source_refused", f"bundle.sources.{source_id}",
+            f"source {source_id!r} was refused by the loader and has no material to "
+            f"fingerprint: {plan.refusal}")
     if plan.status != "active":
         raise LedgerSetupValidationError(
             "source_retired", f"bundle.sources.{source_id}.status",
@@ -1303,8 +1339,29 @@ def _compile_source_plans(
     verified_joins: VerifiedJoinRegistry,
     entities: EntityTypeRegistry,
     catalog: Mapping[str, Any] = None,
+    refused: Mapping[str, Any] = None,
 ) -> SourcePlanRegistry:
     builder = _RegistryBuilder(SourcePlanRegistry)
+    # 🔴 REFUSED SOURCES ARE REGISTERED FIRST, BY NAME (S-177 ②). They are not IN `section` -
+    # the loader dropped them before this saw the bundle - so their name, relation and
+    # status are read from the declaration text the resolver kept. Registering them is the
+    # whole point: a source that vanishes from `source_plans` reads to every screen as a
+    # source the operator deleted, and the one thing an operator needs here is to see it
+    # sitting there with the reason beside it.
+    for source_id in sorted(refused or {}):
+        entry = refused[source_id]
+        raw = entry.get("raw") if isinstance(entry, Mapping) else {}
+        raw = raw if isinstance(raw, Mapping) else {}
+        builder.add(source_id, SourcePlan(
+            source_id=source_id,
+            status=raw.get("status", DEFAULT_LIFECYCLE),
+            relation=raw.get("relation") or "",
+            driver=None,
+            profile=None,
+            planned=False,
+            refusal=_freeze(entry.get("refusal") if isinstance(entry, Mapping) else None),
+            config_path=f"bundle.sources.{source_id}",
+        ))
     for source_id, item in section.items():
         path = f"bundle.sources.{source_id}"
         if is_retired(item):

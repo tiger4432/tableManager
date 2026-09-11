@@ -814,6 +814,12 @@ def ledger_declaration_catalog():
                 # rides only when it is false, so an active source is byte-identical to
                 # what it published before.
                 **({"content_validated": False} if plan.status != "active" else {}),
+                # 🔴 TWO DIFFERENT FACTS, TWO FIELDS (S-177 ②). `status` is what the
+                # OPERATOR wrote; `planned` is what the LOADER managed. A source whose
+                # declaration is broken is still declared active, and folding that into
+                # `status` would tell the screen an operator retired it.
+                **({"planned": False,
+                    "refusal": dict(plan.refusal or {})} if not plan.planned else {}),
                 "emits": sorted({
                     (mapping or {}).get("predicate")
                     for mapping in (((declared_sources.get(source_id) or {})
@@ -824,7 +830,7 @@ def ledger_declaration_catalog():
                 # from the read plan, and a retired source has none; `[]` would say 「reads
                 # no columns」, which is a different and false fact.
                 **({"scope_columns": list(base_select_columns(plan))}
-                   if plan.status == "active" else {}),
+                   if plan.runs else {}),
                 **({"census": census[source_id]} if source_id in census else {}),
             }
             for source_id, plan in sorted(plans.items())

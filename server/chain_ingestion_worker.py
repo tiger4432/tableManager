@@ -2218,9 +2218,9 @@ async def run_ledger_row_census(db_session_factory):
             # at all, which would spend a lap failing once per source. The names ride on
             # the lap line, so the skip is a value rather than a silence.
             sources = sorted(name for name, plan in setup.snapshot.source_plans.items()
-                             if plan.status == "active")
+                             if plan.runs)
             retired = sorted(name for name, plan in setup.snapshot.source_plans.items()
-                             if plan.status != "active")
+                             if not plan.runs)
         except Exception as exc:
             logger.warning("[LedgerCensus] the declaration could not be read: %s", exc)
             sources = []
@@ -2378,8 +2378,14 @@ def _restamp_moved_fingerprints_sync(db_session_factory):
         store = LedgerStore(db.get_bind())
         read = store.connection()
         try:
+            # 🔴 ONLY WHAT IS STILL READ IS RE-STAMPED (S-177 ①②). The stamp says which
+            # declaration a source is translating on; a source that is retired or that the
+            # loader refused translates nothing and is compiled with no material to
+            # fingerprint at all - so asking for its stamp raises, and this loop has no
+            # per-source guard, which would take every source AFTER it down too.
             stored_rows = {source: store.read_cursor(read, source)
-                           for source in setup.snapshot.source_plans}
+                           for source, plan in setup.snapshot.source_plans.items()
+                           if plan.runs}
         finally:
             read.close()
         moved, refused = [], []

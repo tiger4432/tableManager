@@ -146,8 +146,13 @@ def test_a_boot_restamps_the_moved_cursors_and_names_every_one(monkeypatch, capl
             written.append((source, expect, translator_ver))
             return True
 
-    snapshot = type("S", (), {"source_plans": {"stale": None, "fresh": None,
-                                               "legacy": None}})()
+    # S-177 ①②: the boot re-stamp asks each plan whether it still RUNS before it asks for
+    # a stamp, because a retired or refused source is compiled with no material to
+    # fingerprint and this loop has no per-source guard. `None` was thin enough while
+    # nothing was asked; it is not now.
+    _runs = type("Plan", (), {"runs": True})
+    snapshot = type("S", (), {"source_plans": {"stale": _runs(), "fresh": _runs(),
+                                               "legacy": _runs()}})()
     monkeypatch.setattr(ledger_setup, "load_setup",
                         lambda *a, **k: type("Setup", (), {"snapshot": snapshot})())
     monkeypatch.setattr(ledger_store, "LedgerStore", _Store)

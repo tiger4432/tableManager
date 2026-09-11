@@ -33,7 +33,8 @@ class FakeDriver:
 
 
 class FakePlan:
-    def __init__(self, relation, cursor_columns, identity, status="active"):
+    def __init__(self, relation, cursor_columns, identity, status="active",
+                 planned=True):
         self.relation = relation
         self.driver = FakeDriver(cursor_columns, identity)
         # S-103: `followup.sources_for_table` asks a plan whether it is retired before it
@@ -41,6 +42,14 @@ class FakePlan:
         # thinner than the thing it stands in for is more permissive than production - the
         # sentence this file's neighbour already wrote about its own driver.
         self.status = status
+        # S-177 ②: and 「retired」 is no longer the only way a source stops. `runs` is the
+        # ONE predicate the follow-up asks, so the double computes it the way the real
+        # `SourcePlan` does rather than answering a constant.
+        self.planned = planned
+
+    @property
+    def runs(self):
+        return self.status == "active" and self.planned
 
 
 class FakeSetup:

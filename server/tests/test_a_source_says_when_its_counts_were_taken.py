@@ -34,14 +34,22 @@ class _Plan:
     cases are about the STAMP, and a source with no clause is asked nothing."""
 
     def __init__(self, relation, frame_row_id, unit="row", group_by=(), exclude_when=(),
-                 status="active"):
+                 status="active", planned=True):
         self.relation = relation
         self.frame_row_id = frame_row_id
         # S-103: the sweep asks this before it counts, so the fake carries it.
         self.status = status
+        # S-177 ②: and retirement is no longer the only way a source stops - the loader can
+        # refuse one. `runs` is the ONE predicate the sweep asks, and the double computes it
+        # the way the real `SourcePlan` does rather than answering a constant.
+        self.planned = planned
         self.driver = type("D", (), {
             "unit": unit, "group_by": tuple(group_by),
             "preparation": type("P", (), {"exclude_when": tuple(exclude_when)})()})()
+
+    @property
+    def runs(self):
+        return self.status == "active" and self.planned
 
 
 def _setup(plans):

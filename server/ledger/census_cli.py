@@ -51,12 +51,13 @@ def main(argv=None) -> int:
         print(f"{args.source}: 선언에 없는 소스입니다. 선언된 것: "
               f"{', '.join(sorted(setup.snapshot.source_plans))}", file=sys.stderr)
         return 2
-    if (args.source is not None
-            and setup.snapshot.source_plans[args.source].status != "active"):
-        # 은퇴한 소스는 「0 행」이 아니라 「세지 않는다」이다 (S-177 ①). 0 으로 답하면
-        # 표가 비었다는 뜻이 되고, 그건 다른 문장이다.
-        print(f"{args.source}: 은퇴한 소스입니다 (내용 미검증). 세지 않습니다.",
-              file=sys.stderr)
+    if args.source is not None and not setup.snapshot.source_plans[args.source].runs:
+        # 은퇴했거나 «로더가 거절한» 소스는 「0 행」이 아니라 「세지 않는다」이다 (S-177 ①②).
+        # 0 으로 답하면 표가 비었다는 뜻이 되고, 그건 다른 문장이다.
+        plan = setup.snapshot.source_plans[args.source]
+        why = ("로더가 거절한 소스입니다: %s" % (dict(plan.refusal or {}).get("message"),)
+               if not plan.planned else "은퇴한 소스입니다 (내용 미검증).")
+        print(f"{args.source}: {why} 세지 않습니다.", file=sys.stderr)
         return 2
 
     class _Recording:
