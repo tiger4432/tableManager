@@ -77,6 +77,25 @@ console.log('\n── C. THE FILE CARD KEEPS ITS OWN GUARD ───────
     /if \(failedTotal === null\)/.test(card));
 }
 
+console.log('\n── D. A FAILED READ IS NOT A READ IN PROGRESS ──────────────────────');
+{
+  // 🔴 FOUND ON THE SCREEN, NOT HERE (lead, C-80 reply): the queue block drew its 401 refusal
+  //    while a loading indicator went on turning beside it. Measured in this file: FOUR cards
+  //    were set to `'loading'` WITH a failure sentence — the text said it had failed and the
+  //    status said it was still coming. That is 「자막 단 실패」 with the status as the subtitle.
+  // ⚠️ Text as the SUBJECT again, for the reason this file's header already gives: `admin.js`
+  //    cannot be imported. What is scored is 「이 자리가 실패를 실패라 부르나」.
+  const failing = src.match(/setHealthCard\([^)]*\)/g) || [];
+  const lying = failing.filter((call) => /'loading'/.test(call) && /실패/.test(call));
+  ok('D1 no card calls itself loading while saying it failed', lying.length === 0, lying);
+  // 🔴 WITHOUT THIS, D1 PASSES IF THE CARDS STOP REPORTING FAILURE AT ALL.
+  const named = failing.filter((call) => /'unread'/.test(call));
+  // WARNING FIVE, NOT FOUR: the auto card reports a failure from two places (an explicit
+  //    `autoFailure` and its catch). Counted here rather than remembered.
+  ok('D2 ...every failing card names itself unread instead', named.length === 5,
+    named.length);
+}
+
 console.log(`\n${passed} passed, ${failed} failed.`);
 console.log(`ASSERTIONS ${passed} ${failed}`);
 if (failed) process.exit(1);

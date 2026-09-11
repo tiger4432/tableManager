@@ -260,6 +260,16 @@
       font-family: var(--font-mono);
       font-size: 12px;
     }
+    /* 🔴 C-83 — 다투는 칸·표. 수는 머리 줄에 있고, 이 줄이 「어느 것인가」를 말합니다.
+       ⛔ 없으면 «줄이 없습니다» — 「다툼 없음」은 값이 아니라 문장입니다. */
+    .chain-graph-contested {
+      padding: var(--space-1) var(--space-2);
+      color: var(--warning);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      white-space: nowrap;
+      overflow-x: auto;
+    }
     /* 🔴 C-79 머리 한 줄 — 서버가 «센» 수 그대로. 단위 없는 수라 이름과 값뿐입니다.
        ⚠️ 줄이 길어지면 이 상자 «안»에서 가로로 밀립니다 — 페이지가 밀리지 않습니다. */
     .chain-graph-counts {
@@ -580,6 +590,10 @@
       flex-shrink: 0;
       transition: background 0.2s ease, box-shadow 0.2s ease;
     }
+    /* 🔴 「못 읽었다」는 「읽는 중」이 아닙니다 (C-83). 점은 오늘의 기본과 «같은 색»이고,
+       바뀐 것은 이 상태에 «이름이 생겼다»는 것입니다 — 그래야 거절문 옆에서 로딩이 계속
+       돌고 있는지를 셀 수 있습니다. */
+    [data-status="unread"] .health-dot { background: var(--text-dim); box-shadow: none; }
     [data-status="ok"] .health-dot { background: var(--success); box-shadow: 0 0 0 3px var(--success-weak); }
     [data-status="warn"] .health-dot { background: var(--warning); box-shadow: 0 0 0 3px var(--warning-weak); }
     [data-status="danger"] .health-dot { background: var(--danger); box-shadow: 0 0 0 3px var(--danger-weak); }
@@ -1748,14 +1762,14 @@
     .retro-group.is-chosen { border-color: var(--accent); color: var(--accent); }
 
   </style>
-  <script type="module" crossorigin src="/assets/admin-7elj2w0T.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/tokens-CTRx_dnU.js">
+  <script type="module" crossorigin src="/assets/admin-C6Q7S_dR.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/tokens-D5tlFQmo.js">
   <link rel="modulepreload" crossorigin href="/assets/truncation-CkNwtCUZ.js">
   <link rel="modulepreload" crossorigin href="/assets/admin_token-BrUpdOsE.js">
   <link rel="modulepreload" crossorigin href="/assets/config-BUp4smhE.js">
   <link rel="modulepreload" crossorigin href="/assets/effort_meter-CUYmTmql.js">
   <link rel="modulepreload" crossorigin href="/assets/table_part-LwpopP3Q.js">
-  <link rel="stylesheet" crossorigin href="/assets/tokens-CXUJpfO_.css">
+  <link rel="stylesheet" crossorigin href="/assets/tokens-CQaPsZkb.css">
   <link rel="stylesheet" crossorigin href="/assets/admin-BkR8K1Yk.css">
 </head>
 <body>

@@ -940,7 +940,7 @@ const FLOORS = new Map([
   // absence before turning `data` into a count, so 「the collector list is empty」 stops looking
   // like 「the source is not installed」 or 「the request failed」. Verified load-bearing: cutting
   // the card's own absence read (`absentPath` -> null) drops it to 6/1.
-  ['health_card_absence_harness.mjs', 7],
+  ['health_card_absence_harness.mjs', 9],
   //
   // Scores the DONE-stats reader against a probe-loaded copy of the subject, and it drives its
   // OWN mutants through `loadWithProbe` — so the floor is already known to be load-bearing
@@ -1438,8 +1438,8 @@ const FLOORS = new Map([
   // spellings of one instant agree and that two different instants disagree, never a literal
   // wall clock -- otherwise the runner's TZ would decide the verdict.
   ['server_time_harness.mjs', 19],
-  ['chain_graph_harness.mjs', 81],
-  ['runtime_panel_harness.mjs', 37],
+  ['chain_graph_harness.mjs', 91],
+  ['runtime_panel_harness.mjs', 39],
   ['reference_view_head_harness.mjs', 26],
 ]);
 
