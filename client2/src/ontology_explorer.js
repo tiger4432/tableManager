@@ -3,6 +3,8 @@ import {
   initialExplorerState, reduceExplorerState, dirtyNavigationDecision,
   reduceFieldFold, reduceNewDeclaration, restoreDirtyEditorCheckpoint,
   declarationIdFor,
+  // C-82: the draft-leaf reader and the rule that says whose relation the choices follow.
+  draftValueAt as storeDraftValueAt, relationInEffect,
 } from './ontology_explorer_store.js';
 import { renderOntologyExplorer } from './ontology_explorer_view.js';
 import {
@@ -126,6 +128,15 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
   const dispatch = (action) => {
     state = reduceExplorerState(state, action);
     renderOntologyExplorer(root, state);
+    // 🔴 ONE HOOK, NOT ONE PER WRITER. Every row, list and text edit ends in
+    //    `EDITOR_CHANGED` (there are five writers), so the derivation hangs here —
+    //    adding it at each writer is how the fifth one gets forgotten.
+    // ⚠️ `loadColumnStats` already refuses to ask twice about one relation, answer or
+    //    failure, so this costs one request per DISTINCT relation and none on a re-render.
+    if (action && action.type === 'EDITOR_CHANGED') {
+      const relation = relationInEffect(state, state.authoring, PATH_TOOLS);
+      if (relation) loadColumnStats(relation);
+    }
     return state;
   };
 
@@ -224,20 +235,10 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
 
   // Read the leaf the writer would write, under the SAME guards -- section, id and
   // resolvability. Two different notions of "is this field mine" would eventually disagree.
-  const draftValueAt = (path) => {
-    const draft = state.draft;
-    if (!draft || !state.editorText) return undefined;
-    const kinds = state.authoringSchema?.authorable_kinds || [];
-    const section = kinds.find((row) => row.id === draft.target_kind)?.section;
-    if (!section) return undefined;
-    const steps = splitBundlePath(path);
-    if (steps[0] !== section || steps[1] !== draft.target_id) return undefined;
-    try {
-      return getAtPath(JSON.parse(state.editorText), steps.slice(2));
-    } catch {
-      return undefined;
-    }
-  };
+  // 🔴 THE READER MOVED TO THE STORE (C-82) so a harness can reach it; this stays as the
+  //    one-line call every existing caller already makes.
+  const PATH_TOOLS = { splitBundlePath, getAtPath };
+  const draftValueAt = (path) => storeDraftValueAt(state, path, PATH_TOOLS);
 
   // One element of a list field. The whole list is rewritten through `editFieldAtPath`, so
   // there is still exactly one writer and one save path.
@@ -816,9 +817,9 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       // ⚠️ EXPENSIVE, SO ASKED ONCE PER RELATION. It costs a full table scan by design
       // (the counts are exact). Never on a keystroke, never on a re-render -- the guard is
       // inside `loadColumnStats`, and a failure annotates instead of retrying.
-      const relation = (plan?.fields || []).find(
-        (field) => /\.relation$/.test(field.path || '') && typeof field.value === 'string'
-          && field.value)?.value;
+      // 🔴 THE DRAFT WINS OVER THE PLAN (C-82). A plan only exists after a save, so
+      //    reading the relation out of it made 「바로 반영」 impossible by construction.
+      const relation = relationInEffect(state, plan, PATH_TOOLS);
       if (selection && relation) loadColumnStats(relation);
     } catch (error) {
       console.warn('[ontology] authoring plan unavailable', error);

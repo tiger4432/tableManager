@@ -33,6 +33,12 @@ function element(tag) {
     // The map sets its indent through a custom property, so a stub with no `style` dies
     // there rather than failing an assertion.
     style: { setProperty() {} },
+    // 🔴 THE STUB NEVER HAD THIS, and the view has read it since the fold learned to
+    //    print its count -- so every folded row in this harness said 「접힘 · undefined」
+    //    and no assertion looked. C-82 makes the count decide the initial fold, so a
+    //    missing property here would have quietly turned that rule off in the one place
+    //    that measures it.
+    get childElementCount() { return this.children.length; },
     get className() { return this._classes.join(' '); },
     set className(value) {
       this._classes = String(value).split(/\s+/).filter(Boolean);
@@ -818,6 +824,65 @@ const renderDraft = (plan) => {
   check('I4 the address is still there for every one',
     byClass(drawTree(reasons), 'oe-tree-why')
       .every((why) => why.textContent.includes('bundle.sources.a')));
+}
+
+// ── J. C-82: a fold that hides ONE thing is not a fold ────────────────────────────
+//
+// Owner 2026-09-11: 「온톨로지 익스플로러는 1개면 접지 마」. The rule is stated in the store
+// (`fieldOpensByDefault`) against the SAME number the folded line prints, so it is scored here
+// as something a person can see rather than as a restatement of its own code: no fold on the
+// drawn screen may say 「접힘 · 1」.
+//
+// 🔴 THE FIXTURE CARRIES BOTH KINDS OF BRANCH ON PURPOSE. The shared DOCUMENT gives every
+//    branch exactly one child, and on that screen there is nothing left folded at all -- so
+//    「no fold says · 1」 would pass because nothing folds. A second mapping is added here, and
+//    only here, so one render holds a branch that folds and a branch that opens itself.
+{
+  const twoMappings = {
+    ...DOCUMENT,
+    bind: { mappings: {
+      counted: DOCUMENT.bind.mappings.counted,
+      also_counted: { predicate: 'has_netdie@1', bind: { subject: { kind: 'entity' } } },
+    } },
+  };
+  const draw = (expandedFields) => {
+    const root = element('div');
+    renderOntologyExplorer(root, {
+      ...stateWith(PLAN),
+      selection: { ...stateWith(PLAN).selection, raw: twoMappings },
+      draft: { target_kind: 'source_plan', target_id: 'dt_job' },
+      editorText: JSON.stringify(twoMappings),
+      ...(expandedFields ? { expandedFields } : {}),
+    });
+    return root;
+  };
+
+  // Nobody has chosen anything yet -- this is what the screen decides on its own.
+  const root = draw(null);
+  const labels = byClass(root, 'oe-node-folded').map((n) => n.textContent);
+  check('J1 no fold hides a single child', labels.every((t) => t !== '접힘 · 1'),
+    labels.join(' | '));
+  // 🔴 WITHOUT THIS, J1 IS VACUOUS: a screen that folded nothing at all would pass it.
+  check('J2 ...and the screen still folds what holds more than one',
+    labels.length > 0, `${labels.length} folds`);
+  check('J3 some rows are open to begin with', byClass(root, 'oe-node-fold').length > 0);
+
+  // A hand that shuts a row keeps it shut -- the rule only ever OPENS, so a person's
+  // 「접어 둬」 has to survive every one of its clauses, the one-child one included.
+  // ⚠️ COUNTED ON THE OPEN TOGGLES, NOT THE FOLDED ONES. Folding a parent takes its children
+  //    out of the DOM and their folds with them, so 「folded rows went up」 can be false while
+  //    the hand was obeyed perfectly -- the first spelling of this check measured that and
+  //    read 3 vs 3.
+  const shownPaths = byClass(root, 'oe-node').map((n) => n.dataset.path).filter(Boolean);
+  const shut = draw(Object.fromEntries(shownPaths.map((p) => [p, false])));
+  check('J4 ...and a hand that shut them leaves none open',
+    byClass(shut, 'oe-node-fold').length === 0,
+    `${byClass(shut, 'oe-node-fold').length} still open`);
+  // 🔴 THE SHUT SCREEN IS ALLOWED TO SAY 「접힘 · 1」 — that is a person's answer, not the
+  //    rule's, and a rule that overrode it would be the fold nobody can close.
+  check('J5 a hand may shut a one-child row, and then it says so',
+    byClass(shut, 'oe-node-folded').map((n) => n.textContent).includes('접힘 · 1'),
+    byClass(shut, 'oe-node-folded').map((n) => n.textContent).join(' | '));
 }
 
 console.log(`ASSERTIONS ${ran} ${failed}`);

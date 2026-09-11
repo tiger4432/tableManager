@@ -402,6 +402,75 @@ export function reduceNewDeclaration(state, action) {
 //
 // `paths` takes several at once, which is what "what you just added is born open" needs --
 // naming a member decides the fold of the member AND of the map it landed in, in one write.
+/**
+ * 한 줄이 «처음에» 펼쳐져 있나 — 접힘의 «초기값»은 여기 한 곳에서만 정해집니다.
+ *
+ * 🔴 사람이 고른 것이 «언제나» 이깁니다. `expandedFields` 에 값이 있으면 그것이 답이고,
+ *    아래 규칙들은 그 자리가 «비어 있을 때»만 봅니다 — 그래야 접은 것이 다시 안 펴집니다.
+ * 🔴 자식이 «하나»면 펼칩니다 (소유자 2026-09-11 「1개면 접지 마」). 세는 수는 접힌 줄이
+ *    «화면에 적는» 그 수입니다(「접힘 · N」) — 그래서 이 규칙은 「접힘 · 1 이 없다」로
+ *    화면에서 그대로 확인됩니다. 하나를 감추는 접힘은 누를 값어치가 없고, 누르는 사람에게는
+ *    「뒤에 무엇이 있나」가 아니라 「한 번 더 눌러라」로만 읽힙니다.
+ * ⚠️ 규칙은 «열기»만 합니다. 어느 줄도 이 함수 때문에 «닫히지» 않습니다 — 닫는 것은 사람뿐입니다.
+ *
+ * @param {{isRoot?: boolean, chosen?: boolean|undefined, depth?: number,
+ *          attention?: boolean, emptyDoor?: boolean, childCount?: number}} facts
+ *        렌더가 «아는 사실»만 건네고, 판단은 여기서 합니다.
+ */
+/**
+ * 초안이 그 자리에 «지금» 들고 있는 값. 저장본이 아니라 «타이핑된 것»입니다.
+ *
+ * 🔴 컨트롤러에서 여기로 옮겨 왔습니다(C-82). 사유는 둘입니다:
+ *    ① `ontology_explorer.js` 는 자기 CSS 를 import 해서 node 가 «못 읽습니다» — 거기 적힌
+ *       규칙은 어떤 하니스도 못 잽니다
+ *    ② 초안의 잎을 읽는 방법이 «둘»이 되면 언젠가 갈라집니다 (기준 ④)
+ * ⚠️ 가드는 그대로입니다 — 구획·id 가 이 초안의 것이 아니면 «모른다»(`undefined`)이지 `null` 이
+ *    아닙니다. 「그 자리가 비었다」와 「내 초안의 자리가 아니다」는 다른 사실입니다.
+ */
+export function draftValueAt(state, path, pathTools) {
+  const { splitBundlePath, getAtPath } = pathTools || {};
+  const draft = state && state.draft;
+  if (!draft || !state.editorText || !splitBundlePath || !getAtPath) return undefined;
+  const kinds = (state.authoringSchema && state.authoringSchema.authorable_kinds) || [];
+  const section = (kinds.find((row) => row.id === draft.target_kind) || {}).section;
+  if (!section) return undefined;
+  const steps = splitBundlePath(path);
+  if (steps[0] !== section || steps[1] !== draft.target_id) return undefined;
+  try {
+    return getAtPath(JSON.parse(state.editorText), steps.slice(2));
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * 열 목록이 «따르는» relation — 선택지의 주어를 정하는 «한 곳».
+ *
+ * 🔴 초안이 열려 있으면 «초안의 지금 값»이고, 아니면 저장본 계획의 값입니다. 저장 뒤 계획이
+ *    다시 와도 «같은 함수»가 답하므로 「저장 전」과 「저장 후」가 두 답이 될 자리가 없습니다.
+ *    소유자 2026-09-11: 「저장해야 뜨는데 바로 반영되게」 — 고칠 것은 «언제 묻나»가 아니라
+ *    「무엇을 주어로 묻나」였습니다.
+ * ⚠️ 계획이 그 «자리»를 말합니다. 경로를 여기 적으면 선언이 자리를 옮기는 날 조용히 못 찾습니다.
+ * 🔴 빈 문자열은 relation 이 «아닙니다» — 지우는 중인 칸으로 라우트를 두드리면, 사람이 한 글자
+ *    지울 때마다 전수 스캔이 한 번씩 나갑니다.
+ */
+export function relationInEffect(state, plan, pathTools) {
+  const fields = (plan && plan.fields) || [];
+  const field = fields.find((f) => f && /\.relation$/.test(f.path || ''));
+  if (!field) return null;
+  const drafted = draftValueAt(state, field.path, pathTools);
+  const value = drafted === undefined ? field.value : drafted;
+  return typeof value === 'string' && value ? value : null;
+}
+
+export function fieldOpensByDefault(facts) {
+  const f = facts || {};
+  // 뿌리는 접히지 않습니다 — 선언의 «윤곽»은 언제나 그려집니다.
+  if (f.isRoot) return true;
+  if (f.chosen !== undefined) return f.chosen !== false;
+  return Boolean(f.depth <= 1 || f.attention || f.emptyDoor || f.childCount === 1);
+}
+
 export function reduceFieldFold(state, action) {
   if (action.type !== 'FIELD_TOGGLED') return state;
   const choices = { ...state.expandedFields };
