@@ -99,6 +99,11 @@ class OutboxListener:
         self._factory = db_session_factory
         self._channel = channel
         self._connection = None  # 상시 유지되는 raw DBAPI 커넥션(psycopg2)
+        # S-176: how many times this listener has had to rebuild its connection. A count
+        # rather than a flag, because 「it reconnected once at boot」 and 「it is
+        # reconnecting every minute」 are the two states an operator needs told apart, and
+        # a boolean renders them alike.
+        self._reconnects = 0
 
     def _ensure_connection(self):
         """LISTEN 커넥션이 없으면(최초/재생성) 생성하고 LISTEN을 1회 등록한다."""
@@ -135,11 +140,17 @@ class OutboxListener:
         cursor.execute(f"LISTEN {self._channel};")
         cursor.close()
         self._connection = connection
+        heartbeat.record_lap("chain", "listen", state="connected",
+                             reconnects=self._reconnects)
 
     def _reset_connection(self):
         """끊긴/오류 커넥션을 안전하게 폐기한다(리소스 누수 금지)."""
         conn = self._connection
         self._connection = None
+        if conn is not None:
+            self._reconnects += 1
+            heartbeat.record_lap("chain", "listen", state="reconnecting",
+                                 reconnects=self._reconnects)
         if conn is not None:
             try:
                 conn.close()
@@ -2254,13 +2265,18 @@ async def run_ledger_row_census(db_session_factory):
         # its own wall clock is the value 「큐 깊이는 값으로 보임」 asks for, and it is what
         # tells an operator whether slowing the pace actually helped.
         if sources:
+            lap_seconds = time.monotonic() - lap_started
             logger.info("[LedgerCensus] lap: %d source(s) in %.3fs, measured %.3fs "
                         "(rest %.0fs between, "
                         "relation rows are planner estimates - `python -m ledger census` "
-                        "counts)%s", len(sources), time.monotonic() - lap_started,
+                        "counts)%s", len(sources), lap_seconds,
                         measured_seconds, rest,
                         f" · retired (content unvalidated): {', '.join(retired)}"
                         if retired else "")
+            # S-176. `depth` is the number of sources this lap still had to walk, which is
+            # this loop's remaining work in the sense every other entry uses.
+            heartbeat.record_lap("chain", "ledger_census", seconds=lap_seconds,
+                                 depth=len(sources), pace=rest)
         await asyncio.sleep(rest if sources else max(rest, 60.0))
 
 
@@ -2318,9 +2334,14 @@ async def run_ledger_followup(db_session_factory):
         # not there is work; a line per idle lap would bury the laps that moved something,
         # which is the log equivalent of a screen explaining what it is not showing.
         if drained:
+            lap_seconds = time.monotonic() - lap_started
+            depth_left = ledger_followup.queue_depth()
             logger.info("[LedgerFollowUp] lap: %d item(s) in %.3fs, %d left in the queue "
-                        "(rest %.0fs between)", drained, time.monotonic() - lap_started,
-                        ledger_followup.queue_depth(), rest)
+                        "(rest %.0fs between)", drained, lap_seconds, depth_left, rest)
+            # S-176: the same three numbers, carried instead of dropped. No new
+            # measurement -- `lap_seconds` and `depth_left` are the log line's own.
+            heartbeat.record_lap("chain", "ledger_followup", seconds=lap_seconds,
+                                 depth=depth_left, items=drained, pace=rest)
         await asyncio.sleep(rest if drained else max(rest, FOLLOWUP_IDLE_SECONDS))
 
 
@@ -3111,10 +3132,22 @@ async def start_chain_ingestion_worker(db_session_factory):
                         purge_task = asyncio.create_task(
                             asyncio.to_thread(purge_expired_outbox_sync, db_session_factory)
                         )
+                        # S-176. Recorded at DISPATCH, not at completion: the purge runs
+                        # in a thread this loop does not await, so 「when did it last
+                        # start」 is the honest thing this seat knows. Its own count of
+                        # deleted rows stays in its log line.
+                        heartbeat.record_lap("chain", "outbox_purge",
+                                             pace=OUTBOX_PURGE_INTERVAL)
                 except Exception as maint_err:                       # noqa: BLE001
                     # 유지보수의 실패가 «일»의 오류를 덮지 않게 한다. 이 finally 는 예외 경로에서도
                     # 돌고, 거기서 새 예외를 던지면 원래 예외가 사라진다.
                     logger.error(f"[Chain Worker] maintenance pass failed: {maint_err}")
+                # S-176: this loop's own lap, recorded where it ends. `iter_start_ts` is
+                # the timer the iteration already kept; nothing new is measured. The depth
+                # this loop is judged by is the outbox backlog, and THAT is a database
+                # question the route asks directly rather than one this seat counts.
+                heartbeat.record_lap("chain", "chain",
+                                     seconds=time.monotonic() - iter_start_ts)
                 db.close()
         except Exception as e:
             logger.error(f"Database session setup failed in Chain Worker: {e}")

@@ -3978,6 +3978,27 @@ def retry_failed_outbox_events(event_id: int = None, transaction_id: str = None,
 # 질문은 이 화면에 없다. 잘렸다는 사실은 응답의 `listed.capped` 로 «말한다».
 _QUEUE_LIST_CAP = 200
 
+@app.get("/runtime", dependencies=[Depends(require_admin_token)])
+def get_runtime_loops(db: Session = Depends(get_db)):
+    """아홉 고리가 «마지막으로 무엇을 했나» — 값만. 판정은 `/health` 가 합니다 (S-176).
+
+    🔴 `/health` 와 겹치지 않습니다. 저쪽은 «판정»(ok/degraded/unhealthy + HTTP 상태)이고
+    이쪽은 «값»입니다. 한쪽이 다른 쪽을 대신 정하면 큐가 한 시간째 안 움직이는데 초록 불이
+    켜지는 화면이 나옵니다.
+
+    🔴 새로 «재는» 것이 없습니다. 랩은 각 고리가 이미 찍던 수가 자기 프로세스 heartbeat 를
+    타고 온 것이고(`heartbeat.record_lap`), outbox 깊이는 `/admin/chain/queue` 가 이미 하던
+    질의이며, 페이스와 손잡이는 파일 경로입니다. 여기서 «더해지는» 것은 조립뿐입니다.
+
+    ⚠️ 없는 칸은 «키째 생략»합니다. 「그 고리가 랩을 보고한 적 없다」와 「마지막 랩이 0 초였다」는
+    다른 사실이고, 화면에서 둘이 같아 보이면 이 라우트가 없애려는 그 침묵이 재생산됩니다.
+    """
+    import runtime_loops as _runtime_loops
+
+    return JSONResponse(content=_runtime_loops.runtime_loops(db),
+                        headers={"Cache-Control": "no-store"})
+
+
 @app.get("/admin/chain/queue", dependencies=[Depends(require_admin_token)])
 def get_chain_queue_depth(db: Session = Depends(get_db)):
     """「체인 요청이 몇 개 씹히는 것 같다」를 **수로 바꾼다.** 읽기 전용.

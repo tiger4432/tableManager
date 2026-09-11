@@ -154,6 +154,45 @@ def own_name():
     return _own_name
 
 
+#: 🔴 THE LAP CARRIER (S-176, 판정 282). Every loop in this tree already COMPUTES
+#: what it just did -- how long the lap took, how deep its queue still is -- and then
+#: prints it and drops it. The loops run in the chain-worker, watcher and scheduler
+#: PROCESSES, so a route in the API server cannot read those locals; the code said so
+#: itself, about the follow-up queue: 「the queue depth lives in this process's memory
+#: where no query reaches it」.
+#:
+#: 🔴 THIS IS A CARRIER, NOT AN INSTRUMENT. Nothing here measures anything: the
+#: numbers are the ones the log line was already given. No query, no timer, no thread.
+#:
+#: ⚠️ AND IT WRITES NOTHING AT ALL. `record_lap` only STORES; the lap rides the beat the
+#: loop was already going to make. That is not a compromise on freshness -- `at` is stamped
+#: when the lap HAPPENED, so the value stays exact and only the file write is shared -- and
+#: it is what keeps the cost of this carrier at ZERO extra writes rather than one per lap.
+#: Measured: making it beat instead added a second write per ingest chunk, which
+#: `test_a_chunk_loop_that_stops_stops_the_beats` caught by counting beats. A beat means
+#: 「this loop made committed progress」, and a carrier must not be able to forge one.
+_laps = {}   # name -> {loop: {"at": epoch, "seconds": float|None, "depth": int|None, ...}}
+
+
+def record_lap(name, loop, *, seconds=None, depth=None, at=None, **extra):
+    """One loop finished one lap; carry what it already knows into the next beat.
+
+    `seconds` and `depth` are omitted from the payload when they are None rather than
+    written as zero -- 「it did not say」 and 「it said none」 are different facts, and a
+    screen that renders them alike is the silence this whole round is removing.
+    """
+    lap = {"at": time.time() if at is None else at}
+    if seconds is not None:
+        lap["seconds"] = round(float(seconds), 3)
+    if depth is not None:
+        lap["depth"] = int(depth)
+    for key, value in extra.items():
+        if value is not None:
+            lap[key] = value
+    with _state_lock:
+        _laps.setdefault(name, {})[loop] = lap
+
+
 def beat(name, note=None, force=False):
     """Record one unit of progress for worker ``name``.
 
@@ -192,6 +231,10 @@ def beat(name, note=None, force=False):
             # Written by whichever thread beats next - which is the point. The
             # poller reports the ingestion thread's stall.
             "work": _work_snapshot_locked(name),
+            # S-176: what each loop in THIS process last did. Absent until a loop has
+            # recorded one, so a process with no instrumented loop writes exactly the
+            # payload it wrote before.
+            "laps": dict(_laps.get(name) or {}),
         }
 
     try:
@@ -291,6 +334,16 @@ def read_all(stale_after=DEFAULT_STALE_AFTER_SEC, now=None,
                 "stale": age > stale_after,
                 "stale_after_seconds": stale_after,
             }
+            laps = data.get("laps") or {}
+            if laps:
+                # Ages are computed HERE, against this read's `now`, for the same reason
+                # `work` computes its own: a beat that is itself 30 s old must not
+                # under-report a lap's age by 30 s.
+                entry["laps"] = {
+                    loop: dict(lap, age_seconds=round(
+                        max(0.0, now - float(lap.get("at") or now)), 2))
+                    for loop, lap in laps.items() if isinstance(lap, dict)
+                }
             work = data.get("work") or {}
             if work.get("open"):
                 # Measured from now, not from when the beat was written: a beat
