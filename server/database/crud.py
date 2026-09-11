@@ -189,6 +189,8 @@ def _warn_undeclared_column_once(table_name: str, col_name: str):
 
 #: A column the payload named that `column_types` does not declare. Today's incident.
 DROP_UNDECLARED_COLUMN = "undeclared_column"
+#: A row that would break a uniqueness some VIRTUAL JOIN declared on this table.
+DROP_UNIQUE_VIOLATED = "unique_violated"
 #: A column the write path owns (`row_id`, `updated_at`, graph-sync flags ...). A payload
 #: may name it; it is never taken from one.
 DROP_SYSTEM_COLUMN = "system_column"
@@ -220,6 +222,9 @@ def _new_drop_stats() -> dict:
         # capped detail sample: [{row_id, business_key_val, columns: {col: reason}}]
         "sample": [],
         "sample_index": {},
+        # Whole rows refused by name before a cell was read - today the virtual-join
+        # uniqueness refusal (S-174). Declared here so a reader never tests for the key.
+        "row_refusals": [],
     }
 
 
@@ -260,6 +265,28 @@ def _record_dropped_cell(drop_stats: dict, row_id: str, business_key_val: Any,
         entry["columns"][col_name] = reason
 
 
+def _refused_row_counts(drop_stats: dict, version_stats: Optional[dict]) -> dict:
+    """`{reason: rows}` for every WHOLE row refused before a cell was read.
+
+    🔴 ONE MAP, TWO SOURCES, BECAUSE AN OPERATOR ASKS ONE QUESTION. The version gate and
+    the virtual-join uniqueness refusal (S-174) both answer 「this row was not written, and
+    here is the word for why」; publishing them under two keys would make the screen ask
+    which list it is looking at, and a third refusal would add a third key.
+
+    ⚠️ DO NOT SUM THESE VALUES. `NOTE_SAME_VERSION_CONTENT_DIFFERS` is counted IN ADDITION
+    TO `REASON_VERSION_SAME` for the same row - it is an annotation on that refusal ("and
+    the content actually changed, so check the upstream version management"), not a
+    separate one. `NOTE_ROW_VERSION_ABSENT` is excluded outright because it names rows the
+    gate APPLIED, and a refusal count that includes accepted rows is worse than no count.
+    """
+    counts = {k: v for k, v in (version_stats or {}).get("counts", {}).items()
+              if v and k not in (NOTE_ROW_VERSION_ABSENT,)}
+    for refusal in drop_stats.get("row_refusals") or ():
+        reason = refusal.get("reason") or DROP_UNIQUE_VIOLATED
+        counts[reason] = counts.get(reason, 0) + 1
+    return counts
+
+
 def _render_drop_report(drop_report: dict, table_name: str, drop_stats: dict,
                         version_stats: Optional[dict], suppressed_row_ids: list,
                         reported_only_for_drops: int = 0):
@@ -291,18 +318,14 @@ def _render_drop_report(drop_report: dict, table_name: str, drop_stats: dict,
             rows_affected > len(drop_stats["sample"]),
             max(0, rows_affected - len(drop_stats["sample"])),
             "affected rows beyond the detail sample cap")},
-        # Whole ROWS refused before a single cell was read, by name. The version gate is
-        # the only such refusal today and it already counts itself per batch; this puts
-        # its verdict where the caller can reach it instead of only in the log.
-        #
-        # ⚠️ DO NOT SUM THESE VALUES. `NOTE_SAME_VERSION_CONTENT_DIFFERS` is counted IN
-        # ADDITION TO `REASON_VERSION_SAME` for the same row - it is an annotation on
-        # that refusal ("and the content actually changed, so check the upstream version
-        # management"), not a separate one. `NOTE_ROW_VERSION_ABSENT` is excluded outright
-        # because it names rows the gate APPLIED, and a refusal count that includes
-        # accepted rows is worse than no count.
-        "rows_refused": {k: v for k, v in (version_stats or {}).get("counts", {}).items()
-                         if v and k not in (NOTE_ROW_VERSION_ABSENT,)},
+        # Whole ROWS refused before a single cell was read, by name - the version gate and
+        # the virtual-join uniqueness refusal. `_refused_row_counts` owns the arithmetic
+        # and the warning about summing them.
+        "rows_refused": _refused_row_counts(drop_stats, version_stats),
+        # ⚠️ NAMED, AND CAPPED LIKE EVERY OTHER DETAIL LIST. The counts above say HOW MANY;
+        # an operator fixing the data needs WHICH, and each entry carries the other row
+        # that claims the same key - which is the whole of what makes it fixable.
+        "refusals": list(drop_stats["row_refusals"])[:MAX_DROP_REPORT_ROWS],
         # Rows that were NOT inserted because every key the payload carried for them was
         # discarded - see the guard in `_apply_batch_updates_once`.
         "empty_rows_suppressed": len(suppressed_row_ids),
@@ -3711,6 +3734,151 @@ def derive_replace_map_scope(table_name: str, batch: schemas.GeneralUpdateBatch)
     return resolved or None
 
 
+def _virtual_join_right_keys(db: Session, table_name: str):
+    """`(rule, columns, folds)` for every APPROVED virtual join whose RIGHT side is this
+    table - i.e. every uniqueness this table is actually carrying an index for.
+
+    🔴 APPROVED, NOT MERELY DECLARED, AND THAT DIRECTION IS THE WHOLE CARE. Approval means
+    「a UNIQUE index covering this join key EXISTS」; where it does not, there is no
+    constraint for a duplicate to break, the write succeeds, and refusing rows would be a
+    guard throwing away data the database would have taken. So the refusal fires exactly
+    where the failure it is named after can happen.
+
+    `right_folds` rides along because the index is built on the FOLDED expression
+    (`index_key_expression`); comparing raw values would miss exactly the duplicates the
+    index catches, which is the under-approximation that is not safe here.
+
+    ⚠️ ONE LOAD, SHARED. This reads `virtual_join_executor`'s TTL cache - the same one the
+    sibling guard below already warms on this path - rather than re-reading and
+    re-validating the declaration file once per batch on the write path.
+    """
+    try:
+        import virtual_join_executor
+        rules = virtual_join_executor.rules_for_right(db, table_name)
+    except Exception as e:
+        # Same posture as the sibling guard below: an unreadable declaration means NO join
+        # is in effect, so there is no uniqueness to protect. Failing the write here would
+        # turn a config problem into an outage.
+        logger.error(f"[VirtualJoinUnique] could not load declarations for "
+                     f"'{table_name}', no row is refused: {e}")
+        return []
+    out = []
+    for rule in rules or []:
+        if not isinstance(rule, dict):
+            continue
+        columns = list(rule.get("right_columns") or [])
+        if columns:
+            out.append((rule.get("name") or "<unnamed>", columns,
+                        list(rule.get("right_folds") or [])))
+    return out
+
+
+def _folded_join_key(updates: dict, columns: list, folds: list):
+    """One item's value for a join key, folded THE WAY THE INDEX FOLDS IT, or None.
+
+    `None` means 「this payload does not carry the whole key」, which is not a verdict: the
+    stored row may complete it, and refusing on a partial update would refuse a write that
+    cannot break anything.
+    """
+    import notation_norm
+
+    key = []
+    for index, column in enumerate(columns):
+        if column not in (updates or {}):
+            return None
+        value = clean_str_value(updates.get(column))
+        rules = folds[index] if index < len(folds) else None
+        key.append(notation_norm.fold_notation(value, rules) if rules else value)
+    return tuple(key)
+
+
+def _item_identity(item, index: int):
+    """Which ROW this batch item lands on, as far as the payload can say.
+
+    The uniqueness a join owes is violated by two DIFFERENT rows sharing one key; two items
+    landing on the SAME row are merged by `unique_results` long before any statement runs,
+    so identity - not payload equality - is what separates a duplicate emission from a
+    genuine conflict. An item carrying neither handle is its own row, which is the reading
+    that refuses rather than the one that lets a pair through.
+    """
+    return (getattr(item, "row_id", None)
+            or getattr(item, "business_key_val", None)
+            or ("#%d" % index))
+
+
+def refuse_virtual_join_duplicates(db: Session, table_name: str,
+                                   batch: schemas.GeneralUpdateBatch):
+    """Two rows claiming one virtual join's key are refused BY NAME; the rest are written.
+
+    🔴 THE SHAPE OF THE REFUSAL WAS THE DEFECT, NOT THE DETECTION (S-174, owner
+    2026-09-11). A mapper emitting two rows with the same right-side key made the upsert
+    fail on `uq_vjoin_<table>_<columns>` - a unique constraint that is NOT the statement's
+    `ON CONFLICT` target, so there is no `DO UPDATE` arm for it and the whole STATEMENT
+    dies. That failed the group, quarantined it, re-expanded it into a thousand per-row
+    events, and the HOL guard then held every other group behind that table. One row of
+    data stopped one table's chain, and all the operator saw was a driver error in Korean.
+
+    ⚠️ BOTH ARE REFUSED, NOT ONE. Which of the two is true is a question the DATA asks and
+    the product cannot answer; keeping either would write a guess and the guess would look
+    like a fact. So both are skipped, both are named, and each is told the other's key.
+
+    ⚠️ WITHIN ONE BATCH, AND THAT IS STATED RATHER THAN IMPLIED. A row colliding with one
+    ALREADY STORED breaks the same index and is not caught here - catching it needs a read
+    per batch, which is a different decision on a write path. What this closes is the case
+    the incident had: one mapper output carrying the pair.
+
+    Returns the refusals; `batch.updates` is left holding the survivors.
+    """
+    keys = _virtual_join_right_keys(db, table_name)
+    if not keys or not batch.updates:
+        return []
+
+    items = list(batch.updates)
+    refused_indexes, refusals = set(), []
+    for rule_name, columns, folds in keys:
+        by_key = {}
+        for index, item in enumerate(items):
+            key = _folded_join_key(getattr(item, "updates", None), columns, folds)
+            if key is not None:
+                by_key.setdefault(key, []).append(index)
+        for key, group in sorted(by_key.items(), key=lambda pair: str(pair[0])):
+            identities = {}
+            for index in group:
+                identities.setdefault(_item_identity(items[index], index), []).append(index)
+            if len(identities) < 2:
+                # One row, named twice. `unique_results` merges those into a single row
+                # before any statement is built, so nothing can violate anything.
+                continue
+            named = sorted(str(name) for name in identities)
+            for index in group:
+                refused_indexes.add(index)
+                mine = str(_item_identity(items[index], index))
+                refusals.append({
+                    "reason": DROP_UNIQUE_VIOLATED,
+                    "rule": rule_name,
+                    "columns": list(columns),
+                    "key": list(key),
+                    "row": mine,
+                    "others": [name for name in named if name != mine],
+                    "message": (
+                        f"규칙 '{rule_name}' 의 행 {mine} 이(가) 가상 조인의 오른쪽 "
+                        f"유일성({', '.join(columns)}={', '.join(str(v) for v in key)})을 "
+                        f"어겨 건너뜀 — 같은 조인 키의 다른 행: "
+                        f"{', '.join(name for name in named if name != mine)}"),
+                })
+            logger.warning(
+                "⚠️ [VirtualJoinUnique] %s: rule '%s' - %d row(s) share the right-side "
+                "key %s=%s and are ALL skipped, because the product cannot choose which "
+                "is true. Rows: %s",
+                table_name, rule_name, len(identities), list(columns), list(key),
+                named[:MAX_DROP_REPORT_ROWS])
+    if not refused_indexes:
+        return []
+    batch.updates = [item for index, item in enumerate(items)
+                     if index not in refused_indexes]
+    return refusals
+
+
 def refuse_virtual_join_columns(db: Session, table_name: str, batch: schemas.GeneralUpdateBatch):
     """A write aimed at a virtual-join column is REFUSED here, for every write path.
 
@@ -4147,6 +4315,25 @@ def _apply_batch_updates_once(db: Session, table_name: str,
         for item in batch.updates:
             assemble_composite_business_key(table_name, item)
 
+        # [S-174] Two rows claiming one virtual join's right-side key are refused BY NAME
+        # and the rest of the batch is written. BELOW the assembly because the refusal
+        # names each row by its identity and a composite key does not exist until here;
+        # ABOVE the prefetch so the refused rows are not looked up on their way out.
+        vjoin_refusals = refuse_virtual_join_duplicates(db, table_name, batch)
+        if vjoin_refusals and not batch.updates and batch.replace_map:
+            # 🔴 EVERY row was refused ON A `replace_map` PUSH, and the purge above has
+            # already run. Carrying on would leave the map EMPTY - the scope's rows
+            # deleted and nothing replacing them - which is the same ruling the key gate
+            # made for its own whole-batch refusal ("actively destructive"). It cannot
+            # skip the write the way the gate does, because the gate runs before the
+            # purge and this runs after, so it raises: `transaction_context` unwinds and
+            # the map is left exactly as it was.
+            raise ValueError(
+                f"'{table_name}' 에 보낸 {len(vjoin_refusals)}개 행이 모두 가상 조인의 "
+                f"오른쪽 유일성을 어겨 쓸 수 있는 행이 없습니다. 맵을 비우지 않기 위해 "
+                f"이 요청 전체를 취소했습니다. "
+                + " / ".join(r.get("message", "") for r in vjoin_refusals[:3]))
+
         with alignment_batch_counts.write_step("prefetch"):
             target_ids = [u.row_id for u in batch.updates if u.row_id]
             # 🔴 판정 191. BOTH of an item's identities, because `_get_or_create_row`
@@ -4271,6 +4458,9 @@ def _apply_batch_updates_once(db: Session, table_name: str,
         # because the phantom-row guard below reads it and that guard is not optional.
         # A batch that discards nothing never writes into it.
         drop_stats = _new_drop_stats()
+        # Whole rows refused before the loop, by name. They are not cell drops - no cell
+        # was read - so they ride beside the cell accounting rather than inside it.
+        drop_stats["row_refusals"] = vjoin_refusals
 
         # [phantom row] Row ids that ended the loop having received CONTENT. A row is in
         # here iff some item resolved onto it and produced at least one changed column,

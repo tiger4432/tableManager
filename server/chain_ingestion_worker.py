@@ -1250,6 +1250,24 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                         f"because every key they carried was dropped. Fix "
                         f"config/table_config.json or the mapper's column names.")
 
+                # [S-174] A row that breaks a virtual join's right-side uniqueness is ONE
+                # ROW'S problem. It used to be the table's: the statement died on a
+                # constraint that is not its `ON CONFLICT` target, the group failed, the
+                # events quarantined and re-expanded per row, and the HOL guard held
+                # everything behind that table. The refusal is now named and counted and
+                # the group SUCCEEDS, so nothing queues behind it.
+                vjoin_refused = (drop_report.get("rows_refused")
+                                 or {}).get(crud.DROP_UNIQUE_VIOLATED, 0)
+                if vjoin_refused:
+                    logger.warning(
+                        "⚠️ [Chain Write Refusal] Table: '%s' | TX: '%s' | rule(s): %s | "
+                        "vjoin_refused=%d · written=%d | %s",
+                        target_table, chain_tx_id,
+                        ", ".join(sorted(rules_by_target.get(target_table, ()))) or "<unknown>",
+                        vjoin_refused, len(batch_data.updates),
+                        " | ".join(r.get("message", "")
+                                   for r in (drop_report.get("refusals") or ())))
+
                 # [Retraction] Remove what THIS SOURCE owns and no longer derives.
                 #
                 # 🔴 THIS IS WHAT LETS SEVERAL SOURCES SHARE ONE MAP. `replace_map`

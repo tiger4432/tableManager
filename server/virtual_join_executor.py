@@ -87,7 +87,7 @@ CHUNK_SIZE = 1000
 # 워커 프로세스를 위한 뒷받침이다.
 RULES_CACHE_TTL = 5.0
 
-_RULES_CACHE = {"at": 0.0, "by_left": None}
+_RULES_CACHE = {"at": 0.0, "by_left": None, "by_right": None}
 
 # THE emptiness predicate and THE payload renderer, bound once instead of per cell.
 # They are `crud.clean_str_value` / `crud.resolved_text_value` and nothing else - the
@@ -109,6 +109,7 @@ def reset_cache():
     """승인 선언 캐시를 즉시 버린다. config 리로드 경로가 부른다."""
     _RULES_CACHE["at"] = 0.0
     _RULES_CACHE["by_left"] = None
+    _RULES_CACHE["by_right"] = None
 
 
 def _verified_by_left_table(db) -> dict:
@@ -125,17 +126,19 @@ def _verified_by_left_table(db) -> dict:
     import virtual_join_config as vjc
     from database import crud
 
-    by_left = {}
+    by_left, by_right = {}, {}
     try:
         for rule in vjc.load_verified_rules(db, known_tables=crud.TABLE_CONFIG):
             by_left.setdefault(rule["left_table"], []).append(rule)
+            by_right.setdefault(rule["right_table"], []).append(rule)
     except Exception as e:
         # 선언을 읽지 못하면 **조인이 없는 상태**로 간다(빈 dict). 그것이 안전한 방향이다
         # ― 붙지 않은 컬럼은 눈에 보이는 부재고, 잘못 붙은 컬럼은 조용한 오답이다.
         logger.error("[VirtualJoin] verified rules unavailable, NO join is in effect: %s", e)
-        by_left = {}
+        by_left, by_right = {}, {}
 
     _RULES_CACHE["by_left"] = by_left
+    _RULES_CACHE["by_right"] = by_right
     _RULES_CACHE["at"] = now
     return by_left
 
@@ -143,6 +146,20 @@ def _verified_by_left_table(db) -> dict:
 def rules_for(db, left_table: str) -> list:
     """`left_table`에 걸린 **승인된** 선언들."""
     return list(_verified_by_left_table(db).get(left_table) or [])
+
+
+def rules_for_right(db, right_table: str) -> list:
+    """`right_table`이 **오른쪽**인 승인된 선언들 ― 이 표가 «지고 있는 유일성» (S-174).
+
+    🔴 **승인된 것만이다. 그것이 이 방향의 핵심이다.** 승인은 「조인 키를 덮는 UNIQUE
+    인덱스가 «실제로» 있다」는 뜻이고, 인덱스가 없으면 깨질 제약도 없다. 모양만 통과한
+    선언으로 행을 거절하면 데이터베이스가 받아 줬을 행을 «가드가» 버린다.
+
+    같은 캐시·같은 한 번의 로드다(`by_left`와 «한 패스»에서 나온다) ― 쓰기 경로가
+    선언 파일을 배치마다 다시 읽지 않는다.
+    """
+    _verified_by_left_table(db)
+    return list((_RULES_CACHE["by_right"] or {}).get(right_table) or [])
 
 
 def join_onclause(left_model, right_model, rule: dict):
