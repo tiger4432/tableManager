@@ -178,41 +178,64 @@ def test_the_grid_written_is_the_one_the_scoring_ran_under_not_the_maps_own_cell
     assert map_overlay.grid_dims(stored) != map_overlay.grid_dims(own_cells_grid)
 
 
-def test_the_confirmation_records_the_valid_die_area_it_was_scored_against():
+def test_the_confirmation_records_the_valid_die_area_ON_A_BOX_AWARE_ORIGIN():
     """WRITE AND READ, and neither is complete alone. Product owner 2026-08-06:
     「확정 저장시 valid die ref도 저장해줘」 and then 「맵 불러올때 유효 맵 안맞잖아」.
 
     The load paths were never wrong - they were unaware. The aligner
     (`map_alignment._resolve_reference`) and the map editor (`map_editor.js
-    parseValidDieRef`) BOTH read this map's own `grid_metadata.valid_die_ref`, one derivation,
-    both scored against the same contract vectors. The confirmation simply never wrote that
-    key, so confirming against floor X left loading to apply whatever was there before.
+    parseValidDieRef`) BOTH read this map's own `grid_metadata.valid_die_ref`, one
+    derivation, both scored against the same contract vectors.
 
-    🔴 THE MUTATION IS THE OLD BEHAVIOUR: drop the write and this goes red, because the read
-       side resolves to None. A test that only checked the field was populated would pass a
-       version that stored X and loaded Y - so this asserts the value ROUND TRIPS through the
-       real reader, not that a key exists."""
+    🔴 RESHAPED, NOT REPAIRED, AND NOT DELETED (S-185). This asserted an UNCONDITIONAL
+    stamp, which is the contract that existed when it was written. On 2026-08-08 the stamp
+    became conditional on a BOX-AWARE ORIGIN - the confirmation may only record the
+    reference when the origin was actually solved against that reference's own box - and
+    the measured reason is in `map_alignment.py`: when the box changes under a stamp, 2,880
+    of 3,840 cells land on a different die, in 12 of 16 combinations. This fixture supplied
+    neither an anchor pair nor `basis_cells`, so it has been asserting the pre-2026-08-08
+    contract ever since and went red without anything being broken.
+
+    ⚠️ THE PRODUCT IS NOT SILENT ABOUT THE SKIP - `map_alignment` logs 「valid_die_ref NOT
+    stamped ... (anchor=%s basis_cells=%s)」 - which is why this was a stale test rather
+    than a lost write.
+
+    🔴 THE MUTATION IS STILL THE OLD BEHAVIOUR: drop the write and the first half goes red,
+    because the read side resolves to None. The value ROUND TRIPS through the real reader
+    rather than merely existing as a key.
+    """
     floor_meta = {
         "grid_cols": 13, "grid_rows": 13, "rotation": 0, "side": "front",
         "grid_y_invert": False, "grid_start_x": 0, "grid_start_y": 0,
         "phys_wafer_dia": 300.0, "phys_chip_x": 7.0, "phys_chip_y": 7.0,
         "phys_offset_x": 0.0, "phys_offset_y": 0.0, "phys_edge_margin": 3.0}
-    src_meta = dict(floor_meta)
     basis = {"table": "valid_die_ref", "map_id": "CORE_1X"}
+    mark = {"confirmation_uid": "fc_x", "confirmed_by": "tester"}
+    cells = [(x, y) for x in range(3, 10) for y in range(3, 10)]
 
+    # ── the origin WAS solved against the reference's own box ────────────────
     written = map_alignment.confirmed_meta_for(
-        src_meta, floor_meta, basis, "rot90_front",
-        {"confirmation_uid": "fc_x", "confirmed_by": "tester"})
-
-    # read it back with the SAME parser both load paths use
+        dict(floor_meta), floor_meta, basis, "rot90_front", mark,
+        placement={"anchor_src": (3, 3), "anchor_ref": (3, 3)}, basis_cells=cells)
     ref, err = map_overlay.parse_valid_die_ref(written, default_table="dt_map")
     assert err is None, err
     assert ref is not None, (
         "loading resolves the valid-die area from this key; an unwritten key is why the "
         "wrong floor was applied")
-    assert (ref["table"], ref["map_id"]) == ("valid_die_ref", "CORE_1X"), (
-        "whatever the confirmation was scored against is what loading must apply: %s" % ref)
+    assert ref["map_id"] == "CORE_1X"
 
+    # ── and where it was NOT, the stamp is withheld ON PURPOSE ───────────────
+    # ⛔ NOT A GAP IN COVERAGE. Stamping here would record a reference the origin was never
+    # solved against, which is the defect the condition exists to prevent - so the absence
+    # is the contract and is asserted as such.
+    unanchored = map_alignment.confirmed_meta_for(
+        dict(floor_meta), floor_meta, basis, "rot90_front", mark)
+    assert map_overlay.parse_valid_die_ref(
+        unanchored, default_table="dt_map")[0] is None
+    # the frame and origin are still written - only this one key is withheld, which is
+    # exactly what the product's own log line claims ("The frame and origin are still
+    # written"). `rot90_front` confirms a 90 degree rotation, so that is what lands.
+    assert unanchored["rotation"] == 90 and "grid_start_x" in unanchored
 
 def test_a_confirmation_with_no_reference_writes_no_valid_die_ref():
     """Scoring without a reference is a real state - the source follows its own declaration.
