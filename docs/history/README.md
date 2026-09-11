@@ -1,13 +1,14 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **830개** 이력. (거버넌스 규칙 #4)
+> 총 **831개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-09 (September 2026)
 
+- **2026-09-11 22:00** — [The Time Axis Folded And Enrichment Stopped Being Its Own Language](./20260911_220000_the_time_axis_folded_and_enrichment_stopped_being_its_own_language.md)
 - **2026-09-11 20:30** — [Two Blind Spots Got Screens And One Axis Got One Function](./20260911_203000_two_blind_spots_got_screens_and_one_axis_got_one_function.md)
 - **2026-09-11 17:27** — [The Product Learned To Diagnose Itself And A Broken Declaration Learned To Fall Alone](./20260911_172700_the_product_learned_to_diagnose_itself_and_a_broken_declaration_learned_to_fall_alone.md)
 - **2026-09-11 13:46** — [One Poisoned Connection Explained Four Defects And A Days Worth Of Guards](./20260911_134600_one_poisoned_connection_explained_four_defects_and_a_days_worth_of_guards.md)
