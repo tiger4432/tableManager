@@ -1561,67 +1561,6 @@ def create_audit_log(db: Session, table_name: str, row_id: str, col_name: str, o
         
     return log_dict
 
-class SharedWrite:
-    """N tables' side-table rows, held for ONE flush and ONE commit (S-162, 판정 272).
-
-    🔴 WHY THE COMMIT MOVES WITH THE ACCUMULATION, not after it. `apply_batch_updates`
-    commits per table today, and that commit is what makes a table's rows and its
-    `cell_sources` land together. Batch the side tables without moving the commit and a
-    table's rows are committed while its layers are not: a crash there leaves rows with no
-    provenance, and even without a crash the rows and their layers carry DIFFERENT `xmin`s
-    - which is a fresh instance of the very window S-160 is still chasing. So the scope
-    holds both, or neither.
-
-    ⛔ AND IT IS NOT A SECOND WRITE PATH. The judgement - what a cell resolves to, what is
-    audited, what is refused - runs in exactly one implementation either way. What the
-    scope changes is WHEN the accumulated rows are sent, which is why the gate counts
-    `cell_sources`/`overwrites`/`audit` rows: if the two ever disagreed, they disagree
-    there.
-    """
-
-    __slots__ = ("logs", "sources", "overwrites", "overwrite_deletes")
-
-    def __init__(self):
-        self.logs = []
-        self.sources = {}
-        self.overwrites = {}
-        self.overwrite_deletes = set()
-
-
-@contextmanager
-def shared_write_scope(db: Session):
-    """Open a scope in which several tables accumulate, then land in one commit.
-
-    ⚠️ THE CALLER MUST NOT COMMIT INSIDE. That is the whole guarantee, and it is why
-    `apply_batch_updates` takes the scope rather than the caller assembling one - a caller
-    that committed halfway would split the group's rows across two transactions and put
-    back the hazard this exists to remove.
-    """
-    scope = SharedWrite()
-    try:
-        yield scope
-    except Exception:
-        db.rollback()
-        raise
-    flush_shared_write(db, scope)
-
-
-def flush_shared_write(db: Session, scope: SharedWrite):
-    """Send every table's side-table rows, then commit once - the group's only commit."""
-    with alignment_batch_counts.write_step("side tables"):
-        if scope.logs:
-            bulk_insert_audit_logs(db, scope.logs)
-        bulk_upsert_cell_sources(db, list(scope.sources.values()))
-        bulk_upsert_cell_overwrites(db, list(scope.overwrites.values()))
-        bulk_delete_cell_overwrites(db, list(scope.overwrite_deletes))
-    db.commit()
-    # AFTER the commit, exactly as the per-table path does it - the cache must never hold
-    # a log line that the database does not.
-    if scope.logs:
-        from audit_cache import audit_cache
-        audit_cache.add_logs_batch(scope.logs)
-
-
 def bulk_insert_audit_logs(db: Session, logs: list[dict]):
     """AuditLog를 Bulk Insert로 초고속 적재합니다."""
     if not logs:
@@ -3944,8 +3883,7 @@ def _is_business_key_unique_violation(exc) -> bool:
 
 def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpdateBatch,
                         replace_report: Optional[dict] = None,
-                        drop_report: Optional[dict] = None,
-                        shared: Optional["SharedWrite"] = None):
+                        drop_report: Optional[dict] = None):
     """Batch write, with one recovery: losing a cross-process race on a business key.
 
     drop_report: optional out-param (dict), the same shape of contract `replace_report`
@@ -4013,47 +3951,13 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
             # A rolled-back attempt wrote nothing, so its drops describe a transaction
             # that never happened. Only the committing attempt may be reported.
             drop_report.clear()
-        # 🔴 A SAVEPOINT ONLY WHEN A SCOPE IS OPEN, and it is not optional there
-        # (S-162, 판정 272). Inside a shared scope the earlier tables' rows are written
-        # and NOT yet committed, so the plain `db.rollback()` below - which is what makes
-        # this retry safe today - would take those rows with it and then return SUCCESS
-        # for this table. A thousand rows of somebody else's table would vanish with no
-        # error. The per-table internal commit is what protects them today, and the one
-        # commit this round asks for is exactly what removes that protection.
-        #
-        # ⚠️ NOT A NEW MECHANISM: `enrichment_config._isolated_execute` already contains a
-        # failing statement this way, under the standing ruling that containment belongs
-        # where the statement runs.
-        # ⚠️ A SAVEPOINT NEEDS A TRANSACTION TO SIT IN. `begin_nested()` on a session
-        # that has not begun one raises `NoActiveSqlTransaction` from the driver -
-        # measured in production on 2026-09-11, where it failed every chain group three
-        # times and then re-expanded each 1,000-row chunk into 1,000 per-row events.
-        # The session autobegins on its first statement, so whether one is open depends
-        # on what the caller did before - which is exactly the thing not to assume.
-        nested = None
-        if shared is not None:
-            if not db.in_transaction():
-                db.begin()
-            nested = db.begin_nested()
         try:
-            # ⚠️ PASSED ONLY WHEN THERE IS ONE. The default call keeps the exact shape
-            # ten production callers - and the retry's own test stubs - already accept;
-            # handing them an argument they never declared is how a widening breaks the
-            # path it was not meant to touch.
-            extra = {"shared": shared} if shared is not None else {}
-            result = _apply_batch_updates_once(db, table_name, batch, replace_report,
-                                               drop_report, **extra)
-            if nested is not None and nested.is_active:
-                nested.commit()          # releases the savepoint; the OUTER tx stays open
-            return result
+            return _apply_batch_updates_once(db, table_name, batch, replace_report,
+                                             drop_report)
         except IntegrityError as exc:
             if not _is_business_key_unique_violation(exc):
                 raise
-            if nested is not None:
-                if nested.is_active:
-                    nested.rollback()
-            else:
-                db.rollback()
+            db.rollback()
             if attempt >= BK_CONFLICT_MAX_RETRIES:
                 logger.error(
                     f"🔴 [BK Conflict Unresolved] Table: '{table_name}' | "
@@ -4076,8 +3980,7 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
 def _apply_batch_updates_once(db: Session, table_name: str,
                               batch: schemas.GeneralUpdateBatch,
                               replace_report: Optional[dict] = None,
-                              drop_report: Optional[dict] = None,
-                              shared: Optional["SharedWrite"] = None):
+                              drop_report: Optional[dict] = None):
     """통합 업데이트를 배치로 처리합니다.
 
     replace_report: optional out-param (dict). When batch.replace_map is set and a dict
@@ -4476,26 +4379,12 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                                 reported_only_for_drops=len(reported_only_for_drops))
 
         # Execute Bulk Upserts, Bulk Inserts, and Deletes
-        # ⚠️ INSIDE A SCOPE THESE ARE HANDED OVER, NOT SENT. `flush_shared_write` sends
-        # them once for every table.
-        #
-        # 🔴 AND THE ACCUMULATORS STAY THIS TABLE'S. Aliasing them onto the scope was the
-        # obvious shortcut and it is wrong: `created_logs` is part of the 4-tuple this
-        # call returns, so a shared list would hand table 2's caller table 1's log lines.
-        # Measured - three chain tests caught it - and the gate "반환 4-튜플 무변" is
-        # exactly that contract.
-        if shared is not None:
-            shared.logs.extend(logs_to_cache)
-            shared.sources.update(cell_sources_to_upsert)
-            shared.overwrites.update(cell_overwrites_to_upsert)
-            shared.overwrite_deletes.update(cell_overwrites_to_delete)
-        if shared is None:
-            with alignment_batch_counts.write_step("side tables"):
-                if logs_to_cache:
-                    bulk_insert_audit_logs(db, logs_to_cache)
-                bulk_upsert_cell_sources(db, list(cell_sources_to_upsert.values()))
-                bulk_upsert_cell_overwrites(db, list(cell_overwrites_to_upsert.values()))
-                bulk_delete_cell_overwrites(db, list(cell_overwrites_to_delete))
+        with alignment_batch_counts.write_step("side tables"):
+            if logs_to_cache:
+                bulk_insert_audit_logs(db, logs_to_cache)
+            bulk_upsert_cell_sources(db, list(cell_sources_to_upsert.values()))
+            bulk_upsert_cell_overwrites(db, list(cell_overwrites_to_upsert.values()))
+            bulk_delete_cell_overwrites(db, list(cell_overwrites_to_delete))
 
         # [scope diff] What disappeared, decided by SUBTRACTING what this write claimed
         # from what was in scope - never by asking the payload what to delete.
@@ -4554,16 +4443,11 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                 "business_key": l.get("business_key")
             })
             
-        # ⚠️ THE SCOPE OWNS THE COMMIT. Committing here would put this table's rows in a
-        # different transaction from the next table's - the split this round exists to
-        # close - and the audit cache must never hold a line the database does not, so it
-        # waits for the same commit.
-        if shared is None:
-            db.commit()
-
-            if logs_to_cache:
-                from audit_cache import audit_cache
-                audit_cache.add_logs_batch(logs_to_cache)
+        db.commit()
+        
+        if logs_to_cache:
+            from audit_cache import audit_cache
+            audit_cache.add_logs_batch(logs_to_cache)
 
         # [adopt] A replace_map write can resolve a row that was NOT in the scope it
         # declared, and until now it said nothing about having done so.
