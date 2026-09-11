@@ -48,6 +48,9 @@ row changes between the event and its consumption:
     operator can act on; a skipped row nobody counted is not.
 """
 import logging
+import time as _time
+
+from sqlalchemy import bindparam as _bindparam, text as _sqltext
 
 logger = logging.getLogger("Server")
 
@@ -113,7 +116,81 @@ def load_rows_by_ids(db, table_name: str, row_ids, chunk_size: int = OUTBOX_COLL
         id_chunk = unique_ids[i:i + chunk_size]
         for row in db.query(model).filter(model.row_id.in_(id_chunk)).all():
             found[row.row_id] = row
+    if unique_ids and not found:
+        _report_unreadable(db, model, table_name, unique_ids, chunk_size)
     return model, found
+
+
+def _report_unreadable(db, model, table_name, unique_ids, chunk_size):
+    """One line of VALUES for the moment a named set of rows reads back as nothing (S-158).
+
+    🔴 THE INSTRUMENT EXISTS BECAUSE THREE EXPLANATIONS WERE MEASURED AND ALL THREE DIED
+    (판정 266). The session is not shared with the drain (`SessionLocal` is a plain
+    `sessionmaker`), the isolation level is `read committed`, and a direct probe showed the
+    rows visible at the same instant their outbox event became visible. So this stops
+    guessing and records what THE DATABASE ANSWERED at the one moment it goes wrong.
+
+    ⚠️ THE STATEMENT IS RENDERED FROM THE PRODUCT'S OWN QUERY, never retyped. A hand-written
+    lookalike would answer a question about the hand-written one - and the live candidate is
+    that the ids reach the bind with a different TYPE than the rows carry, which is exactly
+    what a retyped query would hide.
+
+    ⚠️ COSTS NOTHING ON THE HAPPY PATH. It runs only when a non-empty id list found zero
+    rows, which is the case that is currently losing data; everything in it is contained, so
+    a probe that cannot answer degrades to a value saying so rather than raising inside the
+    read it is describing.
+    """
+    facts = {}
+    try:
+        probe = db.query(model).filter(model.row_id.in_(unique_ids[:chunk_size]))
+        facts["sql"] = " ".join(str(probe).split())
+    except Exception as exc:                                        # pragma: no cover
+        facts["sql"] = "<unrenderable: %s>" % type(exc).__name__
+    facts["ids"] = len(unique_ids)
+    facts["id_types"] = sorted({type(v).__name__ for v in unique_ids})
+    facts["sample_id"] = repr(unique_ids[0])
+    facts["row_id_col"] = "%s" % getattr(model.row_id.type, "__class__", type(None)).__name__
+
+    physical = getattr(getattr(model, "__table__", None), "name", table_name)
+    ids_as_text = [str(v) for v in unique_ids]
+
+    def _recount(session, label):
+        try:
+            session.execute(_sqltext("SELECT 1"))
+            value = session.execute(
+                _sqltext("SELECT count(*) FROM \"%s\" WHERE row_id IN :ids" % physical)
+                .bindparams(_bindparam("ids", expanding=True)), {"ids": ids_as_text}).scalar()
+            facts[label] = value
+        except Exception as exc:
+            facts[label] = "ERR:%s" % type(exc).__name__
+
+    _recount(db, "same_session_now")
+    for label, sql in (("txid", "SELECT txid_current()"),
+                       ("snapshot", "SELECT pg_current_snapshot()")):
+        try:
+            facts[label] = str(db.execute(_sqltext(sql)).scalar())
+        except Exception as exc:
+            facts[label] = "ERR:%s" % type(exc).__name__
+
+    _time.sleep(0.1)
+    _recount(db, "same_session_after_100ms")
+    try:
+        from database.database import SessionLocal
+        fresh = SessionLocal()
+        try:
+            _recount(fresh, "fresh_session")
+        finally:
+            fresh.close()
+    except Exception as exc:                                        # pragma: no cover
+        facts["fresh_session"] = "ERR:%s" % type(exc).__name__
+
+    logger.warning(
+        "[OUTBOX-4/PROBE] '%s' named %d row(s) and read back ZERO. "
+        "id_types=%s sample=%s row_id_col=%s | same_session_now=%s "
+        "same_session_after_100ms=%s fresh_session=%s | txid=%s snapshot=%s | SQL: %s",
+        table_name, facts["ids"], facts["id_types"], facts["sample_id"], facts["row_id_col"],
+        facts.get("same_session_now"), facts.get("same_session_after_100ms"),
+        facts.get("fresh_session"), facts.get("txid"), facts.get("snapshot"), facts["sql"])
 
 
 def event_key(event) -> str:
