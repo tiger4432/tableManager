@@ -29,12 +29,31 @@ import database.crud as crud
 
 # --- doubles ---------------------------------------------------------------
 
+class FakeSavepoint:
+    def __init__(self, db):
+        self.db = db
+        self.is_active = True
+
+    def rollback(self):
+        self.is_active = False
+        self.db.savepoint_rollbacks += 1
+
+    def commit(self):
+        self.is_active = False
+        self.db.savepoint_commits += 1
+
+
 class FakeDB:
     def __init__(self):
         self.rollbacks = 0
+        self.savepoint_rollbacks = 0
+        self.savepoint_commits = 0
 
     def rollback(self):
         self.rollbacks += 1
+
+    def begin_nested(self):
+        return FakeSavepoint(self)
 
 
 class FakeBatch:
@@ -85,7 +104,10 @@ def _script(monkeypatch, *outcomes):
     """Replace the inner write with a scripted sequence; return the attempt log."""
     calls = []
 
-    def fake_once(db, table_name, batch, replace_report=None, drop_report=None):
+    # `shared` only arrives when a scope is open (S-162), and a double that refuses
+    # it cannot stand in for the real signature at all.
+    def fake_once(db, table_name, batch, replace_report=None, drop_report=None,
+                  shared=None):
         outcome = outcomes[len(calls)] if len(calls) < len(outcomes) else outcomes[-1]
         calls.append(table_name)
         if isinstance(outcome, Exception):
@@ -344,7 +366,10 @@ def test_replace_report_out_param_survives_a_replay(monkeypatch):
     """
     seen = {}
 
-    def fake_once(db, table_name, batch, replace_report=None, drop_report=None):
+    # `shared` only arrives when a scope is open (S-162), and a double that refuses
+    # it cannot stand in for the real signature at all.
+    def fake_once(db, table_name, batch, replace_report=None, drop_report=None,
+                  shared=None):
         if not seen:
             seen["first"] = True
             raise _pg_error("uq_bk_dt_log")
@@ -356,3 +381,44 @@ def test_replace_report_out_param_survives_a_replay(monkeypatch):
     out = crud.apply_batch_updates(FakeDB(), "dt_log", FakeBatch(), report)
     assert len(out) == 4
     assert report["deleted"] == 7
+
+
+# --- the shared scope: one table's conflict must not take another's rows -------------
+
+def test_a_conflict_inside_a_shared_scope_spares_the_tables_already_written(monkeypatch):
+    """🔴 THE HAZARD ONE TRANSACTION CREATES, and the reason the savepoint is not optional.
+
+    S-162 makes a group write every target inside ONE transaction, so the earlier tables'
+    rows are written and NOT yet committed. The recovery below is a SESSION rollback -
+    which is safe today only because the per-table commit already made those rows durable.
+    Remove that commit and leave the rollback, and table 2's lost race silently discards
+    table 1's thousand rows and then returns SUCCESS to a caller with no way to know.
+
+    ⚠️ `db.rollbacks == 0` IS THE WHOLE ASSERTION. A session rollback is precisely the
+    act that would destroy the other tables' work; that it never happens - and that a
+    SAVEPOINT was rolled back instead - is what "they survived" means here.
+    """
+    calls = _script(monkeypatch, _pg_error("uq_bk_dt_inventory"), "MERGED")
+    db = FakeDB()
+    scope = crud.SharedWrite()
+
+    assert crud.apply_batch_updates(db, "dt_inventory", FakeBatch(), shared=scope) == "MERGED"
+
+    assert len(calls) == 2, "it still retries"
+    assert db.rollbacks == 0, (
+        "a SESSION rollback inside a shared scope would discard the tables already "
+        "written in this group - that is the silent loss this guards")
+    assert db.savepoint_rollbacks == 1, "the conflict was contained to its own table"
+
+
+def test_without_a_scope_the_recovery_is_unchanged(monkeypatch):
+    """The control arm: no scope, no savepoint, and the session rollback that ten
+    production callers already depend on stays exactly as it was."""
+    calls = _script(monkeypatch, _pg_error("uq_bk_dt_log"), "MERGED")
+    db = FakeDB()
+
+    assert crud.apply_batch_updates(db, "dt_log", FakeBatch()) == "MERGED"
+
+    assert len(calls) == 2
+    assert db.rollbacks == 1, "the default path still rolls the session back"
+    assert db.savepoint_rollbacks == 0, "and never opens a savepoint it does not need"
