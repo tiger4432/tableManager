@@ -1184,7 +1184,7 @@ const FLOORS = new Map([
   //    The 16th behaviour assertion is the roster named MEMBER BY MEMBER. A count would stay
   //    green while a member was swapped, and a member is exactly what protects a column.
   ['push_gate_harness.mjs', 34],
-  ['retroactive_view_harness.mjs', 263],
+  ['retroactive_view_harness.mjs', 329],
   // NEW 2026-09-03 at the count it reports on the commit that revives it -- there is no
   // earlier tree to measure it against, because it scored nothing from 2026-07-30 to here.
   // 6 of the 34 are the absence check standing in for the five deleted subjects, and one of
@@ -1384,7 +1384,7 @@ const FLOORS = new Map([
   // the queue's first fact: waits are two peaks, so only the age of the last pickup
   // separates 「about to run」 from 「nothing is picking up」 -- and the count is the
   // server's, because the list is newest-first and truncates invisibly
-  ['pickup_state_harness.mjs', 28],
+  ['pickup_state_harness.mjs', 33],
   // why a plan declaration is refused and what to change -- and that the state comes
   // from booleans, never from the server's reason words, which the seam contract forbids
   ['plan_dry_run_harness.mjs', 25],
@@ -1438,7 +1438,7 @@ const FLOORS = new Map([
   // spellings of one instant agree and that two different instants disagree, never a literal
   // wall clock -- otherwise the runner's TZ would decide the verdict.
   ['server_time_harness.mjs', 19],
-  ['chain_graph_harness.mjs', 58],
+  ['chain_graph_harness.mjs', 70],
   ['runtime_panel_harness.mjs', 22],
   ['reference_view_head_harness.mjs', 26],
 ]);

@@ -243,6 +243,25 @@
     .cg-node.is-ledger circle { fill: var(--text-dim); }
     /* 표를 못 짚는 고리도 «말해집니다». 서버의 문장 그대로입니다. */
     .chain-graph-cycle { padding: 3.4px 6.8px; color: var(--danger); font-family: var(--font-mono); }
+    /* 🔴 C-79 — 원장 «절반»이 안 읽힌 날. 이 줄이 없으면 원장 엣지 «0» 이 「원장이 아무것도
+       안 깨운다」로 읽힙니다. 사실은 「그 절반이 아예 안 실렸다」입니다. 문장은 서버의 것입니다. */
+    .chain-graph-ledger-error {
+      padding: 3.4px 6.8px;
+      color: var(--danger);
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+    /* 🔴 C-79 머리 한 줄 — 서버가 «센» 수 그대로. 단위 없는 수라 이름과 값뿐입니다.
+       ⚠️ 줄이 길어지면 이 상자 «안»에서 가로로 밀립니다 — 페이지가 밀리지 않습니다. */
+    .chain-graph-counts {
+      padding: 3.4px 6.8px;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+      overflow-x: auto;
+    }
 
     /* C-74 런타임 — 아홉 고리의 값 표. 수는 자릿수를 맞춰야 세로로 읽힙니다(가독성=기능). */
     .runtime-panel { padding: 3.4px 3.4px 10.2px; }

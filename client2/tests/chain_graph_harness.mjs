@@ -252,6 +252,48 @@ function suite(mod) {
     eq('G12 ...and reads as a file rule', byRule('lot_slot').origin, 'file');
   }
 
+  console.log(`${LF}-- C-79: the counts line, and a quarter of the picture that could not be read --`);
+  {
+    // 🔴 `ledger_error` IS ABSENT WHEN THE LEDGER LOADED -- the route omits the key rather than
+    //    sending an empty one, so 「nothing to say」 and 「could not read」 stay different facts.
+    //    Without the line, ledger edges at 0 read as 「the ledger wakes nothing」 when the truth
+    //    is 「that quarter never loaded」.
+    const counted = {
+      nodes: [{ id: 'a' }], edges: [], cycles: [],
+      counts: { chain_rules: 17, enrichment_rules: 4, virtual_joins: 2, ledger_sources: 15,
+        edges: 40, nodes: 45, contested: 1, contested_tables: 4 },
+    };
+    const cv = chainGraphView(counted);
+    eq('N1 every count the answer carried is drawn', cv.counts.length, 8);
+    eq('N2 ...in the order the answer gave, not one written down here',
+      cv.counts.map((c) => c.name).join(','),
+      Object.keys(counted.counts).join(','));
+    // 🔴 A NINTH COUNT MUST APPEAR WITHOUT AN EDIT -- same rule as the loops and the edge kinds.
+    eq('N3 a count nobody listed here is drawn too',
+      chainGraphView({ nodes: [], edges: [], counts: { ...counted.counts, ninth: 9 } })
+        .counts.length, 9);
+    eq('N4 no counts at all draws no line rather than zeros',
+      chainGraphView({ nodes: [], edges: [] }).counts.length, 0);
+
+    ok('E1 a ledger that loaded says nothing', cv.ledgerError === null, String(cv.ledgerError));
+    const broken = { ...counted, ledger_error: 'RuntimeError: setup unreadable' };
+    eq('E2 a ledger that did not load says so', chainGraphView(broken).ledgerError,
+      'RuntimeError: setup unreadable');
+    const brokenDoc = makeDoc();
+    const brokenMount = brokenDoc.createElement('div');
+    new ChainGraphPanel(brokenMount, { doc: brokenDoc }).render(broken);
+    eq('E3 ...and the screen carries it', byClass(brokenMount, 'chain-graph-ledger-error').length, 1);
+    ok('E4 in the words the server chose', byClass(brokenMount, 'chain-graph-ledger-error')
+      .map((e) => e.textContent).join('').includes('setup unreadable'));
+    const okDoc = makeDoc();
+    const okMount = okDoc.createElement('div');
+    new ChainGraphPanel(okMount, { doc: okDoc }).render(counted);
+    eq('E5 a ledger that loaded draws no such line',
+      byClass(okMount, 'chain-graph-ledger-error').length, 0);
+    ok('E6 an empty string is not an error either',
+      chainGraphView({ ...counted, ledger_error: '' }).ledgerError === null);
+  }
+
   console.log(`${LF}-- a read that failed is not an empty graph --`);
   eq('U1 no payload reads as unread', chainGraphView(null).state, 'unread');
   eq('U2 an answer with an empty node list is READY',
@@ -286,8 +328,8 @@ const MUTANTS = [
     to: '    const value = 0;' },
   { id: 'M5', what: 'a failed read is folded into an empty graph',
     catches: 'U1 no payload reads as unread',
-    from: '  if (!nodes) return { state: \'unread\', nodes: [], edges: [], cycles: [] };',
-    to: '  if (!nodes) return { state: \'ready\', nodes: [], edges: [], cycles: [] };' },
+    from: "  if (!nodes) return { state: 'unread',",
+    to: "  if (!nodes) return { state: 'ready'," },
   { id: 'M6', what: 'the wake list stacks instead of being replaced',
     catches: 'W4 clicking another table replaces',
     from: '      this.root.replaceChild(next, this.wakesBox);',
@@ -315,6 +357,14 @@ const MUTANTS = [
     catches: 'G9 an edge carrying no origin',
     from: "      origin: origin.stated ? edge.origin : null,",
     to: "      origin: origin.stated ? edge.origin : 'file'," },
+  { id: 'M12', what: 'a ledger that could not be read is passed over in silence',
+    catches: 'E2 a ledger that did not load says so',
+    from: "    ledgerError: (payload && typeof payload.ledger_error === 'string' && payload.ledger_error)",
+    to: "    ledgerError: (false && payload && typeof payload.ledger_error === 'string' && payload.ledger_error)" },
+  { id: 'M13', what: 'the counts line is written down here instead of read',
+    catches: 'N3 a count nobody listed here is drawn too',
+    from: '  return Object.entries(counts).map(([name, value]) => ({ name, value }));',
+    to: "  return Object.entries(counts).filter(([n]) => n !== 'ninth').map(([name, value]) => ({ name, value }));" },
   // ⚠️ RE-ANCHORED IN C-78 for the same reason: this round rewrote the comment it named.
   { id: 'M7c', what: 'CONTROL: a comment line is removed', control: true,
     from: '/** 합성된 규칙의 `origin` 은 이 접두로 시작합니다 — 뒤가 «어느 인리치에서 왔나»입니다. */',
