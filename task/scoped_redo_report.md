@@ -33438,3 +33438,41 @@ jsonb_build_object      PG 는 «집합 UPDATE»(660,000 행을 ORM 으로 돌�
    따랐습니다.
 📌 다음은 S-173(재전개를 «이분»으로 — 무제한 폭발 대신)입니다.
 > 📌 **[09-11 14:1x] 이 채널의 미답 질문: «없음».**
+
+---
+
+# [09-11 14:2x] S-169 라이브 게이트 «통과» — 그리고 그 줄이 S-168 가설을 받쳤습니다
+
+## 1. ① waits — 실제 청크 줄에 «값»으로 떴습니다
+```
+[Ingest] dt_log chunk 2: 1000 row(s) in 3.281 s … | waits: none 5 · Client:ClientRead 2
+[Ingest] dt_log chunk 3: 1000 row(s) in 2.953 s … | waits: Client:ClientRead 5 · none 4
+```
+🔵 이 박스는 «락도 IO 도 아닙니다» — `Client:ClientRead`(워처가 보내는 것을 기다림)와 `none`(도는 중).
+   운영에서 `Lock:transactionid 40` 이 뜨면 그게 «다른 이야기»이고, 그 갈림이 이 줄의 목적입니다.
+
+## 2. ④ EXPLAIN — 세 갈래 전부 확인
+```
+임계 아래      아무것도 «안 찍고» False 반환          ✅
+임계 위        PLAN 한 줄 찍고 True                  ✅
+이미 찍었으면  «조용»하고 True (파일당 한 번 걸쇠)     ✅
+```
+그 줄이 낸 계획:
+```
+target      : Index Only Scan using dt_log_pkey on dt_log
+cell_sources: Index Only Scan using idx_sources_lookup_source on cell_sources
+```
+🔵 **S-168 에서 「2번은 `(table_name,row_id)` 전용 인덱스 없이 `idx_sources_lookup_source` 앞
+   두 컬럼에 얹혀 간다」고 적었는데, 계획이 그대로 그 인덱스를 씁니다.** 운영에서 이 줄이
+   `Seq Scan on cell_sources` 라고 말하면 prefetch 10 s 의 자리가 «그 한 줄로» 정해집니다.
+
+## 3. ⚠️ 임계는 «소유자 파일»이라 안 건드렸습니다
+지시는 「임계를 0 으로 낮춰 한 번, 기본으로 돌려 확인」이었는데 `slow_prefetch_explain_seconds`
+는 gitignore 된 `config/ingestion_settings.json`(소유자 파일)에 삽니다.
+```
+대신   `_maybe_explain_slow_prefetch` 를 «실제 DB 로» 직접 세 갈래 호출 — 같은 코드, 같은 계획,
+       소유자 설정은 «무변»
+사유   상설 「라이브 설정은 기록자가 하나다」 — 제 시험이 소유자 파일에 쓴 적이 있어 그 자리를 피했습니다
+```
+다르게 원하시면 한 줄 주십시오(제가 임시로 넣었다 되돌리는 것도 가능합니다).
+> 📌 **[09-11 14:2x] 이 채널의 미답 질문: 3절 «임계를 실제로 만져서 재볼까» 하나(안 급함). 다음 S-173.**
