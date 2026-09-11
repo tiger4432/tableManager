@@ -355,6 +355,44 @@ _RULES_DOCUMENT = {}
 #: 기본 1 = 첫 실패에 바로 FAILED 로 격리하고 «이름을 댄다».
 DEFAULT_MAX_GROUP_ATTEMPTS = 1
 
+#: The one spelling of "this group's rows could not be read back yet". Both the seat that
+#: RAISES it and the seat that RECOGNISES it read this name, so they cannot drift apart.
+ROWS_NOT_VISIBLE = "rows_not_visible"
+
+#: How many times one transaction may be DEFERRED for unreadable rows before it is refused
+#: for real. The sweep is <= 2 s, so 30 is about a minute of patience (S-160, 판정 267).
+DEFAULT_MAX_ROWS_NOT_VISIBLE_DEFERS = 30
+
+#: tx_id -> how many batches it has been deferred for. In memory on purpose: it bounds a
+#: WAIT, not a correctness decision, so a restart handing an event a fresh minute is the
+#: harmless direction. Cleared the moment the group succeeds or is refused.
+_ROWS_NOT_VISIBLE_DEFERS = {}
+
+
+def max_rows_not_visible_defers() -> int:
+    """How long to keep deferring a group whose rows are not readable yet (판정 267).
+
+    🔴 A DEFERRAL IS NOT AN ATTEMPT. `retry_count` counts times the work was TRIED and
+    broke; this counts times it was not tried at all because its input could not be read.
+    Charging these to the retry budget would quarantine a perfectly good chunk for a
+    condition measured to clear in under 100 ms - and quarantine means per-row
+    re-expansion, so a sub-second wait would turn 1,000 rows into 1,000 events.
+
+    ⚠️ IT IS STILL BOUNDED. A genuinely unreadable event must not be deferred forever, or
+    it becomes the silent loss this whole round exists to remove - just quietly, in the
+    queue instead of in the ledger. At the cap it is refused for real, by its own name.
+    """
+    value = (_RULES_DOCUMENT or {}).get("max_rows_not_visible_defers",
+                                        DEFAULT_MAX_ROWS_NOT_VISIBLE_DEFERS)
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        logger.warning(
+            "[Chain] max_rows_not_visible_defers=%r is not a number; using %d.",
+            value, DEFAULT_MAX_ROWS_NOT_VISIBLE_DEFERS)
+        return DEFAULT_MAX_ROWS_NOT_VISIBLE_DEFERS
+    return parsed if parsed >= 1 else DEFAULT_MAX_ROWS_NOT_VISIBLE_DEFERS
+
 
 def max_group_attempts() -> int:
     """선언된 상한, 없으면 기본 1. 판정·로그·격리 경계가 «이 한 수»를 본다.
@@ -945,7 +983,7 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                              len(get_payload_dict(e).get("row_ids") or ()))
             for e in unreadable[:3])
         return False, (
-            "rows_not_visible: %d collapsed event(s) named rows that could not be read "
+            ROWS_NOT_VISIBLE + ": %d collapsed event(s) named rows that could not be read "
             "back in this pass (%s). The rows were NOT derived; the group is refused so "
             "it retries rather than being stamped SUCCESS with an empty payload (S-158)."
             % (len(unreadable), named)), broadcast_messages
@@ -1575,7 +1613,38 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
         with alignment_batch_counts.counting_group() as alignment_summary:
             success, error_reason, broadcast_messages = await process_chain_transaction_group(tx_id, events_in_tx, db, rules)
 
+            # 🔴 UNREADABLE ROWS ARE DEFERRED, NOT FAILED (S-160, 판정 267). Measured: the
+            # rows an event names become readable in UNDER 100 ms - the same session that
+            # saw none sees all of them on the next look. So this group was never tried;
+            # its input was not there yet. Routing it through the failure path would charge
+            # `retry_count` for work that never ran and, at a cap of 1, quarantine it at
+            # once - and quarantine re-expands the chunk, turning 1,000 rows into 1,000
+            # events to wait out a sub-second window.
+            #
+            # ⛔ AND IT DOES NOT SLEEP. The deferral is this batch's, like the HOL guard's
+            # above: the worker's own loop paces the next sweep (<= 2 s), so waiting here
+            # would stall every OTHER group in the batch for one group's window.
+            #
+            # ⚠️ BOUNDED, because "defer forever" is the same silent loss one room over.
+            # At the cap it becomes a real refusal, under its own name.
+            if (not success) and (error_reason or "").startswith(ROWS_NOT_VISIBLE):
+                deferrals = _ROWS_NOT_VISIBLE_DEFERS.get(tx_id, 0) + 1
+                cap = max_rows_not_visible_defers()
+                if deferrals < cap:
+                    _ROWS_NOT_VISIBLE_DEFERS[tx_id] = deferrals
+                    db.rollback()
+                    logger.info(
+                        "[Chain] deferring tx '%s' this batch: the rows its event(s) name "
+                        "are not readable yet (defer %d/%d). retry_count is NOT charged; "
+                        "the next sweep reads the same event.", tx_id, deferrals, cap)
+                    continue
+                _ROWS_NOT_VISIBLE_DEFERS.pop(tx_id, None)
+                logger.warning(
+                    "[Chain] tx '%s' was deferred %d time(s) and its rows are STILL not "
+                    "readable - refusing it for real now, by name.", tx_id, deferrals)
+
             if success:
+                _ROWS_NOT_VISIBLE_DEFERS.pop(tx_id, None)
                 t_mapper_done = time.monotonic()
                 has_messages = bool(broadcast_messages)
                 # commit 시 expire_on_commit으로 속성이 만료되므로 id를 커밋 전에 캡처(재조회 N+1 방지).

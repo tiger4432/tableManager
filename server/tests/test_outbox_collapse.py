@@ -376,6 +376,51 @@ def test_reexpansion_gives_every_row_its_own_group(obx):
 
 
 @pytest.mark.anyio
+async def test_unreadable_rows_are_deferred_without_charging_a_retry(obx, monkeypatch):
+    """🔴 A DEFERRAL IS NOT AN ATTEMPT (S-160, 판정 267).
+
+    Measured: rows an event names become readable in under 100 ms - the same session that
+    saw none sees all of them on the next look. So a group refused for `rows_not_visible`
+    was never TRIED; charging `retry_count` for it would quarantine a good chunk at the
+    default cap of 1, and quarantine re-expands - turning 1,000 rows into 1,000 events to
+    wait out a sub-second window.
+
+    ⚠️ THE CAP IS THE OTHER HALF. "Defer forever" is the same silent loss one room over,
+    just in the queue instead of the ledger, so this also pins that the patience ENDS.
+    """
+    import chain_ingestion_worker as ciw
+    db = obx
+    monkeypatch.setattr(ciw, "_RULES_DOCUMENT", {"max_rows_not_visible_defers": 3})
+    ciw._ROWS_NOT_VISIBLE_DEFERS.clear()
+
+    _seed(db, "obxcol_src", [_row(i) for i in range(3)], "tx-defer", mode=COLLAPSED)
+    ev = _events(db, "obxcol_src", "tx-defer")[0]
+    named = list(get_payload_dict(ev)["row_ids"])
+    model = models.DYNAMIC_TABLES["obxcol_src"]
+    with outbox_mode(COLLAPSED):
+        for row in db.query(model).filter(model.row_id.in_(named)).all():
+            db.delete(row)
+        db.commit()
+
+    rules = [{"name": "obxcol_blind", "trigger_table": "obxcol_src",
+              "target_table": "obxcol_mirror", "enabled": True}]
+
+    for expected in (1, 2):
+        await ciw.process_pending_groups(db, ["tx-defer"], {"tx-defer": [ev]}, rules, None)
+        assert ev.processed_chain is not True, "a deferred event stays in the queue"
+        assert (ev.retry_count or 0) == 0, "a deferral must not be charged as an attempt"
+        assert ciw._ROWS_NOT_VISIBLE_DEFERS.get("tx-defer") == expected
+
+    assert not [e for e in _events(db, "obxcol_src")
+                if get_payload_dict(e).get("reexpanded_from")],         "a deferral must not re-expand the chunk"
+
+    # ⚠️ THE CAP: the third pass stops deferring and refuses for real.
+    await ciw.process_pending_groups(db, ["tx-defer"], {"tx-defer": [ev]}, rules, None)
+    assert "tx-defer" not in ciw._ROWS_NOT_VISIBLE_DEFERS, "the patience is released"
+    assert (ev.retry_count or 0) >= 1, "at the cap it becomes a real, counted attempt"
+
+
+@pytest.mark.anyio
 async def test_third_failure_reexpands_instead_of_quarantining_the_chunk(obx, monkeypatch):
     """The ruling, end to end, through the real `process_pending_groups`.
 
