@@ -1754,10 +1754,16 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                         # A collapsed event covers up to 1,000 rows, so quarantining it
                         # whole would take 999 innocent rows with the poison one. At the
                         # quarantine boundary - and only here, after the cheap chunk-level
-                        # retries are exhausted - it re-expands into per-row events, each
-                        # its own transaction group, so the next passes narrow the failure
-                        # to the row that actually breaks. Never quarantine a chunk without
-                        # having tried to narrow it first.
+                        # retries are exhausted - it is NARROWED instead, so the next
+                        # passes reach the row that actually breaks. Never quarantine a
+                        # chunk without having tried to narrow it first.
+                        #
+                        # 🔴 NARROWED BY HALVING SINCE S-173, not by writing one event per
+                        # row. The per-row shape was correct about WHERE to be fine-grained
+                        # and wrong about the price: a production queue reached ~660,000
+                        # pending per-row events. `reexpand_collapsed_event` owns that
+                        # rule; nothing here had to change for it, which is why this
+                        # comment is the only edit on this side.
                         if event_constants.is_collapsed_payload(pay_dict):
                             try:
                                 n = outbox_expand.reexpand_collapsed_event(db, event, pay_dict, reason)
@@ -1795,11 +1801,12 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
 
                 if reexpanded_rows:
                     logger.warning(
-                        f"Transaction {tx_id}: {reexpanded_rows} per-row retry event(s) written "
+                        f"Transaction {tx_id}: {reexpanded_rows} retry event(s) written "
                         # No em dash: the production console is Korean Windows (cp949)
                         # and one unencodable character deletes the whole log line.
-                        f"from failed collapsed chunk(s). The failure will be narrowed to the "
-                        f"offending row(s) instead of quarantining whole chunks."
+                        f"from failed collapsed chunk(s). Since S-173 a chunk is HALVED "
+                        f"rather than written out one event per row, so this number is "
+                        f"two per narrowing step until a single row is reached."
                     )
                 if failed_permanently_count > 0:
                     logger.error(f"Transaction {tx_id} permanently failed: {failed_permanently_count} events moved to FAILED status.")

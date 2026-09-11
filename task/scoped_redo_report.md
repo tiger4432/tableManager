@@ -33842,3 +33842,125 @@ dry-run     cell_sources live 38,807,544 · dead 301,589 · relpages 760,884
 
 > 📌 **[09-11 19:xx] 이 채널의 미답 질문: S-177 ②의 「가상 조인 규칙까지 격리를 넓힐지」 하나(계속 열려 있음).
 > 다음: S-165 ⓑ → S-173(이분 재전개) → S-176 서버 라우트.**
+
+---
+
+# S-165 ⓑ — 🔴 **안 짓습니다. 이미 있고, SQL 판은 «더 나쁩니다»**
+
+## 1. 실측 — 한 층 «위»에 이미 있습니다
+```
+bulk_upsert_cell_sources 의 호출자   «하나»  (crud.py:4672)
+그 호출자가 넣는 것                  `if not source_unchanged:` 를 통과한 매핑«만»
+source_unchanged (crud.py:3118)     src_obj.value == clean_val  and  src_obj.updated_by == ...
+                                    -> 지시서가 SQL 로 쓰라 한 «그 술어» 그대로
+cell_overwrites                     같은 자리에 ow_unchanged (crud.py:3214)
+시험                                test_replace_map_scope_diff.py 가 «두 표 다» 단언
+                                    🔵 제 변경을 stash 하고 HEAD 에서 돌려 «10 passed» 확인
+```
+🔵 그리고 지시서가 「docstring 2단계를 «값이 바뀐 시각»으로」라 한 그 문장이
+   `source_unchanged` 바로 위에 **이미 적혀 있습니다** —
+   「a source that re-delivers a value it has already delivered has not made a NEW statement …
+   "Newest" means newest assertion of a value, not newest touch.」
+
+## 2. 🔴 그리고 SQL 판은 «틀립니다». 그 자리의 주석이 제 실수를 미리 적어 뒀습니다
+`cell_overwrites` 행은 «값을 안 들고» 있습니다(플래그·작성자·핀뿐). 그래서 SQL 층에서
+그 셋만 비교하면 **셀 «값»이 바뀐 진짜 편집에서 `updated_at` 이 안 갱신됩니다.**
+기존 주석(crud.py:3204~):
+> 「a skip based on them alone would stop refreshing `updated_at` on a genuine user edit.
+>  That silently redefines a column other code displays.」
+
+제 변경은 정확히 그 일을 했고, **기존 시험이 잡았습니다** —
+`test_an_unchanged_cell_does_not_rewrite_its_overwrite_marker` 의 둘째 절(「진짜 변경은 갱신해야」).
+SQL 층은 `source_unchanged` 를 «볼 수 없어서» 이 구별을 원리적으로 못 합니다.
+
+## 3. ⚠️ 다만 버리기 전에 «건진 것 하나» — 다음에 이걸 다시 시도할 사람을 위해
+PostgreSQL 에는 **`json` 등호 연산자가 없습니다.** `cell_sources.value` 가 `JSON` 이라
+`value IS DISTINCT FROM excluded.value` 는 라이브에서 즉사합니다:
+```
+psycopg2.errors.UndefinedFunction: 연산자 없음: json = json
+```
+🔵 **SQLite 시험 13개가 전부 초록인 채로** 이게 났습니다(SQLite 엔 타입 json 이 없어 안 묻습니다).
+   고치려면 «양쪽 다» `::jsonb` — 그리고 그게 의미상으로도 맞습니다(키 순서·공백 정규화).
+   패치는 안 버리고 `scratchpad/s165_not_shipped.patch` 에 뒀습니다.
+
+## 4. 🔴 그래서 «진짜» 열린 물음은 그대로입니다
+소유자가 본 것(`pg_stat_activity` 맨 위 = cell_sources upsert · 오토배큠 상주)은
+**「같은 값 재적재」로 설명되지 «않습니다»** — 그건 오늘도 안 씁니다.
+남은 후보:
+```
+ⓐ 그 upsert 가 «진짜 바뀐 행»을 쓰고 있다 (정상 적재. 그러면 질문은 「양이 예상대로인가」)
+ⓑ 오토배큠이 죽은 튜플이 아니라 «autoANALYZE / insert 유발 / wraparound» 로 떠 있다
+   -> S-170 이 «어느 것인지 이름으로» 냅니다. 그게 다음 측정입니다
+ⓒ 세 번째 호출자가 생기면 SQL 가드가 그때 의미를 갖습니다 (오늘은 호출자 «하나»)
+```
+제안: 소유자 박스에서 인제션 중 `tune_layer_tables.py` 를 «한 번» 돌려
+「지금 도는 것」 줄을 받는 것 — ⓑ 를 한 줄로 가릅니다.
+
+## 5. 제 규율 실패도 적습니다
+상설 관문(「«새 문제»라 부르기 전에 ① 코드에 이미 있나」)을 **짓기 전에 안 돌렸습니다.**
+S-177 ② 에서 «설계 한 장»으로 같은 값을 치렀는데 같은 날 또 했고, 이번엔 «코드까지» 썼습니다.
+잡은 것은 제 점검이 아니라 «이웃 시험»이었습니다.
+
+> 📌 **[09-11 20:xx] 이 채널의 미답 질문: S-165 를 «닫을지»(제 판단: 이미 구현됨 — 닫음) ·
+> 4절 ⓑ 측정을 소유자께 올릴지. 다음: S-173(이분 재전개) → S-176 서버 라우트 → 가상 조인 격리 시험.**
+
+---
+
+# S-173 — 「독 든 행은 «반씩 갈라» 찾는다」 착지 (`c68faff3`) + 가상 조인 격리 «실측» (`f9fa9c24`)
+
+## 0. 먼저 «이미 지어졌나» 관문을 돌렸습니다 (오늘 두 번 안 돌려 값을 치렀으므로)
+```
+① 코드    reexpand_collapsed_event 는 «행별»로만 씁니다. 이분도, 깊이 칸도 «없습니다»
+② 판정    그 docstring 이 「COARSE ON THE HAPPY PATH, FINE ON THE FAILURE PATH」 총괄 판정을 인용 —
+          S-173 은 그 판정의 «개정»이고, 새 증거는 운영의 66만 건입니다(제가 뒤집는 게 아니라 판정이 뒤집음)
+③ 원칙    「실패하는 것이 무해한 것은 아니다」 — 안 도는 큐가 며칠을 먹습니다
+```
+
+## 1. 고침
+```
+split   _split_collapsed_event 가 «둘»을 씁니다 — 각각 row_ids 의 반을 든 «접힌» 페이로드 + 자기 tx
+        🔵 «읽기 0»: 행별 전개는 페이로드를 짓느라 1,000 행을 읽었습니다. 반 나누기는 DB 를 «안 봅니다»
+주소    tx 는 «뿌리» 청크의 접두어 + 걸어온 길: a / ab / abb 가 「첫 반, 그 둘째 반, 그것의 둘째 반」.
+        접두어 검색 하나로 가족 전체가 나오고, 같은 깊이의 두 가지가 «한 id 로 충돌»하지 않습니다
+잎      «한 행»이 되면 예전처럼 행별로 씁니다 — data 를 들고 row_ids 가 없어 다시 못 갈라집니다.
+        🔴 재귀를 «실제로» 끝내는 것은 이것입니다
+상한 칸  모든 자식이 reexpanded_from.depth 를 들고, MAX_REEXPANSION_DEPTH = 12 위는 «이름 대어» 거절
+        (거기 닿았다는 건 잎 규칙이 깨졌다는 뜻 — 큐를 채우는 결함은 «조용히»가 아니라 «크게» 서야 합니다)
+```
+⛔ 자식은 부모의 `error_log` 를 «상속하지 않습니다» — 그건 «부모가» 선 이유이고, 멱등 가드가 바로 그 키를
+   읽으므로 상속하면 새 반쪽이 «자기 분할을 거절»합니다. 시험으로 못 박았습니다.
+
+## 2. 게이트 — 끝까지 «몰아서» 쟀습니다
+```
+1,000 행 · 독은 r777    라운드 11 · 이벤트 «21»      (행별 판은 «1,000»)
+행 손실                 매 라운드 두 반이 부모의 row_ids 를 «정확히» 덮음
+잎                      is_collapsed_payload False -> 다시 안 갈라짐
+상한                    깊이 12 에서 이름 대어 거절 + 로그
+멱등                    이미 갈라진 부모는 다시 안 갈라짐 (기존 가드 그대로)
+신설 12 passed · 이웃 21 파일 300 passed · 커밋 뒤 5,697 collected(오류 0)
+```
+⚰️ `test_outbox_collapse.py` 의 «넷»이 행별 개수를 단언하고 있었습니다 — 자기가 재던 코드와 같은 커밋에서
+   움직였고, 각자 «왜 움직였는지»를 달았습니다. 불변식(자기 그룹·접두어·PENDING·재시도 0·전부-아니면-전무)은
+   그대로이고, 둘은 «작아진 개수가 가릴 뻔한» 단언을 «얻었습니다»(반들이 부모의 모든 행을 덮는가).
+   전부-아니면-전무 시험은 «잎»으로 옮겼습니다 — 분할은 페이로드를 안 지으므로 중간에 못 깨집니다.
+
+## 3. 🔴 가상 조인 격리 — 지시대로 «시험 하나»로 재 봤고, 답은 «아니오»입니다
+```
+ground_node_key("bundle.sources.dt_log.read")              -> "source_plan|dt_log"      ✅
+ground_node_key("bundle.vocabulary.moves_to@1.object")     -> "predicate|moves_to@1"    ✅
+ground_node_key("bundle.entities.InputEntity@1.keys")      -> "entity|InputEntity@1"    ✅
+ground_node_key("bundle.virtual_joins.<rule>.join_key")    -> «None»                    🔴
+```
+`resolve_declarations` 는 `ground_node_key` 로 탓하고, 그 함수는 `AUTHORABLE_SECTIONS`
+(vocabulary · entities · sources)를 읽습니다. **`virtual_joins` 가 거기 없습니다** —
+그래서 깨진 조인 규칙은 «아무도 안 탓하고» config_level 로 가서 번들 전체를 세웁니다.
+
+**한 지도가 두 물음에 답하고 있습니다**: 「화면이 만들고 지울 수 있는 것」(작성)과
+「로더가 격리할 수 있는 것」(로딩)은 다른 물음입니다. 작성 지도를 넓히면 탐색기 표면에
+«새 kind»(`virtual_join|<id>`)가 뜨고 그건 클라 레인 것이라, **재기만 하고 안 넓혔습니다.**
+지도를 가를지는 판정 주십시오 — 가르는 날 이 두 시험이 «빨개져서 어느 쪽을 옮길지»를 말합니다.
+
+## 4. 재기동 — «총괄 몫». 체인 워커가 `outbox_expand` 를 읽습니다 (S-173). `f9fa9c24` 는 시험뿐
+
+> 📌 **[09-11 21:xx] 이 채널의 미답 질문: 3절 «작성 지도와 로딩 지도를 가를지» 하나.
+> 다음: S-176 서버 라우트(`/runtime`).**
