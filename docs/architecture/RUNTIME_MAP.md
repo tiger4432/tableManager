@@ -21,6 +21,7 @@
 | ① | **웹 라우트** | 웹 | 요청 | 동적 표 · `cell_sources` · `cell_overwrites` · 원장(walk) | `[get_table_data] Total … ID Scan … Layer Merge … Other` (S-123) | 없음 — 요청은 곧 사용자 |
 | ② | **워처 (파일 인제션)** | 웹(통합) / run_watcher | `raws/` 파일 이벤트 · 기동 스윕 · **300 s 주기 재스캔**(`watcher-periodic-sweep`) | 그 표 + `file_ingestion_logs` + 큰 적재 뒤 `ANALYZE <표>` (S-124) | `[<표>] … rows` · `statistics re-analysed after N row(s)` | 파일을 `raws/` 밖으로 · `ingestion_settings.json` `analyze_after_rows`(0=끔) · 10 MB 초과는 `watcher-heavy-lane` 스레드로 격리 |
 | ③ | **체인 워커** | 웹(통합) / run_chain_worker | `database_outbox` 의 LISTEN/NOTIFY(≤2 s) · **5 s 스윕** | 규칙의 `target_table` 들 · `database_outbox` · 정렬(alignment) 표 | `[Chain]` · **그룹 줄 세 층**(아래 §1-bis) · **`[Chain] batch: broadcast dispatch … · groups N`** · `[HOL Guard] Deferring tx …` · `[Chain] tx … deferred: rows_not_visible …` · `Failed to execute mapper in tx …` | `chain_rules.json` 의 규칙 `enabled:false` · **`max_group_attempts`**(기본 1) · **`max_rows_not_visible_defers`**(기본 30 ≈ 1분) — 셋 다 «문서 최상단 칸»이고 «SYSTEM_RELOAD 로 반영»된다 |
+| ③-b | **LISTEN 커넥션** | ③ 안 | `database_outbox` 채널 알림 | (읽지 않음 — 알림만) | `[Outbox Listener]` | 🔴 **풀 «밖» 전용이다**(S-167): `psycopg2.connect` 로 «풀이 본 적 없는» 커넥션을 쓰고 `_reset_connection` 의 close 는 «진짜 닫기»다. ⛔ `engine.raw_connection()` 으로 되돌리지 말 것 — LISTEN 이 요구하는 autocommit 이 «풀로 반납»되면 다음 대여자가 트랜잭션을 못 열어 `begin_nested()` 가 25P01 로 터진다(그 형태로 112 회 실측) |
 | ③-a | **outbox 정리** | 체인 안 | 1 h | `database_outbox` (7 일 지난 행 삭제) | `[Outbox Purge]` | 없음(소량) |
 | ④ | **원장 후속 큐** | 체인 안(별 태스크) | 큐 + pace `chain_followup`=`trickle`(1 단위 · 3 s) | 원장(`ledger_*`) · 커서/등록부 | `[LedgerFollowUp]` · 영수증은 `/audit_logs/recent` `ledger_batch` (S-117) | `pacing.json` `jobs.chain_followup` (재기동 없음) |
 | ⑤ | **원장 센서스** | 체인 안(별 태스크) | pace `ledger_row_census`=`background`(1 소스 · 60 s) — «한 바퀴 = 소스 수 분» | 읽기만: `pg_class`(추정) · 등록부 `rows_indexed`(S-122-b) · **뷰 소스만 count(*)** | `[LedgerCensus]` 바퀴 벽시계 한 줄 | `pacing.json` `jobs.ledger_row_census` (재기동 없음) · 정확 수는 사람이 `python -m ledger census` |
@@ -40,11 +41,23 @@ batch: broadcast dispatch T s · groups N                       <- 배치당 «�
 그 그룹의 합이 «검산 안 되는 수»가 됩니다 — 그래서 줄을 따로 뺐습니다.
 ⚠️ **정렬을 한 번도 안 만진 그룹은 이 줄을 «안 찍습니다»** — 0 으로 채운 줄이 진짜를 묻어 버립니다.
 
+### §1-ter. 워처 «청크 줄» — 체인과 «같은 계수기»를 쓴다 (S-164, `parsers/directory_watcher.py`)
+```
+[Ingest] <표> chunk N: R row(s) in T s · STAGES · <스테이지…> · unnamed U s · INSIDE THE WRITE · <스텝…>
+```
+🔵 **새 계기를 만들지 않고 체인의 `alignment_batch_counts` 를 «그대로» 연다** — 두 계수기를 두면
+같은 낱말이 두 곳에서 다른 것을 뜻하게 된다. 층 모양도 그룹 줄과 같다(`unnamed` 잔여 포함).
+🔵 **이것이 운영에서 «읽혀서» S-168 이 됐다** — 운영 apply 19 s/1k = 선인출 10 · 행 만들기 1 · 부수 표 7
+(이 박스 0.03 · 0.37 · 0.42). 운영을 여기서 잴 수 없으므로 «계기를 보내고 값을 받는다»가 방법이다.
+
 ## 2. 증상 → 어느 고리 (오늘 밤에 실제로 온 것들)
 ```
 「모든 표 조회가 느리다, 큐는 비었다」      ⑤ (09-10 전: 소스마다 count(*) 쉼 없이) → 지금은 추정+분 단위. 남으면 ⑦
 「ID Scan 이 0.7 s 로 «고정»」            ① 의 정렬이 인덱스를 못 탐 = 통계 낡음(적재 직후) → ANALYZE (② 가 이제 자동)
 「Entity Fetch / Layer Merge 가 «출렁»」   대기다. 통합 모드면 ②③④⑤ 중 그때 도는 것, 아니면 ⑦
+「SAVEPOINT 가 400 · 25P01」            ③-b 의 LISTEN 커넥션이 «풀로» 반납되던 때의 증상(S-166·S-167).
+                                        autocommit 커넥션을 받은 세션은 BEGIN 을 안 내므로 SAVEPOINT 가 앉을 데가 없다.
+                                        ⚠️ `in_transaction()` 가드로는 «안 닫힌다» — 그 가드가 있는 빌드에서 112 회 났다
 「rows_in=0 인데 SUCCESS」               ⚰️ 09-11 «전»의 증상. 접힌 사건이 자기 행을 하나도 못 읽으면 빈 페이로드로
                                         돌고 SUCCESS 로 찍혔다(조용한 손실, S-158). 지금은 «미룬다» —
                                         `rows_not_visible` 로 이름 대고, `max_rows_not_visible_defers`(기본 30 ≈ 1분)
