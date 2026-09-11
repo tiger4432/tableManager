@@ -629,7 +629,10 @@ def _reach(nodes, edges, seed_signs, static_types=()):
     and there is nothing to split.
 
     Returns `(reach, parents, kinds)`.  `reach` is `node -> [from_positive, from_negative]`,
-    `parents` is `seed -> {node: predecessor}` so an evidence path is rebuilt on demand
+    `parents` is `seed -> {node: (predecessor, predicate)}` so an evidence path is rebuilt
+    on demand — the PREDICATE rides with the predecessor (S-183) because a path that says
+    only which nodes were visited cannot say how, and the two were being read from
+    different places
     instead of keeping one path per node per seed alive for the whole walk, and `kinds` is
     `seed -> {declared type it reached}` — the DENOMINATOR the ranking needs and the one
     thing a reach of zero cannot supply about itself.
@@ -683,11 +686,36 @@ def _reach(nodes, edges, seed_signs, static_types=()):
                         and not (here_is_name and there_is_name)):
                     continue
                 seen.add(nxt)
-                trail[nxt] = node
+                trail[nxt] = (node, predicate)
                 reached_kinds.add(_kind(nxt))
                 reach.setdefault(nxt, [0, 0])[slot] += 1
                 queue.append((nxt, predicate, direction))
     return reach, parents, kinds
+
+
+def _trail_back(trail, node_id):
+    """`(ids, predicates)` from the seed down to `node_id`, seed first.
+
+    🔴 ONE SEAT (S-183). The ranking's `_evidence` and the row projection's `path` must be
+    the same answer — a walk that ranks a node by one path and reports another is two
+    walks wearing one name. Both call this.
+
+    ⚠️ THE FIRST PATH THAT REACHED IT, NOT EVERY PATH. `_reach` is breadth-first and writes
+    `trail[node]` once, so this is the SHORTEST path from that seed and the only one the
+    walk ever knew. Reporting all paths would be a different (and much larger) question;
+    it is not answered here and the row projection documents that.
+    """
+    ids, predicates, cursor = [], [], node_id
+    while cursor is not None:
+        ids.append(cursor)
+        step = trail.get(cursor)
+        if step is None:
+            break
+        cursor, predicate = step
+        predicates.append(predicate)
+    ids.reverse()
+    predicates.reverse()
+    return ids, predicates
 
 
 def _evidence(nodes, parents, seed_signs, node_id):
@@ -701,11 +729,7 @@ def _evidence(nodes, parents, seed_signs, node_id):
     for seed, trail in parents.items():
         if node_id not in trail:
             continue
-        path, cursor = [], node_id
-        while cursor is not None:
-            path.append(cursor)
-            cursor = trail.get(cursor)
-        path.reverse()
+        path, _predicates = _trail_back(trail, node_id)
         trails.append({
             "seed": seed,
             "sign": "+" if seed_signs[seed] > 0 else "-",
