@@ -1533,123 +1533,133 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
         # its own scope or into none.
         with alignment_batch_counts.counting_group() as alignment_summary:
             success, error_reason, broadcast_messages = await process_chain_transaction_group(tx_id, events_in_tx, db, rules)
-        _log_alignment_group_work(tx_id, alignment_summary())
 
-        if success:
-            t_mapper_done = time.monotonic()
-            has_messages = bool(broadcast_messages)
-            # commit 시 expire_on_commit으로 속성이 만료되므로 id를 커밋 전에 캡처(재조회 N+1 방지).
-            event_ids = [event.id for event in events_in_tx]
-            for event in events_in_tx:
-                mark_processed(event, "SUCCESS")
-                # [Reliability F1] 통지할 메시지가 없는 no-op 그룹은 전달할 것이 없으므로 즉시 전달 확정(스윕 제외).
-                # 메시지가 있는 그룹은 broadcast_at을 NULL로 두고, 통지 성공 시 _dispatch_broadcasts가 스탬프한다.
-                if not has_messages:
-                    event.broadcast_at = func.now()
-            db.commit()
-            t_commit_done = time.monotonic()
-            # [Reliability F1/F2] 데이터 처리 성공 + 커밋 이후에만 통지 대상으로 누적한다(발사는 배치 끝 단일 순차).
-            # 통지 실패는 이미 커밋된 그룹의 재처리/중복을 유발하지 않는다(재시도는 오직 처리 실패로만 트리거).
-            if has_messages:
-                # [Latency SLO 계측] wake 기준점이 없으면(테스트/드문 경로) 매퍼 시작 시각으로 대체.
-                wake_ref = batch_wake_ts if batch_wake_ts is not None else t_mapper_start
-                timing = {
-                    "tx": tx_id,
-                    "wake_ts": wake_ref,
-                    "wake_ms": (t_mapper_start - wake_ref) * 1000.0,
-                    "mapper_ms": (t_mapper_done - t_mapper_start) * 1000.0,
-                    "commit_ms": (t_commit_done - t_mapper_done) * 1000.0,
-                    "commit_done_ts": t_commit_done,
-                }
-                pending_broadcasts.append((event_ids, broadcast_messages, timing))
-        else:
-            # 실패 그룹의 매퍼 쓰기는 rollback으로 폐기되어 target에 커밋되지 않는다(유실/중복 없음).
-            # 앞선 성공 그룹은 이미 각자 commit되었으므로 rollback 영향 밖이다.
-            db.rollback()
-
-            # Increment retry count for all events in the failed transaction group
-            failed_permanently_count = 0
-            retrying_count = 0
-            max_retry_num = 0
-            # 한 번 읽어 «판정·사유·로그»가 같은 수를 본다.
-            attempts_cap = max_group_attempts()
-
-            reexpanded_rows = 0
-            for event in events_in_tx:
-                event.retry_count += 1
-                max_retry_num = max(max_retry_num, event.retry_count)
-                if event.retry_count >= attempts_cap:
-                    pay_dict = get_payload_dict(event)
-                    payload_copy = dict(pay_dict) if pay_dict else {}
-                    reason = error_reason or (
-                        f"Mapper execution failed in tx group {tx_id} after "
-                        f"{attempts_cap} attempt(s).")
-
-                    # [OUTBOX-4] COARSE ON THE HAPPY PATH, FINE ON THE FAILURE PATH.
-                    # A collapsed event covers up to 1,000 rows, so quarantining it
-                    # whole would take 999 innocent rows with the poison one. At the
-                    # quarantine boundary - and only here, after the cheap chunk-level
-                    # retries are exhausted - it re-expands into per-row events, each
-                    # its own transaction group, so the next passes narrow the failure
-                    # to the row that actually breaks. Never quarantine a chunk without
-                    # having tried to narrow it first.
-                    if event_constants.is_collapsed_payload(pay_dict):
-                        try:
-                            n = outbox_expand.reexpand_collapsed_event(db, event, pay_dict, reason)
-                        except Exception as rx_err:
-                            n = 0
-                            logger.error(
-                                f"[OUTBOX-4] re-expansion of collapsed event {event.event_uuid} "
-                                f"failed; falling back to whole-chunk quarantine: {rx_err}",
-                                exc_info=True)
-                        if n:
-                            reexpanded_rows += n
-                            payload_copy["error_log"] = {
-                                "failed_at": datetime.now().isoformat(),
-                                "reason": reason,
-                                "reexpanded_into": n,
-                            }
-                            mark_processed(event, "FAILED")
-                            event.payload = payload_copy
-                            failed_permanently_count += 1
-                            continue
-
-                    mark_processed(event, "FAILED")   # Quarantine from worker queries
-                    payload_copy["error_log"] = {
-                        "failed_at": datetime.now().isoformat(),
-                        "reason": reason
+            if success:
+                t_mapper_done = time.monotonic()
+                has_messages = bool(broadcast_messages)
+                # commit 시 expire_on_commit으로 속성이 만료되므로 id를 커밋 전에 캡처(재조회 N+1 방지).
+                event_ids = [event.id for event in events_in_tx]
+                for event in events_in_tx:
+                    mark_processed(event, "SUCCESS")
+                    # [Reliability F1] 통지할 메시지가 없는 no-op 그룹은 전달할 것이 없으므로 즉시 전달 확정(스윕 제외).
+                    # 메시지가 있는 그룹은 broadcast_at을 NULL로 두고, 통지 성공 시 _dispatch_broadcasts가 스탬프한다.
+                    if not has_messages:
+                        event.broadcast_at = func.now()
+                with alignment_batch_counts.stage("commit"):
+                    db.commit()
+                t_commit_done = time.monotonic()
+                # [Reliability F1/F2] 데이터 처리 성공 + 커밋 이후에만 통지 대상으로 누적한다(발사는 배치 끝 단일 순차).
+                # 통지 실패는 이미 커밋된 그룹의 재처리/중복을 유발하지 않는다(재시도는 오직 처리 실패로만 트리거).
+                if has_messages:
+                    # [Latency SLO 계측] wake 기준점이 없으면(테스트/드문 경로) 매퍼 시작 시각으로 대체.
+                    wake_ref = batch_wake_ts if batch_wake_ts is not None else t_mapper_start
+                    timing = {
+                        "tx": tx_id,
+                        "wake_ts": wake_ref,
+                        "wake_ms": (t_mapper_start - wake_ref) * 1000.0,
+                        "mapper_ms": (t_mapper_done - t_mapper_start) * 1000.0,
+                        "commit_ms": (t_commit_done - t_mapper_done) * 1000.0,
+                        "commit_done_ts": t_commit_done,
                     }
-                    event.payload = payload_copy
-                    failed_permanently_count += 1
-                else:
-                    event.status = "RETRYING"
-                    retrying_count += 1
+                    pending_broadcasts.append((event_ids, broadcast_messages, timing))
+            else:
+                # 실패 그룹의 매퍼 쓰기는 rollback으로 폐기되어 target에 커밋되지 않는다(유실/중복 없음).
+                # 앞선 성공 그룹은 이미 각자 commit되었으므로 rollback 영향 밖이다.
+                with alignment_batch_counts.stage("rollback"):
+                    db.rollback()
 
-            db.commit()
+                # Increment retry count for all events in the failed transaction group
+                failed_permanently_count = 0
+                retrying_count = 0
+                max_retry_num = 0
+                # 한 번 읽어 «판정·사유·로그»가 같은 수를 본다.
+                attempts_cap = max_group_attempts()
 
-            if reexpanded_rows:
-                logger.warning(
-                    f"Transaction {tx_id}: {reexpanded_rows} per-row retry event(s) written "
-                    # No em dash: the production console is Korean Windows (cp949)
-                    # and one unencodable character deletes the whole log line.
-                    f"from failed collapsed chunk(s). The failure will be narrowed to the "
-                    f"offending row(s) instead of quarantining whole chunks."
-                )
-            if failed_permanently_count > 0:
-                logger.error(f"Transaction {tx_id} permanently failed: {failed_permanently_count} events moved to FAILED status.")
-            if retrying_count > 0:
-                logger.warning(f"Transaction {tx_id} marked for retry: {retrying_count} events set to RETRYING status ({max_retry_num}/{attempts_cap}).")
+                reexpanded_rows = 0
+                for event in events_in_tx:
+                    event.retry_count += 1
+                    max_retry_num = max(max_retry_num, event.retry_count)
+                    if event.retry_count >= attempts_cap:
+                        pay_dict = get_payload_dict(event)
+                        payload_copy = dict(pay_dict) if pay_dict else {}
+                        reason = error_reason or (
+                            f"Mapper execution failed in tx group {tx_id} after "
+                            f"{attempts_cap} attempt(s).")
 
-            failed_any = True
-            # [Latency Fix #5] break 제거 — 동일 target_table 그룹만 보류(순서 보존)하고 나머지는 계속 처리.
-            blocked_targets |= group_targets
+                        # [OUTBOX-4] COARSE ON THE HAPPY PATH, FINE ON THE FAILURE PATH.
+                        # A collapsed event covers up to 1,000 rows, so quarantining it
+                        # whole would take 999 innocent rows with the poison one. At the
+                        # quarantine boundary - and only here, after the cheap chunk-level
+                        # retries are exhausted - it re-expands into per-row events, each
+                        # its own transaction group, so the next passes narrow the failure
+                        # to the row that actually breaks. Never quarantine a chunk without
+                        # having tried to narrow it first.
+                        if event_constants.is_collapsed_payload(pay_dict):
+                            try:
+                                n = outbox_expand.reexpand_collapsed_event(db, event, pay_dict, reason)
+                            except Exception as rx_err:
+                                n = 0
+                                logger.error(
+                                    f"[OUTBOX-4] re-expansion of collapsed event {event.event_uuid} "
+                                    f"failed; falling back to whole-chunk quarantine: {rx_err}",
+                                    exc_info=True)
+                            if n:
+                                reexpanded_rows += n
+                                payload_copy["error_log"] = {
+                                    "failed_at": datetime.now().isoformat(),
+                                    "reason": reason,
+                                    "reexpanded_into": n,
+                                }
+                                mark_processed(event, "FAILED")
+                                event.payload = payload_copy
+                                failed_permanently_count += 1
+                                continue
+
+                        mark_processed(event, "FAILED")   # Quarantine from worker queries
+                        payload_copy["error_log"] = {
+                            "failed_at": datetime.now().isoformat(),
+                            "reason": reason
+                        }
+                        event.payload = payload_copy
+                        failed_permanently_count += 1
+                    else:
+                        event.status = "RETRYING"
+                        retrying_count += 1
+
+                with alignment_batch_counts.stage("commit"):
+                    db.commit()
+
+                if reexpanded_rows:
+                    logger.warning(
+                        f"Transaction {tx_id}: {reexpanded_rows} per-row retry event(s) written "
+                        # No em dash: the production console is Korean Windows (cp949)
+                        # and one unencodable character deletes the whole log line.
+                        f"from failed collapsed chunk(s). The failure will be narrowed to the "
+                        f"offending row(s) instead of quarantining whole chunks."
+                    )
+                if failed_permanently_count > 0:
+                    logger.error(f"Transaction {tx_id} permanently failed: {failed_permanently_count} events moved to FAILED status.")
+                if retrying_count > 0:
+                    logger.warning(f"Transaction {tx_id} marked for retry: {retrying_count} events set to RETRYING status ({max_retry_num}/{attempts_cap}).")
+
+                failed_any = True
+                # [Latency Fix #5] break 제거 — 동일 target_table 그룹만 보류(순서 보존)하고 나머지는 계속 처리.
+                blocked_targets |= group_targets
+        _log_alignment_group_work(tx_id, alignment_summary())
 
     # [Latency SLO] 배치의 모든 성공 그룹 통지를 group_order 순서대로 **인라인** 발사한다.
     #   배경 태스크(create_task) 예약은 폴링 루프의 동기 구간에 이벤트 루프가 블로킹되는 동안 기아 상태가 되어
     #   통지가 수 초 지연되고 스윕 오발동(전체 리프레시 폭주)을 유발했다. commit은 위에서 이미 완료됐으므로
     #   인라인 await가 데이터 경로를 지연시키지 않는다(F2 순서 보존·F1 스탬프 로직은 _dispatch_broadcasts 내 유지).
     if pending_broadcasts:
+        # 🔴 PER BATCH, NOT PER GROUP, SO IT IS ITS OWN LINE (S-151, 판정 261). The group
+        # line's stages have to sum to one group's wall clock; this fires once for every
+        # group in the batch, so charging it to any single group would make that sum a
+        # number no arithmetic could check.
+        t_dispatch = time.monotonic()
         await _dispatch_broadcasts(pending_broadcasts, db_session_factory)
+        logger.info("[Chain] batch: broadcast dispatch %.3f s · groups %d",
+                    time.monotonic() - t_dispatch, len(pending_broadcasts))
 
     return failed_any
 
