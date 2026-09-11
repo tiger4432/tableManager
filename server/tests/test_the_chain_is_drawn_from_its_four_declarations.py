@@ -1,0 +1,282 @@
+# -*- coding: utf-8 -*-
+"""S-178. One flow lives in four files; `/chain/graph` puts them on one picture.
+
+Owner: 「chain 이 너무 거미줄 같아」. The web is not in the code — it is in the fact that
+`chain_rules.json`, `enrichment_rules.json`, `virtual_join_rules.json` and
+`ledger_config.json` each hold a quarter of one flow, and nothing has ever joined them.
+
+🔴 WHAT THIS FILE GUARDS IS THAT THE PICTURE IS READ, NEVER INFERRED.
+Every edge comes from a declaration through the product's own loader, and 「who wakes
+whom」 is asked of the WORKER'S function rather than re-implemented — a second
+implementation of that predicate would eventually draw a wake that does not happen, which
+is worse than drawing none. The test for it calls the same function the route does and
+compares, so the two cannot drift apart silently.
+
+⚠️ AND ONE EDGE THE ORDER ASKED FOR CANNOT BE DRAWN, which is pinned here as a stated
+limit rather than left to be discovered: a reference view is arbitrary SQL and the
+declaration never names the tables it reads.
+"""
+import os
+import sys
+
+import pytest
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
+server_dir = os.path.abspath(os.path.join(script_dir, ".."))
+if server_dir not in sys.path:
+    sys.path.insert(0, server_dir)
+
+import chain_graph                                                   # noqa: E402
+import chain_ingestion_worker as worker                              # noqa: E402
+
+
+TRIGGER = "cg_test_trigger"
+TARGET = "cg_test_target"
+DERIVED = "cg_test_derived"
+RIGHT = "cg_test_reference"
+
+
+class _FakeDb:
+    def get_bind(self):
+        return type("B", (), {"dialect": type("D", (), {"name": "sqlite"})()})()
+
+
+def chain_rule(**kw):
+    base = {"name": "cg_rule", "trigger_table": TRIGGER, "target_table": TARGET,
+            "enabled": True}
+    base.update(kw)
+    return base
+
+
+def by_kind(graph, kind):
+    return [e for e in graph["edges"] if e["kind"] == kind]
+
+
+def node(graph, name):
+    return next(n for n in graph["nodes"] if n["id"] == name)
+
+
+@pytest.fixture(name="graph")
+def fixture_graph(monkeypatch):
+    """The four loaders, each answering with one declaration, through the real assembler."""
+    import enrichment_config
+    import virtual_join_config as vjc
+    from database import crud
+
+    rules = [chain_rule()]
+    monkeypatch.setattr(chain_graph, "_chain_rule_file", lambda: rules)
+    monkeypatch.setattr(worker, "load_chain_rules", lambda: rules)
+    monkeypatch.setattr(enrichment_config, "load_enrichment_rules",
+                        lambda **kw: [{"name": "cg_enrich", "derived_table": DERIVED,
+                                       "enabled": True,
+                                       "decision_key": ["job", "slot"]}])
+    monkeypatch.setattr(vjc, "load_virtual_join_rules",
+                        lambda **kw: [{"name": "cg_vjoin", "left_table": TARGET,
+                                       "right_table": RIGHT, "enabled": True,
+                                       "right_columns": ["ref_id"], "right_folds": [None],
+                                       "expose": ["grade"]}])
+    monkeypatch.setattr(vjc, "unique_index_covering",
+                        lambda *a, **kw: "uq_vjoin_cg_test_reference_ref_id")
+    monkeypatch.setattr(crud, "TABLE_CONFIG",
+                        {TRIGGER: {}, TARGET: {}, DERIVED: {}, RIGHT: {}})
+
+    class _Plan:
+        relation, status, planned, refusal = TARGET, "active", True, None
+
+    snapshot = type("S", (), {"source_plans": {"cg_source": _Plan()}})()
+    monkeypatch.setattr("ledger.setup.load_setup",
+                        lambda *a, **kw: type("Setup", (), {"snapshot": snapshot})())
+    monkeypatch.setattr("ledger.followup.base_tables_of", lambda e, r: (r,))
+    return chain_graph.chain_graph(_FakeDb())
+
+
+# ---------------------------------------------------------------------------
+# 1. Four files, four edge kinds, and the counts that let a reader check it
+# ---------------------------------------------------------------------------
+
+def test_each_declaration_contributes_its_own_kind(graph):
+    assert {e["kind"] for e in graph["edges"]} == {
+        "mapper", "enrich", "vjoin", "ledger"}
+
+
+def test_the_counts_say_what_each_file_declared(graph):
+    """🔴 THE GATE'S NUMBER. The picture is checkable against the files rather than
+    believed: an edge that appears without a rule behind it moves one of these."""
+    assert graph["counts"]["chain_rules"] == 1
+    assert graph["counts"]["enrichment_rules"] == 1
+    assert graph["counts"]["virtual_joins"] == 1
+    assert graph["counts"]["ledger_sources"] == 1
+    assert graph["counts"]["edges"] == len(graph["edges"])
+    assert graph["counts"]["nodes"] == len(graph["nodes"])
+
+
+def test_the_mapper_edge_carries_what_decides_whether_it_fires(graph):
+    edge = by_kind(graph, "mapper")[0]
+    assert (edge["from"], edge["to"]) == (TRIGGER, TARGET)
+    assert edge["rule"] == "cg_rule" and edge["enabled"] is True
+    assert edge["allow_chain_trigger"] is False
+
+
+def test_the_vjoin_edge_points_from_the_right_table_and_names_its_index(graph):
+    """The join feeds the LEFT table at read time, so the arrow runs right -> left. The
+    index is asked of the database because a declared rule with no index is not in
+    effect, and a picture showing it live would be showing a join that is not happening."""
+    edge = by_kind(graph, "vjoin")[0]
+    assert (edge["from"], edge["to"]) == (RIGHT, TARGET)
+    assert edge["unique_index"] == "uq_vjoin_cg_test_reference_ref_id"
+
+
+def test_the_ledger_is_one_node(graph):
+    edge = by_kind(graph, "ledger")[0]
+    assert edge["to"] == chain_graph.LEDGER_NODE_ID
+    assert edge["from"] == TARGET and edge["source"] == "cg_source"
+    ledger_nodes = [n for n in graph["nodes"] if n["kind"] == chain_graph.NODE_LEDGER]
+    assert len(ledger_nodes) == 1, (
+        "fifteen ledger nodes would invent a distinction the declaration does not make")
+
+
+# ---------------------------------------------------------------------------
+# 2. 🔴 The half-graph that already cost a round
+# ---------------------------------------------------------------------------
+
+def test_a_rule_that_also_writes_map_metadata_draws_both_edges(monkeypatch, graph):
+    """MEASURED 2026-09-04, on the validator this picture sits beside: a rule under
+    `allow_map_metadata_upsert` writes map metadata TOO, that write raises its own chain
+    event, and a graph that saw one of the two writes passed a live cycle. A picture with
+    the same blind spot would hide the same cycle."""
+    import map_meta_registrar
+
+    edges = chain_graph._mapper_edges(
+        [chain_rule(allow_map_metadata_upsert=True)])
+    assert len(edges) == 2
+    assert {e["to"] for e in edges} == {TARGET, map_meta_registrar.META_TABLE}
+    metadata_edge = next(e for e in edges
+                         if e["to"] == map_meta_registrar.META_TABLE)
+    assert metadata_edge["via"] == "allow_map_metadata_upsert"
+
+
+def test_the_metadata_edge_is_not_taken_from_the_rule(monkeypatch):
+    """⛔ `metadata_target_table` NAMES THE MAPPER'S SOURCE in one shipped rule, so
+    borrowing it for this arrow would draw it backwards. The table comes from the
+    registrar."""
+    import map_meta_registrar
+
+    edges = chain_graph._mapper_edges([chain_rule(
+        allow_map_metadata_upsert=True, metadata_target_table="cg_not_this_one")])
+    assert all(e["to"] != "cg_not_this_one" for e in edges)
+    assert any(e["to"] == map_meta_registrar.META_TABLE for e in edges)
+
+
+# ---------------------------------------------------------------------------
+# 3. 🔴 `wakes` is the worker's own answer
+# ---------------------------------------------------------------------------
+
+def test_wakes_is_the_workers_own_predicate(graph):
+    """Not a second implementation. The route calls `_group_triggered_rules`; so does
+    this assertion, and a drift between them shows up here rather than on a screen."""
+    event = type("E", (), {"table_name": TRIGGER, "event_type": "CREATE",
+                           "payload": {"source_name": "user"}})()
+    expected = sorted(r["name"] for r in worker._group_triggered_rules(
+        [event], [chain_rule()]))
+    assert node(graph, TRIGGER)["wakes"]["user"] == expected
+
+
+def test_a_chain_write_wakes_only_what_opted_in(graph, monkeypatch):
+    """🔴 THE OPT-IN IS MOST OF WHAT MAKES THE WEB A WEB, so it is a value rather than
+    something a reader infers from the edges."""
+    rules = [chain_rule()]
+    assert chain_graph._wakes(worker, rules, TRIGGER)["chain"] == []
+
+    rules = [chain_rule(allow_chain_trigger=True)]
+    assert chain_graph._wakes(worker, rules, TRIGGER)["chain"] == ["cg_rule"]
+
+
+def test_a_table_nothing_watches_wakes_nothing(graph):
+    assert node(graph, RIGHT)["wakes"] == {"user": [], "chain": []}
+
+
+# ---------------------------------------------------------------------------
+# 4. ⚠️ The edge that cannot be drawn says so
+# ---------------------------------------------------------------------------
+
+def test_a_reference_view_is_listed_and_its_tables_are_named_absent():
+    """A reference view is arbitrary SQL; the normalised view carries `label`, `query`,
+    `limit`, `candidate_for`, `required_binds` -- and NO table name. Parsing the SQL to
+    invent an arrow would put a possibly-wrong edge on the picture an operator is using to
+    understand the web, which is worse than a missing one."""
+    edges = chain_graph._enrich_edges([{
+        "name": "cg_enrich", "derived_table": DERIVED, "enabled": True,
+        "decision_key": ["job"],
+        "reference_views": [{"label": "recent runs", "required_binds": ["job"]}]}])
+    edge = edges[0]
+    assert edge["reads_not_declared"] == 1
+    view = edge["reference_views"][0]
+    assert view["label"] == "recent runs"
+    assert view["reads"] is None, "absent, and explicitly so"
+
+
+def test_the_enrich_edge_is_the_table_feeding_itself(graph):
+    edge = by_kind(graph, "enrich")[0]
+    assert edge["from"] == edge["to"] == DERIVED
+    assert edge["decision_key"] == ["job", "slot"]
+
+
+# ---------------------------------------------------------------------------
+# 5. What the loader refused is part of the picture
+# ---------------------------------------------------------------------------
+
+def test_a_refused_cycle_is_shown_rather_than_hidden(monkeypatch):
+    """It is the one thing an operator cannot see anywhere else: the rules are in the
+    file, look live, and the worker refused the whole document over them."""
+    loop = [chain_rule(name="a", trigger_table="t1", target_table="t2",
+                       allow_chain_trigger=True),
+            chain_rule(name="b", trigger_table="t2", target_table="t1",
+                       allow_chain_trigger=True)]
+    monkeypatch.setattr(chain_graph, "_chain_rule_file", lambda: loop)
+    monkeypatch.setattr(worker, "load_chain_rules", lambda: loop)
+    import enrichment_config
+    import virtual_join_config as vjc
+    monkeypatch.setattr(enrichment_config, "load_enrichment_rules", lambda **kw: [])
+    monkeypatch.setattr(vjc, "load_virtual_join_rules", lambda **kw: [])
+    monkeypatch.setattr("ledger.setup.load_setup",
+                        lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("no ledger")))
+
+    graph = chain_graph.chain_graph(_FakeDb())
+    assert graph["cycles"] and "cycle" in graph["cycles"][0]
+    # And a quarter of the picture missing is NAMED, not silently empty.
+    assert "no ledger" in graph["ledger_error"]
+
+
+def test_a_healthy_load_carries_no_error_key(graph):
+    """An absent key means 「nothing to say」; a present one means 「this quarter is
+    missing, and here is why」. They must not render alike."""
+    assert "ledger_error" not in graph
+    assert graph["cycles"] == []
+
+
+# ---------------------------------------------------------------------------
+# 6. The route
+# ---------------------------------------------------------------------------
+
+def test_the_route_answers_and_is_gated(client, monkeypatch):
+    import admin_auth
+    from main import app
+
+    token = "s178-graph-token"
+    monkeypatch.setenv(admin_auth.ADMIN_TOKEN_ENV, token)
+    res = client.get("/chain/graph", headers={admin_auth.ADMIN_TOKEN_HEADER: token})
+    assert res.status_code == 200, res.text
+    payload = res.json()
+    assert "nodes" in payload and "edges" in payload and "counts" in payload
+    assert res.headers.get("Cache-Control") == "no-store"
+
+    # ⚠️ `/chain/graph` IS NOT UNDER `/admin`, so `test_admin_auth`'s durable audit does
+    # not walk it. It reads the operator's live declarations, so the gate is asserted here
+    # by name rather than assumed.
+    for route in app.routes:
+        if getattr(route, "path", None) == "/chain/graph":
+            calls = {getattr(d, "dependency", None)
+                     for d in getattr(route, "dependencies", ())}
+            assert calls & set(admin_auth.ADMIN_GATES)
+            return
+    raise AssertionError("/chain/graph is not registered")

@@ -3978,6 +3978,26 @@ def retry_failed_outbox_events(event_id: int = None, transaction_id: str = None,
 # 질문은 이 화면에 없다. 잘렸다는 사실은 응답의 `listed.capped` 로 «말한다».
 _QUEUE_LIST_CAP = 200
 
+@app.get("/chain/graph", dependencies=[Depends(require_admin_token)])
+def get_chain_graph(db: Session = Depends(get_db)):
+    """한 흐름을 «네 선언»이 나눠 적은 것을 «한 그림»으로 (S-178).
+
+    소유자: 「chain 이 너무 거미줄 같아」. 거미줄은 «코드»에 있는 게 아니라,
+    chain_rules · enrichment_rules · virtual_join_rules · ledger_config 넷이 한 흐름을
+    나눠 적고 있는데 그 넷을 «한 화면»에 놓은 자리가 없다는 데 있습니다.
+
+    🔴 로직 0. 정하는 것이 없습니다 — 노드도 엣지도 «제품이 쓰는 로더»로 선언에서 읽습니다.
+    라이브 파일은 «읽기만» 합니다.
+
+    🔴 「누가 누구를 깨우나」는 워커의 «그 함수»에 묻습니다(`_group_triggered_rules`).
+    두 번째 구현을 두면 「일어나지 않는 깨움」을 그리게 되고, 그건 안 그리는 것보다 나쁩니다.
+    """
+    import chain_graph as _chain_graph
+
+    return JSONResponse(content=_chain_graph.chain_graph(db),
+                        headers={"Cache-Control": "no-store"})
+
+
 @app.get("/runtime", dependencies=[Depends(require_admin_token)])
 def get_runtime_loops(db: Session = Depends(get_db)):
     """아홉 고리가 «마지막으로 무엇을 했나» — 값만. 판정은 `/health` 가 합니다 (S-176).
