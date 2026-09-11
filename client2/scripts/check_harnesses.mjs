@@ -1423,7 +1423,10 @@ const FLOORS = new Map([
   // 🔴 AND IT IMPORTS ITS SUBJECT. The existing harness for this screen slices, on a reason
   //    that is false today (「config.js touches window at module scope」) -- this file is the
   //    measurement that says so.
-  ['reference_view_head_harness.mjs', 16],
+  // 🔴 C-73 raised this from 16: the render checks are joined by a corpus that scores the
+  // REQUEST. The panel drew correctly all through the live defect -- what was wrong was the
+  // URL, so nothing that looked at the DOM could have caught it.
+  ['reference_view_head_harness.mjs', 26],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

@@ -513,8 +513,24 @@ export async function showReferenceView() {
   activateReferenceTab();
   const row = selectedRow();
   if (!row) { elements.referenceViewContent.textContent = '그리드에서 참조할 행을 먼저 선택하세요.'; return; }
-  const params = Object.fromEntries((activeRule.decision_key || []).map(column => [column, valueOf(row, column)]));
-  if (Object.values(params).some(value => String(value).trim() === '')) { elements.referenceViewContent.textContent = '선택 행의 결정 키가 비어 있어 참조뷰를 조회할 수 없습니다.'; return; }
+  // 🔴 C-73. THE BIND IS EVERY COLUMN THE DERIVED TABLE DECLARES, NOT JUST THE DECISION KEY.
+  //    S-163 widened the server: a reference view may bind any declared column, and a key it
+  //    was not told about now comes back 400 BY NAME. Binding the decision key alone made
+  //    every view that names another column fail with `missing required bind param(s)` --
+  //    seen in production.
+  // 🔴 THE CATALOGUE IS THE AUTHORITY, and the grid is already holding it: `/schema` puts the
+  //    derived table's `column_types` in `state`, and this panel only shows for a rule whose
+  //    `derived_table` IS the current table. Deriving the list from the row instead would send
+  //    whatever the response happened to carry.
+  // ⚠️ VIRTUAL JOIN COLUMNS ARE EXCLUDED. They are not stored columns of the derived table, so
+  //    the server refuses them -- widening the bind must not widen it to those.
+  const declared = Object.keys(state.currentColumnTypes || {})
+    .filter(column => !isVirtualColumn(column) && Object.prototype.hasOwnProperty.call(row.data || {}, column));
+  const params = Object.fromEntries(declared.map(column => [column, valueOf(row, column)]));
+  // 🔴 THE EMPTINESS TEST STAYS ON THE DECISION KEY ALONE. Any other declared column is allowed
+  //    to be blank -- that is what the view is being asked about -- and testing all of them
+  //    would refuse to open the panel for exactly the rows an operator opens it for.
+  if ((activeRule.decision_key || []).some(column => String(valueOf(row, column)).trim() === '')) { elements.referenceViewContent.textContent = '선택 행의 결정 키가 비어 있어 참조뷰를 조회할 수 없습니다.'; return; }
   const sequence = ++requestSequence;
   elements.referenceViewContent.textContent = '참조뷰 조회 중…';
   const results = await Promise.all((activeRule.reference_views || []).map(async (view, index) => {

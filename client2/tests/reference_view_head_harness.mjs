@@ -52,10 +52,17 @@ function element(tag) {
   return node;
 }
 const host = element('div');
+// 🔴 EVERY id GETS A NODE, and the same node twice. `elements.*` is a GETTER over
+//    `getElementById`, so the host is handed over the way the browser hands it over --
+//    but `activateReferenceTab` also reaches for the timeline containers and tab buttons,
+//    and a `null` there throws BEFORE the request is built (measured: C-73 section died on
+//    `elements.timelineContainer.style`). Nothing in the subject is patched.
+const byId = new Map([['reference-view-content', host]]);
 globalThis.document = { createElement: element, createDocumentFragment: () => element('#f'),
-  // 🔴 `elements.referenceViewContent` is a GETTER over `getElementById`, so the host is
-  //    handed over the way the browser hands it over. Nothing in the subject is patched.
-  getElementById: (id) => (id === 'reference-view-content' ? host : null),
+  getElementById: (id) => {
+    if (!byId.has(id)) byId.set(id, element('div'));
+    return byId.get(id);
+  },
   addEventListener() {}, querySelector: () => null };
 
 
@@ -124,6 +131,133 @@ console.log('\n[4] the words are the response\'s, and a missing count is blank')
   ok('...but the name is still there', bandText(0).includes('빈'),
     bandText(0));
 }
+
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// [5] C-73 — the request binds every column the derived table DECLARES, not the decision key.
+//
+// 🔴 THE DEFECT WAS LIVE. S-163 widened the server to accept any declared column and to refuse
+//    an unknown key with a 400 that NAMES it; this screen still bound `decision_key` alone, so
+//    every view naming another column came back `missing required bind param(s)`.
+// 🔴 SCORED ON THE REQUEST, not on the render. The panel drew fine throughout -- what was wrong
+//    was the URL, which is why nothing above this line could have caught it.
+// ⚠️ The virtual-column case is pinned as a PROPERTY, not as a measurement: whether the server
+//    ever puts a join column in `column_types` as well as in `virtual_columns` is a server
+//    question this harness did not measure. If it ever does, the bind must still leave it out.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+console.log('\n[5] C-73 — the bind is the declared columns, not the decision key');
+
+const path = await import('node:path');
+const { fileURLToPath } = await import('node:url');
+const { loadWithProbe } = await import('./lib/probe.mjs');
+const { scoreMutants } = await import('./lib/mutation_scorer.mjs');
+const { state } = await import('../src/state.js');
+
+const SUBJECT = path.join(path.dirname(fileURLToPath(import.meta.url)),
+  '..', 'src', 'enrichment_reference_view.js');
+
+const RULE = {
+  name: 'r1', derived_table: 'dt_x', decision_key: ['lot', 'slot'],
+  reference_views: [{ label: 'v', candidate_for: { dt_lot: 'lot' } }],
+};
+// `note` is declared and blank -- a column the view asks ABOUT. `joined` is virtual. `stray`
+// is on the row but not declared, so the catalogue is what decides, never the response.
+const ROW = { id: 'r1', data: {
+  lot: { value: 'L-1' }, slot: { value: '07' }, note: { value: '' },
+  joined: { value: 'J' }, stray: { value: 'S' } } };
+
+function armState() {
+  state.currentTable = 'dt_x';
+  state.currentColumnTypes = { lot: 'string', slot: 'string', note: 'string', joined: 'string' };
+  state.currentVirtualColumns = [{ name: 'joined' }];
+  state.selectedCell = { rowId: 'r1', colId: 'lot' };
+  state.gridApi = { getRowNode: (id) => (id === 'r1' ? { data: ROW } : null) };
+  state.activeHistoryTab = 'reference';
+}
+
+/** Drives the panel and hands back the `params` the request actually carried. */
+async function askedParams(mod) {
+  armState();
+  let asked = null;
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes('/enrichment/rules?') || u.endsWith('/enrichment/rules')) {
+      return { ok: true, json: async () => ({ rules: [RULE] }) };
+    }
+    asked = new URL(u, 'http://x').searchParams.get('params');
+    return { ok: true, json: async () => ({ columns: ['a'], rows: [{ a: 1 }] }) };
+  };
+  await mod.syncReferenceViewRule();
+  await mod.showReferenceView();
+  return asked === null ? null : JSON.parse(asked);
+}
+
+function paramsSuite(sent) {
+  const names = [];
+  const failures = [];
+  const say = (name, cond, detail) => {
+    names.push(name);
+    if (cond) { console.log(`  PASS ${name}`); return; }
+    failures.push(detail ? `${name} — ${detail}` : name);
+    console.log(`  FAIL ${name}${detail ? ' — ' + detail : ''}`);
+  };
+  const keys = sent ? Object.keys(sent).sort().join(',') : '(no request)';
+  say('C73-1 the request is made at all', sent !== null, keys);
+  say('C73-2 params are the DECLARED columns present on the row', keys === 'lot,note,slot', keys);
+  say('C73-3 ...which is WIDER than the decision key', sent
+    && Object.keys(sent).length > RULE.decision_key.length, keys);
+  say('C73-4 every decision key is still bound', sent
+    && RULE.decision_key.every((k) => k in sent), keys);
+  say('C73-5 a declared column that is BLANK is still bound, not dropped',
+    sent && sent.note === '', JSON.stringify(sent && sent.note));
+  say('C73-6 a virtual join column is left out — the server refuses it',
+    sent ? !('joined' in sent) : false, keys);
+  say('C73-7 a column the row carries but the catalogue does not declare is left out',
+    sent ? !('stray' in sent) : false, keys);
+  return { ran: names.length, names, failures };
+}
+
+const baseMod = (await loadWithProbe(SUBJECT, {})).module;
+const baseSent = await askedParams(baseMod);
+const base = paramsSuite(baseSent);
+ran += base.ran;
+failed += base.failures.length;
+
+const MUTANTS = [
+  // 🔴 THE DEFECT ITSELF, put back. The panel still renders and the row count is unchanged;
+  //    only the URL is wrong, which is exactly how it reached production.
+  { id: 'M1', what: 'the bind narrows back to the decision key',
+    catches: 'C73-2 params are the DECLARED columns',
+    from: '  const params = Object.fromEntries(declared.map(column => [column, valueOf(row, column)]));',
+    to: '  const params = Object.fromEntries((activeRule.decision_key || [])'
+      + '.map(column => [column, valueOf(row, column)]));' },
+  { id: 'M2', what: 'virtual join columns stop being excluded',
+    catches: 'C73-6 a virtual join column is left out',
+    from: '    .filter(column => !isVirtualColumn(column) && Object.prototype.hasOwnProperty.call(row.data || {}, column));',
+    to: '    .filter(column => Object.prototype.hasOwnProperty.call(row.data || {}, column));' },
+  // 🔴 A WIDER EMPTINESS TEST CLOSES THE PANEL FOR THE ROWS IT EXISTS FOR. `note` is declared
+  //    and blank on purpose, so this mutant makes the screen refuse instead of asking.
+  { id: 'M3', what: 'the emptiness test widens to every bound column',
+    catches: 'C73-1 the request is made at all',
+    from: "  if ((activeRule.decision_key || []).some(column => String(valueOf(row, column)).trim() === '')) {",
+    to: "  if (Object.values(params).some(value => String(value).trim() === '')) {" },
+];
+
+const runMutant = async (m) => {
+  const loaded = await loadWithProbe(SUBJECT, {
+    mutate: (text) => {
+      if (!text.includes(m.from)) throw new Error(`mutation anchor is GONE: ${m.id}`);
+      return text.split(m.from).join(m.to);
+    },
+  });
+  return paramsSuite(await askedParams(loaded.module));
+};
+
+const scored = await scoreMutants(MUTANTS, runMutant,
+  { baselineRan: base.ran, baselineNames: base.names,
+    title: '\n  C-73 mutants — each must be caught by the check it names.' });
+ran += MUTANTS.length;
+failed += scored.wrong;
 
 console.log(`\n════ RESULT: ${ran - failed} passed, ${failed} failed ════`);
 console.log(`ASSERTIONS ${ran} ${failed}`);
