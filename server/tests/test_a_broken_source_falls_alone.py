@@ -258,37 +258,59 @@ def bundle_with_a_broken_join_rule():
     return raw
 
 
-def test_a_broken_join_rule_takes_the_sources_that_inherit_it(tmp_path):
-    """⚠️ MEASURED, AND IT DOES NOT HOLD TODAY -- see the assertion's own message.
+def test_a_broken_join_rule_takes_only_the_sources_that_inherit_it(tmp_path):
+    """판정 281. A broken rule falls WITH its inheritors, and the bundle survives.
 
-    `resolve_declarations` blames a declaration through `ground_node_key`, and that
-    function reads `AUTHORABLE_SECTIONS` -- vocabulary, entities, sources. `virtual_joins`
-    is not in it, so a broken rule blames NOTHING, lands in `config_level`, and the whole
-    bundle is refused. The two questions share one map: 「what a screen may create」 and
-    「what the loader may isolate」 are not the same question, and widening the authoring
-    map would put a new declaration kind on the explorer's surface.
-
-    Pinned as the CURRENT behaviour rather than as the wanted one, so the day the map is
-    split this test fails and says which half to move.
+    ⚰️ THIS TEST ASSERTED THE OPPOSITE ONE COMMIT AGO, and the reversal is the point.
+    Measured then: `resolve_declarations` blamed through `ground_node_key`, which reads
+    the AUTHORING map -- vocabulary, entities, sources -- so a broken join rule blamed
+    NOTHING, landed in the config-level list, and refused the whole bundle. The ruling
+    split the maps rather than widening the authoring one, and this is the same fixture
+    reading the same way with the answer it should always have had.
     """
     document = bundle_with_a_broken_join_rule()
+    setup = load_setup(write_root(tmp_path, document))
 
-    with pytest.raises(Exception) as refused:
-        load_setup(write_root(tmp_path, document))
+    # The bundle LOADS. That is the whole of it: one typo in one rule used to stop every
+    # ledger on the deployment.
+    inheritor = setup.snapshot.source_plans[HEALTHY]
+    bystander = setup.snapshot.source_plans[BROKEN]
 
-    message = str(refused.value)
-    assert "input_to_reference" in message or "virtual_joins" in message, message
-    assert "every_source_refused" not in message, (
-        "if this ever changes to a per-declaration refusal, the isolation has reached "
-        "join rules and this test is the place that says so")
+    assert inheritor.planned is False, (
+        "a source whose declared join rule is gone cannot keep its own declaration")
+    assert "input_to_reference" in str(inheritor.refusal), inheritor.refusal
+    assert bystander.planned is True, (
+        "the source that never named the rule is nobody's casualty")
 
 
-def test_the_isolation_unit_for_a_join_rule_is_not_declared_today():
-    """The one-line reason, measured rather than recalled: the blame function's map."""
-    from ledger.config_authoring import ground_node_key
+def test_the_loader_isolates_a_join_rule_and_the_screen_still_does_not_author_one():
+    """The two maps, side by side, because they answer two questions (판정 281).
 
-    assert ground_node_key("bundle.sources.dt_log.read") == "source_plan|dt_log"
-    assert ground_node_key("bundle.vocabulary.moves_to@1.object") == "predicate|moves_to@1"
-    assert ground_node_key("bundle.entities.InputEntity@1.keys") == "entity|InputEntity@1"
-    # 🔴 THE ROW OF THE TABLE THAT IS STILL OPEN.
-    assert ground_node_key("bundle.virtual_joins.input_to_reference.join_key") is None
+    Widening the AUTHORING map would have put a new declaration kind on the explorer's
+    surface -- an operator could then create and delete join rules from a screen that was
+    never designed to. The loading map is the one that had to grow.
+    """
+    from ledger.config_authoring import ground_node_key, isolation_key
+    from ledger.config_explorer import AUTHORABLE_SECTION_NAMES, ISOLATION_ROOTS
+
+    rule_path = "bundle.virtual_joins.input_to_reference.join_key"
+    assert isolation_key(rule_path) == "virtual_join|input_to_reference"
+    # 🔴 UNCHANGED, and asserted rather than assumed: the screen's surface did not move.
+    assert ground_node_key(rule_path) is None
+    assert "virtual_joins" not in AUTHORABLE_SECTION_NAMES
+    assert "virtual_joins" in ISOLATION_ROOTS
+    assert AUTHORABLE_SECTION_NAMES < ISOLATION_ROOTS, (
+        "the loading map must stay a strict superset, or a section becomes authorable "
+        "without becoming isolatable")
+
+    # The three that were already isolatable still are, and read the same on both maps.
+    for path, key in (
+        ("bundle.sources.dt_log.read", "source_plan|dt_log"),
+        ("bundle.vocabulary.moves_to@1.object", "predicate|moves_to@1"),
+        ("bundle.entities.InputEntity@1.keys", "entity|InputEntity@1"),
+    ):
+        assert isolation_key(path) == key
+        assert ground_node_key(path) == key
+
+    # And neither map blames something that is not a declaration at all.
+    assert isolation_key("bundle.setup_version") is None
