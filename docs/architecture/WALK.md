@@ -54,7 +54,7 @@ client2/src/rnd_board/walk_box_panel.js
 ## 3. 라우트 — 데이터에 답하는 것은 «하나»
 
 ```
-GET /api/ledger/subgraph     걷기. 아래 인자 «열셋»
+GET /api/ledger/subgraph     걷기. 아래 인자 «열넷»
 GET /api/ledger/declaration  무엇을 물을 수 있나 (entities · predicates · sources)
 GET /api/ledger/gaps
 ```
@@ -63,6 +63,7 @@ id(alias)  hops 1–40 (기본 12)  direction outgoing|incoming|both  node_limit
 edge_limit 20–MAX  positive[]  negative[]  follow[]  collect[]  backbone_hops 0–40
 since  until      ISO 시각 둘. 반열린 구간 [since, until) — 아래 「구간 걷기」 절
 include_superseded  기본 false. 대체된 원자도 그릴지 (S-141)
+format              `json`(기본) | `rows` — 아래 「행 투영」 절 (S-183, 09-11)
 ```
 ⚰️ **여기 「아홉」이라 적혀 있었고 목록은 «열» 이었습니다**(2026-09-10 D-3 실측).
 셈이 하나 어긋난 채로, S-98 이 더한 `since`·`until` 이 «둘 다» 빠져 있었습니다 —
@@ -224,6 +225,23 @@ class     🔴 그대로 — **출하 샘플에서도** 아홉 중 «여섯»이
               결과에 «타입 분포»가 붙어 「걸렀다」가 눈에 보이고,
               카운트 줄이 「노드 121 (collect: defect) · 엣지 249 (전부)」로 «주어»를 답니다
 ```
+
+## 🔵 행 투영 — `format=rows` (S-183, 2026-09-11)
+
+```
+GET /api/ledger/subgraph?…&format=rows      «같은 걷기 결과»를 TSV 로 접는다 — 라우트는 «그대로»
+행        닿은 노드 «하나»
+열        고정 `type · depth · id · parent_id · via · seed` + «선언 열»
+          (닿은 타입들의 키·수식어·속성의 «합집합» — 선언에 있는 이름만)
+머리      `# truncated=<사유> nodes=N limit=M` — 잘렸는지를 «첫 줄»이 말한다
+```
+🔵 **라우트를 «더 파지 않았다»** — 늘어난 것은 «인자»이지 갈래가 아니다(상설: 「라우트를 더 판다」가
+어기는 셋 중 하나). 소유자의 물음은 「collect 안 걸고 여러 타입을 표로 받아 스팟파이어에서 쓰기」였고,
+그것은 «다른 질문»이 아니라 «같은 답의 다른 모양»이다.
+⚠️ 실측(09-11 22:42, 이 박스): 15 열 · 130 행 · `truncated=depth` — 행 수가 JSON 노드 수와 같다.
+🔴 그리고 이 절이 «두 번» 라이브에서 거절당하고서야 섰다: ① `rows` 가지가 «시험에서 한 번도
+안 불렸고»(500, NameError) ② 픽스처가 «제품 모양이 아니라» 선언 열이 «0» 이었다.
+📌 새 가지는 «라우트를 직접 불러» 봐야 한다 — 스위트는 자기가 부른 것에 대해서만 초록이다.
 
 ## 🔴 구간 걷기 — `since` · `until` (S-98, 판정 208)
 
