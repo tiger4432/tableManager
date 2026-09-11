@@ -47,7 +47,7 @@
   },
   "dt_log": {
     "__comment": "[source_config.xlsx] Ontology Class: transfer.",
-    "__search_columns": "optional string[] - which columns `?q=` searches. Absent = composite_key_source (here dt_job_id/b_wx/b_wy); `?cols=` overrides it per request. Naming every column made one search 31 ILIKE arms and 6 joins.",
+    "__search_columns": "optional string[] - which columns `?q=` searches. Absent = composite_key_source (here dt_job_id/b_wx/b_wy); `?cols=` overrides it per request. Naming every column made one search 31 ILIKE arms and 6 joins. dt_log's six virtual columns (dt_x_*/dt_y_*) come back if they are named here - and bring those six joins (~2 s) back with them, which is why this table declares none.",
     "composite_key_source": [
       "dt_job_id",
       "b_wx",
@@ -102,9 +102,15 @@
   },
   "dt_inventory": {
     "__comment": "[source_config.xlsx] Ontology Class: lineage.",
+    "__search_columns": "Widened past the identity on purpose: dt_lot_confirmed/dt_slot_confirmed are VIRTUAL (virtual_join_rules dt_inventory_confirmed_from_attribution), so without naming them here an unscoped `?q=` cannot reach a value the grid is showing. One join, so it is cheap - and it is the worked example of recovering a virtual column BY DECLARATION. dt_job is kept because a declaration REPLACES the default rather than adding to it.",
     "business_key": "dt_job_id",
     "composite_key_source": [
       "dt_job"
+    ],
+    "search_columns": [
+      "dt_job",
+      "dt_lot_confirmed",
+      "dt_slot_confirmed"
     ],
     "column_types": {
       "dt_job": "string",
