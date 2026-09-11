@@ -20,10 +20,11 @@
 |---|---|---|---|---|---|---|
 | ① | **웹 라우트** | 웹 | 요청 | 동적 표 · `cell_sources` · `cell_overwrites` · 원장(walk) | `[get_table_data] Total … ID Scan … Layer Merge … Other` (S-123) | 없음 — 요청은 곧 사용자 |
 | ② | **워처 (파일 인제션)** | 웹(통합) / run_watcher | `raws/` 파일 이벤트 · 기동 스윕 · **300 s 주기 재스캔**(`watcher-periodic-sweep`) | 그 표 + `file_ingestion_logs` + 큰 적재 뒤 `ANALYZE <표>` (S-124) | `[<표>] … rows` · `statistics re-analysed after N row(s)` | 파일을 `raws/` 밖으로 · `ingestion_settings.json` `analyze_after_rows`(0=끔) · 10 MB 초과는 `watcher-heavy-lane` 스레드로 격리 |
-| ③ | **체인 워커** | 웹(통합) / run_chain_worker | `database_outbox` 의 LISTEN/NOTIFY(≤2 s) · **5 s 스윕** | 규칙의 `target_table` 들 · `database_outbox` · 정렬(alignment) 표 | `[Chain]` · **그룹 줄 세 층**(아래 §1-bis) · **`[Chain] batch: broadcast dispatch … · groups N`** · `[HOL Guard] Deferring tx …` · `[Chain] tx … deferred: rows_not_visible …` · `Failed to execute mapper in tx …` | `chain_rules.json` 의 규칙 `enabled:false` · **`max_group_attempts`**(기본 1) · **`max_rows_not_visible_defers`**(기본 30 ≈ 1분) — 셋 다 «문서 최상단 칸»이고 «SYSTEM_RELOAD 로 반영»된다 |
+| ③ | **체인 워커** | 웹(통합) / run_chain_worker | `database_outbox` 의 LISTEN/NOTIFY(≤2 s) · **5 s 스윕** | 규칙의 `target_table` 들 · `database_outbox` · 정렬(alignment) 표 | `[Chain]` · **그룹 줄 세 층**(아래 §1-bis) · **`[Chain] batch: broadcast dispatch … · groups N`** · `[HOL Guard] Deferring tx …` · `[Chain] tx … deferred: rows_not_visible …` · `Failed to execute mapper in tx …` · 🆕 **표마다·스윕마다 HOL 한 줄**(머리의 사유를 들고, S-157) | `chain_rules.json` 의 규칙 `enabled:false` · **`max_group_attempts`**(기본 1) · **`max_rows_not_visible_defers`**(기본 30 ≈ 1분) — 셋 다 «문서 최상단 칸»이고 «SYSTEM_RELOAD 로 반영»된다 |
 | ③-b | **LISTEN 커넥션** | ③ 안 | `database_outbox` 채널 알림 | (읽지 않음 — 알림만) | `[Outbox Listener]` | 🔴 **풀 «밖» 전용이다**(S-167): `psycopg2.connect` 로 «풀이 본 적 없는» 커넥션을 쓰고 `_reset_connection` 의 close 는 «진짜 닫기»다. ⛔ `engine.raw_connection()` 으로 되돌리지 말 것 — LISTEN 이 요구하는 autocommit 이 «풀로 반납»되면 다음 대여자가 트랜잭션을 못 열어 `begin_nested()` 가 25P01 로 터진다(그 형태로 112 회 실측) |
 | ③-a | **outbox 정리** | 체인 안 | 1 h | `database_outbox` (7 일 지난 행 삭제) | `[Outbox Purge]` | 없음(소량) |
-| ④ | **원장 후속 큐** | 체인 안(별 태스크) | 큐 + pace `chain_followup`=`trickle`(1 단위 · 3 s) | 원장(`ledger_*`) · 커서/등록부 | `[LedgerFollowUp]` · 영수증은 `/audit_logs/recent` `ledger_batch` (S-117) | `pacing.json` `jobs.chain_followup` (재기동 없음) |
+| ③-c | **격리 재전개** | ③ 안(실패 뒤) | 그룹 실패 | `database_outbox` (자식 사건) | 자식의 `reexpanded_from.depth` | 🆕 **«이분»이다**(S-173) — 실패한 청크를 «반»으로 가른다. 독 든 행 하나가 사건 «21 개»를 쓴다(종전 1,000). 각 반쪽이 자기 트랜잭션 그룹이고 자식이 «자기 경로»를 접두로 남겨(`a`·`ab`·`abb`) 접두 검색 하나로 계보가 나온다. 상한 `MAX_REEXPANSION_DEPTH = 12` |
+| ④ | **원장 후속 큐** | 체인 안(별 태스크) | 큐 + pace `chain_followup`=`trickle`(1 단위 · 3 s) | 원장(`ledger_*`) · 커서/등록부 | 🆕 `[LedgerFollowUp] lap: N item(s) in T s, M left in the queue (rest R s between)` — **«움직인 바퀴»에만 찍는다**(빈 바퀴 줄은 움직인 바퀴를 묻는다). `[LedgerFollowUp]` · 영수증은 `/audit_logs/recent` `ledger_batch` (S-117) | `pacing.json` `jobs.chain_followup` (재기동 없음) |
 | ⑤ | **원장 센서스** | 체인 안(별 태스크) | pace `ledger_row_census`=`background`(1 소스 · 60 s) — «한 바퀴 = 소스 수 분» | 읽기만: `pg_class`(추정) · 등록부 `rows_indexed`(S-122-b) · **뷰 소스만 count(*)** | `[LedgerCensus]` 바퀴 벽시계 한 줄 | `pacing.json` `jobs.ledger_row_census` (재기동 없음) · 정확 수는 사람이 `python -m ledger census` |
 | ⑥ | **수집기 (auto_update)** | run_auto_update | 5 s 틱 · 각 수집기의 `next_run` | 수집기가 쓰는 표(→ ② 와 같은 경로로 적재) | `Scheduler daemon started` · 수집기 이름 | `auto_update` 설정의 그 수집기 |
 | ⑦ | **PG 자기 일** | DB | 큰 적재·삭제 뒤 «스스로» | autovacuum / autoanalyze / `CREATE INDEX CONCURRENTLY` | `pg_stat_activity` · `pg_stat_progress_vacuum` · `pg_stat_progress_create_index` | PG 설정(우리 것 아님) |
@@ -73,8 +74,20 @@ batch: broadcast dispatch T s · groups N                       <- 배치당 «�
 ```
 server/pacing.json                     ④⑤ 의 pace. 바퀴마다 다시 읽음 → 재기동 없음
 server/config/ingestion_settings.json  ② analyze_after_rows · heavy 임계 · 파일 경계 핫리로드 → 재기동 없음
-server/config/chain_rules.json         ③ 규칙 enabled → 🔴 기동 때만 읽음 → 재기동
+server/config/chain_rules.json         ③ 규칙 enabled · max_group_attempts · max_rows_not_visible_defers
+                                       ⚰️ **「기동 때만 읽음 → 재기동」은 거짓이었다**(09-11 D-6 실측, 09-11 D-8 재확인):
+                                       `load_chain_rules()` 가 SYSTEM_RELOAD 에서도 돌고(:2721) `rules` 를 다시 묶으며,
+                                       두 손잡이는 `_RULES_DOCUMENT` 를 «부를 때마다» 읽는다 → **재기동 없음**
 DECOUPLED=True                          0 절의 분리 모드 → 재기동
+```
+### 운영자 «명령» 둘 — 설정이 아니라 «도구»다 (09-11)
+```
+server/scripts/tune_layer_tables.py   층 표의 배큠 상태를 «읽는다». dry-run 이 기본이고 **아무것도 정하지 않는다**
+                                      (dead/live · last_autovacuum · reloptions · progress) — `--apply` 는 표별 설정
+server/scripts/outbox_triage.py       터진 재전개 홍수를 치운다 — per-row 사건을 «건너뛰고» 접힌 채로 다시 쏜다
+                                      (`--count` 로 먼저 «센다»)
+🔵 둘 다 «소유자가 SQL 을 못 낸다»는 제약에서 나온 모양이다(판정 276) — 운영을 여기서 못 재므로
+   제품과 도구가 값을 «말해» 주고, 판단은 사람에게 남긴다
 ```
 
 ## 4. 이 장이 아직 못 말하는 것 (적어 두는 미지)
