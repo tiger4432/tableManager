@@ -942,9 +942,13 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                 event.event_type,
                 tx_id)
 
-    valid_events = [e for e in events if e.event_type in ["CREATE", "EDIT"] and any(
-        r.get("trigger_table") == e.table_name and r.get("enabled", True)
-        and _rule_accepts_event(r, e) for r in rules)]
+    # Named for the same reason as `mark processed`: it walks every event against every
+    # rule, so it is O(events x rules) on a thousand-row group and nothing on the line
+    # said whether that mattered.
+    with alignment_batch_counts.stage("trigger filter"):
+        valid_events = [e for e in events if e.event_type in ["CREATE", "EDIT"] and any(
+            r.get("trigger_table") == e.table_name and r.get("enabled", True)
+            and _rule_accepts_event(r, e) for r in rules)]
     if not valid_events:
         return True, None, broadcast_messages
 
@@ -1646,13 +1650,21 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                 t_mapper_done = time.monotonic()
                 has_messages = bool(broadcast_messages)
                 # commit 시 expire_on_commit으로 속성이 만료되므로 id를 커밋 전에 캡처(재조회 N+1 방지).
-                event_ids = [event.id for event in events_in_tx]
-                for event in events_in_tx:
-                    mark_processed(event, "SUCCESS")
-                    # [Reliability F1] 통지할 메시지가 없는 no-op 그룹은 전달할 것이 없으므로 즉시 전달 확정(스윕 제외).
-                    # 메시지가 있는 그룹은 broadcast_at을 NULL로 두고, 통지 성공 시 _dispatch_broadcasts가 스탬프한다.
-                    if not has_messages:
-                        event.broadcast_at = func.now()
+                # 🔴 NAMED BECAUSE IT IS PER EVENT, AND A GROUP IS A THOUSAND OF THEM
+                # (S-151 ③). The MACHINERY remainder is 0.327 s and this is the only
+                # thousand-iteration loop left inside it - three attribute writes per
+                # outbox row, each on an ORM object the session will flush. Whether that
+                # is most of the remainder or none of it is exactly what could not be
+                # read off the line before, and naming the unnamed is what found the
+                # 0.875 s hook in the first place.
+                with alignment_batch_counts.stage("mark processed"):
+                    event_ids = [event.id for event in events_in_tx]
+                    for event in events_in_tx:
+                        mark_processed(event, "SUCCESS")
+                        # [Reliability F1] 통지할 메시지가 없는 no-op 그룹은 전달할 것이 없으므로 즉시 전달 확정(스윕 제외).
+                        # 메시지가 있는 그룹은 broadcast_at을 NULL로 두고, 통지 성공 시 _dispatch_broadcasts가 스탬프한다.
+                        if not has_messages:
+                            event.broadcast_at = func.now()
                 with alignment_batch_counts.stage("commit"):
                     db.commit()
                 t_commit_done = time.monotonic()
