@@ -57,6 +57,16 @@ function canonIntString(s) {
 //   · null/undefined stay null (composition sites decide their own placeholder).
 export function canonicalKeyValue(value, colType) {
   if (value === null || value === undefined) return null;
+  // 🔴 C-76 / 판정 284 (S-181): 「빈 것은 NULL」이고 «타입을 안 가립니다». 서버의
+  //    `canonical_key_value` 도 타입을 안 보고, 계약 벡터가 `num_empty` 를 `null` 로
+  //    핀했습니다(`contracts/map_seam/vectors.json`). 이 줄이 없던 동안 계약 게이트가
+  //    빨갛고 main 에서 클라 «빌드가 안 됐습니다».
+  // ⚠️ `0` 과 `false` 는 «값»입니다 — `String(0).trim()` 은 `'0'` 이라 여기 안 걸립니다.
+  //    걸리는 것은 길이 0 과 «공백뿐인» 문자열입니다.
+  // 🔵 합성 키는 «안 바뀝니다»: `composeMapId` 가 null 을 `''` 로 이어 붙이고, 서버의
+  //    `compose_business_key` 도 `clean_str_value` 로 None 과 '' 를 «같은 ''» 로 접습니다.
+  //    두 쪽이 같은 규칙이라 전/후의 키가 같습니다(하니스가 그것을 단언합니다).
+  if (String(value).trim() === '') return null;
   if (colType === 'number' && typeof value !== 'boolean') {
     if (typeof value === 'number') {
       if (Number.isFinite(value) && Number.isInteger(value)) return String(value);

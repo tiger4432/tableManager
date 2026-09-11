@@ -124,8 +124,11 @@ const CANON_MATRIX = [
   ['7.5', 'number', '7.5'],
   ['0x10', 'number', '0x10'],      // unreadable -> trimmed original, never invented
   ['LOT', 'number', 'LOT'],
-  ['', 'number', ''],
-  ['  ', 'number', ''],
+  // 🔴 C-76 / 판정 284 (S-181): «빈 것은 NULL». 이 두 줄은 `''` 였고, 계약 벡터가
+  //    `num_empty` 를 null 로 옮긴 뒤에도 «이 표가 자기 답을 들고 있어» 초록이었다 —
+  //    하니스가 자기 표를 들면 이음매가 갈려도 안 빨개진다는 실물이다.
+  ['', 'number', null],
+  ['  ', 'number', null],
   // string / undeclared: TRIM ONLY. '01' must survive as '01'.
   ['01', 'string', '01'],
   [' 01 ', 'string', '01'],
@@ -156,6 +159,44 @@ const SPELLINGS = [
 const composed = SPELLINGS.map(v => H.composeMapId(['lot', 'slot'], v, NUM_TYPES));
 check('7b-1', 'LOT_01 / LOT_1 / LOT_ 1  / LOT_1.0 compose to one map_id',
   Array.from(new Set(composed)), ['LOT_1']);
+
+// ════════════════════════════════════════════════════════════════════════════════
+// C-76 / 판정 284 (S-181) — 「빈 것은 NULL」이고 타입을 «안 가린다».
+//
+// 🔴 이 줄이 없는 동안 `contracts/map_seam` 이 발산했고, prebuild 가 계약 게이트를 먼저
+//    돌므로 main 에서 «클라 빌드가 죽어 있었다». 서버 절반과 계약 벡터는 갔고 클라만 안 갔다.
+// 🔴 그리고 이 하니스는 «그때도 초록»이었다(116/0) — 자기 표를 들고 있어 벡터를 안 읽는다.
+//    그래서 이 부류를 잡은 것은 계약 게이트 «하나»이고, 아래 줄들은 그 구멍을 메운다.
+// ════════════════════════════════════════════════════════════════════════════════
+for (const t of ['number', 'string', undefined]) {
+  check('284', `canonicalKeyValue('', ${JSON.stringify(t)}) folds to null`,
+    H.canonicalKeyValue('', t), null);
+  check('284', `canonicalKeyValue('   ', ${JSON.stringify(t)}) folds to null too`,
+    H.canonicalKeyValue('   ', t), null);
+}
+// 🔴 0 AND false ARE VALUES. A fold written as `!value` would eat them, and a die at
+//    coordinate 0 would read as a die with no coordinate.
+check('284', 'canonicalKeyValue(0) is the value 0, not null',
+  H.canonicalKeyValue(0, 'number'), '0');
+check('284', "canonicalKeyValue('0') is the value 0, not null",
+  H.canonicalKeyValue('0', 'number'), '0');
+check('284', 'canonicalKeyValue(false) is a value, not null',
+  H.canonicalKeyValue(false, 'string'), 'false');
+
+// 🔴 THE COMPOSED KEY DOES NOT MOVE. That is the whole safety of this change: the client
+//    joins a null part as '' and the server's `compose_business_key` folds None and ''
+//    through `clean_str_value` to the SAME ''. Two sides, one rule, one key.
+check('284', 'an empty component composes to the same key as before',
+  H.composeMapId(['lot', 'slot'], { lot: 'LOT', slot: '' }, NUM_TYPES), 'LOT_');
+check('284', 'a missing component composes the same way as an empty one',
+  H.composeMapId(['lot', 'slot'], { lot: 'LOT', slot: null }, NUM_TYPES),
+  H.composeMapId(['lot', 'slot'], { lot: 'LOT', slot: '' }, NUM_TYPES));
+check('284', 'a whitespace component too',
+  H.composeMapId(['lot', 'slot'], { lot: 'LOT', slot: '  ' }, NUM_TYPES), 'LOT_');
+// ⚠️ 그리고 «null 이 글자로 새지 않는다». 이 줄이 없으면 합성이 'LOT_null' 이 되는 변이가
+//    위의 등식 단언만으로는 안 잡힌다 — 양쪽이 같이 틀리기 때문이다.
+check('284', 'null never reaches the key as the WORD null',
+  H.composeMapId(['lot', 'slot'], { lot: 'LOT', slot: '' }, NUM_TYPES).includes('null'), false);
 
 // INV-7b-2 at the composition level - a string-declared slot keeps its padding.
 const STR_TYPES = { lot: 'string', slot: 'string' };
