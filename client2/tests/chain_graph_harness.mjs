@@ -381,7 +381,9 @@ function suite(mod) {
     // Same reason as X2: with no element the mutant would kill the run instead of scoring.
     const drawnText = (byClass(m, 'chain-graph-contested')[0] || { textContent: '' }).textContent;
     ok('X8 ...carrying the name and the writers',
-      drawnText.includes('dt_a.qty') && drawnText.includes('m1'), drawnText);
+      drawnText.includes('dt_a.qty') && drawnText.includes('m1')
+      // The prefix is the head line's own word, so the two lines read as one fact.
+      && drawnText.startsWith('contested'), drawnText);
     const quiet = makeDoc();
     const qm = quiet.createElement('div');
     new ChainGraphPanel(qm, { doc: quiet }).render({ nodes: [], edges: [] });
