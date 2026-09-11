@@ -98,9 +98,20 @@ const MARGIN = 40;
  * 🔴 「못 읽음」과 「그래프가 비었다」는 다른 상태입니다. 실패를 빈 그래프로 접으면 화면이
  *    「아무것도 안 깨운다」는 «거짓»을 말하고, 그건 이 그림이 없애려는 침묵 그대로입니다.
  */
+/**
+ * 머리 한 줄 — 각 선언이 «몇 개»라고 말했나. 단위 없는 수라 이름과 값뿐입니다.
+ *
+ * 🔴 순서를 여기 «적지 않습니다». 응답이 주는 순서를 그대로 씁니다 — 여덟을 적어 두면
+ *    아홉째가 생기는 날 그 수가 «화면에서 사라집니다»(이 그림의 다른 자리들과 같은 규율).
+ */
+export function countLine(counts) {
+  if (!counts || typeof counts !== 'object') return [];
+  return Object.entries(counts).map(([name, value]) => ({ name, value }));
+}
+
 export function chainGraphView(payload) {
   const nodes = payload && Array.isArray(payload.nodes) ? payload.nodes : null;
-  if (!nodes) return { state: 'unread', nodes: [], edges: [], cycles: [] };
+  if (!nodes) return { state: 'unread', nodes: [], edges: [], cycles: [], counts: [], ledgerError: null };
   const edges = payload && Array.isArray(payload.edges) ? payload.edges : [];
   const cycles = payload && Array.isArray(payload.cycles) ? payload.cycles : [];
 
@@ -178,6 +189,12 @@ export function chainGraphView(payload) {
     cycles,
     // 「고리가 있다」는 사실은 표를 못 칠할 때도 «말해져야» 합니다.
     cycleNotes,
+    counts: countLine(payload && payload.counts),
+    // 🔴 «키가 있을 때만» 값입니다(실측: 원장이 읽히면 서버가 키를 아예 안 보냅니다).
+    //    없는 것을 빈 문자열로 만들면 「할 말 없음」과 「못 읽음」이 같은 픽셀이 되고,
+    //    그러면 원장 엣지 «0» 이 「원장에 아무것도 없다」로 읽힙니다 — 사실은 「못 읽었다」인데.
+    ledgerError: (payload && typeof payload.ledger_error === 'string' && payload.ledger_error)
+      ? payload.ledger_error : null,
   };
 }
 
@@ -220,6 +237,21 @@ export class ChainGraphPanel {
 
     const width = MARGIN * 2 + Math.max(0, ...view.nodes.map((n) => n.x));
     const height = MARGIN * 2 + Math.max(0, ...view.nodes.map((n) => n.y));
+    // 🔴 원장 절반이 못 읽혔으면 «반드시» 말합니다. 이 줄이 없으면 원장 엣지 0 이
+    //    「원장이 아무것도 안 읽는다」로 읽히고, 그건 그림이 스스로 거짓말하는 자리입니다.
+    if (view.ledgerError) {
+      const line = this.doc.createElement('div');
+      line.className = 'chain-graph-ledger-error';
+      line.textContent = `원장 절반 못 읽음 · ${view.ledgerError}`;
+      this.root.appendChild(line);
+    }
+    if (view.counts.length) {
+      const head = this.doc.createElement('div');
+      head.className = 'chain-graph-counts';
+      // 이름과 값뿐입니다 — 단위도 문장도 없습니다.
+      head.textContent = view.counts.map((c) => `${c.name} ${c.value}`).join(' · ');
+      this.root.appendChild(head);
+    }
     const svg = this._svg('svg', { class: 'chain-graph', viewBox: `0 0 ${width} ${height}` });
 
     // 선을 «먼저» 그립니다 — 원 밑으로 지나가야 원이 가려지지 않습니다.
