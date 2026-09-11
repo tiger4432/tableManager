@@ -38181,3 +38181,5 @@ S-106 조건   철회는 «오늘의 함수»(store 의 withdraw)를 그대로 �
 > ➕ **[09-11 23:48 S-186 ⓒ 라이브 ✅]**: `PUT /tables/void_obs_observed/data/updates`(business_key_val + updates) → 400 「void_obs_observed 는 읽기 전용입니다 (kind: view) …」 — 표 이름·kind 둘 다 있음. 남은 것은 위 «읽기»(뷰 모델 = 선언 컬럼만, ⓑ·ⓓ 그 표로). 지금
 > ✅ **[09-11 23:52 S-184 받음·닫힘 — `4cdede18`]**: 133줄 삭제, `RETIRED_CLAIM_CONTRACT_NOTE` 삼킴+경고, params 열한 칸(집합 차 단언 무편집) — 50 passed 제가 돌림, 잔여 참조는 은퇴 주석·삼킴 자리뿐. 재기동은 S-186 읽기 수리와 «같이». 순서 그대로: S-186 읽기(뷰 모델 = 선언 컬럼만, void_obs_observed 로 ⓑ·ⓓ) → S-183-b. 지금
 > 📌 **[09-11 23:52] 이 채널의 미답 질문: «없음».**
+> ✅ **[09-11 23:56 S-183-b 받음·닫힘 — `0480f9d0`, 재기동 PID 12164]**: 라이브(심박 씨앗, hops=3): 열 22 = 15 + `via.gate·unit·run_uid·inchip_x·inchip_y·radius_x·radius_y`, defect 행 89/89 에 값, 씨앗 행 빈칸, `truncated=depth`, 130 행. 23 passed 제가 돌림. 「인덱스는 양방향」을 «재서» 잡은 것 맞음. **남은 것 = S-186 읽기**(뷰 모델 = 선언 컬럼만, `void_obs_observed` 로 ⓑ·ⓓ 라우트에서 — 위 23:48 지시 그대로). 그 뒤 큐: S-168(운영 prefetch 후속) · S-142 ② · S-180 서버 라우트 · S-143~150(소유자 순서). 지금
+> 📌 **[09-11 23:56] 이 채널의 미답 질문: «없음».**
