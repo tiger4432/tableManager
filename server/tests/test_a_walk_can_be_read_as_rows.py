@@ -27,12 +27,18 @@ SEED = "seed-1"
 MID = "die-1"
 LEAF = "defect-1"
 
+# 🔴 THE SHAPE THE PRODUCT ACTUALLY PRODUCES, and it is not symmetric: a walk's node
+# carries a BARE type (`wafer`) while the declaration is keyed with its version
+# (`wafer@1`). The first fixtures here used bare on both sides — which is why the live
+# route returned ZERO declared columns while this file was green, and worse, why
+# `unknown_type` was vacuous: with bare declarations nothing matched, so every type was
+# "unknown" and the control could not fail.
 NODES = {
-    SEED: {"id": SEED, "type": "wafer@1", "depth": 0, "keys": {"mat_id": "W1"}},
-    MID: {"id": MID, "type": "die@1", "depth": 1,
+    SEED: {"id": SEED, "type": "wafer", "depth": 0, "keys": {"mat_id": "W1"}},
+    MID: {"id": MID, "type": "die", "depth": 1,
           "keys": {"mat_id": "W1", "x": 3, "y": 4},
           "qualifiers": {"gate": 7}},
-    LEAF: {"id": LEAF, "type": "defect@1", "depth": 2,
+    LEAF: {"id": LEAF, "type": "defect", "depth": 2,
            "keys": {"k": "void-1"}, "attributes": {"radius": 1.5}},
 }
 EDGES = [
@@ -102,6 +108,8 @@ def test_the_path_names_the_predicates_it_climbed():
 def test_the_seed_row_has_no_parent_and_an_empty_path():
     _marker, header, body = _rows()
     seed_row = next(r for r in body if r[header.index("id")] == SEED)
+    assert seed_row[header.index("seed")] == SEED, (
+        "a seed row is its own seed; blank read as 「belongs to no walk」")
     assert seed_row[header.index("parent_id")] == ""
     assert seed_row[header.index("path")] == ""
     assert seed_row[header.index("via")] == ""
@@ -115,9 +123,16 @@ def test_the_first_line_says_whether_the_walk_ran_out():
     """🔴 A READER PASTING THIS INTO A SPREADSHEET HAS NO OTHER WAY TO LEARN IT. A table
     that is silently short answers the question wrongly rather than refusing it."""
     marker, _header, _body = _rows()
-    assert marker == "# truncated=false nodes=3 limit=400"
-    cut, _h, _b = _rows(_payload(truncated={"nodes": True}, node_limit=2))
-    assert cut == "# truncated=true nodes=3 limit=2"
+    assert marker == "# truncated=none nodes=3 limit=400"
+    # 🔴 THE REASON, NOT A BOOLEAN. Measured live: the walk stopped at the hop count it was
+    # ASKED for and the marker said `true`, which reads as 「your table is short」 when the
+    # table is complete. A budget it exhausted and a depth it was told to stop at are
+    # different facts.
+    cut, _h, _b = _rows(_payload(truncated={"nodes": True, "reason": "nodes"},
+                                 node_limit=2))
+    assert cut == "# truncated=nodes nodes=3 limit=2"
+    depth_stop, _h2, _b2 = _rows(_payload(truncated={"depth": True, "reason": "depth"}))
+    assert depth_stop == "# truncated=depth nodes=3 limit=400"
 
 
 def test_the_marker_is_the_first_line_not_a_trailer():
@@ -152,6 +167,16 @@ def test_a_multi_type_walk_carries_every_types_declared_columns():
     assert by_id[MID][header.index("x")] == "3"
     assert by_id[LEAF][header.index("x")] == ""
     assert by_id[LEAF][header.index("radius")] == "1.5"
+
+
+def test_a_declared_type_never_comes_back_with_no_columns():
+    """🔴 THE ASSERTION THAT WOULD HAVE CAUGHT THE LIVE ZERO. Every other column test says
+    「this name is present」; none of them said 「a declared type has ANY column at all」, so a
+    lookup that matched nothing passed them all. It shipped, and the live table had eight
+    fixed columns and not one declared."""
+    for node_type in ("wafer", "die", "defect"):
+        assert ls._declared_columns([{"type": node_type, "qualifiers": {}}], ENTITIES), (
+            node_type, "a declared type resolved to no columns")
 
 
 def test_a_qualifier_the_response_carried_becomes_a_column():
@@ -223,8 +248,11 @@ def test_the_server_half_matches_every_contract_vector():
     for case in cases:
         nodes = [{"type": case["type"],
                   "qualifiers": {name: 1 for name in case["qualifiers_present"]}}]
+        # 🔴 KEYED BY THE VERSIONED NAME while the node carries the bare one — the
+        # product's own asymmetry. A symmetric fixture is exactly what let a lookup that
+        # matched NOTHING pass all seven of these.
         entities = ({} if case["declaration"] is None
-                    else {case["type"]: case["declaration"]})
+                    else {case["declaration_key"]: case["declaration"]})
         assert ls._declared_columns(nodes, entities) == case["expect"], case["name"]
 
 

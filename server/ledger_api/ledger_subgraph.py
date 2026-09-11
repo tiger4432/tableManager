@@ -996,13 +996,21 @@ def _declared_columns(nodes, entities):
     the types were reached, which is why a node of a type that never declared a column
     leaves it blank rather than shifting its row.
     """
+    # 🔴 THE DECLARATION SIDE IS FOLDED TO BARE, NOT THE NODE SIDE (measured live: every
+    # declared column came back empty). A node's `type` is ALREADY bare (`wafer`) and the
+    # declaration is keyed with its version (`wafer@1`), so looking the node up in the
+    # declaration as-is can never match — and folding the node would be folding the half
+    # that is already folded. The client does exactly this, in this direction:
+    # `bareName(e.type) === bare`.
+    declared_by_bare = {}
+    for name, spec in (entities or {}).items():
+        declared_by_bare.setdefault(_bare(name), spec)
     by_type = {}
     for node in nodes:
         by_type.setdefault(str(node.get("type") or ""), []).append(node)
     columns = []
     for node_type, members in by_type.items():
-        spec = (entities or {}).get(node_type) or (entities or {}).get(
-            _bare(node_type)) or {}
+        spec = declared_by_bare.get(_bare(node_type)) or {}
         names = list(spec.get("keys") or ())
         seen_qualifiers = []
         for node in members:
@@ -1049,14 +1057,17 @@ def rows_projection(payload, nodes, edges, seed_signs, entities,
     visible = payload.get("nodes") or []
     limits = payload.get("limits") or {}
     truncation = payload.get("truncated") or {}
-    cut = bool(truncation.get("depth") or truncation.get("nodes")
-               or truncation.get("edges") or truncation.get("claims")
-               or truncation.get("actions"))
+    # 🔴 THE REASON, NOT A BOOLEAN (measured live: `truncated=true` while the payload said
+    # `nodes: False, reason: depth` — the walk simply stopped at the hop count it was ASKED
+    # for). A budget it ran out of and a depth it was told to stop at are different facts,
+    # and one word for both tells a reader their table is short when it is complete.
+    # The response already carries `reason`; this repeats it rather than re-deriving it.
+    cut = truncation.get("reason") or "none"
 
     declared = _declared_columns(visible, entities)
     header = list(ROW_FIXED_COLUMNS) + declared
     lines = ["# truncated=%s nodes=%d limit=%s" % (
-        "true" if cut else "false", len(visible), limits.get("nodes")),
+        cut, len(visible), limits.get("nodes")),
         "\t".join(header)]
 
     for node in visible:
@@ -1075,7 +1086,9 @@ def rows_projection(payload, nodes, edges, seed_signs, entities,
                 "id": node_id,
                 "parent_id": ids[-2] if len(ids) > 1 else None,
                 "via": predicates[-1] if predicates else None,
-                "seed": seed,
+                # A seed row is its OWN seed — it has no trail, and a blank here read as
+                # 「this row belongs to no walk」 (measured live on the depth-0 row).
+                "seed": seed or (node_id if node.get("depth") in (0, "0") else None),
                 "path": PATH_SEPARATOR.join(str(item) for item in predicates),
                 "path_ids": PATH_SEPARATOR.join(str(item) for item in ids),
             }

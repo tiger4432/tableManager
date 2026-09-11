@@ -28,64 +28,136 @@
     "built out of.",
     "",
     "⚠️ DRAFT: the server half reads these today (`_declared_columns`). The client half and",
-    "the harness that scores it are the lead's to place (S-183 order)."
+    "the harness that scores it are the lead's to place (S-183 order).",
+    "🔴 THE NODE TYPE IS BARE AND THE DECLARATION KEY IS VERSIONED — `declaration_key` carries that asymmetry, because it is the product's and scoring against a symmetric fixture is how a lookup that matched NOTHING passed every case here."
   ],
   "version": 1,
   "per_type_declared_columns": [
     {
       "name": "keys_only",
-      "type": "wafer@1",
-      "declaration": { "keys": ["mat_id"] },
+      "type": "wafer",
+      "declaration": {
+        "keys": [
+          "mat_id"
+        ]
+      },
       "qualifiers_present": [],
-      "expect": ["mat_id"],
-      "$why": "The commonest shape: a type whose identity is its only declared column."
+      "expect": [
+        "mat_id"
+      ],
+      "$why": "The commonest shape: a type whose identity is its only declared column.",
+      "declaration_key": "wafer@1"
     },
     {
       "name": "keys_in_declared_order",
-      "type": "die@1",
-      "declaration": { "keys": ["mat_id", "x", "y"] },
+      "type": "die",
+      "declaration": {
+        "keys": [
+          "mat_id",
+          "x",
+          "y"
+        ]
+      },
       "qualifiers_present": [],
-      "expect": ["mat_id", "x", "y"],
-      "$why": "Declaration order, never sorted — the order is part of the answer, and a table that alphabetised it would separate x from y."
+      "expect": [
+        "mat_id",
+        "x",
+        "y"
+      ],
+      "$why": "Declaration order, never sorted — the order is part of the answer, and a table that alphabetised it would separate x from y.",
+      "declaration_key": "die@1"
     },
     {
       "name": "qualifiers_follow_keys",
-      "type": "die@1",
-      "declaration": { "keys": ["mat_id", "x"] },
-      "qualifiers_present": ["gate"],
-      "expect": ["mat_id", "x", "gate"],
-      "$why": "A qualifier is what the ANSWER carried, not what the declaration promised, so it cannot come from the same list — but it still sits after identity."
+      "type": "die",
+      "declaration": {
+        "keys": [
+          "mat_id",
+          "x"
+        ]
+      },
+      "qualifiers_present": [
+        "gate"
+      ],
+      "expect": [
+        "mat_id",
+        "x",
+        "gate"
+      ],
+      "$why": "A qualifier is what the ANSWER carried, not what the declaration promised, so it cannot come from the same list — but it still sits after identity.",
+      "declaration_key": "die@1"
     },
     {
       "name": "attributes_come_last",
-      "type": "defect@1",
-      "declaration": { "keys": ["k"], "attributes": ["radius"] },
+      "type": "defect",
+      "declaration": {
+        "keys": [
+          "k"
+        ],
+        "attributes": [
+          "radius"
+        ]
+      },
       "qualifiers_present": [],
-      "expect": ["k", "radius"],
-      "$why": "🔴 Attributes are declared values that are NOT identity (setup_bundle says so where the grammar is defined), so they read after both."
+      "expect": [
+        "k",
+        "radius"
+      ],
+      "$why": "🔴 Attributes are declared values that are NOT identity (setup_bundle says so where the grammar is defined), so they read after both.",
+      "declaration_key": "defect@1"
     },
     {
       "name": "all_three_groups",
-      "type": "defect@1",
-      "declaration": { "keys": ["k"], "attributes": ["radius", "depth_um"] },
-      "qualifiers_present": ["gate", "unit"],
-      "expect": ["k", "gate", "unit", "radius", "depth_um"],
-      "$why": "The load-bearing case: keys → qualifiers → attributes, each group internally in its own declared order."
+      "type": "defect",
+      "declaration": {
+        "keys": [
+          "k"
+        ],
+        "attributes": [
+          "radius",
+          "depth_um"
+        ]
+      },
+      "qualifiers_present": [
+        "gate",
+        "unit"
+      ],
+      "expect": [
+        "k",
+        "gate",
+        "unit",
+        "radius",
+        "depth_um"
+      ],
+      "$why": "The load-bearing case: keys → qualifiers → attributes, each group internally in its own declared order.",
+      "declaration_key": "defect@1"
     },
     {
       "name": "no_attributes_declared_adds_nothing",
-      "type": "wafer@1",
-      "declaration": { "keys": ["mat_id"], "attributes": [] },
+      "type": "wafer",
+      "declaration": {
+        "keys": [
+          "mat_id"
+        ],
+        "attributes": []
+      },
       "qualifiers_present": [],
-      "expect": ["mat_id"],
-      "$why": "⚠️ An empty `attributes` must render byte-identically to a type that declares none — the client's conflicts column keys off `attributes.length` for the same reason."
+      "expect": [
+        "mat_id"
+      ],
+      "$why": "⚠️ An empty `attributes` must render byte-identically to a type that declares none — the client's conflicts column keys off `attributes.length` for the same reason.",
+      "declaration_key": "wafer@1"
     },
     {
       "name": "unknown_type_declares_nothing",
-      "type": "not_declared@1",
+      "type": "not_declared",
       "declaration": null,
-      "qualifiers_present": ["gate"],
-      "expect": ["gate"],
+      "qualifiers_present": [
+        "gate"
+      ],
+      "expect": [
+        "gate"
+      ],
       "$why": "🔴 THE SENSITIVITY CONTROL. A type with no declaration contributes only what the response actually carried. An implementation that invented columns from the response's `keys` would pass every case above and fail this one."
     }
   ]
