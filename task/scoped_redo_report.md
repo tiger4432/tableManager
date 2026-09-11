@@ -33842,3 +33842,64 @@ dry-run     cell_sources live 38,807,544 · dead 301,589 · relpages 760,884
 
 > 📌 **[09-11 19:xx] 이 채널의 미답 질문: S-177 ②의 「가상 조인 규칙까지 격리를 넓힐지」 하나(계속 열려 있음).
 > 다음: S-165 ⓑ → S-173(이분 재전개) → S-176 서버 라우트.**
+
+---
+
+# S-165 ⓑ — 🔴 **안 짓습니다. 이미 있고, SQL 판은 «더 나쁩니다»**
+
+## 1. 실측 — 한 층 «위»에 이미 있습니다
+```
+bulk_upsert_cell_sources 의 호출자   «하나»  (crud.py:4672)
+그 호출자가 넣는 것                  `if not source_unchanged:` 를 통과한 매핑«만»
+source_unchanged (crud.py:3118)     src_obj.value == clean_val  and  src_obj.updated_by == ...
+                                    -> 지시서가 SQL 로 쓰라 한 «그 술어» 그대로
+cell_overwrites                     같은 자리에 ow_unchanged (crud.py:3214)
+시험                                test_replace_map_scope_diff.py 가 «두 표 다» 단언
+                                    🔵 제 변경을 stash 하고 HEAD 에서 돌려 «10 passed» 확인
+```
+🔵 그리고 지시서가 「docstring 2단계를 «값이 바뀐 시각»으로」라 한 그 문장이
+   `source_unchanged` 바로 위에 **이미 적혀 있습니다** —
+   「a source that re-delivers a value it has already delivered has not made a NEW statement …
+   "Newest" means newest assertion of a value, not newest touch.」
+
+## 2. 🔴 그리고 SQL 판은 «틀립니다». 그 자리의 주석이 제 실수를 미리 적어 뒀습니다
+`cell_overwrites` 행은 «값을 안 들고» 있습니다(플래그·작성자·핀뿐). 그래서 SQL 층에서
+그 셋만 비교하면 **셀 «값»이 바뀐 진짜 편집에서 `updated_at` 이 안 갱신됩니다.**
+기존 주석(crud.py:3204~):
+> 「a skip based on them alone would stop refreshing `updated_at` on a genuine user edit.
+>  That silently redefines a column other code displays.」
+
+제 변경은 정확히 그 일을 했고, **기존 시험이 잡았습니다** —
+`test_an_unchanged_cell_does_not_rewrite_its_overwrite_marker` 의 둘째 절(「진짜 변경은 갱신해야」).
+SQL 층은 `source_unchanged` 를 «볼 수 없어서» 이 구별을 원리적으로 못 합니다.
+
+## 3. ⚠️ 다만 버리기 전에 «건진 것 하나» — 다음에 이걸 다시 시도할 사람을 위해
+PostgreSQL 에는 **`json` 등호 연산자가 없습니다.** `cell_sources.value` 가 `JSON` 이라
+`value IS DISTINCT FROM excluded.value` 는 라이브에서 즉사합니다:
+```
+psycopg2.errors.UndefinedFunction: 연산자 없음: json = json
+```
+🔵 **SQLite 시험 13개가 전부 초록인 채로** 이게 났습니다(SQLite 엔 타입 json 이 없어 안 묻습니다).
+   고치려면 «양쪽 다» `::jsonb` — 그리고 그게 의미상으로도 맞습니다(키 순서·공백 정규화).
+   패치는 안 버리고 `scratchpad/s165_not_shipped.patch` 에 뒀습니다.
+
+## 4. 🔴 그래서 «진짜» 열린 물음은 그대로입니다
+소유자가 본 것(`pg_stat_activity` 맨 위 = cell_sources upsert · 오토배큠 상주)은
+**「같은 값 재적재」로 설명되지 «않습니다»** — 그건 오늘도 안 씁니다.
+남은 후보:
+```
+ⓐ 그 upsert 가 «진짜 바뀐 행»을 쓰고 있다 (정상 적재. 그러면 질문은 「양이 예상대로인가」)
+ⓑ 오토배큠이 죽은 튜플이 아니라 «autoANALYZE / insert 유발 / wraparound» 로 떠 있다
+   -> S-170 이 «어느 것인지 이름으로» 냅니다. 그게 다음 측정입니다
+ⓒ 세 번째 호출자가 생기면 SQL 가드가 그때 의미를 갖습니다 (오늘은 호출자 «하나»)
+```
+제안: 소유자 박스에서 인제션 중 `tune_layer_tables.py` 를 «한 번» 돌려
+「지금 도는 것」 줄을 받는 것 — ⓑ 를 한 줄로 가릅니다.
+
+## 5. 제 규율 실패도 적습니다
+상설 관문(「«새 문제»라 부르기 전에 ① 코드에 이미 있나」)을 **짓기 전에 안 돌렸습니다.**
+S-177 ② 에서 «설계 한 장»으로 같은 값을 치렀는데 같은 날 또 했고, 이번엔 «코드까지» 썼습니다.
+잡은 것은 제 점검이 아니라 «이웃 시험»이었습니다.
+
+> 📌 **[09-11 20:xx] 이 채널의 미답 질문: S-165 를 «닫을지»(제 판단: 이미 구현됨 — 닫음) ·
+> 4절 ⓑ 측정을 소유자께 올릴지. 다음: S-173(이분 재전개) → S-176 서버 라우트 → 가상 조인 격리 시험.**
