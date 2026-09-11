@@ -3133,6 +3133,13 @@ class IngestionHandler(FileSystemEventHandler):
                         "".join(" · %s %.3f s" % (k, v) for k, v in sorted(_steps.items()))
                         or " (none named)",
                         _sampler.summary() if _sampler is not None else "")
+                    # S-176: the chunk line's own two numbers, carried instead of dropped.
+                    # `depth` is the rows this chunk carried -- this loop's unit of work --
+                    # because the watcher's queue is a directory and counting it here would
+                    # be a new measurement on the ingest path.
+                    heartbeat.record_lap(HEARTBEAT_NAME, "watcher", seconds=_wall,
+                                         depth=len(chunk), table=t_name,
+                                         chunk=chunk_index)
                     
             # 🔴 THE STATISTICS ARE PART OF THE LOAD (S-124 ②). After the last chunk
             # commits, this table's row count is one the planner has never seen, and the
