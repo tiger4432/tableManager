@@ -1135,301 +1135,308 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
             # one source, so there is nothing for the write path to do up front.
             write_batches.extend((target, updates, scope is not None, scope, retract)
                                  for target, updates, scope, retract in scoped_batches)
-            for target_table, updates_list, replace_map, scope, retract in write_batches:
-                batch_data = schemas.GeneralUpdateBatch(
-                    updates=updates_list,
-                    transaction_id=chain_tx_id,
-                    silent=False,
-                    replace_map=replace_map,
-                    scope=scope,
-                )
+            # 🔴 ONE SCOPE FOR EVERY TARGET THIS GROUP WRITES (S-162, 판정 272).
+            # The side-table rows of ALL tables land in one flush and the group commits ONCE,
+            # so a table's rows and its `cell_sources` can never carry different `xmin`s -
+            # which is what per-table commits were quietly risking the moment they were
+            # batched. Conflicts stay contained per table by the savepoint inside.
+            with crud.shared_write_scope(db) as shared_scope:
+                for target_table, updates_list, replace_map, scope, retract in write_batches:
+                    batch_data = schemas.GeneralUpdateBatch(
+                        updates=updates_list,
+                        transaction_id=chain_tx_id,
+                        silent=False,
+                        replace_map=replace_map,
+                        scope=scope,
+                    )
 
-                # [ChainKeyGate] 🔴 THE GATE. Every chain-emitted row reaches
-                # `apply_batch_updates` through this loop and only through this loop, so
-                # this is the one place a row with no resolvable identity can be stopped
-                # without asking seven mappers to remember to do it.
-                #
-                # It runs AFTER the batch is built (one validator has already normalised
-                # every mapper's dict/model shape) and BEFORE the write, and it is
-                # read-only - it must not assemble the composite key here, because
-                # writing it into `updates[key_col]` before `derive_replace_map_scope`
-                # runs inside `apply_batch_updates` would narrow a whole-map purge to a
-                # single die.
-                with alignment_batch_counts.stage("key gate"):
-                    kept, key_gate_report = chain_key_gate.screen(
-                        target_table, batch_data.updates,
-                        rule_names=rules_by_target.get(target_table, ()),
-                        transaction_id=chain_tx_id)
-                if key_gate_report["refused_rows"]:
-                    batch_data.updates = kept
-                    if not kept:
-                        # 🔴 EVERY row was refused. Writing the batch anyway would be
-                        # actively destructive on a `replace_map`: the purge (or the
-                        # scope diff) removes the map's rows and nothing replaces them.
-                        # A DECLARED empty replace - `scope` with an empty payload - is
-                        # still honoured, because this arm is only reached when the gate
-                        # is what emptied the list.
-                        logger.error(
-                            f"🔴 [ChainKeyGate] Table: '{target_table}' | TX: "
-                            f"'{chain_tx_id}' | rule(s): "
-                            f"{', '.join(key_gate_report['rules']) or '<unknown>'} | the "
-                            f"whole batch of {key_gate_report['refused_rows']} row(s) "
-                            f"carried no key value in {sorted(key_gate_report['by_column'])}. "
-                            f"Nothing was written and no map was replaced.")
-                        continue
-
-                logger.info(
-                    f"Executing chained batch updates to '{target_table}' under tx '{chain_tx_id}' "
-                    f"(size: {len(batch_data.updates)}, replace_map={replace_map}, scope={scope}, "
-                    f"unkeyed_refused={key_gate_report['refused_rows']})")
-
-                # [Drop report] What the WRITE discards is a different question from what
-                # the gate refuses, and 94954cb built the channel for it. Asking for it
-                # here costs one dict and turns "the chain reported success and the row
-                # has no identity" into a named table, transaction, column and count.
-                drop_report = {}
-
-                # Apply updates
-                #
-                # [OUTBOX-4] The DERIVED write is bulk too: a 10M-row dt_log file
-                # produces ~10M dt_map rows, so leaving this side per-row would leave
-                # half the outbox volume standing. Nothing a user sees depends on
-                # these events - the chain's own WS broadcast is built from
-                # `apply_batch_updates`' return values, not from the outbox, and the
-                # chain worker filters its own events out as circular. The graph
-                # materializer is their one real consumer and it takes the collapsed
-                # shape through `resync_table(row_ids=...)`.
-                #
-                # 🔴 SCOPED TO THIS ONE CALL, not to the enclosing block. This is an
-                # async function, and a mode token held across an `await` (or across a
-                # hook that writes on a human's behalf) is how a human-visible write
-                # collapses by accident - the one thing the design says must never
-                # happen. The narrowest possible scope is the whole guarantee.
-                # ⚰️ The two hooks this warning named have both left the block since
-                # (map-meta 2026-09-07, enrichment S-151); the reason stands for the
-                # retraction below and for whatever is put here next.
-                # Per TABLE, because a group writing several targets has to be able to
-                # say WHICH one it waited on - one number for "the writes" would leave the
-                # next question unanswerable without another round of measuring.
-                with (alignment_batch_counts.stage("write:%s" % target_table),
-                      outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED)):
-                    results, changed_cells, created_logs, deleted_row_ids = crud.apply_batch_updates(
-                        db, target_table, batch_data, drop_report=drop_report)
-
-                if drop_report.get("dropped_cells") or drop_report.get("empty_rows_suppressed"):
-                    logger.warning(
-                        f"⚠️ [Chain Write Discard] Table: '{target_table}' | TX: "
-                        f"'{chain_tx_id}' | rule(s): "
-                        f"{', '.join(sorted(rules_by_target.get(target_table, ()))) or '<unknown>'} | "
-                        f"{drop_report['dropped_cells']} cell(s) on "
-                        f"{drop_report['rows_affected']} row(s) were dropped "
-                        f"({drop_report['by_reason']}, columns {sorted(drop_report['by_column'])}); "
-                        f"{drop_report['empty_rows_suppressed']} row(s) were not created "
-                        f"because every key they carried was dropped. Fix "
-                        f"config/table_config.json or the mapper's column names.")
-
-                # [Retraction] Remove what THIS SOURCE owns and no longer derives.
-                #
-                # 🔴 THIS IS WHAT LETS SEVERAL SOURCES SHARE ONE MAP. `replace_map`
-                # removes by map, and once a map key is the physical unit rather than the
-                # acquisition unit, several jobs converge on one map - so a purge scoped
-                # to the map would delete a sibling job's cells to correct this one's.
-                # `plan_retraction` selects POSITIVELY by the source column that travels
-                # on every derived cell, so a sibling's rows are not in the population it
-                # considers at all.
-                #
-                # Runs AFTER the write, deliberately: the keys it spares are the keys the
-                # write composed, read back off the items the write mutated. Planning it
-                # before the write would mean guessing at them.
-                #
-                # Contained, and for the reason the note above gives - except that a
-                # failure HERE leaves STALE ROWS, which is the conservative direction.
-                # It never leaves a hole.
-                with alignment_batch_counts.stage("retraction"):
-                    if retract:
-                        try:
-                            source_column, source_value = retract
-                            derived_keys = dt_map_derivation.derived_keys_of(
-                                batch_data.updates, target_table, source_column)
-                            plan = dt_map_derivation.plan_retraction(
-                                db, target_table, source_column, source_value, derived_keys,
-                                #: 선언을 읽는 것은 «규칙을 쥔 여기»다 — 순수 함수는 값만 받는다.
-                                slow_warn_ms=event_constants.slow_warn_ms(
-                                    (rule or {}).get("slow_warn_ms"),
-                                    (rule or {}).get("name") or "<unnamed rule>"))
-                            logger.info("%s", dt_map_derivation.format_retraction_summary(plan))
-                            if plan.get("declined"):
-                                logger.warning(
-                                    f"⚠️ [DtMapRetraction] Table: '{target_table}' | TX: "
-                                    f"'{chain_tx_id}' | {source_column}='{source_value}' | "
-                                    f"DECLINED: {plan['declined']['reason']}. Stale rows were "
-                                    f"LEFT IN PLACE; nothing was deleted.")
-                            elif plan.get("delete_row_ids"):
-                                n = dt_map_derivation.apply_retraction(db, plan)
-                                # The rows are gone from the database; a client that is not
-                                # told still draws them. Folded into the SAME delete event the
-                                # replace_map path already emits rather than a second one.
-                                deleted_row_ids = list(deleted_row_ids or []) + list(
-                                    plan["delete_row_ids"])
-                                logger.info(
-                                    f"🔄 [DtMapRetraction] Table: '{target_table}' | TX: "
-                                    f"'{chain_tx_id}' | {source_column}='{source_value}' | "
-                                    f"retracted {n} stale row(s), protected "
-                                    f"{plan.get('protected', 0)} human-touched row(s)")
-                        except Exception as retract_err:
+                    # [ChainKeyGate] 🔴 THE GATE. Every chain-emitted row reaches
+                    # `apply_batch_updates` through this loop and only through this loop, so
+                    # this is the one place a row with no resolvable identity can be stopped
+                    # without asking seven mappers to remember to do it.
+                    #
+                    # It runs AFTER the batch is built (one validator has already normalised
+                    # every mapper's dict/model shape) and BEFORE the write, and it is
+                    # read-only - it must not assemble the composite key here, because
+                    # writing it into `updates[key_col]` before `derive_replace_map_scope`
+                    # runs inside `apply_batch_updates` would narrow a whole-map purge to a
+                    # single die.
+                    with alignment_batch_counts.stage("key gate"):
+                        kept, key_gate_report = chain_key_gate.screen(
+                            target_table, batch_data.updates,
+                            rule_names=rules_by_target.get(target_table, ()),
+                            transaction_id=chain_tx_id)
+                    if key_gate_report["refused_rows"]:
+                        batch_data.updates = kept
+                        if not kept:
+                            # 🔴 EVERY row was refused. Writing the batch anyway would be
+                            # actively destructive on a `replace_map`: the purge (or the
+                            # scope diff) removes the map's rows and nothing replaces them.
+                            # A DECLARED empty replace - `scope` with an empty payload - is
+                            # still honoured, because this arm is only reached when the gate
+                            # is what emptied the list.
                             logger.error(
-                                f"🔴 [DtMapRetraction] Table: '{target_table}' | TX: "
-                                f"'{chain_tx_id}' | retraction failed AFTER a committed write; "
-                                f"stale rows may remain: "
-                                f"[{type(retract_err).__name__}] {retract_err}", exc_info=True)
+                                f"🔴 [ChainKeyGate] Table: '{target_table}' | TX: "
+                                f"'{chain_tx_id}' | rule(s): "
+                                f"{', '.join(key_gate_report['rules']) or '<unknown>'} | the "
+                                f"whole batch of {key_gate_report['refused_rows']} row(s) "
+                                f"carried no key value in {sorted(key_gate_report['by_column'])}. "
+                                f"Nothing was written and no map was replaced.")
+                            continue
 
-                # [M3] Absent-only wafer_map_metadata auto-registration for
-                # chain-created maps. Uses the VALIDATED batch items (same
-                # column names the upsert wrote). One existence check per
-                # distinct map key per tx group; log and continue on failure.
-                # Recursion-safe: the registrar refuses META_TABLE and the meta
-                # table declares no map_key_columns, so meta creation can never
-                # re-trigger itself.
-                #
-                # 🔴 WHAT `except` DOES AND DOES NOT BUY (corrected 2026-07-30).
-                # `crud.apply_batch_updates` DOES commit (crud.py, end of the
-                # `transaction_context` block), so the chain rows above really
-                # are durable before these hooks run. But catching the exception
-                # is NOT the same as containing the failure: on PostgreSQL a
-                # failed statement aborts the transaction, and everything the
-                # worker does afterwards on this session — including
-                # `process_pending_groups`' commit of `processed_chain=True` —
-                # then fails or silently rolls back, so the group is replayed
-                # forever without the retry quarantine ever advancing.
-                # Containment has to happen where the statement runs, which is
-                # why `enrichment_config._isolated_execute` wraps every
-                # reference query in a SAVEPOINT.
-                # [Enrichment ①] Absent-only automatic confirmation of SINGLE
-                # candidates for this rule's target fields: runs on the VALIDATED
-                # batch items after the committed write, per-rule opt-in (default
-                # OFF), and a failure here is logged rather than propagated. The
-                # note directly above says what that `except` does NOT protect
-                # against — it was written for the map-meta hook that stood here
-                # until 2026-09-07 and it holds for this one unchanged.
-                # Not a loop: writes land on the DERIVED table while the
-                # enrichment rule triggers on the SOURCE table, and the
-                # absent-only gate makes a second pass a no-op regardless.
-                # ⚰️ THE HOOK LEFT THIS PATH (S-151, 판정 262). Measured here at 0.875 s per
-                # 1,000-row group - 35 % of everything the group spent outside the mapper -
-                # and it is FOLLOW-UP work: nobody is waiting for a confirmation that the
-                # next read would compute anyway. 「요청/커밋 경로 인라인 금지, 뒤따르는 일은
-                # 페이싱된 별도 작업」 is the standing rule, and this was the inline case of it.
-                # It now runs on the ledger follow-up drain, paced - see
-                # `_auto_confirm_followed_rows`. NOTHING IS ENQUEUED HERE: these rows reach
-                # that queue already, through their own collapsed outbox events, so a second
-                # enqueue would double the ledger's re-translation to save this.
+                    logger.info(
+                        f"Executing chained batch updates to '{target_table}' under tx '{chain_tx_id}' "
+                        f"(size: {len(batch_data.updates)}, replace_map={replace_map}, scope={scope}, "
+                        f"unkeyed_refused={key_gate_report['refused_rows']})")
 
-                # 5. Collect WebSocket broadcast messages (dispatched AFTER commit, fire-and-forget).
-                #    이벤트명/페이로드 형식은 절대 변경하지 않고 타이밍만 커밋 이후로 미룬다.
-                with alignment_batch_counts.stage("broadcast build"):
-                    try:
-                        cfg = crud.TABLE_CONFIG.get(target_table, {})
-                        col_types = cfg.get("column_types", {})
-                        user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
+                    # [Drop report] What the WRITE discards is a different question from what
+                    # the gate refuses, and 94954cb built the channel for it. Asking for it
+                    # here costs one dict and turns "the chain reported success and the row
+                    # has no identity" into a named table, transaction, column and count.
+                    drop_report = {}
 
-                        # [P1b] Fourth copy of the discarded item build. Above the threshold the
-                        # message below carries only `change_count`, so every item here is
-                        # thrown away - and building one is not free: `crud.apply_batch_updates`
-                        # commits, `expire_on_commit` is true, and `row.created_at` is the first
-                        # attribute read, so each row is reloaded by its own SELECT before the
-                        # O(cols) wrapping loop even starts. This site has no metadata merge
-                        # (the main.py endpoints do), so its whole bill IS those reloads.
-                        #
-                        # ⚠️ Same predicate, moved. The loop appends exactly one item per entry
-                        # of `results`, unconditionally, so `len(msg_items) == len(results)`.
-                        # A `continue` added to that loop breaks the equality and this must
-                        # move back.
-                        needs_items = len(results) <= BROADCAST_ITEM_LIMIT
-                        msg_items = []
-                        for row, is_new in (results if needs_items else ()):
-                            c_at_str = to_local_str(row.created_at)
-                            u_at_str = to_local_str(row.updated_at)
+                    # Apply updates
+                    #
+                    # [OUTBOX-4] The DERIVED write is bulk too: a 10M-row dt_log file
+                    # produces ~10M dt_map rows, so leaving this side per-row would leave
+                    # half the outbox volume standing. Nothing a user sees depends on
+                    # these events - the chain's own WS broadcast is built from
+                    # `apply_batch_updates`' return values, not from the outbox, and the
+                    # chain worker filters its own events out as circular. The graph
+                    # materializer is their one real consumer and it takes the collapsed
+                    # shape through `resync_table(row_ids=...)`.
+                    #
+                    # 🔴 SCOPED TO THIS ONE CALL, not to the enclosing block. This is an
+                    # async function, and a mode token held across an `await` (or across a
+                    # hook that writes on a human's behalf) is how a human-visible write
+                    # collapses by accident - the one thing the design says must never
+                    # happen. The narrowest possible scope is the whole guarantee.
+                    # ⚰️ The two hooks this warning named have both left the block since
+                    # (map-meta 2026-09-07, enrichment S-151); the reason stands for the
+                    # retraction below and for whatever is put here next.
+                    # Per TABLE, because a group writing several targets has to be able to
+                    # say WHICH one it waited on - one number for "the writes" would leave the
+                    # next question unanswerable without another round of measuring.
+                    with (alignment_batch_counts.stage("write:%s" % target_table),
+                          outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED)):
+                        results, changed_cells, created_logs, deleted_row_ids = crud.apply_batch_updates(
+                            db, target_table, batch_data, drop_report=drop_report,
+                            shared=shared_scope)
+
+                    if drop_report.get("dropped_cells") or drop_report.get("empty_rows_suppressed"):
+                        logger.warning(
+                            f"⚠️ [Chain Write Discard] Table: '{target_table}' | TX: "
+                            f"'{chain_tx_id}' | rule(s): "
+                            f"{', '.join(sorted(rules_by_target.get(target_table, ()))) or '<unknown>'} | "
+                            f"{drop_report['dropped_cells']} cell(s) on "
+                            f"{drop_report['rows_affected']} row(s) were dropped "
+                            f"({drop_report['by_reason']}, columns {sorted(drop_report['by_column'])}); "
+                            f"{drop_report['empty_rows_suppressed']} row(s) were not created "
+                            f"because every key they carried was dropped. Fix "
+                            f"config/table_config.json or the mapper's column names.")
+
+                    # [Retraction] Remove what THIS SOURCE owns and no longer derives.
+                    #
+                    # 🔴 THIS IS WHAT LETS SEVERAL SOURCES SHARE ONE MAP. `replace_map`
+                    # removes by map, and once a map key is the physical unit rather than the
+                    # acquisition unit, several jobs converge on one map - so a purge scoped
+                    # to the map would delete a sibling job's cells to correct this one's.
+                    # `plan_retraction` selects POSITIVELY by the source column that travels
+                    # on every derived cell, so a sibling's rows are not in the population it
+                    # considers at all.
+                    #
+                    # Runs AFTER the write, deliberately: the keys it spares are the keys the
+                    # write composed, read back off the items the write mutated. Planning it
+                    # before the write would mean guessing at them.
+                    #
+                    # Contained, and for the reason the note above gives - except that a
+                    # failure HERE leaves STALE ROWS, which is the conservative direction.
+                    # It never leaves a hole.
+                    with alignment_batch_counts.stage("retraction"):
+                        if retract:
+                            try:
+                                source_column, source_value = retract
+                                derived_keys = dt_map_derivation.derived_keys_of(
+                                    batch_data.updates, target_table, source_column)
+                                plan = dt_map_derivation.plan_retraction(
+                                    db, target_table, source_column, source_value, derived_keys,
+                                    #: 선언을 읽는 것은 «규칙을 쥔 여기»다 — 순수 함수는 값만 받는다.
+                                    slow_warn_ms=event_constants.slow_warn_ms(
+                                        (rule or {}).get("slow_warn_ms"),
+                                        (rule or {}).get("name") or "<unnamed rule>"))
+                                logger.info("%s", dt_map_derivation.format_retraction_summary(plan))
+                                if plan.get("declined"):
+                                    logger.warning(
+                                        f"⚠️ [DtMapRetraction] Table: '{target_table}' | TX: "
+                                        f"'{chain_tx_id}' | {source_column}='{source_value}' | "
+                                        f"DECLINED: {plan['declined']['reason']}. Stale rows were "
+                                        f"LEFT IN PLACE; nothing was deleted.")
+                                elif plan.get("delete_row_ids"):
+                                    n = dt_map_derivation.apply_retraction(db, plan)
+                                    # The rows are gone from the database; a client that is not
+                                    # told still draws them. Folded into the SAME delete event the
+                                    # replace_map path already emits rather than a second one.
+                                    deleted_row_ids = list(deleted_row_ids or []) + list(
+                                        plan["delete_row_ids"])
+                                    logger.info(
+                                        f"🔄 [DtMapRetraction] Table: '{target_table}' | TX: "
+                                        f"'{chain_tx_id}' | {source_column}='{source_value}' | "
+                                        f"retracted {n} stale row(s), protected "
+                                        f"{plan.get('protected', 0)} human-touched row(s)")
+                            except Exception as retract_err:
+                                logger.error(
+                                    f"🔴 [DtMapRetraction] Table: '{target_table}' | TX: "
+                                    f"'{chain_tx_id}' | retraction failed AFTER a committed write; "
+                                    f"stale rows may remain: "
+                                    f"[{type(retract_err).__name__}] {retract_err}", exc_info=True)
+
+                    # [M3] Absent-only wafer_map_metadata auto-registration for
+                    # chain-created maps. Uses the VALIDATED batch items (same
+                    # column names the upsert wrote). One existence check per
+                    # distinct map key per tx group; log and continue on failure.
+                    # Recursion-safe: the registrar refuses META_TABLE and the meta
+                    # table declares no map_key_columns, so meta creation can never
+                    # re-trigger itself.
+                    #
+                    # 🔴 WHAT `except` DOES AND DOES NOT BUY (corrected 2026-07-30).
+                    # `crud.apply_batch_updates` DOES commit (crud.py, end of the
+                    # `transaction_context` block), so the chain rows above really
+                    # are durable before these hooks run. But catching the exception
+                    # is NOT the same as containing the failure: on PostgreSQL a
+                    # failed statement aborts the transaction, and everything the
+                    # worker does afterwards on this session — including
+                    # `process_pending_groups`' commit of `processed_chain=True` —
+                    # then fails or silently rolls back, so the group is replayed
+                    # forever without the retry quarantine ever advancing.
+                    # Containment has to happen where the statement runs, which is
+                    # why `enrichment_config._isolated_execute` wraps every
+                    # reference query in a SAVEPOINT.
+                    # [Enrichment ①] Absent-only automatic confirmation of SINGLE
+                    # candidates for this rule's target fields: runs on the VALIDATED
+                    # batch items after the committed write, per-rule opt-in (default
+                    # OFF), and a failure here is logged rather than propagated. The
+                    # note directly above says what that `except` does NOT protect
+                    # against — it was written for the map-meta hook that stood here
+                    # until 2026-09-07 and it holds for this one unchanged.
+                    # Not a loop: writes land on the DERIVED table while the
+                    # enrichment rule triggers on the SOURCE table, and the
+                    # absent-only gate makes a second pass a no-op regardless.
+                    # ⚰️ THE HOOK LEFT THIS PATH (S-151, 판정 262). Measured here at 0.875 s per
+                    # 1,000-row group - 35 % of everything the group spent outside the mapper -
+                    # and it is FOLLOW-UP work: nobody is waiting for a confirmation that the
+                    # next read would compute anyway. 「요청/커밋 경로 인라인 금지, 뒤따르는 일은
+                    # 페이싱된 별도 작업」 is the standing rule, and this was the inline case of it.
+                    # It now runs on the ledger follow-up drain, paced - see
+                    # `_auto_confirm_followed_rows`. NOTHING IS ENQUEUED HERE: these rows reach
+                    # that queue already, through their own collapsed outbox events, so a second
+                    # enqueue would double the ledger's re-translation to save this.
+
+                    # 5. Collect WebSocket broadcast messages (dispatched AFTER commit, fire-and-forget).
+                    #    이벤트명/페이로드 형식은 절대 변경하지 않고 타이밍만 커밋 이후로 미룬다.
+                    with alignment_batch_counts.stage("broadcast build"):
+                        try:
+                            cfg = crud.TABLE_CONFIG.get(target_table, {})
+                            col_types = cfg.get("column_types", {})
+                            user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
+
+                            # [P1b] Fourth copy of the discarded item build. Above the threshold the
+                            # message below carries only `change_count`, so every item here is
+                            # thrown away - and building one is not free: `crud.apply_batch_updates`
+                            # commits, `expire_on_commit` is true, and `row.created_at` is the first
+                            # attribute read, so each row is reloaded by its own SELECT before the
+                            # O(cols) wrapping loop even starts. This site has no metadata merge
+                            # (the main.py endpoints do), so its whole bill IS those reloads.
+                            #
+                            # ⚠️ Same predicate, moved. The loop appends exactly one item per entry
+                            # of `results`, unconditionally, so `len(msg_items) == len(results)`.
+                            # A `continue` added to that loop breaks the equality and this must
+                            # move back.
+                            needs_items = len(results) <= BROADCAST_ITEM_LIMIT
+                            msg_items = []
+                            for row, is_new in (results if needs_items else ()):
+                                c_at_str = to_local_str(row.created_at)
+                                u_at_str = to_local_str(row.updated_at)
                         
-                            r_data = {}
-                            for col in user_cols:
-                                val = getattr(row, col)
-                                if val is None:
-                                    val = {"value": None, "is_overwrite": False, "sources": {}, "updated_by": "system"}
-                                r_data[col] = val
-                            r_data["created_at"] = {"value": c_at_str, "is_overwrite": False, "sources": {}, "updated_by": "system"}
-                            r_data["updated_at"] = {"value": u_at_str, "is_overwrite": False, "sources": {}, "updated_by": "system"}
+                                r_data = {}
+                                for col in user_cols:
+                                    val = getattr(row, col)
+                                    if val is None:
+                                        val = {"value": None, "is_overwrite": False, "sources": {}, "updated_by": "system"}
+                                    r_data[col] = val
+                                r_data["created_at"] = {"value": c_at_str, "is_overwrite": False, "sources": {}, "updated_by": "system"}
+                                r_data["updated_at"] = {"value": u_at_str, "is_overwrite": False, "sources": {}, "updated_by": "system"}
                         
-                            msg_items.append({
-                                "row_id": row.row_id,
-                                "is_new": is_new,
-                                "data": r_data,
-                                "created_at": c_at_str,
-                                "updated_at": u_at_str
-                            })
+                                msg_items.append({
+                                    "row_id": row.row_id,
+                                    "is_new": is_new,
+                                    "data": r_data,
+                                    "created_at": c_at_str,
+                                    "updated_at": u_at_str
+                                })
                         
-                        user_name = "chain_worker"
+                            user_name = "chain_worker"
                     
-                        # Ensure created_logs has clean string timestamps
-                        # [C-5 확장] 절단은 직렬화 루프 **앞**에서 수행 — 6.5만 건 dict copy/isoformat 자체가 낭비.
-                        # 재기동 스윕 재인제션 등 대형 tx에서 전량(수만 건, ~50MB JSON) 전송 시
-                        # 웹서버 이벤트 루프가 동결되던 인시던트(2026-07-25)의 재발 방지.
-                        # 실제 총 건수는 total_log_count로 별도 전달(순수 추가 필드, 계약 불변).
-                        total_log_count = len(created_logs) if created_logs else 0
-                        serialized_logs = []
-                        if created_logs:
-                            from datetime import datetime
-                            for log in created_logs[:MAX_NOTIFY_CREATED_LOGS]:
-                                log_copy = dict(log)
-                                ts = log_copy.get("timestamp")
-                                if ts is not None and isinstance(ts, datetime):
-                                    log_copy["timestamp"] = ts.isoformat()
-                                serialized_logs.append(log_copy)
+                            # Ensure created_logs has clean string timestamps
+                            # [C-5 확장] 절단은 직렬화 루프 **앞**에서 수행 — 6.5만 건 dict copy/isoformat 자체가 낭비.
+                            # 재기동 스윕 재인제션 등 대형 tx에서 전량(수만 건, ~50MB JSON) 전송 시
+                            # 웹서버 이벤트 루프가 동결되던 인시던트(2026-07-25)의 재발 방지.
+                            # 실제 총 건수는 total_log_count로 별도 전달(순수 추가 필드, 계약 불변).
+                            total_log_count = len(created_logs) if created_logs else 0
+                            serialized_logs = []
+                            if created_logs:
+                                from datetime import datetime
+                                for log in created_logs[:MAX_NOTIFY_CREATED_LOGS]:
+                                    log_copy = dict(log)
+                                    ts = log_copy.get("timestamp")
+                                    if ts is not None and isinstance(ts, datetime):
+                                        log_copy["timestamp"] = ts.isoformat()
+                                    serialized_logs.append(log_copy)
 
-                        if not needs_items:
-                            # len(msg_items) before; empty by construction on this arm now.
-                            msg = event_constants.batch_refresh_message(
-                                target_table, len(results),
-                                transaction_id=chain_tx_id,
-                                created_logs=serialized_logs,
-                                total_log_count=total_log_count)
-                        else:
-                            msg = {
-                                "event": "batch_row_upsert",
-                                "table_name": target_table,
-                                "items": msg_items,
-                                # 표준 계약 필드 — «항상» 실린다(§event_constants `:185`: 0 과
-                                # 「키 없음」은 다른 사실이다). 이 발신자«만» 안 싣고 있었고,
-                                # 그래서 이 경로에서만 「체인이 몇 칸을 바꿨나」가 «말해지지 않았다».
-                                # 🔴 `len(results)` 가 아니라 «이 메시지가 싣고 있는 수»다. 지금은
-                                #    둘이 같지만(위 불변 주석), 그 불변이 깨지는 날 이 수는 메시지에
-                                #    대해 계속 참이고 `len(results)` 는 과대가 된다.
-                                "change_count": len(msg_items),
-                                "updated_by": user_name,
-                                "transaction_id": chain_tx_id,
-                                "created_logs": serialized_logs,
-                                "total_log_count": total_log_count
-                            }
-                        # 껍데기 행 실시간 제거 이벤트를 먼저(순서 보존) 큐잉한 뒤 upsert/refresh 이벤트를 큐잉
-                        if deleted_row_ids:
-                            broadcast_messages.append({
-                                "event": "batch_row_delete",
-                                "table_name": target_table,
-                                "row_ids": deleted_row_ids,
-                                "transaction_id": chain_tx_id
-                            })
+                            if not needs_items:
+                                # len(msg_items) before; empty by construction on this arm now.
+                                msg = event_constants.batch_refresh_message(
+                                    target_table, len(results),
+                                    transaction_id=chain_tx_id,
+                                    created_logs=serialized_logs,
+                                    total_log_count=total_log_count)
+                            else:
+                                msg = {
+                                    "event": "batch_row_upsert",
+                                    "table_name": target_table,
+                                    "items": msg_items,
+                                    # 표준 계약 필드 — «항상» 실린다(§event_constants `:185`: 0 과
+                                    # 「키 없음」은 다른 사실이다). 이 발신자«만» 안 싣고 있었고,
+                                    # 그래서 이 경로에서만 「체인이 몇 칸을 바꿨나」가 «말해지지 않았다».
+                                    # 🔴 `len(results)` 가 아니라 «이 메시지가 싣고 있는 수»다. 지금은
+                                    #    둘이 같지만(위 불변 주석), 그 불변이 깨지는 날 이 수는 메시지에
+                                    #    대해 계속 참이고 `len(results)` 는 과대가 된다.
+                                    "change_count": len(msg_items),
+                                    "updated_by": user_name,
+                                    "transaction_id": chain_tx_id,
+                                    "created_logs": serialized_logs,
+                                    "total_log_count": total_log_count
+                                }
+                            # 껍데기 행 실시간 제거 이벤트를 먼저(순서 보존) 큐잉한 뒤 upsert/refresh 이벤트를 큐잉
+                            if deleted_row_ids:
+                                broadcast_messages.append({
+                                    "event": "batch_row_delete",
+                                    "table_name": target_table,
+                                    "row_ids": deleted_row_ids,
+                                    "transaction_id": chain_tx_id
+                                })
 
-                        broadcast_messages.append(msg)
-                    except Exception as ws_err:
-                        # 통지 메시지 구성 실패는 로깅만 하고 그룹 처리(성공/커밋)에는 영향 주지 않는다.
-                        # [H4] 다만 **결과를 숨기지 않는다** — 여기서 떨어지면 행은 이미 커밋됐는데
-                        # 어떤 클라이언트도 그 사실을 모른다(핵심가치 #3, 실시간 신뢰 전파).
-                        # 예외 타입과 스택을 남기지 않으면 이 한 줄이 엉뚱한 원인을 가리킨다.
-                        logger.error(
-                            f"Failed to build chained update notification for '{target_table}' "
-                            f"(tx {chain_tx_id}) - rows are COMMITTED but clients will NOT be "
-                            f"notified: [{type(ws_err).__name__}] {ws_err}",
-                            exc_info=True,
-                        )
+                            broadcast_messages.append(msg)
+                        except Exception as ws_err:
+                            # 통지 메시지 구성 실패는 로깅만 하고 그룹 처리(성공/커밋)에는 영향 주지 않는다.
+                            # [H4] 다만 **결과를 숨기지 않는다** — 여기서 떨어지면 행은 이미 커밋됐는데
+                            # 어떤 클라이언트도 그 사실을 모른다(핵심가치 #3, 실시간 신뢰 전파).
+                            # 예외 타입과 스택을 남기지 않으면 이 한 줄이 엉뚱한 원인을 가리킨다.
+                            logger.error(
+                                f"Failed to build chained update notification for '{target_table}' "
+                                f"(tx {chain_tx_id}) - rows are COMMITTED but clients will NOT be "
+                                f"notified: [{type(ws_err).__name__}] {ws_err}",
+                                exc_info=True,
+                            )
                     
         except Exception as e:
             import traceback
