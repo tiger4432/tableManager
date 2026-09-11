@@ -21,6 +21,7 @@ if server_dir not in sys.path:
     sys.path.insert(0, server_dir)
 
 from database.database import SessionLocal
+import alignment_batch_counts
 from database import crud, schemas
 from utils import heartbeat
 
@@ -2837,103 +2838,128 @@ class IngestionHandler(FileSystemEventHandler):
                 if not chunk:
                     break
                 chunk_index += 1
-                items = []
+                # 🔴 THE CHUNK SAYS WHERE ITS TIME WENT (S-164). Production reports ~60 ms a row
+                # for file ingestion while this box measures the SAME `apply_batch_updates` at
+                # ~0.6 ms - and nothing in between could be read, because the watcher never said
+                # which part of a chunk was slow. This opens the chain's own counting scope around
+                # the chunk, so `crud`'s `write_step` values land in it: no second instrument, and
+                # the line reads like the group line an operator already knows.
+                with alignment_batch_counts.counting_group() as chunk_counts:
+                    chunk_started = time.monotonic()
+                    items = []
                 
-                for row in chunk:
-                    normalized_row = {}
-                    bk_val = None
+                    with alignment_batch_counts.stage("parse"):
+                        for row in chunk:
+                            normalized_row = {}
+                            bk_val = None
                     
-                    for key, val in row.items():
-                        target_key = None
-                        for d_col in defined_cols:
-                            if key.lower() == d_col.lower():
-                                target_key = d_col
-                                break
-                        if target_key is not None:
-                            normalized_row[target_key] = val
-                            if target_key.lower() == bk_col.lower():
-                                bk_val = val
-                        elif key in dropped_value_counts:
-                            if val is not None and val != "":
-                                dropped_value_counts[key] += 1
-                        elif len(dropped_value_counts) < MAX_DROPPED_COLUMNS_REPORTED:
-                            # Seed at 0 so a column whose values are all blank is still
-                            # NAMED - the column was offered and refused either way.
-                            dropped_value_counts[key] = 1 if (val is not None and val != "") else 0
-                    if normalized_row:
-                        items.append(schemas.GeneralUpdateItem(
-                            business_key_val=str(bk_val) if bk_val is not None else None,
-                            updates=normalized_row,
-                            source_name=real_source,
-                            updated_by=uploader
-                        ))
+                            for key, val in row.items():
+                                target_key = None
+                                for d_col in defined_cols:
+                                    if key.lower() == d_col.lower():
+                                        target_key = d_col
+                                        break
+                                if target_key is not None:
+                                    normalized_row[target_key] = val
+                                    if target_key.lower() == bk_col.lower():
+                                        bk_val = val
+                                elif key in dropped_value_counts:
+                                    if val is not None and val != "":
+                                        dropped_value_counts[key] += 1
+                                elif len(dropped_value_counts) < MAX_DROPPED_COLUMNS_REPORTED:
+                                    # Seed at 0 so a column whose values are all blank is still
+                                    # NAMED - the column was offered and refused either way.
+                                    dropped_value_counts[key] = 1 if (val is not None and val != "") else 0
+                            if normalized_row:
+                                items.append(schemas.GeneralUpdateItem(
+                                    business_key_val=str(bk_val) if bk_val is not None else None,
+                                    updates=normalized_row,
+                                    source_name=real_source,
+                                    updated_by=uploader
+                                ))
                 
-                if not items:
-                    processed_rows += len(chunk)
-                    continue
+                    if not items:
+                        processed_rows += len(chunk)
+                        continue
 
-                # 1,000건 청크 단위로 DB 세션을 격리하여 트랜잭션 처리
-                db = SessionLocal()
-                try:
-                    batch_obj = schemas.GeneralUpdateBatch(
-                        updates=items,
-                        transaction_id=file_tx_id,
-                        silent=True
-                    )
-                    # [P2-A] 진행 오프셋을 이 청크와 **같은 트랜잭션**에 실어 원자 커밋한다.
-                    # crud.apply_batch_updates가 내부에서 commit하므로, 그 호출 '이전'에
-                    # 같은 세션으로 UPDATE를 발행해야 한 번의 커밋으로 함께 확정된다.
-                    # (호출 이후에 쓰면 별도 트랜잭션이 되어 두 커밋 사이 크래시 시
-                    #  데이터는 들어갔는데 오프셋은 안 오르는 창이 생긴다 — 그래도 업서트
-                    #  멱등성 덕에 유실이 아니라 재적재로만 열화되지만, 원자성이 더 낫다.)
-                    if checkpoint is not None:
-                        ingestion_checkpoint.record_chunk_progress(
-                            db, checkpoint, processed_rows + len(chunk), chunk_index
-                        )
-
-                    results, changed_cells, created_logs, deleted_row_ids = crud.apply_batch_updates(db, t_name, batch_obj)
-
-                    db.commit()
-
-                    # Between chunks, immediately after the commit that made this chunk
-                    # durable and its offset with it: the same boundary the ledger yields
-                    # at, and for the same reason - resuming from here is exact, so the
-                    # pause costs nothing but the wall clock the operator chose to spend.
-                    if _chunks_per_cycle and _rest_seconds and (
-                            chunk_index % _chunks_per_cycle == 0):
-                        time.sleep(_rest_seconds)
-
-                    total_changed += len(changed_cells)
-                    if created_logs:
-                        # [C-5] 누적 자체에 상한 적용 — 수십만 행 파일에서도 메모리·payload가 O(500)로 고정
-                        total_log_count += len(created_logs)
-                        remaining = MAX_NOTIFY_CREATED_LOGS - len(all_created_logs)
-                        if remaining > 0:
-                            all_created_logs.extend(created_logs[:remaining])
-                    logger.info(f"[{t_name}] 💾 Local batch update success ({len(items)} rows). Changed cells: {len(changed_cells)}")
-                except Exception as e:
-                    db.rollback()
-                    # [D3] `{e}` here wrote ~25 KB per failed chunk - see `_db_error_brief`.
-                    logger.error(f"[{t_name}] ❌ Failed to apply local batch update: "
-                                 f"{_db_error_brief(e)}")
-                    raise e
-                finally:
-                    db.close()
-                
-                processed_rows += len(chunk)
-                # [B1/B2 follow-up] One beat per committed chunk. This is the
-                # signal that separates "ingesting a large file" from "wedged
-                # mid-ingestion": it advances with committed rows, so it stops
-                # exactly when the upsert stops, and it refreshes the work claim
-                # opened by process_with_retry on this same thread.
-                heartbeat.beat(HEARTBEAT_NAME,
-                               note=f"{filename or '?'} {processed_rows}/{total_rows}")
-                if self.on_progress_callback:
-                    progress_pct = min(int((processed_rows / total_rows) * 100), 100) if total_rows else 100
+                    # 1,000건 청크 단위로 DB 세션을 격리하여 트랜잭션 처리
+                    db = SessionLocal()
                     try:
-                        self.on_progress_callback(t_name, filename or "unknown", progress_pct, processed_rows, total_rows)
-                    except Exception as pe:
-                        logger.warning(f"Progress callback failed: {pe}")
+                        batch_obj = schemas.GeneralUpdateBatch(
+                            updates=items,
+                            transaction_id=file_tx_id,
+                            silent=True
+                        )
+                        # [P2-A] 진행 오프셋을 이 청크와 **같은 트랜잭션**에 실어 원자 커밋한다.
+                        # crud.apply_batch_updates가 내부에서 commit하므로, 그 호출 '이전'에
+                        # 같은 세션으로 UPDATE를 발행해야 한 번의 커밋으로 함께 확정된다.
+                        # (호출 이후에 쓰면 별도 트랜잭션이 되어 두 커밋 사이 크래시 시
+                        #  데이터는 들어갔는데 오프셋은 안 오르는 창이 생긴다 — 그래도 업서트
+                        #  멱등성 덕에 유실이 아니라 재적재로만 열화되지만, 원자성이 더 낫다.)
+                        if checkpoint is not None:
+                            ingestion_checkpoint.record_chunk_progress(
+                                db, checkpoint, processed_rows + len(chunk), chunk_index
+                            )
+
+                        with alignment_batch_counts.stage("apply"):
+                            results, changed_cells, created_logs, deleted_row_ids = crud.apply_batch_updates(db, t_name, batch_obj)
+
+                        with alignment_batch_counts.stage("commit"):
+                            db.commit()
+
+                        # Between chunks, immediately after the commit that made this chunk
+                        # durable and its offset with it: the same boundary the ledger yields
+                        # at, and for the same reason - resuming from here is exact, so the
+                        # pause costs nothing but the wall clock the operator chose to spend.
+                        if _chunks_per_cycle and _rest_seconds and (
+                                chunk_index % _chunks_per_cycle == 0):
+                            time.sleep(_rest_seconds)
+
+                        total_changed += len(changed_cells)
+                        if created_logs:
+                            # [C-5] 누적 자체에 상한 적용 — 수십만 행 파일에서도 메모리·payload가 O(500)로 고정
+                            total_log_count += len(created_logs)
+                            remaining = MAX_NOTIFY_CREATED_LOGS - len(all_created_logs)
+                            if remaining > 0:
+                                all_created_logs.extend(created_logs[:remaining])
+                        logger.info(f"[{t_name}] 💾 Local batch update success ({len(items)} rows). Changed cells: {len(changed_cells)}")
+                    except Exception as e:
+                        db.rollback()
+                        # [D3] `{e}` here wrote ~25 KB per failed chunk - see `_db_error_brief`.
+                        logger.error(f"[{t_name}] ❌ Failed to apply local batch update: "
+                                     f"{_db_error_brief(e)}")
+                        raise e
+                    finally:
+                        db.close()
+                
+                    processed_rows += len(chunk)
+                    # [B1/B2 follow-up] One beat per committed chunk. This is the
+                    # signal that separates "ingesting a large file" from "wedged
+                    # mid-ingestion": it advances with committed rows, so it stops
+                    # exactly when the upsert stops, and it refreshes the work claim
+                    # opened by process_with_retry on this same thread.
+                    heartbeat.beat(HEARTBEAT_NAME,
+                                   note=f"{filename or '?'} {processed_rows}/{total_rows}")
+                    if self.on_progress_callback:
+                        progress_pct = min(int((processed_rows / total_rows) * 100), 100) if total_rows else 100
+                        try:
+                            self.on_progress_callback(t_name, filename or "unknown", progress_pct, processed_rows, total_rows)
+                        except Exception as pe:
+                            logger.warning(f"Progress callback failed: {pe}")
+
+                    _summary = chunk_counts()
+                    _stages = _summary.get("stages") or {}
+                    _steps = _summary.get("write_steps") or {}
+                    _wall = time.monotonic() - chunk_started
+                    logger.info(
+                        "[Ingest] %s chunk %d: %d row(s) in %.3f s · STAGES%s · unnamed %.3f s"
+                        " · INSIDE THE WRITE%s",
+                        t_name, chunk_index, len(chunk), _wall,
+                        "".join(" · %s %.3f s" % (k, v) for k, v in sorted(_stages.items()))
+                        or " (none named)",
+                        max(_wall - sum(_stages.values()), 0.0),
+                        "".join(" · %s %.3f s" % (k, v) for k, v in sorted(_steps.items()))
+                        or " (none named)")
                     
             # 🔴 THE STATISTICS ARE PART OF THE LOAD (S-124 ②). After the last chunk
             # commits, this table's row count is one the planner has never seen, and the
