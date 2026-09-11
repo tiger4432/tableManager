@@ -15,8 +15,19 @@
 // ⛔ 설명 문구 «0» (상설). 원에 표 이름, 선에 종류, 그 밖에 문장이 없습니다.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/** 선언 넷이 내는 엣지 종류. 순서는 «범례»의 순서이고 판정이 아닙니다. */
+/**
+ * 엣지 종류 넷. 순서는 «범례»의 순서이고 판정이 아닙니다.
+ *
+ * 🔴 S-179 (판정 293) 뒤로 «뜻이 둘» 바뀌었습니다 — 이름은 그대로입니다:
+ *   mapper  체인 규칙이 표를 깨움. 인리치의 «자기 고리»와 «중복 제거 투영»도 이제 여기입니다
+ *           (합성된 체인 규칙: 규칙 이름이 `enrichment_auto_confirm:` · `enrichment_dedup:` 로 시작)
+ *   enrich  «폐기가 아니라 좁아졌습니다» — 이제 「참조뷰가 «읽는» 표 -> derived」 하나입니다
+ *           (`reads:` 를 선언한 참조뷰가 있을 때만). 자동 확정은 더는 이 종류가 아닙니다
+ */
 export const EDGE_KINDS = Object.freeze(['mapper', 'enrich', 'vjoin', 'ledger']);
+
+/** 합성된 규칙의 `origin` 은 이 접두로 시작합니다 — 뒤가 «어느 인리치에서 왔나»입니다. */
+const SYNTHESIZED = 'synthesized:';
 
 /**
  * 선 모양은 «CSS 가» 정하고 이 함수는 이름만 붙입니다.
@@ -27,6 +38,24 @@ export const EDGE_KINDS = Object.freeze(['mapper', 'enrich', 'vjoin', 'ledger'])
 export function edgeClass(kind) {
   const known = EDGE_KINDS.includes(kind);
   return `cg-edge cg-edge--${known ? kind : 'unknown'}`;
+}
+
+/**
+ * 이 엣지가 «파일에 적힌 규칙»인가 «합성된 규칙»인가.
+ *
+ * 🔴 `origin` 은 «모든 엣지에 오지 않습니다». 실측(`server/chain_graph.py`): `mapper` 와
+ *    `enrich` 만 싣고, `vjoin`·`ledger` 는 «종류가 곧 파일»이라 싣지 않습니다(소스 주석이
+ *    그렇게 적습니다). 그래서 없는 것을 `file` 로 «채우지 않습니다» — 「안 왔다」와
+ *    「파일에서 왔다」는 다른 사실이고, 채우면 vjoin 이 파일 규칙이라고 «주장»하게 됩니다.
+ * @returns {{stated: boolean, synthesized: boolean, from: string|null}}
+ */
+export function originOf(edge) {
+  const raw = edge && edge.origin;
+  if (typeof raw !== 'string' || raw === '') return { stated: false, synthesized: false, from: null };
+  if (raw.startsWith(SYNTHESIZED)) {
+    return { stated: true, synthesized: true, from: raw.slice(SYNTHESIZED.length) || null };
+  }
+  return { stated: true, synthesized: false, from: null };
 }
 
 /**
@@ -123,18 +152,29 @@ export function chainGraphView(payload) {
   return {
     state: 'ready',
     nodes: placed,
-    edges: edges.map((edge) => ({
+    edges: edges.map((edge) => {
+      const origin = originOf(edge);
+      return {
       from: edge.from,
       to: edge.to,
       kind: edge.kind,
+      rule: edge.rule || null,
+      // 🔴 합성 규칙은 «다른 선»입니다. 파일에 적힌 규칙과 같아 보이면, 운영자가 파일을 열어
+      //    찾을 수 없는 규칙을 파일에서 찾게 됩니다.
+      origin: origin.stated ? edge.origin : null,
+      synthesized: origin.synthesized,
+      // 「어느 인리치에서 왔나」 — 규칙 이름의 접두가 이미 말하지만, 값으로도 들고 있습니다.
+      synthesizedFrom: origin.from,
       className: edgeClass(edge.kind)
         + (edge.enabled === false ? ' is-dim' : '')
+        + (origin.synthesized ? ' is-synth' : '')
         + (inCycle.has(edge.from) && inCycle.has(edge.to) ? ' is-cycle' : ''),
       x1: (at.get(edge.from) || {}).x,
       y1: (at.get(edge.from) || {}).y,
       x2: (at.get(edge.to) || {}).x,
       y2: (at.get(edge.to) || {}).y,
-    })),
+      };
+    }),
     cycles,
     // 「고리가 있다」는 사실은 표를 못 칠할 때도 «말해져야» 합니다.
     cycleNotes,
@@ -188,6 +228,9 @@ export class ChainGraphPanel {
       svg.appendChild(this._svg('line', {
         class: edge.className, x1: edge.x1, y1: edge.y1, x2: edge.x2, y2: edge.y2,
         'data-kind': edge.kind,
+        // 값이 «없으면 칸도 없습니다» — 빈 속성은 「파일에서 왔다」로 읽힙니다.
+        'data-origin': edge.origin,
+        'data-rule': edge.rule,
       }));
     }
 

@@ -210,6 +210,48 @@ function suite(mod) {
     ok('S8 ...in the server own words', cycleText.includes('would loop'), cycleText);
   }
 
+  console.log(`${LF}-- C-78: a synthesized rule is not a rule anybody wrote down --`);
+  {
+    // 🔴 THE SHAPE MEASURED AT `server/chain_graph.py` (S-179 / 판정 293), not taken from the
+    //    brief: `origin` rides on `mapper` and `enrich` ONLY. `vjoin` and `ledger` do not carry
+    //    it -- the route's own comment says their KIND names their file -- so a missing origin
+    //    must read as 「not stated」, never as 「from a file」.
+    const withOrigins = {
+      nodes: [{ id: 'raw' }, { id: 'dt' }, { id: 'ref' }],
+      edges: [
+        { from: 'raw', to: 'dt', kind: 'mapper', rule: 'dt_from_raw', origin: 'file' },
+        { from: 'dt', to: 'dt', kind: 'mapper',
+          rule: 'enrichment_auto_confirm:lot_slot', origin: 'synthesized:lot_slot' },
+        { from: 'raw', to: 'dt', kind: 'mapper',
+          rule: 'enrichment_dedup:lot_slot', origin: 'synthesized:lot_slot' },
+        { from: 'ref', to: 'dt', kind: 'enrich', rule: 'lot_slot', origin: 'file' },
+        { from: 'raw', to: 'dt', kind: 'vjoin', rule: 'vj' },
+      ],
+      cycles: [],
+    };
+    const ov = chainGraphView(withOrigins);
+    const byRule = (name) => ov.edges.find((e) => e.rule === name);
+    eq('G4 a rule written in a file is not marked synthesized',
+      byRule('dt_from_raw').synthesized, 'false');
+    eq('G5 a synthesized auto-confirm IS marked', byRule('enrichment_auto_confirm:lot_slot')
+      .synthesized, 'true');
+    eq('G6 ...and names the enrichment it came from', byRule('enrichment_auto_confirm:lot_slot')
+      .synthesizedFrom, 'lot_slot');
+    eq('G7 the dedup projection is synthesized too',
+      byRule('enrichment_dedup:lot_slot').synthesized, 'true');
+    ok('G8 a synthesized edge is drawn differently from a file one',
+      byRule('enrichment_auto_confirm:lot_slot').className.includes('is-synth')
+        && !byRule('dt_from_raw').className.includes('is-synth'));
+    // 🔴 AN EDGE THAT NEVER SAID IS NOT AN EDGE THAT SAID 「file」. Filling the gap would make
+    //    a vjoin CLAIM to be a file rule, which is a sentence the route never uttered.
+    eq('G9 an edge carrying no origin says nothing rather than 「file」',
+      byRule('vj').origin, 'null');
+    eq('G10 ...and is not marked synthesized either', byRule('vj').synthesized, 'false');
+    // enrich survives S-179 -- narrowed, not retired.
+    eq('G11 enrich is still a kind', byRule('lot_slot').kind, 'enrich');
+    eq('G12 ...and reads as a file rule', byRule('lot_slot').origin, 'file');
+  }
+
   console.log(`${LF}-- a read that failed is not an empty graph --`);
   eq('U1 no payload reads as unread', chainGraphView(null).state, 'unread');
   eq('U2 an answer with an empty node list is READY',
@@ -226,8 +268,10 @@ const base = { ran, names: NAMES.slice(), failed: failures.length };
 const MUTANTS = [
   { id: 'M1', what: 'an unknown edge kind is dropped instead of drawn',
     catches: 'K6 ...and is still drawn',
-    from: '    edges: edges.map((edge) => ({',
-    to: '    edges: edges.filter((e) => EDGE_KINDS.includes(e.kind)).map((edge) => ({' },
+    // ⚠️ RE-ANCHORED IN C-78: the round that added `origin` changed this very line, and the
+    //    corpus said so out loud (`mutation anchor is GONE`) instead of quietly passing.
+    from: '    edges: edges.map((edge) => {',
+    to: '    edges: edges.filter((e) => EDGE_KINDS.includes(e.kind)).map((edge) => {' },
   { id: 'M2', what: 'a node that never said `enabled` is drawn dim',
     catches: 'D2 a node that never said',
     from: '      dim: node.enabled === false,',
@@ -261,8 +305,19 @@ const MUTANTS = [
     catches: 'S4 a table the catalogue does not declare',
     from: '      undeclared: node.declared === false,',
     to: '      undeclared: false,' },
+  // 🔴 C-78's defect, put back: the edge stops carrying where it came from. Nothing throws,
+  //    the graph looks identical, and a synthesized rule reads as one somebody wrote down.
+  { id: 'M10', what: 'the edge stops reading its origin',
+    catches: 'G5 a synthesized auto-confirm IS marked',
+    from: '      const origin = originOf(edge);',
+    to: '      const origin = { stated: false, synthesized: false, from: null };' },
+  { id: 'M11', what: 'a missing origin is filled in as a file rule',
+    catches: 'G9 an edge carrying no origin',
+    from: "      origin: origin.stated ? edge.origin : null,",
+    to: "      origin: origin.stated ? edge.origin : 'file'," },
+  // ⚠️ RE-ANCHORED IN C-78 for the same reason: this round rewrote the comment it named.
   { id: 'M7c', what: 'CONTROL: a comment line is removed', control: true,
-    from: '/** 선언 넷이 내는 엣지 종류. 순서는 «범례»의 순서이고 판정이 아닙니다. */',
+    from: '/** 합성된 규칙의 `origin` 은 이 접두로 시작합니다 — 뒤가 «어느 인리치에서 왔나»입니다. */',
     to: '/** */' },
 ];
 

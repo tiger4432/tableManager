@@ -213,7 +213,8 @@
     .cg-edge { stroke: var(--text-dim); stroke-width: 1.5; fill: none; }
     /* 실선 — 매퍼가 표를 깨우는 것이 이 그림의 «기본»입니다. */
     .cg-edge--mapper { stroke: var(--text); }
-    /* 점선 — 인리치먼트. */
+    /* 점선 — 인리치먼트: S-179 뒤로 «참조뷰가 읽는 표 -> derived» 하나를 뜻합니다.
+       자동 확정·중복 제거는 이제 mapper(합성 체인 규칙)입니다. 폐기가 아니라 «좁아진» 것. */
     .cg-edge--enrich { stroke-dasharray: 5 3; }
     /* 점-선 — 가상 조인. ⚠️ 지시의 낱말은 「이중」이었습니다. 진짜 이중선은 엣지마다
        선을 «둘» 그려야 해서 「엣지 하나 = 선 하나」 모델이 깨집니다 — 구분되는 넷을
@@ -223,6 +224,10 @@
     .cg-edge--ledger { stroke: var(--border); }
     /* 네 범례 중 어느 것도 아닌 선 — 새 선언이 생겼다는 뜻입니다. */
     .cg-edge--unknown { stroke-dasharray: 2 2; stroke-width: 2.5; }
+    /* 🔴 C-78. 합성된 규칙은 «색»으로 가릅니다 — 선 «모양»은 이미 종류가 쓰고 있어서,
+       거기에 origin 을 얹으면 두 사실이 한 축을 다투게 됩니다. 파일을 열어도 없는 규칙을
+       운영자가 파일에서 찾는 일을 막는 것이 이 색 하나의 일입니다. */
+    .cg-edge.is-synth { stroke: var(--accent, #7a5cff); }
     .cg-edge.is-dim, .cg-node.is-dim { opacity: 0.35; }
     .cg-edge.is-cycle { stroke: var(--danger); stroke-width: 2.5; }
     .cg-node circle { fill: var(--bg); stroke: var(--text); stroke-width: 1.5; cursor: pointer; }
@@ -1698,7 +1703,7 @@
     .retro-group.is-chosen { border-color: var(--accent); color: var(--accent); }
 
   </style>
-  <script type="module" crossorigin src="/assets/admin-CTikD1te.js"></script>
+  <script type="module" crossorigin src="/assets/admin-Bv96fMhG.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/tokens-nTqwt3FA.js">
   <link rel="modulepreload" crossorigin href="/assets/truncation-CkNwtCUZ.js">
   <link rel="modulepreload" crossorigin href="/assets/admin_token-BrUpdOsE.js">
