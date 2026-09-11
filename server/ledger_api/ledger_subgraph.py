@@ -971,12 +971,130 @@ def _seed_node(seed_id, seed_ref, action_lookup):
 _bare = _bare_name
 
 
+#: The columns every row carries whatever it is — asked of the walk, not of a declaration.
+#: `depth` first because the first question about a returned node is how far it is from the
+#: seed, and `id` is long, so it sits where the eye is not.
+ROW_FIXED_COLUMNS = ("type", "depth", "id", "parent_id", "via", "seed",
+                     "path", "path_ids")
+
+#: What separates the hops of `path` / `path_ids`. Not a comma: a predicate name cannot
+#: contain this, and a reader can see direction in it.
+PATH_SEPARATOR = "\u2192"
+
+
+def _declared_columns(nodes, entities):
+    """The declared column names across the types this walk reached, first-seen order.
+
+    🔴 THE SAME RULE THE CLIENT'S `tableColumns` USES, and the contract vector scores the
+    two against each other. For one type it is: the declaration's `keys`, then the
+    qualifier names the RESPONSE actually carried, then the declaration's `attributes` —
+    names exactly as declared, never written here.
+
+    ⚠️ THE CLIENT RENDERS PER-TYPE SECTIONS AND THIS IS ONE TABLE, so the union is this
+    projection's own decision and the vector cannot pin it: a TSV has one header. The rule
+    the vector DOES pin is the per-type list; the union is that list, merged in the order
+    the types were reached, which is why a node of a type that never declared a column
+    leaves it blank rather than shifting its row.
+    """
+    by_type = {}
+    for node in nodes:
+        by_type.setdefault(str(node.get("type") or ""), []).append(node)
+    columns = []
+    for node_type, members in by_type.items():
+        spec = (entities or {}).get(node_type) or (entities or {}).get(
+            _bare(node_type)) or {}
+        names = list(spec.get("keys") or ())
+        seen_qualifiers = []
+        for node in members:
+            for name in (node.get("qualifiers") or {}):
+                if name not in seen_qualifiers:
+                    seen_qualifiers.append(name)
+        names += seen_qualifiers
+        names += list(spec.get("attributes") or ())
+        for name in names:
+            if name not in columns and name not in ROW_FIXED_COLUMNS:
+                columns.append(name)
+    return columns
+
+
+def _row_cell(value):
+    """One TSV cell. A tab or a newline inside a value would invent a column or a row."""
+    if value is None or value is False:
+        return ""
+    if value is True:
+        return "true"
+    text = str(value)
+    return text.replace("\t", " ").replace("\r", " ").replace("\n", " ")
+
+
+def rows_projection(payload, nodes, edges, seed_signs, entities,
+                    static_types=()):
+    """The walk's answer as TSV — one row per reached node.
+
+    🔴 THE TRUNCATION MARKER IS THE FIRST LINE, ALWAYS. 「끊김 ≠ 없음」: a reader who
+    pastes this into a spreadsheet has no other way to learn the walk ran out of budget,
+    and a table that is silently short is worse than no table — it answers the question
+    wrongly rather than refusing it.
+
+    🔴 `depth` COMES FROM THE PAYLOAD AND `path` FROM THE TRAIL — two different
+    traversals ON PURPOSE. `subgraph`'s own BFS stamps `node["depth"]` under the
+    follow/hops/backbone budgets; `_reach` re-walks the RESULT graph under further rules.
+    Recomputing depth from the trail would make 「`path` 의 술어 수 = `depth`」 true by
+    construction and measure nothing. Taking each from its own place makes that gate assert
+    the two AGREE, so if it ever goes red it is a finding about the walk.
+
+    ⚠️ ONE PATH — the first that reached the node. `_trail_back` says why.
+    """
+    reach, parents, _kinds = _reach(nodes, edges, seed_signs, static_types)
+    visible = payload.get("nodes") or []
+    limits = payload.get("limits") or {}
+    truncation = payload.get("truncated") or {}
+    cut = bool(truncation.get("depth") or truncation.get("nodes")
+               or truncation.get("edges") or truncation.get("claims")
+               or truncation.get("actions"))
+
+    declared = _declared_columns(visible, entities)
+    header = list(ROW_FIXED_COLUMNS) + declared
+    lines = ["# truncated=%s nodes=%d limit=%s" % (
+        "true" if cut else "false", len(visible), limits.get("nodes")),
+        "\t".join(header)]
+
+    for node in visible:
+        node_id = node.get("id")
+        # A node may have been reached from more than one seed; the row belongs to the
+        # seed whose trail holds it, and a node on two trails gets a row per seed — 「씨앗
+        # 여럿이면 씨앗마다 행」.
+        trails = [(seed, trail) for seed, trail in parents.items() if node_id in trail]
+        if not trails:
+            trails = [(None, {})]
+        for seed, trail in trails:
+            ids, predicates = _trail_back(trail, node_id) if trail else ([node_id], [])
+            values = {
+                "type": node.get("type"),
+                "depth": node.get("depth"),
+                "id": node_id,
+                "parent_id": ids[-2] if len(ids) > 1 else None,
+                "via": predicates[-1] if predicates else None,
+                "seed": seed,
+                "path": PATH_SEPARATOR.join(str(item) for item in predicates),
+                "path_ids": PATH_SEPARATOR.join(str(item) for item in ids),
+            }
+            carried = dict(node.get("keys") or {})
+            carried.update(node.get("qualifiers") or {})
+            carried.update(node.get("attributes") or {})
+            row = [_row_cell(values.get(name)) for name in ROW_FIXED_COLUMNS]
+            row += [_row_cell(carried.get(name)) for name in declared]
+            lines.append("\t".join(row))
+    return "\n".join(lines) + "\n"
+
+
 def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
              node_limit=DEFAULT_NODE_LIMIT, edge_limit=DEFAULT_EDGE_LIMIT,
              action_lookup=None, follow=None,
              backbone_hops=DEFAULT_BACKBONE_HOPS, static_types=None,
              static_follow=None, follow_keys=None, collect=None,
-             cardinalities=None, include_superseded=False):
+             cardinalities=None, include_superseded=False, rows=False,
+             entities=None):
     """Return a typed evidence subgraph from any public node id, or from a signed SET.
 
     `seed_id` is one opaque id as before, or `{"positive": [ids], "negative": [ids]}`.
@@ -1541,7 +1659,7 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     if edge_cut: reasons.append("edges")
     if claim_cut: reasons.append("claims")
     if action_cut: reasons.append("actions")
-    return {
+    payload = {
         # 🪦 [S-13 ③] `schema_version: 3` 이 여기 있었다. 독자가 «0» 이었고(클라 소스·
         #    하니스·계약·서버 시험 전수), 「다를 때 무엇을 하나」가 «어디에도» 안 적혀 있었으며,
         #    3 과 2 의 «뜻 차이»도 기록이 없었다. 형제(파일별 schema_version)는 이미 은퇴했고
@@ -1589,6 +1707,12 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         },
         "message": None if found else "선택한 노드에 연결된 원장 증거가 없습니다",
     }
+    if rows:
+        # Folded at the END, from this walk's own structures (S-183). No second route, no
+        # second traversal of the source data - the rows ARE this answer, read sideways.
+        payload["rows"] = rows_projection(
+            payload, nodes, ordered_edges, seed_signs, entities, static_types or ())
+    return payload
 
 
 

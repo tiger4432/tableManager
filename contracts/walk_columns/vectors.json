@@ -1,0 +1,92 @@
+{
+  "$comment": [
+    "S-183 DRAFT — the walk table's DECLARED columns, scored on both halves.",
+    "",
+    "🔴 WHAT THIS PINS, AND WHAT IT DELIBERATELY DOES NOT.",
+    "The two halves render different SHAPES: `client2/src/walk/derive.js tableColumns`",
+    "returns one section PER TYPE and decorates it with fixed columns whose names are",
+    "Korean display text (깊이 · 라벨 · id · 충돌); the server's `format=rows` is ONE TSV",
+    "table whose fixed columns are machine names (type · depth · id · parent_id · via ·",
+    "seed · path · path_ids). Those two lists can never be equal, and a vector asserting",
+    "they are would be a vector nobody can satisfy.",
+    "",
+    "What IS one rule, and is what these cases score: for a single type, which DECLARED",
+    "names become columns and IN WHAT ORDER —",
+    "",
+    "    the declaration's `keys`, then the QUALIFIER names the response actually carried,",
+    "    then the declaration's `attributes`.",
+    "",
+    "🔴 NO NAME IS WRITTEN ON EITHER SIDE. A key added to a declaration must add a column",
+    "to both the screen and the TSV with no edit in either — that is the property these",
+    "vectors exist to keep, and `unknown_type` is the case that proves the rule reads the",
+    "declaration rather than the response.",
+    "",
+    "⚠️ THE UNION IS THE SERVER'S OWN. A TSV has one header, so the server merges the",
+    "per-type lists in the order the types were reached and leaves a cell blank where a",
+    "type never declared that column. The client has sections and needs no union. That",
+    "merge is therefore NOT scored here — only the per-type rule above, which the merge is",
+    "built out of.",
+    "",
+    "⚠️ DRAFT: the server half reads these today (`_declared_columns`). The client half and",
+    "the harness that scores it are the lead's to place (S-183 order)."
+  ],
+  "version": 1,
+  "per_type_declared_columns": [
+    {
+      "name": "keys_only",
+      "type": "wafer@1",
+      "declaration": { "keys": ["mat_id"] },
+      "qualifiers_present": [],
+      "expect": ["mat_id"],
+      "$why": "The commonest shape: a type whose identity is its only declared column."
+    },
+    {
+      "name": "keys_in_declared_order",
+      "type": "die@1",
+      "declaration": { "keys": ["mat_id", "x", "y"] },
+      "qualifiers_present": [],
+      "expect": ["mat_id", "x", "y"],
+      "$why": "Declaration order, never sorted — the order is part of the answer, and a table that alphabetised it would separate x from y."
+    },
+    {
+      "name": "qualifiers_follow_keys",
+      "type": "die@1",
+      "declaration": { "keys": ["mat_id", "x"] },
+      "qualifiers_present": ["gate"],
+      "expect": ["mat_id", "x", "gate"],
+      "$why": "A qualifier is what the ANSWER carried, not what the declaration promised, so it cannot come from the same list — but it still sits after identity."
+    },
+    {
+      "name": "attributes_come_last",
+      "type": "defect@1",
+      "declaration": { "keys": ["k"], "attributes": ["radius"] },
+      "qualifiers_present": [],
+      "expect": ["k", "radius"],
+      "$why": "🔴 Attributes are declared values that are NOT identity (setup_bundle says so where the grammar is defined), so they read after both."
+    },
+    {
+      "name": "all_three_groups",
+      "type": "defect@1",
+      "declaration": { "keys": ["k"], "attributes": ["radius", "depth_um"] },
+      "qualifiers_present": ["gate", "unit"],
+      "expect": ["k", "gate", "unit", "radius", "depth_um"],
+      "$why": "The load-bearing case: keys → qualifiers → attributes, each group internally in its own declared order."
+    },
+    {
+      "name": "no_attributes_declared_adds_nothing",
+      "type": "wafer@1",
+      "declaration": { "keys": ["mat_id"], "attributes": [] },
+      "qualifiers_present": [],
+      "expect": ["mat_id"],
+      "$why": "⚠️ An empty `attributes` must render byte-identically to a type that declares none — the client's conflicts column keys off `attributes.length` for the same reason."
+    },
+    {
+      "name": "unknown_type_declares_nothing",
+      "type": "not_declared@1",
+      "declaration": null,
+      "qualifiers_present": ["gate"],
+      "expect": ["gate"],
+      "$why": "🔴 THE SENSITIVITY CONTROL. A type with no declaration contributes only what the response actually carried. An implementation that invented columns from the response's `keys` would pass every case above and fail this one."
+    }
+  ]
+}
