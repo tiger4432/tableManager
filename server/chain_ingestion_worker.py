@@ -107,16 +107,34 @@ class OutboxListener:
         db = self._factory()
         try:
             engine = db.bind or db.get_bind()
-            connection = engine.raw_connection()
-            # autocommit 모드로 변경하여 LISTEN 명령이 즉시 반영되게 함
-            connection.set_isolation_level(0)
-            cursor = connection.cursor()
-            cursor.execute(f"LISTEN {self._channel};")
-            cursor.close()
-            self._connection = connection
+            url = engine.url
         finally:
-            # 세션 래퍼만 닫고, 체크아웃한 raw 커넥션은 LISTEN 유지를 위해 계속 보유한다.
             db.close()
+
+        # 🔴 A DEDICATED CONNECTION, NEVER THE POOL'S (S-167). LISTEN needs autocommit,
+        # and `engine.raw_connection()` hands out a POOLED one: `set_isolation_level(0)`
+        # mutates it, and closing the proxy RETURNS IT TO THE POOL still in autocommit.
+        # Measured on this box - the very next checkout was the SAME connection with
+        # `autocommit=True`. Whatever session took it next never began a transaction, so
+        # every `begin_nested()` on it raised 25P01 `no_active_sql_transaction`: the
+        # chain's shared write scope and the reference view were both answering with that.
+        #
+        # ⚠️ THE `in_transaction()` GUARDS CANNOT CLOSE IT. On an autocommit connection
+        # `session.begin()` issues no BEGIN, so the SAVEPOINT still has nothing to sit in -
+        # measured 112 times on the build that already carried those guards. They stay as
+        # correct defences one layer up; this is the seat that has to stop leaking.
+        #
+        # ⛔ SO IT IS NEVER RETURNED. `psycopg2.connect` gives a connection the pool has
+        # never seen, and `_reset_connection`'s `close()` is then a real close, not a
+        # checkin that would put this autocommit connection back into circulation.
+        import psycopg2
+        connection = psycopg2.connect(
+            url.set(drivername="postgresql").render_as_string(hide_password=False))
+        connection.set_isolation_level(0)
+        cursor = connection.cursor()
+        cursor.execute(f"LISTEN {self._channel};")
+        cursor.close()
+        self._connection = connection
 
     def _reset_connection(self):
         """끊긴/오류 커넥션을 안전하게 폐기한다(리소스 누수 금지)."""

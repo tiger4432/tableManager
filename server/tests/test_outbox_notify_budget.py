@@ -452,3 +452,61 @@ def test_what_it_did_not_measure_is_named_rather_than_left_to_look_like_zero(cli
     body = _queue(client)
     assert set(body["not_measured"]) == {"retried_total", "processed_recently"}
     assert all(body["not_measured"].values()), "a reason that is empty explains nothing"
+
+
+def test_the_listen_connection_never_comes_from_the_pool(monkeypatch):
+    """🔴 THE POOL MUST NOT BE HANDED AN AUTOCOMMIT CONNECTION (S-167).
+
+    LISTEN needs autocommit. `engine.raw_connection()` hands out a POOLED connection, and
+    closing that proxy RETURNS IT - still in autocommit. Measured on this box: the very
+    next checkout was the same connection with `autocommit=True`. A session that takes it
+    never begins a transaction, so every `begin_nested()` on it raises 25P01 - which is
+    what the chain's shared write scope and the reference view were both answering with.
+
+    ⚠️ THE `in_transaction()` GUARDS CANNOT SUBSTITUTE FOR THIS. On an autocommit
+    connection `session.begin()` issues no BEGIN, so the savepoint still has nothing to sit
+    in; this is the seat that has to stop leaking, and this test is what holds it there.
+    """
+    import chain_ingestion_worker as ciw
+
+    taken_from_pool = []
+
+    class Engine:
+        url = __import__("sqlalchemy").engine.url.make_url(
+            "postgresql+psycopg2://u:p@h:5432/d")
+
+        def raw_connection(self):
+            taken_from_pool.append(True)
+            raise AssertionError("LISTEN must not check a connection out of the pool")
+
+    class Session:
+        bind = Engine()
+
+        def close(self):
+            pass
+
+    opened = {}
+
+    class FakeConn:
+        def set_isolation_level(self, level):
+            opened["isolation"] = level
+
+        def cursor(self):
+            return FakeCursor()
+
+    class FakeCursor:
+        def execute(self, sql):
+            opened["sql"] = sql
+
+        def close(self):
+            pass
+
+    import psycopg2
+    monkeypatch.setattr(psycopg2, "connect", lambda dsn: FakeConn())
+
+    listener = ciw.OutboxListener(lambda: Session())
+    listener._ensure_connection()
+
+    assert not taken_from_pool, "the pool was touched"
+    assert opened["isolation"] == 0, "LISTEN still needs autocommit"
+    assert "LISTEN" in opened["sql"]
