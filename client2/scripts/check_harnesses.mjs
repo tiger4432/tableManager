@@ -580,7 +580,9 @@ const FLOORS = new Map([
   //          stopped being scored, and neither direction is visible from an exit code.
   ['load_shows_loaded_map_harness.mjs', 57],
   ['m4_symbol_extractability_probe.mjs', 15],
-  ['map_key_canonical_harness.mjs', 116],
+  // 🔴 C-76 raised this from 116: 판정 284 의 두 줄과 «합성 키가 안 움직인다»는 단언들.
+  // 이 파일이 벡터를 안 읽고 자기 표를 드는 것이 이음매가 갈려도 초록이던 이유였다.
+  ['map_key_canonical_harness.mjs', 129],
   // New 2026-08-04 with the marker-shape + wafer-anchor round (the overlay marker follows its
   // cell's own proportions instead of the shorter axis; the wafer, not the grid, anchors the
   // canvas scale). Floor is the count it reports on the commit that introduces it -- there is
