@@ -22,6 +22,7 @@ if server_dir not in sys.path:
 
 from database.database import SessionLocal
 import alignment_batch_counts
+from sqlalchemy import text as _sa_text
 from database import crud, schemas
 from utils import heartbeat
 
@@ -295,6 +296,154 @@ def load_ingestion_settings() -> dict:
     except Exception as e:
         logger.warning(f"Could not load ingestion settings ({INGESTION_SETTINGS_PATH}): {e}")
     return {}
+
+
+
+#: One `ingestion_settings.json` cell turns the wait sampler off. Default ON, because the
+#: question it answers ("what was the chunk WAITING on") is the one production cannot ask.
+WAIT_SAMPLE_SETTING = "chunk_wait_sampling"
+#: Above this many seconds a chunk's prefetch explains itself, ONCE per file.
+SLOW_PREFETCH_EXPLAIN_S = "slow_prefetch_explain_seconds"
+SLOW_PREFETCH_EXPLAIN_DEFAULT = 1.0
+WAIT_SAMPLE_INTERVAL_S = 0.25
+
+
+class ChunkWaitSampler:
+    """What the watcher's own backend was waiting on, sampled while a chunk applies.
+
+    🔴 THE OWNER CANNOT ISSUE SQL (판정 276), and the chunk line already says WHERE the
+    time went - prefetch 10 s, side tables 82 s in production against 0.03 s and 0.4 s
+    here. What it cannot say is WHY, and "82 s of upsert" versus "82 s of waiting behind a
+    lock" are different defects with different fixes. So the product samples its own
+    `pg_stat_activity` row and reports the answer as counts.
+
+    ⚠️ A DEDICATED CONNECTION, OUTSIDE THE POOL (S-167). This samples WHILE the watcher's
+    own session is busy, so it cannot share it - and a pooled connection is exactly what
+    put an autocommit connection back into circulation this morning. It is closed when the
+    chunk ends.
+
+    ⚠️ COUNTS, NOT A TIMELINE. 250 ms sampling cannot say how long any single wait was;
+    it says what the backend was found doing, and how often. A sample of `none` is a value
+    too - it means the backend was running, not blocked.
+    """
+
+    def __init__(self, dsn, backend_pid):
+        self._dsn = dsn
+        self._pid = backend_pid
+        self._stop = threading.Event()
+        self._thread = None
+        self.counts = {}
+        self.blocker = None
+
+    def start(self):
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+        return self
+
+    def _run(self):
+        conn = None
+        try:
+            import psycopg2
+            conn = psycopg2.connect(self._dsn)
+            conn.set_isolation_level(0)
+            while not self._stop.is_set():
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute("SELECT wait_event_type, wait_event FROM pg_stat_activity"
+                                    " WHERE pid = %s", (self._pid,))
+                        row = cur.fetchone()
+                        key = "none" if not row or not row[0] else "%s:%s" % (row[0], row[1])
+                        self.counts[key] = self.counts.get(key, 0) + 1
+                        if row and row[0] == "Lock" and self.blocker is None:
+                            cur.execute("SELECT pid, left(query, 60) FROM pg_stat_activity"
+                                        " WHERE pid = ANY(pg_blocking_pids(%s)) LIMIT 1",
+                                        (self._pid,))
+                            b = cur.fetchone()
+                            if b:
+                                self.blocker = "pid %s: %s" % (b[0], (b[1] or "").strip())
+                except Exception:
+                    # A sampler that raises must never be the reason a chunk fails.
+                    break
+                self._stop.wait(WAIT_SAMPLE_INTERVAL_S)
+        except Exception:
+            pass
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    def stop(self):
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=2.0)
+        return self
+
+    def summary(self):
+        if not self.counts:
+            return ""
+        parts = " · ".join("%s %d" % (k, v) for k, v in
+                             sorted(self.counts.items(), key=lambda kv: -kv[1]))
+        return " | waits: " + parts + (" | blocked by %s" % self.blocker if self.blocker else "")
+
+
+def _plan_digest(db, sql, params, cap):
+    """The PLAN only: node names, index names, row estimates. No rows, no ANALYZE."""
+    from sqlalchemy import text as _t
+    try:
+        lines = [r[0] for r in db.execute(_t("EXPLAIN " + sql), params).fetchall()]
+    except Exception as exc:
+        db.rollback()
+        return "EXPLAIN refused (%s)" % type(exc).__name__
+    keep = [" ".join(l.split()) for l in lines
+            if any(w in l for w in ("Scan", "Index", "Join", "rows="))]
+    return (" | ".join(keep) or " ".join(" ".join(lines).split()))[:cap]
+
+
+def _maybe_explain_slow_prefetch(db, table_name, summary, results, already):
+    """When a chunk's prefetch is slow, make the PRODUCT print the plan (S-169 ④).
+
+    🔴 THE OWNER CANNOT RUN `EXPLAIN` (판정 276). Production spends 10 s of a chunk in
+    prefetch where this box spends 0.03 s, and the difference between "the index is there
+    and chosen" and "Seq Scan on cell_sources" IS the diagnosis. Nobody can type it, so
+    the product types it for itself - but only when the number says something is wrong.
+
+    ⚠️ ONCE PER FILE, NOT PER CHUNK. A thousand-chunk file would print a thousand plans
+    of one shape and bury the line somebody has to read.
+
+    ⚠️ PLAN ONLY, NEVER `ANALYZE`. `EXPLAIN ANALYZE` RUNS the statement again - on the
+    path that is already slow, for a diagnostic. The plan alone names the scan and the
+    index, which is what splits the two cases.
+    """
+    if already:
+        return already
+    steps = (summary or {}).get("write_steps") or {}
+    try:
+        threshold = float(load_ingestion_settings().get(
+            SLOW_PREFETCH_EXPLAIN_S, SLOW_PREFETCH_EXPLAIN_DEFAULT))
+    except (TypeError, ValueError):
+        threshold = SLOW_PREFETCH_EXPLAIN_DEFAULT
+    if steps.get("prefetch", 0.0) <= threshold:
+        return already
+    row_ids = []
+    for item in (results or [])[:50]:
+        row = item[0] if isinstance(item, tuple) else item
+        rid = getattr(row, "row_id", None)
+        if rid:
+            row_ids.append(str(rid))
+    if not row_ids:
+        return already
+    target = _plan_digest(db, 'SELECT row_id FROM "%s" WHERE row_id = ANY(:ids)' % table_name,
+                          {"ids": row_ids}, 200)
+    sources = _plan_digest(db, "SELECT row_id FROM cell_sources WHERE table_name = :t"
+                               " AND row_id = ANY(:ids)",
+                           {"t": table_name, "ids": row_ids}, 200)
+    logger.warning(
+        "[Ingest] %s prefetch %.3f s over %.1f s - PLAN (once per file) | target: %s"
+        " | cell_sources: %s", table_name, steps.get("prefetch", 0.0), threshold,
+        target, sources)
+    return True
 
 
 # ── External read-only source registration ─────────────────────────────────
@@ -2835,6 +2984,11 @@ class IngestionHandler(FileSystemEventHandler):
         try:
             while True:
                 chunk = list(islice(row_iter, batch_size))
+                # once-per-FILE latch for the slow-prefetch plan (S-169 ④)
+                try:
+                    _explained
+                except NameError:
+                    _explained = False
                 if not chunk:
                     break
                 chunk_index += 1
@@ -2901,6 +3055,20 @@ class IngestionHandler(FileSystemEventHandler):
                                 db, checkpoint, processed_rows + len(chunk), chunk_index
                             )
 
+                        # The sampler watches THIS session's backend while it applies; one
+                        # settings cell turns it off and it never raises into the chunk.
+                        _sampler = None
+                        try:
+                            if load_ingestion_settings().get(WAIT_SAMPLE_SETTING, True):
+                                _eng = db.get_bind()
+                                _pid = db.execute(
+                                    _sa_text("SELECT pg_backend_pid()")).scalar()
+                                _sampler = ChunkWaitSampler(
+                                    _eng.url.set(drivername="postgresql").render_as_string(
+                                        hide_password=False), _pid).start()
+                        except Exception:
+                            _sampler = None
+
                         with alignment_batch_counts.stage("apply"):
                             results, changed_cells, created_logs, deleted_row_ids = crud.apply_batch_updates(db, t_name, batch_obj)
 
@@ -2947,19 +3115,24 @@ class IngestionHandler(FileSystemEventHandler):
                         except Exception as pe:
                             logger.warning(f"Progress callback failed: {pe}")
 
+                    if _sampler is not None:
+                        _sampler.stop()
                     _summary = chunk_counts()
+                    _explained = _maybe_explain_slow_prefetch(
+                        db, t_name, _summary, results, _explained)
                     _stages = _summary.get("stages") or {}
                     _steps = _summary.get("write_steps") or {}
                     _wall = time.monotonic() - chunk_started
                     logger.info(
                         "[Ingest] %s chunk %d: %d row(s) in %.3f s · STAGES%s · unnamed %.3f s"
-                        " · INSIDE THE WRITE%s",
+                        " · INSIDE THE WRITE%s%s",
                         t_name, chunk_index, len(chunk), _wall,
                         "".join(" · %s %.3f s" % (k, v) for k, v in sorted(_stages.items()))
                         or " (none named)",
                         max(_wall - sum(_stages.values()), 0.0),
                         "".join(" · %s %.3f s" % (k, v) for k, v in sorted(_steps.items()))
-                        or " (none named)")
+                        or " (none named)",
+                        _sampler.summary() if _sampler is not None else "")
                     
             # 🔴 THE STATISTICS ARE PART OF THE LOAD (S-124 ②). After the last chunk
             # commits, this table's row count is one the planner has never seen, and the

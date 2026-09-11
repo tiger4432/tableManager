@@ -2496,6 +2496,55 @@ def _ensure_dynamic_table_indexes_sync(db_session_factory):
                     len(created), ", ".join(created))
     else:
         logger.info("[Chain] dynamic-table indexes are already in place.")
+    _report_layer_table_health(db_session_factory)
+
+
+def _report_layer_table_health(db_session_factory):
+    """One startup line per layer table: its indexes, their use, and its vacuum state.
+
+    🔴 THE OWNER CANNOT ISSUE SQL (판정 276), so the product has to say this itself.
+    Production ingestion spends 10 s of a chunk in prefetch where this box spends 0.03 s,
+    and 82 s in the side tables where this box spends 0.4 s - and the two questions that
+    would split those ("is the index there and is anything reading it", "is autovacuum
+    behind") were only answerable by a person typing into psql.
+
+    ⚠️ `idx_scan = 0` IS THE VALUE TO LOOK FOR. An index that exists and is never read
+    costs every write and pays nothing back; an index that is MISSING shows up as a
+    neighbour whose scans went somewhere else. Both are visible only side by side, which
+    is why the line carries every index of the table rather than a verdict.
+
+    ⚠️ STARTUP ONLY, AND CONTAINED. It is three catalogue reads on a connection that is
+    closing anyway; a deployment whose statistics view is restricted logs the refusal and
+    boots exactly as before.
+    """
+    from sqlalchemy import text as _text
+
+    db = db_session_factory()
+    try:
+        for table in ("cell_sources", "cell_overwrites", "audit_logs"):
+            try:
+                idx = db.execute(_text(
+                    "SELECT indexrelname, pg_size_pretty(pg_relation_size(indexrelid)), idx_scan"
+                    " FROM pg_stat_user_indexes WHERE relname = :t ORDER BY idx_scan"),
+                    {"t": table}).fetchall()
+                stat = db.execute(_text(
+                    "SELECT n_live_tup, n_dead_tup, last_autovacuum, autovacuum_count"
+                    " FROM pg_stat_user_tables WHERE relname = :t"), {"t": table}).fetchone()
+            except Exception as exc:
+                db.rollback()
+                logger.info("[LayerHealth] %s: statistics unavailable (%s)",
+                            table, type(exc).__name__)
+                continue
+            if stat is None:
+                continue
+            logger.info(
+                "[LayerHealth] %s: live %s · dead %s · last_autovacuum %s · autovacuums %s"
+                " | indexes%s",
+                table, stat[0], stat[1], stat[2], stat[3],
+                "".join(" · %s %s scans=%s" % (r[0], r[1], r[2]) for r in idx)
+                or " (none)")
+    finally:
+        db.close()
 
 
 def _ensure_human_claims_index_sync(db_session_factory):
