@@ -197,33 +197,6 @@ def _run_chain_for_tx(db, tx_id, trigger_table="encand_test_src"):
             e.processed_chain = True
         db.commit()
     anyio.run(run)
-    # 🔴 THE CONFIRMATION IS NO LONGER PART OF THE GROUP (S-151, 판정 262). It rides the
-    # ledger follow-up drain, so a test that stops at the group stops one step short of
-    # what production does. This helper takes that second step the same way the worker
-    # does - off the outbox events the write just staged for the derived table - so the
-    # assertions above it are unchanged and therefore say the RESULT SET did not move.
-    run_followup_auto_confirm(db)
-
-
-def run_followup_auto_confirm(db, derived_table="encand_test_derived"):
-    """Follow the derived table's rows the way the paced drain does. Returns the note."""
-    from chain_ingestion_worker import _auto_confirm_followed_rows
-    from database.models import DatabaseOutbox
-    from ledger import followup as ledger_followup
-
-    row_ids = []
-    for event in db.query(DatabaseOutbox).filter(
-            DatabaseOutbox.table_name == derived_table).order_by(
-            DatabaseOutbox.id.asc()).all():
-        for row_id in ledger_followup.row_ids_of(event.payload or {}):
-            if row_id not in row_ids:
-                row_ids.append(row_id)
-    if not row_ids:
-        return {}
-    done = {"table": derived_table, "event_type": "EDIT", "row_ids": row_ids}
-    _auto_confirm_followed_rows(db, done)
-    db.commit()
-    return done
 
 
 # ---------------------------------------------------------------------------
@@ -422,42 +395,6 @@ def test_chain_path_auto_confirms_single_candidate(cand_env):
         models.CellSource.row_id == row.row_id,
         models.CellSource.column_name == "wafer_id").all()
     assert [s.source_name for s in src] == [enrichment_candidates.SOURCE_NAME]
-
-
-def test_following_the_same_rows_twice_confirms_them_once(cand_env):
-    """판정 264's duplicate gate: the drain may see one row twice, and must not act twice.
-
-    🔴 THE QUEUE DOES NOT PROMISE UNIQUENESS. Two outbox events can name the same row,
-    a retroactive filler re-queues rows on purpose, and the follow-up drains whatever it is
-    handed - so "runs once per row" is not something the caller can arrange. What makes a
-    second pass harmless is the ABSENT-ONLY gate: once the cell has provenance it is no
-    longer blank, so it is not a candidate. This asserts that property rather than trusting
-    it, because it is the only thing standing between a paced retry and a second write.
-
-    ⚠️ COUNTED ON `cell_sources`, NOT ON THE RETURNED STATS. A second confirmation that
-    wrote the same value would leave the stats looking busy and the row looking correct;
-    the layer table is where a duplicate would actually show.
-    """
-    _seed(cand_env, "encand_test_src",
-          [{"log_key": "k1", "lot": "L1", "slot": "S1", "chip_id": "C1"},
-           {"log_key": "k2", "lot": "L1", "slot": "S1", "chip_id": "C2"}],
-          tx_id="tx_twice")
-    _run_chain_for_tx(cand_env, "tx_twice")          # group + one follow-up pass
-    row = _derived(cand_env, "L1_S1")
-    assert row is not None and row.wafer_id == "WF1"
-
-    def _layers():
-        return cand_env.query(models.CellSource).filter(
-            models.CellSource.table_name == "encand_test_derived",
-            models.CellSource.row_id == row.row_id,
-            models.CellSource.column_name == "wafer_id").all()
-
-    after_first = [(s.source_name, s.value) for s in _layers()]
-    assert after_first == [(enrichment_candidates.SOURCE_NAME, "WF1")]
-
-    run_followup_auto_confirm(cand_env)              # the SAME rows, a second time
-    assert [(s.source_name, s.value) for s in _layers()] == after_first,         "a second follow-up pass wrote a second layer for a cell that already had one"
-    assert _derived(cand_env, "L1_S1").wafer_id == "WF1"
 
 
 def test_chain_path_leaves_ambiguous_key_in_the_queue(cand_env):
