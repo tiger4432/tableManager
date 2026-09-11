@@ -1577,9 +1577,46 @@ def _order_by_clause(expr, tie, order_desc):
     return [ordered, tie.desc() if order_desc else tie.asc()]
 
 
-def _named_sort(table_model, order_by, order_desc):
+def total_order_key(table_model, table_name):
+    """The column that gives this relation a TOTAL order — `row_id`, or the catalogue's
+    `business_key` where there is none (S-186, 판정 296).
+
+    🔴 ONE FUNCTION, THREE CALLERS, because the alternative is three places that answer
+    「what breaks this table's ties」 and drift. The tiebreaker, the default sort and the
+    target-row jump all read it; if any one of them reached for `row_id` directly, a
+    relation without that column would order one way and page another.
+
+    ⚠️ `row_id` STAYS THE ANSWER WHEREVER IT EXISTS, and that is the whole reason this is a
+    lookup rather than a replacement. S-131 measured what moving the grid's total order
+    costs: `idx_<t>_updated (updated_at, row_id)` stops being usable and a page spends
+    0.7 s sorting 440,000 rows. Every table that has `row_id` therefore emits the SQL it
+    emitted before — asserted by comparing the product's own rendered statement, not a
+    hand-written one.
+
+    🔴 R7 IS WHY THIS MAY NOT RETURN None. 「상한 걸린 읽기에는 전순서가 있어야 한다」 — a
+    `LIMIT` without a total order hands the operator a different page on every refresh and
+    raises nothing. A relation declaring neither is refused by name rather than paged
+    arbitrarily.
+    """
+    column = getattr(table_model, "row_id", None)
+    if column is not None:
+        return column
+    declared = (crud.TABLE_CONFIG.get(table_name) or {}).get("business_key")
+    column = getattr(table_model, str(declared), None) if declared else None
+    if column is None:
+        raise HTTPException(
+            status_code=422,
+            detail=("'%s' has no row_id and declares no usable business_key, so a paged "
+                    "read of it has no total order (SCHEMA_CANON R7). Declare "
+                    "business_key in table_config.json." % table_name))
+    return column
+
+
+def _named_sort(table_model, table_name, order_by, order_desc):
+    tie = total_order_key(table_model, table_name)
+
     def pair(expr):
-        return _order_by_clause(expr, table_model.row_id, order_desc)
+        return _order_by_clause(expr, tie, order_desc)
     if order_by == "updated_at":
         return pair(table_model.updated_at)
     if order_by == "id":
@@ -1605,7 +1642,7 @@ def resolve_sort(query, table_model, table_name, order_by, order_desc, binder):
     가상 조인 컬럼은 `VirtualColumnBinder` 를 지난다: 필터·검색이 이미 그 자리를 쓰고,
     「화면에 보이는 컬럼」과 「서버가 정렬할 수 있는 컬럼」이 갈리면 아무 에러도 안 난다.
     """
-    named = _named_sort(table_model, order_by, order_desc)
+    named = _named_sort(table_model, table_name, order_by, order_desc)
     if named is not None:
         return query, named
 
@@ -1631,7 +1668,8 @@ def resolve_sort(query, table_model, table_name, order_by, order_desc, binder):
                     "(virtual_join_rules.json), and the screen's own 'id'/'updated_at'/"
                     "'row_id'." % (order_by, table_name)))
 
-    return query, _order_by_clause(expr, table_model.row_id, order_desc)
+    return query, _order_by_clause(
+        expr, total_order_key(table_model, table_name), order_desc)
 
 
 def apply_column_filters(query, table_model, table_name, filters, binder):
