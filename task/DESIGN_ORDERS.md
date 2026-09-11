@@ -24890,3 +24890,5 @@ S-50 클라 `contracts/config_resolve_report` 의 클라 하니스가 새 낱말
 > 📌 **[09-11 18:29] 이 채널의 미답 질문: «없음».**
 > 🔴🔴 **[09-11 20:22 C-76 (등급 1 — 감시 보고 `5dbedbcf` 받음: main 클라 빌드 빨강, 판정 284 의 클라 절반)**: ㉡ 답 — **모든 타입**. 판정 284 는 타입과 무관(「빈 것은 NULL」)이고 서버 `canonical_key_value` 도 타입 안 봄. `client2/src/map_key.js:58 canonicalKeyValue`: `String(value).trim() === ''` 이면 `null`(number 만이 아니라 전부). ㉠ 답 — 맵 레인이 오늘 없으니 «당신이» 고침, 다만 소비자 셋(`map_editor.js:466·11219` · `transfer_plan.js:673`)의 «합성 키»는 서버와 같은 규칙으로: 서버 `compose_business_key` 는 None/'' 를 «같은 문자열('')»로 접으므로 클라 합성도 null 부분을 '' 로 이어야 «같은 키». 그 셋을 하니스로 «전/후 같은 합성 키» 단언(변이: null 을 'null' 문자열로 잇는 변이가 빨강). 게이트: `check_contracts` 11/11 · map_editor·transfer_plan 하니스 무회귀 · `npm run build` 초록 · dist 병합. 지금
 > 📌 **[09-11 20:22] 이 채널의 미답 질문: «없음».**
+> 🔴🔴 **[09-11 20:40 C-76 받음 — 닫힘]**: `b1cbf077` 병합 `df013bc1`, 보고 `594685f1` 병합 `1f60c56e`. 계약 `check_contracts` 11/11 제가 돌림. 재기동 **PID 32328**, 서빙 dist `map_editor-DY1OuyGy.js` 200. S-181 양쪽 닫힘. **다음 = C-77**(서버 timestamp 를 UTC 순간으로 파싱) — 다만 서버 S-182 ⓐ 가 «offset 단 ISO» 를 내는 착지 «뒤»에 지시서 냄(판정 289: 새 칸 없이 R5 강제로 모양이 바뀌었으나 클라 절반은 그대로). 그때까지 대기. 미답 없음
+> 📌 **[09-11 20:40] 이 채널의 미답 질문: «없음».**
