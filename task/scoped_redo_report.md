@@ -34196,3 +34196,67 @@ HEARTBEAT_SLICE_SECONDS = max(1.0, heartbeat.DEFAULT_STALE_AFTER_SEC / 3.0)
 > scheduler False 는 통합 모드에 그 프로세스가 없어 «참**). 그러면 그 자리는 총괄 몫이 맞고,
 > 제가 물을 일이 아닙니다 — 재기동이 총괄 몫이니 그 «직후»를 아는 것도 그쪽입니다.
 > 📌 **이 채널의 미답 질문: «없음». 구현자 대기 — 소유자 순서(S-143~S-150) 기다립니다.**
+
+---
+
+# S-178 — 「네 선언이 나눠 적은 한 흐름」을 한 그림으로 착지 (`GET /chain/graph`)
+
+## 1. 로직 0 — 네 갈래를 «제품 로더»로 읽습니다
+```
+mapper  trigger_table → target_table   {rule, enabled, allow_chain_trigger, trigger_columns, max_group_attempts}
+enrich  derived_table → 자기 자신        {rule, enabled, decision_key}
+vjoin   right → left                   {rule, enabled, unique_index}  ← 인덱스는 «DB 에» 물음
+ledger  소스 relation → 원장(한 노드)     {source, status, planned}     ← 뷰면 base_tables_of 로 기저 표
+```
+🔵 `vjoin` 의 인덱스를 «DB 에 묻는» 이유: 선언만 있고 유일 인덱스가 없으면 그 조인은 «안 걸려 있습니다».
+   선언된 것을 전부 살아 있는 것처럼 그리면 «일어나지 않는 조인»을 그리게 됩니다.
+
+## 2. 「누가 누구를 깨우나」는 «워커의 그 함수»에 물었습니다
+`_group_triggered_rules` 를 합성 이벤트로 부릅니다 — 두 번째 구현을 두면 언젠가
+「일어나지 않는 깨움」을 그리게 되고, 그건 «안 그리는 것보다 나쁩니다». 시험이 «같은 함수»를
+불러 대조하므로 둘이 조용히 갈라질 자리가 없습니다.
+답은 «둘»입니다(일반 쓰기 / 체인 쓰기) — `allow_chain_trigger` 옵트인이 거미줄의 대부분이라
+엣지에서 «유추»하게 두지 않고 값으로 냅니다.
+
+## 3. ⚠️ 「한 규칙이 두 표를 쓴다」 — 반쪽 그래프를 반복하지 않았습니다
+`allow_map_metadata_upsert` 는 맵 메타도 씁니다. 그 쓰기가 «자기 체인 이벤트»를 냅니다.
+2026-09-04 에 «그 엣지를 못 보던» 고리 검사가 «살아 있는 고리»를 통과시켰습니다.
+같은 사각을 가진 그림은 같은 고리를 숨깁니다 — 그래서 «두 엣지 다» 그립니다.
+⛔ 그리고 표 이름은 «등록기»에서 옵니다. 출하 규칙 하나에서 `metadata_target_table` 은
+   매퍼의 «소스»를 가리키므로, 그걸 빌려 쓰면 «화살표가 거꾸로» 그려집니다. 둘 다 시험으로 못 박음.
+
+## 4. 🔴 지시의 엣지 «하나»는 선언에서 그릴 수 없습니다 — 지어내지 않고 «이름 댔습니다»
+지시 ②의 뒷절 「참조뷰가 «읽는» 표들 → derived_table」:
+```
+정규화된 참조뷰가 드는 것   label · query(«생 SQL») · limit · candidate_for · required_binds · blank_is_missing
+표 이름                   «없음»
+=> 읽는 표는 그 SQL 을 «파싱»해야 알 수 있고, 그건 선언이 아니라 «추론»입니다
+```
+그래서 그 뷰들은 규칙 항목에 `reads: null` + `reads_not_declared: N` 으로 «부재를 이름 대어»
+싣습니다. 운영자가 거미줄을 이해하려고 보는 그림에 «틀릴 수 있는 화살표»를 놓는 것은
+없는 것보다 나쁩니다.
+**제안(판정 청함)**: 참조뷰에 `reads: [표...]` 칸을 «선언»으로 두는 것 —
+상설 「이 질문의 답을 사용자가 적을 수 있나 → 예 → 적을 자리를 만들고 값은 비워 둔다」 그대로입니다.
+(대안은 PG 에 물어 계획에서 관계를 읽는 것인데, 바인드 값이 없어 버전 의존입니다.)
+
+## 5. 라이브 게이트 — 이 박스의 «진짜» 선언에서 (⚠️ 이 박스 수치입니다)
+```
+nodes 45 · edges 36 · cycles 0 · ledger_error 없음
+mapper 12 = 규칙 9 + allow_map_metadata_upsert 3
+            (dt_inventory_to_core_usage_map · dt_inventory_to_standard_dt_map · dt_log_to_core_usage_map)
+ledger 18 = 소스 15 + 뷰 전개 3        (그려진 distinct 소스 = 15 «전부»)
+enrich  4 = 규칙 4          vjoin 2 = 규칙 2
+깨우는 표 5 — dt_log 이 «넷»을 깨우고 그중 셋이 합성된 enrichment 규칙
+```
+🔵 **두 델타가 «선언 사실»로 전부 설명됩니다** — 그래서 게이트의 「네 파일의 규칙 수와 맞음」이
+   「수가 같다」가 아니라 「차이가 이름을 갖는다」로 닫힙니다.
+
+## 6. 이웃 · 재기동
+```
+신설 15 passed · 이웃 424 passed · 커밋 뒤 5,733 collected(오류 0)
+/chain/graph 는 /admin 밑이 «아니라» test_admin_auth 의 상설 감사가 안 걷습니다 → 게이트를 «이름으로» 단언
+재기동 «총괄 몫» — 라우트 신설입니다
+```
+
+> 📌 **[09-11 18:1x] 이 채널의 미답 질문: 4절 «참조뷰에 `reads:` 선언 칸을 둘지» 하나.
+> 다음: S-179 ①(enrichment 를 체인 규칙의 «한 종류»로) 설계 한 장 — 그림 뒤라 하셨으므로 지금.**
