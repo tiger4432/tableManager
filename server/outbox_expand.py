@@ -174,6 +174,18 @@ def _report_unreadable(db, model, table_name, unique_ids, chunk_size):
 
     _time.sleep(0.1)
     _recount(db, "same_session_after_100ms")
+    # 🔴 THE ONE MEASUREMENT THAT DECIDES IT (S-160). On the normal path the outbox event
+    # and its rows share an `xmin` - one transaction, so seeing one without the other is
+    # impossible and the "event commits before its rows" seam does not exist there.
+    # Taken HERE, once the rows are readable, the writer's xid can be compared with the
+    # snapshot recorded above: an xid at or beyond that snapshot's xmax says the write had
+    # simply not committed when we looked, and anything else says it had.
+    try:
+        facts["writer_xid"] = [str(r[0]) for r in db.execute(
+            _sqltext("SELECT DISTINCT xmin::text FROM \"%s\" WHERE row_id IN :ids" % physical)
+            .bindparams(_bindparam("ids", expanding=True)), {"ids": ids_as_text}).fetchall()]
+    except Exception as exc:
+        facts["writer_xid"] = "ERR:%s" % type(exc).__name__
     try:
         from database.database import SessionLocal
         fresh = SessionLocal()
@@ -187,10 +199,12 @@ def _report_unreadable(db, model, table_name, unique_ids, chunk_size):
     logger.warning(
         "[OUTBOX-4/PROBE] '%s' named %d row(s) and read back ZERO. "
         "id_types=%s sample=%s row_id_col=%s | same_session_now=%s "
-        "same_session_after_100ms=%s fresh_session=%s | txid=%s snapshot=%s | SQL: %s",
+        "same_session_after_100ms=%s fresh_session=%s | txid=%s snapshot=%s "
+        "writer_xid=%s | SQL: %s",
         table_name, facts["ids"], facts["id_types"], facts["sample_id"], facts["row_id_col"],
         facts.get("same_session_now"), facts.get("same_session_after_100ms"),
-        facts.get("fresh_session"), facts.get("txid"), facts.get("snapshot"), facts["sql"])
+        facts.get("fresh_session"), facts.get("txid"), facts.get("snapshot"),
+        facts.get("writer_xid"), facts["sql"])
 
 
 def event_key(event) -> str:
