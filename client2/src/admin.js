@@ -30,6 +30,8 @@ import { ChainQueuePanel } from './chain_queue_panel.js';
 import { RuntimePanel } from './runtime_panel.js';
 // 🔴 C-75. 네 선언(chain·enrichment·vjoin·ledger)이 «한 그림». 값만 그립니다.
 import { ChainGraphPanel } from './chain_graph.js';
+// 🔴 C-77. 서버 시각은 offset 단 ISO 다 — 자르지 말고 «순간»으로 읽는다.
+import { localShort, NO_TIME } from './server_time.js';
 // C-1. 판정은 자기 모듈에 삽니다 — `admin.js` 는 `tokens.css` 를 import 해서 node 가
 // 못 읽고, 그러면 이 판정을 재려고 화면을 통째로 세워야 합니다.
 import { ruleOutcomeView } from './rule_outcome.js';
@@ -429,16 +431,12 @@ document.addEventListener('DOMContentLoaded', () => {
 function formatTimestamp(value) {
   if (!value) return '-';
   const s = String(value);
-  // ISO("2026-07-25T13:30:00") / 원시("2026-07-25 13:30:00") 모두 슬라이스로 처리 (타임존 재해석 없음)
-  if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(s)) {
-    return `${s.slice(5, 10)} ${s.slice(11, 19)}`;
-  }
-  const dt = new Date(s);
-  if (!isNaN(dt.getTime())) {
-    const p = n => String(n).padStart(2, '0');
-    return `${p(dt.getMonth() + 1)}-${p(dt.getDate())} ${p(dt.getHours())}:${p(dt.getMinutes())}:${p(dt.getSeconds())}`;
-  }
-  return s;
+  // 🔴 C-77. 종전 이 자리는 문자열을 «잘라» 그렸고 주석이 「타임존 재해석 없음」이라 적고
+  //    있었다. 서버가 naive 를 내던 때는 참이었다 — S-182 ⓐ 뒤로 서버는 offset 을 달아
+  //    보내므로, 자르면 «UTC 숫자가 로컬인 척» 찍힌다(KST 운영자에게 아홉 시간, 오류 없이).
+  //    이제 순간으로 읽고 보는 쪽 zone 으로 그린다 — 판정은 `server_time.js` 한 곳이다.
+  const shown = localShort(s);
+  return shown === NO_TIME ? s : shown;
 }
 
 // Transaction ID 축약 (감사 F8): head8… — 풀값은 title/클릭복사로

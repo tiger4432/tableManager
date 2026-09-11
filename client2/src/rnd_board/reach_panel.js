@@ -21,6 +21,8 @@
 import { Panel } from './panel.js';
 import { SIGN } from './marking_store.js';
 import { TablePart } from './table_part.js';
+// 🔴 C-77. 서버 시각은 offset 단 ISO — 순간으로 읽고 보는 쪽 zone 으로 그린다.
+import { localMinute } from '../server_time.js';
 
 export class ReachPanel extends Panel {
   constructor(host, deps) {
@@ -145,7 +147,8 @@ export class ReachPanel extends Panel {
   _span(span) {
     if (!span || !span.first) return null;
     const day = (t) => String(t).slice(0, 10);
-    const minute = (t) => String(t).slice(0, 16).replace('T', ' ');
+    // 🔴 C-77. 위와 같은 부류 — 자르면 offset 이 떨어진다.
+    const minute = (t) => localMinute(t);
     if (span.first === span.last) return minute(span.first);
     if (day(span.first) === day(span.last)) return `${minute(span.first)} ~ ${String(span.last).slice(11, 16)}`;
     return `${day(span.first)} ~ ${day(span.last)}`;

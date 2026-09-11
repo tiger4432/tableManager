@@ -7,6 +7,7 @@
 //    one assertion — it throws ERR_INVALID_URL before any check runs. One loader, one place.
 // ═══════════════════════════════════════════════════════════════════════════════
 import { readSourceText } from './probe.mjs';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -19,6 +20,20 @@ const dataUrl = (src) => `data:text/javascript;base64,${Buffer.from(src, 'utf8')
 //
 // The relative imports are rewritten so a mutated copy still pulls the OTHER modules under
 // test (mutated or not), and reaches the real `map2/painter.js` where it sits.
+
+// 🔴 ANY PARENT-RELATIVE SPECIFIER, GENERICALLY. A hand-written list of rewrites has taken
+//    harnesses down twice now (`../walk/derive.js` in C-70, `../server_time.js` in C-77), and
+//    both times the failure was 「it used to assert and now measures nothing」 -- never one red
+//    assertion. A part that imports one more sibling directory must not be able to do that
+//    again, so `'../x/y.js'` resolves to the real file on disk rather than to a name somebody
+//    remembered to add here.
+// ⚠️ Same-directory `'./x.js'` is NOT swept up: those are the modules under test and they must
+//    keep pointing at their data: URL twins, mutation and all.
+const OUTWARD_RE = /'(\.\.\/[A-Za-z0-9_./-]+\.js)'/g;
+const outward = (text) => text.replace(OUTWARD_RE, (whole, rel) => {
+  const real = path.join(BOARD_DIR, rel);
+  return existsSync(real) ? `'${pathToFileURL(real).href}'` : whole;
+});
 
 export async function loadBoardModules(mutate = {}) {
   // 🔴 THE TEXTS ARE CARRIED OUT WITH THE MODULES. Section F scans SOURCE, and scanning the
@@ -54,7 +69,7 @@ export async function loadBoardModules(mutate = {}) {
   const tableUrl = dataUrl(read('table_part.js')
     .replaceAll("'./panel.js'", `'${panelUrl}'`)
     .replaceAll("'./marking_store.js'", `'${storeUrl}'`));
-  const partUrl = (file) => dataUrl(read(file)
+  const partUrl = (file) => dataUrl(outward(read(file))
     .replaceAll("'./panel.js'", `'${panelUrl}'`)
     .replaceAll("'./marking_store.js'", `'${storeUrl}'`)
     .replaceAll("'./table_part.js'", `'${tableUrl}'`)

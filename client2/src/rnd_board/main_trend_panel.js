@@ -23,6 +23,8 @@
 import { Panel, markingIntent } from './panel.js';
 import { SIGN } from './marking_store.js';
 import { createWalk } from './api.js';
+// 🔴 C-77. 서버 시각은 offset 단 ISO — 순간으로 읽고 보는 쪽 zone 으로 그린다.
+import { localMinute } from '../server_time.js';
 
 /**
  * 🔴 이 점이 «어느 노드»인가 — 찍는 키는 한 곳에서 정합니다 (소유자 판정 2026-08-24:
@@ -409,7 +411,8 @@ export class MainTrendPanel extends Panel {
     //    not see WHEN any of this happened. Measured: every point in this window shares one
     //    timestamp, so the axis says that timestamp -- an order with no clock on it is not an
     //    answer to 「언제」.
-    const stamp = (v) => String(v || '').replace('T', ' ').slice(0, 16);
+    // 🔴 C-77. 잘라 쓰면 offset 이 떨어져 UTC 가 로컬인 척 찍힌다. 순간으로 읽는다.
+    const stamp = (v) => localMinute(v);
 
     // 🔴 THE AXIS NAMES THE MATERIAL, NOT JUST THE MOMENT. 「x축에 시간에 추가로 자재 id도」
     //    (owner). Points that belong to one material sit together, so the tick goes under the
