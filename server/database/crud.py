@@ -4024,7 +4024,17 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
         # ⚠️ NOT A NEW MECHANISM: `enrichment_config._isolated_execute` already contains a
         # failing statement this way, under the standing ruling that containment belongs
         # where the statement runs.
-        nested = db.begin_nested() if shared is not None else None
+        # ⚠️ A SAVEPOINT NEEDS A TRANSACTION TO SIT IN. `begin_nested()` on a session
+        # that has not begun one raises `NoActiveSqlTransaction` from the driver -
+        # measured in production on 2026-09-11, where it failed every chain group three
+        # times and then re-expanded each 1,000-row chunk into 1,000 per-row events.
+        # The session autobegins on its first statement, so whether one is open depends
+        # on what the caller did before - which is exactly the thing not to assume.
+        nested = None
+        if shared is not None:
+            if not db.in_transaction():
+                db.begin()
+            nested = db.begin_nested()
         try:
             # ⚠️ PASSED ONLY WHEN THERE IS ONE. The default call keeps the exact shape
             # ten production callers - and the retry's own test stubs - already accept;

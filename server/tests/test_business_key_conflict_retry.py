@@ -44,15 +44,28 @@ class FakeSavepoint:
 
 
 class FakeDB:
-    def __init__(self):
+    def __init__(self, in_tx=True):
         self.rollbacks = 0
         self.savepoint_rollbacks = 0
         self.savepoint_commits = 0
+        self._in_tx = in_tx
+        self.begins = 0
 
     def rollback(self):
         self.rollbacks += 1
 
+    def in_transaction(self):
+        return self._in_tx
+
+    def begin(self):
+        self.begins += 1
+        self._in_tx = True
+
     def begin_nested(self):
+        # The real driver raises `NoActiveSqlTransaction` here; the double refuses the
+        # same way so a savepoint opened outside a transaction is a RED TEST.
+        if not self._in_tx:
+            raise AssertionError("SAVEPOINT outside a transaction block")
         return FakeSavepoint(self)
 
 
@@ -422,3 +435,26 @@ def test_without_a_scope_the_recovery_is_unchanged(monkeypatch):
     assert len(calls) == 2
     assert db.rollbacks == 1, "the default path still rolls the session back"
     assert db.savepoint_rollbacks == 0, "and never opens a savepoint it does not need"
+
+
+def test_a_scope_on_a_session_with_no_transaction_opens_one_first(monkeypatch):
+    """🔴 MEASURED IN PRODUCTION, NOT IMAGINED (2026-09-11).
+
+    `begin_nested()` on a session that has not begun a transaction raises
+    `NoActiveSqlTransaction` from the driver - "SAVEPOINT can only be used in transaction
+    blocks". Landed without this, it failed EVERY chain group three times and then
+    re-expanded each 1,000-row chunk into 1,000 per-row events: ~6,000 rows of queue from
+    six writes, and not one of them said "savepoint" out loud.
+
+    ⚠️ THE SESSION AUTOBEGINS ON ITS FIRST STATEMENT, so whether one is open depends on
+    what the caller happened to do before - which is precisely the thing a seat must not
+    assume about its caller.
+    """
+    calls = _script(monkeypatch, "RESULT")
+    db = FakeDB(in_tx=False)
+
+    assert crud.apply_batch_updates(db, "dt_log", FakeBatch(),
+                                    shared=crud.SharedWrite()) == "RESULT"
+
+    assert db.begins == 1, "a transaction must be opened before the savepoint"
+    assert len(calls) == 1
