@@ -28,6 +28,8 @@ import { queueQuery } from './enrichment_queue.js';
 import { ChainQueuePanel } from './chain_queue_panel.js';
 // 🔴 C-74. 아홉 고리의 «값» 표. 판정은 `/health` 가 하고 이 표는 값만 냅니다.
 import { RuntimePanel } from './runtime_panel.js';
+// 🔴 C-75. 네 선언(chain·enrichment·vjoin·ledger)이 «한 그림». 값만 그립니다.
+import { ChainGraphPanel } from './chain_graph.js';
 // C-1. 판정은 자기 모듈에 삽니다 — `admin.js` 는 `tokens.css` 를 import 해서 node 가
 // 못 읽고, 그러면 이 판정을 재려고 화면을 통째로 세워야 합니다.
 import { ruleOutcomeView } from './rule_outcome.js';
@@ -2605,6 +2607,15 @@ let runsInFlight = false;
 /** 두 출처를 «같이» 읽습니다. 한쪽이 실패해도 다른 쪽은 그립니다 -- 부분이 전부보다 낫습니다. */
 // C-74 — 한 번 만들고 재사용합니다. 패널이 «자기 div» 를 소유하므로 mount 를 안 비웁니다.
 let runtimePanel = null;
+let chainGraphPanel = null;
+function renderChainGraph(payload) {
+  const mount = byId('chain-graph-mount');
+  if (!mount) return;
+  if (!chainGraphPanel) chainGraphPanel = new ChainGraphPanel(mount);
+  // 못 읽었으면 `null` — 빈 그래프를 그리면 「아무것도 안 깨운다」는 거짓입니다.
+  chainGraphPanel.render(payload);
+}
+
 function renderRuntime(payload) {
   const mount = byId('runtime-mount');
   if (!mount) return;
@@ -2621,15 +2632,19 @@ async function refreshRunning() {
     // 🔴 C-74. 런타임 표는 «이 폴에 얹혀» 갑니다 — 새 타이머가 없습니다. 이 폴은 이미
     //    개요 탭에서만 돌고 숨은 탭에서 쉬므로, 타이머를 하나 더 두면 그 두 규칙을
     //    «두 번째로» 적게 되고 둘이 갈라지는 날 아무 오류도 안 납니다.
-    const [runsRes, ingestRes, runtimeRes] = await Promise.all([
+    const [runsRes, ingestRes, runtimeRes, graphRes] = await Promise.all([
       adminFetch(`${API_BASE}/admin/retroactive/runs?limit=50`).catch(() => null),
       adminFetch(`${API_BASE}/admin/file-ingestion/active`).catch(() => null),
       adminFetch(`${API_BASE}/runtime`).catch(() => null),
+      // 🔴 C-75 ②. 런타임 패널과 «같은 바퀴»에 얹습니다 — 새 타이머 0.
+      adminFetch(`${API_BASE}/chain/graph`).catch(() => null),
     ]);
     const runs = runsRes && runsRes.ok ? (await runsRes.json().catch(() => null)) : null;
     const ingest = ingestRes && ingestRes.ok ? (await ingestRes.json().catch(() => null)) : null;
     renderRuntime(runtimeRes && runtimeRes.ok
       ? (await runtimeRes.json().catch(() => null)) : null);
+    renderChainGraph(graphRes && graphRes.ok
+      ? (await graphRes.json().catch(() => null)) : null);
     // 🔴 «못 읽은 것»과 «없는 것»을 가릅니다. 실패를 빈 배열로 접으면 화면이
     //    「도는 작업 없음」이라고 «거짓»을 말합니다.
     const failed = [];

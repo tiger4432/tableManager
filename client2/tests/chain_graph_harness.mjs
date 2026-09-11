@@ -172,6 +172,44 @@ function suite(mod) {
   eq('W4 clicking another table replaces the list rather than stacking it',
     byClass(mount, 'chain-graph-wakes').length, 1);
 
+  console.log(`${LF}-- the REAL route's shape, measured 2026-09-11 on server/chain_graph.py --`);
+  {
+    // 🔴 THE ORDER SUMMARISED A SHAPE THE ROUTE DOES NOT SERVE, and two of this panel's
+    //    features were silent no-ops against the real one. `cycles` carries the validator's
+    //    SENTENCES, not id arrays, and nodes carry `{id, kind, declared, wakes}` -- no
+    //    `enabled`, no `opt_in`. Both failures are invisible: nothing throws, nothing turns red.
+    const real = {
+      generated_at: 1, counts: { edges: 1, nodes: 3 },
+      nodes: [
+        { id: 'dt_log', kind: 'table', declared: true, wakes: ['dt_inventory'] },
+        { id: 'ghost_table', kind: 'table', declared: false, wakes: [] },
+        { id: '(ledger)', kind: 'ledger' },
+      ],
+      edges: [{ kind: 'ledger', from: 'dt_log', to: '(ledger)', enabled: true }],
+      cycles: ['chain rule cascade would loop: dt_log -> dt_x -> dt_log'],
+    };
+    const realView = chainGraphView(real);
+    eq('S1 the real answer still draws', realView.state, 'ready');
+    // 🔴 A CYCLE MUST STILL BE SAID even when the table cannot be pointed at.
+    eq('S2 a cycle SENTENCE is carried through as a value', realView.cycleNotes.length, 1);
+    eq('S3 ...and nobody is painted red, because the answer never named a table',
+      realView.nodes.filter((n) => n.inCycle).length, 0);
+    eq('S4 a table the catalogue does not declare is marked',
+      realView.nodes.find((n) => n.id === 'ghost_table').undeclared, 'true');
+    eq('S5 ...and a declared one is not',
+      realView.nodes.find((n) => n.id === 'dt_log').undeclared, 'false');
+    eq('S6 the ledger node keeps its kind', realView.nodes.find((n) => n.id === '(ledger)').kind,
+      'ledger');
+    const realDoc = makeDoc();
+    const realMount = realDoc.createElement('div');
+    new ChainGraphPanel(realMount, { doc: realDoc }).render(real);
+    eq('S7 the cycle sentence reaches the screen', byClass(realMount, 'chain-graph-cycle').length, 1);
+    // A box that is not there must be SCORED, not thrown on: under M7 an index straight into
+    // the list kills the run and the remaining assertions go unmeasured (INERT, not caught).
+    const cycleText = (byClass(realMount, 'chain-graph-cycle')[0] || {}).textContent || '(none)';
+    ok('S8 ...in the server own words', cycleText.includes('would loop'), cycleText);
+  }
+
   console.log(`${LF}-- a read that failed is not an empty graph --`);
   eq('U1 no payload reads as unread', chainGraphView(null).state, 'unread');
   eq('U2 an answer with an empty node list is READY',
@@ -210,7 +248,20 @@ const MUTANTS = [
     catches: 'W4 clicking another table replaces',
     from: '      this.root.replaceChild(next, this.wakesBox);',
     to: '      this.root.appendChild(next);' },
-  { id: 'M7', what: 'CONTROL: a comment line is removed', control: true,
+  { id: 'M7', what: 'a cycle sentence is dropped because it is not an array',
+    catches: 'S2 a cycle SENTENCE is carried through',
+    from: '    else if (cycle) cycleNotes.push(String(cycle));',
+    to: '    else if (false) cycleNotes.push(String(cycle));' },
+  { id: 'M8', what: 'a sentence is read as if it named tables',
+    catches: 'S3 ...and nobody is painted red',
+    from: '    else if (cycle) cycleNotes.push(String(cycle));',
+    to: '    else if (cycle) { cycleNotes.push(String(cycle));'
+      + ' for (const id of String(cycle).split(/[^a-z_]+/)) inCycle.add(id); }' },
+  { id: 'M9', what: 'an undeclared table looks declared',
+    catches: 'S4 a table the catalogue does not declare',
+    from: '      undeclared: node.declared === false,',
+    to: '      undeclared: false,' },
+  { id: 'M7c', what: 'CONTROL: a comment line is removed', control: true,
     from: '/** 선언 넷이 내는 엣지 종류. 순서는 «범례»의 순서이고 판정이 아닙니다. */',
     to: '/** */' },
 ];

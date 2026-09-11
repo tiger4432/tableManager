@@ -1432,7 +1432,7 @@ const FLOORS = new Map([
   // New 2026-09-11 with C-75. 🔴 THE FIXTURE IS THE ORDER'S SHAPE, NOT THE ROUTE'S --
   // `/chain/graph` (S-178) has not landed, so when it does, this fixture is the first thing
   // to re-measure. The panel is deliberately NOT wired to the overview until then.
-  ['chain_graph_harness.mjs', 36],
+  ['chain_graph_harness.mjs', 47],
   ['runtime_panel_harness.mjs', 22],
   ['reference_view_head_harness.mjs', 26],
 ]);
