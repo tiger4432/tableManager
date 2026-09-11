@@ -18,12 +18,18 @@ which is the same predicate the running worker applies. A second implementation 
 question is how a picture comes to show a wake that does not happen, which is worse than
 showing none.
 
-⚠️ ONE EDGE IN THE ORDER CANNOT BE DRAWN FROM DECLARATIONS, AND IT SAYS SO RATHER THAN
-GUESSING. A reference view is arbitrary SQL (inline or a `query_ref` file); the normalised
-view carries `label`, `query`, `limit`, `candidate_for`, `required_binds` — and NO table
-name. Which tables it reads is knowable only by parsing that SQL, which is an inference,
-not a declaration. So those views are listed on the rule's own entry with what IS declared,
-and the absence is named. See `reference_views` below.
+⚠️ WHAT A REFERENCE VIEW READS IS DECLARED OR IT IS UNKNOWN — never parsed (판정 283).
+A reference view is arbitrary SQL, so the tables behind it are knowable only by reading that
+SQL, and an arrow guessed from it would be a possibly-wrong arrow on the picture an operator
+uses to understand the chain. `reads:` is the cell an operator writes; a view without one is
+COUNTED as `reads_unknown` rather than drawn as reading nothing.
+
+⚠️ AND TWO WRITERS ON ONE CELL IS A VALUE, NOT A FAULT. Layering decides which wins, and it
+decides correctly; what is not normal is nobody being able to see it. `contested` lists
+cells with two NAMED writers; `contested_tables` lists tables two writers share where
+neither declares a column. They are separate because the second is a weaker claim — the
+mappers may touch disjoint columns, and only their Python knows — and folding them into one
+list would let a reader take the weaker for the stronger.
 """
 from __future__ import annotations
 
@@ -111,20 +117,95 @@ def _enrich_edges(rules):
         }
         views = rule.get("reference_views") or ()
         if views:
-            # ⚠️ THE TABLES THESE READ ARE NOT DECLARED ANYWHERE. What is declared is the
-            # label and which binds the view needs; the rest is inside the SQL. Naming the
-            # absence beats parsing the SQL and drawing an edge that may be wrong — a
-            # wrong arrow on the picture an operator is using to understand the web is
-            # worse than a missing one.
+            # ⚠️ THE TABLES A VIEW READS ARE DECLARED OR THEY ARE UNKNOWN — never parsed
+            # (판정 283). A reference view is arbitrary SQL, and an arrow guessed from it
+            # would be a possibly-wrong arrow on the picture an operator is using to
+            # understand the chain. `reads` is the cell an operator writes; a view without
+            # one is COUNTED as unknown rather than drawn as reading nothing.
             edge["reference_views"] = [
                 {"label": view.get("label"),
                  "required_binds": list(view.get("required_binds") or ()),
-                 "reads": None}
+                 "reads": list(view["reads"]) if view.get("reads") else None}
                 for view in views
             ]
-            edge["reads_not_declared"] = len(views)
+            unknown = [v for v in views if not v.get("reads")]
+            if unknown:
+                edge["reads_unknown"] = len(unknown)
         edges.append(edge)
+        # The declared half, as real edges: a table a view reads feeds the derived table.
+        for view in views:
+            for table in view.get("reads") or ():
+                edges.append({
+                    "kind": "enrich", "from": table, "to": derived,
+                    "rule": rule.get("name"),
+                    "enabled": bool(rule.get("enabled", True)),
+                    "via_reference_view": view.get("label"),
+                })
     return edges
+
+
+def _contested(chain_rules, enrichment_rules, vjoin_rules):
+    """Cells more than one declaration writes — a VALUE, not an error (소유자 「이 둘이
+    충돌 안 나?」).
+
+    🔴 IT IS NOT A FAULT AND MUST NOT BE DRAWN AS ONE. Layering is what decides which
+    writer wins, and it decides correctly; two rules feeding one cell is a normal and
+    sometimes intended shape. What is NOT normal is nobody being able to see it — an
+    operator debugging a value has to know that a second declaration also writes there,
+    and today that fact is spread across three files.
+
+    ⚠️ THE THREE WRITERS ARE THE THREE THAT REALLY WRITE, and a virtual join is included
+    deliberately even though it writes nothing to disk: it PRESENTS a column on the left
+    table, so a reader of that cell sees the join's value where a mapper's value may also
+    be. For a `collide` column those are the same cell with two sources, which is exactly
+    the question being asked.
+    """
+    writers = {}
+
+    def _claim(table, column, who):
+        if table and column:
+            writers.setdefault((table, column), set()).add(who)
+
+    for rule in chain_rules:
+        # ⚠️ `target_field` IS THE ONLY COLUMN A CHAIN RULE DECLARES, and most rules declare
+        # none — a mapper returns whatever columns it returns, and that is Python, not a
+        # declaration. So this list is COMPLETE FOR DECLARED CELLS and silent about the
+        # rest; `contested_tables` below says where two rules share a TABLE without either
+        # naming a column, which is the most that can be read without running a mapper.
+        declared = rule.get("target_field")
+        for column in ([declared] if isinstance(declared, str) else (declared or ())):
+            _claim(rule.get("target_table"), column, rule.get("name"))
+    for rule in enrichment_rules:
+        for column in rule.get("target_fields") or ():
+            _claim(rule.get("derived_table"), column, rule.get("name"))
+    for rule in vjoin_rules:
+        for column in rule.get("expose") or ():
+            _claim(rule.get("left_table"), column, rule.get("name"))
+
+    return [
+        {"table": table, "column": column, "writers": sorted(who)}
+        for (table, column), who in sorted(writers.items())
+        if len(who) > 1
+    ]
+
+
+def _contested_tables(chain_rules, enrichment_rules):
+    """Tables two writers share where neither DECLARES a column (S-178 ②).
+
+    ⚠️ SEPARATE FROM `contested`, AND DELIBERATELY WEAKER. A cell with two named writers is
+    a fact; a table with two writers is a question — they may touch disjoint columns, and
+    only the mapper's Python knows. Publishing them in one list would let a reader take the
+    weaker claim for the stronger one, which is the whole shape this graph exists to stop.
+    """
+    writers = {}
+    for rule in chain_rules:
+        if not rule.get("target_field") and rule.get("target_table"):
+            writers.setdefault(rule["target_table"], set()).add(rule.get("name"))
+    for rule in enrichment_rules:
+        if rule.get("derived_table") in writers:
+            writers[rule["derived_table"]].add(rule.get("name"))
+    return [{"table": table, "writers": sorted(who)}
+            for table, who in sorted(writers.items()) if len(who) > 1]
 
 
 def _vjoin_edges(db, rules):
@@ -269,6 +350,8 @@ def chain_graph(db):
         "nodes": nodes,
         "edges": edges,
         "cycles": cycles,
+        "contested": _contested(chain_rules, enrichment_rules, vjoin_rules),
+        "contested_tables": _contested_tables(chain_rules, enrichment_rules),
         # The gate's number: what each file declared, so the picture can be checked
         # against the files rather than believed.
         "counts": {
@@ -281,6 +364,8 @@ def chain_graph(db):
             "nodes": len(nodes),
         },
     }
+    out["counts"]["contested"] = len(out["contested"])
+    out["counts"]["contested_tables"] = len(out["contested_tables"])
     if ledger_error:
         # Omitted when the ledger loaded: an absent key means 「nothing to say」, and a
         # present one means 「this quarter of the picture is missing, and here is why」.

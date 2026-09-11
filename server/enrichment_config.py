@@ -455,10 +455,41 @@ def _normalize_candidate_for(rule_name: str, label: str, raw, target_fields: lis
     return out
 
 
+def _view_reads(rule_name: str, label: str, raw, known_tables, rejections):
+    """🔴 WHICH TABLES THIS VIEW READS — DECLARED, NEVER PARSED (S-178 ②, 판정 283).
+
+    A reference view is arbitrary SQL, so the tables behind it are knowable only by reading
+    that SQL. The chain graph needs them to draw the 「reads → derived_table」 edge, and
+    parsing would put a possibly-wrong arrow on the picture an operator uses to understand
+    the chain — worse than a missing one. So the answer is a place an operator can WRITE it,
+    which is the standing rule for exactly this shape: if a person can state it, make the
+    cell and leave it empty.
+
+    ⚠️ OPTIONAL, AND ABSENCE IS NOT EMPTINESS. A view with no `reads` is counted as
+    `reads_unknown` by the graph rather than drawn with no edges — 「nobody said」 and
+    「it reads nothing」 must not render alike.
+
+    ⛔ AN UNKNOWN TABLE DROPS THE VIEW, BY NAME. A typo here would otherwise draw an edge
+    from a table that does not exist, and a graph is read as fact.
+    """
+    if raw is None:
+        return None, None
+    if not isinstance(raw, list) or not all(
+            isinstance(item, str) and item.strip() for item in raw):
+        return None, "'reads' must be a list of table names"
+    names = [item.strip() for item in raw]
+    if known_tables is not None:
+        unknown = sorted({n for n in names if n not in known_tables})
+        if unknown:
+            return None, (f"'reads' names table(s) the catalogue does not declare: "
+                          f"{unknown}")
+    return sorted(set(names)), None
+
+
 def _normalize_reference_views(rule_name: str, raw_views, decision_key: list,
                                target_fields: list = None, rejections: list = None,
                                caps: dict = None, aggregations: dict = None,
-                               derived_binds=None) -> list:
+                               derived_binds=None, known_tables=None) -> list:
     """참조뷰 목록을 정규화한다. 유효하지 않은 뷰는 **목록에서 제외**된다.
 
     주의: 제외는 로드 시점에 일어나므로 `/enrichment/rules`의 label 목록과
@@ -476,6 +507,14 @@ def _normalize_reference_views(rule_name: str, raw_views, decision_key: list,
             logger.warning(f"[Enrichment:{rule_name}] reference view #{i} dropped: missing 'label'")
             _record(rejections, "reference_view", f"{rule_name}/#{i}",
                     "reference view dropped: missing 'label'")
+            continue
+        reads, reads_err = _view_reads(
+            rule_name, raw.get("label"), raw.get("reads"), known_tables, rejections)
+        if reads_err is not None:
+            logger.warning(f"[Enrichment:{rule_name}] reference view "
+                           f"{raw.get('label')!r} dropped: {reads_err}")
+            _record(rejections, "reference_view", f"{rule_name}/{raw.get('label')}",
+                    f"reference view dropped: {reads_err}")
             continue
         sql, err = _resolve_view_query(raw)
         if err is None:
@@ -529,6 +568,9 @@ def _normalize_reference_views(rule_name: str, raw_views, decision_key: list,
             # a view and params, not a rule - so the view has to know.
             "blank_is_missing": sorted(
                 set(required_bind_params(body)) & set(decision_key or ())),
+            # S-178 ②: absent stays absent. `None` is 「nobody declared it」 and `[]` would
+            # be 「it reads nothing」, which is a claim no operator made.
+            "reads": reads,
         })
     return views
 
@@ -785,7 +827,7 @@ def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = 
     reference_views = _normalize_reference_views(
         name, raw.get("reference_views"), decision_key, target_fields,
         rejections=rejections, caps=caps, aggregations=aggregations,
-        derived_binds=derived_binds)
+        derived_binds=derived_binds, known_tables=known_tables)
     normalized = {
         "name": name,
         # ① auto-confirm opt-in. Carried through RAW (not coerced) so

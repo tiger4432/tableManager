@@ -12,9 +12,17 @@ implementation of that predicate would eventually draw a wake that does not happ
 is worse than drawing none. The test for it calls the same function the route does and
 compares, so the two cannot drift apart silently.
 
-⚠️ AND ONE EDGE THE ORDER ASKED FOR CANNOT BE DRAWN, which is pinned here as a stated
-limit rather than left to be discovered: a reference view is arbitrary SQL and the
-declaration never names the tables it reads.
+⚠️ WHAT A REFERENCE VIEW READS IS DECLARED OR IT IS UNKNOWN (판정 283). It was neither
+until this round: the view is arbitrary SQL and nothing named its tables, so the first cut
+could only count the absence. `reads:` is now the cell an operator writes, and what is
+pinned here is that a declared one draws a real edge, an undeclared one is COUNTED rather
+than guessed, and a typo drops the view by name — a graph is read as fact, so an arrow from
+a table that does not exist is worse than no arrow.
+
+⚠️ AND TWO WRITERS ON ONE CELL IS A VALUE, NOT A FAULT (소유자 「이 둘이 충돌 안 나?」).
+`contested` is cells with two NAMED writers; `contested_tables` is the weaker claim, tables
+two writers share where neither declared a column. They stay apart because folding them
+would let a reader take a question for a fact.
 """
 import os
 import sys
@@ -199,20 +207,101 @@ def test_a_table_nothing_watches_wakes_nothing(graph):
 # 4. ⚠️ The edge that cannot be drawn says so
 # ---------------------------------------------------------------------------
 
-def test_a_reference_view_is_listed_and_its_tables_are_named_absent():
-    """A reference view is arbitrary SQL; the normalised view carries `label`, `query`,
-    `limit`, `candidate_for`, `required_binds` -- and NO table name. Parsing the SQL to
-    invent an arrow would put a possibly-wrong edge on the picture an operator is using to
-    understand the web, which is worse than a missing one."""
+def test_a_declared_reads_becomes_a_real_edge():
+    """판정 283. `reads:` is the cell an operator writes, and a written one draws the arrow
+    the SQL could only have been guessed at."""
+    edges = chain_graph._enrich_edges([{
+        "name": "cg_enrich", "derived_table": DERIVED, "enabled": True,
+        "decision_key": ["job"],
+        "reference_views": [{"label": "recent runs", "required_binds": ["job"],
+                             "reads": ["cg_test_upstream"]}]}])
+    drawn = [e for e in edges if e.get("via_reference_view")]
+    assert len(drawn) == 1
+    assert (drawn[0]["from"], drawn[0]["to"]) == ("cg_test_upstream", DERIVED)
+    assert "reads_unknown" not in edges[0]
+
+
+def test_an_undeclared_reads_is_counted_not_drawn():
+    """⛔ COUNTED, NOT SILENT AND NOT INVENTED. 「nobody declared it」 must not render like
+    「it reads nothing」, and must never render like a guess."""
     edges = chain_graph._enrich_edges([{
         "name": "cg_enrich", "derived_table": DERIVED, "enabled": True,
         "decision_key": ["job"],
         "reference_views": [{"label": "recent runs", "required_binds": ["job"]}]}])
-    edge = edges[0]
-    assert edge["reads_not_declared"] == 1
-    view = edge["reference_views"][0]
-    assert view["label"] == "recent runs"
-    assert view["reads"] is None, "absent, and explicitly so"
+    assert edges[0]["reads_unknown"] == 1
+    assert edges[0]["reference_views"][0]["reads"] is None
+    assert not [e for e in edges if e.get("via_reference_view")]
+
+
+def test_an_unknown_table_in_reads_drops_the_view_by_name():
+    """A typo would otherwise draw an edge from a table that does not exist, and a graph is
+    read as fact. Refused at the DECLARATION, per view, with the name in the message."""
+    import enrichment_config
+
+    rejections = []
+    views = enrichment_config._normalize_reference_views(
+        "cg_enrich",
+        [{"label": "typo", "query": "SELECT 1", "reads": ["cg_no_such_table"]}],
+        ["job"], rejections=rejections, known_tables={TRIGGER: {}})
+    assert views == []
+    assert any("cg_no_such_table" in str(r) for r in rejections), rejections
+
+
+def test_a_declared_reads_survives_the_loader():
+    import enrichment_config
+
+    views = enrichment_config._normalize_reference_views(
+        "cg_enrich",
+        [{"label": "ok", "query": "SELECT 1", "reads": [TRIGGER, TRIGGER]}],
+        ["job"], known_tables={TRIGGER: {}})
+    assert views[0]["reads"] == [TRIGGER], "de-duplicated and sorted"
+
+
+# ---------------------------------------------------------------------------
+# 4-bis. 🔴 Two writers on one cell — the owner's question, as a value
+# ---------------------------------------------------------------------------
+
+def test_two_declarations_writing_one_cell_are_listed():
+    """소유자 「이 둘이 충돌 안 나?」. Not an error — layering decides, and decides
+    correctly. What is not normal is the fact being spread across three files with nowhere
+    to read it."""
+    contested = chain_graph._contested(
+        [chain_rule(name="mapper_rule", target_table=DERIVED,
+                    target_field="grade")],
+        [{"name": "enrich_rule", "derived_table": DERIVED,
+          "target_fields": ["grade", "other"]}],
+        [])
+    assert contested == [{"table": DERIVED, "column": "grade",
+                          "writers": ["enrich_rule", "mapper_rule"]}]
+
+
+def test_one_writer_is_not_contested():
+    assert chain_graph._contested(
+        [chain_rule(target_table=DERIVED, target_field="grade")], [], []) == []
+
+
+def test_a_virtual_join_counts_as_a_writer_of_the_cell_it_presents():
+    """It writes nothing to disk and a reader of that cell still sees its value where a
+    mapper's may also be — which is exactly the question being asked."""
+    contested = chain_graph._contested(
+        [chain_rule(name="mapper_rule", target_table=TARGET, target_field="grade")],
+        [],
+        [{"name": "cg_vjoin", "left_table": TARGET, "expose": ["grade"]}])
+    assert contested[0]["writers"] == ["cg_vjoin", "mapper_rule"]
+
+
+def test_a_shared_table_with_no_declared_column_is_the_weaker_list():
+    """⚠️ SEPARATE, AND DELIBERATELY WEAKER. Two rules on one table may touch disjoint
+    columns and only the mapper's Python knows; folding this into `contested` would let a
+    reader take a question for a fact."""
+    weak = chain_graph._contested_tables(
+        [chain_rule(name="a", target_table=TARGET),
+         chain_rule(name="b", target_table=TARGET)], [])
+    assert weak == [{"table": TARGET, "writers": ["a", "b"]}]
+    # And a rule that DID name its column is not in the weak list - it is in the strong one.
+    assert chain_graph._contested_tables(
+        [chain_rule(name="a", target_table=TARGET, target_field="grade"),
+         chain_rule(name="b", target_table=TARGET)], []) == []
 
 
 def test_the_enrich_edge_is_the_table_feeding_itself(graph):
