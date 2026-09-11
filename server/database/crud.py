@@ -25,6 +25,7 @@ import os
 import logging
 from datetime import datetime, date, timezone
 import event_constants
+import alignment_batch_counts
 
 logger = logging.getLogger("Server")
 
@@ -4146,103 +4147,104 @@ def _apply_batch_updates_once(db: Session, table_name: str,
         for item in batch.updates:
             assemble_composite_business_key(table_name, item)
 
-        target_ids = [u.row_id for u in batch.updates if u.row_id]
-        # 🔴 판정 191. BOTH of an item's identities, because `_get_or_create_row`
-        # may resolve on either: the assembled key, and - only when a caller sent a
-        # different one - the key it is renaming FROM. Asking about one of the two leaves
-        # the other unprefetched, and worse: the assembled key of a rename would enter
-        # `probed_identity` as "asked and absent" (true, and the right answer) while the
-        # supplied key it actually resolves on was never asked about at all.
-        target_bks = []
-        for u in batch.updates:
-            for value in (u.business_key_val, u._supplied_business_key_val):
-                if value:
-                    target_bks.append(str(value).strip())
+        with alignment_batch_counts.write_step("prefetch"):
+            target_ids = [u.row_id for u in batch.updates if u.row_id]
+            # 🔴 판정 191. BOTH of an item's identities, because `_get_or_create_row`
+            # may resolve on either: the assembled key, and - only when a caller sent a
+            # different one - the key it is renaming FROM. Asking about one of the two leaves
+            # the other unprefetched, and worse: the assembled key of a rename would enter
+            # `probed_identity` as "asked and absent" (true, and the right answer) while the
+            # supplied key it actually resolves on was never asked about at all.
+            target_bks = []
+            for u in batch.updates:
+                for value in (u.business_key_val, u._supplied_business_key_val):
+                    if value:
+                        target_bks.append(str(value).strip())
 
-        from sqlalchemy import or_
-        existing_rows_list = db.query(table_model).filter(
-            or_(
-                table_model.row_id.in_(target_ids) if target_ids else False,
-                table_model.business_key_val.in_(target_bks) if target_bks else False
-            )
-        ).all()
-        
-        row_cache = {}
-        for r in existing_rows_list:
-            row_cache[r.row_id] = r
-            if r.business_key_val:
-                row_cache[r.business_key_val] = r
-                
-        all_row_ids = list(set(r.row_id for r in existing_rows_list))
-
-        # [P2] Exactly the ids the two prefetch queries below cover. Handed to
-        # `apply_row_update_internal` so a cache miss on one of THESE rows is read as a
-        # proven absence instead of an unknown. It is a snapshot of the ids, not of the
-        # rows: any row resolved later in the loop (composite key assembled from column
-        # values, collision-merge conflict row) is correctly outside the set and is
-        # still read from the database.
-        prefetched_row_ids = set(all_row_ids)
-
-        # [P3] The identity values the prefetch ASKED about MINUS the ones it brought
-        # back - i.e. exactly the values PROVEN not to exist in the table.
-        #
-        # 🔴 THE SUBTRACTION IS THE WHOLE CORRECTNESS ARGUMENT, and the first draft of
-        # this did not have it. Without it the sets say "we asked", and the loop then
-        # has to lean on `row_cache` to know whether an answer came back - but
-        # `row_cache` is MUTATED by the loop. `apply_row_update_internal` deletes the
-        # old key when it renames a row's business key (see the composite block), so a
-        # later item naming that same old key would find the cache empty, read "we
-        # asked" as "nothing exists", and mint a duplicate row where today's code
-        # resolves onto the renamed one. With the subtraction the sets are a statement
-        # about the DATABASE at prefetch time, which nothing in the loop can change:
-        # no row is flushed inside `no_autoflush`.
-        #
-        # The prefetch filters on equality, so every returned row's `row_id` /
-        # `business_key_val` IS one of these strings exactly - the difference is exact,
-        # not approximate.
-        _found_ids = {r.row_id for r in existing_rows_list}
-        _found_bks = {r.business_key_val for r in existing_rows_list if r.business_key_val}
-        probed_identity = ProbedIdentity(
-            row_ids=frozenset(target_ids) - _found_ids,
-            business_keys=frozenset(target_bks) - _found_bks,
-        )
-
-        sources_cache = {}
-        overwrites_cache = {}
-
-        if all_row_ids:
-            all_sources = db.query(
-                models.CellSource.table_name,
-                models.CellSource.row_id,
-                models.CellSource.column_name,
-                models.CellSource.source_name,
-                models.CellSource.value,
-                models.CellSource.updated_by,
-                models.CellSource.ingested_at
-            ).filter(
-                models.CellSource.table_name == table_name,
-                models.CellSource.row_id.in_(all_row_ids)
-            ).order_by(models.CellSource.source_name.asc()).all()
-            for t_name, r_id, col_name, src_name, val, upd_by, ing_at in all_sources:
-                key = (r_id, col_name)
-                if key not in sources_cache:
-                    sources_cache[key] = []
-                sources_cache[key].append(LightCellSource(t_name, r_id, col_name, src_name, val, upd_by, ing_at))
-                
-            all_overwrites = db.query(
-                models.CellOverwrite.table_name,
-                models.CellOverwrite.row_id,
-                models.CellOverwrite.column_name,
-                models.CellOverwrite.is_overwrite,
-                models.CellOverwrite.updated_by,
-                models.CellOverwrite.updated_at,
-                models.CellOverwrite.manual_priority_source
-            ).filter(
-                models.CellOverwrite.table_name == table_name,
-                models.CellOverwrite.row_id.in_(all_row_ids)
+            from sqlalchemy import or_
+            existing_rows_list = db.query(table_model).filter(
+                or_(
+                    table_model.row_id.in_(target_ids) if target_ids else False,
+                    table_model.business_key_val.in_(target_bks) if target_bks else False
+                )
             ).all()
-            for t_name, r_id, col_name, is_ow, upd_by, upd_at, man_pin in all_overwrites:
-                overwrites_cache[(r_id, col_name)] = LightCellOverwrite(t_name, r_id, col_name, is_ow, upd_by, upd_at, man_pin)
+        
+            row_cache = {}
+            for r in existing_rows_list:
+                row_cache[r.row_id] = r
+                if r.business_key_val:
+                    row_cache[r.business_key_val] = r
+                
+            all_row_ids = list(set(r.row_id for r in existing_rows_list))
+
+            # [P2] Exactly the ids the two prefetch queries below cover. Handed to
+            # `apply_row_update_internal` so a cache miss on one of THESE rows is read as a
+            # proven absence instead of an unknown. It is a snapshot of the ids, not of the
+            # rows: any row resolved later in the loop (composite key assembled from column
+            # values, collision-merge conflict row) is correctly outside the set and is
+            # still read from the database.
+            prefetched_row_ids = set(all_row_ids)
+
+            # [P3] The identity values the prefetch ASKED about MINUS the ones it brought
+            # back - i.e. exactly the values PROVEN not to exist in the table.
+            #
+            # 🔴 THE SUBTRACTION IS THE WHOLE CORRECTNESS ARGUMENT, and the first draft of
+            # this did not have it. Without it the sets say "we asked", and the loop then
+            # has to lean on `row_cache` to know whether an answer came back - but
+            # `row_cache` is MUTATED by the loop. `apply_row_update_internal` deletes the
+            # old key when it renames a row's business key (see the composite block), so a
+            # later item naming that same old key would find the cache empty, read "we
+            # asked" as "nothing exists", and mint a duplicate row where today's code
+            # resolves onto the renamed one. With the subtraction the sets are a statement
+            # about the DATABASE at prefetch time, which nothing in the loop can change:
+            # no row is flushed inside `no_autoflush`.
+            #
+            # The prefetch filters on equality, so every returned row's `row_id` /
+            # `business_key_val` IS one of these strings exactly - the difference is exact,
+            # not approximate.
+            _found_ids = {r.row_id for r in existing_rows_list}
+            _found_bks = {r.business_key_val for r in existing_rows_list if r.business_key_val}
+            probed_identity = ProbedIdentity(
+                row_ids=frozenset(target_ids) - _found_ids,
+                business_keys=frozenset(target_bks) - _found_bks,
+            )
+
+            sources_cache = {}
+            overwrites_cache = {}
+
+            if all_row_ids:
+                all_sources = db.query(
+                    models.CellSource.table_name,
+                    models.CellSource.row_id,
+                    models.CellSource.column_name,
+                    models.CellSource.source_name,
+                    models.CellSource.value,
+                    models.CellSource.updated_by,
+                    models.CellSource.ingested_at
+                ).filter(
+                    models.CellSource.table_name == table_name,
+                    models.CellSource.row_id.in_(all_row_ids)
+                ).order_by(models.CellSource.source_name.asc()).all()
+                for t_name, r_id, col_name, src_name, val, upd_by, ing_at in all_sources:
+                    key = (r_id, col_name)
+                    if key not in sources_cache:
+                        sources_cache[key] = []
+                    sources_cache[key].append(LightCellSource(t_name, r_id, col_name, src_name, val, upd_by, ing_at))
+                
+                all_overwrites = db.query(
+                    models.CellOverwrite.table_name,
+                    models.CellOverwrite.row_id,
+                    models.CellOverwrite.column_name,
+                    models.CellOverwrite.is_overwrite,
+                    models.CellOverwrite.updated_by,
+                    models.CellOverwrite.updated_at,
+                    models.CellOverwrite.manual_priority_source
+                ).filter(
+                    models.CellOverwrite.table_name == table_name,
+                    models.CellOverwrite.row_id.in_(all_row_ids)
+                ).all()
+                for t_name, r_id, col_name, is_ow, upd_by, upd_at, man_pin in all_overwrites:
+                    overwrites_cache[(r_id, col_name)] = LightCellOverwrite(t_name, r_id, col_name, is_ow, upd_by, upd_at, man_pin)
     
         # [S-83 ③] ONE instant for this whole request, read from the DATABASE before the
         # loop. It travels into every row so the UPDATE carries a VALUE instead of a SQL
@@ -4276,33 +4278,34 @@ def _apply_batch_updates_once(db: Session, table_name: str,
         # item 2 then fills, and that row is not a phantom.
         rows_with_content = set()
 
-        with db.no_autoflush:
-            for item in batch.updates:
-                row, is_new, changed_cols = apply_row_update_internal(
-                    db, table_name, item,
-                    row_cache=row_cache,
-                    sources_cache=sources_cache,
-                    overwrites_cache=overwrites_cache,
-                    transaction_id=tx_id,
-                    logs_to_cache=logs_to_cache,
-                    cell_sources_to_upsert=cell_sources_to_upsert,
-                    cell_overwrites_to_upsert=cell_overwrites_to_upsert,
-                    cell_overwrites_to_delete=cell_overwrites_to_delete,
-                    deleted_row_ids=deleted_row_ids,
-                    version_stats=version_stats,
-                    prefetched_row_ids=prefetched_row_ids,
-                    probed_identity=probed_identity,
-                    drop_stats=drop_stats,
-                    batch_now=batch_now
-                )
-                prev_row, prev_is_new = unique_results.get(row.row_id, (None, False))
-                unique_results[row.row_id] = (row, is_new or prev_is_new)
+        with alignment_batch_counts.write_step("row build"):
+            with db.no_autoflush:
+                for item in batch.updates:
+                    row, is_new, changed_cols = apply_row_update_internal(
+                        db, table_name, item,
+                        row_cache=row_cache,
+                        sources_cache=sources_cache,
+                        overwrites_cache=overwrites_cache,
+                        transaction_id=tx_id,
+                        logs_to_cache=logs_to_cache,
+                        cell_sources_to_upsert=cell_sources_to_upsert,
+                        cell_overwrites_to_upsert=cell_overwrites_to_upsert,
+                        cell_overwrites_to_delete=cell_overwrites_to_delete,
+                        deleted_row_ids=deleted_row_ids,
+                        version_stats=version_stats,
+                        prefetched_row_ids=prefetched_row_ids,
+                        probed_identity=probed_identity,
+                        drop_stats=drop_stats,
+                        batch_now=batch_now
+                    )
+                    prev_row, prev_is_new = unique_results.get(row.row_id, (None, False))
+                    unique_results[row.row_id] = (row, is_new or prev_is_new)
 
-                if changed_cols:
-                    rows_with_content.add(row.row_id)
+                    if changed_cols:
+                        rows_with_content.add(row.row_id)
 
-                for col in changed_cols:
-                    total_changed_cells.append((row.row_id, col))
+                    for col in changed_cols:
+                        total_changed_cells.append((row.row_id, col))
 
         # [phantom row] A row that exists ONLY because we threw away what the caller sent
         # is a FABRICATED RECORD, and it is worse than a refusal: downstream now has a row
@@ -4376,11 +4379,12 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                                 reported_only_for_drops=len(reported_only_for_drops))
 
         # Execute Bulk Upserts, Bulk Inserts, and Deletes
-        if logs_to_cache:
-            bulk_insert_audit_logs(db, logs_to_cache)
-        bulk_upsert_cell_sources(db, list(cell_sources_to_upsert.values()))
-        bulk_upsert_cell_overwrites(db, list(cell_overwrites_to_upsert.values()))
-        bulk_delete_cell_overwrites(db, list(cell_overwrites_to_delete))
+        with alignment_batch_counts.write_step("side tables"):
+            if logs_to_cache:
+                bulk_insert_audit_logs(db, logs_to_cache)
+            bulk_upsert_cell_sources(db, list(cell_sources_to_upsert.values()))
+            bulk_upsert_cell_overwrites(db, list(cell_overwrites_to_upsert.values()))
+            bulk_delete_cell_overwrites(db, list(cell_overwrites_to_delete))
 
         # [scope diff] What disappeared, decided by SUBTRACTING what this write claimed
         # from what was in scope - never by asking the payload what to delete.
@@ -4419,7 +4423,8 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                 f"Removed: {len(removed_row_ids)}"
             )
 
-        db.flush()
+        with alignment_batch_counts.write_step("flush"):
+            db.flush()
 
         serialized_logs = []
         for l in logs_to_cache:

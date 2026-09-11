@@ -1393,10 +1393,17 @@ def _log_alignment_group_work(tx_id, summary) -> None:
         return
     phases = summary.get("phases") or {}
     stages = summary.get("stages") or {}
+    write_steps = summary.get("write_steps") or {}
+    # The write steps are subtracted from the `write:*` stages they sit inside, not from
+    # the group's wall clock - they are a layer down, the way the phases are a layer down
+    # from `mapper`.
+    write_total = sum(seconds for name, seconds in stages.items()
+                      if name.startswith("write:"))
     logger.info(
         "[Chain] group %s: view builds %d · reference resolutions %d · distinct maps %d "
         "· %.3f s · MACHINERY%s · unnamed %.3f s"
-        " · INSIDE THE VIEW%s · unnamed %.3f s",
+        " · INSIDE THE VIEW%s · unnamed %.3f s"
+        " · INSIDE THE WRITE%s · unnamed %.3f s",
         tx_id, summary["view_builds"], summary["reference_resolutions"],
         summary["distinct_maps"], summary["wall_seconds"],
         "".join(" · %s %.3f s" % (name, seconds)
@@ -1404,7 +1411,10 @@ def _log_alignment_group_work(tx_id, summary) -> None:
         max(summary["wall_seconds"] - sum(stages.values()), 0.0),
         "".join(" · %s %.3f s" % (name, seconds)
                 for name, seconds in sorted(phases.items())) or " (none named)",
-        max(stages.get("mapper", summary["wall_seconds"]) - sum(phases.values()), 0.0))
+        max(stages.get("mapper", summary["wall_seconds"]) - sum(phases.values()), 0.0),
+        "".join(" · %s %.3f s" % (name, seconds)
+                for name, seconds in sorted(write_steps.items())) or " (none named)",
+        max(write_total - sum(write_steps.values()), 0.0))
 
 
 async def process_chain_transaction_group(tx_id, events, db, rules):
