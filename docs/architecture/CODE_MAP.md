@@ -102,6 +102,7 @@
 | 파일 | 구 표기 | 실측 | 차 |
 |---|---|---|---|
 | `server/enrichment_config.py` | 676 | **1,638** | **+962** |
+| 🆕㉓ ↳ `_isolated_execute(db, stmt, params)` :1349 | 참조뷰 질의를 «SAVEPOINT 안»에서 돌려 실패가 바깥 트랜잭션을 안 깨게 한다. 🔴 **[S-166] 그러려면 «앉을 트랜잭션»이 먼저 있어야 한다** — `in_transaction()` 이 거짓이면 열고 들어간다. ⚠️ 그 가드로도 autocommit 커넥션에서는 «안 열린다»(BEGIN 이 안 나감) — 뿌리는 S-167 | |
 | `server/database/models.py` | 636 | **1,079** | +443 |
 | `server/ledger_trace_router.py` | 419 | **779** | +360 |
 | `server/audit_cache.py`(§6) | 643 | **645** | +2 |
@@ -1235,6 +1236,12 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 
 ## 3. `server/parsers/directory_watcher.py` — 파일 인제션
 
+> 🆕㉓ **[2026-09-11 S-164] 청크가 «어디에 썼는지»를 말한다 — 체인의 계수기를 «그대로» 연다**(`alignment_batch_counts`, 새 계기를 만들지 않음). :3042
+> ```
+> [Ingest] <표> chunk N: R row(s) in T s · STAGES · <스테이지…> · unnamed U s · INSIDE THE WRITE · <스텝…>
+> ```
+> 🔵 이 줄이 «운영에서 읽혀» S-168 이 됐다 — 운영 apply 19 s/1k(선인출 10 · 행 만들기 1 · 부수 표 7) vs 이 박스 0.03 · 0.37 · 0.42. **운영을 여기서 못 재므로 «계기를 보내고 값을 받는다».**
+
 > 🟢 **심볼 실측 완료** — 이 절의 심볼은 **`5609ff0`의 커밋된 blob에 존재함이 확인됐고, 그 뒤 HEAD가 움직인 다음 재대조에서도 동일했다**(워킹트리 아님). 🔴 **라인 번호는 싣지 않는다** — 위치는 `git grep -n "<심볼>" -- <경로>`로 확정하라. 숫자가 남아 있는 곳은 **파일 줄 수**이거나, 이름이 없는 덩어리를 가리키며 측정 sha가 함께 적힌 자리뿐이다.
 
 워크스페이스별 폴더 감시 → 파서 실행 → **HTTP 아닌 직접 DB**(`crud.apply_batch_updates`) 업서트 → 웹서버에 `/internal/events/*` 콜백. 2026-07-25 std parser(무스크립트 표준 파싱)·기동/주기 스윕 통합, **워크스페이스 config.json 폐지**(`5fac5f0`).
@@ -1411,7 +1418,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | 시그니처 | 역할 | 라인 |
 |---|---|---|
 | **`import enrichment_candidates`** | **[① 신설]** 모듈 최상단 import — 자동확정 컬렉터([§5-A](#5-a-2026-07-30-신설-서버-모듈-8종)) | ~37 |
-| `class OutboxListener` — `_ensure_connection/_reset_connection/_wait_blocking/wait(timeout)/close` | psycopg2 LISTEN 전용 커넥션 + async 대기 | ~41–123 |
+| `class OutboxListener` — `_ensure_connection/_reset_connection/_wait_blocking/wait(timeout)/close` | psycopg2 LISTEN 전용 커넥션 + async 대기. 🆕㉓ **[S-167] `_ensure_connection` 은 `psycopg2.connect` 로 «풀이 본 적 없는» 커넥션을 만든다** — `engine.raw_connection()` 은 «풀» 커넥션을 주고, LISTEN 이 요구하는 `set_isolation_level(0)` 이 그것을 바꾼 뒤 «autocommit 인 채로» 반납된다(실측: 다음 대여가 같은 커넥션). 그 커넥션을 쥔 세션은 BEGIN 을 안 내므로 `begin_nested()` 가 25P01. ⛔ 되돌리지 말 것 | ~100–130 |
 | **`import internal_event_client`** / `API_BASE_URL = internal_event_client.api_base_url()` | **[`23a346d`]** 세션·주소의 단일 소유자 import / **모듈 속성은 존치**(값만 위임 — 종전 리터럴 사본 3개 중 하나였다). 구 `_get_http_session`의 묘비 주석이 바로 아래 ~131–136에 있다([§0 ⑧](#0-묘비-목록--소스에-존재하지-않는-이름)) | ~127/129 |
 | **`post_event_async(endpoint, payload) -> bool`** | 웹서버 `/internal/events/*` POST. **[`90e284f`] `headers=admin_auth.internal_event_headers()`** — `/internal/events/*`가 게이트 뒤로 들어갔으므로 이게 없으면 워커의 브로드캐스트가 401로 조용히 죽는다([§1.6](#16-serveradmin_authpy--어드민내부-토큰-게이트-90e284f-신설)). 🔴 **[`23a346d`] 세션은 `internal_event_client.internal_event_session()`에서 받고**, 비-`ok` 응답은 **상태코드만 로그하지 않는다** — `admin_auth.internal_event_failure_note(res.status_code, res.headers)`를 붙여 **누가 거부했는지**까지 한 줄에 넣는다. 판별자(`WWW-Authenticate`)는 응답에 내내 실려 있었고 이 줄이 그것을 버리고 있었다 | ~138 |
 | `purge_expired_outbox_sync(db_session_factory, retention_days, ...)` | 처리 완료 outbox 보존기간 청소 (`OUTBOX_RETENTION_DAYS=7`·`OUTBOX_PURGE_INTERVAL=3600`·`OUTBOX_PURGE_CHUNK=1000`·`OUTBOX_PURGE_MAX_CHUNKS=50` ~181–184) | ~187 |
