@@ -33964,3 +33964,50 @@ ground_node_key("bundle.virtual_joins.<rule>.join_key")    -> «None»          
 
 > 📌 **[09-11 21:xx] 이 채널의 미답 질문: 3절 «작성 지도와 로딩 지도를 가를지» 하나.
 > 다음: S-176 서버 라우트(`/runtime`).**
+
+---
+
+# S-177 ③ — 「격리 뿌리는 «자기 상수»를 갖는다」 착지 (판정 281, `52adb243`)
+
+## 1. 고침 — 지도를 «갈랐습니다». 작성 표면은 «안 넓혔습니다**
+```
+ISOLATION_ROOTS   AUTHORABLE_SECTION_NAMES | {"virtual_joins"} — «파생»이라 작성 지도에
+                  한 절이 늘면 같은 날 격리 가능해집니다(따로 적은 목록은 낡습니다)
+isolation_key     ground_node_key 와 «같은 물음, 넓은 집합». 둘이 이제 «한 몸체»에
+                  지도만 달리 받아, 경로를 읽는 방식이 갈라질 자리가 없습니다
+작성 표면          «무변**: 탐색기가 조인 규칙을 만들거나 지우게 되는 것이 «아닙니다»
+```
+🔴 **호출자가 «둘»이었고 둘째는 제 것이었으며 같은 버그였습니다.** `resolve_declarations` 의
+탓하기 말고도, S-177 ② 에서 제가 쓴 `load_setup` 의 관문(「빼면 풀릴 문제인가」)이
+«작성 지도»를 읽고 있었습니다. 그래서 탓하기만 넓히니 깨진 규칙이 **그 관문에서 그대로
+전체 거절로 튕겨 나왔습니다** — 새 시험이 «엉뚱한 이유로» 빨개져서 잡혔습니다.
+
+## 2. 파급은 «새 코드 0줄» — 고정점이 원래 하던 일입니다
+규칙을 빼면 소스의 `prepare.inherit_virtual_join_rules` 가 «없는 규칙»을 이름 대게 되고,
+`_cross_validate` 가 그것을 «소스 자신의 경로»에 `unknown_join_rule` 로 보고합니다
+(`rpath = bundle.sources.<id>.prepare.inherit_virtual_join_rules[i]`).
+그래서 다음 바퀴에 상속자가 떨어집니다. 판정이 예측한 그대로입니다.
+
+## 3. 게이트 — «한 커밋 전 제 시험 둘을 뒤집었습니다**
+```
+깨진 규칙 1 + 그것을 inherit 하는 소스 1 + 무관한 소스 1
+  번들 «로드됨»                                        ✅
+  상속자 planned=False · 사유에 «규칙 이름»              ✅
+  무관한 소스 계획 «전부»                                ✅
+그리고 «안 움직인 것»을 단언:
+  ground_node_key(조인 규칙 경로) is None                ✅
+  "virtual_joins" not in AUTHORABLE_SECTION_NAMES        ✅
+  AUTHORABLE_SECTION_NAMES «진부분집합» ISOLATION_ROOTS   ✅  (한쪽만 늘면 작성 가능한데 격리 불가)
+```
+⚰️ 같은 픽스처·같은 문구로 «반대»를 단언합니다. 그 뒤집힘이 이 커밋의 증거입니다.
+
+## 4. 이웃 — 지도·로더·탐색기를 단언하는 30 파일
+```
+570 passed · 4 skipped
+빨강 3 · 에러 12   `EventFrame schema: event_time` 부류 (HEAD 에서 동일, 오늘 세 번째 확인)
+커밋 뒤            5,697 collected, 오류 0
+```
+
+## 5. 재기동 — «총괄 몫». 선언 로딩 경로입니다
+
+> 📌 **[09-11 21:xx] 이 채널의 미답 질문: «없음». 다음: S-176 서버 라우트(`/runtime`).**
