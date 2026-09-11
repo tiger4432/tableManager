@@ -205,14 +205,39 @@ def test_contains_and_startswith_work_through_the_same_translator(search_env):
     assert ids == {"L5"}
 
 
-def test_an_unscoped_search_reaches_a_virtual_only_column(search_env):
-    """`?q=` with no `?cols=` must cover virtual columns too.
+def test_an_unscoped_search_does_not_reach_a_virtual_only_column(search_env):
+    """The default `?q=` scope is the row's IDENTITY, so a virtual-only column is outside
+    it (판정 255).
 
-    `virtual_only` columns are not in `table_config.column_types` (they are not stored),
-    so the default column list skipped them ― the grid displayed a column that the
-    all-columns search could not see.
+    🔴 THIS ASSERTION IS THE REVERSE OF THE ONE IT REPLACES, AND DELIBERATELY. The old
+    default was "every declared column, plus every virtual-join column". On `dt_log` that
+    built 31 ILIKE arms over casts AND SIX aliased LEFT JOINs on the same key - 2,174 ms
+    and a sequential scan - for an unscoped search that a `?cols=`-scoped one answers with
+    ZERO joins. The cost was created by the default, not by searching as such.
+
+    ⚠️ WHAT THIS COSTS AND WHERE IT IS PAID. A deployment that wants a virtual column
+    searchable declares it; the test below is the other half of this pair, and without
+    that half this one would read as "virtual columns are not searchable", which is false.
     """
     ids, total = _get(search_env, q="M2")
+    assert ids == set()
+    assert total == 0
+
+
+def test_a_declared_search_column_reaches_the_virtual_only_column(search_env):
+    """`search_columns` is how the scope is widened back - by declaration, per table."""
+    import main
+    table = crud.TABLE_CONFIG["vjs_test_log"]
+    table[crud.SEARCH_COLUMNS_KEY] = ["log_id", "fab_site"]
+    # The count cache is keyed by (table, q, cols, filters) and NOT by the declaration,
+    # so the previous test's answer to this exact query string is still sitting in it.
+    main.TABLE_COUNT_CACHE.clear()
+    try:
+        ids, total = _get(search_env, q="M2")
+    finally:
+        table.pop(crud.SEARCH_COLUMNS_KEY, None)
+        main.TABLE_COUNT_CACHE.clear()
+
     assert ids == {"L2"}
     assert total == 1
 

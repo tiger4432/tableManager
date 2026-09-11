@@ -218,10 +218,12 @@ def test_q_search_reaches_the_numeric_virtual_column(num_env):
     ids, total = _get(num_env, q="2.5", cols="slot_no")
     assert ids == {"L2"}
     assert total == 1
-    # Unscoped search must see it too (the column is not in column_types).
+    # 판정 255: the DEFAULT scope is the row's identity, so the unscoped search does
+    # NOT reach a virtual column. Asking for it by name - asserted directly above - is how
+    # a caller reaches it, and `search_columns` is how a deployment makes that the default.
     ids, total = _get(num_env, q="2.5")
-    assert ids == {"L2"}
-    assert total == 1
+    assert ids == set()
+    assert total == 0
 
 
 def test_the_two_spellings_agree_cell_by_cell(num_env, db_session):
