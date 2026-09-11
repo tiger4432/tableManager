@@ -65,6 +65,19 @@ def test_a_relation_that_declares_none_is_unchanged(catalog):
     assert len(silent) == len(catalog) - 5
     for name in silent:
         table = models.DYNAMIC_TABLES[name].__table__
+        entry = catalog[name]
+        if str(entry.get("kind") or "table") == "view":
+            # 🔴 A VIEW HAS NO FRAMEWORK COLUMNS TO BE UNCHANGED BY (S-186). It is built
+            # from its declared columns alone, so its mapped key is its declared
+            # `business_key` — and where a view DOES declare `row_id` the key stays
+            # `row_id` (판정 296), which the sibling assertion above already covers.
+            #
+            # ⚠️ Split rather than loosened: asserting 「row_id or business_key」 for
+            # everything would stop this test noticing a real table that lost its PK.
+            expected = [str(entry.get("business_key") or
+                            list(entry.get("column_types") or {"?": 1})[0])]
+            assert [c.name for c in table.primary_key] == expected, name
+            continue
         assert [c.name for c in table.primary_key] == ["row_id"], name
 
 

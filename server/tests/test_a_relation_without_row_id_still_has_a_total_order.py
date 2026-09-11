@@ -51,8 +51,18 @@ def _declared():
     crud.TABLE_CONFIG[TABLE] = {
         "business_key": "k", "column_types": {"k": "string"}}
     yield
+    # ⚠️ THE MODEL REGISTRY IS PROCESS-WIDE, and several tests here build models to reach
+    # the view path. A model left behind makes a SIBLING test that COUNTS the registry
+    # fail - measured, not guessed: it read 50 against a 46-entry catalogue. So the
+    # fixture removes every name this file introduces and rebuilds from the real
+    # catalogue, rather than each test remembering to.
+    from database import models
+
     crud.TABLE_CONFIG.pop(VIEW, None)
     crud.TABLE_CONFIG.pop(TABLE, None)
+    for name in [n for n in models.DYNAMIC_TABLES if str(n).startswith("s186_")]:
+        models.DYNAMIC_TABLES.pop(name, None)
+    models.init_dynamic_models(dict(crud.TABLE_CONFIG))
 
 
 # ---------------------------------------------------------------------------
@@ -192,16 +202,33 @@ def test_a_view_row_carries_no_layering_metadata_and_renders_its_times():
         vid = "V1"
         seen_at = datetime(2026, 8, 13, 4, 12, 7, tzinfo=timezone.utc)
 
+    from database import models
+
     crud.TABLE_CONFIG["s186_render_view"] = {
         "kind": "view", "business_key": "vid",
         "column_types": {"vid": "string", "seen_at": "datetime"}}
+    # ⚠️ THE MODEL IS BUILT, because the route always has one — it just queried through it.
+    # The merge resolves the row's identity through `total_order_key`, the SAME function the
+    # sort uses, rather than re-deriving 「row_id or business_key」 as a second spelling.
+    models.init_dynamic_models(dict(crud.TABLE_CONFIG))
     try:
         merged = main.fetch_and_merge_metadata(
             None, "s186_render_view", [_Row()], ["vid", "seen_at"])
     finally:
+        # ⚠️ The registry is process-wide, so a model left behind makes a SIBLING test that
+        # counts it fail — measured, not guessed: it went 46 -> 51.
         crud.TABLE_CONFIG.pop("s186_render_view", None)
+        models.DYNAMIC_TABLES.pop("s186_render_view", None)
+        models.init_dynamic_models(dict(crud.TABLE_CONFIG))
 
-    assert merged[0]["vid"] == {"value": "V1", "is_overwrite": False,
-                                "sources": {}, "updated_by": None}
-    assert isinstance(merged[0]["seen_at"]["value"], str), "a raw datetime costs 10x"
-    assert merged[0]["seen_at"]["value"].endswith("+00:00")
+    # 🔴 THE SAME WRAPPER EVERY ROW USES — the grid reads `dataObj.data[col]` for every
+    # relation, so a flat row stopped it drawing a view it had been drawing.
+    row = merged[0]
+    assert sorted(row) == ["created_at", "data", "row_id", "table_name", "updated_at"]
+    assert row["row_id"] == "V1", "the view's identity is its declared key"
+    # ⛔ THE CELL IS `{value}` AND NOTHING MORE. Writing `is_overwrite: False` would invent
+    # an absent layering marker as a value - 「없는 것」 and 「0인 것」 must not look alike.
+    assert row["data"]["vid"] == {"value": "V1"}
+    assert set(row["data"]["seen_at"]) == {"value"}
+    assert isinstance(row["data"]["seen_at"]["value"], str), "a raw datetime costs 10x"
+    assert row["data"]["seen_at"]["value"].endswith("+00:00")

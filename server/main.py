@@ -822,22 +822,34 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
     # sources, updated_by}` per cell, so returning the raw ORM objects here would move the
     # break one layer up into the serializer.
     if str((crud.TABLE_CONFIG.get(table_name) or {}).get("kind") or "table") == "view":
-        # ⚠️ DATETIMES ARE RENDERED, NOT HANDED OVER RAW. Measured on the first live call:
-        # a raw `datetime` makes the payload non-JSON-native and the route falls back to
-        # `jsonable_encoder`, which its own warning prices at ~10x the serialization time —
-        # on a relation with 103,858 rows. The normal path renders `created_at`/`updated_at`
-        # through `to_local_str`; a view's DECLARED time columns had no such seat, so they
-        # go through the same one spelling rather than a second.
-        def _cell(row, col):
-            value = getattr(row, col, None)
-            return to_local_str(value) if isinstance(value, datetime) else value
-
-        return [
-            {col: {"value": _cell(row, col), "is_overwrite": False,
-                   "sources": {}, "updated_by": None}
-             for col in user_cols}
-            for row in rows
-        ]
+        # 🔴 THE SAME WRAPPER EVERY ROW USES. The grid reads `{row_id, table_name, data,
+        # created_at, updated_at}` for EVERY row (`grid.js` reaches for `dataObj.data[col]`),
+        # so a flat dict here stopped it drawing a view it had been drawing — the response
+        # SHAPE is a contract even where the content underneath is thinner.
+        #
+        # ⚠️ THE CELL IS `{value}` AND NOTHING ELSE. A view has no layering, and writing
+        # `is_overwrite: False` / `sources: {}` would be INVENTING an absent marker as a
+        # value — 「없는 것」 and 「0인 것」 must not render the same, which is the defect this
+        # repository has paid for more than once.
+        #
+        # ⚠️ Times go through `to_local_str`: a raw datetime makes the payload
+        # non-JSON-native and the route's own warning prices that at ~10x.
+        key_name = total_order_key(models.DYNAMIC_TABLES.get(table_name), table_name).key
+        out = []
+        for row in rows:
+            cells = {}
+            for col in user_cols:
+                value = getattr(row, col, None)
+                cells[col] = {"value": (to_local_str(value)
+                                        if isinstance(value, datetime) else value)}
+            out.append({
+                "row_id": getattr(row, key_name, None),
+                "table_name": table_name,
+                "data": cells,
+                "created_at": to_local_str(getattr(row, "created_at", None)),
+                "updated_at": to_local_str(getattr(row, "updated_at", None)),
+            })
+        return out
 
     row_ids = [r.row_id for r in rows]
     

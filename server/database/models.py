@@ -1052,7 +1052,13 @@ def init_dynamic_models(config_dict: dict):
             # 422 under R7 for exactly these four, and that is the seat where 「this
             # relation cannot be paged」 is said. Nominating a column here does not answer
             # that question and must not look like it does.
-            if key_name not in declared_names:
+            # 🔴 `row_id` WINS HERE TOO (판정 296). A view whose SQL selects it and
+            # DECLARES it must keep it as the mapped key, exactly as `total_order_key`
+            # keeps it for the read — `dt_log_transferable` is such a view, and giving it
+            # `business_key` instead made the model and the sort disagree about identity.
+            if "row_id" in declared_names:
+                key_name = "row_id"
+            elif key_name not in declared_names:
                 key_name = declared_names[0] if declared_names else ""
             columns = []
         col_types = table_cfg.get("column_types", {})
