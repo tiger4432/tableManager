@@ -20,12 +20,27 @@
  * CONSOLE OUTPUT IS ASCII ONLY (cp949-safe) except for the sentences it quotes.
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BOARD_DIR = path.join(HERE, '..', 'src', 'rnd_board');
+
+// 🔴 ANY PARENT-RELATIVE SPECIFIER, GENERICALLY. A hand-written list of rewrites has taken
+//    harnesses down twice now (`../walk/derive.js` in C-70, `../server_time.js` in C-77), and
+//    both times the failure was 「it used to assert and now measures nothing」 -- never one red
+//    assertion. A part that imports one more sibling directory must not be able to do that
+//    again, so `'../x/y.js'` resolves to the real file on disk rather than to a name somebody
+//    remembered to add here.
+// ⚠️ Same-directory `'./x.js'` is NOT swept up: those are the modules under test and they must
+//    keep pointing at their data: URL twins, mutation and all.
+const OUTWARD_RE = /'(\.\.\/[A-Za-z0-9_./-]+\.js)'/g;
+const outward = (text) => text.replace(OUTWARD_RE, (whole, rel) => {
+  const real = path.join(BOARD_DIR, rel);
+  return existsSync(real) ? `'${pathToFileURL(real).href}'` : whole;
+});
+
 const LF = String.fromCharCode(10);
 const CRLF = String.fromCharCode(13, 10);
 const dataUrl = (src) => `data:text/javascript;base64,${Buffer.from(src, 'utf8').toString('base64')}`;
@@ -55,7 +70,7 @@ async function loadModules(mutate = {}) {
   const tableUrl = dataUrl(read('table_part.js')
     .split("'./panel.js'").join(`'${panelUrl}'`)
     .split("'./marking_store.js'").join(`'${storeUrl}'`));
-  const reachUrl = dataUrl(read('reach_panel.js')
+  const reachUrl = dataUrl(outward(read('reach_panel.js'))
     .split("'./panel.js'").join(`'${panelUrl}'`)
     .split("'./marking_store.js'").join(`'${storeUrl}'`)
     .split("'./table_part.js'").join(`'${tableUrl}'`));

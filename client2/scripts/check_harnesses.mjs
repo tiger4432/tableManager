@@ -1434,6 +1434,10 @@ const FLOORS = new Map([
   // New 2026-09-11 with C-75. 🔴 THE FIXTURE IS THE ORDER'S SHAPE, NOT THE ROUTE'S --
   // `/chain/graph` (S-178) has not landed, so when it does, this fixture is the first thing
   // to re-measure. The panel is deliberately NOT wired to the overview until then.
+  // New 2026-09-11 with C-77. 🔴 ZONE-INDEPENDENT BY CONSTRUCTION: it asserts that two
+  // spellings of one instant agree and that two different instants disagree, never a literal
+  // wall clock -- otherwise the runner's TZ would decide the verdict.
+  ['server_time_harness.mjs', 19],
   ['chain_graph_harness.mjs', 47],
   ['runtime_panel_harness.mjs', 22],
   ['reference_view_head_harness.mjs', 26],

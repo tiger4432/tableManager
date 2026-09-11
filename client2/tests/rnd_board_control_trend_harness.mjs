@@ -20,7 +20,7 @@
  * CONSOLE OUTPUT IS ASCII ONLY (cp949-safe).
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 // 🔴 정규화는 «한 자리»입니다 (`readSourceText`). 사본을 각자 들면 갈립니다 —
 //    2026-09-07 실측: 그 사본이 서른셋이었고, 새 하니스는 그것을 안 들고 태어납니다.
 import { readSourceText } from './lib/probe.mjs';
@@ -30,6 +30,21 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC_DIR = path.join(HERE, '..', 'src');
 const BOARD_DIR = path.join(SRC_DIR, 'rnd_board');
+
+// 🔴 ANY PARENT-RELATIVE SPECIFIER, GENERICALLY. A hand-written list of rewrites has taken
+//    harnesses down twice now (`../walk/derive.js` in C-70, `../server_time.js` in C-77), and
+//    both times the failure was 「it used to assert and now measures nothing」 -- never one red
+//    assertion. A part that imports one more sibling directory must not be able to do that
+//    again, so `'../x/y.js'` resolves to the real file on disk rather than to a name somebody
+//    remembered to add here.
+// ⚠️ Same-directory `'./x.js'` is NOT swept up: those are the modules under test and they must
+//    keep pointing at their data: URL twins, mutation and all.
+const OUTWARD_RE = /'(\.\.\/[A-Za-z0-9_./-]+\.js)'/g;
+const outward = (text) => text.replace(OUTWARD_RE, (whole, rel) => {
+  const real = path.join(BOARD_DIR, rel);
+  return existsSync(real) ? `'${pathToFileURL(real).href}'` : whole;
+});
+
 const dataUrl = (src) => `data:text/javascript;base64,${Buffer.from(src, 'utf8').toString('base64')}`;
 
 const TRENDS = {
@@ -147,7 +162,7 @@ async function loadModules(mutate = {}) {
   const storeUrl = dataUrl(read('marking_store.js'));
   const apiUrl = dataUrl(read('api.js'));
   const panelUrl = dataUrl(read('panel.js').replaceAll("'./marking_store.js'", `'${storeUrl}'`));
-  const rewire = (file) => dataUrl(read(file)
+  const rewire = (file) => dataUrl(outward(read(file))
     .replaceAll("'./panel.js'", `'${panelUrl}'`)
     .replaceAll("'./marking_store.js'", `'${storeUrl}'`)
     .replaceAll("'./api.js'", `'${apiUrl}'`));
