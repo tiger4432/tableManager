@@ -34074,3 +34074,67 @@ heartbeat 파일   이름 «넷»뿐: chain · ledger · watcher · scheduler   
    위 일곱 출처의 «대응»을 한 줄로 주시면 라우트의 항목 이름을 그대로 맞추겠습니다.
 
 > 📌 **[09-11 22:xx] 이 채널의 미답 질문: 5절 ⓐ/ⓑ/ⓒ 와 고리 번호 대응. 답 오면 «그 자리에서» 짓습니다.**
+
+---
+
+# S-176 — `/runtime` 착지 (`0f058cf1`) · 판정 282 의 ⓐ(운반체 한 칸)로
+
+## 1. 운반체 — 「새 «측정» 0」은 지켰고, 쓰기 비용은 «0» 입니다
+```
+heartbeat.record_lap(프로세스, 고리, ...)   로그 줄이 «이미 받은 수»를 담기만 합니다
+                                          질의 0 · 타이머 0 · 스레드 0
+🔵 그리고 «파일도 안 씁니다** — 그 고리가 «어차피 치는» 비트에 실려 갑니다
+```
+⚠️ **첫 판은 `beat()` 를 불렀고, 그게 인제션 청크마다 «두 번째 쓰기»였습니다.**
+`test_a_chunk_loop_that_stops_stops_the_beats` 가 비트를 «세어» 잡았습니다 —
+비트는 「커밋된 진척」이라는 뜻이고 «운반체가 그걸 위조하면 안 됩니다».
+`at` 은 랩이 «일어난» 순간에 찍히므로 쓰기를 공유해도 신선도는 안 잃습니다.
+
+## 2. 실린 랩 «여섯» — 각각 «이미 그 수를 들고 있던 자리»에 한 줄
+```
+ledger_followup  seconds · depth(큐) · items · pace     (랩 줄의 세 수 그대로)
+ledger_census    seconds · depth(소스 수) · pace
+chain            seconds (iter_start_ts — 그 루프가 이미 들던 타이머)
+outbox_purge     «발사 시각» + pace  (스레드로 던지고 안 기다리므로 「마지막으로 언제 시작했나」가 정직한 답)
+listen           state: connected|reconnecting + 재연결 «횟수»
+                 (「부팅 때 한 번」과 「1분마다」는 boolean 이 같아 보이게 만듭니다)
+watcher          seconds · depth(청크 행 수)  — 디렉터리를 세는 것은 «새 측정»이라 안 했습니다
+```
+
+## 3. 라우트 — 값만. 판정은 `/health` 몫
+```
+아홉 항목   web · watcher · chain · outbox_purge · listen · ledger_followup ·
+           ledger_census · scheduler · postgres   (보드 번호 ①~⑦·③-a·③-b 를 `board` 칸에)
+출처       heartbeat(랩) + outbox pending «한 질의»(/admin/chain/queue 가 이미 하던 것) +
+           pg_stat_progress_vacuum + pacing/손잡이 «경로»
+겹침 없음   /health = 판정(ok/degraded/unhealthy + HTTP), /runtime = 값.
+           한쪽이 다른 쪽을 대신 정하면 「큐가 한 시간째인데 초록 불」이 나옵니다
+```
+⚠️ **없는 칸은 «키째 생략**»: `web` 은 랩 없음(이 라우트가 «곧» 그 프로세스의 응답), PG 아닌
+   바인드는 `alive: null`(「모른다」이지 「아니오」가 아님). `loop` 과 `process` 는 «두 칸» —
+   다섯 고리가 chain 프로세스를 공유하므로 「프로세스가 살았다」가 「고리가 돈다」로 읽히면 안 되고,
+   그 구별이 랩 «나이»의 자리입니다.
+⚰️ 기동 `LayerHealth` 줄은 «안 실었습니다** — 부팅 시 값이지 상태가 아니라, 살아 있는 값들
+   옆에 두면 몇 시간 전 사실이 「지금」으로 읽힙니다 (판정 282 그대로).
+
+## 4. 게이트
+```
+신설 15 passed   아홉 항목·보드 순서 · 운반체 «쓰기 0» · 랩이 진짜 heartbeat 파일을 왕복하고
+                 나이가 «읽는 시점» 기준 · 라우트가 진짜 앱에서 200 · Cache-Control no-store
+                 · /runtime 은 /admin 밑이 «아니라» test_admin_auth 의 상설 감사가 안 걷습니다
+                   -> 게이트를 «이름으로» 여기서 단언했습니다
+이웃 385 passed · 1 skipped   커밋 뒤 5,712 collected(오류 0)
+```
+⚠️ 그리고 하니스에서 «반쪽 치환»을 하나 잡았습니다 — conftest 는 `heartbeat_dir` 과
+   `heartbeat_path` 를 «쌍»으로 바꿉니다. 제가 앞엣것만 바꿨더니 «쓰기는 초록, 읽기는 빈 값»이
+   나왔습니다. 지금은 conftest 의 격리 디렉터리를 그대로 씁니다.
+
+## 5. 남은 것 — 재기동 뒤 «한 번» 대조해야 하는 것
+```
+게이트의 「lap 수가 로그 줄과 같음(한 번 대조)」은 «도는 서버»가 있어야 합니다.
+지금 박스는 이전 빌드(PID 20032)이고 재기동은 총괄 몫이라, 제가 못 했습니다.
+재기동 뒤 `/runtime` 한 번 + 그때 로그의 [LedgerFollowUp] lap / [LedgerCensus] lap 한 줄을
+나란히 두면 그 칸이 닫힙니다. 원하시면 제가 재기동 «뒤»에 그 대조만 해서 올리겠습니다.
+```
+
+> 📌 **[09-11 23:xx] 이 채널의 미답 질문: 5절 «재기동 뒤 라이브 대조를 제가 할지» 하나.**
