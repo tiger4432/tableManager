@@ -210,6 +210,19 @@ WORKSPACE_SUBDIRS = ("raws", "archives", "err", "auto_update", "scripts", "confi
 # 처리 실패 잔류 파일의 무한 재시도 루프를 막는다.
 PERIODIC_SWEEP_INTERVAL_SECONDS = 300
 
+#: 🔴 HOW OFTEN THE SWEEP LOOP BEATS WHILE IT WAITS (S-142 ①), AND WHY IT IS NOT
+#: THE SWEEP INTERVAL. In integrated mode this loop is the watcher's only always-running
+#: thread, so an idle deployment never beat at all and `/runtime` published
+#: `watcher alive: false` on a perfectly healthy box. Beating once per SWEEP would not
+#: have fixed it: `heartbeat.DEFAULT_STALE_AFTER_SEC` is 60 s, so a beat every 300 s reads
+#: stale for 240 of every 300 -- the same red light, now with a mechanism behind it.
+#:
+#: DERIVED from that threshold rather than chosen, so the two cannot drift apart: raising
+#: the staleness window widens this automatically, and lowering it narrows this.
+#: The split-mode watcher does the same thing with its 3 s poll (`run_watcher.py`); this
+#: is that shape fitted to a loop whose real work is 100x rarer.
+HEARTBEAT_SLICE_SECONDS = max(1.0, heartbeat.DEFAULT_STALE_AFTER_SEC / 3.0)
+
 
 def load_global_table_config() -> dict:
     """전역 table_config.json 로드 (실패 시 빈 dict — 워처는 계속 동작해야 한다)."""
@@ -3740,8 +3753,32 @@ class WorkspaceWatcher:
         return t
 
     def _periodic_sweep_loop(self):
-        while not self._stop_event.wait(PERIODIC_SWEEP_INTERVAL_SECONDS):
-            self._sweep_safely(None, "periodic")
+        """Sweep every `PERIODIC_SWEEP_INTERVAL_SECONDS`, beat every slice of the wait.
+
+        🔴 ONE THREAD, TWO CADENCES (S-142 ①). The sweep's rarity is deliberate -- it is
+        the safety net under the filesystem events, not the work -- and the beat's
+        frequency is not a second opinion about that: it answers 「is this loop still
+        turning」, which has to be asked more often than the loop does anything. Splitting
+        them into two threads would have been a second thing to start, stop and wedge.
+
+        ⚠️ THE SWEEP'S OWN SCHEDULE IS UNCHANGED. `waited` accumulates the slices and the
+        sweep fires when they add up, so an operator who timed the sweep at five minutes
+        still times it at five minutes.
+        """
+        waited = 0.0
+        while True:
+            remaining = PERIODIC_SWEEP_INTERVAL_SECONDS - waited
+            if self._stop_event.wait(max(min(HEARTBEAT_SLICE_SECONDS, remaining), 0.0)):
+                return
+            waited += min(HEARTBEAT_SLICE_SECONDS, remaining)
+            # ⛔ A BEAT MEANS 「THIS LOOP IS STILL TURNING」, WHICH IS TRUE HERE AND IS ALL
+            # IT CLAIMS. The stronger claim -- that ingestion is not wedged -- is the work
+            # claims' job (`heartbeat.work_claim`), and this beat carries their stall age
+            # exactly as the split-mode poller's does.
+            heartbeat.beat(HEARTBEAT_NAME)
+            if waited >= PERIODIC_SWEEP_INTERVAL_SECONDS:
+                waited = 0.0
+                self._sweep_safely(None, "periodic")
 
     def _ensure_periodic_sweep_running(self):
         """[Startup Sweep] 이벤트 유실 안전망 — 저빈도 주기 재스캔 스레드 기동(1회)."""
