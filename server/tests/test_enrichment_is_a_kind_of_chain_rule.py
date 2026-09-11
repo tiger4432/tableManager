@@ -36,7 +36,6 @@ RULE = {
     "auto_confirm": {},
     "auto_confirm_declared": False,
     "alignment": False,
-    "claim_contract": None,
 }
 
 
