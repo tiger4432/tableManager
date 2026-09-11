@@ -373,6 +373,10 @@ _RULES_DOCUMENT = {}
 #: 기본 1 = 첫 실패에 바로 FAILED 로 격리하고 «이름을 댄다».
 DEFAULT_MAX_GROUP_ATTEMPTS = 1
 
+#: Which sweep the HOL line is reporting, so an operator can see whether a head is
+#: CLEARING or standing. In memory: it counts this process's sweeps, nothing durable.
+_HOL_SWEEP = 0
+
 #: The one spelling of "this group's rows could not be read back yet". Both the seat that
 #: RAISES it and the seat that RECOGNISES it read this name, so they cannot drift apart.
 ROWS_NOT_VISIBLE = "rows_not_visible"
@@ -1601,6 +1605,12 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
     failed_any = False
     # 실패 그룹이 점유(보류)한 target_table 집합. 이후 동일 target 그룹은 순서 보존을 위해 이번 배치 보류.
     blocked_targets = set()
+    # 🔴 ONE LINE PER TABLE PER SWEEP, NOT ONE PER GROUP (S-157). A single stuck head
+    # deferred every group behind it, every sweep - thousands of lines a minute in
+    # production, and the operator could not find the HEAD in its own flood. These carry
+    # the count and the head instead, so the answer is the line rather than buried in it.
+    _hol_deferred = {}          # table -> how many groups this sweep
+    _hol_head = {}              # table -> (tx that blocked it, why)
     # [Reliability F2] 성공 그룹의 통지를 group_order 순서대로 모아 배치 끝에서 단일 순차 발사.
     #   각 원소: (event_ids, messages, timing). 그룹 간 도착 역전(F2)을 방지한다.
     pending_broadcasts = []
@@ -1618,10 +1628,8 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
         # 순서 보존 가드: 앞선 실패 그룹이 «쓴» 표를 건드리는(읽거나 쓰는) 그룹은 이번 배치에서
         # 보류한다. (retry_count를 올리지 않고 processed_chain=False 유지 → 다음 배치에서 재시도)
         if blocked_targets and (group_touches & blocked_targets):
-            logger.info(
-                f"[HOL Guard] Deferring tx '{tx_id}' this batch: table(s) "
-                f"{sorted(group_touches & blocked_targets)} held by an earlier failed group."
-            )
+            for _t in sorted(group_touches & blocked_targets):
+                _hol_deferred[_t] = _hol_deferred.get(_t, 0) + 1
             continue
 
         # Process transaction group atomically
@@ -1781,6 +1789,9 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                     logger.warning(f"Transaction {tx_id} marked for retry: {retrying_count} events set to RETRYING status ({max_retry_num}/{attempts_cap}).")
 
                 failed_any = True
+                for _t in group_targets:
+                    # The FIRST failure owns the table; a later one is standing behind it.
+                    _hol_head.setdefault(_t, (tx_id, (error_reason or "").strip()))
                 # [Latency Fix #5] break 제거 — 동일 target_table 그룹만 보류(순서 보존)하고 나머지는 계속 처리.
                 blocked_targets |= group_targets
         _log_alignment_group_work(tx_id, alignment_summary())
@@ -1799,6 +1810,18 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
         logger.info("[Chain] batch: broadcast dispatch %.3f s · groups %d",
                     time.monotonic() - t_dispatch, len(pending_broadcasts))
 
+    if _hol_deferred:
+        global _HOL_SWEEP
+        _HOL_SWEEP += 1
+        for _t in sorted(_hol_deferred):
+            _tx, _why = _hol_head.get(_t, ("<before this sweep>", ""))
+            if not _why and _tx in _ROWS_NOT_VISIBLE_DEFERS:
+                _why = "rows_not_visible defer %d/%d" % (
+                    _ROWS_NOT_VISIBLE_DEFERS[_tx], max_rows_not_visible_defers())
+            logger.info(
+                "[HOL Guard] %s: %d group(s) deferred behind %s (sweep #%d, head: %s)",
+                _t, _hol_deferred[_t], str(_tx)[:12], _HOL_SWEEP,
+                (_why or "reason not recorded")[:80])
     return failed_any
 
 async def sweep_undelivered_broadcasts(db, rules, db_session_factory):

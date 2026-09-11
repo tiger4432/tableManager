@@ -265,3 +265,42 @@ def test_group_target_tables_derivation():
     # 규칙 없는 트리거 테이블 → 빈 집합
     e_norule = FakeEvent("u4", "unknown_src", "tx4", event_type="CREATE", source_name="user")
     assert ciw._group_target_tables([e_norule], RULES) == set()
+
+
+@pytest.mark.anyio
+async def test_a_stuck_head_logs_one_line_per_table_per_sweep(monkeypatch, caplog):
+    """🔴 THE FLOOD WAS THE DEFECT (S-157). One stuck head deferred every group behind it,
+    every sweep, and each deferral wrote its own line - thousands a minute in production,
+    with the HEAD buried in its own noise. The line now carries the COUNT and the head, so
+    what an operator needs is the line rather than something to be found inside it.
+
+    ⚠️ COUNTED ACROSS SWEEPS, not just within one. A head that is clearing and a head
+    that is standing produce the same single line per sweep; it is the sweep number and
+    the repeated count that tell them apart, so this drives THREE sweeps and checks all
+    three lines.
+    """
+    import logging
+    followers = [("txHead", "tblA_src")] + [("txF%03d" % i, "tblA_src") for i in range(20)]
+    monkeypatch.setattr(ciw, "_RULES_DOCUMENT", {"max_group_attempts": 3})
+    monkeypatch.setattr(ciw, "_HOL_SWEEP", 0)
+
+    seen = []
+    for sweep in range(3):
+        group_order, groups = _make_groups(followers)
+        _patch_processor(monkeypatch, failing_tx_ids={"txHead"})
+        db = FakeDB()
+        with caplog.at_level(logging.INFO, logger="Chain"):
+            caplog.clear()
+            await ciw.process_pending_groups(db, group_order, groups, RULES, lambda: FakeDB())
+        lines = [r.getMessage() for r in caplog.records if "[HOL Guard]" in r.getMessage()]
+        seen.append(lines)
+
+    for sweep, lines in enumerate(seen, start=1):
+        assert len(lines) == 1, (
+            "one line per TABLE per sweep - %d groups deferred must not be %d lines"
+            % (len(followers) - 1, len(lines)))
+        line = lines[0]
+        assert "table_A" in line, "the blocked TARGET table is what HOL holds"
+        assert "20 group(s) deferred" in line, line
+        assert "txHead" in line, "the line must name the HEAD, which is the thing to fix"
+        assert "sweep #%d" % sweep in line, line
