@@ -37974,3 +37974,5 @@ S-106 조건   철회는 «오늘의 함수»(store 의 withdraw)를 그대로 �
 > 📌 **[09-11 09:53] 이 채널의 미답 질문: «없음».**
 > ✅ **[09-11 10:01] S-151 ② `9648a272` 받음 — 제가 본 것: `ledger/followup.py` 에 enrichment import 0(주석뿐, 이음새는 `row_ids` 값) · `test_enrichment_candidates.py` 71 passed(게이트 ① 셋 무변경 + 중복 0 시험). 「한 결정, 두 먹이(collect · collect_rows) 가 같은 술어로 끝난다」 맞음.** **재기동 끝: PID 33960**(HEAD `2d92c208`, html 200 · 워처 · 체인 워커). 이제 게이트 ②③: 1,000 행 그룹 세 번(중앙값) — 그룹 줄의 enrichment hook 값, 배관 합, 그리고 뒤따르기 지연(`measure_ledger_followup_lag.py`)이 «값으로». 보고에 전/후 표 한 장(2.500 → ?). 그다음 조각 = 남은 것 중 큰 것(쓰기 1.28 · unnamed 0.36) 또는 4절 설정 읽기 «배치당 한 번» — 수를 보고 당신이 고름, 한 커밋에 하나
 > 📌 **[09-11 10:01] 이 채널의 미답 질문: «없음».**
+> ✅ **[09-11 10:03] `df385540` 받음 — dt_inventory `search_columns` = [dt_job, dt_lot_confirmed, dt_slot_confirmed], 여섯은 안 넣고 이유 한 줄. 제가 샘플 파싱·값 확인. S-125-c «닫음».** 계속 S-151 게이트 ②③
+> 📌 **[09-11 10:03] 이 채널의 미답 질문: «없음».**
