@@ -105,6 +105,7 @@ server/config/ontology/ledger_config.json   (파일 하나)
 | 「걷기가 무엇을 하나」 | `docs/architecture/WALK.md` | 걷기를 «말하기 전»에 여는 것이 상설 — 이미 있는 것을 다시 짓지 않기 위해 |
 | 「원장 선언이 왜 이 모양인가」 | `docs/architecture/BASIS.md` | 번역·질문·체인의 «기저». §2-0 이 다섯 인자의 유일 분해 |
 | 「이 칸이 있나 · 읽는 쪽이 있나」 | `docs/architecture/LEDGER_SCHEMA_COMPLETENESS.md` | 축 × 칸 표. 스키마 동결의 관문(③ 이 0) |
+| 🔴 「어디서부터 적나 · 무엇이 먼저인가」 | `docs/guide/SETUP_ORDER.md` | **셋업 «순서» 여섯 걸음**(09-11 신설) — 표 → 파생 → 확정 → 가상 조인 → 원장 → 걷기 좌석. 걸음마다 «두 줄» + 「앞에 있어야 할 것」 + 「제품이 뭐라고 거절하나」 |
 | 「이 선언을 어떻게 적나」 | `docs/guide/config/ledger_declaration_by_example.md` | 출하 샘플 기준 «두 줄» 선언법 |
 | 「하니스를 어떻게 쓰나」 | `docs/guide/HARNESS_DISCIPLINE_GUIDE.md` | 09-10 신설(D-2). 잘라쓰기 금지의 «어떻게» — CLAUDE.md 는 «왜»만 |
 

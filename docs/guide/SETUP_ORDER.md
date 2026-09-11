@@ -1,0 +1,122 @@
+# 셋업 «순서» — 여섯 걸음, 걸음마다 «두 줄» (2026-09-11 신설, D-9)
+
+> 🔴 **이 문서가 있는 이유:** 소유자 「체계적인 셋업이 안 됨」(09-11).
+> 선언 문서는 각각 «자기 파일»을 잘 설명하는데, **「무엇을 «먼저» 적어야 하나」를 말하는 자리가 없었다.**
+> 📌 그래서 이 장은 «새로운 것을 가르치지 않는다» — 여섯 파일의 순서와 «서로의 전제»만 적는다.
+> 각 걸음의 정본은 링크로 간다.
+
+## 읽는 법
+
+```
+두 줄     「운영에서는 <이 파일>의 <이 칸>을 적으면 됩니다」  — 스키마 이름은 «빈칸»이다
+앞        이 걸음 «전»에 서 있어야 하는 것
+거절      틀리면 제품이 «무엇이라고» 거절하나 — 거절문의 «이름»이다(조용한 실패가 아니다)
+```
+⚠️ **칸 이름은 로더가 «실제로 읽는» 이름이다**(2026-09-11 출하 샘플과 코드에 대고 확인).
+이 박스의 표 이름·컬럼 이름은 «한 개도» 안 쓴다 — 쓰면 그 순간 이 문서가 이 설치의 것이 된다.
+
+---
+
+## ① 표 — 무엇이 «있는가»
+
+```
+운영에서는 «표 카탈로그»(table_config.json)에 그 표의 `column_types` 와 `business_key` 를 적으면 됩니다.
+키가 여러 컬럼이면 `composite_key_source` 와 `composite_key_separator` 를, 판단 단위가 있으면 `decision_key` 를 적습니다.
+```
+```
+앞     없음 — 여기가 뿌리다. 다른 다섯 걸음이 전부 이 표를 «이름으로» 가리킨다
+거절   `decision_key` 가 «선언된 컬럼의 비지 않은 목록»이 아니면 `invalid_catalog` 로 경로를 대고 거절
+      선언 안 된 컬럼을 쓰면 `unknown_column`
+```
+🔵 `search_columns` 는 «찾기»의 축이고 `map_key_columns` 는 맵의 축이다 — 둘 다 «이 표의 성질»이지
+그것을 읽는 쪽의 성질이 아니다. 📎 [`config/`](./config/) · [CODE_MAP §crud](../architecture/CODE_MAP.md)
+
+## ② 파생 — 무엇이 «무엇을 깨우는가»
+
+```
+운영에서는 «체인 규칙»(chain_rules.json)에 `trigger_table` 과 `target_table` 을, 그리고 그 일을 하는
+`mapper_module`·`mapper_function` 을 적으면 됩니다. 특정 컬럼만 깨우려면 `trigger_columns` 를 적습니다.
+```
+```
+앞     ① 두 표가 «카탈로그에» 있어야 한다. 목적지 표의 `business_key` 가 없으면 쓰기가 신원을 못 만든다
+거절   `trigger_columns` 의 «값»이 트리거 표에 없는 컬럼이면 로드 때 «이름을 대어» 보고된다(S-140)
+      옵트인 엣지만으로 된 «고리»는 로드 때 거절된다
+🔴 그러나 «키» 오타는 조용히 지나간다 — 규칙 하나의 «모양»을 검증하는 자리가 아직 없다(S-152)
+```
+⚠️ 문서 «최상단»의 `max_group_attempts`(기본 1)와 `max_rows_not_visible_defers`(기본 30)는 규칙이 아니라
+«문서»의 칸이고, SYSTEM_RELOAD 로 반영된다(재기동 불필요).
+📎 [CHAIN_CONTRACT_COMPLETENESS](../architecture/CHAIN_CONTRACT_COMPLETENESS.md) · [chain_ingestion_guide](./chain_ingestion_guide.md)
+
+## ③ 확정 — 무엇을 «판단 단위»로 모으는가
+
+```
+운영에서는 «인리치 규칙»(enrichment_rules.json)에 `source_table`·`derived_table` 과 `decision_key`,
+그리고 채울 `target_fields` 를 적으면 됩니다. 후보를 보여 줄 질의는 `reference_views` 에 적습니다.
+```
+```
+앞     ① 의 `decision_key`(판단 단위는 «표»의 성질이다) · 파생 표를 체인이 쓴다면 ②
+거절   참조뷰의 바인드 파라미터가 «판단 키 컬럼»이 아니면 그 뷰 «하나»만 떨어진다(나머지는 산다)
+      `aggregations` 의 함수가 지원 밖이면 «이름 대어» 거절한다(조용히 드롭하지 않는다, S-102)
+```
+🔵 `auto_confirm` 은 기본 꺼짐이다 — 자동 확정은 «옵트인»이고, 그 일은 커밋 경로가 아니라
+뒤따르기에서 돈다. 📎 [config/enrichment_rules](./config/enrichment_rules.md)
+
+## ④ 가상 조인 — 복사하지 «않고» 옆 표의 컬럼을 보여 주기
+
+```
+운영에서는 «가상 조인 규칙»(virtual_join_rules.json)에 `left_table`·`right_table`·`join_key` 와
+보여 줄 컬럼 `expose` 를 적으면 됩니다.
+```
+```
+앞     🔴 오른쪽 표에 그 조인 키를 덮는 «UNIQUE 인덱스»가 «먼저» 있어야 한다
+거절   그 인덱스가 없으면 규칙이 `no_unique_index` 로 거절되고, `GET /admin/config/resolve` 가
+      «자기를 그렇게» 보고한다 — 조용히 실패하지 않는다(필요한 DDL 도 같이 인쇄된다)
+```
+⚠️ 이름이 왼쪽 표의 컬럼과 «부딪히면» 안 된다 — 부딪히는 가상 컬럼은 어느 쪽을 읽는지 모르게 만든다.
+
+## ⑤ 원장 — 무엇을 «사실»로 적는가
+
+```
+운영에서는 «원장 선언»(ledger_config.json)의 `entities` 에 노드 타입과 그 `keys` 를, `vocabulary` 에 술어와
+그 `subjects`·`object` 를 적고, `sources` 에 「어느 표를 읽어 어떤 문장을 만드나」를 적으면 됩니다.
+```
+```
+앞     ① 그 표와 컬럼이 카탈로그에 있어야 한다 · 파생 표를 읽는다면 ②③ 가 먼저 그것을 채운다
+거절   `object.value_type` 이 넷 밖이면 `unsupported_value_type`
+      `timestamp` 값인데 바인딩에 시간대가 없거나 이상하면 `invalid_timezone`
+      선언 안 된 컬럼을 바인딩하면 `unknown_column` · 은퇴한 타입을 내는 문장은 «이름 대어» 거절
+      한 문장이 «양 끝을 같은 신원»으로 읽으면 자기 엣지로 거절 · `cardinality: one` 위반은 쓰기에서 분자째 거절
+🔵 깨진 선언 하나는 «혼자» 떨어진다(로더가 어느 것인지 말한다) — 나머지 선언은 그대로 돈다
+```
+📎 [ledger_declaration_by_example](./config/ledger_declaration_by_example.md) — «두 줄»의 정본 ·
+[LEDGER_SCHEMA_COMPLETENESS](../architecture/LEDGER_SCHEMA_COMPLETENESS.md) — 칸이 있나/읽는 쪽이 있나
+
+## ⑥ 걷기 좌석 — 무엇을 «묻는가»
+
+```
+운영에서는 화면의 좌석에 «시작 마킹»과 `follow`(어느 술어를 밟나) · `collect`(무엇을 실어 오나)를 고르면 됩니다.
+방향과 깊이는 `direction`·`hops` 이고, 기간이 필요하면 `since`·`until` 을 줍니다.
+```
+```
+앞     ⑤ — 좌석이 고르는 이름은 «선언된» 엔터티와 술어다. 선언에 없으면 고를 수 없다
+거절   선언 안 된 노드 타입이면 `node_type_not_declared` 로 «아는 집합»과 함께 거절
+      시각이 ISO 가 아니면 `interval_not_iso8601` · 시작 ≥ 끝이면 `interval_empty`
+```
+🔵 `follow` 는 «길»이고 `collect` 는 «짐»이다. 그리고 후보 경로는 «선언이 뽑아 준다» — 손으로 적지 않는다.
+📎 [WALK.md](../architecture/WALK.md)
+
+---
+
+## 🔴 지금 «없는» 것 — 이 문서가 대신하고 있는 것
+
+```
+S-180  이 순서를 «읽어 주는 화면»이 없다. 그래서 지금은 «문서»가 순서를 안다 —
+       사람이 이 장을 열어야만 「무엇이 먼저인가」를 알 수 있고, 그것이 결함이다
+S-179  네 언어(카탈로그 · 체인 · 인리치 · 원장)가 «각자» 컬럼을 이름 대고 «각자» 거절한다.
+       같은 컬럼을 네 번 적는 자리가 있고, 넷이 어긋나도 «오류가 안 난다»
+```
+⚠️ 그러므로 이 장은 «임시 다리»다. 순서가 화면에 서면 이 문서는 그 화면의 «설명»으로 줄어든다.
+
+---
+📎 이 장은 «옮겨 적기»다 — 각 걸음의 정본은 위 링크이고, 여기서 새로 정한 것은 «없다».
+📎 칸 이름은 2026-09-11 에 출하 샘플과 로더 코드에 대고 확인했다.
