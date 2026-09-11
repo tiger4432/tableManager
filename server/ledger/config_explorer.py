@@ -112,6 +112,18 @@ def authorable_bundle_path(kind: str, canonical_id: str) -> tuple[str, str]:
 #: The sections this screen can write.  Derived, so it cannot disagree with the map above.
 AUTHORABLE_SECTION_NAMES: frozenset[str] = frozenset(AUTHORABLE_SECTIONS.values())
 
+#: 🔴 WHAT THE LOADER MAY ISOLATE, WHICH IS NOT WHAT A SCREEN MAY AUTHOR
+#: (판정 281). These were one map and they answer two questions. 「what this screen can
+#: create and remove」 governs an editing surface; 「which declarations can fall alone」
+#: governs loading, and it is strictly wider -- a virtual join rule is not something an
+#: operator authors here, and it IS something a broken config must be able to drop on its
+#: own. Sharing one map meant a broken join rule blamed NOTHING, landed in the
+#: config-level list and refused the whole bundle: one typo, every ledger stopped.
+#:
+#: Derived from the authoring map rather than listed again, so a section added there is
+#: isolatable the same day.
+ISOLATION_ROOTS: frozenset[str] = AUTHORABLE_SECTION_NAMES | {"virtual_joins"}
+
 
 def owning_section(node: "ExplorerNode") -> str | None:
     """The top-level `ledger_config.json` section `node` is written into.
@@ -1310,7 +1322,7 @@ def resolve_declarations(document: Mapping[str, Any], *,
     🔴 THE DROPS HAPPEN IN A COPY. Nothing here writes, and no caller may persist the
     reduced document: this computes WHAT TO LOAD, it does not edit the operator's file.
     """
-    from .config_authoring import ground_node_key
+    from .config_authoring import isolation_key
 
     working = json.loads(json.dumps(document, ensure_ascii=False))
     invalid: dict[str, dict[str, Any]] = {}
@@ -1320,7 +1332,10 @@ def resolve_declarations(document: Mapping[str, Any], *,
     while True:
         rounds += 1
         problems = list(setup_bundle.validate_bundle_errors(working, catalog=catalog))
-        per, whole = _blame(problems, ground_node_key)
+        # 🔴 `isolation_key`, NOT `ground_node_key` (판정 281). The blame map decides what
+        # can fall alone, and reading the AUTHORING map here is what kept a broken virtual
+        # join rule refusing the whole bundle. See `ISOLATION_ROOTS`.
+        per, whole = _blame(problems, isolation_key)
         config_level = whole
         fell = []
         for key in sorted(per):

@@ -59,7 +59,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 from .column_stats import declared_unique_keys
-from .config_explorer import AUTHORABLE_SECTIONS
+from .config_explorer import AUTHORABLE_SECTIONS, ISOLATION_ROOTS
 from .implementations import (
     # Private on purpose over there and imported anyway: it is the ONE spelling of "a
     # source-specific implementation lives under this package", and `_registered_ids`
@@ -152,6 +152,37 @@ _ABSENT = object()
 _KIND_BY_SECTION = {
     section: kind for kind, section in AUTHORABLE_SECTIONS.items()}
 
+#: The same map WIDENED TO WHAT THE LOADER MAY ISOLATE (판정 281) -- see
+#: `config_explorer.ISOLATION_ROOTS` for why the two are not one map. Built from
+#: `ISOLATION_ROOTS` so a section added there cannot be forgotten here; the kind is the
+#: section's singular, which is the rule every entry above already follows.
+_ISOLATION_KIND_BY_SECTION = {
+    section: _KIND_BY_SECTION.get(section, section.rstrip("s"))
+    for section in ISOLATION_ROOTS}
+
+
+def _declaration_key(path: str, kinds) -> str | None:
+    """`<section>.<id>...` -> `<kind>|<id>`, for whichever map of sections is asked."""
+    steps = _split_path(path)
+    if len(steps) < 2 or not isinstance(steps[0], str) or not isinstance(steps[1], str):
+        return None
+    kind = kinds.get(steps[0])
+    return f"{kind}|{steps[1]}" if kind else None
+
+
+def isolation_key(path: str, ) -> str | None:
+    """Which declaration a problem blames, for the LOADER (판정 281).
+
+    🔴 THE SAME QUESTION AS `ground_node_key` ASKED OF A WIDER SET, and it needs its own
+    name because the two sets answer different questions. `ground_node_key` is the
+    AUTHORING affordance: it decides where a screen sends a person to change a derived
+    value, so it covers what that screen can edit. This one decides which declarations may
+    FALL ALONE when a config is broken, and a virtual join rule qualifies for that without
+    being authorable here. One map served both until 판정 281, and the cost was a broken
+    join rule blaming nothing and refusing the whole bundle.
+    """
+    return _declaration_key(path, _ISOLATION_KIND_BY_SECTION)
+
 
 def ground_node_key(path: str) -> str | None:
     """`bundle.entities.DTJob@1.keys` -> `entity|DTJob@1`, or None if not a declaration.
@@ -162,11 +193,7 @@ def ground_node_key(path: str) -> str | None:
     this field at all -- it is on that declaration.  So the screen sends the person
     there instead of showing them a control that does nothing.
     """
-    steps = _split_path(path)
-    if len(steps) < 2 or not isinstance(steps[0], str) or not isinstance(steps[1], str):
-        return None
-    kind = _KIND_BY_SECTION.get(steps[0])
-    return f"{kind}|{steps[1]}" if kind else None
+    return _declaration_key(path, _KIND_BY_SECTION)
 
 
 class AuthoringGroundError(RuntimeError):

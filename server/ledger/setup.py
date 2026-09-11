@@ -308,15 +308,21 @@ def _resolve_refused_declarations(root_path: Path, catalog: Mapping[str, Any],
     file safe. A root-document fault -- an unreadable file, a duplicate JSON key, an
     unlisted path -- is refused by `load_setup_bundle` on a path no declaration owns, so
     this is never reached for one, and `json.loads` here cannot be reading something the
-    root checks would have stopped.
+    root checks would have stopped. 「Declaration-level」 is `isolation_key`'s answer, which
+    since 판정 281 includes a virtual join rule.
 
     ⚠️ A HEALTHY CONFIG NEVER REACHES THIS FUNCTION. It runs only after the strict load has
     already raised, so the ordinary path costs nothing and is byte-for-byte what it was.
     """
-    from .config_authoring import ground_node_key
+    from .config_authoring import isolation_key
     from .config_explorer import resolve_declarations
 
-    if not ground_node_key(first.path):
+    # 🔴 `isolation_key`, NOT `ground_node_key` (판정 281). This gate asks 「can dropping a
+    # declaration clear this?」, which is the LOADER's question; asking the AUTHORING map
+    # sent a broken virtual join rule straight back out as a whole-bundle refusal, because
+    # a screen cannot author one. Two maps, and this is the second place that had to
+    # choose between them.
+    if not isolation_key(first.path):
         raise first                              # nothing a drop can clear
     document = json.loads(
         (root_path / CONFIG_FILENAME).read_text(encoding="utf-8"))
