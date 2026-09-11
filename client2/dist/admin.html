@@ -207,6 +207,30 @@
       gap: 5px;
       transition: transform 0.15s ease, border-color 0.15s ease;
     }
+    /* C-74 런타임 — 아홉 고리의 값 표. 수는 자릿수를 맞춰야 세로로 읽힙니다(가독성=기능). */
+    .runtime-panel { padding: 3.4px 3.4px 10.2px; }
+    .runtime-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-variant-numeric: tabular-nums;
+    }
+    .runtime-table th {
+      text-align: left;
+      font-weight: 600;
+      color: var(--text-dim);
+      padding: 3.4px 6.8px;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    .runtime-table td {
+      color: var(--text);
+      padding: 3.4px 6.8px;
+      white-space: nowrap;
+    }
+    /* 손잡이는 경로라 고정폭으로 읽습니다. */
+    .runtime-table td[data-col="knob"] { font-family: var(--font-mono); color: var(--text-dim); }
+    .runtime-table td[data-col="loop"] { font-weight: 600; }
+
     /* Chain 대기열 — 목록 한 줄 머리. 카드 스트립을 대신하므로 가로로 넘치지 않는다. */
     .chain-queue-headline {
       display: flex;
@@ -1642,7 +1666,7 @@
     .retro-group.is-chosen { border-color: var(--accent); color: var(--accent); }
 
   </style>
-  <script type="module" crossorigin src="/assets/admin-DDq8S_-7.js"></script>
+  <script type="module" crossorigin src="/assets/admin-C9fbDkGg.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/tokens-nTqwt3FA.js">
   <link rel="modulepreload" crossorigin href="/assets/truncation-CkNwtCUZ.js">
   <link rel="modulepreload" crossorigin href="/assets/admin_token-BrUpdOsE.js">
@@ -1803,6 +1827,8 @@
           <div id="overview-grid" class="overview-grid">
             <!-- admin.js renderOverview()가 채움 -->
           </div>
+          <!-- C-74: 아홉 고리가 마지막으로 무엇을 했나. 값만 — RuntimePanel 이 자기 div 를 만든다 -->
+          <div id="runtime-mount"></div>
         </div>
 
         <!-- ═══ File Ingestion 탭: 진행 중(Active) → 현황(Workspaces) → 오류/실행(Logs + Retry) ═══ -->

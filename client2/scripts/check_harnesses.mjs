@@ -1426,6 +1426,10 @@ const FLOORS = new Map([
   // 🔴 C-73 raised this from 16: the render checks are joined by a corpus that scores the
   // REQUEST. The panel drew correctly all through the live defect -- what was wrong was the
   // URL, so nothing that looked at the DOM could have caught it.
+  // New 2026-09-11 with C-74. Floor is the count it reports on the commit that introduces
+  // it. 🔴 THE SCREEN ITSELF IS NOT SCORED -- `/runtime` is admin-gated and this lane does
+  // not enter tokens, so what is scored is the module the screen is made of.
+  ['runtime_panel_harness.mjs', 22],
   ['reference_view_head_harness.mjs', 26],
 ]);
 

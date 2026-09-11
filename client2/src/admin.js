@@ -26,6 +26,8 @@ import { queueQuery } from './enrichment_queue.js';
 // 「체인 요청이 몇 개 씹히는 것 같다」를 수로 바꾸는 계측기. 뷰 모델이 DOM 없는 자기 모듈에
 // 살아서 하니스가 import 로 채점한다 (`client2/tests/chain_queue_panel_harness.mjs`).
 import { ChainQueuePanel } from './chain_queue_panel.js';
+// 🔴 C-74. 아홉 고리의 «값» 표. 판정은 `/health` 가 하고 이 표는 값만 냅니다.
+import { RuntimePanel } from './runtime_panel.js';
 // C-1. 판정은 자기 모듈에 삽니다 — `admin.js` 는 `tokens.css` 를 import 해서 node 가
 // 못 읽고, 그러면 이 판정을 재려고 화면을 통째로 세워야 합니다.
 import { ruleOutcomeView } from './rule_outcome.js';
@@ -2601,16 +2603,33 @@ let runsView = null;
 let runsInFlight = false;
 
 /** 두 출처를 «같이» 읽습니다. 한쪽이 실패해도 다른 쪽은 그립니다 -- 부분이 전부보다 낫습니다. */
+// C-74 — 한 번 만들고 재사용합니다. 패널이 «자기 div» 를 소유하므로 mount 를 안 비웁니다.
+let runtimePanel = null;
+function renderRuntime(payload) {
+  const mount = byId('runtime-mount');
+  if (!mount) return;
+  if (!runtimePanel) runtimePanel = new RuntimePanel(mount);
+  // 🔴 «못 읽었으면 null 을 넘깁니다». 빈 객체를 넘기면 패널이 「고리 0개」를 그리고,
+  //    그건 「아무것도 안 돈다」는 거짓입니다 — 이 표가 없애려는 바로 그 침묵입니다.
+  runtimePanel.render(payload);
+}
+
 async function refreshRunning() {
   if (runsInFlight) return;
   runsInFlight = true;
   try {
-    const [runsRes, ingestRes] = await Promise.all([
+    // 🔴 C-74. 런타임 표는 «이 폴에 얹혀» 갑니다 — 새 타이머가 없습니다. 이 폴은 이미
+    //    개요 탭에서만 돌고 숨은 탭에서 쉬므로, 타이머를 하나 더 두면 그 두 규칙을
+    //    «두 번째로» 적게 되고 둘이 갈라지는 날 아무 오류도 안 납니다.
+    const [runsRes, ingestRes, runtimeRes] = await Promise.all([
       adminFetch(`${API_BASE}/admin/retroactive/runs?limit=50`).catch(() => null),
       adminFetch(`${API_BASE}/admin/file-ingestion/active`).catch(() => null),
+      adminFetch(`${API_BASE}/runtime`).catch(() => null),
     ]);
     const runs = runsRes && runsRes.ok ? (await runsRes.json().catch(() => null)) : null;
     const ingest = ingestRes && ingestRes.ok ? (await ingestRes.json().catch(() => null)) : null;
+    renderRuntime(runtimeRes && runtimeRes.ok
+      ? (await runtimeRes.json().catch(() => null)) : null);
     // 🔴 «못 읽은 것»과 «없는 것»을 가릅니다. 실패를 빈 배열로 접으면 화면이
     //    「도는 작업 없음」이라고 «거짓»을 말합니다.
     const failed = [];
