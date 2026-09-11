@@ -4188,6 +4188,20 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
     """
     from sqlalchemy.exc import IntegrityError
 
+    # 🔴 A READ-ONLY RELATION IS REFUSED HERE, BY NAME (S-186, 판정 296). `kind: "view"` was
+    # read in exactly three places before this, all of them 「do not build the model/index」
+    # (`models.py`) — nothing refused a WRITE. So a view was read-only only because
+    # PostgreSQL refused it, and a real table declared `kind: view` would simply be written
+    # with nothing raised.
+    #
+    # ⚠️ AT THE FUNNEL, NOT AT EACH CALLER. Cell edits, layering, ingestion and chain writes
+    # all converge on this function — the same reasoning `cast_value_by_type` records one
+    # layer down — so a per-call-site check would be the one the next path forgets.
+    if (TABLE_CONFIG.get(table_name) or {}).get("kind") == "view":
+        raise ValueError(
+            "'%s' 는 읽기 전용입니다 (kind: view). 이 관계는 카탈로그에 뷰로 선언돼 "
+            "있어 쓰기를 받지 않습니다." % table_name)
+
     # [D3-F1] Captured BEFORE attempt 1, because by the time the conflict is raised the
     # payload has already been written into. See `_replay_sensitive_key_column`.
     replay_key_col = _replay_sensitive_key_column(table_name, batch)

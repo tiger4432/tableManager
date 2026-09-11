@@ -1618,7 +1618,12 @@ def _named_sort(table_model, table_name, order_by, order_desc):
     def pair(expr):
         return _order_by_clause(expr, tie, order_desc)
     if order_by == "updated_at":
-        return pair(table_model.updated_at)
+        # ⚠️ A RELATION MAY NOT HAVE IT. `updated_at` is a layering column, and a `kind:
+        # view` relation declared in the catalogue carries whatever the view carries — so
+        # this falls through to the total-order key rather than raising on a name the
+        # screen sends by default (S-186, 판정 296: 「updated_at 이 없는 표는 그 키만으로」).
+        stamp = getattr(table_model, "updated_at", None)
+        return pair(stamp) if stamp is not None else pair(tie)
     if order_by == "id":
         return pair(table_model.business_key_val)
     if order_by == "row_id":
@@ -1626,7 +1631,13 @@ def _named_sort(table_model, table_name, order_by, order_desc):
         # 머리글을 내림차순으로 눌러도 오름차순이 오고 기호만 내림차순이었다. 화면은 기본으로
         # `row_id&order_desc=false` 를 보내므로 «기본 화면은 바이트 동일»이고, 바뀌는 것은
         # 「머리글로 row_id 내림차순」 하나다.
-        return pair(table_model.row_id)
+        # 🔴 THE NAME IS THE SCREEN'S, THE COLUMN IS THE TABLE'S (S-186, 판정 296). The
+        # grid sends `order_by=row_id` as its default for every table, so reading the
+        # column directly here made that default unanswerable for a relation without one —
+        # the third of the three seats, and one direct read is all it takes to make this
+        # two paths. `tie` IS `row_id` wherever it exists, so every table that has one
+        # renders byte-identical SQL.
+        return pair(tie)
     return None
 
 
@@ -2077,8 +2088,15 @@ def get_table_data(
     # ── [Step 1] 타겟 위치(Offset) 자동 계산 (Unified Jump) ──
     actual_target_offset = -1
     if target_row_id:
+        # 🔴 THE JUMP USES THE SAME TOTAL-ORDER KEY THE SORT USES (S-186, 판정 296).
+        # It reached for `order_key` directly in every branch below, so a relation
+        # without that column could be SORTED by its business key and then paged by a
+        # column it does not have. One of the three seats reading `row_id` on its own is
+        # all it takes to make this two paths; `target_row_id` stays the VALUE being
+        # sought, and this is the column it is sought in.
+        order_key = total_order_key(table_model, table_name)
         # [Optimization] 타겟 행이 현재 검색 조건(query)에 부합하는지 PK를 활용해 초고속(1ms 이내) 검증
-        target_row = query.filter(table_model.row_id == target_row_id).first()
+        target_row = query.filter(order_key == target_row_id).first()
         if not target_row:
             # [Task 4] DB에는 존재하지만 현재 검색 조건(query)에 맞지 않는 경우,
             # 무거운 count() 연산과 무의미한 데이터 페칭을 즉시 스킵하고 Fast-fail 응답을 반환합니다.
@@ -2105,30 +2123,30 @@ def get_table_data(
                 if order_desc: # DESC (최신순)
                     # 1. 시간이 더 최근이거나(sort_expr > t_val)
                     # 2. 시간이 같으면 row_id가 더 큰 행(DESC)이 앞에 오므로 row_id > target_row_id인 행을 카운트
-                    count_query = count_query.filter(or_(sort_expr > t_val, and_(sort_expr == t_val, table_model.row_id > target_row_id)))
+                    count_query = count_query.filter(or_(sort_expr > t_val, and_(sort_expr == t_val, order_key > target_row_id)))
                 else: # ASC
-                    count_query = count_query.filter(or_(sort_expr < t_val, and_(sort_expr == t_val, table_model.row_id < target_row_id)))
+                    count_query = count_query.filter(or_(sort_expr < t_val, and_(sort_expr == t_val, order_key < target_row_id)))
             elif order_by == "id":
                 t_bk = target_row.business_key_val
                 if t_bk is None:
                     # NULLS LAST: NULL 행들은 값이 있는 행들 뒤에 위치함
                     count_query = count_query.filter(or_(
                         table_model.business_key_val.isnot(None),
-                        and_(table_model.business_key_val.is_(None), table_model.row_id < target_row_id)
+                        and_(table_model.business_key_val.is_(None), order_key < target_row_id)
                     ))
                 else:
                     if order_desc:
-                        count_query = count_query.filter(or_(table_model.business_key_val > t_bk, and_(table_model.business_key_val == t_bk, table_model.row_id < target_row_id)))
+                        count_query = count_query.filter(or_(table_model.business_key_val > t_bk, and_(table_model.business_key_val == t_bk, order_key < target_row_id)))
                     else:
-                        count_query = count_query.filter(or_(table_model.business_key_val < t_bk, and_(table_model.business_key_val == t_bk, table_model.row_id < target_row_id)))
+                        count_query = count_query.filter(or_(table_model.business_key_val < t_bk, and_(table_model.business_key_val == t_bk, order_key < target_row_id)))
             elif order_by == "row_id":
                 # [판정 97] 방향을 «같이» 따라간다. 정렬이 내림차순인데 오프셋을 오름차순으로
                 # 세면 점프가 표의 «반대편» 페이지에 앉는다 — 위 `updated_at` 갈래가 이미
                 # 그렇게 갈라져 있고, row_id 가 방향을 보게 된 순간 이 자리도 같아야 한다.
                 if order_desc:
-                    count_query = count_query.filter(table_model.row_id > target_row_id)
+                    count_query = count_query.filter(order_key > target_row_id)
                 else:
-                    count_query = count_query.filter(table_model.row_id < target_row_id)
+                    count_query = count_query.filter(order_key < target_row_id)
             else:
                 # 🔴 이 블록은 정렬 «이름마다** 자기 비교식을 들고 있다. 새 컬럼으로 정렬하는
                 #    동안 row_id 비교로 오프셋을 세면 «다른 순서**의 위치를 답하게 되고,
@@ -2177,7 +2195,13 @@ def get_table_data(
     # ── [Step 3] 데이터 페칭 (2단계 인덱스 기반 페칭으로 원복) ──
     t_id_start = time.time()
     # 1. ID만 먼저 인덱스로 스캔 (Very Fast)
-    id_results = query.with_entities(table_model.row_id).order_by(*final_sort).offset(skip).limit(limit).all()
+    # 🔴 A FOURTH SEAT, FOUND BY GREP RATHER THAN NAMED BY THE ORDER (판정 296 listed
+    # three). The page is chosen in TWO phases — select the identifier column under the
+    # sort, then re-fetch those rows by it — so this is the ordering path too, and reading
+    # `row_id` here would break a relation that has none AFTER the sort had already been
+    # taught to handle it. Same key the sort just used.
+    page_key = total_order_key(table_model, table_name)
+    id_results = query.with_entities(page_key).order_by(*final_sort).offset(skip).limit(limit).all()
     id_list = [r[0] for r in id_results]
     t_id_scan = time.time() - t_id_start
     
@@ -2188,9 +2212,12 @@ def get_table_data(
     user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
     
     # [정규화 스키마] 통합 ORM 쿼리 (SQLite/PostgreSQL 공용)
-    raw_rows = db.query(table_model).filter(table_model.row_id.in_(id_list)).all()
+    raw_rows = db.query(table_model).filter(page_key.in_(id_list)).all()
     id_to_idx = {rid: i for i, rid in enumerate(id_list)}
-    raw_rows.sort(key=lambda x: id_to_idx.get(x.row_id, 999999))
+    # ⚠️ THE INSTANCE ATTRIBUTE NEEDS THE KEY'S NAME, not its column — this restores the
+    # page's order after an unordered `IN` fetch, and a hardcoded `x.row_id` would put
+    # every row of a keyless relation at 999999.
+    raw_rows.sort(key=lambda x: id_to_idx.get(getattr(x, page_key.key, None), 999999))
     t_row_scan = time.time() - t_row_start
     
     t_dict_start = time.time()

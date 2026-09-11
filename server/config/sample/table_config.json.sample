@@ -1397,5 +1397,21 @@
       "dt_eqp": "string",
       "event_time": "string"
     }
+  },
+  "ledger_events": {
+    "__comment": "[S-186] 원장을 «메인 그리드에 읽기 전용으로» 올리는 선언 (소유자 「ledger event 도 메인 그리드에 read only 로」). 두 줄이면 끝난다: `kind: \"view\"` 와 `business_key`. | 🔴 `kind: view` 는 이제 «쓰기 문»이 읽는다 — 이 표에 셀을 쓰면 `apply_batch_updates` 가 이름 대어 거절한다(S-186 전에는 어떤 쓰기 경로도 이 칸을 안 봤고, 뷰가 읽기 전용이던 것은 PostgreSQL 이 거절해서였다). | 🔴 `business_key` 가 «전순서»를 준다 — 이 관계에는 `row_id` 가 없으므로 `total_order_key` 가 이 칸을 읽어 정렬의 타이브레이커·페이징 키·점프 키로 쓴다. 없으면 SCHEMA_CANON R7(상한 걸린 읽기에는 전순서가 있어야 한다) 위반이라 라우트가 이름 대어 거절한다. | ⚠️ `payload`·`qualifiers` 는 물리적으로 JSONB 인데 여기서는 `string` 이다 — 카탈로그의 타입 어휘는 number/datetime/string 셋뿐이고, 그리드는 이 값을 «보여줄» 뿐 산술하지 않는다. `occurred_at` 은 파티션 키이므로 정렬을 여기에 두면 프루닝이 산다. | 라이브 카탈로그에 적는 것은 «소유자 몫»이다 — 이 항목은 모양의 정본이다.",
+    "kind": "view",
+    "business_key": "id",
+    "column_types": {
+      "id": "string",
+      "occurred_at": "datetime",
+      "recorded_at": "datetime",
+      "subject_type": "string",
+      "subject_key": "string",
+      "predicate": "string",
+      "object_payload": "string",
+      "source": "string",
+      "tx_id": "string"
+    }
   }
 }
