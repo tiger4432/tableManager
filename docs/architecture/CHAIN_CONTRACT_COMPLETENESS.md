@@ -72,8 +72,17 @@
 |---|---|---|
 | **규칙 하나의 «모양»** | 🔴 **③** | `load_chain_rules()` 는 `json.load` 뒤 `data.get("rules", [])` 가 전부다. 필수 키 검사도, «모르는 키» 거절도 없다. 어드민 쓰기 경로(`ledger_admin`)의 주석이 «스스로 적어 둔다** — 「Nothing validates a single rule's shape - `chain_bindings` refuses at run time - and none was invented here」 |
 
+🔵 **[09-11 총괄 정정] 「거절이 0」은 «아닙니다» — 오타의 «자리»에 따라 갈립니다:**
 ```
-결과   오타 난 키는 «조용히 무시»된다. `trigger_colums` 로 적으면 표 단위로 굴러가고 아무도 안 알려 준다
+«키» 오타      조용히 통과.  `trigger_colums: [...]` 는 «모르는 키»라 무시되고 규칙은 표 단위로 돈다
+«값» 오타      그 칸만 거절.  `trigger_columns: ["dt_jobb"]` 는 트리거 표가 «선언하지 않은 컬럼»이라
+              `_report_unwatchable_trigger_columns` 가 로드 때 «이름을 댄다»(S-140 ④)
+=> 즉 오늘 있는 것은 «칸 안의 값» 검증이고, 없는 것은 «칸 자체»의 검증이다.
+   그래서 S-152 는 「값 검사를 더한다」가 아니라 「키 집합을 «닫는다»」이다
+```
+
+```
+결과   오타 난 «키»는 «조용히 무시»된다. `trigger_colums` 로 적으면 표 단위로 굴러가고 아무도 안 알려 준다
 대비   원장은 `setup_bundle` 이 `problems.exact(...)` 로 «모르는 키»를 이름 대어 거절한다
 그래서 「선언을 고쳤는데 아무 일도 안 난다」가 체인 쪽에서는 «정상 동작»처럼 보인다
 ```
