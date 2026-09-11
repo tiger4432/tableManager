@@ -5321,12 +5321,19 @@ def get_enrichment_reference(rule_name: str, index: int, params: str = None, db:
                 raise ValueError("not an object")
         except Exception:
             raise HTTPException(status_code=400, detail="'params' must be a URL-encoded JSON object")
-        allowed = set(rule.get("decision_key", []))
+        # 🔴 ONE DEFINITION OF WHAT A VIEW MAY BIND (S-163). S-136 widened that set to
+        # every column of the derived row, but this seat kept a LITERAL copy of the old
+        # one - so an operator who bound any other column was refused here, and the
+        # refusal arrived as `missing required bind param(s)` one layer down. The
+        # allowed-set function is shared now; a widening cannot reach one seat and miss
+        # this one again.
+        allowed = enrichment_config.view_bind_names(rule, crud.TABLE_CONFIG)
         invalid = sorted(k for k in parsed.keys() if k not in allowed)
         if invalid:
             raise HTTPException(
                 status_code=400,
-                detail=f"'params' keys must be decision_key columns only; invalid: {invalid}"
+                detail=f"'params' keys must be columns of the rule's derived table; "
+                       f"invalid: {invalid}"
             )
         bind_params = parsed
 

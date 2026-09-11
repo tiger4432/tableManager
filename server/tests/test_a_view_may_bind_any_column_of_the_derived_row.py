@@ -41,6 +41,32 @@ def test_every_declared_column_of_the_derived_row_is_bindable():
     assert "wafer_id" in names, "a target field is a column of the row like any other"
 
 
+def test_the_widening_is_worthless_unless_the_catalogue_is_handed_over():
+    """🔴 S-163: the allowed set widened, the VALUE SUPPLY did not - on two seats.
+
+    `view_bind_names` falls back to the pre-S-136 set when it cannot see the derived
+    table, and that fallback is correct ("unknown table" is not "no columns"). But a
+    CALLER that forgets to pass the catalogue gets that narrow set silently - so the
+    operator binds a perfectly legal column, this says the name is not bindable, and the
+    refusal surfaces one layer down as `missing required bind param(s)`. Measured in
+    production by the owner.
+
+    ⚠️ THE TWO HALVES ARE ASSERTED TOGETHER ON PURPOSE. Each is defensible alone; the
+    defect is only visible as the DIFFERENCE between them.
+    """
+    row = {"lot": "L1", "equipment": "EQ1", "wafer_id": "W1"}
+
+    with_catalogue = enrichment_config.view_bind_values(RULE, row,
+                                                        known_tables=CATALOGUE)
+    without = enrichment_config.view_bind_values(RULE, row)
+
+    assert with_catalogue["equipment"] == "EQ1", (
+        "a plain column of the derived row must be supplied, not just allowed")
+    assert "equipment" not in without, (
+        "this is the silent narrowing S-163 fixed - kept here so a caller that drops the "
+        "catalogue is a RED TEST rather than a production refusal")
+
+
 def test_the_validator_and_the_execution_read_one_function():
     """⛔ TWO SETS WOULD LET A VIEW VALIDATE AND THEN FAIL WHEN ASKED."""
     import inspect

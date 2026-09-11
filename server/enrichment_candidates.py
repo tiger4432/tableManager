@@ -879,6 +879,7 @@ class AutoConfirmCollector:
         if not self.active:
             return
         import enrichment_config
+        from database import crud
 
         decision_key = self.rule["decision_key"]
         for item in items:
@@ -893,7 +894,12 @@ class AutoConfirmCollector:
             # 그 값을 «물을 수» 있어야 하고, 둘 다 파생행의 컬럼이라 출처가 하나다.
             # ⚠️ 아래 두 술어(`key_is_wholly_blank`·`blank_key_columns`)는 규칙의
             # decision_key 만 훑으므로 이름이 늘어도 판정이 바뀌지 않는다 — 실측함.
-            keys = enrichment_config.view_bind_values(self.rule, updates)
+            # ⚠️ `known_tables` IS THE WIDENING (S-163). Without it `view_bind_names`
+            # cannot see the derived table's columns and silently falls back to the
+            # pre-S-136 set, so a view binding any other column is told the bind is
+            # missing - while the allowed set says it is fine.
+            keys = enrichment_config.view_bind_values(self.rule, updates,
+                                                      known_tables=crud.TABLE_CONFIG)
             if enrichment_config.key_is_wholly_blank(self.rule, keys):
                 # NOTHING survives - not "part of the key is missing". A partial
                 # key is worked on what remains [2026-08-05 ruling]; a wholly
@@ -925,7 +931,7 @@ class AutoConfirmCollector:
         if not self.active or not row_ids:
             return
         import enrichment_config
-        from database import models
+        from database import crud, models
 
         model = models.DYNAMIC_TABLES.get(self.derived_table)
         if model is None:
@@ -937,7 +943,8 @@ class AutoConfirmCollector:
             for row in db.query(model).filter(model.row_id.in_(chunk)).all():
                 updates = {name: getattr(row, name, None) for name in columns}
                 bk = updates.get("business_key_val")
-                keys = enrichment_config.view_bind_values(self.rule, updates)
+                keys = enrichment_config.view_bind_values(self.rule, updates,
+                                                          known_tables=crud.TABLE_CONFIG)
                 if enrichment_config.key_is_wholly_blank(self.rule, keys):
                     continue
                 if not bk:
