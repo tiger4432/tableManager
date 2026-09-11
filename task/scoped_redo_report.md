@@ -33311,3 +33311,46 @@ LOST              여섯 구간 «0» · pending 0
    흔들리는 것도 그대로라(오늘 30k 주입 뒤의 그 흔들림), 배관만 보고 판단했습니다.
 🔵 즉 **S-162 ⓐ 되돌림이 «값으로» 확인됐습니다** — 계약 이전의 write/unnamed 배분이 복원됐습니다.
 > 📌 **[09-11 14:0x] 이 채널의 미답 질문: «없음». 다음은 S-169 입니다.**
+
+---
+
+# [09-11 14:1x] S-169 ①~④ 착지 (`6f45a004`) — 제품이 «스스로» 말하게 했습니다
+
+## 1. 넷 (코드 «치료» 0, 계기만)
+```
+① 청크 줄 끝에 «자기 대기»   | waits: Lock:transactionid 40 · IO:DataFileRead 12 · none 8
+                              Lock 이면 막은 pid 와 그 query 60자 «한 번»
+                              표본 커넥션은 «풀 밖 전용»(S-167), 청크 끝에 close
+                              `ingestion_settings.json` 의 `chunk_wait_sampling` 로 끔(기본 켬)
+②③ 기동 줄(층 표 셋)          인덱스마다 «크기·idx_scan» + live/dead·last_autovacuum·autovacuum 횟수
+④ 느린 prefetch 자가 EXPLAIN  임계(기본 1.0 s) 초과 시 «파일당 한 번», ANALYZE «없이» 계획만
+                              (`slow_prefetch_explain_seconds` 로 조절)
+```
+⛔ 지시대로 **인덱스·캐시 등 «치료»는 하나도 안 더했습니다** — 값이 먼저입니다.
+
+## 2. 이 박스에서 ②③ 이 «벌써» 말해 준 것
+```
+cell_sources    live 38,733,527 · dead «301,219» · last_autovacuum 09:02 · autovacuums 5
+                idx_sources_confirmation 16 kB «scans=0»      <- 있는데 «안 읽히는» 인덱스
+cell_overwrites live 0 · dead 0 · last_autovacuum «None»      <- 통계가 한 번도 안 잡힘
+audit_logs      live 6,954,660 · dead 8,569 · autovacuums 2
+```
+📌 「dead 는 거의 0」이라 하셨는데 이 박스 cell_sources 는 «301,219» 입니다 — 운영 값은 그 줄이
+   기동 때 «스스로» 찍습니다. 그때 비교하시면 됩니다.
+
+## 3. 설계에서 «일부러» 고른 둘
+```
+EXPLAIN 은 «계획만»   ANALYZE 는 그 문장을 «다시 돌립니다» — 이미 느린 경로에서 진단을 위해
+                      또 도는 것이라, 계획만으로 「Seq Scan on cell_sources」가 갈립니다
+파일당 한 번          청크마다면 천 청크짜리 파일이 같은 모양 천 줄을 찍어
+                      «읽어야 할 한 줄»을 묻습니다
+```
+
+## 4. 게이트
+```
+이웃   고친 심볼로 30 파일 -> 393 passed · «0 failed»
+       (29 errors 는 무관한 한 파일의 픽스처 — 제 변경 있이/없이 동일, 앞서 확인)
+라이브 재기동 뒤: 실제 청크 줄의 waits · 기동 줄 셋 · 임계를 0 으로 낮춰 EXPLAIN 줄 한 번,
+       그리고 기본으로 되돌려 «안 뜸» 확인
+```
+> 📌 **[09-11 14:1x] 이 채널의 미답 질문: «없음» — 재기동 부탁드립니다.**
