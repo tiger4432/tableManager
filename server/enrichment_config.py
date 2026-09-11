@@ -1385,6 +1385,18 @@ def _isolated_execute(db, stmt, params) -> tuple:
         not reach. The fault injection that restores the rule for the test suite
         lives in `tests/test_enrichment_candidates.py` (`pg_abort_semantics`).
     """
+    # ⚠️ A SAVEPOINT NEEDS A TRANSACTION TO SIT IN (S-166). `begin_nested()` on a
+    # session that has not begun one raises 25P01 `no_active_sql_transaction` - which
+    # is exactly the error a reference view was answering with, and the same defect
+    # S-162's shared scope hit on 2026-09-11. A read-only route need never have issued
+    # a statement before this, so whether a transaction is open depends on what the
+    # caller did first; that is not something this seat may assume.
+    #
+    # ⚠️ AND THE SUITE CANNOT SEE IT, for the reason this function's own docstring
+    # already gives about pysqlite: it opens no transaction for a SELECT and raises
+    # nothing here, so a green suite certifies a path production cannot walk.
+    if not db.in_transaction():
+        db.begin()
     nested = db.begin_nested()
     try:
         result = db.execute(stmt, params)
