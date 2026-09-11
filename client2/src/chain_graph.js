@@ -77,8 +77,19 @@ export function chainGraphView(payload) {
 
   // 🔴 고리에 «든» 것만 빨강입니다. 고리가 하나라도 있으면 전부 빨갛게 칠하면, 어느 표가
   //    문제인지를 그림이 다시 감춥니다.
+  // 🔴 그런데 `cycles` 의 «모양이 둘»입니다 (2026-09-11 라우트 실측, `server/chain_graph.py`):
+  //    오늘 서버가 담는 것은 «검증기가 던진 «문장»»이고 표 이름의 배열이 아닙니다. 배열을
+  //    전제하고 쓰면 빨강이 «한 번도 안 켜지고» 오류도 안 납니다 -- 이 부품이 없애려는
+  //    침묵 그대로입니다. 그래서 «둘 다» 받습니다:
+  //      배열  -> 그 표들만 빨강
+  //      문장  -> 표시할 표를 «모르므로» 아무도 안 칠하고, 그 «문장을 값으로» 내놓습니다
+  // ⛔ 문장에서 표 이름을 «뽑지» 않습니다. 그건 서버가 안 한 말을 화면이 지어내는 것입니다.
   const inCycle = new Set();
-  for (const cycle of cycles) for (const id of (Array.isArray(cycle) ? cycle : [])) inCycle.add(id);
+  const cycleNotes = [];
+  for (const cycle of cycles) {
+    if (Array.isArray(cycle)) for (const id of cycle) inCycle.add(id);
+    else if (cycle) cycleNotes.push(String(cycle));
+  }
 
   const layer = layersOf(nodes, edges);
   const seen = new Map();
@@ -93,8 +104,16 @@ export function chainGraphView(payload) {
       x: MARGIN + column * LAYER_GAP_X,
       y: MARGIN + row * NODE_GAP_Y,
       // 「꺼져 있다」는 «값»입니다. 키가 없으면 끈 적이 없는 것이라 흐리게 그리지 않습니다.
+      // ⚠️ 오늘 라우트의 «노드»는 `enabled` 도 `opt_in` 도 «안 실어 보냅니다»(실측:
+      //    `{id, kind, declared, wakes}`). `enabled` 는 «엣지»에 있습니다. 그래서 이 두 칸은
+      //    오늘 언제나 false 이고, 그 사실을 보고에 적었습니다 -- 키가 생기는 날 «코드 0 줄»로
+      //    켜지도록 읽는 자리는 남겨 둡니다.
       dim: node.enabled === false,
       optIn: node.opt_in === true,
+      // 🔴 카탈로그에 «없는» 표는 서버가 이름으로 말해 줍니다. 「모른다」가 아니라 「선언이
+      //    없다」이고, 그 둘은 다른 사실입니다.
+      undeclared: node.declared === false,
+      kind: node.kind,
       inCycle: inCycle.has(node.id),
       wakes: Array.isArray(node.wakes) ? node.wakes : [],
     };
@@ -117,6 +136,8 @@ export function chainGraphView(payload) {
       y2: (at.get(edge.to) || {}).y,
     })),
     cycles,
+    // 「고리가 있다」는 사실은 표를 못 칠할 때도 «말해져야» 합니다.
+    cycleNotes,
   };
 }
 
@@ -172,7 +193,9 @@ export class ChainGraphPanel {
 
     for (const node of view.nodes) {
       const group = this._svg('g', {
-        class: 'cg-node' + (node.dim ? ' is-dim' : '') + (node.inCycle ? ' is-cycle' : ''),
+        class: 'cg-node' + (node.dim ? ' is-dim' : '') + (node.inCycle ? ' is-cycle' : '')
+          + (node.undeclared ? ' is-undeclared' : '')
+          + (node.kind === 'ledger' ? ' is-ledger' : ''),
         'data-node': node.id,
       });
       group.appendChild(this._svg('circle', { cx: node.x, cy: node.y, r: 12 }));
@@ -191,6 +214,13 @@ export class ChainGraphPanel {
       svg.appendChild(group);
     }
     this.root.appendChild(svg);
+    // 🔴 표를 못 칠하는 고리도 «말해집니다». 문장은 서버의 것이고 여기서 다시 쓰지 않습니다.
+    for (const note of view.cycleNotes || []) {
+      const line = this.doc.createElement('div');
+      line.className = 'chain-graph-cycle';
+      line.textContent = note;
+      this.root.appendChild(line);
+    }
     this.wakesBox = this._wakes();
     this.root.appendChild(this.wakesBox);
     return view;
