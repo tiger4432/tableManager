@@ -308,7 +308,9 @@ export class ChainGraphPanel {
     if (view.contested.length) {
       const line = this.doc.createElement('div');
       line.className = 'chain-graph-contested';
-      line.textContent = `다툼 · ${view.contested
+      // 🔴 머리 줄이 이미 `contested 1` 이라 적습니다 — 이 줄은 «그 수의 목록» 이므로
+      //    같은 낱말로 시작해야 둘이 이어집니다. «번역체 금지» 상설도 짧은 영어를 고릅니다.
+      line.textContent = `contested · ${view.contested
         .map((row) => (row.writers.length ? `${row.name} ← ${row.writers.join('·')}` : row.name))
         .join(' · ')}`;
       this.root.appendChild(line);
