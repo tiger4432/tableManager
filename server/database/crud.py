@@ -24,6 +24,11 @@ import math
 import os
 import logging
 from datetime import datetime, date, timezone
+import re
+
+# The one render/fold module for world time (S-182). Stdlib-only by design, so importing
+# it here cannot pull an application module into the write path.
+from utils import time_format
 import event_constants
 import alignment_batch_counts
 
@@ -515,7 +520,7 @@ def _same_source_content_differs(db, table_name, row, update_item, config, versi
             continue
         col_type = col_types.get(col_name, "string")
         try:
-            incoming = cast_value_by_type(val, col_type, col_name)
+            incoming = cast_value_by_type(val, col_type, col_name, table_name)
         except ValueError:
             differing.append(col_name)
             continue
@@ -876,7 +881,25 @@ def normalize_stored_text(value: Any) -> Any:
     return value.strip() if isinstance(value, str) else value
 
 
-def cast_value_by_type(value: Any, col_type: str, col_name: str) -> Any:
+def _time_is_naive(value) -> bool:
+    """Whether this world-time value reached the write door without saying which zone.
+
+    Text is judged by its OFFSET, not by parsing it: PostgreSQL is what will read the
+    string, and what decides its fate there is whether an offset is present - an
+    offset-bearing string lands correctly and a naive one is reinterpreted in the session
+    TimeZone. Re-implementing a timestamp parser here to answer a question about the
+    presence of a suffix would be a second spelling of something we do not need to know.
+    """
+    if isinstance(value, datetime):
+        return value.tzinfo is None
+    text = str(value).strip() if value is not None else ""
+    if not text or len(text) < 10:
+        return False
+    return not _TIME_OFFSET_RE.search(text)
+
+
+def cast_value_by_type(value: Any, col_type: str, col_name: str,
+                       table_name: str = None) -> Any:
     """컬럼의 타입 스펙에 맞춰 데이터를 int, float 등으로 명시적으로 형변환합니다.
 
     This is the write boundary: `apply_row_update_internal` runs EVERY value through it,
@@ -891,6 +914,23 @@ def cast_value_by_type(value: Any, col_type: str, col_name: str) -> Any:
     # times, 0 and 0.0 and False included.
     if is_blank_value(value):
         return None
+
+    if col_type == "datetime":
+        # 🔴 SCHEMA_CANON R5 IS ENFORCED HERE FOR THE FIRST TIME (S-182 ⓐ, 판정 289).
+        # This function has never had a datetime arm, and the catalogue's own comment
+        # measured what that costs: 「assy_qa 에서 실측 — offset 붙은 문자열은 제대로 앉고,
+        # 쓰레기는 거절되고(DataError), **naive 문자열은 세션 TimeZone 으로 조용히
+        # 재해석된다**」. R5 forbids exactly that value, and until now nothing looked.
+        #
+        # ⚠️ IT DOES NOT CHANGE THE VALUE, and that is the point of round ⓐ. Refusing an
+        # undeclared source is R5's own answer and is already live for ledger sources
+        # (`occurred_at_timezone`), but switching it on for ordinary tables today would
+        # stop every running load at once. So this seat COUNTS and passes through - 「a
+        # table that declared nothing is not one character different」 - and 판정 289's
+        # round ⓑ turns the count into a refusal once the owner has declared.
+        if _time_is_naive(value):
+            time_format.note_naive_time(table_name, col_name)
+        return value
 
     if col_type == "number":
         val_str = str(value).strip()
@@ -2564,6 +2604,11 @@ def assemble_composite_business_key(table_name: str, update_item: schemas.Genera
 #: who means 「deliberately empty」 writes a VALUE in the data, such as 「없음」, and that is
 #: not a product cell). Absent means 「today's behaviour」, which is why the regression gate
 #: reads 「a table with no cell is not one character different」.
+#: An ISO-8601 trailing offset (`Z`, `+09:00`, `-0500`) — the thing PostgreSQL reads to
+#: decide whether it must guess. Anchored to the END so a date like `2026-09-11` cannot
+#: match its own hyphens.
+_TIME_OFFSET_RE = re.compile(r"(?:Z|[+-]\d{2}:?\d{2})$")
+
 KEY_NULL_SKIP = "skip"
 
 
@@ -3048,7 +3093,7 @@ def apply_row_update_internal(
 
         # 3. 소스 데이터 upsert
         col_type = (config.get("column_types") or {}).get(col_name, "string")
-        clean_val = cast_value_by_type(val, col_type, col_name)
+        clean_val = cast_value_by_type(val, col_type, col_name, table_name)
         
         src_obj = next((s for s in col_srcs if s.source_name == update_item.source_name), None)
 

@@ -727,13 +727,13 @@ def invalidate_table_cache(table_name: str):
 
 from datetime import timezone, datetime
 
-# `to_local_str`/`LOCAL_TIMEZONE` now live in utils.time_format so the background
+# `to_local_str` lives in utils.time_format so the background
 # workers can format timestamps without importing this module. Importing `main`
 # runs the #13 boot fail-fast, and a worker that only wanted a timestamp helper
 # would lose its WebSocket notification whenever the config was corrupt - see the
 # module docstring there. Re-exported here so `main.to_local_str` keeps working
 # for every existing caller.
-from utils.time_format import LOCAL_TIMEZONE, to_local_str
+from utils.time_format import to_local_str
 
 def inject_system_columns(row):
     """
@@ -2582,15 +2582,15 @@ def export_table_csv(
     sample_io = io.StringIO()
     sample_writer = csv.writer(sample_io)
     
-    tz = LOCAL_TIMEZONE
-    ts_fmt = "%Y-%m-%d %H:%M:%S"
+    # S-182 ⓐ: the sample rows render the same way the payload does - offset-bearing,
+    # never the machine's ambient zone. `to_local_str` is the one spelling.
     
     for row in sample_rows:
         created_at = row[-2]
         updated_at = row[-1]
         eff_upd = updated_at if updated_at else created_at
-        c_at_s = created_at.replace(tzinfo=timezone.utc).astimezone(tz).strftime(ts_fmt) if created_at else ""
-        u_at_s = eff_upd.replace(tzinfo=timezone.utc).astimezone(tz).strftime(ts_fmt) if eff_upd else ""
+        c_at_s = to_local_str(created_at) if created_at else ""
+        u_at_s = to_local_str(eff_upd) if eff_upd else ""
         
         row_v = [r if r is not None else "" for r in row[:-2]]
         row_v.append(c_at_s)
@@ -2632,17 +2632,14 @@ def export_table_csv(
         # ── [Optimization] 서버사이드 커서(yield_per)를 활용하여 Offset 없이 선형 속도(Constant Speed) 스트리밍 ──
         batch_size = 5000
         
-        # Datetime formatting cache to eliminate redundant tz conversions and formatting (bounded to 10k items)
-        date_cache = {}
+        # ⚰️ THE SECOND MEMO IS GONE (S-182 ⓐ). This was a bounded dict doing what
+        # `to_local_str`'s own memo already does, and it rendered DIFFERENTLY: it called
+        # `replace(tzinfo=utc)` unconditionally, so a value that arrived aware had its real
+        # offset overwritten rather than converted — the export and the grid disagreed
+        # about the same instant, with nothing raised. Two paths for one job is exactly the
+        # shape that drifts quietly; there is one now.
         def format_date(dt):
-            if dt is None:
-                return ""
-            if dt in date_cache:
-                return date_cache[dt]
-            formatted = dt.replace(tzinfo=timezone.utc).astimezone(tz).strftime(ts_fmt)
-            if len(date_cache) < 10000:
-                date_cache[dt] = formatted
-            return formatted
+            return to_local_str(dt) if dt is not None else ""
 
         # SQL 레벨 가상 컬럼 분해 쿼리 생성 (stream_results=True 옵션으로 PostgreSQL 서버사이드 커서 강제화)
         export_query = query.with_entities(*select_entities)\

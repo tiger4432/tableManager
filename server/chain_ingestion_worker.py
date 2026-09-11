@@ -2629,6 +2629,14 @@ def _report_layer_table_health(db_session_factory):
                 table, stat[0], stat[1], stat[2], stat[3],
                 "".join(" · %s %s scans=%s" % (r[0], r[1], r[2]) for r in idx)
                 or " (none)")
+        # S-182 ⓐ: the same count the chunk line carries, on the line the owner already
+        # reads at startup — so 「did anything arrive naive」 is answerable without SQL even
+        # when no file has landed yet this run.
+        from utils.time_format import naive_time_note
+
+        note = naive_time_note()
+        if note:
+            logger.warning("[LayerHealth] %s", note)
     finally:
         db.close()
 

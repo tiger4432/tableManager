@@ -28,7 +28,12 @@ def oracle(dt):
     if not dt:
         return ""
     aware = dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt
-    return aware.astimezone(time_format.LOCAL_TIMEZONE).strftime("%Y-%m-%d %H:%M:%S")
+    # S-182 ⓐ: the render is offset-bearing and normalised to UTC, not the machine's
+    # ambient zone. The UTC conversion is what keeps this oracle — and the memo it scores —
+    # sound: two aware values that are `==` name ONE instant and must render to ONE string,
+    # and they share a memo slot, so rendering them as-given would hand the second caller
+    # the first one's `+09:00` spelling.
+    return aware.astimezone(UTC).isoformat(sep=" ", timespec="seconds")
 
 
 CORPUS = [
@@ -159,6 +164,20 @@ def test_the_module_still_imports_nothing_but_the_standard_library():
             if node.module:
                 imported.add(node.module.split(".")[0])
 
-    assert imported <= {"datetime"}, (
-        f"time_format must import nothing but the standard library; found {imported}")
-    assert isinstance(time_format.LOCAL_TIMEZONE, dt_pkg.tzinfo)
+    # 🔴 SCORED AGAINST THE STANDARD LIBRARY, not against a frozen list of today's imports
+    # (S-182 ⓐ). It used to read `imported <= {"datetime"}`, which is a snapshot rather
+    # than the rule this test's own docstring states — so adding `zoneinfo`, which cannot
+    # refuse any more than `datetime` can, failed a guard that exists to stop APPLICATION
+    # imports. `sys.stdlib_module_names` says the thing the docstring says, and it keeps
+    # every tooth: `database`, `sqlalchemy` and this repository's own modules are still
+    # caught, and it needs no edit the next time a stdlib name is added.
+    import sys
+
+    assert imported <= sys.stdlib_module_names, (
+        f"time_format must import nothing but the standard library; found "
+        f"{sorted(imported - sys.stdlib_module_names)}")
+    # ⚰️ `LOCAL_TIMEZONE` was asserted here and is GONE (S-182 ⓐ): it resolved the ambient
+    # zone of whatever host the process started on, so one instant rendered differently on
+    # two machines with nothing declared anywhere. Its absence is pinned in
+    # `test_one_instant_at_every_time_seat.py`, on the module rather than on this text.
+    assert not hasattr(time_format, "LOCAL_TIMEZONE")

@@ -25,6 +25,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 
 from database.crud import clean_str_value, is_blank_key_part
+from utils import time_format
 
 from .envelope import source_event_identity
 from .ledger_frame import (
@@ -1005,11 +1006,21 @@ def aware_time(value: Any, timezone_name: str, path: str, error=None) -> datetim
         raise refuse("invalid_time_value", path,
                      "a timestamp value must be a datetime")
     if value.tzinfo is None:
-        try:
-            value = value.replace(tzinfo=ZoneInfo(timezone_name))
-        except Exception as exc:
+        # 🔴 THE ONE FOLD (S-182 ⓐ, 판정 289). This is the seat R5 describes — the
+        # declared zone is what a source's NAIVE text means — and it is the ONLY seat whose
+        # zone argument is non-None today, because `occurred_at_timezone` is the one cell
+        # this axis has. Ordinary tables pass None and keep today's behaviour while the
+        # write boundary counts them, which is what makes round ⓐ a no-op to deploy.
+        #
+        # ⚠️ THE REFUSAL STAYS NAMED HERE. `fold_time_value` answers `None` for three
+        # different reasons and cannot tell them apart for the caller; this seat KNOWS a
+        # zone was declared, so a None back means that declaration is unusable — and an
+        # unusable declaration is refused by name rather than defaulted.
+        folded = time_format.fold_time_value(value, zone=timezone_name)
+        if folded is None:
             raise refuse("invalid_time_value", path,
-                         f"declared timezone {timezone_name!r} cannot be applied") from exc
+                         f"declared timezone {timezone_name!r} cannot be applied")
+        value = folded
     return value
 
 

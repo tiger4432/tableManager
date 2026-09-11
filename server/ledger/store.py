@@ -1007,6 +1007,14 @@ def parse_occurred_at(raw, fmt: str, tzname: str):
     So the rule is decided once, here. It is not a new rule: this is what the module has
     always done for a `datetime` input (the branch immediately below), now extended to
     text so there is ONE rule rather than one per input type.
+
+    ⚠️ THIS AND `utils.time_format.fold_time_value` STATE THE SAME RULE (S-182 ⓐ), and this
+    seat deliberately does NOT call it. Two things here are richer and would be lost:
+    `_zone` REFUSES an unresolvable zone by name rather than answering `None`, and it reads
+    an empty zone as UTC, where the fold reads it as 「undeclared, keep today's behaviour」.
+    Widening the fold to carry both would add a mode for no behaviour, so the two are left
+    as one rule with two callers and named here instead of drifting silently. Round ⓑ moves
+    the cell, and that is the round where these two become one call.
     """
     if raw is None:
         return None

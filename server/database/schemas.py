@@ -1,10 +1,6 @@
 from pydantic import BaseModel, ConfigDict, PrivateAttr, field_validator
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
-import datetime as dt_pkg
-
-# [성능 최적화] 타임존 객체 캐싱
-LOCAL_TIMEZONE = dt_pkg.datetime.now(dt_pkg.timezone.utc).astimezone().tzinfo
 
 class CellData(BaseModel):
     value: Any                          # 현재 표출되고 있는 최종 값
@@ -39,8 +35,15 @@ class AuditLogResponse(BaseModel):
     def convert_to_local(cls, v: datetime) -> datetime:
         if v:
             if v.tzinfo is None:
+                # Today's reading, unchanged (gate D): this seat RENDERS, it does not
+                # decide what a source meant. The write boundary decides, and counts.
                 v = v.replace(tzinfo=timezone.utc)
-            return v.astimezone(LOCAL_TIMEZONE)
+            # 🔴 NOT `astimezone(LOCAL_TIMEZONE)` ANY MORE (S-182 ⓐ). That converted to
+            # the ambient zone of whatever host the process started on, so the same instant
+            # reached two clients differently with nothing declared anywhere.
+            # `ledger_trace.DISPLAY_TIMEZONE_RULING` had already named that defect; the
+            # value now carries its own offset and the reader converts it.
+            return v
         return v
 
     class Config:
@@ -279,8 +282,15 @@ class DataRowResponse(DataRowBase):
     def convert_to_local(cls, v: Optional[datetime]) -> Optional[datetime]:
         if v:
             if v.tzinfo is None:
+                # Today's reading, unchanged (gate D): this seat RENDERS, it does not
+                # decide what a source meant. The write boundary decides, and counts.
                 v = v.replace(tzinfo=timezone.utc)
-            return v.astimezone(LOCAL_TIMEZONE)
+            # 🔴 NOT `astimezone(LOCAL_TIMEZONE)` ANY MORE (S-182 ⓐ). That converted to
+            # the ambient zone of whatever host the process started on, so the same instant
+            # reached two clients differently with nothing declared anywhere.
+            # `ledger_trace.DISPLAY_TIMEZONE_RULING` had already named that defect; the
+            # value now carries its own offset and the reader converts it.
+            return v
         return v
 
     class Config:

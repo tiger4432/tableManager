@@ -401,6 +401,19 @@ class ChunkWaitSampler:
         return " | waits: " + parts + (" | blocked by %s" % self.blocker if self.blocker else "")
 
 
+def _naive_time_suffix() -> str:
+    """` | timezone_naive: <table.column> N · ...`, or `""` (S-182 ⓐ).
+
+    Process-wide counts, not this chunk's: the seat that counts is the write boundary and
+    it has no chunk to belong to. The number is therefore 「since this process started」,
+    which is what an operator needs to answer 「is anything still arriving naive」.
+    """
+    from utils.time_format import naive_time_note
+
+    note = naive_time_note()
+    return " | " + note if note else ""
+
+
 def _plan_digest(db, sql, params, cap):
     """The PLAN only: node names, index names, row estimates. No rows, no ANALYZE."""
     from sqlalchemy import text as _t
@@ -3138,14 +3151,20 @@ class IngestionHandler(FileSystemEventHandler):
                     _wall = time.monotonic() - chunk_started
                     logger.info(
                         "[Ingest] %s chunk %d: %d row(s) in %.3f s · STAGES%s · unnamed %.3f s"
-                        " · INSIDE THE WRITE%s%s",
+                        " · INSIDE THE WRITE%s%s%s",
                         t_name, chunk_index, len(chunk), _wall,
                         "".join(" · %s %.3f s" % (k, v) for k, v in sorted(_stages.items()))
                         or " (none named)",
                         max(_wall - sum(_stages.values()), 0.0),
                         "".join(" · %s %.3f s" % (k, v) for k, v in sorted(_steps.items()))
                         or " (none named)",
-                        _sampler.summary() if _sampler is not None else "")
+                        _sampler.summary() if _sampler is not None else "",
+                        # S-182 ⓐ: a world time that arrived with no offset is READ BY
+                        # THE SESSION TimeZone (SCHEMA_CANON R5 forbids exactly that value),
+                        # and the owner cannot issue SQL to find out. So the product says
+                        # it, as a count, beside the chunk that took the rows. Empty string
+                        # when there is nothing to say — a healthy deployment stays quiet.
+                        _naive_time_suffix())
                     # S-176: the chunk line's own two numbers, carried instead of dropped.
                     # `depth` is the rows this chunk carried -- this loop's unit of work --
                     # because the watcher's queue is a directory and counting it here would

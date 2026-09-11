@@ -745,7 +745,17 @@ def _json_scalar(value: Any) -> Any:
         value = value.to_pydatetime()
     if isinstance(value, datetime):
         if value.tzinfo is None:
-            return value.isoformat()
+            # 🔴 THE HOLE IN THE LEDGER'S OWN PROMISE (S-182 ⓐ, R5). Both arms of this
+            # branch were `return value.isoformat()`, identical to the character - so nine
+            # sibling seats refused a naive datetime and THIS one, the serializer that
+            # writes the payload, let one through. R5 forbids naive world times because a
+            # value with no offset is 「어느 쪽인지 모르는 값」, and a payload is the last
+            # place it can still be caught.
+            #
+            # ⚠️ THE SPELLING IS NOT NEW. `roleframe._plain` and `source_preparation._plain`
+            # are the same serializer role and both already raise exactly this - one
+            # sentence, three seats, so they cannot drift into three answers.
+            raise TypeError("naive datetime has no deterministic instant")
         return value.isoformat()
     if isinstance(value, bool) or value is None:
         return value

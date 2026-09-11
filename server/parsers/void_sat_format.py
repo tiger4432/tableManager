@@ -67,6 +67,12 @@ METHOD = "sat"
 #: because "no offset" is not a time - it is a value nobody can place. Attaching
 #: a DECLARED offset is what makes it one. A site whose SAT tool writes another
 #: zone must change this line; it is the only place the assumption lives.
+#: ⚠️ SCHEMA_CANON R5 ASKS FOR THIS PER SOURCE, NOT PER MODULE. The VALUE agrees with
+#: canon - R5 records that this system runs KST - but the PLACE does not: R5 says 「세상
+#: 시각은 소스별로 선언한다」 and this is a module constant. It stays for now because
+#: deleting it without a declaration in its place would silently change which zone these
+#: files are read in (판정 289). S-182 ⓑ replaces it with `occurred_at_timezone` on the
+#: source declaration, under that existing name, and deletes this line.
 SOURCE_UTC_OFFSET = "+09:00"
 
 #: Declared vocabulary for the coordinate/radius unit. A number whose unit is

@@ -34678,3 +34678,80 @@ F  `LOCAL_TIMEZONE` 정의가 «하나»로 줄어든다
 
 > 📌 **[09-11 20:33] 이 채널의 미답 질문: 위 ⓐ' «하나». 그 답이 이번 커밋의 모양을 정합니다.
 > 코드 0 — 답 올 때까지 짓지 않습니다.**
+
+## 10. S-182 ⓐ 착지 — R5 를 «원장 밖»에서 강제합니다 (판정 289, 한 커밋)
+
+새 칸 «안 만들었습니다». 이 축의 소스 선언 칸은 `occurred_at_timezone` 하나 그대로입니다.
+
+```
+함수 하나   utils.time_format.fold_time_value(value, *, zone=None)
+            aware 면 «그대로 돌려줌»(원천이 선언을 이김) · naive + 선언 → 그 zone
+            naive + 선언 없음 → None = 「그 자리는 오늘 행동 그대로」
+셈          note_naive_time / naive_time_note → `timezone_naive: <표.컬럼> N`
+            청크 줄과 기동 줄 «둘 다». 없으면 «빈 문자열» — 건강하면 조용합니다
+```
+
+### 고친 자리
+```
+쓰기 경계    cast_value_by_type 에 `datetime` 가지를 «처음» 만들었습니다.
+            값은 «안 바꿉니다» — offset 없이 온 것을 «셉니다»(게이트 D)
+⑥ 죽은 팔   runtime_v2._json_scalar 가 naive 를 그대로 내보내던 구멍 → 형제 둘과
+            «같은 한 문장»으로 거절(`naive datetime has no deterministic instant`)
+⑦ 스키마     astimezone(LOCAL_TIMEZONE) 제거 — offset 을 단 값 그대로
+⑧ 렌더       to_local_str 이 기계 로컬 대신 «UTC 로 정규화한 offset ISO»
+원장 bind    roleframe 이 fold_time_value 를 지나되 «이름 붙은 거절»은 그대로
+상수         SOURCE_UTC_OFFSET 옆에 「R5 는 소스별 선언 요구 · ⓑ 에서 선언으로」
+```
+🔵 **`LOCAL_TIMEZONE` 은 «둘 → 영»입니다**(게이트 F). 모듈에 정의가 «없습니다».
+
+### 🔴 짓는 중에 «이웃 시험이 잡은 것» 둘 — 둘 다 제 결함입니다
+```
+① main.py 수출 경로에 `tz` 가 «한 군데 더» 있었습니다
+   제가 `tz = LOCAL_TIMEZONE` 을 지우고 2,642행의 쓰임을 «못 봤습니다» → NameError.
+   그런데 열어 보니 그 자리는 `to_local_str` 과 «같은 일을 하는 두 번째 메모»였고,
+   렌더가 «달랐습니다» — `replace(tzinfo=utc)` 를 «무조건» 걸어서 aware 로 온 값의
+   진짜 offset 을 덮고 있었습니다. 수출과 그리드가 같은 순간을 다르게 말하고 있었고
+   아무 오류도 안 났습니다. 메모를 «지우고» to_local_str 하나로 접었습니다
+② 메모 하니스의 「표준 라이브러리만」 가드가 `zoneinfo` 에 빨개졌습니다
+   그 시험의 docstring 은 「«거절할 수 있는» 응용 모듈을 import 하면 안 된다」인데
+   단언은 `imported <= {"datetime"}` — «그날의 import 목록»이었습니다.
+   `sys.stdlib_module_names` 로 바꿨습니다: docstring 이 말하는 것을 그대로 재고,
+   `database`·`sqlalchemy` 는 «여전히» 잡고, 다음 표준 모듈마다 고칠 필요가 없습니다
+```
+
+### 게이트
+```
+A 선언된 zone 하나 → 순간 하나  ✅  (그리고 zone 을 무시하면 빨개지는 대조군 하나)
+B offset 단 값은 «안 건드림»     ✅  (datetime · 문자열 · Z 표기 셋)
+D 회귀 «한 글자도»              ✅  선언 없는 표는 값이 그대로. 빈 값이 None 인 것은
+                                  S-181 의 규칙이지 이번 것이 아니라는 것까지 단언
+E ⑥ 죽은 갈래                   ✅  naive → TypeError, 그리고 «세 직렬화기가 한 문장»인지
+F 기계 zone 소멸                ✅  모듈에 LOCAL_TIMEZONE 속성 «없음»으로(텍스트 아님)
++ 메모 건전성                   ✅  같은 순간의 두 철자가 «같은 문자열» — 이게 UTC 정규화의 이유
+```
+
+### 이웃 시험
+```
+모집단   git grep -l 로 고친 이름 열둘을 단언하는 파일 «38» + 계약 둘
+결과     817 passed / 2 failed
+         그 둘은 «제 변경 이전부터» 빨갰습니다(오늘 `git archive HEAD` 베이스로 확인한 그 목록):
+         test_transfer_sample_draft_validates_unchanged…  라이브 원장 선언의 event_time
+         test_a_graph_meta_boolean…                       docstring 이 KNOWN RED 2026-09-02 로 적어 둠
+```
+
+### ⚠️ 남긴 것 «둘» — 숨기지 않고 이름 댑니다
+```
+① `to_local_str` 의 «이름이 낡았습니다» — 이제 로컬을 안 냅니다.
+   31 자리 4 모듈을 건드리는 개명이라 「바뀌는 층만」에 걸려 «이번엔 안 했습니다».
+   docstring 에 그렇게 적어 뒀습니다. 개명을 원하시면 별 커밋으로 냅니다
+② `store.parse_occurred_at` 이 «같은 규칙»을 따로 구현합니다 — 일부러 안 접었습니다.
+   `_zone` 은 «못 쓰는 zone 을 이름 대어 거절»하고 빈 zone 을 UTC 로 읽는데,
+   fold 는 둘 다 None 입니다. 접으려면 fold 에 모드를 하나 더해야 하고 그건 «행동 없는 복잡»이라
+   한 규칙·두 호출자로 두고 그 자리에 «적어» 뒀습니다. ⓑ 에서 칸이 옮겨질 때 한 호출이 됩니다
+```
+🔵 **클라**: 서버가 이제 offset 단 ISO 를 냅니다 — C-77(클라가 그것을 «UTC 순간으로» 파싱하는지)
+그대로 유효하고, 이번 커밋이 그 전제를 «실물로» 만들었습니다. 계약 벡터는 «안 건드렸습니다».
+
+> 📌 **[09-11 20:51] 이 채널의 미답 질문: «없음». ⓑ 설계 요청하신 한 줄(「카탈로그의 어느 자리에
+> 그 이름이 앉나 — 표 단위인지 컬럼 단위인지」)은 ⓑ 설계에 싣겠습니다. 재기동 총괄 몫 —
+> `utils.time_format`·`database.crud`·`ledger.roleframe`·`main`·워커 둘이 읽습니다.**
