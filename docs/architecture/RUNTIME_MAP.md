@@ -20,18 +20,36 @@
 |---|---|---|---|---|---|---|
 | ① | **웹 라우트** | 웹 | 요청 | 동적 표 · `cell_sources` · `cell_overwrites` · 원장(walk) | `[get_table_data] Total … ID Scan … Layer Merge … Other` (S-123) | 없음 — 요청은 곧 사용자 |
 | ② | **워처 (파일 인제션)** | 웹(통합) / run_watcher | `raws/` 파일 이벤트 · 기동 스윕 · **300 s 주기 재스캔**(`watcher-periodic-sweep`) | 그 표 + `file_ingestion_logs` + 큰 적재 뒤 `ANALYZE <표>` (S-124) | `[<표>] … rows` · `statistics re-analysed after N row(s)` | 파일을 `raws/` 밖으로 · `ingestion_settings.json` `analyze_after_rows`(0=끔) · 10 MB 초과는 `watcher-heavy-lane` 스레드로 격리 |
-| ③ | **체인 워커** | 웹(통합) / run_chain_worker | `database_outbox` 의 LISTEN/NOTIFY(≤2 s) · **5 s 스윕** | 규칙의 `target_table` 들 · `database_outbox` · 정렬(alignment) 표 | `[Chain]` · 그룹 줄(S-94) · `[HOL Guard] Deferring tx …` · `Failed to execute mapper in tx …` | `chain_rules.json` 규칙 `enabled:false`(기동 때만 읽음 → 재기동) |
+| ③ | **체인 워커** | 웹(통합) / run_chain_worker | `database_outbox` 의 LISTEN/NOTIFY(≤2 s) · **5 s 스윕** | 규칙의 `target_table` 들 · `database_outbox` · 정렬(alignment) 표 | `[Chain]` · **그룹 줄 세 층**(아래 §1-bis) · **`[Chain] batch: broadcast dispatch … · groups N`** · `[HOL Guard] Deferring tx …` · `[Chain] tx … deferred: rows_not_visible …` · `Failed to execute mapper in tx …` | `chain_rules.json` 의 규칙 `enabled:false` · **`max_group_attempts`**(기본 1) · **`max_rows_not_visible_defers`**(기본 30 ≈ 1분) — 셋 다 «문서 최상단 칸»이고 «SYSTEM_RELOAD 로 반영»된다 |
 | ③-a | **outbox 정리** | 체인 안 | 1 h | `database_outbox` (7 일 지난 행 삭제) | `[Outbox Purge]` | 없음(소량) |
 | ④ | **원장 후속 큐** | 체인 안(별 태스크) | 큐 + pace `chain_followup`=`trickle`(1 단위 · 3 s) | 원장(`ledger_*`) · 커서/등록부 | `[LedgerFollowUp]` · 영수증은 `/audit_logs/recent` `ledger_batch` (S-117) | `pacing.json` `jobs.chain_followup` (재기동 없음) |
 | ⑤ | **원장 센서스** | 체인 안(별 태스크) | pace `ledger_row_census`=`background`(1 소스 · 60 s) — «한 바퀴 = 소스 수 분» | 읽기만: `pg_class`(추정) · 등록부 `rows_indexed`(S-122-b) · **뷰 소스만 count(*)** | `[LedgerCensus]` 바퀴 벽시계 한 줄 | `pacing.json` `jobs.ledger_row_census` (재기동 없음) · 정확 수는 사람이 `python -m ledger census` |
 | ⑥ | **수집기 (auto_update)** | run_auto_update | 5 s 틱 · 각 수집기의 `next_run` | 수집기가 쓰는 표(→ ② 와 같은 경로로 적재) | `Scheduler daemon started` · 수집기 이름 | `auto_update` 설정의 그 수집기 |
 | ⑦ | **PG 자기 일** | DB | 큰 적재·삭제 뒤 «스스로» | autovacuum / autoanalyze / `CREATE INDEX CONCURRENTLY` | `pg_stat_activity` · `pg_stat_progress_vacuum` · `pg_stat_progress_create_index` | PG 설정(우리 것 아님) |
 
+### §1-bis. 체인 «그룹 줄»의 모양 — 세 층, 층마다 «남은 시간»까지 (S-151, 판정 241·261)
+```
+group <tx>: view builds N · reference resolutions N · distinct maps N · T s
+            · MACHINERY   · <stage …>       · unnamed U s      <- 그룹 전체를 쪼갠 층
+            · INSIDE THE VIEW · <phase …>   · unnamed U s      <- `mapper` 안
+            · INSIDE THE WRITE · <step …>   · unnamed U s      <- `write:*` 안 (셋째 dict)
+batch: broadcast dispatch T s · groups N                       <- 배치당 «한 번», 그래서 자기 줄
+```
+🔵 **`unnamed` 이 층마다 찍히는 이유**: 이름 붙은 조각의 합이 그 층의 벽시계와 «맞는지»를 읽는 사람이
+검산할 수 있어야 하기 때문입니다. 그리고 배치 발사는 그룹당이 아니라 «배치당»이라 어느 그룹에 달면
+그 그룹의 합이 «검산 안 되는 수»가 됩니다 — 그래서 줄을 따로 뺐습니다.
+⚠️ **정렬을 한 번도 안 만진 그룹은 이 줄을 «안 찍습니다»** — 0 으로 채운 줄이 진짜를 묻어 버립니다.
+
 ## 2. 증상 → 어느 고리 (오늘 밤에 실제로 온 것들)
 ```
 「모든 표 조회가 느리다, 큐는 비었다」      ⑤ (09-10 전: 소스마다 count(*) 쉼 없이) → 지금은 추정+분 단위. 남으면 ⑦
 「ID Scan 이 0.7 s 로 «고정»」            ① 의 정렬이 인덱스를 못 탐 = 통계 낡음(적재 직후) → ANALYZE (② 가 이제 자동)
 「Entity Fetch / Layer Merge 가 «출렁»」   대기다. 통합 모드면 ②③④⑤ 중 그때 도는 것, 아니면 ⑦
+「rows_in=0 인데 SUCCESS」               ⚰️ 09-11 «전»의 증상. 접힌 사건이 자기 행을 하나도 못 읽으면 빈 페이로드로
+                                        돌고 SUCCESS 로 찍혔다(조용한 손실, S-158). 지금은 «미룬다» —
+                                        `rows_not_visible` 로 이름 대고, `max_rows_not_visible_defers`(기본 30 ≈ 1분)
+                                        까지 기다린 뒤에도 못 읽으면 «이름 대어 거절»한다(판정 267).
+                                        🔴 원인은 삭제가 아니라 «가시성 시차»였다 — 같은 세션이 100 ms 뒤에 전부 봤다
 「HOL Guard 가 엄청 뜬다」                ③ 앞 그룹의 «실패»가 원인. 첫 HOL 줄 «위»의 `Failed to execute mapper` 를 본다
                                         3회 뒤 격리 경계에서 청크(≤1,000행)가 «행 단위로 펼쳐져» 줄 수가 ×1,000 될 수 있다
 「인제션이 느리다」                       ② 의 `cell_sources` 인덱스 볼륨(S-118 뒤 절반) · 큰 파일이면 heavy 레인 한 줄로 직렬
