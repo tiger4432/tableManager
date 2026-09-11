@@ -282,8 +282,16 @@ def expand_events(db, events) -> dict:
     return result
 
 
+#: 🔴 HOW FAR A CHUNK MAY KEEP SPLITTING (S-173). A 1,000-row chunk reaches a single
+#: row in ten halvings, so twelve is room to spare and a runaway is refused by name rather
+#: than discovered as a queue. The depth lives in the CHILD'S OWN PAYLOAD
+#: (`reexpanded_from.depth`), so an operator reading one event can see how far it has been
+#: narrowed without reconstructing the chain.
+MAX_REEXPANSION_DEPTH = 12
+
+
 def reexpand_collapsed_event(db, event, payload, error_reason: str = None) -> int:
-    """Replace a repeatedly-failing collapsed event with per-row retry events.
+    """Halve a repeatedly-failing collapsed event; write per-row events only at the leaf.
 
     🔴 WHY THIS EXISTS (lead PM ruling, this round). Collapsing makes the retry
     quarantine coarser: today one poison row is quarantined alone, collapsed it
@@ -301,15 +309,32 @@ def reexpand_collapsed_event(db, event, payload, error_reason: str = None) -> in
     make each row its own group, so 999 succeed and the poison row is quarantined
     ALONE - which is exactly the granularity the collapse was accused of losing.
 
-    RE-EXPANSION TERMINATES BY CONSTRUCTION. The events written here carry `data`
-    and no `row_ids`, so `is_collapsed_payload` is False for them and they can
-    never re-expand again. There is no second round.
+    🔴 AND IT HALVES RATHER THAN EXPLODING (S-173). The first shape of this
+    function wrote ONE EVENT PER ROW, and the cost of that is not theoretical: a
+    production queue reached ~660,000 pending per-row events, which at a group's
+    plumbing cost is DAYS of work to find rows that would take about two hours
+    collapsed. Splitting in two finds the same poison row in about ten rounds and
+    about twenty events, and the 999 innocent rows travel as a handful of CHUNKS
+    instead of as 999 groups. Same end state -- the bad row alone, named -- at a
+    logarithmic price instead of a linear one.
 
-    THE COST IS PAID ONLY WHERE SOMETHING BROKE: one chunk's worth of per-row
-    outbox rows, and one mapper run + one commit per row for that chunk. The
-    happy path never reaches this function.
+    ⚠️ A SPLIT READS NOTHING. Per-row expansion had to load every row to synthesize
+    its payload; a half is the parent's envelope with half the `row_ids`, so the
+    database is not touched until a leaf of ONE row is reached.
 
-    Returns the number of per-row events written (0 = caller quarantines as before).
+    RE-EXPANSION STILL TERMINATES, and now it needs two reasons rather than one:
+      * a half of ONE row is written as a per-row `data` event, and those carry no
+        `row_ids`, so `is_collapsed_payload` is False and they can never split again;
+      * every child records `reexpanded_from.depth`, and `MAX_REEXPANSION_DEPTH`
+        refuses BY NAME above it, falling back to the whole-chunk quarantine that
+        was the behaviour before any of this existed.
+    The first is what actually ends it; the second is what makes a bug in the first
+    stop loudly instead of filling a queue.
+
+    THE COST IS PAID ONLY WHERE SOMETHING BROKE. The happy path never reaches this
+    function.
+
+    Returns the number of retry events written (0 = caller quarantines as before).
     """
     from database.models import DatabaseOutbox
     import uuid
@@ -333,6 +358,31 @@ def reexpand_collapsed_event(db, event, payload, error_reason: str = None) -> in
             "'%s#row#' transaction ids instead.",
             event.event_uuid, prior, payload.get("transaction_id"))
         return 0
+
+    lineage = payload.get("reexpanded_from") or {}
+    depth = lineage.get("depth") or 0
+    # The tx id every child of this chunk shares, so an operator can still find the whole
+    # family by prefix however deep the split has gone.
+    root_tx = lineage.get("root_transaction_id") or payload.get("transaction_id")
+    path = lineage.get("path") or ""
+
+    if depth >= MAX_REEXPANSION_DEPTH:
+        # ⛔ REFUSED BY NAME, NOT SILENTLY. Reaching here means the leaf rule stopped
+        # ending the recursion, which is a defect in this function -- and a defect that
+        # fills a queue is exactly what this round removed. The caller quarantines the
+        # chunk whole, which is the honest end state.
+        logger.error(
+            "[OUTBOX-4] collapsed event %s on '%s' has already been narrowed %d times "
+            "(cap %d) and still names %d row(s); refusing to split further and leaving "
+            "it to whole-chunk quarantine.",
+            event.event_uuid, event.table_name, depth, MAX_REEXPANSION_DEPTH,
+            len(row_ids))
+        return 0
+
+    if len(row_ids) > 1:
+        return _split_collapsed_event(
+            db, event, payload, row_ids, error_reason,
+            depth=depth, root_tx=root_tx, path=path)
 
     model, found = load_rows_by_ids(db, event.table_name, row_ids)
     if model is None:
@@ -360,6 +410,9 @@ def reexpand_collapsed_event(db, event, payload, error_reason: str = None) -> in
             "event_uuid": event.event_uuid,
             "row_count": len(row_ids),
             "reason": error_reason or "collapsed chunk failed 3 times",
+            "depth": depth + 1,
+            "root_transaction_id": root_tx,
+            "path": path,
         }
         children.append(DatabaseOutbox(
             event_uuid=str(uuid.uuid4()),
@@ -385,9 +438,80 @@ def reexpand_collapsed_event(db, event, payload, error_reason: str = None) -> in
 
     if written:
         logger.warning(
-            "[OUTBOX-4] collapsed event %s on '%s' (%d rows, tx %s) failed 3 times; "
-            "re-expanded into %d per-row retry event(s) so the failure can be "
-            "narrowed to the row that actually breaks instead of quarantining the "
-            "whole chunk.",
-            event.event_uuid, event.table_name, len(row_ids), base_tx, written)
+            "[OUTBOX-4] collapsed event %s on '%s' (%d row(s), tx %s, narrowed %d "
+            "time(s)) failed its attempts; wrote %d per-row retry event(s) -- this is "
+            "the LEAF of the narrowing, so the failure is now down to the row itself.",
+            event.event_uuid, event.table_name, len(row_ids), base_tx, depth, written)
     return written
+
+
+def _split_collapsed_event(db, event, payload, row_ids, error_reason,
+                           *, depth: int, root_tx, path: str) -> int:
+    """Two collapsed halves instead of N per-row events (S-173).
+
+    🔴 EACH HALF IS ITS OWN TRANSACTION GROUP, for the reason the per-row shape needed
+    distinct ids: the worker's unit of failure is the GROUP, so two halves sharing one id
+    would be regrouped, fail together, and buy nothing. The id keeps the ROOT chunk's
+    prefix and appends the path taken, so `a`, `ab`, `abb` reads as 「first half, then its
+    second half, then that one's second half」 and one prefix search still finds the
+    whole family.
+
+    ⚠️ THE HALVES ARE STILL COLLAPSED, and that is the point: the innocent half is one
+    chunk that succeeds on its first attempt, not five hundred groups that each pay a
+    group's plumbing cost.
+    """
+    from database.models import DatabaseOutbox
+    import uuid
+
+    middle = len(row_ids) // 2
+    halves = (row_ids[:middle], row_ids[middle:])
+    children = []
+    for side, half in zip("ab", halves):
+        if not half:
+            continue
+        child_path = f"{path}{side}"
+        child = dict(payload)
+        child["row_ids"] = list(half)
+        child["transaction_id"] = f"{root_tx}#half#{child_path}"
+        # ⛔ THE PARENT'S VERDICT DOES NOT TRAVEL. `error_log` is why the PARENT stopped;
+        # carrying it onto a child would make a fresh event look like one that has already
+        # failed, and `reexpand_collapsed_event`'s idempotence guard reads exactly that key.
+        child.pop("error_log", None)
+        child["reexpanded_from"] = {
+            "event_uuid": event.event_uuid,
+            "row_count": len(row_ids),
+            "reason": error_reason or "collapsed chunk failed its attempts",
+            "depth": depth + 1,
+            "root_transaction_id": root_tx,
+            "path": child_path,
+        }
+        children.append(DatabaseOutbox(
+            event_uuid=str(uuid.uuid4()),
+            event_type=event.event_type,
+            table_name=event.table_name,
+            payload=child,
+            status="PENDING",
+        ))
+
+    # Same all-or-nothing add as the leaf below it, and for the same reason: a half-added
+    # split leaves orphan PENDING children beside a parent whose log says it quarantined.
+    try:
+        for child in children:
+            db.add(child)
+    except Exception:
+        for child in children:
+            try:
+                db.expunge(child)
+            except Exception:
+                pass
+        raise
+
+    if children:
+        logger.warning(
+            "[OUTBOX-4] collapsed event %s on '%s' (%d rows, tx %s) failed its attempts; "
+            "split into %d half/halves of %s row(s) at depth %d, so the poison row is "
+            "found by halving instead of by writing one event per row.",
+            event.event_uuid, event.table_name, len(row_ids),
+            payload.get("transaction_id"), len(children),
+            " and ".join(str(len(h)) for h in halves if h), depth + 1)
+    return len(children)
