@@ -2163,12 +2163,27 @@ async def run_ledger_followup(db_session_factory):
             logger.warning("[LedgerFollowUp] pace unreadable, using the default: %s", exc)
             units, rest = None, FOLLOWUP_IDLE_SECONDS
         drained = 0
+        lap_started = time.monotonic()
         while ledger_followup.queue_depth() and (units is None or drained < units):
             try:
                 await asyncio.to_thread(_drain_ledger_followup_sync, db_session_factory)
             except Exception as exc:
                 logger.warning("[LedgerFollowUp] batch failed: %s", exc)
             drained += 1
+        # 🔴 A SUCCESSFUL DRAIN USED TO SAY NOTHING, and that silence cost a measurement
+        # (S-160, 판정 269). Asked whether the drain was working DURING a reproduction
+        # window, nothing could answer: failures warn, successes were mute, and the queue
+        # depth lives in this process's memory where no query reaches it. 「큐 깊이는 값으로
+        # 보임」 is the standing rule and this is the line it asks for - the same shape the
+        # census lap already uses beside it.
+        #
+        # ⚠️ SILENT WHEN IT DID NOTHING, deliberately. This loop wakes on a timer whether or
+        # not there is work; a line per idle lap would bury the laps that moved something,
+        # which is the log equivalent of a screen explaining what it is not showing.
+        if drained:
+            logger.info("[LedgerFollowUp] lap: %d item(s) in %.3fs, %d left in the queue "
+                        "(rest %.0fs between)", drained, time.monotonic() - lap_started,
+                        ledger_followup.queue_depth(), rest)
         await asyncio.sleep(rest if drained else max(rest, FOLLOWUP_IDLE_SECONDS))
 
 
