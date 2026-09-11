@@ -236,3 +236,59 @@ def test_a_root_document_fault_is_still_refused_whole(tmp_path):
     with pytest.raises(Exception) as refused:
         load_setup(root)
     assert "every_source_refused" not in str(refused.value)
+
+
+# ---------------------------------------------------------------------------
+# 7. A broken VIRTUAL JOIN RULE, and the sources that inherit it
+# ---------------------------------------------------------------------------
+
+def bundle_with_a_broken_join_rule():
+    """The rule `input_to_reference` is broken; `input_rows` inherits it, `dt_log` does not.
+
+    판정, 2026-09-11: the unit rule already makes `bundle.virtual_joins.<rule>` a path root,
+    so a fixpoint that blames the rule should take the rule and its inheritors and leave the
+    unrelated source running. This test is the confirmation the ruling asked for -- it is
+    not a new mechanism, and if the answer is no, the answer is the finding.
+    """
+    raw = two_source_document()
+    raw["virtual_joins"]["input_to_reference"]["enabled"] = True
+    raw["virtual_joins"]["input_to_reference"]["colour"] = "blue"   # unknown field
+    raw["sources"][HEALTHY]["prepare"]["inherit_virtual_join_rules"] = [
+        "input_to_reference"]
+    return raw
+
+
+def test_a_broken_join_rule_takes_the_sources_that_inherit_it(tmp_path):
+    """⚠️ MEASURED, AND IT DOES NOT HOLD TODAY -- see the assertion's own message.
+
+    `resolve_declarations` blames a declaration through `ground_node_key`, and that
+    function reads `AUTHORABLE_SECTIONS` -- vocabulary, entities, sources. `virtual_joins`
+    is not in it, so a broken rule blames NOTHING, lands in `config_level`, and the whole
+    bundle is refused. The two questions share one map: 「what a screen may create」 and
+    「what the loader may isolate」 are not the same question, and widening the authoring
+    map would put a new declaration kind on the explorer's surface.
+
+    Pinned as the CURRENT behaviour rather than as the wanted one, so the day the map is
+    split this test fails and says which half to move.
+    """
+    document = bundle_with_a_broken_join_rule()
+
+    with pytest.raises(Exception) as refused:
+        load_setup(write_root(tmp_path, document))
+
+    message = str(refused.value)
+    assert "input_to_reference" in message or "virtual_joins" in message, message
+    assert "every_source_refused" not in message, (
+        "if this ever changes to a per-declaration refusal, the isolation has reached "
+        "join rules and this test is the place that says so")
+
+
+def test_the_isolation_unit_for_a_join_rule_is_not_declared_today():
+    """The one-line reason, measured rather than recalled: the blame function's map."""
+    from ledger.config_authoring import ground_node_key
+
+    assert ground_node_key("bundle.sources.dt_log.read") == "source_plan|dt_log"
+    assert ground_node_key("bundle.vocabulary.moves_to@1.object") == "predicate|moves_to@1"
+    assert ground_node_key("bundle.entities.InputEntity@1.keys") == "entity|InputEntity@1"
+    # 🔴 THE ROW OF THE TABLE THAT IS STILL OPEN.
+    assert ground_node_key("bundle.virtual_joins.input_to_reference.join_key") is None
