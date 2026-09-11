@@ -34973,3 +34973,56 @@ S-174 거절             거절 이름이 규칙 이름을 답니다 — `enrich
 > `list_columns`·`auto_confirm`·`auto_confirm_declared`·`alignment`·`claim_contract` 를
 > 넣는 것이 맞습니까(「빠지는 칸 0」을 그대로 읽으면 그렇습니다). 그리고 `enabled` 는
 > 상수가 아니라 «규칙에서» 싣습니다. 코드 0 — 판정 뒤 착수.**
+
+## 13. S-179 짓는 중 — 지시하신 «짓기 전 한 줄» + 게이트 ⓒ 가 «걸리는» 자리 하나
+
+### 짓기 전 한 줄 (판정 292 가 요구하신 것) — 「어느 절반인가」보다 «셋»이 맞습니다
+```
+규칙 층(양쪽 다)   name · derived_table · enabled · decision_key · alignment
+dedup 절반         source_table · aggregations
+자동 확정 절반      target_fields · reference_views · auto_confirm ·
+                  auto_confirm_declared · list_columns · claim_contract
+```
+- **`alignment` 은 «한쪽 것이 아닙니다»** — `alignment_view_service.py:28` 이 「이 규칙이
+  정렬 규칙인가」를 그것으로 가르고, `models.py:1338` 은 그것이 참일 때 `source_table` +
+  `decision_key` 로 인덱스를 세웁니다. 즉 «뷰 쪽과 dedup 쪽» 양쪽이 읽습니다.
+  합성기가 하나라 `params` 를 둘 다에 실으면 그대로 맞습니다.
+- 🔴 **`claim_contract` 은 «읽는 쪽이 0»입니다.** `enrichment_config` 이 정규화·검증까지
+  하는데(578~594·858) 소비자가 «전부 `server/_archive/`» 입니다. 「소비자 0」의 네 예외
+  (데코레이터·시험만·설정 문자열·명령줄)에 «하나도» 안 걸립니다.
+  ⚠️ 그래도 «떨어뜨리지 않고» 싣습니다 — 「읽는 쪽이 없는 칸」과 「지워야 할 칸」은 다른 판정이고,
+  지우는 것은 이번에 지시받은 일이 아닙니다.
+
+### 지은 것 (검증했고, 지금은 «되돌려» 뒀습니다 — 아래 이유)
+```
+합성기 하나가 둘을 냄   이 박스: 규칙 4 → 체인 규칙 8(dedup 4 · auto_confirm 4), 각 params 12칸
+enabled                규칙에서. 상수 아님
+allow_chain_trigger    «선언 안 함» — 넷 다 확인
+follow_up: true        그리고 `_rule_accepts_event` 가 follow_up 규칙을 «트리거 경로에서 제외»
+                       (이게 핑퐁 가드가 «공짜»인 자리입니다)
+기동 줄                「8 dedup」은 «거짓»이 되므로 「8 chain rule(s) (4 dedup · 4 auto-confirm)」로
+적재                   17 규칙 로드 · 고리 검증·trigger_columns 보고 통과 · 행동 «0»
+```
+
+### 🔴 그런데 게이트 ⓒ 에서 멈췄습니다 — 오늘 그래프가 «dedup 엣지를 안 그립니다»
+```
+실측   chain_graph 는 `_chain_rule_file()` 을 씁니다 — «합성 규칙이 안 들어갑니다»
+      그래서 `_enrich_edges` 가 그리는 것은 «자기 고리(derived→derived)»와 참조뷰 엣지뿐이고,
+      dedup 투영(source_table → derived_table)은 «그래프에 아예 없습니다»
+```
+접으면 두 갈래가 생깁니다:
+```
+ⓧ 자동 확정 자기 고리만 mapper 라벨로  -> 게이트 ⓒ(「끝점 집합 전/후 동일」) «문자 그대로» 참
+                                    다만 dedup 엣지는 «여전히 안 보입니다»
+ⓨ 합성 규칙을 _mapper_edges 에 전부   -> 자동 확정 자기 고리 + **dedup 엣지 넷이 «새로» 생김**
+                                    그래프가 «더 맞아집니다»(오늘 빠진 엣지가 채워짐)
+                                    그러나 ⓒ 를 문자 그대로 읽으면 «끝점 집합이 달라집니다»
+```
+🔵 **제 판단은 ⓨ 가 옳다**입니다 — S-178 의 목적이 「누가 누구를 깨우나를 값으로」인데 dedup 이
+안 보이는 그래프는 그 물음에 «절반만» 답합니다. 다만 ⓒ 를 제가 임의로 다시 읽지 않겠습니다:
+**끝점 집합이 달라지는 것이 «수리»입니까, 아니면 ⓧ 로 두고 dedup 엣지는 별건입니까?**
+
+⚠️ **작업 트리는 «비웠습니다»**(공유 트리 노출 금지 — 13:42 의 그 사고 부류). 지은 것은
+스크래치패드에 패치로 있고, 답 주시면 그대로 얹어 ⓐ~ⓖ 게이트와 함께 «한 커밋»으로 냅니다.
+
+> 📌 **[09-11 21:25] 이 채널의 미답 질문: 위 ⓧ/ⓨ «하나». 그 답이 게이트 ⓒ 의 기댓값을 정합니다.**
