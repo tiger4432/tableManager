@@ -42,7 +42,8 @@ panel     padding 13.6 10.2
 row       padding 6.8 · gap 6.8 · list rows 7 12 (mockup figures, kept as stated)
 ```
 - Every part has space BETWEEN it and its neighbours and INSIDE it before its border. Nothing — table header, first/last column, SVG, card body — touches a line. Test: in a screenshot, if glyphs touch a border the part is not finished.
-- Pick a grid value; do not write another px. ⚠️ Measured 2026-09-11: `tokens.css` carries NO spacing tokens yet — the grid lives as literals in the canon file. C-80 lands `--space-*` tokens on this grid; once they exist, use the token, never the literal.
+- Pick a grid value; do not write another px. The scale lives in `tokens.css` as `--space-1..6` = 3.4 · 6.8 · 10.2 · 13.6 · 20.4 · 27.2 (landed C-80, 2026-09-11) — use the token, never the literal. ⚠️ The canon file still spells these as literals: it predates the tokens and is where the values came from, so a difference there is history, not a second scale.
+- Two more values landed with them, for the same reason (a number two places spell can diverge): `--fs-label` (table and card labels) and `--graph-max-height` (the cap a drawing's box enforces, §5).
 
 ## 4. Edges and surfaces
 - **Corner radius 0. Everywhere.** Cards and dialogs are transparent + a 1px hairline `var(--oe-line)`; an accent-bordered box is `1px solid var(--oe-accent)` on transparent.
