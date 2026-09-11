@@ -31896,3 +31896,51 @@ INSIDE THE WRITE (쓰기 합 1.281)   side tables 0.421 · flush 0.407 · row bu
 그 사이에   -> S-125-c(시험 둘, 재기동 불요) 를 먼저 착지시키겠습니다 — 지시하신 순서 그대로
 ```
 > 📌 **[09-11 09:2x] 이 채널의 미답 질문: 4절 «enrichment hook 이 배관인가» 하나.**
+
+---
+
+# [09-11 09:3x] S-125-c 착지 (`c47dd7d5`) — 그리고 🔴 «출하 샘플에 가상 조인 0» 은 «거짓»입니다
+
+## 1. 시험 둘을 새 계약으로 (제품 코드 0)
+```
+test_an_unscoped_search_does_not_reach_a_virtual_only_column     (was ...reaches...)
+test_a_declared_search_column_reaches_the_virtual_only_column    (신설 — «나머지 반쪽»)
+test_q_search_reaches_the_numeric_virtual_column                 (unscoped 반쪽만 뒤집음)
+```
+🔵 **뒤집기만 하면 「가상 컬럼은 검색 안 됨」으로 읽혀 거짓이라** 짝을 붙였습니다 —
+   `search_columns` 를 선언하면 «돌아옵니다». 그 시험은 `TABLE_COUNT_CACHE` 를 앞뒤로 비웁니다
+   (그 캐시는 (table,q,cols,filters) 로 키를 잡고 «선언»을 안 봅니다 — 안 비우면 앞 시험의 답이 옵니다).
+
+## 2. 🔴 지시 전제 하나를 정정드립니다 — 잰 결과입니다
+지시에 「출하 샘플엔 가상 조인이 «없어»(git grep 0) 기본값 변경으로 잃는 화면 값 없음」이라
+하셨는데, `server/config/sample/virtual_join_rules.json.sample` 에 **밑줄 없는 · `enabled: true`
+규칙이 «둘»** 있습니다(로더가 읽는 것이 정확히 그 둘입니다):
+```
+dt_log_frame_from_inventory                dt_log 에 «6» 컬럼
+                                           dt_x_base·sign·offset · dt_y_base·sign·offset
+dt_inventory_confirmed_from_attribution    dt_inventory 에 «2» 컬럼
+                                           dt_lot_confirmed · dt_slot_confirmed
+```
+그 파일의 «은퇴한» 선언들은 밑줄 접두라 건너뜁니다 — 파일을 「전부 은퇴」로 읽으면 0 이 나옵니다.
+🔴 **그래서 출하 설치는 «잃는 것이 있습니다»** — 그 여덟이 `search_columns` 로 이름 불리기 전까지
+   기본 `?q=` 범위 밖입니다.
+🔵 그리고 그 여덟 중 dt_log 의 «여섯»이 `search_scope_default` docstring 이 2,174 ms 로 «잰»
+   바로 그 여섯 LEFT JOIN 입니다 — **비용과 손실이 같은 여섯**입니다. 판정 255 가 한 맞바꿈이
+   그것이고, 시험은 어느 쪽이든 옳습니다.
+```
+판정 청합니다   출하 샘플의 table_config 에 그 여덟(또는 필요한 만큼)을
+               `search_columns` 로 «선언»해 되돌려 놓을까요? — 그러면 「선언으로 복구 가능」이
+               샘플에 «보입니다». 제가 정하지 않습니다
+```
+
+## 3. 게이트
+```
+두 파일 단독      24 passed
+모집단(검색 범위 심볼로 git grep, 24 파일)   612 passed · 3 failed · 12 error
+```
+⚠️ 남은 빨강/에러는 **제 변경 «없이도» 재현됩니다**(두 파일 단독으로 돌려 확인).
+   사유는 소유자 라이브 원장 선언입니다 —
+   `dt_log.bind.occurred_at.column: 'event_time' is not in EventFrame schema`.
+   S-126 부류라 손대지 않았습니다. 이름만 올립니다(`test_ontology_config_explorer` 15건 ·
+   `test_virtual_join_types` 1건).
+> 📌 **[09-11 09:3x] 이 채널의 미답 질문: 둘 — ⓐ 2절(샘플에 search_columns 선언할까) · ⓑ 앞 보고 4절(enrichment hook 이 배관인가 — 판정 262 로 답 주신 듯하여 지금 읽습니다).**
