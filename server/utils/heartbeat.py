@@ -315,7 +315,13 @@ def read_all(stale_after=DEFAULT_STALE_AFTER_SEC, now=None,
     out = {}
     d = heartbeat_dir()
     try:
-        names = [f for f in os.listdir(d) if f.endswith(".json")]
+        # ⚠️ THE ROSTER IS NOT A WORKER. It is published into this same directory on
+        # purpose, so a walk of the directory picks it up and reports `_roster` as a
+        # process with no beat - a name nothing runs under. Measured: it appeared as an
+        # `off_roster` worker the moment a stale supervisor stopped supplying the
+        # expected list and this fallback took over.
+        names = [f for f in os.listdir(d)
+                 if f.endswith(".json") and f != ROSTER_FILENAME]
     except OSError:
         return out
 
@@ -371,10 +377,17 @@ def read_all(stale_after=DEFAULT_STALE_AFTER_SEC, now=None,
     return out
 
 
+#: The roster lives among the heartbeats (see `roster_path`), so every reader that walks
+#: that directory must know this name - otherwise the roster reports ITSELF as a worker.
+#: Named once here rather than spelled at each site, because two spellings of "the file
+#: that is not a heartbeat" is how one of them forgets.
+ROSTER_FILENAME = "_roster.json"
+
+
 def roster_path():
     """Where the launcher publishes what it started. Beside the heartbeats, on purpose:
     the two are read together and a reader that can reach one can reach the other."""
-    return os.path.join(heartbeat_dir(), "_roster.json")
+    return os.path.join(heartbeat_dir(), ROSTER_FILENAME)
 
 
 def write_roster(names, now=None):

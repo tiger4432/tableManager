@@ -35688,3 +35688,44 @@ per-table count 를 «아예 안 만듭니다»). 지우지 말고 새 모양으
 
 > 📌 **[09-12 00:41] 이 채널의 미답 질문: 이 한 줄로 «짓습니까». 등급 4 라 순서는 총괄 몫입니다.
 > 코드 0 — 작업 트리 깨끗(확인함).**
+
+## 28. S-142 ② 착지 — 죽은 기록이 산 것을 대변하지 않습니다 (판정 297)
+
+```
+자리   health.compute_health — 파일에서 값을 «꺼내기 전»에 stale 을 먼저 정합니다
+       (그게 결함의 모양이었습니다: children 을 먼저 짓고 나이를 «나중에» 알았습니다)
+규칙   파일의 나이가 «그 파일에서 온 모든 값»을 지배 — children · supervisor_state · pid · restarts
+       그리고 없는 것은 «없음»(false·0 으로 지어내지 않음)
+```
+
+### 전/후 (이 박스)
+```
+전   problems  「감독이 안 돈다(145,365s)」
+     workers   chain/scheduler/watcher = supervisor_state running · pid 31940·18776·7956
+               실제 python 프로세스는 42240 «하나»
+후   workers   supervisor 유래 칸 «전부 없음» · children {}
+               chain·watcher 는 여전히 ok(심박으로) · scheduler stale · 503 그대로
+```
+🔵 503 은 «안 고쳤습니다» — 감독이 정말 없으니 그게 정직한 답입니다. 고친 것은 «값»입니다.
+
+### ⚠️ 제 변경이 «드러낸» 것 하나 — 로스터가 자기를 워커로 셉니다
+```
+`_roster.json` 은 «심박 디렉터리 안»에 삽니다(그 자리가 의도된 것 — 같이 읽히니까).
+그래서 디렉터리를 훑는 read_all 이 그걸 «`_roster` 라는 프로세스»로 셌습니다.
+전에는 감독 로스터가 expected 를 채워서 «안 보였고», stale 이 그 목록을 비우자 드러났습니다.
+고침: ROSTER_FILENAME 상수 하나 + read_all 에서 그 이름만 제외.
+      (「심박이 아닌 파일」의 철자가 둘이면 언젠가 하나가 잊습니다)
+```
+
+### 게이트
+```
+ⓐ stale → supervisor_state·pid·restarts «없음»  ✅  (그리고 false·0 아님을 따로 단언)
+ⓑ fresh → 오늘과 동일                           ✅  running·31940·2 그대로
+ⓒ 심박만으로 사는 프로세스는 ok                  ✅  chain 의 note(「parsed f.csv」)도 살아남음
+ⓓ problems 와 workers 가 같은 말                ✅  ← 판정 297 이 핵심이라 한 그것
+변이   guard 를 되돌리면 시험 «셋» 빨강(ⓓ 포함)   ✅
+/runtime  같은 로스터 «안 읽음» — grep 확인(읽는 곳은 health_check 하나)
+이웃   31 파일 521 passed / 0 failed
+```
+
+> 📌 **[09-12 00:48] 이 채널의 미답 질문: «없음». 재기동 총괄 몫 — health·heartbeat 를 읽습니다.**

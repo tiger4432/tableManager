@@ -155,24 +155,37 @@ def compute_health(db_result, heartbeats, supervisor_status, outbox_result,
         age = now - float(supervisor_status.get("updated_at") or 0.0)
         failed = supervisor_status.get("failed_children") or []
         correlated = supervisor_status.get("correlated_children") or []
+        # 🔴 THE FILE'S AGE GOVERNS EVERY VALUE THAT CAME OUT OF IT (S-142 ②, 판정 297).
+        # Measured on this box: the record was 145,365s old and still published
+        # `state: "running"` with pids 31940, 18776 and 7956 - none of which existed. The
+        # same response said, in `problems`, that the supervisor was not running. An
+        # operator reads the workers table, sees a state and a pid, and concludes the
+        # process is alive; the contradiction is only visible to someone who cross-checks.
+        #
+        # ⚠️ DECIDED BEFORE ANYTHING IS COPIED, because that was the defect's shape: the
+        # children map was built first and the staleness discovered afterwards, so the
+        # values had already escaped into the payload.
+        sup_stale = age > stale_after
         sup_check = {
             "status": STATUS_OK,
             "pid": supervisor_status.get("supervisor_pid"),
             "updated_age_seconds": round(age, 2),
             "failed_children": failed,
             "correlated_children": correlated,
-            "children": {n: {"state": c.get("state"),
-                             "restarts": c.get("restarts"),
-                             "pid": c.get("pid"),
-                             "last_exit_code": c.get("last_exit_code"),
-                             "failure_reason": c.get("failure_reason"),
-                             "correlated_with": c.get("correlated_with"),
-                             "correlated_retries": c.get("correlated_retries")}
-                         for n, c in sup_children.items()},
+            # A stale record contributes no child facts: 「what it said 40 hours ago」 is
+            # not 「what is true now」, and an empty map says so without inventing a state.
+            "children": {} if sup_stale else {
+                n: {"state": c.get("state"),
+                    "restarts": c.get("restarts"),
+                    "pid": c.get("pid"),
+                    "last_exit_code": c.get("last_exit_code"),
+                    "failure_reason": c.get("failure_reason"),
+                    "correlated_with": c.get("correlated_with"),
+                    "correlated_retries": c.get("correlated_retries")}
+                for n, c in sup_children.items()},
         }
-        if age > stale_after:
+        if sup_stale:
             sup_check["status"] = "stale"
-            sup_stale = True
             sup_age = age
             escalate(STATUS_UNHEALTHY)
             problems.append(
@@ -235,13 +248,17 @@ def compute_health(db_result, heartbeats, supervisor_status, outbox_result,
         # 「wrote nothing」 are different answers and this surface is read by machines.
         if isinstance(hb, dict) and hb.get("note") is not None:
             entry["note"] = hb.get("note")
-        if cinfo is not None:
+        # ⚠️ NOT FROM A STALE RECORD. These three are the fields an operator reads as
+        # 「it is alive」, and the rule this file already states two paragraphs up applies to
+        # them too: absent stays absent rather than becoming a value nobody can trust.
+        # What remains is the heartbeat - the only thing that can say something is running.
+        if cinfo is not None and not sup_stale:
             entry["supervisor_state"] = cinfo.get("state")
             entry["pid"] = cinfo.get("pid")
             entry["restarts"] = cinfo.get("restarts")
 
-        sup_state = (cinfo or {}).get("state")
-        uptime = (cinfo or {}).get("uptime_seconds")
+        sup_state = None if sup_stale else (cinfo or {}).get("state")
+        uptime = None if sup_stale else (cinfo or {}).get("uptime_seconds")
         if uptime is None and roster.get(hb_name):
             # 🔴 THE ONE LINE THAT WAS THE RESTART 503. The "starting" branch below already
             # exists, with its own grace - it just tests `uptime`, which comes from the
