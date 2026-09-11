@@ -982,6 +982,33 @@ ROW_FIXED_COLUMNS = ("type", "depth", "id", "parent_id", "via", "seed",
 PATH_SEPARATOR = "\u2192"
 
 
+#: 🔴 EDGE QUALIFIERS RIDE UNDER A PREFIX (S-183-b, 판정 294). The row's subject stays
+#: the NODE; `via` is already the one edge fact on it, so that edge's qualifiers are the
+#: same fact carried further. The prefix is not decoration - without it an edge qualifier
+#: named `gate` and a node qualifier named `gate` are ONE column, and the edge's value
+#: would silently overwrite the node's in a table where both are real.
+VIA_PREFIX = "via."
+
+
+def _edge_qualifiers(edges):
+    """`(source, target, predicate) -> qualifiers`, indexed BOTH ways.
+
+    ⚠️ Both directions because `_reach` walks an adjacency built from these edges without
+    caring which way each was declared - the hop it recorded may be the reverse of the
+    edge's own `source`/`target`, and a one-way index would quietly find nothing for half
+    the rows.
+    """
+    index = {}
+    for edge in edges or ():
+        quals = edge.get("qualifiers")
+        if not quals:
+            continue
+        predicate = edge.get("predicate")
+        index[(edge.get("source"), edge.get("target"), predicate)] = quals
+        index[(edge.get("target"), edge.get("source"), predicate)] = quals
+    return index
+
+
 def _declared_columns(nodes, entities):
     """The declared column names across the types this walk reached, first-seen order.
 
@@ -1065,7 +1092,14 @@ def rows_projection(payload, nodes, edges, seed_signs, entities,
     cut = truncation.get("reason") or "none"
 
     declared = _declared_columns(visible, entities)
-    header = list(ROW_FIXED_COLUMNS) + declared
+    edge_quals = _edge_qualifiers(edges)
+    # First-seen order, and AFTER the declared columns: a row is read identity-first.
+    via_columns = []
+    for quals in edge_quals.values():
+        for name in quals:
+            if VIA_PREFIX + str(name) not in via_columns:
+                via_columns.append(VIA_PREFIX + str(name))
+    header = list(ROW_FIXED_COLUMNS) + declared + via_columns
     lines = ["# truncated=%s nodes=%d limit=%s" % (
         cut, len(visible), limits.get("nodes")),
         "\t".join(header)]
@@ -1097,6 +1131,12 @@ def rows_projection(payload, nodes, edges, seed_signs, entities,
             carried.update(node.get("attributes") or {})
             row = [_row_cell(values.get(name)) for name in ROW_FIXED_COLUMNS]
             row += [_row_cell(carried.get(name)) for name in declared]
+            # ⚠️ THE SEED ROW HAS NO REACHING EDGE, so its `via.` cells are blank - the
+            # honest answer rather than a gap, because nothing walked to it.
+            reached_by = (edge_quals.get((ids[-2], node_id, values["via"]))
+                          if len(ids) > 1 else None) or {}
+            row += [_row_cell(reached_by.get(name[len(VIA_PREFIX):]))
+                    for name in via_columns]
             lines.append("\t".join(row))
     return "\n".join(lines) + "\n"
 

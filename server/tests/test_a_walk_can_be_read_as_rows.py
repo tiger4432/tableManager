@@ -337,3 +337,70 @@ def test_the_route_itself_answers_rows():
                          params=dict(params, format="json"))
     assert as_json.status_code == 200
     assert len(lines) - 2 >= len(as_json.json().get("nodes") or [])
+
+
+# ---------------------------------------------------------------------------
+# S-183-b (판정 294) — the reaching edge's qualifiers, under a prefix
+# ---------------------------------------------------------------------------
+
+EDGES_WITH_QUALS = [
+    {"source": SEED, "target": MID, "predicate": "inspected",
+     "qualifiers": {"gate": "E1", "step": 10}},
+    {"source": MID, "target": LEAF, "predicate": "observed",
+     "qualifiers": {"gate": "E2"}},
+]
+
+
+def _rows_with_edge_quals():
+    text = ls.rows_projection(_payload(), NODES, EDGES_WITH_QUALS, {SEED: 1}, ENTITIES)
+    lines = text.rstrip("\n").split("\n")
+    return lines[1].split("\t"), [line.split("\t") for line in lines[2:]]
+
+
+def test_the_reaching_edges_qualifiers_ride_as_via_columns():
+    header, body = _rows_with_edge_quals()
+    assert "via.gate" in header and "via.step" in header
+    by_id = {row[header.index("id")]: row for row in body}
+    assert by_id[MID][header.index("via.gate")] == "E1"
+    assert by_id[MID][header.index("via.step")] == "10"
+    # the second hop was reached by a DIFFERENT edge, and carries that edge's value
+    assert by_id[LEAF][header.index("via.gate")] == "E2"
+    assert by_id[LEAF][header.index("via.step")] == ""
+
+
+def test_the_prefix_makes_a_collision_with_a_node_column_impossible():
+    """🔴 THE GATE 판정 294 NAMED. `gate` is a node qualifier on the die AND an edge
+    qualifier on the edge that reached it. Without the prefix those are one column and the
+    edge's value silently overwrites the node's — in a table where both are real facts."""
+    header, body = _rows_with_edge_quals()
+    assert "gate" in header and "via.gate" in header
+    by_id = {row[header.index("id")]: row for row in body}
+    assert by_id[MID][header.index("gate")] == "7", "the node's own qualifier was lost"
+    assert by_id[MID][header.index("via.gate")] == "E1", "the edge's qualifier was lost"
+
+
+def test_the_seed_row_has_no_reaching_edge_so_its_via_cells_are_blank():
+    header, body = _rows_with_edge_quals()
+    seed_row = next(r for r in body if r[header.index("id")] == SEED)
+    assert seed_row[header.index("via.gate")] == ""
+
+
+def test_via_columns_sit_after_the_declared_ones():
+    """A row is read identity-first; the edge's facts follow what the node IS."""
+    header, _body = _rows_with_edge_quals()
+    assert header.index("mat_id") < header.index("via.gate")
+
+
+def test_depth_and_path_are_untouched_by_the_new_columns():
+    """판정 294: 「depth=path 그대로」 — the new axis must not disturb the old gate."""
+    header, body = _rows_with_edge_quals()
+    for row in body:
+        predicates = [p for p in row[header.index("path")].split("→") if p]
+        assert len(predicates) == int(row[header.index("depth")]), row
+
+
+def test_an_edge_carrying_no_qualifiers_adds_no_column():
+    """The control: `via.` columns come from what the answer CARRIED, so a walk whose
+    edges carry nothing must render byte-identically to before this feature."""
+    _marker, header, _body = _rows()
+    assert not [name for name in header if name.startswith("via.")]
