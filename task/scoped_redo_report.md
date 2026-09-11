@@ -33476,3 +33476,63 @@ cell_sources: Index Only Scan using idx_sources_lookup_source on cell_sources
 ```
 다르게 원하시면 한 줄 주십시오(제가 임시로 넣었다 되돌리는 것도 가능합니다).
 > 📌 **[09-11 14:2x] 이 채널의 미답 질문: 3절 «임계를 실제로 만져서 재볼까» 하나(안 급함). 다음 S-173.**
+
+---
+
+# S-177 ① — 「은퇴한 선언은 «내용»을 안 읽는다」 착지 (`5f2b1b72`)
+
+소유자 말씀(「아예 못 읽는 선언은 retired 가 안 먹던데」)이 **코드에서 그대로 확인됐습니다.**
+`status: retired` 는 «도는 쪽»을 이미 전부 막고 있었습니다 — `sources_for_table` 이 거르고,
+census 가 건너뛰고, `backfill.run` 이 이름 대어 거절합니다. **안 막힌 것은 «검증기» 하나입니다.**
+`_validate_sources` 가 `bind`·`prepare`·`map` 을 그대로 판정하고, `_cross_validate` 가 그
+컬럼들을 `table_config.json` 에 대고 판정합니다 — 은퇴 여부와 «무관하게».
+그래서 **소스가 안 읽게 되면 운영자가 지워도 되는 바로 그 표**가, 사라지는 순간 번들 «전체»를
+거절합니다. 번들이 거절되면 원장이 섭니다.
+
+## 1. 고친 것 — 은퇴 = 「내용을 안 본다」
+```
+검증    is_retired 하나로 «한 스펠링». 은퇴 소스는 «모양»만 판정 —
+        exact(모르는 키 거절) · relation · status 는 그대로(보여 주는 화면이 읽으므로)
+        세 절(bind/prepare/map)과 그 컬럼·relation 의 카탈로그 대조는 «건너뜀»
+        엔티티도 같은 규칙이되 `references` «하나»만 — 엔티티 절 중 「바깥 선언」에 기대는 것이 그것뿐입니다
+        (활성 술어가 은퇴 엔티티를 이름 대는 것은 «오늘 규칙 그대로» 거절)
+컴파일  SourcePlan.driver / .profile 가 은퇴 소스에서만 None.
+        이름 · status · relation 만 등록, mapper/profile/preparer 레지스트리엔 «없음»
+읽기    status 를 «안 묻던» 네 자리에 물음을 넣음 —
+        뒤따르기 뷰 색인 · 부팅 커서 재스탬프 · /declaration 의 컴파일 컬럼 목록 ·
+        source_cursor_fingerprint(None 필드에서 죽는 대신 «이름 대어» 거절)
+보임    /declaration: `content_validated: false` · `scope_columns` 는 «생략»
+        (비우지 «않습니다» — []는 「읽는 컬럼이 없다」는 «다른 사실»입니다)
+        census 램프 줄 · `python -m ledger census`: 은퇴한 것을 «이름»으로 냅니다
+```
+🔵 그리고 **`backfill.run` 이 들고 있던 `source_retired` 거절을 `_require_declared_source` 로
+   글자 그대로 옮겼습니다.** 그 거절이 «거기 하나»뿐이라, 탐색기 미리보기·실행으로 은퇴 소스를
+   타이핑하면 «없는 계획»에 닿고 있었습니다. 한 스펠링, 호출자 셋.
+
+## 2. 게이트
+픽스처: 멀쩡한 활성 소스 하나 + relation·정렬·바인딩을 카탈로그가 «한 번도 들어 본 적 없는» 은퇴 소스.
+```
+번들 로드됨                                    ✅
+같은 소스를 active 로 두면 unknown_relation 거절  ✅  (판별식 — 한 낱말이 답을 가릅니다)
+is_retired 를 False 로 치환하면 «빨강»            ✅  (치환 자체를 단언했습니다)
+은퇴 계획 = 이름·status·relation, 본체 «없음»     ✅
+활성 이웃은 «통째로» 계획됨                       ✅
+```
+
+## 3. 이웃 — 고친 «심볼»로 모집단을 만들었습니다(35 파일)
+```
+660 passed · 7 skipped
+빨강 3 · 에러 12   전부 `EventFrame schema: event_time` 부류
+                  🔵 제 변경을 «stash 하고» 같은 파일들을 돌려 «똑같이» 재현했습니다 — HEAD 의 것입니다
+                  (판정 263 의 「남은 16」과 같은 가족으로 보입니다)
+커밋 뒤 수집       5,635 tests collected, 오류 0
+```
+⚠️ 그 과정에서 «제가 낸 빨강 하나»를 잡았습니다 — `test_a_view_says_which_tables_it_reads.py` 의
+   `_Plan` 더블이 `status` 를 «안 들고» 있었습니다. 진짜 `SourcePlan` 은 항상 듭니다.
+   더블에 넣고, 은퇴 소스가 뷰 색인에 «안 들어간다»는 시험을 그 파일에 하나 더했습니다.
+
+## 4. 재기동 — «총괄 몫»입니다
+선언 로딩 경로라 API 서버와 체인 워커 둘 다 새로 읽어야 합니다.
+
+> 📌 **[09-11 15:xx] 이 채널의 미답 질문: 「임계를 실제로 만져서 재볼까」 하나(안 급함, S-169 3절).
+> 다음: S-174 ①② 재개 — 파킹해 둔 `refuse_virtual_join_duplicates` 를 되살려 배선합니다.**

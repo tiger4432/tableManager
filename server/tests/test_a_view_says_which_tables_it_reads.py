@@ -145,8 +145,12 @@ def test_each_relation_is_asked_about_once():
 # ------------------------------------------------- which view sources a base table wakes
 
 class _Plan:
-    def __init__(self, relation, page_key):
+    # `status` is spelled out rather than left off: the real `SourcePlan` always carries it,
+    # and a double that omits a field the production code reads turns a live AttributeError
+    # into a green test. It also makes the retired case expressible below.
+    def __init__(self, relation, page_key, status="active"):
         self.relation = relation
+        self.status = status
         self.driver = type("D", (), {"cursor_columns": (page_key,),
                                      "identity": (page_key,)})()
 
@@ -188,6 +192,23 @@ def test_a_base_table_without_the_page_key_is_named_and_not_silently_dropped():
     assert followers == []
     assert cannot == [{"view": "void_obs_observed", "source": "void_observation",
                        "base": "inspection_run", "missing_column": "void_uid"}]
+
+
+def test_a_retired_source_is_not_in_the_view_index():
+    """S-177 ①. Retirement means the source is no longer read, so it is not followed either
+    -- and its plan now carries no driver, so asking it for a page key would raise while
+    resolving a view chain for a table the declaration has stopped reading."""
+    engine = _Engine(
+        edges={"void_obs_observed": [("void_obs", "r")]},
+        columns={"void_obs": ("void_uid",)})
+    setup = _setup({"void_observation": _Plan("void_obs_observed", "void_uid",
+                                              status="retired")})
+    followers, cannot = followup.view_followers_of(engine, setup, "void_obs")
+    assert followers == []
+    # ⛔ AND NOT AS A `cannot_follow` EITHER. That list is for a source that SHOULD be
+    # followed and cannot; a retired one should not be, so naming it there would publish a
+    # repair nobody owes.
+    assert cannot == []
 
 
 def test_a_table_source_is_not_woken_twice():

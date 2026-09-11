@@ -205,6 +205,13 @@ def view_followers_of(engine, setup, table):
     if built is None:
         follows, cannot = {}, {}
         for source, plan in snapshot.source_plans.items():
+            # 🔴 A RETIRED SOURCE IS NOT FOLLOWED, AND AFTER S-177 ① IT CANNOT BE.
+            # `sources_for_table` below already filters by status, so a retired entry here
+            # only ever built an index nobody read - and its plan now carries no driver, so
+            # `scope_column` would raise while resolving a view chain for a table the
+            # declaration has stopped reading.
+            if plan.status != "active":
+                continue
             relation = plan.relation
             key = scope_column(plan)
             try:
