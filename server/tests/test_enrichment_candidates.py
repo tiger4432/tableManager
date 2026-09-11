@@ -1005,6 +1005,51 @@ def pg_abort_semantics(cand_env):
         cand_env.rollback()
 
 
+def test_a_reference_view_opens_a_transaction_before_its_savepoint():
+    """🔴 25P01, MEASURED IN PRODUCTION (S-166, 2026-09-11).
+
+    `_isolated_execute` wraps a user-authored statement in a SAVEPOINT so a failure cannot
+    poison the session. But `begin_nested()` on a session that has not begun a transaction
+    raises `no_active_sql_transaction` (25P01) - so a read-only route that had issued no
+    statement yet answered a reference view with that error instead of rows. The SAME
+    defect broke the chain's shared write scope earlier the same day.
+
+    ⚠️ pysqlite CANNOT REPRODUCE IT - it opens no transaction for a SELECT and raises
+    nothing here, which is this function's own documented reason for a fault injector. So
+    the double refuses exactly the way the driver does, and the assertion is that a
+    transaction is opened FIRST.
+    """
+    import enrichment_config
+
+    class Session:
+        def __init__(self):
+            self.in_tx = False
+            self.begins = 0
+
+        def in_transaction(self):
+            return self.in_tx
+
+        def begin(self):
+            self.begins += 1
+            self.in_tx = True
+
+        def begin_nested(self):
+            if not self.in_tx:
+                raise AssertionError("25P01: SAVEPOINT with no active transaction")
+            return type("SP", (), {"rollback": lambda s: None,
+                                   "commit": lambda s: None})()
+
+        def execute(self, stmt, params):
+            return type("R", (), {"keys": lambda s: ["a"],
+                                  "fetchall": lambda s: [(1,)]})()
+
+    session = Session()
+    columns, rows = enrichment_config._isolated_execute(session, "SELECT 1", {})
+
+    assert session.begins == 1, "the transaction must be opened before the savepoint"
+    assert columns == ["a"] and rows == [(1,)]
+
+
 def test_the_abort_injection_actually_bites(cand_env, pg_abort_semantics):
     """Guard on the guard. If the injector silently did nothing, the two tests
     below would pass on a defect - which is exactly how the suite came to
