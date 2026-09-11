@@ -1,4 +1,5 @@
-import { isDraftRevisionEditable, declarationIdFor } from './ontology_explorer_store.js';
+import { isDraftRevisionEditable, declarationIdFor, fieldOpensByDefault }
+  from './ontology_explorer_store.js';
 import { commitTree } from './dom_patch.js';
 import { splitBundlePath, getAtPath } from './ontology_path.js';
 import {
@@ -1690,12 +1691,6 @@ function renderSkeletonForm(context, node, path, value, depth = 0, label = null,
   // map as open in the same action that adds the member, so the row the person just created
   // is the row they are looking at. In READING there is no door -- an empty map there really
   // is nothing -- so the outline stays folded and says how much.
-  const byDefault = depth <= 1
-    || needsAttention(context.hot, context.absolute(path))
-    || (!context.readOnly && shape.kind === 'map'
-        && membersOf(shape, value).length === 0);
-  const chosen = context.expanded ? context.expanded[path] : undefined;
-  const open = !path ? true : (chosen === undefined ? byDefault : chosen);
   const box = h('div', 'oe-node');
   // The address the right-hand map jumps to. It is the node's own path and nothing else --
   // the map is drawn from the same paths, so there is no second naming scheme to keep in
@@ -1716,6 +1711,20 @@ function renderSkeletonForm(context, node, path, value, depth = 0, label = null,
   const children = shape.kind === 'map'
     ? renderSkeletonMap(context, shape, path, value, depth)
     : renderSkeletonRecord(context, shape, path, value, depth, covers);
+  // 🔴 접힘의 «초기값»은 이 파일이 안 정합니다 — 사실만 건네고 답은 스토어가 냅니다
+  //    (`fieldOpensByDefault`). 렌더가 자기 예외를 하나 두면 그 예외는 다른 렌더에 «없고»,
+  //    같은 줄이 화면마다 다르게 태어납니다.
+  // ⚠️ 자식을 «먼저» 짓는 이유: 하나뿐인 자식을 감추지 않으려면 몇인지 알아야 하고, 그 수는
+  //    접힌 줄이 화면에 적는 수(「접힘 · N」)와 «같은 수»여야 합니다.
+  const open = fieldOpensByDefault({
+    isRoot: !path,
+    chosen: context.expanded ? context.expanded[path] : undefined,
+    depth,
+    attention: needsAttention(context.hot, context.absolute(path)),
+    emptyDoor: !context.readOnly && shape.kind === 'map'
+      && membersOf(shape, value).length === 0,
+    childCount: children.childElementCount,
+  });
   {
     // 🔴 A FOLD SHOWS ITS COUNT. Folding without saying how many were folded is deleting
     // with extra steps -- the mockup's rule is 「접힌 것은 개수를 보인다」, and it is the

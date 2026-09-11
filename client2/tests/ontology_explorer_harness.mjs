@@ -2,9 +2,13 @@
 // Run: node client2/tests/ontology_explorer_harness.mjs
 import {
   initialExplorerState, reduceExplorerState, assertOneContext, canLeaveSelection,
+  fieldOpensByDefault, relationInEffect, draftValueAt,
   dirtyNavigationDecision, isDraftRevisionEditable, mirrorLoaded, reduceNewDeclaration,
   restoreDirtyEditorCheckpoint, sectionMembers,
 } from '../src/ontology_explorer_store.js';
+// The path tools the store is handed rather than importing, so it stays a pure reducer
+// module. The harness hands it the SAME pair the controller does.
+import { splitBundlePath, getAtPath } from '../src/ontology_path.js';
 
 let ran = 0;
 let failed = 0;
@@ -362,6 +366,106 @@ const payload = (token, selected = 'entity|A@1') => ({
     reduced({ references_truncated: true }).referencesTruncated === false);
   check('G10 and a response that does not say is not read as truncated',
     reduced({}).referencesTruncated === false);
+}
+
+// ── C-82: the initial fold, decided in ONE place ─────────────────────────────────
+//
+// 🔴 THE DEFAULT USED TO LIVE IN THE VIEW. `expandedFields` only ever recorded what a person
+//    chose; the rule that decides an untouched row was a local expression in
+//    `ontology_explorer_view.js`, so no test could reach it and a second render could answer
+//    differently. It is `fieldOpensByDefault` now, and these are its cases.
+{
+  const open = (facts) => fieldOpensByDefault(facts);
+  // Owner 2026-09-11 「1개면 접지 마」 — the whole reason this round exists.
+  check('O1 one child is born open', open({ depth: 3, childCount: 1 }) === true);
+  check('O2 two children keep today\'s answer', open({ depth: 3, childCount: 2 }) === false);
+  // 🔴 NOTHING IS BORN OPEN BECAUSE IT IS EMPTY. A folded empty row says 「접힘 · 0」, which is
+  //    a true statement about nothing; opening it would draw a blank.
+  check('O3 no children stays folded', open({ depth: 3, childCount: 0 }) === false);
+
+  // A hand beats every rule, in both directions, and that is what keeps a fold a fold.
+  check('O4 a hand that shut it wins over the one-child rule',
+    open({ depth: 3, childCount: 1, chosen: false }) === false);
+  check('O5 a hand that opened it wins too',
+    open({ depth: 3, childCount: 9, chosen: true }) === true);
+  // 판정 1073: 「점프는 닫지 않는다」 — a jump records nothing, so the hand's answer survives it.
+  check('O6 an untouched row is the rule\'s to answer',
+    open({ depth: 3, childCount: 1, chosen: undefined }) === true);
+
+  // The rules that were already there, now measured in the open.
+  check('O7 the outline is always drawn', open({ isRoot: true, chosen: false }) === true);
+  check('O8 the top two levels are open', open({ depth: 1, childCount: 9 }) === true);
+  check('O9 a row with something remaining is open',
+    open({ depth: 5, childCount: 9, attention: true }) === true);
+  check('O10 an empty map being edited shows its door',
+    open({ depth: 5, childCount: 0, emptyDoor: true }) === true);
+  check('O11 nothing here ever SHUTS a row',
+    [{ depth: 9, childCount: 5 }, { depth: 9, childCount: 0 }]
+      .every((f) => open({ ...f, chosen: true }) === true));
+}
+
+// ── C-82 ②: the column list follows the DRAFT, not the saved plan ────────────────
+//
+// Owner 2026-09-11: 「저장해야 뜨는데 바로 반영되게」. The list was asked for at one moment —
+// when the authoring plan arrived — about the relation THAT PLAN carried, and a plan only
+// exists after a save. So the fix is not 「ask more often」; it is 「ask about the right
+// subject」, and `relationInEffect` is that subject, for both moments.
+{
+  const tools = { splitBundlePath, getAtPath };
+  const PLAN = { fields: [
+    { path: 'sources.dt_job.read.relation', value: 'public.saved_table' },
+    { path: 'sources.dt_job.read.occurred_at.column', value: 'event_time' },
+  ] };
+  const SCHEMA = { authorable_kinds: [{ id: 'source_plan', section: 'sources' }] };
+  const withDraft = (doc, targetId = 'dt_job') => ({
+    ...initialExplorerState,
+    authoringSchema: SCHEMA,
+    draft: { target_kind: 'source_plan', target_id: targetId },
+    editorText: JSON.stringify(doc),
+  });
+
+  check('R1 with no draft open, the saved plan answers',
+    relationInEffect(initialExplorerState, PLAN, tools) === 'public.saved_table');
+  // 🔴 THE ROUND'S WHOLE POINT: typed, not saved, and the choices already follow it.
+  check('R2 a draft that has typed a relation answers instead',
+    relationInEffect(withDraft({ read: { relation: 'public.typed_table' } }), PLAN, tools)
+      === 'public.typed_table');
+  // 🔴 AND IT WINS WHILE THE PLAN STILL SAYS THE OLD ONE — which is every moment before a
+  //    save. If the plan won here, 「바로 반영」 would be impossible no matter how often we ask.
+  check('R3 ...even though the plan still carries the old value',
+    PLAN.fields[0].value === 'public.saved_table');
+
+  // ⚠️ A FIELD BEING CLEARED IS NOT A RELATION. Asking about '' would send a full-table-scan
+  //    route one request per deleted character.
+  check('R4 an emptied field asks about nothing',
+    relationInEffect(withDraft({ read: { relation: '' } }), PLAN, tools) === null);
+  // A draft that has not touched the field falls through to the saved value rather than
+  // reading 「not typed」 as 「no relation」.
+  check('R5 a draft that never touched it falls back to the plan',
+    relationInEffect(withDraft({ read: { occurred_at: { column: 'x' } } }), PLAN, tools)
+      === 'public.saved_table');
+  // 🔴 SOMEBODY ELSE'S DRAFT IS NOT AN ANSWER. The guard is 「is this leaf mine」, and without
+  //    it a draft on one declaration would rewrite the choices shown for another.
+  check('R6 a draft on a different declaration does not answer',
+    relationInEffect(withDraft({ read: { relation: 'public.other' } }, 'dt_other'), PLAN, tools)
+      === 'public.saved_table');
+  check('R7 a plan with no relation field asks about nothing',
+    relationInEffect(initialExplorerState, { fields: [] }, tools) === null);
+  // 🔴 ONE FUNCTION, BOTH MOMENTS. After the save the plan carries what the draft had, and the
+  //    same call must give the same answer — that is what keeps 「저장 전」 and 「저장 후」 from
+  //    being two paths that can drift (기준 ④).
+  const saved = { fields: [{ path: 'sources.dt_job.read.relation', value: 'public.typed_table' }] };
+  check('R8 after the save, the same function gives the same answer',
+    relationInEffect(initialExplorerState, saved, tools)
+      === relationInEffect(withDraft({ read: { relation: 'public.typed_table' } }), PLAN, tools));
+
+  // The leaf reader the rule stands on, in its own right.
+  check('R9 the draft leaf is read under the section and id guards',
+    draftValueAt(withDraft({ read: { relation: 'public.typed_table' } }),
+      'sources.dt_job.read.relation', tools) === 'public.typed_table');
+  check('R10 ...and says 「모른다」 rather than null when the leaf is not this draft\'s',
+    draftValueAt(withDraft({ read: { relation: 'x' } }, 'dt_other'),
+      'sources.dt_job.read.relation', tools) === undefined);
 }
 
 console.log(`ASSERTIONS ${ran} ${failed}`);
