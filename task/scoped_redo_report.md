@@ -33122,3 +33122,132 @@ autocommit 커넥션에서는 `session.begin()` 이 BEGIN 을 «안 냅니다»
 ④ 그다음 라이브 게이트 셋(S-164 청크 줄 · S-162 전/후 · xmin)
 ```
 > 📌 **[09-11 13:3x] 이 채널의 미답 질문: «없음» — 재기동 부탁드립니다.**
+
+---
+
+# [09-11 13:4x] 라이브 다섯 — ①②③⑤ 통과, 🔴 **④ 는 «실패»입니다(제 설계가 틀렸습니다)**
+
+## ① 참조뷰 0 — «닫힘»
+```
+바인드 없이   400 「missing required bind param(s): ['dt_job']」   <- «이름 있는» 거절
+바인드 주면   «HTTP 200»
+25P01        재기동 뒤 «0»
+```
+S-166+S-167 로 그 경로가 닫혔습니다.
+
+## ② S-160 — «실측으로 닫습니다»
+연속 여섯(씨앗 9880000~9885000), 그리고 «돌았는지»를 먼저 확인했습니다(0 이 「안 돌아서 0」이면 안 되므로):
+```
+alignment rows_in   1000 × 6        ✅ 실제로 돌았습니다
+LOST                여섯 구간 «0»
+rows_not_visible «0» · 계기 줄 «0» · 미룸 «0» · 25P01 «0» · 재전개 «0»
+pending             «0» (밀렸던 ~9,000 전부 소화)
+```
+🔵 지시하신 기준(「0 이면 실측으로 닫음」) 충족 — **S-160 을 닫습니다.**
+   기제는 S-167(오염 커넥션이 autocommit 으로 행과 사건을 다른 커밋에 쓰던 것)로 봅니다.
+
+## ③ 격리 리플레이 — «전부 복구»
+```
+AFTER: distinct dt_job 8,000 -> dt_inventory «8,000»
+```
+(접힘 7 = 7,000 + per-row 1,012 가 가리키던 행 전체)
+
+## ⑤ S-164 청크 줄 — «통과», 합이 벽시계와 «정확히» 맞습니다
+```
+[Ingest] dt_log chunk 4: 1000 row(s) in 2.016 s · STAGES
+  apply 1.953 · commit 0.000 · parse 0.047 · unnamed 0.016      합 = «2.016» ✅
+  INSIDE THE WRITE  flush 0.422 · prefetch 0.000 · row build 0.421 · side tables «1.063»
+```
+⚠️ 첫 시도는 파일이 «거절»됐습니다(`dt_cell_key` 없음) — 파서가 옳게 막은 것이고 계기 문제가 아니라,
+   키 컬럼을 넣어 다시 떨어뜨렸습니다.
+
+## ④ 🔴 S-162 ⓐ — **이득이 «없습니다». 제 설계 추정이 틀렸습니다**
+```
+배관 중앙값   1.695 s   (전 1.66)  -> «개선 없음»
+내역          write:* 1.23 -> «0.891»  (−0.34)
+              MACHINERY unnamed 0.375 -> «0.796»  (+0.42)   <- 플러시가 write 스테이지 «밖»으로 나감
+side tables   두 패스 0.458 -> 한 패스 «0.437»  =  절약 «0.02»   (제 예측은 0.23)
+```
+🔴 **원인: 부수 표 비용이 «패스당»이 아니라 «행당»입니다.** 프로토타입에서 「1,000 행 한 패스
+   0.110 s」를 재고 «두 표면 두 배»로 가정했는데, 실제 두 표 비용(0.458)은 «2,000 행»의 값이고
+   한 패스로 합쳐도 «같은 2,000 행»을 씁니다. 합치는 것이 줄이는 것이 아니었습니다.
+
+### 그리고 xmin 게이트도 «실패»입니다
+```
+체인 그룹 chain_01a08eb3-…
+  dt_inventory        rows xmin 3248756   cell_sources 3248754
+  dt_job_attribution  rows xmin 3248755   cell_sources 3248754
+  outbox events                            3248770
+  -> distinct xmin «넷». «한 커밋이 아닙니다»
+```
+🔴 스코프는 «걸려 있습니다»(그룹 줄의 commit 0.000 · side tables 한 번 0.437). 그런데도 표별 행이
+   다른 트랜잭션에 있습니다. **왜인지 아직 «모릅니다» — 추정으로 안 적습니다.**
+⚠️ 처음엔 «리플레이 트랜잭션»(uuid4)을 재서 실패로 읽을 뻔했습니다. 체인 그룹(uuid7)으로 다시 재도 같습니다.
+
+## 다음 — 판정 청합니다
+```
+S-162 ⓐ 는 «이득 0 · 게이트 실패» 입니다. 되돌릴지, 원인을 더 볼지 정해 주십시오
+제 의견: 「한 커밋」이 안 되고 있으니 «되돌리는» 쪽이 안전합니다 —
+        SAVEPOINT·공유 누적이 얻는 것 없이 복잡도와 위험만 남습니다(오늘 사고 둘이 그 위에서 났습니다)
+```
+> 📌 **[09-11 13:4x] 이 채널의 미답 질문: S-162 ⓐ «되돌릴까/더 볼까» 하나.**
+
+---
+
+# [09-11 13:5x] S-168 — 제품이 «실제로 내는» 선인출 문장 셋 (코드 0)
+
+## 1. ⚠️ 먼저 정정 — 선인출 문장은 «넷이 아니라 셋»입니다
+지시에 「대상 표 기존 행 · 신원 probe · cell_sources · cell_overwrites」 넷이라 하셨는데,
+**«신원 probe» 는 SQL 이 아닙니다** — `ProbedIdentity` 는 1번 질의의 «결과로» 메모리에서
+집합 뺄셈을 합니다(`frozenset(target_ids) - _found_ids`). DB 를 안 갑니다.
+🔵 그래서 운영의 prefetch 10 s 는 «셋 중 하나»입니다.
+
+## 2. 문장 셋 (PostgreSQL 방언으로 컴파일, 바인드 자리 그대로)
+```sql
+-- 1) 대상 표의 기존 행: row_id «또는» business_key_val
+SELECT dt_log.row_id, dt_log.business_key_val, … (전 컬럼) …
+  FROM dt_log
+ WHERE dt_log.row_id IN (__[POSTCOMPILE_row_id_1])
+    OR dt_log.business_key_val IN (__[POSTCOMPILE_business_key_val_1])
+
+-- 2) cell_sources 선인출
+SELECT cell_sources.table_name, cell_sources.row_id, cell_sources.column_name,
+       cell_sources.source_name, cell_sources.value, cell_sources.updated_by,
+       cell_sources.ingested_at
+  FROM cell_sources
+ WHERE cell_sources.table_name = %(table_name_1)s
+   AND cell_sources.row_id IN (__[POSTCOMPILE_row_id_1])
+
+-- 3) cell_overwrites 선인출
+SELECT cell_overwrites.table_name, cell_overwrites.row_id, cell_overwrites.column_name,
+       cell_overwrites.is_overwrite, cell_overwrites.updated_by, cell_overwrites.updated_at,
+       cell_overwrites.manual_priority_source
+  FROM cell_overwrites
+ WHERE cell_overwrites.table_name = %(table_name_1)s
+   AND cell_overwrites.row_id IN (__[POSTCOMPILE_row_id_1])
+```
+🔴 **1번이 `OR` 입니다.** 두 갈래가 각각 다른 인덱스를 타야 하므로 플래너가 BitmapOr 를 못 쓰면
+   순차 스캔으로 갑니다 — 운영에서 확인할 첫 자리로 올립니다.
+
+## 3. 이 박스의 «인덱스와 행 수» (운영과 «diff» 하시라고)
+```
+cell_sources     행 «38,668,981»
+   idx_sources_lookup_source   (table_name, row_id, column_name, source_name)   <- 2번이 쓰는 것
+   idx_sources_human_claims    (table_name, row_id, column_name) WHERE source_name='user'
+   ix_cell_sources_row_id (row_id) · ix_cell_sources_table_name (table_name) · …_column_name
+cell_overwrites  행 121,993
+   idx_overwrites_lookup       (table_name, row_id)            <- 3번이 쓰는 것(전용)
+   idx_overwrites_lookup_col   (table_name, row_id, column_name)
+```
+🔴 **`cell_sources` 에는 «(table_name, row_id)» 전용 인덱스가 «없습니다»** — 2번은
+   `idx_sources_lookup_source` 의 «앞 두 컬럼»에 얹혀 갑니다. 그 인덱스가 운영에 «없거나
+   드롭됐으면» 3,800만 행에서 선인출이 무너집니다.
+⚠️ 저장소에 `scripts/drop_redundant_layering_indexes.py` 가 있습니다 — 운영에서 그것이 돌아
+   `idx_sources_lookup_source` 가 사라졌는지 «먼저» 확인하실 자리로 올립니다(제가 운영을 못 봅니다).
+
+## 4. 운영에서 붙여 주실 것 (SQL 없이, 소유자가 못 내시므로 «값»만)
+```
+① 위 세 문장 각각의 EXPLAIN (ANALYZE 없이도 계획만으로 갈립니다)
+② cell_sources 의 인덱스 목록 + 행 수      (S-169 ②가 기동 줄로 내면 붙이실 필요도 없습니다)
+```
+> 📌 **[09-11 13:5x] 이 채널의 미답 질문: «없음» (S-162 ⓐ 되돌림 판정은 여전히 대기).**
