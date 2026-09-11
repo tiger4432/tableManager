@@ -34839,3 +34839,137 @@ R5 가 다스리는 «세상 시각»이 아닙니다. 그러므로 컬럼 단�
 
 > 📌 **[09-11 21:02] 이 채널의 미답 질문: «없음». ⓑ 는 위 ①~⑤ 로 지을 준비가 됐고,
 > 착수는 「경고 0 + 소유자 선언」 뒤입니다. 다음은 S-179 ① 설계로 갑니다.**
+
+## 12. S-179 ① 설계 — 인리치는 체인 규칙의 «한 종류»다 (코드 0)
+
+📎 규범이 이미 그렇게 적고 있습니다 — **BASIS §4.5**: 「체인 `write ↦ E ↦ walk ; write` —
+별도 «규칙 언어»가 필요 없다(4.3 사건 연쇄) — **오늘 enrichment 규칙은 «이 꼴로 다시 적혀야» 한다**」.
+이 장은 그 문장의 «시공도»입니다.
+
+### 0. 출발점 — 절반은 «이미» 접혀 있습니다 (판정 283 이 짚은 그 줄)
+```
+enrichment_config.load_enrichment_chain_rules()  → 규칙마다 체인 규칙 «하나»를 합성
+  name           "enrichment_dedup:<이름>"
+  trigger_table  source_table        target_table  derived_table
+  mapper_module  enrichment_mapper   mapper_function  map_enrichment_dedup
+  is_batch/enabled  True / True
+  enrichment     ← 규칙 «통째로» 실림
+기동 줄: 「Synthesized 4 dedup chain rule(s) from enrichment_rules.json」
+```
+🔴 **그래서 오늘 인리치는 «두 경로»입니다** — dedup 절반은 «체인 규칙»으로 돌고,
+자동 확정 절반은 «드레인 자리»에 남아 있습니다. 판정 291 의 첫 물음(「한 경로인지」)의 답:
+**아니요, 오늘은 둘입니다. 이 설계가 둘째를 첫째와 같은 꼴로 만듭니다.**
+
+⚠️ 그리고 합성은 칸을 «대응»시키지 않고 «통째로 싣습니다»(`"enrichment": rule`). 밀수입니다 —
+체인 워커가 그 blob 을 이해하는 게 아니라 `enrichment_mapper` 가 풀어 씁니다. ①이 그것을 풉니다.
+
+### ① 두 로더의 칸 대응 «전수» — 🔴 지시하신 모양이 «다섯 칸»을 떨어뜨립니다
+`_validate_rule` 이 내놓는 정규화 규칙의 칸 «열둘»:
+| 인리치 칸 | 접은 뒤 자리 | 비고 |
+|---|---|---|
+| `name` | 체인 규칙 `name` | `enrichment_auto_confirm:<이름>` |
+| `source_table` | — | 자동 확정 종류는 «자기 표»만 본다(아래 ②) |
+| `derived_table` | `trigger_table` = `target_table` | 지시하신 그대로 |
+| `decision_key` | `params.decision_key` | ✅ 지시에 있음 |
+| `target_fields` | `params.target_fields` | ✅ |
+| `reference_views` | `params.reference_views` | ✅ |
+| `aggregations` | `params.aggregations` | ✅ |
+| `list_columns` | `params.list_columns` | 🔴 **지시 목록에 없음** — 워크리스트 표시 단서, 선언 칸 |
+| `auto_confirm` | `params.auto_confirm` | 🔴 **없음** — 접는 대상 «그 자체»의 설정 |
+| `auto_confirm_declared` | `params.auto_confirm_declared` | 🔴 **없음** — 「명시 선언인가」 표지 |
+| `alignment` | `params.alignment` | 🔴 **없음** |
+| `claim_contract` | `params.claim_contract` | 🔴 **없음** |
+```
+지시하신 params = {decision_key, target_fields, reference_views, aggregations}  ← 넷
+실측 정규화 칸                                                                  ← 열둘
+=> 「빠지는 칸 0」 요구를 그대로 적용하면 params 는 «여덟»이어야 합니다(위 표)
+```
+🔵 **이름 변경은 «0» 입니다** — 칸 이름을 그대로 `params` 밑으로 옮기기만 합니다(지시 그대로).
+
+🔴 그리고 «오늘 하드코딩인 칸이 하나» 있습니다: 합성이 `"enabled": True` 를 «상수로» 씁니다.
+오늘은 안전합니다 — `_validate_rule` 이 `enabled: false` 를 «세 함수 위»에서 걸러 내기 때문입니다.
+그러나 그 필터가 움직이면 «꺼진 규칙이 켜진 체인 규칙»이 됩니다(「가드는 도달 가능해지는 날 틀린다」).
+접을 때 `enabled` 를 «규칙에서» 실어야 합니다 — 상수로 두지 않습니다.
+
+### ② 옵트인·trigger_columns·고리·HOL·재시도가 이 종류에 «어떻게» 걸리나
+| 칸/기제 | 이 종류에서 | 왜 |
+|---|---|---|
+| `allow_chain_trigger` | **선언 안 함** | 🔴 핑퐁 가드가 여기 앉습니다 — 아래 별도 |
+| `follow_up: true` | 드레인 랩에서 «페이싱되어» | 그룹 인라인이면 0.875 s 교훈이 되살아납니다 |
+| `trigger_columns` | 쓸 수 있음(그대로) | 규칙을 «컬럼까지» 좁히는 S-140 칸, 종류와 무관 |
+| 고리 검사 | **지나가지만 걸리지 않음** | 옵트인이 없으므로 고리 그래프의 «간선이 아님» |
+| HOL 가드 | **무관** | 뒤따르기는 트리거 캐스케이드가 아니라 «자기 랩»에서 돕니다 |
+| 재시도 | 체인과 «같음» | `max_group_attempts` 그대로 — 별도 정책을 만들지 않습니다 |
+
+#### 🔴 핑퐁 가드 — 판정 291 의 셋째 물음
+```
+접은 모양이 trigger_table = target_table = derived_table 이므로 «자기 고리»입니다.
+오늘 기제:  allow_chain_trigger 를 «선언한 규칙만» 체인이 만든 사건을 먹습니다
+            (chain_ingestion_worker:554·843) · 적재 시점 고리 검증이 :583 에서
+            「allow_chain_trigger cycle: …」로 «이름 대어» 거절합니다
+그러므로:   이 종류는 `allow_chain_trigger` 를 «선언하지 않습니다». 그러면
+            ① 자기 쓰기가 자기를 다시 깨우지 못하고(핑퐁 없음)
+            ② 고리 검증이 이 자기 고리를 «간선으로 안 봅니다» — 거절이 안 납니다
+🔵 그래서 `follow_up: true` 가 «장식이 아닙니다» — 일을 트리거 경로 «밖»(드레인 랩)에
+   두는 것이 핑퐁을 구조적으로 불가능하게 만드는 자리입니다
+```
+
+### ③ 그래프의 인리치 엣지가 체인 엣지로 «접히나» — 판정 291 의 둘째 물음
+```
+오늘 _enrich_edges:  kind "enrich" · from = derived · to = derived  ← «자기 고리»를 이미 그림
+접은 뒤:             kind "mapper" · from = derived · to = derived  ← «끝점이 같음»
+=> 그림은 «안 움직입니다». 라벨만 바뀝니다. 그리고 참조뷰가 그리는
+   「표 → derived」 엣지(판정 283 의 `reads:`)는 그대로 — 그건 «읽는» 관계라 종류와 무관합니다
+```
+🔵 **이것이 이 설계가 안전한 증거입니다** — 접는데 «그림이 그대로»라는 것은 두 언어가 같은 것을
+말하고 있었다는 뜻입니다. 그림이 움직였다면 접는 게 틀린 것입니다.
+
+### ③-b 같은 «규칙 객체»를 읽게 되는 길 (지시 ③)
+```
+어드민 참조뷰 사이드바   /enrichment/rules → 오늘도 로더의 규칙 객체. 접은 뒤엔 그 객체가
+                       체인 규칙의 `params` 라 «같은 것»을 읽습니다(라우트 모양 유지)
+자동 확정 통계          오늘 done 집계 → S-176 의 lap 운반체로 `/runtime` 에. 접은 뒤에도
+                       같은 랩이라 «값의 출처가 안 바뀝니다»
+S-174 거절             거절 이름이 규칙 이름을 답니다 — `enrichment_auto_confirm:<이름>` 로
+                       바뀌므로 «거절 이름의 모양»이 한 번 바뀝니다 (호환 층 ④가 그 한 줄)
+```
+
+### ④ 이행 — 호환 층 «한 방향»
+```
+옛 파일이 있으면  enrichment_rules.json 을 읽어 «같은 규칙 객체»로 변환 + 경고 «한 줄»
+                (오늘의 load_enrichment_chain_rules 가 이미 그 변환기입니다 — 넓히면 됩니다)
+운영 선언        «손대지 않습니다». 소유자가 옮기고 싶을 때 옮깁니다
+경고             「enrichment_rules.json 은 chain_rules 의 한 종류로 접혔습니다.
+                 이 파일은 계속 읽히지만, 새 규칙은 chain_rules 에 적으십시오」
+```
+
+### ⑤ 위험 — 두 파일에 «같은 규칙»이 둘
+```
+문제   같은 이름이 양쪽에 있으면 규칙이 «두 번» 돕니다(④ 위반, 그리고 조용합니다)
+답     이름 충돌 시 «이름 대어 거절»합니다 — 「<이름> 이 chain_rules 와 enrichment_rules
+       «양쪽»에 있습니다. 하나를 지우십시오」. 둘 중 하나를 «고르지 않습니다»
+       (어느 쪽이 참인지는 제품이 정할 수 없습니다 — S-181 마이그레이션과 같은 자세)
+게이트  양쪽에 같은 이름을 넣고 «거절», 한쪽만 두면 «한 번만» 돎(수로)
+```
+
+### S-176 덧붙임 — 「완전히 체인으로 보이나」 다섯 자리 «전/후»
+| 자리 | 오늘 | 접은 뒤 |
+|---|---|---|
+| 자기 그룹 | 드레인 자리(체인 그룹 아님) | 체인 그룹 «하나» — 그룹 줄에 뜸 |
+| 그룹 줄 | 안 뜸 | 다른 규칙과 «같은 줄 모양» |
+| 큐 패널 | 인리치 전용 화면 | 체인 큐에 «같이» — 전용 화면은 `params` 를 읽는 뷰로 남음 |
+| 거절 이름 | 인리치 전용 이름 | `enrichment_auto_confirm:<이름>` (④의 그 한 줄) |
+| `/runtime` | `ledger_followup` 행 | 같은 행 + `auto_confirmed`/`auto_refused` (S-176 덧붙임) |
+
+### 🔴 제가 모르는 것
+```
+① `alignment` · `claim_contract` 두 칸이 «자동 확정»의 것인지 «dedup»의 것인지
+   — 접을 때 어느 params 에 앉는지가 갈립니다. 코드를 더 읽으면 나옵니다(설계 판정엔 불필요)
+② 운영에 enrichment 규칙이 «몇 개»인지 — 이 박스 수는 운영 주장이 아닙니다.
+   호환 층이 있으므로 개수와 무관하게 안전합니다
+```
+
+> 📌 **[09-11 21:06] 이 채널의 미답 질문: 위 ① 표의 «다섯 칸» — 지시하신 params 넷에 더해
+> `list_columns`·`auto_confirm`·`auto_confirm_declared`·`alignment`·`claim_contract` 를
+> 넣는 것이 맞습니까(「빠지는 칸 0」을 그대로 읽으면 그렇습니다). 그리고 `enabled` 는
+> 상수가 아니라 «규칙에서» 싣습니다. 코드 0 — 판정 뒤 착수.**
