@@ -522,7 +522,13 @@ def drain_once(engine, setup):
     table, row_ids, event_type, queued_at, transaction_id = item
     from . import backfill
 
+    # 🔴 `row_ids` IS RETURNED AS A VALUE so a caller can act on the rows this batch
+    # followed WITHOUT this module learning what that action is (S-151, 판정 264). The
+    # enrichment auto-confirm rides this drain, and it is called from the worker loop:
+    # importing it here would tie the ledger basis to the enrichment one in code, and the
+    # ledger only ever READS these tables.
     done = {"table": table, "event_type": event_type, "rows": len(row_ids),
+            "row_ids": list(row_ids),
             "waited": time.time() - queued_at, "sources": {}}
     # 🔴 ASKED BEFORE THE DELETE BRANCH, because a deletion has view followers too (S-65-d).
     view_followers, cannot_follow = view_followers_of(engine, setup, table)

@@ -1197,11 +1197,13 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                 # shape through `resync_table(row_ids=...)`.
                 #
                 # 🔴 SCOPED TO THIS ONE CALL, not to the enclosing block. This is an
-                # async function and the block below contains the map-meta and
-                # enrichment hooks; a mode token held across an `await` (or across a
+                # async function, and a mode token held across an `await` (or across a
                 # hook that writes on a human's behalf) is how a human-visible write
                 # collapses by accident - the one thing the design says must never
                 # happen. The narrowest possible scope is the whole guarantee.
+                # ⚰️ The two hooks this warning named have both left the block since
+                # (map-meta 2026-09-07, enrichment S-151); the reason stands for the
+                # retraction below and for whatever is put here next.
                 # Per TABLE, because a group writing several targets has to be able to
                 # say WHICH one it waited on - one number for "the writes" would leave the
                 # next question unanswerable without another round of measuring.
@@ -1236,9 +1238,9 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                 # write composed, read back off the items the write mutated. Planning it
                 # before the write would mean guessing at them.
                 #
-                # Contained like the M3 and enrichment hooks below and for the same
-                # reason - except that a failure here leaves STALE ROWS, which is the
-                # conservative direction. It never leaves a hole.
+                # Contained, and for the reason the note above gives - except that a
+                # failure HERE leaves STALE ROWS, which is the conservative direction.
+                # It never leaves a hole.
                 with alignment_batch_counts.stage("retraction"):
                     if retract:
                         try:
@@ -1308,19 +1310,15 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                 # Not a loop: writes land on the DERIVED table while the
                 # enrichment rule triggers on the SOURCE table, and the
                 # absent-only gate makes a second pass a no-op regardless.
-                with alignment_batch_counts.stage("enrichment hook"):
-                    try:
-                        ac = enrichment_candidates.AutoConfirmCollector(target_table)
-                        if ac.active:
-                            ac.collect(batch_data.updates)
-                            ac_stats = ac.flush(db)
-                            if ac_stats.get("confirmed"):
-                                logger.info(
-                                    f"[Enrichment ①] Auto-confirmed {ac_stats['confirmed']} single "
-                                    f"candidate(s) on '{target_table}' (source "
-                                    f"'{enrichment_candidates.SOURCE_NAME}', lowest priority)")
-                    except Exception as ac_err:
-                        logger.error(f"[Enrichment ①] Auto-confirm failed for '{target_table}' (chain write unaffected): {ac_err}")
+                # ⚰️ THE HOOK LEFT THIS PATH (S-151, 판정 262). Measured here at 0.875 s per
+                # 1,000-row group - 35 % of everything the group spent outside the mapper -
+                # and it is FOLLOW-UP work: nobody is waiting for a confirmation that the
+                # next read would compute anyway. 「요청/커밋 경로 인라인 금지, 뒤따르는 일은
+                # 페이싱된 별도 작업」 is the standing rule, and this was the inline case of it.
+                # It now runs on the ledger follow-up drain, paced - see
+                # `_auto_confirm_followed_rows`. NOTHING IS ENQUEUED HERE: these rows reach
+                # that queue already, through their own collapsed outbox events, so a second
+                # enqueue would double the ledger's re-translation to save this.
 
                 # 5. Collect WebSocket broadcast messages (dispatched AFTER commit, fire-and-forget).
                 #    이벤트명/페이로드 형식은 절대 변경하지 않고 타이밍만 커밋 이후로 미룬다.
@@ -2023,13 +2021,63 @@ def another_chain_loop_is_running(now=None):
 FOLLOWUP_IDLE_SECONDS = 1.0
 
 
+def _auto_confirm_followed_rows(db, done):
+    """Run the enrichment auto-confirm for the rows this follow-up batch just followed.
+
+    🔴 HERE, AND NOT INSIDE `ledger/followup` (S-151, 판정 264). The ledger only READS
+    these tables; importing the enrichment basis into that module would tie the two
+    together in code for the sake of one call. So the queue hands back `row_ids` as a
+    value and this seat decides what to do with them.
+
+    🔴 NOTHING WAS ENQUEUED TO PUT THE ROWS HERE. A chain write stages collapsed outbox
+    events for its target table, those events are processed as groups of their own, and the
+    ledger enqueue sits ABOVE the trigger filter - so these rows are on this queue already.
+    Enqueueing them again from the write loop would have doubled the ledger's
+    re-translation to save the 0.875 s this move is about.
+
+    ⚠️ A DELETE HAS NOTHING TO CONFIRM. The rows are gone; the follow-up withdraws
+    atoms rather than following values, and asking the collector for them would query for
+    row ids that no longer resolve.
+
+    ⚠️ CONTAINED, THE WAY THE INLINE HOOK WAS. A failure here must not stop the ledger
+    follow-up that already succeeded, and it must not propagate into the drain loop - the
+    counts simply do not appear on the note.
+    """
+    if not done or done.get("event_type") == "DELETE":
+        return
+    table, row_ids = done.get("table"), done.get("row_ids")
+    if not table or not row_ids:
+        return
+    try:
+        collector = enrichment_candidates.AutoConfirmCollector(table)
+        if not collector.active:
+            return
+        collector.collect_rows(db, row_ids)
+        stats = collector.flush(db) or {}
+        confirmed = stats.get("confirmed") or 0
+        refused = sum((stats.get("refused") or {}).values())
+        # Values, not a verdict: 「큰 깊이는 값으로 보임」 - a follow-up that confirms
+        # nothing and one that never ran are different facts, and the note carries both.
+        done["auto_confirmed"] = confirmed
+        done["auto_refused"] = refused
+        if confirmed:
+            logger.info("[Enrichment ①] Auto-confirmed %d single candidate(s) on '%s' "
+                        "(source '%s', lowest priority)",
+                        confirmed, table, enrichment_candidates.SOURCE_NAME)
+    except Exception as err:
+        logger.error("[Enrichment ①] Auto-confirm failed for '%s' on the follow-up "
+                     "(the ledger follow-up itself is unaffected): %s", table, err)
+
+
 def _drain_ledger_followup_sync(db_session_factory):
     """One follow-up batch, in a thread. The session is this call's and closes with it."""
     from ledger.setup import load_setup
 
     db = db_session_factory()
     try:
-        return ledger_followup.drain_once(db.get_bind(), load_setup())
+        done = ledger_followup.drain_once(db.get_bind(), load_setup())
+        _auto_confirm_followed_rows(db, done)
+        return done
     finally:
         db.close()
 

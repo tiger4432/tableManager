@@ -907,6 +907,43 @@ class AutoConfirmCollector:
                 continue
             self.entries.setdefault(bk, {"keys": keys})
 
+    def collect_rows(self, db, row_ids):
+        """Absorb rows named by `row_id`, reading the decision values off the DERIVED ROW.
+
+        🔴 SAME DECISION, A DIFFERENT FEEDER (S-151, 판정 262). `collect` reads the values
+        out of the batch items because the write path has them in hand. Once the hook moves
+        off that path the follow-up has only row ids - and it needs no more, because the
+        decision key and the aggregate names are COLUMNS OF THE DERIVED ROW, which is what
+        the note inside `collect` already says. So this reads the row the write committed
+        and asks the same question of it.
+
+        ⚠️ BOTH FEEDERS END IN THE SAME PREDICATES, deliberately. Two paths deciding one
+        thing may exist only while they cannot answer differently, so this calls the same
+        `enrichment_config` predicates on the same rule and builds the same entry shape -
+        not a second copy of that judgement.
+        """
+        if not self.active or not row_ids:
+            return
+        import enrichment_config
+        from database import models
+
+        model = models.DYNAMIC_TABLES.get(self.derived_table)
+        if model is None:
+            return
+        columns = [c.key for c in model.__table__.columns]
+        ids = [str(item) for item in row_ids if item]
+        for i in range(0, len(ids), CHUNK_SIZE):
+            chunk = ids[i:i + CHUNK_SIZE]
+            for row in db.query(model).filter(model.row_id.in_(chunk)).all():
+                updates = {name: getattr(row, name, None) for name in columns}
+                bk = updates.get("business_key_val")
+                keys = enrichment_config.view_bind_values(self.rule, updates)
+                if enrichment_config.key_is_wholly_blank(self.rule, keys):
+                    continue
+                if not bk:
+                    continue
+                self.entries.setdefault(bk, {"keys": keys})
+
     def pending(self) -> bool:
         return self.active and bool(self.entries)
 
