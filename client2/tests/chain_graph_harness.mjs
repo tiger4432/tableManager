@@ -89,7 +89,7 @@ const ok = (name, cond, detail) => {
 const eq = (name, got, want) => ok(name, String(got) === String(want), `got ${got}, want ${want}`);
 
 function suite(mod) {
-  const { ChainGraphPanel, chainGraphView, edgeClass, layersOf } = mod;
+  const { ChainGraphPanel, chainGraphView, edgeClass, layersOf, layoutFits } = mod;
   const doc = makeDoc();
   const mount = doc.createElement('div');
   const panel = new ChainGraphPanel(mount, { doc });
@@ -294,6 +294,59 @@ function suite(mod) {
       chainGraphView({ ...counted, ledger_error: '' }).ledgerError === null);
   }
 
+
+  console.log(`${LF}-- C-80: 45 nodes must not make the page several screens tall --`);
+  {
+    // 🔴 THE SHAPE THAT BROKE IT, not a convenient one: few layers, many rows. Five sources
+    //    each waking eight derived tables = 45 nodes / 40 edges, over TWO layers. That makes
+    //    the viewBox tall and narrow, and `width:100%` then scaled the whole aspect up by the
+    //    panel width -- which is how a graph became 「몇 화면」.
+    const sources = Array.from({ length: 5 }, (_, i) => `src_${i}`);
+    const derived = [];
+    const edges = [];
+    for (const src of sources) {
+      for (let k = 0; k < 8; k += 1) {
+        const to = `${src}_d${k}`;
+        derived.push(to);
+        edges.push({ from: src, to, kind: 'mapper', rule: `r_${to}` });
+      }
+    }
+    const big = {
+      nodes: [...sources, ...derived].map((id) => ({ id, kind: 'table', declared: true })),
+      edges, cycles: [],
+    };
+    const d = makeDoc();
+    const m = d.createElement('div');
+    new ChainGraphPanel(m, { doc: d }).render(big);
+    const svg = byTag(m, 'svg')[0];
+
+    eq('Z1 the fixture is the measured size', `${big.nodes.length}/${big.edges.length}`, '45/40');
+    // 🔴 THE ACTUAL FIX: the svg carries its own width and height, so CSS can no longer decide
+    //    the aspect. Without these two attributes every assertion below still passes and the
+    //    picture is still several screens tall.
+    ok('Z2 the drawing declares its own width', Number(svg.attrs.width) > 0, svg.attrs.width);
+    ok('Z3 ...and its own height', Number(svg.attrs.height) > 0, svg.attrs.height);
+    eq('Z4 one viewBox unit is one pixel -- no scaling is asked for',
+      svg.attrs.viewBox, `0 0 ${svg.attrs.width} ${svg.attrs.height}`);
+    // The cap lives on the BOX, so the page stops growing even when the drawing does.
+    eq('Z5 the drawing sits in a box of its own', byClass(m, 'chain-graph-box').length, 1);
+    ok('Z6 ...and the drawing is inside that box',
+      byTag(byClass(m, 'chain-graph-box')[0], 'svg').length === 1);
+
+    // 🔴 A BUDGET, NOT A RESTATEMENT OF THE CONSTANTS. 45 nodes over two layers drew 2,576
+    //    units before this round; the budget is what keeps somebody widening the gaps again
+    //    from being invisible. It is a number this fixture must stay under, not a formula.
+    ok('Z7 45 nodes fit in the height budget', Number(svg.attrs.height) <= 1250,
+      `${svg.attrs.height} units`);
+    ok('Z8 ...and in the width budget', Number(svg.attrs.width) <= 400, `${svg.attrs.width} units`);
+
+    // Labels: this lane cannot open a screen, so what is asserted is that the constants do not
+    // contradict each other -- rows wider than a circle, labels done before the next layer.
+    const fits = layoutFits(24);
+    ok('Z9 rows are further apart than a node is wide', fits.rows);
+    ok('Z10 a 24-character table name ends before the next layer starts', fits.columns);
+  }
+
   console.log(`${LF}-- a read that failed is not an empty graph --`);
   eq('U1 no payload reads as unread', chainGraphView(null).state, 'unread');
   eq('U2 an answer with an empty node list is READY',
@@ -366,6 +419,13 @@ const MUTANTS = [
     from: '  return Object.entries(counts).map(([name, value]) => ({ name, value }));',
     to: "  return Object.entries(counts).filter(([n]) => n !== 'ninth').map(([name, value]) => ({ name, value }));" },
   // ⚠️ RE-ANCHORED IN C-78 for the same reason: this round rewrote the comment it named.
+  // 🔴 THE DEFECT THIS ROUND FIXED, put back: the drawing has no size of its own again, so
+  //    `width:100%` decides the aspect and 45 nodes become several screens. Nothing else here
+  //    notices -- every node, edge and count assertion stays green under it.
+  { id: 'M14', what: 'the drawing goes elastic again',
+    catches: 'Z2 the drawing declares its own width',
+    from: "      width, height, preserveAspectRatio: 'xMinYMin meet',",
+    to: "      preserveAspectRatio: 'xMinYMin meet'," },
   { id: 'M7c', what: 'CONTROL: a comment line is removed', control: true,
     from: '/** 합성된 규칙의 `origin` 은 이 접두로 시작합니다 — 뒤가 «어느 인리치에서 왔나»입니다. */',
     to: '/** */' },

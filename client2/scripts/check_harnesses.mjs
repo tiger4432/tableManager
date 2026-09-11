@@ -1438,8 +1438,8 @@ const FLOORS = new Map([
   // spellings of one instant agree and that two different instants disagree, never a literal
   // wall clock -- otherwise the runner's TZ would decide the verdict.
   ['server_time_harness.mjs', 19],
-  ['chain_graph_harness.mjs', 70],
-  ['runtime_panel_harness.mjs', 22],
+  ['chain_graph_harness.mjs', 81],
+  ['runtime_panel_harness.mjs', 37],
   ['reference_view_head_harness.mjs', 26],
 ]);
 

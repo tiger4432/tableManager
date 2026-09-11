@@ -88,9 +88,33 @@ export function layersOf(nodes, edges) {
   return layer;
 }
 
-const NODE_GAP_Y = 64;
-const LAYER_GAP_X = 190;
-const MARGIN = 40;
+// ── 배치의 «세» 수. 소유자 2026-09-11 「체인 그래프를 줄여」 뒤로 라벨이 겹치지 않는 최소로.
+//    ⚠️ 원은 r=12 라 세로 간격은 24 «초과»여야 원끼리 안 닿고, 라벨은 11px 이라 x+18 에서
+//       시작해 가로로 «다음 층»을 침범하면 안 됩니다. 두 성질을 하니스가 수로 단언합니다.
+const NODE_GAP_Y = 30;
+const LAYER_GAP_X = 170;
+const MARGIN = 20;
+
+/** 원의 반지름. 간격 단언이 이 수를 읽으므로 그리는 자리와 «같은 상수»여야 합니다. */
+const NODE_R = 12;
+/** 라벨이 원에서 떨어지는 거리. 위와 같은 이유로 상수입니다. */
+const LABEL_DX = 18;
+
+/**
+ * 배치가 «겹치지 않나» — 수로 답합니다.
+ *
+ * 🔴 이 라운드가 만질 수 있는 것은 배치 좌표뿐입니다. 진짜 글자 폭은 폰트가 정하고 이 레인은
+ *    화면을 못 엽니다(어드민 토큰). 그래서 단언하는 것은 «픽셀»이 아니라 「이 상수들이 서로
+ *    모순되지 않는다」입니다 — 세로는 원 지름보다 넓고, 가로는 라벨이 다음 층에 닿기 전에 끝난다.
+ * @param {number} labelChars 가장 긴 라벨의 글자 수
+ * @param {number} charWidth 11px 글자 하나의 «보수적인» 폭
+ */
+export function layoutFits(labelChars, charWidth = 6) {
+  return {
+    rows: NODE_GAP_Y > NODE_R * 2,
+    columns: LABEL_DX + labelChars * charWidth <= LAYER_GAP_X,
+  };
+}
 
 /**
  * 응답 -> 그릴 것. DOM 이 없습니다.
@@ -252,7 +276,14 @@ export class ChainGraphPanel {
       head.textContent = view.counts.map((c) => `${c.name} ${c.value}`).join(' · ');
       this.root.appendChild(head);
     }
-    const svg = this._svg('svg', { class: 'chain-graph', viewBox: `0 0 ${width} ${height}` });
+    // 🔴 «탄력을 뺍니다». `width:100%` + `height:auto` 는 viewBox 의 «비율»을 화면 폭으로
+    //    늘립니다 — 층이 적고 행이 많은 체인(45 노드 / 3 층)에서 그 비율이 세로로 길어
+    //    한 그림이 화면 몇 장이 됐습니다. 여기서 1 단위 = 1 px 로 못 박으면 라벨 11px 이
+    //    11px 로 남고, «상자»가 높이를 맡습니다(`--graph-max-height`, 넘치면 상자 안 스크롤).
+    const svg = this._svg('svg', {
+      class: 'chain-graph', viewBox: `0 0 ${width} ${height}`,
+      width, height, preserveAspectRatio: 'xMinYMin meet',
+    });
 
     // 선을 «먼저» 그립니다 — 원 밑으로 지나가야 원이 가려지지 않습니다.
     for (const edge of view.edges) {
@@ -273,8 +304,8 @@ export class ChainGraphPanel {
           + (node.kind === 'ledger' ? ' is-ledger' : ''),
         'data-node': node.id,
       });
-      group.appendChild(this._svg('circle', { cx: node.x, cy: node.y, r: 12 }));
-      const label = this._svg('text', { x: node.x + 18, y: node.y + 4 });
+      group.appendChild(this._svg('circle', { cx: node.x, cy: node.y, r: NODE_R }));
+      const label = this._svg('text', { x: node.x + LABEL_DX, y: node.y + 4 });
       label.textContent = node.label;
       group.appendChild(label);
       // 옵트인은 «표시 하나»입니다. 문장이 아닙니다.
@@ -288,7 +319,11 @@ export class ChainGraphPanel {
       }
       svg.appendChild(group);
     }
-    this.root.appendChild(svg);
+    // 상자는 «자기 것»입니다 — 그림이 커도 페이지가 안 늘어나고, 스크롤이 이 안에서 납니다.
+    const box = this.doc.createElement('div');
+    box.className = 'chain-graph-box';
+    box.appendChild(svg);
+    this.root.appendChild(box);
     // 🔴 표를 못 칠하는 고리도 «말해집니다». 문장은 서버의 것이고 여기서 다시 쓰지 않습니다.
     for (const note of view.cycleNotes || []) {
       const line = this.doc.createElement('div');

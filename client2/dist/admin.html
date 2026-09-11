@@ -208,8 +208,17 @@
       transition: transform 0.15s ease, border-color 0.15s ease;
     }
     /* C-75 체인 그래프 — 네 선언이 한 그림. 종류는 «선 모양»으로 갈립니다. */
-    .chain-graph-panel { padding: 3.4px 3.4px 10.2px; }
-    .chain-graph { width: 100%; height: auto; }
+    .chain-graph-panel { padding: var(--space-2); }
+    /* 🔴 그림의 «상자». 높이 상한이 여기 있고, 넘치면 «이 안»에서 스크롤한다 — 페이지가
+       늘어나지 않는다. 그림 자체는 1 단위 = 1 px 로 그려지므로 라벨이 11px 로 남는다
+       (상한에 맞춰 축소하면 45 노드에서 라벨이 5px 가 되고, 그건 없느니만 못하다). */
+    .chain-graph-box {
+      max-height: var(--graph-max-height);
+      overflow: auto;
+      padding: var(--space-2);
+      border: 1px solid var(--border);
+    }
+    .chain-graph { display: block; max-width: 100%; }
     .cg-edge { stroke: var(--text-dim); stroke-width: 1.5; fill: none; }
     /* 실선 — 매퍼가 표를 깨우는 것이 이 그림의 «기본»입니다. */
     .cg-edge--mapper { stroke: var(--text); }
@@ -234,19 +243,19 @@
     .cg-node text { fill: var(--text); font-size: 11px; }
     .cg-node.is-cycle circle { stroke: var(--danger); }
     .cg-optin { fill: var(--text-dim); font-size: 11px; }
-    .chain-graph-wakes { padding: 3.4px 6.8px; }
+    .chain-graph-wakes { padding: var(--space-1) var(--space-2); }
     .chain-graph-wakes-head { font-weight: 600; color: var(--text); }
     .chain-graph-wake { color: var(--text-dim); font-family: var(--font-mono); }
-    .chain-graph-unread { padding: 10.2px; color: var(--text-dim); }
+    .chain-graph-unread { padding: var(--space-3); color: var(--text-dim); }
     /* 카탈로그에 없는 표 — 「모른다」가 아니라 「선언이 없다」입니다. */
     .cg-node.is-undeclared circle { stroke-dasharray: 3 2; }
     .cg-node.is-ledger circle { fill: var(--text-dim); }
     /* 표를 못 짚는 고리도 «말해집니다». 서버의 문장 그대로입니다. */
-    .chain-graph-cycle { padding: 3.4px 6.8px; color: var(--danger); font-family: var(--font-mono); }
+    .chain-graph-cycle { padding: var(--space-1) var(--space-2); color: var(--danger); font-family: var(--font-mono); }
     /* 🔴 C-79 — 원장 «절반»이 안 읽힌 날. 이 줄이 없으면 원장 엣지 «0» 이 「원장이 아무것도
        안 깨운다」로 읽힙니다. 사실은 「그 절반이 아예 안 실렸다」입니다. 문장은 서버의 것입니다. */
     .chain-graph-ledger-error {
-      padding: 3.4px 6.8px;
+      padding: var(--space-1) var(--space-2);
       color: var(--danger);
       font-family: var(--font-mono);
       font-size: 12px;
@@ -254,7 +263,7 @@
     /* 🔴 C-79 머리 한 줄 — 서버가 «센» 수 그대로. 단위 없는 수라 이름과 값뿐입니다.
        ⚠️ 줄이 길어지면 이 상자 «안»에서 가로로 밀립니다 — 페이지가 밀리지 않습니다. */
     .chain-graph-counts {
-      padding: 3.4px 6.8px;
+      padding: var(--space-1) var(--space-2);
       color: var(--text-dim);
       font-family: var(--font-mono);
       font-size: 12px;
@@ -264,25 +273,33 @@
     }
 
     /* C-74 런타임 — 아홉 고리의 값 표. 수는 자릿수를 맞춰야 세로로 읽힙니다(가독성=기능). */
-    .runtime-panel { padding: 3.4px 3.4px 10.2px; }
+    .runtime-panel { padding: var(--space-2); }
     .runtime-table {
       width: 100%;
       border-collapse: collapse;
       font-variant-numeric: tabular-nums;
+      /* 🔴 소유자 2026-09-11 「고리 너무 커」. 이 표는 크기를 «안 적고» 있어서 1rem 을 물려받았고,
+         화면의 다른 글자(0.7~0.85rem) 옆에서 «두 배»로 보였다. 카드 라벨과 «같은 토큰»이다. */
+      font-size: var(--fs-label);
+      line-height: 1.7;
     }
     .runtime-table th {
       text-align: left;
       font-weight: 600;
       color: var(--text-dim);
-      padding: 3.4px 6.8px;
+      padding: var(--space-1) var(--space-2);
       border-bottom: 1px solid var(--border);
       white-space: nowrap;
     }
     .runtime-table td {
       color: var(--text);
-      padding: 3.4px 6.8px;
+      padding: var(--space-1) var(--space-2);
       white-space: nowrap;
     }
+    /* 🔴 「살았나」는 낱말이 아니라 «색 점»이다. 색을 정하는 것은 값이고, 「모른다」에는
+       색이 «없다» — 회색 대시가 이미 그 말을 한다. */
+    .runtime-table td[data-tone="ok"] { color: var(--success); }
+    .runtime-table td[data-tone="danger"] { color: var(--danger); }
     /* 손잡이는 경로라 고정폭으로 읽습니다. */
     .runtime-table td[data-col="knob"] { font-family: var(--font-mono); color: var(--text-dim); }
     .runtime-table td[data-col="loop"] { font-weight: 600; }
@@ -1297,11 +1314,20 @@
     }
 
     /* ── Overview 탭 (좌패널 전폭 — 4 파이프라인 확장 카드) ── */
+    /* 🔴 소유자 2026-09-11 「제발 ui 만들 때 마진 좀 넣어」. 부품 «사이»의 여백은 부품이 아니라
+       «화면»이 정한다 (조립식 상설: 배치는 부품 밖). 그래서 여기 한 줄이고, 부품들은 자기
+       바깥 여백을 안 적는다 — 적으면 다른 화면에 끼울 때 그 값이 따라온다. */
+    #overview-wrapper { padding: var(--space-4); }
+    /* ⚠️ `gap` 이 아니라 «형제 여백»이다. 탭 전환이 `wrapper.style.display = 'block'` 을
+       «인라인»으로 박으므로(admin.js switchTab) 시트의 `display:flex` 가 진다 — 그러면 gap 이
+       조용히 0 이 된다. 이 규칙은 display 가 무엇이든 같은 값을 준다. */
+    #overview-wrapper > * + * { margin-top: var(--space-4); }
     .overview-grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
-      gap: 16px;
-      padding: 20px;
+      gap: var(--space-4);
+      /* 바깥 여백은 위의 wrapper 가 준다 — 여기서 또 주면 두 배가 된다. */
+      padding: 0;
     }
     @media (max-width: 1100px) {
       .overview-grid { grid-template-columns: 1fr; }
@@ -1345,7 +1371,7 @@
     .ov-metric[data-tone="warn"] .ov-metric-value { color: var(--warning); }
     .ov-metric[data-tone="ok"] .ov-metric-value { color: var(--success); }
     .ov-metric-label {
-      font-size: 0.7rem;
+      font-size: var(--fs-label);
       font-weight: 600;
       letter-spacing: 0.4px;
       text-transform: uppercase;
@@ -1722,14 +1748,14 @@
     .retro-group.is-chosen { border-color: var(--accent); color: var(--accent); }
 
   </style>
-  <script type="module" crossorigin src="/assets/admin-Dch4IWQ5.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/tokens-nTqwt3FA.js">
+  <script type="module" crossorigin src="/assets/admin-DZXcjnnn.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/tokens-CTRx_dnU.js">
   <link rel="modulepreload" crossorigin href="/assets/truncation-CkNwtCUZ.js">
   <link rel="modulepreload" crossorigin href="/assets/admin_token-BrUpdOsE.js">
   <link rel="modulepreload" crossorigin href="/assets/config-BUp4smhE.js">
   <link rel="modulepreload" crossorigin href="/assets/effort_meter-CUYmTmql.js">
   <link rel="modulepreload" crossorigin href="/assets/table_part-LwpopP3Q.js">
-  <link rel="stylesheet" crossorigin href="/assets/tokens-ZCVo3oho.css">
+  <link rel="stylesheet" crossorigin href="/assets/tokens-CXUJpfO_.css">
   <link rel="stylesheet" crossorigin href="/assets/admin-BkR8K1Yk.css">
 </head>
 <body>
@@ -1797,6 +1823,17 @@
       <div class="panel-body" style="padding: 0; display: flex; flex-direction: column;">
         <!-- ═══ Overview 탭: 4 파이프라인 확장 카드 (첫 화면, 좌패널 전폭) ═══ -->
         <div id="overview-wrapper" style="flex: 1; overflow: auto;">
+          <!-- ═══ C-80 (소유자 「overview 에서 설정 반영은 아래로, 대기열과 고리는 위로」) ═══
+               블록 «순서»만 바뀐다. 부품은 그대로이고 각자 자기 div 를 만든다 (조립식 상설) —
+               배치는 부품 «밖»인 이 화면의 일이다. -->
+          <!-- C-74: 아홉 고리가 마지막으로 무엇을 했나. 값만 — RuntimePanel 이 자기 div 를 만든다 -->
+          <div id="runtime-mount"></div>
+          <!-- C-80: Chain 대기열. Chain 탭의 그 부품을 «두 번째 인스턴스»로 앉힌다 —
+               탭에서 «빼 오지» 않는다. 빼면 Chain 탭이 자기 화면을 잃는다. -->
+          <div id="overview-queue-mount"></div>
+          <div id="overview-grid" class="overview-grid">
+            <!-- admin.js renderOverview()가 채움 -->
+          </div>
           <!-- 재교정률 한 줄: 사람이 같은 셀을 두 번 이상 고친 비율 (핵심가치 #1 "최소 공수 교정" 계기) -->
           <div id="recorrection-line" class="recorrection-line">
             <span class="rc-label">재교정률</span>
@@ -1880,12 +1917,9 @@
             </summary>
             <div class="cfg-body" id="running-body"></div>
           </details>
-          <div id="overview-grid" class="overview-grid">
-            <!-- admin.js renderOverview()가 채움 -->
-          </div>
-          <!-- C-74: 아홉 고리가 마지막으로 무엇을 했나. 값만 — RuntimePanel 이 자기 div 를 만든다 -->
-          <div id="runtime-mount"></div>
-          <!-- C-75: 네 선언이 한 그림. ChainGraphPanel 이 자기 div 를 만든다 -->
+          <!-- C-75: 네 선언이 한 그림. ChainGraphPanel 이 자기 div 를 만든다.
+               ⚠️ 그림은 «맨 아래»다 — 지시가 정한 넷(고리·대기열·카드·줄) 밖이고, 넷 중
+               어디에 끼워도 그 순서를 깨기 때문이다. 이 한 자리는 제가 정했고 보고에 적었다. -->
           <div id="chain-graph-mount"></div>
         </div>
 

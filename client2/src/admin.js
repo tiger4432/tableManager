@@ -967,12 +967,8 @@ async function fetchData(options = {}) {
       const maps = mapRes.ok ? await mapRes.json().catch(() => null) : null;
       // 🔴 못 읽은 이유를 «이름으로» 넘긴다. 404 는 「이 프로세스에 라우트가 없다」이고,
       //    그것은 「대기가 없다」와 «완전히 다른» 사실이다.
-      let queueBody = null;
-      let queueOpts = {};
-      if (!queueRes) queueOpts = { unavailable: '대기열 조회에 실패했습니다 (네트워크). 수를 그리지 않습니다.' };
-      else if (queueRes.status === 404) queueOpts = { unavailable: '이 서버 프로세스에 /admin/chain/queue 가 없습니다 (404) — 재기동이 필요합니다.' };
-      else if (!queueRes.ok) queueOpts = { unavailable: `대기열 조회 실패 (HTTP ${queueRes.status}). 수를 그리지 않습니다.` };
-      else queueBody = await queueRes.json().catch(() => null);
+      //    C-80: 그 낱말은 이제 `chainQueueFrom` «한 곳»에 있다 — Overview 도 같은 것을 부른다.
+      const { body: queueBody, opts: queueOpts } = await chainQueueFrom(queueRes);
       // C-1. 규칙 표가 읽을 자리에 둡니다. 못 읽었으면 «null 그대로» — 지난번 값을 남기면
       // 낡은 결과를 «지금»으로 읽습니다.
       chainRuleOutcomes = (queueBody && typeof queueBody.rule_outcomes === 'object'
@@ -1288,14 +1284,31 @@ async function refreshLedgerSources() {
 
 // ── Renderers ──────────────────────────────────────────────
 
+/**
+ * 대기열 응답 -> `{ body, opts }`. 거절의 «낱말»이 여기 «한 곳»에 있다.
+ *
+ * 🔴 Overview 와 Chain 이 각자 적으면 같은 404 가 두 문장이 되고, 둘이 갈라져도 오류가 «안 난다»
+ *    (기준 ④: 「둘이 있나」가 아니라 「둘이 갈라질 수 있나」).
+ */
+async function chainQueueFrom(res) {
+  if (!res) return { body: null, opts: { unavailable: '대기열 조회에 실패했습니다 (네트워크). 수를 그리지 않습니다.' } };
+  if (res.status === 404) return { body: null, opts: { unavailable: '이 서버 프로세스에 /admin/chain/queue 가 없습니다 (404) — 재기동이 필요합니다.' } };
+  if (!res.ok) return { body: null, opts: { unavailable: `대기열 조회 실패 (HTTP ${res.status}). 수를 그리지 않습니다.` } };
+  return { body: await res.json().catch(() => null), opts: {} };
+}
+
 // Chain 탭 §오류: 실패 트랜잭션 목록 (Grouped by Transaction ID)
 // 한 번만 만들고 재사용한다. 패널이 자기 div 를 소유하므로 mount 를 비울 필요가 없다.
-let chainQueuePanel = null;
+// 🔴 C-80: 자리가 «둘»이다 (Chain 탭 · Overview). 같은 클래스의 «두 인스턴스»이고, 한 번 받은
+//    답을 둘 다에 그린다 — 각자 받으면 두 화면이 «다른 순간»을 그린다.
+let chainQueuePanels = null;
 function renderChainQueue(payload, opts) {
-  const mount = byId('chain-queue-mount');
-  if (!mount) return;
-  if (!chainQueuePanel) chainQueuePanel = new ChainQueuePanel(mount);
-  const view = chainQueuePanel.render(payload, opts);
+  if (!chainQueuePanels) {
+    chainQueuePanels = ['chain-queue-mount', 'overview-queue-mount']
+      .map((id) => byId(id)).filter(Boolean).map((mount) => new ChainQueuePanel(mount));
+  }
+  if (!chainQueuePanels.length) return;
+  const [view] = chainQueuePanels.map((panel) => panel.render(payload, opts));
   const count = byId('chain-queue-count');
   // 🔴 절 머리의 수는 «깊이»다. 못 읽었으면 «0 이 아니라» 대시다 — 없는 수가 0 으로 읽히는
   //    것이 이 라우트가 없애려는 바로 그 오독이다.
@@ -3473,14 +3486,17 @@ async function fetchOverview(isStale) {
   // 읽히므로 30초 폴링에 아무 비용도 더하지 않는다 — 카운트는 여기서 돌지 않는다.
   refreshRetroactiveOperations();
 
-  const [failedRes, wsRes, outboxRes, rulesRes, mappersRes, autoRes, activeRes] = await Promise.all([
+  // 🔴 C-80: 대기열이 여기 «하나 더» 있다. 전에는 `tab === 'chain'` 아래서만 받았으므로,
+  //    Overview 에 자리만 놓으면 Chain 탭을 «들른 적 없는» 사람에게 빈 상자가 된다.
+  const [failedRes, wsRes, outboxRes, rulesRes, mappersRes, autoRes, activeRes, queueRes] = await Promise.all([
     adminFetch(`${API_BASE}/admin/file-ingestion/failed?page=1&limit=100`),
     adminFetch(`${API_BASE}/admin/file-ingestion/workspaces`),
     adminFetch(`${API_BASE}/admin/outbox/failed?page=1&limit=3`),
     adminFetch(`${API_BASE}/admin/chain/rules`),
     adminFetch(`${API_BASE}/admin/mappers/list`),
     adminFetch(`${API_BASE}/admin/auto-update/status`),
-    adminFetch(`${API_BASE}/admin/file-ingestion/active`) // [Heavy Lane P1] 진행 중 인제션
+    adminFetch(`${API_BASE}/admin/file-ingestion/active`), // [Heavy Lane P1] 진행 중 인제션
+    adminFetch(`${API_BASE}/admin/chain/queue`)
   ].map(p => p.catch(() => null)));
 
   const jsonOf = async (r) => (r && r.ok) ? r.json().catch(() => null) : null;
@@ -3501,6 +3517,13 @@ async function fetchOverview(isStale) {
   } catch (e) { /* 카드에서 조회 실패 표기 */ }
 
   if (isStale()) return;
+
+  {
+    // Chain 탭과 «같은» 읽기·«같은» 그리기 — 다른 것은 「언제 부르나」뿐이다.
+    // ⚠️ 낡음 검사 «뒤»다. 앞에 두면 이미 떠난 탭의 답을 그릴 수 있다.
+    const queue = await chainQueueFrom(queueRes);
+    renderChainQueue(queue.body, queue.opts);
+  }
 
   // 전 소스 실패면 탭 에러 경로로 (개별 실패는 카드 단위 표기)
   if (!failed && !outbox && !auto && !enrich) {

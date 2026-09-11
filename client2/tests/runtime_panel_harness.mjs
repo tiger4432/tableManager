@@ -77,7 +77,7 @@ const ok = (name, cond, detail) => {
 const eq = (name, got, want) => ok(name, String(got) === String(want), `got ${got}, want ${want}`);
 
 function suite(mod) {
-  const { RuntimePanel, runtimeView, ALIVE } = mod;
+  const { RuntimePanel, runtimeView, ALIVE, visibleColumns } = mod;
   const ABSENT = mod.ABSENT || '—';
   const doc = makeDoc();
   const mount = doc.createElement('div');
@@ -119,6 +119,73 @@ function suite(mod) {
   eq('V3 alive unknown is neither mark', runtimeView({ loops: [{ loop: 'x', alive: null }] })
     .rows[0].alive, ALIVE.UNKNOWN);
 
+
+  console.log(`${LF}-- C-80: a column exists because a value does --`);
+  {
+    // 🔴 THE ROUTE'S OWN PAYLOAD FILLS ALL EIGHT. Dropping empty columns must not drop these --
+    //    「좁게 그린다」 that hides a measured value is the defect, not the feature.
+    eq('C1 every column the answer has a value for is drawn', byTag(mount, 'th').length, 8);
+    eq('C2 ...and the header has exactly as many cells as a row',
+      byTag(mount, 'th').length, byTag(bodyRows[0], 'td').length);
+
+    // Nobody in this answer declared a knob, so that column is 「아무도 안 쟀다」 -- eight
+    // columns of dashes is the noise the owner called 「여덟 열이 가로로 퍼짐」.
+    const noKnob = { loops: PAYLOAD.loops.map(({ knob, ...rest }) => rest) };
+    const kept = visibleColumns(runtimeView(noKnob).rows).map((c) => c.key);
+    ok('C3 a column no row has a value for is not drawn', !kept.includes('knob'), kept.join(','));
+    eq('C4 ...and nothing else leaves with it', kept.join(','),
+      'loop,process,alive,age,seconds,depth,pace');
+    // 🔴 ONE value keeps the column. Otherwise a single loop's knob would vanish because the
+    //    other eight never declared one, and that is a value going missing, not noise going.
+    const oneKnob = {
+      loops: [...noKnob.loops.slice(0, 8), { ...noKnob.loops[8], knob: 'config/pacing.json' }],
+    };
+    ok('C5 one row with a value is enough to keep the column',
+      visibleColumns(runtimeView(oneKnob).rows).map((c) => c.key).includes('knob'));
+
+    const toneOf = (i) => (byTag(bodyRows[i], 'td')
+      .find((td) => td.getAttribute('data-col') === 'alive') || {}).attrs['data-tone'];
+    eq('C6 a live loop carries the live colour', toneOf(0), 'ok');
+    eq('C7 a dead one carries the dead colour', toneOf(6), 'danger');
+    // 「모른다」 has NO colour -- a grey dash already says it, and a colour would be a verdict.
+    // ⚠️ TWO rows, deliberately: one that knows keeps the column alive so the one that does not
+    //    has a cell to be drawn in. A lone unknown row deletes the column by the rule above,
+    //    which is the rule working -- and the first spelling of this check measured that
+    //    instead, looking for a cell its own fixture had removed.
+    {
+      const d2 = makeDoc();
+      const m2 = d2.createElement('div');
+      new RuntimePanel(m2, { doc: d2 }).render({ loops: [
+        { loop: 'knows', process: 'p', alive: true },
+        { loop: 'x', process: 'y', alive: null },
+      ] });
+      const cells = byTag(m2, 'td').filter((c) => c.getAttribute('data-col') === 'alive');
+      eq('C8 the unknown row still gets a cell', cells.length, 2);
+      ok('C9 ...and it carries no colour at all', cells[1].attrs['data-tone'] === undefined,
+        String(cells[1].attrs['data-tone']));
+    }
+  }
+
+  console.log(`${LF}-- C-80: two loop tables on one screen do not touch each other --`);
+  {
+    // 조립식 상설의 정의 그대로: 같은 화면에 둘을 놓고 간섭이 «0» 이어야 끼워넣을 수 있는 것.
+    const d = makeDoc();
+    const host = d.createElement('div');
+    const left = new RuntimePanel(host, { doc: d });
+    const right = new RuntimePanel(host, { doc: d });
+    left.render(PAYLOAD);
+    right.render({ loops: [{ loop: 'only', process: 'p', alive: true }] });
+    const rowsOf = (panel) => byTag(panel.root, 'tr').filter((tr) => byTag(tr, 'td').length);
+    eq('P1 the first table keeps its own rows', rowsOf(left).length, 9);
+    eq('P2 the second draws only its own', rowsOf(right).length, 1);
+    // 🔴 AND THEIR COLUMNS DIFFER, which is the sharper test: the column set is computed per
+    //    answer, so a shared module-level list would show up here as one table wearing the
+    //    other's header.
+    eq('P3 ...and each header follows its OWN answer',
+      `${byTag(left.root, 'th').length}/${byTag(right.root, 'th').length}`, '8/3');
+    eq('P4 the host holds both, neither having emptied it', host.children.length, 2);
+  }
+
   console.log(`${LF}-- a read that failed is not an empty list --`);
   eq('U1 no payload reads as unread', runtimeView(null).state, 'unread');
   eq('U2 ...and unread draws no rows rather than inventing them',
@@ -151,12 +218,20 @@ const MUTANTS = [
     to: '  if (!value) return ALIVE.NO;' },
   { id: 'M4', what: 'a failed read is folded into an empty list',
     catches: 'U1 no payload reads as unread',
-    from: '  if (!loops) return { state: \'unread\', rows: [] };',
-    to: '  if (!loops) return { state: \'ready\', rows: [] };' },
+    from: "  if (!loops) return { state: 'unread',",
+    to: "  if (!loops) return { state: 'ready'," },
   { id: 'M5', what: 'the rows come from a list written down here',
     catches: 'R3 a loop this file never heard of',
-    from: '  return { state: \'ready\', rows: loops.map(rowOf) };',
-    to: '  return { state: \'ready\', rows: loops.slice(0, 9).map(rowOf) };' },
+    from: "  const rows = loops.map(rowOf);",
+    to: "  const rows = loops.slice(0, 9).map(rowOf);" },
+  { id: 'M7', what: 'every column is drawn whether or not anybody measured it',
+    catches: 'C3 a column no row has a value for',
+    from: "  return COLUMNS.filter((column) => list.some((row) => row && row[column.key] !== ABSENT));",
+    to: "  return COLUMNS.filter(() => list.length >= 0);" },
+  { id: 'M8', what: 'not knowing is painted as a colour too',
+    catches: 'C9 ...and it carries no colour at all',
+    from: "export const TONE = Object.freeze({ [ALIVE.YES]: 'ok', [ALIVE.NO]: 'danger' });",
+    to: "export const TONE = Object.freeze({ [ALIVE.YES]: 'ok', [ALIVE.NO]: 'danger', [ALIVE.UNKNOWN]: 'warn' });" },
   // 🔴 CONTROL: a comment cannot change an answer.
   { id: 'M6', what: 'CONTROL: a comment line is removed', control: true,
     from: '/** 살았나 — 세 상태입니다. 「모른다」를 ○ 로 그리면 죽은 것으로 읽힙니다. */',

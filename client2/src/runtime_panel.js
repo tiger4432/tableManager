@@ -20,6 +20,16 @@ import { ABSENT, isCount, countText } from './absent.js';
 export const ALIVE = Object.freeze({ YES: '●', NO: '○', UNKNOWN: ABSENT });
 
 /**
+ * 점의 «색». 소유자 2026-09-11: 살았나는 낱말이 아니라 「색 점」입니다.
+ *
+ * 🔴 색을 정하는 것은 «값»이지 «칸 이름»이 아닙니다. 렌더가 `key === 'alive'` 로 갈래를 트면
+ *    그 순간 표가 도메인 낱말을 하나 갖게 되고, 다음 색은 또 다른 갈래가 됩니다 (기준 ③).
+ * ⚠️ 「모른다」에는 색이 «없습니다» — 회색 대시는 이미 「안 왔다」를 말하고, 거기에 색을 주면
+ *    판정이 하나 생깁니다. 이 표는 판정을 하지 않습니다.
+ */
+export const TONE = Object.freeze({ [ALIVE.YES]: 'ok', [ALIVE.NO]: 'danger' });
+
+/**
  * 컬럼 «선언». 라벨은 화면의 낱말이고 key 는 아래 `rowOf` 가 채우는 이름입니다.
  *
  * ⚠️ 도메인 낱말이 아닙니다 — 고리 이름도 프로세스 이름도 여기 없습니다. 그것들은
@@ -35,6 +45,20 @@ export const COLUMNS = Object.freeze([
   { key: 'pace', label: '페이스', align: 'right' },
   { key: 'knob', label: '손잡이' },
 ]);
+
+/**
+ * 그릴 «열». 한 행이라도 값을 가진 열만 남습니다 (소유자: 「열은 값이 있는 것만」).
+ *
+ * 🔴 「아무도 값이 없다」와 「이 고리에 그 값이 없다」는 다른 사실이고, 여기서 지워지는 것은
+ *    «앞»의 것뿐입니다. 한 행이라도 값이 있으면 열은 남고, 값 없는 칸은 여전히 `—` 입니다 —
+ *    열이 통째로 사라져 «있는 값»이 감춰지는 일은 없습니다.
+ * ⚠️ 예외 열을 두지 않습니다. 「고리 이름은 언제나 그린다」 같은 단서를 달면 그 단서가
+ *    다음 화면에서 또 갈래가 됩니다. 행이 없으면 열도 없고, 그때 화면이 말하는 것은 `—` 입니다.
+ */
+export function visibleColumns(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  return COLUMNS.filter((column) => list.some((row) => row && row[column.key] !== ABSENT));
+}
 
 /** 초 — 수면 「12s」, 아니면 `—`. 단위를 부재에 붙이면 「—s」라는 없는 값이 생깁니다. */
 export function secondsText(value) {
@@ -80,8 +104,9 @@ export function rowOf(item) {
  */
 export function runtimeView(payload) {
   const loops = payload && Array.isArray(payload.loops) ? payload.loops : null;
-  if (!loops) return { state: 'unread', rows: [] };
-  return { state: 'ready', rows: loops.map(rowOf) };
+  if (!loops) return { state: 'unread', rows: [], columns: [] };
+  const rows = loops.map(rowOf);
+  return { state: 'ready', rows, columns: visibleColumns(rows) };
 }
 
 export class RuntimePanel {
@@ -112,16 +137,19 @@ export class RuntimePanel {
 
     const thead = this.doc.createElement('thead');
     const hr = this.doc.createElement('tr');
-    for (const column of COLUMNS) hr.appendChild(this._cell('th', column.label, column.align));
+    for (const column of view.columns) hr.appendChild(this._cell('th', column.label, column.align));
     thead.appendChild(hr);
     table.appendChild(thead);
 
     const tbody = this.doc.createElement('tbody');
     for (const row of view.rows) {
       const tr = this.doc.createElement('tr');
-      for (const column of COLUMNS) {
+      for (const column of view.columns) {
         const td = this._cell('td', row[column.key], column.align);
         td.setAttribute('data-col', column.key);
+        // 색은 «값»이 정합니다. 색이 없는 값에는 칸도 안 붙습니다 — 빈 속성은 상태 하나입니다.
+        const tone = TONE[row[column.key]];
+        if (tone) td.setAttribute('data-tone', tone);
         tr.appendChild(td);
       }
       tbody.appendChild(tr);
