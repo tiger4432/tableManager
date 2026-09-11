@@ -1023,9 +1023,45 @@ def init_dynamic_models(config_dict: dict):
         ]
         
         # 2. table_config에 정의된 사용자 컬럼들을 native 타입으로 바인딩
+        # 🔴 A VIEW GETS ITS DECLARED COLUMNS AND NOTHING ELSE (S-186). The four
+        # framework columns above are what a WRITE path maintains - `row_id`,
+        # `business_key_val`, `created_at`, `updated_at` - and a view has none of them
+        # unless its SQL happens to select them. Attaching them anyway made every read of
+        # such a relation emit `SELECT void_obs_observed.row_id`, which PostgreSQL answers
+        # with `UndefinedColumn` and the route turns into a 500.
+        #
+        # ⚠️ THIS SITE IS WHY THE ROUTE STILL BROKE AFTER `total_order_key` LANDED. The
+        # ordering seats had all been folded, but the MODEL still promised four columns the
+        # relation does not have, so the failure moved from the ORDER BY to the SELECT.
+        # `kind` was read in three places before this and none of them was here.
+        #
+        # 🔴 A MAPPED CLASS NEEDS A PRIMARY KEY, so the declared `business_key` becomes
+        # it - the same column `total_order_key` gives the read its total order, which is
+        # what keeps the two from disagreeing about a view's identity.
+        is_view = str(table_cfg.get("kind") or "table") == "view"
+        if is_view:
+            declared_names = list(table_cfg.get("column_types") or {})
+            key_name = str(table_cfg.get("business_key") or "")
+            # 🔴 A MAPPED CLASS NEEDS A PRIMARY KEY; AN IDENTITY IS A DIFFERENT CLAIM.
+            # Measured on this box: of ten `kind: view` relations, FOUR declare no
+            # `business_key` at all. SQLAlchemy cannot map a class without a primary key, so
+            # one column is nominated here purely to make the class buildable - it is NOT a
+            # statement that the relation has an identity.
+            #
+            # ⚠️ WHICH IS WHY THE READ PATH STILL REFUSES THEM. `total_order_key` answers
+            # 422 under R7 for exactly these four, and that is the seat where 「this
+            # relation cannot be paged」 is said. Nominating a column here does not answer
+            # that question and must not look like it does.
+            if key_name not in declared_names:
+                key_name = declared_names[0] if declared_names else ""
+            columns = []
         col_types = table_cfg.get("column_types", {})
         for col_name, type_str in col_types.items():
-            if col_name in FRAMEWORK_COLUMNS:
+            # ⚠️ A VIEW KEEPS EVERY DECLARED COLUMN, framework-named or not. The skip
+            # exists so a real table cannot redeclare a column the framework already
+            # attached — but a view has no framework columns, so skipping here would
+            # silently drop a column the view genuinely selects.
+            if col_name in FRAMEWORK_COLUMNS and not is_view:
                 continue
             if type_str == "number":
                 sql_type = Float
@@ -1033,6 +1069,10 @@ def init_dynamic_models(config_dict: dict):
                 sql_type = DateTime(timezone=True)
             else:
                 sql_type = String
+            if is_view:
+                columns.append(Column(col_name, sql_type, nullable=True,
+                                      primary_key=(col_name == key_name)))
+                continue
             columns.append(Column(col_name, sql_type, nullable=True))
             
         # 3. 1,000만 행 스케일에 최적화된 복합 색인(Covering Index) 정의
@@ -1046,7 +1086,9 @@ def init_dynamic_models(config_dict: dict):
         # The drop for existing databases is structurally gated - see
         # `retire_unread_framework_indexes.py`, which refuses unless another index
         # leading with `business_key_val` survives on that table.
-        table_args = [
+        # ⚠️ A VIEW CANNOT BE INDEXED, and the framework index names columns it does
+        # not have - the same reason `map_key_index_ddl` already states one function over.
+        table_args = [] if is_view else [
             Index(f"idx_{table_name}_updated", "updated_at", "row_id"),
         ]
 
@@ -1066,6 +1108,11 @@ def init_dynamic_models(config_dict: dict):
         # on the `bonding_log` shape and -28.6 B/row (-3.8%, -5.7%) on the widest
         # key in the config. Every WAL sample was byte-identical across repeats.
         key_cols, key_source = declared_key_columns(table_cfg)
+        # ⚠️ A VIEW CARRIES NO INDEX AT ALL — not the framework one above and not this
+        # declared-key one. PostgreSQL cannot index a view, so emitting it would make
+        # `create_all` fail on exactly the relations this round exists to support.
+        if is_view:
+            key_cols = []
         if key_cols:
             table_args.append(Index(f"idx_{table_name}_declared_key", *key_cols))
         elif "refusing" in key_source:

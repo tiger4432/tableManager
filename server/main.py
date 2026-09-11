@@ -810,7 +810,35 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
     """
     if not rows:
         return []
-        
+
+    # 🔴 A VIEW HAS NO LAYERING METADATA, so there is nothing to merge (S-186). Cell
+    # sources and overwrites are written by the write door, and that door refuses this
+    # relation by name - so every row of a view has exactly one value per column, the one
+    # the view selected. Asking for its `row_id` here raised `AttributeError` and the route
+    # answered 500, which is the FIFTH seat in this path that assumed the framework
+    # columns: the sort, the tiebreaker, the paging, the jump, and now the merge.
+    #
+    # ⚠️ SHAPED LIKE A NORMAL ROW, not skipped. The grid reads `{value, is_overwrite,
+    # sources, updated_by}` per cell, so returning the raw ORM objects here would move the
+    # break one layer up into the serializer.
+    if str((crud.TABLE_CONFIG.get(table_name) or {}).get("kind") or "table") == "view":
+        # ⚠️ DATETIMES ARE RENDERED, NOT HANDED OVER RAW. Measured on the first live call:
+        # a raw `datetime` makes the payload non-JSON-native and the route falls back to
+        # `jsonable_encoder`, which its own warning prices at ~10x the serialization time —
+        # on a relation with 103,858 rows. The normal path renders `created_at`/`updated_at`
+        # through `to_local_str`; a view's DECLARED time columns had no such seat, so they
+        # go through the same one spelling rather than a second.
+        def _cell(row, col):
+            value = getattr(row, col, None)
+            return to_local_str(value) if isinstance(value, datetime) else value
+
+        return [
+            {col: {"value": _cell(row, col), "is_overwrite": False,
+                   "sources": {}, "updated_by": None}
+             for col in user_cols}
+            for row in rows
+        ]
+
     row_ids = [r.row_id for r in rows]
     
     # 1. cell_overwrites 일괄 로딩 (Tuple 쿼리로 ORM 인스턴스화 오버헤드 제거)
