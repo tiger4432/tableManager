@@ -148,11 +148,18 @@ class _Plan:
     # `status` is spelled out rather than left off: the real `SourcePlan` always carries it,
     # and a double that omits a field the production code reads turns a live AttributeError
     # into a green test. It also makes the retired case expressible below.
-    def __init__(self, relation, page_key, status="active"):
+    def __init__(self, relation, page_key, status="active", planned=True):
         self.relation = relation
         self.status = status
+        self.planned = planned
         self.driver = type("D", (), {"cursor_columns": (page_key,),
                                      "identity": (page_key,)})()
+
+    @property
+    def runs(self):
+        # Spelled the way the real `SourcePlan.runs` is spelled, not hard-coded True: a
+        # double that answered a constant here would pass whatever the guard did.
+        return self.status == "active" and self.planned
 
 
 def _setup(plans):
@@ -192,6 +199,18 @@ def test_a_base_table_without_the_page_key_is_named_and_not_silently_dropped():
     assert followers == []
     assert cannot == [{"view": "void_obs_observed", "source": "void_observation",
                        "base": "inspection_run", "missing_column": "void_uid"}]
+
+
+def test_a_source_the_loader_refused_is_not_in_the_view_index():
+    """S-177 ②. A refused source has no driver either, for the same reason a retired one
+    has none - and `status` still says `active`, so only `runs` tells them apart."""
+    engine = _Engine(
+        edges={"void_obs_observed": [("void_obs", "r")]},
+        columns={"void_obs": ("void_uid",)})
+    setup = _setup({"void_observation": _Plan("void_obs_observed", "void_uid",
+                                              planned=False)})
+    followers, cannot = followup.view_followers_of(engine, setup, "void_obs")
+    assert followers == [] and cannot == []
 
 
 def test_a_retired_source_is_not_in_the_view_index():

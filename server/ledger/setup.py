@@ -275,6 +275,75 @@ def _announce_dead_cells(dead) -> bool:
     return True
 
 
+def _refused_sources(invalid: Mapping[str, Any]) -> dict[str, Any]:
+    """The resolver's report, narrowed to SOURCES and shaped for the compiler.
+
+    The resolver blames every kind of declaration; only sources have a plan to be absent
+    from, so a refused predicate or entity reaches the screens through the source it took
+    down with it. `reasons[0]` is the root one -- `resolve_declarations` appends in the
+    round it fell, and the first is the one the operator has to fix.
+    """
+    out: dict[str, Any] = {}
+    for key, entry in (invalid or {}).items():
+        kind, _, source_id = str(key).partition("|")
+        if kind != "source_plan" or not source_id:
+            continue
+        reasons = entry.get("reasons") or [{}]
+        out[source_id] = {"raw": entry.get("raw") or {}, "refusal": dict(reasons[0])}
+    return out
+
+
+def _resolve_refused_declarations(root_path: Path, catalog: Mapping[str, Any],
+                                  first: LedgerSetupValidationError):
+    """`(bundle, refused_sources)` for a config one declaration has broken (S-177 ②).
+
+    🔴 THE MECHANISM IS NOT NEW AND MUST NOT BE WRITTEN TWICE. `resolve_declarations`
+    already computes this, as a FIXPOINT over the validator we have: drop whatever a
+    problem blames, validate again, and the cascade falls out because a dangling reference
+    is reported on the REFERRER's own path. The explorer has called it since it was built;
+    what was missing is that the LEDGER'S OWN LOADER did not, so one operator's typo in one
+    source refused the whole bundle and stopped every other source with it.
+
+    🔴 ONLY A DECLARATION-LEVEL FAILURE COMES HERE, and that is what makes re-reading the
+    file safe. A root-document fault -- an unreadable file, a duplicate JSON key, an
+    unlisted path -- is refused by `load_setup_bundle` on a path no declaration owns, so
+    this is never reached for one, and `json.loads` here cannot be reading something the
+    root checks would have stopped.
+
+    ⚠️ A HEALTHY CONFIG NEVER REACHES THIS FUNCTION. It runs only after the strict load has
+    already raised, so the ordinary path costs nothing and is byte-for-byte what it was.
+    """
+    from .config_authoring import ground_node_key
+    from .config_explorer import resolve_declarations
+
+    if not ground_node_key(first.path):
+        raise first                              # nothing a drop can clear
+    document = json.loads(
+        (root_path / CONFIG_FILENAME).read_text(encoding="utf-8"))
+    report = resolve_declarations(document, catalog=catalog)
+    if report["config_level"] or not report["invalid"]:
+        raise first
+    refused = _refused_sources(report["invalid"])
+    bundle = require_ready_bundle(
+        validate_bundle(report["document"], catalog=catalog))
+    # ⛔ ZERO SURVIVING SOURCES IS NOT A LOAD (판정 280 ⓒ). A bundle that compiles to no
+    # plan at all reads to every screen as 「this deployment has no sources」, and the
+    # ledger then stands still with nothing saying why. Refused by name, with each
+    # source's own reason, because the operator has to fix them one at a time.
+    if not bundle.section("sources"):
+        raise LedgerSetupError(
+            "every_source_refused", "bundle.sources",
+            "every declared source was refused, so nothing would be read: "
+            + "; ".join(
+                f"{source_id}: {entry['refusal'].get('path')} "
+                f"{entry['refusal'].get('message')}"
+                for source_id, entry in sorted(refused.items())))
+    for source_id, entry in sorted(refused.items()):
+        logger.error("[Ledger] source %s is NOT planned: %s %s", source_id,
+                     entry["refusal"].get("path"), entry["refusal"].get("message"))
+    return bundle, refused
+
+
 def load_setup(
     root: str | Path = DEFAULT_ONTOLOGY_ROOT,
     *,
@@ -287,18 +356,28 @@ def load_setup(
     `table_config.json`, which is what production does and the only thing production
     should do. It is resolved ONCE here and carried on the result so no later reader
     re-reads the file and gets a different answer.
+
+    🔴 ONE BROKEN DECLARATION NO LONGER STOPS THE OTHERS (S-177 ②, 판정 280). A single
+    source's typo used to refuse the bundle, and a refused bundle is a stopped ledger --
+    in production that is one mistake standing fourteen ledgers up. The broken declaration
+    now falls alone and BY NAME; see `_resolve_refused_declarations`.
     """
     root_path = Path(root).resolve(strict=True)
     resolved_catalog = (
         dict(live_physical_catalog()) if catalog is None else dict(catalog))
-    bundle = require_ready_bundle(
-        load_setup_bundle(root_path, catalog=resolved_catalog))
+    refused: Mapping[str, Any] = {}
+    try:
+        bundle = require_ready_bundle(
+            load_setup_bundle(root_path, catalog=resolved_catalog))
+    except LedgerSetupValidationError as first:
+        bundle, refused = _resolve_refused_declarations(
+            root_path, resolved_catalog, first)
     _announce_dead_cells(_dead_time_cells(bundle.section("sources")))
     _announce_unscored_bindings(
         _unscored_self_edge_sentences(bundle.section("sources")))
     snapshot = compile_setup_snapshot(
         bundle, trusted_implementations(), verified_joins,
-        catalog=resolved_catalog)
+        catalog=resolved_catalog, refused_sources=refused)
     return LedgerSetup(
         config_root=root_path,
         bundle=bundle,
@@ -421,6 +500,13 @@ def _require_declared_source(setup: "LedgerSetup", source_id: str) -> str:
     if not isinstance(setup, LedgerSetup):
         raise TypeError("setup must be LedgerSetup")
     setup.require_source(source_id)
+    plan = setup.snapshot.source_plans[source_id]
+    if not plan.planned:
+        raise LedgerSetupError(
+            "source_refused", f"sources.{source_id}",
+            f"source {source_id!r} was refused by the loader, so it has no plan to run: "
+            f"{dict(plan.refusal or {}).get('path')} "
+            f"{dict(plan.refusal or {}).get('message')}")
     if setup.snapshot.source_plans[source_id].status != "active":
         raise LedgerSetupError(
             "source_retired",
@@ -492,14 +578,15 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         setup = load_setup(root)
-    except LedgerSetupValidationError as refusal:
-        # 🔴 AUTHORING REPORTS EVERY PROBLEM; THE RUNTIME STILL STOPS AT THE FIRST.
-        # `load_setup` above is the runtime path and is unchanged -- it raised, and a
-        # source about to write atoms should stop exactly there. This command is the
-        # AUTHORING path, and the difference was measured 2026-08-19: an author writing a
-        # second source by hand spent five save-and-run cycles discovering five problems
-        # that were all present in the first save. The first refusal is not more true than
-        # the other four; it is only alphabetically first.
+    except (LedgerSetupValidationError, LedgerSetupError) as refusal:
+        # 🔴 AUTHORING REPORTS EVERY PROBLEM; THE RUNTIME REPORTS WHAT IT COULD NOT RUN.
+        # `load_setup` above is the runtime path: since S-177 ② it drops a blamed
+        # declaration and loads the rest, and it only raises when there is nothing left to
+        # read at all (`every_source_refused`). This command is the AUTHORING path, and
+        # the difference was measured 2026-08-19: an author writing a second source by
+        # hand spent five save-and-run cycles discovering five problems that were all
+        # present in the first save. The first refusal is not more true than the other
+        # four; it is only alphabetically first.
         issues = _authoring_issues(root, refusal)
         for issue in issues:
             print(f"{issue.code}	{issue.path}	{issue.message}", file=sys.stderr)
@@ -514,7 +601,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def _authoring_issues(
-    root: Path, fallback: LedgerSetupValidationError,
+    root: Path, fallback: LedgerSetupValidationError | LedgerSetupError,
 ) -> tuple[LedgerSetupValidationError, ...]:
     """The whole list, in the three stages a config is judged in.
 
@@ -523,10 +610,11 @@ def _authoring_issues(
     Reporting a later stage's consequences beside an earlier stage's causes would bury the
     causes.  WITHIN a stage every problem is reported -- that is the change.
 
-    `fallback` is the refusal the loader already raised.  If none of the three stages can
-    reproduce it the loader is still right and the operator still gets an answer; a report
-    that said "0 problems" about a config that just failed to load would be worse than the
-    single message it replaced.
+    `fallback` is the refusal the loader already raised -- which since S-177 ② may be
+    `every_source_refused` rather than a validation error, and both carry `code`/`path`/
+    `message`.  If none of the three stages can reproduce it the loader is still right and
+    the operator still gets an answer; a report that said "0 problems" about a config that
+    just failed to load would be worse than the single message it replaced.
     """
     catalog = dict(live_physical_catalog())
     issues = setup_bundle_errors(root, catalog=catalog)

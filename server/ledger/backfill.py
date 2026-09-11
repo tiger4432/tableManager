@@ -1159,9 +1159,11 @@ def measure_every_source(engine, setup, store=None, now=None):
         # 「rows not yet translated」 for it would publish a remainder that will never move
         # and read as a backlog. Saying which ones were skipped is what keeps that from
         # looking like the sweep quietly losing sources.
-        if setup.snapshot.source_plans[source].status != "active":
-            logger.info("[Ledger] census skips %s: retired (content unvalidated)",
-                        source)
+        if not setup.snapshot.source_plans[source].runs:
+            logger.info("[Ledger] census skips %s: %s", source,
+                        "refused by the loader"
+                        if not setup.snapshot.source_plans[source].planned
+                        else "retired (content unvalidated)")
             continue
         try:
             measure_and_store(engine, setup, source, writer, now=now)

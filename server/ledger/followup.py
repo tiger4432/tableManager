@@ -210,7 +210,7 @@ def view_followers_of(engine, setup, table):
             # only ever built an index nobody read - and its plan now carries no driver, so
             # `scope_column` would raise while resolving a view chain for a table the
             # declaration has stopped reading.
-            if plan.status != "active":
+            if not plan.runs:
                 continue
             relation = plan.relation
             key = scope_column(plan)
@@ -434,7 +434,7 @@ def sources_for_table(setup, table_name):
     # atoms from now on and keeps every atom it already made - which is what retiring one
     # means. A ledger appends; it does not forget.
     return tuple(sorted(name for name, plan in plans.items()
-                        if plan.relation == table_name and plan.status == "active"))
+                        if plan.relation == table_name and plan.runs))
 
 
 def scope_column(plan):
