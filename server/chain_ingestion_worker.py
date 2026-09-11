@@ -919,6 +919,37 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
     with alignment_batch_counts.stage("outbox read"):
         expanded = outbox_expand.expand_events(db, valid_events)
 
+    # 🔴 ZERO LOADED IS NOT "NOTHING TO DO" - IT IS A READ THAT FAILED (S-158).
+    # A collapsed event NAMES its rows. If not one of them can be read back, the mapper
+    # is handed an empty payload, does nothing, and the group ends SUCCESS - so the event
+    # is stamped processed and those rows derive NOTHING, with no error, no retry and no
+    # quarantine anywhere. Measured 2026-09-11: four events of 1,000 rows each went that
+    # way and 3,000 rows silently failed to reach their derived table.
+    #
+    # ⚠️ AND THE OLD EXPLANATION WAS WRONG, WHICH IS WHY THIS CANNOT BE LEFT TO A LOG
+    # LINE. `expand_events` says the rows were "deleted between the write and the chain
+    # run"; measured, every one of those 3,000 rows was present in the table the whole
+    # time. Whatever the cause, the honest answer here is "could not read them", and the
+    # honest outcome is a REFUSAL that retries - not a success that loses them.
+    #
+    # ⚠️ PARTIAL IS DELIBERATELY NOT REFUSED. Some rows missing is the documented
+    # delete-between case and the warning above names it; ALL of them missing, for an
+    # event that named some, is the shape that cannot be a legitimate answer.
+    unreadable = [e for e in valid_events
+                  if event_constants.is_collapsed_payload(get_payload_dict(e))
+                  and (get_payload_dict(e).get("row_ids") or ())
+                  and not expanded.get(outbox_expand.event_key(e))]
+    if unreadable:
+        named = ", ".join(
+            "%s(%d rows)" % (getattr(e, "event_uuid", "?"),
+                             len(get_payload_dict(e).get("row_ids") or ()))
+            for e in unreadable[:3])
+        return False, (
+            "rows_not_visible: %d collapsed event(s) named rows that could not be read "
+            "back in this pass (%s). The rows were NOT derived; the group is refused so "
+            "it retries rather than being stamped SUCCESS with an empty payload (S-158)."
+            % (len(unreadable), named)), broadcast_messages
+
     # 2. Map of updates grouped by target table
     # target_table -> list of GeneralUpdateItem dicts
     table_updates = defaultdict(list)

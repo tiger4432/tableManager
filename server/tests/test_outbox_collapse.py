@@ -299,6 +299,44 @@ def test_a_row_deleted_before_consumption_derives_nothing_and_is_counted(obx, ca
         "an unresolved row_id must be NAMED, never silently skipped")
 
 
+def test_a_collapsed_event_that_loads_no_rows_is_refused_not_succeeded(obx):
+    """🔴 ALL of them missing is a READ THAT FAILED, not an empty answer (S-158).
+
+    A collapsed event NAMES its rows. If none can be read back, the mapper is handed an
+    empty payload, does nothing, and the group would end SUCCESS - stamping the event
+    processed while those rows derive NOTHING, with no error, no retry, no quarantine.
+    Measured 2026-09-11: four events of 1,000 rows each went exactly that way and 3,000
+    rows silently failed to reach their derived table, so this is pinned rather than
+    trusted to the warning that was already being logged beside it.
+
+    ⚠️ THE PARTIAL CASE IS THE TEST ABOVE, AND STAYS A SUCCESS. Some rows deleted
+    between write and consumption is a legitimate answer the warning names; the refusal
+    is narrowed to the all-missing shape so it cannot swallow that one.
+    """
+    import chain_ingestion_worker as ciw
+    db = obx
+
+    _seed(db, "obxcol_src", [_row(i) for i in range(3)], "tx-blind", mode=COLLAPSED)
+    ev = _events(db, "obxcol_src", "tx-blind")[0]
+    named = list(get_payload_dict(ev)["row_ids"])
+    assert len(named) == 3
+
+    model = models.DYNAMIC_TABLES["obxcol_src"]
+    with outbox_mode(COLLAPSED):
+        for row in db.query(model).filter(model.row_id.in_(named)).all():
+            db.delete(row)
+        db.commit()
+
+    rules = [{"name": "obxcol_blind", "trigger_table": "obxcol_src",
+              "target_table": "obxcol_mirror", "enabled": True}]
+    ok, reason, _msgs = ciw._process_chain_transaction_group_sync("tx-blind", [ev], db, rules)
+
+    assert ok is False, "a group that could read NONE of its named rows must not succeed"
+    assert "rows_not_visible" in (reason or ""), reason
+    assert str(len(named)) in (reason or ""), "the refusal says how many rows were lost"
+    assert ev.processed_chain is not True, "a refused group leaves the event to retry"
+
+
 # ---------------------------------------------------------------------------
 # 3) The failure path: coarse on the happy path, fine where something broke
 # ---------------------------------------------------------------------------
