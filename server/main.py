@@ -5776,84 +5776,6 @@ def get_ledger_relations(q: str = None, limit: int = 200, db: Session = Depends(
     return ledger_admin.relations_view(db, query=q, limit=limit)
 
 
-@app.post("/admin/ledger/dry-run", dependencies=[Depends(require_admin_token)])
-def post_ledger_dry_run(payload: dict = Body(...), db: Session = Depends(get_db)):
-    """1단 + 2단. **쓰기 0**으로 「이 선언이 낳을 원자」를 원자 봉투 그대로 돌려준다.
-
-    🔴 실제 번역기를 태운다(브리핑 §4:「가짜 미리보기는 조용한 거짓말이다」). 페치·분자
-    조립·번역·게이트 심사 전부 백필이 쓰는 바로 그 코드이고, 다른 것은 **커넥션의
-    트랜잭션이 READ ONLY로 열려 있다는 것 하나**다 — 그래서 쓰기 0은 이 코드가 쓰기를
-    안 부른다는 약속이 아니라 PostgreSQL이 쓰기를 거절한다는 사실이다.
-
-    ⚠️ **[2026-08-18] 위 문단은 `target: "source"`에 대해 더는 사실이 아니다.** v1 번역기
-    4종이 은퇴해 `preview()`가 `DryRunUnavailable`을 던지고, 이 라우트는 이름 붙은 거절로
-    답한다. 위 문단은 **복구될 미리보기가 만족해야 할 사양**으로 남겨 둔다.
-    🔴 그리고 그 거절은 «저장까지» 막는다 — `token`이 이 함수의 성공 경로에서만 발급되므로
-    소스는 저장이 `dry_run_stale`로 거절된다. `target: "predicate"`는 영향 없다(위쪽에서
-    `_ledger_predicate_dry_run`이 먼저 반환한다).
-    """
-    import ledger_admin
-    from ledger import dry_run as ledger_dry_run
-
-    target = payload.get("target")
-    name = str(payload.get("name") or "").strip()
-    declaration = payload.get("declaration")
-    if target not in ledger_admin.TARGETS:
-        raise _ledger_admin_refusal([ledger_admin.violation(
-            "declaration_rejected", "target",
-            f"target은 {', '.join(ledger_admin.TARGETS)} 중 하나여야 합니다.")])
-
-    # 🔴 원본 JSON 편집도 «같은 문»으로 들어온다. 3단은 완화되지 않는다(소유자 지시):
-    # 손으로 고친 JSON 덩어리야말로 틀린 선언이 나오는 자리이고, 미리보기의 값이 가장 큰
-    # 경로다. 파싱조차 안 되면 그건 `declaration_rejected`이고 몇 행인지 말해 준다.
-    if declaration is None and payload.get("raw") is not None:
-        declaration, refusal = ledger_admin.parse_raw_declaration(payload["raw"])
-        if refusal is not None:
-            raise _ledger_admin_refusal([refusal])
-
-    # 🔴 THE PREDICATE HALF RETIRED 2026-08-27, WITH THE SAVE IT PREVIEWED. A preview
-    # whose「저장하면」cannot happen is the same false signpost the structure rows just lost,
-    # and this one issued a `token` for a route that no longer exists. The SOURCE half stays -
-    # it is the whole reason this route is not retired with the others.
-    if target == ledger_admin.TARGET_PREDICATE:
-        raise _ledger_admin_refusal([ledger_admin.violation(
-            "declaration_rejected", "target",
-            "술어는 이제 «선언 문서»의 일부로 편집합니다 — 온톨로지 화면에서 초안을 "
-            "만들어 문서를 고치고 활성화하세요. 술어만 따로 미리보고 저장하는 경로는 "
-            "은퇴했습니다.",
-            "the predicate dry-run retired with the v1 save route it previewed")])
-
-    violations = ledger_admin.check_source_declaration(db, name, declaration)
-    if violations:
-        raise _ledger_admin_refusal(violations)
-
-    cfg = ledger_admin.candidate_config(name, declaration)
-    try:
-        result = ledger_dry_run.preview(engine, cfg, name,
-                                        rows=payload.get("rows")
-                                        or ledger_dry_run.DEFAULT_ROWS)
-    except ledger_dry_run.DryRunUnavailable as exc:
-        raise _ledger_admin_refusal([ledger_admin.violation(
-            "declaration_rejected", None, exc.detail_ko, str(exc))])
-
-    result["ok"] = True
-    result["target"] = target
-    result["name"] = name
-    # One authoring answer: the physical declaration, the translator's complete possible
-    # emissions (including branches absent from this sample), and the LIVE vocabulary
-    # signatures they must satisfy.  The atom preview below remains the empirical half.
-    from ledger.source_contract import compile_source
-    result["source_contract"] = compile_source(name, declaration)
-    result["token"] = ledger_admin.declaration_token(target, name, declaration)
-    result["sentence_ko"] = (
-        f"이 선언은 {result['rows_read']}행을 읽어 분자 {result['molecules']}개를 만들고 "
-        f"원자 {result['atoms']}개를 씁니다"
-        + (f" (분자 {result['molecules_refused']}개는 게이트가 거절)"
-           if result["molecules_refused"] else "")
-        + ". 이 미리보기는 아무것도 쓰지 않았습니다.")
-    return result
-
-
 # ---------------------------------------------- v1 ledger authoring, RETIRED 2026-08-27
 # 🔴 REMOVED: `POST /admin/ledger/save`, `POST /admin/ledger/vocabulary/retire`, and
 # `_ledger_reload_and_report`, whose only two callers they were.
@@ -5870,10 +5792,12 @@ def post_ledger_dry_run(payload: dict = Body(...), db: Session = Depends(get_db)
 #              ("sources.probe.occurred_at_column is not declared"), so this half could
 #              not save today's grammar at all.
 #
-# `POST /admin/ledger/dry-run` STAYS - sources still preview through it.
-# ⚠️ Its `target: "predicate"` half now previews a save that cannot happen: it still
-# issues a `token` and its sentence still promises「저장하면」. Left standing rather than
-# removed on my own judgement - that is a ruling, not a cleanup.
+# ⚰️ `POST /admin/ledger/dry-run` RETIRED 2026-09-13 (S-203). Both halves were refusals:
+# the source half raised `DryRunUnavailable` from the day the v1 translators left
+# (2026-08-18), and the predicate half refused from 2026-08-27. Client callers: zero.
+# The sentence that stood here -- 「sources still preview through it」 -- was false, as was
+# the docstring claiming `_ledger_predicate_dry_run` returned first: no such function ever
+# existed. Today's step 2 is the draft lifecycle (`compile_draft_preview`, S-194).
 
 
 @app.get("/admin/config/virtual-join/verify", dependencies=[Depends(require_admin_token)])
