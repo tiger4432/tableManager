@@ -1130,6 +1130,33 @@
       flex-direction: column;
       gap: 14px;
     }
+    /* C-87. 「몇 번째 걸음인가」 — 제목 «위» 한 줄. 번호·이름·기다리는 번호 셋이 한 줄에 서고,
+       셋 다 값이라 문장이 없습니다. 여백은 토큰(3.4 그리드)에서만 집습니다. */
+    .cfg-domain-step {
+      display: flex;
+      align-items: baseline;
+      gap: var(--space-2);
+      margin-bottom: var(--space-1);
+    }
+    .cfg-step-no {
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+      font-size: var(--fs-label);
+      color: var(--accent);
+      min-width: 1.2em;
+    }
+    .cfg-step-name {
+      font-size: var(--fs-label);
+      color: var(--text-dim);
+      letter-spacing: 0.02em;
+    }
+    /* 막힌 걸음만 이 표지를 답니다. 색은 «경고»이고, 그 뜻은 「이 걸음은 앞이 서야 선다」입니다. */
+    .cfg-step-blocked {
+      font-variant-numeric: tabular-nums;
+      font-size: var(--fs-label);
+      color: var(--warning);
+      margin-left: auto;
+    }
     .cfg-group-label {
       font-size: 0.7rem;
       font-weight: 700;

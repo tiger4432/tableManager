@@ -2371,11 +2371,10 @@ function renderConfigResolve() {
   line.dataset.tone = view.tone;
 
   body.textContent = '';
-  if (view.empty) {
-    body.appendChild(cfgEl('div', 'cfg-detail', cfgText(view.emptyText)));
-    return;
-  }
-  view.domains.forEach((domain) => body.appendChild(cfgDomainEl(domain)));
+  // C-87. 두 자리가 «같은 함수»로 그립니다 — 탭과 원장 편집기의 저장 응답. 각자 돌면
+  // 걸음 구분선이 한쪽에만 생깁니다(그 둘이 갈라질 수 있는 것이 criterion ④).
+  renderResolveInto(body, view);
+  if (view.empty) return;
 
   const block = byId('config-resolve');
   if (block && !configResolveAutoOpened && view.tone) {
@@ -2393,11 +2392,31 @@ function renderResolveInto(container, view) {
     container.appendChild(cfgEl('div', 'cfg-detail', cfgText(view.emptyText)));
     return;
   }
-  view.domains.forEach((domain) => container.appendChild(cfgDomainEl(domain)));
+  // C-87. 걸음 밖 무리는 «한 번» 이름을 답니다. 도메인마다 달면 그것이 주저리입니다.
+  let namedUnstepped = false;
+  view.domains.forEach((domain) => {
+    if (domain.unstepped && view.unsteppedLabel && !namedUnstepped) {
+      container.appendChild(cfgEl('div', 'cfg-group-label', cfgText(view.unsteppedLabel)));
+      namedUnstepped = true;
+    }
+    container.appendChild(cfgDomainEl(domain));
+  });
 }
 
 function cfgDomainEl(domain) {
   const card = cfgEl('article', 'cfg-domain');
+  // C-87. 「몇 번째 걸음인가」를 제목 «앞»에. 번호와 이름은 서버의 목록에서 왔고, 막혔으면
+  // 기다리는 걸음의 «번호»가 옆에 붙습니다 — 부호 하나와 숫자 하나, 문장 없음.
+  if (domain.step) {
+    const head = cfgEl('div', 'cfg-domain-step');
+    head.appendChild(cfgEl('span', 'cfg-step-no', cfgText(domain.step)));
+    if (domain.stepName) head.appendChild(cfgEl('span', 'cfg-step-name', cfgText(domain.stepName)));
+    if (domain.blockedBy) {
+      head.appendChild(cfgEl('span', 'cfg-step-blocked',
+        `${cfgText(domain.blockedLabel)} ${cfgText(domain.blockedBy)}`));
+    }
+    card.appendChild(head);
+  }
   card.appendChild(cfgEl('div', 'cfg-domain-title', cfgText(domain.title)));
 
   if (domain.sources.length) {
