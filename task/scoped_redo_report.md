@@ -36059,3 +36059,48 @@ skipped                     151                       149
 ```
 
 > 📌 **[09-12 12:3x] 이 채널의 미답 질문: «없음».** S-188 ⓐ 진행 중(판정 300 순서대로).
+
+---
+
+## 📤 [09-12 12:4x 구현자] S-188 ⓐ 착지 — `5ee7dded`. 목록은 «스물둘»이고 열하나로 닫으면 오늘 도는 것이 섭니다
+
+```
+chain_bindings.RULE_ROUTING_REQUIRED = ("name", "trigger_table")
+chain_bindings.RULE_ROUTING_OPTIONAL = 나머지 스물     · routing_keys() 가 «한 목록»으로 냅니다
+RULE_TABLE_KEYS(일곱) ⊆ routing_keys()                 · 시험이 그 «부분집합 관계»를 단언합니다
+```
+🔴 **열하나 → 스물둘의 내역** (전부 실측, 루프가 «어느 규칙 파일»을 도는지 읽어서 귀속):
+```
+워커의 열하나                name enabled trigger_table trigger_columns target_table
+                          mapper_module mapper_function is_batch follow_up
+                          allow_chain_trigger allow_map_metadata_upsert
++ chain_graph 가 «더» 읽음   target_field · max_group_attempts · origin · params
+   (`target_field` 는 그 파일 자기 주석이 「체인 규칙이 «선언하는 유일한 컬럼»」이라 적어 둠)
++ chain_bindings 가 이미 읽음 source_table map_table inventory_table metadata_target_table
+                          derivation_source_table  (= RULE_TABLE_KEYS) · reads · reference
+```
+⚠️ **귀속을 «루프»로 했습니다 — 리터럴 grep 으로는 갈릴 수 없었습니다.** `chain_graph` 안에서
+`_mapper_edges`(체인) · `_enrich_edges`(인리치) · `_vjoin_edges`(가상 조인)가 «전부» 지역변수
+이름을 `rule` 로 씁니다. 그래서 `derived_table`·`target_fields`·`left_table`·`right_table`·
+`expose`·`aggregations`·`decision_key`·`alignment`·`reference_views` 는 이 목록에 «없고»,
+시험이 그 «부재»를 단언합니다 — 세 문법을 한 목록에 담으면 그 목록은 아무것도 거절하지 못합니다.
+
+⚠️ **`target_table`·`enabled`·`is_batch` 는 샘플 열 개 «전부»가 적는데 «선택»으로 뒀습니다.**
+코드에 기본값이 있거나(`rule.get("enabled", True)`) 데코레이터가 댈 수 있습니다
+(`mapper_sdk.mapper(target_table=…)`). 「열 개 다 적혀 있다」와 「없으면 거절」은 다른 문장이고
+계약은 후자뿐입니다 — 시험에 그 문장을 적었습니다.
+
+### 게이트
+```
+6 passed
+변이 ①  목록을 워커의 열하나로 닫음   -> 「그 넷이 목록에 있다」 빨강
+변이 ②  derived_table 을 끼워 넣음    -> 「다른 문법의 칸이 새지 않았다」 빨강
+모집단  6 파일 142 passed · 1 skipped · 빨강 하나
+        test_dt_standard_map_mapper::test_the_live_dt_map_declaration_is_the_physical_unit
+        -> 제 트리 «단독» 빨강 · 부모 71b51494 «단독» 빨강 = 기존
+커밋 뒤  pytest tests --collect-only -q -> 5,863 collected · 오류 0
+동작 변화 «0» — `routing_keys()` 를 «아직 아무도 안 부릅니다». ⓑ 가 거절로 만들고 ⓓ 와 같이 갑니다
+```
+
+> 📌 **[09-12 12:4x] 이 채널의 미답 질문: «없음».** 다음 = ⓒ 등록부(`@mapper` 를 «참으로» 만드는 조각,
+> 맵퍼 패키지 기동 import + 모듈 단위 격리). 재기동은 ⓒ 착지 뒤 총괄 몫입니다.
