@@ -408,6 +408,7 @@ def test_the_export_drops_only_the_column_the_model_cannot_answer(type_env):
 #     and `column_filter` still has to render it before comparing against text.
 
 
+@pytest.mark.xfail(strict=True, reason="KNOWN RED since 2026-09-02 on the lead PM's ruling: the premise (the injected graph-meta cell always wins) was removed ON PURPOSE, and the red is the correct signal. 판정 309 makes it a STRICT xfail so the signal survives without a permanent red -- if this ever passes, the injection came back and THAT is what has to be looked at.")
 def test_a_graph_meta_boolean_never_reaches_the_payload_because_the_cell_is_taken(type_env):
     """MEASURED SCOPE for the boolean arm, so the fix is not read as wider than it is.
 

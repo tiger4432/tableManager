@@ -69,6 +69,35 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 
 
 # ===========================================================================
+# Tests whose subject is a LIVE, gitignored file  [S-199-b, 판정 309]
+# ===========================================================================
+
+#: Set this to run the tests whose judgement's SUBJECT sits outside the repository.
+LIVE_TESTS_ENV = "ASSY_TEST_LIVE"
+
+
+def requires_live(shape):
+    """Skip BY NAME unless the operator asked for the live files to be judged.
+
+    🔴 THESE TESTS ARE NOT WRONG AND THE LIVE FILES ARE NOT WRONG. Their subject is
+    `server/mappers/*.py` and `server/config/*.json`, which `.gitignore` excludes - so the
+    answer is a fact about ONE machine, and a red here says nothing about production. Running
+    them by default makes 「the suite is green」 depend on whose checkout it is.
+
+    ⛔ AND THE REASON CARRIES THE REQUIRED SHAPE, not just 「needs the live files」. A skip
+    that only says it was skipped teaches the reader to ignore it; a skip that says WHAT the
+    live file would have to look like is the one line an operator can act on.
+
+    ⚠️ NEITHER SIDE IS EDITED TO AGREE. Bending the test to today's live file would
+    delete the requirement; editing the owner's file from here would be fixing this box.
+    """
+    return pytest.mark.skipif(
+        not os.environ.get(LIVE_TESTS_ENV),
+        reason="requires the live %s; set %s=1 to judge the live files" % (
+            shape, LIVE_TESTS_ENV))
+
+
+# ===========================================================================
 # Retiring a dynamic model  [S-191, 판정 307]
 # ===========================================================================
 

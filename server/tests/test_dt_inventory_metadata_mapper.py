@@ -2,6 +2,8 @@ import filecmp
 import json
 from pathlib import Path
 
+from conftest import requires_live                                   # noqa: E402
+
 from mappers.dt_inventory_metadata_mapper import copy_dt_metadata_to_inventory_batch
 
 
@@ -15,6 +17,7 @@ def _payload(target_table="dt_log", map_id="SYN-001", grid_metadata=None):
     }
 
 
+@requires_live("chain rule for dt_inventory_metadata to declare `metadata_target_table` -- the binding refuses by name without it")
 def test_copies_dt_log_metadata_to_matching_inventory_job():
     result = copy_dt_metadata_to_inventory_batch(None, [_payload()])
 
@@ -29,6 +32,7 @@ def test_copies_dt_log_metadata_to_matching_inventory_job():
     }
 
 
+@requires_live("chain rule for dt_inventory_metadata to declare `metadata_target_table` -- the binding refuses by name without it")
 def test_skips_other_metadata_targets_invalid_json_and_duplicate_jobs():
     result = copy_dt_metadata_to_inventory_batch(None, [
         _payload(target_table="core_log"),
