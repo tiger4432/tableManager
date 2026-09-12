@@ -428,6 +428,10 @@ class InMemoryEvidenceLookup:
 #: until the first entity node asks for it.
 _entity_key_order = None
 
+#: Which attribute names hold SEVERAL values, per bare entity type (S-144). Filled by the
+#: same read as the line above, so the two can never come from different revisions.
+_entity_plural_attributes = {}
+
 
 def _declared_key_order(entity_type):
     """The key order one entity type declares, from the LIVE ontology declaration.
@@ -443,23 +447,102 @@ def _declared_key_order(entity_type):
     declaration leaves every label exactly as it is today rather than taking the walk down
     with it.  The `@version` suffix is stripped the way `ledger/roleframe.py` strips it.
     """
-    global _entity_key_order
-    if _entity_key_order is None:
-        order = {}
-        try:
-            import paths
-            with open(paths.config_path("ontology", "ledger_config.json"),
-                      "r", encoding="utf-8") as handle:
-                declared = (json.load(handle) or {}).get("entities") or {}
-            for name, spec in declared.items():
-                keys = [str(key) for key in ((spec or {}).get("keys") or [])]
-                if keys:
-                    order[str(name).rsplit("@", 1)[0]] = keys
-        except Exception:
-            order = {}
-        _entity_key_order = order
+    _read_entity_declaration()
     return _entity_key_order.get(str(entity_type))
 
+
+def _read_entity_declaration():
+    """Read the entity declaration ONCE, filling everything this module takes from it.
+
+    🔴 ONE READ, TWO FACTS (S-144). Key order and attribute cardinality come from the same
+    file, and two cached reads could answer from two different revisions of it - a node
+    labelled by one version of a declaration and valued by another. They are two caches
+    because they are two questions, but there is only one sentinel and one open().
+
+    Never raises: an absent or unreadable declaration leaves labels and attributes exactly
+    as they are today rather than taking the walk down with it. The `@version` suffix is
+    stripped the way `ledger/roleframe.py` strips it.
+    """
+    global _entity_key_order, _entity_plural_attributes
+    if _entity_key_order is not None:
+        return
+    from ledger.setup_bundle import ATTRIBUTE_CARDINALITY_MANY
+
+    order, plural_by_type = {}, {}
+    try:
+        import paths
+        with open(paths.config_path("ontology", "ledger_config.json"),
+                  "r", encoding="utf-8") as handle:
+            declared = (json.load(handle) or {}).get("entities") or {}
+        for name, spec in declared.items():
+            spec = spec or {}
+            bare = str(name).rsplit("@", 1)[0]
+            keys = [str(key) for key in (spec.get("keys") or [])]
+            if keys:
+                order[bare] = keys
+            cardinality = spec.get("attribute_cardinality")
+            if isinstance(cardinality, dict):
+                plural = frozenset(
+                    str(attribute) for attribute, how in cardinality.items()
+                    if how == ATTRIBUTE_CARDINALITY_MANY)
+                if plural:
+                    plural_by_type[bare] = plural
+    except Exception:
+        order, plural_by_type = {}, {}
+    _entity_key_order, _entity_plural_attributes = order, plural_by_type
+
+
+def _declared_plural_attributes(entity_type):
+    """Which of this type's attribute names hold SEVERAL values (S-144, 판정 327)."""
+    _read_entity_declaration()
+    return _entity_plural_attributes.get(_bare(str(entity_type))) or frozenset()
+
+
+
+def _apply_registrations(nodes, registrations):
+    """Fold every registration this walk reached onto its node, by the DECLARED rule.
+
+    🔴 LATEST WINS, AND A DISAGREEMENT IS COUNTED RATHER THAN HIDDEN (S-52 ③, ruling 124).
+    "Latest" is the reading rule: a changed attribute wrote a NEW registration and the old
+    one stays, so this picks the newest instant and says out loud how many names had more
+    than one distinct value. Same value at two instants is NOT a conflict - that is one
+    fact stated twice.
+
+    🔴 A NAME THE DECLARATION CALLS `many` IS NOT A DISAGREEMENT (S-144 / A1-2, 판정 327).
+    A column holds one value per ROW, so a wafer with two products is two rows and two
+    registrations - which this read as one name with two values, counted a conflict, and
+    then DROPPED one of them by keeping only the latest. Both were true, and until the
+    declaration gained a cell there was no way to say so.
+
+    🔴 THE SHAPE IS FIXED PER NAME, NOT PER ANSWER. A `many` name is a list even when it
+    holds one value: 「a list only when there are two」 puts two shapes in one cell, and the
+    reader would have to guess which it got.
+
+    A node this walk reached no registration for gets NO KEY, not an empty object: "this
+    entity carries no values" and "this walk did not reach its registration" are different
+    answers.
+    """
+    for node_id, by_name in registrations.items():
+        node = nodes.get(node_id)
+        if node is None:
+            continue
+        plural = _declared_plural_attributes(str(node.get("type") or ""))
+        values, conflicts = {}, 0
+        for name, seen in by_name.items():
+            if name in plural:
+                # Ordered by instant, and the same value at two instants is ONE value -
+                # exactly the rule the conflict count already used: that is one fact
+                # stated twice, not two facts.
+                distinct = {}
+                for _at, value in sorted(seen, key=lambda item: item[0]):
+                    distinct.setdefault(_canonical(value), value)
+                values[name] = list(distinct.values())
+                continue
+            values[name] = max(seen, key=lambda item: item[0])[1]
+            if len({_canonical(value) for _at, value in seen}) > 1:
+                conflicts += 1
+        node["attributes"] = values
+        node["attribute_conflicts"] = conflicts
 
 def _entity_node(entity_type, keys):
     node = ledger_explorer._entity(entity_type, keys)
@@ -1682,17 +1765,9 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     # A node the walk reached no registration for gets NO KEY, not an empty object: "this
     # entity carries no values" and "this walk did not reach its registration" are
     # different answers.
-    for node_id, by_name in registrations.items():
-        node = nodes.get(node_id)
-        if node is None:
-            continue
-        values, conflicts = {}, 0
-        for name, seen in by_name.items():
-            values[name] = max(seen, key=lambda item: item[0])[1]
-            if len({_canonical(value) for _at, value in seen}) > 1:
-                conflicts += 1
-        node["attributes"] = values
-        node["attribute_conflicts"] = conflicts
+    from ledger.setup_bundle import ATTRIBUTE_CARDINALITY_MANY
+
+    _apply_registrations(nodes, registrations)
     ordered_nodes = sorted(nodes.values(), key=lambda item: (
         item["depth"], item["node_kind"], item["label"], item["id"]))
     # 🔴 THE LAST STEP, AND ONLY ON THIS LIST. `nodes` (the dict) still holds everything
@@ -1727,6 +1802,26 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         "state": "ready" if found else "empty",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "seed": seed, "nodes": visible_nodes, "edges": ordered_edges,
+        # 🔴 WHICH ATTRIBUTE NAMES HOLD SEVERAL VALUES, BY NODE TYPE (S-144, 판정 327).
+        # `attributes[name]` is a list for these names and a scalar for every other, so a
+        # reader has to know which - and the DECLARATION is where that is written. The
+        # server is the declaration's only reader, so it says so here rather than leaving
+        # the screen to fetch and parse the ontology for itself.
+        #
+        # ⚠️ THE DECLARATION'S OWN WORD, AND ITS OWN DEFAULT. Only `many` names appear;
+        # absent means `one`, exactly as an absent cell means `one` in the declaration. A
+        # second vocabulary for the same idea is how the two start disagreeing.
+        # ⚠️ OVER THE TYPES THE RESPONSE CARRIES, not over the ones that happened to reach a
+        # registration. It is a fact about the DECLARATION, so a type whose nodes carry no
+        # values yet must still say that `product` is a list when it does - otherwise the
+        # header a screen draws changes shape as data arrives.
+        "attribute_cardinality": {
+            node_type: {name: ATTRIBUTE_CARDINALITY_MANY for name in sorted(plural)}
+            for node_type, plural in sorted(
+                (str(item.get("type") or ""),
+                 _declared_plural_attributes(str(item.get("type") or "")))
+                for item in visible_nodes) if plural
+        },
         "seeds": [{"id": item, "sign": "+" if seed_signs[item] > 0 else "-",
                    "node_kind": seed_refs[item]["kind"]} for item in seed_signs],
         "propagation": _propagation(

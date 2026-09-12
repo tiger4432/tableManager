@@ -542,6 +542,12 @@ def public_bundle_schema() -> dict[str, Any]:
         # against each other by feeding every kind to the validator rather than trusting
         # this literal.
         "identity_binding_kinds": ["column", "constant"],
+        # 🔴 THE WORDS THE CELL ACCEPTS, from the tuple the validator judges with
+        # (S-144). Written here so the authoring form OFFERS them rather than
+        # inviting free text into a closed set -- the same reason
+        # `identity_binding_kinds` sits above, and read from the constant so the
+        # form and the refusal cannot name different words.
+        "attribute_cardinalities": list(ATTRIBUTE_CARDINALITIES),
         # `tables` joins the list: naming it here is what turns "I pasted my old section
         # back in" from a silent no-op into `unknown_field` at `ledger_config.tables`.
         # `source_preparers` and `mappers` join it for the same reason on 2026-08-20 --
@@ -1088,6 +1094,16 @@ def _column_list_or_text(value: Any, path: str, problems: _Problems) -> None:
         _nonblank_list(value, path, problems)
 
 
+#: How many values one attribute name holds for one subject (S-144 / A1-2, 판정 327).
+#: 🔴 ABSENT MEANS `one`, which is what every declaration on disk means today - so the word
+#: is only written where it changes something, and 「declared single」 never has to be
+#: distinguished from 「never classified」 because for this cell they are the same answer.
+ATTRIBUTE_CARDINALITY_ONE = "one"
+ATTRIBUTE_CARDINALITY_MANY = "many"
+ATTRIBUTE_CARDINALITIES = (ATTRIBUTE_CARDINALITY_ONE, ATTRIBUTE_CARDINALITY_MANY)
+DEFAULT_ATTRIBUTE_CARDINALITY = ATTRIBUTE_CARDINALITY_ONE
+
+
 def _column_values(value: Any) -> tuple[str, ...]:
     if isinstance(value, str):
         return (value,)
@@ -1299,7 +1315,7 @@ def _validate_entities(section: Mapping[str, Any], problems: _Problems) -> None:
         if not problems.exact(
                 item, path, required=("keys",),
                 optional=("allow_null", "references", "class",
-                          "attributes", "status")):
+                          "attributes", "attribute_cardinality", "status")):
             continue
         if "class" in item and item["class"] not in ("static", "dynamic"):
             problems.add("invalid_entity_ref", f"{path}.class",
@@ -1344,6 +1360,39 @@ def _validate_entities(section: Mapping[str, Any], problems: _Problems) -> None:
                         f"these names are already identity keys: {collide}. An attribute "
                         f"is not part of what makes this entity the same entity, so one "
                         f"name cannot be both.")
+        # 🔴 「이 이름은 값을 «여럿» 든다」 (S-144 / A1-2, 판정 327). A column holds one value
+        # per ROW, so a subject with two products is two rows and two registrations - and
+        # the walk read that as a DISAGREEMENT, counted it in `attribute_conflicts` and
+        # dropped one of the two values. There was nowhere to say the two are both true.
+        #
+        # ⚠️ THE SHAPE `key_types` HAD, WITH THE READER `key_types` NEVER HAD. That cell was
+        # retired (판정 165) for being a declaration slot nothing consumed; this one is read
+        # by the walk in the same commit that declares it, which is the whole difference.
+        #
+        # 🔴 A NAME THAT IS NOT AN ATTRIBUTE IS REFUSED, NOT IGNORED. `_column_values` drops
+        # non-strings silently, so a cell in the wrong shape disappears without a word - and
+        # an operator who typed `prodcut` here would get no plurality and no error either.
+        if "attribute_cardinality" in item:
+            cardinality = item["attribute_cardinality"]
+            if not isinstance(cardinality, Mapping):
+                problems.add("invalid_type", f"{path}.attribute_cardinality",
+                             "must be an object mapping an attribute name to "
+                             f"one of {list(ATTRIBUTE_CARDINALITIES)}")
+            else:
+                declared_attributes = set(_column_values(item.get("attributes")))
+                for attribute_name in sorted(cardinality, key=str):
+                    where = f"{path}.attribute_cardinality.{attribute_name}"
+                    if cardinality[attribute_name] not in ATTRIBUTE_CARDINALITIES:
+                        problems.add(
+                            "invalid_entity_ref", where,
+                            f"must be one of {list(ATTRIBUTE_CARDINALITIES)} "
+                            f"(absent means {DEFAULT_ATTRIBUTE_CARDINALITY!r})")
+                    if str(attribute_name) not in declared_attributes:
+                        problems.add(
+                            "unknown_id", where,
+                            f"{attribute_name!r} is not in this entity's `attributes`. "
+                            f"Cardinality says how many values a DECLARED attribute holds; "
+                            f"a name only written here would carry no values at all.")
         if "allow_null" in item and not isinstance(item["allow_null"], bool):
             problems.add("invalid_type", f"{path}.allow_null", "must be boolean")
         # 🔴 THE SAME RULE AS A RETIRED SOURCE (S-177 ①). `references` is the ONE entity
