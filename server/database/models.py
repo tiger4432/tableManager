@@ -1038,7 +1038,9 @@ def init_dynamic_models(config_dict: dict):
         # 🔴 A MAPPED CLASS NEEDS A PRIMARY KEY, so the declared `business_key` becomes
         # it - the same column `total_order_key` gives the read its total order, which is
         # what keeps the two from disagreeing about a view's identity.
-        is_view = str(table_cfg.get("kind") or "table") == "view"
+        from ledger.setup_bundle import catalog_kind
+
+        is_view = catalog_kind(table_cfg) == "view"
         if is_view:
             declared_names = list(table_cfg.get("column_types") or {})
             key_name = str(table_cfg.get("business_key") or "")

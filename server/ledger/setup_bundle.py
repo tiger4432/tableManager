@@ -207,6 +207,32 @@ class LedgerSetupValidationError(ValueError):
         return {"code": self.code, "path": self.path, "message": self.message}
 
 
+#: The catalogue's relation kinds. A CLOSED list — see the refusal at `_validate_catalog`,
+#: which exists because `"veiw"` would otherwise read as `table` and plant `row_id` back on
+#: a view, looking exactly like the line had never been written.
+CATALOG_KINDS = ("table", "view")
+
+#: What a relation that says nothing IS. Absent means an ordinary table — that is the
+#: catalogue's own default, not an invention at the reading site.
+DEFAULT_CATALOG_KIND = "table"
+
+
+def catalog_kind(entry):
+    """A catalogue entry's kind, defaulted in ONE place (S-187).
+
+    🔴 FOUR SITES SPELLED THIS OUT SEPARATELY — the validator here, the dynamic model
+    builder, the grid's write door and a script — each as `str(x.get("kind") or "table")`.
+    Four spellings of one default is four chances for one of them to drift, and the drift
+    would be invisible: a relation read as a table where it should be a view is exactly the
+    failure `_validate_catalog` refuses a typo to prevent.
+
+    ⚠️ IT DOES NOT VALIDATE. An unknown word is refused at load time, by path, where the
+    operator can be told which line is wrong; answering that question again here would be
+    a second gate that can disagree with the first.
+    """
+    return str((entry or {}).get("kind") or DEFAULT_CATALOG_KIND)
+
+
 def load_physical_catalog(path: str | Path) -> Mapping[str, Any]:
     """`table_config.json` as the relation shape the cross-validators read.
 
@@ -367,7 +393,7 @@ def _adapt_physical_catalog(document: Mapping[str, Any]) -> Mapping[str, Any]:
         # ⛔ A CLOSED LIST, REFUSED BY PATH. `"veiw"` would otherwise read as `table` and
         # plant `row_id` back on the view -- the typo would look exactly like not having
         # written the line at all, which is the one failure mode this field has.
-        kind = str(declared.get("kind") or "table")
+        kind = catalog_kind(declared)
         if kind not in ("table", "view"):
             raise LedgerSetupValidationError(
                 "invalid_catalog", f"{table_id}.kind",

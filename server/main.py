@@ -821,7 +821,9 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
     # ⚠️ SHAPED LIKE A NORMAL ROW, not skipped. The grid reads `{value, is_overwrite,
     # sources, updated_by}` per cell, so returning the raw ORM objects here would move the
     # break one layer up into the serializer.
-    if str((crud.TABLE_CONFIG.get(table_name) or {}).get("kind") or "table") == "view":
+    from ledger.setup_bundle import catalog_kind
+
+    if catalog_kind(crud.TABLE_CONFIG.get(table_name)) == "view":
         # 🔴 THE SAME WRAPPER EVERY ROW USES. The grid reads `{row_id, table_name, data,
         # created_at, updated_at}` for EVERY row (`grid.js` reaches for `dataObj.data[col]`),
         # so a flat dict here stopped it drawing a view it had been drawing — the response
@@ -1006,6 +1008,8 @@ def list_tables():
     than present with an empty list -- "no map key" and "a map key of nothing" are not the
     same sentence, and `tables` itself is untouched for every existing reader.
     """
+    from ledger.setup_bundle import catalog_kind
+
     return {
         "tables": list(crud.TABLE_CONFIG.keys()),
         "map_key_columns": {
@@ -1013,6 +1017,17 @@ def list_tables():
             for name, entry in crud.TABLE_CONFIG.items()
             if isinstance(entry, dict) and entry.get("map_key_columns")
         },
+        # 🔴 `kind` RIDES FOR THE REASON `map_key_columns` DOES (S-187). The client had no
+        # route that could tell it a relation is a view — measured: `/tables`,
+        # `/tables/<n>/schema` and `/data` all lacked it — so the grid could not refuse
+        # edit entry on something the write door was going to refuse anyway, and the
+        # operator learned it from a 400 after typing.
+        #
+        # ⚠️ EVERY TABLE IS PRESENT HERE, unlike `map_key_columns` where absence means "no
+        # map key". Every relation HAS a kind; a missing entry would make the reader guess,
+        # and the guess would be the very default this hands over explicitly.
+        "kinds": {name: catalog_kind(entry)
+                  for name, entry in crud.TABLE_CONFIG.items()},
     }
 
 def get_deleted_row_business_key(db: Session, table_name: str, row_id: str):
@@ -2884,10 +2899,17 @@ def get_table_schema(table_name: str, db: Session = Depends(get_db)):
         logger.error(f"[VirtualJoin] schema announcement failed on '{table_name}', "
                      f"virtual columns omitted: {e}")
 
+    from ledger.setup_bundle import catalog_kind
+
     return {
         "table_name": table_name,
         "columns": columns,
         "column_types": col_types,
+        # 🔴 THE SAME VALUE `/tables` HANDS OVER, FROM THE SAME FUNCTION (S-187). Two
+        # routes answering 「is this a view」 from two spellings is how they come to
+        # disagree, and a screen that trusted the wrong one would offer an edit the write
+        # door refuses.
+        "kind": catalog_kind(config),
         "business_key": config.get("business_key", ""),
         "composite_key_source": config.get("composite_key_source", []),
         "map_key_columns": config.get("map_key_columns", []),
