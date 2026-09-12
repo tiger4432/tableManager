@@ -2399,16 +2399,16 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 
 ---
 
-### 🆕㉘ `server/chain_builtins.py` (**120줄**, S-189 ⓒ `1964c65a` 신설) — 합성 «한 자리» + `builtin:` 종류 표
+### 🆕㉘ `server/chain_builtins.py` (**171줄**, S-189 ⓒ `1964c65a` 신설 · S-195 에서 120→171) — 합성 «한 자리» + `builtin:` 종류 표
 
 | 심볼 | 무엇인가 |
 |---|---|
 | `synthesize_chain_rules(known_tables=None)` :28 | 🔴 **합성의 «한 자리»** — 인리치 반쪽과 조인 반쪽을 각각 부르고, `load_chain_rules` 는 «이것만» 부른다. ⚠️ 조인 반쪽을 `load_enrichment_chain_rules` «안»에 넣었으면 판정 292 의 «글자»는 지켰겠지만 `enrichment_…` 라는 이름의 함수가 «가상 조인 파일»을 읽게 된다 — 반쪽은 각자 정직한 이름을 갖고, «자리»가 하나다 |
 | `synthesized_kind_counts(rules)` :43 | 합성된 것을 종류별로 «센다» |
-| `class UnknownBuiltinKind(ValueError)` :69 · `BUILTIN_KINDS` :91 · `register_builtin(kind, fn)` :94 · `run_builtin(kind, db, rule, **kwargs)` :104 · `_install()` :114 | **이 어휘가 «처음» 갖는 표다.** 🔴 **모르는 종류는 «이름 대어» 거절된다**(아는 목록을 같이 인쇄) — 구현이 «없는» 종류를 적은 규칙은 «켜진 채로 살아 보이면서» 한 번도 안 돌기 때문이다. 🔵 실측이 그것을 부른 자리: `builtin:auto_confirm` 은 그때까지 «정확히 두 번» 나왔고(둘 다 `enrichment_config`) **아무도 안 읽었다** — S-179 가 로더·그래프 층에는 그 종류를 선언해 두고 실행은 스윕에 남겨 뒀다 |
+| `class UnknownBuiltinKind(ValueError)` :69 · `BUILTIN_KINDS` :138 · `register_builtin(kind, fn)` :141 · `run_builtin(kind, db, rule, **kwargs)` :151 · `_install()` :161 | **이 어휘가 «처음» 갖는 표다.** 🔴 **모르는 종류는 «이름 대어» 거절된다**(아는 목록을 같이 인쇄) — 구현이 «없는» 종류를 적은 규칙은 «켜진 채로 살아 보이면서» 한 번도 안 돌기 때문이다. 🔵 실측이 그것을 부른 자리: `builtin:auto_confirm` 은 그때까지 «정확히 두 번» 나왔고(둘 다 `enrichment_config`) **아무도 안 읽었다** — S-179 가 로더·그래프 층에는 그 종류를 선언해 두고 실행은 스윕에 남겨 뒀다 |
 | `_run_join(db, rule, row_ids=None, key_values=None)` :75 | `builtin:join` 의 실행 — 아래 `virtual_join_executor` 로 내려간다 |
 
-⏳ **[판정 305 — «예고»]** `builtin:auto_confirm` 의 «실행»이 이 표 위로 옮겨 오는 것은 **S-195** 이고 아직 «안 착지했다». 오늘 접힌 것은 «선언»뿐이다.
+⚰️ **[2026-09-12 S-195 — 「예고」 → «착지했다»]** `builtin:auto_confirm` 의 «실행»이 이 표 위로 올라왔다(`_run_auto_confirm` :90). 🔴 **일은 «안 바뀌었고», 바뀐 것은 «어떻게 찾히나»다** — 그때까지 인리치 스윕은 `_auto_confirm_followed_rows` 에서 «이 디스패처 옆에서 직접» 불렸고, 즉 `follow_up` 종류가 «도는 길이 둘»이었다. 그 금지가 이름 붙은 임시방편을 이고 있었던 것이고, 이제 **표 하나, 길 하나**다. 🔵 그리고 규칙이 «선언»에서 온다 — `AutoConfirmCollector` 는 이미 `rules` 를 받았는데 안 주면 `load_enrichment_rules` 로 «다시 찾았다»(합성된 규칙이 이미 들고 있는 것을).
 
 ### 🆕㉘ `server/schema_drift.py` (**864줄**, S-193 `98eee71f`) — 기동이 「없는 표」라 부르던 것 중 열이 «뷰»였다
 
