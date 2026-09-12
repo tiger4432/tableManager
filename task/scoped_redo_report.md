@@ -39474,3 +39474,60 @@ GET /api/ledger/subgraph  에  group_by=<노드 타입 | 속성 이름>   measur
 
 > 📌 **[09-13 01:32] 이 채널의 미답 질문: 여전히 «셋» (S-146 ①②③).** 제안 자체는 안 바뀝니다 —
 > 근거 둘이 더 붙었고, 제가 순서를 어긴 것은 그대로 적어 둡니다.
+
+
+---
+
+## S-146 서버 절반 착지 `a4d80302` — 판정 331 대로. 봉투 칸 `groups`, 어휘는 서버 상수 하나
+
+```
+GET /api/ledger/subgraph?…&group_by=<type|값 이름>&measure=<일곱 중 하나>[:<값 이름>]
+봉투  "groups": [{key, n, value}]      안 물으면 «그 칸이 없음»(null 아님 — 세 상태)
+어휘  ledger_subgraph.AGGREGATE_MEASURES = count·distinct·sum·mean·min·max·median   «클라의 그 일곱 그대로»
+거절  unknown_measure · measure_needs_a_name · measure_needs_numbers — 422 에 code + choices
+```
+🔴 **같은 걷기·같은 예산**입니다. 채점도 «단언»이 아니라 «세기»로 했습니다 — 조회기 호출 수가
+group_by 유무에 관계없이 «같음»(둘째 걷기면 늘어납니다).
+🔴 **잘렸을 때 «수를 냅니다»**(판정 ②ⓑ) — 기울어짐은 «같은 봉투의» `truncated`/`complete` 가 말하고,
+`groups` 안에 둘째 absence 낱말을 두지 않았습니다.
+
+### 계약 벡터 — 양쪽 채점, 클라는 «오늘 채점 불가»
+```
+contracts/walk_aggregate/vectors.json     11 벡터 + 거절 3   (일곱 «전부» 덮는지 시험이 셈)
+                        client_harness.mjs  ⛔ import 합니다. 잘라쓰기 0
+서버   server/tests/test_walk_aggregate_contract.py   23 passed
+클라   exit «2» = COULD NOT SCORE — `AGGREGATE` 가 export 가 아님 (= C-90 이 닫을 자리)
+```
+🔴 **exit 2 는 «조용한 통과»의 반대입니다.** 하니스가 자기 산술로 접었으면 초록이 나왔을 것이고,
+그 초록은 「둘이 같다」가 아니라 「내가 두 번 계산했다」입니다.
+
+### 비용 실측 (이 박스 · 접는 비용«만», 걷기 비용 아님)
+```
+노드  1,000  -> count 0.7ms · mean 1.1ms · median 1.2ms
+노드 20,000  -> count 16ms  · mean 28ms  · median 30ms        선형
+```
+=> **접는 것은 비용이 아닙니다.** 비용은 «예산»(`node_limit` 기본 400)이고, 집계에 더 큰 예산이
+필요한지는 판정대로 **S-146-b**(운영 모양 박스)로 남깁니다 — 짓지 않았습니다.
+
+### 게이트가 잡은 것 · 변이
+```
+내 시험 둘이 «내 코드의 구멍»을 먼저 잡았습니다:
+  · 계약 벡터가 min·max 를 «안 덮고» 있었다 (일곱 전수 시험이 잡음)
+  · 절단 픽스처가 «실제로 안 잘리고» 있었다 (truncated 단언이 잡음 — 40 노드 · node_limit 10 으로 고침)
+내 시험 하나는 «내가 틀렸습니다»:
+  · 라우트의 거절 순서를 소스 오프셋으로 비교했는데, 무관한 «앞선 try» 의 except ValueError 를
+    집었습니다. 코드는 옳았고 수가 «다른 것»을 세고 있었습니다 — `_evidence_graph(` 뒤로 앵커
+변이: 모르는 measure 가 count 로 폴백 → 2 · 복수 키가 한 무리만 → 1 · 빈 무리가 0 → 1 · groups null → 1
+하니스도 한 번 틀렸습니다 — Windows 경로를 그대로 import 해 「채점 불가」가 «나왔는데 사유가 거짓»
+  (protocol 'c:'). `pathToFileURL` 로 고쳤습니다. C-90 이 와도 안 고쳤으면 거짓 사유가 남았을 것입니다
+```
+⚠️ 그리고 제가 하니스 종료코드를 `| tail` 뒤에서 `$?` 로 읽어 «0» 으로 봤습니다 —
+제 기억 파일 「파이프에 가려진 게이트는 게이트가 아니다」 그대로입니다. 파일로 받아 다시 쟀고 «2» 입니다.
+
+`docs/architecture/WALK.md` 에 그 축의 절을 «같은 커밋»에 넣었습니다(행 투영 절 옆, 「라우트는 그대로」로 시작 ·
+봉투 칸 · 절단 규칙 · 일곱의 출처 · 비용 실측 · 계약 포인터).
+
+게이트: 걷기+집계+subgraph+rows+interval+routes+auth **281 passed / FAILED 0** · 커밋 뒤 수집 **6,165**.
+
+> 📌 **[09-13 01:42] 이 채널의 미답 질문: «없음».** 클라 절반은 C-90(총괄이 적으심).
+> 다음은 큐대로 **S-147** 입니다.
