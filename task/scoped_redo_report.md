@@ -36303,3 +36303,53 @@ _archive/profile_chain_mapper.py   469줄   ⚰️ 아카이브 — 되살리지
 
 > 📌 **[09-12 13:1x] 이 채널의 미답 질문: «둘» (위).** 코드 0 · 이 설계 한 장만 커밋합니다.
 > ⚠️ 「failed 18 중 부모에 없던 이름」은 여전히 «재는 중»입니다(순차 두 실행, 아직 안 끝남).
+
+---
+
+## 📤 [09-12 13:3x 구현자] 검증기 승격 착지 — `75c2b0c7`. 「동작 0, 이동 한 번」이 «아니었습니다» — 셋을 주입해야 했습니다
+
+`server/validation.py` 신설 · `setup_bundle` 은 «대입으로 재export»(자기 천 줄과 호출자 무변).
+`LedgerSetupValidationError` 는 «중립 예외의 하위»로 남아 열여섯 호출자가 그대로 잡습니다.
+
+### 🔴 주입 «셋» — 전부 «일반 기제 안에 앉아 있던 원장 지식»이었습니다
+```
+error_cls       finish() 가 내는 예외
+retired_help    exact() 가 `_RETIRED_FIELD_HELP` 를 «직접» 읽었음 — 원장의 은퇴 경로 맵
+🔴 forbidden_keys  이게 제일 중요합니다. 원장은 선언에서 module·function·python·sql·expression…
+                을 «금지»합니다(「원장 선언은 국소적·무계산」). 그런데 «체인 규칙의 일»은
+                코드를 이름 대는 것입니다(`mapper_module`·`mapper_function`).
+                => 공용 검증기가 그 집합을 들고 있으면 **S-188 이 정리하려는 바로 그 칸들을 거절합니다.**
+                기본값 «빈 집합» — 원하는 호출자가 «달라고 합니다»
+```
+🔵 즉 판정 300 의 「옮기고 둘이 import — 동작 0」은 «결과»로는 맞지만, 옮기려면 원장 정책 셋을
+«바깥으로 빼내야» 했습니다. 그 셋을 못 봤으면 체인 로더가 자기 맵퍼 칸을 거절했을 것입니다.
+
+### ⛔ 그리고 «진짜 가드» 하나를 밟았습니다 — 그게 이 라운드의 발견입니다
+```
+test_common_module_has_no_domain_source_branches_or_runtime_imports
+   setup_bundle 의 import 가 «stdlib 만»임을 단언합니다. 그 시험이 자기 주석에 이렇게 적어 뒀습니다:
+   「no I/O, no domain, no runtime — which is the property this allowlist exists to protect.
+     The list stays CLOSED: a new name here is a DECISION」
+   (difflib 이 2026-08-19 에 그 조건으로 «들어온» 전례까지 적혀 있습니다)
+```
+🔴 **그래서 허용 목록에 `validation` 을 «그냥 더하지» 않았습니다.** 프로젝트 모듈을 하나 들이면
+그 목록은 «그 모듈이 다음에 import 할 것만큼 큰 구멍»이 됩니다. 가드를 **넓히지 말고 늘렸습니다** —
+이제 `validation.py` «자기 import»도 파싱해서 stdlib 만인지 단언합니다.
+**성질은 전이적이지 않으면 성질이 아닙니다.**
+변이: `validation.py` 가 `database` 를 import 하게 만들면 그 새 단언이 «빨강»(`['database']`).
+
+### 게이트 — 부모와 «같은 이름, 같은 수»
+```
+모집단 37 파일(뿌리에서 git grep: LedgerSetupValidationError · _Problems · _did_you_mean · setup_bundle)
+제 트리   2 failed · 571 passed · 5 skipped · 12 errors
+부모      2 failed · 561 passed · 4 skipped · 12 errors   (부모에 있는 35 파일)
+빨강 «이름»이 같습니다 — test_ontology_config_explorer 둘. 에러 12 도 같습니다.
+passed 차 10 = 제가 이번에 더한 시험들
+커밋 뒤  pytest tests --collect-only -q
+```
+🔵 라이브 확인: `_Problems()` 가 여전히 `LedgerSetupValidationError` 를 내고 `unsafe_declaration`
+코드·`to_mapping()` 그대로이며, 동시에 `DeclarationValidationError` 로도 잡힙니다.
+
+> 📌 **[09-12 13:3x] 이 채널의 미답 질문: «없음».** 다음 = **ⓓ+ⓑ 한 커밋**(한 칸 `mapper` + 두 칸 호환 +
+> 평면 키 호환 + 거절/경고). 이제 `validation.Problems(forbidden_keys=∅)` 가 그 자리에서 씁니다.
+> ⚠️ 「failed 18 중 부모에 없던 이름」 두 실행은 «아직 도는 중»입니다.
