@@ -18570,3 +18570,97 @@ A5-2 의 물음은 「이 선언 diff 로 «몇 행이 · 어느 소스가 · �
 > 「판정 대기」 «없음» · 대기: 10⁷(보류) · **D-20** = S-147-b `21440c63`·S-150 `3953f695`·
 > S-205 `6cfd921a`·C-90 ② `deebe3da` 묶음(조건 없이 다음 정비 창) · 🔁 이월: 0
 > · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
+
+---
+
+## D-20 «나머지» — 히스토리 항목 + 색인 + 가이드 한 절 (지시 09-13 07:33)
+
+커밋 «둘», 둘 다 `docs/` 뿐입니다. 경로를 명시합니다.
+```
+d81b981a  docs/guide/HARNESS_DISCIPLINE_GUIDE.md                         (+16 / −1)
+94ef0b11  docs/history/20260913_073900_two_walls_…_could_not_be_asked.md  (신규)
+          docs/history/README.md                                          (색인 839 → 840)
+```
+
+### ① 히스토리 항목 — 셋째 묶음 `6cfd921a`~`d9e9d704` (03:10~04:31)
+
+문장마다 해시를 달았고 착지 커밋 단위로 적었습니다. 묶음의 문장은
+**「‘없다’가 두 번 다 ‘아무도 안 써 봤다’였다」** — 보드 로더 `d30e0a1d` 와 `state.js` 벽 `d9e9d704`.
+서버 둘은 반대 방향의 같은 병으로 적었습니다: 자리가 있는데 «아무도 안 지나서» 틀린 채 조용했던 것
+(`6cfd921a`) · 수가 나오는데 «모집단이 틀려서» 그럴듯했던 것(`21440c63`).
+
+🔴 **지시 목록의 한 줄을 «옮겨 적지 않고 쟀습니다»** — S-150 `3953f695`(03:08)는 앞 항목
+`docs/history/20260913_031000_false_had_to_be_earned_and_a_seed_set_stopped_being_a_list.md` §④
+에 «이미» 있습니다(그 항목의 범위가 02:18~03:08). 중복 대신 **그렇다고 적었습니다.**
+
+🔵 **그리고 인용한 줄 번호를 이 라운드에 «다시 쟀습니다»**(기억에서 옮기지 않고):
+```
+client2/tests/lib/board_modules.mjs   moduleUrl :24  ·  outward :39  (:24 가 :39 를 «부른다»)
+client2/src/rnd_board/api.js          mapModel :1115 · waferFactsFromWalk :1289
+server/ledger/config_drafts.py        class OntologyDraftStore :365
+client2/tests/lib/probe.mjs           「import 안 한 이름의 stub 은 거절」 :220 · importedNames :221
+```
+
+### ② 하니스 가이드 — §5-sexies 신설, 그리고 «제 ⏳ 표기»의 이름이 바뀐 것
+
+`docs/guide/HARNESS_DISCIPLINE_GUIDE.md` 에 C-91 ⓐ `d9e9d704` 의 두 규칙을 §5-quinquies
+(`2195e100`) «옆»에 놓았습니다 — stub 목록은 «주체의 import 줄»에서 읽는다 · stage 는
+«번들의» state 에 한다.
+🔴 그 절이 한 줄이 아니라 한 절인 이유를 같이 적었습니다: **달아난 대조군은 치환이 «닿았는지»에
+대해 아무 말도 안 합니다** — 배선됐어도 조용히 건너뛰었어도 «같은 값»입니다. 그래서 증명은
+`state.js` 의 «잡힐 변이»를 «다른 파일»이 잡는 것이고 29/29(종전 28)입니다.
+
+⚠️ **그리고 그 절에서 제 낡은 문장을 하나 고쳤습니다(발견 즉시).** §5-quinquies 의 ⏳ 가
+「`data:` 다리는 **C-91** 과 같이 은퇴」로 적혀 있었는데, 판정 346 이 C-91 을 셋으로 쪼갰고
+다리를 걷는 것은 ⓑ = **C-94** 입니다. **C-91 ⓐ 는 `d9e9d704` 로 착지했고 다리는 그대로 섭니다** —
+제 실측 `git grep -l "data:text/javascript" -- client2 contracts` 가 «여덟 파일»을 내고,
+그중 하나가 그 절이 말하는 로더 자신입니다.
+🔵 표기를 «지우지» 않고 «바뀐 이름»을 적었습니다 — 다리 표기가 해야 하는 일이 그것이라 적었습니다.
+
+### 🔴 열어 본 절 / 안 연 절 (따로)
+
+**열어 본 것** — 이 라운드에 «실제로 열어» 읽은 것만:
+```
+docs/guide/HARNESS_DISCIPLINE_GUIDE.md   §5-quinquies 전문(209~231) + 절 제목 목록
+docs/history/20260913_031000_*.md        전문 (S-150 중복 확인용)
+docs/history/20260913_021400_*.md        전문
+docs/history/gen_index.py                머리 20줄
+task/MARKING_CONTRACT.md                 끝 + `3f881ba4` diff
+task/DESIGN_ORDERS.md                    판정 346 한 줄(:24973)
+client2/tests/lib/probe.mjs              :219~222 및 grep 히트 40줄
+소스 실측                                 위 ①의 줄 번호 다섯, `const dataUrl` 2, `data:` 8
+커밋 메시지 전문                           6cfd921a · 21440c63 · 17819603 · d30e0a1d ·
+                                         deebe3da · d9e9d704 · 40ab1ca6
+```
+**안 연 것** — 그래서 이 보고가 그 문서들에 대해 «아무 말도 안 합니다»:
+```
+docs/architecture/CODE_MAP.md            이 라운드에 «안 열었습니다». ①·②는 `5a280c26`·`3a6afe88` 에서 끝났고
+                                         오늘 그 파일을 다시 재지 않았습니다
+docs/architecture/SYSTEM_FLOWS.md        «안 열었습니다» (§④-bis 정정은 `5a280c26`)
+docs/architecture/LEDGER_SCHEMA_COMPLETENESS.md · WALK.md · BASIS.md · PRIMITIVES.md   «안 열었습니다»
+docs/guide/SETUP_ORDER.md                «안 열었습니다»
+하니스 가이드의 나머지 절 (§1·§2·§4·§5·§5-bis·§5-ter·§5-quater·§6)   제목만 봤고 본문은 «안 열었습니다»
+```
+🔴 **그리고 «대리»를 하나 이름 댑니다** — 서버 둘(`6cfd921a` · `21440c63`)에 대한 제 문장들의 출처는
+«커밋 메시지»이지 `server/` 소스를 연 것이 «아닙니다**. `config_root` 가 부모를 안 가리킨다는 것도,
+`parents` 가 씨앗당 경로 하나만 든다는 것도 **구현자가 잰 것을 제가 옮긴 것**입니다.
+제가 «직접» 잰 것은 위 「열어 본 것」의 줄 번호 다섯과 grep 둘뿐입니다.
+⚠️ 「주석은 «의도»의 증거이지 «동작»의 증거가 아니다」의 부류라, 근거로 쓰실 때 이 구분을 같이 보십시오.
+
+### 감사
+```
+제 커밋 둘의 «비-docs 파일 수»: 0 × 2   (코드 0 · 섞임 0 · `-a`/`-A` 0)
+신규 파일은 `add` + `commit` 을 «한 명령»으로 (공유 트리 창을 안 엶)
+이 박스 이름 0 (두 diff 전부) · 「운영」이라 적은 줄 0
+색인은 `gen_index.py` 로 생성 (손으로 안 고침): 839 → 840
+`.claude/doc_sync_pending` 삭제 (삭제 직전 33 → 지금 없음)
+```
+⚠️ **이 라운드에 제 도구가 파일 하나를 «0바이트로 만들었습니다»** — `open(경로, 'w')` 가 쓰기 «전»에
+자르는데 그 뒤 인코딩 예외가 났습니다(제가 대리 쌍 이스케이프를 썼습니다). `git checkout --` 로
+즉시 되돌렸고(22,950 바이트 복구), 그 뒤로는 «임시 파일에 쓰고 `os.replace`» 로만 했습니다.
+커밋된 것에는 안 닿았고 남은 흔적도 «없습니다». 제 기억 파일의 줄이고, 오늘 그것을 실물로 만났습니다.
+
+> 「판정 대기」 «없음» · 대기: 10⁷(보류, IO 1.3 s/1k · S-168 뒤) · 🔁 이월: 0
+> 🔵 다음 정비 창에 «자연히» 걸릴 것 하나: C-94 가 착지하면 §5-quinquies 의 ⏳ 와 §5-sexies 가
+> 같이 걷힙니다 — 오늘 그 표기에 «걷을 이름»(C-94)을 적어 뒀으니 찾아다니지 않아도 됩니다
+> · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
