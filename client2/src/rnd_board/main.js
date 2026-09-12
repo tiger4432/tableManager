@@ -419,6 +419,11 @@ export const BOARD = Object.freeze({
     {
       id: 'map-bond-a',
       part: 'map',
+      // 🔴 C-92 (판정 343). 「어느 타입이 «셀»인가」와 「어느 술어가 검사·발견인가」는 좌석의
+      //    선언입니다. 읽는 쪽(`mapModel`)은 이 plan 을 «읽기만» 하고 이름을 대지 않습니다 —
+      //    맵이 다른 자재를 그리게 되는 날 바뀌는 것은 코드가 아니라 이 세 줄입니다.
+      cells: { type: 'die' },
+      marks: { scanned: 'inspected', found: 'observed' },
       // 🔴 `collect: 'map'` LEFT 2026-08-28 (round Z). It named `lot_map`, and when that route
       //    went the seat went 404 whole. The points are the walk's own dice and the grid is
       //    physics, so what this seat declares now is the two things the ledger and the
@@ -469,6 +474,11 @@ export const BOARD = Object.freeze({
       //       객체라 inchip 자리를 가진 점이 0개입니다. 그 상태가 F 의 재료입니다.
       id: 'chip-zoom',
       part: 'map',
+      // 🔴 C-92 (판정 343). 「어느 타입이 «셀»인가」와 「어느 술어가 검사·발견인가」는 좌석의
+      //    선언입니다. 읽는 쪽(`mapModel`)은 이 plan 을 «읽기만» 하고 이름을 대지 않습니다 —
+      //    맵이 다른 자재를 그리게 되는 날 바뀌는 것은 코드가 아니라 이 세 줄입니다.
+      cells: { type: 'die' },
+      marks: { scanned: 'inspected', found: 'observed' },
       title: '칩 확대 · 마킹 1',
       at: { column: 4, row: 4 },
       reads: 'marking:1',
@@ -566,6 +576,11 @@ export const BOARD = Object.freeze({
       //    규칙이 성립한다는 증거이기도 합니다.
       id: 'map-core',
       part: 'map',
+      // 🔴 C-92 (판정 343). 「어느 타입이 «셀»인가」와 「어느 술어가 검사·발견인가」는 좌석의
+      //    선언입니다. 읽는 쪽(`mapModel`)은 이 plan 을 «읽기만» 하고 이름을 대지 않습니다 —
+      //    맵이 다른 자재를 그리게 되는 날 바뀌는 것은 코드가 아니라 이 세 줄입니다.
+      cells: { type: 'die' },
+      marks: { scanned: 'inspected', found: 'observed' },
       // 🔴 좌석 8 과 «같은 이유, 같은 변경». 부품도 좌표계도 그대로이고 읽는 마킹만 다릅니다 --
       //    조립식 규칙이 두 번째 인스턴스에서도 성립한다는 것이 이 자리의 증거였고, 라우트가
       //    빠진 뒤에도 그대로입니다.
@@ -802,7 +817,12 @@ export function bindLoaders(layout, deps) {
           //    (지시: 관측만 보는 자리엔 안 붙인다). 실측으로 좌석 질문이 그대로 새고 있어서
           //    여기서 «명시적으로» 끕니다. null 이면 경계가 안 싣습니다.
           backbone_hops: null,
-        }).then((answer) => waferFactsFromWalk(answer, kind));
+        // C-92. 주어 타입·종류 자리·두 역할 — 셋 다 «이 좌석»의 말입니다.
+        }).then((answer) => waferFactsFromWalk(answer, kind, {
+          type: 'wafer',
+          kinds: { type: 'defect_kind', key: 'defect_kind' },
+          marks: { scanned: 'inspected', found: 'observed' },
+        }));
       }
       if (options.peers) {
         // 🔴 넷 중 «하나»만 셀 수 있습니다. 실측 2026-08-28: leg · bond_lot · scan_recipe 는
@@ -903,6 +923,9 @@ export function bindLoaders(layout, deps) {
             } : {};
             return walkHere({ start: decl.start, follow: decl.follow, ...fold, ...rest })
               // 좌석의 «선언»을 읽는 쪽에 같이 넘깁니다. 그 선언이 도메인 낱말의 집입니다.
+              // C-92. 선언(`entities`)이 같이 갑니다 — 구성의 id 는 «선언된 식별 키»로 지어지고,
+              // 그 이름을 아는 것은 선언이지 읽는 코드가 아닙니다. 선언은 «한 번» 읽고 캐시된
+              // 그 약속이며, 못 읽었으면 빈 목록입니다(그때 id 는 노드 자기 id 로 물러섭니다).
               .then((answer) => read(answer, axis, decl));
           };
         }

@@ -310,8 +310,11 @@ const DEFECTS = [
   ['the later-hop predicate stops being shown',
     (s) => s.replace('  return [...new Set([...(fromStartType || []), ...extra])];',
       '  return [...(fromStartType || [])];')],
+  // ⚠️ C-92 moved this anchor: 「그 타입의 선언된 키」 has ONE reader now (`declaredKeys`), because
+  //    the board's composition model needed the same answer and was spelling `keys.mat_id` itself.
+  //    The claim is unchanged -- the column list asks the declaration and remembers nothing.
   ['the column list stops asking the declaration and hardcodes what it saw once',
-    (s) => s.replace('  const declared = (found && found.keys) || [];',
+    (s) => s.replace('  const declared = declaredKeys(entities, type);',
       "  const declared = ['mat_id', 'x', 'y', 'mat_type'];")],
   ['the columns stop carrying the qualifiers that arrived',
     (s) => s.replace(
