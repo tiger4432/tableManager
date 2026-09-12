@@ -37498,3 +37498,53 @@ test_ledger_v2_pg.py:206
 > 📌 **[09-12 20:5x] 이 채널의 미답 질문: «하나» —** 판정 299 의 게이트를
 > 「pop 밖 0」에서 「pop 밖 «3»(감추기/복원 셋) · metadata 누수 0」으로 고쳐 주십시오.
 > 그 답 없이도 위 ✅ 는 진행합니다.
+
+---
+
+## 📤 [09-12 21:0x 구현자] S-191 착지 — `1f730cc9`. 한 함수, 여섯 자리, «셋은 그대로»
+
+```
+conftest.retire_dynamic_model(name) -> 은퇴한 클래스 또는 None
+   models.DYNAMIC_TABLES 에서 빼고 · Base.metadata 에서 Table(과 그 Index)을 «같이» 뺍니다
+진짜 은퇴 «6 자리»가 그것을 부릅니다. 그중 «4» 는 metadata 제거가 «새로 생깁니다» — 그게 값입니다
+```
+
+### 🔴 게이트 — 판정 307 이 준 셋, 전부 «잰» 값입니다
+```
+① 6 파일 전/후 «동일»      2 failed · 101 passed   ×3 회씩 «양쪽»       (빨강 둘은 기존, dashboard)
+② 모집단 18 파일           전 435 passed / 후 440 passed = «+5»(새 게이트 파일) · 빨강 둘 동일
+③ 잔류 pop «셋»            test_ledger_v2_pg · test_map_alignment_references · _worklist
+                          헬퍼 docstring 이 «셋을 이름 대어» 적습니다 (다음 사람이 치환 못 하게)
+④ collect                5,976 (전 5,971, +5) · 오류 0
+```
+
+### ⛔ 그리고 「셋을 그대로 두라」가 «옳았다»는 것을 변이로 쟀습니다
+```
+변이 3: test_map_alignment_references 의 그 자리를 헬퍼로 «치환»
+     -> 그 파일 «6 시험» 빨강: UNIQUE constraint failed: wafer_map_metadata.row_id
+     이유: 복원은 «클래스»를 되돌려 놓지 «Table» 은 안 되돌립니다 — 헬퍼가 Table 까지 빼면 짝이 깨집니다
+=> 원래 게이트 「pop 밖 0」으로 갔으면 이 여섯이 «착지와 함께» 빨개졌을 것입니다
+```
+
+### 새 게이트 파일 — `test_retiring_a_dynamic_model_takes_both_singletons.py` (5)
+```
+· 두 쪽 다 빠지고, 클래스가 «돌아옴» (「있었다」와 「애초에 없었다」를 부를 쪽이 구별)
+· 🔴 결함을 «먼저 재현»합니다 — 옛 자리(클래스만 pop)로 인덱스가 «2» 가 되는 것을 «단언»한 다음
+  헬퍼로 «1» 이 되는 것을 단언. 「1 이다」만 재면 «애초에 안 겹치는 빌드»에서도 초록입니다
+· 자기 자신을 «안 잡도록» 패턴을 «조립»합니다("DYNAMIC_TABLES" + r"\.pop\(") — 게이트가
+  커밋되는 날 자기를 «셋째 자리»로 세는 부류(2026-09-07)를 구조적으로 막습니다
+  그리고 이 파일은 «음성 대조군 때문에» 진짜로 pop 을 합니다 — 감추지 않고 «목록에» 적었습니다
+변이: metadata 반쪽 제거 -> 2 빨강 · docstring 이름 하나 제거 -> 1 빨강 · 위 변이 3 -> 7 빨강
+```
+
+### ⚠️ 잰 것 중 «제 것이 아닌» 빨강 하나
+```
+test_config_reload_integrity::test_h3_cross_directory_replace_applies_physical_alter
+  18 파일 부하에서 «한 번» 빨강, 그 뒤 같은 조합 재실행에서 «초록», 단독 32 passed ×2,
+  6 파일 ×6 회에서 0 회. `handler.wait_for_idle(timeout=…)` 디바운스 경합 — «부하 flake» 입니다
+🔴 처음 한 번은 제가 이것을 「제 회귀」로 볼 뻔했습니다. 가른 것은 «양쪽을 여러 번» 돌린 것뿐입니다
+```
+
+> 📌 **[09-12 21:0x] 이 채널의 미답 질문: «없음».** S-191 «닫힘». 재기동 «불필요»(시험만).
+> 다음 = **S-197**(노트북 — 위 본체 지시대로: `input_for_mapper`/`input_for_parser` 로
+> 「이름만 걸면 입력이 온다」, 자유폼, `publish_mapper`/`publish_parser` 가 발행 «직후» 대조).
