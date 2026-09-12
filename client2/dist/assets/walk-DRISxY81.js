@@ -1,0 +1,72 @@
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/config-C6wMXuF6.js","assets/config-BUp4smhE.js"])))=>i.map(i=>d[i]);
+import"./tokens-D5tlFQmo.js";import{S as e,a as t,c as n,d as r,f as i,g as a,i as o,l as s,o as c,r as l,s as u,t as d,u as f,v as p,y as m}from"./preload-helper-7O3P8UI2.js";var h=`data-wk-styles`,g=`
+.wk-form { display: flex; flex-direction: column; gap: 10px;
+  font-family: 'Outfit', system-ui, sans-serif; font-size: 15px; color: var(--text, #111); }
+.wk-field { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px;
+  background: var(--bg-panel, transparent); border: 1px solid var(--border, #d4d4d8);
+  border-radius: 8px; }
+.wk-label { font-size: 0.72rem; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--text-dim, #71717a); }
+.wk-note { font-size: 0.78rem; color: var(--text-dim, #71717a); }
+
+.wk-select, .wk-input, .wk-go, .wk-check { min-height: 44px; box-sizing: border-box;
+  font: inherit; }
+.wk-select, .wk-input { width: 100%; padding: 0 8px; color: var(--text, #111);
+  background: var(--bg, #fff); border: 1px solid var(--border, #d4d4d8); border-radius: 6px; }
+.wk-keyrow { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+.wk-keyname { flex: none; width: 8.5em; font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem; color: var(--text-dim, #71717a);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wk-check { display: flex; align-items: center; gap: 8px; padding: 0 4px; border-radius: 6px;
+  font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; }
+.wk-check.is-on { background: var(--accent-soft, rgba(37, 99, 235, 0.10)); }
+.wk-check input[type="checkbox"] { width: 22px; height: 22px; flex: none; }
+
+.wk-go { width: 100%; border: 0; border-radius: 8px;
+  background: var(--accent, #2563eb); color: #fff; font-weight: 600; }
+.wk-go[disabled] { opacity: 0.45; }
+
+.wk-result { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px;
+  background: var(--bg-panel, transparent); border: 1px solid var(--border, #d4d4d8);
+  border-radius: 8px; }
+.wk-counts { font-weight: 600; }
+/* 경로 — 누를 수 있는 것이므로 button 이고, 그래서 키보드로도 닿습니다. */
+.wk-path { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; width: 100%;
+  text-align: left; min-height: 44px; padding: 8px 10px; margin: 0 0 6px;
+  border: 1px solid var(--line, #e4e4e7); border-radius: 6px; cursor: pointer;
+  background: var(--surface, #fff); color: inherit; font: inherit; }
+.wk-path:hover { background: var(--accent-soft, rgba(37, 99, 235, 0.10)); }
+.wk-pathto { font-weight: 700; grid-row: 1 / span 2; align-self: center; }
+.wk-pathchain { font-size: 0.86rem; }
+.wk-pathmeta { font-size: 0.78rem; color: var(--text-dim, #71717a); }
+/* 타입 분포 — 「무엇이 몇 개 왔나」. 물어본 타입은 표시가 다릅니다. */
+.wk-dist { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; }
+.wk-distlabel { font-size: 0.78rem; color: var(--text-dim, #71717a); }
+.wk-distchip { display: inline-flex; gap: 4px; padding: 2px 8px; border-radius: 999px;
+  border: 1px solid var(--line, #e4e4e7); font-size: 0.82rem; }
+.wk-distchip.is-asked { border-color: var(--accent, #2563eb); font-weight: 600; }
+/* 결과 표. 구획마다 «자기 키 컬럼»이라 표가 여럿입니다. */
+.wk-sec { margin: 10px 0 14px; }
+.wk-sechead { font-weight: 700; font-size: 0.86rem; margin: 0 0 4px; }
+.wk-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; display: block;
+  overflow-x: auto; white-space: nowrap; }
+.wk-table th, .wk-table td { border-bottom: 1px solid var(--line, #e4e4e7);
+  padding: 5px 8px; text-align: left; }
+.wk-table th { font-weight: 600; color: var(--text-dim, #71717a); position: sticky; top: 0;
+  background: var(--surface, #fff); }
+/* 숫자는 «자릿수»로 섭니다 — x·y 가 세로로 안 맞으면 좌표를 못 읽습니다. */
+.wk-table td.wk-num { text-align: right; font-variant-numeric: tabular-nums; }
+/* id 는 길고 «마지막»입니다. 읽는 것이 아니라 «집는» 칸이라 폭을 안 뺏습니다. */
+.wk-table td.wk-id { font-family: var(--font-mono, ui-monospace, monospace); font-size: 0.74rem;
+  color: var(--text-dim, #71717a); max-width: 22ch; overflow: hidden; text-overflow: ellipsis; }
+.wk-walk, .wk-trunc { font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; }
+.wk-walk { color: var(--text-dim, #71717a); }
+.wk-trunc { color: var(--warn, #b45309); }
+.wk-fail { color: var(--danger, #dc2626); font-size: 0.86rem; }
+.wk-row { display: flex; gap: 8px; align-items: baseline; padding: 3px 0;
+  border-top: 1px solid var(--border, #d4d4d8); font-size: 0.82rem; }
+.wk-rowtype { flex: none; width: 7.5em; font-family: 'JetBrains Mono', monospace;
+  font-size: 0.74rem; color: var(--text-dim, #71717a);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wk-rowlabel { overflow-wrap: anywhere; }
+`;function _(e){if(!e||typeof e.createElement!=`function`||e.querySelector&&e.querySelector(`style[${h}]`))return!1;let t=e.createElement(`style`);return t.setAttribute(h,``),t.textContent=g,(e.head||e.documentElement).appendChild(t),!0}function v(e){return e==null?``:String(e)}function y(e){return e!==``&&Number.isFinite(Number(e))}function b(e){let t=new Map;for(let n of e||[]){let e=n&&n.qualifiers;if(!e||typeof e!=`object`)continue;for(let e of[n.target,n.source])(!e||!t.has(e))&&t.set(e,t.get(e)||{});let r=t.get(n.target)||{};Object.assign(r,e),t.set(n.target,r)}return t}function x(e,t){let n=[];for(let r of e||[])for(let e of Object.keys(t&&t.get(r.id)||{}))n.includes(e)||n.push(e);return n}function S(e,t,n=200){let a=e&&e.nodes||[],c=a.slice(0,n),l=b(e&&e.edges||[]),u=[],d=s(e);for(let[e,n]of r(c)){let r=i(t,e,x(n,l));u.push({type:e,heading:f(e,n.length),columns:r,rows:n.map(e=>({id:e.id,cells:r.map(t=>{let n=v(o(t,e,l.get(e.id)||{},d.get(e.type)));return{text:n,kind:t.kind,numeric:y(n)}})}))})}return{sections:u,shown:c.length,hidden:Math.max(0,a.length-c.length)}}var C=[`both`,`outgoing`,`incoming`],w=`서버 기본`,T=(e,t,n,r)=>{let i=e.createElement(t);return n&&(i.className=n),r!==void 0&&(i.textContent=String(r)),i};function E(r,i,o){let s=o||{},d=s.apiBase||``;_(r);let f=a({apiBase:d,fetchImpl:s.fetchImpl}),h={decl:null,declState:`loading`,declReason:``,type:``,keys:{},follow:new Set,collect:new Set,subjects:null,subjectsState:`idle`,subjectsReason:``,subjectsScanned:null,subjectsScanCut:!1,subjectsListCut:!1,direction:``,hops:``,nodeLimit:``,run:`idle`,result:null,reason:``},g=l,v=()=>h.decl&&h.decl.entities||[],y=e=>{let t=v().find(t=>t.type===e);return t&&t.keys||[]},b=()=>(h.decl&&h.decl.predicates||[]).map(e=>e.name),x=()=>{let e=h.decl&&h.decl.predicates||[];return h.type?c(e.filter(e=>(e.subjects||[]).includes(h.type)).map(e=>e.name),b(),h.follow):e.map(e=>e.name)};function E(){if(!h.decl||!h.type||!h.collect.size)return[];let t=[];for(let n of h.collect)for(let r of e(h.decl,g(h.type),g(n)))t.push({...r,to:g(n)});return n(v(),t).sort((e,t)=>e.hops-t.hops||e.follow.length-t.follow.length)}function D(){let e={type:h.type,keys:h.keys};h.follow.size&&(e.follow=[...h.follow]),h.collect.size&&(e.collect=[...h.collect]),h.direction&&(e.direction=h.direction);let t=parseInt(h.hops,10);Number.isFinite(t)&&(e.hops=t);let n=parseInt(h.nodeLimit,10);return Number.isFinite(n)&&(e.node_limit=n),e}async function O(){if(!h.type)return;h.run=`running`,h.result=null,h.reason=``,N();let e=await f(D());e&&e.ok?(h.run=`done`,h.result=e):(h.run=`failed`,h.reason=e&&e.message||`알 수 없음`),N()}function k(e){let t=T(r,`div`,`wk-field`);return t.append(T(r,`div`,`wk-label`,e)),t}function A(e){let t=k(`노드 타입`),n=T(r,`select`,`wk-select`);n.append(T(r,`option`,``,`— 고르십시오 —`));for(let e of v()){let t=T(r,`option`,``,e.type);t.value=e.type,e.type===h.type&&(t.selected=!0),n.append(t)}if(n.addEventListener(`change`,()=>{h.type=n.value;let e=new Set(y(h.type));h.keys=Object.fromEntries(Object.entries(h.keys).filter(([t])=>e.has(t)));let t=new Set(x());h.follow=new Set([...h.follow].filter(e=>t.has(e))),h.result=null,h.run=`idle`,N(),P()}),t.append(n),e.append(t),h.type){let t=k(`주어 고르기`);if(h.subjectsState===`loading`)t.append(T(r,`div`,`wk-note`,`읽는 중`));else if(h.subjectsState===`failed`)t.append(T(r,`div`,`wk-fail`,`주어 목록 · ${h.subjectsReason}`));else if(h.subjectsState===`ready`){let e=h.subjects||[];if(!e.length)t.append(T(r,`div`,`wk-note`,h.subjectsScanCut?`주어를 다 못 봤습니다 (${h.subjectsScanned} 까지)`:`이 타입은 원장에 주어로 없습니다 (정적 허브)`));else{let n=T(r,`select`,`wk-select`);n.append(T(r,`option`,``,`— 고르거나 아래에 직접 —`)),e.forEach((e,t)=>{let i=Object.values(e.keys||{}).map(e=>String(e)).join(` · `),a=T(r,`option`,``,e.count?`${i}  (${e.count})`:i);a.value=String(t),n.append(a)}),n.addEventListener(`change`,()=>{let t=e[Number(n.value)];t&&(h.keys={...t.keys},N())}),t.append(n),h.subjectsListCut&&t.append(T(r,`div`,`wk-note`,`목록 ${e.length} · 이게 전부가 아닙니다 — 없으면 아래에 직접`))}}e.append(t)}let i=k(`키`),a=y(h.type);h.type?a.length||i.append(T(r,`div`,`wk-note`,`이 타입은 키가 없습니다`)):i.append(T(r,`div`,`wk-note`,`타입을 고르면 키가 나옵니다`));for(let e of a){let t=T(r,`label`,`wk-keyrow`);t.append(T(r,`span`,`wk-keyname`,e));let n=T(r,`input`,`wk-input`);n.type=`text`,n.value=h.keys[e]===void 0?``:h.keys[e],n.addEventListener(`input`,()=>{h.keys[e]=n.value}),t.append(n),i.append(t)}e.append(i);let o=k(`collect · 무엇을 가져오나`),s=v().map(e=>e.type);s.length||o.append(T(r,`div`,`wk-note`,`선언에 엔터티 없음`));for(let e of s){let t=T(r,`label`,`wk-check`+(h.collect.has(e)?` is-on`:``));t.setAttribute(`data-collect`,e);let n=T(r,`input`);n.type=`checkbox`,n.checked=h.collect.has(e),n.addEventListener(`change`,()=>{h.collect.has(e)?h.collect.delete(e):h.collect.add(e),N()}),t.append(n,T(r,`span`,``,e)),o.append(t)}if(s.length&&o.append(T(r,`div`,`wk-note`,`안 고르면 ${w} · 전부`)),e.append(o),h.type&&h.collect.size){let t=k(`경로 · 선언이 아는 길`),n=E();n.length||t.append(T(r,`div`,`wk-note`,`${g(h.type)} 에서 ${[...h.collect].map(g).join(` · `)} 로 가는 길 없음`));for(let e of n){let n=T(r,`button`,`wk-path`);n.type=`button`,n.append(T(r,`span`,`wk-pathto`,`→ ${e.to}`)),n.append(T(r,`span`,`wk-pathchain`,e.chain.join(` → `))),n.append(T(r,`span`,`wk-pathmeta`,`${e.hops}홉 · ${e.follow.join(`, `)}`)),n.addEventListener(`click`,()=>{h.follow=new Set(u(b(),e.follow)),h.hops=String(e.hops),N()}),t.append(n)}e.append(t)}let c=k(`follow · 어느 길로`),l=x();l.length||c.append(T(r,`div`,`wk-note`,h.type?`${h.type} 에서 나가는 술어 없음`:`선언에 술어 없음`));for(let e of l){let t=T(r,`label`,`wk-check`+(h.follow.has(e)?` is-on`:``));t.setAttribute(`data-follow`,e);let n=T(r,`input`);n.type=`checkbox`,n.checked=h.follow.has(e),n.addEventListener(`change`,()=>{h.follow.has(e)?h.follow.delete(e):h.follow.add(e),N()}),t.append(n,T(r,`span`,``,e)),c.append(t)}l.length&&c.append(T(r,`div`,`wk-note`,`안 고르면 ${w}`)),e.append(c);let d=k(`걸음`),f=T(r,`label`,`wk-keyrow`);f.append(T(r,`span`,`wk-keyname`,`direction`));let p=T(r,`select`,`wk-select`);p.append(T(r,`option`,``,w));for(let e of C){let t=T(r,`option`,``,e);t.value=e,e===h.direction&&(t.selected=!0),p.append(t)}p.addEventListener(`change`,()=>{h.direction=p.value}),f.append(p),d.append(f);for(let[e,t,n,i]of[[`hops`,`hops`,1,40],[`node_limit`,`nodeLimit`,10,5e3]]){let a=T(r,`label`,`wk-keyrow`);a.append(T(r,`span`,`wk-keyname`,e));let o=T(r,`input`,`wk-input`);o.type=`number`,o.min=String(n),o.max=String(i),o.placeholder=w,o.value=h[t],o.addEventListener(`input`,()=>{h[t]=o.value}),a.append(o),d.append(a)}e.append(d);let m=T(r,`button`,`wk-go`,h.run===`running`?`걷는 중`:`날리기`);m.type=`button`,m.disabled=!h.type||h.run===`running`,m.addEventListener(`click`,O),e.append(m)}function j(e,t){let n=S(t,v());for(let t of n.sections){let n=T(r,`div`,`wk-sec`);n.append(T(r,`div`,`wk-sechead`,t.heading));let i=T(r,`table`,`wk-table`),a=T(r,`thead`),o=T(r,`tr`);for(let e of t.columns)o.append(T(r,`th`,``,e.name));a.append(o),i.append(a);let s=T(r,`tbody`);for(let e of t.rows){let t=T(r,`tr`);for(let n of e.cells){let e=T(r,`td`,n.numeric?`wk-num`:``,n.text);n.kind===`id`&&(e.className=`wk-id`),t.append(e)}s.append(t)}i.append(s),n.append(i),e.append(n)}n.hidden&&e.append(T(r,`div`,`wk-note`,`이 아래 ${n.hidden} 개 안 그림`))}function M(e){if(h.run===`idle`)return;let n=T(r,`div`,`wk-result`);if(h.run===`running`)n.append(T(r,`div`,`wk-note`,`걷는 중`));else if(h.run===`failed`){let e=T(r,`div`,`wk-fail`);e.append(T(r,`b`,``,`실패`),T(r,`span`,``,` · `+h.reason)),n.append(e)}else if(h.result){let e=h.result,i=[...h.collect].map(g).join(`, `);if(n.append(T(r,`div`,`wk-counts`,i?`노드 ${e.nodes.length} (collect: ${i}) · 엣지 ${e.edges.length} (전부)`:`노드 ${e.nodes.length} · 엣지 ${e.edges.length}`)),e.walk&&n.append(T(r,`div`,`wk-walk`,`요청 ${e.walk.hops_requested}홉 · 도달 ${e.walk.hops_reached}홉 · ${e.walk.direction}`)),e.generatedAt&&n.append(T(r,`div`,`wk-note`,`기준 ${String(e.generatedAt)}`)),e.cut&&n.append(T(r,`div`,`wk-trunc`,`절단됨 · ${t(e.truncatedAxes,e.limits).join(` · `)}`)),e.nodes.length){let t=new Map;for(let n of e.nodes){let e=n.type||`—`;t.set(e,(t.get(e)||0)+1)}let i=T(r,`div`,`wk-dist`);i.append(T(r,`span`,`wk-distlabel`,`타입`));for(let[e,n]of[...t.entries()].sort((e,t)=>t[1]-e[1])){let t=T(r,`span`,`wk-distchip`+(h.collect.has(e)||h.collect.has(`${e}@1`)?` is-asked`:``));t.append(T(r,`b`,``,e),T(r,`span`,``,` ${n}`)),i.append(t)}n.append(i)}e.nodes.length||n.append(T(r,`div`,`wk-note`,e.message||`닿은 노드 없음`)),j(n,e)}e.append(n)}function N(){i.textContent=``;let e=T(r,`div`,`wk-form`);if(h.declState===`loading`)e.append(T(r,`div`,`wk-note`,`선언 · 읽는 중`));else if(h.declState===`failed`){let t=T(r,`div`,`wk-fail`);t.append(T(r,`b`,``,`선언 못 읽음`),T(r,`span`,``,` · `+h.declReason));let n=T(r,`button`,`wk-go`,`다시`);n.type=`button`,n.addEventListener(`click`,F),e.append(t,n)}else A(e),M(e);i.append(e)}async function P(){if(!h.type){h.subjectsState=`idle`,h.subjects=null;return}let e=h.type;h.subjectsState=`loading`,h.subjects=null,N();let t=await m({apiBase:d,fetchImpl:s.fetchImpl,type:e});h.type===e&&(t&&t.ok?(h.subjectsState=`ready`,h.subjects=t.subjects,h.subjectsScanned=t.scanned,h.subjectsScanCut=t.scanTruncated,h.subjectsListCut=t.valuesTruncated):(h.subjectsState=`failed`,h.subjectsReason=t&&t.message||`알 수 없음`),N())}async function F(){h.declState=`loading`,N();let e=await p({apiBase:d,fetchImpl:s.fetchImpl});e&&e.ok?(h.decl=e,h.declState=`ready`):(h.declState=`failed`,h.declReason=e&&e.message||`알 수 없음`),N()}return F(),{state:h,spec:D,fire:O,render:N}}if(typeof document<`u`){let e=document.getElementById(`wk-host`);e&&d(async()=>{let{API_BASE:e}=await import(`./config-C6wMXuF6.js`);return{API_BASE:e}},__vite__mapDeps([0,1])).then(({API_BASE:t})=>{E(document,e,{apiBase:t})})}

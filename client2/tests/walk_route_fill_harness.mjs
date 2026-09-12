@@ -213,6 +213,32 @@ function suite(M) {
   ok(M.cellSource({ kind: 'key', key: 'mat_id' }, null, null) === undefined,
     'V8 CONTROL: a missing node yields nothing rather than throwing');
 
+  // ── C-89: an attribute the DECLARATION calls `many` is the list it is ───────────────
+  //
+  // 🔴 THE DECLARATION DECIDES, NOT THE SHAPE. The server fixes the shape PER NAME -- a
+  //    `many` name is a list even holding one value -- but a `one` name's value can itself be
+  //    an array (a JSON list stored in that column). Choosing by shape would draw that cell as
+  //    「registered several times」, a claim nobody made.
+  const MANY_NODE = {
+    type: 'wafer@1', keys: { wafer: 'W1' },
+    attributes: { product: ['P1', 'P2'], grade: ['A'], note: ['x', 'y'] },
+  };
+  const ENVELOPE = { attribute_cardinality: { 'wafer@1': { product: 'many', grade: 'many' } } };
+  const plural = M.pluralAttributes(ENVELOPE).get('wafer@1');
+  const many = (key) => M.cellSource({ kind: 'attribute', key }, MANY_NODE, {}, plural);
+  ok(many('product') === 'P1 · P2',
+    `P1 a declared-many attribute reads as the list it is -- got ${JSON.stringify(many('product'))}`);
+  ok(many('grade') === 'A',
+    'P2 ... including one that happens to hold a single value -- the shape is per NAME');
+  ok(Array.isArray(many('note')),
+    'P3 a name the declaration did NOT call many is left alone, array or not');
+  ok(M.pluralAttributes({}).size === 0 && M.pluralAttributes(null).size === 0,
+    'P4 an envelope that says nothing about cardinality declares no plural names');
+  ok(M.pluralAttributes({ attribute_cardinality: { 'wafer@1': { product: 'one' } } }).size === 0,
+    'P5 only the server`s word `many` counts -- another word is not a plural declaration');
+  ok(M.cellSource({ kind: 'attribute', key: 'product' }, MANY_NODE, {}) !== 'P1 · P2',
+    'P6 a caller that was told nothing joins nothing -- the knowledge travels, it is not assumed');
+
   // ── the disagreement count: three server states, and only one of them says anything ──
   const conflicts = (v) => M.cellSource({ kind: 'conflicts' },
     v === undefined ? { attributes: {} } : { attributes: {}, attribute_conflicts: v }, {});
@@ -305,9 +331,21 @@ const DEFECTS = [
       + "    ...attributes.map((key) => ({ name: key, kind: 'attribute', key })),",
       "    ...attributes.map((key) => ({ name: key, kind: 'attribute', key })),\n"
       + "    ...(qualifierNames || []).map((key) => ({ name: key, kind: 'qualifier', key })),")],
+  // ⚠️ C-89 moved this anchor: the attribute cell now also honours the declaration's `many`
+  //    word, so the read is two lines inside a block. The CLAIM is unchanged -- an attribute
+  //    cell reads the attribute map and not the identity map.
   ['an attribute cell reads the identity map, so a declared attribute is always empty',
-    (s) => s.replace("    case 'attribute': return (n.attributes || {})[column.key];",
-      "    case 'attribute': return (n.keys || {})[column.key];")],
+    (s) => s.replace("      const held = (n.attributes || {})[column.key];",
+      "      const held = (n.keys || {})[column.key];")],
+  // ── C-89 ──────────────────────────────────────────────────────────────────────────
+  ['the VALUE`s shape decides instead of the declaration, so a stored JSON list reads as many',
+    (s) => s.replace("      return (plural && plural.has(column.key) && Array.isArray(held))",
+      "      return (Array.isArray(held))")],
+  ['the list is joined the way JS joins it, so the cell says `a,b`',
+    (s) => s.replace("        ? held.join(' · ') : held;", "        ? String(held) : held;")],
+  ['any cardinality word counts as many, so `one` declares a list',
+    (s) => s.replace("filter((name) => names[name] === ATTRIBUTE_MANY)",
+      "filter((name) => Boolean(names[name]))")],
   ['the attribute names stop coming from the declaration',
     (s) => s.replace('  const attributes = (found && found.attributes) || [];',
       '  const attributes = [];')],
