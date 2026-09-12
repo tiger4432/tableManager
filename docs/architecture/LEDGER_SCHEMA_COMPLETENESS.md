@@ -292,7 +292,7 @@ S-65-d 뷰 삭제   A4 「삭제 — row_id 없는 뷰」   ✅ ② («이름 �
 | B9 엣지 | ① | `{source, target, predicate, qualifiers}` |
 | B9 그 밖 | ① | `seeds`(부호) · `propagation` · `walk`(모드·방향·씨앗 부호 수·`hops_reached`) · `limits` · `truncated` |
 | **B11 근거 동반** (BASIS §3-0) | 🔵 **엣지 ① / 순위 트레일 ⚠️** | **엣지**: 원자에서 온 엣지는 `claim_id`(= `atom.id`)와 `basis`(= `atom.source_raw_ref`)를 «답니다» (`ledger_subgraph.py:996~999`), 그리고 응답은 `ordered_edges = sorted(edges.values(), …)` :1361 로 «투영 없이» 그대로 나갑니다 — 즉 「어느 원자가 이 엣지를 받쳤나」는 **이미 실립니다**. ⚠️ `WALK.md` §4 는 엣지를 `{source,target,predicate,qualifiers}` «넷»으로 적어 두었습니다 — **문서가 코드보다 좁습니다**(고칠 것). 🔴 **순위 트레일은 그것을 «안 씁니다»**: `_evidence` :565~593 의 hop 은 `atom`/`ref` 를 «노드»에서 읽는데(`nodes[item].keys.id` · `source_raw_ref` · `basis`), `_entity_node` :375 는 «셋 다 없습니다» — 엔티티 키는 도메인 키(wafer·x·y)라 `id` 가 없습니다. 그래서 **엔티티 홉의 `atom`·`ref` 는 «전부 null»** 이고, 걷기의 노드는 사실상 전부 엔티티입니다. 즉 순위는 「어느 길로 닿았나」는 말하고 「어느 «사실»이 그 걸음을 받쳤나」는 못 말합니다. 🔵 그런데 그 사실은 «같은 응답 안»에 있습니다 — 트레일이 «노드»가 아니라 «두 홉 사이의 엣지»를 보면 `claim_id`·`basis` 가 거기 있습니다. 잇는 일이지 «짓는» 일이 아닙니다 |
-| B11-bis 엣지의 «빈» 근거 칸 | 🔴 **③′** | `_edge()` :388~394 가 매 엣지에 `sources: []` · `witnesses: 1` · `rank: None` 을 답니다. `git grep` 으로 이 셋에 «쓰는» 자리 «0**(시험·다른 뜻의 동명이인 제외) — key_types·supersedes 와 «같은 부류»입니다 |
+| B11-bis 엣지의 «빈» 근거 칸 | ⚰️ **닫힘 — «은퇴»** (S-150 `8d344e1d` 다음 커밋, 판정 340) | `sources: []`·`witnesses: 1`·`rank: None` 세 상수를 «지웠습니다». 읽는 쪽 0 인 선언 칸은 계약이 아니라 사본이라는 `key_types`(판정 165) 부류이고, 「채움」은 «부르는 곳이 생기는» 라운드의 일입니다. 🔵 **`basis`·`qualifiers` 는 남았습니다** — 둘은 원자에서 «채워지므로» 상수가 아니라 초기화입니다(같은 실측의 나머지 반쪽). ⚠️ 낱말이 아니라 «객체»로 쟀습니다: `ledger_explorer` 의 `witnesses` 는 «실제로 세는» 다른 칸이고 노드의 `rank` 는 전파 층입니다. 🪦 당시 근거: `_edge()` :388~394 가 매 엣지에 `sources: []` · `witnesses: 1` · `rank: None` 을 답니다. `git grep` 으로 이 셋에 «쓰는» 자리 «0**(시험·다른 뜻의 동명이인 제외) — key_types·supersedes 와 «같은 부류»입니다 |
 | B10 거절 | ① 대부분 | «이름 대어» 넷: `predicate_not_declared` · `node_type_not_declared` · `subgraph_request_invalid` · 관계 부재. 범위·열거는 FastAPI 가 422 |
 | B10 «조용한 불가» | 🔵 **0 (이 라우트에서는)** | 선언에 없는 술어·타입을 «빈 그래프»로 답하지 않는다 — :117~129,:143~152 가 그 이유를 적어 두었다(「오타와 사실을 부르는 쪽이 못 가른다」) |
 
@@ -362,7 +362,7 @@ S-65-d 뷰 삭제   A4 「삭제 — row_id 없는 뷰」   ✅ ② («이름 �
 > 🔵 **[09-11 D-3c 재측정] 표 B 는 «움직인 것이 하나»입니다** — B7 의 «세대»가 S-141 로 닫혔습니다
 > (걷기가 `live_claims` 를 지나고 뺀 수를 `walk.superseded_dropped` 로 말합니다). 나머지는 오늘도 참입니다:
 > B4 `group_by` · B5 `aggregate`/`measure` · B12 「진위」 는 걷기 모듈에서 히트가 «주석뿐»이고,
-> B11-bis 의 엣지 `sources`·`witnesses`·`rank` 는 읽는 쪽이 여전히 0 입니다(클라의 `domain.sources` 는 «다른 이름»).
+> ⚰️ B11-bis 의 엣지 `sources`·`witnesses`·`rank` 는 **은퇴했습니다**(S-150, 판정 340) — 읽는 쪽이 0 인 채로 남겨 두면 「있는데 안 쓴다」가 「곧 쓸 것」으로 읽힙니다.
 > ⚠️ 표 C 는 이번 패스에서 «안 쟀습니다** — 지시가 완전성 표 A 의 구멍을 겨눴고, C-3(15 라우트)은 한 커밋에
 > 담기지 않습니다. 안 잰 것을 「참」으로 적지 않기 위해 여기 적어 둡니다.
 

@@ -1013,12 +1013,23 @@ def _edge(edge_type, source, target, *, original_predicate=None,
     `many`. A synthesised edge and an undeclared predicate both land here, and
     telling a reader `many` about either would be inventing an answer.
     """
+    # ⚰️ `witnesses: 1` · `rank: None` · `sources: []` RETIRED 2026-09-13 (S-150, 판정 340).
+    # Three constants on every edge with nothing reading them — the `key_types` class
+    # (판정 165): a declaration slot with no reader is not a contract, it is a copy. Measured
+    # before removing: no client reads an edge's `sources`, `witnesses` or `rank`
+    # (`ledger_sources_panel` reads an INGESTION's `sources`, and `rank` on a node is the
+    # propagation layer, a different key on a different object).
+    #
+    # 🔴 `basis` AND `qualifiers` STAY, and that is the same measurement rather than a
+    # different opinion: both are FILLED further down from the atom, so they are initialised
+    # here rather than constant. Filling the three instead of removing them is the work of
+    # the round that gains a caller for them.
     edge_id = f"ledger-evidence-edge:v1:{_token([edge_type, source, target])}"
     return {
         "id": edge_id, "source": source, "target": target,
         "predicate": edge_type, "predicate_label": edge_type,
-        "original_predicate": original_predicate, "witnesses": 1,
-        "rank": None, "basis": None, "sources": [], "qualifiers": {},
+        "original_predicate": original_predicate,
+        "basis": None, "qualifiers": {},
         "cardinality": cardinality,
     }
 
