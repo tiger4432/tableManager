@@ -126,15 +126,40 @@ def report_env(tmp_path, monkeypatch):
         monkeypatch.setattr(enrichment_candidates, "INGESTION_SETTINGS_PATH", str(settings_path))
         enrichment_candidates.reset_warnings()
 
-        return crr.resolve_report()["domains"][0]
+        return _domain_named(crr.resolve_report(), crr.DOMAIN_ENRICHMENT)
 
     yield build
     crud.TABLE_CONFIG.clear()
     crud.TABLE_CONFIG.update(saved)
 
 
+def _domain_named(report, name):
+    """The domain called `name`. 🔴 BY NAME, NEVER BY POSITION (S-180 ⓐ-0).
+
+    This read `report["domains"][0]`. `_RESOLVERS` is a dict, so REGISTRATION ORDER decided
+    which domain these expectations were scored against - and registering a new one in setup
+    order would have put it first and started scoring IT against enrichment's expectations.
+    Nothing would error; the contract would simply be measuring a different subject. Same
+    class as an unordered query picking the representative.
+    """
+    for domain in report.get("domains") or ():
+        if domain.get("domain") == name:
+            return domain
+    raise AssertionError(
+        "no %r domain in the report; got %s"
+        % (name, [d.get("domain") for d in report.get("domains") or ()]))
+
+
 def _cases():
     return {c["id"]: c for c in VECTORS["cases"]}
+
+
+def _cases_for(name):
+    """⚠️ A CASE WITHOUT `domain` IS AN ENRICHMENT CASE. The eight that existed when this
+    axis was added carry no such field and must stay byte-identical, so the default lives
+    here rather than in the file."""
+    return [c for c in VECTORS["cases"]
+            if (c.get("domain") or crr.DOMAIN_ENRICHMENT) == name]
 
 
 def _entries(domain):

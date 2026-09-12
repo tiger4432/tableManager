@@ -166,11 +166,23 @@ function scanPayload(node, strings = new Set(), details = []) {
   return { strings, details };
 }
 
-/** A report shaped like the route's response, populated from the vectors' own cases. */
-function reportFromVectors() {
+/** The domain a case belongs to.
+ *  ⚠️ A CASE WITHOUT `domain` IS AN ENRICHMENT CASE (S-180 ⓐ-0). The eight that
+ *  existed when this axis was added carry no such field and stay byte-identical, so the
+ *  default lives here rather than in the vector file. */
+const DEFAULT_DOMAIN = 'enrichment';
+const domainOf = c => c.domain || DEFAULT_DOMAIN;
+
+/** A report shaped like the route's response, populated from the vectors' own cases.
+ *  🔴 ONE DOMAIN OBJECT PER NAMED DOMAIN, NEVER ONE HARDCODED. This emitted a single
+ *  `domain: 'enrichment'` envelope holding every case, so a case belonging to another domain
+ *  would have been scored as enrichment's - the mirror of the positional read the python
+ *  harness carried. */
+function domainFromVectors(name) {
   const populations = vectors.vocabulary.populations;
   const buckets = Object.fromEntries(populations.map(p => [p, []]));
   for (const c of vectors.cases) {
+    if (domainOf(c) !== name) continue;
     const expect = c.expect || c.expect_any;
     if (!expect || !buckets[expect.population]) continue;
     const views = Object.values(c.rules || {}).flatMap(r => r.reference_views || []);
@@ -208,19 +220,24 @@ function reportFromVectors() {
     }
   }
   return {
-    domains: [{
-      domain: 'enrichment',
-      title: mark('domain-title', 'enrichment'),
+    domain: name,
+    title: mark('domain-title', name),
       sources: [
         { key: 'rules', path: mark('src-path', 'rules'), exists: true, status: 'ok',
           detail: mark('source-detail', 'rules') },
         { key: 'settings', path: mark('src-path', 'settings'), exists: false, status: 'ok',
           detail: mark('source-detail', 'settings') },
       ],
-      settings,
-      ...buckets,
-      counts: Object.fromEntries(populations.map(p => [p, buckets[p].length])),
-    }],
+    settings,
+    ...buckets,
+    counts: Object.fromEntries(populations.map(p => [p, buckets[p].length])),
+  };
+}
+
+function reportFromVectors() {
+  const names = [...new Set(vectors.cases.map(domainOf))];
+  return {
+    domains: names.map(domainFromVectors),
     vocabulary: vectors.vocabulary,
   };
 }
