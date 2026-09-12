@@ -1352,11 +1352,59 @@ def _propagation(nodes, edges, seed_signs, complete, static_types=()):
     # controls, because a group defined as void-free cannot reach `defect_kind` -- the
     # tautological axis excludes itself here rather than needing a rule of its own.
     #
-    # ⚠️ WHAT THIS DOES NOT CATCH, said plainly: the denominator is the TYPE. A control
-    # that measured sixteen quantities reaches `quantity`, so an item it never measured
-    # still reads 0/2 and looks like a real difference. That is a different denominator --
-    # the item, not the kind -- and it stays a separate question.
-    def _reachable(node_type):
+    # 🔴 AND WHERE THE DECLARATION SAYS SO, THE DENOMINATOR IS THE ITEM (S-147-b, 판정 342).
+    # The type denominator counted a control that reached `quantity` at all, so an item it
+    # never measured still read 0/2 and looked like a real difference. What tells those
+    # apart is whether the question was DECIDABLE for that control -- which is exactly the
+    # verdict S-149 already folded onto every node.
+    #
+    # 🔴 `unknown` LEAVES THE DENOMINATOR. That is the whole of the fix: a control that could
+    # not be asked becomes 0/0 rather than 0/2, and 0/0 does not read as a difference.
+    #
+    # ⚠️ AND IT IS NOT A SECOND COMPUTATION. The verdict is already on the node, so this
+    # READS rather than re-derives -- counting one fact two ways is a place for the two to
+    # disagree.
+    #
+    # ⚠️ `parents` WAS THE FIRST PLAN AND IT CANNOT ANSWER THIS. Measured: it keeps ONE path
+    # per seed, so the predicate it records is whichever arrived first in that seed's walk --
+    # `observed` was simply missing from it. That incompleteness is invisible: the lookup just
+    # quietly falls through to the type question and the number looks reasonable.
+    #
+    # ⚠️ A PREDICATE THAT DECLARED NO CONFIRMER FALLS BACK TO THE TYPE, unchanged. Dropping
+    # such a candidate from the ranking instead would be a folding rule, and folding is the
+    # owner's (판정 332 ①).
+    # ⚠️ A CANDIDATE IS CONNECTED BY A SET OF PREDICATES, NOT ONE — the cases reach a defect
+    # by `observed` while a control reaches the SAME defect by something else entirely.
+    #
+    # 🔴 AND IT IS READ FROM THE EDGES, NOT FROM `parents`. Measured while gating this:
+    # `parents` keeps ONE path per seed (it exists to rebuild an evidence trail), so the
+    # predicate it records is whichever arrived first in that seed's walk -- `observed` was
+    # simply absent from it. A set built there is incomplete by construction, and the
+    # incompleteness is invisible: it just quietly answers the type question instead.
+    arrived_by = {}
+    for edge in edges or ():
+        predicate = _bare(str(edge.get("predicate") or ""))
+        if not predicate:
+            continue
+        for endpoint in (edge.get("source"), edge.get("target")):
+            if endpoint:
+                arrived_by.setdefault(endpoint, set()).add(predicate)
+
+    def _reachable(node_type, node_id=None):
+        # 🔴 THE ITEM DENOMINATOR NEEDS ONE PREDICATE WHOSE ABSENCE IS CONFIRMABLE. Two would
+        # be two different questions about one candidate, and picking between them here would
+        # make this function the author of the answer -- so that falls back to the type,
+        # which is the answer that shipped.
+        confirmable = sorted((arrived_by.get(node_id) or set()) & set(_absence_confirmers))
+        if len(confirmable) == 1:
+            predicate = confirmable[0]
+            pair = [0, 0]
+            for seed, sign in seed_signs.items():
+                verdict = (((nodes.get(seed) or {}).get("absence") or {})
+                           .get(predicate) or {}).get("verdict")
+                if verdict in (VERDICT_TRUE, VERDICT_FALSE):
+                    pair[0 if sign > 0 else 1] += 1
+            return pair
         bare = str(node_type or "").split("@", 1)[0]
         pair = [0, 0]
         for seed, sign in seed_signs.items():
@@ -1380,7 +1428,7 @@ def _propagation(nodes, edges, seed_signs, complete, static_types=()):
     block["ranked"] = [{
         "id": item["id"], "type": item["type"], "label": item["label"],
         "reach": item["reach"],
-        "reachable": _reachable(item["type"]),
+        "reachable": _reachable(item["type"], item["id"]),
         "rank": item["rank"], "top": item["rank"] == 1,
         "tied": item["tied"], "incomparable": item["incomparable"],
         # 🔴 The trails go on EVERY rank, not only the top set.  「reached from the marked
