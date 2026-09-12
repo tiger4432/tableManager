@@ -140,13 +140,50 @@ export function tableColumns(entities, type, qualifierNames, preset = COLUMNS.FU
  * ⚠️ Raw, not text. Turning `undefined` into 「」 is the caller's job, and doing it here would
  *    hide 「the walk never reached this」 behind a string this function invented.
  */
-export function cellSource(column, node, qualifiers) {
+/**
+ * 봉투가 「이 타입의 이 이름은 «여럿»」이라고 «말한» 것 -> `Map<타입, Set<이름>>`.
+ *
+ * 🔴 선언이 답합니다, 값의 «모양»이 아니라 (S-144, 판정 327). 서버는 `many` 이름을 «언제나»
+ *    리스트로 내지만 — 값이 하나여도 — `one` 이름의 값이 «우연히» 배열일 수도 있습니다(원장에
+ *    JSON 목록이 들어 있는 칸). 모양으로 고르면 그 칸을 「등록이 여럿」으로 그리게 되고, 그건
+ *    아무도 안 한 주장입니다. 「대리를 성질로 읽지 않는다」.
+ * ⚠️ 칸이 «없는» 봉투(옛 서버, 또는 many 이름이 하나도 없는 걷기)는 빈 Map 입니다 — 「없다」와
+ *    「안 물었다」가 그리기에서는 같은 답이라 여기서 갈라 두지 않습니다. 그 구별이 필요해지는
+ *    자리가 생기면 그때 봉투의 키 유무로 갈립니다.
+ */
+export function pluralAttributes(answer) {
+  const out = new Map();
+  const declared = answer && answer.attribute_cardinality;
+  if (!declared || typeof declared !== 'object') return out;
+  for (const type of Object.keys(declared)) {
+    const names = declared[type];
+    if (!names || typeof names !== 'object') continue;
+    const many = new Set(Object.keys(names).filter((name) => names[name] === ATTRIBUTE_MANY));
+    if (many.size) out.set(String(type), many);
+  }
+  return out;
+}
+
+/** 서버의 낱말. 화면이 다시 적지 않습니다. */
+export const ATTRIBUTE_MANY = 'many';
+
+export function cellSource(column, node, qualifiers, plural) {
   const n = node || {};
   switch (column && column.kind) {
     case 'depth': return n.depth;
     case 'key': return (n.keys || {})[column.key];
     case 'qualifier': return (qualifiers || {})[column.key];
-    case 'attribute': return (n.attributes || {})[column.key];
+    // 🔴 C-89. 선언이 «여럿»이라 부른 이름은 «목록»입니다 — 값이 하나여도 리스트로 옵니다
+    //    (서버가 이름당 모양을 «고정»합니다: 「둘일 때만 리스트」면 한 칸에 두 모양이 됩니다).
+    //    그리는 쪽이 `String(['a','b'])` 로 이어 붙이면 `a,b` 가 되는데, 이 제품에서 목록의
+    //    철자는 「·」입니다. 그 판단이 여기 «한 자리»에 있는 이유는 표가 «둘»이기 때문입니다.
+    // ⚠️ 선언이 말한 이름이 아니면 손대지 않습니다. 그리고 리스트가 «아닌» 값이 오면 그대로
+    //    둡니다 — 옛 서버가 스칼라를 낼 수 있고, 그때 이어 붙일 것이 없습니다.
+    case 'attribute': {
+      const held = (n.attributes || {})[column.key];
+      return (plural && plural.has(column.key) && Array.isArray(held))
+        ? held.join(' · ') : held;
+    }
     // 🔴 ONLY A DISAGREEMENT IS AN ANSWER HERE, and that is a reading rule rather than a
     //    display one. The server sends three states — no key (the walk reached no
     //    registration), 0 (it read them and they agree), and N (N names hold differing

@@ -38,7 +38,7 @@ import { TablePart } from './table_part.js';
 import { typeGraph, pathsBetween } from './api.js';
 // 🔴 C-70. 구획과 컬럼을 «걷기 페이지와 같은 함수»에서 받습니다. 이 파일이 컬럼 셋을 자기
 //    소스에 적고 있던 동안 두 걷기 표는 «갈라질 수» 있었고, 갈라져도 오류가 안 납니다.
-import { sectionsByType, sectionHeading, tableColumns, cellSource, COLUMNS }
+import { sectionsByType, sectionHeading, tableColumns, cellSource, pluralAttributes, COLUMNS }
   from '../walk/derive.js';
 
 /** `wafer@1` -> `wafer`. 선언은 버전을 달고 타입 그래프는 안 답니다. */
@@ -567,6 +567,8 @@ export class WalkBoxPanel extends Panel {
     //    입니다 — 프리셋이 고르는 것은 «폭»이지 «정하는 쪽»이 아닙니다.
     const entities = (this.declaration && this.declaration.entities) || [];
     const sections = sectionsByType(rows);
+    // C-89. 같은 독자, 같은 낱말 — 걷기 페이지의 표와 이 표가 같은 칸을 같은 모양으로 그립니다.
+    const plural = pluralAttributes(this.result);
     // 부재는 여전히 «표 하나»가 말합니다. 구획이 없을 때 문장을 잃으면 「걷는 중」·「거절」·
     //    「걸었는데 없음」 셋이 같은 빈 화면이 됩니다.
     if (!sections.size) {
@@ -595,7 +597,7 @@ export class WalkBoxPanel extends Panel {
         rowKey: 'id',
         title: sectionHeading(type, nodes.length),
         columns: cols.map(partColumn),
-        rows: nodes.map((node) => partRow(cols, node)),
+        rows: nodes.map((node) => partRow(cols, node, plural.get(type))),
         onRowClick: (id) => { this.mark(id, SIGN.CASE, 'replace'); this.render(); },
       }).mount();
     }
@@ -640,8 +642,8 @@ function partColumn(col) {
  *    수식어 컬럼이 없으므로 물을 것이 없고, 여기서 지어내면 그것이 세 번째 저자입니다.
  * ⚠️ `id` 는 «컬럼이 아니지만» 행에 실립니다 — `TablePart` 의 `rowKey` 가 그것으로 마킹합니다.
  */
-function partRow(cols, node) {
+function partRow(cols, node, plural) {
   const row = { id: node.id };
-  for (const col of cols) row[columnId(col)] = cellSource(col, node, {});
+  for (const col of cols) row[columnId(col)] = cellSource(col, node, {}, plural);
   return row;
 }

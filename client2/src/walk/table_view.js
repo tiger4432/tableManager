@@ -13,7 +13,8 @@
 // 🔴 텍스트도 여기서 만듭니다. 빈 칸은 «빈 칸»입니다 — 「—」나 0 으로 채우면 「없다」와
 //    「0 이다」가 같은 글자가 됩니다. 그 판정이 렌더러에 있으면 node 가 채점할 수 없습니다.
 // ═══════════════════════════════════════════════════════════════════════════════
-import { sectionsByType, sectionHeading, tableColumns, cellSource } from './derive.js';
+import { sectionsByType, sectionHeading, tableColumns, cellSource, pluralAttributes }
+  from './derive.js';
 
 /** 한 번에 그리는 행 상한. 넘은 것은 «수»로 말합니다 — 조용히 자르지 않습니다. */
 export const ROW_CAP = 200;
@@ -79,6 +80,9 @@ export function walkTableView(result, entities, cap = ROW_CAP) {
   const shown = nodes.slice(0, cap);
   const byNode = qualifiersByNode((result && result.edges) || []);
   const sections = [];
+  // C-89. 「어느 이름이 여럿인가」는 봉투가 말합니다. 노드마다 다시 묻지 않습니다 — 한 답이고,
+  // 표 중간에서 답이 바뀔 수 있으면 그 자체가 결함입니다.
+  const plural = pluralAttributes(result);
   for (const [type, rows] of sectionsByType(shown)) {
     const columns = tableColumns(entities, type, qualifierNamesOf(rows, byNode));
     sections.push({
@@ -90,7 +94,8 @@ export function walkTableView(result, entities, cap = ROW_CAP) {
         // 🔴 머리와 셀이 «같은 배열»을 돕니다. 따로 돌면 그날부터 순서가 갈릴 수 있고,
         //    갈라져도 오류가 안 납니다 — 값이 옆 칸에 들어갈 뿐입니다.
         cells: columns.map((column) => {
-          const text = valueText(cellSource(column, node, byNode.get(node.id) || {}));
+          const text = valueText(
+            cellSource(column, node, byNode.get(node.id) || {}, plural.get(node.type)));
           return { text, kind: column.kind, numeric: isNumericText(text) };
         }),
       })),

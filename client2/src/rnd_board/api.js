@@ -636,6 +636,9 @@ export function subgraphModel(result) {
     //    only way to get them was a second route. Counts answer 「연결이 있었나」; these answer
     //    「그 연결이 무엇이었나」, and collapsing the second into the first is what made the map
     //    need `lot_map` at all.
+    // C-89. 봉투의 낱말을 «그 이름 그대로» 나릅니다. 여기서 camelCase 로 바꾸면 걷기 페이지와
+    // 이 보드가 «다른 이름»을 읽게 되고, 그러면 `pluralAttributes` 가 두 벌이 됩니다.
+    attribute_cardinality: (body && body.attribute_cardinality) || null,
     nodes: Array.isArray(body.nodes) ? body.nodes : [],
     edges: Array.isArray(body.edges) ? body.edges : [],
     contrast: prop.contrast || null,
