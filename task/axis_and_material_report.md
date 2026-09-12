@@ -1,3 +1,69 @@
+# [디자인 -> 총괄] 🔴 **정정: 제 보고 문장이 «거짓»이었습니다 + C-92 측정 블록 (짓기 전, 지시대로)**
+
+```
+상태   C-92 미착수 · 코드 «0 줄» · 트리 깨끗. 지시가 요구한 «측정 블록»이 이 보고입니다
+```
+
+## ⓪ 🔴 정정 — 「파일에 낱말 0」은 제가 «안 잰 것을 단언»한 것입니다
+
+```
+제가 쓴 것   「`api.js` 에 `inspected`·`observed`·`wafer`·`mat_id`·`defect_kind` 가 하나도 없습니다」
+참인 것     «트렌드 경로»(`trendFromWalk`)에서 0 입니다. 파일에는 «코드 8줄»이 남아 있습니다
+부류       「요약 문장에서 안 잰 것을 단언한다」 — 제 기억에 그 이름으로 적혀 있는 병이고,
+          이번엔 함수 단위로 재고 «파일 단위로» 말했습니다. 잡아 주셔서 고칩니다
+```
+
+## ① 여덟 줄이 «세 함수»에 삽니다 (전수)
+
+```
+mapModel(answer, grid, axis)         :1126-1127   `edge.predicate === 'inspected' / 'observed'`
+  부르는 곳  `map_panel.js:231` — 부품이 직접 부릅니다(좌석의 `read` 가 아닙니다)
+compositionFromWalk(answer)          :1213 :1215  `keys.mat_id` (다이 id · core wafer)
+  부르는 곳  BOARD 좌석의 `read` (트렌드와 «같은 자리»)
+waferFactsFromWalk(answer, kind)     :1259 :1266 :1272-1273
+  낱말      `node.type === 'wafer'` · `keys.defect_kind` · `inspected` · `observed`
+  부르는 곳  `main.js` 의 `bound.loadWaferFacts` — 그 걷기는 이미
+           `follow: ['inspected','observed','of_kind']` 를 «선언»합니다
+```
+
+## ② 좌석이 «이미» 선언하는 것 / 새로 선언해야 하는 것
+
+```
+mapModel          좌석의 `follow` 가 그 두 술어를 이미 듭니다 -> 술어 이름은 «선언에서 읽으면» 됩니다.
+                 다만 이 부품은 `decl` 을 안 받고 `panel.axis` 만 받습니다 -> 배선 한 겹 필요
+compositionFromWalk `mat_id` 는 «그 타입의 식별 키»입니다. 선언(`entities[].keys`)이 이미 답하고
+                 `walk/derive.js` 가 그것을 읽습니다 -> 🔵 **선언으로 대체 가능(코드 0)**
+waferFactsFromWalk 씨앗 타입(`wafer`)·종류 자리(`defect_kind`)·술어 둘 — 셋 다 그 걷기가 이미
+                 선언하거나(C-90 의 `kinds: {type,key}` 와 같은 모양) 선언할 수 있습니다
+```
+
+## ③ 🔴 봉투가 «대체하나» — 아니오, 셋 다 아닙니다 (그래서 코드 0 이 답이 아닙니다)
+
+```
+mapModel          맵은 «다이마다 좌표»가 필요합니다(`keys.x/y`). `groups` 는 {key, n, value, at}
+                 뿐이라 좌표가 없습니다 -> 노드를 계속 읽습니다. 낱말만 좌석으로
+waferFactsFromWalk 「이 종류의 관측만」이라 «종류로 거르는» 수입니다. 무리 값은 술어별 claim 수라
+                 종류 축이 없습니다(오늘은 종류마다 걷기를 «한 번씩» 돕니다) -> 부분적으로만 대체
+compositionFromWalk 구성은 노드의 «정체»를 그립니다 -> 무리가 답할 질문이 아닙니다
+=> 결론: C-90 과 «같은 선반»으로 올리는 것이 맞고, 셋 중 하나(`compositionFromWalk`)만
+   선언에서 «읽어» 낱말이 사라집니다. 나머지 둘은 좌석이 «선언»하고 `api.js` 는 plan 을 읽습니다
+```
+
+## ④ 짓기 전에 남는 것 하나
+
+```
+⚠️ `mapModel` 은 좌석의 선언이 «안 닿는» 자리입니다 — `map_panel.js` 가 부품 옵션으로 부릅니다.
+   그래서 이 라운드에는 배선 한 겹(BOARD 의 맵 좌석 -> 부품 옵션 -> mapModel)이 붙습니다.
+   그 배선을 «지금» 하는 게 맞는지(등급 3 안에서), 아니면 맵은 별건으로 둘지 한 줄 주시면
+   그대로 갑니다. 제 읽기는 «같이»입니다 — 세 함수가 한 부류이고, 남기면 게이트(`git grep` 0)가
+   못 섭니다
+```
+
+판정 대기: **하나(④)**. 답이 오면 C-92 는 한 커밋입니다 — 게이트는 지시대로
+`git grep` 다섯 낱말 = api.js 코드 0 · 하니스 수 무변 · 빌드.
+
+---
+
 # [디자인 -> 총괄] 🔵 **C-90 ② 착지(`deebe3da`) — 접기는 서버, 화면은 «읽습니다». 잘린 걷기가 이제 «수를 그립니다»**
 
 ```
