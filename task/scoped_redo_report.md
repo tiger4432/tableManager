@@ -37428,3 +37428,73 @@ profile_binding_columns 두 벌 -> «한 객체»(대입 재export, `is` 로 확
 
 > 📌 **[09-12 19:1x] 이 채널의 미답 질문: «없음».** S-196 «닫힘»(①②). 다음 = **S-191**.
 > 재기동 총괄 몫 — 검증기와 작성 폼이 바뀝니다.
+
+---
+
+## 📤 [09-12 20:5x 구현자] S-191 «짓기 전» 모집단 정정 — 52 가 아니라 «9», 그리고 «행동 0» 이 아닙니다
+
+🔴 **판정 299 의 「52 파일」은 «제가 드린 수»이고, 그 수가 틀렸습니다.** 짓기 전에 다시 쟀습니다.
+
+### ① 52 는 어디서 왔나 — `del` 이 「mo**del**」 «안»에서 잡혔습니다
+```
+제가 썼던 질의   git grep -l 'del .*DYNAMIC_TABLES\[' -- server/tests     -> 49 파일
+그중 «진짜» del  1 파일
+나머지 48 은 이런 줄입니다:
+   raw_table_mo(del) = models.DYNAMIC_TABLES["raw_table_1"]     <- 평범한 «읽기»
+낱말 경계를 넣으면  git grep -lE '(^|[^A-Za-z_])del +[A-Za-z_.]*DYNAMIC_TABLES\['  -> «1»
+```
+
+### ② 오늘의 실제 모집단 — «9 파일 · 10 자리»
+```
+DYNAMIC_TABLES.pop  9 자리 / 8 파일        del DYNAMIC_TABLES[  1 자리 / 1 파일
+파일                                              팝  metadata.remove
+test_a_relation_without_row_id_…_total_order.py    2        1      <- 한 자리는 «빠짐»
+test_config_reload_integrity.py                    1        1
+test_join_resolved_columns.py                      1        1
+test_notation_normalization.py                     1        1
+test_dashboard_table_isolation.py                  1        0      <- 빠짐
+test_mapper_sample_cross_table_lookup.py           1        0      <- 빠짐
+test_ledger_v2_pg.py                               1        0      <- ③ 참조
+test_map_alignment_references.py                   1        0      <- ③ 참조
+test_map_alignment_worklist.py                     1        0      <- ③ 참조
+```
+
+### 🔴 ③ 그리고 «행동 0» 이 아닙니다 — 그것이 이 헬퍼의 «값»입니다
+```
+10 자리 중 «4» 가 DYNAMIC_TABLES 만 빼고 Base.metadata 의 Table 을 «두고 갑니다».
+헬퍼를 지나게 하면 그 4 자리에 metadata 제거가 «생깁니다» — 행동이 «바뀝니다».
+그리고 그 누락이 이번 세션에 «1,008 errors» 를 낸 그 부류입니다(`ea1e8ec2`):
+   클래스가 사라진 채 Table 이 남으면 다음 시험이 «둘째 Index» 를 같은 이름으로 붙이고,
+   그 뒤 «다른 파일»의 create_all 이 「index … already exists」로 죽습니다
+=> 그러므로 게이트는 「행동 0」이 아니라 「그 4 자리에서 «metadata 에 남는 것이 0»」이어야 합니다
+```
+
+### ⛔ ④ 그리고 «셋»은 은퇴가 아니라 «잠깐 감추기»입니다 — 치환하면 회귀입니다
+```
+test_map_alignment_references.py:269 · test_map_alignment_worklist.py:683
+   saved = models.DYNAMIC_TABLES.pop(META_TABLE)
+   try:  … (라우트가 「못 내주는 상태」를 내는지 잰다) …
+   finally: models.DYNAMIC_TABLES[META_TABLE] = saved        <- «되돌려 놓습니다»
+test_ledger_v2_pg.py:206
+   if previous_model is None: pop(...)   else: DYNAMIC_TABLES[…] = previous_model
+```
+🔴 여기서 pop 은 «은퇴»가 아니라 «복원의 역»입니다. `retire_dynamic_model` 을 끼우면
+   metadata 의 Table 까지 빠지는데 복원은 DYNAMIC_TABLES 만 되돌리므로 **짝이 깨집니다**.
+🔴 따라서 판정 299 의 게이트 「`DYNAMIC_TABLES.pop` conftest 밖 «0»」은 **오늘 만족될 수 없습니다** —
+   만족시키려면 `hide_dynamic_model` 이라는 «둘째 것»을 지어야 하고, 그건 「한 함수」가 아닙니다.
+
+### 제가 지금 하는 것 / 판정을 기다리는 것
+```
+✅ 짓습니다   conftest 에 retire_dynamic_model(name) «하나»(DYNAMIC_TABLES + Base.metadata 의
+             Table·Index 를 «같이» 뺌) + «진짜 은퇴» 6 자리를 그것으로 치환
+             게이트: 그 6 파일 전/후 동일(통과 수) + 치환 뒤 Base.metadata 에 남는 이름 0
+             + 변이: 헬퍼에서 metadata 반쪽을 빼면 «누수 시험»이 빨강
+🔴 기다립니다 ④ 의 «셋»(감추기/복원) — 둘 다 그대로 두는 것이 제 판단입니다.
+             그리고 그러면 게이트 「pop 밖 0」은 «3» 으로 적혀야 합니다
+```
+⚠️ 「그 셋을 감싸는 컨텍스트 매니저를 만들까요」는 «묻지 않습니다» — 지시받지 않은 것이고,
+   ①~④ 를 먼저 올리는 것이 맞습니다.
+
+> 📌 **[09-12 20:5x] 이 채널의 미답 질문: «하나» —** 판정 299 의 게이트를
+> 「pop 밖 0」에서 「pop 밖 «3»(감추기/복원 셋) · metadata 누수 0」으로 고쳐 주십시오.
+> 그 답 없이도 위 ✅ 는 진행합니다.
