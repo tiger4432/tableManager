@@ -40791,3 +40791,56 @@ S-200 의 둘   test_virtual_join_types            S-199-b  `8aade672`  09-12 21
 산물입니다. 그 차이가 뜻을 바꿔서 올립니다.
 
 > 📌 **[09-13 03:45] 이 채널의 미답 질문: «없음».** 대기 그대로입니다.
+
+
+---
+
+## S-209 ① 소비자 전수 — 🔴 **「사람만 읽는다」가 «샘플 일곱»에 대해 거짓입니다** (짓지 않음)
+
+응용 쪽 이동이 «아직 안 착지»했습니다(`C:/Users/kk980/Developments/assyManager-authoring/` 없음).
+지시대로 응용 먼저이므로 **아무것도 옮기지 않았습니다.** 그동안 ①(읽기만)을 했고, 그 결과가
+이 행의 전제 하나를 뒤집습니다.
+
+### 실측 — `.py.sample` 열셋 중 «일곱»은 «코드가 읽습니다»
+```
+남아야 함(코드가 읽음 — 게이트가 그것을 «드리프트 방지»로 씁니다)                  «7»
+  core_alignment_mapper          test_core_alignment_mapper.py:69
+     🔴 test_live_mapper_and_tracked_sample_are_byte_identical() —
+        `.sample` 바이트를 «라이브(gitignore) 맵퍼»와 대조합니다
+  core_usage_mapper              test_core_usage_mapper.py
+  cross_table_lookup_mapper      test_mapper_sample_cross_table_lookup.py
+     🔴 그 파일 머리글이 사유를 «스스로» 적습니다: 「A sample that is only read is a sample
+        that DRIFTS from the worker it claims to describe, so this file loads that exact
+        `.sample` text and drives it」
+  dt_alignment_metadata_mapper   test_dt_alignment_metadata_mapper.py
+  dt_inventory_metadata_mapper   test_dt_inventory_metadata_mapper.py:53
+  dt_job_rollup_mapper           test_the_chain_counts_and_the_ledger_only_reads.py
+  dt_map_mapper                  test_dt_map_derivation.py
+
+바깥으로 갈 수 있음(코드 참조 «0** — `git grep -- 'server/**.py'` 전수)                «6»
+  dt_standard_map_mapper · lot_slot_wafer_mapper · production_mapper
+  custom_parser · inspection_run_parser · void_obs_parser
+  (+ `server/parsers/custom_parser_template.py` — 코드 참조 0)
+```
+🔴 **그래서 일곱을 바깥으로 옮기면 «바이트 동일 게이트»가 비교할 대상을 잃습니다.**
+그 `.sample` 은 「사람이 읽는 예제」가 아니라 **«소유자의 라이브 맵퍼의 추적되는 사본»**이고,
+게이트의 존재 이유가 그것입니다. 옮기면 게이트가 죽거나(파일 없음) 바깥 디렉터리를 읽어야 하고,
+후자는 「저장소 시험이 다른 저장소를 읽는다」가 됩니다.
+
+⚠️ **제 첫 필터가 하나를 놓쳤습니다** — `read_bytes|read_text|open\(` 로 훑어
+`dt_inventory_metadata_mapper` 를 「읽는 곳 없음」으로 셌는데, 실제로는 `:53` 에서 경로를
+만들고 읽습니다. 파일 이름으로 다시 세서 잡았습니다(제 기억 파일 「리터럴로 훑지 않는다」).
+
+### 물어야 할 것 «둘» — 이동 전에 정해야 합니다
+```
+① 게이트 있는 일곱: 「저장소에 남는다」가 맞습니까(제 권고: 예 — 코드가 읽고, 그 읽기가
+   드리프트를 막는 «유일한» 장치입니다). 그러면 바깥 가이드는 그 일곱을 «인용»하되
+   본문은 저장소에 남고, 「두 벌 0」은 «가이드가 사본을 두지 않음»으로 지켜집니다
+② 여섯(+template): 바깥으로 «이동»합니다. 그런데 이 여섯의 참조는 전부 «문서»입니다 —
+   docs/guide/INGESTION_GUIDE.md · OPERATOR_RUNBOOK.md · chain_ingestion_guide.md 등.
+   그 문서들이 응용 몫인지(바깥으로 같이) 제 몫인지(경로 한 줄로 고침) 갈라 주십시오
+```
+⚠️ ②③(드리프트 게이트 · `MAPPER_STANDARD.md` 이동)은 바깥 디렉터리가 «선 뒤»에 합니다 —
+지금 만들면 가리킬 곳이 없는 상수가 됩니다.
+
+> 📌 **[09-13 08:01] 이 채널의 미답 질문: «둘» — S-209 의 ①②.** 응용 착지를 기다립니다.
