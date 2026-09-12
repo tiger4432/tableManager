@@ -36214,3 +36214,92 @@ system_reload 는 `mappers.*` 를 sys.modules 에서 뺍니다. 그런데 `mappe
 
 > 📌 **[09-12 13:0x] 이 채널의 미답 질문: «없음».** 다음 = **ⓓ+ⓑ 한 커밋**(호환층 + 거절).
 > 재기동 총괄 몫 — ⓒ 가 기동 때 맵퍼 패키지를 import 하고 거절을 이름 대어 로그에 씁니다.
+
+---
+
+## 📐 [09-12 13:1x 구현자] S-192 설계 한 장 — 코드 0. 지정하신 두 자리가 «둘 다» 이미 있고, 하나는 제 초안을 반증합니다
+
+### ① 「쓰기 0 인 db」 — 제 초안(트랜잭션 롤백)은 «틀립니다». 서버가 강제하는 기제가 이미 있습니다
+```
+🔴 conftest 가 그 이유를 «이미» 적어 두었습니다 (`pg_session` 해체):
+   「TRUNCATE rather than a per-test transaction rollback: the code under test COMMITS
+    (`_apply_batch_updates_once` does)」
+   => 커밋하는 코드 앞에서 롤백은 «무효»입니다. 「돌린 뒤 cell_sources 행 수 불변」 게이트도
+      커밋이 일어나면 «통과하지 못하거나», 더 나쁘게 커밋 뒤 지워져 «통과해 보일» 수 있습니다
+✅ 있는 기제: `db_safety.open_readonly_connection(engine, mode=CONNECT_TIME|PER_TRANSACTION)`
+              + `assert_readonly(conn)` + `READONLY_REFUSAL` + `READONLY_OPTIONS`
+   그리고 그 파일이 «함정까지» 적어 두었습니다 —
+     `default_transaction_read_only` = 「누가 봐도 확인할 변수」   (:245)
+     `transaction_read_only`         = 「PostgreSQL 이 실제로 «강제»하는 것」 (:246)
+   `assert_readonly` 는 «서버에» 물어서 거절합니다. 즉 이 자리는 「제가 지킬 것」이 아니라
+   「DB 가 거절할 것」입니다 — 맵퍼가 «커밋해도» 섭니다
+```
+🔵 **그래서 ① 은 `open_readonly_connection` 을 씁니다.** 판정의 「롤백만 하는 세션」은
+«그것보다 약한» 보장이고, 이 저장소가 그 약함을 이미 한 번 값 치렀습니다.
+「cell_sources 행 수 불변」은 «벨트»로 남깁니다 — 주 보장이 아니라 이중 확인으로.
+
+### ② 「파서를 이름으로 찾는 자리」 — «없습니다». 그리고 없는 것이 «옳습니다»
+```
+실측: 운영은 파서를 «이름으로» 고르지 않습니다. «클레임»으로 고릅니다.
+  `parsers/directory_watcher.scan_workspace_pipeline_parsers(scripts_path, visit, load_errors)` (:1091)
+     · 플러그인 .py 를 `spec_from_file_location` 으로 `pipeline_plugin_<파일>` 로 적재
+     · `BasePipelineParser` 하위 클래스를 찾아 `visit(filename, cls)` 에 넘김
+     · visit 이 «1-튜플»을 돌려주면 «그 파서가 그 파일을 claim» · None 이면 계속 스캔
+     · 자기 주석: 「1-tuple, not the bare value, so a parser may legitimately claim with None」
+  그리고 `SUPPORTED_EXTERNAL_PARSERS = frozenset({"voids_json"})` 는 «외부 파서 열거»로 별개 축입니다
+```
+🔴 **그래서 `try_parser(name, file)` 의 `name` 을 «주 선택축으로 만들면 안 됩니다»** — 운영이
+안 지나는 길을 시험하는 harness 가 됩니다(「이 박스에서 되게 만든 것은 아무것도 증명하지 않는다」).
+```
+설계: try_parser(file, *, force=None)
+  기본   scan_workspace_pipeline_parsers 로 «클레임»을 재현 -> 「어느 파서가 집었나」를 «값으로» 냅니다
+         (아무도 안 집으면 그것이 답입니다 — 그 자리가 「scanned, nobody claimed」로 이미 구별돼 있습니다 :1051)
+  force= 개발 중인 파서가 «아직 안 집을 때»를 위한 우회 — 그게 저자의 실제 필요입니다.
+         그리고 「집지 못했다」와 「집었지만 결과가 틀렸다」를 «가른» 출력을 냅니다
+핵심 로직 경계  `pipeline_base.parse(file_path) -> list[dict]` (:99) = 읽기 → process_dataframe → clean_for_postgres
+         DB 는 «원래 안 씁니다». 그래서 ②는 세션이 «필요 없습니다»
+```
+
+### 기존 넷 — 열어 보고 겹치는 것 (판정이 요구한 「먼저 열어」)
+```
+scripts/chain_replay_cli.py        226줄   규칙 이름으로 «재생». 트리거 행 → 맵퍼 경로를 «이미» 지남
+scripts/replay_ingestion.py        115줄   파일 → 인제션 재생
+scripts/probe_ingestion_stages.py  523줄   단계별 계측(`_load_metadata_row_cell` 등 이름으로)
+_archive/profile_chain_mapper.py   469줄   ⚰️ 아카이브 — 되살리지 않습니다
+🔵 재사용: 맵퍼 호출 규약(`(db, payloads, rule)`)과 규칙 해석은 chain_replay 쪽에 «있습니다».
+   `try_mapper` 는 그것을 «부르고», 다른 점 «하나»만 바꿉니다 — db 가 읽기 전용이고 쓰기 단계를 안 탑니다
+⚠️ 재사용 «못 하는» 것 한 줄: 넷 다 «DB 에 쓰는 것을 전제»로 만들어졌습니다(재생은 쓰기가 목적).
+   그래서 「쓰기 0」은 새 인자가 아니라 «다른 세션»으로 갈립니다 — 그게 ① 입니다
+```
+
+### 지을 것 (코드 0 — 이 설계가 승인되면)
+```
+① try_mapper(name, sample)   등록부(ⓒ)에서 이름 → 콜러블 · 샘플(행 list·CSV·TSV) → payloads_to_df
+                             db = open_readonly_connection(…) · 반환 = DataFrame + 거절 사유(이름 대어)
+                             ⚠️ 이 박스 등록 «0» 이므로 `name` 은 두 칸 경로(모듈·함수)도 받아야
+                                합니다 — ⓓ 가 착지하기 «전»까지는 그것이 유일한 길입니다
+② try_parser(file, force=)   위 설계. 세션 없음
+③ 껍데기 셋이 «같은 두 함수»   CLI `scripts/try_core.py mapper|parser …`(TSV) ·
+                             pytest 픽스처 `tests/samples/<종류>/<이름>/input.* + expected.tsv`
+                             (폴더 발견 = 시험 하나 · 컬럼 집합 + «정렬 뒤» 행 동일) ·
+                             빌더 드라이런 라우트는 «나중에» 같은 함수
+④ 샘플 하나씩 «저장소에»       추적 맵퍼 `.sample` 하나 + void 파서. 운영 맵퍼는 소유자 폴더
+게이트                       읽기 전용을 «서버가» 거절함을 단언(assert_readonly) + cell_sources 불변(벨트) ·
+                             expected.tsv «한 셀» 바꾸면 빨강 · CLI 와 픽스처가 «같은 TSV»
+```
+
+### 두 줄 선언법
+```
+「맵퍼를 고치면 `tests/samples/mapper/<이름>/` 에 `input.csv` 와 `expected.tsv` 를 넣습니다 — 폴더가 시험입니다.」
+「파서도 같습니다. 이름을 적을 자리는 «없고», 그 파일을 «집는» 파서가 답입니다.」
+```
+
+### 📌 판정 필요 «둘»
+```
+① ① 의 세션을 «읽기 전용 연결»로 바꾸는 것(판정의 「롤백만」 대신). conftest 의 반증 근거 위 참조
+② try_parser 의 주 선택축을 «클레임»으로 두고 `name` 을 `force=` 우회로 내리는 것
+둘 다 판정 문구를 바꾸는 것이라 제 판단으로 하지 않습니다.
+```
+
+> 📌 **[09-12 13:1x] 이 채널의 미답 질문: «둘» (위).** 코드 0 · 이 설계 한 장만 커밋합니다.
+> ⚠️ 「failed 18 중 부모에 없던 이름」은 여전히 «재는 중»입니다(순차 두 실행, 아직 안 끝남).
