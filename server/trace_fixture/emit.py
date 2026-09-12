@@ -38,7 +38,15 @@ ORDER = {
                   "slotnumbers", "waferids", "event_time"],
     "core_wafer_map": ["core_lot", "core_slot", "core_x", "core_y",
                        "c_bn", "wafer_id", "event_time"],
-    "dt_log": ["dt_job", "dt_eqp", "product", "dt_lot", "dt_slot", "dt_x", "dt_y",
+    # 🔴 TWO TRIPLES, TWO ROLES (판정 309-b). `dt_job/dt_x/dt_y` is the ONTOLOGY key -
+    # what the ledger sample's `dt_transfer` binds - and `dt_job_id/b_wx/b_wy` is the
+    # INGESTION identity the catalogue declares as `composite_key_source`. They are
+    # different roles over the same die and both are catalogue columns, so a fixture that
+    # emits only one leaves `std_parser` rejecting the file as keyless.
+    # ⛔ `dt_cell_key` IS NOT EMITTED. The product mints it from the three sources; a
+    # fixture that spelled it too would be a second author of the separator rule.
+    "dt_log": ["dt_job", "dt_job_id", "dt_eqp", "product", "dt_lot", "dt_slot",
+               "dt_x", "dt_y", "b_wx", "b_wy",
                "core_lot", "core_slot", "core_wafer", "core_x", "core_y",
                "c_bn", "event_time"],
     "bonding_log": ["bond_lot", "bond_slot", "bond_x", "bond_y", "b_bn",

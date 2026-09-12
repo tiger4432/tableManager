@@ -120,6 +120,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections.abc import Mapping
 
 CONFIG_FILENAME = "ledger_config.json"
 
@@ -1137,6 +1138,73 @@ def declared_inference_derivations(cfg: dict) -> frozenset:
                 if name:
                     out.add(name)
     return frozenset(out)
+
+
+def _bound_words(mapping) -> set:
+    """Every vocabulary and entity name ONE mapping names. Declaration only.
+
+    ⚠️ TWO PLACES, BOTH IN THE MAPPING: the predicate is the mapping's own `predicate`, and
+    an entity appears wherever a bind leaf says `kind: "entity"`. Reading only the first
+    would answer 「which sources use this predicate」 and silently say 「none」 for every
+    entity - an absence that looks exactly like a fact.
+    """
+    found = set()
+    if not isinstance(mapping, Mapping):
+        return found
+    predicate = str(mapping.get("predicate") or "").strip()
+    if predicate:
+        found.add(predicate)
+
+    def walk(node):
+        if isinstance(node, Mapping):
+            if str(node.get("kind") or "") == "entity":
+                entity = str(node.get("entity_type") or "").strip()
+                if entity:
+                    found.add(entity)
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, (list, tuple)):
+            for value in node:
+                walk(value)
+
+    walk(mapping.get("bind"))
+    return found
+
+
+def sources_binding(cfg: dict, name: str) -> tuple:
+    """Which sources name this vocabulary word or entity type. Reads the DECLARATION only.
+
+    🔴 THE QUESTION A COST PREVIEW ASKS (S-143, 판정 322). Editing one source is one
+    source's worth of re-translation; editing a PREDICATE re-runs every source that utters
+    it, and nothing answered that. The three functions that looked close are all on other
+    axes - `followup.sources_for_table` is TABLE -> sources, `declared_derivations` is
+    SOURCE -> derivations, `_declared_entities` is a name list - so this is the one place
+    that answers word -> sources.
+
+    ⚠️ DECLARATION ONLY, ON PURPOSE. `chain_graph` walks the runtime graph for a different
+    question; a second walker here would be two answers to 「what does this word touch」.
+
+    ⚠️ AND THE VERSION IS STRIPPED, as `_collectable_types` strips it: the caller should not
+    have to know whether the declaration happens to spell `wafer` or `wafer@1`.
+
+    An EMPTY tuple is an answer - no source utters this word - and is not the same fact as
+    「not counted here」. The caller keeps those apart.
+    """
+    wanted = str(name or "").split("@", 1)[0].strip()
+    if not wanted:
+        return tuple()
+
+    hits = []
+    for source_name, source_cfg in sorted((cfg or {}).get("sources", {}).items()):
+        if str(source_name).startswith("__") or not isinstance(source_cfg, Mapping):
+            continue
+        mappings = ((source_cfg.get("bind") or {}).get("mappings") or {})
+        words = set()
+        for mapping in (mappings.values() if isinstance(mappings, Mapping) else ()):
+            words |= _bound_words(mapping)
+        if any(str(word).split("@", 1)[0] == wanted for word in words):
+            hits.append(str(source_name))
+    return tuple(hits)
 
 
 def declared_derivations(cfg: dict, source: str) -> frozenset:

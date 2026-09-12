@@ -47,6 +47,21 @@ def one_broken_table(monkeypatch, db_session):
     return broken
 
 
+@pytest.fixture
+def two_broken_tables(monkeypatch, db_session):
+    """TWO of them, one after the other, because that is what proves the loop CONTINUED.
+
+    ⚠️ The declaration is walked in insertion order and these go on the end, so the second
+    name can only appear if the first failure did not end the walk.
+    """
+    names = ["probe_broken_first", "probe_broken_second"]
+    for name in names:
+        monkeypatch.setitem(crud.TABLE_CONFIG, name, {"columns": {}})
+        monkeypatch.setitem(models.DYNAMIC_TABLES, name, _BrokenModel())
+    main.RECORRECTION_CACHE["value"] = None
+    return names
+
+
 def test_the_route_answers_200_and_names_the_table_it_could_not_count(
         client, one_broken_table):
     res = client.get("/dashboard/summary")
@@ -58,29 +73,56 @@ def test_the_route_answers_200_and_names_the_table_it_could_not_count(
     assert "row_id" in named[one_broken_table], named[one_broken_table]
 
 
-def test_the_broken_table_is_not_reported_as_a_table_with_zero_rows(
+def test_a_table_that_could_not_be_read_is_named_as_that_and_never_as_a_figure(
         client, one_broken_table):
-    """🔴 "could not count" is not "counted, and it was zero". Reporting the second would
-    tell an operator the table is empty, which is a different instruction."""
+    """🔴 「could not count」 IS NOT 「counted, and it was zero」 — an operator acts differently
+    on 「empty」 and 「could not read」.
+
+    ⚰️ REWRITTEN, AND THE OLD SURFACE IS WHY (S-198). This asserted the broken table was
+    absent from `table_stats`; `471f66f7` retired `table_stats`, `total_rows` and
+    `total_tables` together (one loop made all three, and nothing read them). So the test had
+    been red on a contract that no longer exists — measuring the SURFACE a property was once
+    visible on, not the property.
+
+    🔴 TODAY THE PROPERTY IS STRONGER, NOT WEAKER: there is no per-table figure at all, so a
+    table that could not be read CANNOT be folded into one. That is what is asserted — the
+    three retired names stay gone, and the table appears by name with a reason.
+    """
     body = client.get("/dashboard/summary").json()
-    assert one_broken_table not in {t["table_name"] for t in body["table_stats"]}
+
+    named = {u["table_name"]: u["reason"] for u in body["uncounted_tables"]}
+    assert one_broken_table in named
+    assert "row_id" in named[one_broken_table]
+    for retired in ("table_stats", "total_rows", "total_tables"):
+        assert retired not in body, (
+            "%s is back; a table that could not be read can be folded into a figure "
+            "again, and this test has to grow that arm back" % retired)
 
 
-def test_every_other_table_still_reports_its_own_number(client, one_broken_table):
-    """🔴 THE GATE THAT MATTERS. PostgreSQL aborts the whole transaction on a failed
-    statement, so without a rollback every table AFTER the bad one fails too - the
-    isolation would be a comment rather than a behaviour. The comparison is against the
-    same route with nothing broken."""
-    with_broken = client.get("/dashboard/summary").json()
+def test_a_failure_does_not_end_the_walk_so_a_LATER_table_is_still_examined(
+        client, two_broken_tables):
+    """🔴 THE GATE THAT MATTERS, MEASURED ON WHAT SURVIVES. One table's failure must not cost
+    the ones after it — the `try` is INSIDE the loop and the loop `continue`s.
 
-    del crud.TABLE_CONFIG[one_broken_table]
-    del models.DYNAMIC_TABLES[one_broken_table]
-    main.RECORRECTION_CACHE["value"] = None
-    without = client.get("/dashboard/summary").json()
+    ⚰️ THE OLD FORM COMPARED `table_stats` WITH AND WITHOUT THE BROKEN TABLE, and there is no
+    per-table figure left to compare. Two broken tables answer the same question through the
+    field that did survive: the declaration is walked in insertion order, so the SECOND name
+    can only appear if the first failure did not end the walk. A `try` around the whole loop
+    — which is what this guards against — names one and loses the rest silently.
 
-    assert {t["table_name"]: t["row_count"] for t in with_broken["table_stats"]} == \
-           {t["table_name"]: t["row_count"] for t in without["table_stats"]}
-    assert with_broken["total_rows"] == without["total_rows"]
+    ⚠️ WHAT THIS DOES NOT MEASURE, STATED: the per-table `db.rollback()`. These probes raise
+    in Python before any statement reaches the database, and sqlite does not abort a
+    transaction on a failed statement the way PostgreSQL does. The rollback's necessity is
+    recorded at its seat in `main.py`; it is not something this file can score.
+    """
+    body = client.get("/dashboard/summary").json()
+
+    named = [u["table_name"] for u in body["uncounted_tables"]]
+    assert named == two_broken_tables, named
+
+    healthy = set(crud.TABLE_CONFIG) - set(two_broken_tables)
+    assert healthy, "the fixture declares real tables too, or this asserts nothing"
+    assert not (healthy & set(named)), "a healthy table was dragged in by the broken ones"
 
 
 def test_a_healthy_dashboard_lists_nothing_as_uncounted(client):

@@ -364,6 +364,31 @@ async def startup_event():
     if os.getenv("TESTING") == "True":
         logger.info("Running in Testing mode. Skipping migrations, Directory Watcher and background Workers.")
         return
+
+    # 🔴 THE MAPPERS THIS PROCESS CAN NAME (S-204 (3), 판정 326). The chain rule editor
+    # refuses a rule naming a mapper nothing implements, and that judgement is only the
+    # LOADER'S judgement if both seats look at the same registry -- a judge with an empty
+    # one answers 「not registered」 to every name, which is indistinguishable from 「that
+    # mapper does not exist」. `discover()` had ONE caller, the chain worker's warmup, so
+    # this process held zero and would have refused every rule written in the one-cell form.
+    #
+    # ⚠️ AND IT SITS AFTER THE TESTING RETURN, the same side the worker's warmup is on.
+    # These files are the owner's and live outside the repository; importing them on
+    # every TestClient startup would make the suite's answers depend on what this box
+    # happens to hold.
+    #
+    # ⚠️ REFUSALS ARE PER MODULE, exactly as in the worker: these files are the owner's, and
+    # one that will not import is a thing to name rather than a reason for the API to come
+    # up with no mappers at all.
+    try:
+        import mapper_sdk
+        _registered, _refused = mapper_sdk.discover()
+        logger.info("[Startup] Mapper registry: %d registered", len(_registered))
+        for _module_name, _message in sorted(_refused.items()):
+            logger.error("[Startup] Mapper module refused: %s — %s", _module_name, _message)
+    except Exception as exc:                                       # noqa: BLE001
+        logger.error("[Startup] Mapper discovery failed entirely: %s", exc)
+
         
     try:
         # [2026-07-25 정리] 레거시 data_rows NULL updated_at 보정 마이그레이션 제거
@@ -5429,24 +5454,32 @@ def get_ingestion_workspaces():
 
 @app.get("/admin/chain/rules", dependencies=[Depends(require_admin_token)])
 def get_chain_rules():
-    """등록된 모든 체인 인제션 룰 목록을 반환합니다."""
-    import os
-    import json
-    
+    """등록된 모든 체인 인제션 룰 목록을 반환합니다.
+
+    🔴 THE FILE IS OPENED IN ONE PLACE (S-201, 판정 316). This route read
+    `chain_rules.json` itself, which made three readers of one file — the loader, this
+    route, and the setup report — each free to disagree about what is in it.
+
+    🔴 AND ONE ANSWER CHANGES, DELIBERATELY: a top-level LIST. This route used to hand
+    that list back as `data`; the LOADER refuses it (「Failed to load chain rules」) and
+    always has. So the screen was showing rules that the boot would never run — a false
+    green, and the screen more generous than the loader, which is the same defect
+    `ChainRuleDocument.preview` carried until S-180 ⓑ-0.
+
+    ⚠️ 「없는 파일」 IS UNCHANGED. `absent` is not `empty`, and `absent_listing` stays the
+    answer for a file that is not there.
+    """
+    import chain_ingestion_worker as worker
+
     rules_path = paths.config_path("chain_rules.json")
-    
-    if not os.path.exists(rules_path):
+    read = worker.read_rules_document(rules_path)
+
+    if not read["exists"]:
         return absent_listing(rules_path)
-        
-    try:
-        with open(rules_path, "r", encoding="utf-8") as f:
-            rules = json.load(f)
-        if isinstance(rules, dict):
-            rules = rules.get("rules", [])
-        return {"status": "success", "data": rules}
-    except Exception as e:
-        print(f"Error reading chain rules: {e}")
-        return {"status": "error", "message": str(e), "data": []}
+    if read["error"]:
+        print(f"Error reading chain rules: {read['error']}")
+        return {"status": "error", "message": read["error"], "data": []}
+    return {"status": "success", "data": read["rules"]}
 
 @app.get("/admin/mappers/list", dependencies=[Depends(require_admin_token)])
 def get_mappers():

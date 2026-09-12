@@ -20,6 +20,7 @@ import json
 import pytest
 
 import chain_bindings
+from conftest import requires_live
 from database import crud, models
 from mappers import dt_standard_map_mapper
 
@@ -280,6 +281,7 @@ def test_map_key_source_columns_lets_a_deployment_rename_the_confirmed_column(wi
 # The fixtures above prove the CODE. This proves the landed DECLARATION.
 # ---------------------------------------------------------------------------
 
+@requires_live("config/table_config.json to declare dt_map's slot column as a STRING -- a number loses a leading zero and the physical unit stops matching")
 def test_the_live_dt_map_declaration_is_the_physical_unit():
     """`server/config/` is gitignored, so this is skipped rather than failed where the
     file is absent. Where it IS present, a half-landed key move is the dangerous shape -

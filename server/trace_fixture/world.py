@@ -393,6 +393,10 @@ class World(object):
             eqp = EQUIPMENTS[si % len(EQUIPMENTS)]
             prod = PRODUCTS[(si // len(EQUIPMENTS)) % len(PRODUCTS)]
             frames = self.frame_of[(eqp, prod)]
+            # The bond frame is built before any session runs, and `_bonding` reads the
+            # same entry - one frame, so one answer for where a die sits on the bonded
+            # wafer.
+            bond_frame = self.frame_of[("bond", BOND_EQUIPMENTS[0])]["bond"]
             when = self._t(10 + si, 0)
             stamp = when.strftime("%Y%m%dT%H%M")
             dt_lot = "DT-26%02d-%03d" % (cfg.batch, si + 1)
@@ -545,10 +549,21 @@ class World(object):
                     # At least one of (core_lot+core_slot) or core_wafer is always
                     # present -- the user was explicit that one of the two is certain.
                     show_ls = (not anchored) or self.rng.random() < 0.5
+                    # 🔴 THE INGESTION IDENTITY, FROM WHAT THE WORLD ALREADY HAS
+                    # (판정 309-b). `dt_job_id` is `dt_job`: the catalogue declares
+                    # `dt_inventory.business_key = dt_job_id` composed from `[dt_job]`, one
+                    # source and no format, so they are one job under two role names.
+                    # `b_wx/b_wy` is this same die recorded in the BOND frame - the
+                    # transform `_bonding` already uses for `bond_x/bond_y`, so the two
+                    # tables agree on where the die sits on the bonded wafer. No new
+                    # coordinate axis is invented here; `dt_x/dt_y` stays the DT frame's.
+                    bwx, bwy = self.grid.record(bond_frame, dx, dy)
                     self.tables["dt_log"].append({
-                        "dt_job": job, "dt_eqp": eqp, "product": prod,
+                        "dt_job": job, "dt_job_id": job,
+                        "dt_eqp": eqp, "product": prod,
                         "dt_lot": rec_lot, "dt_slot": rec_slot,
                         "dt_x": rx, "dt_y": ry,
+                        "b_wx": bwx, "b_wy": bwy,
                         # The core lot/slot AS OF DT TIME, which is not where the core
                         # map was measured -- lot_event is the only bridge between them.
                         "core_lot": self._drift_lot(dt_lot_now) if show_ls else "",

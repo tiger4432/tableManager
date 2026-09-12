@@ -27,6 +27,7 @@ import json
 import pytest
 
 import chain_bindings
+from conftest import requires_live
 from database import crud, models, schemas
 
 
@@ -270,6 +271,7 @@ def test_standard_map_writes_the_configured_name_as_the_output_key(monkeypatch):
     assert "dt_job" not in written
 
 
+@requires_live("server/mappers/dt_standard_map_mapper.py to put a `scope` on its batch -- the ONE output key that can DELETE rather than fail to write")
 def test_standard_map_scopes_the_replace_by_the_configured_name(monkeypatch):
     """The `replace_map` scope is the one output key whose spelling decides a DELETE."""
     _db, result = _run_standard_map(monkeypatch)

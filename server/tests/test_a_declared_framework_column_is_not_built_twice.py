@@ -37,9 +37,25 @@ def catalog():
 
 def test_the_shipped_catalogue_builds(catalog):
     """🔴 THE GATE. The shipped sample is what a new deployment starts from, and it declares
-    `row_id` on the five views that have one."""
+    `row_id` on the five views that have one.
+
+    ⚰️ IT USED TO ASSERT `len(DYNAMIC_TABLES) == len(catalog)`, AND THAT NUMBER WAS THIS
+    BOX'S (S-200). The registry starts the session holding whatever the LIVE, gitignored
+    `config/table_config.json` declares — 45 names here — and it passed only because, on this
+    machine, live is a strict SUBSET of the sample (`live - sample` is empty, `sample - live`
+    is `dt_job_rollup`). An operator who declares one extra table would see this red with no
+    leakage at all: the gate's subject was a file the repository cannot see.
+
+    🔴 THE PROPERTY IT WAS SCORING SURVIVES AS A SET: everything declared gets built, and
+    building adds nothing else. Same question, no number.
+    """
+    before = set(models.DYNAMIC_TABLES)
     models.init_dynamic_models(catalog)
-    assert len(models.DYNAMIC_TABLES) == len(catalog)
+    assert set(catalog) <= set(models.DYNAMIC_TABLES), (
+        "declared but not built: %s" % sorted(set(catalog) - set(models.DYNAMIC_TABLES)))
+    assert set(models.DYNAMIC_TABLES) - before <= set(catalog), (
+        "building the catalogue registered something it does not declare: %s"
+        % sorted(set(models.DYNAMIC_TABLES) - before - set(catalog)))
 
 
 def test_a_view_that_declares_row_id_gets_exactly_one_and_it_is_the_key(catalog):

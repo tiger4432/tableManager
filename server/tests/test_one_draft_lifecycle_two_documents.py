@@ -203,6 +203,12 @@ def test_the_snapshot_hash_is_over_the_rules_not_the_bytes():
     assert one.snapshot_hash != other.snapshot_hash
 
 
+#: What makes a rule RUNNABLE, so a preview case can be about the cell it is testing.
+#: ⚠️ Before S-180 ⓑ-0 these cases named no mapper and still previewed as good - the preview
+#: simply did not ask. They have to say it now, which is the point.
+_RUNNABLE = {"mapper_module": "m", "mapper_function": "f"}
+
+
 def test_the_chain_preview_is_the_loaders_judgement_not_a_second_one():
     """⚠️ A DRAFT THE SCREEN CALLS GOOD MUST NOT BE A RULE THE LOADER REFUSES. The preview
     scores with the same `validation.Problems` + `routing_keys()` the loader uses (S-188 ⓐⓑ)."""
@@ -211,12 +217,29 @@ def test_the_chain_preview_is_the_loaders_judgement_not_a_second_one():
     document = chain_bindings.ChainRuleDocument()
     context = DraftContext(None, chain_bindings.ChainRuleIndex([]))
 
-    missing = document.preview(context, None, {"trigger_table": "t"})
+    missing = document.preview(context, None, {"trigger_table": "t", **_RUNNABLE})
     assert not missing.ok
     assert [i["path"] for i in missing.issues] == ["rule.name"]
 
-    good = document.preview(context, None, {"name": "r", "trigger_table": "t"})
+    good = document.preview(context, None, {"name": "r", "trigger_table": "t", **_RUNNABLE})
     assert good.ok and good.issues == []
+
+
+def test_the_chain_preview_refuses_a_mapper_this_process_cannot_run():
+    """🔴 THE CASE THE PREVIEW USED TO MISS ENTIRELY (S-180 ⓑ-0, 판정 315). It re-typed the
+    loader's `exact` tuple and carried NO mapper check, so a rule naming a mapper nothing
+    implements previewed as good and was dropped at boot — the screen blinder than the log,
+    which is the one thing this seat's own note forbids. Both now come from
+    `chain_bindings.rule_refusals`."""
+    import chain_bindings
+
+    document = chain_bindings.ChainRuleDocument()
+    context = DraftContext(None, chain_bindings.ChainRuleIndex([]))
+
+    preview = document.preview(context, None, {"name": "r", "trigger_table": "t"})
+    assert not preview.ok
+    refusal = [i for i in preview.issues if i["code"] == "unresolvable_mapper"]
+    assert refusal and refusal[0]["path"] == "rule.mapper", preview.issues
 
 
 def test_the_chain_preview_warns_by_name_where_the_loader_warns():
@@ -229,7 +252,7 @@ def test_the_chain_preview_warns_by_name_where_the_loader_warns():
     document = chain_bindings.ChainRuleDocument()
     context = DraftContext(None, chain_bindings.ChainRuleIndex([]))
     preview = document.preview(context, None, {
-        "name": "r", "trigger_table": "t", "x_col": "X", "__comment": "prose"})
+        "name": "r", "trigger_table": "t", "x_col": "X", "__comment": "prose", **_RUNNABLE})
     assert preview.ok, "a flat cell is accepted, exactly as the loader accepts it"
     assert [w["path"] for w in preview.warnings] == ["rule.x_col"]
 

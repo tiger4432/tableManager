@@ -142,7 +142,10 @@ def env(db_session):
     module = _load_sample()
     yield db_session, module
     sys.modules.pop(MODULE_NAME, None)
-    models.DYNAMIC_TABLES.pop("xlk_test_phantom", None)
+    from conftest import retire_dynamic_model
+
+    # S-191: the `Table` used to stay in `Base.metadata` after this pop.
+    retire_dynamic_model("xlk_test_phantom")
     for name in TABLES:
         crud.TABLE_CONFIG.pop(name, None)
 

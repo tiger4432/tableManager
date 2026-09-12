@@ -282,6 +282,63 @@ def flat_param_cells(rule):
         and name not in routing))
 
 
+def rule_refusals(rule, path, *, mapper_resolvable):
+    """Why this chain rule CANNOT RUN — the one spelling, for every reader (S-180 ⓑ-0).
+
+    🔴 IT WAS SPELLED TWICE AND THE TWO HAD ALREADY DIVERGED. The loader
+    (`chain_ingestion_worker.load_chain_rules`) scored the grammar and refused an
+    unresolvable mapper; `ChainRuleDocument.preview` re-typed the same `exact` tuple and
+    had no mapper check at all — so the dry-run screen ACCEPTED a rule the loader would
+    drop, which is exactly the thing that function's own note forbids: 「the screen must
+    not be blinder than the log」.
+
+    🔴 `mapper_resolvable` IS A CALLABLE, NOT A REGISTRY. This module must not import
+    `mapper_sdk`: S-188 set that direction on purpose, and a grammar that reached into the
+    registry would make 「what the rules file may say」 depend on 「what this process happens
+    to have imported」.
+
+    ⚠️ WHAT IS REFUSED IS 「CANNOT RUN」, NOT 「UNFAMILIAR」. An unknown top-level cell is a
+    mapper argument still written flat, and the product cannot tell a stale one from a live
+    one because the mapper that reads it lives in a gitignored file. Those are WARNED about
+    by name (`rule_warnings`), never refused.
+    """
+    import validation
+
+    candidate = rule if isinstance(rule, dict) else {}
+    problems = validation.Problems()
+    problems.exact(candidate, path,
+                   required=RULE_ROUTING_REQUIRED,
+                   optional=RULE_ROUTING_OPTIONAL,
+                   ignored=(flat_param_cells(candidate) + comment_cells(candidate)))
+    issues = list(problems.finish())
+
+    one_cell, module_name, function_name = mapper_cells(candidate)
+    resolvable = bool(mapper_resolvable(one_cell)) if one_cell else False
+    if not resolvable and not (module_name and function_name):
+        issues.append(validation.DeclarationValidationError(
+            "unresolvable_mapper", path + "." + MAPPER_KEY,
+            "names no mapper this process can run: '%s' is not registered and "
+            "mapper_module/mapper_function are not both set" % (one_cell or "")))
+    return issues
+
+
+def rule_warnings(rule, path="rule"):
+    """What this rule should be TIDIED about, in one spelling. Never a refusal.
+
+    ⚠️ A WARNING AND A REFUSAL ARE DIFFERENT FACTS and an operator does something different
+    about each: the flat cell RUNS today and wants moving, the refusal does not run at all.
+    Keeping them one function would make the screen show a rule as broken for a cell that
+    works.
+    """
+    import validation
+
+    flat = flat_param_cells(rule) if isinstance(rule, dict) else ()
+    return [validation.DeclarationValidationError(
+        "flat_param_cell", path + "." + name,
+        "a mapper argument still written at the top level - move it under 'params'")
+        for name in flat]
+
+
 def params_of(rule):
     """The mapper's arguments: the `params` block, with flat cells read underneath it.
 
@@ -630,24 +687,21 @@ class ChainRuleDocument:
         return raw
 
     def preview(self, context, node, raw):
-        import validation
+        """🔴 THE SCREEN MUST NOT BE BLINDER THAN THE LOG, and until S-180 ⓑ-0 it WAS. This
+        re-typed the loader's `exact` tuple and carried no mapper check, so a rule naming a
+        mapper this process cannot run previewed as good and was dropped at boot. Both
+        halves come from `rule_refusals`/`rule_warnings` now, so the screen and the log
+        cannot answer differently.
 
-        problems = validation.Problems()
-        problems.exact(raw if isinstance(raw, dict) else {}, "rule",
-                       required=RULE_ROUTING_REQUIRED,
-                       optional=RULE_ROUTING_OPTIONAL,
-                       ignored=(flat_param_cells(raw) + comment_cells(raw))
-                       if isinstance(raw, dict) else ())
-        issues = [i.to_mapping() for i in problems.finish()]
-        # 🔴 THE SCREEN MUST NOT BE BLINDER THAN THE LOG. The loader ACCEPTS an unknown
-        # top-level cell — it is a mapper argument still written flat (S-188 ⓓ) — and warns by
-        # name so the operator knows what to move. A preview that only reported refusals
-        # would let an author leave the file in the state the boot line complains about every
-        # morning, with the screen calling it good.
-        flat = list(flat_param_cells(raw)) if isinstance(raw, dict) else []
-        warnings = ([{"code": "flat_param_cell", "path": "rule." + name,
-                      "message": "a mapper argument still written at the top level - "
-                                 "move it under 'params'"} for name in flat])
+        ⚠️ The loader ACCEPTS an unknown top-level cell — a mapper argument still written
+        flat (S-188 ⓓ) — and warns by name. A preview reporting only refusals would let an
+        author leave the file in the state the boot line complains about every morning.
+        """
+        import mapper_sdk
+
+        issues = [i.to_mapping() for i in rule_refusals(
+            raw, "rule", mapper_resolvable=mapper_sdk.MAPPER_REGISTRY.get)]
+        warnings = [w.to_mapping() for w in rule_warnings(raw)]
         return SimpleNamespace(raw=raw, issues=issues, warnings=warnings, ok=not issues)
 
     def config_root(self, context):

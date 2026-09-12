@@ -64,10 +64,18 @@ ABSENCE_CANNOT_POINT = "cannot_point"        # 가리킬 수 없음 — 올린�
 ABSENCE_TRULY_NONE = "truly_none"            # 정말 없음 — 없다. 이것도 정보다
 ABSENCE_ALREADY_MISSING = "already_missing"  # 이미 빠져 있음 — 태운다. 복구다
 ABSENCE_NOT_APPLICABLE = "not_applicable"    # 해당 없음 — 그 수가 성립하지 않는 자리
+#: 🔴 SEVENTH, AND IT IS NOT `not_applicable` (S-143, 판정 322). That one says the number does
+#: not HOLD here. This one says the number holds and THIS SEAT did not pay for it: a
+#: declaration edit that touches many sources would need one dry-run per source, inline on a
+#: preview request, and 「성능 마진 넉넉하게」 forbids buying it there. The difference is
+#: actionable - 「cannot be counted」 sends an operator nowhere, 「not counted HERE」 tells them
+#: the count exists on the retroactive route - so folding the two would cost that sentence.
+ABSENCE_NOT_COUNTED_HERE = "not_counted_here"  # 셀 수 있으나 이 자리에서 안 셈
 
 #: Spelled once so a client can offer exactly these and no more.
 ABSENCE_WORDS = (ABSENCE_NOT_YET, ABSENCE_NOT_EXHAUSTIVE, ABSENCE_CANNOT_POINT,
-                 ABSENCE_TRULY_NONE, ABSENCE_ALREADY_MISSING, ABSENCE_NOT_APPLICABLE)
+                 ABSENCE_TRULY_NONE, ABSENCE_ALREADY_MISSING, ABSENCE_NOT_APPLICABLE,
+                 ABSENCE_NOT_COUNTED_HERE)
 
 
 class RetroactiveRefused(Exception):

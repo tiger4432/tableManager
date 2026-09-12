@@ -300,6 +300,588 @@ def _default_scripts_path():
 
 
 # ---------------------------------------------------------------------------
+# ① the input — 「이름을 적으면 입력이 온다」 (S-197)
+# ---------------------------------------------------------------------------
+
+#: How many rows a table hands back when the caller names no window. A notebook cell that
+#: SELECTed a production-shaped table unbounded would hang the kernel on the one input the
+#: author most wants to look at, and 「성능 마진은 넉넉하게」 says not to wait to find out.
+DEFAULT_INPUT_ROWS = 200
+
+
+def _ensure_dynamic_models():
+    """Make `DYNAMIC_TABLES` answer, the way the boot path fills it.
+
+    ⚠️ A NOTEBOOK IS NOT THE SERVER — nothing has called `init_dynamic_models` in this
+    process. Loading the declaration through `crud.load_table_config` rather than reading the
+    file here keeps 「which declaration is live」 one question.
+    """
+    from database import crud, models
+
+    if models.DYNAMIC_TABLES:
+        return
+    config = crud.load_table_config() or {}
+    if config:
+        models.init_dynamic_models(config)
+
+
+def input_for_mapper(table_or_sample, *, rows=None, row_ids=None, where=None):
+    """A DataFrame in EXACTLY the shape the worker hands a mapper. Reads only.
+
+    🔴 IT IS THE PRODUCTION CONSTRUCTION, NOT A LOOKALIKE. A table name goes through
+    `outbox_expand._data_columns` and `_synthesize_payload` — the same two functions the
+    worker uses when it reads a collapsed event's rows back into payloads — and then through
+    `mapper_sdk.payloads_to_df`. A bench that assembled its own envelope would hand the
+    author a frame production never produces, and the mapper written against it would fail on
+    the first real batch. (`_synthesize_payload` is underscored and called anyway; that is
+    the point. Spelling it again here is the defect this argument exists to avoid.)
+
+    ⚠️ A FILE PATH IS ACCEPTED TOO and goes through `read_sample` + `as_payloads`, so the
+    sample folders that are already tests are also inputs here — one shape, two sources.
+
+    Window: `rows=N` (default `DEFAULT_INPUT_ROWS`), `row_ids=[...]`, or `where="col = 'x'"`.
+    """
+    import mapper_sdk
+
+    if os.path.isfile(str(table_or_sample)):
+        return mapper_sdk.payloads_to_df(as_payloads(read_sample(str(table_or_sample))))
+
+    table_name = str(table_or_sample)
+    _ensure_dynamic_models()
+    from database.models import DYNAMIC_TABLES
+
+    model = DYNAMIC_TABLES.get(table_name)
+    if model is None:
+        raise LookupError(
+            "no declared table %r; declared: %s (or give a sample file path)"
+            % (table_name, ", ".join(sorted(DYNAMIC_TABLES)) or "none"))
+
+    session, closer = _readonly_session()
+    if session is None:
+        raise RuntimeError(
+            "a table input needs the database, and the read-only connection did not open; "
+            "give a sample file path instead")
+    try:
+        import outbox_expand
+        from sqlalchemy import text
+
+        query = session.query(model)
+        if row_ids:
+            query = query.filter(model.row_id.in_(list(row_ids)))
+        if where:
+            query = query.filter(text(where))
+        if not row_ids:
+            query = query.limit(int(rows or DEFAULT_INPUT_ROWS))
+        found = query.all()
+        columns = outbox_expand._data_columns(model)
+        payloads = [outbox_expand._synthesize_payload(row, columns, {}) for row in found]
+    finally:
+        closer()
+    return mapper_sdk.payloads_to_df(payloads)
+
+
+#: The value `raw_for_parser` puts where the frame would be. 🔴 A VALUE, NOT AN EXCEPTION —
+#: 「운영이 읽기를 못 하는 포맷」 is the whole reason the author is opening the notebook, so a
+#: first cell that raises on it locks them out of the case they came to solve.
+UNREADABLE = "DataFrame 으로 못 읽음"
+
+#: Tried in order against the head of the file, first one that decodes wins. Display only —
+#: production has no detection step, and inventing one here would teach the author a
+#: behaviour their parser will not get.
+ENCODING_LADDER = ("utf-8-sig", "utf-8", "cp949", "latin-1")
+
+
+def raw_for_parser(file_path, *, lines=20, head_bytes=65536):
+    """What is actually IN the file, plus production's default read if it survives it.
+
+    Returns `{path, size_bytes, encoding, lines, df, read_refusal}`.
+
+    🔴 `read_refusal` IS A NORMAL STATE. `_read_file_to_dataframe` is `pd.read_csv` /
+    `pd.read_excel` by extension; a fixed-width instrument dump or a two-header-row export
+    makes it throw, and that throw is the REASON the author is writing a read override. So
+    the frame comes back `None` with the reason beside it, and the bytes and decoded lines
+    are there either way — those are what a read override is written from.
+    """
+    path = str(file_path)
+    size = os.path.getsize(path) if os.path.exists(path) else None
+    with io.open(path, "rb") as handle:
+        head = handle.read(head_bytes)
+
+    encoding, text_lines = None, []
+    for candidate in ENCODING_LADDER:
+        try:
+            decoded = head.decode(candidate)
+        except Exception:
+            continue
+        encoding = candidate
+        text_lines = decoded.splitlines()[:lines]
+        break
+
+    frame, refusal = None, None
+    try:
+        from parsers.pipeline_base import BasePipelineParser
+
+        frame = BasePipelineParser()._read_file_to_dataframe(path)
+    except Exception as exc:
+        refusal = "%s: %s: %s" % (UNREADABLE, type(exc).__name__, exc)
+
+    return {"path": path, "size_bytes": size, "encoding": encoding,
+            "lines": text_lines, "df": frame, "read_refusal": refusal}
+
+
+# ---------------------------------------------------------------------------
+# 🔴 what the notebook showed better than the bench did — promoted, not copied
+# ---------------------------------------------------------------------------
+
+def claimers(file_path, *, scripts_path=None):
+    """EVERY parser's answer to `match(file_path)`, claiming nothing.
+
+    🔴 `try_parser` ANSWERS 「who gets this file」; THIS ANSWERS 「who WANTS it」. They are
+    different questions and the second one is the one that finds the defect: production takes
+    the FIRST class that says yes, so two parsers claiming one file looks exactly like one
+    parser claiming it until somebody's rows land in somebody else's table.
+
+    Returns `{rows, load_errors, winners}`; `rows` carries
+    `{script, class, match, error, cls}`.
+    """
+    from parsers.directory_watcher import (SCAN_UNAVAILABLE,
+                                           scan_workspace_pipeline_parsers)
+
+    scripts_path = scripts_path or _default_scripts_path()
+    rows, load_errors = [], {}
+
+    def visit(filename, obj):
+        try:
+            hit, error = bool(obj.match(str(file_path))), None
+        except Exception as exc:
+            hit, error = None, "%s: %s" % (type(exc).__name__, exc)
+        rows.append({"script": filename, "class": obj.__name__, "match": hit,
+                     "error": error, "cls": obj})
+        return None                    # never claims - that is what makes it a survey
+
+    out = scan_workspace_pipeline_parsers(scripts_path, visit, load_errors)
+    if out is SCAN_UNAVAILABLE:
+        raise FileNotFoundError("the parser workspace is unavailable at %s" % scripts_path)
+    return {"rows": rows, "load_errors": load_errors,
+            "winners": [r for r in rows if r["match"]]}
+
+
+def run_stages(parser_cls, file_path, *, rel_path=None, source_root=None):
+    """read -> process -> clean, kept APART. Returns `{parser, raw, processed, records}`.
+
+    🔴 THE THREE ARE PRODUCTION'S OWN METHODS IN PRODUCTION'S ORDER, and the two
+    attributes the watcher attaches before `parse()` (`rel_path`, `source_root`) are attached
+    here too — a parser that reads them must not behave differently on the bench than in the
+    pipeline.
+
+    ⚠️ SPLIT BECAUSE `parse()` ANSWERS ONLY 「did it work」. When it does not, the author needs
+    to know WHICH of the three broke the assumption, and one return value cannot say.
+    """
+    from types import SimpleNamespace
+
+    instance = parser_cls()
+    instance.rel_path = (rel_path if rel_path is not None
+                         else os.path.basename(str(file_path)))
+    instance.source_root = source_root
+    raw = instance._read_file_to_dataframe(str(file_path))
+    processed = instance.process_dataframe(raw.copy(deep=True))
+    records = instance.clean_for_postgres(processed)
+    return SimpleNamespace(parser=instance, raw=raw, processed=processed, records=records)
+
+
+def frame_delta(before, after):
+    """What the gap between two frames actually IS: columns added, removed, retyped, rows.
+
+    🔴 「돌았다」 IS NOT AN ANSWER WHEN AN ASSUMPTION BROKE. A processing step that silently
+    dropped a column, or turned one from a number into a string, produces a frame that looks
+    fine and lands wrong — and a shape printed as `(1000, 12) -> (1000, 12)` says nothing
+    about which twelve.
+
+    ⚠️ ROW COUNT IS REPORTED, NEVER JUDGED. A step that drops rows is ordinary (a filter) and
+    a step that adds them is ordinary (an explode); only the author knows which was meant.
+
+    Returns `{added, removed, retyped, rows_before, rows_after}`.
+    """
+    # ⚠️ NO `or ()` HERE. A pandas `Index` raises on truthiness, so the idiom that reads as
+    # 「default when missing」 turns an ordinary empty frame into a ValueError.
+    before_cols = list(getattr(before, "columns", ()))
+    after_cols = list(getattr(after, "columns", ()))
+    retyped = []
+    for name in before_cols:
+        if name not in after_cols:
+            continue
+        was, now = str(before[name].dtype), str(after[name].dtype)
+        if was != now:
+            retyped.append((str(name), was, now))
+    return {"added": [str(c) for c in after_cols if c not in before_cols],
+            "removed": [str(c) for c in before_cols if c not in after_cols],
+            "retyped": retyped,
+            "rows_before": len(before) if before is not None else 0,
+            "rows_after": len(after) if after is not None else 0}
+
+
+#: What the census treats as ordinary in a record on its way to the database.
+#: ⚠️ THIS IS THE BENCH'S JUDGEMENT, NOT PRODUCTION'S PREDICATE — say so wherever it is
+#: shown. `clean_for_postgres` folds NaN / NaT / Inf to `None` and nothing else, so a
+#: `Decimal` or a `set` reaches the driver exactly as the parser produced it. The list is
+#: here, named, so it can be argued with rather than being buried in a notebook cell.
+JSON_SAFE_TYPES = ("str", "int", "float", "bool", "NoneType",
+                   "Timestamp", "datetime", "date")
+
+
+def value_types(rows, *, sample=2000):
+    """The census of Python types in the records, and which of them are not ordinary.
+
+    🔴 THE TYPE THAT ARRIVES IS THE TYPE THAT IS STORED. `clean_for_postgres` repairs NaN,
+    NaT and Inf; it does not repair a `Decimal`, a `set`, or a numpy scalar, and those reach
+    the driver as the parser made them. Casting belongs in `process_dataframe`, and this is
+    where an author finds out that it is needed.
+
+    ⚠️ `sample` BOUNDS THE WALK, and the returned `counted` says how many rows it read — a
+    census over 2,000 of 400,000 rows is a sample and must not be shown as a total.
+    """
+    import collections
+
+    rows = list(rows or ())[:sample]
+    counts = collections.Counter(type(value).__name__
+                                 for row in rows for value in dict(row).values())
+    unknown = sorted(set(counts) - set(JSON_SAFE_TYPES))
+    return {"counts": dict(counts), "unknown": unknown, "counted": len(rows)}
+
+
+def sweep_claims(folder, *, scripts_path=None):
+    """`match()` over EVERY file in `folder`, so 「too wide」 and 「too narrow」 are visible.
+
+    🔴 THIS IS WHERE A PARSER FAILS QUIETLY. Too wide and it takes somebody else's file into
+    this table; too narrow and its own file leaks to the std parser. Neither shows up until a
+    row is sitting under the wrong name, and neither is visible from ONE file — which is all
+    `claimers` can answer.
+
+    ⚠️ THE CLASSES ARE LOADED ONCE AND THEN ASKED PER FILE. `claimers` re-walks the
+    workspace and re-imports every script on each call, so calling it per file would be a
+    folder-sized number of module loads. What is asked per file is `match()` itself —
+    production's own predicate, not a copy of it.
+
+    Returns `{files, unclaimed, contested, load_errors}`; `files` carries
+    `{file, claimed_by}`.
+    """
+    found = []
+    for root, _dirs, names in os.walk(str(folder)):
+        for name in sorted(names):
+            found.append(os.path.join(root, name))
+    found.sort()
+    if not found:
+        return {"files": [], "unclaimed": [], "contested": [], "load_errors": {}}
+
+    survey = claimers(found[0], scripts_path=scripts_path)
+    classes = [(row["script"], row["cls"]) for row in survey["rows"]]
+
+    files = []
+    for path in found:
+        hits = []
+        for _script, cls in classes:
+            try:
+                if cls.match(path):
+                    hits.append(cls.__name__)
+            except Exception as exc:
+                # ⚠️ A `match()` THAT THROWS IS NOT A `match()` THAT SAID NO. Production
+                # treats it as a decline, but the author has to see which one it was.
+                hits.append("%s!%s" % (cls.__name__, type(exc).__name__))
+        files.append({"file": path, "claimed_by": hits})
+
+    return {"files": files,
+            "unclaimed": [f["file"] for f in files if not f["claimed_by"]],
+            "contested": [f for f in files if len(f["claimed_by"]) > 1],
+            "load_errors": survey["load_errors"]}
+
+
+def check_output_columns(rows_or_frame, table_name):
+    """Which produced keys the target table does not declare — production's own predicate.
+
+    🔴 `table.c.get(key) is None` IS THE UPSERT'S OWN TEST, verbatim (`crud.py`, the
+    `unknown_column` decline). One key the table does not have and the whole fast path
+    declines for the whole batch — found here it costs a minute, found in production it
+    costs a round trip.
+
+    ⚠️ NO DATABASE IS NEEDED. `init_dynamic_models` builds the real `Table` objects from the
+    declaration, so this answers off the declaration the server boots from.
+
+    Returns `{declared, produced, unknown, never_filled}`. `never_filled` is a QUESTION, not
+    a fault — a parser that fills half a table is ordinary — and the framework's own columns
+    are left out of it by `models.FRAMEWORK_COLUMNS` rather than by a list spelled here.
+    """
+    _ensure_dynamic_models()
+    from database import models
+
+    model = models.DYNAMIC_TABLES.get(table_name)
+    if model is None:
+        raise LookupError("no declared table %r; declared: %s"
+                          % (table_name, ", ".join(sorted(models.DYNAMIC_TABLES)) or "none"))
+    table = model.__table__
+
+    produced = []
+    for row in _frame_rows(rows_or_frame):
+        for key in row:
+            if key not in produced:
+                produced.append(str(key))
+
+    declared = [c.name for c in table.c]
+    unknown = [k for k in produced if table.c.get(k) is None]
+    never_filled = sorted(set(declared) - set(produced) - set(models.FRAMEWORK_COLUMNS))
+    return {"declared": declared, "produced": produced,
+            "unknown": unknown, "never_filled": never_filled}
+
+
+# ---------------------------------------------------------------------------
+# ③ publishing — 「되면 발행 셀이 함수 파일을 만든다」 (S-197)
+# ---------------------------------------------------------------------------
+
+class PublishRefused(Exception):
+    """⛔ REFUSED BY NAME, AND THE FILE DOES NOT SURVIVE THE REFUSAL. A published file that
+    disagrees with the cell it came from is worse than no file: it sits in a folder
+    production watches, claims real inputs, and produces something nobody has looked at."""
+
+
+def _publish_target(directory, name):
+    if not str(name).isidentifier():
+        raise PublishRefused("%r is not a usable module name" % (name,))
+    os.makedirs(directory, exist_ok=True)
+    target = os.path.join(directory, "%s.py" % name)
+    if os.path.exists(target):
+        raise PublishRefused(
+            "%s already exists; publishing would overwrite a file somebody is running. "
+            "Choose another name, or delete that file yourself." % target)
+    return target
+
+
+def _indent(body, spaces):
+    """The author's cell body, moved into a function body. Blank lines stay blank."""
+    import textwrap
+
+    pad = " " * spaces
+    lines = textwrap.dedent(str(body or "").rstrip("\n")).split("\n")
+    return "\n".join(pad + line if line.strip() else "" for line in lines)
+
+
+def _import_published(path, module_name):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _discard(path, registered_name=None):
+    """Undo a publish. 🔴 THE REGISTRY ENTRY GOES TOO — a name left claimed by a file that no
+    longer exists makes the NEXT publish of that name fail for the wrong reason."""
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+    if registered_name:
+        try:
+            import mapper_sdk
+
+            mapper_sdk.MAPPER_REGISTRY.pop(registered_name, None)
+            getattr(mapper_sdk, "MAPPER_PARAMS", {}).pop(registered_name, None)
+        except Exception:
+            pass
+
+
+def cell_body(fn):
+    """The BODY of a function the author defined in a free-form cell, at column 0.
+
+    🔴 ONE SEAT MOVES A CELL INTO A FILE, so the author never copies anything. Copying is
+    where 「what I ran」 and 「what I shipped」 come apart, and the publisher's comparison exists
+    because that is not a hypothetical.
+
+    ⚠️ `inspect.getsource` GIVES THE CELL AS IT WAS LAST **EXECUTED**, not as it is on the
+    screen. That is unavoidable and it is precisely why `publish_mapper`/`publish_parser`
+    re-run the published file and refuse on disagreement — this function is allowed to be
+    stale, and the publish is not.
+    """
+    import inspect
+    import textwrap
+
+    try:
+        source = textwrap.dedent(inspect.getsource(fn))
+    except (OSError, TypeError) as exc:
+        # ⚠️ 「could not get source code」 IS THE ORDINARY WAY THIS FAILS, and on its own it
+        # sends the author looking for a bug in their cell. It means the function did not
+        # come from a cell or a file at all - a builtin, or something `exec`-ed.
+        raise ValueError("cannot read the source of %r; `cell_body` takes a function you "
+                         "wrote in a cell: %s" % (fn, exc))
+    lines = source.splitlines()
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("def ") and stripped.rstrip().endswith(":"):
+            body = "\n".join(lines[index + 1:])
+            break
+    else:
+        raise ValueError("%r does not look like a plain `def` written in a cell" % (fn,))
+
+    body = textwrap.dedent(body).strip("\n")
+    if not body.strip():
+        raise ValueError("%s has an empty body" % getattr(fn, "__name__", fn))
+    # A docstring belongs to the cell, not to the published file, which writes its own.
+    return body
+
+
+MAPPER_TEMPLATE = '''# -*- coding: utf-8 -*-
+"""%(name)s - published from the mapper workbench.
+
+The body below is the cell that was RUN. `dev_bench.publish_mapper` re-ran it FROM THIS FILE
+against the same frame and compared the result before leaving the file here, so the notebook
+and the deployment are the same bytes by construction rather than by somebody remembering to
+copy carefully.
+"""
+import pandas as pd
+
+from mapper_sdk import mapper
+
+
+@mapper(params=%(params)r)
+def %(name)s(df, db):
+%(body)s
+'''
+
+
+def publish_mapper(name, params, body_source, *, frame, expected, directory=None):
+    """Write the free-form cell out as a decorated mapper, then PROVE it still agrees.
+
+    🔴 THE COMPARISON IS THE POINT, NOT THE FILE. `inspect.getsource` and copy-paste both
+    ship 「the cell as it was last executed」, which is not always 「the cell on the screen」 —
+    so the published file is imported back, run on the SAME frame the notebook ran on, and
+    survives only if it produces the same rows. A disagreement deletes it and refuses by name.
+
+    ⚠️ `frame` IS PASSED, NOT RE-DERIVED. Re-deriving it from a table would re-run the window
+    (`rows=` / `where=`), and a different window is a different answer — the comparison would
+    then fail for a reason that has nothing to do with the body.
+
+    Returns `{path, who, rows}`; raises `PublishRefused` and leaves nothing behind otherwise.
+    """
+    directory = directory or os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "mappers")
+    target = _publish_target(directory, name)
+
+    source = MAPPER_TEMPLATE % {"name": name, "params": tuple(params or ()),
+                                "body": _indent(body_source, 4)}
+    io.open(target, "w", encoding="utf-8").write(source)
+
+    try:
+        module = _import_published(target, "bench_published_%s" % name)
+        published = getattr(module, name)
+    except Exception as exc:
+        _discard(target)
+        raise PublishRefused("the published file does not import: %s: %s"
+                             % (type(exc).__name__, exc))
+
+    inner = getattr(published, "__wrapped__", published)
+    session, closer = _readonly_session()
+    try:
+        got = inner(frame, session)
+    except Exception as exc:
+        _discard(target, name)
+        raise PublishRefused("the published body raised on the same frame: %s: %s"
+                             % (type(exc).__name__, exc))
+    finally:
+        closer()
+
+    mine, theirs = rows_to_tsv(_frame_rows(got)), rows_to_tsv(_frame_rows(expected))
+    if mine != theirs:
+        _discard(target, name)
+        raise PublishRefused(
+            "%s produces different rows from the cell it came from, so it was not kept. "
+            "Re-run the free-form cell and publish again." % name)
+    return {"path": target, "who": name, "rows": _frame_rows(got)}
+
+
+PARSER_TEMPLATE = '''# -*- coding: utf-8 -*-
+"""%(cls)s - published from the parser workbench.
+
+Both bodies below are the cells that were RUN. `dev_bench.publish_parser` re-ran this file
+through the production claim -> parse path on the same file and compared the records before
+leaving it here.
+
+WARNING: `match()` IS A DRAFT. It claims by filename pattern and nothing else. Narrow it
+before this file sits in a folder production watches: the first class that says yes takes the
+file, so a wide pattern quietly takes somebody else's input into this table.
+"""
+import pandas as pd
+
+from pipeline_base import BasePipelineParser
+
+
+class %(cls)s(BasePipelineParser):
+
+    MATCH_PATTERN = %(pattern)r
+
+    @classmethod
+    def match(cls, file_path: str) -> bool:
+        import fnmatch
+
+        name = BasePipelineParser.get_basename(file_path).lower()
+        return fnmatch.fnmatch(name, cls.MATCH_PATTERN.lower())
+
+    def _read_file_to_dataframe(self, file_path: str) -> pd.DataFrame:
+%(read)s
+
+    def process_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
+%(process)s
+'''
+
+
+def publish_parser(name, read_body, process_body, *, file, expected,
+                   match_pattern=None, scripts_path=None):
+    """Write the two free-form cells out as a parser, then run the PRODUCTION path on it.
+
+    🔴 THE READ OVERRIDE IS PUBLISHED TOO, and that is the owner's correction: a format
+    production's default reader cannot open is the ordinary case, so the notebook authors
+    `read_df` as well as `process`, and both land — `_read_file_to_dataframe` and
+    `process_dataframe`. (The read method is underscored and is a public extension point;
+    `pipeline_base` says so in its own docstring, and renaming it would silently drop every
+    workspace override.)
+
+    🔴 AND THE CHECK GOES THROUGH `try_parser`, i.e. claim -> parse. Calling the class
+    directly would skip the one thing publishing actually risks: that some OTHER parser in
+    the same folder already claims this file, so production would never reach this one.
+
+    Returns `{path, who, rows}`; raises `PublishRefused` and leaves nothing behind otherwise.
+    """
+    scripts_path = scripts_path or _default_scripts_path()
+    target = _publish_target(scripts_path, name)
+    class_name = "".join(part[:1].upper() + part[1:] for part in str(name).split("_"))
+    pattern = match_pattern or ("*" + os.path.splitext(str(file))[1].lower())
+
+    source = PARSER_TEMPLATE % {"cls": class_name, "pattern": pattern,
+                                "read": _indent(read_body, 8),
+                                "process": _indent(process_body, 8)}
+    io.open(target, "w", encoding="utf-8").write(source)
+
+    result = try_parser(str(file), scripts_path=scripts_path)
+    if result["refusal"]:
+        _discard(target)
+        raise PublishRefused("the published parser did not run: %s" % result["refusal"])
+    if not str(result["who"] or "").startswith(os.path.basename(target)):
+        claimed_by = result["who"]
+        _discard(target)
+        raise PublishRefused(
+            "%s claims this file first, so the published parser would never see it in "
+            "production. Narrow one of the two match() patterns." % claimed_by)
+
+    from parsers.pipeline_base import BasePipelineParser
+
+    theirs = rows_to_tsv(BasePipelineParser().clean_for_postgres(expected))
+    if rows_to_tsv(result["rows"]) != theirs:
+        _discard(target)
+        raise PublishRefused(
+            "%s produces different records from the cells it came from, so it was not kept. "
+            "Re-run the free-form cells and publish again." % class_name)
+    return {"path": target, "who": result["who"], "rows": result["rows"]}
+
+
+# ---------------------------------------------------------------------------
 # the shells read THIS, so a folder is a test
 # ---------------------------------------------------------------------------
 

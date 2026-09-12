@@ -90,7 +90,14 @@ SCOPE_FILE = "file"
 SCOPE_SETTING = "setting"
 SCOPE_RULE = "rule"
 SCOPE_VIEW = "reference_view"
-SCOPES = (SCOPE_FILE, SCOPE_SETTING, SCOPE_RULE, SCOPE_VIEW)
+#: ⓑ 의 ineffective 항목은 «표»입니다 — 어떤 규칙도 trigger_table 로 가리키지
+#: 않는 선언 표. 그것을 `rule` 로 내면 그 줄이 «거짓»입니다(「이 줄이 참인가」).
+SCOPE_TABLE = "table"
+#: ⓓ 의 effective 항목은 «노드 타입»입니다 — 좌석이 `collect` 로 고를 수 있는 이름.
+#: 판정 316 이 `table` 을 더한 것과 «같은 사유»입니다: 그것을 `rule` 로 내면 그 줄이 거짓입니다.
+SCOPE_NODE_TYPE = "node_type"
+SCOPES = (SCOPE_FILE, SCOPE_SETTING, SCOPE_RULE, SCOPE_VIEW, SCOPE_TABLE,
+          SCOPE_NODE_TYPE)
 
 ORIGIN_FILE = "file"
 ORIGIN_DEFAULT = "default"
@@ -164,6 +171,132 @@ def build_domain(domain: str, title: str, sources: list, settings: list,
 # ---------------------------------------------------------------------------
 # enrichment — 첫 슬라이스
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# chain — 셋업 순서의 ② 걸음 (S-180 ⓑ)
+# ---------------------------------------------------------------------------
+
+DOMAIN_CHAIN = "chain"
+
+#: ⑥ 걸음의 이름. ⚠️ 순서는 «여섯»이 다 서 있고(S-180 ⓒ), 그 걸음의
+#: 등록기는 ⓓ 에서 옵니다 — 순서를 «반쯤» 적으면 그 사이에 문서와 코드가 다른 순서를
+#: 들게 됩니다. 등록기가 없는 걸음은 보고에 «안 나타납니다».
+DOMAIN_WALK = "walk"
+
+#: 합성 규칙에 붙는 표. 🔴 운영자가 «안 적은» 줄이 목록에 이름 없이 섞이면
+#: 「내가 안 썼는데 왜 있지」가 되고, 그 사람은 고칠 수 없는 것을 고치러 갑니다.
+ORIGIN_SYNTHESIZED = "synthesized"
+ORIGIN_DECLARED = "declared"
+
+
+def _resolve_chain() -> dict:
+    """② 파생 — 「무엇이 «무엇을 깨우는가»」.
+
+    🔴 **판정은 `chain_bindings.rule_refusals` 가 합니다** (S-180 ⓑ-0). 그 함수는 로더와
+    드라이런 화면이 «같이» 부르는 하나이고, 이 등록기가 셋째 호출자입니다. 문법을 여기서
+    다시 쓰면 「내 규칙이 돌까」에 답하는 자리가 넷이 됩니다.
+
+    🔴 **파일을 여는 것은 `read_rules_document` 하나입니다.** 로더는 살아남은 규칙만
+    돌려주므로 「무엇을 버렸나」에 답할 수 없고, 그걸 알려고 파일을 다시 여는 순간 이 모듈이
+    둘째 독자가 됩니다.
+
+    ⚠️ **주어가 둘입니다.** effective/rejected 는 «규칙»이고 ineffective 는 «표»입니다 —
+    이 걸음의 질문이 「무엇이 무엇을 깨우나」라서, 「아무도 안 깨우는 표」가 이 걸음의 «빈
+    자리»입니다. 그 항목을 `rule` 스코프로 내면 그 줄이 거짓이므로 `SCOPE_TABLE` 로 냅니다.
+
+    ⚠️ 합성 규칙은 «문법 채점 대상이 아닙니다** — 이 프로세스가 지은 것이라 작성 문법에
+    대면 「우리 버그를 그들의 오타로」 보고하게 됩니다. effective 에 넣되 `origin` 으로
+    이름을 답니다.
+    """
+    import chain_bindings
+    import chain_ingestion_worker as worker
+    import mapper_sdk
+    from database import crud
+
+    effective, ineffective, rejected = [], [], []
+
+    read = worker.read_rules_document()
+    sources = [source(
+        "rules", read["path"],
+        "무엇이 무엇을 깨우는지의 선언입니다. 표가 여기 없으면 그 표는 «아무것도 파생시키지 "
+        "않습니다» — 비어 있는 것과 틀린 것은 아래에서 갈라집니다.",
+        exists=read["exists"], degraded=bool(read["error"]))]
+
+    if read["error"]:
+        rejected.append(entry(
+            SCOPE_FILE, os.path.basename(read["path"]),
+            "체인 규칙 파일을 읽지 못했습니다 (%s). 이 파일이 안 읽히면 «어떤» 표도 파생을 "
+            "일으키지 않습니다." % read["error"],
+            reason=REASON_MAPPING_UNAVAILABLE))
+        return build_domain(DOMAIN_CHAIN, "파생 (체인 규칙)", sources, [],
+                            effective, ineffective, rejected)
+
+    triggered = set()
+    for index, rule in enumerate(read["rules"] or ()):
+        path = "rules[%d]" % index
+        name = str((rule or {}).get("name") or path) if isinstance(rule, dict) else path
+        issues = chain_bindings.rule_refusals(
+            rule, path, mapper_resolvable=mapper_sdk.MAPPER_REGISTRY.get)
+        if issues:
+            first = issues[0]
+            rejected.append(entry(
+                SCOPE_RULE, name,
+                "`%s` 규칙은 «돌 수 없습니다» — %s: %s%s"
+                % (name, first.path, first.message,
+                   " (외 %d건)" % (len(issues) - 1) if len(issues) > 1 else ""),
+                reason=REASON_MAPPING_UNAVAILABLE,
+                fields={"issues": [i.to_mapping() for i in issues],
+                        "origin": ORIGIN_DECLARED}))
+            continue
+
+        trigger = str((rule or {}).get("trigger_table") or "")
+        if trigger:
+            triggered.add(trigger)
+        warnings = chain_bindings.rule_warnings(rule, path)
+        effective.append(entry(
+            SCOPE_RULE, name,
+            "`%s` 가 `%s` 의 변화에 붙었습니다." % (name, trigger),
+            fields={"origin": ORIGIN_DECLARED, "trigger_table": trigger,
+                    "warnings": [w.to_mapping() for w in warnings]}))
+
+    # 🔴 합성 규칙은 «같은 목록에» 서되 이름이 붙습니다 — 운영자가 고칠 수 없는 줄이라,
+    # 안 붙이면 「내가 안 적었는데」가 되고 붙이면 「제품이 넣어 준 것」이 됩니다.
+    try:
+        import chain_builtins
+
+        synthesized = chain_builtins.synthesize_chain_rules() or ()
+    except Exception as exc:
+        synthesized = ()
+        rejected.append(entry(
+            SCOPE_FILE, "synthesized",
+            "제품이 파생 규칙을 합성하지 못했습니다 (%s: %s)." % (exc.__class__.__name__, exc),
+            reason=REASON_MAPPING_UNAVAILABLE))
+
+    for rule in synthesized:
+        name = str((rule or {}).get("name") or "")
+        trigger = str((rule or {}).get("trigger_table") or "")
+        if trigger:
+            triggered.add(trigger)
+        effective.append(entry(
+            SCOPE_RULE, name,
+            "`%s` 는 제품이 «선언에서 합성»한 규칙입니다 — 파일에 적지 않습니다." % name,
+            fields={"origin": ORIGIN_SYNTHESIZED, "trigger_table": trigger}))
+
+    # ⚠️ 표 목록은 «카탈로그»에서 옵니다(① 걸음). 이 걸음이 자기 표 목록을 들면
+    # 두 걸음이 「무슨 표가 있나」에 다르게 답하게 됩니다.
+    for table in sorted(str(t) for t in (crud.load_table_config() or {})
+                        if not str(t).startswith("__")):
+        if table in triggered:
+            continue
+        ineffective.append(entry(
+            SCOPE_TABLE, table,
+            "`%s` 의 변화는 «아무것도 깨우지 않습니다» — 이 표를 `trigger_table` 로 적은 "
+            "규칙이 없습니다. 파생이 필요 없는 표라면 이것이 정상입니다." % table,
+            reason=REASON_NOT_DECLARED))
+
+    return build_domain(DOMAIN_CHAIN, "파생 (체인 규칙)", sources, [],
+                        effective, ineffective, rejected)
+
 
 DOMAIN_ENRICHMENT = "enrichment"
 
@@ -845,6 +978,93 @@ def _resolve_binding() -> dict:
 # ledger — 소스 선언과 어휘 확장 (판정 R-2026-08-15-M)
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# catalog — 셋업 순서의 ① 걸음 (S-180 ⓐ)
+# ---------------------------------------------------------------------------
+
+DOMAIN_CATALOG = "catalog"
+
+#: 이 도메인이 읽는 파일. 값은 «로더의» 상수이고 여기서 경로를 조립하지 않습니다.
+CATALOG_SOURCE_KEY = "tables"
+
+
+def _resolve_catalog() -> dict:
+    """① 표 — 「무엇이 «있는가»」. 셋업 여섯 걸음의 첫 걸음입니다.
+
+    🔴 **판정은 카탈로그 «어댑터»가 합니다.** 표 하나씩 `setup_bundle._adapt_physical_catalog`
+    에 먹이면 그 함수가 «이미 하는» 세 가지 답이 그대로 세 모집단이 됩니다 —
+    관계를 «내면» effective, `invalid_catalog` 로 «던지면» rejected, 아무것도 «안 내면»
+    ineffective. 조건을 여기서 다시 쓰면 카탈로그가 「먹었나」에 답하는 자리가 둘이 되고,
+    갈라지는 날 둘 다 그럴듯합니다. 이 파일에 거절 조건은 «한 줄도» 없습니다.
+
+    ⚠️ 「컬럼이 없어 건너뛴 표」가 왜 결함이 «아니라» ineffective 인가: 어댑터는 그런 표를
+    조용히 지나갑니다(`continue`). 선언은 «있는데» 읽는 쪽이 쓸 수 없는 상태이고, 그것이
+    `not_declared` 의 뜻 그대로입니다 — 「효과에 필요한 선언이 없음」. 새 사유 낱말을
+    만들지 않았습니다.
+
+    ⚠️ 그리고 `open(`/`json.load` 가 이 함수에 «없습니다». 파일을 여는 것은 로더의 일이고,
+    그 드리프트 단언이 계약 시험에 있습니다.
+    """
+    from database import crud
+    from ledger import setup_bundle
+    import validation
+
+    effective, ineffective, rejected = [], [], []
+
+    document, load_error = {}, None
+    try:
+        document = crud.load_table_config_or_raise()
+    except Exception as exc:
+        load_error = "%s: %s" % (exc.__class__.__name__, exc)
+
+    sources = [source(
+        CATALOG_SOURCE_KEY, crud.CONFIG_PATH,
+        "표 선언입니다. 이 파일이 안 읽히면 «그다음 다섯 걸음이 전부» 읽을 표를 잃습니다.",
+        degraded=bool(load_error))]
+
+    if load_error:
+        rejected.append(entry(
+            SCOPE_FILE, os.path.basename(crud.CONFIG_PATH),
+            "표 선언 파일을 읽지 못했습니다 (%s). 표가 없으면 파생·확정·조인·원장·걷기가 "
+            "가리킬 것이 없습니다." % load_error,
+            reason=REASON_MAPPING_UNAVAILABLE))
+        return build_domain(DOMAIN_CATALOG, "표 카탈로그", sources, [],
+                            effective, ineffective, rejected)
+
+    for name, declared in sorted((document or {}).items(), key=lambda kv: str(kv[0])):
+        if str(name).startswith("__"):
+            continue
+        try:
+            adapted = setup_bundle._adapt_physical_catalog({name: declared})
+        except validation.DeclarationValidationError as exc:
+            # 🔴 사유는 «거절문 그대로»입니다. 여기서 다시 쓰면 거절문의 둘째 철자가 됩니다.
+            rejected.append(entry(
+                SCOPE_RULE, name,
+                "`%s` 선언이 카탈로그 검증을 통과하지 못했습니다 — %s: %s"
+                % (name, exc.path, exc.message),
+                reason=REASON_MAPPING_UNAVAILABLE,
+                fields=exc.to_mapping()))
+            continue
+
+        relation = adapted.get(name)
+        if relation is None:
+            ineffective.append(entry(
+                SCOPE_RULE, name,
+                "`%s` 는 선언돼 있지만 `column_types` 가 비어 있어 카탈로그가 «읽지 않습니다». "
+                "컬럼을 적으면 이 표가 다음 걸음들의 대상이 됩니다." % name,
+                reason=REASON_NOT_DECLARED))
+            continue
+
+        effective.append(entry(
+            SCOPE_RULE, name,
+            "`%s` 가 컬럼 %d개로 카탈로그에 섰습니다." % (name, len(relation.get("columns") or {})),
+            fields={"columns": sorted(relation.get("columns") or {}),
+                    "composite_key": list(relation.get("composite_key") or [])}))
+
+    return build_domain(DOMAIN_CATALOG, "표 카탈로그", sources, [],
+                        effective, ineffective, rejected)
+
+
 DOMAIN_LEDGER = "ledger"
 
 
@@ -1007,13 +1227,162 @@ def _ledger_emitted_predicates(document: dict) -> set:
 # 도메인 등록기. 나머지 config는 여기에 한 줄씩 붙는다.
 # 🔴 새 도메인은 **뒤에** 붙인다 — contracts/config_resolve_report의 하네스가
 #    `resolve_report()["domains"][0]`로 enrichment를 집는다.
+# ---------------------------------------------------------------------------
+# walk — 셋업 순서의 ⑥ 걸음 (S-180 ⓓ)
+# ---------------------------------------------------------------------------
+
+def _resolve_walk() -> dict:
+    """⑥ 걷기 좌석 — 「무엇을 «묻는가»」.
+
+    🔴 **이 걸음에는 자기 파일이 «없습니다».** 좌석이 고르는 이름은 ⑤ 원장 선언의 엔터티이고,
+    그래서 「셋업됐나」의 술어는 «걷기 라우트가 이미 쓰는 그 집합»입니다 —
+    `ledger_trace_router._collectable_types()`. 그 함수는 `node_type_not_declared` 로 거절할 때
+    「declared」로 내미는 «바로 그» 목록을 만듭니다. 여기서 엔터티를 다시 세면 한 선언이
+    한 화면에서는 고를 수 있고 다른 화면에서는 거절되는 상태가 생깁니다(그 함수가 자기 주석에
+    적어 둔 바로 그 결함입니다).
+
+    ⚠️ **거절이 «없습니다».** 걷기의 거절(`node_type_not_declared`)은 «요청 하나»에 대한
+    답이지 셋업의 상태가 아닙니다 — 아무도 안 물었으면 거절할 것도 없습니다. 그래서 이
+    걸음의 모집단은 둘뿐이고, 「선언을 못 읽음」만 파일 범위의 rejected 입니다.
+
+    ⚠️ **좌석 자체는 «세지 않습니다».** `client2/src/map2/seating.js` 는 화면 상태이고,
+    서버가 그것을 셀 수 있다고 말하는 순간 이 보고가 «모르는 것을 아는 척»합니다.
+    """
+    effective, ineffective, rejected = [], [], []
+
+    collectable, failure = set(), None
+    try:
+        from ledger_trace_router import _collectable_types
+
+        collectable = _collectable_types()
+    except Exception as exc:
+        # HTTPException 은 detail 에 사유를 싣습니다 — 그 문장을 그대로 나릅니다.
+        detail = getattr(exc, "detail", None)
+        failure = (detail or {}).get("message") if isinstance(detail, dict) else None
+        failure = failure or ("%s: %s" % (exc.__class__.__name__, exc))
+
+    sources = [source(
+        "entities", "ledger_config.json (entities)",
+        "걷기 좌석이 «고를 수 있는 이름»은 원장 선언의 엔터티입니다. 이 걸음은 자기 파일이 "
+        "없고 ⑤ 가 선 만큼 섭니다.",
+        exists=failure is None, degraded=bool(failure))]
+
+    if failure:
+        rejected.append(entry(
+            SCOPE_FILE, "entities",
+            "선언을 읽지 못해 걷기가 «무엇을 고를 수 있는지» 말할 수 없습니다 — %s" % failure,
+            reason=REASON_MAPPING_UNAVAILABLE))
+        return build_domain(DOMAIN_WALK, "걷기 좌석", sources, [],
+                            effective, ineffective, rejected)
+
+    for name in sorted(collectable):
+        effective.append(entry(
+            SCOPE_NODE_TYPE, name,
+            "`%s` 를 좌석의 `collect` 로 고를 수 있습니다." % name))
+
+    if not effective:
+        ineffective.append(entry(
+            SCOPE_FILE, "entities",
+            "선언된 엔터티가 «하나도 없습니다» — 좌석이 고를 이름이 없어 걷기가 아무것도 "
+            "묻지 못합니다. ⑤ 에 엔터티를 적으면 여기가 채워집니다.",
+            reason=REASON_NOT_DECLARED))
+
+    return build_domain(DOMAIN_WALK, "걷기 좌석", sources, [],
+                        effective, ineffective, rejected)
+
+
 _RESOLVERS = {
+    # ⓐ 셀업 순서의 첫 걸음. 이 dict 의 순서는 이제 대표를 고르지 않습니다(S-180 ⓐ-0).
+    DOMAIN_CATALOG: _resolve_catalog,
+    DOMAIN_CHAIN: _resolve_chain,
     DOMAIN_ENRICHMENT: _resolve_enrichment,
     DOMAIN_VIRTUAL_JOIN: _resolve_virtual_join,
     DOMAIN_NOTATION: _resolve_notation,
     DOMAIN_BINDING: _resolve_binding,
     DOMAIN_LEDGER: _resolve_ledger,
+    DOMAIN_WALK: _resolve_walk,
 }
+
+
+#: 셋업 «순서» — 이 리스트가 «정본»이고 `docs/guide/SETUP_ORDER.md` 는 그 설명입니다
+#: (S-180 ⓒ). 소유자 2026-09-11 「체계적인 셋업이 안 됨」.
+#:
+#: 🔴 순서가 «코드»에 있어야 하는 이유는 그 문서가 자기 §「지금 없는 것」에 적어 둔 그대로입니다 —
+#: 「사람이 이 장을 열어야만 «무엇이 먼저인가»를 알 수 있고, 그것이 결함이다」. 문서만 아는 순서는
+#: 화면이 답할 수 없고, 화면이 답하지 못하면 운영자는 «어디가 비었는지»를 파일 여섯 개를 열어
+#: 알아내야 합니다.
+#:
+#: ⚠️ 걸음이 «없는» 도메인이 있습니다(`notation`·`binding`). 그것은 이 순서가 덜 적힌 것이
+#: 아니라 그 도메인이 여섯 걸음의 «밖»이라는 뜻이고, 응답에서 `step: null` 로 «보입니다» —
+#: 숨기면 화면이 가진 도메인과 이 순서가 다른 세계가 됩니다.
+#: 🔴 `after` 는 «문서의 «앞» 줄 그대로»이고, 그것은 «선형이 아닙니다» (판정 317).
+#: 처음 이 리스트를 «줄 세워» 적었더니(각 걸음이 앞 걸음에 의존) 이 박스에서 원장이
+#: `blocked_by: 4` 로 나왔고, 저는 그것을 「기능이 도는 증거」로 읽었습니다. 반대였습니다 —
+#: 원장의 앞은 ④ 가 «아니라» ① 이고, 가상 조인이 «없는» 설치(정당합니다)에서 원장이
+#: «영원히 차단»으로 그려집니다. 「이 줄이 참인가」에서 거짓이고, 어느 설치에서나 그렇습니다.
+#:
+#: ⚠️ ④ 의 앞은 «걸음이 아닙니다** — 오른쪽 표의 UNIQUE 인덱스라는 «DB 상태»이고, 없으면
+#: 그 걸음이 «자기» 모집단에서 `no_unique_index` 로 거절합니다. 걸음으로 적으면 없는 의존이
+#: 생깁니다.
+#:
+#: ⚠️ 그리고 여기 있는 것은 «정적 앞»뿐입니다. 문서는 조건부 의존도 적습니다(③·⑤ 가
+#: 「파생 표를 쓴다면」 ②③ 에 기댑니다) — 그것은 «소스마다» 달라 이 리스트가 답할 수 없고,
+#: 계산하려면 선언을 읽어야 합니다. 별건입니다. 여기서 «추측»하지 않습니다.
+SETUP_STEPS = (
+    {"step": 1, "name": "표", "domain": DOMAIN_CATALOG, "after": None},
+    {"step": 2, "name": "파생", "domain": DOMAIN_CHAIN, "after": 1},
+    {"step": 3, "name": "확정", "domain": DOMAIN_ENRICHMENT, "after": 1},
+    {"step": 4, "name": "가상 조인", "domain": DOMAIN_VIRTUAL_JOIN, "after": 1},
+    {"step": 5, "name": "원장", "domain": DOMAIN_LEDGER, "after": 1},
+    {"step": 6, "name": "걷기 좌석", "domain": DOMAIN_WALK, "after": 5},
+)
+
+#: domain -> 그 걸음. 순서를 «두 번» 적지 않으려고 위에서 만듭니다.
+_STEP_OF = {item["domain"]: item for item in SETUP_STEPS}
+
+
+def _step_is_standing(domain: dict) -> bool:
+    """이 걸음이 «서 있는가» — 뒤 걸음이 기댈 수 있는 상태인가 (판정 318).
+
+    🔴 서 있다 = 효과가 «하나 이상» 있고, «파일 범위» 거절이 «없다».
+
+    🔴 그리고 «부분 거절»은 뒤를 막지 않습니다. 처음에 이것을 「거절이 하나라도 있으면 차단」
+    으로 적었더니 이 박스에서 걷기가 `blocked_by: 5` 로 나왔는데 그 걷기의 effective 는 «9»
+    였습니다 — 「막혔다」와 「이 걸음이 돌고 있다」가 «한 화면에 동시에 참»입니다. 「이 줄이
+    참인가」에서 거짓이고, ⓒ-b 에서 고친 거짓 차단과 «같은 부류»입니다.
+
+    ⚠️ 규칙·표·노드 범위의 거절은 그 걸음의 «자기 모집단»에 그대로 보입니다 — 사라지는 것이
+    아니라, 뒤 걸음을 막는 근거가 «아닐» 뿐입니다. 운영자가 그것을 읽을 자리는 그 걸음입니다.
+    ⚠️ 파일 범위 거절만 다릅니다: 선언을 «못 읽으면» 그 걸음이 무엇을 주는지 «아무도 모르고»,
+    뒤 걸음이 기댈 근거가 남지 않습니다.
+    """
+    counts = domain.get("counts") or {}
+    if not counts.get("effective"):
+        return False
+    return not any((item or {}).get("scope") == SCOPE_FILE
+                   for item in domain.get("rejected") or ())
+
+
+def _annotate_steps(out: list) -> list:
+    """각 도메인 봉투에 `step` 과 `blocked_by` 를 «더합니다». 기존 칸은 손대지 않습니다.
+
+    ⚠️ `blocked_by` 는 «이 보고 안»의 앞 걸음만 봅니다. 도메인을 골라서 부르면
+    (`resolve_report(["ledger"])`) 앞 걸음이 이 보고에 «없고», 그때는 «모른다»는 뜻으로
+    `None` 입니다 — 없는 것을 「안 막혔다」로 읽게 두지 않으려고 `blocked` 를 따로 두지
+    않았습니다: 막혔는지는 «전체 보고»가 답하는 질문입니다.
+    """
+    by_name = {d.get("domain"): d for d in out}
+    for domain in out:
+        item = _STEP_OF.get(domain.get("domain"))
+        domain["step"] = item["step"] if item else None
+        domain["blocked_by"] = None
+        if not item or item["after"] is None:
+            continue
+        previous = next((s for s in SETUP_STEPS if s["step"] == item["after"]), None)
+        standing = by_name.get(previous["domain"]) if previous else None
+        if standing is not None and not _step_is_standing(standing):
+            domain["blocked_by"] = previous["step"]
+    return out
 
 
 def resolve_report(domains: list = None) -> dict:
@@ -1034,8 +1403,11 @@ def resolve_report(domains: list = None) -> dict:
                        f"이 도메인의 설정을 해석하지 못했습니다 ({e.__class__.__name__}).",
                        reason=REASON_MAPPING_UNAVAILABLE)]))
     return {
-        "domains": out,
+        "domains": _annotate_steps(out),
         # 클라이언트가 라벨/필터를 **하드코딩하지 않도록** 어휘를 함께 싣는다.
         "vocabulary": {"reasons": list(REASONS), "populations": list(POPULATIONS),
-                       "scopes": list(SCOPES)},
+                       "scopes": list(SCOPES),
+                       # 🔴 순서도 «어휘»입니다 — 화면이 걸음 이름을 자기가 적으면 이 리스트와
+                       # 갈라지고, 갈라진 쪽은 오류를 안 냅니다.
+                       "setup_steps": [dict(item) for item in SETUP_STEPS]},
     }

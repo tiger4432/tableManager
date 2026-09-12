@@ -67,6 +67,118 @@ engine = create_engine(
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+
+# ===========================================================================
+# The two model registries come back  [S-200, 판정 309]
+# ===========================================================================
+
+@pytest.fixture(autouse=True)
+def _the_model_registries_come_back():
+    """Every test gets the registries it was handed, whatever the last one left behind.
+
+    🔴 SIXTY-FIVE FILES CANNOT EACH BE TRUSTED TO REMEMBER. Measured: 74 test files call
+    `init_dynamic_models` and NINE take a name back out, so `models.DYNAMIC_TABLES` and
+    `Base.metadata` grow all run long — and the cost lands on whichever file happens to count
+    them, naming neither the leaker nor the leak. `test_the_shipped_catalogue_builds` read 63
+    against a 46-table catalogue and was GREEN when run alone.
+
+    ⚠️ S-191 CLOSED THE OTHER HALF OF THIS. `retire_dynamic_model` gave the seats that
+    already retired a model one correct way to do it; this gives the seats that never retired
+    anything a reason not to have to. Same two singletons, same pairing — the helper is what a
+    test calls on purpose, and this is what happens anyway.
+
+    ⛔ ADDITIONS ARE REMOVED; REMOVALS ARE NOT PUT BACK. A test that retires a name from the
+    baseline meant to, and re-adding it here would undo a teardown that was right. What leaks
+    is what is ADDED, and that is what this takes away.
+    """
+    from database import models
+
+    before_models = dict(models.DYNAMIC_TABLES)
+    before_tables = set(Base.metadata.tables)
+    try:
+        yield
+    finally:
+        for name in [n for n in list(models.DYNAMIC_TABLES) if n not in before_models]:
+            models.DYNAMIC_TABLES.pop(name, None)
+        # A name whose CLASS was swapped is put back — the registry is process-wide and a
+        # stand-in left in it answers for the real model in every later file.
+        for name, model in before_models.items():
+            if models.DYNAMIC_TABLES.get(name) is not model:
+                models.DYNAMIC_TABLES[name] = model
+        for key in [k for k in list(Base.metadata.tables) if k not in before_tables]:
+            table = Base.metadata.tables.get(key)
+            if table is not None:
+                Base.metadata.remove(table)
+
+
+# ===========================================================================
+# Tests whose subject is a LIVE, gitignored file  [S-199-b, 판정 309]
+# ===========================================================================
+
+#: Set this to run the tests whose judgement's SUBJECT sits outside the repository.
+LIVE_TESTS_ENV = "ASSY_TEST_LIVE"
+
+
+def requires_live(shape):
+    """Skip BY NAME unless the operator asked for the live files to be judged.
+
+    🔴 THESE TESTS ARE NOT WRONG AND THE LIVE FILES ARE NOT WRONG. Their subject is
+    `server/mappers/*.py` and `server/config/*.json`, which `.gitignore` excludes - so the
+    answer is a fact about ONE machine, and a red here says nothing about production. Running
+    them by default makes 「the suite is green」 depend on whose checkout it is.
+
+    ⛔ AND THE REASON CARRIES THE REQUIRED SHAPE, not just 「needs the live files」. A skip
+    that only says it was skipped teaches the reader to ignore it; a skip that says WHAT the
+    live file would have to look like is the one line an operator can act on.
+
+    ⚠️ NEITHER SIDE IS EDITED TO AGREE. Bending the test to today's live file would
+    delete the requirement; editing the owner's file from here would be fixing this box.
+    """
+    return pytest.mark.skipif(
+        not os.environ.get(LIVE_TESTS_ENV),
+        reason="requires the live %s; set %s=1 to judge the live files" % (
+            shape, LIVE_TESTS_ENV))
+
+
+# ===========================================================================
+# Retiring a dynamic model  [S-191, 판정 307]
+# ===========================================================================
+
+def retire_dynamic_model(name):
+    """Take one dynamic table back out of BOTH process-wide singletons.
+
+    🔴 POPPING `DYNAMIC_TABLES` IS HALF OF IT, AND THE OTHER HALF FAILS THREE FILES AWAY.
+    `Base.metadata` is the same singleton, so the `Table` and its `Index` objects survive
+    the pop -- and because the class is gone, the next `init_dynamic_models` takes its
+    fresh-build arm and appends a SECOND `Index` of the same name. The first LATER file to
+    call `Base.metadata.create_all` then dies with 「index … already exists」, naming
+    neither the file that leaked nor the fixture that did it. Measured this session at
+    **1,008 errors** from one such fixture (`ea1e8ec2`).
+
+    ⚠️ Four seats did both halves by hand and four did not; this is the one function, so
+    「where do I also remove the Table」 stops being a thing each test has to remember.
+
+    ⛔ NOT FOR SAVE-AND-RESTORE. Three seats pop the registry and put the SAME object back
+    in a `finally` -- there the pop is the inverse of the restore, and a helper that also
+    drops the `Table` would break the pair (the restore returns the class, never the
+    `Table`). They are named here so the next reader does not "finish the job":
+
+        tests/test_map_alignment_references.py   `test_an_unservable_catalog_is_a_different_state`
+        tests/test_map_alignment_worklist.py     `test_an_unservable_catalog_is_a_different_state`
+        tests/test_ledger_v2_pg.py               the `finally` that restores `previous_model`
+
+    Returns the retired class, or `None` if the name was not registered -- so a caller can
+    still tell 「it was there」 from 「it never was」.
+    """
+    from database import models
+
+    model = models.DYNAMIC_TABLES.pop(name, None)
+    table = Base.metadata.tables.get(name)
+    if table is not None:
+        Base.metadata.remove(table)
+    return model
+
+
 # [Isolation] Same class of leak as the DATABASE_URL pin above, found the hard
 # way: the ingestion path now publishes a heartbeat (work claims), so any test
 # that drives `process_with_retry` - test_std_parser.py and

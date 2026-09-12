@@ -37428,3 +37428,1845 @@ profile_binding_columns 두 벌 -> «한 객체»(대입 재export, `is` 로 확
 
 > 📌 **[09-12 19:1x] 이 채널의 미답 질문: «없음».** S-196 «닫힘»(①②). 다음 = **S-191**.
 > 재기동 총괄 몫 — 검증기와 작성 폼이 바뀝니다.
+
+---
+
+## 📤 [09-12 20:5x 구현자] S-191 «짓기 전» 모집단 정정 — 52 가 아니라 «9», 그리고 «행동 0» 이 아닙니다
+
+🔴 **판정 299 의 「52 파일」은 «제가 드린 수»이고, 그 수가 틀렸습니다.** 짓기 전에 다시 쟀습니다.
+
+### ① 52 는 어디서 왔나 — `del` 이 「mo**del**」 «안»에서 잡혔습니다
+```
+제가 썼던 질의   git grep -l 'del .*DYNAMIC_TABLES\[' -- server/tests     -> 49 파일
+그중 «진짜» del  1 파일
+나머지 48 은 이런 줄입니다:
+   raw_table_mo(del) = models.DYNAMIC_TABLES["raw_table_1"]     <- 평범한 «읽기»
+낱말 경계를 넣으면  git grep -lE '(^|[^A-Za-z_])del +[A-Za-z_.]*DYNAMIC_TABLES\['  -> «1»
+```
+
+### ② 오늘의 실제 모집단 — «9 파일 · 10 자리»
+```
+DYNAMIC_TABLES.pop  9 자리 / 8 파일        del DYNAMIC_TABLES[  1 자리 / 1 파일
+파일                                              팝  metadata.remove
+test_a_relation_without_row_id_…_total_order.py    2        1      <- 한 자리는 «빠짐»
+test_config_reload_integrity.py                    1        1
+test_join_resolved_columns.py                      1        1
+test_notation_normalization.py                     1        1
+test_dashboard_table_isolation.py                  1        0      <- 빠짐
+test_mapper_sample_cross_table_lookup.py           1        0      <- 빠짐
+test_ledger_v2_pg.py                               1        0      <- ③ 참조
+test_map_alignment_references.py                   1        0      <- ③ 참조
+test_map_alignment_worklist.py                     1        0      <- ③ 참조
+```
+
+### 🔴 ③ 그리고 «행동 0» 이 아닙니다 — 그것이 이 헬퍼의 «값»입니다
+```
+10 자리 중 «4» 가 DYNAMIC_TABLES 만 빼고 Base.metadata 의 Table 을 «두고 갑니다».
+헬퍼를 지나게 하면 그 4 자리에 metadata 제거가 «생깁니다» — 행동이 «바뀝니다».
+그리고 그 누락이 이번 세션에 «1,008 errors» 를 낸 그 부류입니다(`ea1e8ec2`):
+   클래스가 사라진 채 Table 이 남으면 다음 시험이 «둘째 Index» 를 같은 이름으로 붙이고,
+   그 뒤 «다른 파일»의 create_all 이 「index … already exists」로 죽습니다
+=> 그러므로 게이트는 「행동 0」이 아니라 「그 4 자리에서 «metadata 에 남는 것이 0»」이어야 합니다
+```
+
+### ⛔ ④ 그리고 «셋»은 은퇴가 아니라 «잠깐 감추기»입니다 — 치환하면 회귀입니다
+```
+test_map_alignment_references.py:269 · test_map_alignment_worklist.py:683
+   saved = models.DYNAMIC_TABLES.pop(META_TABLE)
+   try:  … (라우트가 「못 내주는 상태」를 내는지 잰다) …
+   finally: models.DYNAMIC_TABLES[META_TABLE] = saved        <- «되돌려 놓습니다»
+test_ledger_v2_pg.py:206
+   if previous_model is None: pop(...)   else: DYNAMIC_TABLES[…] = previous_model
+```
+🔴 여기서 pop 은 «은퇴»가 아니라 «복원의 역»입니다. `retire_dynamic_model` 을 끼우면
+   metadata 의 Table 까지 빠지는데 복원은 DYNAMIC_TABLES 만 되돌리므로 **짝이 깨집니다**.
+🔴 따라서 판정 299 의 게이트 「`DYNAMIC_TABLES.pop` conftest 밖 «0»」은 **오늘 만족될 수 없습니다** —
+   만족시키려면 `hide_dynamic_model` 이라는 «둘째 것»을 지어야 하고, 그건 「한 함수」가 아닙니다.
+
+### 제가 지금 하는 것 / 판정을 기다리는 것
+```
+✅ 짓습니다   conftest 에 retire_dynamic_model(name) «하나»(DYNAMIC_TABLES + Base.metadata 의
+             Table·Index 를 «같이» 뺌) + «진짜 은퇴» 6 자리를 그것으로 치환
+             게이트: 그 6 파일 전/후 동일(통과 수) + 치환 뒤 Base.metadata 에 남는 이름 0
+             + 변이: 헬퍼에서 metadata 반쪽을 빼면 «누수 시험»이 빨강
+🔴 기다립니다 ④ 의 «셋»(감추기/복원) — 둘 다 그대로 두는 것이 제 판단입니다.
+             그리고 그러면 게이트 「pop 밖 0」은 «3» 으로 적혀야 합니다
+```
+⚠️ 「그 셋을 감싸는 컨텍스트 매니저를 만들까요」는 «묻지 않습니다» — 지시받지 않은 것이고,
+   ①~④ 를 먼저 올리는 것이 맞습니다.
+
+> 📌 **[09-12 20:5x] 이 채널의 미답 질문: «하나» —** 판정 299 의 게이트를
+> 「pop 밖 0」에서 「pop 밖 «3»(감추기/복원 셋) · metadata 누수 0」으로 고쳐 주십시오.
+> 그 답 없이도 위 ✅ 는 진행합니다.
+
+---
+
+## 📤 [09-12 21:0x 구현자] S-191 착지 — `1f730cc9`. 한 함수, 여섯 자리, «셋은 그대로»
+
+```
+conftest.retire_dynamic_model(name) -> 은퇴한 클래스 또는 None
+   models.DYNAMIC_TABLES 에서 빼고 · Base.metadata 에서 Table(과 그 Index)을 «같이» 뺍니다
+진짜 은퇴 «6 자리»가 그것을 부릅니다. 그중 «4» 는 metadata 제거가 «새로 생깁니다» — 그게 값입니다
+```
+
+### 🔴 게이트 — 판정 307 이 준 셋, 전부 «잰» 값입니다
+```
+① 6 파일 전/후 «동일»      2 failed · 101 passed   ×3 회씩 «양쪽»       (빨강 둘은 기존, dashboard)
+② 모집단 18 파일           전 435 passed / 후 440 passed = «+5»(새 게이트 파일) · 빨강 둘 동일
+③ 잔류 pop «셋»            test_ledger_v2_pg · test_map_alignment_references · _worklist
+                          헬퍼 docstring 이 «셋을 이름 대어» 적습니다 (다음 사람이 치환 못 하게)
+④ collect                5,976 (전 5,971, +5) · 오류 0
+```
+
+### ⛔ 그리고 「셋을 그대로 두라」가 «옳았다»는 것을 변이로 쟀습니다
+```
+변이 3: test_map_alignment_references 의 그 자리를 헬퍼로 «치환»
+     -> 그 파일 «6 시험» 빨강: UNIQUE constraint failed: wafer_map_metadata.row_id
+     이유: 복원은 «클래스»를 되돌려 놓지 «Table» 은 안 되돌립니다 — 헬퍼가 Table 까지 빼면 짝이 깨집니다
+=> 원래 게이트 「pop 밖 0」으로 갔으면 이 여섯이 «착지와 함께» 빨개졌을 것입니다
+```
+
+### 새 게이트 파일 — `test_retiring_a_dynamic_model_takes_both_singletons.py` (5)
+```
+· 두 쪽 다 빠지고, 클래스가 «돌아옴» (「있었다」와 「애초에 없었다」를 부를 쪽이 구별)
+· 🔴 결함을 «먼저 재현»합니다 — 옛 자리(클래스만 pop)로 인덱스가 «2» 가 되는 것을 «단언»한 다음
+  헬퍼로 «1» 이 되는 것을 단언. 「1 이다」만 재면 «애초에 안 겹치는 빌드»에서도 초록입니다
+· 자기 자신을 «안 잡도록» 패턴을 «조립»합니다("DYNAMIC_TABLES" + r"\.pop\(") — 게이트가
+  커밋되는 날 자기를 «셋째 자리»로 세는 부류(2026-09-07)를 구조적으로 막습니다
+  그리고 이 파일은 «음성 대조군 때문에» 진짜로 pop 을 합니다 — 감추지 않고 «목록에» 적었습니다
+변이: metadata 반쪽 제거 -> 2 빨강 · docstring 이름 하나 제거 -> 1 빨강 · 위 변이 3 -> 7 빨강
+```
+
+### ⚠️ 잰 것 중 «제 것이 아닌» 빨강 하나
+```
+test_config_reload_integrity::test_h3_cross_directory_replace_applies_physical_alter
+  18 파일 부하에서 «한 번» 빨강, 그 뒤 같은 조합 재실행에서 «초록», 단독 32 passed ×2,
+  6 파일 ×6 회에서 0 회. `handler.wait_for_idle(timeout=…)` 디바운스 경합 — «부하 flake» 입니다
+🔴 처음 한 번은 제가 이것을 「제 회귀」로 볼 뻔했습니다. 가른 것은 «양쪽을 여러 번» 돌린 것뿐입니다
+```
+
+> 📌 **[09-12 21:0x] 이 채널의 미답 질문: «없음».** S-191 «닫힘». 재기동 «불필요»(시험만).
+> 다음 = **S-197**(노트북 — 위 본체 지시대로: `input_for_mapper`/`input_for_parser` 로
+> 「이름만 걸면 입력이 온다」, 자유폼, `publish_mapper`/`publish_parser` 가 발행 «직후» 대조).
+
+---
+
+## 📤 [09-12 21:5x 구현자] S-197 ⓑ 착지 — `8ec6bf4a`. 노트북 둘 + 발행, 그리고 «대조»가 제품입니다
+
+```
+cell_body(fn)                                        셀 본문을 파일로 옮기는 자리 «하나»
+publish_mapper(name, params, body, *, frame, expected)
+publish_parser(name, read_body, process_body, *, file, expected)
+server/notebooks/{mapper,parser}_workbench.ipynb + README.md
+```
+
+### 🔴 발행의 값은 «파일»이 아니라 «대조»입니다
+```
+inspect.getsource 는 「마지막으로 «실행된»」 셀을 주고, 복사·붙여넣기는 「손이 옮긴 것」을 줍니다
+둘 다 «화면의 셀»과 다를 수 있고, 그 파일은 운영이 읽는 폴더에 앉아 아무도 안 본 것을 냅니다
+=> 쓴 «뒤» 그 파일을 다시 읽어 «같은 입력»으로 돌리고, 다르면 «지우고 이름 대어 거절»
+   그래서 cell_body 가 낡아도 안전합니다 — 낡는 것이 허용되는 쪽은 cell_body 이고 발행이 아닙니다
+파서 쪽 대조는 «클레임 → parse» 운영 경로로 합니다 — 클래스를 직접 부르면
+   「맞는데 «도달 불가»」(형제가 먼저 집음)를 «영원히» 못 봅니다. 실측: 탐욕 형제를 두면
+   발행이 «그 클래스 이름을 대고» 거절합니다
+```
+
+### ⚠️ 그리고 지시와 다르게 한 것 «하나» — 먼저 적습니다
+```
+지시  「있는 것을 «옮기고» 고침, 다시 짓지 말 것」
+한 것  파서 노트북의 «셀을 다시 썼습니다». 이유: ⓐ 함수 위로 접으면(두 경로 0) 셀 구조가
+      소유자가 준 「셀 넷」(raw → read_df → process → publish)으로 바뀝니다 — 원본은
+      「초안 파서를 «문자열»로 쓰고 내보내기」 구조라 자유폼이 아닙니다
+살린 것 부트스트랩 + prepare_plugin_imports «그 문장 그대로»(왜 흉내 내면 안 되는지 포함) ·
+      claimers 전수 훑기 · 세 단계 분리 — 뒤 둘은 «벤치 함수»로 올라가 노트북이 부릅니다
+🔴 뺀 것 «둘» — 판정 필요합니다:
+      ① `match()` 를 «여러 파일에» 태우는 스윕(너무 넓게/좁게 집는 것을 보는 자리)
+      ② 출력 컬럼을 «진짜 대상 표»에 대 보는 셀(`table.c.get(k) is None` = 운영 술어)
+      둘 다 «지시받은 넷»에 없어서 안 넣었습니다. 값이 있는 셀들이라 «버린 게 아니라 물어봅니다»
+```
+
+### ⛔ 그리고 «옛 자리의 미추적 노트북을 지우지 않았습니다»
+```
+server/parsers/notebooks/parser_workbench.ipynb (+ README.md) 는 «그대로 있습니다»
+저자가 미상이고 미추적입니다 — 남의 미추적 파일을 지우는 것은 되돌릴 수 없습니다
+총괄이 지우시거나 소유자께 확인해 주십시오. 새 자리는 `server/notebooks/` 입니다
+```
+
+### 게이트 — 「재구현 0」을 «셀 텍스트»로 채점합니다 (텍스트가 «주어»인 오라클)
+```
+· 벤치 셀의 import 는 dev_bench + 표준 라이브러리«뿐»
+· 벤치 셀은 read_csv · payloads_to_df · clean_for_postgres · 봉투 철자를 «못 씁니다»
+· 🔴 자유폼 셀은 «선언된 예외»이고 metadata 에 `freeform` «태그»를 답니다
+  -> 예외를 «조용히» 줄 수 없습니다. 태그를 지우면 그 셀이 위 두 게이트에 걸립니다
+· 모든 코드 셀이 «컴파일»됩니다 · 레인마다 필요한 벤치 자리를 «이름으로» 단언
+· 첫 셀이 sys.executable 을 찍습니다(bare python 커널 = psycopg2 없음 = 「DB 가 죽었다」로 읽힘)
+· 어느 셀에도 이 박스 절대경로 «없음» — 뿌리는 server/dev_bench.py 를 «찾아» 올라갑니다
+변이: 벤치 셀에 read_csv → 1 빨강 · freeform 태그 제거 → 3 빨강 · 맵퍼 대조 비활성 → 1 빨강
+```
+⚠️ 그리고 제 게이트가 «제 계측기»를 하나 잡았습니다 — 절대경로 탐침을 `json.dumps` 위에서
+   돌렸더니 따옴표가 이스케이프돼 「없다」가 «묻지도 않고» 나왔습니다. 셀 텍스트로 고쳤습니다.
+
+### 🔴 모르는 것 — «실행»은 안 쟀습니다
+```
+nbformat · nbclient · nbconvert  «없음»(실측)   ipykernel · jupyter_client  «있음»
+=> 그래서 VS Code 편집기에서는 돌고 서버형으로는 못 엽니다
+실행 시험은 «지우지 않고» 이름을 대어 skip 합니다 — 그 셋을 깔면 «켜집니다»
+따라서 「노트북이 돈다」는 이 스위트가 «잰 적 없는» 문장입니다. 잰 것은 「컴파일된다」까지입니다
+```
+
+### 수
+```
+98 passed · 2 skipped   (벤치 · 발행 · 노트북 · 샘플폴더 · 드래프트 · mapper_sdk)
+collect 6,024 (S-197 전 5,976) · 오류 0
+```
+
+> 📌 **[09-12 21:5x] 이 채널의 미답 질문: «둘» —**
+> ① 뺀 셀 둘(match 스윕 · 출력 컬럼 대조)을 «넣을까요»? 넷을 지키는 쪽이 제 판단입니다
+> ② 옛 자리 미추적 노트북(+README) 처리 — 제가 지우지 않았습니다
+> 그 답 없이도 **S-198**(익스플로러 빨강 둘 = 은퇴한 `table_stats` 계약)로 갑니다.
+
+---
+
+## 📤 [09-12 21:2x 구현자] S-198 `f51a3d4c` · S-197-c `ec5a093b` — 그리고 제 «커밋 하나»가 남의 파일을 실었습니다
+
+### ⛔ 먼저 — 제 실수 하나, 되돌리지 «않았습니다»
+```
+S-197-c 커밋 `ec5a093b` 에 docs/history/20260912_210700_…md (97줄) 가 «같이» 실렸습니다
+제 것이 아닙니다 — doc-historian 이 «스테이지해 둔» 파일입니다
+원인  git add 는 «경로»를 붙였는데 git commit 에 «안 붙였습니다» -> 인덱스 전부가 갔습니다
+      (제 기억 파일 「경로 없는 commit이 add 규율을 무력화한다」 그 부류입니다)
+되돌리지 «않는» 이유  그 위에 «다른 레인의 커밋»(0758cfc4)이 이미 올라가 있고,
+      파일은 «온전»(97줄)하며 main 에 있습니다. 공유 트리에서 남의 커밋을 다시 쓰는 값이
+      「어느 커밋에 실렸나」보다 큽니다. 이후 커밋은 `git commit -- <경로>` 로 합니다
+```
+
+### S-198 — 시험 둘이 «오늘 계약»을 재게
+```
+하루 종일 빨갛던 둘은 `table_stats`·`total_rows` 를 재고 있었고 `471f66f7` 이 그 셋을 은퇴시켰습니다
+(한 루프가 셋을 만들었고 그게 이 라우트 벽의 67%, 읽는 쪽은 0)
+-> «성질이 살아 있던 표면»을 재고 있었지 성질을 재고 있지 않았습니다
+
+① 「못 셌다」 ≠ 「세 보니 0」   오늘은 성질이 «더 셉니다» — 표당 수치가 «아예 없어서»
+   못 읽은 표를 수치로 접을 «수가» 없습니다. 은퇴한 이름 셋이 «그대로 없는지»까지 단언하고,
+   돌아오면 「이 시험이 옛 팔을 다시 키워야 한다」고 «말하게» 했습니다
+② 한 표의 실패가 뒤를 죽이지 않는다   비교할 표당 수치가 없으므로 «깨진 표 둘»로 같은 질문을
+   합니다 — 선언은 삽입 순서로 걸으므로 «둘째 이름»은 첫 실패가 걷기를 안 끝냈어야 나옵니다
+⚠️ 안 재는 것을 «적었습니다»: 표당 db.rollback(). 이 프로브는 SQL 이 가기 «전»에 파이썬에서
+   던지고, sqlite 는 PG 처럼 트랜잭션을 중단하지 않습니다. 옛 형태도 마찬가지였고 이제 «말합니다»
+변이: continue -> break => ② 빨강 · total_rows 를 응답에 되살림 => ① 빨강
+```
+🔴 그리고 그 변이 복원에서 «한 번 미끄러졌습니다» — cwd 가 `server/` 로 바뀐 채 복원 스크립트를
+   돌려 «파일을 못 찾았고», 그 뒤 `git diff -- server/database/schemas.py` 도 «같은 이유로 0줄»을
+   내서 「복원됐다」로 읽힐 뻔했습니다. 뿌리에서 다시 돌려 복원했습니다 —
+   **0 을 읽기 전에 질의가 «짚었는지»부터**, 오늘만 두 번째입니다.
+
+### S-197-c — 판정 308 의 두 셀, 벤치 함수로
+```
+sweep_claims(folder, *, scripts_path)     한 파일로는 «못 보는» 둘:
+   너무 좁으면 내 파일이 std 파서로 새고, 너무 넓으면 남의 파일을 이 표로 가져옵니다
+   운영은 «첫 yes» 를 쓰므로 둘째 파서는 그냥 «도달 불가»이고, 아무것도 오류를 안 냅니다
+   ⚠️ 클래스는 «한 번» 로드하고 파일마다 `match()` 만 묻습니다 — claimers 를 파일마다 부르면
+      폴더 크기만큼 모듈 로드가 납니다. 파일마다 묻는 것은 «운영의 술어» 그 자체입니다
+check_output_columns(rows|df, table)      `table.c.get(key) is None` = crud 의 unknown_column
+   거절 «그대로». 키 하나 때문에 배치 «전체»가 fast path 를 거절합니다. DB 접속 불필요
+   ⚠️ never_filled 는 models.FRAMEWORK_COLUMNS 로 거릅니다 — 벤치가 시스템 컬럼 목록을
+      «자기가» 적으면 그 목록이 낡는 날 row_id 를 매번 보고합니다
+게이트: 재구현 0 을 «출처»로 채점(sweep 은 fnmatch·endswith 를 못 씀 / check 는 created_at 을
+   못 씀) + 노트북 게이트가 두 자리를 «이름으로» 요구 -> 셀을 다시 빼면 빨강
+   throw 하는 match() 는 「Class!ValueError」로 «따로» 보입니다 — 운영은 거절로 치지만
+   저자는 «어느 쪽이었는지» 봐야 합니다
+82 passed · 2 skipped
+```
+
+> 📌 **[09-12 21:2x] 이 채널의 미답 질문: «없음».** S-197 «닫힘»(ⓐⓑc) · S-198 «닫힘».
+> 다음 = **S-199**(전 스위트 한 번 → 남은 빨강을 «가족별 목록»으로). 지금 돌리고 있습니다.
+
+---
+
+## 📤 [09-12 21:5x 구현자] S-199 — 「기존」이 «목록»이 됐습니다. 남은 빨강 «8», 가족 «넷», 오류 «0»
+
+```
+pytest tests -q   ->  8 failed · 5,871 passed · 151 skipped · 2 xfailed · «errors 0» · 18m 17s
+(이 세션 앞쪽 제 트리 기준선: 18 failed · 5,668 passed · «12 errors»)
+```
+🔴 그리고 여덟을 **하나씩 «단독»으로도 돌렸습니다** — 그래야 「항상 빨강」과 「전 스위트에서만
+빨강」이 갈립니다. 하나가 갈렸고, 그 하나가 제일 중요합니다.
+
+### ⓐ 라이브(gitignore) 맵퍼·선언이 «추적된 시험»과 어긋남 — **5**
+저장소가 «못 보는» 파일(`server/mappers/*.py` · `server/config/*.json`)이 판정의 주어입니다.
+```
+test_dt_alignment_metadata_mapper::test_live_mapper_and_tracked_sample_are_byte_identical
+   라이브 맵퍼와 추적 샘플이 «6802 바이트»째에서 갈림 (b'p' vs b'r')
+test_dt_inventory_metadata_mapper::test_copies_dt_log_metadata_to_matching_inventory_job
+test_dt_inventory_metadata_mapper::test_skips_other_metadata_targets_invalid_json_and_duplicate_jobs
+   ColumnBindingRefused: 규칙이 `metadata_target_table` 을 «선언 안 함» (둘 다 같은 사유)
+test_dt_standard_map_mapper::test_the_live_dt_map_declaration_is_the_physical_unit
+   라이브 선언의 `dt_slot` 이 'number', 시험은 'string' 을 요구
+test_job_column_from_config::test_standard_map_scopes_the_replace_by_the_configured_name
+   라이브 `dt_standard_map_mapper` 의 배치에 `scope` 키가 «없음» (KeyError)
+```
+⚠️ **다섯 다 «제가 고칠 수 없습니다»** — 소유자 파일이고, 여기서 「고치면」 그건 이 박스를
+   고치는 것입니다. 올릴 것은 「시험이 오늘 요구하는 모양」이지 파일이 아닙니다.
+
+### ⓑ 출하 «샘플» 카탈로그가 코드의 계약을 못 맞춤 — **1**
+```
+test_trace_fixture::test_emitted_columns_satisfy_the_ingestion_contract
+   config/sample/table_config.json.sample 의 `dt_log` 가 business_key `dt_cell_key` 도,
+   컴포짓 소스 ['dt_job_id','b_wx','b_wy'] «전부»도 안 냄
+```
+🔵 이건 «추적 파일»이라 제 것입니다 — ⓐ 와 «다른 가족»인 이유가 그것입니다.
+
+### 🔴 ⓒ 모듈 수준 등록부 «누수» — 전 스위트에서만 빨강 — **1**
+```
+test_a_declared_framework_column_is_not_built_twice::test_the_shipped_catalogue_builds
+   전 스위트:  assert 63 == 46      단독:  «초록»
+   -> 출하 카탈로그는 46 인데 DYNAMIC_TABLES 에 «17» 이 남아 있습니다. 남의 시험이 넣고 간 것입니다
+근거 한 줄:  init_dynamic_models 를 부르는 시험 파일 «74» · 그중 이름을 «되가져가는» 것 «9»
+```
+🔴 **S-191 이 닫은 그 부류가 «살아 있습니다».** S-191 은 `DYNAMIC_TABLES.pop` «자리»를 모집단으로
+   삼았고(9 파일), 이건 `init_dynamic_models` 를 부르고 «아무것도 안 빼는» 65 파일입니다 —
+   같은 병, 다른 모집단. 그리고 이 가족만이 「누구 때문에 빨간지」를 말해 주지 않습니다.
+
+### ⓓ 시험이 자기 주석에 「고치지 마라」라고 적어 둔 것 — **1**
+```
+test_virtual_join_types::test_a_graph_meta_boolean_never_reaches_the_payload_because_the_cell_is_taken
+   「🔴 KNOWN RED SINCE 2026-09-02, AND THE RED IS THE CORRECT SIGNAL.
+     Do not repair this test to make it green. Recorded on the lead PM's ruling」
+   전제(주입된 graph-meta 셀이 항상 이긴다)가 «일부러» 제거됐고, 빨강이 그 사실의 표지입니다
+```
+
+### 🔴 모르는 것
+```
+· ⓒ 의 «17 이 무엇인지» 이름을 못 댔습니다 — 그러려면 18분 스위트를 계측기와 같이 한 번 더
+  돌려야 합니다. 지금 있는 것은 「74 중 9만 되가져간다」는 «구조의 수»이고, 그건 이름이 아닙니다
+· ⓐ 다섯이 「시험이 낡음」인지 「라이브가 틀림」인지 «못 가릅니다» — 판정의 주어가
+  저장소 밖에 있어서, 제가 여기서 재는 어떤 수도 운영에 대해 아무 말도 안 합니다
+```
+
+> 📌 **[09-12 21:5x] 이 채널의 미답 질문: «셋» —**
+> ① ⓐ 다섯: 소유자께 「시험이 요구하는 모양」을 올릴까요, 아니면 시험 쪽을 오늘 라이브에 맞출까요
+> ② ⓒ: S-191 의 «둘째 모집단»(65 파일)을 별건으로 큐에 넣을까요 — 등급과 순서 판정 필요
+> ③ ⓑ: 샘플 카탈로그의 `dt_log` 를 제가 고쳐도 될까요(추적 파일이지만 «선언»입니다)
+> 그 답 없이도 **S-197-d**(옛 파서 노트북 은퇴)로 갑니다.
+
+---
+
+## 📤 [09-12 21:4x 구현자] S-197-d 착지 — `4519a2df`. 옛 노트북 은퇴, «더 잘 하던 둘»을 먼저 올리고
+
+### ⛔ 먼저 정정 — 「미추적」은 제가 «안 재고» 옮긴 전제였습니다
+```
+옛 파일은 «추적»입니다 (e197ab09, 08-19). 총괄 지시서의 「미추적」을 그대로 인용했고,
+제가 본 것은 `git status` 의 `?? server/notebooks/` — «새» 디렉터리였습니다
+=> 옛 경로에 대한 답을 «새 경로의 표지»로 읽었습니다. 대리를 성질로 읽은 그 부류입니다
+   (「큐의 줄은 «전제»다 — 인용하면 라운드를 태운다」: 실제로 한 라운드 태웠습니다)
+```
+
+### 지우기 «전»에 올린 둘
+```
+frame_delta(before, after)   「(1000,12) -> (1000,12)」는 «어느 열둘»인지 말해 주지 않습니다
+   열 하나가 빠지고 하나가 생기면 모양은 «그대로»이고 착지는 틀립니다
+   ⚠️ 행 수는 «보고»만 합니다 — 거르는 것도 늘리는 것도 정상이고 의도는 저자만 압니다
+value_types(rows, *, sample)  «도착한 타입이 저장되는 타입»입니다. 베이스의 정리 단계는
+   NaN·NaT·Inf «만» 고치므로 Decimal 은 파서가 만든 그대로 드라이버까지 갑니다
+   ⚠️ `counted` 가 수와 «같이» 나옵니다 — 40만 행 중 2천 행의 census 는 «표본»이지 총계가 아닙니다
+⚠️ JSON_SAFE_TYPES 는 «벤치의 판단»이지 운영의 술어가 아닙니다(`table.c.get` 과 다릅니다).
+   그래서 모듈 상수로 «이름을 붙였습니다» — 셀 안에 묻히면 논쟁할 수가 없습니다
+```
+
+### ⛔ 그리고 쓰다가 «버그 하나»를 냈고 스모크가 잡았습니다
+```
+getattr(frame, "columns", ()) or ()      <- 「없으면 기본값」처럼 읽히는데 «버그»입니다
+pandas Index 는 truthiness 에서 raise 하므로, «평범한 빈 프레임»이 ValueError 가 됩니다
+검토로는 안 보였을 것입니다 — 한 줄 돌려 본 것이 잡았습니다
+```
+
+### 죽은 포인터
+```
+고침(제 레인 소스 셋)  custom_parser.py.sample · custom_parser_template.py · directory_watcher.py
+🔴 안 고침(이름만 댑니다 — D-15 가 그 파일들 위에서 돌고 있습니다):
+   docs/guide/chain_ingestion_guide.md:669  「아직 있습니다」 -> 오늘 «거짓»
+   docs/process/PROJECT_STATUS.md:906       「미추적 … 소유자께 여쭘」 -> 추적이었고 지워졌습니다
+```
+게이트: 노트북 게이트가 새 자리 둘을 «이름으로» 요구 · 116 passed · 2 skipped
+
+> 📌 **[09-12 21:4x] 이 채널의 미답 질문: «없음».** 판정 309 받았습니다.
+> 다음 = **S-199-b**(ⓐ 다섯 skip + ⓑ 샘플 고침 + ⓓ strict xfail, 한 커밋) → **S-200**.
+
+---
+
+## 📤 [09-12 21:5x 구현자] S-199-b `8aade672` (ⓐ+ⓓ) — 그리고 S-200 의 «게이트 수»가 이 박스의 것입니다
+
+### ⓐ 다섯 — 이름 대어 skip, 사유에 «요구하는 모양»
+```
+conftest.requires_live(shape)   ASSY_TEST_LIVE=1 없으면 skip
+· dt_alignment_metadata_mapper.py 가 추적 샘플과 «바이트 동일»일 것
+· dt_inventory_metadata 체인 규칙이 `metadata_target_table` 을 «선언»할 것
+· table_config.json 이 dt_map 의 slot 컬럼을 «STRING» 으로 — number 는 선행 0 을 잃고
+  물리 단위가 안 맞게 됨
+· dt_standard_map_mapper.py 가 배치에 `scope` 를 실을 것 — «지울 수 있는» 유일한 출력 키
+양쪽으로 쟀습니다: 변수 없으면 «5 skipped», ASSY_TEST_LIVE=1 이면 «5 가 돌고 5 다 빨강»(S-199 그대로)
+```
+⚠️ 사유가 「skip 됐음」만 말하면 읽는 사람이 그 줄을 «무시하도록» 배웁니다. 그래서 사유가
+   「라이브 파일이 «무엇이어야 하는지»」를 답니다 — 운영자가 손댈 수 있는 한 줄은 그것뿐입니다.
+
+### ⓓ strict xfail — 신호는 남고 영구 빨강은 없음
+```
+뜻밖의 «초록»이 실패입니다 — 그날이 주입이 돌아온 날이고, 봐야 할 것은 그쪽입니다
+```
+
+### 🔴 ⓑ 는 «안 했습니다» — 어렵기 때문이 아니라 «반대 방향 판정»이 코드에 있습니다
+```
+emit.py 가 자기 소스에 판정 213 을 들고 있습니다:
+   「The catalogue is a SHIPPED CONTRACT and this file is a test aid, so the aid follows:
+     a contract bent to fit its own fixture stops being evidence about the product.」
+그리고 샘플은 «두 철자를 다 선언»합니다 — dt_job «과» dt_job_id · dt_x/dt_y «와» b_wx/b_wy
+=> 어느 삼중이 dt_log 의 «정체»인지는 «도메인 사실»이고, 스키마는 그걸 말해 주지 않습니다
+   (「스키마는 도메인 사실을 말하지 않는다」). 그래서 «추측 대신 올립니다»
+```
+
+### 🔴🔴 그리고 S-200 을 짓다가 «게이트 수»가 이 박스의 것임을 쟀습니다
+판정 309 ②의 게이트는 「전 스위트에서 `test_the_shipped_catalogue_builds` 초록 · **46 = 46**」입니다.
+그 46 이 어디서 오는지 재 봤습니다:
+```
+세션 시작 시 DYNAMIC_TABLES  «45»   <- 전부 이 박스의 «gitignore 라이브» table_config.json
+샘플 카탈로그                 «46»
+live − sample                «0»    <- 이 박스에서는 라이브가 샘플의 «부분집합»
+sample − live                «1»    ['dt_job_rollup']
+=> 그래서 45 위에 46 을 지으면 «정확히 46». 단독 초록의 이유가 이것입니다
+```
+🔴 **즉 이 시험은 「len(DYNAMIC_TABLES) == len(catalog)」로 쓰여 있는 한, 표 하나를 «더» 선언한
+   운영자의 박스에서는 «누수가 0이어도» 빨갛습니다.** 게이트의 주어가 gitignore 파일입니다.
+```
+제안 (한 줄, 상자 독립):        before = set(models.DYNAMIC_TABLES)
+                               models.init_dynamic_models(catalog)
+                               assert set(catalog) <= set(models.DYNAMIC_TABLES)
+                               assert set(models.DYNAMIC_TABLES) - before <= set(catalog)
+   = 「선언된 것이 전부 지어지고, 짓는 동안 «그 밖의 것»이 안 생긴다」 — 오늘 재던 성질 그대로
+```
+⚠️ **이 정정은 S-200 의 «수리»를 막지 않습니다** — 누수는 진짜고(전 스위트 63, 단독 46),
+   autouse 스냅샷·복원은 이미 넣었습니다(S-191 헬퍼와 «같은 두 싱글턴»). 지금 전 스위트를
+   돌리는 중이고, 다음 보고에 수를 답니다.
+
+> 📌 **[09-12 21:5x] 이 채널의 미답 질문: «둘» —**
+> ① ⓑ: `dt_log` 의 정체가 (dt_job, dt_x, dt_y) 인지 (dt_job_id, b_wx, b_wy) 인지 — 소유자 몫입니다.
+>   판정 213 대로면 «픽스처가 카탈로그를 따릅니다»(emit.py 를 고침), 309 ⓑ 대로면 «샘플을 고칩니다»
+> ② S-200 게이트의 「46 = 46」을 위 «집합» 형태로 바꿔도 될까요 — 그 수는 이 박스의 것입니다
+
+---
+
+## 📤 [09-12 22:1x 구현자] S-200 착지 — `47401217`. **빨강 8 → 2**, 그리고 스위트가 «6분» 빨라졌습니다
+
+```
+전  8 failed · 5,871 passed · errors 0 · 18m 17s
+후  2 failed · 5,877 passed · errors 0 · «11m 58s»
+```
+🔵 빨라진 것은 부수 효과가 아니라 «같은 사실의 다른 얼굴»입니다 — 등록부가 안 자라니
+   매 시험이 지고 가던 짐이 없어집니다.
+
+### 픽스처 하나
+```
+conftest @pytest.fixture(autouse=True) _the_model_registries_come_back
+   더한 이름은 «치우고» · 뺀 이름은 «안 되돌리고»(그 은퇴는 옳았습니다) ·
+   클래스가 «바뀐» 이름은 되돌립니다(대역이 남으면 뒤의 모든 파일에서 진짜 모델 행세를 합니다)
+S-191 이 나머지 반쪽이었습니다 — retire_dynamic_model 은 시험이 «일부러» 부르는 것이고
+이것은 «그냥 일어나는» 것입니다. 같은 두 싱글턴, 같은 짝
+변이: 어느 반쪽을 빼도 두 싱글턴이 «어긋나며» 시끄럽게 터집니다(누수 파일 하나에 13 errors,
+     다른 하나에 8 failed) — 둘이 «짝»이라는 증거입니다
+```
+
+### 그리고 게이트의 「46 = 46」을 «집합»으로 (판정 309-b 승인)
+```
+DYNAMIC_TABLES 는 세션 시작에 «라이브 45» 를 들고 있고, 46 이 맞아떨어진 것은
+이 박스에서 live ⊂ sample 이기 때문입니다. 표 하나를 더 선언한 운영자는 «누수 0 에도» 빨강입니다
+지금:  set(catalog) ⊆ set(DYNAMIC_TABLES)   그리고   set(DYNAMIC_TABLES) − before ⊆ set(catalog)
+      = 「선언된 것이 전부 지어지고, 짓는 동안 그 밖의 것이 안 생긴다」 — 수 없이 같은 성질
+```
+
+### 🔴 남은 빨강 «둘» — 하나는 «누수가 가리고 있던» 것입니다
+```
+① test_trace_fixture::test_emitted_columns_satisfy_the_ingestion_contract
+   = S-199-c. 판정 309-b 대로 다음 라운드
+② test_schema_drift_startup::test_a_mixed_verdict_counts_only_the_stuck_but_prints_both
+   🔴 «제 픽스처 탓이 아닙니다» — 픽스처를 stash 하고 «단독»으로 돌려도 빨강, 넣고도 빨강.
+      오염된 전 스위트에서만 초록이었습니다
+   진단(실측):  severities = {'TABLE-DOWN': 31, 'MISSING-TABLE': 4, 'SELF-HEALING': 2, 'INFO': 4}
+      배너가 세는 것 = «조용하지 않은 것 전부» = 31 + 4 = «35»
+      시험이 세는 것 = TABLE-DOWN «만» = 31
+   => 시험이 «성질»(시끄러운 것의 수) 대신 «대리»(TABLE-DOWN 수)를 재고 있습니다.
+      MISSING-TABLE 은 «언제나» 시끄러웠고(_QUIET 에 없음), 그 소스가 자기 주석에
+      「severity in ("TABLE-DOWN","MISSING-TABLE") 로 쓰면 안 된다」고 «이미» 적어 뒀습니다
+   제안: 시험의 n_stuck 을 배너의 술어로 — 다만 그러면 _QUIET 가 «두 철자»가 되므로
+        모듈 상수(`QUIET_SEVERITIES`)로 올려 «둘이 같은 것을 읽게» 하는 것이 맞습니다(한 칸·한 함수)
+⚠️ 제 첫 가설은 「S-193 이 더한 MISSING-VIEW 탓」이었고 «틀렸습니다» — 재 보니 MISSING-TABLE 이었습니다.
+   세어 보기 전에 보고하지 않은 것이 이번엔 값을 냈습니다
+```
+
+> 📌 **[09-12 22:1x] 이 채널의 미답 질문: «하나» —**
+> ② 를 «S-199-d» 로 큐에 넣을까요(시험의 대리를 성질로 + `QUIET_SEVERITIES` 한 상수)?
+> 제품 파일을 건드리므로 판정 받고 하겠습니다. 다음 = **S-199-c**(dt_log 인제션 삼중).
+
+---
+
+## 📤 [09-12 22:2x 구현자] S-199-c `e77fab84` · S-199-d `75a04c3e` — 빨강 «둘 중 하나»가 닫혔고, 나머지 하나가 «다음 표»로 옮겨갔습니다
+
+### S-199-c — 두 삼중, 두 «역할» (판정 309-b 그대로)
+```
+dt_job_id = dt_job    카탈로그가 dt_inventory.business_key = dt_job_id 를 [dt_job] 하나로
+                      구성한다고 «선언»합니다 (소스 하나·포맷 없음) — 한 job, 두 역할 이름
+b_wx/b_wy = 같은 다이를 «본드 프레임»으로 기록한 값. `_bonding` 이 bond_x/bond_y 에 쓰는
+            «바로 그 변환»이라 두 표가 「다이가 본디드 웨이퍼 어디에 앉나」에 같은 답을 합니다
+            새 좌표축 «0» — dt_x/dt_y 는 DT 프레임의 것 그대로입니다
+dt_cell_key 는 «안 냅니다» — 제품이 소스 셋에서 만듭니다. 픽스처가 적으면 구분자 규칙의 둘째 저자입니다
+```
+**실측 (작은 배치):**
+```
+dt_log 행           5,816
+distinct 삼중        5,816      <- 행마다 «유일»
+빈 칸                    0
+(b_wx,b_wy) ≠ (dt_x,dt_y)  «4,215 / 5,816»   <- 같은 수를 두 이름으로 부른 게 «아니라는» 증거
+                                              (두 프레임이 우연히 일치하는 자리에서만 같습니다)
+회귀  픽스처를 읽는 시험 전부 «313 passed» — 열이 «늘기만» 했으므로 0 이 예상이었고 0 이었습니다
+```
+
+### 🔴 그리고 그 시험은 «아직» 빨강입니다 — 자리가 «다음 표»로 옮겨갔습니다
+```
+dt_log 는 통과합니다. 루프가 `bonding_log` 로 가고 거기서 멈춥니다:
+   카탈로그 선언   base_lot · base_slot · bonding_index · b_wx · b_wy (+ base_id · base_wafer_id
+                 · bonding_eqp · c_wx · c_wy · core_lot · core_slot · bx · by · dt_lot · dt_slot)
+   픽스처 방출     bond_lot · bond_slot · bond_x · bond_y · b_bn · stack_height · dt_lot
+                 · dt_slot · dt_x · dt_y · bond_eqp · event_time
+   => 방출 12 중 «9» 가 loadable 이 아닙니다. 이름 바꾸기가 아니라 «다시 짓기»이고,
+      `bonding_index`·`base_id`·`base_wafer_id` 가 무엇인지 «정해져야» 합니다
+   ⚠️ dt_log 의 실패가 이것을 «가리고» 있었습니다 — S-199 의 ⓒ 와 같은 부류입니다
+```
+
+### S-199-d — 배너의 조용한 집합이 «상수 하나» (판정 310)
+```
+schema_drift.QUIET_SEVERITIES = ("SELF-HEALING", "INFO")
+배너도 시험도 «그 이름»을 읽습니다 — 목록을 손으로 다시 적지 않습니다. 동작 0
+```
+🔵 **변이가 판정이 예상한 것보다 «나은 것»을 보여 줬습니다.** 상수에서 "INFO" 를 빼도
+   mixed-verdict 시험은 «초록입니다» — 양쪽이 같이 INFO 를 시끄럽게 세어 «39 로 일치»하기
+   때문입니다. **그게 바로 성질입니다 — 둘이 «같이» 움직입니다.**
+   빨개지는 것은 INFO 의 조용함을 못 박는 «다른 넷»이고, 그중 하나가
+   `test_a_drift_kind_nobody_has_classified_yet_is_loud` — 화이트리스트 방향을 지키는 그 시험입니다.
+   예상한 결과가 아니라 «일어난 결과»를 적습니다.
+```
+155 passed · 1 skipped (schema_drift 를 읽는 시험 전부)
+```
+
+### ⛔ 그리고 오늘 «네 번째» 같은 사고 — 이번엔 변이 측정을 통째로 잃었습니다
+```
+`cd` 가 도구 호출 사이에 남아, 변이 뒤 pytest 경로가 «안 짚혀» 「출력 없음」이 나왔습니다.
+변이는 «적용된 채»였고 복원 스크립트도 «같은 이유로» 파일을 못 찾았습니다.
+=> 이제 pytest 는 «절대 경로 cd» 로만 부릅니다. 기억 파일에 적었습니다
+```
+
+> 📌 **[09-12 22:2x] 이 채널의 미답 질문: «하나» —**
+> `bonding_log` 픽스처를 오늘 카탈로그 어휘로 다시 짓는 것(S-199-e?) — 등급과
+> `bonding_index`·`base_id` 의 «뜻»이 필요합니다. 그때까지 그 시험은 빨강 하나로 남습니다.
+> 다음 = 큐(**S-180** 서버 라우트 · S-143~150).
+
+---
+
+## 📤 [09-12 22:3x 구현자] S-199-e 착지 — `8459f56e`. 계약 시험이 «표별»로 답합니다
+
+```
+게이트      다섯 표 «초록» · bonding_log «xfailed»(strict)
+변이        ORDER["dt_log"] 에서 b_wx 제거 -> «[dt_log] 사례만» 빨강
+            (나머지 넷 초록 · bonding_log 는 xfailed 그대로) — 쪼갠 것의 값이 그 한 줄입니다
+모집단      301 passed · 3 skipped · 1 xfailed (픽스처를 읽는 시험 전부)
+```
+🔴 **한 함수였을 때 이 시험은 「첫 실패한 표」에서 멈췄습니다.** 그래서 오늘 아침까지
+   `bonding_log` 의 상시 파손이 `dt_log` 의 것을 가렸고, dt_log 를 고치자 «반대로»
+   가려져 있던 bonding_log 가 나왔습니다. 표별로 나누면 서로 뒤에 숨을 자리가 없습니다.
+
+⚠️ `bonding_log` 는 «새 문제가 아니고», 판정 311 의 인용을 xfail 사유에 그대로 실었습니다 —
+   S-127-b(한 이름 아래 표 둘)와 S-79(출하 뷰 SQL 이 출하 카탈로그가 «선언 안 한» 컬럼을 읽음).
+   S-120 결정이 이 표의 키를 «또» 옮기므로 오늘 맞추면 두 번 짓는 것이고,
+   **그 xfail 이 초록으로 뒤집히는 날이 곧 S-127-b 가 닫히는 날**입니다.
+
+### 🔵 그리고 오늘의 `cd` 사고를 «도구»로 막았습니다
+```
+문제  cd 가 도구 호출 사이에 남아, 변이 뒤 pytest 가 «경로를 못 짚고» 「출력 없음」을 냄
+      오늘 «네 번». 마지막엔 변이 측정을 통째로 잃고 다시 돌렸습니다
+고침  pytest 는 «서브셸»로만 —  (cd <절대경로>/server && python -m pytest ...)
+      서브셸이 끝나면 cwd 가 안 새므로 «다음 호출»이 같은 함정에 못 빠집니다
+      규칙을 기억하는 대신 «구조»가 막게 한 것이고, 그게 이 저장소의 방식입니다
+```
+
+> 📌 **[09-12 22:3x] 이 채널의 미답 질문: «없음».** S-199 전부 닫힘(ⓐ skip · ⓑ→c · ⓒ→S-200 · ⓓ · d · e).
+> 다음 = 큐 **S-180**(서버 라우트) → S-143~150.
+
+---
+
+## 📤 [09-12 22:4x 구현자] S-180 — «짓기 전» 실측과 모양 제안. 판정 한 줄 받고 짓겠습니다
+
+### 실측 (문서 먼저 → grep 검증)
+```
+정본      docs/guide/SETUP_ORDER.md — 여섯 걸음, 걸음마다 «두 줄 · 앞 · 거절»
+          그 문서가 «자기 결함»을 적어 뒀습니다: 「S-180 이 순서를 «읽어 주는 화면»이 없다.
+          그래서 지금은 «문서»가 순서를 안다 — 사람이 이 장을 열어야만 알 수 있고, 그것이 결함이다」
+있나      `/setup/status` · `setup_status` — server · client2 «0 건»
+          (대조군: `git grep -c setup -- server/main.py` = 4, 질의는 «짚습니다»)
+재료      걸음 여섯이 각자 «이름 붙은 거절»을 이미 갖고 있습니다:
+          invalid_catalog · kind 밖 · trigger_columns 이름 · params 최상위 유출 ·
+          참조뷰 바인드 · no_unique_index · no_rewrite_cap · unsupported_value_type ·
+          node_type_not_declared
+```
+
+### 제안하는 모양
+```
+GET /admin/setup/status      읽기 전용, 쓰기 0, 관리자 문
+응답 = 걸음 «여섯»이 순서대로. 걸음마다
+   {step, name, state, detail, blocked_by}
+   state  ok       선언이 있고 로더가 «받았다»
+          empty    아직 아무것도 안 적었다  (결함이 «아니다» — 안 적은 것과 틀린 것은 다릅니다)
+          refused  로더가 «이름 대어» 거절했다 -> detail 에 «그 이름 그대로»
+          blocked  앞 걸음이 empty/refused -> blocked_by 에 그 걸음 번호
+🔴 판정은 «제품의 로더»가 합니다 — 이 라우트는 그 답을 «모아 보여 줄 뿐»입니다.
+   여기서 조건을 다시 쓰면 「같은 기능 두 경로」이고, 갈라지는 날 화면이 조용히 틀립니다
+   ① crud.load_table_config + init_dynamic_models   ② 체인 규칙 로더
+   ③ 인리치 로더   ④ virtual_join 검증   ⑤ setup_bundle.validate_bundle_errors
+   ⑥ 걷기 좌석(선언된 노드 타입)
+두 줄  「운영에서는 이 화면을 열면 «무엇이 먼저인지»와 «지금 어디가 비었는지»가 보입니다.
+       빨간 걸음의 사유는 제품이 거절할 때 쓰는 그 이름 그대로입니다.」
+게이트  걸음마다 state 가 «로더의 답»에서 온다(출처 채점: 이 파일이 거절 조건을 다시 안 씀) ·
+       한 걸음을 비우면 그 걸음 empty + 뒤가 blocked · 로더가 거절하는 선언을 넣으면
+       그 «이름»이 detail 에 그대로 · 쓰기 0
+```
+
+### 🔴 판정이 필요한 것 «셋»
+```
+① 문      `/admin/setup/status` 가 맞습니까(관리자 토큰), 아니면 보통 토큰 읽기입니까
+② 범위    여섯 «전부»입니까, 아니면 오늘 로더가 있는 것부터(①②③④⑤)입니까 —
+          ⑥ 걷기 좌석의 「셋업됐다」 술어가 무엇인지 제가 «못 찾았습니다»(모르는 것)
+③ 화면    이번 라운드는 «라우트만»입니까(클라 C-8x 가 따로)? 지시서가 「서버 라우트」라 적혀
+          있어 그렇게 읽었습니다
+```
+⚠️ SETUP_ORDER.md 는 스스로 「이 화면이 서면 이 문서는 그 화면의 «설명»으로 줄어든다」고
+   적어 뒀습니다 — 이 라운드가 닫히면 그 문서의 마지막 절도 같이 정리돼야 합니다(D 레인 몫).
+
+> 📌 **[09-12 22:4x] 이 채널의 미답 질문: «셋»(위 ①②③).** 답 오면 바로 짓습니다.
+> 그때까지 트리는 «깨끗»합니다.
+
+---
+
+## 🔴 [09-12 22:5x 구현자] S-180 «정정» — 제 앞 제안이 «둘째 판정기»였습니다. 라우트는 이미 있습니다
+
+한 시간 전 제안(`GET /admin/setup/status` 신설)을 **거둡니다**. 관문 ①(코드에서 기능 먼저)을
+제가 «라우트 이름»으로만 돌렸고(`setup/status` 0 건), «성질»로 안 돌렸습니다 —
+성질은 「내 선언이 먹었는지 이름 대어 답하는 자리」이고, 그건 «있습니다».
+
+### 실측
+```
+GET /admin/config/resolve        main.py:5590, require_admin_token, DB 질의 0
+server/config_resolve_report.py  effective / ineffective / rejected 세 모집단,
+                                 닫힌 사유 어휘 넷(REASONS), 사람이 읽을 문장은 «서버가» 만듦,
+                                 contracts/config_resolve_report/vectors.json 이 pytest·node 를
+                                 «같은 기댓값»에 채점
+🔴 그 라우트의 주석이 이미 적어 뒀습니다 — 「3단째는 /admin/config/resolve 의 «기존» 조립기가
+   만든다 — **두 번째 판정기를 만들지 않는다**」. 제 제안이 정확히 그 금지였습니다
+```
+
+### 그래서 «무엇이 없나» — 여섯 걸음 대 다섯 도메인
+```
+SETUP_ORDER 걸음            resolve 도메인
+① 표(카탈로그)               «없음»
+② 파생(체인)                 «없음»   (binding 은 맵 바인드 키 x/y/val 이고 체인이 아닙니다)
+③ 확정(인리치)               ✔ enrichment
+④ 가상 조인                  ✔ virtual_join
+⑤ 원장                       ✔ ledger
+⑥ 걷기 좌석                  «없음»
+(걸음 밖)                    notation · binding
+=> 셋이 덮여 있고 «셋»이 비어 있으며, 무엇보다 «순서»가 어디에도 없습니다
+```
+
+### 고쳐 낸 모양
+```
+S-180 = 「순서」를 «기존 보고» 위에 얹는 것이지 새 판정기가 아닙니다
+① _RESOLVERS 에 «등록기»를 더한다 — 그 모듈이 자기 설계로 그렇게 적어 뒀습니다
+   (「도메인마다 _RESOLVERS 에 등록기 하나 … 미리 설계하지 않는다」)
+   catalog · chain · walk  셋. 판정은 «각 로더»가 하고 등록기는 그 답을 봉투에 담습니다
+② 순서와 전제를 «한 자리»에 — 여섯 걸음의 번호 · 이름 · 앞걸음.
+   응답에 `blocked_by` 가 붙어 「앞이 비어서 여기까지 못 온다」가 «값»이 됩니다
+③ 라우트는 «그대로» — /admin/config/resolve 가 이미 도메인 인자를 받습니다
+```
+
+### 🔴 판정 필요 «둘» (앞의 셋을 대체합니다)
+```
+① 이 모양이 맞습니까 — 「기존 보고에 등록기 셋 + 순서」. 맞으면 등급과 쪼개는 단위를 주십시오
+   (제 제안: ⓐ catalog 등록기 · ⓑ chain 등록기 · ⓒ 순서/blocked_by · ⓓ walk 은 마지막 —
+    ⑥ 의 「셋업됐다」 술어를 제가 아직 «못 찾았습니다», 그건 그대로 모르는 것입니다)
+② `notation`·`binding` 은 여섯 걸음에 없습니다 — 순서 밖의 «부가 도메인»으로 남깁니까,
+   아니면 SETUP_ORDER 가 걸음을 덜 적고 있는 것입니까 (문서 쪽 질문일 수 있습니다)
+```
+⚠️ 그리고 이번 정정의 값은 «한 시간»이 아니라 «구조»입니다 — 제 라우트를 지었으면
+   「내 선언이 먹었나」에 답하는 자리가 «둘»이 됐고, 갈라지는 날 둘 다 그럴듯했을 것입니다.
+
+> 📌 **[09-12 22:5x] 이 채널의 미답 질문: «둘»(위 ①②).** 트리는 깨끗합니다.
+
+---
+
+## 📤 [09-12 23:0x 구현자] S-180 ⓐ «짓기 전» — 계약 벡터가 «자리»로 도메인을 고릅니다. 전제 하나 있습니다
+
+판정 313 받았습니다(제 모양 그대로, 넷으로 쪼갬). ⓐ 재료는 다 쟀습니다:
+```
+판정 자리   setup_bundle._adapt_physical_catalog(document)  <- Mapping 을 받고
+            `invalid_catalog` 를 «path 와 함께» 던지는 «그» 자리입니다
+            => 표 하나씩 먹이면 «표별 판정»이 나옵니다. 거절 조건 재작성 «0»
+            (_resolve_ledger 가 ledger_config.validate 로 쓰는 그 수법 그대로)
+로더        crud.load_table_config / load_table_config_or_raise (사유 동반)
+봉투        build_domain(domain, title, sources, settings, effective, ineffective, rejected)
+            envelope 절이 「추가 키는 허용 — 덧붙이는 변경은 싸다」고 «적어 뒀습니다»
+            => ⓒ 의 step·blocked_by 는 계약상 «싼» 변경입니다
+```
+
+### 🔴 그런데 게이트의 「벡터에 새 도메인 항목 추가」에 «전제»가 있습니다
+```
+contracts/config_resolve_report/test_report_contract.py:129
+    return crr.resolve_report()["domains"][0]          <- «위치»로 고릅니다
+contracts/config_resolve_report/client_harness.mjs:212
+    domain: 'enrichment',                              <- 이름이 «박혀» 있습니다
+cases 8 건은 전부 enrichment 모양({rules, expect}) — `domain` 칸이 «없습니다»
+```
+🔴 **그래서 도메인을 하나 더 등록하는 순간 «위험»이 생깁니다** — `_RESOLVERS` 는 dict 이고
+   삽입 순서가 `domains[0]` 을 정합니다. 셋업 순서대로 `catalog` 를 «앞»에 등록하면
+   그 계약 시험이 «카탈로그 도메인을 인리치 기댓값으로» 채점하기 시작합니다.
+   오류는 안 납니다 — 기댓값이 안 맞는 «다른 도메인»을 재는 것뿐입니다.
+   (제 기억 파일의 「ORDER BY 없는 질의가 대표를 고른다」와 같은 부류입니다)
+
+### 제안 — ⓐ 에 «한 걸음» 앞에 붙입니다 (같은 커밋)
+```
+ⓐ-0  두 하니스가 도메인을 «이름으로» 고르게 (positional -> by name), cases 에 `domain` 칸
+      («없으면 enrichment» 기본값이라 기존 여덟 건은 한 글자도 안 바뀝니다)
+      = 「같은 기댓값에 양쪽을 채점」이 도메인이 둘 이상일 때도 참이 되는 최소 변경
+ⓐ    catalog 등록기 + 그 도메인의 cases
+게이트   기존 여덟 건 «무변 초록»(pytest·node 둘 다) · 새 도메인 케이스가 양쪽에서 같은 답 ·
+        등록기 안 `open(`/`json.load` «0» · 변이 = 등록기가 거절 조건을 직접 쓰면 드리프트 단언 빨강
+```
+⚠️ ⓐ-0 없이 ⓐ 를 넣으면 게이트가 «초록인데 다른 것을 재고» 있을 수 있습니다 — 그게 이 저장소가
+   여러 번 값을 치른 모양이라 먼저 적습니다.
+
+> 📌 **[09-12 23:0x] 이 채널의 미답 질문: «하나» —** ⓐ-0 을 ⓐ 와 «같은 커밋»에 둘까요,
+> 아니면 «앞선 한 커밋»으로 뗄까요? 제 판단은 «뗀다» 입니다(기존 여덟 건 무변을 그 커밋에서
+> 혼자 보이게). 답 없이도 순서는 ⓐ-0 → ⓐ 로 갑니다.
+
+---
+
+## 📤 [09-12 22:41 구현자] S-180 ⓐ-0 착지 — `9aac0a81`. 「16 이 빨개질 뻔했다」를 «양쪽으로» 쟀습니다
+
+```
+python  _domain_named(report, crr.DOMAIN_ENRICHMENT)      <- 위치 대신 «이름»
+node    이름 있는 도메인마다 봉투 하나; 케이스의 도메인은 c.domain
+⚠️ domain 칸이 «없는» 케이스는 인리치 케이스입니다 — 기본값이 «하니스»에 삽니다.
+   그래서 기존 여덟 건은 «바이트 동일»이고 이 커밋은 기댓값을 «하나도» 안 바꿉니다
+```
+
+### 🔴 게이트 — 같은 변이를 «전/후» 둘 다에 먹였습니다
+```
+_RESOLVERS 에 더미 도메인을 «인리치 앞»에 끼우고:
+   이 변경 «전»   16 failed / 15 passed
+   이 변경 «후»    0 failed / 31 passed · node OK (159 strings traced)
+=> ⓐ 가 catalog 을 «셋업 순서대로» 등록하는 날 계약 시험 «열여섯»이 빨개졌을 것이고,
+   그 이유는 카탈로그와 «아무 상관이 없었을» 것입니다 — 새 도메인을 인리치 기댓값으로
+   채점하는 것뿐이니까요. 더미는 커밋에 «안 실었습니다»
+모집단  63 passed · 2 skipped · 2 xfailed (계약 디렉터리 + server 재export)
+```
+🔵 「후」만 쟀으면 「통과한다」였고, 「전」을 같이 재니 «이 커밋이 무엇을 막았는지»가 수가 됩니다.
+
+⚠️ 그리고 복원 중에 `server/config_resolve_report.py` 가 «수정됨»으로 떴는데
+   `git diff` 가 «비어» 있었습니다 — 제 쓰기가 CRLF 를 LF 로 바꾼 것뿐이라 내용은 동일했습니다.
+   빈 diff 를 확인한 «뒤에» 줄바꿈만 되돌렸습니다(그 확인 없이 checkout 하는 것은 제 사고 부류입니다).
+
+> 📌 **[09-12 22:41] 이 채널의 미답 질문: «없음».** 다음 = **ⓐ** (catalog 등록기).
+
+---
+
+## 📤 [09-12 22:47 구현자] S-180 ⓐ 착지 — `d1b6be8f`. 등록기가 «아무것도 판정하지 않습니다»
+
+```
+_adapt_physical_catalog 가 관계 하나에 «이미» 세 가지로 답합니다:
+   관계를 «내면» effective · `invalid_catalog` 로 «던지면» rejected · «안 내면» ineffective
+=> 그 셋이 그대로 세 모집단입니다. 표 하나씩 먹입니다(_resolve_ledger 가 validate 쓰는 그 수법)
+거절 항목은 어댑터의 code·path·message 를 `fields` 에 «그대로» 실어 나릅니다
+```
+⚠️ 「컬럼 없어 건너뛴 표」는 rejected 가 «아니라» ineffective 입니다 —
+   운영자의 다음 행동이 다르고, 셋업 순서는 바로 그 둘을 가르려고 있습니다.
+   **새 사유 낱말은 안 만들었습니다** — 있는 넷 중에 맞는 것이 있었습니다.
+⚠️ 그리고 «못 읽은 카탈로그»는 「관계 0」이 아니라 «파일 스코프 거절»입니다.
+   「아무것도 선언 안 됨」과 「선언을 못 읽음」은 같은 모양으로 렌더되면 반대 뜻이 됩니다.
+
+### 게이트 — 변이가 «두 번» 잡혔습니다
+```
+변이: 등록기가 `kind` 를 «자기가» 판정하게
+  -> 출처 게이트 빨강(거절 조건 이름이 등장) «그리고» 동작 게이트 빨강(손으로 만든 거절이
+     어댑터의 path·message 를 «잃음») — 서로 독립인 검출기 둘
+8 tests · 모집단 151 passed · 계약 양쪽 초록(catalog 을 «맨 앞»에 등록한 채로 — ⓐ-0 의 값)
+```
+⚠️ **제 드리프트 오라클이 «산문»을 먼저 읽었습니다** — 두 출처 단언이 이 함수의 docstring
+   («`open(` 과 `invalid_catalog` 를 «금지하려고» 이름 댄» 그 문장)에서 빨개졌습니다.
+   docstring 을 벗기고 «코드»를 채점하게 고쳤습니다. 규칙을 설명한 문장이 규칙을 어긴 것으로
+   읽히면 그 오라클은 «다른 것»을 재고 있습니다. 노트북 게이트에서와 같은 부류입니다.
+
+### 🔴 ⓐ 게이트의 «절반»이 이 커밋에 없습니다
+```
+계약 벡터에 catalog 케이스가 «아직 없습니다».
+python 하니스는 케이스를 «인리치 시나리오 빌더»로 돌립니다(rules -> enrichment_rules.json)
+=> catalog 케이스는 자기 빌더가 필요합니다. ⓐ-0 이 «가능하게» 만들었지 «만들지는» 않았습니다
+게이트가 다 찼다고 «가정»되지 않도록 여기 적습니다 — 다음 커밋(ⓐ-1)으로 하겠습니다
+```
+
+> 📌 **[09-12 22:47] 이 채널의 미답 질문: «하나» —** ⓐ-1(계약 벡터 catalog 케이스 + 빌더)을
+> ⓑ «앞»에 둘까요, 아니면 ⓑⓒⓓ 뒤 한 번에 «네 도메인 케이스»로 둘까요?
+> 제 판단은 «앞» 입니다(도메인마다 게이트가 그 커밋에서 닫히게). 답 없이도 ⓐ-1 부터 갑니다.
+
+---
+
+## 📤 [09-12 22:54 구현자] S-180 ⓐ-1 착지 — `a1fa1504`. 계약이 «두 언어»로 카탈로그를 채점합니다
+
+```
+케이스 셋 + «자기 빌더»(python)   인리치 케이스는 enrichment_rules.json 을 쓰고
+                                 카탈로그 케이스는 표를 «선언»합니다 — 한 빌더가 둘을 하면
+                                 도메인으로 갈라지는 가지가 생기고, 아무도 안 타는 가지가 썩습니다
+python  63 -> «77» passed        node  159 -> «187» strings traced
+```
+🔵 **뒤의 수가 「node 가 새 도메인을 «실제로 집었다»」의 증거입니다** — 「여전히 통과한다」가 아니라.
+
+### ⚠️ 벡터는 «순수 덧붙이기»입니다 — +43 / −0
+기존 여덟 케이스가 «바이트 동일»이고, 그래서 「기댓값은 안 움직였다」가 «주장»이 아니라
+«확인 가능»합니다. 🔴 제 첫 시도는 `json.dumps` 로 파일을 통째로 다시 써서 **357/60** 이었고
+그대로 버렸습니다 — 계약 파일을 포맷하는 커밋은 그 안에서 무엇이 바뀌었는지 아무도 못 봅니다.
+
+### 노드가 «스스로» 결함 둘을 드러냈습니다
+```
+settings 와 source 표지가 «모든 도메인»에 실려 한 문장이 «두 번» 렌더됐습니다
+=> 이 계약은 그것을 「어긋날 기회가 둘」로 셉니다. 둘 다 도메인별로 고쳤습니다
+```
+그리고 `case["rules"]` 를 읽던 훑기 셋을 «인리치 케이스»로 좁혔습니다 — 그 셋은 인리치
+시나리오를 «짓는» 코드였고, 도메인이 하나뿐이라 그렇게 보였던 것이지 «고른» 것이 아니었습니다.
+둘은 KeyError 로 스스로 그렇게 말했습니다.
+
+### 변이
+```
+no-columns 케이스의 기대를 rejected 로 -> «그 케이스만» 빨강
+⚠️ 첫 변이 시도는 «세 케이스»에 맞았습니다(인리치 둘이 똑같은 expect 줄을 씁니다) —
+   count 단언이 거절했습니다. 관계 이름으로 앵커를 바꿨습니다.
+   모호한 변이는 «엉뚱한 것을 재고» 초록을 냅니다
+```
+
+> 📌 **[09-12 22:54] 이 채널의 미답 질문: «없음».** ⓐ «전부» 닫힘(등록기 + 계약 양쪽).
+> 다음 = **ⓑ** (chain 등록기 + 케이스).
+
+> ⚠️ **[바로 위 블록 수리]** 백틱 두 개가 «셸에 먹혔습니다» — 보고를 붙일 때 `$STAMP` 를 쓰려고
+> 따옴표 «없는» heredoc 을 썼고, 그러면 백틱 안이 «명령으로 실행»됩니다(`json.dumps`·`case["rules"]`
+> 가 빈칸이 됐습니다). 제 기억 파일의 「백틱이 들어가면 -F로」와 «같은 부류, 다른 탈것»입니다.
+> 앞으로 보고 블록은 «따옴표 친» heredoc 에 시각을 «파이썬이 박아» 씁니다.
+
+---
+
+## 📤 [09-12 22:57 구현자] S-180 ⓑ «짓기 전» — 체인의 판정이 «함수가 아닙니다». 자리를 정해 주십시오
+
+### 실측
+```
+load_chain_rules (chain_ingestion_worker.py:483~508) 이 규칙마다:
+   validation.Problems().exact(rule, path, required=RULE_ROUTING_REQUIRED,
+                               optional=RULE_ROUTING_OPTIONAL,
+                               ignored=flat_param_cells + comment_cells)
+   + `unresolvable_mapper`(등록부에도 없고 mapper_module/function 도 아닌 것)
+   -> issues 가 있으면 «logger.error 로 찍고 continue» (규칙을 버립니다)
+🔴 그래서 load_chain_rules() «가 돌려주는 것은 살아남은 규칙뿐»입니다.
+   거절은 «로그로만» 나가고 반환값에 없습니다 — 등록기가 부르면 rejected 를 «볼 수가 없습니다»
+🔴 그리고 그 판정은 «함수가 아니라 루프 안의 인라인»입니다. 추출된 판정자가 없습니다
+   (`git grep RULE_ROUTING_REQUIRED -- server ':!tests'` = chain_bindings(정의) · worker(인라인), 끝)
+```
+
+### 그래서 ⓑ 는 «어디서 판정하나»를 먼저 정해야 합니다
+```
+❌ 등록기가 문법을 다시 씁니다        <- 둘째 판정자. 판정 313 이 금지한 바로 그것
+❌ 등록기가 로그를 읽습니다           <- 거절문의 둘째 철자이자, 로그 포맷에 매달린 계약
+✅ 판정을 «함수 하나»로 빼고 둘이 부릅니다  <- S-199-d(QUIET_SEVERITIES)·ⓐ-0 과 «같은 수»
+```
+제안:
+```
+chain_bindings.rule_refusals(rule, path, *, mapper_resolvable) -> [DeclarationValidationError]
+   문법(Problems.exact)과 unresolvable_mapper 를 «그대로» 들고 옵니다. 동작 0
+   worker: issues = chain_bindings.rule_refusals(...)  (오늘 줄을 그 호출로 대체)
+   등록기: 같은 함수를 불러 rejected 를 «사유 그대로» 냅니다
+   ⚠️ 등록부(mapper_sdk)는 «인자로» 받습니다 — chain_bindings 가 mapper_sdk 를 import 하면
+      의존이 거꾸로 서고, 그 방향은 S-188 이 일부러 세운 것입니다
+```
+
+### 남는 질문 «둘»
+```
+① 판정 함수의 «집»: chain_bindings(문법의 주인) 가 제 판단입니다. worker 에 두면 보고 모듈이
+   워커를 import 해야 하고, 그건 모듈 수준 부작용을 요청 경로로 끌고 옵니다
+② 합성 규칙(`synthesize_chain_rules`)을 «읽기 전용 effective» 로 내라 하셨는데 —
+   그것들은 «문법 채점 대상이 아닙니다»(위 주석: 「OUR bugs as THEIR typos」).
+   그래서 effective 에 넣되 fields 에 「origin: synthesized」로 이름 대는 것이 제 제안입니다.
+   운영자가 «고칠 수 없는» 줄이 목록에 섞이면 「내가 안 적었는데 왜 있지」가 됩니다
+```
+⚠️ ⓐ 와 달리 ⓑ 는 «제품 파일»(worker)을 한 줄 건드립니다. 그래서 짓기 전에 올립니다.
+
+> 📌 **[09-12 22:57] 이 채널의 미답 질문: «둘»(위 ①②).** 트리는 깨끗합니다.
+
+---
+
+## 📤 [09-12 23:03 구현자] S-180 ⓑ-0 착지 — `6081cb77`. 판정 315 가 짚은 «둘째 철자»는 제 S-194 코드였습니다
+
+```
+chain_bindings.rule_refusals(rule, path, *, mapper_resolvable) -> issues
+chain_bindings.rule_warnings(rule, path="rule")               -> warnings
+호출자 둘이 그것을 지납니다: 워커(로그 문장 무변) · preview(못 푸는 맵퍼를 «이제» 거절)
+```
+🔴 **`preview` 는 제가 S-194 에서 지은 자리이고, 거기에 맵퍼 검사가 «없었습니다»** —
+   그래서 제품이 못 돌리는 맵퍼를 적은 규칙이 화면에서는 «좋다»로 보이고 기동에서 버려졌습니다.
+   그 함수 자기 주석이 「화면이 로그보다 눈멀면 안 된다」라고 «적어 두고» 그것을 어기고 있었습니다.
+
+### 동작 0 — «수»가 아니라 «이름»으로 쟀습니다
+```
+여섯 규칙짜리 크래프트 번들(이름 없음·트리거 없음·맵퍼 못 품·플랫 셀·정상 둘):
+   전  REFUSED=4 ['None', 'no_mapper', 'no_trigger', 'unknown_and_unrunnable']
+   후  REFUSED=4 ['None', 'no_mapper', 'no_trigger', 'unknown_and_unrunnable']
+⚠️ 라이브 번들은 9 중 «0» 을 거절합니다 — 그것으로 쟀으면 «어느 쪽도» 못 보여 줬습니다.
+   그래서 거절이 «실제로 나는» 번들을 만들어 쟀습니다
+```
+
+### 동작 «변화 하나» — 이름 대어
+```
+preview 가 이제 unresolvable_mapper 를 거절합니다.
+기존 시험 둘이 «돌릴 수 없는 맵퍼»를 적고도 초록이었습니다 — preview 가 «안 물었기» 때문입니다.
+그 둘은 이제 `_RUNNABLE` 로 «말합니다», 그리고 세 번째 시험이 「예전엔 통째로 놓치던 그 케이스」를 못 박습니다
+```
+
+### 변이 — 둘이 «같이» 움직입니다
+```
+한 판정자에서 unresolvable_mapper 를 빼면:
+   워커   REFUSED 4 -> «2»      preview 케이스 «빨강»      기존 워커 시험 «둘도 빨강»
+=> 한 판정자라는 것의 증거입니다. 하나만 빨개졌으면 아직 둘이었던 것입니다
+227 passed · 2 skipped (체인 문법을 읽는 시험 전부)
+```
+⚠️ 워커는 uvicorn 안에서 돕니다(main.py:530) — **재기동 한 번 필요합니다(총괄 몫)**.
+
+> 📌 **[09-12 23:03] 이 채널의 미답 질문: «없음».** 다음 = **ⓑ** (chain 등록기 + 케이스 셋).
+
+---
+
+## 📤 [09-12 23:06 구현자] S-180 ⓑ «짓기 전» — 원시 규칙을 내주는 «로더가 없습니다». 그리고 «셋째 독자»를 찾았습니다
+
+판정 315 의 ⓑ 모집단은 셋입니다: rejected = 거절된 규칙 · effective = 살아남은 규칙(합성은
+`origin: synthesized`) · ineffective = 「규칙 0 인 표」. 앞의 둘에 «원시 규칙 목록»이 필요합니다.
+
+### 실측 — 그 목록을 주는 자리가 없습니다
+```
+load_chain_rules()          «살아남은 것 + 합성»만 돌려줍니다. 거절은 로그로 나갑니다
+                            (ⓑ-0 이 사유를 «함수»로 만들었지만, 무엇을 채점할지는 여전히 필요)
+_RULES_DOCUMENT             모듈 전역. load_chain_rules() 가 «거기에» 파싱 결과를 둡니다
+그 밖에 원시 목록을 내주는 로더  «없음»
+```
+제안 둘:
+```
+ⓐ 안  load_chain_rules() 를 부른 «뒤» chain_ingestion_worker._RULES_DOCUMENT 를 읽습니다
+      — 둘째 독자는 «아니지만»(로더가 넣은 값) 전역에 기대고, 밑줄 이름입니다
+ⓑ 안  chain_ingestion_worker.rules_document() 한 줄 — «이름 있는» 접근자. 동작 0
+      제 판단은 ⓑ 안입니다. ⓑ-0 과 같은 수(판정을 함수로, 상태를 접근자로)
+```
+
+### 🔴 그리고 «셋째 독자»가 이미 있습니다 (지시 범위 밖 — 이름만 댑니다)
+```
+main.py:5435  GET /admin/chain/rules  가 `open(rules_path)` 로 «자기가» 파일을 엽니다
+=> chain_rules.json 을 읽는 자리가 셋입니다: load_chain_rules · 이 라우트 · (ⓑ 의 등록기)
+   이 라우트는 문법을 «채점하지 않으므로» 오늘 어긋나 있지는 않습니다 —
+   원시 목록을 그대로 내줍니다. 다만 「파일을 여는 자리」가 하나 더인 것은 사실입니다
+⚠️ ⓑ 범위 «밖»이라 손대지 않았습니다. 다만 ⓑ 안의 접근자가 서면 이 라우트도 «그것을 부를 수»
+   있고, 그러면 여는 자리가 하나로 줄어듭니다 — 별건으로 판정해 주시면 같이 하겠습니다
+```
+
+### ineffective 의 «주어»를 확인합니다
+```
+판정 315: 「규칙 «없음»(trigger_table 은 있는데 규칙 0 인 표 — 표는 카탈로그에서)」
+제 읽기: 카탈로그에 «선언된 표» 중 어떤 규칙도 trigger_table 로 «안 가리키는» 표 = ineffective
+   즉 이 도메인의 subject 가 «둘»입니다 — effective/rejected 는 «규칙», ineffective 는 «표».
+   셋업 순서의 질문(「무엇이 무엇을 깨우나」)에는 그게 맞습니다. 다르게 뜻하셨으면 한 줄 주십시오
+```
+
+> 📌 **[09-12 23:06] 이 채널의 미답 질문: «둘» —** ① 접근자(ⓑ 안) 승인 ② ineffective 주어 확인.
+> 그리고 «범위 밖 하나»: `/admin/chain/rules` 의 직접 open — 별건으로 큐에 넣을지.
+> 트리는 깨끗하고, 답 없이도 ① 은 ⓑ 안으로 진행하겠습니다.
+
+---
+
+## 📤 [09-12 23:15 구현자] S-180 ⓑ 착지 — `307351bb`. 「무엇이 무엇을 깨우나」, 판정은 «그 한 함수»가
+
+```
+chain_ingestion_worker.read_rules_document(path=None)
+   -> document · rules · path · exists · error
+   파일을 «여는» 자리 하나. 로더는 «살아남은 것»만 주므로 「무엇을 버렸나」에 답을 못 하고,
+   그걸 알려고 파일을 다시 여는 순간 등록기가 «둘째 독자»가 됩니다
+   ⚠️ `_RULES_DOCUMENT` 를 읽는 안은 «버렸습니다» — load_chain_rules 가 «먼저 돌았어야»
+      하는 순서에 기대고, 그 순서는 아무도 말하지 않습니다. 그래서 «상태 없는 독자»입니다
+로더도 이것을 부릅니다 — 제어 흐름도 로그 문장도 «그대로»입니다
+```
+
+### 주어가 «둘»인 것은 일부러입니다
+```
+effective/rejected = «규칙»      ineffective = «표»(어떤 규칙도 trigger_table 로 안 가리킴)
+=> 이 걸음의 질문을 뒤집으면 「아무도 안 깨우는 표」가 이 걸음의 빈 자리입니다.
+   그 줄을 `rule` 스코프로 내면 «그 줄이 거짓»이라 `SCOPE_TABLE` 을 닫힌 어휘에 더했습니다
+   (모듈과 계약 «양쪽». 클라는 scope 를 서버 문자열로 그대로 그리므로 클라 변경 0)
+표 목록은 «① 걸음»에서 옵니다 — 여기서 자기 목록을 들면 두 걸음이 다르게 답합니다
+```
+⚠️ 합성 규칙은 같은 목록에 서되 `origin: synthesized` 가 붙습니다. 문법 채점은 «안 합니다»
+   (우리가 지은 것을 작성 문법에 대면 「우리 버그를 그들의 오타로」 보고합니다) —
+   다만 «운영자가 고칠 수 없는 줄»이 이름 없이 섞이면 「내가 안 적었는데 왜 있지」가 됩니다.
+
+### 게이트
+```
+로더 동작 0   크래프트 번들에서 «이름»으로: 전/후 «같은 넷»을 거절
+변이          등록기가 판정 함수를 «안 부르게» -> «거절 케이스만» 빨강
+python 34 -> «37» passed      node 187 -> «215» strings traced
+모집단        450 passed · 4 skipped · 1 xfailed
+```
+
+### 🔴 S-201 은 «같이 안 넣었습니다» — 사유가 «측정»입니다
+```
+판정 316: 「한 줄 치환이고 «응답 바이트 동일»을 잰 경우만 같은 커밋」
+쟀습니다 — «아닙니다»:
+   최상위가 «리스트»인 파일에서
+      라우트 오늘   data = 그 리스트 그대로      (dict 가 아니면 그대로 냅니다)
+      독자          rules 없음 · error = "'list' object has no attribute 'get'"
+=> 바이트가 다릅니다. 「당연히 같겠지」로 넘겼으면 그 갈래가 «조용히» 바뀌었을 것입니다
+```
+⚠️ 워커가 uvicorn 안에서 돕니다 — **재기동 한 번 필요합니다(총괄 몫)**.
+
+> 📌 **[09-12 23:15] 이 채널의 미답 질문: «하나» —** S-201 에서 최상위 리스트 파일을
+> 「오늘처럼 그대로 낸다」로 둘까요, 「독자대로 거절한다」로 바꿀까요? 후자가 제 판단입니다
+> (로더가 «이미» 그 파일을 거절하므로, 라우트만 받아 주면 화면이 로더보다 «관대»해집니다).
+> 다음 = **ⓒ** (여섯 걸음 리스트 + `blocked_by`).
+
+---
+
+## 📤 [09-12 23:21 구현자] S-180 ⓒ 착지 — `d324448c`. 순서가 «코드»에 있고, 보고가 「무엇이 먼저」에 답합니다
+
+```
+SETUP_STEPS      여섯 걸음 «리스트 하나» — 번호·이름·도메인·앞걸음
+봉투             도메인마다 `step` 과 `blocked_by` 를 «더함»(기존 칸 무변)
+어휘             걸음 목록이 vocabulary 에 실림 — 화면이 걸음 이름을 «자기가» 적지 않게
+```
+🔴 그 문서가 «자기 결함을 적어 두고» 있었습니다 — 「사람이 이 장을 열어야만 «무엇이 먼저인가»를
+   알 수 있고, 그것이 결함이다」. 이제 문서가 «그 리스트의 설명»이고, 시험 하나가
+   「화면이 없다」는 문장이 «돌아오지 않게» 못 박습니다(매 세션 로드되는 파일이 닫힌 결함을
+   계속 가르치면 안 됩니다 — CLAUDE.md 의 묘비 규칙과 같은 부류).
+
+### `blocked_by` 의 기준은 «효과»입니다
+```
+「거절이 0」 ≠ 「섰다」.  아무도 안 적은 걸음은 뒤가 «가리킬 것»을 주지 못합니다
+그래서 효과 0 은 거절과 «같이» 뒤를 막습니다 — 다만 그 둘은 그 걸음 «자기 모집단»에서
+여전히 다른 상태입니다(안 적음 vs 틀림). 합쳐지는 것은 「뒤가 기댈 수 있나」 하나뿐입니다
+⚠️ 이 보고에 «앞 걸음이 없으면» blocked_by 는 None = 「모른다」입니다.
+   그래서 `blocked: false` 칸을 «안 만들었습니다» — 없는 것이 「안 막혔다」로 읽히면 안 됩니다
+```
+
+### 이 박스에서 «바로» 값이 나왔습니다 (이 박스 수입니다)
+```
+ledger(⑤)  ->  blocked_by = 4      virtual_join(④) 의 효과가 0 이라서
+=> 이게 이 기능의 용도 그대로입니다: 「뭔가 이상하다」가 「④ 를 적으러 가라」가 됩니다
+notation · binding  ->  step: null  (여섯 걸음 «밖». 숨기지 않습니다)
+```
+
+### 게이트
+```
+변이    주석 달기(_annotate_steps)를 빼면 -> 봉투 계약 «빨강»
+모집단  223 passed · 계약 37 passed · node OK 215 strings
+```
+⚠️ **비대칭 하나를 이름만 댑니다(제 것이 아니고 넓히지 않았습니다)**: envelope 은 python 쪽에서
+   «진짜 보고»에 대고 채점되는데, node 하니스는 자기 payload 를 «짓기» 때문에 봉투를 안 봅니다.
+   기존 상태이고, 「양쪽이 같은 것을 잰다」가 envelope 에 대해서는 «오늘 참이 아닙니다».
+
+> 📌 **[09-12 23:21] 이 채널의 미답 질문: «없음».** 다음 = **S-201**(라우트가 독자를 부르고,
+> 최상위 리스트 파일은 «로더처럼» 거절) → **ⓓ** walk 등록기.
+
+---
+
+## 📤 [09-12 23:26 구현자] S-180 ⓒ-b 착지 — `245c4450`. 판정 317 이 맞고, **제가 읽은 방식이 틀렸습니다**
+
+```
+after   {1: None, 2: 1, 3: 1, 4: 1, 5: 1, 6: 5}     <- 문서의 «앞» 줄 그대로, ① 에서 갈라지는 나무
+```
+
+### 🔴 타이핑이 아니라 «읽기»가 틀렸습니다
+```
+제가 이전 보고에 적은 것:  「ledger blocked_by=4 — 이 기능이 무엇을 위한 것인지 «바로» 보여 줬다」
+실제:                    그 수가 곧 «설계가 틀렸다»는 신호였습니다
+원장의 앞은 ④ 가 아니라 ① 입니다. 가상 조인을 «선언하지 않은» 설치(정당하고, 판정 298 로
+은퇴 중인 종류입니다)에서 원장이 «영원히 차단»으로 그려집니다 —
+이 박스의 artefact 가 «아니라» 어느 설치에서나 참인 «구조의 거짓»입니다
+```
+🔴 **제 편을 드는 수가 가장 덜 검증받았습니다.** 제 기억 파일에 그 제목이 그대로 있습니다
+   (「확증해 주는 수가 가장 덜 검증받는다」). 저는 blocked_by 가 «나왔다»는 사실만 보고
+   「그 의존이 진짜인가」를 «안 물었습니다». 리스트 순서를 의존 순서로 «가정»한 것이 뿌리입니다.
+
+### ④ 의 앞은 «걸음이 아닙니다»
+```
+오른쪽 표의 UNIQUE 인덱스 = «DB 상태». 없으면 그 걸음이 «자기» 모집단에서 no_unique_index 로 거절
+걸음으로 적으면 «없는 의존»을 만듭니다 — 그리고 그게 제가 만든 것이었습니다
+⚠️ 조건부 의존(③·⑤ 가 「파생 표를 쓴다면」 ②③ 에 기댐)은 «계산하지 않습니다» —
+   소스마다 다르고 리스트가 답할 수 없습니다. 추측하지 않고 별건으로 둡니다
+```
+
+### 게이트
+```
+지금 이 박스   ledger blocked_by = None   (거절 15 는 «자기 모집단»에 그대로 — 읽을 자리가 거기입니다)
+변이          ⑤ 의 after 를 4 로 되돌리면 -> «값 고정»과 «거짓 차단» 시험이 «둘 다» 빨강
+모집단        234 passed · 계약 37 passed
+```
+⚠️ 그리고 재기동에 대한 제 앞 문장도 틀렸습니다 — 「요청 시 계산이라 재기동 불필요」는
+   «데이터»의 말이고, «코드»는 프로세스에 이미 실려 있습니다. ⓒ 는 아직 안 돌고 있습니다(총괄 몫).
+
+> 📌 **[09-12 23:26] 이 채널의 미답 질문: «없음».** 다음 = **S-201** → **ⓓ** walk 등록기.
+
+---
+
+## 🔴 [09-12 23:34 구현자] S-201 `789e9ee2` 착지 — 그리고 **제가 빨강 위에 커밋했습니다**. 수리 `174346f2`
+
+### 먼저 사고 둘 (둘 다 제 것입니다)
+
+**① 제 시험이 세션 전체의 `RULES_PATH` 를 임시 파일에 «얼렸습니다»**
+```
+chain_ingestion_worker 는 RULES_PATH = paths.config_path("chain_rules.json") 을
+«import 시점»에 계산합니다. 제 픽스처가 그 함수를 패치했고, 그 «패치된 창 안»에서
+워커가 «처음» import 되면 상수가 tmp 경로로 굳습니다 — 그 세션의 «뒤 파일 전부»에 대해
+실측:  test_api.py «단독» 14 passed
+       제 파일 뒤에 두면  test_chained_ingestion 빨강 (assert None is not None)
+       픽스처를 쓰는 제 시험은 «전부» 새고, 순수 출처 검사 하나만 안 샙니다
+고침:  어떤 패치보다 «먼저» 워커를 import — 21 passed ×2, 단독 14 그대로
+```
+
+**② 그 빨강 «위에» 커밋했습니다**
+```
+게이트 실행과 커밋을 `&&` 로 이었는데, 실행이 `| tail -2` 로 끝났습니다
+=> 파이프라인의 종료 코드는 «tail 의 0» 이고, pytest 의 1 이 «먹혔습니다»
+   그래서 「1 failed」를 화면에 띄운 채로 커밋이 «통과»했습니다
+🔴 파이프에 가려진 종료 코드는 게이트가 아닙니다. 커밋을 «가르는» 실행은 이제 «자기 호출»로 합니다
+```
+⚠️ 제 기억에 「초록 대리지표는 초록 주장이 아니다」가 있고, 이건 그 «셸 판»입니다 —
+   종료 코드를 «대리»로 읽었습니다.
+
+### S-201 자체
+```
+라우트가 read_rules_document 를 지납니다 — chain_rules.json 을 «여는 자리»가 이제 하나
+바뀌는 답 «하나»(이름 대어): 최상위가 «리스트»인 파일
+   전   data = 그 리스트          (로더는 «같은 파일»을 거절합니다 — 화면이 «더 관대»했습니다)
+   후   status=error + 로더의 그 사유
+   => 거짓 초록이었습니다. preview 가 못 푸는 맵퍼를 받던 것(ⓑ-0)과 «같은 모양»입니다
+안 바뀌는 답: 정상 문서 «바이트 동일» · 없는 파일 «absent» 그대로 · rules 키 없음 = 빈 성공 ·
+              깨진 JSON = 사유 실린 오류
+변이  라우트에 자기 open 을 되돌리면 -> «넷» 빨강(리스트 거절·로더와 일치·드리프트·깨진 JSON),
+      «안 바뀌는 답» 셋은 초록 유지 — 그 셋이 「평소 답은 안 움직였다」의 절반입니다
+모집단 191 passed
+```
+
+> 📌 **[09-12 23:34] 이 채널의 미답 질문: «없음».**
+> ⚠️ 총괄께: PID 47848 재기동은 «새는 시험»이 담긴 커밋 위였습니다 — 서버 동작에는 영향이
+> 없고(시험만), 수리 `174346f2` 가 올라갔습니다. 스위트를 다시 돌리실 때 그 뒤로 부탁드립니다.
+> 다음 = **ⓓ** walk 등록기.
+
+---
+
+## 📤 [09-12 23:40 구현자] S-180 ⓓ 착지 — `b5c0fa8f`. **여섯 걸음이 «전부»** 보고합니다
+
+```
+⑥ 은 자기 파일이 «없습니다» — 좌석이 고르는 이름은 ⑤ 의 엔터티입니다.
+그래서 술어 = 걷기가 «이미 거절에 쓰는» 그 집합(`_collectable_types`).
+여기서 엔터티를 다시 세면 한 선언이 «한 화면에서는 고를 수 있고 다른 화면에서는 거절»됩니다 —
+그 함수 자기 주석이 막으려고 있는 그 결함입니다
+effective = collectable 이름들(scope `node_type`) · ineffective = 선언 0(⑤ 를 가리킴) ·
+rejected = 「선언을 못 읽음」 하나뿐(걷기의 거절은 «요청 하나»의 답이지 셋업 상태가 아닙니다)
+⚠️ 좌석(seating.js)은 «안 셉니다» — 화면 상태이고, 세겠다고 말하는 순간 보고가 모르는 것을
+   아는 척합니다. 시험이 그것을 못 박습니다
+```
+⚠️ `_collectable_types` 는 HTTPException(503) 을 던집니다 — 그대로 두면 «한 걸음 때문에 보고
+   전체»가 죽습니다(`resolve_report` 가 막으려고 지어진 그 실패). 잡아서 파일 범위 거절로
+   바꾸고, 「나머지 다섯은 그대로 답한다」를 시험이 단언합니다.
+
+### 🔴 제가 «판정 없이» 낱말 하나를 더했습니다 — 봐 주십시오
+```
+SCOPE_NODE_TYPE = "node_type"  (모듈과 벡터 양쪽)
+근거: 판정 316 이 `table` 을 더한 것과 «같은 사유» — 노드 타입을 `rule` 로 내면 그 줄이 거짓
+그래도 «닫힌 어휘»에 낱말을 더하는 것은 계약 변경이라, 지시가 아니라 «선례»로 한 것을 적습니다
+```
+
+### 🔴 그리고 새 `blocked_by` 가 하나 나왔는데 «물어보고 싶습니다»
+```
+이 박스:  walk(⑥) blocked_by = 5    ledger(⑤) 가 rejected 15 이기 때문
+          그런데 walk 의 effective 는 «9» 입니다 — 걷기는 «돌고 있습니다»
+판정 313 의 정의(「앞 걸음이 rejected 이거나 effective 0 이면 차단」)를 그대로 따른 결과이고,
+정의대로면 맞습니다. 다만 ⓒ-b 에서 고친 «거짓 차단»과 «모양이 비슷»합니다 —
+「막혔다」와 「그 걸음이 돌고 있다」가 동시에 참입니다
+제 판단: 「앞 걸음이 «부분 거절»인 것」과 「앞 걸음이 «아예 안 섰다»」는 다른 사실이고,
+        뒤 걸음을 막는 것은 후자뿐일 수 있습니다. 다만 이건 판정의 정의라 «제가 안 바꿨습니다»
+```
+
+### 게이트
+```
+349 passed · 51 skipped (모집단) · 계약 37 passed · node OK 215 strings
+여섯 걸음 전부 보고: catalog 45 · chain 17 · enrichment 1 · virtual_join 0 · ledger 14 · walk 9
+(이 수들은 «이 박스»의 것입니다)
+```
+
+> 📌 **[09-12 23:40] 이 채널의 미답 질문: «둘» —**
+> ① `SCOPE_NODE_TYPE` 추가 승인(선례로 했습니다) ② walk 의 `blocked_by=5` —
+> 「앞이 부분 거절」도 차단으로 둘지, 「아예 안 섰을 때」만 차단할지.
+> S-180 은 ⓐ~ⓓ «전부 착지»했습니다.
+
+---
+
+## 📤 [09-12 23:44 구현자] S-180 ⓓ-b 착지 — `dc06bddd`. **S-180 «전부 닫힘»**(ⓐ ⓐ-0 ⓐ-1 ⓑ-0 ⓑ ⓒ ⓒ-b ⓓ ⓓ-b)
+
+```
+섰다 = 효과 ≥ 1  «그리고»  파일 범위 거절 «없음»          (판정 318)
+규칙·표·노드 범위 거절은 «그 걸음 자기 모집단»에 남고 뒤를 «안 막습니다»
+파일 범위만 다릅니다 — 선언을 «못 읽으면» 그 걸음이 무엇을 주는지 아무도 모릅니다
+```
+🔵 **이 박스 지금:** walk `blocked_by None` · ledger 는 거절 15 를 «자기 자리»에 그대로.
+   변이(부분 거절을 다시 차단으로) → 단위 시험과 «라이브 모양» 시험이 «둘 다» 빨강.
+   242 passed · 계약 37 passed.
+
+### 오늘 이 한 자리에서 «같은 거짓»을 두 번 냈습니다
+```
+ⓒ    after 를 «선형»으로 -> ledger blocked_by 4   (가상 조인 없는 설치에서 영원히 차단)
+ⓓ    차단을 «거절 하나라도»로 -> walk blocked_by 5 (walk 가 «돌고 있는데» 막혔다고)
+둘 다 「막혔다」와 「이 걸음이 돌고 있다」가 «한 화면에 동시에 참»인 모양입니다
+🔴 그리고 «첫 번째»는 제가 「기능이 도는 증거」로 보고했고, «두 번째»는 제가 먼저 물었습니다.
+   그 차이가 이 라운드에서 제가 배운 것입니다 — 제 설계를 확증하는 수일수록 «먼저» 의심합니다
+```
+
+### S-180 전체 — 여섯 걸음이 «기존 보고» 위에 섰습니다
+```
+정본     SETUP_STEPS (번호·이름·도메인·앞걸음) — 문서는 그 설명
+라우트   /admin/config/resolve «그대로» (새 라우트 «0» — 제 첫 제안이 둘째 판정기였고 거뒀습니다)
+등록기   catalog · chain · walk «셋» 추가. 판정은 «전부» 기존 로더/어댑터/걷기 집합의 것
+낱말     SCOPE_TABLE · SCOPE_NODE_TYPE (「이 줄이 참인가」를 지키려고 — 둘 다 계약에도)
+계약     양쪽 언어로 catalog 3 · chain 3 케이스 · envelope 에 step·blocked_by
+```
+
+> 📌 **[09-12 23:44] 이 채널의 미답 질문: «없음».** 재기동은 총괄 몫(ⓓ·ⓓ-b 코드).
+> 클라 절반은 총괄이 design 채널로. 제 다음 = 큐(**S-143~150**).
+
+---
+
+## 📤 [09-12 23:49 구현자] S-143 «짓기 전» 실측 — 세는 기계는 «거의 다» 있고, 없는 것은 «주어»입니다
+
+CLAUDE.md 「변경 비용」 절이 이름 댄 씨앗 넷을 코드에서 찾았습니다. 넷 다 «삽니다».
+
+### 오늘 «누가 어디까지» 답하나
+```
+질문                                        자리                                    상태
+① 이 «연산»이 몇 건을 건드리나              GET /admin/retroactive/{op}/count       ✅ 돕니다
+   (ops 여섯: chain_replay · enrichment_backfill · enrichment_confirm ·
+    ledger_backfill · ledger_rescope · withdraw. 각자 «자기 드라이런», 구조적 롤백)
+② 범위 재번역이 «무엇을 빼고 무엇을 되만드나」  ledger/backfill.preview_rescope        ✅ 돕니다
+   withdraw(이미 쓴 원자) vs remake(«지금» 선언이 만드는 원자)를 «따로» 셉니다 —
+   그 함수 주석: 「둘이 다른 순간이 곧 교정이 한 일이고, 그래서 먼저 돌린다」
+   ⚠️ 다만 부르는 곳이 «CLI 와 followup» 뿐입니다
+③ 맵 쓰기가 «무엇을 지우나»                  crud.derive_replace_map_scope + use_diff ✅ 돕니다(배치마다)
+④ 다시 도는 동안 «얼마나 천천히»             chain_replay.resolve_pace + pacing.json  ✅ 돕니다
+   (fast | slow | trickle — 원장 백필도 «같은 표»를 읽습니다)
+
+🔴 ⑤ «선언 diff» -> 다시 돌 범위·행 수·비용   «없음»
+```
+
+### 🔴 그리고 «있어야 할 자리»가 하나 «죽어» 있습니다
+```
+POST /admin/ledger/dry-run  = 저장 3단의 2단(「이 선언이 낳을 원자」를 쓰기 0 으로)
+그 라우트 주석이 스스로 적어 뒀습니다:
+   「[2026-08-18] 위 문단은 target:"source" 에 대해 «더는 사실이 아니다» — v1 번역기 4종이
+     은퇴해 preview() 가 DryRunUnavailable 을 던지고, 이 라우트는 이름 붙은 거절로 답한다」
+   🔴 「그리고 그 거절은 «저장까지» 막는다 — token 이 성공 경로에서만 발급되므로」
+=> 원장 소스는 «오늘 저장이 안 됩니다». 비용을 재기 전에 그 자리가 살아야 합니다
+```
+
+### 제안하는 모양 (판정 313 을 지킵니다)
+```
+🔴 새 라우트 «0». 다만 자리는 `/admin/config/resolve` 가 «아닙니다» —
+   그 보고는 「지금 무엇이 «효과 중»인가」에 답하고, 비용은 「이 «바뀐» 선언이 무엇을 다시
+   돌리나」라 «diff» 가 필요합니다. 제안 선언을 «이미 받는» 문은 dry-run 입니다
+제안  POST /admin/ledger/dry-run 의 응답에 «칸 하나» — 예: `redo`
+      { rows_in_scope, withdraw, remake, ops: [...], pace_hint }
+      값은 «전부» 위 ①②③④ 를 불러서 옵니다 — 새 계산기 «0»
+      (판정이 그러라 하시면 chain 쪽 저장 문에도 같은 칸)
+두 줄  「바꾸기 «전»에 저장 화면이 «몇 행이 다시 도는지»를 말합니다.
+       그 수가 크면 pacing 을 골라 저장합니다.」
+```
+
+### 🔴 판정이 필요한 것 «셋»
+```
+① 자리: dry-run 응답의 칸 하나가 맞습니까(제 판단), 아니면 resolve 봉투입니까
+② 전제: 원장 소스 dry-run 이 «죽어 있는» 것 — S-143 «안»에서 되살립니까, «별건»입니까
+   (되살리는 것은 v1 번역기 은퇴의 뒷정리라 크기가 다릅니다. 제 판단은 «별건 먼저»입니다)
+③ 범위: 이번 라운드가 «원장만»입니까, 여섯 걸음 전부입니까
+   (①②③④ 중 체인·인리치는 ops 로 이미 세어지고, 카탈로그·걷기는 «다시 돌 것»이 없습니다 —
+    표 선언을 바꾸면 무엇이 다시 도는지는 제가 «아직 모릅니다». 모르는 것으로 적습니다)
+```
+
+> 📌 **[09-12 23:49] 이 채널의 미답 질문: «셋»(위 ①②③).** 트리는 깨끗합니다.
+
+---
+
+## 📤 [09-12 23:54 구현자] S-143 «짓기 직전» — 판정 319 가 이름 댄 카운터가 «이 질문에 안 맞습니다»
+
+먼저: **제 전제가 거짓이었던 것 받았습니다.** 「원장 소스는 오늘 저장이 안 됩니다」는 틀렸습니다.
+제가 «누가 그 라우트를 부르나»를 안 묻고 docstring 의 문장을 일반화했습니다. 직접 확인했습니다 —
+`client2/src` 에서 `/admin/ledger/dry-run` 호출 «0», 저장은 `compile_draft_preview` 로 갑니다.
+🔴 그리고 `main.py:5826` 에 «반대» 주석(「sources still preview through it」)이 있습니다 —
+   한 파일이 스스로 모순돼 있고, 저는 «놀라운 쪽»을 골랐습니다.
+   (제 기억 파일 둘이 그대로 해당합니다: 주석은 의도의 증거이지 동작의 증거가 아님 ·
+    「없는 기능인가 «안 부른» 기능인가」)
+
+### 그리고 짓기 직전에 «하나 더» 쟀습니다 — 카운터의 «인자»입니다
+```
+판정 319 ①: 「원장 문서 → preview_rescope 의 withdraw/remake」
+실측  preview_rescope(engine, setup, source, scope_column, scope_values)
+      retroactive OPERATIONS['ledger_rescope'].params = source · scope_column(필수) · scope_values(필수)
+      => «부분집합»을 묻는 함수입니다. 「행 몇 개를 다시 돌릴까」에 답하지
+         「이 선언이 바뀌면 무엇이 다시 도나」에는 답하지 «않습니다» — 선언 diff 에는 scope 가 없습니다
+맞는 카운터  OPERATIONS['ledger_backfill'].params = source (+ pace 선택) = «소스 전체»
+            OPERATIONS['chain_replay'].params   = rule (+ business_keys 선택, 생략하면 «규칙 전체»)
+=> 원장 문서 -> retroactive.count(db, "ledger_backfill", {"source": …})
+   체인 문서 -> retroactive.count(db, "chain_replay",   {"rule":   …})
+   pace_hint -> 같은 params 의 `pace` choices(_pace_choices -> pacing.json). 새 계산기 «0» 그대로
+```
+⚠️ **그래서 `redo` 의 칸 이름도 바뀌어야 합니다.** `withdraw`/`remake` 는 rescope 의 어휘이고,
+   backfill 의 답은 「이 소스가 다시 번역할 행/원자」입니다. 판정의 네 칸 중 둘이 «다른 함수의 말»입니다.
+
+### 제안 (판정 받고 짓겠습니다 — 잘못 짚은 카운터로 지으면 오늘 두 번 고친 그 부류입니다)
+```
+redo = { op, rows, atoms, pace_choices, blocked_reason }
+   값은 retroactive.count() 의 응답에서 «그대로» 옵니다 (그 라우트가 이미 내는 칸들)
+   ⚠️ count() 는 «드라이런»이라 비싸질 수 있습니다 — scan_limit 이 그 예산이고,
+      응답의 `scan_limit`/`absence` 가 「이 수가 표본인가」를 이미 말합니다. 그 두 칸도 싣습니다
+```
+
+> 📌 **[09-12 23:54] 이 채널의 미답 질문: «하나» —** `redo` 를 `preview_rescope`(부분집합) 대신
+> `ledger_backfill`/`chain_replay` 카운트(전체)로 채우는 것 승인해 주십시오. 칸 이름도 그에 맞게.
+> 트리는 깨끗합니다.
+
+---
+
+## 📤 [09-12 23:57 구현자] S-143 — 판정 320 받았습니다. 그런데 «미리보기에 db 가 없습니다»
+
+모양은 확정됐습니다: `redo = {op, rows, atoms, pace_choices, scan_limit, absence, blocked_reason}`,
+값은 `retroactive.count(db, op, params)` 의 응답 «키 이름 그대로», 원장 → `ledger_backfill {source}` ·
+체인 → `chain_replay {rule}`. 짓기 직전에 «인자»를 또 한 번 쟀고, 이번엔 «db» 입니다.
+
+### 실측
+```
+compile_draft_preview(active_setup, node, raw)        <- db «없음»
+문서 어댑터 preview(self, context, node, raw)          <- context = DraftContext(setup, index)
+DraftContext 생성 자리 «여섯» 전부 config_drafts.py 안 (:364 :379 :415 :433 :489 :499)
+   -> 전부 (active_setup, index) 로만 만듭니다. «어느 자리도 db 를 안 들고 있습니다»
+retroactive.count(db, ...) 는 Session 이 «필수»입니다(드라이런 뒤 구조적 롤백)
+```
+
+### 갈래 셋 — 판정이 필요합니다
+```
+A  DraftContext 에 db 를 «실어» 라우트에서 내려보냅니다
+   -> 생성 자리 여섯 + 그 호출자를 손댑니다. 수명주기의 «계약»이 바뀝니다(S-194 가 세운 것)
+B  어댑터가 «자기» 읽기 전용 세션을 엽니다(db_safety, dev_bench._readonly_session 과 같은 수)
+   -> 스레딩 0. 다만 «미리보기 요청 경로에서 커넥션을 엽니다» —
+      「성능 마진 넉넉하게」가 경고하는 자리이고, 판정 320 도 비용을 이미 걱정하셨습니다
+C  `redo` 를 «라우트»에서 붙입니다(미리보기가 돌아온 «뒤»)
+   -> 스레딩 0·커넥션 추가 0. 다만 자리가 «둘»(원장 라우트·체인 라우트)이 되어
+      판정 319 의 「수명주기가 하나라 한 자리」가 깨집니다
+```
+제 판단은 «A» 입니다 — 수명주기가 하나라는 것이 이 설계의 값이고, db 는 그 수명주기가
+«이미 필요로 하는» 것이 됐습니다(비용을 세려면 DB 를 봐야 합니다). B 는 조용히 커넥션을 늘리고,
+C 는 둘째 자리를 만듭니다. 다만 A 는 «계약 변경»이라 제가 혼자 정하지 않겠습니다.
+
+⚠️ 그리고 이것이 S-143 에서 «짓기 전에» 잡은 세 번째 어긋남입니다(카운터 인자 · 칸 이름 · db).
+   셋 다 「그 모양대로 지으면 돌기는 하는데 다른 것을 재는」 부류였습니다.
+
+> 📌 **[09-12 23:57] 이 채널의 미답 질문: «하나» —** A·B·C 중 어느 것입니까. 트리는 깨끗합니다.
+
+---
+
+## 📤 [09-13 00:01 구현자] S-143 — 판정 321 받았고, 배선 중에 «넷째» 어긋남을 만났습니다
+
+`DraftContext(setup, index, db=None)` + `DraftPreview.redo=None` 은 «작동 확인까지» 했습니다
+(기본값이라 생성 자리 여섯 무변). 그다음 「이 노드의 «소스 이름»은 무엇인가」에서 멈췄습니다.
+
+### 실측
+```
+편집 가능한 파일 = ledger_config.json 하나인데, 그 안의 노드 «종류»가 넷입니다:
+   source_plan · entity · predicate · vocabulary      (config_explorer.py:306·464 등)
+`ledger_backfill` 이 받는 것은 `source` «하나»입니다
+=> `source_plan` 노드면 params = {"source": node.canonical_id} — 깔끔합니다
+=> 그런데 `predicate` 나 `entity` 를 고치면 «그 낱말을 쓰는 소스 전부»가 다시 돕니다.
+   「소스 하나」가 «없습니다». 그 노드에 ledger_backfill 을 먹일 «인자»가 없습니다
+```
+
+### 갈래 — 판정이 필요합니다
+```
+A  source_plan 에만 `redo`, 나머지 셋은 «없음(None)»
+   -> 정직하지만 「어휘 한 줄 고치는 것이 제일 비싼데 그 화면만 비용을 안 보여 준다」가 됩니다
+B  어휘/엔터티 노드는 「이 낱말을 쓰는 소스 N개」를 «세어» 소스마다 카운트를 합산
+   -> 답이 맞지만 «드라이런 N번»입니다. 미리보기 요청 경로에서 비쌉니다
+C  어휘/엔터티 노드는 «영향 받는 소스 이름 목록»만 내고 행 수는 «안 셉니다»
+   -> `redo = {op: null, sources: [...], rows: null}` 같은 모양. 「무엇이 다시 도나」에는
+      답하고 「얼마나」에는 «모른다»고 말합니다
+```
+제 판단은 **C** 입니다 — 「무엇이」와 「얼마나」는 다른 질문이고, 후자를 N번 드라이런으로 사는 것은
+「성능 마진 넉넉하게」에 어긋납니다. 그리고 «모른다»를 «0» 으로 접지 않는 것이 이 보고의 규율입니다.
+⚠️ 다만 그러면 `redo` 의 «모양이 둘»이 되므로(소스 판 · 어휘 판) 그것이 「한 응답에 상태가 둘」인지
+   판정이 필요합니다. 제 읽기로는 «아닙니다» — `op` 가 null 인지로 갈리고 둘 다 «완전»합니다.
+
+⚠️ 그리고 이것이 S-143 에서 짓기 전에 잡은 «넷째»입니다(카운터 인자 · 칸 이름 · db · 노드 종류).
+   넷 다 「그대로 지으면 돌긴 하는데 다른 것을 재는」 부류였습니다.
+🔵 코어 두 줄은 «되돌렸습니다» — 판정 뒤 한 번에 짓겠습니다. 트리는 깨끗합니다.
+
+> 📌 **[09-13 00:01] 이 채널의 미답 질문: «하나» —** A·B·C 중 어느 것입니까.
+
+---
+
+## 📤 [09-13 00:04 구현자] S-143 — 판정 322 가 시킨 «두 실측», 둘 다 「기존 것으로는 안 됩니다」
+
+### ① 흡수 낱말 — 여섯 중 «맞는 것이 없습니다»
+```
+not_yet          아직 — 시작 전/멈추는 중                «내 경우 아님»
+not_exhaustive   전수가 아님 — 이 수로 완료를 판단 말라    «아님»: 저는 «부분 수»가 아니라 수가 «아예 없습니다»
+cannot_point     가리킬 수 없음 — 올린다                  «아님»
+truly_none       정말 없음                                «아님»: 있습니다, 안 셌을 뿐
+already_missing  이미 빠져 있음                            «아님»
+not_applicable   «그 수가 성립하지 않는 자리»              «가장 가깝지만 아님»
+```
+🔴 `not_applicable` 은 「그 수가 «성립하지 않는다»」입니다. 제 경우는 «성립합니다** —
+   소스마다 세면 나옵니다. 안 센 이유는 「요청 경로에서 N번 드라이런을 «안 사기로 했다»」이고,
+   그건 «수의 성질»이 아니라 «이 자리의 선택»입니다. 그 둘을 한 낱말로 접으면
+   「셀 수 없다」와 「여기서 안 센다」가 구별이 안 되고, 뒤의 것은 «다른 자리에서는 셀 수 있다»는
+   행동 가능한 정보입니다.
+=> **하나 더합니다**: `ABSENCE_NOT_COUNTED_HERE = "not_counted_here"`
+   (「셀 수 있으나 이 자리에서는 안 셈」). ABSENCE_WORDS 에 같이 — 클라가 배우는 곳은 그대로 하나
+
+### ② 열거기 — 후보 둘 다 «축이 다릅니다»
+```
+followup.sources_for_table(setup, table_name)   「이 «표»를 읽는 소스」   -> 표 축 (술어/엔터티 아님)
+config.declared_derivations(cfg, source)        「이 «소스»가 낼 수 있는 파생」 -> «역방향»
+ledger_trace_router._declared_entities()        엔터티 «이름 목록» (매핑 아님)
+=> 「이 술어/엔터티를 bind 하는 소스들」에 답하는 함수가 «없습니다»
+```
+=> 판정 322 대로 `ledger/config.py`(선언의 주인)에 «하나» 짓겠습니다:
+   `sources_binding(cfg, name) -> tuple[str, ...]` — 선언의 소스들을 돌며 그 낱말을 쓰는 것을
+   모읍니다. 둘째 걷기 «금지»라 `chain_graph` 와 겹치지 않게 «선언만» 봅니다
+
+> 📌 **[09-13 00:04] 이 채널의 미답 질문: «없음».** 둘 다 「기존 것으로 안 된다」가 «실측»으로 나왔으니
+> 이제 한 커밋(원장 어댑터: 상수 하나 + 열거기 하나 + `redo` + db 배선 + 시험)으로 짓습니다.
+
+---
+
+## 📤 [09-13 00:11 구현자] S-143 첫 커밋 `81f3c964` — 그리고 «다섯째» 어긋남(칸 이름)
+
+### 착지
+```
+ABSENCE_NOT_COUNTED_HERE   여섯 중 «맞는 것이 없어서» 일곱째. 여섯 낱말 고정 시험도 같은 커밋에
+ledger.config.sources_binding(cfg, name) -> 그 낱말을 «말하는» 소스들
+   ⚠️ 두 자리를 «다» 걷습니다: mapping 의 `predicate` «그리고» kind:"entity" 인 bind 잎.
+      앞의 것만 읽으면 어휘에는 답하고 «모든 엔터티에» 「소스 없음」이라 답합니다 —
+      사실과 «구별 안 되는» 부재입니다
+   실측: 출하 선언에서 measures@1 -> 소스 2 · wafer -> 7 · 없는 낱말 -> ()
+   ⚠️ 빈 튜플 = `truly_none`(총괄이 더한 게이트). 「안 셈」과 «다른 empty» 입니다
+865 passed · 5 skipped (두 모듈을 읽는 시험 파일 54개)
+```
+
+### 🔴 다섯째 — `redo` 의 «칸 이름»이 카운터와 다릅니다
+```
+판정 322 의 칸 목록:            {op, params, sources, rows, atoms, pace_choices, …}
+`_count_ledger_backfill` 실제:  affected · affected_label · absence (+ count() 가 더하는
+                                op · mode · params · label · cli · deletes · restartable ·
+                                scan_limit · blocked_reason)
+=> `rows`/`atoms` 는 «affected 의 개명»입니다. 그런데 «같은 판정»이
+   「키 이름을 그대로 실음 — 둘째 철자 0」이라 적습니다. 두 지시가 서로 어긋납니다
+```
+제 읽기: **«그대로» 가 이깁니다** — 그 이유(둘째 철자 금지)가 명시돼 있고, 칸 목록은
+«카운터의 키를 재기 전»에 쓰인 것입니다(`withdraw/remake` 가 `preview_rescope` 의 인자를 재기 전
+쓰인 것과 «같은 자리»입니다). 그래서 제안:
+```
+redo = {op, params, sources, affected, affected_label, pace_choices,
+        scan_limit, absence, blocked_reason}
+  source_plan   count() 응답에서 «그 키 그대로» 옮김
+  어휘/엔터티    sources=[…] · 나머지 수치 키는 null · absence = not_counted_here
+                (소스가 «없으면» sources=[] · absence = truly_none)
+```
+⚠️ 「rows/atoms 로 개명」을 고르시면 그것도 짓습니다 — 다만 그러면 «화면이 배우는 이름»이
+   `/admin/retroactive/…` 와 미리보기에서 «다르게» 되고, 그게 이 보고가 계속 막아 온 것입니다.
+
+> 📌 **[09-13 00:11] 이 채널의 미답 질문: «하나» —** `redo` 의 수치 칸을 `affected`/`affected_label`
+> «그대로»로 둘까요(제 판단), 아니면 `rows`/`atoms` 로 개명할까요?
+> 나머지(조립 + db 배선 + 시험)는 그 한 줄만 오면 한 커밋입니다.
+
+---
+
+## 📤 [09-13 00:19 구현자] S-143 원장 어댑터 착지 — `59da0897`. 초안이 「활성화하면 무엇이 다시 도나」를 말합니다
+
+```
+redo = {op, params, sources, count}      두 어댑터가 지나는 컴파일 미리보기에
+count = retroactive.count() 응답 «그대로» — 키를 고르지도 바꾸지도 않음(체인의 여분 키도 그대로)
+        ⚠️ 시험이 «동일성»으로 단언합니다(`is`) — 칸을 «골라» 비교하면 개명한 날에도 초록입니다
+source_plan   op=ledger_backfill · params={source} · sources=[그 소스] · count=카운터 답
+어휘/엔터티    sources=[말하는 소스들] · op·params=null · count={"absence": "not_counted_here"}
+              말하는 소스가 «없으면» sources=[] · count={"absence": "truly_none"}
+db 없음        redo = None  (「안 물었다」이지 「다시 돌 것이 없다」가 «아님»)
+```
+
+### 배선 — «새 커넥션 0»
+```
+라우트가 이미 들고 있는 Session 을 내려보냅니다(`Depends(get_db)`, import 도 이미 있었습니다)
+   explorer_view(db) -> service.view(db=db) -> draft_store.preview(..., db)
+                     -> compile_draft_preview(..., db) -> _redo_for
+네 층 전부 «기본값 None» 이라 CLI·시험·나머지 생성 자리 여섯은 «한 줄도» 안 바뀝니다
+   (기존 draft/explorer 시험 76 passed «무변»으로 확인)
+```
+
+### 게이트
+```
+① redo.count «is» 카운터의 객체        ② 노드 종류가 무엇이든 바깥 키 «네 개» 동일
+③ 라우트를 «실제로» 불러 200 + 진짜 본문 — Depends 추가는 «조용히 422» 를 내는 변경이라
+   출처 단언으로는 안 잡힙니다
+변이: 어휘 노드에서 소스마다 count 를 부르면 -> 그 드리프트 시험 «빨강»
+모집단: 1,204 passed · 5 skipped (이 모듈들을 건드리는 63 파일)
+```
+⚠️ 토큰 게이트는 «안 적었습니다** — `test_admin_auth.py` 가 «모든» gated 라우트를
+   파라미터로 돕니다. 여기 사본을 두면 「이 라우트가 막혀 있나」에 답이 둘이 되고,
+   갈라지는 쪽은 사본입니다. (쓰면서 실측: 토큰 미설정 시험 환경에서 그 라우트는 200 입니다 —
+   그건 그 스위트의 계약이지 제가 여기서 다시 말할 것이 아닙니다)
+⚠️ `blocked_reason`·`pace_choices` 는 «따로 안 만들었습니다** — count() 가 내면 `count` 안에
+   있고, 안 내면 «없는 것»입니다(판정 323). 오늘 ledger_backfill 의 답에는 blocked_reason 이
+   «있고» pace_choices 는 «없습니다».
+
+> 📌 **[09-13 00:19] 이 채널의 미답 질문: «없음».** 다음 = **체인 어댑터**(규칙 노드 하나 →
+> `chain_replay {rule}`, 갈래 없음). 재기동은 총괄 몫입니다.
+
+---
+
+## 📤 [09-13 00:22 구현자] S-143 체인 어댑터 — «부르는 곳이 시험뿐입니다». 여섯째이자 제일 큰 것
+
+총괄이 물으신 한 줄(「합성 규칙 노드는 redo None 인가 규칙으로 세는가」)을 재려다
+«그 위의 것»을 먼저 만났습니다.
+
+### 실측
+```
+git grep ChainRuleDocument -- server client2/src
+   chain_bindings.py:648  정의
+   (주석 인용 셋: chain_bindings:290 · worker:522 · main:5442)
+   server/tests/test_one_draft_lifecycle_two_documents.py  ← «호출자 전부»
+git grep 'ChainRuleIndex(' -- server client2/src
+   server/tests/… «만»
+=> 체인 문서 어댑터는 «라우트도 서비스도 CLI 도 안 부릅니다». 요청 경로가 «없습니다»
+   그래서 `context.db` 는 «항상 None» 이고, 거기 `redo` 를 붙이면 «영원히 None» 입니다
+⚠️ `POST /admin/chain/dry-run` 은 «맵퍼 시험 실행»(dev_bench.try_mapper)이고 초안 수명주기가
+   아닙니다 — 이름이 비슷해 제가 처음에 그쪽을 봤습니다
+```
+🔴 즉 체인 어댑터에 `redo` 를 더하는 것은 «아무도 안 부르는 자리에 칸 하나»입니다 —
+   제 기억 파일 「착지는 배선이 아니다」 그대로이고, 그 어댑터를 지은 것도 저(S-194)입니다.
+   그때 보고에 「아직 부르는 곳 없음 — 적었으니 됨」이라 적었고, 그 「나중」이 «아직» 입니다.
+
+### 그래서 갈래
+```
+A  체인 어댑터에 `redo` 를 «지금» 더한다 — 시험으로만 채점되고 «화면에는 영원히 안 뜸»
+   (S-143 의 두 줄 「저장 화면이 몇 행이 다시 도는지 말한다」가 체인에 대해서는 «거짓»)
+B  체인 문서의 «요청 경로»를 먼저 만든다 — 그게 S-143 이 아니라 «별건»(초안 수명주기의
+   체인 절반을 라우트에 잇는 일). 크기가 다릅니다
+C  S-143 을 «원장으로 닫고», 체인은 그 경로가 생기는 라운드에 «같이» 한다
+```
+제 판단은 **C** 입니다 — 원장 절반은 «오늘 화면에 뜹니다»(그 라우트가 돕니다).
+체인 절반은 붙일 화면이 없으므로, 그 화면을 만드는 라운드가 `redo` 의 «자연스러운 자리»입니다.
+A 는 배선 0 인 칸을 늘리고, B 는 S-143 의 범위가 아닙니다.
+
+⚠️ 합성 규칙 질문은 «그때» 답하면 됩니다 — 인덱스가 `load_chain_rules()`(살아남은 것 + 합성)로
+   지어지면 합성 규칙도 노드가 되고, 그러면 「편집 불가인데 초안 대상」이라는 «다른» 결함이
+   먼저 걸립니다. 경로가 없는 지금은 그 질문이 «성립하지 않습니다».
+
+> 📌 **[09-13 00:22] 이 채널의 미답 질문: «하나» —** A·B·C. 트리는 깨끗합니다.
+
+---
+
+## S-204 착수 — 그 «전»에 S-143 원장 절반의 배선을 고쳤습니다 (`3238bff6`)
+
+판정 324 받았습니다(C 채택 · S-143 원장으로 닫힘 · S-204 = 체인 초안의 요청 경로, 등급 2).
+지시대로 **「라우터·서비스가 문서를 어디서 고정하는지」를 «먼저» 실측**했고, 그 실측이
+«S-143 원장 절반»의 결함을 하나 냈습니다. 먼저 그것부터 적습니다.
+
+### 🔴 ① S-143 이 «수를 만들고 버리고 있었습니다» — 고쳤습니다
+
+```
+실측   git grep 'redo' -- server client2/src   (시험 제외)
+       server/ledger/config_drafts.py:155   redo: Mapping | None = None   ← «선언 한 줄이 전부»
+       그 밖 «0». 서비스에도 라우터에도 없습니다
+경로   payload["draft"] = public(record) + activation_blockers   ← public() 은 «레코드»의 화이트리스트
+       `redo` 는 레코드의 칸이 «아닙니다» — 이 요청이 든 세션에 대한 사실입니다
+결과   preview.redo 를 계산해 놓고 «아무 데도 안 싣습니다». 화면이 읽을 방법이 없습니다
+```
+🔴 **제 기억 파일 「착지는 배선이 아니다」 그대로입니다.** 그리고 제 게이트가 이걸 «못 본»
+이유도 분명합니다 — 제가 라우트에 대해 단언한 것은 「`db=db` 가 서비스에 닿는다」와
+「200 을 답한다」였지 **「그 수가 응답에 있다」가 아니었습니다**(「내 게이트는 내가 떠올린 것만 잰다」).
+
+수리는 **한 줄**입니다 — preview 와 db 를 «둘 다» 쥔 자리가 거기 하나뿐이라:
+```python
+draft["redo"] = preview.redo          # config_explorer_service.view()
+```
+채점: 동일성으로 단언(칸 비교는 개명·키 누락을 통과합니다) + 초안 없는 view 는 `draft` 가 `None`.
+**변이 실측** — 그 대입을 지우면 «그 시험 하나»가 빨강, 나머지 14 초록.
+게이트: 익스플로러+초안 수명주기 모집단 **92 passed / FAILED 0** · 커밋 뒤 수집 **6,107**.
+
+⚠️ 바깥에 `null` 이 셋으로 읽히지 않게 «한 줄»만 적었습니다 — 안 물음(db 없음) · 컴파일 안 됨
+(거절 옆에 수를 놓지 않는다는 S-143 의 판정 그대로)은 `preview_valid`·`validation_errors` 가
+«이미» 가르므로 넷째 낱말을 만들지 않았습니다.
+
+### 실측 — 라우터·서비스는 문서를 «어디서» 고정하나 (S-204 의 입력)
+
+```
+라우터    초안 라우트 «여섯» 전부 draft_id/payload 만 받습니다 — 문서 이름이 «없습니다»
+서비스    OntologyExplorerService.__init__ 에 OntologyDraftStore(draft_root) «하나»
+          document 인자를 «안 넘깁니다» → 항상 LedgerDocument. 고정되는 자리는 «여기 한 줄»
+```
+그리고 그 한 줄을 고치는 것만으로는 안 됩니다. 체인 문서를 «오늘의 저장소»에 끼워
+수명주기를 태워 봤습니다(실측, 스크래치):
+```
+create                 OK
+save                   FAIL  AttributeError: SimpleNamespace has no attribute 'valid'
+store.preview(뷰 경로)  OK 인데 «unsupported_draft_target» — 문서를 «안 묻고»
+                             draft_target()+compile_draft_preview() 를 «직접» 부릅니다
+request_review         문서를 안 씁니다 (save 가 죽어 리비전이 안 올랐을 뿐)
+```
+그래서 S-204 가 닫아야 할 것이 «넷»입니다 — 판정 324 가 적은 둘에 실측이 둘을 더했습니다:
+```
+㉠ 선택      서비스 «한 자리»에서 종류로 고른다 (라우트 0 · 저장소 인스턴스 둘, 같은 수명주기)
+㉡ 체인 redo  chain_replay {rule} · count 그대로(withdrawal_* 포함)
+🆕 ㉢ preview 의 «모양이 둘»   수명주기는 valid/errors/setup.snapshot 을 읽고
+             ChainRuleDocument.preview 는 ok/issues/warnings 를 냅니다 → 체인은 «저장이 안 됩니다»
+🆕 ㉣ store.preview 가 문서를 «건너뜁니다»   뷰 경로가 원장으로 박혀 있어, 체인 초안은
+             화면에서 「이 선언은 읽기 전용」으로 뜹니다. S-194 가 못 본 둘째 좌석입니다
+```
+🔴 그리고 ㉣ 옆에 «하나 더» 있습니다: `ChainRuleDocument.config_root` 가
+`setup.config_root`(= `server/config/ontology`)를 내는데 **`chain_rules.json` 은 그 «부모»**
+(`paths.CONFIG_DIR`)에 삽니다 — 활성화가 «없는 파일»에 씁니다. 부르는 시험이 0 이라
+S-194 이후 한 번도 안 걸렸습니다. 같은 커밋에서 닫습니다.
+
+⚠️ 합성 규칙은 예고대로 «지금» 성립합니다 — 인덱스 모집단을 「파일의 규칙」으로 두고,
+합성 이름은 «이름 대어 거절»(「이건 제품이 만든 규칙이라 파일에 없습니다」)로 답합니다.
+
+> 📌 **[09-13 00:4x] 이 채널의 미답 질문: «없음».** ㉢㉣ 는 판정 324 의 「먼저 실측」이
+> 낸 것이라 그 지시 «안»으로 읽고 같은 커밋에 넣습니다. 다르게 보시면 한 줄 주십시오 —
+> 그 전까지 S-204 를 계속 짓습니다.
+
+---
+
+## S-204(재정의) — chain 탭 서버 절반 ①② 착지 `45f0da47` · ③ 은 «재서» 멈췄습니다
+
+판정 325 받았습니다. 익스플로러 방향으로 짓던 것은 **역편집으로 되돌렸습니다**(커밋 0 — 맞습니다).
+
+### 되돌린 파일 «둘»
+```
+server/chain_bindings.py          ChainRuleIndex 키 통일 · 합성 규칙 거절 · _rule_redo · config_root 수리
+server/ledger/config_drafts.py    DraftPreview.warnings/snapshot_hash · store.preview 가 문서를 묻게
+되돌린 뒤 확인: git status 에 그 둘 «없음» · 초안 수명주기 시험 35 passed (HEAD 그대로)
+```
+⚠️ 그 넷은 사라진 것이 아니라 **S-205 의 입력**입니다 — `config_root` 가 부모가 아닌 것(제 실측)과
+`preview` 모양이 둘인 것(실측: `save` 가 AttributeError)은 그 어댑터를 «은퇴시키든 배선하든»
+그때 답해질 사실입니다. 여기 적어 두니 다시 재지 않으셔도 됩니다.
+
+### ① 규칙 «한 개»의 모양을 뷰가 내줍니다 — `skeleton()` 그대로
+```
+chain_rule_raw_view() 에 "skeleton": chain_bindings.skeleton()   한 칸. 이름 «없이» 불러도 실립니다
+채점: 응답 == skeleton() 동일 · 이름 있을 때와 없을 때 «같은 값» · 칸 목록 == routing_keys() ·
+      필수 == RULE_ROUTING_REQUIRED · 드리프트(뷰가 스스로 목록을 조립하지 않음)
+변이: 그 칸을 지우면 «4» 빨강
+```
+🔴 **둘째 철자를 막는 것이 전부입니다** — 폼이 칸 이름을 «적으면» 문법이 칸 하나 늘어난 날
+조용히 낡습니다. `skeleton()` 은 `routing_keys()` 에서 «생성»되므로 저자가 하나입니다.
+
+### ② «새 이름 저장»을 라우트 «실호출»로 못 박았습니다
+```
+없던 이름 POST  → created true · enabled «false» · 파일에도 false · 이웃 규칙 무변
+저장 직후       → rules 목록에 뜨고, 그 이름으로 다시 읽힙니다 (「저장됐다」 ≠ 「보인다」)
+낡은 base 로 둘째 POST → 거절 · 사유에 `stale_base` · 파일은 «첫 값 그대로»
+첫 저장이 «돌려준» base 로는 다시 저장됩니다 (잠금이 벽이 되지 않게)
+변이: 라우트가 payload 를 `name` 아닌 `rule` 로 읽게 하면 «5» 빨강 — 기존 직접호출 시험은 «0»
+```
+🔴 그 변이가 이 파일의 존재 이유입니다. 기존 `test_chain_rule_editor_arms_without_firing.py` 는
+함수를 «직접» 부르므로 라우트와 함수 «사이»의 결함을 구조적으로 못 봅니다. 기존 시험 «무변»입니다.
+
+### 🔴 ③ 「저장 전 문법 판정이 `rule_refusals` 를 지나나」 — **안 지납니다. 그런데 그대로 걸면 «저장이 막힙니다»**
+
+```
+실측 ⓐ  save_chain_rule_raw 의 검사는 «하나» — _validate_chain_cascade_graph(고리)
+        소스가 자기 주석에 적어 뒀습니다: 「Nothing validates a single rule's shape」
+실측 ⓑ  mapper_sdk.discover() 호출자 «하나» = chain_ingestion_worker.warmup_worker (워커 프로세스)
+        프로브: import main «뒤»에도 MAPPER_REGISTRY == «0»   (before 0 / after 0)
+실측 ⓒ  rule_refusals 의 거절 조건 = `not resolvable and not (module_name and function_name)`
+        => 레지스트리가 빈 프로세스에서는 «한 칸 mapper 형식»의 규칙이 «전부» 거절됩니다
+```
+🔴 **그래서 그 자리를 «그대로» 놓으면, 판정 325 가 열려는 바로 그 문(「규칙을 추가할 수가 없어」)이
+   한 칸 mapper 형식에 대해 «닫힙니다».** 이건 이 박스의 수가 아니라 «구조»입니다 — 어느 설치든
+   API 프로세스는 `discover()` 를 안 부릅니다.
+
+⚠️ 그리고 이것이 **S-180 ⓑ 의 제 코드에도 걸립니다** — `config_resolve_report.py:239` 가 같은
+   프로세스에서 같은 인자를 씁니다. 이 박스에서는 `rejected 0`(규칙들이 module+function 형식)이라
+   «오늘은» 안 드러나지만, 한 칸 형식 규칙이 하나 생기는 날 그 보고가 「못 돈다」고 말합니다.
+
+### 갈래 — 제 판단은 **A** 입니다
+```
+A  판정하기 «전»에 API 프로세스도 mapper_sdk.discover() 를 부른다
+   => 화면과 로그가 «같은 세상»을 봅니다(판정 315 그대로). 거절은 모듈 단위라 하나 깨져도 안 죽음
+   비용: 소유자의 gitignore 된 mappers/ 를 «웹 프로세스가 import» 합니다 — 되돌리기 쉬우나 «부작용»
+B  mapper_resolvable 을 「이 프로세스가 못 고르면 그 이유로는 거절 안 함」으로 넘긴다
+   => 문법 절반(name·trigger_table·모르는 칸)은 저장 전에 거절, 맵퍼 절반은 «오늘 그대로»(무회귀)
+   비용: 판정 315 의 절반이 이 좌석에서 다시 열립니다
+C  그대로 둔다 (③ 무변)
+```
+🔴 **A 를 권하는 이유**: 「둘째 판정기 0」은 두 판정기가 «같은 세상»을 볼 때만 참입니다. 레지스트리가
+빈 판정기는 이름만 같은 «다른 판정기»입니다. 다만 웹 프로세스가 소유자 파일을 import 하는 것은
+부작용이라 제가 혼자 정하지 않았습니다.
+
+> 📌 **[09-13 01:1x] 이 채널의 미답 질문: «하나» — ③ 의 A·B·C.**
+> ①② 는 착지·푸시했습니다(`45f0da47`, 수집 6,116). ③ 은 «짓지 않았습니다» — 판정 주시면 한 커밋입니다.
+> 그동안 큐 다음 줄(S-144 속성 복수값)로 넘어갑니다.
+
+---
+
+## S-144 (속성 복수값 · A1-2) — 짓기 «전» 실측 + 모양 제안
+
+정본 `docs/architecture/LEDGER_SCHEMA_COMPLETENESS.md:134` — 「이 이름은 값을 «여럿» 든다」.
+그 줄이 든 근거 둘을 «각각» 코드에 대고 쟀습니다. **둘 다 참인데, 무게가 반대였습니다.**
+
+### 실측 ⓐ 「목록을 넣으면 발행이 거절한다」 — 참, 그런데 «드문 길»입니다
+```
+roleframe._scalar  (:1509 — 큐의 :1473 은 낡았습니다)
+  _scalar(['a','b'])  -> RoleFrameError invalid_scalar_role
+  _scalar('a') · _scalar(1) -> accepted
+호출자 «둘»뿐: :1474 엔터티 식별키 · :1492 kind in {identity, order, attribute, symbolic}
+```
+
+### 🔴 실측 ⓑ 「두 값은 충돌로 읽힌다」 — 참이고, **이쪽이 «보통 길»입니다**
+```
+ledger_subgraph.py:1690  등록 원자를 주어별·이름별로 모아 (occurred_at, value) 목록으로
+                         values[name] = «가장 늦은 것 하나»
+                         conflicts   += 1  if 서로 다른 값이 둘 이상
+프로브(그 규칙 그대로 재현):
+   [(1,'A'),(2,'B')]  latest='B'  conflict=True     <- 다른 시각
+   [(1,'A'),(1,'B')]  latest='A'  conflict=True     <- «같은 시각»도 충돌
+   [(1,'A'),(2,'A')]  latest='A'  conflict=False
+```
+🔴 **여기가 요점입니다 — 복수값은 「원자 하나에 목록」으로 오지 «않습니다».**
+컬럼 하나는 행 하나에 값 하나이므로, 한 웨이퍼에 product 가 둘이면 그것은 «행이 둘»이고
+등록 원자가 «둘»입니다. 그래서 오늘 그 사실은
+```
+① 「불일치 1건」으로 세어지고   ② 둘 중 «하나가 조용히 사라집니다»(latest 하나만 attributes 에)
+```
+즉 **ⓐ(목록 거절)는 맵퍼가 손으로 목록을 만들 때만 걸리고, 운영에서 실제로 밟는 것은 ⓑ 입니다.**
+정본의 두 근거가 «같은 무게»로 적혀 있는데, 재 보니 아니었습니다.
+
+### 실측 ⓒ 적을 «자리»가 없는 것도 참입니다
+```
+setup_bundle.py:1329  엔터티의 attributes 는 «이름의 평평한 리스트»입니다
+                      검증: 비어있지 않음 · 중복 없음 · keys 와 이름 충돌 금지
+                      => 이름 «하나»에 대해 무엇도 더 적을 칸이 없습니다
+⚠️ 그리고 조용합니다 — `_column_values`(:1091) 가 `isinstance(item, str)` 아닌 항목을
+   «걸러 버립니다». attributes 에 {"name":..,"plural":true} 를 적으면 거절이 아니라 «무시»됩니다
+```
+🔴 그 무시가 이 라운드의 «함정»입니다: 모양을 잘못 고르면 운영자가 적은 줄이 오류 없이 사라집니다.
+
+### 제안 — 자리는 «keys / key_types 짝»을 그대로 따릅니다
+이 파일에는 「나열된 이름 하나하나에 사실을 더 붙이는」 집 모양이 «이미» 있습니다 —
+`keys`(리스트) 옆의 `key_types`(맵). 같은 짝을 씁니다. 새 문법 축을 만들지 않습니다.
+```
+entities.wafer@1:
+  attributes: ["product", "lot_state"]
+  attribute_cardinality: { "product": "many" }      <- 없으면 "one" (오늘 동작 그대로)
+검증: 이 맵의 이름은 attributes 에 «있어야» 한다 · 값은 {"one","many"} 뿐
+```
+```
+읽기  「many」인 이름은  attributes[name] 이 «언제나 리스트»(값이 하나여도) 이고
+                       attribute_conflicts 에 «세지 않는다»
+     「one」인 이름은   오늘 그대로 — 최신 하나 + 다르면 충돌 1
+쓰기  ⓐ 의 _scalar 는 «그대로 둡니다». 복수는 원자 하나의 목록이 아니라 «원자 여럿»이므로
+     발행 경로를 안 건드려도 이 사실이 표현됩니다 (최소 수정)
+```
+🔴 **이름별로 모양이 «고정»입니다** — 「값이 둘일 때만 리스트」로 하면 같은 칸이 두 모양이 되고,
+그건 이 채널이 이미 두 번 맞은 부류입니다(「한 경계에 모양이 둘이면 조용히 실패한다」).
+
+**두 줄:** 「그 엔터티의 `attribute_cardinality` 에 그 이름을 `many` 로 적습니다.
+그러면 한 주어에 값이 여럿이어도 «불일치»가 아니라 «목록»으로 읽힙니다.」
+
+### 물어야 할 것 «둘»
+```
+① 모양: attribute_cardinality 맵 «한 칸» (제 권고) vs attributes 를 맵으로 승격(기존 선언 전부 개정)
+② 클라: attributes[name] 이 이름에 따라 스칼라/리스트로 갈립니다. 화면은 선언을 읽어야 합니다 —
+   `client2/src/walk/derive.js:160` 이 attribute_conflicts 를 읽는 «유일한» 소비자입니다.
+   서버가 노드에 「이 이름은 many」를 «같이» 실어 주면 화면이 선언을 따로 안 읽어도 됩니다 —
+   실을까요, 아니면 클라가 선언에서 읽게 둘까요(= C 행 하나)
+```
+
+> 📌 **[09-13 01:2x] 이 채널의 미답 질문: «셋» — S-204 ③ 의 A·B·C · S-144 의 ①②.**
+> S-144 는 등급 3 이라 «판정 받고» 짓습니다. 그동안 손대지 않고 기다리거나, 순서를 바꾸라고
+> 하시면 큐의 다음 줄(S-146 걷기 group_by·집계)을 같은 모양으로 재겠습니다.
+
+---
+
+## S-204 ③ 착지 `5422b308` — 판정 326 «A». ② 의 답: **API 에 «같은 방아쇠가 이미» 있었습니다**
+
+### ② 먼저 — 어느 자리인지 재서 한 줄
+```
+워커    reload_worker_process_cache()  sys.modules 에서 mappers.* 제거
+        → warmup_worker() 가 discover() «다시» 부름                      = 세 걸음
+API     reload_local_process_cache()   mappers.* 제거 + mapper_sdk.reset_registry()
+        → «여기서 끝»                                                    = 두 걸음
+```
+🔴 **그래서 새 방아쇠를 만들 필요가 없었습니다 — 있던 것이 «반쪽»이었습니다.**
+그 자리(리셋 «바로 뒤»)에 `discover()` 를 놓았습니다. 저장 좌석에서 판정 직전에 부르는 안은
+쓰지 않았습니다. 기동은 **TESTING 조기 반환 «뒤»** — 워커 warmup 과 «같은 쪽»입니다
+(소유자 파일이라 TestClient 기동마다 import 하면 스위트의 답이 이 박스에 매입니다).
+
+### ③ 저장 전 한 판정기
+```
+save_chain_rule_raw 가 쓰기 «전» rule_refusals(entry, "rules.<name>",
+                                mapper_resolvable=MAPPER_REGISTRY.get) 를 지납니다
+고리 검사는 «그대로» — 전체 집합을 읽는 «다른 축»이지 둘째 의견이 아닙니다
+거절 봉투는 라우트가 이미 쓰는 _table_config_refusal(code, path, message)
+```
+게이트(라우트 «실호출»): 등록된 한 칸 맵퍼 → 저장됨 · 없는 이름 → `unresolvable_mapper` 로
+이름 대어 거절 + 파일 «무변» · module+function 형식 무회귀 · 필수 칸 누락도 같은 자리에서 거절 ·
+드리프트 = `rule_refusals` 호출자가 `chain_ingestion_worker`·`config_resolve_report`·`ledger_admin` 셋.
+⚠️ 시험의 맵퍼는 «제가 등록한 가짜»입니다 — 박스의 `mappers/` 는 gitignore 라 그 이름을 쓰면
+이 박스를 재는 것이 됩니다.
+
+### 🔴 보고해야 할 것 — 「기존 raw 시험 무변」이 «단언만» 무변입니다
+```
+기존 test_chain_rule_editor_arms_without_firing.py 7개 중 «6개»가 빨개졌습니다
+원인: 그 케이스들이 저장하는 규칙에 맵퍼가 «없습니다» — 실측하니 로더가 unresolvable_mapper 로
+      «떨어뜨리는» 규칙입니다. 즉 그 시험들은 판정 326 이 없애려는 바로 그 상태
+      (「성공으로 읽히고 아무것도 안 하는 저장」)를 못박고 있었습니다
+수리: **단언은 한 줄도 안 건드리고 «픽스처 데이터»에만 RUNNABLE = {mapper_module, mapper_function}**
+      를 더했습니다. 그 파일의 주제는 `enabled` 이지 맵퍼 해소가 아닙니다
+```
+다르게 보시면 되돌리겠습니다 — 「무변」을 «파일 무변»으로 읽으셨다면 그 시험들은 지금
+「떨어질 규칙을 저장할 수 있다」를 단언하게 되므로, 그때는 그 파일이 아니라 ③ 이 물러나야 합니다.
+
+### 변이
+```
+저장이 판정기를 건너뛰게        → 2 빨강
+리셋 뒤 discover 를 없애면      → 1 빨강   ⚠️ «처음엔 0 이었습니다»
+discover 를 리셋 «앞»으로 옮기면 → 1 빨강
+```
+🔴 **그 「처음엔 0」이 오늘 제일 값어치 있는 줄입니다** — 판정 326 ②가 지목한 바로 그 좌석에
+채점자가 «없었고», 순서가 뒤집혀도(=레지스트리가 빈 채) 아무도 안 울었을 것입니다. 그래서
+호출 «순서»를 단언하는 시험을 하나 넣었습니다(개수가 아니라 순서 — 박스의 맵퍼 수를 재지 않게).
+
+⚠️ 그리고 제가 변이를 `git checkout -- <파일>` 로 되돌리다 **그 라운드의 미커밋 편집을 같이
+   지웠습니다**(제 기억 파일에 있는 그대로). 바로 재적용하고 게이트를 다시 돌렸습니다 —
+   착지한 것은 재적용 «뒤»의 트리입니다.
+
+게이트: 체인 편집기+스켈레톤+ledger_admin+mapper_sdk+warmup+api **134 passed / FAILED 0** ·
+커밋 뒤 수집 **6,123**.
+
+> 📌 **[09-13 01:4x] 이 채널의 미답 질문: «하나» — 위 「기존 시험 무변」의 읽기(픽스처 데이터
+> 수정이 맞는지).** 아니라고 하시면 되돌립니다. 그동안 판정 327 대로 **S-144 를 짓습니다**.

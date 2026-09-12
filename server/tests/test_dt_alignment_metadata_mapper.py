@@ -4,6 +4,8 @@ from __future__ import annotations
 import importlib
 from pathlib import Path
 
+from conftest import requires_live                                   # noqa: E402
+
 
 mapper = importlib.import_module("mappers.dt_alignment_metadata_mapper")
 
@@ -129,6 +131,7 @@ def test_syn_job_uses_declared_valid_die_reference(monkeypatch):
     assert got["reference_spec"] == "valid_die_ref:PRD-A_DT13"
 
 
+@requires_live("server/mappers/dt_alignment_metadata_mapper.py to be BYTE-IDENTICAL to the tracked sample beside this test")
 def test_live_mapper_and_tracked_sample_are_byte_identical():
     root = Path(__file__).resolve().parents[1] / "mappers"
     assert (root / "dt_alignment_metadata_mapper.py").read_bytes() == \

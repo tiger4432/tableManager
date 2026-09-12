@@ -96,12 +96,12 @@ def norm_env(db_session, tmp_path, monkeypatch):
     _write_decl(tmp_path, monkeypatch, BASE_DECL)
     yield db_session
     notation_norm.reset_cache()
+    from conftest import retire_dynamic_model
+
     for name in TABLES:
-        models.DYNAMIC_TABLES.pop(name, None)
+        # S-191: registry + `Base.metadata` in one call, so a seat cannot do half.
+        retire_dynamic_model(name)
         crud.TABLE_CONFIG.pop(name, None)
-        tbl = Base.metadata.tables.get(name)
-        if tbl is not None:
-            Base.metadata.remove(tbl)
 
 
 def _write(db, table, rows, source_name="pipeline_parser"):

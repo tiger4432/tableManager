@@ -8,7 +8,7 @@
   * `custom_parser.py.sample` (클래스형) — `BasePipelineParser`를 상속하고 `match()`와
                            `process_dataframe()` **둘만** 쓴다. 읽기·NaN 정리·DB 전달은 베이스가
                            한다. **표 형태 파일이면 거의 항상 이쪽이다.**
-                           개발·검증·내보내기는 `server/parsers/notebooks/parser_workbench.ipynb`.
+                           개발·검증·내보내기는 `server/notebooks/parser_workbench.ipynb`.
 """
 import csv
 import os

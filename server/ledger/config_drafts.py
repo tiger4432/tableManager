@@ -149,10 +149,64 @@ class DraftPreview:
     setup: Any | None
     index: ExplorerIndex | None
     errors: tuple[Mapping[str, str], ...]
+    #: 🔴 WHAT ACTIVATING THIS WOULD MAKE RE-RUN (S-143). `None` means the question was not
+    #: ASKED - no request, no Session - and never 「nothing re-runs」. Those are different
+    #: facts and an operator acts differently on each.
+    redo: Mapping[str, Any] | None = None
 
 
-def compile_draft_preview(active_setup: Any, node: ExplorerNode, raw: Mapping[str, Any]
-                          ) -> DraftPreview:
+#: The op that re-translates ONE ledger source. 🔴 NOT `ledger_rescope`: that one requires a
+#: scope column and its values, and a declaration edit HAS no scope - it changes what the
+#: source means for every row it reads. Measured before wiring (판정 320).
+REDO_SOURCE_OP = "ledger_backfill"
+
+#: The node kind that IS one source. The other three kinds in this file - entity, predicate,
+#: vocabulary - are words that many sources utter, and no single source can be named for them.
+SOURCE_NODE_KIND = "source_plan"
+
+
+def _redo_for(active_setup: Any, node: ExplorerNode, db) -> Mapping[str, Any] | None:
+    """What activating this draft would make re-run. `None` when nobody asked (S-143).
+
+    🔴 THE OUTER SHAPE IS FIXED AND `count` IS THE COUNTER'S ANSWER VERBATIM (판정 323).
+    Keys are neither picked nor renamed - a chain rule's extra keys ride along untouched -
+    because the screen must learn one name for one number, and `/admin/retroactive/{op}/count`
+    already taught it. A second spelling here is the defect this whole seat exists to avoid.
+
+    ⚠️ A WORD IS NOT COUNTED, AND THAT IS A CHOICE RATHER THAN AN INABILITY. Editing a
+    predicate re-runs every source that utters it; counting that means one dry-run PER SOURCE,
+    inline on a preview request, which 「성능 마진 넉넉하게」 forbids. So the sources are named
+    and `absence` says `not_counted_here` - the count is still available on the retroactive
+    route, and that sentence is what makes the refusal actionable.
+
+    ⚠️ AND AN UNUTTERED WORD IS `truly_none`, NOT `not_counted_here`. Two different empties:
+    nothing re-runs, versus something does and this seat declined to count it.
+    """
+    if db is None:
+        return None
+
+    import retroactive
+
+    if getattr(node, "kind", None) == SOURCE_NODE_KIND:
+        params = {"source": node.canonical_id}
+        return {"op": REDO_SOURCE_OP, "params": params,
+                "sources": [node.canonical_id],
+                "count": retroactive.count(db, REDO_SOURCE_OP, params)}
+
+    from ledger import config as ledger_config
+
+    sources = list(ledger_config.sources_binding(
+        active_setup.bundle.to_mapping(), node.canonical_id))
+    absence = (retroactive.ABSENCE_NOT_COUNTED_HERE if sources
+               else retroactive.ABSENCE_TRULY_NONE)
+    # ⚠️ ONE KEY, NOT A HOLLOWED-OUT COUNT. A `count` carrying nulls under every numeric name
+    # would read as 「counted, and the answer was nothing」.
+    return {"op": None, "params": None, "sources": sources,
+            "count": {"absence": absence}}
+
+
+def compile_draft_preview(active_setup: Any, node: ExplorerNode, raw: Mapping[str, Any],
+                          db=None) -> DraftPreview:
     if node.config_file != _EDITABLE_FILE:
         return DraftPreview(False, None, None, ({
             "code": "unsupported_draft_target",
@@ -200,8 +254,12 @@ def compile_draft_preview(active_setup: Any, node: ExplorerNode, raw: Mapping[st
             snapshot=snapshot,
             catalog=catalog,
         )
+        # ⚠️ THE COST RIDES ONLY ON A PREVIEW THAT COMPILED. A draft that does not compile
+        # has no cost to state - it will not be activated - and answering one anyway would
+        # put a number beside a refusal.
         return DraftPreview(
-            True, preview_setup, build_explorer_index(preview_setup), tuple())
+            True, preview_setup, build_explorer_index(preview_setup), tuple(),
+            _redo_for(active_setup, node, db))
     except (LedgerSetupValidationError, ConfigExplorerError, TypeError, ValueError) as exc:
         return DraftPreview(False, None, None, (_decorate_issue(_issue(exc)),))
 
@@ -307,13 +365,19 @@ class DraftContext:
     ⚠️ A PAIR, NOT A MERGE. The two are separately meaningful - the setup is what compiled,
     the index is how it is navigated - and the coupled methods already received exactly
     these two. Collapsing them would hide which half a document actually reads.
+
+    ⚠️ AND `db` IS OPTIONAL, WHICH IS THE SIZE OF THE CHANGE (S-143, 판정 321). A cost is a
+    question only a REQUEST asks: the route hands down the Session it already holds, and the
+    CLI, the tests and every other construction site pass nothing. The six construction
+    sites are untouched because the default is `None`, and S-194's one lifecycle stands.
     """
 
-    __slots__ = ("setup", "index")
+    __slots__ = ("setup", "index", "db")
 
-    def __init__(self, setup, index):
+    def __init__(self, setup, index, db=None):
         self.setup = setup
         self.index = index
+        self.db = db
 
 
 class LedgerDocument:
@@ -345,7 +409,7 @@ class LedgerDocument:
         return _filled_declaration(context.setup, node, raw)
 
     def preview(self, context, node, raw):
-        return compile_draft_preview(context.setup, node, raw)
+        return compile_draft_preview(context.setup, node, raw, context.db)
 
     def config_root(self, context):
         return Path(context.setup.config_root)
@@ -757,7 +821,12 @@ class OntologyDraftStore:
         record: Mapping[str, Any],
         active_setup: Any,
         active_index: ExplorerIndex,
+        db=None,
     ) -> DraftPreview:
+        """⚠️ `db` IS OPTIONAL AND DEFAULTS TO 「nobody asked」 (S-143). Only a REQUEST carries a
+        Session, so the CLI and the tests keep calling this with three arguments and get a
+        preview whose `redo` is `None` - which says the question was not asked, never that
+        nothing would re-run."""
         if record["base_snapshot_hash"] != active_index.snapshot_hash:
             stale_status = self.stale_status(record, active_index)
             return DraftPreview(False, None, None, ({
@@ -766,7 +835,7 @@ class OntologyDraftStore:
                 "message": "active snapshot changed; draft preview is stale",
             },))
         node = draft_target(record, active_index)
-        return compile_draft_preview(active_setup, node, record["raw"])
+        return compile_draft_preview(active_setup, node, record["raw"], db)
 
     @staticmethod
     def public(record: Mapping[str, Any]) -> dict[str, Any]:

@@ -44,12 +44,17 @@ def explorer_view(
     draft_id: str | None = Query(default=None),
     revision: int | None = Query(default=None),
     view_mode: str = Query(default="active"),
+    # 🔴 THE REQUEST'S OWN SESSION, NOT A NEW ONE (S-143, 판정 321). A draft preview states
+    # what activating it would make re-run, and counting that needs the database. Opening a
+    # second connection here would be the quiet kind of cost 「성능 마진 넉넉하게」 forbids;
+    # this is the Session FastAPI already holds for this request.
+    db: Session = Depends(get_db),
 ):
     try:
         return _service.view(
             selection=selection, query=q, page=page, limit=limit,
             reference_limit=reference_limit, expected_context_token=context_token,
-            draft_id=draft_id, revision=revision, view_mode=view_mode)
+            draft_id=draft_id, revision=revision, view_mode=view_mode, db=db)
 
     except ConfigExplorerError as exc:
         raise _refusal(exc) from exc

@@ -233,9 +233,11 @@ def alter_target(tmp_path):
     # models.DYNAMIC_TABLES / Base.metadata are shared with the entire suite - so
     # without this the rest of the run carries a growing set of tables whose
     # physical counterpart exists only in a tmp database that is already gone.
-    dynamic_class = models.DYNAMIC_TABLES.pop(table_name, None)
-    if dynamic_class is not None and table_name in models.Base.metadata.tables:
-        models.Base.metadata.remove(dynamic_class.__table__)
+    # S-191: one function knows the pair (`conftest.retire_dynamic_model`). Eight seats
+    # spelled this out, four of them only half of it.
+    from conftest import retire_dynamic_model
+
+    retire_dynamic_model(table_name)
 
 
 # --------------------------------------------------------------------------
