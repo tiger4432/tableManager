@@ -1220,7 +1220,7 @@ def _validate_vocabulary(section: Mapping[str, Any], problems: _Problems) -> Non
         #: word from quietly reading as a live rule.
         if not problems.exact(
                 item, path, required=("status", "subjects", "object"),
-                optional=("cardinality",)):
+                optional=("cardinality", "absence_confirmed_by")):
             continue
         status = item.get("status")
         if not isinstance(status, str) or status not in LIFECYCLE_STATES:
@@ -1230,6 +1230,43 @@ def _validate_vocabulary(section: Mapping[str, Any], problems: _Problems) -> Non
         if not isinstance(cardinality, str) or cardinality not in CARDINALITIES:
             problems.add("invalid_predicate", f"{path}.cardinality",
                          f"must be one of {sorted(CARDINALITIES)} (absent means {DEFAULT_CARDINALITY!r})")
+        # 🔴 「이 술어가 «안 보이는» 것이 무슨 뜻인가」 (S-147-a / 판정 333). A1 has this
+        # sub-axis for node keys -- `allow_null` says whether an absent key is 「원자 없음」 or
+        # 「null 목적어」 -- and A2 had no counterpart at all.
+        #
+        # 🔴 THE VALUE IS ANOTHER PREDICATE'S NAME, not a self-contained word, and that is
+        # forced rather than chosen: 「안 봤다」 and 「보고 없었다」 are separated by THE
+        # EXISTENCE OF A DIFFERENT ATOM. No `absence: none|unknown` flag can say that, because
+        # the fact lives outside this predicate.
+        #
+        # ⚠️ WHICH PREDICATE IS AN EXAMINATION IS A DOMAIN FACT, so it is declared. Code that
+        # knew `inspected` by name would break 「코드에 도메인 낱말이 «없다»」, and the next
+        # installation spells it something else.
+        #
+        # ⛔ A TYPO IS REFUSED, NEVER SWALLOWED. An unresolvable name would make the
+        # denominator read 0 without a word said -- 「봤는데 없음」 counted as 「안 봤음」 -- and
+        # that is a wrong number rather than a missing one.
+        if "absence_confirmed_by" in item:
+            confirmer = item["absence_confirmed_by"]
+            where = f"{path}.absence_confirmed_by"
+            if not isinstance(confirmer, str) or not confirmer.strip():
+                problems.add("invalid_predicate", where,
+                             "must be the id of a declared predicate")
+            elif confirmer == predicate_id:
+                # A predicate cannot confirm its own absence: if it is missing, so is the
+                # evidence that it was looked for.
+                problems.add("invalid_predicate", where,
+                             "a predicate cannot confirm its own absence")
+            elif confirmer not in section:
+                problems.add(
+                    "unknown_id", where,
+                    f"{confirmer!r} is not a declared predicate; declared: "
+                    f"{sorted(section)}")
+            elif (section[confirmer] or {}).get("status") == "retired":
+                # The same word `status` already carries, rather than a second retirement rule.
+                problems.add("invalid_predicate", where,
+                             f"{confirmer!r} is retired, so its presence cannot confirm "
+                             f"anything about today's absences")
         _nonblank_list(item.get("subjects"), f"{path}.subjects", problems)
         obj = item.get("object")
         if problems.exact(

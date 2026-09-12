@@ -365,6 +365,16 @@
                   "hint": "choice",
                   "list": "cardinality"
                 }
+              },
+              {
+                "key": "absence_confirmed_by",
+                "required": false,
+                "label": "부재를 확인해 주는 술어 — 이것이 있는데 이 술어가 없으면 «봤는데 없음» (비우면 «모름»)",
+                "node": {
+                  "kind": "leaf",
+                  "hint": "ref",
+                  "section": "vocabulary"
+                }
               }
             ]
           }

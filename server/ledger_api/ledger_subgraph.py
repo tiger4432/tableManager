@@ -123,21 +123,45 @@ def _fold(measure, values):
     return (ordered[middle - 1] + ordered[middle]) / 2
 
 
-def _values_of(node, name):
-    """What one node carries under `name`, always as a list.
+#: Where a `measure`'s name is looked up, IN THIS ORDER (S-146-c, 판정 336).
+#: 🔴 SPELLED ONCE AND CARRIED IN THE ENVELOPE, so the screen learns the order rather than
+#: guessing it. A name that resolves in two of these is REFUSED: silently preferring one
+#: would let that preference decide the answer, and the two numbers are not the same number.
+VALUE_SOURCES = ("attributes", "qualifiers", "predicates")
 
-    ⚠️ A PLURAL ATTRIBUTE IS ALREADY A LIST (S-144), and flattening it here is the only
-    reading that does not invent one: each value it holds is a value.
+
+def _source_values(node, source, name):
+    """The values one source of one node offers under `name`. Empty when it offers none."""
+    if source == "predicates":
+        # 🔴 THE NODE ALREADY CARRIES THIS (`ledger_subgraph` publishes
+        # `predicates: [{predicate, count}]` per entity). Counting 「reached by this
+        # predicate」 therefore needs no edge walk and no second query - the ratio axis's
+        # numerator and denominator are both node-side facts that were already on the wire.
+        return [entry.get("count") for entry in (node.get("predicates") or ())
+                if entry.get("predicate") == name and entry.get("count") is not None]
+    carried = (node.get(source) or {})
+    if name not in carried:
+        return []
+    value = carried[name]
+    # ⚠️ A PLURAL ATTRIBUTE IS ALREADY A LIST (S-144), and flattening it is the only reading
+    # that does not invent one: each value it holds is a value.
+    return list(value) if isinstance(value, list) else [value]
+
+
+def _values_of(node, name):
+    """What one node carries under `name`, always as a list — from ONE source.
+
+    ⛔ A NAME THAT TWO SOURCES ANSWER IS REFUSED. An attribute called `observed@1` and a
+    predicate of that id are different numbers, and choosing between them here would make
+    this function the author of the answer.
     """
-    carried = (node.get("attributes") or {})
-    if name in carried:
-        value = carried[name]
-        return list(value) if isinstance(value, list) else [value]
-    qualifiers = (node.get("qualifiers") or {})
-    if name in qualifiers:
-        value = qualifiers[name]
-        return list(value) if isinstance(value, list) else [value]
-    return []
+    answering = [source for source in VALUE_SOURCES if _source_values(node, source, name)]
+    if len(answering) > 1:
+        raise AggregateRefused(
+            "ambiguous_value_name",
+            "%r is answered by %s on the same node; rename one or ask for the other"
+            % (name, " and ".join(answering)), VALUE_SOURCES)
+    return _source_values(node, answering[0], name) if answering else []
 
 
 def _group_keys(node, group_by):
@@ -152,14 +176,8 @@ def _group_keys(node, group_by):
     return [value for value in _values_of(node, group_by) if value is not None]
 
 
-def group_nodes(nodes, group_by, measure):
-    """`groups` for one walk: the fold, over the nodes this response carries (판정 331).
-
-    🔴 THE SAME WALK AND THE SAME BUDGET. A second walk for the aggregate would put two
-    populations in one answer, and the reader would have no way to know which number came
-    from which. Truncation is said by the envelope's own `truncated`/`complete` rather than
-    by a second word in here -- one spelling for one fact.
-    """
+def _split_measure(measure):
+    """One `measure` argument -> (fold name, the value name it folds). Refuses by name."""
     name, _sep, qualifier = str(measure or "count").partition(":")
     if name not in AGGREGATE_MEASURES:
         raise AggregateRefused(
@@ -169,6 +187,51 @@ def group_nodes(nodes, group_by, measure):
             "measure_needs_a_name",
             "measure %r folds values, so it needs a name: %s:<attribute>" % (name, name),
             AGGREGATE_MEASURES)
+    return name, qualifier
+
+
+def _latest_edge_instant(members, edges_by_node):
+    """The newest `occurred_at` among the edges attached to this group's nodes.
+
+    🔴 AN ENTITY HAS NO INSTANT AND SHOULD NOT (S-146-c, 판정 336). Time lives on the atoms,
+    so a group's time is the newest time of the facts that reached it -- measured: only
+    edges carry `occurred_at`; entity nodes carry none.
+
+    ⚠️ NO EDGES MEANS NO KEY, NOT `null`. 「this group has no fact with a time」 and 「the
+    caller did not ask」 are different answers, and a null collapses them.
+    """
+    instants = [edge.get("occurred_at")
+                for node in members
+                for edge in edges_by_node.get(node.get("id"), ())
+                if edge.get("occurred_at")]
+    return max(instants) if instants else None
+
+
+def group_nodes(nodes, group_by, measure, edges=()):
+    """`groups` for one walk: the fold, over the nodes this response carries (판정 331).
+
+    🔴 THE SAME WALK AND THE SAME BUDGET. A second walk for the aggregate would put two
+    populations in one answer, and the reader would have no way to know which number came
+    from which. Truncation is said by the envelope's own `truncated`/`complete` rather than
+    by a second word in here -- one spelling for one fact.
+
+    ⚠️ `edges` IS AN INPUT, NOT A SECOND POPULATION (판정 336). They come from the walk that
+    already ran; what changes is what the fold may read, not what was reached.
+
+    🔴 `value` IS ALWAYS A MAP, keyed by the measure string, even for one measure. A cell
+    that is a number for one measure and a map for two is one cell with two shapes, and a
+    reader would have to guess which it got.
+    """
+    asked = [measure] if isinstance(measure, (str, bytes)) or measure is None else list(measure)
+    if not asked:
+        asked = ["count"]
+    folds = [(str(item), ) + _split_measure(item) for item in asked]
+
+    edges_by_node = {}
+    for edge in edges or ():
+        for endpoint in (edge.get("source"), edge.get("target")):
+            if endpoint:
+                edges_by_node.setdefault(endpoint, []).append(edge)
 
     grouped = {}
     for node in nodes:
@@ -178,13 +241,20 @@ def group_nodes(nodes, group_by, measure):
     out = []
     for key in sorted(grouped, key=str):
         members = grouped[key]
-        if qualifier:
-            values = [value for node in members for value in _values_of(node, qualifier)]
-        else:
-            # `count`/`distinct` with no name count the NODES, which is what the screen's
-            # default (`count`) has always meant.
-            values = [node.get("id") for node in members]
-        out.append({"key": key, "n": len(members), "value": _fold(name, values)})
+        value = {}
+        for spelled, name, qualifier in folds:
+            if qualifier:
+                values = [v for node in members for v in _values_of(node, qualifier)]
+            else:
+                # `count`/`distinct` with no name count the NODES, which is what the
+                # screen's default (`count`) has always meant.
+                values = [node.get("id") for node in members]
+            value[spelled] = _fold(name, values)
+        row = {"key": key, "n": len(members), "value": value}
+        at = _latest_edge_instant(members, edges_by_node)
+        if at is not None:
+            row["at"] = at
+        out.append(row)
     return out
 
 #: 🔴 A STEP THAT STAYS ON THE SAME MATERIAL SPENDS A DIFFERENT BUDGET, and this is how
@@ -204,6 +274,15 @@ def group_nodes(nodes, group_by, measure):
 #: consumers are ours, and a compatibility layer with no one left to remove it stays.
 DEFAULT_BACKBONE_HOPS = 0
 DEFAULT_NODE_LIMIT = 400
+
+#: How many SUBJECTS a described seed set may name (S-148-a, 판정 337). 🔴 THE NUMBER IS
+#: MINE AND UNVERIFIED AT OPERATING SHAPE. It sits in `node_limit`'s class -- an argument,
+#: a ceiling and a default -- and is deliberately generous rather than tuned: a seed is one
+#: id, but every seed EXPANDS, so the real cost is seeds x hops and `node_limit` cuts that
+#: second. Whether 200 is right belongs in a production-shaped box (S-146-b's seat), and
+#: guessing it here would let the guess decide the answer.
+DEFAULT_SEED_LIMIT = 200
+MAX_SEED_LIMIT = 2000
 DEFAULT_EDGE_LIMIT = 6000
 MAX_NODE_LIMIT = 1000
 #: 🔴 THESE THREE WERE SIZED FOR A GRAPH THAT WAS TWO THIRDS PLUMBING, and on 2026-08-25 the
@@ -516,6 +595,53 @@ class SqlEvidenceLookup:
         return self._bounded(rows, limit)
 
 
+    def subjects_of_type(self, entity_type, limit):
+        """Every REGISTERED subject of one declared type — a described seed set (S-148-a).
+
+        🔴 THROUGH THE INDEX THAT ALREADY EXISTS, and measured to be the right one:
+        `idx_ledger_register (subject_type, subject_keys) WHERE predicate = 'register'`.
+        It is PARTIAL, so it is O(entities) rather than O(atoms) -- the schema's own note
+        says so -- which is exactly the shape 「그 타입의 전부」 needs. No new index, and no
+        full scan of the ledger.
+
+        🔴 EVERY ENTITY HAS A REGISTER ATOM. That is A1's existence axis and the predicate
+        name is fixed (`config_authoring.REGISTER_PREDICATE`), so 「this type's subjects」
+        does not need a new concept -- it reads the seat that already records existence.
+
+        ⚠️ ONE ROW PAST THE BUDGET IS FETCHED ON PURPOSE, so 「there were more」 is a fact
+        rather than an inference from a full page.
+        """
+        from ledger import schema
+        from ledger.config_authoring import REGISTER_PREDICATE
+
+        bare = str(entity_type or "").split("@", 1)[0]
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"SELECT DISTINCT subject_type, subject_keys "
+                f"FROM {schema.LEDGER_TABLE} "
+                f"WHERE predicate = %s AND subject_type = %s "
+                f"ORDER BY subject_type, subject_keys LIMIT %s",
+                (REGISTER_PREDICATE, bare, int(limit) + 1))
+            rows = cursor.fetchall()
+        cut = max(0, len(rows) - int(limit))
+        return _DescribedSeeds(
+            [ledger_explorer.entity_id(row[0], row[1]) for row in rows[:int(limit)]], cut)
+
+
+class _DescribedSeeds:
+    """What a described seed set resolved to, and whether the description outran its budget.
+
+    ⚠️ A PAIR, because 「these are the subjects」 and 「there were more」 are two facts and a
+    truncated list cannot carry the second one about itself.
+    """
+
+    __slots__ = ("ids", "cut")
+
+    def __init__(self, ids, cut):
+        self.ids = list(ids)
+        self.cut = int(cut)
+
+
 class InMemoryEvidenceLookup:
     """Contract double used to prove traversal independently of PostgreSQL."""
 
@@ -537,6 +663,26 @@ class InMemoryEvidenceLookup:
     def _result(rows, limit):
         ordered = sorted(rows, key=lambda atom: (atom.occurred_at, atom.id), reverse=True)
         return ordered[:limit], len(ordered) > limit
+
+    def subjects_of_type(self, entity_type, limit):
+        """The same question over the atoms held in memory. ⚠️ THE SAME RULE, not a looser
+        one: only REGISTERED subjects count, so a fixture cannot accidentally seed from a
+        type nothing registered."""
+        from ledger.config_authoring import REGISTER_PREDICATE
+
+        bare = str(entity_type or "").split("@", 1)[0]
+        seen, ids = set(), []
+        for atom in sorted(self.atoms, key=lambda a: (a.subject_type, str(a.subject_keys))):
+            if atom.predicate != REGISTER_PREDICATE:
+                continue
+            if str(atom.subject_type).split("@", 1)[0] != bare:
+                continue
+            node_id = ledger_explorer.entity_id(atom.subject_type, atom.subject_keys)
+            if node_id in seen:
+                continue
+            seen.add(node_id)
+            ids.append(node_id)
+        return _DescribedSeeds(ids[:int(limit)], max(0, len(ids) - int(limit)))
 
     def claims_for_entities(self, entities, direction, limit, *,
                             follow=None):
@@ -1398,7 +1544,8 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
              backbone_hops=DEFAULT_BACKBONE_HOPS, static_types=None,
              static_follow=None, follow_keys=None, collect=None,
              cardinalities=None, include_superseded=False, rows=False,
-             entities=None, group_by=None, measure=None):
+             entities=None, group_by=None, measure=None,
+             seed_type=None, seed_limit=DEFAULT_SEED_LIMIT):
     """Return a typed evidence subgraph from any public node id, or from a signed SET.
 
     `seed_id` is one opaque id as before, or `{"positive": [ids], "negative": [ids]}`.
@@ -1422,6 +1569,39 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     they chose among node KINDS, and there is one kind now, a declared entity. `collect`
     returned because it chooses among DOMAIN TYPES, which is a different question.
     """
+    # 🔴 A DESCRIBED SEED SET (S-148-a, 판정 337). 「전체 ∖ 사례」 could not be asked because
+    # 「전체」 had to be SHIPPED as ids, and at 10⁸ that list does not fit a query string. The
+    # description is re-evaluated per request, so it is not a stored derivation -- the
+    # 2026-08-24 ruling forbids keeping one, and the truth's owner stays the ledger.
+    #
+    # ⚠️ WITH `negative[]` THIS IS THE WHOLE OF `∖`. No set operator is built: 「everything of
+    # this type」 plus 「except these」 are two arguments the walk already knows how to read.
+    # ⚠️ A DESCRIPTION IS A NON-EMPTY STRING, AND NOTHING ELSE. A direct call to the route
+    # handler leaves FastAPI's `Query` sentinel in this argument and a sentinel is truthy —
+    # measured: a bare truthiness test sent a walk that asked for no description off to
+    # enumerate subjects, against a connection the caller never opened.
+    seed_type = seed_type if isinstance(seed_type, str) and seed_type.strip() else None
+    seed_cut = 0
+    if seed_type:
+        described = lookup.subjects_of_type(seed_type, seed_limit)
+        seed_cut = described.cut
+        if not described.ids:
+            raise ValueError(
+                "no registered subject of type %r; nothing to walk from" % (seed_type,))
+        negatives = list((seed_id or {}).get("negative") or ()) if isinstance(
+            seed_id, dict) else []
+        # 🔴 THE EXCEPTED SUBJECTS LEAVE THE DESCRIBED SIDE — this subtraction IS the set
+        # difference, and it is why no operator had to be built. Measured while writing the
+        # gate: leaving them in both sides trips `_signed_seeds`'s own refusal 「a seed
+        # cannot be both observed and a control」, which is that guard correctly saying the
+        # request contradicted itself.
+        excepted = set(negatives)
+        seed_id = {"positive": [item for item in described.ids if item not in excepted],
+                   "negative": negatives}
+        if not seed_id["positive"]:
+            raise ValueError(
+                "every registered subject of type %r is named as a control; nothing is "
+                "left to walk from" % (seed_type,))
     seed_signs = _signed_seeds(seed_id)
     seed_refs = {item: decode_node_id(item) for item in seed_signs}
     primary = next(iter(seed_signs))
@@ -1955,6 +2135,11 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     if edge_cut: reasons.append("edges")
     if claim_cut: reasons.append("claims")
     if action_cut: reasons.append("actions")
+    # 🔴 SEEDS CUT IS A TRUNCATION LIKE THE OTHERS. A walk that started from 200 of 5,000
+    # subjects answered a NARROWER question than the one asked, and `complete` has to say so
+    # -- a contrast computed over a fifth of the controls is the skew `propagation.complete`
+    # exists to name.
+    if seed_cut: reasons.append("seeds")
     payload = {
         # 🪦 [S-13 ③] `schema_version: 3` 이 여기 있었다. 독자가 «0» 이었고(클라 소스·
         #    하니스·계약·서버 시험 전수), 「다를 때 무엇을 하나」가 «어디에도» 안 적혀 있었으며,
@@ -1988,7 +2173,11 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         # spelling for one fact, rather than a second absence word in here.
         **({} if group_by is None
            else {"groups": group_nodes(visible_nodes, str(group_by),
-                                       measure or "count")}),
+                                       measure or "count", ordered_edges)}),
+        # ⚠️ WHERE A MEASURE NAME IS LOOKED UP, IN ORDER (판정 336). Carried so the screen
+        # learns the order rather than guessing it, and so a name answered by two sources
+        # is a refusal both sides can explain.
+        **({} if group_by is None else {"value_sources": list(VALUE_SOURCES)}),
         "attribute_cardinality": {
             node_type: {name: ATTRIBUTE_CARDINALITY_MANY for name in sorted(plural)}
             for node_type, plural in sorted(
@@ -2000,7 +2189,8 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                    "node_kind": seed_refs[item]["kind"]} for item in seed_signs],
         "propagation": _propagation(
             nodes, ordered_edges, seed_signs,
-            not (depth_cut or node_cut or edge_cut or claim_cut or action_cut),
+            not (depth_cut or node_cut or edge_cut or claim_cut or action_cut
+                 or seed_cut),
             static_types),
         "walk": {
             "mode": "evidence_graph", "direction": direction,
@@ -2020,11 +2210,19 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         },
         "limits": {"nodes": node_limit, "edges": edge_limit,
                    "claims": claim_limit, "actions": edge_limit,
-                   "max_hops": MAX_HOPS},
+                   "max_hops": MAX_HOPS,
+                   # ⚠️ Present only when a DESCRIPTION was asked for: an enumerated seed
+                   # list has no ceiling of its own, and a number here would state one.
+                   **({"seeds": seed_limit} if seed_type else {})},
         "truncated": {
             "depth": depth_cut, "nodes": node_cut, "edges": edge_cut,
             "claims": claim_cut, "actions": action_cut,
             "reason": ", ".join(reasons) if reasons else None,
+            # 🔴 HOW MANY SUBJECTS THE DESCRIPTION NAMED AND THIS WALK DID NOT TAKE
+            # (S-148-a). A COUNT rather than a flag, as `interval_excluded` beside it is:
+            # 「how much was left out」 is what tells an operator whether to narrow the
+            # question. Present only when a description was asked for.
+            **({"seeds": seed_cut} if seed_type else {}),
             # 🔴 S-98 / ruling 208. Present ONLY when an interval was asked for - a key
             # that is absent says 「this question was not put」, and a 0 would say 「it was put
             # and nothing was excluded」. Those are different answers and a reader cannot
