@@ -30,13 +30,19 @@ def _domain(report, name):
 # the order itself
 # ---------------------------------------------------------------------------
 
-def test_the_six_steps_are_numbered_in_one_unbroken_chain():
-    """⛔ EACH STEP NAMES THE ONE BEFORE IT, so 「what has to stand first」 is a fact of the
-    list rather than of the order somebody typed it in."""
+def test_the_prerequisites_are_a_ROOTED_TREE_and_not_a_line():
+    """🔴 PINNED AS VALUES, because I first wrote this as a LINE and it produced a FALSE
+    BLOCK (판정 317). Each step depending on the previous one made the ledger `blocked_by: 4`,
+    so an installation with no virtual joins - which is legitimate - would show the ledger
+    permanently blocked. The document's own 「앞」 lines are the canon and they branch from ①.
+
+    ⚠️ ④'s prerequisite is NOT A STEP. It is the right-hand table's UNIQUE index, a DB state,
+    and its absence makes that step refuse itself with `no_unique_index`. Writing it as a
+    step would invent a dependency that does not exist.
+    """
+    assert {s["step"]: s["after"] for s in crr.SETUP_STEPS} == {
+        1: None, 2: 1, 3: 1, 4: 1, 5: 1, 6: 5}
     assert [s["step"] for s in crr.SETUP_STEPS] == [1, 2, 3, 4, 5, 6]
-    assert crr.SETUP_STEPS[0]["after"] is None, "the first step waits for nothing"
-    for previous, current in zip(crr.SETUP_STEPS, crr.SETUP_STEPS[1:]):
-        assert current["after"] == previous["step"], current
 
 
 def test_every_step_names_a_domain_and_no_domain_takes_two_steps():
@@ -81,6 +87,18 @@ def test_a_step_whose_predecessor_stands_is_not_blocked(monkeypatch):
     report = crr.resolve_report([crr.DOMAIN_CATALOG, crr.DOMAIN_CHAIN])
     assert _domain(report, crr.DOMAIN_CATALOG)["counts"]["effective"] == 1
     assert _domain(report, crr.DOMAIN_CHAIN)["blocked_by"] is None
+
+
+def test_the_ledger_is_not_blocked_by_a_virtual_join_it_does_not_need():
+    """🔴 THE FALSE BLOCK THIS LIST FIRST PRODUCED (판정 317). Virtual join is not the
+    ledger's prerequisite - the catalogue is - so a box that declares no materialised join
+    must not show the ledger as blocked. Its OWN refusals stay in its own populations, which
+    is where an operator should read them."""
+    report = crr.resolve_report()
+    ledger = _domain(report, crr.DOMAIN_LEDGER)
+    assert ledger is not None
+    assert ledger["blocked_by"] is None, (
+        "the ledger is blocked by %r; only step 1 can block it" % ledger["blocked_by"])
 
 
 def test_a_step_is_blocked_by_the_NUMBER_of_the_step_that_did_not_stand(monkeypatch):

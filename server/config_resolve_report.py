@@ -1246,12 +1246,25 @@ _RESOLVERS = {
 #: ⚠️ 걸음이 «없는» 도메인이 있습니다(`notation`·`binding`). 그것은 이 순서가 덜 적힌 것이
 #: 아니라 그 도메인이 여섯 걸음의 «밖»이라는 뜻이고, 응답에서 `step: null` 로 «보입니다» —
 #: 숨기면 화면이 가진 도메인과 이 순서가 다른 세계가 됩니다.
+#: 🔴 `after` 는 «문서의 «앞» 줄 그대로»이고, 그것은 «선형이 아닙니다» (판정 317).
+#: 처음 이 리스트를 «줄 세워» 적었더니(각 걸음이 앞 걸음에 의존) 이 박스에서 원장이
+#: `blocked_by: 4` 로 나왔고, 저는 그것을 「기능이 도는 증거」로 읽었습니다. 반대였습니다 —
+#: 원장의 앞은 ④ 가 «아니라» ① 이고, 가상 조인이 «없는» 설치(정당합니다)에서 원장이
+#: «영원히 차단»으로 그려집니다. 「이 줄이 참인가」에서 거짓이고, 어느 설치에서나 그렇습니다.
+#:
+#: ⚠️ ④ 의 앞은 «걸음이 아닙니다** — 오른쪽 표의 UNIQUE 인덱스라는 «DB 상태»이고, 없으면
+#: 그 걸음이 «자기» 모집단에서 `no_unique_index` 로 거절합니다. 걸음으로 적으면 없는 의존이
+#: 생깁니다.
+#:
+#: ⚠️ 그리고 여기 있는 것은 «정적 앞»뿐입니다. 문서는 조건부 의존도 적습니다(③·⑤ 가
+#: 「파생 표를 쓴다면」 ②③ 에 기댑니다) — 그것은 «소스마다» 달라 이 리스트가 답할 수 없고,
+#: 계산하려면 선언을 읽어야 합니다. 별건입니다. 여기서 «추측»하지 않습니다.
 SETUP_STEPS = (
     {"step": 1, "name": "표", "domain": DOMAIN_CATALOG, "after": None},
     {"step": 2, "name": "파생", "domain": DOMAIN_CHAIN, "after": 1},
-    {"step": 3, "name": "확정", "domain": DOMAIN_ENRICHMENT, "after": 2},
-    {"step": 4, "name": "가상 조인", "domain": DOMAIN_VIRTUAL_JOIN, "after": 3},
-    {"step": 5, "name": "원장", "domain": DOMAIN_LEDGER, "after": 4},
+    {"step": 3, "name": "확정", "domain": DOMAIN_ENRICHMENT, "after": 1},
+    {"step": 4, "name": "가상 조인", "domain": DOMAIN_VIRTUAL_JOIN, "after": 1},
+    {"step": 5, "name": "원장", "domain": DOMAIN_LEDGER, "after": 1},
     {"step": 6, "name": "걷기 좌석", "domain": DOMAIN_WALK, "after": 5},
 )
 
