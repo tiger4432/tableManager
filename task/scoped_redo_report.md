@@ -36570,3 +36570,54 @@ tests/test_chain_skeleton.py  둘을 «양방향»으로 셉니다
 
 > 📌 **[09-12 14:0x] 이 채널의 미답 질문: «하나» — 문서 단위 모양(위).** 다음 = **S-193**
 > (기동 `[MISSING-TABLE]` 이 kind view 열 개를 「없는 표」라 부르는 것). 재기동 불필요(생성물·시험).
+
+---
+
+## 📤 [09-12 14:1x 구현자] S-193 착지 — `98eee71f`. 상설 거짓 «열 줄»이 0 이 됐습니다
+
+### 양방향으로 쟀습니다
+```
+옛 동작 복원(손으로 _declared_kind 를 'table' 로)  ->  MISSING-TABLE «10», 총괄이 적으신 열 개와 «이름까지 동일»
+  bonding_core_die · bonding_core_lot · bonding_die_from_core · dt_log_transferable ·
+  lot_slot_move · mechanism_edge_to_finding · mechanism_edge_to_quantity ·
+  process_param_num · process_param_txt · void_obs_observed
+고친 뒤                                          ->  MISSING-TABLE «0» · MISSING-VIEW «0» ·
+                                                     기존 INFO 34 만 남음
+「Starting anyway ON PURPOSE」 문장 그대로
+```
+사유: `_actual` 이 `get_multi_columns`/`get_table_names` 를 읽고 «둘 다 뷰를 안 싣습니다».
+`models.py` 가 그 비용을 이미 적어 뒀습니다 — 「a permanent error line is how a real one stops being read」.
+
+### 🔴 「존재」냐 「뷰냐」 — 실측이 갈랐고, 제 첫 직감이 «틀렸습니다»
+```
+제가 먼저 잡은 것: get_view_names() 에 있나  <- 이게 «틀립니다»
+실측: 이 카탈로그의 kind view 는 «열하나»입니다. 열한 번째가 `ledger_events` 이고,
+      그것은 «물리적으로 표»인데 kind view 로 선언돼 쓰기 문이 거절합니다(S-186).
+      => get_view_names() 로 물으면 «그것을 MISSING-VIEW 라 부릅니다». 거짓 열 개를 «거짓 하나»와 바꾸는 것입니다
+그래서 질문은 «관계가 존재하나»입니다 — 총괄이 `to_regclass` 라 적으신 이유가 그것이었고,
+인스펙터 두 목록(table+view)에 더해 PG 에서는 to_regclass 로 «날을 세웁니다»
+(머티리얼라이즈드 뷰가 두 목록에서 빠질 수 있고, 그걸 「없다」고 보고하면 «같은 결함이 다른 문으로» 돌아옵니다)
+```
+⚠️ **답할 수 없는 프로브는 「없음」이 아닙니다** — 물을 수 없었다는 이유로 부재를 보고하는 것이
+건강한 DB 에 상설 오류 줄을 쓰는 길입니다. 그 경우 `True`(있다고 봄)로 둡니다.
+
+### 「없는 뷰」는 «이름 대어» 보고합니다 (0 지어내지 않음)
+```
+[MISSING-VIEW] <이름> — 카탈로그가 뷰를 선언했는데 DB 에 그 이름의 관계가 없음
+severity 는 MISSING-TABLE «과 같은 등급» (질의가 똑같이 다 깨지므로)
+remedy 가 «표와 다릅니다» — create_all 은 «표»를 만듭니다. 부팅으로 뷰는 안 생깁니다
+   (표의 remedy 「boot once」를 뷰에 그대로 쓰면 그 문장이 «거짓»입니다)
+카탈로그 질문은 `catalog_kind` «한 함수»로 — 기동 검사와 쓰기 문이 «어긋날 수» 없게(S-187)
+```
+
+### 게이트
+```
+8 passed
+변이 ①  뷰를 다시 표로 취급        -> 「뷰로 이름 댄다」 단언 빨강
+변이 ②  없는 뷰를 조용히 건너뜀     -> 같은 단언 빨강
+모집단 3 파일 155 passed · 1 skipped · 커밋 뒤 collect 5,904
+```
+
+> 📌 **[09-12 14:1x] 이 채널의 미답 질문: «없음».** 🔵 재기동 «제 몫 아님» — 총괄 몫이고,
+> 재기동하면 기동 줄에서 MISSING-TABLE 열 줄이 사라진 것을 보실 수 있습니다.
+> 다음 = **S-189 설계**(가상 조인 → join 체인 종류) → S-194 설계(빌더 서버 절반).
