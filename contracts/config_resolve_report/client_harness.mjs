@@ -206,8 +206,11 @@ function domainFromVectors(name) {
       },
     });
   }
+  // ⚠️ SETTINGS BELONG TO THE DOMAIN THAT HAS THEM. `settings_cases` carry no domain
+  // field, so they are enrichment's; emitting them under every domain rendered one detail
+  // twice and the contract counted that as two chances to disagree.
   const settings = [];
-  for (const sc of vectors.settings_cases || []) {
+  for (const sc of (name === DEFAULT_DOMAIN ? vectors.settings_cases || [] : [])) {
     for (const s of sc.expect || []) {
       settings.push({
         key: s.key,
@@ -222,12 +225,18 @@ function domainFromVectors(name) {
   return {
     domain: name,
     title: mark('domain-title', name),
-      sources: [
-        { key: 'rules', path: mark('src-path', 'rules'), exists: true, status: 'ok',
-          detail: mark('source-detail', 'rules') },
-        { key: 'settings', path: mark('src-path', 'settings'), exists: false, status: 'ok',
-          detail: mark('source-detail', 'settings') },
-      ],
+    // ⚠️ A SOURCE MARKER IS PER DOMAIN, for the same reason the settings are: the enrichment
+    // file names were emitted under every domain, and the contract read one sentence
+    // rendered twice - which it counts as two chances to disagree.
+    sources: name === DEFAULT_DOMAIN ? [
+      { key: 'rules', path: mark('src-path', 'rules'), exists: true, status: 'ok',
+        detail: mark('source-detail', 'rules') },
+      { key: 'settings', path: mark('src-path', 'settings'), exists: false, status: 'ok',
+        detail: mark('source-detail', 'settings') },
+    ] : [
+      { key: name, path: mark('src-path', name), exists: true, status: 'ok',
+        detail: mark('source-detail', name) },
+    ],
     settings,
     ...buckets,
     counts: Object.fromEntries(populations.map(p => [p, buckets[p].length])),

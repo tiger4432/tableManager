@@ -260,7 +260,50 @@ def test_entry_refuses_a_word_outside_the_vocabulary():
 # The cases
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("case_id", [c["id"] for c in VECTORS["cases"]])
+@pytest.fixture()
+def catalog_env(monkeypatch):
+    """A catalogue bundle in, the `catalog` domain out. 🔴 ITS OWN BUILDER (S-180 ⓐ-1).
+
+    An enrichment case writes `enrichment_rules.json` and a catalogue case declares tables;
+    one builder serving both would have to branch on the domain, and the branch nobody takes
+    is the one that rots. The domain comes back BY NAME, never by position.
+    """
+    from database import crud
+
+    def build(catalog):
+        monkeypatch.setattr(crud, "load_table_config_or_raise", lambda: dict(catalog))
+        return _domain_named(crr.resolve_report([crr.DOMAIN_CATALOG]), crr.DOMAIN_CATALOG)
+
+    return build
+
+
+@pytest.mark.parametrize(
+    "case_id", [c["id"] for c in _cases_for(crr.DOMAIN_CATALOG)])
+def test_catalog_case(case_id, catalog_env):
+    """⚠️ THE SAME EXPECTATION THE NODE HARNESS READS. A case that only python scored
+    would let the two halves drift on the one thing this contract exists to hold together:
+    which population an entry lands in, and under which reason word."""
+    case = _cases()[case_id]
+    _CONSUMED.add(case_id)
+    domain = catalog_env(case["catalog"])
+
+    want = case["expect"]
+    subject = next(iter(case["catalog"]))
+    found = [(pop, e) for pop, e in _entries(domain)
+             if e["scope"] == crr.SCOPE_RULE and e["subject"] == subject]
+    assert len(found) == 1, (
+        f"[{case_id}] a relation must appear in exactly one population, got {len(found)}: "
+        f"{[(p, e['reason']) for p, e in found]}")
+    pop, e = found[0]
+    assert pop == want["population"], (
+        f"[{case_id}] expected population '{want['population']}', got '{pop}' "
+        f"(reason={e['reason']!r}, detail={e['detail']!r})")
+    assert e["reason"] == want["reason"], f"[{case_id}] detail was: {e['detail']!r}"
+    assert e["warnings"] == want["warnings"], f"[{case_id}] detail was: {e['detail']!r}"
+
+
+@pytest.mark.parametrize(
+    "case_id", [c["id"] for c in _cases_for(crr.DOMAIN_ENRICHMENT)])
 def test_case(case_id, report_env):
     case = _cases()[case_id]
     _CONSUMED.add(case_id)
@@ -335,7 +378,7 @@ def test_inv_1_and_2_reason_presence_tracks_population(report_env):
 
 
 def test_inv_3_and_4_every_entry_is_renderable_and_in_vocabulary(report_env):
-    for case in VECTORS["cases"]:
+    for case in _cases_for(crr.DOMAIN_ENRICHMENT):
         domain = report_env(rules=case["rules"], settings=case.get("settings"))
         for pop, e in _entries(domain):
             assert set(VECTORS["envelope"]["entry"]) <= set(e)
@@ -376,7 +419,8 @@ def test_inv_8_no_operator_sentence_leaks_python_spelling_or_raw_markup(report_e
         "**": "literal markdown",
         "!r": "an unformatted repr conversion",
     }
-    cases = [(c["id"], c["rules"], c.get("settings")) for c in VECTORS["cases"]]
+    cases = [(c["id"], c["rules"], c.get("settings"))
+             for c in _cases_for(crr.DOMAIN_ENRICHMENT)]
     # Plus the branches no rule case reaches: invalid settings values, which are
     # echoed back to the operator.
     cases.append(("invalid_settings", {}, {"enrichment_auto_confirm_max_keys": "20",

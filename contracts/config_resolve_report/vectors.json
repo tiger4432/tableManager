@@ -289,6 +289,49 @@
         }
       },
       "expect_any": {"population": "rejected", "reason": "mapping_unavailable", "scope": "reference_view"}
+    },
+
+    {
+      "id": "catalog_relation_with_columns_stands",
+      "domain": "catalog",
+      "$comment": [
+        "S-180 ⓐ. The catalogue step's happy answer -- and the only one of the three a",
+        "resolver that never refuses would also produce, which is why the other two sit",
+        "beside it."
+      ],
+      "catalog": {
+        "s180_ok": {"column_types": {"a": "string", "b": "number"}, "composite_key_source": ["a"]}
+      },
+      "expect": {"population": "effective", "reason": null, "warnings": []}
+    },
+
+    {
+      "id": "catalog_relation_without_columns_is_not_read",
+      "domain": "catalog",
+      "$comment": [
+        "The adapter passes over a relation with no `column_types` WITHOUT complaining, so",
+        "the operator has written a name and nothing the reader can use. That is",
+        "`not_declared`, and it must never share a bucket with a refusal: one is the next",
+        "step and the other is a mistake."
+      ],
+      "catalog": {
+        "s180_no_columns": {"column_types": {}}
+      },
+      "expect": {"population": "ineffective", "reason": "not_declared", "warnings": []}
+    },
+
+    {
+      "id": "catalog_relation_with_an_unknown_kind_is_refused",
+      "domain": "catalog",
+      "$comment": [
+        "`veiw` is the failure mode this field has: the typo reads exactly like never having",
+        "written the line, so it is refused BY PATH. The report carries that path and message",
+        "rather than a second spelling of them."
+      ],
+      "catalog": {
+        "s180_bad_kind": {"column_types": {"a": "string"}, "kind": "veiw"}
+      },
+      "expect": {"population": "rejected", "reason": "mapping_unavailable", "warnings": []}
     }
   ],
 
