@@ -569,6 +569,61 @@ def map_production_plan_shortage(row_data: dict, db: Session) -> dict:
 
 ---
 
+## 🔬 1-bis. 돌려 보기 — 샘플 «하나»로 (S-192, 2026-09-12 신설)
+
+**쓰기 없이, 이름을 추측하지 않고, 매퍼나 파서 하나를 돌려 봅니다.**
+
+```bash
+python scripts/try_core.py mapper  <이름>  <sample.csv>
+python scripts/try_core.py parser  <파일>  [--force File.py::Class] [--scripts DIR]
+python scripts/try_core.py folder  tests/samples/parser/void_lines
+```
+```
+매퍼   `<이름>` 은 «등록된» 매퍼 이름입니다 — `@mapper()` 가 등록부를 채웁니다(`mapper_sdk.MAPPER_REGISTRY`).
+      `module:function` 도 받지만, 등록된 이름이면 «추측할 이름이 없습니다»
+파서   제품과 «같은 방식»으로 고릅니다 — 파서의 `match()` 가 그 파일을 무는지로. `--force` 는
+      안 무는 파일을 굳이 돌릴 때이고, 그것이 「이 파서가 이 파일을 안 문다」를 «숨기지 않게» 하는 인자입니다
+폴더   아래 「폴더 하나 = 시험 하나」 그대로. pytest 가 부르는 «그 함수»를 그대로 부릅니다
+```
+
+### 🔴 폴더 «하나»가 시험 «하나»입니다
+
+```
+tests/samples/<종류>/<이름>/
+    input.csv        입력 (또는 .tsv · .json)
+    rule.json        그 규칙 — 매퍼가 `rule` 에서 읽는 것이 여기 있습니다
+    <매퍼>.py        그 폴더가 쓰는 매퍼 (매퍼 샘플일 때)
+    expected.tsv     기대 — «머리글과 행이 둘 다» 못 박힙니다
+```
+폴더를 더하면 시험이 «하나 늘어납니다». 등록할 목록이 없습니다 — `dev_bench.sample_folders()` 가
+디렉터리를 훑고 `server/tests/test_a_sample_folder_is_a_test.py` 가 그것을 파라미터로 받습니다.
+
+### 🔴 CLI 와 시험이 «같은 함수»를 지납니다
+
+`scripts/try_core.py` 는 아무것도 스스로 조립하지 않고 세 형태 전부 `dev_bench` 를 부르며,
+`folder` 형태는 pytest 픽스처가 부르는 «바로 그» `run_sample_folder` 입니다 —
+그래서 **「명령줄에서는 됩니다」와 「시험은 통과합니다」가 «다른 사실»이 될 수 없습니다.**
+⚠️ 거절은 **stderr + 종료코드 2** 입니다. stdout 으로 내면 「행이 0 인 결과」와 «구별되지 않습니다».
+
+### ⚠️ 벤치가 «하지 않는» 것 셋
+
+```
+쓰기        커넥션은 «서버가 강제하는» 읽기 전용입니다(판정 301). 벤치가 스스로 안 쓰는 것이 아니라
+           «쓸 수 없습니다» — 그 둘은 다른 보장입니다
+DB 요구     열리지 않으면 `db` 로 `None` 을 넘기고 그대로 돕니다. 매퍼 대부분은 `db` 를 안 만지고,
+           살아 있는 PostgreSQL 을 요구하면 벤치가 «제일 쓸모 있을 때» 못 쓰입니다
+도메인 가르치기  선언 없는 대상 표에는 «최소 선언»만 빌려 줍니다(`business_key: row_id`, 컬럼 하나).
+           도메인 모양이 아닙니다 — 벤치가 매퍼에게 «그 표가 안 가르칠 것»을 가르치면 안 됩니다
+```
+🔵 그리고 한 칸이 **화면·행 TSV 와 «같은 바이트»**로 보이게 `utils.wire_format.wire_text` 를 지납니다.
+⚠️ **그 사실은 폴더 시험이 «따로» 단언합니다** — `rows_to_tsv` 에서 `wire_text` 를 빼도 폴더 시험은
+«초록»이었습니다(두 규칙이 같은 답을 내는 표본은 판별식이 아닙니다).
+
+📎 심볼과 줄 번호는 [CODE_MAP §🆕㉗](../architecture/CODE_MAP.md) 가 정본입니다.
+
+---
+
+
 ## ⚙️ 2. 체인 룰 설정 파일에 맵퍼 등록
 
 가공 연산이 정의된 파이썬 함수를 실제 인제션 파이프라인 흐름에 바인딩하기 위해 체인 룰 설정 파일에 맵퍼 모듈 정보를 기재합니다.
