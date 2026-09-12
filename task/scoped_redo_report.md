@@ -36621,3 +36621,101 @@ remedy 가 «표와 다릅니다» — create_all 은 «표»를 만듭니다. �
 > 📌 **[09-12 14:1x] 이 채널의 미답 질문: «없음».** 🔵 재기동 «제 몫 아님» — 총괄 몫이고,
 > 재기동하면 기동 줄에서 MISSING-TABLE 열 줄이 사라진 것을 보실 수 있습니다.
 > 다음 = **S-189 설계**(가상 조인 → join 체인 종류) → S-194 설계(빌더 서버 절반).
+
+---
+
+## 📐 [09-12 14:3x 구현자] S-189 설계 한 장 — 코드 0. ③ 의 수가 «설계를 정합니다»: 한 참조 행이 70,800 행을 다시 쓰게 합니다
+
+### ⚠️ 먼저 제 앞선 수 하나를 정정합니다
+가상 조인 규칙을 「이 박스 9」로 셌는데 **틀렸습니다** — `len()` 이 `_` 접두 «주석 키»를 같이 셌습니다.
+**라이브 규칙은 «둘»이고, 추적 샘플도 «둘»입니다.** (규칙 모양: `left_table`·`right_table`·
+`join_key`[{left,right} 쌍]·`expose`·`join_cardinality`·`unresolved_label`·`enabled`.)
+
+### 🔴 ③ 변경 비용 — 식과 «이 박스» 실측
+```
+식   참조 행 하나가 바뀔 때 다시 쓸 대상 행 수 = 그 조인 키를 가진 «왼쪽 행 수»
+     (= 왼쪽 표를 join_key 로 GROUP BY 했을 때 그 키의 크기)
+
+이 박스 실측:
+  dt_log_frame_from_inventory              left=dt_log        606,215 행   MAX_FANOUT «70,800»
+  dt_inventory_confirmed_from_attribution  left=dt_inventory  488,429 행   MAX_FANOUT «1»
+```
+🔴 **70,800 은 설계를 «바꾸는» 수입니다.** 소유자 규격(IO ≤ 1.3 s/1k, 판정 273)으로 환산하면
+**한 참조 행 편집이 ≈ 92 s 의 IO**입니다. 그러므로:
+```
+⛔ 커밋 경로 «인라인 금지» — 90초짜리 쓰기를 요청 안에 두면 그 요청이 죽습니다
+✅ follow_up «페이싱»으로 (S-151 이 이미 그 자리입니다 — 훅이 아니라 드레인)
+✅ 그리고 «미리 세는» 자리가 필수입니다 — retroactive count 씨앗 그대로.
+   「이 편집이 N 행을 다시 씁니다」를 «쓰기 전에» 말할 수 있어야 합니다(핵심가치: 변경 비용)
+⚠️ 카디널리티가 «1» 인 규칙과 «70,800» 인 규칙이 같은 기제를 지나되 비용이 «네 자리» 다릅니다.
+   그래서 `join_cardinality` 는 장식이 아니라 «예산 축»입니다
+```
+
+### ② 트리거 둘 — 그리고 역색인의 답은 「필요하다, 그런데 «제품이 요구하지 않는다»」
+```
+트리거 ⓐ  대상(왼쪽) 행 변화  -> «그 행만» 다시 씀. 비용 O(1). 오늘의 읽기 시점 조인과 같은 방향
+트리거 ⓑ  참조(오른쪽) 행 변화 -> 그 값을 참조하던 «왼쪽 행 전부». 위의 70,800 이 이 경우입니다
+🔴 색인의 «비대칭»이 실측됐습니다:
+   오른쪽   `virtual_join_config.required_index_ddl` 이 «요구»합니다 — UNIQUE 없으면 규칙이 «거절»됩니다
+            (S-181 마이그레이션이 그 인덱스를 만듭니다: right_table · right_columns)
+   왼쪽     «아무것도 요구하지 않습니다». 그런데 ⓑ 가 필요로 하는 것은 «왼쪽» 색인입니다
+   이 박스  왼쪽 표에 dt_job 을 «언급하는» 인덱스가 둘 있어 우연히 색인됩니다 —
+            우연은 계약이 아닙니다
+=> 설계: 실체화를 켜는 조건에 «왼쪽 join_key 색인»을 `required_index_ddl` 과 «같은 모양»으로 더합니다.
+   그러면 승인 거절이 운영자에게 «할 일»을 주는 오늘의 자세가 그대로 유지됩니다
+```
+
+### ① 오늘의 자리 «전수» — 접힌 뒤 어디로 가나
+```
+virtual_join_config.py     선언·검증·join_onclause·required_index_*·unresolved_label·verification_report
+                           -> 규칙 «문법»은 남습니다(호환층이 읽음). onclause 는 «실체화 쓰기»의 SELECT 로
+virtual_join_executor.py   exposed_columns·resolved_expression·join_onclause·reset_cache
+                           -> 읽기 시점 해석은 «사라집니다». 값이 이미 셀에 있습니다
+main.py VirtualColumnBinder 필터·검색·정렬에 COALESCE 식을 물림
+                           -> «사라집니다». 실체화된 컬럼은 «보통 컬럼»이라 필터·정렬이 공짜입니다
+                              🔵 이것이 실체화의 «진짜 이득»입니다 — 가상 컬럼은 정렬 하나에 조인을 붙였습니다
+column_filter.py           resolved_expression·unresolved_label       -> 보통 컬럼 경로로
+database/crud.py           resolved_expression·refuse_virtual_join_duplicates -> 후자는 «남습니다»(쓰기 전 거절)
+ledger/source_preparation  resolved_expression -> 원장 소스가 가상 컬럼을 읽던 자리. 보통 컬럼으로
+chain_graph._vjoin_edges   -> mapper 엣지로(⑥), origin synthesized
+config_resolve_report      unresolved_label 문장 조립기 -> 그대로(거절 문장은 남습니다)
+migrations/add_vjoin_null_safe_indexes  -> 남고, «왼쪽» 인덱스가 더해집니다(②)
+```
+
+### ④ NULL = NULL 은 «같은 함수»로 남습니다
+```
+`crud.fold_key_value`(S-181) 그대로입니다. 🔴 그리고 «이행 기간»이 위험합니다 —
+실체화 쓰기가 읽기 시점 onclause 와 «다르게» 접으면, 같은 행이 두 문에서 다른 값을 냅니다.
+그래서 실체화 SELECT 는 `join_onclause` 를 «그대로 부릅니다» — 두 번째 철자를 만들지 않습니다
+```
+
+### ⑤ 철회 — 기제가 «이미» 있습니다
+```
+`crud.withdraw_source(db, table_name, source_name, columns=…)`
+조인 층의 source_name = «규칙 이름» 이므로, 참조 행이 사라지면 그 이름의 층을 철회합니다
+=> 0 이나 빈칸을 «지어내지 않습니다». 셀이 «그 층 없이» 남고 수동 수정이 있으면 그것이 보입니다
+```
+
+### ⑥ 한 방향 호환
+```
+`virtual_join_rules.json` -> `builtin:join` 체인 규칙으로 «합성» + 경고 한 줄 (S-179 ④ 와 같은 모양)
+운영 파일 «안 건드립니다». 합성 규칙은 `origin: synthesized:<name>` 를 답니다(chain_graph 가 이미 읽음)
+```
+
+### ⑦ 두 줄 선언법
+```
+「참조 표의 값을 대상 표에 실제로 넣으려면 `virtual_join_rules.json` 의 그 규칙에 `materialize: true` 를 적습니다.」
+「값은 규칙 이름의 «자기 층»으로 들어가므로, 수동 수정이 이깁니다 — 원천이 바뀌면 그 층만 다시 씁니다.」
+```
+
+### 📌 소유자 결정 자리 «하나»
+```
+70,800 행 재작성이 «언제» 도나 — 규칙마다 예산을 둘지, 전역 한 줄로 둘지입니다.
+  ① 규칙마다  `join_cardinality` 옆에 「참조 변화 시 최대 재작성 행」 상한. 넘으면 «거절하고 이름 댐»
+  ② 전역      페이싱 하나에 맡기고 상한 없음 — 90초가 «조용히» 도는 것을 허용
+저는 ①을 권합니다 — 「변경 비용을 말하고 나서 바꾼다」가 이 제품의 핵심가치이고,
+상한이 없으면 그 말을 «할 수 있는데 안 하는» 것이 됩니다. 다만 수(상한)는 소유자 몫입니다.
+```
+
+> 📌 **[09-12 14:3x] 이 채널의 미답 질문: «하나» — 위 예산 상한(①을 권함).** 코드 0 · 설계 한 장만 커밋합니다.
+> ⚠️ CODE_MAP §5-C/§5-D 가 가상 조인의 지도이고 `docs/architecture` 에 vjoin 전용 문서는 «없습니다»(실측).
