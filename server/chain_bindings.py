@@ -185,6 +185,50 @@ READS_KEY = "reads"
 REFERENCE_BLOCK = "reference"
 REFERENCE_TABLE_KEY = "table"
 
+# ---------------------------------------------------------------------------
+# S-188 ⓐ — 체인 규칙의 «최상위» 칸 전부, 한 목록 (판정 300)
+# ---------------------------------------------------------------------------
+#: 🔴 이 목록의 주어는 «워커»가 아니라 «규칙을 받는 모듈 전부»다. 워커의 `rule.get` 전수는
+#: 열하나인데, `chain_graph._mapper_edges`/`_contested`/`_contested_tables` 가 «워커가 안 읽는»
+#: 넷을 더 읽는다 — `target_field` · `max_group_attempts` · `origin` · `params`. 열하나로 닫으면
+#: 오늘 도는 것이 거절된다(실측 2026-09-12).
+#:
+#: ⚠️ 합성 규칙이 `params` «안»에 두는 이름은 여기 «없다» — `decision_key` ·
+#: `reference_views` · `aggregations` · `alignment` 은 인리치 규칙의 칸이거나 `params` 의
+#: 내용이고, 최상위에서 읽히지 않는다(`chain_graph:97` 이 `params` 를 꺼낸 «뒤» 읽는다).
+#: 인리치·가상 조인 규칙의 칸을 여기 섞으면 «세 파일의 문법»이 한 목록이 되고, 그러면 이
+#: 목록은 아무것도 거절하지 못한다.
+#:
+#: 🔴 `RULE_TABLE_KEYS` 는 이것의 «부분집합»이고 그 관계를 시험이 못 박는다. 표 키가 하나
+#: 늘 때 이 목록에도 적어야 한다는 것을 사람이 기억하게 두지 않는다 — 위 `rule_tables` 의
+#: 「여기서 다시 열거하지 않는다」와 같은 규율이다.
+RULE_ROUTING_REQUIRED = ("name", "trigger_table")
+
+#: ⚠️ `target_table` · `enabled` · `is_batch` 는 샘플 규칙 «열 개 전부»가 적지만 선택이다 —
+#: 코드에 기본값이 있거나(`rule.get("enabled", True)` · `rule.get("is_batch", False)`) 데코레이터가
+#: 댈 수 있다(`mapper_sdk.mapper(target_table=...)`). 「전부 적혀 있다」와 「없으면 거절」은
+#: 다른 문장이고, 후자만 계약이다.
+RULE_ROUTING_OPTIONAL = (
+    "target_table", "target_field", "trigger_columns", "enabled", "is_batch",
+    "follow_up", "allow_chain_trigger", "allow_map_metadata_upsert",
+    "max_group_attempts", "origin", "params",
+    "mapper_module", "mapper_function",
+    # 표를 이름 대는 칸 — `RULE_TABLE_KEYS` 와 «같은» 목록이어야 한다(시험이 단언)
+    "source_table", "map_table", "inventory_table", "metadata_target_table",
+    "derivation_source_table",
+    # 위 키로 표현 못 하는 읽기와, 실행 시점에 정해지는 참조 블록
+    READS_KEY, REFERENCE_BLOCK,
+)
+
+
+def routing_keys():
+    """이 규칙 문법이 최상위에서 «받는» 이름 전부 — 로더의 `exact(...)` 가 이것을 지난다.
+
+    🔴 함수로 내는 이유는 「한 목록」이 두 벌이 되지 않게 하려는 것이다. 필수와 선택을 각자
+    import 해 합치는 자리가 둘이면 그 둘이 갈릴 수 있고, 갈린 쪽이 «조용히» 덜 거절한다.
+    """
+    return tuple(RULE_ROUTING_REQUIRED) + tuple(RULE_ROUTING_OPTIONAL)
+
 
 def reference_tables(rule):
     """이 규칙의 `reference_spec` 이 «이름 댈 수 있는» 표 — 선언에서 도출한다."""
