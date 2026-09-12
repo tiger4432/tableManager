@@ -8,15 +8,23 @@
 // answers NO for and whose filter the server nonetheless evaluates against the joined
 // COALESCE. Both kinds are fixtured below, because a client that keys the filter off the
 // first announcement is silently wrong about every collide column.
-// Run: node client2/tests/virtual_column_render_harness.mjs   (no node_modules — vm sandbox)
+// Run: node client2/tests/virtual_column_render_harness.mjs
 //
-// WHAT IT SCORES. The REAL `loadSchema` (api.js), the REAL `buildColumnDefs` (grid.js), the
-// REAL `getUnprotectedPushColumns` (push_columns.js — IMPORTED, not sliced; see `runPushGate`)
-// and the REAL per-cell decision blocks of
-// the four client write funnels (clipboard.js x3, ui.js x1), all lifted verbatim out of the
-// source and evaluated in a vm sandbox — the same technique as
-// `value_suggest_keys_harness.mjs`, and for the same reason: those modules import `config.js`,
-// which touches `window` at module scope, so they cannot be imported in node.
+// WHAT IT SCORES. The REAL `loadSchema` (api.js), the REAL `buildColumnDefs` (grid.js), the REAL
+// `getUnprotectedPushColumns` (push_columns.js) and the REAL write funnels -- the paste and copy
+// handlers `setupClipboardHandlers` registers, plus `clearSelectedCells` and
+// `applyValueToSelectedRange`. All of them IMPORTED, driven on a stub page, and asked the one
+// question this file exists for: which columns reached the request.
+//
+// 🔴 C-88, 2026-09-13: IT USED TO CUT THEM OUT AS TEXT AND RUN THE PIECES IN `vm`. The owner's
+// standing rule is 「잘라쓰기 하니스 절대 금지」 and the reason this file recorded for the
+// exception -- 「those modules import config.js, which touches window at module scope, so they
+// cannot be imported in node」 -- had stopped being true: `config.js` is guarded and its own
+// comment warns against putting the bare read back. The cost of the slice was measured twice in
+// two days: it went RED on correct code (C-85's new helper was an unbound name in the sandbox,
+// C-84 moved a mutation anchor), which is the disease the ban describes -- a harness scoring the
+// shape of the letters instead of the behaviour. The numbers did not move across the conversion:
+// 66 assertions, 28 defect mutants, 2 controls, same expectations.
 //
 // THE FIXTURE IS THE ANNOUNCEMENT. There is no live `server/config/virtual_join_rules.json`
 // on this box (only `.sample`), so nothing announces anything here and a harness that read the
@@ -25,32 +33,19 @@
 // (`bonding_log` <- `core_wafer_map`, expose `wafer_id`, label `미상`) plus a `number`-typed
 // sibling — because a `number` virtual column carrying a string is the whole point.
 //
-// EVERY CHECK IS PAIRED WITH A MUTANT. The suite re-runs against deliberately defective
-// sources and FAILS if a defect still passes — a check that cannot fail proves nothing. It
-// also runs CONTROL mutants (a consistent rename of locals, and stripping every comment line)
-// which must ESCAPE: if a control is caught, some check is reading source text rather than
-// behaviour, and its green means nothing.
+// EVERY CHECK IS PAIRED WITH A MUTANT. Each defect mutant names ONE FILE; the probe builds a
+// whole module from it (byte-identical copy + appended probe), so a mutant that fails to parse
+// fails loudly rather than scoring as caught. CONTROL mutants (a consistent rename of locals, and
+// stripping every comment line) must ESCAPE: if a control is caught, some check is reading source
+// text rather than behaviour, and its green means nothing.
 //
-// EXTRACTION ANCHORS ARE THE ONE PLACE SOURCE TEXT IS READ, and this file exits 2 — loudly,
-// not green — when one stops matching. A harness that goes quiet because it lost the code is
-// worse than no harness.
+// 🔴 A MUTATION WHOSE ANCHOR HAS ROTTED STOPS THE RUN (exit 2) instead of reading as a pass --
+// `sub()` counts its occurrences and dies on anything but the expected number.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import vm from 'node:vm';
-// 🔴 A REAL IMPORT, and the direction this file still has to go. `server_time.js` touches no
-//    DOM, so the sandbox below is handed the SHIPPED parse instead of a second one written here
-//    -- a harness that re-implements the thing it measures is measuring itself.
-//
-// ⚠️ AND THE REASON THIS FILE SLICES IS STALE (measured 2026-09-13, C-85). The header says those
-//    modules "cannot be imported in node" because `config.js` touches `window` at module scope;
-//    `config.js` is guarded today (`typeof window !== 'undefined'`) and its own comment warns
-//    against putting the bare read back. `client2/tests/grid_datetime_render_harness.mjs`
-//    imports `grid.js` WHOLE and drives the same `buildColumnDefs`. Converting this file is a
-//    round of its own, not a side effect of C-85 -- it is raised to the Lead rather than done
-//    here, and NOTHING NEW IS SLICED BY THAT ROUND: the three lifts added below are the names
-//    the new code needs to not throw, and the behaviour they carry is scored by import next door.
-import { localStamp, NO_TIME } from '../src/server_time.js';
+import { loadWithProbe } from './lib/probe.mjs';
+import { makeDoc, makeNode } from './lib/board_dom.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
@@ -62,68 +57,126 @@ function die(msg) {
   process.exit(2);
 }
 
-const read = f => readFileSync(join(SRC, f), 'utf8').replace(/\r\n/g, '\n');
-// `push` replaced `map: read('map_editor.js')`: the only thing this harness ever took from
-// that file was Gate 4, and Gate 4 now lives in its own module. This file therefore no longer
-// reads `map_editor.js` at all -- one fewer harness holding a text anchor into it.
-const PRISTINE = {
-  state: read('state.js'),
-  api: read('api.js'),
-  grid: read('grid.js'),
-  clipboard: read('clipboard.js'),
-  ui: read('ui.js'),
-  push: read('push_columns.js')
+// ── the page these modules run on ───────────────────────────────────────────────
+//
+// 🔴 ONE DOCUMENT, GLOBAL, because that is what `dom.js` reads. The modules take their
+//    elements from `document.getElementById`, so a stub handed in as a parameter would be a
+//    second page nobody looks at.
+const doc = makeDoc('light');
+const nodes = new Map();
+const listeners = new Map();
+doc.getElementById = (id) => {
+  if (!nodes.has(id)) nodes.set(id, makeNode(doc, 'div'));
+  return nodes.get(id);
+};
+doc.querySelector = () => null;
+doc.querySelectorAll = () => [];
+doc.addEventListener = (type, fn) => {
+  if (!listeners.has(type)) listeners.set(type, []);
+  listeners.get(type).push(fn);
+};
+doc.removeEventListener = () => {};
+doc.activeElement = null;
+doc.hidden = false;
+globalThis.document = doc;
+globalThis.alert = () => {};
+// `clipboard.js` asks `e.target instanceof Element` to tell a sidebar copy from a grid copy.
+// Node has no `Element`, and a missing global would throw INSIDE the handler -- so the class
+// exists and this harness's fake events are deliberately not instances of it, which is the
+// truthful answer for an event that did not come from the reference sidebar.
+globalThis.Element = class Element {};
+
+// ── the server, as far as these paths reach it ──────────────────────────────────
+//
+// Every write funnel PUTs to `/tables/<t>/data/updates` with `{updates: [{row_id, updates}]}`,
+// so 「which columns reached the batch」 is read off the REQUEST rather than off a sliced
+// block's local variable. That is the whole point of the conversion: the question is now asked
+// of the code that runs.
+let schemaBody = null;
+let writes = [];
+globalThis.fetch = async (url, opts = {}) => {
+  const method = String(opts.method || 'GET').toUpperCase();
+  if (method !== 'GET' && opts && typeof opts.body === 'string') {
+    try { writes.push(JSON.parse(opts.body)); } catch (e) { /* not ours */ }
+  }
+  return {
+    ok: true, status: 200,
+    json: async () => (String(url).endsWith('/schema') ? schemaBody : { data: [], total: 0 }),
+    text: async () => '',
+  };
+};
+const writtenColumns = () => {
+  const out = [];
+  for (const body of writes) {
+    for (const row of (body && body.updates) || []) {
+      for (const col of Object.keys((row && row.updates) || {})) {
+        if (!out.includes(col)) out.push(col);
+      }
+    }
+  }
+  return out;
 };
 
-// ── extraction ──────────────────────────────────────────────────────────────────
+// ── the modules under test ──────────────────────────────────────────────────────
+//
+// 🔴 C-88. THIS FILE USED TO CUT ITS SUBJECTS OUT AS TEXT AND RUN THEM IN `vm`. The owner's
+//    standing rule is 「잘라쓰기 하니스 절대 금지」, and the reason this file gave for it --
+//    「config.js touches window at module scope, so node cannot import these」 -- had stopped
+//    being true: `config.js` is guarded (`typeof window !== 'undefined'`) and its own comment
+//    warns against putting the bare read back. Two harnesses landed in the meantime that import
+//    `grid.js` whole. The slice measured the SHAPE OF THE LETTERS: it went red twice in two days
+//    on CORRECT code (a new helper name, a moved mutation anchor), which is the disease.
+//
+// A mutant is now a WHOLE module (`lib/probe.mjs`: byte-identical copy + appended probe), so a
+// mutant that fails to parse fails loudly instead of scoring as caught.
+//
+// ⚠️ ONE WALL, NAMED: `state.js` is always the REAL module. The `state` singleton is shared by
+//    every other module, and a probe copy of it carries its OWN object that nothing else reads --
+//    so substituting it would score a page nobody is on. No defect mutant targets it; the two
+//    CONTROLS therefore cover five of the six files.
+const FILE = {
+  state: join(SRC, 'state.js'), api: join(SRC, 'api.js'), grid: join(SRC, 'grid.js'),
+  clipboard: join(SRC, 'clipboard.js'), ui: join(SRC, 'ui.js'),
+  push: join(SRC, 'push_columns.js'),
+};
 
-function balanced(src, from, open, close) {
-  const i = src.indexOf(open, from);
-  if (i < 0) return null;
-  let depth = 0;
-  for (let j = i; j < src.length; j++) {
-    if (src[j] === open) depth++;
-    else if (src[j] === close) { depth--; if (depth === 0) return { start: i, end: j }; }
-  }
-  return null;
-}
+// `buildColumnDefs` asks the reference panel which columns a paste fills. That module owns async
+// rule state, so the answer is STUBBED -- and stubbed NON-EMPTY, because a stub returning nothing
+// would leave the ①② decoration unwalked and this harness green whatever it did.
+let FILL_TARGETS = [['core_lot', '①'], ['core_slot', '②']];
+const GRID_STUBS = {
+  './enrichment_reference_view.js': { fillTargetOrdinals: () => new Map(FILL_TARGETS) },
+};
 
-/** A named function declaration, verbatim, with any `export` prefix dropped. */
-function fnFrom(src, label, name) {
-  const m = new RegExp(`(?:export\\s+)?(?:async\\s+)?function\\s+${name}\\s*\\(`).exec(src);
-  if (!m) die(`function ${name} not found in ${label}`);
-  const b = balanced(src, m.index, '{', '}');
-  if (!b) die(`unbalanced braces for ${name} in ${label}`);
-  return src.slice(m.index, b.end + 1).replace(/^export\s+/, '');
-}
+const REAL = {
+  state: await import('../src/state.js'),
+  api: await import('../src/api.js'),
+  grid: (await loadWithProbe(FILE.grid, { stubs: GRID_STUBS, tag: 'vcrgrid' })).module,
+  clipboard: await import('../src/clipboard.js'),
+  ui: await import('../src/ui.js'),
+  push: await import('../src/push_columns.js'),
+};
 
-function constFrom(src, label, name) {
-  const m = new RegExp(`(?:export\\s+)?const\\s+${name}\\s*=`).exec(src);
-  if (!m) die(`const ${name} not found in ${label}`);
-  let depth = 0;
-  for (let j = m.index; j < src.length; j++) {
-    const ch = src[j];
-    if (ch === '[' || ch === '{') depth++;
-    else if (ch === ']' || ch === '}') depth--;
-    else if (ch === ';' && depth === 0) return src.slice(m.index, j + 1).replace(/^export\s+/, '');
-  }
-  die(`no terminator for const ${name} in ${label}`);
-}
-
-/**
- * The BODY of an arrow callback, wrapped as a function of `params`.
+/** One bundle, with the named files replaced by mutants. `state` is never substituted.
  *
- * The four write funnels are straight-line blocks inside large handlers, so the alternative
- * to slicing them is re-typing the guard chain here — and a harness that re-types the
- * predicate under test scores itself. `return;` inside a sliced block therefore means
- * "this cell was skipped", exactly as it does in the app.
+ * ⚠️ A TRANSFORM THAT CHANGES NOTHING LEAVES THE REAL MODULE IN PLACE. The probe refuses a
+ *    mutate that returns the source unchanged -- rightly, for a DEFECT, where an unchanged
+ *    source would score as 「caught」 having proved nothing. A CONTROL is the other case: 「rename
+ *    every local」 has nothing to rename in `push_columns.js`, and that is not a failure, it is
+ *    a file the control does not reach. Defects cannot slip through this door: `sub()` dies
+ *    when its anchor count is wrong, before the probe is ever asked.
  */
-function arrowBodyFrom(src, label, anchor, params, after = 0) {
-  const at = src.indexOf(anchor, after);
-  if (at < 0) die(`anchor not found in ${label}: ${JSON.stringify(anchor)}`);
-  const b = balanced(src, at, '{', '}');
-  if (!b) die(`unbalanced braces after anchor in ${label}: ${JSON.stringify(anchor)}`);
-  return `function (${params}) ${src.slice(b.start, b.end + 1)}`;
+async function bundleOf(mutations, tag) {
+  const out = { ...REAL };
+  for (const key of Object.keys(mutations)) {
+    if (key === 'state') continue;
+    const source = readFileSync(FILE[key], 'utf8').replace(/\r\n/g, '\n');
+    if (mutations[key](source) === source) continue;
+    const spec = { mutate: mutations[key], tag };
+    if (key === 'grid') spec.stubs = GRID_STUBS;
+    out[key] = (await loadWithProbe(FILE[key], spec)).module;
+  }
+  return out;
 }
 
 // ── fixtures ────────────────────────────────────────────────────────────────────
@@ -184,227 +237,200 @@ const cell = v => ({
   sources: { virtual_join: v }, updated_by: 'system', priority_source: 'virtual_join'
 });
 
-// ── sandboxes ───────────────────────────────────────────────────────────────────
+// ── staging ─────────────────────────────────────────────────────────────────────
 
-function baseGlobals() {
+const state = REAL.state.state;
+
+/** The shared `state`, put back to a known page before every runner. */
+function stage(schema, extra = {}) {
+  Object.assign(state, {
+    currentTable: 'bonding_log',
+    currentColumns: schema ? schema.columns.slice() : [],
+    currentColumnTypes: schema ? schema.column_types : {},
+    currentBusinessKey: schema ? schema.business_key : '',
+    currentCompositeKeySources: schema ? schema.composite_key_source : [],
+    currentVirtualColumns: schema ? schema.virtual_columns : [],
+    currentJoinResolvedColumns: (schema && schema.join_resolved_columns) || [],
+    viewMode: 'pagination', allDataLoaded: true, currentSkip: 0,
+    pendingTxEdits: {}, txModeActive: false, selectedCellsMap: {},
+    visibleColIndexMap: {}, dragStartCell: null, dragEndCell: null,
+    smartPasteArmedUntil: 0, pageCache: new Map(),
+  }, extra);
+  writes = [];
+  return state;
+}
+
+const rowOf = (i) => ({ row_id: `R${i}`, table_name: 'bonding_log', data: {},
+                        created_at: null, updated_at: null });
+
+function gridApiFor(colIds) {
+  const cols = colIds.slice();
   return {
-    // The sandboxed code logs; a mutant run is EXPECTED to be noisy and that noise is not
-    // evidence, so it is muted while the sweep is scoring.
-    console: {
-      log: (...a) => { if (!quiet) console.log(...a); },
-      error: (...a) => { if (!quiet) console.error(...a); },
-      warn: (...a) => { if (!quiet) console.warn(...a); }
-    },
-    URLSearchParams, JSON, Number, String, Object, Array, Math, isNaN,
-    Promise, Set, Map, Date, RegExp, Error,
-    window: { location: { search: '' } },
-    alert: () => {},
-    document: {
-      createElement: () => ({ set textContent(v) { this._t = v; }, get textContent() { return this._t; } }),
-      querySelector: () => null
-    }
+    getFocusedCell: () => null,
+    getColumnState: () => cols.map((c) => ({ colId: c, hide: false })),
+    getColumns: () => cols.map((c) => ({ getColId: () => c, isVisible: () => true })),
+    getDisplayedRowAtIndex: (i) => (i === 0 ? { data: rowOf(0), id: 'R0' } : null),
+    getRowNode: (id) => ({ data: rowOf(0), id }),
+    getSelectedNodes: () => [{ data: rowOf(0), id: 'R0' }],
+    applyTransaction() {}, refreshCells() {}, setGridOption() {}, redrawRows() {},
+    forEachNode() {}, getDisplayedRowCount: () => 1, ensureIndexVisible() {},
+    getEditingCells: () => [], stopEditing() {}, getColumn: () => null,
+    applyColumnState() {}, setFilterModel() {}, getFilterModel: () => ({}),
+    onFilterChanged() {}, refreshHeader() {}, getGridOption: () => undefined,
   };
 }
 
-/** state.js verbatim: the `state` singleton and `isVirtualColumn` come from the real module. */
-function withState(sources, extra = {}) {
-  const sandbox = Object.assign(baseGlobals(), extra);
-  const ctx = vm.createContext(sandbox);
-  vm.runInContext(
-    sources.state.replace(/^export\s+/gm, '')
-    + '\n;globalThis.__state = state; globalThis.__isVirtualColumn = isVirtualColumn;',
-    ctx, { filename: 'state.js' });
-  return { ctx, sandbox, state: sandbox.__state, isVirtualColumn: sandbox.__isVirtualColumn };
-}
-
-/** The real `loadSchema`, fed a stubbed `fetch`. Records what the search dropdown was offered.
+/** The REAL `loadSchema`, fed a stubbed fetch. Records what the search dropdown was offered.
  *
  * `offered` is the VALUE (what reaches `?cols=`) and `labels` the visible text, kept apart on
  * purpose: they are allowed to differ (the 🔗 marker rides the label), and a check that read
  * only one of them could not tell a decorated label from a corrupted column name. */
 async function runLoadSchema(sources, response) {
-  const offered = [];
-  const labels = [];
-  const s = withState(sources, {
-    API_BASE: '/api',
-    resetSuggestLearning: () => {},
-    // 🔴 `ok` and `status` are part of what `fetch` ANSWERS, and this stub left them off.
-    //    `api.js` now refuses a schema it could not read (a failure body silently became
-    //    「this table has no columns」), and an under-modelled response made correct code
-    //    look broken -- 2026-09-06. A stub that omits a field the subject reads is not a
-    //    smaller stub, it is a different server.
-    fetch: async () => ({ ok: true, status: 200, json: async () => response })
-  });
-  s.sandbox.elements = {
-    performanceLog: { textContent: '' },
-    searchCols: {
-      innerHTML: '',
-      appendChild: o => { offered.push(o.value); labels.push(o.textContent); }
-    }
+  stage(null);
+  schemaBody = response;
+  const select = doc.getElementById('search-cols');
+  select.children.length = 0;
+  select.innerHTML = '';
+  await sources.api.loadSchema('bonding_log');
+  // 🔴 THE APPENDED OPTIONS, WHICH IS THE QUESTION. `loadSchema` writes the 「All Columns」
+  //    placeholder through `innerHTML` and appends the rest -- so what this reads is exactly
+  //    what the code OFFERED, with the static placeholder no more counted here than it was
+  //    when this harness recorded `appendChild` calls in a sandbox.
+  const options = select.children.filter((c) => c.tagName === 'OPTION');
+  return {
+    state,
+    offered: options.map((o) => o.value),
+    labels: options.map((o) => o.textContent),
   };
-  s.sandbox.document.createElement = () => ({ value: '', textContent: '' });
-  vm.runInContext(fnFrom(sources.api, 'api.js', 'loadSchema')
-    + '\n;globalThis.__loadSchema = loadSchema;', s.ctx, { filename: 'api.js#loadSchema' });
-  await s.sandbox.__loadSchema('bonding_log');
-  return { state: s.state, offered, labels };
 }
 
-/** The real `buildColumnDefs`, with the schema already in state. */
+/** The REAL `buildColumnDefs`, with the schema already in state. */
 function runBuildColumnDefs(sources, schema, fillTargets = [['core_lot', '①'], ['core_slot', '②']]) {
-  const s = withState(sources);
-  Object.assign(s.state, {
-    currentColumns: schema.columns.slice(),
-    currentColumnTypes: schema.column_types,
-    currentBusinessKey: schema.business_key,
-    currentCompositeKeySources: schema.composite_key_source,
-    currentVirtualColumns: schema.virtual_columns,
-    currentJoinResolvedColumns: schema.join_resolved_columns || [],
-    viewMode: 'pagination', allDataLoaded: true, currentSkip: 0, pendingTxEdits: {}
-  });
-  s.sandbox.isCellInRange = () => false;
-  s.sandbox.SuggestCellEditor = function () {};
-  // `buildColumnDefs` now asks the reference panel which columns the paste fills. That module
-  // is not sliced in here (it owns async rule state), so the harness SUPPLIES the answer --
-  // and supplies a non-empty one, because a stub returning nothing would leave the ①②
-  // decoration unwalked and this harness green whatever it did.
-  s.sandbox.fillTargetOrdinals = () => new Map(fillTargets);
-  // C-85. The time formatter's two imports, handed in as the REAL ones. A stub returning a
-  // fixed string would make every `datetime` column in this fixture agree with itself and say
-  // nothing about the offset.
-  s.sandbox.localStamp = localStamp;
-  s.sandbox.NO_TIME = NO_TIME;
-  // `joinResolvedColumn` is NOT lifted here — it comes from the real state.js that
-  // `withState` already ran, so the predicate under test is the shipped one.
-  vm.runInContext([
-    fnFrom(sources.grid, 'grid.js', 'rawCellValue'),
-    fnFrom(sources.grid, 'grid.js', 'numericDisplayValue'),
-    constFrom(sources.grid, 'grid.js', 'JOIN_RESOLVED_FILTER_OPTIONS'),
-    fnFrom(sources.grid, 'grid.js', 'joinResolvedFilterDef'),
-    // `buildColumnDefs` ends by delegating the mockup's column order and widths, so the
-    // helper and its table have to come into the sandbox with it. Without them the slice
-    // throws ReferenceError rather than scoring anything — which is how this harness
-    // reported the change, loudly, instead of going quietly green.
-    constFrom(sources.grid, 'grid.js', 'MOCKUP_COLUMN_LAYOUT'),
-    fnFrom(sources.grid, 'grid.js', 'applyMockupLayout'),
-    // C-85: the time seat. `buildColumnDefs` now asks whether a column is a time and, if so,
-    // hands AG-Grid ONE formatter shared with the read-only join column. Both names are free
-    // identifiers in its body, so the slice throws without them -- which is how this harness
-    // announced C-85 rather than going quietly green.
-    constFrom(sources.grid, 'grid.js', 'SYSTEM_TIME_COLUMNS'),
-    fnFrom(sources.grid, 'grid.js', 'isTimeColumn'),
-    fnFrom(sources.grid, 'grid.js', 'timeCellFormatter'),
-    fnFrom(sources.grid, 'grid.js', 'buildColumnDefs'),
-    'globalThis.__defs = buildColumnDefs();'
-  ].join('\n\n'), s.ctx, { filename: 'grid.js#buildColumnDefs' });
-  return s.sandbox.__defs;
+  stage(schema);
+  FILL_TARGETS = fillTargets;
+  return sources.grid.buildColumnDefs();
 }
 
 /**
- * The four write funnels. Each returns the column ids that actually reached an update batch,
- * given a list of grid column ids the user's selection covered.
+ * The four write funnels and the two copy predicates, DRIVEN. Each returns the column ids that
+ * actually reached an update batch (or the copied block), given the grid columns a selection
+ * covered.
+ *
+ * 🔴 C-88: these used to be arrow BODIES cut out of their handlers. Now the paste and copy
+ *    handlers are the ones `setupClipboardHandlers` registers -- captured off the document stub
+ *    and fired -- and clear/bulk-fill are the exported functions themselves. What is scored is
+ *    what the operator's keystroke reaches.
  */
 function runWriteFunnels(sources, schema) {
-  const s = withState(sources);
-  Object.assign(s.state, {
-    currentColumns: schema.columns.slice(),
-    currentColumnTypes: schema.column_types,
-    currentVirtualColumns: schema.virtual_columns,
-    // Set so the funnels run with the announcement PRESENT. `core_lot` is announced
-    // `collide` and must still be written: if anyone ever wires this list into a write
-    // guard, 9a-9d go red here instead of in production. (`crud.refuse_virtual_join_columns`
-    // is the refusal; this list is a UI marker and must never become a second one.)
-    currentJoinResolvedColumns: schema.join_resolved_columns || [],
-    txModeActive: false, pendingTxEdits: {}, selectedCellsMap: {}, visibleColIndexMap: {}
-  });
-  s.state.gridApi = {
-    getDisplayedRowAtIndex: i => ({ data: { row_id: `R${i}`, data: {} } }),
-    getRowNode: id => ({ data: { row_id: id, data: {} } })
+  const select = (colIds) => {
+    const map = {};
+    for (const colId of colIds) map[`0_${colId}`] = { rowIndex: 0, colId };
+    return map;
   };
-  s.sandbox.CURRENT_USER = 'harness';
-  s.sandbox.ensureCellObject = (d, c) => { if (!d.data[c]) d.data[c] = { value: '' }; };
-
-  const clip = sources.clipboard;
-  const singleAt = clip.indexOf('const val = parsedMatrix[0][0];');
-  if (singleAt < 0) die('anchor not found in clipboard.js: the 1x1 paste branch');
-
-  vm.runInContext([
-    `var __paste1x1 = ${arrowBodyFrom(clip, 'clipboard.js', 'targetCells.forEach(cell => {', 'cell', singleAt)};`,
-    `var __pasteMxN = ${arrowBodyFrom(clip, 'clipboard.js', 'rowValues.forEach((val, cOffset) => {', 'val, cOffset')};`,
-    `var __clear = ${arrowBodyFrom(clip, 'clipboard.js', 'cellsToClear.forEach(cell => {', 'cell')};`,
-    `var __bulkFill = ${arrowBodyFrom(sources.ui, 'ui.js', 'cellsToUpdate.forEach(cell => {', 'cell')};`,
-    // the two READ predicates, which decide the SHAPE of a copied block
-    `var __copyRange = ${arrowBodyFrom(clip, 'clipboard.js', 'visibleCols.filter((colId, idx) => {', 'colId, idx')};`,
-    `var __copyRows = ${arrowBodyFrom(clip, 'clipboard.js', '.map(c => c.getColId()).filter(c => {', 'c')};`
-  ].join('\n\n'), s.ctx, { filename: 'write-funnels' });
-
-  const written = () => Object.keys(s.sandbox.updateMapByRow)
-    .flatMap(r => Object.keys(s.sandbox.updateMapByRow[r].updates));
-  const reset = () => { s.sandbox.updateMapByRow = {}; };
+  const prepare = (colIds) => {
+    stage(schema, {
+      gridApi: gridApiFor(colIds),
+      selectedCellsMap: select(colIds),
+      visibleColIndexMap: Object.fromEntries(colIds.map((c, i) => [c, i])),
+    });
+  };
+  const pasteHandler = () => {
+    listeners.clear();
+    sources.clipboard.setupClipboardHandlers();
+    const fn = (listeners.get('paste') || [])[0];
+    if (!fn) die('no paste listener: setupClipboardHandlers did not register one');
+    return fn;
+  };
+  const copyHandler = () => {
+    listeners.clear();
+    sources.clipboard.setupClipboardHandlers();
+    const fn = (listeners.get('copy') || [])[0];
+    if (!fn) die('no copy listener: setupClipboardHandlers did not register one');
+    return fn;
+  };
+  const clipboardEvent = (text) => {
+    let written = '';
+    return {
+      event: {
+        preventDefault() {}, stopPropagation() {},
+        clipboardData: {
+          getData: () => text,
+          setData: (_type, value) => { written = value; },
+          items: [], files: [],
+        },
+      },
+      taken: () => written,
+    };
+  };
+  const tsvColumns = (tsv) => (tsv ? String(tsv).split('\n')[0].split('\t') : []);
 
   return {
-    paste1x1(colIds) {
-      reset(); s.sandbox.val = '7';   // numeric-safe: the span includes a `number` column
-      colIds.forEach(colId => s.sandbox.__paste1x1({ rowIndex: 0, colId }));
-      return written();
+    async paste1x1(colIds) {
+      prepare(colIds);
+      const clip = clipboardEvent('7');
+      await pasteHandler()(clip.event);
+      return writtenColumns();
     },
-    pasteMxN(colIds) {
-      reset();
-      s.sandbox.visibleCols = colIds.slice();
-      s.sandbox.anchorColVisibleIdx = 0;
-      s.sandbox.rowId = 'R0';
-      // the MxN branch resolves its row ONCE, outside the per-cell block it is sliced from
-      s.sandbox.rowNode = { data: { row_id: 'R0', data: {} } };
-      colIds.forEach((_, i) => s.sandbox.__pasteMxN('7', i));
-      return written();
+    async pasteMxN(colIds) {
+      prepare(colIds);
+      // A row as wide as the selection is what makes this the MxN branch rather than the 1x1
+      // fill -- the two differ only in the shape of what was copied.
+      const clip = clipboardEvent(colIds.map(() => '7').join('\t'));
+      await pasteHandler()(clip.event);
+      return writtenColumns();
     },
-    clear(colIds) {
-      reset();
-      // Mirrors crud.py's write-path skip list, which lost the three graph-sync names
-      // on 2026-08-31 along with the branch that wrote them.
-      s.sandbox.systemCols = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#'];
-      colIds.forEach(colId => s.sandbox.__clear({ rowIndex: 0, colId }));
-      return written();
+    async clear(colIds) {
+      prepare(colIds);
+      await sources.clipboard.clearSelectedCells();
+      return writtenColumns();
     },
-    bulkFill(colIds) {
-      reset(); s.sandbox.newValue = '7';
-      colIds.forEach(colId => s.sandbox.__bulkFill({ rowIndex: 0, colId }));
-      return written();
+    async bulkFill(colIds) {
+      prepare(colIds);
+      await sources.ui.applyValueToSelectedRange('7');
+      return writtenColumns();
     },
-    copyRange(colIds) {
-      s.sandbox.minColIdx = 0;
-      s.sandbox.maxColIdx = colIds.length - 1;
-      return colIds.filter((colId, idx) => s.sandbox.__copyRange(colId, idx));
+    async copyRange(colIds) {
+      prepare(colIds);
+      // The header row names the columns that survived, which is exactly what is being asked.
+      doc.getElementById('copy-header-toggle').checked = true;
+      const clip = clipboardEvent('');
+      await copyHandler()(clip.event);
+      doc.getElementById('copy-header-toggle').checked = false;
+      return tsvColumns(clip.taken()).map((c) => c.toLowerCase());
     },
-    copyRows(colIds) {
-      return colIds.filter(c => s.sandbox.__copyRows(c));
-    }
+    async copyRows(colIds) {
+      // The ROW copy is the fallback the copy handler takes when no cell range is selected.
+      prepare(colIds);
+      state.selectedCellsMap = {};
+      doc.getElementById('copy-header-toggle').checked = true;
+      const clip = clipboardEvent('');
+      await copyHandler()(clip.event);
+      doc.getElementById('copy-header-toggle').checked = false;
+      return tsvColumns(clip.taken()).map((c) => c.toLowerCase());
+    },
   };
 }
 
 /**
  * The real Gate-4 push arithmetic, untouched by this round and asserted to stay that way.
- *
- * 🔴 IMPORTED, NOT SLICED. It used to be cut out of `map_editor.js` as text and re-run in a
- *    `vm` sandbox, which every other extraction here still has to do, because those functions
- *    read module globals. Gate 4 never did -- it takes a schema and three column names and
- *    returns a list -- so it now lives in `client2/src/push_columns.js` and is imported.
- *    What that buys is written down in the module's header; what it costs this file is
- *    nothing, because the mutant below still reaches it: the module's TEXT is imported as a
- *    `data:` URL, so `push` behaves exactly like the other entries in `sources`.
- *
- * ⚠️ The module must stay import-free for this to work -- a relative specifier cannot resolve
- *    inside a `data:` URL. If it ever gains one, this stops loading and every mutant becomes a
- *    throw, which scores as a kill.
+ * 🔴 IMPORTED, like everything else here now (C-88). It was already the one function this file
+ *    did not slice, and its module stays import-free so a probe copy of it needs no stubs.
  */
 async function runPushGate(sources) {
-  const url = 'data:text/javascript;base64,' + Buffer.from(sources.push, 'utf8').toString('base64');
-  const mod = await import(url);
-  return mod.getUnprotectedPushColumns;
+  return sources.push.getUnprotectedPushColumns;
 }
 
 // ── scoring ─────────────────────────────────────────────────────────────────────
 
 let quiet = false;
+// 🔴 THE SUBJECTS LOG, AND A MUTANT RUN IS EXPECTED TO BE NOISY. That noise is not evidence --
+//    `loadSchema` prints its own failure when a mutant feeds it a non-array -- so it is muted
+//    while the sweep scores, exactly as the vm sandbox used to mute its own console. The
+//    harness's OWN lines still print: they go through `console.log` here, guarded by `quiet`.
+const realConsole = { log: console.log, error: console.error, warn: console.warn };
+for (const key of ['log', 'error', 'warn']) {
+  console[key] = (...args) => { if (!quiet) realConsole[key](...args); };
+}
 function makeScorer() {
   const st = { pass: 0, fail: 0, failed: [] };
   st.check = (name, actual, expected) => {
@@ -666,13 +692,13 @@ async function suite(sources) {
   // front of these, so not merging the names is NOT what protects them.
   const w = runWriteFunnels(sources, SCHEMA);
   const span = ['core_lot', 'wafer_id', 'bond_count', 'yield_pct'];
-  check('9a MxN paste skips virtual columns', w.pasteMxN(span), ['core_lot', 'bond_count']);
-  check('9b 1x1 fill skips virtual columns', w.paste1x1(span), ['core_lot', 'bond_count']);
-  check('9c delete-to-clear skips virtual columns', w.clear(span), ['core_lot', 'bond_count']);
-  check('9d bulk fill skips virtual columns', w.bulkFill(span), ['core_lot', 'bond_count']);
+  check('9a MxN paste skips virtual columns', await w.pasteMxN(span), ['core_lot', 'bond_count']);
+  check('9b 1x1 fill skips virtual columns', await w.paste1x1(span), ['core_lot', 'bond_count']);
+  check('9c delete-to-clear skips virtual columns', await w.clear(span), ['core_lot', 'bond_count']);
+  check('9d bulk fill skips virtual columns', await w.bulkFill(span), ['core_lot', 'bond_count']);
   // The axis is alive: with nothing announced the same span writes everything.
   const w0 = runWriteFunnels(sources, { ...SCHEMA, virtual_columns: [] });
-  check('9e with no announcement the same span is fully writable', w0.pasteMxN(span), span);
+  check('9e with no announcement the same span is fully writable', await w0.pasteMxN(span), span);
 
   // [9f-9g] COPY, the other side of the same coin. These predicates run INSIDE a
   // min..max index window, so a visible column they reject is deleted from the MIDDLE of the
@@ -680,9 +706,9 @@ async function suite(sources) {
   // rectangle that is not the one they selected, with no message. Rendering the column is
   // what made this predicate load-bearing, so it is scored here rather than assumed.
   check('9f range copy keeps virtual columns in place',
-    w.copyRange(['core_lot', 'wafer_id', 'bond_count']), ['core_lot', 'wafer_id', 'bond_count']);
+    await w.copyRange(['core_lot', 'wafer_id', 'bond_count']), ['core_lot', 'wafer_id', 'bond_count']);
   check('9g row copy keeps them too',
-    w.copyRows(['row_id', 'core_lot', 'wafer_id', '#']), ['row_id', 'core_lot', 'wafer_id']);
+    await w.copyRows(['row_id', 'core_lot', 'wafer_id', '#']), ['row_id', 'core_lot', 'wafer_id']);
 
   // [10] Gate 4 arithmetic is untouched by the new key
   const gate = await runPushGate(sources);
@@ -717,118 +743,90 @@ const sub = (src, from, to, label, times = 1) => {
 
 // DEFECTS: each must be CAUGHT. Every one of them is a thing this round actually decided.
 const DEFECTS = [
-  ['merge the names into currentColumns', s => ({ ...s,
-    api: sub(s.api, 'state.currentColumns = data.columns || [];',
+  ['merge the names into currentColumns', 'api', (t) => sub(t, 'state.currentColumns = data.columns || [];',
       'state.currentColumns = (data.columns || []).concat((data.virtual_columns || []).map(v => v.name));',
-      'merge') })],
-  ['announce them as editable', s => ({ ...s,
-    grid: sub(s.grid, `      field: col,\n      editable: false,`,
-      `      field: col,\n      editable: true,`, 'editable') })],
-  ['coerce the unresolved label with a bare Number()', s => ({ ...s,
-    grid: sub(s.grid, `    const parsed = Number(val);\n    if (!isNaN(parsed)) {\n      return parsed;\n    }`,
-      `    return Number(val);`, 'coerce') })],
-  ['drop the guard that keeps Number("") from becoming 0', s => ({ ...s,
-    grid: sub(s.grid, `  if (val !== '' && val !== null && val !== undefined) {`,
-      `  if (val !== null && val !== undefined) {`, 'empty-guard') })],
-  ['fall back to the default sort comparator', s => ({ ...s,
-    grid: sub(s.grid, `      ...(isNumeric ? {`, `      ...(false ? {`, 'comparator') })],
+      'merge')],
+  ['announce them as editable', 'grid', (t) => sub(t, `      field: col,\n      editable: false,`,
+      `      field: col,\n      editable: true,`, 'editable')],
+  ['coerce the unresolved label with a bare Number()', 'grid', (t) => sub(t, `    const parsed = Number(val);\n    if (!isNaN(parsed)) {\n      return parsed;\n    }`,
+      `    return Number(val);`, 'coerce')],
+  ['drop the guard that keeps Number("") from becoming 0', 'grid', (t) => sub(t, `  if (val !== '' && val !== null && val !== undefined) {`,
+      `  if (val !== null && val !== undefined) {`, 'empty-guard')],
+  ['fall back to the default sort comparator', 'grid', (t) => sub(t, `      ...(isNumeric ? {`, `      ...(false ? {`, 'comparator')],
   // ── the 2026-07-31 round: which columns lose blank/notBlank, and on whose say-so ──────
-  ['leave blank/notBlank on a join-resolved column', s => ({ ...s,
-    grid: sub(s.grid, `    filterParams: { filterOptions: JOIN_RESOLVED_FILTER_OPTIONS },\n`, ``,
-      'keep-blank') })],
+  ['leave blank/notBlank on a join-resolved column', 'grid', (t) => sub(t, `    filterParams: { filterOptions: JOIN_RESOLVED_FILTER_OPTIONS },\n`, ``,
+      'keep-blank')],
   // Both kinds, because the numeric hazard is identical on each: the server casts the
   // override to String, so a numeric predicate would be answered lexically.
-  ['use a number filter on a numeric join-resolved column', s => ({ ...s,
-    grid: sub(sub(s.grid,
+  ['use a number filter on a numeric join-resolved column', 'grid', (t) => sub(sub(t,
       `      ...filterDef,\n      resizable: true,`,
       `      ...filterDef,\n      ...(isNumeric ? { filter: 'agNumberColumnFilter' } : {}),\n      resizable: true,`,
       'number-filter-virtual'),
       `      Object.assign(colDef, joinResolvedFilterDef(resolvedEntry, headerLabel));`,
       `      Object.assign(colDef, joinResolvedFilterDef(resolvedEntry, headerLabel));\n`
       + `      if (colType === 'number') colDef.filter = 'agNumberColumnFilter';`,
-      'number-filter-stored') })],
+      'number-filter-stored')],
   // The exact error the brief warned about: `isVirtualColumn` cannot see a collide column.
-  ['key the filter off isVirtualColumn instead of the announcement', s => ({ ...s,
-    grid: sub(s.grid, `    const resolvedEntry = joinResolvedColumn(col);\n\n    const colDef = {`,
-      `    const resolvedEntry = null;\n\n    const colDef = {`, 'wrong-predicate') })],
-  ['enable the filter even when the server never announced it', s => ({ ...s,
-    grid: sub(s.grid, `    const filterDef = resolvedEntry\n      ? joinResolvedFilterDef(resolvedEntry, baseTooltip)\n      : { filter: false, floatingFilter: false, headerTooltip: baseTooltip };`,
+  ['key the filter off isVirtualColumn instead of the announcement', 'grid', (t) => sub(t, `    const resolvedEntry = joinResolvedColumn(col);\n\n    const colDef = {`,
+      `    const resolvedEntry = null;\n\n    const colDef = {`, 'wrong-predicate')],
+  ['enable the filter even when the server never announced it', 'grid', (t) => sub(t, `    const filterDef = resolvedEntry\n      ? joinResolvedFilterDef(resolvedEntry, baseTooltip)\n      : { filter: false, floatingFilter: false, headerTooltip: baseTooltip };`,
       `    const filterDef = joinResolvedFilterDef(resolvedEntry || vc, baseTooltip);`,
-      'old-server') })],
-  ['hardcode the unresolved label instead of reading the entry', s => ({ ...s,
-    grid: sub(s.grid, `    ? entry.unresolved_label : '';`, `    ? '미상' : '미상';`, 'hardcode') })],
+      'old-server')],
+  ['hardcode the unresolved label instead of reading the entry', 'grid', (t) => sub(t, `    ? entry.unresolved_label : '';`, `    ? '미상' : '미상';`, 'hardcode')],
   // 🔴 The design line the brief drew: this marker must never become a write guard.
   // ⚠️ C-84 moved this anchor: editability now also asks whether the CATALOGUE calls the table a
   //    view (`!viewTable`). That is a different question — a table-level fact the server states —
   //    and the mutant still says the same thing: the join ANNOUNCEMENT must not decide writability.
-  ['make the announcement decide editability', s => ({ ...s,
-    grid: sub(s.grid, `      editable: !isSystem && !viewTable,`,
-      `      editable: !isSystem && !viewTable && !resolvedEntry,`, 'write-guard') })],
-  ['let the announcement replace the numeric cell editor', s => ({ ...s,
-    grid: sub(s.grid, `    if (colType === 'number') {\n      colDef.cellEditor = 'agNumberCellEditor';`,
+  ['make the announcement decide editability', 'grid', (t) => sub(t, `      editable: !isSystem && !viewTable,`,
+      `      editable: !isSystem && !viewTable && !resolvedEntry,`, 'write-guard')],
+  ['let the announcement replace the numeric cell editor', 'grid', (t) => sub(t, `    if (colType === 'number') {\n      colDef.cellEditor = 'agNumberCellEditor';`,
       `    if (colType === 'number' && !resolvedEntry) {\n      colDef.cellEditor = 'agNumberCellEditor';`,
-      'editor') })],
-  ['accept a non-array join_resolved_columns straight into state', s => ({ ...s,
-    api: sub(s.api, `Array.isArray(data.join_resolved_columns)\n      ? data.join_resolved_columns : []`,
-      `data.join_resolved_columns || []`, 'non-array-jrc') })],
+      'editor')],
+  ['accept a non-array join_resolved_columns straight into state', 'api', (t) => sub(t, `Array.isArray(data.join_resolved_columns)\n      ? data.join_resolved_columns : []`,
+      `data.join_resolved_columns || []`, 'non-array-jrc')],
   // ── the search dropdown (N4) ──────────────────────────────────────────────────
   // The regression: back to stored columns only, which is what this file asserted before
   // the server learned to scope `?cols=` by the announcement.
-  ['drop the announced columns from the search dropdown', s => ({ ...s,
-    api: sub(s.api, `        if (state.currentColumns.includes(entry.name)) return;\n        appendOption(entry.name, true);`,
-      `        return;`, 'dropdown-stored-only') })],
+  ['drop the announced columns from the search dropdown', 'api', (t) => sub(t, `        if (state.currentColumns.includes(entry.name)) return;\n        appendOption(entry.name, true);`,
+      `        return;`, 'dropdown-stored-only')],
   // Appending the WIDER announcement wholesale: every `collide` name is offered a second time.
-  ['offer the announcement without differencing it against stored columns', s => ({ ...s,
-    api: sub(s.api, `        if (state.currentColumns.includes(entry.name)) return;\n`, ``,
-      'dropdown-dup') })],
+  ['offer the announcement without differencing it against stored columns', 'api', (t) => sub(t, `        if (state.currentColumns.includes(entry.name)) return;\n`, ``,
+      'dropdown-dup')],
   // Fabricating the list instead of reading the announcement — the exact thing the brief
   // forbade. `virtual_columns` is the NARROWER key and is the convenient wrong read.
-  ['build the dropdown from virtual_columns instead of the announcement', s => ({ ...s,
-    api: sub(s.api, `      state.currentJoinResolvedColumns.forEach(entry => {`,
-      `      state.currentVirtualColumns.forEach(entry => {`, 'dropdown-wrong-list') })],
+  ['build the dropdown from virtual_columns instead of the announcement', 'api', (t) => sub(t, `      state.currentJoinResolvedColumns.forEach(entry => {`,
+      `      state.currentVirtualColumns.forEach(entry => {`, 'dropdown-wrong-list')],
   // A malformed entry becoming an option whose value is `undefined`.
-  ['let a malformed announcement entry reach the dropdown', s => ({ ...s,
-    api: sub(s.api, `        if (!entry || typeof entry.name !== 'string' || entry.name === '') return;\n`,
-      ``, 'dropdown-malformed') })],
+  ['let a malformed announcement entry reach the dropdown', 'api', (t) => sub(t, `        if (!entry || typeof entry.name !== 'string' || entry.name === '') return;\n`,
+      ``, 'dropdown-malformed')],
   // The decoration leaking into the value, i.e. into `?cols=`.
-  ['put the 🔗 marker in the option value rather than the label', s => ({ ...s,
-    api: sub(s.api, `        option.value = col;`, `        option.value = joined ? \`\${col} 🔗\` : col;`,
-      'dropdown-marker-in-value') })],
-  ['let a colliding name produce a second def', s => ({ ...s,
-    grid: sub(s.grid, `    if (state.currentColumns.includes(col)) return;`, ``, 'collide') })],
-  ['accept a malformed announcement entry', s => ({ ...s,
-    grid: sub(s.grid, `    if (!vc || typeof vc.name !== 'string' || vc.name === '') return;`, ``,
-      'malformed') })],
+  ['put the 🔗 marker in the option value rather than the label', 'api', (t) => sub(t, `        option.value = col;`, `        option.value = joined ? \`\${col} 🔗\` : col;`,
+      'dropdown-marker-in-value')],
+  ['let a colliding name produce a second def', 'grid', (t) => sub(t, `    if (state.currentColumns.includes(col)) return;`, ``, 'collide')],
+  ['accept a malformed announcement entry', 'grid', (t) => sub(t, `    if (!vc || typeof vc.name !== 'string' || vc.name === '') return;`, ``,
+      'malformed')],
   // The trailing line disambiguates the two paste branches, whose guards differ only in
   // indentation (and the shallower one is a substring of the deeper one).
-  ['let the MxN paste target a virtual column', s => ({ ...s,
-    clipboard: sub(s.clipboard,
+  ['let the MxN paste target a virtual column', 'clipboard', (t) => sub(t,
       `            if (isVirtualColumn(colId)) return;\n\n            if (!updateMapByRow[rowId]) {`,
-      `            if (!updateMapByRow[rowId]) {`, 'paste-mxn') })],
-  ['let the 1x1 fill target a virtual column', s => ({ ...s,
-    clipboard: sub(s.clipboard,
+      `            if (!updateMapByRow[rowId]) {`, 'paste-mxn')],
+  ['let the 1x1 fill target a virtual column', 'clipboard', (t) => sub(t,
       `          if (isVirtualColumn(colId)) return;\n\n          const rowNode = state.gridApi.getDisplayedRowAtIndex(rowIndex);`,
-      `          const rowNode = state.gridApi.getDisplayedRowAtIndex(rowIndex);`, 'paste-1x1') })],
-  ['let delete-to-clear target a virtual column', s => ({ ...s,
-    clipboard: sub(s.clipboard, `    if (isVirtualColumn(cell.colId)) return;`, ``, 'clear') })],
-  ['let the bulk fill target a virtual column', s => ({ ...s,
-    ui: sub(s.ui, `    if (isVirtualColumn(colId)) return;`, ``, 'bulk-fill') })],
-  ['make the push gate count announced columns', s => ({ ...s,
-    push: sub(s.push, `  const cols = Array.isArray(schema && schema.columns) ? schema.columns : [];`,
+      `          const rowNode = state.gridApi.getDisplayedRowAtIndex(rowIndex);`, 'paste-1x1')],
+  ['let delete-to-clear target a virtual column', 'clipboard', (t) => sub(t, `    if (isVirtualColumn(cell.colId)) return;`, ``, 'clear')],
+  ['let the bulk fill target a virtual column', 'ui', (t) => sub(t, `    if (isVirtualColumn(colId)) return;`, ``, 'bulk-fill')],
+  ['make the push gate count announced columns', 'push', (t) => sub(t, `  const cols = Array.isArray(schema && schema.columns) ? schema.columns : [];`,
       `  const cols = (Array.isArray(schema && schema.columns) ? schema.columns : [])\n`
       + `    .concat((Array.isArray(schema && schema.virtual_columns) ? schema.virtual_columns : []).map(v => v.name));`,
-      'push-gate') })],
-  ['drop a virtual column out of the middle of a copied range', s => ({ ...s,
-    clipboard: sub(s.clipboard,
+      'push-gate')],
+  ['drop a virtual column out of the middle of a copied range', 'clipboard', (t) => sub(t,
       `    return state.currentColumns.includes(colId)\n      || isVirtualColumn(colId)\n`,
-      `    return state.currentColumns.includes(colId)\n`, 'copy-range') })],
-  ['drop it out of a row copy', s => ({ ...s,
-    clipboard: sub(s.clipboard,
+      `    return state.currentColumns.includes(colId)\n`, 'copy-range')],
+  ['drop it out of a row copy', 'clipboard', (t) => sub(t,
       `      return state.currentColumns.includes(c)\n        || isVirtualColumn(c)\n`,
-      `      return state.currentColumns.includes(c)\n`, 'copy-rows') })],
-  ['accept a non-array virtual_columns straight into state', s => ({ ...s,
-    api: sub(s.api, `Array.isArray(data.virtual_columns) ? data.virtual_columns : []`,
-      `data.virtual_columns || []`, 'non-array') })]
+      `      return state.currentColumns.includes(c)\n`, 'copy-rows')],
+  ['accept a non-array virtual_columns straight into state', 'api', (t) => sub(t, `Array.isArray(data.virtual_columns) ? data.virtual_columns : []`,
+      `data.virtual_columns || []`, 'non-array')]
 ];
 
 // CONTROLS: each must ESCAPE. If one is caught, a check is reading source text.
@@ -842,30 +840,31 @@ const RENAMES = [
 ];
 const stripComments = src => src.split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
 
+// 🔴 C-88. A CONTROL NOW APPLIES TO EVERY FILE THE BUNDLE CAN SUBSTITUTE, which is five of
+//    six: `state.js` is the shared singleton and a probe copy of it is a page nobody is on
+//    (see the wall named at the top). `push_columns.js` takes the rename too -- it could not
+//    before, because it was loaded from a `data:` URL rather than as a mutant.
+const SUBSTITUTABLE = ['api', 'grid', 'clipboard', 'ui', 'push'];
+const everyFile = (fn) => Object.fromEntries(SUBSTITUTABLE.map((key) => [key, fn]));
+
 const CONTROLS = [
-  ['consistent rename of locals across every sliced module', s => {
-    const r = t => RENAMES.reduce((acc, [re, to]) => acc.replace(re, to), t);
-    return { state: r(s.state), api: r(s.api), grid: r(s.grid),
-      clipboard: r(s.clipboard), ui: r(s.ui), push: s.push };
-  }],
-  ['every full-line comment stripped from every sliced module', s => ({
-    state: stripComments(s.state), api: stripComments(s.api), grid: stripComments(s.grid),
-    clipboard: stripComments(s.clipboard), ui: stripComments(s.ui), push: stripComments(s.push)
-  })]
+  ['consistent rename of locals across every module',
+    everyFile((t) => RENAMES.reduce((acc, [re, to]) => acc.replace(re, to), t))],
+  ['every full-line comment stripped from every module', everyFile(stripComments)],
 ];
 
 // ── run ─────────────────────────────────────────────────────────────────────────
 
-const base = await suite(PRISTINE);
+const base = await suite(REAL);
 console.log(`\n[baseline] ${base.pass} passed, ${base.fail} failed`);
 
 let caught = 0, escaped = 0;
 const escapedNames = [];
 console.log(`\n── defect mutants (each must be CAUGHT) ────────────────────────────`);
 quiet = true;
-for (const [name, mutate] of DEFECTS) {
+for (const [name, key, mutate] of DEFECTS) {
   let r;
-  try { r = await suite(mutate(PRISTINE)); }
+  try { r = await suite(await bundleOf({ [key]: mutate }, 'vcrd')); }
   catch (e) { r = { fail: 1, failed: [`threw: ${e && e.message}`] }; }
   if (r.fail > 0) { caught++; console.log(`  caught  ${name}  (${r.failed[0]})`); }
   else { escaped++; escapedNames.push(name); console.log(`  ESCAPED ${name}`); }
@@ -874,9 +873,9 @@ for (const [name, mutate] of DEFECTS) {
 let controlsCaught = 0;
 const controlsCaughtNames = [];
 console.log(`\n── control mutants (each must ESCAPE) ──────────────────────────────`);
-for (const [name, mutate] of CONTROLS) {
+for (const [name, mutations] of CONTROLS) {
   let r;
-  try { r = await suite(mutate(PRISTINE)); }
+  try { r = await suite(await bundleOf(mutations, 'vcrc')); }
   catch (e) { r = { fail: 1, failed: [`threw: ${e && e.message}`] }; }
   if (r.fail === 0) console.log(`  escaped ${name}`);
   else { controlsCaught++; controlsCaughtNames.push(`${name} (${r.failed[0]})`); console.log(`  CAUGHT  ${name}  (${r.failed[0]})`); }
