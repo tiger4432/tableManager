@@ -490,6 +490,255 @@ def run_stages(parser_cls, file_path, *, rel_path=None, source_root=None):
 
 
 # ---------------------------------------------------------------------------
+# ③ publishing — 「되면 발행 셀이 함수 파일을 만든다」 (S-197)
+# ---------------------------------------------------------------------------
+
+class PublishRefused(Exception):
+    """⛔ REFUSED BY NAME, AND THE FILE DOES NOT SURVIVE THE REFUSAL. A published file that
+    disagrees with the cell it came from is worse than no file: it sits in a folder
+    production watches, claims real inputs, and produces something nobody has looked at."""
+
+
+def _publish_target(directory, name):
+    if not str(name).isidentifier():
+        raise PublishRefused("%r is not a usable module name" % (name,))
+    os.makedirs(directory, exist_ok=True)
+    target = os.path.join(directory, "%s.py" % name)
+    if os.path.exists(target):
+        raise PublishRefused(
+            "%s already exists; publishing would overwrite a file somebody is running. "
+            "Choose another name, or delete that file yourself." % target)
+    return target
+
+
+def _indent(body, spaces):
+    """The author's cell body, moved into a function body. Blank lines stay blank."""
+    import textwrap
+
+    pad = " " * spaces
+    lines = textwrap.dedent(str(body or "").rstrip("\n")).split("\n")
+    return "\n".join(pad + line if line.strip() else "" for line in lines)
+
+
+def _import_published(path, module_name):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _discard(path, registered_name=None):
+    """Undo a publish. 🔴 THE REGISTRY ENTRY GOES TOO — a name left claimed by a file that no
+    longer exists makes the NEXT publish of that name fail for the wrong reason."""
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+    if registered_name:
+        try:
+            import mapper_sdk
+
+            mapper_sdk.MAPPER_REGISTRY.pop(registered_name, None)
+            getattr(mapper_sdk, "MAPPER_PARAMS", {}).pop(registered_name, None)
+        except Exception:
+            pass
+
+
+def cell_body(fn):
+    """The BODY of a function the author defined in a free-form cell, at column 0.
+
+    🔴 ONE SEAT MOVES A CELL INTO A FILE, so the author never copies anything. Copying is
+    where 「what I ran」 and 「what I shipped」 come apart, and the publisher's comparison exists
+    because that is not a hypothetical.
+
+    ⚠️ `inspect.getsource` GIVES THE CELL AS IT WAS LAST **EXECUTED**, not as it is on the
+    screen. That is unavoidable and it is precisely why `publish_mapper`/`publish_parser`
+    re-run the published file and refuse on disagreement — this function is allowed to be
+    stale, and the publish is not.
+    """
+    import inspect
+    import textwrap
+
+    try:
+        source = textwrap.dedent(inspect.getsource(fn))
+    except (OSError, TypeError) as exc:
+        # ⚠️ 「could not get source code」 IS THE ORDINARY WAY THIS FAILS, and on its own it
+        # sends the author looking for a bug in their cell. It means the function did not
+        # come from a cell or a file at all - a builtin, or something `exec`-ed.
+        raise ValueError("cannot read the source of %r; `cell_body` takes a function you "
+                         "wrote in a cell: %s" % (fn, exc))
+    lines = source.splitlines()
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("def ") and stripped.rstrip().endswith(":"):
+            body = "\n".join(lines[index + 1:])
+            break
+    else:
+        raise ValueError("%r does not look like a plain `def` written in a cell" % (fn,))
+
+    body = textwrap.dedent(body).strip("\n")
+    if not body.strip():
+        raise ValueError("%s has an empty body" % getattr(fn, "__name__", fn))
+    # A docstring belongs to the cell, not to the published file, which writes its own.
+    return body
+
+
+MAPPER_TEMPLATE = '''# -*- coding: utf-8 -*-
+"""%(name)s - published from the mapper workbench.
+
+The body below is the cell that was RUN. `dev_bench.publish_mapper` re-ran it FROM THIS FILE
+against the same frame and compared the result before leaving the file here, so the notebook
+and the deployment are the same bytes by construction rather than by somebody remembering to
+copy carefully.
+"""
+import pandas as pd
+
+from mapper_sdk import mapper
+
+
+@mapper(params=%(params)r)
+def %(name)s(df, db):
+%(body)s
+'''
+
+
+def publish_mapper(name, params, body_source, *, frame, expected, directory=None):
+    """Write the free-form cell out as a decorated mapper, then PROVE it still agrees.
+
+    🔴 THE COMPARISON IS THE POINT, NOT THE FILE. `inspect.getsource` and copy-paste both
+    ship 「the cell as it was last executed」, which is not always 「the cell on the screen」 —
+    so the published file is imported back, run on the SAME frame the notebook ran on, and
+    survives only if it produces the same rows. A disagreement deletes it and refuses by name.
+
+    ⚠️ `frame` IS PASSED, NOT RE-DERIVED. Re-deriving it from a table would re-run the window
+    (`rows=` / `where=`), and a different window is a different answer — the comparison would
+    then fail for a reason that has nothing to do with the body.
+
+    Returns `{path, who, rows}`; raises `PublishRefused` and leaves nothing behind otherwise.
+    """
+    directory = directory or os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "mappers")
+    target = _publish_target(directory, name)
+
+    source = MAPPER_TEMPLATE % {"name": name, "params": tuple(params or ()),
+                                "body": _indent(body_source, 4)}
+    io.open(target, "w", encoding="utf-8").write(source)
+
+    try:
+        module = _import_published(target, "bench_published_%s" % name)
+        published = getattr(module, name)
+    except Exception as exc:
+        _discard(target)
+        raise PublishRefused("the published file does not import: %s: %s"
+                             % (type(exc).__name__, exc))
+
+    inner = getattr(published, "__wrapped__", published)
+    session, closer = _readonly_session()
+    try:
+        got = inner(frame, session)
+    except Exception as exc:
+        _discard(target, name)
+        raise PublishRefused("the published body raised on the same frame: %s: %s"
+                             % (type(exc).__name__, exc))
+    finally:
+        closer()
+
+    mine, theirs = rows_to_tsv(_frame_rows(got)), rows_to_tsv(_frame_rows(expected))
+    if mine != theirs:
+        _discard(target, name)
+        raise PublishRefused(
+            "%s produces different rows from the cell it came from, so it was not kept. "
+            "Re-run the free-form cell and publish again." % name)
+    return {"path": target, "who": name, "rows": _frame_rows(got)}
+
+
+PARSER_TEMPLATE = '''# -*- coding: utf-8 -*-
+"""%(cls)s - published from the parser workbench.
+
+Both bodies below are the cells that were RUN. `dev_bench.publish_parser` re-ran this file
+through the production claim -> parse path on the same file and compared the records before
+leaving it here.
+
+WARNING: `match()` IS A DRAFT. It claims by filename pattern and nothing else. Narrow it
+before this file sits in a folder production watches: the first class that says yes takes the
+file, so a wide pattern quietly takes somebody else's input into this table.
+"""
+import pandas as pd
+
+from pipeline_base import BasePipelineParser
+
+
+class %(cls)s(BasePipelineParser):
+
+    MATCH_PATTERN = %(pattern)r
+
+    @classmethod
+    def match(cls, file_path: str) -> bool:
+        import fnmatch
+
+        name = BasePipelineParser.get_basename(file_path).lower()
+        return fnmatch.fnmatch(name, cls.MATCH_PATTERN.lower())
+
+    def _read_file_to_dataframe(self, file_path: str) -> pd.DataFrame:
+%(read)s
+
+    def process_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
+%(process)s
+'''
+
+
+def publish_parser(name, read_body, process_body, *, file, expected,
+                   match_pattern=None, scripts_path=None):
+    """Write the two free-form cells out as a parser, then run the PRODUCTION path on it.
+
+    🔴 THE READ OVERRIDE IS PUBLISHED TOO, and that is the owner's correction: a format
+    production's default reader cannot open is the ordinary case, so the notebook authors
+    `read_df` as well as `process`, and both land — `_read_file_to_dataframe` and
+    `process_dataframe`. (The read method is underscored and is a public extension point;
+    `pipeline_base` says so in its own docstring, and renaming it would silently drop every
+    workspace override.)
+
+    🔴 AND THE CHECK GOES THROUGH `try_parser`, i.e. claim -> parse. Calling the class
+    directly would skip the one thing publishing actually risks: that some OTHER parser in
+    the same folder already claims this file, so production would never reach this one.
+
+    Returns `{path, who, rows}`; raises `PublishRefused` and leaves nothing behind otherwise.
+    """
+    scripts_path = scripts_path or _default_scripts_path()
+    target = _publish_target(scripts_path, name)
+    class_name = "".join(part[:1].upper() + part[1:] for part in str(name).split("_"))
+    pattern = match_pattern or ("*" + os.path.splitext(str(file))[1].lower())
+
+    source = PARSER_TEMPLATE % {"cls": class_name, "pattern": pattern,
+                                "read": _indent(read_body, 8),
+                                "process": _indent(process_body, 8)}
+    io.open(target, "w", encoding="utf-8").write(source)
+
+    result = try_parser(str(file), scripts_path=scripts_path)
+    if result["refusal"]:
+        _discard(target)
+        raise PublishRefused("the published parser did not run: %s" % result["refusal"])
+    if not str(result["who"] or "").startswith(os.path.basename(target)):
+        claimed_by = result["who"]
+        _discard(target)
+        raise PublishRefused(
+            "%s claims this file first, so the published parser would never see it in "
+            "production. Narrow one of the two match() patterns." % claimed_by)
+
+    from parsers.pipeline_base import BasePipelineParser
+
+    theirs = rows_to_tsv(BasePipelineParser().clean_for_postgres(expected))
+    if rows_to_tsv(result["rows"]) != theirs:
+        _discard(target)
+        raise PublishRefused(
+            "%s produces different records from the cells it came from, so it was not kept. "
+            "Re-run the free-form cells and publish again." % class_name)
+    return {"path": target, "who": result["who"], "rows": result["rows"]}
+
+
+# ---------------------------------------------------------------------------
 # the shells read THIS, so a folder is a test
 # ---------------------------------------------------------------------------
 
