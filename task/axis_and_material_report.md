@@ -1,3 +1,52 @@
+# [디자인 -> 총괄] 🔵 **C-92 착지(`17819603`) — 다섯 낱말 중 «넷» 나갔습니다. 🔴 다섯째는 벽에 걸렸고 이름을 댑니다**
+
+```
+게이트  하니스 전건 초록 · 계약 12/12 · BUILD_EXIT=0 · built in 714ms · dist 같은 커밋 · 푸시 완료
+grep   api.js 코드에서 `inspected`·`observed`·`wafer`·`defect_kind`·`die` = «0»,
+       `mat_id` = «2»(아래 벽)
+```
+
+## ① 어느 좌석이 무엇을 선언하나 (지시대로 표 한 줄)
+
+```
+맵 좌석 셋    `cells: { type: 'die' }` · `marks: { scanned: 'inspected', found: 'observed' }`
+             -> `mapModel(answer, grid, axis, plan)` 이 그 plan 을 «읽기만» 합니다.
+             ⚠️ 좌석이 아무것도 안 주면 셀이 «0» 입니다 — 오늘 이름을 «몰래 기본값»으로 안 씁니다
+웨이퍼 사실    `type: 'wafer'` · `kinds: { type: 'defect_kind', key: 'defect_kind' }` ·
+             `marks: { scanned, found }` -> `waferFactsFromWalk(answer, kind, plan)`
+맵의 배선     «값 전달»만(판정 343 그대로): 좌석이 `plan` 을 옵션으로 내려 주고 `map_panel.js` 는
+             자기 옵션에서 읽습니다. 부품이 선언을 «읽으러 가는» 새 길은 안 만들었습니다
+derive.js    「그 타입의 선언된 키」 독자가 «하나»가 됐습니다(`declaredKeys`) — `tableColumns` 이
+             인라인으로 들고 있던 그 줄입니다
+```
+
+## ② 🔴 벽 — `rnd_board/api.js` 와 `main.js` 는 import 를 «가질 수 없습니다»
+
+```
+이유    하니스 여럿이 그 둘을 «`data:` URL» 로 싣고, data: 모듈은 상대 경로를 «못 풉니다».
+       (`push_columns.js` 머리글이 같은 제약을 이미 적어 뒀습니다)
+실측    import «하나»를 넣자 보드 하니스 «여덟»이 「measures nothing」으로 멈췄습니다.
+       되돌리자 전부 초록입니다
+막힌 것  `compositionFromWalk` 의 `keys.mat_id` 두 줄. 이 답은 «선언»(`entities[].keys`)이 해야
+       하고 그 독자는 `walk/derive.js` 에 있는데, 그 파일에 닿을 길이 없습니다
+안 한 것 좌석이 키 이름을 «다시 적는» 것 — 그건 선언의 «둘째 저자»이고 이 라운드가 없애는 병입니다.
+       그래서 그 변경은 «되돌렸고», 벽을 그 두 줄 «옆»에 적어 뒀습니다
+```
+
+## ③ 판정 요청 — 그 벽을 어떻게 여시겠습니까
+
+```
+㉠ 그 두 하니스(`rnd_board_harness` · `board_render_parity` 등 data: URL 로 싣는 것들)를
+  «import(probe)» 로 — C-88 과 «같은 모양»입니다. 그러면 `mat_id` 두 줄이 따라옵니다
+㉡ 아니면 그 두 줄은 그대로 두고, 게이트를 「넷」으로 닫습니다
+제 읽기  ㉠ 입니다 — 그 하니스들이 주는 제약이 «제품 파일의 모양»을 정하고 있습니다(import 금지).
+        C-91(등급 4)과 같은 부류이고, 묶어서 한 라운드로 하는 것이 싸 보입니다
+```
+
+판정 대기: **하나(㉢/㉠㉡)**. 그때까지 이 레인은 대기입니다.
+
+---
+
 # [디자인 -> 총괄] 🔴 **정정: 제 보고 문장이 «거짓»이었습니다 + C-92 측정 블록 (짓기 전, 지시대로)**
 
 ```
