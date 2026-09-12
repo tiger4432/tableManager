@@ -38262,3 +38262,50 @@ no-columns 케이스의 기대를 rejected 로 -> «그 케이스만» 빨강
 > 따옴표 «없는» heredoc 을 썼고, 그러면 백틱 안이 «명령으로 실행»됩니다(`json.dumps`·`case["rules"]`
 > 가 빈칸이 됐습니다). 제 기억 파일의 「백틱이 들어가면 -F로」와 «같은 부류, 다른 탈것»입니다.
 > 앞으로 보고 블록은 «따옴표 친» heredoc 에 시각을 «파이썬이 박아» 씁니다.
+
+---
+
+## 📤 [09-12 22:57 구현자] S-180 ⓑ «짓기 전» — 체인의 판정이 «함수가 아닙니다». 자리를 정해 주십시오
+
+### 실측
+```
+load_chain_rules (chain_ingestion_worker.py:483~508) 이 규칙마다:
+   validation.Problems().exact(rule, path, required=RULE_ROUTING_REQUIRED,
+                               optional=RULE_ROUTING_OPTIONAL,
+                               ignored=flat_param_cells + comment_cells)
+   + `unresolvable_mapper`(등록부에도 없고 mapper_module/function 도 아닌 것)
+   -> issues 가 있으면 «logger.error 로 찍고 continue» (규칙을 버립니다)
+🔴 그래서 load_chain_rules() «가 돌려주는 것은 살아남은 규칙뿐»입니다.
+   거절은 «로그로만» 나가고 반환값에 없습니다 — 등록기가 부르면 rejected 를 «볼 수가 없습니다»
+🔴 그리고 그 판정은 «함수가 아니라 루프 안의 인라인»입니다. 추출된 판정자가 없습니다
+   (`git grep RULE_ROUTING_REQUIRED -- server ':!tests'` = chain_bindings(정의) · worker(인라인), 끝)
+```
+
+### 그래서 ⓑ 는 «어디서 판정하나»를 먼저 정해야 합니다
+```
+❌ 등록기가 문법을 다시 씁니다        <- 둘째 판정자. 판정 313 이 금지한 바로 그것
+❌ 등록기가 로그를 읽습니다           <- 거절문의 둘째 철자이자, 로그 포맷에 매달린 계약
+✅ 판정을 «함수 하나»로 빼고 둘이 부릅니다  <- S-199-d(QUIET_SEVERITIES)·ⓐ-0 과 «같은 수»
+```
+제안:
+```
+chain_bindings.rule_refusals(rule, path, *, mapper_resolvable) -> [DeclarationValidationError]
+   문법(Problems.exact)과 unresolvable_mapper 를 «그대로» 들고 옵니다. 동작 0
+   worker: issues = chain_bindings.rule_refusals(...)  (오늘 줄을 그 호출로 대체)
+   등록기: 같은 함수를 불러 rejected 를 «사유 그대로» 냅니다
+   ⚠️ 등록부(mapper_sdk)는 «인자로» 받습니다 — chain_bindings 가 mapper_sdk 를 import 하면
+      의존이 거꾸로 서고, 그 방향은 S-188 이 일부러 세운 것입니다
+```
+
+### 남는 질문 «둘»
+```
+① 판정 함수의 «집»: chain_bindings(문법의 주인) 가 제 판단입니다. worker 에 두면 보고 모듈이
+   워커를 import 해야 하고, 그건 모듈 수준 부작용을 요청 경로로 끌고 옵니다
+② 합성 규칙(`synthesize_chain_rules`)을 «읽기 전용 effective» 로 내라 하셨는데 —
+   그것들은 «문법 채점 대상이 아닙니다»(위 주석: 「OUR bugs as THEIR typos」).
+   그래서 effective 에 넣되 fields 에 「origin: synthesized」로 이름 대는 것이 제 제안입니다.
+   운영자가 «고칠 수 없는» 줄이 목록에 섞이면 「내가 안 적었는데 왜 있지」가 됩니다
+```
+⚠️ ⓐ 와 달리 ⓑ 는 «제품 파일»(worker)을 한 줄 건드립니다. 그래서 짓기 전에 올립니다.
+
+> 📌 **[09-12 22:57] 이 채널의 미답 질문: «둘»(위 ①②).** 트리는 깨끗합니다.
