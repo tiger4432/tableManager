@@ -925,6 +925,41 @@ def _implementation_clause_fields(base: str, clause: Mapping[str, Any],
     )
 
 
+def _with_group_columns(columns, mapper):
+    """The derived inputs, plus the unit's group columns (S-196, 판정 306-b).
+
+    🔴 THE VALIDATOR REQUIRES THEM: 「group_by columns must be mapper input columns」. The
+    base derivation is 「the prepared frame minus what `read` already reads」, and a group
+    column is usually exactly one of the columns `read` reads — so it was being subtracted
+    away and the rebuilt bundle was refused by its own validator. Measured on the document
+    the test opens: `dt_job` groups by `dt_job`, and the re-derived inputs did not contain it.
+
+    ⚠️ APPENDED, NOT UNIONED-AND-SORTED. The base order is the prepared frame's and a
+    re-derivation that reordered it would show every operator a diff that means nothing.
+    """
+    out = list(columns)
+    for name in unit_group_columns(mapper):
+        if name not in out:
+            out.append(name)
+    return out
+
+
+def unit_group_columns(mapper):
+    """The columns a mapper's unit groups by — EMPTY for a row unit (S-196, 판정 306/306-b).
+
+    🔴 ONE PLACE READS `unit`. The derivation of `map.input_columns` needs these columns and
+    so does the `unit.columns` field itself; two readers of one declaration is how they come
+    to disagree, and here they would disagree about whether a column is required to exist.
+
+    ⚠️ A ROW UNIT HAS NO GROUP, and that is a declaration rather than an omission — 「없는
+    그룹」 must not be invented, so this answers `[]` and nothing downstream adds columns.
+    """
+    unit = mapper.get("unit") if isinstance(mapper.get("unit"), Mapping) else {}
+    if unit.get("kind") != "group_by":
+        return []
+    return list(_listed(unit.get("columns")))
+
+
 def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                            ) -> Iterable[Field]:
     """The preparer and mapper clauses of every source, walked FROM the source.
@@ -1144,7 +1179,8 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             yield Field(
                 path=f"{base}.input_columns", step="sources",
                 label="매퍼 input_columns", state="derived", tier=TIER_DERIVATION,
-                value=[name for name in prepared if name not in locked_all],
+                value=_with_group_columns(
+                    [name for name in prepared if name not in locked_all], mapper),
                 # Empty-as-unanswered, same ruling and same scope as the preparer row above
                 # -- see the comment there before changing this back to a membership test.
                 declared=declared_mapper_inputs,
@@ -1155,7 +1191,8 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                     f"(relation {relation} + 준비기 output_columns)",
                     (f"{PHYSICAL_CATALOG_FILENAME}:{relation}",
                      f"{prep_base}.output_columns"),
-                    [name for name in prepared if name not in locked_all]),
+                    _with_group_columns(
+                        [name for name in prepared if name not in locked_all], mapper)),
                 # Stated for the same reason as the preparer row above: the value is the
                 # MAXIMUM and a person narrows it, so `comparison` has no word for it.
                 disposition="default_overridable",
@@ -1186,7 +1223,10 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         )
         if kind == "group_by":
             group_by = list(_listed(_driver(source).get("group_by")))
-            columns = list(_listed(unit.get("columns")))
+            # 🔴 THE SAME FUNCTION THE DERIVATION USES (판정 306-b). Reading `unit` here
+            # too would be a second reader, and the two would disagree about whether a
+            # column is required to exist.
+            columns = unit_group_columns(mapper)
             derived_inputs = sorted({column for column, _ in binding_columns})
             yield Field(
                 path=f"{base}.unit.columns", step="sources",

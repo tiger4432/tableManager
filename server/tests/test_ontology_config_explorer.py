@@ -1883,21 +1883,26 @@ def test_every_deficit_lands_on_a_field_rather_than_a_loose_error_list(active_se
     # and nothing supplies it" -- is now the unbound Role, one declaration over, so it is
     # made there instead.  Its refusal is `missing_required_role`, which is why the two
     # deficits below are asserted per path rather than by distinct codes.
-    del bundle["sources"]["lot_event"]["bind"]["mappings"]["in_slot"]["bind"]["slot"]
 
     plan = authoring_plan(bundle, catalog)
     by_path = {row["path"]: row for row in plan["fields"]}
     role = by_path["bundle.sources.dt_job.bind.mappings.counted.bind.value"]
     assert role["state"] == "missing"
     assert [item["code"] for item in role["refusals"]] == ["missing_required_role"]
-    qualifier = by_path["bundle.sources.lot_event.bind.mappings.in_slot.bind.slot"]
-    assert qualifier["state"] == "missing"
-    assert [item["code"] for item in qualifier["refusals"]] == [
-        "missing_required_role"]
-    # The candidates are the binding KINDS the Role admits, offered so the operator picks
-    # rather than recalls -- the same service the `$slot` spelling used to do for a
-    # qualifier reference.
-    assert set(qualifier["candidates"]) == {"column", "constant"}
+    # ⚰️ THE SECOND HOLE HAS NO SUBJECT LEFT (S-196, 판정 306 ①). It was made in
+    # `lot_event.bind.mappings.in_slot.bind.slot`, and `lot_event` declares
+    # ['descent', 'first_sight_holder', 'first_sight_item'] today -- `in_slot` went when the
+    # sample was replaced with the live declarations (`7e23677d`). Measured before removing
+    # it: NO mapping in the live bundle carries a `slot` qualifier, so there is no 「today's
+    # mapping」 to move the hole to.
+    #
+    # 🔴 THE PROPERTY IS STILL SCORED. What this test is about is 「a deficit lands ON A FIELD
+    # rather than in a loose error list」, and the Role hole above makes exactly that claim --
+    # `state == "missing"`, a refusal code on the field, and `unattached_refusals` empty
+    # below. What is gone is a SECOND example of it, not the assertion.
+    assert set(role["candidates"]) == {"column", "constant"}, (
+        "the candidates are the binding KINDS the Role admits, offered so the operator "
+        "picks rather than recalls")
     assert not plan["unattached_refusals"], plan["unattached_refusals"]
     blocked = {step["id"] for step in plan["steps"] if step["status"] == "blocked"}
     assert blocked == {"sources"}
