@@ -4152,6 +4152,53 @@ def get_runtime_loops(db: Session = Depends(get_db)):
                         headers={"Cache-Control": "no-store"})
 
 
+@app.post("/admin/chain/dry-run", dependencies=[Depends(require_admin_token)])
+def chain_dry_run(payload: dict = Body(...)):
+    """Run one chain rule's mapper over one trigger row and show what comes out. Writes 0.
+
+    S-194 ②. `{"rule": {...}, "row": {...}}` -> `{"who", "rows", "refusal"}`.
+
+    🔴 IT ASSEMBLES NOTHING. `dev_bench.try_mapper` already resolves the mapper through the
+    registry (S-188 ⓒ) with the two-cell fallback, folds the sample into the worker's payload
+    shape, and hands back a named refusal. A route that rebuilt any of that would make the
+    CLI, the pytest fixture and this endpoint three answers to one question.
+
+    🔴 THE WRITE-ZERO GUARANTEE IS POSTGRESQL'S, NOT THIS ROUTE'S CARE. The bench opens a
+    read-only connection and `assert_readonly` asks the server; measured, a `CREATE TABLE` on
+    it comes back `ReadOnlySqlTransaction`. A route that promised no writes by being careful
+    would be promising something it cannot enforce.
+
+    ⛔ THE TRIGGER ROW IS OPERATOR DATA. It goes back to the caller who sent it, and the log
+    line carries the rule name, the row count and the refusal code - never the body
+    (「payload 본문 로그 금지」).
+    """
+    import dev_bench
+
+    rule = payload.get("rule") if isinstance(payload, dict) else None
+    row = payload.get("row") if isinstance(payload, dict) else None
+    if not isinstance(rule, dict) or not isinstance(row, dict):
+        raise HTTPException(
+            status_code=400,
+            detail="send {'rule': <the chain rule>, 'row': <one trigger row>}")
+
+    import chain_bindings
+
+    name, module_name, function_name = chain_bindings.mapper_cells(rule)
+    target = name or (("%s:%s" % (module_name, function_name))
+                      if module_name and function_name else "")
+    if not target:
+        raise HTTPException(
+            status_code=400,
+            detail="the rule names no mapper: set 'mapper', or "
+                   "'mapper_module' and 'mapper_function'")
+
+    result = dev_bench.try_mapper(target, [row], rule=rule)
+    logger.info("[ChainDryRun] rule=%s mapper=%s rows_in=1 rows_out=%d%s",
+                rule.get("name"), result.get("who"), len(result.get("rows") or ()),
+                " REFUSED" if result.get("refusal") else "")
+    return result
+
+
 @app.get("/admin/chain/queue", dependencies=[Depends(require_admin_token)])
 def get_chain_queue_depth(db: Session = Depends(get_db)):
     """「체인 요청이 몇 개 씹히는 것 같다」를 **수로 바꾼다.** 읽기 전용.

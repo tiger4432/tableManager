@@ -520,3 +520,137 @@ def model_column(model, table: str, column: str, purpose: str):
             "such attribute. table_config and the physical table disagree — run the "
             "schema sync, or correct the name." % (table, column, purpose))
     return attribute
+
+
+# ---------------------------------------------------------------------------
+# S-194 ① — the chain's half of the draft lifecycle
+# ---------------------------------------------------------------------------
+#: 🔴 THE SAME LIFECYCLE, A DIFFERENT DOCUMENT (판정 303). `config_drafts` owns draft →
+#: review → activate with optimistic locking and a snapshot compare-and-swap; it asks a
+#: document seven questions and this is the chain's set of answers. A second lifecycle was
+#: refused because 「합칠 사람이 없다」 — nobody merges two, so there is one.
+from types import SimpleNamespace
+
+CHAIN_EDITABLE_FILE = "chain_rules.json"
+
+
+class ChainRuleIndex:
+    """The three things the lifecycle asks of an index: `nodes`, `node(key)`, `snapshot_hash`.
+
+    ⚠️ THE CHAIN HAS NO EXPLORER INDEX, and that is the measured reason 「one bundle argument」
+    could not open the lifecycle (S-194 design). What the machinery actually needs is small:
+    a mapping of editable targets, a refusal by name for a key that is not one, and something
+    to compare a draft's base against.
+
+    🔴 THE SNAPSHOT HASH IS OVER THE RULES AS THE LOADER SEES THEM, not over the file's bytes.
+    Two files that differ only in whitespace describe the same rules, and a draft rejected for
+    a reformat would teach an operator that the lock is noise. Conversely a synthesized rule
+    changing IS a change the draft must notice, because it can collide with a declared name.
+    """
+
+    def __init__(self, rules):
+        self.nodes = {}
+        for position, rule in enumerate(rules or ()):
+            name = str((rule or {}).get("name") or "")
+            if not name:
+                continue
+            self.nodes[name] = SimpleNamespace(
+                key=name,
+                canonical_id=name,
+                kind="chain_rule",
+                config_file=CHAIN_EDITABLE_FILE,
+                # Only `config_file` and `bundle_path` are read downstream — `draft_target`
+                # says so — and this is where in the document the rule lives.
+                bundle_path=("rules", position),
+                definition_hash=None,
+                raw=rule,
+            )
+        self.snapshot_hash = self._hash(rules)
+
+    @staticmethod
+    def _hash(rules):
+        import hashlib
+        import json
+
+        payload = json.dumps([r for r in (rules or ())], sort_keys=True,
+                             ensure_ascii=False, default=str)
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    def node(self, key):
+        """⛔ REFUSES BY NAME, as the explorer's index does. A key the loader never saw is a
+        typo or a rule that was removed, and resolving it to something would put a draft on a
+        target that cannot be written back."""
+        try:
+            return self.nodes[str(key)]
+        except KeyError:
+            raise KeyError(
+                "no chain rule named %r; declared: %s"
+                % (key, ", ".join(sorted(self.nodes)) or "none")) from None
+
+
+class ChainRuleDocument:
+    """The chain's answers to the lifecycle's seven questions.
+
+    ⚠️ VALIDATION IS THE LOADER'S, NOT A SECOND OPINION. `preview` scores a draft with the
+    same `validation.Problems` + `routing_keys()` the loader uses (S-188 ⓐⓑ), so a draft the
+    screen calls good cannot be a rule the loader then refuses.
+    """
+
+    editable_file = CHAIN_EDITABLE_FILE
+
+    def node_of(self, context, target_key):
+        return context.index.node(target_key)
+
+    def has_node(self, context, target_key) -> bool:
+        return str(target_key) in context.index.nodes
+
+    def snapshot_hash(self, context):
+        return context.index.snapshot_hash
+
+    def target_of(self, record, context):
+        key = str((record or {}).get("target_key"))
+        existing = context.index.nodes.get(key)
+        if existing is not None:
+            return existing
+        stored = (record or {}).get("target_bundle_path")
+        if not stored:
+            return context.index.node(key)      # refuses by name, as above
+        # A draft that AUTHORS a rule has no node to ask — the same hole `draft_target`
+        # records for the ledger, where the owner wrote a declaration by hand for two hours.
+        return SimpleNamespace(
+            key=key, canonical_id=key, kind="chain_rule",
+            config_file=CHAIN_EDITABLE_FILE, bundle_path=tuple(stored),
+            definition_hash=None, raw=(record or {}).get("raw"))
+
+    def fill(self, context, node, raw):
+        """⚠️ NOTHING IS FILLED IN. The ledger fills a declaration from the active setup so a
+        partly written node still compiles; a chain rule is flat and the loader's required
+        cells are two. Inventing defaults here would put values in the operator's file that
+        the operator never wrote."""
+        return raw
+
+    def preview(self, context, node, raw):
+        import validation
+
+        problems = validation.Problems()
+        problems.exact(raw if isinstance(raw, dict) else {}, "rule",
+                       required=RULE_ROUTING_REQUIRED,
+                       optional=RULE_ROUTING_OPTIONAL,
+                       ignored=(flat_param_cells(raw) + comment_cells(raw))
+                       if isinstance(raw, dict) else ())
+        issues = [i.to_mapping() for i in problems.finish()]
+        # 🔴 THE SCREEN MUST NOT BE BLINDER THAN THE LOG. The loader ACCEPTS an unknown
+        # top-level cell — it is a mapper argument still written flat (S-188 ⓓ) — and warns by
+        # name so the operator knows what to move. A preview that only reported refusals
+        # would let an author leave the file in the state the boot line complains about every
+        # morning, with the screen calling it good.
+        flat = list(flat_param_cells(raw)) if isinstance(raw, dict) else []
+        warnings = ([{"code": "flat_param_cell", "path": "rule." + name,
+                      "message": "a mapper argument still written at the top level - "
+                                 "move it under 'params'"} for name in flat])
+        return SimpleNamespace(raw=raw, issues=issues, warnings=warnings, ok=not issues)
+
+    def config_root(self, context):
+        from pathlib import Path
+
+        return Path(context.setup.config_root)

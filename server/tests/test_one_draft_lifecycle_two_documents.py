@@ -158,3 +158,132 @@ def test_the_context_keeps_the_two_halves_apart():
     assert context.setup == "setup" and context.index == "index"
     with pytest.raises(AttributeError):
         context.anything_else = 1          # __slots__: the pair is the whole of it
+
+
+# ---------------------------------------------------------------------------
+# S-194 ① second commit — the chain's document, in the same seat
+# ---------------------------------------------------------------------------
+
+def test_the_chain_document_answers_the_same_seven_questions():
+    """🔴 THE POINT OF THE SEAM. Two documents, one lifecycle — so the chain's answers must
+    cover exactly what the ledger's does, or the store would work for one and break for the
+    other at whichever question was missing."""
+    import chain_bindings
+
+    ledger, chain = LedgerDocument, chain_bindings.ChainRuleDocument
+    asked = ("editable_file", "node_of", "has_node", "snapshot_hash",
+             "target_of", "fill", "preview", "config_root")
+    for name in asked:
+        assert hasattr(ledger, name), name
+        assert hasattr(chain, name), ("the chain document cannot sit in the seat", name)
+
+
+def test_the_chain_index_refuses_a_key_it_never_saw():
+    """⛔ AS THE EXPLORER'S INDEX DOES. A key the loader never saw is a typo or a removed rule,
+    and resolving it would put a draft on a target that cannot be written back."""
+    import chain_bindings
+
+    index = chain_bindings.ChainRuleIndex([{"name": "r1", "trigger_table": "t"}])
+    assert index.node("r1").config_file == "chain_rules.json"
+    assert index.node("r1").bundle_path == ("rules", 0)
+    with pytest.raises(KeyError) as caught:
+        index.node("typo")
+    assert "r1" in str(caught.value), "the refusal must say what IS declared"
+
+
+def test_the_snapshot_hash_is_over_the_rules_not_the_bytes():
+    """🔴 A REFORMAT IS NOT A CHANGE. Two files differing only in whitespace describe the same
+    rules, and rejecting a draft for that would teach an operator the lock is noise."""
+    import chain_bindings
+
+    one = chain_bindings.ChainRuleIndex([{"name": "r", "trigger_table": "t"}])
+    same = chain_bindings.ChainRuleIndex([{"trigger_table": "t", "name": "r"}])
+    other = chain_bindings.ChainRuleIndex([{"name": "r", "trigger_table": "other"}])
+    assert one.snapshot_hash == same.snapshot_hash
+    assert one.snapshot_hash != other.snapshot_hash
+
+
+def test_the_chain_preview_is_the_loaders_judgement_not_a_second_one():
+    """⚠️ A DRAFT THE SCREEN CALLS GOOD MUST NOT BE A RULE THE LOADER REFUSES. The preview
+    scores with the same `validation.Problems` + `routing_keys()` the loader uses (S-188 ⓐⓑ)."""
+    import chain_bindings
+
+    document = chain_bindings.ChainRuleDocument()
+    context = DraftContext(None, chain_bindings.ChainRuleIndex([]))
+
+    missing = document.preview(context, None, {"trigger_table": "t"})
+    assert not missing.ok
+    assert [i["path"] for i in missing.issues] == ["rule.name"]
+
+    good = document.preview(context, None, {"name": "r", "trigger_table": "t"})
+    assert good.ok and good.issues == []
+
+
+def test_the_chain_preview_warns_by_name_where_the_loader_warns():
+    """🔴 THE SCREEN MUST NOT BE BLINDER THAN THE LOG. The loader ACCEPTS an unknown top-level
+    cell — it is a mapper argument still written flat — and names it so the operator knows what
+    to move. A preview reporting only refusals would let an author leave the file in the state
+    the boot line complains about every morning, with the screen calling it good."""
+    import chain_bindings
+
+    document = chain_bindings.ChainRuleDocument()
+    context = DraftContext(None, chain_bindings.ChainRuleIndex([]))
+    preview = document.preview(context, None, {
+        "name": "r", "trigger_table": "t", "x_col": "X", "__comment": "prose"})
+    assert preview.ok, "a flat cell is accepted, exactly as the loader accepts it"
+    assert [w["path"] for w in preview.warnings] == ["rule.x_col"]
+
+
+def test_the_chain_document_fills_nothing_in():
+    """⚠️ THE LEDGER FILLS A PARTLY WRITTEN NODE so it still compiles; a chain rule is flat and
+    the loader's required cells are two. Inventing defaults would put values in the operator's
+    file that the operator never wrote."""
+    import chain_bindings
+
+    raw = {"name": "r"}
+    assert chain_bindings.ChainRuleDocument().fill(None, None, raw) is raw
+
+
+# ---------------------------------------------------------------------------
+# the dry-run route
+# ---------------------------------------------------------------------------
+
+def test_the_dry_run_route_calls_the_bench_and_assembles_nothing():
+    """⛔ SCORED ON THE SOURCE. The defect would be a route that rebuilt the resolution, the
+    payload folding or the refusal text — then the CLI, the pytest fixture and this endpoint
+    become three answers to one question."""
+    import inspect
+
+    import main
+
+    body = inspect.getsource(main.chain_dry_run)
+    assert "dev_bench.try_mapper(" in body
+    for rebuilt in ("payloads_to_df", "MAPPER_REGISTRY", "open_readonly", "importlib"):
+        assert rebuilt not in body, ("the route rebuilt %s" % rebuilt)
+
+
+def test_the_dry_run_route_logs_no_row_body():
+    """⛔ 「payload 본문 로그 금지」. The trigger row is operator data: it goes back to the caller
+    who sent it, and the log carries the rule name, the count and whether it was refused."""
+    import inspect
+
+    import main
+
+    log_lines = [l for l in inspect.getsource(main.chain_dry_run).splitlines()
+                 if "logger." in l or "rows_in" in l]
+    assert log_lines, "it must say something"
+    for line in log_lines:
+        assert "row" not in line or "rows_in" in line or "rows_out" in line, line
+    assert "payload" not in " ".join(log_lines)
+
+
+def test_the_dry_run_route_refuses_a_rule_naming_no_mapper():
+    """⚠️ BOTH SPELLINGS ARE ACCEPTED, because the registry is empty wherever no mapper file
+    uses the decorator yet — so a rule with neither is the only unrunnable case, and it is
+    named rather than passed to the bench to fail there."""
+    import chain_bindings
+
+    assert chain_bindings.mapper_cells({"mapper": "m"})[0] == "m"
+    assert chain_bindings.mapper_cells(
+        {"mapper_module": "a", "mapper_function": "b"})[1:] == ("a", "b")
+    assert chain_bindings.mapper_cells({}) == (None, None, None)
