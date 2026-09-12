@@ -18664,3 +18664,121 @@ docs/guide/SETUP_ORDER.md                «안 열었습니다»
 > 🔵 다음 정비 창에 «자연히» 걸릴 것 하나: C-94 가 착지하면 §5-quinquies 의 ⏳ 와 §5-sexies 가
 > 같이 걷힙니다 — 오늘 그 표기에 «걷을 이름»(C-94)을 적어 뒀으니 찾아다니지 않아도 됩니다
 > · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
+
+---
+
+## D-21 = A-1 문서 절반 — 바깥 디렉토리가 «섰습니다» (지시 09-13 07:59 · 판정 348·349)
+
+커밋 «둘», 저장소 셋이 아니라 «두 저장소»에 하나씩입니다.
+```
+바깥 git   763079d  (root-commit)  README.md · MAPPING_GUIDE.md · PARSER_GUIDE.md   +389
+           C:/Users/kk980/Developments/assyManager-authoring/   브랜치 main
+저장소     c49d8670                docs/guide/AUTHORING.md                          +55
+```
+🔵 **구현자 S-209 의 대기 조건이 풀렸습니다** — 판정 349 의 「응용 D-21 «첫 커밋이 바깥 git 에
+서면»」이 `763079d` 입니다. 다섯 파일 이동을 시작하실 수 있습니다.
+
+### 게이트 넷 — 전부 실측
+
+```
+① 이 박스 이름 0        세 문서 전건. 표·컬럼은 «<표>»·«<컬럼>» 자리표시자로만 씁니다
+                       ⚠️ 한 줄만 판정 여쭙니다 — 아래 「올리는 것」 ②
+② 문장마다 정본 위치     파일 + 줄 + 해시. 인용한 줄 번호를 전부 «제가 열어» 확인했습니다
+③ SDK 버전 한 줄        바깥 `README.md` 에 「SDK 버전 = 저장소 커밋 해시 `e5c41d5c`」
+                       🔵 그 문장이 오늘 참인지 «재서» 넣었습니다:
+                       `git diff --name-only e5c41d5c..HEAD -- server/ .gitignore MAPPER_STANDARD.md`
+                       = «빈 결과». 그 뒤 다섯 커밋은 전부 orders/board/report 입니다
+④ 저장소 쪽 링크 깨짐 0  `docs/guide/AUTHORING.md` 의 대상 «여섯» 전건 존재 확인 후 커밋
+                       (mapper_sdk · pipeline_base · custom_parser_template ·
+                        HTML_TOPOLOGY_PARSER_GUIDE · chain_ingestion_guide · INGESTION_GUIDE)
+```
+
+### 🔴 지시의 전제 하나가 «절반 거짓»이었습니다 — 옮기지 않고 쟀습니다
+
+지시 ①이 「루트 `MAPPER_STANDARD.md`(고정 파이프라인 + 훅 둘)을 «옮겨» 합침」이었는데,
+그 문서 §2 의 코드 예시를 운영자 가이드로 옮기면 **없는 API 를 가르칩니다.**
+제 실측(`git grep`, 저장소 `e5c41d5c`):
+```
+class Unit  «0»    class Emit  «0»    EMITS =  «0»    REQUIRES =  «0»
+row_pair · eav_pivot · snapshot_diff        `*.py` · `*.json` · `*.sample` 전건  «0»
+```
+🔵 **다만 그 제안의 「훅 둘」 모양은 «다른 이름으로» 착지해 있었습니다** —
+`server/ledger/roleframe.py` 의 `BaseLedgerMapper` :252 · `interpret_unit` :309 ·
+`DeclarativeRoleMapper` :318, 추적되는 예제 둘(`server/mappers/ledger_v2_*.py`).
+그래서 **옮기는 대신 부록 A 로 기록**했습니다: 무엇이 제안이었고 · 무엇이 어느 이름으로 착지했고 ·
+작성자가 「내가 어느 쪽 맵퍼를 쓰는가」를 가르는 한 줄(`(df, db) -> df` 면 이 문서,
+`interpret_unit` 이면 저쪽).
+📌 부류: 「문서만 읽었을 때 — 낡은 문장을 «전제»로 지시서를 쓴다」. 이번엔 지시가 «가르칠 내용»으로
+그 문장을 들고 있어서, 옮겼으면 낡음이 «운영자에게» 갔을 것입니다.
+
+### 🔴 그리고 지시 ②가 가리킨 문서가 «오늘 낡았습니다» — 그래서 «복사하지 않았습니다**
+
+```
+docs/guide/HTML_TOPOLOGY_PARSER_GUIDE.md @ `8cdd00e8`   머리글 «Last-verified: 2026-07-24»
+  그 문서에서 `REFUSED` · `refus` · 「격자 원점」        ->  «0건» (제 grep)
+소스 server/parsers/html_topology_parser.py @ `b95d998b`, 824줄
+  `REFUSED to parse` :654 · `note_refusal` :809 · `take_refusal` :814 · `clear_refusal` :822
+넣은 커밋 `419cd8fa` (2026-08-04) 「격자 원점을 두 번 유도하고 어긋나면 파일을 거절한다」, 이 파일에 +151/−51
+```
+🔴 **낡은 페이지를 옮기면 낡음이 «두 벌»이 됩니다.** 그래서 `PARSER_GUIDE.md` §6 은 그 문서를
+«경로로만» 가리키고 **「거절 경로가 통째로 빠져 있다」를 이름 대어** 적었습니다 — 파일이 조용히
+0건으로 들어오면 그것이 «버그»가 아니라 «거절»일 수 있는데, 그 낱말이 그 문서에 없습니다.
+🔵 그리고 그 사실을 저장소 쪽 `AUTHORING.md` 의 「옮겨 가지 않은 것」 표에도 적었습니다 —
+그 문서를 여는 사람이 여기까지 안 와도 보게.
+
+### 예제 절 — «비워 두고 사유를 적었습니다»(판정 348·349)
+
+```
+남는 것 ①  맵퍼 샘플 «일곱»  시험이 바이트를 «라이브 맵퍼»와 대조하는 드리프트 게이트가 읽습니다
+남는 것 ②  파서 shim «둘»    `void_obs_parser` · `inspection_run_parser` — 존재 이유가
+                            「수정은 `git pull` 하나」라, 바깥으로 오면 그 이유가 «그 자리에서» 거짓
+오는 것    «다섯»            맵퍼 샘플 셋 + `custom_parser_template.py` + `custom_parser.py.sample`
+```
+🔵 **각 가이드가 「내 인용 중 «어느 것»이 이동으로 바뀌나」를 이름으로 적어 두었습니다** —
+`PARSER_GUIDE.md` 의 `server/parsers/...` 인용 중 «둘»입니다. 그래서 구현자가 이동과 인용 수정을
+**한 커밋**으로 할 수 있습니다. 한쪽만 가면 그 사이가 거짓입니다.
+
+### 열어 본 절 / 안 연 절
+
+**열어 본 것** — 이 라운드에 «실제로 열어» 읽은 것:
+```
+server/mapper_sdk.py                    전량 395줄
+server/parsers/pipeline_base.py         :1~60 · :95~109 + 최상위 심볼 전건
+server/parsers/custom_parser_template.py 전량 · custom_parser.py.sample :1~30
+server/ledger/roleframe.py              최상위 심볼 + 머리 독스트링
+MAPPER_STANDARD.md                      전량
+docs/guide/HTML_TOPOLOGY_PARSER_GUIDE.md 머리글 + 절 제목 전건 (본문은 «안» 읽음 — §6 참조)
+.gitignore :68·:69·:75 · server/main.py :5491·:5509 · git ls-files(mappers · parsers · notebooks)
+판정 348 `9abdde3c` · 349 `7a4215ed` · 구현자 실측 `3f720a66`
+```
+**안 연 것** — 그래서 이 보고가 그것들에 대해 «아무 말도 안 합니다»:
+```
+docs/architecture/CODE_MAP.md     §mapper_sdk 행만 grep 으로 스쳤고 «절을 안 열었습니다»
+                                   (그 행의 「운영 소비자 0」은 낡은 문장일 수 있어 «인용 안 했습니다»)
+docs/guide/INGESTION_GUIDE.md · chain_ingestion_guide.md · OPERATOR_RUNBOOK.md   링크 대상 존재만 확인
+server/parsers/html_topology_parser.py   grep 넷만 — 본문 «안 읽었습니다»
+server/ledger/roleframe.py 의 본문        심볼과 머리 주석만 — 훅 «내용»은 안 읽었습니다
+```
+
+### 감사
+```
+제 커밋 둘의 «비-docs 파일 수»: 저장소 0 · 바깥 git 은 문서 셋뿐 (코드 0 · 섞임 0)
+바깥 디렉토리는 «신규»라 지운 것 0 · 저장소 파일은 «추가 한 장»뿐(수정·삭제 0)
+신규 파일은 `add` + `commit` 을 «한 명령»으로
+```
+
+### 🔴 올리는 것 «둘» (판정 대기)
+
+```
+① 바깥 git 의 «원격»을 어떻게 합니까
+   지금 원격 «없음»(로컬 뿐). 운영자에게 가려면 어딘가로 «나가야» 하는데, 그건 바깥으로 나가는
+   일이라 제가 정하지 않습니다. 「무엇을 알려주시면 판정되나」: 이 디렉토리를 «누가 받아 가나»
+   (운영자가 이 상자에서 복사 / 사내 저장소 / 파일로 전달) — 답 하나면 정해집니다
+② `README.md` 가 추적 파일명 하나를 듭니다 — `server/mappers/ledger_v2_lot_event_role_mapper.py`
+   (부록 A). 「이 박스 이름 0」 게이트에 걸리는지 여쭙니다. 제 읽기로는 «저장소에 추적되는
+   파일 이름»이라 증거 쪽이고 라이브 표·행 수가 아닙니다만, 게이트가 제 것이 아니라 올립니다
+```
+
+> 「판정 대기」 **2**(위 ①②) · 대기: 10⁷(보류, IO 1.3 s/1k · S-168 뒤) · 🔁 이월: 0
+> 🔵 다음: 구현자 S-209 이동이 착지하면 두 가이드의 예제 절 + 바뀌는 인용 둘을 «한 커밋»으로
+> · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
