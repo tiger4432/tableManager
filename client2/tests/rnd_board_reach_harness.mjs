@@ -44,7 +44,6 @@ const outward = (text) => text.replace(OUTWARD_RE, (whole, rel) => {
 
 const LF = String.fromCharCode(10);
 const CRLF = String.fromCharCode(13, 10);
-const dataUrl = (src) => `data:text/javascript;base64,${Buffer.from(src, 'utf8').toString('base64')}`;
 
 const BODY = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'rnd_board_reach.json'), 'utf8').replace(/\r\n/g, '\n'));
 

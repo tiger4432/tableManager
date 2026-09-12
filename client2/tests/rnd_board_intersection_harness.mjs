@@ -29,7 +29,6 @@ import { loadBoardModules } from './lib/board_modules.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BOARD_DIR = path.join(HERE, '..', 'src', 'rnd_board');
-const dataUrl = (src) => `data:text/javascript;base64,${Buffer.from(src, 'utf8').toString('base64')}`;
 
 // 🔴 C-93 (판정 345). THE LOADER IS SHARED. This file used to carry its own `dataUrl`/`read`/
 //    `outward` -- the same three lines six harnesses each held -- and the day `api.js` gained its
