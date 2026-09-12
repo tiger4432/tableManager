@@ -3,6 +3,10 @@ export const state = {
   currentTable: '',
   currentColumns: [],
   currentColumnTypes: {},
+  // C-84. 서버 카탈로그가 말하는 이 표의 «종류» — `/tables/<n>/schema.kind` 그대로.
+  // 🔴 세 상태다: 'table' · 'view' · ''(«아직/옛 서버가 안 알려 줬다»). 빈 값은 뷰가 «아니다» —
+  //    모르는 것을 뷰로 읽으면 멀쩡한 표가 조용히 읽기 전용이 된다.
+  currentTableKind: '',
   currentBusinessKey: '',          // 비즈니스 키 컬럼명 (예: 'pkg_id')
   currentCompositeKeySources: [],  // 조합 소스 컬럼 목록 (예: ['base', 'x', 'y'])
   // [Virtual join] `/schema`'s `virtual_columns`, verbatim. Entries are
@@ -185,6 +189,22 @@ export function isVirtualColumn(colId) {
   if (!Array.isArray(list) || list.length === 0) return false;
   return list.some(vc => vc && vc.name === colId);
 }
+
+/**
+ * C-84. 이 표가 «뷰»인가 — 카탈로그가 `kind` 로 «말해 준» 것만 참이다.
+ *
+ * 🔴 데이터 «모양»으로 추론하지 않는다. 뷰 셀은 `{value}` 뿐이지만 «덮어쓴 적 없는 표»의 한
+ *    페이지도 같은 모양이다. 모양으로 가르면 멀쩡한 표가 조용히 읽기 전용이 된다.
+ * 🔴 쓰기를 «막는» 것은 서버다(이름 대어 400). 이 술어는 클라가 쓰기를 «권하지 않게» 하는
+ *    것뿐이고, 그래서 편집 진입·붙여넣기·지우기·일괄 채우기·소스 컨트롤이 «같은 함수»를 지난다 —
+ *    자리마다 다른 답이 나올 수 있으면 그것이 criterion ④ 다.
+ */
+export function tableIsView() {
+  return state.currentTableKind === 'view';
+}
+
+/** 뷰에서 쓰기를 거절할 때 적는 «한 줄». 술어와 같이 살아서 자리마다 다르게 안 적힌다. */
+export const VIEW_READ_ONLY_NOTE = '뷰 — 읽기 전용';
 
 /**
  * [Virtual join] The `join_resolved_columns` entry for this grid column, or `null`.

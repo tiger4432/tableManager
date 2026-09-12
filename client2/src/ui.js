@@ -1,5 +1,5 @@
 import { API_BASE, CURRENT_USER, pageLimit } from './config.js';
-import { state, isVirtualColumn } from './state.js';
+import { state, isVirtualColumn, tableIsView, VIEW_READ_ONLY_NOTE } from './state.js';
 import { elements } from './dom.js';
 import { getLocalTimeString, escapeHtml } from './utils.js';
 import { updateGridSortState } from './grid.js';
@@ -132,6 +132,8 @@ export function setTransactionFilter(txId) {
 
 export async function applyValueToSelectedRange(newValue) {
   if (!state.gridApi) return;
+  // C-84. 일괄 채우기도 쓰기다.
+  if (tableIsView()) { elements.performanceLog.textContent = VIEW_READ_ONLY_NOTE; return; }
 
   let cellsToUpdate = Object.values(state.selectedCellsMap);
   if (cellsToUpdate.length === 0) {

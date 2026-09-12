@@ -758,9 +758,12 @@ const DEFECTS = [
   ['hardcode the unresolved label instead of reading the entry', s => ({ ...s,
     grid: sub(s.grid, `    ? entry.unresolved_label : '';`, `    ? '미상' : '미상';`, 'hardcode') })],
   // 🔴 The design line the brief drew: this marker must never become a write guard.
+  // ⚠️ C-84 moved this anchor: editability now also asks whether the CATALOGUE calls the table a
+  //    view (`!viewTable`). That is a different question — a table-level fact the server states —
+  //    and the mutant still says the same thing: the join ANNOUNCEMENT must not decide writability.
   ['make the announcement decide editability', s => ({ ...s,
-    grid: sub(s.grid, `      editable: !isSystem,`,
-      `      editable: !isSystem && !resolvedEntry,`, 'write-guard') })],
+    grid: sub(s.grid, `      editable: !isSystem && !viewTable,`,
+      `      editable: !isSystem && !viewTable && !resolvedEntry,`, 'write-guard') })],
   ['let the announcement replace the numeric cell editor', s => ({ ...s,
     grid: sub(s.grid, `    if (colType === 'number') {\n      colDef.cellEditor = 'agNumberCellEditor';`,
       `    if (colType === 'number' && !resolvedEntry) {\n      colDef.cellEditor = 'agNumberCellEditor';`,

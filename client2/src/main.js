@@ -9,7 +9,7 @@ import { narrowingTail } from './narrowing.js';
 // C-14: 값의 «출처»를 찍는 두 행. 하니스가 import 로 채점할 수 있게 자기 모듈에 삽니다 —
 // 이 파일은 ag-grid 의 CSS 를 import 해서 node 가 못 읽습니다.
 import { sourceRowHtml, sourceRowAllHtml } from './source_rows.js';
-import { state } from './state.js';
+import { state, tableIsView } from './state.js';
 import { elements } from './dom.js';
 import {
   checkServerHealth,
@@ -1561,10 +1561,11 @@ async function refreshSourcesList() {
         const isPinned = manualPriority === sourceName;
 
         const tr = document.createElement('tr');
-        tr.innerHTML = sourceRowHtml(sourceName, sourceVal, { isPinned });
+        tr.innerHTML = sourceRowHtml(sourceName, sourceVal, { isPinned, writable: !tableIsView() });
 
         // Bind Pin Action
-        tr.querySelector('.pin-btn').addEventListener('click', async () => {
+        const pinBtn = tr.querySelector('.pin-btn');
+        if (pinBtn) pinBtn.addEventListener('click', async () => {
           const nextPriority = isPinned ? null : sourceName; // Toggle pin
           elements.performanceLog.textContent = 'Updating cell priority...';
           try {
@@ -1592,7 +1593,8 @@ async function refreshSourcesList() {
         });
 
         // Bind Delete Action
-        tr.querySelector('.del-btn').addEventListener('click', async () => {
+        const delBtn = tr.querySelector('.del-btn');
+        if (delBtn) delBtn.addEventListener('click', async () => {
           if (!confirm(`Are you sure you want to delete source [${sourceName}] data for this cell?`)) return;
 
           elements.performanceLog.textContent = 'Deleting cell source...';
@@ -1679,10 +1681,12 @@ async function refreshSourcesList() {
         //    the row could not tell 「this source is missing from 3 of these cells」 from
         //    「this source covers all of them」, and those looked identical.
         tr.innerHTML = sourceRowAllHtml(sourceName, values,
-                                        { isPinnedAll, cellCount: cells.length });
+                                        { isPinnedAll, cellCount: cells.length,
+                                          writable: !tableIsView() });
 
         // Bind batch Pin Action
-        tr.querySelector('.pin-btn').addEventListener('click', async () => {
+        const pinBtn = tr.querySelector('.pin-btn');
+        if (pinBtn) pinBtn.addEventListener('click', async () => {
           const nextPriority = isPinnedAll ? null : sourceName;
           elements.performanceLog.textContent = `Batch updating cell priority to [${sourceName}]...`;
           try {
@@ -1711,7 +1715,8 @@ async function refreshSourcesList() {
         });
 
         // Bind batch Delete Action
-        tr.querySelector('.del-btn').addEventListener('click', async () => {
+        const delBtn = tr.querySelector('.del-btn');
+        if (delBtn) delBtn.addEventListener('click', async () => {
           if (!confirm(`Are you sure you want to delete source [${sourceName}] from all ${cells.length} selected cells?`)) return;
 
           elements.performanceLog.textContent = `Batch deleting source [${sourceName}]...`;

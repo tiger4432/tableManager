@@ -1279,6 +1279,12 @@ const FLOORS = new Map([
   //    「drawn in the viewer's zone, copied as the served offset ISO」 is an OBSERVATION of the
   //    two functions the operator reaches, not a reading of grid.js's text.
   ['grid_datetime_render_harness.mjs', 16],
+  // New 2026-09-13 with C-84. Floor is the count it reports on the commit that introduces it.
+  // 🔴 SIX SEATS, ONE PREDICATE, ONE FIXTURE: the staged `/schema` goes through the REAL
+  //    `loadSchema`, and the same staged table is then asked at edit entry, the three write
+  //    funnels, the badge rules and the two source rows. A per-seat answer is how one rule
+  //    turns into two spellings, so the gate asks them all with one fixture.
+  ['grid_view_readonly_harness.mjs', 24],
   // a value carrying markup does not come back out as markup, and the backlog has a ceiling
   ['escaping_harness.mjs', 56],
   // clicking a derived route fills follow, and a later-hop predicate stays visible
