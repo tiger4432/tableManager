@@ -84,7 +84,7 @@ def _subgraph_contract_state(connection):
 
 @router.get("/subgraph")
 def evidence_subgraph(
-    node_id: str = Query(..., alias="id",
+    node_id: str | None = Query(None, alias="id",
                          description="Entity/Event/Claim/Collection/Point/Value/Action의 불투명 id"),
     hops: int = Query(12, ge=1, le=40, description="증거 그래프 탐색 깊이"),
     direction: str = Query("both", pattern="^(outgoing|incoming|both)$",
@@ -230,11 +230,22 @@ def evidence_subgraph(
     # ⚠️ `isinstance(str)` BECAUSE A DIRECT CALL LEAVES FastAPI'S `Query` SENTINEL HERE, and
     # a sentinel is truthy — this handler's own note above says so, and measured: a bare
     # truthiness test refused two existing tests that pass neither argument.
-    if isinstance(seed_type, str) and seed_type.strip() and isinstance(node_id, str):
+    described = isinstance(seed_type, str) and bool(seed_type.strip())
+    listed = isinstance(node_id, str) and bool(node_id.strip())
+    if described and listed:
         raise HTTPException(status_code=422, detail={
             "reason": "seeds_defined_twice",
             "message": "`id` 와 `seed_type` 은 같이 줄 수 없습니다 — 씨앗을 «열거»하거나 "
                        "«서술»하거나 둘 중 하나입니다"})
+    # 🔴 `id` STOPPED BEING REQUIRED SO A DESCRIPTION COULD ARRIVE, AND THAT MADE 「neither」
+    # REACHABLE. FastAPI used to refuse an absent `id` before this handler ran; now the
+    # three states are ours to say, and 「씨앗을 안 말했다」 must be named rather than walked
+    # from nothing.
+    if not described and not listed:
+        raise HTTPException(status_code=422, detail={
+            "reason": "seeds_not_defined",
+            "message": "씨앗을 말해야 합니다 — `id` 로 «열거»하거나 `seed_type` 으로 "
+                       "«서술»하십시오"})
     try:
         payload = _evidence_graph(
             db.connection(), node_id=_signed_start(node_id, positive, negative),

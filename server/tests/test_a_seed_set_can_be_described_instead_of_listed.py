@@ -229,3 +229,81 @@ def test_the_enumeration_reads_the_seat_that_already_records_existence():
     assert params[0] == "register", "the predicate name comes from the constant"
     assert params[1] == "wafer", "the version is folded before the index is asked"
     assert params[2] == 26, "one row past the budget, so 「there were more」 is a fact"
+
+
+# ---------------------------------------------------------------------------
+# 🔴 THROUGH THE MOUNTED ROUTE — the layer a direct call cannot see
+# ---------------------------------------------------------------------------
+#
+# 🔴 THIS IS THE GATE I OWED AND SUBSTITUTED. The first landing of S-148-a asserted the
+# handler's SIGNATURE instead of calling the route, and the defect was one layer above the
+# handler: `id` was `Query(...)`, so FastAPI refused `seed_type=wafer` with
+# `{"loc": ["query", "id"], "msg": "Field required"}` before any of this code ran. I wrote
+# the rule myself in S-204 ② -- 「every defect a direct call cannot see lives BETWEEN the
+# route and the function」 -- and then tested the function.
+
+@pytest.fixture
+def route_client(monkeypatch):
+    """The real router, mounted. Only the STORAGE is substituted, so FastAPI's own
+    validation layer -- the one that held this defect -- runs for real."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    import ledger_trace_router
+    from admin_auth import require_admin_token
+    from database.database import get_db
+
+    monkeypatch.setattr(ledger_trace_router.ledger_trace, "relation_exists",
+                        lambda *a, **k: True)
+    monkeypatch.setattr(ledger_trace_router, "_subgraph_contract_state",
+                        lambda *a, **k: [])
+    monkeypatch.setattr(
+        ledger_subgraph, "SqlEvidenceLookup",
+        lambda *a, **k: ledger_subgraph.InMemoryEvidenceLookup(_registered(4)))
+
+    class _Db:
+        def connection(self):
+            return object()
+
+    app = FastAPI()
+    app.dependency_overrides[require_admin_token] = lambda: None
+    app.dependency_overrides[get_db] = lambda: _Db()
+    app.include_router(ledger_trace_router.router)
+    return TestClient(app)
+
+
+def test_a_description_alone_reaches_the_walk(route_client):
+    """🔴 THE FIRST LINE OF THIS ROUND'S GATE, finally scored where it lives."""
+    answer = route_client.get("/api/ledger/subgraph",
+                              params={"seed_type": "wafer", "hops": 1})
+
+    assert answer.status_code == 200, answer.text
+    assert len(answer.json()["seeds"]) == 4
+
+
+def test_naming_no_seeds_at_all_is_refused_by_name(route_client):
+    """⚠️ MADE REACHABLE BY THIS FIX. While `id` was required FastAPI answered this with a
+    generic 「Field required」; now the three states are ours to say."""
+    answer = route_client.get("/api/ledger/subgraph", params={"hops": 1})
+
+    assert answer.status_code == 422
+    assert answer.json()["detail"]["reason"] == "seeds_not_defined"
+
+
+def test_naming_seeds_twice_is_refused_by_name(route_client):
+    answer = route_client.get("/api/ledger/subgraph", params={
+        "id": ledger_explorer.entity_id("wafer", {"wid": "W0"}),
+        "seed_type": "wafer", "hops": 1})
+
+    assert answer.status_code == 422
+    assert answer.json()["detail"]["reason"] == "seeds_defined_twice"
+
+
+def test_an_enumerated_seed_still_answers_exactly_as_before(route_client):
+    """⚠️ THE HALF THAT MUST NOT MOVE. `id` became optional so a description could arrive;
+    a caller that passes one must see no change at all."""
+    answer = route_client.get("/api/ledger/subgraph", params={
+        "id": ledger_explorer.entity_id("wafer", {"wid": "W0"}), "hops": 1})
+
+    assert answer.status_code == 200, answer.text
+    assert len(answer.json()["seeds"]) == 1
