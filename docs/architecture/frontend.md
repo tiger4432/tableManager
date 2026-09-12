@@ -188,6 +188,47 @@ null    Matches: …      «아직 모른다» -- 세는 중 (+ 원소에 `is-co
 
 ⚰️ **[2026-08-31] 그리드에서 «빠진» 것 — 은퇴한 그래프 컬럼 셋** (`is_graph_synced`·`needs_graph_rollback`·`graph_synced_at`). 컬럼 정의를 만들기 **전에** 거르므로 **컬럼 토글 목록에서도 사라진다**(그 목록이 같은 집합이다). 🔴 **서버는 여전히 셋을 보낸다** — 없어진 것은 «그리는 자리»이지 컬럼이 아니다([backend §2 은퇴 블록](./backend.md)). 🔴 **`push_columns.js` 의 `PUSH_SYSTEM_COLUMNS` 에는 «일부러» 남겼다** — 그쪽은 표시 목록이 아니라 **서버의 시스템 컬럼 분류의 사본**이라, 빼면 맵 Push 게이트가 그 셋을 「지워도 되는 데이터 컬럼」으로 센다.
 
+### 3.4 여백·크기 토큰 — 「한 벌」 (2026-09-11 C-80 `f1497dbb` 신설)
+
+소유자 「제발 ui 만들 때 마진 좀 넣어」 · 「고리 너무 커」 · 「체인 그래프를 줄여. 이게 진짜 커」.
+🔴 **셋 다 «값»의 문제가 아니라 «자리마다 자기 숫자를 적는» 문제였습니다** — 그래서 답이 토큰입니다.
+📎 정본은 스킬 [`.claude/skills/ui-design-system/SKILL.md`](../../.claude/skills/ui-design-system/SKILL.md),
+캐논 파일은 `client2/src/ontology_explorer.css` 입니다. 아래 표는 «선언 자리와 오늘의 소비자»만 적습니다.
+
+| 토큰 | 값 | 선언 | 오늘 읽는 곳 (`git grep "var(<토큰>" -- client2`, dist 제외) |
+|---|---|---|---|
+| `--space-1` | 3.4px | `tokens.css:167` | **7** — 전부 `client2/admin.html` |
+| `--space-2` | 6.8px | `tokens.css:168` | **10** — 전부 `client2/admin.html` |
+| `--space-3` | 10.2px | `tokens.css:169` | **1** — `client2/admin.html` |
+| `--space-4` | 13.6px | `tokens.css:170` | **3** — `client2/admin.html` |
+| ⚠️ `--space-5` | 20.4px | `tokens.css:171` | **0** |
+| ⚠️ `--space-6` | 27.2px | `tokens.css:172` | **0** |
+| `--fs-label` | 12px | `tokens.css:178` | **2** — `client2/admin.html` |
+| `--graph-max-height` | 420px | `tokens.css:182` | **1** — `client2/admin.html` |
+
+🔴 **`--space-5`·`--space-6` 은 «선언돼 있고 아무도 안 읽습니다»** — 사다리를 여섯 칸으로 선언하고
+네 칸만 밟고 있습니다. 이것은 결함이 아니라 «측정»이고, 다음 화면이 그 둘을 밟거나 아니면 둘이
+은퇴해야 한다는 뜻입니다(부류: 「착지는 배선이 아니다」의 CSS 판).
+⚠️ **그리고 `var(--space*)` 를 쓰는 `.css` 파일이 «하나도 없습니다»** — 스물한 개 참조가 전부
+`client2/admin.html` 의 인라인 `<style>` 입니다. 토큰이 «한 벌»이 된 것과 «한 벌이 퍼진» 것은 다른 일입니다.
+
+**왜 이 값들인가 — 셋 다 실측에서 나왔습니다** (C-80 커밋 본문이 정본):
+```
+--fs-label        `.runtime-table` 이 font-size 를 «선언 안 해» 브라우저 기본 16px 을 상속했고
+                  이웃은 0.68~0.85rem 이었습니다 — 카드 라벨의 «1.43배»(지시서 추정 2배가 아님).
+                  🔴 값은 «캐논»에서 옵니다: 어드민이 쓰던 0.7rem(11.2px)이 아니라 12px.
+                  판정은 「캐논이 정본」이고, 어드민이 캐논과 달랐던 것입니다
+--graph-max-height  그래프가 컸던 것은 «노드 수»가 아니라 «스케일링»이었습니다. 레이아웃 좌표계
+                  viewBox 위의 `width:100%`+`height:auto` 가 세로로 긴 그림을 패널 너비로 늘려,
+                  45 노드 × 2층 = 270x2576 units 가 900px 패널에서 ~8,587px 로 그려졌습니다.
+                  이제 svg 가 자기 width/height 를 들고(1 unit = 1 px) 상자가 상한을 갖습니다.
+                  ⚠️ 대신 420px 로 «그림을 줄이면» 45개 라벨이 ~5px 가 되어 가독성 규칙이 거절합니다
+--space-1..6      3.4 그리드. 🔴 부품 «사이» 여백은 화면의 일이지 부품의 일이 아니고,
+                  그것이 flex `gap` 이 아니라 «형제 margin» 인 이유가 있습니다 —
+                  `switchTab` 이 `display:block` 을 «인라인»으로 쓰고 인라인이 시트를 이기므로
+                  `gap` 이었으면 «조용히 0» 이 됐을 것입니다(상설 「인라인 스타일이 시트를 이긴다」)
+```
+
 ---
 
 ## 4. R&D 진단 보드 (`src/rnd_board/`)
