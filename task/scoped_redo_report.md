@@ -40169,3 +40169,46 @@ B13 「수」 행    ③ → ✅ ① (판정 338 ②) — group_by·measure 가 
 커밋 뒤 수집 **6,210**.
 
 > 📌 **[09-13 02:35] 이 채널의 미답 질문: «없음».** 다음 = **S-149**(판정 338 대로 짓겠습니다).
+
+
+---
+
+## 판정 338 대기 중 — S-203 의 «미보고 실측»을 닫습니다 (짓지 않음)
+
+판정 338 은 채널에 «아직 안 왔습니다»(알림 요약만 봤고 본문을 안 봤습니다 — 요약으로 짓지 않습니다).
+그동안, 판정 325 가 끼어들며 «보고 안 하고 넘어간» S-203 실측이 하나 있어 닫습니다.
+
+### 🔴 그때 제가 «틀리게» 읽고 있었습니다 — 주석을 동작의 증거로
+그 라운드에서 저는 라우트 docstring 을 읽고 「`target: "predicate"` 반쪽은 «아직 돈다» →
+큐의 「항상 거절」은 거짓」이라고 «결론 직전»까지 갔습니다. 근거가 이 문장이었습니다:
+```
+main.py:5793  「`target: "predicate"` 는 영향 없다(위쪽에서 `_ledger_predicate_dry_run` 이 먼저 반환한다)」
+```
+지금 재 보니:
+```
+git grep -n "_ledger_predicate_dry_run" -- server
+   server/ledger/dry_run.py:189   ← «주석»
+   server/main.py:5793            ← «docstring»
+=> 그런 함수가 «없습니다». 정의 0, 호출 0. 두 문장이 «없는 함수»를 근거로 듭니다
+실제 코드(main.py:5818 근처):
+   if target == ledger_admin.TARGET_PREDICATE:  → declaration_rejected
+   「THE PREDICATE HALF RETIRED 2026-08-27, WITH THE SAVE IT PREVIEWED」
+```
+🔴 **그러므로 큐의 「항상 거절」은 «맞습니다». 틀린 것은 제 읽기였고, 저를 틀리게 만든 것은
+주석이었습니다** — 제 기억 파일 「주석은 «의도»의 증거이지 «동작»의 증거가 아니다」 그대로입니다.
+⚠️ 다행히 그 오독을 «보고하기 전»에 판정 325 가 라운드를 바꿨습니다. 보고했으면 총괄이 거짓 전제로
+S-203 을 닫았을 것입니다.
+
+### 그래서 S-203 의 은퇴 조건은 «충족»입니다 (제가 잰 것)
+```
+소비자        클라 호출 «0»(git grep -- client2/src) · 시험 하나 · 라우트 자신
+두 반쪽       source → DryRunUnavailable 거절 · predicate → 2026-08-27 은퇴 거절   = «전부 거절»
+낡은 산문 «셋»  main.py:5793 docstring · dry_run.py:189 주석 (둘 다 없는 함수를 인용)
+              main.py:5851 「STAYS - sources still preview through it」 (이미 알려진 거짓)
+모듈의 나머지  envelope_of · _existing_registrations · MAX_ROWS · MAX_ATOMS_RENDERED 소비자 «0»
+              ⚠️ 예외 하나: `begin_read_only` 는 시험이 «일부러» 붙들고 있습니다 —
+                그 시험 주석이 「v2 미리보기가 붙을 때를 위해 인라인하지 말 것」이라 적습니다
+```
+
+> 📌 **[09-13 02:37] 이 채널의 미답 질문: «없음».** S-203 은 등급 4 라 «짓지 않았습니다» —
+> 순서를 주시면 그때 한 커밋입니다. 지금은 **판정 338 본문**을 기다립니다.
