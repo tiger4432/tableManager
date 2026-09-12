@@ -37005,3 +37005,49 @@ chain_graph._vjoin_edges                              실체화 규칙은 «안 
 
 > 📌 **[09-12 15:5x] 이 채널의 미답 질문: «없음».** S-189 ⓐⓑⓒ «닫힘». 다음 = **S-194 ①**(어댑터 + 원장 어댑터 바이트 동일 게이트 + 체인 어댑터 + 드라이런 라우트, 커밋 둘) → 클라 C-86.
 > 재기동 총괄 몫 — ⓒ 가 기동 줄(합성 세 종류)과 드레인 랩을 바꿥니다.
+
+---
+
+## 📤 [09-12 16:0x 구현자] S-194 ① 착수 «전»에 게이트가 25% 눈이 멀어 있었습니다 — 한 낱말이었습니다 (`c91b2800`)
+
+### 왜 이걸 먼저 했나
+```
+S-194 ① 은 `config_drafts`(856줄 · 초안→리뷰→적용 수명주기 · 낙관적 잠금 · compare-and-swap)를
+어댑터 뒤로 옮기는 «리팩터»이고, 판정 303 의 게이트는 「원장 어댑터가 오늘과 «바이트 동일»」입니다.
+그 게이트의 «실체»는 시험 모집단인데, 재 보니:
+   tests/test_ontology_config_explorer.py   56 수집 · 42 통과 · 2 실패 · «12 에러»
+=> 게이트가 «25% 눈이 멀어» 있었고, 그 사각이 하필 «행동이 안 바뀌어야 하는 그 문서»였습니다
+   구멍 난 그물 뒤에서 리팩터하는 것은 그물 뒤가 아닙니다
+```
+
+### 원인 — 추적되는 «샘플 둘»이 한 컬럼 이름에서 어긋났습니다
+```
+tests/support/transfer_explorer_table_config.json   dt_log.column_types: … "event_at" …
+config/sample/ontology/transfer_explorer/ledger_config.json
+      order_by: ["event_time", …] · input_columns: […"event_time"…] · occurred_at.column: "event_time"
+git grep -c  ->  event_at «1» · event_time «8»   => 카탈로그가 예외였습니다
+```
+🔴 **그리고 이 결함은 «선언 결함으로 위장»합니다.** 거절문이
+「column 'event_time' is not in EventFrame schema」인데, `setup_bundle` 이 그 문장을 «이미» 경고해 뒀습니다:
+```
+「A WRONG INPUT THAT PRODUCES A PLAUSIBLE ANSWER IS WORSE THAN ONE THAT RAISES …
+  That sentence is TRUE of what it was given and false about the world …
+  it sent one lane to invent a defect (S-85) out of a caller's mistake, and it sent me
+  to the same place today.」
+```
+🔵 그래서 저는 «문장을 믿지 않고» 카탈로그를 열었습니다 — 제 기억
+[[load-the-catalogue-the-way-the-product-does]] 가 바로 그 사고(S-85 를 지어냄)입니다.
+⚠️ 픽스처 «자체»는 결백했습니다 — `load_physical_catalog` 로 «제품이 부르는 길»로 적재합니다.
+문제는 그 카탈로그가 든 «이름»이었습니다.
+
+### 실측 (전 → 후)
+```
+explorer 스위트         42 passed · 2 failed · «12 errors»   ->   54 passed · 2 failed · «0 errors»
+초안 수명주기 모집단     95 passed · 3 failed · «12 errors»   ->  129 passed · 2 failed · «0 errors»
+남은 빨강 둘 = 오늘 부모 71b51494 에서 «같은 둘»로 확인한 기존
+커밋 뒤  collect 5,935
+```
+🔵 **한 낱말이 시험 «열둘»을 되살렸습니다.** 그리고 이제 S-194 ① 의 게이트가 실제로 무언가를 듭니다.
+
+> 📌 **[09-12 16:0x] 이 채널의 미답 질문: «없음».** 다음 = **S-194 ①**(어댑터 + 원장 어댑터 바이트 동일 + 체인 어댑터 + 드라이런 라우트, 커밋 둘) — 이제 그물이 성합니다.
+> 재기동 불필요(시험 지원 파일 하나).
