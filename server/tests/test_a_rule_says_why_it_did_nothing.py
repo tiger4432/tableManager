@@ -113,9 +113,25 @@ def test_finish_still_has_exactly_one_caller():
     """🔴 판정 63 의 멈춤 조건을 «상설»로 세운다. `finish` 가 하는 일은 「도는 목록에서
     뺀다」 하나이고, 거기에 결과 기록을 얹으면 호출자가 여섯이 된다."""
     src = open(os.path.join(SERVER, "chain_ingestion_worker.py"), encoding="utf-8").read()
-    calls = [n for n in ast.walk(ast.parse(src))
-             if isinstance(n, ast.Call) and getattr(n.func, "attr", None) == "finish"]
-    assert len(calls) == 1, "finish grew a second caller - two facts under one name"
+
+    def _is_registry_finish(node):
+        """⚠️ NARROWED TO THE RECEIVER THIS RULE IS ABOUT (S-189 ⓒ, 2026-09-12).
+
+        This counted EVERY `.finish(` in the file, and the subject of 판정 63 is the activity
+        registry's — 「도는 목록에서 뺀다」. S-188 ⓑ gave `load_chain_rules` a
+        `validation.Problems`, whose `finish()` returns the refusals it collected: a
+        different function, a different fact, matched only because the attribute name is
+        shared. Narrowing is stricter than loosening — a second `registry.finish` caller
+        still fails here, which is the whole of what this guard exists to stop.
+        """
+        if not (isinstance(node, ast.Call) and getattr(node.func, "attr", None) == "finish"):
+            return False
+        receiver = node.func.value
+        return getattr(receiver, "attr", None) == "registry" or getattr(
+            receiver, "id", None) == "registry"
+
+    calls = [n for n in ast.walk(ast.parse(src)) if _is_registry_finish(n)]
+    assert len(calls) == 1, "registry.finish grew a second caller - two facts under one name"
 
 
 def test_the_vocabulary_is_closed_and_the_causes_are_not_values():

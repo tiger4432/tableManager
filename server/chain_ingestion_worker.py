@@ -536,27 +536,40 @@ def load_chain_rules():
         # would run TWICE and say nothing about it. Which of the two an operator meant is
         # not a thing this product can know, so it names both and drops the synthesized
         # half — the same posture the S-181 migration takes toward duplicate keys.
-        collisions = enrichment_config.enrichment_name_collisions(
-            [r.get("name") for r in rules], known_tables=crud.TABLE_CONFIG)
+        # 🔴 ONE SYNTHESIS SEAT (판정 304). `chain_builtins.synthesize_chain_rules` calls
+        # each half — enrichment reads its file, the join half reads its own — so there is
+        # one synthesiser and one call site, and no function reads a file its name does not
+        # mention. The MOVE is behaviour-zero and a test compares the enrichment output
+        # before and after.
+        #
+        # 🔴 A NAME CLAIMED TWICE IS REFUSED BY NAME, NEVER RESOLVED (S-179 ①, 판정 292).
+        # The join half gets the same treatment as the enrichment half: which of the two an
+        # operator meant is not a thing this product can know.
+        import chain_builtins
+        import virtual_join_config
+
+        declared_names = [r.get("name") for r in rules]
+        collisions = set(enrichment_config.enrichment_name_collisions(
+            declared_names, known_tables=crud.TABLE_CONFIG))
+        collisions |= set(virtual_join_config.join_name_collisions(
+            declared_names, known_tables=crud.TABLE_CONFIG))
         if collisions:
             logger.error(
-                "[Enrichment] %s: chain_rules.json 과 enrichment_rules.json 이 «같은 이름»을 "
-                "선언합니다. 한쪽을 지우십시오 — 어느 쪽이 참인지는 제품이 고를 수 없습니다.",
-                ", ".join(collisions))
-        enrich_rules = [r for r in
-                        enrichment_config.load_enrichment_chain_rules(
-                            known_tables=crud.TABLE_CONFIG)
-                        if r.get("name") not in set(collisions)]
-        if enrich_rules:
-            rules = rules + enrich_rules
-            # ⚠️ IT SAYS WHICH KINDS, because it stopped being only dedup (S-179 ①). One
-            # enrichment rule now yields TWO chain rules, and a line still reading
-            # 「N dedup rule(s)」 would report 8 of a kind there are 4 of.
-            follow_ups = sum(1 for r in enrich_rules if r.get("follow_up"))
+                "[ChainRules] %s: chain_rules.json 과 «합성 규칙»이 같은 이름을 선언합니다. "
+                "한쪽을 지우십시오 — 어느 쪽이 참인지는 제품이 고를 수 없습니다.",
+                ", ".join(sorted(collisions)))
+        synthesized = [r for r in
+                       chain_builtins.synthesize_chain_rules(known_tables=crud.TABLE_CONFIG)
+                       if r.get("name") not in collisions]
+        if synthesized:
+            rules = rules + synthesized
+            # ⚠️ IT SAYS WHICH KINDS. 「N synthesized」 over three kinds is the shape that once
+            # reported 8 of a kind there were 4 of, which is why S-179 ① split its own count.
+            counts = chain_builtins.synthesized_kind_counts(synthesized)
             logger.info(
-                "[Enrichment] Synthesized %d chain rule(s) from enrichment_rules.json "
-                "(%d dedup · %d auto-confirm)",
-                len(enrich_rules), len(enrich_rules) - follow_ups, follow_ups)
+                "[ChainRules] Synthesized %d chain rule(s) "
+                "(%d dedup · %d auto-confirm · %d join)",
+                len(synthesized), counts["dedup"], counts["auto_confirm"], counts["join"])
     except Exception as e:
         logger.error(f"[Enrichment] Failed to synthesize enrichment chain rules: {e}")
 
@@ -2227,6 +2240,55 @@ def another_chain_loop_is_running(now=None):
 FOLLOWUP_IDLE_SECONDS = 1.0
 
 
+def _run_builtin_followups(db, done):
+    """Route this follow-up batch to every `builtin:` kind whose rule watches its table.
+
+    🔴 THIS IS THE FIRST DISPATCHER THE `builtin:` VOCABULARY HAS EVER HAD (판정 305).
+    Measured before building: `builtin:auto_confirm` appeared twice, both in
+    `enrichment_config`, and nothing read it — S-179 declared the kind for the loader and the
+    graph and left execution in the sweep above. A rule naming a kind nothing implements
+    would otherwise sit enabled, look live, and never run.
+
+    ⚠️ THE SWEEP ABOVE HAS NOT MOVED HERE YET, and that is a NAMED temporary (S-195, queued):
+    moving it touches the paced path S-151 measured at 0.875 s per group, which deserves its
+    own gate rather than riding on this one. Two paths that are written down and queued are
+    not the drift the prohibition is about — the drift is the silent kind.
+
+    ⚠️ CONTAINED, like its neighbour. A failure here must not cost the ledger follow-up that
+    already succeeded, and must not propagate into the drain loop.
+    """
+    if not done:
+        return
+    table, row_ids = done.get("table"), done.get("row_ids")
+    if not table or not row_ids:
+        return
+    # ⚠️ A DELETE FOLLOWS NO VALUES. The rows are gone; a join's answer for them is
+    # retracted by `retract_rows`, not recomputed from a row that no longer resolves.
+    if done.get("event_type") == "DELETE":
+        return
+    try:
+        import chain_builtins
+
+        for rule in load_chain_rules():
+            if not rule.get("follow_up") or rule.get("trigger_table") != table:
+                continue
+            kind = rule.get("mapper")
+            if not (isinstance(kind, str) and kind in chain_builtins.BUILTIN_KINDS):
+                continue
+            result = chain_builtins.run_builtin(kind, db, rule, row_ids=list(row_ids))
+            # 🔴 THE GROUP LINE CARRIES THE RULE NAME. A count with no name is a line nobody
+            # can act on — and with several join rules watching one table it cannot even be
+            # attributed.
+            logger.info("[ChainBuiltin] rule=%s kind=%s table=%s rows_in=%d written=%s%s",
+                        rule.get("name"), kind, table, len(row_ids),
+                        (result or {}).get("written"),
+                        (" REFUSED: " + result["refusal"]) if (result or {}).get("refusal")
+                        else "")
+    except Exception as err:                                       # noqa: BLE001
+        logger.error("[ChainBuiltin] follow-up dispatch failed for table %s "
+                     "(the ledger follow-up itself is unaffected): %s", table, err)
+
+
 def _auto_confirm_followed_rows(db, done):
     """Run the enrichment auto-confirm for the rows this follow-up batch just followed.
 
@@ -2283,6 +2345,7 @@ def _drain_ledger_followup_sync(db_session_factory):
     try:
         done = ledger_followup.drain_once(db.get_bind(), load_setup())
         _auto_confirm_followed_rows(db, done)
+        _run_builtin_followups(db, done)
         return done
     finally:
         db.close()

@@ -853,3 +853,70 @@ def verification_report(db, path: str = None, known_tables: dict = None) -> dict
                          r.get("code", CODE_SHAPE), r.get("facts"), r["detail"])}
                     for r in rejections],
     }
+
+
+# ---------------------------------------------------------------------------
+# S-189 ⓒ — a materialised join IS a chain rule
+# ---------------------------------------------------------------------------
+#: The kind a synthesised join rule names. 🔴 ONE TABLE OF `builtin:` KINDS DISPATCHES THESE
+#: (판정 305), the same posture the mapper registry takes: a name, a callable, and an unknown
+#: name refused rather than resolved.
+JOIN_MAPPER = "builtin:join"
+JOIN_PREFIX = "virtual_join:"
+
+
+def synthesized_join_rule_name(rule_name: str) -> str:
+    """The chain-rule name a join declaration claims. One speller, so the collision check
+    and the synthesis cannot disagree about what a join rule is called."""
+    return JOIN_PREFIX + rule_name
+
+
+def synthesized_join_chain_rules(path: str = None, known_tables: dict = None) -> list:
+    """Every `materialize: true` join declaration, as a chain rule.
+
+    🔴 ONLY THE MATERIALISING ONES. A read-time rule writes nothing, so giving it a chain
+    rule would put a rule on the loader that can never do anything — and this box's two
+    production rules are read-time today. They must come out of here byte-identically absent.
+
+    🔴 `follow_up: True`, FOR THE REASON S-151 MEASURED. One reference row can reach 70,800
+    target rows here (≈92 s at the owner's IO spec), and 「요청/커밋 경로 인라인 금지,
+    뒤따르는 일은 페이싱된 별도 작업」 is the standing rule. The cell says so in the
+    declaration rather than only in the code.
+
+    ⚠️ `params` IS THE WHOLE NORMALIZED RULE, exactly as the enrichment half does it — a
+    hand-listed subset is a list that goes stale silently, and the cell it drops is invisible
+    until somebody asks why a declaration stopped working.
+    """
+    rules = []
+    for rule in load_virtual_join_rules(path=path, known_tables=known_tables):
+        if not rule.get("materialize"):
+            continue
+        rules.append({
+            "name": synthesized_join_rule_name(rule["name"]),
+            # The TARGET table is what a join writes, and it is also what wakes this rule
+            # when one of its own rows moves (trigger ⓐ). The reference side reaches it
+            # through the follow-up lap, which is why this is not a second trigger cell.
+            "trigger_table": rule["left_table"],
+            "target_table": rule["left_table"],
+            "mapper": JOIN_MAPPER,
+            "follow_up": True,
+            "enabled": True,
+            "params": dict(rule),
+            "origin": "synthesized:" + rule["name"],
+        })
+    return rules
+
+
+def join_name_collisions(chain_rule_names, path: str = None,
+                         known_tables: dict = None) -> list:
+    """Names `chain_rules.json` declares that a synthesised join would also claim.
+
+    ⛔ REFUSED BY NAME, NEVER RESOLVED — the same posture `enrichment_name_collisions` takes
+    (S-179 ①, 판정 292). Which of the two an operator meant is not a thing this product can
+    know, so it names both and drops the synthesised half.
+    """
+    declared = {name for name in (chain_rule_names or ()) if name}
+    return sorted(name for name in
+                  (r["name"] for r in synthesized_join_chain_rules(
+                      path=path, known_tables=known_tables))
+                  if name in declared)

@@ -231,11 +231,24 @@ def _contested_tables(chain_rules, enrichment_rules):
 
 
 def _vjoin_edges(db, rules):
-    """③ `virtual_join_rules`: the right table feeds the left one, at read time."""
+    """③ `virtual_join_rules`: the right table feeds the left one, at read time.
+
+    🔴 A MATERIALISED RULE IS NOT DRAWN HERE (S-189 ⓒ). It is a chain rule now — synthesised
+    as `builtin:join` — so `_mapper_edges` above already draws it from the loader, carrying
+    its `origin: synthesized:<name>`. Drawing it in both places would put TWO arrows between
+    the same pair of tables for one declaration, and a reader counting arrows would see a
+    flow that does not exist.
+
+    ⚠️ THE READ-TIME RULES STAY, and on this box that is both of them. Their arrow means
+    something different: the right table feeds the left WITHOUT writing, which is exactly the
+    distinction a materialised rule stops making.
+    """
     import virtual_join_config as vjc
 
     edges = []
     for rule in rules:
+        if rule.get("materialize"):
+            continue
         left, right = rule.get("left_table"), rule.get("right_table")
         if not (left and right):
             continue
