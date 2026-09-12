@@ -37851,3 +37851,56 @@ sample − live                «1»    ['dt_job_rollup']
 > ① ⓑ: `dt_log` 의 정체가 (dt_job, dt_x, dt_y) 인지 (dt_job_id, b_wx, b_wy) 인지 — 소유자 몫입니다.
 >   판정 213 대로면 «픽스처가 카탈로그를 따릅니다»(emit.py 를 고침), 309 ⓑ 대로면 «샘플을 고칩니다»
 > ② S-200 게이트의 「46 = 46」을 위 «집합» 형태로 바꿔도 될까요 — 그 수는 이 박스의 것입니다
+
+---
+
+## 📤 [09-12 22:1x 구현자] S-200 착지 — `47401217`. **빨강 8 → 2**, 그리고 스위트가 «6분» 빨라졌습니다
+
+```
+전  8 failed · 5,871 passed · errors 0 · 18m 17s
+후  2 failed · 5,877 passed · errors 0 · «11m 58s»
+```
+🔵 빨라진 것은 부수 효과가 아니라 «같은 사실의 다른 얼굴»입니다 — 등록부가 안 자라니
+   매 시험이 지고 가던 짐이 없어집니다.
+
+### 픽스처 하나
+```
+conftest @pytest.fixture(autouse=True) _the_model_registries_come_back
+   더한 이름은 «치우고» · 뺀 이름은 «안 되돌리고»(그 은퇴는 옳았습니다) ·
+   클래스가 «바뀐» 이름은 되돌립니다(대역이 남으면 뒤의 모든 파일에서 진짜 모델 행세를 합니다)
+S-191 이 나머지 반쪽이었습니다 — retire_dynamic_model 은 시험이 «일부러» 부르는 것이고
+이것은 «그냥 일어나는» 것입니다. 같은 두 싱글턴, 같은 짝
+변이: 어느 반쪽을 빼도 두 싱글턴이 «어긋나며» 시끄럽게 터집니다(누수 파일 하나에 13 errors,
+     다른 하나에 8 failed) — 둘이 «짝»이라는 증거입니다
+```
+
+### 그리고 게이트의 「46 = 46」을 «집합»으로 (판정 309-b 승인)
+```
+DYNAMIC_TABLES 는 세션 시작에 «라이브 45» 를 들고 있고, 46 이 맞아떨어진 것은
+이 박스에서 live ⊂ sample 이기 때문입니다. 표 하나를 더 선언한 운영자는 «누수 0 에도» 빨강입니다
+지금:  set(catalog) ⊆ set(DYNAMIC_TABLES)   그리고   set(DYNAMIC_TABLES) − before ⊆ set(catalog)
+      = 「선언된 것이 전부 지어지고, 짓는 동안 그 밖의 것이 안 생긴다」 — 수 없이 같은 성질
+```
+
+### 🔴 남은 빨강 «둘» — 하나는 «누수가 가리고 있던» 것입니다
+```
+① test_trace_fixture::test_emitted_columns_satisfy_the_ingestion_contract
+   = S-199-c. 판정 309-b 대로 다음 라운드
+② test_schema_drift_startup::test_a_mixed_verdict_counts_only_the_stuck_but_prints_both
+   🔴 «제 픽스처 탓이 아닙니다» — 픽스처를 stash 하고 «단독»으로 돌려도 빨강, 넣고도 빨강.
+      오염된 전 스위트에서만 초록이었습니다
+   진단(실측):  severities = {'TABLE-DOWN': 31, 'MISSING-TABLE': 4, 'SELF-HEALING': 2, 'INFO': 4}
+      배너가 세는 것 = «조용하지 않은 것 전부» = 31 + 4 = «35»
+      시험이 세는 것 = TABLE-DOWN «만» = 31
+   => 시험이 «성질»(시끄러운 것의 수) 대신 «대리»(TABLE-DOWN 수)를 재고 있습니다.
+      MISSING-TABLE 은 «언제나» 시끄러웠고(_QUIET 에 없음), 그 소스가 자기 주석에
+      「severity in ("TABLE-DOWN","MISSING-TABLE") 로 쓰면 안 된다」고 «이미» 적어 뒀습니다
+   제안: 시험의 n_stuck 을 배너의 술어로 — 다만 그러면 _QUIET 가 «두 철자»가 되므로
+        모듈 상수(`QUIET_SEVERITIES`)로 올려 «둘이 같은 것을 읽게» 하는 것이 맞습니다(한 칸·한 함수)
+⚠️ 제 첫 가설은 「S-193 이 더한 MISSING-VIEW 탓」이었고 «틀렸습니다» — 재 보니 MISSING-TABLE 이었습니다.
+   세어 보기 전에 보고하지 않은 것이 이번엔 값을 냈습니다
+```
+
+> 📌 **[09-12 22:1x] 이 채널의 미답 질문: «하나» —**
+> ② 를 «S-199-d» 로 큐에 넣을까요(시험의 대리를 성질로 + `QUIET_SEVERITIES` 한 상수)?
+> 제품 파일을 건드리므로 판정 받고 하겠습니다. 다음 = **S-199-c**(dt_log 인제션 삼중).
