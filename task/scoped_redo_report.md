@@ -35845,3 +35845,80 @@ S-187     새 시험 6/6 · 라이브 확인 · 10 파일 211 passed · 0 errors
 
 > 📌 **[09-12 12:4x] 이 채널의 미답 질문: «하나» — 위 「53 파일 부류」를 훑을지.**
 > 재기동 총괄 몫입니다 — **S-187 이 `/tables`·`/schema` 응답을 바꿉니다.** 다음은 순서대로 **S-190**.
+
+---
+
+## 📤 [09-12 12:2x 구현자] S-190 착지 — `46512d5b` · 자리 «다섯»이 한 함수를 지납니다
+
+### 먼저 라이브로 «결함»을 쟀습니다 (PID 43720 — 제 편집 «전»에 뜬 서버입니다)
+```
+GET :8080/tables/ledger_events/data?limit=2   (total 2,248,024)
+  subject_keys           dict    ← OBJECT-ON-WIRE
+  object_payload         dict    ← OBJECT-ON-WIRE
+  나머지 열둘(id·occurred_at·occurred_at_basis·subject_type·predicate·object_kind·
+             source_who·source_translator_ver·source_raw_ref·supersedes·
+             source_event_id·source_event_state)  전부 str / NoneType
+```
+🔵 소유자가 본 「[object Object]」 둘과 «정확히 일치»합니다. 선언은 둘 다 `string` 인데 전선이 객체였습니다.
+
+### 지은 것 — `utils/wire_format.wire_text(value)`
+```
+dict · list  ->  json.dumps(ensure_ascii=False, sort_keys=True, separators=(",",":"))
+그 밖        ->  «그대로». 수는 수로(그리드가 정렬해야 함), None 은 «없음»으로(「null」 문자열 아님)
+```
+🔴 **인자가 «값 하나»인 이유를 적습니다.** 카탈로그 타입 어휘가 number/datetime/string «셋»뿐이라
+dict/list 는 «string 선언 컬럼에만» 올 수 있습니다. 타입 인자를 받으면 그건 선언과 «어긋날 수 있는
+두 번째 기회»일 뿐입니다.
+🔴 **철자를 고정한 이유**: 두 문(門)의 문자열을 «견주기» 때문입니다. `sort_keys` 없으면 둘 다
+「올바른 JSON」인데 «안 맞습니다»(dict 삽입 순서는 선언의 것이 아님). `ensure_ascii=False` 라서
+한글 키가 읽히고, 좁은 구분자라 그리드와 TSV 가 «같은 바이트»입니다.
+
+### 자리 «다섯» — 전수입니다
+```
+① fetch_and_merge_metadata  뷰 팔       ← ledger_events 가 지나는 자리(소유자가 본 그 문)
+② fetch_and_merge_metadata  일반 팔      ← 오늘 dict 없음. 「이 셀의 텍스트」 저자를 «팔마다» 두지 않기 위해
+③ export_table_csv          스트림 행
+④ export_table_csv          «표본 sizer» ← 같은 식의 «세 번째 사본». 이 파일 자기 주석이
+                                          「표본이 스트림과 갈리면 X-Estimated-Content-Length 가
+                                           빠뜨린 폭만큼 과소보고되고 진행바가 100%를 넘는다」고 적어 둠
+⑤ _row_cell (걷기 rows TSV) ← `str(dict)` = «파이썬 repr»(홑따옴표·True·None). JSON 이 아니고
+                              아래쪽 누구도 파싱 못 합니다. 「틀린」 게 아니라 «파싱 불가»였습니다
+```
+
+### 게이트 — 변이 셋으로 채점
+```
+8 passed
+변이 ①  wire_text 를 무동작으로   -> 4 빨강 (TSV·문 견주기 포함)
+변이 ②  sort_keys=False          -> 「두 문을 견줄 수 있다」 단언만 빨강
+변이 ③  표본 sizer 자리 제거      -> 「한 함수를 지난다」 단언 빨강
+TSV 는 그리드 문자열과 «같다»로 단언(비슷하다 아님) · 탭·줄바꿈 접기와 None/True 는 그대로 살아 있음
+```
+🔴 **라우트 게이트가 처음엔 «공허»했습니다 — 그걸 적습니다.** 제 `TestClient(main.app)` 은 빈 DB 에
+닿아 모든 표가 데이터 0 이고, 단언은 «아무것도 검사하지 않고» 통과했습니다(`checked == 0`).
+conftest 의 «씨앗 있는 `client`» 픽스처로 바꾸고 `assert checked` 를 남겼습니다.
+그리고 원장 관계는 이 환경(SQLite)에서 `/data` 가 500 이라 «건너뜁니다» — 그 사실도 시험 안에 적었고,
+뷰 팔은 «소스 채점»으로 덮습니다.
+
+### 모집단
+```
+10 파일(고친 이름으로 고름: _row_cell · rows_projection · fetch_and_merge_metadata · export_table_csv)
+164 passed · 1 skipped · 빨강 «하나»
+  test_virtual_join_types::test_a_graph_meta_boolean_never_reaches_the_payload_because_the_cell_is_taken
+  -> 제 트리에서도 «단독» 빨강 · 부모 아카이브 71b51494 에서도 «단독» 빨강 = 기존, 조합 산물도 아님
+커밋 뒤  pytest tests --collect-only -q  ->  5857 collected(+8) · 오류 0
+```
+
+### ⚠️ 제가 «못 한» 것
+```
+라이브에서 «수리»는 확인 못 했습니다 — PID 43720 이 제 편집 «전»에 떴습니다.
+위 프로브는 «결함»의 측정이고 수리의 측정이 아닙니다. 재기동은 총괄 몫입니다.
+재기동 뒤 확인할 것: 같은 라우트에서 subject_keys·object_payload 가 «str», 나머지 열둘 «바이트 동일»
+```
+
+### 📌 판정 299(53 파일 은퇴 헬퍼)의 «수»는 아직 돌고 있습니다
+제 트리 전 스위트를 돌리는 중입니다(픽스처 수리 `ea1e8ec2` «뒤», S-190 «전» 상태에서 시작 —
+수집이 그 시점에 import 를 끝냈습니다). 부모는 «1020 errors» 였고, 끝나면 차이를 한 줄로 올립니다.
+그 전에 나머지 52 를 손대지 않습니다.
+
+> 📌 **[09-12 12:2x] 이 채널의 미답 질문: «없음».** 재기동 총괄 몫 — **S-190 이 `/data`·CSV·TSV 의 셀 문자열을 바꿉니다.**
+> 다음은 **S-188 설계** → S-189 설계.
