@@ -37343,3 +37343,50 @@ S-196 ② 근거를 config/sample 에서 쟀는데, 시험이 여는 것은 DEFA
 
 > 📌 **[09-12 18:2x] 이 채널의 미답 질문: «하나» — `bonded_from` (read 에 relation 없음) 처리 방향.**
 > 다음 = **S-191**. 재기동 총괄 몫.
+
+---
+
+## 🔎 [09-12 18:4x 구현자] S-196 ② 되돌림 받음 — 짓기 «전»에 잰 것 하나가 이 수리를 «안전하게» 만듭니다
+
+판정대로 「도출기가 검증기와 «같은 요구 집합»을 지난다」로 갑니다. 그 전에 요구 자리를 전수로 열었습니다.
+
+### 검증기가 `input_columns` 에 요구하는 것 — «둘»이고, 자리가 둘입니다
+```
+① 그룹 컬럼        setup_bundle.py:1546~1552
+                  set(_column_values(unit.columns)) - set(_column_values(item["input_columns"]))
+                  -> 「group_by columns must be mapper input columns」
+② 프로파일 바인딩   setup_bundle.py:2215
+                  for column, column_path in _profile_binding_columns(profile_path, profile):
+                      if column not in mapper_inputs: 「Profile column … is missing」
+```
+
+### 🔴 그리고 그 열거기가 «두 벌» 있습니다 — 이것이 이 결함의 «부류 이름»입니다
+```
+ledger/config_authoring.py:767    def profile_binding_columns(path, profile)      ← 작성 폼이 씁니다
+ledger/setup_bundle.py:2531       def _profile_binding_columns(path, profile)     ← 검증기가 씁니다
+=> 「무엇이 input_columns 에 있어야 하나」를 «두 곳»이 각자 셉니다.
+   제가 지난 커밋에서 그룹 컬럼만 손으로 더한 것이 «셋째 벌»이 될 뻔했습니다 —
+   판정이 「손으로 목록을 늘리지 말 것」이라 한 이유가 그것입니다
+```
+
+### ✅ 짓기 전에 «둘이 오늘 같은 답을 내는지» 쟀습니다 — 이것이 수리를 안전하게 만듭니다
+```
+라이브 번들의 소스 «15»에 대해 두 열거기를 나란히 돌림
+   -> «어긋나는 소스 0»
+=> 하나로 합치는 것이 «동작 중립»입니다. 합치면서 무엇이 바뀌는지 걱정할 자리가 없습니다
+⚠️ 안 쟀으면: 합친 뒤 어느 소스가 달라졌는지 «합친 다음에» 알게 됐을 것이고,
+   그때는 「내 이사가 바꿨나, 원래 달랐나」를 «구별할 수 없습니다»
+```
+
+### 지을 것 (다음 라운드, 한 커밋)
+```
+required_mapper_input_columns(item, profile, profile_path)  ← «한 함수»
+   = 그룹 컬럼(unit) + 프로파일 바인딩 컬럼
+검증기의 «두 검사»가 그것을 부르고, 작성 폼의 «도출»도 그것을 부릅니다
+profile_binding_columns 는 «한 구현»으로 (지금 두 벌, 오늘은 같은 답)
+게이트: 그 시험이 «모든 소스»에서 초록 + 변이로 열거에서 한 부류를 빼면 빨강
+```
+⚠️ **오늘은 여기서 멈춥니다** — 이 수리는 «검증기»를 건드리고, 이번 라운드에 제가 이미
+정정을 한 번 냈습니다(근거를 다른 문서에서 잼). 긴 구간 끝에서 검증기를 고치지 않겠습니다.
+
+> 📌 **[09-12 18:4x] 이 채널의 미답 질문: «없음».** 다음 라운드 = S-196 ② (위 계획) → S-191.
