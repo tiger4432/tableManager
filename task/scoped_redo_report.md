@@ -37680,3 +37680,71 @@ check_output_columns(rows|df, table)      `table.c.get(key) is None` = crud 의 
 
 > 📌 **[09-12 21:2x] 이 채널의 미답 질문: «없음».** S-197 «닫힘»(ⓐⓑc) · S-198 «닫힘».
 > 다음 = **S-199**(전 스위트 한 번 → 남은 빨강을 «가족별 목록»으로). 지금 돌리고 있습니다.
+
+---
+
+## 📤 [09-12 21:5x 구현자] S-199 — 「기존」이 «목록»이 됐습니다. 남은 빨강 «8», 가족 «넷», 오류 «0»
+
+```
+pytest tests -q   ->  8 failed · 5,871 passed · 151 skipped · 2 xfailed · «errors 0» · 18m 17s
+(이 세션 앞쪽 제 트리 기준선: 18 failed · 5,668 passed · «12 errors»)
+```
+🔴 그리고 여덟을 **하나씩 «단독»으로도 돌렸습니다** — 그래야 「항상 빨강」과 「전 스위트에서만
+빨강」이 갈립니다. 하나가 갈렸고, 그 하나가 제일 중요합니다.
+
+### ⓐ 라이브(gitignore) 맵퍼·선언이 «추적된 시험»과 어긋남 — **5**
+저장소가 «못 보는» 파일(`server/mappers/*.py` · `server/config/*.json`)이 판정의 주어입니다.
+```
+test_dt_alignment_metadata_mapper::test_live_mapper_and_tracked_sample_are_byte_identical
+   라이브 맵퍼와 추적 샘플이 «6802 바이트»째에서 갈림 (b'p' vs b'r')
+test_dt_inventory_metadata_mapper::test_copies_dt_log_metadata_to_matching_inventory_job
+test_dt_inventory_metadata_mapper::test_skips_other_metadata_targets_invalid_json_and_duplicate_jobs
+   ColumnBindingRefused: 규칙이 `metadata_target_table` 을 «선언 안 함» (둘 다 같은 사유)
+test_dt_standard_map_mapper::test_the_live_dt_map_declaration_is_the_physical_unit
+   라이브 선언의 `dt_slot` 이 'number', 시험은 'string' 을 요구
+test_job_column_from_config::test_standard_map_scopes_the_replace_by_the_configured_name
+   라이브 `dt_standard_map_mapper` 의 배치에 `scope` 키가 «없음» (KeyError)
+```
+⚠️ **다섯 다 «제가 고칠 수 없습니다»** — 소유자 파일이고, 여기서 「고치면」 그건 이 박스를
+   고치는 것입니다. 올릴 것은 「시험이 오늘 요구하는 모양」이지 파일이 아닙니다.
+
+### ⓑ 출하 «샘플» 카탈로그가 코드의 계약을 못 맞춤 — **1**
+```
+test_trace_fixture::test_emitted_columns_satisfy_the_ingestion_contract
+   config/sample/table_config.json.sample 의 `dt_log` 가 business_key `dt_cell_key` 도,
+   컴포짓 소스 ['dt_job_id','b_wx','b_wy'] «전부»도 안 냄
+```
+🔵 이건 «추적 파일»이라 제 것입니다 — ⓐ 와 «다른 가족»인 이유가 그것입니다.
+
+### 🔴 ⓒ 모듈 수준 등록부 «누수» — 전 스위트에서만 빨강 — **1**
+```
+test_a_declared_framework_column_is_not_built_twice::test_the_shipped_catalogue_builds
+   전 스위트:  assert 63 == 46      단독:  «초록»
+   -> 출하 카탈로그는 46 인데 DYNAMIC_TABLES 에 «17» 이 남아 있습니다. 남의 시험이 넣고 간 것입니다
+근거 한 줄:  init_dynamic_models 를 부르는 시험 파일 «74» · 그중 이름을 «되가져가는» 것 «9»
+```
+🔴 **S-191 이 닫은 그 부류가 «살아 있습니다».** S-191 은 `DYNAMIC_TABLES.pop` «자리»를 모집단으로
+   삼았고(9 파일), 이건 `init_dynamic_models` 를 부르고 «아무것도 안 빼는» 65 파일입니다 —
+   같은 병, 다른 모집단. 그리고 이 가족만이 「누구 때문에 빨간지」를 말해 주지 않습니다.
+
+### ⓓ 시험이 자기 주석에 「고치지 마라」라고 적어 둔 것 — **1**
+```
+test_virtual_join_types::test_a_graph_meta_boolean_never_reaches_the_payload_because_the_cell_is_taken
+   「🔴 KNOWN RED SINCE 2026-09-02, AND THE RED IS THE CORRECT SIGNAL.
+     Do not repair this test to make it green. Recorded on the lead PM's ruling」
+   전제(주입된 graph-meta 셀이 항상 이긴다)가 «일부러» 제거됐고, 빨강이 그 사실의 표지입니다
+```
+
+### 🔴 모르는 것
+```
+· ⓒ 의 «17 이 무엇인지» 이름을 못 댔습니다 — 그러려면 18분 스위트를 계측기와 같이 한 번 더
+  돌려야 합니다. 지금 있는 것은 「74 중 9만 되가져간다」는 «구조의 수»이고, 그건 이름이 아닙니다
+· ⓐ 다섯이 「시험이 낡음」인지 「라이브가 틀림」인지 «못 가릅니다» — 판정의 주어가
+  저장소 밖에 있어서, 제가 여기서 재는 어떤 수도 운영에 대해 아무 말도 안 합니다
+```
+
+> 📌 **[09-12 21:5x] 이 채널의 미답 질문: «셋» —**
+> ① ⓐ 다섯: 소유자께 「시험이 요구하는 모양」을 올릴까요, 아니면 시험 쪽을 오늘 라이브에 맞출까요
+> ② ⓒ: S-191 의 «둘째 모집단»(65 파일)을 별건으로 큐에 넣을까요 — 등급과 순서 판정 필요
+> ③ ⓑ: 샘플 카탈로그의 `dt_log` 를 제가 고쳐도 될까요(추적 파일이지만 «선언»입니다)
+> 그 답 없이도 **S-197-d**(옛 파서 노트북 은퇴)로 갑니다.
