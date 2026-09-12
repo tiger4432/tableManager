@@ -3740,6 +3740,30 @@ python -m chain  replay    [옵션]   -> scripts/chain_replay_cli.py        main
 >
 > 🔴 **그리고 «넷째 철자»가 오늘 생겼다 — 계약 벡터를 «`client2/tests/` 의 최상위 하니스»가 읽는 것.** `declaration_tokens`(`client2/tests/frame_declaration_harness.mjs:75`) · `ledger_receipt`(`client2/tests/ledger_receipt_timeline_harness.mjs:20`) · `test_run_rows`(`client2/tests/test_run_rows_harness.mjs:21`). 🔴 **이 셋은 `contracts/<이름>/client_harness.mjs` 가 «없어서» `check_contracts.mjs` 가 못 본다** — 대신 `client2/scripts/check_harnesses.mjs` 의 «바닥값»이 잡는다(각각 4104 · 22 · 21 — `client2/scripts/check_harnesses.mjs:342` · `:897` · `:904`). ⚠️ **그래서 「이 계약이 게이트에 걸렸나」와 「계약 게이트가 이것을 세나」가 «다른 질문»이었다** — 셋은 앞에 예, 뒤에 아니오였다.
 >
+> 🔴🔴 **[2026-09-12 D-12 · 재계수] 계약이 «열넷»이다 — `walk_columns` 가 09-11 에 들어왔다**(`a1f66842`, C-81).
+>
+> ```
+> 계약 «디렉터리»            14   (09-10 표기 13)   🆕 walk_columns (09-11 `a1f66842`)
+> client_harness.mjs         12   (09-10 표기 11)   -> check_contracts.mjs 가 «발견»하는 수
+> test_*_contract.py          9   무변동            🔴 «walk_columns 는 여기에 안 뜬다»
+> ```
+> 🔴 **그리고 그 「안 뜬다」가 이 절의 경고를 «반대 방향»으로 다시 보여 준다.** 09-10 블록은
+> 「파일 «이름»으로 세면 계약 «아닌» 것을 센다」고 적었다(디렉터리 없는 둘). `walk_columns` 는 그 거울이다 —
+> **양쪽 절반을 다 가졌는데** 파이썬 쪽 철자가 `server/tests/test_a_walk_can_be_read_as_rows.py`(:242 에서
+> `contracts/walk_columns/vectors.json` 을 읽는다)라서 이름으로 세면 «한쪽만 있는 계약»으로 잘못 읽힌다.
+> 📌 그러므로 「파이썬 절반이 있나」의 판별식은 «파일 이름»이 아니라 **「그 벡터 파일을 읽는 파이썬이 있나」**다 —
+> `git grep -l '<name>' -- server/tests` 가 그 철자다 — ⚠️ **경로로 훑으면 «0» 이 나온다**: 이 시험은
+> `os.path.join(server_dir, os.pardir, "contracts", "walk_columns", "vectors.json")` 로 길을 «조립»해서
+> `contracts/walk_columns` 라는 문자열이 소스에 «없다». 이 줄을 처음 그렇게 적었다가 자기 사례에서 0 을 받았다.
+>
+> 🔵 **재는 것은 «한 규칙»이고 «한 모양»이 아니다** — 두 절반이 그리는 표는 «영원히 다르다»(클라는 타입마다
+> 한 절, 고정 컬럼이 한국어 표시어 `깊이·충돌·라벨·id`; 서버 `format=rows` 는 TSV 하나에 기계 이름).
+> 벡터가 못 박는 것은 **「선언된 컬럼이 «어느 것»이고 «어느 순서»인가」** 하나이고, 양쪽이 그것에만 채점된다.
+> 서버 쪽이 재는 자리는 `ledger_subgraph._declared_columns`(위 §5-I), 클라 쪽은 `walk/derive.js` 의 `tableColumns` 다.
+> 🔴 **모든 케이스가 «미끼 선언»을 싣는다** — 노드 타입은 맨 이름(`wafer`)인데 선언 키는 버전이 붙어(`wafer@1`) 있고,
+> 미끼가 없으면 「아무것도 못 찾았다」와 「맞는 것을 찾았다」가 «같은 답»(고정 컬럼만)이 돼 기대가 짧은 케이스를
+> 전부 통과시킨다. 그 비대칭은 제품의 것이지 픽스처의 것이 아니다.
+>
 > ✅ **[같은 날 C-69 로 «닫혔다»] 셋에 `client_harness.mjs` 를 «얇은 러너»로 뒀다 — 그 최상위 하니스를 `import` 하는 «한 줄»이고 사본은 0이다.** 벡터도 단언도 판정도 하니스가 그대로 소유한다. `check_contracts.mjs` 가 이제 **11**을 발견하고, 두 물음이 «같은 답»을 낸다. 🔴 **러너는 「돌아오면 실패」다** — 하니스가 스스로 `process.exit` 하므로 러너의 마지막 두 줄은 도달 불가능하고, 도달하면 그것이 「하니스가 자기를 안 돌렸다」의 신호라 exit 2 로 죽는다(조용한 0 이 «없는 커버리지»를 보고하는 것을 막는 자리가 그 두 줄이다).
 >
 > **② 「하니스 공통 규율: 소스 텍스트에서 함수 선언을 잘라내 `node:vm` 에서 평가한다」는 «공통이 아니다».** 여덟을 전건으로 열어 재면 대상에 닿는 방식이 «넷»이다:
