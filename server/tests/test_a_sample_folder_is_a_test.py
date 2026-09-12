@@ -106,6 +106,35 @@ def test_the_cli_and_the_fixture_print_the_same_tsv():
     assert completed.stdout.replace("\r\n", "\n") == produced.replace("\r\n", "\n")
 
 
+def test_the_bench_leaves_no_declaration_behind():
+    """⛔ `crud.TABLE_CONFIG` IS A PROCESS-WIDE SINGLETON. The bench LENDS an undeclared
+    target a declaration, because `df_to_updates` refuses to emit without a business key —
+    and a name left behind is the same class of defect as a dynamic model left in
+    `Base.metadata`, which cost five sibling errors earlier today. A target that is already
+    declared must not be touched at all.
+    """
+    from database import crud
+
+    mapper_folders = [f for f in FOLDERS
+                      if os.path.basename(os.path.dirname(f)) == dev_bench.MAPPER]
+    if not mapper_folders:
+        pytest.skip("no mapper sample ships yet")
+
+    # ⛔ THE LENT NAME IS CLEARED FIRST, AND THAT IS THE WHOLE TEST. Written without this, an
+    # EARLIER test in this file had already run the mapper folder and already leaked the
+    # name — so `before` contained it and the comparison held whether or not the restore
+    # ran. Measured: removing the restore left this GREEN. Order-dependence is how an
+    # assertion becomes a fixture both rules agree on.
+    for folder in mapper_folders:
+        crud.TABLE_CONFIG.pop("bench_target", None)
+        before = dict(crud.TABLE_CONFIG)
+        assert "bench_target" not in before, "the precondition did not hold"
+        dev_bench.run_sample_folder(folder)
+        assert "bench_target" not in crud.TABLE_CONFIG, (
+            "the lent declaration outlived the run")
+        assert crud.TABLE_CONFIG == before, "a declaration was modified rather than added"
+
+
 def test_a_refusal_is_a_named_answer_rather_than_an_exception(tmp_path):
     """⚠️ 「nobody claimed this file」 IS AN ANSWER. `directory_watcher` already separates that
     from a failure, and an author meets it constantly while writing `match()` — so it arrives

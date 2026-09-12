@@ -1,0 +1,3 @@
+updates	source_name	updated_by	business_key_val
+{"row_id":"sample-0","wafer":"W7","x_doubled":20}	chain_ingestion	bench_double_x	sample-0
+{"row_id":"sample-1","wafer":"W8","x_doubled":6}	chain_ingestion	bench_double_x	sample-1

@@ -1,0 +1,6 @@
+{
+  "name": "bench_double_x",
+  "trigger_table": "bench_source",
+  "mapper": "bench_double_x",
+  "params": {"x_col": "x"}
+}

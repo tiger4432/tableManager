@@ -48,18 +48,23 @@ def read_sample(path):
 def as_payloads(rows):
     """Sample rows in the shape the worker hands a mapper.
 
-    ⚠️ `payloads_to_df` READS `{col: {"value": x}}`, which is the OUTBOX envelope and not what
-    anybody writes in a CSV. A flat row is wrapped; a row already in envelope shape is left
-    alone, so a sample captured from a real payload works unchanged.
+    🔴 THE ENVELOPE IS `{"row_id": …, "data": {col: {"value": x}}}` — THE CELLS SIT UNDER
+    `data`, not at the top level. `payloads_to_df`'s docstring says 「the cell shape is
+    `{col: {"value": x}}`」 and that sentence describes the contents of `data`; read as the
+    whole payload it produced a frame with ONE column, `row_id`, and the sample mapper died on
+    `None of [Index(['wafer'])] are in the [columns]`. Measured, not reasoned: the first
+    version of this function wrapped at the top level.
+
+    ⚠️ A row already carrying `data` is passed through, so a sample captured from a real
+    outbox payload works unchanged.
     """
     out = []
     for index, row in enumerate(rows):
-        if any(isinstance(v, dict) and "value" in v for v in row.values()):
+        if isinstance(row.get("data"), dict):
             out.append(row)
             continue
         cells = {k: {"value": v} for k, v in row.items() if k != "row_id"}
-        cells["row_id"] = row.get("row_id") or "sample-%d" % index
-        out.append(cells)
+        out.append({"row_id": row.get("row_id") or "sample-%d" % index, "data": cells})
     return out
 
 
@@ -132,6 +137,41 @@ def _readonly_session():
         return None, lambda: None
 
 
+#: The declaration the bench lends an undeclared target, so `df_to_updates` has a business
+#: key to read. One column, and `row_id` is the key — nothing domain-shaped, because the
+#: bench must not teach a mapper anything its own target would not.
+BENCH_TARGET_DECLARATION = {"business_key": "row_id",
+                            "column_types": {"row_id": "string"}}
+
+
+def _declare_bench_target(table_name):
+    """Lend `table_name` a declaration for the length of one run. Returns the undo.
+
+    🔴 THE MAPPER CONTRACT REFUSES AN UNDECLARED TARGET, AND THAT REFUSAL IS RIGHT:
+    `df_to_updates` reads the business key from the declaration, and emitting without one
+    lands rows that the upsert can never find again. So a bench that wants to see a
+    decorated mapper's output has to supply the declaration, exactly as it supplies a
+    session — measured, by running the sample and reading the refusal.
+
+    ⚠️ AND IT IS PUT BACK IN A `finally`. `crud.TABLE_CONFIG` is a process-wide singleton;
+    leaving a name behind is the same class of defect as a dynamic model left in
+    `Base.metadata`, which cost five sibling errors earlier today. A target that is ALREADY
+    declared is left completely alone.
+    """
+    try:
+        from database import crud
+    except Exception:
+        return lambda: None
+    if table_name in crud.TABLE_CONFIG:
+        return lambda: None
+    crud.TABLE_CONFIG[table_name] = dict(BENCH_TARGET_DECLARATION)
+
+    def restore():
+        crud.TABLE_CONFIG.pop(table_name, None)
+
+    return restore
+
+
 # ---------------------------------------------------------------------------
 # the mapper
 # ---------------------------------------------------------------------------
@@ -172,6 +212,7 @@ def try_mapper(name, sample, *, rule=None, target_table="bench_target"):
     effective_rule.setdefault("target_table", target_table)
 
     session, closer = _readonly_session()
+    restore_target = _declare_bench_target(effective_rule["target_table"])
     try:
         try:
             out = fn(session, payloads, rule=effective_rule)
@@ -186,6 +227,7 @@ def try_mapper(name, sample, *, rule=None, target_table="bench_target"):
         return {"who": who, "rows": [], "refusal": "%s: %s" % (type(exc).__name__, exc)}
     finally:
         closer()
+        restore_target()
 
     if isinstance(out, dict):
         return {"who": who, "rows": list(out.get("updates") or ()), "refusal": None}
@@ -285,12 +327,43 @@ def run_sample_folder(folder):
         # input, so a repository sample needs nothing from the operator's workspace.
         return try_parser(target, force=force, scripts_path=folder)
 
+    # 🔴 THE MAPPER SHIPS BESIDE ITS SAMPLE, exactly as the parser does (판정 13:30), so the
+    # folder is self-contained: nothing is needed from the operator's gitignored workspace.
+    # Importing it here is what makes `@mapper` run, which is what puts the name in the
+    # registry — so this folder is also the first place the one-cell `mapper` path is
+    # actually traversed rather than described.
+    load_folder_mappers(folder)
+
     rule_file = os.path.join(folder, "rule.json")
     rule = None
     if os.path.exists(rule_file):
         rule = json.load(io.open(rule_file, encoding="utf-8"))
     mapper_name = (rule or {}).get("mapper") or name
     return try_mapper(mapper_name, target, rule=rule)
+
+
+def load_folder_mappers(folder):
+    """Import every `*.py` beside a sample so its decorators register. Returns refusals.
+
+    ⚠️ PER MODULE, like `mapper_sdk.discover` and for the same reason: one broken sample must
+    not cost the others. The module name is prefixed so a sample cannot collide with a real
+    module in `sys.modules`.
+    """
+    import importlib.util
+
+    refusals = {}
+    for filename in sorted(os.listdir(folder)):
+        if not filename.endswith(".py"):
+            continue
+        module_name = "bench_sample_%s_%s" % (os.path.basename(folder), filename[:-3])
+        try:
+            spec = importlib.util.spec_from_file_location(
+                module_name, os.path.join(folder, filename))
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+        except Exception as exc:
+            refusals[filename] = "%s: %s" % (type(exc).__name__, exc)
+    return refusals
 
 
 def expected_path(folder):
