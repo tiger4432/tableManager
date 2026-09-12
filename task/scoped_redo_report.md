@@ -38710,3 +38710,43 @@ POST /admin/ledger/dry-run  = 저장 3단의 2단(「이 선언이 낳을 원자
 ```
 
 > 📌 **[09-12 23:49] 이 채널의 미답 질문: «셋»(위 ①②③).** 트리는 깨끗합니다.
+
+---
+
+## 📤 [09-12 23:54 구현자] S-143 «짓기 직전» — 판정 319 가 이름 댄 카운터가 «이 질문에 안 맞습니다»
+
+먼저: **제 전제가 거짓이었던 것 받았습니다.** 「원장 소스는 오늘 저장이 안 됩니다」는 틀렸습니다.
+제가 «누가 그 라우트를 부르나»를 안 묻고 docstring 의 문장을 일반화했습니다. 직접 확인했습니다 —
+`client2/src` 에서 `/admin/ledger/dry-run` 호출 «0», 저장은 `compile_draft_preview` 로 갑니다.
+🔴 그리고 `main.py:5826` 에 «반대» 주석(「sources still preview through it」)이 있습니다 —
+   한 파일이 스스로 모순돼 있고, 저는 «놀라운 쪽»을 골랐습니다.
+   (제 기억 파일 둘이 그대로 해당합니다: 주석은 의도의 증거이지 동작의 증거가 아님 ·
+    「없는 기능인가 «안 부른» 기능인가」)
+
+### 그리고 짓기 직전에 «하나 더» 쟀습니다 — 카운터의 «인자»입니다
+```
+판정 319 ①: 「원장 문서 → preview_rescope 의 withdraw/remake」
+실측  preview_rescope(engine, setup, source, scope_column, scope_values)
+      retroactive OPERATIONS['ledger_rescope'].params = source · scope_column(필수) · scope_values(필수)
+      => «부분집합»을 묻는 함수입니다. 「행 몇 개를 다시 돌릴까」에 답하지
+         「이 선언이 바뀌면 무엇이 다시 도나」에는 답하지 «않습니다» — 선언 diff 에는 scope 가 없습니다
+맞는 카운터  OPERATIONS['ledger_backfill'].params = source (+ pace 선택) = «소스 전체»
+            OPERATIONS['chain_replay'].params   = rule (+ business_keys 선택, 생략하면 «규칙 전체»)
+=> 원장 문서 -> retroactive.count(db, "ledger_backfill", {"source": …})
+   체인 문서 -> retroactive.count(db, "chain_replay",   {"rule":   …})
+   pace_hint -> 같은 params 의 `pace` choices(_pace_choices -> pacing.json). 새 계산기 «0» 그대로
+```
+⚠️ **그래서 `redo` 의 칸 이름도 바뀌어야 합니다.** `withdraw`/`remake` 는 rescope 의 어휘이고,
+   backfill 의 답은 「이 소스가 다시 번역할 행/원자」입니다. 판정의 네 칸 중 둘이 «다른 함수의 말»입니다.
+
+### 제안 (판정 받고 짓겠습니다 — 잘못 짚은 카운터로 지으면 오늘 두 번 고친 그 부류입니다)
+```
+redo = { op, rows, atoms, pace_choices, blocked_reason }
+   값은 retroactive.count() 의 응답에서 «그대로» 옵니다 (그 라우트가 이미 내는 칸들)
+   ⚠️ count() 는 «드라이런»이라 비싸질 수 있습니다 — scan_limit 이 그 예산이고,
+      응답의 `scan_limit`/`absence` 가 「이 수가 표본인가」를 이미 말합니다. 그 두 칸도 싣습니다
+```
+
+> 📌 **[09-12 23:54] 이 채널의 미답 질문: «하나» —** `redo` 를 `preview_rescope`(부분집합) 대신
+> `ledger_backfill`/`chain_replay` 카운트(전체)로 채우는 것 승인해 주십시오. 칸 이름도 그에 맞게.
+> 트리는 깨끗합니다.
