@@ -115,6 +115,15 @@ def evidence_subgraph(
                            "오늘 동작 그대로. 걷기는 안 바뀐다: 웨이퍼에서 결함으로 가려면 "
                            "다이를 «지나야» 하고, 지나는 것과 «실어 오는 것»은 다르다. "
                            "이름은 선언된 엔터티 타입이다 (`@` 버전은 있어도 없어도 된다)")),
+    seed_type: str | None = Query(
+        None,
+        description=("씨앗을 «열거하지 않고» 말한다 — 그 타입으로 «등록된 주어 전부»가 씨앗이다. "
+                     "`negative[]` 와 같이 주면 그것이 「전체 ∖ 사례」이고, 집합 연산은 «없다» — "
+                     "인자 둘이다. 많으면 `limits.seeds` 까지만 걷고 `truncated.seeds` 가 "
+                     "«몇을 안 걸었는지» 말한다. ⛔ `id` 와 «같이» 줄 수 없다")),
+    seed_limit: int = Query(
+        ledger_subgraph.DEFAULT_SEED_LIMIT, ge=1, le=ledger_subgraph.MAX_SEED_LIMIT,
+        description="서술된 씨앗의 상한. `node_limit` 과 같은 부류다"),
     group_by: str | None = Query(
         None,
         description=("이 걷기가 «닿은 노드»를 무엇으로 묶나 — `type`(노드 타입) 또는 "
@@ -215,6 +224,17 @@ def evidence_subgraph(
     # caller who asked for rows a body they cannot parse, and they would read the failure as
     # 「the walk found nothing」 - the shape this route already refuses for an unparsable
     # interval and an undeclared predicate.
+    # ⛔ TWO DEFINITIONS OF ONE QUESTION'S SEEDS IS NOT A DEFAULT TO PICK BETWEEN. Silently
+    # preferring one would make that preference the answer, and the caller would read a walk
+    # from subjects they did not ask for (S-148-a, 판정 337).
+    # ⚠️ `isinstance(str)` BECAUSE A DIRECT CALL LEAVES FastAPI'S `Query` SENTINEL HERE, and
+    # a sentinel is truthy — this handler's own note above says so, and measured: a bare
+    # truthiness test refused two existing tests that pass neither argument.
+    if isinstance(seed_type, str) and seed_type.strip() and isinstance(node_id, str):
+        raise HTTPException(status_code=422, detail={
+            "reason": "seeds_defined_twice",
+            "message": "`id` 와 `seed_type` 은 같이 줄 수 없습니다 — 씨앗을 «열거»하거나 "
+                       "«서술»하거나 둘 중 하나입니다"})
     try:
         payload = _evidence_graph(
             db.connection(), node_id=_signed_start(node_id, positive, negative),
@@ -224,6 +244,7 @@ def evidence_subgraph(
             collect=collect, include_superseded=include_superseded,
             rows=(wants == "rows"),
             group_by=group_by, measure=measure,
+            seed_type=seed_type, seed_limit=seed_limit,
             **interval)
         if wants == "rows":
             # \U0001f534 THE SAME WALK, READ SIDEWAYS. No second route and no second traversal
@@ -450,7 +471,8 @@ def _evidence_graph(connection, *, node_id, hops, direction,
         # `superseded_by` 표지가 붙는다 — 「보인다」와 「현재다」를 가르기 위해.
         include_superseded: bool = False,
                     collect=None, since=None, until=None, rows=False,
-                    group_by=None, measure=None):
+                    group_by=None, measure=None,
+                    seed_type=None, seed_limit=ledger_subgraph.DEFAULT_SEED_LIMIT):
     if not ledger_trace.relation_exists(connection, LEDGER_RELATION):
         raise _relation_absent()
     missing = _subgraph_contract_state(connection)
@@ -476,7 +498,9 @@ def _evidence_graph(connection, *, node_id, hops, direction,
         # both the screen and the TSV with no edit in either (S-183).
         rows=rows, entities=_declared_entities() if rows else None,
         # S-146. The fold rides the SAME walk - no second query, no second budget.
-        group_by=group_by, measure=measure)
+        group_by=group_by, measure=measure,
+        # S-148-a. The description resolves INSIDE the walk, on the same connection.
+        seed_type=seed_type, seed_limit=seed_limit)
 
 
 #: How many ledger rows one key-values answer may READ. The scan is bounded, not the
