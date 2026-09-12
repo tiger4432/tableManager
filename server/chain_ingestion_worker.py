@@ -483,22 +483,14 @@ def load_chain_rules():
     kept = []
     for index, rule in enumerate(rules):
         path = "rules[%d]" % index
-        problems = validation.Problems()
-        problems.exact(rule, path,
-                       required=chain_bindings.RULE_ROUTING_REQUIRED,
-                       optional=chain_bindings.RULE_ROUTING_OPTIONAL,
-                       ignored=(chain_bindings.flat_param_cells(rule)
-                                + chain_bindings.comment_cells(rule)))
-        issues = list(problems.finish())
-
-        one_cell, module_name, function_name = chain_bindings.mapper_cells(rule)
+        # 🔴 ONE JUDGE (S-180 ⓑ-0). This block WAS the grammar, and `ChainRuleDocument.preview`
+        # carried a second copy of it that had already drifted — no mapper check, so the
+        # dry-run screen accepted what this loop drops. The sentences below are unchanged;
+        # only where the verdict comes from moved.
+        issues = chain_bindings.rule_refusals(
+            rule, path, mapper_resolvable=mapper_sdk.MAPPER_REGISTRY.get)
+        one_cell, _module_name, _function_name = chain_bindings.mapper_cells(rule)
         resolvable = bool(mapper_sdk.MAPPER_REGISTRY.get(one_cell)) if one_cell else False
-        if not resolvable and not (module_name and function_name):
-            issues.append(validation.DeclarationValidationError(
-                "unresolvable_mapper", path + "." + chain_bindings.MAPPER_KEY,
-                "names no mapper this process can run: '%s' is not registered and "
-                "mapper_module/mapper_function are not both set"
-                % (one_cell or "")))
 
         if issues:
             logger.error(
@@ -508,7 +500,7 @@ def load_chain_rules():
             continue
         kept.append(rule)
 
-        flat = chain_bindings.flat_param_cells(rule)
+        flat = [w.path.rsplit(".", 1)[-1] for w in chain_bindings.rule_warnings(rule)]
         if flat:
             logger.warning(
                 "[ChainRules] %s: %d cell(s) still written flat — move them under 'params': %s",
