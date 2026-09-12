@@ -38986,3 +38986,74 @@ A 는 배선 0 인 칸을 늘리고, B 는 S-143 의 범위가 아닙니다.
    먼저 걸립니다. 경로가 없는 지금은 그 질문이 «성립하지 않습니다».
 
 > 📌 **[09-13 00:22] 이 채널의 미답 질문: «하나» —** A·B·C. 트리는 깨끗합니다.
+
+---
+
+## S-204 착수 — 그 «전»에 S-143 원장 절반의 배선을 고쳤습니다 (`3238bff6`)
+
+판정 324 받았습니다(C 채택 · S-143 원장으로 닫힘 · S-204 = 체인 초안의 요청 경로, 등급 2).
+지시대로 **「라우터·서비스가 문서를 어디서 고정하는지」를 «먼저» 실측**했고, 그 실측이
+«S-143 원장 절반»의 결함을 하나 냈습니다. 먼저 그것부터 적습니다.
+
+### 🔴 ① S-143 이 «수를 만들고 버리고 있었습니다» — 고쳤습니다
+
+```
+실측   git grep 'redo' -- server client2/src   (시험 제외)
+       server/ledger/config_drafts.py:155   redo: Mapping | None = None   ← «선언 한 줄이 전부»
+       그 밖 «0». 서비스에도 라우터에도 없습니다
+경로   payload["draft"] = public(record) + activation_blockers   ← public() 은 «레코드»의 화이트리스트
+       `redo` 는 레코드의 칸이 «아닙니다» — 이 요청이 든 세션에 대한 사실입니다
+결과   preview.redo 를 계산해 놓고 «아무 데도 안 싣습니다». 화면이 읽을 방법이 없습니다
+```
+🔴 **제 기억 파일 「착지는 배선이 아니다」 그대로입니다.** 그리고 제 게이트가 이걸 «못 본»
+이유도 분명합니다 — 제가 라우트에 대해 단언한 것은 「`db=db` 가 서비스에 닿는다」와
+「200 을 답한다」였지 **「그 수가 응답에 있다」가 아니었습니다**(「내 게이트는 내가 떠올린 것만 잰다」).
+
+수리는 **한 줄**입니다 — preview 와 db 를 «둘 다» 쥔 자리가 거기 하나뿐이라:
+```python
+draft["redo"] = preview.redo          # config_explorer_service.view()
+```
+채점: 동일성으로 단언(칸 비교는 개명·키 누락을 통과합니다) + 초안 없는 view 는 `draft` 가 `None`.
+**변이 실측** — 그 대입을 지우면 «그 시험 하나»가 빨강, 나머지 14 초록.
+게이트: 익스플로러+초안 수명주기 모집단 **92 passed / FAILED 0** · 커밋 뒤 수집 **6,107**.
+
+⚠️ 바깥에 `null` 이 셋으로 읽히지 않게 «한 줄»만 적었습니다 — 안 물음(db 없음) · 컴파일 안 됨
+(거절 옆에 수를 놓지 않는다는 S-143 의 판정 그대로)은 `preview_valid`·`validation_errors` 가
+«이미» 가르므로 넷째 낱말을 만들지 않았습니다.
+
+### 실측 — 라우터·서비스는 문서를 «어디서» 고정하나 (S-204 의 입력)
+
+```
+라우터    초안 라우트 «여섯» 전부 draft_id/payload 만 받습니다 — 문서 이름이 «없습니다»
+서비스    OntologyExplorerService.__init__ 에 OntologyDraftStore(draft_root) «하나»
+          document 인자를 «안 넘깁니다» → 항상 LedgerDocument. 고정되는 자리는 «여기 한 줄»
+```
+그리고 그 한 줄을 고치는 것만으로는 안 됩니다. 체인 문서를 «오늘의 저장소»에 끼워
+수명주기를 태워 봤습니다(실측, 스크래치):
+```
+create                 OK
+save                   FAIL  AttributeError: SimpleNamespace has no attribute 'valid'
+store.preview(뷰 경로)  OK 인데 «unsupported_draft_target» — 문서를 «안 묻고»
+                             draft_target()+compile_draft_preview() 를 «직접» 부릅니다
+request_review         문서를 안 씁니다 (save 가 죽어 리비전이 안 올랐을 뿐)
+```
+그래서 S-204 가 닫아야 할 것이 «넷»입니다 — 판정 324 가 적은 둘에 실측이 둘을 더했습니다:
+```
+㉠ 선택      서비스 «한 자리»에서 종류로 고른다 (라우트 0 · 저장소 인스턴스 둘, 같은 수명주기)
+㉡ 체인 redo  chain_replay {rule} · count 그대로(withdrawal_* 포함)
+🆕 ㉢ preview 의 «모양이 둘»   수명주기는 valid/errors/setup.snapshot 을 읽고
+             ChainRuleDocument.preview 는 ok/issues/warnings 를 냅니다 → 체인은 «저장이 안 됩니다»
+🆕 ㉣ store.preview 가 문서를 «건너뜁니다»   뷰 경로가 원장으로 박혀 있어, 체인 초안은
+             화면에서 「이 선언은 읽기 전용」으로 뜹니다. S-194 가 못 본 둘째 좌석입니다
+```
+🔴 그리고 ㉣ 옆에 «하나 더» 있습니다: `ChainRuleDocument.config_root` 가
+`setup.config_root`(= `server/config/ontology`)를 내는데 **`chain_rules.json` 은 그 «부모»**
+(`paths.CONFIG_DIR`)에 삽니다 — 활성화가 «없는 파일»에 씁니다. 부르는 시험이 0 이라
+S-194 이후 한 번도 안 걸렸습니다. 같은 커밋에서 닫습니다.
+
+⚠️ 합성 규칙은 예고대로 «지금» 성립합니다 — 인덱스 모집단을 「파일의 규칙」으로 두고,
+합성 이름은 «이름 대어 거절»(「이건 제품이 만든 규칙이라 파일에 없습니다」)로 답합니다.
+
+> 📌 **[09-13 00:4x] 이 채널의 미답 질문: «없음».** ㉢㉣ 는 판정 324 의 「먼저 실측」이
+> 낸 것이라 그 지시 «안»으로 읽고 같은 커밋에 넣습니다. 다르게 보시면 한 줄 주십시오 —
+> 그 전까지 S-204 를 계속 짓습니다.
