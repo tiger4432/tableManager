@@ -315,6 +315,18 @@ class OntologyExplorerService:
             draft["activation_blockers"] = self.draft_store.activation_blockers(
                 record, active_index)
             preview = self.draft_store.preview(record, setup, active_index, db)
+            # 🔴 THE COST REACHES THE WIRE HERE, AND NOWHERE ELSE (S-143 correction).
+            # `public()` is a whitelist over the RECORD, and `redo` is not a field of the
+            # record - it is a fact about what activating THIS text would re-run, computed
+            # against the session this request carries. Computing it and dropping it is the
+            # 「착지는 배선이 아니다」 shape: S-143 landed the number and no caller could read
+            # it, because this seat is the only one that holds both the preview and the db.
+            #
+            # ⚠️ `null` HERE IS READ BESIDE `preview_valid`. A preview that did not compile
+            # carries no cost on purpose - a number beside a refusal states a cost for
+            # something that will not be activated - and `validation_errors` already says
+            # which case this is. That is two facts in two fields, not two states in one.
+            draft["redo"] = preview.redo
             if view_mode == "draft_preview" and preview.valid and preview.index is not None:
                 index = preview.index
                 token = (

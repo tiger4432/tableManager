@@ -200,3 +200,65 @@ def test_the_route_still_answers_after_gaining_the_dependency(client):
     assert answer.status_code == 200, answer.text
     body = answer.json()
     assert "snapshot_hash" in body, "the handler ran rather than being refused by FastAPI"
+
+
+# ---------------------------------------------------------------------------
+# 🔴 S-143 correction — the number has to REACH somebody
+# ---------------------------------------------------------------------------
+
+def _copied_ontology(tmp_path):
+    """A private copy of the live ontology root.
+
+    ⛔ NEVER THE LIVE ONE. A draft written into the owner's config directory is the
+    「내 시험이 소유자의 파일에 썼다」 failure, and this test creates one.
+    """
+    import shutil
+
+    from ledger.setup import DEFAULT_ONTOLOGY_ROOT
+
+    target = tmp_path / "ontology"
+    shutil.copytree(DEFAULT_ONTOLOGY_ROOT, target)
+    return target
+
+
+def test_the_cost_reaches_the_wire_rather_than_being_computed_and_dropped(tmp_path,
+                                                                         monkeypatch):
+    """🔴 S-143 LANDED A NUMBER NOBODY COULD READ — 「착지는 배선이 아니다」.
+
+    `public()` is a whitelist over the draft RECORD and `redo` is not a record field: it is
+    a fact about the session THIS request carries. So the only seat that can put it on the
+    wire is the one holding both the preview and the db, and it did not. Measured before
+    this test existed: `redo` appeared exactly once outside the tests — the dataclass field
+    that declares it.
+
+    ⚠️ ASSERTED BY IDENTITY, for the same reason the counter's answer is: a test comparing
+    fields would stay green on a seat that rebuilt the mapping and dropped a key.
+    """
+    from ledger.config_drafts import DraftPreview
+    from ledger.config_explorer_service import OntologyExplorerService
+
+    service = OntologyExplorerService(
+        config_root=_copied_ontology(tmp_path), draft_root=tmp_path / "drafts")
+    _setup, index, *_rest = service.active()
+    key = next(name for name, node in index.nodes.items()
+               if node.config_file == "ledger_config.json")
+    draft = service.create_draft(target_key=key, base_snapshot_hash=index.snapshot_hash)
+
+    cost = {"op": "ledger_backfill", "params": {"source": "s"}, "sources": ["s"],
+            "count": {"affected": 7}}
+    monkeypatch.setattr(service.draft_store, "preview",
+                        lambda *a, **k: DraftPreview(True, None, None, (), cost))
+
+    payload = service.view(draft_id=draft["draft_id"], db="SESSION")
+    assert payload["draft"]["redo"] is cost
+
+
+def test_a_view_with_no_draft_carries_no_cost_key_at_all(tmp_path):
+    """⚠️ THE KEY BELONGS TO A DRAFT, NOT TO THE SCREEN. With no draft open there is no
+    text whose activation could cost anything, and `payload["draft"]` is `None` — inventing
+    a null cost beside it would be a third empty for a reader to tell apart."""
+    from ledger.config_explorer_service import OntologyExplorerService
+
+    service = OntologyExplorerService(
+        config_root=_copied_ontology(tmp_path), draft_root=tmp_path / "drafts")
+    assert service.view(db="SESSION")["draft"] is None
