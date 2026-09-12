@@ -662,9 +662,30 @@ def save_chain_rule_raw(name: str, declaration, base: str) -> dict:
     merged = dict(document)
     merged["rules"] = rules
 
-    # The one validator that exists for these, found by measurement: it reads the WHOLE
-    # set and refuses a cycle of opt-in chain triggers. Nothing validates a single rule's
-    # shape - `chain_bindings` refuses at run time - and none was invented here.
+    # 🔴 THE LOADER'S OWN JUDGEMENT, BEFORE THE WRITE (S-204 (3), 판정 326 · 판정 315).
+    # Saving a rule the loader will drop at boot is a save that reads as success and does
+    # nothing: the operator gets their rule back from this editor every time and never sees
+    # it run. `rule_refusals` is the ONE spelling of 「cannot run」 -- the boot loader and
+    # the resolve report already call it -- so this seat asks it rather than re-typing the
+    # grammar, which is the drift that made the old preview blinder than the log.
+    #
+    # ⚠️ THIS PROCESS MUST HAVE THE MAPPERS, and that is why `discover()` now runs at
+    # startup and after every reload. A judge with an empty registry answers 「not
+    # registered」 to every name, which would refuse every rule written in the one-cell form
+    # -- the door this round exists to open.
+    import chain_bindings
+    import mapper_sdk
+
+    grammar = chain_bindings.rule_refusals(
+        entry, f"rules.{name}", mapper_resolvable=mapper_sdk.MAPPER_REGISTRY.get)
+    if grammar:
+        first = grammar[0]
+        raise _table_config_refusal(
+            first.code, first.path,
+            " | ".join("%s: %s" % (issue.path, issue.message) for issue in grammar))
+
+    # A DIFFERENT AXIS, not a second opinion: this one reads the WHOLE set and refuses a
+    # cycle of opt-in chain triggers, which no single rule can be asked about.
     try:
         import chain_ingestion_worker
         chain_ingestion_worker._validate_chain_cascade_graph(rules)

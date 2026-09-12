@@ -34,6 +34,12 @@ from admin_auth import require_admin_token                       # noqa: E402
 
 ROUTE = "/admin/chain/rules/raw"
 
+#: 🔴 WHAT MAKES A RULE RUNNABLE (판정 326). The save now asks `rule_refusals` before
+#: writing, and a rule naming no mapper is one the boot loader drops — so a case about
+#: 「registering a name」 has to register a rule that would actually run, or it is measuring
+#: the refusal instead of the registration.
+RUNNABLE = {"mapper_module": "m", "mapper_function": "f"}
+
 
 @pytest.fixture
 def rules_file(tmp_path, monkeypatch):
@@ -41,7 +47,8 @@ def rules_file(tmp_path, monkeypatch):
     operator's `chain_rules.json` edits what the running worker reads."""
     path = tmp_path / "chain_rules.json"
     path.write_text(json.dumps({"rules": [
-        {"name": "live_one", "trigger_table": "a", "target_table": "b", "enabled": True},
+        {"name": "live_one", "trigger_table": "a", "target_table": "b",
+         "mapper_module": "m", "mapper_function": "f", "enabled": True},
     ]}), encoding="utf-8")
     monkeypatch.setattr(ledger_admin, "chain_rules_path", lambda: str(path))
     monkeypatch.setattr(ledger_admin.config_backup, "backup_dir_for",
@@ -152,7 +159,7 @@ def test_a_name_the_file_never_had_is_registered_through_the_route(rules_file, c
 
     saved = client.post(ROUTE, json={
         "name": "fresh_one", "base": base,
-        "declaration": {"trigger_table": "x", "target_table": "y"}})
+        "declaration": {"trigger_table": "x", "target_table": "y", **RUNNABLE}})
 
     assert saved.status_code == 200, saved.text
     body = saved.json()
@@ -170,7 +177,7 @@ def test_the_new_rule_is_listed_and_readable_the_moment_it_is_saved(rules_file, 
     but did not appear there would read to an operator as a save that did nothing."""
     base = client.get(ROUTE).json()["base"]
     client.post(ROUTE, json={"name": "fresh_one", "base": base,
-                             "declaration": {"trigger_table": "x"}})
+                             "declaration": {"trigger_table": "x", **RUNNABLE}})
 
     listed = client.get(ROUTE).json()
     assert "fresh_one" in listed["rules"]
@@ -186,11 +193,11 @@ def test_a_second_save_on_the_base_it_already_moved_is_refused(rules_file, clien
     stale write this refuses."""
     base = client.get(ROUTE).json()["base"]
     first = client.post(ROUTE, json={"name": "fresh_one", "base": base,
-                                     "declaration": {"trigger_table": "x"}})
+                                     "declaration": {"trigger_table": "x", **RUNNABLE}})
     assert first.status_code == 200, first.text
 
     second = client.post(ROUTE, json={"name": "fresh_one", "base": base,
-                                      "declaration": {"trigger_table": "z"}})
+                                      "declaration": {"trigger_table": "z", **RUNNABLE}})
 
     assert second.status_code >= 400, second.text
     assert rules_of(rules_file)["fresh_one"]["trigger_table"] == "x", (
@@ -202,9 +209,9 @@ def test_the_refusal_names_the_base_rather_than_failing_namelessly(rules_file, c
     know it was the base, so the next move is 「reopen and look」 rather than 「try again」."""
     base = client.get(ROUTE).json()["base"]
     client.post(ROUTE, json={"name": "fresh_one", "base": base,
-                             "declaration": {"trigger_table": "x"}})
+                             "declaration": {"trigger_table": "x", **RUNNABLE}})
     refused = client.post(ROUTE, json={"name": "fresh_one", "base": base,
-                                       "declaration": {"trigger_table": "z"}})
+                                       "declaration": {"trigger_table": "z", **RUNNABLE}})
 
     detail = json.dumps(refused.json(), ensure_ascii=False)
     assert "stale_base" in detail, detail
@@ -215,11 +222,155 @@ def test_saving_again_on_the_base_the_first_save_returned_goes_through(rules_fil
     fingerprint, so an editor that stays open can keep working without re-opening."""
     base = client.get(ROUTE).json()["base"]
     first = client.post(ROUTE, json={"name": "fresh_one", "base": base,
-                                     "declaration": {"trigger_table": "x"}}).json()
+                                     "declaration": {"trigger_table": "x", **RUNNABLE}}).json()
 
     again = client.post(ROUTE, json={"name": "fresh_one", "base": first["base"],
-                                     "declaration": {"trigger_table": "z"}})
+                                     "declaration": {"trigger_table": "z", **RUNNABLE}})
 
     assert again.status_code == 200, again.text
     assert again.json()["created"] is False
     assert rules_of(rules_file)["fresh_one"]["trigger_table"] == "z"
+
+
+# ---------------------------------------------------------------------------
+# (3) the loader's own judgement, before the write (판정 326)
+# ---------------------------------------------------------------------------
+#: 🔴 A MAPPER OF THIS TEST'S OWN. The box's mappers live in a gitignored directory, so a
+#: case naming one of them would be measuring this box rather than the product -- and the
+#: same test would refuse on a machine whose `mappers/` holds something else.
+FAKE_MAPPER = "a_mapper_this_test_registered"
+
+
+@pytest.fixture
+def registered_mapper(monkeypatch):
+    import mapper_sdk
+
+    monkeypatch.setitem(mapper_sdk.MAPPER_REGISTRY, FAKE_MAPPER, lambda *a, **k: None)
+    monkeypatch.setitem(mapper_sdk.MAPPER_PARAMS, FAKE_MAPPER, ())
+    return FAKE_MAPPER
+
+
+def test_a_rule_naming_a_registered_mapper_saves(rules_file, client, registered_mapper):
+    """⚠️ THE HALF THAT MUST NOT REGRESS. The judge only earns its seat if it lets through
+    what the loader would run; a gate that refuses everything is not strict, it is broken."""
+    base = client.get(ROUTE).json()["base"]
+
+    saved = client.post(ROUTE, json={
+        "name": "one_cell", "base": base,
+        "declaration": {"trigger_table": "x", "mapper": registered_mapper}})
+
+    assert saved.status_code == 200, saved.text
+    assert rules_of(rules_file)["one_cell"]["mapper"] == registered_mapper
+
+
+def test_a_rule_naming_a_mapper_nothing_implements_is_refused_by_name(rules_file, client):
+    """🔴 THE SAVE THAT USED TO SUCCEED AND DO NOTHING. The boot loader drops such a rule,
+    so the operator got it back from this editor every time and never saw it run -- the
+    screen blinder than the log, which 판정 315 exists to forbid."""
+    base = client.get(ROUTE).json()["base"]
+
+    refused = client.post(ROUTE, json={
+        "name": "ghost_mapper", "base": base,
+        "declaration": {"trigger_table": "x", "mapper": "nothing_implements_this"}})
+
+    assert refused.status_code >= 400, refused.text
+    detail = refused.json()["detail"]
+    assert detail["code"] == "unresolvable_mapper", detail
+    assert "ghost_mapper" not in rules_of(rules_file), "the refused rule was written anyway"
+
+
+def test_the_module_and_function_form_still_saves_with_an_empty_registry(rules_file,
+                                                                        client):
+    """⚠️ NO REGRESSION FOR THE OLDER SPELLING. `rule_refusals` refuses only when the rule
+    names neither a registered mapper NOR both of `mapper_module`/`mapper_function`, so a
+    rule written the old way is judged without the registry being consulted at all."""
+    base = client.get(ROUTE).json()["base"]
+
+    saved = client.post(ROUTE, json={
+        "name": "old_form", "base": base,
+        "declaration": {"trigger_table": "x", "mapper_module": "m",
+                        "mapper_function": "f"}})
+
+    assert saved.status_code == 200, saved.text
+    assert rules_of(rules_file)["old_form"]["mapper_module"] == "m"
+
+
+def test_a_rule_missing_a_required_cell_is_refused_where_the_loader_refuses(rules_file,
+                                                                           client,
+                                                                           registered_mapper):
+    """⚠️ THE GRAMMAR HALF, not only the mapper half. `trigger_table` is one of the two
+    cells the loader requires, and a rule without it is dropped at boot."""
+    base = client.get(ROUTE).json()["base"]
+
+    refused = client.post(ROUTE, json={
+        "name": "no_trigger", "base": base,
+        "declaration": {"mapper": registered_mapper}})
+
+    assert refused.status_code >= 400, refused.text
+    assert "no_trigger" not in rules_of(rules_file)
+
+
+def test_the_save_asks_the_one_judge_rather_than_re_typing_the_grammar():
+    """⛔ SCORED ON THE SOURCE, because the defect would be a REIMPLEMENTATION that agrees
+    today. The boot loader and `config_resolve_report` already call `rule_refusals`; a
+    third spelling here is exactly the drift that let the old preview accept what the
+    loader dropped."""
+    body = _code_of(ledger_admin.save_chain_rule_raw)
+    assert "rule_refusals(" in body
+    for retyped in ("problems.exact(", "RULE_ROUTING_REQUIRED", "mapper_module\" in",
+                    "unresolvable_mapper\""):
+        assert retyped not in body, ("the save re-types the grammar: %s" % retyped)
+
+
+def test_the_grammar_judge_has_exactly_one_spelling_across_the_product():
+    """🔴 THE DRIFT GATE (판정 326). Three seats ask 「can this rule run」 -- the boot loader,
+    the resolve report and now this save -- and all three must ask the same function, or
+    the one that drifts is whichever was edited last."""
+    import subprocess
+
+    server_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    out = subprocess.run(
+        ["git", "grep", "-l", "rule_refusals(", "--", ".", ":!tests"],
+        cwd=server_dir, capture_output=True, text=True)
+    callers = {line for line in out.stdout.split("\n") if line.strip()}
+    assert out.returncode in (0, 1), out.stderr
+    # The definition plus its callers - and no file that builds a verdict of its own.
+    assert "chain_bindings.py" in " ".join(callers), callers
+    for caller in ("chain_ingestion_worker.py", "config_resolve_report.py",
+                   "ledger_admin.py"):
+        assert any(caller in line for line in callers), (caller, callers)
+
+
+# ---------------------------------------------------------------------------
+# 🔴 the judge's registry must be as fresh as the file it judges (판정 326 (2))
+# ---------------------------------------------------------------------------
+
+def test_a_reload_leaves_the_registry_populated_rather_than_emptied():
+    """🔴 THE HALF-RELOAD THIS CLOSES. `reload_local_process_cache` evicts `mappers.*` from
+    `sys.modules` and resets the registry (S-188 ⓒ) — and then, until now, stopped. The
+    chain worker does the same two things AND re-runs `discover()` in its warmup, so its
+    registry is as fresh as the files; this process's was empty from the first
+    SYSTEM_RELOAD onward.
+
+    🔴 THE ORDER IS THE ASSERTION, not the call. Discovering and THEN resetting is the same
+    two lines in the other sequence and leaves the registry empty — a judge that refuses
+    every rule written in the one-cell form, which is the failure this round exists to
+    avoid. Measured: removing the discover call reds nothing without this test.
+
+    ⚠️ SCORED BY THE CALLS, NOT BY A COUNT. The box's `mappers/` is gitignored, so asserting
+    a number here would measure this machine rather than the product.
+    """
+    import mapper_sdk
+    import system_reload
+
+    order = []
+    real_reset, real_discover = mapper_sdk.reset_registry, mapper_sdk.discover
+    mapper_sdk.reset_registry = lambda: order.append("reset")
+    mapper_sdk.discover = lambda *a, **k: (order.append("discover"), ((), {}))[1]
+    try:
+        system_reload.reload_local_process_cache()
+    finally:
+        mapper_sdk.reset_registry, mapper_sdk.discover = real_reset, real_discover
+
+    assert order == ["reset", "discover"], (
+        "the reload must forget the evicted modules and then find them again, in that order")

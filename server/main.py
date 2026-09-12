@@ -364,6 +364,31 @@ async def startup_event():
     if os.getenv("TESTING") == "True":
         logger.info("Running in Testing mode. Skipping migrations, Directory Watcher and background Workers.")
         return
+
+    # 🔴 THE MAPPERS THIS PROCESS CAN NAME (S-204 (3), 판정 326). The chain rule editor
+    # refuses a rule naming a mapper nothing implements, and that judgement is only the
+    # LOADER'S judgement if both seats look at the same registry -- a judge with an empty
+    # one answers 「not registered」 to every name, which is indistinguishable from 「that
+    # mapper does not exist」. `discover()` had ONE caller, the chain worker's warmup, so
+    # this process held zero and would have refused every rule written in the one-cell form.
+    #
+    # ⚠️ AND IT SITS AFTER THE TESTING RETURN, the same side the worker's warmup is on.
+    # These files are the owner's and live outside the repository; importing them on
+    # every TestClient startup would make the suite's answers depend on what this box
+    # happens to hold.
+    #
+    # ⚠️ REFUSALS ARE PER MODULE, exactly as in the worker: these files are the owner's, and
+    # one that will not import is a thing to name rather than a reason for the API to come
+    # up with no mappers at all.
+    try:
+        import mapper_sdk
+        _registered, _refused = mapper_sdk.discover()
+        logger.info("[Startup] Mapper registry: %d registered", len(_registered))
+        for _module_name, _message in sorted(_refused.items()):
+            logger.error("[Startup] Mapper module refused: %s — %s", _module_name, _message)
+    except Exception as exc:                                       # noqa: BLE001
+        logger.error("[Startup] Mapper discovery failed entirely: %s", exc)
+
         
     try:
         # [2026-07-25 정리] 레거시 data_rows NULL updated_at 보정 마이그레이션 제거
