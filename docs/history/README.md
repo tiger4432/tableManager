@@ -1,13 +1,14 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **833개** 이력. (거버넌스 규칙 #4)
+> 총 **834개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-09 (September 2026)
 
+- **2026-09-12 14:55** — [The Join Started Writing And A Lifecycle Learned To Ask A Document](./20260912_145500_the_join_started_writing_and_a_lifecycle_learned_to_ask_a_document.md)
 - **2026-09-12 13:40** — [A View Became A First Class Relation And A Rule Stopped Being A Flat Pile Of Cells](./20260912_134000_a_view_became_a_first_class_relation_and_a_rule_stopped_being_a_flat_pile_of_cells.md)
 - **2026-09-11 23:55** — [A Walk Folded To A Table And A Grid Stopped Asking For Row Id By Name](./20260911_235500_a_walk_folded_to_a_table_and_a_grid_stopped_asking_for_row_id_by_name.md)
 - **2026-09-11 22:00** — [The Time Axis Folded And Enrichment Stopped Being Its Own Language](./20260911_220000_the_time_axis_folded_and_enrichment_stopped_being_its_own_language.md)
