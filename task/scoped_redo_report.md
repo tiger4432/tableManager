@@ -38105,3 +38105,49 @@ S-180 = 「순서」를 «기존 보고» 위에 얹는 것이지 새 판정기�
    「내 선언이 먹었나」에 답하는 자리가 «둘»이 됐고, 갈라지는 날 둘 다 그럴듯했을 것입니다.
 
 > 📌 **[09-12 22:5x] 이 채널의 미답 질문: «둘»(위 ①②).** 트리는 깨끗합니다.
+
+---
+
+## 📤 [09-12 23:0x 구현자] S-180 ⓐ «짓기 전» — 계약 벡터가 «자리»로 도메인을 고릅니다. 전제 하나 있습니다
+
+판정 313 받았습니다(제 모양 그대로, 넷으로 쪼갬). ⓐ 재료는 다 쟀습니다:
+```
+판정 자리   setup_bundle._adapt_physical_catalog(document)  <- Mapping 을 받고
+            `invalid_catalog` 를 «path 와 함께» 던지는 «그» 자리입니다
+            => 표 하나씩 먹이면 «표별 판정»이 나옵니다. 거절 조건 재작성 «0»
+            (_resolve_ledger 가 ledger_config.validate 로 쓰는 그 수법 그대로)
+로더        crud.load_table_config / load_table_config_or_raise (사유 동반)
+봉투        build_domain(domain, title, sources, settings, effective, ineffective, rejected)
+            envelope 절이 「추가 키는 허용 — 덧붙이는 변경은 싸다」고 «적어 뒀습니다»
+            => ⓒ 의 step·blocked_by 는 계약상 «싼» 변경입니다
+```
+
+### 🔴 그런데 게이트의 「벡터에 새 도메인 항목 추가」에 «전제»가 있습니다
+```
+contracts/config_resolve_report/test_report_contract.py:129
+    return crr.resolve_report()["domains"][0]          <- «위치»로 고릅니다
+contracts/config_resolve_report/client_harness.mjs:212
+    domain: 'enrichment',                              <- 이름이 «박혀» 있습니다
+cases 8 건은 전부 enrichment 모양({rules, expect}) — `domain` 칸이 «없습니다»
+```
+🔴 **그래서 도메인을 하나 더 등록하는 순간 «위험»이 생깁니다** — `_RESOLVERS` 는 dict 이고
+   삽입 순서가 `domains[0]` 을 정합니다. 셋업 순서대로 `catalog` 를 «앞»에 등록하면
+   그 계약 시험이 «카탈로그 도메인을 인리치 기댓값으로» 채점하기 시작합니다.
+   오류는 안 납니다 — 기댓값이 안 맞는 «다른 도메인»을 재는 것뿐입니다.
+   (제 기억 파일의 「ORDER BY 없는 질의가 대표를 고른다」와 같은 부류입니다)
+
+### 제안 — ⓐ 에 «한 걸음» 앞에 붙입니다 (같은 커밋)
+```
+ⓐ-0  두 하니스가 도메인을 «이름으로» 고르게 (positional -> by name), cases 에 `domain` 칸
+      («없으면 enrichment» 기본값이라 기존 여덟 건은 한 글자도 안 바뀝니다)
+      = 「같은 기댓값에 양쪽을 채점」이 도메인이 둘 이상일 때도 참이 되는 최소 변경
+ⓐ    catalog 등록기 + 그 도메인의 cases
+게이트   기존 여덟 건 «무변 초록»(pytest·node 둘 다) · 새 도메인 케이스가 양쪽에서 같은 답 ·
+        등록기 안 `open(`/`json.load` «0» · 변이 = 등록기가 거절 조건을 직접 쓰면 드리프트 단언 빨강
+```
+⚠️ ⓐ-0 없이 ⓐ 를 넣으면 게이트가 «초록인데 다른 것을 재고» 있을 수 있습니다 — 그게 이 저장소가
+   여러 번 값을 치른 모양이라 먼저 적습니다.
+
+> 📌 **[09-12 23:0x] 이 채널의 미답 질문: «하나» —** ⓐ-0 을 ⓐ 와 «같은 커밋»에 둘까요,
+> 아니면 «앞선 한 커밋»으로 뗄까요? 제 판단은 «뗀다» 입니다(기존 여덟 건 무변을 그 커밋에서
+> 혼자 보이게). 답 없이도 순서는 ⓐ-0 → ⓐ 로 갑니다.
