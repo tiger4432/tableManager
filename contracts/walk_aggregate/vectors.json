@@ -25,13 +25,25 @@
     "",
     "EXPECTATIONS ARE THE SERVER'S ANSWER, and that is a choice rather than a default: the",
     "server is the side that can see the whole population, so where the two differ it is the",
-    "client that moves. C-90 is where that lands."
+    "client that moves. C-90 is where that lands.",
+    "",
+    "🔴 S-146-c (판정 336) CHANGED THE SHAPE, and the vectors moved with it rather than a second",
+    "spelling being written beside them. `value` is a MAP even for one measure: a cell that is a",
+    "number for one and a map for two is one cell with two shapes.",
+    "",
+    "  * a measure name is looked up in `attributes`, then `qualifiers`, then the node's own",
+    "    `predicates[].count` -- so 「how many claims of this predicate did the group's nodes",
+    "    carry」 needs no edge walk. A name answered by TWO sources is refused, because",
+    "    preferring one would make that preference the answer.",
+    "  * `at` is the newest `occurred_at` among the edges attached to the group's nodes. An",
+    "    entity has no instant and should not; the time lives on the atoms."
   ],
   "$shape": {
     "nodes": "the walk's `nodes`, as the response carries them",
     "group_by": "`type`, or the name of a value a node carries",
-    "measure": "one of the seven, `name:<attribute>` for the arithmetic five",
-    "groups": "[{key, n, value}] sorted by key"
+    "measure": "one of the seven, `name:<value name>` for the arithmetic five; a LIST is allowed and every entry becomes a key of `value`",
+    "groups": "[{key, n, value, at?}] sorted by key — `value` is ALWAYS a map keyed by the measure string, and `at` is ABSENT when the group's nodes carry no edge with a time",
+    "value_sources": "where a measure's name is looked up, in order: attributes, qualifiers, predicates[].count"
   },
   "vectors": [
     {
@@ -59,12 +71,16 @@
         {
           "key": "defect",
           "n": 1,
-          "value": 1
+          "value": {
+            "count": 1
+          }
         },
         {
           "key": "wafer",
           "n": 2,
-          "value": 2
+          "value": {
+            "count": 2
+          }
         }
       ]
     },
@@ -99,12 +115,16 @@
         {
           "key": "A",
           "n": 2,
-          "value": 2
+          "value": {
+            "count": 2
+          }
         },
         {
           "key": "B",
           "n": 1,
-          "value": 1
+          "value": {
+            "count": 1
+          }
         }
       ]
     },
@@ -136,12 +156,16 @@
         {
           "key": "A",
           "n": 2,
-          "value": 2
+          "value": {
+            "count": 2
+          }
         },
         {
           "key": "B",
           "n": 1,
-          "value": 1
+          "value": {
+            "count": 1
+          }
         }
       ]
     },
@@ -179,12 +203,16 @@
         {
           "key": "A",
           "n": 2,
-          "value": 3.0
+          "value": {
+            "mean:yield": 3.0
+          }
         },
         {
           "key": "B",
           "n": 1,
-          "value": 9.0
+          "value": {
+            "mean:yield": 9.0
+          }
         }
       ]
     },
@@ -230,7 +258,9 @@
         {
           "key": "x",
           "n": 4,
-          "value": 2.5
+          "value": {
+            "median:v": 2.5
+          }
         }
       ]
     },
@@ -260,7 +290,9 @@
         {
           "key": "x",
           "n": 2,
-          "value": 3.0
+          "value": {
+            "sum:v": 3.0
+          }
         }
       ]
     },
@@ -298,7 +330,9 @@
         {
           "key": "x",
           "n": 3,
-          "value": 2
+          "value": {
+            "distinct:v": 2
+          }
         }
       ]
     },
@@ -327,7 +361,9 @@
         {
           "key": "x",
           "n": 2,
-          "value": null
+          "value": {
+            "sum:v": null
+          }
         }
       ]
     },
@@ -360,7 +396,9 @@
         {
           "key": "x",
           "n": 2,
-          "value": 9.0
+          "value": {
+            "sum:v": 9.0
+          }
         }
       ]
     },
@@ -398,7 +436,9 @@
         {
           "key": "x",
           "n": 3,
-          "value": -2.0
+          "value": {
+            "min:v": -2.0
+          }
         }
       ]
     },
@@ -436,7 +476,96 @@
         {
           "key": "x",
           "n": 3,
-          "value": 11.0
+          "value": {
+            "max:v": 11.0
+          }
+        }
+      ]
+    },
+    {
+      "name": "several measures land under their own keys",
+      "nodes": [
+        {
+          "id": "a",
+          "type": "w",
+          "attributes": {
+            "g": "x",
+            "v": 2
+          }
+        },
+        {
+          "id": "b",
+          "type": "w",
+          "attributes": {
+            "g": "x",
+            "v": 4
+          }
+        }
+      ],
+      "group_by": "g",
+      "measure": [
+        "count",
+        "mean:v"
+      ],
+      "groups": [
+        {
+          "key": "x",
+          "n": 2,
+          "value": {
+            "count": 2,
+            "mean:v": 3.0
+          }
+        }
+      ]
+    },
+    {
+      "name": "a predicate id is a value name, counting the claims the nodes carry",
+      "$why": "S-146-c. The ratio axis's numerator and denominator are both node-side facts already on the wire.",
+      "nodes": [
+        {
+          "id": "a",
+          "type": "w",
+          "attributes": {
+            "g": "x"
+          },
+          "predicates": [
+            {
+              "predicate": "inspected@1",
+              "count": 3
+            },
+            {
+              "predicate": "observed@1",
+              "count": 1
+            }
+          ]
+        },
+        {
+          "id": "b",
+          "type": "w",
+          "attributes": {
+            "g": "x"
+          },
+          "predicates": [
+            {
+              "predicate": "inspected@1",
+              "count": 5
+            }
+          ]
+        }
+      ],
+      "group_by": "g",
+      "measure": [
+        "sum:inspected@1",
+        "sum:observed@1"
+      ],
+      "groups": [
+        {
+          "key": "x",
+          "n": 2,
+          "value": {
+            "sum:inspected@1": 8.0,
+            "sum:observed@1": 1.0
+          }
         }
       ]
     }
@@ -469,6 +598,28 @@
       "group_by": "g",
       "measure": "sum:v",
       "code": "measure_needs_numbers"
+    },
+    {
+      "name": "a name two sources answer is refused rather than resolved",
+      "nodes": [
+        {
+          "id": "a",
+          "type": "w",
+          "attributes": {
+            "g": "x",
+            "dup": 1
+          },
+          "predicates": [
+            {
+              "predicate": "dup",
+              "count": 2
+            }
+          ]
+        }
+      ],
+      "group_by": "g",
+      "measure": "sum:dup",
+      "code": "ambiguous_value_name"
     }
   ]
 }

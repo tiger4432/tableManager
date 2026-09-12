@@ -121,11 +121,14 @@ def evidence_subgraph(
                      "노드가 드는 «값의 이름»(속성·수식어). 없으면 봉투에 `groups` 칸이 "
                      "«생기지 않는다»(null 이 아니라 «없음» — 안 물은 것이다). "
                      "술어는 여기 오지 않는다: 길은 `follow` 가 고른다")),
-    measure: str | None = Query(
+    measure: list[str] | None = Query(
         None,
         description=("무리마다 무엇을 재나 — `count`·`distinct`·`sum`·`mean`·`min`·"
-                     "`max`·`median`. 수를 접는 넷은 «이름이 필요»하다: `mean:<속성>`. "
-                     "없으면 `count`. 이 일곱은 화면이 이미 고르던 그 일곱이다")),
+                     "`max`·`median`. 수를 접는 다섯은 «이름이 필요»하다: `mean:<이름>`. "
+                     "이름은 속성·수식어·«술어»(그 노드가 든 그 술어의 claim 수) 순으로 찾고 "
+                     "둘이 답하면 «거절»한다 — 순서는 응답의 `value_sources` 가 말한다. "
+                     "«여러 번» 줄 수 있고, 무리의 `value` 는 measure 문자열로 키 잡은 «맵»이다 "
+                     "(하나여도 맵). 없으면 `count`. 이 일곱은 화면이 이미 고르던 그 일곱이다")),
     response_format: str = Query(
         "json", alias="format",
         description=("`json`(기본) 또는 `rows`. `rows` 는 «같은 걷기 결과»를 TSV 로 접어 "

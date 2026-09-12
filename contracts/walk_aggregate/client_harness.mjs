@@ -61,18 +61,27 @@ if (!AGGREGATE) {
 // ---------------------------------------------------------------------------
 // Reached once C-90 exports the table: the SAME vectors, folded by the client.
 // ---------------------------------------------------------------------------
+// 🔴 THE SAME THREE SOURCES, IN THE SAME ORDER, as `VALUE_SOURCES` on the server — and the
+// response carries that order in `value_sources` so this is a mirror rather than a guess.
 const valuesOf = (node, name) => {
-  const carried = (node.attributes || {});
-  if (!(name in carried)) return [];
-  const value = carried[name];
-  return Array.isArray(value) ? value : [value];
+  for (const source of ['attributes', 'qualifiers']) {
+    const carried = (node[source] || {});
+    if (name in carried) {
+      const value = carried[name];
+      return Array.isArray(value) ? value : [value];
+    }
+  }
+  return (node.predicates || [])
+    .filter((entry) => entry.predicate === name && entry.count != null)
+    .map((entry) => entry.count);
 };
 
 const diverged = [];
 for (const vector of vectors.vectors) {
-  const [measure, qualifier] = String(vector.measure).split(':');
-  const fold = AGGREGATE[measure];
-  if (!fold) { diverged.push(`${vector.name}: client has no measure '${measure}'`); continue; }
+  // 🔴 `measure` MAY BE A LIST, and `value` is ALWAYS a map keyed by the measure string
+  // (S-146-c). One measure does not collapse to a bare number: a cell with two shapes is
+  // one the reader has to type-check before using.
+  const asked = Array.isArray(vector.measure) ? vector.measure : [vector.measure];
 
   const groups = new Map();
   for (const node of vector.nodes) {
@@ -84,12 +93,18 @@ for (const vector of vectors.vectors) {
   }
   for (const expected of vector.groups) {
     const members = groups.get(expected.key) || [];
-    const stream = qualifier
-      ? members.flatMap((node) => valuesOf(node, qualifier))
-      : members.map((node) => node.id);
-    const value = stream.length || !qualifier ? fold(stream) : null;
     if (members.length !== expected.n) {
       diverged.push(`${vector.name}/${expected.key}: n ${members.length} != ${expected.n}`);
+    }
+    const value = {};
+    for (const spelled of asked) {
+      const [measure, qualifier] = String(spelled).split(':');
+      const fold = AGGREGATE[measure];
+      if (!fold) { diverged.push(`${vector.name}: client has no measure '${measure}'`); continue; }
+      const stream = qualifier
+        ? members.flatMap((node) => valuesOf(node, qualifier))
+        : members.map((node) => node.id);
+      value[String(spelled)] = stream.length || !qualifier ? fold(stream) : null;
     }
     if (JSON.stringify(value) !== JSON.stringify(expected.value)) {
       diverged.push(

@@ -217,3 +217,74 @@ def test_the_route_declares_both_arguments():
     signature = inspect.signature(ledger_trace_router.evidence_subgraph)
     assert "group_by" in signature.parameters
     assert "measure" in signature.parameters
+
+
+# ---------------------------------------------------------------------------
+# 🔴 S-146-c — several measures, a time, and one shape per cell (판정 336)
+# ---------------------------------------------------------------------------
+
+def test_the_value_is_a_map_even_for_one_measure():
+    """🔴 ONE CELL, ONE SHAPE. A number for one measure and a map for two is a cell a reader
+    has to type-check before using — the class this channel has been bitten by twice."""
+    groups = ledger_subgraph.group_nodes(
+        [{"id": "a", "type": "w", "attributes": {}}], "type", "count")
+
+    assert groups[0]["value"] == {"count": 2 - 1}
+    assert isinstance(groups[0]["value"], dict)
+
+
+def test_a_group_carries_the_newest_time_of_the_edges_that_reached_it():
+    """🔴 AN ENTITY HAS NO INSTANT AND SHOULD NOT. Measured: only edges carry `occurred_at`;
+    entity nodes carry none, because a thing has no single time and its facts do."""
+    nodes = [{"id": "a", "type": "w", "attributes": {"g": "x"}},
+             {"id": "b", "type": "w", "attributes": {"g": "x"}}]
+    edges = [{"source": "a", "target": "z", "occurred_at": "2026-09-13T01:00:00Z"},
+             {"source": "b", "target": "z", "occurred_at": "2026-09-13T03:00:00Z"}]
+
+    groups = ledger_subgraph.group_nodes(nodes, "g", "count", edges)
+
+    assert groups[0]["at"] == "2026-09-13T03:00:00Z"
+
+
+def test_a_group_whose_nodes_carry_no_dated_edge_has_NO_at_key():
+    """⛔ ABSENT, NOT `null`. 「this group has no fact with a time」 and 「the caller did not
+    ask for grouping at all」 must not collapse into one value."""
+    groups = ledger_subgraph.group_nodes(
+        [{"id": "a", "type": "w", "attributes": {"g": "x"}}], "g", "count")
+
+    assert "at" not in groups[0]
+    assert set(groups[0]) == {"key", "n", "value"}
+
+
+def test_the_envelope_says_where_a_measure_name_is_looked_up():
+    """⚠️ THE ORDER IS DECLARED, NOT GUESSED. The screen has to be able to explain an
+    `ambiguous_value_name` refusal, which it cannot if it does not know the order."""
+    body = _walk(group_by="type", measure="count")
+
+    assert body["value_sources"] == list(ledger_subgraph.VALUE_SOURCES)
+    assert "predicates" in body["value_sources"], (
+        "a predicate id must be a value name, or the ratio axis has nowhere to go")
+
+
+def test_asking_for_a_time_does_not_walk_again():
+    """🔴 EDGES ARE AN INPUT, NOT A SECOND POPULATION (판정 336). They come from the walk that
+    already ran; scored by the lookup's call count, as the one-budget rule is."""
+    lookup = ledger_subgraph.InMemoryEvidenceLookup(
+        [_atom(1, "register", payload={"qualifiers": {"product": "A"}})])
+    calls = []
+    real = lookup.claims_for_entities
+
+    def spy(*args, **kwargs):
+        calls.append(1)
+        return real(*args, **kwargs)
+
+    lookup.claims_for_entities = spy
+    ledger_subgraph.subgraph(SEED, lookup, hops=1)
+    without = len(calls)
+
+    calls.clear()
+    lookup.claims_for_entities = spy
+    ledger_subgraph.subgraph(SEED, lookup, hops=1, group_by="type",
+                             measure=["count", "distinct"])
+
+    assert len(calls) == without, "asking for two measures and a time walked again"

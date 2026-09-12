@@ -123,21 +123,45 @@ def _fold(measure, values):
     return (ordered[middle - 1] + ordered[middle]) / 2
 
 
-def _values_of(node, name):
-    """What one node carries under `name`, always as a list.
+#: Where a `measure`'s name is looked up, IN THIS ORDER (S-146-c, 판정 336).
+#: 🔴 SPELLED ONCE AND CARRIED IN THE ENVELOPE, so the screen learns the order rather than
+#: guessing it. A name that resolves in two of these is REFUSED: silently preferring one
+#: would let that preference decide the answer, and the two numbers are not the same number.
+VALUE_SOURCES = ("attributes", "qualifiers", "predicates")
 
-    ⚠️ A PLURAL ATTRIBUTE IS ALREADY A LIST (S-144), and flattening it here is the only
-    reading that does not invent one: each value it holds is a value.
+
+def _source_values(node, source, name):
+    """The values one source of one node offers under `name`. Empty when it offers none."""
+    if source == "predicates":
+        # 🔴 THE NODE ALREADY CARRIES THIS (`ledger_subgraph` publishes
+        # `predicates: [{predicate, count}]` per entity). Counting 「reached by this
+        # predicate」 therefore needs no edge walk and no second query - the ratio axis's
+        # numerator and denominator are both node-side facts that were already on the wire.
+        return [entry.get("count") for entry in (node.get("predicates") or ())
+                if entry.get("predicate") == name and entry.get("count") is not None]
+    carried = (node.get(source) or {})
+    if name not in carried:
+        return []
+    value = carried[name]
+    # ⚠️ A PLURAL ATTRIBUTE IS ALREADY A LIST (S-144), and flattening it is the only reading
+    # that does not invent one: each value it holds is a value.
+    return list(value) if isinstance(value, list) else [value]
+
+
+def _values_of(node, name):
+    """What one node carries under `name`, always as a list — from ONE source.
+
+    ⛔ A NAME THAT TWO SOURCES ANSWER IS REFUSED. An attribute called `observed@1` and a
+    predicate of that id are different numbers, and choosing between them here would make
+    this function the author of the answer.
     """
-    carried = (node.get("attributes") or {})
-    if name in carried:
-        value = carried[name]
-        return list(value) if isinstance(value, list) else [value]
-    qualifiers = (node.get("qualifiers") or {})
-    if name in qualifiers:
-        value = qualifiers[name]
-        return list(value) if isinstance(value, list) else [value]
-    return []
+    answering = [source for source in VALUE_SOURCES if _source_values(node, source, name)]
+    if len(answering) > 1:
+        raise AggregateRefused(
+            "ambiguous_value_name",
+            "%r is answered by %s on the same node; rename one or ask for the other"
+            % (name, " and ".join(answering)), VALUE_SOURCES)
+    return _source_values(node, answering[0], name) if answering else []
 
 
 def _group_keys(node, group_by):
@@ -152,14 +176,8 @@ def _group_keys(node, group_by):
     return [value for value in _values_of(node, group_by) if value is not None]
 
 
-def group_nodes(nodes, group_by, measure):
-    """`groups` for one walk: the fold, over the nodes this response carries (판정 331).
-
-    🔴 THE SAME WALK AND THE SAME BUDGET. A second walk for the aggregate would put two
-    populations in one answer, and the reader would have no way to know which number came
-    from which. Truncation is said by the envelope's own `truncated`/`complete` rather than
-    by a second word in here -- one spelling for one fact.
-    """
+def _split_measure(measure):
+    """One `measure` argument -> (fold name, the value name it folds). Refuses by name."""
     name, _sep, qualifier = str(measure or "count").partition(":")
     if name not in AGGREGATE_MEASURES:
         raise AggregateRefused(
@@ -169,6 +187,51 @@ def group_nodes(nodes, group_by, measure):
             "measure_needs_a_name",
             "measure %r folds values, so it needs a name: %s:<attribute>" % (name, name),
             AGGREGATE_MEASURES)
+    return name, qualifier
+
+
+def _latest_edge_instant(members, edges_by_node):
+    """The newest `occurred_at` among the edges attached to this group's nodes.
+
+    🔴 AN ENTITY HAS NO INSTANT AND SHOULD NOT (S-146-c, 판정 336). Time lives on the atoms,
+    so a group's time is the newest time of the facts that reached it -- measured: only
+    edges carry `occurred_at`; entity nodes carry none.
+
+    ⚠️ NO EDGES MEANS NO KEY, NOT `null`. 「this group has no fact with a time」 and 「the
+    caller did not ask」 are different answers, and a null collapses them.
+    """
+    instants = [edge.get("occurred_at")
+                for node in members
+                for edge in edges_by_node.get(node.get("id"), ())
+                if edge.get("occurred_at")]
+    return max(instants) if instants else None
+
+
+def group_nodes(nodes, group_by, measure, edges=()):
+    """`groups` for one walk: the fold, over the nodes this response carries (판정 331).
+
+    🔴 THE SAME WALK AND THE SAME BUDGET. A second walk for the aggregate would put two
+    populations in one answer, and the reader would have no way to know which number came
+    from which. Truncation is said by the envelope's own `truncated`/`complete` rather than
+    by a second word in here -- one spelling for one fact.
+
+    ⚠️ `edges` IS AN INPUT, NOT A SECOND POPULATION (판정 336). They come from the walk that
+    already ran; what changes is what the fold may read, not what was reached.
+
+    🔴 `value` IS ALWAYS A MAP, keyed by the measure string, even for one measure. A cell
+    that is a number for one measure and a map for two is one cell with two shapes, and a
+    reader would have to guess which it got.
+    """
+    asked = [measure] if isinstance(measure, (str, bytes)) or measure is None else list(measure)
+    if not asked:
+        asked = ["count"]
+    folds = [(str(item), ) + _split_measure(item) for item in asked]
+
+    edges_by_node = {}
+    for edge in edges or ():
+        for endpoint in (edge.get("source"), edge.get("target")):
+            if endpoint:
+                edges_by_node.setdefault(endpoint, []).append(edge)
 
     grouped = {}
     for node in nodes:
@@ -178,13 +241,20 @@ def group_nodes(nodes, group_by, measure):
     out = []
     for key in sorted(grouped, key=str):
         members = grouped[key]
-        if qualifier:
-            values = [value for node in members for value in _values_of(node, qualifier)]
-        else:
-            # `count`/`distinct` with no name count the NODES, which is what the screen's
-            # default (`count`) has always meant.
-            values = [node.get("id") for node in members]
-        out.append({"key": key, "n": len(members), "value": _fold(name, values)})
+        value = {}
+        for spelled, name, qualifier in folds:
+            if qualifier:
+                values = [v for node in members for v in _values_of(node, qualifier)]
+            else:
+                # `count`/`distinct` with no name count the NODES, which is what the
+                # screen's default (`count`) has always meant.
+                values = [node.get("id") for node in members]
+            value[spelled] = _fold(name, values)
+        row = {"key": key, "n": len(members), "value": value}
+        at = _latest_edge_instant(members, edges_by_node)
+        if at is not None:
+            row["at"] = at
+        out.append(row)
     return out
 
 #: 🔴 A STEP THAT STAYS ON THE SAME MATERIAL SPENDS A DIFFERENT BUDGET, and this is how
@@ -1988,7 +2058,11 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         # spelling for one fact, rather than a second absence word in here.
         **({} if group_by is None
            else {"groups": group_nodes(visible_nodes, str(group_by),
-                                       measure or "count")}),
+                                       measure or "count", ordered_edges)}),
+        # ⚠️ WHERE A MEASURE NAME IS LOOKED UP, IN ORDER (판정 336). Carried so the screen
+        # learns the order rather than guessing it, and so a name answered by two sources
+        # is a refusal both sides can explain.
+        **({} if group_by is None else {"value_sources": list(VALUE_SOURCES)}),
         "attribute_cardinality": {
             node_type: {name: ATTRIBUTE_CARDINALITY_MANY for name in sorted(plural)}
             for node_type, plural in sorted(
