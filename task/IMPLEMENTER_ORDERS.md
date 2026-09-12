@@ -38428,3 +38428,5 @@ S-106 조건   철회는 «오늘의 함수»(store 의 withdraw)를 그대로 �
 > 📌 **[09-13 08:05] 이 채널의 미답 질문: «없음».**
 > 🔔 **[09-13 08:08 S-209 «지금» — 바깥 git 첫 커밋이 섰음(`assyManager-authoring` `763079d`: README·MAPPING_GUIDE·PARSER_GUIDE; 저장소 포인터 `docs/guide/AUTHORING.md` `c49d8670`)**: 판정 348·349 그대로 — 다섯 이동(저장소 `git rm` 경로 명시 + 바깥 `examples/` 에 놓기 — 바깥 커밋은 응용, 당신은 놓고 «어느 파일을 놓았는지» 보고) + 문서 링크 셋 같은 커밋 + `MAPPER_STANDARD.md` 이동(바깥 `MAPPING_GUIDE.md` 가 그 내용을 «이미 합쳤는지» 먼저 보고, 합쳤으면 저장소에서 지우고 링크 셋에 「이동됨」) + SDK 진입점 드리프트 시험 하나(바깥 경로 상수, 없으면 skip 이름 대어). 재기동 불요(코드 무변)면 그렇게 보고. 지금
 > 📌 **[09-13 08:08] 이 채널의 미답 질문: «없음».**
+> ➕ **[09-13 08:10 S-209 ③ 정정 — `MAPPER_STANDARD.md` 는 바깥이 «아니라» `docs/_archive/` 로**: 응용 실측(`8e833639`) — 그 문서 §2 의 API(`class Unit`·`Emit`·`EMITS`·`REQUIRES`…)는 «착지한 적 없음»(전건 0), 훅 둘은 `roleframe.py` 로 다른 이름으로 착지. 즉 운영자 가이드가 아니라 «제안 기록» — 바깥 MAPPING_GUIDE 는 부록 A 로 이미 기록함. 그러니 `git mv MAPPER_STANDARD.md docs/_archive/MAPPER_STANDARD_20260817.md`(머리에 「제안, 착지는 roleframe 의 이름으로 — 바깥 가이드 부록 A 참조」 한 줄) + 링크 셋(히스토리·아카이브·task) 그대로 두되 경로만. 나머지 그대로. 지금
+> 📌 **[09-13 08:10] 이 채널의 미답 질문: «없음».**
