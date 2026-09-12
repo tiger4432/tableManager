@@ -57,6 +57,8 @@ import chain_key_gate
 import dt_map_derivation
 import chain_activity
 import chain_bindings
+import mapper_sdk
+import validation
 from ledger import followup as ledger_followup
 
 #: 🔴 THE FILE THIS PROCESS LOGS TO, NAMED ONCE AND CARRIED ONTO THE MAPPER LINES.
@@ -464,6 +466,65 @@ def load_chain_rules():
         except Exception as e:
             logger.error(f"Failed to load chain rules: {e}")
 
+    # ------------------------------------------------------------------ S-188 ⓑ
+    # 🔴 THE FILE'S GRAMMAR IS CHECKED HERE, AND ONLY THE FILE'S. Synthesized rules below are
+    # built by this process, not typed by an operator, so scoring them against an authoring
+    # grammar would report OUR bugs as THEIR typos.
+    #
+    # ⛔ A REFUSED RULE IS DROPPED AND COUNTED, NEVER FATAL. One unrunnable rule must not
+    # cost the other nine — 「거절된 분자는 세고 건너뛴다, 죽은 페이지가 아니다」. Before this,
+    # `load_chain_rules` validated NOTHING: an unknown key or a typo was silent.
+    #
+    # ⚠️ WHAT IS REFUSED IS 「CANNOT RUN」, NOT 「UNFAMILIAR」. A top-level cell this product
+    # does not know is a mapper argument still written flat (ⓓ), and the product cannot tell
+    # a stale one from a live one because the mapper that reads it lives in a gitignored
+    # file. So those are NAMED, not refused; what is refused is a rule missing `name` or
+    # `trigger_table`, or one whose mapper resolves to nothing at all.
+    kept = []
+    for index, rule in enumerate(rules):
+        path = "rules[%d]" % index
+        problems = validation.Problems()
+        problems.exact(rule, path,
+                       required=chain_bindings.RULE_ROUTING_REQUIRED,
+                       optional=chain_bindings.RULE_ROUTING_OPTIONAL,
+                       ignored=(chain_bindings.flat_param_cells(rule)
+                                + chain_bindings.comment_cells(rule)))
+        issues = list(problems.finish())
+
+        one_cell, module_name, function_name = chain_bindings.mapper_cells(rule)
+        resolvable = bool(mapper_sdk.MAPPER_REGISTRY.get(one_cell)) if one_cell else False
+        if not resolvable and not (module_name and function_name):
+            issues.append(validation.DeclarationValidationError(
+                "unresolvable_mapper", path + "." + chain_bindings.MAPPER_KEY,
+                "names no mapper this process can run: '%s' is not registered and "
+                "mapper_module/mapper_function are not both set"
+                % (one_cell or "")))
+
+        if issues:
+            logger.error(
+                "[ChainRules] %s refused (%d): %s",
+                (rule or {}).get("name") or path, len(issues),
+                " | ".join("%s %s: %s" % (i.code, i.path, i.message) for i in issues))
+            continue
+        kept.append(rule)
+
+        flat = chain_bindings.flat_param_cells(rule)
+        if flat:
+            logger.warning(
+                "[ChainRules] %s: %d cell(s) still written flat — move them under 'params': %s",
+                rule.get("name"), len(flat), ", ".join(flat))
+        declared = mapper_sdk.MAPPER_PARAMS.get(one_cell) if resolvable else None
+        if declared is not None:
+            undeclared = sorted(set(chain_bindings.params_of(rule)) - set(declared))
+            if undeclared:
+                logger.warning(
+                    "[ChainRules] %s: param(s) '%s' does not declare: %s",
+                    rule.get("name"), one_cell, ", ".join(undeclared))
+    if len(kept) != len(rules):
+        logger.error("[ChainRules] %d of %d rule(s) refused and skipped",
+                     len(rules) - len(kept), len(rules))
+    rules = kept
+
     # [Enrichment Queue] enrichment_rules.json으로부터 dedup 투영 체인 룰을 자동 파생하여 병합.
     #   파생 룰은 일반 체인 룰과 동일 형태이므로 워커 파이프라인(HOL 가드·SLO 계측·warmup·재시도)을
     #   그대로 탄다. SYSTEM_RELOAD 시 본 함수가 재호출되므로 enrichment 규칙도 무중단 반영된다.
@@ -769,7 +830,18 @@ def execute_custom_mapper(module_name: str, function_name: str, db, payload, rul
     started = time.monotonic()
     rule_name = (rule or {}).get("name") or "<unnamed rule>"
     target_table = (rule or {}).get("target_table") or "<none>"
-    who = "%s.%s" % (module_name, function_name)
+    # 🔴 S-188 ⓓ: ONE CELL FIRST, TWO CELLS STILL READ. `rule["mapper"]` names an entry of
+    # the decorator's registry; `mapper_module` + `mapper_function` are what a file may still
+    # say, and they remain the working path wherever no mapper uses the decorator yet
+    # (measured ZERO on this box). Resolution happens HERE because this is the one place
+    # every custom mapper is called through — two resolvers would be two answers to 「which
+    # function is this rule's mapper」.
+    import chain_bindings
+    import mapper_sdk
+
+    one_cell, _rule_module, _rule_function = chain_bindings.mapper_cells(rule)
+    registered = mapper_sdk.MAPPER_REGISTRY.get(one_cell) if one_cell else None
+    who = one_cell if registered is not None else "%s.%s" % (module_name, function_name)
     rows_in = _payload_row_count(payload)
     logger.info("[%s] START rule=%s mapper=%s target=%s rows_in=%d",
                 MAPPER_LOG_TAG, rule_name, who, target_table, rows_in)
@@ -777,8 +849,11 @@ def execute_custom_mapper(module_name: str, function_name: str, db, payload, rul
     # "is it in one right now" without somebody tailing it.
     token = chain_activity.registry.start(rule_name, who, target_table, rows_in)
     try:
-        module = importlib.import_module(module_name)
-        mapper_func = getattr(module, function_name)
+        if registered is not None:
+            mapper_func = registered
+        else:
+            module = importlib.import_module(module_name)
+            mapper_func = getattr(module, function_name)
         # 🔴 NaN IS NOT A VALUE AND A MAPPER AUTHOR SHOULD NOT HAVE TO KNOW THAT. Owner
         # report 2026-09-04: `cannot convert float NaN to integer` from the chain. This is
         # the one place every custom mapper is called through, so the rule is applied here

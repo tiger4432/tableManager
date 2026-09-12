@@ -221,11 +221,80 @@ RULE_ROUTING_OPTIONAL = tuple(
     key for key in RULE_TABLE_KEYS if key not in RULE_ROUTING_REQUIRED) + (
     "target_field", "trigger_columns", "enabled", "is_batch",
     "follow_up", "allow_chain_trigger", "allow_map_metadata_upsert",
-    "max_group_attempts", "origin", "params",
+    "max_group_attempts", "origin",
+    # S-188 ⓓ: `mapper` is the ONE cell; the two-cell spelling stays readable. `params` is
+    # where a mapper's arguments live. The symbols `MAPPER_KEY`/`PARAMS_KEY` below are
+    # defined against these literals and a test asserts they agree — the literals are here
+    # because this tuple is built before them.
+    "mapper", "params",
     "mapper_module", "mapper_function",
     # 위 키로 표현 못 하는 읽기와, 실행 시점에 정해지는 참조 블록
     READS_KEY, REFERENCE_BLOCK,
 )
+
+
+#: The one cell a rule uses to name its mapper (S-188 ⓓ). `mapper_module` + `mapper_function`
+#: remain readable — see `mapper_cells`.
+MAPPER_KEY = "mapper"
+PARAMS_KEY = "params"
+
+
+def mapper_cells(rule):
+    """`(name, module, function)` — which of the two spellings this rule used.
+
+    🔴 BOTH STAY READABLE, AND THAT IS NOT TRANSITIONAL POLITENESS. The registry is empty
+    wherever no mapper file uses the decorator yet — measured as ZERO on this box — so a
+    loader that accepted only `mapper` would refuse every rule that runs today. The one cell
+    is what an author SHOULD write; the two are what the file may still say.
+    """
+    rule = rule or {}
+    return (str(rule.get(MAPPER_KEY) or "") or None,
+            str(rule.get("mapper_module") or "") or None,
+            str(rule.get("mapper_function") or "") or None)
+
+
+#: 🔴 A CELL WHOSE NAME STARTS WITH THIS IS A COMMENT, and the convention has ONE author
+#: here. The shipped rules carry `__comment`, `__why_enabled` and
+#: `__alignment_thresholds_derivation`; the first version of the loader check left them out
+#: of both the routing list and the flat-cell list, so `exact` refused them and NINE OF NINE
+#: rules in this box were dropped — the whole chain, from a validator meant to protect it.
+COMMENT_PREFIX = "__"
+
+
+def comment_cells(rule):
+    """Cells that are prose for the operator, not declaration."""
+    return tuple(sorted(
+        name for name in (rule or {})
+        if isinstance(name, str) and name.startswith(COMMENT_PREFIX)))
+
+
+def flat_param_cells(rule):
+    """Top-level cells that are NOT routing — i.e. mapper arguments still written flat.
+
+    ⚠️ ONE-WAY COMPATIBILITY (S-188 ⓓ). The operator's file is not touched: these are READ as
+    though they sat in `params`, and the loader names them so the operator knows what to move.
+    Double-underscore names are comments by this file's convention and are not arguments.
+    """
+    routing = set(routing_keys())
+    return tuple(sorted(
+        name for name in (rule or {})
+        if isinstance(name, str) and not name.startswith(COMMENT_PREFIX)
+        and name not in routing))
+
+
+def params_of(rule):
+    """The mapper's arguments: the `params` block, with flat cells read underneath it.
+
+    🔴 `params` WINS. If a name is written both ways the block is the one the author moved
+    on purpose, and silently preferring the flat copy would make the migration a no-op that
+    looks done.
+    """
+    rule = rule or {}
+    block = rule.get(PARAMS_KEY)
+    merged = {name: rule[name] for name in flat_param_cells(rule)}
+    if isinstance(block, dict):
+        merged.update(block)
+    return merged
 
 
 def routing_keys():
