@@ -9,6 +9,8 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 import difflib
+
+import validation
 import json
 from pathlib import Path
 import re
@@ -194,17 +196,12 @@ _MAPPER_UNITS = frozenset({"event", "row", "group_by"})
 _OCCURRED_AT_BASES = frozenset({"ingested"})
 
 
-class LedgerSetupValidationError(ValueError):
-    """One stable validation issue with its exact authoring path."""
+class LedgerSetupValidationError(validation.DeclarationValidationError):
+    """One stable validation issue with its exact authoring path.
 
-    def __init__(self, code: str, path: str, message: str):
-        self.code = code
-        self.path = path
-        self.message = message
-        super().__init__(f"{path}: {message}")
-
-    def to_mapping(self) -> dict[str, str]:
-        return {"code": self.code, "path": self.path, "message": self.message}
+    ⚠️ THE BODY MOVED, THE NAME DID NOT (판정 300). It is a SUBCLASS of the neutral error so
+    its sixteen callers keep catching what they caught, and so a caller that catches
+    `validation.DeclarationValidationError` also sees it."""
 
 
 #: The catalogue's relation kinds. A CLOSED list — see the refusal at `_validate_catalog`,
@@ -503,90 +500,26 @@ _RETIRED_FIELD_HELP = {
 
 #: How many declared names a refusal will list before it stops.  A message nobody reads to
 #: the end helps nobody; the close-match branch below is the one that usually answers.
-_CANDIDATE_LIMIT = 8
+#: 🔴 RE-EXPORTS, NOT COPIES (판정 300). The bodies live in `validation.py` so S-188's chain
+#: loader refuses with the SAME language; these names stay because this module's callers and
+#: its own thousand lines already spell them. The idiom is the one `main.py` uses for
+#: `reload_local_process_cache` — an assignment, so it is the same object.
+CANDIDATE_LIMIT = validation.CANDIDATE_LIMIT
+_CANDIDATE_LIMIT = validation.CANDIDATE_LIMIT
+_path = validation.path_of
+_allowed_note = validation.allowed_note
+_did_you_mean = validation.did_you_mean
 
 
-def _allowed_note(required: Sequence[str], optional: Sequence[str]) -> str:
-    """What this object DOES take, appended to a refusal that says a field is not allowed.
-
-    🔴 THE VALIDATOR IS HOLDING THE ANSWER AT THE MOMENT IT REFUSES.  `exact()` already has
-    the required and optional tuples in hand; it just was not saying them.  Measured
-    2026-08-19: an author hit `unknown_field` at `...emit.object.payload` and a human sitting
-    beside them had to translate it into "object takes kind / entity / value / qualifiers".
-    That translation is free -- it is two tuples one stack frame away.
-    """
-    names = [f"{name} (required)" for name in required] + list(optional)
-    if not names:
-        return "; no fields are allowed here"
-    return "; allowed here: " + ", ".join(str(name) for name in names)
-
-
-def _did_you_mean(wanted: Any, declared: Iterable[Any], label: str) -> str:
-    """The half of an `unknown_*` refusal that says WHICH mistake this is.
-
-    "unknown pack 'dt-job@1'" does not separate **you misspelled it** from **you have not
-    written it yet**, and those two need opposite next actions -- fix a character, or go
-    author a declaration.  Measured 2026-08-19: an author had a mapper emitting into a pack
-    that did not exist yet and read the refusal as a typo.
-
-    So the message answers the question it raised: nothing declared at all, a near miss to
-    correct, or the declared names to choose from.
-    """
-    names = sorted({str(name) for name in declared})
-    if not names:
-        return f"; no {label} are declared yet"
-    close = difflib.get_close_matches(str(wanted), names, n=3, cutoff=0.6)
-    if close:
-        return "; did you mean " + " or ".join(repr(name) for name in close) + "?"
-    listed = ", ".join(repr(name) for name in names[:_CANDIDATE_LIMIT])
-    if len(names) > _CANDIDATE_LIMIT:
-        listed += f", +{len(names) - _CANDIDATE_LIMIT} more"
-    return f"; declared {label}: {listed}"
-
-
-class _Problems:
-    def __init__(self):
-        self.items: list[LedgerSetupValidationError] = []
-
-    def add(self, code: str, path: str, message: str) -> None:
-        self.items.append(LedgerSetupValidationError(code, path, message))
-
-    def exact(self, value: Any, path: str, *, required: Sequence[str],
-              optional: Sequence[str] = (), ignored: Sequence[str] = ()) -> bool:
-        """Refuse every field this object does not take -- except the ones it USED to.
-
-        🔴 `ignored` IS ACCEPT-AND-DISCARD, AND IT IS NOT `_RETIRED_FIELD_HELP`.  That map
-        only rewords an `unknown_field`; the refusal still happens, so a config
-        holding the name still fails to load.  That is right for `tables`, whose contents
-        moved to another file and must be deleted by hand.  It is wrong for a field that
-        retired because it had ONE legal value: nothing has to move, nothing has to be
-        decided, and refusing stops an operator mid-sentence over a word that no longer
-        means anything.  So these names are read and dropped, in silence.
-
-        🔴 NARROW BY CONSTRUCTION.  This is a per-call-site tuple, never a global
-        tolerance: `unknown_field` is how a typo is caught everywhere else, and one
-        forgiving validator would take that away from every object at once.
-        """
-        if not isinstance(value, Mapping):
-            self.add("invalid_type", path, "must be an object")
-            return False
-        allowed = set(required) | set(optional) | set(ignored)
-        for name in sorted(set(value) - allowed, key=str):
-            key_path = _path(path, str(name))
-            code = ("unsafe_declaration"
-                    if str(name).lower() in _FORBIDDEN_DECLARATION_KEYS
-                    else "unknown_field")
-            self.add(code, key_path, _RETIRED_FIELD_HELP.get(
-                key_path, "field is not allowed" + _allowed_note(required, optional)))
-        for name in required:
-            if name not in value:
-                self.add("missing_field", _path(path, name), "field is required")
-        return True
-
-    def finish(self) -> tuple[LedgerSetupValidationError, ...]:
-        return tuple(sorted(
-            self.items, key=lambda issue: (issue.path, issue.code, issue.message)))
-
+def _Problems() -> validation.Problems:
+    """This module's `Problems`, carrying the THREE things the shared class does not know:
+    the ledger's exception, the ledger's retired authoring paths, and — the one that matters
+    — the ledger's prohibition on cells that name code. A chain rule names a mapper on
+    purpose, so that set cannot be the shared default."""
+    return validation.Problems(
+        error_cls=LedgerSetupValidationError,
+        retired_help=_RETIRED_FIELD_HELP,
+        forbidden_keys=_FORBIDDEN_DECLARATION_KEYS)
 
 def public_bundle_schema() -> dict[str, Any]:
     """Small public contract; no runtime registry or implementation details."""
@@ -1170,11 +1103,6 @@ def _has_duplicate_strings(value: Any) -> bool:
 
 def _is_list(value: Any) -> bool:
     return isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray))
-
-
-def _path(base: str, child: str) -> str:
-    return f"{base}.{child}" if base else child
-
 
 def _normalize(value: Any) -> Any:
     if isinstance(value, Mapping):

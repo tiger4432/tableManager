@@ -1359,11 +1359,30 @@ def test_common_module_has_no_domain_source_branches_or_runtime_imports():
     # which is the property this allowlist exists to protect. The list stays CLOSED: a new
     # name here is a decision, and anything that reads data or knows about a source is
     # still refused by the loop below.
-    assert imported <= {"__future__", "collections", "dataclasses", "difflib", "json",
-                        "pathlib", "re", "types", "typing", "zoneinfo"}
+    # `validation` joined on 2026-09-12 (S-188, 판정 300): the refusal language moved out so
+    # the CHAIN rule loader refuses with the same words instead of importing a private class
+    # out of this module. It is admitted on `difflib`'s terms -- pure comparison, no I/O, no
+    # domain, no runtime -- and the assertion below is what keeps that true, because a name
+    # on this list would otherwise be a hole the size of whatever that module imports next.
+    STDLIB_ONLY = {"__future__", "collections", "dataclasses", "difflib", "json",
+                   "pathlib", "re", "types", "typing", "zoneinfo"}
+    assert imported <= STDLIB_ONLY | {"validation"}
     for forbidden in ("database", "sqlalchemy", "psycopg2", "backfill", "store",
                       "translator", "chain_mapper"):
         assert forbidden not in imported
+
+    # 🔴 THE PROPERTY IS TRANSITIVE OR IT IS NOTHING. Admitting a project module without
+    # this would let `validation.py` import `database` tomorrow and this test would still be
+    # green -- the allowlist would name a module instead of naming a property.
+    shared = source_path.parents[1] / "validation.py"
+    shared_tree = ast.parse(shared.read_text(encoding="utf-8"))
+    shared_imports = set()
+    for node in ast.walk(shared_tree):
+        if isinstance(node, ast.Import):
+            shared_imports.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            shared_imports.add(node.module.split(".")[0])
+    assert shared_imports <= STDLIB_ONLY, sorted(shared_imports - STDLIB_ONLY)
 
 
 def test_stage_two_has_no_db_migration_write_runtime_or_compiler_surface():
