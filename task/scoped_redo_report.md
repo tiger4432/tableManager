@@ -36955,3 +36955,53 @@ git grep "builtin:auto_confirm"  ->  «두 줄뿐»:
 > ⓒ 의 나머지(합성 자리·조인 절반·그래프 엣지·기동 줄 셋)는 이 갈래가 정해지면 한 커밋으로 갑니다.
 > ⚠️ 그리고 이것은 「합성했으니 돈다」를 «가정하지 않고 열어 본» 결과입니다 — 가정했으면
 > 안 도는 규칙에 초록 게이트를 붙였을 것입니다.
+
+---
+
+## 📤 [09-12 15:5x 구현자] S-189 ⓒ 착지 — S-189 닫힘. 그리고 **제가 S-188 ⓓ+ⓑ 보고에서 틀린 것 하나를 정정합니다**
+
+### ⛔ 먼저 정정 — 「빨강 전부 기존」이 아니었습니다
+```
+이번 모집단에서 test_a_rule_says_why_it_did_nothing::test_finish_still_has_exactly_one_caller 가 빨강
+부모 71b51494 에서는 «초록» -> «제 회귀»이고, 낸 커밋은 S-188 ⓓ+ⓑ(`87be0737`) 입니다
+기제: 그 가드가 `chain_ingestion_worker.py` 의 «모든» `.finish(` 를 셉니다.
+      ⓑ 가 `load_chain_rules` 에 `validation.Problems` 를 줬고 그 `finish()` 가 «둘째»로 세졌습니다
+      (판정 63 의 주어는 `chain_activity.registry.finish` — 「도는 목록에서 뺀다」입니다. 다른 함수입니다)
+🔴 제가 왜 못 봤나: ⓓ+ⓑ 모집단 실행에서 «제 `tail -6` 이 FAILED 목록을 잘랐습니다».
+   여섯 중 다섯만 보고 「전부 기존」이라고 적었습니다 — «0건 오독»의 사촌입니다(잘린 것을 없는 것으로)
+고침: 가드를 «판정 63 의 주어»로 좁혔습니다(receiver = registry). 느슨하게가 아니라 «엄격하게» —
+      둘째 `registry.finish` 호출자는 여전히 빨강이고, 변이로 확인했습니다
+```
+
+### 지은 것
+```
+chain_builtins.synthesize_chain_rules(known_tables)   «한 자리». load_chain_rules 는 이것만 부릅니다
+   게이트: 인리치 절반이 «전/후 동일»(리스트 비교) — 이동은 동작 0 이어야 합니다
+chain_builtins.BUILTIN_KINDS                          `builtin:<kind>` → 콜러블 «한 표»
+   모르는 kind -> 이름 대어 거절 + «아는 것»을 같이 말함
+   🔴 이 어휘의 «첫 디스패처»입니다 — auto_confirm 은 선언만 있고 읽는 곳이 없었습니다(실측)
+virtual_join_config.synthesized_join_chain_rules()    materialize: true «만» 체인 규칙으로
+   follow_up: True · origin: synthesized:<name> · params = 정규화 규칙 «전체»
+_run_builtin_followups(db, done)                      페이싱된 드레인에서 그 표를 지납니다
+   그룹 줄: rule=<이름> kind=<종류> rows_in=N written=M [REFUSED: …]
+chain_graph._vjoin_edges                              실체화 규칙은 «안 그립니다»(mapper 엣지가 이미 그림)
+```
+🔵 라이브: `Synthesized 8 chain rule(s) (4 dedup · 4 auto-confirm · 0 join)` · 총 17 규칙 — **전과 동일**.
+이 박스의 vjoin 둘은 읽기 시점이라 join 0 이 «맞는 수»입니다.
+
+### ⚠️ 이름 붙은 임시 하나 (S-195, 큐)
+```
+자동 확정은 «아직» 스윕에서 돕니다 -> follow_up 종류가 두 길입니다.
+여기와 큐에 적혀 있고 게이트(S-151 의 그룹당 0.875 s 무회귀)가 정해져 있습니다.
+「두 경로 금지」가 막는 것은 «조용히 갈라지는 것»이고, 이건 조용하지 않습니다
+```
+
+### 게이트
+```
+12 passed · 변이 둘(로더가 절반을 직접 부름 · 읽기 시점 규칙도 합성) 둘 다 빨강
+모집단 93 파일 1,583 passed · 남은 빨강 하나는 기존(양쪽 트리 단독 빨강)
+커밋 뒤  collect 5,935
+```
+
+> 📌 **[09-12 15:5x] 이 채널의 미답 질문: «없음».** S-189 ⓐⓑⓒ «닫힘». 다음 = **S-194 ①**(어댑터 + 원장 어댑터 바이트 동일 게이트 + 체인 어댑터 + 드라이런 라우트, 커밋 둘) → 클라 C-86.
+> 재기동 총괄 몫 — ⓒ 가 기동 줄(합성 세 종류)과 드레인 랩을 바꿥니다.
