@@ -1332,7 +1332,14 @@ export const AGGREGATIONS = Object.freeze([
   { id: 'distinct', label: 'distinct', numericOnly: false },
 ]);
 
-const AGGREGATE = Object.freeze({
+/**
+ * C-90 ①. 일곱 접기. 🔴 «export» 인 이유는 화면이 아니라 «이음매» 때문입니다 —
+ * `contracts/walk_aggregate/` 의 서버 절반(S-146)이 같은 벡터를 파이썬으로 접고, 클라 절반은
+ * 이 표를 «import 해» 같은 벡터를 접습니다. 모듈 비공개이던 동안 그 계약은 «채점 불가»(exit 2)
+ * 였고, 그건 초록이 아니라 「아직 아무것도 안 쟀다」입니다.
+ * ⛔ 이 표를 하니스가 «다시 적는» 것이 대안이었고, 그러면 계약이 자기 자신과 합의합니다.
+ */
+export const AGGREGATE = Object.freeze({
   count: (values) => values.length,
   distinct: (values) => new Set(values.map((v) => JSON.stringify(v))).size,
   sum: (nums) => nums.reduce((a, b) => a + b, 0),
