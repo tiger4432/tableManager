@@ -23,11 +23,31 @@ export function recordingContext(canvas) {
   return ctx;
 }
 
+const dataName = (key) => 'data-' + String(key).replace(/[A-Z]/g, (c) => '-' + c.toLowerCase());
+
+function selectorMatches(node, sel) {
+  const cls = /^\.([A-Za-z0-9_-]+)$/.exec(String(sel));
+  if (cls) return String(node.className || '').split(/\s+/).includes(cls[1]);
+  const attr = /^\[([A-Za-z0-9_-]+)="(.*)"\]$/.exec(String(sel));
+  if (attr) return node.attrs && node.attrs[attr[1]] === attr[2];
+  return false;
+}
+
+function querySelectorIn(root, sel) {
+  for (const node of walk(root)) if (node !== root && selectorMatches(node, sel)) return node;
+  return null;
+}
+
 export function makeNode(doc, tag) {
   const node = {
     tagName: String(tag).toUpperCase(),
     className: '',
-    style: {},
+    // CSS custom properties are set through `setProperty`, not by assignment -- a plain
+    // object answers the first and throws on the second, which stops a render dead.
+    style: { _props: Object.create(null),
+             setProperty(k, v) { this._props[String(k)] = String(v); },
+             getPropertyValue(k) { return this._props[String(k)] || ''; },
+             removeProperty(k) { delete this._props[String(k)]; } },
     children: [],
     attrs: Object.create(null),
     listeners: Object.create(null),
@@ -58,9 +78,43 @@ export function makeNode(doc, tag) {
         ? this.attrs[String(k)] : null;
     },
     addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); },
+    // 🔴 ADDED 2026-09-13 (C-86). A stub that RECORDS listeners and cannot fire them scores
+    //    what was wired, never what happens -- and 「the add control opens a name field」 is a
+    //    claim about what happens. Bubbling is one level, which is all the delegation here
+    //    needs (the form box listens for its children's `change`).
+    dispatch(type, event = {}) {
+      const ev = { type, target: this, ...event };
+      for (const fn of this.listeners[type] || []) fn(ev);
+      // Bubbles ALL the way, as a real `change` does. One level was the first spelling and
+      // it made delegation look broken: a control nested four deep under the box that listens
+      // is the ordinary case, not the exception.
+      let up = this.parentNode;
+      while (up) {
+        for (const fn of up.listeners[type] || []) fn(ev);
+        up = up.parentNode;
+      }
+      return ev;
+    },
+    // The two selector forms this repository's parts actually pass. Not a selector engine:
+    // an engine that silently answers the wrong thing is worse than one that answers nothing,
+    // so anything else returns null and the caller's assertion fails loudly.
+    querySelector(sel) { return querySelectorIn(this, sel); },
+    querySelectorAll(sel) { return walk(this).filter((n) => selectorMatches(n, sel)); },
     set textContent(v) { this._text = String(v); this.children.length = 0; },
     get textContent() { return this._text + this.children.map((c) => c.textContent).join(''); },
   };
+  node.ownerDocument = doc;
+  // `dataset.fooBar` IS `data-foo-bar`, and both spellings must reach one place -- the parts
+  // write `el.dataset.action` and the harnesses read `attrs['data-action']`.
+  node.dataset = new Proxy(Object.create(null), {
+    get: (_t, key) => node.attrs[dataName(key)],
+    set: (_t, key, value) => { node.attrs[dataName(key)] = String(value); return true; },
+    has: (_t, key) => dataName(key) in node.attrs,
+    deleteProperty: (_t, key) => { delete node.attrs[dataName(key)]; return true; },
+    ownKeys: () => Object.keys(node.attrs).filter((k) => k.startsWith('data-'))
+      .map((k) => k.slice(5).replace(/-([a-z])/g, (_m, c) => c.toUpperCase())),
+    getOwnPropertyDescriptor: () => ({ enumerable: true, configurable: true }),
+  });
   if (node.tagName === 'CANVAS') {
     node.width = 0;
     node.height = 0;

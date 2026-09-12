@@ -8,7 +8,7 @@ import {
 } from './ontology_explorer_store.js';
 import { renderOntologyExplorer } from './ontology_explorer_view.js';
 import {
-  splitBundlePath, setAtPath, getAtPath, deleteAtPath,
+  splitBundlePath, setAtPath, getAtPath, deleteAtPath, writeShapeAtPath,
 } from './ontology_path.js';
 import { declarationShape, emptyOf, shapeAt } from './ontology_skeleton.js';
 import { censusBySource } from './source_backlog.js';
@@ -274,42 +274,10 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     } catch {
       return;
     }
-    const steps = splitBundlePath(relative);
-    // 🔴 THE FORM'S OWN BRANCHES ARE BUILT, because the form is what promised them.
-    // `setAtPath` refuses a missing parent on purpose -- an authoring-plan row names a leaf
-    // the declaration already has a place for. But the claim form offers `emit.object.kind`
-    // on a claim whose `emit` does not exist yet, and a field that silently does nothing is
-    // the refusing control this screen keeps removing. The shape said those objects exist,
-    // so writing through it creates them -- and only plain objects, never a guessed value.
-    // 🔴 A LIST SLOT IS NEVER INVENTED, BUT WHAT LIVES INSIDE ONE STILL GETS BUILT. Refusing
-    // the whole path as soon as it held a number was too wide: `mappings[0].bind` sits under
-    // an element that EXISTS, and naming a binding there wrote nothing at all -- the button
-    // was silent, which is the failure this screen keeps closing. So the refusal is narrowed
-    // to what it always meant: a missing INDEX is a member nobody added, and inventing it
-    // would put an empty slot in somebody's list.
-    for (let depth = 1; depth < steps.length; depth += 1) {
-      const branch = steps.slice(0, depth);
-      if (getAtPath(raw, branch) !== undefined) continue;
-      if (typeof branch[branch.length - 1] === 'number') break;
-      const built = setAtPath(raw, branch, {});
-      if (built === null) break;
-      raw = built;
-    }
-    // 🔴 THE UI NEVER ASSERTS A TYPE. The plan carries none -- measured, a field record has
-    // no type key and `implementation_version` is not a plan row at all -- so a table here
-    // saying "this one is an integer" would be a second author for the validator's
-    // contract, the exact thing removed from this screen all day.
-    //
-    // Instead: whatever type is already at that leaf is preserved, and a value typed into
-    // an empty leaf goes in as typed. If that is wrong the validator says so, and since
-    // today it says so ON the screen, showing beats blocking.
-    const current = getAtPath(raw, steps);
-    let written = value;
-    if (typeof current === 'number' && typeof value === 'string') {
-      const asNumber = Number(value.trim());
-      if (value.trim() !== '' && Number.isFinite(asNumber)) written = asNumber;
-    }
-    const next = setAtPath(raw, steps, written);
+    // 🔴 THE WRITER MOVED TO `ontology_path.js` (C-86) AND NOTHING ABOUT IT CHANGED. The
+    // chain rule form draws from a skeleton too, so the branch building and the type
+    // preservation now have ONE author instead of two that could drift apart in silence.
+    const next = writeShapeAtPath(raw, relative, value);
     if (next === null) return;
     dispatch({ type: 'EDITOR_CHANGED', text: JSON.stringify(next, null, 2) });
   };
