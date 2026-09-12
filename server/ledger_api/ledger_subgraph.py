@@ -733,6 +733,13 @@ _entity_key_order = None
 #: same read as the line above, so the two can never come from different revisions.
 _entity_plural_attributes = {}
 
+#: 🔴 「이 술어가 안 보이는 것이 무슨 뜻인가」 — bare finding predicate -> (bare examination
+#: predicate, whether that examination is itself declared). Filled by the same read as the two
+#: above (S-149). The population of `node["absence"]` is THIS MAP, not the data: a predicate
+#: that did not appear has no row in `predicates[]`, and that is exactly where a `false`
+#: verdict has to live.
+_absence_confirmers = {}
+
 
 def _declared_key_order(entity_type):
     """The key order one entity type declares, from the LIVE ontology declaration.
@@ -764,17 +771,27 @@ def _read_entity_declaration():
     as they are today rather than taking the walk down with it. The `@version` suffix is
     stripped the way `ledger/roleframe.py` strips it.
     """
-    global _entity_key_order, _entity_plural_attributes
+    global _entity_key_order, _entity_plural_attributes, _absence_confirmers
     if _entity_key_order is not None:
         return
     from ledger.setup_bundle import ATTRIBUTE_CARDINALITY_MANY
 
-    order, plural_by_type = {}, {}
+    order, plural_by_type, confirmers = {}, {}, {}
     try:
         import paths
         with open(paths.config_path("ontology", "ledger_config.json"),
                   "r", encoding="utf-8") as handle:
-            declared = (json.load(handle) or {}).get("entities") or {}
+            document = json.load(handle) or {}
+        declared = document.get("entities") or {}
+        # 🔴 THE THIRD FACT, ON THE SAME READ AND THE SAME SENTINEL (S-149). A separate
+        # cached read would be a second thing to forget on reload -- which is exactly the
+        # hole S-206 closed -- and could answer from a different revision of one file.
+        vocabulary = document.get("vocabulary") or {}
+        for predicate, spec in vocabulary.items():
+            confirmer = (spec or {}).get("absence_confirmed_by")
+            if isinstance(confirmer, str) and confirmer.strip():
+                confirmers[str(predicate).rsplit("@", 1)[0]] = (
+                    confirmer.rsplit("@", 1)[0], confirmer in vocabulary)
         for name, spec in declared.items():
             spec = spec or {}
             bare = str(name).rsplit("@", 1)[0]
@@ -789,8 +806,9 @@ def _read_entity_declaration():
                 if plural:
                     plural_by_type[bare] = plural
     except Exception:
-        order, plural_by_type = {}, {}
+        order, plural_by_type, confirmers = {}, {}, {}
     _entity_key_order, _entity_plural_attributes = order, plural_by_type
+    _absence_confirmers = confirmers
 
 
 def reset_declaration_cache():
@@ -808,8 +826,9 @@ def reset_declaration_cache():
     sentinel would leave the plural map from the previous revision standing while the key
     order came from the new one - the split this module's 「one read」 note exists to stop.
     """
-    global _entity_key_order, _entity_plural_attributes
+    global _entity_key_order, _entity_plural_attributes, _absence_confirmers
     _entity_key_order, _entity_plural_attributes = None, {}
+    _absence_confirmers = {}
 
 
 def _declared_entity_facts_names():
@@ -827,6 +846,73 @@ def _declared_plural_attributes(entity_type):
     _read_entity_declaration()
     return _entity_plural_attributes.get(_bare(str(entity_type))) or frozenset()
 
+
+
+#: The three answers a walk may give about 「is this predicate true of this subject」
+#: (S-149, 판정 338·339). 🔴 `unknown` IS A VALUE, NOT A GAP -- a guard must be able to refuse
+#: on it, which it cannot do if 「cannot say」 renders as `false`.
+VERDICT_TRUE = "true"
+VERDICT_FALSE = "false"
+VERDICT_UNKNOWN = "unknown"
+
+#: Why a verdict is `unknown`, in words that already exist. `not_declared` = the examination
+#: predicate this one names is not itself declared; a truncation key (`nodes`, `claims`, …)
+#: = the walk was cut, so an absence here may be the budget rather than the world.
+#:
+#: ⚠️ `not_examined` IS A THIRD WORD AND I ADDED IT. The ruling named two, and measuring the
+#: cases turned up one they do not cover: the confirmer IS declared, the walk IS complete,
+#: and the examination simply did not happen for this subject. Calling that `not_declared`
+#: would be false (it is declared) and calling it a truncation would be false (nothing was
+#: cut), so mislabelling it would put a wrong reason where an operator reads one.
+WHY_NOT_DECLARED = "not_declared"
+WHY_NOT_EXAMINED = "not_examined"
+
+
+def _absence_verdicts(nodes, complete, cut_reason):
+    """What each node can say about the predicates whose absence is confirmable (S-149).
+
+    🔴 THE POPULATION IS THE DECLARATION, NOT THE DATA. `predicates[]` is built from claims
+    that were ATTACHED, so a predicate with no claims has no row there -- and a `false`
+    verdict is by definition about a predicate with no claims. The set of predicates that
+    declared `absence_confirmed_by` is the only population in which 「it did not happen」 can
+    be stated at all.
+
+    🔴 `false` IS EARNED, NEVER ASSUMED. It needs three things at once: the examination this
+    predicate names happened to THIS subject, this predicate did not, and the walk was
+    COMPLETE. Drop any one and a zero is one of the five zeros again -- and a guard built on
+    it writes on an absence that was really a budget.
+
+    ⚠️ EMPTY IS THE HONEST ANSWER TODAY. Nothing in the shipped declaration names a
+    confirmer yet, so this map is `{}` until an operator writes one. That is the cell
+    filling up, not the cell failing.
+    """
+    _read_entity_declaration()
+    confirmers = _absence_confirmers
+    if not confirmers:
+        return
+    for node in nodes.values():
+        if node.get("node_kind") not in {"entity", "event"}:
+            continue
+        counts = {_bare(str(row.get("predicate"))): row.get("count") or 0
+                  for row in (node.get("predicates") or ())}
+        verdicts = {}
+        for finding, (examination, examination_declared) in sorted(confirmers.items()):
+            if counts.get(finding):
+                verdicts[finding] = {"verdict": VERDICT_TRUE, "why": None}
+            elif not examination_declared:
+                verdicts[finding] = {"verdict": VERDICT_UNKNOWN,
+                                     "why": WHY_NOT_DECLARED}
+            elif not counts.get(examination):
+                verdicts[finding] = {
+                    "verdict": VERDICT_UNKNOWN,
+                    # A cut walk may simply not have REACHED the examination, so the budget
+                    # is the honest reason when there was one.
+                    "why": cut_reason or WHY_NOT_EXAMINED}
+            elif not complete:
+                verdicts[finding] = {"verdict": VERDICT_UNKNOWN, "why": cut_reason}
+            else:
+                verdicts[finding] = {"verdict": VERDICT_FALSE, "why": None}
+        node["absence"] = verdicts
 
 
 def _apply_registrations(nodes, registrations):
@@ -2170,6 +2256,9 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     # -- a contrast computed over a fifth of the controls is the skew `propagation.complete`
     # exists to name.
     if seed_cut: reasons.append("seeds")
+    # 🔴 THE VERDICTS NEED THE CUTS, so they are folded once the budget is known — the same
+    # walk, no second pass over the store.
+    _absence_verdicts(nodes, not reasons, reasons[0] if reasons else None)
     payload = {
         # 🪦 [S-13 ③] `schema_version: 3` 이 여기 있었다. 독자가 «0» 이었고(클라 소스·
         #    하니스·계약·서버 시험 전수), 「다를 때 무엇을 하나」가 «어디에도» 안 적혀 있었으며,
