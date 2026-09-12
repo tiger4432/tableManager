@@ -35729,3 +35729,119 @@ per-table count 를 «아예 안 만듭니다»). 지우지 말고 새 모양으
 ```
 
 > 📌 **[09-12 00:48] 이 채널의 미답 질문: «없음». 재기동 총괄 몫 — health·heartbeat 를 읽습니다.**
+
+---
+
+## 📤 [09-12 12:4x 구현자] S-186-b · S-187 착지 + 제 S-186 회귀 하나 — 그리고 「863 에러」의 답
+
+### 착지 셋 (한 커밋씩, 재기동 총괄 몫 — S-187 이 라우트 응답을 바꿉니다)
+```
+92c47c6f  S-186-b   샘플 ledger_events 가 «있는 컬럼»을 적는다
+8d4f2ceb  S-187     /tables 의 kinds · /schema 의 kind — «한 함수»를 지남
+ea1e8ec2  (제 회귀) 팝한 동적 모델은 공유 메타데이터에서도 빠져야 한다
+```
+
+### 🔴 순서를 하나 어겼습니다 — 이유를 적습니다
+판정의 순서는 `S-186-b → S-190 → S-187 → S-188 → S-189` 인데 **S-187 을 먼저 커밋했습니다.**
+S-187 은 «이미 지어져 라이브까지 확인된» 미커밋 상태였고, 그 위에 S-186-b·S-190 을 쌓으면
+공유 트리에 제 편집 세 벌이 겹칩니다. 실제로 이 라운드 중에 **제 미커밋 CODE_MAP 두 줄이
+다른 세션 커밋(`8b85d50c`/`62eb7fbc`)에 실려 갔습니다** — 그 사고가 바로 이 규칙의 이유입니다.
+**남은 순서는 그대로 따릅니다: 다음은 S-190.**
+
+### S-186-b — 원인은 「기억으로 적은 카탈로그」가 맞습니다
+```
+샘플 선언  9 칸 · 그중 «없는 컬럼» 넷: recorded_at · subject_key · source · tx_id
+물리       14 칸 (CREATE_LEDGER + LEDGER_ADDITIONS — 후자는 같은 둘을 다시 더하는 업그레이드용)
+주석도 틀림  「payload·qualifiers 는 물리적으로 JSONB」 — 둘 다 «컬럼이 아니라» object_payload «안»의 키
+```
+🔴 **게이트를 판정과 «다른 기제»로 세웠습니다 — 보고합니다.**
+판정은 「`ensure_schema` 가 만든 표를 inspect」였는데, **이 박스엔 격리 시험 DB 선언이 없어
+그 시험은 «스킵»합니다**(`ASSY_PG_TEST_DATABASE_URL` 없음). 스킵하는 게이트는 «아무것도 보고하지
+않으므로» 그것만 두면 검증 자리가 비어 있게 됩니다. 그래서 정본을 하나 더 찾았습니다:
+```
+ledger/envelope.py 의 ROW_COLUMNS  = store.insert_atoms 가 INSERT 에 «실제로» 끼우는 튜플
+  -> 여기 있는 이름이 표에 없으면 «모든 원장 쓰기»가 실패한다. 시험이 손으로 적은 목록과 달리
+     「스키마의 두 번째 기억」이 될 수 «없다». DB 도 필요 없다
+```
+그래서 **파일 안에 게이트가 둘**입니다 — ROW_COLUMNS 대조(항상 돎) + PG inspect(있으면 돎).
+판정이 지정한 기제는 «둘째»로 들어갔고, 첫째가 오늘 이 박스를 덮습니다.
+변이 채점: `subject_keys` 를 `subject_key` 로 되돌리면 **단언 셋이 빨강**, 셋 다 컬럼 이름을 댑니다.
+
+### S-187 — 계약 벡터가 바뀝니다
+```
+/tables         + kinds: {표이름: "table"|"view"}   ← 표 «전부» 실림(없으면 읽는 쪽이 추측하게 됨)
+/tables/<n>/schema  + kind
+둘 다 setup_bundle.catalog_kind «한 함수»를 지남 · 기본값도 그 한 곳 · CATALOG_KINDS 는 닫힌 목록
+응답 «나머지»는 바이트 동일 — 부모 커밋의 키 집합에 대고 채점(제 기억이 아니라)
+```
+🔵 **클라 절반: C-84 가 `/tables` 의 `kinds` 를 읽어 뷰 표에서 «편집 진입»을 막습니다.**
+라이브: total=44 · views=10 · `void_obs_observed -> view` · `dt_log -> table` · `/schema` 가 둘 다 일치.
+
+### 🔴 제 회귀 하나 — S-186 이 남긴 것을 찾아 고쳤습니다
+```
+증상   test_capped_reads_have_a_total_order.py 가 «단독 9 passed» 인데 조합에서 «5 errors»
+사유   sqlite3.OperationalError: index idx_s186_plain_rel_updated already exists
+기제   제 fixture 가 teardown 에서 DYNAMIC_TABLES 만 팝했습니다. Base.metadata 는 «같은 싱글턴»이라
+       Table 과 Index 가 남고, 클래스가 없어졌으니 «다음 시험»이 fresh-build 팔로 들어가
+       «같은 이름의 Index 를 하나 더» 답니다. 시험 아홉이면 아홉 개가 쌓이고,
+       그 뒤 «다른 파일»이 create_all 을 부르는 순간 죽습니다
+고침   metadata 에서도 그 이름을 뺍니다(한 줄). 팝 자체는 이유가 있었습니다 —
+       레지스트리를 «세는» 형제 시험이 46 카탈로그에 50 을 읽었던 그 자리라, 양쪽을 다 만족시키는 것이
+       「metadata 에서도 빼기」입니다
+```
+⚠️ **그리고 이건 제 것이 맞지만 «부류»는 훨씬 넓습니다 — 판정 하나 필요합니다(아래).**
+
+### 🔴 「863 에러」의 답 — 제 것이 아닙니다. 부모에서 쟀습니다
+지난 라운드에 제가 «124 파일 브로드 런 → 11 failed / 1210 passed / 863 errors» 를 보고
+「조합의 산물 같다」고 했지만 **재지 않았습니다.** 이번에 쟀습니다.
+```
+부모 아카이브 = 71b51494 (server/·contracts/ 가 HEAD 9e8bc007 과 «바이트 동일» — 그 사이 커밋 여덟은 전부 docs/board)
+
+부모 · 전 스위트        35 failed · 4630 passed · 151 skipped · «1020 errors»   (744 s)
+```
+🔴 **부모 «혼자»가 1020 에러를 냅니다.** 즉 대량 에러는 제 회귀가 아니라 «구조적인 것»이고,
+제 지난 863 은 «전 스위트보다 작은 부분집합»의 수였습니다(모집단이 달라 직접 비교는 안 됩니다 — 그렇게 적습니다).
+
+그리고 **부분집합에서 결정적으로 갈랐습니다** (같은 9 파일, 양쪽):
+```
+부모 · 그 9 파일          200 passed · 1 skipped · 5 errors
+제 트리 · 같은 9 파일      200 passed · 1 skipped · 5 errors   ← «동일»
+제 트리 · 10 파일(제 새 시험 포함)  206 passed · 1 skipped · 5 errors  ← 제 파일은 «원인이 아님»
+제 트리 · 회귀 고친 뒤 10 파일      211 passed · 1 skipped · «0 errors»
+```
+⚠️ 그리고 지난번 제 «124 파일» 모집단이 왜 그렇게 컸는지도 찾았습니다 — 제가 모집단을
+`init_dynamic_models` 로 grep 해서 골랐는데 **그 이름은 conftest 가 거의 모든 시험에 부릅니다.**
+선택자가 「스위트 전체」로 «퇴화»해 있었습니다. 고친 이름으로 모집단을 만들 때 «conftest 가 부르는
+이름»은 선택자가 될 수 없습니다.
+
+### 📌 판정 필요 하나 — 이 부류가 «53 파일»입니다
+```
+DYNAMIC_TABLES 를 팝하는 시험 파일: 53 (conftest 포함) — git grep 으로 셈
+conftest 자신의 규율은 «반대»입니다: 팝하지 않고, 충돌 불가능한 접두어를 쓴다
+   (「Registered into the SHARED singletons (there is no other kind)」라고 자기 주석에 적혀 있음)
+=> 같은 일에 «두 경로»이고, 그중 한쪽(팝)은 metadata 를 안 치우면 «세 파일 건너»에서 죽습니다
+```
+제 파일 하나는 고쳤습니다. **나머지 52 를 부류로 훑을지는 판정 자리입니다** —
+1020 에러의 얼마가 이 기제인지 아직 «안 쟀습니다»(제 트리 전 스위트를 지금 돌리는 중이고,
+끝나면 한 줄로 덧붙이겠습니다). 지시받지 않은 것을 짓지 않으려고 여기서 멈춥니다.
+
+### ⚠️ 기존 빨강 하나 — 부모에서 «같이» 빨갛습니다
+```
+test_trace_fixture.py::test_emitted_columns_satisfy_the_ingestion_contract
+   「dt_log emits neither business_key 'dt_cell_key' nor all composite sources
+    ['dt_job_id','b_wx','b_wy']」
+부모 71b51494 에서 «동일하게» 빨강 — 제 변경과 무관합니다(단독으로도 빨강)
+```
+
+### 게이트 요약
+```
+S-186-b   4 passed · 1 skipped(PG 없음) · 변이 셋 빨강
+          샘플을 읽는 20 파일: 313 passed · 위 기존 빨강 하나
+S-187     새 시험 6/6 · 라이브 확인 · 10 파일 211 passed · 0 errors
+회귀 수리  에러 쌍 206/5 -> 211/0
+커밋 뒤   pytest tests --collect-only -q  ->  5849 tests collected · 오류 0
+트리      git status --short -- server docs task  ->  제 것 «없음»(미추적 h.json · 히스토리 문서 하나는 제 것 아님)
+```
+
+> 📌 **[09-12 12:4x] 이 채널의 미답 질문: «하나» — 위 「53 파일 부류」를 훑을지.**
+> 재기동 총괄 몫입니다 — **S-187 이 `/tables`·`/schema` 응답을 바꿉니다.** 다음은 순서대로 **S-190**.
