@@ -197,6 +197,17 @@ export class RawRegistryPanel {
     this.mount.appendChild(this.root);
   }
 
+  /**
+   * 닫힌 목록을 넣습니다. 응답이 «패널을 만든 뒤»에 오기 때문에 생성자만으로는 부족합니다.
+   *
+   * 🔴 «안 넣는 것»과 «빈 목록을 넣는 것»은 다른 답입니다. 안 넣으면 그 칸은 「못 읽음」이고,
+   *    빈 배열을 넣으면 「선택지 없음」입니다 — 등록된 맵퍼가 하나도 없는 것은 «읽어서 안» 사실이고
+   *    그건 값입니다.
+   */
+  setLists(lists) {
+    this.lists = lists || {};
+  }
+
   _line(cls, text) {
     const el = this.doc.createElement('div');
     el.className = cls;

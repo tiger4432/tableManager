@@ -1078,6 +1078,29 @@ async function fetchData(options = {}) {
 // 🔴 그리고 하나 더 있습니다 — 저장이 «장전»까지라는 사실을 서버가 `enabled` 로
 //    말하고, 패널은 그 «값»을 그립니다. 문구는 지지 않습니다.
 let chainRulePanel = null;
+// C-86 ③. 저장이 «받아 주는» 맵퍼 이름들. `null` 은 「아직/못 읽음」이고 `[]` 는 「없음」입니다 —
+// 그 둘을 한 값으로 접으면 화면이 「등록된 맵퍼 없음」을 안 물어본 자리에도 적습니다.
+//
+// 🔴 `data`(파일의 def 목록)가 «아니라» `registered` 입니다. 그 둘은 다른 물음이고, 실측했습니다:
+//    `data` 는 `server/mappers/*.py` 를 AST 로 읽은 «모든 최상위 def» 이고, 저장을 판정하는 것은
+//    `mapper_sdk.MAPPER_REGISTRY` 입니다(`@mapper(name=…)` 가 준 이름). 전자로 채우면 서버가
+//    거절할 이름을 목록으로 내놓게 됩니다 (S-207 이 그래서 `registered` 를 실었습니다).
+let chainMapperNames = null;
+
+async function loadChainMapperNames() {
+  if (chainMapperNames !== null) return chainMapperNames;
+  try {
+    const res = await adminFetch(`${API_BASE}/admin/mappers/list`);
+    if (!res.ok) return null;
+    const body = await res.json().catch(() => null);
+    // 키가 «없으면» 옛 서버입니다 — 그때도 「없음」이 아니라 「못 읽음」입니다.
+    if (!body || !Array.isArray(body.registered)) return null;
+    chainMapperNames = body.registered.map(String);
+  } catch (e) {                                              // noqa
+    return null;
+  }
+  return chainMapperNames;
+}
 async function refreshChainRule(name, extra = {}) {
   const mount = byId('chain-rule-mount');
   if (!mount) return;
@@ -1087,6 +1110,10 @@ async function refreshChainRule(name, extra = {}) {
       onSave: (payload) => saveChainRule(payload),
     });
   }
+  // C-86 ③. 목록은 «패널이 그리기 전»에 넣습니다. 한 번 읽고 기억합니다 — 규칙을 열 때마다
+  // 등록부를 다시 묻는 것은 같은 답에 대한 두 번째 질문입니다.
+  const mappers = await loadChainMapperNames();
+  chainRulePanel.setLists(mappers === null ? {} : { mappers });
   let body = null;
   let opts = { ...extra };
   try {
