@@ -1,0 +1,4 @@
+wafer,x,y,kind
+W7,10,20,void
+W7,11,20,void
+W8,3,4,delam
