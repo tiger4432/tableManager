@@ -583,12 +583,24 @@ def chain_rule_raw_view(name: str = None) -> dict:
         error = f"{exc.__class__.__name__}: {exc}"
     rules = (document.get("rules") or []) if isinstance(document, dict) else []
     named = {str(r.get("name")): r for r in rules if isinstance(r, dict) and r.get("name")}
+    import chain_bindings
+
     out = {
         "config_path": path,
         "base": file_fingerprint(path),
         "rules": sorted(named),
         "error": error,
         "editable_unit": "rule",
+        # 🔴 THE SHAPE OF ONE RULE, FROM ITS ONE AUTHOR (S-204). The screen has to offer
+        # 「add a rule」, and a form that knows the cell names has WRITTEN them - a second
+        # spelling of `routing_keys()` that goes stale the day the grammar gains a cell and
+        # nobody tells the client. `skeleton()` is generated from that list, so there is
+        # still one author and the form reads it.
+        #
+        # ⚠️ CARRIED EVEN WITH NO NAME, because that is exactly the call a screen makes
+        # when it is about to create one. A skeleton that only arrived beside an EXISTING
+        # rule would be absent at the only moment it is needed.
+        "skeleton": chain_bindings.skeleton(),
     }
     if name is not None:
         out["name"] = name
