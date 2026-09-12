@@ -208,14 +208,21 @@ RULE_ROUTING_REQUIRED = ("name", "trigger_table")
 #: 코드에 기본값이 있거나(`rule.get("enabled", True)` · `rule.get("is_batch", False)`) 데코레이터가
 #: 댈 수 있다(`mapper_sdk.mapper(target_table=...)`). 「전부 적혀 있다」와 「없으면 거절」은
 #: 다른 문장이고, 후자만 계약이다.
-RULE_ROUTING_OPTIONAL = (
-    "target_table", "target_field", "trigger_columns", "enabled", "is_batch",
+#: ⛔ 표를 이름 대는 칸을 여기 «글자로» 적지 않는다 — `RULE_TABLE_KEYS` 에서 «조립»한다.
+#: 🔴 처음 이 목록을 적을 때 그 네 이름을 손으로 옮겨 적었고, 이 파일이 자기 규율로 막던 바로
+#: 그 모양이라 `test_the_rule_table_keys_have_one_author` 가 «빨개졌다». 부분집합 «관계»를
+#: 시험이 단언하는 것으로는 부족하다 — 관계는 참인데 «사본»이 둘이면 하나만 고쳐질 수 있다.
+#: 조립하면 표 키가 하나 늘 때 이 목록이 «자동으로» 안다.
+#: ⚠️ `trigger_table` 은 표 키«이면서» 필수다. 그래서 조립은 필수를 «빼고» 한다 — 한 이름이
+#: `required` 와 `optional` 양쪽에 있으면 `exact(...)` 에게 두 말을 하는 것이고, 제 시험이
+#: 그 중복을 잡았다(조립으로 바꾼 첫 판이 24/22 였다). `target_table` 도 표 키라서 아래
+#: 글자 목록에서 «빠졌다».
+RULE_ROUTING_OPTIONAL = tuple(
+    key for key in RULE_TABLE_KEYS if key not in RULE_ROUTING_REQUIRED) + (
+    "target_field", "trigger_columns", "enabled", "is_batch",
     "follow_up", "allow_chain_trigger", "allow_map_metadata_upsert",
     "max_group_attempts", "origin", "params",
     "mapper_module", "mapper_function",
-    # 표를 이름 대는 칸 — `RULE_TABLE_KEYS` 와 «같은» 목록이어야 한다(시험이 단언)
-    "source_table", "map_table", "inventory_table", "metadata_target_table",
-    "derivation_source_table",
     # 위 키로 표현 못 하는 읽기와, 실행 시점에 정해지는 참조 블록
     READS_KEY, REFERENCE_BLOCK,
 )
