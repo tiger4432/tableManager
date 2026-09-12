@@ -13,10 +13,10 @@ appeared exactly twice, both in `enrichment_config`, and NOTHING read it — S-1
 kind for the loader and graph layers and left execution in the auto-confirm sweep. So this is
 the FIRST dispatcher the `builtin:` vocabulary has ever had.
 
-⚠️ AND IT CARRIES ONE KIND TODAY, WHICH IS A NAMED TEMPORARY. Auto-confirm still runs from
-its sweep, so a follow-up kind runs two ways until S-195 moves it here — gated on S-151's
-measured 0.875 s per group not regressing. That is written down here and queued rather than
-left to be discovered, which is the whole difference between a temporary and a drift.
+🔵 AND THE TEMPORARY IS OVER (S-195). It carried one kind while auto-confirm still ran from
+its own sweep, so a follow-up kind had two ways to run; both are in the table now and there is
+one route. What made that survivable in between was that it was WRITTEN DOWN and queued — a
+temporary nobody records is just a drift with a date on it.
 """
 from __future__ import annotations
 
@@ -87,6 +87,53 @@ def _run_join(db, rule, row_ids=None, key_values=None):
     return vje.on_target_rows_changed(db, joined, list(row_ids or ()))
 
 
+def _run_auto_confirm(db, rule, row_ids=None, done=None, **_):
+    """`builtin:auto_confirm` — the enrichment sweep, now reached through the table (S-195).
+
+    🔴 THE WORK IS UNCHANGED; WHAT MOVED IS HOW IT IS FOUND. It ran from
+    `_auto_confirm_followed_rows`, called directly on the drain beside this dispatcher — so a
+    `follow_up` kind had TWO ways to run and the prohibition on that was carrying a named
+    temporary. This closes it: one table, one route.
+
+    🔴 AND THE RULE COMES FROM THE DECLARATION, NOT FROM A SECOND LOOKUP.
+    `AutoConfirmCollector` already accepted `rules`; left to itself it called
+    `load_enrichment_rules` and re-found what the synthesised rule is already carrying in
+    `params`. Two readers of one fact is how they come to disagree — and here the second one
+    also re-read a file on a paced path.
+
+    ⚠️ `.active` STILL DECIDES. The global switch, the per-rule knob and 「does any reference
+    view declare `candidate_for`」 are the collector's gates and stay there; this seat only
+    hands it the rule it was already going to use.
+
+    ⚠️ CONTAINED. A failure here must not cost the ledger follow-up that already succeeded.
+    """
+    import enrichment_candidates
+
+    table = (done or {}).get("table")
+    rows = list(row_ids or ())
+    if not table or not rows:
+        return {"confirmed": 0, "refused": 0}
+
+    declared = (rule or {}).get("params") or None
+    collector = enrichment_candidates.AutoConfirmCollector(
+        table, rules=[declared] if isinstance(declared, dict) else None)
+    if not collector.active:
+        return {"confirmed": 0, "refused": 0}
+
+    collector.collect_rows(db, rows)
+    stats = collector.flush(db) or {}
+    confirmed = stats.get("confirmed") or 0
+    refused = sum((stats.get("refused") or {}).values())
+    if done is not None:
+        # Values, not a verdict: 「큰 깊이는 값으로 보임」 — a follow-up that confirms nothing
+        # and one that never ran are different facts, and the note carries both. The drain
+        # loop reads these two keys, so they keep their names.
+        done["auto_confirmed"] = confirmed
+        done["auto_refused"] = refused
+    return {"confirmed": confirmed, "refused": refused,
+            "source_name": enrichment_candidates.SOURCE_NAME}
+
+
 #: kind -> callable. One table, the registry's posture: a name, a callable, nothing implicit.
 BUILTIN_KINDS = {}
 
@@ -112,9 +159,13 @@ def run_builtin(kind: str, db, rule, **kwargs):
 
 
 def _install():
+    import enrichment_config
     import virtual_join_config
 
     register_builtin(virtual_join_config.JOIN_MAPPER, _run_join)
+    # S-195: the kind S-179 declared finally has an implementation, so the table carries the
+    # whole `builtin:` vocabulary and the named temporary two-path condition is over.
+    register_builtin(enrichment_config.AUTO_CONFIRM_MAPPER, _run_auto_confirm)
 
 
 _install()

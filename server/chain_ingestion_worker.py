@@ -1487,7 +1487,7 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                 # next read would compute anyway. 「요청/커밋 경로 인라인 금지, 뒤따르는 일은
                 # 페이싱된 별도 작업」 is the standing rule, and this was the inline case of it.
                 # It now runs on the ledger follow-up drain, paced - see
-                # `_auto_confirm_followed_rows`. NOTHING IS ENQUEUED HERE: these rows reach
+                # the `builtin:auto_confirm` kind. NOTHING IS ENQUEUED HERE: these rows reach
                 # that queue already, through their own collapsed outbox events, so a second
                 # enqueue would double the ledger's re-translation to save this.
 
@@ -2300,7 +2300,8 @@ def _run_builtin_followups(db, done):
             if rule.get("trigger_table") != table:
                 continue
             kind = rule.get("mapper")
-            result = chain_builtins.run_builtin(kind, db, rule, row_ids=list(row_ids))
+            result = chain_builtins.run_builtin(
+                kind, db, rule, row_ids=list(row_ids), done=done)
             # 🔴 THE GROUP LINE CARRIES THE RULE NAME. A count with no name is a line nobody
             # can act on — and with several join rules watching one table it cannot even be
             # attributed.
@@ -2314,54 +2315,6 @@ def _run_builtin_followups(db, done):
                      "(the ledger follow-up itself is unaffected): %s", table, err)
 
 
-def _auto_confirm_followed_rows(db, done):
-    """Run the enrichment auto-confirm for the rows this follow-up batch just followed.
-
-    🔴 HERE, AND NOT INSIDE `ledger/followup` (S-151, 판정 264). The ledger only READS
-    these tables; importing the enrichment basis into that module would tie the two
-    together in code for the sake of one call. So the queue hands back `row_ids` as a
-    value and this seat decides what to do with them.
-
-    🔴 NOTHING WAS ENQUEUED TO PUT THE ROWS HERE. A chain write stages collapsed outbox
-    events for its target table, those events are processed as groups of their own, and the
-    ledger enqueue sits ABOVE the trigger filter - so these rows are on this queue already.
-    Enqueueing them again from the write loop would have doubled the ledger's
-    re-translation to save the 0.875 s this move is about.
-
-    ⚠️ A DELETE HAS NOTHING TO CONFIRM. The rows are gone; the follow-up withdraws
-    atoms rather than following values, and asking the collector for them would query for
-    row ids that no longer resolve.
-
-    ⚠️ CONTAINED, THE WAY THE INLINE HOOK WAS. A failure here must not stop the ledger
-    follow-up that already succeeded, and it must not propagate into the drain loop - the
-    counts simply do not appear on the note.
-    """
-    if not done or done.get("event_type") == "DELETE":
-        return
-    table, row_ids = done.get("table"), done.get("row_ids")
-    if not table or not row_ids:
-        return
-    try:
-        collector = enrichment_candidates.AutoConfirmCollector(table)
-        if not collector.active:
-            return
-        collector.collect_rows(db, row_ids)
-        stats = collector.flush(db) or {}
-        confirmed = stats.get("confirmed") or 0
-        refused = sum((stats.get("refused") or {}).values())
-        # Values, not a verdict: 「큰 깊이는 값으로 보임」 - a follow-up that confirms
-        # nothing and one that never ran are different facts, and the note carries both.
-        done["auto_confirmed"] = confirmed
-        done["auto_refused"] = refused
-        if confirmed:
-            logger.info("[Enrichment ①] Auto-confirmed %d single candidate(s) on '%s' "
-                        "(source '%s', lowest priority)",
-                        confirmed, table, enrichment_candidates.SOURCE_NAME)
-    except Exception as err:
-        logger.error("[Enrichment ①] Auto-confirm failed for '%s' on the follow-up "
-                     "(the ledger follow-up itself is unaffected): %s", table, err)
-
-
 def _drain_ledger_followup_sync(db_session_factory):
     """One follow-up batch, in a thread. The session is this call's and closes with it."""
     from ledger.setup import load_setup
@@ -2369,7 +2322,9 @@ def _drain_ledger_followup_sync(db_session_factory):
     db = db_session_factory()
     try:
         done = ledger_followup.drain_once(db.get_bind(), load_setup())
-        _auto_confirm_followed_rows(db, done)
+        # 🔴 ONE ROUTE (S-195). Auto-confirm used to be called here by name, beside the
+        # dispatcher; it is a `builtin:` kind in the table now, so both kinds arrive the same
+        # way and there is no second path to keep in step.
         _run_builtin_followups(db, done)
         return done
     finally:

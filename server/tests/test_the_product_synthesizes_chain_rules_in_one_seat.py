@@ -241,3 +241,91 @@ def test_the_cache_holds_only_what_the_dispatcher_could_run():
     for rule in worker._followup_builtin_rules():
         assert rule.get("follow_up")
         assert rule.get("mapper") in chain_builtins.BUILTIN_KINDS
+
+
+# ---------------------------------------------------------------------------
+# S-195 — auto-confirm joins the table, and the named temporary ends
+# ---------------------------------------------------------------------------
+
+def test_both_builtin_kinds_are_in_the_table():
+    """🔵 THE TEMPORARY IS OVER. It carried one kind while auto-confirm still ran from its own
+    sweep, so a `follow_up` kind had two ways to run."""
+    import enrichment_config
+
+    assert set(chain_builtins.BUILTIN_KINDS) == {
+        vjc.JOIN_MAPPER, enrichment_config.AUTO_CONFIRM_MAPPER}
+
+
+def test_the_drain_has_no_second_route_left():
+    """⛔ THE ASSERTION THAT CLOSES 「두 경로 금지」. Auto-confirm was called on the drain BY NAME,
+    beside the dispatcher; if that call comes back the two can diverge again with nothing red.
+    """
+    import inspect
+
+    import chain_ingestion_worker as worker
+
+    assert not hasattr(worker, "_auto_confirm_followed_rows"), (
+        "the second route is back")
+    body = inspect.getsource(worker._drain_ledger_followup_sync)
+    assert body.count("_run_builtin_followups(db, done)") == 1
+    assert "auto_confirm" not in body, "the drain names a kind again"
+
+
+def test_the_collector_is_handed_its_rule_rather_than_finding_it(monkeypatch):
+    """🔴 THE SECOND READER, DELETED. `AutoConfirmCollector` already accepted `rules`; left to
+    itself it called `load_enrichment_rules` and re-found what the synthesised rule carries in
+    `params`. Two readers of one fact is how they come to disagree — and this one also re-read
+    a file on a paced path."""
+    import enrichment_candidates
+
+    seen = {}
+
+    class _Collector:
+        active = False
+
+        def __init__(self, table, rules=None, settings=None):
+            seen["table"] = table
+            seen["rules"] = rules
+
+    monkeypatch.setattr(enrichment_candidates, "AutoConfirmCollector", _Collector)
+    rule = {"name": "enrichment_auto_confirm:x", "params": {"name": "x", "auto_confirm": True}}
+    chain_builtins.run_builtin("builtin:auto_confirm", None, rule,
+                               row_ids=["r1"], done={"table": "derived_t"})
+    assert seen["table"] == "derived_t"
+    assert seen["rules"] == [rule["params"]], (
+        "the collector was left to load the rules itself")
+
+
+def test_the_note_still_carries_both_counts(monkeypatch):
+    """⚠️ VALUES, NOT A VERDICT. A follow-up that confirms nothing and one that never ran are
+    different facts, and the drain loop reads these two keys by name to total them."""
+    import enrichment_candidates
+
+    class _Collector:
+        active = True
+
+        def __init__(self, table, rules=None, settings=None):
+            pass
+
+        def collect_rows(self, db, rows):
+            pass
+
+        def flush(self, db):
+            return {"confirmed": 3, "refused": {"a": 1, "b": 2}}
+
+    monkeypatch.setattr(enrichment_candidates, "AutoConfirmCollector", _Collector)
+    done = {"table": "derived_t", "row_ids": ["r1"], "event_type": "EDIT"}
+    chain_builtins.run_builtin("builtin:auto_confirm", None, {"params": {}},
+                               row_ids=["r1"], done=done)
+    assert done["auto_confirmed"] == 3 and done["auto_refused"] == 3
+
+
+def test_the_dispatcher_hands_the_note_to_the_kind():
+    """⚠️ `done` IS HOW A KIND REPORTS BACK. Without it the counts would die one frame above
+    where they are computed — which S-176 already had to repair once."""
+    import inspect
+
+    import chain_ingestion_worker as worker
+
+    body = inspect.getsource(worker._run_builtin_followups)
+    assert "done=done" in body

@@ -207,7 +207,18 @@ def _run_chain_for_tx(db, tx_id, trigger_table="encand_test_src"):
 
 def run_followup_auto_confirm(db, derived_table="encand_test_derived"):
     """Follow the derived table's rows the way the paced drain does. Returns the note."""
-    from chain_ingestion_worker import _auto_confirm_followed_rows
+    # S-195: the drain reaches auto-confirm through the `builtin:` table now, and this
+    # helper's whole promise is 「the way the paced drain does」 — so it calls what the drain
+    # calls. The assertions above it are unchanged, which is what makes them the gate on the
+    # confirmed count not moving.
+    from chain_ingestion_worker import (_run_builtin_followups,
+                                        reload_worker_process_cache)
+
+    # ⚠️ THE DISPATCHER HOLDS ITS RULE LIST ACROSS BATCHES (the drain calls it in a loop), and
+    # these tests rewrite the declaration in-process between cases. Production reaches a
+    # changed declaration through a reload, so the faithful thing here is to reload too —
+    # without it a case would be judged against the PREVIOUS case's rules.
+    reload_worker_process_cache()
     from database.models import DatabaseOutbox
     from ledger import followup as ledger_followup
 
@@ -221,7 +232,7 @@ def run_followup_auto_confirm(db, derived_table="encand_test_derived"):
     if not row_ids:
         return {}
     done = {"table": derived_table, "event_type": "EDIT", "row_ids": row_ids}
-    _auto_confirm_followed_rows(db, done)
+    _run_builtin_followups(db, done)
     db.commit()
     return done
 
