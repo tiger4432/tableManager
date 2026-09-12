@@ -1273,6 +1273,12 @@ const FLOORS = new Map([
   ['grid_source_label_harness.mjs', 18],
   // one writer for "a person overwrote this cell", and it writes the half the paint rule reads
   ['cell_overwrite_mark_harness.mjs', 11],
+  // New 2026-09-13 with C-85 (2)~(4). Floor is the count it reports on the commit that
+  // introduces it -- there is no earlier tree to measure it against.
+  // 🔴 IT DRIVES THE REAL `buildColumnDefs` AND THE REAL COPY ROUTE (`getRangeSelectedTSV`), so
+  //    「drawn in the viewer's zone, copied as the served offset ISO」 is an OBSERVATION of the
+  //    two functions the operator reaches, not a reading of grid.js's text.
+  ['grid_datetime_render_harness.mjs', 16],
   // a value carrying markup does not come back out as markup, and the backlog has a ceiling
   ['escaping_harness.mjs', 56],
   // clicking a derived route fills follow, and a later-hop predicate stays visible

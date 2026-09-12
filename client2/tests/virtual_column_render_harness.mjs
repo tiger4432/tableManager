@@ -38,6 +38,19 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import vm from 'node:vm';
+// 🔴 A REAL IMPORT, and the direction this file still has to go. `server_time.js` touches no
+//    DOM, so the sandbox below is handed the SHIPPED parse instead of a second one written here
+//    -- a harness that re-implements the thing it measures is measuring itself.
+//
+// ⚠️ AND THE REASON THIS FILE SLICES IS STALE (measured 2026-09-13, C-85). The header says those
+//    modules "cannot be imported in node" because `config.js` touches `window` at module scope;
+//    `config.js` is guarded today (`typeof window !== 'undefined'`) and its own comment warns
+//    against putting the bare read back. `client2/tests/grid_datetime_render_harness.mjs`
+//    imports `grid.js` WHOLE and drives the same `buildColumnDefs`. Converting this file is a
+//    round of its own, not a side effect of C-85 -- it is raised to the Lead rather than done
+//    here, and NOTHING NEW IS SLICED BY THAT ROUND: the three lifts added below are the names
+//    the new code needs to not throw, and the behaviour they carry is scored by import next door.
+import { localStamp, NO_TIME } from '../src/server_time.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
@@ -255,6 +268,11 @@ function runBuildColumnDefs(sources, schema, fillTargets = [['core_lot', '①'],
   // and supplies a non-empty one, because a stub returning nothing would leave the ①②
   // decoration unwalked and this harness green whatever it did.
   s.sandbox.fillTargetOrdinals = () => new Map(fillTargets);
+  // C-85. The time formatter's two imports, handed in as the REAL ones. A stub returning a
+  // fixed string would make every `datetime` column in this fixture agree with itself and say
+  // nothing about the offset.
+  s.sandbox.localStamp = localStamp;
+  s.sandbox.NO_TIME = NO_TIME;
   // `joinResolvedColumn` is NOT lifted here — it comes from the real state.js that
   // `withState` already ran, so the predicate under test is the shipped one.
   vm.runInContext([
@@ -268,6 +286,13 @@ function runBuildColumnDefs(sources, schema, fillTargets = [['core_lot', '①'],
     // reported the change, loudly, instead of going quietly green.
     constFrom(sources.grid, 'grid.js', 'MOCKUP_COLUMN_LAYOUT'),
     fnFrom(sources.grid, 'grid.js', 'applyMockupLayout'),
+    // C-85: the time seat. `buildColumnDefs` now asks whether a column is a time and, if so,
+    // hands AG-Grid ONE formatter shared with the read-only join column. Both names are free
+    // identifiers in its body, so the slice throws without them -- which is how this harness
+    // announced C-85 rather than going quietly green.
+    constFrom(sources.grid, 'grid.js', 'SYSTEM_TIME_COLUMNS'),
+    fnFrom(sources.grid, 'grid.js', 'isTimeColumn'),
+    fnFrom(sources.grid, 'grid.js', 'timeCellFormatter'),
     fnFrom(sources.grid, 'grid.js', 'buildColumnDefs'),
     'globalThis.__defs = buildColumnDefs();'
   ].join('\n\n'), s.ctx, { filename: 'grid.js#buildColumnDefs' });

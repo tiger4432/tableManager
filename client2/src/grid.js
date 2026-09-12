@@ -18,6 +18,7 @@ import {
 import { applyValueToSelectedRange, updateSelectedCellUI } from './ui.js';
 import { SuggestCellEditor, handleEditorKey, isSuggestEditorActive } from './value_suggest.js';
 import { refreshReferenceForSelection, fillTargetOrdinals } from './enrichment_reference_view.js';
+import { localStamp, NO_TIME } from './server_time.js';
 
 // ── [0b-c] Keyboard range selection (Shift+Arrow) ───────────────────────────────
 // The bulk-fill engine already existed: `applyValueToSelectedRange` (ui.js) does the
@@ -664,6 +665,45 @@ function numericDisplayValue(val) {
   return val;
 }
 
+// ── 시각 셀 — 「어느 순간인가」는 `server_time.js` 하나가 답하고, 값에서 offset 은 안 떨어진다 ──
+//
+// C-85 (소유자 그리드 실물). `ledger_events.occurred_at` 이 `2026-05-12 15:00:00+00:00` 으로
+// 보였다. 서버는 시각을 «offset 단 ISO» 로 낸다(`to_local_str`) — 그런데 이 그리드에는
+// datetime 갈래가 «아예 없었다»: `valueGetter` 가 `number` 하나만 모양 잡고 나머지는 그대로
+// 흘린다. 그래서 UTC 숫자가 보는 사람의 벽시계인 «척» 셀에 앉았다.
+//
+// 🔴 표시«만» 바꾼다. 그 갈라짐이 이 자리의 전부다:
+//    valueFormatter  AG-Grid 가 «그릴 때»만 읽는다             -> 보는 쪽 zone
+//    valueGetter     서버가 준 글자를 그대로 낸다              -> 편집기 시작값 · valueSetter
+//    clipboard.js    `rowNode.data` 를 «직접» 읽는다(실측)     -> 복사값은 원문
+//    로컬 글자를 «값»으로 만들면, 안 고치고 커밋한 셀이 offset 없는 문자열을 되보내고
+//    순간이 보는 사람의 zone 만큼 «움직인다» — 「자막 단 실패」 부류다
+//
+// ⚠️ 파싱은 `server_time.js` 에만 있다. 자르는 것이 C-77 에서 화면 «셋»의 offset 을 떨어뜨렸다.
+const SYSTEM_TIME_COLUMNS = Object.freeze(['created_at', 'updated_at']);
+
+/** 이 컬럼이 «시각»인가 — 선언된 `datetime` 이거나 봉투의 시각 둘. */
+function isTimeColumn(col, colType) {
+  return colType === 'datetime' || SYSTEM_TIME_COLUMNS.includes(col);
+}
+
+/**
+ * 시각 셀의 «표시». 값은 손대지 않는다.
+ *
+ * 🔴 순간을 못 만들면 «받은 것»을 그대로 그린다. 한 줄이 둘에 답한다:
+ *    빈 칸은 «빈 칸»으로 남는다 — `NO_TIME`('-') 을 그리면 이 그리드가 다른 컬럼에서 안 그리는
+ *      글자를 시각 컬럼에만 지어내는 것이고, 편집 가능한 빈 셀이 «값이 있는 척»을 한다
+ *    못 읽는 글자는 «자기 글자»로 남는다 — '-' 로 덮으면 운영자가 그것을 «잃고», 부재와 못 읽음이
+ *      같은 모양이 된다. `numericDisplayValue` 가 NaN 에서 원본을 돌려주는 것과 같은 이유다
+ * ⚠️ `val` 이 빈 값인지 «먼저 묻는 갈래»를 두지 않는다 — 실측(변이 하나): 그 갈래를 지워도 답이
+ *    한 개도 안 바뀐다. `localStamp('')` 가 이미 `NO_TIME` 이라 아래 한 줄이 같은 답을 낸다.
+ */
+function timeCellFormatter(params) {
+  const val = params ? params.value : undefined;
+  const shown = localStamp(val);
+  return shown === NO_TIME ? val : shown;
+}
+
 // ── [Virtual join] The filter a JOIN-RESOLVED column gets ───────────────────────────────
 //
 // ONE helper for BOTH shapes `/schema.join_resolved_columns` announces: `virtual_only`
@@ -791,6 +831,8 @@ export function buildColumnDefs() {
       resizable: true,
       checkboxSelection: index === 0,
       headerCheckboxSelection: index === 0,
+      // C-85. 시각은 보는 쪽 zone 으로 «그리고», 값은 서버가 준 원문 그대로 둔다.
+      valueFormatter: isTimeColumn(col, colType) ? timeCellFormatter : undefined,
       valueGetter: (params) => {
         if (col === 'row_id') return params.data.row_id;
         if (col === 'created_at') return params.data.created_at;
@@ -927,6 +969,7 @@ export function buildColumnDefs() {
     if (state.currentColumns.includes(col)) return;
 
     const isNumeric = vc.type === 'number';
+    const isTime = vc.type === 'datetime';
     const unresolved = typeof vc.unresolved_label === 'string' ? vc.unresolved_label : '';
     const rightTable = vc.right_table || '?';
     const baseTooltip = `${col.toUpperCase()} — '${rightTable}' 조인 컬럼 (읽기 전용)\n`
@@ -987,6 +1030,8 @@ export function buildColumnDefs() {
       // exists to explain.
       ...filterDef,
       resizable: true,
+      // C-85 ④. 읽기 전용 컬럼도 «같은 함수»다 — 두 자리가 갈라지면 같은 순간이 두 글자다.
+      valueFormatter: isTime ? timeCellFormatter : undefined,
       valueGetter: (params) => {
         const val = rawCellValue(params.data, col);
         return isNumeric ? numericDisplayValue(val) : val;
