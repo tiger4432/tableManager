@@ -30,7 +30,6 @@ const BOARD_DIR = path.join(HERE, '..', 'src', 'rnd_board');
 const WALK_DIR = path.join(HERE, '..', 'src', 'walk');
 const LF = String.fromCharCode(10);
 const CRLF = String.fromCharCode(13, 10);
-const dataUrl = (src) => `data:text/javascript;base64,${Buffer.from(src, 'utf8').toString('base64')}`;
 
 // The shape the Lead PM measured (`GET /api/ledger/declaration`).
 const DECL = {

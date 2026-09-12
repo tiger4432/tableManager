@@ -130,15 +130,31 @@ const writtenColumns = () => {
 // A mutant is now a WHOLE module (`lib/probe.mjs`: byte-identical copy + appended probe), so a
 // mutant that fails to parse fails loudly instead of scoring as caught.
 //
-// ⚠️ ONE WALL, NAMED: `state.js` is always the REAL module. The `state` singleton is shared by
-//    every other module, and a probe copy of it carries its OWN object that nothing else reads --
-//    so substituting it would score a page nobody is on. No defect mutant targets it; the two
-//    CONTROLS therefore cover five of the six files.
+// 🔵 THAT WALL IS OPEN (C-91, 판정 346). A probe copy of `state.js` does carry its own `state`
+//    object -- measured -- but the other subjects can be POINTED AT IT: `spec.stubs` overrides the
+//    names a subject imports from `./state.js`, and an explicit export beats the stub's `export *`.
+//    So the controls now cover SIX files. The mechanism was in `probe.mjs` the whole time; what was
+//    missing was this composition, which is the same finding C-93 made about the board loaders --
+//    twice in one night, 「there is no mechanism」 turned out to mean 「nobody had used it」.
+// ⚠️ THE STUB LIST IS PER SUBJECT, and that is not ceremony: `probe.mjs` REFUSES a stub for a name
+//    the subject does not import, because a stub nobody reads is a harness believing it intervened.
+//    Measured: `grid.js` does not import `isVirtualColumn`, and the refusal said so by name.
 const FILE = {
   state: join(SRC, 'state.js'), api: join(SRC, 'api.js'), grid: join(SRC, 'grid.js'),
   clipboard: join(SRC, 'clipboard.js'), ui: join(SRC, 'ui.js'),
   push: join(SRC, 'push_columns.js'),
 };
+
+// What each subject takes from `./state.js`. 🔴 NOT a memory of it -- it is READ from the file, so
+// a subject that starts importing one more name cannot silently stop being covered by the control.
+const STATE_IMPORTS = {};
+for (const key of ['api', 'grid', 'clipboard', 'ui', 'push']) {
+  const text = readFileSync(FILE[key], 'utf8');
+  const found = /import\s*\{([^}]*)\}\s*from\s*'\.\/state\.js'/.exec(text);
+  STATE_IMPORTS[key] = found
+    ? found[1].split(',').map((piece) => piece.trim().split(/\s+as\s+/)[0]).filter(Boolean)
+    : [];
+}
 
 // `buildColumnDefs` asks the reference panel which columns a paste fills. That module owns async
 // rule state, so the answer is STUBBED -- and stubbed NON-EMPTY, because a stub returning nothing
@@ -168,12 +184,29 @@ const REAL = {
  */
 async function bundleOf(mutations, tag) {
   const out = { ...REAL };
+  // 🔵 C-91. `state.js` first, because everything else has to be pointed at ITS object.
+  let stateStub = null;
+  if (mutations.state) {
+    const source = readFileSync(FILE.state, 'utf8').replace(/\r\n/g, '\n');
+    if (mutations.state(source) !== source) {
+      out.state = (await loadWithProbe(FILE.state, { mutate: mutations.state, tag })).module;
+      stateStub = out.state;
+    }
+  }
   for (const key of Object.keys(mutations)) {
     if (key === 'state') continue;
     const source = readFileSync(FILE[key], 'utf8').replace(/\r\n/g, '\n');
-    if (mutations[key](source) === source) continue;
-    const spec = { mutate: mutations[key], tag };
-    if (key === 'grid') spec.stubs = GRID_STUBS;
+    const mutated = mutations[key](source) !== source;
+    if (!mutated && !stateStub) continue;
+    const spec = { tag };
+    if (mutated) spec.mutate = mutations[key];
+    const stubs = key === 'grid' ? { ...GRID_STUBS } : {};
+    if (stateStub && STATE_IMPORTS[key].length) {
+      // Only the names THIS subject imports. The probe refuses the rest, by name.
+      stubs['./state.js'] = Object.fromEntries(
+        STATE_IMPORTS[key].map((name) => [name, stateStub[name]]));
+    }
+    if (Object.keys(stubs).length) spec.stubs = stubs;
     out[key] = (await loadWithProbe(FILE[key], spec)).module;
   }
   return out;
@@ -239,7 +272,11 @@ const cell = v => ({
 
 // ── staging ─────────────────────────────────────────────────────────────────────
 
-const state = REAL.state.state;
+let state = REAL.state.state;
+// 🔵 C-91. The suite stages the state of the BUNDLE it is scoring. With a mutated `state.js` in
+//    play that is a different object, and staging the real one would leave the mutant on a page
+//    nobody filled -- which is exactly how a substituted singleton scores nothing.
+const useState = (bundle) => { state = bundle.state.state; };
 
 /** The shared `state`, put back to a known page before every runner. */
 function stage(schema, extra = {}) {
@@ -453,6 +490,7 @@ const optsOf = def => (def && def.filterParams && def.filterParams.filterOptions
 const getVal = (def, data) => def.valueGetter({ data, node: { rowIndex: 0 } });
 
 async function suite(sources) {
+  useState(sources);
   const t = makeScorer();
   const { check } = t;
 
@@ -743,6 +781,14 @@ const sub = (src, from, to, label, times = 1) => {
 
 // DEFECTS: each must be CAUGHT. Every one of them is a thing this round actually decided.
 const DEFECTS = [
+  // 🔵 C-91. THE PROOF THAT THE SUBSTITUTION REACHES THE SUBJECTS. A control that escapes proves
+  //    nothing about it -- it escapes whether the copy was wired in or quietly skipped. This
+  //    mutant lives in `state.js` and must be CAUGHT by the write funnels, which are OTHER files:
+  //    if they are still reading the real singleton, the announcement is still honoured and this
+  //    passes. It is the reason the wall is written as open rather than merely claimed open.
+  ['state.js: the announcement stops being recognised, so every write funnel offers it', 'state',
+    (t) => sub(t, '  return list.some(vc => vc && vc.name === colId);',
+      '  return false;', 'state-blind')],
   ['merge the names into currentColumns', 'api', (t) => sub(t, 'state.currentColumns = data.columns || [];',
       'state.currentColumns = (data.columns || []).concat((data.virtual_columns || []).map(v => v.name));',
       'merge')],
@@ -840,11 +886,9 @@ const RENAMES = [
 ];
 const stripComments = src => src.split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
 
-// 🔴 C-88. A CONTROL NOW APPLIES TO EVERY FILE THE BUNDLE CAN SUBSTITUTE, which is five of
-//    six: `state.js` is the shared singleton and a probe copy of it is a page nobody is on
-//    (see the wall named at the top). `push_columns.js` takes the rename too -- it could not
-//    before, because it was loaded from a `data:` URL rather than as a mutant.
-const SUBSTITUTABLE = ['api', 'grid', 'clipboard', 'ui', 'push'];
+// 🔵 C-91. A CONTROL NOW APPLIES TO ALL SIX. `state.js` joined the day the composition above was
+//    written; before that its copy was 「a page nobody is on」, which read as a wall and was not one.
+const SUBSTITUTABLE = ['state', 'api', 'grid', 'clipboard', 'ui', 'push'];
 const everyFile = (fn) => Object.fromEntries(SUBSTITUTABLE.map((key) => [key, fn]));
 
 const CONTROLS = [

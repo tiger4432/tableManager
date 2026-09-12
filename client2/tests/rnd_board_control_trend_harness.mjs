@@ -46,7 +46,6 @@ const outward = (text) => text.replace(OUTWARD_RE, (whole, rel) => {
   return existsSync(real) ? `'${pathToFileURL(real).href}'` : whole;
 });
 
-const dataUrl = (src) => `data:text/javascript;base64,${Buffer.from(src, 'utf8').toString('base64')}`;
 
 const TRENDS = {
   state: 'ready',

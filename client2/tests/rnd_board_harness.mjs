@@ -43,7 +43,6 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const dataUrl = (src) => `data:text/javascript;base64,${Buffer.from(src, 'utf8').toString('base64')}`;
 
 const FIX_07 = JSON.parse(readFileSync(
   path.join(HERE, 'fixtures', 'rnd_board_lot_map_slot07.json'), 'utf8').replace(/\r\n/g, '\n'));
