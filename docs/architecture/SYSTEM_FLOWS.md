@@ -592,6 +592,42 @@ rnd_board_walk_harness.mjs     (329줄)   `hops` 히트 2 — 둘 다 픽스처 
 | 삭제 (`deleteDeclaration`) | `GET /deletion-preview?targets=` → `DELETE /declarations/{key}` | 「삭제」 클릭 | HTTP 쿼리 ×2 | 🔴 **`context_token` 을 안 싣는다**(라우터가 받고 `stale_context` 로 거절할 수 있는 축인데 클라가 안 쓴다) | 🔴 **응답 14키 중 «1»** — `plan.unread_after` 만(`:499`). `released`·`blocked`·`retained`·`is_reset`·`sources_before/after`·`*_total` 등 13 소비자 0 | 🔴 **위험하게 조용.** `is_reset`(「소스가 하나도 안 남는다」)이 **안 읽혀서** 번들을 통째로 비우는 삭제가 `window.confirm` 에 「영향 없음」으로 뜰 수 있다 | ⚠️ |
 | 컨트롤러 `review-draft`·`revise-draft`·`activate-draft`·`discard-draft` 분기 | `POST /drafts/{id}/review`·`/revise`·`/activate`, `DELETE /drafts/{id}` | (없음) | — | 네 분기가 `ontology_explorer.js:1212·1218·1227·1242` 에 살아 있다 | 🔴 **생산자 0.** 그 넷을 «만드는» 자리가 `client2/src/` 어디에도 없다(전량 grep: 소비 분기 4줄 + `client2/tests/dom_patch_harness.mjs:223` 시험 전용 1 — 규칙대로 빼면 **0**). `view.js` 의 `button(...)` 이 내는 액션은 `save-draft`(672)·`test-run`(855)·`create-draft`(870) 셋 | 🔇 조용 — 서버 라우트 넷이 서 있고 **누를 버튼이 없다**. `POST /review`·`/revise` 는 클라 호출자 0 | ⚰️ |
 
+### 🆕 ④-bis 수명주기는 «하나», 문서는 «둘» (2026-09-12 S-194 `15fa6006`·`27795fdc`, 판정 303)
+
+이 흐름의 «기계»(초안 만들기 → 저장 → 검토 → 발효 → 버리기)는 원장 선언만 편집할 수 있었다.
+체인 규칙도 같은 일을 해야 하는데, **두 번째 수명주기를 짓는 것이 답이 아니었다** —
+초안 두 벌은 「compare-and-swap 이 무엇을 견주나」에 대한 답이 «둘»이 된다는 뜻이다.
+
+```
+수명주기  `ledger/config_drafts.OntologyDraftStore` :354   — «하나». 문서를 «인자»로 받는다
+문서 ①    `ledger/config_drafts.LedgerDocument` :319       — 기본값. 오늘의 코드를 «옮긴 것»
+문서 ②    `chain_bindings.ChainRuleDocument` :591          — 체인 규칙
+색인      `chain_bindings.ChainRuleIndex` :537             — 체인의 «탐색기 인덱스» 대용
+맥락      `ledger/config_drafts.DraftContext` :304
+```
+
+🔴 **`LedgerDocument` 는 아무것도 «다르게 정하지 않는다».** 판정 303 이 요구한 관문이
+「원장 경로가 «바이트 동일»하게 나온다」라서, 그 클래스는 오늘의 결정에 «이름을 줄» 뿐이다.
+그리고 `OntologyDraftStore(document=None)` 의 기본값이 `LedgerDocument` 라 **기존 호출자가 한 줄도
+안 바뀌고**, 바이트 동일 관문이 «대조할 것»을 갖는다.
+
+⚠️ **「번들 인자 하나면 열린다」가 «거짓»이었고, 그것을 재서 알았다** — 체인에는 «탐색기 인덱스»가
+없다. 기계가 실제로 요구하는 것은 작았다: 편집 가능한 대상의 매핑 · 대상이 아닌 키에 대한
+«이름 있는 거절» · 초안의 base 를 견줄 무엇. `ChainRuleIndex` 가 그 셋이다.
+🔴 **스냅샷 해시는 «로더가 보는 규칙»에 대한 것이지 파일 «바이트»에 대한 것이 아니다.**
+🔴 **검증은 «로더의 것»이고 «둘째 의견»이 아니다** — `ChainRuleDocument.preview` :632 가
+`validation.Problems().exact(...)` 를 로더와 «같은 상수»(`RULE_ROUTING_REQUIRED` · `RULE_ROUTING_OPTIONAL` —
+`routing_keys()` 가 이어 붙이는 바로 그 둘)로 돌린다(S-188 ⓐⓑ). 그래서 **화면이 좋다고 부른 초안을
+로더가 곧이어 거절하는 일이 «있을 수 없다»** — 이 흐름이 반복해서 치른 부류(「같은 질문에 답하는 자리가
+둘」)를 여기서 «구조로» 막는다.
+🔵 **그리고 거절만 보이면 «화면이 로그보다 눈이 어둡다»** — 로더는 평평한 최상위 칸을 «받아 주고»
+이름 대어 «경고»한다(S-188 ⓓ). 거절만 보고하는 프리뷰는 저자가 파일을 «매일 아침 기동 줄이 불평하는
+상태»로 두게 두면서 화면은 「좋다」고 말하게 된다. 그래서 프리뷰도 `flat_param_cell` 경고를 «같이» 낸다.
+
+📎 그리고 이 흐름에 «드라이런»이 하나 붙었다 — `POST /admin/chain/dry-run`(`main.py` :4155):
+트리거 행 하나를 매퍼에 먹여 «무엇이 나오나»를 보여 주고 **쓰지 않는다**.
+
+
 ### ④ 에서 목록이 놓친 흐름
 
 - **`GET /authoring/plan` 이 «두 번» 나간다.** `loadAuthoring` 이 `Promise.all` 로 필터된 플랜(`?selection=`)과 **필터 없는 전량 플랜**을 같이 부른다(`:768-773`). 뒤엣것은 「이 파일이 여기서 이미 무엇을 쓰나」 전용이고 `state.authoringAll` 에 한 번만 캐시된다. **라우트는 하나인데 질문이 둘**이라 라우트를 세면 안 보인다.
