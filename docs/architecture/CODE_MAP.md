@@ -3551,6 +3551,71 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 | 🆕㉖ **`rows_projection(payload, nodes, edges, seed_signs, entities, static_types=())`** :1065 · `_declared_columns(nodes, entities)` :1012 · `_trail_back(trail, node_id)` :696 · `ROW_FIXED_COLUMNS` :977 · `PATH_SEPARATOR = "→"` :982 · `VIA_PREFIX = "via."` :990 | **걷기의 답을 TSV 로**(S-183 `7f39a51f`, `format=rows`) — 행 하나 = 닿은 노드 하나. 🔴 **절단 표시는 «언제나 첫 줄»** — 「끊김 ≠ 없음」이고, 표만 받은 독자는 그것을 다른 데서 배울 길이 없다. 🔴 그리고 그 표시는 «불리언이 아니라 사유»다 — 라이브 실측에서 `truncated=true` 인데 페이로드는 「물어본 홉 수에서 멈췄다」고 말했다. 예산이 동난 것과 시킨 데까지만 간 것은 다른 사실이다. 🔴 `depth` 는 «페이로드»에서, `path` 는 «trail» 에서 온다 — 두 번 걷는 것이 «일부러»다: trail 에서 depth 를 다시 세면 「경로의 술어 수 = depth」가 «구성상» 참이 돼 아무것도 재지 못한다. ⚠️ 경로는 씨앗당 «하나»(그 노드에 처음 닿은 것)이고, 씨앗 둘의 trail 에 든 노드는 «씨앗마다 행»이다. 🆕 **닿게 한 엣지의 수식어는 `via.` 접두로 실린다**(S-183-b `0480f9d0`) — 씨앗 행은 닿게 한 엣지가 «없어» 그 칸이 비고, 그것이 정직한 답이다 |
 | 🪦 `tabular_projection` · `NODE_KINDS` · `RETIRED_NODE_KINDS` · `FOLDED_KINDS` · ~~`collect`~~(🆕㉓ **이름이 «돌아왔다»** — 배관 종류를 고르던 그 축은 죽었고, «도메인 노드 타입»을 고르는 새 인자가 같은 이름을 쓴다. 위 라우트 행 참조) · `observation_mode` · `include_values` · `quantity_node_id` · `_quantity_node` · `_bound_quantities` · 🆕⑭ **`NODE_TABLE_COLUMNS`·`EDGE_TABLE_COLUMNS`·`PROPERTY_TABLE_COLUMNS`** · 🆕⑭ `_link_containers` · 🆕⑭ `DEFAULT_CONTINUES_HOPS` · 🆕⑭ `continuing` | **전부 없다**(`2a4e51cf` 전건 grep). 🔴 **세 `*_TABLE_COLUMNS` 는 🆕⑬ 이 「호출자 0」이라 적어 둔 바로 그 셋이고, 그 행이 삭제 근거가 됐다.** 살아 있는 상한 상수는 `MAX_EDGE_LIMIT = 6000` · `MAX_CLAIM_SCAN = 6000` 이고 소스가 정착 실측을 곁들여 적는다(`edge_limit 3000` 은 아직 엣지에서 끊기고 **6000 에서 5,079 엣지로 정착** · claim scan **6000 에서 1,805노드/720엔티티**). ⚠️ `DEFAULT_PROPERTY_LIMIT`/`MAX_PROPERTY_LIMIT` 은 «선언만» 남아 있다 — 이 파일 안에 읽는 자리가 없다 |
 
+### 🆕㉗ 서버 — **신설 넷** (2026-09-12 · D-13 범위 · `75c2b0c7`·`803a709c`·`46512d5b`·`4dcfda23`)
+
+> 🔬 넷 다 「**한 자리가 여럿이 되던 것**」의 수리다 — 거절의 말투 · 「돌려 보는 법」 · 「전선 위의 한 칸」 ·
+> 「규칙의 모양」. 아래 줄 수와 심볼·자리 수는 `wc -l` 과 `git grep` 실측(2026-09-12, HEAD)이다.
+
+#### `server/validation.py` (**142줄**, S-188 ⓒ `75c2b0c7`) — 거절의 «말투» 하나
+
+| 심볼 | 무엇인가 |
+|---|---|
+| `class DeclarationValidationError(ValueError)` :30 · `CANDIDATE_LIMIT = 8` :44 | 선언 검증의 거절 타입과 「비슷한 이름」 제시 상한 |
+| `path_of(base, child)` :47 · `allowed_note(required, optional)` :51 · `did_you_mean(wanted, declared, label)` :66 | **거절문이 «경로»와 «허용 목록»과 «오타 후보»를 같은 말투로 낸다** |
+| `class Problems` :89 | 그 셋을 모아 쓰는 수집기 |
+
+🔴 **원장의 셋업 모듈 «밖»으로 나온 것이 이 커밋의 모양이다.** 체인 로더도 같은 말투로 거절해야 하는데
+그 함수들이 원장 쪽에 살아 있으면 둘 중 하나는 «자기 말투»를 새로 쓰게 되고, 그때 운영자는 같은 종류의
+실수에 대해 «두 가지 다른 문장»을 받는다 — 어느 쪽이 무엇을 뜻하는지 알 방법 없이.
+
+#### `server/utils/wire_format.py` (**35줄**, S-190 `46512d5b`) — 「선언된 한 칸」이 전선 위에서 무엇인가
+
+| 심볼 | 무엇인가 |
+|---|---|
+| `wire_text(value)` | dict·list 면 **JSON «텍스트»**, 그 밖은 «그대로». 인자는 «값 하나»이고 타입 인자가 없다 |
+
+🔴 **타입 인자가 없는 것이 설계다** — 카탈로그의 타입 어휘는 number/datetime/string «셋»뿐이라
+dict·list 는 «`string` 으로 선언된 칸»에만 도착할 수 있다. 값의 «모양»이 이미 답을 정하므로
+둘째 인자는 「선언과 어긋날 두 번째 기회」가 된다.
+🔴 **철자가 고정인 이유는 «두 독자가 이 문자열을 견주기» 때문이다** — `sort_keys`(dict 의 삽입 순서는
+선언의 순서가 아니다) · `ensure_ascii=False`(한국어 키가 이스케이프로 바뀌지 않게) ·
+좁은 구분자(그리드와 TSV 내보내기가 «같은 바이트»). `str(value)` 는 파이썬 repr 이라 JSON 이 아니고
+하류의 아무도 못 판다 — 행 TSV 가 그걸 하고 있었다.
+📐 **부르는 자리 «여섯»**(`git grep -o "wire_text(" -- server`, 정의·import·시험 제외):
+`main.py` :846·:950·:2724·:2785 · `ledger_api/ledger_subgraph.py` :1066 · `dev_bench.py` :94.
+⚠️ **지시서는 「자리 다섯」이라 적었다** — 제품 자리가 다섯이고 여섯째는 «벤치»(`dev_bench`)다.
+벤치가 같은 함수를 지나는 것이 요점이라(아래) 이 줄은 여섯으로 세고 갈래를 적는다.
+
+#### `server/dev_bench.py` (**385줄**) + `server/scripts/try_core.py` (**59줄**) — 샘플 하나로 «돌려 보는» 자리 (S-192 `803a709c`·`12985006`)
+
+| 심볼 | 무엇인가 |
+|---|---|
+| `MAPPER`/`PARSER`/`KINDS` :32~34 | 두 종류의 «한 철자» |
+| `read_sample(path)` :37 · `as_payloads(rows)` :48 · `rows_to_tsv(rows)` :71 | 입력 읽기 · 워커가 주는 «봉투» 모양으로 · 결과를 TSV 로 |
+| `_readonly_session()` :112 | 🔴 **서버가 «강제»하는 읽기 전용 커넥션**(`db_safety.open_readonly_engine`/`assert_readonly`, 판정 301). ⚠️ **열리지 않으면 `None` 을 넘긴다** — `db` 를 안 쓰는 매퍼가 대부분이고, 살아 있는 PostgreSQL 을 요구하면 벤치가 «제일 쓸모 있을 때» 못 쓰인다 |
+| `BENCH_TARGET_DECLARATION` :143 · `_declare_bench_target(table_name)` :147 | 선언 없는 표에 «빌려 주는» 최소 선언(`business_key: row_id`, 컬럼 하나). 🔴 **도메인 모양이 «아니다»** — 벤치가 매퍼에게 그 표가 안 가르칠 것을 가르치면 안 된다 |
+| `try_mapper(name, sample, *, rule=None, target_table="bench_target")` :179 | 🔴 **이름은 «레지스트리»에서 푼다**(아래 `mapper_sdk`) — `module:function` 도 받지만, 등록된 이름이면 «추측할 이름이 없다** |
+| `try_parser(file_path, *, force=None, scripts_path=None)` :241 | 파서는 «claim 으로» 고른다(판정 301) — `--force` 는 match() 가 안 무는 파일을 굳이 돌릴 때 |
+| `run_sample_folder(folder)` :306 · `load_folder_mappers(folder)` :345 · `expected_path(folder)` :369 · `sample_folders(root, kind=None)` :373 | **폴더 «하나»가 시험 하나다** — `input.csv` + `rule.json` + 매퍼 파일 + `expected.tsv` |
+
+🔴 **CLI 와 픽스처가 «같은 함수»를 지난다.** `scripts/try_core.py` 는 아무것도 스스로 조립하지 않고
+세 형태(`mapper`·`parser`·`folder`) 전부 `dev_bench` 를 부르며, `folder` 형태는 pytest 픽스처가 부르는
+바로 그 `run_sample_folder` 다 — 그래서 「명령줄에서는 된다」와 「시험은 통과한다」가 «다른 사실»이 될 수 없다.
+⚠️ **거절은 stderr + 종료코드 2** 다(`try_core.py`). stdout 으로 내면 「행이 0 인 결과」와 구별되지 않는다.
+🔵 그리고 그 폴더 시험이 자기 픽스처의 «공허함»을 적어 뒀다 — `rows_to_tsv` 에서 `wire_text` 를 빼도
+폴더 시험은 «초록»이었다. 두 규칙이 같은 답을 내는 표본은 판별식이 아니라서, 시험이 그 자리를 따로 단언한다
+(`server/tests/test_a_sample_folder_is_a_test.py`).
+📌 오늘 실린 샘플: `server/tests/samples/mapper/bench_double_x` · `server/tests/samples/parser/void_lines`.
+
+#### `server/chain_skeleton.json` (**197줄**, S-188 ⓔ `4dcfda23`) — 규칙 «하나»의 모양
+
+🔴 **손으로 적은 목록이 아니라 `chain_bindings.routing_keys()` 에서 «생성»된다**(파일의 `note` 가 그렇게 적는다).
+그리고 `server/tests/test_chain_skeleton.py` 가 둘을 «서로 세어» 대조한다 — 문법이 한 칸 늘면 스켈레톤이
+따라오지 않은 날 «빨개진다».
+⚠️ **스켈레톤은 «무엇이 좋은지»를 판정하지 않는다** — 자기 `note` 가 「the loader still decides what is
+good」이라 적는다. 모양은 여기, 판정은 로더. 두 자리가 같은 질문에 답하면 갈린다.
+
+
 ### ⚰️ 서버 — 원장 v2 작성/설정 계열 → **[§5-H](#5-h-정본-원장-canonical-ledger) / [§5-H-bis](#5-h-bis-온톨로지-config-작성탐색-표면-2026-08-21-신설-등재)로 승격했다 (2026-08-21)**
 
 > 🆕⑩ **여기 있던 표 아홉 행은 이제 정식 절에 있다** — `setup_registry` · `roleframe` · `source_preparation` · `runtime_v2` · `setup` · `shadow_parity` · `config_explorer` · `config_explorer_service` · `config_drafts`. §5-I의 규칙(「절이 필요할 만큼 중요해지면 §5-x로 승격하고 이 목록에서 지운다」)대로 지웠다. **줄 수·심볼은 §5-H 쓰기 측 표를 보라** — 여기 있던 값은 전부 `5359fdd` 기준이었고 아홉 중 **여덟이 이 구간에 자랐다**.
