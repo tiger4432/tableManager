@@ -40682,3 +40682,40 @@ LedgerDocument · DraftContext · document= 인자  은퇴
 제 기억 파일의 줄이고, 오늘 그 부류를 이미 두 번(빈 모집단) 만났습니다.
 
 > 📌 **[09-13 03:39] 이 채널의 미답 질문: «없음».** 전 스위트 결과가 이 라운드의 남은 산출물입니다.
+
+
+---
+
+## 전 스위트 한 바퀴 — **빨강 «0»** (판정 03:16 의 조건 그대로)
+
+```
+6,067 passed · 156 skipped · 4 xfailed · FAILED «0» · ERROR «0»
+소요 656.59s (10분 57초)
+수집 6,227 = 6,067 + 156 + 4      ← 산술 대조: 남거나 빠진 시험 «없음»
+env python 절대경로 · 파일로 받음(`| tail` 없음) · `-rf`
+```
+🔴 **새 빨강 «없습니다».** 그래서 큐 행 후보도 «0** 입니다 — 고칠 것이 없었습니다.
+
+### xfail 넷 — 판정이 말한 「기존 둘」보다 «둘 많습니다». 전부 이름 댑니다
+```
+test_config_resolve_report_contract.py::test_every_report_reason_including_scope_unresolved_has_a_runtime_twin
+test_replace_map_cross_scope.py::test_push_into_one_map_rewrites_a_row_owned_by_another
+test_trace_fixture.py::test_emitted_columns_satisfy_the_ingestion_contract[bonding_log]
+test_virtual_join_types.py::test_a_graph_meta_boolean_never_reaches_the_payload_because_the_cell_is_taken
+```
+⚠️ **넷 다 «strict» 이고 셋은 소스에 `@pytest.mark.xfail(strict=True)` 로 사유가 적혀 있습니다**
+(넷째 `test_trace_fixture` 는 픽스처가 사유를 «붙여» 파라미터로 만듭니다 — 그래서 mark 문법 grep 은
+«셋»이고 실제는 넷입니다. 낱말로 세면 하나를 놓치는 자리라 적어 둡니다).
+`test_virtual_join_types` 의 것은 판정 309 가 「이게 «통과»하면 주입이 돌아온 것이고 그게 볼 일」로
+만든 신호이고, 나머지 셋도 같은 «이름 붙은» 부류로 보입니다.
+
+🔴 **제가 「기존 둘」을 확인하지 못했습니다** — 그 둘이 어느 것이었는지 제 기록에 없어서,
+「둘이 넷이 됐다」인지 「원래 넷인데 둘로 적혔다」인지 **못 가릅니다.** 넷의 이름을 다 적었으니
+총괄이 대조해 주시면 그 차이가 바로 보입니다. 추측으로 메우지 않겠습니다.
+
+### 오늘 새벽 착지분 뒤의 상태
+S-200 이 8→2 로 만든 뒤 오늘 스무 개가 넘게 착지했고(복수값·집계·씨앗·진위·대조 분모·은퇴 셋·이음새),
+그 위에서 **전수가 초록**입니다. 수집 수가 라운드마다 늘어난 것(6,107 → 6,227)도 그대로입니다.
+
+> 📌 **[09-13 03:41] 이 채널의 미답 질문: «하나» — xfail 「기존 둘」이 어느 둘이었습니까(넷 중).**
+> 큐에 판정 없이 갈 줄이 없으므로(S-145·S-57 은 S-55 뒤 · S-146-b 는 운영 모양 박스 뒤) **대기합니다.**
