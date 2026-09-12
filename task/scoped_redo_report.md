@@ -35922,3 +35922,106 @@ conftest 의 «씨앗 있는 `client`» 픽스처로 바꾸고 `assert checked` 
 
 > 📌 **[09-12 12:2x] 이 채널의 미답 질문: «없음».** 재기동 총괄 몫 — **S-190 이 `/data`·CSV·TSV 의 셀 문자열을 바꿉니다.**
 > 다음은 **S-188 설계** → S-189 설계.
+
+---
+
+## 📐 [09-12 12:3x 구현자] S-188 설계 한 장 — 코드 0. 「짓기」보다 «이미 있는 것에 붙이기»가 큽니다
+
+### 🔴 먼저: 관문 ①②③ 을 지나고 나니 «셋»이 이미 있습니다. 설계가 그만큼 작아집니다
+```
+② params 블록      «이미 있습니다». `chain_graph.py:97` 이 `rule.get("params")` 를 읽고
+                   `decision_key`·`reference_views` 를 그 안에서 꺼냅니다 — S-179 합성 규칙이
+                   그 모양으로 나기 때문입니다. `origin`(:89)도 이미 `file` / 합성을 가릅니다
+                   => ② 는 「블록을 만든다」가 아니라 «파일이 적은 규칙까지 그 블록으로 옮긴다»입니다
+①③ 거절 언어       «이미 있습니다». `setup_bundle._Problems.exact(value, path, required=, optional=, ignored=)`
+                   (:554, 호출 9곳) + `_did_you_mean`(:524)이 「오타냐 아직 안 적었냐」를 가릅니다.
+                   `ignored=` 는 «받고 버리기»라 ④ 호환층의 철자로 그대로 쓸 수 있습니다
+셀 이름의 저자      «이미 있습니다». `chain_bindings.RULE_TABLE_KEYS`(표 키 «일곱» + 역할) ·
+                   `READS_KEY="reads"` · `REFERENCE_BLOCK` · `resolve_table`/`resolve_column`.
+                   그리고 그 파일이 이 설계의 원칙을 «먼저 적어 두었습니다»:
+                     ⛔「목적마다 새 키를 만들지 않는다. 새 목적은 여기 «값»으로 적힌다」
+                     🔴「여기서 다시 열거하지 않는다 — 키가 하나 늘면 «한 줄»이 늘고 세 자리가 같이 안다」
+```
+⚠️ **그래서 이 라운드의 일은 「검증기·레지스트리를 짓기」가 아니라 「있는 셋을 «한 목록»으로 잇기」입니다.**
+새로 짓는 것은 «맵퍼가 자기 인자 이름을 선언하는 자리» 하나뿐입니다.
+
+### 실측 — 판정의 수를 제 손으로 다시 쟀고, «둘»이 다릅니다
+```
+✅ 워커가 읽는 규칙 키 = «열하나»  (chain_ingestion_worker 의 rule.get 전수)
+   allow_chain_trigger · allow_map_metadata_upsert · enabled · follow_up · is_batch ·
+   mapper_function · mapper_module · name · target_table · trigger_columns · trigger_table
+🔴 그런데 «워커만»이 아닙니다 — chain_graph 가 «워커가 안 읽는» 키를 더 읽습니다:
+   derived_table · expose · left_table · max_group_attempts · origin · params ·
+   reference_views · right_columns · right_folds · right_table · target_field · target_fields
+   enrichment_config 가 더: aggregations · alignment · decision_key
+=> 「라우팅 키 정확히 열하나」로 «닫으면» chain_graph 가 읽는 것을 로더가 «거절»합니다.
+   닫을 목록의 주어는 «워커»가 아니라 «규칙을 받는 모듈 전부»입니다
+🔴 샘플 규칙의 키 = «44종» (이 박스 · `config/sample/chain_rules.json.sample`, 규칙 10)
+   그중 `__` 셋은 주석(`__comment`·`__why_enabled`·`__alignment_thresholds_derivation`)
+⚠️ 「맵퍼 인자 개수」는 «못 셉니다» — `server/mappers/*.py` 는 gitignore 입니다.
+   추적되는 맵퍼는 «12»(`.sample` 여덟 + `ledger_v2_*` 둘 + …)이고, 운영 맵퍼가 무엇을 읽는지는
+   저장소가 «모릅니다». 그래서 ② 의 선언은 «맵퍼 쪽에서» 나와야 합니다 — 제품이 추측할 수 없습니다
+✅ 로더 `load_chain_rules`(:453) 검증 «0» — `json.load` 뒤 `data.get("rules", [])`. 끝입니다.
+   모르는 키·오타가 «조용»하고, 파일이 깨지면 `logger.error` 하나 뒤 «빈 규칙»으로 갑니다
+```
+
+### 지을 것 — 다섯 조각, 한 커밋에 하나
+```
+ⓐ 라우팅 키 «한 목록»       chain_bindings 에 `RULE_ROUTING_KEYS`(이름 → 필수/선택).
+                          RULE_TABLE_KEYS 가 그 부분집합이 되게 «그 파일»에 둡니다 —
+                          「세 자리가 같이 안다」가 이미 그 파일의 규율입니다.
+                          모집단은 «규칙을 받는 모듈 전부»의 read 합집합(위 실측)
+ⓑ 로더 거절/경고           `load_chain_rules` 가 ⓐ 로 `exact(...)` 를 부릅니다.
+                          모르는 라우팅 키 = «거절»(이름·경로·did-you-mean) ·
+                          선언 안 된 param = «이름 대어 경고»(거절 아님 — 맵퍼가 저장소 밖이라
+                          제품이 「없다」를 단언할 수 없습니다)
+ⓒ 맵퍼의 인자 선언          🔴 **`@mapper` 는 오늘 «레지스트리가 아닙니다»** — `mapper_sdk.py:245` 는
+                          `(df,db)->df` 를 `(db,payloads,rule)` 로 «감싸기만» 하고 아무것도 등록
+                          하지 않습니다. 규칙은 오늘 `mapper_module` + `mapper_function` «두 칸»으로
+                          맵퍼를 이름 대고 워커가 `importlib` 합니다(:1092·:1615).
+                          => 판정 제목의 「the mapper list is the decorator's registry」는 «아직 거짓»이고,
+                             그것을 «참으로 만드는 것»이 이 조각입니다:
+                             `@mapper(params=("x_col","y_col",…))` 가 ① 이름을 등록하고
+                             ② 그 인자 이름을 «코드에 선언»합니다. 로직은 코드 그대로(선언형 맵퍼 아님)
+ⓓ 한 방향 호환             평면 키 → `params` 로 «읽고» 경고 한 줄. 운영 파일 손대지 않습니다.
+                          철자는 `exact(..., ignored=평면키)` — S-179 ④ 와 «같은 모양»
+ⓔ 스켈레톤 + 드리프트 시험  `chain_skeleton.json` 을 ⓐ·ⓒ 에서 «생성», 시험이 파일과 견줍니다
+                          (`ledger_skeleton.json` · `test_ledger_skeleton.py` 패턴 그대로)
+```
+
+### 두 줄 선언법
+```
+「체인 규칙은 «라우팅 열한 칸»만 위에 적고, 맵퍼에 주는 값은 전부 `params` 안에 적습니다.」
+「`params` 의 이름은 그 맵퍼가 `@mapper(params=…)` 로 «선언한 것»이고, 그 밖의 이름은 로더가 이름을 댑니다.」
+```
+
+### ⑥ 빌더의 서버 절반 — 실측 하나가 남았습니다
+```
+드라이런 라우트  없음(제가 아는 범위) — 트리거 행 하나 → 맵퍼 → rows_out · 쓰기 0
+config_drafts   「원장 전용인가」를 «아직 안 쟀습니다». 재기 전에는 「번들에 무관」을 말하지 않겠습니다
+```
+
+### ⑦ 변경 비용
+```
+운영       «0». ⓓ 호환층이 평면 키를 계속 읽습니다. 파일을 고치는 것은 선택이고, 고칠 때
+           로더가 «어느 이름»을 옮기라고 말해 줍니다(경고가 그 자리를 이름 댐)
+이 박스     규칙 «10» · 평면 키 «44 중 라우팅 아닌 것»이 params 로 갑니다(이 박스 표기)
+소급        «없음» — 규칙 문법은 다시 도는 범위를 바꾸지 않습니다. 원장 선언·스키마와 달리
+           체인 규칙 변경은 트리거가 다음에 돌 때부터 적용됩니다
+```
+
+### 🔴 결정 자리 «하나» — 검증기를 어디 둘까요 (판정 필요)
+```
+`_Problems` 는 «비공개»(밑줄)이고 `setup_bundle` 안에 살며, `add` 가
+`LedgerSetupValidationError` 를 냅니다 — «원장» 이름이 붙은 예외입니다.
+  ① 그대로 import       가장 작음. 다만 체인 규칙 거절이 「원장 설정 오류」로 나옵니다 (층 냄새)
+  ② 작은 모듈로 승격     `validation.py` 같은 자리로 옮기고 둘이 import. 동작 변화 0, 한 번의 이동
+  ③ 체인용 새 검증기     ⛔ 「두 번째 검증기 언어」 — 판정이 금지한 것
+저는 ②를 권합니다(「같은 기능에 두 경로 금지」가 ①의 층 냄새보다 무겁고, ③은 금지).
+다만 «파일을 옮기는 것»이라 제 판단으로 하지 않습니다.
+```
+
+> 📌 **[09-12 12:3x] 이 채널의 미답 질문: «하나» — 위 검증기 자리(②를 권함).**
+> ⚠️ 그리고 판정의 「라우팅 키 정확히 열하나」는 «워커의 수»입니다. 닫을 목록은 chain_graph·
+> enrichment_config 가 읽는 것까지라 «더 큽니다» — 열하나로 닫으면 오늘 도는 것이 거절됩니다.
+> 코드 0, 커밋은 이 설계 한 장뿐입니다.
