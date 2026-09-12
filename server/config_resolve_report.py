@@ -845,6 +845,93 @@ def _resolve_binding() -> dict:
 # ledger — 소스 선언과 어휘 확장 (판정 R-2026-08-15-M)
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# catalog — 셋업 순서의 ① 걸음 (S-180 ⓐ)
+# ---------------------------------------------------------------------------
+
+DOMAIN_CATALOG = "catalog"
+
+#: 이 도메인이 읽는 파일. 값은 «로더의» 상수이고 여기서 경로를 조립하지 않습니다.
+CATALOG_SOURCE_KEY = "tables"
+
+
+def _resolve_catalog() -> dict:
+    """① 표 — 「무엇이 «있는가»」. 셋업 여섯 걸음의 첫 걸음입니다.
+
+    🔴 **판정은 카탈로그 «어댑터»가 합니다.** 표 하나씩 `setup_bundle._adapt_physical_catalog`
+    에 먹이면 그 함수가 «이미 하는» 세 가지 답이 그대로 세 모집단이 됩니다 —
+    관계를 «내면» effective, `invalid_catalog` 로 «던지면» rejected, 아무것도 «안 내면»
+    ineffective. 조건을 여기서 다시 쓰면 카탈로그가 「먹었나」에 답하는 자리가 둘이 되고,
+    갈라지는 날 둘 다 그럴듯합니다. 이 파일에 거절 조건은 «한 줄도» 없습니다.
+
+    ⚠️ 「컬럼이 없어 건너뛴 표」가 왜 결함이 «아니라» ineffective 인가: 어댑터는 그런 표를
+    조용히 지나갑니다(`continue`). 선언은 «있는데» 읽는 쪽이 쓸 수 없는 상태이고, 그것이
+    `not_declared` 의 뜻 그대로입니다 — 「효과에 필요한 선언이 없음」. 새 사유 낱말을
+    만들지 않았습니다.
+
+    ⚠️ 그리고 `open(`/`json.load` 가 이 함수에 «없습니다». 파일을 여는 것은 로더의 일이고,
+    그 드리프트 단언이 계약 시험에 있습니다.
+    """
+    from database import crud
+    from ledger import setup_bundle
+    import validation
+
+    effective, ineffective, rejected = [], [], []
+
+    document, load_error = {}, None
+    try:
+        document = crud.load_table_config_or_raise()
+    except Exception as exc:
+        load_error = "%s: %s" % (exc.__class__.__name__, exc)
+
+    sources = [source(
+        CATALOG_SOURCE_KEY, crud.CONFIG_PATH,
+        "표 선언입니다. 이 파일이 안 읽히면 «그다음 다섯 걸음이 전부» 읽을 표를 잃습니다.",
+        degraded=bool(load_error))]
+
+    if load_error:
+        rejected.append(entry(
+            SCOPE_FILE, os.path.basename(crud.CONFIG_PATH),
+            "표 선언 파일을 읽지 못했습니다 (%s). 표가 없으면 파생·확정·조인·원장·걷기가 "
+            "가리킬 것이 없습니다." % load_error,
+            reason=REASON_MAPPING_UNAVAILABLE))
+        return build_domain(DOMAIN_CATALOG, "표 카탈로그", sources, [],
+                            effective, ineffective, rejected)
+
+    for name, declared in sorted((document or {}).items(), key=lambda kv: str(kv[0])):
+        if str(name).startswith("__"):
+            continue
+        try:
+            adapted = setup_bundle._adapt_physical_catalog({name: declared})
+        except validation.DeclarationValidationError as exc:
+            # 🔴 사유는 «거절문 그대로»입니다. 여기서 다시 쓰면 거절문의 둘째 철자가 됩니다.
+            rejected.append(entry(
+                SCOPE_RULE, name,
+                "`%s` 선언이 카탈로그 검증을 통과하지 못했습니다 — %s: %s"
+                % (name, exc.path, exc.message),
+                reason=REASON_MAPPING_UNAVAILABLE,
+                fields=exc.to_mapping()))
+            continue
+
+        relation = adapted.get(name)
+        if relation is None:
+            ineffective.append(entry(
+                SCOPE_RULE, name,
+                "`%s` 는 선언돼 있지만 `column_types` 가 비어 있어 카탈로그가 «읽지 않습니다». "
+                "컬럼을 적으면 이 표가 다음 걸음들의 대상이 됩니다." % name,
+                reason=REASON_NOT_DECLARED))
+            continue
+
+        effective.append(entry(
+            SCOPE_RULE, name,
+            "`%s` 가 컬럼 %d개로 카탈로그에 섰습니다." % (name, len(relation.get("columns") or {})),
+            fields={"columns": sorted(relation.get("columns") or {}),
+                    "composite_key": list(relation.get("composite_key") or [])}))
+
+    return build_domain(DOMAIN_CATALOG, "표 카탈로그", sources, [],
+                        effective, ineffective, rejected)
+
+
 DOMAIN_LEDGER = "ledger"
 
 
@@ -1008,6 +1095,8 @@ def _ledger_emitted_predicates(document: dict) -> set:
 # 🔴 새 도메인은 **뒤에** 붙인다 — contracts/config_resolve_report의 하네스가
 #    `resolve_report()["domains"][0]`로 enrichment를 집는다.
 _RESOLVERS = {
+    # ⓐ 셀업 순서의 첫 걸음. 이 dict 의 순서는 이제 대표를 고르지 않습니다(S-180 ⓐ-0).
+    DOMAIN_CATALOG: _resolve_catalog,
     DOMAIN_ENRICHMENT: _resolve_enrichment,
     DOMAIN_VIRTUAL_JOIN: _resolve_virtual_join,
     DOMAIN_NOTATION: _resolve_notation,
