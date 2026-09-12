@@ -96,7 +96,7 @@ def test_the_cell_must_be_an_object():
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def declared(tmp_path, monkeypatch):
+def declared(tmp_path, monkeypatch, request):
     """A declaration of this test's own, read through the walk's own cached reader.
 
     ⛔ NOT THE BOX'S. `server/config/ontology/` is the owner's and gitignored; a case that
@@ -112,7 +112,14 @@ def declared(tmp_path, monkeypatch):
 
         monkeypatch.setattr(paths, "config_path",
                             lambda *parts: str(tmp_path.joinpath(*parts)))
-        monkeypatch.setattr(ledger_subgraph, "_entity_key_order", None)
+        # ⚠️ THE PRODUCT'S OWN FORGETTING, not a poke at the global (S-206). A fixture that
+        # cleared the sentinel by hand would keep passing on the day the real reset stopped
+        # clearing the other half.
+        ledger_subgraph.reset_declaration_cache()
+    # ⚠️ AND IT IS FORGOTTEN AGAIN ON THE WAY OUT. This cache is module state: a test that
+    # left it holding a tmp_path declaration would hand the next one an answer from a file
+    # that no longer exists. [[the-model-registries-come-back]] is the same posture.
+    request.addfinalizer(ledger_subgraph.reset_declaration_cache)
     return declare
 
 
@@ -259,3 +266,81 @@ def test_the_envelope_uses_the_declarations_own_word_and_its_own_default(declare
     assert setup_bundle.ATTRIBUTE_CARDINALITY_MANY == "many"
     node = next(n for n in body["nodes"] if n["id"] == SUBJECT)
     assert node["attributes"]["product"] == "A", "a name nobody declared many is a scalar"
+
+
+# ---------------------------------------------------------------------------
+# 🔴 S-206 — a declaration the operator just activated is the one the walk reads
+# ---------------------------------------------------------------------------
+
+def test_the_walk_keeps_answering_from_the_declaration_it_already_read(declared):
+    """⚠️ THE CACHE IS DELIBERATE. Re-reading the file per walk would open it on every
+    request; what must be true is that something FORGETS it, not that nothing caches it."""
+    declared({"wafer@1": {"keys": ["wid"], "attributes": ["product"]}})
+    assert ledger_subgraph._declared_plural_attributes("wafer") == frozenset()
+
+    _redeclare_product_as_many()
+
+    assert ledger_subgraph._declared_plural_attributes("wafer") == frozenset(), (
+        "nothing asked it to forget, so the old answer is the right answer")
+
+
+def test_activating_a_declaration_makes_the_walk_read_it_again(declared):
+    """🔴 THE ROUND. An operator declares `many`, presses activate -- which is a
+    SYSTEM_RELOAD -- and the walk answered `one` until somebody restarted the server.
+    「빌드했다고 로드된 건 아니다」: the declaration changed and the thing that answers
+    questions about it did not."""
+    import system_reload
+
+    declared({"wafer@1": {"keys": ["wid"], "attributes": ["product"]}})
+    assert ledger_subgraph._declared_plural_attributes("wafer") == frozenset()
+
+    _redeclare_product_as_many()
+    system_reload.reload_local_process_cache()
+
+    assert ledger_subgraph._declared_plural_attributes("wafer") == {"product"}
+
+
+def test_forgetting_drops_both_halves_of_the_one_read(declared):
+    """🔴 ONE READ FILLS BOTH, SO ONE FORGETTING EMPTIES BOTH. Clearing only the sentinel
+    would leave the plural map from the previous revision standing beside a key order from
+    the new one -- exactly the split 「one read」 exists to prevent."""
+    declared({"wafer@1": {"keys": ["wid", "slot"], "attributes": ["product"],
+                          "attribute_cardinality": {"product": "many"}}})
+    assert ledger_subgraph._declared_plural_attributes("wafer") == {"product"}
+    assert ledger_subgraph._entity_key_order["wafer"] == ["wid", "slot"]
+
+    ledger_subgraph.reset_declaration_cache()
+
+    assert ledger_subgraph._entity_key_order is None
+    assert ledger_subgraph._entity_plural_attributes == {}
+
+
+def test_the_reload_seat_names_this_cache_beside_the_others():
+    """⛔ SCORED ON THE SOURCE. The defect is an OMISSION -- a cache that is simply not in
+    the list -- and an omission leaves no failing call to catch. Every neighbour in that
+    list is there because the same thing went wrong once."""
+    import inspect
+
+    import system_reload
+
+    body = inspect.getsource(system_reload.reload_local_process_cache)
+    assert "reset_declaration_cache()" in body
+
+
+def _redeclare_product_as_many():
+    """Rewrite the SAME file the fixture pointed the reader at."""
+    import json as _json
+
+    import paths
+
+    path = paths.config_path("ontology", "ledger_config.json")
+    with io_open(path, "w") as handle:
+        handle.write(_json.dumps({"entities": {"wafer@1": {
+            "keys": ["wid"], "attributes": ["product"],
+            "attribute_cardinality": {"product": "many"}}}}))
+
+
+def io_open(path, mode):
+    import io as _io
+
+    return _io.open(path, mode, encoding="utf-8")

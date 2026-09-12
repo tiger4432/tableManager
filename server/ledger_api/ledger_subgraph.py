@@ -492,6 +492,25 @@ def _read_entity_declaration():
     _entity_key_order, _entity_plural_attributes = order, plural_by_type
 
 
+def reset_declaration_cache():
+    """Forget the entity declaration so the next walk reads it again (S-206, 판정 330).
+
+    🔴 THE SENTINEL ABOVE IS PROCESS-LIFETIME, and that is a reload hole rather than a
+    design: an operator who declares `attribute_cardinality: many` and activates it gets
+    `one` from the walk until somebody RESTARTS the server. 「빌드했다고 로드된 건 아니다」.
+
+    ⚠️ THE HOLE PREDATES THE PLURAL CELL - key order was already cached this way - but the
+    same cache now carries a fact the operator wrote MINUTES ago, which is what makes the
+    staleness visible instead of theoretical.
+
+    🔴 BOTH GLOBALS GO TOGETHER, because one read fills them both. Clearing only the
+    sentinel would leave the plural map from the previous revision standing while the key
+    order came from the new one - the split this module's 「one read」 note exists to stop.
+    """
+    global _entity_key_order, _entity_plural_attributes
+    _entity_key_order, _entity_plural_attributes = None, {}
+
+
 def _declared_plural_attributes(entity_type):
     """Which of this type's attribute names hold SEVERAL values (S-144, 판정 327)."""
     _read_entity_declaration()
