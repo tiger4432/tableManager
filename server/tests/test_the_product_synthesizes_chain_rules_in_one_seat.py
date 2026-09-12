@@ -190,3 +190,54 @@ def test_the_dispatcher_rides_the_paced_lap_beside_its_neighbour():
     assert "rule=%s" in hook
     # ⚠️ a delete follows no values
     assert 'done.get("event_type") == "DELETE"' in hook
+
+
+# ---------------------------------------------------------------------------
+# 🔴 the dispatcher does not re-read the rule file on every drain batch
+# ---------------------------------------------------------------------------
+
+def test_the_followup_dispatcher_does_not_load_rules_per_batch():
+    """🔴 MEASURED: `load_chain_rules()` COSTS 3.4 ms, and the drain calls its batch function
+    in a `while` loop — so reading the file, validating every rule and re-running the
+    synthesis on every batch is waste that grows with the rule count.
+
+    ⛔ IT WAS INVISIBLE WHEN S-189 ⓒ LANDED, because no join rule matched and the loop did
+    nothing. S-195 puts auto-confirm on this path, where it would have fired on every batch
+    forever — the cost would have arrived attributed to S-195 rather than to the commit that
+    caused it.
+    """
+    import inspect
+
+    import chain_ingestion_worker as worker
+
+    body = inspect.getsource(worker._run_builtin_followups)
+    assert "_followup_builtin_rules()" in body
+    assert "load_chain_rules()" not in body, "the file is read per batch again"
+
+
+def test_the_cached_rules_are_cleared_where_every_other_worker_cache_is():
+    """⚠️ A CACHE WITH NO RESET IS WHY A RELOAD STOPS MEANING ANYTHING, and this process
+    already has one seat for that."""
+    import inspect
+
+    import chain_ingestion_worker as worker
+
+    worker._followup_builtin_rules()
+    assert worker._FOLLOWUP_BUILTIN_RULES is not None
+    worker.reload_worker_process_cache()
+    assert worker._FOLLOWUP_BUILTIN_RULES is None
+
+    body = inspect.getsource(worker.reload_worker_process_cache)
+    assert "_FOLLOWUP_BUILTIN_RULES" in body
+
+
+def test_the_cache_holds_only_what_the_dispatcher_could_run():
+    """⚠️ NARROWED AT THE SOURCE. Holding every rule would make the per-batch loop walk the
+    whole list to find the handful that are `follow_up` AND implemented."""
+    import chain_ingestion_worker as worker
+    import chain_builtins
+
+    worker.reload_worker_process_cache()
+    for rule in worker._followup_builtin_rules():
+        assert rule.get("follow_up")
+        assert rule.get("mapper") in chain_builtins.BUILTIN_KINDS

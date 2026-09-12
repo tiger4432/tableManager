@@ -1666,6 +1666,31 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
         _process_chain_transaction_group_sync, tx_id, events, db, rules)
 
 
+#: Follow-up rules for the `builtin:` dispatcher, held across drain batches.
+#:
+#: 🔴 MEASURED: `load_chain_rules()` COSTS 3.4 ms, and the drain calls its batch function in a
+#: `while` loop — so reading the file, validating every rule and re-running the synthesis on
+#: EVERY batch is pure waste that grows with the rule count. It was invisible when S-189 ⓒ
+#: landed because no join rule matched and the loop did nothing; S-195 puts auto-confirm on
+#: this path, where it would have fired on every batch forever.
+#:
+#: ⚠️ INVALIDATED WHERE EVERY OTHER WORKER CACHE IS. A cache with no reset is the reason a
+#: reload stops meaning anything, and this process already has one seat for that.
+_FOLLOWUP_BUILTIN_RULES = None
+
+
+def _followup_builtin_rules():
+    """The follow-up rules a `builtin:` kind could run, loaded once per reload."""
+    global _FOLLOWUP_BUILTIN_RULES
+    if _FOLLOWUP_BUILTIN_RULES is None:
+        import chain_builtins
+
+        _FOLLOWUP_BUILTIN_RULES = [
+            r for r in load_chain_rules()
+            if r.get("follow_up") and r.get("mapper") in chain_builtins.BUILTIN_KINDS]
+    return _FOLLOWUP_BUILTIN_RULES
+
+
 def reload_worker_process_cache():
     """체인 워커 프로세스의 동적 모듈 캐시(mappers, pipeline plugins)를 명시적으로 무효화합니다."""
     import sys
@@ -1680,6 +1705,8 @@ def reload_worker_process_cache():
     for k in plugin_keys:
         sys.modules.pop(k, None)
 
+    global _FOLLOWUP_BUILTIN_RULES
+    _FOLLOWUP_BUILTIN_RULES = None
     logger.info("[Reload] Chain worker modules cache cleared.")
 
 def warmup_worker(rules, db_session_factory=None):
@@ -2269,12 +2296,10 @@ def _run_builtin_followups(db, done):
     try:
         import chain_builtins
 
-        for rule in load_chain_rules():
-            if not rule.get("follow_up") or rule.get("trigger_table") != table:
+        for rule in _followup_builtin_rules():
+            if rule.get("trigger_table") != table:
                 continue
             kind = rule.get("mapper")
-            if not (isinstance(kind, str) and kind in chain_builtins.BUILTIN_KINDS):
-                continue
             result = chain_builtins.run_builtin(kind, db, rule, row_ids=list(row_ids))
             # 🔴 THE GROUP LINE CARRIES THE RULE NAME. A count with no name is a line nobody
             # can act on — and with several join rules watching one table it cannot even be
