@@ -48,6 +48,12 @@ export const CHROME = Object.freeze({
   FETCH_UNAUTHORIZED: '토큰 거부 · 새로고침 후 재입력',
   FETCH_INTERCEPTED: '관리자 게이트 아님 · 앞단 프록시 확인',
   NO_DOMAINS: '설정 도메인 없음',
+  // C-87. 막힌 걸음이 «기다리는 걸음»을 가리키는 부호. 문장이 아니라 부호 하나이고, 번호는
+  // 서버의 값입니다 — 「⑤ 가 안 서서 막혔습니다」라고 쓰면 그 문장의 저자가 화면이 됩니다.
+  STEP_BLOCKED: '←',
+  // 걸음 번호가 «없는» 도메인이 서는 자리의 이름. 없는 것을 0 번으로 그리지 않으려고
+  // 이름을 하나 둡니다 — 「안 물어봤다」가 「첫 걸음」이 되면 순서가 거짓이 됩니다.
+  UNSTEPPED: '순서 밖',
 });
 
 export const CHROME_STRINGS = Object.freeze(Object.values(CHROME));
@@ -235,10 +241,38 @@ function buildSetting(setting) {
   };
 }
 
-function buildDomain(domain, populations) {
+/**
+ * C-87. 도메인 -> 그 «걸음». 번호도 이름도 «서버의 목록»(`vocabulary.setup_steps`)에서 옵니다.
+ *
+ * 🔴 한 자리에서만 읽습니다. 도메인 봉투도 `step` 을 싣지만, 둘 다 읽으면 화면이 「번호는
+ *    이쪽, 이름은 저쪽」이 되고 두 자리가 갈라질 수 있습니다 — 서버에서는 한 표에서 나온
+ *    값이라 갈리지 않지만, 갈릴 «수» 있는 구조를 만드는 것이 criterion ④ 입니다.
+ * 🔴 이름은 «서버 문자열»입니다. 「표」·「파생」을 여기 적으면 걸음이 하나 늘 때 화면이 모릅니다.
+ */
+function stepIndex(vocabulary) {
+  const out = new Map();
+  for (const item of list(vocabulary && vocabulary.setup_steps)) {
+    if (!item || item.domain == null) continue;
+    out.set(String(item.domain), item);
+  }
+  return out;
+}
+
+/** 걸음이 없는 도메인은 «맨 뒤»입니다. 0 이 아니라 뒤 — 없는 것은 첫 걸음이 아닙니다. */
+const LAST = Number.MAX_SAFE_INTEGER;
+const stepRank = (item) => (item && item.step != null ? Number(item.step) : LAST);
+
+function buildDomain(domain, populations, stepItem) {
   const name = domain && domain.domain != null ? String(domain.domain) : '';
+  const blocked = domain && domain.blocked_by != null ? domain.blocked_by : null;
   return {
     name,
+    // C-87. 걸음의 번호·이름, 그리고 「무엇을 기다리나」. 셋 다 없을 수 있고, 없으면 null 입니다.
+    step: stepItem && stepItem.step != null ? val(stepItem.step) : null,
+    stepName: stepItem && stepItem.name != null ? srv(stepItem.name) : null,
+    unstepped: !stepItem,
+    blockedLabel: blocked === null ? null : chrome(CHROME.STEP_BLOCKED),
+    blockedBy: blocked === null ? null : val(blocked),
     title: domain && domain.title != null ? srv(domain.title) : null,
     sourcesLabel: chrome(CHROME.SOURCES),
     sources: list(domain && domain.sources).map(buildSource),
@@ -264,7 +298,12 @@ function buildDomain(domain, populations) {
 export function buildConfigResolveView(report) {
   const vocabulary = (report && report.vocabulary) || {};
   const populations = list(vocabulary.populations).map(String);
-  const domains = list(report && report.domains);
+  const steps = stepIndex(vocabulary);
+  // C-87. 걸음 «순서»로 세웁니다. 서버가 보낸 순서가 아니라 서버가 «말한 순서»입니다 — 그리고
+  // 번호가 없는 도메인은 뒤에, 받은 순서 그대로(`sort` 는 안정 정렬입니다).
+  const domains = list(report && report.domains).slice().sort(
+    (a, b) => stepRank(steps.get(String(a && a.domain)))
+            - stepRank(steps.get(String(b && b.domain))));
   const totals = populations.map((population) => ({
     name: population,
     label: srv(population),
@@ -285,7 +324,11 @@ export function buildConfigResolveView(report) {
     totals,
     tone,
     titles: domains.map((d) => (d && d.title != null ? srv(d.title) : null)).filter(Boolean),
-    domains: domains.map((d) => buildDomain(d, populations)),
+    domains: domains.map((d) => buildDomain(d, populations, steps.get(String(d && d.domain)))),
+    // 걸음 밖 무리가 «있을 때만» 그 이름이 있습니다. 비어 있는 구분선은 없는 무리를 있는 것처럼
+    // 그립니다.
+    unsteppedLabel: domains.some((d) => !steps.get(String(d && d.domain)))
+      ? chrome(CHROME.UNSTEPPED) : null,
     empty: domains.length === 0,
     emptyText: chrome(CHROME.NO_DOMAINS),
   };

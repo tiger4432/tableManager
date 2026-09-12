@@ -173,6 +173,34 @@ function scanPayload(node, strings = new Set(), details = []) {
 const DEFAULT_DOMAIN = 'enrichment';
 const domainOf = c => c.domain || DEFAULT_DOMAIN;
 
+// --- S-202: THE SETUP ORDER TRAVELS IN THE PAYLOAD -----------------------------------
+//
+// 🔴 WHY THE HARNESS BUILDS IT. `envelope.domain` has required `step` and `blocked_by` since
+//    S-180, and this file was emitting neither -- so the client could have invented both and
+//    the contract would have said nothing. That asymmetry is what S-202 closes: the payload
+//    carries the order, and the view is scored against it.
+//
+// ⛔ AND IT IS NOT COPIED FROM THE SERVER'S LIST. The names here are MARKERS, so a view that
+//    prints 「표」 because it wrote 「표」 down fails: the marker is the only string in the
+//    payload, and a server-owned text carrier must be found in the payload verbatim.
+// ⚠️ The step numbers and the `after` chain are the SHAPE the server documents (six steps,
+//    each naming the one it follows); the domains are this file's own, so a domain rename on
+//    the server cannot make this harness green by accident.
+const SETUP_STEPS = [
+  { step: 1, name: mark('step-name', 'catalog'), domain: 'catalog', after: null },
+  { step: 2, name: mark('step-name', 'chain'), domain: 'chain', after: 1 },
+  { step: 3, name: mark('step-name', 'enrichment'), domain: DEFAULT_DOMAIN, after: 1 },
+  { step: 4, name: mark('step-name', 'virtual_join'), domain: 'virtual_join', after: 1 },
+  { step: 5, name: mark('step-name', 'ledger'), domain: 'ledger', after: 1 },
+  { step: 6, name: mark('step-name', 'walk'), domain: 'walk', after: 5 },
+];
+const STEP_OF = new Map(SETUP_STEPS.map((s) => [s.domain, s]));
+// One blocked step in the fixture, because 「blocked」 and 「not blocked」 must both be drawn:
+// a payload where nothing is blocked cannot tell a marker that never renders from one that
+// renders correctly.
+const BLOCKED_DOMAIN = 'walk';
+const BLOCKED_BY = 5;
+
 /** A report shaped like the route's response, populated from the vectors' own cases.
  *  🔴 ONE DOMAIN OBJECT PER NAMED DOMAIN, NEVER ONE HARDCODED. This emitted a single
  *  `domain: 'enrichment'` envelope holding every case, so a case belonging to another domain
@@ -240,14 +268,23 @@ function domainFromVectors(name) {
     settings,
     ...buckets,
     counts: Object.fromEntries(populations.map(p => [p, buckets[p].length])),
+    // S-202. The two keys `envelope.domain` has required since S-180.
+    step: (STEP_OF.get(name) || {}).step ?? null,
+    blocked_by: name === BLOCKED_DOMAIN ? BLOCKED_BY : null,
   };
 }
 
 function reportFromVectors() {
-  const names = [...new Set(vectors.cases.map(domainOf))];
+  // The domains the CASES name, plus the stepped ones they do not -- a report that held only
+  // enrichment could not show an order at all, and 「the six stand in order」 is the claim.
+  const named = [...new Set(vectors.cases.map(domainOf))];
+  const names = [...new Set([...named, ...SETUP_STEPS.map((s) => s.domain), 'notation'])];
   return {
     domains: names.map(domainFromVectors),
-    vocabulary: vectors.vocabulary,
+    // ⚠️ SPREAD, NOT REPLACED. `vectors.vocabulary` is the server's and this file does not
+    //    edit the vector document; the order is ADDED beside it, which is what an additive
+    //    envelope change looks like from the client side.
+    vocabulary: { ...vectors.vocabulary, setup_steps: SETUP_STEPS },
   };
 }
 
@@ -345,6 +382,74 @@ if (!existsSync(VIEW_MODULE)) {
     refused: { no_candidate: 7, ambiguous: 2 }, samples: [], truncated: false,
   };
   scoreTexts(view.collectTexts(view.buildDryRunView(dryRun)), dryRun, chromeSet, 'dry-run');
+
+  // --- S-202 / C-87: the order on screen is the order in the payload -------------------
+  const built = view.buildConfigResolveView(payload);
+  const shown = built.domains.map((d) => d.name);
+  const wantOrder = [
+    ...SETUP_STEPS.map((s) => s.domain).filter((n) => shown.includes(n)),
+    ...shown.filter((n) => !STEP_OF.has(n)),
+  ];
+  checksRun++;
+  if (shown.join(',') !== wantOrder.join(',')) {
+    divergences.push({
+      invariant: 'INV-F9-8', file: VIEW_REL, line: 0,
+      detail: `the report stands its domains as [${shown.join(', ')}], but the payload's `
+        + `\`vocabulary.setup_steps\` says [${wantOrder.join(', ')}]. The order is the setup `
+        + `order or it is nothing: a screen that lists them as they arrived teaches an order `
+        + `the server did not state.`,
+    });
+  }
+  for (const domain of built.domains) {
+    const item = STEP_OF.get(domain.name);
+    checksRun++;
+    if (!item) {
+      if (domain.step !== null || domain.stepName !== null || domain.unstepped !== true) {
+        divergences.push({
+          invariant: 'INV-F9-8', file: VIEW_REL, line: 0,
+          detail: `domain '${domain.name}' has no step in the payload, but the view gave it `
+            + `one (${JSON.stringify(domain.step)} / ${JSON.stringify(domain.stepName)}). `
+            + `Absent is not step zero.`,
+        });
+      }
+      continue;
+    }
+    if (!domain.step || domain.step.raw !== item.step) {
+      divergences.push({
+        invariant: 'INV-F9-8', file: VIEW_REL, line: 0,
+        detail: `domain '${domain.name}' is drawn at step ${JSON.stringify(domain.step)}, `
+          + `while the payload says ${item.step}.`,
+      });
+    }
+    checksRun++;
+    if (!domain.stepName || domain.stepName.text !== item.name) {
+      divergences.push({
+        invariant: 'INV-F9-8', file: VIEW_REL, line: 0,
+        detail: `domain '${domain.name}' is named ${JSON.stringify(domain.stepName)} on `
+          + `screen; the payload calls that step ${JSON.stringify(item.name)}. The step names `
+          + `are the server's words -- a client that spells them owns a list it cannot keep.`,
+      });
+    }
+  }
+  const blocked = built.domains.find((d) => d.name === BLOCKED_DOMAIN);
+  checksRun++;
+  if (!blocked || !blocked.blockedBy || blocked.blockedBy.raw !== BLOCKED_BY) {
+    divergences.push({
+      invariant: 'INV-F9-8', file: VIEW_REL, line: 0,
+      detail: `the blocked domain '${BLOCKED_DOMAIN}' should carry the number of the step it `
+        + `waits on (${BLOCKED_BY}); the view carries `
+        + `${JSON.stringify(blocked && blocked.blockedBy)}.`,
+    });
+  }
+  const free = built.domains.find((d) => d.name !== BLOCKED_DOMAIN && STEP_OF.has(d.name));
+  checksRun++;
+  if (free && free.blockedBy !== null) {
+    divergences.push({
+      invariant: 'INV-F9-8', file: VIEW_REL, line: 0,
+      detail: `domain '${free.name}' is not blocked in the payload, but the view drew a `
+        + `blocked marker for it. A marker that is always there says nothing.`,
+    });
+  }
 }
 
 const result = {
