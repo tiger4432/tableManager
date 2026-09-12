@@ -37301,3 +37301,45 @@ test_enrichment_candidates   부모 71b51494: «72 passed»   ·   지금: «72 
 > 제 읽기로는 ②의 수리가 「도출이 그룹 컬럼을 input_columns 에 포함」 하나로 좁혀지고,
 > 「row 단위엔 안 채우기」는 이번 건에서 «할 일이 없습니다»(그 자리는 `kind == "group_by"` 로 이미 막혀 있습니다 —
 > `config_authoring.py:1186`). 고치기 «전»에 판정을 기다립니다.
+
+---
+
+## 📤 [09-12 18:2x 구현자] S-196 ①② 착지 — 그리고 **그 시험은 아직 빨갛습니다. 사유가 «다릅니다»**
+
+```
+② 도출된 map.input_columns 가 unit 의 «그룹 컬럼»을 담습니다
+   unit_group_columns(mapper)   row 단위 -> []  · group_by -> 그 columns
+   _with_group_columns(cols, mapper)   «덧붙이기»(합쳐서 정렬 아님 — 기준 순서는 준비 프레임의 것이고,
+                                       재도출이 순서를 바꾸면 운영자에게 «뜻 없는 diff»를 보입니다)
+① in_slot 반쪽 «제거». 라이브 lot_event 는 ['descent','first_sight_holder','first_sight_item'] 이고,
+   «어느 매핑도 slot 수식어를 안 듭니다» — 그래서 「오늘 있는 매핑으로 옮기기」가 «불가능»했고,
+   그 사실을 재고 나서 지웠습니다. 성질(결핍이 «필드에» 앉는다)은 위 Role 구멍이 그대로 잽니다
+```
+🔴 **제 게이트가 «제가 안 한 것»을 잡았습니다** — `unit.columns` 필드가 여전히 `unit.get("columns")` 를
+«직접» 읽고 있었습니다(판정 306-b 의 「읽는 자리 하나」 위반). 같은 함수로 돌렸습니다.
+
+### ⚠️ `test_derivations_rebuild_by_force…` 는 «여전히 빨강»입니다 — 그리고 이 커밋의 사유가 아닙니다
+```
+dt_job       이제 «맞습니다» (도출이 떨어뜨리는 컬럼 «0»)
+bonded_from  다음으로 넘어져 있고 «원인이 다릅니다»:
+   read 에 relation/table 이 «아예 없습니다» (read 키: cursor·group_by·identity·occurred_at·order_by·unit)
+   -> 도출된 프레임이 «3 컬럼»이고, 바인딩이 요구하는 «7»(base_id·bx·by·core_wafer·cx·cy·event_time)을
+      담을 수가 없습니다
+=> 판정 306-b 의 절 «밖»입니다. 제 판단으로 판정을 «넓히지 않았습니다» — 올립니다
+```
+
+### ⛔ 그리고 이 라운드에 제가 «판정을 틀린 근거 위에 서게» 했습니다
+```
+S-196 ② 근거를 config/sample 에서 쟀는데, 시험이 여는 것은 DEFAULT_ONTOLOGY_ROOT 입니다.
+판정 306 이 그 위에서 «30분» 섰고, 제가 잡아 정정했습니다(`98e3f9a2`).
+🔴 규칙 한 줄: **측정의 주어는 «시험이 여는 문서»다.** 시험을 읽기 «전»에 그 파일을 확인합니다
+```
+
+### 게이트
+```
+새 파일 6 passed · 변이(그룹 컬럼 포함 제거) 빨강 · ① 초록
+모집단 154 passed · 빨강 하나 = 위 bonded_from (사유 명시)
+```
+
+> 📌 **[09-12 18:2x] 이 채널의 미답 질문: «하나» — `bonded_from` (read 에 relation 없음) 처리 방향.**
+> 다음 = **S-191**. 재기동 총괄 몫.
