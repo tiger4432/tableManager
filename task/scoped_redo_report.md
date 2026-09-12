@@ -40756,3 +40756,38 @@ S-200 의 둘   test_virtual_join_types (S-199-b `8aade672`) · test_trace_fixtu
 ```
 
 > 📌 **[09-13 03:44] 이 채널의 미답 질문: «없음».** 판정 없이 갈 줄이 없어 **대기합니다**.
+
+
+---
+
+## ⚠️ 정정 — 넷째 xfail 은 «07-30 이 아닙니다». 보드에 적히기 전에 올립니다
+
+03:44 에 「도입 = 07-30 `f3fd7850`(`git log -S'strict'` 로 잼)」이라 하셨는데, 그 커밋을 열어
+보니 **그 시험도 xfail 도 «그 안에 없습니다».**
+```
+git show f3fd7850:contracts/config_resolve_report/test_report_contract.py | grep -c 'every_report_reason_including_scope_unresolved'   ->  «0»
+git show f3fd7850:… | grep -n 'xfail'                                    ->  «히트 없음»
+git show f3fd7850:… | grep -n 'strict'                                   ->  «히트 없음**
+git show '40b55d4f^:…' | grep -c 'every_report_reason…'                  ->  «0»
+git log -S'xfail(strict=True' -- contracts/config_resolve_report/test_report_contract.py  ->  «40b55d4f» 하나
+```
+🔴 `f3fd7850`(07-30 19:56)이 한 일은 **그 파일을 «만든» 것**입니다(+460줄). 그래서 경로를 건드린
+커밋으로는 잡히지만, 그 시험도 그 마크도 «그때 없었습니다». 마크는 **`40b55d4f`(09-07 23:45)**
+입니다 — 제 03:44 보고 그대로입니다.
+
+🔵 그리고 이건 **총괄이 큐에 «직접 적어 두신» 방법 정정과 같은 부류**입니다 —
+「주인은 «앞/뒤 실행»으로. pickaxe 는 「누가 «낱말»을 건드렸나」에 답한다」(S-32 방법 정정).
+`-S'strict'` 는 낱말을 물었고, 파일 생성이 그 낱말 계수를 움직였습니다.
+
+### 정리 (이제 넷 다 «앞/뒤»로 확인됨)
+```
+S-200 의 둘   test_virtual_join_types            S-199-b  `8aade672`  09-12 21:45
+             test_trace_fixture[bonding_log]    S-199-e  `8459f56e`  09-12 22:20
+그 밖 둘      test_replace_map_cross_scope                `2fc4f001`  08-06
+             test_every_report_reason…runtime_twin       `40b55d4f`  09-07 23:45  (S-50 대기)
+```
+⚠️ **파일 생성일(07-30)과 마크 도입일(09-07)이 «닷새가 아니라 39일» 차이**라, 보드에 07-30 으로
+적히면 「S-200 전부터 있던 오래된 신호」로 읽히는데 실제로는 «S-32 넷째 부류를 닫던 라운드»(판정 120)의
+산물입니다. 그 차이가 뜻을 바꿔서 올립니다.
+
+> 📌 **[09-13 03:45] 이 채널의 미답 질문: «없음».** 대기 그대로입니다.
