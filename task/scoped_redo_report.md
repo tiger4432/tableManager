@@ -37212,3 +37212,43 @@ test_enrichment_candidates   부모 71b51494: «72 passed»   ·   지금: «72 
 
 > 📌 **[09-12 17:3x] 이 채널의 미답 질문: «없음».** 다음 = **S-196**(익스플로러 빨강 둘 — 시험 vs 제품 가름).
 > 🔵 재기동 총괄 몫 — 드레인 경로가 바뀝니다.
+
+---
+
+## ⚖️ [09-12 17:5x 구현자] S-196 가름 — 하나는 «시험», 하나는 «제품». 근거 한 줄씩
+
+### ① `test_every_deficit_lands_on_a_field_rather_than_a_loose_error_list` → **시험이 낡았습니다**
+```
+시험이 하는 것   del bundle["sources"]["lot_event"]["bind"]["mappings"]["in_slot"]…  -> KeyError: 'in_slot'
+근거 한 줄       `lot_event` 의 매핑은 ['descent','first_sight_holder','first_sight_item','merge','split'] —
+                «in_slot 이 없습니다»
+언제 사라졌나    `7e23677d` 「sample: copy the live declarations, which also fixes 30 validation errors」
+                 — 샘플을 «라이브 선언으로 교체»할 때 같이 나갔습니다
+```
+🔵 제품은 옳습니다. 시험이 «선언에 없는 매핑»을 지우려 합니다.
+
+### ② `test_derivations_rebuild_by_force_what_the_operator_typed_by_hand` → **제품입니다**
+```
+시험이 하는 것   강제 칸을 비우고 -> 다시 «도출»시키고 -> 「다시 도출된 번들이 유효한가」를 단언
+                (앞 단언 `assert not validate_bundle_errors(original)` 는 «통과»합니다 — 원본은 유효)
+실패             bundle.sources.dt_job.map.unit.columns:
+                   group_by columns must be mapper input columns: ['dt_job']
+근거 한 줄       샘플의 dt_job 은 read.group_by=[] · read.unit="row" · map.unit={"kind":"row"} ·
+                prepare.input_columns=[] — «전부 비어» 있어 원본은 무사히 통과합니다.
+                도출이 `map.unit.columns=['dt_job']` 를 «채우면서» 짝인 `prepare.input_columns` 는
+                «안 채웁니다» -> 검증기가 그 «짝»을 요구하므로 거절
+```
+🔴 **즉 강제 재도출이 «자기 검증기가 거절하는 번들»을 만듭니다.** 한 쌍의 한쪽만 채웁니다.
+시험은 그것을 «옳게» 잡고 있습니다 — 「강제 칸이 빠진 번들도 도출되어야 하고, 그 결과는 유효해야 한다」.
+
+### 그래서 남은 일
+```
+① 시험 수정   — `in_slot` 를 «오늘 있는 매핑»으로 바꾸거나, 그 단언이 재던 성질을 다른 매핑으로 재기
+② 제품 수정   — 도출이 `map.unit.columns` 를 채울 때 `prepare.input_columns` 도 «같이» 채우기
+               (또는 `unit.kind == "row"` 면 `columns` 를 «안 채우기» — row 단위에는 그룹 컬럼이 없습니다)
+⚠️ 둘 다 «제 판단으로 고치지 않았습니다» — S-196 의 지시가 「재서 가름, 근거 한 줄」이고
+   ②는 도출 규칙을 바꾸는 것이라 어느 쪽이 옳은 수리인지가 판정 자리입니다
+```
+
+> 📌 **[09-12 17:5x] 이 채널의 미답 질문: «하나» — ② 의 수리 방향(짝을 같이 채우기 vs row 단위엔 안 채우기).**
+> 다음 = **S-191**(52 파일 `retire_dynamic_model` 헬퍼). 재기동 불필요(이 라운드는 측정뿐, 코드 0).
