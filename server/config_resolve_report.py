@@ -174,6 +174,11 @@ def build_domain(domain: str, title: str, sources: list, settings: list,
 
 DOMAIN_CHAIN = "chain"
 
+#: ⑥ 걸음의 이름. ⚠️ 순서는 «여섯»이 다 서 있고(S-180 ⓒ), 그 걸음의
+#: 등록기는 ⓓ 에서 옵니다 — 순서를 «반쯤» 적으면 그 사이에 문서와 코드가 다른 순서를
+#: 들게 됩니다. 등록기가 없는 걸음은 보고에 «안 나타납니다».
+DOMAIN_WALK = "walk"
+
 #: 합성 규칙에 붙는 표. 🔴 운영자가 «안 적은» 줄이 목록에 이름 없이 섞이면
 #: 「내가 안 썼는데 왜 있지」가 되고, 그 사람은 고칠 수 없는 것을 고치러 갑니다.
 ORIGIN_SYNTHESIZED = "synthesized"
@@ -1230,6 +1235,64 @@ _RESOLVERS = {
 }
 
 
+#: 셋업 «순서» — 이 리스트가 «정본»이고 `docs/guide/SETUP_ORDER.md` 는 그 설명입니다
+#: (S-180 ⓒ). 소유자 2026-09-11 「체계적인 셋업이 안 됨」.
+#:
+#: 🔴 순서가 «코드»에 있어야 하는 이유는 그 문서가 자기 §「지금 없는 것」에 적어 둔 그대로입니다 —
+#: 「사람이 이 장을 열어야만 «무엇이 먼저인가»를 알 수 있고, 그것이 결함이다」. 문서만 아는 순서는
+#: 화면이 답할 수 없고, 화면이 답하지 못하면 운영자는 «어디가 비었는지»를 파일 여섯 개를 열어
+#: 알아내야 합니다.
+#:
+#: ⚠️ 걸음이 «없는» 도메인이 있습니다(`notation`·`binding`). 그것은 이 순서가 덜 적힌 것이
+#: 아니라 그 도메인이 여섯 걸음의 «밖»이라는 뜻이고, 응답에서 `step: null` 로 «보입니다» —
+#: 숨기면 화면이 가진 도메인과 이 순서가 다른 세계가 됩니다.
+SETUP_STEPS = (
+    {"step": 1, "name": "표", "domain": DOMAIN_CATALOG, "after": None},
+    {"step": 2, "name": "파생", "domain": DOMAIN_CHAIN, "after": 1},
+    {"step": 3, "name": "확정", "domain": DOMAIN_ENRICHMENT, "after": 2},
+    {"step": 4, "name": "가상 조인", "domain": DOMAIN_VIRTUAL_JOIN, "after": 3},
+    {"step": 5, "name": "원장", "domain": DOMAIN_LEDGER, "after": 4},
+    {"step": 6, "name": "걷기 좌석", "domain": DOMAIN_WALK, "after": 5},
+)
+
+#: domain -> 그 걸음. 순서를 «두 번» 적지 않으려고 위에서 만듭니다.
+_STEP_OF = {item["domain"]: item for item in SETUP_STEPS}
+
+
+def _step_is_standing(domain: dict) -> bool:
+    """이 걸음이 «서 있는가» — 뒤 걸음이 기댈 수 있는 상태인가.
+
+    🔴 「거절이 없다」로는 부족합니다. 아무것도 «선언되지 않은» 걸음도 뒤 걸음이 가리킬 것을
+    주지 못하므로, 효과 0 은 거절과 같은 뜻으로 «뒤를 막습니다»(판정 313).
+    ⚠️ 그러나 그 둘은 «같은 상태가 아닙니다** — 어느 쪽인지는 그 걸음 자기 모집단이 말합니다.
+    여기서는 「뒤가 기댈 수 있나」 하나만 답합니다.
+    """
+    counts = domain.get("counts") or {}
+    return not counts.get("rejected") and bool(counts.get("effective"))
+
+
+def _annotate_steps(out: list) -> list:
+    """각 도메인 봉투에 `step` 과 `blocked_by` 를 «더합니다». 기존 칸은 손대지 않습니다.
+
+    ⚠️ `blocked_by` 는 «이 보고 안»의 앞 걸음만 봅니다. 도메인을 골라서 부르면
+    (`resolve_report(["ledger"])`) 앞 걸음이 이 보고에 «없고», 그때는 «모른다»는 뜻으로
+    `None` 입니다 — 없는 것을 「안 막혔다」로 읽게 두지 않으려고 `blocked` 를 따로 두지
+    않았습니다: 막혔는지는 «전체 보고»가 답하는 질문입니다.
+    """
+    by_name = {d.get("domain"): d for d in out}
+    for domain in out:
+        item = _STEP_OF.get(domain.get("domain"))
+        domain["step"] = item["step"] if item else None
+        domain["blocked_by"] = None
+        if not item or item["after"] is None:
+            continue
+        previous = next((s for s in SETUP_STEPS if s["step"] == item["after"]), None)
+        standing = by_name.get(previous["domain"]) if previous else None
+        if standing is not None and not _step_is_standing(standing):
+            domain["blocked_by"] = previous["step"]
+    return out
+
+
 def resolve_report(domains: list = None) -> dict:
     """등록된 도메인의 해석 보고서. 한 도메인의 실패가 나머지를 삼키지 않는다."""
     names = list(domains) if domains else list(_RESOLVERS)
@@ -1248,8 +1311,11 @@ def resolve_report(domains: list = None) -> dict:
                        f"이 도메인의 설정을 해석하지 못했습니다 ({e.__class__.__name__}).",
                        reason=REASON_MAPPING_UNAVAILABLE)]))
     return {
-        "domains": out,
+        "domains": _annotate_steps(out),
         # 클라이언트가 라벨/필터를 **하드코딩하지 않도록** 어휘를 함께 싣는다.
         "vocabulary": {"reasons": list(REASONS), "populations": list(POPULATIONS),
-                       "scopes": list(SCOPES)},
+                       "scopes": list(SCOPES),
+                       # 🔴 순서도 «어휘»입니다 — 화면이 걸음 이름을 자기가 적으면 이 리스트와
+                       # 갈라지고, 갈라진 쪽은 오류를 안 냅니다.
+                       "setup_steps": [dict(item) for item in SETUP_STEPS]},
     }

@@ -53,7 +53,7 @@
   "envelope": {
     "$comment": "Required keys at each level. Extra keys are allowed (additive change stays cheap).",
     "top": ["domains", "vocabulary"],
-    "domain": ["domain", "title", "sources", "settings", "effective", "ineffective", "rejected", "counts"],
+    "domain": ["domain", "title", "sources", "settings", "effective", "ineffective", "rejected", "counts", "step", "blocked_by"],
     "entry": ["scope", "subject", "detail", "reason", "warnings", "fields"],
     "source": ["key", "path", "exists", "status", "detail"],
     "setting": ["key", "value", "origin", "path", "declared", "detail"]
