@@ -22,6 +22,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadBoardModules } from './lib/board_modules.mjs';
 import { scoreMutants } from './lib/mutation_scorer.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -68,38 +69,14 @@ const ok = (name, cond, detail) => {
 };
 const eq = (name, got, want) => ok(name, String(got) === String(want), `got ${got}, want ${want}`);
 
+// 🔴 C-93 (판정 345). THE LOADER IS SHARED. This file used to carry its own `dataUrl`/`read`/
+//    `outward` -- the same three lines six harnesses each held -- and the day `api.js` gained its
+//    first outward import, every one of those copies was missing the rewrite it already knew
+//    about. One place to forget nothing; the mutation keys and the names driven here are unchanged.
 async function loadModules(mutate = {}) {
-  const read = (file) => {
-    const text = readFileSync(path.join(BOARD_DIR, file), 'utf8').replace(/\r\n/g, '\n').split(CRLF).join(LF);
-    const fn = mutate[file];
-    const out = fn ? fn(text) : text;
-    if (fn && out === text) throw new Error(`mutation anchor is GONE: ${file}`);
-    return out;
-  };
-  const storeUrl = dataUrl(read('marking_store.js'));
-  const panelUrl = dataUrl(read('panel.js').split("'./marking_store.js'").join(`'${storeUrl}'`));
-  const tableUrl = dataUrl(read('table_part.js')
-    .split("'./panel.js'").join(`'${panelUrl}'`)
-    .split("'./marking_store.js'").join(`'${storeUrl}'`));
-  // 🔴 `api.js` 를 «먼저» 만들고 상자에도 배선합니다 (round V, 2026-08-29). 걷기 상자가
-  //    타입 그래프를 쓰려고 `./api.js` 를 import 하는데, 그 줄이 재배선 목록에 없으면
-  //    「Failed to resolve module specifier」로 «하니스가 통째로» 죽습니다 -- 단언 하나가
-  //    아니라 전부입니다. main.js 머리가 그 경고를 적어 둔 자리이고, 실제로 밟았습니다.
-  // 🔴 C-70. `walk/derive.js` 도 재배선 목록에 «있어야» 합니다 -- 걷기 상자가 구획과 컬럼을
-  //    거기서 받으므로, 빠지면 위 경고 그대로 「Failed to resolve module specifier」로 하니스가
-  //    통째로 죽습니다. 그리고 그 URL 을 «단언에도» 그대로 씁니다: 화면이 부르는 함수와 채점이
-  //    부르는 함수가 «같은 모듈 인스턴스»여야 「같은 함수에서 나온다」가 검사가 됩니다.
-  const deriveUrl = dataUrl(readFileSync(path.join(WALK_DIR, 'derive.js'), 'utf8')
-    .replace(/\r\n/g, '\n').split(CRLF).join(LF));
-  const apiUrl = dataUrl(read('api.js'));
-  const boxUrl = dataUrl(read('walk_box_panel.js')
-    .split("'./panel.js'").join(`'${panelUrl}'`)
-    .split("'./marking_store.js'").join(`'${storeUrl}'`)
-    .split("'./table_part.js'").join(`'${tableUrl}'`)
-    .split("'./api.js'").join(`'${apiUrl}'`)
-    .split("'../walk/derive.js'").join(`'${deriveUrl}'`));
-  return { store: await import(storeUrl), box: await import(boxUrl), api: await import(apiUrl),
-    derive: await import(deriveUrl) };
+  const board = await loadBoardModules(mutate);
+  return { store: board.store, box: board.parts.box, api: board.api,
+    derive: board.parts.derive };
 }
 
 /** A document just large enough for selects, inputs and buttons. No jsdom, no globals. */

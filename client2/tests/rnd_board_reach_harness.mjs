@@ -23,6 +23,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { loadBoardModules } from './lib/board_modules.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BOARD_DIR = path.join(HERE, '..', 'src', 'rnd_board');
@@ -57,29 +58,13 @@ const ok = (name, cond, detail) => {
 };
 const eq = (name, got, want) => ok(name, String(got) === String(want), `got ${got}, want ${want}`);
 
+// 🔴 C-93 (판정 345). THE LOADER IS SHARED. This file used to carry its own `dataUrl`/`read`/
+//    `outward` -- the same three lines six harnesses each held -- and the day `api.js` gained its
+//    first outward import, every one of those copies was missing the rewrite it already knew
+//    about. One place to forget nothing; the mutation keys and the names driven here are unchanged.
 async function loadModules(mutate = {}) {
-  const read = (file) => {
-    const text = readFileSync(path.join(BOARD_DIR, file), 'utf8').replace(/\r\n/g, '\n').split(CRLF).join(LF);
-    const fn = mutate[file];
-    const out = fn ? fn(text) : text;
-    if (fn && out === text) throw new Error(`mutation anchor is GONE: ${file}`);
-    return out;
-  };
-  const storeUrl = dataUrl(read('marking_store.js'));
-  const panelUrl = dataUrl(read('panel.js').split("'./marking_store.js'").join(`'${storeUrl}'`));
-  const tableUrl = dataUrl(read('table_part.js')
-    .split("'./panel.js'").join(`'${panelUrl}'`)
-    .split("'./marking_store.js'").join(`'${storeUrl}'`));
-  const reachUrl = dataUrl(outward(read('reach_panel.js'))
-    .split("'./panel.js'").join(`'${panelUrl}'`)
-    .split("'./marking_store.js'").join(`'${storeUrl}'`)
-    .split("'./table_part.js'").join(`'${tableUrl}'`));
-  const apiUrl = dataUrl(read('api.js'));
-  return {
-    store: await import(storeUrl),
-    reach: await import(reachUrl),
-    api: await import(apiUrl),
-  };
+  const board = await loadBoardModules(mutate);
+  return { store: board.store, reach: board.parts.reach, api: board.api };
 }
 
 /** The smallest document a part can be scored under. No jsdom, no globals. */

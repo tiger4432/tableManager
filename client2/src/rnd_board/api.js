@@ -40,6 +40,12 @@
 //    showing the same die agree on the same string.
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// 🔴 C-93. 이 파일의 첫 import 이고, C-92 에서 «막혔던» 그것입니다. 막은 것은 기제가 아니라
+//    로더들의 누락이었습니다: `board_modules.mjs` 가 바깥 import 를 다시 쓰는 일반 규칙을 이미
+//    들고 있었는데 `api.js` 한 줄만 그 문을 안 지났고, 개인 로더 여섯이 같은 줄을 각자 들고
+//    있었습니다. 이제 일곱이 «한 문»(`moduleUrl`)을 지납니다.
+import { declaredKeys } from '../walk/derive.js';
+
 export const ROUTES = Object.freeze({
   lotMap: '/api/ledger/lot_map',
   composition: '/api/ledger/composition',
@@ -1219,6 +1225,7 @@ export function compositionFromWalk(answer, _axis, plan) {
   const components = [];
   // 좌석이 «무엇을 따라가는지» 이미 선언합니다. 그 목록이 곧 「구성의 술어」입니다.
   const follows = new Set(((plan && plan.follow) || []).map(String));
+  const entities = (plan && plan.entities) || [];
   for (const edge of edges) {
     if (!edge || !follows.has(String(edge.predicate))) continue;
     // 🔴 방향은 «엣지가 말합니다». source 가 base 이고 target 이 core 입니다 -- 여기서 방향을
@@ -1226,16 +1233,17 @@ export function compositionFromWalk(answer, _axis, plan) {
     const core = byId.get(edge.target);
     if (!core) continue;
     const keys = core.keys || {};
-    // ⚠️ C-92 가 여기서 «멈췄습니다». 이 두 줄의 `mat_id` 는 선언(`entities[].keys`)이 답해야
-    //    하는데, 그 독자(`walk/derive.js` 의 `declaredKeys`)가 이 파일에 «닿을 수 없습니다»:
-    //    이 파일도 `rnd_board/main.js` 도 하니스가 `data:` URL 로 싣고, data: 모듈은 상대
-    //    경로를 못 풉니다(실측 2026-09-13: import 하나에 보드 하니스 여덟이 측정 불가).
-    //    좌석이 키 이름을 «다시 적는» 것은 선언의 둘째 저자라 안 합니다. 벽의 이름을 보고에 적고
-    //    그 하니스들이 import 로 돌아설 때 이 두 줄이 따라갑니다.
+    // 🔴 C-93. id 는 «선언된 식별 키 순서»로 지어집니다 — 선언에 키가 하나 늘면 id 가 같이
+    //    자라고, 이 파일은 그 이름이 무엇인지 «모릅니다». (C-92 가 여기서 멈췄던 이유는 로더의
+    //    누락이었고, 그 문이 닫히자 선언 독자가 여기 닿습니다.)
+    // ⚠️ 선언을 «못 읽었으면» 노드 자기 id 로 물러섭니다 — 이름을 지어내지 않습니다.
+    const identity = declaredKeys(entities, core.type);
     components.push({
-      id: `${keys.mat_id}:${keys.x},${keys.y}`,
+      id: identity.length ? identity.map((key) => keys[key]).join(':') : core.id,
       entityId: core.id,
-      core: { wafer: keys.mat_id || null, lot: null, slot: null, branch: null },
+      // 「어느 것에 속하나」도 선언의 «첫 키»입니다 — 이름이 아니라 자리로 읽습니다.
+      core: { wafer: identity.length ? (keys[identity[0]] || null) : null,
+        lot: null, slot: null, branch: null },
       lineage: null,
       resolutionState: seeds.has(edge.source) ? 'resolved' : 'reached',
       steps: [],
