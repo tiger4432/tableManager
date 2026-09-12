@@ -69,6 +69,49 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 
 
 # ===========================================================================
+# The two model registries come back  [S-200, 판정 309]
+# ===========================================================================
+
+@pytest.fixture(autouse=True)
+def _the_model_registries_come_back():
+    """Every test gets the registries it was handed, whatever the last one left behind.
+
+    🔴 SIXTY-FIVE FILES CANNOT EACH BE TRUSTED TO REMEMBER. Measured: 74 test files call
+    `init_dynamic_models` and NINE take a name back out, so `models.DYNAMIC_TABLES` and
+    `Base.metadata` grow all run long — and the cost lands on whichever file happens to count
+    them, naming neither the leaker nor the leak. `test_the_shipped_catalogue_builds` read 63
+    against a 46-table catalogue and was GREEN when run alone.
+
+    ⚠️ S-191 CLOSED THE OTHER HALF OF THIS. `retire_dynamic_model` gave the seats that
+    already retired a model one correct way to do it; this gives the seats that never retired
+    anything a reason not to have to. Same two singletons, same pairing — the helper is what a
+    test calls on purpose, and this is what happens anyway.
+
+    ⛔ ADDITIONS ARE REMOVED; REMOVALS ARE NOT PUT BACK. A test that retires a name from the
+    baseline meant to, and re-adding it here would undo a teardown that was right. What leaks
+    is what is ADDED, and that is what this takes away.
+    """
+    from database import models
+
+    before_models = dict(models.DYNAMIC_TABLES)
+    before_tables = set(Base.metadata.tables)
+    try:
+        yield
+    finally:
+        for name in [n for n in list(models.DYNAMIC_TABLES) if n not in before_models]:
+            models.DYNAMIC_TABLES.pop(name, None)
+        # A name whose CLASS was swapped is put back — the registry is process-wide and a
+        # stand-in left in it answers for the real model in every later file.
+        for name, model in before_models.items():
+            if models.DYNAMIC_TABLES.get(name) is not model:
+                models.DYNAMIC_TABLES[name] = model
+        for key in [k for k in list(Base.metadata.tables) if k not in before_tables]:
+            table = Base.metadata.tables.get(key)
+            if table is not None:
+                Base.metadata.remove(table)
+
+
+# ===========================================================================
 # Tests whose subject is a LIVE, gitignored file  [S-199-b, 판정 309]
 # ===========================================================================
 
