@@ -1,0 +1,197 @@
+{
+  "skeleton_version": 1,
+  "note": "The shape of ONE chain rule. Generated from `chain_bindings.routing_keys()`; the loader still decides what is good. server/tests/test_chain_skeleton.py counts the two against each other.",
+  "root": {
+    "kind": "record",
+    "fields": [
+      {
+        "key": "name",
+        "required": true,
+        "node": {
+          "kind": "leaf",
+          "hint": "free"
+        }
+      },
+      {
+        "key": "trigger_table",
+        "required": true,
+        "node": {
+          "kind": "leaf",
+          "hint": "ref"
+        }
+      },
+      {
+        "key": "source_table",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "ref"
+        }
+      },
+      {
+        "key": "target_table",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "ref"
+        }
+      },
+      {
+        "key": "map_table",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "ref"
+        }
+      },
+      {
+        "key": "inventory_table",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "ref"
+        }
+      },
+      {
+        "key": "metadata_target_table",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "ref"
+        }
+      },
+      {
+        "key": "derivation_source_table",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "ref"
+        }
+      },
+      {
+        "key": "target_field",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "free"
+        }
+      },
+      {
+        "key": "trigger_columns",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "free"
+        }
+      },
+      {
+        "key": "enabled",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "flag"
+        }
+      },
+      {
+        "key": "is_batch",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "flag"
+        }
+      },
+      {
+        "key": "follow_up",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "flag"
+        }
+      },
+      {
+        "key": "allow_chain_trigger",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "flag"
+        }
+      },
+      {
+        "key": "allow_map_metadata_upsert",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "flag"
+        }
+      },
+      {
+        "key": "max_group_attempts",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "number"
+        }
+      },
+      {
+        "key": "origin",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "free"
+        }
+      },
+      {
+        "key": "mapper",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "choice"
+        }
+      },
+      {
+        "key": "params",
+        "required": false,
+        "node": {
+          "kind": "map",
+          "keyed_by": "param",
+          "node": {
+            "kind": "leaf",
+            "hint": "free"
+          }
+        }
+      },
+      {
+        "key": "mapper_module",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "free"
+        }
+      },
+      {
+        "key": "mapper_function",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "free"
+        }
+      },
+      {
+        "key": "reads",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "free"
+        }
+      },
+      {
+        "key": "reference",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "free"
+        }
+      }
+    ]
+  }
+}

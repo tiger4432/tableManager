@@ -297,6 +297,66 @@ def params_of(rule):
     return merged
 
 
+#: S-188 ⓔ. The node vocabulary is the LEDGER skeleton's, verbatim: kinds `record`/`map`/
+#: `leaf` and hints `choice`/`free`/`ref`/`number`/`flag`. 🔴 NOTHING NEW IS INVENTED HERE —
+#: a kind the form renderer has never seen draws NOTHING, and this repository has paid for
+#: 「a contract adopted before its material blanks the screen」 once already.
+SKELETON_VERSION = 1
+
+#: Which hint each routing cell gets. A cell absent from this map is `free`.
+_SKELETON_HINTS = {
+    "enabled": "flag",
+    "is_batch": "flag",
+    "follow_up": "flag",
+    "allow_chain_trigger": "flag",
+    "allow_map_metadata_upsert": "flag",
+    "max_group_attempts": "number",
+    "trigger_table": "ref",
+    "target_table": "ref",
+    "source_table": "ref",
+    "map_table": "ref",
+    "inventory_table": "ref",
+    "metadata_target_table": "ref",
+    "derivation_source_table": "ref",
+    "mapper": "choice",
+}
+
+
+def skeleton():
+    """The shape of ONE chain rule, generated from the list above.
+
+    🔴 GENERATED, NOT WRITTEN. The ledger's skeleton is 「a SECOND statement of a contract
+    whose first author is `setup_bundle.py`」 and `test_ledger_skeleton` exists because two
+    authors of one contract drift in silence. Deriving this from `routing_keys()` means the
+    file cannot say a different thing from the loader — there is only one author.
+
+    ⚠️ IT DESCRIBES A RULE, NOT THE DOCUMENT. `chain_rules.json` holds `rules` as a LIST, and
+    the skeleton vocabulary has no `list` kind — only `record`, `map` and `leaf`. Adding one
+    would give the form a node it cannot draw, and calling the list a `map` keyed by `name`
+    would state a shape the file does not have. A rule is also the unit a builder edits, so
+    this is the useful half either way; the document level is named in the report as an open
+    question rather than guessed at here.
+    """
+    required = set(RULE_ROUTING_REQUIRED)
+    fields = []
+    for key in routing_keys():
+        if key == PARAMS_KEY:
+            # The mapper's own arguments. `keyed_by` is the argument NAME, and what names are
+            # legal is the mapper's to declare (`@mapper(params=…)`) — not this file's.
+            node = {"kind": "map", "keyed_by": "param",
+                    "node": {"kind": "leaf", "hint": "free"}}
+        else:
+            node = {"kind": "leaf", "hint": _SKELETON_HINTS.get(key, "free")}
+        fields.append({"key": key, "required": key in required, "node": node})
+    return {
+        "skeleton_version": SKELETON_VERSION,
+        "note": ("The shape of ONE chain rule. Generated from "
+                 "`chain_bindings.routing_keys()`; the loader still decides what is good. "
+                 "server/tests/test_chain_skeleton.py counts the two against each other."),
+        "root": {"kind": "record", "fields": fields},
+    }
+
+
 def routing_keys():
     """이 규칙 문법이 최상위에서 «받는» 이름 전부 — 로더의 `exact(...)` 가 이것을 지난다.
 
