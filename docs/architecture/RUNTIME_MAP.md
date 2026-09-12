@@ -29,6 +29,19 @@
 | ⑥ | **수집기 (auto_update)** | run_auto_update | 5 s 틱 · 각 수집기의 `next_run` | 수집기가 쓰는 표(→ ② 와 같은 경로로 적재) | `Scheduler daemon started` · 수집기 이름 | `auto_update` 설정의 그 수집기 |
 | ⑦ | **PG 자기 일** | DB | 큰 적재·삭제 뒤 «스스로» | autovacuum / autoanalyze / `CREATE INDEX CONCURRENTLY` | `pg_stat_activity` · `pg_stat_progress_vacuum` · `pg_stat_progress_create_index` | PG 설정(우리 것 아님) |
 
+### 🆕 §1-quinquies. `follow_up` 종류는 «길이 하나»다 (2026-09-12 S-195)
+```
+종전   인리치 스윕이 `_auto_confirm_followed_rows` 에서 «디스패처 옆»에서 «직접» 불렸다
+       -> `follow_up` 한 종류가 «도는 길이 둘» — 그 금지가 이름 붙은 임시방편을 이고 있었다
+오늘   `chain_builtins.BUILTIN_KINDS` «표 하나»를 지난다. 표 하나, 길 하나
+```
+🔴 **일은 «안 바뀌었다» — 바뀐 것은 「어떻게 찾히나」다.** 그리고 규칙이 «선언»에서 온다:
+`AutoConfirmCollector` 는 이미 `rules` 를 받는데, 안 주면 `load_enrichment_rules` 로 «다시 찾았다»
+— 합성된 규칙이 이미 들고 있는 것을.
+📐 그 목록은 «리로드당 한 번» 실린다(`_followup_builtin_rules` :1682) — **드레인 배치마다 규칙 파일을
+다시 읽던 것**을 그만뒀고, 무효화는 이 프로세스의 «다른 캐시와 같은 자리»에 있다
+(`reload_worker_process_cache`). ⚠️ **리셋 없는 캐시는 「리로드가 아무 뜻도 없게 되는」 이유**다.
+
 ### §1-bis. 체인 «그룹 줄»의 모양 — 세 층, 층마다 «남은 시간»까지 (S-151, 판정 241·261)
 ```
 group <tx>: view builds N · reference resolutions N · distinct maps N · T s
