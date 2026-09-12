@@ -203,6 +203,72 @@ def test_run_stages_attaches_what_the_watcher_attaches():
 
 
 # ---------------------------------------------------------------------------
+# 🔴 what the retiring notebook did better (S-197-d)
+# ---------------------------------------------------------------------------
+
+def test_the_delta_names_the_columns_a_shape_would_have_hidden():
+    """🔴 `(1000, 12) -> (1000, 12)` SAYS NOTHING ABOUT WHICH TWELVE. A step that drops one
+    column and adds another reads as 「unchanged」 on a shape, and lands wrong."""
+    import pandas as pd
+
+    before = pd.DataFrame({"x": [1, 2], "y": ["a", "b"]})
+    after = before.drop(columns=["y"]).assign(z=1)
+    after["x"] = after["x"].astype(str)
+
+    delta = dev_bench.frame_delta(before, after)
+
+    assert delta["added"] == ["z"] and delta["removed"] == ["y"]
+    assert delta["retyped"] == [("x", "int64", "str")]
+    assert (delta["rows_before"], delta["rows_after"]) == (2, 2)
+
+
+def test_an_empty_frame_is_a_frame_and_not_a_crash():
+    """⛔ `getattr(frame, "columns", ()) or ()` READS AS A DEFAULT AND IS A BUG: a pandas
+    `Index` raises on truthiness, so the idiom turns an ordinary empty frame into a
+    ValueError. Measured while writing this — the smoke test caught it, not a review."""
+    import pandas as pd
+
+    assert dev_bench.frame_delta(pd.DataFrame(), pd.DataFrame())["added"] == []
+
+
+def test_the_row_count_is_reported_and_never_judged():
+    """⚠️ A step that drops rows is a filter and a step that adds them is an explode. Only
+    the author knows which was meant, so the bench hands over both numbers and no verdict."""
+    import pandas as pd
+
+    delta = dev_bench.frame_delta(pd.DataFrame({"x": [1, 2, 3]}), pd.DataFrame({"x": [1]}))
+    assert (delta["rows_before"], delta["rows_after"]) == (3, 1)
+    assert "verdict" not in delta and "ok" not in delta
+
+
+def test_the_census_finds_the_type_clean_for_postgres_does_not_repair():
+    """🔴 THE TYPE THAT ARRIVES IS THE TYPE THAT IS STORED. `clean_for_postgres` folds NaN,
+    NaT and Inf to `None` and nothing else, so a `Decimal` reaches the driver as the parser
+    made it — and casting belongs in `process_dataframe`."""
+    import decimal
+
+    census = dev_bench.value_types([{"a": 1, "b": "s", "c": None},
+                                    {"a": decimal.Decimal("1.5")}])
+    assert census["unknown"] == ["Decimal"]
+    assert census["counts"]["NoneType"] == 1
+    assert census["counted"] == 2
+
+
+def test_the_census_says_how_many_rows_it_actually_read():
+    """⚠️ A CENSUS OVER 2,000 OF 400,000 ROWS IS A SAMPLE. Showing it as a total is the
+    「말하려는 끝에서 재라」 defect in miniature, so the count travels with the numbers."""
+    rows = [{"a": i} for i in range(50)]
+    assert dev_bench.value_types(rows, sample=10)["counted"] == 10
+
+
+def test_the_ordinary_type_list_is_named_rather_than_buried():
+    """⚠️ IT IS THE BENCH'S JUDGEMENT, NOT PRODUCTION'S PREDICATE — unlike `table.c.get`,
+    nothing in the product holds this list. Naming it is what lets it be argued with."""
+    assert "Decimal" not in dev_bench.JSON_SAFE_TYPES
+    assert {"str", "int", "float", "NoneType"} <= set(dev_bench.JSON_SAFE_TYPES)
+
+
+# ---------------------------------------------------------------------------
 # 🔴 the two things one file cannot answer (판정 308)
 # ---------------------------------------------------------------------------
 

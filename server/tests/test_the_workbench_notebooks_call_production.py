@@ -175,7 +175,10 @@ def test_each_notebook_reaches_the_bench_functions_its_lane_needs():
                      # 판정 308: the two cells the first cut dropped. They answer what ONE
                      # file cannot — too wide, too narrow, and a key the target has no
                      # column for — so the gate names them rather than counting mentions.
-                     "dev_bench.sweep_claims(", "dev_bench.check_output_columns("):
+                     "dev_bench.sweep_claims(", "dev_bench.check_output_columns(",
+                     # S-197-d: what the retiring notebook did better. Promoted before it
+                     # was deleted, and named here so deleting the cells is not silent.
+                     "dev_bench.frame_delta(", "dev_bench.value_types("):
         assert required in parser, required
 
 

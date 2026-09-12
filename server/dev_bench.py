@@ -489,6 +489,66 @@ def run_stages(parser_cls, file_path, *, rel_path=None, source_root=None):
     return SimpleNamespace(parser=instance, raw=raw, processed=processed, records=records)
 
 
+def frame_delta(before, after):
+    """What the gap between two frames actually IS: columns added, removed, retyped, rows.
+
+    🔴 「돌았다」 IS NOT AN ANSWER WHEN AN ASSUMPTION BROKE. A processing step that silently
+    dropped a column, or turned one from a number into a string, produces a frame that looks
+    fine and lands wrong — and a shape printed as `(1000, 12) -> (1000, 12)` says nothing
+    about which twelve.
+
+    ⚠️ ROW COUNT IS REPORTED, NEVER JUDGED. A step that drops rows is ordinary (a filter) and
+    a step that adds them is ordinary (an explode); only the author knows which was meant.
+
+    Returns `{added, removed, retyped, rows_before, rows_after}`.
+    """
+    # ⚠️ NO `or ()` HERE. A pandas `Index` raises on truthiness, so the idiom that reads as
+    # 「default when missing」 turns an ordinary empty frame into a ValueError.
+    before_cols = list(getattr(before, "columns", ()))
+    after_cols = list(getattr(after, "columns", ()))
+    retyped = []
+    for name in before_cols:
+        if name not in after_cols:
+            continue
+        was, now = str(before[name].dtype), str(after[name].dtype)
+        if was != now:
+            retyped.append((str(name), was, now))
+    return {"added": [str(c) for c in after_cols if c not in before_cols],
+            "removed": [str(c) for c in before_cols if c not in after_cols],
+            "retyped": retyped,
+            "rows_before": len(before) if before is not None else 0,
+            "rows_after": len(after) if after is not None else 0}
+
+
+#: What the census treats as ordinary in a record on its way to the database.
+#: ⚠️ THIS IS THE BENCH'S JUDGEMENT, NOT PRODUCTION'S PREDICATE — say so wherever it is
+#: shown. `clean_for_postgres` folds NaN / NaT / Inf to `None` and nothing else, so a
+#: `Decimal` or a `set` reaches the driver exactly as the parser produced it. The list is
+#: here, named, so it can be argued with rather than being buried in a notebook cell.
+JSON_SAFE_TYPES = ("str", "int", "float", "bool", "NoneType",
+                   "Timestamp", "datetime", "date")
+
+
+def value_types(rows, *, sample=2000):
+    """The census of Python types in the records, and which of them are not ordinary.
+
+    🔴 THE TYPE THAT ARRIVES IS THE TYPE THAT IS STORED. `clean_for_postgres` repairs NaN,
+    NaT and Inf; it does not repair a `Decimal`, a `set`, or a numpy scalar, and those reach
+    the driver as the parser made them. Casting belongs in `process_dataframe`, and this is
+    where an author finds out that it is needed.
+
+    ⚠️ `sample` BOUNDS THE WALK, and the returned `counted` says how many rows it read — a
+    census over 2,000 of 400,000 rows is a sample and must not be shown as a total.
+    """
+    import collections
+
+    rows = list(rows or ())[:sample]
+    counts = collections.Counter(type(value).__name__
+                                 for row in rows for value in dict(row).values())
+    unknown = sorted(set(counts) - set(JSON_SAFE_TYPES))
+    return {"counts": dict(counts), "unknown": unknown, "counted": len(rows)}
+
+
 def sweep_claims(folder, *, scripts_path=None):
     """`match()` over EVERY file in `folder`, so 「too wide」 and 「too narrow」 are visible.
 

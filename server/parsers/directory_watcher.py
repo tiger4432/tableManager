@@ -1032,7 +1032,7 @@ def _register_legacy_import_shim():
 #: `_register_legacy_import_shim` is CALLED, never overridden, so a public name costs
 #: nothing and buys a contract: preparing this process to load workspace parsers is a
 #: legitimate thing for something other than the watcher to ask for, and the parser
-#: workbench notebook (`server/parsers/notebooks/`) asks for exactly that before it
+#: workbench notebook (`server/notebooks/`) asks for exactly that before it
 #: touches `pipeline_base`.  A caller reaching for the underscore name is a dependency
 #: the next refactor is entitled to ignore; this alias makes it one the refactor has to
 #: keep.  The old name stays valid — it is the same object, and it is used inside this
