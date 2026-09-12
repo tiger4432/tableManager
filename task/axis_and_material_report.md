@@ -1,3 +1,45 @@
+# [디자인 -> 총괄] 🔴 **A-2 클라 몫 — `client/` 는 «지우면 안 됩니다». 소비자 넷, 전부 «import 로는 안 보이는» 부류 (코드 0)**
+
+```
+상태   삭제 커밋 «안 만들었습니다» · 코드 0 줄 · 트리 깨끗. 지시의 「없으면 삭제」에서 «있음»이 나왔습니다
+```
+
+## 무엇인가 · 누가 쓰나 (전수)
+
+```
+파일 다섯   desktop_wrapper.py(514줄, QtWebEngine 셸) · package_client.py · AssyManagerClient.spec
+          · client_settings.json · assets/app_icon.png
+① 런처     `run_decoupled_app.py:336` 이 «자식 프로세스»로 띄웁니다:
+          [python_exe, os.path.join(root_dir, "client", "desktop_wrapper.py")]
+          🔴 CLAUDE.md 가 이름 댄 그 부류입니다 — 「명령줄이 이름을 드는 것: import 소비자가
+             «있을 수 없다»」. grep 으로 「참조 0」을 세면 정확히 이런 것을 지웁니다
+② 라우트 둘 `server/main.py:637` 이 `client/dist/AssyManagerClient.exe` 를,
+          `:655 /api/desktop/download` 가 onedir 빌드 zip 을 냅니다. 그 docstring 이
+          「Built by `client/package_client.py`」라고 «적어 두었습니다»
+③ 화면     어드민의 「데스크톱 클라이언트 .zip — 풀어서 안의 실행 파일을 여십시오」 버튼이 ②를 누릅니다
+          (오늘 제가 그 화면에서 본 버튼입니다)
+④ .gitignore `!client/AssyManagerClient.spec` — «손으로» 추적 예외를 걸어 뒀고, 그 이유가
+          그 자리에 적혀 있습니다: desktop_wrapper 의 주석 셋이 이 spec 을 «정본으로 인용»합니다
+문서      `docs/architecture/frontend.md` 가 source-of-truth 로 싣고, CODE_MAP §7 이 514줄짜리
+          자리로 등재(핀 포함), CONDA_SETUP_GUIDE 가 「PySide6 는 이 셸에 여전히 필요」라고 못 박습니다
+```
+
+## 판정 요청
+
+```
+제 읽기   «그대로 둡니다». 「08-27 이후 안 건드림」은 «안 바뀐 것»이지 «안 쓰이는 것»이 아닙니다 —
+        이 폴더는 «빌드 산출물의 소스»라 기능이 추가될 때만 바뀝니다
+㉠ 그래도 정리라면  «디렉터리 구조»의 문제이지 삭제가 아닙니다(예: `client/` -> `desktop/` 이름을 뜻과
+        맞추기). 그건 런처·라우트 둘·spec·문서 다섯을 «한 커밋»에 옮기는 일이고 등급 3 입니다
+㉡ 소유자가 원하신 것이 「루트가 지저분하다」면  그 답은 이 폴더가 아닐 수 있습니다 —
+        루트에 미추적 잔해가 여럿 보입니다(`ids.txt`·`sg.json`·`_seedkeys.json`·`08:4x` 같은 파일명).
+        그건 «추적되지 않는» 것이라 제 삭제 대상도 아니고 소유자 판단입니다
+```
+
+판정 대기: **하나** — 그대로 둘지, ㉠(이름/자리 옮기기)를 라운드로 여실지.
+
+---
+
 # [디자인 -> 총괄] 🔵 **C-91 ⓐ 착지(`d9e9d704`) — `state.js` 벽이 «열렸습니다». 그리고 그것을 «증명»했습니다(29/29)**
 
 ```
