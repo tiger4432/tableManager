@@ -16,6 +16,12 @@ export const SRC_DIR = path.join(HERE, '..', '..', 'src');
 export const BOARD_DIR = path.join(SRC_DIR, 'rnd_board');
 const srcUrl = (rel) => pathToFileURL(path.join(SRC_DIR, rel)).href;
 const dataUrl = (src) => `data:text/javascript;base64,${Buffer.from(src, 'utf8').toString('base64')}`;
+// 🔴 C-93. EVERY module URL goes through HERE, and `outward` is inside it. It used to be
+//    applied at the call sites, and `api.js`'s site (plus `main.js`'s) simply did not have it --
+//    so the day `api.js` gained its first outward import, EIGHT board harnesses stopped
+//    measuring anything. The loader already knew the rule (see `OUTWARD_RE` below); what it
+//    lacked was a place where forgetting is impossible.
+const moduleUrl = (src) => dataUrl(outward(src));
 // ── loading the modules under test, with an optional mutation per file ─────────────
 //
 // The relative imports are rewritten so a mutated copy still pulls the OTHER modules under
@@ -45,31 +51,36 @@ export async function loadBoardModules(mutate = {}) {
     const text = readSourceText(path.join(BOARD_DIR, file)).text
       .replace(new RegExp(String.fromCharCode(13, 10), 'g'), String.fromCharCode(10));
     const fn = mutate[file];
-    sources[file] = fn ? fn(text) : text;
+    const out = fn ? fn(text) : text;
+    // 🔴 C-93. THE GONE-ANCHOR GUARD MOVED IN WITH THE SIX. Every private loader carried it and
+    //    this one did not, so folding them here without it would have quietly traded 「the
+    //    mutant did nothing」 for 「caught」 -- the one failure a green sweep cannot show you.
+    if (fn && out === text) throw new Error(`mutation anchor is GONE: ${file}`);
+    sources[file] = out;
     return sources[file];
   };
   // 🔴 스타일시트도 «채점 대상»입니다. 오늘 화면을 깬 것은 자바스크립트가 아니라 CSS 한 줄
   //    (flex-wrap)이었고, 소스에 안 읽어 두면 그 부류는 변이도 단언도 못 겁니다.
   read('board.css');
-  const storeUrl = dataUrl(read('marking_store.js'));
-  const apiUrl = dataUrl(read('api.js'));
-  const panelUrl = dataUrl(read('panel.js')
+  const storeUrl = moduleUrl(read('marking_store.js'));
+  const apiUrl = moduleUrl(read('api.js'));
+  const panelUrl = moduleUrl(read('panel.js')
     .replaceAll("'./marking_store.js'", `'${storeUrl}'`));
-  const mapUrl = dataUrl(read('map_panel.js')
+  const mapUrl = moduleUrl(read('map_panel.js')
     .replaceAll("'./panel.js'", `'${panelUrl}'`)
     .replaceAll("'./marking_store.js'", `'${storeUrl}'`)
     .replaceAll("'./api.js'", `'${apiUrl}'`)
     .replaceAll("'../map2/painter.js'", `'${srcUrl('map2/painter.js')}'`)
     .replaceAll("'../map2/seating.js'", `'${srcUrl('map2/seating.js')}'`));
-  const shellUrl = dataUrl(read('grid_shell.js'));
-  const interUrl = dataUrl(read('marking_intersection.js')
+  const shellUrl = moduleUrl(read('grid_shell.js'));
+  const interUrl = moduleUrl(read('marking_intersection.js')
     .replaceAll("'./marking_store.js'", `'${storeUrl}'`));
   // Round 2's parts are imported by `main.js` too, so they have to be rewired here or the
   // composition root cannot load at all -- which is how it failed the moment they landed.
-  const tableUrl = dataUrl(read('table_part.js')
+  const tableUrl = moduleUrl(read('table_part.js')
     .replaceAll("'./panel.js'", `'${panelUrl}'`)
     .replaceAll("'./marking_store.js'", `'${storeUrl}'`));
-  const partUrl = (file) => dataUrl(outward(read(file))
+  const partUrl = (file) => moduleUrl(read(file)
     .replaceAll("'./panel.js'", `'${panelUrl}'`)
     .replaceAll("'./marking_store.js'", `'${storeUrl}'`)
     .replaceAll("'./table_part.js'", `'${tableUrl}'`)
@@ -88,7 +99,7 @@ export async function loadBoardModules(mutate = {}) {
   const trendUrl = partUrl('main_trend_panel.js');
   const statusUrl = partUrl('marking_status_panel.js');
   const declUrl = partUrl('declaration_panel.js');
-  const mainUrl = dataUrl(read('main.js')
+  const mainUrl = moduleUrl(read('main.js')
     .replaceAll("'./marking_store.js'", `'${storeUrl}'`)
     .replaceAll("'./grid_shell.js'", `'${shellUrl}'`)
     .replaceAll("'./marking_intersection.js'", `'${interUrl}'`)
@@ -108,9 +119,23 @@ export async function loadBoardModules(mutate = {}) {
     .replaceAll("'./reach_panel.js'", `'${partUrl('reach_panel.js')}'`)
     .replaceAll("'./walk_box_panel.js'", `'${partUrl('walk_box_panel.js')}'`)
     .replaceAll("'./api.js'", `'${apiUrl}'`));
-  const [store, api, panel, map, shell, main] = await Promise.all([
-    import(storeUrl), import(apiUrl), import(panelUrl),
-    import(mapUrl), import(shellUrl), import(mainUrl),
-  ]);
-  return { store, api, panel, map, shell, main, sources };
+  // 🔴 C-93 (판정 345). THE PARTS COME BACK BY NAME, because six harnesses used to build this
+  //    same graph each in their own copy of three lines -- and the day `api.js` gained an import,
+  //    the omission was in all seven at once. One loader, one place to forget nothing.
+  // ⚠️ Every harness now pays for the whole board's load. That is the price of one loader, and
+  //    it is small: `main.js` imports every part anyway, so nothing new is being evaluated.
+  const [store, api, panel, map, shell, main, table, inter, derive,
+    head, comp, cand, rank, control, trend, status, decl, layer, reach, box] =
+    await Promise.all([
+      import(storeUrl), import(apiUrl), import(panelUrl),
+      import(mapUrl), import(shellUrl), import(mainUrl),
+      import(tableUrl), import(interUrl), import(srcUrl('walk/derive.js')),
+      import(headUrl), import(compUrl), import(candUrl), import(rankUrl),
+      import(ctlUrl), import(trendUrl), import(statusUrl), import(declUrl),
+      import(partUrl('expanded_layer_panel.js')),
+      import(partUrl('reach_panel.js')), import(partUrl('walk_box_panel.js')),
+    ]);
+  return { store, api, panel, map, shell, main, sources,
+    parts: { table, inter, derive, head, comp, cand, rank,
+      control, trend, status, decl, layer, reach, box } };
 }

@@ -926,7 +926,14 @@ export function bindLoaders(layout, deps) {
               // C-92. 선언(`entities`)이 같이 갑니다 — 구성의 id 는 «선언된 식별 키»로 지어지고,
               // 그 이름을 아는 것은 선언이지 읽는 코드가 아닙니다. 선언은 «한 번» 읽고 캐시된
               // 그 약속이며, 못 읽었으면 빈 목록입니다(그때 id 는 노드 자기 id 로 물러섭니다).
-              .then((answer) => read(answer, axis, decl));
+              .then(async (answer) => {
+                // C-93. 선언이 «같이» 갑니다(평범한 데이터). 구성의 id 는 선언된 식별 키로
+                // 지어지고, 그 이름을 아는 것은 선언이지 읽는 코드가 아닙니다. 못 읽었으면
+                // 빈 목록이고 그때 id 는 노드 자기 id 입니다.
+                const served = await loadDeclarationOnce();
+                return read(answer, axis,
+                            { ...decl, entities: (served && served.entities) || [] });
+              });
           };
         }
         return { ...decl, options: bound };

@@ -26,6 +26,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { readSourceText } from './lib/probe.mjs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { loadBoardModules } from './lib/board_modules.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC_DIR = path.join(HERE, '..', 'src');
@@ -170,28 +171,14 @@ const TREND_WALK = {
   ],
 };
 
+// 🔴 C-93 (판정 345). THE LOADER IS SHARED. This file used to carry its own `dataUrl`/`read`/
+//    `outward` -- the same three lines six harnesses each held -- and the day `api.js` gained its
+//    first outward import, every one of those copies was missing the rewrite it already knew
+//    about. One place to forget nothing; the mutation keys and the names driven here are unchanged.
 async function loadModules(mutate = {}) {
-  const read = (file) => {
-    const text = readSourceText(path.join(BOARD_DIR, file)).text
-      .replace(new RegExp(String.fromCharCode(13, 10), 'g'), String.fromCharCode(10));
-    const fn = mutate[file];
-    const out = fn ? fn(text) : text;
-    if (fn && out === text) throw new Error(`mutation anchor is GONE: ${file}`);
-    return out;
-  };
-  const storeUrl = dataUrl(read('marking_store.js'));
-  const apiUrl = dataUrl(read('api.js'));
-  const panelUrl = dataUrl(read('panel.js').replaceAll("'./marking_store.js'", `'${storeUrl}'`));
-  const rewire = (file) => dataUrl(outward(read(file))
-    .replaceAll("'./panel.js'", `'${panelUrl}'`)
-    .replaceAll("'./marking_store.js'", `'${storeUrl}'`)
-    .replaceAll("'./api.js'", `'${apiUrl}'`));
-  const control = await import(rewire('control_bar_panel.js'));
-  const trend = await import(rewire('main_trend_panel.js'));
-  const store = await import(storeUrl);
-  // 집계 규칙은 «경계»에 삽니다 (`trendFromWalk`) -- 화면이 아니라 여기서 채점합니다.
-  const api = await import(apiUrl);
-  return { control, trend, store, api };
+  const board = await loadBoardModules(mutate);
+  return { control: board.parts.control, trend: board.parts.trend,
+    store: board.store, api: board.api };
 }
 
 // ── the DOM stub (same shape the other board harnesses drive) ──────────────────────

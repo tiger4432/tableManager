@@ -29,6 +29,7 @@ import { readSourceText } from './lib/probe.mjs';
 import { scoreMutants } from './lib/mutation_scorer.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadBoardModules } from './lib/board_modules.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BOARD_DIR = path.join(HERE, '..', 'src', 'rnd_board');
@@ -57,38 +58,14 @@ const BODY = {
   ],
 };
 
+// 🔴 C-93 (판정 345). THE LOADER IS SHARED. This file used to carry its own `dataUrl`/`read`/
+//    `outward` -- the same three lines six harnesses each held -- and the day `api.js` gained its
+//    first outward import, every one of those copies was missing the rewrite it already knew
+//    about. One place to forget nothing; the mutation keys and the names driven here are unchanged.
 async function loadModules(mutate = {}) {
-  const sources = {};
-  const read = (file) => {
-    const text = readSourceText(path.join(BOARD_DIR, file)).text
-      .replace(new RegExp(String.fromCharCode(13, 10), 'g'), String.fromCharCode(10));
-    const fn = mutate[file];
-    // 🔴 A MUTATION THAT CHANGES NOTHING IS A MUTANT THAT TESTS NOTHING, and it reads as a
-    // pass. The first run of this file shipped two of those. An anchor that no longer matches
-    // now stops the run instead of going quietly green.
-    const out = fn ? fn(text) : text;
-    if (fn && out === text) throw new Error(`mutation anchor is GONE: ${file}`);
-    sources[file] = out;
-    return sources[file];
-  };
-  const storeUrl = dataUrl(read('marking_store.js'));
-  const apiUrl = dataUrl(read('api.js'));
-  const panelUrl = dataUrl(read('panel.js').replaceAll("'./marking_store.js'", `'${storeUrl}'`));
-  // 표 부품은 이제 «다른 부품 안»에 삽니다 -- 그래서 여기서도 배선됩니다.
-  const tableUrl = dataUrl(read('table_part.js')
-    .replaceAll("'./panel.js'", `'${panelUrl}'`)
-    .replaceAll("'./marking_store.js'", `'${storeUrl}'`));
-  const rewire = (file) => dataUrl(read(file)
-    .replaceAll("'./panel.js'", `'${panelUrl}'`)
-    .replaceAll("'./marking_store.js'", `'${storeUrl}'`)
-    .replaceAll("'./table_part.js'", `'${tableUrl}'`)
-    .replaceAll("'./api.js'", `'${apiUrl}'`));
-  const table = await import(tableUrl);
-  const layer = await import(rewire('expanded_layer_panel.js'));
-  const head = await import(rewire('head_summary_panel.js'));
-  const comp = await import(rewire('composition_panel.js'));
-  const store = await import(storeUrl);
-  return { head, comp, layer, store, table, sources };
+  const board = await loadBoardModules(mutate);
+  return { head: board.parts.head, comp: board.parts.comp, layer: board.parts.layer,
+    store: board.store, table: board.parts.table, sources: board.sources };
 }
 
 // ── the DOM stub. Same shape round 1 used: a part must be scorable under bare node ──

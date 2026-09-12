@@ -25,26 +25,19 @@ import { readFileSync } from 'node:fs';
 import { readSourceText } from './lib/probe.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadBoardModules } from './lib/board_modules.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BOARD_DIR = path.join(HERE, '..', 'src', 'rnd_board');
 const dataUrl = (src) => `data:text/javascript;base64,${Buffer.from(src, 'utf8').toString('base64')}`;
 
+// 🔴 C-93 (판정 345). THE LOADER IS SHARED. This file used to carry its own `dataUrl`/`read`/
+//    `outward` -- the same three lines six harnesses each held -- and the day `api.js` gained its
+//    first outward import, every one of those copies was missing the rewrite it already knew
+//    about. One place to forget nothing; the mutation keys and the names driven here are unchanged.
 async function loadModules(mutate = {}) {
-  const read = (file) => {
-    const text = readSourceText(path.join(BOARD_DIR, file)).text
-      .replace(new RegExp(String.fromCharCode(13, 10), 'g'), String.fromCharCode(10));
-    const fn = mutate[file];
-    const out = fn ? fn(text) : text;
-    if (fn && out === text) throw new Error(`mutation anchor is GONE: ${file}`);
-    return out;
-  };
-  const storeUrl = dataUrl(read('marking_store.js'));
-  const interUrl = dataUrl(read('marking_intersection.js')
-    .replaceAll("'./marking_store.js'", `'${storeUrl}'`));
-  const store = await import(storeUrl);
-  const inter = await import(interUrl);
-  return { store, inter };
+  const board = await loadBoardModules(mutate);
+  return { store: board.store, inter: board.parts.inter };
 }
 
 async function suite(mods) {
