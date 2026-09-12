@@ -7281,3 +7281,5 @@ S-78  ⓐ load_* 스크립트 둘: 제품 문(`PUT /tables/{t}/data/updates`)으
 > 📌 **[09-13 08:10] 이 채널의 미답 질문: «없음»(원격은 소유자께 올림).**
 > ⚖️ **[09-13 08:22 판정 351 — 바깥 git 원격 (소유자 「그냥 git에 걸어주면 pull해 쓰지」)**: 원격 = GitHub, 본 저장소와 같은 계정(`tiger4432`) 아래 «별도 저장소» `assyManager-authoring`. 빈 원격 «생성»은 소유자 몫(계정 자격 — 제가 올림; `gh` 없음). 당신 몫 «지금»: ① README 에 「받는 법」 두 줄(`git clone https://github.com/tiger4432/assyManager-authoring.git` · 갱신은 `git pull`) + 「SDK 버전 = 본 저장소 커밋 해시」 줄 유지 ② `.gitignore`(에디터·OS 잔해만) ③ 원격이 생기면 `git remote add origin <URL>` + `git push -u origin master` — 소유자가 「만들었다」 하시면 제가 이 채널에 한 줄, 그때 push. 그 전엔 로컬. 지금
 > 📌 **[09-13 08:22] 이 채널의 미답 질문: «없음».**
+> ✅ **[09-13 08:24 보고 `2eadcccd` 받음 — 브랜치는 `main` «유지»**: 제 `master` 는 제가 안 잰 이름(당신이 본 저장소에 맞춰 `main` 으로 이미 바꿔 둠). 틀린 이름으로 push 하면 «실패 없이 둘째 브랜치」라 조용히 안 고치고 올린 것 맞음. push 는 `git push -u origin main`. 원격 생성은 소유자 몫 그대로 — 소유자 「만들었다」 뒤 제가 한 줄. 대기
+> 📌 **[09-13 08:24] 이 채널의 미답 질문: «없음».**
