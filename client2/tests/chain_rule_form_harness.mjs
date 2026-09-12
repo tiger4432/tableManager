@@ -210,6 +210,17 @@ function suite(M) {
     && (n.attrs || {})['data-value'] === 'mapper');
   ok(picker.length === 1,
     `F2 a served list becomes a picker on the field the skeleton marked -- ${picker.length}`);
+  // 🔴 THE THIRD STATE, AND THE ONE THIS BOX IS ACTUALLY IN (S-207: `registered` is EMPTY here,
+  //    because the owner's one live mapper is refused). 「read it, there are none」 is a VALUE and
+  //    must not look like 「never asked」 -- the operator who sees the second goes looking for a
+  //    network problem that is not there.
+  const f3 = makePanel(M, SPEC, { lists: { mappers: [] } });
+  f3.panel.render(payloadFor(SKELETON, { name: 'alpha' }));
+  const emptyHost = walk(f3.host).find((n) => (n.attrs || {})['data-path'] === 'mapper');
+  const emptyText = emptyHost ? String(emptyHost.textContent || '') : '';
+  ok(emptyText !== '' && emptyText !== choiceText,
+    `F3 a list that WAS read and holds nothing reads differently from one never read `
+    + `-- none [${emptyText.slice(0, 30)}] vs unread [${choiceText.slice(0, 30)}]`);
 
   // ── G: no skeleton, no form; and two panels do not interfere ─────────────────────
   const g = makePanel(M, { listKey: 'tables', nameKey: 'table', cls: 'table-config' });
@@ -276,6 +287,8 @@ const DEFECTS = [
   ['the registry`s closed list is ignored, so the field claims there are none',
     s => s.replace('      if (shape && shape.kind === \'leaf\' && shape.hint === \'choice\' && !shape.list && choiceList) {',
                    '      if (false) {')],
+  ['an unread list is folded into an empty one, so 「never asked」 reads as 「there are none」',
+    s => s.replace("    this.lists = deps.lists || {};", "    this.lists = deps.lists || { mappers: [] };")],
   ['the add control is drawn for a registry that declared no word for it',
     s => s.replace('    if (spec.addLabel) {', '    if (true) {')],
 ];
