@@ -739,3 +739,125 @@ def attach(db, table_name: str, data_list: list) -> int:
                                "priority_source": SOURCE_NAME}
             touched += 1
     return touched
+
+
+# ---------------------------------------------------------------------------
+# S-189 ⓑ — materialising a join: the value stops being computed and becomes a cell
+# ---------------------------------------------------------------------------
+#: 🔴 THE WRITE REUSES `execute_rule`, WHICH REUSES `join_onclause`. Not a new SELECT: the
+#: ON clause already has ONE spelling (see that function's own note about the grid and the
+#: filter disagreeing), and a materialising query that composed its own would be a third
+#: reader of the same join. What the read path computes and what the write path stores are
+#: then the same rows by construction rather than by review.
+
+
+def materialize_rows(db, rule: dict, row_ids: list) -> dict:
+    """Write the join's answer onto the named left rows, as the RULE's own layer.
+
+    Returns `{"rule", "written", "refusal"}`.
+
+    🔴 `source_name` IS THE RULE NAME, and that is what makes a manual edit win. Layering
+    already ranks a `user` overwrite above a named source, so nothing here has to defend the
+    operator's edit -- and nothing here may, because a second precedence rule would be a
+    second answer to 「who wins」.
+
+    ⚠️ A ROW THE JOIN DID NOT MATCH IS SKIPPED, NOT WRITTEN BLANK. Writing `None` would be
+    this repository's 「없는 것」 / 「0인 것」 defect: an absent right-hand row and a right-hand
+    row holding an empty value would land identically, and the layer could never be told
+    apart from a real value later.
+    """
+    from database import crud, schemas
+
+    if not rule.get("materialize"):
+        return {"rule": rule.get("name"), "written": 0,
+                "refusal": "rule '%s' does not declare materialize" % rule.get("name")}
+
+    results = execute_rule(db, rule, list(row_ids))
+    expose = list(rule.get("expose") or ())
+    items = []
+    for row_id, answer in results.items():
+        values = (answer or {}).get("values") or {}
+        cells = {col: values[col] for col in expose
+                 if col in values and values[col] is not None}
+        if not cells:
+            continue
+        items.append(schemas.GeneralUpdateItem(
+            row_id=row_id, updates=cells,
+            source_name=rule["name"], updated_by=rule["name"]))
+    if not items:
+        return {"rule": rule["name"], "written": 0, "refusal": None}
+
+    crud.apply_batch_updates(db, rule["left_table"],
+                             schemas.GeneralUpdateBatch(updates=items))
+    return {"rule": rule["name"], "written": len(items), "refusal": None}
+
+
+def on_target_rows_changed(db, rule: dict, row_ids: list) -> dict:
+    """Trigger ⓐ — the TARGET row moved, so only that row is rewritten. Cost is O(rows).
+
+    ⚠️ NO CEILING APPLIES HERE, deliberately. The ceiling exists because ONE reference row
+    can fan out to many target rows; a target row costs itself, and refusing that would
+    refuse an ordinary edit.
+    """
+    return materialize_rows(db, rule, row_ids)
+
+
+def on_reference_rows_changed(db, rule: dict, key_values: list) -> dict:
+    """Trigger ⓑ — a REFERENCE row moved, so every target row carrying that key follows.
+
+    🔴 THIS IS THE EXPENSIVE ONE AND IT COUNTS BEFORE IT WRITES (판정 302). Measured on this
+    box: one `dt_job` covers 70,800 rows of `dt_log`, about 92 seconds of writing at the
+    owner's IO spec. Counting first is what lets the rule's declared ceiling refuse the whole
+    thing instead of discovering the cost halfway through.
+
+    ⛔ OVER THE CEILING WRITES NOTHING. Not the first N rows: a table left part new and part
+    old says nothing about which row is which.
+    """
+    import virtual_join_config as vjc
+
+    counted = vjc.rewrite_row_count(db.connection(), rule, key_values)
+    refusal = vjc.rewrite_refusal(rule, counted)
+    if refusal:
+        return {"rule": rule["name"], "written": 0, "counted": counted, "refusal": refusal}
+
+    row_ids = _left_row_ids_for_key(db, rule, key_values)
+    result = materialize_rows(db, rule, row_ids)
+    result["counted"] = counted
+    return result
+
+
+def _left_row_ids_for_key(db, rule: dict, key_values: list) -> list:
+    """Which target rows carry this join key — folded the SAME way the counter folds it."""
+    from sqlalchemy import text
+
+    import virtual_join_config as vjc
+    from database.crud import fold_key_value
+
+    left_columns = [p["left"] for p in rule["join_key"]]
+    folds = vjc._folds_list(rule["right_columns"], rule.get("right_folds"))
+    where = " AND ".join(
+        "%s = :k%d" % (vjc.index_key_expression(col, fold), i)
+        for i, (col, fold) in enumerate(zip(left_columns, folds)))
+
+    def _bound(col, value):
+        folded = fold_key_value(rule["left_table"], col, value)
+        return "" if folded is None else folded
+
+    params = {("k%d" % i): _bound(col, value)
+              for i, (col, value) in enumerate(zip(left_columns, key_values))}
+    sql = 'SELECT row_id FROM "%s" WHERE %s' % (rule["left_table"], where)
+    return [row[0] for row in db.connection().execute(text(sql), params).fetchall()]
+
+
+def retract_rows(db, rule: dict, columns=None) -> dict:
+    """The reference row is GONE, so the join's layer goes with it.
+
+    🔴 THE MECHANISM ALREADY EXISTED — `chain_replay.withdraw_source` retracts a named
+    source's layer, and the join layer is named for the rule. Nothing is written in its
+    place: 「투영은 지워도 기록은 안 된다」, and inventing a `0` or a blank where a value used
+    to be is how a screen stops being able to tell absence from measurement.
+    """
+    from chain_replay import withdraw_source
+
+    return withdraw_source(db, rule["left_table"], rule["name"],
+                           columns=list(columns or rule.get("expose") or ()))
