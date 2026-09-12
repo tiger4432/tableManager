@@ -73,8 +73,12 @@ def test_every_other_table_still_reports_its_own_number(client, one_broken_table
     same route with nothing broken."""
     with_broken = client.get("/dashboard/summary").json()
 
+    from conftest import retire_dynamic_model
+
     del crud.TABLE_CONFIG[one_broken_table]
-    del models.DYNAMIC_TABLES[one_broken_table]
+    # S-191: this seat dropped the class and left the `Table` in `Base.metadata` for the
+    # rest of the process. Nothing here went red for it -- that is the shape of this leak.
+    retire_dynamic_model(one_broken_table)
     main.RECORRECTION_CACHE["value"] = None
     without = client.get("/dashboard/summary").json()
 

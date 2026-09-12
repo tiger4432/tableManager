@@ -56,13 +56,12 @@ def _declared():
     # fail - measured, not guessed: it read 50 against a 46-entry catalogue. So the
     # fixture removes every name this file introduces and rebuilds from the real
     # catalogue, rather than each test remembering to.
+    from conftest import retire_dynamic_model
     from database import models
     from database.database import Base
 
     crud.TABLE_CONFIG.pop(VIEW, None)
     crud.TABLE_CONFIG.pop(TABLE, None)
-    for name in [n for n in models.DYNAMIC_TABLES if str(n).startswith("s186_")]:
-        models.DYNAMIC_TABLES.pop(name, None)
     # 🔴 POPPING THE CLASS IS ONLY HALF OF IT, AND THE OTHER HALF FAILS THREE FILES AWAY.
     # `Base.metadata` is the same process-wide singleton, so the `Table` and its
     # `Index` survive the pop -- and because the class is gone, the NEXT test in this
@@ -72,8 +71,15 @@ def _declared():
     # idx_s186_plain_rel_updated already exists」 -- measured as 5 errors in
     # `test_capped_reads_have_a_total_order.py`, which names neither this file nor this
     # fixture.
-    for name in [n for n in list(Base.metadata.tables) if str(n).startswith("s186_")]:
-        Base.metadata.remove(Base.metadata.tables[name])
+    # S-191: the pair is `conftest.retire_dynamic_model` now, so this file no longer
+    # spells it out and cannot drift from the seven other seats that do the same thing.
+    # ⚠️ BOTH registries are swept, not just one -- a name can outlive its class in
+    # `Base.metadata` (that is exactly the leak), so iterating only `DYNAMIC_TABLES`
+    # would walk past it.
+    leaked = [n for n in list(models.DYNAMIC_TABLES) + list(Base.metadata.tables)
+              if str(n).startswith("s186_")]
+    for name in dict.fromkeys(leaked):
+        retire_dynamic_model(name)
     models.init_dynamic_models(dict(crud.TABLE_CONFIG))
 
 
@@ -229,8 +235,14 @@ def test_a_view_row_carries_no_layering_metadata_and_renders_its_times():
     finally:
         # ⚠️ The registry is process-wide, so a model left behind makes a SIBLING test that
         # counts it fail — measured, not guessed: it went 46 -> 51.
+        from conftest import retire_dynamic_model
+
         crud.TABLE_CONFIG.pop("s186_render_view", None)
-        models.DYNAMIC_TABLES.pop("s186_render_view", None)
+        # S-191: this seat popped the class and left the `Table` behind -- the autouse
+        # fixture above swept it up afterwards, which is why nothing here ever went red.
+        # It goes through the one function anyway: a seat that only works because
+        # something else cleans up after it is a seat that breaks when that changes.
+        retire_dynamic_model("s186_render_view")
         models.init_dynamic_models(dict(crud.TABLE_CONFIG))
 
     # 🔴 THE SAME WRAPPER EVERY ROW USES — the grid reads `dataObj.data[col]` for every

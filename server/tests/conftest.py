@@ -67,6 +67,46 @@ engine = create_engine(
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+
+# ===========================================================================
+# Retiring a dynamic model  [S-191, 판정 307]
+# ===========================================================================
+
+def retire_dynamic_model(name):
+    """Take one dynamic table back out of BOTH process-wide singletons.
+
+    🔴 POPPING `DYNAMIC_TABLES` IS HALF OF IT, AND THE OTHER HALF FAILS THREE FILES AWAY.
+    `Base.metadata` is the same singleton, so the `Table` and its `Index` objects survive
+    the pop -- and because the class is gone, the next `init_dynamic_models` takes its
+    fresh-build arm and appends a SECOND `Index` of the same name. The first LATER file to
+    call `Base.metadata.create_all` then dies with 「index … already exists」, naming
+    neither the file that leaked nor the fixture that did it. Measured this session at
+    **1,008 errors** from one such fixture (`ea1e8ec2`).
+
+    ⚠️ Four seats did both halves by hand and four did not; this is the one function, so
+    「where do I also remove the Table」 stops being a thing each test has to remember.
+
+    ⛔ NOT FOR SAVE-AND-RESTORE. Three seats pop the registry and put the SAME object back
+    in a `finally` -- there the pop is the inverse of the restore, and a helper that also
+    drops the `Table` would break the pair (the restore returns the class, never the
+    `Table`). They are named here so the next reader does not "finish the job":
+
+        tests/test_map_alignment_references.py   `test_an_unservable_catalog_is_a_different_state`
+        tests/test_map_alignment_worklist.py     `test_an_unservable_catalog_is_a_different_state`
+        tests/test_ledger_v2_pg.py               the `finally` that restores `previous_model`
+
+    Returns the retired class, or `None` if the name was not registered -- so a caller can
+    still tell 「it was there」 from 「it never was」.
+    """
+    from database import models
+
+    model = models.DYNAMIC_TABLES.pop(name, None)
+    table = Base.metadata.tables.get(name)
+    if table is not None:
+        Base.metadata.remove(table)
+    return model
+
+
 # [Isolation] Same class of leak as the DATABASE_URL pin above, found the hard
 # way: the ingestion path now publishes a heartbeat (work claims), so any test
 # that drives `process_with_retry` - test_std_parser.py and

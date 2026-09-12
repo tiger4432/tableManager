@@ -134,12 +134,13 @@ def jrc_env(db_session, client, tmp_path, monkeypatch):
     # Restoring TABLE_CONFIG is NOT enough: `init_dynamic_models` also writes
     # `models.DYNAMIC_TABLES` and `Base.metadata`, and leaving scratch tables there made a
     # DIFFERENT file fail in full-suite order only, earlier this session.
+    from conftest import retire_dynamic_model
+
     for t in JRC_TABLES:
         crud.TABLE_CONFIG.pop(t, None)
-        models.DYNAMIC_TABLES.pop(t, None)
-        tbl = Base.metadata.tables.get(t)
-        if tbl is not None:
-            Base.metadata.remove(tbl)
+        # S-191: both singletons in one call. The comment above is why it has to be both;
+        # `retire_dynamic_model` is where that "why" now lives for all eight seats.
+        retire_dynamic_model(t)
 
 
 def _schema(client, table):
