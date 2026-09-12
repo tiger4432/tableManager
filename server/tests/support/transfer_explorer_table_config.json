@@ -29,7 +29,7 @@
   "dt_log": {
     "column_types": {
       "record_id": "string",
-      "event_at": "datetime",
+      "event_time": "datetime",
       "dt_job_id": "string",
       "core_wafer": "string",
       "core_x": "number",
