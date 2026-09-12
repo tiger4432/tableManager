@@ -171,6 +171,40 @@ CEILINGS    (:1450) 바닥의 거울 — 「쌓인 것을 더 쌓지 마라」
 
 ---
 
+## 🆕 5-bis. 동적 모델을 «물리는» 것은 함수 «하나»다 (2026-09-12 S-191 `1f730cc9`)
+
+```
+✅ `server/tests/conftest.py::retire_dynamic_model(name)` :75      — 이것을 쓴다
+⛔ `models.DYNAMIC_TABLES.pop(name)` «만» 하는 것                   — 절반이고, 나머지 절반이 «세 파일 건너»에서 터진다
+```
+
+### 🔴 왜 pop 이 «절반»인가 — 실패가 «다른 파일»에서 난다
+```
+pop 하면        `DYNAMIC_TABLES` 에서 클래스가 빠진다
+남는 것         `Base.metadata` 는 «같은 싱글턴»이라 `Table` 과 그 `Index` 객체가 «살아남는다»
+다음 빌드       클래스가 없으니 `init_dynamic_models` 가 «새로 짓는» 팔을 타고 **같은 이름의 `Index` 를 하나 더** 붙인다
+터지는 곳       그 «뒤에» `Base.metadata.create_all` 을 부르는 «첫 파일»이 「index … already exists」로 죽는다
+                — 샌 파일도, 그렇게 만든 픽스처도 «이름 대지 않고»
+```
+📐 **이 세션 실측: 그런 픽스처 «하나»에서 오류 1,008 건**(`ea1e8ec2`). 좌석 «넷»이 양쪽 절반을 손으로 했고
+«넷»은 안 했다 — 그래서 「Table 은 어디서 또 빼지」가 시험마다 «외울 일»이 아니게 함수 하나로 접었다.
+
+### ⛔ 그리고 「저장했다 되돌리기」는 이 헬퍼의 «예외»다 — 이름까지 적혀 있다
+```
+tests/test_map_alignment_references.py   test_an_unservable_catalog_is_a_different_state
+tests/test_map_alignment_worklist.py     test_an_unservable_catalog_is_a_different_state
+tests/test_ledger_v2_pg.py               `previous_model` 을 되돌리는 `finally`
+```
+🔴 **거기서는 pop 이 restore 의 «역»이다.** `Table` 까지 떨어뜨리는 헬퍼를 쓰면 그 짝이 깨진다 —
+restore 는 «클래스»를 돌려놓지 `Table` 을 돌려놓지 않기 때문이다. 소스가 이 셋을 «이름 대어» 적어 둔 이유가
+그것이다: **다음 독자가 「일을 마저 끝내지」 않게.**
+🔵 반환은 «물린 클래스», 없던 이름이면 `None` — 그래서 호출자가 「있었다」와 「애초에 없었다」를 «구별»할 수 있다.
+
+📌 부류: 「한 축은 한 칸·한 함수」의 «시험 픽스처» 판이다. 그리고 이 항목이 이 문서에 있는 이유는
+**증상이 원인에서 세 파일 떨어져 나타나기 때문**이다 — 하니스가 「무엇을 재는가」만큼이나
+「무엇을 «남기는가»」가 이 저장소가 값을 치른 자리다.
+
+
 ## 6. 이 문서가 부르는 이름 (2026-09-10 실측)
 
 | 심볼 | 자리 |
