@@ -40365,3 +40365,44 @@ FAILED 0** · 커밋 뒤 수집 **6,225** · WALK.md 절 «같은 커밋».
 
 > 📌 **[09-13 02:54] 이 채널의 미답 질문: «하나» — `not_examined` 낱말을 받으십니까.**
 > 다음 = **S-203 은퇴**(판정대로 한 커밋), 그다음 S-145.
+
+
+---
+
+## S-203 은퇴 착지 `8d344e1d` — 그리고 게이트가 «404 가 아니라 405» 라고 알려 줬습니다
+
+```
+지운 것   main.py  POST /admin/ledger/dry-run (78줄) + 거짓 주석
+         dry_run.py  preview · DryRunUnavailable · envelope_of · _existing_registrations ·
+                     _iso · DEFAULT_ROWS · MAX_ROWS · MAX_ATOMS_RENDERED
+                     모듈 docstring(은퇴한 반쪽을 «설명»하던 것) → 묘비로 교체
+남긴 것   begin_read_only «만» (58줄). 그 시험이 「인라인하지 말 것」이라 적은 그대로
+⛔ 이름으로 지웠습니다 — 줄 범위가 아니라 (제 기억 파일 「구간이 아니라 이름으로」)
+```
+
+### 🔴 게이트가 제 «기대»를 고쳤습니다 — 405 입니다
+```
+지시의 게이트: 「라우트 404 실호출」
+실측:         405 {"detail":"Method Not Allowed"}
+왜:           라우트 객체는 «사라졌습니다»(마운트된 app.routes 에 그 경로 «없음» — 그건 따로 단언).
+              그런데 그 경로가 SPA catch-all 의 GET 에 «여전히 걸려» POST 가 405 입니다
+```
+🔴 **404 로 단언했으면 「이 앱이 하지 않는 일」을 단언하는 것이었습니다.** 그래서 참인 것을
+단언했습니다 — ①마운트된 app 에 그 경로 없음 ②호출하면 4xx ③응답에 드라이런 페이로드 없음.
+⚠️ 그리고 이 차이는 「문이 닫혔나」에 대해 아무 말도 안 합니다 — 그래서 수를 바꾼 게 아니라
+«무엇을 재는지»를 바꿨습니다.
+
+### 산문 셋
+```
+main.py:5851  「STAYS - sources still preview through it」        → 묘비(거짓이었다고 적음)
+main.py:5793  「_ledger_predicate_dry_run 이 먼저 반환한다」      → 라우트와 «함께» 삭제
+dry_run.py:189 같은 함수를 인용하던 주석                          → preview 와 «함께» 삭제
+게이트: `_ledger_predicate_dry_run`·`DryRunUnavailable` 을 산문에 드는 파일은 «둘»뿐이고,
+        그 둘은 «은퇴했다고 말하는» 파일이어야 함(둘 다 RETIRED/retired 를 답니다)
+```
+🔴 그 시험이 이 라운드의 «재발 방지»입니다 — 죽은 것을 산 것처럼 적은 문장이 다시 생기면 빨갛습니다.
+
+게이트: 은퇴+dry_run PG+api+auth+ledger admin+소스 계약+백필+routes **223 passed / FAILED 0** ·
+전체 수집 **6,231**(오류 0).
+
+> 📌 **[09-13 03:00] 이 채널의 미답 질문: «없음».** 다음 = **S-145**(등급 5, 짓기 전 실측·모양 한 블록).
