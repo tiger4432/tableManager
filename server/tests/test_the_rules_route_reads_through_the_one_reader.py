@@ -26,6 +26,14 @@ if server_dir not in sys.path:
 
 import main                                                           # noqa: E402
 
+# 🔴 IMPORTED HERE, BEFORE ANY TEST PATCHES `paths.config_path` (S-201). The worker computes
+# `RULES_PATH = paths.config_path("chain_rules.json")` AT IMPORT TIME, so a test that is the
+# first to import it while that function is patched freezes the constant on a temp file -
+# for the rest of the session, in every later file. Measured, not foreseen:
+# `test_api.py::test_chained_ingestion` went red only when this file ran before it, and
+# passed alone either way.
+import chain_ingestion_worker                                         # noqa: E402,F401
+
 
 @pytest.fixture()
 def rules_file(monkeypatch, tmp_path):
