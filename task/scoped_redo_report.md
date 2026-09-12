@@ -38750,3 +38750,40 @@ redo = { op, rows, atoms, pace_choices, blocked_reason }
 > 📌 **[09-12 23:54] 이 채널의 미답 질문: «하나» —** `redo` 를 `preview_rescope`(부분집합) 대신
 > `ledger_backfill`/`chain_replay` 카운트(전체)로 채우는 것 승인해 주십시오. 칸 이름도 그에 맞게.
 > 트리는 깨끗합니다.
+
+---
+
+## 📤 [09-12 23:57 구현자] S-143 — 판정 320 받았습니다. 그런데 «미리보기에 db 가 없습니다»
+
+모양은 확정됐습니다: `redo = {op, rows, atoms, pace_choices, scan_limit, absence, blocked_reason}`,
+값은 `retroactive.count(db, op, params)` 의 응답 «키 이름 그대로», 원장 → `ledger_backfill {source}` ·
+체인 → `chain_replay {rule}`. 짓기 직전에 «인자»를 또 한 번 쟀고, 이번엔 «db» 입니다.
+
+### 실측
+```
+compile_draft_preview(active_setup, node, raw)        <- db «없음»
+문서 어댑터 preview(self, context, node, raw)          <- context = DraftContext(setup, index)
+DraftContext 생성 자리 «여섯» 전부 config_drafts.py 안 (:364 :379 :415 :433 :489 :499)
+   -> 전부 (active_setup, index) 로만 만듭니다. «어느 자리도 db 를 안 들고 있습니다»
+retroactive.count(db, ...) 는 Session 이 «필수»입니다(드라이런 뒤 구조적 롤백)
+```
+
+### 갈래 셋 — 판정이 필요합니다
+```
+A  DraftContext 에 db 를 «실어» 라우트에서 내려보냅니다
+   -> 생성 자리 여섯 + 그 호출자를 손댑니다. 수명주기의 «계약»이 바뀝니다(S-194 가 세운 것)
+B  어댑터가 «자기» 읽기 전용 세션을 엽니다(db_safety, dev_bench._readonly_session 과 같은 수)
+   -> 스레딩 0. 다만 «미리보기 요청 경로에서 커넥션을 엽니다» —
+      「성능 마진 넉넉하게」가 경고하는 자리이고, 판정 320 도 비용을 이미 걱정하셨습니다
+C  `redo` 를 «라우트»에서 붙입니다(미리보기가 돌아온 «뒤»)
+   -> 스레딩 0·커넥션 추가 0. 다만 자리가 «둘»(원장 라우트·체인 라우트)이 되어
+      판정 319 의 「수명주기가 하나라 한 자리」가 깨집니다
+```
+제 판단은 «A» 입니다 — 수명주기가 하나라는 것이 이 설계의 값이고, db 는 그 수명주기가
+«이미 필요로 하는» 것이 됐습니다(비용을 세려면 DB 를 봐야 합니다). B 는 조용히 커넥션을 늘리고,
+C 는 둘째 자리를 만듭니다. 다만 A 는 «계약 변경»이라 제가 혼자 정하지 않겠습니다.
+
+⚠️ 그리고 이것이 S-143 에서 «짓기 전에» 잡은 세 번째 어긋남입니다(카운터 인자 · 칸 이름 · db).
+   셋 다 「그 모양대로 지으면 돌기는 하는데 다른 것을 재는」 부류였습니다.
+
+> 📌 **[09-12 23:57] 이 채널의 미답 질문: «하나» —** A·B·C 중 어느 것입니까. 트리는 깨끗합니다.
