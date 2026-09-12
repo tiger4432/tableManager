@@ -123,13 +123,45 @@ def test_a_predecessor_that_is_not_in_this_report_is_unknown_not_unblocked():
     assert _domain(report, crr.DOMAIN_LEDGER)["blocked_by"] is None
 
 
-def test_standing_needs_an_effect_and_not_merely_the_absence_of_refusals():
-    """🔴 「거절이 0」 IS NOT 「섰다」. A step nobody has written declares nothing for the next
-    one to point at, so effect 0 blocks exactly as a refusal does — while the two stay
-    different states in that step's own populations."""
-    assert not crr._step_is_standing({"counts": {"effective": 0, "rejected": 0}})
-    assert not crr._step_is_standing({"counts": {"effective": 3, "rejected": 1}})
-    assert crr._step_is_standing({"counts": {"effective": 1, "rejected": 0}})
+def test_standing_is_an_effect_plus_a_readable_file_and_nothing_more():
+    """🔴 판정 318. A step stands when it has an effect AND no FILE-scope refusal.
+
+    ⛔ A PARTIAL REFUSAL DOES NOT BLOCK THE NEXT STEP. Written as 「any refusal blocks」 this
+    made the walk `blocked_by: 5` while the walk's own effective was 9 — 「blocked」 and 「this
+    step runs」 true on one screen, which is the same false block ⓒ-b fixed.
+
+    ⚠️ Those refusals do not vanish: they stay in that step's own populations, which is where
+    an operator reads them. What changes is only whether they are grounds to stop the next
+    step from being asked about.
+    """
+    nothing = {"counts": {"effective": 0, "rejected": 0}, "rejected": []}
+    partial = {"counts": {"effective": 3, "rejected": 1},
+               "rejected": [{"scope": crr.SCOPE_RULE, "subject": "r"}]}
+    unreadable = {"counts": {"effective": 3, "rejected": 1},
+                  "rejected": [{"scope": crr.SCOPE_FILE, "subject": "f"}]}
+    fine = {"counts": {"effective": 1, "rejected": 0}, "rejected": []}
+
+    assert not crr._step_is_standing(nothing), "nothing declared gives the next step nothing"
+    assert crr._step_is_standing(partial), "a refused rule is not a fallen step"
+    assert not crr._step_is_standing(unreadable), "an unreadable file says nothing at all"
+    assert crr._step_is_standing(fine)
+
+
+def test_a_partially_refused_predecessor_does_not_block_the_next_step():
+    """🔴 THE LIVE SHAPE THIS RULING CAME FROM. The ledger refuses some of its sources and
+    still declares entities; the walk runs on those entities, so calling the walk blocked
+    would be false while its own list is full."""
+    report = crr.resolve_report()
+    ledger = _domain(report, crr.DOMAIN_LEDGER)
+    walk = _domain(report, crr.DOMAIN_WALK)
+    if ledger is None or walk is None:
+        pytest.skip("both steps must be registered for this to say anything")
+
+    if ledger["counts"]["effective"] and not any(
+            e["scope"] == crr.SCOPE_FILE for e in ledger["rejected"]):
+        assert walk["blocked_by"] is None, (
+            "the walk is blocked by %r while the ledger stands with %d effective"
+            % (walk["blocked_by"], ledger["counts"]["effective"]))
 
 
 # ---------------------------------------------------------------------------

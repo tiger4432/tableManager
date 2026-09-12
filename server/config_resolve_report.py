@@ -1342,15 +1342,25 @@ _STEP_OF = {item["domain"]: item for item in SETUP_STEPS}
 
 
 def _step_is_standing(domain: dict) -> bool:
-    """이 걸음이 «서 있는가» — 뒤 걸음이 기댈 수 있는 상태인가.
+    """이 걸음이 «서 있는가» — 뒤 걸음이 기댈 수 있는 상태인가 (판정 318).
 
-    🔴 「거절이 없다」로는 부족합니다. 아무것도 «선언되지 않은» 걸음도 뒤 걸음이 가리킬 것을
-    주지 못하므로, 효과 0 은 거절과 같은 뜻으로 «뒤를 막습니다»(판정 313).
-    ⚠️ 그러나 그 둘은 «같은 상태가 아닙니다** — 어느 쪽인지는 그 걸음 자기 모집단이 말합니다.
-    여기서는 「뒤가 기댈 수 있나」 하나만 답합니다.
+    🔴 서 있다 = 효과가 «하나 이상» 있고, «파일 범위» 거절이 «없다».
+
+    🔴 그리고 «부분 거절»은 뒤를 막지 않습니다. 처음에 이것을 「거절이 하나라도 있으면 차단」
+    으로 적었더니 이 박스에서 걷기가 `blocked_by: 5` 로 나왔는데 그 걷기의 effective 는 «9»
+    였습니다 — 「막혔다」와 「이 걸음이 돌고 있다」가 «한 화면에 동시에 참»입니다. 「이 줄이
+    참인가」에서 거짓이고, ⓒ-b 에서 고친 거짓 차단과 «같은 부류»입니다.
+
+    ⚠️ 규칙·표·노드 범위의 거절은 그 걸음의 «자기 모집단»에 그대로 보입니다 — 사라지는 것이
+    아니라, 뒤 걸음을 막는 근거가 «아닐» 뿐입니다. 운영자가 그것을 읽을 자리는 그 걸음입니다.
+    ⚠️ 파일 범위 거절만 다릅니다: 선언을 «못 읽으면» 그 걸음이 무엇을 주는지 «아무도 모르고»,
+    뒤 걸음이 기댈 근거가 남지 않습니다.
     """
     counts = domain.get("counts") or {}
-    return not counts.get("rejected") and bool(counts.get("effective"))
+    if not counts.get("effective"):
+        return False
+    return not any((item or {}).get("scope") == SCOPE_FILE
+                   for item in domain.get("rejected") or ())
 
 
 def _annotate_steps(out: list) -> list:
