@@ -300,6 +300,196 @@ def _default_scripts_path():
 
 
 # ---------------------------------------------------------------------------
+# ① the input — 「이름을 적으면 입력이 온다」 (S-197)
+# ---------------------------------------------------------------------------
+
+#: How many rows a table hands back when the caller names no window. A notebook cell that
+#: SELECTed a production-shaped table unbounded would hang the kernel on the one input the
+#: author most wants to look at, and 「성능 마진은 넉넉하게」 says not to wait to find out.
+DEFAULT_INPUT_ROWS = 200
+
+
+def _ensure_dynamic_models():
+    """Make `DYNAMIC_TABLES` answer, the way the boot path fills it.
+
+    ⚠️ A NOTEBOOK IS NOT THE SERVER — nothing has called `init_dynamic_models` in this
+    process. Loading the declaration through `crud.load_table_config` rather than reading the
+    file here keeps 「which declaration is live」 one question.
+    """
+    from database import crud, models
+
+    if models.DYNAMIC_TABLES:
+        return
+    config = crud.load_table_config() or {}
+    if config:
+        models.init_dynamic_models(config)
+
+
+def input_for_mapper(table_or_sample, *, rows=None, row_ids=None, where=None):
+    """A DataFrame in EXACTLY the shape the worker hands a mapper. Reads only.
+
+    🔴 IT IS THE PRODUCTION CONSTRUCTION, NOT A LOOKALIKE. A table name goes through
+    `outbox_expand._data_columns` and `_synthesize_payload` — the same two functions the
+    worker uses when it reads a collapsed event's rows back into payloads — and then through
+    `mapper_sdk.payloads_to_df`. A bench that assembled its own envelope would hand the
+    author a frame production never produces, and the mapper written against it would fail on
+    the first real batch. (`_synthesize_payload` is underscored and called anyway; that is
+    the point. Spelling it again here is the defect this argument exists to avoid.)
+
+    ⚠️ A FILE PATH IS ACCEPTED TOO and goes through `read_sample` + `as_payloads`, so the
+    sample folders that are already tests are also inputs here — one shape, two sources.
+
+    Window: `rows=N` (default `DEFAULT_INPUT_ROWS`), `row_ids=[...]`, or `where="col = 'x'"`.
+    """
+    import mapper_sdk
+
+    if os.path.isfile(str(table_or_sample)):
+        return mapper_sdk.payloads_to_df(as_payloads(read_sample(str(table_or_sample))))
+
+    table_name = str(table_or_sample)
+    _ensure_dynamic_models()
+    from database.models import DYNAMIC_TABLES
+
+    model = DYNAMIC_TABLES.get(table_name)
+    if model is None:
+        raise LookupError(
+            "no declared table %r; declared: %s (or give a sample file path)"
+            % (table_name, ", ".join(sorted(DYNAMIC_TABLES)) or "none"))
+
+    session, closer = _readonly_session()
+    if session is None:
+        raise RuntimeError(
+            "a table input needs the database, and the read-only connection did not open; "
+            "give a sample file path instead")
+    try:
+        import outbox_expand
+        from sqlalchemy import text
+
+        query = session.query(model)
+        if row_ids:
+            query = query.filter(model.row_id.in_(list(row_ids)))
+        if where:
+            query = query.filter(text(where))
+        if not row_ids:
+            query = query.limit(int(rows or DEFAULT_INPUT_ROWS))
+        found = query.all()
+        columns = outbox_expand._data_columns(model)
+        payloads = [outbox_expand._synthesize_payload(row, columns, {}) for row in found]
+    finally:
+        closer()
+    return mapper_sdk.payloads_to_df(payloads)
+
+
+#: The value `raw_for_parser` puts where the frame would be. 🔴 A VALUE, NOT AN EXCEPTION —
+#: 「운영이 읽기를 못 하는 포맷」 is the whole reason the author is opening the notebook, so a
+#: first cell that raises on it locks them out of the case they came to solve.
+UNREADABLE = "DataFrame 으로 못 읽음"
+
+#: Tried in order against the head of the file, first one that decodes wins. Display only —
+#: production has no detection step, and inventing one here would teach the author a
+#: behaviour their parser will not get.
+ENCODING_LADDER = ("utf-8-sig", "utf-8", "cp949", "latin-1")
+
+
+def raw_for_parser(file_path, *, lines=20, head_bytes=65536):
+    """What is actually IN the file, plus production's default read if it survives it.
+
+    Returns `{path, size_bytes, encoding, lines, df, read_refusal}`.
+
+    🔴 `read_refusal` IS A NORMAL STATE. `_read_file_to_dataframe` is `pd.read_csv` /
+    `pd.read_excel` by extension; a fixed-width instrument dump or a two-header-row export
+    makes it throw, and that throw is the REASON the author is writing a read override. So
+    the frame comes back `None` with the reason beside it, and the bytes and decoded lines
+    are there either way — those are what a read override is written from.
+    """
+    path = str(file_path)
+    size = os.path.getsize(path) if os.path.exists(path) else None
+    with io.open(path, "rb") as handle:
+        head = handle.read(head_bytes)
+
+    encoding, text_lines = None, []
+    for candidate in ENCODING_LADDER:
+        try:
+            decoded = head.decode(candidate)
+        except Exception:
+            continue
+        encoding = candidate
+        text_lines = decoded.splitlines()[:lines]
+        break
+
+    frame, refusal = None, None
+    try:
+        from parsers.pipeline_base import BasePipelineParser
+
+        frame = BasePipelineParser()._read_file_to_dataframe(path)
+    except Exception as exc:
+        refusal = "%s: %s: %s" % (UNREADABLE, type(exc).__name__, exc)
+
+    return {"path": path, "size_bytes": size, "encoding": encoding,
+            "lines": text_lines, "df": frame, "read_refusal": refusal}
+
+
+# ---------------------------------------------------------------------------
+# 🔴 what the notebook showed better than the bench did — promoted, not copied
+# ---------------------------------------------------------------------------
+
+def claimers(file_path, *, scripts_path=None):
+    """EVERY parser's answer to `match(file_path)`, claiming nothing.
+
+    🔴 `try_parser` ANSWERS 「who gets this file」; THIS ANSWERS 「who WANTS it」. They are
+    different questions and the second one is the one that finds the defect: production takes
+    the FIRST class that says yes, so two parsers claiming one file looks exactly like one
+    parser claiming it until somebody's rows land in somebody else's table.
+
+    Returns `{rows, load_errors, winners}`; `rows` carries
+    `{script, class, match, error, cls}`.
+    """
+    from parsers.directory_watcher import (SCAN_UNAVAILABLE,
+                                           scan_workspace_pipeline_parsers)
+
+    scripts_path = scripts_path or _default_scripts_path()
+    rows, load_errors = [], {}
+
+    def visit(filename, obj):
+        try:
+            hit, error = bool(obj.match(str(file_path))), None
+        except Exception as exc:
+            hit, error = None, "%s: %s" % (type(exc).__name__, exc)
+        rows.append({"script": filename, "class": obj.__name__, "match": hit,
+                     "error": error, "cls": obj})
+        return None                    # never claims - that is what makes it a survey
+
+    out = scan_workspace_pipeline_parsers(scripts_path, visit, load_errors)
+    if out is SCAN_UNAVAILABLE:
+        raise FileNotFoundError("the parser workspace is unavailable at %s" % scripts_path)
+    return {"rows": rows, "load_errors": load_errors,
+            "winners": [r for r in rows if r["match"]]}
+
+
+def run_stages(parser_cls, file_path, *, rel_path=None, source_root=None):
+    """read -> process -> clean, kept APART. Returns `{parser, raw, processed, records}`.
+
+    🔴 THE THREE ARE PRODUCTION'S OWN METHODS IN PRODUCTION'S ORDER, and the two
+    attributes the watcher attaches before `parse()` (`rel_path`, `source_root`) are attached
+    here too — a parser that reads them must not behave differently on the bench than in the
+    pipeline.
+
+    ⚠️ SPLIT BECAUSE `parse()` ANSWERS ONLY 「did it work」. When it does not, the author needs
+    to know WHICH of the three broke the assumption, and one return value cannot say.
+    """
+    from types import SimpleNamespace
+
+    instance = parser_cls()
+    instance.rel_path = (rel_path if rel_path is not None
+                         else os.path.basename(str(file_path)))
+    instance.source_root = source_root
+    raw = instance._read_file_to_dataframe(str(file_path))
+    processed = instance.process_dataframe(raw.copy(deep=True))
+    records = instance.clean_for_postgres(processed)
+    return SimpleNamespace(parser=instance, raw=raw, processed=processed, records=records)
+
+
+# ---------------------------------------------------------------------------
 # the shells read THIS, so a folder is a test
 # ---------------------------------------------------------------------------
 
