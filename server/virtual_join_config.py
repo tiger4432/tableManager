@@ -120,6 +120,9 @@ _IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 CODE_NO_UNIQUE_INDEX = "no_unique_index"     # 유일성을 강제하는 인덱스가 없다
 CODE_FANOUT_DECLARED = "fanout_declared"     # 집계 형태는 아직 구현이 없다
 CODE_SHAPE = "shape"                         # 평범한 문법/존재 오류
+# S-189 ⓐ (판정 302). 실체화는 «쓰기»라서 비용이 선언에 적혀야 한다.
+CODE_NO_REWRITE_CAP = "no_rewrite_cap"       # materialize 인데 상한을 안 적었다
+CODE_NO_LEFT_INDEX = "no_left_index"         # 역방향(참조→대상) 색인이 없다
 
 # 인덱스 이름 규약. PostgreSQL 식별자 상한은 63바이트라 넘치면 해시로 접는다
 # (`value_suggest.suggest_index_name`과 같은 규율·같은 상한).
@@ -224,6 +227,89 @@ def index_key_expression(column: str, fold_rules=None) -> str:
     return "coalesce(%s, '')" % inner
 
 
+def rewrite_row_count(connection, rule, key_values) -> int:
+    """참조 행 «하나»가 바뀔 때 다시 쓸 대상 행 수 — 쓰기 «전»에 센다 (S-189 ⓐ, 판정 302).
+
+    🔴 세는 것이 «먼저»인 이유는 이 제품의 핵심 제약이 변경 비용이기 때문이다. 소급 등록부가
+    이미 같은 자세를 갖고 있고(`retroactive` 의 사전 세기), 그 씨앗을 그대로 쓴다.
+
+    🔴 접기는 «조인과 같은 철자»다. `index_key_expression` 은 인덱스 DDL 과 실행기가 이미
+    지나는 함수이고, 세는 질의가 다르게 접으면 「세었을 때 3 행, 썼을 때 5 행」이 된다 —
+    그리고 그 차이는 상한을 조용히 넘긴다.
+    """
+    from sqlalchemy import text
+
+    left_columns = [p["left"] for p in rule["join_key"]]
+    folds = _folds_list(rule["right_columns"], rule.get("right_folds"))
+    where = " AND ".join(
+        "%s = :k%d" % (index_key_expression(col, fold), i)
+        for i, (col, fold) in enumerate(zip(left_columns, folds)))
+    # 🔴 THE VALUE IS FOLDED TOO, AND MEASURING CAUGHT THIS. The expression folds the
+    # COLUMN (`coalesce(col,'')`), so binding a raw `None` compares `'' = NULL` -> NULL and
+    # the count came back ZERO for a key this box has 70,800 rows of. Folding one side only
+    # is the exact defect S-181 was about, and `fold_key_value` is its one spelling
+    # (판정 285: 키를 견주는 자리에서 NULL = NULL).
+    from database.crud import fold_key_value
+
+    # ⚠️ TWO FOLDS, TWO DOMAINS, AND THE MAPPING IS SPELLED OUT HERE BECAUSE MEASURING
+    # CAUGHT IT. `fold_key_value` is the authority on blankness and answers `None` for an
+    # absent key part; `index_key_expression` folds the COLUMN to `coalesce(col, '')` and so
+    # answers `''`. Binding the first into the second compares `'' = NULL` -> NULL, and the
+    # count came back ZERO for the key this box has 70,800 rows of. Neither fold is wrong —
+    # they are halves of a pair written for an INDEX, where both sides pass through the same
+    # SQL. Crossing the boundary is what needs saying.
+    def _bound(col, value):
+        folded = fold_key_value(rule["left_table"], col, value)
+        return "" if folded is None else folded
+
+    params = {("k%d" % i): _bound(col, value)
+              for i, (col, value) in enumerate(zip(left_columns, key_values))}
+    sql = 'SELECT count(*) FROM "%s" WHERE %s' % (rule["left_table"], where)
+    return int(connection.execute(text(sql), params).scalar() or 0)
+
+
+def rewrite_refusal(rule, counted):
+    """상한을 넘었을 때의 «거절문», 아니면 None.
+
+    ⛔ 넘으면 «거절»이지 «잘라 쓰기»가 아니다(판정 302). 상한까지만 쓰고 마는 것은 대상 표를
+    「일부는 새 값, 일부는 옛 값」으로 남기는 것이고, 그 상태는 어느 행이 어느 쪽인지 말해
+    주지 않는다 — 화면에서 «조용히 틀린 답»이 된다.
+    """
+    cap = rule.get("max_rewrite_rows")
+    if not rule.get("materialize") or not cap or counted <= cap:
+        return None
+    return ("this change rewrites %d rows of '%s' and the rule's declared ceiling is %d. "
+            "Refused whole rather than written to the ceiling: a half-written join layer "
+            "leaves the table part new and part old with nothing saying which. Raise "
+            "'max_rewrite_rows' if %d is a cost you accept."
+            % (counted, rule["left_table"], cap, counted))
+
+
+def required_left_index_name(table: str, columns: list) -> str:
+    """실체화가 요구하는 «왼쪽» 색인의 이름 (S-189 ⓐ).
+
+    🔴 여기에는 UNIQUE 가 «없습니다», 그리고 그것이 이 함수가 오른쪽 것과 따로 있는 이유
+    전부입니다. 오른쪽 키는 유일해야 하고(그것이 승인 조건입니다), 왼쪽 키는 «유일하지 않은
+    것이 정상»입니다 — 이 박스에서 `dt_log` 의 한 `dt_job` 이 «70,800 행»입니다. 그 수가 곧
+    팬아웃이고, 그래서 오른쪽 DDL 을 왼쪽에 쓰면 «만들 수 없는 색인»을 시키는 것이 됩니다.
+    """
+    return "ix_mjoin_%s__%s" % (table, "_".join(columns))
+
+
+def required_left_index_ddl(table: str, columns: list) -> str:
+    """운영자가 그대로 실행할 수 있는 왼쪽 색인 DDL 한 줄.
+
+    ⚠️ 오른쪽 색인은 «읽기 시점 조인»이 쓰고, 이것은 «참조 행이 바뀔 때 대상 행을 찾는»
+    질의가 씁니다. 실측(S-189 설계): 오른쪽은 `required_index_ddl` 이 «요구»하지만 왼쪽은
+    오늘 «아무것도 요구하지 않습니다» — 이 박스에 우연히 있을 뿐이고, 우연은 계약이 아닙니다.
+
+    `CONCURRENTLY` 이유는 오른쪽과 같습니다(운영 표에 쓰기를 잠그지 않기).
+    """
+    return 'CREATE INDEX CONCURRENTLY %s ON "%s" (%s);' % (
+        required_left_index_name(table, columns), table,
+        ", ".join('"%s"' % c for c in columns))
+
+
 def required_index_ddl(table: str, columns: list, folds=None) -> str:
     """운영자가 그대로 실행할 수 있는 DDL 한 줄.
 
@@ -261,6 +347,29 @@ def _validate_join(name: str, raw: dict, known_tables: dict, rejections: list = 
         return None, "join declaration must be an object", CODE_SHAPE, None
     if raw.get("enabled", True) is False:
         return None, None, None, None  # 비활성 ― 오류 아님, 조용히 제외
+
+    # ------------------------------------------------------------------ S-189 ⓐ
+    # 🔴 실체화는 «쓰기»이고, 이 제품의 핵심 제약은 «변경 비용»이다. 참조 행 하나가 바뀌면
+    # 그 키를 가진 대상 행이 «전부» 다시 써진다 — 이 박스 실측으로 `dt_log` 최대 «70,800 행»,
+    # 소유자 IO 규격(≤1.3 s/1k)으로 환산하면 한 번의 편집이 ≈92 s 다.
+    #
+    # ⛔ 그래서 상한에 «기본값이 없다»(판정 302). 제품이 숫자를 고르면 그 숫자는 «아무도 안 본
+    # 숫자»가 되고, 92 초가 조용히 도는 것을 제품이 «허락»한 것이 된다. `occurred_at_basis` 와
+    # 같은 자세다 — 선언 가능한 것은 선언하게 하고, 없으면 이름 대어 거절한다.
+    materialize = raw.get("materialize", False)
+    if materialize is not False:
+        if materialize is not True:
+            return None, ("'materialize' must be true or false, not "
+                          + json.dumps(materialize, ensure_ascii=False)), CODE_SHAPE, None
+        cap = raw.get("max_rewrite_rows")
+        if not isinstance(cap, int) or isinstance(cap, bool) or cap <= 0:
+            return None, (
+                "'materialize' is on and 'max_rewrite_rows' is not declared. A change to "
+                "ONE referenced row rewrites every target row carrying that join key, and "
+                "this product says what a change costs before making it - so the ceiling "
+                "is yours to write, not the product's to guess. Count it first: "
+                "SELECT max(k) FROM (SELECT count(*) k FROM <left_table> GROUP BY "
+                "<join key>) s"), CODE_NO_REWRITE_CAP, None
 
     left_table = raw.get("left_table")
     right_table = raw.get("right_table")
@@ -418,6 +527,14 @@ def _validate_join(name: str, raw: dict, known_tables: dict, rejections: list = 
         "join_cardinality": "one",
         # 운영자가 만들어야 하는 인덱스. 선언만으로 계산되므로 세션 없이도 말할 수 있고,
         # 그래서 DB를 못 보는 해석 보고서도 「무엇을 만들면 되는지」를 말할 수 있다.
+        # S-189 ⓐ. `materialize` False 면 나머지는 오늘과 «바이트 동일»이다.
+        "materialize": materialize is True,
+        "max_rewrite_rows": raw.get("max_rewrite_rows") if materialize is True else None,
+        # 🔴 왼쪽 색인은 «참조 변화 → 대상 행 찾기»가 쓴다. 오른쪽 것과 목적이 반대라
+        # UNIQUE 가 아니고, 그래서 이름도 DDL 도 따로다.
+        "required_left_index": (
+            required_left_index_name(left_table, [p["left"] for p in join_key])
+            if materialize is True else None),
         "required_index": required_index_name(right_table, right_join_cols,
                                               right_folds),
         "required_index_ddl": required_index_ddl(right_table, right_join_cols,
