@@ -38902,3 +38902,45 @@ redo = {op, params, sources, affected, affected_label, pace_choices,
 > 📌 **[09-13 00:11] 이 채널의 미답 질문: «하나» —** `redo` 의 수치 칸을 `affected`/`affected_label`
 > «그대로»로 둘까요(제 판단), 아니면 `rows`/`atoms` 로 개명할까요?
 > 나머지(조립 + db 배선 + 시험)는 그 한 줄만 오면 한 커밋입니다.
+
+---
+
+## 📤 [09-13 00:19 구현자] S-143 원장 어댑터 착지 — `59da0897`. 초안이 「활성화하면 무엇이 다시 도나」를 말합니다
+
+```
+redo = {op, params, sources, count}      두 어댑터가 지나는 컴파일 미리보기에
+count = retroactive.count() 응답 «그대로» — 키를 고르지도 바꾸지도 않음(체인의 여분 키도 그대로)
+        ⚠️ 시험이 «동일성»으로 단언합니다(`is`) — 칸을 «골라» 비교하면 개명한 날에도 초록입니다
+source_plan   op=ledger_backfill · params={source} · sources=[그 소스] · count=카운터 답
+어휘/엔터티    sources=[말하는 소스들] · op·params=null · count={"absence": "not_counted_here"}
+              말하는 소스가 «없으면» sources=[] · count={"absence": "truly_none"}
+db 없음        redo = None  (「안 물었다」이지 「다시 돌 것이 없다」가 «아님»)
+```
+
+### 배선 — «새 커넥션 0»
+```
+라우트가 이미 들고 있는 Session 을 내려보냅니다(`Depends(get_db)`, import 도 이미 있었습니다)
+   explorer_view(db) -> service.view(db=db) -> draft_store.preview(..., db)
+                     -> compile_draft_preview(..., db) -> _redo_for
+네 층 전부 «기본값 None» 이라 CLI·시험·나머지 생성 자리 여섯은 «한 줄도» 안 바뀝니다
+   (기존 draft/explorer 시험 76 passed «무변»으로 확인)
+```
+
+### 게이트
+```
+① redo.count «is» 카운터의 객체        ② 노드 종류가 무엇이든 바깥 키 «네 개» 동일
+③ 라우트를 «실제로» 불러 200 + 진짜 본문 — Depends 추가는 «조용히 422» 를 내는 변경이라
+   출처 단언으로는 안 잡힙니다
+변이: 어휘 노드에서 소스마다 count 를 부르면 -> 그 드리프트 시험 «빨강»
+모집단: 1,204 passed · 5 skipped (이 모듈들을 건드리는 63 파일)
+```
+⚠️ 토큰 게이트는 «안 적었습니다** — `test_admin_auth.py` 가 «모든» gated 라우트를
+   파라미터로 돕니다. 여기 사본을 두면 「이 라우트가 막혀 있나」에 답이 둘이 되고,
+   갈라지는 쪽은 사본입니다. (쓰면서 실측: 토큰 미설정 시험 환경에서 그 라우트는 200 입니다 —
+   그건 그 스위트의 계약이지 제가 여기서 다시 말할 것이 아닙니다)
+⚠️ `blocked_reason`·`pace_choices` 는 «따로 안 만들었습니다** — count() 가 내면 `count` 안에
+   있고, 안 내면 «없는 것»입니다(판정 323). 오늘 ledger_backfill 의 답에는 blocked_reason 이
+   «있고» pace_choices 는 «없습니다».
+
+> 📌 **[09-13 00:19] 이 채널의 미답 질문: «없음».** 다음 = **체인 어댑터**(규칙 노드 하나 →
+> `chain_replay {rule}`, 갈래 없음). 재기동은 총괄 몫입니다.
