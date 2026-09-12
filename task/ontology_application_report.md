@@ -18176,8 +18176,8 @@ S-196   익스플로러 남은 빨강 둘 — 지시 목록 밖
 f8972094  CODE_MAP + RUNTIME_MAP + BASIS   S-195 한 경로 · S-196 열거 하나 · S-197 벤치 두 절반
 ae8587ea  HARNESS_DISCIPLINE_GUIDE §5-bis  동적 모델 은퇴는 «함수 하나», pop+복원 짝은 «예외»
 3617ec76  chain_ingestion_guide §1-ter     워크벤치 노트북 둘
+ec5a093b  docs/history/…and_a_notebook…md  🔴 **히스토리 «본문» — 구현자 커밋에 실림**(아래 · 총괄 21:17 인용 지시)
 0758cfc4  docs/history/README.md           색인 재생성(835)
-⚠️ 히스토리 «본문»은 `ec5a093b`(구현자 커밋) 안에 있습니다 — 아래
 ```
 
 ### 🔴 제가 만든 창으로 제 파일이 «남의 커밋»에 실렸습니다
