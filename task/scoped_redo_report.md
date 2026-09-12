@@ -36353,3 +36353,64 @@ passed 차 10 = 제가 이번에 더한 시험들
 > 📌 **[09-12 13:3x] 이 채널의 미답 질문: «없음».** 다음 = **ⓓ+ⓑ 한 커밋**(한 칸 `mapper` + 두 칸 호환 +
 > 평면 키 호환 + 거절/경고). 이제 `validation.Problems(forbidden_keys=∅)` 가 그 자리에서 씁니다.
 > ⚠️ 「failed 18 중 부모에 없던 이름」 두 실행은 «아직 도는 중»입니다.
+
+---
+
+## 📤 [09-12 13:2x 구현자] S-188 ⓓ+ⓑ 착지 — `87be0737`. 그리고 「18 중 부모에 없던 이름」 답 «있습니다»
+
+### 🔴 먼저: 첫 판이 이 박스의 규칙 «9 중 9»를 거절했습니다. 돌려 보고 잡았습니다
+```
+`__comment` 은 «관례상 주석»이라 라우팅 칸도 아니고 맵퍼 인자도 아닙니다.
+둘 다 아니니 `exact` 가 「모르는 필드」로 «거절»했습니다.
+=> 체인을 지키려고 넣은 검증기가 «체인을 통째로 껐습니다». 파일 규칙 0, 합성 8만 남았습니다
+고침  관례에 저자를 하나 줬습니다 — `chain_bindings.COMMENT_PREFIX` · `comment_cells(rule)`
+      로더가 그것을 `ignored=` 로 넘깁니다. 시험 `test_a_comment_is_not_a_declaration` 이 이 실패를 못 박습니다
+```
+⚠️ **시험만 돌렸으면 못 봤습니다** — 제 시험 픽스처는 `__comment` 을 «안 쓰는» 규칙을 썼을 테니까요.
+라이브 로더를 한 번 부른 것이 갈랐습니다.
+
+### 지은 것
+```
+ⓓ  rule["mapper"] «한 칸» → 등록부 조회. 두 칸(mapper_module+mapper_function)은 «그대로 읽힘»이고
+    등록부가 빈 박스에서는 그것이 «유일하게 도는 길»입니다. 해석은 execute_custom_mapper «한 자리»
+ⓓ  라우팅이 아닌 최상위 칸 → `params` 로 «읽음». 🔴 같은 이름이 양쪽에 있으면 «블록이 이깁니다»
+    (평면 사본을 우선하면 이사가 「끝난 것처럼 보이는 무동작」이 됩니다). 운영 파일 무접촉
+ⓑ  load_chain_rules 가 «파일 규칙만» 채점(validation.Problems · ⓐ 목록 · forbidden_keys=∅ —
+    체인 규칙은 «코드를 이름 대는 것이 일»이라 원장 금지 집합을 쓰지 않습니다)
+    합성 규칙은 «일부러» 안 챕니다 — 제 프로세스가 만든 것이라 채점하면 «제 버그를 운영자 오타로» 보고합니다
+⛔ 거절 = 「못 돈다」. 규칙 «하나»를 버리고 세고 이름 대며, 나머지는 돕니다
+    (없는 name/trigger_table · 맵퍼가 «아무것으로도» 안 풀리는 것)
+    평면 칸은 «이름만» 댑니다 — 낡은 칸인지 산 칸인지 제품이 알 수 없습니다(맵퍼가 gitignore)
+```
+🔵 라이브: **거절 0 · 규칙 17 유지**(파일 9 + 합성 8) · 경고가 규칙마다 평면 칸을 이름 댑니다
+(`dt_log_to_primary_core_frame` 11개 · `lot_event_to_lot_slot_wafer` 6개 …).
+
+### 📌 「failed 18 중 부모 35 에 없던 이름」 — 답: «제 새 빨강은 없습니다»
+전 스위트 두 번을 «이름까지» 다시 떴습니다.
+```
+제 트리   15 failed · 5,685 passed · 12 errors
+부모      33 failed · 4,632 passed · 1,020 errors
+차집합(제 쪽에만) «넷»:
+  ⚠️ test_mapper_sdk 둘        → «제 ⓒ 중간 회귀». 이 실행이 제가 «편집 중인 트리»를 물었습니다
+                               (qualname origin 버그, 같은 라운드에 고쳐 커밋). 즉 이 실행은 오염됐습니다
+  ✅ test_dashboard_table_isolation::test_every_other_table_still_reports_its_own_number
+  ✅ test_virtual_join_types::test_a_graph_meta_boolean_never_reaches_the_payload_because_the_cell_is_taken
+     -> 둘 다 «단독으로 부모에서도 빨강»입니다(직접 쟀습니다: dashboard 파일은 양쪽 다 2 failed/59 passed).
+        부모의 FAILED 목록에 «없던» 이유는 부모에서 그것들이 1,020 «에러» 안에 있었기 때문입니다
+=> 결론: **「새로 보이게 된 기존 빨강」이 둘이고, 제가 낸 새 빨강은 «없습니다».**
+큐에 이름 대어 둡니다(수리 아님, 목록):
+  · test_dashboard_table_isolation 둘 — 2026-09-05 `471f66f7` 이 지운 `table_stats` 키를 아직 단언
+  · test_virtual_join_types::test_a_graph_meta_boolean_…
+⚠️ 그리고 전 스위트 수는 ±2 로 «안 고정»입니다 — 같은 부모 트리를 두 번 떠서 35 와 33 이 나왔습니다.
+   그래서 이런 비교는 «이름»으로만 하고 수로는 하지 않겠습니다
+```
+
+### 게이트
+```
+9 passed · 변이 둘(주석을 ignored 에서 빼기 → 9/9 핀 빨강 · 거절이 배치를 버리게 → 격리 핀 빨강)
+모집단 96 파일 1,781 passed · 빨강 전부 기존(넷은 부모 동일, test_config_reload_integrity 는 «단독 초록» = 조합 산물)
+커밋 뒤  pytest tests --collect-only -q
+```
+
+> 📌 **[09-12 13:2x] 이 채널의 미답 질문: «없음».** 다음 = **S-192** → ⓔ 스켈레톤. 재기동 총괄 몫
+> — ⓑ 가 기동 때 규칙을 채점하고 거절·경고를 로그에 씁니다.
