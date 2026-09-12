@@ -1,0 +1,474 @@
+{
+  "$comment": [
+    "SHARED CONTRACT -- the WALK AGGREGATE seam (S-146, 판정 331).",
+    "",
+    "THE QUESTION THIS SEAM ASKS: 'what is this group's number?' -- and it is answered TWICE,",
+    "once on the server and once in the browser, about the same nodes.",
+    "",
+    "  Python : `ledger_api.ledger_subgraph.group_nodes(nodes, group_by, measure)`",
+    "  JS     : `AGGREGATE[measure]` in `client2/src/rnd_board/api.js`",
+    "",
+    "WHY THE SEAM EXISTS AT ALL. The client has folded these seven since the board was built,",
+    "and it REFUSES to fold a truncated walk (`trendFromWalk`, api.js): at 10^8 the budget cuts",
+    "first, so the screen goes blank rather than wrong. S-146 moves the fold to where the",
+    "population is whole. That means the same seven names now have two implementations, and the",
+    "one that drifts is the one nobody scored.",
+    "",
+    "WHAT WOULD DIVERGE WITHOUT THIS FILE -- each of these passes both sides' own tests:",
+    "  * `mean` of an empty group: 0, null, or NaN. JS `reduce(...)/0` is NaN; the server says",
+    "    null, because 0 would claim the values were there and summed to nothing.",
+    "  * `median` of an even count: the lower middle, or the mean of the two middles.",
+    "  * `distinct` over objects: identity, JSON text, or a canonical form.",
+    "  * a PLURAL attribute (S-144): one value picked, or membership in every group it names.",
+    "    The server puts the node in BOTH groups -- picking one would decide which of two",
+    "    declared-true values counts.",
+    "",
+    "EXPECTATIONS ARE THE SERVER'S ANSWER, and that is a choice rather than a default: the",
+    "server is the side that can see the whole population, so where the two differ it is the",
+    "client that moves. C-90 is where that lands."
+  ],
+  "$shape": {
+    "nodes": "the walk's `nodes`, as the response carries them",
+    "group_by": "`type`, or the name of a value a node carries",
+    "measure": "one of the seven, `name:<attribute>` for the arithmetic five",
+    "groups": "[{key, n, value}] sorted by key"
+  },
+  "vectors": [
+    {
+      "name": "count by node type",
+      "nodes": [
+        {
+          "id": "w1",
+          "type": "wafer",
+          "attributes": {}
+        },
+        {
+          "id": "w2",
+          "type": "wafer",
+          "attributes": {}
+        },
+        {
+          "id": "d1",
+          "type": "defect",
+          "attributes": {}
+        }
+      ],
+      "group_by": "type",
+      "measure": "count",
+      "groups": [
+        {
+          "key": "defect",
+          "n": 1,
+          "value": 1
+        },
+        {
+          "key": "wafer",
+          "n": 2,
+          "value": 2
+        }
+      ]
+    },
+    {
+      "name": "an attribute is a group key",
+      "nodes": [
+        {
+          "id": "w1",
+          "type": "wafer",
+          "attributes": {
+            "product": "A"
+          }
+        },
+        {
+          "id": "w2",
+          "type": "wafer",
+          "attributes": {
+            "product": "B"
+          }
+        },
+        {
+          "id": "w3",
+          "type": "wafer",
+          "attributes": {
+            "product": "A"
+          }
+        }
+      ],
+      "group_by": "product",
+      "measure": "count",
+      "groups": [
+        {
+          "key": "A",
+          "n": 2,
+          "value": 2
+        },
+        {
+          "key": "B",
+          "n": 1,
+          "value": 1
+        }
+      ]
+    },
+    {
+      "name": "a plural attribute puts its node in EVERY group it names",
+      "$why": "S-144. Picking one would decide which of two declared-true values counts.",
+      "nodes": [
+        {
+          "id": "w1",
+          "type": "wafer",
+          "attributes": {
+            "product": [
+              "A",
+              "B"
+            ]
+          }
+        },
+        {
+          "id": "w2",
+          "type": "wafer",
+          "attributes": {
+            "product": "A"
+          }
+        }
+      ],
+      "group_by": "product",
+      "measure": "count",
+      "groups": [
+        {
+          "key": "A",
+          "n": 2,
+          "value": 2
+        },
+        {
+          "key": "B",
+          "n": 1,
+          "value": 1
+        }
+      ]
+    },
+    {
+      "name": "mean over a named attribute",
+      "nodes": [
+        {
+          "id": "w1",
+          "type": "wafer",
+          "attributes": {
+            "product": "A",
+            "yield": 2
+          }
+        },
+        {
+          "id": "w2",
+          "type": "wafer",
+          "attributes": {
+            "product": "A",
+            "yield": 4
+          }
+        },
+        {
+          "id": "w3",
+          "type": "wafer",
+          "attributes": {
+            "product": "B",
+            "yield": 9
+          }
+        }
+      ],
+      "group_by": "product",
+      "measure": "mean:yield",
+      "groups": [
+        {
+          "key": "A",
+          "n": 2,
+          "value": 3.0
+        },
+        {
+          "key": "B",
+          "n": 1,
+          "value": 9.0
+        }
+      ]
+    },
+    {
+      "name": "median of an even count is the mean of the two middles",
+      "nodes": [
+        {
+          "id": "a",
+          "type": "w",
+          "attributes": {
+            "g": "x",
+            "v": 1
+          }
+        },
+        {
+          "id": "b",
+          "type": "w",
+          "attributes": {
+            "g": "x",
+            "v": 2
+          }
+        },
+        {
+          "id": "c",
+          "type": "w",
+          "attributes": {
+            "g": "x",
+            "v": 3
+          }
+        },
+        {
+          "id": "d",
+          "type": "w",
+          "attributes": {
+            "g": "x",
+            "v": 10
+          }
+        }
+      ],
+      "group_by": "g",
+      "measure": "median:v",
+      "groups": [
+        {
+          "key": "x",
+          "n": 4,
+          "value": 2.5
+        }
+      ]
+    },
+    {
+      "name": "sum, min and max fold the named values",
+      "nodes": [
+        {
+          "id": "a",
+          "type": "w",
+          "attributes": {
+            "g": "x",
+            "v": 5
+          }
+        },
+        {
+          "id": "b",
+          "type": "w",
+          "attributes": {
+            "g": "x",
+            "v": -2
+          }
+        }
+      ],
+      "group_by": "g",
+      "measure": "sum:v",
+      "groups": [
+        {
+          "key": "x",
+          "n": 2,
+          "value": 3.0
+        }
+      ]
+    },
+    {
+      "name": "distinct counts distinct values, not rows",
+      "nodes": [
+        {
+          "id": "a",
+          "type": "w",
+          "attributes": {
+            "g": "x",
+            "v": "P"
+          }
+        },
+        {
+          "id": "b",
+          "type": "w",
+          "attributes": {
+            "g": "x",
+            "v": "P"
+          }
+        },
+        {
+          "id": "c",
+          "type": "w",
+          "attributes": {
+            "g": "x",
+            "v": "Q"
+          }
+        }
+      ],
+      "group_by": "g",
+      "measure": "distinct:v",
+      "groups": [
+        {
+          "key": "x",
+          "n": 3,
+          "value": 2
+        }
+      ]
+    },
+    {
+      "name": "a group whose nodes carry the name but no values has NO number",
+      "$why": "0 would say the values were there and folded to nothing. Absent values and a zero sum are different facts.",
+      "nodes": [
+        {
+          "id": "a",
+          "type": "w",
+          "attributes": {
+            "g": "x"
+          }
+        },
+        {
+          "id": "b",
+          "type": "w",
+          "attributes": {
+            "g": "x"
+          }
+        }
+      ],
+      "group_by": "g",
+      "measure": "sum:v",
+      "groups": [
+        {
+          "key": "x",
+          "n": 2,
+          "value": null
+        }
+      ]
+    },
+    {
+      "name": "a plural attribute flattens into the value stream",
+      "nodes": [
+        {
+          "id": "a",
+          "type": "w",
+          "attributes": {
+            "g": "x",
+            "v": [
+              1,
+              3
+            ]
+          }
+        },
+        {
+          "id": "b",
+          "type": "w",
+          "attributes": {
+            "g": "x",
+            "v": 5
+          }
+        }
+      ],
+      "group_by": "g",
+      "measure": "sum:v",
+      "groups": [
+        {
+          "key": "x",
+          "n": 2,
+          "value": 9.0
+        }
+      ]
+    },
+    {
+      "name": "min and max fold the named values",
+      "nodes": [
+        {
+          "id": "a",
+          "type": "w",
+          "attributes": {
+            "g": "x",
+            "v": 5
+          }
+        },
+        {
+          "id": "b",
+          "type": "w",
+          "attributes": {
+            "g": "x",
+            "v": -2
+          }
+        },
+        {
+          "id": "c",
+          "type": "w",
+          "attributes": {
+            "g": "x",
+            "v": 11
+          }
+        }
+      ],
+      "group_by": "g",
+      "measure": "min:v",
+      "groups": [
+        {
+          "key": "x",
+          "n": 3,
+          "value": -2.0
+        }
+      ]
+    },
+    {
+      "name": "max over the same nodes, so the two are scored on one population",
+      "nodes": [
+        {
+          "id": "a",
+          "type": "w",
+          "attributes": {
+            "g": "x",
+            "v": 5
+          }
+        },
+        {
+          "id": "b",
+          "type": "w",
+          "attributes": {
+            "g": "x",
+            "v": -2
+          }
+        },
+        {
+          "id": "c",
+          "type": "w",
+          "attributes": {
+            "g": "x",
+            "v": 11
+          }
+        }
+      ],
+      "group_by": "g",
+      "measure": "max:v",
+      "groups": [
+        {
+          "key": "x",
+          "n": 3,
+          "value": 11.0
+        }
+      ]
+    }
+  ],
+  "refusals": [
+    {
+      "name": "an unknown measure is named, never defaulted to count",
+      "group_by": "type",
+      "measure": "avg",
+      "code": "unknown_measure"
+    },
+    {
+      "name": "an arithmetic measure needs the name of what it folds",
+      "group_by": "type",
+      "measure": "mean",
+      "code": "measure_needs_a_name"
+    },
+    {
+      "name": "arithmetic over a value that is not a number is refused, not coerced",
+      "nodes": [
+        {
+          "id": "a",
+          "type": "w",
+          "attributes": {
+            "g": "x",
+            "v": "seven"
+          }
+        }
+      ],
+      "group_by": "g",
+      "measure": "sum:v",
+      "code": "measure_needs_numbers"
+    }
+  ]
+}

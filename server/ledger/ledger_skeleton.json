@@ -190,6 +190,21 @@
                 }
               },
               {
+                "key": "attribute_cardinality",
+                "required": false,
+                "label": "속성 값 개수 — 값을 여럿 드는 속성만 적습니다 (비우면 하나)",
+                "node": {
+                  "kind": "map",
+                  "keyed_by": "name",
+                  "member": "속성",
+                  "of": {
+                    "kind": "leaf",
+                    "hint": "choice",
+                    "list": "attribute_cardinalities"
+                  }
+                }
+              },
+              {
                 "key": "allow_null",
                 "required": false,
                 "node": {

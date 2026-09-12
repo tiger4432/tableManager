@@ -43,6 +43,150 @@ import ledger_trace
 
 DEFAULT_HOPS = 12
 MAX_HOPS = 40
+
+# ---------------------------------------------------------------------------
+# S-146 — group · aggregate, where the population is whole (판정 331)
+# ---------------------------------------------------------------------------
+#: 🔴 THE SEVEN THE SCREEN ALREADY OFFERS, spelled ONCE and on the server side.
+#: `client2/src/rnd_board/api.js` has held this exact table (`AGGREGATE`) and the operator
+#: has been choosing from it; inventing an eighth here, or renaming one, would make the
+#: screen and the answer disagree about what 「mean」 means. The names are the client's.
+#:
+#: 🔴 AND THE AXIS MOVES TO THE SERVER BECAUSE THE POPULATION DOES. Folding on the client
+#: needs the walk to carry EVERYTHING back, and at 10⁸ the budget cuts first -- measured:
+#: `trendFromWalk` REFUSES to count a truncated walk, so the screen goes blank rather than
+#: wrong. Counting here counts over the set the walk actually reached.
+AGGREGATE_MEASURES = ("count", "distinct", "sum", "mean", "min", "max", "median")
+
+#: Which of them need numbers. `count` and `distinct` fold anything; the rest are arithmetic
+#: and a string in the stream is a refusal rather than a zero.
+NUMERIC_MEASURES = frozenset({"sum", "mean", "min", "max", "median"})
+
+#: What `group_by` may name: a node's TYPE, or one of the values it carries.
+#: ⚠️ NOT A PREDICATE. 「사용자가 고르는 축은 노드 타입 하나, 술어는 follow 로만」 — a key that
+#: named an edge would be a second way to say `follow`.
+GROUP_BY_TYPE = "type"
+
+
+class AggregateRefused(ValueError):
+    """A group key or measure this walk cannot honour. Carries the name and the choices.
+
+    ⛔ NAMED, NEVER SILENT. A misspelled measure that fell back to `count` would answer a
+    question nobody asked, and the number would look exactly like a right one.
+    """
+
+    def __init__(self, code, detail, choices=()):
+        self.code = code
+        self.detail = detail
+        self.choices = tuple(choices)
+        super().__init__(detail)
+
+
+def _numbers(values):
+    """The numeric values in a stream, or `None` if any of them is not a number."""
+    out = []
+    for value in values:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        out.append(float(value))
+    return out
+
+
+def _fold(measure, values):
+    """One measure over one group's values. The seven, and nothing else."""
+    if measure == "count":
+        return len(values)
+    if measure == "distinct":
+        return len({_canonical(value) for value in values})
+    numbers = _numbers(values)
+    if numbers is None:
+        raise AggregateRefused(
+            "measure_needs_numbers",
+            "measure %r folds numbers and this group carries a value that is not one"
+            % measure, sorted(NUMERIC_MEASURES))
+    if not numbers:
+        # 🔴 AN EMPTY GROUP HAS NO SUM TO STATE. `0` would say the values were there and
+        # added to nothing, which is a different fact from 「no values were carried」.
+        return None
+    if measure == "sum":
+        return sum(numbers)
+    if measure == "mean":
+        return sum(numbers) / len(numbers)
+    if measure == "min":
+        return min(numbers)
+    if measure == "max":
+        return max(numbers)
+    ordered = sorted(numbers)
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[middle]
+    return (ordered[middle - 1] + ordered[middle]) / 2
+
+
+def _values_of(node, name):
+    """What one node carries under `name`, always as a list.
+
+    ⚠️ A PLURAL ATTRIBUTE IS ALREADY A LIST (S-144), and flattening it here is the only
+    reading that does not invent one: each value it holds is a value.
+    """
+    carried = (node.get("attributes") or {})
+    if name in carried:
+        value = carried[name]
+        return list(value) if isinstance(value, list) else [value]
+    qualifiers = (node.get("qualifiers") or {})
+    if name in qualifiers:
+        value = qualifiers[name]
+        return list(value) if isinstance(value, list) else [value]
+    return []
+
+
+def _group_keys(node, group_by):
+    """Which groups this node belongs to. Several, when the key is a plural attribute.
+
+    🔴 A NODE WITH TWO PRODUCTS IS IN BOTH GROUPS. Picking one would be this seat deciding
+    which of two declared-true values counts, and dropping the node would make the groups
+    sum to less than the population without saying so.
+    """
+    if group_by == GROUP_BY_TYPE:
+        return [str(node.get("type") or "")]
+    return [value for value in _values_of(node, group_by) if value is not None]
+
+
+def group_nodes(nodes, group_by, measure):
+    """`groups` for one walk: the fold, over the nodes this response carries (판정 331).
+
+    🔴 THE SAME WALK AND THE SAME BUDGET. A second walk for the aggregate would put two
+    populations in one answer, and the reader would have no way to know which number came
+    from which. Truncation is said by the envelope's own `truncated`/`complete` rather than
+    by a second word in here -- one spelling for one fact.
+    """
+    name, _sep, qualifier = str(measure or "count").partition(":")
+    if name not in AGGREGATE_MEASURES:
+        raise AggregateRefused(
+            "unknown_measure", "no measure named %r" % name, AGGREGATE_MEASURES)
+    if name in NUMERIC_MEASURES and not qualifier:
+        raise AggregateRefused(
+            "measure_needs_a_name",
+            "measure %r folds values, so it needs a name: %s:<attribute>" % (name, name),
+            AGGREGATE_MEASURES)
+
+    grouped = {}
+    for node in nodes:
+        for key in _group_keys(node, group_by):
+            grouped.setdefault(key, []).append(node)
+
+    out = []
+    for key in sorted(grouped, key=str):
+        members = grouped[key]
+        if qualifier:
+            values = [value for node in members for value in _values_of(node, qualifier)]
+        else:
+            # `count`/`distinct` with no name count the NODES, which is what the screen's
+            # default (`count`) has always meant.
+            values = [node.get("id") for node in members]
+        out.append({"key": key, "n": len(members), "value": _fold(name, values)})
+    return out
+
 #: 🔴 A STEP THAT STAYS ON THE SAME MATERIAL SPENDS A DIFFERENT BUDGET, and this is how
 #: many of those a walk may take on top of `hops`.  DEFAULT ZERO, deliberately: the day
 #: this landed the declaration already marked six predicates `continues`, so any other
@@ -428,6 +572,10 @@ class InMemoryEvidenceLookup:
 #: until the first entity node asks for it.
 _entity_key_order = None
 
+#: Which attribute names hold SEVERAL values, per bare entity type (S-144). Filled by the
+#: same read as the line above, so the two can never come from different revisions.
+_entity_plural_attributes = {}
+
 
 def _declared_key_order(entity_type):
     """The key order one entity type declares, from the LIVE ontology declaration.
@@ -443,23 +591,121 @@ def _declared_key_order(entity_type):
     declaration leaves every label exactly as it is today rather than taking the walk down
     with it.  The `@version` suffix is stripped the way `ledger/roleframe.py` strips it.
     """
-    global _entity_key_order
-    if _entity_key_order is None:
-        order = {}
-        try:
-            import paths
-            with open(paths.config_path("ontology", "ledger_config.json"),
-                      "r", encoding="utf-8") as handle:
-                declared = (json.load(handle) or {}).get("entities") or {}
-            for name, spec in declared.items():
-                keys = [str(key) for key in ((spec or {}).get("keys") or [])]
-                if keys:
-                    order[str(name).rsplit("@", 1)[0]] = keys
-        except Exception:
-            order = {}
-        _entity_key_order = order
+    _read_entity_declaration()
     return _entity_key_order.get(str(entity_type))
 
+
+def _read_entity_declaration():
+    """Read the entity declaration ONCE, filling everything this module takes from it.
+
+    🔴 ONE READ, TWO FACTS (S-144). Key order and attribute cardinality come from the same
+    file, and two cached reads could answer from two different revisions of it - a node
+    labelled by one version of a declaration and valued by another. They are two caches
+    because they are two questions, but there is only one sentinel and one open().
+
+    Never raises: an absent or unreadable declaration leaves labels and attributes exactly
+    as they are today rather than taking the walk down with it. The `@version` suffix is
+    stripped the way `ledger/roleframe.py` strips it.
+    """
+    global _entity_key_order, _entity_plural_attributes
+    if _entity_key_order is not None:
+        return
+    from ledger.setup_bundle import ATTRIBUTE_CARDINALITY_MANY
+
+    order, plural_by_type = {}, {}
+    try:
+        import paths
+        with open(paths.config_path("ontology", "ledger_config.json"),
+                  "r", encoding="utf-8") as handle:
+            declared = (json.load(handle) or {}).get("entities") or {}
+        for name, spec in declared.items():
+            spec = spec or {}
+            bare = str(name).rsplit("@", 1)[0]
+            keys = [str(key) for key in (spec.get("keys") or [])]
+            if keys:
+                order[bare] = keys
+            cardinality = spec.get("attribute_cardinality")
+            if isinstance(cardinality, dict):
+                plural = frozenset(
+                    str(attribute) for attribute, how in cardinality.items()
+                    if how == ATTRIBUTE_CARDINALITY_MANY)
+                if plural:
+                    plural_by_type[bare] = plural
+    except Exception:
+        order, plural_by_type = {}, {}
+    _entity_key_order, _entity_plural_attributes = order, plural_by_type
+
+
+def reset_declaration_cache():
+    """Forget the entity declaration so the next walk reads it again (S-206, 판정 330).
+
+    🔴 THE SENTINEL ABOVE IS PROCESS-LIFETIME, and that is a reload hole rather than a
+    design: an operator who declares `attribute_cardinality: many` and activates it gets
+    `one` from the walk until somebody RESTARTS the server. 「빌드했다고 로드된 건 아니다」.
+
+    ⚠️ THE HOLE PREDATES THE PLURAL CELL - key order was already cached this way - but the
+    same cache now carries a fact the operator wrote MINUTES ago, which is what makes the
+    staleness visible instead of theoretical.
+
+    🔴 BOTH GLOBALS GO TOGETHER, because one read fills them both. Clearing only the
+    sentinel would leave the plural map from the previous revision standing while the key
+    order came from the new one - the split this module's 「one read」 note exists to stop.
+    """
+    global _entity_key_order, _entity_plural_attributes
+    _entity_key_order, _entity_plural_attributes = None, {}
+
+
+def _declared_plural_attributes(entity_type):
+    """Which of this type's attribute names hold SEVERAL values (S-144, 판정 327)."""
+    _read_entity_declaration()
+    return _entity_plural_attributes.get(_bare(str(entity_type))) or frozenset()
+
+
+
+def _apply_registrations(nodes, registrations):
+    """Fold every registration this walk reached onto its node, by the DECLARED rule.
+
+    🔴 LATEST WINS, AND A DISAGREEMENT IS COUNTED RATHER THAN HIDDEN (S-52 ③, ruling 124).
+    "Latest" is the reading rule: a changed attribute wrote a NEW registration and the old
+    one stays, so this picks the newest instant and says out loud how many names had more
+    than one distinct value. Same value at two instants is NOT a conflict - that is one
+    fact stated twice.
+
+    🔴 A NAME THE DECLARATION CALLS `many` IS NOT A DISAGREEMENT (S-144 / A1-2, 판정 327).
+    A column holds one value per ROW, so a wafer with two products is two rows and two
+    registrations - which this read as one name with two values, counted a conflict, and
+    then DROPPED one of them by keeping only the latest. Both were true, and until the
+    declaration gained a cell there was no way to say so.
+
+    🔴 THE SHAPE IS FIXED PER NAME, NOT PER ANSWER. A `many` name is a list even when it
+    holds one value: 「a list only when there are two」 puts two shapes in one cell, and the
+    reader would have to guess which it got.
+
+    A node this walk reached no registration for gets NO KEY, not an empty object: "this
+    entity carries no values" and "this walk did not reach its registration" are different
+    answers.
+    """
+    for node_id, by_name in registrations.items():
+        node = nodes.get(node_id)
+        if node is None:
+            continue
+        plural = _declared_plural_attributes(str(node.get("type") or ""))
+        values, conflicts = {}, 0
+        for name, seen in by_name.items():
+            if name in plural:
+                # Ordered by instant, and the same value at two instants is ONE value -
+                # exactly the rule the conflict count already used: that is one fact
+                # stated twice, not two facts.
+                distinct = {}
+                for _at, value in sorted(seen, key=lambda item: item[0]):
+                    distinct.setdefault(_canonical(value), value)
+                values[name] = list(distinct.values())
+                continue
+            values[name] = max(seen, key=lambda item: item[0])[1]
+            if len({_canonical(value) for _at, value in seen}) > 1:
+                conflicts += 1
+        node["attributes"] = values
+        node["attribute_conflicts"] = conflicts
 
 def _entity_node(entity_type, keys):
     node = ledger_explorer._entity(entity_type, keys)
@@ -1152,7 +1398,7 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
              backbone_hops=DEFAULT_BACKBONE_HOPS, static_types=None,
              static_follow=None, follow_keys=None, collect=None,
              cardinalities=None, include_superseded=False, rows=False,
-             entities=None):
+             entities=None, group_by=None, measure=None):
     """Return a typed evidence subgraph from any public node id, or from a signed SET.
 
     `seed_id` is one opaque id as before, or `{"positive": [ids], "negative": [ids]}`.
@@ -1682,17 +1928,9 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     # A node the walk reached no registration for gets NO KEY, not an empty object: "this
     # entity carries no values" and "this walk did not reach its registration" are
     # different answers.
-    for node_id, by_name in registrations.items():
-        node = nodes.get(node_id)
-        if node is None:
-            continue
-        values, conflicts = {}, 0
-        for name, seen in by_name.items():
-            values[name] = max(seen, key=lambda item: item[0])[1]
-            if len({_canonical(value) for _at, value in seen}) > 1:
-                conflicts += 1
-        node["attributes"] = values
-        node["attribute_conflicts"] = conflicts
+    from ledger.setup_bundle import ATTRIBUTE_CARDINALITY_MANY
+
+    _apply_registrations(nodes, registrations)
     ordered_nodes = sorted(nodes.values(), key=lambda item: (
         item["depth"], item["node_kind"], item["label"], item["id"]))
     # 🔴 THE LAST STEP, AND ONLY ON THIS LIST. `nodes` (the dict) still holds everything
@@ -1727,6 +1965,37 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         "state": "ready" if found else "empty",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "seed": seed, "nodes": visible_nodes, "edges": ordered_edges,
+        # 🔴 WHICH ATTRIBUTE NAMES HOLD SEVERAL VALUES, BY NODE TYPE (S-144, 판정 327).
+        # `attributes[name]` is a list for these names and a scalar for every other, so a
+        # reader has to know which - and the DECLARATION is where that is written. The
+        # server is the declaration's only reader, so it says so here rather than leaving
+        # the screen to fetch and parse the ontology for itself.
+        #
+        # ⚠️ THE DECLARATION'S OWN WORD, AND ITS OWN DEFAULT. Only `many` names appear;
+        # absent means `one`, exactly as an absent cell means `one` in the declaration. A
+        # second vocabulary for the same idea is how the two start disagreeing.
+        # ⚠️ OVER THE TYPES THE RESPONSE CARRIES, not over the ones that happened to reach a
+        # registration. It is a fact about the DECLARATION, so a type whose nodes carry no
+        # values yet must still say that `product` is a list when it does - otherwise the
+        # header a screen draws changes shape as data arrives.
+        # 🔴 THE FOLD, OVER THE SET THIS WALK REACHED (S-146, 판정 331). The key is ABSENT
+        # when nobody asked - not `null` and not `[]`. 「안 물었다」·「물었는데 아무 무리도
+        #없다」·「무리가 있다」 are three answers and a null collapses the first two.
+        #
+        # ⚠️ IT IS THE SAME WALK AND THE SAME BUDGET. A second walk for the aggregate would
+        # put two populations in one answer. Whether this number stands on a whole
+        # population is said by `truncated`/`complete` in this same envelope -- one
+        # spelling for one fact, rather than a second absence word in here.
+        **({} if group_by is None
+           else {"groups": group_nodes(visible_nodes, str(group_by),
+                                       measure or "count")}),
+        "attribute_cardinality": {
+            node_type: {name: ATTRIBUTE_CARDINALITY_MANY for name in sorted(plural)}
+            for node_type, plural in sorted(
+                (str(item.get("type") or ""),
+                 _declared_plural_attributes(str(item.get("type") or "")))
+                for item in visible_nodes) if plural
+        },
         "seeds": [{"id": item, "sign": "+" if seed_signs[item] > 0 else "-",
                    "node_kind": seed_refs[item]["kind"]} for item in seed_signs],
         "propagation": _propagation(

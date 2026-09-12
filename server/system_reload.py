@@ -79,6 +79,18 @@ def reload_local_process_cache():
     except Exception:
         pass
 
+    # 🔴 AND THE WALK'S COPY OF THE ENTITY DECLARATION (S-206). `ledger_subgraph` caches
+    # key order AND attribute cardinality behind a process-lifetime sentinel, so a `many`
+    # the operator declared and activated would read as `one` until a RESTART -- the
+    # declaration changed and the thing that answers questions about it did not.
+    # Same `try/except` posture as its neighbours: one cache that will not clear does not
+    # kill the reload.
+    try:
+        from ledger_api import ledger_subgraph
+        ledger_subgraph.reset_declaration_cache()
+    except Exception:
+        pass
+
     # [Ledger skeleton] The authoring screen GENERATES its form from
     # `ledger/ledger_skeleton.json`, and the loader caches it for the life of the process.
     # Without this line every edit to that document needs a restart to show up -- measured:
