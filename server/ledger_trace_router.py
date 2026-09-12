@@ -115,6 +115,17 @@ def evidence_subgraph(
                            "오늘 동작 그대로. 걷기는 안 바뀐다: 웨이퍼에서 결함으로 가려면 "
                            "다이를 «지나야» 하고, 지나는 것과 «실어 오는 것»은 다르다. "
                            "이름은 선언된 엔터티 타입이다 (`@` 버전은 있어도 없어도 된다)")),
+    group_by: str | None = Query(
+        None,
+        description=("이 걷기가 «닿은 노드»를 무엇으로 묶나 — `type`(노드 타입) 또는 "
+                     "노드가 드는 «값의 이름»(속성·수식어). 없으면 봉투에 `groups` 칸이 "
+                     "«생기지 않는다»(null 이 아니라 «없음» — 안 물은 것이다). "
+                     "술어는 여기 오지 않는다: 길은 `follow` 가 고른다")),
+    measure: str | None = Query(
+        None,
+        description=("무리마다 무엇을 재나 — `count`·`distinct`·`sum`·`mean`·`min`·"
+                     "`max`·`median`. 수를 접는 넷은 «이름이 필요»하다: `mean:<속성>`. "
+                     "없으면 `count`. 이 일곱은 화면이 이미 고르던 그 일곱이다")),
     response_format: str = Query(
         "json", alias="format",
         description=("`json`(기본) 또는 `rows`. `rows` 는 «같은 걷기 결과»를 TSV 로 접어 "
@@ -209,6 +220,7 @@ def evidence_subgraph(
             follow_keys=follow_keys, backbone_hops=backbone_hops,
             collect=collect, include_superseded=include_superseded,
             rows=(wants == "rows"),
+            group_by=group_by, measure=measure,
             **interval)
         if wants == "rows":
             # \U0001f534 THE SAME WALK, READ SIDEWAYS. No second route and no second traversal
@@ -216,6 +228,13 @@ def evidence_subgraph(
             return PlainTextResponse(payload.get("rows") or "",
                                      media_type="text/tab-separated-values")
         return payload
+    except ledger_subgraph.AggregateRefused as exc:
+        # 🔴 NAMED, WITH THE CHOICES (S-146, 판정 331). `subgraph_request_invalid` would tell
+        # a caller their request was wrong and not which word -- and a screen that offers
+        # measures cannot repair a refusal it cannot read. The same posture as
+        # `node_type_not_declared`, which hands back `declared`.
+        raise HTTPException(status_code=422, detail={
+            "reason": exc.code, "message": exc.detail, "choices": list(exc.choices)})
     except ValueError as exc:
         raise HTTPException(status_code=422, detail={
             "reason": "subgraph_request_invalid", "message": str(exc)})
@@ -427,7 +446,8 @@ def _evidence_graph(connection, *, node_id, hops, direction,
         # [S-141] 기본은 «안 그림». true 면 대체된 원자도 그리되 엣지에
         # `superseded_by` 표지가 붙는다 — 「보인다」와 「현재다」를 가르기 위해.
         include_superseded: bool = False,
-                    collect=None, since=None, until=None, rows=False):
+                    collect=None, since=None, until=None, rows=False,
+                    group_by=None, measure=None):
     if not ledger_trace.relation_exists(connection, LEDGER_RELATION):
         raise _relation_absent()
     missing = _subgraph_contract_state(connection)
@@ -451,7 +471,9 @@ def _evidence_graph(connection, *, node_id, hops, direction,
         # The declaration is the ONLY authority for which columns exist — the same source
         # the client reads through /declaration, so a key added to a declaration reaches
         # both the screen and the TSV with no edit in either (S-183).
-        rows=rows, entities=_declared_entities() if rows else None)
+        rows=rows, entities=_declared_entities() if rows else None,
+        # S-146. The fold rides the SAME walk - no second query, no second budget.
+        group_by=group_by, measure=measure)
 
 
 #: How many ledger rows one key-values answer may READ. The scan is bounded, not the

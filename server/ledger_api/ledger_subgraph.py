@@ -43,6 +43,150 @@ import ledger_trace
 
 DEFAULT_HOPS = 12
 MAX_HOPS = 40
+
+# ---------------------------------------------------------------------------
+# S-146 — group · aggregate, where the population is whole (판정 331)
+# ---------------------------------------------------------------------------
+#: 🔴 THE SEVEN THE SCREEN ALREADY OFFERS, spelled ONCE and on the server side.
+#: `client2/src/rnd_board/api.js` has held this exact table (`AGGREGATE`) and the operator
+#: has been choosing from it; inventing an eighth here, or renaming one, would make the
+#: screen and the answer disagree about what 「mean」 means. The names are the client's.
+#:
+#: 🔴 AND THE AXIS MOVES TO THE SERVER BECAUSE THE POPULATION DOES. Folding on the client
+#: needs the walk to carry EVERYTHING back, and at 10⁸ the budget cuts first -- measured:
+#: `trendFromWalk` REFUSES to count a truncated walk, so the screen goes blank rather than
+#: wrong. Counting here counts over the set the walk actually reached.
+AGGREGATE_MEASURES = ("count", "distinct", "sum", "mean", "min", "max", "median")
+
+#: Which of them need numbers. `count` and `distinct` fold anything; the rest are arithmetic
+#: and a string in the stream is a refusal rather than a zero.
+NUMERIC_MEASURES = frozenset({"sum", "mean", "min", "max", "median"})
+
+#: What `group_by` may name: a node's TYPE, or one of the values it carries.
+#: ⚠️ NOT A PREDICATE. 「사용자가 고르는 축은 노드 타입 하나, 술어는 follow 로만」 — a key that
+#: named an edge would be a second way to say `follow`.
+GROUP_BY_TYPE = "type"
+
+
+class AggregateRefused(ValueError):
+    """A group key or measure this walk cannot honour. Carries the name and the choices.
+
+    ⛔ NAMED, NEVER SILENT. A misspelled measure that fell back to `count` would answer a
+    question nobody asked, and the number would look exactly like a right one.
+    """
+
+    def __init__(self, code, detail, choices=()):
+        self.code = code
+        self.detail = detail
+        self.choices = tuple(choices)
+        super().__init__(detail)
+
+
+def _numbers(values):
+    """The numeric values in a stream, or `None` if any of them is not a number."""
+    out = []
+    for value in values:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        out.append(float(value))
+    return out
+
+
+def _fold(measure, values):
+    """One measure over one group's values. The seven, and nothing else."""
+    if measure == "count":
+        return len(values)
+    if measure == "distinct":
+        return len({_canonical(value) for value in values})
+    numbers = _numbers(values)
+    if numbers is None:
+        raise AggregateRefused(
+            "measure_needs_numbers",
+            "measure %r folds numbers and this group carries a value that is not one"
+            % measure, sorted(NUMERIC_MEASURES))
+    if not numbers:
+        # 🔴 AN EMPTY GROUP HAS NO SUM TO STATE. `0` would say the values were there and
+        # added to nothing, which is a different fact from 「no values were carried」.
+        return None
+    if measure == "sum":
+        return sum(numbers)
+    if measure == "mean":
+        return sum(numbers) / len(numbers)
+    if measure == "min":
+        return min(numbers)
+    if measure == "max":
+        return max(numbers)
+    ordered = sorted(numbers)
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[middle]
+    return (ordered[middle - 1] + ordered[middle]) / 2
+
+
+def _values_of(node, name):
+    """What one node carries under `name`, always as a list.
+
+    ⚠️ A PLURAL ATTRIBUTE IS ALREADY A LIST (S-144), and flattening it here is the only
+    reading that does not invent one: each value it holds is a value.
+    """
+    carried = (node.get("attributes") or {})
+    if name in carried:
+        value = carried[name]
+        return list(value) if isinstance(value, list) else [value]
+    qualifiers = (node.get("qualifiers") or {})
+    if name in qualifiers:
+        value = qualifiers[name]
+        return list(value) if isinstance(value, list) else [value]
+    return []
+
+
+def _group_keys(node, group_by):
+    """Which groups this node belongs to. Several, when the key is a plural attribute.
+
+    🔴 A NODE WITH TWO PRODUCTS IS IN BOTH GROUPS. Picking one would be this seat deciding
+    which of two declared-true values counts, and dropping the node would make the groups
+    sum to less than the population without saying so.
+    """
+    if group_by == GROUP_BY_TYPE:
+        return [str(node.get("type") or "")]
+    return [value for value in _values_of(node, group_by) if value is not None]
+
+
+def group_nodes(nodes, group_by, measure):
+    """`groups` for one walk: the fold, over the nodes this response carries (판정 331).
+
+    🔴 THE SAME WALK AND THE SAME BUDGET. A second walk for the aggregate would put two
+    populations in one answer, and the reader would have no way to know which number came
+    from which. Truncation is said by the envelope's own `truncated`/`complete` rather than
+    by a second word in here -- one spelling for one fact.
+    """
+    name, _sep, qualifier = str(measure or "count").partition(":")
+    if name not in AGGREGATE_MEASURES:
+        raise AggregateRefused(
+            "unknown_measure", "no measure named %r" % name, AGGREGATE_MEASURES)
+    if name in NUMERIC_MEASURES and not qualifier:
+        raise AggregateRefused(
+            "measure_needs_a_name",
+            "measure %r folds values, so it needs a name: %s:<attribute>" % (name, name),
+            AGGREGATE_MEASURES)
+
+    grouped = {}
+    for node in nodes:
+        for key in _group_keys(node, group_by):
+            grouped.setdefault(key, []).append(node)
+
+    out = []
+    for key in sorted(grouped, key=str):
+        members = grouped[key]
+        if qualifier:
+            values = [value for node in members for value in _values_of(node, qualifier)]
+        else:
+            # `count`/`distinct` with no name count the NODES, which is what the screen's
+            # default (`count`) has always meant.
+            values = [node.get("id") for node in members]
+        out.append({"key": key, "n": len(members), "value": _fold(name, values)})
+    return out
+
 #: 🔴 A STEP THAT STAYS ON THE SAME MATERIAL SPENDS A DIFFERENT BUDGET, and this is how
 #: many of those a walk may take on top of `hops`.  DEFAULT ZERO, deliberately: the day
 #: this landed the declaration already marked six predicates `continues`, so any other
@@ -1254,7 +1398,7 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
              backbone_hops=DEFAULT_BACKBONE_HOPS, static_types=None,
              static_follow=None, follow_keys=None, collect=None,
              cardinalities=None, include_superseded=False, rows=False,
-             entities=None):
+             entities=None, group_by=None, measure=None):
     """Return a typed evidence subgraph from any public node id, or from a signed SET.
 
     `seed_id` is one opaque id as before, or `{"positive": [ids], "negative": [ids]}`.
@@ -1834,6 +1978,17 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         # registration. It is a fact about the DECLARATION, so a type whose nodes carry no
         # values yet must still say that `product` is a list when it does - otherwise the
         # header a screen draws changes shape as data arrives.
+        # 🔴 THE FOLD, OVER THE SET THIS WALK REACHED (S-146, 판정 331). The key is ABSENT
+        # when nobody asked - not `null` and not `[]`. 「안 물었다」·「물었는데 아무 무리도
+        #없다」·「무리가 있다」 are three answers and a null collapses the first two.
+        #
+        # ⚠️ IT IS THE SAME WALK AND THE SAME BUDGET. A second walk for the aggregate would
+        # put two populations in one answer. Whether this number stands on a whole
+        # population is said by `truncated`/`complete` in this same envelope -- one
+        # spelling for one fact, rather than a second absence word in here.
+        **({} if group_by is None
+           else {"groups": group_nodes(visible_nodes, str(group_by),
+                                       measure or "count")}),
         "attribute_cardinality": {
             node_type: {name: ATTRIBUTE_CARDINALITY_MANY for name in sorted(plural)}
             for node_type, plural in sorted(
