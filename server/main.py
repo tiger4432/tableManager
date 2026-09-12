@@ -5483,15 +5483,37 @@ def get_chain_rules():
 
 @app.get("/admin/mappers/list", dependencies=[Depends(require_admin_token)])
 def get_mappers():
-    """등록된 맵퍼 파일들과 내부 매핑 함수 목록을 반환합니다."""
+    """등록된 맵퍼 파일들과 내부 매핑 함수 목록을 반환합니다.
+
+    🔴 `data` 는 «파일에 무슨 def 가 있나» 이고 `registered` 는 «저장이 받아 줄 이름이
+    무엇인가» 다 — 다른 물음이다 (S-207). 이 라우트는 AST 로 «모든 최상위 def» 를 세는데,
+    규칙 저장을 판정하는 것은 `mapper_sdk.MAPPER_REGISTRY`(`@mapper(name=…)` 가 준 이름)이다.
+    그래서 이 목록으로 채운 드롭다운은 **저장이 «거절할» 이름을 내밀고 «받아 줄» 이름을
+    숨긴다** — 한 칸이 두 물음에 답하고 있었던 것이다.
+
+    ⚠️ 기존 칸은 «한 글자도» 안 바뀐다. `admin.js` 의 두 소비자는 파일·함수 목록을 그
+    «다른 물음»으로 읽고 있고 그쪽은 맞다. 칸이 하나 «더» 생길 뿐이다.
+
+    🔴 그리고 그 이름은 레지스트리 «그대로»다 — 여기서 거르거나 이름을 바꾸면 저장이
+    판정하는 집합과 화면이 내미는 집합이 «갈릴 수 있는 둘째 철자»가 된다. API 프로세스가
+    그 레지스트리를 드는 것은 S-204 ③(기동·리로드의 `discover()`)이 세웠다.
+    """
     import os
     import ast
-    
+
+    import mapper_sdk
+
+    #: 저장이 판정하는 «바로 그» 집합. 사본이 아니라 매 호출 그 딕셔너리를 읽는다 —
+    #: 리로드가 레지스트리를 갈아 끼우면 이 목록도 «같은 순간» 갈린다.
+    registered = sorted(mapper_sdk.MAPPER_REGISTRY)
+
     script_dir = os.path.dirname(os.path.abspath(__file__))
     mappers_dir = os.path.join(script_dir, "mappers")
     
     if not os.path.exists(mappers_dir):
-        return absent_listing(mappers_dir)
+        # ⚠️ 「디렉터리가 없다」와 「옛 서버라 이 칸이 없다」가 같아 보이지 않게, 부재 쪽에도
+        # 싣는다. 부재 경로에서는 보통 빈 목록이고, 그 «빈 것»도 답이다.
+        return absent_listing(mappers_dir, registered=registered)
         
     mappers = []
     for name in os.listdir(mappers_dir):
@@ -5524,7 +5546,7 @@ def get_mappers():
                 "functions": functions
             })
             
-    return {"status": "success", "data": mappers}
+    return {"status": "success", "data": mappers, "registered": registered}
 
 # -----------------------------------------------------------------------------
 # Enrichment Queue Endpoints (docs/spec/ENRICHMENT_QUEUE_SPEC.md §5 — 경계 계약 확정분)
