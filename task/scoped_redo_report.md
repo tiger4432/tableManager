@@ -37791,3 +37791,63 @@ pandas Index 는 truthiness 에서 raise 하므로, «평범한 빈 프레임»�
 
 > 📌 **[09-12 21:4x] 이 채널의 미답 질문: «없음».** 판정 309 받았습니다.
 > 다음 = **S-199-b**(ⓐ 다섯 skip + ⓑ 샘플 고침 + ⓓ strict xfail, 한 커밋) → **S-200**.
+
+---
+
+## 📤 [09-12 21:5x 구현자] S-199-b `8aade672` (ⓐ+ⓓ) — 그리고 S-200 의 «게이트 수»가 이 박스의 것입니다
+
+### ⓐ 다섯 — 이름 대어 skip, 사유에 «요구하는 모양»
+```
+conftest.requires_live(shape)   ASSY_TEST_LIVE=1 없으면 skip
+· dt_alignment_metadata_mapper.py 가 추적 샘플과 «바이트 동일»일 것
+· dt_inventory_metadata 체인 규칙이 `metadata_target_table` 을 «선언»할 것
+· table_config.json 이 dt_map 의 slot 컬럼을 «STRING» 으로 — number 는 선행 0 을 잃고
+  물리 단위가 안 맞게 됨
+· dt_standard_map_mapper.py 가 배치에 `scope` 를 실을 것 — «지울 수 있는» 유일한 출력 키
+양쪽으로 쟀습니다: 변수 없으면 «5 skipped», ASSY_TEST_LIVE=1 이면 «5 가 돌고 5 다 빨강»(S-199 그대로)
+```
+⚠️ 사유가 「skip 됐음」만 말하면 읽는 사람이 그 줄을 «무시하도록» 배웁니다. 그래서 사유가
+   「라이브 파일이 «무엇이어야 하는지»」를 답니다 — 운영자가 손댈 수 있는 한 줄은 그것뿐입니다.
+
+### ⓓ strict xfail — 신호는 남고 영구 빨강은 없음
+```
+뜻밖의 «초록»이 실패입니다 — 그날이 주입이 돌아온 날이고, 봐야 할 것은 그쪽입니다
+```
+
+### 🔴 ⓑ 는 «안 했습니다» — 어렵기 때문이 아니라 «반대 방향 판정»이 코드에 있습니다
+```
+emit.py 가 자기 소스에 판정 213 을 들고 있습니다:
+   「The catalogue is a SHIPPED CONTRACT and this file is a test aid, so the aid follows:
+     a contract bent to fit its own fixture stops being evidence about the product.」
+그리고 샘플은 «두 철자를 다 선언»합니다 — dt_job «과» dt_job_id · dt_x/dt_y «와» b_wx/b_wy
+=> 어느 삼중이 dt_log 의 «정체»인지는 «도메인 사실»이고, 스키마는 그걸 말해 주지 않습니다
+   (「스키마는 도메인 사실을 말하지 않는다」). 그래서 «추측 대신 올립니다»
+```
+
+### 🔴🔴 그리고 S-200 을 짓다가 «게이트 수»가 이 박스의 것임을 쟀습니다
+판정 309 ②의 게이트는 「전 스위트에서 `test_the_shipped_catalogue_builds` 초록 · **46 = 46**」입니다.
+그 46 이 어디서 오는지 재 봤습니다:
+```
+세션 시작 시 DYNAMIC_TABLES  «45»   <- 전부 이 박스의 «gitignore 라이브» table_config.json
+샘플 카탈로그                 «46»
+live − sample                «0»    <- 이 박스에서는 라이브가 샘플의 «부분집합»
+sample − live                «1»    ['dt_job_rollup']
+=> 그래서 45 위에 46 을 지으면 «정확히 46». 단독 초록의 이유가 이것입니다
+```
+🔴 **즉 이 시험은 「len(DYNAMIC_TABLES) == len(catalog)」로 쓰여 있는 한, 표 하나를 «더» 선언한
+   운영자의 박스에서는 «누수가 0이어도» 빨갛습니다.** 게이트의 주어가 gitignore 파일입니다.
+```
+제안 (한 줄, 상자 독립):        before = set(models.DYNAMIC_TABLES)
+                               models.init_dynamic_models(catalog)
+                               assert set(catalog) <= set(models.DYNAMIC_TABLES)
+                               assert set(models.DYNAMIC_TABLES) - before <= set(catalog)
+   = 「선언된 것이 전부 지어지고, 짓는 동안 «그 밖의 것»이 안 생긴다」 — 오늘 재던 성질 그대로
+```
+⚠️ **이 정정은 S-200 의 «수리»를 막지 않습니다** — 누수는 진짜고(전 스위트 63, 단독 46),
+   autouse 스냅샷·복원은 이미 넣었습니다(S-191 헬퍼와 «같은 두 싱글턴»). 지금 전 스위트를
+   돌리는 중이고, 다음 보고에 수를 답니다.
+
+> 📌 **[09-12 21:5x] 이 채널의 미답 질문: «둘» —**
+> ① ⓑ: `dt_log` 의 정체가 (dt_job, dt_x, dt_y) 인지 (dt_job_id, b_wx, b_wy) 인지 — 소유자 몫입니다.
+>   판정 213 대로면 «픽스처가 카탈로그를 따릅니다»(emit.py 를 고침), 309 ⓑ 대로면 «샘플을 고칩니다»
+> ② S-200 게이트의 「46 = 46」을 위 «집합» 형태로 바꿔도 될까요 — 그 수는 이 박스의 것입니다
