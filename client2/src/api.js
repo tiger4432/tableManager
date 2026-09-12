@@ -182,6 +182,11 @@ export async function loadSchema(tableName) {
     const data = await res.json();
     state.currentColumns = data.columns || [];
     state.currentColumnTypes = data.column_types || {};
+    // C-84. 표인가 뷰인가. S-187 이 `/schema` 에 실었고, `/tables` 의 `kinds` 와 «같은 서버
+    // 함수»라 둘 다 읽을 이유가 없다 — 두 경로면 갈라질 수 있다(criterion ④).
+    // 🔴 문자열이 «아니면» 빈 값이다: 옛 서버는 이 키를 안 보내고, 그 «모름»을 뷰로 읽으면
+    //    멀쩡한 표의 편집이 사라진다.
+    state.currentTableKind = typeof data.kind === 'string' ? data.kind : '';
     state.currentBusinessKey = data.business_key || '';
     state.currentCompositeKeySources = data.composite_key_source || [];
     // [Virtual join] The route always sends this key (`[]` when no verified join touches the

@@ -21,7 +21,7 @@
 import { escapeHtml } from './utils.js';
 
 /** One cell's row: this source, the value it holds, and whether it is pinned. */
-export function sourceRowHtml(sourceName, sourceVal, { isPinned }) {
+export function sourceRowHtml(sourceName, sourceVal, { isPinned, writable }) {
   let displayVal = sourceVal;
   let titleAttr = '';
   if (sourceVal && typeof sourceVal === 'object') {
@@ -32,13 +32,18 @@ export function sourceRowHtml(sourceName, sourceVal, { isPinned }) {
       titleAttr = `title="Updated by ${escapeHtml(userStr)} at ${escapeHtml(timeStr)}"`;
     }
   }
+  // C-84. 쓸 수 없는 표(뷰)에서는 두 버튼을 «안 그린다». 그려 두고 누르면 400 이고, 회색으로
+  // 그리는 것은 「눌러도 되는 것처럼 보이는 것」을 하나 더 만드는 일이다.
+  // 🔴 `writable` 을 «안 주면» 안 그린다. 이 칸은 쓰기 컨트롤이라, 빠뜨린 호출자가 «권하는»
+  //    쪽으로 기울면 안 된다 — 없는 버튼은 조용하고, 있는 버튼은 쓴다.
+  const actions = writable
+    ? `<button class="action-btn pin-btn ${isPinned ? 'active' : ''}" title="Pin this value">${isPinned ? '📌 Pinned' : '📍 Pin'}</button>
+            <button class="action-btn del-btn" title="Delete this source">🗑️ Delete</button>`
+    : '';
   return `
           <td>${escapeHtml(sourceName)}</td>
           <td><code ${titleAttr}>${displayVal !== null ? escapeHtml(String(displayVal)) : 'NULL'}</code></td>
-          <td>
-            <button class="action-btn pin-btn ${isPinned ? 'active' : ''}" title="Pin this value">${isPinned ? '📌 Pinned' : '📍 Pin'}</button>
-            <button class="action-btn del-btn" title="Delete this source">🗑️ Delete</button>
-          </td>
+          <td>${actions}</td>
         `;
 }
 
@@ -56,7 +61,7 @@ export function sourceRowHtml(sourceName, sourceVal, { isPinned }) {
  * ⚠️ Optional on purpose: a caller that does not pass it renders EXACTLY as before. The
  *    single-cell row is a different function and is untouched.
  */
-export function sourceRowAllHtml(sourceName, values, { isPinnedAll, cellCount }) {
+export function sourceRowAllHtml(sourceName, values, { isPinnedAll, cellCount, writable }) {
   const uniqueVals = Array.from(new Set(values || []));
   let valText = '';
   if (uniqueVals.length === 0) {
@@ -80,12 +85,14 @@ export function sourceRowAllHtml(sourceName, values, { isPinnedAll, cellCount })
   if (selected !== null && covered > 0 && covered < selected) {
     valText = `${valText} · ${selected}칸 중 ${covered}칸`;
   }
+  // C-84. 같은 규칙, 같은 이유 — 선택 여럿짜리 행도 뷰에서는 컨트롤을 안 그린다.
+  const actions = writable
+    ? `<button class="action-btn pin-btn ${isPinnedAll ? 'active' : ''}" title="Pin this source for all selected cells">${isPinnedAll ? '📌 Pinned' : '📍 Pin'}</button>
+            <button class="action-btn del-btn" title="Delete this source from all selected cells">🗑️ Delete</button>`
+    : '';
   return `
           <td>${escapeHtml(sourceName)}</td>
           <td><code>${escapeHtml(valText)}</code></td>
-          <td>
-            <button class="action-btn pin-btn ${isPinnedAll ? 'active' : ''}" title="Pin this source for all selected cells">${isPinnedAll ? '📌 Pinned' : '📍 Pin'}</button>
-            <button class="action-btn del-btn" title="Delete this source from all selected cells">🗑️ Delete</button>
-          </td>
+          <td>${actions}</td>
         `;
 }

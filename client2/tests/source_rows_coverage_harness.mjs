@@ -64,7 +64,7 @@ ok(!RATIO.test(row(['a'], { isPinnedAll: false, cellCount: '5' })),
   'C6 a non-integer denominator is not coerced into a ratio');
 
 console.log('\n-- the single-cell row is a different question, and is untouched -------');
-const single = sourceRowHtml('excel', { value: 42 }, { isPinned: false });
+const single = sourceRowHtml('excel', { value: 42 }, { isPinned: false, writable: true });
 ok(!RATIO.test(single),
   'D1 the per-cell row draws no ratio — ruling 70 closed that half as DESIGN, not as a gap');
 ok(single.includes('42'), 'D2 ...and still shows its value');

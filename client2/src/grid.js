@@ -1,6 +1,6 @@
 import { createGrid } from 'ag-grid-community';
 import { pageLimit } from './config.js';
-import { state, updateVisibleColIndexMap, joinResolvedColumn, visibleRangeColIds } from './state.js';
+import { state, updateVisibleColIndexMap, joinResolvedColumn, visibleRangeColIds, tableIsView } from './state.js';
 import { elements } from './dom.js';
 import { pagingView } from './match_count.js';
 // 🔴 닫는 방법은 Re-translate 드롭다운과 «같은 한 벌»입니다. 둘째가 나왔을 때 두 번째를
@@ -773,6 +773,8 @@ export function buildColumnDefs() {
   // Read ONCE per build, not per column: it is the same Map for every column and the rule
   // must not be able to change halfway down the list.
   const fillTargets = fillTargetOrdinals();
+  // C-84. 표의 «종류»도 한 번만 읽는다 — 컬럼마다 물으면 목록 중간에서 답이 바뀔 수 있다.
+  const viewTable = tableIsView();
   // 🔴 은퇴한 기능의 잔해는 «만들지 않습니다» (숨기는 것이 아니라). 그래프 동기화는 서버가
   //    은퇴시켰고(`/graph/mapping-summary` -> 410 Gone), `main.js` 의 GRAPH_SYNC_RETIRED 는
   //    켤 경로가 없는 «리터럴»입니다.
@@ -818,7 +820,8 @@ export function buildColumnDefs() {
       headerName: headerLabel,
       headerTooltip: headerLabel,
       field: col,
-      editable: !isSystem,
+      // C-84. 뷰면 «편집 진입 자체»가 없다 — 서버 400 을 셀에서 만나게 두지 않는다.
+      editable: !isSystem && !viewTable,
       sortable: true,
       // A system column is not editable and is not filterable either. Until now only the
       // first half was said, and `defaultColDef.floatingFilter` then put a filter box under

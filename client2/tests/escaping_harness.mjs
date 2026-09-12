@@ -151,8 +151,8 @@ ok(rows.autoUpdateRowHtml(benignCol, opts).includes('data-table="wafer"'),
 console.log('\n-- the source rows, and the selected-cell panel ------------------------');
 const srcRows = await import('../src/source_rows.js');
 
-const baseSrc = srcRows.sourceRowHtml('excel', { value: 42, updated_by: 'kim', timestamp: null }, { isPinned: false });
-const hostSrc = srcRows.sourceRowHtml(CELL_BREAK, { value: BREAKOUT, updated_by: ATTR_BREAK, timestamp: null }, { isPinned: false });
+const baseSrc = srcRows.sourceRowHtml('excel', { value: 42, updated_by: 'kim', timestamp: null }, { isPinned: false, writable: true });
+const hostSrc = srcRows.sourceRowHtml(CELL_BREAK, { value: BREAKOUT, updated_by: ATTR_BREAK, timestamp: null }, { isPinned: false, writable: true });
 ok(opens(baseSrc, 'td') === opens(hostSrc, 'td'), 'F1 a hostile source name opens no extra cell');
 ok(opens(baseSrc, 'span') === opens(hostSrc, 'span') && !hostSrc.includes('<script'),
   'F2 ... and a hostile value opens no element of its own');
@@ -162,11 +162,11 @@ ok(!/title="Updated by x" onmouseover=/.test(hostSrc), 'F3 updated_by cannot clo
 ok(baseSrc.includes('excel') && baseSrc.includes('kim') && baseSrc.includes('>42<'),
   'F4 CONTROL: benign name, author and value all still reach the row');
 
-const baseAll = srcRows.sourceRowAllHtml('excel', ['a', 'a'], { isPinnedAll: true });
-const hostAll = srcRows.sourceRowAllHtml(BREAKOUT, [CELL_BREAK], { isPinnedAll: true });
+const baseAll = srcRows.sourceRowAllHtml('excel', ['a', 'a'], { isPinnedAll: true, writable: true });
+const hostAll = srcRows.sourceRowAllHtml(BREAKOUT, [CELL_BREAK], { isPinnedAll: true, writable: true });
 ok(opens(baseAll, 'td') === opens(hostAll, 'td') && opens(baseAll, 'span') === opens(hostAll, 'span'),
   'G1 the selection row is closed the same way');
-ok(srcRows.sourceRowAllHtml('excel', ['a', 'b'], { isPinnedAll: false }).includes('Multiple Values (2 types)'),
+ok(srcRows.sourceRowAllHtml('excel', ['a', 'b'], { isPinnedAll: false, writable: true }).includes('Multiple Values (2 types)'),
   'G2 CONTROL: the distinct-count sentence is still built and not escaped away');
 
 // -- the real ui.js function, driven through a DOM stub ----------------------------------
