@@ -271,7 +271,11 @@ class OntologyExplorerService:
         draft_id: str | None = None,
         revision: int | None = None,
         view_mode: str = "active",
+        db: Any = None,
     ) -> dict[str, Any]:
+        """⚠️ `db` IS OPTIONAL AND MEANS 「a request asked」 (S-143). The tests and any other
+        caller keep calling without it and get a preview whose `redo` is `None` - the
+        question was not asked, which is not the same as 「nothing would re-run」."""
         if view_mode not in {"active", "draft_preview"}:
             raise ConfigExplorerError(
                 "invalid_view_mode", "view_mode",
@@ -310,7 +314,7 @@ class OntologyExplorerService:
             # draft that was activatable the whole time looked blocked.
             draft["activation_blockers"] = self.draft_store.activation_blockers(
                 record, active_index)
-            preview = self.draft_store.preview(record, setup, active_index)
+            preview = self.draft_store.preview(record, setup, active_index, db)
             if view_mode == "draft_preview" and preview.valid and preview.index is not None:
                 index = preview.index
                 token = (
