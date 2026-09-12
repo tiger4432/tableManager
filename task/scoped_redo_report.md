@@ -37252,3 +37252,52 @@ test_enrichment_candidates   부모 71b51494: «72 passed»   ·   지금: «72 
 
 > 📌 **[09-12 17:5x] 이 채널의 미답 질문: «하나» — ② 의 수리 방향(짝을 같이 채우기 vs row 단위엔 안 채우기).**
 > 다음 = **S-191**(52 파일 `retire_dynamic_model` 헬퍼). 재기동 불필요(이 라운드는 측정뿐, 코드 0).
+
+---
+
+## 🔴🔴 [09-12 18:0x 구현자] **정정 — S-196 ② 의 근거를 «다른 문서»에서 쟀습니다. 판정 306 이 그 위에 섰습니다**
+
+⛔ **먼저 결론**: 제가 S-196 보고에 적은 ② 의 근거 줄이 «틀렸습니다». 그 결과 판정 306 의 첫 절
+(「row 단위엔 안 채우기」)은 **이번 실패와 «다른 경우»를 겨냥합니다.**
+
+### 무엇을 잘못 쟀나
+```
+제가 잰 것     server/config/sample/ledger_config.json.sample
+               -> dt_job: map.unit={"kind":"row"} · read.group_by=[] · input_columns=[]
+               («전부 비어» 있으니 「row 단위인데 columns 를 채운다」는 이야기가 나왔습니다)
+시험이 읽는 것  DEFAULT_ONTOLOGY_ROOT / "ledger_config.json"   ← «라이브 온톨로지 루트»
+               -> dt_job: map.unit={"columns":["dt_job"], "kind":"group_by"}   ← «group_by 입니다»
+                  read.group_by=['dt_job'] · map.input_columns=['dt_eqp','dt_index','dt_job','event_time']
+```
+🔴 **즉 이번 실패는 «row 단위»가 아니라 «group_by 단위»에서 납니다.**
+
+### 실제 기제 (시험 본문을 그대로 읽어서)
+```
+시험은 «map.input_columns 만» 지우고 -> authoring_plan 으로 다시 도출 -> «그것만» 되써 넣고 검증합니다
+   for source in reduced["sources"].values(): source["map"].pop("input_columns", None)
+   …
+   source["map"]["input_columns"] = derived[f"{base}.input_columns"]["value"]
+실패            map.unit.columns: group_by columns must be mapper input columns: ['dt_job']
+=> `map.unit.columns` 는 «손대지 않았고»(원본 그대로 ['dt_job']),
+   다시 도출된 `map.input_columns` 가 «dt_job 을 안 담습니다».
+   검증기는 「group_by 컬럼은 매퍼 input_columns 안에 있어야 한다」를 요구합니다
+```
+🔵 **그러므로 고칠 자리는 「map.input_columns 도출이 unit 의 그룹 컬럼을 포함해야 한다」**입니다 —
+판정 306 의 «둘째 절»(「그룹 단위에서는 짝을 같이, 한 함수에서」)이 맞는 절반이고,
+첫째 절(row 단위)은 이 실패와 «무관»합니다.
+
+### 왜 이렇게 됐나 — 그리고 무엇을 바꾸는가
+```
+제 오류  「샘플」과 「라이브 온톨로지 루트」를 «같은 문서로» 읽었습니다.
+        오늘 하루 종일 잡아 온 부류와 «같은 것»입니다 — 주어가 아니라 «대리»를 쟀습니다.
+        차이: 이번엔 «보고까지 갔고» 그 위에서 판정이 났습니다
+🔴 시험이 읽는 파일을 «먼저» 확인했어야 했습니다. 한 줄이면 됐습니다:
+        원본 = DEFAULT_ONTOLOGY_ROOT / "ledger_config.json"
+```
+⚠️ ① (`in_slot` 시험 낡음)의 근거는 «그대로 유효»합니다 — 그건 `lot_event` 매핑 목록이고,
+그 문서(메인 샘플)가 맞는 주어였습니다.
+
+> 📌 **[09-12 18:0x] 이 채널의 미답 질문: «하나» — 판정 306 을 이 정정 위에서 다시 보실지.**
+> 제 읽기로는 ②의 수리가 「도출이 그룹 컬럼을 input_columns 에 포함」 하나로 좁혀지고,
+> 「row 단위엔 안 채우기」는 이번 건에서 «할 일이 없습니다»(그 자리는 `kind == "group_by"` 로 이미 막혀 있습니다 —
+> `config_authoring.py:1186`). 고치기 «전»에 판정을 기다립니다.
