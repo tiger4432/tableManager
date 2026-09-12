@@ -1608,6 +1608,20 @@ def warmup_worker(rules, db_session_factory=None):
     실제 커넥션 수립은 시도하지 않음 — 첫 통지에서 수립 후 keep-alive로 재사용).
     """
     t0 = time.monotonic()
+    # 0) 🔴 맵퍼 패키지 «전체»를 import 해 데코레이터가 등록되게 한다 (S-188 ⓒ, 판정 300).
+    #    아래 ①은 «규칙이 이름 댄» 모듈만 덥히므로 「어떤 맵퍼가 있나」에 답하지 못한다 —
+    #    빌더와 ⓓ 의 한 칸 이름 해석이 그 답을 필요로 한다.
+    #    ⚠️ 거절은 «모듈 단위»다(S-177 과 같은 자세). 이 파일들은 소유자의 것이고, 하나가
+    #    import 에서 죽는 것은 «이름 대어 알릴 일»이지 체인이 맵퍼 0개로 뜰 이유가 아니다.
+    try:
+        import mapper_sdk
+        registered, refusals = mapper_sdk.discover()
+        logger.info("[Warmup] Mapper registry: %d registered", len(registered))
+        for module_name, message in sorted(refusals.items()):
+            logger.error("[Warmup] Mapper module refused: %s — %s", module_name, message)
+    except Exception as e:
+        logger.error("[Warmup] Mapper discovery failed entirely: %s", e)
+
     # 1) 활성 규칙의 매퍼 모듈 선(先)import — importlib 캐시를 덥힌다(기동 + 리로드 재웜업 공통).
     for rule in rules:
         if not rule.get("enabled", True):

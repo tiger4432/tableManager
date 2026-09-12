@@ -96,6 +96,17 @@ def reload_local_process_cache():
     mapper_keys = [k for k in sys.modules.keys() if k.startswith("mappers.")]
     for k in mapper_keys:
         sys.modules.pop(k, None)
+
+    # 🔴 THE REGISTRY GOES WITH THEM (S-188 ⓒ). `mapper_sdk` is NOT evicted -- it is not
+    # under `mappers.` -- so its registry would keep pointing at functions from the modules
+    # just dropped, and the re-import would then refuse every name as 「claimed twice」. A
+    # reload would break the thing it exists to refresh. Same `try/except` posture as the
+    # blocks above: one cache that will not clear does not kill the reload.
+    try:
+        import mapper_sdk
+        mapper_sdk.reset_registry()
+    except Exception:
+        pass
         
     # Remove pipeline plugin parsers from sys.modules cache
     plugin_keys = [k for k in sys.modules.keys() if k.startswith("pipeline_plugin_")]

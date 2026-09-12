@@ -242,8 +242,102 @@ def df_to_updates(df, table_name: str, *, source_name: str, updated_by: str) -> 
         updates.append(item)
     return {"updates": updates}
 
+# ---------------------------------------------------------------------------
+# S-188 ⓒ — the decorator IS the registry (판정 300)
+# ---------------------------------------------------------------------------
+#: name -> the wrapped callable the worker calls. 🔴 BEFORE THIS, `@mapper` REGISTERED
+#: NOTHING: it wrapped `(df, db) -> df` into `(db, payloads, rule)` and returned it, so a
+#: rule had to name its mapper with TWO cells (`mapper_module` + `mapper_function`) and the
+#: worker resolved them with `importlib`. Nothing could answer 「which mappers exist」 --
+#: which is what the builder needs and what ⓓ needs to collapse those two cells into one.
+MAPPER_REGISTRY: dict[str, object] = {}
+
+#: name -> the argument names that mapper reads out of its rule's `params` block. Declared
+#: in CODE, beside the logic, because `server/mappers/**` is the OWNER's and gitignored:
+#: the product cannot discover what a mapper reads, so the mapper has to say.
+MAPPER_PARAMS: dict[str, tuple] = {}
+
+
+class MapperNameClaimedTwice(MapperContractError):
+    """⛔ REFUSED BY NAME, NEVER RESOLVED. Two mappers under one name means a rule naming it
+    gets whichever module imported last -- an answer that changes with import order and says
+    nothing about it. The same posture `load_chain_rules` takes toward a rule name claimed
+    by both `chain_rules.json` and a synthesized rule (S-179 ①, 판정 292)."""
+
+
+def reset_registry():
+    """Forget every registration. 🔴 CALLED WHERE `mappers.*` LEAVES `sys.modules`.
+
+    The registry lives in THIS module, which a reload does NOT evict, while the mapper
+    modules it points into ARE evicted (`system_reload`). Left alone, the registry would
+    hand the worker functions from modules nobody can reach any more, and the re-import
+    would then trip `MapperNameClaimedTwice` on every name -- so a reload would break
+    exactly the thing it exists to refresh.
+    """
+    MAPPER_REGISTRY.clear()
+    MAPPER_PARAMS.clear()
+
+
+def _origin(fn):
+    """Where a registration came from — the MODULE, which is the unit that gets re-imported.
+
+    ⛔ NOT `module.qualname`. That was the first spelling and it broke `test_mapper_sdk`:
+    a function defined inside a test carries `…<locals>.emit` in its qualname, so two tests
+    reusing one name looked like two different mappers and the second was refused. A module
+    cannot hold two top-level functions of one name anyway — Python decides that — so the
+    module is the whole of what 「same mapper」 means here.
+    """
+    return getattr(fn, "__module__", "?")
+
+
+def register(name: str, fn, params=()):
+    """One registration. Separate from the decorator so `discover` and a test share it."""
+    existing = MAPPER_REGISTRY.get(name)
+    # 🔴 「SAME NAME」 IS DECIDED BY ORIGIN, NOT BY OBJECT IDENTITY. A reload re-imports the
+    # module, and the decorator then builds a NEW wrapper for the SAME source -- identity
+    # would call that a collision and a reload would refuse every mapper it refreshed. What
+    # must be refused is TWO modules claiming one name, because then which one a rule meant
+    # depends on import order and nothing says so.
+    if existing is not None and _origin(existing) != _origin(fn):
+        raise MapperNameClaimedTwice(
+            f"two mappers are registered as '{name}': "
+            f"{_origin(existing)} and {_origin(fn)}. "
+            f"Rename one - a rule naming '{name}' cannot say which it meant.")
+    MAPPER_REGISTRY[name] = fn
+    MAPPER_PARAMS[name] = tuple(params)
+    return fn
+
+
+def discover(package="mappers"):
+    """Import every module of the mapper package so its decorators run. Returns
+    `(registered, refusals)` where `refusals` is `{module: message}`.
+
+    🔴 ONE BROKEN MAPPER MUST NOT COST THE OTHERS (S-177's posture). These files are the
+    owner's; an ImportError in one is a thing to be told about by name, not a reason for the
+    chain to come up with no mappers at all. `warmup_worker` already imports this way for
+    the modules rules NAME -- this walks the package, because 「which mappers exist」 cannot
+    be answered from the rules that happen to use them.
+    """
+    import importlib
+    import pkgutil
+
+    refusals = {}
+    try:
+        pkg = importlib.import_module(package)
+    except Exception as exc:
+        return tuple(MAPPER_REGISTRY), {package: f"{type(exc).__name__}: {exc}"}
+
+    for info in pkgutil.iter_modules(getattr(pkg, "__path__", [])):
+        name = f"{package}.{info.name}"
+        try:
+            importlib.import_module(name)
+        except Exception as exc:
+            refusals[name] = f"{type(exc).__name__}: {exc}"
+    return tuple(sorted(MAPPER_REGISTRY)), refusals
+
+
 def mapper(target_table=None, *, source_name: str = "chain_ingestion",
-           updated_by: str | None = None):
+           updated_by: str | None = None, params=(), name: str | None = None):
     """Wrap an author's `(df, db) -> df` so that ① and ③ leave their file. Step ③ of the
     owner's shape, as a decorator.
 
@@ -292,5 +386,10 @@ def mapper(target_table=None, *, source_name: str = "chain_ingestion",
                     f"envelope yourself means this decorator is not the thing you want.")
             return df_to_updates(out, table, source_name=source_name,
                                  updated_by=updated_by or fn.__name__)
-        return run
+        # 🔴 REGISTERED UNDER THE AUTHOR'S FUNCTION NAME unless one is given. The name a
+        # rule writes has to be a name the author can see in their own file; a generated
+        # one would be a third thing to keep in step. `params` is the argument names this
+        # mapper reads out of `params` -- the loader warns about a name nobody declared,
+        # and only the mapper can declare it (its file is gitignored).
+        return register(name or fn.__name__, run, params)
     return decorate
