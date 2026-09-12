@@ -5464,7 +5464,8 @@ def get_chain_rules():
     that list back as `data`; the LOADER refuses it (「Failed to load chain rules」) and
     always has. So the screen was showing rules that the boot would never run — a false
     green, and the screen more generous than the loader, which is the same defect
-    `ChainRuleDocument.preview` carried until S-180 ⓑ-0.
+    the explorer's chain draft adapter carried until S-180 ⓑ-0 (that adapter retired
+    with S-205; this seat is the one that stayed).
 
     ⚠️ 「없는 파일」 IS UNCHANGED. `absent` is not `empty`, and `absent_listing` stays the
     answer for a file that is not there.

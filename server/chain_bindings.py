@@ -287,10 +287,10 @@ def rule_refusals(rule, path, *, mapper_resolvable):
 
     🔴 IT WAS SPELLED TWICE AND THE TWO HAD ALREADY DIVERGED. The loader
     (`chain_ingestion_worker.load_chain_rules`) scored the grammar and refused an
-    unresolvable mapper; `ChainRuleDocument.preview` re-typed the same `exact` tuple and
-    had no mapper check at all — so the dry-run screen ACCEPTED a rule the loader would
-    drop, which is exactly the thing that function's own note forbids: 「the screen must
-    not be blinder than the log」.
+    unresolvable mapper; the explorer's chain draft adapter (retired, S-205) re-typed the
+    same `exact` tuple and had no mapper check at all — so the dry-run screen ACCEPTED a
+    rule the loader would drop, which is exactly the thing that function's own note
+    forbids: 「the screen must not be blinder than the log」.
 
     🔴 `mapper_resolvable` IS A CALLABLE, NOT A REGISTRY. This module must not import
     `mapper_sdk`: S-188 set that direction on purpose, and a grammar that reached into the
@@ -580,131 +580,22 @@ def model_column(model, table: str, column: str, purpose: str):
 
 
 # ---------------------------------------------------------------------------
-# S-194 ① — the chain's half of the draft lifecycle
+# ⚰️ S-194's draft adapter RETIRED 2026-09-13 (S-205, 판정 340)
 # ---------------------------------------------------------------------------
-#: 🔴 THE SAME LIFECYCLE, A DIFFERENT DOCUMENT (판정 303). `config_drafts` owns draft →
-#: review → activate with optimistic locking and a snapshot compare-and-swap; it asks a
-#: document seven questions and this is the chain's set of answers. A second lifecycle was
-#: refused because 「합칠 사람이 없다」 — nobody merges two, so there is one.
-from types import SimpleNamespace
-
-CHAIN_EDITABLE_FILE = "chain_rules.json"
-
-
-class ChainRuleIndex:
-    """The three things the lifecycle asks of an index: `nodes`, `node(key)`, `snapshot_hash`.
-
-    ⚠️ THE CHAIN HAS NO EXPLORER INDEX, and that is the measured reason 「one bundle argument」
-    could not open the lifecycle (S-194 design). What the machinery actually needs is small:
-    a mapping of editable targets, a refusal by name for a key that is not one, and something
-    to compare a draft's base against.
-
-    🔴 THE SNAPSHOT HASH IS OVER THE RULES AS THE LOADER SEES THEM, not over the file's bytes.
-    Two files that differ only in whitespace describe the same rules, and a draft rejected for
-    a reformat would teach an operator that the lock is noise. Conversely a synthesized rule
-    changing IS a change the draft must notice, because it can collide with a declared name.
-    """
-
-    def __init__(self, rules):
-        self.nodes = {}
-        for position, rule in enumerate(rules or ()):
-            name = str((rule or {}).get("name") or "")
-            if not name:
-                continue
-            self.nodes[name] = SimpleNamespace(
-                key=name,
-                canonical_id=name,
-                kind="chain_rule",
-                config_file=CHAIN_EDITABLE_FILE,
-                # Only `config_file` and `bundle_path` are read downstream — `draft_target`
-                # says so — and this is where in the document the rule lives.
-                bundle_path=("rules", position),
-                definition_hash=None,
-                raw=rule,
-            )
-        self.snapshot_hash = self._hash(rules)
-
-    @staticmethod
-    def _hash(rules):
-        import hashlib
-        import json
-
-        payload = json.dumps([r for r in (rules or ())], sort_keys=True,
-                             ensure_ascii=False, default=str)
-        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
-
-    def node(self, key):
-        """⛔ REFUSES BY NAME, as the explorer's index does. A key the loader never saw is a
-        typo or a rule that was removed, and resolving it to something would put a draft on a
-        target that cannot be written back."""
-        try:
-            return self.nodes[str(key)]
-        except KeyError:
-            raise KeyError(
-                "no chain rule named %r; declared: %s"
-                % (key, ", ".join(sorted(self.nodes)) or "none")) from None
+#: 🔴 THE DOOR TURNED OUT TO BE SOMEWHERE ELSE. `ChainRuleDocument`/`ChainRuleIndex` gave the
+#: chain a seat in the explorer's draft lifecycle, and 판정 325 then ruled that a chain rule is
+#: authored from the admin CHAIN TAB's raw route -- so the adapter never gained a product
+#: caller. Measured at retirement: callers outside its own tests, ZERO.
+#:
+#: ⚠️ AND IT WAS WRONG WHERE NOBODY LOOKED. `config_root` returned the ontology root while
+#: `chain_rules.json` lives in its PARENT, so activating through it would have written a file
+#: no loader reads. No test ever called that method, so the seat was wrong from the day it was
+#: written and said nothing about it.
+#:
+#: 🔴 ITS TESTS WENT IN THE SAME COMMIT. 「테스트는 자기가 재던 코드와 같은 커밋에서 죽는다」 --
+#: leaving them standing would have left the only callers alive and made the count look real.
+#:
+#: 📎 What survives is the half with readers: `rule_refusals`/`rule_warnings` (the ONE grammar
+#: judge, S-180 ⓑ-0) and `skeleton()`, which the chain tab's own route hands over (S-204).
 
 
-class ChainRuleDocument:
-    """The chain's answers to the lifecycle's seven questions.
-
-    ⚠️ VALIDATION IS THE LOADER'S, NOT A SECOND OPINION. `preview` scores a draft with the
-    same `validation.Problems` + `routing_keys()` the loader uses (S-188 ⓐⓑ), so a draft the
-    screen calls good cannot be a rule the loader then refuses.
-    """
-
-    editable_file = CHAIN_EDITABLE_FILE
-
-    def node_of(self, context, target_key):
-        return context.index.node(target_key)
-
-    def has_node(self, context, target_key) -> bool:
-        return str(target_key) in context.index.nodes
-
-    def snapshot_hash(self, context):
-        return context.index.snapshot_hash
-
-    def target_of(self, record, context):
-        key = str((record or {}).get("target_key"))
-        existing = context.index.nodes.get(key)
-        if existing is not None:
-            return existing
-        stored = (record or {}).get("target_bundle_path")
-        if not stored:
-            return context.index.node(key)      # refuses by name, as above
-        # A draft that AUTHORS a rule has no node to ask — the same hole `draft_target`
-        # records for the ledger, where the owner wrote a declaration by hand for two hours.
-        return SimpleNamespace(
-            key=key, canonical_id=key, kind="chain_rule",
-            config_file=CHAIN_EDITABLE_FILE, bundle_path=tuple(stored),
-            definition_hash=None, raw=(record or {}).get("raw"))
-
-    def fill(self, context, node, raw):
-        """⚠️ NOTHING IS FILLED IN. The ledger fills a declaration from the active setup so a
-        partly written node still compiles; a chain rule is flat and the loader's required
-        cells are two. Inventing defaults here would put values in the operator's file that
-        the operator never wrote."""
-        return raw
-
-    def preview(self, context, node, raw):
-        """🔴 THE SCREEN MUST NOT BE BLINDER THAN THE LOG, and until S-180 ⓑ-0 it WAS. This
-        re-typed the loader's `exact` tuple and carried no mapper check, so a rule naming a
-        mapper this process cannot run previewed as good and was dropped at boot. Both
-        halves come from `rule_refusals`/`rule_warnings` now, so the screen and the log
-        cannot answer differently.
-
-        ⚠️ The loader ACCEPTS an unknown top-level cell — a mapper argument still written
-        flat (S-188 ⓓ) — and warns by name. A preview reporting only refusals would let an
-        author leave the file in the state the boot line complains about every morning.
-        """
-        import mapper_sdk
-
-        issues = [i.to_mapping() for i in rule_refusals(
-            raw, "rule", mapper_resolvable=mapper_sdk.MAPPER_REGISTRY.get)]
-        warnings = [w.to_mapping() for w in rule_warnings(raw)]
-        return SimpleNamespace(raw=raw, issues=issues, warnings=warnings, ok=not issues)
-
-    def config_root(self, context):
-        from pathlib import Path
-
-        return Path(context.setup.config_root)

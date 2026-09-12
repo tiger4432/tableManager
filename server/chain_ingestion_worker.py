@@ -519,8 +519,8 @@ def load_chain_rules():
     kept = []
     for index, rule in enumerate(rules):
         path = "rules[%d]" % index
-        # 🔴 ONE JUDGE (S-180 ⓑ-0). This block WAS the grammar, and `ChainRuleDocument.preview`
-        # carried a second copy of it that had already drifted — no mapper check, so the
+        # 🔴 ONE JUDGE (S-180 ⓑ-0). This block WAS the grammar, and the explorer's chain draft
+        # adapter carried a second copy that had already drifted — no mapper check, so the
         # dry-run screen accepted what this loop drops. The sentences below are unchanged;
         # only where the verdict comes from moved.
         issues = chain_bindings.rule_refusals(
