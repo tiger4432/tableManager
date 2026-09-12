@@ -1425,7 +1425,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `purge_expired_outbox_sync(db_session_factory, retention_days, ...)` | 처리 완료 outbox 보존기간 청소 (`OUTBOX_RETENTION_DAYS=7`·`OUTBOX_PURGE_INTERVAL=3600`·`OUTBOX_PURGE_CHUNK=1000`·`OUTBOX_PURGE_MAX_CHUNKS=50` ~181–184) | ~187 |
 | `_stamp_broadcast_at_sync(db_session_factory, event_ids)` | 브로드캐스트 완료 스탬프(F1 전달 확정) | ~227 |
 | `_dispatch_broadcasts(pending_broadcasts, db_session_factory)` | 커밋 후 인라인 브로드캐스트 발사 + 스탬프 | ~248 |
-| `load_chain_rules()` | chain_rules 설정 로드(+enrichment 룰 병합). **`chain_replay.load_rules`가 이 함수를 그대로 부른다** — 재생이 라이브 룰 집합을 정확히 그대로 보게 하려는 것 | ~292 |
+| `load_chain_rules()` | chain_rules 설정 로드(+enrichment 룰 병합). **`chain_replay.load_rules`가 이 함수를 그대로 부른다** — 재생이 라이브 룰 집합을 정확히 그대로 보게 하려는 것 | ~292<br>🆕㉛ **[S-201 `789e9ee2`·`174346f2`, 판정 316] `read_rules_document(path=None)` — 「그 파일을 읽는」 «무상태 독자» 하나.** `/admin/chain/rules`(`main.py`)가 자기 `open` 을 버리고 이것을 지난다. 🔴 **리스트 형태 파일은 «로더와 같은 방식»으로 거절한다** — 새 독자가 자기 거절을 쓰면 운영자가 같은 실수에 «두 문장»을 받는다 |
 | `_mapper_accepts_rule(mapper_func) -> bool` | 맵퍼가 rule 인자를 받는지 시그니처 검사 | ~321 |
 | `execute_custom_mapper(module_name, function_name, db, payload, rule=None)` | mappers/ 동적 로드·실행 | ~332 |
 | `_group_target_tables(events_in_tx, rules)` | tx 내 이벤트 → 타깃 테이블 그룹핑 | ~350 |
@@ -2450,6 +2450,20 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 📎 사용법은 [chain_ingestion_guide §1-ter](../guide/chain_ingestion_guide.md), 심볼은 위 §🆕㉗ `dev_bench`.
 
 
+### 🆕㉛ `server/config_resolve_report.py` — 「내 선언이 먹었나」의 «한 자리», 그리고 셋업 «순서»가 사는 곳 (2026-09-12 S-180)
+
+| 심볼 | 무엇인가 |
+|---|---|
+| `_RESOLVERS` (도메인 «여덟») | `catalog` · `chain` · `enrichment` · `virtual_join` · `notation` · `binding` · `ledger` · `walk`. 🔴 **이 dict 의 «순서»가 더는 대표를 고르지 않는다**(S-180 ⓐ-0 `9aac0a81`) — 계약 양쪽이 도메인을 «이름»으로 고른다 |
+| `SETUP_STEPS` (여섯) · `_STEP_OF` · 응답의 `step`·`blocked_by` | **셋업 순서의 «정본»이고 `docs/guide/SETUP_ORDER.md` 는 그 설명이다**(S-180 ⓒ `d324448c`·`245c4450`). 🔴 순서가 «코드»에 있어야 하는 이유는 그 문서가 자기 「지금 없는 것」 절에 적어 둔 그대로다 — 「사람이 이 장을 열어야만 «무엇이 먼저인가»를 알 수 있고, 그것이 결함이다」. ⚠️ **걸음이 «없는» 도메인이 둘**(`notation`·`binding`) — 여섯 걸음 «밖»이라는 뜻이고 `step: null` 로 «보인다». 숨기면 화면이 가진 도메인과 이 순서가 «다른 세계»가 된다 |
+| `after` 가 «선형이 아니다» (판정 317) | ①=뿌리 · ②③④⑤ ← ① · ⑥ ← ⑤ — **뿌리 DAG 이지 줄이 아니다.** 🔴 처음 «줄 세워» 적었더니 이 박스에서 원장이 `blocked_by: 4` 로 나왔고 구현자가 그것을 「기능이 도는 증거」로 읽었다 — 반대였다. 원장의 앞은 ④ 가 아니라 ① 이고, **가상 조인이 «없는» 설치(정당하다)에서 원장이 «영원히 차단»으로 그려진다.** ⚠️ 여기 있는 것은 «정적 앞»뿐이다 — 문서가 적는 조건부 의존(③·⑤ 가 「파생 표를 쓴다면」 ②③ 에 기댐)은 «소스마다» 달라 이 리스트가 답할 수 없고, 그래서 «추측하지 않는다» |
+| `_step_is_standing(domain)` (판정 318) | **서 있다 = 효과가 «하나 이상» 있고 «파일 범위» 거절이 «없다».** 🔴 **부분 거절은 뒤를 막지 않는다** — 「거절이 하나라도 있으면 차단」으로 적었더니 걷기가 `blocked_by: 5` 인데 그 걷기의 effective 가 «9» 였다. 「막혔다」와 「이 걸음이 돌고 있다」가 «한 화면에 동시에 참»이 된다. ⚠️ 규칙·표·노드 범위 거절은 그 걸음의 «자기 모집단»에 그대로 보인다 — 사라지는 게 아니라 «뒤를 막는 근거가 아닐» 뿐이다. 파일 범위만 다르다: 선언을 «못 읽으면» 그 걸음이 무엇을 주는지 아무도 모른다 |
+| `SCOPES` (여섯) · `POPULATIONS` (셋) | `file`·`setting`·`rule`·`reference_view` + 🆕 `table`(판정 316 — 어떤 규칙도 `trigger_table` 로 안 가리키는 선언 표) + 🆕 `node_type`(좌석이 `collect` 로 고를 수 있는 이름). 🔴 **둘 다 같은 사유로 늘었다: 그것을 `rule` 로 내면 «그 줄이 거짓»이다**(「이 줄이 참인가」) |
+
+🔵 **그리고 ⓓ 의 차단 판정이 «걷기 자신의 함수»를 지난다** — `ledger_trace_router._collectable_types`(S-180 ⓓ `b5c0fa8f`·`dc06bddd`) — 모듈을 적는다, 어제 상수 하나를 틀린 모듈에 붙였으므로.
+판정 312 가 「⑥ 은 걷기 «자신»의 아는 집합을 읽는다」로 정한 자리이고, 둘째 판정기를 만들지 않은 것이다.
+
+
 ## 5-D. 2026-08-04 신설 서버 모듈
 
 > 🔎 **이번 라운드의 서버 신설은 두 갈래다** — ① 가상 조인이 **선언**(`virtual_join_config`)과 **실행**(`virtual_join_executor`)으로 갈렸다 ② 「이미 지나간 데이터에 지금 규칙을 먹인다」는 조작이 산발적 CLI에서 **하나의 레지스트리**(`retroactive`)로 모였다.
@@ -2703,6 +2717,8 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 - `resolve_alignment_view(db, rule_name, key_values, map_table, *, reference_spec=None, include_cells=True, x_col=None, y_col=None, value_col=None, index_col=None, assume_reference_geometry=True, alignment_thresholds=None, source_filters=None, source_table=None, ignore_source_metadata=False) -> dict` — 🔴 **키워드 전용(`*`)이다.** 라우트와 맵퍼가 **같은 진입점**을 쓰는 것이 요점이고, 그래서 체인 맵퍼가 화면과 다른 답을 받을 수 없다.
 
 ### 🆕🆕🆕🆕 `server/chain_bindings.py` (**244줄**, `5b09d69` 신설, 추적됨) — job-column 이름의 단일 해석기
+
+> 🆕㉛ **[S-180 ⓑ-0 `6081cb77`, 판정 315] 체인 문법의 «판정자»가 하나씩이다 — `rule_refusals(rule, path, *, mapper_resolvable)` · `rule_warnings(rule, path="rule")`, 호출자 «셋».** 🔴 그때까지 그 문법을 판정하는 자리가 «이미 둘»이었고, 등록기가 셋째가 되기 «전»에 접었다 — 셋이 되면 「어느 것이 정본인가」의 답이 셋이 된다. ⚠️ `mapper_resolvable` 이 «인자»인 것이 요점이다: 드라이런이 «못 푸는» 매퍼를 거절해야 하는데, 그 판단은 부르는 자리마다 다르고 «문법»의 성질이 아니다
 
 > 🆕㉘ **[S-194 ⓑ `27795fdc`] 체인이 «그 수명주기 안»에 앉는다 — `class ChainRuleIndex` :537 · `class ChainRuleDocument` :591.** ⚠️ **체인에는 «탐색기 인덱스»가 없고, 그것이 「번들 인자 하나로 열 수 없었다」의 «잰» 이유다**(S-194 설계). 기계가 실제로 필요로 한 것은 작다 — 편집 가능한 대상의 매핑 · 대상이 아닌 키에 대한 «이름 있는 거절» · 초안의 base 를 견줄 무엇. 🔴 **스냅샷 해시는 «로더가 보는 규칙»에 대한 것이지 파일 «바이트»에 대한 것이 아니다.** 🔴 **검증은 «로더의 것»이고 «둘째 의견»이 아니다** — `preview` 가 로더와 «같은» `validation.Problems` + `routing_keys()` 로 채점하므로(S-188 ⓐⓑ), 화면이 좋다고 부른 초안을 로더가 곧이어 거절하는 일이 «있을 수 없다». 📎 드라이런 라우트는 `POST /admin/chain/dry-run`(`main.py` :4155)
 
