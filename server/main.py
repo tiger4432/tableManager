@@ -734,6 +734,7 @@ from datetime import timezone, datetime
 # module docstring there. Re-exported here so `main.to_local_str` keeps working
 # for every existing caller.
 from utils.time_format import to_local_str
+from utils.wire_format import wire_text
 
 def inject_system_columns(row):
     """
@@ -842,8 +843,8 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
             cells = {}
             for col in user_cols:
                 value = getattr(row, col, None)
-                cells[col] = {"value": (to_local_str(value)
-                                        if isinstance(value, datetime) else value)}
+                cells[col] = {"value": wire_text(
+                    to_local_str(value) if isinstance(value, datetime) else value)}
             out.append({
                 "row_id": getattr(row, key_name, None),
                 "table_name": table_name,
@@ -942,7 +943,11 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
             has_overwrite = is_ow or (manual_pin is not None) or is_collision or (include_sources and "user" in col_srcs)
             
             r_data[col] = {
-                "value": val_raw,
+                # S-190: the SAME function the view arm and the export use. A dynamic
+                # table builds only String/Float/DateTime columns so nothing here is a
+                # dict today -- it is here so 「this cell as text」 has one author and not
+                # one per arm.
+                "value": wire_text(val_raw),
                 "is_overwrite": has_overwrite,
                 "is_collision_merge": is_collision,
                 "sources": col_srcs,
@@ -2712,7 +2717,11 @@ def export_table_csv(
         c_at_s = to_local_str(created_at) if created_at else ""
         u_at_s = to_local_str(eff_upd) if eff_upd else ""
         
-        row_v = [r if r is not None else "" for r in row[:-2]]
+        # 🔴 S-190: THE SAME FOLD AS THE STREAM BELOW. This sample sizes
+        # `X-Estimated-Content-Length`, and this file already says what divergence costs:
+        # the estimate under-reports by exactly the width the sample missed and the
+        # client's progress bar runs past 100%.
+        row_v = [wire_text(r) if r is not None else "" for r in row[:-2]]
         row_v.append(c_at_s)
         row_v.append(u_at_s)
         sample_writer.writerow(row_v)
@@ -2773,7 +2782,7 @@ def export_table_csv(
             updated_at = row[-1]
             
             # 비즈니스 컬럼 값은 그대로 로드 (이미 SQL 레벨에서 분해됨)
-            row_vals = [r if r is not None else "" for r in row[:-2]]
+            row_vals = [wire_text(r) if r is not None else "" for r in row[:-2]]
             
             # 시스템 컬럼 날짜 포맷 캐시 활용
             effective_update = updated_at if updated_at else created_at

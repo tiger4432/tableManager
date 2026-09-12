@@ -36,6 +36,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import ledger_explorer
+from utils.wire_format import wire_text
 from declaration_names import bare_name as _bare_name
 import ledger_trace
 
@@ -1058,7 +1059,11 @@ def _row_cell(value):
         return ""
     if value is True:
         return "true"
-    text = str(value)
+    # 🔴 S-190: THE SAME FUNCTION THE GRID AND THE CSV EXPORT USE. `str()` on a dict is
+    # Python's repr -- single quotes, `True`, `None` -- which is not JSON and which nothing
+    # downstream can parse. Two spellings of 「this value as text」 is how one cell
+    # arrives differently depending on which door the reader came through.
+    text = str(wire_text(value))
     return text.replace("\t", " ").replace("\r", " ").replace("\n", " ")
 
 
