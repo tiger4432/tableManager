@@ -258,6 +258,17 @@ export const BOARD = Object.freeze({
       //    창을 묻지 않습니다 -- 그건 walk 의 모양이 아니라 라우트를 다시 파는 것입니다.
       //    시간축은 이미 응답 안에 있습니다: 실측으로 626 엣지 «전부» occurred_at 을 답니다.
       follow: ['inspected', 'observed', 'of_kind'],
+      // 🔴 C-90 ②. 접는 것은 «서버»이고(S-146), 무엇을 어떻게 접을지는 «좌석»이 선언합니다.
+      //    읽는 코드(`trendFromWalk`)에 도메인 낱말이 «하나도» 없는 것이 이 세 줄의 값입니다 --
+      //    이 좌석은 이미 `follow` 와 `start.groupby` 로 그 낱말들을 들고 있었습니다.
+      // ⚠️ 이름은 «선언된 철자»입니다(`inspected@1`): 무리 값은 노드가 든 `predicates[].count`
+      //    에서 오고 그 목록은 선언의 철자를 씁니다 (WALK.md 「이름 찾기」, S-146-c).
+      group_by: 'wafer',
+      measure: ['sum:inspected@1', 'sum:observed@1'],
+      // 비율의 분자·분모. 나누는 것은 «화면»의 일입니다 — 서버는 접는 규칙을 지어내지 않습니다.
+      ratio: { found: 'sum:observed@1', of: 'sum:inspected@1' },
+      // Y 축 알약이 고를 수 있는 «종류»가 어느 타입의 어느 키에 사는지. 이것도 선언입니다.
+      kinds: { type: 'defect_kind', key: 'defect_kind' },
       // 🔴 방향을 «선언»합니다 (라운드 ⓪, 2026-08-29). 서버 기본 `both` 는 이 씨앗에서
       //    «남의 웨이퍼»로 새고 그 예산으로 절단이 납니다 -- 실측은 보고서의 표에.
       //    일괄로 바꾼 것이 «아닙니다»: 부품마다 두 방향을 각각 걸어 네 수를 비교했습니다.
@@ -343,6 +354,17 @@ export const BOARD = Object.freeze({
       //    창을 묻지 않습니다 -- 그건 walk 의 모양이 아니라 라우트를 다시 파는 것입니다.
       //    시간축은 이미 응답 안에 있습니다: 실측으로 626 엣지 «전부» occurred_at 을 답니다.
       follow: ['inspected', 'observed', 'of_kind'],
+      // 🔴 C-90 ②. 접는 것은 «서버»이고(S-146), 무엇을 어떻게 접을지는 «좌석»이 선언합니다.
+      //    읽는 코드(`trendFromWalk`)에 도메인 낱말이 «하나도» 없는 것이 이 세 줄의 값입니다 --
+      //    이 좌석은 이미 `follow` 와 `start.groupby` 로 그 낱말들을 들고 있었습니다.
+      // ⚠️ 이름은 «선언된 철자»입니다(`inspected@1`): 무리 값은 노드가 든 `predicates[].count`
+      //    에서 오고 그 목록은 선언의 철자를 씁니다 (WALK.md 「이름 찾기」, S-146-c).
+      group_by: 'wafer',
+      measure: ['sum:inspected@1', 'sum:observed@1'],
+      // 비율의 분자·분모. 나누는 것은 «화면»의 일입니다 — 서버는 접는 규칙을 지어내지 않습니다.
+      ratio: { found: 'sum:observed@1', of: 'sum:inspected@1' },
+      // Y 축 알약이 고를 수 있는 «종류»가 어느 타입의 어느 키에 사는지. 이것도 선언입니다.
+      kinds: { type: 'defect_kind', key: 'defect_kind' },
       // 🔴 방향을 «선언»합니다 (라운드 ⓪, 2026-08-29). 서버 기본 `both` 는 이 씨앗에서
       //    «남의 웨이퍼»로 새고 그 예산으로 절단이 납니다 -- 실측은 보고서의 표에.
       //    일괄로 바꾼 것이 «아닙니다»: 부품마다 두 방향을 각각 걸어 네 수를 비교했습니다.
@@ -868,8 +890,20 @@ export function bindLoaders(layout, deps) {
           //    떼어 내고, 나가는 요청은 축과 무관하게 «글자 그대로» 같습니다.
           bound.load = (override) => {
             const { axis, ...rest } = override || {};
-            return walkHere({ start: decl.start, follow: decl.follow, ...rest })
-              .then((answer) => read(answer, axis));
+            // 🔴 C-90 ②. 고른 축이 «measure 하나 더»가 되어 같은 걷기에 실립니다 — 둘째 걷기도,
+            //    둘째 예산도 없습니다. 좌석이 `group_by` 를 선언하지 «않으면» 이 블록은 아무것도
+            //    안 싣고, 그 요청은 오늘과 «글자 그대로» 같습니다(구성 좌석 셋이 그렇습니다).
+            const fold = decl.group_by ? {
+              group_by: decl.group_by,
+              measure: [
+                ...(decl.measure || []),
+                ...(axis && axis.aggregation && axis.qualifier
+                  ? [`${axis.aggregation}:${axis.qualifier}`] : []),
+              ],
+            } : {};
+            return walkHere({ start: decl.start, follow: decl.follow, ...fold, ...rest })
+              // 좌석의 «선언»을 읽는 쪽에 같이 넘깁니다. 그 선언이 도메인 낱말의 집입니다.
+              .then((answer) => read(answer, axis, decl));
           };
         }
         return { ...decl, options: bound };

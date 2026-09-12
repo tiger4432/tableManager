@@ -126,6 +126,13 @@ const DECLARATION = {
  *    족한 규칙이 이 입력에서 «다른 답»을 냅니다 (전수면 축이 죽고, 하나면 3 이 나옵니다).
  *    두 규칙이 같은 답을 내는 표본으로는 어느 쪽이 도는지 알 수 없습니다.
  */
+// C-90 ②. 좌석의 «선언» -- 도메인 낱말이 사는 자리. `trendFromWalk` 에는 하나도 없습니다.
+const TREND_SEAT = {
+  group_by: 'wafer',
+  ratio: { found: 'sum:observed@1', of: 'sum:inspected@1' },
+  kinds: { type: 'defect_kind', key: 'defect_kind' },
+};
+
 const TREND_WALK = {
   ok: true,
   complete: true,
@@ -147,6 +154,19 @@ const TREND_WALK = {
       qualifiers: { radius_x: 4, unit: 'um' } },
     { source: 'd2', target: 'f3', predicate: 'observed', occurred_at: '2026-07-11T08:00:00+09:00',
       qualifiers: { radius_x: 'n/a', unit: 'um' } },
+  ],
+  // 🔴 C-90 ②. THE FOLD IS THE SERVER'S NOW (S-146), so the fixture carries what the envelope
+  //    carries: one group per key, its size, its representative instant, and a MAP of measures.
+  //    The shape is the contract's own -- `contracts/walk_aggregate/vectors.json`, last vector --
+  //    and the numbers are what the seven folds return over the edges above: median(2,4)=3 with
+  //    the non-numeric skipped by the FOLD, count over all three, and the two predicate counts
+  //    the ratio axis is made of.
+  // ⚠️ The edges stay: `qualifierTypesFromWalk` still reads them (F4), and a walk that folds is
+  //    the same walk -- 「같은 걷기, 같은 예산」.
+  groups: [
+    { key: 'W-1', n: 2, at: '2026-07-11T08:00:00+09:00',
+      value: { 'median:radius_x': 3, 'count:radius_x': 3,
+               'sum:inspected@1': 2, 'sum:observed@1': 3 } },
   ],
 };
 
@@ -447,25 +467,67 @@ async function suite(mods) {
     eq('F1 a numeric aggregation skips the non-numeric value rather than dying on it',
       [median.points.length, median.points[0].value, median.valueKind],
       [1, 3, 'aggregate']);
-    // 🔴 못박음 ②: 건너뛴 수를 «셉니다». 안 세면 「없어서 0」과 「건너뛰어서 0」이 같은 수입니다.
-    eq('F2 ... and says how many it skipped', median.skipped, 1);
+    // 🔴 C-90 ② -- THE INVERSE OF THE OLD PIN, AND THE SAME DISCIPLINE. The skipped count used
+    //    to be the client's because the client folded. The server folds now and the envelope
+    //    carries no such number, so the honest answer is `null`: 「아무도 안 셌다」. A 0 here
+    //    would say 「세었고 없었다」, which is the collapse this repository keeps refusing.
+    //    ⚠️ The FACT is not lost quietly -- it is reported as the one thing this move costs.
+    eq('F2 ... and no longer claims a skipped count, because nobody counted it', median.skipped, null);
     const counted = api.trendFromWalk(TREND_WALK, { aggregation: 'count', qualifier: 'radius_x' });
-    eq('F3 count takes every value, numeric or not, and skips nothing',
-      [counted.points[0].value, counted.skipped], [3, 0]);
+    eq('F3 a different pill reads a DIFFERENT measure out of the same envelope',
+      [counted.points[0].value, counted.skipped], [3, null]);
     // 🔴 「하나라도 수치면 수치」는 «세는 쪽»이 두 수를 다 들고 있어야 말할 수 있습니다.
     eq('F4 the numeric verdict is two counts, not a boolean',
       api.qualifierTypesFromWalk(TREND_WALK).radius_x, { seen: 3, numeric: 2 });
-    // 모르는 집계는 «거절»입니다. 빈 점으로 그리면 「아무도 안 쟀다」가 되는데 그건 거짓입니다.
+    // 🔴 C-90 ②: THE REFUSAL MOVED TO WHERE THE FOLD IS. An aggregation nobody declared is now
+    //    refused by the SERVER (it answers 422 and `subgraphModel` renders `ok:false`), and this
+    //    file must not invent a second refusal for the same fact. What the client owes is the
+    //    other half: a measure the envelope did not answer draws NO value rather than a made-up
+    //    one -- `null`, which the chart skips, instead of a number nobody computed.
     const bogus = api.trendFromWalk(TREND_WALK, { aggregation: 'nope', qualifier: 'radius_x' });
-    eq('F5 an aggregation nobody declared is refused, not drawn as absence',
-      [bogus.ok, bogus.state], [false, 'refused']);
+    eq('F5 a measure the envelope does not carry draws no value, and none is invented',
+      [bogus.ok, bogus.state, bogus.points[0].value], [true, 'ready', null]);
+    // ... and a refusal from the server is still a refusal, drawn as one.
+    const refused = api.trendFromWalk({ ok: false, message: '서버가 거절했습니다' },
+      { aggregation: 'median', qualifier: 'radius_x' });
+    eq('F5b a refused walk stays a refusal rather than an empty chart',
+      [refused.ok, refused.state], [false, 'refused']);
+    // 🔴 AND A CUT WALK IS NOW A MARKER, NOT A REFUSAL. This is the defect the round exists to
+    //    close: a seat whose budget cut the walk drew an EMPTY chart forever, because counting
+    //    was refused outright. The numbers are drawn and the cut is said beside them.
+    const cutWalk = { ...TREND_WALK, complete: false, truncated: ['nodes'] };
+    const cut = api.trendFromWalk(cutWalk, { aggregation: 'median', qualifier: 'radius_x' });
+    eq('F5c a cut walk still draws its numbers, and says it was cut',
+      [cut.state, cut.points.length, cut.cut], ['ready', 1, true]);
 
     const doc = makeDoc();
     const markings = new MarkingStore();
     const host = doc.createElement('div');
     const t = new trend.MainTrendPanel(host, {
       doc, markings, reads: 'marking:1', writes: 'marking:1', axisReads: 'axis:y',
-      load: async ({ axis }) => api.trendFromWalk(TREND_WALK, axis),
+      // C-90 ②: the SEAT's declaration travels with the answer -- that is where the domain
+      // words live now, and `trendFromWalk` has none of its own.
+      //
+      // 🔴 AND THE LOADER MODELS THE SERVER, because the fold is the server's: the measure goes
+      //    on the wire, so the ANSWER depends on the axis. A fixture that answered the same
+      //    thing for every pill would make 「the pill moves the chart」 unmeasurable.
+      //    `max:unit` is the contract's own refusal case (`measure_needs_numbers`) -- folding a
+      //    value that is not a number is refused BY NAME rather than coerced or skipped.
+      load: async ({ axis }) => {
+        const key = axis && axis.aggregation && axis.qualifier
+          ? `${axis.aggregation}:${axis.qualifier}` : null;
+        if (key === 'max:unit') {
+          return api.trendFromWalk(
+            { ok: false, reason: 'measure_needs_numbers',
+              message: "'unit' is not a number" }, axis, TREND_SEAT);
+        }
+        const folded = key && !(key in TREND_WALK.groups[0].value)
+          ? { ...TREND_WALK,
+              groups: [{ ...TREND_WALK.groups[0],
+                value: { ...TREND_WALK.groups[0].value, ...(key === 'max:radius_x' ? { [key]: 4 } : {}) } }] }
+          : TREND_WALK;
+        return api.trendFromWalk(folded, axis, TREND_SEAT);
+      },
     });
     t.mount();
     await flush(); await flush();
@@ -481,8 +543,11 @@ async function suite(mods) {
     // Guarded: a mutant that kills the axis must FAIL a named line, not crash the suite --
     // a crash reads as INERT, which is the honest word for 「아무것도 시험 안 했다」.
     const aggLegend = byClass(host, 'rb-trend-legend')[0];
-    ok('F7 the legend says the skipped count where the reader can see it',
-      Boolean(aggLegend) && aggLegend.textContent.includes('건너뜀 1'),
+    // 🔴 C-90 ②, the inverse: the legend must NOT claim a skipped count any more. The number is
+    //    not zero, it is unknown, and a line that says 「건너뜀 0」 about an uncounted thing is
+    //    the same lie as a 0 in the model.
+    ok('F7 the legend no longer states a skipped count, because nobody counts it',
+      Boolean(aggLegend) && !aggLegend.textContent.includes('건너뜀'),
       aggLegend ? aggLegend.textContent : host.textContent.slice(0, 140));
     chooseAxis('axis:agg:max:radius_x');
     await flush(); await flush();
@@ -490,20 +555,23 @@ async function suite(mods) {
     ok('F8 picking a different aggregation changes what the chart draws',
       titleOf().includes('max(radius_x) 4'), titleOf());
 
-    // 🔴 두 가지 0 을 가릅니다 (라이브 실측 2026-08-29 에서 이 라운드가 만든 결함).
-    //    `unit` 은 걷기가 «실었고» max 가 전부 건너뛴 것인데, 화면은 「안 실었습니다」라고
-    //    말했습니다. 개수를 세고도 그 수를 «안 읽으면» 못박음 ② 가 공허해집니다.
+    // 🔴 C-90 ② / 판정 341. 「두 가지 0」의 구분은 이제 «서버»가 이름으로 답합니다: 수가 아닌
+    //    값을 접는 것은 거절(`measure_needs_numbers`)이고, 화면은 그 이름을 «그대로» 그립니다.
+    //    전에는 이 화면이 두 문장을 «지어» 그 구분을 흉내 냈습니다.
     chooseAxis('axis:agg:max:unit');
     await flush(); await flush();
     const text = host.textContent;
-    ok('F9 an aggregation that skipped EVERY value says so, not that nothing was carried',
-      text.includes('전부 건너뛰었습니다') && !text.includes('안 실었습니다'),
+    ok('F9 a fold the server refused is drawn in the SERVER`s word, not in a sentence of ours',
+      text.includes('measure_needs_numbers')
+      && !text.includes('전부 건너뛰었습니다') && !text.includes('안 실었습니다'),
       text.slice(0, 220));
-    // 그리고 «진짜로 안 실린» 수식어는 여전히 그 문장이어야 합니다 -- 둘이 같아지면 구분이 없습니다.
+    // 그리고 «봉투가 답하지 않은» 이름은 거절이 «아닙니다» -- 값이 없을 뿐이고, 화면은 그것에
+    // 대해서도 문장을 짓지 않습니다. 두 경우가 «같은 낱말»이 되면 구분이 사라집니다.
     chooseAxis('axis:agg:max:gate');
     await flush(); await flush();
-    ok('F10 ... and a qualifier the walk really did not carry keeps its own sentence',
-      host.textContent.includes('안 실었습니다'), host.textContent.slice(0, 220));
+    ok('F10 ... and a measure the envelope simply did not answer invents no sentence either',
+      !host.textContent.includes('measure_needs_numbers')
+      && !host.textContent.includes('안 실었습니다'), host.textContent.slice(0, 220));
   }
 
   return { ran, failures };
@@ -550,17 +618,15 @@ const MUTANTS = [
       '    return AGGREGATIONS.map((agg) => this._pill({',
       '    return (this.qualifierTypes ? AGGREGATIONS : []).map((agg) => this._pill({') } },
   // 🔴 「하나라도 수치면 수치」의 반대: 전수를 요구하는 규칙. 문자 하나가 축을 죽입니다.
-  { id: 'M16', what: 'one non-numeric value kills the whole axis (all-or-nothing instead of any)',
-    catches: 'F1',
-    mutate: { 'api.js': (s) => s.replace(
-      '      const used = numericOnly ? nums : row.values;',
-      '      const used = numericOnly && nums.length === row.values.length ? nums : [];') } },
-  // 🔴 건너뛴 수를 «안 세면» 값은 맞고 화면만 덜 말합니다 -- 그게 이 변이의 요점입니다.
-  { id: 'M17', what: 'the skipped values are dropped silently, so absent and skipped look alike',
-    catches: 'F2',
-    mutate: { 'api.js': (s) => s.replace(
-      '      if (numericOnly) skipped += row.values.length - nums.length;',
-      '      if (false) skipped += 0;') } },
+  // ⚰️ M16 · M17 RETIRED WITH THE CODE THEY SCORED (C-90 ②, 판정 341). Both mutated the
+  //    CLIENT's fold -- 「one non-numeric kills the whole axis」 and 「the skipped values are
+  //    dropped silently」 -- and that fold is the server's now. A test dies in the same commit
+  //    as the code it measured; keeping them would have reported 「mutation anchor is GONE」
+  //    forever, which is a harness telling the truth about nothing.
+  // 🔵 WHAT CARRIES THOSE CLAIMS NOW: the server refuses a non-numeric fold BY NAME
+  //    (`measure_needs_numbers`, contract vectors), and F9 scores that the screen draws that
+  //    name rather than a sentence of its own -- with M19 as its mutant. The two zeros are
+  //    still kept apart; the place that keeps them apart moved.
   // 🔴 게이트 ① 의 변이: 알약이 «차트를 안 바꾸는» 것. 2026-08-24 에 소유자가 지적한 그 결함.
   { id: 'M18', what: 'the chosen aggregation never reaches the walk, so the pill does not move the chart',
     catches: 'F8',
@@ -568,10 +634,13 @@ const MUTANTS = [
       '      ? this.boundWalk({ start, axis: this.axis })',
       '      ? this.boundWalk({ start })') } },
   // 🔴 라이브에서 실제로 난 결함입니다 (2026-08-29). 건너뛰기를 «안 실렸다»로 읽는 것.
-  { id: 'M19', what: 'a fully skipped aggregation is reported as a qualifier the walk never carried',
+  // 🔴 SAME CLAIM, NEW CARRIER (C-90 ②): the refusal must reach the screen in the server's own
+  //    word. Swallowing it leaves the operator with an empty chart and no name for why.
+  { id: 'M19', what: 'the server`s named refusal is swallowed, so a refused fold reads as absence',
     catches: 'F9',
     mutate: { 'main_trend_panel.js': (s) => s.replace(
-      '        ? (m.skipped > 0', '        ? (false') } },
+      '            : ((this.model && (this.model.reason || this.model.message))',
+      '            : ((this.model && this.model.message)') } },
   { id: 'M2', what: 'a name-only candidate is offered as an axis, so a pill leads nowhere',
     catches: 'A3',
     mutate: { 'control_bar_panel.js': (s) => s.replace(

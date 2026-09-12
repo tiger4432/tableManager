@@ -344,7 +344,9 @@ export function compositionModel(result) {
 export async function fetchSubgraph(params) {
   const { apiBase, nodeId, fetchImpl, positive, negative,
           node_limit: nodeLimit, hops, follow, collect, direction,
-          backbone_hops: backboneHops, since, until } = params || {};
+          backbone_hops: backboneHops, since, until,
+          // C-90 ②. 무리와 잴 것. 좌석이 «선언»하고 이 함수는 실어 나르기만 합니다.
+          group_by: groupBy, measure } = params || {};
   // 🔴 THE GATE (contract §4). Refused HERE rather than at the server, because the server
   //    would answer 200 with an empty walk and the screen would read that as 「없다」.
   //    A refusal is CONTENT: `subgraphModel` already renders `ok:false` with its reason.
@@ -388,6 +390,17 @@ export async function fetchSubgraph(params) {
   //    「고장」으로 그리고, 운영자는 «안 고른 것»을 오류로 읽습니다.
   if (since) query.set('since', String(since));
   if (until) query.set('until', String(until));
+  // 🔴 C-90 ② (S-146). 접기를 «서버에서» 합니다. 안 물으면 두 인자를 «안 싣고», 안 실으면
+  //    봉투에 `groups` 칸이 «없습니다» — null 이 아니라 없음(세 상태). 그래서 이 줄이 붙어도
+  //    묻지 않는 호출의 요청은 한 글자도 안 바뀝니다.
+  // ⚠️ `measure` 는 «여러 번» 실립니다(S-146-c). 비율 축의 분자·분모가 한 봉투에 같이 오고,
+  //    그것이 「둘째 걷기를 돌지 않는다」의 실물입니다.
+  if (groupBy) {
+    query.set('group_by', String(groupBy));
+    for (const name of (Array.isArray(measure) ? measure : [measure])) {
+      if (name) query.append('measure', String(name));
+    }
+  }
   // 🔴 «백본 예산»은 선언한 부품만 싣습니다 (라운드 ③, 2026-08-29). follow 와 «같은 모양»:
   //    없으면 안 싣고, 안 실으면 서버 기본이라 오늘과 «완전히 같은» 답입니다.
   //
@@ -639,6 +652,10 @@ export function subgraphModel(result) {
     // C-89. 봉투의 낱말을 «그 이름 그대로» 나릅니다. 여기서 camelCase 로 바꾸면 걷기 페이지와
     // 이 보드가 «다른 이름»을 읽게 되고, 그러면 `pluralAttributes` 가 두 벌이 됩니다.
     attribute_cardinality: (body && body.attribute_cardinality) || null,
+    // 🔴 C-90 ②. 서버가 접은 무리. «안 물었으면 키가 없고», 그때 이 값은 `null` 입니다 —
+    //    「안 물었다」와 「물었는데 무리가 없다」(빈 배열)는 다른 답이고, 읽는 쪽이 그 둘을
+    //    갈라야 「아직 안 셌다」를 「없다」로 안 그립니다.
+    groups: Array.isArray(body && body.groups) ? body.groups : null,
     nodes: Array.isArray(body.nodes) ? body.nodes : [],
     edges: Array.isArray(body.edges) ? body.edges : [],
     contrast: prop.contrast || null,
@@ -1335,32 +1352,16 @@ export const AGGREGATIONS = Object.freeze([
   { id: 'distinct', label: 'distinct', numericOnly: false },
 ]);
 
-/**
- * C-90 ①. 일곱 접기. 🔴 «export» 인 이유는 화면이 아니라 «이음매» 때문입니다 —
- * `contracts/walk_aggregate/` 의 서버 절반(S-146)이 같은 벡터를 파이썬으로 접고, 클라 절반은
- * 이 표를 «import 해» 같은 벡터를 접습니다. 모듈 비공개이던 동안 그 계약은 «채점 불가»(exit 2)
- * 였고, 그건 초록이 아니라 「아직 아무것도 안 쟀다」입니다.
- * ⛔ 이 표를 하니스가 «다시 적는» 것이 대안이었고, 그러면 계약이 자기 자신과 합의합니다.
- */
-export const AGGREGATE = Object.freeze({
-  count: (values) => values.length,
-  distinct: (values) => new Set(values.map((v) => JSON.stringify(v))).size,
-  sum: (nums) => nums.reduce((a, b) => a + b, 0),
-  mean: (nums) => nums.reduce((a, b) => a + b, 0) / nums.length,
-  min: (nums) => Math.min(...nums),
-  max: (nums) => Math.max(...nums),
-  median: (nums) => {
-    const sorted = [...nums].sort((a, b) => a - b);
-    const mid = sorted.length >> 1;
-    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-  },
-});
+// ⚰️ C-90 ②: THE CLIENT'S SEVEN FOLDS ARE GONE, and so is `aggregationIsNumericOnly` beside
+//    them. The server folds now (S-146) and this file READS the answer -- so a table here would
+//    be a second author of the same arithmetic with no caller, and the contract that scored the
+//    two against each other has no seam left to score (판정 335 ㉢: they retire together).
+//    C-90 ① exported the table for exactly one round, to prove the two sides AGREED before one
+//    of them left: 11 vectors, identical. That was the bridge, and this is the far bank.
+//    ⚠️ `AGGREGATIONS` above STAYS -- it is the PICKER's list (id, label, numericOnly), which is
+//    a screen fact and not arithmetic. The server's seven and that list share their names by
+//    contract (`ledger_subgraph.AGGREGATE_MEASURES`), which is what makes the pill a measure.
 
-/** `median` -> true. 화면이 어느 알약을 죽일지를 이 함수 하나로 묻습니다. */
-export function aggregationIsNumericOnly(id) {
-  const row = AGGREGATIONS.find((agg) => agg.id === id);
-  return Boolean(row && row.numericOnly);
-}
 
 /**
  * 선언이 이름 대는 수식어 «전부», 그것을 싣는 술어와 함께. 원장을 한 줄도 안 읽습니다 --
@@ -1397,107 +1398,113 @@ export function qualifierTypesFromWalk(answer) {
   return out;
 }
 
-export function trendFromWalk(answer, axis) {
+/**
+ * 트렌드 한 좌석 -> 점들. 🔴 C-90 ②: 접는 것은 «서버»이고 이 함수는 «읽습니다».
+ *
+ * 🔴 왜 옮겼나 (WALK.md, S-146). 클라가 접으려면 걷기가 «전부»를 실어 와야 하는데 운영 규격에서는
+ *    예산이 «먼저» 끊습니다. 그리고 이 함수는 잘린 걷기를 «세기를 거부»했으므로, 증상은 「기울어진
+ *    답」이 아니라 «영구 빈 화면»이었습니다. 이제 절단은 «값 옆의 표지»이지 거절이 아닙니다.
+ *
+ * 🔴 이 파일에 도메인 낱말이 «없습니다». 무리의 키도, 재는 이름도, 종류가 어느 타입에 사는지도
+ *    «좌석»이 선언합니다(`plan`) -- `rnd_board/main.js` 의 BOARD 가 그 자리이고, 거기에는 이미
+ *    `follow` 와 `start.groupby` 가 도메인 낱말로 서 있습니다.
+ *
+ * @param {object|null} answer  `subgraphModel` 의 답 (봉투의 `groups` 를 나릅니다)
+ * @param {{aggregation?: string, qualifier?: string}|null} axis  화면이 고른 Y 축
+ * @param {{group_by?: string, ratio?: {found: string, of: string},
+ *          kinds?: {type: string, key: string}}} [plan]  좌석의 선언 (전선의 이름 그대로)
+ */
+export function trendFromWalk(answer, axis, plan) {
   // 축이 «수식어까지» 정해졌을 때만 집계 축입니다 -- 집계만 고른 상태는 아직 축이 아닙니다.
   const wanted = axis && axis.aggregation && axis.qualifier ? axis : null;
-  const empty = (state, message) => ({
+  const seat = plan || {};
+  const ratio = (seat.ratio && seat.ratio.found && seat.ratio.of) ? seat.ratio : null;
+  const empty = (state, message, extra = {}) => ({
     ok: state !== 'refused', state, points: [], kinds: [], provenance: null, message,
-    axis: wanted, valueKind: wanted ? 'aggregate' : 'ratio', skipped: 0,
+    axis: wanted, valueKind: wanted ? 'aggregate' : 'ratio',
+    // 🔴 「몇 개를 건너뛰었나」는 이제 «아무도 안 셉니다» -- 접는 쪽이 서버이고 봉투에 그 칸이
+    //    없습니다. 0 이 아니라 `null` 입니다: 0 은 「세었고 없었다」이고, 여기서는 안 세었습니다.
+    skipped: null, cut: false, ...extra,
   });
   if (!answer) return empty('awaiting', '아직 안 골랐습니다');
-  if (answer.ok === false) return empty('refused', answer.message || '서버가 거절했습니다');
-  const nodes = answer.nodes || [];
-  const edges = answer.edges || [];
-  const byId = new Map(nodes.map((node) => [node.id, node]));
-  const kinds = [...new Set(nodes.filter((n) => n.type === 'defect_kind')
-    .map((n) => (n.keys || {}).defect_kind).filter(Boolean))]
-    .map((id) => ({ id, label: id, active: true }));
-  if (answer.complete === false || (answer.truncated || []).length) {
-    return { ...empty('truncated', '이 걷기는 예산에서 끊겼습니다 — 여기까지 봤습니다'), kinds };
+  // 🔴 거절은 «서버의 낱말»입니다 (판정 341). 코드를 그대로 실어 나릅니다 — 화면이 그것을
+  //    값 옆에 그립니다. 우리가 문장을 지으면 그건 「자막 단 실패」입니다.
+  if (answer.ok === false) {
+    return empty('refused', answer.message || '서버가 거절했습니다',
+                 { reason: answer.reason || null });
   }
-  // die -> the wafer it sits on, so a per-wafer point can be counted off die-level edges
-  const waferOf = (id) => {
-    const node = byId.get(id);
-    const keys = (node && node.keys) || {};
-    return keys.mat_id || keys.wafer || null;
-  };
-  const stat = new Map();
-  const at = (wafer) => {
-    if (!stat.has(wafer)) {
-      stat.set(wafer, { scanned: new Set(), found: new Set(), at: null, values: [] });
-    }
-    return stat.get(wafer);
-  };
-  for (const edge of edges) {
-    if (!edge) continue;
-    const wafer = waferOf(edge.target) || waferOf(edge.source);
-    if (!wafer) continue;
-    const row = at(wafer);
-    if (edge.predicate === 'inspected') row.scanned.add(edge.target);
-    if (edge.predicate === 'observed') row.found.add(edge.source);
-    if (edge.occurred_at && (!row.at || edge.occurred_at > row.at)) row.at = edge.occurred_at;
-    // 🔴 값을 «거르지 않고» 모읍니다. 수치 판정은 집계가 하고, 건너뛴 수는 세어서 말합니다.
-    if (wanted) {
-      const q = edge.qualifiers || {};
-      if (Object.prototype.hasOwnProperty.call(q, wanted.qualifier)) row.values.push(q[wanted.qualifier]);
-    }
-  }
-  const waferNodeId = (wafer) => (nodes.find(
-    (n) => n.type === 'wafer' && (n.keys || {}).wafer === wafer,
-  ) || {}).id || null;
 
-  // ── 집계 축: 「이 자재의 이 수식어를 이렇게 재면」 ────────────────────────────
-  if (wanted) {
-    const fn = AGGREGATE[wanted.aggregation] || null;
-    // 모르는 집계는 «거절»입니다. 값 없음으로 그리면 「아무도 안 쟀다」가 되는데 그건 거짓입니다.
-    if (!fn) return { ...empty('refused', `모르는 집계입니다 — ${wanted.aggregation}`), kinds };
-    const numericOnly = aggregationIsNumericOnly(wanted.aggregation);
-    let skipped = 0;
-    const aggregated = [...stat.entries()].map(([wafer, row]) => {
-      const nums = row.values.filter((v) => typeof v === 'number' && Number.isFinite(v));
-      const used = numericOnly ? nums : row.values;
-      if (numericOnly) skipped += row.values.length - nums.length;
-      return {
-        seriesId: 'marking', wafer, leg: null, at: row.at,
-        // 「몇 개로 만든 수인가」 -- 비율의 분모와 같은 자리이고, 같은 이유로 말합니다.
-        denominator: row.values.length || null,
-        found: used.length,
-        value: used.length ? fn(used) : null,
-        rate: null,
-        state: 'measured', markKey: null,
-        nodeId: waferNodeId(wafer), nodeType: 'wafer',
-      };
-    }).sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
-    return {
-      ok: true,
-      state: aggregated.length ? 'ready' : 'empty',
-      points: aggregated, kinds,
-      // 출처는 «이 걷기가 실제로 지난 술어»입니다. 지어내지 않습니다.
-      provenance: { source: 'walk',
-        predicates: [...new Set(edges.map((e) => e && e.predicate).filter(Boolean))] },
-      axis: wanted, valueKind: 'aggregate', skipped,
-      message: aggregated.length ? '' : '이 마킹에는 셀 것이 없습니다',
-    };
+  // 종류 목록 -- 좌석이 「어느 타입의 어느 키」인지 선언합니다. 선언이 없으면 목록도 없습니다.
+  const kindSeat = seat.kinds && seat.kinds.type && seat.kinds.key ? seat.kinds : null;
+  const kinds = kindSeat
+    ? [...new Set((answer.nodes || [])
+      .filter((node) => node && node.type === kindSeat.type)
+      .map((node) => (node.keys || {})[kindSeat.key])
+      .filter(Boolean))].map((id) => ({ id, label: id, active: true }))
+    : [];
+
+  // 🔴 세 상태입니다. 무리를 «안 물었으면» 칸이 없고(`null`), 물었는데 아무 무리도 안 나오면
+  //    «빈 배열»입니다. 앞쪽을 「셀 것이 없다」로 그리면 안 물어본 것을 답으로 만듭니다.
+  const groups = Array.isArray(answer.groups) ? answer.groups : null;
+  if (!groups) {
+    return { ...empty('unread', '이 좌석은 아직 무리를 묻지 않았습니다'), kinds };
   }
-  const points = [...stat.entries()].map(([wafer, row]) => ({
-    seriesId: 'marking', wafer, leg: null, at: row.at,
-    denominator: row.scanned.size || null,
-    found: row.found.size,
-    rate: row.scanned.size ? row.found.size / row.scanned.size : null,
-    // 그리는 쪽이 «한 이름»만 보게 합니다 -- 비율이면 비율이 그 값입니다.
-    value: row.scanned.size ? row.found.size / row.scanned.size : null,
-    state: 'measured', markKey: null,
-    nodeId: waferNodeId(wafer),
-    nodeType: 'wafer',
-  })).sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
+
+  // 🔴 절단은 «표지»입니다. 이 줄이 `state: 'truncated'` 로 돌아가던 자리이고, 그래서 예산에
+  //    걸린 좌석이 «영원히 빈 화면»이었습니다. 잘린 위에서 센 수도 수이고, 그것이 잘렸다는 것을
+  //    같이 말하면 운영자가 「더 넓혀 다시 물을지」를 정할 수 있습니다.
+  const cut = answer.complete === false || (answer.truncated || []).length > 0;
+
+  const measure = wanted ? `${wanted.aggregation}:${wanted.qualifier}` : null;
+  const keyName = seat.group_by || null;
+  // 무리의 키 -> 그 키를 든 노드. 마킹이 노드 id 를 쓰므로 필요하고, 이름은 좌석의 것입니다.
+  const nodeFor = (key) => {
+    if (!keyName) return null;
+    return (answer.nodes || []).find(
+      (node) => node && String((node.keys || {})[keyName]) === String(key)) || null;
+  };
+  const numberAt = (values, name) => {
+    const held = values && name ? values[name] : undefined;
+    return typeof held === 'number' && Number.isFinite(held) ? held : null;
+  };
+
+  const points = groups.map((group) => {
+    const values = (group && group.value) || {};
+    // 비율: 분자·분모가 «둘 다» 같은 봉투의 수입니다(S-146-c). 나누는 것은 화면의 일이고,
+    // 서버는 접는 규칙을 지어내지 않습니다 -- WALK.md 가 그렇게 적습니다.
+    const found = ratio ? numberAt(values, ratio.found) : null;
+    const of = ratio ? numberAt(values, ratio.of) : null;
+    const folded = measure ? numberAt(values, measure) : null;
+    const rate = (ratio && of) ? (found || 0) / of : null;
+    return {
+      seriesId: 'marking',
+      // 무리의 «키»가 그 점의 이름입니다. 이 파일은 그 이름이 무엇인지 모릅니다.
+      wafer: group && group.key != null ? String(group.key) : '',
+      leg: null,
+      // 🔵 무리의 «대표 시각»(S-146-c). 엣지가 없으면 키가 «없고», 그때 이 점에는 순간이 없습니다.
+      at: group && group.at != null ? group.at : null,
+      denominator: wanted ? (group && group.n) || null : of,
+      found: wanted ? (group && group.n) || 0 : (found || 0),
+      value: wanted ? folded : rate,
+      rate,
+      state: 'measured', markKey: null,
+      // 마킹이 노드를 가리킵니다. 타입도 «그 노드가» 말합니다 -- 이 파일이 이름을 대지 않습니다.
+      nodeId: (nodeFor(group && group.key) || {}).id || null,
+      nodeType: (nodeFor(group && group.key) || {}).type || null,
+    };
+  }).sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
+
   return {
     ok: true,
     state: points.length ? 'ready' : 'empty',
     points, kinds,
-    // 🔴 출처를 «지어내지 않습니다». lot_map 은 서버가 relation·column 을 실어 줬고, 여기서는
-    //    그 자리에 «술어»가 옵니다 -- 이 수가 어느 엣지에서 나왔는지가 사실입니다.
-    provenance: { source: 'walk', predicates: ['inspected', 'observed'] },
-    axis: null, valueKind: 'ratio', skipped: 0,
+    // 출처는 «이 걷기가 실제로 답한 것»입니다. 무리를 만든 이름들이 그 사실입니다.
+    provenance: { source: 'walk',
+      predicates: [...new Set(groups.flatMap(
+        (group) => Object.keys((group && group.value) || {})))] },
+    axis: wanted, valueKind: wanted ? 'aggregate' : 'ratio',
+    skipped: null,
+    cut,
     message: points.length ? '' : '이 마킹에는 셀 것이 없습니다',
   };
 }
