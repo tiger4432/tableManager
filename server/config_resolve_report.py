@@ -93,7 +93,11 @@ SCOPE_VIEW = "reference_view"
 #: ⓑ 의 ineffective 항목은 «표»입니다 — 어떤 규칙도 trigger_table 로 가리키지
 #: 않는 선언 표. 그것을 `rule` 로 내면 그 줄이 «거짓»입니다(「이 줄이 참인가」).
 SCOPE_TABLE = "table"
-SCOPES = (SCOPE_FILE, SCOPE_SETTING, SCOPE_RULE, SCOPE_VIEW, SCOPE_TABLE)
+#: ⓓ 의 effective 항목은 «노드 타입»입니다 — 좌석이 `collect` 로 고를 수 있는 이름.
+#: 판정 316 이 `table` 을 더한 것과 «같은 사유»입니다: 그것을 `rule` 로 내면 그 줄이 거짓입니다.
+SCOPE_NODE_TYPE = "node_type"
+SCOPES = (SCOPE_FILE, SCOPE_SETTING, SCOPE_RULE, SCOPE_VIEW, SCOPE_TABLE,
+          SCOPE_NODE_TYPE)
 
 ORIGIN_FILE = "file"
 ORIGIN_DEFAULT = "default"
@@ -1223,6 +1227,70 @@ def _ledger_emitted_predicates(document: dict) -> set:
 # 도메인 등록기. 나머지 config는 여기에 한 줄씩 붙는다.
 # 🔴 새 도메인은 **뒤에** 붙인다 — contracts/config_resolve_report의 하네스가
 #    `resolve_report()["domains"][0]`로 enrichment를 집는다.
+# ---------------------------------------------------------------------------
+# walk — 셋업 순서의 ⑥ 걸음 (S-180 ⓓ)
+# ---------------------------------------------------------------------------
+
+def _resolve_walk() -> dict:
+    """⑥ 걷기 좌석 — 「무엇을 «묻는가»」.
+
+    🔴 **이 걸음에는 자기 파일이 «없습니다».** 좌석이 고르는 이름은 ⑤ 원장 선언의 엔터티이고,
+    그래서 「셋업됐나」의 술어는 «걷기 라우트가 이미 쓰는 그 집합»입니다 —
+    `ledger_trace_router._collectable_types()`. 그 함수는 `node_type_not_declared` 로 거절할 때
+    「declared」로 내미는 «바로 그» 목록을 만듭니다. 여기서 엔터티를 다시 세면 한 선언이
+    한 화면에서는 고를 수 있고 다른 화면에서는 거절되는 상태가 생깁니다(그 함수가 자기 주석에
+    적어 둔 바로 그 결함입니다).
+
+    ⚠️ **거절이 «없습니다».** 걷기의 거절(`node_type_not_declared`)은 «요청 하나»에 대한
+    답이지 셋업의 상태가 아닙니다 — 아무도 안 물었으면 거절할 것도 없습니다. 그래서 이
+    걸음의 모집단은 둘뿐이고, 「선언을 못 읽음」만 파일 범위의 rejected 입니다.
+
+    ⚠️ **좌석 자체는 «세지 않습니다».** `client2/src/map2/seating.js` 는 화면 상태이고,
+    서버가 그것을 셀 수 있다고 말하는 순간 이 보고가 «모르는 것을 아는 척»합니다.
+    """
+    effective, ineffective, rejected = [], [], []
+
+    collectable, failure = set(), None
+    try:
+        from ledger_trace_router import _collectable_types
+
+        collectable = _collectable_types()
+    except Exception as exc:
+        # HTTPException 은 detail 에 사유를 싣습니다 — 그 문장을 그대로 나릅니다.
+        detail = getattr(exc, "detail", None)
+        failure = (detail or {}).get("message") if isinstance(detail, dict) else None
+        failure = failure or ("%s: %s" % (exc.__class__.__name__, exc))
+
+    sources = [source(
+        "entities", "ledger_config.json (entities)",
+        "걷기 좌석이 «고를 수 있는 이름»은 원장 선언의 엔터티입니다. 이 걸음은 자기 파일이 "
+        "없고 ⑤ 가 선 만큼 섭니다.",
+        exists=failure is None, degraded=bool(failure))]
+
+    if failure:
+        rejected.append(entry(
+            SCOPE_FILE, "entities",
+            "선언을 읽지 못해 걷기가 «무엇을 고를 수 있는지» 말할 수 없습니다 — %s" % failure,
+            reason=REASON_MAPPING_UNAVAILABLE))
+        return build_domain(DOMAIN_WALK, "걷기 좌석", sources, [],
+                            effective, ineffective, rejected)
+
+    for name in sorted(collectable):
+        effective.append(entry(
+            SCOPE_NODE_TYPE, name,
+            "`%s` 를 좌석의 `collect` 로 고를 수 있습니다." % name))
+
+    if not effective:
+        ineffective.append(entry(
+            SCOPE_FILE, "entities",
+            "선언된 엔터티가 «하나도 없습니다» — 좌석이 고를 이름이 없어 걷기가 아무것도 "
+            "묻지 못합니다. ⑤ 에 엔터티를 적으면 여기가 채워집니다.",
+            reason=REASON_NOT_DECLARED))
+
+    return build_domain(DOMAIN_WALK, "걷기 좌석", sources, [],
+                        effective, ineffective, rejected)
+
+
 _RESOLVERS = {
     # ⓐ 셀업 순서의 첫 걸음. 이 dict 의 순서는 이제 대표를 고르지 않습니다(S-180 ⓐ-0).
     DOMAIN_CATALOG: _resolve_catalog,
@@ -1232,6 +1300,7 @@ _RESOLVERS = {
     DOMAIN_NOTATION: _resolve_notation,
     DOMAIN_BINDING: _resolve_binding,
     DOMAIN_LEDGER: _resolve_ledger,
+    DOMAIN_WALK: _resolve_walk,
 }
 
 

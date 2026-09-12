@@ -38,7 +38,7 @@
   "vocabulary": {
     "reasons": ["not_declared", "mapping_unavailable", "scope_unresolved", "not_reached"],
     "populations": ["effective", "ineffective", "rejected"],
-    "scopes": ["file", "setting", "rule", "reference_view", "table"],
+    "scopes": ["file", "setting", "rule", "reference_view", "table", "node_type"],
     "origins": ["file", "default"]
   },
 
