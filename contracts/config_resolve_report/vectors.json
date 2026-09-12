@@ -38,7 +38,7 @@
   "vocabulary": {
     "reasons": ["not_declared", "mapping_unavailable", "scope_unresolved", "not_reached"],
     "populations": ["effective", "ineffective", "rejected"],
-    "scopes": ["file", "setting", "rule", "reference_view"],
+    "scopes": ["file", "setting", "rule", "reference_view", "table"],
     "origins": ["file", "default"]
   },
 
@@ -332,6 +332,51 @@
         "s180_bad_kind": {"column_types": {"a": "string"}, "kind": "veiw"}
       },
       "expect": {"population": "rejected", "reason": "mapping_unavailable", "warnings": []}
+    },
+
+    {
+      "id": "chain_rule_that_can_run_is_effective",
+      "domain": "chain",
+      "$comment": [
+        "S-180 ⓑ. A rule naming a mapper this process can run, on a table that exists.",
+        "`origin: declared` is what separates it from the ones the product synthesised - an",
+        "operator can edit this line and cannot edit those."
+      ],
+      "catalog": {"t_chain": {"column_types": {"a": "string"}}},
+      "rules": [
+        {"name": "r_ok", "trigger_table": "t_chain", "mapper_module": "m", "mapper_function": "f"}
+      ],
+      "expect": {"population": "effective", "reason": null, "warnings": []}
+    },
+
+    {
+      "id": "chain_rule_naming_no_runnable_mapper_is_refused",
+      "domain": "chain",
+      "$comment": [
+        "The refusal comes from `chain_bindings.rule_refusals`, the same function the loader",
+        "and the dry-run screen ask (S-180 ⓑ-0). Before that there were two spellings and",
+        "the preview had no mapper check at all, so this rule previewed as good and was",
+        "dropped at boot."
+      ],
+      "catalog": {"t_chain": {"column_types": {"a": "string"}}},
+      "rules": [
+        {"name": "r_no_mapper", "trigger_table": "t_chain"}
+      ],
+      "expect": {"population": "rejected", "reason": "mapping_unavailable", "warnings": []}
+    },
+
+    {
+      "id": "chain_table_nothing_wakes_is_ineffective_not_a_defect",
+      "domain": "chain",
+      "$comment": [
+        "「안 적은 것과 틀린 것은 다르다」. A table no rule triggers on derives nothing, and for",
+        "most tables that is correct - so it is `ineffective`, never `rejected`. Its scope is",
+        "`table`, because calling it a `rule` would make the line itself false."
+      ],
+      "catalog": {"t_quiet": {"column_types": {"a": "string"}}},
+      "rules": [],
+      "expect": {"population": "ineffective", "reason": "not_declared", "warnings": [],
+                 "scope": "table", "subject": "t_quiet"}
     }
   ],
 

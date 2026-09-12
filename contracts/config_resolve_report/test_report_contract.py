@@ -277,6 +277,53 @@ def catalog_env(monkeypatch):
     return build
 
 
+@pytest.fixture()
+def chain_env(monkeypatch, tmp_path):
+    """A rules file and a catalogue in, the `chain` domain out.
+
+    ⚠️ THE CATALOGUE IS PART OF THE INPUT, because this step's `ineffective` rows are
+    TABLES - a table nothing triggers on. The table list comes from step ①, so a builder
+    that invented its own would let the two steps disagree about what tables exist.
+    """
+    import chain_ingestion_worker as worker
+    from database import crud
+
+    def build(rules, catalog=None):
+        path = tmp_path / "chain_rules.json"
+        path.write_text(json.dumps({"rules": list(rules or [])}), encoding="utf-8")
+        monkeypatch.setattr(worker, "RULES_PATH", str(path))
+        monkeypatch.setattr(crud, "load_table_config", lambda: dict(catalog or {}))
+        return _domain_named(crr.resolve_report([crr.DOMAIN_CHAIN]), crr.DOMAIN_CHAIN)
+
+    return build
+
+
+@pytest.mark.parametrize(
+    "case_id", [c["id"] for c in _cases_for(crr.DOMAIN_CHAIN)])
+def test_chain_case(case_id, chain_env):
+    """🔴 THE REFUSAL COMES FROM THE ONE JUDGE. A case scored here against a grammar
+    this file re-spelled would agree on the day it was written and drift after."""
+    case = _cases()[case_id]
+    _CONSUMED.add(case_id)
+    domain = chain_env(case["rules"], case.get("catalog"))
+
+    want = case["expect"]
+    scope = want.get("scope", crr.SCOPE_RULE)
+    subject = want.get("subject") or next(
+        iter([r["name"] for r in case["rules"]] or [None]))
+    found = [(pop, e) for pop, e in _entries(domain)
+             if e["scope"] == scope and e["subject"] == subject]
+    assert len(found) == 1, (
+        f"[{case_id}] {scope} {subject!r} must appear in exactly one population, got "
+        f"{len(found)}: {[(p, e['reason']) for p, e in found]}")
+    pop, e = found[0]
+    assert pop == want["population"], (
+        f"[{case_id}] expected population '{want['population']}', got '{pop}' "
+        f"(reason={e['reason']!r}, detail={e['detail']!r})")
+    assert e["reason"] == want["reason"], f"[{case_id}] detail was: {e['detail']!r}"
+    assert e["warnings"] == want["warnings"], f"[{case_id}] detail was: {e['detail']!r}"
+
+
 @pytest.mark.parametrize(
     "case_id", [c["id"] for c in _cases_for(crr.DOMAIN_CATALOG)])
 def test_catalog_case(case_id, catalog_env):

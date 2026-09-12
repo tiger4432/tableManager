@@ -90,7 +90,10 @@ SCOPE_FILE = "file"
 SCOPE_SETTING = "setting"
 SCOPE_RULE = "rule"
 SCOPE_VIEW = "reference_view"
-SCOPES = (SCOPE_FILE, SCOPE_SETTING, SCOPE_RULE, SCOPE_VIEW)
+#: ⓑ 의 ineffective 항목은 «표»입니다 — 어떤 규칙도 trigger_table 로 가리키지
+#: 않는 선언 표. 그것을 `rule` 로 내면 그 줄이 «거짓»입니다(「이 줄이 참인가」).
+SCOPE_TABLE = "table"
+SCOPES = (SCOPE_FILE, SCOPE_SETTING, SCOPE_RULE, SCOPE_VIEW, SCOPE_TABLE)
 
 ORIGIN_FILE = "file"
 ORIGIN_DEFAULT = "default"
@@ -164,6 +167,127 @@ def build_domain(domain: str, title: str, sources: list, settings: list,
 # ---------------------------------------------------------------------------
 # enrichment — 첫 슬라이스
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# chain — 셋업 순서의 ② 걸음 (S-180 ⓑ)
+# ---------------------------------------------------------------------------
+
+DOMAIN_CHAIN = "chain"
+
+#: 합성 규칙에 붙는 표. 🔴 운영자가 «안 적은» 줄이 목록에 이름 없이 섞이면
+#: 「내가 안 썼는데 왜 있지」가 되고, 그 사람은 고칠 수 없는 것을 고치러 갑니다.
+ORIGIN_SYNTHESIZED = "synthesized"
+ORIGIN_DECLARED = "declared"
+
+
+def _resolve_chain() -> dict:
+    """② 파생 — 「무엇이 «무엇을 깨우는가»」.
+
+    🔴 **판정은 `chain_bindings.rule_refusals` 가 합니다** (S-180 ⓑ-0). 그 함수는 로더와
+    드라이런 화면이 «같이» 부르는 하나이고, 이 등록기가 셋째 호출자입니다. 문법을 여기서
+    다시 쓰면 「내 규칙이 돌까」에 답하는 자리가 넷이 됩니다.
+
+    🔴 **파일을 여는 것은 `read_rules_document` 하나입니다.** 로더는 살아남은 규칙만
+    돌려주므로 「무엇을 버렸나」에 답할 수 없고, 그걸 알려고 파일을 다시 여는 순간 이 모듈이
+    둘째 독자가 됩니다.
+
+    ⚠️ **주어가 둘입니다.** effective/rejected 는 «규칙»이고 ineffective 는 «표»입니다 —
+    이 걸음의 질문이 「무엇이 무엇을 깨우나」라서, 「아무도 안 깨우는 표」가 이 걸음의 «빈
+    자리»입니다. 그 항목을 `rule` 스코프로 내면 그 줄이 거짓이므로 `SCOPE_TABLE` 로 냅니다.
+
+    ⚠️ 합성 규칙은 «문법 채점 대상이 아닙니다** — 이 프로세스가 지은 것이라 작성 문법에
+    대면 「우리 버그를 그들의 오타로」 보고하게 됩니다. effective 에 넣되 `origin` 으로
+    이름을 답니다.
+    """
+    import chain_bindings
+    import chain_ingestion_worker as worker
+    import mapper_sdk
+    from database import crud
+
+    effective, ineffective, rejected = [], [], []
+
+    read = worker.read_rules_document()
+    sources = [source(
+        "rules", read["path"],
+        "무엇이 무엇을 깨우는지의 선언입니다. 표가 여기 없으면 그 표는 «아무것도 파생시키지 "
+        "않습니다» — 비어 있는 것과 틀린 것은 아래에서 갈라집니다.",
+        exists=read["exists"], degraded=bool(read["error"]))]
+
+    if read["error"]:
+        rejected.append(entry(
+            SCOPE_FILE, os.path.basename(read["path"]),
+            "체인 규칙 파일을 읽지 못했습니다 (%s). 이 파일이 안 읽히면 «어떤» 표도 파생을 "
+            "일으키지 않습니다." % read["error"],
+            reason=REASON_MAPPING_UNAVAILABLE))
+        return build_domain(DOMAIN_CHAIN, "파생 (체인 규칙)", sources, [],
+                            effective, ineffective, rejected)
+
+    triggered = set()
+    for index, rule in enumerate(read["rules"] or ()):
+        path = "rules[%d]" % index
+        name = str((rule or {}).get("name") or path) if isinstance(rule, dict) else path
+        issues = chain_bindings.rule_refusals(
+            rule, path, mapper_resolvable=mapper_sdk.MAPPER_REGISTRY.get)
+        if issues:
+            first = issues[0]
+            rejected.append(entry(
+                SCOPE_RULE, name,
+                "`%s` 규칙은 «돌 수 없습니다» — %s: %s%s"
+                % (name, first.path, first.message,
+                   " (외 %d건)" % (len(issues) - 1) if len(issues) > 1 else ""),
+                reason=REASON_MAPPING_UNAVAILABLE,
+                fields={"issues": [i.to_mapping() for i in issues],
+                        "origin": ORIGIN_DECLARED}))
+            continue
+
+        trigger = str((rule or {}).get("trigger_table") or "")
+        if trigger:
+            triggered.add(trigger)
+        warnings = chain_bindings.rule_warnings(rule, path)
+        effective.append(entry(
+            SCOPE_RULE, name,
+            "`%s` 가 `%s` 의 변화에 붙었습니다." % (name, trigger),
+            fields={"origin": ORIGIN_DECLARED, "trigger_table": trigger,
+                    "warnings": [w.to_mapping() for w in warnings]}))
+
+    # 🔴 합성 규칙은 «같은 목록에» 서되 이름이 붙습니다 — 운영자가 고칠 수 없는 줄이라,
+    # 안 붙이면 「내가 안 적었는데」가 되고 붙이면 「제품이 넣어 준 것」이 됩니다.
+    try:
+        import chain_builtins
+
+        synthesized = chain_builtins.synthesize_chain_rules() or ()
+    except Exception as exc:
+        synthesized = ()
+        rejected.append(entry(
+            SCOPE_FILE, "synthesized",
+            "제품이 파생 규칙을 합성하지 못했습니다 (%s: %s)." % (exc.__class__.__name__, exc),
+            reason=REASON_MAPPING_UNAVAILABLE))
+
+    for rule in synthesized:
+        name = str((rule or {}).get("name") or "")
+        trigger = str((rule or {}).get("trigger_table") or "")
+        if trigger:
+            triggered.add(trigger)
+        effective.append(entry(
+            SCOPE_RULE, name,
+            "`%s` 는 제품이 «선언에서 합성»한 규칙입니다 — 파일에 적지 않습니다." % name,
+            fields={"origin": ORIGIN_SYNTHESIZED, "trigger_table": trigger}))
+
+    # ⚠️ 표 목록은 «카탈로그»에서 옵니다(① 걸음). 이 걸음이 자기 표 목록을 들면
+    # 두 걸음이 「무슨 표가 있나」에 다르게 답하게 됩니다.
+    for table in sorted(str(t) for t in (crud.load_table_config() or {})
+                        if not str(t).startswith("__")):
+        if table in triggered:
+            continue
+        ineffective.append(entry(
+            SCOPE_TABLE, table,
+            "`%s` 의 변화는 «아무것도 깨우지 않습니다» — 이 표를 `trigger_table` 로 적은 "
+            "규칙이 없습니다. 파생이 필요 없는 표라면 이것이 정상입니다." % table,
+            reason=REASON_NOT_DECLARED))
+
+    return build_domain(DOMAIN_CHAIN, "파생 (체인 규칙)", sources, [],
+                        effective, ineffective, rejected)
+
 
 DOMAIN_ENRICHMENT = "enrichment"
 
@@ -1097,6 +1221,7 @@ def _ledger_emitted_predicates(document: dict) -> set:
 _RESOLVERS = {
     # ⓐ 셀업 순서의 첫 걸음. 이 dict 의 순서는 이제 대표를 고르지 않습니다(S-180 ⓐ-0).
     DOMAIN_CATALOG: _resolve_catalog,
+    DOMAIN_CHAIN: _resolve_chain,
     DOMAIN_ENRICHMENT: _resolve_enrichment,
     DOMAIN_VIRTUAL_JOIN: _resolve_virtual_join,
     DOMAIN_NOTATION: _resolve_notation,

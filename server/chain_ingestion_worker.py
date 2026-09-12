@@ -452,19 +452,55 @@ def max_group_attempts() -> int:
     return parsed if parsed >= 1 else DEFAULT_MAX_GROUP_ATTEMPTS
 
 
+def read_rules_document(path=None):
+    """The chain rules FILE, read in ONE place. Absence is a VALUE, never an exception.
+
+    🔴 THREE READERS OPENED THIS FILE (S-180 ⓑ, 판정 316): this loader, the resolve
+    registrar that needs the RAW list to report what was refused, and
+    `GET /admin/chain/rules`. A loader that only hands back survivors cannot answer
+    「what did you throw away」, and a caller that opens the file itself to find out becomes
+    a second reader free to disagree about what is in it.
+
+    🔴 AND IT IS STATELESS. The parsed document also lands in `_RULES_DOCUMENT`, but a
+    caller that read THAT would depend on `load_chain_rules` having run first — an ordering
+    nobody states and nothing enforces. This takes a path and returns an answer.
+
+    ⚠️ THE CONTROL FLOW IS THE LOADER'S OWN, MOVED. A top-level list still raises inside the
+    `try` exactly as it did (`data.get` on a list), so the same file that logged
+    「Failed to load chain rules」 yesterday logs it today, with the same words.
+
+    Returns `{document, rules, path, exists, error}` — `exists=False` is the answer for a
+    file that is not there, which is what lets the route keep saying `absent` rather than
+    `empty`.
+    """
+    target = path or RULES_PATH
+    if not os.path.exists(target):
+        return {"document": {}, "rules": [], "path": target, "exists": False, "error": None}
+
+    document, rules, error = {}, [], None
+    try:
+        with open(target, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+            rules = data.get("rules", [])
+            document = data if isinstance(data, dict) else {}
+    except Exception as exc:
+        document, rules, error = {}, [], str(exc)
+    return {"document": document, "rules": rules, "path": target,
+            "exists": True, "error": error}
+
+
 def load_chain_rules():
     global _RULES_DOCUMENT
-    rules = []
-    if not os.path.exists(RULES_PATH):
+    # 🔴 ONE READER (S-180 ⓑ). The sentences below are unchanged; only where the bytes come
+    # from moved, so the registrar can ask the same question without opening the file again.
+    read = read_rules_document()
+    rules = read["rules"]
+    if not read["exists"]:
         logger.warning(f"Chain rules configuration file not found at {RULES_PATH}. Using empty rules.")
+    elif read["error"]:
+        logger.error(f"Failed to load chain rules: {read['error']}")
     else:
-        try:
-            with open(RULES_PATH, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                rules = data.get("rules", [])
-                _RULES_DOCUMENT = data if isinstance(data, dict) else {}
-        except Exception as e:
-            logger.error(f"Failed to load chain rules: {e}")
+        _RULES_DOCUMENT = read["document"]
 
     # ------------------------------------------------------------------ S-188 ⓑ
     # 🔴 THE FILE'S GRAMMAR IS CHECKED HERE, AND ONLY THE FILE'S. Synthesized rules below are
