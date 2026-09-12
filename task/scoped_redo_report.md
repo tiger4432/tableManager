@@ -40844,3 +40844,53 @@ S-200 의 둘   test_virtual_join_types            S-199-b  `8aade672`  09-12 21
 지금 만들면 가리킬 곳이 없는 상수가 됩니다.
 
 > 📌 **[09-13 08:01] 이 채널의 미답 질문: «둘» — S-209 의 ①②.** 응용 착지를 기다립니다.
+
+
+---
+
+## S-209 ② 착수 전 한 줄 — 🔴 **여섯 중 «둘»도 옮기면 안 됩니다. 이번엔 «운영 절차»입니다**
+
+바깥 디렉터리는 «섰지만»(`MAPPING_GUIDE.md`·`README.md`) 그 git 에 **커밋이 0** 입니다
+(`your current branch 'master' does not have any commits yet`) — 응용 D-21 이 «착지 전»이라
+지시대로 아직 «아무것도 옮기지 않았습니다». 그동안 옮길 여섯의 문서 링크를 짚었고, 거기서
+둘째 반증이 나왔습니다.
+
+### 🔴 `void_obs_parser.py.sample` · `inspection_run_parser.py.sample` = «운영자가 손복사하는 파일»
+그 파일 «자신»이 첫 줄에 그렇게 적습니다:
+```
+# VOID SCHEMA - the observation half. HAND-COPY THIS FILE to:
+#     server/ingestion_workspace/void_obs/scripts/void_obs_parser.py
+# `server/ingestion_workspace/**` is gitignored … That is why this file carries NO judgement:
+# everything that can be wrong lives in `server/parsers/void_sat_format.py`, which is TRACKED
+# … Fixing a parsing defect is a `git pull`; only this shim is hand-copied.
+```
+그리고 운영 문서가 그 복사를 «절차»로 듭니다:
+```
+docs/process/OPERATOR_RUNBOOK.md:71-72   4. server/parsers/void_obs_parser.py.sample →
+                                            ingestion_workspace/void_obs/scripts/void_obs_parser.py
+docs/guide/INGESTION_GUIDE.md:287        「수정이 `git pull` 하나로 끝나게 하려는 배치」
+```
+🔴 **바깥 저장소로 옮기면 그 배치가 깨집니다** — 운영자가 파서를 고치려면 «두 저장소»를 받아야 하고,
+「`git pull` 하나」라는 이 파일들의 «존재 이유»가 거짓이 됩니다. 열셋 중 일곱은 «시험 게이트»가
+붙들고, 이 둘은 «운영 절차»가 붙듭니다 — 사유가 다르고 결론은 같습니다.
+
+### 그래서 옮겨도 되는 것은 «넷»입니다
+```
+옮김 ✅   dt_standard_map_mapper · lot_slot_wafer_mapper · production_mapper
+         + server/parsers/custom_parser_template.py            (코드 참조 0 · 운영 절차 0)
+         ⚠️ custom_parser.py.sample 은 template 이 «이름으로 인용»합니다 — 둘은 «같이» 움직입니다
+남김 🔴   게이트 일곱(판정 348 ①) + 운영 절차 둘(위)
+```
+🔵 `dt_standard_map_mapper` 의 유일한 문서 링크는 `PROJECT_STATUS.md:6033`(총괄 파일)의 `cp` 예시
+한 줄이고, `production_mapper` 는 `chain_ingestion_guide.md:478` 이 「추적되는 것은 `.sample` 뿐」을
+설명하며 «이름을 셋» 드는 문장입니다 — 그 문장은 셋 중 둘이 남으므로 «부분 수정»이 됩니다.
+
+### 물어야 할 것 «하나»
+```
+운영 절차 둘(`void_obs`·`inspection_run`)을 «저장소에 남김»으로 받으십니까 (제 권고: 예).
+받으시면 이동 대상은 넷(+custom_parser.py.sample 동반 = 다섯)이고, 그때 한 커밋으로 하겠습니다
+```
+⚠️ 그리고 응용 git 에 커밋이 0 이므로 **파일을 놓는 것도 아직입니다** — 놓으면 커밋 없는 작업
+트리에 남의 파일이 섞입니다(응용이 커밋 주체라 그쪽 첫 커밋을 오염시킵니다).
+
+> 📌 **[09-13 08:04] 이 채널의 미답 질문: «하나» — 운영 절차 둘의 처분.**
