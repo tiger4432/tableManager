@@ -36827,3 +36827,7 @@ materialize: true      -> max_rewrite_rows «필수». 없으면 no_rewrite_cap 
 
 > 📌 **[09-12 15:0x] 이 채널의 미답 질문: «없음».** 다음 = **ⓑ**(실체화 쓰기 + 자기 층 + 철회) → ⓒ(호환 합성·그래프 origin).
 > 재기동 불필요(ⓐ 는 문법·헬퍼뿐, 쓰는 경로 없음).
+
+> ⚠️ **[09-12 15:1x 정정] S-189 설계 ⑤ 에서 철회 함수의 «집»을 틀리게 적었습니다** —
+> `crud.withdraw_source` 라고 썼는데 실제는 **`chain_replay.withdraw_source(db, table_name, source_name, columns=None, …)`** 입니다.
+> 시그니처와 판단(층 철회 기제가 «이미 있다」)은 그대로 맞고, 모듈 이름만 틀렸습니다. ⓑ 는 이 이름으로 짓습니다.
