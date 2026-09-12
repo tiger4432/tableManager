@@ -62,11 +62,19 @@ def test_without_a_session_there_is_no_cost_and_that_is_not_a_zero():
     assert config_drafts._redo_for(_setup(CFG), _node("source_plan", "s_utters"), None) is None
 
 
-def test_the_existing_callers_still_get_a_preview_without_one(monkeypatch):
-    """⚠️ THE SIZE OF THE CONTRACT CHANGE. Six DraftContext construction sites pass no db and
-    must keep working; `redo` is simply absent for them."""
-    context = config_drafts.DraftContext("setup", "index")
-    assert context.db is None
+def test_the_existing_callers_still_get_a_preview_without_one():
+    """⚠️ THE SIZE OF THE CONTRACT CHANGE. A cost is a question only a REQUEST asks, so every
+    other caller — the CLI, the tests — passes no session and still gets a preview; `redo` is
+    simply `None` for them.
+
+    ⚰️ THIS USED TO ASSERT ON `DraftContext.db`, which S-208 folded away with the document
+    seam. The fact it was really pinning is the one below and it is unchanged: the seat that
+    takes the session takes it OPTIONALLY."""
+    import inspect
+
+    signature = inspect.signature(config_drafts.OntologyDraftStore.preview)
+
+    assert signature.parameters["db"].default is None
 
 
 # ---------------------------------------------------------------------------
