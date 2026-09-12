@@ -38860,3 +38860,45 @@ ledger_trace_router._declared_entities()        엔터티 «이름 목록» (매
 
 > 📌 **[09-13 00:04] 이 채널의 미답 질문: «없음».** 둘 다 「기존 것으로 안 된다」가 «실측»으로 나왔으니
 > 이제 한 커밋(원장 어댑터: 상수 하나 + 열거기 하나 + `redo` + db 배선 + 시험)으로 짓습니다.
+
+---
+
+## 📤 [09-13 00:11 구현자] S-143 첫 커밋 `81f3c964` — 그리고 «다섯째» 어긋남(칸 이름)
+
+### 착지
+```
+ABSENCE_NOT_COUNTED_HERE   여섯 중 «맞는 것이 없어서» 일곱째. 여섯 낱말 고정 시험도 같은 커밋에
+ledger.config.sources_binding(cfg, name) -> 그 낱말을 «말하는» 소스들
+   ⚠️ 두 자리를 «다» 걷습니다: mapping 의 `predicate` «그리고» kind:"entity" 인 bind 잎.
+      앞의 것만 읽으면 어휘에는 답하고 «모든 엔터티에» 「소스 없음」이라 답합니다 —
+      사실과 «구별 안 되는» 부재입니다
+   실측: 출하 선언에서 measures@1 -> 소스 2 · wafer -> 7 · 없는 낱말 -> ()
+   ⚠️ 빈 튜플 = `truly_none`(총괄이 더한 게이트). 「안 셈」과 «다른 empty» 입니다
+865 passed · 5 skipped (두 모듈을 읽는 시험 파일 54개)
+```
+
+### 🔴 다섯째 — `redo` 의 «칸 이름»이 카운터와 다릅니다
+```
+판정 322 의 칸 목록:            {op, params, sources, rows, atoms, pace_choices, …}
+`_count_ledger_backfill` 실제:  affected · affected_label · absence (+ count() 가 더하는
+                                op · mode · params · label · cli · deletes · restartable ·
+                                scan_limit · blocked_reason)
+=> `rows`/`atoms` 는 «affected 의 개명»입니다. 그런데 «같은 판정»이
+   「키 이름을 그대로 실음 — 둘째 철자 0」이라 적습니다. 두 지시가 서로 어긋납니다
+```
+제 읽기: **«그대로» 가 이깁니다** — 그 이유(둘째 철자 금지)가 명시돼 있고, 칸 목록은
+«카운터의 키를 재기 전»에 쓰인 것입니다(`withdraw/remake` 가 `preview_rescope` 의 인자를 재기 전
+쓰인 것과 «같은 자리»입니다). 그래서 제안:
+```
+redo = {op, params, sources, affected, affected_label, pace_choices,
+        scan_limit, absence, blocked_reason}
+  source_plan   count() 응답에서 «그 키 그대로» 옮김
+  어휘/엔터티    sources=[…] · 나머지 수치 키는 null · absence = not_counted_here
+                (소스가 «없으면» sources=[] · absence = truly_none)
+```
+⚠️ 「rows/atoms 로 개명」을 고르시면 그것도 짓습니다 — 다만 그러면 «화면이 배우는 이름»이
+   `/admin/retroactive/…` 와 미리보기에서 «다르게» 되고, 그게 이 보고가 계속 막아 온 것입니다.
+
+> 📌 **[09-13 00:11] 이 채널의 미답 질문: «하나» —** `redo` 의 수치 칸을 `affected`/`affected_label`
+> «그대로»로 둘까요(제 판단), 아니면 `rows`/`atoms` 로 개명할까요?
+> 나머지(조립 + db 배선 + 시험)는 그 한 줄만 오면 한 커밋입니다.
