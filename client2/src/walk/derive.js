@@ -103,10 +103,22 @@ export function sectionHeading(type, count) {
  *    paragraph said the opposite until today: it was true when written and the server caught up,
  *    which is why the slot was built before anything could fill it.
  */
+/**
+ * 선언이 말하는 그 타입의 «식별 키», 선언된 순서 그대로. 없으면 빈 목록.
+ *
+ * 🔴 C-92. 이 물음의 독자를 «하나»로 둡니다. 보드의 구성 모델이 다이의 id 를 지을 때 같은 답이
+ *    필요한데, 거기서 키 이름을 «적으면»(`keys.mat_id`) 선언이 바뀌어도 그 화면만 안 따라옵니다.
+ */
+export function declaredKeys(entities, type) {
+  const bare = bareName(type);
+  const found = (entities || []).find((e) => e && bareName(e.type) === bare);
+  return (found && found.keys) || [];
+}
+
 export function tableColumns(entities, type, qualifierNames, preset = COLUMNS.FULL) {
   const bare = bareName(type);
   const found = (entities || []).find((e) => e && bareName(e.type) === bare);
-  const declared = (found && found.keys) || [];
+  const declared = declaredKeys(entities, type);
   const attributes = (found && found.attributes) || [];
   const identity = declared.map((key) => ({ name: key, kind: 'key', key }));
   // 🔴 THE PRESET CHOOSES THE WIDTH. IT NEVER CHOOSES THE AUTHOR. Both presets read the same

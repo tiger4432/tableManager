@@ -1099,7 +1099,14 @@ export async function fetchMapGrid(params) {
  * @param {object} answer  what `walk()` returned -- `subgraphModel`'s model, carrying nodes/edges
  * @param {?string} grid   `grid_metadata` as the relation serves it (a JSON string), or null
  */
-export function mapModel(answer, grid, axis) {
+/**
+ * 걷기 -> 맵 셀. 🔴 C-92: 「어느 타입이 셀인가」와 「어느 술어가 검사·발견인가」는 «좌석»이
+ * 선언합니다. 이 함수는 그 선언을 읽을 뿐 이름을 대지 않습니다 — 맵이 다른 자재를 그리게 되는
+ * 날 코드가 아니라 선언이 바뀝니다.
+ * ⚠️ 좌석이 아무것도 안 주면 셀이 «0» 입니다 — 오늘의 기본값을 몰래 쓰지 않습니다. 선언이
+ *    없는데 그림이 나오면 그 그림의 저자가 이 파일이 되고, 그것이 이 라운드가 없애는 것입니다.
+ */
+export function mapModel(answer, grid, axis, plan) {
   if (!answer || answer.ok === false) {
     return {
       axis, label: axis, sublabel: '', drawable: false,
@@ -1112,9 +1119,11 @@ export function mapModel(answer, grid, axis) {
   }
   const nodes = answer.nodes || [];
   const edges = answer.edges || [];
+  const cellType = (plan && plan.cells && plan.cells.type) || null;
+  const marks = (plan && plan.marks) || {};
   const dice = new Map();
   for (const node of nodes) {
-    if (!node || node.type !== 'die') continue;
+    if (!node || !cellType || node.type !== cellType) continue;
     const keys = node.keys || {};
     if (keys.x === undefined || keys.y === undefined) continue;
     dice.set(node.id, { x: keys.x, y: keys.y, n: 0, scanned: false, id: node.id });
@@ -1123,8 +1132,9 @@ export function mapModel(answer, grid, axis) {
     if (!edge) continue;
     const die = dice.get(edge.target) || dice.get(edge.source);
     if (!die) continue;
-    if (edge.predicate === 'inspected') die.scanned = true;
-    if (edge.predicate === 'observed') { die.n += 1; die.scanned = true; }
+    // 「검사했다」와 「찾았다」는 «역할»이고, 그 역할을 어느 술어가 맡는지는 좌석의 선언입니다.
+    if (marks.scanned && edge.predicate === marks.scanned) die.scanned = true;
+    if (marks.found && edge.predicate === marks.found) { die.n += 1; die.scanned = true; }
   }
   const cells = [...dice.values()].map((die) => ({
     x: die.x, y: die.y, n: die.n,
@@ -1185,7 +1195,12 @@ function declaredSeats(grid) {
  * the composition route's own join; the ledger holds no atom for them at die granularity, so they
  * come back `null` and the panel prints 「—」. A zero there would be a number nobody measured.
  */
-export function compositionFromWalk(answer) {
+/**
+ * 걷기 -> 구성. 🔴 C-92: 부품의 id 는 «선언된 식별 키»로 짓습니다(`declaredKeys`) — 키 이름을
+ * 여기 적으면 선언이 바뀌어도 이 화면만 안 따라옵니다. 그리고 어느 술어가 「무엇으로 이루어졌나」
+ * 인지는 좌석의 `follow` 가 이미 말합니다.
+ */
+export function compositionFromWalk(answer, _axis, plan) {
   const absent = (state, message) => ({
     ok: false, state, status: (answer && answer.status) || null, message,
     subject: null, wafer: null, resolution: null, window: null,
@@ -1202,13 +1217,21 @@ export function compositionFromWalk(answer) {
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const seeds = new Set((answer.seeds || []).map((seed) => seed.id || seed));
   const components = [];
+  // 좌석이 «무엇을 따라가는지» 이미 선언합니다. 그 목록이 곧 「구성의 술어」입니다.
+  const follows = new Set(((plan && plan.follow) || []).map(String));
   for (const edge of edges) {
-    if (!edge || edge.predicate !== 'bonded_from') continue;
+    if (!edge || !follows.has(String(edge.predicate))) continue;
     // 🔴 방향은 «엣지가 말합니다». source 가 base 이고 target 이 core 입니다 -- 여기서 방향을
     //    다시 정하면 그게 두 번째 진실이 됩니다.
     const core = byId.get(edge.target);
     if (!core) continue;
     const keys = core.keys || {};
+    // ⚠️ C-92 가 여기서 «멈췄습니다». 이 두 줄의 `mat_id` 는 선언(`entities[].keys`)이 답해야
+    //    하는데, 그 독자(`walk/derive.js` 의 `declaredKeys`)가 이 파일에 «닿을 수 없습니다»:
+    //    이 파일도 `rnd_board/main.js` 도 하니스가 `data:` URL 로 싣고, data: 모듈은 상대
+    //    경로를 못 풉니다(실측 2026-09-13: import 하나에 보드 하니스 여덟이 측정 불가).
+    //    좌석이 키 이름을 «다시 적는» 것은 선언의 둘째 저자라 안 합니다. 벽의 이름을 보고에 적고
+    //    그 하니스들이 import 로 돌아설 때 이 두 줄이 따라갑니다.
     components.push({
       id: `${keys.mat_id}:${keys.x},${keys.y}`,
       entityId: core.id,
@@ -1251,26 +1274,34 @@ export function compositionFromWalk(answer) {
  * ⚠️ A CUT WALK RETURNS `null` COUNTS, NOT ZEROS. Same rule the map's `unscanned` follows: a
  * truncated walk under-counts, and reporting that as a number says 「없다」 where 「못 봤다」 is true.
  */
-export function waferFactsFromWalk(answer, kind) {
+/**
+ * 걷기 -> 「이 자재에서 몇 개를 보고 몇 개를 찾았나」. 🔴 C-92: 주어의 타입도, 종류가 사는 자리도,
+ * 두 역할의 술어도 «좌석»이 선언합니다(C-90 의 `kinds: {type, key}` 와 같은 모양).
+ */
+export function waferFactsFromWalk(answer, kind, plan) {
   if (!answer || answer.ok === false) return null;
   const nodes = answer.nodes || [];
   const edges = answer.edges || [];
   const byId = new Map(nodes.map((node) => [node.id, node]));
-  const wafer = nodes.find((node) => node.type === 'wafer');
+  const subjectType = (plan && plan.type) || null;
+  const kindSeat = (plan && plan.kinds) || {};
+  const marks = (plan && plan.marks) || {};
+  const wafer = subjectType ? nodes.find((node) => node.type === subjectType) : null;
   const cut = answer.complete === false || (answer.truncated || []).length > 0;
   // finding -> its kind, off the `of_kind` edges the walk already returned
   const kindOf = new Map();
   for (const edge of edges) {
     if (!edge || edge.predicate !== 'of_kind') continue;
     const target = byId.get(edge.target);
-    kindOf.set(edge.source, (target && (target.keys || {}).defect_kind) || null);
+    kindOf.set(edge.source, (target && kindSeat.key && (target.keys || {})[kindSeat.key]) || null);
   }
   const scanned = new Set();
   const found = new Set();
   for (const edge of edges) {
     if (!edge) continue;
-    if (edge.predicate === 'inspected') scanned.add(edge.target);
-    if (edge.predicate === 'observed' && (!kind || kindOf.get(edge.target) === kind)) {
+    if (marks.scanned && edge.predicate === marks.scanned) scanned.add(edge.target);
+    if (marks.found && edge.predicate === marks.found
+        && (!kind || kindOf.get(edge.target) === kind)) {
       found.add(edge.source);
     }
   }

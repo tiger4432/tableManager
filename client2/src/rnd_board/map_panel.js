@@ -228,7 +228,8 @@ const SPACES = {
     //    답니다. 갈래는 «누가 격자를 줄 수 있나»이지 라우트 이름이 아닙니다 -- `loadGrid` 를
     //    받은 좌석은 걷기로 오고, 안 받은 좌석은 lot_map 답을 그대로 읽습니다(종전 그대로).
     model: (body, panel) => (panel.loadGrid
-      ? panel.loadGrid(panel.mapId).then((got) => mapModel(body, got && got.grid, panel.axis))
+      ? panel.loadGrid(panel.mapId)
+        .then((got) => mapModel(body, got && got.grid, panel.axis, panel.plan))
       : projectionModel(body, panel.axis)),
     // 🔴 이 좌표계에서는 «서버가 그릴 수 있나»를 판정합니다 (프레임이 어긋나면 거절). 그
     //    판정을 존중하는 것이 이 축의 계약입니다.
@@ -411,6 +412,9 @@ export class MapPanel extends Panel {
     // 🔴 격자는 «두 번째 재료»입니다 (round Z). 받은 좌석만 걷기로 그립니다 -- 부품은 어디서
     //    오는지 모릅니다. 이름은 합성 루트가 묶습니다.
     this.loadGrid = options.loadGrid || null;
+    // 🔴 C-92 (판정 343). «값 하나»를 받습니다. 부품이 좌석의 선언을 «읽으러 가는» 새 길을 만들지
+    //    않습니다 — 좌석이 내려 주고 부품은 옵션만 읽습니다(조립식 그대로).
+    this.plan = options.plan || null;
     this.mapId = options.mapId || null;
     this.basisCounts = null;
     this.body = null;
