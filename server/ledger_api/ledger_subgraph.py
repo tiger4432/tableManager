@@ -598,34 +598,45 @@ class SqlEvidenceLookup:
     def subjects_of_type(self, entity_type, limit):
         """Every REGISTERED subject of one declared type — a described seed set (S-148-a).
 
-        🔴 THROUGH THE INDEX THAT ALREADY EXISTS, and measured to be the right one:
+        🔴 THROUGH THIS CLASS'S OWN RUNNER, `self._execute`, and that is not a style choice.
+        Measured: every sibling method here goes through it (`ledger_trace._fetch`), and the
+        first landing of this method reached for `self.connection.cursor()` instead — a
+        DBAPI call. The connection this class actually holds in the product is a SQLAlchemy
+        `Connection`, which has no `cursor`, so the route answered 500. One class, one way
+        of emitting SQL.
+
+        🔴 THE INDEX IS THE ONE THE SCHEMA ALREADY KEEPS:
         `idx_ledger_register (subject_type, subject_keys) WHERE predicate = 'register'`.
-        It is PARTIAL, so it is O(entities) rather than O(atoms) -- the schema's own note
-        says so -- which is exactly the shape 「그 타입의 전부」 needs. No new index, and no
-        full scan of the ledger.
+        PARTIAL, so it is O(entities) rather than O(atoms) -- the schema's own note says so.
 
         🔴 EVERY ENTITY HAS A REGISTER ATOM. That is A1's existence axis and the predicate
         name is fixed (`config_authoring.REGISTER_PREDICATE`), so 「this type's subjects」
-        does not need a new concept -- it reads the seat that already records existence.
+        reads the seat that already records existence rather than inventing one.
 
-        ⚠️ ONE ROW PAST THE BUDGET IS FETCHED ON PURPOSE, so 「there were more」 is a fact
-        rather than an inference from a full page.
+        ⚠️ ONE ROW PAST THE BUDGET, so 「there were more」 is a fact rather than an inference
+        from a full page.
         """
         from ledger import schema
         from ledger.config_authoring import REGISTER_PREDICATE
 
         bare = str(entity_type or "").split("@", 1)[0]
-        with self.connection.cursor() as cursor:
-            cursor.execute(
-                f"SELECT DISTINCT subject_type, subject_keys "
-                f"FROM {schema.LEDGER_TABLE} "
-                f"WHERE predicate = %s AND subject_type = %s "
-                f"ORDER BY subject_type, subject_keys LIMIT %s",
-                (REGISTER_PREDICATE, bare, int(limit) + 1))
-            rows = cursor.fetchall()
+        rows = self._execute(
+            f"SELECT DISTINCT subject_type, subject_keys "
+            f"FROM {schema.LEDGER_TABLE} "
+            f"WHERE predicate = %(predicate)s AND subject_type = %(subject_type)s "
+            f"ORDER BY subject_type, subject_keys "
+            f"LIMIT %(fetch)s",
+            {"predicate": REGISTER_PREDICATE, "subject_type": bare,
+             "fetch": int(limit) + 1})
         cut = max(0, len(rows) - int(limit))
-        return _DescribedSeeds(
-            [ledger_explorer.entity_id(row[0], row[1]) for row in rows[:int(limit)]], cut)
+        # ⚠️ ROWS ARE POSITIONAL, as `_atom_from_row` beside this reads them, and
+        # `subject_keys` arrives as text on one driver and as a mapping on the other --
+        # the same two-shaped handling that function already does.
+        out = []
+        for row in rows[:int(limit)]:
+            keys = json.loads(row[1]) if isinstance(row[1], str) else row[1]
+            out.append(ledger_explorer.entity_id(str(row[0]), dict(keys or {})))
+        return _DescribedSeeds(out, cut)
 
 
 class _DescribedSeeds:
@@ -799,6 +810,16 @@ def reset_declaration_cache():
     """
     global _entity_key_order, _entity_plural_attributes
     _entity_key_order, _entity_plural_attributes = None, {}
+
+
+def _declared_entity_facts_names():
+    """The bare names the declaration gives entity types. Empty when it cannot be read.
+
+    ⚠️ EMPTY MEANS 「cannot say」, NOT 「none are declared」 — the caller must not turn an
+    unreadable declaration into a refusal of every type.
+    """
+    _read_entity_declaration()
+    return frozenset(_entity_key_order or ())
 
 
 def _declared_plural_attributes(entity_type):
@@ -1583,6 +1604,15 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     seed_type = seed_type if isinstance(seed_type, str) and seed_type.strip() else None
     seed_cut = 0
     if seed_type:
+        # ⛔ AN UNDECLARED TYPE IS REFUSED BEFORE THE QUERY RUNS, and by name. Asking the
+        # ledger for a type the declaration never named returns zero rows, which would read
+        # as 「that type has no subjects」 -- a fact about the data rather than about the
+        # request. The walk already refuses an undeclared `collect` this way.
+        declared = _declared_entity_facts_names()
+        if declared and _bare(str(seed_type)) not in declared:
+            raise AggregateRefused(
+                "seed_type_not_declared",
+                "no declared entity type named %r" % (seed_type,), sorted(declared))
         described = lookup.subjects_of_type(seed_type, seed_limit)
         seed_cut = described.cut
         if not described.ids:

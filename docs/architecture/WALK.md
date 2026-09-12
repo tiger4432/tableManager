@@ -243,6 +243,9 @@ GET /api/ledger/subgraph?…&seed_type=<엔터티 타입>[&seed_limit=N]
 왜 «저장»이 아니라 «서술»인가   저장된 파생은 소스가 바뀌면 낡습니다(08-24 판정의 근거 ①).
                             서술은 «요청마다 다시 평가»되므로 진실의 주인이 원장 하나로 남습니다
 어디서 오나                   `register` 원자 — A1 의 «존재» 축입니다. 새 개념 0
+모르는 타입                   질의 «전»에 카탈로그로 422 `seed_type_not_declared`(고를 이름 같이) —
+                            선언에 없는 타입을 원장에 물으면 «0 행»이 오고, 그 0 은
+                            「그 타입에 주어가 없다」로 읽힙니다(요청의 잘못인데 데이터의 사실처럼)
 어느 인덱스                   `idx_ledger_register (subject_type, subject_keys)
                             WHERE predicate = 'register'` — «부분 인덱스»라 O(엔터티)이지
                             O(원자)가 아닙니다(스키마 주석이 그렇게 적습니다). 전체 스캔 아님

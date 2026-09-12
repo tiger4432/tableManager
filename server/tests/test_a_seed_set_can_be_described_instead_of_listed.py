@@ -183,52 +183,46 @@ def test_the_route_declares_both_arguments():
     assert "seed_limit" in signature.parameters
 
 
-def test_the_enumeration_reads_the_seat_that_already_records_existence():
-    """⛔ SCORED ON THE SOURCE. The query must go through the PARTIAL index the schema
-    already keeps — on (subject_type, subject_keys) where the predicate is the register one,
-    which is O(entities) rather than O(atoms). A scan of the whole ledger for this would be
-    the cost the description exists to avoid, and it would not show up as a failure
-    anywhere."""
-    class _Cursor:
-        def __init__(self, seen):
-            self.seen = seen
+def test_the_enumeration_goes_through_this_class_own_runner():
+    """🔴 ONE CLASS, ONE WAY OF EMITTING SQL — and this is scored because the first landing
+    did NOT. It called `self.connection.cursor()`, a DBAPI call, while the connection this
+    class holds in the product is a SQLAlchemy `Connection` with no `cursor`: the route
+    answered 500 on the box and every test passed, because the tests handed it a connection
+    of a different kind. 「시험이 여는 문서 ≠ 제품이 여는 문서」.
 
-        def __enter__(self):
-            return self
+    `_execute` is the sibling path (`ledger_trace._fetch`), and it is what handles BOTH
+    connection shapes — so going through it is what makes this work for the product rather
+    than only for a fixture.
+    """
+    import inspect
 
-        def __exit__(self, *exc):
-            return False
+    source = inspect.getsource(ledger_subgraph.SqlEvidenceLookup.subjects_of_type)
+    tokens = _code_without_prose(source)
 
-        def execute(self, statement, params):
-            self.seen.append((" ".join(statement.split()), params))
+    assert "self._execute(" in tokens, "the class's own runner is not used"
+    assert ".cursor(" not in tokens, (
+        "a DBAPI cursor is a second way of emitting SQL, and the product's connection "
+        "does not have one")
 
-        def fetchall(self):
-            return []
 
-    class _Connection:
-        def __init__(self):
-            self.seen = []
+def _code_without_prose(source):
+    """The code, with comments and docstring stripped.
 
-        def cursor(self):
-            return _Cursor(self.seen)
+    ⚠️ MEASURED TWICE TODAY: a source oracle passes on text that sits in a comment, in both
+    directions — a note that names the forbidden thing, and a clause commented OUT.
+    """
+    import io as _io
+    import tokenize
 
-    connection = _Connection()
-    lookup = ledger_subgraph.SqlEvidenceLookup.__new__(ledger_subgraph.SqlEvidenceLookup)
-    lookup.connection = connection
-    lookup.subjects_of_type("wafer@1", 25)
-
-    # ⚠️ THE STATEMENT THAT RAN, not the source text. Measured: an oracle reading the source
-    # passed when the LIMIT was commented OUT, because the word survived in the comment —
-    # the same trap as a drift check reading the note that forbids the defect.
-    statement, params = connection.seen[0]
-    assert "WHERE predicate = %s AND subject_type = %s" in statement, statement
-    assert "--" not in statement, (
-        "a commented-out clause still READS as present; measured — `-- LIMIT %s` passed an "
-        "endswith check, which is the same trap as an oracle reading a comment")
-    assert statement.rstrip().endswith("LIMIT %s"), statement
-    assert params[0] == "register", "the predicate name comes from the constant"
-    assert params[1] == "wafer", "the version is folded before the index is asked"
-    assert params[2] == 26, "one row past the budget, so 「there were more」 is a fact"
+    kept, previous_end = [], (0, 0)
+    for token in tokenize.generate_tokens(_io.StringIO(source).readline):
+        if token.type in (tokenize.COMMENT, tokenize.STRING):
+            continue
+        if token.start[0] != previous_end[0]:
+            kept.append(chr(10))
+        kept.append(token.string)
+        previous_end = token.end
+    return "".join(kept)
 
 
 # ---------------------------------------------------------------------------
@@ -307,3 +301,83 @@ def test_an_enumerated_seed_still_answers_exactly_as_before(route_client):
 
     assert answer.status_code == 200, answer.text
     assert len(answer.json()["seeds"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# 🔴 THE PRODUCT'S CONNECTION KIND — the shape that 500'd on the box
+# ---------------------------------------------------------------------------
+
+class _SqlAlchemyShapedConnection:
+    """A connection with `exec_driver_sql` and NO `cursor` — what the route actually holds.
+
+    🔴 THIS IS THE BOX'S FAILURE, REPRODUCED. `db.connection()` hands the walk a SQLAlchemy
+    `Connection`; the first landing called `.cursor()` on it and the route answered 500 with
+    `AttributeError: 'Connection' object has no attribute 'cursor'`. Every test passed,
+    because every test handed it a connection of the OTHER kind.
+
+    ⚠️ `cursor` IS ABSENT RATHER THAN RAISING, because that is how `ledger_trace._fetch`
+    chooses its branch — `hasattr(conn, "cursor")`. A fake that merely raised would take the
+    psycopg2 path and prove nothing.
+    """
+
+    def __init__(self, rows):
+        self.rows = rows
+        self.seen = []
+
+    def exec_driver_sql(self, sql, params=None):
+        self.seen.append((" ".join(sql.split()), params))
+        return list(self.rows)
+
+
+def test_the_description_resolves_on_the_connection_the_route_actually_holds():
+    """🔴 THE GATE THAT WAS MISSING. Not 「does the query look right」 but 「does it run on
+    the thing the product hands it」."""
+    connection = _SqlAlchemyShapedConnection(
+        [("wafer", '{"wid": "W0"}'), ("wafer", '{"wid": "W1"}')])
+    lookup = ledger_subgraph.SqlEvidenceLookup(connection)
+
+    described = lookup.subjects_of_type("wafer@1", 10)
+
+    assert described.cut == 0
+    assert described.ids == [ledger_explorer.entity_id("wafer", {"wid": "W0"}),
+                             ledger_explorer.entity_id("wafer", {"wid": "W1"})]
+
+
+def test_the_budget_reaches_the_database_and_asks_for_one_more():
+    """⚠️ SCORED ON THE STATEMENT THAT RUNS, not on the source — measured today that a
+    source oracle passes a commented-out clause."""
+    connection = _SqlAlchemyShapedConnection([])
+    ledger_subgraph.SqlEvidenceLookup(connection).subjects_of_type("wafer", 25)
+
+    statement, params = connection.seen[0]
+    assert "--" not in statement, "a commented-out clause still reads as present"
+    assert statement.rstrip().endswith("LIMIT %(fetch)s"), statement
+    assert params["fetch"] == 26, "one row past the budget makes 「there were more」 a fact"
+    assert params["predicate"] == "register"
+    assert params["subject_type"] == "wafer", "the version is folded before the index"
+
+
+def test_subject_keys_arrive_as_text_or_as_a_mapping():
+    """⚠️ TWO DRIVERS, TWO SHAPES — the same two-shaped handling `_atom_from_row` does. A
+    reader that assumed one would work on one deployment and not the other."""
+    as_text = ledger_subgraph.SqlEvidenceLookup(
+        _SqlAlchemyShapedConnection([("wafer", '{"wid": "W0"}')])).subjects_of_type("wafer", 5)
+    as_mapping = ledger_subgraph.SqlEvidenceLookup(
+        _SqlAlchemyShapedConnection([("wafer", {"wid": "W0"})])).subjects_of_type("wafer", 5)
+
+    assert as_text.ids == as_mapping.ids
+
+
+def test_an_undeclared_type_is_refused_before_the_query_runs(route_client, monkeypatch):
+    """⛔ ASKING THE LEDGER FOR A TYPE THE DECLARATION NEVER NAMED RETURNS ZERO ROWS, which
+    would read as 「that type has no subjects」 — a fact about the data rather than about the
+    request. The walk already refuses an undeclared `collect` this way."""
+    monkeypatch.setattr(ledger_subgraph, "_declared_entity_facts_names",
+                        lambda: frozenset({"wafer"}))
+
+    answer = route_client.get("/api/ledger/subgraph",
+                              params={"seed_type": "nosuchtype", "hops": 1})
+
+    assert answer.status_code == 422, answer.text
+    assert answer.json()["detail"]["reason"] == "seed_type_not_declared"
+    assert "wafer" in answer.json()["detail"]["choices"]
