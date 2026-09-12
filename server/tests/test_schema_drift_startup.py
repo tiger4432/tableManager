@@ -455,7 +455,13 @@ def test_a_mixed_verdict_counts_only_the_stuck_but_prints_both(narrowed_db, drif
     heal_engine, heal_cols = drifted_dynamic_db
     findings = drift.check(stuck_engine) + drift.check(heal_engine)
 
-    n_stuck = len([f for f in findings if f["severity"] == "TABLE-DOWN"])
+    # 🔴 THE BANNER'S OWN PREDICATE, BY NAME (S-199-d, 판정 310). This counted
+    # TABLE-DOWN, which is a PROXY for 「what the banner calls loud」 - and the day four
+    # MISSING-TABLE findings appeared the two answers were 31 and 35. Importing the constant
+    # rather than re-spelling the list is what keeps them one answer: add a severity and both
+    # sides move together.
+    n_stuck = len([f for f in findings
+                   if f["severity"] not in drift.QUIET_SEVERITIES])
     assert n_stuck and len([f for f in findings if f["severity"] == "SELF-HEALING"])
 
     out = "\n".join(t for _l, t in drift.banner_lines(findings, "t"))

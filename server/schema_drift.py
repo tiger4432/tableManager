@@ -108,6 +108,19 @@ _SOURCE_CACHE = None
 SEVERITY_ORDER = {"TABLE-DOWN": 0, "MISSING-TABLE": 1, "MISSING-VIEW": 1,
                   "SELF-HEALING": 2, "INFO": 3}
 
+#: The severities the banner does NOT count as 「things the build requires」 (S-199-d,
+#: 판정 310). QUIET IS THE WHITELIST, and it has to be this way round: written as
+#: 「loud is TABLE-DOWN and MISSING-TABLE」 a severity nobody has invented yet would fall
+#: through to neither bucket and print as harmless. Two named quiet kinds and 「everything
+#: else is loud」 cannot fail that way.
+#:
+#: 🔴 IT IS A MODULE CONSTANT BECAUSE THE TEST HAS TO READ THE SAME ONE. It was a local
+#: tuple inside `banner_lines`, so `test_a_mixed_verdict_counts_only_the_stuck_but_prints_both`
+#: had no way to ask and counted TABLE-DOWN instead - a PROXY. The day four MISSING-TABLE
+#: findings appeared the banner said 35 and the test said 31, and the only reason that had
+#: not surfaced earlier was a registry leak making those four tables look present.
+QUIET_SEVERITIES = ("SELF-HEALING", "INFO")
+
 # Rank INSIDE a severity. Everything INFO is quiet, but the three INFO kinds are
 # not equally urgent - see the sort in `check`. Anything without a `kind` gets 0,
 # which is why the severities that have no kinds keep their previous order.
@@ -712,9 +725,8 @@ def banner_lines(findings, target):
     # argument stale - it made it the precedent. Type findings are quiet because
     # somebody argued they should be (INFO, ruled 2026-08-19); the NEXT unseen
     # kind still arrives loud.
-    _QUIET = ("SELF-HEALING", "INFO")
     healing = [f for f in findings if f["severity"] == "SELF-HEALING"]
-    stuck = [f for f in findings if f["severity"] not in _QUIET]
+    stuck = [f for f in findings if f["severity"] not in QUIET_SEVERITIES]
     types = [f for f in findings if f.get("kind") in TYPE_KINDS]
     extra = len(findings) - len(stuck) - len(healing) - len(types)
     if not stuck and not healing:
