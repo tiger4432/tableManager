@@ -39057,3 +39057,76 @@ S-194 이후 한 번도 안 걸렸습니다. 같은 커밋에서 닫습니다.
 > 📌 **[09-13 00:4x] 이 채널의 미답 질문: «없음».** ㉢㉣ 는 판정 324 의 「먼저 실측」이
 > 낸 것이라 그 지시 «안»으로 읽고 같은 커밋에 넣습니다. 다르게 보시면 한 줄 주십시오 —
 > 그 전까지 S-204 를 계속 짓습니다.
+
+---
+
+## S-204(재정의) — chain 탭 서버 절반 ①② 착지 `45f0da47` · ③ 은 «재서» 멈췄습니다
+
+판정 325 받았습니다. 익스플로러 방향으로 짓던 것은 **역편집으로 되돌렸습니다**(커밋 0 — 맞습니다).
+
+### 되돌린 파일 «둘»
+```
+server/chain_bindings.py          ChainRuleIndex 키 통일 · 합성 규칙 거절 · _rule_redo · config_root 수리
+server/ledger/config_drafts.py    DraftPreview.warnings/snapshot_hash · store.preview 가 문서를 묻게
+되돌린 뒤 확인: git status 에 그 둘 «없음» · 초안 수명주기 시험 35 passed (HEAD 그대로)
+```
+⚠️ 그 넷은 사라진 것이 아니라 **S-205 의 입력**입니다 — `config_root` 가 부모가 아닌 것(제 실측)과
+`preview` 모양이 둘인 것(실측: `save` 가 AttributeError)은 그 어댑터를 «은퇴시키든 배선하든»
+그때 답해질 사실입니다. 여기 적어 두니 다시 재지 않으셔도 됩니다.
+
+### ① 규칙 «한 개»의 모양을 뷰가 내줍니다 — `skeleton()` 그대로
+```
+chain_rule_raw_view() 에 "skeleton": chain_bindings.skeleton()   한 칸. 이름 «없이» 불러도 실립니다
+채점: 응답 == skeleton() 동일 · 이름 있을 때와 없을 때 «같은 값» · 칸 목록 == routing_keys() ·
+      필수 == RULE_ROUTING_REQUIRED · 드리프트(뷰가 스스로 목록을 조립하지 않음)
+변이: 그 칸을 지우면 «4» 빨강
+```
+🔴 **둘째 철자를 막는 것이 전부입니다** — 폼이 칸 이름을 «적으면» 문법이 칸 하나 늘어난 날
+조용히 낡습니다. `skeleton()` 은 `routing_keys()` 에서 «생성»되므로 저자가 하나입니다.
+
+### ② «새 이름 저장»을 라우트 «실호출»로 못 박았습니다
+```
+없던 이름 POST  → created true · enabled «false» · 파일에도 false · 이웃 규칙 무변
+저장 직후       → rules 목록에 뜨고, 그 이름으로 다시 읽힙니다 (「저장됐다」 ≠ 「보인다」)
+낡은 base 로 둘째 POST → 거절 · 사유에 `stale_base` · 파일은 «첫 값 그대로»
+첫 저장이 «돌려준» base 로는 다시 저장됩니다 (잠금이 벽이 되지 않게)
+변이: 라우트가 payload 를 `name` 아닌 `rule` 로 읽게 하면 «5» 빨강 — 기존 직접호출 시험은 «0»
+```
+🔴 그 변이가 이 파일의 존재 이유입니다. 기존 `test_chain_rule_editor_arms_without_firing.py` 는
+함수를 «직접» 부르므로 라우트와 함수 «사이»의 결함을 구조적으로 못 봅니다. 기존 시험 «무변»입니다.
+
+### 🔴 ③ 「저장 전 문법 판정이 `rule_refusals` 를 지나나」 — **안 지납니다. 그런데 그대로 걸면 «저장이 막힙니다»**
+
+```
+실측 ⓐ  save_chain_rule_raw 의 검사는 «하나» — _validate_chain_cascade_graph(고리)
+        소스가 자기 주석에 적어 뒀습니다: 「Nothing validates a single rule's shape」
+실측 ⓑ  mapper_sdk.discover() 호출자 «하나» = chain_ingestion_worker.warmup_worker (워커 프로세스)
+        프로브: import main «뒤»에도 MAPPER_REGISTRY == «0»   (before 0 / after 0)
+실측 ⓒ  rule_refusals 의 거절 조건 = `not resolvable and not (module_name and function_name)`
+        => 레지스트리가 빈 프로세스에서는 «한 칸 mapper 형식»의 규칙이 «전부» 거절됩니다
+```
+🔴 **그래서 그 자리를 «그대로» 놓으면, 판정 325 가 열려는 바로 그 문(「규칙을 추가할 수가 없어」)이
+   한 칸 mapper 형식에 대해 «닫힙니다».** 이건 이 박스의 수가 아니라 «구조»입니다 — 어느 설치든
+   API 프로세스는 `discover()` 를 안 부릅니다.
+
+⚠️ 그리고 이것이 **S-180 ⓑ 의 제 코드에도 걸립니다** — `config_resolve_report.py:239` 가 같은
+   프로세스에서 같은 인자를 씁니다. 이 박스에서는 `rejected 0`(규칙들이 module+function 형식)이라
+   «오늘은» 안 드러나지만, 한 칸 형식 규칙이 하나 생기는 날 그 보고가 「못 돈다」고 말합니다.
+
+### 갈래 — 제 판단은 **A** 입니다
+```
+A  판정하기 «전»에 API 프로세스도 mapper_sdk.discover() 를 부른다
+   => 화면과 로그가 «같은 세상»을 봅니다(판정 315 그대로). 거절은 모듈 단위라 하나 깨져도 안 죽음
+   비용: 소유자의 gitignore 된 mappers/ 를 «웹 프로세스가 import» 합니다 — 되돌리기 쉬우나 «부작용»
+B  mapper_resolvable 을 「이 프로세스가 못 고르면 그 이유로는 거절 안 함」으로 넘긴다
+   => 문법 절반(name·trigger_table·모르는 칸)은 저장 전에 거절, 맵퍼 절반은 «오늘 그대로»(무회귀)
+   비용: 판정 315 의 절반이 이 좌석에서 다시 열립니다
+C  그대로 둔다 (③ 무변)
+```
+🔴 **A 를 권하는 이유**: 「둘째 판정기 0」은 두 판정기가 «같은 세상»을 볼 때만 참입니다. 레지스트리가
+빈 판정기는 이름만 같은 «다른 판정기»입니다. 다만 웹 프로세스가 소유자 파일을 import 하는 것은
+부작용이라 제가 혼자 정하지 않았습니다.
+
+> 📌 **[09-13 01:1x] 이 채널의 미답 질문: «하나» — ③ 의 A·B·C.**
+> ①② 는 착지·푸시했습니다(`45f0da47`, 수집 6,116). ③ 은 «짓지 않았습니다» — 판정 주시면 한 커밋입니다.
+> 그동안 큐 다음 줄(S-144 속성 복수값)로 넘어갑니다.
