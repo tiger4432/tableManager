@@ -1279,9 +1279,14 @@ def test_every_operation_answers_the_absence_question_even_when_the_answer_is_no
     """A count with no `absence` key would be indistinguishable from one that forgot to
     choose, so the field is always present and `None` is an ANSWER: this number means what
     it says. And `reads_as` tells a client whether one number decided it or a pair did."""
+    # ⚠️ A CLOSED SET, EXTENDED DELIBERATELY. `not_counted_here` joined for S-143 (판정 322):
+    # a declaration edit touching many sources has a number, and this seat declines to buy it
+    # with one dry-run per source on a request path. `not_applicable` could not carry that -
+    # it says the number does not HOLD - and the difference is what tells an operator the
+    # count is still available on this route.
     assert set(retroactive.ABSENCE_WORDS) == {
         "not_yet", "not_exhaustive", "cannot_point", "truly_none", "already_missing",
-        "not_applicable"}
+        "not_applicable", "not_counted_here"}
     units = {row["op"]: row["reads_as"] for row in retroactive.inventory()}
     assert units["ledger_rescope"] == "pair"
     assert set(units.values()) <= {"number", "pair"}
