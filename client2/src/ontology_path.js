@@ -52,6 +52,47 @@ export function setAtPath(document, steps, value) {
   return next;
 }
 
+/**
+ * 폼 컨트롤 하나가 «리프 하나»를 쓴 결과의 새 문서. 못 쓰면 `null`.
+ *
+ * 🔴 ONE WRITER, BECAUSE THE RULES ARE NOT OBVIOUS AND THERE ARE NOW TWO FORMS (C-86). The
+ * explorer's declaration form and the chain rule form both draw from a skeleton, and both
+ * have to answer the same three questions the same way. A second copy of these rules would
+ * not throw -- it would quietly write a different document.
+ *
+ * 🔴 THE FORM'S OWN BRANCHES ARE BUILT, because the form is what promised them. `setAtPath`
+ * refuses a missing parent on purpose -- an authoring-plan row names a leaf the declaration
+ * already has a place for. But a form offers `emit.object.kind` on a claim whose `emit` does
+ * not exist yet, and a field that silently does nothing is a refusing control.
+ *
+ * 🔴 A LIST SLOT IS NEVER INVENTED, but what lives inside one still gets built: a missing
+ * INDEX is a member nobody added, and inventing it would put an empty slot in somebody's list.
+ *
+ * 🔴 THE UI NEVER ASSERTS A TYPE. Whatever type is already at that leaf is preserved, and a
+ * value typed into an empty leaf goes in as typed. If that is wrong the validator says so on
+ * the screen, and showing beats blocking.
+ */
+export function writeShapeAtPath(document, relative, value) {
+  const steps = splitBundlePath(relative);
+  if (!steps.length) return null;
+  let raw = document;
+  for (let depth = 1; depth < steps.length; depth += 1) {
+    const branch = steps.slice(0, depth);
+    if (getAtPath(raw, branch) !== undefined) continue;
+    if (typeof branch[branch.length - 1] === 'number') break;
+    const built = setAtPath(raw, branch, {});
+    if (built === null) break;
+    raw = built;
+  }
+  const current = getAtPath(raw, steps);
+  let written = value;
+  if (typeof current === 'number' && typeof value === 'string') {
+    const asNumber = Number(value.trim());
+    if (value.trim() !== '' && Number.isFinite(asNumber)) written = asNumber;
+  }
+  return setAtPath(raw, steps, written);
+}
+
 /** Read the leaf at `steps`, or `undefined` when the path does not resolve. */
 export function getAtPath(document, steps) {
   let cursor = document;

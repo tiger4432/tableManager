@@ -422,6 +422,38 @@
       max-width: 320px;
       margin: 0 0 10.2px;
     }
+    /* C-86. 「+ 규칙 추가」는 고르개 «옆»에 섭니다 — 같은 줄의 두 동작(고르기 · 새로 짓기)이고,
+       고르개가 inline-block 이라 자리가 이미 있습니다. 왼쪽 간격만 3.4 그리드에서 집습니다. */
+    .chain-rule-add,
+    .table-config-add {
+      margin: 0 0 var(--space-3) var(--space-2);
+      vertical-align: top;
+    }
+    .chain-rule-new-name,
+    .table-config-new-name {
+      display: block;
+      width: 100%;
+      max-width: 320px;
+      margin: 0 0 var(--space-3);
+    }
+    /* 폼은 «원문 옆»이 아니라 «위»입니다 — 어드민 절의 폭이 두 열을 담기엔 좁고, 두 열로
+       두면 둘 다 좁아져 글자가 테두리에 닿습니다(상설: 마진). 안쪽 여백은 토큰 하나. */
+    .chain-rule-form,
+    .table-config-form {
+      margin: 0 0 var(--space-3);
+      padding: var(--space-3);
+      border: 1px solid var(--border);
+      max-height: var(--graph-max-height);
+      overflow: auto;
+    }
+    /* 거절은 «그 칸 옆»에. 코드 한 낱말이고 문장은 아래 거절 상자의 것입니다. */
+    .chain-rule-field-refusal,
+    .table-config-field-refusal {
+      margin-left: var(--space-2);
+      color: var(--danger);
+      font-size: var(--fs-label);
+      font-style: normal;
+    }
     .chain-rule-raw,
     .table-config-raw {
       display: block;
@@ -1762,7 +1794,7 @@
     .retro-group.is-chosen { border-color: var(--accent); color: var(--accent); }
 
   </style>
-  <script type="module" crossorigin src="/assets/admin-DlVv_tf8.js"></script>
+  <script type="module" crossorigin src="/assets/admin-B2e2T2_p.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/tokens-D5tlFQmo.js">
   <link rel="modulepreload" crossorigin href="/assets/truncation-CkNwtCUZ.js">
   <link rel="modulepreload" crossorigin href="/assets/admin_token-BrUpdOsE.js">

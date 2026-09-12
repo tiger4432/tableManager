@@ -33,6 +33,11 @@ export const TABLE_REGISTRY = Object.freeze({
   nameKey: 'table',
   cls: 'table-config',
   extra: missingRelations,
+  // C-86 ①. 템플릿이 자란 것을 이 등록부도 «선언 한 줄»로 받습니다 — 둘째를 손으로 그리지
+  // 않는다는 상설 그대로입니다. 서버가 새 이름을 받는지 «재서» 켭니다: `save_table_config_raw`
+  // 는 얕은 병합이라 없던 키를 만듭니다(이름이 비었을 때만 `table_name_required` 로 거절).
+  addLabel: '표 추가',
+  // 이 라우트는 스켈레톤을 «안 싣습니다» — 그래서 폼이 없고 화면은 오늘 그대로입니다.
 });
 
 /**

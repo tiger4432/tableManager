@@ -1651,7 +1651,17 @@ function treeRow(depth, label, extras, valueEl, stateEl, cls) {
 }
 
 /** One node: its own row, and -- when it is a branch that is open -- its children below. */
-function renderSkeletonForm(context, node, path, value, depth = 0, label = null,
+/**
+ * 🔴 EXPORTED FOR THE SECOND SCREEN (C-86), NOT COPIED. The chain rule editor draws ONE rule
+ *    from the skeleton the chain route serves, and the owner's rule for that round was 「새 폼
+ *    코드 «금지»」 — a second hand-written form is a screen that has stopped coming from the
+ *    declaration. This function already takes a `context` of callbacks and `renderReadTree`
+ *    already stubs nearly all of them, so a second caller costs this file one word.
+ * ⚠️ IT BUILDS WITH THE GLOBAL `document` (see `h`). A caller that owns its own document (the
+ *    registry panel takes `deps.doc`) gets nodes from the global one here; that is true today
+ *    for the explorer too, and a harness must point the global at the same stub.
+ */
+export function renderSkeletonForm(context, node, path, value, depth = 0, label = null,
                            required = undefined) {
   const shape = context.deref(node);
   // 🔴 A SHAPE THIS SCREEN CANNOT READ IS A FAULT, AND IT USED TO VANISH. Returning

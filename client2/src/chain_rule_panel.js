@@ -38,6 +38,15 @@ export const CHAIN_RULE_REGISTRY = Object.freeze({
   nameKey: 'name',
   cls: 'chain-rule',
   extra: enabledState,
+  // C-86 ①. 소유자: 「규칙 등록 영역에 규칙을 추가할 수가 없어」. 서버는 «이미» 새 이름을
+  // 받습니다 — 새 규칙은 `enabled: false` 로 «장전»까지만 저장됩니다(위 절 참조).
+  addLabel: '규칙 추가',
+  // C-86 ②. 칸 이름·종류는 «서버가 실어 준» 스켈레톤에서 나옵니다(S-204). 이 파일도 칸 이름을
+  // 적지 않습니다 — `chain_bindings.routing_keys()` 가 유일한 저자입니다.
+  formRoot: (payload) => (payload && payload.skeleton && payload.skeleton.root) || null,
+  // C-86 ③. 맵퍼 칸의 목록 이름. 값은 화면이 `GET /admin/mappers/list` 에서 받아 넣습니다 —
+  // 이 파일은 «이름»만 대고 «목록»은 서버의 등록부입니다.
+  choiceList: 'mappers',
 });
 
 /**
