@@ -2212,7 +2212,11 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
             # these very refs, and a rule comparing a value with its own source states
             # nothing.
             mapper_inputs = set(mapper.get("input_columns", []))
-            for column, column_path in _profile_binding_columns(profile_path, profile):
+            # 🔴 THE SAME ENUMERATION THE DERIVATION USES. Counting binding columns here
+            # and deriving them there is how the two came to disagree about what a mapper
+            # must hold.
+            for column, column_path in required_mapper_input_columns(
+                    mapper, profile, profile_path):
                 if column not in mapper_inputs:
                     problems.add(
                         "invalid_mapper", f"{mapper_path}.input_columns",
@@ -2528,13 +2532,68 @@ def _bind_entities_refs(path: str, profile: Mapping[str, Any],
                     f"them on each role of this sentence instead.")
 
 
+def required_mapper_input_columns(mapper: Mapping[str, Any], profile: Mapping[str, Any],
+                                 profile_path: str) -> tuple[tuple[str, str], ...]:
+    """Every column a mapper's `input_columns` MUST hold, with where each one is demanded.
+
+    🔴 ONE ENUMERATION, TWO CALLERS (S-196, 판정 306-b 되돌림). The validator refuses an
+    `input_columns` that misses one of these, and the authoring form DERIVES that same list —
+    so the two have to be answering one question. They were not: the derivation was 「the
+    prepared frame minus what `read` already reads」, which subtracts away exactly the columns
+    a group or a binding needs, and a bundle rebuilt from it was refused by its own validator.
+
+    ⛔ AND THE FIX MAY NOT BE A HAND-WRITTEN LIST. The first repair added the group columns
+    only, and the next source fell over on its BINDING columns — a list extended by hand
+    misses whatever the next declaration uses. This enumerates the kinds; a new kind is added
+    here and both callers learn it at once.
+
+    ⚠️ THE PATHS RIDE ALONG because the refusals name where the demand comes from — 「Profile
+    column 'base_id' at …bind.subject.keys.x.column is missing」 sends an operator to the
+    declaration that wants it, which 「it is missing」 alone does not.
+    """
+    demanded: list[tuple[str, str]] = []
+    unit = mapper.get("unit") if isinstance(mapper.get("unit"), Mapping) else {}
+    if unit.get("kind") == "group_by":
+        # A row unit declares that there IS no group, so it demands nothing here.
+        for column in _column_values(unit.get("columns") or ()):
+            demanded.append((column, f"{profile_path}.unit.columns"))
+    demanded.extend(_profile_binding_columns(profile_path, profile))
+    seen: set = set()
+    out: list[tuple[str, str]] = []
+    for column, where in demanded:
+        if column not in seen:
+            seen.add(column)
+            out.append((column, where))
+    return tuple(out)
+
+
 def _profile_binding_columns(path: str, profile: Mapping[str, Any]
                              ) -> tuple[tuple[str, str], ...]:
+    """Every column a profile's bindings name, with where each is named.
+
+    🔴 TOLERANT OF A HALF-BUILT PROFILE, AND THAT IS A REQUIREMENT NOW (S-196). This indexed
+    `profile["mappings"]` and `mapping["bind"]` directly, which is safe for the VALIDATOR —
+    `validate_bundle_errors` returns before cross-validation if anything is structurally
+    wrong, and the file says so where it does it. It is NOT safe for the authoring form,
+    which runs on a bundle being written: measured, three ordinary half-built shapes raised
+    (`{}`, a mapping with no `bind`, a `bind` of `None`), and the screen an operator is using
+    to finish the declaration would have gone blank.
+
+    ⚠️ THE ANSWER DOES NOT MOVE. Measured across all 15 sources of the live bundle before the
+    merge: the strict traversal and the tolerant one disagreed on ZERO. That measurement is
+    what made this safe to unify rather than a hope.
+    """
     out: list[tuple[str, str]] = []
-    for sentence, mapping in sorted(profile["mappings"].items()):
+    mappings = profile.get("mappings") if isinstance(profile, Mapping) else None
+    if not isinstance(mappings, Mapping):
+        return ()
+    for sentence, mapping in sorted(mappings.items(), key=lambda pair: str(pair[0])):
         base = f"{path}.mappings.{sentence}.bind"
-        for role in sorted(mapping["bind"]):
-            out.extend(_binding_columns(mapping["bind"][role], f"{base}.{role}"))
+        bind = mapping.get("bind") if isinstance(mapping, Mapping) else None
+        if not isinstance(bind, Mapping):
+            continue
+        for role in sorted(bind, key=str):
+            out.extend(_binding_columns(bind[role], f"{base}.{role}"))
     return tuple(out)
 
 

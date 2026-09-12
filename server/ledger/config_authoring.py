@@ -74,6 +74,7 @@ from .implementations import (
 from .setup_registry import OCCURRED_AT_BASIS_COLUMNS
 from .source_preparation import locked_select_columns
 from .setup_bundle import (
+    _profile_binding_columns as _setup_bundle_profile_binding_columns,
     _MAPPER_UNITS,
     CARDINALITIES,
     EMITTABLE_VALUE_TYPES,
@@ -764,17 +765,15 @@ def _binding_columns(binding: Any, path: str) -> list[tuple[str, str]]:
     return out
 
 
-def profile_binding_columns(path: str, profile: Any
-                            ) -> tuple[tuple[str, str], ...]:
-    out: list[tuple[str, str]] = []
-    for sentence, mapping in _mappings(profile):
-        base = f"{path}.mappings.{sentence}.bind"
-        bind = mapping.get("bind")
-        if not isinstance(bind, Mapping):
-            continue
-        for role in sorted(bind, key=str):
-            out.extend(_binding_columns(bind[role], f"{base}.{role}"))
-    return tuple(out)
+#: 🔴 ONE IMPLEMENTATION (S-196, 판정 306-b 되돌림). This module carried its own copy of the
+#: traversal and `setup_bundle` carried another — two answers to 「which columns do this
+#: profile's bindings name」, measured identical on all 15 live sources and one edit away from
+#: diverging. The validator's is now the only one, made tolerant of a half-built profile
+#: because THIS caller needs that and the validator never sees one.
+#:
+#: ⚠️ AN ASSIGNMENT, so it is the same function object — the idiom `main.py` uses for
+#: `reload_local_process_cache`, and the reason callers by name keep resolving.
+profile_binding_columns = _setup_bundle_profile_binding_columns
 
 
 # ------------------------------------------------------------------------- derivations
@@ -925,22 +924,29 @@ def _implementation_clause_fields(base: str, clause: Mapping[str, Any],
     )
 
 
-def _with_group_columns(columns, mapper):
-    """The derived inputs, plus the unit's group columns (S-196, 판정 306-b).
+def _with_required_columns(columns, mapper, profile, profile_path):
+    """The derived inputs, plus every column the VALIDATOR demands (S-196, 되돌림 뒤).
 
-    🔴 THE VALIDATOR REQUIRES THEM: 「group_by columns must be mapper input columns」. The
-    base derivation is 「the prepared frame minus what `read` already reads」, and a group
-    column is usually exactly one of the columns `read` reads — so it was being subtracted
-    away and the rebuilt bundle was refused by its own validator. Measured on the document
-    the test opens: `dt_job` groups by `dt_job`, and the re-derived inputs did not contain it.
+    🔴 THE ENUMERATION IS THE VALIDATOR'S OWN. `setup_bundle.required_mapper_input_columns`
+    is what refuses an `input_columns` that misses a column; deriving from the same function
+    is what makes a bundle rebuilt from this derivation acceptable to it.
 
-    ⚠️ APPENDED, NOT UNIONED-AND-SORTED. The base order is the prepared frame's and a
-    re-derivation that reordered it would show every operator a diff that means nothing.
+    ⛔ MY FIRST REPAIR ADDED THE GROUP COLUMNS BY HAND, and the next source fell over on its
+    BINDING columns — `bonded_from` needs `base_id`, `by` and five more that no group
+    mentions. A list extended by hand misses whatever the next declaration uses; this asks
+    the one function instead.
+
+    ⚠️ APPENDED, NOT UNIONED-AND-SORTED. The base order is the prepared frame's, and a
+    re-derivation that reordered it would show an operator a diff that means nothing.
     """
+    from .setup_bundle import required_mapper_input_columns
+
     out = list(columns)
-    for name in unit_group_columns(mapper):
-        if name not in out:
-            out.append(name)
+    if not isinstance(profile, Mapping):
+        return out
+    for column, _where in required_mapper_input_columns(mapper, profile, profile_path):
+        if column not in out:
+            out.append(column)
     return out
 
 
@@ -1179,8 +1185,9 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             yield Field(
                 path=f"{base}.input_columns", step="sources",
                 label="매퍼 input_columns", state="derived", tier=TIER_DERIVATION,
-                value=_with_group_columns(
-                    [name for name in prepared if name not in locked_all], mapper),
+                value=_with_required_columns(
+                    [name for name in prepared if name not in locked_all],
+                    mapper, profile, profile_base),
                 # Empty-as-unanswered, same ruling and same scope as the preparer row above
                 # -- see the comment there before changing this back to a membership test.
                 declared=declared_mapper_inputs,
@@ -1191,8 +1198,9 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                     f"(relation {relation} + 준비기 output_columns)",
                     (f"{PHYSICAL_CATALOG_FILENAME}:{relation}",
                      f"{prep_base}.output_columns"),
-                    _with_group_columns(
-                        [name for name in prepared if name not in locked_all], mapper)),
+                    _with_required_columns(
+                        [name for name in prepared if name not in locked_all],
+                        mapper, profile, profile_base)),
                 # Stated for the same reason as the preparer row above: the value is the
                 # MAXIMUM and a person narrows it, so `comparison` has no word for it.
                 disposition="default_overridable",
