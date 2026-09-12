@@ -202,6 +202,122 @@ def test_run_stages_attaches_what_the_watcher_attaches():
     assert staged.parser.source_root == "/somewhere"
 
 
+# ---------------------------------------------------------------------------
+# 🔴 the two things one file cannot answer (판정 308)
+# ---------------------------------------------------------------------------
+
+def test_the_sweep_names_the_files_nobody_claims(tmp_path):
+    """🔴 TOO NARROW IS INVISIBLE FROM ONE FILE. A parser whose `match()` misses its own
+    input leaks it to the std parser, and nothing anywhere says so."""
+    for name in ("input.txt", "stranger.log"):
+        (tmp_path / name).write_text("x\n", encoding="utf-8")
+
+    swept = dev_bench.sweep_claims(str(tmp_path), scripts_path=VOID_LINES)
+
+    by_file = {os.path.basename(f["file"]): f["claimed_by"] for f in swept["files"]}
+    assert by_file == {"input.txt": ["BenchVoidParser"], "stranger.log": []}
+    assert [os.path.basename(f) for f in swept["unclaimed"]] == ["stranger.log"]
+
+
+def test_the_sweep_names_a_file_two_parsers_both_want(tmp_path):
+    """🔴 TOO WIDE IS WORSE, AND LOOKS IDENTICAL. Production takes the first yes, so the
+    second parser is simply never reached — no error, no log, just rows under the wrong
+    name."""
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    (scripts / "greedy.py").write_text(
+        "from pipeline_base import BasePipelineParser\n"
+        "class Greedy(BasePipelineParser):\n"
+        "    @classmethod\n"
+        "    def match(cls, file_path):\n"
+        "        return True\n", encoding="utf-8")
+    (scripts / "narrow.py").write_text(
+        "import os\n"
+        "from pipeline_base import BasePipelineParser\n"
+        "class Narrow(BasePipelineParser):\n"
+        "    @classmethod\n"
+        "    def match(cls, file_path):\n"
+        "        return os.path.basename(file_path) == 'mine.csv'\n", encoding="utf-8")
+
+    raws = tmp_path / "raws"
+    raws.mkdir()
+    (raws / "mine.csv").write_text("a\n", encoding="utf-8")
+    (raws / "theirs.csv").write_text("a\n", encoding="utf-8")
+
+    swept = dev_bench.sweep_claims(str(raws), scripts_path=str(scripts))
+
+    contested = [os.path.basename(f["file"]) for f in swept["contested"]]
+    assert contested == ["mine.csv"]
+    assert swept["unclaimed"] == [], "the greedy one takes everything, so nothing is free"
+
+
+def test_a_match_that_throws_is_not_a_match_that_said_no(tmp_path):
+    """⚠️ PRODUCTION TREATS A THROW AS A DECLINE, and it is right to. But the author has to
+    see WHICH it was — a `match()` that raises on every file is a parser that never runs."""
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    (scripts / "angry.py").write_text(
+        "from pipeline_base import BasePipelineParser\n"
+        "class Angry(BasePipelineParser):\n"
+        "    @classmethod\n"
+        "    def match(cls, file_path):\n"
+        "        raise ValueError('nope')\n", encoding="utf-8")
+    raws = tmp_path / "raws"
+    raws.mkdir()
+    (raws / "a.csv").write_text("a\n", encoding="utf-8")
+
+    swept = dev_bench.sweep_claims(str(raws), scripts_path=str(scripts))
+    assert swept["files"][0]["claimed_by"] == ["Angry!ValueError"]
+
+
+def test_an_empty_folder_is_an_answer_not_a_crash(tmp_path):
+    swept = dev_bench.sweep_claims(str(tmp_path), scripts_path=VOID_LINES)
+    assert swept == {"files": [], "unclaimed": [], "contested": [], "load_errors": {}}
+
+
+def test_output_columns_are_judged_by_the_upserts_own_predicate(db_session):
+    """🔴 `table.c.get(key) is None` IS `crud`'s `unknown_column` DECLINE, verbatim. One key
+    the table does not have and the fast path declines for the WHOLE batch."""
+    checked = dev_bench.check_output_columns(
+        [{"EQP_ID": "E1", "NOT_A_COLUMN": 1}], "raw_table_1")
+
+    assert checked["unknown"] == ["NOT_A_COLUMN"]
+    assert "EQP_ID" in checked["declared"]
+    assert set(checked["produced"]) == {"EQP_ID", "NOT_A_COLUMN"}
+
+
+def test_the_framework_columns_are_not_counted_as_never_filled(db_session):
+    """⚠️ 「never filled」 IS A QUESTION, NOT A FAULT — and it would be a useless one if it
+    listed `row_id` and `created_at` every time. The exclusion is `models.FRAMEWORK_COLUMNS`,
+    production's own name for them, rather than a list spelled in the bench."""
+    from database import models
+
+    checked = dev_bench.check_output_columns([{"EQP_ID": "E1"}], "raw_table_1")
+    assert not (set(checked["never_filled"]) & set(models.FRAMEWORK_COLUMNS))
+
+
+def test_a_table_that_is_not_declared_is_refused_by_name(db_session):
+    with pytest.raises(LookupError) as caught:
+        dev_bench.check_output_columns([{"a": 1}], "s197_no_such_table")
+    assert "s197_no_such_table" in str(caught.value)
+
+
+def test_neither_new_function_re_implements_what_it_asks():
+    """🔴 SCORED ON THE SOURCE. The sweep must ask `match()` and the column check must ask
+    `table.c.get` — a bench that compared filename patterns itself, or held its own list of
+    system columns, would be right until the day production changed and it did not."""
+    import inspect
+
+    sweep = inspect.getsource(dev_bench.sweep_claims)
+    assert ".match(" in sweep and "claimers(" in sweep
+    for rebuilt in ("fnmatch", "endswith(", "MATCH_PATTERN"):
+        assert rebuilt not in sweep, rebuilt
+
+    check = inspect.getsource(dev_bench.check_output_columns)
+    assert "table.c.get(" in check and "FRAMEWORK_COLUMNS" in check
+    assert "created_at" not in check, "the system columns are spelled here again"
+
+
 def test_the_stages_are_productions_own_methods():
     """🔴 SCORED ON THE SOURCE. A bench that read the file itself would be green on a parser
     whose read override production would actually have used."""

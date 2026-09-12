@@ -171,7 +171,11 @@ def test_each_notebook_reaches_the_bench_functions_its_lane_needs():
     parser = "".join(_text(c) for c in _load("parser_workbench.ipynb")["cells"])
     for required in ("dev_bench.raw_for_parser(", "dev_bench.claimers(",
                      "dev_bench.run_stages(", "dev_bench.publish_parser(",
-                     "dev_bench.cell_body("):
+                     "dev_bench.cell_body(",
+                     # 판정 308: the two cells the first cut dropped. They answer what ONE
+                     # file cannot — too wide, too narrow, and a key the target has no
+                     # column for — so the gate names them rather than counting mentions.
+                     "dev_bench.sweep_claims(", "dev_bench.check_output_columns("):
         assert required in parser, required
 
 

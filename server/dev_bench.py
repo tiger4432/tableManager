@@ -489,6 +489,89 @@ def run_stages(parser_cls, file_path, *, rel_path=None, source_root=None):
     return SimpleNamespace(parser=instance, raw=raw, processed=processed, records=records)
 
 
+def sweep_claims(folder, *, scripts_path=None):
+    """`match()` over EVERY file in `folder`, so 「too wide」 and 「too narrow」 are visible.
+
+    🔴 THIS IS WHERE A PARSER FAILS QUIETLY. Too wide and it takes somebody else's file into
+    this table; too narrow and its own file leaks to the std parser. Neither shows up until a
+    row is sitting under the wrong name, and neither is visible from ONE file — which is all
+    `claimers` can answer.
+
+    ⚠️ THE CLASSES ARE LOADED ONCE AND THEN ASKED PER FILE. `claimers` re-walks the
+    workspace and re-imports every script on each call, so calling it per file would be a
+    folder-sized number of module loads. What is asked per file is `match()` itself —
+    production's own predicate, not a copy of it.
+
+    Returns `{files, unclaimed, contested, load_errors}`; `files` carries
+    `{file, claimed_by}`.
+    """
+    found = []
+    for root, _dirs, names in os.walk(str(folder)):
+        for name in sorted(names):
+            found.append(os.path.join(root, name))
+    found.sort()
+    if not found:
+        return {"files": [], "unclaimed": [], "contested": [], "load_errors": {}}
+
+    survey = claimers(found[0], scripts_path=scripts_path)
+    classes = [(row["script"], row["cls"]) for row in survey["rows"]]
+
+    files = []
+    for path in found:
+        hits = []
+        for _script, cls in classes:
+            try:
+                if cls.match(path):
+                    hits.append(cls.__name__)
+            except Exception as exc:
+                # ⚠️ A `match()` THAT THROWS IS NOT A `match()` THAT SAID NO. Production
+                # treats it as a decline, but the author has to see which one it was.
+                hits.append("%s!%s" % (cls.__name__, type(exc).__name__))
+        files.append({"file": path, "claimed_by": hits})
+
+    return {"files": files,
+            "unclaimed": [f["file"] for f in files if not f["claimed_by"]],
+            "contested": [f for f in files if len(f["claimed_by"]) > 1],
+            "load_errors": survey["load_errors"]}
+
+
+def check_output_columns(rows_or_frame, table_name):
+    """Which produced keys the target table does not declare — production's own predicate.
+
+    🔴 `table.c.get(key) is None` IS THE UPSERT'S OWN TEST, verbatim (`crud.py`, the
+    `unknown_column` decline). One key the table does not have and the whole fast path
+    declines for the whole batch — found here it costs a minute, found in production it
+    costs a round trip.
+
+    ⚠️ NO DATABASE IS NEEDED. `init_dynamic_models` builds the real `Table` objects from the
+    declaration, so this answers off the declaration the server boots from.
+
+    Returns `{declared, produced, unknown, never_filled}`. `never_filled` is a QUESTION, not
+    a fault — a parser that fills half a table is ordinary — and the framework's own columns
+    are left out of it by `models.FRAMEWORK_COLUMNS` rather than by a list spelled here.
+    """
+    _ensure_dynamic_models()
+    from database import models
+
+    model = models.DYNAMIC_TABLES.get(table_name)
+    if model is None:
+        raise LookupError("no declared table %r; declared: %s"
+                          % (table_name, ", ".join(sorted(models.DYNAMIC_TABLES)) or "none"))
+    table = model.__table__
+
+    produced = []
+    for row in _frame_rows(rows_or_frame):
+        for key in row:
+            if key not in produced:
+                produced.append(str(key))
+
+    declared = [c.name for c in table.c]
+    unknown = [k for k in produced if table.c.get(k) is None]
+    never_filled = sorted(set(declared) - set(produced) - set(models.FRAMEWORK_COLUMNS))
+    return {"declared": declared, "produced": produced,
+            "unknown": unknown, "never_filled": never_filled}
+
+
 # ---------------------------------------------------------------------------
 # ③ publishing — 「되면 발행 셀이 함수 파일을 만든다」 (S-197)
 # ---------------------------------------------------------------------------
