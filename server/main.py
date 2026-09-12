@@ -5429,24 +5429,32 @@ def get_ingestion_workspaces():
 
 @app.get("/admin/chain/rules", dependencies=[Depends(require_admin_token)])
 def get_chain_rules():
-    """등록된 모든 체인 인제션 룰 목록을 반환합니다."""
-    import os
-    import json
-    
+    """등록된 모든 체인 인제션 룰 목록을 반환합니다.
+
+    🔴 THE FILE IS OPENED IN ONE PLACE (S-201, 판정 316). This route read
+    `chain_rules.json` itself, which made three readers of one file — the loader, this
+    route, and the setup report — each free to disagree about what is in it.
+
+    🔴 AND ONE ANSWER CHANGES, DELIBERATELY: a top-level LIST. This route used to hand
+    that list back as `data`; the LOADER refuses it (「Failed to load chain rules」) and
+    always has. So the screen was showing rules that the boot would never run — a false
+    green, and the screen more generous than the loader, which is the same defect
+    `ChainRuleDocument.preview` carried until S-180 ⓑ-0.
+
+    ⚠️ 「없는 파일」 IS UNCHANGED. `absent` is not `empty`, and `absent_listing` stays the
+    answer for a file that is not there.
+    """
+    import chain_ingestion_worker as worker
+
     rules_path = paths.config_path("chain_rules.json")
-    
-    if not os.path.exists(rules_path):
+    read = worker.read_rules_document(rules_path)
+
+    if not read["exists"]:
         return absent_listing(rules_path)
-        
-    try:
-        with open(rules_path, "r", encoding="utf-8") as f:
-            rules = json.load(f)
-        if isinstance(rules, dict):
-            rules = rules.get("rules", [])
-        return {"status": "success", "data": rules}
-    except Exception as e:
-        print(f"Error reading chain rules: {e}")
-        return {"status": "error", "message": str(e), "data": []}
+    if read["error"]:
+        print(f"Error reading chain rules: {read['error']}")
+        return {"status": "error", "message": read["error"], "data": []}
+    return {"status": "success", "data": read["rules"]}
 
 @app.get("/admin/mappers/list", dependencies=[Depends(require_admin_token)])
 def get_mappers():
