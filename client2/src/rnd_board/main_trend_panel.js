@@ -246,7 +246,11 @@ export class MainTrendPanel extends Panel {
         : (this.loadState === 'undeclared'
           ? '이 좌석이 «무엇을 모을지» 선언하지 않았습니다 — 그래서 걷지 않았습니다'
           : (this.loadState === 'loading' ? '읽는 중…'
-            : (this.model && this.model.message) || '서버가 거절했습니다'));
+            // 🔴 C-90 ② / 판정 341. 거절은 «서버의 낱말»입니다 — 이름이 있으면 그 이름을
+            //    먼저 그립니다(`measure_needs_numbers` 같은 코드). 문장은 서버의 것이고,
+            //    둘 다 없을 때만 이 화면이 「거절했습니다」라고 말합니다.
+            : ((this.model && (this.model.reason || this.model.message))
+              || '서버가 거절했습니다')));
       root.appendChild(note);
       this.host.appendChild(root);
       return;
@@ -280,16 +284,16 @@ export class MainTrendPanel extends Panel {
       //    `unit` 은 걷기가 «4개나 실었는데» max 가 전부 건너뛴 것이고, 그때 화면이
       //    「안 실었습니다」라고 말했습니다 -- 총괄 못박음 ②(「건너뛴 개수를 말할 것」)가
       //    막으려던 바로 그 오독입니다. 재료는 이미 모델에 있었고 이 자리가 안 읽고 있었습니다.
-      const carried = m.points.reduce((n, p) => n + (p.denominator || 0), 0);
-      const axisWord = m.valueKind === 'aggregate' && m.axis
-        ? (m.skipped > 0
-          ? `${m.axis.aggregation}(${m.axis.qualifier}) 는 값 ${carried}개를 «전부 건너뛰었습니다»`
-            + ' — 수치가 아니었습니다 (count · distinct 는 잽니다)'
-          : `${m.axis.aggregation}(${m.axis.qualifier}) 로 잰 것은 없습니다 — 이 걷기가 그 수식어를 안 실었습니다`)
-        : '비율이 붙은 것은 없습니다 — 아직 안 쟀습니다';
+      // 🔴 C-90 ② / 판정 341. 이 자리가 짓던 세 문장(「건너뜀 N」·「전부 건너뛰었습니다」·
+      //    「안 실었습니다」)은 «없어졌습니다». 접기가 서버로 갔고(S-146), 그 셋 중 둘은 이제
+      //    서버가 «이름 대어» 거절합니다 — `measure_needs_numbers` · `unknown_measure` ·
+      //    `ambiguous_value_name`. 화면은 그 이름을 «그대로» 그리고 문장을 짓지 않습니다:
+      //    상설 「거절은 서버의 낱말」이고, 지어낸 문장은 「자막 단 실패」입니다.
+      // ⚠️ 셋째(「안 실었습니다」)는 거절이 아니라 «값 없음»입니다 — 봉투가 그 measure 에
+      //    답하지 않은 것이고, 그때 점은 그려지되 값이 없습니다. 그것도 지어낼 문장이 아닙니다.
       note.textContent = m.points.length
-        ? `점 ${m.points.length}개 · ${axisWord}`
-        : (m.state === 'truncated' && m.message ? m.message : '이 창에 점이 없습니다');
+        ? `점 ${m.points.length}개`
+        : (m.reason || m.message || '이 창에 점이 없습니다');
       root.appendChild(note);
       this.host.appendChild(root);
       return;
@@ -487,13 +491,15 @@ export class MainTrendPanel extends Panel {
         + (m.provenance && m.provenance.predicates
           ? ` · ${m.provenance.predicates.join(' · ')} 에서` : '');
       el.appendChild(ax);
-      // 🔴 건너뛴 수를 «말합니다» (총괄 못박음 ②). 말 안 하면 「없어서」와 「건너뛰어서」가
-      //    같은 수가 됩니다 -- 「하나라도 수치면 수치」의 값은 이 문장이 치릅니다.
-      if (m.skipped > 0) {
-        const skipped = doc.createElement('span');
-        skipped.className = 'rb-trend-absent';
-        skipped.textContent = `건너뜀 ${m.skipped} — 수치가 아니었습니다`;
-        el.appendChild(skipped);
+      // 🔴 C-90 ②: 「건너뜀 N」은 «아무도 안 세는 수»가 되어 사라졌습니다(판정 341 이 ㉡ 기각).
+      //    그 자리에 오는 것은 «절단 표지»입니다 — 잘린 위에서 센 수도 수이고, 그것이 잘렸다는
+      //    사실이 값 «옆»에 서야 운영자가 「더 넓혀 다시 물을지」를 정할 수 있습니다.
+      //    (전에는 잘리면 «세기를 거부»해서 화면이 영원히 비었습니다.)
+      if (m.cut) {
+        const cut = doc.createElement('span');
+        cut.className = 'rb-trend-absent';
+        cut.textContent = '잘림';
+        el.appendChild(cut);
       }
     }
     if (m.provenance && m.valueKind !== 'aggregate') {
