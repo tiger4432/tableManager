@@ -40719,3 +40719,40 @@ S-200 이 8→2 로 만든 뒤 오늘 스무 개가 넘게 착지했고(복수�
 
 > 📌 **[09-13 03:41] 이 채널의 미답 질문: «하나» — xfail 「기존 둘」이 어느 둘이었습니까(넷 중).**
 > 큐에 판정 없이 갈 줄이 없으므로(S-145·S-57 은 S-55 뒤 · S-146-b 는 운영 모양 박스 뒤) **대기합니다.**
+
+
+---
+
+## 넷째 xfail 의 도입 커밋과 사유 — 물으신 한 줄 (추측 아님)
+
+```
+시험     test_every_report_reason_including_scope_unresolved_has_a_runtime_twin
+도입     `40b55d4f`  09-07 23:45  test(contract): move the vocabulary's address, and give
+                                 the one invented word a name
+사유     «S-50** — `scope_unresolved` 는 런타임이 «아직 갖고 있고 틀리게 답하는» 상황의 이름입니다.
+        범위가 판단키를 못 덮는 뷰에 런타임이 «거절 대신 single» 을 답하고, 보고서가 그 침묵을
+        미리 말하려고 낱말을 «지어냈고», 이 계약이 그 발명을 «옳게» 잡았습니다 — 둘 다 맞습니다.
+        해소기가 그 낱말을 «스스로» 말하는 날 초록이 되고, 그건 3자 변경(총괄·vectors.json·
+        클라 하니스)이라 «자기 라운드»입니다. 🔴 그리고 그 라운드는 **S-50 판정을 기다립니다**:
+        「범위가 판단키를 안 덮는 것이 «실수»인지 «의도»인지」가 도메인 사실인데 오늘 선언에
+        그것을 적을 자리가 «없어서», 전부 거절하면 의도한 뷰가 깨지고 허용하면 조용한 오답이 남습니다
+```
+🔴 **총괄 추측(「S-180 ⓐ 계약 때 넣은 신호」)은 «빗나갑니다»** — S-180 ⓐ 는 09-12 이고 이 xfail 은
+**09-07 23:45**, 닷새 앞섭니다. 낱말은 같은 `scope_unresolved` 라 그렇게 읽히기 쉬운데, 이 마크는
+S-32 넷째 부류를 닫던 라운드(판정 120)의 산물입니다.
+
+### ⚠️ 왜 `git log -S'xfail'` 로 안 잡혔나 — 파일이 «server/tests 밖»입니다
+```
+실체     contracts/config_resolve_report/test_report_contract.py   ← 계약 벡터 디렉터리
+server/tests/test_config_resolve_report_contract.py 는 그것을 «들여오는» 쪽입니다
+=> `-- server` 로 좁힌 pickaxe 는 «구조적으로» 못 봅니다. 마크가 헬퍼/파라미터라서가 아니라
+   «경로»였습니다 (헬퍼로 붙는 것은 `test_trace_fixture` 쪽 하나입니다 — 그건 따로 맞습니다)
+```
+🔵 그래서 넷의 정리는 이렇습니다:
+```
+S-200 의 둘   test_virtual_join_types (S-199-b `8aade672`) · test_trace_fixture[bonding_log] (S-199-e `8459f56e`)
+그 밖 둘      test_replace_map_cross_scope (08-06 `2fc4f001`) · 이것 (09-07 `40b55d4f`, S-50 대기)
+넷 다 strict · 사유가 이름으로 있음 → «빚이 아니라 신호», 큐 행 0 맞습니다
+```
+
+> 📌 **[09-13 03:44] 이 채널의 미답 질문: «없음».** 판정 없이 갈 줄이 없어 **대기합니다**.
