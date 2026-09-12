@@ -63,7 +63,7 @@ import glob
 import os
 import sys
 
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 from sqlalchemy import types as sqltypes
 
 
@@ -105,7 +105,8 @@ _MIGRATION_GLOBS = (
 )
 _SOURCE_CACHE = None
 
-SEVERITY_ORDER = {"TABLE-DOWN": 0, "MISSING-TABLE": 1, "SELF-HEALING": 2, "INFO": 3}
+SEVERITY_ORDER = {"TABLE-DOWN": 0, "MISSING-TABLE": 1, "MISSING-VIEW": 1,
+                  "SELF-HEALING": 2, "INFO": 3}
 
 # Rank INSIDE a severity. Everything INFO is quiet, but the three INFO kinds are
 # not equally urgent - see the sort in `check`. Anything without a `kind` gets 0,
@@ -513,6 +514,52 @@ def _add_column_ddl(table, col, dialect):
     return stmt
 
 
+def _declared_kind(table):
+    """What the catalogue says this relation is — through `setup_bundle.catalog_kind` (S-187).
+
+    ⚠️ A NAME THE CATALOGUE DOES NOT HOLD IS A TABLE, which is the framework's own relations
+    (`cell_sources`, `audit_logs`, …): they are declared in code, not in the catalogue, and
+    they are tables. `catalog_kind(None)` already answers `"table"` for exactly this reason.
+    """
+    try:
+        from database import crud
+        from ledger.setup_bundle import catalog_kind
+
+        return catalog_kind(crud.TABLE_CONFIG.get(table))
+    except Exception:
+        return "table"
+
+
+def _relation_exists(engine, name):
+    """Does a relation of this name exist -- of ANY kind? (S-193)
+
+    🔴 THE QUESTION IS EXISTENCE, NOT VIEW-NESS, and measuring settled that. This box
+    declares ELEVEN relations `kind: view`; ten are SQL views and the eleventh,
+    `ledger_events`, is a physical TABLE declared a view so the write door refuses it
+    (S-186). A probe that asked 「is it in `get_view_names()`?」 would therefore have called
+    `ledger_events` a missing view -- trading ten false alarms for one.
+
+    ⚠️ `to_regclass` IS THE POSTGRESQL SHARPENING, not a second answer to the same question.
+    The inspector's two lists miss a materialised view, and reporting one of those as absent
+    would be the exact defect this function was written to remove.
+    """
+    try:
+        insp = inspect(engine)
+        if name in set(insp.get_table_names()) | set(insp.get_view_names()):
+            return True
+    except Exception:
+        pass
+    if engine.dialect.name != "postgresql":
+        return False
+    try:
+        with engine.connect() as conn:
+            return conn.execute(text("SELECT to_regclass(:n)"), {"n": name}).scalar() is not None
+    except Exception:
+        # ⚠️ Unanswerable is not 「absent」. Saying a relation is missing because the probe
+        # failed is how a permanent error line gets written about a healthy database.
+        return True
+
+
 def check(engine):
     declared, actual = _declared(), _actual(engine)
     dynamic_names = _dynamic_table_names()
@@ -521,6 +568,29 @@ def check(engine):
 
     for table, columns in sorted(declared.items()):
         if table not in actual:
+            # 🔴 A DECLARED VIEW IS NOT A MISSING TABLE (S-193). `_actual` reads
+            # `get_multi_columns`/`get_table_names`, and neither lists views -- so every
+            # relation the catalogue declares `kind: view` came out as MISSING-TABLE on
+            # EVERY boot. Measured: exactly ten of them, identically, from 09-11 23:46 to
+            # 09-12 13:18, and two of those ten answer HTTP 200 on the data route. This
+            # file's neighbour already names the cost: 「a permanent error line is how a real
+            # one stops being read」.
+            #
+            # ⚠️ THE CATALOGUE IS ASKED THROUGH `catalog_kind`, the one function S-187 made
+            # for it. A second spelling of 「is this a view」 is how a screen comes to trust
+            # the wrong one.
+            if _declared_kind(table) == "view":
+                if _relation_exists(engine, table):
+                    continue
+                findings.append({
+                    "severity": "MISSING-VIEW", "table": table, "column": None,
+                    "breaks": ("every query against this view fails - the catalogue "
+                               "declares it and the database has no relation of that name"),
+                    "remedy": ("a view is NOT built by a boot: `create_all` makes tables. "
+                               "Run the migration that creates it, or correct the "
+                               "catalogue entry if the view was retired."),
+                })
+                continue
             findings.append({
                 "severity": "MISSING-TABLE", "table": table, "column": None,
                 "breaks": "every query against this table fails",
