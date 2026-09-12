@@ -2365,6 +2365,8 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 
 ### `server/virtual_join_config.py` (**697줄**(🆕⑨ `5359fdd` 실측 — 구 표기 687), `4e06eec` 신설 540줄 → `b6942ec`로 **475**) — 가상 조인 선언 로더/검증
 
+> 🆕㉘ **[S-189 ⓐ `446a7076`, 판정 302] 실체화가 «자기 예산»을 선언한다 — 기본값이 «없다».** `materialize` 는 true/false 만(:359~:367), true 면 `max_rewrite_rows` 를 «반드시» 적어야 하고 없으면 `CODE_NO_REWRITE_CAP = "no_rewrite_cap"` :124 로 «이름 대어» 거절하면서 **그 수를 세는 질의를 같이 인쇄한다**(일을 떠넘기지 않는다). 상한 검사는 :279. 🔴 **왜 기본값이 없나 — 수 때문이다**: 이 박스 실측으로 `dt_log` 606,215 행 중 한 `dt_job` 이 70,800 행을 덮으므로, 참조 행 «하나»가 바뀌면 70,800 행을 다시 쓴다 ≈ **92 s**(소유자 IO 규격 기준). 기본값을 두면 제품이 «한 번도 말한 적 없는 92 초짜리 쓰기»의 저자가 된다 — `occurred_at_basis` 와 같은 자세다. ⛔ **상한 초과는 «거절»이지 «잘라 쓰기»가 아니다** — 상한까지 쓰면 표가 반은 새 값 반은 옛 값이 되고 «어느 행이 어느 쪽인지 말해 주는 것이 없어» 화면이 조용히 틀린 답을 보인다. 🆕 `JOIN_MAPPER = "builtin:join"` :864
+
 **Virtual join은 두 테이블을 저장하지 않고 조회 시점에 잇는다** — `/api/maps/overlay`가 좌표로 하는 일을 **행(row) 모양으로** 하는 것이고, 잇는 기준은 좌표가 아니라 선언된 조인 키다. **이 파일은 선언만 다룬다 — 조인 실행은 여기 없다.**
 
 🔴 **왜 가드가 먼저인가 (운영 DB read-only 실측 2026-07-31, 소스 docstring에 표로 있다)**: `core_defect_map ⋈ eds_fail_map`을 `(lot,slot,x,y)`로 잇면 103,040 → 103,040(x1)인데 `(lot,slot)`으로 잇면 **103,040 → 132,715,520(x1288)**이다. `bonding_log ⋈ wafer_process (lot,slot)`은 14,436 → 2,552,624(x177). **두 선언은 컬럼 두 개 차이인데 결과는 10만 행과 1억 3천만 행이다.** 문법도 맞고 컬럼도 존재하므로 **선언을 읽는 시점에 거부하지 않으면 거부할 자리가 없다.**
@@ -2397,11 +2399,32 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 
 ---
 
+### 🆕㉘ `server/chain_builtins.py` (**120줄**, S-189 ⓒ `1964c65a` 신설) — 합성 «한 자리» + `builtin:` 종류 표
+
+| 심볼 | 무엇인가 |
+|---|---|
+| `synthesize_chain_rules(known_tables=None)` :28 | 🔴 **합성의 «한 자리»** — 인리치 반쪽과 조인 반쪽을 각각 부르고, `load_chain_rules` 는 «이것만» 부른다. ⚠️ 조인 반쪽을 `load_enrichment_chain_rules` «안»에 넣었으면 판정 292 의 «글자»는 지켰겠지만 `enrichment_…` 라는 이름의 함수가 «가상 조인 파일»을 읽게 된다 — 반쪽은 각자 정직한 이름을 갖고, «자리»가 하나다 |
+| `synthesized_kind_counts(rules)` :43 | 합성된 것을 종류별로 «센다» |
+| `class UnknownBuiltinKind(ValueError)` :69 · `BUILTIN_KINDS` :91 · `register_builtin(kind, fn)` :94 · `run_builtin(kind, db, rule, **kwargs)` :104 · `_install()` :114 | **이 어휘가 «처음» 갖는 표다.** 🔴 **모르는 종류는 «이름 대어» 거절된다**(아는 목록을 같이 인쇄) — 구현이 «없는» 종류를 적은 규칙은 «켜진 채로 살아 보이면서» 한 번도 안 돌기 때문이다. 🔵 실측이 그것을 부른 자리: `builtin:auto_confirm` 은 그때까지 «정확히 두 번» 나왔고(둘 다 `enrichment_config`) **아무도 안 읽었다** — S-179 가 로더·그래프 층에는 그 종류를 선언해 두고 실행은 스윕에 남겨 뒀다 |
+| `_run_join(db, rule, row_ids=None, key_values=None)` :75 | `builtin:join` 의 실행 — 아래 `virtual_join_executor` 로 내려간다 |
+
+⏳ **[판정 305 — «예고»]** `builtin:auto_confirm` 의 «실행»이 이 표 위로 옮겨 오는 것은 **S-195** 이고 아직 «안 착지했다». 오늘 접힌 것은 «선언»뿐이다.
+
+### 🆕㉘ `server/schema_drift.py` (**864줄**, S-193 `98eee71f`) — 기동이 「없는 표」라 부르던 것 중 열이 «뷰»였다
+
+🔴 **`[MISSING-TABLE]` 이 이 카탈로그가 선언한 SQL 뷰 «열»을 매 기동마다 «똑같이» 이름 대고 있었다**(09-11 23:46 ~ 09-12 13:18 동일). 그리고 그 열 중 «둘»은 데이터 라우트에서 **HTTP 200** 을 답한다 — 없기는커녕 읽히고 있었다. 원인은 `_actual` 이 `get_multi_columns`/`get_table_names` 를 읽는데 **둘 다 뷰를 «안 싣는다»**는 것.
+⛔ **대가는 `models.py` 가 이미 이름 붙여 둔 것이다 — 「상설 오류 줄은 «진짜 오류»가 안 읽히게 되는 방법이다」.** 서 있는 열 줄이 열한 번째, 즉 «참인» 줄을 묻는다.
+🔵 **수리는 «새 판별»이 아니라 «있는 함수»다** — `check` 가 카탈로그에게 `setup_bundle.catalog_kind` 로 묻는다(S-187 이 만든 그 함수). 그래서 기동 검사와 쓰기 문이 한 관계에 대해 «어긋날 수 없다». 선언된 뷰에는 「그 «관계»가 있나」를 묻고, 진짜로 없으면 **`[MISSING-VIEW]`** 로 «자기 이름»을 갖는다 — 처방까지 참이다(`create_all` 은 표를 만들지 뷰를 만들지 않으므로 「기동하면 생긴다」가 거짓인 쪽).
+🔴 **판별식은 «뷰인가»가 아니라 «있는가»이고, 그것을 «재서» 갈랐다.** 카탈로그가 `kind: view` 를 **열하나** 선언하는데(커밋 본문의 수는 «라이브» 카탈로그이고, 제가 «출하 샘플»을 세도 같은 열하나입니다 — 두 모집단이 «우연히» 같습니다) 열한 번째가 `ledger_events` — 쓰기 문이 거절하게 하려고(S-186) «뷰로 선언한 물리 표»다. 「`get_view_names()` 에 있나」로 물었으면(처음 손이 간 쪽이다) **그 하나를 MISSING-VIEW 라 불렀을 것이다** — 거짓 경보 열을 하나와 맞바꾼 셈이다.
+
+
 ## 5-D. 2026-08-04 신설 서버 모듈
 
 > 🔎 **이번 라운드의 서버 신설은 두 갈래다** — ① 가상 조인이 **선언**(`virtual_join_config`)과 **실행**(`virtual_join_executor`)으로 갈렸다 ② 「이미 지나간 데이터에 지금 규칙을 먹인다」는 조작이 산발적 CLI에서 **하나의 레지스트리**(`retroactive`)로 모였다.
 
 ### `server/virtual_join_executor.py` (**631줄**(🆕⑨ `5359fdd` 실측 — 구 표기 584), `ed9cfdb` 535에서 **+19**) — 가상 조인의 **실행** 절반
+
+> 🆕㉘ **[S-189 ⓑ `5833c7f8`] 실체화 = 「자기 층으로 쓰고, 되가져간다」.** `materialize_rows(db, rule, row_ids)` :754 · 트리거 «둘» `on_target_rows_changed` :795 · `on_reference_rows_changed` :805 · 철회 `retract_rows` :852. 🔴 **새 SELECT 를 «안 짓는다»** — `execute_rule` :487 → `join_onclause` :165 을 그대로 지난다. 그 함수 자기 주석이 ON 절의 «둘째 철자»가 한 번 치른 값을 적어 둔다(그리드가 한 행 집합을 보이고 필터가 다른 것을 셌다). 실체화가 자기 조인을 조립하면 «같은 선언의 세 번째 독자»가 되고, 시험이 그렇지 않음을 채점한다. 🔴 **`source_name` 이 «규칙 이름»이고 그것이 레이어링 이야기의 전부다** — `user` 덮어쓰기가 이미 이름 붙은 소스를 이기므로 «사람의 편집이 아무 방어 없이 이긴다». 🔴 그리고 여기서 «방어하면 안 된다» — 둘째 우선순위 규칙은 「누가 이기나」에 대한 «둘째 답»이다. ⚠️ **안 맞은 행은 «건너뛴다», 빈 값으로 «쓰지» 않는다** — `None` 을 쓰면 «부재»가 값으로 착지한다
 
 **선언은 [`virtual_join_config`](#5-c-2026-07-31-신설-서버-모듈-2종), 승인은 `pg_index`, 실행은 여기다.** 이 파일은 규칙을 **검증하지 않는다** — `vjc.load_verified_rules`가 통과시킨 것만 받는다.
 
@@ -2647,6 +2670,8 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 
 ### 🆕🆕🆕🆕 `server/chain_bindings.py` (**244줄**, `5b09d69` 신설, 추적됨) — job-column 이름의 단일 해석기
 
+> 🆕㉘ **[S-194 ⓑ `27795fdc`] 체인이 «그 수명주기 안»에 앉는다 — `class ChainRuleIndex` :537 · `class ChainRuleDocument` :591.** ⚠️ **체인에는 «탐색기 인덱스»가 없고, 그것이 「번들 인자 하나로 열 수 없었다」의 «잰» 이유다**(S-194 설계). 기계가 실제로 필요로 한 것은 작다 — 편집 가능한 대상의 매핑 · 대상이 아닌 키에 대한 «이름 있는 거절» · 초안의 base 를 견줄 무엇. 🔴 **스냅샷 해시는 «로더가 보는 규칙»에 대한 것이지 파일 «바이트»에 대한 것이 아니다.** 🔴 **검증은 «로더의 것»이고 «둘째 의견»이 아니다** — `preview` 가 로더와 «같은» `validation.Problems` + `routing_keys()` 로 채점하므로(S-188 ⓐⓑ), 화면이 좋다고 부른 초안을 로더가 곧이어 거절하는 일이 «있을 수 없다». 📎 드라이런 라우트는 `POST /admin/chain/dry-run`(`main.py` :4155)
+
 **왜 있나 — 6개 맵퍼가 전부 `"dt_job"`을 리터럴로 썼다.** 어떤 것은 `_value(payload, "dt_job")`처럼 맨 문자열로, 어떤 것은 `rule.get("job_column", "dt_job")`처럼 기본값의 절반으로. 운영 컬럼은 **`dt_job_id`**다. 실패는 **양끝 다 침묵**이다 — 읽기 쪽은 `_value(payload, "dt_job")`이 `None`을 돌려주고 맵퍼가 그 행을 건너뛰어 빈 배치+SUCCESS를 기록하고(뒤쪽의 시끄러운 `source.dt_job` `AttributeError`엔 도달조차 안 한다), 쓰기 쪽은 `crud.apply_batch_updates`가 `column_types`에 없는 `updates` 키를 드롭하고 프로세스당 1회 경고 후 200을 반환한다. 스펠링이 다른 배포는 **예외 없이 죽은 체인 셋과 200**을 받는다 — 이 저장소의 어떤 픽스처도 그것을 재현 못 한다(모든 픽스처가 `dt_job`을 쓰므로).
 
 **규칙**: `rule 선언 > table_config 유도 > 이름을 대고 거절`. 리터럴 폴백 없음. `68db020`이 맵 좌표 바인딩에 세운 것과 **같은 전 순서**이고 같은 이유로 관습 폴백을 지웠다 — 아무도 선언한 적 없는 이름이 관습으로 풀리면, 그것은 설정된 답의 탈을 쓴 틀린 답이다.
@@ -2786,7 +2811,7 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 | 🆕⑩ `ledger_skeleton.json` | 🆕㉕ **823** @`d8ec410b`(2026-09-08 — `defs.binding.attributes` + when 잠금, `851075e5`) · ~~🆕⑳ 761~~ [2026-09-08 낡음] · 구 표기 761 @`328a5c20`(🆕⑱ 797 · 🆕⑪ 710 · 구 표기 763 — 🔴 **줄었다가 다시 늘었다**: `6345ef3d` 797 → `5cdb92de` **721** → HEAD **761**. ⚠️ 🆕⑮ 가 §5-H-bis 에는 797 로 적고 **이 표는 안 고쳐서** 한 문서가 두 수를 들고 있던 그 자리다) | config가 **무엇으로 이루어지는지**를 말하는 문서. **줄어들었다** — `vocabulary.*.layer`가 빠지고(`ddc93f5b`) 마지막 네 칸이 「계획 행」에서 「문장」으로 바뀌었다(`81382191`). 상세는 [§5-H-bis](#5-h-bis-온톨로지-config-작성탐색-표면-2026-08-21-신설-등재) |
 | 🆕⑩ `config_explorer.py` | **1,380**(구 표기 767) | v2 온톨로지 config 탐색기의 **불변 읽기 모델**. `ConfigExplorerError`·`ExplorerIndex`·`AUTHORABLE_SECTIONS`/`AUTHORABLE_SECTION_NAMES`·`build_explorer_index`·`explorer_view`·`resolve_declarations`·`load_resolved_setup`·`deletion_plan`/`DeletionPlan`·`definition_diff`/`reference_diff`·`document_hash`·`authorable_bundle_path` |
 | 🆕⑩ `config_explorer_service.py` | 🆕⑱ **989** @`6345ef3d`(구 표기 946/305) | 그 탐색기의 **캐시된 애플리케이션 서비스**(`OntologyExplorerService`). 상세는 [§5-H-bis](#5-h-bis-온톨로지-config-작성탐색-표면-2026-08-21-신설-등재) |
-| 🆕⑩ `config_drafts.py` | 🆕⑱ **850** @`6345ef3d`(🆕⑪ 828 · 구 표기 806/548) | 탐색기의 **파일시스템 작업 초안**(`OntologyDraftStore`) — 🔴 **작성 경로에서 «쓰는» 유일한 자리**(`config_authoring`은 한 줄도 안 쓴다) |
+| 🆕⑩ `config_drafts.py` | 🆕⑱ **850** @`6345ef3d`(🆕⑪ 828 · 구 표기 806/548) | 탐색기의 **파일시스템 작업 초안**(`OntologyDraftStore`) — 🔴 **작성 경로에서 «쓰는» 유일한 자리**(`config_authoring`은 한 줄도 안 쓴다)<br>🆕㉘ **[S-194 `15fa6006`, 판정 303] 줄 수 «937»(구 표기 850), 그리고 수명주기가 «문서 어댑터»를 통해 묻는다.** `class DraftContext` :304 · `class LedgerDocument` :319 · `class OntologyDraftStore(root, document=None)` :354. 🔴 **`LedgerDocument` 의 모든 메서드가 «오늘의 코드를 옮긴 것»이다** — 판정 303 이 요구한 관문이 「원장 경로가 «바이트 동일»하게 나온다」라, 이 클래스는 아무것도 «다르게 정하면 안 된다». 이름만 준다. 🔴 **기본값이 `LedgerDocument` 다** — 기존 호출자가 «한 줄도» 안 바뀌고, 바이트 동일 관문이 «대조할 것»을 갖는다. 📎 둘째 문서는 `chain_bindings.ChainRuleDocument`(아래) |
 | `source_profile.py` | 🆕⑪ **1,429**(구 표기 1,512) | v1 Profile. **줄어들었다** — 은퇴한 바인딩 필드 셋을 삼키는 자리(`_RETIRED_BINDING_FIELDS` 계열, 「읽고 버린다」)만 남고 승인 게이트가 빠졌다 |
 | `ledger_frame.py` | **278** | (🆕⑯ 무변동) |
 | 🆕㉑ **`followup.py`** | **234**(신설 `1d4bb79d`) | 「원장이 «자기가 읽는 표»를 따라간다」 — 체인/사람이 그 표의 행을 고치면 그 분자만 다시 번역한다(S-54). 🔴 **큐일 뿐이고 번역은 안 한다** — 체인 워커가 `(표, row_ids, EDIT)` 를 «메모리 deque»에 넣고 제 길을 가고, 옆에서 도는 페이싱된 asyncio 작업이 `backfill.rescope` 를 부른다. 범위 컬럼은 «15 소스 전부» `backfill._page_key`(갈래 «없음» — 판정 131). `enqueue`/`row_ids_of`/`queue_depth`/`note`/`reset`/`sources_for_table`/`scope_column`/`drain_once` · `FOLLOWED_EVENT_TYPES = ("EDIT",)` · `FOLLOWUP_JOB = "chain_followup"` · `MAX_QUEUED_EVENTS = 10000`. ⚠️ **큐는 메모리이고 유실이 «사실의 유실이 아니다»** — 소급 실행이 정본 메움이고 이쪽은 «빠른» 쪽이다. 채점자 `server/tests/test_the_ledger_follows_the_table_it_reads.py`(**350줄** / `def test_` 16, 수집 19) |
