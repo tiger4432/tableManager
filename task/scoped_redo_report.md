@@ -40944,3 +40944,91 @@ POST 의 payload 키  main.py:5766                payload.get("name")
 클라는 «한 글자도» 안 건드렸습니다 — 화면 쪽은 이미 `name` 으로 묻고 있었습니다(`client2/dist` 빌드 없음).
 
 > 📌 **[09-13 11:09] 이 채널의 미답 질문: «없음».** 다음: S-209(판정 348·349 + 08:10 정정) 착수.
+
+---
+
+## ✅ [09-13 11:2x] S-209 — 다섯이 바깥으로, 표준은 아카이브로, 이름 여섯은 시험이 붙듭니다 (`d664d754` · `6d3c4b68` · `84acc2c1`)
+
+**재기동 «불요»** — 실행 코드는 한 줄도 안 바뀌었습니다(시험 하나 신설 + 문서).
+
+### 놓은 파일 «다섯» — 어느 파일인지 (지시대로 보고)
+```
+assyManager-authoring/examples/ 에 놓음 (바이트 동일 확인 뒤 저장소에서 git rm)
+  dt_standard_map_mapper.py.sample   10,492 B
+  lot_slot_wafer_mapper.py.sample     5,668 B
+  production_mapper.py.sample         1,134 B
+  custom_parser_template.py           2,226 B
+  custom_parser.py.sample             1,834 B
+바깥 git 커밋은 응용(`e428afa`·`b4dcc43`) — 저는 «놓기»만 했습니다
+```
+남긴 것: 맵퍼 샘플 «일곱»(판정 348 — 시험이 바이트 동일로 읽음) + 파서 shim «둘»(판정 349).
+
+### 🔴 제 첫 실측이 «부분집합 필터»였습니다 — 스스로 잡았습니다
+```
+처음   `*.py.sample` «파일 이름»으로 소비자를 셌습니다 -> 다섯 다 «0»
+문제   그 필터는 «모듈 이름»으로 쓰는 시험을 구조적으로 못 봅니다
+다시   `dt_standard_map_mapper` 같은 «모듈 이름»으로 다시 셈 -> 시험 «둘»이 나옴
+       test_dt_standard_map_mapper.py:25 · test_job_column_from_config.py:242
+읽는 것  둘 다 `from mappers import …` = 소유자의 «라이브 .py»(gitignored), `requires_live` 뒤
+       -> `.sample` 제거가 «안 닿습니다». 결론은 같고, 근거가 달라졌습니다
+```
+시험 모집단도 «떠올려서»가 아니라 grep 으로 지었습니다 — 29 파일, **557 passed / 6 skipped**.
+
+### 시험 하나 — 이름을 «import 로» 풉니다 (`test_the_authoring_guides_name_entry_points_that_exist.py`, 23)
+```
+저장소 반 (항상 돔)   mapper_sdk.mapper · discover · MAPPER_REGISTRY
+                    BasePipelineParser.match · process_dataframe · parse
+                    + @mapper(name=…) 를 «실제로 걸어» 등록부 키가 그 이름인지
+양방향 고정          옮긴 다섯: 여기 사본 «0» 이어야 함   /   게이트 샘플 아홉: 여기 «있어야» 함
+바깥 반 (없으면 skip) 경로를 «이름 대어» 건너뜀. 상수 하나 = 저장소의 «형제» 경로(하드코딩 아님)
+```
+🔴 **텍스트로 안 읽습니다** — 텍스트 오라클은 서식이 바뀌면 «옳은 코드»에 빨강을 주고 주석에만 있는 이름에 초록을 줍니다.
+🔴 **변이로 재봤습니다**: 옮긴 사본을 되돌려 놓으면 빨강 1 · 게이트 샘플 하나를 치우면 빨강 1 — 둘 다 잡고, 되돌린 뒤 초록.
+⚠️ **뒷방향이 조용한 쪽입니다** — 게이트 샘플을 옮기면 «그 순간엔 아무것도 안 터지고» 바이트 동일 시험이 비교할 대상을 잃습니다.
+
+### 🔴 옮기다 잰 것 하나 — 판정 352 로 받으셨습니다 (`parse_file`)
+추적 코드에 부르는 자리가 «0», 워처 `directory_watcher.py:1157` 은 `BasePipelineParser` «하위 클래스»만 줍습니다. 지시대로 `AUTHORING.md` 에 「**미배선 — S-213**」으로 적고, 「오늘 그 길로 가면 «침묵»(실리고·등록 안 되고·오류도 없음)」을 같이 적었습니다(`84acc2c1`).
+
+### 🪦 `MAPPER_STANDARD.md` → `docs/_archive/MAPPER_STANDARD_20260817.md`
+머리 한 줄로 «제안 기록»임과 훅이 `roleframe.py` 에 «다른 이름»(`RoleEmission`·`MapperContext`)으로 착지했음을 적었습니다. 제가 다시 쟀습니다 — `class Unit`·`class Emit`·`EMITS`·`row_pair`·`eav_pivot`·`snapshot_diff` 전건 «0»(`REQUIRES` 만 히트하는데 `config_authoring.py` 의 «다른 것»입니다). 링크 넷은 문장을 두고 «경로만» 옮겼습니다(히스토리 둘은 2026-08-17 의 기록이라 그대로 참이고, 얻은 것은 「지금 어디 있나」 한 줄뿐입니다).
+
+### 고친 문서 링크 — 「저장소 쪽 링크 깨짐 0」
+```
+AUTHORING.md :24 :25 :37      깨진 링크 셋 + `examples/` 행을 「⏳ 아직 없음」에서 실제 다섯으로
+chain_ingestion_guide.md :478  셋 중 «둘»만 남으므로 «부분 수정» — 문장이 참이 되게
+CODE_MAP.md :2771             절의 «주어»가 저장소에 없으므로 🪦 한 줄 (절 본문은 그대로 참)
+SERVER_FILE_MAP.md :174        행을 「이동됨」으로
+LEDGER_SCHEMA_COMPLETENESS.md  「출하 견본 하나」가 이제 0 — 🪦 한 줄
+```
+
+### 🔴 제 잘못 «둘», 둘 다 제가 잡아 고쳤습니다
+```
+① `git add` 가 «지워진 경로»에서 죽고, 줄이 «따로»라 커밋이 그냥 돌았습니다
+   -> 첫 커밋이 «삭제만» 담았습니다(문서·시험 빠짐). 원자성이 이 라운드의 «요점»이라 amend.
+   그리고 «같은 덫에 두 번» 걸렸습니다(③ 에서도) — 두 번째엔 `git status` 에서 경로를 골랐습니다
+   교훈: 지운 경로를 `git add` 에 적지 않는다 · add 와 commit 을 «한 줄»로 잇는다
+② 제 시험이 «남의 저장소 작업 트리»에 `__pycache__` 를 쌌습니다
+   응용이 그것을 추적 해제하고 ignore 를 더해야 했습니다. `sys.dont_write_bytecode` 로 막고
+   재실행해 «잔해 0» 확인(`84acc2c1`). 컴파일 사본도 «사본»이고, 이 라운드의 주제가 그것입니다
+```
+
+### 게이트
+```
+저장소 다섯 추적 0 · 바깥 다섯 있음 · 같은 파일 두 벌 «0»
+맵퍼·파서 모집단(grep 으로 지음) 29 파일  557 passed / 6 skipped / 0 failed
+드리프트 시험 23 passed + 변이 둘 CAUGHT
+커밋 뒤 수집 6,254 (6,231 + 23)  exit 0
+루트 경로를 가리키는 추적 파일 «0» · 아카이브 상대 링크 해석 OK
+```
+
+### 넘기는 것 셋
+```
+총괄   PROJECT_STATUS.md:6043 의 `cp` 예시 — 새 경로는
+       `cp assyManager-authoring/examples/dt_standard_map_mapper.py.sample server/mappers/dt_standard_map_mapper.py`
+총괄   LEDGER_SCHEMA_COMPLETENESS D-8-4 의 「SDK 를 쓴다」 철자 — 그 견본이 import 하던 것은
+       `mapper_sdk` 가 아니라 `mappers.base.BaseMapper`(:4) 였습니다. 판정만 적어 두었습니다
+응용   바깥 `MAPPING_GUIDE.md:160` 이 「제품 저장소 «루트»의 `MAPPER_STANDARD.md`」를 인용 —
+       새 경로는 `docs/_archive/MAPPER_STANDARD_20260817.md` (PARSER_GUIDE 쪽은 이미 고치셨습니다)
+```
+
+> 📌 **[09-13 11:2x] 이 채널의 미답 질문: «없음».** 다음: **S-210** — 지시대로 «짓기 전 한 블록»(무엇을 지우고 무엇을 아카이브하나 · 소비자 표 · 미추적 아홉은 표만) 먼저 올립니다.
