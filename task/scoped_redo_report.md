@@ -41032,3 +41032,108 @@ LEDGER_SCHEMA_COMPLETENESS.md  「출하 견본 하나」가 이제 0 — 🪦 �
 ```
 
 > 📌 **[09-13 11:2x] 이 채널의 미답 질문: «없음».** 다음: **S-210** — 지시대로 «짓기 전 한 블록»(무엇을 지우고 무엇을 아카이브하나 · 소비자 표 · 미추적 아홉은 표만) 먼저 올립니다.
+
+---
+
+## 📋 [09-13 11:26] S-210 계획 블록 — 지시 목록 열둘을 «전수 실측»했습니다. 셋이 «청소 대상이 아닙니다»
+
+추적 대상 합 **247 파일**. 아래 표의 「소비자」는 `git grep` 전수이고, 이 박스의 파일 수가 아니라 «저장소에 커밋된» 참조입니다.
+
+### ✅ 지워도 되는 것 — 소비자 0 (합 23 파일)
+```
+assy_manager.egg-info/        5   빌드 산출물. 지시대로 삭제 + .gitignore 한 줄
+                                  🔵 이미 «낡았습니다» — SOURCES.txt 가 어제 옮긴 custom_parser_template 을 듭니다
+outputs/                      3   코드 소비자 «0». 산문 인용 둘(아카이브 보드·큐)뿐
+test.ipynb (루트)             1   소비자 0
+server/test.ipynb             1   소비자 0
+source_config.xlsx            1   코드 0. `table_config.json.sample` 의 `__comment` 열둘이 «출처 표기»로 이름만 듭니다
+                                  (파일을 읽지 않습니다 — 「이 표가 어느 워크북에서 왔나」)
+server/_archive/             11   import 0. 🔴 그리고 그 안의 시험 넷은 «수집조차 안 됩니다»
+                                  (`pytest _archive --collect-only` = 4 errors) — 이미 돌 수 없는 코드입니다
+```
+⚠️ `server/_archive/` 에는 딸린 것이 있습니다 — **코드 «세 자리»가 그 디렉터리를 「건너뛴다」고 적습니다**
+(`tests/prod_import_check.py:64` · `tests/test_one_name_has_one_body.py:105` · `scripts/raw_write_census.py:46`).
+지우면 그 세 갈래가 «아무도 안 타는 갈래»가 됩니다(상설 ③). **같은 커밋에서 그 셋도 빼는 것을 권고**합니다 — 판정 주시면 그렇게, 아니면 디렉터리만.
+
+### 📦 아카이브가 맞는 것 (6 파일)
+```
+ontology_config_explorer_plan/  6   완료된 계획(2026-08-17 승인, 상태 COMPLETE)
+                                    -> docs/_archive/ontology_config_explorer_plan_20260817/
+                                    링크 여섯을 같은 커밋에 경로 수정:
+                                    docs/README · guide/ONTOLOGY_LEDGER_SETUP · process/DOC_OWNERSHIP
+                                    · process/FORK_SESSION_BRIEF · process/RELEASE_LOG · process/SERVER_DEFECT_QUEUE
+                                    (task/ontology_config_explorer_pending.md 는 «자기 옆 파일»을 가리키므로 같이 감)
+```
+
+### 🔴 청소 대상이 «아닙니다» — 셋. 실측이 지시 목록과 어긋납니다
+```
+① server/notebooks/  (3)   «살아 있는 운영자 도구»입니다
+   근거  docs/guide/chain_ingestion_guide.md:630~631 이 두 노트북을 «셀 번호까지» 들어 정본으로 가리키고,
+         :669~670 이 「`server/parsers/notebooks/` 는 은퇴했고 정본은 «이쪽 둘»」이라고 «최근 라운드»(S-197-d
+         `4519a2df`)에서 «일부러 모은» 자리입니다. directory_watcher.py:1035 도 이 워크벤치를 인용합니다
+   => 지우면 가이드가 운영자를 «없는 파일»로 보냅니다. 권고: «남김»
+
+② server/scratch/  (6)     한 파일이 «게이트의 나르개»입니다
+   근거  tests/test_the_default_database_url_has_one_home.py:82 의 CARRIERS 에
+         `scratch/scratch_migration_txid.py` 가 있고, 두 시험이 그것을 «import 하고 스크립트로 돌립니다»
+   ⚠️ 그런데 그 시험이 존재하는 «이유»가 「scratch 가 DB URL 로직의 «둘째 사본»을 들고 있었고 순서까지
+      달랐다」입니다(그 파일 머리 :6~11). 즉 이 디렉터리는 상설 ④(같은 기능 두 경로)의 «실물»입니다
+   => 갈래 둘, 판정 필요:
+      ㉠ 남김        — 게이트 그대로. 둘째 사본도 그대로(다만 «묶여» 있어 갈라지면 빨개집니다)
+      ㉡ 파일과 CARRIERS 행을 «같이» 지움 — 둘째 사본이 사라집니다(④ 에 맞음). 게이트는 다섯 -> 넷
+      제 권고: ㉡. 다만 「나르개를 줄이는 것」이라 «보고 없이» 하지 않겠습니다
+      (나머지 다섯 파일은 소비자 0 이라 어느 쪽이든 삭제)
+
+③ server/M1_SOURCE_CONFIG_REF.RETIRED.md  (1)   «코드가 인용하는 묘비»입니다
+   근거  transfer_plan.py 가 «다섯 자리»(:66 :85 :158 :435 :704)에서 「이 위임이 왜 은퇴했나」의 근거로
+         이 파일을 듭니다. 시험 셋 + 추적 샘플 하나도 같습니다 — 합 «열셋»
+   => 옮기면 열셋을 같은 커밋에 고쳐야 하고, 그것은 「청소」가 아니라 «반경 있는 변경»입니다
+      제 권고: «남김». 루트가 아니라 `server/` 밑이고, 이름이 이미 `.RETIRED` 로 자기를 설명합니다
+```
+
+### ⏸️ agent_workspace/ (209) — 지우기 전에 판정 하나
+```
+소비자  코드 0 · 시험 0. 그런데 «에이전트 정의 아홉»이 이 경로를 «프로토콜»로 적습니다 —
+        .agents/skills/{DataIngester·ExcelInteractionExpert·PanelUIExpert·StableDevelopmentProtocol
+        ·SubAgentExecution·WebSocketExpert}/SKILL.md · .claude/agents/{client-pm·code-mapper·doc-auditor
+        ·doc-historian·doc-keeper·lead-pm …}.md
+        예: 「완료 후 `agent_workspace/reports/` 에 … 리포트」 · 「통신 디렉토리 구조(`agent_workspace/`)」
+내용    reports 179 · memory 10 · archive 7 · prompts 4 · ui_preview 3 · mockups 3 — 08-23 정지
+```
+🔴 **「산출물 209」와 「우편함 경로」는 다른 것입니다.** 산출물을 지워도 프로토콜은 안 깨지지만, **디렉터리가 사라지면 그 정의들이 «없는 자리»를 가리킵니다.** 갈래 둘:
+```
+㉠ 산출물 209 만 지우고 «디렉터리 계약은 그대로»   (정의 아홉 무변, 다음 에이전트가 다시 만듦)
+㉡ 209 + 정의 아홉의 그 줄까지                    (그 프로토콜을 «은퇴»시키는 것 — 반경이 다릅니다)
+제 권고: ㉠. ㉡ 은 「청소」가 아니라 «운영 방식 변경»이고 이 라운드의 것이 아닙니다
+```
+
+### 📄 미추적 — 지시는 «아홉»인데 오늘 **열하나**입니다 (지우지 않고 표만)
+```
+이름                                     크기        mtime
+.claude/settings.local.json.bak-0037     15,690     2026-08-24 00:37
+084x                                    0     2026-08-24 08:55   🔴 «깨진 이름»(U+F03A = ':' 대체)
+main.js175                              0     2026-08-24 09:52   🔴 같은 부류
+file                                          0     2026-09-09 13:01   🆕 지시 목록에 «없던» 것
+다시                                          0     2026-09-09 13:01   🆕 지시 목록에 «없던» 것
+_seedkeys.json                              237     2026-08-23 21:17
+ids.txt                                     622     2026-08-23 17:04
+server/h.json                             2,176     2026-09-04 07:46
+sg.json                                 109,781     2026-08-23 17:04
+spotfire-style-ontology-rnd-view.zip    393,585     2026-08-23 19:06
+outputs/syn_p/                            (DIR)     2026-09-08 14:42   🆕 빈 디렉터리
+```
+⚠️ 0 바이트 넷 중 둘(`file`·`다시`)은 «같은 분»에 생겼습니다 — 리다이렉션 사고로 보입니다. 소유자가 고르실 것이고 저는 손대지 않습니다.
+
+### 게이트 (실행 계획)
+```
+스위트 무변 (6,254 수집 · 지금 값 대조)   ·   런처 넷 실행: uvicorn main:app · run_watcher · run_chain_worker
+                                             · run_auto_update · run_app.bat (존재 확인 완료)
+CODE_MAP 링크 0 깨짐  -> 응용 D-21 로 넘김(지시대로)
+```
+
+> 📌 **[09-13 11:26] 이 채널의 미답 질문: «넷».**
+> ① `server/notebooks/` 남김 (제 권고: 예 — 가이드가 정본으로 가리킴)
+> ② `server/scratch/` 처분 ㉠/㉡ (제 권고: ㉡ — 둘째 사본 제거, 게이트 나르개 다섯→넷)
+> ③ `M1_SOURCE_CONFIG_REF.RETIRED.md` 남김 (제 권고: 예 — 코드가 열셋 자리에서 인용)
+> ④ `agent_workspace/` ㉠/㉡ (제 권고: ㉠ — 산출물만, 프로토콜은 그대로)
+> 판정 주시면 «한 커밋»으로 착지합니다. ①③ 이 「예」면 삭제 23 + 아카이브 6 이 이번 커밋의 전부입니다.
