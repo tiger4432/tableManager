@@ -152,6 +152,15 @@ def test_the_functional_parser_example_still_defines_the_name_the_guide_teaches(
     path = os.path.join(EXAMPLES_DIR, "custom_parser_template.py")
     spec = importlib.util.spec_from_file_location("s209_authoring_example", path)
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    # ⛔ NO `__pycache__` IN SOMEONE ELSE'S WORKING TREE. Executing a module writes a `.pyc`
+    # beside it, and that directory is another repository - the application lane had to
+    # untrack one this test produced. A compiled copy of a source file is a second copy of
+    # it, which is the very defect that repo's guide warns about two sections along.
+    written = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = written
 
     assert callable(module.parse_file)

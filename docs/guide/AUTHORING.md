@@ -35,7 +35,7 @@ C:/Users/kk980/Developments/assyManager-authoring/      이 저장소의 «형�
 ```
 @mapper            server/mapper_sdk.py :339      체인 맵퍼 등록 (이름 -> MAPPER_REGISTRY :253)
 parse_file         assyManager-authoring/examples/custom_parser_template.py   함수형 파서의 계약 전부
-                   🔴 이 이름은 «저장소 코드에 없습니다»(추적 전건 0) — 아래 「⚠️」 참조
+                   🔴 «미배선 — S-213». 이 이름을 부르는 자리가 코드에 없습니다. 아래 「⚠️」
 match · process_dataframe   server/parsers/pipeline_base.py :15 · :22   클래스형 파서의 훅 둘
 ```
 그 이름이 바뀌면 제품이 «거절로» 말합니다. 그 밖의 것(파일 배치·헬퍼·예제 경로)은 약속이 아닙니다.
@@ -44,8 +44,10 @@ match · process_dataframe   server/parsers/pipeline_base.py :15 · :22   클래
 추적 파일 전건에서 그 낱말이 이 문서와 `SERVER_FILE_MAP.md` «둘»뿐이고, 워크스페이스 스크립트를
 집는 자리(`server/parsers/directory_watcher.py` :1157)는 `BasePipelineParser` 의 «하위 클래스»만
 찾습니다. 즉 함수형 길의 계약은 옮겨 간 템플릿의 «머리 주석»에만 살아 있었습니다.
-`server/tests/test_the_authoring_guides_name_entry_points_that_exist.py` 가 이 상태를 잽니다 —
-판정 대상이지 이 문서가 정할 것이 아닙니다.
+`server/tests/test_the_authoring_guides_name_entry_points_that_exist.py` 가 이 상태를 잽니다.
+🔴 **그래서 오늘 그 길로 가면 «침묵»입니다** — 파일은 실리고, 아무것도 등록되지 않고, 오류도
+안 납니다. 짓느냐(워처가 모듈의 함수도 줍게) 지우느냐(문서에서)는 **S-213**(판정 352)이고,
+그때까지 이 이름은 «약속이 아닙니다».
 
 ## 왜 밖인가
 
