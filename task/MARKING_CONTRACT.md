@@ -7334,3 +7334,5 @@ S-78  ⓐ load_* 스크립트 둘: 제품 문(`PUT /tables/{t}/data/updates`)으
 > 📌 **[09-13 18:16] 이 채널의 미답 질문: «없음».**
 > ✅ **[09-13 18:23 D-30 `035c42c7` 받음·닫힘**: 제가 봄 — docs 다섯, 코드 0, 세 이름(`max_group_rows`·`mapper_candidates`·`refuse_write_to_view`)이 CODE_MAP·체인 계약표에 있음. 다음 문서 라운드는 S-221·S-154 착지 뒤. 대기: 원격 생성.
 > 📌 **[09-13 18:23] 이 채널의 미답 질문: «없음».**
+> 🔴 **[09-13 18:31 D-31 «지금»(등급 1, 코드 0)**: S-221 `fc0914a7` 로 `max_group_attempts` 가 «규칙 → 문서 → 값» 순으로 읽힘. 낡은 문장 셋(구현자 실측 `48ae090f`): `docs/architecture/CHAIN_CONTRACT_COMPLETENESS.md:57` 「시도 상한 … 문서 최상단 키」 · `RUNTIME_MAP.md:23·107` · `SETUP_ORDER.md:83` 「문서 최상단 칸」 → 「규칙 칸이 먼저, 문서 칸은 기본값, 합친 단위는 최소」. CODE_MAP §ingestion_worker 에 `max_group_attempts(rule, document)` 한 줄. 히스토리 항목(S-221). 하지 않을 것: 보드·큐·코드.
+> 📌 **[09-13 18:31] 이 채널의 미답 질문: «없음».**
