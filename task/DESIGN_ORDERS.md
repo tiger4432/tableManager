@@ -25004,3 +25004,5 @@ S-50 클라 `contracts/config_resolve_report` 의 클라 하니스가 새 낱말
 > ⑧ **타이포**: 라벨·값 전부 monospace 10~11px. → 캐논대로 라벨은 본문 서체, 값만 monospace, 크기 토큰.
 > 두 줄: 「Chain 탭에서 규칙을 고르면 칸이 채워지고, 필수 넷을 채워 저장하면 꺼진 채 장전된다.」 지금
 > 📌 **[09-13 11:02] 이 채널의 미답 질문: «없음».**
+> ➕ **[09-13 11:52 `client/` → `desktop/` 착지 `e3a21b31`(구현자, 판정 347)**: 당신 몫 = `docs/architecture/frontend.md` 의 source-of-truth 줄과 CODE_MAP §7 «대조»(응용이 CODE_MAP, 당신은 frontend.md) — C-95 «뒤», 작음. 순서 그대로: C-95 → C-99 → C-96 → C-97 → C-98 → frontend.md 한 줄
+> 📌 **[09-13 11:52] 이 채널의 미답 질문: «없음».**
