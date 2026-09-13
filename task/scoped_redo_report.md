@@ -41949,3 +41949,58 @@ server/mappers/*.py (소유자 파일, 추적 안 됨, 제가 «고칠 수 없�
 ```
 
 > 📌 **[09-13 13:05] 이 채널의 미답 질문: «하나» — ㉠/㉡/㉢. 트리는 HEAD 원복, 수집 6,291 정상, 박스 무사입니다.**
+
+---
+
+## ✅ [09-13 14:22] S-211 패키지화 — **착지했습니다** (`aa77a2fe`, 253 파일) · 재기동 «필요»
+
+### 결과
+```
+36 모듈 -> 8 패키지 (chain · virtual_join · ledger · maps · enrichment · ingestion · runtime · admin)
+최상위 잔류 32   (앵커 둘 + 운영자 약속 열하나 + 억지로 안 넣은 나머지)
+스위트   6,151 passed / 156 skipped / 4 xfailed / «0 failed»  exit 0
+런처 넷 · 옛 이름 import 0 · 접두 여덟 무변 · 문 시험 · 맵퍼 약속 게이트  전부 초록
+```
+
+### 🔴 「수집 초록」은 게이트가 «아니었습니다» — 두 번 증명됐습니다
+```
+적용 1회차   수집 6,312 «깨끗» -> 스위트 152 failed · 297 errors
+원인(제 결함) 재작성기가 «속성의 밑동»만 개명했습니다.
+             `monkeypatch.setattr(ledger_admin, …)` 처럼 «값으로 넘기는» 모듈은 옛 이름 그대로
+=> import 줄이 «파싱된다»는 것은 그 이름이 «실행될 때» 산다는 뜻이 아닙니다
+고침         그 파일이 실제로 import 한 이름의 «모든 Load» 를 개명
+꼬리         449 -> 92 -> 12 -> 1 -> «0»
+```
+
+### 재작성기가 «구조적으로 못 보는» 참조 다섯 — 전부 «돌려서» 찾았습니다
+```
+설정 문자열      "mapper_module": "enrichment_mapper"   <- «한 줄»이 34 실패였습니다
+서브프로세스 코드  시험이 문자열로 넣어 자식에서 도는 import
+소스 오라클      open(SERVER, "chain_ingestion_worker.py") 같은 «경로 리터럴»
+속성 패치 대상    setattr(trace_router.ledger_trace, …)  <- 모듈의 «공개 속성 이름»이 바뀝니다
+시험 파라미터     SENDERS = [… "chain_ingestion_worker"]
+```
+🔵 **그리고 문자열을 «일부러» 안 건드린 것이 옳았습니다** — `SOURCE_NAME = "enrichment_backfill"` 은 `cell_sources` 에 쓰이는 «출처 값»이고, `OPERATIONS` 의 키는 클라가 보내는 «연산 이름»입니다. 정규식이었으면 저장된 데이터와 API 를 «조용히» 깨뜨렸습니다.
+
+### 🔴 점 표기(판정 363)가 «만든» 결함 둘 — 저장소 전수로 쓸었습니다
+```
+① 함수 안 `import enrichment.candidates` 가 그 함수 «전체»에서 `enrichment` 를 지역으로 만듭니다
+   -> 같은 함수의 «앞쪽» `enrichment.config…` 가 UnboundLocalError. «제품 코드»에 하나 있었습니다
+   고침: 그 자리들을 `from enrichment import config as _enrichment_config` 로 «일률»(일부만
+         고치니 별칭을 안 묶은 함수가 NameError — 그래서 파일 전체를 한 규칙으로)
+② 지역 변수 이름이 «패키지와 같으면» 같은 줄의 `enrichment.config` 가 죽습니다
+   -> 평면 이름(`enrichment_config`)일 때는 «없던» 충돌입니다. 9 후보 중 실제 결함은 이 하나
+```
+
+### ⚠️ 남은 고리 하나 — 이 라운드 것이 «아닙니다»
+`database.database` ↔ `db_safety`, 지연 import 로 벌려 둔 상태(S-211 ① 이 끊은 것과 «같은 모양»). 두 파일 다 이번에 안 움직였고, «모집단을 68 에서 전 모듈로 넓히니» 보였습니다. 손대지 않았습니다.
+
+### 제 실수 둘 (기록)
+```
+① `git reset --hard` 로 패키지화를 되물리며 «미커밋이던 다른 넷»(능력 검사·약속 목록·맵퍼 게이트
+   ·프로브 셋)을 같이 날렸습니다. 자기완결적이고 초록이면 «먼저 커밋»했어야 합니다
+② 커밋 메시지 파일을 python 이 못 읽어 «옛 문구»로 착지 -> amend.
+   Git Bash 의 `/tmp` 와 Windows python 의 `/tmp` 가 «다른 곳»입니다
+```
+
+> 📌 **[09-13 14:22] 이 채널의 미답 질문: «없음».** 다음: **S-216**(선언 라우트가 `absence_confirmed_by` 를 싣기).
