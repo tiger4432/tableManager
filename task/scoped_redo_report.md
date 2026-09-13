@@ -41502,3 +41502,74 @@ chain_ingestion_worker ──> chain_builtins  :576 :1714 :2325  모듈 전체
 ⚠️ 그리고 **이 셋 중 무엇을 고르든 «패키지화»는 그 뒤입니다** — 넷이 한 고리인 동안에는 경계 표의 `chain/*` 이 `virtual_join_executor` 를 삼키거나 뱉거나 둘 중 하나여야 하는데, 그 판단이 이 고리에 달려 있습니다.
 
 > 📌 **[09-13 12:09] 이 채널의 미답 질문: «하나» — 남은 넷 고리의 갈래(㉮/㉯/㉰, 제 권고 ㉯ 먼저).**
+
+---
+
+## 🔴 [09-13 12:14] S-211 ㉯ — **짓지 않았습니다.** 재 보니 그 이동이 고리를 «안 줄입니다» (코드 0줄)
+
+판정 357 의 게이트가 「그 쌍 지연 0 · SCC 4→3」인데, **둘 다 ㉯ 로는 안 됩니다.** 짓기 전에 재서 올립니다.
+
+### ① `load_chain_rules` 는 «선언 독자»가 아닙니다 — 일곱 가지를 합니다
+```
+✅ 선언 읽기    read_rules_document() (S-201, 이미 «상태 없는 독자»)
+🔴 워커 상태    global _RULES_DOCUMENT  <- 읽는 자리 «셋»: max_rows_not_visible_defers(:420)
+                                        · max_group_attempts(:442) · max_chain_depth(:3207)
+✅ 문법 판정    chain_bindings.rule_refusals   (고리 «밖»)
+✅ 경고         mapper_sdk 의 flat cell · 미선언 param  (고리 «밖»)
+🔴 합성         chain_builtins.synthesize_chain_rules   <- **고리 «안»**
+🔴 워커 함수    _validate_chain_cascade_graph · _report_unwatchable_trigger_columns
+🔴 부작용       chain_activity.registry.seed_rules(...)
+```
+지시가 「워커 상태를 들면 어디를 드는지 한 줄」이라 하셨으니: **`_RULES_DOCUMENT` 이고, 읽는 자리가 셋입니다.**
+
+### ② 그리고 «옮겨도» 고리가 그대로입니다 — 자리만 바뀝니다
+```
+chain_replay 가 필요한 것   「워커가 보는 것과 «똑같은» 규칙 집합 — 합성 포함」 (그 함수 docstring 의 계약)
+그런데 합성은             chain_builtins 에 있고, 그것이 «고리 구성원»입니다
+=> 가벼운 모듈 M 을 만들면   replay -> M -> chain_builtins -> virtual_join_executor -> replay
+                          «같은 고리»가 M 을 하나 더 끼고 돌아옵니다. 모듈만 늘고 넷은 그대로입니다
+```
+🔴 **이것이 ① 라운드와 «다른» 이유:** 거기서 내린 것은 «문장»이라 아래에 아무것도 안 딸려 왔습니다(그 모듈은 stdlib 만 import 합니다). 여기서 내릴 것에는 «합성»이 딸려 오고, 합성은 고리 구성원입니다.
+
+### ③ 그리고 `chain_replay → chain_ingestion_worker` «쌍»은 :153 만으로 안 없어집니다
+```
+:153  load_chain_rules      (선언 읽기)
+:265  execute_custom_mapper (행위)   <- 이게 남으면 «쌍»은 그대로 엣지입니다
+=> 「그 쌍 지연 0」도, 「SCC 4→3」도 ㉯ 로는 도달 못 합니다 (시뮬레이션으로 확인)
+```
+
+### 🔵 대신 «값싼 답»이 실측에서 나왔습니다 — 이 고리는 **단순 4-고리**입니다
+```
+chain_builtins ──:82──> virtual_join_executor ──:860──> chain_replay ──:265──> chain_ingestion_worker ──:576/1714/2325──> chain_builtins
+=> 넷 중 «아무 하나»를 끊으면 SCC 가 4→«0» 입니다 (3 이 아니라 «사라집니다»)
+```
+
+### 판정 357 이 시킨 표 — 「같은 트랜잭션인가 별도 작업인가」
+```
+엣지                                무엇을 부르나            트랜잭션            판별
+builtins :82 -> executor           on_target/reference_    «같은» txn          체인 드레인이 자기 빌트인을
+                                   rows_changed (조인 실행)  (run_builtin 이 db 를 그대로 넘김)   실행하는 것. 내부
+worker :576… -> builtins           synthesize · dispatch    «같은» txn          같은 부류
+replay :265 -> worker              execute_custom_mapper    «별도 작업»         replay 는 운영자 배치이고
+                                                           (replay 가 «청크마다» 자기 커밋)      자기 커밋 경계를 가집니다
+                                                           => 「부르지 말고 큐로」가 아니라
+                                                              «한 실행기가 둘로 쪼개진 것» 쪽입니다
+executor :860 -> replay            withdraw_source          «같은» txn          🔵 «남의 집에 있는 프리미티브»
+                                   (레이어 철회)             (db 를 그대로 넘김)   — 철회는 replay 의 «행위»가
+                                                                                아니라 둘 다 쓰는 «연산»입니다
+```
+
+### 권고 «하나» (판정 357 이 요구한 대로)
+```
+🔵 `virtual_join_executor -> chain_replay` (:860) 를 끊습니다 — 호출 «하나»입니다
+   `withdraw_source` 는 replay 의 행위가 아니라 «레이어 철회 프리미티브»입니다. 실행기도 replay 도
+   그것을 «씁니다». ①에서 문장을 내린 것과 «같은 기제»이고, 여기서는 연산을 내립니다
+   딸려 오는 것(실측): ReplayRefused · PROTECTED_SOURCES · DEFAULT_CHUNK_SIZE 셋.
+   그 셋은 replay 의 «상수와 예외»라 같이 내리고 replay 가 그것을 읽습니다(둘째 철자 0)
+   비용: 함수 하나 + 상수 셋 이동. 효과: 4-고리가 «통째로» 사라짐
+⚠️ :265(`execute_custom_mapper`)는 「같은 기능 두 경로」라 «합치는» 쪽이 맞지만, 그건 실행 경로를
+   건드리는 «큰» 변경입니다. 위의 :860 을 끊으면 고리가 이미 없어지므로 «급하지 않습니다»
+```
+
+> 📌 **[09-13 12:14] 이 채널의 미답 질문: «하나» — ㉯ 대신 :860 을 끊을까요(권고: 예). 코드 0줄로 대기합니다.**
+> ⚠️ 판정 357 의 게이트 둘(「쌍 지연 0」·「SCC 4→3」)은 ㉯ 로는 «도달 불가»이고, :860 을 끊으면 「SCC 4→0」이 됩니다.
