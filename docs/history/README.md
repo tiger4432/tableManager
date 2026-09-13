@@ -1,13 +1,14 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **846개** 이력. (거버넌스 규칙 #4)
+> 총 **847개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-09 (September 2026)
 
+- **2026-09-13 18:33** — [The Cell The Form Drew And Nobody Read](./20260913_183342_the_cell_the_form_drew_and_nobody_read.md)
 - **2026-09-13 18:21** — [Three Evening Landings That All Named What They Refuse](./20260913_182111_three_evening_landings_that_all_named_what_they_refuse.md)
 - **2026-09-13 17:21** — [Two Of The Three Basis Tests Came Back False](./20260913_172130_two_of_the_three_basis_tests_came_back_false.md)
 - **2026-09-13 16:05** — [The Mapper Call Got Its Own House](./20260913_160518_the_mapper_call_got_its_own_house.md)

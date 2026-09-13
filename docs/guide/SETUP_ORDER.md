@@ -80,7 +80,7 @@ strip 뒤 길이가 0 이면 — NULL 이고, 키를 «견주는» 자리에서�
 📎 규칙 «하나»의 모양은 `server/chain_skeleton.json` 이 들고 있고, 그 파일은 위 목록에서 «생성»됩니다 —
 손으로 맞추는 둘째 목록이 아닙니다. ⚠️ 다만 **모양은 스켈레톤, 「무엇이 좋은가」는 로더**입니다.
 
-⚠️ 문서 «최상단»의 `max_group_attempts`(기본 1)와 `max_rows_not_visible_defers`(기본 30)는 규칙이 아니라
+⚠️ 🆕 **[2026-09-13 S-221 `fc0914a7`] `max_group_attempts` 는 이제 «규칙 칸이 먼저»이고 문서 칸은 «기본값»이다**(합친 단위는 최소). `max_rows_not_visible_defers`(기본 30)는 문서 «최상단»이고 규칙이 아니라
 «문서»의 칸이고, SYSTEM_RELOAD 로 반영된다(재기동 불필요).
 📎 [CHAIN_CONTRACT_COMPLETENESS](../architecture/CHAIN_CONTRACT_COMPLETENESS.md) · [chain_ingestion_guide](./chain_ingestion_guide.md)
 
