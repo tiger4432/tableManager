@@ -2321,7 +2321,9 @@ def _git_sha() -> str | None:
        (아카이브 추출·컨테이너 COPY), 그때는 이 함수가 None을 돌려주고 아래 문장이
        「기록되지 않은 체크아웃」이라고 **사실대로** 말한다.
     """
-    here = os.path.dirname(os.path.abspath(__file__))
+    import paths
+
+    here = paths.SERVER_DIR
     for _ in range(4):                       # server/ → repo root 정도까지만 올라간다
         head = os.path.join(here, ".git", "HEAD")
         try:

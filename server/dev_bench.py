@@ -296,7 +296,7 @@ def _default_scripts_path():
 
         return os.path.join(paths.workspace_path(), "scripts")
     except Exception:
-        return os.path.join(os.path.dirname(os.path.abspath(__file__)), "scripts")
+        return os.path.join(paths.SERVER_DIR, "scripts")
 
 
 # ---------------------------------------------------------------------------
@@ -761,8 +761,7 @@ def publish_mapper(name, params, body_source, *, frame, expected, directory=None
 
     Returns `{path, who, rows}`; raises `PublishRefused` and leaves nothing behind otherwise.
     """
-    directory = directory or os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "mappers")
+    directory = directory or os.path.join(paths.SERVER_DIR, "mappers")
     target = _publish_target(directory, name)
 
     source = MAPPER_TEMPLATE % {"name": name, "params": tuple(params or ()),

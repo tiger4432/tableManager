@@ -3085,7 +3085,10 @@ async def start_chain_ingestion_worker(db_session_factory):
     loop_wake_ts = None
 
     import sys
-    script_dir = os.path.dirname(os.path.abspath(__file__))
+
+    import paths
+
+    script_dir = paths.SERVER_DIR
     if script_dir not in sys.path:
         sys.path.append(script_dir)
 

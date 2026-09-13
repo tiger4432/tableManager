@@ -132,7 +132,9 @@ def _migration_sources():
     """Every file that could carry an ADD COLUMN, as {relative path: text}."""
     global _SOURCE_CACHE
     if _SOURCE_CACHE is None:
-        repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        import paths
+
+        repo = paths.REPO_ROOT
         _SOURCE_CACHE = {}
         for pattern in _MIGRATION_GLOBS:
             for path in glob.glob(os.path.join(repo, pattern)):
