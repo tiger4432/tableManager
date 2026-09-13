@@ -279,7 +279,9 @@ def test_the_sort_carries_no_nulls_directive_so_the_index_can_answer_it():
         dt_lot = Column(String)
 
     for descending in (True, False):
-        clause = main._order_by_clause(_Row.dt_lot, _Row.row_id, descending)
+        # ⚠️ THE TIEBREAKER IS A TUPLE SINCE S-229 - a relation's total order can be
+        #    several columns, and this one's is the single `row_id`.
+        clause = main._order_by_clause(_Row.dt_lot, (_Row.row_id,), descending)
         rendered = " ".join(str(c) for c in clause).upper()
 
         assert "NULLS" not in rendered, rendered

@@ -91,12 +91,12 @@ def test_row_id_wins_wherever_it_exists():
     """🔴 THE REGRESSION LINE. Every table that has `row_id` must keep it as its total
     order, or S-131's index path dies across the whole grid."""
     model = _Model(row_id="ROWID_COL", id="ID_COL", k="K_COL")
-    assert main.total_order_key(model, TABLE) == "ROWID_COL"
+    assert main.total_order_keys(model, TABLE) == ("ROWID_COL",)
 
 
 def test_a_relation_without_row_id_falls_to_its_declared_business_key():
     model = _Model(id="ID_COL", occurred_at="TS_COL")
-    assert main.total_order_key(model, VIEW) == "ID_COL"
+    assert main.total_order_keys(model, VIEW) == ("ID_COL",)
 
 
 def test_a_relation_with_neither_is_refused_by_name_not_paged_anyway():
@@ -107,7 +107,7 @@ def test_a_relation_with_neither_is_refused_by_name_not_paged_anyway():
 
     crud.TABLE_CONFIG[VIEW] = {"kind": "view", "column_types": {"id": "string"}}
     with pytest.raises(HTTPException) as caught:
-        main.total_order_key(_Model(id="ID_COL"), VIEW)
+        main.total_order_keys(_Model(id="ID_COL"), VIEW)
     assert caught.value.status_code == 422
     assert "R7" in str(caught.value.detail)
     assert VIEW in str(caught.value.detail)
@@ -120,7 +120,7 @@ def test_a_business_key_naming_a_column_the_model_lacks_is_refused():
 
     crud.TABLE_CONFIG[VIEW]["business_key"] = "not_a_column"
     with pytest.raises(HTTPException):
-        main.total_order_key(_Model(id="ID_COL"), VIEW)
+        main.total_order_keys(_Model(id="ID_COL"), VIEW)
 
 
 # ---------------------------------------------------------------------------
@@ -204,7 +204,7 @@ def test_a_view_declaring_no_business_key_is_still_mappable_but_refused_at_read(
     crud.TABLE_CONFIG["s186_keyless_view"] = cfg["s186_keyless_view"]
     try:
         with pytest.raises(HTTPException) as caught:
-            main.total_order_key(model, "s186_keyless_view")
+            main.total_order_keys(model, "s186_keyless_view")
         assert "R7" in str(caught.value.detail)
     finally:
         crud.TABLE_CONFIG.pop("s186_keyless_view", None)

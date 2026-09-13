@@ -886,7 +886,12 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
         #
         # ⚠️ Times go through `to_local_str`: a raw datetime makes the payload
         # non-JSON-native and the route's own warning prices that at ~10x.
-        key_name = total_order_key(models.DYNAMIC_TABLES.get(table_name), table_name).key
+        # 🔴 [S-229] THE ROW'S IDENTITY IS ITS KEY, COMPOSED THE WAY THE TABLE DECLARES.
+        # The grid needs one `row_id` per row, and a composite-keyed view has no single
+        # column carrying it - so the parts are joined by `crud.compose_business_key`, the
+        # one spelling of an identity, rather than by a separator invented here.
+        key_names = [key.key for key in
+                     total_order_keys(models.DYNAMIC_TABLES.get(table_name), table_name)]
         out = []
         for row in rows:
             cells = {}
@@ -895,7 +900,9 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
                 cells[col] = {"value": wire_text(
                     to_local_str(value) if isinstance(value, datetime) else value)}
             out.append({
-                "row_id": getattr(row, key_name, None),
+                "row_id": (getattr(row, key_names[0], None) if len(key_names) == 1
+                           else crud.compose_business_key(
+                               table_name, [getattr(row, name, None) for name in key_names])),
                 "table_name": table_name,
                 "data": cells,
                 "created_at": to_local_str(getattr(row, "created_at", None)),
@@ -1653,8 +1660,11 @@ class VirtualColumnBinder:
 #: `?order_by=` 이름 중 표의 컬럼이 «아닌» 셋. 화면이 오늘 보내는 철자이고 각자 자기
 #: 정렬식과 tie-breaker 를 들고 있다. 아래 일반 갈래와 «두 경로»가 아닌 이유는 이 셋이
 #: 컬럼 이름이 아니어서다 — `id` 는 `business_key_val` 의 화면 철자다.
-def _order_by_clause(expr, tie, order_desc):
-    """`ORDER BY` for one sort: the column, then `row_id` to break its ties.
+def _order_by_clause(expr, keys, order_desc):
+    """`ORDER BY` for one sort: the column, then the total-order key(s) to break its ties.
+
+    ⚠️ `expr` MAY BE None — the sort IS the key, and repeating it as its own tiebreaker
+    would emit the same column twice (S-229).
 
     ⚰️ THIS CARRIED A FALSE SENTENCE ABOUT POSTGRESQL AND IT COST 0.7 s A PAGE (S-131).
     The version added by `8e462875` (A-6-c) said 「Ascending, SQL puts NULLs first on
@@ -1682,13 +1692,28 @@ def _order_by_clause(expr, tie, order_desc):
     of them - the class this repository keeps meeting (`두 경로가 갈라진다`). `row_id`
     is the primary key and never NULL, so the tie-break needs nothing.
     """
-    ordered = expr.desc() if order_desc else expr.asc()
-    return [ordered, tie.desc() if order_desc else tie.asc()]
+    def directed(column):
+        return column.desc() if order_desc else column.asc()
+
+    terms = [] if expr is None else [directed(expr)]
+    return terms + [directed(key) for key in keys]
 
 
-def total_order_key(table_model, table_name):
-    """The column that gives this relation a TOTAL order — `row_id`, or the catalogue's
-    `business_key` where there is none (S-186, 판정 296).
+def total_order_keys(table_model, table_name):
+    """The columns that give this relation a TOTAL order — `row_id`, else the catalogue's
+    `business_key`, else its `composite_key_source` (S-186 · S-229).
+
+    🔴 PLURAL, BECAUSE FOUR OF THE SHIPPED VIEWS ARE KEYED BY A PAIR OR MORE. Measured in
+    `table_config.json.sample`: of eleven `kind: view` relations, FOUR declare neither
+    `row_id` nor `business_key` and DO declare `composite_key_source` — `bonding_core_lot`
+    (base_id, core_wafer), `bonding_core_die`, `lot_slot_move`, `bonding_die_from_core`.
+    Reading one column meant those four were refused under R7 and the operator saw an empty
+    grid for a relation the catalogue fully describes.
+
+    🔴 THE COMPOSITE IS NOT A NEW CELL. `composite_key_source` is what composes
+    `business_key_val` for an ordinary table — the declaration ALREADY says 「these columns
+    are this row's identity」, and an identity is exactly what a total order needs. Adding a
+    cell for the order would be a second expression of the same fact.
 
     🔴 ONE FUNCTION, THREE CALLERS, because the alternative is three places that answer
     「what breaks this table's ties」 and drift. The tiebreaker, the default sort and the
@@ -1709,30 +1734,47 @@ def total_order_key(table_model, table_name):
     """
     column = getattr(table_model, "row_id", None)
     if column is not None:
-        return column
-    declared = (crud.TABLE_CONFIG.get(table_name) or {}).get("business_key")
+        return (column,)
+    entry = crud.TABLE_CONFIG.get(table_name) or {}
+    declared = entry.get("business_key")
     column = getattr(table_model, str(declared), None) if declared else None
-    if column is None:
-        raise HTTPException(
-            status_code=422,
-            detail=("'%s' has no row_id and declares no usable business_key, so a paged "
-                    "read of it has no total order (SCHEMA_CANON R7). Declare "
-                    "business_key in table_config.json." % table_name))
-    return column
+    if column is not None:
+        return (column,)
+
+    # 🔴 [S-229] THE COMPOSITE THE CATALOGUE ALREADY DECLARES. Every name has to resolve: a
+    # composite missing one of its parts is not a narrower key, it is a key that does not
+    # identify the row, and ordering by the rest would hand out a different page per refresh
+    # — the very thing R7 exists to stop.
+    parts = []
+    for name in (entry.get("composite_key_source") or ()):
+        part = getattr(table_model, str(name), None)
+        if part is None:
+            parts = []
+            break
+        parts.append(part)
+    if parts:
+        return tuple(parts)
+
+    raise HTTPException(
+        status_code=422,
+        detail=("'%s' has no row_id and declares no usable business_key or "
+                "composite_key_source, so a paged read of it has no total order "
+                "(SCHEMA_CANON R7). Declare business_key or composite_key_source in "
+                "table_config.json." % table_name))
 
 
 def _named_sort(table_model, table_name, order_by, order_desc):
-    tie = total_order_key(table_model, table_name)
+    keys = total_order_keys(table_model, table_name)
 
     def pair(expr):
-        return _order_by_clause(expr, tie, order_desc)
+        return _order_by_clause(expr, keys, order_desc)
     if order_by == "updated_at":
         # ⚠️ A RELATION MAY NOT HAVE IT. `updated_at` is a layering column, and a `kind:
         # view` relation declared in the catalogue carries whatever the view carries — so
         # this falls through to the total-order key rather than raising on a name the
         # screen sends by default (S-186, 판정 296: 「updated_at 이 없는 표는 그 키만으로」).
         stamp = getattr(table_model, "updated_at", None)
-        return pair(stamp) if stamp is not None else pair(tie)
+        return pair(stamp) if stamp is not None else pair(None)
     if order_by == "id":
         return pair(table_model.business_key_val)
     if order_by == "row_id":
@@ -1744,9 +1786,9 @@ def _named_sort(table_model, table_name, order_by, order_desc):
         # grid sends `order_by=row_id` as its default for every table, so reading the
         # column directly here made that default unanswerable for a relation without one —
         # the third of the three seats, and one direct read is all it takes to make this
-        # two paths. `tie` IS `row_id` wherever it exists, so every table that has one
-        # renders byte-identical SQL.
-        return pair(tie)
+        # two paths. The total-order key IS `row_id` wherever it exists, so every table
+        # that has one renders byte-identical SQL.
+        return pair(None)
     return None
 
 
@@ -1789,7 +1831,7 @@ def resolve_sort(query, table_model, table_name, order_by, order_desc, binder):
                     "'row_id'." % (order_by, table_name)))
 
     return query, _order_by_clause(
-        expr, total_order_key(table_model, table_name), order_desc)
+        expr, total_order_keys(table_model, table_name), order_desc)
 
 
 def apply_column_filters(query, table_model, table_name, filters, binder):
@@ -2203,7 +2245,19 @@ def get_table_data(
         # column it does not have. One of the three seats reading `row_id` on its own is
         # all it takes to make this two paths; `target_row_id` stays the VALUE being
         # sought, and this is the column it is sought in.
-        order_key = total_order_key(table_model, table_name)
+        # ⛔ [S-229] A COMPOSITE-KEYED RELATION HAS NO SINGLE VALUE TO JUMP TO. Every branch
+        # below compares the key against `target_row_id`, which is ONE value the client sent;
+        # comparing it against the first part alone would seat the jump on a different
+        # ordering than the one the page uses. Refused by name, the same posture this block
+        # already takes for a sort name it cannot count - and the PAGE itself still works.
+        _keys = total_order_keys(table_model, table_name)
+        if len(_keys) > 1:
+            raise HTTPException(
+                status_code=422,
+                detail=("target_row_id cannot be resolved on '%s': its total order is the "
+                        "composite (%s), so no single value names a row. Drop target_row_id."
+                        % (table_name, ", ".join(key.key for key in _keys))))
+        order_key = _keys[0]
         # [Optimization] 타겟 행이 현재 검색 조건(query)에 부합하는지 PK를 활용해 초고속(1ms 이내) 검증
         target_row = query.filter(order_key == target_row_id).first()
         if not target_row:
@@ -2309,9 +2363,12 @@ def get_table_data(
     # sort, then re-fetch those rows by it — so this is the ordering path too, and reading
     # `row_id` here would break a relation that has none AFTER the sort had already been
     # taught to handle it. Same key the sort just used.
-    page_key = total_order_key(table_model, table_name)
-    id_results = query.with_entities(page_key).order_by(*final_sort).offset(skip).limit(limit).all()
-    id_list = [r[0] for r in id_results]
+    # 🔴 [S-229] THE IDENTIFIER MAY BE SEVERAL COLUMNS. A composite-keyed view has no single
+    # one, so the phase selects the whole key and the re-fetch matches on the whole key -
+    # taking the first part alone would pull in every row that shares it.
+    page_keys = total_order_keys(table_model, table_name)
+    id_results = query.with_entities(*page_keys).order_by(*final_sort).offset(skip).limit(limit).all()
+    id_list = [row[0] if len(page_keys) == 1 else tuple(row) for row in id_results]
     t_id_scan = time.time() - t_id_start
     
     t_row_start = time.time()
@@ -2321,12 +2378,25 @@ def get_table_data(
     user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
     
     # [정규화 스키마] 통합 ORM 쿼리 (SQLite/PostgreSQL 공용)
-    raw_rows = db.query(table_model).filter(page_key.in_(id_list)).all()
+    if len(page_keys) == 1:
+        matches = page_keys[0].in_(id_list)
+    else:
+        from sqlalchemy import tuple_ as _tuple
+
+        matches = _tuple(*page_keys).in_(id_list)
+    raw_rows = db.query(table_model).filter(matches).all()
     id_to_idx = {rid: i for i, rid in enumerate(id_list)}
     # ⚠️ THE INSTANCE ATTRIBUTE NEEDS THE KEY'S NAME, not its column — this restores the
     # page's order after an unordered `IN` fetch, and a hardcoded `x.row_id` would put
     # every row of a keyless relation at 999999.
-    raw_rows.sort(key=lambda x: id_to_idx.get(getattr(x, page_key.key, None), 999999))
+    _key_names = [key.key for key in page_keys]
+
+    def _row_position(row):
+        seen = (getattr(row, _key_names[0], None) if len(_key_names) == 1
+                else tuple(getattr(row, name, None) for name in _key_names))
+        return id_to_idx.get(seen, 999999)
+
+    raw_rows.sort(key=_row_position)
     t_row_scan = time.time() - t_row_start
     
     t_dict_start = time.time()
