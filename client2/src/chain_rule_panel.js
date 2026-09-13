@@ -47,6 +47,23 @@ export const CHAIN_RULE_REGISTRY = Object.freeze({
   // C-86 ③. 맵퍼 칸의 목록 이름. 값은 화면이 `GET /admin/mappers/list` 에서 받아 넣습니다 —
   // 이 파일은 «이름»만 대고 «목록»은 서버의 등록부입니다.
   choiceList: 'mappers',
+  // C-95 ②. 「첫 화면」은 «필수»가 아닙니다 — 다른 물음입니다.
+  //
+  // 🔴 실측(2026-09-13, `chain_bindings.RULE_ROUTING_REQUIRED`): 이 문법의 required 는
+  //    `name`·`trigger_table` «둘»뿐입니다. `target_table` 과 `mapper` 는 «선택»이고, 그 이유가
+  //    그 파일 자기 주석에 적혀 있습니다 — 코드에 기본값이 있거나 데코레이터가 댈 수 있습니다.
+  //    그래서 이 둘을 「필수」라고 적으면 «거짓»이 되고, required 를 여기 다시 적으면 저자가
+  //    둘이 됩니다. 이 목록은 그 둘 중 어느 것도 아닙니다 — 「이것 없이 규칙을 읽을 수 있나」입니다.
+  //    ⚠️ 규칙이 «쓰는 표»와 «도는 코드»를 안 보고는 규칙을 못 읽습니다. 그리고 맵퍼가 안 풀리면
+  //       저장이 `unresolvable_mapper` 로 거절됩니다 — 첫 화면에서 보이지 않으면 그 거절이
+  //       「고급」 뒤에서 옵니다.
+  firstScreen: ['target_table', 'mapper'],
+  // C-95 ③. 맵퍼를 대는 «두 철자». 로더가 둘 다 읽습니다(`chain_bindings.mapper_cells`) —
+  // 하나가 이름 하나, 다른 하나가 module + function 입니다. 화면이 둘을 같이 내놓으면
+  // 운영자가 「둘 다 적어야 하나」를 묻게 되고, 실측에서 그 셋이 한 화면에 서 있었습니다.
+  // ⚠️ 가려진 철자는 「고급」에 있습니다 — 없애면 오늘 module+function 으로 적힌 규칙을
+  //    한 칸짜리로 «바꿀 길»이 사라집니다.
+  oneOf: [{ one: ['mapper'], other: ['mapper_module', 'mapper_function'], list: 'mappers' }],
 });
 
 /**

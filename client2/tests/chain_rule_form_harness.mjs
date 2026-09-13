@@ -148,9 +148,18 @@ function suite(M) {
   const addBtn = byCls(c.host, 'chain-rule-add')[0];
   ok(!!addBtn, 'C1 a registry that declares the word draws the add control');
   if (addBtn) addBtn.dispatch('click', {});
-  const nameBox = attrOf(c.host, 'data-new-name')[0];
-  ok(!!nameBox, 'C2 adding opens a NAME field -- the picker cannot offer a name that is not there');
-  if (nameBox) nameBox.value = 'gamma';
+  // 🔴 C-95. ONE PLACE TO TYPE THE NAME, and that place is the form's own `name` cell. The
+  //    second box beside the form was drawn WHILE the form drew `name` too, so the screen held
+  //    two name fields and could not say which one the save would read (measured 2026-09-13).
+  //    The claim is unchanged -- adding a rule asks for a name, and the save carries THAT name.
+  const asideBox = attrOf(c.host, 'data-new-name')[0];
+  const nameBox = walk(c.host).find((x) => x.attrs && x.attrs['data-value'] === 'name');
+  ok(!asideBox && !!nameBox,
+     'C2 adding asks for a name in ONE place -- the form`s own cell, not a second box beside it');
+  if (nameBox) {
+    nameBox.value = 'gamma';
+    nameBox.dispatch('change', { target: nameBox });
+  }
   const saveBtn = byCls(c.host, 'chain-rule-save')[0];
   if (saveBtn) saveBtn.dispatch('click', {});
   const sent = saves[saves.length - 1] || {};
@@ -160,6 +169,13 @@ function suite(M) {
   try { sentDoc = JSON.parse(sent.raw || 'null'); } catch (e) { sentDoc = null; }
   ok(sentDoc && typeof sentDoc === 'object' && !sentDoc.trigger_table,
     'C5 ... and an EMPTY document, not the rule that happened to be open');
+  // 🔴 C-95. The picker says WHICH rule is on the screen. It used to keep showing the rule that
+  //    was open while a new one was being written, so the one control that answers 「what am I
+  //    looking at」 answered wrong -- and it is the control a person checks before saving.
+  const shown = byCls(c.host, 'chain-rule-picker')[0];
+  const marked = shown ? shown.children.filter((o) => o.getAttribute('selected')) : [];
+  ok(marked.length === 1 && marked[0].value === M.NEW_NAME,
+     `C6 while a new rule is being written the picker says so -- [${marked.map((o) => o.value).join(',')}]`);
 
   // ── D: one document, two editors ─────────────────────────────────────────────────
   const saves2 = [];
@@ -250,9 +266,12 @@ const DEFECTS = [
     s => s.replace('    const root = spec.formRoot ? spec.formRoot(payload) : null;',
                    "    const root = spec.formRoot ? { kind: 'record', fields: ["
                    + "{ key: 'trigger_table', node: { kind: 'leaf', hint: 'free' } }] } : null;")],
+  // Re-aimed by C-95 at the same claim: the name the person typed must win over the one that
+  // was open. The cell it is typed into moved into the form, so this is where that now decides.
   ['the add control saves the name that was already open',
-    s => s.replace('        [spec.nameKey]: nameInput ? String(nameInput.value || \'\').trim() : view.name,',
-                   '        [spec.nameKey]: view.name,')],
+    s => s.replace('        if (formOwnsName) {', '        if (false) {')],
+  ['the picker keeps showing the rule that was open while a new one is written',
+    s => s.replace('    if (this.newMode && spec.addLabel) {', '    if (false) {')],
   ['a new rule starts from the rule that was open',
     s => s.replace('      const held = this.newMode\n'
                    + '        ? (emptyOf(root, (payload.skeleton || {}).defs) || {})\n',

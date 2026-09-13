@@ -29,6 +29,12 @@ import { emptyOf } from './ontology_skeleton.js';
 import { writeShapeAtPath } from './ontology_path.js';
 
 /**
+ * 고르개가 «새 이름을 짓는 중»일 때 입는 말. 🔴 철자가 «하나»입니다 — 그리는 쪽과 비교하는
+ * 쪽이 각자 적으면 둘이 갈라지고, 갈라진 날 고르개가 새 규칙을 «기존 이름처럼» 열려 합니다.
+ */
+export const NEW_NAME = '(새 규칙)';
+
+/**
  * 한 등록부의 «선언». 도메인 낱말은 «전부» 여기로 들어옵니다.
  *
  * @typedef {object} RegistrySpec
@@ -41,6 +47,17 @@ import { writeShapeAtPath } from './ontology_path.js';
  *      등록부에 버튼을 그리면 그 버튼은 거절을 만들러 가는 길입니다. 오늘 둘 다 받습니다
  *      (실측: `save_chain_rule_raw` 는 새 이름을 «꺼진 채로» 적고,
  *       `save_table_config_raw` 는 얕은 병합이라 새 키를 만듭니다).
+ * @property {string[]} [firstScreen]  「필수」는 아니지만 «첫 화면»에 서는 칸.
+ *   🔴 「required」와 «다른 물음»입니다. required 는 「없으면 거절되나」이고 스켈레톤이 답합니다
+ *      (실측 2026-09-13: 체인 규칙의 required 는 `name`·`trigger_table` «둘»). 이것은 「이것
+ *      없이 규칙을 읽을 수 있나」이고 그 답은 «등록부»의 것입니다. 두 물음을 한 목록으로 접으면
+ *      로더가 셋째를 요구하는 날 이 화면이 모릅니다.
+ *   ⚠️ 값이 있는 칸은 이 목록과 무관하게 첫 화면입니다 — 접기가 값을 숨기면 지운 것처럼 읽힙니다.
+ * @property {{one:string[], other:string[], list?:string}[]} [oneOf]  한 사실의 «두 철자».
+ *   🔴 둘을 «같이» 보이면 화면이 「둘 다 적어야 하나」를 묻게 만듭니다. 문서가 든 철자가 이기고,
+ *      아무것도 안 들었으면 `list` 가 답합니다 — «빈 목록»은 읽어서 안 사실(고를 것이 없음)이라
+ *      다른 철자가 서고, «못 읽음»은 모르는 것이라 기본 철자가 자기 상태를 그립니다(세 상태).
+ *   ⚠️ 가려진 철자는 «사라지지 않습니다» — 「고급」으로 갑니다. 없애면 철자를 바꿀 길이 없어집니다.
  * @property {string} [choiceList]  이 등록부의 «닫힌 목록» 이름 (예: 'mappers').
  *   🔴 칸 «이름»이 아닙니다. 스켈레톤이 `list` 로 이름을 대면 그 이름이 이기고, 안 대면 이
  *      등록부의 목록이 쓰입니다. 오늘 체인 스켈레톤은 `mapper` 를 `hint: 'choice'` 로만 내고
@@ -146,6 +163,17 @@ function formContext(skeleton, lists, choiceList) {
  * 🔴 «코드»만 답니다. 서버의 문장은 아래 거절 상자가 그대로 들고 있고, 같은 문장을 두 자리에
  *    그리면 한 사실이 두 번 읽힙니다. 주소가 뿌리(칸이 없음)이면 아무 칸도 안 짚습니다.
  */
+/** 그 요소의 «직계» 자식 중 그 클래스를 가진 첫 번째. 후손으로 내려가지 않습니다 —
+ *  가지 밑의 손자 줄을 집으면 거절이 «다른 칸»에 붙습니다. */
+function firstChildOf(el, cls) {
+  const kids = el && el.childNodes ? el.childNodes : [];
+  for (const kid of kids) {
+    const name = kid && typeof kid.className === 'string' ? kid.className : '';
+    if (name.split(' ').indexOf(cls) !== -1) return kid;
+  }
+  return null;
+}
+
 function markRefusedField(box, view, spec) {
   const refusal = view.refusal;
   if (!refusal || !refusal.path || !box.querySelector) return null;
@@ -161,7 +189,16 @@ function markRefusedField(box, view, spec) {
   tag.className = `${spec.cls}-field-refusal`;
   tag.setAttribute('data-refused', at);
   tag.textContent = refusal.code || '';
-  node.appendChild(tag);
+  // 🔴 그 칸의 «값 열»에 답니다. `[data-path]` 는 칸의 «상자»라서 거기 붙이면 코드가 줄
+  //    «아래» 한 줄로 떨어지고, 줄이 세 열짜리 격자가 된 뒤로는 그것이 줄의 결을 끊습니다.
+  //    ⚠️ 상태 열(필수·선택이 사는 곳)에 먼저 넣어 봤고 «재서» 물렸습니다 — 그 열은 92px
+  //       고정이라 `unresolvable_mapper` 가 카드 밖으로 넘쳤습니다. 값 열은 1fr 이고,
+  //       거기 붙으면 코드가 «그 입력 바로 아래»에 서서 어느 칸의 답인지가 자리로 보입니다.
+  //    열을 못 찾으면 종전대로 상자에 답니다.
+  // ⚠️ `:scope` 를 안 씁니다 — 하니스의 DOM 스텁이 못 읽는 선택자는 «조용히» 빗나갑니다.
+  const own = firstChildOf(node, 'oe-node-row');
+  const slot = own ? firstChildOf(own, 'oe-node-value') : null;
+  (slot || node).appendChild(tag);
   return tag;
 }
 
@@ -185,6 +222,10 @@ export class RawRegistryPanel {
     // 🔴 «새 이름»을 짓는 중인가. 패널의 상태이지 서버의 상태가 아니라서 여기 삽니다 —
     //    서버는 「이 이름이 파일에 있었나」만 알고, 그 답은 저장할 때 나옵니다.
     this.newMode = false;
+    // 🔴 접힘은 «사람이 둔 자리»입니다 — 응답의 성질이 아니라서 여기 삽니다. 다시 그릴 때
+    //    이 둘이 그대로라야 편집 한 번이 화면을 접어 버리지 않습니다.
+    this.moreOpen = false;
+    this.rawOpen = false;
     // 닫힌 목록(예: 맵퍼 등록부). 스켈레톤의 `list` 이름을 키로 하는 «값»이고, 이 파일은
     // 그 이름을 짓지 않습니다. 화면이 넣어 줍니다.
     //
@@ -215,6 +256,70 @@ export class RawRegistryPanel {
     return el;
   }
 
+  /**
+   * 첫 화면과 「고급」을 가르는 «자리 하나». 순수 함수라 하니스가 그대로 채점합니다.
+   *
+   * 🔴 「필수」는 «스켈레톤이» 말합니다. 실측(2026-09-13, `chain_bindings.RULE_ROUTING_REQUIRED`):
+   *    규칙의 required 는 `name`·`trigger_table` «둘»입니다. 그 둘을 여기 적으면 저자가 둘이
+   *    되고, 로더가 셋째를 요구하는 날 이 화면만 모릅니다.
+   * 🔴 그 위에 등록부가 «자기 첫 화면»을 선언할 수 있습니다(`firstScreen`). 그건 다른 물음입니다
+   *    — 「없으면 거절되나」가 아니라 「이것 없이 규칙을 읽을 수 있나」.
+   * ⚠️ 값이 «있는» 칸은 언제나 첫 화면입니다. 접힌 뒤에 값이 숨으면 화면이 그 값을 지운 것처럼
+   *    읽힙니다 — 그리고 그것이 접기의 유일한 위험입니다.
+   */
+  _split(root, held) {
+    const spec = this.spec;
+    const fields = (root && root.fields) || [];
+    const declared = new Set(spec.firstScreen || []);
+    const hidden = new Set();
+    // ① 한 가지 사실을 «두 철자»로 적는 칸들 — 한 번에 한 철자만 첫 화면에 섭니다.
+    for (const group of spec.oneOf || []) {
+      const one = group.one || [];
+      const other = group.other || [];
+      const holds = (keys) => keys.some((key) => held[key] !== undefined && held[key] !== '');
+      // 문서가 든 철자가 이깁니다. 안 들었으면 목록이 답합니다 — «빈 목록»은 읽어서 안 사실이고
+      // (고를 것이 없음), «못 읽음»은 아직 모르는 것이라 기본 철자가 자기 상태를 그립니다.
+      const list = this.lists ? this.lists[group.list] : undefined;
+      const useOne = holds(one) ? true
+        : holds(other) ? false
+          : !(Array.isArray(list) && list.length === 0);
+      const won = useOne ? one : other;
+      const lost = useOne ? other : one;
+      for (const key of lost) hidden.add(key);
+      // 🔴 첫 화면의 선언은 «사실»에 붙습니다 — 「이 규칙에 맵퍼 이름이 있어야 한다」이지
+      //    「`mapper` 라는 칸이 있어야 한다」가 아닙니다. 선언된 철자가 져서 가려지면 «이긴»
+      //    철자가 그 자리를 물려받습니다. 안 그러면 첫 화면에 그 사실을 적을 칸이 «하나도»
+      //    없게 되고(실측: 등록부가 빈 새 규칙), 저장이 안 보이는 칸 때문에 거절됩니다.
+      if (lost.some((key) => declared.has(key))) for (const key of won) declared.add(key);
+    }
+    const first = [];
+    const rest = [];
+    for (const field of fields) {
+      const key = field && field.key;
+      if (!key) continue;
+      const value = held[key];
+      const onFirst = value !== undefined
+        || (field.required === true && !hidden.has(key))
+        || (declared.has(key) && !hidden.has(key));
+      (onFirst ? first : rest).push(key);
+    }
+    return { first, rest };
+  }
+
+  /** 접힌 것은 «개수»를 말합니다 — 말 없이 접는 것은 단계를 늘린 삭제입니다. */
+  _fold(cls, label, count, open, onToggle) {
+    const btn = this.doc.createElement('button');
+    btn.className = cls;
+    btn.setAttribute('data-action', cls);
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    // 🔴 수는 «센 것이 있을 때»만. 원본은 상자 하나라 「· 1」이 아무것도 안 세고, 안 센 수를
+    //    적으면 그 수가 «무엇의 수인지» 화면이 거짓을 말합니다.
+    btn.textContent = open ? `− ${label}`
+      : (count == null ? label : `${label} · ${count}`);
+    if (btn.addEventListener) btn.addEventListener('click', onToggle);
+    return btn;
+  }
+
   /** @param {object|null} payload @param {object} [opts] */
   render(payload, opts = {}) {
     const spec = this.spec;
@@ -237,99 +342,145 @@ export class RawRegistryPanel {
       return view;
     }
 
-    // 고르는 자리. 이름을 외우게 하지 않습니다 — 서버가 목록을 줍니다.
+    const root = spec.formRoot ? spec.formRoot(payload) : null;
+    // 🔴 «이름을 누가 갖고 있나». 폼이 그 칸을 그리면 이름 입력이 «하나»입니다 — 두 자리에 이름을
+    //    받으면 저장이 어느 것을 쓰는지 화면이 말할 수 없습니다(실측 2026-09-13: [규칙 추가] 를
+    //    누르면 이름 칸이 폼 «위»에 하나, 폼 «안»에 하나 — 둘이었습니다).
+    const formOwnsName = Boolean(root)
+      && ((root.fields || []).some((f) => f && f.key === spec.nameKey));
+
+    // 🔴 저장이 보내는 «글자»입니다. 폼은 이 글자를 고치는 두 번째 «편집기»이지 두 번째 «문서»가
+    //    아닙니다 — 그래서 둘이 갈라질 수 없습니다 (criterion ④).
+    const area = doc.createElement('textarea');
+
+    // ═══ 머리 한 줄: 고르개 · 추가/취소 · 상태 · 저장 ══════════════════════════════════
+    const head = doc.createElement('div');
+    head.className = `${spec.cls}-head`;
+
     const picker = doc.createElement('select');
     // 🔴 탐색기의 고르개 «그 자체»를 씁니다 — 값을 베끼는 대신 규칙에 «닿습니다».
-    //    남는 `${spec.cls}-picker` 는 «배치»만 합니다 (폭·여백).
     picker.className = `${spec.cls}-picker oe-field-select`;
     picker.setAttribute('data-picker', spec.nameKey);
+    // 새 이름을 짓는 중이면 고르개가 «그것»을 보여 줍니다. 종전에는 이전 규칙의 이름이 그대로
+    // 남아, 지금 보고 있는 것이 무엇인지 화면이 «틀리게» 말했습니다.
+    if (this.newMode && spec.addLabel) {
+      const o = doc.createElement('option');
+      o.value = NEW_NAME;
+      o.textContent = NEW_NAME;
+      o.setAttribute('selected', 'selected');
+      picker.appendChild(o);
+    }
     for (const name of view.names) {
       const o = doc.createElement('option');
       o.value = name;
       o.textContent = name;
-      if (name === view.name) o.setAttribute('selected', 'selected');
+      if (!this.newMode && name === view.name) o.setAttribute('selected', 'selected');
       picker.appendChild(o);
     }
     if (picker.addEventListener && this.onOpen) {
       picker.addEventListener('change', (e) => {
-        // 고르는 순간 «새 이름 짓기»에서 나옵니다 — 고른 것과 짓던 것이 같은 화면에 있으면
-        // 저장이 둘 중 어느 것인지 화면이 말할 수 없습니다.
+        const value = e && e.target ? e.target.value || '' : '';
+        if (value === NEW_NAME) return;
         this.newMode = false;
-        this.onOpen(e?.target?.value || '');
+        this.onOpen(value);
       });
     }
-    this.root.appendChild(picker);
+    head.appendChild(picker);
 
     // ① 새 이름. 등록부가 «말»을 주지 않으면 컨트롤이 없습니다.
     if (spec.addLabel) {
       const addBtn = doc.createElement('button');
       addBtn.className = `admin-btn ${spec.cls}-add`;
-      addBtn.setAttribute('data-action', `add-${spec.cls}`);
-      addBtn.textContent = `+ ${spec.addLabel}`;
+      addBtn.setAttribute('data-action', this.newMode ? `cancel-${spec.cls}` : `add-${spec.cls}`);
+      addBtn.textContent = this.newMode ? '취소' : `+ ${spec.addLabel}`;
       if (addBtn.addEventListener) {
         addBtn.addEventListener('click', () => {
-          this.newMode = true;
+          // 취소는 «보고 있던 것»으로 돌아갑니다. 다시 묻지 않습니다 — 응답이 그대로 있습니다.
+          this.newMode = !this.newMode;
           this.render(this._payload, this._opts);
         });
       }
-      this.root.appendChild(addBtn);
+      head.appendChild(addBtn);
     }
 
-    // 새 이름 칸. 이름이 «비어 있으면» 저장은 서버까지 안 갑니다 — 서버도 같은 것을
-    // 거절하지만(`name_required`), 빈 이름으로 요청을 만드는 것은 길을 하나 더 여는 일입니다.
+    // 새 이름 칸은 «폼이 이름을 안 가질 때»만. 서버도 빈 이름을 거절하지만(`name_required`),
+    // 빈 이름으로 요청을 만드는 것은 길을 하나 더 여는 일입니다.
     let nameInput = null;
-    if (this.newMode) {
+    if (this.newMode && !formOwnsName) {
       nameInput = doc.createElement('input');
       nameInput.className = `${spec.cls}-new-name oe-field-input`;
       nameInput.setAttribute('data-new-name', spec.nameKey);
       nameInput.setAttribute('placeholder', spec.nameKey);
       nameInput.value = '';
-      this.root.appendChild(nameInput);
+      head.appendChild(nameInput);
     }
 
-    // 🔴 `base` 는 «화면에 보이는 값»이 아니라 저장이 되돌려 보낼 지문입니다. 눈에 띄게
-    //    적지 않되, 저장 경로가 읽을 수 있게 요소에 답니다.
+    // ⑤ «값 하나». 거절이 있으면 그 코드가 지금의 상태이고, 아니면 등록부의 상태입니다.
+    //    없으면 «아무것도 안 그립니다» — 「안 물어봤다」는 「꺼져 있다」가 아닙니다.
+    // 🔴 새 이름을 짓는 중에는 «상태가 없습니다». 응답의 상태는 «방금까지 열려 있던» 이름의
+    //    것이고, 그것을 새 이름 옆에 그리면 화면이 아직 없는 규칙에 대해 사실을 주장합니다
+    //    (실측 2026-09-13: [규칙 추가] 를 눌러도 `enabled true` 가 그대로 남아 있었습니다).
+    const status = view.refusal && view.refusal.code
+      ? { text: view.refusal.code, value: 'refused' }
+      : (!this.newMode && view.extra && view.extra.text ? view.extra : null);
+    if (status) {
+      const line = this._line(`${spec.cls}-state`, status.text);
+      if (status.value != null) line.setAttribute('data-state', String(status.value));
+      head.appendChild(line);
+    }
+
+    const save = doc.createElement('button');
+    save.className = `admin-btn btn-primary ${spec.cls}-save`;
+    save.setAttribute('data-action', `save-${spec.cls}`);
+    save.textContent = '저장';
+    if (save.addEventListener && this.onSave) {
+      // 🔴 저장은 «한 길»입니다. 새 이름이든 고른 이름이든 같은 함수에 같은 모양으로 갑니다.
+      //    이름이 어디서 오는지만 다르고, 폼이 이름을 가지면 «문서가» 그 답을 들고 있습니다.
+      save.addEventListener('click', () => {
+        let named = nameInput ? String(nameInput.value || '').trim() : view.name;
+        if (formOwnsName) {
+          let held;
+          try { held = JSON.parse(area.value || '{}'); } catch (e) { held = null; }
+          const fromDoc = held && typeof held === 'object' ? held[spec.nameKey] : undefined;
+          if (typeof fromDoc === 'string' && fromDoc.trim()) named = fromDoc.trim();
+          else if (this.newMode) named = '';
+        }
+        this.onSave({ [spec.nameKey]: named, base: view.base, raw: area.value });
+      });
+    }
+    head.appendChild(save);
+    this.root.appendChild(head);
+
+    // 🔴 `base` 는 «화면에 보이는 값»이 아니라 저장이 되돌려 보낼 지문입니다.
     this.root.setAttribute('data-base', view.base);
-    // ⚠️ 이름을 «선언된 낱말»로도 달아 둡니다 (`data-table` · `data-name`).
-    //    저장 경로와 하니스가 그 등록부의 말로 읽을 수 있게 하려고입니다.
-    this.root.setAttribute(`data-${spec.nameKey}`, view.name);
+    // ⚠️ 이름을 «선언된 낱말»로도 달아 둡니다 — 저장 경로와 하니스가 그 등록부의 말로 읽습니다.
+    this.root.setAttribute(`data-${spec.nameKey}`, this.newMode ? '' : view.name);
 
-    // ⑤ 이 등록부만의 상태. 값이 없으면 «아무것도 안 그립니다» — 「안 물어봤다」는
-    //    「꺼져 있다」가 아닙니다.
-    if (view.extra && view.extra.text) {
-      const line = this._line(`${spec.cls}-state`, view.extra.text);
-      if (view.extra.value != null) line.setAttribute('data-state', String(view.extra.value));
-      this.root.appendChild(line);
-    }
-
-    // ② 폼. 서버가 스켈레톤을 실어 줄 때«만» 그립니다 — 없으면 오늘 그대로입니다.
-    //
-    // 🔴 «문서는 하나»입니다. 저장이 보내는 것은 아래 textarea 의 «글자»이고, 폼은 그 글자를
-    //    고치는 두 번째 «편집기»이지 두 번째 «문서»가 아닙니다. 폼에서 한 칸을 고치면 그
-    //    글자가 다시 쓰이고, 글자를 직접 고치면 폼이 그것을 다시 읽습니다. 그래서 둘이
-    //    갈라질 수 없습니다 (criterion ④).
-    const root = spec.formRoot ? spec.formRoot(payload) : null;
-    const area = doc.createElement('textarea');
+    // ═══ 폼 ═══════════════════════════════════════════════════════════════════════════
+    // ② 서버가 스켈레톤을 실어 줄 때«만» 그립니다 — 없으면 오늘 그대로입니다.
     if (root) {
       const held = this.newMode
         ? (emptyOf(root, (payload.skeleton || {}).defs) || {})
         : (payload.declaration && typeof payload.declaration === 'object'
           ? payload.declaration : {});
       const box = doc.createElement('div');
-      box.className = `${spec.cls}-form`;
+      // 🔴 탐색기의 «그 규칙»이 이 마운트에도 닿습니다 (C-95). 시트는 한 벌이고 문이 둘입니다 —
+      //    같은 함수가 두 화면에서 다르게 보이던 것이 criterion ④ 의 실물이었습니다.
+      box.className = `${spec.cls}-form oe-skeleton-form`;
       const draw = (value) => {
         box.textContent = '';
         const form = renderSkeletonForm(
           formContext(payload.skeleton, this.lists, spec.choiceList), root, '', value, 0,
-          this.newMode ? '' : view.name);
-        if (form) box.appendChild(form);
+          this.newMode ? NEW_NAME : view.name);
+        if (form) {
+          this._partition(form, root, value);
+          box.appendChild(form);
+        }
         // ④ 서버가 «주소를 대어» 거절하면 그 칸 «옆»에 붙입니다 (S-204 ③).
-        //    문장은 안 붙입니다 — 아래 거절 상자가 서버의 문장을 그대로 들고 있습니다.
         markRefusedField(box, view, spec);
       };
       draw(held);
-      // 폼이 낸 편집을 문서에 «적습니다». 컨트롤의 낱말(`edit-shape`)은 탐색기의 것이고,
-      // 이 파일은 그 낱말을 «읽을» 뿐 새로 짓지 않습니다.
+      // 폼이 낸 편집을 문서에 «적습니다». 컨트롤의 낱말(`edit-shape`)은 탐색기의 것입니다.
       if (box.addEventListener) {
         const write = (event) => {
           const el = event && event.target;
@@ -340,9 +491,8 @@ export class RawRegistryPanel {
           let held2;
           try { held2 = JSON.parse(area.value || '{}'); } catch (e) { return; }
           const next = action === 'edit-shape-flag' ? Boolean(el.checked) : el.value;
-          // 🔴 탐색기와 «같은 함수»입니다. 가지를 짓는 규칙과 타입을 지키는 규칙이 두 벌이면
-          //    둘이 «오류 없이» 다른 문서를 씁니다. 그리고 새 문서를 «돌려받습니다» —
-          //    `setAtPath` 는 제자리에서 안 고칩니다(그렇게 읽어 이 줄이 한 번 죽었습니다).
+          // 🔴 탐색기와 «같은 함수»입니다. 그리고 새 문서를 «돌려받습니다» — `setAtPath` 는
+          //    제자리에서 안 고칩니다(그렇게 읽어 이 줄이 한 번 죽었습니다).
           const updated = writeShapeAtPath(held2, String(path), next);
           if (updated === null) return;
           area.value = JSON.stringify(updated, null, 2);
@@ -351,46 +501,9 @@ export class RawRegistryPanel {
         box.addEventListener('change', write);
       }
       this.root.appendChild(box);
+      this._redraw = draw;
       if (this.newMode) view = Object.freeze({ ...view, raw: JSON.stringify(held, null, 2) });
     }
-
-    area.className = `${spec.cls}-raw`;
-    area.setAttribute('data-raw', spec.nameKey);
-    area.value = view.raw;
-    area.textContent = view.raw;
-    if (area.addEventListener && root) {
-      // 글자가 문서입니다. 파싱이 안 되면 폼을 «그대로 둡니다» — 반쯤 친 JSON 위에서 폼을
-      // 비우면 사람이 치던 것이 사라진 것처럼 보입니다.
-      area.addEventListener('input', () => {
-        let held2;
-        try { held2 = JSON.parse(area.value || '{}'); } catch (e) { return; }
-        const box = this.root.querySelector ? this.root.querySelector(`.${spec.cls}-form`) : null;
-        if (!box) return;
-        box.textContent = '';
-        const form = renderSkeletonForm(
-          formContext(payload.skeleton, this.lists, spec.choiceList), root, '', held2, 0, '');
-        if (form) box.appendChild(form);
-      });
-    }
-    this.root.appendChild(area);
-
-    const controls = doc.createElement('div');
-    controls.className = `${spec.cls}-controls`;
-    const save = doc.createElement('button');
-    save.className = `admin-btn btn-primary ${spec.cls}-save`;
-    save.setAttribute('data-action', `save-${spec.cls}`);
-    save.textContent = 'Save';
-    if (save.addEventListener && this.onSave) {
-      // 🔴 저장은 «한 길»입니다. 새 이름이든 고른 이름이든 같은 함수에 같은 모양으로 갑니다 —
-      //    이름이 어디서 왔는지만 다릅니다. 두 번째 저장 경로를 만들면 그 둘이 갈라집니다.
-      save.addEventListener('click', () => this.onSave({
-        [spec.nameKey]: nameInput ? String(nameInput.value || '').trim() : view.name,
-        base: view.base,
-        raw: area.value,
-      }));
-    }
-    controls.appendChild(save);
-    this.root.appendChild(controls);
 
     // 🔴 거절은 «서버의 낱말»로. 이 파일은 문구를 짓지 않습니다.
     //    ⚠️ code 나 path 가 없으면 그 칸을 «안 그립니다» — 빈 칸이 아니라 없는 것입니다.
@@ -404,11 +517,63 @@ export class RawRegistryPanel {
       this.root.appendChild(box);
     }
 
+    // ⑥ 원본은 «보조»입니다 — 폼과 같은 무게로 나란히 서면 무엇이 주 편집기인지 화면이
+    //    말하지 않습니다. 문서는 그대로 여기 삽니다(접혀도 DOM 에 있습니다).
+    area.className = `${spec.cls}-raw`;
+    area.setAttribute('data-raw', spec.nameKey);
+    area.value = view.raw;
+    area.textContent = view.raw;
+    if (area.addEventListener && root) {
+      // 글자가 문서입니다. 파싱이 안 되면 폼을 «그대로 둡니다» — 반쯤 친 JSON 위에서 폼을
+      // 비우면 사람이 치던 것이 사라진 것처럼 보입니다.
+      area.addEventListener('input', () => {
+        let held2;
+        try { held2 = JSON.parse(area.value || '{}'); } catch (e) { return; }
+        if (this._redraw) this._redraw(held2);
+      });
+    }
+    if (root) {
+      this.root.appendChild(this._fold(`${spec.cls}-raw-fold`, '원본', null, this.rawOpen, () => {
+        this.rawOpen = !this.rawOpen;
+        this.render(this._payload, this._opts);
+      }));
+      if (!this.rawOpen) area.hidden = true;
+    }
+    this.root.appendChild(area);
+
     // 저장이 «됐다»는 것도 값으로. 몇 개가 됐고 백업이 어디인지는 서버가 말합니다.
     if (view.saved) {
       this.root.appendChild(this._line(`${spec.cls}-saved`,
         `${view.saved.name} · ${view.saved.count} · ${view.saved.backup}`));
     }
     return view;
+  }
+
+  /**
+   * 첫 화면과 「고급」. 🔴 그린 것을 «옮길» 뿐 새로 그리지 않습니다 — 배치는 부품 밖의 일이고
+   * (상설 「조립식」), 두 번째 폼 코드를 쓰는 순간 이 화면이 선언에서 오는 것을 그만둡니다.
+   */
+  _partition(form, root, held) {
+    const spec = this.spec;
+    const doc = this.doc;
+    if (!form || !form.querySelector) return;
+    const children = form.querySelector('.oe-node-children');
+    if (!children) return;
+    const { first, rest } = this._split(root, held && typeof held === 'object' ? held : {});
+    if (!rest.length) return;
+    const keep = new Set(first);
+    const later = doc.createElement('div');
+    later.className = `oe-node-children ${spec.cls}-advanced`;
+    if (!this.moreOpen) later.hidden = true;
+    const nodes = children.childNodes ? [...children.childNodes] : [];
+    for (const node of nodes) {
+      const at = node && node.dataset ? node.dataset.path : '';
+      if (at && !keep.has(at)) later.appendChild(node);
+    }
+    children.appendChild(this._fold(`${spec.cls}-more`, '고급', rest.length, this.moreOpen, () => {
+      this.moreOpen = !this.moreOpen;
+      this.render(this._payload, this._opts);
+    }));
+    children.appendChild(later);
   }
 }
