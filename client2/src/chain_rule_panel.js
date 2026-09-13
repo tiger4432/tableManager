@@ -32,6 +32,120 @@ function enabledState(payload, opts) {
   return { value: from.enabled, text: `enabled ${from.enabled}` };
 }
 
+/**
+ * 목록의 두 묶음. 화면에 보이는 말이고, 이 등록부의 것입니다.
+ *
+ * 🔴 왜 묶나: 소유자의 물음이 「내 파일이 왜 안 보이지」였습니다(2026-09-13). 「등록된 이름」과
+ *    「파일의 함수」가 한 줄에 섞이면 그 물음이 화면에서 «안 풀립니다» — 둘은 서로 다른 사실이고
+ *    저장이 받아 주는 방식도 다릅니다(하나는 등록부 조회, 하나는 두 칸).
+ */
+export const MAPPER_GROUPS = Object.freeze({ registered: '등록 이름', file: '파일 함수' });
+
+//: 파일 함수를 «한 칸짜리 값»으로 적는 철자. 🔴 저자가 이 파일 «하나»입니다 — 만드는 쪽
+//: (`mapperChoices`)과 펴는 쪽(`splitMapper`)과 되읽는 쪽(`joinMapper`)이 나란히 있어야
+//: 갈라질 수 없고, 갈라진 날 「고른 것이 아무 칸도 안 채운다」가 됩니다.
+const TOKEN = ':';
+const tokenOf = (module, name) => `${module}${TOKEN}${name}`;
+
+/**
+ * `GET /admin/mappers/list` → 고를 수 있는 것들. `null` 은 「못 읽음」이고 `[]` 는 「없음」입니다.
+ *
+ * 🔴 두 묶음이 «한 push» 를 지납니다. 서버가 `candidates` 를 싣기 전에는 오늘 있는 두 칸에서
+ *    같은 모양을 만들고(다리), 두 읽기가 다른 모양을 낼 수 없습니다 (criterion ④).
+ * ⚠️ 그 다리는 `candidates` 가 오면 «그 블록만» 지웁니다 — 판정 379 가 그 모양을 확정했습니다.
+ */
+export function mapperChoices(body) {
+  if (!body || typeof body !== 'object') return null;
+  const out = [];
+  const seen = new Set();
+  const push = (value, label, group) => {
+    if (!value || seen.has(value)) return;
+    seen.add(value);
+    out.push({ value, label, group });
+  };
+  const candidates = Array.isArray(body.candidates) ? body.candidates : null;
+  if (candidates) {
+    for (const item of candidates) {
+      if (!item || typeof item !== 'object') continue;
+      const name = String(item.name || '');
+      const module = String(item.module || '');
+      if (item.kind === 'registered') push(name, name, MAPPER_GROUPS.registered);
+      else if (module && name) {
+        push(tokenOf(module, name), `${module} · ${name}`, MAPPER_GROUPS.file);
+      }
+    }
+    return out;
+  }
+  for (const name of Array.isArray(body.registered) ? body.registered : []) {
+    push(String(name), String(name), MAPPER_GROUPS.registered);
+  }
+  for (const file of Array.isArray(body.data) ? body.data : []) {
+    const module = String((file && file.module_name) || '');
+    if (!module) continue;
+    for (const fn of Array.isArray(file && file.functions) ? file.functions : []) {
+      const name = String((fn && fn.name) || '');
+      if (name) push(tokenOf(module, name), `${module} · ${name}`, MAPPER_GROUPS.file);
+    }
+  }
+  return out;
+}
+
+/**
+ * 목록 «밖»의 한 줄들 — 「여기 있지만 고를 수 없는 것」. 사유는 «서버의 낱말»이고 이 파일은
+ * 문장을 짓지 않습니다(모듈 이름 · 사유).
+ *
+ * 🔴 이것이 필요한 이유는 하나입니다: 없는 것과 «거절된 것»이 드롭다운에서 «같은 부재»로
+ *    보입니다. 소유자가 「내 파일이 왜 안 보이지」를 두 번 묻지 않게 하는 자리입니다.
+ * ⚠️ 오늘 서버는 이 칸들을 «안 냅니다»(S-223 이 실습니다). 키가 없으면 줄이 «없습니다» —
+ *    빈 줄을 그리면 「못 읽음」이 「없음」이 됩니다.
+ */
+export function mapperNotes(body) {
+  if (!body || typeof body !== 'object') return [];
+  const lines = [];
+  const add = (kind, entry) => {
+    if (!entry || typeof entry !== 'object') return;
+    const module = String(entry.module || '');
+    const why = String(entry.why || '');
+    if (!module && !why) return;
+    lines.push({ kind, text: module && why ? `${module} · ${why}` : module || why });
+  };
+  for (const entry of Array.isArray(body.other) ? body.other : []) add('other', entry);
+  for (const entry of Array.isArray(body.refused) ? body.refused : []) add('refused', entry);
+  return lines;
+}
+
+/**
+ * 고른 것이 «어느 칸들»에 적히나. `null` 이면 그 칸 하나에 그대로 적힙니다(등록된 이름).
+ *
+ * 🔴 파일 함수는 `mapper` 를 «비웁니다». 그 칸의 뜻은 「등록부의 이름」이고(실측:
+ *    `chain_bindings.mapper_resolvable` 이 등록부만 봅니다), 토큰을 거기 적으면 문서가 다른
+ *    독자에게 거짓을 말합니다 — 그리고 저장은 두 칸이 차 있으면 «그대로 받습니다».
+ */
+export function splitMapper(value) {
+  const text = String(value == null ? '' : value);
+  const at = text.lastIndexOf(TOKEN);
+  if (at <= 0 || at === text.length - 1) return null;
+  return {
+    mapper: null,
+    mapper_module: text.slice(0, at),
+    mapper_function: text.slice(at + 1),
+  };
+}
+
+/**
+ * 문서가 «어느 철자로든» 든 맵퍼를 고르개의 값으로 되읽습니다. 없으면 ''.
+ *
+ * 🔴 이것이 없으면 두 칸으로 적힌 규칙에서 고르개가 «빈 채»로 서고, 화면은 맵퍼가 있는 규칙을
+ *    「안 골랐다」로 그립니다 — 그건 「한 응답에 상태가 둘」의 실물입니다.
+ */
+export function joinMapper(held) {
+  const doc = held && typeof held === 'object' ? held : {};
+  if (typeof doc.mapper === 'string' && doc.mapper) return doc.mapper;
+  const module = typeof doc.mapper_module === 'string' ? doc.mapper_module : '';
+  const name = typeof doc.mapper_function === 'string' ? doc.mapper_function : '';
+  return module && name ? tokenOf(module, name) : '';
+}
+
 /** 이 등록부의 낱말. */
 export const CHAIN_RULE_REGISTRY = Object.freeze({
   listKey: 'rules',
@@ -47,6 +161,11 @@ export const CHAIN_RULE_REGISTRY = Object.freeze({
   // C-86 ③. 맵퍼 칸의 목록 이름. 값은 화면이 `GET /admin/mappers/list` 에서 받아 넣습니다 —
   // 이 파일은 «이름»만 대고 «목록»은 서버의 등록부입니다.
   choiceList: 'mappers',
+  // C-101 ②. 표를 대는 칸들의 목록 이름. 값은 화면이 `GET /tables` 에서 받아 넣습니다 —
+  // 그 라우트가 «제품이 아는 표 전부»(`crud.TABLE_CONFIG`)이고, 규칙이 읽고 쓸 수 있는 표가
+  // 그 집합입니다. 🔴 실측 2026-09-13: 이 문법의 `hint: 'ref'` 리프가 일곱이고 전부 이
+  // 목록을 씁니다 — 칸 이름을 여기 적지 않는 이유가 그것입니다(스켈레톤이 저자입니다).
+  refList: 'tables',
   // C-95 ②. 「첫 화면」은 «필수»가 아닙니다 — 다른 물음입니다.
   //
   // 🔴 실측(2026-09-13, `chain_bindings.RULE_ROUTING_REQUIRED`): 이 문법의 required 는
@@ -63,7 +182,15 @@ export const CHAIN_RULE_REGISTRY = Object.freeze({
   // 운영자가 「둘 다 적어야 하나」를 묻게 되고, 실측에서 그 셋이 한 화면에 서 있었습니다.
   // ⚠️ 가려진 철자는 「고급」에 있습니다 — 없애면 오늘 module+function 으로 적힌 규칙을
   //    한 칸짜리로 «바꿀 길»이 사라집니다.
-  oneOf: [{ one: ['mapper'], other: ['mapper_module', 'mapper_function'], list: 'mappers' }],
+  // C-101 ③. 그리고 그 «두 철자 사이의 번역»도 이 등록부의 것입니다 — 고르개 하나가 둘 다
+  // 쓸 수 있게 되었으므로, 운영자가 「둘 중 어디에 적나」를 고를 일이 없습니다.
+  oneOf: [{
+    one: ['mapper'],
+    other: ['mapper_module', 'mapper_function'],
+    list: 'mappers',
+    split: splitMapper,
+    join: joinMapper,
+  }],
 });
 
 /**

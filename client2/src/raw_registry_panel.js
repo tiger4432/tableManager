@@ -26,7 +26,7 @@
 import { ABSENT, countText } from './absent.js';
 import { renderSkeletonForm } from './ontology_explorer_view.js';
 import { emptyOf } from './ontology_skeleton.js';
-import { writeShapeAtPath } from './ontology_path.js';
+import { writeShapeAtPath, deleteAtPath, splitBundlePath } from './ontology_path.js';
 
 /**
  * 고르개가 «새 이름을 짓는 중»일 때 입는 말. 🔴 철자가 «하나»입니다 — 그리는 쪽과 비교하는
@@ -64,11 +64,24 @@ export const PICK_NAME = '— 고르십시오 —';
  *      없이 규칙을 읽을 수 있나」이고 그 답은 «등록부»의 것입니다. 두 물음을 한 목록으로 접으면
  *      로더가 셋째를 요구하는 날 이 화면이 모릅니다.
  *   ⚠️ 값이 있는 칸은 이 목록과 무관하게 첫 화면입니다 — 접기가 값을 숨기면 지운 것처럼 읽힙니다.
- * @property {{one:string[], other:string[], list?:string}[]} [oneOf]  한 사실의 «두 철자».
+ * @property {{one:string[], other:string[], list?:string,
+ *             split?:(value:string)=>object|null, join?:(held:object)=>string}[]} [oneOf]
+ *   한 사실의 «두 철자».
+ *   🔴 C-101 ③. `split` 이 있으면 그 «고르개 하나»가 두 철자를 다 씁니다 — 고른 것이 다른
+ *      철자의 것이면 등록부가 «어느 칸들에 무엇을» 적을지 답하고(`null` 값은 그 칸을 지웁니다),
+ *      `join` 은 그 반대로 «문서가 든 것»을 고르개의 값으로 되읽습니다. 철자의 저자는 등록부
+ *      하나이고, 이 파일은 그 함수를 부를 뿐입니다.
+ *   ⚠️ 없으면 오늘 그대로입니다 — 고르개가 자기 칸 하나에만 적습니다.
  *   🔴 둘을 «같이» 보이면 화면이 「둘 다 적어야 하나」를 묻게 만듭니다. 문서가 든 철자가 이기고,
  *      아무것도 안 들었으면 `list` 가 답합니다 — «빈 목록»은 읽어서 안 사실(고를 것이 없음)이라
  *      다른 철자가 서고, «못 읽음»은 모르는 것이라 기본 철자가 자기 상태를 그립니다(세 상태).
  *   ⚠️ 가려진 철자는 «사라지지 않습니다» — 「고급」으로 갑니다. 없애면 철자를 바꿀 길이 없어집니다.
+ * @property {string} [refList]  «참조 칸»(`hint: 'ref'`)이 고르는 목록 이름 (예: 'tables').
+ *   🔴 `choiceList` 와 같은 다리입니다 — 스켈레톤이 리프에 `section` 을 대면 그 이름이 이기고,
+ *      안 대면 이 등록부의 이름이 쓰입니다. 실측 2026-09-13: 체인 스켈레톤의 ref 리프 «일곱»이
+ *      전부 `section` 을 «안 댑니다». 그래서 이 줄이 없으면 탐색기가 제안을 못 찾고 일곱 칸이
+ *      평문 입력으로 섭니다 — 표 이름을 손으로 적는 자리가 일곱입니다.
+ *   ⚠️ 제안입니다. 컨트롤은 여전히 입력이고, 목록에 없는 이름도 «그대로» 남습니다(서버가 판정).
  * @property {string} [choiceList]  이 등록부의 «닫힌 목록» 이름 (예: 'mappers').
  *   🔴 칸 «이름»이 아닙니다. 스켈레톤이 `list` 로 이름을 대면 그 이름이 이기고, 안 대면 이
  *      등록부의 목록이 쓰입니다. 오늘 체인 스켈레톤은 `mapper` 를 `hint: 'choice'` 로만 내고
@@ -138,8 +151,15 @@ export function registryView(payload, opts, spec) {
  * 🔴 도메인 낱말 «0». `lists` 는 등록부가 넘겨 준 «닫힌 목록»이고, 어느 칸이 그것을 쓰는지는
  *    스켈레톤의 `list` 가 말합니다 — 이 파일이 고르지 않습니다.
  */
-function formContext(skeleton, lists, choiceList) {
+function formContext(skeleton, lists, spec, held) {
   const defs = (skeleton && skeleton.defs) || {};
+  const choiceList = spec.choiceList;
+  const refList = spec.refList;
+  /** 이름 하나로 목록 하나. 문자열 아닌 멤버는 «제안»이 될 수 없어 빠집니다. */
+  const named = (name) => {
+    const list = name ? (lists || {})[name] : null;
+    return Array.isArray(list) ? list.filter((item) => typeof item === 'string') : [];
+  };
   return {
     schema: lists || {},
     readOnly: false,
@@ -156,7 +176,20 @@ function formContext(skeleton, lists, choiceList) {
       }
       return shape;
     },
-    declared: () => [],
+    // 🔴 C-101 ②. 참조 칸의 제안 목록. 스켈레톤이 «칸마다» 다른 절을 댈 수 있으므로 그 이름이
+    //    먼저이고, 안 대면 등록부가 댄 이름입니다 — 위 `deref` 와 «같은 규율»입니다.
+    declared: (section) => named(section || refList),
+    // 🔴 C-101 ③. 「이 고르개가 지금 무엇을 골랐나」가 «이 칸 하나»로 안 답해질 수 있습니다 —
+    //    한 사실을 두 칸으로 적는 문법이 있고, 그때 이 칸은 비어 있는데 규칙은 그것을 «듭니다».
+    //    번역은 등록부의 것이고(`join`), 이 자리는 그 함수를 부를 뿐입니다.
+    heldChoice: (list, at) => {
+      for (const group of spec.oneOf || []) {
+        if (typeof group.join !== 'function') continue;
+        if ((group.one || [])[0] !== at) continue;
+        return group.join(held && typeof held === 'object' ? held : {});
+      }
+      return '';
+    },
     rolesNear: () => [],
     usedElsewhere: () => [],
     renderRow: () => null,
@@ -177,7 +210,10 @@ function formContext(skeleton, lists, choiceList) {
 /** 그 요소의 «직계» 자식 중 그 클래스를 가진 첫 번째. 후손으로 내려가지 않습니다 —
  *  가지 밑의 손자 줄을 집으면 거절이 «다른 칸»에 붙습니다. */
 function firstChildOf(el, cls) {
-  const kids = el && el.childNodes ? el.childNodes : [];
+  // 🔴 «원소» 자식입니다. `childNodes` 는 글자 노드까지 내주고, 그 목록에서 클래스를 찾으면
+  //    줄 사이의 공백이 먼저 걸립니다 — 그리고 그 철자는 이 저장소의 DOM 스텁에 없어서
+  //    「값 열에 붙인다」가 하니스에서는 «언제나 폴백»으로 재어졌습니다 (실측 2026-09-13).
+  const kids = el && el.children ? el.children : [];
   for (const kid of kids) {
     const name = kid && typeof kid.className === 'string' ? kid.className : '';
     if (name.split(' ').indexOf(cls) !== -1) return kid;
@@ -237,6 +273,13 @@ export class RawRegistryPanel {
     //    이 둘이 그대로라야 편집 한 번이 화면을 접어 버리지 않습니다.
     this.moreOpen = false;
     this.rawOpen = false;
+    // 🔴 C-101 ①. 「무엇이 열려 있나」와 「저장 안 된 글자」는 «부품의» 사실입니다. 페이지는
+    //    30초마다 목록을 다시 읽는데 그 읽기는 이름을 «안 댑니다» — 응답에 문서가 «없어서»
+    //    그대로 그리면 편집기가 사라집니다(소유자 2026-09-13 「지혼자 새로고침되서 초기화」).
+    //    ⚠️ 상태를 페이지에 두면 등록부마다 한 벌씩 생기고, 늦게 배우는 쪽만 초기화됩니다.
+    this.open = '';      // 열려 있는 문서의 이름 (새 이름이면 NEW_NAME). 아무것도 없으면 ''
+    this.draft = null;   // 저장 안 된 «글자». `null`(고친 적 없음)과 ''(다 지웠음)이 다릅니다
+    this.draftOf = '';   // 그 초안이 «어느 문서»의 것인가 — 남의 문서에 입히면 남의 값이 됩니다
     // 닫힌 목록(예: 맵퍼 등록부). 스켈레톤의 `list` 이름을 키로 하는 «값»이고, 이 파일은
     // 그 이름을 짓지 않습니다. 화면이 넣어 줍니다.
     //
@@ -244,6 +287,8 @@ export class RawRegistryPanel {
     //    「선택지가 없다」를 다른 픽셀로 그립니다 — 오늘 맵퍼 등록부를 내는 라우트가 없어서
     //    이 칸은 «못 읽음»으로 섭니다. 「없음」으로 그리면 안 물어본 것을 답으로 만듭니다.
     this.lists = deps.lists || {};
+    // C-101 ③. 목록 «밖»의 줄들 — 「여기 있지만 고를 수 없는 것」. 값이고, 사유는 서버의 것입니다.
+    this.notes = deps.notes || [];
     this.root = this.doc.createElement('div');
     this.root.className = `${spec.cls}-panel`;
     this.mount.appendChild(this.root);
@@ -258,6 +303,14 @@ export class RawRegistryPanel {
    */
   setLists(lists) {
     this.lists = lists || {};
+  }
+
+  /**
+   * 목록 밖의 줄들을 넣습니다. 🔴 «빈 배열»이면 아무것도 안 그립니다 — 오늘 서버가 이 칸들을
+   * 안 내므로 줄이 «없는» 것이 맞고, 자리를 비워 그리면 「없음」을 주장하게 됩니다.
+   */
+  setNotes(notes) {
+    this.notes = Array.isArray(notes) ? notes : [];
   }
 
   _line(cls, text) {
@@ -291,9 +344,16 @@ export class RawRegistryPanel {
       // 문서가 든 철자가 이깁니다. 안 들었으면 목록이 답합니다 — «빈 목록»은 읽어서 안 사실이고
       // (고를 것이 없음), «못 읽음»은 아직 모르는 것이라 기본 철자가 자기 상태를 그립니다.
       const list = this.lists ? this.lists[group.list] : undefined;
-      const useOne = holds(one) ? true
-        : holds(other) ? false
-          : !(Array.isArray(list) && list.length === 0);
+      // 🔴 C-101 ③. 목록을 «읽을 수 있으면» 고르개 쪽이 첫 화면입니다 — 그 컨트롤이 이제 두
+      //    철자를 «다» 쓰므로(고르면 다른 철자의 칸들이 채워집니다), 문서가 무엇을 들고 있는지로
+      //    고르개를 숨기면 「고를 수 있는 유일한 자리」가 「고급」 뒤로 갑니다. 소유자가 본 것이
+      //    그것입니다: 두 칸으로 적힌 규칙에서 목록이 «안 보였습니다».
+      //    ⚠️ 값을 «든» 칸은 그래도 첫 화면입니다(아래 `value !== undefined`) — 고른 것이 무엇을
+      //       적었는지 보여야 하고, 접힘이 값을 숨기면 지운 것처럼 읽힙니다.
+      const useOne = (Array.isArray(list) && list.length) ? true
+        : holds(one) ? true
+          : holds(other) ? false
+            : !(Array.isArray(list) && list.length === 0);
       const won = useOne ? one : other;
       const lost = useOne ? other : one;
       for (const key of lost) hidden.add(key);
@@ -334,14 +394,26 @@ export class RawRegistryPanel {
   /** @param {object|null} payload @param {object} [opts] */
   render(payload, opts = {}) {
     const spec = this.spec;
+    let view = registryView(payload, opts, spec);
+    const doc = this.doc;
+    // 🔴 C-101 ①. «배경 갱신»은 목록입니다 — 열려 있는 문서를 갈아 끼우지 않습니다.
+    //    ⚠️ 「고치는 중」만 지키는 것이 아닙니다: 고른 것이 «풀리는» 것도 초기화입니다.
+    //    ⚠️ 못 읽은 배경 읽기도 아무것도 안 바꿉니다 — 이름 없는 읽기는 문서를 «안 실어서»
+    //       그 자리에 놓을 것이 없고, 상태를 보이려고 편집 중인 글자를 지우는 것은 값을 잃는
+    //       것입니다. 목록이 «그대로»면 고르개도 다시 안 짓습니다(열린 목록을 닫는 일뿐입니다).
+    if (opts.background && this.open) {
+      const names = view.available ? view.names.join('\u0000') : null;
+      if (names !== null && names !== this._names) this._options(this._picker, view, this.open);
+      return view;
+    }
     // 「+ 추가」는 서버에 다시 묻지 않습니다 — 목록도 지문도 방금 받은 그대로입니다.
     this._payload = payload;
     this._opts = opts;
-    let view = registryView(payload, opts, spec);
-    const doc = this.doc;
+    this.open = '';
     this.root.textContent = '';
 
     if (!view.available) {
+      this._forget();
       const box = doc.createElement('div');
       box.className = 'empty-state';
       const ic = doc.createElement('div');
@@ -359,6 +431,12 @@ export class RawRegistryPanel {
     //    누르면 이름 칸이 폼 «위»에 하나, 폼 «안»에 하나 — 둘이었습니다).
     const formOwnsName = Boolean(root)
       && ((root.fields || []).some((f) => f && f.key === spec.nameKey));
+    // 🔴 C-101 ①. 문서의 «이름». 초안은 그 이름을 같이 들고, 저장이 답했거나 «다른 문서»가
+    //    열리면 끝납니다 — 남겨 두면 나중에 아무 표시 없이 되살아납니다(보관은 제안 사항이고,
+    //    그건 「미저장」 배지가 선 뒤의 일입니다).
+    const key = this.newMode ? NEW_NAME : String(view.name || '');
+    if (opts.saved || (this.draft !== null && this.draftOf !== key)) this._forget();
+    const drafted = this.draft !== null && this.draftOf === key ? this.draft : null;
     // 🔴 C-95-b. 「무엇을 편집하고 있나」에 답이 있나. 없으면 편집기를 «안 그립니다» — 빈 편집기는
     //    친절이 아니라 «이름 없는 문서 위의 살아 있는 저장 버튼»입니다.
     const picked = this.newMode || Boolean(view.name);
@@ -375,30 +453,8 @@ export class RawRegistryPanel {
     // 🔴 탐색기의 고르개 «그 자체»를 씁니다 — 값을 베끼는 대신 규칙에 «닿습니다».
     picker.className = `${spec.cls}-picker oe-field-select`;
     picker.setAttribute('data-picker', spec.nameKey);
-    // 새 이름을 짓는 중이면 고르개가 «그것»을 보여 줍니다. 종전에는 이전 규칙의 이름이 그대로
-    // 남아, 지금 보고 있는 것이 무엇인지 화면이 «틀리게» 말했습니다.
-    if (this.newMode && spec.addLabel) {
-      const o = doc.createElement('option');
-      o.value = NEW_NAME;
-      o.textContent = NEW_NAME;
-      o.setAttribute('selected', 'selected');
-      picker.appendChild(o);
-    } else if (!picked) {
-      // C-95-b. 아직 아무것도 안 골랐습니다. 자리표시자가 없으면 고르개가 «첫 이름»을 보여 주고,
-      // 그 이름의 내용은 아직 읽은 적이 없습니다.
-      const o = doc.createElement('option');
-      o.value = PICK_NAME;
-      o.textContent = PICK_NAME;
-      o.setAttribute('selected', 'selected');
-      picker.appendChild(o);
-    }
-    for (const name of view.names) {
-      const o = doc.createElement('option');
-      o.value = name;
-      o.textContent = name;
-      if (!this.newMode && name === view.name) o.setAttribute('selected', 'selected');
-      picker.appendChild(o);
-    }
+    this._picker = picker;
+    this._options(picker, view, picked ? key : '');
     if (picker.addEventListener && this.onOpen) {
       picker.addEventListener('change', (e) => {
         const value = e && e.target ? e.target.value || '' : '';
@@ -419,7 +475,7 @@ export class RawRegistryPanel {
         addBtn.addEventListener('click', () => {
           // 취소는 «보고 있던 것»으로 돌아갑니다. 다시 묻지 않습니다 — 응답이 그대로 있습니다.
           this.newMode = !this.newMode;
-          this.render(this._payload, this._opts);
+          this._again();
         });
       }
       head.appendChild(addBtn);
@@ -484,10 +540,18 @@ export class RawRegistryPanel {
     // ═══ 폼 ═══════════════════════════════════════════════════════════════════════════
     // ② 서버가 스켈레톤을 실어 줄 때«만» 그립니다 — 없으면 오늘 그대로입니다.
     if (root && picked) {
-      const held = this.newMode
+      let held = this.newMode
         ? (emptyOf(root, (payload.skeleton || {}).defs) || {})
         : (payload.declaration && typeof payload.declaration === 'object'
           ? payload.declaration : {});
+      // 초안이 있으면 «그것»이 문서입니다. 반쯤 친 JSON 이면 폼은 종전 문서로 그리고 글자는
+      // 초안 그대로 둡니다 — 원문 상자의 `input` 갈래가 이미 그 규율입니다.
+      if (drafted !== null) {
+        try {
+          const typed = JSON.parse(drafted || '{}');
+          if (typed && typeof typed === 'object') held = typed;
+        } catch (e) { /* noqa */ }
+      }
       const box = doc.createElement('div');
       // 🔴 탐색기의 «그 규칙»이 이 마운트에도 닿습니다 (C-95). 시트는 한 벌이고 문이 둘입니다 —
       //    같은 함수가 두 화면에서 다르게 보이던 것이 criterion ④ 의 실물이었습니다.
@@ -495,8 +559,8 @@ export class RawRegistryPanel {
       const draw = (value) => {
         box.textContent = '';
         const form = renderSkeletonForm(
-          formContext(payload.skeleton, this.lists, spec.choiceList), root, '', value, 0,
-          this.newMode ? NEW_NAME : view.name);
+          formContext(payload.skeleton, this.lists, spec, value),
+          root, '', value, 0, this.newMode ? NEW_NAME : view.name);
         if (form) {
           this._partition(form, root, value);
           box.appendChild(form);
@@ -518,9 +582,22 @@ export class RawRegistryPanel {
           const next = action === 'edit-shape-flag' ? Boolean(el.checked) : el.value;
           // 🔴 탐색기와 «같은 함수»입니다. 그리고 새 문서를 «돌려받습니다» — `setAtPath` 는
           //    제자리에서 안 고칩니다(그렇게 읽어 이 줄이 한 번 죽었습니다).
-          const updated = writeShapeAtPath(held2, String(path), next);
-          if (updated === null) return;
+          // 🔴 C-101 ③. 한 번 고르기가 문서를 «한 번» 바꿉니다. 고른 것이 다른 철자의 것이면
+          //    그 철자의 칸들로 펴지고, 이 칸은 비워집니다 — 두 컨트롤을 오갈 일이 없습니다.
+          let updated = held2;
+          for (const [at, val] of this._cells(String(path), next)) {
+            if (val === null) {
+              // 없는 칸을 지우는 것은 «성공»입니다 — 그 자리는 이미 비어 있습니다.
+              const gone = deleteAtPath(updated, splitBundlePath(at));
+              if (gone !== null) updated = gone;
+              continue;
+            }
+            const written = writeShapeAtPath(updated, at, val);
+            if (written === null) return;
+            updated = written;
+          }
           area.value = JSON.stringify(updated, null, 2);
+          this._keep(key, area.value);
           draw(updated);
         };
         box.addEventListener('change', write);
@@ -528,6 +605,23 @@ export class RawRegistryPanel {
       this.root.appendChild(box);
       this._redraw = draw;
       if (this.newMode) view = Object.freeze({ ...view, raw: JSON.stringify(held, null, 2) });
+    }
+
+    // C-101 ③. 목록 밖의 줄들. 드롭다운 «밖»이고 한 줄씩입니다 — 「내 파일이 왜 안 보이나」의
+    // 답이 이 자리이고, 문구는 서버의 것이라 이 파일이 짓는 말이 없습니다.
+    if (picked && root && this.notes.length) {
+      const box = doc.createElement('div');
+      box.className = `${spec.cls}-list-notes`;
+      let drawn = 0;
+      for (const note of this.notes) {
+        if (!note || !note.text) continue;
+        const line = this._line(`${spec.cls}-list-note`, String(note.text));
+        if (note.kind) line.setAttribute('data-note', String(note.kind));
+        box.appendChild(line);
+        drawn += 1;
+      }
+      // 줄이 하나도 «안 그려졌으면» 상자도 없습니다 — 빈 상자는 여백만 남는 주장입니다.
+      if (drawn) this.root.appendChild(box);
     }
 
     // 🔴 거절은 «서버의 낱말»로. 이 파일은 문구를 짓지 않습니다.
@@ -546,12 +640,17 @@ export class RawRegistryPanel {
     //    말하지 않습니다. 문서는 그대로 여기 삽니다(접혀도 DOM 에 있습니다).
     area.className = `${spec.cls}-raw`;
     area.setAttribute('data-raw', spec.nameKey);
-    area.value = view.raw;
-    area.textContent = view.raw;
+    // 🔴 초안이 «문서»입니다 — 서버의 글자로 덮는 그 순간이 초기화입니다.
+    const text = drafted !== null ? drafted : view.raw;
+    area.value = text;
+    area.textContent = text;
     if (area.addEventListener && root && picked) {
       // 글자가 문서입니다. 파싱이 안 되면 폼을 «그대로 둡니다» — 반쯤 친 JSON 위에서 폼을
       // 비우면 사람이 치던 것이 사라진 것처럼 보입니다.
       area.addEventListener('input', () => {
+        // 🔴 파싱 여부와 «무관하게» 초안입니다. 반쯤 친 JSON 을 안 들고 있으면 다음 그림이
+        //    그것을 지우고, 그 그림은 접기 버튼 하나로도 옵니다.
+        this._keep(key, area.value);
         let held2;
         try { held2 = JSON.parse(area.value || '{}'); } catch (e) { return; }
         if (this._redraw) this._redraw(held2);
@@ -560,7 +659,7 @@ export class RawRegistryPanel {
     if (root && picked) {
       this.root.appendChild(this._fold(`${spec.cls}-raw-fold`, '원본', null, this.rawOpen, () => {
         this.rawOpen = !this.rawOpen;
-        this.render(this._payload, this._opts);
+        this._again();
       }));
       if (!this.rawOpen) area.hidden = true;
     }
@@ -573,7 +672,71 @@ export class RawRegistryPanel {
       this.root.appendChild(this._line(`${spec.cls}-saved`,
         `${view.saved.name} · ${view.saved.count} · ${view.saved.backup}`));
     }
+    // 🔴 C-101 ①. 「무엇이 열려 있나」를 적습니다 — 배경 갱신이 이것을 읽고 «비켜갑니다».
+    this.open = picked ? key : '';
     return view;
+  }
+
+  /**
+   * 고르개의 «선택지». 🔴 자리가 하나입니다 — 첫 그림과 배경 갱신이 각자 지으면 둘이 갈라지고,
+   * 갈라진 날 목록 갱신이 자리표시자를 «되살려» 열려 있는 문서를 안 고른 것처럼 그립니다.
+   *
+   * @param {object|null} picker  고르개 (없으면 아무것도 안 합니다)
+   * @param {object} view  방금 읽은 것
+   * @param {string} open  «열려 있는» 문서의 이름. ''이면 아직 아무것도 안 골랐습니다
+   */
+  _options(picker, view, open) {
+    if (!picker) return;
+    const doc = this.doc;
+    picker.textContent = '';
+    const opt = (value, selected) => {
+      const o = doc.createElement('option');
+      o.value = value;
+      o.textContent = value;
+      if (selected) o.setAttribute('selected', 'selected');
+      picker.appendChild(o);
+    };
+    // 새 이름을 짓는 중이면 고르개가 «그것»을 보여 줍니다. 종전에는 이전 규칙의 이름이 그대로
+    // 남아, 지금 보고 있는 것이 무엇인지 화면이 «틀리게» 말했습니다.
+    if (this.newMode && this.spec.addLabel) opt(NEW_NAME, true);
+    // C-95-b. 아직 아무것도 안 골랐습니다. 자리표시자가 없으면 고르개가 «첫 이름»을 보여 주고,
+    // 그 이름의 내용은 아직 읽은 적이 없습니다.
+    else if (!open) opt(PICK_NAME, true);
+    for (const name of view.names) opt(name, name === open);
+    this._names = view.names.join('\u0000');
+  }
+
+  /** 자기 자신을 다시 그립니다 — «사람이 누른» 것이라 배경 갱신이 «아닙니다». 세 자리가 각자
+   *  부르던 것을 한 자리로 모았습니다: 그중 하나가 배경 깃발을 그대로 넘기면 접기 버튼이
+   *  «아무 일도 안 하는» 버튼이 됩니다 (criterion ④). */
+  _again() {
+    this.render(this._payload, { ...this._opts, background: false });
+  }
+
+  /** 저장 안 된 글자를 «부품이» 듭니다. 이름을 같이 드는 이유는 생성자의 `draftOf` 를 보십시오. */
+  _keep(key, text) {
+    this.draft = String(text == null ? '' : text);
+    this.draftOf = String(key || '');
+  }
+
+  _forget() {
+    this.draft = null;
+    this.draftOf = '';
+  }
+
+  /**
+   * 이 컨트롤의 한 번 고르기가 «어느 칸들»에 무엇을 적나. 기본은 그 칸 하나입니다.
+   * `null` 값은 「그 칸을 지운다」이고, 무엇이 그렇게 되는지는 «등록부»가 답합니다.
+   */
+  _cells(path, value) {
+    for (const group of this.spec.oneOf || []) {
+      if (typeof group.split !== 'function') continue;
+      if ((group.one || [])[0] !== path) continue;
+      const spread = group.split(value);
+      if (spread && typeof spread === 'object') return Object.entries(spread);
+      break;
+    }
+    return [[path, value]];
   }
 
   /**
@@ -592,14 +755,17 @@ export class RawRegistryPanel {
     const later = doc.createElement('div');
     later.className = `oe-node-children ${spec.cls}-advanced`;
     if (!this.moreOpen) later.hidden = true;
-    const nodes = children.childNodes ? [...children.childNodes] : [];
+    // 🔴 같은 이유로 «원소»입니다. 실측 2026-09-13: 이 줄이 `childNodes` 를 읽어 하니스에서
+    //    한 줄도 «안 옮겨졌고», 접힘 버튼은 「고급 · 18」이라 세어 놓고 아무것도 안 숨겼습니다.
+    //    브라우저에서는 돌던 코드라 화면은 맞았고 — 그래서 조용했습니다.
+    const nodes = children.children ? [...children.children] : [];
     for (const node of nodes) {
       const at = node && node.dataset ? node.dataset.path : '';
       if (at && !keep.has(at)) later.appendChild(node);
     }
     children.appendChild(this._fold(`${spec.cls}-more`, '고급', rest.length, this.moreOpen, () => {
       this.moreOpen = !this.moreOpen;
-      this.render(this._payload, this._opts);
+      this._again();
     }));
     children.appendChild(later);
   }

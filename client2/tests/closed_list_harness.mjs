@@ -19,6 +19,9 @@
 // Run: node client2/tests/closed_list_harness.mjs
 import { closedListChoice, renderClosedList, LIST_UNREAD, NO_CHOICE } from '../src/closed_list.js';
 
+/** 무엇이 «고를 수 있게» 제시됐나 — 값으로. */
+const values = (decision) => decision.options.map((o) => o.value);
+
 let pass = 0;
 const failures = [];
 function eq(name, got, want) {
@@ -65,14 +68,16 @@ console.log('\n[1] the member count decides the control');
   // 🔴 ③ — the one case the rule must NOT swallow.
   eq('one member with an EMPTY document stays a picker, or it can never be filled',
     closedListChoice(['ingested'], '').control, 'picker');
+  // ⚠️ READ AS VALUES. Since C-101 ③ a member may carry a label and a group, so 「what is
+  //    offered」 is the VALUE list -- which is what every one of these assertions meant.
   eq('...and the blank is offered beside it, so the box does not read as already-answered',
-    closedListChoice(['ingested'], '').options, ['', 'ingested']);
+    values(closedListChoice(['ingested'], '')), ['', 'ingested']);
 
   // A value the list does not know is a second thing to choose between: the stray and the
   // member. Drawing that as a value would leave the operator no way to correct it.
   eq('one member and a stray value is a picker',
     closedListChoice(['ingested'], 'bogus').control, 'picker');
-  eq('...offering both, the stray first', closedListChoice(['ingested'], 'bogus').options,
+  eq('...offering both, the stray first', values(closedListChoice(['ingested'], 'bogus')),
     ['bogus', 'ingested']);
 }
 
@@ -99,7 +104,46 @@ console.log('\n[2] four states, and two of them are not the same empty');
     closedListChoice(undefined, '', { loaded: false, name: 'x' }).control, 'unread');
   eq('a non-list is not read as a member', closedListChoice('ingested', '').control, 'none');
   eq('non-strings in the list are not offered',
-    closedListChoice(['a', 7, null, 'b'], 'a').options, ['a', 'b']);
+    values(closedListChoice(['a', 7, null, 'b'], 'a')), ['a', 'b']);
+}
+
+// ═══ ④ 멤버가 «묶음»과 «보일 이름»을 들 수 있다 (C-101 ③) ═════════════════════════════
+// 🔴 왜: 소유자의 물음이 「내 파일이 왜 목록에 안 보이지」였다. 「등록된 이름」과 「파일의 함수」가
+//    한 줄에 섞이면 그 물음이 화면에서 안 풀린다 — 답은 «묶어서 이름을 다는» 것이다.
+// ⚠️ 값과 보일 이름이 갈라질 수 있게 됐으므로, 고른 것을 읽는 쪽은 «언제나» 값을 읽는다.
+console.log('\n[4] a member can carry a group and a label');
+{
+  const MEMBERS = [
+    { value: 'build_dt_map', group: '등록 이름' },
+    { value: 'mappers.lot:build_rows', label: 'lot · build_rows', group: '파일 함수' },
+  ];
+  const picked = closedListChoice(MEMBERS, 'build_dt_map');
+  eq('objects are members too', picked.control, 'picker');
+  eq('...and the document holds a VALUE, never a label',
+    values(picked), ['build_dt_map', 'mappers.lot:build_rows']);
+  const box = draw(MEMBERS, 'build_dt_map');
+  const groups = (box.children || []).filter((c) => c.tagName === 'OPTGROUP');
+  eq('two groups are drawn, in the order the list gave them',
+    groups.map((g) => g.getAttribute('label')), ['등록 이름', '파일 함수']);
+  eq('every member sits in its own group', groups.map((g) => g.children.length), [1, 1]);
+  eq('...and none is left loose beside them',
+    (box.children || []).filter((c) => c.tagName === 'OPTION').length, 0);
+  const labelled = groups[1] ? groups[1].children[0] : null;
+  eq('a label is what is SHOWN', labelled ? labelled.textContent : null, 'lot · build_rows');
+  eq('...while the value is what is WRITTEN', labelled ? labelled.value : null,
+    'mappers.lot:build_rows');
+  // 🔴 그리고 목록이 모르는 값은 «묶음 밖»에 맨 앞으로 — 그것은 「고를 수 있는 것」의 분류가
+  //    아니라 「지금 참인 것」이다. 묶음 안에 넣으면 그 묶음의 멤버라고 말하는 것이 된다.
+  const stray = draw(MEMBERS, 'hand_typed_name');
+  const loose = (stray.children || []).filter((c) => c.tagName === 'OPTION');
+  eq('a stray value stands outside the groups, first', loose.map((o) => o.value),
+    ['hand_typed_name']);
+  eq('a member with no value cannot be chosen and is dropped',
+    values(closedListChoice([{ label: 'x', group: 'g' }, 'ok'], 'ok')), ['ok']);
+  // ⚠️ 묶음 «없는» 멤버는 오늘 두 소비자가 넘기는 것이고, 그 그림은 한 픽셀도 안 바뀐다.
+  const plain = draw(['row', 'group'], 'row');
+  eq('a plain string list draws no groups at all',
+    (plain.children || []).filter((c) => c.tagName === 'OPTGROUP').length, 0);
 }
 
 // ═══ ③ 그리는 것만으로 남의 파일을 고치지 않는다 ═══════════════════════════════════════

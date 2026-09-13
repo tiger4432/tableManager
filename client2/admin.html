@@ -553,6 +553,37 @@
     .chain-rule-state[data-state="false"] { color: var(--warning); font-weight: 600; }
     .chain-rule-state[data-state="refused"],
     .table-config-state[data-state="refused"] { color: var(--danger); font-weight: 600; }
+    /* C-101 ③. 목록 «밖»의 줄들 — 「여기 있지만 고를 수 없는 것」. 드롭다운 안에 넣으면
+       고를 수 있는 것처럼 보이고, 안 그리면 「내 파일이 왜 안 보이나」에 답이 없습니다.
+       ⚠️ 줄이 하나도 없으면 상자 자체가 «안 그려집니다» (빈 상자는 여백만 남는 주장입니다). */
+    .chain-rule-list-notes,
+    .table-config-list-notes {
+      margin: 6.8px 0 0;
+      padding: 6.8px 10.2px;
+      border-left: 2px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 3.4px;
+    }
+    .chain-rule-list-note,
+    .table-config-list-note {
+      margin: 0;
+      font-family: var(--font-mono);
+      font-size: var(--fs-tag);
+      color: var(--text-dim);
+      white-space: normal;
+    }
+    /* 「import 실패」는 «고칠 수 있는» 것이라 눈에 띕니다. 「체인용 아님」은 사실이고 할 일이 없습니다. */
+    .chain-rule-list-note[data-note="refused"],
+    .table-config-list-note[data-note="refused"] { color: var(--warning); }
+    /* 두 묶음의 머리. 묶음 이름은 «고를 수 없는 것»이라 값과 다르게 보입니다. */
+    .chain-rule-form optgroup,
+    .table-config-form optgroup {
+      font-family: var(--font-sans);
+      font-size: var(--fs-tag);
+      color: var(--text-dim);
+      font-weight: 600;
+    }
     /* 거절은 서버의 낱말로. 세 칸이고, 없는 칸은 안 그립니다. */
     .chain-rule-refusal,
     .table-config-refusal {

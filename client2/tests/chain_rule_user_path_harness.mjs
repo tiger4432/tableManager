@@ -24,6 +24,12 @@
  *   E  saving: ONE POST, shape {name, declaration, base}, through the page's own save
  *   F  staying: after the save the same rule is still selected and still filled
  *   G  the new name: [규칙 추가] asks for a name in ONE place, and the save carries THAT name
+ *   H  staying under the page's own clock: the 30-second read names no rule, and what is being
+ *      edited is still there afterwards -- while the LIST it went for does refresh (C-101 ①)
+ *   I  choosing rather than typing: the table catalogue reaches the reference cells, and a name
+ *      the catalogue does not hold is still accepted as typed (C-101 ②)
+ *   J  the mapper list: BOTH what the decorator registered and what the files define, in two
+ *      groups, and choosing a file function fills the two cells (C-101 ③)
  *
  * ⚠️ WHAT IT DOES NOT SCORE, AND WHY. The query parameter's SPELLING is a seam between two
  *    files in two lanes (`admin.js` sends one word, `main.get_chain_rule_raw` declares another
@@ -97,11 +103,16 @@ if (!globalThis.navigator.clipboard) {
 
 /** Every request the page makes, and the answer it is given. */
 const calls = [];
+// 🔴 COUNTED ACROSS THE WHOLE WALK, not inside one section. `calls` is emptied between sections,
+//    and inside any one of them 「once」 and 「every time」 look identical -- which is how a list
+//    re-read per rule opened would pass as cached.
+let catalogueReads = 0;
 let answer = () => ({ status: 404, body: null });
 globalThis.fetch = async (url, init) => {
   const call = { url: String(url), method: (init && init.method) || 'GET',
                  body: init && init.body ? JSON.parse(init.body) : null };
   calls.push(call);
+  if (isCatalogue(call)) catalogueReads += 1;
   const a = answer(call) || { status: 404, body: null };
   return {
     ok: a.status >= 200 && a.status < 300,
@@ -128,6 +139,23 @@ const rawView = (name) => {
   }
   return out;
 };
+
+// The catalogue route, which is NOT behind the admin gate -- `crud.TABLE_CONFIG.keys()` plus two
+// fields this screen deliberately does not read (`map_key_columns`, `kind`: other questions).
+// ⚠️ Matched on the END of the path: `/admin/tables/config/raw` contains 「/tables」 too, and a
+//    fixture that answered both would be feeding one route's body to another route's reader.
+const TABLES = ['lot_event', 'lot_slot_wafer', 'dt_log', 'dt_map'];
+// 🔴 THE SHAPE THE ROUTE ANSWERS WITH TODAY, both cells. `registered` is what the decorator
+//    registered; `data` is every top-level def the AST found. The owner's mappers subclass
+//    `BaseMapper`, so they are in the SECOND cell and in no other -- which is why a screen
+//    reading only the first told them 「선택지 없음」 while their files sat right there.
+const MAPPERS = {
+  status: 'success',
+  registered: ['build_dt_map'],
+  data: [{ filename: 'lot_slot_wafer_mapper.py', module_name: 'mappers.lot_slot_wafer_mapper',
+           functions: [{ name: 'build_lot_slot_wafer_rows', arguments: ['rows'], summary: '' }] }],
+};
+const isCatalogue = (call) => /\/tables$/.test(call.url.split('?')[0]);
 
 /** The name the page asked for, whatever cell it used to ask. */
 const askedName = (call) => {
@@ -202,6 +230,7 @@ function freshPage() {
   c.setAttribute('id', 'chain-rule-editor-count');
   doc.body.appendChild(c);
   mount = m;
+  catalogueReads = 0;
 }
 
 async function suite(probe) {
@@ -212,8 +241,9 @@ async function suite(probe) {
 
   // ── A. the tab opens: no name yet, so the page asks for the list ────────────────────────
   answer = (call) => (call.url.includes('/admin/mappers/list')
-    ? { status: 200, body: { registered: [] } }
-    : { status: 200, body: rawView(null) });
+    ? { status: 200, body: MAPPERS }
+    : isCatalogue(call) ? { status: 200, body: { tables: TABLES } }
+      : { status: 200, body: rawView(null) });
   calls.length = 0;
   await refreshChainRule();
   await flush();
@@ -237,8 +267,9 @@ async function suite(probe) {
 
   // ── B. picking: one request, carrying the chosen name ───────────────────────────────────
   answer = (call) => (call.url.includes('/admin/mappers/list')
-    ? { status: 200, body: { registered: [] } }
-    : { status: 200, body: rawView(askedName(call)) });
+    ? { status: 200, body: MAPPERS }
+    : isCatalogue(call) ? { status: 200, body: { tables: TABLES } }
+      : { status: 200, body: rawView(askedName(call)) });
   calls.length = 0;
   picker.value = RULE.name;
   picker.dispatch('change', { target: { value: RULE.name } });
@@ -263,6 +294,47 @@ async function suite(probe) {
   ok(Boolean(opened) && opened.lot_column === RULE.lot_column,
      'C a cell the skeleton never heard of survives in the document');
 
+  // ── I. the catalogue reaches the reference cells (C-101 ②) ──────────────────────────────
+  // 🔴 THE OWNER'S OTHER SENTENCE: 「테이블이랑 맵퍼 설정은 리스트 좀 나오게해」. Measured in the
+  //    shipped skeleton: SEVEN leaves are `hint: 'ref'` and none names a section, so the list has
+  //    to come from what the registry declares -- and only the real declaration on the real page
+  //    can prove that it does.
+  const refBox = boxAt('trigger_table');
+  const refListId = refBox ? refBox.attrs.list : '';
+  const refOptions = all(panelRoot())
+    // ⚠️ `id` is a PROPERTY here, not an attribute: `ontology_explorer_view` writes `list.id = …`
+    //    and reading `attrs.id` found zero lists while the screen had one.
+    .filter((el) => el.tagName === 'DATALIST' && (el.id || el.attrs.id) === refListId)
+    .flatMap((el) => (el.children || []).map((o) => o.value));
+  ok(Boolean(refListId) && refOptions.length > 0,
+     `I the table cells offer the catalogue rather than a blank box (${refOptions.length} name(s))`);
+  ok(TABLES.every((name) => refOptions.includes(name)),
+     `I ... and it is the served catalogue, whole [${refOptions.join(',')}]`);
+  // ── J. the mapper list carries BOTH cells, in two groups (C-101 ③) ──────────────────────
+  // 🔴 THE OWNER'S RULE IS THE FIXTURE: `RULE` names its mapper with `mapper_module` +
+  //    `mapper_function`, which is the spelling every rule in this box uses. Before this round
+  //    the dropdown read `registered` only, so their file was not on it -- and the cell that
+  //    held their mapper was a text box.
+  const chooser = all(panelRoot()).find(
+    (el) => el.tagName === 'SELECT' && el.attrs && el.attrs['data-value'] === 'mapper');
+  const groups = chooser
+    ? (chooser.children || []).filter((c) => c.tagName === 'OPTGROUP')
+      .map((g) => g.getAttribute('label')) : [];
+  ok(groups.length === 2, `J the mapper cell is a dropdown of two groups [${groups.join(',')}]`);
+  const offeredMappers = chooser
+    ? (chooser.children || []).flatMap((c) => (c.tagName === 'OPTGROUP' ? c.children : [c]))
+      .map((o) => o.value) : [];
+  ok(offeredMappers.includes('build_dt_map'),
+     `J a decorator-registered name is offered [${offeredMappers.join(' | ')}]`);
+  ok(offeredMappers.includes('mappers.lot_slot_wafer_mapper:build_lot_slot_wafer_rows'),
+     'J ... and so is a function the FILES define, which is where this box`s mappers live');
+  const picked2 = chooser
+    ? (chooser.children || []).flatMap((c) => (c.tagName === 'OPTGROUP' ? c.children : [c]))
+      .filter((o) => o.selected).map((o) => o.value) : [];
+  ok(picked2.length === 1
+     && picked2[0] === 'mappers.lot_slot_wafer_mapper:build_lot_slot_wafer_rows',
+     `J the rule's own two-cell mapper is what the dropdown shows [${picked2.join(',')}]`);
+
   // ── D. editing: the document the save will send is rewritten ────────────────────────────
   type('target_table', 'lot_slot_wafer_v2');
   await flush();
@@ -270,10 +342,57 @@ async function suite(probe) {
   ok(afterEdit.target_table === 'lot_slot_wafer_v2', 'D a box changed rewrites the document');
   ok(afterEdit.lot_column === RULE.lot_column, 'D and rewrites nothing else');
 
+  // ── H. the page's own clock does not swap out the form (C-101 ①) ────────────────────────
+  // 🔴 THE OWNER'S SENTENCE, AS A WALK: 「체인 규칙 설정 쓰다가 지혼자 새로고침되서 초기화되는데?」
+  //    `admin.js:408` fires every 30s and reaches `refreshChainRule()` WITH NO NAME. That read
+  //    carries a list and no declaration, so drawing it removes the editor -- the boxes do not
+  //    go stale, they go AWAY, and the rule deselects with them.
+  // ⚠️ Called exactly as the timer calls it: no arguments. A harness that passed the background
+  //    flag itself would be making the page's decision and would stay green with the page broken.
+  answer = (call) => (call.url.includes('/admin/mappers/list')
+    ? { status: 200, body: MAPPERS }
+    : isCatalogue(call) ? { status: 200, body: { tables: TABLES } }
+      : { status: 200, body: rawView(null) });
+  await refreshChainRule();
+  await flush();
+  const kept = boxAt('target_table');
+  ok(Boolean(kept) && kept.value === 'lot_slot_wafer_v2',
+     `H the edited box survives the page's own refresh (${kept ? JSON.stringify(kept.value) : 'the form is GONE'})`);
+  ok((held() || {}).target_table === 'lot_slot_wafer_v2',
+     'H and the document the save would send is the edited one, not the served one');
+  const underClock = byAttr('data-picker');
+  const onClock = underClock
+    ? underClock.children.filter((o) => o.getAttribute('selected')).map((o) => o.value) : [];
+  ok(onClock.length === 1 && onClock[0] === RULE.name,
+     `H the rule is still the one open -- deselecting IS the 「초기화」 (${JSON.stringify(onClock)})`);
+  ok(Boolean(boxAt('lot_column')) || (held() || {}).lot_column === RULE.lot_column,
+     'H and a cell the skeleton never heard of is still in the document');
+
+  // 🔴 THE OTHER HALF, OR THE GUARD IS JUST 「IGNORE THE SERVER」. The page went for the list
+  //    because the list can change under it; a rule added by somebody else must appear.
+  answer = (call) => {
+    if (call.url.includes('/admin/mappers/list')) return { status: 200, body: MAPPERS };
+    if (isCatalogue(call)) return { status: 200, body: { tables: TABLES } };
+    const body = rawView(null);
+    body.rules = [...NAMES, 'a_rule_somebody_else_added'];
+    return { status: 200, body };
+  };
+  await refreshChainRule();
+  await flush();
+  const grown = byAttr('data-picker');
+  const names = grown ? grown.children.map((o) => o.value) : [];
+  ok(names.includes('a_rule_somebody_else_added'),
+     `H the list DOES refresh -- that is what the read was for (${JSON.stringify(names)})`);
+  ok(names.indexOf(PICK_NAME) === -1,
+     'H ... and refreshing it does not bring back 「아직 안 골랐다」 over an open rule');
+  ok(Boolean(boxAt('target_table')) && boxAt('target_table').value === 'lot_slot_wafer_v2',
+     'H ... while the edit is still untouched');
+
   // ── E. saving: one POST, the shape the route reads ──────────────────────────────────────
   let saved = null;
   answer = (call) => {
-    if (call.url.includes('/admin/mappers/list')) return { status: 200, body: { registered: [] } };
+    if (call.url.includes('/admin/mappers/list')) return { status: 200, body: MAPPERS };
+    if (isCatalogue(call)) return { status: 200, body: { tables: TABLES } };
     if (call.method === 'POST') { saved = call; return { status: 200, body: { name: call.body.name, rules: NAMES, backup: '/box/bak', enabled: true } }; }
     return { status: 200, body: rawView(askedName(call)) };
   };
@@ -298,6 +417,16 @@ async function suite(probe) {
      `F after saving, the picker still shows that rule (${JSON.stringify(selected)})`);
   ok(Boolean(boxAt('trigger_table')) && boxAt('trigger_table').value === RULE.trigger_table,
      'F and the boxes are still filled');
+  // 🔴 AND THE SAVE READ BACK THE RULE IT WROTE. Since C-101 ① a read that names no rule is the
+  //    page's own clock and the panel steps around it -- so 「still selected, still filled」 is
+  //    true of a save that forgot its own name too, and asserting only those would let that
+  //    defect through. What only a NAMED read-back can do is two things: bring the server's
+  //    version of the document to the screen, and let the screen say the write happened.
+  const readBack = calls.filter((c) => c.method === 'GET' && c.url.includes('/admin/chain/rules/raw'));
+  ok(readBack.length === 1 && askedName(readBack[0]) === RULE.name,
+     `F the save reads back the rule it saved (${readBack.map(askedName).map((x) => JSON.stringify(x)).join(',') || 'no read'})`);
+  ok(Boolean(byCls('chain-rule-saved')),
+     'F and the screen says the write happened -- a save nobody can see is a save nobody trusts');
 
   // ── G. the new name lives in ONE place, and the save carries it ─────────────────────────
   press('add-chain-rule');
@@ -317,6 +446,13 @@ async function suite(probe) {
      `G the save carries the name typed in the form (${saved ? saved.body.name : 'no save'})`);
   ok(Boolean(saved) && saved.body.declaration && saved.body.declaration.name === 'brand_new_rule',
      'G and the document says the same name -- one fact, one place');
+
+  // ── I (closing): the catalogue was read ONCE for this page ───────────────────────────────
+  // 🔴 Six refreshes have happened by here -- opening, picking, two clock reads, a save and a new
+  //    rule. The catalogue is the same answer to the same question every time, and asking it per
+  //    rule opened is the shape S-72 already paid for once (44 requests, 76% thrown away).
+  ok(catalogueReads === 1,
+     `I the catalogue is read once for the page, not once per rule opened (${catalogueReads})`);
   return { pass: pass - before.pass, fail: fail - before.fail };
 }
 
@@ -342,6 +478,32 @@ const DEFECTS = [
   ['the save forgets the base fingerprint, so a concurrent edit is overwritten in silence',
     s => s.replace('      body: JSON.stringify({ name, declaration, base }),',
                    '      body: JSON.stringify({ name, declaration }),')],
+  // 🔴 C-101 ①, AS THE OWNER MET IT. Without this one line the page hands its periodic read to
+  //    the panel as if a person had asked for it, and a read that names no rule draws no editor.
+  ['the page hands its own 30-second read to the form, which then has no document to draw',
+    s => s.replace('if (!name) opts.background = true;', '')],
+  // 🔴 C-101 ②. The list never leaves the page, and seven table cells go back to being typed.
+  ['the catalogue is read but never handed to the panel',
+    s => s.replace('    ...(tables === null ? {} : { tables }),', '')],
+  // ⚠️ S-207's class, on this route: `data` and `tables` are DIFFERENT QUESTIONS, and the mapper
+  //    route next door answers with `data`. Reading the neighbour's cell empties the list while
+  //    nothing errors.
+  ['the catalogue is read from the cell the route next door uses',
+    s => s.replace('    chainTableNames = body.tables.map(String);',
+                   '    chainTableNames = (body.data || []).map(String);')],
+  ['the catalogue is re-read every time a rule is opened',
+    s => s.replace('  if (chainTableNames !== null) return chainTableNames;', '')],
+  // 🔴 C-101 ③. S-207's shape, one route over: the page folds the answer itself and only the
+  //    registered half survives -- which is the screen the owner met.
+  ['the page folds the mapper answer itself, so only the registered half is offered',
+    s => s.replace('  const mappers = mapperChoices(mapperBody);',
+                   '  const mappers = mapperBody ? mapperBody.registered : null;')],
+  // ⚠️ THE SAME LINE, SPELLED WRONG. 「!name」 is the whole judgement: a read that names a rule
+  //    is a person opening it, and one that names none is the clock. Inverting it makes every
+  //    real open silently refuse to draw, which is the failure mode nobody would guess from
+  //    the fix's shape.
+  ['the flag is raised on the reads that DO name a rule',
+    s => s.replace('if (!name) opts.background = true;', 'if (name) opts.background = true;')],
   // 🔴 What 「저장했더니 사라졌다」 is made of: the save lands and the screen re-reads with no
   //    name, so the rule that was just written is no longer the one on the screen.
   ['after saving, the screen forgets which rule it saved',

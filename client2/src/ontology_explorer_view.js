@@ -1947,8 +1947,17 @@ function renderSkeletonLeaf(context, node, path, value) {
     // would draw EVERY list as empty for as long as it takes. 「모름」 and 「없음」 are not the
     // same pixel; the part keeps them apart and this line is what tells it which one.
     const loaded = Object.keys(context.schema || {}).length > 0;
+    // 🔴 C-101 ③. 「이 고르개가 지금 무엇을 골랐나」는 이 칸 하나로 답해지지 않을 수 있다. A
+    // grammar may spell ONE fact in TWO cells -- the chain rule's mapper is `mapper`, or
+    // `mapper_module` + `mapper_function` -- and then this cell is empty while the rule DOES
+    // name a mapper. Reading only this cell draws that rule as 「nothing chosen」, which is one
+    // response carrying two states. The context answers when it knows; the read-only tree and
+    // the explorer do not offer that function, so for them nothing changes.
+    const chosen = typeof context.heldChoice === 'function'
+      ? (String(context.heldChoice(node.list, path) || '') || text)
+      : text;
     return renderClosedList(
-      closedListChoice(context.schema[node.list], text, { loaded, name: node.list }),
+      closedListChoice(context.schema[node.list], chosen, { loaded, name: node.list }),
       h, { action: 'edit-shape', path });
   }
   const input = h('input', 'oe-field-input');

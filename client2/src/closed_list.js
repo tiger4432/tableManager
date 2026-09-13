@@ -18,6 +18,30 @@ export const LIST_UNREAD = '목록 · 모름';
 export const NO_CHOICE = '선택지 없음';
 
 /**
+ * 한 «멤버». 문자열이면 값과 보일 이름이 같고 묶음이 없습니다.
+ *
+ * 🔴 객체 판이 생긴 이유 하나: 「등록된 이름」과 「파일의 함수」가 한 줄에 섞이면 운영자가
+ *    «자기 파일이 목록에 있는지»를 못 봅니다. 그 물음이 이 묶음의 전부입니다.
+ * ⚠️ `value` 는 문서에 적히는 것이고 `label` 은 화면에 보이는 것입니다. 둘이 다를 수 있게
+ *    되었으므로, 고른 것을 «값으로» 읽는 쪽은 언제나 `value` 를 읽습니다.
+ *
+ * @typedef {string | {value: string, label?: string, group?: string}} Member
+ */
+
+/** 멤버 하나를 정규형으로. 값이 될 수 없는 것은 «빠집니다» (그린다고 고를 수 있는 게 아닙니다). */
+function member(item) {
+  if (typeof item === 'string') return { value: item, label: item, group: '' };
+  if (!item || typeof item !== 'object') return null;
+  const value = typeof item.value === 'string' ? item.value : '';
+  if (!value) return null;
+  return {
+    value,
+    label: typeof item.label === 'string' && item.label ? item.label : value,
+    group: typeof item.group === 'string' ? item.group : '',
+  };
+}
+
+/**
  * 이 칸을 값으로 그릴지, 고르개로 그릴지, 아니면 둘 다 아닌지.
  *
  * 🔴 판별식은 «하나»다: **이 컨트롤이 지금 값 말고 «다른 것»을 고를 수 있나.**
@@ -31,11 +55,11 @@ export const NO_CHOICE = '선택지 없음';
  * ⚠️ 현재 값은 «언제나» 항목에 남는다. 목록에 없는 값을 조용히 첫 항목으로 바꾸면 그리는
  *    것만으로 남의 파일을 고쳐 쓰는 것이 된다.
  *
- * @param {string[]|null|undefined} options 서버가 준 닫힌 목록의 멤버
+ * @param {Member[]|null|undefined} options 서버가 준 닫힌 목록의 멤버
  * @param {string} current 문서가 «지금» 들고 있는 값 (없으면 '')
  * @param {{loaded?: boolean, name?: string}} [opts] `loaded` 는 목록의 «도착» 여부
  * @returns {{control: 'unread'|'none'|'value'|'picker', value: string,
- *            options: string[], reason: string}}
+ *            options: {value: string, label: string, group: string}[], reason: string}}
  */
 export function closedListChoice(options, current, opts = {}) {
   const value = typeof current === 'string' || typeof current === 'number' ? String(current) : '';
@@ -43,12 +67,15 @@ export function closedListChoice(options, current, opts = {}) {
   if (opts.loaded === false) {
     return { control: 'unread', value, options: [], reason: LIST_UNREAD };
   }
-  const members = Array.isArray(options) ? options.filter((i) => typeof i === 'string') : [];
+  const members = Array.isArray(options) ? options.map(member).filter(Boolean) : [];
   if (!members.length) {
     return { control: 'none', value, options: [],
              reason: name ? `${NO_CHOICE} · ${name}` : NO_CHOICE };
   }
-  const offered = members.includes(value) ? members : [value, ...members];
+  // ⚠️ 현재 값은 «언제나» 항목에 남습니다(위 주석) — 묶음 «없이», 맨 앞에. 그것이 지금 참인
+  //    것이고, 묶음은 «고를 수 있는 것»의 분류입니다.
+  const offered = members.some((m) => m.value === value)
+    ? members : [{ value, label: value, group: '' }, ...members];
   if (offered.length === 1) {
     return { control: 'value', value, options: offered, reason: '' };
   }
@@ -69,11 +96,24 @@ export function renderClosedList(decision, h, spec) {
     select.dataset.action = spec.action;
     select.dataset.value = spec.path;
     select.setAttribute('aria-label', label);
+    // 🔴 묶음은 «만나는 순서»로 섭니다. 목록을 낸 쪽이 정한 순서이고, 여기서 다시 정렬하면
+    //    그 순서가 두 자리에서 두 답을 냅니다.
+    const groups = new Map();
+    const holder = (name) => {
+      if (!name) return select;
+      if (!groups.has(name)) {
+        const box = h('optgroup');
+        box.setAttribute('label', name);
+        groups.set(name, box);
+        select.append(box);
+      }
+      return groups.get(name);
+    };
     for (const item of decision.options) {
-      const option = h('option', '', item);
-      option.value = item;
-      if (item === decision.value) option.selected = true;
-      select.append(option);
+      const option = h('option', '', item.label);
+      option.value = item.value;
+      if (item.value === decision.value) option.selected = true;
+      holder(item.group).append(option);
     }
     return select;
   }

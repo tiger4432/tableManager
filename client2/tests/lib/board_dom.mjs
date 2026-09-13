@@ -57,7 +57,18 @@ export function makeNode(doc, tag) {
     offsetHeight: 0,
     _text: '',
     parentNode: null,
-    appendChild(c) { this.children.push(c); c.parentNode = this; return c; },
+    // 🔴 `appendChild` MOVES. Measured 2026-09-13: without the detach, a row moved from one box
+    //    to another sat in BOTH parents' child lists, and a walk of the tree counted one control
+    //    twice -- 「a served list becomes a picker」 read 2 for a single picker. The browser's
+    //    appendChild removes the node from its old parent first, and any part that REPARENTS
+    //    (folding rows into 「고급」 is one) is measuring nothing until this stub does the same.
+    appendChild(c) {
+      if (c && c.parentNode && c.parentNode !== this
+          && typeof c.parentNode.removeChild === 'function') c.parentNode.removeChild(c);
+      this.children.push(c);
+      c.parentNode = this;
+      return c;
+    },
     // 🔴 ADDED 2026-09-08. The board harness only ever mounted MAP panels, which use
     //    `appendChild`; the other eleven parts use `append(...)`. A stub missing it does not
     //    fail one assertion — it throws before the panel renders, so the whole screen is blank

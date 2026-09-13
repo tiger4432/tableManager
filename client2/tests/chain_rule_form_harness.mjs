@@ -71,6 +71,11 @@ function ok(cond, name) {
   return !!cond;
 }
 
+/** 두 목록이 같은가 — 문구를 짚는 것이 아니라 «서버가 준 값»이 그대로 섰는지. */
+function eqTexts(got, want, name) {
+  ok(JSON.stringify(got) === JSON.stringify(want), `${name} ${JSON.stringify(got)}`);
+}
+
 const leafKeys = (skeleton) => (skeleton.root.fields || [])
   .filter((f) => f.node && f.node.kind === 'leaf').map((f) => f.key);
 
@@ -88,7 +93,11 @@ const payloadFor = (skeleton, declaration, extra = {}) => ({
   ...extra,
 });
 
-const CHAIN_SPEC_EXTRA = { addLabel: '규칙 추가', choiceList: 'mappers' };
+// ⚠️ A FIXTURE, NOT A COPY OF THE DECLARATION. What is scored here is the TEMPLATE: a registry
+// that declares these things must behave this way. That the CHAIN registry declares them is
+// scored where it can only be true end to end -- `chain_rule_user_path_harness` drives the
+// real `chain_rule_panel.js` through the real page.
+const CHAIN_SPEC_EXTRA = { addLabel: '규칙 추가', choiceList: 'mappers', refList: 'tables' };
 
 function mount() {
   const host = makeNode(doc, 'div');
@@ -271,6 +280,190 @@ function suite(M) {
   ok(h1Paths.has('trigger_table') && !h1Paths.has('decoy_alpha'),
     'G3 two panels on one page keep their own documents');
 
+  // ── H: the part owns what is open and what is unsaved (C-101 ①) ───────────────────
+  // 🔴 THE OWNER'S SENTENCE: 「체인 규칙 설정 쓰다가 지혼자 새로고침되서 초기화되는데?」. The page
+  //    re-reads every 30 seconds WITHOUT a name, so that response carries a list and no
+  //    document -- drawing it does not make the boxes stale, it takes the editor AWAY.
+  const clock = makePanel(M, SPEC);
+  clock.panel.render(payloadFor(SKELETON, { name: 'alpha', trigger_table: 'before' }));
+  const clockField = walk(clock.host).find((n) => n.attrs && n.attrs['data-value'] === 'trigger_table');
+  if (clockField) { clockField.value = 'typed'; clockField.dispatch('change', {}); }
+  const listOnly = payloadFor(SKELETON, { name: 'alpha' });
+  delete listOnly.name;
+  delete listOnly.declaration;
+  delete listOnly.raw;
+  delete listOnly.enabled;
+  listOnly.rules = ['alpha', 'beta', 'gamma'];
+  clock.panel.render(listOnly, { background: true });
+  const stillThere = walk(clock.host).find((n) => n.attrs && n.attrs['data-value'] === 'trigger_table');
+  ok(Boolean(stillThere) && stillThere.value === 'typed',
+    `H1 a background read does not swap out a document being edited -- [${stillThere ? stillThere.value : 'the form is GONE'}]`);
+  const clockPicker = byCls(clock.host, 'chain-rule-picker')[0];
+  const clockNames = clockPicker ? clockPicker.children.map((o) => o.value) : [];
+  ok(clockNames.includes('gamma'),
+    `H2 ... while the LIST it went for does refresh -- that is what the read was for [${clockNames.join(',')}]`);
+  ok(clockNames.indexOf(M.PICK_NAME) === -1,
+    'H3 ... and refreshing the list does not put 「nothing picked」 over an open rule');
+  // 🔴 THE SAME LOSS THROUGH A CLICK, AND NO TIMER NEEDED. Folding 「원본」 redraws the panel from
+  //    the response it is holding, so before C-101 ① one fold threw away everything typed.
+  const fold = byCls(clock.host, 'chain-rule-raw-fold')[0];
+  if (fold) fold.dispatch('click', {});
+  const afterFold = walk(clock.host).find((n) => n.attrs && n.attrs['data-value'] === 'trigger_table');
+  ok(Boolean(fold) && Boolean(afterFold) && afterFold.value === 'typed',
+    `H4 the part's OWN redraw keeps the unsaved document too -- [${afterFold ? afterFold.value : 'no field'}]`);
+  // 🔴 AND A DRAFT ENDS WHERE ITS DOCUMENT DOES. The answer to a save IS the document now; a
+  //    draft that outlived it would put the old text back with nothing on the screen saying so.
+  clock.panel.render(payloadFor(SKELETON, { name: 'alpha', trigger_table: 'stored' }),
+                     { saved: { name: 'alpha', rules: ['alpha', 'beta'], backup: '/box/bak' } });
+  const afterSave = walk(clock.host).find((n) => n.attrs && n.attrs['data-value'] === 'trigger_table');
+  ok(Boolean(afterSave) && afterSave.value === 'stored',
+    `H5 once the save answers, the served document wins -- [${afterSave ? afterSave.value : 'no field'}]`);
+  // ⚠️ NOTHING OPEN MEANS NOTHING TO PROTECT -- the tab's first read is a background one, and a
+  //    guard that refused it would open the tab on an empty panel.
+  const first = makePanel(M, SPEC);
+  first.panel.render(payloadFor(SKELETON, { name: 'alpha', trigger_table: 'served' }),
+                     { background: true });
+  ok(byCls(first.host, 'chain-rule-form').length === 1,
+    'H6 a background read with nothing open still draws -- that is how the tab opens');
+  // 🔴 AND A PERSON PRESSING A BUTTON IS NOT THE CLOCK. The panel redraws itself from the
+  //    response it stored; if it passed that response's background flag back in, every fold
+  //    after the tab opened would be a button that does nothing.
+  const reFold = byCls(first.host, 'chain-rule-raw-fold')[0];
+  if (reFold) reFold.dispatch('click', {});
+  const reArea = byCls(first.host, 'chain-rule-raw')[0];
+  ok(Boolean(reFold) && Boolean(reArea) && reArea.hidden !== true,
+    'H7 a fold pressed after a background read still opens');
+
+  // ── I: reference cells choose from a catalogue, and still take anything (C-101 ②) ──
+  // 🔴 Measured 2026-09-13 in `server/chain_skeleton.json`: SEVEN leaves carry `hint: 'ref'` and
+  //    every one of them carries NO section. The explorer asks `context.declared(node.section)`
+  //    for those, this context answered `[]`, and so seven table names were typed by hand.
+  // ⚠️ NO NEW CONTROL. The explorer already draws a `datalist` -- searchable, still an input, and
+  //    a name the catalogue never heard of stays exactly as typed with no mark on it. What was
+  //    missing was the list, not the control, and that distinction is the whole of this fix.
+  const refs = makePanel(M, SPEC, { lists: { tables: ['lot_event', 'lot_slot_wafer'] } });
+  refs.panel.render(payloadFor(SKELETON, { name: 'alpha', trigger_table: 'lot_event' }));
+  const refBox = walk(refs.host).find((n2) => n2.attrs && n2.attrs['data-value'] === 'trigger_table');
+  const refList = walk(refs.host).find((n2) => n2.tagName === 'DATALIST');
+  const offered = refList ? refList.children.map((o) => o.value) : [];
+  ok(Boolean(refBox) && refBox.tagName === 'INPUT' && Boolean(refBox.attrs.list),
+    `I1 a reference cell offers a list -- [${refBox ? refBox.tagName : 'no box'}, list=${refBox ? refBox.attrs.list : '-'}]`);
+  ok(offered.includes('lot_event') && offered.includes('lot_slot_wafer'),
+    `I2 ... and the list is the catalogue it was handed -- [${offered.join(',')}]`);
+  // 🔴 A NAME THE CATALOGUE DOES NOT HOLD IS KEPT AS TYPED, AND NOTHING ON THE SCREEN OBJECTS.
+  //    The server judges a table name; a screen that refused one would refuse a table added
+  //    between this read and the save.
+  if (refBox) { refBox.value = 'a_table_nobody_declared'; refBox.dispatch('change', {}); }
+  let refDoc = null;
+  try { refDoc = JSON.parse((byCls(refs.host, 'chain-rule-raw')[0] || {}).value || 'null'); }
+  catch (e) { refDoc = null; }
+  ok(refDoc && refDoc.trigger_table === 'a_table_nobody_declared',
+    'I3 a typed name outside the catalogue reaches the document unchanged');
+  ok(byCls(refs.host, 'chain-rule-field-refusal').length === 0,
+    'I4 ... and carries no refusal mark -- the server judges a table name, not this screen');
+  // ⚠️ A CATALOGUE NEVER READ DRAWS NO LIST, AND THAT IS NOT 「there are none」. For a SUGGESTION
+  //    the two states share a pixel on purpose: an absent suggestion claims nothing. A closed
+  //    list is the opposite case and `closedListChoice` keeps those four states apart (F1-F3).
+  const noCat = makePanel(M, SPEC);
+  noCat.panel.render(payloadFor(SKELETON, { name: 'alpha', trigger_table: 'lot_event' }));
+  const noCatBox = walk(noCat.host).find((n2) => n2.attrs && n2.attrs['data-value'] === 'trigger_table');
+  ok(Boolean(noCatBox) && !noCatBox.attrs.list && noCatBox.tagName === 'INPUT',
+    'I5 an unread catalogue leaves the cell typable with no list -- a suggestion absent claims nothing');
+  // 🔴 AND THE SKELETON WINS WHEN IT NAMES ITS OWN. A grammar whose cells draw from different
+  //    catalogues is not this grammar today, and the day it is, one list answering for all of
+  //    them would offer table names where zones belong -- with nothing erroring.
+  const SECTIONED = { skeleton_version: 1, root: { kind: 'record', fields: [
+    { key: 'decoy_alpha', required: true, node: { kind: 'leaf', hint: 'ref', section: 'zones' } }] } };
+  const sect = makePanel(M, { listKey: 'rules', nameKey: 'name', cls: 'chain-rule',
+                              formRoot: (p) => (p && p.skeleton && p.skeleton.root) || null,
+                              refList: 'tables' },
+                         { lists: { tables: ['lot_event'], zones: ['Asia/Seoul'] } });
+  sect.panel.render(payloadFor(SECTIONED, { decoy_alpha: 'Asia/Seoul' }));
+  const sectList = walk(sect.host).find((n2) => n2.tagName === 'DATALIST');
+  const sectOffered = sectList ? sectList.children.map((o) => o.value) : [];
+  ok(sectOffered.includes('Asia/Seoul') && !sectOffered.includes('lot_event'),
+    `I6 a leaf that names its own section gets THAT list -- [${sectOffered.join(',')}]`);
+
+  // ── J: one dropdown writes either spelling, and says which one is held (C-101 ③) ───
+  // 🔴 Measured on the server (`chain_bindings.mapper_cells` / `mapper_resolvable`): `mapper`
+  //    resolves ONLY through the registry, so a file function cannot be named in that cell --
+  //    it is two cells or nothing. That is why one choice has to write two cells, and why
+  //    putting a token in `mapper` would make the document lie to every other reader.
+  const MEMBERS = [
+    { value: 'build_dt_map', group: '등록 이름' },
+    { value: 'mappers.lot:build_rows', label: 'mappers.lot · build_rows', group: '파일 함수' },
+  ];
+  const SPLIT = (value) => {
+    const at = String(value).lastIndexOf(':');
+    return at <= 0 ? null : { mapper: null, mapper_module: String(value).slice(0, at),
+                              mapper_function: String(value).slice(at + 1) };
+  };
+  const JOIN = (doc) => (doc.mapper || (doc.mapper_module && doc.mapper_function
+    ? `${doc.mapper_module}:${doc.mapper_function}` : ''));
+  const TWO_SPELLINGS = {
+    ...SPEC,
+    firstScreen: ['mapper'],
+    oneOf: [{ one: ['mapper'], other: ['mapper_module', 'mapper_function'], list: 'mappers',
+              split: SPLIT, join: JOIN }],
+  };
+  const pick = (host) => walk(host).find(
+    (n2) => n2.attrs && n2.attrs['data-value'] === 'mapper' && n2.tagName === 'SELECT');
+  const docOf = (host) => {
+    try { return JSON.parse((byCls(host, 'chain-rule-raw')[0] || {}).value || 'null'); }
+    catch (e) { return null; }
+  };
+
+  const two = makePanel(M, TWO_SPELLINGS, { lists: { mappers: MEMBERS } });
+  two.panel.render(payloadFor(SKELETON, { name: 'alpha', trigger_table: 't' }));
+  const chooser = pick(two.host);
+  const chooserGroups = chooser
+    ? (chooser.children || []).filter((c) => c.tagName === 'OPTGROUP')
+      .map((g) => g.getAttribute('label')) : [];
+  ok(Boolean(chooser) && chooserGroups.length === 2,
+    `J1 the mapper cell is a dropdown of two groups [${chooserGroups.join(',')}]`);
+  if (chooser) { chooser.value = 'mappers.lot:build_rows'; chooser.dispatch('change', {}); }
+  const afterPick = docOf(two.host) || {};
+  ok(afterPick.mapper_module === 'mappers.lot' && afterPick.mapper_function === 'build_rows',
+    `J2 choosing a file function fills BOTH cells (${JSON.stringify([afterPick.mapper_module, afterPick.mapper_function])})`);
+  ok(!('mapper' in afterPick),
+    'J3 ... and clears the one-cell spelling, because that cell means 「a registered name」');
+  const chooser2 = pick(two.host);
+  if (chooser2) { chooser2.value = 'build_dt_map'; chooser2.dispatch('change', {}); }
+  const afterName = docOf(two.host) || {};
+  ok(afterName.mapper === 'build_dt_map',
+    `J4 choosing a registered name writes that one cell (${JSON.stringify(afterName.mapper)})`);
+  // 🔴 AND THE CONTROL SAYS WHAT THE RULE HOLDS. A rule written with the two cells left this
+  //    dropdown EMPTY while the rule did name a mapper -- one response carrying two states.
+  const held2 = makePanel(M, TWO_SPELLINGS, { lists: { mappers: MEMBERS } });
+  held2.panel.render(payloadFor(SKELETON, { name: 'alpha', mapper_module: 'mappers.lot',
+                                            mapper_function: 'build_rows' }));
+  const shown2 = pick(held2.host);
+  const chosen2 = shown2
+    ? (shown2.children || []).flatMap((c) => (c.tagName === 'OPTGROUP' ? c.children : [c]))
+      .filter((o) => o.selected).map((o) => o.value) : [];
+  ok(chosen2.length === 1 && chosen2[0] === 'mappers.lot:build_rows',
+    `J5 a rule spelled in two cells shows its mapper in the dropdown [${chosen2.join(',')}]`);
+  // 🔴 AND THE DROPDOWN IS ON THE FIRST SCREEN FOR THAT RULE. It is the only place the mapper
+  //    can be CHANGED now, so hiding it behind 「고급」 is hiding the control, not a duplicate.
+  const advanced = byCls(held2.host, 'chain-rule-advanced')[0];
+  const hidden = advanced ? (advanced.children || []).map((c) => (c.attrs || {})['data-path']) : [];
+  ok(hidden.indexOf('mapper') === -1,
+    `J6 ... and that dropdown is not folded away [${hidden.filter(Boolean).slice(0, 6).join(',')}]`);
+  // ── lines OUTSIDE the list: 「here but not choosable」 ────────────────────────────
+  const noted = makePanel(M, TWO_SPELLINGS, { lists: { mappers: MEMBERS },
+    notes: [{ kind: 'other', text: 'mappers.rf · not a chain mapper' },
+             { kind: 'refused', text: 'mappers.x · ImportError' }] });
+  noted.panel.render(payloadFor(SKELETON, { name: 'alpha' }));
+  const lines = byCls(noted.host, 'chain-rule-list-note');
+  eqTexts(lines.map((l) => l.textContent),
+    ['mappers.rf · not a chain mapper', 'mappers.x · ImportError'],
+    'J7 what is here but not choosable gets one line each, in the server`s words');
+  ok(lines.length === 2 && lines[0].attrs['data-note'] === 'other'
+    && lines[1].attrs['data-note'] === 'refused',
+    'J8 ... and each line says which of the two it is, as a value not a sentence');
+  ok(byCls(two.host, 'chain-rule-list-note').length === 0,
+    'J9 no such cells means no lines at all -- an empty row would claim there are none');
+
   return { pass: pass - before.pass, fail: fail - before.fail };
 }
 
@@ -287,34 +480,36 @@ const DEFECTS = [
   // was open. The cell it is typed into moved into the form, so this is where that now decides.
   ['the add control saves the name that was already open',
     s => s.replace('        if (formOwnsName) {', '        if (false) {')],
+  // Re-aimed by C-101 ①: the options are built in ONE place now (`_options`), so the claim
+  // 「the picker says WHICH document is on the screen」 is decided there. Same claim, same C6.
   ['the picker keeps showing the rule that was open while a new one is written',
-    s => s.replace('    if (this.newMode && spec.addLabel) {', '    if (false) {')],
+    s => s.replace('if (this.newMode && this.spec.addLabel) opt(NEW_NAME, true);',
+                   'if (false) opt(NEW_NAME, true);')],
   // C-95-b. Without the placeholder the browser picks the first option for the screen, and the
   // screen then names a rule it has never read -- with empty boxes beside the name.
   ['a response with no name still names the first rule in the list',
-    s => s.replace('    } else if (!picked) {', '    } else if (false) {')],
+    s => s.replace('else if (!open) opt(PICK_NAME, true);', 'else if (false) opt(PICK_NAME, true);')],
   ['an editor is drawn for a rule nobody picked',
     s => s.replace('    const picked = this.newMode || Boolean(view.name);',
                    '    const picked = true;')],
   ['the save button stands on a screen with no document',
     s => s.replace('    if (picked || !root) head.appendChild(save);', '    head.appendChild(save);')],
   ['a new rule starts from the rule that was open',
-    s => s.replace('      const held = this.newMode\n'
+    s => s.replace('      let held = this.newMode\n'
                    + '        ? (emptyOf(root, (payload.skeleton || {}).defs) || {})\n',
-                   '      const held = this.newMode\n        ? (payload.declaration || {})\n')],
+                   '      let held = this.newMode\n        ? (payload.declaration || {})\n')],
   ['a form edit no longer reaches the document that is saved',
     s => s.replace('          area.value = JSON.stringify(updated, null, 2);\n', '')],
   // 🔴 THE TRAP THIS ROUND FELL INTO, KEPT AS A MUTANT. `setAtPath`/`writeShapeAtPath` return a
   //    NEW document; reading them as in-place writers silently throws the edit away, and the
   //    screen looks like a form that does nothing. It cost D2 one debug round.
   ['the writer is read as mutating in place, so the edit is thrown away',
-    s => s.replace('          const updated = writeShapeAtPath(held2, String(path), next);\n'
-                   + '          if (updated === null) return;\n'
-                   + '          area.value = JSON.stringify(updated, null, 2);\n'
-                   + '          draw(updated);',
-                   '          writeShapeAtPath(held2, String(path), next);\n'
-                   + '          area.value = JSON.stringify(held2, null, 2);\n'
-                   + '          draw(held2);')],
+    // Re-aimed by C-101 ③: the write became a LOOP over the cells the registry named, so the
+    // same misreading now lives on the value returned inside it. Same claim, same D2.
+    s => s.replace('            const written = writeShapeAtPath(updated, at, val);\n'
+                   + '            if (written === null) return;\n'
+                   + '            updated = written;',
+                   '            writeShapeAtPath(updated, at, val);')],
   ['the refused field is not marked',
     s => s.replace('        markRefusedField(box, view, spec);\n', '')],
   ['the mark carries a sentence instead of the code',
@@ -334,6 +529,35 @@ const DEFECTS = [
                    '      if (false) {')],
   ['an unread list is folded into an empty one, so 「never asked」 reads as 「there are none」',
     s => s.replace("    this.lists = deps.lists || {};", "    this.lists = deps.lists || { mappers: [] };")],
+  // 🔴 C-101 ①. Four ways this screen reset itself while somebody was typing.
+  ['a background read is drawn over the document being edited',
+    s => s.replace('if (opts.background && this.open) {', 'if (false) {')],
+  ['the unsaved document is dropped, so any redraw rebuilds from the response',
+    s => s.replace('const drafted = this.draft !== null && this.draftOf === key ? this.draft : null;',
+                   'const drafted = null;')],
+  ['the part passes the stored background flag back in, so a fold after the tab opens does nothing',
+    s => s.replace('this.render(this._payload, { ...this._opts, background: false });',
+                   'this.render(this._payload, this._opts);')],
+  ['a draft outlives the document it belongs to, so old text returns after a save',
+    s => s.replace('if (opts.saved || (this.draft !== null && this.draftOf !== key)) this._forget();', '')],
+  // 🔴 C-101 ②. The owner's second sentence: 「테이블이랑 맵퍼 설정은 리스트 좀 나오게해」.
+  ['the reference cells lose their catalogue, so every table name is typed by hand',
+    s => s.replace('    declared: (section) => named(section || refList),', '    declared: () => [],')],
+  ['one list answers for every reference cell, whatever section the skeleton named',
+    s => s.replace('named(section || refList)', 'named(refList)')],
+  // 🔴 C-101 ③. Five ways one choice stops writing what the operator chose.
+  ['the registry`s translation is ignored, so a file function writes the wrong cell',
+    s => s.replace('      const spread = group.split(value);', '      const spread = null;')],
+  ['the one-cell spelling is left behind, so the document names a mapper twice',
+    s => s.replace('            if (val === null) {', '            if (false) {')],
+  ['the dropdown cannot say what a two-cell rule holds',
+    s => s.replace('        return group.join(held && typeof held === \'object\' ? held : {});',
+                   '        return \'\';')],
+  ['the only control that can change the mapper is folded behind 「고급」',
+    s => s.replace('      const useOne = (Array.isArray(list) && list.length) ? true',
+                   '      const useOne = false ? true')],
+  ['what is here but not choosable is never drawn, so 「why is my file missing」 has no answer',
+    s => s.replace('    if (picked && root && this.notes.length) {', '    if (false) {')],
   ['the add control is drawn for a registry that declared no word for it',
     s => s.replace('    if (spec.addLabel) {', '    if (true) {')],
 ];

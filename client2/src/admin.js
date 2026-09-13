@@ -74,7 +74,7 @@ import { initOntologyExplorer, refreshOntologyExplorer } from './ontology_explor
 import { LedgerSourcesPanel } from './ledger_sources_panel.js';
 import { censusBySource } from './source_backlog.js';
 import { TableConfigPanel } from './table_config_panel.js';
-import { ChainRulePanel } from './chain_rule_panel.js';
+import { ChainRulePanel, mapperChoices, mapperNotes } from './chain_rule_panel.js';
 import { countWithAbsence } from './count_with_absence.js';
 import { takeRescopeHandoff } from './rescope_handoff.js';
 
@@ -1085,22 +1085,49 @@ let chainRulePanel = null;
 //    `data` 는 `server/mappers/*.py` 를 AST 로 읽은 «모든 최상위 def» 이고, 저장을 판정하는 것은
 //    `mapper_sdk.MAPPER_REGISTRY` 입니다(`@mapper(name=…)` 가 준 이름). 전자로 채우면 서버가
 //    거절할 이름을 목록으로 내놓게 됩니다 (S-207 이 그래서 `registered` 를 실었습니다).
-let chainMapperNames = null;
+// 🔴 C-101 ③. 응답 «전체»를 듭니다 — 고를 수 있는 것이 `registered`(등록된 이름)와 `data`(파일의
+//    함수) «둘»에서 나오고, 그 둘을 후보 목록 «하나»로 접는 것은 등록부의 일입니다
+//    (`mapperChoices`). 여기서 접으면 그 철자의 저자가 둘이 됩니다.
+let chainMapperBody = null;
 
-async function loadChainMapperNames() {
-  if (chainMapperNames !== null) return chainMapperNames;
+async function loadChainMappers() {
+  if (chainMapperBody !== null) return chainMapperBody;
   try {
     const res = await adminFetch(`${API_BASE}/admin/mappers/list`);
     if (!res.ok) return null;
     const body = await res.json().catch(() => null);
     // 키가 «없으면» 옛 서버입니다 — 그때도 「없음」이 아니라 「못 읽음」입니다.
     if (!body || !Array.isArray(body.registered)) return null;
-    chainMapperNames = body.registered.map(String);
+    chainMapperBody = body;
   } catch (e) {                                              // noqa
     return null;
   }
-  return chainMapperNames;
+  return chainMapperBody;
 }
+// C-101 ②. 규칙이 읽고 쓰는 «표»의 이름들. `null` 은 「아직/못 읽음」이고 `[]` 는 「없음」입니다 —
+// 맵퍼 목록과 같은 세 상태이고, 같은 이유입니다.
+//
+// 🔴 `GET /tables` 입니다. 그 라우트가 내는 것이 «제품이 아는 표 전부»(`crud.TABLE_CONFIG`)이고,
+//    규칙의 `trigger_table`·`target_table` 이 가리킬 수 있는 집합이 바로 그것입니다. 어드민
+//    게이트 «밖»이라 `adminFetch` 가 아닙니다 — `/enrichment/rules`(:4745)와 같은 자리입니다.
+// ⚠️ 이름 «목록»만 씁니다. 같은 응답이 `map_key_columns`·`kind` 를 같이 싣는데, 그것은 다른
+//    물음의 답이고 여기서 읽으면 이 화면이 그 물음의 둘째 독자가 됩니다.
+let chainTableNames = null;
+
+async function loadTableNames() {
+  if (chainTableNames !== null) return chainTableNames;
+  try {
+    const res = await fetch(`${API_BASE}/tables`);
+    if (!res.ok) return null;
+    const body = await res.json().catch(() => null);
+    if (!body || !Array.isArray(body.tables)) return null;
+    chainTableNames = body.tables.map(String);
+  } catch (e) {                                              // noqa
+    return null;
+  }
+  return chainTableNames;
+}
+
 async function refreshChainRule(name, extra = {}) {
   const mount = byId('chain-rule-mount');
   if (!mount) return;
@@ -1112,10 +1139,26 @@ async function refreshChainRule(name, extra = {}) {
   }
   // C-86 ③. 목록은 «패널이 그리기 전»에 넣습니다. 한 번 읽고 기억합니다 — 규칙을 열 때마다
   // 등록부를 다시 묻는 것은 같은 답에 대한 두 번째 질문입니다.
-  const mappers = await loadChainMapperNames();
-  chainRulePanel.setLists(mappers === null ? {} : { mappers });
+  // 🔴 C-101 ②. 목록이 «둘»이고 상태도 각자입니다 — 안 넣으면 「모름」, 빈 배열이면 「없음」.
+  //    하나를 못 읽었을 때 다른 하나까지 「없음」으로 그리면 안 물어본 것이 답이 됩니다.
+  const [mapperBody, tables] = await Promise.all([loadChainMappers(), loadTableNames()]);
+  const mappers = mapperChoices(mapperBody);
+  // C-101 ③. 목록 «밖»의 줄들 — 서버가 그 칸들을 낼 때만 섭니다(S-223). 없으면 빈 배열이고
+  // 패널은 아무것도 안 그립니다: 「못 읽음」을 「없음」으로 그리지 않는 자리입니다.
+  chainRulePanel.setNotes(mapperNotes(mapperBody));
+  chainRulePanel.setLists({
+    ...(mappers === null ? {} : { mappers }),
+    ...(tables === null ? {} : { tables }),
+  });
   let body = null;
   let opts = { ...extra };
+  // 🔴 C-101 ①. 이름을 «안 댄» 읽기는 «목록»입니다 — 30초 자동 갱신(:408)과 탭 전환이 그렇게
+  //    부릅니다. 그 응답에는 문서가 «없어서», 그대로 그리면 편집 중인 폼이 사라집니다
+  //    (소유자 2026-09-13 「체인 규칙 설정 쓰다가 지혼자 새로고침되서 초기화되는데?」).
+  //    ⚠️ 종전 가드는 `isInlineEditorActive || isEditorDirty` «뿐»이었고 그 둘은 Monaco
+  //       «파일 편집기»의 깃발입니다 — 이 폼이 편집 중인 것을 페이지는 «알 수 없습니다».
+  //    🔴 무엇을 할지는 «패널»이 정합니다. 여기에 판정을 두면 등록부마다 한 벌씩 생깁니다.
+  if (!name) opts.background = true;
   try {
     const qs = name ? `?name=${encodeURIComponent(name)}` : '';
     const res = await adminFetch(`${API_BASE}/admin/chain/rules/raw${qs}`);
@@ -1178,6 +1221,9 @@ async function refreshTableConfig(table, extra = {}) {
   }
   let body = null;
   let opts = { ...extra };
+  // 🔴 C-101 ①. 체인 규칙과 «같은 템플릿»이고 같은 결함입니다 — `switchTab`(:635)과
+  //    `fetchData`(:1034)가 이름 없이 부릅니다. 부류로 답합니다.
+  if (!table) opts.background = true;
   try {
     const qs = table ? `?table=${encodeURIComponent(table)}` : '';
     const res = await adminFetch(`${API_BASE}/admin/tables/config/raw${qs}`);
