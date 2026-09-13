@@ -1285,8 +1285,10 @@ lot-event-live-frame (준비기)  같은 부류
             반면 원장 역할 매퍼 둘(`ledger_v2_dt_job_mapper.py` · `ledger_v2_lot_event_role_mapper.py`)은 **REPO**
 => 그래서 D-6 의 「15 중 셋」은 «유효»하고(추적 파일만 봤습니다), 체인 매퍼의 소비자 수는 «무효»입니다.
 🔴 그리고 소유자가 이미 답하셨습니다 — 「내가 운영에서 @mapper 로 했다니까? 박스 재지 마」(2026-09-07).
-   추적본 중 SDK 를 쓰는 것은 `production_mapper.py.sample` «하나»이고, 그 수는 «출하 견본의 수»이지
-   운영의 수가 아닙니다. 여기서 「소비자 0/1」을 말하지 않습니다
+   ~~추적본 중 SDK 를 쓰는 것은 `production_mapper.py.sample` «하나»~~ — ⚰️ **거짓입니다**
+   🔴 **[2026-09-13 정정, 응용 실측] `@mapper` 를 쓰는 추적 견본은 «0» 입니다.** `git grep -ln mapper_sdk -- 'server/mappers/*'` 이 «빈 결과»이고, 지목된 그 견본은 :4 에서 `from mappers.base import BaseMapper` 를 import 합니다 — `mapper_sdk` 가 아닙니다. 즉 이 문장은 «이동 전에도» 거짓이었고, 이동(`d664d754`)은 그것을 드러낸 것일 뿐입니다.
+   ⚠️ **그럼에도 「BaseMapper 를 쓰니 SDK 를 안 쓴다」는 너무 센 문장입니다** — `BaseMapper` 의 정의는 `server/mapper_sdk.py` :77 에 살고, 그 머리 주석(:80~85)이 `mappers/base.py` 를 «재-export» 로 만들었다고 적습니다. 그래서 가르는 철자는 **「`@mapper` 데코레이터를 쓰는 추적 견본이 0」**이지 「SDK 파일을 안 지난다」가 아닙니다.
+   🔴 그리고 위 판정은 그대로입니다 — 그 0 은 «출하 견본의 수»이지 «운영의 수»가 아니고, 여기서 「소비자 0」을 말하지 않습니다
 🪦 **[2026-09-13, S-209] 그 견본은 «이 저장소에 없습니다»** — `assyManager-authoring/examples/` 로
    옮겨졌습니다(판정 348·349). 위 판정(「박스를 재지 않는다」)은 그대로이고, 바뀐 것은 «출하 견본의
    수»가 이제 0 이라는 것뿐입니다. ⚠️ 그리고 그 파일이 import 하던 것은 `mapper_sdk` 가 아니라
