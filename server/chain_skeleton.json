@@ -141,6 +141,14 @@
         }
       },
       {
+        "key": "group_by",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "free"
+        }
+      },
+      {
         "key": "origin",
         "required": false,
         "node": {

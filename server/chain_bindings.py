@@ -221,7 +221,7 @@ RULE_ROUTING_OPTIONAL = tuple(
     key for key in RULE_TABLE_KEYS if key not in RULE_ROUTING_REQUIRED) + (
     "target_field", "trigger_columns", "enabled", "is_batch",
     "follow_up", "allow_chain_trigger", "allow_map_metadata_upsert",
-    "max_group_attempts", "max_group_rows", "origin",
+    "max_group_attempts", "max_group_rows", "group_by", "origin",
     # S-188 ⓓ: `mapper` is the ONE cell; the two-cell spelling stays readable. `params` is
     # where a mapper's arguments live. The symbols `MAPPER_KEY`/`PARAMS_KEY` below are
     # defined against these literals and a test asserts they agree — the literals are here
@@ -349,6 +349,29 @@ def rule_refusals(rule, path, *, mapper_resolvable, mapper_params=None):
                 "bad_group_rows", path + "." + MAX_GROUP_ROWS_KEY,
                 "a group-row ceiling must be a positive whole number, got %r" % (written,)))
 
+    # 🔴 [S-154, 판정 381] A GROUP KEY NAMES COLUMNS OF THE TRIGGER TABLE. A name that is
+    # not one matches nothing, so every row would key on the same absent value and the whole
+    # table would arrive as ONE group - the loudest possible version of the misspelling S-152
+    # closed one cell over. `declared_columns` is the author of 「what columns does this table
+    # have」; `None` from it means 「the catalogue says nothing」 and is why a table it does not
+    # declare keeps working instead of being refused.
+    if GROUP_BY_KEY in candidate:
+        written = candidate.get(GROUP_BY_KEY)
+        names = (written if isinstance(written, list)
+                 and all(isinstance(n, str) and n.strip() for n in written) else None)
+        if names is None:
+            issues.append(validation.DeclarationValidationError(
+                "bad_group_by", path + "." + GROUP_BY_KEY,
+                "a group key must be a list of column names, got %r" % (written,)))
+        else:
+            known = declared_columns(str(candidate.get("trigger_table") or ""))
+            for missing in (sorted(set(names) - known) if known is not None else ()):
+                issues.append(validation.DeclarationValidationError(
+                    "unknown_group_column", path + "." + GROUP_BY_KEY,
+                    "'%s' is not a column of trigger table '%s' - a name that matches "
+                    "nothing would put the whole table in one group"
+                    % (missing, candidate.get("trigger_table"))))
+
     # 🔴 THE ONE BRANCH THIS ROUND ADDS. Only where a declaration exists, and only over the
     # cells the rule actually wrote - `params_of` reads the block with the flat cells beneath
     # it, which is the same view the mapper will be handed.
@@ -399,6 +422,13 @@ def params_of(rule):
 #: this line, so the literal appears there too - and `test_the_rule_table_keys_have_one_author`
 #: is the reason that pair is asserted rather than trusted.
 MAX_GROUP_ROWS_KEY = "max_group_rows"
+
+#: 🔴 [S-154] ONE SPELLING OF THE GROUP KEY'S NAME, for the same reason as the ceiling.
+#: ⚠️ NOT THE WALK'S `group_by` AND NOT A SYNTHESIZED RULE'S `decision_key`. The walk's is
+#: a QUERY argument and the alignment rule's is the unit a confirmation is stamped onto; this
+#: one says which rows reach a mapper in ONE call. Three axes, and a refusal message that
+#: mixed them would send an operator to the wrong file.
+GROUP_BY_KEY = "group_by"
 
 
 #: S-188 ⓔ. The node vocabulary is the LEDGER skeleton's, verbatim: kinds `record`/`map`/

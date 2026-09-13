@@ -484,6 +484,101 @@ def _declared_attempts(source, where):
     return parsed
 
 
+def group_key(rule, payload):
+    """이 규칙이 이 사건을 «무엇으로» 묶나 — 선언이 없으면 `None`.
+
+    🔴 그룹의 단위는 지금까지 «쓴 쪽의 커밋»이었다 (S-154). A rule could not choose it,
+    so a mapper that needed rows grouped by a lot re-grouped them in its own body - and that
+    body is in a gitignored file, so the product could not say what its groups were.
+
+    🔴 WITHIN ONE BATCH. Rows for one key that arrive in LATER batches form their own group;
+    waiting for them would need a 「how long」 cell, which is a different feature (판정 381 ㈚).
+
+    ⛔ A RE-EXPANDED EVENT IS NEVER RE-GROUPED. `outbox_expand` splits a failed chunk into
+    per-row events ON PURPOSE, and a key that folded them back together would rebuild the group
+    that just failed - quarantine undone, silently. `root_transaction_id` is the mark that says
+    「this one was split」.
+
+    ⛔ AND A COLLAPSED EVENT CARRIES NO VALUES. Its payload holds `row_ids` and a count, not
+    cells, so there is nothing to key on without reading the rows back; it keeps the writer's
+    transaction. MEASURED - `database.py`'s collapsed stager writes `row_ids` where the per-row
+    stager writes `data`.
+
+    ⚠️ THE VALUE IS FOLDED BY `crud.fold_key_value`, the one fold for a key part (S-181):
+    `None`, `''` and `'   '` are ONE key here, exactly as they are everywhere else a key is
+    composed. A second folding rule here is how two seats come to disagree about null.
+    """
+    columns = [str(name) for name in ((rule or {}).get(chain_bindings.GROUP_BY_KEY) or ())
+               if str(name).strip()]
+    if not columns:
+        return None
+    payload = payload or {}
+    if payload.get("root_transaction_id") or event_constants.is_collapsed_payload(payload):
+        return None
+
+    from database import crud
+
+    data = payload.get("data") or {}
+    table = str(payload.get("table_name") or "")
+    parts = []
+    for column in columns:
+        cell = data.get(column)
+        value = cell.get("value") if isinstance(cell, dict) and "value" in cell else cell
+        parts.append("%s=%r" % (column, crud.fold_key_value(table, column, value)))
+    return "|".join(parts)
+
+
+def group_id(event, rules):
+    """이 사건이 들어갈 그룹의 «이름».
+
+    🔴 THIS EXISTED TWICE, WRITTEN OUT BY HAND (S-154). The batch loop and the undelivered
+    sweep each spelled `payload["transaction_id"] or f"single_{uuid}"`, so the axis had two
+    authors and a new cell would have reached one of them. Folding them is half of this round,
+    and it lands in the SAME commit as the cell - a fold that lands alone leaves a window in
+    which the two answers are already different.
+
+    🔴 THE KEYS OF EVERY RULE THAT ACCEPTS THIS EVENT, TOGETHER. An event can be in exactly one
+    group, so two rules asking for different keys cannot each be obeyed separately - the
+    combined key is the FINER partition, which satisfies both at once. Same reading as
+    「가장 엄한 상한이 이긴다」 one axis over (S-153/S-221), and it needs no new refusal.
+
+    ⚠️ NO RULE DECLARING ONE = TODAY'S ANSWER, to the character.
+    """
+    payload = get_payload_dict(event) or {}
+    keys = sorted({key for rule in (rules or ())
+                   if rule.get("enabled", True)
+                   and rule.get("trigger_table") == event.table_name
+                   and _rule_accepts_event(rule, event)
+                   for key in (group_key(rule, payload),) if key})
+    if keys:
+        return "group_by:" + "|".join(keys)
+    transaction_id = payload.get("transaction_id")
+    return transaction_id if transaction_id else f"single_{event.event_uuid}"
+
+
+def group_events(events, rules):
+    """한 배치의 사건들을 그룹으로 «묶는다» — `(순서, {그룹: [사건]})`. 배치와 스윕이 «이 함수»를 지난다.
+
+    🔴 THIS LOOP EXISTED TWICE, WRITTEN OUT BY HAND (S-154). The batch drain and the
+    undelivered sweep each spelled `payload["transaction_id"] or f"single_{uuid}"` and each
+    built its own dict, so the axis had TWO authors - and a new cell would have reached one of
+    them. The fold lands in the SAME commit as the cell: a fold that lands alone leaves a
+    window in which the two answers are already different.
+
+    🔴 FIRST-APPEARANCE ORDER (판정 381 ㈛). Re-keying moves rows between groups, so the order
+    has to be stated rather than inherited from a dict: a group is placed where its FIRST event
+    stood. HOL stays per-table and 「A before B」 between rules is S-156.
+    """
+    order, groups = [], {}
+    for event in events or ():
+        key = group_id(event, rules)
+        if key not in groups:
+            order.append(key)
+            groups[key] = []
+        groups[key].append(event)
+    return order, groups
+
+
 def max_group_attempts(rule, document) -> int:
     """시도 상한 — 규칙이 적었으면 규칙, 아니면 문서, 그리고 없으면 값(1).
 
@@ -2007,14 +2102,9 @@ async def sweep_undelivered_broadcasts(db, rules, db_session_factory):
 
     # 미전달 행을 tx 그룹으로 묶어 규칙 정적 추정(_group_target_tables)으로 영향 target_table을 유도한다.
     # (매퍼 재실행 없음 — target_table은 규칙 설정에서 결정되므로 정적 추정이 정확하다.)
-    sweep_groups = defaultdict(list)
     for e in stale:
-        pay = get_payload_dict(e)
-        e._parsed_payload = pay
-        tx = pay.get("transaction_id") if isinstance(pay, dict) else None
-        if not tx:
-            tx = f"single_{e.event_uuid}"
-        sweep_groups[tx].append(e)
+        e._parsed_payload = get_payload_dict(e)
+    _sweep_order, sweep_groups = group_events(stale, rules)
 
     affected_targets = set()
     for evs in sweep_groups.values():
@@ -3214,17 +3304,8 @@ async def start_chain_ingestion_worker(db_session_factory):
                     )
                     normalized_events = trimmed
 
-                # Group events by transaction_id
-                groups = defaultdict(list)
-                group_order = []
-                
-                for event in normalized_events:
-                    tx_id = event._parsed_payload.get("transaction_id") if isinstance(event._parsed_payload, dict) else None
-                    if not tx_id:
-                        tx_id = f"single_{event.event_uuid}"
-                    if tx_id not in groups:
-                        group_order.append(tx_id)
-                    groups[tx_id].append(event)
+                # Group events - by the writer's transaction, or by a rule's `group_by`
+                group_order, groups = group_events(normalized_events, rules)
 
                 # 🔴 [S-153, 판정 378] THE HANDLE, APPLIED ONCE, BEFORE ANYTHING READS THE
                 #    GROUPS. Folding here rather than inside the drain keeps every seat
