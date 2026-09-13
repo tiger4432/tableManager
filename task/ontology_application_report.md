@@ -19374,3 +19374,72 @@ docs/architecture/BASIS.md   §6 의 ② · ③ · ⑥  —  3줄 교체(3 inser
 > ③ 의 write∘walk 를 «문을 낼 것인가 거절문을 낼 것인가» ·
 > ②의 안 잰 절반(클라 손짓)을 다음 라운드로 받을지
 > · 대기: 원격 생성 → push · 🔁 이월: 0 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
+
+---
+
+## D-28 — 스크립트 문 셋의 «정체», 그리고 ②의 나머지 절반
+
+```
+docs/architecture/BASIS.md   §6 ② 한 줄에 «나머지 절반» 결과 추가 (1 insert / 1 delete)
+```
+
+### ① `/admin/scripts/*` 셋 — 제 실측으로는 **㉯(기저 D)**, 다만 D 목록에 «없는 행»
+
+| 물음 | 실측 |
+|---|---|
+| 본문이 «어디»에 저장되나 | 접두 «둘»만 허용 — `mappers/` · `ingestion_workspace/` (`main.py` :6624~6630) |
+| 무엇을 읽고 쓰나 | 파일 «하나». 디렉터리 순회 가드 + 접두 검사 + 임시파일 후 교체 |
+| 봉투를 지나나 | **이 라우트는 «실행을 안 한다»**. 짝인 실행 반쪽은 `POST /admin/auto-update/run-now` 이고 그것이 **`SCHEDULER_RUN_NOW` 봉투를 발행**한다(:6288 주석이 자기를 「실행하는 반쪽」이라 적음) |
+| 누가 부르나 | `client2/src/admin.js` 의 **Monaco 편집기** — 파일 피커 :4510 · 읽기 :4581 · 쓰기 :4611. 그 밖의 호출자 «없음»(시험 둘은 게이트 시험) |
+| 게이트 | `require_admin_token_strict` — 「코드 실행에 닿는」 라우트 전용 |
+
+🔵 **그래서 ㉮(둘째 문)가 아니라고 봅니다** — 이 문이 «하는 일»은 체인 규칙이 하는 일이 아닙니다.
+체인 규칙은 «이름으로 매퍼를 고르고», 이 문은 **그 매퍼의 «파일 본문»을 원격에서 편집**합니다.
+중복되는 것은 「체인 규칙+매퍼」가 아니라 **«파일 시스템»**이고, 그건 원격 편집 «편의»입니다.
+🔴 **다만 D 의 목록에 그 행이 «없습니다»** — 스키마·소스·템플릿·규칙·전이 표·가드·역할 중
+무엇도 「운영자 파일 편집」이 아닙니다. 그러므로 판정 373 의 ㉯ 대로 **D 에 행이 느는 것이 발견**입니다.
+⚠️ 그리고 이 문이 «바이트를 싣는 유일한 문»이라는 점은 그대로입니다 — strict 토큰이 그 자리에
+있는 이유이고, 제 실측은 그 게이트가 «오늘도» 그 셋에 붙어 있음을 확인합니다.
+📌 이 셋이 쓰는 두 접두는 **제 작성자 가이드가 다루는 바로 그 파일들**입니다(`mappers/` ·
+`ingestion_workspace/<표>/scripts/`) — 즉 이 문은 「작성자의 파일을 원격에서 고치는 자리」입니다.
+
+### ② 나머지 절반 — 라우터 19 도 같은 다섯으로 분해됩니다
+
+| 생성자 | 수 | 대표 |
+|---|---:|---|
+| `declare` | 8 | `post /drafts` · `put /drafts/{id}` · `post /drafts/{id}/activate` · `delete /declarations/{key}` · `post /bootstrap` |
+| `read` | 7 | `get /declaration` · `get /columns` · `get /key-values` · `get /gaps` · `get /view` · `authoring/{plan,schema}` |
+| `dry` | 3 | `post /drafts/{id}/review`(=dry(declare)) · `get /deletion-preview` · `post /test-run` |
+| 🔵 **`walk`** | **1** | `get /subgraph` |
+
+🔴 **그래서 제품 전체에서 `walk` 은 «라우트 하나»이고 `resolve` 도 «라우트 하나»**
+(`/tables/{t}/row_ids/target`)입니다 — 다섯 생성자 중 둘이 각각 문 «하나»를 가집니다.
+🔵 그리고 **클라 손짓 여섯은 전부 위 라우트로 나갑니다**(제 grep: `data/updates` ·
+`cells/priority` · `map-presets` · `maps/alignment/confirm` · `drafts` · `activate`) —
+**새 생성자를 부르는 손짓이 «없습니다»**. 즉 ② 는 «라우트로 닫힙니다».
+
+### ⑥ 셋째 축 — 알림 선언은 «집이 없습니다»
+출하 선언 스무 개(`server/config/sample/*.sample` + `ontology/`)에 `notification`·`notify`·`alert`
+를 든 파일이 **«0»** 입니다(제 grep). 즉 ⑥ 의 셋째 선언은 **이름 댄 부재**이고,
+랏 홀드·해제가 분해 안 되는 이유의 «한 축»이 그것입니다.
+
+### 열어 본 절 / 안 연 절
+```
+열어 본 것   main.py :6284~6300 · :6602~6660 · admin.js 의 호출 세 자리 ·
+            라우터 둘의 `@router.` 전건 19 · 출하 `.sample` 스무 개의 파일명 + 낱말 grep
+안 연 것     라우터 19 의 «본체» — 분해는 경로·동사·이름으로 했고 본문을 열지 «않았습니다».
+            🔴 그래서 「dry 셋」과 「declare 여덟」의 경계는 «이름 기준»이고, 본문이 다르게
+            굴 수 있습니다 · `_resolve_admin_script_path` 본체 · 손짓 여섯의 «화면 쪽» 코드
+```
+
+### 감사
+```
+코드 0 · 보드 0 · 큐 0 · 이 박스 수 0
+문서 편집 = BASIS §6 ② 한 줄(1 insert / 1 delete) — 지시 그대로
+「없다」는 전부 «이름 댄 부재»: 알림 선언 · 스크립트 문의 다른 호출자 · 새 생성자를 부르는 손짓
+```
+
+> 🔴 「판정 대기」 **1** — ①의 결론(㉯ + D 에 행 추가)을 받으실지. 제가 «판정은 총괄» 대로
+> 결론만 올리고 D 표에는 손대지 «않았습니다»
+> · 대기: 원격 생성 → push · S-220(write∘walk 설계 라운드, 큐) · 🔁 이월: 0
+> · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
