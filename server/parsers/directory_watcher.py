@@ -952,6 +952,31 @@ def resolve_workspace_table(folder_name: str, table_config: dict) -> str | None:
     return None
 
 
+#: 🔴 THE NAMES AN OPERATOR'S OWN SCRIPT IMPORTS — a PROMISE, not an inventory (S-211 ②,
+#: 판정 354). Workspace parser scripts live under `ingestion_workspace/*/scripts/` and are
+#: gitignored: they are the operator's files, this repo never edits them, and it cannot even
+#: COUNT what they import. So the question 「what breaks if a module moves」 cannot be
+#: answered by measuring. It is answered by promising.
+#:
+#: MEASURED, not guessed - this list is the union of two things that already exist:
+#:   · the two hand-copied shims (`parsers/*.py.sample`, whose own headers say 「HAND-COPY
+#:     THIS FILE」) import `void_sat_format` and `pipeline_base`, bare and top-level
+#:   · `_register_legacy_import_shim` below already aliases `pipeline_base`,
+#:     `html_topology_parser` and `database.*` so that older `server.*` spellings resolve -
+#:     its docstring states the rule outright: 「사용자 스크립트는 무수정 원칙」
+#:
+#: ⛔ SO THESE MODULES DO NOT MOVE. When the flat top-level modules become domain packages
+#: (S-211), every name here keeps its top-level spelling; a package that swallowed one would
+#: break files this repo cannot see, on machines it cannot reach.
+#: `server/tests/test_the_names_an_operator_imports_are_a_promise.py` scores it.
+OPERATOR_IMPORT_NAMES = (
+    "void_sat_format",
+    "pipeline_base",
+    "html_topology_parser",
+    "database",
+)
+
+
 def _register_legacy_import_shim():
     """[C-2 하위호환 shim] gitignored 사용자 워크스페이스 스크립트의 구식 `server.*` import 지원.
 
