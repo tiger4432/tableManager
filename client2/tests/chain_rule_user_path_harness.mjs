@@ -38,6 +38,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadWithProbe } from './lib/probe.mjs';
+import { PICK_NAME } from '../src/raw_registry_panel.js';
 import { makeDoc, flush } from './lib/board_dom.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -219,9 +220,20 @@ async function suite(probe) {
   ok(Boolean(panelRoot()), 'A the page seats a panel in its own mount');
   const picker = byAttr('data-picker');
   ok(Boolean(picker), 'A the picker is drawn');
-  ok(Boolean(picker) && picker.children.length === NAMES.length,
-     `A the picker holds the served names (${picker ? picker.children.length : 0})`);
+  ok(Boolean(picker) && picker.children.length === NAMES.length + 1,
+     `A the picker holds the served names and the placeholder (${picker ? picker.children.length : 0})`);
   if (!picker) return { pass: pass - before.pass, fail: fail - before.fail };
+  // 🔴 C-95-b. NOTHING IS PICKED YET, AND THE SCREEN SAYS SO. The first read carries no name, so
+  //    without a placeholder the picker shows its first option by browser default -- and the
+  //    boxes beside it are empty. 「이름이 있는데 칸이 비어 있다」 is the first thing anybody sees.
+  const opening = picker.children.filter((o) => o.getAttribute('selected'));
+  ok(opening.length === 1 && opening[0].value === PICK_NAME,
+     `A nothing is picked, and the picker says that rather than naming a rule `
+     + `(${opening.map((o) => o.value).join(',')})`);
+  ok(!byCls('chain-rule-form') && !byCls('chain-rule-raw'),
+     'A no editor is drawn before a name is chosen -- that would be an empty document under a live save');
+  ok(Boolean(byAttr('data-action', 'add-chain-rule')),
+     'A ... but the add control is there, because that is the other way in');
 
   // ── B. picking: one request, carrying the chosen name ───────────────────────────────────
   answer = (call) => (call.url.includes('/admin/mappers/list')

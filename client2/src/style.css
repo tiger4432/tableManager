@@ -290,7 +290,15 @@ body.resizing-active .history-sidebar {
   pointer-events: none !important;
 }
 
-/* Grid Footer StatusBar */
+/* Grid Footer StatusBar
+   🔴 C-99 ②. ONE LINE, AND THE COUNTS ARE WHAT GIVES WAY. Measured at 800px before this: the
+   bar is 36px by declaration and its three groups stood 38, 36 and 52 -- the right one ended
+   at y=909 in a 900px window, so 「Load All」 and 「Load CSV」 were cut off by the screen, and
+   every group wrapped its own text (「Loaded: 0」 · 「‹ Prev」 · 「Next ›」 each over two lines).
+   Nothing said the groups may not wrap and nothing said WHICH one yields, so all three did --
+   downward, through a height that does not move.
+   A number one character short still says its order of magnitude; a button that wrapped is a
+   button that cannot be pressed. So the counts shrink and elide, the controls keep their size. */
 .grid-footer {
   height: 36px;
   background: var(--bg-header);
@@ -298,30 +306,48 @@ body.resizing-active .history-sidebar {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--space-3);
   padding: 0 16px;
   font-family: var(--font-mono);
   font-size: 0.8rem;
   color: var(--text-muted);
+  /* The bar states its own height; nothing inside it may push past that unseen. */
+  overflow: hidden;
 }
 
 .status-left {
-  flex: 1;
+  /* 🔴 THE ONLY GROUP THAT SHRINKS. `min-width: 0` is what lets it -- a flex item's floor is
+     its content unless it is told otherwise, which is why 「flex: 1」 alone never yielded. */
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
+  white-space: nowrap;
+}
+
+/* Counts read as numbers: one line, elided at the end, digits on one vertical rhythm. */
+.status-left > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
 }
 
 .status-left .divider {
   color: var(--text-dim);
+  flex: none;
 }
 
 .status-right {
-  flex: 1;
+  /* Controls keep their size -- see the note on `.grid-footer`. */
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 16px;
   font-size: 0.75rem;
+  white-space: nowrap;
 }
 
 .footer-control-group {
@@ -1437,6 +1463,9 @@ body.resizing-active .history-sidebar {
   display: flex;
   align-items: center;
   gap: 12px;
+  /* 페이징은 «누르는» 것이라 줄지 않습니다. 줄어든 버튼은 줄바꿈으로 갚습니다 (C-99 ②). */
+  flex: none;
+  white-space: nowrap;
 }
 
 .glass-page-btn {
