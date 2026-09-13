@@ -2793,7 +2793,7 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 
 ### 🆕⑰ `server/mappers/lot_slot_wafer_mapper.py.sample` (**114줄**, `c5147985`·`4ffc8a7c`·`60b16345` 신설) — **뷰가 «체인 파생 표»가 된 자리**
 
-> 🪦 **[2026-09-13, S-209] 이 파일은 «이 저장소에 없습니다»** — `assyManager-authoring/examples/lot_slot_wafer_mapper.py.sample` 로 옮겨졌습니다(판정 348·349). 아래 절의 «심볼·계약»은 그대로 참이고, «경로»만 바깥입니다.
+> 🪦 **[2026-09-13, S-209] 이 파일은 «이 저장소에 없습니다»** — `authoring/examples/lot_slot_wafer_mapper.py.sample` 로 옮겨졌습니다(판정 348·349). 아래 절의 «심볼·계약»은 그대로 참이고, «경로»만 바깥입니다.
 
 > 🔴 **이 계열은 이 지도에 «한 번도» 없었다** — `lot_slot_wafer` 라는 낱말이 종전 문서 전건에서 **0건**이었다.
 >

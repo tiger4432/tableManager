@@ -4,16 +4,16 @@
 > **Source-of-truth:** `server/mapper_sdk.py` · `server/parsers/pipeline_base.py`
 
 ```
-맵퍼·파서를 «쓰려면» `assyManager-authoring/` 을 연다.
+맵퍼·파서를 «쓰려면» `authoring/` 을 연다.
 저장소는 «SDK 진입점의 이름»만 약속한다.
 ```
 
 ## 어디에 있나
 
 ```
-C:/Users/kk980/Developments/assyManager-authoring/      이 저장소의 «형제» 디렉토리, 별도 git
+authoring/      이 저장소의 «루트» 폴더 — 추적 파일이라 pull 하면 같이 온다
 ```
-⚠️ 서브모듈이 아닙니다. 이 저장소는 그쪽을 «참조하지 않고», 그쪽도 이쪽 코드를 «담지 않습니다».
+⚰️ **[2026-09-13 판정 386] 종전엔 «형제 저장소»였습니다** — 소유자의 「git 에 걸어 주면 pull 해 쓰지」가 「둘째 저장소」가 아니라 「폴더 «입구»에 두라」는 뜻이었고, 판정 351 이 철회됐습니다. 🔵 **바뀐 것은 «사는 자리»뿐**이고 내용은 그대로입니다. ⚠️ 여전히 «제품 코드는 한 줄도 없습니다** — 그 폴더는 문서와 «복사해 쓰는 예제»뿐입니다.
 
 ## 무엇이 있나
 
@@ -34,7 +34,7 @@ C:/Users/kk980/Developments/assyManager-authoring/      이 저장소의 «형�
 
 ```
 @mapper            server/mapper_sdk.py :339      체인 맵퍼 등록 (이름 -> MAPPER_REGISTRY :253)
-parse_file         assyManager-authoring/examples/custom_parser_template.py   함수형 파서의 계약 전부
+parse_file         authoring/examples/custom_parser_template.py   함수형 파서의 계약 전부
                    🔴 «미배선 — S-213». 이 이름을 부르는 자리가 코드에 없습니다. 아래 「⚠️」
 match · process_dataframe   server/parsers/pipeline_base.py :15 · :22   클래스형 파서의 훅 둘
 ```
@@ -54,7 +54,7 @@ match · process_dataframe   server/parsers/pipeline_base.py :15 · :22   클래
 작성자의 파일은 **이 저장소와 함께 배포되지 않습니다** — `server/mappers/*` 와
 `server/ingestion_workspace/*/scripts/` 는 `.gitignore` 대상이고, `server/mapper_sdk.py` :12~17 이
 SDK 가 «맵퍼 옆»이 아니라 «배포되는 자리»에 사는 이유로 바로 그것을 적습니다.
-🔴 즉 **작성자 문서는 작성자의 상자에서 열려야 하고, 그것이 이 디렉토리가 형제인 이유**입니다.
+🔴 즉 **작성자 문서는 작성자의 상자에서 «열려 있어야» 하고, 그래서 저장소 «입구»에 있습니다** — 제품을 받은 사람은 그것을 «이미 갖고 있습니다». 🔵 그리고 그것이 «둘째 저장소»보다 나은 이유가 하나 더 있습니다: 문서와 코드가 «같은 커밋»에 살면 「이 문서가 어느 제품을 말하는가」를 손으로 맞출 일이 없고, **맞추다 틀릴 일도 없습니다**.
 
 ## 옮겨 가지 «않은» 것
 

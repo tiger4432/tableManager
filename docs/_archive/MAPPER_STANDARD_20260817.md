@@ -4,7 +4,7 @@
 > 이 문서 §2 의 API(`class Unit`·`class Emit`·`EMITS`·`REQUIRES`·`row_pair`·`eav_pivot`
 > ·`snapshot_diff`)는 **착지한 적이 없고**(실측 전건 0), 훅 둘은 `server/ledger/roleframe.py`
 > 에 **다른 이름**(`RoleEmission`·`MapperContext`)으로 착지했습니다. 운영자가 읽을 것은
-> `assyManager-authoring/MAPPING_GUIDE.md` 이고, 그 부록 A 가 이 문서를 그렇게 기록합니다.
+> `authoring/MAPPING_GUIDE.md` 이고, 그 부록 A 가 이 문서를 그렇게 기록합니다.
 > 옛 경로는 저장소 루트 `MAPPER_STANDARD.md` 였습니다.
 
 > 파편화의 코드 쪽 해소. Profile-서술 정본화(R-P 제안)와 한 쌍이다: mapper가
