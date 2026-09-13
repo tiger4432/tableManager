@@ -149,6 +149,14 @@
         }
       },
       {
+        "key": "idempotent",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "flag"
+        }
+      },
+      {
         "key": "origin",
         "required": false,
         "node": {

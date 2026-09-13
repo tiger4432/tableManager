@@ -221,7 +221,7 @@ RULE_ROUTING_OPTIONAL = tuple(
     key for key in RULE_TABLE_KEYS if key not in RULE_ROUTING_REQUIRED) + (
     "target_field", "trigger_columns", "enabled", "is_batch",
     "follow_up", "allow_chain_trigger", "allow_map_metadata_upsert",
-    "max_group_attempts", "max_group_rows", "group_by", "origin",
+    "max_group_attempts", "max_group_rows", "group_by", "idempotent", "origin",
     # S-188 ⓓ: `mapper` is the ONE cell; the two-cell spelling stays readable. `params` is
     # where a mapper's arguments live. The symbols `MAPPER_KEY`/`PARAMS_KEY` below are
     # defined against these literals and a test asserts they agree — the literals are here
@@ -349,6 +349,14 @@ def rule_refusals(rule, path, *, mapper_resolvable, mapper_params=None):
                 "bad_group_rows", path + "." + MAX_GROUP_ROWS_KEY,
                 "a group-row ceiling must be a positive whole number, got %r" % (written,)))
 
+    # 🔴 [S-155, 판정 384] IDEMPOTENCE IS A YES OR A NO, and a string 「false」 is a YES
+    # to every truth test in Python. The cell decides whether a failed group is fed to the
+    # mapper a second time, so a value that cannot be read as a boolean must not be guessed at.
+    if IDEMPOTENT_KEY in candidate and not isinstance(candidate.get(IDEMPOTENT_KEY), bool):
+        issues.append(validation.DeclarationValidationError(
+            "bad_idempotent", path + "." + IDEMPOTENT_KEY,
+            "idempotence must be true or false, got %r" % (candidate.get(IDEMPOTENT_KEY),)))
+
     # 🔴 [S-154, 판정 381] A GROUP KEY NAMES COLUMNS OF THE TRIGGER TABLE. A name that is
     # not one matches nothing, so every row would key on the same absent value and the whole
     # table would arrive as ONE group - the loudest possible version of the misspelling S-152
@@ -430,6 +438,12 @@ MAX_GROUP_ROWS_KEY = "max_group_rows"
 #: mixed them would send an operator to the wrong file.
 GROUP_BY_KEY = "group_by"
 
+#: 🔴 [S-155] ONE SPELLING OF THE IDEMPOTENCE CELL'S NAME.
+#: ⚠️ IT IS AN OPT-OUT. Absent and `true` are TODAY'S ANSWER - the retry cap decides - and
+#: only `false` changes anything. A cell whose declared value does nothing is the defect
+#: S-152 and S-221 each closed once; a `true`-only cell would have been the third.
+IDEMPOTENT_KEY = "idempotent"
+
 
 #: S-188 ⓔ. The node vocabulary is the LEDGER skeleton's, verbatim: kinds `record`/`map`/
 #: `leaf` and hints `choice`/`free`/`ref`/`number`/`flag`. 🔴 NOTHING NEW IS INVENTED HERE —
@@ -446,6 +460,7 @@ _SKELETON_HINTS = {
     "allow_map_metadata_upsert": "flag",
     "max_group_attempts": "number",
     "max_group_rows": "number",
+    "idempotent": "flag",
     "trigger_table": "ref",
     "target_table": "ref",
     "source_table": "ref",

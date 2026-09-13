@@ -243,9 +243,28 @@ def _to_payloads(page, columns: list) -> list:
     return payloads
 
 
+def _refuse_unless_idempotent(rule, force):
+    """⛔ [S-155, 판정 384] A REPLAY IS A RE-FEED, AND A BIGGER ONE THAN A RETRY.
+
+    A retry hands one failed group back to the mapper; a replay hands it the trigger table's
+    WHOLE CURRENT CONTENTS. So a rule that declared it cannot be fed twice is refused here by
+    name, and `force` is the only way past - the operator saying it out loud.
+
+    ⚠️ ONE AUTHOR FOR THE TWO CALLERS. `replay_all` asks BEFORE it starts, so a rule declaring
+    `false` stops the run at the top rather than half way through, with earlier rules already
+    applied.
+    """
+    if (rule or {}).get("idempotent") is False and not force:
+        raise ReplayRefused(
+            "chain rule '%s' declares idempotent: false, so re-running it may not "
+            "reproduce its own writes - pass force to replay it anyway"
+            % ((rule or {}).get("name"),))
+
+
 def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
                 chunk_size: int = DEFAULT_CHUNK_SIZE, log=logger.info,
-                checkpoint=None, business_keys=None, pace=None) -> dict:
+                checkpoint=None, business_keys=None, pace=None,
+                force: bool = False) -> dict:
     """[R1] Re-run one chain rule over the trigger table's current contents.
 
     Dry-run (default) reads only and reports what WOULD change, including which
@@ -253,6 +272,8 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
     candidates). Apply commits per write chunk, so a large replay is restartable
     and idempotent - re-running recomputes the same values.
     """
+    _refuse_unless_idempotent(rule, force)
+
     from database import crud, models, schemas
     import map_meta_registrar
     # 🪦 [S-214, 판정 370] It lived in the worker and this line was the whole of the
@@ -635,7 +656,8 @@ def _count_user_protected(db, target_table: str, items: list) -> int:
 
 
 def replay_all(db, apply: bool = False, limit: int = None,
-               chunk_size: int = DEFAULT_CHUNK_SIZE, log=logger.info) -> dict:
+               chunk_size: int = DEFAULT_CHUNK_SIZE, log=logger.info,
+               force: bool = False) -> dict:
     """[R1] Replay every enabled rule in dependency order, each EXACTLY ONCE.
 
     Replaying each rule once is the second half of the loop guard: cascading
@@ -647,12 +669,16 @@ def replay_all(db, apply: bool = False, limit: int = None,
     cannot make the running worker cascade either.
     """
     rules = order_rules(load_rules())
+    # ⛔ ASKED BEFORE ANYTHING RUNS (S-155). Refusing inside the loop would stop the run with
+    #    the rules above it already applied, which is a worse state than not starting.
+    for rule in rules:
+        _refuse_unless_idempotent(rule, force)
     log(f"[replay] order: {' -> '.join(r.get('name', '?') for r in rules)}")
     out = {"mode": "apply" if apply else "dry-run",
            "order": [r.get("name") for r in rules], "rules": []}
     for rule in rules:
         out["rules"].append(replay_rule(db, rule, apply=apply, limit=limit,
-                                        chunk_size=chunk_size, log=log))
+                                        chunk_size=chunk_size, log=log, force=force))
     return out
 
 

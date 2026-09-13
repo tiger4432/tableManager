@@ -599,6 +599,18 @@ def max_group_attempts(rule, document) -> int:
     ⚠️ 3 을 적으면 예 동작이 «그대로» 돌아온다 — 이 변경은 기본값을 옮긴 것이지 기제를
     없앤 것이 아니다.
     """
+    # 🔴 [S-155, 판정 384] A RULE THAT SAYS IT IS NOT IDEMPOTENT GETS ONE ATTEMPT, AND IT IS
+    #    DECIDED HERE. A second seat comparing `idempotent` to a cap of its own would be the
+    #    two-paths defect on the one axis this round is about: the verdict, the isolation
+    #    reason and the log all read THIS function, so the opt-out has to live in it.
+    # ⚠️ ABSENT AND `true` FALL THROUGH. Only `false` is an instruction; `is False` rather
+    #    than falsiness, because `0` and `""` are not a declaration that a mapper repeats badly.
+    if (rule or {}).get("idempotent") is False:
+        logger.warning(
+            "[Chain] rule '%s' declares idempotent: false - one attempt, then isolation.",
+            (rule or {}).get("name"))
+        return 1
+
     for source, where in ((rule, "rule"), (document, "document")):
         declared = _declared_attempts(source, where)
         if declared is not None:
