@@ -115,7 +115,23 @@ export function declaredKeys(entities, type) {
   return (found && found.keys) || [];
 }
 
-export function tableColumns(entities, type, qualifierNames, preset = COLUMNS.FULL) {
+/**
+ * 선언이 「이 술어가 안 보이는 것은 «이 검사»가 답한다」고 말한 술어들 — 선언된 순서 그대로.
+ *
+ * 🔴 «선언»이 모집단입니다, 데이터가 아니라 (S-149/S-216). 걷기가 그 타입의 노드에 못 닿은 날
+ *    열이 사라지면 「그런 질문이 없다」로 읽히고, 그건 이 칸이 막으려던 바로 그 오독입니다 —
+ *    `conflicts` 열이 「속성이 선언되면 선다」인 것과 같은 규율입니다.
+ * ⚠️ 키가 «없는» 술어는 「확인 술어가 아니다」이고, 빈 문자열이 아닙니다. 라우트가 그 둘을
+ *    가르려고 키를 «생략»합니다 — 여기서도 그 구별을 값으로 되살리지 않습니다.
+ */
+export function confirmedPredicates(predicates) {
+  return (predicates || [])
+    .filter((p) => p && typeof p.absence_confirmed_by === 'string' && p.absence_confirmed_by)
+    .map((p) => bareName(p.name));
+}
+
+export function tableColumns(entities, type, qualifierNames, preset = COLUMNS.FULL,
+                             confirmers = []) {
   const bare = bareName(type);
   const found = (entities || []).find((e) => e && bareName(e.type) === bare);
   const declared = declaredKeys(entities, type);
@@ -137,6 +153,12 @@ export function tableColumns(entities, type, qualifierNames, preset = COLUMNS.FU
     //    A type declaring no attributes gets no column at all, which keeps today's table
     //    byte-identical.
     ...(attributes.length ? [{ name: '충돌', kind: 'conflicts' }] : []),
+    // 🔴 C-98. 「이 술어가 안 보이는 것이 무슨 뜻인가」. 열이 서는 조건은 «선언»이 확인 술어를
+    //    이름 댄 것이지 어느 노드가 판정을 든 것이 아닙니다 — 충돌 열과 같은 규율이고, 같은
+    //    사유입니다: 답이 표의 «모양»을 정하면 같은 걷기가 두 표를 그립니다.
+    //    ⚠️ 주어로 거르지 «않습니다». 서버가 entity·event 노드 전부에 판정을 다는 것이 실측이고,
+    //       화면이 그중 일부를 빼면 그건 서버가 «센 것»을 화면이 숨기는 것입니다.
+    ...(confirmers || []).map((key) => ({ name: key, kind: 'absence', key })),
     { name: '라벨', kind: 'label' },
     { name: 'id', kind: 'id' },
   ];
@@ -208,6 +230,22 @@ export function cellSource(column, node, qualifiers, plural) {
     case 'conflicts': {
       const count = Number(n.attribute_conflicts);
       return Number.isFinite(count) && count > 0 ? count : undefined;
+    }
+    // 🔴 C-98. 세 상태를 «서버의 낱말 그대로» 냅니다 — 번역이 0 인 이유는 이 셋이 운영자가
+    //    «다르게 행동하는» 사실이어서입니다: 찾았다 · 검사했고 없었다 · 모른다.
+    //    셋째일 때 «왜» 모르는지는 `why` 가 말하고, 그 낱말은 «서버의 것»입니다.
+    //    ⛔ 그 사유 목록을 여기 적지 «않습니다» — 계약 INV-F9-7 이 그것을 막고, 사유가 하나
+    //       늘어나는 날 이 파일이 조용히 낡기 때문입니다. 봉투가 주는 것을 그대로 싣습니다.
+    //    ⚠️ 판정이 «없는» 칸은 undefined 입니다 — 빈 칸이고, 「아니다」가 아닙니다. 옛 서버와
+    //       판정을 안 받는 노드가 그 자리이고, 그 둘을 `false` 로 접으면 이 칸이 존재하는
+    //       이유가 사라집니다.
+    case 'absence': {
+      const held = (n.absence || {})[column.key];
+      if (!held || typeof held !== 'object') return undefined;
+      const verdict = held.verdict;
+      if (!verdict) return undefined;
+      // 사유는 «있을 때만» 붙습니다. `true`·`false` 는 why 가 null 이고, 그때 붙일 것이 없습니다.
+      return held.why ? `${verdict} · ${held.why}` : String(verdict);
     }
     case 'label': return n.label;
     case 'id': return n.id;

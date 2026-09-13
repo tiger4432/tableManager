@@ -13,7 +13,7 @@
 // 🔴 텍스트도 여기서 만듭니다. 빈 칸은 «빈 칸»입니다 — 「—」나 0 으로 채우면 「없다」와
 //    「0 이다」가 같은 글자가 됩니다. 그 판정이 렌더러에 있으면 node 가 채점할 수 없습니다.
 // ═══════════════════════════════════════════════════════════════════════════════
-import { sectionsByType, sectionHeading, tableColumns, cellSource, pluralAttributes }
+import { confirmedPredicates, sectionsByType, sectionHeading, tableColumns, cellSource, pluralAttributes }
   from './derive.js';
 
 /** 한 번에 그리는 행 상한. 넘은 것은 «수»로 말합니다 — 조용히 자르지 않습니다. */
@@ -72,10 +72,11 @@ export function qualifierNamesOf(nodes, byNode) {
  *
  * @param {{nodes?: Array, edges?: Array}} result  walk 응답
  * @param {Array} entities                          선언의 엔티티 목록
+ * @param {Array} [predicates]                      선언의 술어 목록 (확인 술어를 읽는 자리, C-98)
  * @param {number} [cap]                            행 상한
  * @returns {{sections: Array, shown: number, hidden: number}}
  */
-export function walkTableView(result, entities, cap = ROW_CAP) {
+export function walkTableView(result, entities, predicates = [], cap = ROW_CAP) {
   const nodes = (result && result.nodes) || [];
   const shown = nodes.slice(0, cap);
   const byNode = qualifiersByNode((result && result.edges) || []);
@@ -83,8 +84,12 @@ export function walkTableView(result, entities, cap = ROW_CAP) {
   // C-89. 「어느 이름이 여럿인가」는 봉투가 말합니다. 노드마다 다시 묻지 않습니다 — 한 답이고,
   // 표 중간에서 답이 바뀔 수 있으면 그 자체가 결함입니다.
   const plural = pluralAttributes(result);
+  // C-98. 「무엇이 안 보이는 것이 무슨 뜻인가」의 모집단은 «선언»이라, 한 번 읽고 모든 구획이
+  // 같은 열을 씁니다 — 구획마다 다시 물으면 표 중간에서 열이 바뀔 수 있습니다.
+  const confirmers = confirmedPredicates(predicates);
   for (const [type, rows] of sectionsByType(shown)) {
-    const columns = tableColumns(entities, type, qualifierNamesOf(rows, byNode));
+    const columns = tableColumns(
+      entities, type, qualifierNamesOf(rows, byNode), undefined, confirmers);
     sections.push({
       type,
       heading: sectionHeading(type, rows.length),

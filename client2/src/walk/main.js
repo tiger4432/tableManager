@@ -367,7 +367,9 @@ export function boot(doc, host, deps) {
   //    수도 `walkTableView` 가 답하고, 여기서는 그 답을 DOM 으로 옮기기만 합니다. 그래서
   //    하니스가 이 화면을 세워 「그려진 것이 그 함수의 답인가」를 «거동으로» 물을 수 있습니다.
   function renderTable(box, r) {
-    const view = walkTableView(r, entities());
+    // C-98. 선언의 술어 목록이 «같이» 갑니다 — 확인 술어를 이름 대는 것은 선언이고,
+    // 화면은 그 이름을 읽을 뿐입니다.
+    const view = walkTableView(r, entities(), (state.decl && state.decl.predicates) || []);
     for (const section of view.sections) {
       const sec = el(doc, 'div', 'wk-sec');
       sec.append(el(doc, 'div', 'wk-sechead', section.heading));

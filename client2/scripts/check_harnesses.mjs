@@ -1302,7 +1302,7 @@ const FLOORS = new Map([
   // page's own rendering is scored on screen rather than by trusting that its copy is gone --
   // M1 is a copy put back, and it changes no count at all.
   ['walk_table_harness.mjs', 15],
-  ['walk_route_fill_harness.mjs', 60],
+  ['walk_route_fill_harness.mjs', 71],
   // New 2026-09-08 with C-40 ② (the declaration form's three attribute seats). Floor is
   // the count it reports on the commit that introduces it -- there is no earlier tree to
   // measure it against. 🔴 IT READS THE SHIPPED SKELETON AND THE SHIPPED SAMPLE, so a seat
