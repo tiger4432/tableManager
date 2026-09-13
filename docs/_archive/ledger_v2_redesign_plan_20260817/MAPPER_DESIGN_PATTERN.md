@@ -1,7 +1,7 @@
 # Ledger v2 Mapper Design Pattern
 
 > 상태: `TARGET_CONTRACT` · 구현 전 단계별 승인 필요
-> 참고: 루트 `MAPPER_STANDARD.md`의 Template Method 발상을 사용하되, 그 문서의 반환형과
+> 참고: 루트 `MAPPER_STANDARD.md`(🪦 2026-09-13 이동됨 → [`docs/_archive/MAPPER_STANDARD_20260817.md`](../MAPPER_STANDARD_20260817.md))의 Template Method 발상을 사용하되, 그 문서의 반환형과
 > 파이프라인을 그대로 복제하지 않는다.
 
 ## 1. 최종 경계

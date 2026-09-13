@@ -4,7 +4,7 @@
 > **우선순위:** config 확정 직후
 > **등록:** 2026-08-18
 > **소유자 판정:** 「config 먼저 확정하고 매퍼 개주하자」 (2026-08-18)
-> **기준 계약:** `MAPPER_STANDARD.md`(루트),
+> **기준 계약:** `docs/_archive/MAPPER_STANDARD_20260817.md`(🪦 2026-09-13 루트에서 이동 — 그리고 판정 350 이 이것을 «제안 기록»으로 판정했다),
 > `ledger_v2_redesign_plan_20260817/MAPPER_DESIGN_PATTERN.md`
 
 ## 두 갈래다 — 순서가 다르다

@@ -12,7 +12,7 @@ Profile-서술 정본화(R-P 제안)와 한 쌍으로, mapper가 자기 서술�
 
 ## 변경 내용
 
-`MAPPER_STANDARD.md` 신설(110줄). Template Method — 파이프라인 5구간 중 셋은
+`MAPPER_STANDARD.md` 신설(110줄, 🪦 2026-09-13 `docs/_archive/MAPPER_STANDARD_20260817.md` 로 이동 — 판정 350). Template Method — 파이프라인 5구간 중 셋은
 엔진 공통, 훅은 둘뿐:
 
 ```
