@@ -26,6 +26,8 @@
  *   G  the new name: [규칙 추가] asks for a name in ONE place, and the save carries THAT name
  *   H  staying under the page's own clock: the 30-second read names no rule, and what is being
  *      edited is still there afterwards -- while the LIST it went for does refresh (C-101 ①)
+ *   I  choosing rather than typing: the table catalogue reaches the reference cells, and a name
+ *      the catalogue does not hold is still accepted as typed (C-101 ②)
  *
  * ⚠️ WHAT IT DOES NOT SCORE, AND WHY. The query parameter's SPELLING is a seam between two
  *    files in two lanes (`admin.js` sends one word, `main.get_chain_rule_raw` declares another
@@ -99,11 +101,16 @@ if (!globalThis.navigator.clipboard) {
 
 /** Every request the page makes, and the answer it is given. */
 const calls = [];
+// 🔴 COUNTED ACROSS THE WHOLE WALK, not inside one section. `calls` is emptied between sections,
+//    and inside any one of them 「once」 and 「every time」 look identical -- which is how a list
+//    re-read per rule opened would pass as cached.
+let catalogueReads = 0;
 let answer = () => ({ status: 404, body: null });
 globalThis.fetch = async (url, init) => {
   const call = { url: String(url), method: (init && init.method) || 'GET',
                  body: init && init.body ? JSON.parse(init.body) : null };
   calls.push(call);
+  if (isCatalogue(call)) catalogueReads += 1;
   const a = answer(call) || { status: 404, body: null };
   return {
     ok: a.status >= 200 && a.status < 300,
@@ -130,6 +137,13 @@ const rawView = (name) => {
   }
   return out;
 };
+
+// The catalogue route, which is NOT behind the admin gate -- `crud.TABLE_CONFIG.keys()` plus two
+// fields this screen deliberately does not read (`map_key_columns`, `kind`: other questions).
+// ⚠️ Matched on the END of the path: `/admin/tables/config/raw` contains 「/tables」 too, and a
+//    fixture that answered both would be feeding one route's body to another route's reader.
+const TABLES = ['lot_event', 'lot_slot_wafer', 'dt_log', 'dt_map'];
+const isCatalogue = (call) => /\/tables$/.test(call.url.split('?')[0]);
 
 /** The name the page asked for, whatever cell it used to ask. */
 const askedName = (call) => {
@@ -204,6 +218,7 @@ function freshPage() {
   c.setAttribute('id', 'chain-rule-editor-count');
   doc.body.appendChild(c);
   mount = m;
+  catalogueReads = 0;
 }
 
 async function suite(probe) {
@@ -215,7 +230,8 @@ async function suite(probe) {
   // ── A. the tab opens: no name yet, so the page asks for the list ────────────────────────
   answer = (call) => (call.url.includes('/admin/mappers/list')
     ? { status: 200, body: { registered: [] } }
-    : { status: 200, body: rawView(null) });
+    : isCatalogue(call) ? { status: 200, body: { tables: TABLES } }
+      : { status: 200, body: rawView(null) });
   calls.length = 0;
   await refreshChainRule();
   await flush();
@@ -240,7 +256,8 @@ async function suite(probe) {
   // ── B. picking: one request, carrying the chosen name ───────────────────────────────────
   answer = (call) => (call.url.includes('/admin/mappers/list')
     ? { status: 200, body: { registered: [] } }
-    : { status: 200, body: rawView(askedName(call)) });
+    : isCatalogue(call) ? { status: 200, body: { tables: TABLES } }
+      : { status: 200, body: rawView(askedName(call)) });
   calls.length = 0;
   picker.value = RULE.name;
   picker.dispatch('change', { target: { value: RULE.name } });
@@ -265,6 +282,22 @@ async function suite(probe) {
   ok(Boolean(opened) && opened.lot_column === RULE.lot_column,
      'C a cell the skeleton never heard of survives in the document');
 
+  // ── I. the catalogue reaches the reference cells (C-101 ②) ──────────────────────────────
+  // 🔴 THE OWNER'S OTHER SENTENCE: 「테이블이랑 맵퍼 설정은 리스트 좀 나오게해」. Measured in the
+  //    shipped skeleton: SEVEN leaves are `hint: 'ref'` and none names a section, so the list has
+  //    to come from what the registry declares -- and only the real declaration on the real page
+  //    can prove that it does.
+  const refBox = boxAt('trigger_table');
+  const refListId = refBox ? refBox.attrs.list : '';
+  const refOptions = all(panelRoot())
+    // ⚠️ `id` is a PROPERTY here, not an attribute: `ontology_explorer_view` writes `list.id = …`
+    //    and reading `attrs.id` found zero lists while the screen had one.
+    .filter((el) => el.tagName === 'DATALIST' && (el.id || el.attrs.id) === refListId)
+    .flatMap((el) => (el.children || []).map((o) => o.value));
+  ok(Boolean(refListId) && refOptions.length > 0,
+     `I the table cells offer the catalogue rather than a blank box (${refOptions.length} name(s))`);
+  ok(TABLES.every((name) => refOptions.includes(name)),
+     `I ... and it is the served catalogue, whole [${refOptions.join(',')}]`);
   // ── D. editing: the document the save will send is rewritten ────────────────────────────
   type('target_table', 'lot_slot_wafer_v2');
   await flush();
@@ -281,7 +314,8 @@ async function suite(probe) {
   //    flag itself would be making the page's decision and would stay green with the page broken.
   answer = (call) => (call.url.includes('/admin/mappers/list')
     ? { status: 200, body: { registered: [] } }
-    : { status: 200, body: rawView(null) });
+    : isCatalogue(call) ? { status: 200, body: { tables: TABLES } }
+      : { status: 200, body: rawView(null) });
   await refreshChainRule();
   await flush();
   const kept = boxAt('target_table');
@@ -301,6 +335,7 @@ async function suite(probe) {
   //    because the list can change under it; a rule added by somebody else must appear.
   answer = (call) => {
     if (call.url.includes('/admin/mappers/list')) return { status: 200, body: { registered: [] } };
+    if (isCatalogue(call)) return { status: 200, body: { tables: TABLES } };
     const body = rawView(null);
     body.rules = [...NAMES, 'a_rule_somebody_else_added'];
     return { status: 200, body };
@@ -320,6 +355,7 @@ async function suite(probe) {
   let saved = null;
   answer = (call) => {
     if (call.url.includes('/admin/mappers/list')) return { status: 200, body: { registered: [] } };
+    if (isCatalogue(call)) return { status: 200, body: { tables: TABLES } };
     if (call.method === 'POST') { saved = call; return { status: 200, body: { name: call.body.name, rules: NAMES, backup: '/box/bak', enabled: true } }; }
     return { status: 200, body: rawView(askedName(call)) };
   };
@@ -373,6 +409,13 @@ async function suite(probe) {
      `G the save carries the name typed in the form (${saved ? saved.body.name : 'no save'})`);
   ok(Boolean(saved) && saved.body.declaration && saved.body.declaration.name === 'brand_new_rule',
      'G and the document says the same name -- one fact, one place');
+
+  // ── I (closing): the catalogue was read ONCE for this page ───────────────────────────────
+  // 🔴 Six refreshes have happened by here -- opening, picking, two clock reads, a save and a new
+  //    rule. The catalogue is the same answer to the same question every time, and asking it per
+  //    rule opened is the shape S-72 already paid for once (44 requests, 76% thrown away).
+  ok(catalogueReads === 1,
+     `I the catalogue is read once for the page, not once per rule opened (${catalogueReads})`);
   return { pass: pass - before.pass, fail: fail - before.fail };
 }
 
@@ -402,6 +445,17 @@ const DEFECTS = [
   //    the panel as if a person had asked for it, and a read that names no rule draws no editor.
   ['the page hands its own 30-second read to the form, which then has no document to draw',
     s => s.replace('if (!name) opts.background = true;', '')],
+  // 🔴 C-101 ②. The list never leaves the page, and seven table cells go back to being typed.
+  ['the catalogue is read but never handed to the panel',
+    s => s.replace('    ...(tables === null ? {} : { tables }),', '')],
+  // ⚠️ S-207's class, on this route: `data` and `tables` are DIFFERENT QUESTIONS, and the mapper
+  //    route next door answers with `data`. Reading the neighbour's cell empties the list while
+  //    nothing errors.
+  ['the catalogue is read from the cell the route next door uses',
+    s => s.replace('    chainTableNames = body.tables.map(String);',
+                   '    chainTableNames = (body.data || []).map(String);')],
+  ['the catalogue is re-read every time a rule is opened',
+    s => s.replace('  if (chainTableNames !== null) return chainTableNames;', '')],
   // ⚠️ THE SAME LINE, SPELLED WRONG. 「!name」 is the whole judgement: a read that names a rule
   //    is a person opening it, and one that names none is the clock. Inverting it makes every
   //    real open silently refuse to draw, which is the failure mode nobody would guess from

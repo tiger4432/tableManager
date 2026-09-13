@@ -1101,6 +1101,30 @@ async function loadChainMapperNames() {
   }
   return chainMapperNames;
 }
+// C-101 ②. 규칙이 읽고 쓰는 «표»의 이름들. `null` 은 「아직/못 읽음」이고 `[]` 는 「없음」입니다 —
+// 맵퍼 목록과 같은 세 상태이고, 같은 이유입니다.
+//
+// 🔴 `GET /tables` 입니다. 그 라우트가 내는 것이 «제품이 아는 표 전부»(`crud.TABLE_CONFIG`)이고,
+//    규칙의 `trigger_table`·`target_table` 이 가리킬 수 있는 집합이 바로 그것입니다. 어드민
+//    게이트 «밖»이라 `adminFetch` 가 아닙니다 — `/enrichment/rules`(:4745)와 같은 자리입니다.
+// ⚠️ 이름 «목록»만 씁니다. 같은 응답이 `map_key_columns`·`kind` 를 같이 싣는데, 그것은 다른
+//    물음의 답이고 여기서 읽으면 이 화면이 그 물음의 둘째 독자가 됩니다.
+let chainTableNames = null;
+
+async function loadTableNames() {
+  if (chainTableNames !== null) return chainTableNames;
+  try {
+    const res = await fetch(`${API_BASE}/tables`);
+    if (!res.ok) return null;
+    const body = await res.json().catch(() => null);
+    if (!body || !Array.isArray(body.tables)) return null;
+    chainTableNames = body.tables.map(String);
+  } catch (e) {                                              // noqa
+    return null;
+  }
+  return chainTableNames;
+}
+
 async function refreshChainRule(name, extra = {}) {
   const mount = byId('chain-rule-mount');
   if (!mount) return;
@@ -1112,8 +1136,13 @@ async function refreshChainRule(name, extra = {}) {
   }
   // C-86 ③. 목록은 «패널이 그리기 전»에 넣습니다. 한 번 읽고 기억합니다 — 규칙을 열 때마다
   // 등록부를 다시 묻는 것은 같은 답에 대한 두 번째 질문입니다.
-  const mappers = await loadChainMapperNames();
-  chainRulePanel.setLists(mappers === null ? {} : { mappers });
+  // 🔴 C-101 ②. 목록이 «둘»이고 상태도 각자입니다 — 안 넣으면 「모름」, 빈 배열이면 「없음」.
+  //    하나를 못 읽었을 때 다른 하나까지 「없음」으로 그리면 안 물어본 것이 답이 됩니다.
+  const [mappers, tables] = await Promise.all([loadChainMapperNames(), loadTableNames()]);
+  chainRulePanel.setLists({
+    ...(mappers === null ? {} : { mappers }),
+    ...(tables === null ? {} : { tables }),
+  });
   let body = null;
   let opts = { ...extra };
   // 🔴 C-101 ①. 이름을 «안 댄» 읽기는 «목록»입니다 — 30초 자동 갱신(:408)과 탭 전환이 그렇게

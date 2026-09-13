@@ -47,6 +47,11 @@ export const CHAIN_RULE_REGISTRY = Object.freeze({
   // C-86 ③. 맵퍼 칸의 목록 이름. 값은 화면이 `GET /admin/mappers/list` 에서 받아 넣습니다 —
   // 이 파일은 «이름»만 대고 «목록»은 서버의 등록부입니다.
   choiceList: 'mappers',
+  // C-101 ②. 표를 대는 칸들의 목록 이름. 값은 화면이 `GET /tables` 에서 받아 넣습니다 —
+  // 그 라우트가 «제품이 아는 표 전부»(`crud.TABLE_CONFIG`)이고, 규칙이 읽고 쓸 수 있는 표가
+  // 그 집합입니다. 🔴 실측 2026-09-13: 이 문법의 `hint: 'ref'` 리프가 일곱이고 전부 이
+  // 목록을 씁니다 — 칸 이름을 여기 적지 않는 이유가 그것입니다(스켈레톤이 저자입니다).
+  refList: 'tables',
   // C-95 ②. 「첫 화면」은 «필수»가 아닙니다 — 다른 물음입니다.
   //
   // 🔴 실측(2026-09-13, `chain_bindings.RULE_ROUTING_REQUIRED`): 이 문법의 required 는

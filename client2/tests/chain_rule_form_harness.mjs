@@ -88,7 +88,11 @@ const payloadFor = (skeleton, declaration, extra = {}) => ({
   ...extra,
 });
 
-const CHAIN_SPEC_EXTRA = { addLabel: '규칙 추가', choiceList: 'mappers' };
+// ⚠️ A FIXTURE, NOT A COPY OF THE DECLARATION. What is scored here is the TEMPLATE: a registry
+// that declares these things must behave this way. That the CHAIN registry declares them is
+// scored where it can only be true end to end -- `chain_rule_user_path_harness` drives the
+// real `chain_rule_panel.js` through the real page.
+const CHAIN_SPEC_EXTRA = { addLabel: '규칙 추가', choiceList: 'mappers', refList: 'tables' };
 
 function mount() {
   const host = makeNode(doc, 'div');
@@ -325,6 +329,56 @@ function suite(M) {
   ok(Boolean(reFold) && Boolean(reArea) && reArea.hidden !== true,
     'H7 a fold pressed after a background read still opens');
 
+  // ── I: reference cells choose from a catalogue, and still take anything (C-101 ②) ──
+  // 🔴 Measured 2026-09-13 in `server/chain_skeleton.json`: SEVEN leaves carry `hint: 'ref'` and
+  //    every one of them carries NO section. The explorer asks `context.declared(node.section)`
+  //    for those, this context answered `[]`, and so seven table names were typed by hand.
+  // ⚠️ NO NEW CONTROL. The explorer already draws a `datalist` -- searchable, still an input, and
+  //    a name the catalogue never heard of stays exactly as typed with no mark on it. What was
+  //    missing was the list, not the control, and that distinction is the whole of this fix.
+  const refs = makePanel(M, SPEC, { lists: { tables: ['lot_event', 'lot_slot_wafer'] } });
+  refs.panel.render(payloadFor(SKELETON, { name: 'alpha', trigger_table: 'lot_event' }));
+  const refBox = walk(refs.host).find((n2) => n2.attrs && n2.attrs['data-value'] === 'trigger_table');
+  const refList = walk(refs.host).find((n2) => n2.tagName === 'DATALIST');
+  const offered = refList ? refList.children.map((o) => o.value) : [];
+  ok(Boolean(refBox) && refBox.tagName === 'INPUT' && Boolean(refBox.attrs.list),
+    `I1 a reference cell offers a list -- [${refBox ? refBox.tagName : 'no box'}, list=${refBox ? refBox.attrs.list : '-'}]`);
+  ok(offered.includes('lot_event') && offered.includes('lot_slot_wafer'),
+    `I2 ... and the list is the catalogue it was handed -- [${offered.join(',')}]`);
+  // 🔴 A NAME THE CATALOGUE DOES NOT HOLD IS KEPT AS TYPED, AND NOTHING ON THE SCREEN OBJECTS.
+  //    The server judges a table name; a screen that refused one would refuse a table added
+  //    between this read and the save.
+  if (refBox) { refBox.value = 'a_table_nobody_declared'; refBox.dispatch('change', {}); }
+  let refDoc = null;
+  try { refDoc = JSON.parse((byCls(refs.host, 'chain-rule-raw')[0] || {}).value || 'null'); }
+  catch (e) { refDoc = null; }
+  ok(refDoc && refDoc.trigger_table === 'a_table_nobody_declared',
+    'I3 a typed name outside the catalogue reaches the document unchanged');
+  ok(byCls(refs.host, 'chain-rule-field-refusal').length === 0,
+    'I4 ... and carries no refusal mark -- the server judges a table name, not this screen');
+  // ⚠️ A CATALOGUE NEVER READ DRAWS NO LIST, AND THAT IS NOT 「there are none」. For a SUGGESTION
+  //    the two states share a pixel on purpose: an absent suggestion claims nothing. A closed
+  //    list is the opposite case and `closedListChoice` keeps those four states apart (F1-F3).
+  const noCat = makePanel(M, SPEC);
+  noCat.panel.render(payloadFor(SKELETON, { name: 'alpha', trigger_table: 'lot_event' }));
+  const noCatBox = walk(noCat.host).find((n2) => n2.attrs && n2.attrs['data-value'] === 'trigger_table');
+  ok(Boolean(noCatBox) && !noCatBox.attrs.list && noCatBox.tagName === 'INPUT',
+    'I5 an unread catalogue leaves the cell typable with no list -- a suggestion absent claims nothing');
+  // 🔴 AND THE SKELETON WINS WHEN IT NAMES ITS OWN. A grammar whose cells draw from different
+  //    catalogues is not this grammar today, and the day it is, one list answering for all of
+  //    them would offer table names where zones belong -- with nothing erroring.
+  const SECTIONED = { skeleton_version: 1, root: { kind: 'record', fields: [
+    { key: 'decoy_alpha', required: true, node: { kind: 'leaf', hint: 'ref', section: 'zones' } }] } };
+  const sect = makePanel(M, { listKey: 'rules', nameKey: 'name', cls: 'chain-rule',
+                              formRoot: (p) => (p && p.skeleton && p.skeleton.root) || null,
+                              refList: 'tables' },
+                         { lists: { tables: ['lot_event'], zones: ['Asia/Seoul'] } });
+  sect.panel.render(payloadFor(SECTIONED, { decoy_alpha: 'Asia/Seoul' }));
+  const sectList = walk(sect.host).find((n2) => n2.tagName === 'DATALIST');
+  const sectOffered = sectList ? sectList.children.map((o) => o.value) : [];
+  ok(sectOffered.includes('Asia/Seoul') && !sectOffered.includes('lot_event'),
+    `I6 a leaf that names its own section gets THAT list -- [${sectOffered.join(',')}]`);
+
   return { pass: pass - before.pass, fail: fail - before.fail };
 }
 
@@ -404,6 +458,11 @@ const DEFECTS = [
                    'this.render(this._payload, this._opts);')],
   ['a draft outlives the document it belongs to, so old text returns after a save',
     s => s.replace('if (opts.saved || (this.draft !== null && this.draftOf !== key)) this._forget();', '')],
+  // 🔴 C-101 ②. The owner's second sentence: 「테이블이랑 맵퍼 설정은 리스트 좀 나오게해」.
+  ['the reference cells lose their catalogue, so every table name is typed by hand',
+    s => s.replace('    declared: (section) => named(section || refList),', '    declared: () => [],')],
+  ['one list answers for every reference cell, whatever section the skeleton named',
+    s => s.replace('named(section || refList)', 'named(refList)')],
   ['the add control is drawn for a registry that declared no word for it',
     s => s.replace('    if (spec.addLabel) {', '    if (true) {')],
 ];

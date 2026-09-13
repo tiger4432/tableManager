@@ -69,6 +69,12 @@ export const PICK_NAME = '— 고르십시오 —';
  *      아무것도 안 들었으면 `list` 가 답합니다 — «빈 목록»은 읽어서 안 사실(고를 것이 없음)이라
  *      다른 철자가 서고, «못 읽음»은 모르는 것이라 기본 철자가 자기 상태를 그립니다(세 상태).
  *   ⚠️ 가려진 철자는 «사라지지 않습니다» — 「고급」으로 갑니다. 없애면 철자를 바꿀 길이 없어집니다.
+ * @property {string} [refList]  «참조 칸»(`hint: 'ref'`)이 고르는 목록 이름 (예: 'tables').
+ *   🔴 `choiceList` 와 같은 다리입니다 — 스켈레톤이 리프에 `section` 을 대면 그 이름이 이기고,
+ *      안 대면 이 등록부의 이름이 쓰입니다. 실측 2026-09-13: 체인 스켈레톤의 ref 리프 «일곱»이
+ *      전부 `section` 을 «안 댑니다». 그래서 이 줄이 없으면 탐색기가 제안을 못 찾고 일곱 칸이
+ *      평문 입력으로 섭니다 — 표 이름을 손으로 적는 자리가 일곱입니다.
+ *   ⚠️ 제안입니다. 컨트롤은 여전히 입력이고, 목록에 없는 이름도 «그대로» 남습니다(서버가 판정).
  * @property {string} [choiceList]  이 등록부의 «닫힌 목록» 이름 (예: 'mappers').
  *   🔴 칸 «이름»이 아닙니다. 스켈레톤이 `list` 로 이름을 대면 그 이름이 이기고, 안 대면 이
  *      등록부의 목록이 쓰입니다. 오늘 체인 스켈레톤은 `mapper` 를 `hint: 'choice'` 로만 내고
@@ -138,8 +144,13 @@ export function registryView(payload, opts, spec) {
  * 🔴 도메인 낱말 «0». `lists` 는 등록부가 넘겨 준 «닫힌 목록»이고, 어느 칸이 그것을 쓰는지는
  *    스켈레톤의 `list` 가 말합니다 — 이 파일이 고르지 않습니다.
  */
-function formContext(skeleton, lists, choiceList) {
+function formContext(skeleton, lists, choiceList, refList) {
   const defs = (skeleton && skeleton.defs) || {};
+  /** 이름 하나로 목록 하나. 문자열 아닌 멤버는 «제안»이 될 수 없어 빠집니다. */
+  const named = (name) => {
+    const list = name ? (lists || {})[name] : null;
+    return Array.isArray(list) ? list.filter((item) => typeof item === 'string') : [];
+  };
   return {
     schema: lists || {},
     readOnly: false,
@@ -156,7 +167,9 @@ function formContext(skeleton, lists, choiceList) {
       }
       return shape;
     },
-    declared: () => [],
+    // 🔴 C-101 ②. 참조 칸의 제안 목록. 스켈레톤이 «칸마다» 다른 절을 댈 수 있으므로 그 이름이
+    //    먼저이고, 안 대면 등록부가 댄 이름입니다 — 위 `deref` 와 «같은 규율»입니다.
+    declared: (section) => named(section || refList),
     rolesNear: () => [],
     usedElsewhere: () => [],
     renderRow: () => null,
@@ -506,8 +519,8 @@ export class RawRegistryPanel {
       const draw = (value) => {
         box.textContent = '';
         const form = renderSkeletonForm(
-          formContext(payload.skeleton, this.lists, spec.choiceList), root, '', value, 0,
-          this.newMode ? NEW_NAME : view.name);
+          formContext(payload.skeleton, this.lists, spec.choiceList, spec.refList),
+          root, '', value, 0, this.newMode ? NEW_NAME : view.name);
         if (form) {
           this._partition(form, root, value);
           box.appendChild(form);
