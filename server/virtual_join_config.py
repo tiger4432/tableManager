@@ -117,12 +117,13 @@ VIRTUAL_JOIN_RULES_PATH = os.path.join(CONFIG_DIR, "virtual_join_rules.json")
 _IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 # --- 거부 코드 (내부 어휘 ― config_resolve_report가 닫힌 사유로 사상한다) ---
-CODE_NO_UNIQUE_INDEX = "no_unique_index"     # 유일성을 강제하는 인덱스가 없다
-CODE_FANOUT_DECLARED = "fanout_declared"     # 집계 형태는 아직 구현이 없다
-CODE_SHAPE = "shape"                         # 평범한 문법/존재 오류
-# S-189 ⓐ (판정 302). 실체화는 «쓰기»라서 비용이 선언에 적혀야 한다.
-CODE_NO_REWRITE_CAP = "no_rewrite_cap"       # materialize 인데 상한을 안 적었다
-CODE_NO_LEFT_INDEX = "no_left_index"         # 역방향(참조→대상) 색인이 없다
+# 🪦 [S-211 ①, 판정 355] 코드 다섯과 그 «한국어 문장»이 `virtual_join_refusal` 로 내려갔다.
+#    이 모듈이 그것을 읽는 것은 «아래로» 가는 방향이라 고리를 만들지 않는다. 종전에는 이
+#    파일이 문장을 지으려고 «보고서»(`config_resolve_report`)를 함수 안에서 import 했고,
+#    보고서는 이 파일을 import 했다 — 함수 안에 둬서 «보이지 않던» 고리다.
+from virtual_join_refusal import (                              # noqa: F401
+    CODE_FANOUT_DECLARED, CODE_NO_LEFT_INDEX, CODE_NO_REWRITE_CAP,
+    CODE_NO_UNIQUE_INDEX, CODE_SHAPE, virtual_join_detail)
 
 # 인덱스 이름 규약. PostgreSQL 식별자 상한은 63바이트라 넘치면 해시로 접는다
 # (`value_suggest.suggest_index_name`과 같은 규율·같은 상한).
@@ -808,12 +809,12 @@ def verification_report(db, path: str = None, known_tables: dict = None) -> dict
     카탈로그 조회 하나라 요청 경로에 앉아도 된다(행을 세지 않으므로 비용이 테이블
     크기와 무관하다 ― 프로브를 라우트에 앉힐 수 없었던 이유가 정확히 그것이었다).
 
-    쓰는 이가 읽을 **한국어 문장**은 `config_resolve_report.virtual_join_detail`이 짓는다
+    쓰는 이가 읽을 **한국어 문장**은 `virtual_join_refusal.virtual_join_detail` 이 짓는다
     ― 보고서와 이 라우트가 같은 거부에 다른 문장을 내면 「서버가 문장의 정본」이라는
-    계약이 깨진다. 로더가 한국어를 짓지 않는 것도 같은 규율이다(사상은 보고서 계층).
+    계약이 깨진다. 로더가 한국어를 «짓지» 않는 것도 같은 규율이다(사상은 보고서 계층).
+    🪦 그 함수는 `config_resolve_report` 에 있었고, 이 자리가 그것을 함수 안에서 import 해
+       고리를 만들었다 (S-211 ①, 판정 355).
     """
-    import config_resolve_report as crr
-
     rejections = []
     rules = load_virtual_join_rules(path=path, known_tables=known_tables,
                                     rejections=rejections)
@@ -842,14 +843,14 @@ def verification_report(db, path: str = None, known_tables: dict = None) -> dict
             "required_index": rule["required_index"],
             "required_index_ddl": None if result["unique_index"] else rule["required_index_ddl"],
             "detail": (None if not result["refused"] else
-                       crr.virtual_join_detail(CODE_NO_UNIQUE_INDEX, facts)),
+                       virtual_join_detail(CODE_NO_UNIQUE_INDEX, facts)),
         })
     return {
         "declarations": out,
         "accepted": sum(1 for d in out if d["accepted"]),
         "refused": sum(1 for d in out if not d["accepted"]),
         "invalid": [{"subject": r.get("subject"),
-                     "detail": crr.virtual_join_detail(
+                     "detail": virtual_join_detail(
                          r.get("code", CODE_SHAPE), r.get("facts"), r["detail"])}
                     for r in rejections],
     }
