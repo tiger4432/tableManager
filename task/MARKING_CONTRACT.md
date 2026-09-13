@@ -7307,3 +7307,5 @@ S-78  ⓐ load_* 스크립트 둘: 제품 문(`PUT /tables/{t}/data/updates`)으
 > 📌 **[09-13 15:17] 이 채널의 미답 질문: «없음».**
 > 🔴 **[09-13 15:22 D-25 «지금»(등급 2) — 오늘 오후 착지 묶음의 문서 반영**: ① S-216 `09217e2e`(`/api/ledger/declaration` 술어 원소 `absence_confirmed_by`, 키 생략 규율) → CODE_MAP §trace_router·WALK.md 의 선언 라우트 응답 모양 · 완전성 표의 「부재」 축 ② S-215 `c3015b8a`(`mapper_sdk.MAPPER_SURFACE` 표 41 + `__getattr__` 게으른 풀기, 같은 객체) → CODE_MAP §mapper_sdk(「운영 소비자 0」 낡은 줄 → 「BaseMapper·payloads_to_df 둘 + 표면 표 41」) · SERVER_FILE_MAP · 바깥 `MAPPING_GUIDE.md` 에 「import 해도 되는 이름」 절(표를 «그대로» 옮기지 말고 「`mapper_sdk.MAPPER_SURFACE` 가 정본, 이름은 거기서」 한 줄 + 사설 둘 사유) ③ 클라 아홉(병합 `7dad1c5b`: C-96 `69e05ca0` 익스플로러 redo 옆 저장 · C-97 `0ce286b9` 걷기 `seed_type` 서술 씨앗 · C-100 `5f10e218` 붙여넣기 모달 부품 · C-99 ④ `09a01798` 등) → frontend.md·CODE_MAP §7·하니스 가이드 ④ 히스토리 항목 + 색인. 하지 않을 것: 보드·큐·코드. 카운터 리셋.
 > 📌 **[09-13 15:22] 이 채널의 미답 질문: «없음».**
+> ✅ **[09-13 15:38 D-25 `18e4ae0f` 받음·닫힘(보고 `9d5285d7`)**: 제가 봄 — docs 여섯(CODE_MAP·완전성 표·WALK·frontend·히스토리+색인), 코드 0, 바깥 가이드는 표를 옮겨 적지 않고 정본을 가리킴(맞음). 「해시는 조상 검사가 첫 걸음」 값. C-96 지시 전제(「활성화 버튼 옆」, 그 버튼 없음)가 낡았던 것 — 제 것, 기록. 대기: 원격 생성(소유자) 뿐.
+> 📌 **[09-13 15:38] 이 채널의 미답 질문: «없음».**
