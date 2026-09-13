@@ -522,7 +522,8 @@ def load_chain_rules():
         # dry-run screen accepted what this loop drops. The sentences below are unchanged;
         # only where the verdict comes from moved.
         issues = chain_bindings.rule_refusals(
-            rule, path, mapper_resolvable=mapper_sdk.MAPPER_REGISTRY.get)
+            rule, path, mapper_resolvable=mapper_sdk.MAPPER_REGISTRY.get,
+            mapper_params=mapper_sdk.MAPPER_PARAMS.get)
         one_cell, _module_name, _function_name = chain_bindings.mapper_cells(rule)
         resolvable = bool(mapper_sdk.MAPPER_REGISTRY.get(one_cell)) if one_cell else False
 
@@ -539,13 +540,10 @@ def load_chain_rules():
             logger.warning(
                 "[ChainRules] %s: %d cell(s) still written flat — move them under 'params': %s",
                 rule.get("name"), len(flat), ", ".join(flat))
-        declared = mapper_sdk.MAPPER_PARAMS.get(one_cell) if resolvable else None
-        if declared is not None:
-            undeclared = sorted(set(chain_bindings.params_of(rule)) - set(declared))
-            if undeclared:
-                logger.warning(
-                    "[ChainRules] %s: param(s) '%s' does not declare: %s",
-                    rule.get("name"), one_cell, ", ".join(undeclared))
+        # 🪦 [S-152, 판정 372] AN UNDECLARED PARAM USED TO WARN HERE, and a warning is what
+        #    let `trigger_colums` roll on against the whole table. It is a REFUSAL now, and
+        #    it is raised by `rule_refusals` above - so the save and the config screen, which
+        #    already call that judge, say the same thing without a second author.
     if len(kept) != len(rules):
         logger.error("[ChainRules] %d of %d rule(s) refused and skipped",
                      len(rules) - len(kept), len(rules))

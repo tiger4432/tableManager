@@ -677,7 +677,8 @@ def save_chain_rule_raw(name: str, declaration, base: str) -> dict:
     import mapper_sdk
 
     grammar = chain_bindings.rule_refusals(
-        entry, f"rules.{name}", mapper_resolvable=mapper_sdk.MAPPER_REGISTRY.get)
+        entry, f"rules.{name}", mapper_resolvable=mapper_sdk.MAPPER_REGISTRY.get,
+        mapper_params=mapper_sdk.MAPPER_PARAMS.get)
     if grammar:
         first = grammar[0]
         raise _table_config_refusal(

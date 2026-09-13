@@ -282,7 +282,7 @@ def flat_param_cells(rule):
         and name not in routing))
 
 
-def rule_refusals(rule, path, *, mapper_resolvable):
+def rule_refusals(rule, path, *, mapper_resolvable, mapper_params=None):
     """Why this chain rule CANNOT RUN — the one spelling, for every reader (S-180 ⓑ-0).
 
     🔴 IT WAS SPELLED TWICE AND THE TWO HAD ALREADY DIVERGED. The loader
@@ -298,9 +298,21 @@ def rule_refusals(rule, path, *, mapper_resolvable):
     to have imported」.
 
     ⚠️ WHAT IS REFUSED IS 「CANNOT RUN」, NOT 「UNFAMILIAR」. An unknown top-level cell is a
-    mapper argument still written flat, and the product cannot tell a stale one from a live
-    one because the mapper that reads it lives in a gitignored file. Those are WARNED about
-    by name (`rule_warnings`), never refused.
+    mapper argument still written flat, and where nobody said otherwise the product cannot
+    tell a stale one from a live one - the mapper that reads it lives in a gitignored file.
+    Those are WARNED about by name (`rule_warnings`), never refused.
+
+    🔴 UNLESS THE MAPPER SAID WHAT IT READS (S-152, 판정 371·372). `@mapper(params=…)` is a
+    DECLARATION, and once it exists the product CAN tell: a flat cell outside it is a name
+    this mapper will never look at. `trigger_colums` for `trigger_columns` used to roll on as
+    a warning and silently take the whole table with it, because a typo and a stale argument
+    look the same until something declares the difference.
+    ⚠️ 「Can tell」 is the whole of the rule: no declaration, no refusal - today's warning
+    stands, because refusing there would refuse a working rule over a name nobody defined.
+
+    🔴 `mapper_params` IS A CALLABLE, for the same reason `mapper_resolvable` is: this module
+    must not import `mapper_sdk` (S-188 set that direction), or 「what the rules file may
+    say」 would depend on 「what this process happens to have imported」.
     """
     import validation
 
@@ -319,6 +331,18 @@ def rule_refusals(rule, path, *, mapper_resolvable):
             "unresolvable_mapper", path + "." + MAPPER_KEY,
             "names no mapper this process can run: '%s' is not registered and "
             "mapper_module/mapper_function are not both set" % (one_cell or "")))
+
+    # 🔴 THE ONE BRANCH THIS ROUND ADDS. Only where a declaration exists, and only over the
+    # cells the rule actually wrote - `params_of` reads the block with the flat cells beneath
+    # it, which is the same view the mapper will be handed.
+    declared = mapper_params(one_cell) if (mapper_params and resolvable and one_cell) else None
+    if declared is not None:
+        for name in sorted(set(params_of(candidate)) - set(declared)):
+            issues.append(validation.DeclarationValidationError(
+                "undeclared_param", path + "." + name,
+                "'%s' does not read an argument by this name (it declares: %s) - a "
+                "misspelling here runs against the whole table"
+                % (one_cell, ", ".join(sorted(declared)) or "none")))
     return issues
 
 
