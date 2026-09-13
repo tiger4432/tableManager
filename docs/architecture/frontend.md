@@ -131,12 +131,12 @@ npm run build     # prebuild(§2.1) 통과 후 dist/ 생성
 | 통신 | `api.js` · `websocket.js` | REST 호출과 WS 수신·델타 반영 |
 | 그리드 | `grid.js` · `clipboard.js` · `tsv.js` · `push_columns.js` · `grid_source_label.js` · **`redo_banner.js`** · `rescope_handoff.js` · 🆕 **`dropdown.js`** · 🆕 **`match_count.js`** | AG-Grid 배선, 엑셀형 복사·붙여넣기. **[2026-08-31] 그리드가 원장을 «안다»** — 아래 §3.1. ⚠️ **줄 수는 여기 적지 않는다**(정본은 [CODE_MAP §7](./CODE_MAP.md)) |
 | 값 편집 | `value_suggest.js` (1,003) · `enrichment*.js` · `timeline.js` (1,148) | 셀 제안, 보정, 이력 타임라인 |
-| 붙여넣기 | 🆕 **`clipboard_type_modal.js`** | 클립보드가 여러 형식일 때 «어느 것으로 받나». 조립식 부품 — 자기 mount·자기 div, 겉모양은 `style.css` 의 `.ctm-*`, 같은 화면에 둘을 놓아도 간섭 0 |
+| 붙여넣기 | 🆕 **`clipboard_type_modal.js`** | 클립보드가 여러 형식일 때 «어느 것으로 받나». 조립식 부품 — 자기 mount·자기 div, 겉모양은 `style.css` 의 `.ctm-*`, 같은 화면에 둘을 놓아도 간섭 0<br>🆕㈢ **[C-100 `5f10e218`] 이제 «부품»이고, 프레임을 «기다리지 않는다»** — 조립식 상설 그대로 자기 mount · 자기 div, 겹장은 `style.css` 의 `.ctm-*` |
 | 맵(레거시) | `map_editor.js` (11,060) · `map_key.js` · `split_registry_row.js` | 웨이퍼 맵 캔버스·좌표·오버레이 |
 | 맵2 | `map_editor2.js` + `src/map2/*` (18 파일 · 10,437) | 정렬 화면. 층 경계로 읽습니다 — `view_model` 은 DOM 없이 채점됩니다 |
 | 계획 | `transfer_plan.js` (1,875) · `doe_bands.js` (753) | DOE·STACK 구간과 자재 |
 | 온톨로지 작성 | `ontology_explorer*.js` · `ontology_path.js` · `ontology_skeleton.js` · 🆕 **`closed_list.js`** · 🆕 `uniqueness.js` | 선언 초안 → 검토 → 활성화. 닫힌 목록을 «값으로 그릴지 고르개로 그릴지»는 아래 §3.3 |
-| **부재 어휘** | 🆕 **`absent.js`** · 🆕 **`count_with_absence.js`** · 🆕 **`redo_cost.js`** | **「안 왔다」와 「0이다」를 다른 글자로 적는 한 곳.** 아래 §3.3 |
+| **부재 어휘** | 🆕 **`absent.js`** · 🆕 **`count_with_absence.js`** · 🆕 **`redo_cost.js`** | **「안 왔다」와 「0이다」를 다른 글자로 적는 한 곳.** 아래 §3.3<br>🆕㈢ **[C-96 `69e05ca0`] `redo_cost.js` 가 드디어 «화면에 닿았다»** — 서버는 전부터 `redo = {op, params, sources, count}` 를 초안 기록에 실어 보내고 있었고, 클라가 «한 줄도» 안 읽었다(`git grep redo -- client2/src` 이 벤너만 냈다). 🔴 부류: **「착지는 배선이 아니다」의 «읽는 쪽» 판** — 수는 착지했고 운영자는 볼 수 없었다. ⚠️ 그리고 지시서가 「활성화 버튼 옆」을 말했는데 **그 버튼은 없다** — 소유자 판정으로 활성화가 «저장 안»으로 들어갔기 때문이다. 그래서 값은 «저장 옆»에 서고, 저장이 곷 발화라는 점이 그 값을 더 필요하게 만든다 |
 | R&D 보드 | `src/rnd_board/*` (19 파일 · 6,183) | §4 |
 | 어드민 | `admin.js` · 🆕 `retroactive_view.js` · 🆕 **`chain_queue_panel.js`** · 🆕 **`ledger_sources_panel.js`** · 🆕 `raw_registry_panel.js` · 🆕 `table_config_panel.js` · 🆕 `chain_rule_panel.js` · 🆕 `join_verification.js` | 파이프라인 생애주기. 소급 블록의 폼·실행 목록 조립은 뷰 모듈이 갖는다(파라미터의 `choices` → 선택지 매핑 포함). **패널은 클래스이고 자기 mount 와 deps 를 받는다** — 한 화면에 둘을 놓아도 서로를 안 건드린다 |
 | 진행 표시 | 🆕 **`progress_card.js`** | 「무언가가 도는 동안 진행을 보여 준다」의 **근원 템플릿**(파일 인제션 · 리플레이 «둘»이 쓴다). 도메인 낱말이 인자에 «없다» |

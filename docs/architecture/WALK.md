@@ -29,6 +29,8 @@ collect  무엇을 «가져오나»  도메인 «노드 타입»(선언된 엔�
 
 ```
 GET /api/ledger/declaration      ->  { state, entities, predicates, sources }
+   predicates[]                  ->  { name, subjects, object, origin }
+                                     🆕 + `absence_confirmed_by` — «선언한 술어에만» (S-216 `09217e2e`)
 client2/src/rnd_board/api.js
    typeGraph(declaration)        ->  선언의 predicates 로 «타입 그래프» (from -술어-> to)
    pathsBetween(decl, from, to)  ->  그 그래프의 «단순 경로 전부» = { hops, follow, chain }
@@ -36,6 +38,9 @@ client2/src/rnd_board/walk_box_panel.js
    routes()                      ->  pathsBetween(선언, 시작타입, 도착지)
    useRoute(i)                   ->  🔵 `follow` 와 `hops` 를 «그 경로에서» 채운다
 ```
+🔴 **부재 열의 모집단은 «선언»이지 «데이터»가 아니다** (S-216 `09217e2e`, 판정 366). S-149 가 모든 노드에 `absence` 판정을 접어 주므로, 그 열을 «노드만 보고» 그리면 화면은 **«도착한» 술어들을 모집단으로 쏴다** — 그 판정 칸이 막으려던 바로 그 오독이다.
+⚠️ **없으면 «비우지 않고 생략한다»** — `class`·`attributes` 와 같은 규율이다. 「이 술어는 확인자를 안 적었다」와 「이 설치는 그 축이 생기기 전이다」는 **다른 사실**이고, 빈 문자열은 그 둘을 하나로 접는다.
+⚠️ 그래서 **오늘 출하 선언에는 확인자가 하나도 없고**, 키가 «전혀 안 나오는 것»이 「여긴 그 축을 안 쓴다」를 뜻한다 — 「못 한다」가 아니다.
 **그러므로 사용자는 `follow` 를 손으로 적지 않는다.** «시작 타입 + 도착지»를 고르면
 후보 경로가 목록으로 나오고, 하나를 «누르면» `follow`·`hops` 가 들어간다.
 
@@ -56,6 +61,7 @@ client2/src/rnd_board/walk_box_panel.js
 ```
 GET /api/ledger/subgraph     걷기. 아래 인자 «열넷»
 GET /api/ledger/declaration  무엇을 물을 수 있나 (entities · predicates · sources)
+                             🆕 그리고 「어느 술어가 «검사»인가」 — `absence_confirmed_by` (S-216 `09217e2e`)
 GET /api/ledger/gaps
 ```
 ```
