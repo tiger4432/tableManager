@@ -4,6 +4,7 @@ import 'ag-grid-community/styles/ag-theme-quartz.css';
 import './tokens.css';
 import './style.css';
 import { initTheme } from './theme.js';
+import { ClipboardTypeModal } from './clipboard_type_modal.js';
 import { API_BASE, CURRENT_USER, pageLimit } from './config.js';
 import { narrowingTail } from './narrowing.js';
 // C-14: 값의 «출처»를 찍는 두 행. 하니스가 import 로 채점할 수 있게 자기 모듈에 삽니다 —
@@ -2010,168 +2011,13 @@ async function smartPasteViaIngestion() {
   );
 }
 
-// Glassmorphism selection modal for clipboard data types
+// 🔴 C-100. 이 자리는 이제 «앉히기»뿐입니다. 모달은 자기 파일의 부품이고 겉모양은
+//    `style.css` 의 `.ctm-*` 가 듭니다 — 종전에는 이 함수가 `Object.assign(el.style, …)`
+//    다섯 블록과 innerHTML 의 `style="…"` 넷으로 화면을 «통째로» 지었고, 클래스가 하나도
+//    없어 시트가 이 화면에 대해 아무 말도 못 했습니다(스킬 「인라인이 스타일시트를 이긴다」).
+//    ⚠️ 「어디에 뜨나」는 부품 밖의 일이라 mount 를 여기서 고릅니다 — 조립식 상설 그대로.
 function showClipboardTypeModal(types) {
-  return new Promise((resolve) => {
-    // 1. Create overlay container
-    const overlay = document.createElement('div');
-    overlay.id = 'clipboard-type-modal-overlay';
-    Object.assign(overlay.style, {
-      position: 'fixed',
-      top: '0',
-      left: '0',
-      width: '100vw',
-      height: '100vh',
-      backgroundColor: 'var(--scrim)',
-      zIndex: '9999',
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'center',
-      opacity: '0',
-      transition: 'opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
-    });
-
-    // 2. Map mime-types to user friendly labels & icons
-    const typeConfigs = {
-      'text/plain': { label: 'Plain Text (일반 텍스트)', icon: '📋', color: 'var(--accent)' },
-      'text/html': { label: 'HTML Table (엑셀 표 서식 포함)', icon: '🌐', color: 'var(--success)' },
-      'text/rtf': { label: 'Rich Text Format (RTF 서식)', icon: '📝', color: 'var(--warning)' },
-      'text/csv': { label: 'Comma Separated (CSV)', icon: '📊', color: 'var(--info)' },
-      'application/json': { label: 'JSON Data Object', icon: '⚙️', color: 'var(--accent-2)' }
-    };
-
-    // 3. Create modal container card
-    const card = document.createElement('div');
-    Object.assign(card.style, {
-      background: 'var(--bg-surface)',
-      border: '1px solid var(--border-strong)',
-      borderRadius: '16px',
-      padding: '28px',
-      width: '420px',
-      boxShadow: 'var(--shadow-pop)',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '20px',
-      transform: 'scale(0.92)',
-      transition: 'transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)'
-    });
-
-    // 4. Modal Header
-    const header = document.createElement('div');
-    header.innerHTML = `
-      <h3 style="font-family: var(--font-sans); font-size: 1.35rem; font-weight: 600; color: var(--text); margin-bottom: 6px;">📋 Paste Clipboard Type</h3>
-      <p style="font-family: var(--font-sans); font-size: 0.85rem; color: var(--text-muted); line-height: 1.45;">클립보드에 여러 포맷의 데이터가 감지되었습니다.<br>파싱을 위해 전송할 데이터 타입을 선택하세요.</p>
-    `;
-    card.appendChild(header);
-
-    // 5. Buttons Container
-    const btnContainer = document.createElement('div');
-    Object.assign(btnContainer.style, {
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '10px'
-    });
-
-    types.forEach(type => {
-      const cfg = typeConfigs[type] || { label: type, icon: '📄', color: 'var(--text)' };
-      const btn = document.createElement('button');
-
-      Object.assign(btn.style, {
-        background: 'var(--bg-inset)',
-        border: '1px solid var(--border)',
-        borderRadius: '10px',
-        padding: '12px 16px',
-        color: 'var(--text)',
-        fontFamily: 'var(--font-sans)',
-        fontSize: '0.92rem',
-        fontWeight: '500',
-        textAlign: 'left',
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '12px',
-        transition: 'all 0.15s ease',
-        outline: 'none'
-      });
-
-      btn.innerHTML = `
-        <span style="font-size: 1.25rem; background: var(--bg-surface); padding: 4px; border-radius: 6px; display: flex; align-items: center; justify-content: center;">${cfg.icon}</span>
-        <div style="display: flex; flex-direction: column;">
-          <span style="color: ${cfg.color}; font-weight: 600;">${cfg.label.split(' (')[0]}</span>
-          <span style="font-size: 0.72rem; color: var(--text-muted); margin-top: 1px;">${type}</span>
-        </div>
-      `;
-
-      btn.addEventListener('mouseenter', () => {
-        btn.style.background = 'var(--surface-hover)';
-        btn.style.borderColor = cfg.color;
-        btn.style.transform = 'translateX(4px)';
-        btn.style.boxShadow = 'var(--shadow-card)';
-      });
-      btn.addEventListener('mouseleave', () => {
-        btn.style.background = 'var(--bg-inset)';
-        btn.style.borderColor = 'var(--border)';
-        btn.style.transform = 'none';
-        btn.style.boxShadow = 'none';
-      });
-
-      btn.addEventListener('click', () => {
-        closeModal(type);
-      });
-
-      btnContainer.appendChild(btn);
-    });
-
-    card.appendChild(btnContainer);
-
-    // 6. Cancel Button
-    const cancelBtn = document.createElement('button');
-    Object.assign(cancelBtn.style, {
-      background: 'transparent',
-      border: '1px solid var(--border)',
-      borderRadius: '10px',
-      padding: '10px',
-      color: 'var(--text-muted)',
-      fontFamily: 'var(--font-sans)',
-      fontSize: '0.88rem',
-      fontWeight: '500',
-      cursor: 'pointer',
-      transition: 'all 0.15s ease',
-      outline: 'none'
-    });
-    cancelBtn.textContent = 'Cancel (취소)';
-    cancelBtn.addEventListener('mouseenter', () => {
-      cancelBtn.style.background = 'var(--danger-weak)';
-      cancelBtn.style.color = 'var(--danger)';
-      cancelBtn.style.borderColor = 'var(--danger)';
-    });
-    cancelBtn.addEventListener('mouseleave', () => {
-      cancelBtn.style.background = 'transparent';
-      cancelBtn.style.color = 'var(--text-muted)';
-      cancelBtn.style.borderColor = 'var(--border)';
-    });
-    cancelBtn.addEventListener('click', () => {
-      closeModal(null);
-    });
-    card.appendChild(cancelBtn);
-
-    overlay.appendChild(card);
-    document.body.appendChild(overlay);
-
-    requestAnimationFrame(() => {
-      overlay.style.opacity = '1';
-      card.style.transform = 'scale(1)';
-    });
-
-    function closeModal(val) {
-      overlay.style.opacity = '0';
-      card.style.transform = 'scale(0.92)';
-      setTimeout(() => {
-        overlay.remove();
-        resolve(val);
-      }, 200);
-    }
-  });
+  return new ClipboardTypeModal(document.body).open(types);
 }
 
 // Global mouseup handling for drag range selection completion

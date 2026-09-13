@@ -1151,7 +1151,7 @@ const FLOORS = new Map([
   // 「나머지는 들어가겠지」, which is the promise the server was forbidden to make, so a
   // screen that omits it makes that promise on the server's behalf. H5/H6 hold the two
   // silent states, and I3 holds that a code-less issue draws no code rather than a blank.
-  ['ontology_authoring_panel_harness.mjs', 84],
+  ['ontology_authoring_panel_harness.mjs', 90],
   // New with the N2 round (overlay markers coloured by the overlay cell's own value). Same
   // rule: floor is the count it reports on the commit that introduces it.
   // 70 as of 2026-08-04: A12 (loading an overlay REGISTERS its values, so the colouring this
@@ -1292,6 +1292,7 @@ const FLOORS = new Map([
   //    decoy's keys exist nowhere in this product, so drawing them is the proof, and drawing a
   //    real routing key beside them is the failure.
   ['chain_rule_form_harness.mjs', 25],
+  ['clipboard_type_modal_harness.mjs', 21],
   ['chain_rule_user_path_harness.mjs', 28],
   // a value carrying markup does not come back out as markup, and the backlog has a ceiling
   ['escaping_harness.mjs', 56],
@@ -1375,13 +1376,13 @@ const FLOORS = new Map([
   // the board part: reach
   ['rnd_board_reach_harness.mjs', 63],
   // the board part: the walk box
-  ['rnd_board_walk_box_harness.mjs', 68],
+  ['rnd_board_walk_box_harness.mjs', 79],
   // the board part: the walk itself
   ['rnd_board_walk_harness.mjs', 32],
   // 🔴 the walk REQUEST, not the walk return. `createWalkBoxWalk` accepted `spec.hops` and
   //    never put it on the wire, so the screen wrote 「3홉」 while the server walked 12 -- with
   //    no error and no warning. A harness that scores the RETURN is green throughout that.
-  ['walk_wire_harness.mjs', 86],
+  ['walk_wire_harness.mjs', 94],
   // a cut-off count says it was cut off -- 「끊김 != 없음」
   // 12 -> 32. The floor had not been raised since the file was written; the gate has been
   // naming it as running above its floor for a while. The new assertions are 클라 7 ㉯ — the

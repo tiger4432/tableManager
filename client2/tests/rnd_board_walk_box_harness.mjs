@@ -470,6 +470,78 @@ async function suite(mods) {
       node && node.id === sent.id && got.nodes.length === 1);
   }
 
+  // ══ C-97 (판정 365). 키를 «안 골랐으면» 씨앗을 서술한다 ═══════════════════════════
+  //
+  // 🔴 재는 것은 «나가는 요청»입니다. 실측 2026-09-13, 라이브 라우트에 직접: 오늘 이 화면이
+  //    타입만 고르고 걸으면 `id=…WyJ3YWZlciIse31d`(빈 키) 가 나가 «422» 를 받습니다 --
+  //    `entity id must contain [type, structured keys]`. 즉 주어를 모르면 걸을 수 없었고,
+  //    「이 타입이 무엇에 닿나」는 주어를 «모를 때» 묻는 질문입니다.
+  // ⛔ 서버는 `id` 와 `seed_type` 을 «같이» 주는 것을 거절합니다. 그래서 「둘 중 하나」가
+  //    단언이지 「seed_type 이 있다」가 아닙니다 -- 둘 다 실리면 그 거절이 화면에서 「고장」이 됩니다.
+  console.log(`${LF}-- X. 키를 안 고르면 씨앗을 «서술»한다 (C-97) --`);
+  {
+    const asked = [];
+    const walk = A.createWalkBoxWalk({ apiBase: '',
+      fetchImpl: async (url) => { asked.push(String(url)); return { ok: true, status: 200,
+        json: async () => ({ nodes: [], edges: [], truncated: null }) }; } });
+    const query = (i) => new URLSearchParams(String(asked[i]).split('?')[1] || '');
+
+    await walk({ type: 'wafer@1', keys: {} });
+    eq('XS1 타입만 고르면 씨앗을 서술한다 — 버전은 벗겨서',
+      query(0).get('seed_type'), 'wafer');
+    ok('XS2 ...그리고 `id` 는 «안 실린다» (서버가 둘 다를 거절한다)',
+      query(0).get('id') === null, asked[0]);
+
+    await walk({ type: 'wafer@1', keys: { wafer: 'SYN-CX-BW-001' } });
+    eq('XS3 키를 고르면 오늘 그대로 열거된 씨앗이다',
+      query(1).get('id'),
+      'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0');
+    ok('XS4 ...그리고 그때는 `seed_type` 이 «안 실린다»',
+      query(1).get('seed_type') === null, asked[1]);
+
+    // 🔴 빈 «문자열» 키는 「안 고름」입니다 -- `run()` 이 이미 그렇게 접고, 이 층도 같은 답을
+    //    내야 합니다. 두 층이 갈리면 칸을 비운 사람이 422 를 받습니다.
+    await walk({ type: 'wafer@1' });
+    eq('XS5 키 칸이 아예 없어도 서술이다', query(2).get('seed_type'), 'wafer');
+
+    // ⚠️ CONTROL. 서술된 씨앗도 «씨앗»이라, 관문이 「아직 안 골랐다」로 막으면 안 됩니다.
+    ok('XS6 CONTROL: 서술된 걷기가 실제로 «나갔다» (관문이 먹지 않았다)', asked.length === 3,
+      String(asked.length));
+  }
+
+  // ══ C-97. 잘린 축이 «수»로 와도 잘린 것이다 ══════════════════════════════════════
+  //
+  // 🔴 실측: `seed_type` 절단은 `truncated.seeds: 1` -- 몇을 «안 걸었는지»를 수로 말합니다.
+  //    `=== true` 만 읽으면 그 절단이 화면에서 사라지고, 사라진 절단은 「그게 전부였다」로
+  //    읽힙니다 -- 이 축 목록이 존재하는 이유 그대로입니다.
+  console.log(`${LF}-- Y. 수로 오는 절단 (C-97) --`);
+  {
+    const walkWith = (truncated) => A.createWalkBoxWalk({ apiBase: '',
+      fetchImpl: async () => ({ ok: true, status: 200,
+        json: async () => ({ nodes: [], edges: [], truncated }) }) });
+
+    const cutSeeds = await walkWith({ depth: false, nodes: false, seeds: 1,
+                                      reason: 'seeds' })({ type: 'wafer@1', keys: {} });
+    ok('Y1 `seeds: 1` 은 잘린 축이다', (cutSeeds.truncatedAxes || []).includes('seeds'),
+      JSON.stringify(cutSeeds.truncatedAxes));
+    ok('Y2 ...그리고 「잘림」이 서 있다', cutSeeds.cut === true);
+
+    const none = await walkWith({ depth: false, nodes: false, seeds: 0, reason: null })(
+      { type: 'wafer@1', keys: {} });
+    ok('Y3 `seeds: 0` 은 «안 잘린» 것이다 — 0 은 「전부 걸었다」이지 절단이 아니다',
+      !(none.truncatedAxes || []).includes('seeds'), JSON.stringify(none.truncatedAxes));
+
+    // 🔴 그 하나의 예외. `interval_excluded` 는 예산에 걸려 못 간 것이 아니라 «구간 밖이라
+    //    안 가져온» 것이고, 자기 독자가 따로 있습니다. 절단 축에 세면 「예산이 모자랐다」를
+    //    구간이 한 일에 대고 말하게 됩니다.
+    const interval = await walkWith({ depth: false, nodes: false, interval_excluded: 7,
+                                      reason: null })({ type: 'wafer@1', keys: {} });
+    ok('Y4 `interval_excluded` 는 수여도 절단이 «아니다»',
+      !(interval.truncatedAxes || []).includes('interval_excluded'),
+      JSON.stringify(interval.truncatedAxes));
+    eq('Y5 ...그리고 그 수는 자기 자리에서 읽힌다', interval.intervalExcluded, 7);
+  }
+
   // ══ C-51. 「언제부터 언제까지」 — 칸 둘, 그리고 돌아온 수 ═══════════════════════════
   //
   // 🔴 THE COMPONENT DOES NOT FILTER. These two boxes are a QUESTION; the walk answers it

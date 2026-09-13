@@ -91,7 +91,9 @@ console.log('\n[3] what the caller did not choose does not go');
 {
   const r = recorder();
   await createWalkBoxWalk({ apiBase: '', fetchImpl: r.fetchImpl })({ type: 'wafer@1', keys: {} });
-  eq('with nothing chosen, only the seed goes', [...r.params().keys()], ['id']);
+  // 🔴 C-97. 주장은 그대로입니다 — 「안 준 것은 안 간다」. 바뀐 것은 씨앗이 «열거»가 아니라
+  //    «서술»이라는 것뿐이고(키를 안 골랐으니까), 그래서 나가는 키는 여전히 «하나»입니다.
+  eq('with nothing chosen, only the seed goes', [...r.params().keys()], ['seed_type']);
 }
 
 // ═══ ③-bis C-51 — 구간 «둘», 그리고 빈 칸은 «안 간다» ═══════════════════════════════
@@ -397,6 +399,24 @@ async function truncationSuite(M) {
   const clean = await cutOf(M, { hops: 2 }, T({}));
   ok('D6 an untouched walk reports no cut', clean.cut === false, `cut=${clean.cut}`);
 
+  // 🔴 C-97. 잘린 축이 «수»로도 옵니다 — 서술된 씨앗의 절단은 `seeds: 1`, 「몇을 안 걸었나」.
+  //    `=== true` 만 읽던 판에서는 이 절단이 화면에서 «사라졌고», 사라진 절단은
+  //    「그게 전부였다」로 읽힙니다.
+  const seeds = await cutOf(M, { hops: 2 }, T({ seeds: 1, reason: 'seeds' }));
+  ok('D7 a numeric cut IS a cut — `seeds: 1` means some were not walked', seeds.cut === true,
+    `cut=${seeds.cut} axes=${JSON.stringify(seeds.truncatedAxes)}`);
+  ok('D8 ... and it names that axis', JSON.stringify(seeds.truncatedAxes) === '["seeds"]',
+    JSON.stringify(seeds.truncatedAxes));
+  // 반대 팔. 0 은 「전부 걸었다」이지 절단이 아닙니다.
+  const allSeeds = await cutOf(M, { hops: 2 }, T({ seeds: 0, reason: null }));
+  ok('D9 `seeds: 0` is NOT a cut — every described subject was walked', allSeeds.cut === false,
+    `cut=${allSeeds.cut} axes=${JSON.stringify(allSeeds.truncatedAxes)}`);
+  // 🔴 그 하나의 예외, 그리고 그것이 이름이 아니라 «뜻» 때문인 이유: 이 수는 예산에 걸려
+  //    못 간 것이 아니라 «구간 밖이라 안 가져온» 것이고, 자기 독자가 따로 있습니다.
+  const outside = await cutOf(M, { hops: 2 }, T({ interval_excluded: 7, reason: null }));
+  ok('D10 the interval count is NOT a cut, however large', outside.cut === false,
+    `cut=${outside.cut} axes=${JSON.stringify(outside.truncatedAxes)}`);
+
   return { failed: failures.length - before };
 }
 
@@ -506,6 +526,31 @@ async function oneBuilderSuite(M) {
   const zeros = await urlOfSpec({ type: 'wafer@1', keys: { wafer_id: 'W-1' }, hops: 0, node_limit: 0 });
   ok('G4 the panel still drops its zeros', !/hops=0/.test(zeros) && !/node_limit=0/.test(zeros), zeros);
   const seatZero = await urlOfSeat({ nodeId: seed, hops: 0 });
+  // 🔴 C-97. 서술된 씨앗은 «id 없이» 갑니다. 서버가 둘을 «같이» 주는 것을 거절하므로, 둘 다
+  //    실리는 날 그 거절이 화면에서는 「고장」으로 보이고 운영자는 자기가 안 한 일로 혼납니다.
+  {
+    const rd = recorder();
+    await M.createWalkBoxWalk({ apiBase: '', fetchImpl: rd.fetchImpl })(
+      { type: 'wafer@1', keys: {} });
+    const q = rd.params();
+    ok('G6 a described seed names the type', q.get('seed_type') === 'wafer', String(q.get('seed_type')));
+    ok('G7 ... and carries NO id, because the route refuses both together',
+      q.get('id') === null, String(q.get('id')));
+  }
+  // 🔴 그리고 «부른 쪽이 둘 다 줬을 때» 정본 생성기가 하나만 싣습니다. 이것이 배타성의
+  //    시험이고 — 걷기 상자는 오늘 둘 다 줄 수 없으니, 그 경로로는 이 판을 못 잽니다.
+  //    서버가 `id` 와 `seed_type` 을 같이 주는 것을 거절하므로, 둘 다 실리는 날 그 거절이
+  //    화면에서는 「고장」으로 보입니다.
+  {
+    const rb = recorder();
+    await M.fetchSubgraph({ apiBase: '', fetchImpl: rb.fetchImpl,
+      nodeId: entitySeedId('wafer', { wafer: 'W-1' }), seed_type: 'wafer' });
+    const q = rb.params();
+    ok('G8 given both, the builder sends the description', q.get('seed_type') === 'wafer',
+      String(q.get('seed_type')));
+    ok('G9 ... and NOT the id — one of the two, never both', q.get('id') === null,
+      String(q.get('id')));
+  }
   ok('G5 ...while the seat still sends one, because there they mean different things',
     /hops=0/.test(seatZero), seatZero);
   return { failed: failures.length - before };
@@ -529,8 +574,8 @@ const RENAME_DEFECTS = [
 // Gate 3 of the 23:05 ruling: splitting the judgement apart again must turn D1 red.
 const TRUNCATION_DEFECTS = [
   ['depth counts as a cut again, so a satisfied question reads as truncated',
-    (src) => src.replace("    .filter((key) => raw[key] === true && !(key === 'depth' && hopsChosen));",
-      '    .filter((key) => raw[key] === true);')],
+    (src) => src.replace("    .filter((key) => isCut(key) && !(key === 'depth' && hopsChosen));",
+      '    .filter((key) => isCut(key));')],
   ['the caller stops passing what it knows, so the judgement loses its one input',
     (src) => src.replace(
       '  const hopsChosen = !!(options && options.hopsChosen);', '  const hopsChosen = false;')],
@@ -538,8 +583,19 @@ const TRUNCATION_DEFECTS = [
     (src) => src.replace('        cut: !!(cutAxes && cutAxes.length),',
       '        cut: !!(truncated && truncated.reason),')],
   ['nothing is ever a cut, which would satisfy the first two assertions alone',
-    (src) => src.replace("    .filter((key) => raw[key] === true && !(key === 'depth' && hopsChosen));",
+    (src) => src.replace("    .filter((key) => isCut(key) && !(key === 'depth' && hopsChosen));",
       '    .filter(() => false);')],
+  // 🔴 C-97. 수로 오는 절단이 다시 «보이지 않게» 되는 판. `seed_type` 의 절단은 `seeds: 1` —
+  //    불리언이 아니라 수입니다. 이 한 줄이 돌아가면 그 절단이 화면에서 사라지고, 사라진
+  //    절단은 「그게 전부였다」로 읽힙니다.
+  ['a numeric cut stops counting, so a described seed is silently complete',
+    (src) => src.replace(
+      '    return typeof value === \'number\' && Number.isFinite(value) && value > 0;',
+      '    return false;')],
+  // 🔴 그리고 그 반대 — 구간이 «절단»으로 세어지는 판. 「예산이 모자랐다」를 구간이 한 일에
+  //    대고 말하게 되고, 그건 이 목록이 지키는 구별을 잃는 것입니다.
+  ['the interval count is read as a cut, so a question answered in full reads as truncated',
+    (src) => src.replace("    if (key === NOT_A_CUT) return false;", '')],
 ];
 // C-51. 🔴 THE INTERVAL'S FOUR WAYS TO GO WRONG, and each is a live shape rather than a
 //    typo: an empty box that travels (the server then refuses a question nobody asked), an
@@ -594,8 +650,13 @@ const ONE_BUILDER_DEFECTS = [
   // 🔴 「걷기 상자가 자기 질문을 다시 짓는다」의 대역: 정본을 지나되 «자기만» 인자를 하나
   //    더 실어 보냅니다. 그 순간 두 URL 이 갈라지고, 그것이 둘째 생성기가 하는 일 그대로입니다.
   ['the walk box adds an argument of its own, so the two URLs part again',
-    (src) => src.replace('        nodeId: entitySeedId(type, keys),',
-      "        nodeId: entitySeedId(type, keys), positive: ['x'],")],
+    (src) => src.replace('          : { nodeId: entitySeedId(type, keys) }),',
+      "          : { nodeId: entitySeedId(type, keys) }), positive: ['x'],")],
+  // 🔴 C-97. 서술된 씨앗이 «id 와 같이» 나가는 판. 서버가 둘 다를 거절하므로 그 거절이
+  //    화면에서는 「고장」으로 보이고, 운영자는 자기가 안 한 일로 혼납니다.
+  ['a described seed travels WITH an id, which the route refuses',
+    (src) => src.replace("  } else {\n    query.set('id', nodeId);\n  }",
+      "  }\n  if (nodeId) query.set('id', String(nodeId));")],
 ];
 const RENAME_CONTROLS = [
   ['comments stripped', (src) => src.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n')],

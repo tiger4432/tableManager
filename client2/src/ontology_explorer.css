@@ -495,7 +495,11 @@
  * needs the opaque ground and the rule above it because it floats over the panel in
  * between. */
 /* Save 옆의 한 줄. 단락이 아니고 상자도 아닙니다 — 「지금 무엇이 막는가」만 말합니다. */
-#ontology-explorer-root .oe-editor-blockers {
+/* 🔴 C-96. 둘이 «한 물음의 두 답»입니다 — 「무엇이 이 저장을 막나」와 「이 저장이 무엇을 다시
+   돌리나」. 그래서 같은 줄, 같은 크기, 같은 서체입니다. 비용만 다른 색을 주면 그것이 경고로
+   읽히는데, 이 수는 경고가 아니라 «값»입니다. */
+#ontology-explorer-root .oe-editor-blockers,
+#ontology-explorer-root .oe-editor-cost {
   align-self: center;
   font-size: 12px;
   color: var(--oe-muted);
