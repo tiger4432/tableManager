@@ -1,7 +1,7 @@
 # 🖼️ Frontend Architecture
 
 > **Status:** 🟢 Living | **Last-verified:** 2026-09-05 (**§3.3 신설 — 부재가 «일급»이 됐다**(`absent.js`·`count_with_absence.js`·`closed_list.js`) · §3 표에 **어드민 패널 여섯 · 진행 카드 · 부재 어휘** 행 · 🔴 **「묘비」 행이 거짓이 되어 묘비 주석으로 교체** — `graph_viewer.js`·`trace*.js` 넷과 `graph.html`·`trace.html` 은 **트리에서 제거**됐다(`45d8b66f`), 안내 페이지도 남기지 않는다) · 직전 2026-09-02 (**§3.2 신설 — 「몇 건인가」가 세 상태로**(개수가 늦게 온다) · §3.1 의 **`grid_rescope_menu.js` → `redo_banner.js`** 정정(우클릭 메뉴 → 헤더 배너) · `dropdown.js` 의 닫힘 한 벌) · 직전 2026-08-31 (**§3.1 신설** — 그리드가 원장을 아는 세 자리 + 은퇴한 그래프 컬럼 셋이 그리드에서 빠진 사실 · §6 overview 탭에 소급 블록·실행 목록·취소) · 직전 2026-08-29 (개정 6 — §4 의 `collect` 서술 정정) | **Owner:** Client
-> **Source-of-truth:** `client2/src/*` · `client2/vite.config.js` · `client/desktop_wrapper.py`
+> **Source-of-truth:** `client2/src/*` · `client2/vite.config.js` · `desktop/desktop_wrapper.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md) · 라우트 계약: [backend §2](./backend.md)
 
 > 🔴 **이 헤더에 라운드 기록을 쌓지 마십시오.** 변경 이력은 [`docs/history/`](../history/)가 소유합니다.
@@ -14,7 +14,7 @@
 메인 클라이언트는 **`client2`(웹)**이고, 데스크톱 앱은 그것을 감싸는 QtWebEngine 셸입니다.
 
 - **`client2/`** — Vite 멀티페이지 앱. 바닐라 ESM + AG-Grid. 프레임워크 없음
-- **`client/desktop_wrapper.py`** — `{해석된 서버}/?client=desktop` 를 로드하는 `QWebEngineView`.
+- **`desktop/desktop_wrapper.py`** — `{해석된 서버}/?client=desktop` 를 로드하는 `QWebEngineView`.
   그 플래그가 `state.isDesktop` 을 켜고, 웹앱은 그때만 네이티브 경로를 씁니다
 
 실측 규모(2026-08-27 `wc -l`): `src/*.js` 최상위 **39 파일 · 37,121줄** ·
@@ -51,7 +51,7 @@
 - `--print-target` — 해석·출력 후 종료하는 헤드리스 점검 경로(GUI·HKCU 미접촉)
 - `extend_no_proxy()` — 해석된 호스트가 LAN 주소면 `NO_PROXY` 에 더합니다.
   기준값이 루프백뿐이라 사내 프록시가 있는 곳에서 업로드가 403 이 되는 것을 막습니다
-- ⚠️ **exe 는 재빌드가 필요합니다** — `client/dist/`·`client/build/`·`client/*.spec` 은
+- ⚠️ **exe 는 재빌드가 필요합니다** — `desktop/dist/`·`desktop/build/`·`desktop/*.spec` 은
   의도적으로 gitignore 입니다. 소스를 바꿨으면 exe 는 낡습니다
 
 ---

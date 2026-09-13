@@ -2,7 +2,7 @@
 
 > **Status:** 🟢 Living | **Last-verified:** 2026-08-06 | **Owner:** Ops
 > 🔴 **[2026-08-06 전면 재작성] 이 문서는 아카이브 후보였는데 아카이브하지 않았습니다 — 이유가 반대이기 때문입니다.**
-> 종전 본문은 **제거된 PySide6 클라이언트 앱**(`client/main.py`)을 실행하라 지시하고, **SQLite 파일**(`server/assy_manager.db`)을 지우면 DB가 초기화된다 하고, `uvicorn main:app --reload`(포트 8000)을 기동 절차로 안내했습니다. **셋 다 오늘 거짓입니다.**
+> 종전 본문은 **제거된 PySide6 클라이언트 앱**(`desktop/main.py`)을 실행하라 지시하고, **SQLite 파일**(`server/assy_manager.db`)을 지우면 DB가 초기화된다 하고, `uvicorn main:app --reload`(포트 8000)을 기동 절차로 안내했습니다. **셋 다 오늘 거짓입니다.**
 > 🔴 **트리거가 없어서 낡은 문서가 아니라, *가리켜지면서* 낡은 문서였습니다** — [SYSTEM_OVERVIEW §7](../overview/SYSTEM_OVERVIEW.md)(SSOT) · [CONFIG_GUIDE](./CONFIG_GUIDE.md) · [SERVER_STARTUP_GUIDE](./SERVER_STARTUP_GUIDE.md) · [docs/README](../README.md)가 운영자를 여기로 보냅니다. 아카이브했다면 **SSOT가 없는 문서를 가리키게** 됩니다. 그래서 재작성입니다.
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md) · **기동 절차의 정본은 SSOT §7**이고 이 문서는 **환경 구성**을 다룹니다.
 
@@ -41,7 +41,7 @@ conda env update -f environment.yml --prune
 | FastAPI · Uvicorn | 웹 API + WebSocket 허브(`server/main.py`) |
 | SQLAlchemy · psycopg2 | ORM + PostgreSQL 드라이버 |
 | Watchdog | 파일 인제션 워처 |
-| **PySide6** | 🔴 **데스크톱 *셸*에 여전히 필요합니다.** `client/desktop_wrapper.py`가 QtWebEngine으로 웹앱을 감쌉니다 — **「PySide6는 제거됐다」로 읽지 마십시오.** 없어진 것은 Qt 위젯으로 그리던 **클라이언트 앱**입니다 |
+| **PySide6** | 🔴 **데스크톱 *셸*에 여전히 필요합니다.** `desktop/desktop_wrapper.py`가 QtWebEngine으로 웹앱을 감쌉니다 — **「PySide6는 제거됐다」로 읽지 마십시오.** 없어진 것은 Qt 위젯으로 그리던 **클라이언트 앱**입니다 |
 | Node.js / npm | ⚠️ **conda 환경 밖입니다.** 웹 클라(`client2/`) 빌드에 별도로 필요합니다 |
 
 ## 4. 실행
@@ -72,7 +72,7 @@ curl http://127.0.0.1:8080/health
 ## 6. 함정
 
 - ⚠️ **DB 초기화는 파일 삭제가 아닙니다.** 종전 이 문서의 「`server/assy_manager.db`를 지우고 재시작하면 초기화된다」는 **SQLite 시절의 문장**이고 오늘 거짓입니다. 저장소는 PostgreSQL이고, 초기화·마이그레이션은 [NATIVE_POSTGRES_SETUP_GUIDE](./NATIVE_POSTGRES_SETUP_GUIDE.md)와 [POSTGRES_OPERATIONS_GUIDE](./POSTGRES_OPERATIONS_GUIDE.md)가 다룹니다.
-- ⚠️ **`client/main.py`는 없습니다.** 종전 이 문서의 3단계가 그것을 실행하라 했습니다. 데스크톱은 `run_decoupled_app.py`가 자식으로 띄우는 `client/desktop_wrapper.py` 하나입니다.
+- ⚠️ **`desktop/main.py`는 없습니다.** 종전 이 문서의 3단계가 그것을 실행하라 했습니다. 데스크톱은 `run_decoupled_app.py`가 자식으로 띄우는 `desktop/desktop_wrapper.py` 하나입니다.
 - ⚠️ **환경변수는 프로세스가 태어날 때의 사본을 쥡니다.** 편집기(원격이면 `vscode-server`)가 변경 *전에* 떠 있었다면 그 안에서 연 터미널은 옛 환경을 물려받습니다 → [DEPLOY_SETUP §1-4-A](./DEPLOY_SETUP.md).
 
 ## 관련 문서

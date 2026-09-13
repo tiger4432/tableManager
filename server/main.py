@@ -631,15 +631,23 @@ def read_root(request: Request):
     return {"status": "AssyManager Data Server is running"}
 
 
+#: The desktop shell's folder, one directory up. 🔴 SAME SPELLING AS THE LAUNCHER
+#: (`run_decoupled_app.DESKTOP_DIR`) - these two serve opposite ends of one thing: the
+#: launcher RUNS the shell, these routes hand over what was BUILT from it. Two spellings
+#: is how a rename reaches one end and not the other.
+#: 🪦 `client/` until 2026-09-13 (S-211, 판정 347/354).
+DESKTOP_DIR = "desktop"
+
+
 @app.get("/api/download/client")
 def download_desktop_client():
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    # client/dist/AssyManagerClient.exe (onefile mode output)
-    client_exe_path = os.path.abspath(os.path.join(script_dir, "..", "client", "dist", "AssyManagerClient.exe"))
-    
+    # desktop/dist/AssyManagerClient.exe (onefile mode output)
+    client_exe_path = os.path.abspath(os.path.join(script_dir, "..", DESKTOP_DIR, "dist", "AssyManagerClient.exe"))
+
     if not os.path.exists(client_exe_path):
         # Fallback to directory mode path if onefile isn't generated
-        fallback_path = os.path.abspath(os.path.join(script_dir, "..", "client", "dist", "AssyManagerClient", "AssyManagerClient.exe"))
+        fallback_path = os.path.abspath(os.path.join(script_dir, "..", DESKTOP_DIR, "dist", "AssyManagerClient", "AssyManagerClient.exe"))
         if os.path.exists(fallback_path):
             client_exe_path = fallback_path
             
@@ -655,7 +663,7 @@ def download_desktop_client():
 
 @app.get("/api/desktop/download")
 def download_desktop_bundle():
-    """The onedir desktop build, as one zip. Built by `client/package_client.py`.
+    """The onedir desktop build, as one zip. Built by `desktop/package_client.py`.
 
     Absence is answered as absence: 404 with a `reason`, not an empty 200 and not a 500. The
     button on the admin page reads the failure and says 「데스크톱 빌드가 없습니다」, so this
@@ -665,7 +673,7 @@ def download_desktop_bundle():
     """
     script_dir = os.path.dirname(os.path.abspath(__file__))
     bundle_path = os.path.abspath(os.path.join(
-        script_dir, "..", "client", "dist", "AssyManagerClient.zip"))
+        script_dir, "..", DESKTOP_DIR, "dist", "AssyManagerClient.zip"))
     if not os.path.exists(bundle_path):
         return JSONResponse(status_code=404, content={"reason": "desktop_build_absent"})
     return FileResponse(

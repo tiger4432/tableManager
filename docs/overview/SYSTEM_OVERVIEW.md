@@ -5,7 +5,7 @@
 > ⚰️ **[`2ec78b9` · 판정 R-2026-08-14-H] 구 그래프 갈래가 은퇴해 §2·§3·§5·§6·§8이 갱신됐습니다** — 백엔드 자식이 다섯에서 **넷**, 라우트 일곱이 **은퇴**(⚠️ 2026-09-05: 그 410 묘비마저 삭제됐습니다 — §2 참조), 저장소 셋이 **DROP**(약 841 MB). 후계는 정준 원장입니다. 토폴로지 변경이라 SSOT가 반드시 말해야 하는 종류의 사실입니다. **⚠️ 총괄 검수 대상** — 이 문서는 사실 동기화만 받았고 아키텍처 «결정»은 하나도 건드리지 않았습니다.
 > 
 > 직전 2026-08-11 (제품 소유자 승인 — §4 「우선순위 결정」이 서열을 **두 층**으로만 적고 있었는데 `347de78`이 세 번째 층(동점 규칙)을 코드에 심었다. 서열만 적고 동점을 안 적은 문장이 정확히 그 결함의 유래였다 — `sorted()`의 안정성이 동점을 dict 삽입 순서로 갈랐고 200/200 동점 셀이 항상 기존 값을 표시했다. 세 층 + 「2·3층은 계층을 못 넘는다」로 정정. 직전 2026-08-06: 🔴 **정합 감사가 이 문서 하나 때문에 코퍼스를 「신뢰 불가」로 판정했고, 그 판정은 옳았습니다.** §3의 「진입점 **6개**」가 `map_editor2.html`을 빠뜨린 채 6행 표를 들고 있었는데, **이 문서는 「상충하면 이 문서가 우선한다」고 스스로 적는 문서**라 그 규칙이 독자에게 **틀린 사본을 믿으라고 지시하고** 있었습니다. 함께: §2의 `main.py (~3,650줄)` 삭제(실측 6,128 — **산문 속 줄 수는 이 결함의 가장 순수한 형태**라 고치지 않고 지웠습니다) · §3의 「PySide6 참조 문서는 전부 `_archive/`에 있다」 정정(**[CONDA_SETUP_GUIDE](../guide/CONDA_SETUP_GUIDE.md)가 아니었고 §7이 거기로 보내고 있었습니다**) + **「PySide6가 제거됐다」로 읽히지 않도록** 못박음(`desktop_wrapper.py`가 여전히 import합니다) · §8 라우트 기수 삭제. 직전 2026-08-04: §8 라우트 수 재실측 + fail-closed 3종. 직전 2026-07-27: §8 `/admin/*` + `/internal/events/*` 공유 토큰 게이트) | **Owner:** Lead / Architecture
-> **Source-of-truth:** `server/`, `client2/`, `client/desktop_wrapper.py`, `run_decoupled_app.py`
+> **Source-of-truth:** `server/`, `client2/`, `desktop/desktop_wrapper.py`, `run_decoupled_app.py`
 > 본 문서는 AssyManager의 **현재 아키텍처에 대한 유일한 권위(SSOT)**입니다. 다른 모든 문서는 이 문서를 기준으로 하며, 여기와 상충하면 이 문서가 우선합니다. 세부는 하위 문서로 링크합니다.
 
 ---
@@ -137,10 +137,10 @@ graph TD
 - **그리드:** AG-Grid Community `^35.3.0` (유일한 런타임 의존성). 맵 에디터는 AG-Grid 미사용 — 커스텀 캔버스 렌더링. (⚰️ **[2026-09-05 정정] 종전 이 문장이 함께 대던 「그래프 뷰어」는 트리에 없다** — 위 표 참조.)
 - **테마:** 듀얼 테마(기본 라이트 + 다크 토글). 토큰 SSOT는 `src/tokens.css`, 전환은 `src/theme.js`.
 - **상태 관리:** `state.js`의 단일 싱글턴 객체를 직접 변조하고 명시적 UI 리프레셔를 호출하는 **수동 반응성**(리액티브 프레임워크 아님).
-- **데스크톱 셸:** `client/desktop_wrapper.py`(514줄)는 `{해석된 서버}/?client=desktop`를 로드하는 **QtWebEngine 래퍼**. OS 드래그앤드롭 업로드, 네이티브 다운로드 다이얼로그, `assymanager://` URI 스킴을 제공. 서버 주소는 하드코딩이 아니라 `--server` > `ASSY_SERVER` > `client/client_settings.json` > `127.0.0.1:8080` 순으로 해석된다([frontend §1.1](../architecture/frontend.md)).
-- ⚠️ **구 PySide6 데스크톱 클라이언트 *애플리케이션*(`client/main.py`, `ui/`, `models/table_model.py`)은 제거되었습니다.**
-- 🔴 **PySide6는 살아 있는 런타임 의존성입니다** — `client/desktop_wrapper.py` 가 `QtWebEngineWidgets`·`QtWidgets`·`QtNetwork`·`QtGui` 를 import 합니다. 없어진 것은 «Qt 위젯으로 그리던 클라이언트 앱»이고, 남은 것은 «웹앱을 감싸는 QtWebEngine 셸»입니다. `environment.yml` 에서 PySide6 를 빼면 데스크톱 셸이 죽습니다.
-- 🔴 **[2026-08-06 정정] 종전 이 자리는 「이를 참조하는 문서는 `_archive/`에 있습니다」로 끝났고 그것은 거짓입니다.** [guide/CONDA_SETUP_GUIDE](../guide/CONDA_SETUP_GUIDE.md)가 `_archive/` 밖에서 `client/main.py` 실행을 지시하고 있었고, **아래 §7이 운영자를 바로 그 문서로 보내고 있었습니다.** 이 라운드에 그 가이드를 현행 스택으로 다시 썼습니다.
+- **데스크톱 셸:** `desktop/desktop_wrapper.py`(514줄)는 `{해석된 서버}/?client=desktop`를 로드하는 **QtWebEngine 래퍼**. OS 드래그앤드롭 업로드, 네이티브 다운로드 다이얼로그, `assymanager://` URI 스킴을 제공. 서버 주소는 하드코딩이 아니라 `--server` > `ASSY_SERVER` > `desktop/client_settings.json` > `127.0.0.1:8080` 순으로 해석된다([frontend §1.1](../architecture/frontend.md)).
+- ⚠️ **구 PySide6 데스크톱 클라이언트 *애플리케이션*(`desktop/main.py`, `ui/`, `models/table_model.py`)은 제거되었습니다.**
+- 🔴 **PySide6는 살아 있는 런타임 의존성입니다** — `desktop/desktop_wrapper.py` 가 `QtWebEngineWidgets`·`QtWidgets`·`QtNetwork`·`QtGui` 를 import 합니다. 없어진 것은 «Qt 위젯으로 그리던 클라이언트 앱»이고, 남은 것은 «웹앱을 감싸는 QtWebEngine 셸»입니다. `environment.yml` 에서 PySide6 를 빼면 데스크톱 셸이 죽습니다.
+- 🔴 **[2026-08-06 정정] 종전 이 자리는 「이를 참조하는 문서는 `_archive/`에 있습니다」로 끝났고 그것은 거짓입니다.** [guide/CONDA_SETUP_GUIDE](../guide/CONDA_SETUP_GUIDE.md)가 `_archive/` 밖에서 `desktop/main.py` 실행을 지시하고 있었고, **아래 §7이 운영자를 바로 그 문서로 보내고 있었습니다.** 이 라운드에 그 가이드를 현행 스택으로 다시 썼습니다.
 
 상세: [architecture/frontend.md](../architecture/frontend.md)
 

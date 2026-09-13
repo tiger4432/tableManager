@@ -7,7 +7,7 @@ description: 웹 클라이언트(client2)와 5-프로세스 백엔드 시스템�
 
 본 스킬은 `assyManager`의 안정성을 책임지는 QA 에이전트(Agent Q)의 핵심 행동 지침입니다. 에러 발생 시 프로그램을 망치지 않고 오직 결함만 제거하는 '정밀 타격형 디버깅'을 목표로 합니다.
 
-> 현행 아키텍처: 웹 `client2`(Vite Vanilla ESM + AG-Grid, 4엔트리 멀티페이지) + 5-프로세스 백엔드(PostgreSQL Outbox). 기준: [SYSTEM_OVERVIEW](file:///c:/Users/kk980/Developments/assyManager/docs/overview/SYSTEM_OVERVIEW.md). 구 PySide6 데스크톱 클라이언트는 제거되었고, Qt는 `client/desktop_wrapper.py`(QtWebEngine 셸)에만 남아 있습니다.
+> 현행 아키텍처: 웹 `client2`(Vite Vanilla ESM + AG-Grid, 4엔트리 멀티페이지) + 5-프로세스 백엔드(PostgreSQL Outbox). 기준: [SYSTEM_OVERVIEW](file:///c:/Users/kk980/Developments/assyManager/docs/overview/SYSTEM_OVERVIEW.md). 구 PySide6 데스크톱 클라이언트는 제거되었고, Qt는 `desktop/desktop_wrapper.py`(QtWebEngine 셸)에만 남아 있습니다.
 
 ## 1. 📋 디버깅 4대 원칙 (Core Principles)
 

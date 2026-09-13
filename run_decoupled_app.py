@@ -26,6 +26,21 @@ _launcher_logger = get_process_logger("Launcher", "launcher.log")
 _LEVELS = {"DEBUG": 10, "INFO": 20, "WARNING": 30, "ERROR": 40, "CRITICAL": 50}
 
 
+#: The desktop shell's folder. 🔴 ONE SPELLING, because the launcher spawns this path and
+#: two routes in `server/main.py` serve what is BUILT from it - a rename that reaches three
+#: of the four seats leaves a window that silently never opens (the child is
+#: `restartable=False`, so its death is the quietest kind).
+#:
+#: 🪦 Named `client/` until 2026-09-13 (S-211, 판정 347/354). The web client is `client2/`,
+#: so `client/` read as the application rather than as the QtWebEngine shell around it.
+DESKTOP_DIR = "desktop"
+
+
+def desktop_shell_path(root_dir):
+    """Absolute path of the shell script the launcher starts as a child process."""
+    return os.path.join(root_dir, DESKTOP_DIR, "desktop_wrapper.py")
+
+
 def log_launcher(msg, level="INFO"):
     _launcher_logger.log(_LEVELS.get(level, 20), msg)
 
@@ -333,7 +348,7 @@ def main():
     if not server_only:
         # The desktop window closing means "stop everything", not "restart me".
         specs.append(ChildSpec("Desktop Client UI",
-                               [python_exe, os.path.join(root_dir, "client", "desktop_wrapper.py")],
+                               [python_exe, desktop_shell_path(root_dir)],
                                root_dir, restartable=False,
                                log_file=paths.log_path("desktop_client_stdout.log")))
 

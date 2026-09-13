@@ -1,12 +1,12 @@
 """Zip the onedir desktop build so the server can hand it over as ONE file.
 
 The build is `pyinstaller AssyManagerClient.spec`, which now emits a DIRECTORY
-(`client/dist/AssyManagerClient/`) rather than a single exe -- measured 2026-08-25: onefile
+(`desktop/dist/AssyManagerClient/`) rather than a single exe -- measured 2026-08-25: onefile
 never opened a window in four minutes because the bootloader was still unpacking, onedir
 opened in five seconds. A directory cannot be downloaded, so this runs after the build and
 packs it.
 
-    python client/package_client.py
+    python desktop/package_client.py
 
 The zip's single top-level entry is `AssyManagerClient/`, so unzipping produces one folder
 rather than 5,818 loose files in whatever directory the operator happened to be in.
@@ -43,7 +43,7 @@ def _tree_size(root):
 def main():
     if not os.path.isdir(BUILD_DIR):
         print("no build at %s" % BUILD_DIR)
-        print("run `pyinstaller AssyManagerClient.spec` from client/ first")
+        print("run `pyinstaller AssyManagerClient.spec` from desktop/ first")
         return 1
 
     files, raw = _tree_size(BUILD_DIR)
