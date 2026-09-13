@@ -43378,3 +43378,25 @@ reason 문자열 "unresolvable_row_identity" 가 그런 표에 대해 오늘 «�
 🔴 이건 제 커밋이 «깨뜨린 것»이 아니라 «전제를 낡게 만든 것»이고, 빨강이 없으므로 재지 않았으면 몰랐습니다. 고치는 방향(두 번째 연언을 성질로 바꿀지, 이유 문자열만 정직하게 할지)은 판정이라 짓지 않았습니다.
 
 > 📌 **[09-14 00:15] 이 채널의 미답 질문: «둘» — 위 ①(셋의 재작성을 어느 표에서, 그리고 legacy 경로의 뜻) · ②(`use_diff` 의 둘째 연언이 오늘도 맞는가).** 판정 받으면 «한 커밋»으로 부류 전체를 처리하고 멈추겠습니다. 추가 스위트 실행은 안 했습니다.
+
+### 📐 [09-14 00:22] 위 두 물음을 «배포 카탈로그»에 대고 셌습니다 — ②는 훨씬 싸집니다
+
+판정을 기다리는 동안 「이게 픽스처 얘기인가, 우리가 배포하는 모양인가」를 `table_config.json.sample`(추적 파일, 뷰 제외 35 표)에 대고 쟀습니다.
+
+```
+A) map_key_columns «없음» + 평키          12 / 35     <- legacy scope 가 이제 «한 신원»을 핀으로 뭅니다
+   lot_event · process_event · inventory_master · production_plan · wafer_process ·
+   dt_job_attribution · dt_transfer_log · eqp_event · entity_comment · process_param ·
+   lot_slot_wafer · dt_job_rollup
+   🔴 열둘 다 업무키가 skip_cols 에 «없습니다» -> 예외 없이 scope 에 들어갑니다
+B) map_key_columns 없음 + 컴포짓            12 / 35     <- scope 가 여러 행을 덮는 것이 그대로 가능
+C) map_key_columns 선언                      9 / 35     <- 그중 컴포짓 «9», 평키 «0»
+```
+
+**① 은 픽스처 얘기가 아닙니다.** 「legacy replace_map 이 한 행 upsert 로 축퇴한다」가 배포되는 표 **열둘**에 대해 참입니다. 다만 그 열둘이 오늘 `replace_map` 으로 밀리는 표인지는 «선언이 말하지 않습니다» — 그건 호출자의 성질이라 제가 못 셉니다(모르는 것).
+
+**② 는 반대로 «오늘 주어가 없습니다».** `use_diff` 의 둘째 연언이 거짓이 되는 모양 = 「map_key_columns 는 있고 composite_key_source 는 없음」인데 배포 카탈로그에 **0** 입니다(아홉 다 컴포짓 -> 전부 diff). 그 경로에 닿는 유일한 것이 시험 픽스처 `rmscope_test_map` 입니다. 그러므로 ②는 설계 변경이 아니라 **「이유 문자열과 근거 주석이 오늘도 참인가」** 크기입니다 — 제가 앞 문단에서 ①과 나란히 올린 것은 «과대»했고, 이 수가 그것을 바로잡습니다.
+
+🔵 곁가지 하나: 그 근거 주석(`crud:~4403`)이 「All **seven** shipped map tables declare a composite key」라 적는데 오늘 **아홉**입니다. 결론은 그대로 참이고 수만 낡았습니다.
+
+> 📌 **[09-14 00:22] 이 채널의 미답 질문: «둘» (위와 동일, ②의 크기만 정정).**
