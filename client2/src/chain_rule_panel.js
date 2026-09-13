@@ -39,7 +39,11 @@ function enabledState(payload, opts) {
  *    「파일의 함수」가 한 줄에 섞이면 그 물음이 화면에서 «안 풀립니다» — 둘은 서로 다른 사실이고
  *    저장이 받아 주는 방식도 다릅니다(하나는 등록부 조회, 하나는 두 칸).
  */
-export const MAPPER_GROUPS = Object.freeze({ registered: '등록 이름', file: '파일 함수' });
+export const MAPPER_GROUPS = Object.freeze({ registered: '등록 이름' });
+
+//: 선언된 파라미터가 들어가는 칸. 🔴 이름을 «여기» 적는 이유는 이 파일이 이 문법의 낱말을
+//: 아는 유일한 자리이기 때문입니다 — 템플릿은 경로를 «받아» 쓸 뿐입니다.
+const PARAMS_KEY = 'params';
 
 //: 파일 함수를 «한 칸짜리 값»으로 적는 철자. 🔴 저자가 이 파일 «하나»입니다 — 만드는 쪽
 //: (`mapperChoices`)과 펴는 쪽(`splitMapper`)과 되읽는 쪽(`joinMapper`)이 나란히 있어야
@@ -58,10 +62,10 @@ export function mapperChoices(body) {
   if (!body || typeof body !== 'object') return null;
   const out = [];
   const seen = new Set();
-  const push = (value, label, group) => {
+  const push = (value, label, group, fill) => {
     if (!value || seen.has(value)) return;
     seen.add(value);
-    out.push({ value, label, group });
+    out.push(fill ? { value, label, group, fill } : { value, label, group });
   };
   const candidates = Array.isArray(body.candidates) ? body.candidates : null;
   if (candidates) {
@@ -69,10 +73,14 @@ export function mapperChoices(body) {
       if (!item || typeof item !== 'object') continue;
       const name = String(item.name || '');
       const module = String(item.module || '');
-      if (item.kind === 'registered') push(name, name, MAPPER_GROUPS.registered);
-      else if (module && name) {
-        push(tokenOf(module, name), `${module} · ${name}`, MAPPER_GROUPS.file);
-      }
+      // C-106 ⑤. 서버가 «선언된 파라미터»를 실어 주면 고르는 순간 그 행들이 따라옵니다.
+      //    🔴 `null` 이면 «안 물어본» 것이라 아무것도 안 채웁니다 — 빈 목록(선언은 읽었고
+      //       파라미터가 없다)과 다른 사실이고, 그 둘을 접으면 화면이 답을 지어냅니다.
+      const fill = Array.isArray(item.params) ? paramFill(item.params) : undefined;
+      if (item.kind === 'registered') push(name, name, MAPPER_GROUPS.registered, fill);
+      // C-106 ⑦. 파일 함수는 «파일별»로 묶이고 항목은 «함수 이름»만 답니다 — 목록이 길어지면
+      //    항목마다 같은 모듈 접두가 반복되고, 그 반복이 「내 파일이 어디 있나」를 다시 가립니다.
+      else if (module && name) push(tokenOf(module, name), name, module, fill);
     }
     return out;
   }
@@ -84,10 +92,22 @@ export function mapperChoices(body) {
     if (!module) continue;
     for (const fn of Array.isArray(file && file.functions) ? file.functions : []) {
       const name = String((fn && fn.name) || '');
-      if (name) push(tokenOf(module, name), `${module} · ${name}`, MAPPER_GROUPS.file);
+      // ⚠️ 이 다리에는 `params` 가 «없습니다»(AST 가 센 def 목록이라 선언이 아닙니다).
+      //    그래서 채울 것도 없습니다 — S-223 의 `candidates` 가 오면 그때 따라옵니다.
+      if (name) push(tokenOf(module, name), name, module);
     }
   }
   return out;
+}
+
+/** 선언된 파라미터 이름들 → «칸 경로»와 빈 값. 경로의 저자가 이 파일 하나입니다. */
+function paramFill(names) {
+  const fill = {};
+  for (const name of names) {
+    const key = String(name || '');
+    if (key) fill[`${PARAMS_KEY}.${key}`] = '';
+  }
+  return Object.keys(fill).length ? fill : undefined;
 }
 
 /**
