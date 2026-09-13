@@ -5506,6 +5506,16 @@ def get_mappers():
     🔴 그리고 그 이름은 레지스트리 «그대로»다 — 여기서 거르거나 이름을 바꾸면 저장이
     판정하는 집합과 화면이 내미는 집합이 «갈릴 수 있는 둘째 철자»가 된다. API 프로세스가
     그 레지스트리를 드는 것은 S-204 ③(기동·리로드의 `discover()`)이 세웠다.
+
+    🔴 그리고 칸 «셋»이 더 붙는다 (S-223, 판정 379): `candidates` · `other` · `refused`.
+    등록 이름만으로는 드롭다운이 「선택지 없음」이었다 — 소유자 박스에서 도는 맵퍼는 거의
+    전부 규칙이 `mapper_function` 으로 «이름을 대는» 모듈 수준 함수이고, `@mapper` 가 준
+    이름은 그중 일부다. 셋은 «배타»이고 「여기 없다」·「고장났다」·「다른 계열이다」라는
+    서로 다른 세 답을 각자 들고 있다. 만드는 자리는 `mapper_sdk.mapper_candidates()` 하나다
+    — 이 라우트는 그 답을 «싣기만» 한다.
+
+    ⚠️ `data` 와 `registered` 는 여전히 «한 글자도» 안 바뀐다. `data` 는 AST 가 읽은 파일
+    내용이라 import 안 되는 모듈의 def 도 들고 있고, 그것이 그 칸의 물음이다.
     """
     import os
     import ast
@@ -5516,13 +5526,17 @@ def get_mappers():
     #: 리로드가 레지스트리를 갈아 끼우면 이 목록도 «같은 순간» 갈린다.
     registered = sorted(mapper_sdk.MAPPER_REGISTRY)
 
+    #: 「규칙이 오늘 이름을 댈 수 있는 것은 무엇인가」 — 등록 이름 + 모듈 수준 함수, 못 읽은
+    #: 모듈은 사유를 이름에 달아 따로. 세 칸 전부 여기서 만들지 않고 SDK 가 만든다.
+    buckets = mapper_sdk.mapper_candidates()
+
     script_dir = os.path.dirname(os.path.abspath(__file__))
     mappers_dir = os.path.join(script_dir, "mappers")
     
     if not os.path.exists(mappers_dir):
         # ⚠️ 「디렉터리가 없다」와 「옛 서버라 이 칸이 없다」가 같아 보이지 않게, 부재 쪽에도
         # 싣는다. 부재 경로에서는 보통 빈 목록이고, 그 «빈 것»도 답이다.
-        return absent_listing(mappers_dir, registered=registered)
+        return absent_listing(mappers_dir, registered=registered, **buckets)
         
     mappers = []
     for name in os.listdir(mappers_dir):
@@ -5555,7 +5569,7 @@ def get_mappers():
                 "functions": functions
             })
             
-    return {"status": "success", "data": mappers, "registered": registered}
+    return {"status": "success", "data": mappers, "registered": registered, **buckets}
 
 # -----------------------------------------------------------------------------
 # Enrichment Queue Endpoints (docs/spec/ENRICHMENT_QUEUE_SPEC.md §5 — 경계 계약 확정분)

@@ -482,3 +482,91 @@ def __getattr__(name):
     import importlib
 
     return getattr(importlib.import_module(source), name)
+
+
+# ---------------------------------------------------------------------------
+# 🔴 WHAT A RULE MAY NAME — the candidates a screen offers (S-223, 판정 379)
+# ---------------------------------------------------------------------------
+
+def mapper_candidates(package="mappers"):
+    """-> `{"candidates": [...], "other": [...], "refused": [...]}` from IMPORTED modules.
+
+    🔴 THE DROPDOWN WAS EMPTY AND THE REASON WAS A CATEGORY ERROR. It offered
+    `MAPPER_REGISTRY` alone - the names `@mapper` registered - while every mapper actually
+    running on the owner's box is a MODULE-LEVEL FUNCTION a rule names through
+    `mapper_function`. So the one list a screen had said 「no options」 about a directory full
+    of working mappers.
+
+    🔴 A CLASS IS NOT A CANDIDATE (measured, 판정 379). `execute_custom_mapper` does
+    `getattr(module, name)` and then calls it, so a class is CONSTRUCTED - an instance goes on
+    to the row count and a wrong answer leaves quietly. Callable is not runnable.
+
+    🔴 THREE BUCKETS, MUTUALLY EXCLUSIVE, because 「it is not here」, 「it is broken」 and 「it is
+    a different thing」 are three answers and collapsing any two of them puts a false sentence
+    on the screen:
+        candidates  a rule can name this today
+        other       imports fine, but is a LEDGER roleframe mapper - no chain rule names it
+        refused     did not import, with the reason by name
+
+    ⚠️ `other` IS DECIDED ONLY AMONG MODULES THAT IMPORTED. Judging a family from a file that
+    could not be loaded is exactly the mistake this round's own measurement made: parsing a
+    file says nothing about importing it. A module that fails to import is `refused` and
+    nothing else, and it MOVES to `other` the day it loads.
+
+    ⚠️ A FUNCTION IS FILTERED BY ITS SIGNATURE, NEVER BY ITS NAME. The executor hands over
+    `(db, payload)`, so 「takes at least two positional arguments」 is the property; a name
+    filter would be this repository's oldest defect wearing a new hat.
+    """
+    import importlib
+    import inspect
+    import sys as _sys
+
+    registered_names, refusals = discover(package)
+    candidates = [{"module": _origin(MAPPER_REGISTRY[name]), "name": name,
+                   "kind": "registered", "params": list(MAPPER_PARAMS.get(name, ()))}
+                  for name in registered_names if name in MAPPER_REGISTRY]
+
+    # 🔴 A REGISTERED MAPPER IS NOT ALSO A PLAIN FUNCTION. `@mapper` leaves its wrapper
+    # bound to the module-level name too, so the sweep below would list the SAME OBJECT a
+    # second time under `kind: function` - one mapper, two rows, and the operator with no way
+    # to tell that picking either runs the same code. Identity decides it, not the name.
+    registered_objects = {id(MAPPER_REGISTRY[name])
+                          for name in registered_names if name in MAPPER_REGISTRY}
+
+    try:
+        roleframe_base = importlib.import_module("ledger.roleframe").BaseLedgerMapper
+    except Exception:                                    # pragma: no cover - ledger absent
+        roleframe_base = None
+
+    other = []
+    prefix = package + "."
+    for module_name in sorted(n for n in list(_sys.modules) if n.startswith(prefix)):
+        module = _sys.modules.get(module_name)
+        if module is None or module_name in refusals:
+            continue
+        functions = []
+        roleframe_only = False
+        for attribute, value in sorted(vars(module).items()):
+            if attribute.startswith("_"):
+                continue
+            if (inspect.isfunction(value) and value.__module__ == module_name
+                    and id(value) not in registered_objects):
+                spec = inspect.getfullargspec(value)
+                if len(spec.args) >= 2:
+                    functions.append(attribute)
+            elif (roleframe_base is not None and inspect.isclass(value)
+                  and value is not roleframe_base and issubclass(value, roleframe_base)
+                  and value.__module__ == module_name):
+                roleframe_only = True
+        for attribute in functions:
+            candidates.append({"module": module_name, "name": attribute,
+                               "kind": "function", "params": None})
+        if not functions and roleframe_only:
+            other.append({"module": module_name, "kind": "ledger_roleframe",
+                          "why": "원장 롤프레임 매퍼입니다 — 체인 규칙이 이 모듈을 들지 않습니다"})
+
+    return {
+        "candidates": candidates,
+        "other": other,
+        "refused": [{"module": name, "why": why} for name, why in sorted(refusals.items())],
+    }
