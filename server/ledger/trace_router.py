@@ -856,13 +856,25 @@ def ledger_declaration_catalog():
         if attributes:
             item["attributes"] = [str(entry) for entry in attributes]
         entities.append(item)
-    predicates = [
-        {"name": name,
-         "subjects": list((spec or {}).get("subjects") or []),
-         "object": (spec or {}).get("object") or {},
-         "origin": "vocabulary"}
-        for name, spec in sorted((declared.get("vocabulary") or {}).items())
-    ]
+    # 🔴 `absence_confirmed_by` RIDES HERE SO A SCREEN CAN TELL WHICH PREDICATE IS THE
+    # EXAMINATION (S-216, 판정 366). S-149 folds an `absence` verdict onto every node, and a
+    # column drawn from the nodes alone takes its POPULATION FROM THE DATA - it shows the
+    # predicates that happened to arrive, which is the exact misreading that cell exists to
+    # prevent. The declaration is the population, and this is where a client reads it.
+    #
+    # ⚠️ OMITTED, NOT EMPTIED - the same discipline as `class` and `attributes` above. 「this
+    # predicate declares no confirmer」 and 「this deployment predates the axis」 are different
+    # facts, and an empty string would collapse them into one.
+    predicates = []
+    for name, spec in sorted((declared.get("vocabulary") or {}).items()):
+        item = {"name": name,
+                "subjects": list((spec or {}).get("subjects") or []),
+                "object": (spec or {}).get("object") or {},
+                "origin": "vocabulary"}
+        confirmer = (spec or {}).get("absence_confirmed_by")
+        if confirmer:
+            item["absence_confirmed_by"] = str(confirmer)
+        predicates.append(item)
     # 🔴 THE SAME ARRAY, THE SAME SHAPE. A reference edge is followable, so the
     # catalogue must offer it - and in `predicates[]` rather than a second array, because a
     # client that had to read two arrays would grow a branch. `origin` tells them apart for
