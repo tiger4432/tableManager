@@ -25055,3 +25055,5 @@ S-50 클라 `contracts/config_resolve_report` 의 클라 하니스가 새 낱말
 > ✅🔴 **[09-13 19:55 C-102 `30cdbb48` · C-103 `803f451b` 받음 — 병합 `5f8ed428`, 실제 페이지(박스 8080 메인 그리드) 확인**: 뷰 표(`ledger_events`·`bonding_core_lot`)에서 [➕ Row] 가 `disabled` + title 「뷰 — 읽기 전용」 + cursor not-allowed(보이는 비활성) ✅ · `dt_job_attribution` 행을 찍으니 참조뷰 «탭 5 · 패널 5 · 아래 스택 0» ✅ · 콘솔 오류는 아래 하나뿐. 게이트(하니스·계약·빌드)는 도는 중 — 끝나면 닫힘 줄.
 > 🔴 **C-105 «지금, 마지막»(등급 2, 실경로에서 잡힘)**: `GET /tables/bonding_core_lot/data?…` 가 **422**(서버의 이름 댄 거절: 「row_id 도 usable business_key 도 없어 페이지 읽기에 전순서가 없다 — table_config.json 에 business_key 를 선언하라」, R7)인데 그리드가 `Cannot read properties of undefined (reading 'length')` 로 «던지고» 「Failed to fetch data」만 냄 — C-102 ② 와 같은 부류(데이터 «읽기» 경로가 `detail` 을 안 그림). 지을 것: 표 데이터 읽기가 4xx 면 서버 문장을 그리드 빈 상태(또는 토스트)에 «그대로», 던지지 않음 · 같은 읽기 경로(count·schema)도 같은 규율인지 표 한 줄. 서버 무변(거절은 맞음). 실경로 하니스(422 픽스처 → 문장 보임, 예외 0). 그것이 클라 마지막.
 > 📌 **[09-13 19:55] 이 채널의 미답 질문: «없음».**
+> ✅ **[09-13 20:03 C-102 · C-103 «닫힘» — 게이트 끝**: 하니스 전부 초록 · 계약 12 · main 재빌드 = dist 동일(줄끝 제외). 실경로 확인은 위 줄. 남은 것 = C-105 하나.
+> 📌 **[09-13 20:03] 이 채널의 미답 질문: «없음».**
