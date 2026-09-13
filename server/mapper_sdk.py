@@ -144,12 +144,15 @@ def df_to_updates(df, table_name: str, *, source_name: str, updated_by: str) -> 
             change now reaches every mapper instead of drifting in one.
 
         non-composite target, key left to the framework
-            nothing lifts `updates[business_key]` into `business_key_val` -
-            `_get_or_create_row` resolves identity from `row_id`/`business_key_val`
-            alone - so the write has NO identity. The row lands, the upsert can never
-            find it again, and every run inserts another copy. `unfilled_key_columns`
-            answers `[]` for such an item, so the pre-write gate does not catch it
-            either.
+            ⚰️ THIS USED TO BE AN IDENTITY-LESS WRITE: nothing lifted
+            `updates[business_key]` into `business_key_val`, `_get_or_create_row`
+            resolves identity from `row_id`/`business_key_val` alone, so the row landed,
+            the upsert could never find it again, and every run inserted another copy -
+            and `unfilled_key_columns` answered `[]`, so the pre-write gate did not catch
+            it either. S-226 (판정 391) lifts it at `assemble_composite_business_key`.
+            🔴 THE REFUSAL BELOW STAYS. A key column that is ABSENT or blank still has
+            nothing to lift, and refusing it here names the mapper rather than leaving an
+            operator to find an unaddressable row later.
 
     Both were measured on 2026-09-02, and both are the kind that is found much later by
     someone counting rows. So the author emits columns and this function reads

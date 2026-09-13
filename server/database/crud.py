@@ -2541,7 +2541,34 @@ def compose_business_key(table_name: str, values) -> str:
 
 def assemble_composite_business_key(table_name: str, update_item: schemas.GeneralUpdateItem) -> bool:
     """Fill in `business_key_val` from the payload's own column values, for a table
-    whose business key is a join of other columns (`composite_key_source`).
+    whose business key is a join of other columns (`composite_key_source`) - and, since
+    S-226, LIFT it from the declared key column for a table that has no such join.
+
+    🔴 ONE AXIS, ONE SEAT (판정 391). A row's identity is one axis, and the COMPOSITE half
+    of it has been resolved here since 판정 190. The PLAIN half was resolved NOWHERE:
+    nothing lifted `updates[business_key]` into `business_key_val`, `_get_or_create_row`
+    reads only `row_id`/`business_key_val`, so such a write landed with NO identity - the
+    upsert could never find it again and EVERY run inserted another copy. Not only a
+    retry: every run. Counted in the shipped catalogue before this was built: 3 of the 10
+    chain rules target a plain-keyed table, 6 of the 7 shipped mapper samples spell
+    `business_key_val` by hand and 0 go through `mapper_sdk.df_to_updates` - so what held
+    the axis up on that half was the mapper AUTHOR.
+
+    ⚠️ THE TWO HALVES ARE NOT SYMMETRIC, AND THE FIRST CUT OF S-226 GOT THAT WRONG. The
+    composite half OVERWRITES a supplied key (판정 190: a supplied key switching assembly
+    off is how two payloads with the same columns became two rows under one identity).
+    The plain half must NOT: there is no assembly to switch off, the declared column IS
+    the key, and a supplied `business_key_val` is what the prefetch filtered on and what
+    `_get_or_create_row` matched. Re-deriving over it stores the row under a handle the
+    batch never resolved on - measured by
+    `test_the_items_own_key_wins_over_any_re_derivation_from_the_payload`, where a payload
+    spelling `'1234.0'` would have re-keyed a row resolved as `'1234'`. So the plain half
+    FILLS an absent identity and does nothing else.
+
+    ⚠️ AND IT FIRES ONLY WHEN THE KEY COLUMN HAS A VALUE, which is what keeps 818c9c0
+    whole: a blank key column still writes nothing, still lands NULL, and is still a
+    legitimate row from manual grid work. A ruling about rows WITH a key cannot reach
+    rows without one.
 
     Returns True if it set one. Calling it twice is safe because this is a PURE
     FUNCTION of the payload's own columns - the second call assembles again and lands on
@@ -2588,7 +2615,23 @@ def assemble_composite_business_key(table_name: str, update_item: schemas.Genera
     key_col = config.get("business_key")
     composite_src = config.get("composite_key_source")
     if not composite_src:
-        return False
+        # [S-226, 판정 391] THE PLAIN HALF OF THE SAME AXIS. Nothing to compose - the
+        # declared column already holds the identity - so the work is to LIFT it to where
+        # the resolver looks. See the docstring for why this half fills rather than
+        # overwrites. `clean_str_value` is the one spelling this seam uses
+        # (`compose_business_key`, `_update_row_business_key`, the prefetch filter); a
+        # second spelling stores the row under a key nothing looks it up by. And
+        # `updates[key_col]` is NOT written back - it is where the value came from.
+        if not (isinstance(key_col, str) and key_col.strip()):
+            return False
+        if update_item.business_key_val and not is_blank_key_part(
+                update_item.business_key_val):
+            return False
+        updates = update_item.updates or {}
+        if key_col not in updates or is_blank_key_part(updates.get(key_col)):
+            return False
+        update_item.business_key_val = clean_str_value(updates.get(key_col))
+        return True
     if _unfilled_composite_parts(composite_src, update_item.updates):
         return False
 
@@ -2740,10 +2783,11 @@ def unfilled_key_columns(table_name: str, update_item) -> list:
         `composite_key_source` - nothing to judge, so judging it would be inventing a
         policy;
       * the table declares a plain (non-composite) business key and the payload supplies
-        that column with a value. The row still fails to MATCH an existing one on a later
-        push (`_get_or_create_row` reads only `row_id`/`business_key_val`, a pre-existing
-        defect recorded at the `[scope diff]` comment in `_apply_batch_updates_once`), but
-        it does land addressable, which is what this predicate is about.
+        that column with a value. ⚰️ THIS BULLET CARRIED A CAVEAT - such a row landed but
+        could never be MATCHED on a later push, because `_get_or_create_row` reads only
+        `row_id`/`business_key_val` and nothing lifted the column into either. S-226
+        (판정 391) closed that at `assemble_composite_business_key`, so an accept here now
+        means what it says: the row is addressable and the next push resolves onto it.
 
     A NON-EMPTY list names the columns, so a refusal can say WHICH column was blank
     instead of "some key is missing".
