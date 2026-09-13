@@ -393,3 +393,92 @@ def mapper(target_table=None, *, source_name: str = "chain_ingestion",
         # and only the mapper can declare it (its file is gitignored).
         return register(name or fn.__name__, run, params)
     return decorate
+
+
+# ---------------------------------------------------------------------------
+# 🔴 THE SURFACE A MAPPER MAY IMPORT — declared here, resolved when touched (S-215, 판정 369)
+# ---------------------------------------------------------------------------
+#
+# 🔴 WHY A TABLE AND NOT IMPORTS AT THE TOP: these nine modules are 13,406 lines, and
+# `mapper_sdk` is read on the chain worker's BOOT path. Re-exporting eagerly would put all of
+# it there for the sake of names most mappers never touch. Resolved on first access, a mapper
+# pulls only what it uses and a process that uses none pays nothing.
+#
+# 🔴 AND THE TABLE IS THE DECLARATION. Re-export cannot wander outside it, because
+# `__getattr__` has no other source - which is what makes 「only from the declared surface」 a
+# property of the code rather than a habit.
+#
+# ⚠️ THE NAMES ARE NOT CHOSEN, THEY ARE MEASURED. This is what the owner's live mappers
+# actually import today (`server/mappers/*.py`, gitignored - their files, read but never
+# edited). It is a CONTRACT, not a wish list: shortening it breaks files this repo cannot see.
+#
+# ⚠️ TWO OF THEM ARE PRIVATE (`_cells_of`, `_load_metas`), and they are here under exactly
+# those spellings (판정 368). A `_name` on an SDK looks wrong, and it is - but it is already
+# the contract, and this round WRITES the contract down rather than changing it. Renaming
+# would edit the operator's files, which is the one thing this surface exists to avoid.
+#
+# ⚠️ WHAT IS NOT HERE: `_load_metas` has a reporting variant that discards `complete`, and it
+# stays out (판정 368 ④). What rides is what mappers use, nothing beside it.
+MAPPER_SURFACE = {
+    "CONFIRMED_JOIN_RULE": "dt_map_derivation",
+    "ColumnBindingRefused": "chain_bindings",
+    "DEFAULT_RULES": "notation_norm",
+    "DerivationRefused": "dt_map_derivation",
+    "FRAME_JOIN_RULE": "dt_map_derivation",
+    "INDEX_AXIS_RANKING": "map_alignment",
+    "MAX_VALID_DIE_CELLS": "map_overlay",
+    "METRIC_INDEX": "map_alignment",
+    "PLACEMENT_ANCHOR": "map_alignment",
+    "REFUSE_SCOPE_TOO_LARGE": "dt_map_derivation",
+    "SCOPE_ROW_CAP": "dt_map_derivation",
+    "STATE_SCORED": "map_alignment",
+    "VALID_DIE_REF_KEY": "map_overlay",
+    "_cells_of": "map_alignment",
+    "_load_metas": "map_alignment",
+    "apply_dt_equations": "dt_frame_transform",
+    "apply_valid_die_ref": "map_overlay",
+    "basis_cells_for": "map_alignment",
+    "compose_map_id": "map_meta_registrar",
+    "confirmed_meta_for": "map_alignment",
+    "core_equations": "dt_frame_transform",
+    "declared_alignment_rule": "alignment_view_service",
+    "declared_columns": "chain_bindings",
+    "derive_cells": "dt_map_derivation",
+    "dt_equations": "dt_frame_transform",
+    "fold_notation": "notation_norm",
+    "fold_notation_sql": "notation_norm",
+    "frame_trigger_scope": "dt_map_derivation",
+    "identity_columns": "dt_map_derivation",
+    "join_pairs": "dt_map_derivation",
+    "join_rule": "dt_map_derivation",
+    "load_map_meta": "map_overlay",
+    "load_overlay_config": "map_overlay",
+    "meta_business_key": "map_meta_registrar",
+    "model_column": "chain_bindings",
+    "resolve_alignment_view": "alignment_view_service",
+    "resolve_column": "chain_bindings",
+    "resolve_decision_column": "chain_bindings",
+    "resolve_table": "chain_bindings",
+    "slow_warn_ms": "event_constants",
+    "standard_meta": "dt_frame_transform",
+}
+
+
+def __getattr__(name):
+    """Resolve a declared surface name to the REAL object in its module.
+
+    🔴 THE SAME OBJECT, NOT A COPY (판정 368 ①). This returns what the source module holds,
+    so `mapper_sdk.fold_notation is notation_norm.fold_notation`. A wrapper here would be a
+    second implementation of something that already has one, and the two would drift.
+
+    ⛔ NO BRANCH BEYOND THE TABLE (판정 369). A name that is not declared raises the ordinary
+    `AttributeError` - this seat does not compose a refusal sentence. Inventing one would put
+    a second author on a message Python already writes, and would make a typo look like a
+    product rule.
+    """
+    source = MAPPER_SURFACE.get(name)
+    if source is None:
+        raise AttributeError(name)
+    import importlib
+
+    return getattr(importlib.import_module(source), name)
