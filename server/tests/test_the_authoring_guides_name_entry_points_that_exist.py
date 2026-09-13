@@ -1,19 +1,22 @@
 # -*- coding: utf-8 -*-
-"""S-209. The authoring directory is OUTSIDE this repo, so the names it teaches drift.
+"""S-209 · S-231. The authoring guides teach entry-point NAMES, and nothing makes them agree.
 
-🔴 THE SEAM IS A NAME, NOT A FILE. `assyManager-authoring/` is a sibling directory with its
-own git; nothing in this repo imports it and nothing in it is deployed with us. What the two
-share is a short list of ENTRY-POINT NAMES - `@mapper`, `discover`, `MAPPER_REGISTRY`, and
-the parser hooks on `BasePipelineParser`. A rename here is silent over there: the guide goes
-on teaching a word the product no longer answers to, and an operator following it gets a
-refusal with no clue which side moved.
+🔴 THE SEAM IS A NAME, NOT A FILE. Nothing in this repo imports `authoring/` and nothing in
+it is deployed. What the two sides share is a short list of ENTRY-POINT NAMES - `@mapper`,
+`discover`, `MAPPER_REGISTRY`, and the parser hooks on `BasePipelineParser`. A rename here
+is silent over there: the guide goes on teaching a word the product no longer answers to,
+and an operator following it gets a refusal with no clue which side moved.
 
 ⚠️ THE NAMES ARE RESOLVED BY IMPORT, never by reading source text. A text oracle would go
 red when a file is reformatted and green when the name is only mentioned in a comment -
 it measures spelling, not the thing the guide promises.
 
-⚠️ AND THE OUTSIDE HALF SKIPS BY NAME. That directory is not everyone's checkout; a skip
-that says WHICH path was missing is a measurement, while a silently-passing case is not.
+🔴 [S-231] AND THERE IS NO SKIP ANY MORE. The guides lived in a SIBLING repository when
+S-209 wrote this, so half the cases skipped by name when that checkout was absent - a
+measurement then. 판정 386 moved them to `authoring/` INSIDE this repo, which left the skip
+condition permanently true: six cases went quietly green against a population that no longer
+existed. A file this repo tracks is either here or the gate is red, and that is the whole of
+the fix - a gate whose subject can vanish without a red is not a gate.
 """
 import importlib.util
 import os
@@ -27,10 +30,10 @@ if SERVER_DIR not in sys.path:
 
 REPO_DIR = os.path.dirname(SERVER_DIR)
 
-#: 🔴 THE ONE CONSTANT. `docs/guide/AUTHORING.md` promises a SIBLING of this repo, so it is
-#: derived from the repo's own location rather than typed as an absolute path - a typed one
-#: would be true on exactly one box.
-AUTHORING_DIR = os.path.join(os.path.dirname(REPO_DIR), "assyManager-authoring")
+#: 🔴 THE ONE CONSTANT. `docs/guide/AUTHORING.md` says 「authoring/ 이 저장소의 «루트» 폴더 —
+#: 추적 파일이라 pull 하면 같이 온다」, so the path is derived from the repo's own location.
+#: ⚰️ It named a SIBLING (`../assyManager-authoring`) until 판정 386 brought the guides in.
+AUTHORING_DIR = os.path.join(REPO_DIR, "authoring")
 EXAMPLES_DIR = os.path.join(AUTHORING_DIR, "examples")
 
 #: The five that MOVED (판정 348·349). Two copies of one file is the defect this half of
@@ -60,11 +63,6 @@ STAYS = (
     "parsers/void_obs_parser.py.sample",
     "parsers/inspection_run_parser.py.sample",
 )
-
-outside = pytest.mark.skipif(
-    not os.path.isdir(EXAMPLES_DIR),
-    reason="the authoring directory is not checked out here: %s" % EXAMPLES_DIR)
-
 
 # ---------------------------------------------------------------------------
 # 🔴 the names this repo promises - always scored, no skip
@@ -128,16 +126,14 @@ def test_a_sample_a_gate_reads_is_still_here(relative):
 
 
 # ---------------------------------------------------------------------------
-# ⚠️ the outside half - skipped BY NAME when that directory is not here
+# 🔴 the guides themselves - tracked files, so absence is a RED (S-231)
 # ---------------------------------------------------------------------------
 
-@outside
 @pytest.mark.parametrize("relative", MOVED)
 def test_the_moved_example_is_in_the_authoring_directory(relative):
     assert os.path.exists(os.path.join(EXAMPLES_DIR, os.path.basename(relative)))
 
 
-@outside
 def test_the_functional_parser_example_still_defines_the_name_the_guide_teaches():
     """🔴 `PARSER_GUIDE.md` teaches `parse_file(file_path) -> list[dict]` as the whole of the
     functional contract, and after the move this example is the only place that name is
@@ -152,10 +148,10 @@ def test_the_functional_parser_example_still_defines_the_name_the_guide_teaches(
     path = os.path.join(EXAMPLES_DIR, "custom_parser_template.py")
     spec = importlib.util.spec_from_file_location("s209_authoring_example", path)
     module = importlib.util.module_from_spec(spec)
-    # ⛔ NO `__pycache__` IN SOMEONE ELSE'S WORKING TREE. Executing a module writes a `.pyc`
-    # beside it, and that directory is another repository - the application lane had to
-    # untrack one this test produced. A compiled copy of a source file is a second copy of
-    # it, which is the very defect that repo's guide warns about two sections along.
+    # ⛔ NO `__pycache__` BESIDE THE GUIDES. Executing a module writes a `.pyc` next to it,
+    # and since 판정 386 that directory is OURS - so the artefact would land in this repo's
+    # own tree, where it was untracked once already. A compiled copy of a source file is a
+    # second copy of it, which is the very defect the guide warns about two sections along.
     written = sys.dont_write_bytecode
     sys.dont_write_bytecode = True
     try:
