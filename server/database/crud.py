@@ -852,6 +852,43 @@ if not hasattr(sys, "_table_config_singleton"):
 TABLE_CONFIG = sys._table_config_singleton
 
 
+class ReadOnlyRelation(ValueError):
+    """⛔ THIS RELATION DOES NOT ACCEPT WRITES — a REFUSAL, not a fault.
+
+    A `ValueError` still, because that is what the sentence was raised as before it moved
+    here and callers already catch it that way; a NAME so the route can answer 422 with the
+    reason instead of 500 with a traceback.
+    """
+
+
+def refuse_write_to_view(table_name):
+    """🔴 THE ONE PLACE 「이 관계가 쓰기를 받나」 IS ANSWERED (S-224).
+
+    The sentence used to live INSIDE `apply_batch_updates`, on the reasoning that every
+    write converges there. It does not. `create_empty_rows_batch`, `delete_rows_batch`,
+    `delete_cell_source_batch` and `set_cell_manual_priority_batch` reach the relation
+    directly, and on a view none of them found a gate — the owner's add-row button answered
+    **500** `TypeError: 'row_id' is an invalid keyword argument`, which is what a missing
+    refusal looks like when the model happens to lack a column. Where the view DOES declare
+    `row_id` there is no crash at all: the deletes would have removed that row's cell layers
+    and let PostgreSQL refuse only the last statement.
+
+    🔴 BEFORE THE EMPTY-PAYLOAD SHORTCUT, in every caller. 「빈 요청이라 통과됐다」 and
+    「쓸 수 있는 관계라 통과됐다」 must not be the same answer, or the refusal starts
+    depending on what the caller happened to send.
+
+    ⚠️ `catalog_kind` DECIDES THE WORD, not a fourth spelling of
+    `.get("kind") or "table"` — that function exists because this repository already had
+    four of them (S-187).
+    """
+    from ledger.setup_bundle import catalog_kind
+
+    if catalog_kind(TABLE_CONFIG.get(table_name)) == "view":
+        raise ReadOnlyRelation(
+            "'%s' 는 읽기 전용입니다 (kind: view). 이 관계는 카탈로그에 뷰로 선언돼 "
+            "있어 쓰기를 받지 않습니다." % table_name)
+
+
 def normalize_stored_text(value: Any) -> Any:
     """THE write-boundary normalizer for text. Strips a string; leaves anything else alone.
 
@@ -4188,19 +4225,12 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
     """
     from sqlalchemy.exc import IntegrityError
 
-    # 🔴 A READ-ONLY RELATION IS REFUSED HERE, BY NAME (S-186, 판정 296). `kind: "view"` was
-    # read in exactly three places before this, all of them 「do not build the model/index」
-    # (`models.py`) — nothing refused a WRITE. So a view was read-only only because
-    # PostgreSQL refused it, and a real table declared `kind: view` would simply be written
-    # with nothing raised.
-    #
-    # ⚠️ AT THE FUNNEL, NOT AT EACH CALLER. Cell edits, layering, ingestion and chain writes
-    # all converge on this function — the same reasoning `cast_value_by_type` records one
-    # layer down — so a per-call-site check would be the one the next path forgets.
-    if (TABLE_CONFIG.get(table_name) or {}).get("kind") == "view":
-        raise ValueError(
-            "'%s' 는 읽기 전용입니다 (kind: view). 이 관계는 카탈로그에 뷰로 선언돼 "
-            "있어 쓰기를 받지 않습니다." % table_name)
+    # 🔴 A READ-ONLY RELATION IS REFUSED BY NAME (S-186, 판정 296), AND THE SENTENCE NO
+    # LONGER LIVES HERE (S-224). This seat is a funnel for the CELL paths — cell edits,
+    # layering, ingestion and chain writes all converge on it — but row creation, row
+    # deletion and the two source controls reach the relation without passing through, so
+    # 「관문이 여기 하나」 was true of this function and false of the relation.
+    refuse_write_to_view(table_name)
 
     # [D3-F1] Captured BEFORE attempt 1, because by the time the conflict is raised the
     # payload has already been written into. See `_replay_sensitive_key_column`.
@@ -4816,6 +4846,10 @@ def create_empty_row(db: Session, table_name: str):
 
 def create_empty_rows_batch(db: Session, table_name: str, count: int, user_name: str = "system"):
     """신규 빈 행을 일괄 생성하고 요약 히스토리를 남깁니다."""
+    # ⛔ A VIEW FIRST. Without this the owner's add-row button reached
+    # `table_model(row_id=…)` and answered 500 (S-224).
+    refuse_write_to_view(table_name)
+
     from sqlalchemy.sql import func
     
     tx_id = str(uuid6.uuid7())
@@ -4894,6 +4928,12 @@ def record_row_deletions(db: Session, table_name: str, rows, user_name: str,
 
 def delete_rows_batch(db: Session, table_name: str, row_ids: list[str], user_name: str = "system"):
     """여러 행을 일괄 삭제하고 개별 히스토리를 남기며 메타데이터도 연쇄 삭제합니다."""
+    # ⛔ A VIEW FIRST — and BEFORE the empty-list shortcut, so the answer does not depend
+    # on what the caller sent. This path deletes the row's cell layers before it touches the
+    # relation, so on a view that declares `row_id` it destroyed metadata and only then let
+    # PostgreSQL refuse (S-224).
+    refuse_write_to_view(table_name)
+
     if not row_ids:
         return 0
         
@@ -4964,6 +5004,10 @@ def get_row_cell(db: Session, table_name: str, row_id: str):
 
 def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], source_name: str):
     """여러 셀의 특정 데이터 원천(Source)을 일괄 삭제합니다."""
+    # ⛔ A VIEW FIRST. `delete_cell_source` delegates here, so the single-cell control is
+    # gated by this one line too (S-224).
+    refuse_write_to_view(table_name)
+
     if not cells:
         return [], []
 
@@ -5127,6 +5171,9 @@ def delete_cell_source(db: Session, table_name: str, row_id: str, col_name: str,
 
 def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[dict], source_name: Optional[str], updated_by: str = "user"):
     """여러 셀의 표시 우선순위 소스를 수동으로 일괄 지정합니다 (Pin)."""
+    # ⛔ A VIEW FIRST. `set_cell_manual_priority` delegates here (S-224).
+    refuse_write_to_view(table_name)
+
     if not updates:
         return [], []
 

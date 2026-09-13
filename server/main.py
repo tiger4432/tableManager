@@ -178,6 +178,22 @@ app.add_middleware(
                     "WWW-Authenticate"]
 )
 
+# --- A read-only relation answers 4xx, once, for every write route -----------
+# 🔴 ONE SEAT FOR THE STATUS AND THE SENTENCE (S-224). `crud.refuse_write_to_view` is the
+# one place 「이 관계가 쓰기를 받나」 is decided; this is the one place that decision
+# becomes a RESPONSE. Row creation, row deletion, the paste/cell door and the two source
+# controls are five routes, and a `try/except` in each of them is five chances for the
+# sixth to answer 500 — which is exactly how the owner's add-row button came to.
+#
+# ⚠️ 422, NOT 500. A 500 says the server broke; this relation is doing what it was
+# declared to do. The client draws `detail`, so the reason has to travel in it.
+@app.exception_handler(crud.ReadOnlyRelation)
+async def _read_only_relation_refused(request: Request, exc: crud.ReadOnlyRelation):
+    from fastapi.responses import JSONResponse as _JSONResponse
+
+    return _JSONResponse(status_code=422, content={"detail": str(exc)})
+
+
 # --- Ledger lineage trace (GET /api/ledger/trace) --------------------------
 # Registered HERE for the same reason /health is: FastAPI matches in registration
 # order and the SPA catch-all `@app.get("/{file_name:path}")` at the bottom of
@@ -3333,6 +3349,11 @@ async def apply_batch_updates_endpoint(
             results, changed_cells, created_logs, deleted_row_ids = await run_in_threadpool(
                 crud.apply_batch_updates, db, table_name, batch, replace_report, drop_report
             )
+    except crud.ReadOnlyRelation:
+        # 🔴 NOT 400, AND NOT HERE. A read-only relation is one judgement with one
+        # response, and catching it as an ordinary `ValueError` would make this the only
+        # write route answering a different status to the same refusal (S-224).
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except IntegrityError as e:
