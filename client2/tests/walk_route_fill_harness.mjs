@@ -340,6 +340,13 @@ const DEFECTS = [
     (s) => s.replace('      return held.why ? `${verdict} · ${held.why}` : String(verdict);',
       '      return String(verdict);')],
   // 🔴 「판정 없음」을 `false` 로 접는 판. 이것이 이 칸이 막으려고 태어난 바로 그 오독입니다.
+  // 🔴 판정 366 이 이름 댄 판: «키 생략»과 «빈 값»을 같게 읽는 것. 라우트가 둘을 가르려고
+  //    키를 생략하는데(S-216), 읽는 쪽이 빈 문자열도 「댄 것」으로 읽으면 그 구별이 화면에서
+  //    사라집니다 — 이름이 «없는» 열이 서게 됩니다.
+  ['an omitted key and an empty value are read the same, so a blank confirmer makes a column',
+    (s) => s.replace(
+      "    .filter((p) => p && typeof p.absence_confirmed_by === 'string' && p.absence_confirmed_by)",
+      "    .filter((p) => p && typeof p.absence_confirmed_by === 'string')")],
   ['a missing verdict is folded into `false`',
     (s) => s.replace("      if (!held || typeof held !== 'object') return undefined;",
       "      if (!held || typeof held !== 'object') return 'false';")],
