@@ -177,6 +177,23 @@ function suite(M) {
   ok(marked.length === 1 && marked[0].value === M.NEW_NAME,
      `C6 while a new rule is being written the picker says so -- [${marked.map((o) => o.value).join(',')}]`);
 
+  // ── C-95-b: a response with NO name is 「nothing picked」, not 「this one, blank」 ─────
+  const h = makePanel(M, SPEC);
+  const opening = payloadFor(SKELETON, { name: 'alpha' });
+  delete opening.name;
+  delete opening.declaration;
+  delete opening.raw;
+  delete opening.enabled;
+  h.panel.render(opening);
+  const openPicker = byCls(h.host, 'chain-rule-picker')[0];
+  const openMarked = openPicker ? openPicker.children.filter((o) => o.getAttribute('selected')) : [];
+  ok(openMarked.length === 1 && openMarked[0].value === M.PICK_NAME,
+     `C7 a response with no name says 「nothing picked」 -- [${openMarked.map((o) => o.value).join(',')}]`);
+  ok(byCls(h.host, 'chain-rule-form').length === 0 && byCls(h.host, 'chain-rule-raw').length === 0,
+     'C8 ... and draws no editor, because an empty document under a live save button is not kindness');
+  ok(byCls(h.host, 'chain-rule-save').length === 0,
+     'C9 ... and no save either -- a button that can only be refused is a question sent to the server');
+
   // ── D: one document, two editors ─────────────────────────────────────────────────
   const saves2 = [];
   const d = makePanel(M, SPEC, { onSave: (p) => saves2.push(p) });
@@ -272,6 +289,15 @@ const DEFECTS = [
     s => s.replace('        if (formOwnsName) {', '        if (false) {')],
   ['the picker keeps showing the rule that was open while a new one is written',
     s => s.replace('    if (this.newMode && spec.addLabel) {', '    if (false) {')],
+  // C-95-b. Without the placeholder the browser picks the first option for the screen, and the
+  // screen then names a rule it has never read -- with empty boxes beside the name.
+  ['a response with no name still names the first rule in the list',
+    s => s.replace('    } else if (!picked) {', '    } else if (false) {')],
+  ['an editor is drawn for a rule nobody picked',
+    s => s.replace('    const picked = this.newMode || Boolean(view.name);',
+                   '    const picked = true;')],
+  ['the save button stands on a screen with no document',
+    s => s.replace('    if (picked || !root) head.appendChild(save);', '    head.appendChild(save);')],
   ['a new rule starts from the rule that was open',
     s => s.replace('      const held = this.newMode\n'
                    + '        ? (emptyOf(root, (payload.skeleton || {}).defs) || {})\n',

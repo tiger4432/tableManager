@@ -35,6 +35,17 @@ import { writeShapeAtPath } from './ontology_path.js';
 export const NEW_NAME = '(새 규칙)';
 
 /**
+ * 아직 «아무것도 안 골랐을» 때 고르개가 입는 말.
+ *
+ * 🔴 이 자리는 처음 열 때마다 생깁니다 — 절이 이름 «없이» 한 번 읽으므로 응답에 이름이 없고,
+ *    고르개는 브라우저 기본대로 «첫 항목»을 보여 줍니다. 그러면 화면이 「이 규칙을 보고 있다」고
+ *    말하면서 칸은 비어 있습니다. 그건 거짓 상태이고, 운영자는 「왜 안 채워지나」로 헤맵니다.
+ * ⚠️ 글자는 걷기 화면의 고르개와 «같은 말»입니다 — 같은 사실(아직 안 고름)에 두 낱말을 쓰면
+ *    같은 제품이 두 목소리로 말합니다.
+ */
+export const PICK_NAME = '— 고르십시오 —';
+
+/**
  * 한 등록부의 «선언». 도메인 낱말은 «전부» 여기로 들어옵니다.
  *
  * @typedef {object} RegistrySpec
@@ -348,6 +359,9 @@ export class RawRegistryPanel {
     //    누르면 이름 칸이 폼 «위»에 하나, 폼 «안»에 하나 — 둘이었습니다).
     const formOwnsName = Boolean(root)
       && ((root.fields || []).some((f) => f && f.key === spec.nameKey));
+    // 🔴 C-95-b. 「무엇을 편집하고 있나」에 답이 있나. 없으면 편집기를 «안 그립니다» — 빈 편집기는
+    //    친절이 아니라 «이름 없는 문서 위의 살아 있는 저장 버튼»입니다.
+    const picked = this.newMode || Boolean(view.name);
 
     // 🔴 저장이 보내는 «글자»입니다. 폼은 이 글자를 고치는 두 번째 «편집기»이지 두 번째 «문서»가
     //    아닙니다 — 그래서 둘이 갈라질 수 없습니다 (criterion ④).
@@ -369,6 +383,14 @@ export class RawRegistryPanel {
       o.textContent = NEW_NAME;
       o.setAttribute('selected', 'selected');
       picker.appendChild(o);
+    } else if (!picked) {
+      // C-95-b. 아직 아무것도 안 골랐습니다. 자리표시자가 없으면 고르개가 «첫 이름»을 보여 주고,
+      // 그 이름의 내용은 아직 읽은 적이 없습니다.
+      const o = doc.createElement('option');
+      o.value = PICK_NAME;
+      o.textContent = PICK_NAME;
+      o.setAttribute('selected', 'selected');
+      picker.appendChild(o);
     }
     for (const name of view.names) {
       const o = doc.createElement('option');
@@ -380,7 +402,7 @@ export class RawRegistryPanel {
     if (picker.addEventListener && this.onOpen) {
       picker.addEventListener('change', (e) => {
         const value = e && e.target ? e.target.value || '' : '';
-        if (value === NEW_NAME) return;
+        if (value === NEW_NAME || value === PICK_NAME) return;
         this.newMode = false;
         this.onOpen(value);
       });
@@ -422,7 +444,7 @@ export class RawRegistryPanel {
     //    (실측 2026-09-13: [규칙 추가] 를 눌러도 `enabled true` 가 그대로 남아 있었습니다).
     const status = view.refusal && view.refusal.code
       ? { text: view.refusal.code, value: 'refused' }
-      : (!this.newMode && view.extra && view.extra.text ? view.extra : null);
+      : (picked && !this.newMode && view.extra && view.extra.text ? view.extra : null);
     if (status) {
       const line = this._line(`${spec.cls}-state`, status.text);
       if (status.value != null) line.setAttribute('data-state', String(status.value));
@@ -448,7 +470,10 @@ export class RawRegistryPanel {
         this.onSave({ [spec.nameKey]: named, base: view.base, raw: area.value });
       });
     }
-    head.appendChild(save);
+    // 🔴 C-95-b. 편집기가 없으면 저장도 없습니다 — 아무것도 안 고른 화면의 저장 버튼은
+    //    «이름 없는 빈 문서»를 보내러 가는 길입니다. 서버도 거절하지만, 누를 수 있는 버튼을
+    //    두고 거절로 답하는 것은 화면이 답할 수 있는 것을 서버에 미룬 것입니다.
+    if (picked || !root) head.appendChild(save);
     this.root.appendChild(head);
 
     // 🔴 `base` 는 «화면에 보이는 값»이 아니라 저장이 되돌려 보낼 지문입니다.
@@ -458,7 +483,7 @@ export class RawRegistryPanel {
 
     // ═══ 폼 ═══════════════════════════════════════════════════════════════════════════
     // ② 서버가 스켈레톤을 실어 줄 때«만» 그립니다 — 없으면 오늘 그대로입니다.
-    if (root) {
+    if (root && picked) {
       const held = this.newMode
         ? (emptyOf(root, (payload.skeleton || {}).defs) || {})
         : (payload.declaration && typeof payload.declaration === 'object'
@@ -523,7 +548,7 @@ export class RawRegistryPanel {
     area.setAttribute('data-raw', spec.nameKey);
     area.value = view.raw;
     area.textContent = view.raw;
-    if (area.addEventListener && root) {
+    if (area.addEventListener && root && picked) {
       // 글자가 문서입니다. 파싱이 안 되면 폼을 «그대로 둡니다» — 반쯤 친 JSON 위에서 폼을
       // 비우면 사람이 치던 것이 사라진 것처럼 보입니다.
       area.addEventListener('input', () => {
@@ -532,14 +557,16 @@ export class RawRegistryPanel {
         if (this._redraw) this._redraw(held2);
       });
     }
-    if (root) {
+    if (root && picked) {
       this.root.appendChild(this._fold(`${spec.cls}-raw-fold`, '원본', null, this.rawOpen, () => {
         this.rawOpen = !this.rawOpen;
         this.render(this._payload, this._opts);
       }));
       if (!this.rawOpen) area.hidden = true;
     }
-    this.root.appendChild(area);
+    // 🔴 C-95-b. 아무것도 안 골랐으면 «문서 자체가 없습니다» — 원문 상자도 그 문서의 한 모습이라
+    //    같이 빠집니다. 스켈레톤이 없는 등록부(표 등록)는 원문이 «유일한» 편집기라 그대로 섭니다.
+    if (picked || !root) this.root.appendChild(area);
 
     // 저장이 «됐다»는 것도 값으로. 몇 개가 됐고 백업이 어디인지는 서버가 말합니다.
     if (view.saved) {
