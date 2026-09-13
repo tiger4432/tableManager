@@ -26,6 +26,13 @@ server/assy_manager.db
 agent_workspace/tasks/
 !agent_workspace/reports/
 agent_workspace/*
+# 🔴 우편함의 «자리»만 추적합니다 — 산출물은 docs/_archive/agent_workspace_20260823/ 로
+#    옮겨졌고(S-210, 판정 353), 이 한 줄이 없으면 위 `agent_workspace/*` 가 그 README 까지
+#    가려 「비어 있되 있음」이 성립하지 않습니다.
+!agent_workspace/README.md
+
+# 빌드 산출물 — setup.py/pip 이 다시 만듭니다 (S-210, 판정 353)
+assy_manager.egg-info/
 _archive/*
 /.codex_tmp/
 /.test_tmp/
@@ -44,14 +51,14 @@ Desktop.ini
 server/*.log
 
 # 빌드 결과물
-client/build/
-client/dist/
-client/*.spec
+desktop/build/
+desktop/dist/
+desktop/*.spec
 # 🔴 이 하나는 «결과물이 아니라 소스»입니다. PyInstaller 가 인자 없이 만들어 내는 spec 은
 #    위 규칙대로 무시하되, 손으로 관리하는 이것은 추적합니다 — desktop_wrapper.py 의 주석 셋이
 #    이 파일을 «정본으로 인용»하고 있고(datas=[] · console=False · onedir), 인용되는 파일이
 #    추적되지 않으면 그 주석이 가리키는 곳이 언제든 사라집니다.
-!client/AssyManagerClient.spec
+!desktop/AssyManagerClient.spec
 
 # 운영 환경 고유 설정 및 인제션 워크스페이스
 server/config/*

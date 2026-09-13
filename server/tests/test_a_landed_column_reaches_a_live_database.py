@@ -25,16 +25,16 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import chain_ingestion_worker                                        # noqa: E402
+from chain import ingestion_worker                                        # noqa: E402
 from ledger import backfill, schema                                  # noqa: E402
 
 
 def test_the_additions_list_is_reachable_from_the_daemon():
     """🔴 THE PROPERTY, NOT THE COLUMN. Whatever `CURSOR_ADDITIONS` names next has to arrive
     without a person, so the assertion is on the CALL and not on today's members."""
-    body = inspect.getsource(chain_ingestion_worker.start_chain_ingestion_worker)
+    body = inspect.getsource(ingestion_worker.start_chain_ingestion_worker)
     assert "_ensure_ledger_schema_sync" in body
-    helper = inspect.getsource(chain_ingestion_worker._ensure_ledger_schema_sync)
+    helper = inspect.getsource(ingestion_worker._ensure_ledger_schema_sync)
     assert "ensure_schema()" in helper
 
 
@@ -55,7 +55,7 @@ def test_the_cli_does_not_need_the_daemon_to_have_run_first():
 def test_the_daemon_names_a_failure_rather_than_dying_of_it():
     """⚠️ THIS DAEMON ALSO DOES CHAIN WORK THAT OWES THE LEDGER NOTHING. A ledger schema that
     cannot be ensured must cost the ledger jobs, not the outbox."""
-    body = inspect.getsource(chain_ingestion_worker.start_chain_ingestion_worker)
+    body = inspect.getsource(ingestion_worker.start_chain_ingestion_worker)
     assert "logger.error" in body.split("_ensure_ledger_schema_sync")[1][:600]
 
 

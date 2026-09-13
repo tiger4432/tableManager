@@ -36,7 +36,7 @@ if parsers_dir not in sys.path:
     sys.path.insert(0, parsers_dir)
 
 import directory_watcher
-import ingestion_checkpoint
+import ingestion.checkpoint
 from directory_watcher import IngestionHandler, WorkspaceWatcher
 from database.database import Base
 from database import crud, models
@@ -157,10 +157,10 @@ def test_signature_is_content_addressed_and_stable(tmp_path):
     b = _write(tmp_path / "b.csv", _csv(5))   # 다른 이름, 같은 내용
     c = _write(tmp_path / "c.csv", _csv(6))   # 다른 내용
 
-    sig_a = ingestion_checkpoint.compute_file_signature(a)
-    assert sig_a == ingestion_checkpoint.compute_file_signature(a)  # 결정적
-    assert sig_a == ingestion_checkpoint.compute_file_signature(b)  # 이름 무관·내용 기준
-    assert sig_a != ingestion_checkpoint.compute_file_signature(c)
+    sig_a = ingestion.checkpoint.compute_file_signature(a)
+    assert sig_a == ingestion.checkpoint.compute_file_signature(a)  # 결정적
+    assert sig_a == ingestion.checkpoint.compute_file_signature(b)  # 이름 무관·내용 기준
+    assert sig_a != ingestion.checkpoint.compute_file_signature(c)
 
     algo, size, digest = sig_a.split(":")
     assert algo == "sha256"
@@ -170,7 +170,7 @@ def test_signature_is_content_addressed_and_stable(tmp_path):
 
 def test_signature_returns_none_when_unreadable(tmp_path):
     """읽기 불가 파일은 None → 호출자는 체크포인트/dedup을 끄고 기존 동작으로 처리."""
-    assert ingestion_checkpoint.compute_file_signature(str(tmp_path / "nope.csv")) is None
+    assert ingestion.checkpoint.compute_file_signature(str(tmp_path / "nope.csv")) is None
 
 
 # ---------------------------------------------------------------------------
@@ -180,13 +180,13 @@ def test_signature_returns_none_when_unreadable(tmp_path):
 def test_checkpoint_recorded_and_marked_done_after_success(p2_env):
     ws, handler = p2_env["make_handler"]()
     p = _write(ws / "raws" / "d1.csv", _csv(3))
-    sig = ingestion_checkpoint.compute_file_signature(p)
+    sig = ingestion.checkpoint.compute_file_signature(p)
 
     handler.process_with_retry(p, delay=0.01)
 
     ck = _checkpoint(p2_env, signature=sig)
     assert ck is not None
-    assert ck.status == ingestion_checkpoint.STATUS_DONE
+    assert ck.status == ingestion.checkpoint.STATUS_DONE
     assert ck.processed_rows == 3
     assert ck.total_rows == 3
     assert ck.source_kind == "std"
@@ -205,7 +205,7 @@ def test_crash_mid_file_keeps_committed_offset_then_resumes(p2_env, monkeypatch)
     ws, handler = p2_env["make_handler"]()
     content = _csv(1500)
     p = _write(ws / "raws" / "big.csv", content)
-    sig = ingestion_checkpoint.compute_file_signature(p)
+    sig = ingestion.checkpoint.compute_file_signature(p)
 
     real_apply = crud.apply_batch_updates
     state = {"calls": 0}
@@ -226,7 +226,7 @@ def test_crash_mid_file_keeps_committed_offset_then_resumes(p2_env, monkeypatch)
     # 옮기지 않는 모드에서는 그 사실을 폴더가 아니라 원장이 들어야 한다. 프로세스가
     # 통째로 죽어 이 핸들러가 못 돈 경우에만 IN_PROGRESS로 남고, 그때는 다음 스윕이
     # 자동으로 이어받는다 — P2 재개의 원래 대상이 그쪽이다.
-    assert ck.status == ingestion_checkpoint.STATUS_FAILED
+    assert ck.status == ingestion.checkpoint.STATUS_FAILED
     # 🔴 종결 표시가 재개 오프셋을 지우지 않는다 — 아래 재개가 그것을 그대로 쓴다.
     assert ck.processed_rows == 1000, "커밋된 행 수와 기록된 오프셋이 일치해야 한다"
     assert len(_rows(p2_env)) == 1000
@@ -250,7 +250,7 @@ def test_crash_mid_file_keeps_committed_offset_then_resumes(p2_env, monkeypatch)
     assert len(rows) == 1500
     assert len(set(bks)) == 1500, "bk 중복 0"
     ck2 = _checkpoint(p2_env, signature=sig)
-    assert ck2.status == ingestion_checkpoint.STATUS_DONE
+    assert ck2.status == ingestion.checkpoint.STATUS_DONE
 
 
 def test_resume_skips_already_committed_rows(p2_env):
@@ -258,7 +258,7 @@ def test_resume_skips_already_committed_rows(p2_env):
     ws, handler = p2_env["make_handler"]()
     content = _csv(6)
     p = _write(ws / "raws" / "resume.csv", content)
-    sig = ingestion_checkpoint.compute_file_signature(p)
+    sig = ingestion.checkpoint.compute_file_signature(p)
 
     # 앞 2행만 적재된 상태를 인위적으로 만든다 (프로세스가 2행 커밋 직후 죽은 상황)
     db = p2_env["SessionLocal"]()
@@ -266,7 +266,7 @@ def test_resume_skips_already_committed_rows(p2_env):
         db.add(models.FileIngestionCheckpoint(
             table_name=TABLE, file_signature=sig, filename="resume.csv",
             filepath=p, source_kind="std", total_rows=6, processed_rows=2,
-            chunk_index=1, status=ingestion_checkpoint.STATUS_IN_PROGRESS,
+            chunk_index=1, status=ingestion.checkpoint.STATUS_IN_PROGRESS,
         ))
         db.commit()
     finally:
@@ -286,7 +286,7 @@ def test_resume_skips_already_committed_rows(p2_env):
     # 선두 2행(P-1, P-2)은 재적재되지 않고 나머지 4행만 업서트된다.
     assert applied == ["P-3", "P-4", "P-5", "P-6"]
     ck = _checkpoint(p2_env, signature=sig)
-    assert ck.status == ingestion_checkpoint.STATUS_DONE
+    assert ck.status == ingestion.checkpoint.STATUS_DONE
 
 
 def test_resume_note_is_recorded_in_log_and_notification(p2_env):
@@ -295,14 +295,14 @@ def test_resume_note_is_recorded_in_log_and_notification(p2_env):
     notified = []
     handler.on_file_processed_callback = lambda t, f, s, d: notified.append((t, f, s, d))
     p = _write(ws / "raws" / "resume2.csv", _csv(4))
-    sig = ingestion_checkpoint.compute_file_signature(p)
+    sig = ingestion.checkpoint.compute_file_signature(p)
 
     db = p2_env["SessionLocal"]()
     try:
         db.add(models.FileIngestionCheckpoint(
             table_name=TABLE, file_signature=sig, filename="resume2.csv", filepath=p,
             source_kind="std", total_rows=4, processed_rows=1, chunk_index=1,
-            status=ingestion_checkpoint.STATUS_IN_PROGRESS,
+            status=ingestion.checkpoint.STATUS_IN_PROGRESS,
         ))
         db.commit()
     finally:
@@ -329,12 +329,12 @@ def test_unusable_checkpoint_restarts_from_zero_with_explicit_reason(p2_env, mut
     notified = []
     handler.on_file_processed_callback = lambda t, f, s, d: notified.append(d)
     p = _write(ws / "raws" / "bad.csv", _csv(4))
-    sig = ingestion_checkpoint.compute_file_signature(p)
+    sig = ingestion.checkpoint.compute_file_signature(p)
 
     base = dict(
         table_name=TABLE, file_signature=sig, filename="bad.csv", filepath=p,
         source_kind="std", total_rows=4, processed_rows=2, chunk_index=1,
-        status=ingestion_checkpoint.STATUS_IN_PROGRESS,
+        status=ingestion.checkpoint.STATUS_IN_PROGRESS,
     )
     base.update(mutate)
     db = p2_env["SessionLocal"]()
@@ -369,7 +369,7 @@ def test_resume_is_idempotent_no_duplicate_rows(p2_env):
     def drop_and_process(fname):
         p = _write(ws / "raws" / fname, content)
         handler.process_with_retry(p, delay=0.01)
-        return ingestion_checkpoint.compute_file_signature(str(ws / "archives" / fname))
+        return ingestion.checkpoint.compute_file_signature(str(ws / "archives" / fname))
 
     sig = drop_and_process("idem1.csv")
     assert len(_rows(p2_env)) == n
@@ -380,7 +380,7 @@ def test_resume_is_idempotent_no_duplicate_rows(p2_env):
             db.query(models.FileIngestionCheckpoint).filter(
                 models.FileIngestionCheckpoint.file_signature == sig
             ).update({"processed_rows": forced_offset,
-                      "status": ingestion_checkpoint.STATUS_IN_PROGRESS},
+                      "status": ingestion.checkpoint.STATUS_IN_PROGRESS},
                      synchronize_session=False)
             db.commit()
         finally:
@@ -399,7 +399,7 @@ def test_checkpoint_applies_on_sweep_path(p2_env):
     """스윕(재기동 캐치업) 경로도 같은 라우팅을 타므로 체크포인트가 동일하게 동작한다."""
     ws, handler = p2_env["make_handler"]()
     p = _write(ws / "raws" / "sweep.csv", _csv(3))
-    sig = ingestion_checkpoint.compute_file_signature(p)
+    sig = ingestion.checkpoint.compute_file_signature(p)
 
     watcher = WorkspaceWatcher(str(p2_env["tmp_path"]))
     raw_abs = os.path.abspath(str(ws / "raws"))
@@ -408,7 +408,7 @@ def test_checkpoint_applies_on_sweep_path(p2_env):
 
     assert processed == 1
     ck = _checkpoint(p2_env, signature=sig)
-    assert ck is not None and ck.status == ingestion_checkpoint.STATUS_DONE
+    assert ck is not None and ck.status == ingestion.checkpoint.STATUS_DONE
     assert len(_rows(p2_env)) == 3
 
 
@@ -421,7 +421,7 @@ def test_checkpoint_applies_on_heavy_lane_path(p2_env):
     p2_env["settings_path"].write_text(json.dumps({"heavy_file_mb": 0.000001}), encoding="utf-8")
 
     p = _write(ws / "raws" / "heavy.csv", _csv(4))
-    sig = ingestion_checkpoint.compute_file_signature(p)
+    sig = ingestion.checkpoint.compute_file_signature(p)
 
     done = threading.Event()
     handler.on_file_processed_callback = lambda *a: done.set()
@@ -430,7 +430,7 @@ def test_checkpoint_applies_on_heavy_lane_path(p2_env):
     lane.stop()
 
     ck = _checkpoint(p2_env, signature=sig)
-    assert ck is not None and ck.status == ingestion_checkpoint.STATUS_DONE
+    assert ck is not None and ck.status == ingestion.checkpoint.STATUS_DONE
     assert ck.processed_rows == 4
 
 
@@ -438,14 +438,14 @@ def test_resume_disabled_by_setting_restarts_from_zero(p2_env):
     ws, handler = p2_env["make_handler"]()
     p2_env["settings_path"].write_text(json.dumps({"resume_from_checkpoint": False}), encoding="utf-8")
     p = _write(ws / "raws" / "noresume.csv", _csv(4))
-    sig = ingestion_checkpoint.compute_file_signature(p)
+    sig = ingestion.checkpoint.compute_file_signature(p)
 
     db = p2_env["SessionLocal"]()
     try:
         db.add(models.FileIngestionCheckpoint(
             table_name=TABLE, file_signature=sig, filename="noresume.csv", filepath=p,
             source_kind="std", total_rows=4, processed_rows=3, chunk_index=1,
-            status=ingestion_checkpoint.STATUS_IN_PROGRESS,
+            status=ingestion.checkpoint.STATUS_IN_PROGRESS,
         ))
         db.commit()
     finally:
@@ -609,7 +609,7 @@ def _log(tx, i):
 
 @pytest.fixture
 def cache():
-    from audit_cache import AuditLogCache
+    from admin.audit_cache import AuditLogCache
     c = AuditLogCache()
     c.is_loaded = True
     return c

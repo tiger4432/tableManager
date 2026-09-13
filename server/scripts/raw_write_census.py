@@ -33,7 +33,9 @@ import sys
 SQL = re.compile(r"\b(INSERT\s+INTO|DELETE\s+FROM|UPDATE\s+\w+\s+SET)\b", re.I)
 
 #: Excluded by path, each for a stated reason rather than to make the number look better.
-#:   _archive  retired code, kept as a record
+#:   🪦 `_archive` was listed here and is gone (S-210, 판정 353). MEASURED while removing it:
+#:      this walks `server/scripts`, where no `_archive` has ever existed - so the entry was
+#:      excluding nothing on the day it was written, not only after the deletion.
 #:   migrat    schema migrations - DDL and one-time data moves are not the product's writes
 #:   dev_env   isolated-environment cloning; a restore puts a whole state down at once and
 #:             is outside the algebra rather than a write that skipped the door
@@ -43,7 +45,7 @@ SQL = re.compile(r"\b(INSERT\s+INTO|DELETE\s+FROM|UPDATE\s+\w+\s+SET)\b", re.I)
 #: itself, and it comes with an obligation: a `migrate_`/`ops_` script writes ledger or
 #: outbox tables that the product door does not serve, and carries S-77's shape - dry run by
 #: default, `--apply --i-accept-writing-to-owner-database` to write.
-SKIP_DIRS = ("_archive", "dev_env")
+SKIP_DIRS = ("dev_env",)
 SKIP_PREFIXES = ("migrate_", "ops_")
 
 

@@ -62,7 +62,7 @@ def main(argv=None) -> int:
                         help="actually forget it; without this nothing changes")
     args = parser.parse_args(argv)
 
-    import ingestion_checkpoint
+    import ingestion.checkpoint
     from database.database import SessionLocal
     from database.models import FileIngestionCheckpoint as Model
 
@@ -71,7 +71,7 @@ def main(argv=None) -> int:
     exists = os.path.exists(filepath)
     print(f"존재 여부 : {'있음' if exists else '없음 (원장 기록만 지웁니다)'}")
 
-    signature = ingestion_checkpoint.compute_file_signature(filepath) if exists else None
+    signature = ingestion.checkpoint.compute_file_signature(filepath) if exists else None
     print(f"signature : {signature or '(계산 못 함)'}")
 
     db = SessionLocal()

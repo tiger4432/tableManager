@@ -22,7 +22,7 @@ import event_constants                                           # noqa: E402
 
 SERVER = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 #: 이 이벤트를 «내는» 모듈. 새 모듈이 생기면 여기 한 줄이고, 그 한 줄이 곧 「누가 발신자인가」다.
-EMITTERS = ("main.py", "chain_ingestion_worker.py", "chain_replay.py", "run_watcher.py")
+EMITTERS = ("main.py", "chain/ingestion_worker.py", "chain/replay.py", "run_watcher.py")
 
 
 def _upsert_dicts():
@@ -60,7 +60,7 @@ def test_the_chain_worker_is_one_of_them():
     """그 하나가 «이 줄의 주어»였다. 부류 단언이 6 을 세는 한 이 단언은 중복처럼 보이지만,
     발신자가 «줄어드는» 날 부류 단언은 여전히 초록이고 이것만 빨개진다."""
     workers = [(ln, keys) for n, ln, keys in _upsert_dicts()
-               if n == "chain_ingestion_worker.py"]
+               if n == "chain/ingestion_worker.py"]
     assert workers, "the chain worker stopped emitting this event at all"
     for _ln, keys in workers:
         assert "change_count" in keys
@@ -69,7 +69,7 @@ def test_the_chain_worker_is_one_of_them():
 def test_the_count_is_what_this_message_carries():
     """🔴 `len(results)` 가 아니라 «실린 항목 수»다. 지금은 둘이 같지만(그 자리 불변 주석),
     불변이 깨지는 날 이 수는 메시지에 대해 계속 참이고 `len(results)` 는 과대가 된다."""
-    src = open(os.path.join(SERVER, "chain_ingestion_worker.py"), encoding="utf-8").read()
+    src = open(os.path.join(SERVER, "chain/ingestion_worker.py"), encoding="utf-8").read()
     assert '"change_count": len(msg_items),' in src
     assert '"items": msg_items,' in src, "the count and the payload came apart"
 

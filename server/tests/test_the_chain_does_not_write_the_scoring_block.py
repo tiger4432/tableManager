@@ -19,7 +19,7 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import alignment_batch_counts                                        # noqa: E402
+from maps import alignment_batch_counts                                        # noqa: E402
 import map_alignment                                                 # noqa: E402
 
 

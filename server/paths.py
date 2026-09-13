@@ -33,7 +33,18 @@ import os
 import re
 
 # Location of this file == the server package directory.
+# 🔴 THE DEPTH OF THIS FILE IS PART OF THE CONTRACT (S-211, 판정 360). `SERVER_DIR` is
+# `dirname(__file__)`, so moving this module one directory down moves `DATA_ROOT` with it -
+# and on a box with no `ASSY_DATA_ROOT` set, which is the production layout, config, the
+# ingestion workspace and the logs would all silently resolve somewhere else. Nothing would
+# raise. So this module does not move into a package, and
+# `test_one_place_decides_where_the_server_is.py` holds that.
 SERVER_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# The repository root - one above the server package. Callers that need it (migration
+# globs, the checkout probe) read it here rather than spelling `dirname(dirname(...))`
+# themselves: that spelling is exactly what breaks when a file's depth changes.
+REPO_ROOT = os.path.dirname(SERVER_DIR)
 
 # The overridable root. Empty/unset -> production layout.
 DATA_ROOT = os.path.abspath(os.environ.get("ASSY_DATA_ROOT") or SERVER_DIR)

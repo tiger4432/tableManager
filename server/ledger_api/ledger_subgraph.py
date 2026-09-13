@@ -35,10 +35,10 @@ from collections import defaultdict, deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-import ledger_explorer
+from ledger import explorer
 from utils.wire_format import wire_text
 from declaration_names import bare_name as _bare_name
-import ledger_trace
+from ledger import trace
 
 
 DEFAULT_HOPS = 12
@@ -373,7 +373,7 @@ def decode_node_id(value):
     """Decode and canonical-reencode any public evidence-graph node id."""
     text = str(value or "").strip()
     if text.startswith("ledger-entity:v1:"):
-        entity_type, keys = ledger_explorer.decode_entity_id(text)
+        entity_type, keys = explorer.decode_entity_id(text)
         return {"kind": "entity", "type": entity_type, "keys": keys, "id": text}
     #: 🔴 A CLAIM ID IS NO LONGER A PLACE. Claims became edges on 2026-08-25, so a claim seed
     #: names something the graph has no node for. Refusing says that; answering with a graph
@@ -486,7 +486,7 @@ class SqlEvidenceLookup:
         return "(" + " OR ".join(kept) + ")"
 
     def _execute(self, sql, params):
-        return ledger_trace._fetch(self.connection, sql, params)
+        return trace._fetch(self.connection, sql, params)
 
     @staticmethod
     def _bounded(rows, limit):
@@ -635,7 +635,7 @@ class SqlEvidenceLookup:
         out = []
         for row in rows[:int(limit)]:
             keys = json.loads(row[1]) if isinstance(row[1], str) else row[1]
-            out.append(ledger_explorer.entity_id(str(row[0]), dict(keys or {})))
+            out.append(explorer.entity_id(str(row[0]), dict(keys or {})))
         return _DescribedSeeds(out, cut)
 
 
@@ -688,7 +688,7 @@ class InMemoryEvidenceLookup:
                 continue
             if str(atom.subject_type).split("@", 1)[0] != bare:
                 continue
-            node_id = ledger_explorer.entity_id(atom.subject_type, atom.subject_keys)
+            node_id = explorer.entity_id(atom.subject_type, atom.subject_keys)
             if node_id in seen:
                 continue
             seen.add(node_id)
@@ -961,7 +961,7 @@ def _apply_registrations(nodes, registrations):
         node["attribute_conflicts"] = conflicts
 
 def _entity_node(entity_type, keys):
-    node = ledger_explorer._entity(entity_type, keys)
+    node = explorer._entity(entity_type, keys)
     node.update({"node_kind": "entity", "schema_kind": "entity_instance"})
     order = _declared_key_order(entity_type)
     if order:
@@ -989,10 +989,10 @@ def _split_superseded(atoms):
     ⚠️ SCOPE IS THE FETCHED SET, which is what `live_claims` documents: a correction is
     about the same subject, so the superseding atom rides in the same neighbourhood.
     """
-    import ledger_trace
+    from ledger import trace
 
     atoms = list(atoms)
-    live = ledger_trace.live_claims(atoms)
+    live = trace.live_claims(atoms)
     if len(live) == len(atoms):
         return atoms, {}
     kept = {str(a.id) for a in live}
@@ -1060,13 +1060,13 @@ def _canonical_seed(item):
     """
     text = str(item)
     try:
-        entity_type, keys = ledger_explorer.decode_entity_id(text)
+        entity_type, keys = explorer.decode_entity_id(text)
     except ValueError:
         return text
     bare = _bare(entity_type)
     if bare == entity_type:
         return text
-    return ledger_explorer.entity_id(bare, keys)
+    return explorer.entity_id(bare, keys)
 
 
 def _signed_seeds(start):
@@ -1830,7 +1830,9 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     # build `models_by_name`, and the only thing that read it was a quantity seed
     # branch that `decode_node_id` cannot produce - it returns `{"kind": "entity"}`
     # or raises. What left here was the walk loading it for nobody; the file itself
-    # moved to `_archive/ledger_api/` on 2026-08-28 once the consumer count reached zero.
+    # moved to `_archive/ledger_api/` on 2026-08-28 once the consumer count reached zero,
+    # 🪦 and that archive directory was deleted on 2026-09-13 (S-210, 판정 353) - the file
+    # is in this repository's history and nowhere in its tree.
 
     nodes = {}
     #: node id -> {attribute name: [(occurred_at, value)]}. Filled by ONE sweep after the
@@ -1953,14 +1955,14 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         a subset of what the first already had. Which atoms these are is stated once, by the
         sweep's `follow=["register"]`, rather than restated as a predicate check here.
         """
-        subject_id = ledger_explorer.entity_id(atom.subject_type, atom.subject_keys)
+        subject_id = explorer.entity_id(atom.subject_type, atom.subject_keys)
         for name, value in ((atom.object_payload or {}).get("qualifiers") or {}).items():
             registrations.setdefault(subject_id, {}).setdefault(name, []).append(
                 (atom.occurred_at, value))
 
     def _expand_atom(atom, depth, frontier_entities):
         """Materialise one atom's far side and the single edge that carries it."""
-        subject_id = ledger_explorer.entity_id(atom.subject_type, atom.subject_keys)
+        subject_id = explorer.entity_id(atom.subject_type, atom.subject_keys)
         # 🔴 EVERY REGISTRATION THIS WALK TOUCHED, RECORDED BEFORE ANY BRANCH (S-52 ③).
         # A registration says what its SUBJECT is - the entity's own values ride in the
         # qualifiers - so this is where a node's columns come from. Taken at the top

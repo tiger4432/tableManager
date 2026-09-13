@@ -21,7 +21,7 @@ infinite sweep.
 """
 import pytest
 
-import chain_ingestion_worker as ciw
+from chain import ingestion_worker as ciw
 import event_constants
 
 

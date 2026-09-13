@@ -475,7 +475,7 @@ points at. Guard: `chain_ingestion_worker._validate_chain_cascade_graph`, scored
 
 ### `calculate_shortage.py` (예제 — 저장소에 없는 파일입니다)
 
-> ⚠️ 아래는 **직접 만들어 보는 템플릿**이지 저장소에 있는 파일이 아닙니다. `server/mappers/*`는 gitignored(사용자 커스텀 영역)이고 트래킹되는 것은 `*.sample`뿐(`production_mapper.py.sample` · `dt_map_mapper.py.sample` · `cross_table_lookup_mapper.py.sample`)이므로, 각 환경의 실제 맵퍼 구성은 **디렉터리를 직접 확인**해야 합니다. 이 파일명을 그대로 Read하려 하지 마십시오.
+> ⚠️ 아래는 **직접 만들어 보는 템플릿**이지 저장소에 있는 파일이 아닙니다. `server/mappers/*`는 gitignored(사용자 커스텀 영역)이고 트래킹되는 것은 `*.sample` 일곱뿐(`dt_map_mapper.py.sample` · `cross_table_lookup_mapper.py.sample` 등 — 시험이 «바이트 동일»로 읽는 라이브 맵퍼의 추적 사본입니다. `production_mapper.py.sample` 은 2026-09-13 에 `assyManager-authoring/examples/` 로 옮겨졌습니다)이므로, 각 환경의 실제 맵퍼 구성은 **디렉터리를 직접 확인**해야 합니다. 이 파일명을 그대로 Read하려 하지 마십시오.
 >
 > 📎 **트리거 테이블이 아닌 다른 테이블을 읽어야 한다면** [`cross_table_lookup_mapper.py.sample`](file:///c:/Users/kk980/Developments/assyManager/server/mappers/cross_table_lookup_mapper.py.sample)가 정본 참조 구현입니다. 맨 앞에 **"이 도구가 틀린 경우"** 절이 있습니다 — 다른 테이블의 컬럼을 **그대로 보여 주기만** 하면 되는 경우는 virtual join(선언)이 정답이고 맵퍼 조회는 그것의 열등한 두 번째 철자입니다. 맵퍼가 정당해지는 조건은 값이 **계산**돼야 하거나 파생 시점에 **동결**돼야 할 때입니다(그 밖에 오른쪽이 조인 키로 유일할 수 없거나, 아직 존재하지 않는 행을 만들어야 할 때). 세션·트랜잭션 소유권, SAVEPOINT 격리(실패한 문장이 트랜잭션을 오염시킨다), N+1 회피, 부재 어휘(`not_declared`/`mapping_unavailable`)가 그 파일에 근거와 함께 들어 있고, `server/tests/test_mapper_sample_cross_table_lookup.py`가 그 `.sample`을 실제 워커 진입점(`execute_custom_mapper`)으로 실행해 못박습니다.
 >

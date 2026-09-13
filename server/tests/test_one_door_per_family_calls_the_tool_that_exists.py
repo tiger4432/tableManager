@@ -88,9 +88,14 @@ def test_no_arguments_lists_the_tools_and_succeeds(door, capsys):
 
 
 def test_the_door_does_not_move_the_tools_it_opens():
-    """⛔ A DOOR, NOT A RENAME. The worker and the replay stay where every existing
-    reference points; only a way IN was added."""
+    """⛔ A DOOR, NOT A RENAME. Opening `python -m chain` moved nothing; the tools stay
+    where they are and the door only points at them.
+
+    🪦 [S-211, 판정 364] The worker's own home DID move later - `chain/ingestion_worker.py` -
+    when the flat modules became packages. That is a different round doing a different
+    thing, and this case still says what it said: the DOOR did not move it.
+    """
     here = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-    assert os.path.exists(os.path.join(here, "chain_ingestion_worker.py"))
+    assert os.path.exists(os.path.join(here, "chain", "ingestion_worker.py"))
     assert os.path.exists(os.path.join(here, "scripts", "chain_replay_cli.py"))
     assert os.path.exists(os.path.join(here, "scripts", "ledger_restamp_cursor.py"))

@@ -3,7 +3,7 @@ import json
 from unittest.mock import MagicMock
 from database.models import DatabaseOutbox
 from utils.payload_helper import get_payload_dict
-from chain_ingestion_worker import process_chain_transaction_group, execute_custom_mapper
+from chain.ingestion_worker import process_chain_transaction_group, execute_custom_mapper
 
 def test_get_payload_dict_various_inputs():
     # 1. Plain dictionary

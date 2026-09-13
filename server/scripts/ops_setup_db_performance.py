@@ -113,7 +113,7 @@ def _verify_withdraw_plan(conn, idx_name):
     proving.
     """
     import value_suggest
-    import chain_replay
+    from chain import replay
     from sqlalchemy import func
     from database import models
 
@@ -135,7 +135,7 @@ def _verify_withdraw_plan(conn, idx_name):
     print(f" - Probe: table_name={table!r} source_name={source!r} "
           f"({matches} of {total} rows)")
 
-    conds = chain_replay._claimed_filter(table, source)
+    conds = replay._claimed_filter(table, source)
     # The two shapes the missing index actually cost: the count route's aggregate
     # and `withdraw_source` step 1's (row_id, column_name) projection. The pinned
     # JOIN in `count_withdrawable` is deliberately NOT checked here — the planner

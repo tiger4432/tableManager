@@ -30,7 +30,7 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import ledger_explorer                                             # noqa: E402
+from ledger import explorer                                             # noqa: E402
 from ledger_api import ledger_subgraph                             # noqa: E402
 
 NOW = datetime(2026, 9, 13, 3, 0, tzinfo=timezone.utc)
@@ -97,7 +97,7 @@ def _world(control_examined, control_reaches_type=True):
 
 
 def _contrast(atoms):
-    control = ledger_explorer.entity_id("wafer", {"wid": "W2"})
+    control = explorer.entity_id("wafer", {"wid": "W2"})
     body = ledger_subgraph.subgraph(
         {"positive": [], "negative": [control]},
         ledger_subgraph.InMemoryEvidenceLookup(atoms), hops=2, seed_type="wafer")
@@ -118,7 +118,7 @@ def test_a_control_that_was_not_examined_leaves_the_denominator(declared):
     body, row = _contrast(_world(control_examined=False))
 
     assert row is not None
-    control = ledger_explorer.entity_id("wafer", {"wid": "W2"})
+    control = explorer.entity_id("wafer", {"wid": "W2"})
     assert any(node["id"] == control for node in body["nodes"]), "the control is in the walk"
     assert row["reachable"][1] == 0, "an unexamined control must not sit in the denominator"
 

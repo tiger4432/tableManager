@@ -258,7 +258,7 @@ def run(table: str, rows: int, label: str, number_start: int, work_root: str,
         keep_workspace: bool, deep: bool):
     from database import crud, models
     from database.database import engine
-    import ingestion_checkpoint
+    import ingestion.checkpoint
     from parsers import directory_watcher as dw
     from sqlalchemy import text
     from sqlalchemy.engine import Connection as EngineConnection
@@ -309,7 +309,7 @@ def run(table: str, rows: int, label: str, number_start: int, work_root: str,
         clock.wrap(dw.IngestionHandler, "_log_ingestion_success", "ingestion record")
 
         # Inside the write, per 1,000-row chunk.
-        clock.wrap(ingestion_checkpoint, "record_chunk_progress", "  checkpoint offset")
+        clock.wrap(ingestion.checkpoint, "record_chunk_progress", "  checkpoint offset")
         clock.wrap(heartbeat, "beat", "  heartbeat")
 
         clock.wrap(crud, "apply_batch_updates", "  apply_batch_updates",

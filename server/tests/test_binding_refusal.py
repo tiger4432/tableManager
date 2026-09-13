@@ -78,13 +78,13 @@ def test_vocabulary_matches_its_canonical_definitions():
     true, rather than true-for-now.
     """
     import config_resolve_report
-    import enrichment_candidates
+    import enrichment.candidates
 
     assert bonding_plan.BINDING_NOT_DECLARED == config_resolve_report.REASON_NOT_DECLARED
     assert (bonding_plan.BINDING_MAPPING_UNAVAILABLE
             == config_resolve_report.REASON_MAPPING_UNAVAILABLE)
     assert (bonding_plan.BINDING_COLUMN_MISSING
-            == enrichment_candidates.REASON_CANDIDATE_COLUMN_MISSING)
+            == enrichment.candidates.REASON_CANDIDATE_COLUMN_MISSING)
 
 
 # ---------------------------------------------------------------------------

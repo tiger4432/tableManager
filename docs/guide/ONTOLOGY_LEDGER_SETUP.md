@@ -2032,7 +2032,7 @@ PostgreSQL E2E는 `ASSY_PG_TEST_DATABASE_URL`이 안전한 격리 DB를 가리�
 | v4 → `setup_version: 5` 마이그레이션(§2.4) | `server/scripts/migrate_ledger_config_to_v5.py` |
 | 현재 production 선언 | `server/config/ontology/ledger_config.json` |
 | transfer file-backed sample | `server/config/sample/ontology/transfer_explorer/ledger_config.json` |
-| Explorer 전체 계약 | `ontology_config_explorer_plan/02_IMPLEMENTATION_AND_ACCEPTANCE.md` |
+| Explorer 전체 계약 | `docs/_archive/ontology_config_explorer_plan_20260817/02_IMPLEMENTATION_AND_ACCEPTANCE.md` (🪦 2026-09-13 루트에서 아카이브) |
 
 정확한 필드가 이 문서와 validator에서 충돌하면 코드와 승인된 V2 acceptance evidence를 먼저
 대조한다. 문서를 조용히 추측으로 고치지 말고, 실제 contract 변경이면 validator·테스트·정본

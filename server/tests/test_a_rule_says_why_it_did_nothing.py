@@ -14,8 +14,8 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import chain_activity                                            # noqa: E402
-import chain_ingestion_worker as ciw                             # noqa: E402
+from chain import activity                                            # noqa: E402
+from chain import ingestion_worker as ciw                             # noqa: E402
 import event_constants as ec                                     # noqa: E402
 
 SERVER = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -70,7 +70,7 @@ def test_an_eligible_rule_leaves_the_answer_to_the_run():
 
 def test_a_disabled_rule_and_a_rule_that_changed_nothing_differ():
     """🔴 이 라운드가 «존재하는 이유». 둘 다 「아무 일도 없었다」인데 운영자에게는 «다른 일»이다."""
-    reg = chain_activity.ChainActivityRegistry()
+    reg = activity.ChainActivityRegistry()
     reg.record_outcome("off", ec.RULE_OUTCOME_SKIPPED_DISABLED, "rule declares enabled: false")
     reg.record_outcome("quiet", ec.RULE_OUTCOME_RAN_UNCHANGED, "the mapper produced no rows")
     out = reg.outcomes()
@@ -81,7 +81,7 @@ def test_a_disabled_rule_and_a_rule_that_changed_nothing_differ():
 
 def test_never_evaluated_is_a_value_not_an_absence():
     """부재는 「옛 서버」 «하나»만 뜻해야 한다 — 그래서 선언된 규칙은 씨로 세워 둔다."""
-    reg = chain_activity.ChainActivityRegistry()
+    reg = activity.ChainActivityRegistry()
     reg.seed_rules(["a", "b"])
     assert reg.outcomes()["a"]["outcome"] == ec.RULE_OUTCOME_NEVER_EVALUATED
     reg.record_outcome("a", ec.RULE_OUTCOME_RAN_CHANGED)
@@ -93,7 +93,7 @@ def test_never_evaluated_is_a_value_not_an_absence():
 # ============================================ 3. 라우트 — 같은 경로, «값»으로
 
 def test_the_route_carries_it_on_the_same_path_as_running(client):
-    chain_activity.registry.record_outcome(
+    activity.registry.record_outcome(
         "gate-probe", ec.RULE_OUTCOME_SKIPPED_DISABLED, "rule declares enabled: false")
     body = client.get("/admin/chain/queue",
                       headers={"X-Admin-Token": os.environ.get("ADMIN_TOKEN", "")}).json()
@@ -112,7 +112,7 @@ def test_the_route_carries_it_on_the_same_path_as_running(client):
 def test_finish_still_has_exactly_one_caller():
     """🔴 판정 63 의 멈춤 조건을 «상설»로 세운다. `finish` 가 하는 일은 「도는 목록에서
     뺀다」 하나이고, 거기에 결과 기록을 얹으면 호출자가 여섯이 된다."""
-    src = open(os.path.join(SERVER, "chain_ingestion_worker.py"), encoding="utf-8").read()
+    src = open(os.path.join(SERVER, "chain/ingestion_worker.py"), encoding="utf-8").read()
 
     def _is_registry_finish(node):
         """⚠️ NARROWED TO THE RECEIVER THIS RULE IS ABOUT (S-189 ⓒ, 2026-09-12).

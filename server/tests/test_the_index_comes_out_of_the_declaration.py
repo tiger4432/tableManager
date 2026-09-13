@@ -83,7 +83,7 @@ def test_the_boot_sequence_calls_the_ensure_and_not_only_the_reload_path():
     """
     import inspect
 
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     body = inspect.getsource(worker.start_chain_ingestion_worker)
     assert "_ensure_alignment_decision_key_indexes_sync" in body, body[:400]

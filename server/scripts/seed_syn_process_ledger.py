@@ -925,7 +925,7 @@ def resolved_factors(db):
     with its own rule it would be scoring the console against a second opinion, and
     "measured beats setpoint" would be true of the answer key rather than of the system.
     """
-    import ledger_trace as lt
+    from ledger import trace as lt
     from sqlalchemy import text
 
     rows = db.execute(text("""
@@ -1085,7 +1085,7 @@ def prove_class_decides(db, sample: int = 200):
     assertion would be about arithmetic rather than about the class. So the mutant is run
     too, and it must DISAGREE - on every wafer that has both flavours.
     """
-    import ledger_trace as lt
+    from ledger import trace as lt
     from sqlalchemy import text
 
     rows = db.execute(text("""

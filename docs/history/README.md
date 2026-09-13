@@ -1,13 +1,15 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **839개** 이력. (거버넌스 규칙 #4)
+> 총 **841개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-09 (September 2026)
 
+- **2026-09-13 12:02** — [The Root Was Cleaned And The Shell Got Its Own Name](./20260913_120249_the_root_was_cleaned_and_the_shell_got_its_own_name.md)
+- **2026-09-13 07:39** — [Two Walls That Were Never Walls And A Denominator That Could Not Be Asked](./20260913_073900_two_walls_that_were_never_walls_and_a_denominator_that_could_not_be_asked.md)
 - **2026-09-13 03:10** — [False Had To Be Earned And A Seed Set Stopped Being A List](./20260913_031000_false_had_to_be_earned_and_a_seed_set_stopped_being_a_list.md)
 - **2026-09-13 02:14** — [The Screen Stopped Offering What The Save Would Refuse](./20260913_021400_the_screen_stopped_offering_what_the_save_would_refuse.md)
 - **2026-09-12 23:46** — [The Setup Order Moved From A Document Into The Code](./20260912_234600_the_setup_order_moved_from_a_document_into_the_code.md)

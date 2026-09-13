@@ -14,9 +14,9 @@ import json
 
 import pytest
 
-import enrichment_analysis
-import enrichment_candidates
-import enrichment_config
+from enrichment import analysis
+import enrichment.candidates
+import enrichment.config
 from database import crud, models, schemas
 
 AN_TABLES = {
@@ -107,11 +107,11 @@ def an_env(db_session, tmp_path, monkeypatch):
     rules_path = tmp_path / "enrichment_rules.json"
     rules_path.write_text(json.dumps({"enan_rule": _rule(), "enan_single": SINGLE_RULE}),
                           encoding="utf-8")
-    monkeypatch.setattr(enrichment_config, "ENRICHMENT_RULES_PATH", str(rules_path))
+    monkeypatch.setattr(enrichment.config, "ENRICHMENT_RULES_PATH", str(rules_path))
     settings = tmp_path / "ingestion_settings.json"
     settings.write_text("{}", encoding="utf-8")
-    monkeypatch.setattr(enrichment_candidates, "INGESTION_SETTINGS_PATH", str(settings))
-    enrichment_candidates.reset_warnings()
+    monkeypatch.setattr(enrichment.candidates, "INGESTION_SETTINGS_PATH", str(settings))
+    enrichment.candidates.reset_warnings()
     import main
     main.TABLE_COUNT_CACHE.clear()
     return db_session
@@ -125,7 +125,7 @@ def _seed(db, table, rows, source_name="pipeline_parser", tx_id="seed"):
 
 
 def _loaded(name="enan_rule"):
-    rules = enrichment_config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
+    rules = enrichment.config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
     return next(r for r in rules if r["name"] == name)
 
 
@@ -144,16 +144,16 @@ def test_mapping_gap_is_detected_and_is_not_vacuous(an_env):
     _seed(an_env, "enan_test_derived", [{"wafer_key": "L1_S1", "lot": "L1", "slot": "S1"}])
 
     rule = _loaded()
-    res = enrichment_analysis.classify_queue(an_env, rule, log=lambda *_: None)
+    res = analysis.classify_queue(an_env, rule, log=lambda *_: None)
     assert res["queue_size"] == 1
-    assert res["counts"].get(enrichment_analysis.CLS_MAPPING_GAP) == 1
+    assert res["counts"].get(analysis.CLS_MAPPING_GAP) == 1
 
     # INJECTED: the source no longer has the value -> no longer a pipeline bug.
     _seed(an_env, "enan_test_src",
           [{"log_key": "a1", "lot": "L1", "slot": "S1", "chip_id": "C1", "wafer_id": ""}],
           tx_id="blank")
-    res2 = enrichment_analysis.classify_queue(an_env, rule, log=lambda *_: None)
-    assert res2["counts"].get(enrichment_analysis.CLS_MAPPING_GAP) is None
+    res2 = analysis.classify_queue(an_env, rule, log=lambda *_: None)
+    assert res2["counts"].get(analysis.CLS_MAPPING_GAP) is None
 
 
 def test_resolvable_and_ambiguous_are_separated_from_real_work(an_env):
@@ -172,19 +172,19 @@ def test_resolvable_and_ambiguous_are_separated_from_real_work(an_env):
         {"wafer_key": "A1_S1", "lot": "A1", "slot": "S1"},
         {"wafer_key": "N1_S1", "lot": "N1", "slot": "S1"},
     ])
-    res = enrichment_analysis.classify_queue(an_env, _loaded(), log=lambda *_: None)
+    res = analysis.classify_queue(an_env, _loaded(), log=lambda *_: None)
     c = res["counts"]
-    assert c.get(enrichment_analysis.CLS_RESOLVABLE) == 1
-    assert c.get(enrichment_analysis.CLS_AMBIGUOUS) == 1
-    assert c.get(enrichment_analysis.CLS_NO_EVIDENCE) == 1
-    assert res["no_evidence_reasons"].get(enrichment_candidates.REASON_NO_CANDIDATE) == 1
+    assert c.get(analysis.CLS_RESOLVABLE) == 1
+    assert c.get(analysis.CLS_AMBIGUOUS) == 1
+    assert c.get(analysis.CLS_NO_EVIDENCE) == 1
+    assert res["no_evidence_reasons"].get(enrichment.candidates.REASON_NO_CANDIDATE) == 1
 
 
 def test_no_source_rows_is_its_own_class(an_env):
     """A derived row with no source rows behind it is neither work nor a bug."""
     _seed(an_env, "enan_test_derived", [{"wafer_key": "Z9_S1", "lot": "Z9", "slot": "S1"}])
-    res = enrichment_analysis.classify_queue(an_env, _loaded(), log=lambda *_: None)
-    assert res["counts"].get(enrichment_analysis.CLS_NO_SOURCE_ROWS) == 1
+    res = analysis.classify_queue(an_env, _loaded(), log=lambda *_: None)
+    assert res["counts"].get(analysis.CLS_NO_SOURCE_ROWS) == 1
 
 
 def test_probe_budget_reports_unprobed_rather_than_guessing(an_env):
@@ -196,9 +196,9 @@ def test_probe_budget_reports_unprobed_rather_than_guessing(an_env):
         {"wafer_key": "P1_S1", "lot": "P1", "slot": "S1"},
         {"wafer_key": "P2_S1", "lot": "P2", "slot": "S1"},
     ])
-    res = enrichment_analysis.classify_queue(an_env, _loaded(), max_keys=1,
+    res = analysis.classify_queue(an_env, _loaded(), max_keys=1,
                                              log=lambda *_: None)
-    assert res["counts"].get(enrichment_analysis.CLS_UNPROBED) == 1
+    assert res["counts"].get(analysis.CLS_UNPROBED) == 1
     assert res["probed"] == 1
     assert res["max_keys"] == 1
 
@@ -216,10 +216,10 @@ def test_the_key_budget_is_not_a_read_cap_and_the_old_name_still_works(an_env):
         {"wafer_key": "Q1_S1", "lot": "Q1", "slot": "S1"},
         {"wafer_key": "Q2_S1", "lot": "Q2", "slot": "S1"},
     ])
-    res = enrichment_analysis.classify_queue(an_env, _loaded(), probe_limit=1,
+    res = analysis.classify_queue(an_env, _loaded(), probe_limit=1,
                                              log=lambda *_: None)
     assert res["probed"] == 1 and res["max_keys"] == 1
-    detail = res["samples"][enrichment_analysis.CLS_UNPROBED][0]["detail"]
+    detail = res["samples"][analysis.CLS_UNPROBED][0]["detail"]
     assert "max_keys" in detail and "budget" in detail
 
 
@@ -229,7 +229,7 @@ def test_classify_is_read_only(an_env):
     _seed(an_env, "enan_test_derived", [{"wafer_key": "L9_S1", "lot": "L9", "slot": "S1"}])
     m = models.DYNAMIC_TABLES["enan_test_derived"]
     before = an_env.query(m).filter(m.business_key_val == "L9_S1").first().wafer_id
-    enrichment_analysis.classify_queue(an_env, _loaded(), log=lambda *_: None)
+    analysis.classify_queue(an_env, _loaded(), log=lambda *_: None)
     after = an_env.query(m).filter(m.business_key_val == "L9_S1").first().wafer_id
     assert before == after
 
@@ -251,7 +251,7 @@ def test_repeated_human_judgement_becomes_a_proposal(an_env):
         {"wafer_key": f"L1_S{i}", "lot": "L1", "slot": f"S{i}", "wafer_id": "WF_SAME"}
         for i in range(1, 4)])
 
-    res = enrichment_analysis.analyze_promotions(an_env, _loaded(), min_support=3,
+    res = analysis.analyze_promotions(an_env, _loaded(), min_support=3,
                                                  log=lambda *_: None)
     assert res["refused"] is None
     props = [p for p in res["proposals"] if p["antecedent_columns"] == ["lot"]]
@@ -274,7 +274,7 @@ def test_a_conflict_rejects_the_rule_and_says_why(an_env):
         {"wafer_key": "L2_S3", "lot": "L2", "slot": "S3", "wafer_id": "WF_A"},
         {"wafer_key": "L2_S4", "lot": "L2", "slot": "S4", "wafer_id": "WF_B"},
     ])
-    res = enrichment_analysis.analyze_promotions(an_env, _loaded(), min_support=3,
+    res = analysis.analyze_promotions(an_env, _loaded(), min_support=3,
                                                  log=lambda *_: None)
     assert not [p for p in res["proposals"] if p["antecedent_columns"] == ["lot"]]
     conflict = next(c for c in res["conflicts"] if c["antecedent_columns"] == ["lot"])
@@ -289,8 +289,8 @@ def test_machine_written_values_are_not_evidence_of_a_judgement(an_env):
     _seed(an_env, "enan_test_derived",
           [{"wafer_key": f"L3_S{i}", "lot": "L3", "slot": f"S{i}", "wafer_id": "WF_MACHINE"}
            for i in range(1, 4)],
-          source_name=enrichment_candidates.SOURCE_NAME, tx_id="machine")
-    res = enrichment_analysis.analyze_promotions(an_env, _loaded(), min_support=3,
+          source_name=enrichment.candidates.SOURCE_NAME, tx_id="machine")
+    res = analysis.analyze_promotions(an_env, _loaded(), min_support=3,
                                                  log=lambda *_: None)
     assert res["human_cells"] == 0
     assert res["proposals"] == []
@@ -302,13 +302,13 @@ def test_below_threshold_is_not_promoted(an_env):
     _resolve_by_hand(an_env, [
         {"wafer_key": f"L4_S{i}", "lot": "L4", "slot": f"S{i}", "wafer_id": "WF_TWICE"}
         for i in range(1, 3)])
-    res = enrichment_analysis.analyze_promotions(an_env, _loaded(), min_support=3,
+    res = analysis.analyze_promotions(an_env, _loaded(), min_support=3,
                                                  log=lambda *_: None)
     assert not [p for p in res["proposals"] if p["antecedent_columns"] == ["lot"]]
 
 
 def test_single_column_decision_key_is_refused_with_a_reason(an_env):
-    res = enrichment_analysis.analyze_promotions(an_env, _loaded("enan_single"),
+    res = analysis.analyze_promotions(an_env, _loaded("enan_single"),
                                                  log=lambda *_: None)
     assert res["refused"] == "no_proper_subset"
     assert res["proposals"] == []
@@ -321,7 +321,7 @@ def test_proposal_never_writes_config(an_env, tmp_path):
     _resolve_by_hand(an_env, [
         {"wafer_key": f"L5_S{i}", "lot": "L5", "slot": f"S{i}", "wafer_id": "WF5"}
         for i in range(1, 4)])
-    enrichment_analysis.analyze_promotions(an_env, _loaded(), min_support=3,
+    analysis.analyze_promotions(an_env, _loaded(), min_support=3,
                                            log=lambda *_: None)
     assert (tmp_path / "enrichment_rules.json").read_text(encoding="utf-8") == before
 
@@ -339,21 +339,21 @@ def test_proposed_view_is_accepted_by_the_real_loader_and_resolves(an_env):
     _resolve_by_hand(an_env, [
         {"wafer_key": f"L6_S{i}", "lot": "L6", "slot": f"S{i}", "wafer_id": "WF6"}
         for i in range(1, 4)])
-    res = enrichment_analysis.analyze_promotions(an_env, _loaded(), min_support=3,
+    res = analysis.analyze_promotions(an_env, _loaded(), min_support=3,
                                                  log=lambda *_: None)
     view = next(p["reference_view"] for p in res["proposals"]
                 if p["antecedent_columns"] == ["lot"])
 
     promoted = _rule(reference_views=[view])
-    normalized, err = enrichment_config._validate_rule("promoted", promoted, AN_TABLES)
+    normalized, err = enrichment.config._validate_rule("promoted", promoted, AN_TABLES)
     assert err is None, f"the real loader rejected the proposal: {err}"
     assert normalized["reference_views"], "the proposed view was dropped by the loader"
 
     # A NEW key of the same lot, never resolved by hand.
     _seed(an_env, "enan_test_derived", [{"wafer_key": "L6_S9", "lot": "L6", "slot": "S9"}])
-    verdict = enrichment_candidates.resolve_target_candidate(
+    verdict = enrichment.candidates.resolve_target_candidate(
         an_env, normalized, {"lot": "L6", "slot": "S9"}, "wafer_id")
-    assert verdict["status"] == enrichment_candidates.STATUS_SINGLE
+    assert verdict["status"] == enrichment.candidates.STATUS_SINGLE
     assert verdict["value"] == "WF6"
 
     # ...and the safety property that makes the promotion retractable-in-effect:
@@ -361,10 +361,10 @@ def test_proposed_view_is_accepted_by_the_real_loader_and_resolves(an_env):
     _seed(an_env, "enan_test_derived", [{"wafer_key": "L6_S8", "lot": "L6", "slot": "S8"}])
     _resolve_by_hand(an_env, [{"wafer_key": "L6_S8", "lot": "L6", "slot": "S8",
                                "wafer_id": "WF6_OTHER"}])
-    verdict2 = enrichment_candidates.resolve_target_candidate(
+    verdict2 = enrichment.candidates.resolve_target_candidate(
         an_env, normalized, {"lot": "L6", "slot": "S9"}, "wafer_id")
-    assert verdict2["status"] == enrichment_candidates.STATUS_REFUSED
-    assert verdict2["reason"] == enrichment_candidates.REASON_AMBIGUOUS
+    assert verdict2["status"] == enrichment.candidates.STATUS_REFUSED
+    assert verdict2["reason"] == enrichment.candidates.REASON_AMBIGUOUS
 
 
 # ---------------------------------------------------------------------------
@@ -379,7 +379,7 @@ def test_sweep_dry_run_measures_without_writing(an_env):
     _seed(an_env, "enan_test_derived", [{"wafer_key": "W1_S1", "lot": "W1", "slot": "S1"}])
 
     rule = _loaded()
-    stats = enrichment_analysis.run_auto_confirm_sweep(an_env, rule, apply=False,
+    stats = analysis.run_auto_confirm_sweep(an_env, rule, apply=False,
                                                        log=lambda *_: None)
     assert stats["confirmed"] == 1
     assert stats["mode"] == "dry-run"
@@ -390,16 +390,16 @@ def test_sweep_dry_run_measures_without_writing(an_env):
 
 
 def test_sweep_apply_refused_while_the_knob_is_off(an_env):
-    with pytest.raises(enrichment_analysis.AnalysisRefused) as e:
-        enrichment_analysis.run_auto_confirm_sweep(an_env, _loaded(), apply=True,
+    with pytest.raises(analysis.AnalysisRefused) as e:
+        analysis.run_auto_confirm_sweep(an_env, _loaded(), apply=True,
                                                    log=lambda *_: None)
     assert "auto_confirm" in str(e.value)
 
 
 def test_sweep_refuses_a_rule_with_no_declaration(an_env):
     rule = dict(_loaded(), reference_views=[])
-    with pytest.raises(enrichment_analysis.AnalysisRefused) as e:
-        enrichment_analysis.run_auto_confirm_sweep(an_env, rule, log=lambda *_: None)
+    with pytest.raises(analysis.AnalysisRefused) as e:
+        analysis.run_auto_confirm_sweep(an_env, rule, log=lambda *_: None)
     assert "candidate_for" in str(e.value)
 
 
@@ -415,10 +415,10 @@ def test_the_two_scopes_are_different_populations_and_the_sweep_takes_the_wider(
         {"wafer_key": "PARTIAL", "lot": "", "slot": "S9"},
     ])
     rule = _loaded()
-    keyed = list(enrichment_analysis.iter_derived_rows(
-        an_env, rule, scope=enrichment_analysis.SCOPE_KEYED))
-    whole = list(enrichment_analysis.iter_derived_rows(
-        an_env, rule, scope=enrichment_analysis.SCOPE_QUEUE))
+    keyed = list(analysis.iter_derived_rows(
+        an_env, rule, scope=analysis.SCOPE_KEYED))
+    whole = list(analysis.iter_derived_rows(
+        an_env, rule, scope=analysis.SCOPE_QUEUE))
     assert all(crud.clean_str_value(r["keys"]["lot"]) != "" for r in keyed)
     assert {r["business_key_val"] for r in whole} > {r["business_key_val"] for r in keyed}, (
         "SCOPE_QUEUE must be strictly wider - it is the population the operator sees")
@@ -495,15 +495,15 @@ def test_auto_confirm_sweep_works_a_partial_key_and_stamps_what_it_did(an_env, t
 
     # (a) The fixture is not inert: the partial key really does resolve to one
     #     candidate, and the resolver says the key was partial without refusing.
-    probed = enrichment_candidates.resolve_target_candidate(
+    probed = enrichment.candidates.resolve_target_candidate(
         an_env, rule, {"lot": "", "slot": "S1"}, "wafer_id")
-    assert probed["status"] == enrichment_candidates.STATUS_SINGLE, probed
+    assert probed["status"] == enrichment.candidates.STATUS_SINGLE, probed
     assert probed["value"] == "WF_GOOD"
     assert probed["partial_key"] is True
     assert probed["blank_key_columns"] == ["lot"], (
         "the fact must name WHICH column was missing, not just that one was")
 
-    stats = enrichment_analysis.run_auto_confirm_sweep(an_env, rule, apply=True,
+    stats = analysis.run_auto_confirm_sweep(an_env, rule, apply=True,
                                                        log=lambda *_: None)
 
     m = models.DYNAMIC_TABLES["enan_test_derived"]
@@ -517,8 +517,8 @@ def test_auto_confirm_sweep_works_a_partial_key_and_stamps_what_it_did(an_env, t
     # (b) The record. Two rows written by the same sweep in the same transaction,
     #     told apart by `source_name` alone - the existing per-cell provenance.
     sources = _cell_sources(an_env, "enan_test_derived", "wafer_id")
-    assert sources["ORPHAN_BK"] == enrichment_candidates.SOURCE_NAME_PARTIAL_KEY
-    assert sources["L1_S1"] == enrichment_candidates.SOURCE_NAME, (
+    assert sources["ORPHAN_BK"] == enrichment.candidates.SOURCE_NAME_PARTIAL_KEY
+    assert sources["L1_S1"] == enrichment.candidates.SOURCE_NAME, (
         "a full-key decision must keep the plain source name, or the stamp says nothing")
     assert stats["queue_size"] == 2, (
         f"the sweep examined {stats['queue_size']} rows - it must walk the whole queue")
@@ -534,11 +534,11 @@ def test_the_partial_key_stamp_does_not_outrank_or_underrank_anything(an_env, tm
     Registering either one is the single edit that would put a machine above a
     person, so the equality is asserted rather than assumed.
     """
-    assert enrichment_candidates.SOURCE_NAME_PARTIAL_KEY not in crud.SOURCE_PRIORITY
-    assert (crud.get_source_priority(enrichment_candidates.SOURCE_NAME_PARTIAL_KEY)
-            == crud.get_source_priority(enrichment_candidates.SOURCE_NAME))
+    assert enrichment.candidates.SOURCE_NAME_PARTIAL_KEY not in crud.SOURCE_PRIORITY
+    assert (crud.get_source_priority(enrichment.candidates.SOURCE_NAME_PARTIAL_KEY)
+            == crud.get_source_priority(enrichment.candidates.SOURCE_NAME))
     assert (crud.get_source_priority(crud.USER_SOURCE)
-            < crud.get_source_priority(enrichment_candidates.SOURCE_NAME_PARTIAL_KEY))
+            < crud.get_source_priority(enrichment.candidates.SOURCE_NAME_PARTIAL_KEY))
 
     # And end to end: a human value already on the cell is what the row displays
     # after a sweep, not the partial-key confirmation.
@@ -547,7 +547,7 @@ def test_the_partial_key_stamp_does_not_outrank_or_underrank_anything(an_env, tm
         updates=[schemas.GeneralUpdateItem(
             business_key_val="ORPHAN_BK", updates={"wafer_id": "WF_HUMAN"},
             source_name=crud.USER_SOURCE, updated_by="tester")], silent=True))
-    enrichment_analysis.run_auto_confirm_sweep(an_env, rule, apply=True, log=lambda *_: None)
+    analysis.run_auto_confirm_sweep(an_env, rule, apply=True, log=lambda *_: None)
     m = models.DYNAMIC_TABLES["enan_test_derived"]
     orphan = next(r for r in an_env.query(m).all() if crud.clean_str_value(r.lot) == "")
     assert crud.clean_str_value(orphan.wafer_id) == "WF_HUMAN"
@@ -570,7 +570,7 @@ def test_a_partial_key_row_with_no_business_key_is_FILLED_not_DUPLICATED(an_env,
     an_env.flush()
     before = an_env.query(m).count()
 
-    enrichment_analysis.run_auto_confirm_sweep(an_env, rule, apply=True, log=lambda *_: None)
+    analysis.run_auto_confirm_sweep(an_env, rule, apply=True, log=lambda *_: None)
 
     assert an_env.query(m).count() == before, (
         "the sweep inserted a row instead of filling one - the write was not "
@@ -590,12 +590,12 @@ def test_confirm_keys_refuses_a_row_it_cannot_address(an_env, tmp_path):
     m = models.DYNAMIC_TABLES["enan_test_derived"]
     before = an_env.query(m).count()
 
-    st = enrichment_candidates.confirm_keys(an_env, rule, [
+    st = enrichment.candidates.confirm_keys(an_env, rule, [
         {"row_id": None, "business_key_val": "  ",
          "keys": {"lot": "", "slot": "S1"}, "blank_targets": ["wafer_id"]},
     ], apply=True)
 
-    assert st["refused"].get(enrichment_candidates.REASON_NO_ROW_IDENTITY) == 1
+    assert st["refused"].get(enrichment.candidates.REASON_NO_ROW_IDENTITY) == 1
     assert st["confirmed"] == 0, "an unaddressable row must not even be probed"
     assert an_env.query(m).count() == before
 
@@ -622,23 +622,23 @@ def test_a_wholly_blank_key_is_refused_by_name_and_writes_nothing(an_env, tmp_pa
     rule = _loaded()
 
     # The hazard is live: with no key predicate of its own, this view resolves.
-    assert enrichment_candidates.resolve_target_candidate(
+    assert enrichment.candidates.resolve_target_candidate(
         an_env, rule, {"lot": "L1", "slot": "S1"}, "wafer_id")["status"] \
-        == enrichment_candidates.STATUS_SINGLE, "fixture is inert: the view must resolve"
+        == enrichment.candidates.STATUS_SINGLE, "fixture is inert: the view must resolve"
 
-    res = enrichment_candidates.resolve_target_candidate(
+    res = enrichment.candidates.resolve_target_candidate(
         an_env, rule, {"lot": "", "slot": ""}, "wafer_id")
-    assert res["status"] == enrichment_candidates.STATUS_REFUSED
-    assert res["reason"] == enrichment_candidates.REASON_NO_DECISION_KEY
+    assert res["status"] == enrichment.candidates.STATUS_REFUSED
+    assert res["reason"] == enrichment.candidates.REASON_NO_DECISION_KEY
 
-    stats = enrichment_analysis.run_auto_confirm_sweep(an_env, rule, apply=True,
+    stats = analysis.run_auto_confirm_sweep(an_env, rule, apply=True,
                                                        log=lambda *_: None)
     m = models.DYNAMIC_TABLES["enan_test_derived"]
     keyless = next(r for r in an_env.query(m).all()
                    if crud.clean_str_value(r.business_key_val) == "KEYLESS_BK")
     assert crud.clean_str_value(keyless.wafer_id) == "", (
         f"the sweep wrote {keyless.wafer_id!r} into a row that has no decision key at all")
-    assert stats["refused"].get(enrichment_candidates.REASON_NO_DECISION_KEY) == 1
+    assert stats["refused"].get(enrichment.candidates.REASON_NO_DECISION_KEY) == 1
     assert stats["confirmed"] == 0
 
 
@@ -650,13 +650,13 @@ def test_a_view_that_binds_the_blank_column_still_refuses_by_name(an_env, tmp_pa
     blank column refuses - `missing_bind`, the name it already had.
     """
     rule = _seed_partial_key_fixture(an_env, tmp_path, [dict(NARROW)])
-    res = enrichment_candidates.resolve_target_candidate(
+    res = enrichment.candidates.resolve_target_candidate(
         an_env, rule, {"lot": "", "slot": "S1"}, "wafer_id")
-    assert res["status"] == enrichment_candidates.STATUS_REFUSED
-    assert res["reason"] == enrichment_candidates.REASON_MISSING_BIND
+    assert res["status"] == enrichment.candidates.STATUS_REFUSED
+    assert res["reason"] == enrichment.candidates.REASON_MISSING_BIND
     assert res["partial_key"] is True, "the fact rides along even on a refusal"
 
-    enrichment_analysis.run_auto_confirm_sweep(an_env, rule, apply=True, log=lambda *_: None)
+    analysis.run_auto_confirm_sweep(an_env, rule, apply=True, log=lambda *_: None)
     m = models.DYNAMIC_TABLES["enan_test_derived"]
     orphan = next(r for r in an_env.query(m).all() if crud.clean_str_value(r.lot) == "")
     assert crud.clean_str_value(orphan.wafer_id) == ""
@@ -679,16 +679,16 @@ def test_classify_names_blank_key_rows_and_totals_the_whole_queue(an_env):
         {"wafer_key": "ORPHAN_B", "lot": "", "slot": ""},
     ])
 
-    res = enrichment_analysis.classify_queue(an_env, _loaded(), log=lambda *_: None)
+    res = analysis.classify_queue(an_env, _loaded(), log=lambda *_: None)
     assert res["queue_size"] == 3, "queue_size must be the queue the operator sees"
     assert res["blank_decision_key"] == 2
-    assert res["counts"].get(enrichment_analysis.CLS_BLANK_DECISION_KEY) == 2, (
+    assert res["counts"].get(analysis.CLS_BLANK_DECISION_KEY) == 2, (
         "blank-key rows must be counted under their OWN name, not folded into "
         "no_source_rows")
-    assert enrichment_analysis.CLS_BLANK_DECISION_KEY in enrichment_analysis.BUG_CLASSES
+    assert analysis.CLS_BLANK_DECISION_KEY in analysis.BUG_CLASSES
     # Sum of all classes accounts for every queue row - nothing silently dropped.
     assert sum(res["counts"].values()) == 3
-    detail = res["samples"][enrichment_analysis.CLS_BLANK_DECISION_KEY][0]["detail"]
+    detail = res["samples"][analysis.CLS_BLANK_DECISION_KEY][0]["detail"]
     assert "lot" in detail, f"the sample must name WHICH key is missing (got {detail!r})"
 
 
@@ -727,16 +727,16 @@ def test_a_half_decidable_row_is_partially_resolvable_not_resolvable(an_env, tmp
     """
     rule = _two_target_rule(tmp_path)
     _seed_split_verdict(an_env)
-    res = enrichment_analysis.classify_queue(an_env, rule, log=lambda *_: None)
+    res = analysis.classify_queue(an_env, rule, log=lambda *_: None)
 
-    assert res["counts"].get(enrichment_analysis.CLS_PARTIALLY_RESOLVABLE) == 1
-    assert res["counts"].get(enrichment_analysis.CLS_RESOLVABLE) is None, \
+    assert res["counts"].get(analysis.CLS_PARTIALLY_RESOLVABLE) == 1
+    assert res["counts"].get(analysis.CLS_RESOLVABLE) is None, \
         "a row with an undecidable column is not 'needs no human'"
     assert res["target_verdicts"]["owner"] == {"single": 1}
     assert res["target_verdicts"]["wafer_id"] == {
-        enrichment_candidates.REASON_AMBIGUOUS: 1}
+        enrichment.candidates.REASON_AMBIGUOUS: 1}
     assert sum(res["counts"].get(c, 0)
-               for c in enrichment_analysis.REAL_WORK_CLASSES) == 1, \
+               for c in analysis.REAL_WORK_CLASSES) == 1, \
         "the residual judgement must still be counted as work"
 
 
@@ -753,9 +753,9 @@ def test_a_fully_decidable_row_stays_in_the_plain_resolvable_class(an_env, tmp_p
           [{"hist_id": "qh1", "lot": "Q1", "slot": "S1", "wafer_id": "WF_Q", "owner": "OPS"}])
     _seed(an_env, "enan_test_derived", [{"wafer_key": "Q1_S1", "lot": "Q1", "slot": "S1"}])
 
-    res = enrichment_analysis.classify_queue(an_env, rule, log=lambda *_: None)
-    assert res["counts"].get(enrichment_analysis.CLS_RESOLVABLE) == 1
-    assert res["counts"].get(enrichment_analysis.CLS_PARTIALLY_RESOLVABLE) is None
+    res = analysis.classify_queue(an_env, rule, log=lambda *_: None)
+    assert res["counts"].get(analysis.CLS_RESOLVABLE) == 1
+    assert res["counts"].get(analysis.CLS_PARTIALLY_RESOLVABLE) is None
 
 
 def test_the_sweep_fills_the_decidable_column_and_reports_the_row_as_partly_filled(
@@ -767,7 +767,7 @@ def test_the_sweep_fills_the_decidable_column_and_reports_the_row_as_partly_fill
     """
     rule = _two_target_rule(tmp_path, auto_confirm=True)
     _seed_split_verdict(an_env)
-    stats = enrichment_analysis.run_auto_confirm_sweep(an_env, rule, apply=True,
+    stats = analysis.run_auto_confirm_sweep(an_env, rule, apply=True,
                                                        log=lambda *_: None)
     m = models.DYNAMIC_TABLES["enan_test_derived"]
     row = an_env.query(m).filter(m.business_key_val == "P1_S1").first()
@@ -777,7 +777,7 @@ def test_the_sweep_fills_the_decidable_column_and_reports_the_row_as_partly_fill
     assert stats["rows_partly_confirmed"] == 1 and stats["rows_fully_confirmed"] == 0
     assert stats["written_cells"] == 1
     assert stats["per_target"]["wafer_id"]["refused"] == {
-        enrichment_candidates.REASON_AMBIGUOUS: 1}
+        enrichment.candidates.REASON_AMBIGUOUS: 1}
 
 
 def test_a_partly_filled_row_stays_in_the_queue_predicate_ANY_TARGET_BLANK(an_env, tmp_path):
@@ -805,7 +805,7 @@ def test_a_partly_filled_row_stays_in_the_queue_predicate_ANY_TARGET_BLANK(an_en
     general filter, additive and unchanged; it is simply no longer THE queue.
     """
     rule = _two_target_rule(tmp_path)
-    public = enrichment_config.to_public_rule(rule)
+    public = enrichment.config.to_public_rule(rule)
     assert public["queue_filters"] == {"wafer_id": {"type": "blank"},
                                        "owner": {"type": "blank"}}, \
         "the general filter is unchanged: one blank spec per target"
@@ -822,8 +822,8 @@ def test_a_partly_filled_row_stays_in_the_queue_predicate_ANY_TARGET_BLANK(an_en
         {"wafer_key": "F1_S1", "lot": "F1", "slot": "S1",
          "owner": "OPS", "wafer_id": "WF_F"},
     ])
-    seen = {r["business_key_val"] for r in enrichment_analysis.iter_derived_rows(
-        an_env, rule, scope=enrichment_analysis.SCOPE_QUEUE)}
+    seen = {r["business_key_val"] for r in analysis.iter_derived_rows(
+        an_env, rule, scope=analysis.SCOPE_QUEUE)}
     assert "B1_S1" in seen, "fixture is inert if the all-blank row is missing too"
     assert "H1_S1" in seen, (
         "a row whose `wafer_id` is still blank left the queue because a DIFFERENT "
@@ -859,8 +859,8 @@ def test_every_consumer_of_the_queue_reaches_the_one_predicate(an_env, client, t
     rule = _two_target_rule(tmp_path)
     _mixed_queue_population(an_env)
 
-    walked = {r["row_id"] for r in enrichment_analysis.iter_derived_rows(
-        an_env, rule, scope=enrichment_analysis.SCOPE_QUEUE)}
+    walked = {r["row_id"] for r in analysis.iter_derived_rows(
+        an_env, rule, scope=analysis.SCOPE_QUEUE)}
     assert len(walked) == 3, f"fixture premise: 3 of the 4 rows still need work ({walked})"
 
     main.TABLE_COUNT_CACHE.clear()
@@ -877,7 +877,7 @@ def test_every_consumer_of_the_queue_reaches_the_one_predicate(an_env, client, t
         f"the remainder the progress bar subtracts is {body['total']}, but the queue "
         f"holds {len(walked)} rows")
 
-    res4 = enrichment_analysis.classify_queue(an_env, rule, log=lambda *_: None)
+    res4 = analysis.classify_queue(an_env, rule, log=lambda *_: None)
     assert res4["queue_size"] == len(walked), (
         "④ accounts for a different number of rows than the operator is shown")
 
@@ -897,13 +897,13 @@ def test_the_queue_scopes_partition_it_and_resolved_is_its_exact_complement(
     _mixed_queue_population(an_env)
 
     def walk(scope, **kw):
-        return {r["row_id"] for r in enrichment_analysis.iter_derived_rows(
+        return {r["row_id"] for r in analysis.iter_derived_rows(
             an_env, rule, scope=scope, **kw)}
 
-    queue = walk(enrichment_analysis.SCOPE_QUEUE)
-    keyed = walk(enrichment_analysis.SCOPE_KEYED)
-    blank_key = walk(enrichment_analysis.SCOPE_BLANK_KEY)
-    resolved = walk(enrichment_analysis.SCOPE_KEYED, resolved=True)
+    queue = walk(analysis.SCOPE_QUEUE)
+    keyed = walk(analysis.SCOPE_KEYED)
+    blank_key = walk(analysis.SCOPE_BLANK_KEY)
+    resolved = walk(analysis.SCOPE_KEYED, resolved=True)
 
     assert keyed | blank_key == queue and not (keyed & blank_key), (
         f"keyed({keyed}) and blank_key({blank_key}) do not partition queue({queue})")

@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 import pytest
 
-from admin_auth import require_admin_token, require_admin_token_strict
+from admin.auth import require_admin_token, require_admin_token_strict
 from ledger.config_explorer import (
     ConfigExplorerError,
     ExplorerIndex,

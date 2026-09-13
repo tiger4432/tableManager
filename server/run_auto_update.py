@@ -743,7 +743,7 @@ class MultiDiscoveryScheduler:
         while nothing is in flight.
         """
         try:
-            import retroactive
+            from admin import retroactive
             from database.database import SessionLocal
 
             session = SessionLocal()
@@ -777,7 +777,7 @@ class MultiDiscoveryScheduler:
         Returns True when the run was started (and the event may be marked
         processed), False when it was refused because one is already in flight.
         """
-        import retroactive
+        from admin import retroactive
 
         if self.retroactive_busy():
             # The gate is closed either way; this log line is where the two states become

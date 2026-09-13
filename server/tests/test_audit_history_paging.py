@@ -27,7 +27,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-import audit_history
+from admin import audit_history
 from database import models
 
 TABLE = "raw_table_1"

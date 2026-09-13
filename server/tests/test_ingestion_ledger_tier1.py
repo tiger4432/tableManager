@@ -36,7 +36,7 @@ if parsers_dir not in sys.path:
     sys.path.insert(0, parsers_dir)
 
 import directory_watcher
-import ingestion_checkpoint
+import ingestion.checkpoint
 from directory_watcher import IngestionHandler
 from database.database import Base
 from database import crud, models
@@ -89,7 +89,7 @@ def env(tmp_path, monkeypatch):
 
     # Count the expensive thing directly: a tier-1 hit must not reach this.
     counter = {"hashes": 0, "ingests": 0}
-    real_sig = ingestion_checkpoint.compute_file_signature
+    real_sig = ingestion.checkpoint.compute_file_signature
     real_apply = crud.apply_batch_updates
 
     def counting_sig(p):
@@ -145,20 +145,20 @@ def test_mtime_conversion_is_exact_and_reproducible():
 
     이게 깨지면 tier 1은 **조용히** 항상 miss한다(에러 없이 빠른 경로만 사라진다)."""
     ns = 1786580977459357500  # NTFS의 100ns 눈금 (뒤가 00으로 안 끝난다)
-    a = ingestion_checkpoint.mtime_ns_to_datetime(ns)
-    b = ingestion_checkpoint.mtime_ns_to_datetime(ns)
+    a = ingestion.checkpoint.mtime_ns_to_datetime(ns)
+    b = ingestion.checkpoint.mtime_ns_to_datetime(ns)
     assert a == b
     assert a.tzinfo is timezone.utc, "naive datetime 금지 (SCHEMA_CANON R5)"
     assert a.microsecond == 459357, "마이크로초로 «절단»(반올림 아님)"
     # 1ns 차이는 같은 마이크로초로 절단된다 — PG가 저장할 수 있는 해상도가 그것이다.
-    assert ingestion_checkpoint.mtime_ns_to_datetime(ns + 1) == a
+    assert ingestion.checkpoint.mtime_ns_to_datetime(ns + 1) == a
     # 1us 차이는 반드시 갈라진다.
-    assert ingestion_checkpoint.mtime_ns_to_datetime(ns + 1000) == a + timedelta(microseconds=1)
+    assert ingestion.checkpoint.mtime_ns_to_datetime(ns + 1000) == a + timedelta(microseconds=1)
 
 
 def test_read_file_stat_returns_none_for_a_missing_file(tmp_path):
     """stat 실패는 예외가 아니라 None — tier 1이 miss하고 기존 경로로 떨어진다."""
-    assert ingestion_checkpoint.read_file_stat(str(tmp_path / "nope.csv")) is None
+    assert ingestion.checkpoint.read_file_stat(str(tmp_path / "nope.csv")) is None
 
 
 # ---------------------------------------------------------------------------
@@ -375,7 +375,7 @@ def test_admin_retry_records_the_tier1_key(env):
         db.close()
 
     row = _ledger(env, "DONE")[0]
-    st = ingestion_checkpoint.read_file_stat(os.path.abspath(p))
+    st = ingestion.checkpoint.read_file_stat(os.path.abspath(p))
     assert row.file_size == st[1]
     # 저장된 값을 «시각으로» 비교한다. SQLite의 DateTime은 tzinfo를 떼고 돌려주고
     # PostgreSQL은 KST로 붙여 돌려준다 — 두 백엔드에서 다른 객체가 같은 순간을
@@ -387,7 +387,7 @@ def test_admin_retry_records_the_tier1_key(env):
     # 무엇보다 «행동»으로 확인한다: 이 열쇠로 tier 1이 실제로 적중하는가.
     db = env["SessionLocal"]()
     try:
-        assert ingestion_checkpoint.find_terminal_by_path_stat(
+        assert ingestion.checkpoint.find_terminal_by_path_stat(
             db, TABLE, os.path.abspath(p), st) is not None
     finally:
         db.close()

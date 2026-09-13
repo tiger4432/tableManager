@@ -1041,7 +1041,7 @@ def measure_row_census(engine, setup, source, now=None, *, exact_rows=True):
     """
     from datetime import datetime, timezone
 
-    from ledger_trace import measured
+    from ledger.trace import measured
 
     census = rows_not_yet_translated(engine, setup, source, exact_rows=exact_rows)
     stamp = (now or datetime.now(timezone.utc)).isoformat()

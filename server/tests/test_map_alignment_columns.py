@@ -488,9 +488,9 @@ def test_the_worklist_no_longer_calls_the_binding_a_pin(env):
 # ---------------------------------------------------------------------------
 
 def _patch(monkeypatch):
-    import enrichment_config
+    import enrichment.config
     import main
-    monkeypatch.setattr(enrichment_config, "load_enrichment_rules",
+    monkeypatch.setattr(enrichment.config, "load_enrichment_rules",
                         lambda *a, **k: [dict(RULE)])
     monkeypatch.setattr(main.map_overlay_module, "load_overlay_config",
                         lambda *a, **k: dict(CFG))

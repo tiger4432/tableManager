@@ -73,7 +73,7 @@ def find_rule(rules_path: str, rule_name: str) -> dict:
 
 def run(rule_name: str, key_column: str, rows: int, rules_path: str,
         mapper_path: str | None, no_diagnostics: bool):
-    import alignment_batch_counts
+    from maps import alignment_batch_counts
     from database import models
     from database.database import SessionLocal
     from sqlalchemy import text

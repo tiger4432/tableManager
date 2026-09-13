@@ -12,7 +12,7 @@ logger = get_process_logger("Chain", "chain_worker.log")
 
 from database.database import SessionLocal, engine
 from database import models
-from chain_ingestion_worker import start_chain_ingestion_worker
+from chain.ingestion_worker import start_chain_ingestion_worker
 
 # Initialize dynamic database models
 try:

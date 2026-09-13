@@ -40641,3 +40641,1391 @@ unknown 은 분모에서 «빠집니다» → 0/2 가 0/0 이 되고, 0/0 은 �
 
 > 📌 **[09-13 03:22] 이 채널의 미답 질문: «없음».** 다음은 판정대로 **S-208**(이음새 접기) 과
 > 전수 한 바퀴입니다 — 순서 주시면 그대로 하겠습니다.
+
+
+---
+
+## S-208 착지 `df108854` — 이음새를 접었습니다. 전 스위트는 «도는 중»입니다
+
+### 짓기 전 실측 (판정이 요구한 한 줄)
+```
+self._document. 를 지나는 자리   «16»   (전부 config_drafts.py)
+저장소를 만드는 제품 호출자       «1»    (config_explorer_service:154 — document= 를 «안 넘김»)
+document= 를 넘기는 시험         «1»    (그 이음새를 채점하던 그 시험)
+```
+
+### 접은 것
+```
+16 자리 → LedgerDocument 가 «위임하던 곳»으로 그대로 되돌림
+         (그 클래스 주석이 「every method here is today's code, moved」라 적었고, 이건 그 역방향)
+LedgerDocument · DraftContext · document= 인자  은퇴
+판정 303 의 문장 고침: 「수명주기 하나, 문서는 원장 하나 — 둘째가 오면 그때 이음새」
+```
+🔴 **이음새 시험은 «같은 커밋»에 죽였고**, 그 파일에 남은 주제가 «드라이런 라우트» 뿐이라
+파일 이름을 `test_the_dry_run_route_assembles_nothing.py` 로 바꿨습니다 —
+**은퇴한 개념을 이름에 든 파일은 산문이 그런 것과 같은 결함**이고, 이번 주에 두 번 물렸습니다.
+
+⚠️ 제 시험 하나가 `DraftContext.db` 를 단언하고 있었습니다. 그것이 «진짜로» 못 박던 사실
+(세션을 받는 자리가 «선택»으로 받는다)은 안 바뀌었으므로 그쪽을 단언하게 고쳤습니다.
+
+게이트: 초안수명주기+익스플로러+드라이런+chain 탭+규칙편집기+스켈레톤+맵퍼목록 «9 파일(ls)»
+**158 passed / 1 skipped / 1 xfailed / FAILED 0** · 은퇴 이름 묘비 밖 «0** · 커밋 뒤 수집 **6,227**.
+
+### ⏳ 전 스위트 — «돌고 있습니다»
+판정 03:16 의 조건 그대로 돌렸습니다(env python 절대경로 · `| tail` 없이 파일로 · `-rf`).
+600초를 넘겨 백그라운드로 갔고, 끝나면 «다음 보고»에 적습니다:
+```
+소요 시간 · 빨강을 «파일::시험» 으로 · 기존 둘(strict xfail)과 «새 것»을 갈라서
+새 빨강은 «고치지 않고» 큐 행 후보로만
+```
+⚠️ 아직 결과가 없으므로 **수를 적지 않습니다** — 「요약 문장에서 안 잰 것을 단언한다」가
+제 기억 파일의 줄이고, 오늘 그 부류를 이미 두 번(빈 모집단) 만났습니다.
+
+> 📌 **[09-13 03:39] 이 채널의 미답 질문: «없음».** 전 스위트 결과가 이 라운드의 남은 산출물입니다.
+
+
+---
+
+## 전 스위트 한 바퀴 — **빨강 «0»** (판정 03:16 의 조건 그대로)
+
+```
+6,067 passed · 156 skipped · 4 xfailed · FAILED «0» · ERROR «0»
+소요 656.59s (10분 57초)
+수집 6,227 = 6,067 + 156 + 4      ← 산술 대조: 남거나 빠진 시험 «없음»
+env python 절대경로 · 파일로 받음(`| tail` 없음) · `-rf`
+```
+🔴 **새 빨강 «없습니다».** 그래서 큐 행 후보도 «0** 입니다 — 고칠 것이 없었습니다.
+
+### xfail 넷 — 판정이 말한 「기존 둘」보다 «둘 많습니다». 전부 이름 댑니다
+```
+test_config_resolve_report_contract.py::test_every_report_reason_including_scope_unresolved_has_a_runtime_twin
+test_replace_map_cross_scope.py::test_push_into_one_map_rewrites_a_row_owned_by_another
+test_trace_fixture.py::test_emitted_columns_satisfy_the_ingestion_contract[bonding_log]
+test_virtual_join_types.py::test_a_graph_meta_boolean_never_reaches_the_payload_because_the_cell_is_taken
+```
+⚠️ **넷 다 «strict» 이고 셋은 소스에 `@pytest.mark.xfail(strict=True)` 로 사유가 적혀 있습니다**
+(넷째 `test_trace_fixture` 는 픽스처가 사유를 «붙여» 파라미터로 만듭니다 — 그래서 mark 문법 grep 은
+«셋»이고 실제는 넷입니다. 낱말로 세면 하나를 놓치는 자리라 적어 둡니다).
+`test_virtual_join_types` 의 것은 판정 309 가 「이게 «통과»하면 주입이 돌아온 것이고 그게 볼 일」로
+만든 신호이고, 나머지 셋도 같은 «이름 붙은» 부류로 보입니다.
+
+🔴 **제가 「기존 둘」을 확인하지 못했습니다** — 그 둘이 어느 것이었는지 제 기록에 없어서,
+「둘이 넷이 됐다」인지 「원래 넷인데 둘로 적혔다」인지 **못 가릅니다.** 넷의 이름을 다 적었으니
+총괄이 대조해 주시면 그 차이가 바로 보입니다. 추측으로 메우지 않겠습니다.
+
+### 오늘 새벽 착지분 뒤의 상태
+S-200 이 8→2 로 만든 뒤 오늘 스무 개가 넘게 착지했고(복수값·집계·씨앗·진위·대조 분모·은퇴 셋·이음새),
+그 위에서 **전수가 초록**입니다. 수집 수가 라운드마다 늘어난 것(6,107 → 6,227)도 그대로입니다.
+
+> 📌 **[09-13 03:41] 이 채널의 미답 질문: «하나» — xfail 「기존 둘」이 어느 둘이었습니까(넷 중).**
+> 큐에 판정 없이 갈 줄이 없으므로(S-145·S-57 은 S-55 뒤 · S-146-b 는 운영 모양 박스 뒤) **대기합니다.**
+
+
+---
+
+## 넷째 xfail 의 도입 커밋과 사유 — 물으신 한 줄 (추측 아님)
+
+```
+시험     test_every_report_reason_including_scope_unresolved_has_a_runtime_twin
+도입     `40b55d4f`  09-07 23:45  test(contract): move the vocabulary's address, and give
+                                 the one invented word a name
+사유     «S-50** — `scope_unresolved` 는 런타임이 «아직 갖고 있고 틀리게 답하는» 상황의 이름입니다.
+        범위가 판단키를 못 덮는 뷰에 런타임이 «거절 대신 single» 을 답하고, 보고서가 그 침묵을
+        미리 말하려고 낱말을 «지어냈고», 이 계약이 그 발명을 «옳게» 잡았습니다 — 둘 다 맞습니다.
+        해소기가 그 낱말을 «스스로» 말하는 날 초록이 되고, 그건 3자 변경(총괄·vectors.json·
+        클라 하니스)이라 «자기 라운드»입니다. 🔴 그리고 그 라운드는 **S-50 판정을 기다립니다**:
+        「범위가 판단키를 안 덮는 것이 «실수»인지 «의도»인지」가 도메인 사실인데 오늘 선언에
+        그것을 적을 자리가 «없어서», 전부 거절하면 의도한 뷰가 깨지고 허용하면 조용한 오답이 남습니다
+```
+🔴 **총괄 추측(「S-180 ⓐ 계약 때 넣은 신호」)은 «빗나갑니다»** — S-180 ⓐ 는 09-12 이고 이 xfail 은
+**09-07 23:45**, 닷새 앞섭니다. 낱말은 같은 `scope_unresolved` 라 그렇게 읽히기 쉬운데, 이 마크는
+S-32 넷째 부류를 닫던 라운드(판정 120)의 산물입니다.
+
+### ⚠️ 왜 `git log -S'xfail'` 로 안 잡혔나 — 파일이 «server/tests 밖»입니다
+```
+실체     contracts/config_resolve_report/test_report_contract.py   ← 계약 벡터 디렉터리
+server/tests/test_config_resolve_report_contract.py 는 그것을 «들여오는» 쪽입니다
+=> `-- server` 로 좁힌 pickaxe 는 «구조적으로» 못 봅니다. 마크가 헬퍼/파라미터라서가 아니라
+   «경로»였습니다 (헬퍼로 붙는 것은 `test_trace_fixture` 쪽 하나입니다 — 그건 따로 맞습니다)
+```
+🔵 그래서 넷의 정리는 이렇습니다:
+```
+S-200 의 둘   test_virtual_join_types (S-199-b `8aade672`) · test_trace_fixture[bonding_log] (S-199-e `8459f56e`)
+그 밖 둘      test_replace_map_cross_scope (08-06 `2fc4f001`) · 이것 (09-07 `40b55d4f`, S-50 대기)
+넷 다 strict · 사유가 이름으로 있음 → «빚이 아니라 신호», 큐 행 0 맞습니다
+```
+
+> 📌 **[09-13 03:44] 이 채널의 미답 질문: «없음».** 판정 없이 갈 줄이 없어 **대기합니다**.
+
+
+---
+
+## ⚠️ 정정 — 넷째 xfail 은 «07-30 이 아닙니다». 보드에 적히기 전에 올립니다
+
+03:44 에 「도입 = 07-30 `f3fd7850`(`git log -S'strict'` 로 잼)」이라 하셨는데, 그 커밋을 열어
+보니 **그 시험도 xfail 도 «그 안에 없습니다».**
+```
+git show f3fd7850:contracts/config_resolve_report/test_report_contract.py | grep -c 'every_report_reason_including_scope_unresolved'   ->  «0»
+git show f3fd7850:… | grep -n 'xfail'                                    ->  «히트 없음»
+git show f3fd7850:… | grep -n 'strict'                                   ->  «히트 없음**
+git show '40b55d4f^:…' | grep -c 'every_report_reason…'                  ->  «0»
+git log -S'xfail(strict=True' -- contracts/config_resolve_report/test_report_contract.py  ->  «40b55d4f» 하나
+```
+🔴 `f3fd7850`(07-30 19:56)이 한 일은 **그 파일을 «만든» 것**입니다(+460줄). 그래서 경로를 건드린
+커밋으로는 잡히지만, 그 시험도 그 마크도 «그때 없었습니다». 마크는 **`40b55d4f`(09-07 23:45)**
+입니다 — 제 03:44 보고 그대로입니다.
+
+🔵 그리고 이건 **총괄이 큐에 «직접 적어 두신» 방법 정정과 같은 부류**입니다 —
+「주인은 «앞/뒤 실행»으로. pickaxe 는 「누가 «낱말»을 건드렸나」에 답한다」(S-32 방법 정정).
+`-S'strict'` 는 낱말을 물었고, 파일 생성이 그 낱말 계수를 움직였습니다.
+
+### 정리 (이제 넷 다 «앞/뒤»로 확인됨)
+```
+S-200 의 둘   test_virtual_join_types            S-199-b  `8aade672`  09-12 21:45
+             test_trace_fixture[bonding_log]    S-199-e  `8459f56e`  09-12 22:20
+그 밖 둘      test_replace_map_cross_scope                `2fc4f001`  08-06
+             test_every_report_reason…runtime_twin       `40b55d4f`  09-07 23:45  (S-50 대기)
+```
+⚠️ **파일 생성일(07-30)과 마크 도입일(09-07)이 «닷새가 아니라 39일» 차이**라, 보드에 07-30 으로
+적히면 「S-200 전부터 있던 오래된 신호」로 읽히는데 실제로는 «S-32 넷째 부류를 닫던 라운드»(판정 120)의
+산물입니다. 그 차이가 뜻을 바꿔서 올립니다.
+
+> 📌 **[09-13 03:45] 이 채널의 미답 질문: «없음».** 대기 그대로입니다.
+
+
+---
+
+## S-209 ① 소비자 전수 — 🔴 **「사람만 읽는다」가 «샘플 일곱»에 대해 거짓입니다** (짓지 않음)
+
+응용 쪽 이동이 «아직 안 착지»했습니다(`C:/Users/kk980/Developments/assyManager-authoring/` 없음).
+지시대로 응용 먼저이므로 **아무것도 옮기지 않았습니다.** 그동안 ①(읽기만)을 했고, 그 결과가
+이 행의 전제 하나를 뒤집습니다.
+
+### 실측 — `.py.sample` 열셋 중 «일곱»은 «코드가 읽습니다»
+```
+남아야 함(코드가 읽음 — 게이트가 그것을 «드리프트 방지»로 씁니다)                  «7»
+  core_alignment_mapper          test_core_alignment_mapper.py:69
+     🔴 test_live_mapper_and_tracked_sample_are_byte_identical() —
+        `.sample` 바이트를 «라이브(gitignore) 맵퍼»와 대조합니다
+  core_usage_mapper              test_core_usage_mapper.py
+  cross_table_lookup_mapper      test_mapper_sample_cross_table_lookup.py
+     🔴 그 파일 머리글이 사유를 «스스로» 적습니다: 「A sample that is only read is a sample
+        that DRIFTS from the worker it claims to describe, so this file loads that exact
+        `.sample` text and drives it」
+  dt_alignment_metadata_mapper   test_dt_alignment_metadata_mapper.py
+  dt_inventory_metadata_mapper   test_dt_inventory_metadata_mapper.py:53
+  dt_job_rollup_mapper           test_the_chain_counts_and_the_ledger_only_reads.py
+  dt_map_mapper                  test_dt_map_derivation.py
+
+바깥으로 갈 수 있음(코드 참조 «0** — `git grep -- 'server/**.py'` 전수)                «6»
+  dt_standard_map_mapper · lot_slot_wafer_mapper · production_mapper
+  custom_parser · inspection_run_parser · void_obs_parser
+  (+ `server/parsers/custom_parser_template.py` — 코드 참조 0)
+```
+🔴 **그래서 일곱을 바깥으로 옮기면 «바이트 동일 게이트»가 비교할 대상을 잃습니다.**
+그 `.sample` 은 「사람이 읽는 예제」가 아니라 **«소유자의 라이브 맵퍼의 추적되는 사본»**이고,
+게이트의 존재 이유가 그것입니다. 옮기면 게이트가 죽거나(파일 없음) 바깥 디렉터리를 읽어야 하고,
+후자는 「저장소 시험이 다른 저장소를 읽는다」가 됩니다.
+
+⚠️ **제 첫 필터가 하나를 놓쳤습니다** — `read_bytes|read_text|open\(` 로 훑어
+`dt_inventory_metadata_mapper` 를 「읽는 곳 없음」으로 셌는데, 실제로는 `:53` 에서 경로를
+만들고 읽습니다. 파일 이름으로 다시 세서 잡았습니다(제 기억 파일 「리터럴로 훑지 않는다」).
+
+### 물어야 할 것 «둘» — 이동 전에 정해야 합니다
+```
+① 게이트 있는 일곱: 「저장소에 남는다」가 맞습니까(제 권고: 예 — 코드가 읽고, 그 읽기가
+   드리프트를 막는 «유일한» 장치입니다). 그러면 바깥 가이드는 그 일곱을 «인용»하되
+   본문은 저장소에 남고, 「두 벌 0」은 «가이드가 사본을 두지 않음»으로 지켜집니다
+② 여섯(+template): 바깥으로 «이동»합니다. 그런데 이 여섯의 참조는 전부 «문서»입니다 —
+   docs/guide/INGESTION_GUIDE.md · OPERATOR_RUNBOOK.md · chain_ingestion_guide.md 등.
+   그 문서들이 응용 몫인지(바깥으로 같이) 제 몫인지(경로 한 줄로 고침) 갈라 주십시오
+```
+⚠️ ②③(드리프트 게이트 · `MAPPER_STANDARD.md` 이동)은 바깥 디렉터리가 «선 뒤»에 합니다 —
+지금 만들면 가리킬 곳이 없는 상수가 됩니다.
+
+> 📌 **[09-13 08:01] 이 채널의 미답 질문: «둘» — S-209 의 ①②.** 응용 착지를 기다립니다.
+
+
+---
+
+## S-209 ② 착수 전 한 줄 — 🔴 **여섯 중 «둘»도 옮기면 안 됩니다. 이번엔 «운영 절차»입니다**
+
+바깥 디렉터리는 «섰지만»(`MAPPING_GUIDE.md`·`README.md`) 그 git 에 **커밋이 0** 입니다
+(`your current branch 'master' does not have any commits yet`) — 응용 D-21 이 «착지 전»이라
+지시대로 아직 «아무것도 옮기지 않았습니다». 그동안 옮길 여섯의 문서 링크를 짚었고, 거기서
+둘째 반증이 나왔습니다.
+
+### 🔴 `void_obs_parser.py.sample` · `inspection_run_parser.py.sample` = «운영자가 손복사하는 파일»
+그 파일 «자신»이 첫 줄에 그렇게 적습니다:
+```
+# VOID SCHEMA - the observation half. HAND-COPY THIS FILE to:
+#     server/ingestion_workspace/void_obs/scripts/void_obs_parser.py
+# `server/ingestion_workspace/**` is gitignored … That is why this file carries NO judgement:
+# everything that can be wrong lives in `server/parsers/void_sat_format.py`, which is TRACKED
+# … Fixing a parsing defect is a `git pull`; only this shim is hand-copied.
+```
+그리고 운영 문서가 그 복사를 «절차»로 듭니다:
+```
+docs/process/OPERATOR_RUNBOOK.md:71-72   4. server/parsers/void_obs_parser.py.sample →
+                                            ingestion_workspace/void_obs/scripts/void_obs_parser.py
+docs/guide/INGESTION_GUIDE.md:287        「수정이 `git pull` 하나로 끝나게 하려는 배치」
+```
+🔴 **바깥 저장소로 옮기면 그 배치가 깨집니다** — 운영자가 파서를 고치려면 «두 저장소»를 받아야 하고,
+「`git pull` 하나」라는 이 파일들의 «존재 이유»가 거짓이 됩니다. 열셋 중 일곱은 «시험 게이트»가
+붙들고, 이 둘은 «운영 절차»가 붙듭니다 — 사유가 다르고 결론은 같습니다.
+
+### 그래서 옮겨도 되는 것은 «넷»입니다
+```
+옮김 ✅   dt_standard_map_mapper · lot_slot_wafer_mapper · production_mapper
+         + server/parsers/custom_parser_template.py            (코드 참조 0 · 운영 절차 0)
+         ⚠️ custom_parser.py.sample 은 template 이 «이름으로 인용»합니다 — 둘은 «같이» 움직입니다
+남김 🔴   게이트 일곱(판정 348 ①) + 운영 절차 둘(위)
+```
+🔵 `dt_standard_map_mapper` 의 유일한 문서 링크는 `PROJECT_STATUS.md:6033`(총괄 파일)의 `cp` 예시
+한 줄이고, `production_mapper` 는 `chain_ingestion_guide.md:478` 이 「추적되는 것은 `.sample` 뿐」을
+설명하며 «이름을 셋» 드는 문장입니다 — 그 문장은 셋 중 둘이 남으므로 «부분 수정»이 됩니다.
+
+### 물어야 할 것 «하나»
+```
+운영 절차 둘(`void_obs`·`inspection_run`)을 «저장소에 남김»으로 받으십니까 (제 권고: 예).
+받으시면 이동 대상은 넷(+custom_parser.py.sample 동반 = 다섯)이고, 그때 한 커밋으로 하겠습니다
+```
+⚠️ 그리고 응용 git 에 커밋이 0 이므로 **파일을 놓는 것도 아직입니다** — 놓으면 커밋 없는 작업
+트리에 남의 파일이 섞입니다(응용이 커밋 주체라 그쪽 첫 커밋을 오염시킵니다).
+
+> 📌 **[09-13 08:04] 이 채널의 미답 질문: «하나» — 운영 절차 둘의 처분.**
+
+---
+
+## ✅ [09-13 11:09] S-212 — 규칙을 고르면 폼이 채워집니다. 한 낱말의 두 철자를 «하나»로 (`3bdab11c`)
+
+**🔴 재기동 «필요»합니다** (라우트 시그니처 변경 — API 프로세스 `uvicorn main:app`). 워커·스케줄러는 이 라우트를 부르지 않습니다.
+
+### 진단 — 제 손으로 다시 잰 것
+```
+화면이 보내는 낱말   client2/src/admin.js:1121   `?name=<규칙>`
+패널의 계약         chain_rule_panel.js:38      nameKey: 'name'
+POST 의 payload 키  main.py:5766                payload.get("name")
+뷰 함수의 인자       ledger_admin.py:568         def chain_rule_raw_view(name=None)
+🔴 GET 라우트만      main.py:5747                def get_chain_rule_raw(rule: str = None)
+=> FastAPI 가 «모르는 질의»를 버림 -> chain_rule_raw_view(None) -> `declaration` 없이 응답
+   -> 규칙을 골라도 폼이 «항상» 빔. 던지지도 남기지도 않습니다
+표 쪽이 되는 이유     get_table_config_raw(table=...) — 양끝이 «같은 낱말»
+```
+지시대로 라우트를 «`name`» 으로 고쳤습니다. **둘째 철자를 «더하지» 않았습니다** — `?rule=` 도 받게 하면 같은 질문에 길이 둘이 되고, 그 둘이 갈라지는 날 라우트는 계속 답하면서 화면과 핸들러가 다른 낱말을 계약으로 믿습니다(상설 ④).
+
+### S-204 의 라우트 시험이 왜 이걸 못 봤나 — 재발 방지의 «본체»
+```
+그 시험은 라우트를 «몹니다». 다만 «서버의 철자»로 몹니다:  params={"rule": ...}
+🔴 핸들러가 쓰는 낱말을 시험도 쓰면 «이음매»는 구조적으로 안 보입니다 —
+   이 자리를 가르는 유일한 읽기는 «클라가 선에 싣는» 낱말입니다
+```
+그래서 ① 그 두 호출 자리를 «클라의 철자»로 바꾸고, ② 새 파일은 **클라 쪽에서만** 채점합니다. 클라의 낱말을 상수 하나(`CLIENT_QUERY_KEY`)로 두어 어느 쪽이 이름을 바꿔도 그 상수가 «같이» 움직여야 하게 했습니다.
+
+### 시험 — 라우트 «실호출», 그리고 데코레이터가 «등록한» 객체로
+`server/tests/test_a_picked_chain_rule_fills_the_form.py` (신규 4)
+```
+?name=X            -> X 의 declaration · raw · enabled
+?name=이웃          -> «이웃의» 것 (읽되 «다른 자리»에 읽는 결함은 빈 폼보다 나쁩니다)
+?name 없음          -> rules 목록만, `declaration`·`name` 키가 «없음» (null 이 아니라 부재)
+?rule=X            -> 아무것도 안 채움  (둘째 철자가 안 생겼다는 단언)
+```
+마운트는 `main.app.routes` 에서 **데코레이터가 등록한 라우트 객체를 꺼내»** 씁니다 — 손으로 경로에 함수를 다시 매다는 방식은 「데코레이터가 엉뚱한 def 에 붙는」 같은 부류의 결함을 대신 답해 줍니다. 토큰 오버라이드는 «`main.app` 에» 겁니다(그런 라우트가 들고 다니는 overrides provider 가 그것이라, 다른 앱에 걸면 조회되지 않습니다).
+
+### 게이트 — «되돌려» 재고, 그다음 통과
+```
+라우트를 되돌린 상태   5 빨강  (새 3 + 철자 고친 2)      <- 셋째 「둘째 철자 없음」도 빨강이었습니다
+                             즉 옛 라우트는 `?rule=` 로 «채웠고», 그것이 이 단언의 판별력입니다
+고친 상태             171 passed  exit 0
+   (test_a_picked_chain_rule_fills_the_form · test_the_chain_tab_can_add_a_rule_it_did_not_have
+    · test_chain_rule_editor_arms_without_firing · test_admin_auth)
+커밋 뒤 수집          6,231 collected  exit 0   (6,227 + 새 4)
+```
+클라는 «한 글자도» 안 건드렸습니다 — 화면 쪽은 이미 `name` 으로 묻고 있었습니다(`client2/dist` 빌드 없음).
+
+> 📌 **[09-13 11:09] 이 채널의 미답 질문: «없음».** 다음: S-209(판정 348·349 + 08:10 정정) 착수.
+
+---
+
+## ✅ [09-13 11:2x] S-209 — 다섯이 바깥으로, 표준은 아카이브로, 이름 여섯은 시험이 붙듭니다 (`d664d754` · `6d3c4b68` · `84acc2c1`)
+
+**재기동 «불요»** — 실행 코드는 한 줄도 안 바뀌었습니다(시험 하나 신설 + 문서).
+
+### 놓은 파일 «다섯» — 어느 파일인지 (지시대로 보고)
+```
+assyManager-authoring/examples/ 에 놓음 (바이트 동일 확인 뒤 저장소에서 git rm)
+  dt_standard_map_mapper.py.sample   10,492 B
+  lot_slot_wafer_mapper.py.sample     5,668 B
+  production_mapper.py.sample         1,134 B
+  custom_parser_template.py           2,226 B
+  custom_parser.py.sample             1,834 B
+바깥 git 커밋은 응용(`e428afa`·`b4dcc43`) — 저는 «놓기»만 했습니다
+```
+남긴 것: 맵퍼 샘플 «일곱»(판정 348 — 시험이 바이트 동일로 읽음) + 파서 shim «둘»(판정 349).
+
+### 🔴 제 첫 실측이 «부분집합 필터»였습니다 — 스스로 잡았습니다
+```
+처음   `*.py.sample` «파일 이름»으로 소비자를 셌습니다 -> 다섯 다 «0»
+문제   그 필터는 «모듈 이름»으로 쓰는 시험을 구조적으로 못 봅니다
+다시   `dt_standard_map_mapper` 같은 «모듈 이름»으로 다시 셈 -> 시험 «둘»이 나옴
+       test_dt_standard_map_mapper.py:25 · test_job_column_from_config.py:242
+읽는 것  둘 다 `from mappers import …` = 소유자의 «라이브 .py»(gitignored), `requires_live` 뒤
+       -> `.sample` 제거가 «안 닿습니다». 결론은 같고, 근거가 달라졌습니다
+```
+시험 모집단도 «떠올려서»가 아니라 grep 으로 지었습니다 — 29 파일, **557 passed / 6 skipped**.
+
+### 시험 하나 — 이름을 «import 로» 풉니다 (`test_the_authoring_guides_name_entry_points_that_exist.py`, 23)
+```
+저장소 반 (항상 돔)   mapper_sdk.mapper · discover · MAPPER_REGISTRY
+                    BasePipelineParser.match · process_dataframe · parse
+                    + @mapper(name=…) 를 «실제로 걸어» 등록부 키가 그 이름인지
+양방향 고정          옮긴 다섯: 여기 사본 «0» 이어야 함   /   게이트 샘플 아홉: 여기 «있어야» 함
+바깥 반 (없으면 skip) 경로를 «이름 대어» 건너뜀. 상수 하나 = 저장소의 «형제» 경로(하드코딩 아님)
+```
+🔴 **텍스트로 안 읽습니다** — 텍스트 오라클은 서식이 바뀌면 «옳은 코드»에 빨강을 주고 주석에만 있는 이름에 초록을 줍니다.
+🔴 **변이로 재봤습니다**: 옮긴 사본을 되돌려 놓으면 빨강 1 · 게이트 샘플 하나를 치우면 빨강 1 — 둘 다 잡고, 되돌린 뒤 초록.
+⚠️ **뒷방향이 조용한 쪽입니다** — 게이트 샘플을 옮기면 «그 순간엔 아무것도 안 터지고» 바이트 동일 시험이 비교할 대상을 잃습니다.
+
+### 🔴 옮기다 잰 것 하나 — 판정 352 로 받으셨습니다 (`parse_file`)
+추적 코드에 부르는 자리가 «0», 워처 `directory_watcher.py:1157` 은 `BasePipelineParser` «하위 클래스»만 줍습니다. 지시대로 `AUTHORING.md` 에 「**미배선 — S-213**」으로 적고, 「오늘 그 길로 가면 «침묵»(실리고·등록 안 되고·오류도 없음)」을 같이 적었습니다(`84acc2c1`).
+
+### 🪦 `MAPPER_STANDARD.md` → `docs/_archive/MAPPER_STANDARD_20260817.md`
+머리 한 줄로 «제안 기록»임과 훅이 `roleframe.py` 에 «다른 이름»(`RoleEmission`·`MapperContext`)으로 착지했음을 적었습니다. 제가 다시 쟀습니다 — `class Unit`·`class Emit`·`EMITS`·`row_pair`·`eav_pivot`·`snapshot_diff` 전건 «0»(`REQUIRES` 만 히트하는데 `config_authoring.py` 의 «다른 것»입니다). 링크 넷은 문장을 두고 «경로만» 옮겼습니다(히스토리 둘은 2026-08-17 의 기록이라 그대로 참이고, 얻은 것은 「지금 어디 있나」 한 줄뿐입니다).
+
+### 고친 문서 링크 — 「저장소 쪽 링크 깨짐 0」
+```
+AUTHORING.md :24 :25 :37      깨진 링크 셋 + `examples/` 행을 「⏳ 아직 없음」에서 실제 다섯으로
+chain_ingestion_guide.md :478  셋 중 «둘»만 남으므로 «부분 수정» — 문장이 참이 되게
+CODE_MAP.md :2771             절의 «주어»가 저장소에 없으므로 🪦 한 줄 (절 본문은 그대로 참)
+SERVER_FILE_MAP.md :174        행을 「이동됨」으로
+LEDGER_SCHEMA_COMPLETENESS.md  「출하 견본 하나」가 이제 0 — 🪦 한 줄
+```
+
+### 🔴 제 잘못 «둘», 둘 다 제가 잡아 고쳤습니다
+```
+① `git add` 가 «지워진 경로»에서 죽고, 줄이 «따로»라 커밋이 그냥 돌았습니다
+   -> 첫 커밋이 «삭제만» 담았습니다(문서·시험 빠짐). 원자성이 이 라운드의 «요점»이라 amend.
+   그리고 «같은 덫에 두 번» 걸렸습니다(③ 에서도) — 두 번째엔 `git status` 에서 경로를 골랐습니다
+   교훈: 지운 경로를 `git add` 에 적지 않는다 · add 와 commit 을 «한 줄»로 잇는다
+② 제 시험이 «남의 저장소 작업 트리»에 `__pycache__` 를 쌌습니다
+   응용이 그것을 추적 해제하고 ignore 를 더해야 했습니다. `sys.dont_write_bytecode` 로 막고
+   재실행해 «잔해 0» 확인(`84acc2c1`). 컴파일 사본도 «사본»이고, 이 라운드의 주제가 그것입니다
+```
+
+### 게이트
+```
+저장소 다섯 추적 0 · 바깥 다섯 있음 · 같은 파일 두 벌 «0»
+맵퍼·파서 모집단(grep 으로 지음) 29 파일  557 passed / 6 skipped / 0 failed
+드리프트 시험 23 passed + 변이 둘 CAUGHT
+커밋 뒤 수집 6,254 (6,231 + 23)  exit 0
+루트 경로를 가리키는 추적 파일 «0» · 아카이브 상대 링크 해석 OK
+```
+
+### 넘기는 것 셋
+```
+총괄   PROJECT_STATUS.md:6043 의 `cp` 예시 — 새 경로는
+       `cp assyManager-authoring/examples/dt_standard_map_mapper.py.sample server/mappers/dt_standard_map_mapper.py`
+총괄   LEDGER_SCHEMA_COMPLETENESS D-8-4 의 「SDK 를 쓴다」 철자 — 그 견본이 import 하던 것은
+       `mapper_sdk` 가 아니라 `mappers.base.BaseMapper`(:4) 였습니다. 판정만 적어 두었습니다
+응용   바깥 `MAPPING_GUIDE.md:160` 이 「제품 저장소 «루트»의 `MAPPER_STANDARD.md`」를 인용 —
+       새 경로는 `docs/_archive/MAPPER_STANDARD_20260817.md` (PARSER_GUIDE 쪽은 이미 고치셨습니다)
+```
+
+> 📌 **[09-13 11:2x] 이 채널의 미답 질문: «없음».** 다음: **S-210** — 지시대로 «짓기 전 한 블록»(무엇을 지우고 무엇을 아카이브하나 · 소비자 표 · 미추적 아홉은 표만) 먼저 올립니다.
+
+---
+
+## 📋 [09-13 11:26] S-210 계획 블록 — 지시 목록 열둘을 «전수 실측»했습니다. 셋이 «청소 대상이 아닙니다»
+
+추적 대상 합 **247 파일**. 아래 표의 「소비자」는 `git grep` 전수이고, 이 박스의 파일 수가 아니라 «저장소에 커밋된» 참조입니다.
+
+### ✅ 지워도 되는 것 — 소비자 0 (합 23 파일)
+```
+assy_manager.egg-info/        5   빌드 산출물. 지시대로 삭제 + .gitignore 한 줄
+                                  🔵 이미 «낡았습니다» — SOURCES.txt 가 어제 옮긴 custom_parser_template 을 듭니다
+outputs/                      3   코드 소비자 «0». 산문 인용 둘(아카이브 보드·큐)뿐
+test.ipynb (루트)             1   소비자 0
+server/test.ipynb             1   소비자 0
+source_config.xlsx            1   코드 0. `table_config.json.sample` 의 `__comment` 열둘이 «출처 표기»로 이름만 듭니다
+                                  (파일을 읽지 않습니다 — 「이 표가 어느 워크북에서 왔나」)
+server/_archive/             11   import 0. 🔴 그리고 그 안의 시험 넷은 «수집조차 안 됩니다»
+                                  (`pytest _archive --collect-only` = 4 errors) — 이미 돌 수 없는 코드입니다
+```
+⚠️ `server/_archive/` 에는 딸린 것이 있습니다 — **코드 «세 자리»가 그 디렉터리를 「건너뛴다」고 적습니다**
+(`tests/prod_import_check.py:64` · `tests/test_one_name_has_one_body.py:105` · `scripts/raw_write_census.py:46`).
+지우면 그 세 갈래가 «아무도 안 타는 갈래»가 됩니다(상설 ③). **같은 커밋에서 그 셋도 빼는 것을 권고**합니다 — 판정 주시면 그렇게, 아니면 디렉터리만.
+
+### 📦 아카이브가 맞는 것 (6 파일)
+```
+ontology_config_explorer_plan/  6   완료된 계획(2026-08-17 승인, 상태 COMPLETE)
+                                    -> docs/_archive/ontology_config_explorer_plan_20260817/
+                                    링크 여섯을 같은 커밋에 경로 수정:
+                                    docs/README · guide/ONTOLOGY_LEDGER_SETUP · process/DOC_OWNERSHIP
+                                    · process/FORK_SESSION_BRIEF · process/RELEASE_LOG · process/SERVER_DEFECT_QUEUE
+                                    (task/ontology_config_explorer_pending.md 는 «자기 옆 파일»을 가리키므로 같이 감)
+```
+
+### 🔴 청소 대상이 «아닙니다» — 셋. 실측이 지시 목록과 어긋납니다
+```
+① server/notebooks/  (3)   «살아 있는 운영자 도구»입니다
+   근거  docs/guide/chain_ingestion_guide.md:630~631 이 두 노트북을 «셀 번호까지» 들어 정본으로 가리키고,
+         :669~670 이 「`server/parsers/notebooks/` 는 은퇴했고 정본은 «이쪽 둘»」이라고 «최근 라운드»(S-197-d
+         `4519a2df`)에서 «일부러 모은» 자리입니다. directory_watcher.py:1035 도 이 워크벤치를 인용합니다
+   => 지우면 가이드가 운영자를 «없는 파일»로 보냅니다. 권고: «남김»
+
+② server/scratch/  (6)     한 파일이 «게이트의 나르개»입니다
+   근거  tests/test_the_default_database_url_has_one_home.py:82 의 CARRIERS 에
+         `scratch/scratch_migration_txid.py` 가 있고, 두 시험이 그것을 «import 하고 스크립트로 돌립니다»
+   ⚠️ 그런데 그 시험이 존재하는 «이유»가 「scratch 가 DB URL 로직의 «둘째 사본»을 들고 있었고 순서까지
+      달랐다」입니다(그 파일 머리 :6~11). 즉 이 디렉터리는 상설 ④(같은 기능 두 경로)의 «실물»입니다
+   => 갈래 둘, 판정 필요:
+      ㉠ 남김        — 게이트 그대로. 둘째 사본도 그대로(다만 «묶여» 있어 갈라지면 빨개집니다)
+      ㉡ 파일과 CARRIERS 행을 «같이» 지움 — 둘째 사본이 사라집니다(④ 에 맞음). 게이트는 다섯 -> 넷
+      제 권고: ㉡. 다만 「나르개를 줄이는 것」이라 «보고 없이» 하지 않겠습니다
+      (나머지 다섯 파일은 소비자 0 이라 어느 쪽이든 삭제)
+
+③ server/M1_SOURCE_CONFIG_REF.RETIRED.md  (1)   «코드가 인용하는 묘비»입니다
+   근거  transfer_plan.py 가 «다섯 자리»(:66 :85 :158 :435 :704)에서 「이 위임이 왜 은퇴했나」의 근거로
+         이 파일을 듭니다. 시험 셋 + 추적 샘플 하나도 같습니다 — 합 «열셋»
+   => 옮기면 열셋을 같은 커밋에 고쳐야 하고, 그것은 「청소」가 아니라 «반경 있는 변경»입니다
+      제 권고: «남김». 루트가 아니라 `server/` 밑이고, 이름이 이미 `.RETIRED` 로 자기를 설명합니다
+```
+
+### ⏸️ agent_workspace/ (209) — 지우기 전에 판정 하나
+```
+소비자  코드 0 · 시험 0. 그런데 «에이전트 정의 아홉»이 이 경로를 «프로토콜»로 적습니다 —
+        .agents/skills/{DataIngester·ExcelInteractionExpert·PanelUIExpert·StableDevelopmentProtocol
+        ·SubAgentExecution·WebSocketExpert}/SKILL.md · .claude/agents/{client-pm·code-mapper·doc-auditor
+        ·doc-historian·doc-keeper·lead-pm …}.md
+        예: 「완료 후 `agent_workspace/reports/` 에 … 리포트」 · 「통신 디렉토리 구조(`agent_workspace/`)」
+내용    reports 179 · memory 10 · archive 7 · prompts 4 · ui_preview 3 · mockups 3 — 08-23 정지
+```
+🔴 **「산출물 209」와 「우편함 경로」는 다른 것입니다.** 산출물을 지워도 프로토콜은 안 깨지지만, **디렉터리가 사라지면 그 정의들이 «없는 자리»를 가리킵니다.** 갈래 둘:
+```
+㉠ 산출물 209 만 지우고 «디렉터리 계약은 그대로»   (정의 아홉 무변, 다음 에이전트가 다시 만듦)
+㉡ 209 + 정의 아홉의 그 줄까지                    (그 프로토콜을 «은퇴»시키는 것 — 반경이 다릅니다)
+제 권고: ㉠. ㉡ 은 「청소」가 아니라 «운영 방식 변경»이고 이 라운드의 것이 아닙니다
+```
+
+### 📄 미추적 — 지시는 «아홉»인데 오늘 **열하나**입니다 (지우지 않고 표만)
+```
+이름                                     크기        mtime
+.claude/settings.local.json.bak-0037     15,690     2026-08-24 00:37
+084x                                    0     2026-08-24 08:55   🔴 «깨진 이름»(U+F03A = ':' 대체)
+main.js175                              0     2026-08-24 09:52   🔴 같은 부류
+file                                          0     2026-09-09 13:01   🆕 지시 목록에 «없던» 것
+다시                                          0     2026-09-09 13:01   🆕 지시 목록에 «없던» 것
+_seedkeys.json                              237     2026-08-23 21:17
+ids.txt                                     622     2026-08-23 17:04
+server/h.json                             2,176     2026-09-04 07:46
+sg.json                                 109,781     2026-08-23 17:04
+spotfire-style-ontology-rnd-view.zip    393,585     2026-08-23 19:06
+outputs/syn_p/                            (DIR)     2026-09-08 14:42   🆕 빈 디렉터리
+```
+⚠️ 0 바이트 넷 중 둘(`file`·`다시`)은 «같은 분»에 생겼습니다 — 리다이렉션 사고로 보입니다. 소유자가 고르실 것이고 저는 손대지 않습니다.
+
+### 게이트 (실행 계획)
+```
+스위트 무변 (6,254 수집 · 지금 값 대조)   ·   런처 넷 실행: uvicorn main:app · run_watcher · run_chain_worker
+                                             · run_auto_update · run_app.bat (존재 확인 완료)
+CODE_MAP 링크 0 깨짐  -> 응용 D-21 로 넘김(지시대로)
+```
+
+> 📌 **[09-13 11:26] 이 채널의 미답 질문: «넷».**
+> ① `server/notebooks/` 남김 (제 권고: 예 — 가이드가 정본으로 가리킴)
+> ② `server/scratch/` 처분 ㉠/㉡ (제 권고: ㉡ — 둘째 사본 제거, 게이트 나르개 다섯→넷)
+> ③ `M1_SOURCE_CONFIG_REF.RETIRED.md` 남김 (제 권고: 예 — 코드가 열셋 자리에서 인용)
+> ④ `agent_workspace/` ㉠/㉡ (제 권고: ㉠ — 산출물만, 프로토콜은 그대로)
+> 판정 주시면 «한 커밋»으로 착지합니다. ①③ 이 「예」면 삭제 23 + 아카이브 6 이 이번 커밋의 전부입니다.
+
+---
+
+## ✅ [09-13 11:37] S-210 — 지운 28 · 아카이브 215 · 둘째 사본 하나를 접음 (`f74bbd98`, 258 파일)
+
+**재기동 «불요»** — 동작 코드 무변(지운 것은 아무도 안 읽던 것, 고친 것은 시험·주석·건너뛰기 목록).
+
+### 🔴 먼저 정정 — 제 계획 블록의 「삭제 23」이 «틀렸습니다»
+```
+egg-info 5 + outputs 3 + _archive 11 + test.ipynb 1 + server/test.ipynb 1 + xlsx 1  =  22   (23 이 아님)
++ scratch 6 (판정 ㉡)                                                              =  28
+```
+제가 제 표를 더하면서 하나를 더 셌습니다. 이번 커밋의 «실측» 수는 **28** 입니다.
+
+### 지운 것 — 28 (목록은 지시대로 전건)
+```
+assy_manager.egg-info/     PKG-INFO · SOURCES.txt · dependency_links.txt · requires.txt · top_level.txt
+                           + .gitignore 한 줄. 🔵 이미 낡아 있었습니다 — SOURCES.txt 가 어제 S-209 로
+                             옮긴 custom_parser_template 을 아직 싣고 있었습니다
+outputs/                   source_config_v2.xlsx · …inspect.ndjson · syn_lot_split_merge/scenario_summary.json
+                           ⚠️ 마지막 것에 «미커밋 수정»이 있었습니다 — 09-10 씨앗 스크립트가 다시 쓴 것이라
+                             파일 자신과 «같은 부류»입니다(누구의 작업물도 아님). mtime 확인 뒤 -f
+server/_archive/           audit_changeset · chain_mapper · enrichment_actions · examples/__init__ ·
+                           ledger_api/mechanism_gate · profile_chain_mapper · profile_lookup_adapters
+                           + tests 넷. 🔴 그 시험 넷은 «수집조차 안 됩니다»(--collect-only = 4 errors)
+server/scratch/            generate_large_table · generate_random_rows · migrate_indices · profile_query
+                           · scratch_migration_txid · test_sanitize
+test.ipynb · server/test.ipynb · source_config.xlsx
+```
+
+### 🔴 scratch — 「죽어서」가 아니라 「둘째 사본이라서」 지웠습니다 (판정 ㉡)
+```
+그 파일은 살아 있었습니다   test_the_default_database_url_has_one_home.py 의 CARRIERS 한 행
+                          (import + 스크립트 기동, 두 케이스)
+그런데 그 게이트가 «있는 이유»가  「scratch 가 DB URL 의 둘째 사본을 들었고, 순서까지 달랐다」입니다
+=> 파일과 CARRIERS 행을 «같이» 지웠습니다. 나르개 다섯 -> 넷
+```
+**둘째 사본을 「같이 빨개지게 묶어 두는 것」보다 «없애는 것»이 낫다** — 상설 ④ 의 실물이었습니다. 시험 머리글에 그 사실을 묘비로 남겨 「왜 넷인가」가 읽히게 했습니다.
+
+### 아무도 못 타는 갈래 셋도 같은 커밋에서
+```
+prod_import_check.py        NON_RUNTIME_DIRS 에서 `_archive/` · `scratch/` 제거
+test_one_name_has_one_body  walk 필터에서 `_archive` 제거
+raw_write_census.py         SKIP_DIRS 에서 `_archive` 제거
+  🔴 셋째는 «실측하다 알았습니다» — 이 스크립트는 `server/scripts` 를 걷는데 그 밑에 `_archive` 는
+     «한 번도 없었습니다». 즉 이 항목은 «쓰인 날부터» 아무것도 거르지 않았습니다.
+     제 삭제가 죽인 것이 아니라 원래 죽어 있었습니다
+각 항목이 «사 준 것»은 주석으로 남기고 튜플에서만 뺐습니다 (이유를 잃지 않게)
+```
+
+### 아카이브 — 지우지 않고 옮김 (215)
+```
+ontology_config_explorer_plan/ (6)  -> docs/_archive/ontology_config_explorer_plan_20260817/
+                                      인용 여섯 전부 같은 커밋에 경로 수정. 옛 경로를 드는 추적 파일 «0»
+agent_workspace/ (209)              -> docs/_archive/agent_workspace_20260823/
+                                      디렉터리는 «주소»로 남기고 README 한 장
+```
+🔴 **`.gitignore` 가 제 README 를 삼킬 뻔했습니다** — `agent_workspace/*` 가 이미 있어서, 그 줄만 두면 README 가 «추적되지 않고» 「비어 있되 있음」이 **조용히** 실패합니다. `!agent_workspace/README.md` 를 같은 커밋에 넣고 추적됨을 확인했습니다.
+🔵 **지시대로 셌습니다 — 마크다운 «링크»는 «0» 입니다.** 196개 참조는 전부 주석·히스토리의 «산문 경로»이고(코드가 읽는 자리 0), 그 196의 행선지가 README 한 줄입니다. 그래서 히스토리 196곳을 고쳐 쓰지 않았습니다.
+
+### 남긴 것 — 판정 353 그대로, 그리고 딸린 묘비 둘
+```
+server/notebooks/ · M1_SOURCE_CONFIG_REF.RETIRED.md      남김
+server/enrichment_config.py:580 · ledger_api/ledger_subgraph.py:1833
+   -> 둘 다 「`server/_archive/` 로 갔다」를 «현재형»으로 적고 있었습니다. 그 디렉터리가 없어졌으므로
+      한 줄씩 정정했습니다(문장을 지우지 않고 「그리고 그것도 지워졌다」로 — 이유를 잃지 않게)
+CODE_MAP.md 의 `_archive/` 인용 여럿  -> 지시대로 «응용 D-21» 로 넘깁니다(제 파일이 아님)
+docs/process/SERVER_DEFECT_QUEUE.md:793  -> 실측: «링크가 아니라» S-210 의 «과제 서술»입니다
+                                            (대상 목록). 고칠 링크가 없어 손대지 않았습니다
+```
+
+### 게이트
+```
+수집        6,254 -> 6,252   «정확히» 사라진 나르개 두 케이스. exit 0
+시험        손댄 게이트 넷 128 passed / 1 skipped     ·  raw_write_census.py 실행 OK(1/6/51)
+런처 넷     main:app -> FastAPI, 라우트 123
+           run_watcher · run_chain_worker · run_auto_update · run_decoupled_app — 모듈 본문 전부 실행
+옛 경로     지운 경로를 드는 코드 «0»(묘비 제외)
+트리        제 미커밋 «0»
+```
+🔴 **런처를 «완전 기동»하지는 «않았습니다» — 일부러입니다.** 박스가 PID 43732 로 살아 있고, 둘째 API 인스턴스는 «물리 스키마 작업»을 돌리며(`main.py:338~345`) 둘째 워커는 «같은 아웃박스»를 먹습니다. 그래서 이 저장소 자신의 방식(`runpy.run_path(run_name='__not_main__')` — 위 나르개 시험이 쓰는 바로 그 기제)으로 «모듈 본문과 import 전건»을 태웠습니다. 제 변경이 런처를 깰 수 있는 길은 «import» 하나뿐이라 그 층을 잰 것입니다.
+⚠️ 그리고 **부작용 0 은 아니었습니다** — 워커 둘은 import 중에 자기 스키마 싱크를 돌려 로그 한 줄씩 남겼습니다(「0 declared column(s)」 무변). 「기동 뒤 자기 로그 한 줄」은 그렇게 나왔고, 「완전 기동」이 아니라는 것을 여기 적습니다. 완전 기동이 필요하시면 총괄께서 재기동 때 겸하시는 것이 안전합니다.
+
+### 미추적 — 손대지 않음. 지시는 «아홉», 오늘은 «열하나»
+```
+이름                                     크기       mtime
+.claude/settings.local.json.bak-0037    15,690    2026-08-24 00:37
+08<U+F03A>4x                                 0    2026-08-24 08:55   🔴 깨진 이름(U+F03A = ':' 대체)
+main.js<U+F03A>175                           0    2026-08-24 09:52   🔴 같은 부류
+file                                         0    2026-09-09 13:01   🆕 지시 목록에 없던 것
+다시                                         0    2026-09-09 13:01   🆕 지시 목록에 없던 것
+_seedkeys.json                             237    2026-08-23 21:17
+ids.txt                                    622    2026-08-23 17:04
+server/h.json                            2,176    2026-09-04 07:46
+sg.json                                109,781    2026-08-23 17:04
+spotfire-style-ontology-rnd-view.zip   393,585    2026-08-23 19:06
+outputs/syn_p/                           (DIR)    2026-09-08 14:42   🆕 빈 디렉터리(방금 지운 outputs 밑)
+```
+0 바이트 넷 중 `file`·`다시` 는 «같은 분»에 생겼습니다 — 리다이렉션 사고로 보입니다. 소유자 판단입니다.
+
+### 🔵 지나가며 잰 것 하나 (고치지 않음)
+`server/scripts/diagnose_wal_headroom.py:3` 의 사용법이 `python agent_workspace/reports/wal_headroom.py` 를 실행하라고 적는데, **그 파일은 추적본에 없습니다**(0건). 제 이동 «전부터» 거짓이었고, 범위 밖이라 손대지 않았습니다.
+
+> 📌 **[09-13 11:37] 이 채널의 미답 질문: «없음».** 다음: **S-211 계획 블록**(패키지 경계 표 · 이동 파일 수 · import 갱신 자리 수 · 위험 · 되돌리기) — 짓기는 «판정 뒤».
+
+---
+
+## 📋 [09-13 11:42] S-211 계획 블록 — import 그래프를 «재서» 낸 경계. 그리고 고리 하나가 그 경계를 «가로지릅니다»
+
+지시대로 «짓기 전»이고, 코드는 «0 줄» 건드렸습니다. 아래 수는 전부 `ast` 로 전수 파싱한 것입니다(문자열 grep 아님).
+
+### 규모 — 이것이 이 라운드의 «진짜 크기»입니다
+```
+최상위 평면 모듈            66      (⚠️ `git ls-files 'server/*.py'` 는 «재귀»라 654 가 나옵니다.
+                                   `:(glob)server/*.py` 로 다시 세서 66 — 지시의 「~60」과 맞습니다)
+그 66 을 이름 대는 import 문   1,172
+그 문을 실은 파일             376
+이미 패키지인 것             chain · ledger · ledger_api · database · parsers · mappers · migrations
+                            · source_fixtures · trace_fixture · scripts/support · tests/support
+아무도 import 안 하는 것       1  (`run_chain_worker` — 명령줄이 이름을 드는 런처. 「소비자 0」이 아닙니다)
+```
+🔴 **「이동 파일 수」보다 「고칠 import 자리 수」가 이 작업의 크기입니다 — 1,172.** 그리고 호환 재수출이 «0» 이어야 하므로 그 1,172 이 «한 커밋»에 다 맞아야 합니다.
+
+### 제안 경계 — 오늘의 접두에서, import 방향으로 검증
+```
+패키지        모듈                                                                     수
+chain/*      chain_activity · chain_bindings · chain_builtins · chain_graph ·          7
+             chain_ingestion_worker · chain_key_gate · chain_replay
+ledger/*     ledger_admin · ledger_explorer · ledger_trace · ledger_trace_router        4
+map/*        map_alignment · map_meta_registrar · map_overlay · map_preset_routing      4
+             + alignment_batch_counts · alignment_view_service · dt_frame_transform     (+3)
+enrichment/* enrichment_analysis · enrichment_backfill · enrichment_candidates ·        5
+             enrichment_config · enrichment_materialize
+ingestion/*  ingestion_activity · ingestion_checkpoint · file_ingestion_status          3
+runtime/*    paths · event_constants · system_reload · process_supervisor · pacing ·    ~8
+             runtime_loops · health · launcher_args
+admin/*      admin_auth · dev_bench · retroactive · schema_drift · audit_cache ·        ~6
+             audit_history
+남는 것       main · run_* 셋 · transfer_plan · bonding_plan · mapper_sdk · db_safety …  ~26
+```
+⚠️ **접두가 «하나뿐»인 모듈이 31 입니다.** 즉 절반은 「오늘의 접두」가 경계를 안 정해 줍니다 — 그 31 은 import 방향으로 붙이거나 최상위에 남겨야 하고, 그것이 이 설계의 «실제 판단»입니다.
+
+### 🔴 고리 둘 — 하나가 «경계를 가로지릅니다». 이게 이 라운드의 핵심 위험입니다
+```
+① 여덟 짜리  chain_bindings ↔ chain_builtins ↔ chain_ingestion_worker ↔ chain_replay
+            ↔ config_resolve_report ↔ dt_map_derivation ↔ virtual_join_config ↔ virtual_join_executor
+   🔴 chain · config · dt · virtual «넷»을 관통합니다. 넷을 다른 패키지로 가르면
+      패키지 «사이»에 순환 의존이 생깁니다 — 파이썬은 돌긴 하지만 import 순서에 따라
+      «가끔» 터지고, 그 터짐은 「누가 먼저 import 됐나」로 갈려 재현이 어렵습니다
+② 둘 짜리    frame_confirmation ↔ map_alignment    (map/ 안에 «같이» 넣으면 경계를 안 넘습니다)
+```
+🔴 **그래서 갈래가 셋입니다 — 판정 필요:**
+```
+㉠ 여덟을 «한 패키지»에 같이 넣는다      경계가 도메인이 아니라 «고리 모양»이 됩니다. 정직하지만 이름이 안 붙습니다
+㉡ 고리를 «먼저» 끊고 그다음 패키지화    옳은 순서입니다. 다만 라운드가 «둘»이 되고, 끊는 것은 설계 변경입니다
+㉢ 이번엔 «고리 밖» 모듈만 옮긴다        고리 여덟은 최상위에 남깁니다. 가장 작지만 「평면 60」이 「평면 8+」로만 줄어듭니다
+제 권고: ㉡ — 다만 「끊기」가 이 라운드의 «진짜 일»이고 패키지화는 그 뒤의 «결과»라는 뜻입니다.
+         ㉠ 을 고르시면 그 패키지 이름을 제가 짓지 않고 올리겠습니다(고리는 도메인이 아니므로)
+```
+
+### 위험 다섯 — 이름으로 주소를 대는 자리
+```
+① 🔴 «운영자 스크립트»가 이름으로 import 합니다 — 그리고 저는 그것을 «잴 수 없습니다»
+   손복사 shim 둘이 증거입니다:  void_obs_parser.py.sample:17  `from void_sat_format import …`
+                              inspection_run_parser.py.sample:20  같은 줄
+   `void_sat_format` 은 «이 66 중 하나»입니다. 옮기면 운영자가 자기 워크스페이스에 복사해 둔
+   파일이 전부 깨지고, 그 파일들은 gitignored 라 제가 고칠 수도 셀 수도 없습니다
+   그리고 `directory_watcher.py:955 _register_legacy_import_shim()` 이 「사용자 스크립트는
+   «무수정» 원칙」을 자기 docstring 에 적으며 `server.parsers.*`·`server.database.*` 를
+   이름으로 별칭 등록합니다 — 즉 «이름 안정성»이 이미 제품의 약속입니다
+   => 권고: 「운영자가 import 하는 이름」을 S-209 의 SDK 진입점처럼 «고정 목록»으로 선언하고,
+      그 목록의 모듈은 «안 옮깁니다». 최소 `void_sat_format`·`pipeline_base`
+② 설정 문자열   chain_rules 의 `mapper_module: "mappers.X"` — `mappers/` 는 이동 대상이 아니라 무사
+③ 시험의 문자열 주소   monkeypatch.setattr("<모듈>.…") «32». 이름이 바뀌면 «빨개집니다»(조용하지 않음 — 좋은 쪽)
+④ sys.modules 를 «이름으로» 만지는 자리 «81»   그중 chain_ingestion_worker:1727 은 `mappers.` 접두,
+   :1732 는 `pipeline_plugin_` 접두로 «지웁니다». 둘 다 이동 대상 밖이지만, 패키지화로 모듈의
+   dotted 이름이 바뀌면 이 접두 비교가 «조용히» 빗나갈 수 있는 부류입니다 — 전건 확인 필요
+⑤ importlib.import_module 리터럴 «26» · `__import__` «6»   리터럴 중 66 을 드는 것은 현재 0
+   (`mappers.*` · `ledger.__main__` · `chain.__main__` 뿐)
+```
+
+### 되돌리기 · 게이트
+```
+되돌리기   한 커밋 revert. 그래서 「통째 착지」가 요구인 것이고, 이 블록의 ㉡ 갈래는 «커밋 둘»이 됩니다
+게이트     시험 6,252 무변 · 런처 넷 · 호환 재수출 0(`git grep` 으로 옛 최상위 이름 import 0)
+          · 고리 재측정(SCC>1 이 늘지 않았나) · 운영자 고정 목록의 모듈이 «안 움직였나»
+```
+
+### 판정 347 — `client/` → `desktop/` (자기 커밋, 패키지화와 «따로»)
+```
+파일 다섯   AssyManagerClient.spec · assets/app_icon.png · client_settings.json
+           · desktop_wrapper.py · package_client.py
+제가 본 소비자   run_decoupled_app.py:336 (자식 프로세스 경로 `os.path.join(root_dir, "client", …)`)
+              · main.py:637 :658 (주석·라우트 서술) · .gitignore :54 :55 :56 :61 «네 줄»
+              ⚠️ 완전한 소비자 표는 클라 실측 `1ca4089a` 가 정본입니다 — 그것을 입력으로 쓰겠습니다
+크기       작습니다. S-211 본체와 «독립»이므로 «먼저» 착지시켜도 됩니다(권고: 먼저 — 위험이 분리됩니다)
+```
+
+### 🔴 모르는 것 — 적어 둡니다
+```
+운영자 워크스페이스 스크립트가 «무엇을» import 하는지 셀 수 없습니다. gitignored 이고,
+「박스를 재지 않는다」가 여기 그대로 걸립니다. 손복사 shim 둘이 «하한»이고 상한은 모릅니다
+=> 그래서 위험 ①의 답은 「세어서」가 아니라 「약속으로」 나와야 합니다 — 고정 목록 선언
+```
+
+> 📌 **[09-13 11:42] 이 채널의 미답 질문: «셋».**
+> ① 고리 여덟의 처리 ㉠/㉡/㉢ (제 권고: ㉡ — 끊기가 먼저, 패키지화는 결과)
+> ② 「운영자가 import 하는 이름」 고정 목록을 만들까요 (제 권고: 예 — 최소 `void_sat_format`·`pipeline_base`,
+>    그 모듈은 이동 대상에서 «뺌». 없으면 운영자 파일이 깨지고 그것은 제가 못 고칩니다)
+> ③ `client/` → `desktop/` 를 S-211 본체 «앞»에 따로 착지시킬까요 (제 권고: 예)
+> 판정 주시면 그때 «짓습니다». 지금은 코드 0 줄입니다.
+
+---
+
+## ✅📋 [09-13 11:56] S-211 ③② 착지 (`…desktop` · `07139e17`) + ① 블록 — 🔴 **제 앞 측정이 거칠었습니다. 정정합니다**
+
+### ③ `client/` → `desktop/` (자기 커밋) — **재기동 필요**(라우트·자식 경로)
+```
+옮김 다섯 + 소비자 넷   런처 자식 경로 · 라우트 둘 · .gitignore 네 줄 · 그 폴더 자신의 산문
+살아 있는 문서 여덟      frontend · CONDA_SETUP · SYSTEM_OVERVIEW · DOC_OWNERSHIP · prompts 둘
+                       · FEATURE_CHECKLIST · .agents 스킬     (CODE_MAP 은 지시대로 응용)
+철자 «하나»씩          run_decoupled_app.DESKTOP_DIR · main.DESKTOP_DIR, 그리고 시험이 «둘을 견줍니다»
+게이트                 런처 경로가 «실재 파일»인가 + 라우트 둘 «실호출»(그들이 «본» 경로로 채점 —
+                      os.path.exists 를 가로채서. 시험이 경로를 다시 적으면 그게 둘째 철자입니다)
+변이                   각 프로세스의 상수를 `client` 로 되돌리면 빨강 3·4. 417 passed
+```
+⚠️ 그 라운드에서 **제 `git checkout --` 이 제 미커밋 편집을 날렸습니다**(변이 복구 중). 같은 실수를 전에도 한 적이 있고, 이번엔 즉시 알아채 재적용·재검증했습니다. 기록으로 남깁니다.
+
+### ② 운영자 import 이름 = «약속» (`07139e17`)
+```
+상수     parsers/directory_watcher.py 의 OPERATOR_IMPORT_NAMES (그 약속을 이미 드는 shim 옆)
+전수     손복사 shim 둘이 드는 것: void_sat_format · pipeline_base
+        + 레거시 별칭이 이미 약속하는 것: html_topology_parser · database(.database/.models/.crud/.schemas)
+시험     ① 네 이름이 «맨 이름»으로 import 되는가(`ingestion.void_sat_format` 이면 빨강)
+        ② 🔴 shim 의 import 가 그 목록의 «부분집합»인가 — 나중에 «새 이름»을 잡는 쪽
+        ③ 파싱이 «뭔가 찾았는가» (빈 집합 위의 부분집합 단언은 공허합니다)
+변이     shim 에 약속 밖 import 하나 -> 빨강 · 약속 이름에 패키지 접두 -> 빨강 4. 313 passed
+```
+🔵 **쓰다가 잰 것 하나 — `server/database/` 는 «네임스페이스 패키지»입니다**(`__init__.py` 없음). `__file__` 이 None 이라 제 첫 단언이 «멀쩡한 모듈»에 빨강을 줬고, 더 나쁘게는 `or ""` 가 그 None 을 «현재 디렉터리»로 바꿔 «틀린 답»을 냈습니다(오류가 아니라). 네임스페이스 패키지는 sys.path 항목마다 «합쳐지므로» 패키지화 라운드에서 새 패키지가 엉뚱한 데로 풀릴 수 있는 부류입니다 — ①의 입력으로 적어 둡니다.
+
+---
+
+## 🔴🔴 ① 고리 여덟 — 블록 «전에» 정정부터: **import 시점 고리는 «없습니다»**
+
+제 계획 블록(`c0c0ab5d`)이 「파이썬은 돌긴 하지만 import 순서에 따라 «가끔» 터진다」고 적었습니다. **오늘 코드에 대해 그 문장은 거짓입니다.** 판정 354 ①이 그 문장 위에 서 있어 먼저 정정합니다.
+
+```
+엣지를 «모듈 수준»과 «함수 안»으로 갈라 다시 셌습니다 (ast, 깊이 추적)
+  import 시점 엣지 «3»      chain_bindings -> dt_map_derivation :68
+                          chain_ingestion_worker -> chain_bindings :59
+                          chain_ingestion_worker -> dt_map_derivation :57
+  그 셋의 SCC              «없음»  -> import 시점 그래프는 «비순환»입니다
+  지연(함수 안) 엣지 «22 문장 / 15 쌍»  <- 여덟 짜리 SCC 는 «전부» 여기서 나옵니다
+```
+🔴 **즉 고리는 이미 «끊겨» 있습니다 — 판정이 «금지»한 바로 그 기제로.** 지연 import 가 고리를 숨기고 있고, 그래서 오늘 아무 일도 안 납니다.
+
+### 그래서 「고리를 끊는다」의 «진짜 뜻»이 바뀝니다
+```
+제가 전에 뜻한 것   import 시점에 터질 수 있는 고리를 «없앤다»        -> 그런 고리가 «없습니다»
+실제로 남는 일      지연 22 를 «없애고도» 비순환이 되게 «구조를 바꾼다»  -> 그게 설계 변경입니다
+```
+
+### 방향 — 판정이 준 판별식(「판정기·보고가 워커를 import 하면 거꾸로」)이 «그대로» 맞습니다
+```
+config_resolve_report -> chain_bindings · chain_builtins · chain_ingestion_worker · virtual_join_config
+   «보고»가 «워커» 넷을 부릅니다. 지연 쌍 15 중 «4»가 이 하나에서 나옵니다   <- 가장 큰 팬아웃
+virtual_join_config -> config_resolve_report  (:815)
+   그리고 «설정 로더»가 그 «보고»를 부릅니다. 그 자리의 주석이 이유를 적어 뒀습니다 —
+   「쓰는 이가 읽을 한국어 문장은 config_resolve_report 가 짓는다 … 로더가 한국어를 짓지 않는 것도 같은 규율」
+   => 이 둘이 «진짜 2-고리»이고, 판정의 판별식에 «정확히» 해당합니다:
+      보고가 워커를 읽는 것은 맞는 방향, 로더가 보고를 읽는 것은 «거꾸로»
+   끊는 법: 로더가 필요한 것은 «문장»이지 «보고 모듈»이 아닙니다 — 그 문장을 만드는 함수(또는
+   사유 코드 + 인자)를 «가벼운 모듈»로 내리고 양쪽이 그것을 읽습니다 (판정이 말한 「상수·타입을
+   가벼운 모듈로 내리기」의 실물)
+virtual_join_executor -> chain_replay (:860, withdraw_source) · chain_builtins -> virtual_join_* ·
+chain_replay -> chain_ingestion_worker (load_chain_rules · execute_custom_mapper)
+   나머지 열하나는 «실행기가 실행기를» 부르는 부류라 방향이 한쪽으로 안 정해집니다 — 여기가 진짜 설계 판단
+```
+
+### 갈래 셋 — 판정 필요
+```
+㉠ 정본대로: 지연 22 를 «전부» 없애고 비순환으로 재배치
+   -> 가장 옳고 가장 큽니다. 15 쌍 각각에 「무엇을 어느 모듈로 내리나」 판단이 필요합니다
+㉡ 「보고/로더」 축 «하나»만 먼저 (config_resolve_report ↔ virtual_join_config, 지연 5 쌍)
+   -> 판별식이 방향을 «정해 주는» 유일한 축이고, 끝나면 SCC 가 여덟에서 줄어드는지 «재서» 압니다
+      제 권고: ㉡. 실물 하나로 기제를 세우고, 남은 열이 같은 방식으로 풀리는지 그때 봅니다
+㉢ 고리는 두고 패키지화만 (지연을 «그대로» 둠)
+   -> import 시점이 비순환이므로 «오늘은 안전»합니다. 다만 판정이 금지한 상태를 «영속»시킵니다
+```
+
+> 📌 **[09-13 11:56] 이 채널의 미답 질문: «하나» — ①의 갈래(㉠/㉡/㉢).**
+> ⚠️ 그리고 **판정 354 ①은 제 거친 문장 위에 내려졌습니다** — 「가끔 터진다」가 아니라 「이미 지연으로 숨겨져 있다」가 실측입니다. 그 차이가 갈래를 바꿀 수 있어 짓기 전에 올립니다.
+
+---
+
+## ✅ [09-13 12:09] S-211 ① ㉡ — 보고↔로더 축을 끊었습니다. **SCC 여덟 → 넷** (`4e1b92ac`)
+
+**재기동 «필요»** (모듈 경계 변경).
+
+### 무엇을 어디로
+```
+새 모듈  server/virtual_join_refusal.py   거부 코드 다섯 + 코드별 한국어 앞머리 + virtual_join_detail
+        stdlib 말고 «아무것도» import 안 합니다 — 그게 이 모듈의 전 재산입니다
+로더     virtual_join_config: 함수 안 `import config_resolve_report` «삭제». 코드를 새 모듈에서 읽습니다
+보고서   config_resolve_report: 문장의 «본체»가 내려갔고, 함수 안 import 넷이 «모듈 수준»으로 올라왔습니다
+```
+🔵 **코드를 문장과 «같이» 옮긴 이유:** 코드를 하나 더하면 그것이 내는 «문장»도 같이 정해져야 합니다. 두 파일에 나눠 두면 코드만 늘고 문장은 기본값으로 «조용히» 떨어집니다.
+🔵 **보고서의 넷을 올린 근거:** 그것들이 지연이었던 이유가 «비용»이 아니라 «고리»였습니다. 그리고 올리기 «전에» 쟀습니다 — 이 보고서를 «모듈 수준»에서 읽는 제품 코드가 «0» 입니다(`main.py` 셋 다 함수 안). 그래서 그 비용은 「보고서를 처음 부르는 요청」에 붙고 **기동 경로에는 안 붙습니다**.
+
+### 게이트 — 판정이 정한 그대로
+```
+그 5 쌍의 함수 안 import      5 -> «0»
+SCC (여덟)                  8 -> «4»   남은 것: chain_builtins · chain_ingestion_worker
+                                       · chain_replay · virtual_join_executor
+                            나간 것: config_resolve_report · virtual_join_config
+                                     · dt_map_derivation · chain_bindings
+import 시점 그래프           여전히 «비순환» (모듈 수준 엣지 9, 고리 0)
+스위트                      두 모듈을 드는 32 파일 615 passed / 3 skipped / 2 xfailed
+수집                        6,269 -> 6,275
+설정 반영 탭 계약            test_config_resolve_report_contract · 라우트 시험 통과
+```
+🔴 **새 게이트는 «함수 안»도 봅니다** — 모듈 수준만 보는 단언은 «이번에 고친 결함을 그대로 통과»시킵니다(그 import 가 함수 «안»에 있었으니까). 변이: 그 지연 import 를 되돌리면 빨강 둘.
+🔵 그리고 「보고서가 로더를 읽는다」를 «지키는» 단언도 넣었습니다 — 나중에 「고리 청소」가 «맞는 방향»까지 자르고 그래프가 깔끔해졌다고 말하는 것을 막습니다.
+
+### ⚠️ 지나가며 잰 것 — 고치지 않았습니다
+`_resolve_virtual_join` 의 docstring 이 「DB 질의 0건」의 근거로 `test_the_report_issues_no_database_queries` 를 듭니다. **그 이름의 시험이 «없습니다»**(전수 grep). 계약이 «주석에만» 있고 재는 것이 없습니다. 이번 범위 밖이라 보고만 합니다.
+
+---
+
+## 📋 남은 지연 열 — 「같은 방식으로 풀리나」 (판정 355 의 후속 블록)
+
+### 남은 고리는 «넷 짜리» 하나이고, 엣지 넷이 전부 «함수 안»입니다
+```
+chain_builtins ──> virtual_join_executor   :82   모듈 전체 (import … as vje)
+virtual_join_executor ──> chain_replay     :860  withdraw_source        <- «행위»
+chain_replay ──> chain_ingestion_worker    :153  load_chain_rules       <- «선언 읽기»
+                                           :265  execute_custom_mapper  <- «행위»
+chain_ingestion_worker ──> chain_builtins  :576 :1714 :2325  모듈 전체
+```
+
+### 답: **절반만 같은 방식으로 풀립니다.** 그리고 그 절반이 어느 쪽인지 «성질»로 갈립니다
+```
+✅ 같은 방식     `load_chain_rules` (:153)
+                이건 «문장»과 같은 부류입니다 — 선언 파일을 읽어 규칙 목록을 주는 것이고,
+                워커의 «행위»가 아닙니다. 가벼운 모듈로 내리면 chain_replay 가 워커를
+                안 읽어도 됩니다. 판정 355 가 쓴 「상수·타입을 가벼운 모듈로 내리기」의 실물
+🔴 안 풀림      `withdraw_source`(:860) · `execute_custom_mapper`(:265) · 모듈 전체 셋(:82 :576 :1714 :2325)
+                이건 «행위»입니다. 내리면 그 행위가 딸린 상태를 같이 끌고 내려와야 하고,
+                그러면 「가벼운 모듈」이 아니라 «또 하나의 워커»가 됩니다
+```
+🔴 **그래서 이 넷은 「무엇을 내리나」가 아니라 「누가 누구를 «부를 자격»이 있나」의 문제입니다** — 재생(`chain_replay`)이 워커의 실행 함수를 부르고, 실행기가 재생의 철회를 부르고, 워커가 합성을 부르고, 합성이 실행기를 부릅니다. **넷 다 「실행기가 실행기를」이라 방향을 정해 줄 판별식이 없습니다.**
+
+### 그러므로 갈래 (판정 필요 — 짓지 않았습니다)
+```
+㉮ 공통 «진입점» 하나를 위에 둔다      넷이 서로를 안 부르고, 위의 한 모듈이 순서를 정한다
+                                  -> 고리는 사라지지만 그 모듈이 넷을 다 아는 «새 중심»이 됩니다
+㉯ `load_chain_rules` 만 내리고 멈춘다  고리는 «남습니다»(셋 짜리로 줄 뿐). 값싸고 정직합니다
+㉰ 넷을 «한 패키지»로 묶는다           패키지 «사이»엔 고리가 없고, 안에서는 서로 부릅니다
+                                  -> 지연 import 는 그대로라 판정 355 의 금지를 «영속»시킵니다
+제 권고: ㉯ 를 먼저(값싸고 방향이 분명), 그다음 남은 셋을 ㉮ 로 볼지 판정.
+        ㉰ 는 「패키지화로 고리를 덮는 것」이라 권고하지 않습니다
+```
+⚠️ 그리고 **이 셋 중 무엇을 고르든 «패키지화»는 그 뒤입니다** — 넷이 한 고리인 동안에는 경계 표의 `chain/*` 이 `virtual_join_executor` 를 삼키거나 뱉거나 둘 중 하나여야 하는데, 그 판단이 이 고리에 달려 있습니다.
+
+> 📌 **[09-13 12:09] 이 채널의 미답 질문: «하나» — 남은 넷 고리의 갈래(㉮/㉯/㉰, 제 권고 ㉯ 먼저).**
+
+---
+
+## 🔴 [09-13 12:14] S-211 ㉯ — **짓지 않았습니다.** 재 보니 그 이동이 고리를 «안 줄입니다» (코드 0줄)
+
+판정 357 의 게이트가 「그 쌍 지연 0 · SCC 4→3」인데, **둘 다 ㉯ 로는 안 됩니다.** 짓기 전에 재서 올립니다.
+
+### ① `load_chain_rules` 는 «선언 독자»가 아닙니다 — 일곱 가지를 합니다
+```
+✅ 선언 읽기    read_rules_document() (S-201, 이미 «상태 없는 독자»)
+🔴 워커 상태    global _RULES_DOCUMENT  <- 읽는 자리 «셋»: max_rows_not_visible_defers(:420)
+                                        · max_group_attempts(:442) · max_chain_depth(:3207)
+✅ 문법 판정    chain_bindings.rule_refusals   (고리 «밖»)
+✅ 경고         mapper_sdk 의 flat cell · 미선언 param  (고리 «밖»)
+🔴 합성         chain_builtins.synthesize_chain_rules   <- **고리 «안»**
+🔴 워커 함수    _validate_chain_cascade_graph · _report_unwatchable_trigger_columns
+🔴 부작용       chain_activity.registry.seed_rules(...)
+```
+지시가 「워커 상태를 들면 어디를 드는지 한 줄」이라 하셨으니: **`_RULES_DOCUMENT` 이고, 읽는 자리가 셋입니다.**
+
+### ② 그리고 «옮겨도» 고리가 그대로입니다 — 자리만 바뀝니다
+```
+chain_replay 가 필요한 것   「워커가 보는 것과 «똑같은» 규칙 집합 — 합성 포함」 (그 함수 docstring 의 계약)
+그런데 합성은             chain_builtins 에 있고, 그것이 «고리 구성원»입니다
+=> 가벼운 모듈 M 을 만들면   replay -> M -> chain_builtins -> virtual_join_executor -> replay
+                          «같은 고리»가 M 을 하나 더 끼고 돌아옵니다. 모듈만 늘고 넷은 그대로입니다
+```
+🔴 **이것이 ① 라운드와 «다른» 이유:** 거기서 내린 것은 «문장»이라 아래에 아무것도 안 딸려 왔습니다(그 모듈은 stdlib 만 import 합니다). 여기서 내릴 것에는 «합성»이 딸려 오고, 합성은 고리 구성원입니다.
+
+### ③ 그리고 `chain_replay → chain_ingestion_worker` «쌍»은 :153 만으로 안 없어집니다
+```
+:153  load_chain_rules      (선언 읽기)
+:265  execute_custom_mapper (행위)   <- 이게 남으면 «쌍»은 그대로 엣지입니다
+=> 「그 쌍 지연 0」도, 「SCC 4→3」도 ㉯ 로는 도달 못 합니다 (시뮬레이션으로 확인)
+```
+
+### 🔵 대신 «값싼 답»이 실측에서 나왔습니다 — 이 고리는 **단순 4-고리**입니다
+```
+chain_builtins ──:82──> virtual_join_executor ──:860──> chain_replay ──:265──> chain_ingestion_worker ──:576/1714/2325──> chain_builtins
+=> 넷 중 «아무 하나»를 끊으면 SCC 가 4→«0» 입니다 (3 이 아니라 «사라집니다»)
+```
+
+### 판정 357 이 시킨 표 — 「같은 트랜잭션인가 별도 작업인가」
+```
+엣지                                무엇을 부르나            트랜잭션            판별
+builtins :82 -> executor           on_target/reference_    «같은» txn          체인 드레인이 자기 빌트인을
+                                   rows_changed (조인 실행)  (run_builtin 이 db 를 그대로 넘김)   실행하는 것. 내부
+worker :576… -> builtins           synthesize · dispatch    «같은» txn          같은 부류
+replay :265 -> worker              execute_custom_mapper    «별도 작업»         replay 는 운영자 배치이고
+                                                           (replay 가 «청크마다» 자기 커밋)      자기 커밋 경계를 가집니다
+                                                           => 「부르지 말고 큐로」가 아니라
+                                                              «한 실행기가 둘로 쪼개진 것» 쪽입니다
+executor :860 -> replay            withdraw_source          «같은» txn          🔵 «남의 집에 있는 프리미티브»
+                                   (레이어 철회)             (db 를 그대로 넘김)   — 철회는 replay 의 «행위»가
+                                                                                아니라 둘 다 쓰는 «연산»입니다
+```
+
+### 권고 «하나» (판정 357 이 요구한 대로)
+```
+🔵 `virtual_join_executor -> chain_replay` (:860) 를 끊습니다 — 호출 «하나»입니다
+   `withdraw_source` 는 replay 의 행위가 아니라 «레이어 철회 프리미티브»입니다. 실행기도 replay 도
+   그것을 «씁니다». ①에서 문장을 내린 것과 «같은 기제»이고, 여기서는 연산을 내립니다
+   딸려 오는 것(실측): ReplayRefused · PROTECTED_SOURCES · DEFAULT_CHUNK_SIZE 셋.
+   그 셋은 replay 의 «상수와 예외»라 같이 내리고 replay 가 그것을 읽습니다(둘째 철자 0)
+   비용: 함수 하나 + 상수 셋 이동. 효과: 4-고리가 «통째로» 사라짐
+⚠️ :265(`execute_custom_mapper`)는 「같은 기능 두 경로」라 «합치는» 쪽이 맞지만, 그건 실행 경로를
+   건드리는 «큰» 변경입니다. 위의 :860 을 끊으면 고리가 이미 없어지므로 «급하지 않습니다»
+```
+
+> 📌 **[09-13 12:14] 이 채널의 미답 질문: «하나» — ㉯ 대신 :860 을 끊을까요(권고: 예). 코드 0줄로 대기합니다.**
+> ⚠️ 판정 357 의 게이트 둘(「쌍 지연 0」·「SCC 4→3」)은 ㉯ 로는 «도달 불가»이고, :860 을 끊으면 「SCC 4→0」이 됩니다.
+
+---
+
+## ✅ [09-13 12:2x] S-211 ① — 고리가 «사라졌습니다». SCC 4 → **0** (`ring cut`, 재기동 «필요»)
+
+### 끊은 것 — 호출 «하나»
+```
+virtual_join_executor.retract_rows 가 `chain_replay.withdraw_source` 를 «함수 안에서» import
+그 한 줄이 네 모듈 고리의 마지막 이음매였고, «단순 4-고리»라 통째로 사라졌습니다 (줄어든 게 아니라)
+새 모듈  server/cell_layer.py — 셀의 «층»: 누가 claim 했나 · 밑에 무엇이 있나 · claim 을 «철회»
+방향 근거  철회는 재생의 «행위»가 아니라 «둘 다 쓰는 연산»입니다 — 실행기는 「참조 행이 사라져서」,
+          재생은 「이 소스의 claim 을 되돌리려고」. 같은 연산, 다른 사유 -> 둘보다 «아래»
+```
+
+### 🔴 제 앞 보고를 정정합니다 — 「함수 하나 + 상수 셋」이 아니라 «열»이었습니다
+```
+제가 적은 것   ReplayRefused · PROTECTED_SOURCES · DEFAULT_CHUNK_SIZE  «셋»
+실제           + R1_SOURCE_NAME · R2_AUDIT_SOURCE · SAMPLE_LIMIT
+               + 사설 헬퍼 «셋» `_claimed_filter` · `_load_cell_state` · `_resolve_cell`
+               = 열, 271줄 (chain_replay 1,202 -> 927)
+왜 틀렸나      함수 «본문이 무엇을 참조하는지»를 안 재고 눈으로 봤습니다. `ast` 로 재니 열이었습니다
+```
+🔵 헬퍼 셋은 `chain_replay` 의 «다른 함수들도» 쓰므로 그쪽이 `cell_layer` 에서 읽습니다 — 정의는 «하나»입니다(시험이 `is` 로 동일 객체를 단언합니다).
+🔵 `ReplayRefused` 는 «이름만» 재생의 것으로 남겼습니다 — 개명하면 잡는 자리 넷(`main`·`retroactive`·`frame_confirmation`·CLI)이 같이 바뀌고, 이동이 개명을 겸하면 무엇이 깨졌는지 읽기 어려워집니다.
+
+### 게이트 — 판정 358 이 정한 그대로
+```
+cell_layer 가 고리를 import 안 함   여섯 이름 각각 단언 · «모듈 수준과 함수 안» 둘 다 읽음
+:860 지연                          «0» — 실행기는 `cell_layer` 를 부르고 `chain_replay` 를 안 부릅니다
+SCC                                4 -> «0» (열 모듈 전수 재측정)
+스위트                             27 파일 515 passed / 1 xfailed
+수집                               6,275 -> 6,284
+철회 계약                          `user` 층은 여전히 «즉시 거절» (이 시험이 단언)
+```
+🔴 **시험 하나가 «패치 대상»을 옮겨야 했습니다** — `test_retraction_withdraws_the_layer_by_the_rule_name` 이 `chain_replay.withdraw_source` 를 monkeypatch 하고 있었는데, 이동 뒤 그건 «실행기가 부르는 것이 아닙니다». **옛 자리를 패치하면 초록인 채로 «진짜 함수»가 돕니다** — 그 자리를 옮기고 사유를 그 시험 docstring 에 적었습니다. (S-212 와 «같은 부류»입니다: 채점기가 «호출이 실제로 닿는 자리»를 봐야 합니다.)
+🔵 변이: `cell_layer` 가 `chain_replay` 를 import 하게 만들면 빨강 셋.
+
+> 📌 **[09-13 12:2x] 이 채널의 미답 질문: «없음».** 다음: 지시대로 **패키지화 «짓기 전 블록 갱신»** — 고리 0 이 됐으니 `virtual_join_executor` 의 자리를 import 방향으로 확정하고, 1,172 자리 · 재수출 0 · 런처 넷 · `sys.modules` 접두 81 전건을 블록에 싣겠습니다.
+
+---
+
+## 📋 [09-13 12:31] 패키지화 «짓기 전 블록» 갱신 — 고리 0 위에서 다시 잼 (코드 0줄)
+
+### 수 — 두 모듈이 늘어 다시 셌습니다
+```
+최상위 평면 모듈   66 -> «68»   (+virtual_join_refusal +cell_layer)
+import 문         1,172 -> «1,179»
+그 문을 실은 파일   376 -> «379»
+고리               SCC «0» (import 시점·지연 «둘 다» 비순환) — 이 블록의 전제가 바뀐 자리입니다
+```
+
+### 🔴 `sys.modules` 접두 비교 «전건» — 지시하신 81 자리를 분류했습니다
+```
+prose(주석)        14      membership(`in sys.modules`)   9      lookup   3      기타   24
+assign alias       11      delete by name                12      🔴 PREFIX COMPARE   «8»
+```
+그 여덟이 «전부»입니다:
+```
+chain_ingestion_worker:1727 "mappers."          ·  :1732 "pipeline_plugin_"
+run_watcher:177 "pipeline_plugin_"              ·  :182 "mappers."
+system_reload:108 "mappers."                    ·  :134 "pipeline_plugin_"
+run_auto_update:949 "dynamic_collector…"        ·  tests/test_contention_fixes:70 "server…"
+```
+🔵 **결론: 이번 패키지화가 «닿지 않습니다».** 여덟 중 «하나도» 68 의 이름을 비교하지 않습니다 — 비교 대상은 `mappers.`(운영자 맵퍼) · `pipeline_plugin_`(운영자 파서) · `dynamic_collector`(수집기) · `server.`(레거시 별칭)이고 넷 다 이동 대상 «밖»입니다. 게이트로는 「그 여덟의 접두 문자열 무변」을 걸겠습니다.
+
+### 🔴 두 새 모듈의 자리 — import «방향»이 정합니다 (지시대로)
+```
+cell_layer        읽는 쪽: chain_replay · virtual_join_executor  «둘뿐»
+                  -> 그 둘이 가는 패키지의 «아래». 자기 import 는 logging·uuid·keyset_scan 뿐이라
+                     어디에 놓아도 고리를 못 만듭니다. 시험이 그 성질을 붙들고 있습니다
+virtual_join_refusal  읽는 쪽: config_resolve_report · virtual_join_config -> virtual join 계열과 같이
+```
+🔴 **그런데 `virtual_join_executor` 는 «체인의 것이 아닙니다» — 실측이 그렇게 말합니다:**
+```
+읽는 쪽   chain_builtins · database/config_watcher · database/crud · main · system_reload
+=> 체인 «밖»이 셋(데이터 층 둘 + 기동/리로드 둘). 즉 이것은 «공용 설비»이지 체인 내부가 아닙니다
+=> `chain/*` 안에 넣으면 `database/` 가 `chain/` 을 import 하게 됩니다 — 층이 거꾸로입니다
+권고     virtual join 셋(config · executor · refusal)은 «자기 패키지»(`vjoin/`) 또는 최상위 잔류.
+         `chain/` 에 넣지 «않습니다»
+🔵 완화 하나: `database/crud` 의 둘은 «함수 안»입니다(:3838 :3992) — 모듈 수준 층 위반은 «아직» 없습니다.
+   그래서 이것은 「오늘 깨진다」가 아니라 「그 경계를 그으면 내일 깨진다」입니다
+```
+
+### 갱신된 경계 표 (제안)
+```
+chain/          chain_activity · chain_bindings · chain_builtins · chain_graph ·
+                chain_ingestion_worker · chain_key_gate · chain_replay + cell_layer      8
+vjoin/          virtual_join_config · virtual_join_executor · virtual_join_refusal       3   <- 체인 아님
+ledger/*        ledger_admin · ledger_explorer · ledger_trace · ledger_trace_router      4
+map/            map_alignment · map_meta_registrar · map_overlay · map_preset_routing
+                + alignment_batch_counts · alignment_view_service · dt_frame_transform
+                + frame_confirmation (map_alignment 과 «서로» 부름 — 같이 넣어야 경계를 안 넘음)  8
+enrichment/     enrichment_* 다섯                                                        5
+ingestion/      ingestion_activity · ingestion_checkpoint · file_ingestion_status         3
+runtime/        paths · event_constants · system_reload · process_supervisor · pacing ·
+                runtime_loops · health · launcher_args                                    8
+admin/          admin_auth · dev_bench · retroactive · schema_drift · audit_cache ·
+                audit_history                                                             6
+최상위 잔류      main · run_* 셋 · transfer_plan · bonding_plan · mapper_sdk · db_safety …  ~23
+                🔴 그리고 «운영자 고정 목록»(void_sat_format · pipeline_base ·
+                   html_topology_parser · database) 은 «절대» 안 움직입니다 — 약속입니다
+```
+⚠️ 「못 붙이면 최상위에 남김」을 지시받았고, 그래서 억지로 안 넣습니다 — 접두가 하나뿐인 31 중 상당수가 여기입니다.
+
+### 게이트 · 되돌리기
+```
+시험 6,284 무변 · 런처 넷(`main:app` · run_watcher · run_chain_worker · run_auto_update ·
+run_decoupled_app) 모듈 본문 실행 · 호환 재수출 «0»(옛 최상위 이름을 import 하는 자리 git grep 0)
+· SCC «0» 유지 · `sys.modules` 접두 여덟 문자열 무변 · 운영자 고정 목록 시험 초록
+되돌리기  한 커밋 revert. 그래서 1,179 자리가 «한 커밋»이어야 합니다
+```
+
+### 🔴 모르는 것 — 그대로입니다
+운영자 워크스페이스 스크립트가 무엇을 import 하는지 셀 수 없습니다. 답은 «약속»(`OPERATOR_IMPORT_NAMES`)이고, 그 목록의 모듈은 이동 대상에서 뺍니다.
+
+> 📌 **[09-13 12:31] 이 채널의 미답 질문: «하나» — `virtual_join_*` 셋을 `vjoin/` 로 낼까요, 최상위에 남길까요 (제 권고: `vjoin/` — `chain/` 에 넣는 것만 «안 됩니다», 데이터 층이 체인을 읽게 되므로).**
+
+---
+
+## 🔴 [09-13 12:35] 패키지화 — **짓기 전에 멈춥니다.** `paths.py` 하나가 아니라 «열하나»입니다 (코드 0줄)
+
+판정 359 가 「`paths.py` 가 runtime/ 로 가면 데이터 루트가 한 층 깊어짐 — 실측 후 보고 한 줄」이라 하셨습니다. 재 보니 **그 부류가 `paths` 말고 «열» 더 있고, 그중 셋은 «틀린 값»을 내지 오류를 안 냅니다.**
+
+### 실측 — 이동 대상 중 `__file__` 로 경로를 «계산»하는 자리
+```
+🔴 틀린 «값»이 나오는 것 (오류 없음 — 제일 나쁜 부류)
+  paths:36          SERVER_DIR = dirname(abspath(__file__))     «주석이 그렇게 적습니다:
+                    「Location of this file == the server package directory」»
+                    -> runtime/ 로 가면 DATA_ROOT 가 server/runtime 이 되고,
+                       ASSY_DATA_ROOT 가 «없는 운영 배치»에서 config·ingestion_workspace·로그가
+                       통째로 «다른 디렉터리»가 됩니다. 아무것도 안 던집니다
+  pacing:24         PACING_PATH = Path(__file__).with_name("pacing.json")
+                    -> 모듈이 움직이면 그 json 도 «같이» 가야 합니다(안 가면 조용히 기본값)
+  schema_drift:135  repo = dirname(dirname(abspath(__file__)))   = 저장소 루트
+                    -> 한 층 깊어지면 그 값이 «server/» 가 됩니다
+
+⚠️ sys.path 에 «넣는» 것 (패키지 안에서는 다른 디렉터리를 넣게 됩니다)
+  enrichment_candidates:124 · ledger_trace:51    sys.path.insert(0, dirname(__file__))
+
+⚠️ server 디렉터리를 «가정»하는 것
+  chain_ingestion_worker:3088 · dev_bench:299 · dev_bench:765 · map_alignment:2324
+  (그리고 map_alignment:2404 는 자기 파일 mtime — 이동해도 «참»이라 무해)
+합계 «11» (무해 하나 포함)
+```
+
+### 그래서 제안 — 순서를 하나 앞에 끼웁니다
+```
+① paths 는 «안 옮깁니다»   이 모듈은 «뿌리 앵커»입니다 — 운영자 고정 목록과 «같은 부류»로,
+                        「여기가 server 다」를 정의하는 자리라 깊이가 계약의 일부입니다
+                        (그래서 runtime/ 표에서 paths 를 뺍니다 — 나머지 일곱은 그대로)
+② pacing 은 json 과 «같이» 옮기거나 안 옮깁니다   권고: 안 옮김(앵커 한 줄로 족합니다)
+③ 나머지 «여덟»은 옮기기 «전»에 `paths` 를 지나게 고칩니다
+   근거가 그 모듈 자신의 docstring 입니다 — 「~17 modules build these paths independently
+   from dirname(__file__). Each now reads from here, so there is exactly one place that
+   decides where data lives.」 여덟은 그 정리에서 «빠진 잔여»입니다
+   즉 이건 패키지화를 위한 «새 일»이 아니라 이미 선언된 규칙의 «미완 구간»입니다
+④ 그 뒤에 패키지화 한 커밋 (1,179 자리, 스크립트로)
+```
+🔵 ③ 이 «먼저»여야 하는 이유: 패키지화와 «같은 커밋»에 넣으면, 경로가 틀어졌을 때 1,179 자리 중 무엇 때문인지 못 가립니다. 그리고 ③ 은 그것만으로 «옳은 정리»라 되돌릴 일이 없습니다.
+
+### 그리고 이 게이트가 «없으면» 안 됩니다
+```
+현재 시험에 「DATA_ROOT 가 server 디렉터리다」를 «깊이로» 잡는 것이 있는지 — 제가 못 찾았습니다.
+`paths` 를 한 층 내려도 «초록»이면, 운영 배치에서만 다른 디렉터리를 읽습니다
+=> ③ 의 커밋에 시험 하나: 「`paths.SERVER_DIR` == `server/` 이고, 그것을 «계산하는 자리»가
+   저장소에 하나뿐이다」 (모듈 수준·함수 안 둘 다 훑어서)
+```
+
+> 📌 **[09-13 12:35] 이 채널의 미답 질문: «하나» — ③(여덟을 `paths` 경유로 + 게이트 하나)을 «패키지화 앞»에 끼울까요. 제 권고: 예. 아니면 판정 359 그대로 한 커밋으로 가되 `paths`·`pacing` 만 제자리에 두는 방법도 있습니다(그때도 나머지 여덟은 이동과 «같은 커밋»에서 고쳐야 합니다).**
+> ⚠️ 판정 359 의 「한 줄 보고」가 «한 줄»로 안 끝난 이유를 적었습니다 — 같은 부류가 열하나이고 셋이 조용합니다.
+
+---
+
+## ✅ [09-13 12:45] S-211 ③ — 「여기가 server 다」를 정하는 자리가 «하나» (`936b5cda`) · 재기동 «필요»
+
+### 고친 다섯 — 전부 `paths` 를 지납니다
+```
+schema_drift:135          저장소 루트  -> paths.REPO_ROOT  (신설, SERVER_DIR «옆»)
+chain_ingestion_worker:3088  sys.path 에 넣던 server 디렉터리 -> paths.SERVER_DIR
+dev_bench:299 :765        워크스페이스 폴백 · mappers 디렉터리 -> paths.SERVER_DIR
+map_alignment:2324        체크아웃 탐침의 출발점 -> paths.SERVER_DIR
+```
+🔵 **새 일이 아닙니다** — `paths` 자신의 docstring 이 「~17 modules build these paths independently … there is exactly one place that decides where data lives」라고 이미 선언했고, 이 다섯은 그 정리의 «미완 구간»이었습니다. 패키지화가 그것을 «드러냈을» 뿐입니다.
+
+### 🔴 일곱 중 «둘»은 못 지납니다 — 면제가 아니라 «다른 부류»입니다
+```
+enrichment_candidates:124 · ledger_trace:51
+  둘 다 `except ImportError:` 폴백이고, 그 안에서 하는 일이 «`paths` 를 찾는 것»입니다
+  -> 자기가 import 하는 중인 모듈을 지날 수 없습니다. 게이트의 허용 목록에 «이름과 사유»를 적었습니다
+⚠️ 그리고 이 둘은 패키지화 때 «깊이에 맞춰» 고쳐야 합니다(스크립트가 깊이를 아니 그때) — 지금은 참입니다
+```
+
+### 앵커 둘은 제자리 (판정 360)
+`paths` · `pacing` 은 이동 대상에서 «뺐고», 게이트가 그것을 단언합니다. `SERVER_DIR = dirname(__file__)` 이고 `ASSY_DATA_ROOT` 가 «없는 배치»(= 운영)에서 `DATA_ROOT` 가 거기로 떨어지므로, 한 층만 내려가도 config·ingestion_workspace·로그가 통째로 다른 데를 가리키고 **아무것도 안 던집니다.**
+
+### 🔴 제 첫 게이트가 «너무 넓었습니다» — 스스로 고쳤습니다
+```
+1차   저장소 전체를 훑어 ~150 자리를 냈습니다 (scripts/ · migrations/ 전부)
+      그것들은 «안 움직이고», 자기 경로를 계산하는 것이 «옳습니다»(각자 __main__ 부트스트랩)
+      -> 무관한 150건을 내는 게이트는 «지켜지지 않고 꺼집니다»
+2차   모집단을 «깊이가 바뀌는 모듈»(이동 표) 로 좁혔습니다. 그게 이 라운드가 건드리는 집합입니다
+```
+🔵 그리고 게이트에 «허용 목록 낡음» 시험을 넣었는데, **그게 제 실수를 먼저 잡았습니다** — 고쳐 놓고 목록에 남겨 둔 `map_alignment` 에서 빨강. 오래 남은 허용 목록은 «허가»가 됩니다.
+
+### 게이트
+```
+paths.SERVER_DIR == server/ · REPO_ROOT == 그 위 · DATA_ROOT 폴백 == SERVER_DIR (운영 경로)
+이동 대상 중 dirname(__file__) 계산 «0» (허용 둘 제외, 모듈 수준·함수 안 둘 다 훑음)
+앵커 둘이 이동 표에 «없음»
+변이   schema_drift 의 계산을 되돌리면 빨강
+시험   116 파일 2,202 passed / 7 skipped   ·   수집 6,284 -> 6,291
+```
+⚠️ 검증 중 제 파일 목록이 `.mjs` 오라클을 물어 pytest 가 «exit 4 · 시험 0»을 냈습니다. 「초록」으로 안 읽고 출력을 열어 잡았습니다(부류: 「0건은 질의가 아무것도 못 짚은 것일 수 있다」).
+
+> 📌 **[09-13 12:45] 이 채널의 미답 질문: «없음».** 다음: **패키지화 한 커밋**(판정 359) — 1,179 자리 스크립트, 앵커 둘 제외, 부트스트랩 둘은 깊이에 맞춰, 게이트 전부.
+
+---
+
+## 🔴 [09-13 12:5x] 패키지화 — **다시 멈춥니다.** `chain/` 과 `ledger/` 가 «이미 있습니다» (코드 0줄)
+
+판정 359 의 경계 표는 「새 패키지 여덟」을 전제합니다. 그런데 둘은 «이미 존재하고», 그 둘이 «서로 다른 것»입니다.
+
+### 실측
+```
+server/chain/      «둘»뿐입니다 — __init__.py · __main__.py
+                   그리고 그 파일이 자기를 이렇게 적습니다:
+                   「운영에서는 `python -m chain <도구>` 하나만 외우면 됩니다」
+                   「🔴 THIS ENTRY POINT IMPLEMENTS NOTHING (S-109)」
+                   => `chain/` 은 오늘 «구현»이 아니라 «문»입니다
+server/ledger/     «32»개 — 진짜 패키지입니다. 그리고 «문»도 같이 있습니다(__main__.py)
+                   => 「문 + 집」을 한 패키지에 두는 «선례»가 이미 있습니다. ledger 가 모델입니다
+server/ledger_api/ 4개 (별개)
+server/parsers/ · server/database/   __init__.py «없음» = 네임스페이스 패키지
+```
+🔵 **그러므로 「문에 구현을 합친다」는 새 발명이 아닙니다** — `ledger/` 가 그렇게 돼 있습니다. 다만 `chain/` 은 «아직» 문뿐이라, 이 라운드가 그 성격을 바꿉니다. 판정에 그 한 줄이 필요합니다.
+
+### 🔴 그리고 «이름»이 결정돼 있지 않습니다 — 기존 패키지가 답을 들고 있습니다
+```
+기존 ledger/ 의 모듈 이름   config · envelope · store · gaps · schema · setup · roleframe …
+                          => 접두를 «떼는» 것이 이 저장소의 관례입니다 (예외 하나: ledger_frame)
+그러면                     ledger_trace -> ledger/trace     ·  chain_bindings -> chain/bindings
+충돌                       «0» (열둘 전부 실측)
+```
+
+### 갈래 둘 — «비용이 다릅니다». 판정 필요
+```
+㉠ 접두 «유지»   chain/chain_bindings.py,  `from chain import chain_bindings`
+   바뀌는 것     import 줄 «1,179»뿐. 호출 자리(`chain_bindings.foo()`)는 «한 글자도» 안 바뀜
+   대가         `chain.chain_bindings` 로 더듬거리고, 기존 `ledger/` 관례와 «어긋납니다»
+                (그러면 한 저장소에 관례가 둘이 됩니다 — 상설 ④ 의 부류)
+㉡ 접두 «제거»   chain/bindings.py,  `from chain import bindings`
+   바뀌는 것     import 1,179 + «속성 참조 659» (열하나 모듈 실측: 운영 코드 190 · 시험 469)
+   대가         디프가 훨씬 큽니다. 대신 관례가 «하나»가 되고 이름이 읽힙니다
+   ⚠️ `as chain_bindings` 로 별칭을 달면 659 를 피할 수 있지만, 그러면 1,179 자리에 «옛 이름»이
+      그대로 남아 개명의 값이 사라집니다 — 권하지 않습니다
+제 권고: ㉡ — 이 저장소에 «이미 있는» 관례가 그것이고, 관례가 둘이 되는 것이 이 라운드가
+        고치려는 병과 «같은 부류»이기 때문입니다. 다만 디프가 1,179 -> «1,838» 자리가 됩니다
+```
+
+### 그 밖에 이번에 같이 잰 것
+```
+chain/__main__.py:17  HERE=dirname(__file__) · SERVER=dirname(HERE)  <- 열두 번째 __file__ 자리
+                      «오늘 맞습니다»(chain/ 이 server/ 바로 밑). 이 라운드가 깊이를 안 바꾸므로 무해
+                      ⚠️ 다만 패키지를 «더 깊이» 두는 안이 나오면 이 줄이 같이 틀립니다
+test_one_door_per_family_calls_the_tool_that_exists.py 가 두 문을 «둘 다» 채점합니다 —
+패키지에 구현이 들어와도 그 시험은 그대로 참이어야 합니다 (게이트에 넣겠습니다)
+```
+
+> 📌 **[09-13 12:5x] 이 채널의 미답 질문: «둘».**
+> ① 이름: ㉠(접두 유지, 1,179 자리) / ㉡(접두 제거, 1,838 자리 — 제 권고, 기존 `ledger/` 관례와 같음)
+> ② `chain/` 은 오늘 «문»뿐인데 거기에 구현 여덟을 넣습니까 (제 권고: 예 — `ledger/` 가 이미 「문+집」입니다)
+> ⚠️ 판정 359 는 「새 패키지 여덟」을 전제로 내려졌고, 둘은 이미 있으며 그중 하나는 «성격이 다릅니다».
+
+---
+
+## 📋 [09-13 13:0x] 패키지화 — 스크립트는 «섰습니다». 판정 362 가 요구한 「너무 일반적인 이름」 한 줄이 «열 파일»입니다 (코드 0줄)
+
+### 스크립트 (드라이런 통과, 저장소 밖 스크래치패드에 있습니다)
+```
+43 모듈 -> 8 패키지   ·   286 파일 · 2,818 자리
+🔴 정규식이 아니라 «AST» 로 고칩니다. 이유를 재서 알았습니다:
+   정규식 3,210 자리 vs AST 2,818 — 차이 «392»가 문자열·주석이었습니다. 실물 둘:
+     logging.getLogger("map_alignment.diag")   <- 정규식이면 «로거 이름»이 바뀝니다(동작 변경)
+     retroactive.py:633 "chain_replay": {…}    <- 모듈이 아니라 «연산 키»입니다
+🔴 그리고 «그 파일이 실제로 import 한 것»만 개명합니다 — `health` 는 모듈이면서 흔한 지역
+   변수 이름입니다. import 한 적 없는 파일의 `health` 를 건드리면 안 됩니다
+확인   `import virtual_join_config as vjc` -> `from virtual_join import config as vjc` (별칭 보존)
+       `import map_overlay` + `map_overlay.SOURCE_REF` -> `from maps import overlay` + `overlay.SOURCE_REF`
+```
+🔵 제 스크립트도 처음엔 «`__file__` 로 저장소 루트»를 구해서 「0 파일」을 냈습니다 — 방금 고친 그 부류입니다. `git rev-parse --show-toplevel` 로 바꿨고, 그 사유를 스크립트 머리에 적었습니다.
+
+### 🔴 그 「한 줄」의 실측 — 접두를 떼면 «열 파일»에서 이름이 부딪힙니다
+```
+enrichment_config -> config        alignment_view_service · database/models · main
+virtual_join_config -> config      main · tests/test_ledger_v2_pg
+   🔴 main.py 는 «둘 다» import 합니다 — 떼면 `config` 가 «서로» 부딪힙니다
+enrichment_candidates -> candidates   chain_ingestion_worker
+enrichment_backfill -> backfill       retroactive
+ingestion_checkpoint -> checkpoint    parsers/directory_watcher · tests/…given_back
+chain_graph -> graph                  tests/…four_declarations
+runtime_loops -> loops                tests/…nine_loops
+합계 «열» 파일 (기존 바인딩과 충돌 — 지역 변수·인자·다른 import)
+```
+**패키지 «안»에서는 뜻이 섭니다**(`enrichment/config` · `virtual_join/config` — `ledger/config` 가 선례). 문제는 «부르는 자리»입니다: 한 파일이 둘을 같이 읽으면 맨 이름이 같아집니다.
+
+### 갈래 — 판정 필요 (별칭은 금지하셨으므로 둘 중 하나)
+```
+㉮ «점 표기»로 부른다      import enrichment.config  ->  enrichment.config.X
+   어디에              「접두를 떼면 일반적인 이름」이 되는 것들에 «일률적으로»
+                      (config · candidates · checkpoint · backfill · graph · loops)
+   장점                별칭 0 · 어느 파일에서나 뜻이 «같음» · 규칙이 하나
+   대가                그 모듈들의 속성 참조가 `enrichment.config.X` 로 길어집니다
+㉯ 충돌 «열 파일»에서만 점 표기       나머지는 맨 이름
+   대가                관례가 둘이 됩니다(대부분 맨 이름, 열 곳만 점) — 상설 ④ 의 부류
+제 권고: ㉮ — 「어디서나 같은 뜻」이 이 라운드의 목적이고, 예외 열 개를 두면 다음 파일이
+        어느 쪽인지 매번 판단해야 합니다
+```
+
+> 📌 **[09-13 13:0x] 이 채널의 미답 질문: «하나» — ㉮/㉯. 판정 주시면 스크립트에 그 규칙만 넣고 «한 커밋»으로 돌립니다(드라이런은 이미 초록입니다).**
+
+---
+
+## 🔴🔴 [09-13 13:05] 패키지화 — **돌렸고, 되물렸습니다.** 소유자의 «라이브 맵퍼»가 깨집니다 (트리 원복 완료, 수집 6,291)
+
+지시대로 한 커밋을 돌렸습니다. 드라이런은 초록이었고, **적용 뒤 수집이 41 오류**였습니다. 원인 셋 중 «하나»가 제가 못 고치는 것이라 **즉시 되물렸습니다**(박스가 살아 있어서).
+
+### 🔴 못 고치는 것 — 소유자의 gitignored 맵퍼가 «옮긴 이름»을 import 합니다
+```
+server/mappers/*.py (소유자 파일, 추적 안 됨, 제가 «고칠 수 없음») 가 import 하는 것:
+   chain_bindings          7      map_alignment          3
+   map_overlay             4      dt_map_derivation      2
+   dt_frame_transform      4      alignment_view_service 2
+   map_meta_registrar      3      (`from ledger …` 7 은 이미 패키지라 «무사»)
+=> 옮긴 43 중 «일곱»이 소유자 파일에 이름으로 박혀 있습니다
+```
+🔴 **S-211 ② 의 약속 목록이 «좁았습니다».** 저는 추적되는 shim 둘이 드는 것(`void_sat_format`·`pipeline_base`)과 레거시 별칭만 넣었습니다. **소유자의 «라이브 맵퍼»가 무엇을 import 하는지는 안 셌습니다** — 「셀 수 없다」고 두 번 적었는데, **디스크에 있으니 «구조적 사실»은 잴 수 있었습니다.** 재는 것과 «고치는 것»은 다른데 제가 둘을 같이 묶어 「못 잰다」로 넘겼습니다.
+
+### 나머지 둘 (이건 제가 고칩니다 — 판정 나면)
+```
+34 오류  verified_join_contract.py:213
+         `if module_name not in {"virtual_join_config", "server.virtual_join_config"}`
+         -> 호출자의 «모듈 이름 문자열»로 «능력»을 검사합니다. 이름이 바뀌면 거절합니다
+         (AST 재작성이 문자열을 «일부러» 안 건드린 것이 맞았고, 그래서 드러났습니다)
+ 3 오류  나머지는 위 맵퍼들이 끌고 온 것
+```
+
+### 무엇이 잘 됐나 (스크립트는 섭니다)
+```
+287 파일 · 3,337 자리 · 재작성 후 «전부 파싱»  ·  이름 충돌 «0»(점 표기 여섯)
+그리고 적용 «전에» 두 결함을 잡았습니다:
+ ① AST 가 아니라 정규식이면 392 자리(로거 이름·연산 키)가 «동작 변경»이 됐습니다
+ ② `ast` 의 col_offset 은 «UTF-8 바이트»입니다 — 문자 인덱스로 자르니 한국어가 있는 줄에서
+    `map_overlay.META_TABLE` 이 `map_overlay.MEoverlay` 가 됐습니다. 재파싱 검사가 없었으면
+    286 파일이 «조용히» 망가졌습니다
+ ③ 제 모듈 목록에 «없는 이름»이 하나(`enrichment_materialize`, 실제는 `enrichment_mapper`) —
+    `git mv` 가 도중에 죽어 트리가 반만 옮겨졌습니다. 목록을 `git ls-files` 로 «검증»하는
+    프리플라이트를 넣었고, 그 사유를 스크립트에 적었습니다
+```
+⚠️ 그리고 **판정 363 의 지적대로 시각을 `date` 로만 적습니다** — 앞 보고의 `13:0x` 는 제가 손으로 적은 자리표시였습니다. 이 보고의 13:05 는 `date` 값입니다.
+
+### 갈래 — 판정 필요 (트리는 원복됐고 코드 0줄입니다)
+```
+㉠ 일곱을 «안 옮긴다»      chain_bindings · map_overlay · dt_frame_transform · map_meta_registrar
+                        · map_alignment · dt_map_derivation · alignment_view_service
+                        -> 최상위에 남기고 «운영자 고정 목록»에 올립니다(S-211 ② 의 약속 확장)
+                        패키지화는 나머지 36 으로. `maps/` 는 거의 비고, `chain/` 은 bindings 를 잃습니다
+㉡ 옮기고 «소유자께 알린다»  옮긴 뒤 소유자가 자기 맵퍼의 import 를 고쳐야 합니다
+                        -> 「사용자 스크립트는 무수정 원칙」(directory_watcher shim 이 적은 계약)과
+                           정면으로 어긋납니다. 제 권고 아님
+㉢ 별칭 모듈을 둔다        최상위에 `chain_bindings.py` = `from chain.bindings import *`
+                        -> 「호환 재수출 0」 위반. 기각
+제 권고: ㉠ — 그리고 그 일곱이 «왜» 약속인지 실측을 `OPERATOR_IMPORT_NAMES` 옆에 적습니다.
+        「소유자 맵퍼가 import 하는 이름」을 «파일에서 세는» 게이트도 같이(오늘 그것이 없어서 놓쳤습니다)
+```
+
+> 📌 **[09-13 13:05] 이 채널의 미답 질문: «하나» — ㉠/㉡/㉢. 트리는 HEAD 원복, 수집 6,291 정상, 박스 무사입니다.**
+
+---
+
+## ✅ [09-13 14:22] S-211 패키지화 — **착지했습니다** (`aa77a2fe`, 253 파일) · 재기동 «필요»
+
+### 결과
+```
+36 모듈 -> 8 패키지 (chain · virtual_join · ledger · maps · enrichment · ingestion · runtime · admin)
+최상위 잔류 32   (앵커 둘 + 운영자 약속 열하나 + 억지로 안 넣은 나머지)
+스위트   6,151 passed / 156 skipped / 4 xfailed / «0 failed»  exit 0
+런처 넷 · 옛 이름 import 0 · 접두 여덟 무변 · 문 시험 · 맵퍼 약속 게이트  전부 초록
+```
+
+### 🔴 「수집 초록」은 게이트가 «아니었습니다» — 두 번 증명됐습니다
+```
+적용 1회차   수집 6,312 «깨끗» -> 스위트 152 failed · 297 errors
+원인(제 결함) 재작성기가 «속성의 밑동»만 개명했습니다.
+             `monkeypatch.setattr(ledger_admin, …)` 처럼 «값으로 넘기는» 모듈은 옛 이름 그대로
+=> import 줄이 «파싱된다»는 것은 그 이름이 «실행될 때» 산다는 뜻이 아닙니다
+고침         그 파일이 실제로 import 한 이름의 «모든 Load» 를 개명
+꼬리         449 -> 92 -> 12 -> 1 -> «0»
+```
+
+### 재작성기가 «구조적으로 못 보는» 참조 다섯 — 전부 «돌려서» 찾았습니다
+```
+설정 문자열      "mapper_module": "enrichment_mapper"   <- «한 줄»이 34 실패였습니다
+서브프로세스 코드  시험이 문자열로 넣어 자식에서 도는 import
+소스 오라클      open(SERVER, "chain_ingestion_worker.py") 같은 «경로 리터럴»
+속성 패치 대상    setattr(trace_router.ledger_trace, …)  <- 모듈의 «공개 속성 이름»이 바뀝니다
+시험 파라미터     SENDERS = [… "chain_ingestion_worker"]
+```
+🔵 **그리고 문자열을 «일부러» 안 건드린 것이 옳았습니다** — `SOURCE_NAME = "enrichment_backfill"` 은 `cell_sources` 에 쓰이는 «출처 값»이고, `OPERATIONS` 의 키는 클라가 보내는 «연산 이름»입니다. 정규식이었으면 저장된 데이터와 API 를 «조용히» 깨뜨렸습니다.
+
+### 🔴 점 표기(판정 363)가 «만든» 결함 둘 — 저장소 전수로 쓸었습니다
+```
+① 함수 안 `import enrichment.candidates` 가 그 함수 «전체»에서 `enrichment` 를 지역으로 만듭니다
+   -> 같은 함수의 «앞쪽» `enrichment.config…` 가 UnboundLocalError. «제품 코드»에 하나 있었습니다
+   고침: 그 자리들을 `from enrichment import config as _enrichment_config` 로 «일률»(일부만
+         고치니 별칭을 안 묶은 함수가 NameError — 그래서 파일 전체를 한 규칙으로)
+② 지역 변수 이름이 «패키지와 같으면» 같은 줄의 `enrichment.config` 가 죽습니다
+   -> 평면 이름(`enrichment_config`)일 때는 «없던» 충돌입니다. 9 후보 중 실제 결함은 이 하나
+```
+
+### ⚠️ 남은 고리 하나 — 이 라운드 것이 «아닙니다»
+`database.database` ↔ `db_safety`, 지연 import 로 벌려 둔 상태(S-211 ① 이 끊은 것과 «같은 모양»). 두 파일 다 이번에 안 움직였고, «모집단을 68 에서 전 모듈로 넓히니» 보였습니다. 손대지 않았습니다.
+
+### 제 실수 둘 (기록)
+```
+① `git reset --hard` 로 패키지화를 되물리며 «미커밋이던 다른 넷»(능력 검사·약속 목록·맵퍼 게이트
+   ·프로브 셋)을 같이 날렸습니다. 자기완결적이고 초록이면 «먼저 커밋»했어야 합니다
+② 커밋 메시지 파일을 python 이 못 읽어 «옛 문구»로 착지 -> amend.
+   Git Bash 의 `/tmp` 와 Windows python 의 `/tmp` 가 «다른 곳»입니다
+```
+
+> 📌 **[09-13 14:22] 이 채널의 미답 질문: «없음».** 다음: **S-216**(선언 라우트가 `absence_confirmed_by` 를 싣기).
+
+---
+
+## ✅ [09-13 14:47] S-216 — 선언이 «확인 술어»를 이름 댑니다 · 재기동 «필요»
+
+```
+고친 것   ledger/trace_router.py 의 predicates 조립 — `absence_confirmed_by` 를
+         «선언한 술어에만» 싣습니다. 키 «생략»(빈 값 아님)
+근거     S-149 의 `absence` 칸은 노드마다 붙는데, 화면이 그 열을 «노드에서» 그리면 모집단이
+         「도착한 술어」가 됩니다 — 그 칸이 막으려던 바로 그 오독입니다. 모집단은 «선언»이고
+         이 라우트가 그것을 읽는 자리입니다
+규율     이 라우트의 `class`·`attributes` 와 «같은» 세 상태: 키 없음 ≠ 빈 값 ≠ 값
+         (오늘 출하 선언에는 확인 술어가 «없으므로», 키의 부재가 「이 배치는 그 축을 안 쓴다」를
+          「이 서버는 그 축을 모른다」와 구별해 줍니다)
+```
+🔵 **게이트를 «마운트한 라우트»로 몰았습니다** — 이 라우트의 형제 시험들은 핸들러를 직접 부르고(그 시험들이 단언하는 것에는 그게 맞습니다), 지시는 「라우트 실호출」이었습니다. 그리고 그 차이가 바로 드러났습니다: 라우터에 «접두»(`/api/ledger`)가 있어 `/declaration` 은 404 였습니다 — 핸들러를 직접 불렀으면 안 보였을 것입니다.
+```
+시험 넷   선언한 술어에만 키 · 안 한 술어엔 키 «없음» · 아무도 선언 안 하면 전건 «없음»
+         · 기존 네 칸(name·subjects·object·origin) 무변
+변이     키를 «빈 문자열»로 내면 빨강 둘
+모집단   5 파일 83 passed / 1 skipped  ·  수집 6,312 -> 6,315
+```
+⚠️ 커밋은 «제 두 파일만» 담았습니다 — 공유 트리에 응용 레인의 문서 수정 «55개»가 미커밋으로 있어서, 경로를 명시해 제 것만 올렸습니다.
+
+> 📌 **[09-13 14:47] 이 채널의 미답 질문: «없음».** 큐: S-215 · S-214 (둘 다 «뒤»로 잡혀 있습니다).

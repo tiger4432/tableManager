@@ -1,6 +1,9 @@
 # HTML Table Adjacency Graph Topology Parser User Guide
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-24 | **Owner:** Ingester | **Source-of-truth:** `server/parsers/html_topology_parser.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-09-13 | **Owner:** Ingester | **Source-of-truth:** `server/parsers/html_topology_parser.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+
+> 🔴 **[2026-09-13 갱신] 이 문서는 07-24 이후 «거절 경로»를 한 글자도 들고 있지 않았습니다.** `419cd8fa`(2026-08-04, 이 파일에 +151/−51)가 「격자 원점을 «두 번» 유도하고 어긋나면 파일을 거절한다」를 넣었고, 그 뒤 `b95d998b`(2026-09-07)까지 옵직였습니다. 그 경로가 **§3.6-bis** 로 들어왔습니다 — «0행으로 들어온 파일»을 만나면 그 절부터 열으십시오.
+> ⚠️ 그 밖의 절(§1~§3.5 · §4)은 이번 패스가 «열지 않았습니다» — 그대로인지 재지 않았다는 뜻입니다.
 
 이 가이드는 HTML 테이블 구조에서 셀 병합(`rowspan`, `colspan`)과 불규칙한 레이아웃 위상(Topology)을 분석하여 데이터와 헤더 간의 의미론적 관계를 역추적하고, 노드와 엣지 기반의 유향 그래프 및 연결 행렬을 생성하는 **`HTMLTableGraphParser`**의 사용 방법과 통합 방안에 대해 다룹니다.
 
@@ -167,6 +170,78 @@ matrix_parser = HTMLMatrixTableParser()
 # 반환 형식: [ { "TITLE": "AAA", "BDIE_LOT": "A", "BDIE_WF": "B", "X": 2, "Y": 2, "VALUE": "F" }, ... ]
 records = matrix_parser.parse_matrix_to_records(html_content)
 ```
+
+---
+
+### 3.6-bis 🔴 격자를 «거절»할 때 — 0행은 고장이 아닐 수 있습니다 (2026-09-13 실측)
+
+`parse_matrix_to_records` 가 **격자 원점을 못 정하면 `[]` 를 돌려주고
+«던지지 않습니다»**(`server/parsers/html_topology_parser.py` :633~660 @ `b95d998b`).
+그래서 **status 는 SUCCESS 이고, 그것이 맞습니다** — 형식을 거부하는 것은
+정당한 결과입니다. 문제는 그것이 «말없이» 정상처럼 보이는 것이고,
+이 절은 그 문장이 «어디서 보이는지»를 적습니다.
+
+#### 왜 거절하나 — X·Y 가 «비즈니스 키의 일부»이기 때문입니다
+소스의 로그 문장이 그 이유를 적습니다(:654~658):
+「Returning 0 records rather than a plausible-looking wrong grid origin, because X and Y are
+part of the business key.」
+🔴 즉 **그러도는척 맞아 보이는 틀린 원점**은 0행보다 나쁘다는 판단입니다 —
+원점이 한 칸 밀리면 모든 셀이 «다른 다이»의 값으로 들어가고, 그것은 나중에
+세어도 안 보입니다.
+
+#### 원점을 «두 번» 유도합니다 (`419cd8fa`)
+```
+① 행의 모양    X축 눈금 행 = «병합 안 된» 비숫자 모퉁이 + 병합 안 된 정수 눈금 2개 이상
+② Y축 라벨   0번 열의 «병합 안 된 정수» 라벨들 — 그 최소행 − 1 이 눈금 행이어야 합니다
+둘이 어긋나면  거절
+```
+그래서 사유가 **네 가지로 갈라 이름이 붙습니다**(:638~652):
+```
+① 둘 다 없음    「no X-axis ruler row and no Y-axis labels … does not have the shape of a 2D matrix map」
+② 눈금만 없음   「no row has the shape of an X-axis ruler … while the Y-axis labels imply the ruler is row N」
+③ 라벨만 없음   「row N is ruler-shaped but no unmerged integer labels sit in column 0」
+④ 둘이 불일치  「the two derivations disagree … Something ruler-shaped sits above the real grid」
+```
+🔵 ④ 가 이 기제의 존재 이유입니다 — «진짜 격자 위에 눈금처럼 생긴 것이
+하나 더 있는» 문서는 한 가지 유도만 쓰면 «조용히» 틀린 답을 냅니다.
+
+#### 🔴 그러면 그 사유를 «어디서 읽나» — 로그가 아닙니다
+```
+쓰는 곳   html_topology_parser.note_refusal(reason)      :809   (거절 자리에서 :660)
+채널    _REFUSAL = threading.local()                      :806   — 모듈 곁의 쓰레드-로컬
+가져감  html_topology_parser.take_refusal()              :814   «가져가며 비울1»
+비움    html_topology_parser.clear_refusal()             :822
+워처가  directory_watcher._grid_refusal()                :2028  -> take_refusal()
+        directory_watcher._compose_detail(…, grid_refusal)  :2047  -> detail 문자열
+        그 detail 이 «완료 통지»의 네번째 인자로 가고(:1985 · :2543),
+        `file_ingestion_completed` 메시지 문자열과 인젝션 성공 로그에 붙습니다
+```
+🔵 **그래서 운영자가 보는 자리는 «파일 완료 메시지»입니다** — 로그를 안 열어도
+「왜 0행인가」가 거기 있습니다. 사유가 «없으면» 그때만 기본 문장(「파싱 결과 0행 ―
+저장된 셀 없음…」)이 나갑니다(:2059~2069).
+⛔ 그 둘을 «같이» 쓰지 않습니다 — 사유를 주면서 「로그 확인」을 남기면 운영자가
+«이미 답을 받았는데» 또 로그를 보라는 말을 듣습니다(그 주석이 그렇게 적습니다).
+
+#### ⚠️ 채널의 수명 — «한 파일»에서 끝납니다
+```
+시작   워처가 (표, 파일) 한 건을 넘기기 «전» clear_refusal()          directory_watcher :2748
+끝    take_refusal() 이 «가져가며 비울1니다»                        :814
+위험   한 파일의 사유가 «다음 파일의 화면»에 붙는 것 — 위 둘이 그것을 닫습니다
+```
+🔴 **왜 파서 «인스턴스»에 안 달고 모듈 곁 채널인가** — 그 객체를 만드는 것은
+«운영자의 플러그인»이고 워처는 그것을 절대 못 봅니다(:2744~2747의 주석).
+그래서 모듈 옆에 놓고, 수명의 양끝을 «워처가» 쇥니다.
+⚠️ 그 파서를 안 쓰는 워크스페이스가 대부분이라, `clear_refusal` import 가 실패해도
+인제션을 막지 않습니다 — «없는 것은 정상»입니다(같은 주석).
+
+#### 🔵 `_grid_refusal` 은 「실패했나」를 «안» 묻습니다
+:2030~2034 가 그것을 명시합니다 — 사유만 가져오고 판정을 흔내지 않습니다.
+🔴 이 함수가 판정을 흔내면 **정당한 성공이 화면에서 실패로 보입니다.**
+즉 «0행 거절»은 SUCCESS 이고, 화면이 달라지는 것은 **상태가 아니라 문장**입니다.
+
+#### 시험
+`server/tests/test_a_refused_grid_says_why_on_the_screen.py` 가 이 경로를 못 박습니다 —
+사유의 존재·가져가며 비움·쓰레드 경계·`clear_refusal()` 호출이 «한 번»인 것까지.
 
 ---
 

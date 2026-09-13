@@ -15,7 +15,7 @@ import types
 
 import pytest
 
-import chain_replay
+from chain import replay
 from database import crud, models, schemas
 
 REP_TABLES = {
@@ -152,7 +152,7 @@ def _sources(db, table, row_id, col):
 def test_r1_dry_run_reports_without_writing(rep_env):
     _seed(rep_env, "crep_test_trigger",
           [{"src_key": "s1", "part_no": "P1", "qty": 5}])
-    stats = chain_replay.replay_rule(rep_env, RULE_RESERVE, apply=False, log=lambda *_: None)
+    stats = replay.replay_rule(rep_env, RULE_RESERVE, apply=False, log=lambda *_: None)
     assert stats["mode"] == "dry-run"
     assert stats["rows_scanned"] == 1
     assert stats["cells_proposed"] == 2      # part_no + reserved
@@ -164,19 +164,19 @@ def test_r1_apply_writes_through_the_real_layering_path(rep_env):
     _seed(rep_env, "crep_test_trigger",
           [{"src_key": "s1", "part_no": "P1", "qty": 5},
            {"src_key": "s2", "part_no": "P2", "qty": 3}])
-    stats = chain_replay.replay_rule(rep_env, RULE_RESERVE, apply=True, log=lambda *_: None)
+    stats = replay.replay_rule(rep_env, RULE_RESERVE, apply=True, log=lambda *_: None)
     assert stats["rows_created"] == 2
     assert float(_target(rep_env, "P1").reserved) == 10.0
     # Provenance is the SAME layer the live worker writes - replay is not a new layer.
     row = _target(rep_env, "P1")
     assert set(_sources(rep_env, "crep_test_target", row.row_id, "reserved")) == \
-        {chain_replay.R1_SOURCE_NAME}
+        {replay.R1_SOURCE_NAME}
 
 
 def test_r1_is_idempotent(rep_env):
     _seed(rep_env, "crep_test_trigger", [{"src_key": "s1", "part_no": "P1", "qty": 5}])
-    chain_replay.replay_rule(rep_env, RULE_RESERVE, apply=True, log=lambda *_: None)
-    second = chain_replay.replay_rule(rep_env, RULE_RESERVE, apply=True, log=lambda *_: None)
+    replay.replay_rule(rep_env, RULE_RESERVE, apply=True, log=lambda *_: None)
+    second = replay.replay_rule(rep_env, RULE_RESERVE, apply=True, log=lambda *_: None)
     assert second["rows_created"] == 0
     assert float(_target(rep_env, "P1").reserved) == 10.0
 
@@ -189,20 +189,20 @@ def test_r1_cannot_overwrite_a_human_value(rep_env):
           source_name="user", tx_id="human")
     assert float(_target(rep_env, "P1").reserved) == 999.0
 
-    chain_replay.replay_rule(rep_env, RULE_RESERVE, apply=True, log=lambda *_: None)
+    replay.replay_rule(rep_env, RULE_RESERVE, apply=True, log=lambda *_: None)
     row = _target(rep_env, "P1")
     assert float(row.reserved) == 999.0, "replay must never outrank a human's value"
     # Both layers exist; the human's simply wins.
     srcs = _sources(rep_env, "crep_test_target", row.row_id, "reserved")
-    assert set(srcs) == {"user", chain_replay.R1_SOURCE_NAME}
-    assert float(srcs[chain_replay.R1_SOURCE_NAME]) == 10.0
+    assert set(srcs) == {"user", replay.R1_SOURCE_NAME}
+    assert float(srcs[replay.R1_SOURCE_NAME]) == 10.0
 
 
 def test_r1_dry_run_counts_user_protected_cells(rep_env):
     _seed(rep_env, "crep_test_trigger", [{"src_key": "s1", "part_no": "P1", "qty": 5}])
     _seed(rep_env, "crep_test_target", [{"part_no": "P1", "reserved": 999}],
           source_name="user", tx_id="human")
-    stats = chain_replay.replay_rule(rep_env, RULE_RESERVE, apply=False, log=lambda *_: None)
+    stats = replay.replay_rule(rep_env, RULE_RESERVE, apply=False, log=lambda *_: None)
     assert stats["user_protected_cells"] >= 1, \
         "the dry-run must state the safety property in numbers, not only in prose"
 
@@ -211,7 +211,7 @@ def test_r1_never_writes_a_blank_and_reports_it_as_an_r2_candidate(rep_env):
     """ABSENCE IS NOT ZERO. 'the rule produces nothing here' is R2's statement."""
     _seed(rep_env, "crep_test_trigger", [{"src_key": "s1", "part_no": "P1", "qty": 5}])
     _seed(rep_env, "crep_test_target", [{"part_no": "P1", "note": "OLD"}], tx_id="pre")
-    stats = chain_replay.replay_rule(rep_env, RULE_BLANK, apply=True, log=lambda *_: None)
+    stats = replay.replay_rule(rep_env, RULE_BLANK, apply=True, log=lambda *_: None)
     assert stats["skipped_blank_cells"] == 1
     assert stats["withdrawal_candidates"], "a vanished value must be reported, not written"
     assert stats["withdrawal_candidates"][0]["column"] == "note"
@@ -225,7 +225,7 @@ def test_r1_never_writes_a_blank_and_reports_it_as_an_r2_candidate(rep_env):
 def test_r1_self_triggering_scan_is_bounded_by_the_snapshot(rep_env):
     _seed(rep_env, "crep_test_self",
           [{"self_key": f"k{i}", "seq": i} for i in range(1, 4)])
-    stats = chain_replay.replay_rule(rep_env, RULE_SELF, apply=True, log=lambda *_: None)
+    stats = replay.replay_rule(rep_env, RULE_SELF, apply=True, log=lambda *_: None)
     assert stats["self_triggering"] is True
     assert stats["rows_scanned"] == 3, \
         "the scan must see only the rows that existed when it started"
@@ -237,8 +237,8 @@ def test_r1_without_the_snapshot_guard_the_scan_eats_its_own_output(rep_env, mon
     prevents. Bounded with `limit` so a failure cannot hang the suite."""
     _seed(rep_env, "crep_test_self",
           [{"self_key": f"k{i}", "seq": i} for i in range(1, 4)])
-    monkeypatch.setattr(chain_replay, "is_self_triggering", lambda rule: False)
-    stats = chain_replay.replay_rule(rep_env, RULE_SELF, apply=True, limit=40,
+    monkeypatch.setattr(replay, "is_self_triggering", lambda rule: False)
+    stats = replay.replay_rule(rep_env, RULE_SELF, apply=True, limit=40,
                                      chunk_size=3, log=lambda *_: None)
     assert stats["rows_scanned"] > 3, \
         "without the guard the scan must be observed consuming its own writes"
@@ -249,26 +249,26 @@ def test_r1_replay_order_puts_the_producer_first(rep_env):
                     target_table="crep_test_self")
     producer = dict(RULE_RESERVE, name="producer", trigger_table="crep_test_trigger",
                     target_table="crep_test_target")
-    order = [r["name"] for r in chain_replay.order_rules([consumer, producer])]
+    order = [r["name"] for r in replay.order_rules([consumer, producer])]
     assert order.index("producer") < order.index("consumer")
 
 
 def test_r1_self_edge_is_not_treated_as_a_cycle(rep_env):
-    order = [r["name"] for r in chain_replay.order_rules([RULE_SELF, RULE_RESERVE])]
+    order = [r["name"] for r in replay.order_rules([RULE_SELF, RULE_RESERVE])]
     assert set(order) == {"crep_self", "crep_reserve"}
 
 
 def test_r1_cross_table_cycle_is_refused_by_name(rep_env):
     a = dict(RULE_RESERVE, name="a", trigger_table="t1", target_table="t2")
     b = dict(RULE_RESERVE, name="b", trigger_table="t2", target_table="t1")
-    with pytest.raises(chain_replay.ReplayRefused) as e:
-        chain_replay.order_rules([a, b])
+    with pytest.raises(replay.ReplayRefused) as e:
+        replay.order_rules([a, b])
     assert "cycle" in str(e.value)
 
 
 def test_r1_refuses_an_unknown_rule_with_the_available_list(rep_env):
-    with pytest.raises(chain_replay.ReplayRefused) as e:
-        chain_replay.find_rule("no_such_rule", [RULE_RESERVE])
+    with pytest.raises(replay.ReplayRefused) as e:
+        replay.find_rule("no_such_rule", [RULE_RESERVE])
     assert "crep_reserve" in str(e.value)
 
 
@@ -290,7 +290,7 @@ def _two_layer_cell(db):
 
 def test_r2_withdrawal_reveals_the_next_source_not_a_hole(rep_env):
     row = _two_layer_cell(rep_env)
-    stats = chain_replay.withdraw_source(rep_env, "crep_test_target", "pipeline_parser",
+    stats = replay.withdraw_source(rep_env, "crep_test_target", "pipeline_parser",
                                          columns=["note"], apply=True, log=lambda *_: None)
     assert stats["cells_withdrawn"] == 1
     assert stats["revealed"] == 1
@@ -303,8 +303,8 @@ def test_r2_withdrawal_reveals_the_next_source_not_a_hole(rep_env):
 def test_r2_refuses_to_withdraw_the_user_layer(rep_env):
     _seed(rep_env, "crep_test_target", [{"part_no": "P1", "note": "HUMAN"}],
           source_name="user", tx_id="h")
-    with pytest.raises(chain_replay.ReplayRefused) as e:
-        chain_replay.withdraw_source(rep_env, "crep_test_target", "user", apply=True,
+    with pytest.raises(replay.ReplayRefused) as e:
+        replay.withdraw_source(rep_env, "crep_test_target", "user", apply=True,
                                      log=lambda *_: None)
     assert "human" in str(e.value).lower()
     assert _target(rep_env, "P1").note == "HUMAN"
@@ -321,7 +321,7 @@ def test_r2_cannot_remove_a_human_value_when_withdrawing_a_machine_source(rep_en
     row = _target(rep_env, "P1")
     assert row.note == "HUMAN"
 
-    chain_replay.withdraw_source(rep_env, "crep_test_target", "pipeline_parser",
+    replay.withdraw_source(rep_env, "crep_test_target", "pipeline_parser",
                                  apply=True, log=lambda *_: None)
     rep_env.refresh(row)
     assert row.note == "HUMAN"
@@ -338,7 +338,7 @@ def test_r2_skips_a_source_a_human_pinned(rep_env):
     rep_env.add(ow)
     rep_env.commit()
 
-    stats = chain_replay.withdraw_source(rep_env, "crep_test_target", "pipeline_parser",
+    stats = replay.withdraw_source(rep_env, "crep_test_target", "pipeline_parser",
                                          columns=["note"], apply=True, log=lambda *_: None)
     assert stats["pinned_skipped"] == 1
     assert stats["cells_withdrawn"] == 0
@@ -350,7 +350,7 @@ def test_r2_empty_stack_is_reported_as_emptied_not_revealed(rep_env):
     _seed(rep_env, "crep_test_target", [{"part_no": "P1", "note": "ONLY"}],
           source_name="custom_script", tx_id="s1")
     row = _target(rep_env, "P1")
-    stats = chain_replay.withdraw_source(rep_env, "crep_test_target", "custom_script",
+    stats = replay.withdraw_source(rep_env, "crep_test_target", "custom_script",
                                          columns=["note"], apply=True, log=lambda *_: None)
     assert stats["emptied"] == 1
     assert stats["revealed"] == 0
@@ -362,7 +362,7 @@ def test_r2_writes_an_audit_entry_naming_the_withdrawn_source(rep_env):
     """A cell that changes must not change silently: the existing cell-history
     timeline is where an operator asks 'why does this say this'."""
     row = _two_layer_cell(rep_env)
-    chain_replay.withdraw_source(rep_env, "crep_test_target", "pipeline_parser",
+    replay.withdraw_source(rep_env, "crep_test_target", "pipeline_parser",
                                  columns=["note"], apply=True, log=lambda *_: None)
     logs = rep_env.query(models.AuditLog).filter(
         models.AuditLog.table_name == "crep_test_target",
@@ -370,7 +370,7 @@ def test_r2_writes_an_audit_entry_naming_the_withdrawn_source(rep_env):
         models.AuditLog.column_name == "note").all()
     assert logs, "a withdrawal that changes a visible value must leave a trail"
     entry = logs[-1]
-    assert entry.source_name == chain_replay.R2_AUDIT_SOURCE
+    assert entry.source_name == replay.R2_AUDIT_SOURCE
     assert "pipeline_parser" in (entry.updated_by or "")
     assert entry.old_value == "FROM_PARSER"
     assert entry.new_value == "FROM_SCRIPT"
@@ -378,7 +378,7 @@ def test_r2_writes_an_audit_entry_naming_the_withdrawn_source(rep_env):
 
 def test_r2_dry_run_changes_nothing(rep_env):
     row = _two_layer_cell(rep_env)
-    stats = chain_replay.withdraw_source(rep_env, "crep_test_target", "pipeline_parser",
+    stats = replay.withdraw_source(rep_env, "crep_test_target", "pipeline_parser",
                                          columns=["note"], apply=False, log=lambda *_: None)
     assert stats["cells_withdrawn"] == 1     # it reports what it WOULD do
     rep_env.refresh(row)
@@ -390,7 +390,7 @@ def test_r2_column_scope_is_respected(rep_env):
     _seed(rep_env, "crep_test_target", [{"part_no": "P1", "note": "N", "reserved": 7}],
           source_name="custom_script", tx_id="s1")
     row = _target(rep_env, "P1")
-    chain_replay.withdraw_source(rep_env, "crep_test_target", "custom_script",
+    replay.withdraw_source(rep_env, "crep_test_target", "custom_script",
                                  columns=["note"], apply=True, log=lambda *_: None)
     rep_env.refresh(row)
     assert row.note is None
@@ -398,8 +398,8 @@ def test_r2_column_scope_is_respected(rep_env):
 
 
 def test_r2_unknown_column_is_refused(rep_env):
-    with pytest.raises(chain_replay.ReplayRefused):
-        chain_replay.withdraw_source(rep_env, "crep_test_target", "custom_script",
+    with pytest.raises(replay.ReplayRefused):
+        replay.withdraw_source(rep_env, "crep_test_target", "custom_script",
                                      columns=["nope"], log=lambda *_: None)
 
 
@@ -444,7 +444,7 @@ def test_r2_unknown_column_is_refused(rep_env):
 # whatever_the_outbox_label` is the measurement rather than the argument.
 # ---------------------------------------------------------------------------
 
-import chain_ingestion_worker as chain_worker  # noqa: E402
+from chain import ingestion_worker as chain_worker  # noqa: E402
 
 W_BLOCKED = {"name": "blocked", "trigger_table": "crep_test_target",
              "target_table": "crep_blocked_target", "enabled": True}
@@ -474,7 +474,7 @@ def _all_layers(db, table="crep_test_target"):
 
 
 def _withdraw(db, source="pipeline_parser", **kw):
-    return chain_replay.withdraw_source(db, "crep_test_target", source,
+    return replay.withdraw_source(db, "crep_test_target", source,
                                         columns=["note"], apply=True,
                                         log=lambda *_: None, **kw)
 
@@ -489,7 +489,7 @@ def test_r2_events_are_labelled_so_the_loop_filter_can_see_them(rep_env):
     assert len(events) == 1, "one revealed row stages exactly one EDIT event"
     payload = chain_worker.get_payload_dict(events[0])
     assert payload["source_name"] == "chain_ingestion"
-    assert payload["updated_by"] == chain_replay.R2_AUDIT_SOURCE
+    assert payload["updated_by"] == replay.R2_AUDIT_SOURCE
     assert not chain_worker._rule_accepts_event(W_BLOCKED, events[0]), \
         "a rule that never opted in must not be woken by an operator's withdrawal"
     assert chain_worker._group_target_tables(events, [W_BLOCKED]) == set()
@@ -529,7 +529,7 @@ def test_r2_stages_one_transaction_id_for_the_whole_run(rep_env):
     assert len(events) == 3
     tx_ids = {chain_worker.get_payload_dict(e)["transaction_id"] for e in events}
     assert len(tx_ids) == 1, f"one group per run, got {len(tx_ids)}: {sorted(tx_ids)}"
-    assert tx_ids.pop().startswith(chain_replay.R2_AUDIT_SOURCE)
+    assert tx_ids.pop().startswith(replay.R2_AUDIT_SOURCE)
 
 
 def test_withdraw_deletes_the_same_layers_whatever_the_outbox_label(rep_env,
@@ -565,8 +565,8 @@ def test_withdraw_deletes_the_same_layers_whatever_the_outbox_label(rep_env,
             "pipeline_parser")
         before = _all_layers(rep_env)
         stats = _withdraw(rep_env)
-        with pytest.raises(chain_replay.ReplayRefused):
-            chain_replay.withdraw_source(rep_env, "crep_test_target", "user",
+        with pytest.raises(replay.ReplayRefused):
+            replay.withdraw_source(rep_env, "crep_test_target", "user",
                                          apply=True, log=lambda *_: None)
         return before, _all_layers(rep_env), stats, pinned
 
@@ -628,8 +628,8 @@ def test_an_empty_row_selection_is_refused_rather_than_read_as_no_filter(rep_env
     """
     rule = {"name": "x", "trigger_table": "crep_test_trigger",
             "target_table": "crep_test_target"}
-    with pytest.raises(chain_replay.ReplayRefused) as caught:
-        chain_replay.replay_rule(rep_env, rule, apply=False, business_keys=[])
+    with pytest.raises(replay.ReplayRefused) as caught:
+        replay.replay_rule(rep_env, rule, apply=False, business_keys=[])
     assert "empty" in str(caught.value)
     # ...and it says what to do instead, or the operator only learns they were refused.
     assert "Omit it" in str(caught.value)
@@ -662,7 +662,7 @@ def test_a_cancel_stops_between_batches_keeps_what_it_wrote_and_can_be_resumed(r
         seen.append(processed)
         return len(seen) > 1          # let one page through, then ask it to stop
 
-    stopped = chain_replay.replay_rule(rep_env, RULE_RESERVE, apply=True, chunk_size=1,
+    stopped = replay.replay_rule(rep_env, RULE_RESERVE, apply=True, chunk_size=1,
                                        log=lambda *_: None,
                                        checkpoint=stop_after_the_first_page)
 
@@ -674,7 +674,7 @@ def test_a_cancel_stops_between_batches_keeps_what_it_wrote_and_can_be_resumed(r
     assert _target(rep_env, "P2") is None and _target(rep_env, "P3") is None
 
     # RESUMES: the same job again finishes the rest, without redoing the first.
-    finished = chain_replay.replay_rule(rep_env, RULE_RESERVE, apply=True,
+    finished = replay.replay_rule(rep_env, RULE_RESERVE, apply=True,
                                         log=lambda *_: None)
     assert finished.get("stopped") is not True
     assert _target(rep_env, "P2") is not None and _target(rep_env, "P3") is not None
@@ -713,7 +713,7 @@ def _record_sleeps(monkeypatch, db):
     def fake_sleep(seconds):
         calls.append({"seconds": seconds, "in_transaction": db.in_transaction()})
 
-    monkeypatch.setattr(chain_replay.time, "sleep", fake_sleep)
+    monkeypatch.setattr(replay.time, "sleep", fake_sleep)
     return calls
 
 
@@ -731,7 +731,7 @@ def test_a_pace_yields_once_per_declared_number_of_pages(rep_env, monkeypatch):
     _seed(rep_env, "crep_test_trigger", _paced_rows())
     calls = _record_sleeps(monkeypatch, rep_env)
 
-    stats = chain_replay.replay_rule(rep_env, RULE_RESERVE, apply=True, chunk_size=1,
+    stats = replay.replay_rule(rep_env, RULE_RESERVE, apply=True, chunk_size=1,
                                      log=lambda *_: None, pace="slow")
 
     assert stats["pages"] == PACE_PAGES
@@ -753,7 +753,7 @@ def test_a_pace_rests_for_the_time_the_table_declares(rep_env, monkeypatch):
     _seed(rep_env, "crep_test_trigger", _paced_rows())
     calls = _record_sleeps(monkeypatch, rep_env)
 
-    chain_replay.replay_rule(rep_env, RULE_RESERVE, apply=True, chunk_size=1,
+    replay.replay_rule(rep_env, RULE_RESERVE, apply=True, chunk_size=1,
                              log=lambda *_: None, pace="slow")
 
     assert calls, "it never yielded at all"
@@ -771,7 +771,7 @@ def test_the_yield_happens_with_nothing_held(rep_env, monkeypatch):
     _seed(rep_env, "crep_test_trigger", _paced_rows())
     calls = _record_sleeps(monkeypatch, rep_env)
 
-    chain_replay.replay_rule(rep_env, RULE_RESERVE, apply=True, chunk_size=1,
+    replay.replay_rule(rep_env, RULE_RESERVE, apply=True, chunk_size=1,
                              log=lambda *_: None, pace="slow")
 
     assert calls, "it never yielded at all"
@@ -790,10 +790,10 @@ def test_fast_is_exactly_what_this_did_before_the_handle_existed(rep_env, monkey
     _seed(rep_env, "crep_test_trigger", _paced_rows(offset=PACE_PAGES))
     calls = _record_sleeps(monkeypatch, rep_env)
 
-    unset = chain_replay.replay_rule(
+    unset = replay.replay_rule(
         rep_env, RULE_RESERVE, apply=True, chunk_size=1, log=lambda *_: None,
         business_keys=[r["src_key"] for r in _paced_rows()])
-    fast = chain_replay.replay_rule(
+    fast = replay.replay_rule(
         rep_env, RULE_RESERVE, apply=True, chunk_size=1, log=lambda *_: None, pace="fast",
         business_keys=[r["src_key"] for r in _paced_rows(offset=PACE_PAGES)])
 
@@ -814,8 +814,8 @@ def test_an_undeclared_pace_is_refused_before_anything_is_written(rep_env):
     """
     _seed(rep_env, "crep_test_trigger", _paced_rows(n=2))
 
-    with pytest.raises(chain_replay.ReplayRefused) as raised:
-        chain_replay.replay_rule(rep_env, RULE_RESERVE, apply=True, chunk_size=1,
+    with pytest.raises(replay.ReplayRefused) as raised:
+        replay.replay_rule(rep_env, RULE_RESERVE, apply=True, chunk_size=1,
                                  log=lambda *_: None, pace="turbo")
     assert "turbo" in str(raised.value)
     assert "slow" in str(raised.value), "the refusal must name what IS declared"
@@ -829,7 +829,7 @@ def test_the_registry_offers_the_pace_from_the_table_and_refuses_the_rest():
     Both pace-taking operations are checked, because the point of declaring the parameter
     once is that neither can drift from the other.
     """
-    import retroactive
+    from admin import retroactive
 
     inventory = {op["op"]: op for op in retroactive.inventory()}
     for op_id in ("chain_replay", "ledger_backfill"):

@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 import anyio                                                          # noqa: E402
 import pytest                                                         # noqa: E402
 
-import enrichment_config                                              # noqa: E402
+import enrichment.config                                              # noqa: E402
 from database import crud, models, schemas                            # noqa: E402
 
 TABLES = {
@@ -72,7 +72,7 @@ def env(db_session, tmp_path, monkeypatch):
 
     path = tmp_path / "enrichment_rules.json"
     path.write_text(json.dumps(RULE), encoding="utf-8")
-    monkeypatch.setattr(enrichment_config, "ENRICHMENT_RULES_PATH", str(path))
+    monkeypatch.setattr(enrichment.config, "ENRICHMENT_RULES_PATH", str(path))
     return db_session
 
 
@@ -85,10 +85,10 @@ def _seed(db, rows, tx_id):
 
 
 def _run_chain(db, tx_id):
-    from chain_ingestion_worker import process_chain_transaction_group
+    from chain.ingestion_worker import process_chain_transaction_group
     from database.models import DatabaseOutbox
 
-    rules = enrichment_config.load_enrichment_chain_rules(known_tables=crud.TABLE_CONFIG)
+    rules = enrichment.config.load_enrichment_chain_rules(known_tables=crud.TABLE_CONFIG)
     events = db.query(DatabaseOutbox).filter(
         DatabaseOutbox.table_name == "s129_bond_src",
         DatabaseOutbox.processed_chain == False,          # noqa: E712
@@ -144,7 +144,7 @@ def test_the_reference_view_may_bind_the_aggregate_and_runs_with_its_value(env):
     ], "tx-view")
     _run_chain(env, "tx-view")
 
-    rules = enrichment_config.load_enrichment_chain_rules(known_tables=crud.TABLE_CONFIG)
+    rules = enrichment.config.load_enrichment_chain_rules(known_tables=crud.TABLE_CONFIG)
     # S-179 (1): only the dedup kind embeds `enrichment`; the auto-confirm kind carries
     # the same cells under `params`. Filtered rather than indexed.
     rule = [r["enrichment"] for r in rules
@@ -154,11 +154,11 @@ def test_the_reference_view_may_bind_the_aggregate_and_runs_with_its_value(env):
     assert "bonding_time_min" in view["required_binds"], view["required_binds"]
 
     row = _derived(env)[0]
-    binds = enrichment_config.view_bind_values(
+    binds = enrichment.config.view_bind_values(
         rule, {"lot": row.lot, "bonding_time_min": row.bonding_time_min})
 
-    assert enrichment_config.missing_binds(view, binds) == []
-    _columns, rows = enrichment_config.execute_reference_view(env, view, binds)
+    assert enrichment.config.missing_binds(view, binds) == []
+    _columns, rows = enrichment.config.execute_reference_view(env, view, binds)
 
     assert [r[0] for r in rows] == ["B1"], "only the bond at the group's first time"
 
@@ -171,8 +171,8 @@ def test_a_rule_whose_table_is_not_catalogued_falls_back_to_key_and_aggregates()
     So it falls back to exactly what the rule alone can vouch for."""
     rule = {"decision_key": ["lot"], "aggregations": {"bonding_time_min": {"fn": "min"}}}
 
-    assert enrichment_config.view_bind_names(rule) == {"lot", "bonding_time_min"}
-    assert enrichment_config.view_bind_values(
+    assert enrichment.config.view_bind_names(rule) == {"lot", "bonding_time_min"}
+    assert enrichment.config.view_bind_values(
         rule, {"lot": "L", "bonding_time_min": "t", "wafer_id": "W"}) == {
             "lot": "L", "bonding_time_min": "t"}
 
@@ -182,7 +182,7 @@ def test_a_value_the_derived_row_does_not_carry_is_absent_rather_than_none():
     gap with None would turn that refusal into an empty result table."""
     rule = {"decision_key": ["lot"], "aggregations": {"bonding_time_min": {"fn": "min"}}}
 
-    assert enrichment_config.view_bind_values(rule, {"lot": "L"}) == {"lot": "L"}
+    assert enrichment.config.view_bind_values(rule, {"lot": "L"}) == {"lot": "L"}
 
 
 # ── ④ 검증: 고칠 자리를 이름으로 가리킨다 ──────────────────────────────────
@@ -191,7 +191,7 @@ def _refusal(aggregations):
     raw = {"source_table": "s129_bond_src", "derived_table": "s129_bond_derived",
            "decision_key": ["lot"], "target_fields": ["wafer_id"],
            "aggregations": aggregations}
-    rule, why = enrichment_config._validate_rule("r", raw, TABLES)
+    rule, why = enrichment.config._validate_rule("r", raw, TABLES)
     assert rule is None, f"expected a refusal, got {rule}"
     return why
 
@@ -232,7 +232,7 @@ def test_the_old_string_form_still_loads_unchanged():
            "decision_key": ["lot"], "target_fields": ["wafer_id"],
            "aggregations": {"bond_count": "count"}}
 
-    rule, why = enrichment_config._validate_rule("r", raw, TABLES)
+    rule, why = enrichment.config._validate_rule("r", raw, TABLES)
 
     assert rule is not None, why
     assert rule["aggregations"] == {"bond_count": {"fn": "count", "column": None}}

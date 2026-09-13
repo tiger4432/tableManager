@@ -16,8 +16,8 @@ import time
 import json
 import pytest
 
-import health as health_mod
-from health import compute_health, STATUS_OK, STATUS_DEGRADED, STATUS_UNHEALTHY
+from runtime import health as health_mod
+from runtime.health import compute_health, STATUS_OK, STATUS_DEGRADED, STATUS_UNHEALTHY
 from utils import heartbeat
 
 
@@ -400,7 +400,7 @@ def test_health_route_returns_503_when_unhealthy(client, monkeypatch):
 
 
 def test_health_route_returns_200_when_everything_is_fine(client, monkeypatch):
-    import process_supervisor
+    from runtime import process_supervisor
     monkeypatch.setattr("main._health_probe_db_sync",
                         lambda: (DB_OK, dict(OUTBOX_OK)))
     monkeypatch.setattr(heartbeat, "read_all", lambda *a, **k: {"chain": fresh()})

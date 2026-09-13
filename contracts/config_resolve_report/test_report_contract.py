@@ -37,8 +37,8 @@ if str(_SERVER) not in sys.path:
     sys.path.insert(0, str(_SERVER))
 
 import config_resolve_report as crr          # noqa: E402
-import enrichment_candidates                 # noqa: E402
-import enrichment_config                     # noqa: E402
+import enrichment.candidates                 # noqa: E402
+import enrichment.config                     # noqa: E402
 from database import crud                    # noqa: E402
 
 VECTORS = json.loads((_HERE / "vectors.json").read_text(encoding="utf-8"))
@@ -116,15 +116,15 @@ def report_env(tmp_path, monkeypatch):
                 rules_path.write_text(
                     json.dumps({n: _rule_json(s) for n, s in (rules or {}).items()}),
                     encoding="utf-8")
-        monkeypatch.setattr(enrichment_config, "ENRICHMENT_RULES_PATH", str(rules_path))
+        monkeypatch.setattr(enrichment.config, "ENRICHMENT_RULES_PATH", str(rules_path))
 
         settings_path = tmp_path / "ingestion_settings.json"
         if settings_file_exists:
             settings_path.write_text(json.dumps(settings or {}), encoding="utf-8")
         elif settings_path.exists():
             settings_path.unlink()
-        monkeypatch.setattr(enrichment_candidates, "INGESTION_SETTINGS_PATH", str(settings_path))
-        enrichment_candidates.reset_warnings()
+        monkeypatch.setattr(enrichment.candidates, "INGESTION_SETTINGS_PATH", str(settings_path))
+        enrichment.candidates.reset_warnings()
 
         return _domain_named(crr.resolve_report(), crr.DOMAIN_ENRICHMENT)
 
@@ -285,7 +285,7 @@ def chain_env(monkeypatch, tmp_path):
     TABLES - a table nothing triggers on. The table list comes from step ①, so a builder
     that invented its own would let the two steps disagree about what tables exist.
     """
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
     from database import crud
 
     def build(rules, catalog=None):
@@ -607,7 +607,7 @@ def test_candidate_for_reaches_the_public_rule_shape():
             "decision_key": ["lot"], "target_fields": ["wafer_id"], "list_columns": [],
             "reference_views": [{"label": "narrow", "candidate_for": {"wafer_id": "wf"}},
                                 {"label": "display only", "candidate_for": {}}]}
-    public = enrichment_config.to_public_rule(rule)
+    public = enrichment.config.to_public_rule(rule)
     assert public["reference_views"] == [
         {"label": "narrow", "candidate_for": {"wafer_id": "wf"}},
         {"label": "display only", "candidate_for": {}},
@@ -642,7 +642,7 @@ def test_live_config_is_still_the_state_this_round_measured():
     fails loudly and the `live_production_state_2026_07_30` vector gets revisited
     deliberately instead of quietly describing a state that no longer exists.
     """
-    path = enrichment_config.ENRICHMENT_RULES_PATH
+    path = enrichment.config.ENRICHMENT_RULES_PATH
     if not os.path.exists(path):
         pytest.skip(f"no live enrichment_rules.json at {path}")
     raw = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))

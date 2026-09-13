@@ -161,7 +161,7 @@ def test_describe_masks_env_password(monkeypatch):
 # --- supervisor reachability probe follows the same precedence ----------------
 
 def test_supervisor_probe_reads_config_file(config_dir, monkeypatch):
-    import process_supervisor
+    from runtime import process_supervisor
     monkeypatch.delenv("DATABASE_URL", raising=False)
     _write_config(config_dir, {"host": "probehost", "port": 6543, "database": "d",
                                "user": "u", "password": "p"})
@@ -169,7 +169,7 @@ def test_supervisor_probe_reads_config_file(config_dir, monkeypatch):
 
 
 def test_supervisor_probe_still_none_when_nothing_configured(config_dir, monkeypatch):
-    import process_supervisor
+    from runtime import process_supervisor
     monkeypatch.delenv("DATABASE_URL", raising=False)
     # No env, no file: the probe must keep treating this as nothing to probe
     # (it has never probed the built-in default).

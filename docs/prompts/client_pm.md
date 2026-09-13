@@ -19,7 +19,7 @@
 | 어드민 대시보드 | `client2/src/admin.js` (Monaco) |
 | 웨이퍼 맵 에디터 | `client2/src/map_editor.js`, `map_editor.html` |
 | 빌드 | `client2/vite.config.js`, `package.json`, `index/admin/map_editor.html` |
-| 데스크톱 셸 | `client/desktop_wrapper.py` (QtWebEngine) |
+| 데스크톱 셸 | `desktop/desktop_wrapper.py` (QtWebEngine) |
 
 ## 2. 기준 문서 & 스킬
 

@@ -29,11 +29,11 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import ledger_explorer                                             # noqa: E402
+from ledger import explorer                                             # noqa: E402
 from ledger_api import ledger_subgraph                             # noqa: E402
 
 NOW = datetime(2026, 9, 13, 3, 0, tzinfo=timezone.utc)
-SEED = ledger_explorer.entity_id("wafer", {"wid": "W0"})
+SEED = explorer.entity_id("wafer", {"wid": "W0"})
 
 PREDICATE = {"status": "active", "subjects": ["wafer@1"],
              "object": {"kind": "none", "qualifiers": {"required": [], "optional": []}}}
@@ -212,14 +212,14 @@ def test_the_envelope_carries_the_cell_through_the_mounted_route(declared, monke
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    import ledger_trace_router
-    from admin_auth import require_admin_token
+    from ledger import trace_router
+    from admin.auth import require_admin_token
     from database.database import get_db
 
     declared(_confirmed())
-    monkeypatch.setattr(ledger_trace_router.ledger_trace, "relation_exists",
+    monkeypatch.setattr(trace_router.trace, "relation_exists",
                         lambda *a, **k: True)
-    monkeypatch.setattr(ledger_trace_router, "_subgraph_contract_state",
+    monkeypatch.setattr(trace_router, "_subgraph_contract_state",
                         lambda *a, **k: [])
     monkeypatch.setattr(
         ledger_subgraph, "SqlEvidenceLookup",
@@ -232,7 +232,7 @@ def test_the_envelope_carries_the_cell_through_the_mounted_route(declared, monke
     app = FastAPI()
     app.dependency_overrides[require_admin_token] = lambda: None
     app.dependency_overrides[get_db] = lambda: _Db()
-    app.include_router(ledger_trace_router.router)
+    app.include_router(trace_router.router)
 
     answer = TestClient(app).get("/api/ledger/subgraph",
                                  params={"id": SEED, "hops": 2})

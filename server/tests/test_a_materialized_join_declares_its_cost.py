@@ -27,7 +27,7 @@ server_dir = os.path.abspath(os.path.join(script_dir, ".."))
 if server_dir not in sys.path:
     sys.path.insert(0, server_dir)
 
-import virtual_join_config as vjc                                     # noqa: E402
+import virtual_join.config as vjc                                     # noqa: E402
 
 KNOWN = {
     "left_t": {"column_types": {"k": "string", "frame": "string"}},

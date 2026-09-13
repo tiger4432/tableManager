@@ -28,9 +28,9 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import chain_bindings                                            # noqa: E402
-import ledger_admin                                              # noqa: E402
+from ledger import admin                                              # noqa: E402
 import main                                                      # noqa: E402
-from admin_auth import require_admin_token                       # noqa: E402
+from admin.auth import require_admin_token                       # noqa: E402
 
 ROUTE = "/admin/chain/rules/raw"
 
@@ -50,8 +50,8 @@ def rules_file(tmp_path, monkeypatch):
         {"name": "live_one", "trigger_table": "a", "target_table": "b",
          "mapper_module": "m", "mapper_function": "f", "enabled": True},
     ]}), encoding="utf-8")
-    monkeypatch.setattr(ledger_admin, "chain_rules_path", lambda: str(path))
-    monkeypatch.setattr(ledger_admin.config_backup, "backup_dir_for",
+    monkeypatch.setattr(admin, "chain_rules_path", lambda: str(path))
+    monkeypatch.setattr(admin.config_backup, "backup_dir_for",
                         lambda p: str(tmp_path / "backup"))
     return path
 
@@ -87,7 +87,7 @@ def test_the_shape_arrives_when_no_rule_is_named_which_is_when_it_is_needed(rule
     """🔴 THE CREATE CALL HAS NO NAME. A skeleton that only rode along beside an EXISTING
     rule would be absent at the one moment a form is being drawn for a new one."""
     without = client.get(ROUTE).json()
-    beside = client.get(ROUTE, params={"rule": "live_one"}).json()
+    beside = client.get(ROUTE, params={"name": "live_one"}).json()
     assert without["skeleton"] == beside["skeleton"]
     assert "name" not in without and beside["name"] == "live_one"
 
@@ -141,7 +141,7 @@ def test_the_route_reads_the_skeleton_rather_than_assembling_one():
     """⛔ SCORED ON THE SOURCE. A view that built the field list itself would be the second
     author the skeleton exists to prevent; `test_chain_skeleton.py` counts the skeleton
     against the loader, and that count means nothing if the route ships a different one."""
-    body = _code_of(ledger_admin.chain_rule_raw_view)
+    body = _code_of(admin.chain_rule_raw_view)
     assert "chain_bindings.skeleton()" in body
     for rebuilt in ("routing_keys(", "RULE_ROUTING_REQUIRED", "fields"):
         assert rebuilt not in body, ("the view assembles a shape of its own: %s" % rebuilt)
@@ -181,7 +181,7 @@ def test_the_new_rule_is_listed_and_readable_the_moment_it_is_saved(rules_file, 
 
     listed = client.get(ROUTE).json()
     assert "fresh_one" in listed["rules"]
-    read_back = client.get(ROUTE, params={"rule": "fresh_one"}).json()
+    read_back = client.get(ROUTE, params={"name": "fresh_one"}).json()
     assert read_back["declaration"]["trigger_table"] == "x"
     assert read_back["enabled"] is False
 
@@ -315,7 +315,7 @@ def test_the_save_asks_the_one_judge_rather_than_re_typing_the_grammar():
     today. The boot loader and `config_resolve_report` already call `rule_refusals`; a
     third spelling here is exactly the drift that let the old preview accept what the
     loader dropped."""
-    body = _code_of(ledger_admin.save_chain_rule_raw)
+    body = _code_of(admin.save_chain_rule_raw)
     assert "rule_refusals(" in body
     for retyped in ("problems.exact(", "RULE_ROUTING_REQUIRED", "mapper_module\" in",
                     "unresolvable_mapper\""):
@@ -336,8 +336,11 @@ def test_the_grammar_judge_has_exactly_one_spelling_across_the_product():
     assert out.returncode in (0, 1), out.stderr
     # The definition plus its callers - and no file that builds a verdict of its own.
     assert "chain_bindings.py" in " ".join(callers), callers
-    for caller in ("chain_ingestion_worker.py", "config_resolve_report.py",
-                   "ledger_admin.py"):
+    # 🪦 [S-211, 판정 364] These are PATHS, and the packaging round moved two of them. A
+    # filename literal in an oracle is a reference like any other - it just does not fail at
+    # import, so it waits for the run.
+    for caller in ("chain/ingestion_worker.py", "config_resolve_report.py",
+                   "ledger/admin.py"):
         assert any(caller in line for line in callers), (caller, callers)
 
 
@@ -361,7 +364,7 @@ def test_a_reload_leaves_the_registry_populated_rather_than_emptied():
     a number here would measure this machine rather than the product.
     """
     import mapper_sdk
-    import system_reload
+    from runtime import system_reload
 
     order = []
     real_reset, real_discover = mapper_sdk.reset_registry, mapper_sdk.discover

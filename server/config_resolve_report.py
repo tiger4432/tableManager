@@ -50,6 +50,18 @@ import json
 import logging
 import os
 
+# 🔴 [S-211 ①, 판정 355] 이 넷은 «함수 안»에 있었다. 고리를 숨기려고가 아니라 고리가 «있어서»
+#    그랬고(로더 ↔ 보고서), 문장이 `virtual_join_refusal` 로 내려가 그 고리가 사라졌으므로
+#    이제 모듈 수준에서 선언한다. 「보고가 워커를 읽는다」는 맞는 방향이라 그대로 둔다.
+#    ⚠️ 이 모듈을 «모듈 수준»에서 읽는 제품 코드는 없다(실측: `main.py` 셋 다 함수 안). 그래서
+#    이 import 들의 비용은 보고서를 «처음 부르는» 요청에 붙고, 기동 경로에는 붙지 않는다.
+import chain_bindings
+from chain import builtins
+from chain import ingestion_worker as worker
+import mapper_sdk
+import virtual_join.config as vjc
+from virtual_join.refusal import virtual_join_detail             # noqa: F401
+
 logger = logging.getLogger(__name__)
 
 
@@ -208,9 +220,6 @@ def _resolve_chain() -> dict:
     대면 「우리 버그를 그들의 오타로」 보고하게 됩니다. effective 에 넣되 `origin` 으로
     이름을 답니다.
     """
-    import chain_bindings
-    import chain_ingestion_worker as worker
-    import mapper_sdk
     from database import crud
 
     effective, ineffective, rejected = [], [], []
@@ -262,9 +271,7 @@ def _resolve_chain() -> dict:
     # 🔴 합성 규칙은 «같은 목록에» 서되 이름이 붙습니다 — 운영자가 고칠 수 없는 줄이라,
     # 안 붙이면 「내가 안 적었는데」가 되고 붙이면 「제품이 넣어 준 것」이 됩니다.
     try:
-        import chain_builtins
-
-        synthesized = chain_builtins.synthesize_chain_rules() or ()
+        synthesized = builtins.synthesize_chain_rules() or ()
     except Exception as exc:
         synthesized = ()
         rejected.append(entry(
@@ -352,7 +359,7 @@ def _view_report(rule: dict, view: dict) -> dict:
 
 
 def _rule_fields(rule: dict, views: list, knob_on: bool, raw_knob, max_keys: int) -> dict:
-    import enrichment_candidates as ec
+    import enrichment.candidates as ec
 
     return {
         "auto_confirm": knob_on,
@@ -378,15 +385,15 @@ def _resolve_enrichment() -> dict:
     드라이런 숫자(「몇 건이 사람 없이 확정 가능한가」)는 큐 전체를 걷는 분석 질의라
     여기 있지 않다 — `GET /admin/enrichment/auto-confirm/dry-run`이 별도로 답한다.
     """
-    import enrichment_candidates as ec
-    import enrichment_config
+    import enrichment.candidates as ec
+    import enrichment.config
     from database import crud
 
-    rules_path = enrichment_config.ENRICHMENT_RULES_PATH
+    rules_path = enrichment.config.ENRICHMENT_RULES_PATH
     rejections = []
     # `/enrichment/rules`와 **같은 인자로** 로드한다 — 보고서와 라우트가 다른 답을 내면
     # 보고서가 답하려던 질문 자체가 무의미해진다(같은 신호원 규율).
-    rules = enrichment_config.load_enrichment_rules(
+    rules = enrichment.config.load_enrichment_rules(
         known_tables=crud.TABLE_CONFIG, rejections=rejections)
 
     settings_path = ec.INGESTION_SETTINGS_PATH
@@ -541,38 +548,12 @@ _VJ_CODE_TO_REASON = {
     "shape": REASON_MAPPING_UNAVAILABLE,
 }
 
-# 코드별 한국어 앞머리. 로더가 만든 영문 사유를 그대로 붙이지 않고, 운영자가 무엇을
-# 고쳐야 하는지 먼저 말한다(INV-F9-8 ― `detail`은 그가 읽는 최종 문장이다).
-_VJ_CODE_LEAD = {
-    "no_unique_index":
-        "오른쪽 테이블이 조인 키로 유일하다는 보장이 없어 선언을 거부했습니다",
-    "fanout_declared":
-        "아직 구현되지 않은 조인 형태라 선언을 거부했습니다",
-    "shape":
-        "선언이 반영되지 않았습니다",
-}
-
-
-def virtual_join_detail(code: str, facts: dict = None, loader_detail: str = "") -> str:
-    """virtual join 거부 1건의 **운영자가 읽는 최종 문장**. 서버가 짓는다.
-
-    보고서와 `GET /admin/config/virtual-join/verify`가 **같은 함수**를 쓴다. 갈라 두면
-    같은 거부가 두 화면에서 다른 문장으로 나오고, 그 순간 「서버가 문장의 정본」이라는
-    계약이 깨진다. `no_unique_index`는 세션이 있어야 나오는 코드라 보고서 경로에서는
-    발화하지 않는다 ― 그래서 이 함수가 라우트에서도 불려야 그 분기가 살아 있다.
-    """
-    facts = facts or {}
-    lead = _VJ_CODE_LEAD.get(code, _VJ_CODE_LEAD["shape"])
-    # 유일성 거부는 구조화된 사실이 오므로 **온전한 한국어 문장**을 짓는다. 로더의
-    # `detail`은 영어 로그 문구라, 그것을 이어 붙이면 운영자가 읽는 최종 문장이
-    # 반쯤 영어가 된다(INV-F9-8). 사실이 없는 거부만 영어 사유를 그대로 나른다.
-    if code == "no_unique_index" and facts.get("required_index_ddl"):
-        return (f"{lead}. {facts['right_table']} 테이블의 "
-                f"{_names(facts.get('join_key'), ', ')}을(를) 덮는 UNIQUE 인덱스가 "
-                f"없습니다. 다음을 실행해 만드세요: {facts['required_index_ddl']} "
-                f"만드는 중 중복 오류가 나면 그 값이 실제로 둘 이상 있다는 뜻이므로 "
-                f"데이터를 먼저 정리해야 합니다.")
-    return f"{lead} ― {loader_detail}"
+# 🪦 [S-211 ①, 판정 355] `_VJ_CODE_LEAD` 와 `virtual_join_detail` 의 «본체»가
+#    `virtual_join_refusal` 로 내려갔다. 이 이름이 여기서 계속 해석되는 것은 «재수출»이
+#    아니라 이 모듈이 그 문장을 «쓰기» 때문이다 — 짓는 자리는 거기 하나다.
+#    왜 옮겼나: 로더(`virtual_join_config`)도 같은 문장이 필요했고, 그것을 얻으려고 이
+#    모듈을 «함수 안에서» import 하고 있었다. 보고서가 로더를 읽는 것은 맞는 방향이고,
+#    로더가 보고서를 읽는 것이 거꾸로였다.
 
 
 def _resolve_virtual_join() -> dict:
@@ -588,7 +569,6 @@ def _resolve_virtual_join() -> dict:
     어느 컬럼인지 말하지 않는 거부는 운영자가 행동할 수 없는 거부다.
     실제 존재 여부는 `GET /admin/config/virtual-join/verify`가 답한다.
     """
-    import virtual_join_config as vjc
     from database import crud
 
     rules_path = vjc.VIRTUAL_JOIN_RULES_PATH
@@ -1252,7 +1232,7 @@ def _resolve_walk() -> dict:
 
     collectable, failure = set(), None
     try:
-        from ledger_trace_router import _collectable_types
+        from ledger.trace_router import _collectable_types
 
         collectable = _collectable_types()
     except Exception as exc:

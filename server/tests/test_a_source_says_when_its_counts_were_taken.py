@@ -19,7 +19,7 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import ledger_trace                                                  # noqa: E402
+from ledger import trace                                                  # noqa: E402
 import pacing                                                        # noqa: E402
 from ledger import backfill, schema                                  # noqa: E402
 
@@ -97,7 +97,7 @@ class _Engine:
 # ------------------------------------------------------------------ the shape
 
 def test_every_published_number_says_how_and_when():
-    value = ledger_trace.measured(12, exact=True, method="count(*)", measured_at="T")
+    value = trace.measured(12, exact=True, method="count(*)", measured_at="T")
     assert value == {"estimate": 12, "exact": True, "method": "count(*)",
                      "measured_at": "T"}
 
@@ -105,18 +105,18 @@ def test_every_published_number_says_how_and_when():
 def test_the_atoms_estimate_is_built_from_the_same_helper_not_beside_it():
     """⛔ NOT A SECOND SPELLING. Two shapes for 「this is an estimate」 is how one of them
     starts rendering as a fact."""
-    assert ledger_trace.ATOMS_UNKNOWN["exact"] is False
-    assert ledger_trace.ATOMS_UNKNOWN["method"] == "pg_class.reltuples"
-    assert ledger_trace.ATOMS_UNKNOWN["measured_at"] is None
-    assert set(ledger_trace.measured(0, exact=False, method="m")) <= set(
-        ledger_trace.ATOMS_UNKNOWN)
+    assert trace.ATOMS_UNKNOWN["exact"] is False
+    assert trace.ATOMS_UNKNOWN["method"] == "pg_class.reltuples"
+    assert trace.ATOMS_UNKNOWN["measured_at"] is None
+    assert set(trace.measured(0, exact=False, method="m")) <= set(
+        trace.ATOMS_UNKNOWN)
 
 
 def test_the_key_is_estimate_because_that_one_already_ships():
     """⚠️ `value` would be the nicer word. The trace client reads `atoms.estimate` today,
     and renaming a shipped key to improve a word breaks a reader for nothing."""
-    assert "estimate" in ledger_trace.ATOMS_UNKNOWN
-    assert "value" not in ledger_trace.ATOMS_UNKNOWN
+    assert "estimate" in trace.ATOMS_UNKNOWN
+    assert "value" not in trace.ATOMS_UNKNOWN
 
 
 # ------------------------------------------------------------ the measurement

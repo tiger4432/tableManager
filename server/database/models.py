@@ -1475,10 +1475,10 @@ def ensure_alignment_decision_key_indexes(engine, config=None, rules=None):
     catalog = config if config is not None else _catalog_owner.TABLE_CONFIG
     if rules is None:
         try:
-            import enrichment_config
+            import enrichment.config
             from database import crud as _crud
 
-            rules = enrichment_config.load_enrichment_rules(
+            rules = enrichment.config.load_enrichment_rules(
                 known_tables=_crud.TABLE_CONFIG)
         except Exception as err:                       # noqa: BLE001
             print(f"[Schema Sync] alignment rules unreadable, no decision-key index: {err}")

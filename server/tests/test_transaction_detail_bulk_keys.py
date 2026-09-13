@@ -24,7 +24,7 @@ import pytest
 from sqlalchemy import event
 
 import main as main_mod
-from audit_cache import audit_cache
+from admin.audit_cache import audit_cache
 from database import models
 
 TABLE = "raw_table_1"

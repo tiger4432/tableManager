@@ -18,7 +18,7 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import chain_ingestion_worker as worker                          # noqa: E402
+from chain import ingestion_worker as worker                          # noqa: E402
 import map_meta_registrar                                        # noqa: E402
 
 META = map_meta_registrar.META_TABLE

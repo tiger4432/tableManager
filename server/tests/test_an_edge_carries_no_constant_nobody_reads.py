@@ -24,11 +24,11 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import ledger_explorer                                             # noqa: E402
+from ledger import explorer                                             # noqa: E402
 from ledger_api import ledger_subgraph                             # noqa: E402
 
 NOW = datetime(2026, 9, 13, 3, 0, tzinfo=timezone.utc)
-SEED = ledger_explorer.entity_id("wafer", {"wid": "W0"})
+SEED = explorer.entity_id("wafer", {"wid": "W0"})
 
 RETIRED = ("witnesses", "rank", "sources")
 
@@ -95,7 +95,7 @@ def test_a_name_that_survives_elsewhere_is_a_different_object():
     it, and a word-level sweep would have."""
     import inspect
 
-    source = inspect.getsource(ledger_explorer)
+    source = inspect.getsource(explorer)
 
     assert 'row["witnesses"] += 1' in source, (
         "the live counter elsewhere was removed along with the constant")

@@ -70,8 +70,8 @@ def test_both_readers_name_the_constant_rather_than_quoting_the_value():
     that actually differs: which spelling each file uses.
     """
     for module_name, function_name in (
-            ("chain_replay", "_count_user_protected"),
-            ("enrichment_analysis", "_human_resolved_cells"),
+            ("chain.replay", "_count_user_protected"),
+            ("enrichment.analysis", "_human_resolved_cells"),
     ):
         body = _source_of(module_name, function_name)
         assert "HUMAN_SOURCE_NAME" in body, (module_name, function_name, body[:400])
@@ -102,7 +102,7 @@ def test_the_boot_sequence_calls_the_ensure():
     """🔴 착지는 배선이 아니다 — the same check the decision-key index needed, for the
     same reason: an ensure wired only into config reload leaves a restarted deployment
     without the index, and the reader then scans without anything saying so."""
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     body = inspect.getsource(worker.start_chain_ingestion_worker)
     assert "_ensure_human_claims_index_sync" in body, body[:400]
@@ -113,7 +113,7 @@ def test_the_ensure_runs_against_a_database_that_refuses():
     """What is proved here is that the ensure gets as far as asking the engine and does
     not raise out of the boot sequence - not what the engine says. A boot that dies on an
     index build is a worse outage than a missing index."""
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     class _Refuses:
         def connect(self):

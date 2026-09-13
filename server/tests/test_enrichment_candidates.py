@@ -17,8 +17,8 @@ import json
 import anyio
 import pytest
 
-import enrichment_candidates
-import enrichment_config
+import enrichment.candidates
+import enrichment.config
 from database import crud, models, schemas
 
 
@@ -29,7 +29,7 @@ def _caps(**overrides):
     overrides a cap still exercises the real reader - including the `declared`
     flag the refusals report on.
     """
-    caps = enrichment_config.load_read_caps({})
+    caps = enrichment.config.load_read_caps({})
     for name, value in overrides.items():
         caps[name] = {"value": value, "declared": True}
     return caps
@@ -110,16 +110,16 @@ def cand_env(db_session, tmp_path, monkeypatch):
 
     rules_path = tmp_path / "enrichment_rules.json"
     rules_path.write_text(json.dumps({"encand_rule": _rule()}), encoding="utf-8")
-    monkeypatch.setattr(enrichment_config, "ENRICHMENT_RULES_PATH", str(rules_path))
+    monkeypatch.setattr(enrichment.config, "ENRICHMENT_RULES_PATH", str(rules_path))
 
     settings_path = tmp_path / "ingestion_settings.json"
     settings_path.write_text(json.dumps({}), encoding="utf-8")
-    monkeypatch.setattr(enrichment_candidates, "INGESTION_SETTINGS_PATH", str(settings_path))
-    enrichment_candidates.reset_warnings()
+    monkeypatch.setattr(enrichment.candidates, "INGESTION_SETTINGS_PATH", str(settings_path))
+    enrichment.candidates.reset_warnings()
     # Module-level throttle state. Leaking it between tests would make a test's
     # result depend on what ran before it - which is the exact class of
     # cross-test pollution this file's fixtures already work to avoid.
-    enrichment_config.reset_driver_error_incidents()
+    enrichment.config.reset_driver_error_incidents()
 
     # Reference history: L1/S1 -> WF1, L1/S2 -> WF2. Keyed by lot alone this is
     # two candidates; keyed by lot+slot it is one.
@@ -168,7 +168,7 @@ def _seed_raw(db, table, rows):
 
 
 def _loaded_rule(name="encand_rule"):
-    rules = enrichment_config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
+    rules = enrichment.config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
     return next(r for r in rules if r["name"] == name)
 
 
@@ -178,10 +178,10 @@ def _derived(db, bk):
 
 
 def _run_chain_for_tx(db, tx_id, trigger_table="encand_test_src"):
-    from chain_ingestion_worker import process_chain_transaction_group
+    from chain.ingestion_worker import process_chain_transaction_group
     from database.models import DatabaseOutbox
 
-    rules = enrichment_config.load_enrichment_chain_rules(known_tables=crud.TABLE_CONFIG)
+    rules = enrichment.config.load_enrichment_chain_rules(known_tables=crud.TABLE_CONFIG)
     assert rules, "enrichment chain rules must be synthesized"
     events = db.query(DatabaseOutbox).filter(
         DatabaseOutbox.table_name == trigger_table,
@@ -211,8 +211,7 @@ def run_followup_auto_confirm(db, derived_table="encand_test_derived"):
     # helper's whole promise is 「the way the paced drain does」 — so it calls what the drain
     # calls. The assertions above it are unchanged, which is what makes them the gate on the
     # confirmed count not moving.
-    from chain_ingestion_worker import (_run_builtin_followups,
-                                        reload_worker_process_cache)
+    from chain.ingestion_worker import _run_builtin_followups, reload_worker_process_cache
 
     # ⚠️ THE DISPATCHER HOLDS ITS RULE LIST ACROSS BATCHES (the drain calls it in a loop), and
     # these tests rewrite the declaration in-process between cases. Production reaches a
@@ -246,8 +245,8 @@ def test_candidate_for_normalized_and_view_without_it_is_display_only(cand_env):
     narrow, broad = rule["reference_views"]
     assert narrow["candidate_for"] == {"wafer_id": "wafer_id"}
     assert broad["candidate_for"] == {}, "a view with no declaration must never be a candidate source"
-    assert enrichment_candidates.declaring_views(rule, "wafer_id") == [narrow]
-    assert enrichment_candidates.candidate_target_fields(rule) == ["wafer_id"]
+    assert enrichment.candidates.declaring_views(rule, "wafer_id") == [narrow]
+    assert enrichment.candidates.candidate_target_fields(rule) == ["wafer_id"]
     # required_binds is derived from the SQL, per view, not from the decision key.
     assert narrow["required_binds"] == ["lot", "slot"]
     assert broad["required_binds"] == ["lot"]
@@ -255,7 +254,7 @@ def test_candidate_for_normalized_and_view_without_it_is_display_only(cand_env):
 
 def test_candidate_for_rejects_non_target_and_non_string(cand_env):
     bad = dict(NARROW_VIEW, candidate_for={"lot": "wafer_id", "wafer_id": ""})
-    normalized, err = enrichment_config._validate_rule(
+    normalized, err = enrichment.config._validate_rule(
         "r", _rule(reference_views=[bad]), CAND_TABLES)
     assert err is None
     # 'lot' is a decision key, not a target field -> rejected. '' -> rejected.
@@ -272,8 +271,8 @@ def test_declaration_is_load_bearing_decoy_view_would_have_been_ambiguous(cand_e
     """
     rule = _loaded_rule()
     keys = {"lot": "L1", "slot": "S1"}
-    good = enrichment_candidates.resolve_target_candidate(cand_env, rule, keys, "wafer_id")
-    assert good["status"] == enrichment_candidates.STATUS_SINGLE
+    good = enrichment.candidates.resolve_target_candidate(cand_env, rule, keys, "wafer_id")
+    assert good["status"] == enrichment.candidates.STATUS_SINGLE
     assert good["value"] == "WF1"
 
     # INJECTED DEFECT: the broad view is declared as a candidate source too.
@@ -281,9 +280,9 @@ def test_declaration_is_load_bearing_decoy_view_would_have_been_ambiguous(cand_e
     injected["reference_views"] = [rule["reference_views"][0],
                                    dict(rule["reference_views"][1],
                                         candidate_for={"wafer_id": "wafer_id"})]
-    bad = enrichment_candidates.resolve_target_candidate(cand_env, injected, keys, "wafer_id")
-    assert bad["status"] == enrichment_candidates.STATUS_REFUSED
-    assert bad["reason"] == enrichment_candidates.REASON_AMBIGUOUS
+    bad = enrichment.candidates.resolve_target_candidate(cand_env, injected, keys, "wafer_id")
+    assert bad["status"] == enrichment.candidates.STATUS_REFUSED
+    assert bad["reason"] == enrichment.candidates.REASON_AMBIGUOUS
     assert set(bad["candidates"]) == {"WF1", "WF2"}
 
 
@@ -293,23 +292,23 @@ def test_declaration_is_load_bearing_decoy_view_would_have_been_ambiguous(cand_e
 
 def test_ambiguous_two_rows_same_key_is_a_human_judgement(cand_env):
     rule = _loaded_rule()
-    res = enrichment_candidates.resolve_target_candidate(
+    res = enrichment.candidates.resolve_target_candidate(
         cand_env, rule, {"lot": "L2", "slot": "S1"}, "wafer_id")
-    assert res["status"] == enrichment_candidates.STATUS_REFUSED
-    assert res["reason"] == enrichment_candidates.REASON_AMBIGUOUS
+    assert res["status"] == enrichment.candidates.STATUS_REFUSED
+    assert res["reason"] == enrichment.candidates.REASON_AMBIGUOUS
     assert res["distinct_count"] == 2
 
 
 def test_no_candidate_and_not_declared_are_distinct_reasons(cand_env):
     rule = _loaded_rule()
-    empty = enrichment_candidates.resolve_target_candidate(
+    empty = enrichment.candidates.resolve_target_candidate(
         cand_env, rule, {"lot": "NOPE", "slot": "S1"}, "wafer_id")
-    assert empty["reason"] == enrichment_candidates.REASON_NO_CANDIDATE
+    assert empty["reason"] == enrichment.candidates.REASON_NO_CANDIDATE
 
     undeclared = dict(rule, target_fields=["wafer_id", "other"])
-    res = enrichment_candidates.resolve_target_candidate(
+    res = enrichment.candidates.resolve_target_candidate(
         cand_env, undeclared, {"lot": "L1", "slot": "S1"}, "other")
-    assert res["reason"] == enrichment_candidates.REASON_NOT_DECLARED
+    assert res["reason"] == enrichment.candidates.REASON_NOT_DECLARED
 
 
 def test_blank_candidate_values_are_not_candidates(cand_env):
@@ -317,9 +316,9 @@ def test_blank_candidate_values_are_not_candidates(cand_env):
     _seed(cand_env, "encand_test_hist",
           [{"hist_id": "H5", "lot": "L3", "slot": "S1", "wafer_id": "  "}])
     rule = _loaded_rule()
-    res = enrichment_candidates.resolve_target_candidate(
+    res = enrichment.candidates.resolve_target_candidate(
         cand_env, rule, {"lot": "L3", "slot": "S1"}, "wafer_id")
-    assert res["reason"] == enrichment_candidates.REASON_NO_CANDIDATE
+    assert res["reason"] == enrichment.candidates.REASON_NO_CANDIDATE
 
 
 def test_whitespace_and_numeric_forms_are_one_candidate_not_two(cand_env):
@@ -328,9 +327,9 @@ def test_whitespace_and_numeric_forms_are_one_candidate_not_two(cand_env):
         {"hist_id": "H6", "lot": "L4", "slot": "S1", "wafer_id": "WF7"},
         {"hist_id": "H7", "lot": "L4", "slot": "S1", "wafer_id": "WF7 "},
     ])
-    res = enrichment_candidates.resolve_target_candidate(
+    res = enrichment.candidates.resolve_target_candidate(
         cand_env, _loaded_rule(), {"lot": "L4", "slot": "S1"}, "wafer_id")
-    assert res["status"] == enrichment_candidates.STATUS_SINGLE
+    assert res["status"] == enrichment.candidates.STATUS_SINGLE
     assert res["value"] == "WF7"
     assert res["support"] == 2
 
@@ -344,10 +343,10 @@ def test_a_failed_view_refuses_even_when_a_surviving_view_agrees(cand_env):
               "candidate_for": {"wafer_id": "wafer_id"}, "limit": 200,
               "required_binds": ["lot"]}
     injected = dict(rule, reference_views=[rule["reference_views"][0], broken])
-    res = enrichment_candidates.resolve_target_candidate(
+    res = enrichment.candidates.resolve_target_candidate(
         cand_env, injected, {"lot": "L1", "slot": "S1"}, "wafer_id")
-    assert res["status"] == enrichment_candidates.STATUS_REFUSED
-    assert res["reason"] == enrichment_candidates.REASON_VIEW_ERROR
+    assert res["status"] == enrichment.candidates.STATUS_REFUSED
+    assert res["reason"] == enrichment.candidates.REASON_VIEW_ERROR
     # The partial finding is still reported (a UI may show it) but must not gate.
     assert res["value"] == "WF1"
     assert res["errors"][0]["label"] == "broken"
@@ -365,9 +364,9 @@ def test_declared_column_absent_from_result_is_a_named_refusal(cand_env):
     rule = _loaded_rule()
     wrong = dict(rule["reference_views"][0], candidate_for={"wafer_id": "not_a_column"})
     injected = dict(rule, reference_views=[wrong])
-    res = enrichment_candidates.resolve_target_candidate(
+    res = enrichment.candidates.resolve_target_candidate(
         cand_env, injected, {"lot": "L1", "slot": "S1"}, "wafer_id")
-    assert res["reason"] == enrichment_candidates.REASON_CANDIDATE_COLUMN_MISSING
+    assert res["reason"] == enrichment.candidates.REASON_CANDIDATE_COLUMN_MISSING
     assert res["value"] != "not_a_column", (
         "the probe fabricated a candidate out of the column name - the quoted "
         "identifier was demoted to a string literal")
@@ -375,9 +374,9 @@ def test_declared_column_absent_from_result_is_a_named_refusal(cand_env):
 
 def test_missing_bind_refuses_instead_of_executing_blindly(cand_env):
     rule = _loaded_rule()
-    res = enrichment_candidates.resolve_target_candidate(
+    res = enrichment.candidates.resolve_target_candidate(
         cand_env, rule, {"lot": "L1"}, "wafer_id")   # no slot
-    assert res["reason"] == enrichment_candidates.REASON_MISSING_BIND
+    assert res["reason"] == enrichment.candidates.REASON_MISSING_BIND
 
 
 # ---------------------------------------------------------------------------
@@ -385,13 +384,13 @@ def test_missing_bind_refuses_instead_of_executing_blindly(cand_env):
 # ---------------------------------------------------------------------------
 
 def test_knob_defaults_off_and_opt_in_turns_it_on(cand_env):
-    assert enrichment_candidates.rule_auto_confirm_enabled({"name": "r"}) is False
-    assert enrichment_candidates.rule_auto_confirm_enabled({"name": "r", "auto_confirm": True}) is True
+    assert enrichment.candidates.rule_auto_confirm_enabled({"name": "r"}) is False
+    assert enrichment.candidates.rule_auto_confirm_enabled({"name": "r", "auto_confirm": True}) is True
 
 
 def test_non_boolean_knob_warns_and_falls_back_to_off(cand_env, caplog):
     with caplog.at_level("WARNING"):
-        assert enrichment_candidates.rule_auto_confirm_enabled(
+        assert enrichment.candidates.rule_auto_confirm_enabled(
             {"name": "r", "auto_confirm": "true"}) is False
     assert any("expected JSON boolean" in rec.getMessage() for rec in caplog.records), \
         "a non-boolean knob must SAY it is being ignored, not fail silently"
@@ -400,17 +399,17 @@ def test_non_boolean_knob_warns_and_falls_back_to_off(cand_env, caplog):
 def test_global_kill_switch_disables_every_rule(cand_env, tmp_path, monkeypatch):
     p = tmp_path / "kill.json"
     p.write_text(json.dumps({"enrichment_auto_confirm_enabled": False}), encoding="utf-8")
-    monkeypatch.setattr(enrichment_candidates, "INGESTION_SETTINGS_PATH", str(p))
-    assert enrichment_candidates.rule_auto_confirm_enabled({"name": "r", "auto_confirm": True}) is False
-    assert enrichment_candidates.AutoConfirmCollector("encand_test_derived").active is False
+    monkeypatch.setattr(enrichment.candidates, "INGESTION_SETTINGS_PATH", str(p))
+    assert enrichment.candidates.rule_auto_confirm_enabled({"name": "r", "auto_confirm": True}) is False
+    assert enrichment.candidates.AutoConfirmCollector("encand_test_derived").active is False
 
 
 def test_collector_inert_without_declaration(cand_env, tmp_path, monkeypatch):
     rules_path = tmp_path / "nodecl.json"
     rules_path.write_text(json.dumps({"encand_rule": _rule(
         reference_views=[dict(BROAD_VIEW)])}), encoding="utf-8")
-    monkeypatch.setattr(enrichment_config, "ENRICHMENT_RULES_PATH", str(rules_path))
-    assert enrichment_candidates.AutoConfirmCollector("encand_test_derived").active is False
+    monkeypatch.setattr(enrichment.config, "ENRICHMENT_RULES_PATH", str(rules_path))
+    assert enrichment.candidates.AutoConfirmCollector("encand_test_derived").active is False
 
 
 # ---------------------------------------------------------------------------
@@ -427,12 +426,12 @@ def test_chain_path_auto_confirms_single_candidate(cand_env):
     assert row is not None
     assert row.wafer_id == "WF1", "single candidate should have been confirmed automatically"
     # Provenance: lowest priority, so nothing it writes can outrank a human.
-    assert crud.get_source_priority(enrichment_candidates.SOURCE_NAME) == 99
+    assert crud.get_source_priority(enrichment.candidates.SOURCE_NAME) == 99
     src = cand_env.query(models.CellSource).filter(
         models.CellSource.table_name == "encand_test_derived",
         models.CellSource.row_id == row.row_id,
         models.CellSource.column_name == "wafer_id").all()
-    assert [s.source_name for s in src] == [enrichment_candidates.SOURCE_NAME]
+    assert [s.source_name for s in src] == [enrichment.candidates.SOURCE_NAME]
 
 
 def test_following_the_same_rows_twice_confirms_them_once(cand_env):
@@ -464,7 +463,7 @@ def test_following_the_same_rows_twice_confirms_them_once(cand_env):
             models.CellSource.column_name == "wafer_id").all()
 
     after_first = [(s.source_name, s.value) for s in _layers()]
-    assert after_first == [(enrichment_candidates.SOURCE_NAME, "WF1")]
+    assert after_first == [(enrichment.candidates.SOURCE_NAME, "WF1")]
 
     run_followup_auto_confirm(cand_env)              # the SAME rows, a second time
     assert [(s.source_name, s.value) for s in _layers()] == after_first,         "a second follow-up pass wrote a second layer for a cell that already had one"
@@ -487,7 +486,7 @@ def test_knob_off_writes_nothing(cand_env, tmp_path, monkeypatch):
     rules_path = tmp_path / "off.json"
     rules_path.write_text(json.dumps({"encand_rule": _rule(auto_confirm=False)}),
                           encoding="utf-8")
-    monkeypatch.setattr(enrichment_config, "ENRICHMENT_RULES_PATH", str(rules_path))
+    monkeypatch.setattr(enrichment.config, "ENRICHMENT_RULES_PATH", str(rules_path))
     _seed(cand_env, "encand_test_src",
           [{"log_key": "k4", "lot": "L1", "slot": "S1", "chip_id": "C1"}], tx_id="tx_off")
     _run_chain_for_tx(cand_env, "tx_off")
@@ -513,13 +512,13 @@ def test_absent_only_refuses_a_cell_that_already_has_provenance(cand_env):
     row = _derived(cand_env, "L1_S1")
     assert crud.clean_str_value(row.wafer_id) == ""
 
-    stats = enrichment_candidates.confirm_keys(
+    stats = enrichment.candidates.confirm_keys(
         cand_env, _loaded_rule(),
         [{"row_id": row.row_id, "business_key_val": "L1_S1",
           "keys": {"lot": "L1", "slot": "S1"}, "blank_targets": ["wafer_id"]}],
         apply=True)
     assert stats["confirmed"] == 0
-    assert stats["refused"][enrichment_candidates.REASON_CELL_HAS_PROVENANCE] == 1
+    assert stats["refused"][enrichment.candidates.REASON_CELL_HAS_PROVENANCE] == 1
     row = _derived(cand_env, "L1_S1")
     assert crud.clean_str_value(row.wafer_id) == "", \
         "auto-confirm must not overwrite a human's deliberate blank"
@@ -547,7 +546,7 @@ def test_user_edit_beats_an_auto_confirmed_value(cand_env):
 def test_per_unit_cap_leaves_the_remainder_in_the_queue(cand_env, tmp_path, monkeypatch):
     p = tmp_path / "cap.json"
     p.write_text(json.dumps({"enrichment_auto_confirm_max_keys": 1}), encoding="utf-8")
-    monkeypatch.setattr(enrichment_candidates, "INGESTION_SETTINGS_PATH", str(p))
+    monkeypatch.setattr(enrichment.candidates, "INGESTION_SETTINGS_PATH", str(p))
     _seed(cand_env, "encand_test_hist",
           [{"hist_id": "H8", "lot": "L5", "slot": "S1", "wafer_id": "WF5"}])
     _seed(cand_env, "encand_test_src",
@@ -581,11 +580,11 @@ def test_a_contradiction_past_the_view_limit_still_makes_it_ambiguous(cand_env):
     ])
     rule = _loaded_rule()
     narrow = dict(rule["reference_views"][0], limit=2)   # truncates before WFX
-    res = enrichment_candidates.resolve_target_candidate(
+    res = enrichment.candidates.resolve_target_candidate(
         cand_env, dict(rule, reference_views=[narrow]), {"lot": "LT", "slot": "S1"},
         "wafer_id")
-    assert res["status"] == enrichment_candidates.STATUS_REFUSED
-    assert res["reason"] == enrichment_candidates.REASON_AMBIGUOUS
+    assert res["status"] == enrichment.candidates.STATUS_REFUSED
+    assert res["reason"] == enrichment.candidates.REASON_AMBIGUOUS
     assert set(res["candidates"]) == {"WF1", "WFX"}
 
 
@@ -596,10 +595,10 @@ def test_support_counts_every_row_not_just_the_first_limit(cand_env):
     ])
     rule = _loaded_rule()
     narrow = dict(rule["reference_views"][0], limit=2)
-    res = enrichment_candidates.resolve_target_candidate(
+    res = enrichment.candidates.resolve_target_candidate(
         cand_env, dict(rule, reference_views=[narrow]), {"lot": "LS", "slot": "S1"},
         "wafer_id")
-    assert res["status"] == enrichment_candidates.STATUS_SINGLE
+    assert res["status"] == enrichment.candidates.STATUS_SINGLE
     assert res["support"] == 5, "support must be a count over the whole result"
     assert res["evidence"][0]["rows"] == 5
 
@@ -616,7 +615,7 @@ def test_each_evidence_axis_says_whether_it_was_cut(cand_env):
         for i in range(3)
     ])
     rule = _loaded_rule()
-    res = enrichment_candidates.resolve_target_candidate(
+    res = enrichment.candidates.resolve_target_candidate(
         cand_env, rule, {"lot": "LA", "slot": "S1"}, "wafer_id")
 
     ev = res["evidence"][0]
@@ -638,7 +637,7 @@ def test_the_two_evidence_axes_can_disagree(cand_env):
         {"hist_id": f"D{i}", "lot": "LD", "slot": "S1", "wafer_id": "WF1"}
         for i in range(4)
     ])
-    res = enrichment_candidates.resolve_target_candidate(
+    res = enrichment.candidates.resolve_target_candidate(
         cand_env, _loaded_rule(), {"lot": "LD", "slot": "S1"}, "wafer_id",
         caps=_caps(probe_scan_rows=2))
 
@@ -663,11 +662,11 @@ def test_a_truncated_probe_refuses_instead_of_claiming_single(cand_env):
         {"hist_id": f"P{i}", "lot": "LP", "slot": "S1", "wafer_id": "WF1"}
         for i in range(4)
     ])
-    res = enrichment_candidates.resolve_target_candidate(
+    res = enrichment.candidates.resolve_target_candidate(
         cand_env, _loaded_rule(), {"lot": "LP", "slot": "S1"}, "wafer_id",
         caps=_caps(probe_scan_rows=2))
-    assert res["status"] == enrichment_candidates.STATUS_REFUSED
-    assert res["reason"] == enrichment_candidates.REASON_PROBE_TRUNCATED
+    assert res["status"] == enrichment.candidates.STATUS_REFUSED
+    assert res["reason"] == enrichment.candidates.REASON_PROBE_TRUNCATED
     # The partial finding is still reported so a UI can show it; it just cannot gate.
     assert res["value"] == "WF1"
 
@@ -685,15 +684,15 @@ def test_a_truncation_refusal_names_the_cap_that_cut_it_and_where_to_set_it(cand
         {"hist_id": f"C{i}", "lot": "LC", "slot": "S1", "wafer_id": "WF1"}
         for i in range(4)
     ])
-    res = enrichment_candidates.resolve_target_candidate(
+    res = enrichment.candidates.resolve_target_candidate(
         cand_env, _loaded_rule(), {"lot": "LC", "slot": "S1"}, "wafer_id",
         caps=_caps(probe_scan_rows=2))
     err = res["errors"][0]
-    assert err["cap"] == enrichment_config.CAP_PROBE_SCAN_ROWS
+    assert err["cap"] == enrichment.config.CAP_PROBE_SCAN_ROWS
     assert err["cap"] != "limit"
     assert err["cap_value"] == 2
     assert err["cap_declared"] is True
-    assert enrichment_config.READ_CAPS_SETTINGS_KEY in err["cap_home"]
+    assert enrichment.config.READ_CAPS_SETTINGS_KEY in err["cap_home"]
     assert "ingestion_settings.json" in err["cap_home"]
 
 
@@ -711,12 +710,12 @@ def test_an_undeclared_cap_says_so_in_the_refusal(cand_env):
     ])
     rule = _loaded_rule()
     narrow = dict(rule["reference_views"][0], limit=1)
-    res = enrichment_candidates.resolve_target_candidate(
+    res = enrichment.candidates.resolve_target_candidate(
         cand_env, dict(rule, reference_views=[narrow]), {"lot": "LU", "slot": "S1"},
         "wafer_id", caps=_caps())
     err = next(e for e in res["errors"]
-               if e["reason"] == enrichment_candidates.REASON_DISTINCT_TRUNCATED)
-    assert err["cap"] == enrichment_config.CAP_PROBE_DISTINCT_VALUES
+               if e["reason"] == enrichment.candidates.REASON_DISTINCT_TRUNCATED)
+    assert err["cap"] == enrichment.config.CAP_PROBE_DISTINCT_VALUES
     assert err["cap_declared"] is False, (
         "undeclared must read as undeclared - reporting the inherited number as a "
         "declaration hides the fact that nobody ever chose it")
@@ -740,26 +739,26 @@ def test_the_refusal_says_whether_a_bigger_cap_could_even_help(cand_env):
         {"hist_id": f"A{i}", "lot": "LA", "slot": "S1", "wafer_id": f"W{i}"}
         for i in range(4)
     ])
-    amb = enrichment_candidates.resolve_target_candidate(
+    amb = enrichment.candidates.resolve_target_candidate(
         cand_env, dict(rule, reference_views=[narrow]), {"lot": "LA", "slot": "S1"},
         "wafer_id", caps=_caps())
     err = next(e for e in amb["errors"]
-               if e["reason"] == enrichment_candidates.REASON_DISTINCT_TRUNCATED)
+               if e["reason"] == enrichment.candidates.REASON_DISTINCT_TRUNCATED)
     assert err["distinct_values_read"] >= 2
-    assert err["expected_if_raised"] == enrichment_candidates.EXPECT_AMBIGUOUS
+    assert err["expected_if_raised"] == enrichment.candidates.EXPECT_AMBIGUOUS
 
     # One value read so far -> the remainder may agree or may not. Say unknown.
     _seed(cand_env, "encand_test_hist", [
         {"hist_id": f"K{i}", "lot": "LK", "slot": "S1", "wafer_id": "WSAME"}
         for i in range(4)
     ])
-    unk = enrichment_candidates.resolve_target_candidate(
+    unk = enrichment.candidates.resolve_target_candidate(
         cand_env, dict(rule, reference_views=[narrow]), {"lot": "LK", "slot": "S1"},
         "wafer_id", caps=_caps(probe_scan_rows=2))
     err = next(e for e in unk["errors"]
-               if e["reason"] == enrichment_candidates.REASON_PROBE_TRUNCATED)
+               if e["reason"] == enrichment.candidates.REASON_PROBE_TRUNCATED)
     assert err["distinct_values_read"] <= 1
-    assert err["expected_if_raised"] == enrichment_candidates.EXPECT_UNKNOWN
+    assert err["expected_if_raised"] == enrichment.candidates.EXPECT_UNKNOWN
 
 
 def test_the_two_outcomes_are_counted_apart_in_the_sweep_stats(cand_env):
@@ -774,15 +773,15 @@ def test_the_two_outcomes_are_counted_apart_in_the_sweep_stats(cand_env):
           [{"wafer_key": "LS2_S1", "lot": "LS2", "slot": "S1"}])
     rule = _loaded_rule()
     narrow = dict(rule["reference_views"][0], limit=1)
-    st = enrichment_candidates.confirm_keys(
+    st = enrichment.candidates.confirm_keys(
         cand_env, dict(rule, reference_views=[narrow]),
         [{"row_id": None, "business_key_val": "LS2_S1",
           "keys": {"lot": "LS2", "slot": "S1"}, "blank_targets": ["wafer_id"]}],
         apply=False, caps=_caps())
-    slot = st["cap_hits"][enrichment_config.CAP_PROBE_DISTINCT_VALUES]
+    slot = st["cap_hits"][enrichment.config.CAP_PROBE_DISTINCT_VALUES]
     assert slot["hits"] == 1
-    assert slot[enrichment_candidates.EXPECT_AMBIGUOUS] == 1
-    assert slot[enrichment_candidates.EXPECT_UNKNOWN] == 0
+    assert slot[enrichment.candidates.EXPECT_AMBIGUOUS] == 1
+    assert slot[enrichment.candidates.EXPECT_UNKNOWN] == 0
     assert slot["cap_declared"] is False
     assert "ingestion_settings.json" in slot["cap_home"]
 
@@ -791,9 +790,9 @@ def test_the_display_path_keeps_its_row_limit(cand_env):
     """One declaration, two execution shapes. The human display still needs ROWS,
     ordered - grouping it would break the other consumer of the same view."""
     view = dict(_loaded_rule()["reference_views"][1], limit=1)
-    columns, rows = enrichment_config.execute_reference_view(cand_env, view, {"lot": "L1"})
+    columns, rows = enrichment.config.execute_reference_view(cand_env, view, {"lot": "L1"})
     assert len(rows) == 1 and "wafer_id" in columns
-    probe = enrichment_config.execute_candidate_probe(
+    probe = enrichment.config.execute_candidate_probe(
         cand_env, view, "wafer_id", {"lot": "L1"})
     assert probe["scanned"] == 2, "the probe must see both rows the display path hid"
     assert probe["distinct_truncated"] is True   # 2 distinct > limit 1
@@ -832,17 +831,17 @@ def test_a_clipped_distinct_read_is_refused_even_when_it_folds_to_one_value(cand
     narrow = dict(rule["reference_views"][0], limit=1)
     keys = {"lot": "LD", "slot": "S1"}
 
-    probe = enrichment_config.execute_candidate_probe(cand_env, narrow, "wafer_id", keys)
+    probe = enrichment.config.execute_candidate_probe(cand_env, narrow, "wafer_id", keys)
     assert probe["distinct_truncated"] is True
     folded = {crud.clean_str_value(v) for v, _ in probe["pairs"]} - {""}
     assert len(folded) == 1, (
         "fixture no longer activates the defect axis: the CLIPPED groups must fold "
         f"to a single value (that is what used to read as `single`), got {folded}")
 
-    res = enrichment_candidates.resolve_target_candidate(
+    res = enrichment.candidates.resolve_target_candidate(
         cand_env, dict(rule, reference_views=[narrow]), keys, "wafer_id")
-    assert res["status"] == enrichment_candidates.STATUS_REFUSED
-    assert res["reason"] == enrichment_candidates.REASON_DISTINCT_TRUNCATED
+    assert res["status"] == enrichment.candidates.STATUS_REFUSED
+    assert res["reason"] == enrichment.candidates.REASON_DISTINCT_TRUNCATED
     # The partial finding is still reported so a UI can show it; it just cannot gate.
     assert res["value"] == "WF01"
 
@@ -860,7 +859,7 @@ def test_scanned_counts_every_row_the_probe_read_not_just_the_returned_groups(ca
         for i in range(6)
     ])
     view = dict(_loaded_rule()["reference_views"][0], limit=1)
-    probe = enrichment_config.execute_candidate_probe(
+    probe = enrichment.config.execute_candidate_probe(
         cand_env, view, "wafer_id", {"lot": "LN", "slot": "S1"})
     assert probe["distinct_truncated"] is True
     assert len(probe["pairs"]) == 2, "the outer LIMIT is limit+1, the rest is clipped"
@@ -878,7 +877,7 @@ def test_row_truncation_is_still_detected_when_the_groups_are_also_clipped(cand_
         for i in range(6)
     ])
     view = dict(_loaded_rule()["reference_views"][0], limit=1)
-    probe = enrichment_config.execute_candidate_probe(
+    probe = enrichment.config.execute_candidate_probe(
         cand_env, view, "wafer_id", {"lot": "LR", "slot": "S1"},
         caps=_caps(probe_scan_rows=3))
     assert len(probe["pairs"]) == 2 and probe["distinct_truncated"] is True
@@ -900,20 +899,20 @@ def test_the_probe_distinct_cap_can_be_declared_apart_from_the_display_limit(can
         for i in range(4)
     ])
     view = dict(_loaded_rule()["reference_views"][0], limit=1)
-    inherited = enrichment_config.execute_candidate_probe(
+    inherited = enrichment.config.execute_candidate_probe(
         cand_env, view, "wafer_id", {"lot": "LD", "slot": "S1"}, caps=_caps())
     assert inherited["distinct_truncated"] is True
     assert inherited["distinct_values_cap"] == 1
     assert inherited["distinct_values_cap_declared"] is False
 
-    declared = enrichment_config.execute_candidate_probe(
+    declared = enrichment.config.execute_candidate_probe(
         cand_env, view, "wafer_id", {"lot": "LD", "slot": "S1"},
         caps=_caps(probe_distinct_values=50))
     assert declared["distinct_truncated"] is False
     assert declared["distinct_values_cap"] == 50
     assert declared["distinct_values_cap_declared"] is True
     # The DISPLAY path is untouched by the probe's cap - that is the separation.
-    _, rows = enrichment_config.execute_reference_view(
+    _, rows = enrichment.config.execute_reference_view(
         cand_env, view, {"lot": "LD", "slot": "S1"}, caps=_caps(probe_distinct_values=50))
     assert len(rows) == 1
 
@@ -922,12 +921,12 @@ def test_a_candidate_column_that_is_not_an_identifier_is_rejected_at_load(cand_e
     """The column name is INTERPOLATED into the probe SQL, so its shape is checked
     before anything executes - validation must not sit downstream of the query."""
     bad = dict(NARROW_VIEW, candidate_for={"wafer_id": 'wafer_id" OR "1"="1'})
-    normalized, err = enrichment_config._validate_rule(
+    normalized, err = enrichment.config._validate_rule(
         "r", _rule(reference_views=[bad]), CAND_TABLES)
     assert err is None
     assert normalized["reference_views"][0]["candidate_for"] == {}
-    with pytest.raises(enrichment_config.ReferenceViewError):
-        enrichment_config.execute_candidate_probe(
+    with pytest.raises(enrichment.config.ReferenceViewError):
+        enrichment.config.execute_candidate_probe(
             cand_env, dict(NARROW_VIEW, required_binds=["lot", "slot"], limit=200),
             'wafer_id" OR "1"="1', {"lot": "L1", "slot": "S1"})
 
@@ -1030,7 +1029,7 @@ def test_a_reference_view_opens_a_transaction_before_its_savepoint():
     the double refuses exactly the way the driver does, and the assertion is that a
     transaction is opened FIRST.
     """
-    import enrichment_config
+    import enrichment.config
 
     class Session:
         def __init__(self):
@@ -1055,7 +1054,7 @@ def test_a_reference_view_opens_a_transaction_before_its_savepoint():
                                   "fetchall": lambda s: [(1,)]})()
 
     session = Session()
-    columns, rows = enrichment_config._isolated_execute(session, "SELECT 1", {})
+    columns, rows = enrichment.config._isolated_execute(session, "SELECT 1", {})
 
     assert session.begins == 1, "the transaction must be opened before the savepoint"
     assert columns == ["a"] and rows == [(1,)]
@@ -1089,17 +1088,17 @@ def test_a_failed_probe_does_not_poison_the_callers_transaction(cand_env, pg_abo
     rule = _loaded_rule()
     wrong = dict(rule["reference_views"][0], candidate_for={"wafer_id": "not_a_column"})
 
-    res = enrichment_candidates.resolve_target_candidate(
+    res = enrichment.candidates.resolve_target_candidate(
         cand_env, dict(rule, reference_views=[wrong]), {"lot": "L1", "slot": "S1"},
         "wafer_id")
-    assert res["reason"] == enrichment_candidates.REASON_CANDIDATE_COLUMN_MISSING, (
+    assert res["reason"] == enrichment.candidates.REASON_CANDIDATE_COLUMN_MISSING, (
         "the diagnostic ran on an aborted session, so it could only report "
         "view_error - candidate_column_missing is unreachable on PostgreSQL")
 
     assert pg_abort_semantics["aborted"] is False, "the savepoint was not rolled back"
-    survivor = enrichment_candidates.resolve_target_candidate(
+    survivor = enrichment.candidates.resolve_target_candidate(
         cand_env, rule, {"lot": "L1", "slot": "S1"}, "wafer_id")
-    assert survivor["status"] == enrichment_candidates.STATUS_SINGLE
+    assert survivor["status"] == enrichment.candidates.STATUS_SINGLE
     assert survivor["value"] == "WF1", "the session did not survive the failed probe"
 
 
@@ -1122,7 +1121,7 @@ def test_a_bad_candidate_column_does_not_wedge_the_chain_work_unit(cand_env, pg_
     bad_view = dict(NARROW_VIEW, candidate_for={"wafer_id": "not_a_column"})
     rules_path.write_text(json.dumps({"encand_rule": _rule(reference_views=[bad_view])}),
                           encoding="utf-8")
-    monkeypatch.setattr(enrichment_config, "ENRICHMENT_RULES_PATH", str(rules_path))
+    monkeypatch.setattr(enrichment.config, "ENRICHMENT_RULES_PATH", str(rules_path))
 
     _seed(cand_env, "encand_test_src",
           [{"log_key": "kb1", "lot": "L1", "slot": "S1", "chip_id": "C1"}], tx_id="tx_badcol")
@@ -1167,8 +1166,8 @@ def test_reference_view_execution_has_one_definition(cand_env):
         "the enrichment reference route no longer calls the shared executor - either "
         "it grew its own definition again or the call was renamed")
     for token in ("__enrichment_ref", "__enrichment_cand", ":__enrichment_limit"):
-        assert token in (enrichment_config.REFERENCE_LIMIT_WRAP_SQL
-                         + enrichment_config.CANDIDATE_GROUP_WRAP_SQL)
+        assert token in (enrichment.config.REFERENCE_LIMIT_WRAP_SQL
+                         + enrichment.config.CANDIDATE_GROUP_WRAP_SQL)
         assert token not in main_src, (
             f"main.py contains {token!r} again - reference-view execution has grown a "
             f"second definition. The display path and the candidate probe share it.")
@@ -1176,15 +1175,15 @@ def test_reference_view_execution_has_one_definition(cand_env):
 
 def test_execute_reference_view_enforces_the_limit(cand_env):
     view = dict(_loaded_rule()["reference_views"][1], limit=1)
-    columns, rows = enrichment_config.execute_reference_view(cand_env, view, {"lot": "L1"})
+    columns, rows = enrichment.config.execute_reference_view(cand_env, view, {"lot": "L1"})
     assert "wafer_id" in columns
     assert len(rows) == 1, "server-side LIMIT must be enforced regardless of the view body"
 
 
 def test_execute_reference_view_refuses_missing_bind(cand_env):
     view = _loaded_rule()["reference_views"][0]
-    with pytest.raises(enrichment_config.ReferenceViewError):
-        enrichment_config.execute_reference_view(cand_env, view, {"lot": "L1"})
+    with pytest.raises(enrichment.config.ReferenceViewError):
+        enrichment.config.execute_reference_view(cand_env, view, {"lot": "L1"})
 
 
 def test_a_blank_bind_value_is_missing_and_not_a_query_that_matches_nothing(cand_env):
@@ -1199,17 +1198,17 @@ def test_a_blank_bind_value_is_missing_and_not_a_query_that_matches_nothing(cand
     path and the CANDIDATE path refuse the same view for the same reason.
     """
     view = _loaded_rule()["reference_views"][0]      # binds lot AND slot
-    with pytest.raises(enrichment_config.ReferenceViewError) as e:
-        enrichment_config.execute_reference_view(cand_env, view, {"lot": "L1", "slot": "  "})
+    with pytest.raises(enrichment.config.ReferenceViewError) as e:
+        enrichment.config.execute_reference_view(cand_env, view, {"lot": "L1", "slot": "  "})
     assert "slot" in str(e.value)
-    with pytest.raises(enrichment_config.ReferenceViewError):
-        enrichment_config.execute_candidate_probe(
+    with pytest.raises(enrichment.config.ReferenceViewError):
+        enrichment.config.execute_candidate_probe(
             cand_env, view, "wafer_id", {"lot": "L1", "slot": ""})
 
     # The control: the SURVIVING bind still executes, on the same call, so this is
     # a refusal about one view and not a blanket one about blank-containing keys.
     subset = _loaded_rule()["reference_views"][1]    # binds lot only
-    columns, rows = enrichment_config.execute_reference_view(
+    columns, rows = enrichment.config.execute_reference_view(
         cand_env, subset, {"lot": "L1", "slot": ""})
     assert "wafer_id" in columns and rows
 
@@ -1221,7 +1220,7 @@ def test_collector_keeps_a_partial_key_and_drops_only_a_wholly_blank_one(cand_en
     NOTHING survives - and that skip is an optimization, not a second opinion:
     `resolve_target_candidate` would refuse the same row `no_decision_key`.
     """
-    c = enrichment_candidates.AutoConfirmCollector("encand_test_derived")
+    c = enrichment.candidates.AutoConfirmCollector("encand_test_derived")
     assert c.active, "fixture is inert: the collector must be live for this to mean anything"
     c.collect([
         {"business_key_val": "FULL", "updates": {"lot": "L1", "slot": "S1"}},
@@ -1257,7 +1256,7 @@ def _confirm(db, rule, bks, apply=True):
                   if crud.clean_str_value(getattr(row, t)) == ""]
         keyed.append({"row_id": row.row_id, "business_key_val": bk,
                       "keys": {"lot": row.lot, "slot": row.slot}, "blank_targets": blanks})
-    return enrichment_candidates.confirm_keys(db, rule, keyed, apply=apply,
+    return enrichment.candidates.confirm_keys(db, rule, keyed, apply=apply,
                                               tx_prefix="encand_test")
 
 
@@ -1293,7 +1292,7 @@ def test_a_determined_column_is_written_while_its_ambiguous_sibling_stays_blank(
     assert st["per_target"]["owner"]["confirmed"] == 2
     assert st["per_target"]["wafer_id"]["confirmed"] == 1
     assert st["per_target"]["wafer_id"]["refused"] == {
-        enrichment_candidates.REASON_AMBIGUOUS: 1}
+        enrichment.candidates.REASON_AMBIGUOUS: 1}
 
 
 def test_never_asked_is_not_the_same_blank_as_asked_and_disagreed(cand_env, tmp_path):
@@ -1310,10 +1309,10 @@ def test_never_asked_is_not_the_same_blank_as_asked_and_disagreed(cand_env, tmp_
     st = _confirm(cand_env, rule, ["L2_S1"])
 
     assert st["per_target"]["owner"]["refused"] == {
-        enrichment_candidates.REASON_NOT_DECLARED: 1}
-    assert enrichment_candidates.REASON_AMBIGUOUS not in st["per_target"]["owner"]["refused"]
+        enrichment.candidates.REASON_NOT_DECLARED: 1}
+    assert enrichment.candidates.REASON_AMBIGUOUS not in st["per_target"]["owner"]["refused"]
     assert st["per_target"]["wafer_id"]["refused"] == {
-        enrichment_candidates.REASON_AMBIGUOUS: 1}, \
+        enrichment.candidates.REASON_AMBIGUOUS: 1}, \
         "the sibling was asked, and its blank means something else entirely"
     assert crud.clean_str_value(_derived(cand_env, "L2_S1").owner) == ""
 
@@ -1359,7 +1358,7 @@ def test_cell_sources_already_says_which_columns_the_sweep_decided(cand_env, tmp
                .filter(models.CellSource.table_name == "encand_test_derived",
                        models.CellSource.row_id == row.row_id,
                        models.CellSource.column_name.in_(["wafer_id", "owner"])).all())
-    assert got == {"owner": enrichment_candidates.SOURCE_NAME}, \
+    assert got == {"owner": enrichment.candidates.SOURCE_NAME}, \
         "the decided column is named and the refused one has no provenance row"
 
 
@@ -1476,8 +1475,8 @@ def test_the_diagnostics_injection_actually_bites(cand_env, pg_diagnostics):
     injection proves itself once, out loud.
     """
     pg_diagnostics["diag"] = _FakeDiag(**DIAG_UNDEFINED_COLUMN)
-    with pytest.raises(enrichment_config.ReferenceViewError) as err:
-        enrichment_config.execute_reference_view(cand_env, BROKEN_VIEW, {})
+    with pytest.raises(enrichment.config.ReferenceViewError) as err:
+        enrichment.config.execute_reference_view(cand_env, BROKEN_VIEW, {})
     assert pg_diagnostics["attached"] >= 1, "the driver error never received a .diag"
     assert "42703" in str(err.value)
 
@@ -1490,8 +1489,8 @@ def test_a_broken_reference_view_names_the_column_postgres_named(cand_env, pg_di
     nothing else. `nosuchcol_xyz` is the one string an author needs.
     """
     pg_diagnostics["diag"] = _FakeDiag(**DIAG_UNDEFINED_COLUMN)
-    with pytest.raises(enrichment_config.ReferenceViewError) as err:
-        enrichment_config.execute_reference_view(cand_env, BROKEN_VIEW, {})
+    with pytest.raises(enrichment.config.ReferenceViewError) as err:
+        enrichment.config.execute_reference_view(cand_env, BROKEN_VIEW, {})
 
     message = str(err.value)
     assert "nosuchcol_xyz" in message, "the message does not name the offending column"
@@ -1515,8 +1514,8 @@ def test_the_candidate_probe_path_says_the_same_thing(cand_env, pg_diagnostics):
     helper.
     """
     pg_diagnostics["diag"] = _FakeDiag(**DIAG_UNDEFINED_TABLE)
-    with pytest.raises(enrichment_config.ReferenceViewError) as err:
-        enrichment_config.execute_candidate_probe(cand_env, BROKEN_VIEW, "wafer_id", {})
+    with pytest.raises(enrichment.config.ReferenceViewError) as err:
+        enrichment.config.execute_candidate_probe(cand_env, BROKEN_VIEW, "wafer_id", {})
 
     message = str(err.value)
     assert message.startswith("candidate probe execution failed"), \
@@ -1531,8 +1530,8 @@ def test_the_hint_ships_because_it_names_the_column_the_author_meant(cand_env, p
     `tables.table_name`). Dropping it would leave the author knowing the name is
     wrong and not what it should be."""
     pg_diagnostics["diag"] = _FakeDiag(**DIAG_UNDEFINED_COLUMN_HINTED)
-    with pytest.raises(enrichment_config.ReferenceViewError) as err:
-        enrichment_config.execute_reference_view(cand_env, BROKEN_VIEW, {})
+    with pytest.raises(enrichment.config.ReferenceViewError) as err:
+        enrichment.config.execute_reference_view(cand_env, BROKEN_VIEW, {})
     assert "tables.table_name" in str(err.value)
 
 
@@ -1548,8 +1547,8 @@ def test_a_condition_whose_message_quotes_the_statement_is_withheld_by_name(
     and the message SAYS the text was withheld and where to read it.
     """
     pg_diagnostics["diag"] = _FakeDiag(**DIAG_SYNTAX_ERROR)
-    with pytest.raises(enrichment_config.ReferenceViewError) as err:
-        enrichment_config.execute_reference_view(cand_env, BROKEN_VIEW, {})
+    with pytest.raises(enrichment.config.ReferenceViewError) as err:
+        enrichment.config.execute_reference_view(cand_env, BROKEN_VIEW, {})
 
     message = str(err.value)
     assert "SELCT" not in message, "a raw statement token reached the response"
@@ -1572,8 +1571,8 @@ def test_a_shape_that_is_not_a_condition_is_withheld_even_unmeasured(cand_env, p
         sqlstate="42P01",
         message_primary='relation does not exist\nLINE 1: SELECT nosuchcol_xyz AS '
                         'wafer_id FROM encand_test_hist\n               ^')
-    with pytest.raises(enrichment_config.ReferenceViewError) as err:
-        enrichment_config.execute_reference_view(cand_env, BROKEN_VIEW, {})
+    with pytest.raises(enrichment.config.ReferenceViewError) as err:
+        enrichment.config.execute_reference_view(cand_env, BROKEN_VIEW, {})
 
     message = str(err.value)
     assert "encand_test_hist" not in message, "a multi-line echo slipped through by shape"
@@ -1590,8 +1589,8 @@ def test_the_query_body_never_reaches_the_message(cand_env, pg_diagnostics):
     SQLAlchemy's text carries `[SQL: ...]` and `[parameters: ...]`.
     """
     pg_diagnostics["diag"] = _FakeDiag(**DIAG_UNDEFINED_COLUMN)
-    with pytest.raises(enrichment_config.ReferenceViewError) as err:
-        enrichment_config.execute_reference_view(cand_env, BROKEN_VIEW, {})
+    with pytest.raises(enrichment.config.ReferenceViewError) as err:
+        enrichment.config.execute_reference_view(cand_env, BROKEN_VIEW, {})
 
     message = str(err.value)
     for leak in ("SELECT", "FROM", "encand_test_hist", "[SQL:", "[parameters:",
@@ -1607,8 +1606,8 @@ def test_a_driver_without_diagnostics_degrades_by_name(cand_env):
     behaviour. "I could not read the diagnostics" must be sayable, or a missing
     `.diag` is indistinguishable from the defect.
     """
-    with pytest.raises(enrichment_config.ReferenceViewError) as err:
-        enrichment_config.execute_reference_view(cand_env, BROKEN_VIEW, {})
+    with pytest.raises(enrichment.config.ReferenceViewError) as err:
+        enrichment.config.execute_reference_view(cand_env, BROKEN_VIEW, {})
 
     message = str(err.value)
     assert "no structured diagnostics" in message
@@ -1627,8 +1626,8 @@ def test_the_full_driver_error_reaches_the_server_log(cand_env, caplog):
     import logging
 
     with caplog.at_level(logging.ERROR, logger="EnrichmentConfig"):
-        with pytest.raises(enrichment_config.ReferenceViewError):
-            enrichment_config.execute_reference_view(cand_env, BROKEN_VIEW, {})
+        with pytest.raises(enrichment.config.ReferenceViewError):
+            enrichment.config.execute_reference_view(cand_env, BROKEN_VIEW, {})
 
     records = [r for r in caplog.records if r.name == "EnrichmentConfig"]
     assert records, "the raise site logged nothing at all"
@@ -1652,14 +1651,14 @@ def test_reading_diagnostics_does_not_disturb_the_savepoint_discipline(
     """
     pg_diagnostics["diag"] = _FakeDiag(**DIAG_UNDEFINED_COLUMN)
 
-    with pytest.raises(enrichment_config.ReferenceViewError) as err:
-        enrichment_config.execute_reference_view(cand_env, BROKEN_VIEW, {})
+    with pytest.raises(enrichment.config.ReferenceViewError) as err:
+        enrichment.config.execute_reference_view(cand_env, BROKEN_VIEW, {})
     assert "nosuchcol_xyz" in str(err.value), "the diagnosis did not survive the rollback"
 
     assert pg_abort_semantics["aborted"] is False, "the savepoint was not rolled back"
-    survivor = enrichment_candidates.resolve_target_candidate(
+    survivor = enrichment.candidates.resolve_target_candidate(
         cand_env, _loaded_rule(), {"lot": "L1", "slot": "S1"}, "wafer_id")
-    assert survivor["status"] == enrichment_candidates.STATUS_SINGLE
+    assert survivor["status"] == enrichment.candidates.STATUS_SINGLE
     assert survivor["value"] == "WF1", "the session did not survive the failed read"
 
 
@@ -1673,10 +1672,10 @@ def test_the_named_refusal_carries_the_diagnosis_to_the_worklist(cand_env, pg_di
     pg_diagnostics["diag"] = _FakeDiag(**DIAG_UNDEFINED_COLUMN)
     rule = dict(_loaded_rule(), reference_views=[dict(BROKEN_VIEW, required_binds=[])])
 
-    res = enrichment_candidates.resolve_target_candidate(
+    res = enrichment.candidates.resolve_target_candidate(
         cand_env, rule, {"lot": "L1", "slot": "S1"}, "wafer_id")
 
-    assert res["status"] == enrichment_candidates.STATUS_REFUSED
+    assert res["status"] == enrichment.candidates.STATUS_REFUSED
     details = " ".join(e.get("detail") or "" for e in res["errors"])
     assert "nosuchcol_xyz" in details, "the refusal still hides why the view failed"
 
@@ -1719,7 +1718,7 @@ def test_describe_driver_error_renders_a_real_psycopg2_shape():
     `message_primary`. A renderer that kept only the identifier fields would
     return a contentless string here and re-create the original defect.
     """
-    described = enrichment_config.describe_driver_error(
+    described = enrichment.config.describe_driver_error(
         _psycopg2_shaped("UndefinedColumn", **DIAG_UNDEFINED_COLUMN))
 
     assert described.startswith("UndefinedColumn/42703:"), described
@@ -1729,7 +1728,7 @@ def test_describe_driver_error_renders_a_real_psycopg2_shape():
 def test_describe_driver_error_names_the_condition_even_when_it_withholds():
     """`42601` is the class that cannot ship its prose. It must still ship a
     diagnosis: "your SQL does not parse" said in a stable English word."""
-    described = enrichment_config.describe_driver_error(
+    described = enrichment.config.describe_driver_error(
         _psycopg2_shaped("SyntaxError", **DIAG_SYNTAX_ERROR))
 
     assert described.startswith("SyntaxError/42601:"), described
@@ -1740,7 +1739,7 @@ def test_describe_driver_error_names_the_condition_even_when_it_withholds():
 def test_describe_driver_error_ships_structured_identifiers_when_there_are_any():
     """Where PostgreSQL DOES populate them (constraint and not-null conditions),
     the identifier fields are pure identifiers and are worth carrying."""
-    described = enrichment_config.describe_driver_error(
+    described = enrichment.config.describe_driver_error(
         _psycopg2_shaped("NotNullViolation", sqlstate="23502",
                          message_primary="null value in column violates not-null constraint",
                          table_name="encand_test_hist", column_name="wafer_id"))
@@ -1763,19 +1762,19 @@ def test_describe_driver_error_never_returns_nothing():
             raise RuntimeError("diagnostics unavailable")
 
     bare = Exception("no orig at all")
-    assert "no driver error attached" in enrichment_config.describe_driver_error(bare)
+    assert "no driver error attached" in enrichment.config.describe_driver_error(bare)
 
     no_diag = Exception("wrapper")
     no_diag.orig = ValueError("a driver with no structured diagnostics")
-    assert "no structured diagnostics" in enrichment_config.describe_driver_error(no_diag)
+    assert "no structured diagnostics" in enrichment.config.describe_driver_error(no_diag)
 
     hostile = Exception("wrapper")
     hostile.orig = _Hostile()
-    described = enrichment_config.describe_driver_error(hostile)
+    described = enrichment.config.describe_driver_error(hostile)
     assert "unreadable" in described, described
 
     for exc in (bare, no_diag, hostile):
-        assert "server log" in enrichment_config.describe_driver_error(exc), \
+        assert "server log" in enrichment.config.describe_driver_error(exc), \
             "a degraded message that does not say where the cause is, is still silence"
 
 
@@ -1811,8 +1810,8 @@ def _traced(caplog):
 
 def _probe_fails(db, times=1):
     for _ in range(times):
-        with pytest.raises(enrichment_config.ReferenceViewError):
-            enrichment_config.execute_candidate_probe(db, BROKEN_VIEW, "wafer_id", {})
+        with pytest.raises(enrichment.config.ReferenceViewError):
+            enrichment.config.execute_candidate_probe(db, BROKEN_VIEW, "wafer_id", {})
 
 
 def test_repeated_probe_failures_collapse_to_one_traceback(cand_env, pg_diagnostics, caplog):
@@ -1870,7 +1869,7 @@ def test_the_suppressed_repeats_are_counted_not_lost(cand_env, pg_diagnostics, c
     """
     import logging
 
-    every = enrichment_config.DRIVER_ERROR_REPEAT_EVERY
+    every = enrichment.config.DRIVER_ERROR_REPEAT_EVERY
     pg_diagnostics["diag"] = _FakeDiag(**DIAG_UNDEFINED_COLUMN)
     with caplog.at_level(logging.ERROR, logger="EnrichmentConfig"):
         _probe_fails(cand_env, times=every + 1)
@@ -1895,12 +1894,12 @@ def test_the_work_unit_boundary_states_the_true_total_and_then_forgets(cand_env,
     _probe_fails(cand_env, times=3)
 
     with caplog.at_level(logging.ERROR, logger="EnrichmentConfig"):
-        drained = enrichment_config.drain_driver_error_incidents()
-    assert drained == [(enrichment_config.SITE_CANDIDATE_PROBE, "42703", 3)], drained
+        drained = enrichment.config.drain_driver_error_incidents()
+    assert drained == [(enrichment.config.SITE_CANDIDATE_PROBE, "42703", 3)], drained
     assert "failed 3 time(s)" in caplog.text
 
     # Forgotten: nothing left to drain, and the NEXT failure is news again.
-    assert enrichment_config.drain_driver_error_incidents() == []
+    assert enrichment.config.drain_driver_error_incidents() == []
     caplog.clear()
     with caplog.at_level(logging.ERROR, logger="EnrichmentConfig"):
         _probe_fails(cand_env, times=1)
@@ -1922,8 +1921,8 @@ def test_the_display_path_is_not_throttled_because_a_person_is_repairing_it(
     pg_diagnostics["diag"] = _FakeDiag(**DIAG_UNDEFINED_COLUMN)
     with caplog.at_level(logging.ERROR, logger="EnrichmentConfig"):
         for _ in range(3):
-            with pytest.raises(enrichment_config.ReferenceViewError):
-                enrichment_config.execute_reference_view(cand_env, BROKEN_VIEW, {})
+            with pytest.raises(enrichment.config.ReferenceViewError):
+                enrichment.config.execute_reference_view(cand_env, BROKEN_VIEW, {})
 
     assert len(_traced(caplog)) == 3, \
         "the display path was throttled - an author's second attempt now logs nothing"
@@ -1945,14 +1944,14 @@ def test_the_diagnostic_requery_does_not_open_a_second_incident(cand_env, pg_dia
     rule = dict(_loaded_rule(), reference_views=[dict(BROKEN_VIEW, required_binds=[])])
 
     with caplog.at_level(logging.ERROR, logger="EnrichmentConfig"):
-        res = enrichment_candidates.resolve_target_candidate(
+        res = enrichment.candidates.resolve_target_candidate(
             cand_env, rule, {"lot": "L1", "slot": "S1"}, "wafer_id")
 
-    assert res["status"] == enrichment_candidates.STATUS_REFUSED
+    assert res["status"] == enrichment.candidates.STATUS_REFUSED
     assert len(_traced(caplog)) == 1, \
         "the diagnostic re-query logged a second traceback for the same root cause"
     assert not [r for r in _errors(caplog)
-                if enrichment_config.SITE_REFERENCE_VIEW in r.getMessage()], \
+                if enrichment.config.SITE_REFERENCE_VIEW in r.getMessage()], \
         "the follow-up read opened an incident at the display site"
     # And the refusal it exists to produce is unchanged - the quieting must not
     # have cost the diagnosis.
@@ -1975,7 +1974,7 @@ def test_the_collector_drains_at_the_real_work_unit_boundary(cand_env, pg_diagno
         {"wafer_key": "L1_S2", "lot": "L1", "slot": "S2"},
     ])
 
-    collector = enrichment_candidates.AutoConfirmCollector(
+    collector = enrichment.candidates.AutoConfirmCollector(
         "encand_test_derived", rules=[rule])
     assert collector.active, "fixture is inert - the collector must be live to mean anything"
     collector.collect([
@@ -1988,7 +1987,7 @@ def test_the_collector_drains_at_the_real_work_unit_boundary(cand_env, pg_diagno
 
     assert len(_traced(caplog)) == 1, "two keys, two tracebacks - the throttle is not wired"
     assert "failed 2 time(s)" in caplog.text, "the unit ended without stating the total"
-    assert enrichment_config.drain_driver_error_incidents() == [], \
+    assert enrichment.config.drain_driver_error_incidents() == [], \
         "flush left throttle state behind for the next work unit to inherit"
 
 
@@ -2005,15 +2004,15 @@ def test_a_driver_with_no_sqlstate_still_separates_its_conditions(cand_env, capl
     with caplog.at_level(logging.ERROR, logger="EnrichmentConfig"):
         _probe_fails(cand_env, times=2)
         for _ in range(2):
-            with pytest.raises(enrichment_config.ReferenceViewError):
-                enrichment_config.execute_candidate_probe(cand_env, other, "wafer_id", {})
+            with pytest.raises(enrichment.config.ReferenceViewError):
+                enrichment.config.execute_candidate_probe(cand_env, other, "wafer_id", {})
 
     # SQLite reports both as OperationalError, so this is the honest floor: the
     # two collapse into one entry and the test says so rather than pretending
     # otherwise. What it pins is that the FIRST is never lost and the driver
     # class - not a constant - is what the key falls back to.
     assert len(_traced(caplog)) >= 1
-    assert enrichment_config._incident_condition(
+    assert enrichment.config._incident_condition(
         _sqlalchemy_error(cand_env, "SELECT 1 FROM encand_test_no_such_table")
     ) == "OperationalError"
 

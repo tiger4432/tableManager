@@ -205,7 +205,7 @@ def test_unconfirmed_metadata_is_emitted_blank_for_the_gate_not_gated_here(
     the row and NAMES the column - executed, not asserted about.
     """
     from database import schemas
-    import chain_key_gate
+    from chain import key_gate
 
     result = dt_standard_map_mapper.build_standard_dt_map_batches(
         _Db([_Row(1, 1, 1, "B4")]), [_payload(lot=lot, slot=slot)], rule=RULE)
@@ -213,30 +213,30 @@ def test_unconfirmed_metadata_is_emitted_blank_for_the_gate_not_gated_here(
     assert cells, "the mapper must not silently drop the job; the gate does the refusing"
     assert blank_column in cells[0]["updates"], "the blank key column must reach the gate"
 
-    chain_key_gate.reset_counters()
+    key_gate.reset_counters()
     try:
         items = [schemas.GeneralUpdateItem(**c) for c in cells]
-        kept, report = chain_key_gate.screen(TARGET, items, rule_names=[RULE["name"]],
+        kept, report = key_gate.screen(TARGET, items, rule_names=[RULE["name"]],
                                              transaction_id="t")
         assert kept == []
         assert report["refused_rows"] == len(cells)
         assert blank_column in report["by_column"]
-        assert chain_key_gate.refused_rows() == {TARGET: len(cells)}
+        assert key_gate.refused_rows() == {TARGET: len(cells)}
         assert crud.unfilled_key_columns(TARGET, items[0]) == [blank_column]
     finally:
-        chain_key_gate.reset_counters()
+        key_gate.reset_counters()
 
 
 def test_a_confirmed_job_is_not_refused_by_the_gate(wired):
     """The control for the test above. Without it, a gate that refused EVERYTHING would
     make that test pass."""
     from database import schemas
-    import chain_key_gate
+    from chain import key_gate
 
     result = dt_standard_map_mapper.build_standard_dt_map_batches(
         _Db([_Row(1, 1, 1, "B4")]), [_payload()], rule=RULE)
     items = [schemas.GeneralUpdateItem(**c) for c in result["batches"][0]["updates"]]
-    kept, report = chain_key_gate.screen(TARGET, items, transaction_id="t")
+    kept, report = key_gate.screen(TARGET, items, transaction_id="t")
     assert report["refused_rows"] == 0
     assert len(kept) == 1
 

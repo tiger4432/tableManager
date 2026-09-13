@@ -70,13 +70,13 @@ def test_only_the_first_at_is_a_separator():
 def test_the_three_common_callers_share_one_function():
     """🔴 IDENTITY, NOT EQUALITY. Two functions that agree today are exactly what this file
     exists about; asserting `is` is what makes a re-copied body fail here."""
-    import ledger_admin
+    from ledger import admin
     from ledger import gaps
     from ledger_api import ledger_subgraph
 
     assert gaps._bare is declaration_names.bare_name
     assert ledger_subgraph._bare is declaration_names.bare_name
-    assert ledger_admin._bare is declaration_names.bare_name
+    assert admin._bare is declaration_names.bare_name
 
 
 def test_the_fourth_keeps_its_own_extra_and_only_that():
@@ -102,7 +102,8 @@ def test_no_module_spells_the_body_under_this_name_again():
     root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     spelled = []
     for base, dirs, files in os.walk(root):
-        dirs[:] = [d for d in dirs if d not in ("__pycache__", "_archive", "tests",
+        # 🪦 `_archive` was skipped here until S-210 deleted it (판정 353).
+        dirs[:] = [d for d in dirs if d not in ("__pycache__", "tests",
                                                 "scripts", ".tmp")]
         for name in files:
             if not name.endswith(".py"):

@@ -182,7 +182,7 @@ def test_the_reload_clears_the_registry_where_it_drops_the_modules():
     somewhere else could drift away from the eviction it exists to follow."""
     import inspect
 
-    import system_reload
+    from runtime import system_reload
 
     body = inspect.getsource(system_reload.reload_local_process_cache)
     assert "reset_registry()" in body

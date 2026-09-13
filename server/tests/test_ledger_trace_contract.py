@@ -30,7 +30,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from datetime import datetime, timezone             # noqa: E402
 
-import ledger_trace as lt
+from ledger import trace as lt
 
 ledger_pkg = pytest.importorskip(
     "ledger", reason="the ledger translator package (L1) is not present")

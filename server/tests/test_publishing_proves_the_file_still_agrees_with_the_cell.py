@@ -22,7 +22,7 @@ server_dir = os.path.abspath(os.path.join(script_dir, ".."))
 if server_dir not in sys.path:
     sys.path.insert(0, server_dir)
 
-import dev_bench                                                      # noqa: E402
+from admin import dev_bench                                                      # noqa: E402
 
 DOUBLE_X = os.path.join(script_dir, "samples", "mapper", "bench_double_x")
 VOID_LINES = os.path.join(script_dir, "samples", "parser", "void_lines")

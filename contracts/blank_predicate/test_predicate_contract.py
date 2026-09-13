@@ -618,8 +618,8 @@ def vj_db(tmp_path, monkeypatch):
     it answers through `pg_index` and returns None on any non-Postgres dialect, and "unknown
     means refuse" would leave zero verified rules and every assertion below passing vacuously.
     """
-    import virtual_join_config as vjc
-    import virtual_join_executor as vjx
+    import virtual_join.config as vjc
+    from virtual_join import executor as vjx
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy.pool import StaticPool
@@ -674,7 +674,7 @@ def _vj_seed(db, cid, right_value, through_funnel, column="fab_site"):
 
 def _vj_python(db, cid, column="fab_site"):
     """What `virtual_join_executor.attach` puts in the payload cell -- the value the grid paints."""
-    import virtual_join_executor as vjx
+    from virtual_join import executor as vjx
     m = models.DYNAMIC_TABLES[VJ_LEFT]
     row = db.query(m).filter(m.lk == cid).first()
     payload = [{"row_id": row.row_id, "data": {}}]
@@ -685,7 +685,7 @@ def _vj_python(db, cid, column="fab_site"):
 
 def _vj_sql(db, cid, column="fab_site"):
     """What `resolved_expression` evaluates to for the same row -- the value SEARCH compares."""
-    import virtual_join_executor as vjx
+    from virtual_join import executor as vjx
     m = models.DYNAMIC_TABLES[VJ_LEFT]
     q = db.query(m.row_id)
     q, expr, _label = vjx.resolved_expression(db, m, VJ_LEFT, column, q)

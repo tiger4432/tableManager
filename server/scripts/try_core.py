@@ -15,7 +15,7 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import dev_bench                                                     # noqa: E402
+from admin import dev_bench                                                     # noqa: E402
 
 
 def main(argv=None):

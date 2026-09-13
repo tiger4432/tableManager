@@ -216,10 +216,10 @@ def test_one_read_answers_both_questions(declared):
 import uuid                                                        # noqa: E402
 from datetime import datetime, timezone                            # noqa: E402
 
-import ledger_explorer                                             # noqa: E402
+from ledger import explorer                                             # noqa: E402
 
 NOW = datetime(2026, 9, 13, 1, 0, tzinfo=timezone.utc)
-SUBJECT = ledger_explorer.entity_id("wafer", {"wid": "W1"})
+SUBJECT = explorer.entity_id("wafer", {"wid": "W1"})
 
 
 def _registration(number, value, *, at=None):
@@ -289,7 +289,7 @@ def test_activating_a_declaration_makes_the_walk_read_it_again(declared):
     SYSTEM_RELOAD -- and the walk answered `one` until somebody restarted the server.
     「빌드했다고 로드된 건 아니다」: the declaration changed and the thing that answers
     questions about it did not."""
-    import system_reload
+    from runtime import system_reload
 
     declared({"wafer@1": {"keys": ["wid"], "attributes": ["product"]}})
     assert ledger_subgraph._declared_plural_attributes("wafer") == frozenset()
@@ -321,7 +321,7 @@ def test_the_reload_seat_names_this_cache_beside_the_others():
     list is there because the same thing went wrong once."""
     import inspect
 
-    import system_reload
+    from runtime import system_reload
 
     body = inspect.getsource(system_reload.reload_local_process_cache)
     assert "reset_declaration_cache()" in body

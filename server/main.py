@@ -5,9 +5,9 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from database.database import SessionLocal, engine, get_db, SQLALCHEMY_DATABASE_URL, DB_URL_SOURCE, DEFAULT_PG_URL
 from database import models, schemas, crud
-import system_reload
+from runtime import system_reload
 from listing_absence import absent_listing
-from file_ingestion_status import FILE_INGESTION_STATUS_VOCABULARY
+from ingestion.file_ingestion_status import FILE_INGESTION_STATUS_VOCABULARY
 import uuid 
 import os
 import io
@@ -46,12 +46,12 @@ import json
 import paths  # single override point for config/ + ingestion_workspace/ (ASSY_DATA_ROOT)
 import db_safety  # [#16a] "a test process may not touch a real database", as a decision
 import value_suggest  # [F3] unique-value lookup + THE shared prefix predicate
-import audit_history  # keyset paging + config ceiling for row/cell /history
+from admin import audit_history  # keyset paging + config ceiling for row/cell /history
 # Shared-token gate for /admin/*. Every route below whose path starts with
 # /admin carries one of these two dependencies; server/tests/test_admin_auth.py
 # enumerates the app's routes and fails if a new one ever misses.
-from admin_auth import require_admin_token, require_admin_token_strict
-import admin_auth
+from admin.auth import require_admin_token, require_admin_token_strict
+from admin import auth
 script_dir = os.path.dirname(os.path.abspath(__file__))
 logger.info(f"[paths] {paths.describe()}")
 # Which DB URL source won (env / config file / default) - password masked, never raw.
@@ -182,8 +182,8 @@ app.add_middleware(
 # Registered HERE for the same reason /health is: FastAPI matches in registration
 # order and the SPA catch-all `@app.get("/{file_name:path}")` at the bottom of
 # this file would otherwise serve index.html with a 200 for this path too.
-import ledger_trace_router  # noqa: E402
-app.include_router(ledger_trace_router.router)
+from ledger import trace_router  # noqa: E402
+app.include_router(trace_router.router)
 
 # --- Ledger v2 ontology config explorer (admin read/draft surface) --------
 # Registered above the SPA catch-all; write endpoints carry the strict admin gate inside
@@ -204,8 +204,8 @@ from fastapi.responses import JSONResponse
 # Used only by `_table_data_response`'s fallback branch - see its docstring. Importing
 # it here keeps the fallback on the exact code path FastAPI would have taken anyway.
 from fastapi.encoders import jsonable_encoder
-import health as health_mod
-import process_supervisor as _supervisor_mod
+from runtime import health as health_mod
+from runtime import process_supervisor as _supervisor_mod
 from utils import heartbeat as _heartbeat_mod
 
 # A health check that blocks is a second outage, so the database probe is bounded.
@@ -332,7 +332,7 @@ async def startup_event():
     # module-level flag because TestClient(app) re-runs startup per test.
     if not _admin_auth_banner_logged:
         _admin_auth_banner_logged = True
-        _lvl, _msg = admin_auth.startup_banner()
+        _lvl, _msg = auth.startup_banner()
         getattr(logger, _lvl)(_msg)
 
     # [#16a] Physical schema first: it used to run at import, so it completed
@@ -464,7 +464,7 @@ async def startup_event():
         # runtime import path may reach into server/scripts, and a sys.path append
         # here would be caught by it. The CLI wraps this same code.
         try:
-            import schema_drift
+            from admin import schema_drift
             schema_drift.run_at_startup(
                 engine,
                 lambda level, text: getattr(logger, level)(text),
@@ -552,7 +552,7 @@ async def startup_event():
         logger.info(f"Directory Watcher started with {global_watcher.watch_count} watches.")
 
         # Start Chained Ingestion Worker
-        from chain_ingestion_worker import start_chain_ingestion_worker
+        from chain.ingestion_worker import start_chain_ingestion_worker
         chain_task = main_loop.create_task(start_chain_ingestion_worker(SessionLocal))
         # 🔴 「spawned」를 «참으로» 만드는 콜백. `create_task` 는 성공하므로 아래 except 는
         #    태스크 «안»의 예외를 못 봅니다 — 그래서 종전에는 로더가 거절해도(설계상 거절입니다,
@@ -631,15 +631,23 @@ def read_root(request: Request):
     return {"status": "AssyManager Data Server is running"}
 
 
+#: The desktop shell's folder, one directory up. 🔴 SAME SPELLING AS THE LAUNCHER
+#: (`run_decoupled_app.DESKTOP_DIR`) - these two serve opposite ends of one thing: the
+#: launcher RUNS the shell, these routes hand over what was BUILT from it. Two spellings
+#: is how a rename reaches one end and not the other.
+#: 🪦 `client/` until 2026-09-13 (S-211, 판정 347/354).
+DESKTOP_DIR = "desktop"
+
+
 @app.get("/api/download/client")
 def download_desktop_client():
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    # client/dist/AssyManagerClient.exe (onefile mode output)
-    client_exe_path = os.path.abspath(os.path.join(script_dir, "..", "client", "dist", "AssyManagerClient.exe"))
-    
+    # desktop/dist/AssyManagerClient.exe (onefile mode output)
+    client_exe_path = os.path.abspath(os.path.join(script_dir, "..", DESKTOP_DIR, "dist", "AssyManagerClient.exe"))
+
     if not os.path.exists(client_exe_path):
         # Fallback to directory mode path if onefile isn't generated
-        fallback_path = os.path.abspath(os.path.join(script_dir, "..", "client", "dist", "AssyManagerClient", "AssyManagerClient.exe"))
+        fallback_path = os.path.abspath(os.path.join(script_dir, "..", DESKTOP_DIR, "dist", "AssyManagerClient", "AssyManagerClient.exe"))
         if os.path.exists(fallback_path):
             client_exe_path = fallback_path
             
@@ -655,7 +663,7 @@ def download_desktop_client():
 
 @app.get("/api/desktop/download")
 def download_desktop_bundle():
-    """The onedir desktop build, as one zip. Built by `client/package_client.py`.
+    """The onedir desktop build, as one zip. Built by `desktop/package_client.py`.
 
     Absence is answered as absence: 404 with a `reason`, not an empty 200 and not a 500. The
     button on the admin page reads the failure and says 「데스크톱 빌드가 없습니다」, so this
@@ -665,7 +673,7 @@ def download_desktop_bundle():
     """
     script_dir = os.path.dirname(os.path.abspath(__file__))
     bundle_path = os.path.abspath(os.path.join(
-        script_dir, "..", "client", "dist", "AssyManagerClient.zip"))
+        script_dir, "..", DESKTOP_DIR, "dist", "AssyManagerClient.zip"))
     if not os.path.exists(bundle_path):
         return JSONResponse(status_code=404, content={"reason": "desktop_build_absent"})
     return FileResponse(
@@ -1015,8 +1023,8 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
     # column: an unattached column is a visible absence, a wrongly attached one is a
     # silent wrong answer.
     try:
-        import virtual_join_executor
-        virtual_join_executor.attach(db, table_name, data_list)
+        from virtual_join import executor
+        executor.attach(db, table_name, data_list)
     except Exception as e:
         logger.error(f"[VirtualJoin] attach failed on '{table_name}', columns omitted: {e}")
 
@@ -1166,11 +1174,11 @@ def check_rows_exist(db: Session, row_keys: list[tuple[str, str]]) -> set[tuple[
                 existing_keys.add((t_name, f_id))
     return existing_keys
 
-from audit_cache import audit_cache
+from admin.audit_cache import audit_cache
 import event_constants
 from event_constants import MAX_NOTIFY_CREATED_LOGS, BROADCAST_ITEM_LIMIT
 # [Heavy Lane P1] 진행 중 인제션 스냅샷 레지스트리 (watcher가 push, admin API가 서빙)
-from ingestion_activity import registry as ingestion_activity_registry
+from ingestion.activity import registry as ingestion_activity_registry
 
 @app.get("/audit_logs/recent", response_model=schemas.AuditLogGroupPage)
 def get_recent_audit_logs(response: Response, limit_groups: int = 100,
@@ -1603,11 +1611,11 @@ class VirtualColumnBinder:
         self._cache = {}
         self._vjx = None
         try:
-            import virtual_join_executor
-            self._vjx = virtual_join_executor
+            from virtual_join import executor
+            self._vjx = executor
             # collide AND virtual_only - see `exposed_columns` for why this is wider
             # than what `/schema` announces.
-            self.columns = virtual_join_executor.exposed_columns(db, table_name)
+            self.columns = executor.exposed_columns(db, table_name)
         except Exception as e:
             # Same safe direction as the read path: unreadable declarations mean NO join
             # is in effect, so no column is virtual and every caller falls through to the
@@ -1848,7 +1856,7 @@ def apply_enrichment_queue_predicate(query, table_model, table_name, rule_name, 
     """
     if not rule_name:
         return query
-    rules = enrichment_config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
+    rules = enrichment.config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
     rule = next((r for r in rules if r["name"] == rule_name), None)
     if rule is None:
         raise HTTPException(
@@ -1863,9 +1871,9 @@ def apply_enrichment_queue_predicate(query, table_model, table_name, rule_name, 
             detail=(f"규칙 '{rule_name}'의 큐는 '{rule['derived_table']}' 테이블의 "
                     f"것입니다 (요청: '{table_name}')."))
     try:
-        cond = enrichment_config.queue_predicate_condition(
-            table_model, rule, scope=scope or enrichment_config.QUEUE_SCOPE_QUEUE)
-    except enrichment_config.QueuePredicateError as e:
+        cond = enrichment.config.queue_predicate_condition(
+            table_model, rule, scope=scope or enrichment.config.QUEUE_SCOPE_QUEUE)
+    except enrichment.config.QueuePredicateError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return query.filter(cond)
 
@@ -2657,9 +2665,9 @@ def export_table_csv(
     # depends on positionally (`row[-2]`, `row[-1]`).
     virtual_only_cols = []
     try:
-        import virtual_join_executor
+        from virtual_join import executor
         virtual_only_cols = [c["name"] for c in
-                             virtual_join_executor.announced_columns(db, table_name)
+                             executor.announced_columns(db, table_name)
                              if c["name"] not in business_cols
                              and c["name"] not in ("created_at", "updated_at")]
     except Exception as e:
@@ -2909,8 +2917,8 @@ def get_table_schema(table_name: str, db: Session = Depends(get_db)):
     # funnel; this only stops the UI proposing an edit that would come back 400.
     join_resolved_columns = []
     try:
-        import virtual_join_executor
-        join_resolved_columns = virtual_join_executor.resolved_column_announcements(
+        from virtual_join import executor
+        join_resolved_columns = executor.resolved_column_announcements(
             db, table_name)
     except Exception as e:
         # Safe direction, same as every other virtual-join call site: announce NOTHING.
@@ -2919,7 +2927,7 @@ def get_table_schema(table_name: str, db: Session = Depends(get_db)):
         logger.error(f"[VirtualJoin] join_resolved_columns unavailable on '{table_name}': {e}")
 
     try:
-        announced = virtual_join_executor.announced_columns(db, table_name)
+        announced = executor.announced_columns(db, table_name)
         # 🔴 A name already in `columns` is never announced again. The executor drops
         # `collide` names, but `collide` is computed against `column_types` and that is
         # NOT the whole of `columns`: the system tail above is appended unconditionally
@@ -4150,7 +4158,7 @@ def get_chain_graph(db: Session = Depends(get_db)):
     🔴 「누가 누구를 깨우나」는 워커의 «그 함수»에 묻습니다(`_group_triggered_rules`).
     두 번째 구현을 두면 「일어나지 않는 깨움」을 그리게 되고, 그건 안 그리는 것보다 나쁩니다.
     """
-    import chain_graph as _chain_graph
+    import chain.graph as _chain_graph
 
     return JSONResponse(content=_chain_graph.chain_graph(db),
                         headers={"Cache-Control": "no-store"})
@@ -4171,7 +4179,7 @@ def get_runtime_loops(db: Session = Depends(get_db)):
     ⚠️ 없는 칸은 «키째 생략»합니다. 「그 고리가 랩을 보고한 적 없다」와 「마지막 랩이 0 초였다」는
     다른 사실이고, 화면에서 둘이 같아 보이면 이 라우트가 없애려는 그 침묵이 재생산됩니다.
     """
-    import runtime_loops as _runtime_loops
+    import runtime.loops as _runtime_loops
 
     return JSONResponse(content=_runtime_loops.runtime_loops(db),
                         headers={"Cache-Control": "no-store"})
@@ -4197,7 +4205,7 @@ def chain_dry_run(payload: dict = Body(...)):
     line carries the rule name, the row count and the refusal code - never the body
     (「payload 본문 로그 금지」).
     """
-    import dev_bench
+    from admin import dev_bench
 
     rule = payload.get("rule") if isinstance(payload, dict) else None
     row = payload.get("row") if isinstance(payload, dict) else None
@@ -4400,7 +4408,7 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
     scheduler_bucket = owners.get(event_constants.OUTBOX_OWNER_SCHEDULER)
     if scheduler_bucket is not None:
         try:
-            import retroactive
+            from admin import retroactive
             scheduler_bucket["blocked_by"] = retroactive.in_flight(db)
             # 🔴 「곧 돔 · 늦음 · 안 돎」을 가르는 재료. `blocked_by` 는 «도는 것»만 말하므로
             # 「아무것도 안 집고 있다」는 그 칸이 null 인 것과 «구별이 안 됐습니다» — 큐가 짧아도
@@ -4428,8 +4436,8 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
     # 대기 수가 같고, 그 둘을 가르는 것은 맵퍼를 «돌리는 프로세스»만 압니다.
     # 🔴 `loop_in_this_process` 가 같이 나갑니다 — 목록이 비었을 때 그것이 「도는 게 없다」
     #    인지 「내가 못 본다」인지 화면이 구별해야 합니다. 별도 워커로 띄우면 후자입니다.
-    import chain_activity
-    running = chain_activity.registry.snapshot()
+    from chain import activity
+    running = activity.registry.snapshot()
     # 🔴 「이 규칙이 «왜» 아무것도 안 했나」 — 규칙별 «마지막 결과». `running` 을 내는 «같은
     #    경로»다(두 번째 경로 금지). 이력이 «아니라» 마지막 하나이고, 수명은 `running` 과
     #    같은 «이 프로세스»다.
@@ -4438,7 +4446,7 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
     #    견주므로), 기준 시각은 이 응답의 `generated_at` 이 이미 준다.
     rule_outcomes = {name: {"last_outcome": e["outcome"], "last_reason": e["reason"],
                             "last_age_seconds": e["age_seconds"]}
-                     for name, e in chain_activity.registry.outcomes().items()}
+                     for name, e in activity.registry.outcomes().items()}
 
     # 🔴 «어느 파일을 열어야 하나». `loop_in_this_process` 는 「어느 «프로세스»인가」를
     # 답하는데, 운영자가 다음에 하는 일은 «파일을 여는» 것이고 그 이름을 내는 자리가
@@ -4462,13 +4470,13 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
         "waiting": int(waiting or 0),
         "running": running,
         "rule_outcomes": rule_outcomes,
-        "loop_in_this_process": chain_activity.registry.attached,
+        "loop_in_this_process": activity.registry.attached,
         "log_filename": process_logging.active_log_filename(),
         # 🔴 「재시작하면 풀리나」에 답하는 두 수. 그 판단의 근거는 이미 이 프로세스 안에
         #    있었는데 «큐가 1분 이상 막힌 뒤에만» «로그 문장 속 글자»로 나갔다 — 즉 이미
         #    멈춘 시스템의 로그를 읽고 있는 사람만 물을 수 있는 질문이었다.
         #    ⚠️ 재적재가 없었으면 `null` 이다. `0` 은 「방금」이라는 «반대» 사실이다.
-        **chain_activity.registry.ages(),
+        **activity.registry.ages(),
         "waiting_by_owner": [owners[k] for k in sorted(owners)],
         "oldest_waiting_seconds": oldest_seconds,
         "oldest_waiting_at": to_local_str(oldest) if oldest is not None else None,
@@ -4792,8 +4800,8 @@ def get_bonding_plan_core_summary(
 import map_overlay as map_overlay_module
 import map_alignment
 import alignment_view_service
-import frame_confirmation
-import map_preset_routing as map_preset_routing_module
+from maps import frame_confirmation
+from maps import preset_routing as map_preset_routing_module
 
 @app.get("/api/maps/overlay")
 def get_map_overlay(
@@ -4994,7 +5002,7 @@ def confirm_map_alignment(payload: dict = Body(...), db: Session = Depends(get_d
     if not rule_name:
         raise HTTPException(status_code=400, detail="'rule' is required")
 
-    rules = enrichment_config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
+    rules = enrichment.config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
     decl = next((r for r in rules if r["name"] == rule_name), None)
     if decl is None:
         raise HTTPException(status_code=404, detail=f"Enrichment rule '{rule_name}' not found")
@@ -5087,7 +5095,7 @@ def get_map_alignment_worklist(
     어느 좌표 컬럼을 읽을지는 상세에서 고르며, 이 경로는 이름과 무관한 것만 답한다 —
     어떤 단위가 있는가 · 확정됐는가 · 채점 가능한가 · 맵 몇 장이 모이는가.
     """
-    rules = enrichment_config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
+    rules = enrichment.config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
     decl = next((r for r in rules if r["name"] == rule), None)
     if decl is None:
         raise HTTPException(status_code=404, detail=f"Enrichment rule '{rule}' not found")
@@ -5470,7 +5478,7 @@ def get_chain_rules():
     ⚠️ 「없는 파일」 IS UNCHANGED. `absent` is not `empty`, and `absent_listing` stays the
     answer for a file that is not there.
     """
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     rules_path = paths.config_path("chain_rules.json")
     read = worker.read_rules_document(rules_path)
@@ -5554,7 +5562,7 @@ def get_mappers():
 #   워크리스트/결손 카운트/저장은 기존 GET /tables/{t}/data + PUT /tables/{t}/data/updates 재사용.
 #   신규는 아래 2종(규칙 메타 + 참조뷰 조회)뿐이다.
 # -----------------------------------------------------------------------------
-import enrichment_config
+import enrichment.config
 
 @app.get("/enrichment/rules")
 def get_enrichment_rules():
@@ -5568,8 +5576,8 @@ def get_enrichment_rules():
     (어느 뷰가 어느 target_field의 후보 원천인지 — 클라가 유도하지 않게 하는 유일한 길).
     형태 근거는 `enrichment_config.to_public_rule` 참조. 기존 필드는 그대로입니다.
     """
-    rules = enrichment_config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
-    return {"rules": [enrichment_config.to_public_rule(r) for r in rules]}
+    rules = enrichment.config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
+    return {"rules": [enrichment.config.to_public_rule(r) for r in rules]}
 
 @app.get("/enrichment/rules/{rule_name}/references/{index}")
 def get_enrichment_reference(rule_name: str, index: int, params: str = None, db: Session = Depends(get_db)):
@@ -5581,7 +5589,7 @@ def get_enrichment_reference(rule_name: str, index: int, params: str = None, db:
     - LIMIT은 서버가 강제합니다(뷰별 설정, 기본 200 / 최대 1000).
     - 규칙/인덱스 미존재 404.
     """
-    rules = enrichment_config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
+    rules = enrichment.config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
     rule = next((r for r in rules if r["name"] == rule_name), None)
     if rule is None:
         raise HTTPException(status_code=404, detail=f"Enrichment rule '{rule_name}' not found")
@@ -5604,7 +5612,7 @@ def get_enrichment_reference(rule_name: str, index: int, params: str = None, db:
         # refusal arrived as `missing required bind param(s)` one layer down. The
         # allowed-set function is shared now; a widening cannot reach one seat and miss
         # this one again.
-        allowed = enrichment_config.view_bind_names(rule, crud.TABLE_CONFIG)
+        allowed = enrichment.config.view_bind_names(rule, crud.TABLE_CONFIG)
         invalid = sorted(k for k in parsed.keys() if k not in allowed)
         if invalid:
             raise HTTPException(
@@ -5618,8 +5626,8 @@ def get_enrichment_reference(rule_name: str, index: int, params: str = None, db:
     # (2026-07-30 [F9]) 여기 있던 인라인 사본을 제거했다 — 두 정의가 갈라지면 클라가 보는
     # 표시 결과와 후보 해석이 다른 행 집합을 보게 된다.
     try:
-        columns, rows = enrichment_config.execute_reference_view(db, view, bind_params)
-    except enrichment_config.ReferenceViewError as e:
+        columns, rows = enrichment.config.execute_reference_view(db, view, bind_params)
+    except enrichment.config.ReferenceViewError as e:
         # 필수 바인드 누락 등 파라미터/실행 오류 — 쿼리 본문은 응답에 노출하지 않는다.
         # This line names WHICH view failed; the driver's own error and its
         # traceback were already logged in full at the raise site
@@ -5690,8 +5698,8 @@ def get_ledger_sources(db: Session = Depends(get_db)):
     훑는다(실측 2026-09-04: 플래너 비용 110,832 대 1.13). 그 수가 무엇에 대한 수인지는
     응답의 `note`가 같이 나른다 — 번역기의 장부이지 원자의 인구조사가 아니다.
     """
-    import ledger_admin
-    return ledger_admin.sources_view(db)
+    from ledger import admin
+    return admin.sources_view(db)
 
 
 @app.get("/admin/ledger/config/raw", dependencies=[Depends(require_admin_token)])
@@ -5709,8 +5717,8 @@ def get_ledger_config_raw(source: str = None):
     않는다. `/admin/scripts/code`에는 그 보호가 «없고», config 파일은 설계상 git 이력이
     없어 덮어쓰면 되돌릴 수 없다.
     """
-    import ledger_admin
-    return ledger_admin.source_raw_view(source)
+    from ledger import admin
+    return admin.source_raw_view(source)
 
 
 @app.get("/admin/tables/config/raw", dependencies=[Depends(require_admin_token)])
@@ -5725,8 +5733,8 @@ def get_table_config_raw(table: str = None):
     것과 같습니다: 파일 전체를 쓰기 단위로 삼으면 모든 저장이 «남의 등록»을 다시 쓰는 일이
     됩니다.
     """
-    import ledger_admin
-    return ledger_admin.table_config_raw_view(table)
+    from ledger import admin
+    return admin.table_config_raw_view(table)
 
 
 @app.post("/admin/tables/config/raw", dependencies=[Depends(require_admin_token)])
@@ -5737,21 +5745,26 @@ def post_table_config_raw(payload: dict = Body(...)):
     ⛔ `init_dynamic_models` 를 여기서 부르지 «않습니다». 그 일은 config_watcher 가 합니다 —
        두 번째 문을 만들면 둘이 다른 순간에 다른 것을 봅니다.
     """
-    import ledger_admin
-    return ledger_admin.save_table_config_raw(
+    from ledger import admin
+    return admin.save_table_config_raw(
         str(payload.get("table") or ""), payload.get("declaration"),
         str(payload.get("base") or ""))
 
 
 @app.get("/admin/chain/rules/raw", dependencies=[Depends(require_admin_token)])
-def get_chain_rule_raw(rule: str = None):
+def get_chain_rule_raw(name: str = None):
     """체인 규칙 «하나» + base 지문. 편집 단위는 표·선언 편집기와 «같습니다».
 
     🔴 변환 «코드»는 앱 안에서 쓸 수 있는데, 그 코드를 표에 «거는» 규칙은 읽기만 있었습니다 —
     전략(「체인이 표를 만든다」)의 마지막 한 걸음이 앱 «밖»이었습니다.
+
+    🔴 인자 이름이 «계약»입니다 (S-212). 화면은 `?name=` 으로 묻고(패널의 `nameKey: 'name'`),
+       POST 의 payload 키도 뷰 함수의 인자도 `name` 인데 «이 라우트만» `rule` 이었습니다 —
+       FastAPI 가 모르는 질의를 버려 `declaration` 없이 답했고, 규칙을 골라도 폼이 «항상»
+       비었습니다. 표 쪽이 `table` 인 것과 같은 규칙: «등록부가 부르는 낱말» 그대로.
     """
-    import ledger_admin
-    return ledger_admin.chain_rule_raw_view(rule)
+    from ledger import admin
+    return admin.chain_rule_raw_view(name)
 
 
 @app.post("/admin/chain/rules/raw", dependencies=[Depends(require_admin_token)])
@@ -5764,8 +5777,8 @@ def post_chain_rule_raw(payload: dict = Body(...)):
     ⚠️ 기존 규칙을 고쳐 저장할 때는 `enabled` 를 «건드리지 않습니다» — 돌던 것을 조용히
        끄는 것이 더 나쁩니다. 켜는 방법은 이 raw 편집기에서 그 값을 고치는 것입니다.
     """
-    import ledger_admin
-    return ledger_admin.save_chain_rule_raw(
+    from ledger import admin
+    return admin.save_chain_rule_raw(
         str(payload.get("name") or ""), payload.get("declaration"),
         str(payload.get("base") or ""))
 
@@ -5773,8 +5786,8 @@ def post_chain_rule_raw(payload: dict = Body(...)):
 @app.get("/admin/ledger/relations", dependencies=[Depends(require_admin_token)])
 def get_ledger_relations(q: str = None, limit: int = 200, db: Session = Depends(get_db)):
     """실재하는 관계와 컬럼. **카탈로그만 읽는다** — 비용이 테이블 행 수와 무관하다."""
-    import ledger_admin
-    return ledger_admin.relations_view(db, query=q, limit=limit)
+    from ledger import admin
+    return admin.relations_view(db, query=q, limit=limit)
 
 
 # ---------------------------------------------- v1 ledger authoring, RETIRED 2026-08-27
@@ -5821,9 +5834,9 @@ def verify_virtual_join_declarations(db: Session = Depends(get_db)):
     중복이 있으면 PostgreSQL이 그 중복 키 값을 지목하며 인덱스 생성에 실패하므로,
     데이터 정리가 필요하다는 사실도 같은 자리에서 드러난다.
     """
-    import virtual_join_config
+    import virtual_join.config
     from database import crud
-    return virtual_join_config.verification_report(db, known_tables=crud.TABLE_CONFIG)
+    return virtual_join.config.verification_report(db, known_tables=crud.TABLE_CONFIG)
 
 
 @app.get("/admin/config/notation/preview", dependencies=[Depends(require_admin_token)])
@@ -5915,20 +5928,20 @@ def get_enrichment_auto_confirm_dry_run(
         일괄 실행, `--limit`, `--ignore-knob` 측정, classify/propose. 버튼이 생겼다고
         CLI가 없어진 것이 아니다.
     """
-    import enrichment_analysis
+    from enrichment import analysis
     import config_resolve_report
 
     limit = max(1, min(int(limit or ENRICHMENT_DRY_RUN_DEFAULT_LIMIT),
                        ENRICHMENT_DRY_RUN_MAX_LIMIT))
-    rules = enrichment_config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
+    rules = enrichment.config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
     target = next((r for r in rules if r["name"] == rule), None)
     if target is None:
         raise HTTPException(status_code=404, detail=f"Enrichment rule '{rule}' not found")
 
     try:
-        stats = enrichment_analysis.run_auto_confirm_sweep(
+        stats = analysis.run_auto_confirm_sweep(
             db, target, apply=False, limit=limit, ignore_knob=True, log=logger.info)
-    except enrichment_analysis.AnalysisRefused as e:
+    except analysis.AnalysisRefused as e:
         # 선언이 없어 측정 자체가 불가능한 상태 — 라이브가 지금 그 상태다. 500이 아니라
         # 보고서와 **같은 어휘**로 답한다: 클라가 두 표면에서 같은 단어를 읽는다.
         db.rollback()
@@ -5986,7 +5999,7 @@ def list_retroactive_operations():
     나머지(`replay-all`, `--limit`, `--force-disabled`, 라벨 한정 스윕, 컬럼 한정 회수)는
     CLI에 남는다.
     """
-    import retroactive
+    from admin import retroactive
     return {"operations": retroactive.inventory()}
 
 
@@ -6007,7 +6020,7 @@ def get_retroactive_count(op: str, request: Request, scan_limit: int = None,
 
     `apply`류 파라미터는 여기 존재하지 않는다 — 이 라우트는 구조적으로 rollback한다.
     """
-    import retroactive
+    from admin import retroactive
 
     params = {k: v for k, v in request.query_params.items() if k != "scan_limit"}
     try:
@@ -6045,7 +6058,7 @@ def trigger_retroactive_run(op: str, payload: dict = Body(default=None),
     거쳐도 우회되지 않는다. 여기서 다시 확인하는 것은 편의(400을 즉시 돌려주려고)이지
     안전장치가 아니다.
     """
-    import retroactive
+    from admin import retroactive
 
     body = payload if isinstance(payload, dict) else {}
     params = body.get("params") if isinstance(body.get("params"), dict) else {}
@@ -6077,7 +6090,7 @@ def list_retroactive_runs(limit: int = 50, db: Session = Depends(get_db)):
     때까지 걷는 연산은 시작 시점에 전체를 모른다. 0 으로 채우면 화면이 「할 일 없음」과
     0% 를 그린다.
     """
-    import retroactive
+    from admin import retroactive
 
     try:
         return {"runs": retroactive.runs(db, limit=limit)}
@@ -6103,7 +6116,7 @@ def cancel_retroactive_run(run_id: str, db: Session = Depends(get_db)):
     이미 끝난 실행은 «이름으로 거절»한다. 끝난 것에 「취소됨」을 돌려주면 운영자는 자기
     데이터가 반만 처리됐다고 읽는데, 사실은 전부 처리됐다.
     """
-    import retroactive
+    from admin import retroactive
 
     try:
         return retroactive.request_cancel(db, run_id)
@@ -6633,7 +6646,7 @@ async def save_admin_script_code(
         # modules. `open(w)` truncates FIRST, so a write that raises leaves a syntactically
         # broken module for the next reload to import - and the worker caches modules for
         # the life of the process, so it would stay broken until a restart.
-        import ledger_admin as _ledger_admin
+        from ledger import admin as _ledger_admin
         backup_path = _ledger_admin.backup_file(full_path)
         temporary = f"{full_path}.tmp.{os.getpid()}"
         with open(temporary, "w", encoding="utf-8", newline="") as f:

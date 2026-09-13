@@ -30,8 +30,8 @@ import logging
 
 import pytest
 
-import virtual_join_config as vjc
-import virtual_join_executor as vjx
+import virtual_join.config as vjc
+from virtual_join import executor as vjx
 from database import crud, models, schemas
 from verified_join_contract import VerifiedJoinDescriptor
 

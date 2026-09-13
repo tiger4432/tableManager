@@ -388,7 +388,7 @@ def test_user_vs_user_conflict_merge(sqlite_db):
 
 import uuid as _uuid
 
-import enrichment_mapper
+from enrichment import mapper
 
 PIPE_TABLE = "s1_pipe_key"
 PIPE_SEP = "|"
@@ -507,7 +507,7 @@ def test_the_enrichment_mapper_spells_it_the_same_way(pipe_db):
         "decision_key": PIPE_SRC, "target_fields": ["note"], "list_columns": [],
         "aggregations": {},
     }}
-    out = enrichment_mapper.map_enrichment_dedup(
+    out = mapper.map_enrichment_dedup(
         pipe_db, [{"data": {k: {"value": v} for k, v in PIPE_VALUES.items()}}], rule=rule)
     assert len(out["updates"]) == 1
     assert out["updates"][0]["business_key_val"] == PIPE_EXPECTED
@@ -546,7 +546,7 @@ def test_the_four_blank_policies_are_still_four(pipe_db):
         "decision_key": PIPE_SRC, "target_fields": ["note"], "list_columns": [],
         "aggregations": {},
     }}
-    out = enrichment_mapper.map_enrichment_dedup(
+    out = mapper.map_enrichment_dedup(
         pipe_db, [{"data": {k: {"value": v} for k, v in partial.items()}}], rule=rule)
     assert out["updates"][0]["business_key_val"] == "LOT-A||W03", (
         "the enrichment mapper stopped composing a partial key - that reverses the "

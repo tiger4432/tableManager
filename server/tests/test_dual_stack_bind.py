@@ -38,7 +38,7 @@ import socket
 
 import pytest
 
-import process_supervisor as ps
+from runtime import process_supervisor as ps
 
 
 def free_port():

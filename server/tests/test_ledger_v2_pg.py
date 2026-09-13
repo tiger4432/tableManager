@@ -32,10 +32,10 @@ from ledger.source_preparation import (
 )
 from ledger.setup_registry import cursor_translator_version
 from ledger.store import LedgerStore
-from ledger_trace import DEFAULT_RESOLVER_CONFIG, coverage
+from ledger.trace import DEFAULT_RESOLVER_CONFIG, coverage
 from test_ledger_setup_bundle import logical_bundle, logical_catalog
 from test_ledger_setup_registry import trusted_implementations
-import virtual_join_config
+import virtual_join.config
 
 
 # TOMBSTONE: THE GATE MOVED OUT (S-115). This file carried its own `_resolve_url` and its
@@ -160,7 +160,7 @@ def pg_v2(tmp_path_factory):
             connection.execute(text(
                 f'CREATE UNIQUE INDEX "{UNIQUE_INDEX}" '
                 f'ON public."{RIGHT_TABLE}" '
-                f'({virtual_join_config.index_key_expression("join_id")})'))
+                f'({virtual_join.config.index_key_expression("join_id")})'))
 
         raw = _bundle()
         config_path = tmp_path_factory.mktemp("ledger_v2_s6") / "virtual_joins.json"
@@ -168,7 +168,7 @@ def pg_v2(tmp_path_factory):
         Maker = sessionmaker(bind=admin, autoflush=False)
         verifier_session = Maker()
         try:
-            verified = tuple(virtual_join_config.load_verified_rules(
+            verified = tuple(virtual_join.config.load_verified_rules(
                 verifier_session, path=str(config_path),
                 known_tables=_known_tables(CATALOG)))
         finally:
@@ -475,7 +475,7 @@ def test_postgres_right_unique_index_is_used_by_the_join_probe(clean_pg_v2):
         # join. This is what scores the two halves of S-181 against PostgreSQL itself:
         # the index is built on that expression and the query is written on it, and an
         # expression index is used ONLY when those match.
-        probe = virtual_join_config.index_key_expression("join_id")
+        probe = virtual_join.config.index_key_expression("join_id")
         plan = "\n".join(row[0] for row in connection.execute(text(
             f'EXPLAIN SELECT target_id FROM public."{RIGHT_TABLE}" '
             f"WHERE {probe} = 'J-0001'")))

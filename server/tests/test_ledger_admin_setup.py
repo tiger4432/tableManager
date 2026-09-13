@@ -33,7 +33,7 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from ledger import gate                                              # noqa: E402
-import ledger_admin                                                  # noqa: E402
+from ledger import admin                                                  # noqa: E402
 
 
 # --------------------------------------------------------------------------- fixtures
@@ -71,12 +71,12 @@ def test_an_identifier_that_would_land_in_an_interpolation_is_refused(bad):
     An identifier is not a bind parameter, so the check cannot be moved downstream. Until
     today a human typed these into a file; from today an HTTP request does.
     """
-    assert codes(ledger_admin.check_identifier(bad, "columns.wafer")) \
+    assert codes(admin.check_identifier(bad, "columns.wafer")) \
         == ["invalid_identifier"]
 
 
 def test_a_legal_identifier_passes():
-    assert ledger_admin.check_identifier("base_wafer_id", "columns.wafer") == []
+    assert admin.check_identifier("base_wafer_id", "columns.wafer") == []
 
 
 # --------------------------- the source surface: declared tables, and raw editing
@@ -90,8 +90,8 @@ def test_a_source_on_an_undeclared_table_is_refused_at_SAVE_not_only_hidden(monk
     ingestion and no chain, so atoms about its rows name something nothing else can point
     at.
     """
-    monkeypatch.setattr(ledger_admin, "declared_tables", lambda: ["void_obs"])
-    violations = ledger_admin.check_source_declaration(None, "some_other_table", {})
+    monkeypatch.setattr(admin, "declared_tables", lambda: ["void_obs"])
+    violations = admin.check_source_declaration(None, "some_other_table", {})
     assert codes(violations) == ["undeclared_table"]
     assert "table_config.json" in violations[0]["detail_ko"]
 
@@ -102,7 +102,7 @@ def test_an_undeclared_table_is_NAMED_rather_than_silently_absent():
     refusal ladder as everywhere else — the refusal names the next action."""
     import inspect
 
-    body = inspect.getsource(ledger_admin.relations_view)
+    body = inspect.getsource(admin.relations_view)
     assert "undeclared" in body
     assert "테이블 미등록" in body, (
         "the undeclared-table sentence changed - it is the operator's next action")
@@ -112,16 +112,16 @@ def test_raw_json_that_does_not_parse_is_refused_WITH_A_POSITION():
     """The three-step save is not relaxed for the raw path: no parse, no dry run, no save.
     A raw editor's most common failure is a stray comma, and 「JSON이 잘못됐다」 with no
     position sends the operator hunting through a 200-line blob."""
-    parsed, refusal = ledger_admin.parse_raw_declaration(
+    parsed, refusal = admin.parse_raw_declaration(
         '{\n  "kind": "observation",\n  "oops": ,\n}')
     assert parsed is None
     assert refusal["code"] == "declaration_rejected"
     assert "3행" in refusal["detail_ko"], refusal["detail_ko"]
 
-    parsed, refusal = ledger_admin.parse_raw_declaration('["not", "an", "object"]')
+    parsed, refusal = admin.parse_raw_declaration('["not", "an", "object"]')
     assert parsed is None and refusal["code"] == "declaration_rejected"
 
-    parsed, refusal = ledger_admin.parse_raw_declaration('{"kind": "observation"}')
+    parsed, refusal = admin.parse_raw_declaration('{"kind": "observation"}')
     assert parsed == {"kind": "observation"} and refusal is None
 
 
@@ -137,21 +137,21 @@ def test_a_stale_base_is_refused_so_one_save_cannot_clobber_another(tmp_path):
     path = str(tmp_path / "ledger_config.json")
     with open(path, "w", encoding="utf-8") as handle:
         json.dump({"version": 1, "sources": {}}, handle)
-    base = ledger_admin.file_fingerprint(path)
+    base = admin.file_fingerprint(path)
 
-    assert ledger_admin.check_base(path, base) is None
-    assert ledger_admin.check_base(path, None) is None      # the form sends none
+    assert admin.check_base(path, base) is None
+    assert admin.check_base(path, None) is None      # the form sends none
 
     with open(path, "w", encoding="utf-8") as handle:       # somebody else saved
         json.dump({"version": 1, "sources": {"theirs": {}}}, handle)
-    stale = ledger_admin.check_base(path, base)
+    stale = admin.check_base(path, base)
     assert stale is not None and stale["code"] == "stale_base"
 
     # An absent file has a fingerprint of its own, so "created since you looked" is caught
     # rather than reading as unchanged.
     os.remove(path)
-    assert ledger_admin.file_fingerprint(path) == "sha256:absent"
-    assert ledger_admin.check_base(path, base)["code"] == "stale_base"
+    assert admin.file_fingerprint(path) == "sha256:absent"
+    assert admin.check_base(path, base)["code"] == "stale_base"
 
 
 # ------------------------- the declaration map as an edit surface (owner, 08-15)
@@ -174,31 +174,31 @@ def test_the_token_binds_a_save_to_the_EXACT_declaration_that_was_previewed():
     """
     declaration = {"kind": "observation", "relation": "void_obs",
                    "occurred_at_column": "t", "columns": {"wafer": "wafer_id"}}
-    token = ledger_admin.declaration_token("source", "void_obs", declaration)
+    token = admin.declaration_token("source", "void_obs", declaration)
 
-    assert ledger_admin.declaration_token("source", "void_obs", declaration) == token
+    assert admin.declaration_token("source", "void_obs", declaration) == token
     edited = dict(declaration, columns={"wafer": "base_wafer_id"})
-    assert ledger_admin.declaration_token("source", "void_obs", edited) != token, (
+    assert admin.declaration_token("source", "void_obs", edited) != token, (
         "one edited character must invalidate the preview it was issued against")
-    assert ledger_admin.declaration_token("source", "other", declaration) != token
-    assert ledger_admin.declaration_token("predicate", "void_obs", declaration) != token
+    assert admin.declaration_token("source", "other", declaration) != token
+    assert admin.declaration_token("predicate", "void_obs", declaration) != token
 
 
 def test_key_order_does_not_change_the_token():
     """A screen that serialises its form in a different order must not be refused."""
     a = {"kind": "observation", "relation": "r", "occurred_at_column": "t"}
     b = {"occurred_at_column": "t", "relation": "r", "kind": "observation"}
-    assert (ledger_admin.declaration_token("source", "n", a)
-            == ledger_admin.declaration_token("source", "n", b))
+    assert (admin.declaration_token("source", "n", a)
+            == admin.declaration_token("source", "n", b))
 
 
 def test_the_refusal_codes_are_closed():
     """A code invented at a call site is a refusal the screen cannot render."""
     with pytest.raises(ValueError):
-        ledger_admin.violation("something_went_wrong", None, "…")
+        admin.violation("something_went_wrong", None, "…")
     # The control: a code that IS in the closed set builds, so the assertion above is
     # about the CODE and not about `violation` raising for everything.
-    assert ledger_admin.violation("invalid_identifier", "columns.wafer", "…")
+    assert admin.violation("invalid_identifier", "columns.wafer", "…")
 
 
 # ---------------------------------------------------------------- the dry run's config
@@ -206,7 +206,7 @@ def test_the_candidate_config_carries_only_the_source_under_preview():
     """A broken NEIGHBOUR must not be able to refuse this preview - and vice versa."""
     declaration = {"occurred_at_column": "t", "occurred_at_timezone": "Asia/Seoul",
                    "subject_types": ["wafer"]}
-    cfg = ledger_admin.candidate_config("my_table", declaration)
+    cfg = admin.candidate_config("my_table", declaration)
     assert list(cfg["sources"]) == ["my_table"]
 
 

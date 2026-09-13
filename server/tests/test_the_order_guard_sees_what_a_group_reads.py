@@ -17,7 +17,7 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import chain_bindings as cb                                      # noqa: E402
-import chain_ingestion_worker as ciw                             # noqa: E402
+from chain import ingestion_worker as ciw                             # noqa: E402
 
 SERVER = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 SAMPLE = os.path.join(SERVER, "config", "sample", "chain_rules.json.sample")
@@ -87,7 +87,7 @@ def test_no_shipped_rule_reads_the_table_it_writes():
 def test_the_writes_helper_kept_its_meaning_for_its_other_consumer():
     """⚠️ `_group_target_tables` 는 소비자가 «둘»이고 둘째는 «미전달 행 스윕»이다.
     거기에 읽기를 섞으면 순서와 무관한 그 경로가 같이 움직인다."""
-    src = open(os.path.join(SERVER, "chain_ingestion_worker.py"), encoding="utf-8").read()
+    src = open(os.path.join(SERVER, "chain/ingestion_worker.py"), encoding="utf-8").read()
     tree = ast.parse(src)
     fn = next(n for n in ast.walk(tree)
               if isinstance(n, ast.FunctionDef) and n.name == "_group_target_tables")
@@ -97,7 +97,7 @@ def test_the_writes_helper_kept_its_meaning_for_its_other_consumer():
 
 
 def test_the_guard_asks_about_everything_the_group_touches():
-    src = open(os.path.join(SERVER, "chain_ingestion_worker.py"), encoding="utf-8").read()
+    src = open(os.path.join(SERVER, "chain/ingestion_worker.py"), encoding="utf-8").read()
     assert "group_touches = group_targets | _group_read_tables(" in src
     assert "if blocked_targets and (group_touches & blocked_targets):" in src, \
         "the guard still judges on writes alone"

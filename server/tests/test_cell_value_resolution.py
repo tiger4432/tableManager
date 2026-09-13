@@ -28,7 +28,7 @@ from datetime import datetime
 
 import pytest
 
-import chain_replay
+from chain import replay
 from database import crud, models, schemas
 
 RES_TABLES = {
@@ -307,7 +307,7 @@ def _make_stale_cell(db, monkeypatch, older="aaa_old.csv", newer="zzz_new.csv"):
 
 def test_recompute_dry_run_enumerates_the_stale_cell_and_writes_nothing(res_env, monkeypatch):
     row = _make_stale_cell(res_env, monkeypatch)
-    stats = chain_replay.recompute_display_values(res_env, "cvres_test_map",
+    stats = replay.recompute_display_values(res_env, "cvres_test_map",
                                                   log=lambda *_: None)
     assert stats["mode"] == "dry-run"
     assert stats["cells_changed"] == 1
@@ -324,7 +324,7 @@ def test_recompute_dry_run_enumerates_the_stale_cell_and_writes_nothing(res_env,
 
 def test_recompute_apply_repairs_the_cell(res_env, monkeypatch):
     row = _make_stale_cell(res_env, monkeypatch)
-    stats = chain_replay.recompute_display_values(res_env, "cvres_test_map", apply=True,
+    stats = replay.recompute_display_values(res_env, "cvres_test_map", apply=True,
                                                   log=lambda *_: None)
     assert stats["cells_changed"] == 1
     res_env.refresh(row)
@@ -337,21 +337,21 @@ def test_recompute_writes_history_for_every_value_it_changes(res_env, monkeypatc
     """The product owner's condition: a value that changes with no history entry is
     the same defect wearing different clothes."""
     row = _make_stale_cell(res_env, monkeypatch)
-    chain_replay.recompute_display_values(res_env, "cvres_test_map", apply=True,
+    replay.recompute_display_values(res_env, "cvres_test_map", apply=True,
                                           log=lambda *_: None)
     logs = _audit(res_env, row.row_id, "pitch")
     assert len(logs) == 1
     lg = logs[0]
     assert (lg.old_value, lg.new_value) == ("1", "7")
-    assert lg.source_name == chain_replay.R3_AUDIT_SOURCE
+    assert lg.source_name == replay.R3_AUDIT_SOURCE
     assert lg.updated_by == "resolved:zzz_new.csv"
 
 
 def test_recompute_is_idempotent(res_env, monkeypatch):
     _make_stale_cell(res_env, monkeypatch)
-    chain_replay.recompute_display_values(res_env, "cvres_test_map", apply=True,
+    replay.recompute_display_values(res_env, "cvres_test_map", apply=True,
                                           log=lambda *_: None)
-    second = chain_replay.recompute_display_values(res_env, "cvres_test_map", apply=True,
+    second = replay.recompute_display_values(res_env, "cvres_test_map", apply=True,
                                                    log=lambda *_: None)
     assert second["cells_changed"] == 0
 
@@ -366,7 +366,7 @@ def test_recompute_never_touches_a_cell_with_one_layer(res_env):
     # An out-of-band write that no layer knows about: the pass must leave it alone.
     row.note = "TOUCHED_ELSEWHERE"
     res_env.commit()
-    stats = chain_replay.recompute_display_values(res_env, "cvres_test_map", apply=True,
+    stats = replay.recompute_display_values(res_env, "cvres_test_map", apply=True,
                                                   log=lambda *_: None)
     assert stats["cells_examined"] == 0
     assert stats["cells_changed"] == 0
@@ -378,7 +378,7 @@ def test_recompute_leaves_a_human_value_alone(res_env):
     _seed(res_env, [{"part_no": "P1", "pitch": "HUMAN"}], source_name="user", tx_id="h")
     _backdate(res_env, "user", OLD_TS)
     _seed(res_env, [{"part_no": "P1", "pitch": "7"}], source_name="zzz_new.csv", tx_id="f")
-    stats = chain_replay.recompute_display_values(res_env, "cvres_test_map", apply=True,
+    stats = replay.recompute_display_values(res_env, "cvres_test_map", apply=True,
                                                   log=lambda *_: None)
     # Two multi-layer cells: both writers set `part_no` and `pitch`. The pass looked
     # at both and changed neither, which is the point - `user` wins on both.
@@ -399,7 +399,7 @@ def test_recompute_honours_a_human_pin(res_env, monkeypatch):
         [{"row_id": row.row_id, "column_name": "pitch"}], "aaa_old.csv")
     res_env.refresh(row)
     assert row.pitch == "1"
-    stats = chain_replay.recompute_display_values(res_env, "cvres_test_map", apply=True,
+    stats = replay.recompute_display_values(res_env, "cvres_test_map", apply=True,
                                                   log=lambda *_: None)
     assert stats["cells_changed"] == 0
     res_env.refresh(row)
@@ -424,7 +424,7 @@ def test_recompute_repairs_drift_toward_the_pinned_layer_not_the_newest(res_env,
         row_id=row.row_id).update({"pitch": "999"}, synchronize_session=False)
     res_env.commit()
 
-    stats = chain_replay.recompute_display_values(res_env, "cvres_test_map", apply=True,
+    stats = replay.recompute_display_values(res_env, "cvres_test_map", apply=True,
                                                   log=lambda *_: None)
     assert stats["pinned_examined"] == 1
     assert stats["cells_changed"] == 1
@@ -435,7 +435,7 @@ def test_recompute_repairs_drift_toward_the_pinned_layer_not_the_newest(res_env,
 
 def test_recompute_column_scope_is_respected(res_env, monkeypatch):
     row = _make_stale_cell(res_env, monkeypatch)
-    stats = chain_replay.recompute_display_values(res_env, "cvres_test_map",
+    stats = replay.recompute_display_values(res_env, "cvres_test_map",
                                                   columns=["note"], apply=True,
                                                   log=lambda *_: None)
     assert stats["cells_changed"] == 0
@@ -444,8 +444,8 @@ def test_recompute_column_scope_is_respected(res_env, monkeypatch):
 
 
 def test_recompute_refuses_an_undeclared_column(res_env):
-    with pytest.raises(chain_replay.ReplayRefused):
-        chain_replay.recompute_display_values(res_env, "cvres_test_map",
+    with pytest.raises(replay.ReplayRefused):
+        replay.recompute_display_values(res_env, "cvres_test_map",
                                               columns=["no_such_col"],
                                               log=lambda *_: None)
 
@@ -468,7 +468,7 @@ def test_recompute_refuses_an_undeclared_column(res_env):
 # single transaction id, and the layering invariant.
 # ---------------------------------------------------------------------------
 
-import chain_ingestion_worker as chain_worker  # noqa: E402
+from chain import ingestion_worker as chain_worker  # noqa: E402
 
 BLOCKED_RULE = {"name": "blocked", "trigger_table": "cvres_test_map",
                 "target_table": "cvres_blocked_target", "enabled": True}
@@ -520,7 +520,7 @@ def _make_stale_rows(db, monkeypatch, parts):
 
 
 def _recompute(db, **kw):
-    return chain_replay.recompute_display_values(db, "cvres_test_map", apply=True,
+    return replay.recompute_display_values(db, "cvres_test_map", apply=True,
                                                  log=lambda *_: None, **kw)
 
 
@@ -536,7 +536,7 @@ def test_recompute_events_are_labelled_so_the_loop_filter_can_see_them(res_env, 
     assert len(events) == 1, "one repaired row stages exactly one EDIT event"
     payload = chain_worker.get_payload_dict(events[0])
     assert payload["source_name"] == "chain_ingestion"
-    assert payload["updated_by"] == chain_replay.R3_AUDIT_SOURCE
+    assert payload["updated_by"] == replay.R3_AUDIT_SOURCE
     assert not chain_worker._rule_accepts_event(BLOCKED_RULE, events[0]), \
         "a rule that never opted in must not be re-triggered by a display repair"
     assert chain_worker._group_target_tables(events, [BLOCKED_RULE]) == set(), \
@@ -581,7 +581,7 @@ def test_recompute_stages_one_transaction_id_for_the_whole_run(res_env, monkeypa
     # ... and it is the SAME id the history carries, so the two can be joined.
     audit_tx = {lg.transaction_id for r in rows for lg in _audit(res_env, r.row_id, "pitch")}
     assert audit_tx == tx_ids
-    assert tx_ids.pop().startswith(chain_replay.R3_AUDIT_SOURCE)
+    assert tx_ids.pop().startswith(replay.R3_AUDIT_SOURCE)
 
 
 def test_recompute_creates_no_cell_sources_layer(res_env, monkeypatch):

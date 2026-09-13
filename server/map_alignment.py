@@ -38,7 +38,7 @@ import sys
 import time
 import uuid
 
-import alignment_batch_counts
+from maps import alignment_batch_counts
 import event_constants
 import map_overlay
 from dt_map_derivation import parse_frame, source_meta_for_frame
@@ -2321,7 +2321,9 @@ def _git_sha() -> str | None:
        (아카이브 추출·컨테이너 COPY), 그때는 이 함수가 None을 돌려주고 아래 문장이
        「기록되지 않은 체크아웃」이라고 **사실대로** 말한다.
     """
-    here = os.path.dirname(os.path.abspath(__file__))
+    import paths
+
+    here = paths.SERVER_DIR
     for _ in range(4):                       # server/ → repo root 정도까지만 올라간다
         head = os.path.join(here, ".git", "HEAD")
         try:
@@ -6843,7 +6845,7 @@ def build_alignment_worklist(db, cfg: dict, rule: dict, map_table: str,
     """
     from database import crud, models
     from sqlalchemy import func as _func
-    import frame_confirmation
+    from maps import frame_confirmation
 
     t0 = time.monotonic()
     rule_name = rule.get("name")

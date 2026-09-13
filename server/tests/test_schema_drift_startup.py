@@ -35,7 +35,7 @@ SERVER = os.path.join(ROOT, "server")
 # Imported from `server/`, the way the boot paths do it - NOT from server/scripts.
 # Importing the CLI here would put server/scripts on this suite's sys.path and
 # hide exactly the defect test_prod_import_env.py exists to catch.
-import schema_drift as drift  # noqa: E402
+from admin import schema_drift as drift  # noqa: E402
 
 
 # The column this test removes. Any mapped table with a plain nullable column
@@ -807,7 +807,7 @@ def test_the_check_does_not_leave_TESTING_set_in_the_calling_process():
         "import os, sys;"
         f"sys.path.insert(0, r'{SERVER}');"
         "os.environ.pop('TESTING', None);"
-        "import schema_drift as d;"
+        "from admin import schema_drift as d;"
         "assert 'database.models' not in sys.modules;"
         "d._declared();"
         "print('TESTING=' + repr(os.environ.get('TESTING')))"
@@ -835,7 +835,7 @@ def test_dynamic_tables_are_in_scope_of_the_check():
     probe = (
         "import os, sys;"
         f"sys.path.insert(0, r'{SERVER}');"
-        "import schema_drift as d;"
+        "from admin import schema_drift as d;"
         "assert 'database.models' not in sys.modules;"
         "decl = d._declared();"
         "from database import models;"
@@ -883,7 +883,13 @@ def test_neither_boot_path_reaches_into_server_scripts():
     """
     for path in (os.path.join("server", "main.py"), "run_decoupled_app.py"):
         src = _source(path)
-        assert "import schema_drift" in src, f"{path} does not use the runtime module"
+        # 🪦 [S-211 packaging] the CLI reaches it as `from admin.schema_drift import …`.
+        # 🪦 [S-211 packaging] two boot paths reach the same module by different
+        #    spellings (`from admin import schema_drift` / `from admin.schema_drift
+        #    import …`). What this case is about is WHICH module, not which spelling.
+        assert ("from admin import schema_drift" in src
+                or "from admin.schema_drift import" in src), (
+            f"{path} does not use the runtime module")
         # The IMPORT, not the name: both call sites legitimately mention the CLI
         # by path in the message they print when the check cannot run.
         assert "import check_schema_drift" not in src, \
@@ -895,7 +901,7 @@ def test_neither_boot_path_reaches_into_server_scripts():
 def test_the_cli_is_a_wrapper_and_not_a_second_copy_of_the_logic():
     """Two copies drift, and the one in the boot path is the one nobody reads."""
     cli = _source(os.path.join("server", "scripts", "check_schema_drift.py"))
-    assert "from schema_drift import" in cli
+    assert "from admin.schema_drift import" in cli
     for owned in ("def check(", "def banner_lines(", "def run_at_startup("):
         assert owned not in cli, f"the CLI redefines {owned.strip('def (')}"
 

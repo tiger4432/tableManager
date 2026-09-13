@@ -11,7 +11,7 @@
 - 승인 구현: `2d1ad863106fc228566cab1a386265957f5c3587`
 - 최종 상태 동기화: `cbe139e1adae1c808bfb5774f24ae22ede1cf2ea`
 - 독립 Audit: `APPROVE` 및 `STATUS SYNC ACK`
-- 수락 근거: `ontology_config_explorer_plan/02_IMPLEMENTATION_AND_ACCEPTANCE.md`
+- 수락 근거: `docs/_archive/ontology_config_explorer_plan_20260817/02_IMPLEMENTATION_AND_ACCEPTANCE.md` (🪦 2026-09-13 루트에서 아카이브)
 - 인수인계: `docs/process/FORK_SESSION_BRIEF.md`
 
 full server suite와 Explorer PostgreSQL E2E는 후속 사용자 지시에 따라 재실행하지 않았다.

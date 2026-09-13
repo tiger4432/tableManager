@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import pytest
 import notation_norm
-import virtual_join_config as virtual_join_config_module
+import virtual_join.config as virtual_join_config_module
 
 from ledger import setup_bundle as setup_bundle_module
 from ledger import setup_registry as setup_registry_module
@@ -287,13 +287,18 @@ def test_catalog_mapping_cannot_construct_a_verified_descriptor_directly():
     with pytest.raises(TypeError):
         VerifiedJoinDescriptor()
     assert not hasattr(VerifiedJoinDescriptor, "from_verified_rule")
+    # 🔴 [S-211, 판정 364] THE GATE MOVED FROM 「WHO ASKS」 TO 「WHAT THEY DO」. Binding used
+    # to be refused by comparing the caller's module NAME to `virtual_join_config`, and a
+    # capability keyed to a name stops working the moment the module is packaged. Holding an
+    # issuer is now open and grants NOTHING: minting still requires the running frame to BE
+    # the caller's own `load_verified_rules`, which is what this asserts.
+    # ⚠️ This is a real, narrow loosening: forging a descriptor now takes deliberately
+    # defining a module-level `load_verified_rules` and issuing from inside it. It cannot
+    # happen by accident, and no rename can cause it.
+    _bind_physical_verifier_issuer()                     # open, and inert on its own
     with pytest.raises(
             TypeError,
-            match="only available to virtual_join_config"):
-        _bind_physical_verifier_issuer()
-    with pytest.raises(
-            TypeError,
-            match="only be issued inside virtual_join_config.load_verified_rules"):
+            match="only be issued inside the loader's own load_verified_rules"):
         virtual_join_config_module._VERIFIED_JOIN_ISSUER.issue({"name": "raw"})
 
 

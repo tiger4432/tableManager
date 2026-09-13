@@ -118,8 +118,8 @@ server/config/ontology/ledger_config.json   (파일 하나)
 > `packs`·`claims`·`profiles`·`mapping_id`는 전부 은퇴했습니다.**
 > 위 3번이 그 자리를 대신합니다. 계획서는 **왜 그렇게 됐는지**를 볼 때만 «역사»로 엽니다.
 > (문서 감사 2026-08-21: 그 디렉터리 26개 중 현행 A등급 «0», C등급 21)
-8. `ontology_config_explorer_plan/01_DISCOVERY_AND_STATE_CONTRACT.md`
-9. `ontology_config_explorer_plan/02_IMPLEMENTATION_AND_ACCEPTANCE.md`
+8. `docs/_archive/ontology_config_explorer_plan_20260817/01_DISCOVERY_AND_STATE_CONTRACT.md`
+9. `docs/_archive/ontology_config_explorer_plan_20260817/02_IMPLEMENTATION_AND_ACCEPTANCE.md`
 10. `task/ontology_config_explorer_pending.md` — 완료된 원 요구사항
 11. `task/ontology_config_explorer_reference.html` — CSS·3단 배치 시각 기준본
 

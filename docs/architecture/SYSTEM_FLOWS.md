@@ -592,7 +592,11 @@ rnd_board_walk_harness.mjs     (329줄)   `hops` 히트 2 — 둘 다 픽스처 
 | 삭제 (`deleteDeclaration`) | `GET /deletion-preview?targets=` → `DELETE /declarations/{key}` | 「삭제」 클릭 | HTTP 쿼리 ×2 | 🔴 **`context_token` 을 안 싣는다**(라우터가 받고 `stale_context` 로 거절할 수 있는 축인데 클라가 안 쓴다) | 🔴 **응답 14키 중 «1»** — `plan.unread_after` 만(`:499`). `released`·`blocked`·`retained`·`is_reset`·`sources_before/after`·`*_total` 등 13 소비자 0 | 🔴 **위험하게 조용.** `is_reset`(「소스가 하나도 안 남는다」)이 **안 읽혀서** 번들을 통째로 비우는 삭제가 `window.confirm` 에 「영향 없음」으로 뜰 수 있다 | ⚠️ |
 | 컨트롤러 `review-draft`·`revise-draft`·`activate-draft`·`discard-draft` 분기 | `POST /drafts/{id}/review`·`/revise`·`/activate`, `DELETE /drafts/{id}` | (없음) | — | 네 분기가 `ontology_explorer.js:1212·1218·1227·1242` 에 살아 있다 | 🔴 **생산자 0.** 그 넷을 «만드는» 자리가 `client2/src/` 어디에도 없다(전량 grep: 소비 분기 4줄 + `client2/tests/dom_patch_harness.mjs:223` 시험 전용 1 — 규칙대로 빼면 **0**). `view.js` 의 `button(...)` 이 내는 액션은 `save-draft`(672)·`test-run`(855)·`create-draft`(870) 셋 | 🔇 조용 — 서버 라우트 넷이 서 있고 **누를 버튼이 없다**. `POST /review`·`/revise` 는 클라 호출자 0 | ⚰️ |
 
-### 🆕 ④-bis 수명주기는 «하나», 문서는 «둘» (2026-09-12 S-194 `15fa6006`·`27795fdc`, 판정 303)
+### 🆕 ④-bis 수명주기는 «하나», 문서도 «하나» (2026-09-12 S-194 → ⚰️ **2026-09-13 S-205 `6cfd921a`·S-208 `df108854` 에서 되접힘**, 판정 303·325)
+
+> 🔴 **[2026-09-13 자기 정정] 이 절을 제가 «문서 둘»로 적었고 그것은 오늘 거짓이다.** 어댑터 층이 되접혔고 남은 것은 `OntologyDraftStore` «하나»다 — `LedgerDocument`·`ChainRuleDocument`·`ChainRuleIndex`·`DraftContext` 전부 없다. 둘째 문서는 «끝내 안 왔다»: 판정 325 가 체인 규칙의 문을 «체인 탭의 raw 라우트»로 두면서 `ChainRuleDocument` 는 «제품 호출자를 한 번도 못 가진 채» 은퇴했다.
+> ⚠️ **그리고 제가 적을 때 «이미» 그랬다** — 그때도 제품 문서는 원장 «하나»였고 둘째는 «예정»이었는데, 저는 그것을 「문서 둘」로 적고 좋게 기록했다. 상설 「무한 케이스인가, 여럿이 될 거라는 베팅인가」가 겨누는 바로 그것이고, **층은 «둘일 때» 짓지 «둘이 될 것 같을 때» 짓지 않는다**.
+> 🔵 아래 본문은 «그때의 설계»로 남긴다 — 판정 303 에서 서 있는 절반(「수명주기는 하나」)은 오늘도 참이고, 접힌 것은 «문서 축»뿐이다. 근거로 인용할 때는 이 머리를 같이 읽을 것.
 
 이 흐름의 «기계»(초안 만들기 → 저장 → 검토 → 발효 → 버리기)는 원장 선언만 편집할 수 있었다.
 체인 규칙도 같은 일을 해야 하는데, **두 번째 수명주기를 짓는 것이 답이 아니었다** —

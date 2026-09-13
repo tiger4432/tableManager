@@ -25,9 +25,9 @@ server_dir = os.path.abspath(os.path.join(script_dir, ".."))
 if server_dir not in sys.path:
     sys.path.insert(0, server_dir)
 
-import chain_builtins                                                 # noqa: E402
-import enrichment_config                                              # noqa: E402
-import virtual_join_config as vjc                                     # noqa: E402
+from chain import builtins                                                 # noqa: E402
+import enrichment.config                                              # noqa: E402
+import virtual_join.config as vjc                                     # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -37,17 +37,21 @@ import virtual_join_config as vjc                                     # noqa: E4
 def test_the_enrichment_half_is_byte_identical_through_the_seat():
     """🔴 THE GATE 판정 304 ASKED FOR. Same rules, same order, same cells — the seat only
     moved the CALL."""
-    direct = enrichment_config.load_enrichment_chain_rules()
-    through = [r for r in chain_builtins.synthesize_chain_rules()
+    direct = enrichment.config.load_enrichment_chain_rules()
+    through = [r for r in builtins.synthesize_chain_rules()
                if not str(r.get("name") or "").startswith(vjc.JOIN_PREFIX)]
     assert through == direct
 
 
 def test_the_seat_emits_both_halves():
-    names = {r["name"] for r in chain_builtins.synthesize_chain_rules()}
-    enrichment = {r["name"] for r in enrichment_config.load_enrichment_chain_rules()}
+    names = {r["name"] for r in builtins.synthesize_chain_rules()}
+    # 🪦 [S-211 packaging] the local was called `enrichment`, which now shadows the
+    #    PACKAGE on the same line. Renamed rather than aliased: the package is the
+    #    thing being read here.
+    from_enrichment = {r["name"]
+                       for r in enrichment.config.load_enrichment_chain_rules()}
     joins = {r["name"] for r in vjc.synthesized_join_chain_rules()}
-    assert enrichment <= names and joins <= names
+    assert from_enrichment <= names and joins <= names
 
 
 def test_the_loader_calls_the_seat_and_not_a_half():
@@ -55,7 +59,7 @@ def test_the_loader_calls_the_seat_and_not_a_half():
     agree today — which is exactly what 판정 304 moved."""
     import inspect
 
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     body = inspect.getsource(worker.load_chain_rules)
     assert "synthesize_chain_rules" in body
@@ -65,8 +69,8 @@ def test_the_loader_calls_the_seat_and_not_a_half():
 def test_the_boot_line_counts_the_three_kinds_apart():
     """⚠️ 「N synthesized」 OVER THREE KINDS is the shape that once reported 8 of a kind there
     were 4 of, which is why S-179 ① split its own count."""
-    rules = chain_builtins.synthesize_chain_rules()
-    counts = chain_builtins.synthesized_kind_counts(rules)
+    rules = builtins.synthesize_chain_rules()
+    counts = builtins.synthesized_kind_counts(rules)
     assert set(counts) == {"dedup", "auto_confirm", "join"}
     assert sum(counts.values()) == len(rules)
 
@@ -131,20 +135,20 @@ def test_an_unknown_kind_is_refused_by_name_not_ignored():
     """⛔ SILENCE IS THE DEFECT. A rule naming a kind nothing implements would sit enabled,
     look live, and never run — the same silence `_report_unwatchable_trigger_columns` breaks
     for a mistyped trigger column."""
-    with pytest.raises(chain_builtins.UnknownBuiltinKind) as caught:
-        chain_builtins.run_builtin("builtin:no_such_kind", None, {})
+    with pytest.raises(builtins.UnknownBuiltinKind) as caught:
+        builtins.run_builtin("builtin:no_such_kind", None, {})
     assert "builtin:no_such_kind" in str(caught.value)
     assert "builtin:join" in str(caught.value), "it must say what IS known"
 
 
 def test_the_join_kind_is_in_the_table():
-    assert vjc.JOIN_MAPPER in chain_builtins.BUILTIN_KINDS
+    assert vjc.JOIN_MAPPER in builtins.BUILTIN_KINDS
 
 
 def test_the_table_routes_a_target_change_and_a_reference_change_differently(monkeypatch):
     """⚠️ ONE KIND, TWO TRIGGERS. The caller says which by which argument it passes, and they
     cost differently — a reference change counts first and can be refused."""
-    import virtual_join_executor as vje
+    from virtual_join import executor as vje
 
     seen = []
     monkeypatch.setattr(vje, "on_target_rows_changed",
@@ -153,8 +157,8 @@ def test_the_table_routes_a_target_change_and_a_reference_change_differently(mon
                         lambda db, rule, keys: seen.append(("reference", keys)) or {"written": 2})
 
     rule = {"params": {"name": "j1"}}
-    chain_builtins.run_builtin(vjc.JOIN_MAPPER, None, rule, row_ids=["r1"])
-    chain_builtins.run_builtin(vjc.JOIN_MAPPER, None, rule, key_values=["k1"])
+    builtins.run_builtin(vjc.JOIN_MAPPER, None, rule, row_ids=["r1"])
+    builtins.run_builtin(vjc.JOIN_MAPPER, None, rule, key_values=["k1"])
     assert seen == [("target", ["r1"]), ("reference", ["k1"])]
 
 
@@ -168,9 +172,9 @@ def test_a_materialized_rule_is_not_drawn_twice():
     and a reader counting arrows would see a flow that does not exist."""
     import inspect
 
-    import chain_graph
+    import chain.graph
 
-    body = inspect.getsource(chain_graph._vjoin_edges)
+    body = inspect.getsource(chain.graph._vjoin_edges)
     assert 'rule.get("materialize")' in body and "continue" in body
 
 
@@ -180,7 +184,7 @@ def test_the_dispatcher_rides_the_paced_lap_beside_its_neighbour():
     seat is here at all."""
     import inspect
 
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     body = inspect.getsource(worker._drain_ledger_followup_sync)
     assert "_run_builtin_followups(db, done)" in body
@@ -208,7 +212,7 @@ def test_the_followup_dispatcher_does_not_load_rules_per_batch():
     """
     import inspect
 
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     body = inspect.getsource(worker._run_builtin_followups)
     assert "_followup_builtin_rules()" in body
@@ -220,7 +224,7 @@ def test_the_cached_rules_are_cleared_where_every_other_worker_cache_is():
     already has one seat for that."""
     import inspect
 
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     worker._followup_builtin_rules()
     assert worker._FOLLOWUP_BUILTIN_RULES is not None
@@ -234,13 +238,13 @@ def test_the_cached_rules_are_cleared_where_every_other_worker_cache_is():
 def test_the_cache_holds_only_what_the_dispatcher_could_run():
     """⚠️ NARROWED AT THE SOURCE. Holding every rule would make the per-batch loop walk the
     whole list to find the handful that are `follow_up` AND implemented."""
-    import chain_ingestion_worker as worker
-    import chain_builtins
+    from chain import ingestion_worker as worker
+    from chain import builtins
 
     worker.reload_worker_process_cache()
     for rule in worker._followup_builtin_rules():
         assert rule.get("follow_up")
-        assert rule.get("mapper") in chain_builtins.BUILTIN_KINDS
+        assert rule.get("mapper") in builtins.BUILTIN_KINDS
 
 
 # ---------------------------------------------------------------------------
@@ -250,10 +254,10 @@ def test_the_cache_holds_only_what_the_dispatcher_could_run():
 def test_both_builtin_kinds_are_in_the_table():
     """🔵 THE TEMPORARY IS OVER. It carried one kind while auto-confirm still ran from its own
     sweep, so a `follow_up` kind had two ways to run."""
-    import enrichment_config
+    import enrichment.config
 
-    assert set(chain_builtins.BUILTIN_KINDS) == {
-        vjc.JOIN_MAPPER, enrichment_config.AUTO_CONFIRM_MAPPER}
+    assert set(builtins.BUILTIN_KINDS) == {
+        vjc.JOIN_MAPPER, enrichment.config.AUTO_CONFIRM_MAPPER}
 
 
 def test_the_drain_has_no_second_route_left():
@@ -262,7 +266,7 @@ def test_the_drain_has_no_second_route_left():
     """
     import inspect
 
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     assert not hasattr(worker, "_auto_confirm_followed_rows"), (
         "the second route is back")
@@ -276,7 +280,7 @@ def test_the_collector_is_handed_its_rule_rather_than_finding_it(monkeypatch):
     itself it called `load_enrichment_rules` and re-found what the synthesised rule carries in
     `params`. Two readers of one fact is how they come to disagree — and this one also re-read
     a file on a paced path."""
-    import enrichment_candidates
+    import enrichment.candidates
 
     seen = {}
 
@@ -287,9 +291,9 @@ def test_the_collector_is_handed_its_rule_rather_than_finding_it(monkeypatch):
             seen["table"] = table
             seen["rules"] = rules
 
-    monkeypatch.setattr(enrichment_candidates, "AutoConfirmCollector", _Collector)
+    monkeypatch.setattr(enrichment.candidates, "AutoConfirmCollector", _Collector)
     rule = {"name": "enrichment_auto_confirm:x", "params": {"name": "x", "auto_confirm": True}}
-    chain_builtins.run_builtin("builtin:auto_confirm", None, rule,
+    builtins.run_builtin("builtin:auto_confirm", None, rule,
                                row_ids=["r1"], done={"table": "derived_t"})
     assert seen["table"] == "derived_t"
     assert seen["rules"] == [rule["params"]], (
@@ -299,7 +303,7 @@ def test_the_collector_is_handed_its_rule_rather_than_finding_it(monkeypatch):
 def test_the_note_still_carries_both_counts(monkeypatch):
     """⚠️ VALUES, NOT A VERDICT. A follow-up that confirms nothing and one that never ran are
     different facts, and the drain loop reads these two keys by name to total them."""
-    import enrichment_candidates
+    import enrichment.candidates
 
     class _Collector:
         active = True
@@ -313,9 +317,9 @@ def test_the_note_still_carries_both_counts(monkeypatch):
         def flush(self, db):
             return {"confirmed": 3, "refused": {"a": 1, "b": 2}}
 
-    monkeypatch.setattr(enrichment_candidates, "AutoConfirmCollector", _Collector)
+    monkeypatch.setattr(enrichment.candidates, "AutoConfirmCollector", _Collector)
     done = {"table": "derived_t", "row_ids": ["r1"], "event_type": "EDIT"}
-    chain_builtins.run_builtin("builtin:auto_confirm", None, {"params": {}},
+    builtins.run_builtin("builtin:auto_confirm", None, {"params": {}},
                                row_ids=["r1"], done=done)
     assert done["auto_confirmed"] == 3 and done["auto_refused"] == 3
 
@@ -325,7 +329,7 @@ def test_the_dispatcher_hands_the_note_to_the_kind():
     where they are computed — which S-176 already had to repair once."""
     import inspect
 
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     body = inspect.getsource(worker._run_builtin_followups)
     assert "done=done" in body

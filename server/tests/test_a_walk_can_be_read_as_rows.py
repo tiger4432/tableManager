@@ -219,7 +219,7 @@ def test_an_unknown_format_is_refused_by_name():
     unparsable interval and an undeclared predicate."""
     from fastapi import HTTPException
 
-    import ledger_trace_router as router
+    from ledger import trace_router as router
 
     with pytest.raises(HTTPException) as caught:
         router.evidence_subgraph(node_id="x", response_format="csv", db=None)
@@ -265,7 +265,7 @@ def test_the_router_can_read_the_declarations_it_hands_the_fold():
     `_config` — a name every sibling handler imports LOCALLY and this one never did — so
     the rows branch raised `NameError` on its first live call while the whole suite stayed
     green. Calling the accessor is enough to prove the name resolves."""
-    import ledger_trace_router as router
+    from ledger import trace_router as router
 
     entities = router._declared_entities()
     assert isinstance(entities, dict)
@@ -274,7 +274,7 @@ def test_the_router_can_read_the_declarations_it_hands_the_fold():
 def test_the_route_hands_back_the_fold_as_text_not_json(monkeypatch):
     """The other half of the seam: the route must return the TSV as TEXT. A JSON body
     would parse for nobody and read as 「the walk found nothing」."""
-    import ledger_trace_router as router
+    from ledger import trace_router as router
 
     monkeypatch.setattr(router, "_evidence_graph",
                         lambda *a, **kw: {

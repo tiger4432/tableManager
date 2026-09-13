@@ -148,7 +148,7 @@ def test_the_explorer_refuses_an_undeclared_name_by_NAME(tmp_path):
     ⛔ A COPY OF THE ONTOLOGY, never the live one — a draft written into the owner's config
     directory is the 「내 시험이 소유자의 파일에 썼다」 failure.
     """
-    from admin_auth import require_admin_token, require_admin_token_strict
+    from admin.auth import require_admin_token, require_admin_token_strict
     from ledger.config_explorer_service import OntologyExplorerService
     from ledger.setup import DEFAULT_ONTOLOGY_ROOT
     from ledger_api import ontology_config_explorer_router as explorer_router

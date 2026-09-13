@@ -19,7 +19,7 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import frame_confirmation as fc                                  # noqa: E402
+from maps import frame_confirmation as fc                                  # noqa: E402
 from test_transfer_plan import _seed_scenario, tp_env            # noqa: F401,E402
 
 CORE_MAP = "tp_test_core_defect_map"

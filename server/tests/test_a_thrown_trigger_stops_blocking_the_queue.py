@@ -223,10 +223,10 @@ def test_the_reload_watchers_are_a_different_shape_and_are_left_alone():
     do not have."""
     import inspect
 
-    import chain_ingestion_worker
+    from chain import ingestion_worker
     import run_auto_update
 
     for source in (inspect.getsource(run_auto_update.MultiDiscoveryScheduler.run),
-                   inspect.getsource(chain_ingestion_worker.start_chain_ingestion_worker)):
+                   inspect.getsource(ingestion_worker.start_chain_ingestion_worker)):
         head = source.split('"SYSTEM_RELOAD"', 1)[1][:400]
         assert "id.desc()" in head, "a reload watcher started reading oldest-first"

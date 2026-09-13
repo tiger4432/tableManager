@@ -20,7 +20,7 @@
 | 🟢 [process/BACKLOG_ARCHIVE.md](./process/BACKLOG_ARCHIVE.md) | **옛 대기열·현재 초점·완료 롤업·장기 백로그** — 미완 항목의 정본은 보드로 승격되었다 |
 | 🟢 [process/CONTRIBUTING.md](./process/CONTRIBUTING.md) | **개발·문서 갱신 규율(docs-as-code)** — 코드 바꾸면 여기 규칙대로. **§2-bis = 이 저장소가 자기를 검증하는 자리**(pytest = 서버 절반 · `npm run build` = 클라 절반 **세 채점자**, 둘 다 돌려야 한다. 목록의 정본은 `package.json`의 `prebuild` 한 줄) |
 | 🟢 [guide/CONFIG_GUIDE.md](./guide/CONFIG_GUIDE.md) | 설정 파일 지도, 의존 순서, 대표 시나리오, 리로드·효과 확인 |
-| 🟢 [guide/ONTOLOGY_LEDGER_SETUP.md](./guide/ONTOLOGY_LEDGER_SETUP.md) · [Explorer Acceptance](../ontology_config_explorer_plan/02_IMPLEMENTATION_AND_ACCEPTANCE.md) | **현행 원장 설정의 정본**(`setup_version: 5` · 절 셋)과 Ontology Config Explorer 전체 수락 근거. 🗄️ **[2026-08-21] 이 자리에 있던 「Ledger V2 Plan」은 닫힌 계획서라 [_archive/ledger_v2_redesign_plan_20260817/](./_archive/ledger_v2_redesign_plan_20260817/README.md)로 옮겼다** — `setup_version: 2`·`packs`·`profiles`를 가르치므로 **세팅 지침으로 읽지 말 것** |
+| 🟢 [guide/ONTOLOGY_LEDGER_SETUP.md](./guide/ONTOLOGY_LEDGER_SETUP.md) · [Explorer Acceptance](./_archive/ontology_config_explorer_plan_20260817/02_IMPLEMENTATION_AND_ACCEPTANCE.md) | **현행 원장 설정의 정본**(`setup_version: 5` · 절 셋)과 Ontology Config Explorer 전체 수락 근거. 🗄️ **[2026-08-21] 이 자리에 있던 「Ledger V2 Plan」은 닫힌 계획서라 [_archive/ledger_v2_redesign_plan_20260817/](./_archive/ledger_v2_redesign_plan_20260817/README.md)로 옮겼다** — `setup_version: 2`·`packs`·`profiles`를 가르치므로 **세팅 지침으로 읽지 말 것** |
 
 ## 🏛️ 2. 아키텍처 (architecture/)
 
@@ -140,6 +140,8 @@
   - 2026-08-15 셋업 개혁 3부작(증상 → 진단 → 처방): [SETUP_PAIN_LOG](./_archive/SETUP_PAIN_LOG.md) · [LEDGER_SETUP_SCENARIO_REVIEW](./_archive/LEDGER_SETUP_SCENARIO_REVIEW.md) · [LEDGER_SETUP_REFORM_PLAN](./_archive/LEDGER_SETUP_REFORM_PLAN.md)
   - 사이클 기록: [SCENARIO_STRESS_LOG](./_archive/SCENARIO_STRESS_LOG.md)(S-001~, 시간당 사이클 종료)
   - [CONFIG_INHERITANCE](./_archive/CONFIG_INHERITANCE.md) — 🔴 **§5는 「이 박스」의 config 상태라 다른 환경에 대해 거짓**이다. 코드에서 오는 규칙(§2~§4)을 [guide/CONFIG_GUIDE](./guide/CONFIG_GUIDE.md)로 옮길지는 **총괄 판정 대기**
+- 🗄️ **[2026-09-13 · S-209 `6d3c4b68`] [_archive/MAPPER_STANDARD_20260817.md](./_archive/MAPPER_STANDARD_20260817.md)** — 루트에 있던 「MAPPER 표준」입니다. 🔴 **표준이 아니라 «제안»이어서** 올라왔습니다 — 그 §2 가 가르치는 API 가 착지하지 않았고(추적 서버 코드에 `class Unit`·`class Emit`·`EMITS` 전건 0), «훅 둘»은 `server/ledger/roleframe.py` 에 다른 이름으로 들어갔습니다. ⚠️ 운영자가 읽는 것은 이것이 아니라 `assyManager-authoring/MAPPING_GUIDE.md` 입니다
+- 🗄️ **[2026-09-13 · S-210 `f74bbd98`] [_archive/ontology_config_explorer_plan_20260817/](./_archive/ontology_config_explorer_plan_20260817/)** — 루트 청소에서 «지우지 않고 올린» 계획 여섯. 🔵 그 라운드의 가르는 선은 「아무것도 안 읽는가」 하나였고, «읽힐 수 있는 기록»은 지우지 않았습니다
 - 🗄️ **[2026-08-21] [_archive/ledger_v2_redesign_plan_20260817/](./_archive/ledger_v2_redesign_plan_20260817/README.md)** — 1~7단계를 끝내고 닫힌 Ledger v2 재설계 계획서 26편(리포지토리 루트에서 이관). **가르치는 config 문법이 은퇴했다**(`setup_version: 2` · `packs`·`profiles` 포함 일곱 절 · `profiles.use → packs/claim`). 현행은 `setup_version: 5`, 절 셋(`entities`·`sources`·`vocabulary`)이고 후계는 [guide/ONTOLOGY_LEDGER_SETUP](./guide/ONTOLOGY_LEDGER_SETUP.md) 하나다. 「왜 그렇게 됐는가」를 볼 때만 역사로 연다.
 
 ---

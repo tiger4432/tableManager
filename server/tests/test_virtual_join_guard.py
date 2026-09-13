@@ -30,7 +30,7 @@ if _SERVER not in sys.path:
     sys.path.insert(0, _SERVER)
 
 import config_resolve_report as crr          # noqa: E402
-import virtual_join_config as vjc            # noqa: E402
+import virtual_join.config as vjc            # noqa: E402
 from verified_join_contract import VerifiedJoinDescriptor  # noqa: E402
 
 

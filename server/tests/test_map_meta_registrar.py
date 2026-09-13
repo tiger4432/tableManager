@@ -161,7 +161,7 @@ def test_the_chain_worker_creates_no_meta_row(iso_db):
     """같은 사실, 둘째 배선. 체인 쓰기는 성공하고 메타만 안 생긴다."""
     db, _ = iso_db
     from database.models import DatabaseOutbox
-    from chain_ingestion_worker import process_chain_transaction_group
+    from chain.ingestion_worker import process_chain_transaction_group
 
     tx_id = "tx_mmrauto"
     trigger = DatabaseOutbox(

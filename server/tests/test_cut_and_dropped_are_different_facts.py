@@ -23,10 +23,10 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 import event_constants as ec                                     # noqa: E402
 
 SERVER = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-FOLDED = ("chain_key_gate.py", "database/crud.py", "parsers/void_sat_format.py",
-          "chain_replay.py", "main.py", "event_constants.py",
+FOLDED = ("chain/key_gate.py", "database/crud.py", "parsers/void_sat_format.py",
+          "chain/replay.py", "main.py", "event_constants.py",
           # [S-34 첫 커밋] 독자가 «0» 이라 두 걸음 없이 접힌 둘.
-          "bonding_plan.py", "enrichment_candidates.py")
+          "bonding_plan.py", "enrichment/candidates.py")
 
 
 # ============================================ 1. 정본이 «하나»다
@@ -73,7 +73,7 @@ def test_the_drop_counters_stay_outside_the_canonical():
     """🔴 판정 81 ㉤. `columns_omitted` 는 「이 칸들을 «버렸다»」이고 `python_default_omitted`
     는 드리프트 «라벨»이다 — 둘 다 목록이 잘린 것이 아니다. 접히면 운영자가 「선언을 고쳐라」를
     잃는다."""
-    for name in ("chain_key_gate.py", "database/crud.py"):
+    for name in ("chain/key_gate.py", "database/crud.py"):
         src = open(os.path.join(SERVER, name), encoding="utf-8").read()
         assert '"columns_omitted"' in src, \
             "%s folded the DROP counter into the cut canonical" % name

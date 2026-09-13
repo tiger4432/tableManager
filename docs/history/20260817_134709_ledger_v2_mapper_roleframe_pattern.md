@@ -4,7 +4,7 @@
 
 Ledger v2 계획은 Source Preparer가 완성 EventFrame을 만든 뒤 Mapper가 pandas RoleFrame을
 반환한다는 큰 경계는 갖고 있었지만, Mapper마다 공통 처리와 자유 코드를 어디까지 허용할지
-단일 작성 패턴이 없었다. 루트 `MAPPER_STANDARD.md`를 그대로 적용하면 Mapper 최종 반환을
+단일 작성 패턴이 없었다. 루트 `MAPPER_STANDARD.md`(🪦 2026-09-13 `docs/_archive/MAPPER_STANDARD_20260817.md` 로 이동)를 그대로 적용하면 Mapper 최종 반환을
 Claim 목록으로 오해할 여지도 있었다.
 
 ## 근본 원인

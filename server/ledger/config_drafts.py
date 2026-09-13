@@ -185,7 +185,7 @@ def _redo_for(active_setup: Any, node: ExplorerNode, db) -> Mapping[str, Any] | 
     if db is None:
         return None
 
-    import retroactive
+    from admin import retroactive
 
     if getattr(node, "kind", None) == SOURCE_NODE_KIND:
         params = {"source": node.canonical_id}
@@ -345,89 +345,32 @@ def _delete_path(document: Any, path: Sequence[Any]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# S-194 (1) - one lifecycle, one document adapter (판정 303)
+# ⚰️ S-194's document seam FOLDED 2026-09-13 (S-208, 판정 340)
 # ---------------------------------------------------------------------------
-#: 🔴 THE LIFECYCLE WAS NEVER THE LEDGER'S. Nine of this store's methods already owe the
-#: document nothing (`get`, `request_review`, `revise`, `discard`, the record IO, the
-#: revision check, `public`) - draft, review, revise, activate, optimistic locking and the
-#: snapshot compare-and-swap are a STATE MACHINE. The eight that are coupled all receive
-#: their context as arguments already, so the seam is a handful of questions rather than a
-#: rewrite.
+#: 🔴 판정 303 SAID 「합칠 사람이 없다 — 수명주기는 하나」 and that half stands: this store is a
+#: STATE MACHINE (draft, review, revise, activate, optimistic locking, the snapshot
+#: compare-and-swap) and there is exactly one of it. What was added on top was a DOCUMENT
+#: ADAPTER so a second document could sit in the same machine.
 #:
-#: ⚠️ AND 「ONE BUNDLE ARGUMENT」 WOULD NOT HAVE OPENED IT (measured, S-194 design). The
-#: coupling is to the explorer's navigation model - `ExplorerIndex`/`ExplorerNode` - and to a
-#: hardcoded filename, not to the bundle. A chain rule has no `ExplorerNode`.
-
-
-class DraftContext:
-    """What a document needs to answer about one request: the active setup and its index.
-
-    ⚠️ A PAIR, NOT A MERGE. The two are separately meaningful - the setup is what compiled,
-    the index is how it is navigated - and the coupled methods already received exactly
-    these two. Collapsing them would hide which half a document actually reads.
-
-    ⚠️ AND `db` IS OPTIONAL, WHICH IS THE SIZE OF THE CHANGE (S-143, 판정 321). A cost is a
-    question only a REQUEST asks: the route hands down the Session it already holds, and the
-    CLI, the tests and every other construction site pass nothing. The six construction
-    sites are untouched because the default is `None`, and S-194's one lifecycle stands.
-    """
-
-    __slots__ = ("setup", "index", "db")
-
-    def __init__(self, setup, index, db=None):
-        self.setup = setup
-        self.index = index
-        self.db = db
-
-
-class LedgerDocument:
-    """The document this store has always edited, now said out loud.
-
-    🔴 EVERY METHOD HERE IS TODAY'S CODE, MOVED. The gate 판정 303 asked for is that the
-    ledger path comes out byte-identical, so this class may not decide anything differently -
-    it only gives the decisions a name a second document can answer under.
-    """
-
-    #: Which file a draft of this document edits.
-    editable_file = _EDITABLE_FILE
-
-    def node_of(self, context, target_key):
-        """The declaration a `target_key` names - refusing a key the snapshot never saw."""
-        return context.index.node(target_key)
-
-    def has_node(self, context, target_key) -> bool:
-        return target_key in context.index.nodes
-
-    def snapshot_hash(self, context):
-        """What the draft was based on. The compare-and-swap reads this and nothing else."""
-        return context.index.snapshot_hash
-
-    def target_of(self, record, context):
-        return draft_target(record, context.index)
-
-    def fill(self, context, node, raw):
-        return _filled_declaration(context.setup, node, raw)
-
-    def preview(self, context, node, raw):
-        return compile_draft_preview(context.setup, node, raw, context.db)
-
-    def config_root(self, context):
-        return Path(context.setup.config_root)
-
+#: 🔴 THE SECOND DOCUMENT NEVER ARRIVED. 판정 325 put the chain rule's door at the admin chain
+#: tab's raw route, and `ChainRuleDocument` retired with S-205 having never gained a product
+#: caller. That leaves a layer with one implementation, which the standing rule forbids:
+#: 「나중에 여럿일 것 같아서 층을 만들지 않는다」.
+#:
+#: 🔵 SO THE SENTENCE IS NOW: 「수명주기 하나, 문서는 원장 하나 — 둘째가 오면 그때 이음새」.
+#: The sixteen call sites went back to what `LedgerDocument` delegated to, which is what its
+#: own note said they were: 「every method here is today's code, moved」. Moving it back is the
+#: same edit in reverse, and the draft-lifecycle suite is what says so.
 
 class OntologyDraftStore:
-    def __init__(self, root: str | Path, document=None):
+    def __init__(self, root: str | Path):
         self.root = Path(root)
         self._lock = RLock()
-        # ⚠️ DEFAULTS TO THE LEDGER, so every existing caller is untouched and the
-        # byte-identical gate has something to be identical to.
-        self._document = document or LedgerDocument()
 
     def create(self, active_setup: Any, index: ExplorerIndex, target_key: str
                ) -> dict[str, Any]:
-        context = DraftContext(active_setup, index)
-        node = self._document.node_of(context, target_key)
-        if node.config_file != self._document.editable_file:
+        node = index.node(target_key)
+        if node.config_file != _EDITABLE_FILE:
             raise ConfigExplorerError(
                 "unsupported_draft_target", "target_key",
                 "this declaration is read-only in the current explorer",
@@ -439,8 +382,7 @@ class OntologyDraftStore:
             "target_id": node.canonical_id,
             "target_kind": node.kind,
             "target_bundle_path": list(node.bundle_path),
-            "base_snapshot_hash": self._document.snapshot_hash(
-                DraftContext(active_setup, index)),
+            "base_snapshot_hash": index.snapshot_hash,
             "base_definition_hash": node.definition_hash,
             "creates_declaration": False,
             "revision": 0,
@@ -476,7 +418,7 @@ class OntologyDraftStore:
         """
         section, name = authorable_bundle_path(kind, canonical_id)
         key = node_key(kind, canonical_id)
-        if self._document.has_node(DraftContext(active_setup, index), key):
+        if key in index.nodes:
             raise ConfigExplorerError(
                 "declaration_exists", "canonical_id",
                 f"{canonical_id!r} is already declared; open it to edit instead of "
@@ -493,8 +435,7 @@ class OntologyDraftStore:
             # against what the index holds now, and a real hash here would make "nobody has
             # created this yet" indistinguishable from "somebody created it and it happens
             # to be empty".
-            "base_snapshot_hash": self._document.snapshot_hash(
-                DraftContext(active_setup, index)),
+            "base_snapshot_hash": index.snapshot_hash,
             "base_definition_hash": None,
             "creates_declaration": True,
             "revision": 0,
@@ -549,8 +490,7 @@ class OntologyDraftStore:
             if record["lifecycle_status"] == "activated":
                 raise ConfigExplorerError(
                     "draft_already_activated", "draft_id", "draft is already active")
-            if record["base_snapshot_hash"] != self._document.snapshot_hash(
-                    DraftContext(active_setup, active_index)):
+            if record["base_snapshot_hash"] != active_index.snapshot_hash:
                 stale_status = self.stale_status(record, active_index)
                 record["lifecycle_status"] = stale_status
                 record["updated_at"] = _now()
@@ -559,16 +499,14 @@ class OntologyDraftStore:
                     f"{stale_status}_draft", "base_snapshot_hash",
                     "active snapshot changed; rebase before saving",
                 )
-            node = self._document.target_of(
-                record, DraftContext(active_setup, active_index))
+            node = draft_target(record, active_index)
             # 🔴 THE FILL LANDS BEFORE THE PREVIEW, NOT AFTER IT.  What the preview scores
             # has to be what the file will hold, or the operator reads a refusal
             # (`missing_field` on `implementation_version`) about a square the screen has
             # already answered -- and `activate` writes `record["raw"]` verbatim, so this
             # is also the only assignment that decides what reaches the config file.
-            context = DraftContext(active_setup, active_index)
-            raw = self._document.fill(context, node, raw)
-            preview = self._document.preview(context, node, raw)
+            raw = _filled_declaration(active_setup, node, raw)
+            preview = compile_draft_preview(active_setup, node, raw)
             record["revision"] += 1
             record["raw"] = json.loads(json.dumps(raw, ensure_ascii=False))
             record["preview_valid"] = preview.valid
@@ -671,8 +609,7 @@ class OntologyDraftStore:
         that has since changed would remove something the operator never looked at.
         """
         with self._lock:
-            if base_snapshot_hash != self._document.snapshot_hash(
-                    DraftContext(active_setup, active_index)):
+            if base_snapshot_hash != active_index.snapshot_hash:
                 raise ConfigExplorerError(
                     "stale_base_snapshot", "base_snapshot_hash",
                     "active snapshot changed; delete refused against a stale view",
@@ -693,15 +630,13 @@ class OntologyDraftStore:
             # `_delete_path` still raises `declaration_absent` if nothing is at the leaf, so
             # a wrong address refuses rather than silently succeeding.
             try:
-                node = self._document.node_of(
-                    DraftContext(active_setup, active_index), target_key)
+                node = active_index.node(target_key)
                 config_file, bundle_path = node.config_file, node.bundle_path
             except ConfigExplorerError:
                 kind, _, canonical_id = target_key.partition("|")
                 config_file = CONFIG_FILENAME
                 bundle_path = authorable_bundle_path(kind, canonical_id)
-            config_path = self._document.config_root(
-                DraftContext(active_setup, active_index)) / config_file
+            config_path = Path(active_setup.config_root) / config_file
             backup = self._activate_file(
                 config_path, [(bundle_path, _Remove())])
             reload_callback()
@@ -736,8 +671,7 @@ class OntologyDraftStore:
             # would refuse the operator's save for something they did not touch. It is also
             # simply absent while a setup is mid-construction and compiles to nothing,
             # which is exactly when this check still has to work.
-            if record["base_snapshot_hash"] != self._document.snapshot_hash(
-                    DraftContext(active_setup, active_index)):
+            if record["base_snapshot_hash"] != active_index.snapshot_hash:
                 stale_status = self.stale_status(record, active_index)
                 record["lifecycle_status"] = stale_status
                 record["updated_at"] = _now()
@@ -746,10 +680,8 @@ class OntologyDraftStore:
                     f"{stale_status}_draft", "base_snapshot_hash",
                     "active snapshot changed; activation compare-and-swap refused",
                 )
-            node = self._document.target_of(
-                record, DraftContext(active_setup, active_index))
-            preview = self._document.preview(
-                DraftContext(active_setup, active_index), node, record["raw"])
+            node = draft_target(record, active_index)
+            preview = compile_draft_preview(active_setup, node, record["raw"])
             # 🔴 NOT COMPILING NO LONGER BLOCKS THE WRITE. 「지금은 안읽히면 저장도
             # 안하네」 -- three gates used to stand here and each presumed a successful
             # compile, so each refused exactly the state a person is in while building:
@@ -768,8 +700,7 @@ class OntologyDraftStore:
             # `preview` is still compiled -- its errors are what the screen shows -- it just
             # no longer decides whether the file may be written.
 
-            config_path = self._document.config_root(
-                DraftContext(active_setup, active_index)) / node.config_file
+            config_path = Path(active_setup.config_root) / node.config_file
             backup = self._activate_file(
                 config_path, [(node.bundle_path, record["raw"])])
             # 🔴 THE WRITE STAYS, EVEN IF WHAT FOLLOWS FAILS. This used to restore the

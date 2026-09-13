@@ -281,7 +281,7 @@ def _add_outbox_row(db, *, processed: bool, age_days: int):
 
 
 def test_outbox_purge_deletes_only_expired_processed_rows(db_session):
-    from chain_ingestion_worker import purge_expired_outbox_sync
+    from chain.ingestion_worker import purge_expired_outbox_sync
     from database.models import DatabaseOutbox
 
     old_processed = _add_outbox_row(db_session, processed=True, age_days=8)
@@ -303,7 +303,7 @@ def test_outbox_purge_deletes_only_expired_processed_rows(db_session):
 
 def test_outbox_purge_respects_chunk_cap(db_session):
     """사이클당 max_chunks 상한을 지켜 초과분은 다음 사이클로 이월해야 한다 (루프 독점 방지)."""
-    from chain_ingestion_worker import purge_expired_outbox_sync
+    from chain.ingestion_worker import purge_expired_outbox_sync
     from database.models import DatabaseOutbox
 
     for _ in range(35):

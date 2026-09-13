@@ -156,7 +156,7 @@ def test_a_delete_event_cannot_wake_the_chain():
     import inspect
     import re
 
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     # The module, not one function: the guard appears at every place the worker SELECTS
     # trigger events, and naming the functions would make this test go red on a rename
