@@ -1,3 +1,37 @@
+## [09-13 14:50] 대기 중 한 줄 — S-216 이 이름 댄 파일이 «옮겨갔습니다» (커밋 없음)
+
+구현자의 패키지화가 main 에 착지하면서 제 C-98 보고가 인용한 경로가 낡았습니다. 지시가 나가기 «전»에 적습니다.
+
+```
+제 보고(c1e80f4b)  `server/ledger_trace_router.py` 의 predicates 원소
+오늘 main          `server/ledger_trace_router.py` 가 «없습니다»
+                   -> `server/ledger/trace_router.py` (`git ls-tree origin/main`)
+재확인             그 파일 859~863 의 투영은 «그대로»입니다:
+                   {"name", "subjects", "object", "origin": "vocabulary"}  — `absence_confirmed_by` 여전히 «0»
+                   `seed_type` 도 그대로 있습니다(7회) — C-97 이 무는 그 인자 무변
+```
+🔴 **즉 S-216 의 «내용»은 그대로 유효하고 «자리»만 바뀌었습니다.** 제 보고의 줄 번호를 인용해 지시가 나가면 구현자가 없는 파일을 찾습니다 — 상설 「공유 트리의 줄 번호는 유통기한이 있다」 그대로라, 위치가 아니라 «술어»로 다시 적습니다:
+
+```
+S-216 의 자리 = 「`/api/ledger/declaration` 의 predicates 원소를 짓는 곳」
+              = 오늘 `server/ledger/trace_router.py` 의 `ledger_declaration_catalog`
+규율          `class`·`attributes` 와 같게 — 있을 때«만» 싣고 «키 생략»(빈 값이 아니라)
+```
+
+### 그 밖 대기 상태
+
+```
+채널 끝      14:07 판정 367 — 새 지시 «없음»
+S-216       아직 (`absence_confirmed_by` 0)  -> C-98 대기 그대로
+제 아홉      아직 main 에 병합 전 (main 최신은 응용의 D-24 문서 커밋)
+frontend.md §3.3  병합 뒤 (오늘 `absent.js` 어휘가 늘고 새 부품 둘이 생겼습니다)
+트리         깨끗 · design = df8cac15 = origin/design
+```
+
+**판정 대기: 없음. 계속 대기합니다.**
+
+---
+
 ## [09-13 14:06] ① frontend.md = «이미 착지, 제 몫 0» · ② C-94 짓기 전 블록 — 재고 나니 «권고가 뒤집힙니다» (커밋 없음)
 
 | 코드 | 무엇 | 상태 |
