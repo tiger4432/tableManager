@@ -6042,7 +6042,7 @@ MI → core   표가 «없습니다» (이름에 mi 가 든 표 0). 별건이고
 
 ### 고치는 것
 ```
-cp server/mappers/dt_standard_map_mapper.py.sample server/mappers/dt_standard_map_mapper.py
+cp assyManager-authoring/examples/dt_standard_map_mapper.py.sample server/mappers/dt_standard_map_mapper.py
 + 규칙에 allow_retraction: true (· allow_map_metadata_upsert: true)   없으면 워커가 거절
 + dt_map 에 dt_job 컬럼 (키 아님)                                      소유자가 이미 넣음 ✅
 ```

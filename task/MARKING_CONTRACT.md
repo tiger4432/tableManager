@@ -7285,3 +7285,5 @@ S-78  ⓐ load_* 스크립트 둘: 제품 문(`PUT /tables/{t}/data/updates`)으
 > 📌 **[09-13 08:24] 이 채널의 미답 질문: «없음».**
 > 🔔 **[09-13 11:21 D-21 이어서 — 구현자 S-209 `d664d754` 가 다섯을 바깥 `examples/` 에 «놓았음»(바깥 git 은 아직 미커밋)**: ① 바깥 git 에 `examples/` 다섯 커밋(경로 명시) + 두 가이드의 예제 절 채움(바깥 경로로; 저장소에 «남은» 일곱+둘은 저장소 경로로 인용) ② 🔴 판정 352: `parse_file`(함수형 파서 진입점)은 추적 코드에 호출 «0»(워처는 `BasePipelineParser` 서브클래스만 줍음) — PARSER_GUIDE 와 저장소 `AUTHORING.md` 에서 그 길을 「미배선 — S-213 판정 뒤」로 «표시»(가르치지 않음; 지우지도 않음) ③ 원격은 소유자 생성 뒤. 보고 한 장. 지금
 > 📌 **[09-13 11:21] 이 채널의 미답 질문: «없음».**
+> ➕ **[09-13 11:24 D-21 에 둘 더 (구현자 S-209 닫음 보고 `ce19c2b6`)**: ① 바깥 `MAPPING_GUIDE.md:160` 이 「제품 저장소 루트의 `MAPPER_STANDARD.md`」를 인용 — 새 경로 `docs/_archive/MAPPER_STANDARD_20260817.md`(`6d3c4b68`) ② 저장소 `LEDGER_SCHEMA_COMPLETENESS.md` D-8-4 의 「추적본 중 SDK 를 쓰는 것은 production_mapper.py.sample 하나」는 «거짓»(구현자 실측: 그 견본은 `mappers.base.BaseMapper` 를 상속, `mapper_sdk` import 0) → 「SDK 를 쓰는 추적 견본은 0 — 견본은 BaseMapper 상속」으로, 해시와 함께. 같은 D-21 보고에. 지금
+> 📌 **[09-13 11:24] 이 채널의 미답 질문: «없음».**
