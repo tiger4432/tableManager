@@ -5,6 +5,10 @@
 정본        `paths.DEFAULT_PG_URL` (해석기 `resolve_database_url` «바로 옆»)
 사본 다섯   scratch 마이그레이션 · dev_env manifest · dev_env snapshot ·
            diagnose_slow_after_ingest · diagnose_wal_headroom
+오늘 넷     🪦 [2026-09-13, S-210 판정 353] scratch 사본은 «파일째» 사라졌다 —
+           `server/scratch/` 가 삭제됐고, 이 게이트의 나르개도 다섯에서 넷이 됐다.
+           둘째 사본을 «묶어 두는 것»보다 «없애는 것»이 낫다는 판정이고, 그래서 아래
+           CARRIERS 에서 그 행이 빠졌다. 아래 본문의 scratch 서술은 «그때 있었던 일»이다
 ```
 🔴 `diagnose_slow_after_ingest` 의 주석은 「이 스크립트와 서버가 «다른 데이터베이스»를 볼 수
 없다」고 적어 두었는데, 값이 «사본»이라 정본이 바뀌는 날 그 문장이 조용히 거짓이 된다.
@@ -79,15 +83,15 @@ def test_the_home_module_creates_no_engine():
 #: «부르기만 하고 배선이 없는 것»이다 — 나르개가 리터럴을 «안 들고» 이름을 «부르니»
 #: 위의 단언은 초록인데 그 파일은 import 에서 죽는다. 그래서 «행동»을 나란히 잰다.
 CARRIERS = [
-    ("scratch.scratch_migration_txid",     "server/scratch/scratch_migration_txid.py"),
     ("scripts.dev_env.manifest",           "server/scripts/dev_env/manifest.py"),
     ("scripts.dev_env.snapshot_db",        "server/scripts/dev_env/snapshot_db.py"),
     ("scripts.diagnose_slow_after_ingest", "server/scripts/diagnose_slow_after_ingest.py"),
     ("scripts.diagnose_wal_headroom",      "server/scripts/diagnose_wal_headroom.py"),
 ]
 
-#: `__main__` 으로 «돌리지 않는다» — scratch 사본은 argparse 가 없어 곧장 ALTER TABLE 을 친다.
-#: `sys.path[0]` 을 스크립트 자기 디렉터리로 바꾸는 것이 `python <script>` 와 같은 조건이다.
+#: `__main__` 으로 «돌리지 않는다» — 나르개 중에는 argparse 없이 곧장 ALTER TABLE 을 치는 것이
+#: 있었다(삭제된 scratch 사본이 그랬다). `sys.path[0]` 을 스크립트 자기 디렉터리로 바꾸는 것이
+#: `python <script>` 와 같은 조건이다.
 _START = ("import runpy, sys; sys.path[0] = sys.argv[1]; "
           "runpy.run_path(sys.argv[2], run_name='__not_main__')")
 

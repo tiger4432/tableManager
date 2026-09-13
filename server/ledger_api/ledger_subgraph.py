@@ -1830,7 +1830,9 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     # build `models_by_name`, and the only thing that read it was a quantity seed
     # branch that `decode_node_id` cannot produce - it returns `{"kind": "entity"}`
     # or raises. What left here was the walk loading it for nobody; the file itself
-    # moved to `_archive/ledger_api/` on 2026-08-28 once the consumer count reached zero.
+    # moved to `_archive/ledger_api/` on 2026-08-28 once the consumer count reached zero,
+    # 🪦 and that archive directory was deleted on 2026-09-13 (S-210, 판정 353) - the file
+    # is in this repository's history and nowhere in its tree.
 
     nodes = {}
     #: node id -> {attribute name: [(occurred_at, value)]}. Filled by ONE sweep after the

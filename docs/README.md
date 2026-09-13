@@ -20,7 +20,7 @@
 | 🟢 [process/BACKLOG_ARCHIVE.md](./process/BACKLOG_ARCHIVE.md) | **옛 대기열·현재 초점·완료 롤업·장기 백로그** — 미완 항목의 정본은 보드로 승격되었다 |
 | 🟢 [process/CONTRIBUTING.md](./process/CONTRIBUTING.md) | **개발·문서 갱신 규율(docs-as-code)** — 코드 바꾸면 여기 규칙대로. **§2-bis = 이 저장소가 자기를 검증하는 자리**(pytest = 서버 절반 · `npm run build` = 클라 절반 **세 채점자**, 둘 다 돌려야 한다. 목록의 정본은 `package.json`의 `prebuild` 한 줄) |
 | 🟢 [guide/CONFIG_GUIDE.md](./guide/CONFIG_GUIDE.md) | 설정 파일 지도, 의존 순서, 대표 시나리오, 리로드·효과 확인 |
-| 🟢 [guide/ONTOLOGY_LEDGER_SETUP.md](./guide/ONTOLOGY_LEDGER_SETUP.md) · [Explorer Acceptance](../ontology_config_explorer_plan/02_IMPLEMENTATION_AND_ACCEPTANCE.md) | **현행 원장 설정의 정본**(`setup_version: 5` · 절 셋)과 Ontology Config Explorer 전체 수락 근거. 🗄️ **[2026-08-21] 이 자리에 있던 「Ledger V2 Plan」은 닫힌 계획서라 [_archive/ledger_v2_redesign_plan_20260817/](./_archive/ledger_v2_redesign_plan_20260817/README.md)로 옮겼다** — `setup_version: 2`·`packs`·`profiles`를 가르치므로 **세팅 지침으로 읽지 말 것** |
+| 🟢 [guide/ONTOLOGY_LEDGER_SETUP.md](./guide/ONTOLOGY_LEDGER_SETUP.md) · [Explorer Acceptance](./_archive/ontology_config_explorer_plan_20260817/02_IMPLEMENTATION_AND_ACCEPTANCE.md) | **현행 원장 설정의 정본**(`setup_version: 5` · 절 셋)과 Ontology Config Explorer 전체 수락 근거. 🗄️ **[2026-08-21] 이 자리에 있던 「Ledger V2 Plan」은 닫힌 계획서라 [_archive/ledger_v2_redesign_plan_20260817/](./_archive/ledger_v2_redesign_plan_20260817/README.md)로 옮겼다** — `setup_version: 2`·`packs`·`profiles`를 가르치므로 **세팅 지침으로 읽지 말 것** |
 
 ## 🏛️ 2. 아키텍처 (architecture/)
 

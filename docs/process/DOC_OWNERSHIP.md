@@ -95,7 +95,7 @@
 >   context가 모두 맞을 때만 복원한다. `admin.js`는 인증 fetch와 `#ontology` 탭 배선만 소유한다.
 >   file-backed 예제는 `server/config/sample/ontology/transfer_explorer/`가 소유하며 운영 config
 >   root와 분리한다. 정본과 수락 근거는
->   [Explorer plan](../../ontology_config_explorer_plan/02_IMPLEMENTATION_AND_ACCEPTANCE.md)이다.
+>   [Explorer plan](../_archive/ontology_config_explorer_plan_20260817/02_IMPLEMENTATION_AND_ACCEPTANCE.md)이다.
 >   `bea0484`의 제한 범위 승인은 역사로 보존한다. 전체 완료 exact commit `2d1ad863`은 지정
 >   독립 Audit이 APPROVE했고 main에 병합돼 `COMPLETE / APPROVED`다. mapper/translator/
 >   cursor/DB와 운영 ontology config는 무변경이며 파괴 작업 금지는 유지한다.

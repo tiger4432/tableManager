@@ -26,6 +26,13 @@ server/assy_manager.db
 agent_workspace/tasks/
 !agent_workspace/reports/
 agent_workspace/*
+# 🔴 우편함의 «자리»만 추적합니다 — 산출물은 docs/_archive/agent_workspace_20260823/ 로
+#    옮겨졌고(S-210, 판정 353), 이 한 줄이 없으면 위 `agent_workspace/*` 가 그 README 까지
+#    가려 「비어 있되 있음」이 성립하지 않습니다.
+!agent_workspace/README.md
+
+# 빌드 산출물 — setup.py/pip 이 다시 만듭니다 (S-210, 판정 353)
+assy_manager.egg-info/
 _archive/*
 /.codex_tmp/
 /.test_tmp/

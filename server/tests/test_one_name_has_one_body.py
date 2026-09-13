@@ -102,7 +102,8 @@ def test_no_module_spells_the_body_under_this_name_again():
     root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     spelled = []
     for base, dirs, files in os.walk(root):
-        dirs[:] = [d for d in dirs if d not in ("__pycache__", "_archive", "tests",
+        # 🪦 `_archive` was skipped here until S-210 deleted it (판정 353).
+        dirs[:] = [d for d in dirs if d not in ("__pycache__", "tests",
                                                 "scripts", ".tmp")]
         for name in files:
             if not name.endswith(".py"):

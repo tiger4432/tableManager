@@ -55,13 +55,13 @@ import sys
 #: subject to the runtime path. `scripts/` and `setup/` are operator entry points
 #: that bootstrap their own path; `tests/` is pytest; `scratch/` is disposable.
 #:
-#: `_archive/` is retired code, kept for reference and imported by nothing that runs.
-#: Its own archived tests import the modules that were archived beside them, and
-#: those names resolve from no directory on any path - so this check was reporting
-#: two retired test files as production outages. The prefix match is anchored at the
-#: top level, which is why `tests/` above does not already cover `_archive/tests/`.
-NON_RUNTIME_DIRS = ("scripts/", "tests/", "setup/", "scratch/", "migrations/",
-                    "_archive/")
+#: 🪦 `_archive/` and `scratch/` WERE listed here and are gone from the tree (S-210,
+#: 판정 353). An exemption for a directory that does not exist is a branch nobody can
+#: take, and it reads as though such a directory were still expected. What it bought is
+#: recorded rather than kept: `_archive/tests/` imported the modules archived beside
+#: them, names that resolve from no directory on any path, so this check used to report
+#: two retired test files as production outages.
+NON_RUNTIME_DIRS = ("scripts/", "tests/", "setup/", "migrations/")
 
 #: Exceptions that make an import OPTIONAL rather than required.
 #:

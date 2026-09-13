@@ -10,7 +10,7 @@
 
 Ontology Config Explorer 라운드는 다섯 시간 반에 걸쳐 커밋 일곱 개로 착지했고, **일곱 개
 모두 본문이 제목 한 줄뿐이다.** 「왜」는 같은 커밋이 함께 넣은 `docs/history/` 항목과
-`ontology_config_explorer_plan/` 문서에 있는데, 그 항목들 대부분은 **자기를 실은 커밋의
+`ontology_config_explorer_plan/` 문서(🪦 2026-09-13 `docs/_archive/ontology_config_explorer_plan_20260817/` 로 이동)에 있는데, 그 항목들 대부분은 **자기를 실은 커밋의
 해시를 달고 있지 않다** — 파일명 날짜로는 덮인 것처럼 보이지만 해시로는 도달할 방법이 없는
 상태였다. 이 항목이 그 연결이다.
 

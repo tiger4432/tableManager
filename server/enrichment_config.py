@@ -576,8 +576,11 @@ def _normalize_reference_views(rule_name: str, raw_views, decision_key: list,
 
 
 #: ⚰️ `claim_contract` RETIRED (S-184, 판정 295). It declared how an enrichment result was
-#: projected into ontology Claims and actions, and its ONLY consumers now live under
+#: projected into ontology Claims and actions, and its ONLY consumers lived under
 #: `server/_archive/` — the layer retired with 2026-08-28's 「엔티티·어휘·walk 이게 끝」.
+#: 🪦 That directory was DELETED on 2026-09-13 (S-210, 판정 353): nothing imported it and
+#: its own archived tests could not even be collected. So the consumer count is now zero
+#: with nothing left to point at, which is the same fact stated more plainly.
 #: What it used to do is now done by 「인리치 결과 표 → 원장 소스 선언」, the standing rule
 #: 「표에 원천 데이터를 넣고 그걸로 원장」.
 #:
