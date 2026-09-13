@@ -41137,3 +41137,107 @@ CODE_MAP 링크 0 깨짐  -> 응용 D-21 로 넘김(지시대로)
 > ③ `M1_SOURCE_CONFIG_REF.RETIRED.md` 남김 (제 권고: 예 — 코드가 열셋 자리에서 인용)
 > ④ `agent_workspace/` ㉠/㉡ (제 권고: ㉠ — 산출물만, 프로토콜은 그대로)
 > 판정 주시면 «한 커밋»으로 착지합니다. ①③ 이 「예」면 삭제 23 + 아카이브 6 이 이번 커밋의 전부입니다.
+
+---
+
+## ✅ [09-13 11:37] S-210 — 지운 28 · 아카이브 215 · 둘째 사본 하나를 접음 (`f74bbd98`, 258 파일)
+
+**재기동 «불요»** — 동작 코드 무변(지운 것은 아무도 안 읽던 것, 고친 것은 시험·주석·건너뛰기 목록).
+
+### 🔴 먼저 정정 — 제 계획 블록의 「삭제 23」이 «틀렸습니다»
+```
+egg-info 5 + outputs 3 + _archive 11 + test.ipynb 1 + server/test.ipynb 1 + xlsx 1  =  22   (23 이 아님)
++ scratch 6 (판정 ㉡)                                                              =  28
+```
+제가 제 표를 더하면서 하나를 더 셌습니다. 이번 커밋의 «실측» 수는 **28** 입니다.
+
+### 지운 것 — 28 (목록은 지시대로 전건)
+```
+assy_manager.egg-info/     PKG-INFO · SOURCES.txt · dependency_links.txt · requires.txt · top_level.txt
+                           + .gitignore 한 줄. 🔵 이미 낡아 있었습니다 — SOURCES.txt 가 어제 S-209 로
+                             옮긴 custom_parser_template 을 아직 싣고 있었습니다
+outputs/                   source_config_v2.xlsx · …inspect.ndjson · syn_lot_split_merge/scenario_summary.json
+                           ⚠️ 마지막 것에 «미커밋 수정»이 있었습니다 — 09-10 씨앗 스크립트가 다시 쓴 것이라
+                             파일 자신과 «같은 부류»입니다(누구의 작업물도 아님). mtime 확인 뒤 -f
+server/_archive/           audit_changeset · chain_mapper · enrichment_actions · examples/__init__ ·
+                           ledger_api/mechanism_gate · profile_chain_mapper · profile_lookup_adapters
+                           + tests 넷. 🔴 그 시험 넷은 «수집조차 안 됩니다»(--collect-only = 4 errors)
+server/scratch/            generate_large_table · generate_random_rows · migrate_indices · profile_query
+                           · scratch_migration_txid · test_sanitize
+test.ipynb · server/test.ipynb · source_config.xlsx
+```
+
+### 🔴 scratch — 「죽어서」가 아니라 「둘째 사본이라서」 지웠습니다 (판정 ㉡)
+```
+그 파일은 살아 있었습니다   test_the_default_database_url_has_one_home.py 의 CARRIERS 한 행
+                          (import + 스크립트 기동, 두 케이스)
+그런데 그 게이트가 «있는 이유»가  「scratch 가 DB URL 의 둘째 사본을 들었고, 순서까지 달랐다」입니다
+=> 파일과 CARRIERS 행을 «같이» 지웠습니다. 나르개 다섯 -> 넷
+```
+**둘째 사본을 「같이 빨개지게 묶어 두는 것」보다 «없애는 것»이 낫다** — 상설 ④ 의 실물이었습니다. 시험 머리글에 그 사실을 묘비로 남겨 「왜 넷인가」가 읽히게 했습니다.
+
+### 아무도 못 타는 갈래 셋도 같은 커밋에서
+```
+prod_import_check.py        NON_RUNTIME_DIRS 에서 `_archive/` · `scratch/` 제거
+test_one_name_has_one_body  walk 필터에서 `_archive` 제거
+raw_write_census.py         SKIP_DIRS 에서 `_archive` 제거
+  🔴 셋째는 «실측하다 알았습니다» — 이 스크립트는 `server/scripts` 를 걷는데 그 밑에 `_archive` 는
+     «한 번도 없었습니다». 즉 이 항목은 «쓰인 날부터» 아무것도 거르지 않았습니다.
+     제 삭제가 죽인 것이 아니라 원래 죽어 있었습니다
+각 항목이 «사 준 것»은 주석으로 남기고 튜플에서만 뺐습니다 (이유를 잃지 않게)
+```
+
+### 아카이브 — 지우지 않고 옮김 (215)
+```
+ontology_config_explorer_plan/ (6)  -> docs/_archive/ontology_config_explorer_plan_20260817/
+                                      인용 여섯 전부 같은 커밋에 경로 수정. 옛 경로를 드는 추적 파일 «0»
+agent_workspace/ (209)              -> docs/_archive/agent_workspace_20260823/
+                                      디렉터리는 «주소»로 남기고 README 한 장
+```
+🔴 **`.gitignore` 가 제 README 를 삼킬 뻔했습니다** — `agent_workspace/*` 가 이미 있어서, 그 줄만 두면 README 가 «추적되지 않고» 「비어 있되 있음」이 **조용히** 실패합니다. `!agent_workspace/README.md` 를 같은 커밋에 넣고 추적됨을 확인했습니다.
+🔵 **지시대로 셌습니다 — 마크다운 «링크»는 «0» 입니다.** 196개 참조는 전부 주석·히스토리의 «산문 경로»이고(코드가 읽는 자리 0), 그 196의 행선지가 README 한 줄입니다. 그래서 히스토리 196곳을 고쳐 쓰지 않았습니다.
+
+### 남긴 것 — 판정 353 그대로, 그리고 딸린 묘비 둘
+```
+server/notebooks/ · M1_SOURCE_CONFIG_REF.RETIRED.md      남김
+server/enrichment_config.py:580 · ledger_api/ledger_subgraph.py:1833
+   -> 둘 다 「`server/_archive/` 로 갔다」를 «현재형»으로 적고 있었습니다. 그 디렉터리가 없어졌으므로
+      한 줄씩 정정했습니다(문장을 지우지 않고 「그리고 그것도 지워졌다」로 — 이유를 잃지 않게)
+CODE_MAP.md 의 `_archive/` 인용 여럿  -> 지시대로 «응용 D-21» 로 넘깁니다(제 파일이 아님)
+docs/process/SERVER_DEFECT_QUEUE.md:793  -> 실측: «링크가 아니라» S-210 의 «과제 서술»입니다
+                                            (대상 목록). 고칠 링크가 없어 손대지 않았습니다
+```
+
+### 게이트
+```
+수집        6,254 -> 6,252   «정확히» 사라진 나르개 두 케이스. exit 0
+시험        손댄 게이트 넷 128 passed / 1 skipped     ·  raw_write_census.py 실행 OK(1/6/51)
+런처 넷     main:app -> FastAPI, 라우트 123
+           run_watcher · run_chain_worker · run_auto_update · run_decoupled_app — 모듈 본문 전부 실행
+옛 경로     지운 경로를 드는 코드 «0»(묘비 제외)
+트리        제 미커밋 «0»
+```
+🔴 **런처를 «완전 기동»하지는 «않았습니다» — 일부러입니다.** 박스가 PID 43732 로 살아 있고, 둘째 API 인스턴스는 «물리 스키마 작업»을 돌리며(`main.py:338~345`) 둘째 워커는 «같은 아웃박스»를 먹습니다. 그래서 이 저장소 자신의 방식(`runpy.run_path(run_name='__not_main__')` — 위 나르개 시험이 쓰는 바로 그 기제)으로 «모듈 본문과 import 전건»을 태웠습니다. 제 변경이 런처를 깰 수 있는 길은 «import» 하나뿐이라 그 층을 잰 것입니다.
+⚠️ 그리고 **부작용 0 은 아니었습니다** — 워커 둘은 import 중에 자기 스키마 싱크를 돌려 로그 한 줄씩 남겼습니다(「0 declared column(s)」 무변). 「기동 뒤 자기 로그 한 줄」은 그렇게 나왔고, 「완전 기동」이 아니라는 것을 여기 적습니다. 완전 기동이 필요하시면 총괄께서 재기동 때 겸하시는 것이 안전합니다.
+
+### 미추적 — 손대지 않음. 지시는 «아홉», 오늘은 «열하나»
+```
+이름                                     크기       mtime
+.claude/settings.local.json.bak-0037    15,690    2026-08-24 00:37
+08<U+F03A>4x                                 0    2026-08-24 08:55   🔴 깨진 이름(U+F03A = ':' 대체)
+main.js<U+F03A>175                           0    2026-08-24 09:52   🔴 같은 부류
+file                                         0    2026-09-09 13:01   🆕 지시 목록에 없던 것
+다시                                         0    2026-09-09 13:01   🆕 지시 목록에 없던 것
+_seedkeys.json                             237    2026-08-23 21:17
+ids.txt                                    622    2026-08-23 17:04
+server/h.json                            2,176    2026-09-04 07:46
+sg.json                                109,781    2026-08-23 17:04
+spotfire-style-ontology-rnd-view.zip   393,585    2026-08-23 19:06
+outputs/syn_p/                           (DIR)    2026-09-08 14:42   🆕 빈 디렉터리(방금 지운 outputs 밑)
+```
+0 바이트 넷 중 `file`·`다시` 는 «같은 분»에 생겼습니다 — 리다이렉션 사고로 보입니다. 소유자 판단입니다.
+
+### 🔵 지나가며 잰 것 하나 (고치지 않음)
+`server/scripts/diagnose_wal_headroom.py:3` 의 사용법이 `python agent_workspace/reports/wal_headroom.py` 를 실행하라고 적는데, **그 파일은 추적본에 없습니다**(0건). 제 이동 «전부터» 거짓이었고, 범위 밖이라 손대지 않았습니다.
+
+> 📌 **[09-13 11:37] 이 채널의 미답 질문: «없음».** 다음: **S-211 계획 블록**(패키지 경계 표 · 이동 파일 수 · import 갱신 자리 수 · 위험 · 되돌리기) — 짓기는 «판정 뒤».
