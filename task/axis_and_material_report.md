@@ -1,3 +1,59 @@
+## [09-13 13:20] C-98 선측정 — 클라 반쪽이 «서버 한 줄»에 막혀 있습니다 (커밋 없음, C-97 판정 기다리는 동안)
+
+### 봉투는 완성돼 있습니다
+
+```
+서버  `node["absence"][<술어>] = {verdict, why}`      (`ledger_subgraph.py:915`)
+      verdict  "true" | "false" | "unknown"
+      why      null | "not_declared" | "not_examined" | <절단 사유>
+선언  `vocabulary.<술어>.absence_confirmed_by = <검사 술어>`   ← 이 한 칸이 모집단의 저자입니다
+      코드가 자기 주석에 적어 둡니다 — 「The population of `node["absence"]` is THIS MAP,
+      not the data: a predicate that did not appear has no row in `predicates[]`, and that is
+      exactly where a `false` verdict has to live」
+클라  소비자 «0» (`git grep` — 지시서 맞습니다)
+```
+
+### 🔴 그런데 화면이 «어느 술어가 확인 술어인지» 알 방법이 없습니다
+
+```
+`/api/ledger/declaration` 이 술어마다 내는 것:  {name, subjects, object, origin}
+                                     «`absence_confirmed_by` 가 없습니다»
+```
+그래서 화면이 열(column)을 만들 근거가 «걷기가 실제로 닿은 노드»뿐입니다 — 데이터가 모집단이 됩니다. 그러면 그 타입의 노드에 안 닿은 걷기에서 **열 자체가 사라지고**, 「열이 없다」는 「그런 질문이 없다」로 읽힙니다. 세 상태를 지키려고 만든 칸이 세 상태를 잃는 자리입니다.
+
+🔵 **그리고 그 라우트가 이미 «같은 논거»를 자기 주석에 적어 두었습니다** — S-52 의 `attributes` 를 실어 보내는 이유로:
+
+> 「`attributes` RIDES HERE SO NO SCREEN HAS TO NAME ONE (S-52). … the only authority for which names exist is this declaration — a client holding its own list would be right until the day an operator adds one, and then quietly short.」
+
+`absence_confirmed_by` 도 «똑같은 부류»입니다. 운영자가 확인 술어를 하나 선언하는 날, 그 사실이 화면에 닿을 길이 오늘은 없습니다.
+
+### 그래서 나눠지는 반쪽 둘
+
+```
+서버(구현자)  `/declaration` 의 predicates 원소에 `absence_confirmed_by` 를 «있을 때만» 싣기
+             ⚠️ 빈 문자열이 아니라 «키 생략» — `class` 와 `attributes` 가 이미 그 규율입니다
+             (「I was not told」와 「I was told none」은 다른 사실)
+클라(저)      선언이 이름 댄 확인 술어마다 걷기 표에 열 하나 · 셀은 `{verdict, why}` 를
+             값으로 — true · false · unknown(+why 낱말 그대로, 번역 없음)
+             `cellSource` 의 `column.kind` 갈래에 한 가지가 늡니다(그 자리가 이미 그 모양입니다)
+```
+
+### 🔴 찾은 문제 · 해결 여부 · 모르는 것
+
+```
+찾은 것   지시서의 「클라 소비자 0」은 참. 다만 «읽을 수 있는 상태가 아닙니다» —
+          모집단의 저자(선언)가 화면에 안 실립니다
+해결      없음 — 서버 한 줄이 먼저입니다. 그게 없으면 제가 짓는 것은 「데이터가 모집단」인 열이고,
+          그건 이 칸이 막으려던 오독을 화면이 «새로» 짓는 것입니다
+모르는 것  오늘 출하 선언에 확인 술어가 «0» 이라(지시서도 그렇게 적습니다) 서버 한 줄이 들어와도
+          화면에 «보이는 변화가 없습니다». 즉 이 라운드의 증거는 «하니스뿐»이고, 저는 박스에서
+          눈으로 확인할 수 없습니다. 그 사실을 미리 적어 둡니다
+```
+
+**판정 대기: ㉠ C-98 의 서버 반쪽(`/declaration` 에 `absence_confirmed_by`)을 구현자 채널로 올려 주실지 · ㉡ 그때까지 C-98 을 접고 다른 것을 할지. 그리고 C-97 의 셋(ⓐ 걷기 「전부에서 걷기」 · ⓑ 보드 대조군 + 선언 값 · ⓒ 접기)은 그대로 열려 있습니다.**
+
+---
+
 ## [09-13 13:16] C-97 — «짓기 전에» 재서 올립니다. 지시서의 전제가 두 군데 어긋납니다 (커밋 없음)
 
 | 코드 | 무엇 | 상태 |
