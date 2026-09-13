@@ -427,6 +427,40 @@ def max_rows_not_visible_defers() -> int:
     return parsed if parsed >= 1 else DEFAULT_MAX_ROWS_NOT_VISIBLE_DEFERS
 
 
+#: 🔴 [S-153, 판정 378] 「DO NOT MERGE」 - TODAY'S BEHAVIOUR, WRITTEN AS A VALUE. A group is
+#: one writer's transaction and stays that way unless a rule asks otherwise, so this round
+#: adds the HANDLE and changes no timing at all: a deployment that declares nothing keeps
+#: exactly the group count it has now.
+#: ⚠️ IT IS NAMED RATHER THAN SPELLED `0`/`None` at the call sites. A bare zero there reads
+#: as 「no limit」 to one person and 「merge nothing」 to the next, and the two are opposites.
+#: ⛔ An operator who WRITES 0 is refused (`chain_bindings.rule_refusals`): the product
+#: choosing 「do not merge」 and an author declaring a ceiling of nothing are different facts.
+NO_GROUP_MERGE = 0
+
+
+def max_group_rows(rule) -> int:
+    """How many rows a merged group may hold for THIS rule, or `NO_GROUP_MERGE`.
+
+    🔴 THE CELL IS READ WHERE IT IS WRITTEN (S-153). `max_group_attempts` is open as a rule
+    cell, drawn by the form and published by the graph screen, and the worker reads it from
+    the DOCUMENT only - so writing it on a rule does nothing at all (S-221 closes that). This
+    reader takes the rule, because the merge unit is 「the same table, the same rule」 and a
+    ceiling that lived somewhere else could not describe it.
+
+    ⚠️ A BAD VALUE IS ALREADY REFUSED at load, so this seat does not re-judge it - it falls
+    back rather than raising, because by the time a group is being built the rule has passed
+    the grammar and a surprise here would stop a batch over a cell that cannot be there.
+    """
+    value = (rule or {}).get(chain_bindings.MAX_GROUP_ROWS_KEY)
+    if value is None or isinstance(value, bool):
+        return NO_GROUP_MERGE
+    try:
+        rows = int(value)
+    except (TypeError, ValueError):
+        return NO_GROUP_MERGE
+    return rows if rows > 0 else NO_GROUP_MERGE
+
+
 def max_group_attempts() -> int:
     """선언된 상한, 없으면 기본 1. 판정·로그·격리 경계가 «이 한 수»를 본다.
 
@@ -1596,6 +1630,64 @@ def warmup_worker(rules, db_session_factory=None):
         f"[Warmup] mappers={(t1 - t0) * 1000.0:.0f}ms db={(t2 - t1) * 1000.0:.0f}ms "
         f"total={(t3 - t0) * 1000.0:.0f}ms"
     )
+
+def _rules_for_group(events_in_tx, rules):
+    """The enabled rules this transaction group would wake, as a stable signature."""
+    return tuple(sorted(
+        str(r.get("name") or "")
+        for r in rules
+        if r.get("enabled", True)
+        and any(e.table_name == r.get("trigger_table") and _rule_accepts_event(r, e)
+                for e in events_in_tx)))
+
+
+def merge_consecutive_groups(group_order, groups, rules):
+    """Fold CONSECUTIVE groups that wake the same rules into one, up to their ceiling.
+
+    🔴 SAME TABLE, SAME RULE, AND ADJACENT (S-153, 판정 378). The signature is the set of
+    rules a group wakes, so 「same table and same rule」 is decided by the declaration rather
+    than guessed; adjacency is what keeps the batch's order intact, because folding a group
+    into one that is not its neighbour would move work past work.
+
+    🔴 THE CEILING IS THE STRICTEST RULE'S. A merged unit runs every rule it woke, so a
+    ceiling that held only for one of them would be no ceiling for the others - and the
+    strictest is the only choice that is true for all of them at once.
+
+    ⚠️ DECLARING NOTHING CHANGES NOTHING. With no cell the ceiling is `NO_GROUP_MERGE` and
+    every group comes back exactly as it arrived - the no-regression this round is built to
+    keep, asserted by its own case.
+
+    ⚠️ THE MERGED UNIT IS ONE UNIT FOR FAILURE TOO. It succeeds or fails together, and the
+    HOL guard sees it as the single group it now is. Splitting a failed merge back apart is
+    S-222 and is deliberately not here.
+    """
+    merged_order, merged = [], {}
+    previous_signature, previous_id = None, None
+    for tx_id in group_order:
+        events = groups[tx_id]
+        signature = _rules_for_group(events, rules)
+        ceiling = NO_GROUP_MERGE
+        if signature:
+            caps = [max_group_rows(r) for r in rules
+                    if str(r.get("name") or "") in signature]
+            # 🔴 `min` over the declared ones only: one rule saying 「do not merge」 stops the
+            #    fold for the whole unit, which is the conservative reading and the one an
+            #    operator can predict.
+            ceiling = NO_GROUP_MERGE if NO_GROUP_MERGE in caps or not caps else min(caps)
+        # ⚠️ THE FIRST TEST IS REDUNDANT TODAY AND STAYS ANYWAY. `NO_GROUP_MERGE` is 0, so
+        #    the row comparison alone already refuses to fold - measured by removing this
+        #    clause and watching every case stay green. It is kept because that greenness
+        #    depends on the SENTINEL'S VALUE rather than on its meaning, and the next person
+        #    to give 「do not merge」 a different number would turn merging on by accident.
+        if (ceiling != NO_GROUP_MERGE and signature and signature == previous_signature
+                and len(merged[previous_id]) + len(events) <= ceiling):
+            merged[previous_id].extend(events)
+            continue
+        merged_order.append(tx_id)
+        merged[tx_id] = list(events)
+        previous_signature, previous_id = signature, tx_id
+    return merged_order, merged
+
 
 async def process_pending_groups(db, group_order, groups, rules, db_session_factory, batch_wake_ts=None):
     """[Latency Fix #5] 한 배치 안의 트랜잭션 그룹들을 순차 처리한다.
@@ -3099,6 +3191,14 @@ async def start_chain_ingestion_worker(db_session_factory):
                     if tx_id not in groups:
                         group_order.append(tx_id)
                     groups[tx_id].append(event)
+
+                # 🔴 [S-153, 판정 378] THE HANDLE, APPLIED ONCE, BEFORE ANYTHING READS THE
+                #    GROUPS. Folding here rather than inside the drain keeps every seat
+                #    downstream - HOL, retries, broadcast order - looking at exactly one
+                #    shape of group, which is what stops 「how big is a group」 from having
+                #    two answers. With no rule declaring a ceiling this returns what it was
+                #    given, so a deployment that says nothing is untouched.
+                group_order, groups = merge_consecutive_groups(group_order, groups, rules)
                 
                 # [Latency Fix #5] 실패 그룹은 배치 전체를 중단(break)하지 않고 건너뛴다(순서 보존 가드는 내부 처리).
                 failed_any = await process_pending_groups(db, group_order, groups, rules, db_session_factory, batch_wake_ts=batch_wake_ts)

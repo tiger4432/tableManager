@@ -221,7 +221,7 @@ RULE_ROUTING_OPTIONAL = tuple(
     key for key in RULE_TABLE_KEYS if key not in RULE_ROUTING_REQUIRED) + (
     "target_field", "trigger_columns", "enabled", "is_batch",
     "follow_up", "allow_chain_trigger", "allow_map_metadata_upsert",
-    "max_group_attempts", "origin",
+    "max_group_attempts", "max_group_rows", "origin",
     # S-188 ⓓ: `mapper` is the ONE cell; the two-cell spelling stays readable. `params` is
     # where a mapper's arguments live. The symbols `MAPPER_KEY`/`PARAMS_KEY` below are
     # defined against these literals and a test asserts they agree — the literals are here
@@ -332,6 +332,23 @@ def rule_refusals(rule, path, *, mapper_resolvable, mapper_params=None):
             "names no mapper this process can run: '%s' is not registered and "
             "mapper_module/mapper_function are not both set" % (one_cell or "")))
 
+    # 🔴 [S-153, 판정 378] A CEILING THAT IS NOT A POSITIVE NUMBER IS NOT A CEILING. Written
+    # as text or as zero it would read as 「no limit」 or 「merge nothing」 depending on who
+    # looked, and the operator would have declared a performance handle that quietly does
+    # neither. The DEFAULT is a different thing entirely (`NO_GROUP_MERGE`, set by the
+    # product when the cell is absent) - what is refused here is a cell somebody WROTE.
+    if MAX_GROUP_ROWS_KEY in candidate:
+        written = candidate.get(MAX_GROUP_ROWS_KEY)
+        # ⚠️ THE CHECK SAYS WHAT THE MESSAGE SAYS. `int(2.5)` is 2, so scoring through a cast
+        # would accept 「two and a half rows」 while the refusal below promises a whole number -
+        # and an operator reading that sentence would never learn which half was wrong.
+        # `bool` is an `int` in Python, and `True` is not a ceiling.
+        rows = written if isinstance(written, int) and not isinstance(written, bool) else None
+        if rows is None or rows <= 0:
+            issues.append(validation.DeclarationValidationError(
+                "bad_group_rows", path + "." + MAX_GROUP_ROWS_KEY,
+                "a group-row ceiling must be a positive whole number, got %r" % (written,)))
+
     # 🔴 THE ONE BRANCH THIS ROUND ADDS. Only where a declaration exists, and only over the
     # cells the rule actually wrote - `params_of` reads the block with the flat cells beneath
     # it, which is the same view the mapper will be handed.
@@ -378,6 +395,12 @@ def params_of(rule):
     return merged
 
 
+#: 🔴 [S-153] ONE SPELLING OF THE CEILING'S NAME. The grammar tuple above is built before
+#: this line, so the literal appears there too - and `test_the_rule_table_keys_have_one_author`
+#: is the reason that pair is asserted rather than trusted.
+MAX_GROUP_ROWS_KEY = "max_group_rows"
+
+
 #: S-188 ⓔ. The node vocabulary is the LEDGER skeleton's, verbatim: kinds `record`/`map`/
 #: `leaf` and hints `choice`/`free`/`ref`/`number`/`flag`. 🔴 NOTHING NEW IS INVENTED HERE —
 #: a kind the form renderer has never seen draws NOTHING, and this repository has paid for
@@ -392,6 +415,7 @@ _SKELETON_HINTS = {
     "allow_chain_trigger": "flag",
     "allow_map_metadata_upsert": "flag",
     "max_group_attempts": "number",
+    "max_group_rows": "number",
     "trigger_table": "ref",
     "target_table": "ref",
     "source_table": "ref",

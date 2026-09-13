@@ -133,6 +133,14 @@
         }
       },
       {
+        "key": "max_group_rows",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "number"
+        }
+      },
+      {
         "key": "origin",
         "required": false,
         "node": {
