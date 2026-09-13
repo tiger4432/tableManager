@@ -87,7 +87,7 @@ def test_the_shape_arrives_when_no_rule_is_named_which_is_when_it_is_needed(rule
     """🔴 THE CREATE CALL HAS NO NAME. A skeleton that only rode along beside an EXISTING
     rule would be absent at the one moment a form is being drawn for a new one."""
     without = client.get(ROUTE).json()
-    beside = client.get(ROUTE, params={"rule": "live_one"}).json()
+    beside = client.get(ROUTE, params={"name": "live_one"}).json()
     assert without["skeleton"] == beside["skeleton"]
     assert "name" not in without and beside["name"] == "live_one"
 
@@ -181,7 +181,7 @@ def test_the_new_rule_is_listed_and_readable_the_moment_it_is_saved(rules_file, 
 
     listed = client.get(ROUTE).json()
     assert "fresh_one" in listed["rules"]
-    read_back = client.get(ROUTE, params={"rule": "fresh_one"}).json()
+    read_back = client.get(ROUTE, params={"name": "fresh_one"}).json()
     assert read_back["declaration"]["trigger_table"] == "x"
     assert read_back["enabled"] is False
 

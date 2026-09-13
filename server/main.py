@@ -5744,14 +5744,19 @@ def post_table_config_raw(payload: dict = Body(...)):
 
 
 @app.get("/admin/chain/rules/raw", dependencies=[Depends(require_admin_token)])
-def get_chain_rule_raw(rule: str = None):
+def get_chain_rule_raw(name: str = None):
     """체인 규칙 «하나» + base 지문. 편집 단위는 표·선언 편집기와 «같습니다».
 
     🔴 변환 «코드»는 앱 안에서 쓸 수 있는데, 그 코드를 표에 «거는» 규칙은 읽기만 있었습니다 —
     전략(「체인이 표를 만든다」)의 마지막 한 걸음이 앱 «밖»이었습니다.
+
+    🔴 인자 이름이 «계약»입니다 (S-212). 화면은 `?name=` 으로 묻고(패널의 `nameKey: 'name'`),
+       POST 의 payload 키도 뷰 함수의 인자도 `name` 인데 «이 라우트만» `rule` 이었습니다 —
+       FastAPI 가 모르는 질의를 버려 `declaration` 없이 답했고, 규칙을 골라도 폼이 «항상»
+       비었습니다. 표 쪽이 `table` 인 것과 같은 규칙: «등록부가 부르는 낱말» 그대로.
     """
     import ledger_admin
-    return ledger_admin.chain_rule_raw_view(rule)
+    return ledger_admin.chain_rule_raw_view(name)
 
 
 @app.post("/admin/chain/rules/raw", dependencies=[Depends(require_admin_token)])
