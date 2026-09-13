@@ -239,9 +239,12 @@ export class ControlBarPanel extends Panel {
     } else if (!this.numericReads) {
       note.textContent = '수식어는 선언에서 옵니다 · 수치인지는 이 부품이 재지 않습니다';
     } else if (this.qualifierTypes === null) {
-      // 🔴 이 문장이 게이트 ② 입니다. 목록은 «그대로 서 있고», 못 잰 이유만 말합니다.
-      note.textContent = `재려면 마킹이 필요합니다 — ${this.numericReads} 이 비어 있습니다`
-        + ' (수식어는 선언에서 오므로 그대로 있습니다)';
+      // 🔴 판정 361 ①. 사유는 «낱말»로 남고 문장은 안 남습니다. 「마킹 없음」이 왜 못 쟀는지이고,
+      //    목록이 그대로 서 있는 까닭(수식어는 선언에서 온다)은 화면이 «보여 주고» 있습니다 —
+      //    목록이 눈앞에 있는데 그것을 문장으로 또 말하면 그게 상설이 막는 주저리입니다.
+      // ⚠️ 게이트 ② 가 이 자리를 단언합니다. 재는 것은 「목록이 서 있고 못 잰 이유가 보인다」이지
+      //    이 낱말들이 아니어서, 하니스는 상태로 채점하고 문구는 여기 하나입니다.
+      note.textContent = `마킹 없음 · ${this.numericReads}`;
     } else {
       const carried = this.qualifiers
         .filter((q) => (this.qualifierTypes[q.name] || {}).seen).length;

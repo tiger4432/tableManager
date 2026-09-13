@@ -255,8 +255,12 @@ async function suite(mods) {
     // 🔴 게이트 ② -- 「아직 안 골라서 못 잰다」는 «자기 문장»입니다. 「값 없음」이나 빈 목록으로
     //    두면 「없어서」와 구별이 사라지고, 그게 이 보드가 존재하는 이유입니다.
     const note = byClass(host, 'rb-control-note')[0];
+    // 🔴 문구가 아니라 «두 사실»을 봅니다 (판정 361 이 이 줄을 짧은 명사로 줄였고, 그때 문구를
+    //    베낀 단언은 «같은 말을 하는 화면»에서 빨개졌습니다). 재는 것은: 못 잰 자리가 «어느
+    //    마킹»인지 이름을 들고 있고 -- 「값 없음」류의 한 낱말로는 실을 수 없는 사실입니다 --
+    //    그리고 목록이 그대로 서 있다는 것.
     ok('A8 with an empty marking the qualifiers still stand and the reason is SAID',
-      Boolean(note) && note.textContent.includes('재려면 마킹이 필요합니다')
+      Boolean(note) && note.textContent.includes('marking:1')
       && texts.some((t) => t.startsWith('radius_x')), note && note.textContent);
     // 🔴 집계는 «데이터가 필요 없습니다». 마킹이 비어도 일곱이 전부 서 있어야 합니다.
     ok('A9 every aggregation is offered with no data at all',
@@ -595,8 +599,8 @@ const MUTANTS = [
   { id: 'M14', what: 'an empty marking is reported as an absence, folding two absences into one',
     catches: 'A8',
     mutate: { 'control_bar_panel.js': (s) => s.replace(
-      "      note.textContent = `재려면 마킹이 필요합니다 — ${this.numericReads} 이 비어 있습니다`",
-      "      note.textContent = '값 없음'") } },
+      "      note.textContent = `마킹 없음 · ${this.numericReads}`;",
+      "      note.textContent = '값 없음';") } },
   // 🔴 집계는 «데이터가 필요 없습니다». 데이터를 기다리게 하면 빈 마킹에서 축이 통째로 사라집니다.
   { id: 'M15', what: 'the aggregations wait for data, so an empty marking has no axis at all',
     catches: 'A9',

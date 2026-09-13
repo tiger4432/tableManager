@@ -16,7 +16,7 @@
     rel="stylesheet">
   <!-- 토큰(SSOT)과 이 화면의 뼈대. main.js 는 CSS 를 임포트하지 않는다 — bare node 로
        채점 가능해야 하기 때문. 그 규율의 근거는 ledger_map_panel.js 머리 주석. -->
-  <script type="module" crossorigin src="/assets/rnd_board-tHV-Kp5I.js"></script>
+  <script type="module" crossorigin src="/assets/rnd_board-DrjC3UWv.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/tokens-HUps0QzO.js">
   <link rel="modulepreload" crossorigin href="/assets/preload-helper-rH28oKiQ.js">
   <link rel="modulepreload" crossorigin href="/assets/absent-Ae952B9C.js">
@@ -31,9 +31,9 @@
   <div class="rb-page">
     <header class="rb-page__head">
       <span class="rb-page__title">R&D 진단 보드</span>
-      <span class="rb-page__note">
-        맵을 클릭하면 그 자리가 «그 패널이 쓰는 마킹»에 들어갑니다 · Shift+클릭은 컨트롤(−)
-      </span>
+      <!-- 🔴 판정 361 ②. 안내가 필요해도 «문장»은 안 씁니다 — 상설 「기호·짧은 영어·명사형」.
+           누르는 것과 그 결과를 등호로 잇는 것이 이 사실의 전부이고, 그 밖은 설명입니다. -->
+      <span class="rb-page__note">클릭 = 마킹 · Shift+클릭 = 컨트롤(−)</span>
     </header>
     <!-- 배치는 이 페이지에 없다. 셸이 선언(main.js 의 BOARD)을 읽어 격자에 앉힌다. -->
     <div id="rb-board"></div>
