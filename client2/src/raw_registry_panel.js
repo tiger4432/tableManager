@@ -237,6 +237,13 @@ export class RawRegistryPanel {
     //    이 둘이 그대로라야 편집 한 번이 화면을 접어 버리지 않습니다.
     this.moreOpen = false;
     this.rawOpen = false;
+    // 🔴 C-101 ①. 「무엇이 열려 있나」와 「저장 안 된 글자」는 «부품의» 사실입니다. 페이지는
+    //    30초마다 목록을 다시 읽는데 그 읽기는 이름을 «안 댑니다» — 응답에 문서가 «없어서»
+    //    그대로 그리면 편집기가 사라집니다(소유자 2026-09-13 「지혼자 새로고침되서 초기화」).
+    //    ⚠️ 상태를 페이지에 두면 등록부마다 한 벌씩 생기고, 늦게 배우는 쪽만 초기화됩니다.
+    this.open = '';      // 열려 있는 문서의 이름 (새 이름이면 NEW_NAME). 아무것도 없으면 ''
+    this.draft = null;   // 저장 안 된 «글자». `null`(고친 적 없음)과 ''(다 지웠음)이 다릅니다
+    this.draftOf = '';   // 그 초안이 «어느 문서»의 것인가 — 남의 문서에 입히면 남의 값이 됩니다
     // 닫힌 목록(예: 맵퍼 등록부). 스켈레톤의 `list` 이름을 키로 하는 «값»이고, 이 파일은
     // 그 이름을 짓지 않습니다. 화면이 넣어 줍니다.
     //
@@ -334,14 +341,26 @@ export class RawRegistryPanel {
   /** @param {object|null} payload @param {object} [opts] */
   render(payload, opts = {}) {
     const spec = this.spec;
+    let view = registryView(payload, opts, spec);
+    const doc = this.doc;
+    // 🔴 C-101 ①. «배경 갱신»은 목록입니다 — 열려 있는 문서를 갈아 끼우지 않습니다.
+    //    ⚠️ 「고치는 중」만 지키는 것이 아닙니다: 고른 것이 «풀리는» 것도 초기화입니다.
+    //    ⚠️ 못 읽은 배경 읽기도 아무것도 안 바꿉니다 — 이름 없는 읽기는 문서를 «안 실어서»
+    //       그 자리에 놓을 것이 없고, 상태를 보이려고 편집 중인 글자를 지우는 것은 값을 잃는
+    //       것입니다. 목록이 «그대로»면 고르개도 다시 안 짓습니다(열린 목록을 닫는 일뿐입니다).
+    if (opts.background && this.open) {
+      const names = view.available ? view.names.join('\u0000') : null;
+      if (names !== null && names !== this._names) this._options(this._picker, view, this.open);
+      return view;
+    }
     // 「+ 추가」는 서버에 다시 묻지 않습니다 — 목록도 지문도 방금 받은 그대로입니다.
     this._payload = payload;
     this._opts = opts;
-    let view = registryView(payload, opts, spec);
-    const doc = this.doc;
+    this.open = '';
     this.root.textContent = '';
 
     if (!view.available) {
+      this._forget();
       const box = doc.createElement('div');
       box.className = 'empty-state';
       const ic = doc.createElement('div');
@@ -359,6 +378,12 @@ export class RawRegistryPanel {
     //    누르면 이름 칸이 폼 «위»에 하나, 폼 «안»에 하나 — 둘이었습니다).
     const formOwnsName = Boolean(root)
       && ((root.fields || []).some((f) => f && f.key === spec.nameKey));
+    // 🔴 C-101 ①. 문서의 «이름». 초안은 그 이름을 같이 들고, 저장이 답했거나 «다른 문서»가
+    //    열리면 끝납니다 — 남겨 두면 나중에 아무 표시 없이 되살아납니다(보관은 제안 사항이고,
+    //    그건 「미저장」 배지가 선 뒤의 일입니다).
+    const key = this.newMode ? NEW_NAME : String(view.name || '');
+    if (opts.saved || (this.draft !== null && this.draftOf !== key)) this._forget();
+    const drafted = this.draft !== null && this.draftOf === key ? this.draft : null;
     // 🔴 C-95-b. 「무엇을 편집하고 있나」에 답이 있나. 없으면 편집기를 «안 그립니다» — 빈 편집기는
     //    친절이 아니라 «이름 없는 문서 위의 살아 있는 저장 버튼»입니다.
     const picked = this.newMode || Boolean(view.name);
@@ -375,30 +400,8 @@ export class RawRegistryPanel {
     // 🔴 탐색기의 고르개 «그 자체»를 씁니다 — 값을 베끼는 대신 규칙에 «닿습니다».
     picker.className = `${spec.cls}-picker oe-field-select`;
     picker.setAttribute('data-picker', spec.nameKey);
-    // 새 이름을 짓는 중이면 고르개가 «그것»을 보여 줍니다. 종전에는 이전 규칙의 이름이 그대로
-    // 남아, 지금 보고 있는 것이 무엇인지 화면이 «틀리게» 말했습니다.
-    if (this.newMode && spec.addLabel) {
-      const o = doc.createElement('option');
-      o.value = NEW_NAME;
-      o.textContent = NEW_NAME;
-      o.setAttribute('selected', 'selected');
-      picker.appendChild(o);
-    } else if (!picked) {
-      // C-95-b. 아직 아무것도 안 골랐습니다. 자리표시자가 없으면 고르개가 «첫 이름»을 보여 주고,
-      // 그 이름의 내용은 아직 읽은 적이 없습니다.
-      const o = doc.createElement('option');
-      o.value = PICK_NAME;
-      o.textContent = PICK_NAME;
-      o.setAttribute('selected', 'selected');
-      picker.appendChild(o);
-    }
-    for (const name of view.names) {
-      const o = doc.createElement('option');
-      o.value = name;
-      o.textContent = name;
-      if (!this.newMode && name === view.name) o.setAttribute('selected', 'selected');
-      picker.appendChild(o);
-    }
+    this._picker = picker;
+    this._options(picker, view, picked ? key : '');
     if (picker.addEventListener && this.onOpen) {
       picker.addEventListener('change', (e) => {
         const value = e && e.target ? e.target.value || '' : '';
@@ -419,7 +422,7 @@ export class RawRegistryPanel {
         addBtn.addEventListener('click', () => {
           // 취소는 «보고 있던 것»으로 돌아갑니다. 다시 묻지 않습니다 — 응답이 그대로 있습니다.
           this.newMode = !this.newMode;
-          this.render(this._payload, this._opts);
+          this._again();
         });
       }
       head.appendChild(addBtn);
@@ -484,10 +487,18 @@ export class RawRegistryPanel {
     // ═══ 폼 ═══════════════════════════════════════════════════════════════════════════
     // ② 서버가 스켈레톤을 실어 줄 때«만» 그립니다 — 없으면 오늘 그대로입니다.
     if (root && picked) {
-      const held = this.newMode
+      let held = this.newMode
         ? (emptyOf(root, (payload.skeleton || {}).defs) || {})
         : (payload.declaration && typeof payload.declaration === 'object'
           ? payload.declaration : {});
+      // 초안이 있으면 «그것»이 문서입니다. 반쯤 친 JSON 이면 폼은 종전 문서로 그리고 글자는
+      // 초안 그대로 둡니다 — 원문 상자의 `input` 갈래가 이미 그 규율입니다.
+      if (drafted !== null) {
+        try {
+          const typed = JSON.parse(drafted || '{}');
+          if (typed && typeof typed === 'object') held = typed;
+        } catch (e) { /* noqa */ }
+      }
       const box = doc.createElement('div');
       // 🔴 탐색기의 «그 규칙»이 이 마운트에도 닿습니다 (C-95). 시트는 한 벌이고 문이 둘입니다 —
       //    같은 함수가 두 화면에서 다르게 보이던 것이 criterion ④ 의 실물이었습니다.
@@ -521,6 +532,7 @@ export class RawRegistryPanel {
           const updated = writeShapeAtPath(held2, String(path), next);
           if (updated === null) return;
           area.value = JSON.stringify(updated, null, 2);
+          this._keep(key, area.value);
           draw(updated);
         };
         box.addEventListener('change', write);
@@ -546,12 +558,17 @@ export class RawRegistryPanel {
     //    말하지 않습니다. 문서는 그대로 여기 삽니다(접혀도 DOM 에 있습니다).
     area.className = `${spec.cls}-raw`;
     area.setAttribute('data-raw', spec.nameKey);
-    area.value = view.raw;
-    area.textContent = view.raw;
+    // 🔴 초안이 «문서»입니다 — 서버의 글자로 덮는 그 순간이 초기화입니다.
+    const text = drafted !== null ? drafted : view.raw;
+    area.value = text;
+    area.textContent = text;
     if (area.addEventListener && root && picked) {
       // 글자가 문서입니다. 파싱이 안 되면 폼을 «그대로 둡니다» — 반쯤 친 JSON 위에서 폼을
       // 비우면 사람이 치던 것이 사라진 것처럼 보입니다.
       area.addEventListener('input', () => {
+        // 🔴 파싱 여부와 «무관하게» 초안입니다. 반쯤 친 JSON 을 안 들고 있으면 다음 그림이
+        //    그것을 지우고, 그 그림은 접기 버튼 하나로도 옵니다.
+        this._keep(key, area.value);
         let held2;
         try { held2 = JSON.parse(area.value || '{}'); } catch (e) { return; }
         if (this._redraw) this._redraw(held2);
@@ -560,7 +577,7 @@ export class RawRegistryPanel {
     if (root && picked) {
       this.root.appendChild(this._fold(`${spec.cls}-raw-fold`, '원본', null, this.rawOpen, () => {
         this.rawOpen = !this.rawOpen;
-        this.render(this._payload, this._opts);
+        this._again();
       }));
       if (!this.rawOpen) area.hidden = true;
     }
@@ -573,7 +590,56 @@ export class RawRegistryPanel {
       this.root.appendChild(this._line(`${spec.cls}-saved`,
         `${view.saved.name} · ${view.saved.count} · ${view.saved.backup}`));
     }
+    // 🔴 C-101 ①. 「무엇이 열려 있나」를 적습니다 — 배경 갱신이 이것을 읽고 «비켜갑니다».
+    this.open = picked ? key : '';
     return view;
+  }
+
+  /**
+   * 고르개의 «선택지». 🔴 자리가 하나입니다 — 첫 그림과 배경 갱신이 각자 지으면 둘이 갈라지고,
+   * 갈라진 날 목록 갱신이 자리표시자를 «되살려» 열려 있는 문서를 안 고른 것처럼 그립니다.
+   *
+   * @param {object|null} picker  고르개 (없으면 아무것도 안 합니다)
+   * @param {object} view  방금 읽은 것
+   * @param {string} open  «열려 있는» 문서의 이름. ''이면 아직 아무것도 안 골랐습니다
+   */
+  _options(picker, view, open) {
+    if (!picker) return;
+    const doc = this.doc;
+    picker.textContent = '';
+    const opt = (value, selected) => {
+      const o = doc.createElement('option');
+      o.value = value;
+      o.textContent = value;
+      if (selected) o.setAttribute('selected', 'selected');
+      picker.appendChild(o);
+    };
+    // 새 이름을 짓는 중이면 고르개가 «그것»을 보여 줍니다. 종전에는 이전 규칙의 이름이 그대로
+    // 남아, 지금 보고 있는 것이 무엇인지 화면이 «틀리게» 말했습니다.
+    if (this.newMode && this.spec.addLabel) opt(NEW_NAME, true);
+    // C-95-b. 아직 아무것도 안 골랐습니다. 자리표시자가 없으면 고르개가 «첫 이름»을 보여 주고,
+    // 그 이름의 내용은 아직 읽은 적이 없습니다.
+    else if (!open) opt(PICK_NAME, true);
+    for (const name of view.names) opt(name, name === open);
+    this._names = view.names.join('\u0000');
+  }
+
+  /** 자기 자신을 다시 그립니다 — «사람이 누른» 것이라 배경 갱신이 «아닙니다». 세 자리가 각자
+   *  부르던 것을 한 자리로 모았습니다: 그중 하나가 배경 깃발을 그대로 넘기면 접기 버튼이
+   *  «아무 일도 안 하는» 버튼이 됩니다 (criterion ④). */
+  _again() {
+    this.render(this._payload, { ...this._opts, background: false });
+  }
+
+  /** 저장 안 된 글자를 «부품이» 듭니다. 이름을 같이 드는 이유는 생성자의 `draftOf` 를 보십시오. */
+  _keep(key, text) {
+    this.draft = String(text == null ? '' : text);
+    this.draftOf = String(key || '');
+  }
+
+  _forget() {
+    this.draft = null;
+    this.draftOf = '';
   }
 
   /**
@@ -599,7 +665,7 @@ export class RawRegistryPanel {
     }
     children.appendChild(this._fold(`${spec.cls}-more`, '고급', rest.length, this.moreOpen, () => {
       this.moreOpen = !this.moreOpen;
-      this.render(this._payload, this._opts);
+      this._again();
     }));
     children.appendChild(later);
   }

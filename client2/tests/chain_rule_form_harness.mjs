@@ -271,6 +271,60 @@ function suite(M) {
   ok(h1Paths.has('trigger_table') && !h1Paths.has('decoy_alpha'),
     'G3 two panels on one page keep their own documents');
 
+  // ── H: the part owns what is open and what is unsaved (C-101 ①) ───────────────────
+  // 🔴 THE OWNER'S SENTENCE: 「체인 규칙 설정 쓰다가 지혼자 새로고침되서 초기화되는데?」. The page
+  //    re-reads every 30 seconds WITHOUT a name, so that response carries a list and no
+  //    document -- drawing it does not make the boxes stale, it takes the editor AWAY.
+  const clock = makePanel(M, SPEC);
+  clock.panel.render(payloadFor(SKELETON, { name: 'alpha', trigger_table: 'before' }));
+  const clockField = walk(clock.host).find((n) => n.attrs && n.attrs['data-value'] === 'trigger_table');
+  if (clockField) { clockField.value = 'typed'; clockField.dispatch('change', {}); }
+  const listOnly = payloadFor(SKELETON, { name: 'alpha' });
+  delete listOnly.name;
+  delete listOnly.declaration;
+  delete listOnly.raw;
+  delete listOnly.enabled;
+  listOnly.rules = ['alpha', 'beta', 'gamma'];
+  clock.panel.render(listOnly, { background: true });
+  const stillThere = walk(clock.host).find((n) => n.attrs && n.attrs['data-value'] === 'trigger_table');
+  ok(Boolean(stillThere) && stillThere.value === 'typed',
+    `H1 a background read does not swap out a document being edited -- [${stillThere ? stillThere.value : 'the form is GONE'}]`);
+  const clockPicker = byCls(clock.host, 'chain-rule-picker')[0];
+  const clockNames = clockPicker ? clockPicker.children.map((o) => o.value) : [];
+  ok(clockNames.includes('gamma'),
+    `H2 ... while the LIST it went for does refresh -- that is what the read was for [${clockNames.join(',')}]`);
+  ok(clockNames.indexOf(M.PICK_NAME) === -1,
+    'H3 ... and refreshing the list does not put 「nothing picked」 over an open rule');
+  // 🔴 THE SAME LOSS THROUGH A CLICK, AND NO TIMER NEEDED. Folding 「원본」 redraws the panel from
+  //    the response it is holding, so before C-101 ① one fold threw away everything typed.
+  const fold = byCls(clock.host, 'chain-rule-raw-fold')[0];
+  if (fold) fold.dispatch('click', {});
+  const afterFold = walk(clock.host).find((n) => n.attrs && n.attrs['data-value'] === 'trigger_table');
+  ok(Boolean(fold) && Boolean(afterFold) && afterFold.value === 'typed',
+    `H4 the part's OWN redraw keeps the unsaved document too -- [${afterFold ? afterFold.value : 'no field'}]`);
+  // 🔴 AND A DRAFT ENDS WHERE ITS DOCUMENT DOES. The answer to a save IS the document now; a
+  //    draft that outlived it would put the old text back with nothing on the screen saying so.
+  clock.panel.render(payloadFor(SKELETON, { name: 'alpha', trigger_table: 'stored' }),
+                     { saved: { name: 'alpha', rules: ['alpha', 'beta'], backup: '/box/bak' } });
+  const afterSave = walk(clock.host).find((n) => n.attrs && n.attrs['data-value'] === 'trigger_table');
+  ok(Boolean(afterSave) && afterSave.value === 'stored',
+    `H5 once the save answers, the served document wins -- [${afterSave ? afterSave.value : 'no field'}]`);
+  // ⚠️ NOTHING OPEN MEANS NOTHING TO PROTECT -- the tab's first read is a background one, and a
+  //    guard that refused it would open the tab on an empty panel.
+  const first = makePanel(M, SPEC);
+  first.panel.render(payloadFor(SKELETON, { name: 'alpha', trigger_table: 'served' }),
+                     { background: true });
+  ok(byCls(first.host, 'chain-rule-form').length === 1,
+    'H6 a background read with nothing open still draws -- that is how the tab opens');
+  // 🔴 AND A PERSON PRESSING A BUTTON IS NOT THE CLOCK. The panel redraws itself from the
+  //    response it stored; if it passed that response's background flag back in, every fold
+  //    after the tab opened would be a button that does nothing.
+  const reFold = byCls(first.host, 'chain-rule-raw-fold')[0];
+  if (reFold) reFold.dispatch('click', {});
+  const reArea = byCls(first.host, 'chain-rule-raw')[0];
+  ok(Boolean(reFold) && Boolean(reArea) && reArea.hidden !== true,
+    'H7 a fold pressed after a background read still opens');
+
   return { pass: pass - before.pass, fail: fail - before.fail };
 }
 
@@ -287,21 +341,24 @@ const DEFECTS = [
   // was open. The cell it is typed into moved into the form, so this is where that now decides.
   ['the add control saves the name that was already open',
     s => s.replace('        if (formOwnsName) {', '        if (false) {')],
+  // Re-aimed by C-101 ①: the options are built in ONE place now (`_options`), so the claim
+  // 「the picker says WHICH document is on the screen」 is decided there. Same claim, same C6.
   ['the picker keeps showing the rule that was open while a new one is written',
-    s => s.replace('    if (this.newMode && spec.addLabel) {', '    if (false) {')],
+    s => s.replace('if (this.newMode && this.spec.addLabel) opt(NEW_NAME, true);',
+                   'if (false) opt(NEW_NAME, true);')],
   // C-95-b. Without the placeholder the browser picks the first option for the screen, and the
   // screen then names a rule it has never read -- with empty boxes beside the name.
   ['a response with no name still names the first rule in the list',
-    s => s.replace('    } else if (!picked) {', '    } else if (false) {')],
+    s => s.replace('else if (!open) opt(PICK_NAME, true);', 'else if (false) opt(PICK_NAME, true);')],
   ['an editor is drawn for a rule nobody picked',
     s => s.replace('    const picked = this.newMode || Boolean(view.name);',
                    '    const picked = true;')],
   ['the save button stands on a screen with no document',
     s => s.replace('    if (picked || !root) head.appendChild(save);', '    head.appendChild(save);')],
   ['a new rule starts from the rule that was open',
-    s => s.replace('      const held = this.newMode\n'
+    s => s.replace('      let held = this.newMode\n'
                    + '        ? (emptyOf(root, (payload.skeleton || {}).defs) || {})\n',
-                   '      const held = this.newMode\n        ? (payload.declaration || {})\n')],
+                   '      let held = this.newMode\n        ? (payload.declaration || {})\n')],
   ['a form edit no longer reaches the document that is saved',
     s => s.replace('          area.value = JSON.stringify(updated, null, 2);\n', '')],
   // 🔴 THE TRAP THIS ROUND FELL INTO, KEPT AS A MUTANT. `setAtPath`/`writeShapeAtPath` return a
@@ -311,9 +368,11 @@ const DEFECTS = [
     s => s.replace('          const updated = writeShapeAtPath(held2, String(path), next);\n'
                    + '          if (updated === null) return;\n'
                    + '          area.value = JSON.stringify(updated, null, 2);\n'
+                   + '          this._keep(key, area.value);\n'
                    + '          draw(updated);',
                    '          writeShapeAtPath(held2, String(path), next);\n'
                    + '          area.value = JSON.stringify(held2, null, 2);\n'
+                   + '          this._keep(key, area.value);\n'
                    + '          draw(held2);')],
   ['the refused field is not marked',
     s => s.replace('        markRefusedField(box, view, spec);\n', '')],
@@ -334,6 +393,17 @@ const DEFECTS = [
                    '      if (false) {')],
   ['an unread list is folded into an empty one, so 「never asked」 reads as 「there are none」',
     s => s.replace("    this.lists = deps.lists || {};", "    this.lists = deps.lists || { mappers: [] };")],
+  // 🔴 C-101 ①. Four ways this screen reset itself while somebody was typing.
+  ['a background read is drawn over the document being edited',
+    s => s.replace('if (opts.background && this.open) {', 'if (false) {')],
+  ['the unsaved document is dropped, so any redraw rebuilds from the response',
+    s => s.replace('const drafted = this.draft !== null && this.draftOf === key ? this.draft : null;',
+                   'const drafted = null;')],
+  ['the part passes the stored background flag back in, so a fold after the tab opens does nothing',
+    s => s.replace('this.render(this._payload, { ...this._opts, background: false });',
+                   'this.render(this._payload, this._opts);')],
+  ['a draft outlives the document it belongs to, so old text returns after a save',
+    s => s.replace('if (opts.saved || (this.draft !== null && this.draftOf !== key)) this._forget();', '')],
   ['the add control is drawn for a registry that declared no word for it',
     s => s.replace('    if (spec.addLabel) {', '    if (true) {')],
 ];

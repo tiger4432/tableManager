@@ -24,6 +24,8 @@
  *   E  saving: ONE POST, shape {name, declaration, base}, through the page's own save
  *   F  staying: after the save the same rule is still selected and still filled
  *   G  the new name: [규칙 추가] asks for a name in ONE place, and the save carries THAT name
+ *   H  staying under the page's own clock: the 30-second read names no rule, and what is being
+ *      edited is still there afterwards -- while the LIST it went for does refresh (C-101 ①)
  *
  * ⚠️ WHAT IT DOES NOT SCORE, AND WHY. The query parameter's SPELLING is a seam between two
  *    files in two lanes (`admin.js` sends one word, `main.get_chain_rule_raw` declares another
@@ -270,6 +272,50 @@ async function suite(probe) {
   ok(afterEdit.target_table === 'lot_slot_wafer_v2', 'D a box changed rewrites the document');
   ok(afterEdit.lot_column === RULE.lot_column, 'D and rewrites nothing else');
 
+  // ── H. the page's own clock does not swap out the form (C-101 ①) ────────────────────────
+  // 🔴 THE OWNER'S SENTENCE, AS A WALK: 「체인 규칙 설정 쓰다가 지혼자 새로고침되서 초기화되는데?」
+  //    `admin.js:408` fires every 30s and reaches `refreshChainRule()` WITH NO NAME. That read
+  //    carries a list and no declaration, so drawing it removes the editor -- the boxes do not
+  //    go stale, they go AWAY, and the rule deselects with them.
+  // ⚠️ Called exactly as the timer calls it: no arguments. A harness that passed the background
+  //    flag itself would be making the page's decision and would stay green with the page broken.
+  answer = (call) => (call.url.includes('/admin/mappers/list')
+    ? { status: 200, body: { registered: [] } }
+    : { status: 200, body: rawView(null) });
+  await refreshChainRule();
+  await flush();
+  const kept = boxAt('target_table');
+  ok(Boolean(kept) && kept.value === 'lot_slot_wafer_v2',
+     `H the edited box survives the page's own refresh (${kept ? JSON.stringify(kept.value) : 'the form is GONE'})`);
+  ok((held() || {}).target_table === 'lot_slot_wafer_v2',
+     'H and the document the save would send is the edited one, not the served one');
+  const underClock = byAttr('data-picker');
+  const onClock = underClock
+    ? underClock.children.filter((o) => o.getAttribute('selected')).map((o) => o.value) : [];
+  ok(onClock.length === 1 && onClock[0] === RULE.name,
+     `H the rule is still the one open -- deselecting IS the 「초기화」 (${JSON.stringify(onClock)})`);
+  ok(Boolean(boxAt('lot_column')) || (held() || {}).lot_column === RULE.lot_column,
+     'H and a cell the skeleton never heard of is still in the document');
+
+  // 🔴 THE OTHER HALF, OR THE GUARD IS JUST 「IGNORE THE SERVER」. The page went for the list
+  //    because the list can change under it; a rule added by somebody else must appear.
+  answer = (call) => {
+    if (call.url.includes('/admin/mappers/list')) return { status: 200, body: { registered: [] } };
+    const body = rawView(null);
+    body.rules = [...NAMES, 'a_rule_somebody_else_added'];
+    return { status: 200, body };
+  };
+  await refreshChainRule();
+  await flush();
+  const grown = byAttr('data-picker');
+  const names = grown ? grown.children.map((o) => o.value) : [];
+  ok(names.includes('a_rule_somebody_else_added'),
+     `H the list DOES refresh -- that is what the read was for (${JSON.stringify(names)})`);
+  ok(names.indexOf(PICK_NAME) === -1,
+     'H ... and refreshing it does not bring back 「아직 안 골랐다」 over an open rule');
+  ok(Boolean(boxAt('target_table')) && boxAt('target_table').value === 'lot_slot_wafer_v2',
+     'H ... while the edit is still untouched');
+
   // ── E. saving: one POST, the shape the route reads ──────────────────────────────────────
   let saved = null;
   answer = (call) => {
@@ -298,6 +344,16 @@ async function suite(probe) {
      `F after saving, the picker still shows that rule (${JSON.stringify(selected)})`);
   ok(Boolean(boxAt('trigger_table')) && boxAt('trigger_table').value === RULE.trigger_table,
      'F and the boxes are still filled');
+  // 🔴 AND THE SAVE READ BACK THE RULE IT WROTE. Since C-101 ① a read that names no rule is the
+  //    page's own clock and the panel steps around it -- so 「still selected, still filled」 is
+  //    true of a save that forgot its own name too, and asserting only those would let that
+  //    defect through. What only a NAMED read-back can do is two things: bring the server's
+  //    version of the document to the screen, and let the screen say the write happened.
+  const readBack = calls.filter((c) => c.method === 'GET' && c.url.includes('/admin/chain/rules/raw'));
+  ok(readBack.length === 1 && askedName(readBack[0]) === RULE.name,
+     `F the save reads back the rule it saved (${readBack.map(askedName).map((x) => JSON.stringify(x)).join(',') || 'no read'})`);
+  ok(Boolean(byCls('chain-rule-saved')),
+     'F and the screen says the write happened -- a save nobody can see is a save nobody trusts');
 
   // ── G. the new name lives in ONE place, and the save carries it ─────────────────────────
   press('add-chain-rule');
@@ -342,6 +398,16 @@ const DEFECTS = [
   ['the save forgets the base fingerprint, so a concurrent edit is overwritten in silence',
     s => s.replace('      body: JSON.stringify({ name, declaration, base }),',
                    '      body: JSON.stringify({ name, declaration }),')],
+  // 🔴 C-101 ①, AS THE OWNER MET IT. Without this one line the page hands its periodic read to
+  //    the panel as if a person had asked for it, and a read that names no rule draws no editor.
+  ['the page hands its own 30-second read to the form, which then has no document to draw',
+    s => s.replace('if (!name) opts.background = true;', '')],
+  // ⚠️ THE SAME LINE, SPELLED WRONG. 「!name」 is the whole judgement: a read that names a rule
+  //    is a person opening it, and one that names none is the clock. Inverting it makes every
+  //    real open silently refuse to draw, which is the failure mode nobody would guess from
+  //    the fix's shape.
+  ['the flag is raised on the reads that DO name a rule',
+    s => s.replace('if (!name) opts.background = true;', 'if (name) opts.background = true;')],
   // 🔴 What 「저장했더니 사라졌다」 is made of: the save lands and the screen re-reads with no
   //    name, so the rule that was just written is no longer the one on the screen.
   ['after saving, the screen forgets which rule it saved',

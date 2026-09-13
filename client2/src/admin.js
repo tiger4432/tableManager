@@ -1116,6 +1116,13 @@ async function refreshChainRule(name, extra = {}) {
   chainRulePanel.setLists(mappers === null ? {} : { mappers });
   let body = null;
   let opts = { ...extra };
+  // 🔴 C-101 ①. 이름을 «안 댄» 읽기는 «목록»입니다 — 30초 자동 갱신(:408)과 탭 전환이 그렇게
+  //    부릅니다. 그 응답에는 문서가 «없어서», 그대로 그리면 편집 중인 폼이 사라집니다
+  //    (소유자 2026-09-13 「체인 규칙 설정 쓰다가 지혼자 새로고침되서 초기화되는데?」).
+  //    ⚠️ 종전 가드는 `isInlineEditorActive || isEditorDirty` «뿐»이었고 그 둘은 Monaco
+  //       «파일 편집기»의 깃발입니다 — 이 폼이 편집 중인 것을 페이지는 «알 수 없습니다».
+  //    🔴 무엇을 할지는 «패널»이 정합니다. 여기에 판정을 두면 등록부마다 한 벌씩 생깁니다.
+  if (!name) opts.background = true;
   try {
     const qs = name ? `?name=${encodeURIComponent(name)}` : '';
     const res = await adminFetch(`${API_BASE}/admin/chain/rules/raw${qs}`);
@@ -1178,6 +1185,9 @@ async function refreshTableConfig(table, extra = {}) {
   }
   let body = null;
   let opts = { ...extra };
+  // 🔴 C-101 ①. 체인 규칙과 «같은 템플릿»이고 같은 결함입니다 — `switchTab`(:635)과
+  //    `fetchData`(:1034)가 이름 없이 부릅니다. 부류로 답합니다.
+  if (!table) opts.background = true;
   try {
     const qs = table ? `?table=${encodeURIComponent(table)}` : '';
     const res = await adminFetch(`${API_BASE}/admin/tables/config/raw${qs}`);
