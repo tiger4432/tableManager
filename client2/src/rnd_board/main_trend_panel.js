@@ -25,6 +25,10 @@ import { SIGN } from './marking_store.js';
 import { createWalk } from './api.js';
 // 🔴 C-77. 서버 시각은 offset 단 ISO — 순간으로 읽고 보는 쪽 zone 으로 그린다.
 import { localMinute } from '../server_time.js';
+// ⚰️ C-99 ③. 「여기서는 `absent.js` 를 import 할 수 없습니다」가 이 파일 56행에 적혀 있었고
+//    오늘 거짓입니다 — 바로 위 줄이 이미 바깥 import 이고, C-93 이 공용 로더의 재작성을 한
+//    자리로 모은 뒤로 여덟 하니스가 그것을 따라옵니다. 낡은 문장은 같이 지웁니다.
+import { UNPICKED, subjectText } from '../absent.js';
 
 /**
  * 🔴 이 점이 «어느 노드»인가 — 찍는 키는 한 곳에서 정합니다 (소유자 판정 2026-08-24:
@@ -53,10 +57,14 @@ function formatValue(model, value) {
   //    그러면 아래 첫 줄은 «던지고» (undefined.toFixed), 둘째 줄은 「NaN%」를
   //    그립니다. 둘 다 사용자가 보는 자리입니다 (상세 툴팁 · 축 라벨).
   //    ⚠️ `Number.isFinite(value)` 하나로는 부족합니다 — null 과 '' 이 통과합니다.
-  // ⚠️ `absent.js` 가 이 철자의 정본인데 여기서는 «import 할 수 없습니다» —
-  //    이 파일을 재는 하니스가 모듈을 data: URL 로 집어넣거나 함수를 «잘라내어» eval 합니다.
-  //    둘 다 새 import 를 못 따라옵니다. 그래서 «같은 판정»을 여기 적되, typeof 로
-  //    좁혀 사본이 벌어질 여지를 없앱니다. 하니스 쪽은 별도 라운드입니다.
+  // ⚰️ 여기에 「`absent.js` 를 이 파일에서는 import 할 수 없습니다 — 하니스가 data: URL 로
+  //    싣거나 잘라내어 eval 합니다」가 적혀 있었고, C-99 ③ 에서 재서 «거짓»이었습니다:
+  //    이 파일이 이미 `../server_time.js` 를 import 하고, C-93(판정 345)이 공용 로더의 바깥
+  //    import 재작성(`OUTWARD_RE`)을 «잊을 수 없는 한 자리»로 모은 뒤로 여덟 하니스가 그것을
+  //    따라옵니다. 그 문장은 그날 거짓이 됐고 계속 서 있었습니다.
+  // 🔴 그런데 이 «함수»는 그대로 둡니다 — 재는 것이 「없음」이 아니라 «수의 서식»이라,
+  //    `ABSENT` 와 글자만 같고 판정이 다릅니다. 같아 보이는 것을 접는 것이 이 라운드의 일이
+  //    아닙니다 (부재의 세 상태를 접는 쪽이 더 비쌉니다).
   if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
   const n = value;
   if (model && model.valueKind === 'aggregate') {
@@ -225,12 +233,14 @@ export class MainTrendPanel extends Panel {
       root.appendChild(cap);
     }
 
-    // The subtitle is the instruction, on the panel: this is how a seed is chosen.
+    // 🔴 C-99 ③. 값입니다. 세 부품이 같은 사실을 「… 이 이 차트의 주어입니다」·「… 이 맵의
+    //    주어입니다」·「… 이 목록의 주어입니다」로 각자 적고 있었고, 하나가 바뀌면 세 화면이
+    //    다른 말투가 됩니다. 철자는 `absent.js` 하나입니다.
     const sub = doc.createElement('div');
     sub.className = 'rb-trend-sub';
     sub.textContent = this.start && this.start.marking
-      ? `${this.start.marking} 이 이 차트의 주어입니다`
-      : '점을 찍으면 그것이 씨앗입니다 · 씨앗도 마킹 하나';
+      ? subjectText(this.start.marking)
+      : UNPICKED;
     root.appendChild(sub);
 
     if (this.loadState !== 'ready' || !this.model || !this.model.ok) {
@@ -242,7 +252,7 @@ export class MainTrendPanel extends Panel {
       //    make an untouched screen look broken -- the first of the four absences this board
       //    is built to keep apart.
       note.textContent = this.loadState === 'awaiting'
-        ? `${(this.start && this.start.marking) || '마킹'} 이 비었습니다 — 후보를 고르면 그립니다`
+        ? UNPICKED
         : (this.loadState === 'undeclared'
           ? '이 좌석이 «무엇을 모을지» 선언하지 않았습니다 — 그래서 걷지 않았습니다'
           : (this.loadState === 'loading' ? '읽는 중…'

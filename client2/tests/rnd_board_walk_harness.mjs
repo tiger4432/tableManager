@@ -197,7 +197,7 @@ async function suite(mods) {
     stateCells.some((s) => s.includes('동률') && !s.includes('종류 다름')));
 
   // ── R. rank is not a verdict ──────────────────────────────────────────────────
-  truthy('R1 the panel says so on itself', hostR.textContent.includes('순위는 판정이 아닙니다'));
+  truthy('R1 the panel says so on itself', hostR.textContent.includes('판정 아님'));
   const ranks = byClass(hostR, 'rb-table-cell--rank').map((n) => n.textContent);
   // The header cells carry no `rb-rank-n`, so this is the data rows only. 2 appears TWICE:
   // that is the tie surviving, and X4 (renumbering) dies right here.

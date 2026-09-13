@@ -36,6 +36,7 @@ import { Panel } from './panel.js';
 import { SIGN } from './marking_store.js';
 import { TablePart } from './table_part.js';
 import { typeGraph, pathsBetween } from './api.js';
+import { UNPICKED } from '../absent.js';
 // 🔴 C-70. 구획과 컬럼을 «걷기 페이지와 같은 함수»에서 받습니다. 이 파일이 컬럼 셋을 자기
 //    소스에 적고 있던 동안 두 걷기 표는 «갈라질 수» 있었고, 갈라져도 오류가 안 납니다.
 import { sectionsByType, sectionHeading, tableColumns, cellSource, pluralAttributes, COLUMNS }
@@ -614,7 +615,8 @@ export class WalkBoxPanel extends Panel {
     // ③ 걸었는데 없다.
     if (this.walkState === 'ready') return '걸었는데 닿은 것이 없습니다';
     // ① 아직 안 골랐다 / 안 걸었다.
-    return this.nodeType ? '「걷기」를 누르면 결과가 여기 나옵니다' : '타입을 고르고 걸으십시오';
+    // C-99 ③. 두 문장이 한 값으로. 다음 행동은 «누를 수 있는 버튼»이 이미 말합니다.
+    return UNPICKED;
   }
 }
 

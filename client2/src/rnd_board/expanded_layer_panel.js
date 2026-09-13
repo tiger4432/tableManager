@@ -17,6 +17,7 @@
 import { Panel } from './panel.js';
 import { SIGN } from './marking_store.js';
 import { TablePart } from './table_part.js';
+import { UNPICKED } from '../absent.js';
 
 export class ExpandedLayerPanel extends Panel {
   constructor(host, deps) {
@@ -109,11 +110,11 @@ export class ExpandedLayerPanel extends Panel {
       // 🔴 idle 은 «아직 안 물었다» 입니다 (round Z-3). 마킹이 비면 mount 가 묻지 않으므로
       //    여기에 머무는데, 종전 문장은 「구성을 못 읽었습니다」였습니다 -- 이 파일 머리가
       //    「아직 안 골랐다 ≠ 없다」라고 적어 두고 정작 그 자리에서 «고장»으로 그렸습니다.
-      note.textContent = this.loadState === 'idle' ? '층을 찍으면 여기에 펼칩니다'
+      note.textContent = this.loadState === 'idle' ? UNPICKED
         : this.loadState === 'loading' ? '읽는 중…'
         : (this.loadState === 'ready'
           ? (((this.model && this.model.components) || []).length
-            ? '층을 찍으면 여기에 펼칩니다'
+            ? UNPICKED
             : '이 웨이퍼는 구성 기록이 없습니다 — 펼칠 층이 없습니다')
           : (this.model && this.model.message) || '구성을 못 읽었습니다');
       root.appendChild(note);

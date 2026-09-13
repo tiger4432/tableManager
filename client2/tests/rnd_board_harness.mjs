@@ -38,6 +38,8 @@ import { readFileSync, readdirSync } from 'node:fs';
 //    2026-09-07 실측: 그 사본이 서른셋이었고, 새 하니스는 그것을 안 들고 태어납니다.
 import { readSourceText } from './lib/probe.mjs';
 import { loadBoardModules, BOARD_DIR } from './lib/board_modules.mjs';
+// C-99 ③. The spelling has one author; see the same note in the reach harness.
+import { UNPICKED } from '../src/absent.js';
 import { makeDoc, makeObserver, flush, walk, canvasIn, byClass } from './lib/board_dom.mjs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -708,7 +710,7 @@ async function suite(mods) {
     await flush(); await flush();
     eq('F17 a map whose marking is empty does not ask', askedZoom, 0);
     ok('F17b ... and says it is waiting, not that the server refused',
-      /비었습니다/.test(zoomHost2.textContent) && !/거절/.test(zoomHost2.textContent),
+      zoomHost2.textContent.includes(UNPICKED) && !/거절/.test(zoomHost2.textContent),
       zoomHost2.textContent.slice(0, 80));
     zoom3.destroy();
   }

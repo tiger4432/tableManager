@@ -37,6 +37,7 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { Panel, markingIntent } from './panel.js';
+import { UNPICKED, subjectText } from '../absent.js';
 import { SIGN } from './marking_store.js';
 import { projectionModel, mapModel } from './api.js';
 import { layoutFor, paintSeating, createCanvasSurface } from '../map2/painter.js';
@@ -627,8 +628,9 @@ export class MapPanel extends Panel {
       n.sub.textContent = '좌표계 선언 없음';
       n.counts.textContent = 'space 를 선언하십시오 — die:base · die:core · die:dt · inchip';
     } else if (this.status === 'awaiting') {
-      n.sub.textContent = `${this.start.marking} 이 이 맵의 주어입니다`;
-      n.counts.textContent = `${this.start.marking} 이 비었습니다 — 찍으면 그립니다`;
+      // C-99 ③. 같은 두 값, 같은 철자 — 트렌드·목록과 한 벌입니다.
+      n.sub.textContent = subjectText(this.start.marking);
+      n.counts.textContent = UNPICKED;
     } else if (this.status === 'error') {
       n.sub.textContent = CHROME.FAILED;
       n.counts.textContent = this.failure || '';

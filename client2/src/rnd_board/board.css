@@ -36,12 +36,12 @@ body {
 }
 
 .rb-page__title {
-  font-size: 14px;
+  font-size: var(--fs-body);
   font-weight: 600;
 }
 
 .rb-page__note {
-  font-size: 12.5px;
+  font-size: var(--fs-label);
   color: var(--text-muted);
 }
 
@@ -86,13 +86,13 @@ body {
 }
 
 .rb-map__title {
-  font-size: 13.5px;
+  font-size: var(--fs-body);
   font-weight: 600;
 }
 
 .rb-map__sub,
 .rb-map__counts {
-  font-size: 12.5px;
+  font-size: var(--fs-label);
   color: var(--text-muted);
 }
 
@@ -102,7 +102,7 @@ body {
   border: 1px solid var(--border-strong);
   border-radius: 4px;
   font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 11.5px;
+  font-size: var(--fs-tag);
   color: var(--text-dim);
 }
 
@@ -120,7 +120,7 @@ body {
 .rb-map__note:not(:empty) {
   padding: 8px 10px;
   border-top: 1px solid var(--border);
-  font-size: 12.5px;
+  font-size: var(--fs-label);
   line-height: 1.5;
   color: var(--warning);
   background: var(--warning-weak);
@@ -143,8 +143,8 @@ body {
 .rb-head-subject { font-family: var(--font-mono); font-weight: 600; color: var(--text); }
 
 .rb-chip { display: inline-flex; align-items: center; gap: 5px; padding: 1px 7px;
-  border: 1px solid var(--border); border-radius: 5px; font-size: 11px; white-space: nowrap; }
-.rb-chip-key { color: var(--text-muted); font-size: 11px; letter-spacing: .3px; text-transform: uppercase; }
+  border: 1px solid var(--border); border-radius: 5px; font-size: var(--fs-tag); white-space: nowrap; }
+.rb-chip-key { color: var(--text-muted); font-size: var(--fs-tag); letter-spacing: .3px; text-transform: uppercase; }
 .rb-chip-val { font-family: var(--font-mono); color: var(--text); }
 .rb-chip--fact { background: var(--bg-surface); }
 /* An absence: quieter, never alarming. */
@@ -152,7 +152,7 @@ body {
 .rb-chip--absent .rb-chip-val { color: var(--text-muted); }
 
 .rb-head-note { display: flex; align-items: center; gap: 8px; padding: 6px 10px;
-  border-radius: 5px; font-size: 12px; }
+  border-radius: 5px; font-size: var(--fs-label); }
 .rb-head-note--idle { background: var(--bg-inset); color: var(--text-muted); }
 .rb-head-note--refused { background: var(--danger-weak); color: var(--danger);
   border: 1px solid var(--danger); }
@@ -163,10 +163,10 @@ body {
   min-height: 0; overflow: auto; }
 .rb-comp-counts { display: flex; gap: 14px; flex-wrap: wrap; }
 .rb-comp-count { display: flex; align-items: baseline; gap: 5px; }
-.rb-comp-count-value { font-family: var(--font-mono); font-size: 18px; font-weight: 700; color: var(--text); }
-.rb-comp-count-label { font-size: 11px; letter-spacing: .4px; text-transform: uppercase; color: var(--text-muted); }
-.rb-comp-cardinality { font-size: 11px; color: var(--text-muted); }
-.rb-comp-note { padding: 6px 8px; border-radius: 5px; font-size: 12px;
+.rb-comp-count-value { font-family: var(--font-mono); font-size: var(--fs-title); font-weight: 700; color: var(--text); }
+.rb-comp-count-label { font-size: var(--fs-tag); letter-spacing: .4px; text-transform: uppercase; color: var(--text-muted); }
+.rb-comp-cardinality { font-size: var(--fs-tag); color: var(--text-muted); }
+.rb-comp-note { padding: 6px 8px; border-radius: 5px; font-size: var(--fs-label);
   background: var(--bg-inset); color: var(--text-muted); }
 .rb-comp-note--refused { background: var(--danger-weak); color: var(--danger); }
 
@@ -182,13 +182,13 @@ body {
   grid-template-columns: var(--comp-cols);
   justify-content: start; column-gap: 12px;
   gap: 8px; align-items: center; padding: 4px 6px; border-bottom: 1px solid var(--border);
-  font-size: 11.5px; cursor: pointer; }
+  font-size: var(--fs-tag); cursor: pointer; }
 .rb-comp-row:hover { background: var(--surface-hover); }
 .rb-comp-row.is-marked-case { background: var(--accent-weak); box-shadow: inset 2px 0 0 var(--accent); }
 .rb-comp-row.is-marked-control { background: var(--bg-inset); box-shadow: inset 2px 0 0 var(--text-muted); }
 .rb-comp-row-id { font-family: var(--font-mono); color: var(--text); overflow: hidden; text-overflow: ellipsis; }
 .rb-comp-row-core { font-family: var(--font-mono); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; }
-.rb-comp-row-state { font-size: 11px; letter-spacing: .3px; text-transform: uppercase; color: var(--text-muted); }
+.rb-comp-row-state { font-size: var(--fs-tag); letter-spacing: .3px; text-transform: uppercase; color: var(--text-muted); }
 /* `unresolved` is an ABSENCE, not a failure -- muted, not red. */
 .rb-comp-row-state.is-resolved { color: var(--success); }
 .rb-comp-row-events { font-family: var(--font-mono); color: var(--text-muted); }
@@ -202,10 +202,10 @@ body {
    🔴 An absence never borrows `--danger`. Only a server refusal does. */
 .rb-cand { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px; min-height: 0; overflow: auto; }
 .rb-cand-head { display: flex; gap: 6px; flex-wrap: wrap; }
-.rb-cand-stat { padding: 1px 7px; border-radius: 5px; font-size: 11px; border: 1px solid var(--border); }
+.rb-cand-stat { padding: 1px 7px; border-radius: 5px; font-size: var(--fs-tag); border: 1px solid var(--border); }
 .rb-cand-stat--fact { background: var(--bg-surface); color: var(--text); }
 .rb-cand-stat--absent { background: var(--bg-inset); color: var(--text-muted); border-style: dashed; }
-.rb-cand-line { padding: 6px 8px; border-radius: 5px; font-size: 12px; }
+.rb-cand-line { padding: 6px 8px; border-radius: 5px; font-size: var(--fs-label); }
 .rb-cand-line--absent { background: var(--bg-inset); color: var(--text-muted); }
 .rb-cand-line--refused { background: var(--danger-weak); color: var(--danger); border: 1px solid var(--danger); }
 
@@ -222,44 +222,44 @@ body {
 /* The folded card: one shape for "there are N more and none of them has a value". */
 .rb-cand-card--folded { cursor: default; border-style: dashed; background: var(--bg-inset); }
 .rb-cand-card-top { display: flex; align-items: center; gap: 5px; }
-.rb-cand-rank { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
-.rb-cand-tag { padding: 0 5px; border-radius: 4px; font-size: 11px; border: 1px solid var(--border); }
+.rb-cand-rank { font-family: var(--font-mono); font-size: var(--fs-tag); color: var(--text-muted); }
+.rb-cand-tag { padding: 0 5px; border-radius: 4px; font-size: var(--fs-tag); border: 1px solid var(--border); }
 .rb-cand-tag--top { border-color: var(--accent); color: var(--accent); background: var(--accent-weak); }
 .rb-cand-tag--absent { color: var(--text-muted); background: var(--bg-inset); border-style: dashed; }
-.rb-cand-quantity { font-family: var(--font-mono); font-size: 13px; font-weight: 600; color: var(--text); }
-.rb-cand-model { font-size: 11px; color: var(--text-muted); }
-.rb-cand-measured { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+.rb-cand-quantity { font-family: var(--font-mono); font-size: var(--fs-label); font-weight: 600; color: var(--text); }
+.rb-cand-model { font-size: var(--fs-tag); color: var(--text-muted); }
+.rb-cand-measured { font-family: var(--font-mono); font-size: var(--fs-tag); color: var(--text-muted); }
 
 .rb-rank { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; min-height: 0; overflow: auto; }
-.rb-rank-caption { font-size: 11px; color: var(--text-muted); }
-.rb-rank-note { padding: 6px 8px; border-radius: 5px; font-size: 12px; }
+.rb-rank-caption { font-size: var(--fs-tag); color: var(--text-muted); }
+.rb-rank-note { padding: 6px 8px; border-radius: 5px; font-size: var(--fs-label); }
 .rb-rank-note--absent { background: var(--bg-inset); color: var(--text-muted); }
 .rb-rank-note--refused { background: var(--danger-weak); color: var(--danger); border: 1px solid var(--danger); }
 .rb-rank-rows { display: flex; flex-direction: column; }
 .rb-rank-row { display: grid; grid-template-columns: 2.5rem minmax(0,1fr) 2rem 3rem 8rem;
   gap: 6px; align-items: center; padding: 3px 4px; border-bottom: 1px solid var(--border);
-  font-size: 11.5px; cursor: pointer; }
+  font-size: var(--fs-tag); cursor: pointer; }
 .rb-rank-row--head { cursor: default; background: var(--bg-header); color: var(--text-muted);
-  font-size: 11px; letter-spacing: .3px; text-transform: uppercase; }
+  font-size: var(--fs-tag); letter-spacing: .3px; text-transform: uppercase; }
 .rb-rank-row:hover { background: var(--surface-hover); }
 .rb-rank-row.is-marked-case { background: var(--accent-weak); box-shadow: inset 2px 0 0 var(--accent); }
 .rb-rank-n { font-family: var(--font-mono); color: var(--text); }
 /* Two lines, never merged. */
 .rb-rank-label { display: flex; flex-direction: column; min-width: 0; }
 .rb-rank-quantity { font-family: var(--font-mono); color: var(--text); overflow: hidden; text-overflow: ellipsis; }
-.rb-rank-model { font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; }
+.rb-rank-model { font-size: var(--fs-tag); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; }
 .rb-rank-hops, .rb-rank-measured { font-family: var(--font-mono); color: var(--text); }
 /* `-` is the name-only reading. Muted, never red -- it is an absence of measurement, not a fault. */
 .rb-rank-measured.is-absent { color: var(--text-muted); }
-.rb-rank-state { font-size: 11px; color: var(--text-muted); }
+.rb-rank-state { font-size: var(--fs-tag); color: var(--text-muted); }
 .rb-rank-evidence { display: flex; flex-direction: column; gap: 1px; padding: 4px 4px 6px 2.5rem;
   border-bottom: 1px solid var(--border); background: var(--bg-inset); }
-.rb-rank-hop { display: flex; gap: 6px; font-size: 11px; align-items: baseline; }
-.rb-rank-hop-kind { font-size: 11px; color: var(--text-muted); text-transform: uppercase; min-width: 4rem; }
+.rb-rank-hop { display: flex; gap: 6px; font-size: var(--fs-tag); align-items: baseline; }
+.rb-rank-hop-kind { font-size: var(--fs-tag); color: var(--text-muted); text-transform: uppercase; min-width: 4rem; }
 .rb-rank-hop-label { font-family: var(--font-mono); color: var(--text); overflow: hidden; text-overflow: ellipsis; }
 /* A hop that only names a model is dimmer than one that points at a thing in the world. */
 .rb-rank-hop.is-declared .rb-rank-hop-label { color: var(--text-muted); }
-.rb-rank-hop-ref { font-family: var(--font-mono); font-size: 11px; color: var(--accent-2); }
+.rb-rank-hop-ref { font-family: var(--font-mono); font-size: var(--fs-tag); color: var(--accent-2); }
 
 /* ── MARKING IS DRAWN BY ATTENUATION ─────────────────────────────────────────────
    Measured in the owner's running Spotfire (2026-08-23): a click leaves the marked row at
@@ -305,7 +305,8 @@ body {
   padding: 8px 10px 5px;
   background: var(--bg-header);
   border-bottom: 1px solid var(--border);
-  font-size: 11.5px;
+  /* 기본은 «라벨»입니다. 주(트렌드·맵·구성)와 보조(축 표·마킹·펼친 층)는 아래에서 갈립니다. */
+  font-size: var(--fs-label);
   font-weight: 600;
   letter-spacing: .2px;
   color: var(--text);
@@ -322,9 +323,9 @@ body {
    🔴 NOTHING UNDER 11px. 「작은 글씨는 없느니만 못하다」 is a standing value in this repo, and a
       9.5px qualifier is a line the reader skips rather than reads. */
 .rb-rank-row { align-items: center; }
-.rb-rank-n { font-family: var(--font-mono); font-size: 13px; font-weight: 600; }
-.rb-cand-rank { font-size: 12px; font-weight: 600; }
-.rb-comp-row-id { font-size: 12.5px; }
+.rb-rank-n { font-family: var(--font-mono); font-size: var(--fs-label); font-weight: 600; }
+.rb-cand-rank { font-size: var(--fs-label); font-weight: 600; }
+.rb-comp-row-id { font-size: var(--fs-label); }
 /* The qualifier under a name is a second line, not a second heading. */
 .rb-rank-model, .rb-cand-model { line-height: 1.35; }
 
@@ -337,18 +338,18 @@ body {
 }
 .rb-control-group { display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
   padding-right: 14px; border-right: 1px solid var(--border-strong); }
-.rb-control-ordinal { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
-.rb-control-label { font-size: 12.5px; color: var(--text-muted); }
-.rb-control-hint { font-size: 12.5px; color: var(--text-dim); margin-right: 2px; }
-.rb-control-grammar { font-size: 12px; color: var(--text-muted); margin-left: auto; }
+.rb-control-ordinal { font-family: var(--font-mono); font-size: var(--fs-tag); color: var(--text-dim); }
+.rb-control-label { font-size: var(--fs-label); color: var(--text-muted); }
+.rb-control-hint { font-size: var(--fs-label); color: var(--text-dim); margin-right: 2px; }
+.rb-control-grammar { font-size: var(--fs-label); color: var(--text-muted); margin-left: auto; }
 /* 「왜 못 쟀나」를 알약 옆이 아니라 «줄 전체»로 말합니다 -- 알약 하나에 붙이면 그 알약만의
    사정으로 읽히는데, 이건 그 줄 전부에 걸린 사실입니다 (라운드 ①-a). */
-.rb-control-note { flex-basis: 100%; font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+.rb-control-note { flex-basis: 100%; font-size: var(--fs-label); color: var(--text-dim); margin-top: 2px; }
 
 .rb-pill {
   display: inline-flex; align-items: baseline; gap: 6px;
   padding: 3px 9px; border: 1px solid var(--border-strong); background: var(--bg-surface);
-  font-family: var(--font-mono); font-size: 12.5px; color: var(--text); cursor: pointer;
+  font-family: var(--font-mono); font-size: var(--fs-label); color: var(--text); cursor: pointer;
 }
 .rb-pill:hover { border-color: var(--accent); color: var(--accent); }
 .rb-pill.is-chosen { border-color: var(--accent); background: var(--accent); color: var(--accent-contrast); }
@@ -356,7 +357,7 @@ body {
 /* 🔴 A COUNT NOBODY SERVES. Dashed and 「—」: the axis exists, the number does not, and those
    are different sentences from 「0 개」. */
 .rb-pill--unsourced { border-style: dashed; }
-.rb-pill-count { font-size: 11px; color: var(--text-muted); }
+.rb-pill-count { font-size: var(--fs-tag); color: var(--text-muted); }
 .rb-pill.is-chosen .rb-pill-count { color: var(--accent-contrast); }
 .rb-pill-count.is-absent { color: var(--text-dim); }
 
@@ -364,8 +365,8 @@ body {
    점 하나가 웨이퍼 하나. 씨앗은 링, 씨앗의 값은 가로 점선. */
 .rb-trend { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px;
   min-height: 0; overflow: hidden; }
-.rb-trend-sub { font-size: 11px; color: var(--text-muted); flex: 0 0 auto; }
-.rb-trend-note { padding: 6px 8px; font-size: 12px; }
+.rb-trend-sub { font-size: var(--fs-tag); color: var(--text-muted); flex: 0 0 auto; }
+.rb-trend-note { padding: 6px 8px; font-size: var(--fs-label); }
 .rb-trend-note--absent { background: var(--bg-inset); color: var(--text-muted); }
 .rb-trend-note--refused { background: var(--danger-weak); color: var(--danger); }
 .rb-trend-plot { position: relative; flex: 1 1 auto; min-height: 0;
@@ -379,11 +380,11 @@ body {
 .rb-trend-dot.is-seed { box-shadow: 0 0 0 3px var(--danger-weak); }
 .rb-trend-seedline { position: absolute; left: 0; right: 0; height: 0;
   border-top: 1px dashed var(--accent); }
-.rb-trend-ymax { position: absolute; left: -44px; top: -7px; font-size: 11px;
+.rb-trend-ymax { position: absolute; left: -44px; top: -7px; font-size: var(--fs-tag);
   font-family: var(--font-mono); color: var(--text-muted); }
-.rb-trend-ymin { position: absolute; left: -44px; bottom: -7px; font-size: 11px;
+.rb-trend-ymin { position: absolute; left: -44px; bottom: -7px; font-size: var(--fs-tag);
   font-family: var(--font-mono); color: var(--text-muted); }
-.rb-trend-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 11px;
+.rb-trend-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: var(--fs-tag);
   color: var(--text-muted); flex: 0 0 auto; }
 .rb-trend-prov { font-family: var(--font-mono); color: var(--text-dim); }
 .rb-trend-absent { color: var(--text-dim); border-bottom: 1px dashed var(--border-strong); }
@@ -394,20 +395,20 @@ body {
 .rb-comp-row-lot { font-family: var(--font-mono); color: var(--text-muted);
   overflow: hidden; text-overflow: ellipsis; }
 .rb-comp-row-slot, .rb-comp-row-branch, .rb-comp-row-lineage {
-  font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+  font-family: var(--font-mono); font-size: var(--fs-tag); color: var(--text-muted); }
 .rb-comp-row-id.is-absent, .rb-comp-row-core.is-absent, .rb-comp-row-lot.is-absent,
 .rb-comp-row-slot.is-absent, .rb-comp-row-branch.is-absent, .rb-comp-row-lineage.is-absent {
   color: var(--text-dim);
 }
 .rb-comp-head { display: grid; grid-template-columns: var(--comp-cols);
   justify-content: start; column-gap: 12px; align-items: baseline; padding: 3px 4px;
-  border-bottom: 1px solid var(--border-strong); font-size: 11px; color: var(--text-dim);
+  border-bottom: 1px solid var(--border-strong); font-size: var(--fs-tag); color: var(--text-dim);
   letter-spacing: .3px; }
 
 /* 목업의 맵 상태 알약 — 「이 패널이 왜 이렇게 그려졌나」. */
 .rb-map__basis {
   padding: 1px 7px; border: 1px solid var(--border); border-radius: 4px;
-  background: var(--bg-inset); font-size: 11px; color: var(--text-muted);
+  background: var(--bg-inset); font-size: var(--fs-tag); color: var(--text-muted);
   white-space: nowrap;
 }
 .rb-map__basis[data-basis="follows"] { border-style: dashed; }
@@ -418,17 +419,17 @@ body {
   border: 1px solid var(--border); background: var(--bg-inset);
   justify-self: start; min-width: 18rem;
 }
-.rb-comp-resolution-head { font-size: 11px; color: var(--text-muted); letter-spacing: .3px; }
+.rb-comp-resolution-head { font-size: var(--fs-tag); color: var(--text-muted); letter-spacing: .3px; }
 .rb-comp-resolution-row { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 8px; }
-.rb-comp-resolution-key { font-size: 11px; color: var(--text-muted); }
-.rb-comp-resolution-val { font-family: var(--font-mono); font-size: 11px; color: var(--text);
+.rb-comp-resolution-key { font-size: var(--fs-tag); color: var(--text-muted); }
+.rb-comp-resolution-val { font-family: var(--font-mono); font-size: var(--fs-tag); color: var(--text);
   overflow-wrap: anywhere; }
 .rb-comp-resolution-row.is-absent .rb-comp-resolution-val { color: var(--text-dim); }
 
 /* 스팟파이어의 상태바 — 「N marked」 가 항상 보입니다. */
 .rb-status { display: flex; flex-direction: column; gap: 2px; padding: 6px 10px;
   min-height: 0; overflow: auto; }
-.rb-status-row { display: flex; align-items: baseline; gap: 8px; font-size: 11px; }
+.rb-status-row { display: flex; align-items: baseline; gap: 8px; font-size: var(--fs-tag); }
 .rb-status-key { color: var(--text-muted); }
 .rb-status-val { font-family: var(--font-mono); color: var(--text); margin-left: auto; }
 /* 0 marked 는 «상태»입니다. 흐리게 두되 숨기지 않습니다. */
@@ -443,24 +444,24 @@ body {
 .rb-comp-steps { display: flex; align-items: center; flex-wrap: nowrap; gap: 4px 6px;
   padding: 5px 6px; border-top: 1px solid var(--border); overflow-x: auto; }
 .rb-comp-steps > * { flex: 0 0 auto; }
-.rb-comp-steps-head { font-size: 11px; color: var(--text-muted); margin-right: 4px; }
+.rb-comp-steps-head { font-size: var(--fs-tag); color: var(--text-muted); margin-right: 4px; }
 .rb-comp-step { padding: 1px 7px; border: 1px solid var(--border); border-radius: 4px;
-  background: var(--bg-surface); font-family: var(--font-mono); font-size: 11px;
+  background: var(--bg-surface); font-family: var(--font-mono); font-size: var(--fs-tag);
   color: var(--text-muted); }
-.rb-comp-steps-sep { color: var(--border-strong); font-size: 11px; }
-.rb-comp-steps-absent { font-size: 11px; color: var(--text-dim); }
+.rb-comp-steps-sep { color: var(--border-strong); font-size: var(--fs-tag); }
+.rb-comp-steps-absent { font-size: var(--fs-tag); color: var(--text-dim); }
 
 /* 목업 맵 하단의 기반 «선택자» — 누르면 그 타입으로 다시 그립니다. */
 .rb-map__basis { display: inline-flex; align-items: center; gap: 5px; flex-wrap: wrap; }
-.rb-map__basis-label { font-size: 11px; color: var(--text-muted); }
+.rb-map__basis-label { font-size: var(--fs-tag); color: var(--text-muted); }
 .rb-map__basis-pill { display: inline-flex; align-items: baseline; gap: 5px;
   padding: 1px 7px; border: 1px solid var(--border); border-radius: 4px;
-  background: var(--bg-surface); font-family: var(--font-mono); font-size: 11px;
+  background: var(--bg-surface); font-family: var(--font-mono); font-size: var(--fs-tag);
   color: var(--text-muted); cursor: pointer; }
 .rb-map__basis-pill:hover { border-color: var(--accent); color: var(--accent); }
 .rb-map__basis-pill.is-chosen { border-color: var(--accent); background: var(--accent);
   color: var(--accent-contrast); }
-.rb-map__basis-count { font-size: 11px; }
+.rb-map__basis-count { font-size: var(--fs-tag); }
 .rb-map__basis-count.is-absent { color: var(--text-dim); }
 .rb-map__basis-pill.is-chosen .rb-map__basis-count { color: var(--accent-contrast); }
 /* 그릴 수 있는 거절문 = «단서»입니다. 빨강이 아니라 점선 밑줄. */
@@ -469,10 +470,10 @@ body {
 /* 맵 페이지 — 「‹ 07 / 25 › · SYN-BW-001-07」. 목록이 안 오면 아예 안 그립니다. */
 .rb-map__pager { display: inline-flex; align-items: center; gap: 4px; }
 .rb-map__page-step { padding: 0 5px; border: 1px solid var(--border); border-radius: 4px;
-  background: var(--bg-surface); font-size: 11px; color: var(--text-muted); cursor: pointer; }
+  background: var(--bg-surface); font-size: var(--fs-tag); color: var(--text-muted); cursor: pointer; }
 .rb-map__page-step:hover { border-color: var(--accent); color: var(--accent); }
 .rb-map__page-step.is-end { color: var(--text-dim); cursor: default; }
-.rb-map__page-label { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+.rb-map__page-label { font-family: var(--font-mono); font-size: var(--fs-tag); color: var(--text-muted); }
 
 /* 제목을 다는 패널은 자기 위쪽 패딩을 «제목에 넘깁니다» — 제목 위에 빈 띠가 없어야
    스크롤한 내용이 제목 위로 비쳐 보이지 않습니다. */
@@ -490,7 +491,7 @@ body {
 .rb-map__note { grid-row: 4; }
 .rb-map__outside:empty { display: none; }
 .rb-map__outside {
-  padding: 3px 10px; font-size: 11px; color: var(--text-muted);
+  padding: 3px 10px; font-size: var(--fs-tag); color: var(--text-muted);
   background: var(--bg-inset); border-bottom: 1px solid var(--border);
 }
 .rb-map__outside.is-measured { font-family: var(--font-mono); }
@@ -503,7 +504,7 @@ body {
 
 /* 목업 ① 의 웨이퍼 줄 — 주어(칩) «아래», 대체가 아니라 «추가». */
 .rb-head-wafer { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px;
-  font-size: 11px; color: var(--text-muted); }
+  font-size: var(--fs-tag); color: var(--text-muted); }
 .rb-head-wafer-subject { font-family: var(--font-mono); color: var(--text); font-weight: 600; }
 .rb-head-wafer-fact { font-family: var(--font-mono); }
 .rb-head-wafer-kind { font-family: var(--font-mono); color: var(--text); }
@@ -514,12 +515,12 @@ body {
   min-height: 0; overflow: auto; }
 .rb-decl-row { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: 6px;
   align-items: baseline; }
-.rb-decl-key { font-size: 11px; color: var(--text-muted); }
-.rb-decl-val { font-family: var(--font-mono); font-size: 11px; color: var(--text);
+.rb-decl-key { font-size: var(--fs-tag); color: var(--text-muted); }
+.rb-decl-val { font-family: var(--font-mono); font-size: var(--fs-tag); color: var(--text);
   overflow-wrap: anywhere; }
 .rb-decl-val.is-live { color: var(--accent); font-weight: 600; }
 .rb-decl-val.is-absent { color: var(--text-dim); border-bottom: 1px dashed var(--border-strong); }
-.rb-decl-select { width: 100%; font-family: var(--font-mono); font-size: 11px;
+.rb-decl-select { width: 100%; font-family: var(--font-mono); font-size: var(--fs-tag);
   padding: 2px 4px; border: 1px solid var(--border-strong); background: var(--bg-surface);
   color: var(--text); }
 
@@ -528,13 +529,13 @@ body {
 .is-attenuating .rb-trend-dot.is-subject { opacity: 1; }
 /* x 축의 시각 — 「차례」만 말하지 않습니다. */
 .rb-trend-xlabel { position: absolute; bottom: -15px; font-family: var(--font-mono);
-  font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+  font-size: var(--fs-tag); color: var(--text-muted); white-space: nowrap; }
 .rb-trend-xlabel.is-left { left: 0; }
 .rb-trend-xlabel.is-right { right: 0; }
 
 /* x 축의 «자재 id» — 한 자재의 점들 가운데에 하나씩. */
 .rb-trend-xtick { position: absolute; bottom: -14px; transform: translateX(-50%);
-  font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted);
+  font-family: var(--font-mono); font-size: var(--fs-meta); color: var(--text-muted);
   white-space: nowrap; }
 .rb-trend-xtick.is-subject { color: var(--accent); font-weight: 600; }
 /* 시각은 자재 이름 «아래» 줄에 둡니다 — 겹치지 않게. */
@@ -550,9 +551,9 @@ body {
 .rb-table-head, .rb-table-row { display: grid; column-gap: 12px; align-items: center;
   justify-content: start; padding: 4px 6px; }
 .rb-table-head { background: var(--bg-header); color: var(--text-muted);
-  font-size: 11px; letter-spacing: .3px; text-transform: uppercase;
+  font-size: var(--fs-tag); letter-spacing: .3px; text-transform: uppercase;
   position: sticky; top: 0; z-index: 1; }
-.rb-table-row { border-bottom: 1px solid var(--border); font-size: 11.5px; min-height: 22px; }
+.rb-table-row { border-bottom: 1px solid var(--border); font-size: var(--fs-tag); min-height: 22px; }
 .rb-table-row:hover { background: var(--surface-hover); }
 .rb-table-row.is-marked-case { background: var(--accent-weak); box-shadow: inset 2px 0 0 var(--accent); }
 .rb-table-row.is-marked-control { background: var(--bg-inset); box-shadow: inset 2px 0 0 var(--text-muted); }
@@ -564,12 +565,12 @@ body {
 .rb-table-cell--number { text-align: right; }
 .rb-table-cell--rank { font-family: var(--font-mono); font-weight: 700; }
 /* 상태는 서버가 준 값 그대로. 번역하지 않습니다 -- 번역하면 두 표가 다시 달라집니다. */
-.rb-table-cell--badge { font-size: 11px; letter-spacing: .3px; color: var(--text-muted); }
+.rb-table-cell--badge { font-size: var(--fs-tag); letter-spacing: .3px; color: var(--text-muted); }
 .rb-table-cell--two_line { white-space: normal; }
 .rb-table-main { color: var(--text); overflow: hidden; text-overflow: ellipsis; }
-.rb-table-sub { color: var(--text-muted); font-size: 10.5px; font-family: var(--font-mono);
+.rb-table-sub { color: var(--text-muted); font-size: var(--fs-meta); font-family: var(--font-mono);
   overflow: hidden; text-overflow: ellipsis; }
-.rb-table-empty { padding: 8px 6px; color: var(--text-muted); font-size: 11.5px; }
+.rb-table-empty { padding: 8px 6px; color: var(--text-muted); font-size: var(--fs-tag); }
 
 /* 🔴 붙는 제목은 «스크롤되는 패널»의 것입니다. 머리 요약은 스크롤되지 않는데도 sticky 라서,
    페이지가 조금 밀린 순간 제목이 «내용 위로 내려앉아» 첫 줄(주어 · 웨이퍼 줄)을 덮었습니다.
@@ -579,27 +580,46 @@ body {
 .rb-control .rb-part-title,
 .rb-status .rb-part-title { position: static; }
 
+/* ── 위계 «셋» (C-99 ③) ────────────────────────────────────────────────────────────
+   실측 2026-09-13: 좌석 열여섯의 제목이 전부 11px 이고 맵 둘만 14px 이라, 「무엇을 먼저 보나」가
+   크기로 안 보였습니다. 너비는 이미 갈라져 있었는데(1,073 vs 318) 제목이 그 차이를 말하지
+   않았습니다.
+   🔴 기준은 «좌석»이 아니라 «부품의 종류»입니다. 좌석에 무게를 적으면 같은 부품이 화면마다
+      다른 크기가 되고, 그러면 「크다」가 배치의 성질이 됩니다 — 부품의 성질이어야 합니다.
+   ⚠️ 크기만 바꿉니다. 위치·굵기·색의 나머지는 그대로라 좌석 배치가 한 픽셀도 안 움직입니다. */
+.rb-trend .rb-part-title,
+.rb-comp .rb-part-title,
+.rb-map__title {
+  font-size: var(--fs-title);
+}
+.rb-decl .rb-part-title,
+.rb-status .rb-part-title,
+.rb-layer .rb-part-title {
+  font-size: var(--fs-tag);
+  color: var(--text-dim);
+}
+
 
 /* ── 펼친 층 — 목업 구성의 셋째 칸 ────────────────────────────────────────────────
    🔴 「아직 안 골랐다」가 «빈 상자»로 보이면 안 됩니다. 문장이 자리를 차지합니다. */
 /* 닿는 곳 -- 층 패널과 «같은 뼈대»입니다. 머리 한 줄 + 표 부품 하나.
    새 표 양식을 만들지 않습니다 (소유자 상설: 근원 템플릿 요소 개발 후 데이터 갈아끼우기). */
 .rb-reach { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow: auto; }
-.rb-reach-head { padding: 0 10px; font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); }
+.rb-reach-head { padding: 0 10px; font-family: var(--font-mono); font-size: var(--fs-label); color: var(--text-muted); }
 .rb-reach-table { min-height: 0; overflow: auto; }
 .rb-reach .rb-table-row { cursor: pointer; }
 
 .rb-layer { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow: auto; }
-.rb-layer-note { padding: 8px 10px; color: var(--text-muted); font-size: 11.5px; }
-.rb-layer-head { padding: 0 10px; font-family: var(--font-mono); font-size: 12px; color: var(--text); }
+.rb-layer-note { padding: 8px 10px; color: var(--text-muted); font-size: var(--fs-tag); }
+.rb-layer-head { padding: 0 10px; font-family: var(--font-mono); font-size: var(--fs-label); color: var(--text); }
 /* 같은 이유로 여기도 «한 줄»입니다 -- 펼친 층의 스텝도 267개가 될 수 있습니다. */
 .rb-layer-steps { display: flex; flex-wrap: nowrap; gap: 4px; align-items: center;
   padding: 0 10px; overflow-x: auto; min-width: 0; }
 .rb-layer-steps > * { flex: 0 0 auto; white-space: nowrap; }
 .rb-layer-step { border: 1px solid var(--border); border-radius: 3px; padding: 1px 5px;
-  font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted); }
+  font-family: var(--font-mono); font-size: var(--fs-meta); color: var(--text-muted); }
 .rb-layer-step.is-absent { border-style: dashed; }
-.rb-layer-sep { color: var(--text-muted); font-size: 10px; }
+.rb-layer-sep { color: var(--text-muted); font-size: var(--fs-meta); }
 .rb-layer-claims { display: flex; min-height: 0; padding: 0 4px; }
 .rb-layer-claims .rb-table { flex: 1 1 auto; min-height: 0; }
 /* 머리의 마킹 행수 — 맵의 수와 «다른 수»라 서체를 나눕니다. */
@@ -611,7 +631,7 @@ body {
    패널을 키우는 것은 답이 아닙니다 -- 다음 칩이 400스텝이면 또 넘칩니다. 한 줄로 두고
    넓은 내용은 «자기 컨테이너에서» 스크롤합니다. */
 .rb-head-steps { display: flex; flex-wrap: nowrap; gap: 4px; align-items: center;
-  font-size: 11px; overflow-x: auto; min-width: 0; }
+  font-size: var(--fs-tag); overflow-x: auto; min-width: 0; }
 /* 🔴 «모든» 자식이 자기 폭을 지킵니다. nowrap 만 두고 자식을 안 잠그면 flex 가 전부 0 쪽으로
    찌그러뜨려, 컨테이너 높이가 0 이 되고 글자가 18px 폭에 «세로로» 쌓입니다 (총괄 실측).
    넘침 단언은 그래도 통과합니다 -- 높이가 0 이니까요. 「고쳤다」가 아니라 「없앴다」가 되는 자리라
@@ -620,7 +640,7 @@ body {
 .rb-head-steps-key { color: var(--text-muted); }
 .rb-head-steps-absent { color: var(--text-muted); font-style: italic; }
 .rb-head-step { border: 1px solid var(--border); border-radius: 3px; padding: 0 5px;
-  font-family: var(--font-mono); font-size: 10.5px; color: var(--text); }
+  font-family: var(--font-mono); font-size: var(--fs-meta); color: var(--text); }
 .rb-head-steps-sep { color: var(--text-muted); }
 /* 목업의 「접는 단위」 줄 — 이 차트가 무엇을 한 점으로 접는지. */
-.rb-trend-fold { color: var(--text-muted); font-family: var(--font-mono); font-size: 10.5px; }
+.rb-trend-fold { color: var(--text-muted); font-family: var(--font-mono); font-size: var(--fs-meta); }
