@@ -45,7 +45,14 @@ function element(tag) {
     setAttribute(k, v) { this.attrs[String(k)] = String(v); },
     getAttribute(k) { return Object.prototype.hasOwnProperty.call(this.attrs, String(k)) ? this.attrs[String(k)] : null; },
     querySelector() { return null; }, querySelectorAll() { return []; },
-    addEventListener() {}, closest() { return null; },
+    // 🔴 C-103. 듣고, «발화»합니다. 기록만 하고 못 쏘는 스텁은 「무엇이 배선됐나」를 재고,
+    //    「탭을 누르면 그 표가 뜬다」는 «무슨 일이 일어나나»입니다 — 다른 물음입니다.
+    listeners: Object.create(null),
+    addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); },
+    dispatch(type, event = {}) {
+      for (const fn of this.listeners[String(type)] || []) fn({ type, target: this, ...event });
+    },
+    closest() { return null; },
     set textContent(v) { this._text = String(v); this.children = []; },
     get textContent() { return this._text + this.children.map((c) => c.textContent).join(''); },
   };
@@ -95,13 +102,51 @@ console.log('\n[1] one view — the table has a title even with no tab strip');
   eq('the tab strip stays hidden for a single panel', 'none', tabsRow().style.display);
 }
 
-console.log('\n[2] primary + evidence — two bands, still one panel');
+// ⚠️ 이 절은 «뒤집혔습니다» (C-103, 소유자 2026-09-13 「참조뷰는 왜 맨상단 두개는 탭이고
+//    아래는 그냥 리스트야? 그냥 다 탭으로 해줘」). 종전 단언은 「근거는 탭이 아니다」였고,
+//    그것이 목업 2b 의 배치였습니다. 지우지 «않고» 반대로 세웁니다 — 지우면 새 규칙을 재는
+//    것이 아무것도 안 남습니다.
+console.log('\n[2] a fillable view and an evidence view — BOTH are tabs');
 {
   renderReferenceResults([primary('후보', 2), evidence('근거', 5)]);
   eq('each table has its own band', 2, bands().length);
   ok('the first is the primary label', bandText(0).includes('후보'), bandText(0));
   ok('the second is the evidence label', bandText(1).includes('근거'), bandText(1));
-  eq('...and the strip is still hidden — evidence is not a tab', 'none', tabsRow().style.display);
+  eq('an evidence view gets a tab like any other', 2, byClass(host, 'reference-view-tab').length);
+  eq('...so the strip is SHOWN', '', tabsRow().style.display);
+  eq('...and there is no stack under the grid any more', 0,
+    byClass(host, 'reference-evidence').length);
+}
+
+// ═══ C-103 — 갈래가 하나. 뷰 N 이면 탭 N, 순서는 `results` 그대로 ══════════════════════
+console.log('\n[2b] five views — five tabs, one branch, and the tab points at its own table');
+{
+  const five = [primary('채움A', 2), evidence('근거1', 3), primary('채움B', 1),
+                evidence('근거2', 4), evidence('근거3', 6)];
+  renderReferenceResults(five);
+  eq('one tab per view, fillable or not', 5, byClass(host, 'reference-view-tab').length);
+  eq('one panel per view', 5, byClass(host, 'reference-view-panels')[0].children.length);
+  eq('no evidence stack survives', 0, byClass(host, 'reference-evidence').length);
+  const tabLabels = byClass(host, 'reference-view-tab').map((b) => b.textContent);
+  eq('the tabs stand in the order the response gave them',
+    '채움A,근거1,채움B,근거2,근거3', tabLabels.join(','));
+  // 🔴 THE INDEX IS WHAT DECIDES WHICH TABLE A SELECTION IS IN (`td.dataset.view`), so a panel
+  //    whose table carries another view's number is 「the tab shows one grid and the copy
+  //    takes another」 -- which is exactly what two separate counters used to risk.
+  const panels = byClass(host, 'reference-view-panels')[0];
+  const tableIndex = panels.children.map(
+    (p) => byClass(p, 'reference-view-table')[0]?.dataset.view);
+  eq('each panel holds ITS OWN table, by number', '0,1,2,3,4', tableIndex.join(','));
+  // 🔴 그리고 «눌러» 봅니다. 배선이 아니라 일어나는 일입니다.
+  byClass(host, 'reference-view-tab')[3].dispatch('click');
+  const shown = panels.children.map((p) => (p.style.display === 'none' ? '.' : 'X')).join('');
+  eq('clicking the fourth tab shows the fourth panel and only it', '...X.', shown);
+  ok('...and the active mark moved with it',
+    byClass(host, 'reference-view-tab')[3].classList.contains('active')
+    && !byClass(host, 'reference-view-tab')[0].classList.contains('active'),
+    byClass(host, 'reference-view-tab').map((b) => b.className).join('|'));
+  ok('...and the table under that tab is the fourth one',
+    byClass(panels.children[3], 'reference-view-table')[0]?.dataset.view === '3');
 }
 
 console.log('\n[3] two primaries — tabs come back, and both keep their bands');

@@ -1,14 +1,14 @@
 import { API_BASE, WS_URL, CURRENT_USER, pageLimit } from './config.js';
 import { narrowingParams as buildNarrowing } from './narrowing.js';
-import { state } from './state.js';
+import { state, tableIsView, VIEW_READ_ONLY_NOTE } from './state.js';
 import { elements } from './dom.js';
 import { clearRangeSelection } from './clipboard.js';
-import { updateSelectedCellUI, updateTxModeUI } from './ui.js';
+import { updateSelectedCellUI, updateTxModeUI, applyViewWriteGuard } from './ui.js';
 import { renderGrid, updateGridSortState, updateLoadedCount, updatePaginationUI, ensureCellObject, markCellOverwritten, applyFillTargetHeaders, sortQueryTail } from './grid.js';
 // 「Matches:」를 쓰는 자리는 다섯입니다. 철자와 «세는 중» 판정은 한 곳에 삽니다.
 import { setMatchCount } from './match_count.js';
 import { loadHistory } from './timeline.js';
-import { getLocalTimeString } from './utils.js';
+import { getLocalTimeString, showToast } from './utils.js';
 import { resetSuggestLearning } from './value_suggest.js';
 import { snapshot, commitIfRecorded } from './effort_meter.js';
 import { syncReferenceViewRule } from './enrichment_reference_view.js';
@@ -140,6 +140,9 @@ export async function switchTable(tableName) {
 
   // Load Schema
   await loadSchema(tableName);
+  // 🔴 C-102 ①. 자리가 여기인 이유: 표의 «종류»를 `loadSchema` 가 읽고, 그다음 줄이 그것을
+  //    아는 «첫» 자리입니다. 컨트롤이 각자 물으면 새 컨트롤마다 한 번씩 빠집니다.
+  applyViewWriteGuard();
   // Re-create empty grid to bind new columns
   renderGrid([]);
   // Fetch initial chunk of data (reset skip to 0)
@@ -549,20 +552,38 @@ export async function handleCellEdit(event) {
 // Add Empty Rows
 export async function addRows(count) {
   if (!state.currentTable) return;
-  elements.performanceLog.textContent = `Creating ${count} empty row(s)...`;
+  // 🔴 C-102 ①. 네 번째 깔때기. 붙여넣기·지우기·일괄채우기가 이미 이 모양이고, 이것만
+  //    빠져 있어서 뷰에서 «서버까지» 갔습니다. 거절이 깔때기에 있어야 버튼이 아닌 다른
+  //    경로로 불려도 같은 답이 납니다 (criterion ④).
+  if (tableIsView()) { setBadge(elements.performanceLog, VIEW_READ_ONLY_NOTE); return; }
+  setBadge(elements.performanceLog, `Creating ${count} empty row(s)...`);
+  // 🔴 C-102 ②. 거절의 «사유»는 서버의 것입니다 — 이 파일이 이미 그렇게 하는 자리가 있고
+  //    (:528 `errData.detail`), 이 한 자리만 `Error('Create failed')` 로 접고 있었습니다.
+  //    접으면 운영자는 「무엇이 · 왜」를 콘솔에서도 못 봅니다.
+  // ⚠️ 화면 쓰기가 `catch` «밖»입니다 — 이 파일의 머리글이 말하는 그대로입니다:
+  //    catch 안에서 DOM 을 쓰면 «처리된» 장애가 처리되지 않은 거절이 됩니다.
+  let refused = '';
   try {
     const res = await fetch(`${API_BASE}/tables/${state.currentTable}/rows?count=${count}&user_name=${encodeURIComponent(CURRENT_USER)}`, {
       method: 'POST'
     });
     if (res.ok) {
-      elements.performanceLog.textContent = `${count} empty row(s) created successfully`;
-    } else {
-      throw new Error('Create failed');
+      setBadge(elements.performanceLog, `${count} empty row(s) created successfully`);
+      return;
     }
+    const body = await res.json().catch(() => null);
+    // 문장이 «문자열일 때만» 그것이 답입니다. FastAPI 의 기본 422 는 `detail` 이 목록이고,
+    // 그것을 그대로 그리면 화면이 «[object Object]» 를 말합니다.
+    refused = (body && typeof body.detail === 'string' && body.detail)
+      ? body.detail
+      : `Create failed (HTTP ${res.status})`;
   } catch (err) {
     console.error('Failed to create row(s)', err);
-    elements.performanceLog.textContent = '❌ Failed to create row(s)';
+    // 서버에 «닿지 못한» 것은 서버가 낸 사유가 없는 자리라 이 문장이 화면의 것입니다.
+    refused = '행 추가 요청이 서버에 닿지 못했습니다 (네트워크).';
   }
+  setBadge(elements.performanceLog, refused);
+  showToast(refused, 'error');
 }
 
 // Delete selected rows batch

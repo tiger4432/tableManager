@@ -4,9 +4,13 @@
  *
  * WHY THIS EXISTS (C-84). The main grid made every stored column editable (`editable: !isSystem`)
  * and the three write funnels guarded per COLUMN only, so on a relation the server serves as a
- * view the operator could open an editor, paste, clear or bulk-fill and meet the server's 400 in
+ * view the operator could open an editor, paste, clear or bulk-fill and meet the server's refusal in
  * the cell. The catalogue now says which it is (`/tables/<n>/schema.kind`, S-187), so the client
  * can stop offering the write instead of discovering it is refused.
+ *
+ * ⚠️ S-224 (2026-09-13) made every one of those six routes answer 422 WITH THE REASON in
+ *    `detail` (the cell-update route moved 400 -> 422). Nothing here asserts a status code --
+ *    what G scores is that the reason REACHES THE SCREEN rather than being folded away.
  *
  * WHAT IT SCORES:
  *   P  the predicate: only the word 'view' is a view. '' (old server / not yet read) is NOT
@@ -16,6 +20,10 @@
  *      issue one on a table, so C is not vacuous -- and each says why on screen
  *   D  a cell carrying no marker draws no badge, and a cell carrying one still does
  *   E  the two source rows draw no pin/delete when the caller says the table is not writable
+ *   F  the FOURTH funnel (C-102 ①): 「행 추가」 writes nothing on a view, says why in the same one
+ *      spelling, still writes on a table -- and the control itself stops being clickable
+ *   G  a refusal is the SERVER's sentence (C-102 ②), and a `detail` that is not one does not
+ *      become 「[object Object]」 on the screen
  *
  * 🔴 NOT INFERRED FROM THE DATA SHAPE. A view cell is `{value}` only -- and so is a page of an
  *    ordinary table nobody has overwritten. Reading the shape would turn a healthy table
@@ -49,11 +57,29 @@ function fakeNode(id) {
     appendChild(c) { this.children.push(c); return c; },
     addEventListener() {}, removeEventListener() {},
     querySelector: () => null, querySelectorAll: () => [],
-    setAttribute() {}, getAttribute: () => null, hasAttribute: () => false,
+    // 🔴 C-102. 속성을 «듭니다». 종전에는 쓰기가 무음이고 읽기가 언제나 null 이라 「버튼이
+    //    사유를 단다」를 잴 수 없었고, `removeAttribute` 는 아예 «없어서» 그것을 부르는
+    //    부품이 하니스에서만 던집니다 — 스텁에 없는 철자는 재는 것이 아니라 막는 것입니다.
+    attrs: {},
+    setAttribute(k, v) { this.attrs[String(k)] = String(v); },
+    getAttribute(k) { return Object.prototype.hasOwnProperty.call(this.attrs, String(k)) ? this.attrs[String(k)] : null; },
+    removeAttribute(k) { delete this.attrs[String(k)]; },
+    hasAttribute(k) { return Object.prototype.hasOwnProperty.call(this.attrs, String(k)); },
     focus() {}, blur() {}, remove() {}, insertAdjacentHTML() {},
   };
 }
 const listeners = new Map();
+// 🔴 A WINDOW, BECAUSE `switchTable` STARTS BY WRITING TO ONE (`window.currentTable`, which the
+//    desktop wrapper reads). Without it that function died on its SECOND line, so every seat in
+//    this file was scored by calling `loadSchema` directly -- which cannot see WHEN something is
+//    called. `location` rides along because `config.js` and `state.js` read it when it exists,
+//    and each mutant re-imports its copy.
+globalThis.window = {
+  currentTable: null,
+  location: { port: '', origin: 'http://box', href: 'http://box/', hash: '', search: '' },
+  addEventListener() {}, removeEventListener() {},
+  matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
+};
 globalThis.document = {
   hidden: false, activeElement: null, body: fakeNode('body'),
   getElementById: (id) => {
@@ -91,9 +117,18 @@ const rowData = () => ({
 // ── the fetch spy: every write is counted, every read answers the staged schema ──────────
 let staged = schemaBody('view');
 let writes = [];
+// C-102 ②. 서버가 «거절»할 때 무엇이 화면에 서는가 — S-224 뒤 뷰 쓰기는 여섯 라우트 전부
+// 422 + `detail` 문장이다. `null` 이면 종전대로 전부 성공한다.
+let refusal = null;
 globalThis.fetch = async (url, opts = {}) => {
   const method = String(opts.method || 'GET').toUpperCase();
   if (method !== 'GET') writes.push({ url: String(url), method });
+  if (method !== 'GET' && refusal) {
+    return {
+      ok: false, status: refusal.status,
+      json: async () => refusal.body, text: async () => JSON.stringify(refusal.body),
+    };
+  }
   return {
     ok: true, status: 200,
     json: async () => (String(url).endsWith('/schema') ? staged : { data: [], total: 0 }),
@@ -260,6 +295,73 @@ async function suite(M) {
   ok(!hasBtns(M.rows.sourceRowHtml('excel', { value: 1 }, { isPinned: false })),
     'E5 a caller that says NOTHING gets no write control -- the quiet half is the safe one');
 
+  // ── F: the fourth funnel (C-102 ①) ───────────────────────────────────────────────────
+  // 🔴 THE OWNER HIT THIS ONE: [행 추가] on a view, and the request went to the server (500 in
+  //    the console, 「Create failed」 and nothing else). Measured: `tableIsView()` had SIX
+  //    consumers and this button was not one of them -- the catalogue's `kind` was on the wire
+  //    the whole time (A1-A4 above), so nothing was missing except the question.
+  await stageThrough(M.api, 'view');
+  const addOnView = await countWrites(() => M.api.addRows(1));
+  ok(addOnView.writes === 0,
+    `F1 adding a row to a view writes nothing -- ${addOnView.writes} request(s)`);
+  ok(addOnView.note === NOTE,
+    `F2 ... and says why, in the SAME one spelling as the other three [${addOnView.note}]`);
+  await stageThrough(M.api, 'table');
+  const addOnTable = await countWrites(() => M.api.addRows(1));
+  ok(addOnTable.writes > 0,
+    `F3 the same call on a TABLE does write -- F1 is not vacuous (${addOnTable.writes})`);
+  // 🔴 AND THE VISIBLE HALF. A refusal the operator meets AFTER clicking is a refusal they
+  //    earned by being offered the control; the button stops being clickable when the table
+  //    the page just loaded is a view.
+  const addBtn = document.getElementById('add-row-btn');
+  addBtn.disabled = false;
+  staged = schemaBody('view');
+  realState.currentTable = 't';
+  // ⚠️ `switchTable` walks further than this stub goes (grid, history, badges). What is scored
+  //    is that the guard runs BEFORE any of that -- so a throw further down must not hide it.
+  try { await M.api.switchTable('t'); } catch (e) { /* the stub ends before the grid does */ }
+  ok(addBtn.disabled === true, 'F4 loading a view disables the add control');
+  ok(addBtn.getAttribute('title') === NOTE,
+    `F5 ... and carries the reason with it [${addBtn.getAttribute('title')}]`);
+  addBtn.disabled = true;
+  staged = schemaBody('table');
+  try { await M.api.switchTable('t'); } catch (e) { /* as above */ }
+  ok(addBtn.disabled === false, 'F6 ... and loading a table gives it back -- F4 is not vacuous');
+  // 🔴 AND THE GUARD ITSELF, CALLED DIRECTLY. F4-F6 go through the REAL `ui.js` whatever module
+  //    this run mutated -- that is how this file is built (one copy swapped, the rest real) --
+  //    so a defect inside the guard is only visible through its own module, exactly as the
+  //    bulk-fill funnel above is scored.
+  realState.currentTableKind = 'view';
+  addBtn.disabled = false;
+  // 마크업이 이미 다는 말. index.html 의 `title="Add Row"` 그대로입니다.
+  addBtn.setAttribute('title', 'Add Row');
+  delete addBtn.dataset.titleWas;
+  M.ui.applyViewWriteGuard();
+  ok(addBtn.disabled === true && addBtn.getAttribute('title') === NOTE,
+    `F7 the guard disables the control and names the reason [${addBtn.getAttribute('title')}]`);
+  realState.currentTableKind = 'table';
+  M.ui.applyViewWriteGuard();
+  ok(addBtn.disabled === false && addBtn.getAttribute('title') === 'Add Row',
+    `F8 ... and gives it back on a table WITH the markup's own words [${addBtn.getAttribute('title')}]`);
+
+  // ── G: the refusal is the SERVER's sentence (C-102 ②) ────────────────────────────────
+  // 🔴 `api.js` already reads `detail` where a cell edit is refused (:528). This one funnel
+  //    folded every answer into 「Create failed」, so the owner's 500 arrived with no 「what」
+  //    and no 「why」 -- and S-224 has since made every view write a 422 that CARRIES the why.
+  await stageThrough(M.api, 'table');
+  const SENTENCE = 'read-only relation: a view cannot be written through';
+  refusal = { status: 422, body: { detail: SENTENCE } };
+  const refusedRun = await countWrites(() => M.api.addRows(1));
+  ok(refusedRun.note === SENTENCE,
+    `G1 the refusal on screen is the SERVER's sentence [${refusedRun.note}]`);
+  // ⚠️ FastAPI's own 422 carries a LIST in `detail`. Drawing it unchecked is how a screen
+  //    says 「[object Object]」 to an operator.
+  refusal = { status: 422, body: { detail: [{ loc: ['query', 'count'], msg: 'x' }] } };
+  const listy = await countWrites(() => M.api.addRows(1));
+  ok(!String(listy.note).includes('object Object') && String(listy.note).includes('422'),
+    `G2 a detail that is not a sentence names the status instead [${listy.note}]`);
+  refusal = null;
+
   return { pass: pass - before.pass, fail: fail - before.fail };
 }
 
@@ -287,6 +389,19 @@ const DEFECTS = [
     s => s.replace('  if (tableIsView()) { elements.performanceLog.textContent = VIEW_READ_ONLY_NOTE; return; }\n', '')],
   ['clipboard.js: the refusal is silent', 'clipboard',
     s => s.replace('      elements.performanceLog.textContent = VIEW_READ_ONLY_NOTE;\n', '')],
+  // 🔴 C-102. Four ways the owner's click gets back to the server, or its answer gets lost.
+  ['api.js: the add-row funnel is unguarded again', 'api',
+    s => s.replace('  if (tableIsView()) { setBadge(elements.performanceLog, VIEW_READ_ONLY_NOTE); return; }\n', '')],
+  ['api.js: the control is never told the table changed', 'api',
+    s => s.replace('  applyViewWriteGuard();\n', '')],
+  ['ui.js: the guard eats the words the markup already wrote', 'ui',
+    s => s.replace("  else if (btn.dataset.titleWas) btn.setAttribute('title', btn.dataset.titleWas);\n", '')],
+  ['ui.js: the control is told, and stays clickable anyway', 'ui',
+    s => s.replace('  btn.disabled = view;', '  btn.disabled = false;')],
+  ['api.js: the server`s sentence is folded into one of ours', 'api',
+    s => s.replace("    refused = (body && typeof body.detail === 'string' && body.detail)", "    refused = (false)")],
+  ['api.js: a detail that is not a sentence is drawn anyway', 'api',
+    s => s.replace("(body && typeof body.detail === 'string' && body.detail)", '(body && body.detail)')],
   ['source_rows.js: a caller that omits the flag gets the controls', 'rows',
     s => s.replace('  const actions = writable\n', '  const actions = writable !== false\n')],
 ];
