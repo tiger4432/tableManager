@@ -227,7 +227,7 @@
 > git grep -c "layer_coverage_gap" -- server client2
 > # ④ 이 문서 안 — 히트는 전부 묘비 문맥이어야 한다(살아있는 앵커 0건)
 > grep -n "adoptServerDoe\|doeRowKey\|deleteUnsent\|_doe_get\|layer_coverage_gap" docs/architecture/CODE_MAP.md
-> # 🆕㈠ [2026-09-13 신설 · S-211 `2992bee2`] 평면 36 모듈의 «옆 이름» — 경로로는 히트 0건이어야 한다
+> # 🆕㈠ [2026-09-13 신설 · S-211 `aa77a2fe`] 평면 36 모듈의 «옆 이름» — 경로로는 히트 0건이어야 한다
 > #    여덟 패키지로 갔다: admin/ · chain/ · enrichment/ · ingestion/ · ledger/ · maps/ · runtime/ · virtual_join/ (접두 제거)
 > git ls-tree -r --name-only HEAD -- server | grep -cE "^server/(admin_auth|alignment_batch_counts|audit_cache|audit_history|cell_layer|chain_activity|chain_builtins|chain_graph|chain_ingestion_worker|chain_key_gate|chain_replay|dev_bench|enrichment_analysis|enrichment_backfill|enrichment_candidates|enrichment_config|enrichment_mapper|file_ingestion_status|frame_confirmation|health|ingestion_activity|ingestion_checkpoint|launcher_args|ledger_admin|ledger_explorer|ledger_trace|ledger_trace_router|map_preset_routing|process_supervisor|retroactive|runtime_loops|schema_drift|system_reload|virtual_join_config|virtual_join_executor|virtual_join_refusal)\.py$"
 > #    기대 0. 🔴 **이름 열넷은 «안 갔다»** — 운영자의 라이브 맵퍼가 import 하므로 «약속»이다

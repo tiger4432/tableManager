@@ -5,7 +5,7 @@
 >       parsers/directory_watcher · ledger/backfill · ledger/setup · setup/*
 > ⚠️ tests · scripts · migrations 는 «뿌리가 아니라» 별도 실행 도구입니다
 > 🔴 상대 임포트(`from .store import …`)를 패키지 경로로 «풀어서» 셌습니다 — 안 풀면 쓰기 경로가 고아로 찍힙니다
-> 🆕㈟ **[2026-09-13 S-211 `2992bee2`] 평면 36 모듈이 여덟 패키지로 갔습니다** — 아래 이름 옆의 «» 가 «오늘의 자리»입니다(`admin/` · `chain/` · `enrichment/` · `ingestion/` · `ledger/` · `maps/` · `runtime/` · `virtual_join/`, 접두 제거). 🔴 이 표는 이름을 «맨이름»으로 적어 둔 터라 경로 치환 섬에 «한 줄도 안 잡혔습니다» — 따로 재서 고쳐야 했고, 그것이 「모집단을 정하는 것은 기계가 아니라 표기」의 실물입니다.
+> 🆕㈟ **[2026-09-13 S-211 `aa77a2fe`] 평면 36 모듈이 여덟 패키지로 갔습니다** — 아래 이름 옆의 «» 가 «오늘의 자리»입니다(`admin/` · `chain/` · `enrichment/` · `ingestion/` · `ledger/` · `maps/` · `runtime/` · `virtual_join/`, 접두 제거). 🔴 이 표는 이름을 «맨이름»으로 적어 둔 터라 경로 치환 섬에 «한 줄도 안 잡혔습니다» — 따로 재서 고쳐야 했고, 그것이 「모집단을 정하는 것은 기계가 아니라 표기」의 실물입니다.
 > 🔒 = **운영자 약속** — 소유자의 라이브 맵퍼가 이 이름을 import 하므로 «최상위에 남습니다»(`parsers/directory_watcher.OPERATOR_IMPORT_NAMES` :966, 판정 364).
 >    🔴 그 목록은 **열넷**이고, 그중 «최상위 평면 모듈»은 **열**입니다(제 실측) — `database` 는 이미 패키지고, `pipeline_base`·`html_topology_parser`·`void_sat_format` 은 `parsers/` 밑에 살아서 «샿킬 평면 모듈이 아니었습니다».
 >    ⚠️ 그래서 「열하나」도 「열넷」도 틀린 말이 아니라 **다른 모집단**입니다 — 수를 쓸 때 어느 쪽인지 같이 적어야 합니다.
