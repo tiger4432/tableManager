@@ -42445,3 +42445,56 @@ process_pending_groups :1630    `for tx_id in group_order:` -> 그룹 하나씩 
 ```
 
 > 📌 **[09-13 17:5x] 이 채널의 미답 질문: «없음».** 다음: **S-223**(맵퍼 후보 목록) — 지시받은 «짓기 전 한 줄 실측»을 바로 아래 올립니다.
+
+---
+
+## 📋 [09-13 17:47] S-223 짓기 전 한 줄 실측 — 🔴 답이 «한 줄»보다 큽니다 (코드 0줄)
+
+지시: 「`chain/mapper_call.py:132` 의 `getattr(module, function_name)` 이 «클래스»를 받으면 어떻게 부르나」.
+
+### 답 ① — 클래스는 «불려지긴» 합니다. 매핑은 안 합니다
+```
+mapper_call.py:131~132  mapper_func = getattr(module, function_name)
+그리고                   result = mapper_func(db, payload)   (또는 rule= 를 더해)
+클래스면                 그 호출은 «생성자»입니다 -> result 는 «인스턴스»
+그 뒤                    without_missing(result) · _result_row_count(...) 를 그대로 지납니다
+=> 던지지 «않습니다». 틀린 결과가 조용히 나갑니다 (`__init__` 이 두 인자를 받는 한)
+=> 그러므로 `kind: class` 는 오늘의 실행기로 «실행 가능하지 않습니다» — 지시의 「못 부르면
+   후보에 안 넣고 보고」에 해당합니다
+```
+
+### 🔴 답 ② — 그런데 이 박스의 «클래스뿐인» 모듈들은 «체인 맵퍼가 아닙니다»
+```
+ledger_dt_job_mapper.py        class MyMapper(BaseLedgerMapper)          메서드: interpret_unit
+ledger_v2_dt_job_mapper.py     class DtJobRoleMapper(BaseLedgerMapper)   메서드: interpret_unit
+BaseLedgerMapper 는            server/ledger/roleframe.py:252  — «원장» 롤프레임 기저입니다
+그 호출 규약은                  interpret_unit(context, unit, profile) -> [RoleEmission]
+                              (roleframe.py:281 이 그것을 부릅니다)
+체인 규칙이 이 모듈을 드는 곳    «0»  (config/sample·config_reference 전건)
+=> 즉 이 둘은 「체인 맵퍼인데 못 부르는 것」이 아니라 «다른 계열»이 같은 디렉터리에 사는 것입니다
+```
+🔴 **그래서 지시의 기대 한 줄 —「소유자 `ledger_dt_job_mapper` 가 `refused` 에 보이게」— 는 전제가 어긋납니다.** 그 모듈은 «import 실패»가 아닙니다(잘 import 됩니다). 그것을 `refused` 에 넣으면 화면이 운영자에게 **「이 체인 맵퍼가 고장났다」**고 말하게 되는데, 그 모듈은 «자기 계열에서는 멀쩡히 돕니다». 거짓을 한 칸 더 만드는 것입니다.
+
+### 그래서 갈래 — 스키마에 «넷째 처분»이 필요합니다
+```
+지시의 스키마   candidates{registered|function|class} + refused{이름·사유}
+빠진 것        「체인 맵퍼가 «아닌» 모듈」 — 원장 롤프레임 매퍼가 그 자리
+㉠ 넷째 칸       `other: [{module, kind: "ledger_roleframe", why}]` — 화면이 「여기 있지만
+                체인용이 아니다」를 말합니다. 소유자가 자기 파일을 찾되 오해하지 않습니다
+㉡ 아예 안 싣는다  목록에서 «조용히» 빼기 — 그러면 소유자는 「내 파일이 왜 안 보이지」를 다시 묻습니다
+                (이번 라운드가 바로 그 물음에서 시작했습니다)
+㉢ refused 에 넣는다 지시 그대로 — 다만 사유가 «거짓»입니다(고장 아님)
+제 권고: ㉠ — 「없다」와 「다른 것이다」는 다른 답이고, 이 제품이 반복해서 가르는 그 구분입니다
+```
+
+### 그리고 실행 가능한 후보의 «진짜» 모양 (실측)
+```
+오늘 도는 체인 맵퍼는 전부 «모듈 수준 함수»입니다 — 규칙이 `mapper_function` 으로 그 이름을 듭니다
+   예: build_dt_map_batch_df · build_dt_alignment_metadata_batch · copy_dt_metadata_to_inventory_batch
+BaseMapper 상속은 «부수적»입니다 — 부르는 것은 클래스가 아니라 그 모듈의 함수입니다
+=> `kind: "function"` 후보 = 모듈 수준 함수 중 `(db, payload)` 를 받는 것.
+   이게 소유자 드롭다운을 채울 «실제» 모집단입니다
+```
+
+> 📌 **[09-13 17:47] 이 채널의 미답 질문: «하나» — 넷째 처분 ㉠/㉡/㉢ (제 권고 ㉠).**
+> ⚠️ 지시의 「`kind: class` 를 후보로」와 「`ledger_dt_job_mapper` 를 `refused` 에」는 둘 다 실측과 어긋납니다 — 클래스는 생성자를 부를 뿐이고, 그 모듈은 고장난 것이 아니라 «다른 계열»입니다.
