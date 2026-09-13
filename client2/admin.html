@@ -553,13 +553,28 @@
     .chain-rule-state[data-state="false"] { color: var(--warning); font-weight: 600; }
     .chain-rule-state[data-state="refused"],
     .table-config-state[data-state="refused"] { color: var(--danger); font-weight: 600; }
+    /* 🔴 C-106 ①. 「저장 안 됨」은 «값»입니다 — 배지 하나, 문장 없음. C-101 이 세운 가드는
+       화면에 «안 보였고», 안 보이는 가드는 운영자에게 없는 것과 같습니다. 복원된 초안도
+       같은 배지가 말합니다(글자가 다릅니다) — 한 사실에 한 모양입니다. */
+    .chain-rule-unsaved,
+    .table-config-unsaved {
+      margin: 0;
+      padding: 1.7px 6.8px;
+      font-family: var(--font-mono);
+      font-size: var(--fs-tag);
+      color: var(--warning);
+      border: 1px solid var(--warning);
+      white-space: nowrap;
+    }
     /* C-101 ③. 목록 «밖»의 줄들 — 「여기 있지만 고를 수 없는 것」. 드롭다운 안에 넣으면
        고를 수 있는 것처럼 보이고, 안 그리면 「내 파일이 왜 안 보이나」에 답이 없습니다.
        ⚠️ 줄이 하나도 없으면 상자 자체가 «안 그려집니다» (빈 상자는 여백만 남는 주장입니다). */
     .chain-rule-list-notes,
     .table-config-list-notes {
-      margin: 6.8px 0 0;
-      padding: 6.8px 10.2px;
+      /* C-106 ⑥. 이제 «그 칸 밑»에 삽니다(폼 아래가 아니라) — 왼쪽 여백이 그 칸에 붙어
+         있다는 것을 말합니다. 값은 3.4 격자에서 가져옵니다. */
+      margin: 3.4px 0 6.8px 13.6px;
+      padding: 3.4px 10.2px;
       border-left: 2px solid var(--border);
       display: flex;
       flex-direction: column;

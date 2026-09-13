@@ -198,13 +198,16 @@ console.log('\n[5] the mapper candidates, and the translation between the two sp
              functions: [{ name: 'build_rows' }, { name: 'helper' }] }],
   };
   const got = mapperChoices(BODY);
-  eq('both cells become candidates, in two groups',
+  // ⚠️ C-106 ⑦ 이 이 단언을 «뒤집었습니다». 종전에는 파일 함수가 「파일 함수」 한 묶음이었고,
+  //    소유자가 「파일별 묶음, 항목은 함수 이름만」을 골랐습니다 — 목록이 길어지면 항목마다
+  //    같은 모듈 접두가 반복되고 그 반복이 「내 파일이 어디 있나」를 다시 가립니다.
+  eq('a registered name and a file function are different groups',
     got.map((c) => [c.value, c.group]),
     [['build_dt_map', MAPPER_GROUPS.registered],
-     ['mappers.lot:build_rows', MAPPER_GROUPS.file],
-     ['mappers.lot:helper', MAPPER_GROUPS.file]]);
-  ok('a file function is shown by module and name, not by its token',
-    got[1].label === 'mappers.lot · build_rows');
+     ['mappers.lot:build_rows', 'mappers.lot'],
+     ['mappers.lot:helper', 'mappers.lot']]);
+  ok('a file function is shown by its FUNCTION name, and the file is the group',
+    got[1].label === 'build_rows');
   eq('an unread answer is 「모름」, not 「없음」', mapperChoices(null), null);
   eq('an answer with neither cell is 「없음」', mapperChoices({}), []);
   // 🔴 S-223 이 오면 `candidates` 가 «이깁니다» — 그때 위 다리는 지워지고, 그 전에도 두 읽기가
@@ -214,6 +217,19 @@ console.log('\n[5] the mapper candidates, and the translation between the two sp
                                { module: 'mappers.a', name: 'inner', kind: 'function' }] };
   eq('when the server names candidates, that is the list',
     mapperChoices(AFTER).map((c) => c.value), ['run', 'mappers.a:inner']);
+  // ── C-106 ⑤: 선언된 파라미터가 «고르면 따라옵니다» ──────────────────────────────
+  // 🔴 세 상태입니다. `params` 가 목록이면 그 행들을 채우고, `null` 이면 «안 물어본» 것이라
+  //    아무것도 안 채우며(오늘 그대로), 빈 목록이면 「읽었고 없다」라 역시 채울 것이 없습니다.
+  const DECLARED = { candidates: [
+    { module: 'm', name: 'withParams', kind: 'registered', params: ['retry', 'batch'] },
+    { module: 'm', name: 'unknownParams', kind: 'registered', params: null },
+    { module: 'm', name: 'noParams', kind: 'registered', params: [] }] };
+  const picked = mapperChoices(DECLARED);
+  eq('a candidate that declares parameters carries the cells to write',
+    picked[0].fill, { 'params.retry': '', 'params.batch': '' });
+  eq('one that declares NOTHING KNOWN carries none -- 「not asked」 is not 「none」',
+    picked[1].fill, undefined);
+  eq('...and one that was read and has none carries none either', picked[2].fill, undefined);
   // ── 고른 것이 어느 칸들에 적히나 ───────────────────────────────────────────────
   eq('a registered name writes its own cell only', splitMapper('build_dt_map'), null);
   eq('a file function writes the two cells and CLEARS the one',

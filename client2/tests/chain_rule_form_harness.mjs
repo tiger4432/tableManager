@@ -464,6 +464,142 @@ function suite(M) {
   ok(byCls(two.host, 'chain-rule-list-note').length === 0,
     'J9 no such cells means no lines at all -- an empty row would claim there are none');
 
+  // ── K: the unsaved document is VISIBLE, defensible and reversible (C-106) ─────────
+  // 🔴 C-101 stopped the timer from swapping a form being edited -- and said nothing about it.
+  //    An invisible guard is, to the operator, no guard: they do not know there is anything to
+  //    save. Seven things follow from that, and this section scores them.
+  const store = () => {
+    const held = new Map();
+    return {
+      getItem: (k) => (held.has(k) ? held.get(k) : null),
+      setItem: (k, v) => held.set(k, String(v)),
+      removeItem: (k) => held.delete(k),
+      _map: held,
+    };
+  };
+  const typeInto = (host, at, value) => {
+    const box = walk(host).find((n2) => n2.attrs && n2.attrs['data-value'] === at
+      && ['INPUT', 'SELECT', 'TEXTAREA'].includes(n2.tagName));
+    if (!box) return false;
+    box.value = value;
+    box.dispatch('change', {});
+    return true;
+  };
+  const doc2 = (host) => {
+    try { return JSON.parse((byCls(host, 'chain-rule-raw')[0] || {}).value || 'null'); }
+    catch (e) { return null; }
+  };
+
+  const shelf = store();
+  const saves3 = [];
+  const k = makePanel(M, SPEC, { storage: shelf, onSave: (p) => saves3.push(p) });
+  k.panel.render(payloadFor(SKELETON, { name: 'alpha', trigger_table: 'before' }));
+  ok(byCls(k.host, 'chain-rule-unsaved').length === 0,
+    'K1 a document straight from the server carries no 「unsaved」 mark');
+  typeInto(k.host, 'trigger_table', 'typed');
+  k.panel.render(k.panel._payload, {});
+  const mark = byCls(k.host, 'chain-rule-unsaved')[0];
+  ok(Boolean(mark) && mark.attrs['data-unsaved'] === 'edited',
+    `K2 one edit and the screen says so [${mark ? mark.textContent : 'no mark'}]`);
+  // 🔴 Ctrl+S IS THE SAVE BUTTON, not a second one: the same body, reached another way.
+  k.panel.root.dispatch('keydown', { key: 's', ctrlKey: true, preventDefault() {} });
+  ok(saves3.length === 1 && JSON.parse(saves3[0].raw).trigger_table === 'typed',
+    `K3 Ctrl+S saves the edited document (${saves3.length} save(s))`);
+  // ⚠️ And it is the ONLY shortcut: a bare 「s」 typed into a box must not save.
+  k.panel.root.dispatch('keydown', { key: 's', preventDefault() {} });
+  ok(saves3.length === 1, 'K4 ... and a plain 「s」 does not');
+
+  // ── ② leaving a document with unsaved text asks first ────────────────────────────
+  const opened = [];
+  let asked = 0;
+  const no = makePanel(M, SPEC, { storage: store(), confirm: () => { asked += 1; return false; },
+                                  onOpen: (name) => opened.push(name) });
+  no.panel.render(payloadFor(SKELETON, { name: 'alpha', trigger_table: 'before' }));
+  typeInto(no.host, 'trigger_table', 'typed');
+  no.panel.render(no.panel._payload, {});
+  const noPicker = byCls(no.host, 'chain-rule-picker')[0];
+  noPicker.value = 'beta';
+  noPicker.dispatch('change', { target: { value: 'beta' } });
+  ok(asked === 1 && opened.length === 0,
+    `K5 leaving an unsaved document asks, and 「no」 stays put (asked ${asked}, opened ${opened.length})`);
+  ok(noPicker.value === 'alpha',
+    `K6 ... and the picker goes back to what is actually open [${noPicker.value}]`);
+  const yes = makePanel(M, SPEC, { storage: store(), confirm: () => true,
+                                   onOpen: (name) => opened.push(name) });
+  yes.panel.render(payloadFor(SKELETON, { name: 'alpha', trigger_table: 'before' }));
+  typeInto(yes.host, 'trigger_table', 'typed');
+  yes.panel.render(yes.panel._payload, {});
+  const yesPicker = byCls(yes.host, 'chain-rule-picker')[0];
+  yesPicker.dispatch('change', { target: { value: 'beta' } });
+  ok(opened.length === 1 && opened[0] === 'beta', 'K7 ... and 「yes」 opens the other one');
+  let askedClean = 0;
+  const clean = makePanel(M, SPEC, { storage: store(), confirm: () => { askedClean += 1; return true; },
+                                     onOpen: () => {} });
+  clean.panel.render(payloadFor(SKELETON, { name: 'alpha', trigger_table: 'before' }));
+  byCls(clean.host, 'chain-rule-picker')[0].dispatch('change', { target: { value: 'beta' } });
+  ok(askedClean === 0, 'K8 a document with nothing unsaved asks nothing -- a question with one answer is noise');
+
+  // ── ③ putting it back ────────────────────────────────────────────────────────────
+  const undoBtn = walk(k.host).find((n2) => n2.attrs && n2.attrs['data-action'] === 'undo-chain-rule');
+  ok(Boolean(undoBtn), 'K9 an unsaved document offers a way back to the served one');
+  if (undoBtn) undoBtn.dispatch('click', {});
+  ok((doc2(k.host) || {}).trigger_table === 'before',
+    `K10 ... and taking it puts the SERVER's document back [${(doc2(k.host) || {}).trigger_table}]`);
+  ok(byCls(k.host, 'chain-rule-unsaved').length === 0, 'K11 ... and the mark goes with it');
+
+  // ── ④ the draft outlives the page ────────────────────────────────────────────────
+  const kept = store();
+  const before2 = makePanel(M, SPEC, { storage: kept });
+  before2.panel.render(payloadFor(SKELETON, { name: 'alpha', trigger_table: 'before' }));
+  typeInto(before2.host, 'trigger_table', 'survives');
+  const after = makePanel(M, SPEC, { storage: kept });   // a new page, the same browser
+  after.panel.render(payloadFor(SKELETON, { name: 'alpha', trigger_table: 'before' }));
+  ok((doc2(after.host) || {}).trigger_table === 'survives',
+    `K12 a draft survives the page it was typed on [${(doc2(after.host) || {}).trigger_table}]`);
+  const restoredMark = byCls(after.host, 'chain-rule-unsaved')[0];
+  ok(Boolean(restoredMark) && restoredMark.attrs['data-unsaved'] === 'restored',
+    `K13 ... and says it was RESTORED -- text that comes back silently reads as the server's`);
+  // 🔴 저장이 답하면 보관도 끝입니다 — 안 지우면 다음에 연 사람이 «이미 저장된» 글자를
+  //    「미저장」으로 봅니다.
+  after.panel.render(payloadFor(SKELETON, { name: 'alpha', trigger_table: 'stored' }),
+                     { saved: { name: 'alpha', rules: ['alpha', 'beta'], backup: '/b' } });
+  const reopened = makePanel(M, SPEC, { storage: kept });
+  reopened.panel.render(payloadFor(SKELETON, { name: 'alpha', trigger_table: 'stored' }));
+  ok((doc2(reopened.host) || {}).trigger_table === 'stored'
+     && byCls(reopened.host, 'chain-rule-unsaved').length === 0,
+    'K14 once the save answers, the kept draft is gone with it');
+  // ⚠️ 보관을 못 쓰는 환경(프라이빗 모드)에서도 화면은 그대로 돕니다.
+  const noStore = makePanel(M, SPEC, { storage: null });
+  noStore.panel.render(payloadFor(SKELETON, { name: 'alpha', trigger_table: 'before' }));
+  ok(typeInto(noStore.host, 'trigger_table', 'x') && (doc2(noStore.host) || {}).trigger_table === 'x',
+    'K15 a browser that keeps nothing still edits normally');
+
+  // ── ⑤ choosing a mapper brings the parameters it declares ────────────────────────
+  const WITH_PARAMS = [
+    { value: 'named', label: 'named', group: '등록 이름',
+      fill: { 'params.retry': '', 'params.batch': '' } },
+  ];
+  const p6 = makePanel(M, { ...SPEC, firstScreen: ['mapper'] },
+                       { storage: store(), lists: { mappers: WITH_PARAMS } });
+  p6.panel.render(payloadFor(SKELETON, { name: 'alpha', params: { retry: '3' } }));
+  typeInto(p6.host, 'mapper', 'named');
+  const withParams = doc2(p6.host) || {};
+  ok(withParams.params && withParams.params.batch === '',
+    `K16 choosing a mapper brings the parameters it declares [${JSON.stringify(withParams.params)}]`);
+  ok(withParams.params && withParams.params.retry === '3',
+    'K17 ... and does not overwrite one the document already holds -- choosing is not erasing');
+
+  // ── ⑥ the lines sit under the cell they are about ────────────────────────────────
+  // ⚠️ 어느 칸 밑인지는 «선언»이 답합니다(목록을 든 `oneOf` 그룹의 첫 철자) — 실제 체인
+  //    등록부가 그 선언을 갖고 있고, 이 픽스처도 그것을 답니다.
+  const under = makePanel(M, { ...SPEC, oneOf: [{ one: ['mapper'], other: [], list: 'mappers' }] }, {
+    storage: store(), lists: { mappers: [{ value: 'a', group: 'g' }, { value: 'b', group: 'g' }] },
+    notes: [{ kind: 'refused', text: 'mappers.x · ImportError' }] });
+  under.panel.render(payloadFor(SKELETON, { name: 'alpha' }));
+  const cell = walk(under.host).find((n2) => (n2.attrs || {})['data-path'] === 'mapper');
+  ok(Boolean(cell) && byCls(cell, 'chain-rule-list-note').length === 1,
+    'K18 what is here but not choosable reads UNDER the cell it is about');
+
   return { pass: pass - before.pass, fail: fail - before.fail };
 }
 
@@ -479,7 +615,9 @@ const DEFECTS = [
   // Re-aimed by C-95 at the same claim: the name the person typed must win over the one that
   // was open. The cell it is typed into moved into the form, so this is where that now decides.
   ['the add control saves the name that was already open',
-    s => s.replace('        if (formOwnsName) {', '        if (false) {')],
+    // Re-aimed by C-106 ①: the save body became `runSave` (shared with Ctrl+S), so it sits
+    // one level out. Same claim, same C3.
+    s => s.replace('      if (formOwnsName) {', '      if (false) {')],
   // Re-aimed by C-101 ①: the options are built in ONE place now (`_options`), so the claim
   // 「the picker says WHICH document is on the screen」 is decided there. Same claim, same C6.
   ['the picker keeps showing the rule that was open while a new one is written',
@@ -533,13 +671,13 @@ const DEFECTS = [
   ['a background read is drawn over the document being edited',
     s => s.replace('if (opts.background && this.open) {', 'if (false) {')],
   ['the unsaved document is dropped, so any redraw rebuilds from the response',
-    s => s.replace('const drafted = this.draft !== null && this.draftOf === key ? this.draft : null;',
-                   'const drafted = null;')],
+    s => s.replace('let drafted = this.draft !== null && this.draftOf === key ? this.draft : null;',
+                   'let drafted = null;')],
   ['the part passes the stored background flag back in, so a fold after the tab opens does nothing',
     s => s.replace('this.render(this._payload, { ...this._opts, background: false });',
                    'this.render(this._payload, this._opts);')],
   ['a draft outlives the document it belongs to, so old text returns after a save',
-    s => s.replace('if (opts.saved || (this.draft !== null && this.draftOf !== key)) this._forget();', '')],
+    s => s.replace('    if (opts.saved) this._forget();', '')],
   // 🔴 C-101 ②. The owner's second sentence: 「테이블이랑 맵퍼 설정은 리스트 좀 나오게해」.
   ['the reference cells lose their catalogue, so every table name is typed by hand',
     s => s.replace('    declared: (section) => named(section || refList),', '    declared: () => [],')],
@@ -547,7 +685,7 @@ const DEFECTS = [
     s => s.replace('named(section || refList)', 'named(refList)')],
   // 🔴 C-101 ③. Five ways one choice stops writing what the operator chose.
   ['the registry`s translation is ignored, so a file function writes the wrong cell',
-    s => s.replace('      const spread = group.split(value);', '      const spread = null;')],
+    s => s.replace('        const spread = group.split(value);', '        const spread = null;')],
   ['the one-cell spelling is left behind, so the document names a mapper twice',
     s => s.replace('            if (val === null) {', '            if (false) {')],
   ['the dropdown cannot say what a two-cell rule holds',
@@ -557,7 +695,36 @@ const DEFECTS = [
     s => s.replace('      const useOne = (Array.isArray(list) && list.length) ? true',
                    '      const useOne = false ? true')],
   ['what is here but not choosable is never drawn, so 「why is my file missing」 has no answer',
-    s => s.replace('    if (picked && root && this.notes.length) {', '    if (false) {')],
+    s => s.replace('    if (!this.notes.length || !box || !box.querySelector) return;',
+                   '    if (true) return;')],
+  // 🔴 C-106. Nine ways the unsaved document stops being visible, defensible or reversible.
+  ['the unsaved mark is never drawn',
+    s => s.replace('    if (drafted !== null) {\n      const mark', '    if (false) {\n      const mark')],
+  ['the shortcut is not the save button but nothing at all',
+    s => s.replace("        if (key !== 's' || !(event.ctrlKey || event.metaKey)) return;",
+                   '        if (true) return;')],
+  ['any key saves, so typing an s in a box writes the file',
+    s => s.replace("        if (key !== 's' || !(event.ctrlKey || event.metaKey)) return;",
+                   "        if (key !== 's') return;")],
+  ['leaving an unsaved document asks nothing',
+    s => s.replace('        if (drafted !== null && !this.ask(LEAVE_UNSAVED)) {',
+                   '        if (false) {')],
+  ['the answer to the question is ignored',
+    s => s.replace('        if (drafted !== null && !this.ask(LEAVE_UNSAVED)) {',
+                   '        if (drafted !== null && !this.ask(LEAVE_UNSAVED) && false) {')],
+  ['the way back does not actually drop the draft',
+    s => s.replace('        undo.addEventListener(\'click\', () => { this._forget(); this._again(); });',
+                   '        undo.addEventListener(\'click\', () => { this._again(); });')],
+  ['a kept draft is never read back, so a refresh loses it again',
+    s => s.replace('      const held = this._stored(key);', '      const held = null;')],
+  ['a saved document leaves its draft in the browser',
+    s => s.replace('    try { this.store.removeItem(this._slot(was)); } catch (e) { /* noqa */ }', '')],
+  ['choosing a mapper overwrites parameters the document already holds',
+    s => s.replace('        if (getAtPath(held, splitBundlePath(at)) === undefined) extra.push([at, fill[at]]);',
+                   '        extra.push([at, fill[at]]);')],
+  ['the lines drift back to the end of the form',
+    s => s.replace("    const host = (at && box.querySelector(`[data-path=\"${at}\"]`)) || box;",
+                   '    const host = box;')],
   ['the add control is drawn for a registry that declared no word for it',
     s => s.replace('    if (spec.addLabel) {', '    if (true) {')],
 ];

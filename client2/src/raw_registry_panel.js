@@ -26,7 +26,7 @@
 import { ABSENT, countText } from './absent.js';
 import { renderSkeletonForm } from './ontology_explorer_view.js';
 import { emptyOf } from './ontology_skeleton.js';
-import { writeShapeAtPath, deleteAtPath, splitBundlePath } from './ontology_path.js';
+import { writeShapeAtPath, deleteAtPath, splitBundlePath, getAtPath } from './ontology_path.js';
 
 /**
  * 고르개가 «새 이름을 짓는 중»일 때 입는 말. 🔴 철자가 «하나»입니다 — 그리는 쪽과 비교하는
@@ -44,6 +44,13 @@ export const NEW_NAME = '(새 규칙)';
  *    같은 제품이 두 목소리로 말합니다.
  */
 export const PICK_NAME = '— 고르십시오 —';
+
+/**
+ * 저장 안 된 글자가 있는데 «다른 문서»로 가려 할 때 묻는 말. 🔴 짧게, 그리고 «거짓말 없이» —
+ * 초안은 이름별로 보관되므로 이동해도 «사라지지 않습니다». 묻는 이유는 잃어서가 아니라
+ * 「지금 보던 것이 저장 안 된 상태」라는 사실을 운영자가 모르고 넘어가지 않게 하려는 것입니다.
+ */
+export const LEAVE_UNSAVED = '미저장 변경이 있습니다. 이동할까요?';
 
 /**
  * 한 등록부의 «선언». 도메인 낱말은 «전부» 여기로 들어옵니다.
@@ -289,9 +296,29 @@ export class RawRegistryPanel {
     this.lists = deps.lists || {};
     // C-101 ③. 목록 «밖»의 줄들 — 「여기 있지만 고를 수 없는 것」. 값이고, 사유는 서버의 것입니다.
     this.notes = deps.notes || [];
+    // 🔴 C-106 ④. 초안은 «새로고침을 넘어» 삽니다 — 오늘까지는 창을 닫으면 사라졌습니다.
+    //    자리는 «이 브라우저»뿐이고 서버로 가지 않습니다. 못 쓰는 환경(프라이빗 모드)이면
+    //    조용히 «없는 셈»이고, 그때도 메모리 초안은 그대로 돕니다.
+    this.store = deps.storage !== undefined ? deps.storage
+      : (typeof globalThis !== 'undefined' ? globalThis.localStorage : null);
+    // C-106 ②. 「묻는 것」도 밖에서 올 수 있어야 채점됩니다.
+    this.ask = deps.confirm
+      || ((text) => (typeof globalThis !== 'undefined' && typeof globalThis.confirm === 'function'
+        ? globalThis.confirm(text) : true));
     this.root = this.doc.createElement('div');
     this.root.className = `${spec.cls}-panel`;
     this.mount.appendChild(this.root);
+    // 🔴 C-106 ①. Ctrl/⌘+S 는 «저장 버튼과 같은 길»입니다 — 두 번째 저장 경로를 만들면 둘이
+    //    갈라질 수 있고(criterion ④), 갈라진 쪽은 아무도 안 누르는 동안 조용히 틀립니다.
+    //    ⚠️ 뿌리에 답니다(문서가 아니라) — 같은 화면에 패널이 둘이면 각자 자기 것만 저장합니다.
+    if (this.root.addEventListener) {
+      this.root.addEventListener('keydown', (event) => {
+        const key = event && event.key ? String(event.key).toLowerCase() : '';
+        if (key !== 's' || !(event.ctrlKey || event.metaKey)) return;
+        if (typeof event.preventDefault === 'function') event.preventDefault();
+        if (this._saveNow) this._saveNow();
+      });
+    }
   }
 
   /**
@@ -431,15 +458,29 @@ export class RawRegistryPanel {
     //    누르면 이름 칸이 폼 «위»에 하나, 폼 «안»에 하나 — 둘이었습니다).
     const formOwnsName = Boolean(root)
       && ((root.fields || []).some((f) => f && f.key === spec.nameKey));
-    // 🔴 C-101 ①. 문서의 «이름». 초안은 그 이름을 같이 들고, 저장이 답했거나 «다른 문서»가
-    //    열리면 끝납니다 — 남겨 두면 나중에 아무 표시 없이 되살아납니다(보관은 제안 사항이고,
-    //    그건 「미저장」 배지가 선 뒤의 일입니다).
+    // 🔴 C-101 ①. 문서의 «이름». 초안은 그 이름을 같이 듭니다.
     const key = this.newMode ? NEW_NAME : String(view.name || '');
-    if (opts.saved || (this.draft !== null && this.draftOf !== key)) this._forget();
-    const drafted = this.draft !== null && this.draftOf === key ? this.draft : null;
     // 🔴 C-95-b. 「무엇을 편집하고 있나」에 답이 있나. 없으면 편집기를 «안 그립니다» — 빈 편집기는
     //    친절이 아니라 «이름 없는 문서 위의 살아 있는 저장 버튼»입니다.
     const picked = this.newMode || Boolean(view.name);
+    // 저장이 답하면 그 초안은 «끝»입니다 — 보관까지 지웁니다.
+    if (opts.saved) this._forget();
+    // ⚠️ 다른 문서가 열리면 «메모리에서만» 내려놓습니다. 보관은 그 이름으로 남아 있고 돌아오면
+    //    그대로 섭니다 — 지우면 「이동하면 사라진다」가 되어 ②가 묻는 말이 거짓이 됩니다.
+    if (this.draft !== null && this.draftOf !== key) { this.draft = null; this.draftOf = ''; }
+    let drafted = this.draft !== null && this.draftOf === key ? this.draft : null;
+    // 🔴 C-106 ④. 메모리에 없으면 «보관»을 봅니다(새로고침·탭 닫기를 넘어온 것). 복원된 것은
+    //    배지가 «말합니다» — 말없이 되살아난 글자는 운영자가 「서버가 준 것」으로 읽습니다.
+    let restored = false;
+    if (drafted === null && picked && key) {
+      const held = this._stored(key);
+      if (held !== null) {
+        drafted = held;
+        this.draft = held;
+        this.draftOf = key;
+        restored = true;
+      }
+    }
 
     // 🔴 저장이 보내는 «글자»입니다. 폼은 이 글자를 고치는 두 번째 «편집기»이지 두 번째 «문서»가
     //    아닙니다 — 그래서 둘이 갈라질 수 없습니다 (criterion ④).
@@ -459,6 +500,13 @@ export class RawRegistryPanel {
       picker.addEventListener('change', (e) => {
         const value = e && e.target ? e.target.value || '' : '';
         if (value === NEW_NAME || value === PICK_NAME) return;
+        // 🔴 C-106 ②. 저장 안 된 것이 있으면 «묻습니다». 타이머는 C-101 이 막았지만 사람의
+        //    손은 안 막았고, 고르개 한 번이 화면을 바꾸는 유일한 자리입니다.
+        if (drafted !== null && !this.ask(LEAVE_UNSAVED)) {
+          // 보던 것으로 «되돌립니다» — 고르개가 가지 않은 곳을 가리키고 있으면 그 자체가 거짓입니다.
+          if (this._picker) this._picker.value = this.newMode ? NEW_NAME : view.name;
+          return;
+        }
         this.newMode = false;
         this.onOpen(value);
       });
@@ -507,25 +555,46 @@ export class RawRegistryPanel {
       head.appendChild(line);
     }
 
+    // 🔴 C-106 ①. 「저장 안 됨」은 «값»입니다 — 배지 하나, 문장 없음. C-101 이 세운 가드(타이머가
+    //    편집 중인 폼을 안 갈아 끼움)는 «보이지 않았고», 안 보이는 가드는 운영자에게 없는 것과
+    //    같습니다. 복원된 초안도 «같은 배지»가 말합니다(값이 다릅니다).
+    if (drafted !== null) {
+      const mark = this._line(`${spec.cls}-unsaved`, restored ? '미저장 · 복원' : '미저장');
+      mark.setAttribute('data-unsaved', restored ? 'restored' : 'edited');
+      head.appendChild(mark);
+      // 🔴 C-106 ③. 되돌릴 «길»이 있어야 합니다. 오늘까지는 다른 규칙에 들렀다 오는 것이
+      //    유일한 길이었고, 그건 우연이지 컨트롤이 아닙니다.
+      const undo = doc.createElement('button');
+      undo.className = `admin-btn ${spec.cls}-undo`;
+      undo.setAttribute('data-action', `undo-${spec.cls}`);
+      undo.textContent = '되돌리기';
+      if (undo.addEventListener) {
+        undo.addEventListener('click', () => { this._forget(); this._again(); });
+      }
+      head.appendChild(undo);
+    }
+
     const save = doc.createElement('button');
     save.className = `admin-btn btn-primary ${spec.cls}-save`;
     save.setAttribute('data-action', `save-${spec.cls}`);
     save.textContent = '저장';
-    if (save.addEventListener && this.onSave) {
-      // 🔴 저장은 «한 길»입니다. 새 이름이든 고른 이름이든 같은 함수에 같은 모양으로 갑니다.
-      //    이름이 어디서 오는지만 다르고, 폼이 이름을 가지면 «문서가» 그 답을 들고 있습니다.
-      save.addEventListener('click', () => {
-        let named = nameInput ? String(nameInput.value || '').trim() : view.name;
-        if (formOwnsName) {
-          let held;
-          try { held = JSON.parse(area.value || '{}'); } catch (e) { held = null; }
-          const fromDoc = held && typeof held === 'object' ? held[spec.nameKey] : undefined;
-          if (typeof fromDoc === 'string' && fromDoc.trim()) named = fromDoc.trim();
-          else if (this.newMode) named = '';
-        }
-        this.onSave({ [spec.nameKey]: named, base: view.base, raw: area.value });
-      });
-    }
+    // 🔴 저장은 «한 길»입니다. 새 이름이든 고른 이름이든 같은 함수에 같은 모양으로 갑니다.
+    //    이름이 어디서 오는지만 다르고, 폼이 이름을 가지면 «문서가» 그 답을 들고 있습니다.
+    //    ⚠️ C-106 ①: 단축키도 «이 함수»를 부릅니다. 두 번째 저장 본문을 만들지 않습니다.
+    const runSave = () => {
+      if (!this.onSave) return;
+      let named = nameInput ? String(nameInput.value || '').trim() : view.name;
+      if (formOwnsName) {
+        let held;
+        try { held = JSON.parse(area.value || '{}'); } catch (e) { held = null; }
+        const fromDoc = held && typeof held === 'object' ? held[spec.nameKey] : undefined;
+        if (typeof fromDoc === 'string' && fromDoc.trim()) named = fromDoc.trim();
+        else if (this.newMode) named = '';
+      }
+      this.onSave({ [spec.nameKey]: named, base: view.base, raw: area.value });
+    };
+    this._saveNow = (picked || !root) ? runSave : null;
+    if (save.addEventListener && this.onSave) save.addEventListener('click', runSave);
     // 🔴 C-95-b. 편집기가 없으면 저장도 없습니다 — 아무것도 안 고른 화면의 저장 버튼은
     //    «이름 없는 빈 문서»를 보내러 가는 길입니다. 서버도 거절하지만, 누를 수 있는 버튼을
     //    두고 거절로 답하는 것은 화면이 답할 수 있는 것을 서버에 미룬 것입니다.
@@ -567,6 +636,9 @@ export class RawRegistryPanel {
         }
         // ④ 서버가 «주소를 대어» 거절하면 그 칸 «옆»에 붙입니다 (S-204 ③).
         markRefusedField(box, view, spec);
+        // 🔴 C-106 ⑥. 목록 «밖»의 줄들은 그 목록을 먹이는 칸 «바로 밑»에 섭니다 — 폼 아래에
+        //    두면 「내 파일이 왜 안 보이나」의 답이 물음에서 한 화면 떨어져 있습니다.
+        this._notesUnder(box);
       };
       draw(held);
       // 폼이 낸 편집을 문서에 «적습니다». 컨트롤의 낱말(`edit-shape`)은 탐색기의 것입니다.
@@ -585,7 +657,7 @@ export class RawRegistryPanel {
           // 🔴 C-101 ③. 한 번 고르기가 문서를 «한 번» 바꿉니다. 고른 것이 다른 철자의 것이면
           //    그 철자의 칸들로 펴지고, 이 칸은 비워집니다 — 두 컨트롤을 오갈 일이 없습니다.
           let updated = held2;
-          for (const [at, val] of this._cells(String(path), next)) {
+          for (const [at, val] of this._cells(String(path), next, held2)) {
             if (val === null) {
               // 없는 칸을 지우는 것은 «성공»입니다 — 그 자리는 이미 비어 있습니다.
               const gone = deleteAtPath(updated, splitBundlePath(at));
@@ -605,23 +677,6 @@ export class RawRegistryPanel {
       this.root.appendChild(box);
       this._redraw = draw;
       if (this.newMode) view = Object.freeze({ ...view, raw: JSON.stringify(held, null, 2) });
-    }
-
-    // C-101 ③. 목록 밖의 줄들. 드롭다운 «밖»이고 한 줄씩입니다 — 「내 파일이 왜 안 보이나」의
-    // 답이 이 자리이고, 문구는 서버의 것이라 이 파일이 짓는 말이 없습니다.
-    if (picked && root && this.notes.length) {
-      const box = doc.createElement('div');
-      box.className = `${spec.cls}-list-notes`;
-      let drawn = 0;
-      for (const note of this.notes) {
-        if (!note || !note.text) continue;
-        const line = this._line(`${spec.cls}-list-note`, String(note.text));
-        if (note.kind) line.setAttribute('data-note', String(note.kind));
-        box.appendChild(line);
-        drawn += 1;
-      }
-      // 줄이 하나도 «안 그려졌으면» 상자도 없습니다 — 빈 상자는 여백만 남는 주장입니다.
-      if (drawn) this.root.appendChild(box);
     }
 
     // 🔴 거절은 «서버의 낱말»로. 이 파일은 문구를 짓지 않습니다.
@@ -717,26 +772,96 @@ export class RawRegistryPanel {
   _keep(key, text) {
     this.draft = String(text == null ? '' : text);
     this.draftOf = String(key || '');
+    // 🔴 C-106 ④. 메모리와 «같은 순간»에 보관합니다 — 나중에 한 번 더 쓰는 자리를 만들면
+    //    그 사이에 창이 닫히는 글자가 생기고, 그 창이 정확히 이 기능이 겨냥한 창입니다.
+    if (!this.store || !this.draftOf) return;
+    try { this.store.setItem(this._slot(this.draftOf), this.draft); } catch (e) { /* noqa */ }
   }
 
   _forget() {
+    const was = this.draftOf;
     this.draft = null;
     this.draftOf = '';
+    if (!this.store || !was) return;
+    try { this.store.removeItem(this._slot(was)); } catch (e) { /* noqa */ }
+  }
+
+  /** 이 등록부의 «이 문서»에 붙는 열쇠. 등록부가 둘이면 열쇠도 둘입니다. */
+  _slot(key) {
+    return `assy.draft.${this.spec.cls}.${key}`;
+  }
+
+  /** 보관된 초안, 또는 `null`. 🔴 못 읽는 환경은 «없는 것»과 같은 답입니다 — 거기서 던지면
+   *  초안 기능이 화면 «전체»를 못 그리게 만듭니다. */
+  _stored(key) {
+    if (!this.store || !key) return null;
+    try {
+      const held = this.store.getItem(this._slot(key));
+      return typeof held === 'string' ? held : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /** 닫힌 목록의 «그 항목». 없으면 null — 손으로 친 값은 목록에 없습니다. */
+  _member(list, value) {
+    const members = list ? (this.lists || {})[list] : null;
+    if (!Array.isArray(members)) return null;
+    return members.find((m) => m && typeof m === 'object' && m.value === value) || null;
+  }
+
+  /**
+   * 목록 «밖»의 줄들을 그 목록을 쓰는 칸 밑에 답니다. 어느 칸인지는 «선언»이 말합니다 —
+   * 목록을 든 `oneOf` 그룹의 첫 철자가 그 컨트롤입니다. 못 찾으면 폼 끝에 답니다.
+   */
+  _notesUnder(box) {
+    if (!this.notes.length || !box || !box.querySelector) return;
+    const group = (this.spec.oneOf || []).find((g) => g && g.list);
+    const at = group ? (group.one || [])[0] : '';
+    const host = (at && box.querySelector(`[data-path="${at}"]`)) || box;
+    const wrap = this.doc.createElement('div');
+    wrap.className = `${this.spec.cls}-list-notes`;
+    let drawn = 0;
+    for (const note of this.notes) {
+      if (!note || !note.text) continue;
+      const line = this._line(`${this.spec.cls}-list-note`, String(note.text));
+      if (note.kind) line.setAttribute('data-note', String(note.kind));
+      wrap.appendChild(line);
+      drawn += 1;
+    }
+    // 줄이 하나도 «안 그려졌으면» 상자도 없습니다 — 빈 상자는 여백만 남는 주장입니다.
+    if (drawn) host.appendChild(wrap);
   }
 
   /**
    * 이 컨트롤의 한 번 고르기가 «어느 칸들»에 무엇을 적나. 기본은 그 칸 하나입니다.
    * `null` 값은 「그 칸을 지운다」이고, 무엇이 그렇게 되는지는 «등록부»가 답합니다.
    */
-  _cells(path, value) {
+  _cells(path, value, held) {
+    let cells = null;
+    // 어느 목록에서 온 값인가. 그룹이 자기 목록을 대면 그것이고, 아니면 이 등록부의 «닫힌
+    // 목록»입니다 — 그 이름이 곧 `deref` 가 리프에 입혀 주는 목록이기 때문입니다.
+    let list = this.spec.choiceList || '';
     for (const group of this.spec.oneOf || []) {
-      if (typeof group.split !== 'function') continue;
       if ((group.one || [])[0] !== path) continue;
-      const spread = group.split(value);
-      if (spread && typeof spread === 'object') return Object.entries(spread);
+      if (typeof group.split === 'function') {
+        const spread = group.split(value);
+        if (spread && typeof spread === 'object') cells = Object.entries(spread);
+      }
+      if (group.list) list = group.list;
       break;
     }
-    return [[path, value]];
+    // 🔴 C-106 ⑤. 고른 항목이 «자기가 무엇을 더 적어야 하는지» 압니다(선언된 파라미터).
+    //    ⚠️ 문서에 «없는» 칸만 채웁니다 — 있는 값을 덮으면 고르기가 «지우기»가 됩니다.
+    const extra = [];
+    const member = this._member(list, value);
+    const fill = member && member.fill && typeof member.fill === 'object' ? member.fill : null;
+    if (fill) {
+      for (const at of Object.keys(fill)) {
+        if (getAtPath(held, splitBundlePath(at)) === undefined) extra.push([at, fill[at]]);
+      }
+    }
+    return (cells || [[path, value]]).concat(extra);
   }
 
   /**
