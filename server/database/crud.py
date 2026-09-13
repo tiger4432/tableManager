@@ -4387,21 +4387,29 @@ def _apply_batch_updates_once(db: Session, table_name: str,
             # So the branch that cannot resolve the true scope keeps the behaviour it has
             # today, and the reason travels in the response rather than being inferred
             # from an absence of improvement.
-            # [scope diff] The SECOND requirement, and it is not cosmetic: the diff must
-            # be able to RESOLVE an incoming cell onto the row it already has. That
-            # resolution is `assemble_composite_business_key`, which needs
-            # `composite_key_source`. A table whose business key arrives as a plain value
-            # in the payload is not matched at all today - `_get_or_create_row` looks at
-            # `row_id` and `business_key_val` only, and neither is set for it - so every
-            # push creates a fresh row. Measured: two identical pushes of one business
-            # key produce TWO rows carrying the same `business_key_val`.
+            # [scope diff] The SECOND requirement: the diff must be able to RESOLVE an
+            # incoming cell onto the row it already has, because diffing a table whose
+            # rows cannot be matched would mark every existing cell unclaimed and delete
+            # the whole map on every push.
             #
-            # That duplicate is a PRE-EXISTING defect of the shared write path, not
-            # something the diff introduces, and it is deliberately not fixed here. But
-            # it does decide this gate: diffing a table whose rows cannot be matched
-            # would mark every existing cell unclaimed and delete the entire map on every
-            # push. All seven shipped map tables declare a composite key, so this
-            # excludes no real map.
+            # ⚰️ WHY THIS CONJUNCT WAS WRITTEN IS NO LONGER WHY IT STANDS. It used to say
+            # - as measured fact - that a table whose business key arrives as a plain
+            # payload value is never matched, so two identical pushes produced TWO rows,
+            # and it called that a pre-existing defect of the shared write path that this
+            # gate merely routed around. S-226 (판정 391) fixed that defect:
+            # `assemble_composite_business_key` now lifts a plain declared key into
+            # `business_key_val`, so such rows ARE matched and such a table could in
+            # principle be diffed.
+            #
+            # 🔴 THE GATE IS UNCHANGED ON PURPOSE (판정 394). Dropping the conjunct would
+            # turn diffing ON for a shape no test exercises, and a guard is not switched
+            # on at the end of a round. Measured in the shipped catalogue: of the nine
+            # tables declaring `map_key_columns`, NINE declare a composite key - so no
+            # shipped map reaches the other arm at all, and the only thing that does is a
+            # test fixture. Whether the conjunct should become a property is queue row
+            # S-233; until then `unresolvable_row_identity` is the reason this branch
+            # reports, and for a plain-keyed table that sentence is no longer true of the
+            # write path - which is exactly what S-233 holds.
             _cfg = TABLE_CONFIG.get(table_name, {})
             use_diff = bool(_cfg.get("map_key_columns")) and bool(_cfg.get("composite_key_source"))
 

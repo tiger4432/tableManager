@@ -25,41 +25,47 @@ def _seed_map(client, table, map_key, count):
 
 
 def test_replace_map_clean_purge(client):
+    """The purge deletes what its scope covers and nothing beside it.
+
+    ⚰️ THE COUNTS CHANGED, AND THE SUBJECT DID NOT (S-226, 판정 391·393). This test used
+    to push ONE `EQP_ID` three times and expect THREE rows: on a plain-keyed table the
+    declared key was never lifted into `business_key_val`, so every push minted another
+    row. That was the defect S-226 removed, and this test was standing on it. Three
+    pushes of one key are now one row, so the numbers here are what the declaration
+    permits rather than what the defect produced.
+
+    🔴 AND THE SCOPE NEIGHBOUR IS WHY THIS IS STILL A TEST. With one row before and one
+    after, "purged then re-inserted" and "did nothing at all" look identical. A row under
+    a DIFFERENT key makes the assertion discriminating again: the legacy derivation pins
+    `EQP_ID`, so a purge that ignored its filters would take that row too."""
     unique_eqp = "EQP_UNIQUE_999"
-    # 1. Insert initial map data (3 cells for EQP_ID = EQP_UNIQUE_999)
-    payload1 = {
+    neighbour = "EQP_UNIQUE_998"
+
+    res1 = client.put("/tables/raw_table_1/data/updates", json={
         "updates": [
             {"updates": {"EQP_ID": unique_eqp}},
             {"updates": {"EQP_ID": unique_eqp}},
-            {"updates": {"EQP_ID": unique_eqp}}
+            {"updates": {"EQP_ID": unique_eqp}},
+            {"updates": {"EQP_ID": neighbour}},
         ],
-        "replace_map": False
-    }
-    res1 = client.put("/tables/raw_table_1/data/updates", json=payload1)
+        "replace_map": False,
+    })
     assert res1.status_code == 200
+    assert len(_get_rows(client, "raw_table_1", "EQP_ID", unique_eqp)) == 1
+    assert len(_get_rows(client, "raw_table_1", "EQP_ID", neighbour)) == 1
 
-    # Verify 3 rows exist
-    check1 = client.get(f"/tables/raw_table_1/data?filters=%7B%22EQP_ID%22%3A%7B%22filterType%22%3A%22text%22%2C%22type%22%3A%22equals%22%2C%22filter%22%3A%22{unique_eqp}%22%7D%7D")
-    assert check1.status_code == 200
-    rows1 = check1.json()["data"]
-    assert len(rows1) == 3
-
-    # 2. Purge existing map for EQP_UNIQUE_999 and replace with ONLY 1 new cell
-    payload_purge = {
-        "updates": [
-            {"updates": {"EQP_ID": unique_eqp}}
-        ],
-        "replace_map": True
-    }
-    res_purge = client.put("/tables/raw_table_1/data/updates", json=payload_purge)
+    res_purge = client.put("/tables/raw_table_1/data/updates", json={
+        "updates": [{"updates": {"EQP_ID": unique_eqp}}],
+        "replace_map": True,
+    })
     assert res_purge.status_code == 200
+    assert res_purge.json()["scope"]["deleted"] == 1, "the row in scope WAS purged"
 
-    # 3. Check that old 3 rows for unique_eqp were purged and replaced with ONLY 1 row!
-    check2 = client.get(f"/tables/raw_table_1/data?filters=%7B%22EQP_ID%22%3A%7B%22filterType%22%3A%22text%22%2C%22type%22%3A%22equals%22%2C%22filter%22%3A%22{unique_eqp}%22%7D%7D")
-    assert check2.status_code == 200
-    rows2 = check2.json()["data"]
+    rows2 = _get_rows(client, "raw_table_1", "EQP_ID", unique_eqp)
     assert len(rows2) == 1
     assert str(rows2[0]["data"]["EQP_ID"]["value"]) == unique_eqp
+    assert len(_get_rows(client, "raw_table_1", "EQP_ID", neighbour)) == 1, (
+        "the purge widened past its own filters")
 
 
 # ---------------------------------------------------------------------------
@@ -96,7 +102,14 @@ def test_replace_map_response_reports_scope_and_counts(client):
 
 def test_replace_map_fallback_scope_reported(client):
     """Table WITHOUT map_key_columns: the legacy fallback derivation still works
-    and the response now says which filters it actually used."""
+    and the response says which filters it actually used.
+
+    ⚰️ `deleted` WAS 2 AND IS 1 (S-226, 판정 391·393). The seed pushed one `EQP_ID`
+    twice and got two rows only because a plain declared key was never lifted into
+    `business_key_val`; it is one row now, so the scope covers one row and the report
+    says so. The subject - that the response states the filters and the counts it
+    really used - is unchanged, and `deleted: 1` still separates a purge that ran from
+    one that did not."""
     eqp = "EQP_SCOPE_FB"
     client.put("/tables/raw_table_1/data/updates", json={
         "updates": [{"updates": {"EQP_ID": eqp}}, {"updates": {"EQP_ID": eqp}}],
@@ -109,7 +122,7 @@ def test_replace_map_fallback_scope_reported(client):
     assert res.status_code == 200
     body = res.json()
     assert body["scope"]["filters"] == {"EQP_ID": eqp}
-    assert body["scope"]["deleted"] == 2
+    assert body["scope"]["deleted"] == 1
     assert body["scope"]["inserted"] == 1
 
 

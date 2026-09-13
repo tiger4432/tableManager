@@ -241,7 +241,12 @@ def test_a_large_removal_is_capped_and_says_so(client):
 
 
 def test_a_table_without_map_key_columns_keeps_the_purge_and_says_so(client):
-    """No silent downgrade: the table that does not improve says which strategy ran."""
+    """No silent downgrade: the table that does not improve says which strategy ran.
+
+    ⚰️ `deleted` WAS 2 AND IS 1 (S-226, 판정 391·393). The seed pushed one `EQP_ID` twice
+    and got two rows only because a plain declared key was never lifted into
+    `business_key_val`. The mode and the reason - which is what this test is about - did
+    not move; only the number of rows the scope could ever cover did."""
     client.put("/tables/raw_table_1/data/updates", json={
         "updates": [{"updates": {"EQP_ID": "DIFF_LEGACY"}},
                     {"updates": {"EQP_ID": "DIFF_LEGACY"}}],
@@ -254,7 +259,7 @@ def test_a_table_without_map_key_columns_keeps_the_purge_and_says_so(client):
 
     assert body["scope"]["mode"] == "purge"
     assert body["scope"]["reason"] == "legacy_column_derivation"
-    assert body["scope"]["deleted"] == 2 and body["scope"]["inserted"] == 1
+    assert body["scope"]["deleted"] == 1 and body["scope"]["inserted"] == 1
 
 
 def test_the_declared_branch_reports_the_diff_strategy(client):
