@@ -461,27 +461,54 @@ def max_group_rows(rule) -> int:
     return rows if rows > 0 else NO_GROUP_MERGE
 
 
-def max_group_attempts() -> int:
-    """선언된 상한, 없으면 기본 1. 판정·로그·격리 경계가 «이 한 수»를 본다.
+def _declared_attempts(source, where):
+    """One layer's answer, or `None` when that layer did not declare a usable one.
 
-    🔴 상수를 값만 바꾸지 않는 이유 (S-139). 종전엔 `>= 3` 이 판정에 박혀 있고 로그가
-    「(N/3)」 를 «따로» 적었다 — 상한을 옮기면 둘이 갈라지고, 갈라진 로그는 「몇 번 남았나」에
-    대해 조용히 거짓말한다. 이제 셋이 같은 함수를 부른다.
-
-    ⚠️ 3 을 적으면 옛 동작이 «그대로» 돌아온다 — 이 변경은 기본값을 옮긴 것이지 기제를
-    없앤 것이 아니다.
+    ⛔ 0 이하는 「한 번도 안 시도한다」가 돼 그룹이 «영원히» 격리된다, 그래서 바닥이 1 이다.
+    A value that cannot be used is REFUSED AT ITS LAYER and the next layer answers - never
+    raised, because a settings typo must not stop the chain.
     """
-    value = (_RULES_DOCUMENT or {}).get("max_group_attempts",
-                                        DEFAULT_MAX_GROUP_ATTEMPTS)
+    value = (source or {}).get("max_group_attempts")
+    if value is None:
+        return None
     try:
         parsed = int(value)
     except (TypeError, ValueError):
-        logger.warning(
-            "[Chain] max_group_attempts=%r is not a number; using %d.",
-            value, DEFAULT_MAX_GROUP_ATTEMPTS)
-        return DEFAULT_MAX_GROUP_ATTEMPTS
-    # 0 이하는 「한 번도 안 시도한다」가 되어 그룹이 «영원히» 격리된다. 1 로 바닥을 둔다.
-    return parsed if parsed >= 1 else DEFAULT_MAX_GROUP_ATTEMPTS
+        logger.warning("[Chain] %s max_group_attempts=%r is not a number; ignoring it.",
+                       where, value)
+        return None
+    if parsed < 1:
+        logger.warning("[Chain] %s max_group_attempts=%r is below 1; ignoring it.",
+                       where, value)
+        return None
+    return parsed
+
+
+def max_group_attempts(rule, document) -> int:
+    """시도 상한 — 규칙이 적었으면 규칙, 아니면 문서, 그리고 없으면 값(1).
+
+    🔴 THE CELL WAS OPEN AND NOBODY READ IT (S-221, 판정 378). `max_group_attempts` is a
+    declared RULE cell - it sits in `RULE_ROUTING_OPTIONAL`, the skeleton types it `number`,
+    and the chain graph screen publishes `rule["max_group_attempts"]` - while this reader
+    looked at the DOCUMENT only. So an operator could write it on a rule, watch the form draw
+    it and the screen show it, and change nothing: 「폼이 그리는데 읽는 쪽이 없다」.
+
+    🔴 BOTH SOURCES ARE ARGUMENTS. This function reads no module state, so the three
+    layers can be scored directly and the worker's seat is the only place that decides WHICH
+    rule is asked.
+
+    🔴 상수를 값만 바꾸지 않는 이유 (S-139). 종전엔 `>= 3` 이 판정에 박혀 있고 로그가
+    「(N/3)」 를 «따로» 적었다 — 상한을 옮기면 둘이 갈라지고, 갈라진 로그는 「몇 번 남았나」에
+    대해 조용히 거짓말한다. 판정·사유·로그 셋이 이 함수를 부른다.
+
+    ⚠️ 3 을 적으면 예 동작이 «그대로» 돌아온다 — 이 변경은 기본값을 옮긴 것이지 기제를
+    없앤 것이 아니다.
+    """
+    for source, where in ((rule, "rule"), (document, "document")):
+        declared = _declared_attempts(source, where)
+        if declared is not None:
+            return declared
+    return DEFAULT_MAX_GROUP_ATTEMPTS
 
 
 def read_rules_document(path=None):
@@ -1823,7 +1850,14 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                 retrying_count = 0
                 max_retry_num = 0
                 # 한 번 읽어 «판정·사유·로그»가 같은 수를 본다.
-                attempts_cap = max_group_attempts()
+                # 🔴 THE RULES THIS GROUP WOKE DECIDE IT, AND THE STRICTEST WINS (S-221).
+                #    A group - merged or not - runs every rule it woke, so a cap that held
+                #    for one of them would be no cap for the others. Same reading, same
+                #    shape and the same `min` as `merge_consecutive_groups`' ceiling.
+                _woke = _rules_for_group(events_in_tx, rules)
+                _caps = [max_group_attempts(r, _RULES_DOCUMENT) for r in rules
+                         if str(r.get("name") or "") in _woke]
+                attempts_cap = min(_caps) if _caps else max_group_attempts(None, _RULES_DOCUMENT)
 
                 reexpanded_rows = 0
                 for event in events_in_tx:
