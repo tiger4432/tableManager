@@ -43319,3 +43319,62 @@ df_to_updates 의 「unfilled_key_columns answers [] …, so the pre-write gate 
 게이트 **9** 신설 · 변이 셋 전부 빨강(올림 제거 3 · 빈 값도 올림 3 · 공급된 키 덮어쓰기 2) · 제가 고친 «이름»으로 모은 21 파일 **387 passed / 1 skipped / 1 xfailed** · 커밋 뒤 `--collect-only` **6,542** 에러 0(직전 6,533 + 신설 9). 재기동은 총괄 몫입니다.
 
 > 📌 **[09-14 00:03] 이 채널의 미답 질문: «없음».** 이제 ③ 전 스위트 «한 번»을 마지막 트리에서 돌립니다 — 돌리는 동안 트리는 건드리지 않고, 끝나면 수·시간·exit(+ 실패가 있으면 이름)만 보고합니다.
+
+---
+
+## 📊 [09-14 00:15] 전 스위트 «한 번» — 3 failed / 6,379 passed, 10:27, exit 1
+
+```
+수집   6,542        결과   3 failed · 6,379 passed · 156 skipped · 4 xfailed
+시간   627.98 s (10:27)      exit   1
+해석기 C:/Users/kk980/anaconda3/envs/assy_manager/python.exe -m pytest tests -q -p no:cacheprovider
+```
+
+### ⚠️ 「트리 무변」은 «절반만» 참입니다 — 재서 적습니다
+```
+시작 HEAD  4c317fbc      끝 HEAD  b80ffa01      (도는 동안 총괄 커밋 둘이 이 트리에 들어왔습니다)
+그 둘이 건드린 파일   docs/process/PROJECT_STATUS.md · task/IMPLEMENTER_ORDERS.md
+git diff --name-only 4c317fbc..b80ffa01 -- server   ->   «0 파일»
+```
+🔴 **제가 「트리 무변」이라 말할 자격이 있는 것은 «server/» 뿐입니다.** 스위트의 주어는 그 동안 한 바이트도 안 움직였고, 그래서 위 수는 유효합니다. 다만 「트리가 안 움직였다」는 문장은 그대로는 거짓이라 이렇게 적습니다.
+
+### 🔴 실패 «셋» — 전부 이름으로
+```
+tests/test_replace_map.py::test_replace_map_clean_purge
+tests/test_replace_map.py::test_replace_map_fallback_scope_reported
+tests/test_replace_map_scope_diff.py::test_a_table_without_map_key_columns_keeps_the_purge_and_says_so
+```
+총괄이 찾은 둘에 **`test_replace_map_scope_diff` 의 하나가 더** 있습니다. 셋 다 «같은 부류»입니다.
+
+### 갈래 — ㉠ 발판 «셋» · ㉡ 진짜 회귀 «0»
+```
+셋 다 raw_table_1 에 «같은 EQP_ID» 를 두세 번 밀고 2~3 행을 기대합니다
+raw_table_1 선언(conftest)   business_key: "EQP_ID" · column_types: {"EQP_ID": "string"}  <- 컬럼이 그 «하나»
+=> 「평키는 신원이 아니다」가 전제이고, 그것이 S-226 이 없앤 바로 그것입니다
+㉡ 진짜 회귀: 제가 잰 범위에서 «0». 제 21 파일 모집단은 387 passed 였고, 그 모집단이 이 셋을 «놓쳤습니다»
+```
+🔴 **모집단을 놓친 것이 제 잘못입니다.** 저는 고친 «이름»(`assemble_composite_business_key` · `unfilled_key_columns` · `_get_or_create_row` · `df_to_updates`)으로 모았는데, 제가 고친 함수의 docstring 이 **`derive_replace_map_scope` 를 «순서 제약»으로 이름 대고 있었습니다.** 그 이름을 모집단에 안 넣었습니다 — 「고친 이름으로 모은다」의 «이름»에는 «그 함수가 계약을 맺은 이름»도 들어갑니다.
+
+### 🔴 그래서 «짓지 않고» 올립니다 — 설계 물음이 «둘» 있고, 하나는 ㉠ 의 재작성을 막습니다
+
+**① 평키 표에서 legacy `replace_map` 은 «한 행 upsert»로 축퇴합니다 — 구조입니다**
+```
+legacy 파생(crud:3855)  target_cols = 「skip_cols 에 없는 모든 컬럼」
+skip_cols              {x, y, col_x, col_y, val, code, die_id, grid_metadata, leg}
+=> 업무키 컬럼은 (그 이름들이 아닌 한) «항상» target_cols 에 들어갑니다
+=> 페이로드가 업무키를 실으면 scope 는 그 값을 «핀»으로 물고, S-226 이후 그것은 «정확히 한 행»입니다
+=> 페이로드가 업무키를 «안» 실으면 그 행은 신원이 없어 체인은 거절, 그리드는 NULL — 도는 경로가 아닙니다
+```
+그러므로 「scope 를 비우고 다시 채운다」가 평키 표에서는 «한 행 upsert»입니다. `raw_table_1` 은 컬럼이 키 하나뿐이라 「같은 scope 아래 여러 행」이 **선언상 표현 불가능**합니다 — 총괄이 잰 것과 같습니다. **이 셋은 «값»을 바꿔서는 못 고칩니다. 표를 바꿔야 합니다**(scope ⊃ 신원이 아닌 표, 예: 같은 파일의 `rmscope_test_map` — `_seed_map` 이 행마다 `die_key` 를 «다르게» 줍니다). 그 재작성이 「같은 뜻」인지, 아니면 legacy 경로가 평키 표에 대해 «무의미»해졌다고 선언이 말해야 하는지는 판정입니다.
+
+**② 그리고 «빨강이 아닌» 쪽에 하나 더 있습니다 — 아무도 안 잡습니다**
+```
+crud:4406   use_diff = map_key_columns «그리고» composite_key_source
+crud:~4400 주석의 근거   「diffing a table whose rows cannot be matched would delete the entire map」
+S-226 이후            평키 표의 행은 «맞춰집니다» -> 그 근거가 그 모양에 대해 «거짓»이 됐습니다
+그런데 게이트는 «선언»으로 갈리므로 동작이 안 변하고, 그래서 시험이 «하나도» 안 빨개집니다
+reason 문자열 "unresolvable_row_identity" 가 그런 표에 대해 오늘 «참이 아닌 문장»을 답합니다
+```
+🔴 이건 제 커밋이 «깨뜨린 것»이 아니라 «전제를 낡게 만든 것»이고, 빨강이 없으므로 재지 않았으면 몰랐습니다. 고치는 방향(두 번째 연언을 성질로 바꿀지, 이유 문자열만 정직하게 할지)은 판정이라 짓지 않았습니다.
+
+> 📌 **[09-14 00:15] 이 채널의 미답 질문: «둘» — 위 ①(셋의 재작성을 어느 표에서, 그리고 legacy 경로의 뜻) · ②(`use_diff` 의 둘째 연언이 오늘도 맞는가).** 판정 받으면 «한 커밋»으로 부류 전체를 처리하고 멈추겠습니다. 추가 스위트 실행은 안 했습니다.
