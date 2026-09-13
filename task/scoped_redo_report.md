@@ -41689,3 +41689,57 @@ run_decoupled_app) 모듈 본문 실행 · 호환 재수출 «0»(옛 최상위 
 운영자 워크스페이스 스크립트가 무엇을 import 하는지 셀 수 없습니다. 답은 «약속»(`OPERATOR_IMPORT_NAMES`)이고, 그 목록의 모듈은 이동 대상에서 뺍니다.
 
 > 📌 **[09-13 12:31] 이 채널의 미답 질문: «하나» — `virtual_join_*` 셋을 `vjoin/` 로 낼까요, 최상위에 남길까요 (제 권고: `vjoin/` — `chain/` 에 넣는 것만 «안 됩니다», 데이터 층이 체인을 읽게 되므로).**
+
+---
+
+## 🔴 [09-13 12:35] 패키지화 — **짓기 전에 멈춥니다.** `paths.py` 하나가 아니라 «열하나»입니다 (코드 0줄)
+
+판정 359 가 「`paths.py` 가 runtime/ 로 가면 데이터 루트가 한 층 깊어짐 — 실측 후 보고 한 줄」이라 하셨습니다. 재 보니 **그 부류가 `paths` 말고 «열» 더 있고, 그중 셋은 «틀린 값»을 내지 오류를 안 냅니다.**
+
+### 실측 — 이동 대상 중 `__file__` 로 경로를 «계산»하는 자리
+```
+🔴 틀린 «값»이 나오는 것 (오류 없음 — 제일 나쁜 부류)
+  paths:36          SERVER_DIR = dirname(abspath(__file__))     «주석이 그렇게 적습니다:
+                    「Location of this file == the server package directory」»
+                    -> runtime/ 로 가면 DATA_ROOT 가 server/runtime 이 되고,
+                       ASSY_DATA_ROOT 가 «없는 운영 배치»에서 config·ingestion_workspace·로그가
+                       통째로 «다른 디렉터리»가 됩니다. 아무것도 안 던집니다
+  pacing:24         PACING_PATH = Path(__file__).with_name("pacing.json")
+                    -> 모듈이 움직이면 그 json 도 «같이» 가야 합니다(안 가면 조용히 기본값)
+  schema_drift:135  repo = dirname(dirname(abspath(__file__)))   = 저장소 루트
+                    -> 한 층 깊어지면 그 값이 «server/» 가 됩니다
+
+⚠️ sys.path 에 «넣는» 것 (패키지 안에서는 다른 디렉터리를 넣게 됩니다)
+  enrichment_candidates:124 · ledger_trace:51    sys.path.insert(0, dirname(__file__))
+
+⚠️ server 디렉터리를 «가정»하는 것
+  chain_ingestion_worker:3088 · dev_bench:299 · dev_bench:765 · map_alignment:2324
+  (그리고 map_alignment:2404 는 자기 파일 mtime — 이동해도 «참»이라 무해)
+합계 «11» (무해 하나 포함)
+```
+
+### 그래서 제안 — 순서를 하나 앞에 끼웁니다
+```
+① paths 는 «안 옮깁니다»   이 모듈은 «뿌리 앵커»입니다 — 운영자 고정 목록과 «같은 부류»로,
+                        「여기가 server 다」를 정의하는 자리라 깊이가 계약의 일부입니다
+                        (그래서 runtime/ 표에서 paths 를 뺍니다 — 나머지 일곱은 그대로)
+② pacing 은 json 과 «같이» 옮기거나 안 옮깁니다   권고: 안 옮김(앵커 한 줄로 족합니다)
+③ 나머지 «여덟»은 옮기기 «전»에 `paths` 를 지나게 고칩니다
+   근거가 그 모듈 자신의 docstring 입니다 — 「~17 modules build these paths independently
+   from dirname(__file__). Each now reads from here, so there is exactly one place that
+   decides where data lives.」 여덟은 그 정리에서 «빠진 잔여»입니다
+   즉 이건 패키지화를 위한 «새 일»이 아니라 이미 선언된 규칙의 «미완 구간»입니다
+④ 그 뒤에 패키지화 한 커밋 (1,179 자리, 스크립트로)
+```
+🔵 ③ 이 «먼저»여야 하는 이유: 패키지화와 «같은 커밋»에 넣으면, 경로가 틀어졌을 때 1,179 자리 중 무엇 때문인지 못 가립니다. 그리고 ③ 은 그것만으로 «옳은 정리»라 되돌릴 일이 없습니다.
+
+### 그리고 이 게이트가 «없으면» 안 됩니다
+```
+현재 시험에 「DATA_ROOT 가 server 디렉터리다」를 «깊이로» 잡는 것이 있는지 — 제가 못 찾았습니다.
+`paths` 를 한 층 내려도 «초록»이면, 운영 배치에서만 다른 디렉터리를 읽습니다
+=> ③ 의 커밋에 시험 하나: 「`paths.SERVER_DIR` == `server/` 이고, 그것을 «계산하는 자리»가
+   저장소에 하나뿐이다」 (모듈 수준·함수 안 둘 다 훑어서)
+```
+
+> 📌 **[09-13 12:35] 이 채널의 미답 질문: «하나» — ③(여덟을 `paths` 경유로 + 게이트 하나)을 «패키지화 앞»에 끼울까요. 제 권고: 예. 아니면 판정 359 그대로 한 커밋으로 가되 `paths`·`pacing` 만 제자리에 두는 방법도 있습니다(그때도 나머지 여덟은 이동과 «같은 커밋»에서 고쳐야 합니다).**
+> ⚠️ 판정 359 의 「한 줄 보고」가 «한 줄»로 안 끝난 이유를 적었습니다 — 같은 부류가 열하나이고 셋이 조용합니다.
