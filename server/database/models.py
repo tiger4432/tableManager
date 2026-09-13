@@ -1044,24 +1044,38 @@ def init_dynamic_models(config_dict: dict):
         if is_view:
             declared_names = list(table_cfg.get("column_types") or {})
             key_name = str(table_cfg.get("business_key") or "")
-            # 🔴 A MAPPED CLASS NEEDS A PRIMARY KEY; AN IDENTITY IS A DIFFERENT CLAIM.
-            # Measured on this box: of ten `kind: view` relations, FOUR declare no
-            # `business_key` at all. SQLAlchemy cannot map a class without a primary key, so
-            # one column is nominated here purely to make the class buildable - it is NOT a
-            # statement that the relation has an identity.
+            # 🔴 A MAPPED CLASS NEEDS A PRIMARY KEY, AND WHERE THE CATALOGUE DECLARES AN
+            # IDENTITY THAT IS THE ONE TO USE. Of the eleven `kind: view` relations in the
+            # shipped catalogue, FOUR declare no `business_key` and DO declare
+            # `composite_key_source`; nominating one column for those is what S-229-b was.
             #
-            # ⚠️ WHICH IS WHY THE READ PATH STILL REFUSES THEM. `total_order_key` answers
-            # 422 under R7 for exactly these four, and that is the seat where 「this
-            # relation cannot be paged」 is said. Nominating a column here does not answer
-            # that question and must not look like it does.
-            # 🔴 `row_id` WINS HERE TOO (판정 296). A view whose SQL selects it and
-            # DECLARES it must keep it as the mapped key, exactly as `total_order_key`
-            # keeps it for the read — `dt_log_transferable` is such a view, and giving it
-            # `business_key` instead made the model and the sort disagree about identity.
+            # 🔴 WHAT A WRONG NOMINATION COSTS, MEASURED (S-229-b): `bonding_core_lot` has
+            # 3,658 rows and 3,658 distinct `(base_id, core_wafer)` pairs - but only 160
+            # distinct `base_id`. Mapped on `base_id` alone, SQLAlchemy's identity map folds
+            # every row sharing one onto ONE object, so a page of 1,000 came back as 41 rows.
+            # A 200 answering a twenty-fourth of what was asked for, with no error anywhere.
+            #
+            # 🔴 THE ORDER IS THE READ PATH'S ORDER. `main.total_order_keys` answers
+            # `row_id` -> `business_key` -> `composite_key_source`, and the model has to
+            # agree: a model and a sort that disagree about identity is the defect 판정 296
+            # already paid for once (`dt_log_transferable`).
+            #
+            # ⚠️ THE LAST RESORT IS STILL A NOMINATION, NOT A CLAIM. A view declaring none
+            # of the three gets its first column purely so the class can be built, and the
+            # read path still refuses it by name under R7 - nominating a column here does
+            # not answer 「can this be paged」 and must not look like it does.
+            key_names = []
             if "row_id" in declared_names:
-                key_name = "row_id"
-            elif key_name not in declared_names:
-                key_name = declared_names[0] if declared_names else ""
+                key_names = ["row_id"]
+            elif key_name in declared_names:
+                key_names = [key_name]
+            else:
+                composite = [str(name) for name
+                             in (table_cfg.get("composite_key_source") or ())]
+                if composite and all(name in declared_names for name in composite):
+                    key_names = composite
+                elif declared_names:
+                    key_names = [declared_names[0]]
             columns = []
         col_types = table_cfg.get("column_types", {})
         for col_name, type_str in col_types.items():
@@ -1079,7 +1093,7 @@ def init_dynamic_models(config_dict: dict):
                 sql_type = String
             if is_view:
                 columns.append(Column(col_name, sql_type, nullable=True,
-                                      primary_key=(col_name == key_name)))
+                                      primary_key=(col_name in key_names)))
                 continue
             columns.append(Column(col_name, sql_type, nullable=True))
             
