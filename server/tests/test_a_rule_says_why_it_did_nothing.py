@@ -112,7 +112,15 @@ def test_the_route_carries_it_on_the_same_path_as_running(client):
 def test_finish_still_has_exactly_one_caller():
     """🔴 판정 63 의 멈춤 조건을 «상설»로 세운다. `finish` 가 하는 일은 「도는 목록에서
     뺀다」 하나이고, 거기에 결과 기록을 얹으면 호출자가 여섯이 된다."""
-    src = open(os.path.join(SERVER, "chain/ingestion_worker.py"), encoding="utf-8").read()
+    # 🪦 [S-214, 판정 370] THE RULE IS 「ONE CALLER」, NOT 「ONE CALLER IN THIS FILE」. The
+    # executor moved to `chain/mapper_call.py` and took the call with it, so a file-scoped
+    # sweep read ZERO and called that a failure - a guard that a move can fool is a guard
+    # about addresses. The package is the subject.
+    import glob
+
+    src = chr(10).join(
+        open(path, encoding="utf-8").read()
+        for path in sorted(glob.glob(os.path.join(SERVER, "chain", "*.py"))))
 
     def _is_registry_finish(node):
         """⚠️ NARROWED TO THE RECEIVER THIS RULE IS ABOUT (S-189 ⓒ, 2026-09-12).

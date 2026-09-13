@@ -56,6 +56,13 @@ from chain import key_gate
 # removes by map and cannot express it - see the retract branch in the write loop.
 import dt_map_derivation
 from chain import activity
+
+# 🔴 [S-214, 판정 370] 맵퍼를 «부르는 자리»는 이 모듈의 것이 아니라 «재생과 같이 쓰는 것»이다.
+#    재생이 맵퍼를 돌리려고 이 모듈을 import 하고 있었고, 그것은 「공용 프리미티브가 한 호출자의
+#    집에 산다」는 뜻이었다. S-211 ① 의 `withdraw_source` 와 같은 기제, 반대 방향.
+#    ⚠️ 여기서 읽는 이름들은 «재수출»이 아니라 이 모듈이 그것들을 «쓰기» 때문이다.
+from chain.mapper_call import (                                      # noqa: F401
+    MAPPER_LOG_TAG, execute_custom_mapper, without_missing)
 import chain_bindings
 import mapper_sdk
 import validation
@@ -71,15 +78,6 @@ LOG_FILENAME = "chain_worker.log"
 
 logger = get_process_logger("Chain", LOG_FILENAME)
 
-#: Prefix on every mapper-execution line: what ran it, and where to read it.
-#
-# 🔴 READ FROM THE LOGGER, NOT FROM `LOG_FILENAME`. In the integrated server the chain
-# loop runs inside the web server's process, whose log file was opened first, so these
-# lines land in `server.log` - and a constant tag would print `mapper@chain_worker.log`
-# on top of them. The rule this tag exists to serve is "say which file you are in", and
-# a tag that names the file this module WANTED rather than the one it GOT breaks that
-# rule while looking like it follows it.
-MAPPER_LOG_TAG = "mapper@%s" % (process_logging.active_log_filename() or LOG_FILENAME)
 
 class OutboxListener:
     """[Latency Fix #4] 상시 유지되는 LISTEN 전용 raw 커넥션.
@@ -721,81 +719,11 @@ def _validate_chain_cascade_graph(rules):
     for node in graph:
         visit(node, [])
 
-def _mapper_accepts_rule(mapper_func) -> bool:
-    """맵퍼 함수가 선택적 `rule` 키워드 인자를 받는지 판정한다(기존 맵퍼 하위호환 유지)."""
-    try:
-        sig = inspect.signature(mapper_func)
-    except (TypeError, ValueError):
-        return False
-    params = sig.parameters
-    if "rule" in params:
-        return True
-    return any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values())
-
-def _is_missing_scalar(value) -> bool:
-    """Is this ONE value a missing marker? Same rule as `parsers/pipeline_base.py:73-75`.
-
-    🔴 THE SPELLING IS COPIED FROM THERE ON PURPOSE, INCLUDING `inf`. That file already
-    decided what "no value" means when a frame becomes rows - `pd.isna` for None/NaN/NaT,
-    and a second clause turning float infinities into None as well - and the mapper
-    boundary is the same decision in a third place, not a new one. If these two ever
-    disagree, the same source value becomes a number on one path and a blank on the other.
-
-    ⚠️ `pd.isna` ANSWERS ELEMENTWISE FOR CONTAINERS, so a DataFrame or an ndarray comes
-    back as an array of booleans rather than one. Those are not scalars and are left
-    alone; taking their truth value here would raise, which is how this kind of guard
-    usually fails - loudly, on the one payload shape nobody tested.
-    """
-    if value is None:
-        return True
-    if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
-        return True
-    try:
-        answer = pd.isna(value)
-    except (TypeError, ValueError):                      # unhashable / odd objects
-        return False
-    return bool(answer) if isinstance(answer, (bool, np.bool_)) else False
 
 
-def _missing_as_none(value):
-    """Deep-replace missing markers with `None`. Returns `(value, changed)`.
-
-    🔴 UNCHANGED INPUT COMES BACK AS THE SAME OBJECT, not a rebuilt copy. A payload with
-    no missing value in it must pass through byte-identical: a normaliser that quietly
-    rewrites healthy values is a silent regression, and one that copies every payload
-    would also make every mapper's `is` comparison and every large batch pay for a defect
-    that was not there.
-    """
-    if isinstance(value, dict):
-        changed = False
-        rebuilt = {}
-        for key, item in value.items():
-            new_item, item_changed = _missing_as_none(item)
-            rebuilt[key] = new_item
-            changed = changed or item_changed
-        return (rebuilt, True) if changed else (value, False)
-
-    if isinstance(value, (list, tuple)):
-        changed = False
-        rebuilt = []
-        for item in value:
-            new_item, item_changed = _missing_as_none(item)
-            rebuilt.append(new_item)
-            changed = changed or item_changed
-        if not changed:
-            return value, False
-        return (tuple(rebuilt) if isinstance(value, tuple) else rebuilt), True
-
-    if value is None:
-        return value, False                              # already missing; nothing to do
-    if _is_missing_scalar(value):
-        return None, True
-    return value, False
 
 
-def without_missing(value):
-    """`_missing_as_none` without the flag - the shape the call sites want."""
-    return _missing_as_none(value)[0]
+
 
 
 def mark_processed(event, status: str):
@@ -823,138 +751,10 @@ def mark_processed(event, status: str):
     event.processed_at = func.now()
 
 
-def _payload_row_count(payload):
-    """How many trigger rows this call carries. A batch mapper is handed a list."""
-    if isinstance(payload, (list, tuple)):
-        return len(payload)
-    return 1 if payload else 0
 
 
-def _result_row_count(result):
-    """How many rows the mapper produced, counted across the shapes a mapper returns.
-
-    Counted rather than assumed. A mapper returns `{"updates": [...]}`, or
-    `{"batches": [{"updates": [...]}, ...]}`, and either may also carry
-    `map_metadata_updates` - the three shapes are all in production today. A number
-    that read only the first would report 0 for a mapper that did a map's worth of
-    work, and "0" is the answer the operator is trying to tell apart from "did not
-    run".
-    """
-    if not isinstance(result, dict):
-        return 0
-    total = len(result.get("updates") or ())
-    for batch in result.get("batches") or ():
-        if isinstance(batch, dict):
-            total += len(batch.get("updates") or ())
-    total += len(result.get("map_metadata_updates") or ())
-    return total
 
 
-def execute_custom_mapper(module_name: str, function_name: str, db, payload, rule=None):
-    """
-    Dynamically imports a python mapper module and executes the mapping function.
-
-    rule: 현재 실행 중인 체인 룰 dict. 맵퍼가 `rule` 인자를 선언한 경우에만 전달한다
-    (generic 맵퍼가 룰 설정을 참조하는 용도 — 예: enrichment_mapper.map_enrichment_dedup).
-    기존 (db, payload) 시그니처 맵퍼는 종전과 완전히 동일하게 호출된다.
-
-    🔴 IT ALSO SAYS, ONCE PER GROUP, THAT THE MAPPER RAN. This is the only place every
-    custom mapper is called through, so one pair of lines here covers all of them and
-    no mapper author has to remember to log. What goes on the line is the identity
-    (rule, mapper, target table), the size (rows in, rows out) and the time - never the
-    payload body, which is operator data, and never one line per row: a mapper handed a
-    thousand-row group must not turn into a thousand log lines.
-
-    ⚠️ INFO, NOT DEBUG. A line that only exists when somebody remembered to raise the
-    level does not exist on the deployment where the question is being asked.
-    """
-    started = time.monotonic()
-    rule_name = (rule or {}).get("name") or "<unnamed rule>"
-    target_table = (rule or {}).get("target_table") or "<none>"
-    # 🔴 S-188 ⓓ: ONE CELL FIRST, TWO CELLS STILL READ. `rule["mapper"]` names an entry of
-    # the decorator's registry; `mapper_module` + `mapper_function` are what a file may still
-    # say, and they remain the working path wherever no mapper uses the decorator yet
-    # (measured ZERO on this box). Resolution happens HERE because this is the one place
-    # every custom mapper is called through — two resolvers would be two answers to 「which
-    # function is this rule's mapper」.
-    import chain_bindings
-    import mapper_sdk
-
-    one_cell, _rule_module, _rule_function = chain_bindings.mapper_cells(rule)
-    registered = mapper_sdk.MAPPER_REGISTRY.get(one_cell) if one_cell else None
-    who = one_cell if registered is not None else "%s.%s" % (module_name, function_name)
-    rows_in = _payload_row_count(payload)
-    logger.info("[%s] START rule=%s mapper=%s target=%s rows_in=%d",
-                MAPPER_LOG_TAG, rule_name, who, target_table, rows_in)
-    # The log says what RAN; this says what is running. A line in a file cannot answer
-    # "is it in one right now" without somebody tailing it.
-    token = activity.registry.start(rule_name, who, target_table, rows_in)
-    try:
-        if registered is not None:
-            mapper_func = registered
-        else:
-            module = importlib.import_module(module_name)
-            mapper_func = getattr(module, function_name)
-        # 🔴 NaN IS NOT A VALUE AND A MAPPER AUTHOR SHOULD NOT HAVE TO KNOW THAT. Owner
-        # report 2026-09-04: `cannot convert float NaN to integer` from the chain. This is
-        # the one place every custom mapper is called through, so the rule is applied here
-        # rather than remembered in each mapper - a rule that has to be remembered is a
-        # trap, and it fires in production the first time somebody forgets.
-        #
-        # ⚠️ WHAT THIS DOES NOT FIX, stated so nobody reads more into it: it stops a NaN
-        # arriving IN the payload. A mapper that builds its own frame with pandas can
-        # still create a NaN inside itself and raise before returning, and no boundary can
-        # see that.
-        #
-        # Missing becomes None, never 0: a zero is a VALUE, and the two being confused is
-        # the defect this repository spent the day removing elsewhere.
-        payload = without_missing(payload)
-        # 🔴 ONE SEAT FOR BOTH ARMS (S-94, 판정 241). The group line has to be able to say
-        # how much of its wall clock the MAPPER took, as opposed to the writes and the
-        # outbox read around it; timing the two arms separately would be two spellings of
-        # one number, free to disagree the day a third arm appears.
-        with alignment_batch_counts.stage("mapper"):
-            if rule is not None and _mapper_accepts_rule(mapper_func):
-                result = mapper_func(db, payload, rule=rule)
-            else:
-                result = mapper_func(db, payload)
-        # The way out as well: whatever the mapper returns goes on to the write path,
-        # which has its own integer columns and would hit the same conversion.
-        cleaned = without_missing(result)
-        rows_out = _result_row_count(cleaned)
-        logger.info("[%s] END   rule=%s mapper=%s target=%s rows_in=%d rows_out=%d "
-                    "elapsed=%.3fs",
-                    MAPPER_LOG_TAG, rule_name, who, target_table, rows_in,
-                    rows_out, time.monotonic() - started)
-        # ⚠️ 이 층이 아는 것은 「매퍼가 «행을 냈나»」다. 「쓰기가 «바꿨나»」를 아는 층은
-        #    `crud.apply_batch_updates` 이고 그 수는 규칙별로 여기까지 안 온다. 그래서
-        #    `ran:unchanged` 는 «확실»하고(행이 0이면 바뀐 것이 없다), `ran:changed` 는
-        #    「행을 냈다」까지가 참이다. 그 마지막 한 걸음은 별도 줄이다 — 대리를 성질처럼
-        #    적지 않으려고 여기 적는다.
-        activity.registry.record_outcome(
-            rule_name,
-            event_constants.RULE_OUTCOME_RAN_CHANGED if rows_out
-            else event_constants.RULE_OUTCOME_RAN_UNCHANGED,
-            None if rows_out else "the mapper produced no rows")
-        return cleaned
-    except Exception as e:
-        # The throw gets its OWN line rather than being folded into the end line: a
-        # mapper that raised produced no rows, and "rows_out=0" would be the same text
-        # a mapper that legitimately had nothing to do writes.
-        logger.error("[%s] RAISED rule=%s mapper=%s target=%s rows_in=%d elapsed=%.3fs "
-                     "-> %s: %s",
-                     MAPPER_LOG_TAG, rule_name, who, target_table, rows_in,
-                     time.monotonic() - started, type(e).__name__, e)
-        activity.registry.record_outcome(
-            rule_name, event_constants.RULE_OUTCOME_FAILED,
-            "%s: %s" % (type(e).__name__, e))
-        raise e
-    finally:
-        # 🔴 IN `finally`, NOT AFTER THE RETURN. A mapper that throws is exactly the case
-        # where an entry left behind would sit in the view forever, saying a mapper is
-        # still running - and a stuck-looking chain is the symptom this whole step exists
-        # to stop inventing.
-        activity.registry.finish(token)
 
 def _rule_outcome_before_running(rule, events):
     """이 규칙이 이 그룹에 대해 «돌기 전에» 결정되는 결과 — 또는 `(None, None)`(돌 자격 있음).

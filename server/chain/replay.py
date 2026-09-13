@@ -255,7 +255,9 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
     """
     from database import crud, models, schemas
     import map_meta_registrar
-    from chain.ingestion_worker import execute_custom_mapper
+    # 🪦 [S-214, 판정 370] It lived in the worker and this line was the whole of the
+    # `replay -> worker` edge: a shared primitive in one caller's house.
+    from chain.mapper_call import execute_custom_mapper
 
     trigger_table = rule.get("trigger_table")
     target_table = rule.get("target_table")

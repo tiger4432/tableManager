@@ -195,7 +195,11 @@ def test_the_worker_passes_the_rule_to_this_mapper(env):
     from chain import ingestion_worker as worker
 
     _db, module = env
-    assert worker._mapper_accepts_rule(module.build_pack_weight_batch) is True
+    # 🪦 [S-214, 판정 370] the executor and its helpers live in `chain/mapper_call.py`
+    #    now; the assertion follows the call rather than the old house.
+    from chain import mapper_call
+
+    assert mapper_call._mapper_accepts_rule(module.build_pack_weight_batch) is True
 
 
 def test_a_reference_value_is_computed_and_frozen_next_to_what_it_produced(env):
