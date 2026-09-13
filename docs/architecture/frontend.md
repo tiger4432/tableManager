@@ -131,11 +131,12 @@ npm run build     # prebuild(§2.1) 통과 후 dist/ 생성
 | 통신 | `api.js` · `websocket.js` | REST 호출과 WS 수신·델타 반영 |
 | 그리드 | `grid.js` · `clipboard.js` · `tsv.js` · `push_columns.js` · `grid_source_label.js` · **`redo_banner.js`** · `rescope_handoff.js` · 🆕 **`dropdown.js`** · 🆕 **`match_count.js`** | AG-Grid 배선, 엑셀형 복사·붙여넣기. **[2026-08-31] 그리드가 원장을 «안다»** — 아래 §3.1. ⚠️ **줄 수는 여기 적지 않는다**(정본은 [CODE_MAP §7](./CODE_MAP.md)) |
 | 값 편집 | `value_suggest.js` (1,003) · `enrichment*.js` · `timeline.js` (1,148) | 셀 제안, 보정, 이력 타임라인 |
+| 붙여넣기 | 🆕 **`clipboard_type_modal.js`** | 클립보드가 여러 형식일 때 «어느 것으로 받나». 조립식 부품 — 자기 mount·자기 div, 겉모양은 `style.css` 의 `.ctm-*`, 같은 화면에 둘을 놓아도 간섭 0 |
 | 맵(레거시) | `map_editor.js` (11,060) · `map_key.js` · `split_registry_row.js` | 웨이퍼 맵 캔버스·좌표·오버레이 |
 | 맵2 | `map_editor2.js` + `src/map2/*` (18 파일 · 10,437) | 정렬 화면. 층 경계로 읽습니다 — `view_model` 은 DOM 없이 채점됩니다 |
 | 계획 | `transfer_plan.js` (1,875) · `doe_bands.js` (753) | DOE·STACK 구간과 자재 |
 | 온톨로지 작성 | `ontology_explorer*.js` · `ontology_path.js` · `ontology_skeleton.js` · 🆕 **`closed_list.js`** · 🆕 `uniqueness.js` | 선언 초안 → 검토 → 활성화. 닫힌 목록을 «값으로 그릴지 고르개로 그릴지»는 아래 §3.3 |
-| **부재 어휘** | 🆕 **`absent.js`** · 🆕 **`count_with_absence.js`** | **「안 왔다」와 「0이다」를 다른 글자로 적는 한 곳.** 아래 §3.3 |
+| **부재 어휘** | 🆕 **`absent.js`** · 🆕 **`count_with_absence.js`** · 🆕 **`redo_cost.js`** | **「안 왔다」와 「0이다」를 다른 글자로 적는 한 곳.** 아래 §3.3 |
 | R&D 보드 | `src/rnd_board/*` (19 파일 · 6,183) | §4 |
 | 어드민 | `admin.js` · 🆕 `retroactive_view.js` · 🆕 **`chain_queue_panel.js`** · 🆕 **`ledger_sources_panel.js`** · 🆕 `raw_registry_panel.js` · 🆕 `table_config_panel.js` · 🆕 `chain_rule_panel.js` · 🆕 `join_verification.js` | 파이프라인 생애주기. 소급 블록의 폼·실행 목록 조립은 뷰 모듈이 갖는다(파라미터의 `choices` → 선택지 매핑 포함). **패널은 클래스이고 자기 mount 와 deps 를 받는다** — 한 화면에 둘을 놓아도 서로를 안 건드린다 |
 | 진행 표시 | 🆕 **`progress_card.js`** | 「무언가가 도는 동안 진행을 보여 준다」의 **근원 템플릿**(파일 인제션 · 리플레이 «둘»이 쓴다). 도메인 낱말이 인자에 «없다» |
@@ -184,6 +185,19 @@ null    Matches: …      «아직 모른다» -- 세는 중 (+ 원소에 `is-co
   - ⚠️ **현재 값은 «언제나» 항목에 남는다.** 목록에 없는 값을 조용히 첫 항목으로 바꾸면 **그리는 것만으로 남의 파일을 고쳐 쓰는 것**이 된다. 목록이 없을 때도 값은 «사유와 함께» 남는다 — 사라지면 화면이 그 값을 지운 것처럼 읽힌다.
   - 🔴 **낱개 수정이 아니라 «규칙»이라 목록이 «어디서 오든» 이 부품이 판단한다.** 오늘 부르는 곳이 둘이다 — 계획 행의 `candidates`(서버가 그 행에 실어 준 것)와 스켈레톤 잎의 `schema[node.list]`(서버가 `closed_lists()` 로 공표한 것). **한쪽만 고치면 남은 쪽이 「이미 고쳤다」로 읽힌다.**
   - 🔴 **[2026-09-05] `schema[node.list]` 의 목록이 «다 같은 물건»이 아니다 — 클라가 새 상태를 만나는 자리다.** 대부분은 **코드의 성질**이라 어느 배포에서든 같은 답이고 «항상 온다». 그런데 `implementations` 하나는 **이 배포의 선언에서 «세어»** 나오므로 — 선언이 비었거나 파싱이 안 되면 — **선택지는 오는데 기본값이 «없이»** 온다. 그것은 위 넷 중 `unread`(목록이 아직 안 옴)도 `none`(멤버 0)도 **아니다**: 목록은 왔고 멤버도 있고, **고를 값이 안 정해졌을 뿐**이다. 🔴 **그 셋을 같은 픽셀로 그리면 운영자가 「고장」과 「아직 아무도 안 골랐다」를 못 가른다.** 공급 쪽 계약은 [PRIMITIVES §7 「닫힌 목록에는 두 종류가 있다」](./PRIMITIVES.md).
+- **「아직 안 골랐다」도 그 파일의 낱말이다** — `UNPICKED` · `subjectText(marking)`. 🔴 `ABSENT`(「—」)와
+  «다른 글자»인 것이 요점입니다: 「—」는 「세었는데 없다」이고 이쪽은 「아직 안 세었다」라, 한 글자로
+  접으면 이 저장소가 자리마다 가르는 세 상태가 «둘»이 됩니다. R&D 보드의 빈 상태 여덟 자리와
+  「주어가 누구인가」 세 자리가 이 둘을 씁니다(그 전에는 같은 사실을 여덟·세 «문장»으로 말했습니다).
+- **「무엇이 다시 도나」도 «값»이다** (`redo_cost.js`) — 초안의 `redo` 봉투를 한 줄로 읽습니다.
+  세 상태: `null`(아무도 «안 물었다» — 아무것도 «안 그립니다») · 수(셌다) · `absence` 낱말
+  (`not_counted_here` / `truly_none` — 서버의 낱말 그대로). 🔴 카드 독자(`retroactive_view.js`)와
+  «따로» 있는 이유는 그 파일의 헬퍼가 «꼬리표 붙은 칸»을 내기 때문입니다 — 초안 편집기는 그
+  규율을 안 써서, 맞추려고 납작하게 만들면 그 파일이 지키는 것을 그 파일 안에서 깹니다.
+- **부재의 «뜻»은 걷기 표의 열이다** (S-149 + S-216) — 선언이 `absence_confirmed_by` 를 적은 술어마다
+  열 하나, 셀은 `{verdict, why}` 값 그대로. 🔴 **모집단은 «선언»이지 데이터가 아닙니다** — 판정을
+  든 노드가 하나도 없어도 열은 섭니다(답이 표의 «모양»을 정하면 같은 걷기가 두 표를 그립니다).
+  정본은 [WALK.md 「진위」](./WALK.md).
 - 재사용 관점 [PRIMITIVES §7](./PRIMITIVES.md).
 
 ⚰️ **[2026-08-31] 그리드에서 «빠진» 것 — 은퇴한 그래프 컬럼 셋** (`is_graph_synced`·`needs_graph_rollback`·`graph_synced_at`). 컬럼 정의를 만들기 **전에** 거르므로 **컬럼 토글 목록에서도 사라진다**(그 목록이 같은 집합이다). 🔴 **서버는 여전히 셋을 보낸다** — 없어진 것은 «그리는 자리»이지 컬럼이 아니다([backend §2 은퇴 블록](./backend.md)). 🔴 **`push_columns.js` 의 `PUSH_SYSTEM_COLUMNS` 에는 «일부러» 남겼다** — 그쪽은 표시 목록이 아니라 **서버의 시스템 컬럼 분류의 사본**이라, 빼면 맵 Push 게이트가 그 셋을 「지워도 되는 데이터 컬럼」으로 센다.

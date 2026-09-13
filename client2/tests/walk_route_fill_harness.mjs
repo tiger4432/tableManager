@@ -275,6 +275,48 @@ function suite(M) {
   ok(M.cutBudgets([], { nodes: 400 }).length === 0,
     'U5 CONTROL: nothing cut yields nothing — the budget alone is not a truncation');
 
+  // ══ C-98 (S-149 + S-216). 「안 보이는 것이 무슨 뜻인가」가 열이 된다 ═══════════════
+  //
+  // 🔴 모집단은 «선언»입니다. 라우트가 술어마다 `absence_confirmed_by` 를 «있을 때만» 싣고
+  //    (S-216, 키 생략), 그 이름이 곧 열입니다. 걷기가 그 타입에 못 닿은 날 열이 사라지면
+  //    「그런 질문이 없다」로 읽히고, 그게 이 칸이 막으려던 오독입니다.
+  const ENT = [{ type: 'wafer@1', keys: ['wafer'] }];
+  const CONFIRMED = [{ name: 'observed@1', absence_confirmed_by: 'inspected@1' },
+                     { name: 'inspected@1' }];
+  const colsWith = (confirmers) => M.tableColumns(ENT, 'wafer@1', [], undefined, confirmers)
+    .filter((c) => c.kind === 'absence');
+  const cellOf = (absence) => M.cellSource(
+    { kind: 'absence', key: 'observed' }, { absence }, {}, undefined);
+
+  ok(M.confirmedPredicates(CONFIRMED).join(',') === 'observed',
+    'A1 선언이 이름 댄 확인 술어만, 버전은 벗겨서');
+  ok(M.confirmedPredicates([{ name: 'observed@1' }]).length === 0,
+    'A2 키가 «없는» 술어는 확인 술어가 아니다 — 라우트가 키를 생략하는 이유 그대로');
+  ok(M.confirmedPredicates([{ name: 'x@1', absence_confirmed_by: '' }]).length === 0,
+    'A3 빈 문자열도 «안 댄 것»이다 — 값으로 되살리지 않는다');
+
+  ok(colsWith(M.confirmedPredicates(CONFIRMED)).map((c) => c.name).join(',') === 'observed',
+    'A4 확인 술어마다 열 하나, 그 술어의 이름으로');
+  ok(colsWith([]).length === 0,
+    'A5 아무도 안 댔으면 열이 «없다» — 오늘 표와 바이트가 같다');
+  // 🔴 열이 서는 조건은 «선언»이지 데이터가 아닙니다. 판정을 하나도 안 든 걷기에서도 섭니다.
+  ok(colsWith(['observed']).length === 1,
+    'A6 판정을 든 노드가 하나도 없어도 열은 선다 — 답이 표의 모양을 정하지 않는다');
+
+  ok(cellOf({ observed: { verdict: 'true', why: null } }) === 'true',
+    'A7 `true` 는 서버의 낱말 그대로');
+  ok(cellOf({ observed: { verdict: 'false', why: null } }) === 'false',
+    'A8 `false` 도 그대로 — 「검사했고 없었다」이지 「모른다」가 아니다');
+  ok(cellOf({ observed: { verdict: 'unknown', why: 'not_examined' } })
+      === 'unknown · not_examined',
+    'A9 `unknown` 은 «사유»를 데리고 온다, 번역 0');
+  // 🔴 셋째 상태. 판정이 «없는» 칸은 빈 칸이고 `false` 가 아닙니다 — 옛 서버와, 판정을 안
+  //    받는 노드가 그 자리입니다. 접으면 이 칸이 존재할 이유가 사라집니다.
+  ok(cellOf(undefined) === undefined,
+    'A10 판정이 없으면 «빈 칸» — 「아니다」로 접지 않는다');
+  ok(cellOf({}) === undefined,
+    'A11 봉투에 그 술어가 없어도 빈 칸이다');
+
   return { fail: fail - before.fail };
 }
 
@@ -287,6 +329,27 @@ failedNames.length = 0;
 // -- mutants -----------------------------------------------------------------------------
 // ③ of the Lead's gate: deleting the filling line must turn ① red.
 const DEFECTS = [
+  // ── C-98. 세 판, 그리고 셋 다 «조용히» 틀립니다 ────────────────────────────────────
+  // 🔴 열이 «데이터»에서 오면, 그 타입에 못 닿은 걷기에서 열이 통째로 사라집니다 — 그러면
+  //    「그런 질문이 없다」로 읽히고, 이 칸이 존재할 이유가 사라집니다.
+  ['the absence column is drawn from the nodes instead of the declaration',
+    (s) => s.replace('    ...(confirmers || []).map((key) => ({ name: key, kind: \'absence\', key })),',
+      '')],
+  // 🔴 사유를 버리면 세 상태가 «둘»이 됩니다: 「안 선언됨」과 「안 검사됨」과 절단이 한 낱말이 됩니다.
+  ['the reason is dropped, so every unknown reads the same',
+    (s) => s.replace('      return held.why ? `${verdict} · ${held.why}` : String(verdict);',
+      '      return String(verdict);')],
+  // 🔴 「판정 없음」을 `false` 로 접는 판. 이것이 이 칸이 막으려고 태어난 바로 그 오독입니다.
+  // 🔴 판정 366 이 이름 댄 판: «키 생략»과 «빈 값»을 같게 읽는 것. 라우트가 둘을 가르려고
+  //    키를 생략하는데(S-216), 읽는 쪽이 빈 문자열도 「댄 것」으로 읽으면 그 구별이 화면에서
+  //    사라집니다 — 이름이 «없는» 열이 서게 됩니다.
+  ['an omitted key and an empty value are read the same, so a blank confirmer makes a column',
+    (s) => s.replace(
+      "    .filter((p) => p && typeof p.absence_confirmed_by === 'string' && p.absence_confirmed_by)",
+      "    .filter((p) => p && typeof p.absence_confirmed_by === 'string')")],
+  ['a missing verdict is folded into `false`',
+    (s) => s.replace("      if (!held || typeof held !== 'object') return undefined;",
+      "      if (!held || typeof held !== 'object') return 'false';")],
   // 🔴 C-70. Three for the two functions the picking list now leans on. Single-line anchors on
   //    purpose: a transform that matches nothing leaves the module intact and ESCAPES, which is
   //    a louder failure than a green mutant but still a wasted round.
@@ -355,11 +418,16 @@ const DEFECTS = [
   ['the disagreement column appears for every type, so today\'s table stops being unchanged',
     (s) => s.replace("    ...(attributes.length ? [{ name: '충돌', kind: 'conflicts' }] : []),",
       "    { name: '충돌', kind: 'conflicts' },")],
+  // ⚠️ 앵커가 C-98 에서 한 번 옮겨갔습니다 — 충돌 열과 라벨 열 «사이»에 부재 열이 들어왔고,
+  //    두 줄을 붙여 잡던 앵커가 사라졌습니다. 주장은 그대로라 «한 줄»로 다시 잡습니다:
+  //    충돌 열은 자기가 말하는 것 «옆»에 서고, 라벨 뒤로 가면 무엇에 대한 수인지 자리가
+  //    말하지 않습니다.
   ['the disagreement column moves behind the label, away from what it is about',
-    (s) => s.replace("    ...(attributes.length ? [{ name: '충돌', kind: 'conflicts' }] : []),\n"
-      + "    { name: '라벨', kind: 'label' },",
-    "    { name: '라벨', kind: 'label' },\n"
-      + "    ...(attributes.length ? [{ name: '충돌', kind: 'conflicts' }] : []),")],
+    (s) => s.replace("    ...(attributes.length ? [{ name: '충돌', kind: 'conflicts' }] : []),",
+      '')
+      .replace("    { name: 'id', kind: 'id' },",
+        "    ...(attributes.length ? [{ name: '충돌', kind: 'conflicts' }] : []),\n"
+        + "    { name: 'id', kind: 'id' },")],
   ['a measured zero is drawn as 0, which tells the operator nothing is wrong',
     (s) => s.replace('      return Number.isFinite(count) && count > 0 ? count : undefined;',
       '      return count;')],
