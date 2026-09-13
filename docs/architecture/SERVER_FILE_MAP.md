@@ -30,6 +30,7 @@
 | 🔴 | `chain_bindings` 🔒 | 11,455 | 2026-08-11 | Which column of a table carries the DT job identity — READ, never assumed. |
 | ✅ | `chain_ingestion_worker` · 🆕㈟ «`chain/ingestion_worker`» | 88,253 | 2026-08-27 |  |
 | 🆕㈣ | `chain/mapper_call` | 13,503 | 2026-09-13 | Where a mapper is CALLED FROM — the worker and the replay read the same house (S-214 `236b24e9`, 판정 370). Moved, not re-implemented: `execute_custom_mapper` and the six helpers only it uses. |
+| 🆕㈤ | `chain/rule_order` | 4,240 | 2026-09-13 | The order rules run in, DERIVED from the declaration rather than declared (S-156 `c7bc59db`). The worker reads it; `chain/replay` delegates to it. The self-edge exception is a PROPERTY of the pair, never a name (S-232 `c70dc340`, 판정 387 · S-232-b 판정 388). |
 | ✅ | `chain_key_gate` · 🆕㈟ «`chain/key_gate`» | 10,848 | 2026-08-12 | A chain may not emit a row whose key columns are not filled. ONE gate, not seven. |
 | ✅ | `chain_replay` · 🆕㈟ «`chain/replay`» | 57,743 | 2026-08-13 | Chain Replay R1 (rule re-application) + R2 (stale source withdrawal) |
 | ✅ | `column_filter` | 9,921 | 2026-08-05 | The AG-Grid filter DSL -> SQLAlchemy translator, in a module every process can import. |

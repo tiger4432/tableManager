@@ -1,13 +1,14 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **850개** 이력. (거버넌스 규칙 #4)
+> 총 **851개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-09 (September 2026)
 
+- **2026-09-13 23:54** — [The Order Landed Twice And A View Pages By Its Composite](./20260913_235436_the_order_landed_twice_and_a_view_pages_by_its_composite.md)
 - **2026-09-13 21:32** — [The Authoring Guides Moved To The Repository Entrance](./20260913_213255_the_authoring_guides_moved_to_the_repository_entrance.md)
 - **2026-09-13 19:58** — [The Iteration Order Stopped Being A Hash](./20260913_195800_the_iteration_order_stopped_being_a_hash.md)
 - **2026-09-13 19:05** — [A Rule Can Now Say What A Group Is And Whether It May Be Retried](./20260913_190533_a_rule_can_now_say_what_a_group_is_and_whether_it_may_be_retried.md)
