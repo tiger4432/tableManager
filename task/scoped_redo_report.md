@@ -41573,3 +41573,41 @@ executor :860 -> replay            withdraw_source          «같은» txn      
 
 > 📌 **[09-13 12:14] 이 채널의 미답 질문: «하나» — ㉯ 대신 :860 을 끊을까요(권고: 예). 코드 0줄로 대기합니다.**
 > ⚠️ 판정 357 의 게이트 둘(「쌍 지연 0」·「SCC 4→3」)은 ㉯ 로는 «도달 불가»이고, :860 을 끊으면 「SCC 4→0」이 됩니다.
+
+---
+
+## ✅ [09-13 12:2x] S-211 ① — 고리가 «사라졌습니다». SCC 4 → **0** (`ring cut`, 재기동 «필요»)
+
+### 끊은 것 — 호출 «하나»
+```
+virtual_join_executor.retract_rows 가 `chain_replay.withdraw_source` 를 «함수 안에서» import
+그 한 줄이 네 모듈 고리의 마지막 이음매였고, «단순 4-고리»라 통째로 사라졌습니다 (줄어든 게 아니라)
+새 모듈  server/cell_layer.py — 셀의 «층»: 누가 claim 했나 · 밑에 무엇이 있나 · claim 을 «철회»
+방향 근거  철회는 재생의 «행위»가 아니라 «둘 다 쓰는 연산»입니다 — 실행기는 「참조 행이 사라져서」,
+          재생은 「이 소스의 claim 을 되돌리려고」. 같은 연산, 다른 사유 -> 둘보다 «아래»
+```
+
+### 🔴 제 앞 보고를 정정합니다 — 「함수 하나 + 상수 셋」이 아니라 «열»이었습니다
+```
+제가 적은 것   ReplayRefused · PROTECTED_SOURCES · DEFAULT_CHUNK_SIZE  «셋»
+실제           + R1_SOURCE_NAME · R2_AUDIT_SOURCE · SAMPLE_LIMIT
+               + 사설 헬퍼 «셋» `_claimed_filter` · `_load_cell_state` · `_resolve_cell`
+               = 열, 271줄 (chain_replay 1,202 -> 927)
+왜 틀렸나      함수 «본문이 무엇을 참조하는지»를 안 재고 눈으로 봤습니다. `ast` 로 재니 열이었습니다
+```
+🔵 헬퍼 셋은 `chain_replay` 의 «다른 함수들도» 쓰므로 그쪽이 `cell_layer` 에서 읽습니다 — 정의는 «하나»입니다(시험이 `is` 로 동일 객체를 단언합니다).
+🔵 `ReplayRefused` 는 «이름만» 재생의 것으로 남겼습니다 — 개명하면 잡는 자리 넷(`main`·`retroactive`·`frame_confirmation`·CLI)이 같이 바뀌고, 이동이 개명을 겸하면 무엇이 깨졌는지 읽기 어려워집니다.
+
+### 게이트 — 판정 358 이 정한 그대로
+```
+cell_layer 가 고리를 import 안 함   여섯 이름 각각 단언 · «모듈 수준과 함수 안» 둘 다 읽음
+:860 지연                          «0» — 실행기는 `cell_layer` 를 부르고 `chain_replay` 를 안 부릅니다
+SCC                                4 -> «0» (열 모듈 전수 재측정)
+스위트                             27 파일 515 passed / 1 xfailed
+수집                               6,275 -> 6,284
+철회 계약                          `user` 층은 여전히 «즉시 거절» (이 시험이 단언)
+```
+🔴 **시험 하나가 «패치 대상»을 옮겨야 했습니다** — `test_retraction_withdraws_the_layer_by_the_rule_name` 이 `chain_replay.withdraw_source` 를 monkeypatch 하고 있었는데, 이동 뒤 그건 «실행기가 부르는 것이 아닙니다». **옛 자리를 패치하면 초록인 채로 «진짜 함수»가 돕니다** — 그 자리를 옮기고 사유를 그 시험 docstring 에 적었습니다. (S-212 와 «같은 부류»입니다: 채점기가 «호출이 실제로 닿는 자리»를 봐야 합니다.)
+🔵 변이: `cell_layer` 가 `chain_replay` 를 import 하게 만들면 빨강 셋.
+
+> 📌 **[09-13 12:2x] 이 채널의 미답 질문: «없음».** 다음: 지시대로 **패키지화 «짓기 전 블록 갱신»** — 고리 0 이 됐으니 `virtual_join_executor` 의 자리를 import 방향으로 확정하고, 1,172 자리 · 재수출 0 · 런처 넷 · `sys.modules` 접두 81 전건을 블록에 싣겠습니다.
