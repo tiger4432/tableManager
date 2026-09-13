@@ -29,6 +29,7 @@
 | ✅ | `bonding_plan` | 55,845 | 2026-08-05 | 본딩 실험계획(M1) — 역할 바인딩 config 로더 + 코어 집계 코어. |
 | 🔴 | `chain_bindings` 🔒 | 11,455 | 2026-08-11 | Which column of a table carries the DT job identity — READ, never assumed. |
 | ✅ | `chain_ingestion_worker` · 🆕㈟ «`chain/ingestion_worker`» | 88,253 | 2026-08-27 |  |
+| 🆕㈣ | `chain/mapper_call` | 13,503 | 2026-09-13 | Where a mapper is CALLED FROM — the worker and the replay read the same house (S-214 `236b24e9`, 판정 370). Moved, not re-implemented: `execute_custom_mapper` and the six helpers only it uses. |
 | ✅ | `chain_key_gate` · 🆕㈟ «`chain/key_gate`» | 10,848 | 2026-08-12 | A chain may not emit a row whose key columns are not filled. ONE gate, not seven. |
 | ✅ | `chain_replay` · 🆕㈟ «`chain/replay`» | 57,743 | 2026-08-13 | Chain Replay R1 (rule re-application) + R2 (stale source withdrawal) |
 | ✅ | `column_filter` | 9,921 | 2026-08-05 | The AG-Grid filter DSL -> SQLAlchemy translator, in a module every process can import. |

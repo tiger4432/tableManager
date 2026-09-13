@@ -1,13 +1,14 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **843개** 이력. (거버넌스 규칙 #4)
+> 총 **844개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-09 (September 2026)
 
+- **2026-09-13 16:05** — [The Mapper Call Got Its Own House](./20260913_160518_the_mapper_call_got_its_own_house.md)
 - **2026-09-13 15:29** — [The Cells That Had Landed Finally Reached A Screen](./20260913_152901_the_cells_that_had_landed_finally_reached_a_screen.md)
 - **2026-09-13 14:53** — [The Flat Server Became Packages And Some Names Stayed](./20260913_145311_the_flat_server_became_packages_and_some_names_stayed.md)
 - **2026-09-13 12:02** — [The Root Was Cleaned And The Shell Got Its Own Name](./20260913_120249_the_root_was_cleaned_and_the_shell_got_its_own_name.md)
