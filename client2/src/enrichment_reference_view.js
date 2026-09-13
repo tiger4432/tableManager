@@ -365,12 +365,15 @@ function render(results) {
   tabs.className = 'reference-view-tabs';
   const panels = document.createElement('div');
   panels.className = 'reference-view-panels';
-  // [2b] The evidence stack. The mockup puts the source rows UNDER the candidate grid rather
-  // than behind a tab, because the operator reads the evidence to decide whether to trust the
-  // candidate -- behind a tab that decision costs a click and a memory of what was on the
-  // other side.
-  const evidence = document.createElement('div');
-  evidence.className = 'reference-evidence';
+  // 🔴 C-103 (소유자 2026-09-13: 「참조뷰는 왜 맨상단 두개는 탭이고 아래는 그냥 리스트야?
+  //    그냥 다 탭으로 해줘」). 갈래가 «하나»입니다 — 모든 뷰가 탭 하나와 패널 하나를 갖고
+  //    순서는 `results` 그대로입니다.
+  // ⚰️ 종전에는 여기에 「근거 스택」이 있었습니다(`.reference-evidence`): 목업 2b 의
+  //    「근거는 탭 뒤가 아니라 격자 아래」가 그 근거였고, 소유자가 그 배치를 «바꿨습니다».
+  //    그러니 그 주석은 이유가 아니라 낡은 기록이고, 배치를 두 갈래로 두면 「이 뷰가 어디
+  //    그려지나」가 뷰마다 다른 답을 갖습니다 (깔끔 ③·④).
+  // ⚠️ 「채울 수 있는 뷰」라는 성질은 «그대로»입니다 — 그건 배치가 아니라 «규칙»의 것이고
+  //    (`fillPlan`), 붙여넣기 순서와 ①② 표시는 한 글자도 안 바뀝니다.
   const selectView = (index) => {
     Array.from(tabs.children).forEach((button, tabIndex) => button.classList.toggle('active', tabIndex === index));
     Array.from(panels.children).forEach((panel, panelIndex) => { panel.style.display = panelIndex === index ? '' : 'none'; });
@@ -380,16 +383,6 @@ function render(results) {
     dragging = false;
     paintSelection();
   };
-  // A view that declares `candidate_for` is a grid the operator pastes FROM; one that declares
-  // nothing is evidence. Where no view declares anything the first is still the grid, which is
-  // the behaviour every display-only rule had before this.
-  const declares = entry => {
-    const map = entry?.view?.candidate_for;
-    return !!map && Object.keys(map).length > 0;
-  };
-  const anyDeclares = results.some(declares);
-  const isPrimary = entry => (anyDeclares ? declares(entry) : results.indexOf(entry) === 0);
-
   results.forEach((entry, index) => {
     const { view, payload, error } = entry;
     const section = document.createElement('section'); section.className = 'reference-view-section';
@@ -478,32 +471,27 @@ function render(results) {
       section.appendChild(table);
     }
 
-    if (isPrimary(entry)) {
-      // Captured BEFORE the append, so the tab and its panel keep the same position even
-      // though `index` counts views the tab strip never receives.
-      const panelIndex = panels.children.length;
-      const tab = document.createElement('button');
-      tab.type = 'button'; tab.className = 'reference-view-tab';
-      tab.textContent = view.label || `Reference ${index + 1}`;
-      tab.addEventListener('click', () => selectView(panelIndex));
-      tabs.appendChild(tab);
-      // 🔴 C-60 (소유자 09-10: 「참조뷰 첫째 테이블도 타이틀 달아줘」). 첫째 표는 «탭»으로만
-      //    이름이 붙었는데, 패널이 하나면 탭 줄이 `display:none` 이라 그 이름이 «아무 데도»
-      //    없었습니다. 근거 뷰는 처음부터 띠를 갖고 있었고 첫째만 못 가진 것이었습니다.
-      // ⚠️ 띠는 «`section` 안»에 넣습니다 — `panels` 의 형제로 넣으면 `selectView` 의
-      //    인덱스가 뷰당 «둘»이 되어 탭이 엉뚱한 패널을 보여 줍니다(`panels.children` 1:1).
-      section.insertBefore(
-        referenceHeadBand(view.label || `Reference ${index + 1}`, payload?.rows?.length),
-        section.firstChild);
-      panels.appendChild(section);
-    } else {
-      evidence.append(referenceHeadBand(view.label || '근거', payload?.rows?.length), section);
-    }
+    // 🔴 탭과 패널이 «1:1» 이고 둘 다 `index` 입니다. 갈래가 있던 동안에는 탭이 못 받는
+    //    뷰가 있어서 두 번호가 «따로» 셌고, 그 어긋남이 「탭을 눌렀는데 다른 표가 뜬다」의
+    //    모양입니다. 이제 한 번호입니다.
+    const tab = document.createElement('button');
+    tab.type = 'button'; tab.className = 'reference-view-tab';
+    tab.textContent = view.label || `Reference ${index + 1}`;
+    tab.addEventListener('click', () => selectView(index));
+    tabs.appendChild(tab);
+    // 🔴 C-60 (소유자 09-10: 「참조뷰 첫째 테이블도 타이틀 달아줘」). 표의 이름은 «띠»가 답니다 —
+    //    탭 줄은 패널이 하나면 `display:none` 이라, 이름이 탭에만 있으면 그때 아무 데도 없습니다.
+    // ⚠️ 띠는 «`section` 안»에 넣습니다 — `panels` 의 형제로 넣으면 `selectView` 의 인덱스가
+    //    뷰당 «둘»이 되어 탭이 엉뚱한 패널을 보여 줍니다(`panels.children` 1:1).
+    section.insertBefore(
+      referenceHeadBand(view.label || `Reference ${index + 1}`, payload?.rows?.length),
+      section.firstChild);
+    panels.appendChild(section);
   });
   // One panel needs no tab strip -- the mockup's panel goes straight from the band to the
   // grid. The strip comes back the moment a rule declares a second fillable view.
   tabs.style.display = panels.children.length > 1 ? '' : 'none';
-  host.append(tabs, panels, evidence);
+  host.append(tabs, panels);
   installSelectionKeys();
   if (panels.children.length) selectView(0);
 }

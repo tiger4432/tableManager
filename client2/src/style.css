@@ -2511,8 +2511,9 @@ body.resizing-active .history-sidebar {
 
 /* Mockup 2b: the evidence stack under the candidate grid. Its own top border separates it
    from the grid; `:empty` keeps that border off the screen on a rule with no evidence view. */
-.reference-evidence { border-top: 1px solid var(--border-strong); margin-top: 10px; }
-.reference-evidence:empty { display: none; border-top: none; margin-top: 0; }
+/* ⚰️ C-103. 「근거 스택」의 시트는 «지웁니다» — 그 상자를 만드는 코드가 없어졌습니다.
+   ⚠️ 아래 `-head`/`-count` 는 «남습니다»: 이름이 근거에서 왔을 뿐 오늘은 «모든» 패널의
+      제목 띠입니다(C-60). 이름이 낡은 것은 별개이고, 지금 고치면 하니스·시트가 같이 움직입니다. */
 .reference-evidence-head {
   height: 28px;
   display: flex;
