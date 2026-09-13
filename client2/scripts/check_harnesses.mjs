@@ -1461,7 +1461,7 @@ const FLOORS = new Map([
   ['server_time_harness.mjs', 19],
   ['chain_graph_harness.mjs', 91],
   ['runtime_panel_harness.mjs', 39],
-  ['reference_view_head_harness.mjs', 36],
+  ['reference_view_head_harness.mjs', 69],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

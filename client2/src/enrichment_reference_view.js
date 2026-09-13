@@ -5,6 +5,9 @@ import { elements } from './dom.js';
 // clipboard API — which is exactly why importing it does not drag the app graph in
 // behind it the way importing `clipboard.js` would.
 import { serializeTsv } from './tsv.js';
+// 「이것이 «세어진 수»인가」의 판정 한 벌. `0` 은 수이고 `null`·`undefined`·빈 문자열은
+// 아닙니다 — 그 구별이 없으면 「0 행」과 「안 왔다」가 화면에서 같은 모양입니다.
+import { isCount } from './absent.js';
 
 let rulesPromise = null;
 let activeRule = null;
@@ -330,14 +333,56 @@ function installSelectionKeys() {
   });
 }
 
+// ── C-108 ① 「몇 행인가」의 철자는 «하나» ──────────────────────────────────────────────
+/**
+ * 행 수의 글자. 띠(C-60)와 탭 배지(C-108)가 «같은 함수»를 지납니다 — 같은 수를 두 자리가
+ * 각자 적으면 한쪽이 「0행」이라 말하기 시작하는 날 다른 쪽은 빈 칸입니다(기준 ④).
+ *
+ * 🔴 그리고 «세어진 0» 과 «안 온 것» 이 여기서 갈립니다. 종전 판정은 `rowCount ? … : ''`
+ *    라 행이 0 인 표와 응답이 «없는» 표가 띠에서 «똑같이» 비어 있었습니다 — 바로 아래
+ *    주석이 그 둘을 구별한다고 적고 있었는데 코드가 안 그랬습니다(깔끔 ①: 이 줄이 참인가).
+ */
+function rowCountText(rowCount) {
+  return isCount(rowCount) ? `${rowCount}행` : '';
+}
+
+// ── C-108 ② 표마다 «마지막 탭» ────────────────────────────────────────────────────────
+//
+// 🔴 기억하는 것은 «번호»가 아니라 «이름»입니다. 선언이 뷰를 하나 끼워 넣거나 순서를 바꾸면
+//    번호는 조용히 «다른 표»를 가리키고 그 고장은 오류를 안 냅니다. 이름은 그때 「목록에
+//    없다」가 되고, 없으면 첫 탭입니다.
+// ⚠️ 「기억이 없다」와 「첫 탭을 골랐다」는 화면이 같습니다. 그래서 «그리기»는 기억하지 않고
+//    «고르기»만 기억합니다 — 안 그러면 한 번 그린 것이 곧 선택이 되어, 아무도 안 고른 표에
+//    선택이 생깁니다.
+const TAB_MEMORY_PREFIX = 'assy.refview.tab.';
+
+function tabMemoryKey() {
+  // 표가 없으면 기억할 주어가 없습니다 — 키 없이 쓰면 모든 표가 한 칸을 나눠 씁니다.
+  return state.currentTable ? `${TAB_MEMORY_PREFIX}${state.currentTable}` : '';
+}
+
+function rememberedTabName() {
+  const key = tabMemoryKey();
+  if (!key) return '';
+  // 사생활 창·차단된 저장소에서는 «읽는 것만으로» 던집니다. 기억은 편의이고, 편의가 화면을
+  // 죽이면 안 됩니다.
+  try { return globalThis.localStorage?.getItem(key) || ''; } catch (e) { return ''; }
+}
+
+function rememberTabName(name) {
+  const key = tabMemoryKey();
+  if (!key) return;
+  try { globalThis.localStorage?.setItem(key, String(name)); } catch (e) { /* 위와 같은 이유 */ }
+}
+
 /**
  * C-60 — 표 «위의 띠»: 이름 한 칸, 행 수 한 칸. 그것뿐입니다.
  *
  * 🔴 갈래가 «둘»(첫째 표 · 근거 표)이고 띠는 «한 벌»입니다. 근거 쪽이 자기 안에서 띠를
  *    조립하고 있었고, 첫째에 같은 것을 «또» 조립하면 그 순간 두 표의 제목이 «갈라질 수»
  *    있게 됩니다 — 기준 ④ 는 「둘이 있나」가 아니라 「둘이 갈라질 수 있나」입니다.
- * ⛔ 설명 문구 없음. 수는 행 수 «하나»뿐이고, 없으면 «빈 칸»입니다 — 0 이 아닙니다
- *    (「행 0」은 재 봤다는 뜻이고, 여기서 빈 칸은 「셀 것이 안 왔다」입니다).
+ * ⛔ 설명 문구 없음. 수는 행 수 «하나»뿐이고, 글자는 `rowCountText` 가 정합니다 —
+ *    「행 0」은 «재 본» 것이고, 빈 칸은 「셀 것이 안 왔다」입니다.
  */
 function referenceHeadBand(labelText, rowCount) {
   const strip = document.createElement('div');
@@ -348,7 +393,7 @@ function referenceHeadBand(labelText, rowCount) {
   count.className = 'reference-evidence-count';
   // The count is the ONLY number here. The mockup's `lot = TL26-08*` is its own fixture
   // and inventing a live equivalent would put a filter on screen that nothing applied.
-  count.textContent = rowCount ? `${rowCount}행` : '';
+  count.textContent = rowCountText(rowCount);
   strip.append(label, count);
   return strip;
 }
@@ -361,6 +406,9 @@ function referenceHeadBand(labelText, rowCount) {
 function render(results) {
   const host = elements.referenceViewContent;
   host.replaceChildren();
+  // 뷰의 이름을 «한 줄»이 정합니다 — 탭·띠·기억이 같은 글자를 씁니다. 종전에는 같은 식이
+  // 탭과 띠에 각각 적혀 있었고, 그 둘은 «갈라질 수» 있었습니다(기준 ④).
+  const names = results.map((entry, index) => entry.view?.label || `Reference ${index + 1}`);
   const tabs = document.createElement('div');
   tabs.className = 'reference-view-tabs';
   const panels = document.createElement('div');
@@ -377,12 +425,38 @@ function render(results) {
   const selectView = (index) => {
     Array.from(tabs.children).forEach((button, tabIndex) => button.classList.toggle('active', tabIndex === index));
     Array.from(panels.children).forEach((panel, panelIndex) => { panel.style.display = panelIndex === index ? '' : 'none'; });
+    // 🔴 고른 탭은 «보이는» 것까지가 고른 것입니다. 탭 줄은 `overflow-x: auto` 라 기억해 둔 탭이
+    //    줄 «밖»에 있을 수 있고, 그러면 화면은 «첫 탭이 선택된 것처럼» 보입니다.
+    //    실측(실제 브라우저, 09-13): 기억한 다섯째 탭이 offsetLeft 412 · 보이는 폭 394 ·
+    //    scrollLeft 0 — 그리고 `focus()` 는 이 줄을 «안 밀었습니다». 그래서 여기서 밀어 줍니다 —
+    //    개별 경로(누르기 · ←→ · 그리기)가 각자 밀면 그중 하나만 빠집니다.
+    tabs.children[index]?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     // A selection belongs to the grid it was made in. Carrying it across a tab switch would
     // leave a rectangle highlighted over columns that mean something else.
     selection = null;
     dragging = false;
     paintSelection();
   };
+  // 🔴 «고르기»는 사람의 행위입니다. 누르기와 ←→ 가 «같은 한 줄»을 지나야 둘이 갈라지지
+  //    않습니다 — 갈라지면 한쪽으로 고른 것만 기억되고, 그 차이는 «다음에 이 표를 열 때»에야
+  //    보입니다.
+  const chooseView = (index) => { selectView(index); rememberTabName(names[index]); };
+  // C-108 ③. ←→ 는 «탭 줄 위»에서만 듣습니다. 표 안에서도 들으면 범위를 읽던 손이 표를
+  // 바꾸고, Shift+←→ 는 이미 «선택»의 몫입니다(`installSelectionKeys`).
+  tabs.addEventListener('keydown', (event) => {
+    const step = event.key === 'ArrowRight' ? 1 : (event.key === 'ArrowLeft' ? -1 : 0);
+    if (!step || event.shiftKey) return;
+    const at = Array.from(tabs.children).findIndex((button) => button.classList.contains('active'));
+    // 끝에서는 «안 돕니다». 도는 목록은 「지금 어디쯤인가」를 잃습니다.
+    const next = Math.min(Math.max(at + step, 0), tabs.children.length - 1);
+    // 눌린 키는 여기서 끝납니다 — 안 그러면 탭이 바뀌는 «동시에» 탭 줄이 가로로 밀립니다
+    // (`overflow-x: auto`).
+    event.preventDefault();
+    if (next === at) return;
+    chooseView(next);
+    // 다음 ←→ 가 이어지려면 초점이 «고른 탭»에 있어야 합니다.
+    tabs.children[next].focus();
+  });
   results.forEach((entry, index) => {
     const { view, payload, error } = entry;
     const section = document.createElement('section'); section.className = 'reference-view-section';
@@ -476,15 +550,27 @@ function render(results) {
     //    모양입니다. 이제 한 번호입니다.
     const tab = document.createElement('button');
     tab.type = 'button'; tab.className = 'reference-view-tab';
-    tab.textContent = view.label || `Reference ${index + 1}`;
-    tab.addEventListener('click', () => selectView(index));
+    const tabName = document.createElement('span');
+    tabName.className = 'reference-view-tab-name';
+    tabName.textContent = names[index];
+    tab.appendChild(tabName);
+    // C-108 ①. 「어느 표에 행이 있나」를 «열어 보기 전»에 답합니다. 배지가 없는 탭은
+    // 「0 행」이 아니라 「셀 것이 안 왔다」입니다(거절·빈 응답).
+    const tabCount = rowCountText(payload?.rows?.length);
+    if (tabCount) {
+      const badge = document.createElement('span');
+      badge.className = 'reference-view-tab-count';
+      badge.textContent = tabCount;
+      tab.appendChild(badge);
+    }
+    tab.addEventListener('click', () => chooseView(index));
     tabs.appendChild(tab);
     // 🔴 C-60 (소유자 09-10: 「참조뷰 첫째 테이블도 타이틀 달아줘」). 표의 이름은 «띠»가 답니다 —
     //    탭 줄은 패널이 하나면 `display:none` 이라, 이름이 탭에만 있으면 그때 아무 데도 없습니다.
     // ⚠️ 띠는 «`section` 안»에 넣습니다 — `panels` 의 형제로 넣으면 `selectView` 의 인덱스가
     //    뷰당 «둘»이 되어 탭이 엉뚱한 패널을 보여 줍니다(`panels.children` 1:1).
     section.insertBefore(
-      referenceHeadBand(view.label || `Reference ${index + 1}`, payload?.rows?.length),
+      referenceHeadBand(names[index], payload?.rows?.length),
       section.firstChild);
     panels.appendChild(section);
   });
@@ -493,7 +579,12 @@ function render(results) {
   tabs.style.display = panels.children.length > 1 ? '' : 'none';
   host.append(tabs, panels);
   installSelectionKeys();
-  if (panels.children.length) selectView(0);
+  if (panels.children.length) {
+    // 기억이 없거나, 기억한 이름이 «오늘 목록에 없으면» 첫 탭입니다 — 그리기는 기억하지
+    // 않으므로 이 자리는 `selectView` 이지 `chooseView` 가 아닙니다.
+    const remembered = names.indexOf(rememberedTabName());
+    selectView(remembered >= 0 ? remembered : 0);
+  }
 }
 
 export async function showReferenceView() {
