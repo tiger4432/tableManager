@@ -21,8 +21,8 @@ C:/Users/kk980/Developments/assyManager-authoring/      이 저장소의 «형�
 |---|---|---|
 | `README.md` | 누구를 위한 것인가 · **SDK 버전 = 이 저장소의 커밋 해시** | — |
 | `MAPPING_GUIDE.md` | 체인 맵퍼 — `(df, db) -> df` 하나 + `@mapper` 등록 | [`server/mapper_sdk.py`](../../server/mapper_sdk.py) |
-| `PARSER_GUIDE.md` | 인제션 파서 — 함수형·클래스형 두 길 | [`server/parsers/pipeline_base.py`](../../server/parsers/pipeline_base.py) · [`custom_parser_template.py`](../../server/parsers/custom_parser_template.py) |
-| `examples/` | ⏳ 아직 없음 — 판정 348 의 이동 뒤 | — |
+| `PARSER_GUIDE.md` | 인제션 파서 — 함수형·클래스형 두 길 | [`server/parsers/pipeline_base.py`](../../server/parsers/pipeline_base.py) (`custom_parser_template.py` 는 `examples/` 로 «옮겨졌습니다» — 아래) |
+| `examples/` | 맵퍼 샘플 셋(`dt_standard_map_mapper` · `lot_slot_wafer_mapper` · `production_mapper`) + `custom_parser_template.py` + `custom_parser.py.sample` — 판정 348·349 의 «다섯», 저장소에서 «이동»(사본 0) | — |
 
 ## 정본 관계 — 한 줄
 
@@ -34,10 +34,18 @@ C:/Users/kk980/Developments/assyManager-authoring/      이 저장소의 «형�
 
 ```
 @mapper            server/mapper_sdk.py :339      체인 맵퍼 등록 (이름 -> MAPPER_REGISTRY :253)
-parse_file         server/parsers/custom_parser_template.py     함수형 파서의 계약 전부
+parse_file         assyManager-authoring/examples/custom_parser_template.py   함수형 파서의 계약 전부
+                   🔴 이 이름은 «저장소 코드에 없습니다»(추적 전건 0) — 아래 「⚠️」 참조
 match · process_dataframe   server/parsers/pipeline_base.py :15 · :22   클래스형 파서의 훅 둘
 ```
 그 이름이 바뀌면 제품이 «거절로» 말합니다. 그 밖의 것(파일 배치·헬퍼·예제 경로)은 약속이 아닙니다.
+
+⚠️ **`parse_file` 은 위 셋 중 «코드가 부르는 자리»가 없습니다**(S-209 실측, 2026-09-13):
+추적 파일 전건에서 그 낱말이 이 문서와 `SERVER_FILE_MAP.md` «둘»뿐이고, 워크스페이스 스크립트를
+집는 자리(`server/parsers/directory_watcher.py` :1157)는 `BasePipelineParser` 의 «하위 클래스»만
+찾습니다. 즉 함수형 길의 계약은 옮겨 간 템플릿의 «머리 주석»에만 살아 있었습니다.
+`server/tests/test_the_authoring_guides_name_entry_points_that_exist.py` 가 이 상태를 잽니다 —
+판정 대상이지 이 문서가 정할 것이 아닙니다.
 
 ## 왜 밖인가
 

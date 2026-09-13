@@ -171,7 +171,7 @@
 | | 파일 | 크기 | 수정 | 하는 일 |
 |---|---|---:|---|---|
 | 🔴 | `parsers/advanced_ingester` | 25,051 | 2026-08-16 |  |
-| 🔴 | `parsers/custom_parser_template` | 2,234 | 2026-08-19 | [함수형 커스텀 파서] 이 파일의 계약은 **`parse_file(file_path) -> list[dict]` 함수 하나**다. |
+| 🪦 | ~~`parsers/custom_parser_template`~~ | — | 2026-09-13 | **이동됨 → `assyManager-authoring/examples/custom_parser_template.py`** (S-209, 판정 348). 그 파일의 계약은 `parse_file(file_path) -> list[dict]` 함수 하나이고, **이 저장소 코드에는 그 이름을 부르는 자리가 없다**(실측: `directory_watcher` :1157 은 `BasePipelineParser` 하위 «클래스»만 집는다). |
 | ✅ | `parsers/directory_watcher` | 178,031 | 2026-08-19 |  |
 | 🔴 | `parsers/html_topology_parser` | 35,639 | 2026-08-04 |  |
 | 🔴 | `parsers/pipeline_base` | 5,172 | 2026-08-19 |  |
