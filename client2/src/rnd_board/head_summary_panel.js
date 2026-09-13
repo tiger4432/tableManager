@@ -18,6 +18,7 @@
 
 import { Panel } from './panel.js';
 import { createWalk } from './api.js';
+import { UNPICKED } from '../absent.js';
 
 export class HeadSummaryPanel extends Panel {
   /**
@@ -232,7 +233,8 @@ export class HeadSummaryPanel extends Panel {
 
     if (this.loadState === 'no-subject') {
       // NOT an error: nobody has picked a chip yet. Says what to do, in one clause.
-      root.appendChild(this._note('대상 없음', '칩을 고르면 여기에 나옵니다', 'idle'));
+      // C-99 ③. 값은 이미 있었고 «문장»만 옆에 서 있었습니다. 철자는 `absent.js` 하나입니다.
+      root.appendChild(this._note(UNPICKED, '', 'idle'));
       this.host.appendChild(root);
       return;
     }

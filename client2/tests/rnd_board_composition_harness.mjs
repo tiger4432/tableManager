@@ -30,6 +30,8 @@ import { scoreMutants } from './lib/mutation_scorer.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadBoardModules } from './lib/board_modules.mjs';
+// C-99 ③. The spelling has one author; see the same note in the reach harness.
+import { UNPICKED } from '../src/absent.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BOARD_DIR = path.join(HERE, '..', 'src', 'rnd_board');
@@ -284,7 +286,7 @@ async function suite(mods) {
     await flush(); await flush();
     // 🔴 넷 중 «첫째» 부재입니다 -- 「없다」가 아니라 「아직 안 골랐다」.
     truthy('L1 nothing marked says so instead of drawing a layer nobody chose',
-      /층을 찍으면/.test(hostL.textContent) && !/INGOT_RELEASE/.test(hostL.textContent),
+      hostL.textContent.includes(UNPICKED) && !/INGOT_RELEASE/.test(hostL.textContent),
       hostL.textContent.slice(0, 60));
     marks.set('m:1', 'node:l02', store.SIGN.CASE);
     truthy('L2 the marked layer is the one that opens',

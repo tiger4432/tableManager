@@ -20,6 +20,7 @@
 import { Panel, markingIntent } from './panel.js';
 import { SIGN } from './marking_store.js';
 import { createWalk } from './api.js';
+import { UNPICKED } from '../absent.js';
 
 export class CandidateListPanel extends Panel {
   constructor(host, deps) {
@@ -264,7 +265,7 @@ export class CandidateListPanel extends Panel {
     const refused = state === 'refused';
     const el = this.doc.createElement('div');
     el.className = refused ? 'rb-cand-line rb-cand-line--refused' : 'rb-cand-line rb-cand-line--absent';
-    el.textContent = state === 'no-seed' ? '씨앗 없음 — 웨이퍼를 고르면 여기에 나옵니다'
+    el.textContent = state === 'no-seed' ? UNPICKED
       : state === 'loading' ? '걷는 중'
       : (this.model && this.model.message) || '서버가 거절했습니다';
     return el;

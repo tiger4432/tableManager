@@ -99,7 +99,7 @@ export class RankListPanel extends Panel {
     const caption = doc.createElement('div');
     caption.className = 'rb-rank-caption';
     // Said on the panel, not only in a comment. The screen must not read as a verdict.
-    caption.textContent = '순위는 판정이 아닙니다 · 점수·확률 없음';
+    caption.textContent = '판정 아님 · 점수·확률 없음';
     root.appendChild(caption);
 
 

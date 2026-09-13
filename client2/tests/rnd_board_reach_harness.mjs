@@ -24,6 +24,11 @@ import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadBoardModules } from './lib/board_modules.mjs';
+// 🔴 THE SPELLING HAS ONE AUTHOR (C-99 ③). These assertions are about a STATE --
+//    「아직 안 골랐다」 has its own seat -- and a copy of the sentence here would make
+//    this harness a second author of it: a wording change reddens an assertion that
+//    was never about the wording.
+import { UNPICKED } from '../src/absent.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BOARD_DIR = path.join(HERE, '..', 'src', 'rnd_board');
@@ -300,7 +305,7 @@ async function suite(mods) {
   pe.mount();
   await settle();
   const notChosen = textOf(hostE);
-  ok('E1 an empty marking says 「not chosen yet」', notChosen.includes('아직 안 골랐습니다'), notChosen.slice(0, 60));
+  ok('E1 an empty marking says 「not chosen yet」', notChosen.includes(UNPICKED), notChosen.slice(0, 60));
   ok('E2 and it did not ask a question with no subject', pe.model === null);
 
   const hostR = doc.createElement('div');
@@ -314,7 +319,7 @@ async function suite(mods) {
   await settle();
   const refusedText = textOf(hostR);
   ok('E3 a refusal says the server refused', refusedText.includes('거절'), refusedText.slice(0, 60));
-  ok('E4 a refusal is not the not-chosen sentence', !refusedText.includes('아직 안 골랐습니다'));
+  ok('E4 a refusal is not the not-chosen state', !refusedText.includes(UNPICKED));
 
   const hostN = doc.createElement('div');
   const noEdges = reachModel({ ok: true, status: 200, body: { ...BODY, edges: [] } });
@@ -327,7 +332,7 @@ async function suite(mods) {
   await settle();
   const noneText = textOf(hostN);
   ok('E5 no outgoing edges is its own sentence', noneText.includes('나가는 엣지가 없습니다'), noneText.slice(0, 60));
-  ok('E6 and that is not the not-chosen sentence', !noneText.includes('아직 안 골랐습니다'));
+  ok('E6 and that is not the not-chosen state', !noneText.includes(UNPICKED));
 
   return { ran, failed: failedList.slice() };
 }
@@ -372,7 +377,7 @@ const MUTANTS = [
     to: '    if (!this.walkFn) {' },
   { name: 'every-absence-shares-one-sentence', target: 'reach_panel.js', wakes: 'E3',
     from: "    if (this.loadState === 'refused') return (this.model && this.model.message) || '걸어 보지 못했습니다';",
-    to: "    if (this.loadState === 'refused') return '아직 안 골랐습니다';" },
+    to: "    if (this.loadState === 'refused') return UNPICKED;" },
   // 🔴 `writes: null` ON THE TABLE IS NOT SCORED, AND THAT IS SAID OUT LOUD RATHER THAN
   //    FAKED. A mutant that hands the table this part's write name ESCAPES: the table would
   //    mark the predicate STRING, and then `_expand` immediately marks the first real node

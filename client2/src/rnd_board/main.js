@@ -835,7 +835,7 @@ export function bindLoaders(layout, deps) {
           if (!eqp) {
             return Promise.resolve({
               subjects: null, units: null, relation: null, column: null,
-              analysis: null, straddling: null, message: '이 축은 원장에 없습니다',
+              analysis: null, straddling: null, message: '원장에 없음',
             });
           }
           return walkHere({

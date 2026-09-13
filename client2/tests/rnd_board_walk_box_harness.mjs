@@ -23,6 +23,11 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadBoardModules } from './lib/board_modules.mjs';
+// 🔴 THE SPELLING HAS ONE AUTHOR (C-99 ③). These assertions are about a STATE --
+//    「아직 안 골랐다」 has its own seat -- and a copy of the sentence here would make
+//    this harness a second author of it: a wording change reddens an assertion that
+//    was never about the wording.
+import { UNPICKED } from '../src/absent.js';
 import { scoreMutants } from './lib/mutation_scorer.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -401,7 +406,7 @@ async function suite(mods) {
   pn.mount();
   await settle();
   const before = textOf(hostN);
-  ok('E3 nothing chosen yet is its own sentence', before.includes('타입을 고르고 걸으십시오'),
+  ok('E3 nothing chosen yet has its own seat', before.includes(UNPICKED),
     before.slice(-90));
   pn.setType('die@1');
   await pn.run();
@@ -409,7 +414,7 @@ async function suite(mods) {
   const after = textOf(hostN);
   ok('E4 walked-and-empty is a DIFFERENT sentence', after.includes('걸었는데 닿은 것이 없습니다'),
     after.slice(-90));
-  ok('E5 and it is not the not-chosen one', !after.includes('타입을 고르고 걸으십시오'));
+  ok('E5 and it is not the not-chosen one', !after.includes(UNPICKED));
 
   const hostF = doc.createElement('div');
   const pf = new WalkBoxPanel(hostF, {
@@ -425,7 +430,7 @@ async function suite(mods) {
   const refused = textOf(hostF);
   ok('E6 a refused walk carries the server sentence', refused.includes('HTTP 503'), refused.slice(-90));
   ok('E7 which is neither of the other two',
-    !refused.includes('걸었는데 닿은 것이 없습니다') && !refused.includes('타입을 고르고 걸으십시오'));
+    !refused.includes('걸었는데 닿은 것이 없습니다') && !refused.includes(UNPICKED));
 
   // ── W: the reader hands the node ON, it does not re-author it ────────────────────────
   // 🔴 THE DEFECT THIS CLOSES HAPPENED TWICE IN THREE DAYS, in the same line. `createWalkBoxWalk`
@@ -590,7 +595,7 @@ const MUTANTS = [
     to: "    if (this.result && this.result.truncated) box.appendChild(this._note(" },
   { name: 'every-absence-shares-one-sentence', catches: ['E4', 'E6'],
     from: "    if (this.walkState === 'ready') return '걸었는데 닿은 것이 없습니다';",
-    to: "    if (this.walkState === 'ready') return '타입을 고르고 걸으십시오';" },
+    to: "    if (this.walkState === 'ready') return UNPICKED;" },
   { name: 'a-missing-route-reads-as-an-empty-result', catches: ['E1'],
     from: "    if (this.declState !== 'ready') {",
     to: "    if (false) {" },

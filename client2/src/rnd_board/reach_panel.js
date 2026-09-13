@@ -19,6 +19,7 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { Panel } from './panel.js';
+import { UNPICKED, subjectText } from '../absent.js';
 import { SIGN } from './marking_store.js';
 import { TablePart } from './table_part.js';
 // 🔴 C-77. 서버 시각은 offset 단 ISO — 순간으로 읽고 보는 쪽 zone 으로 그린다.
@@ -168,15 +169,16 @@ export class ReachPanel extends Panel {
       if (m.cut && m.cut.length) parts.push(`잘림 ${m.cut.join('·')}`);
       if (this.opened) parts.push(`펼침 ${this.opened}`);
     } else if (this.loadState === 'no-marking') {
-      parts.push(`${this.reads || '마킹'} 이 이 목록의 주어입니다`);
+      parts.push(subjectText(this.reads));
     }
     el.textContent = parts.join(' · ');
     return el;
   }
 
-  /** 넷 중 어느 부재인지 «문장»으로 말합니다. 빈 표가 아닙니다. */
+  /** 넷 중 «어느» 부재인지 말합니다. 빈 표가 아닙니다.
+   *  ⚠️ 넷이 여전히 넷입니다 — 접은 것은 「아직 안 골랐다」의 «문장»이지 그 상태가 아닙니다. */
   _emptyText() {
-    if (this.loadState === 'no-marking') return '아직 안 골랐습니다 — 찍으면 어디로 갈 수 있는지 보입니다';
+    if (this.loadState === 'no-marking') return UNPICKED;
     if (this.loadState === 'loading') return '읽는 중…';
     if (this.loadState === 'refused') return (this.model && this.model.message) || '걸어 보지 못했습니다';
     return '이 노드에서 나가는 엣지가 없습니다';

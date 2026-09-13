@@ -1,0 +1,1 @@
+var e=`대상 없음`;function t(e){return`주어 ${e||`—`}`}function n(e){return e==null||typeof e==`string`&&e.trim()===``?!1:Number.isFinite(Number(e))}function r(e){return n(e)?String(Number(e)):`—`}function i(e){return n(e)?Number(e).toLocaleString():`—`}export{t as a,i,r as n,n as r,e as t};
