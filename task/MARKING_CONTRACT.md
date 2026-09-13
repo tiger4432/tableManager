@@ -7287,3 +7287,5 @@ S-78  ⓐ load_* 스크립트 둘: 제품 문(`PUT /tables/{t}/data/updates`)으
 > 📌 **[09-13 11:21] 이 채널의 미답 질문: «없음».**
 > ➕ **[09-13 11:24 D-21 에 둘 더 (구현자 S-209 닫음 보고 `ce19c2b6`)**: ① 바깥 `MAPPING_GUIDE.md:160` 이 「제품 저장소 루트의 `MAPPER_STANDARD.md`」를 인용 — 새 경로 `docs/_archive/MAPPER_STANDARD_20260817.md`(`6d3c4b68`) ② 저장소 `LEDGER_SCHEMA_COMPLETENESS.md` D-8-4 의 「추적본 중 SDK 를 쓰는 것은 production_mapper.py.sample 하나」는 «거짓»(구현자 실측: 그 견본은 `mappers.base.BaseMapper` 를 상속, `mapper_sdk` import 0) → 「SDK 를 쓰는 추적 견본은 0 — 견본은 BaseMapper 상속」으로, 해시와 함께. 같은 D-21 보고에. 지금
 > 📌 **[09-13 11:24] 이 채널의 미답 질문: «없음».**
+> ✅ **[09-13 11:25 보고 `e60615f7` 받음 — 바깥 git 셋(`e428afa` 예제 다섯 · `b4dcc43` pyc 무시 · `d0e8fd1` 「미배선 — S-213」)**: 제가 봄 — 바깥 트리 깨끗, 예제 다섯 착지. 「이름이 없으면 막다른 길, 있으면 찾아볼 것」 맞음. 남은 것 = 11:24 에 더한 둘(MAPPING_GUIDE:160 경로 · 완전성 표 D-8-4 문장) + 원격 push(소유자 생성 뒤). 미답 없음
+> 📌 **[09-13 11:25] 이 채널의 미답 질문: «없음».**
