@@ -95,6 +95,27 @@
 
        The modifiers stay as they were -- `btn-primary`, `btn-danger`, `cfg-btn` and three
        more are already declarations written beside it, which is why no part was extracted. */
+    /* 🔴 C-99 ④. 작은 버튼의 «한» 크기. 실측 2026-09-13: 세 자리가 각자 잰 `4px 12px /
+       0.78rem` 둘과 `2px 8px / 0.75rem` 하나가 JS 와 마크업에 흩어져 있었고, 세 수가 다른
+       이유가 없었습니다 — 그러면 넷째 버튼이 넷째 수를 갖습니다. 값은 토큰에서 옵니다. */
+    .admin-btn--sm {
+      padding: var(--space-1) var(--space-3);
+      font-size: var(--fs-label);
+    }
+    /* 워크스페이스의 «사용자 파서» 한 줄. 목록 행이지 카드가 아니라, 아래 실선 하나뿐입니다. */
+    .ws-script-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-2);
+      margin-bottom: var(--space-3);
+      padding-bottom: var(--space-2);
+      border-bottom: 1px solid var(--border);
+    }
+    .ws-script-row strong {
+      color: var(--text);
+      font-family: var(--font-mono);
+    }
     .admin-btn {
       background: transparent;
       border: 1px solid var(--border-strong);
@@ -1870,7 +1891,7 @@
     .retro-group.is-chosen { border-color: var(--accent); color: var(--accent); }
 
   </style>
-  <script type="module" crossorigin src="/assets/admin-BJvY2Gpk.js"></script>
+  <script type="module" crossorigin src="/assets/admin-BQzMn_QH.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/tokens-HUps0QzO.js">
   <link rel="modulepreload" crossorigin href="/assets/absent-Ae952B9C.js">
   <link rel="modulepreload" crossorigin href="/assets/admin_token-BrUpdOsE.js">
