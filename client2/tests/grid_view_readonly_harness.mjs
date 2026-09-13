@@ -24,6 +24,8 @@
  *      spelling, still writes on a table -- and the control itself stops being clickable
  *   G  a refusal is the SERVER's sentence (C-102 ②), and a `detail` that is not one does not
  *      become 「[object Object]」 on the screen
+ *   R  a refused READ is an answer, not an exception (C-105): the page's data fetch draws the
+ *      server's sentence, empties the grid, and says 「not counted」 rather than 「0」
  *
  * 🔴 NOT INFERRED FROM THE DATA SHAPE. A view cell is `{value}` only -- and so is a page of an
  *    ordinary table nobody has overwritten. Reading the shape would turn a healthy table
@@ -52,7 +54,22 @@ const nodes = new Map();
 function fakeNode(id) {
   return {
     id, innerHTML: '', textContent: '', value: '', checked: false,
-    style: {}, dataset: {}, classList: { add() {}, remove() {}, contains: () => false },
+    style: {}, dataset: {},
+    // 🔴 `toggle` 이 «없으면» 그것을 부르는 코드가 던집니다 — 그리고 그 던짐은 대개 바깥
+    //    `catch` 가 먹어서 «조용합니다»(실측: `setMatchCount` 때문에 `fetchData` 의 개수
+    //    이후가 성공 경로에서도 한 번도 안 돌았습니다). 브라우저가 하는 대로: 넣고·빼고·
+    //    «지금 상태»를 답합니다.
+    classList: {
+      _s: new Set(),
+      add(...names) { for (const x of names) this._s.add(x); },
+      remove(...names) { for (const x of names) this._s.delete(x); },
+      contains(name) { return this._s.has(name); },
+      toggle(name, on) {
+        const want = on === undefined ? !this._s.has(name) : !!on;
+        if (want) this._s.add(name); else this._s.delete(name);
+        return want;
+      },
+    },
     children: [],
     appendChild(c) { this.children.push(c); return c; },
     addEventListener() {}, removeEventListener() {},
@@ -120,9 +137,18 @@ let writes = [];
 // C-102 ②. 서버가 «거절»할 때 무엇이 화면에 서는가 — S-224 뒤 뷰 쓰기는 여섯 라우트 전부
 // 422 + `detail` 문장이다. `null` 이면 종전대로 전부 성공한다.
 let refusal = null;
+// C-105. 읽기도 거절됩니다 — 실경로에서 잡힌 것이 그것입니다(`/data` 가 422 로 이름을 대고
+// 거절). `/schema` 는 건드리지 않습니다: 그 읽기가 먼저 성공해야 표가 서기 때문입니다.
+let readRefusal = null;
 globalThis.fetch = async (url, opts = {}) => {
   const method = String(opts.method || 'GET').toUpperCase();
   if (method !== 'GET') writes.push({ url: String(url), method });
+  if (method === 'GET' && readRefusal && String(url).includes('/data?')) {
+    return {
+      ok: false, status: readRefusal.status,
+      json: async () => readRefusal.body, text: async () => JSON.stringify(readRefusal.body),
+    };
+  }
   if (method !== 'GET' && refusal) {
     return {
       ok: false, status: refusal.status,
@@ -362,6 +388,40 @@ async function suite(M) {
     `G2 a detail that is not a sentence names the status instead [${listy.note}]`);
   refusal = null;
 
+  // ── R: a refused READ is an answer (C-105) ───────────────────────────────────────────
+  // 🔴 CAUGHT ON THE REAL PAGE (lead, 2026-09-13): `/tables/bonding_core_lot/data` answers 422
+  //    NAMING the reason -- no row_id and no usable business key, so a page read has no total
+  //    order -- and the grid threw `Cannot read properties of undefined (reading 'length')`
+  //    because it read `result.data` off the refusal. The screen said 「Data fetch failed」.
+  await stageThrough(M.api, 'table');
+  const rowsSet = [];
+  realState.gridApi.setGridOption = (key, value) => { if (key === 'rowData') rowsSet.push(value); };
+  const SAYS = 'bonding_core_lot: no row_id and no usable business_key -- declare one';
+  readRefusal = { status: 422, body: { detail: SAYS } };
+  log().textContent = '';
+  let threw = null;
+  try { await M.api.fetchData(true); } catch (e) { threw = e && e.message; }
+  ok(threw === null, `R1 a refused read does not throw [${threw}]`);
+  ok(log().textContent === SAYS,
+    `R2 ... and the server's sentence is what the screen says [${log().textContent}]`);
+  ok(rowsSet.length > 0 && Array.isArray(rowsSet[rowsSet.length - 1])
+     && rowsSet[rowsSet.length - 1].length === 0,
+    `R3 ... and the grid is emptied, so the previous table's rows are not read as this one's`);
+  // ⚠️ 「0 건」 is a MEASUREMENT and this read never counted anything. `match_count` keeps those
+  //    apart on purpose, and a refusal is the clearest case of 「not counted」 there is.
+  // ⚠️ `total-rows`, not `total-rows-count` -- the id is `dom.js`'s, and reading the wrong
+  //    one made this assertion measure an element nothing ever writes to.
+  const counted = document.getElementById('total-rows').textContent;
+  ok(counted.includes('…') && !counted.includes('0'),
+    `R4 ... and the count says 「not counted」, not 「0」 [${counted}]`);
+  // 🔴 NOT VACUOUS: the same call on an answer that carries rows still renders them.
+  readRefusal = null;
+  rowsSet.length = 0;
+  await M.api.fetchData(true);
+  ok(rowsSet.length > 0 && Array.isArray(rowsSet[rowsSet.length - 1]),
+    'R5 a read that is NOT refused still puts rows in the grid');
+  realState.gridApi.setGridOption = () => {};
+
   return { pass: pass - before.pass, fail: fail - before.fail };
 }
 
@@ -389,6 +449,14 @@ const DEFECTS = [
     s => s.replace('  if (tableIsView()) { elements.performanceLog.textContent = VIEW_READ_ONLY_NOTE; return; }\n', '')],
   ['clipboard.js: the refusal is silent', 'clipboard',
     s => s.replace('      elements.performanceLog.textContent = VIEW_READ_ONLY_NOTE;\n', '')],
+  // 🔴 C-105. The read path, which is where the owner's 422 arrived as an exception.
+  ['api.js: a refused read is read as a page of rows again', 'api',
+    s => s.replace('    if (!res.ok) {', '    if (false) {')],
+  ['api.js: the refused read claims it counted zero', 'api',
+    s => s.replace('  setMatchCount(elements.totalRowsCount, null);',
+                   '  setMatchCount(elements.totalRowsCount, 0);')],
+  ['api.js: the refused read leaves the previous table`s rows on screen', 'api',
+    s => s.replace("  if (state.gridApi) state.gridApi.setGridOption('rowData', []);\n", '')],
   // 🔴 C-102. Four ways the owner's click gets back to the server, or its answer gets lost.
   ['api.js: the add-row funnel is unguarded again', 'api',
     s => s.replace('  if (tableIsView()) { setBadge(elements.performanceLog, VIEW_READ_ONLY_NOTE); return; }\n', '')],
@@ -399,7 +467,9 @@ const DEFECTS = [
   ['ui.js: the control is told, and stays clickable anyway', 'ui',
     s => s.replace('  btn.disabled = view;', '  btn.disabled = false;')],
   ['api.js: the server`s sentence is folded into one of ours', 'api',
-    s => s.replace("    refused = (body && typeof body.detail === 'string' && body.detail)", "    refused = (false)")],
+    // Re-aimed by C-105: the sentence is built in ONE place now (`refusalText`), shared with the
+    // READ path -- so this is where folding it away happens. Same claim, same G1.
+    s => s.replace("  return (body && typeof body.detail === 'string' && body.detail)", '  return (false)')],
   ['api.js: a detail that is not a sentence is drawn anyway', 'api',
     s => s.replace("(body && typeof body.detail === 'string' && body.detail)", '(body && body.detail)')],
   ['source_rows.js: a caller that omits the flag gets the controls', 'rows',

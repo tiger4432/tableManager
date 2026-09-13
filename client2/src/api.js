@@ -34,6 +34,44 @@ function setBadge(el, text, className) {
   return true;
 }
 
+/**
+ * 거절의 «사유» — 서버가 문장을 보냈으면 그것이고, 아니면 상태를 이름 댑니다.
+ *
+ * 🔴 자리가 «하나»입니다: 쓰기(`addRows`)와 읽기(`fetchData`)가 같은 답을 내야 하고, 각자
+ *    적으면 한쪽이 조용히 달라집니다. 그리고 이 함수는 «던지지 않습니다» — 거절은 예외가
+ *    아니라 «답»이고, 던지면 그 문장이 콘솔로만 갑니다.
+ * ⚠️ `detail` 이 «문자열일 때만» 그것이 답입니다. FastAPI 의 기본 422 는 `detail` 이 목록이라,
+ *    그대로 그리면 화면이 「[object Object]」를 말합니다.
+ *
+ * @param {Response} res 거절한 응답
+ * @param {string} whenSilent 서버가 문장을 «안 보냈을» 때 화면이 댈 이름
+ */
+async function refusalText(res, whenSilent) {
+  const body = await res.json().catch(() => null);
+  return (body && typeof body.detail === 'string' && body.detail)
+    ? body.detail
+    : `${whenSilent} (HTTP ${res.status})`;
+}
+
+/**
+ * 거절된 «읽기»를 그립니다. 🔴 이 함수는 던지지 않습니다.
+ *
+ * ⚠️ 사유를 «맨 먼저» 답니다 — 뒤의 한 줄이 실패해도 문장은 화면에 서 있어야 합니다. 그리는
+ *    도중의 실패가 사유를 지우면 운영자는 다시 「Data fetch failed」만 보게 되고, 그것이 이
+ *    라운드의 출발점입니다(실측: 하니스의 문서 스텁에서 토스트가 던지자 바깥 `catch` 가
+ *    사유를 덮었습니다).
+ * ⚠️ 개수는 «0 이 아니라 모름»입니다. 세러 간 적이 없습니다 — 0 은 「없다」는 측정입니다.
+ */
+function showReadRefusal(why) {
+  setBadge(elements.performanceLog, why);
+  // 격자를 «비웁니다» — 앞 표의 행이 남아 있으면 그것을 «이 표의 데이터»로 읽습니다.
+  if (state.gridApi) state.gridApi.setGridOption('rowData', []);
+  updateLoadedCount(0);
+  setMatchCount(elements.totalRowsCount, null);
+  updatePaginationUI(null);
+  try { showToast(why, 'error'); } catch (err) { console.error('[toast] refusal', err); }
+}
+
 // Check backend server status
 export async function checkServerHealth() {
   try {
@@ -346,6 +384,15 @@ export async function fetchData(resetSkip = true) {
 
   try {
     const res = await fetch(url);
+    // 🔴 C-105. 거절은 «읽기»에도 옵니다 — 그리고 그 답에는 행이 «없습니다». 종전에는 `res.ok`
+    //    를 안 보고 `result.data.length` 를 읽어 «던졌고», 서버가 이름을 대고 거절한 사유가
+    //    (실경로: 「전순서가 없어 페이지를 읽을 수 없다 — business_key 를 선언하라」) 화면
+    //    어디에도 안 섰습니다. 운영자가 본 것은 「Data fetch failed」 한 줄입니다.
+    if (!res.ok) {
+      showReadRefusal(await refusalText(res, 'Data fetch failed'));
+      state.isLoadingMore = false;
+      return;
+    }
     const result = await res.json();
 
     const fetchTime = (performance.now() - startTime).toFixed(1);
@@ -571,12 +618,8 @@ export async function addRows(count) {
       setBadge(elements.performanceLog, `${count} empty row(s) created successfully`);
       return;
     }
-    const body = await res.json().catch(() => null);
-    // 문장이 «문자열일 때만» 그것이 답입니다. FastAPI 의 기본 422 는 `detail` 이 목록이고,
-    // 그것을 그대로 그리면 화면이 «[object Object]» 를 말합니다.
-    refused = (body && typeof body.detail === 'string' && body.detail)
-      ? body.detail
-      : `Create failed (HTTP ${res.status})`;
+    // 🔴 C-105. 읽기와 «같은 함수»를 지납니다 — 사유를 만드는 자리가 둘이면 갈라집니다.
+    refused = await refusalText(res, 'Create failed');
   } catch (err) {
     console.error('Failed to create row(s)', err);
     // 서버에 «닿지 못한» 것은 서버가 낸 사유가 없는 자리라 이 문장이 화면의 것입니다.
