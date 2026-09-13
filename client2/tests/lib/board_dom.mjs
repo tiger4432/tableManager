@@ -77,6 +77,29 @@ export function makeNode(doc, tag) {
       return Object.prototype.hasOwnProperty.call(this.attrs, String(k))
         ? this.attrs[String(k)] : null;
     },
+    // 🔴 ADDED 2026-09-13 (C-100). A part that says 「열림」 with a class needs this, and it
+    //    reads and writes THE SAME STRING as `className` -- two separate lists would let a
+    //    class added through one be invisible to the other, so the harness would see 「닫힘」
+    //    while the screen is open. No errors either way.
+    classList: {
+      _list() { return String(node.className || '').split(/\s+/).filter(Boolean); },
+      _write(parts) { node.className = parts.join(' '); },
+      add(...names) {
+        const parts = this._list();
+        for (const name of names) if (!parts.includes(name)) parts.push(name);
+        this._write(parts);
+      },
+      remove(...names) {
+        this._write(this._list().filter((p) => !names.includes(p)));
+      },
+      contains(name) { return this._list().includes(name); },
+      toggle(name, force) {
+        const has = this.contains(name);
+        const want = force === undefined ? !has : !!force;
+        if (want) this.add(name); else this.remove(name);
+        return want;
+      },
+    },
     addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); },
     // 🔴 ADDED 2026-09-13 (C-86). A stub that RECORDS listeners and cannot fire them scores
     //    what was wired, never what happens -- and 「the add control opens a name field」 is a

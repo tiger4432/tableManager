@@ -3055,3 +3055,113 @@ body.resizing-active .history-sidebar {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* ── 붙여넣기 형식 모달 (C-100) ────────────────────────────────────────────────────
+   🔴 이 부품은 겉모양을 «전부» JS 에서 지었습니다 — `Object.assign(el.style, …)` 다섯 블록에
+   innerHTML 의 `style="…"` 넷. 클래스가 하나도 없으니 시트가 이 화면에 대해 아무 말도 못 했고,
+   hover 는 `mouseenter`/`mouseleave` 두 리스너였습니다 — 그래서 «키보드로는 닿지도 않았습니다».
+   그건 취향이 아니라 결함이고, `:hover`/`:focus-visible` 한 쌍이 그 둘을 같이 고칩니다.
+   ⚠️ 줄의 강조색은 «데이터»(어느 MIME 인가)라 `--ctm-accent` 로 내려옵니다. 규칙은 여기 하나,
+      값만 부품이 실어 줍니다. */
+.ctm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--scrim);
+  opacity: 0;
+  transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.ctm-overlay.is-open { opacity: 1; }
+.ctm-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  width: 420px;
+  max-width: calc(100vw - var(--space-6));
+  padding: var(--space-6);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  box-shadow: var(--shadow-pop);
+  transform: scale(0.92);
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.ctm-overlay.is-open .ctm-card { transform: scale(1); }
+.ctm-title {
+  font-family: var(--font-sans);
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 var(--space-2);
+}
+.ctm-sub {
+  font-family: var(--font-sans);
+  font-size: var(--fs-label);
+  line-height: 1.45;
+  color: var(--text-muted);
+  margin: 0;
+}
+.ctm-list { display: flex; flex-direction: column; gap: var(--space-3); }
+.ctm-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  text-align: left;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+/* 🔴 hover 와 «키보드 초점»이 같은 규칙입니다. 두 리스너로 쓰면 초점은 영영 빠집니다. */
+.ctm-row:hover,
+.ctm-row:focus-visible {
+  background: var(--surface-hover);
+  border-color: var(--ctm-accent, var(--accent));
+  box-shadow: var(--shadow-card);
+  transform: translateX(4px);
+  outline: none;
+}
+.ctm-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-1);
+  font-size: 1.25rem;
+  background: var(--bg-surface);
+  border-radius: 6px;
+}
+.ctm-text { display: flex; flex-direction: column; min-width: 0; }
+.ctm-label { color: var(--ctm-accent, var(--text)); font-weight: 600; }
+.ctm-mime {
+  margin-top: 1px;
+  font-size: var(--fs-meta);
+  color: var(--text-muted);
+}
+.ctm-cancel {
+  padding: var(--space-3);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--fs-label);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.ctm-cancel:hover,
+.ctm-cancel:focus-visible {
+  background: var(--danger-weak);
+  border-color: var(--danger);
+  color: var(--danger);
+  outline: none;
+}
