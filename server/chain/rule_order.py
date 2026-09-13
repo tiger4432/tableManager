@@ -31,21 +31,27 @@ def order_rules(rules: list) -> list:
     Rule 1's output is rule 2's input, so replaying 2 first would recompute from
     stale data. And rule 2 triggers itself, so it is a self-edge.
 
-    A SELF-FEEDING RULE IS NOT AN ORDERING PRODUCER (S-232, ruling 387). A rule
-    whose trigger_table IS its target_table moves nothing BETWEEN tables, so the
-    edge out of it is skipped - by that PROPERTY, never by comparing names. The
-    name comparison this replaces only skipped a rule against ITSELF, so three
-    DIFFERENT rules all writing the table they trigger on were producers for each
-    other and the walk called them a cycle. Measured on this box before the fix:
-    the three synthesized `enrichment_auto_confirm:*` rules (all
-    `dt_inventory -> dt_inventory`) did exactly that, so every load logged a cycle
-    and left the order alone - the ordering was inert here.
+    THE SKIP BELONGS TO THE PAIR, NOT TO ONE RULE (S-232-b, ruling 388). The edge
+    `P -> X` over table `t` is skipped only when P AND X BOTH read `t` and write
+    `t`: that pair is mutually dependent on one table, and mutual dependence on
+    one table has no total order to find. It is never decided by comparing NAMES.
+
+    ⚠️ ONE HALF IS NOT ENOUGH, AND THAT WAS RULING 387. A self-feeding `t -> t`
+    rule still WRITES `t`, so a different `t -> u` rule that reads `t` genuinely
+    depends on it and must run after it. "Moves nothing BETWEEN tables" was never
+    the same sentence as "nobody reads it". Narrowing loses nothing the deleted
+    name comparison covered: a rule against ITSELF satisfies both halves.
+
+    ⚰️ WHAT THE NAME COMPARISON COST, MEASURED. It skipped a rule only against
+    itself, so three DIFFERENT rules all writing the table they trigger on were
+    producers for each other and the walk called them a cycle. On this box the
+    three synthesized `enrichment_auto_confirm:*` rules (all
+    `dt_inventory -> dt_inventory`) did exactly that: every load logged a cycle
+    and left the order alone, so S-156's ordering was inert here.
 
     A cycle between DIFFERENT tables is still refused by name: there is no
     correct order for it, and picking one silently would produce a result nobody
-    could reason about. Mutual dependence on ONE table has no total order to
-    find, which is why skipping is the answer there and refusing is the answer
-    across tables - the same split this function's own sentence already made.
+    could reason about - the same split this function's own sentence already made.
     """
     by_target = {}
     for r in rules:
@@ -66,8 +72,9 @@ def order_rules(rules: list) -> list:
         state[name] = 0
         trigger = rule.get("trigger_table")
         for producer in by_target.get(trigger, []):
-            if producer.get("trigger_table") == producer.get("target_table"):
-                continue  # self-feeding: writes no table it does not already read
+            if (producer.get("trigger_table") == trigger
+                    and rule.get("target_table") == trigger):
+                continue  # both ends live on `trigger`: no order exists between them
             visit(producer, path + [name])
         state[name] = 1
         ordered.append(rule)

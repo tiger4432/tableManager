@@ -14,12 +14,15 @@ disagree with the declaration it restates - the 「같은 기능에 두 경로�
 invisible here, exactly as it is to every other declaration-driven guard: 「선언으로 표현할 수
 없는 교차 테이블 의존」 stays the sanctioned blind spot it is written down as.
 
-🔴 [S-232, 판정 387] AND THE EXCEPTION IS A PROPERTY NOW. S-156 landed INERT on this box: the
-walk skipped a self-edge by comparing NAMES, so three DIFFERENT rules that each write the
-table they trigger on were producers for each OTHER, every load reported a cycle, and the
-order was left alone. 「자기 자신인가」는 이름이 아니라 «성질»이다 — a rule whose
-`trigger_table` IS its `target_table` moves nothing between tables, so the edge out of it is
-skipped by that property and the name comparison is gone.
+🔴 [S-232, 판정 387·388] AND THE EXCEPTION BELONGS TO THE PAIR. S-156 landed INERT on this
+box: the walk skipped a self-edge by comparing NAMES, so three DIFFERENT rules that each
+write the table they trigger on were producers for each OTHER, every load reported a cycle,
+and the order was left alone. 「자기 자신인가」는 이름이 아니라 «성질»이다 — but the property
+is a fact about the PAIR, not about one rule: the edge `P -> X` over `t` is skipped only when
+P AND X both read `t` and write `t`. Ruling 387 skipped every edge out of a self-feeding
+rule, which was one conjunct too wide - such a rule still WRITES its table, so a different
+rule reading that table depends on it. 388 narrowed it, and narrowing loses nothing the name
+comparison covered: a rule against ITSELF satisfies both halves.
 """
 import json
 import os
@@ -113,18 +116,23 @@ def test_a_rule_that_fills_a_table_still_runs_before_the_rule_that_feeds_itself_
         "p1_fills", "p2_self"]
 
 
-def test_a_self_feeding_rule_does_not_order_another_rule_on_that_table():
-    """🔴 THE EXTENT OF THE RULING, PINNED BECAUSE IT IS A CHANGE. Under the name comparison a
-    self-feeding `t -> t` rule WAS an ordering producer for a different `t -> u` rule, so it
-    ran first; under the property it is not, and the two keep file order. Measured in the
-    SHIPPED catalogue (`chain_rules.json.sample`): self-feeding rules 0, so no declaration we
-    ship changes answer. Reported to the channel rather than decided here - a silent
-    behaviour change is the thing this assertion exists to prevent."""
-    consumer = _rule("reads_t_writes_u", "t", "u")
+def test_a_self_feeding_rule_still_orders_a_rule_that_reads_the_table_it_writes():
+    """🔴 THE ORDER A RULING CAME BACK FOR (판정 388), AND THE ASSERTION IS WHY. Ruling 387
+    skipped every edge out of a self-feeding rule; this case was written to PIN the extent of
+    that, because it was a behaviour change nothing else would have shown. It went to the
+    channel as a measurement, 판정 388 read it and narrowed the condition to BOTH ends - so
+    what this file asserts today is the opposite of what it asserted for one commit.
+
+    🔴 `A(t -> t)` WRITES `t`, AND `B(t -> u)` READS IT. Moving nothing BETWEEN tables is not
+    the same sentence as nobody reading it, so B genuinely depends on A and runs after it -
+    from either file order. Only a PAIR that both read and write `t` has no order to find."""
     self_feeder = _rule("feeds_t_from_t", "t", "t")
+    consumer = _rule("reads_t_writes_u", "t", "u")
 
     assert [r["name"] for r in rule_order.order_rules([consumer, self_feeder])] == [
-        "reads_t_writes_u", "feeds_t_from_t"]
+        "feeds_t_from_t", "reads_t_writes_u"]
+    assert [r["name"] for r in rule_order.order_rules([self_feeder, consumer])] == [
+        "feeds_t_from_t", "reads_t_writes_u"]
 
 
 def test_a_cycle_across_tables_is_refused_by_name():
