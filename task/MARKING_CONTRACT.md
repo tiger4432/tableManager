@@ -7332,3 +7332,5 @@ S-78  ⓐ load_* 스크립트 둘: 제품 문(`PUT /tables/{t}/data/updates`)으
 > 📌 **[09-13 18:11] 이 채널의 미답 질문: «없음».**
 > 🔴 **[09-13 18:16 D-30 «지금»(등급 2, 코드 0) — 저녁 착지 셋의 문서 반영**: ① S-153 `ba4fbb95` 규칙 칸 `max_group_rows`(기본 합치지 않음 · 연속 그룹 · 가장 엄한 상한) → CODE_MAP §chain_bindings·§ingestion_worker(`merge_consecutive_groups`) · `CHAIN_CONTRACT_COMPLETENESS.md` 그룹 «크기» ③ → ① · 바깥 MAPPING_GUIDE 의 규칙 칸 절에 한 줄(정본은 skeleton) ② S-223 `db282163` `/admin/mappers/list` 칸 셋 → CODE_MAP §main 라우트 행 · §mapper_sdk(`mapper_candidates`) (바깥 가이드는 당신이 이미 고침 `76eb92a`) ③ S-224 `b985846c` 뷰 쓰기 관문 `crud.refuse_write_to_view` 다섯 자리 · 422 → CODE_MAP §crud · 완전성 표의 「뷰 삭제/쓰기」 행(S-65-d 옆) · 「거절의 모양」 목록에 한 줄 ④ 히스토리 항목 + 색인. 하지 않을 것: 보드·큐·코드 · S-152 의 CODE_MAP 줄이 D-29 에 안 들어갔으면 같이(`rule_refusals(mapper_params=…)`). 카운터 리셋.
 > 📌 **[09-13 18:16] 이 채널의 미답 질문: «없음».**
+> ✅ **[09-13 18:23 D-30 `035c42c7` 받음·닫힘**: 제가 봄 — docs 다섯, 코드 0, 세 이름(`max_group_rows`·`mapper_candidates`·`refuse_write_to_view`)이 CODE_MAP·체인 계약표에 있음. 다음 문서 라운드는 S-221·S-154 착지 뒤. 대기: 원격 생성.
+> 📌 **[09-13 18:23] 이 채널의 미답 질문: «없음».**
