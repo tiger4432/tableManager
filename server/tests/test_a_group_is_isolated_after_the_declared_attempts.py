@@ -18,6 +18,8 @@ nothing. The reader now takes both and answers rule → document → value.
 import os
 import sys
 
+import pytest
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from chain import ingestion_worker as worker                              # noqa: E402
@@ -85,34 +87,87 @@ def test_the_reader_holds_no_module_state(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# The seat: one number for the verdict, the reason and the log
+# 🔴 S-225 (판정 380) - the seat, RUN. Not read.
+#
+# 「가장 엄한 상한이 이긴다」 was held by a SOURCE ORACLE, and a source oracle measures the
+# shape of a line rather than what the line does - the standing 「텍스트가 «대리»면 금지」.
+# The oracle S-139 put there was a bridge; this is the thing itself, and the bridge comes
+# out in the same commit, because two oracles for one property are two paths.
 # ---------------------------------------------------------------------------
 
-def test_the_verdict_the_reason_and_the_log_read_one_number():
-    """🔴 THE POINT OF S-139. Three spellings of one cap is how a log comes to disagree with
-    the behaviour it describes."""
-    import inspect
+# ⚠️ ONE SPELLING OF THE FAKES. `test_chain_hol_scheduling` already drives this same
+# function with them; a second copy here would be a second outbox event shape, and the day
+# the real one grows a field only one of them would learn.
+from test_chain_hol_scheduling import FakeDB, FakeEvent                   # noqa: E402
 
-    body = inspect.getsource(worker.process_pending_groups)
+STRICT, LAX = 2, 5
 
-    assert "attempts_cap = min(_caps)" in body
-    assert "max_group_attempts(r, _RULES_DOCUMENT)" in body
-    assert "event.retry_count >= attempts_cap" in body
-    assert "{max_retry_num}/{attempts_cap}" in body
-    assert ">= 3" not in body, "the literal cap must be gone from the verdict"
-    assert "/3)" not in body, "and from the log"
+#: TWO RULES, ONE GROUP. Same trigger table, so one event wakes both - which is the only
+#: arrangement in which 「whose cap」 is a real question.
+CAP_RULES = [
+    {"name": "strict", "trigger_table": "s225_src", "target_table": "s225_target",
+     "enabled": True, "max_group_attempts": STRICT},
+    {"name": "lax", "trigger_table": "s225_src", "target_table": "s225_target",
+     "enabled": True, "max_group_attempts": LAX},
+]
 
 
-def test_the_seat_asks_the_rules_this_group_woke():
-    """🔴 S-221. A group that woke no enabled rule still needs a number, and the strictest of
-    the ones it did wake is the only cap that is true for all of them at once - the same
-    reading `merge_consecutive_groups` makes about its row ceiling."""
-    import inspect
+def _one_failing_group(monkeypatch):
+    async def always_fails(tx_id, events, db, rules):
+        return False, f"boom:{tx_id}", []
 
-    body = inspect.getsource(worker.process_pending_groups)
+    monkeypatch.setattr(worker, "process_chain_transaction_group", always_fails)
+    monkeypatch.setattr(worker, "_RULES_DOCUMENT", {})
+    event = FakeEvent("s225_uuid", "s225_src", "s225_tx")
+    return ["s225_tx"], {"s225_tx": [event]}, event
 
-    assert "_woke = _rules_for_group(events_in_tx, rules)" in body
-    assert "max_group_attempts(None, _RULES_DOCUMENT)" in body, "the no-rule fallback"
+
+@pytest.mark.anyio
+async def test_the_strictest_rules_cap_is_the_one_that_isolates_the_group(monkeypatch):
+    """🔴 THE BEHAVIOUR, IN ORDER. Attempt 1 must NOT quarantine (so the cap is not 1, the
+    built-in value) and attempt 2 MUST (so the cap is 2 and not 5). Either half alone is
+    satisfied by a wrong answer."""
+    group_order, groups, event = _one_failing_group(monkeypatch)
+    factory = lambda: FakeDB()                                      # noqa: E731
+
+    await worker.process_pending_groups(FakeDB(), group_order, groups, CAP_RULES, factory)
+    assert (event.retry_count, event.status) == (1, "RETRYING")
+
+    await worker.process_pending_groups(FakeDB(), group_order, groups, CAP_RULES, factory)
+    assert (event.retry_count, event.status) == (2, "FAILED")
+    assert event.processed_chain is True, "quarantined means out of the worker's queries"
+
+
+@pytest.mark.anyio
+async def test_the_log_says_the_same_number_the_verdict_used(monkeypatch, caplog):
+    """🔴 THE OTHER HALF OF S-139, ALSO RUN NOW. A log that is wrong about 「how many tries
+    are left」 lies quietly, so the number it prints is read off the line it printed."""
+    import logging
+
+    group_order, groups, _event = _one_failing_group(monkeypatch)
+
+    with caplog.at_level(logging.WARNING):
+        await worker.process_pending_groups(FakeDB(), group_order, groups, CAP_RULES,
+                                            lambda: FakeDB())
+
+    said = " ".join(r.getMessage() for r in caplog.records)
+    assert f"(1/{STRICT})" in said, said
+    assert f"/{LAX})" not in said, said
+
+
+@pytest.mark.anyio
+async def test_a_group_that_woke_no_rule_still_gets_a_number(monkeypatch):
+    """⚠️ THE FALLBACK, RUN. With no rule matching, the document answers - and without this
+    the seat would be reading `min([])`."""
+    group_order, groups, event = _one_failing_group(monkeypatch)
+    monkeypatch.setattr(worker, "_RULES_DOCUMENT", {"max_group_attempts": 1})
+    strangers = [{"name": "elsewhere", "trigger_table": "not_s225_src",
+                  "target_table": "s225_target", "enabled": True}]
+
+    await worker.process_pending_groups(FakeDB(), group_order, groups, strangers,
+                                        lambda: FakeDB())
+
+    assert (event.retry_count, event.status) == (1, "FAILED")
 
 
 def test_the_row_expansion_at_the_quarantine_boundary_is_untouched():
