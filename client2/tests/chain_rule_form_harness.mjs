@@ -600,6 +600,31 @@ function suite(M) {
   ok(Boolean(cell) && byCls(cell, 'chain-rule-list-note').length === 1,
     'K18 what is here but not choosable reads UNDER the cell it is about');
 
+  // 🔴 총괄의 물음(2026-09-13 21:52): 새 규칙 초안을 「취소」한 뒤에도 화면에 무언가 남는가.
+  //    낱말 「수정」은 이 패널의 것이 «아니었습니다»(admin.html 의 상시 단계 칩 — 측정: 이
+  //    파일의 소스에 그 낱말이 0). 그런데 그 물음이 «진짜 하나»를 열었습니다: 취소는 버리는
+  //    것인데 보관은 남아서, 다음 [+ 규칙 추가] 가 지난번에 버린 글자로 열립니다.
+  const shelf2 = store();
+  const cancelled = makePanel(M, SPEC, { storage: shelf2 });
+  cancelled.panel.render(payloadFor(SKELETON, { name: 'alpha', trigger_table: 'before' }));
+  const addCtl = walk(cancelled.host).find((n2) => (n2.attrs || {})['data-action'] === 'add-chain-rule');
+  if (addCtl) addCtl.dispatch('click', {});
+  typeInto(cancelled.host, 'name', 'half_typed');
+  const cancelCtl = walk(cancelled.host).find(
+    (n2) => (n2.attrs || {})['data-action'] === 'cancel-chain-rule');
+  ok(Boolean(cancelCtl), 'K19 a new rule being written offers a cancel');
+  if (cancelCtl) cancelCtl.dispatch('click', {});
+  ok(byCls(cancelled.host, 'chain-rule-unsaved').length === 0,
+    'K20 cancelling leaves no unsaved mark on the screen');
+  const addAgain = walk(cancelled.host).find((n2) => (n2.attrs || {})['data-action'] === 'add-chain-rule');
+  if (addAgain) addAgain.dispatch('click', {});
+  const reopenedName = walk(cancelled.host).find(
+    (n2) => (n2.attrs || {})['data-value'] === 'name' && n2.tagName === 'INPUT');
+  ok(Boolean(reopenedName) && reopenedName.value === '',
+    `K21 ... and the NEXT new rule starts empty, not from what was thrown away [${reopenedName ? reopenedName.value : 'no box'}]`);
+  ok(byCls(cancelled.host, 'chain-rule-unsaved').length === 0,
+    'K22 ... with nothing calling it 「restored」 -- the operator discarded it');
+
   return { pass: pass - before.pass, fail: fail - before.fail };
 }
 
@@ -725,6 +750,8 @@ const DEFECTS = [
   ['the lines drift back to the end of the form',
     s => s.replace("    const host = (at && box.querySelector(`[data-path=\"${at}\"]`)) || box;",
                    '    const host = box;')],
+  ['cancelling a new rule leaves its draft in the browser',
+    s => s.replace('          if (this.newMode) this._forget();\n', '')],
   ['the add control is drawn for a registry that declared no word for it',
     s => s.replace('    if (spec.addLabel) {', '    if (true) {')],
 ];
