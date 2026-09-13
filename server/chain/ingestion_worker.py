@@ -984,6 +984,27 @@ def _group_triggered_rules(events_in_tx, rules):
                         for e in events_in_tx))]
 
 
+def trigger_tables_in_order(events):
+    """이 그룹이 «어떤 순서로» 트리거 표를 도는가 — 말해진 순서, 집합의 순서가 아니다 (S-228).
+
+    🔴 THE ORDER WAS A SET'S, AND A SET OF STRINGS IS ORDERED BY A HASH PYTHON RANDOMIZES PER
+    PROCESS. Measured on this box (`PYTHONHASHSEED` unset): six table names in a set, flattened
+    in five separate processes -> FIVE DIFFERENT ORDERS. A group carrying two trigger tables
+    therefore ran its rules in an order that could change at every restart, and nothing said so.
+
+    ⚠️ MEASURED TWICE ON PURPOSE. Four names over three processes came out IDENTICAL, and
+    stopping there would have produced 「it is deterministic」 out of a sample that decided the
+    answer. The six-name run is the one that is true.
+
+    ⚠️ SORTED, AND ARBITRARY, AND SAYING SO. 「The order they arrived in」 would be the outbox's
+    id order - a second axis, which would make this answer depend on how a writer chunked its
+    commit. What matters here is only that every process gives the SAME answer, so that a rule
+    order (S-156) has something to stand on.
+    """
+    return sorted({event.table_name for event in events
+                   if event.event_type in ("CREATE", "EDIT")})
+
+
 def _group_read_tables(events_in_tx, rules):
     """이 그룹이 «읽을» 표 집합 — 열거는 `chain_bindings.RULE_TABLE_KEYS` «하나»가 든다.
 
@@ -1158,9 +1179,8 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
     # 3. Evaluate rules for this transaction
     # To support batch rules, we group rules by trigger table to execute them efficiently.
     # First, gather trigger tables present in valid_events
-    trigger_tables = set(e.table_name for e in valid_events if e.event_type in ["CREATE", "EDIT"])
     
-    for table_name in trigger_tables:
+    for table_name in trigger_tables_in_order(valid_events):
         matched_rules = [
             r for r in rules
             if r.get("trigger_table") == table_name and r.get("enabled", True)
