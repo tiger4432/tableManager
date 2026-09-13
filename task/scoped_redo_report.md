@@ -41845,3 +41845,50 @@ test_one_door_per_family_calls_the_tool_that_exists.py 가 두 문을 «둘 다�
 > ① 이름: ㉠(접두 유지, 1,179 자리) / ㉡(접두 제거, 1,838 자리 — 제 권고, 기존 `ledger/` 관례와 같음)
 > ② `chain/` 은 오늘 «문»뿐인데 거기에 구현 여덟을 넣습니까 (제 권고: 예 — `ledger/` 가 이미 「문+집」입니다)
 > ⚠️ 판정 359 는 「새 패키지 여덟」을 전제로 내려졌고, 둘은 이미 있으며 그중 하나는 «성격이 다릅니다».
+
+---
+
+## 📋 [09-13 13:0x] 패키지화 — 스크립트는 «섰습니다». 판정 362 가 요구한 「너무 일반적인 이름」 한 줄이 «열 파일»입니다 (코드 0줄)
+
+### 스크립트 (드라이런 통과, 저장소 밖 스크래치패드에 있습니다)
+```
+43 모듈 -> 8 패키지   ·   286 파일 · 2,818 자리
+🔴 정규식이 아니라 «AST» 로 고칩니다. 이유를 재서 알았습니다:
+   정규식 3,210 자리 vs AST 2,818 — 차이 «392»가 문자열·주석이었습니다. 실물 둘:
+     logging.getLogger("map_alignment.diag")   <- 정규식이면 «로거 이름»이 바뀝니다(동작 변경)
+     retroactive.py:633 "chain_replay": {…}    <- 모듈이 아니라 «연산 키»입니다
+🔴 그리고 «그 파일이 실제로 import 한 것»만 개명합니다 — `health` 는 모듈이면서 흔한 지역
+   변수 이름입니다. import 한 적 없는 파일의 `health` 를 건드리면 안 됩니다
+확인   `import virtual_join_config as vjc` -> `from virtual_join import config as vjc` (별칭 보존)
+       `import map_overlay` + `map_overlay.SOURCE_REF` -> `from maps import overlay` + `overlay.SOURCE_REF`
+```
+🔵 제 스크립트도 처음엔 «`__file__` 로 저장소 루트»를 구해서 「0 파일」을 냈습니다 — 방금 고친 그 부류입니다. `git rev-parse --show-toplevel` 로 바꿨고, 그 사유를 스크립트 머리에 적었습니다.
+
+### 🔴 그 「한 줄」의 실측 — 접두를 떼면 «열 파일»에서 이름이 부딪힙니다
+```
+enrichment_config -> config        alignment_view_service · database/models · main
+virtual_join_config -> config      main · tests/test_ledger_v2_pg
+   🔴 main.py 는 «둘 다» import 합니다 — 떼면 `config` 가 «서로» 부딪힙니다
+enrichment_candidates -> candidates   chain_ingestion_worker
+enrichment_backfill -> backfill       retroactive
+ingestion_checkpoint -> checkpoint    parsers/directory_watcher · tests/…given_back
+chain_graph -> graph                  tests/…four_declarations
+runtime_loops -> loops                tests/…nine_loops
+합계 «열» 파일 (기존 바인딩과 충돌 — 지역 변수·인자·다른 import)
+```
+**패키지 «안»에서는 뜻이 섭니다**(`enrichment/config` · `virtual_join/config` — `ledger/config` 가 선례). 문제는 «부르는 자리»입니다: 한 파일이 둘을 같이 읽으면 맨 이름이 같아집니다.
+
+### 갈래 — 판정 필요 (별칭은 금지하셨으므로 둘 중 하나)
+```
+㉮ «점 표기»로 부른다      import enrichment.config  ->  enrichment.config.X
+   어디에              「접두를 떼면 일반적인 이름」이 되는 것들에 «일률적으로»
+                      (config · candidates · checkpoint · backfill · graph · loops)
+   장점                별칭 0 · 어느 파일에서나 뜻이 «같음» · 규칙이 하나
+   대가                그 모듈들의 속성 참조가 `enrichment.config.X` 로 길어집니다
+㉯ 충돌 «열 파일»에서만 점 표기       나머지는 맨 이름
+   대가                관례가 둘이 됩니다(대부분 맨 이름, 열 곳만 점) — 상설 ④ 의 부류
+제 권고: ㉮ — 「어디서나 같은 뜻」이 이 라운드의 목적이고, 예외 열 개를 두면 다음 파일이
+        어느 쪽인지 매번 판단해야 합니다
+```
+
+> 📌 **[09-13 13:0x] 이 채널의 미답 질문: «하나» — ㉮/㉯. 판정 주시면 스크립트에 그 규칙만 넣고 «한 커밋»으로 돌립니다(드라이런은 이미 초록입니다).**
