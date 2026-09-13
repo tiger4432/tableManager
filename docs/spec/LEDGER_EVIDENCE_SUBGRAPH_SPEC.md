@@ -1,7 +1,7 @@
 # Ledger Evidence Subgraph — 걷기 하나가 답한다
 
 > **Status:** 🟢 Living · **Last verified:** 2026-09-02 (**걷기 규칙이 셋에서 «넷»으로** — `follow` 가 키를 받고(`follow=inspected:x,y`), 그 키를 못 드는 씨앗은 «0» 이 아니라 **422** 다. §1·§3 파라미터 표·§4 거절 표·§5.1 규칙 표가 그에 맞춰 갱신됐다) · 직전 2026-08-29 밤 · `290bb1af` 기준 재측정 (걷기 규칙 셋 · 대조 규칙 둘. **§5.1 이 걷기 규칙의 유일한 정본**)
-> **정본 코드:** `server/ledger_api/ledger_subgraph.py` · `server/ledger_trace_router.py` ·
+> **정본 코드:** `server/ledger_api/ledger_subgraph.py` · `server/ledger/trace_router.py` ·
 > `server/ledger/envelope.py` · `server/ledger/schema.py`
 > **선언 정본:** `server/config/ontology/ledger_config.json` (`entities` · `vocabulary` · `sources`)
 > **범위:** 원장 증거를 보는 읽기 모델. 증거의 «양»은 인과가 아니다.

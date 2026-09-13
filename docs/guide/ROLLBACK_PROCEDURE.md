@@ -177,7 +177,7 @@ conda run -n assy_manager python server/scripts/list_undeclared_tables.py > sche
 conda run -n assy_manager python server/scripts/dev_env/manifest.py capture rollback_evidence/before.json
 ```
 
-**⚠️ 로그에 없는 것**: `table_config.json` 변경이 유발한 `ALTER TABLE`은 `sync_dynamic_tables_schema`가 **`print()`로만** 내보낸다. 런처는 자식 프로세스의 stdout을 리다이렉트하지 않으므로(`process_supervisor.py`의 `Popen`에 `stdout=` 없음) 그 줄은 **운영자 콘솔에만** 뜨고 어느 로그 파일에도 남지 않는다. 드릴에서 확인한 결과, `server.log`에는 `Physical database schema synced successfully.`라는 **어느 테이블의 어느 컬럼인지 없는 한 줄**만 남는다. 콘솔 스크롤백이 살아 있다면 **지금 복사해 두라. 재기동하면 사라진다.**
+**⚠️ 로그에 없는 것**: `table_config.json` 변경이 유발한 `ALTER TABLE`은 `sync_dynamic_tables_schema`가 **`print()`로만** 내보낸다. 런처는 자식 프로세스의 stdout을 리다이렉트하지 않으므로(`runtime/process_supervisor.py`의 `Popen`에 `stdout=` 없음) 그 줄은 **운영자 콘솔에만** 뜨고 어느 로그 파일에도 남지 않는다. 드릴에서 확인한 결과, `server.log`에는 `Physical database schema synced successfully.`라는 **어느 테이블의 어느 컬럼인지 없는 한 줄**만 남는다. 콘솔 스크롤백이 살아 있다면 **지금 복사해 두라. 재기동하면 사라진다.**
 
 ### 단계 2 — config 되돌리기 (즉시 반영, 재기동 불필요)
 

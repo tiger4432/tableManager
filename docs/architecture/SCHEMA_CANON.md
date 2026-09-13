@@ -199,5 +199,5 @@ naive datetime 금지 — 이 시스템은 KST 운영이고 UTC 저장이다. tz
   `dt_job_attribution.dt_lot_confirmed/dt_slot_confirmed`(타입은 이쪽이 맞았다, `string`).
   **둘이 어긋날 수 있다.** 하나를 권위로 정하고 나머지를 파생으로 내려야 한다
 - **`server/utils/time_format.py`에 소유 행이 없다** — 프로세스 셋이 직접 import한다
-- **`virtual_join_executor.py`·`main.py`의 거짓 성능 주장** — 2026-08-04 라우팅, 미수리.
+- **`virtual_join/executor.py`·`main.py`의 거짓 성능 주장** — 2026-08-04 라우팅, 미수리.
   **왜 거짓인지가 기록돼 있지 않아** 승인된 선언에 `EXPLAIN` 한 번이 필요하다

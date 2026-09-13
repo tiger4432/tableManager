@@ -10,7 +10,7 @@
                       기동 로그: 「Directory Watcher started …」 · 「Chained Ingestion Worker background task spawned.」
 분리 모드 (DECOUPLED=True)  웹은 「Decoupled mode active. Skipping inline …」 을 찍고 «웹만» 한다
                       워처(run_watcher.py) · 체인(run_chain_worker.py) · 수집기(run_auto_update.py) 가 «각자 프로세스»
-                      감독(process_supervisor.py)이 살리고 죽인다(백오프 2·4·8·16·32 s)
+                      감독(runtime/process_supervisor.py)이 살리고 죽인다(백오프 2·4·8·16·32 s)
 ```
 🔴 통합 모드에서는 아래 표의 «모든 고리가 한 파이썬 프로세스(GIL)와 한 DB 풀»을 나눠 쓴다.
    조회가 «출렁이면»(같은 질의가 0 → 1.5 s) 먼저 이 줄을 본다 — 질의 모양이 아니라 «옆 고리»다.
@@ -67,7 +67,7 @@ batch: broadcast dispatch T s · groups N                       <- 배치당 «�
 ### §1-quater. 🔵 **이 표를 «화면»이 대신 읽는다 — `GET /runtime`** (S-176, 09-11)
 
 ```
-자리      `GET /runtime` (관리자 토큰) · 조립은 `server/runtime_loops.py` 의 `LOOPS` 아홉
+자리      `GET /runtime` (관리자 토큰) · 조립은 `server/runtime/loops.py` 의 `LOOPS` 아홉
 아홉      web · watcher · chain · outbox_purge · listen · ledger_followup · ledger_census · scheduler · postgres
           = 이 표의 ①~⑦ 에 ③ 을 «셋»으로 가른 것(③ · ③-a · ③-b)
 🔴 ③-c 는 «없다**  재전개는 «자기 lap 을 보고하지 않는다» — 그룹이 실패했을 때만 도는 «행동»이지

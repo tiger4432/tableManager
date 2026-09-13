@@ -5,6 +5,11 @@
 >       parsers/directory_watcher · ledger/backfill · ledger/setup · setup/*
 > ⚠️ tests · scripts · migrations 는 «뿌리가 아니라» 별도 실행 도구입니다
 > 🔴 상대 임포트(`from .store import …`)를 패키지 경로로 «풀어서» 셌습니다 — 안 풀면 쓰기 경로가 고아로 찍힙니다
+> 🆕㈟ **[2026-09-13 S-211 `2992bee2`] 평면 36 모듈이 여덟 패키지로 갔습니다** — 아래 이름 옆의 «» 가 «오늘의 자리»입니다(`admin/` · `chain/` · `enrichment/` · `ingestion/` · `ledger/` · `maps/` · `runtime/` · `virtual_join/`, 접두 제거). 🔴 이 표는 이름을 «맨이름»으로 적어 둔 터라 경로 치환 섬에 «한 줄도 안 잡혔습니다» — 따로 재서 고쳐야 했고, 그것이 「모집단을 정하는 것은 기계가 아니라 표기」의 실물입니다.
+> 🔒 = **운영자 약속** — 소유자의 라이브 맵퍼가 이 이름을 import 하므로 «최상위에 남습니다»(`parsers/directory_watcher.OPERATOR_IMPORT_NAMES` :966, 판정 364).
+>    🔴 그 목록은 **열넷**이고, 그중 «최상위 평면 모듈»은 **열**입니다(제 실측) — `database` 는 이미 패키지고, `pipeline_base`·`html_topology_parser`·`void_sat_format` 은 `parsers/` 밑에 살아서 «샿킬 평면 모듈이 아니었습니다».
+>    ⚠️ 그래서 「열하나」도 「열넷」도 틀린 말이 아니라 **다른 모집단**입니다 — 수를 쓸 때 어느 쪽인지 같이 적어야 합니다.
+> 🔴 **그 약속은 되돌린 커밋 하나를 치르고 얻은 것입니다** — 이동이 한 번 적용됐다가 스위트가 깨져 되돌려졌고, 그때서야 「운영자 파일이 무엇을 import 하나」가 «셀 수 없는 것이 아니라 안 센 것»임이 드러났습니다(파일을 «고칠 수 없다»와 «쟰 수 없다»는 다릅니다).
 > ⚰️ 📦 = 2026-08-28 에 `server/_archive/` 로 이동했던 여섯. **[2026-09-13 S-210 `f74bbd98`] 그 폴더가 «삭제됐습니다»** — 아래 📦 여섯 줄은 이제 «묘비»입니다. 본문을 찾으려 하지 마십시오 — `git log` 에만 있습니다.
 >    🔴 지우지 않고 남기는 이유는 이 표가 「안 닿음 52」의 «모집단»을 적은 기록이기 때문입니다 — 그 여섯을 지우면 「52 가 어떻게 세어졌나」가 사라집니다.
 >    🔵 삭제가 정당했던 근거도 그 커밋이 재서 적습니다 — 그 폴더의 아카이브된 시험 넷은 `pytest _archive --collect-only` 에서 **수집조차 안 됐습니다**(오류 4).
@@ -16,67 +21,67 @@
 
 | | 파일 | 크기 | 수정 | 하는 일 |
 |---|---|---:|---|---|
-| ✅ | `admin_auth` | 22,249 | 2026-07-31 | Shared-token gate for the ``/admin/*`` surface. |
-| ✅ | `alignment_view_service` | 4,146 | 2026-08-19 | Shared, read-only alignment-view service for HTTP routes and chain mappers. |
-| ✅ | `audit_cache` | 33,076 | 2026-08-11 | The in-memory projection behind `GET /audit_logs/recent`. |
+| ✅ | `admin_auth` · 🆕㈟ «`admin/auth`» | 22,249 | 2026-07-31 | Shared-token gate for the ``/admin/*`` surface. |
+| ✅ | `alignment_view_service` 🔒 | 4,146 | 2026-08-19 | Shared, read-only alignment-view service for HTTP routes and chain mappers. |
+| ✅ | `audit_cache` · 🆕㈟ «`admin/audit_cache`» | 33,076 | 2026-08-11 | The in-memory projection behind `GET /audit_logs/recent`. |
 | ⚰️📦 | ~~`_archive/audit_changeset`~~ | 20,442 | 2026-08-18 | The CHANGESET shape of an audit row: one row per WRITE, not one per COLUMN. |
-| ✅ | `audit_history` | 12,149 | 2026-08-11 | Row/cell audit history paging - the ceiling on `/history` fetches. |
+| ✅ | `audit_history` · 🆕㈟ «`admin/audit_history`» | 12,149 | 2026-08-11 | Row/cell audit history paging - the ceiling on `/history` fetches. |
 | ✅ | `bonding_plan` | 55,845 | 2026-08-05 | 본딩 실험계획(M1) — 역할 바인딩 config 로더 + 코어 집계 코어. |
-| 🔴 | `chain_bindings` | 11,455 | 2026-08-11 | Which column of a table carries the DT job identity — READ, never assumed. |
-| ✅ | `chain_ingestion_worker` | 88,253 | 2026-08-27 |  |
-| ✅ | `chain_key_gate` | 10,848 | 2026-08-12 | A chain may not emit a row whose key columns are not filled. ONE gate, not seven. |
-| ✅ | `chain_replay` | 57,743 | 2026-08-13 | Chain Replay R1 (rule re-application) + R2 (stale source withdrawal) |
+| 🔴 | `chain_bindings` 🔒 | 11,455 | 2026-08-11 | Which column of a table carries the DT job identity — READ, never assumed. |
+| ✅ | `chain_ingestion_worker` · 🆕㈟ «`chain/ingestion_worker`» | 88,253 | 2026-08-27 |  |
+| ✅ | `chain_key_gate` · 🆕㈟ «`chain/key_gate`» | 10,848 | 2026-08-12 | A chain may not emit a row whose key columns are not filled. ONE gate, not seven. |
+| ✅ | `chain_replay` · 🆕㈟ «`chain/replay`» | 57,743 | 2026-08-13 | Chain Replay R1 (rule re-application) + R2 (stale source withdrawal) |
 | ✅ | `column_filter` | 9,921 | 2026-08-05 | The AG-Grid filter DSL -> SQLAlchemy translator, in a module every process can import. |
 | ✅ | `config_backup` | 17,487 | 2026-08-16 | Weekly snapshots of ``server/config/``, and the check that says one is missing. |
 | ✅ | `config_resolve_report` | 59,213 | 2026-08-27 | 「내 config가 먹었는가」 — 선언을 세 모집단으로 나눠 **이름으로** 답한다. |
 | ✅ | `db_safety` | 22,203 | 2026-08-13 | A test process must not be able to reach a real database. [board #16a] |
-| 🔴 | `dt_frame_transform` | 4,040 | 2026-08-10 | Derive portable X/Y/sign/offset equations from confirmed DT frame metadata. |
-| ✅ | `dt_map_derivation` | 43,842 | 2026-08-25 | The dt_log -> dt_map derivation: the gate, the identity, the frame, the retraction. |
+| 🔴 | `dt_frame_transform` 🔒 | 4,040 | 2026-08-10 | Derive portable X/Y/sign/offset equations from confirmed DT frame metadata. |
+| ✅ | `dt_map_derivation` 🔒 | 43,842 | 2026-08-25 | The dt_log -> dt_map derivation: the gate, the identity, the frame, the retraction. |
 | ✅ | `effort_metric` | 7,752 | 2026-07-29 | Interaction-effort instrument — config side. |
 | ⚰️📦 | ~~`_archive/enrichment_actions`~~ | 17,472 | 2026-08-15 | Project open Enrichment work into bounded, walkable ontology action nodes. |
-| ✅ | `enrichment_analysis` | 36,619 | 2026-08-05 | Read-only enrichment analytics: [④] why a gap exists, [②] which judgement |
-| ✅ | `enrichment_backfill` | 22,966 | 2026-08-16 | Retroactive enrichment backfill - apply an enrichment rule to source rows |
-| ✅ | `enrichment_candidates` | 50,823 | 2026-08-05 | [Enrichment ①] A single candidate is a confirmation, not a judgement. |
-| ✅ | `enrichment_config` | 89,781 | 2026-08-27 | Enrichment Queue 규칙 로더/검증기 (docs/spec/ENRICHMENT_QUEUE_SPEC.md §5). |
-| ✅ | `enrichment_mapper` | 16,896 | 2026-08-05 | Enrichment Queue generic dedup mapper (docs/spec/ENRICHMENT_QUEUE_SPEC.md §6). |
-| ✅ | `event_constants` | 12,456 | 2026-08-07 | 프로세스 간 이벤트 공용 상수 — 내부 이벤트(POST /internal/events/*) + 아웃박스 제어 이벤트. |
-| ✅ | `frame_confirmation` | 46,945 | 2026-08-16 | 좌표계 확정 기록 — 맵 정렬 스펙 §0.2 층 ⑧ (사슬에서 **쓰는 유일한 층**). |
-| ✅ | `health` | 18,091 | 2026-07-28 | The /health contract. |
-| ✅ | `ingestion_activity` | 7,063 | 2026-07-26 | [Heavy Lane P1] 진행 중 파일 인제션 스냅샷 레지스트리 (웹서버 프로세스 인메모리). |
-| ✅ | `ingestion_checkpoint` | 28,513 | 2026-08-13 | [P2] 파일 인제션 오프셋 체크포인트 + 파일 시그니처 dedup. |
+| ✅ | `enrichment_analysis` · 🆕㈟ «`enrichment/analysis`» | 36,619 | 2026-08-05 | Read-only enrichment analytics: [④] why a gap exists, [②] which judgement |
+| ✅ | `enrichment_backfill` · 🆕㈟ «`enrichment/backfill`» | 22,966 | 2026-08-16 | Retroactive enrichment backfill - apply an enrichment rule to source rows |
+| ✅ | `enrichment_candidates` · 🆕㈟ «`enrichment/candidates`» | 50,823 | 2026-08-05 | [Enrichment ①] A single candidate is a confirmation, not a judgement. |
+| ✅ | `enrichment_config` · 🆕㈟ «`enrichment/config`» | 89,781 | 2026-08-27 | Enrichment Queue 규칙 로더/검증기 (docs/spec/ENRICHMENT_QUEUE_SPEC.md §5). |
+| ✅ | `enrichment_mapper` · 🆕㈟ «`enrichment/mapper`» | 16,896 | 2026-08-05 | Enrichment Queue generic dedup mapper (docs/spec/ENRICHMENT_QUEUE_SPEC.md §6). |
+| ✅ | `event_constants` 🔒 | 12,456 | 2026-08-07 | 프로세스 간 이벤트 공용 상수 — 내부 이벤트(POST /internal/events/*) + 아웃박스 제어 이벤트. |
+| ✅ | `frame_confirmation` · 🆕㈟ «`maps/frame_confirmation`» | 46,945 | 2026-08-16 | 좌표계 확정 기록 — 맵 정렬 스펙 §0.2 층 ⑧ (사슬에서 **쓰는 유일한 층**). |
+| ✅ | `health` · 🆕㈟ «`runtime/health`» | 18,091 | 2026-07-28 | The /health contract. |
+| ✅ | `ingestion_activity` · 🆕㈟ «`ingestion/activity`» | 7,063 | 2026-07-26 | [Heavy Lane P1] 진행 중 파일 인제션 스냅샷 레지스트리 (웹서버 프로세스 인메모리). |
+| ✅ | `ingestion_checkpoint` · 🆕㈟ «`ingestion/checkpoint`» | 28,513 | 2026-08-13 | [P2] 파일 인제션 오프셋 체크포인트 + 파일 시그니처 dedup. |
 | ✅ | `internal_event_client` | 16,431 | 2026-08-04 | The one way a process on this box talks to the web server on this box. |
 | ✅ | `keyset_scan` | 3,449 | 2026-08-16 | The ONE keyset page walk over a dynamic table. |
-| 🔴 | `launcher_args` | 9,675 | 2026-08-04 | Command-line parsing for ``run_decoupled_app.py`` - the refusal half. |
+| 🔴 | `launcher_args` · 🆕㈟ «`runtime/launcher_args`» | 9,675 | 2026-08-04 | Command-line parsing for ``run_decoupled_app.py`` - the refusal half. |
 | ✅ | `ledger` | 1,683 | 2026-08-13 | The canonical ledger - `ledger_events` and the translators that feed it. |
-| ✅ | `ledger_admin` | 45,754 | 2026-08-27 | admin으로 소스를 원장에 잇고 어휘를 늘린다 — 문법 검증과 저장(1단·3단). |
+| ✅ | `ledger_admin` · 🆕㈟ «`ledger/admin`» | 45,754 | 2026-08-27 | admin으로 소스를 원장에 잇고 어휘를 늘린다 — 문법 검증과 저장(1단·3단). |
 | ✅ | `ledger_api` | 1,305 | 2026-08-23 | Read-side modules behind the ledger console's HTTP routes. |
-| ✅ | `ledger_explorer` | 7,215 | 2026-08-27 | Bounded, read-only graph projection of the canonical ledger lineage. |
-| ✅ | `ledger_trace` | 84,223 | 2026-08-27 | Lot lineage trace over the canonical ledger — the resolver, the lookup, the walk. |
-| ✅ | `ledger_trace_router` | 13,803 | 2026-08-27 | The ledger read routes — ten of them, and none is the pair this line used to name. |
+| ✅ | `ledger_explorer` · 🆕㈟ «`ledger/explorer`» | 7,215 | 2026-08-27 | Bounded, read-only graph projection of the canonical ledger lineage. |
+| ✅ | `ledger_trace` · 🆕㈟ «`ledger/trace`» | 84,223 | 2026-08-27 | Lot lineage trace over the canonical ledger — the resolver, the lookup, the walk. |
+| ✅ | `ledger_trace_router` · 🆕㈟ «`ledger/trace_router`» | 13,803 | 2026-08-27 | The ledger read routes — ten of them, and none is the pair this line used to name. |
 | ✅ | `main` | 305,779 | 2026-08-27 |  |
-| ✅ | `map_alignment` | 471,436 | 2026-08-25 | 맵 정렬 채점 — 후보 8개를 **한 번에** 채점해 한 payload로 낸다 (스펙 §0.2 층 ⑤·⑥·⑦). |
-| ✅ | `map_meta_registrar` | 16,312 | 2026-09-07 | `wafer_map_metadata` 신원(`META_TABLE`·`compose_map_id`·`meta_business_key`)과 마스크 중립 합성 프레임(`synthesize_grid_meta`). 🔴 인제션 자동 등록(M3 `MapMetaCollector`)은 2026-09-07 소유자 지시로 은퇴했다. |
-| ✅ | `map_overlay` | 163,825 | 2026-08-25 | 범용 맵 오버레이 (S1') — 임의의 맵을 임의의 맵 캔버스 위에 정렬해 겹쳐 보는 인프라. |
-| ✅ | `map_preset_routing` | 25,070 | 2026-07-30 | [F5] Load-time preset routing — WHICH physical spec a map opens with. |
+| ✅ | `map_alignment` 🔒 | 471,436 | 2026-08-25 | 맵 정렬 채점 — 후보 8개를 **한 번에** 채점해 한 payload로 낸다 (스펙 §0.2 층 ⑤·⑥·⑦). |
+| ✅ | `map_meta_registrar` 🔒 | 16,312 | 2026-09-07 | `wafer_map_metadata` 신원(`META_TABLE`·`compose_map_id`·`meta_business_key`)과 마스크 중립 합성 프레임(`synthesize_grid_meta`). 🔴 인제션 자동 등록(M3 `MapMetaCollector`)은 2026-09-07 소유자 지시로 은퇴했다. |
+| ✅ | `map_overlay` 🔒 | 163,825 | 2026-08-25 | 범용 맵 오버레이 (S1') — 임의의 맵을 임의의 맵 캔버스 위에 정렬해 겹쳐 보는 인프라. |
+| ✅ | `map_preset_routing` · 🆕㈟ «`maps/preset_routing`» | 25,070 | 2026-07-30 | [F5] Load-time preset routing — WHICH physical spec a map opens with. |
 | 🔴 | `mappers` | 33 | 2026-06-07 |  |
 | 🔴 | `migrations` | 61 | 2026-06-13 |  |
-| ✅ | `notation_norm` | 39,702 | 2026-08-04 | WF/lot/slot notation normalization - a DECLARATION about a column, applied at |
+| ✅ | `notation_norm` 🔒 | 39,702 | 2026-08-04 | WF/lot/slot notation normalization - a DECLARATION about a column, applied at |
 | ✅ | `outbox_expand` | 14,168 | 2026-08-16 | [OUTBOX-4] Turning a collapsed outbox event back into rows. |
 | ✅ | `paths` | 7,493 | 2026-08-16 | Single override point for the server's **data root**. |
-| ✅ | `process_supervisor` | 52,933 | 2026-08-04 | Child-process supervision for the decoupled launcher. |
+| ✅ | `process_supervisor` · 🆕㈟ «`runtime/process_supervisor`» | 52,933 | 2026-08-04 | Child-process supervision for the decoupled launcher. |
 | 🔴 | `product_tables` | 11,492 | 2026-08-16 | Product-owned table declarations — **the** single definition. |
-| ✅ | `retroactive` | 24,432 | 2026-08-16 | Retroactive (backfill) operation registry. |
+| ✅ | `retroactive` · 🆕㈟ «`admin/retroactive`» | 24,432 | 2026-08-16 | Retroactive (backfill) operation registry. |
 | ✅ | `run_auto_update` | 43,993 | 2026-08-16 |  |
 | ✅ | `run_chain_worker` | 2,497 | 2026-07-29 |  |
 | ✅ | `run_watcher` | 18,276 | 2026-08-04 |  |
-| ✅ | `schema_drift` | 41,987 | 2026-08-19 | Does this database carry the schema this build expects? |
+| ✅ | `schema_drift` · 🆕㈟ «`admin/schema_drift`» | 41,987 | 2026-08-19 | Does this database carry the schema this build expects? |
 | 🔴 | `source_fixtures` | 436 | 2026-08-16 | Deterministic source-table fixtures used before ingestion. |
 | 🔴 | `trace_fixture` | 1,000 | 2026-08-01 | Synthetic core-material trace fixture (docs/spec/TRACE_FIXTURE_SPEC.md). |
 | ✅ | `transfer_plan` | 218,352 | 2026-08-14 | Universal Transfer Plan (M2) — 전사(轉寫) 프레임워크: stage 선언 로더 + 가용 엔진 + 계획 검증. |
 | ✅ | `value_suggest` | 56,927 | 2026-08-18 | Unique-value lookup (F3) — the primitive every input suggestion sits on. |
 | ✅ | `verified_join_contract` | 8,548 | 2026-08-17 | Immutable hand-off produced only after virtual-join physical verification. |
-| ✅ | `virtual_join_config` | 41,453 | 2026-08-17 | Virtual join 선언 로더/검증기 ― **UNIQUE 인덱스가 없으면 거부한다.** |
-| ✅ | `virtual_join_executor` | 38,108 | 2026-08-12 | Virtual join 실행기 ― 선언을 **LEFT 조인 한 방**으로 바꾸고 행 페이로드에 붙인다. |
+| ✅ | `virtual_join_config` · 🆕㈟ «`virtual_join/config`» | 41,453 | 2026-08-17 | Virtual join 선언 로더/검증기 ― **UNIQUE 인덱스가 없으면 거부한다.** |
+| ✅ | `virtual_join_executor` · 🆕㈟ «`virtual_join/executor`» | 38,108 | 2026-08-12 | Virtual join 실행기 ― 선언을 **LEFT 조인 한 방**으로 바꾸고 행 페이로드에 붙인다. |
 
 ## database/
 

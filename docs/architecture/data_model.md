@@ -5,7 +5,7 @@
 > 이 문서는 **지금의 데이터 모델**만 적는다. 라운드별 변경 이력은 `docs/history/`가 정본이고 여기에 쌓지 않는다.
 >
 > **두 기둥** — ① 원장(`ledger_events`)이 무엇을 말할 수 있는지는 **선언**(`server/config/ontology/ledger_config.json`)이 정한다. 저장 계층은 술어를 문자열로 받고 CHECK 둘로만 지킨다. ② 화면의 질문은 **walk** 하나이고, 차트는 그 서브그래프를 보는 창이다.
-> **Source-of-truth:** `server/database/models.py`, `server/database/crud.py`, `server/chain_replay.py`(레이어 철회), `server/config/table_config.json`, `server/product_tables.py`
+> **Source-of-truth:** `server/database/models.py`, `server/database/crud.py`, `server/chain/replay.py`(레이어 철회), `server/config/table_config.json`, `server/product_tables.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 ---
@@ -408,7 +408,7 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 
 키 없는 행은 **아무 업서트로도 지목되지 않으므로**, 같은 데이터가 다시 배달될 때마다 한 개씩 늘어난다. 2026-08-11 운영 실측 약 **17만 행**이 한 테이블에서 그렇게 쌓였고, 그중 한 행이 `GET /api/maps/alignment/worklist`를 요청 통째로 500으로 만들었다(`c4a3159`).
 
-- **게이트는 하나다**: [`server/chain_key_gate.py`](file:///c:/Users/kk980/Developments/assyManager/server/chain_key_gate.py). 매퍼에 넣지 않은 이유는 `server/mappers/*.py`가 **gitignored**라 거기 쓴 가드는 배포에 도달하지 않기 때문이다(추적되는 것은 `.sample`뿐). 호출부는 체인이 쓰는 깔때기 둘 — `chain_ingestion_worker`의 `write_batches` 루프, `chain_replay._apply_replay_batch`.
+- **게이트는 하나다**: [`server/chain/key_gate.py`](file:///c:/Users/kk980/Developments/assyManager/server/chain/key_gate.py). 매퍼에 넣지 않은 이유는 `server/mappers/*.py`가 **gitignored**라 거기 쓴 가드는 배포에 도달하지 않기 때문이다(추적되는 것은 `.sample`뿐). 호출부는 체인이 쓰는 깔때기 둘 — `chain_ingestion_worker`의 `write_batches` 루프, `chain_replay._apply_replay_batch`.
 - **키 컬럼의 정의는 선언에서 읽는다**: `composite_key_source`(있으면) 또는 `business_key`. 리터럴 컬럼명을 쓰지 않는다 — 2026-08-11 사고의 원인이 하드코딩된 `dt_job`(운영은 `dt_job_id`)이었다. 판정 함수는 `crud.unfilled_key_columns`이고, 「빈 값」은 `crud.is_blank_value`(= `contracts/blank_predicate`)로 묻는다. 🔴 좌표 `0`은 값이지 공백이 아니다.
 - **3.1-bis에 대한 두 번째 의견이 아니다**: 이 게이트는 아무것도 지우지 않고 아무것도 NULL로 만들지 않는다. 행을 **내보내지 않을** 뿐이다. `row_id`나 `business_key_val`을 가진 항목은 절대 거절되지 않으므로 기존 행의 UPDATE는 영향이 없다.
 - **인제션·그리드는 그대로다**: 키 없는 행은 여전히 수동 작업에서 생길 수 있고 NULL이 그 모양이다(3.1-bis). assy_qa 실측(2026-08-11): 워처 `_send_to_upsert`에 키 컬럼이 빈 행을 섞어 넣으면 **전과 동일하게** 7행 중 1행이 NULL 키로 저장되고 게이트 카운터는 0이다.
@@ -497,7 +497,7 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 | `frame_confirmation_source` | 소스 하나에 한 행 | **소스 목록** + 소스별 적용 프레임과 **시프트(dx, dy)** + 근거 개수 + 제외 사유 + **`geometry_basis`** |
 | `cell_sources.confirmation_uid` | 셀 | 파생 도장 — 「이 셀은 어느 확정 아래에서 만들어졌나」. NULL이 기존 전 행의 상태 |
 
-**소유자**: `server/frame_confirmation.py`(쓰기는 `record_confirmation` 하나) · 라우트 `POST /api/maps/alignment/confirm` · 모델 `server/database/models.py` · 스키마 `server/migrations/add_frame_confirmation.py` + `server/scripts/ops_setup_db_performance.py` Step 3.10 · 회귀 그물 `server/tests/test_frame_confirmation.py` + `server/tests/test_frame_confirmation_meta.py`(2026-08-06 [D7]).
+**소유자**: `server/maps/frame_confirmation.py`(쓰기는 `record_confirmation` 하나) · 라우트 `POST /api/maps/alignment/confirm` · 모델 `server/database/models.py` · 스키마 `server/migrations/add_frame_confirmation.py` + `server/scripts/ops_setup_db_performance.py` Step 3.10 · 회귀 그물 `server/tests/test_frame_confirmation.py` + `server/tests/test_frame_confirmation_meta.py`(2026-08-06 [D7]).
 
 🔴 **결정 단위에 컬럼명을 적지 않습니다.** 단위의 정본은 규칙의 `decision_key` 선언이고, 저장은 `rule_name` + `unit_key`(그 규칙 파생 테이블의 `business_key_val`과 **같은 조립**: 선언된 `composite_key_separator`로 join) + `decision_key` JSON입니다. `dt_eqp`·`product` 컬럼은 첫 선언의 흔적으로 남아 있을 뿐 신규 코드의 단위가 아닙니다(추가 전용 규율이라 지우지 않고 NULL 허용으로 물러났습니다). 확정 대상도 마찬가지로 규칙의 `target_fields` 밖이면 거절합니다.
 
@@ -557,7 +557,7 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 - 🔴 **머리 행·소스 행·메타 행이 한 트랜잭션입니다 — 규율이 아니라 구조로.** `crud.apply_batch_updates`가 무조건 커밋하고 그 세션이 아직 안 커밋된 확정 머리를 들고 있는 그 세션이라, 커밋 하나가 셋을 함께 내보냅니다. `record_confirmation(commit=False)`로 부르면서 메타를 쓰라는 요청은 **조용히 둘로 갈리는 대신 거절**합니다(`ValueError`).
 - 🔴 **쓰기 서열은 `user`입니다.** 사람의 결정이고(`confirmed_by`), 그보다 낮게 쓰면 `custom_script`가 써 둔 셀이 이겨 **아무것도 안 바뀐 채 200이 나갑니다** — [D-1]이 방금 고친 실패의 같은 형태입니다. ⚠️ **그 서열의 대가 하나**: `user` 쓰기는 그 셀의 `manual_priority_source`를 해제합니다(2026-06-02 규칙). 확정은 규격 셀의 핀을 **조용히 풉니다** — 통제군 대조 결과 평범한 `user` 쓰기와 동작이 동일하므로 확정 고유의 파괴가 아니지만, 조작자에게는 메시지가 없습니다. 조작자용 서술은 [guide/data_preservation §3](../guide/data_preservation_and_signature_change.md)입니다. 업무 키는 `map_meta_registrar.meta_business_key` **한 철자**를 등록기와 공유합니다(두 철자면 재확정이 맵 하나를 두 행으로 쪼갭니다 — 실측).
 - 🔴 **확정된 기하는 다시 빌리지 않습니다.** `phys_needs_basis`가 묻는 것은 「선언인가」가 아니라 「빌려야 하는가」이고, 다시 빌리면 값은 그대로인 채 표지만 `assumed`로 덮여 **확정 다음 조회가 확정 이전과 구별되지 않습니다.** 같은 술어를 `geometry_basis_of`와 목록의 `usable_map_count`/`assumable_map_count`도 씁니다.
-- **소유자·회귀 그물**: `server/map_overlay.py`(어휘·표지·`geometry_declaration`/`geometry_computable`/`orientation_declaration`) · `server/map_alignment.py`(`confirmed_meta_for`·`phys_needs_basis`·`geometry_basis_of`) · `server/frame_confirmation.py`(`_write_confirmed_meta`) · `server/tests/test_frame_confirmation_meta.py`.
+- **소유자·회귀 그물**: `server/map_overlay.py`(어휘·표지·`geometry_declaration`/`geometry_computable`/`orientation_declaration`) · `server/map_alignment.py`(`confirmed_meta_for`·`phys_needs_basis`·`geometry_basis_of`) · `server/maps/frame_confirmation.py`(`_write_confirmed_meta`) · `server/tests/test_frame_confirmation_meta.py`.
 - ✅ **[2026-08-06 갱신] 클라 절반이 같은 날 착지했습니다.** 🔴 **종전 이 줄은 「클라 절반은 아직 없습니다 — `DECLARATION_TOKENS`에 `confirmed`가 없고 `decode.js`의 `token()`은 모르는 토큰을 `null`로 접습니다」였고, 서버 레인이 그것을 쓴 시점에는 참이었습니다.** 지금 `client2/src/map2/declaration.js`는 `CONFIRMED`를 내보내고 `DECLARATION_TOKENS`·`COMPUTABLE_TOKENS`에 싣습니다.
   - 🔴 **어휘 한 줄로는 부족했고, 그 점이 `assumed`와 다릅니다.** `assumed`는 서버 메모리에만 사는 표지라 클라는 **단어만 알면** 됐지만 `confirmed`는 **저장되므로** 클라가 확정된 메타를 DB에서 그대로 읽습니다 — `geometryDeclaration`에 분기가 없으면 아래 phys 여섯 값이 읽히므로 `declared`로 떨어져, **아무도 재지 않은 맵을 두고 「누가 쟀다」고 말합니다.** 그래서 분기는 `geometryDeclaration`(`phys_confirmed_from`)과 `frameFromDeclaration`(`frame_confirmed_from` → `rotation`·`side`만) **두 곳**에 있습니다.
   - 🔴 **표지 존재 판정이 양쪽에서 같은 뜻이어야 합니다** — 서버는 `if m.get(KEY):`이고 파이썬 `bool({})`은 거짓인데 JS `!!{}` 는 참입니다. `confirmed_meta_for`가 `dict(mark or {})`로 끝나므로 **빈 표지 `{}`는 실제로 나올 수 있는 모양**이고, 클라가 `!!`로 썼다면 서버가 무표지로 취급하는 바로 그 행에서 갈립니다. 클라 `markerPresent()`가 그 규칙을 맞춥니다(채점 `contracts/map2_seam/vectors.json`의 `empty_marker_is_inert`).

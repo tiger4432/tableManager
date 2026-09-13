@@ -25,7 +25,7 @@
 > 종전 선언   ontology_mapping.json 의 `node_class: "dynamic"|"static"`   -> 소비자 0. 파싱만 됐다
 > 오늘 선언   ledger_config.json 의 entities.<타입>.class: "static"        -> walk 이 «매 요청» 읽는다
 > 오늘 정적   quantity@1 · defect_kind@1 · recipe@1  (실측 2026-08-29, 라이브 선언)
-> 집행 자리   server/ledger_trace_router.py `_static_types()` · `_static_step_predicates()`
+> 집행 자리   server/ledger/trace_router.py `_static_types()` · `_static_step_predicates()`
 >            -> server/ledger_api/ledger_subgraph.py `subgraph()`
 > ```
 > 🔴 **이 표시가 이 절이 한 달간 「없는 규칙」으로 읽힌 이유를 끝냅니다.** 판정이 «구현»(`node_class`·

@@ -2,7 +2,7 @@
 
 > **Status:** 🟢 Living - **v1 구현 완료(2026-07-25), UI는 2026-08-11부터 재배치** | **Last-verified:** 2026-08-11 (🔴 **§v1 구성의 「`enrichment.html` 컨베이어」는 삭제됐습니다** — `1e29078`이 배지·nav를 걷고 `ab36fab`이 페이지와 vite 진입점을 지웠습니다. 결손 target을 순차 입력하던 워크플로는 **대체 없이 소멸**(대체가 아니라 삭제 — 커밋 스스로 "no replacement was built for it"이라고 적습니다). 참조뷰 절반만 메인 그리드 사이드바(`enrichment_reference_view.js`, Cell/Row History 옆 탭)로 이식됐고, 같은 백엔드 API를 재사용합니다. 이 스펙의 §5.x 서술(당첨 로직·규칙 config)은 여전히 유효합니다 — 낡은 것은 **UI 접근 경로**뿐입니다. **이전:** 2026-08-05 (**[사용자 재정] §5.1 재작성 - 판단키가 일부만 있으면 「남은 키로 판단한다」, 사람이든 스윕이든 똑같이.** `auto_confirm`이 **이미 동의**이므로(규칙별·기본 OFF·선언자가 무인 쓰기를 수락) 그 아래 두 번째 관문은 config가 정한 것을 코드가 다시 판정하는 일이다 - 2026-08-04에 세웠던 `keyed_queue_filters` 쓰기 가드를 **좁히는 게 아니라 걷어냈다**. 남는 거절은 산술뿐(`missing_bind` 뷰별 · **`no_decision_key`** 신설: 아무것도 안 남았을 때). 부분 판단키로 쓴 셀은 **기존 provenance로** 구별된다 - `cell_sources.source_name = enrichment_auto_confirm_partial_key`(미등재 = 99, 평범한 자동확정과 **같은 서열**), 신규 필드 없음) | **이전:** 2026-08-04 (**[N36 · 사용자 재정] §5.1 재작성 - 큐 술어에서 판단키 `notBlank`를 뺐다**: 진행률 분모(무필터 전체 행)와 잔여가 서로 다른 모집단을 세어 **판단키가 빈 행이 「답한 것」으로 계산**됐다(실측 33% → 100%, 데이터 변경 0). 그 행들은 이제 워크리스트에 **뜨고**, 뒤로 정렬되고, **「판단키 없음 N건」**으로 이름 붙는다. 판단키 술어는 사라지지 않고 **`keyed_queue_filters`**라는 이름을 얻어 **쓰기 경로(① 자동 확정 스윕)의 술어로 남았다** - 부분집합 바인드 뷰에서 빈 키가 후보 1개를 만들어 오답이 쓰이는 것이 실증됐다. ④ 분류에 `blank_decision_key` 계급 신설) | **이전:** 2026-07-30 (**[F9 후속 QA 수리] §5.2 갱신 - ⓐ 참조 질의를 SAVEPOINT로 격리**(Postgres에서 실패한 프로브가 트랜잭션을 abort시켜 `candidate_column_missing`이 도달 불가였고, 오염된 세션이 체인 워커를 통과해 outbox 부기 커밋을 무산시켜 그룹이 영원히 재처리됐다 - 읽기 전용 실측) **ⓑ `distinct_truncated` 거절 신설**(집계 절단이 `clean_str_value` 접기로 1개 값으로 접히면 `single`로 자동 확정될 수 있었다) **ⓒ `scanned`를 그룹 절단 전 값으로 정정**. 직전 [F9] **§5.2-bis 신설** - 선언의 효과를 어드민에 노출(`/admin/config/resolve`·드라이런), 후보 프로브가 뷰 `limit`에 잘리던 결함 수리(`probe_truncated` 신설), **경계 계약 1건 변경**: `GET /enrichment/rules`에 가산 필드 `candidate_for`(총괄 승인). 직전: §5.2 ① 후보 1개 자동 확정 · §5.3 ② 룰 승격 제안 · §5.4 ④ 결손 원인 분류) | **이전:** 2026-07-28 (`1fefd12`: §5.1 `queue_filters`) | **Owner:** Server PM(mapper·config·API) + Client PM(페이지·배지), 계약은 총괄
 > **연관 핵심가치:** #1 최소 공수 교정(주) · #2 온톨로지/지식 그래프 기반(직결) — [SYSTEM_OVERVIEW §1](../overview/SYSTEM_OVERVIEW.md)
-> **v1 구성 (2026-07-25, 출하 당시):** 서버(`enrichment_config.py`·`enrichment_mapper.py`·API 2종) + 클라(~~`enrichment.html` 컨베이어~~ + ~~참조뷰 탭~~ + ~~메인 그리드 결손 배지~~ — **셋 다 2026-08-11에 재배치/삭제**, 아래 참조). E2E 실동 검증 완료(스모크 규칙 `line_model_owner_attribution`). 규칙 작성법: [chain_ingestion_guide §4](../guide/chain_ingestion_guide.md).
+> **v1 구성 (2026-07-25, 출하 당시):** 서버(`enrichment/config.py`·`enrichment/mapper.py`·API 2종) + 클라(~~`enrichment.html` 컨베이어~~ + ~~참조뷰 탭~~ + ~~메인 그리드 결손 배지~~ — **셋 다 2026-08-11에 재배치/삭제**, 아래 참조). E2E 실동 검증 완료(스모크 규칙 `line_model_owner_attribution`). 규칙 작성법: [chain_ingestion_guide §4](../guide/chain_ingestion_guide.md).
 > **UI 현황 (2026-08-11):** 컨베이어(입력)는 **소멸**(그리드 직접 편집으로 흡수, 대체 화면 없음). 참조뷰(조회)는 **메인 그리드 History 패널의 사이드바 탭**으로 이식(`client2/src/enrichment_reference_view.js` — 셀 선택 기반, 같은 백엔드 API). 결손 배지는 **삭제**(그리드 필터 `?enrichment_queue=<규칙명>`은 URL로는 여전히 유효, 전용 UI 컨트롤 없음).
 > **2026-08-15 가산:** 선택적 `claim_contract`와 🪦`server/enrichment_actions.py`(08-28 보관 8fc0a996)가 착지했다. 기존 column queue는 그대로이고, 계약이 있는 rule의 결손은 Evidence Graph에서 `Claim --needs_enrichment--> Enrich Action`으로도 보인다. Action은 원장 저장물이 아닌 재계산 투영이며 통합 `/enrichment/worklist` API는 아직 미구현이다.
 
@@ -49,7 +49,7 @@
 
 ## 5. Config 스키마
 
-> ✅ **서버 구현됨 (2026-07-25, Server PM)** — 로더/검증 `server/enrichment_config.py`, dedup mapper `server/enrichment_mapper.py`(체인 룰 자동 파생), API 2종(`GET /enrichment/rules`, `GET /enrichment/rules/{rule}/references/{i}`) `server/main.py`. 규칙 작성법: [chain_ingestion_guide §4](../guide/chain_ingestion_guide.md). 서버 전용 추가 필드: `aggregations`(v1 count만)·`enabled`·참조뷰 `query`(인라인)/`query_ref`(`config/enrichment_queries/*.sql`)/`limit`(기본 200, 최대 1000). Living 승격은 클라 통합 후 총괄이 수행.
+> ✅ **서버 구현됨 (2026-07-25, Server PM)** — 로더/검증 `server/enrichment/config.py`, dedup mapper `server/enrichment/mapper.py`(체인 룰 자동 파생), API 2종(`GET /enrichment/rules`, `GET /enrichment/rules/{rule}/references/{i}`) `server/main.py`. 규칙 작성법: [chain_ingestion_guide §4](../guide/chain_ingestion_guide.md). 서버 전용 추가 필드: `aggregations`(v1 count만)·`enabled`·참조뷰 `query`(인라인)/`query_ref`(`config/enrichment_queries/*.sql`)/`limit`(기본 200, 최대 1000). Living 승격은 클라 통합 후 총괄이 수행.
 
 기존 설정 주도 패턴(`table_config.json`, `chain_rules.json`)과 정합시킨다.
 
@@ -163,7 +163,7 @@ resolved  = 모든 target notBlank AND 모든 key notBlank
 
 **확장성**: 키 1개당 선언된 뷰 수만큼 SQL이 나가므로 작업 단위당 상한(`enrichment_auto_confirm_max_keys`, 기본 200)이 있다. 초과 키는 쓰지 않고 **큐에 남으며** 건수를 로그에 남긴다.
 
-**구현**: `server/enrichment_candidates.py`(술어·노브·`AutoConfirmCollector`) + 체인 워커 훅(M3 훅 직후) + `server/enrichment_analysis.run_auto_confirm_sweep`(소급·dry-run). 설정 절차 정본은 [config/enrichment_rules §7](../guide/config/enrichment_rules.md).
+**구현**: `server/enrichment/candidates.py`(술어·노브·`AutoConfirmCollector`) + 체인 워커 훅(M3 훅 직후) + `server/enrichment_analysis.run_auto_confirm_sweep`(소급·dry-run). 설정 절차 정본은 [config/enrichment_rules §7](../guide/config/enrichment_rules.md).
 
 ### 5.2-ter 모호함은 **컬럼**의 성질이지 행의 성질이 아니다 (2026-08-05 사용자 재정 · 서버 착지)
 

@@ -34,13 +34,13 @@
 >
 > 🔴 **라이브 인시던트 (2026-07-30, 사용자 신고) — 운영 chain 워커가 `POST /internal/events/broadcast`에서 403**
 >
-> ✅ **데이터는 안전하다.** 통지는 fire-and-forget이고 반환값은 `broadcast_at` 스탬프 판정에만 쓰인다(`chain_ingestion_worker.py:152` — *"데이터 처리 성공/재시도 판정에는 절대 반영하지 않는다"*). 체인 쓰기는 커밋돼 있고 실패 행은 `broadcast_at IS NULL`로 DB에 durable하게 남는다. ⚠️ **단 스윕은 이 건을 못 고친다** — `sweep_undelivered_broadcasts`(`:767`)가 같은 `post_event_async`를 타므로 매 사이클 같은 403을 받는다. 스윕은 재시작·타임아웃 같은 **일시적** 유실용이다. 클라는 토큰/경로가 풀릴 때까지 stale이고, 풀리면 `LIMIT 500`씩 회수된다.
+> ✅ **데이터는 안전하다.** 통지는 fire-and-forget이고 반환값은 `broadcast_at` 스탬프 판정에만 쓰인다(`chain/ingestion_worker.py:152` — *"데이터 처리 성공/재시도 판정에는 절대 반영하지 않는다"*). 체인 쓰기는 커밋돼 있고 실패 행은 `broadcast_at IS NULL`로 DB에 durable하게 남는다. ⚠️ **단 스윕은 이 건을 못 고친다** — `sweep_undelivered_broadcasts`(`:767`)가 같은 `post_event_async`를 타므로 매 사이클 같은 403을 받는다. 스윕은 재시작·타임아웃 같은 **일시적** 유실용이다. 클라는 토큰/경로가 풀릴 때까지 stale이고, 풀리면 `LIMIT 500`씩 회수된다.
 >
 > 🔴 **원인은 우리 게이트가 아니다 — 실측으로 확정.** 운영 호스트 루프백에서 **토큰 없이** 쏜 결과가 **403**이었다. `admin_auth._enforce`(`:138-150`)는 헤더가 없으면 **401**이고 403은 「헤더가 있고 값이 다름」에서만 나온다. 그리고 그 브랜치는 도입된 `90e284f` 이후 **줄곧 401**이다(상태 코드 변경 이력 0 — 옛 빌드로도 설명 안 됨). 미들웨어 둘 다 403을 못 낸다(`db_context_middleware`는 컨텍스트 변수만, CORS는 preflight OPTIONS에 400). 브로드캐스트 핸들러 본문에는 403 경로가 **아예 없다**. → **403은 FastAPI 상류에서 온다**(리버스 프록시의 `/internal/*` 차단이 유력, 방화벽·엔드포인트 에이전트·8080을 물고 있는 다른 프로세스도 같은 모양). **재기동은 듣지 않는다.**
 >
-> 🔴 **근인 확정 — 우리 코드다. `requests`가 프록시 환경변수를 신뢰한다.** 실측 추가: **`/health`도 403**이다. `/health`에는 게이트가 아예 없으므로 우리 앱이 답한 게 아니다. 기구: `_get_http_session()`(`chain_ingestion_worker.py:145`)이 `requests.Session()`을 프록시 설정 없이 만들고 `requests`는 `trust_env`가 기본 True라 `HTTP_PROXY`와 Windows 프록시 레지스트리를 읽는다. **함정: `ProxyOverride`의 `<local>`은 점 없는 호스트명만 우회하므로 `localhost`는 면제되고 `127.0.0.1`은 안 된다.** 워커의 내부 POST가 사내 프록시로 나가고 프록시가 사설 주소 중계를 403으로 거부한다. 전 관측이 맞는다 — 401 아닌 403 · 게이트 없는 `/health`까지 · 재기동 무효 · 개발 머신엔 사내 프록시가 없어 운영에서만.
+> 🔴 **근인 확정 — 우리 코드다. `requests`가 프록시 환경변수를 신뢰한다.** 실측 추가: **`/health`도 403**이다. `/health`에는 게이트가 아예 없으므로 우리 앱이 답한 게 아니다. 기구: `_get_http_session()`(`chain/ingestion_worker.py:145`)이 `requests.Session()`을 프록시 설정 없이 만들고 `requests`는 `trust_env`가 기본 True라 `HTTP_PROXY`와 Windows 프록시 레지스트리를 읽는다. **함정: `ProxyOverride`의 `<local>`은 점 없는 호스트명만 우회하므로 `localhost`는 면제되고 `127.0.0.1`은 안 된다.** 워커의 내부 POST가 사내 프록시로 나가고 프록시가 사설 주소 중계를 403으로 거부한다. 전 관측이 맞는다 — 401 아닌 403 · 게이트 없는 `/health`까지 · 재기동 무효 · 개발 머신엔 사내 프록시가 없어 운영에서만.
 >
-> **수리**: `sess.trust_env = False`(또는 호출부가 놓칠 수 없는 세션 팩토리). **발신자 3곳 전부** — `chain_ingestion_worker.py`·`graph_sync_worker.py`·`run_watcher.py`. 즉효 조치는 런처 셸에서 `$env:NO_PROXY = "127.0.0.1,localhost"`.
+> **수리**: `sess.trust_env = False`(또는 호출부가 놓칠 수 없는 세션 팩토리). **발신자 3곳 전부** — `chain/ingestion_worker.py`·`graph_sync_worker.py`·`run_watcher.py`. 즉효 조치는 런처 셸에서 `$env:NO_PROXY = "127.0.0.1,localhost"`.
 >
 > ⚠️ **총괄 정정 2회 — 둘 다 도구를 검증하지 않은 결과다.** ① 처음엔 「403 = 토큰 불일치 → 트리 전체 재기동」이라 했다. 추론은 옳았고 전제가 틀렸다(우리 게이트는 헤더가 없으면 401이고, 그 브랜치는 `90e284f` 이후 줄곧 401이다). ② **내가 준 진단 명령이 증상을 스스로 만들 수 있었다** — PowerShell에서 `curl`은 `Invoke-WebRequest` 별칭이고 그것도 시스템 프록시를 탄다. 사용자가 「파워셸 스크립트가 하나도 안 돌아간다」고 알려 준 것이 근인으로 가는 단서였다. **교훈: 진단 도구가 진단 대상과 같은 경로를 타는지 먼저 확인한다.** 올바른 명령은 `curl.exe -s --noproxy "*"`.
 >
@@ -50,7 +50,7 @@
 >
 > ⚠️ **이 인시던트가 드러낸 것**: 누출 규율이 토큰을 모든 로그에서 지우다 보니 **두 토큰이 다른지 확인할 방법이 없었다.** 수리로 지문 8 hex가 서버 배너·워커 로그·운영자 셸 세 곳에 찍힌다(값은 어디에도 안 찍힘).
 >
-> 🔁 **현재 상태 (2026-07-31 밤 · 새 세션 인수)** ― 문서 싱크 `6f328c0` 착지, **4레인 동시 가동 중이라 트리 더러움**(미커밋: `map_editor.js`·`admin.js`·`main.py`·`crud.py`·`virtual_join_executor.py` + 신규 4)
+> 🔁 **현재 상태 (2026-07-31 밤 · 새 세션 인수)** ― 문서 싱크 `6f328c0` 착지, **4레인 동시 가동 중이라 트리 더러움**(미커밋: `map_editor.js`·`admin.js`·`main.py`·`crud.py`·`virtual_join/executor.py` + 신규 4)
 >
 > **가동 중인 4레인** ― ① map-pm **오버레이 = 맵 규칙 6**(사용자 판정 「클라 단일 구현」, 서버 `map_overlay` 정렬군은 손대지 않는다) · ② client-pm **소급 어드민 화면**(`fbc1053` 라우트 3개에 화면) · ③ server-pm **가상 컬럼 검색·필터**(**정렬은 사용자 판정으로 범위 밖**) + contract-keeper 동시 투입 · ④ doc-keeper ✅ 착지
 >

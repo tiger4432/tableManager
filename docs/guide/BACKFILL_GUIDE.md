@@ -11,7 +11,7 @@
 > - ⚰️ **§7.1 의 `--allow-production`·격리 관문 문단은 «없어진 파일»을 서술합니다**(§7.1 안의 배너 참조).
 >
 > **직전 라운드 (2026-08-14 · `2ec78b9` · R-2026-08-14-H — ⓔ가 «없어졌습니다»)**
-> - ⚰️ **ⓔ 그래프 고아 스윕 은퇴** — 지울 대상(`graph_nodes`/`graph_edges`/`graph_sync_state`)이 **DROP**됐습니다(약 841 MB). `server/retroactive.py`의 `OPERATIONS`가 다섯에서 **넷**(`chain_replay`·`withdraw`·`enrichment_backfill`·`enrichment_confirm`)이 되어 어드민 API에서도 **등록 해제**됐고, 스케줄러의 자동 호출도 제거됐습니다.
+> - ⚰️ **ⓔ 그래프 고아 스윕 은퇴** — 지울 대상(`graph_nodes`/`graph_edges`/`graph_sync_state`)이 **DROP**됐습니다(약 841 MB). `server/admin/retroactive.py`의 `OPERATIONS`가 다섯에서 **넷**(`chain_replay`·`withdraw`·`enrichment_backfill`·`enrichment_confirm`)이 되어 어드민 API에서도 **등록 해제**됐고, 스케줄러의 자동 호출도 제거됐습니다.
 > - 🔴 **이 문서에서 「다섯」이라 적힌 자리는 전부 「넷」으로 읽으십시오** — §5 · §6.2 · §6.3 · §7의 ⓔ 관련 서술은 접혀 있습니다. **ⓐ~ⓓ와 ⓕ는 한 줄도 영향받지 않았습니다.**
 >
 > **직전 라운드 (2026-08-11 2차 · `ffb23d6`+`53f9187` — ⓕ와 ⓑ가 더 이상 하류 체인을 깨우지 않습니다)**
@@ -24,17 +24,17 @@
 > **직전 라운드 (2026-08-11 · 해결 순서 수리 + R3 착지)**
 > - **신규 경로 ⓕ — R3 `chain_replay_cli.py resolve`**(§2.5). 같은 CLI의 **세 번째 연산**이라 **스크립트 수는 그대로 넷**이고, 결정표·§1의 공통 규율에 행이 하나 늘었습니다.
 > - 🔴 **제목의 「다섯 가지 길」을 여섯으로 고치지 않고 기수를 지웠습니다** — 목록 옆의 수는 목록의 두 번째 사본이고, 이 문서에서 그 수는 **§0 결정표·§1 서두·§7 서두** 세 자리에 사본이 있었습니다. 목록이 정본입니다.
-> - 🔴 **ⓕ만 어드민 API에 없습니다** — `server/retroactive.py`의 `OPERATIONS`는 ~~`chain_replay`·`withdraw`·`enrichment_backfill`·`enrichment_confirm`·`graph_orphans` **다섯**~~이고 R3는 등재돼 있지 않습니다(실측). §0과 §7의 「전부 어드민 API로도 됩니다」는 **ⓐ~ⓔ에 대해서만** 참입니다. → ⚠️ **[2026-08-18 정정] 지금은 `graph_orphans`가 빠져 «넷»입니다**(§5 참조). 이 줄의 「다섯」은 2026-08-11 시점의 실측이고, **현재 수는 §5가 정본**입니다.
+> - 🔴 **ⓕ만 어드민 API에 없습니다** — `server/admin/retroactive.py`의 `OPERATIONS`는 ~~`chain_replay`·`withdraw`·`enrichment_backfill`·`enrichment_confirm`·`graph_orphans` **다섯**~~이고 R3는 등재돼 있지 않습니다(실측). §0과 §7의 「전부 어드민 API로도 됩니다」는 **ⓐ~ⓔ에 대해서만** 참입니다. → ⚠️ **[2026-08-18 정정] 지금은 `graph_orphans`가 빠져 «넷»입니다**(§5 참조). 이 줄의 「다섯」은 2026-08-11 시점의 실측이고, **현재 수는 §5가 정본**입니다.
 > - **§1.1 레이어링 표 갱신** — 표시값 결정이 **등재 우선순위 → `ingested_at` 내림차순 → `source_name` 오름차순**의 전순서가 됐습니다. 종전에는 미등재 이름이 전부 99로 **동점**이었고 승자가 삽입 순서로 떨어졌습니다(ⓒ·ⓓ가 둘 다 99인 것은 그대로이며, 이제 그 둘 사이도 결정적으로 갈립니다).
 > - **§6.1 갱신** — `--limit`의 뜻 표에 ⓕ 행 추가(**훑는 행 수** 상한).
 >
 > **직전 라운드 (2026-07-31 · `fbc1053`·`1948338`·`9c6a1c9`)**
 > - **§7 재작성 — 어드민 API가 착지했습니다**(라우트 3개). 🔴 **화면(버튼)은 아직 없습니다** — 「어드민 화면에는 자리가 없다」는 종전 문장은 절반만 참이 됐습니다. 지금 쓰려면 `curl`입니다.
 > - **§7.2 신설 — 카운트는 「어떤 종류의 수인지」를 함께 답합니다**(`exact`/`sample`/`upper_bound`). 다섯 중 넷은 요청 경로에서 정확할 수 없고, **어느 것도 정확하다고 주장하지 않습니다.**
-> - **§3에 각주 — ⓒ의 구현이 `server/enrichment_backfill.py`로 옮겨졌습니다**(`9c6a1c9`). **CLI 경로·진입점·플래그는 그대로**라 이 문서가 찍는 명령은 전부 그대로 동작합니다.
+> - **§3에 각주 — ⓒ의 구현이 `server/enrichment/backfill.py`로 옮겨졌습니다**(`9c6a1c9`). **CLI 경로·진입점·플래그는 그대로**라 이 문서가 찍는 명령은 전부 그대로 동작합니다.
 > - **§6.5·§6.6 신설** — ⓒ의 「이미 있는 정체성」 읽기가 **두 갈래**가 됐고(CLI는 전량 스냅샷, 미리보기는 표본 키만 되물음), **ⓑ R2의 카운트가 인덱스를 얻었습니다**(`1948338`). 새 DB에 반영하는 경로는 `ops_setup_db_performance.py` 하나입니다.
 >
-> (신설 근거: 진입점 전부의 argparse를 **소스 대조 + `--help` 실행**으로 전수 확인 — `server/scripts/chain_replay_cli.py` · `backfill_enrichment.py` · `enrichment_insights.py` · `graph_orphan_sweep.py`, 그리고 의미론은 `server/chain_replay.py` · `server/enrichment_analysis.py` · `server/enrichment_candidates.py` · `server/graph_orphans.py` · `server/keyset_scan.py` · `crud.SOURCE_PRIORITY`/`apply_batch_updates`)
+> (신설 근거: 진입점 전부의 argparse를 **소스 대조 + `--help` 실행**으로 전수 확인 — `server/scripts/chain_replay_cli.py` · `backfill_enrichment.py` · `enrichment_insights.py` · `graph_orphan_sweep.py`, 그리고 의미론은 `server/chain/replay.py` · `server/enrichment/analysis.py` · `server/enrichment/candidates.py` · `server/graph_orphans.py` · `server/keyset_scan.py` · `crud.SOURCE_PRIORITY`/`apply_batch_updates`)
 > **대상:** 규칙을 바꿔 놓고 **「과거 데이터는 왜 그대로지?」**를 만난 운영자.
 > **먼저 알아야 할 것:** 이 시스템의 규칙은 **증분(outbox) 구동**이다. 규칙은 **자기가 선언된 이후에 바뀐 행만** 본다. 규칙을 고쳐도 과거는 옛 규칙이 남긴 상태 그대로 있고, 그것을 움직이는 유일한 방법이 이 문서의 경로들이다. ⓕ가 그 원리의 가장 순수한 사례다 — **해결 규칙 자체를 고쳐도** 이미 확정된 표시값은 그대로 남는다.
 > **관련:** 개발자 계약은 [chain_ingestion_guide §5](./chain_ingestion_guide.md) · 인리치먼트 선언은 [config/enrichment_rules §7](./config/enrichment_rules.md). 제거된 그래프 고아 스윕의 배경은 [archive](../_archive/retired_graph_sync/README.md)에만 남깁니다.
@@ -70,7 +70,7 @@
 ⚠️ **ⓗ의 `scope` 는 `limit` 이 아닙니다** — 「어느 행」이지 「몇 행」이 아니고, 페이징을 대체하지 않고 AND 로 걸립니다.
 
 > 📍 **어드민 표면에 «화면»이 있습니다**(2026-08-31 — 종전 「버튼은 아직 없다」는 거짓이 됐습니다). 어드민 **Overview** 탭의 소급 블록에서 연산을 고르고 파라미터를 채워 실행하며, **도는 실행 목록과 취소**도 같은 자리에 있습니다. 절차·주의는 **§7**입니다. 결정표는 도구를 고르는 자리이므로 **어느 표면을 쓰든 위 표가 먼저입니다.**
-> ⚠️ **ⓕ는 어드민 API에 «여전히» 없습니다 — CLI 전용입니다**(`server/retroactive.py`의 `OPERATIONS`에 미등재 · 재실측 2026-08-31). `/admin/retroactive/operations`가 돌려주는 목록에 안 나오는 것이 정상입니다.
+> ⚠️ **ⓕ는 어드민 API에 «여전히» 없습니다 — CLI 전용입니다**(`server/admin/retroactive.py`의 `OPERATIONS`에 미등재 · 재실측 2026-08-31). `/admin/retroactive/operations`가 돌려주는 목록에 안 나오는 것이 정상입니다.
 
 ---
 
@@ -237,7 +237,7 @@ conda run -n assy_manager python server/scripts/backfill_enrichment.py <룰> --c
 * `--limit N`은 **새로 만들 파생 정체성의 수**를 자릅니다(스캔 행 수가 아닙니다). 잘린 만큼은 `skipped by --limit`로 보고되고 **다시 돌리면 이어서** 갑니다.
 * `--force-disabled`는 `"enabled": false`인 규칙도 돌립니다. 규칙을 아직 켜지 않은 채 규모만 재 보고 싶을 때 씁니다.
 
-> ℹ️ **2026-07-31 `9c6a1c9` — 이 도구의 알맹이는 `server/enrichment_backfill.py`로 옮겨졌고, `scripts/backfill_enrichment.py`는 그 위의 CLI가 됐습니다.** **경로·진입점·플래그는 하나도 바뀌지 않았으므로 위 명령은 전부 그대로 동작합니다.** 의미론은 `server/`에, argparse와 출력은 `server/scripts/`에 두는 분리가 `chain_replay`와 enrichment 도구에 적용됩니다.
+> ℹ️ **2026-07-31 `9c6a1c9` — 이 도구의 알맹이는 `server/enrichment/backfill.py`로 옮겨졌고, `scripts/backfill_enrichment.py`는 그 위의 CLI가 됐습니다.** **경로·진입점·플래그는 하나도 바뀌지 않았으므로 위 명령은 전부 그대로 동작합니다.** 의미론은 `server/`에, argparse와 출력은 `server/scripts/`에 두는 분리가 `chain_replay`와 enrichment 도구에 적용됩니다.
 
 ---
 
@@ -287,7 +287,7 @@ conda run -n assy_manager python server/scripts/enrichment_insights.py propose  
 
 🔴 **ⓔ는 더 이상 소급 경로가 아닙니다 — 돌리지 마십시오.** 지울 대상(`graph_nodes`/`graph_edges`)이 은퇴하고 **DROP**됐습니다(약 841 MB).
 
-- **어드민 API에서 «등록 해제»됐습니다.** `server/retroactive.py`의 `OPERATIONS`는 이제 `chain_replay`·`withdraw`·`enrichment_backfill`·`enrichment_confirm` **넷**입니다. `GET /admin/retroactive/operations`에 ⓔ 행이 없고, `POST /admin/retroactive/graph_orphans/run`은 미등재 연산으로 거절됩니다. 이 문서에서 **「다섯」이라 적힌 자리는 전부 「넷」으로 읽으십시오.**
+- **어드민 API에서 «등록 해제»됐습니다.** `server/admin/retroactive.py`의 `OPERATIONS`는 이제 `chain_replay`·`withdraw`·`enrichment_backfill`·`enrichment_confirm` **넷**입니다. `GET /admin/retroactive/operations`에 ⓔ 행이 없고, `POST /admin/retroactive/graph_orphans/run`은 미등재 연산으로 거절됩니다. 이 문서에서 **「다섯」이라 적힌 자리는 전부 「넷」으로 읽으십시오.**
 - **스케줄 호출도 제거됐습니다**([AUTO_UPDATE_GUIDE §4-ter](./AUTO_UPDATE_GUIDE.md)) — 🔴 **그것은 정리가 아니라 필수였습니다**: `graph_orphans.run_scheduled`가 첫 동작으로 `ensure_graph_tables`를 불러 **DROP된 표를 되살렸을** 것입니다.
 - **CLI와 런타임 모듈은 2026-08-16 트리에서 제거됐습니다.** 옛 설명과 설정 예시는 [archive](../_archive/retired_graph_sync/README.md)에만 남습니다.
 - ⚠️ **§1의 「ⓔ만 페이지 커밋이 아니다」·§6.2·§6.3(종료 코드 3)·§7의 `--allow-production` 서술은 전부 이 연산에 대한 것이라 «함께 은퇴»합니다.** ⓐ~ⓓ에 대한 서술은 **한 줄도 영향받지 않았습니다.**
@@ -456,7 +456,7 @@ curl -X POST -H "X-Admin-Token: $ASSY_ADMIN_TOKEN" -H "Content-Type: application
 
 ### 7.6 페이싱 — **「도는 동안 화면이 느리다」의 노브** (2026-08-31 신설)
 
-**`pace`** 파라미터를 든 연산은 **둘**입니다 — ⓐ `chain_replay`(R1, 2026-09-02 합류)와 ⓖ `ledger_backfill`. 값이 닫혀 있어 화면은 텍스트칸이 아니라 **선택지**를 그립니다. ⚠️ **수를 여기 핀으로 박지 마십시오** — 정본은 `server/retroactive.py`의 `OPERATIONS`이고 `GET /admin/retroactive/operations`가 그대로 답합니다.
+**`pace`** 파라미터를 든 연산은 **둘**입니다 — ⓐ `chain_replay`(R1, 2026-09-02 합류)와 ⓖ `ledger_backfill`. 값이 닫혀 있어 화면은 텍스트칸이 아니라 **선택지**를 그립니다. ⚠️ **수를 여기 핀으로 박지 마십시오** — 정본은 `server/admin/retroactive.py`의 `OPERATIONS`이고 `GET /admin/retroactive/operations`가 그대로 답합니다.
 
 | 이름 | 언제 |
 |---|---|

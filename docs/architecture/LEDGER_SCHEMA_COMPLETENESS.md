@@ -245,7 +245,7 @@ S-65-d 뷰 삭제   A4 「삭제 — row_id 없는 뷰」   ✅ ② («이름 �
 
 # 표 B — 걷기 스킴 (질의 공간)
 
-> 축의 정본 `BASIS.md` §3. **소비자 정본 `WALK.md` 를 «먼저» 열고 `GET /api/ledger/subgraph` 시그니처로 검증했다** (`server/ledger_trace_router.py:84~163`).
+> 축의 정본 `BASIS.md` §3. **소비자 정본 `WALK.md` 를 «먼저» 열고 `GET /api/ledger/subgraph` 시그니처로 검증했다** (`server/ledger/trace_router.py:84~163`).
 > 제약(상설): 「사용자가 고르는 축은 노드 타입 «하나», 술어는 follow 로만」 — **배관 낱말이 축으로 «새로 생기면» ③ 이 아니라 «위반»이다.**
 > 🔴 아래 셋은 BASIS §3 의 「오늘」 칸이 «낡아» 있었다: B2 반전(미확인→착지) · B3 짐(③→①) · B6 대조(③→대부분 ①). BASIS 를 고쳤다.
 
@@ -253,7 +253,7 @@ S-65-d 뷰 삭제   A4 「삭제 — row_id 없는 뷰」   ✅ ② («이름 �
 
 | 축 | 상태 | 인자 · 자리 | 정의역 |
 |---|---|---|---|
-| B1 마킹 | ① | `id`(별칭, 항상 positive) + `positive[]` + `negative[]` (`ledger_trace_router.py:85,:95,:97`) · 합치는 자리는 `_signed_start` :166 «하나» | 노드 id 문자열 |
+| B1 마킹 | ① | `id`(별칭, 항상 positive) + `positive[]` + `negative[]` (`ledger/trace_router.py:85,:95,:97`) · 합치는 자리는 `_signed_start` :166 «하나» | 노드 id 문자열 |
 | B1 이름 붙은 마킹 «여럿» | ② | 🔴 라우트는 «한 번에 한 질의»다. 「마킹1 · 마킹2」는 «클라의 저장소»가 들고 부품이 각자 걷는다 — 서버는 «부호 두 갈래»만 안다 | |
 | B1 씨앗 해소 | ① / ⚠️ | 키 → 노드. ⚠️ `/declaration` 이 `wafer@1` 로 알려 주는데 그 철자로 씨앗을 만들면 «빈 그래프»다 — `wafer` 여야 한다(WALK.md §6 · 큐 C-25). 클라는 `entitySeedId` 가 벗겨서 안 걸린다 | |
 | B2 `follow` | ① | `follow[]`, `이름:키1,키2` 로 «목적지 키» 제약까지 :99~103. 없으면 «전부» | 🔴 선언된 술어만 — 아니면 **422 `predicate_not_declared`** + `unknown`/`declared` 집합 :146 |
@@ -267,7 +267,7 @@ S-65-d 뷰 삭제   A4 「삭제 — row_id 없는 뷰」   ✅ ② («이름 �
 
 | 축 | 상태 | 근거 |
 |---|---|---|
-| B4 `group_by` | 🔴 **③** | 라우트 인자에 없다. `git grep 'group_by'` — `ledger_subgraph.py`·`ledger_trace_router.py` 히트 **0**. 오늘 «클라가» 묶는다 |
+| B4 `group_by` | 🔴 **③** | 라우트 인자에 없다. `git grep 'group_by'` — `ledger_subgraph.py`·`ledger/trace_router.py` 히트 **0**. 오늘 «클라가» 묶는다 |
 | B5 `measure` · `aggregate` · `n` | 🔴 **③** | 같음 — `aggregate`/`measure` 의 히트는 전부 «주석의 낱말»이고 인자가 아니다 |
 | B5 «사용자 수식» (BASIS §4.8 의심 ②) | 🔴 **③** | 집계 축 자체가 없으므로 그 정의역도 없다. 「수율식·규격 판정을 사용자가 적는다」를 받을 칸이 «0» — 이것이 `compute : G × D_formula → G` 가 «다섯째 생성자»인지 묻는 자리다 |
 
@@ -304,7 +304,7 @@ S-65-d 뷰 삭제   A4 「삭제 — row_id 없는 뷰」   ✅ ② («이름 �
 
 ```
 마킹이 라우트에 닿는 «유일한» 모양   질의 문자열의 «노드 id 목록» — `id` + `positive[]` + `negative[]`
-                                 합치는 자리는 `_signed_start`(ledger_trace_router.py:166) 하나
+                                 합치는 자리는 `_signed_start`(ledger/trace_router.py:166) 하나
 서버가 «마킹»을 아는가             🔴 모른다. `git grep marking -- server/ --include=*.py` 에서
                                  이 뜻의 히트 «0» (나머지는 「~로 표시한다」 같은 다른 낱말이다)
                                  => 마킹을 «이름 지어 저장»할 자리도, 이름으로 부를 자리도 없다
@@ -319,7 +319,7 @@ S-65-d 뷰 삭제   A4 「삭제 — row_id 없는 뷰」   ✅ ② («이름 �
 
 🔵 **[판정 337 ② · 2026-09-13] 「저장」은 «닫혔고», 열린 것은 «서술»이다.** 마킹을 서버가 «보관»하는 길은 총괄 판정(2026-08-24)이 이미 닫았다 — 저장된 파생은 소스가 움직이면 진실의 주인이 사라진다. 열려 있던 것은 「씨앗 집합을 «열거하지 않고» 말하는 법」이고, **S-148-a(`3644b8dc`)가 그것을 닫았다**: `seed_type=<타입>` + `negative[]` = 「전체 ∖ 사례」, 집합 연산 «0». 서술은 «요청마다 다시 평가»되므로 저장 금지에 걸리지 않는다.
 
-🔴 **[S-148 실측 2026-09-13] 서버에 «마킹»이라는 것이 «없다».** `git grep -c 'marking' -- server/ledger_api server/ledger_trace_router.py` = **0**. 라우트가 받는 것은 `id`·`positive[]`·`negative[]` = «씨앗 id 목록»이다. 그러므로 「M × M → M 이 없다」는 «연산»의 부재가 아니라 **«대상»의 부재**이고, 연산을 얹으려면 «무엇 위에» 얹는지부터 서야 한다 — 그것이 S-148-a 다.
+🔴 **[S-148 실측 2026-09-13] 서버에 «마킹»이라는 것이 «없다».** `git grep -c 'marking' -- server/ledger_api server/ledger/trace_router.py` = **0**. 라우트가 받는 것은 `id`·`positive[]`·`negative[]` = «씨앗 id 목록»이다. 그러므로 「M × M → M 이 없다」는 «연산»의 부재가 아니라 **«대상»의 부재**이고, 연산을 얹으려면 «무엇 위에» 얹는지부터 서야 한다 — 그것이 S-148-a 다.
 
 🔴 **그리고 이것이 «규모»의 문제인 이유** — 대조군의 자연스러운 정의가 「전체 ∖ 사례」인데,
 그것을 오늘 방식으로 쓰려면 **«전체»를 id 목록으로 실어 보내야 한다.** 원자 10⁸ 규격에서 그 목록은
@@ -1257,7 +1257,7 @@ enrichment_rules.json.sample 규칙 4. 키 = {source_table, derived_table, decis
 ## D-8-2. 셋을 그 칸에 대 봅니다
 | 규칙 밖 축 | 체인의 칸 | 판정 |
 |---|---|---|
-| **그룹 집계** | ⚠️ **칸은 있으나 «다른 파이프라인의 것»입니다** (판정 211 이 정정) — `aggregations: {컬럼: fn}` 은 «인리치먼트»(후보 → 사람 확인) 흐름의 칸입니다: 같은 규칙이 `auto_confirm`(기본 **False**) · `enrichment_candidates` · `process_pending_groups` 를 끼고 있습니다. 「체인이 계산해 표에 쓴다」의 일반 설비가 «아닙니다». 그 안에서의 정의역은 `count` «하나»입니다. ⚰️ **그리고 「경고 후 조용히 드롭」은 닫혔습니다(S-102, 09-10 07:5x 확인)** — `enrichment_config` 가 이제 `count` 아닌 함수를 「aggregation '<컬럼>: <fn>' is not supported - 'count' is the only function this version applies」로 «이름 대어 거절»합니다. 그 자리 주석이 이유를 적어 뒀습니다: 조용히 버리면 「작성자가 `sum` 을 적어도 규칙은 집계 없이 서고, 파생 표의 그 칸은 영영 비어 있으면서 선언은 채워진 것처럼 보인다」. 🔵 원장의 `value_type`(S-84)과 «같은 처리»가 됐습니다 — D-11-0 의 판별식이 두 자리에서 같이 섭니다. 🔴 그리고 그 밖은 **「경고 후 조용히 드롭」**입니다(`enrichment_config.py:585` 「aggregation '…' dropped (v1 supports 'count' only)」). 원장 쪽 같은 상황은 «이름 대어 거절»하고 S-84 를 댑니다 — **같은 상황, 두 처리** |
+| **그룹 집계** | ⚠️ **칸은 있으나 «다른 파이프라인의 것»입니다** (판정 211 이 정정) — `aggregations: {컬럼: fn}` 은 «인리치먼트»(후보 → 사람 확인) 흐름의 칸입니다: 같은 규칙이 `auto_confirm`(기본 **False**) · `enrichment_candidates` · `process_pending_groups` 를 끼고 있습니다. 「체인이 계산해 표에 쓴다」의 일반 설비가 «아닙니다». 그 안에서의 정의역은 `count` «하나»입니다. ⚰️ **그리고 「경고 후 조용히 드롭」은 닫혔습니다(S-102, 09-10 07:5x 확인)** — `enrichment_config` 가 이제 `count` 아닌 함수를 「aggregation '<컬럼>: <fn>' is not supported - 'count' is the only function this version applies」로 «이름 대어 거절»합니다. 그 자리 주석이 이유를 적어 뒀습니다: 조용히 버리면 「작성자가 `sum` 을 적어도 규칙은 집계 없이 서고, 파생 표의 그 칸은 영영 비어 있으면서 선언은 채워진 것처럼 보인다」. 🔵 원장의 `value_type`(S-84)과 «같은 처리»가 됐습니다 — D-11-0 의 판별식이 두 자리에서 같이 섭니다. 🔴 그리고 그 밖은 **「경고 후 조용히 드롭」**입니다(`enrichment/config.py:585` 「aggregation '…' dropped (v1 supports 'count' only)」). 원장 쪽 같은 상황은 «이름 대어 거절»하고 S-84 를 댑니다 — **같은 상황, 두 처리** |
 | **선언 조인** | ⚠️ 있음 — `reference_views[].query` | ⚠️ **②** — 칸은 있으나 내용이 «생 SQL»(샘플: `SELECT … FROM dt_log WHERE dt_job = :dt_job ORDER BY …`). 완성 정의가 지목한 자리 그대로입니다 — 「뷰는 두 줄로 안 말해진다」 |
 | **값 변환** | 🔴 **없음** | **③** — 변환은 `mapper_module`/`mapper_function` 이 가리키는 파이썬 «안»에 있습니다 |
 | **짝짓기 / 위치** | 🔴 **없음** | **③** — 같은 자리 |

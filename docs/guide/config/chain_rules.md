@@ -4,7 +4,7 @@
 > 상위: [폴더 인덱스](./README.md) · 동작 원리 정본은 [chain_ingestion_guide](../chain_ingestion_guide.md) · 절차 요약은 [CONFIG_GUIDE §3-S8](../CONFIG_GUIDE.md)
 
 <!-- Loader evidence (2026-07-28):
-  worker load: server/chain_ingestion_worker.py:278 load_chain_rules (RULES_PATH :111; missing file -> warning + empty)
+  worker load: server/chain/ingestion_worker.py:278 load_chain_rules (RULES_PATH :111; missing file -> warning + empty)
     called at startup :787 and re-called on SYSTEM_RELOAD :862; enrichment-derived rules merged :296
   web view reads file per request: server/main.py:3367 (GET /admin/chain/rules :3361, admin-gated)
   mapper cache purge on reload: main.py reload-configs (mappers.* module cache)

@@ -22,7 +22,7 @@
 
 | 이미 있는 조각 | 무엇을 하는가 | 얼마나 깔렸나 |
 |---|---|---|
-| `server/schema_drift.py` | 모델이 기대하는 스키마 ↔ DB 카탈로그 대조, 부팅마다 | 26개 테이블 전부. **단, 이름만. 타입은 안 본다** |
+| `server/admin/schema_drift.py` | 모델이 기대하는 스키마 ↔ DB 카탈로그 대조, 부팅마다 | 26개 테이블 전부. **단, 이름만. 타입은 안 본다** |
 | `known_tables=crud.TABLE_CONFIG` 인자 | config 선언의 컬럼 참조를 `table_config`에 대조, **로드 시점에 이름 붙여 거절** | 8개 표면 중 **4개** |
 | `server/scripts/install_product_tables.py` | 제품 소유 선언을 사이트의 gitignore된 live config에 **바이트 스플라이스**로 설치 | `table_config.json`의 4개 엔트리만 |
 
@@ -50,7 +50,7 @@
 | ② | 동적 테이블 동기화 | `models.sync_dynamic_tables_schema` (`server/database/models.py:772`), 부팅마다 호출 (`main.py:120`) | `table_config`에 있고 DB에 없는 **컬럼을 ADD** | **ALTER TYPE 없음 · DROP 없음 · RENAME 없음.** 실패는 `print` 후 삼킨다(`models.py:801-802`) |
 | ③ | 런타임 신규 테이블 | `models.create_missing_dynamic_tables` | config 핫리로드로 생긴 **신규 테이블만** CREATE | 주석이 명시 — *"기존 테이블에 대한 런타임 ALTER는 수행하지 않는다"* |
 | ④ | `server/migrations/*` | `.py` 4개 + `.sql` 2개 | 손으로 실행하는 DDL | **순서 없음 · 원장 없음 · 실행 여부를 아무도 모른다** (아래) |
-| ⑤ | 부팅 시 드리프트 점검 | `server/schema_drift.py`, `f6406b1` | 모델 ↔ 카탈로그 대조, 배너로 보고 | **읽기 전용.** 그리고 자기 docstring이 선언 — *"It compares NAMES, not types."* (`schema_drift.py:38-39`) |
+| ⑤ | 부팅 시 드리프트 점검 | `server/admin/schema_drift.py`, `f6406b1` | 모델 ↔ 카탈로그 대조, 배너로 보고 | **읽기 전용.** 그리고 자기 docstring이 선언 — *"It compares NAMES, not types."* (`admin/schema_drift.py:38-39`) |
 
 ### 1.1 ④에 원장이 없다는 것은 측정된 사실이다
 
@@ -67,7 +67,7 @@ grep -rn "schema_version|migration_history|alembic|applied_migrations|schema_mig
 이라고 적혀 있다(선행 조건으로만 배포된 파일). **어느 박스가 어느 파일을 돌렸는지 기록하는
 자리가 없다.**
 
-그래서 `schema_drift.py`가 만들어 내는 문장은 *"run server/migrations/add_frame_confirmation.py"*
+그래서 `admin/schema_drift.py`가 만들어 내는 문장은 *"run server/migrations/add_frame_confirmation.py"*
 까지이고, **"그거 이미 돌렸나?"에는 아무도 답할 수 없다.** `a14a098`이 그 마이그레이션 파일에
 검증 루프를 손으로 넣은 이유가 정확히 이것이다(`add_frame_confirmation.py:169-181` —
 컬럼별 `information_schema` 조회를 **이름으로** 출력하며, 주석이 이유를 적어 놓았다:
@@ -75,7 +75,7 @@ grep -rn "schema_version|migration_history|alembic|applied_migrations|schema_mig
 
 ### 1.2 ⑤가 타입을 안 본다는 것이 증상 ②의 정확한 구멍이다
 
-`schema_drift.py:38-39`가 자기 한계를 선언한다: *"A column that exists with the wrong type is
+`admin/schema_drift.py:38-39`가 자기 한계를 선언한다: *"A column that exists with the wrong type is
 real drift and this will call it healthy."* `dt_inventory.dt_frame`이 `double precision`인 채로
 있어도 이 점검은 초록이다. §2 ②에서 다시 다룬다.
 
@@ -84,7 +84,7 @@ real drift and this will call it healthy."* `dt_inventory.dt_frame`이 `double p
 1. **타입 변경.** ①②③⑤ 어느 것도 `ALTER ... TYPE`을 발행하지 않고, ⑤는 보지도 않는다.
    ④만이 할 수 있고, ④는 원장이 없다.
 2. **컬럼 삭제·개명.** 어느 경로에도 없다. `schema_drift`는 DB에만 있는 컬럼을 `INFO`로
-   *"harmless"*라고 부른다(`schema_drift.py:248-254`) — 의도된 판단이지만, 개명은 "새 컬럼 +
+   *"harmless"*라고 부른다(`admin/schema_drift.py:248-254`) — 의도된 판단이지만, 개명은 "새 컬럼 +
    무해한 잉여 컬럼"으로 보이며 **개명이었다는 사실은 아무 데도 안 남는다.**
 3. **동적 테이블의 ALTER 실패.** ②는 실패를 `print` 후 삼킨다. 실패한 박스는 조용히
    컬럼 없는 상태로 계속 돈다.
@@ -120,7 +120,7 @@ real drift and this will call it healthy."* `dt_inventory.dt_frame`이 `double p
 
 기제는 확인된다. `test_system_schema_drift.py`가 그 기제 자체를 테스트로 고정해 두었고
 (`test_missing_column_appears_in_sql_that_never_asked_for_it:67`,
-`test_full_entity_read_dies_without_the_column:79`), `schema_drift.py` 헤더가 같은 문장을 쓴다.
+`test_full_entity_read_dies_without_the_column:79`), `admin/schema_drift.py` 헤더가 같은 문장을 쓴다.
 
 **정정:** 두 컬럼이 `models.py`에 도달한 커밋은 **`9cf17ee`**이고, `a14a098`은
 *docs(board)* 커밋으로 **마이그레이션 파일에 `ALTER` 두 줄과 검증 루프를 추가하고
@@ -162,7 +162,7 @@ then record the column here naming that migration."*
    나머지 절반**이다.
 2. **손으로 관리하던 매니페스트가 이미 한 번 파생으로 대체된 전례가 있다.** `f6406b1`이
    `schema_drift.MIGRATION_OWNER`를 손 지도에서 **디렉터리 스캔 파생**으로 바꿨고
-   (`schema_drift.py:89-104`), 그 이유를 코드 주석이 적어 놓았다: *"A check whose whole value
+   (`admin/schema_drift.py:89-104`), 그 이유를 코드 주석이 적어 놓았다: *"A check whose whole value
    is naming the fix cannot depend on somebody remembering to describe the fix here."*
    **같은 판단을 `SYSTEM_TABLE_COLUMNS`에 적용하는 것이 §7의 권고다** — 새 원칙이 아니라
    이미 한 번 내려진 판단의 확장이다.
@@ -300,9 +300,9 @@ site-owned가 되고, 제품이 정한 어휘가 사이트마다 갈릴 수 있�
 
 | 소비자 | `table_config`에서 필요한 사실 | 검사 시점 | **얼마나 시끄러운가** | 근거 |
 |---|---|---|---|---|
-| `enrichment_rules.json` | source·derived 테이블 등록 여부 + 참조 컬럼 존재 | **로드** | 🟢 **큼.** 규칙 1건 거절 + 사유 + `/admin/config/resolve` 표면 | `enrichment_config.py:441-445` |
+| `enrichment_rules.json` | source·derived 테이블 등록 여부 + 참조 컬럼 존재 | **로드** | 🟢 **큼.** 규칙 1건 거절 + 사유 + `/admin/config/resolve` 표면 | `enrichment/config.py:441-445` |
 | **`ontology_mapping.json`** | 테이블 등록 여부 + `identity`/`props`/`event_time_column`/`target_identity_from` 컬럼 존재 | **로드** | 🟢 **큼.** 테이블 매핑 **통째 거절** + `/graph/mapping-summary`의 `rejected[]` | `ontology_config.py:256-271` |
-| `virtual_join_rules.json` | 양쪽 테이블 등록 + join_key/expose 컬럼 존재 | **로드** | 🟢 **큼.** 규칙 거절 + 코드 붙은 사유 | `virtual_join_config.py:330-344` |
+| `virtual_join_rules.json` | 양쪽 테이블 등록 + join_key/expose 컬럼 존재 | **로드** | 🟢 **큼.** 규칙 거절 + 코드 붙은 사유 | `virtual_join/config.py:330-344` |
 | `notation_rules.json` | 컬럼 존재 | **로드** | 🟢 큼 | `notation_norm.load_notation_rules(known_tables=)` |
 | `map_overlay_config.json` | 바인딩이 지목한 x/y/val/key 컬럼이 모델에 존재 | **질의 시** | 🟡 **중간.** 이름 붙은 거절(`binding_unresolved`)이지만 **그 맵을 읽을 때에야** | 로더 `map_overlay.load_overlay_config(path)` — **`known_tables` 인자 없음** |
 | `chain_rules.json` | `source_table`/`map_table`/`x_col`/`y_col`/`index_col`/`primary_selector.group_columns` | **없음** | 🔴 **조용.** 로더는 cascade 그래프만 검증 | `chain_ingestion_worker.load_chain_rules():297` — 인자 없음 |
@@ -523,7 +523,7 @@ map_overlay_config...key_columns              = ["wafer_id"]          <- 이동�
 
 **계산 가능하다. 그리고 계산하는 코드가 이미 있다.**
 
-`schema_drift._declared()`(`schema_drift.py:107-144`)가 정확히 그 일을 한다 —
+`schema_drift._declared()`(`admin/schema_drift.py:107-144`)가 정확히 그 일을 한다 —
 `database.models`를 import하고 `init_dynamic_models`로 동적 테이블까지 등록한 뒤
 `Base.metadata.tables`에서 **테이블별 컬럼 전체**를 뽑는다. `test_system_schema_drift.py`의
 `_live_system_tables()`도 같은 것의 축소판이다.
@@ -551,7 +551,7 @@ map_overlay_config...key_columns              = ["wafer_id"]          <- 이동�
 
 ## 8. 권고 — 하나
 
-> **`schema_drift.py`를 "보고서"에서 "이 저장소의 기대 상태를 계산하는 단일 자리"로 승격하고,
+> **`admin/schema_drift.py`를 "보고서"에서 "이 저장소의 기대 상태를 계산하는 단일 자리"로 승격하고,
 > 그 자리를 (a) 타입 (b) 마이그레이션 실행 원장 (c) config 소비자 계약, 세 축으로 넓힌다.
 > 나머지는 전부 그 한 자리의 소비자가 된다.**
 

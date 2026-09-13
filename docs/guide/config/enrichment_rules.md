@@ -9,7 +9,7 @@
 > 상위: [폴더 인덱스](./README.md) · 스펙 정본은 [ENRICHMENT_QUEUE_SPEC](../../spec/ENRICHMENT_QUEUE_SPEC.md) · 절차 요약은 [CONFIG_GUIDE §3-S7](../CONFIG_GUIDE.md)
 
 <!-- Loader evidence (2026-07-28):
-  load/validate: server/enrichment_config.py:250 load_enrichment_rules (missing -> []),
+  load/validate: server/enrichment/config.py:250 load_enrichment_rules (missing -> []),
     :231 validate (root must be object), key schema docstring :11-32,
     table registration check :179-182, key contract (composite_key_source subset / business_key in decision_key) :30-32
   decision_key contract (re-measured 2026-07-28):
@@ -19,11 +19,11 @@
     addressability code :202-216 (composite_key_source branch :205-211, business_key elif :212-216),
     reference view SQL/bind validation :81-100 (bind error :96-99), view drop log :123 (view-level, rule survives),
     rule skip log format :243 "[Enrichment:{name}] rule skipped: {err}"
-  chain synthesis: enrichment_config.py:264 -> merged in chain_ingestion_worker.py:296
+  chain synthesis: enrichment/config.py:264 -> merged in chain/ingestion_worker.py:296
     (log "[Enrichment] Synthesized N dedup chain rule(s)"; reload on SYSTEM_RELOAD)
   ontology promotion: server/ontology_config.py:218 (RESOLVED_AS)
   web query API per-request: server/main.py:3442
-  query_ref dir: enrichment_config.py:43 config/enrichment_queries/<ref>.sql (dir absent by default)
+  query_ref dir: enrichment/config.py:43 config/enrichment_queries/<ref>.sql (dir absent by default)
   worked example source: server/config/sample/enrichment_rules.json.sample (bonding_wafer_attribution)
 -->
 
@@ -35,7 +35,7 @@
 
 ## 2. `decision_key` 계약 — source와 derived에서 같아야 하는가?
 
-**예, 완전히 같아야 합니다.** 규칙 하나에 `decision_key`는 컬럼명 목록 **하나**뿐이고, 그 목록의 모든 컬럼이 `source_table`과 `derived_table` **양쪽에 같은 이름으로** 존재해야 합니다(`table_config.json`의 `column_types` 선언 기준, `enrichment_config.py:185-190`). 소스 `eqp_id` ↔ 파생 `equipment` 같은 **이름 매핑 기능은 없습니다.**
+**예, 완전히 같아야 합니다.** 규칙 하나에 `decision_key`는 컬럼명 목록 **하나**뿐이고, 그 목록의 모든 컬럼이 `source_table`과 `derived_table` **양쪽에 같은 이름으로** 존재해야 합니다(`table_config.json`의 `column_types` 선언 기준, `enrichment/config.py:185-190`). 소스 `eqp_id` ↔ 파생 `equipment` 같은 **이름 매핑 기능은 없습니다.**
 
 **실무 처방**: 소스 테이블 컬럼명은 인제션 스키마라 바꾸기 어렵지만, **파생 테이블은 사이트가 `table_config.json`에 직접 선언하는 테이블**입니다. 파생 테이블을 만들 때 판단키 컬럼명을 **소스 쪽에 맞춰** 지으십시오 — 반대 방향(규칙에서 이름을 바꿔치기)은 존재하지 않습니다.
 

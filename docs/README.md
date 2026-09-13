@@ -84,7 +84,7 @@
 |---|---|---|
 | [proposal/FETCH_AND_AUDIT_HISTORY_PERFORMANCE_PROPOSAL.md](./proposal/FETCH_AND_AUDIT_HISTORY_PERFORMANCE_PROPOSAL.md) | 제안(미확정) | `CellSource` 쓰기 증폭 축소(제안 A/B, **미구현**) + 조회 경로 성능(제안 C). 🔴 **제안 C(행/셀 이력 keyset 페이징 + 전역 감사 화면 bounded scan)는 2026-08-11 `dab9152`+`2630790`+`fde424c`로 이미 구현·착지했다** — 이 문서는 그 실행의 설계 근거로만 남고, A/B는 여전히 미착수 |
 | [proposal/UPSERT_THROUGHPUT_NEXT_STEP_PROPOSAL.md](./proposal/UPSERT_THROUGHPUT_NEXT_STEP_PROPOSAL.md) | 제안(미확정) | 대형 파일 인제션 `apply_batch_updates` 처리량 다음 단계. 검증됨: 미구현 |
-| [proposal/SCHEMA_AND_ONTOLOGY_TRANSPORT_RESEARCH.md](./proposal/SCHEMA_AND_ONTOLOGY_TRANSPORT_RESEARCH.md) | 연구·제안(미확정) | 환경 간 스키마·온톨로지 정의 이행. 결론: 정의는 이미 사실상 버전 관리되고 있고(8/10 config가 `.sample`과 바이트 동일), 없는 것은 방향(어느 쪽이 상류인가)과 병합 규칙. `server/schema_drift.py`를 리포트에서 기대상태 계산기로 승격 권고 |
+| [proposal/SCHEMA_AND_ONTOLOGY_TRANSPORT_RESEARCH.md](./proposal/SCHEMA_AND_ONTOLOGY_TRANSPORT_RESEARCH.md) | 연구·제안(미확정) | 환경 간 스키마·온톨로지 정의 이행. 결론: 정의는 이미 사실상 버전 관리되고 있고(8/10 config가 `.sample`과 바이트 동일), 없는 것은 방향(어느 쪽이 상류인가)과 병합 규칙. `server/admin/schema_drift.py`를 리포트에서 기대상태 계산기로 승격 권고 |
 | [proposal/DT_ALIGNMENT_METADATA_CHAIN_PROPOSAL.md](./proposal/DT_ALIGNMENT_METADATA_CHAIN_PROPOSAL.md) | S1/S2 구현됨 · S3 제안 | DT 정렬 결과를 metadata로 적재하는 체인의 첫 단계. S1/S2는 [DT/Core 프레임 파생 체인](./architecture/DT_CORE_FRAME_CHAINS.md)으로 착지(DOC_OWNERSHIP 행 참조) |
 | [proposal/DT_STANDARD_MAP_CHAIN_PROPOSAL.md](./proposal/DT_STANDARD_MAP_CHAIN_PROPOSAL.md) | 승인된 구현 방향(운영 검증 전까지 proposal 유지) | DT frame → 표준 DT map 체인. 같은 파생 체인 행 참조 |
 | [proposal/DT_TRANSFORMATION_CHAIN_PROPOSAL.md](./proposal/DT_TRANSFORMATION_CHAIN_PROPOSAL.md) | 제안 | DT–Core 표준 좌표 변환 체인 — 원본 행을 바꾸는 권한은 이 제안이 주지 않는다는 전제를 못박음 |

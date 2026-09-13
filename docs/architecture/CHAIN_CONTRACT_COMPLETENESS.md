@@ -131,6 +131,6 @@
 체인은 「기제를 먼저 짓고 칸은 안 만들었다」(그래서 ③ 이 전부 «칸 없음»입니다).
 
 ---
-📎 잰 날: 2026-09-11. 근거는 `chain_ingestion_worker.py` · `mapper_sdk.py` · `chain_bindings.py` ·
-`ledger_admin.py` · `chain_replay.py` · 출하 샘플 `chain_rules.json.sample`(규칙 10) ·
+📎 잰 날: 2026-09-11. 근거는 `chain/ingestion_worker.py` · `mapper_sdk.py` · `chain_bindings.py` ·
+`ledger/admin.py` · `chain/replay.py` · 출하 샘플 `chain_rules.json.sample`(규칙 10) ·
 그리고 D-5 의 실측(`task/ontology_application_report.md` 09-11).

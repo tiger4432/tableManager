@@ -363,7 +363,7 @@ null    Matches: …      «아직 모른다» -- 세는 중 (+ 원소에 `is-co
 - **워크리스트는 테이블마다 묻습니다** — `map_table` 이 라우트의 «필수» 파라미터입니다
 
 서버 절반: `server/map_alignment.py`(채점·판정) · `server/map_overlay.py`(기하) ·
-`server/frame_confirmation.py`(확정 기록). 이음새는 `contracts/map2_seam/` 이 채점합니다.
+`server/maps/frame_confirmation.py`(확정 기록). 이음새는 `contracts/map2_seam/` 이 채점합니다.
 
 ---
 

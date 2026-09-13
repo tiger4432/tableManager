@@ -155,7 +155,7 @@ walk/state   모드·방향·시작 부호 수 / ready|empty
 ```
 축      ✅ 끝에서 끝까지 «이어져 있다»
 선언    /api/ledger/declaration 이 엔티티마다 attributes 를 «싣는다»(S-52)
-        server/ledger_trace_router.py:725(사유) · :735~:737(코드)
+        server/ledger/trace_router.py:725(사유) · :735~:737(코드)
         🔴 타입이 선언 안 하면 «키가 없다» — 빈 배열이 아니다.
            「이 타입은 값이 없다」와 「이 배포는 축이 없다」를 가르기 위해서다
 화면    derive.js:106 이 그 이름마다 열을 만들고, cellSource(:143)가 n.attributes 에서 읽는다

@@ -73,14 +73,14 @@ watchdog Observer는 모든 워크스페이스의 이벤트를 **단일 디스�
 | 교차 격리 | heavy 파일은 큐 제출 후 라우팅 스레드 즉시 반환 — A 테이블 대형 파일이 B 테이블 소형 파일을 막지 않음(라이브 드릴 실측: 2.3s vs 종전 최악 415s, **약 180배**) |
 | 순서 보존 | 같은 워크스페이스는 FIFO 유지 — ① heavy backlog 잔여 시 후속 파일은 크기 무관 큐 후미 ② 워크스페이스 직렬화 락(heavy/인라인/재처리 폴러 공용) ③ 인라인은 논블로킹 try-acquire 실패 시 큐 재라우팅 |
 | 스윕 경로 | 기동/주기 스윕도 동일 라우팅을 탐 — 재기동 캐치업이 대형 파일에 직렬 블로킹되지 않음 |
-| 진행 가시화 | watcher가 QUEUED/PROCESSING/FINISHED를 `POST /internal/events/ingestion-state`로 push → 웹서버 인메모리 레지스트리(`ingestion_activity.py`) → **`GET /admin/file-ingestion/active`**. admin File 탭에 진행 섹션(HEAVY 배지·진행률 바·경과)과 **재기동 경고 배너** 표시. WS 이벤트 계약은 무변경 |
+| 진행 가시화 | watcher가 QUEUED/PROCESSING/FINISHED를 `POST /internal/events/ingestion-state`로 push → 웹서버 인메모리 레지스트리(`ingestion/activity.py`) → **`GET /admin/file-ingestion/active`**. admin File 탭에 진행 섹션(HEAVY 배지·진행률 바·경과)과 **재기동 경고 배너** 표시. WS 이벤트 계약은 무변경 |
 | 알려진 제약 | heavy 워커는 1개 — heavy 파일끼리는 직렬 처리(소형은 계속 비차단) |
 
 ---
 
 ## 1.8 체크포인트 재개 & 파일 dedup (P2, 2026-07-26)
 
-P1은 대형 파일이 **남을 막지 않게** 했지만, ① 재기동하면 진행 중이던 파일을 **0행부터 다시** 처리했고 ② 같은 파일이 다시 떨어지면 그대로 다시 적재했습니다. P2가 둘 다 닫습니다. 구현: `server/ingestion_checkpoint.py` + `directory_watcher.process_with_retry`/`_try_dedup_skip`/`_plan_checkpoint`.
+P1은 대형 파일이 **남을 막지 않게** 했지만, ① 재기동하면 진행 중이던 파일을 **0행부터 다시** 처리했고 ② 같은 파일이 다시 떨어지면 그대로 다시 적재했습니다. P2가 둘 다 닫습니다. 구현: `server/ingestion/checkpoint.py` + `directory_watcher.process_with_retry`/`_try_dedup_skip`/`_plan_checkpoint`.
 
 **파일 시그니처** = `sha256:<size>:<digest>` — **샘플링이 아니라 전체 해시**입니다. 실측 500MB 0.535초(~935MB/s), 15.6MB 0.016초로 라이브 드릴 총 처리 415초의 0.004%라, 비용보다 정확성을 택했습니다.
 

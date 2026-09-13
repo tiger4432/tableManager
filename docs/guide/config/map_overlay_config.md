@@ -12,7 +12,7 @@
   resolve_value_column_candidates / get_default_legend, served via same paint-rules endpoint
   [F1/F2 2026-07-28] resolved binding served: resolve_binding_info map_overlay.py:593
   (source: declared|derived|fallback_guess); candidate-miss guess refused in data paths
-  [F5 2026-07-30] preset_routing: reader server/map_preset_routing.py
+  [F5 2026-07-30] preset_routing: reader server/maps/preset_routing.py
   (resolve_routing_config / resolve_preset_routing), served via
   GET /api/maps/preset-routing?table=&map_key=; preset bodies still come from maps.json
 -->

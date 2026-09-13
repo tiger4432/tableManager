@@ -52,7 +52,7 @@ Chain cursor, table sink, outbox consumer, scheduler, retry queue는 만들지 �
 | source-event 원자성 | `server/ledger/gate.py::building_molecule` + `screen_molecule` | 유지. 한 사건 Claim 전부를 한 gate scope로 검사한다. |
 | 저장·cursor transaction | `server/ledger/store.py::LedgerStore.write_batch` | 유지. Atom insert와 `_advance_cursor` 후 한 번 commit, 예외 시 rollback한다. |
 | dry-run | `server/ledger/dry_run.py::preview` | 같은 등록 mapper와 LedgerFrame validator/gate를 호출하고 store는 호출하지 않는다. |
-| 기존 Chain mapper | `server/chain_ingestion_worker.py::execute_custom_mapper` | `(db, payload, rule=None)` 모양만 재사용한다. worker는 변경하지 않았다. |
+| 기존 Chain mapper | `server/chain/ingestion_worker.py::execute_custom_mapper` | `(db, payload, rule=None)` 모양만 재사용한다. worker는 변경하지 않았다. |
 | 기존 표준 Claim DataFrame | 없음 | `ledger_frame.py`의 단일 pandas 계약을 신설했다. |
 | 과거 별도 Profile runtime 초안 | 호출자 없음 | outbox/sink/ExecutionPlan 중심의 미추적 초안 2개를 parity 후 제거했다. |
 

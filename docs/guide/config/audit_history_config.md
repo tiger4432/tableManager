@@ -42,7 +42,7 @@
 
 ## 3. 두 그룹, 왜 같은 파일인가
 
-이 파일은 **같은 기능의 두 얼굴**을 담습니다 — "행/셀 하나를 클릭했을 때"(`default_limit`/`max_limit`, `server/audit_history.py`)와 "전역 타임라인 패널을 열었을 때"(`recent_*`, `server/audit_cache.py`)는 둘 다 `audit_logs`가 무제한으로 자라는 것을 어떻게 상한 짓는가의 문제이고, `audit_cache`는 이 파일을 **두 번째 로더로 다시 읽지 않고** `audit_history.load_config()`를 그대로 재사용합니다. 운영자가 "감사 이력을 어디까지 보여줄까"를 결정할 자리를 파일 하나로 묶어 둔 것입니다.
+이 파일은 **같은 기능의 두 얼굴**을 담습니다 — "행/셀 하나를 클릭했을 때"(`default_limit`/`max_limit`, `server/admin/audit_history.py`)와 "전역 타임라인 패널을 열었을 때"(`recent_*`, `server/admin/audit_cache.py`)는 둘 다 `audit_logs`가 무제한으로 자라는 것을 어떻게 상한 짓는가의 문제이고, `audit_cache`는 이 파일을 **두 번째 로더로 다시 읽지 않고** `audit_history.load_config()`를 그대로 재사용합니다. 운영자가 "감사 이력을 어디까지 보여줄까"를 결정할 자리를 파일 하나로 묶어 둔 것입니다.
 
 ## 4. `recent_*` 넷의 뜻 — 그리고 무엇을 지키는가
 
@@ -87,4 +87,4 @@ conda run -n assy_manager python server/scripts/backup_config.py restore audit_h
 
 `default_limit > max_limit`이면 `default_limit`이 `max_limit`으로 clamp됩니다(경고 로그와 함께).
 
-> 🔴 **`audit_history_config.json.sample`은 지금 이 네 키(`recent_*`)를 적고 있지 않습니다 — 그 파일만 보고 옮겨 적지 마십시오.** 코드(`server/audit_cache.py`의 `RECENT_DEFAULTS`)는 이 파일에서 읽도록 이미 배선돼 있으므로, `.sample`에 없다는 이유로 이 네 키가 안 먹는다고 결론짓거나 상한이 적용 안 된다고 오해하면 안 됩니다. `.sample`이 따라잡을 때까지는 위 §2/§8과 이 문서가 **정본**입니다.
+> 🔴 **`audit_history_config.json.sample`은 지금 이 네 키(`recent_*`)를 적고 있지 않습니다 — 그 파일만 보고 옮겨 적지 마십시오.** 코드(`server/admin/audit_cache.py`의 `RECENT_DEFAULTS`)는 이 파일에서 읽도록 이미 배선돼 있으므로, `.sample`에 없다는 이유로 이 네 키가 안 먹는다고 결론짓거나 상한이 적용 안 된다고 오해하면 안 됩니다. `.sample`이 따라잡을 때까지는 위 §2/§8과 이 문서가 **정본**입니다.

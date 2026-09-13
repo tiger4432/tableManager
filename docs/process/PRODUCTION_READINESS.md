@@ -28,7 +28,7 @@
 
 ## ✅ 해소 — B1 · B2 (2026-07-27, 커밋 `8117456`)
 
-### B1(해소). 프로세스 감시 — `server/process_supervisor.py`
+### B1(해소). 프로세스 감시 — `server/runtime/process_supervisor.py`
 런처의 `while True: time.sleep(1)`이 **`Supervisor.run()`으로 교체**됐다(`run_decoupled_app.py`). 자식 5~6개를 1초 주기로 폴링하고, 죽으면 재시작하고, 재시작 사실을 남긴다.
 
 - **재시작 예산**: 연속 실패 n회째 `min(2·2^(n-1), 60)`초 후 재시작 → **2/4/8/16/32초**. **6번째 연속 실패에서 `FAILED`로 확정**하고 다시는 살리지 않는다(배너 로그 + `/health` 비정상). 무한 재시작은 "감시가 도는 것처럼 보이면서 고장을 숨기는" 최악의 실패라 일부러 막았다.
@@ -37,7 +37,7 @@
 - **데스크톱 셸은 `restartable=False`**다. 창을 닫는 것은 "전체 종료"지 "나를 살려라"가 아니다.
 - 상태는 `<DATA_ROOT>/config/supervisor_status.json`에 기록되며 `updated_at`이 **감시자 자신의 생존 신호**다.
 
-### B2(해소). `/health` — `server/health.py` + `GET /health`
+### B2(해소). `/health` — `server/runtime/health.py` + `GET /health`
 JSON을 반환하고 **비정상이면 503**을 낸다. 판정 대상은 DB·워커·outbox·감시자 4종.
 
 - **워커는 pid가 아니라 진행 박동으로 판정한다**(`server/utils/heartbeat.py`). 우리가 실제로 겪은 장애는 프로세스가 살아 있는 채 멈춘 이벤트 루프 동결이었고, pid 검사로는 안 보인다. 감시자의 프로세스 관점과 워커 자신의 진행 관점을 **조인**해 실패를 명명한다. 🔴 **수를 여기 적지 않는다 — 상태값 전수와 판정 조건의 정본은 [backend §1.3](../architecture/backend.md)의 표다**(종전 이 자리가 「8종」이라 적고 있었는데 `unknown`이 붙으면서 낡았다).
@@ -110,7 +110,7 @@ conda run -n assy_manager python server/scripts/list_undeclared_tables.py
 | `POST /admin/scripts/code` | **임의 코드 파일 쓰기** (파서·매퍼·수집기) |
 | `POST /admin/auto-update/run-now` | **그 스크립트 실행** |
 
-**조치**: 공유 토큰 헤더 게이트(`server/admin_auth.py`). 로그인 화면·사용자 관리는 **의도적으로 도입하지 않았다**(2~5명 사내 공유).
+**조치**: 공유 토큰 헤더 게이트(`server/admin/auth.py`). 로그인 화면·사용자 관리는 **의도적으로 도입하지 않았다**(2~5명 사내 공유).
 
 - 토큰 = `ASSY_ADMIN_TOKEN` 환경변수, 헤더 = `X-Admin-Token`, 비교 = `secrets.compare_digest`.
 - **설정 시**: `/admin/*` 16개 전부 필수(조회 포함 — 소스 코드 반환도 유출이다).
@@ -123,7 +123,7 @@ conda run -n assy_manager python server/scripts/list_undeclared_tables.py
 
 | 결함 | 내용 |
 |---|---|
-| **정적 폴백 임의 파일 읽기** | `main.py`의 SPA catch-all이 containment 검사 없이 `os.path.join`을 해서 **무인증으로 아무 파일이나** 반환했다 — `/../../server/config/table_config.json`, `/../../../../../../Windows/win.ini`, 심지어 `/../../server/admin_auth.py`까지 200. 조회 admin을 잠근 근거 자체를 무효화하는 구멍이었다. `_resolve_admin_script_path`와 **같은 형태의 결과 기반 검사**로 수정 |
+| **정적 폴백 임의 파일 읽기** | `main.py`의 SPA catch-all이 containment 검사 없이 `os.path.join`을 해서 **무인증으로 아무 파일이나** 반환했다 — `/../../server/config/table_config.json`, `/../../../../../../Windows/win.ini`, 심지어 `/../../server/admin/auth.py`까지 200. 조회 admin을 잠근 근거 자체를 무효화하는 구멍이었다. `_resolve_admin_script_path`와 **같은 형태의 결과 기반 검사**로 수정 |
 | **`/internal/events/*` 무인증** | 워커→웹서버 IPC 4개가 완전 무인증. `POST /internal/events/broadcast`는 임의 dict를 **접속 중인 모든 WS 클라이언트에 중계**하고 `audit_cache`에 주입한다 — 조작된 값이 모두의 그리드에, 조작된 행이 이력 타임라인에 뜬다(SSOT §1 #3이 "느린 것보다 나쁘다"고 규정한 실패). 같은 토큰으로 게이트, 워커는 런처 환경에서 변수를 물려받는다 |
 
 > **아직 남는 것** (2026-07-27 doc-keeper 실측 재정리 — 세 항목의 성격이 서로 다르다):

@@ -149,7 +149,7 @@
 
 ### ⭐ **부재일 때만 채운다(absent-only merge) — 그리고 합친 컬럼은 셀마다 출처를 실어야 한다** (2026-07-31 등록 · `d70a33d`)
 - **무엇**: 두 출처가 같은 컬럼을 채우려 하면 **덮지 않고 빈칸만 채운다**. 왼쪽(기존) 값 있음 → **그대로 두고 다른 쪽 값을 버린다** · 비었음 → 다른 쪽 값 · 둘 다 없음 → **선언된 라벨**(`미상`). 「비었음」은 시스템 공용 정규화 **하나**(`crud.clean_str_value(v) == ""`)로만 판정한다.
-- **어디**: `server/enrichment_candidates.py`(빈칸 전용 관문 — 쓰기 **전**, **영속 provenance**를 묻는다) · `server/virtual_join_executor.py`의 `_resolve_one`(조회 시점 — 쓰지 않으므로 **표시값이 비었는가**만 묻는다) · 형제 형태로 `server/map_meta_registrar.py`(동반 행 부재 시 등록, §5).
+- **어디**: `server/enrichment/candidates.py`(빈칸 전용 관문 — 쓰기 **전**, **영속 provenance**를 묻는다) · `server/virtual_join/executor.py`의 `_resolve_one`(조회 시점 — 쓰지 않으므로 **표시값이 비었는가**만 묻는다) · 형제 형태로 `server/map_meta_registrar.py`(동반 행 부재 시 등록, §5).
 - **언제 재사용**: "자동 계산이 사람 값을 덮으면 안 된다"의 **병합** 버전 전부 — 한 컬럼에 두 출처가 들어오는 모든 자리. 새 정책을 설계하기 전에 이 세 줄이 답인지 먼저 보라.
 - **함정**:
   - 🔴 **셀 단위 provenance 없이 합치지 마라.** 합쳐진 컬럼은 **셀마다 출처가 다르다** — 그것이 보이지 않으면 "없는 값을 있다고 읽는다"는 원래의 오독이 컬럼 **안에서** 다시 일어난다. 어휘는 이미 있다(`sources` + `priority_source`, 그리드가 이미 렌더한다) — **새 키·새 UI를 만들지 마라.** 그리고 **진 쪽은 흔적을 남기지 않는다**: 참여했다가 진 것은 출처가 아니고, 표식을 달면 "이 값은 그쪽이 만들었다"는 거짓말이 된다.
@@ -463,7 +463,7 @@
 
 ### ⭐ **관례에 기댄 파생은 «분리 가능»하게 표시하라 — 버전 문자열의 접미가 열두 번째 컬럼보다 낫다** (2026-08-13 등록 · `f896020`+`01452d5`)
 - **무엇**: 소스가 **말하지 않은 것**을 config 선언으로 메워 만든 값과, 소스가 **실제로 발화한** 값을 한 저장소에 섞어 넣어야 할 때가 있다. 둘을 가르는 방법은 새 컬럼이 아니라 **버전 문자열의 접미**다 — 번역기가 자기 config 선언을 해시해 `source_translator_ver`에 싣고, 관례로 만들어진 원자는 그 값이 `#<derivation>`으로 끝난다. 그러면 `WHERE source_translator_ver LIKE '%#slot_preserving'` 하나로 **관례발 원자만** 떼어낼 수 있고, 스키마는 한 칸도 안 넓어진다.
-- **어디**: `server/config/sample/ledger_config.json.sample`의 `vocabulary.<event>.slot_pairing`(관례 «선언») · `server/ledger_trace.py`의 `inference_derivations`(해결기가 그 접미를 읽어 3류로 내린다). 접미를 «부여»하는 자리는 `server/mappers/ledger_v2_lot_event_role_mapper.py`이고, **읽는 쪽(`inference_derivations`)이 이 프리미티브의 살아 있는 절반**이다. 판정은 [process/LEDGER_RULINGS](../process/LEDGER_RULINGS.md).
+- **어디**: `server/config/sample/ledger_config.json.sample`의 `vocabulary.<event>.slot_pairing`(관례 «선언») · `server/ledger/trace.py`의 `inference_derivations`(해결기가 그 접미를 읽어 3류로 내린다). 접미를 «부여»하는 자리는 `server/mappers/ledger_v2_lot_event_role_mapper.py`이고, **읽는 쪽(`inference_derivations`)이 이 프리미티브의 살아 있는 절반**이다. 판정은 [process/LEDGER_RULINGS](../process/LEDGER_RULINGS.md).
 - **언제 재사용**: **「이 값이 데이터에 있었나, 우리가 그렇게 «치기로» 했나」가 나중에 물어질 모든 자리.** 실측 근거의 모양이 이 항목을 만들었다 — 분할(split)의 두 행은 **둘 다 사후 스냅샷**이라 웨이퍼 겹침이 14건 전부 **0**이었다. 즉 그 사슬은 「분할은 슬롯을 유지한다」는 **믿음 위에서만** 존재하고, 그 믿음은 데이터에 없다.
 - **함정**:
   - 🔴 **관례를 번역기 코드에 넣지 마라 — 선언으로 빼면 «반대 입장»이 config 한 줄이 된다.** `shared_wafer`로 바꾸면 같은 소스가 슬롯 원자를 **0개** 낸다. 그리고 어느 쪽이든 접미가 붙으므로 **원자마다 자기를 만든 관례가 남고**, `source_raw_ref`가 있으므로 관례가 나중에 거짓으로 밝혀져도 **재번역이 가능하다.**
@@ -611,7 +611,7 @@
 
 ### 선언된 라우팅 — **순서가 계약이고, 조회 miss는 정상 경로다** (2026-07-30 등록)
 - **무엇**: "이 대상에는 어떤 기본값을 줄 것인가"를 **고정된 해석 순서**로 답한다: ① 선언된 조회 테이블(크로스 테이블) → ② 순서 있는 텍스트 패턴 규칙, 첫 매치 승리 → ③ **답하지 않음**. 세 단계 모두 실패하면 그럴듯한 것을 고르지 않고 **명시적으로 "라우팅 없음"**을 답하며, 호출부는 종전 동작을 그대로 유지한다.
-- **어디**: `server/map_preset_routing.py`의 `resolve_preset_routing(db, cfg, table, map_key, presets)` → `GET /api/maps/preset-routing`. 선언은 `map_overlay_config.preset_routing`, 프리셋 본문은 `maps.json`. 계약 서술 [MAP_EDITOR_SPEC §5.8](../spec/MAP_EDITOR_SPEC.md) · 운영 절차 [guide/config/map_overlay_config §2-bis](../guide/config/map_overlay_config.md).
+- **어디**: `server/maps/preset_routing.py`의 `resolve_preset_routing(db, cfg, table, map_key, presets)` → `GET /api/maps/preset-routing`. 선언은 `map_overlay_config.preset_routing`, 프리셋 본문은 `maps.json`. 계약 서술 [MAP_EDITOR_SPEC §5.8](../spec/MAP_EDITOR_SPEC.md) · 운영 절차 [guide/config/map_overlay_config §2-bis](../guide/config/map_overlay_config.md).
 - **언제 재사용**: "환경마다 답이 다르고, 그 답이 조회 테이블에 있을 수도 없을 수도 있는" 기본값 결정 전부. 크로스 테이블 조회 자체를 새로 만들지 마라 — 이 시스템에 이미 **네 형태**가 있다(`map_overlay_config.table_bindings` · Enrichment `reference_views` · F3 `value_suggest` · **virtual join**(아래)). 📒 그 넷이 [중복 원장 D-2](./DUPLICATION_LEDGER.md#d-2-크로스-테이블-조회--네-형태)이고, 판정은 **「합치지 말고 다섯 번째를 만들지 마라」**다 — 소비 형태가 넷 다 달라 한 추상으로 접으면 그것이 다섯 번째 구현이 된다.
 - **함정**:
   - 🔴 **우선순위를 절대적으로 못박고, 그것을 서버가 강제하라.** 우리 순서는 **저장된 메타 > 라우팅 > 사용자 패널**이다. 이미 등록된 규격이 있는 대상은 **preset `null`**로 답하므로 클라가 그것을 덮는 것이 **구조적으로 불가능**하다 — 클라 규율에 맡기면 언젠가 덮는다. (여기서 규격은 `inside`를 바꾸고, `inside`는 저장 가능 집합을 바꾼다.)
@@ -622,7 +622,7 @@
 
 ### ⭐ **저장하지 않고 조회 시점에 잇는다 — 선언된 virtual join** (2026-07-31 등록 · `d70a33d`)
 - **무엇**: 다른 테이블의 컬럼이 이 표에 필요하면 **비정규화(복사 저장)도 DB 뷰도 아니라**, 선언된 조인 키로 **조회 시점에 붙인다.** `/api/maps/overlay`가 **좌표**로 하는 일의 **행(row) 버전**이고, 아무것도 영속하지 않으므로 원본이 바뀌면 다음 조회가 곧 최신이다.
-- **어디**: 선언·승인 `server/virtual_join_config.py` · 실행 `server/virtual_join_executor.py`(`attach`) · 붙는 자리는 `main.fetch_and_merge_metadata` **하나**(행 페이로드의 유일한 직렬화 지점 — 그리드 페이지·단건·배치 응답·WS가 전부 여기를 지난다). 절차·키 사전은 [guide/config/virtual_join_rules](../guide/config/virtual_join_rules.md).
+- **어디**: 선언·승인 `server/virtual_join/config.py` · 실행 `server/virtual_join/executor.py`(`attach`) · 붙는 자리는 `main.fetch_and_merge_metadata` **하나**(행 페이로드의 유일한 직렬화 지점 — 그리드 페이지·단건·배치 응답·WS가 전부 여기를 지난다). 절차·키 사전은 [guide/config/virtual_join_rules](../guide/config/virtual_join_rules.md).
 - **언제 재사용**: "이 표에 저 테이블의 값도 같이 보여야 한다" 전부. **컬럼을 복사해 채우는 배치를 만들기 전에 여기부터 보라** — 복사는 그 순간부터 원본과 갈라지고, 갈라짐을 되잡는 동기화가 다음 부채가 된다.
 - **함정**:
   - 🔴 **승인 조건은 오른쪽의 UNIQUE 인덱스 하나다** — 없으면 왼쪽 행이 맞는 행 수만큼 불어난다(실측 x1288). 그 판정은 **config가 아니라 DB 카탈로그**를 읽으므로 등급·스냅샷·유효기간이 없다. 실행기의 입구를 **승인 경로 하나**로 두어 가드를 우회할 길을 만들지 마라.
@@ -711,7 +711,7 @@
 
 ### ⭐⭐ **분산된 실행 계약은 작성자에게 하나로 컴파일하라 — 정적 전수와 실제 표본은 서로 대체하지 않는다** (2026-08-16 등록)
 - **무엇**: config, 실행 코드, vocabulary가 서로 다른 책임을 가져도 작성자가 답할 질문은 하나다. 이 셋을 한 읽기 모델로 결합해 **가능한 출력 전수**를 정적으로 검사하고, 같은 화면에서 **실제 표본 실행 결과**도 보여 준다. ⚠️ **[2026-08-19] 지금 도는 것은 정적 절반뿐이다** — 표본 실행 절반이 내려가 있다(아래 함정).
-- **어디**: `server/ledger/source_contract.py`(선언→번역 프로필→`emissions[]`→live vocabulary) + `server/ledger_admin.py`(저장 전 거절). ⚰️ **표본 실행 절반이던 `server/ledger/dry_run.py`의 소스 미리보기는 «없다»** — 태우던 v1 번역기가 은퇴하며 `preview()`가 `DryRunUnavailable`을 던진다(`ab8657f`). 쓰기 없는 v2 표본은 `ledger/setup.py`의 `preview_selected_cursor_batch`인데 **부르는 라우트가 아직 없다.** 🔴 **프리미티브 자체는 유효하다** — 「정적 전수 + 실제 표본」이 서로를 못 대신한다는 판정은 그대로이고, 지금은 그중 한 쪽이 배선 대기 중일 뿐이다. 계약 [LEDGER_TECHNICAL_SPEC §3.9](../spec/LEDGER_TECHNICAL_SPEC.md), v2에서 같은 일을 하는 절차는 [ONTOLOGY_LEDGER_SETUP §13](../guide/ONTOLOGY_LEDGER_SETUP.md)(검증 / write-free dry-run / Explorer draft preview / execute의 차이).
+- **어디**: `server/ledger/source_contract.py`(선언→번역 프로필→`emissions[]`→live vocabulary) + `server/ledger/admin.py`(저장 전 거절). ⚰️ **표본 실행 절반이던 `server/ledger/dry_run.py`의 소스 미리보기는 «없다»** — 태우던 v1 번역기가 은퇴하며 `preview()`가 `DryRunUnavailable`을 던진다(`ab8657f`). 쓰기 없는 v2 표본은 `ledger/setup.py`의 `preview_selected_cursor_batch`인데 **부르는 라우트가 아직 없다.** 🔴 **프리미티브 자체는 유효하다** — 「정적 전수 + 실제 표본」이 서로를 못 대신한다는 판정은 그대로이고, 지금은 그중 한 쪽이 배선 대기 중일 뿐이다. 계약 [LEDGER_TECHNICAL_SPEC §3.9](../spec/LEDGER_TECHNICAL_SPEC.md), v2에서 같은 일을 하는 절차는 [ONTOLOGY_LEDGER_SETUP §13](../guide/ONTOLOGY_LEDGER_SETUP.md)(검증 / write-free dry-run / Explorer draft preview / execute의 차이).
 - **언제 재사용**: 한 기능을 설정하려면 운영자가 config·코드·등록부를 각각 열어 맞춰야 하는 곳. 판별 질문은 **「첫 N건에 안 나온 분기가 잘못돼도 dry-run이 초록인가」**다.
 - **함정**:
   - 정적 목록만 있으면 죽은 코드와 실제 payload 오류를 못 본다.
@@ -1039,7 +1039,7 @@
 | 프리미티브 | 무엇 | 어디 |
 |---|---|---|
 | **heavy 레인** | 크기 임계 초과 파일을 전용 워커로 — 소형 파일 차단 방지 | `directory_watcher.HeavyIngestionLane` |
-| **오프셋 체크포인트** | 중단된 적재를 마지막 커밋 오프셋부터 재개 | `server/ingestion_checkpoint.py` |
+| **오프셋 체크포인트** | 중단된 적재를 마지막 커밋 오프셋부터 재개 | `server/ingestion/checkpoint.py` |
 | **해시 dedup** | 같은 내용 파일 재적재 skip (`__force__`로 강제) | 같은 모듈 |
 | **작업 경계 스냅샷** | config를 파일 처리 시작 시 1회 스냅샷 — 핫리로드와 작업 내 정합 동시 만족 | `_snapshot_table_context` |
 | **체인 규칙** | 트리거 테이블 → 매퍼 함수 → 타깃 테이블, config 선언만으로 추가 | `chain_rules.json` + `server/mappers/` |
@@ -1089,7 +1089,7 @@
 
 ### ⭐⭐ **오래 도는 일은 «등록부 행 하나»를 갖고, 멈춤은 «협조적»이다 — 그리고 「멈출 수 있나」는 연산마다 «선언»된다** (2026-08-31 등록 · `retroactive_runs`)
 - **무엇**: 큐에 넣고 즉시 반환하는 실행은 「도는 중인가 · 끝났나 · 얼마나 갔나」를 **로그로만** 답한다. 처방: 실행마다 **행 하나**(`run_id`·`op`·`params`·`state`·`processed_rows`/`total_rows`·시각 넷)를 쓰고, 취소는 프로세스를 죽이는 대신 그 행에 **값을 세운다.** 도는 쪽은 **배치 사이에서** 그 값을 묻고 스스로 멈춘다.
-- **어디**: `server/database/models.py::RetroactiveRun`(표 `retroactive_runs` — 🔴 **마이그레이션 파일이 없다. `create_all` 이 만든다**) · 등록부와 훅 `server/retroactive.py`(`OPERATIONS` · `RunControl.stop_requested()` · `_checkpoint(control)` 이 만드는 훅이 `chain_replay`·`withdraw`·`enrichment_backfill`·`ledger.backfill` 에 `checkpoint=` 로 들어간다) · 라우트 `GET /admin/retroactive/runs` · `POST /admin/retroactive/runs/{run_id}/cancel` · 집행은 스케줄러의 전용 스레드.
+- **어디**: `server/database/models.py::RetroactiveRun`(표 `retroactive_runs` — 🔴 **마이그레이션 파일이 없다. `create_all` 이 만든다**) · 등록부와 훅 `server/admin/retroactive.py`(`OPERATIONS` · `RunControl.stop_requested()` · `_checkpoint(control)` 이 만드는 훅이 `chain_replay`·`withdraw`·`enrichment_backfill`·`ledger.backfill` 에 `checkpoint=` 로 들어간다) · 라우트 `GET /admin/retroactive/runs` · `POST /admin/retroactive/runs/{run_id}/cancel` · 집행은 스케줄러의 전용 스레드.
 - **언제 재사용**: 즉시 반환하는 장기 실행을 **새로 만들 때마다**. 그리고 「진행 표시줄을 붙여 달라」·「이거 지금 도는 중인가요」가 나올 때 — 답은 화면이 아니라 **행**이다.
 - **함정**:
   - 🔴 **취소 플래그는 «자기 세션»에서 읽어야 한다.** 도는 쪽의 트랜잭션 스냅숏 안에서 읽으면 시작 시점의 값에 갇혀 **영원히 「멈추라고 안 했다」**가 된다. 버튼은 눌리고 아무 일도 안 일어난다.
@@ -1101,7 +1101,7 @@
 
 ### ⭐⭐ **여러 긴 작업의 «속도»는 표 «하나»가 선언한다 — 이름을 고르게 하고 숫자를 고르게 하지 마라** (2026-08-31 등록 · `server/pacing.json`)
 - **무엇**: 대량 작업이 DB 를 독점하면 **옆 질의가 느려진다.** 노브를 작업마다 만들면 운영자가 숫자를 외워야 하고, 그 숫자는 작업마다 뜻이 다르다. 처방: **이름 붙은 프로파일 표 하나**(`fast`·`slow`·`trickle`, 각 `label`·`when`·`units_per_cycle`·`rest_seconds`)를 두고 긴 작업이 전부 **같은 표**를 읽는다. 화면에 나가는 것은 값이 아니라 **이름과 「언제 쓰나」**다.
-- **어디**: 선언 `server/pacing.json`(🔴 **`server/config/` 가 아니라 «코드 옆»에 있고 git 추적된다** — `.sample` 이 없는 이유가 그것이다) · 읽기 `server/pacing.py`(`load_paces` · `resolve` · `UnknownPace`) · 소비자 **셋**: 원장 백필(`ledger/backfill.py`, 단위 = **페이지**) · 체인 재적용 R1(`chain_replay.py`, 단위 = **페이지** — 2026-09-02 합류) · 파일 인제션(`parsers/directory_watcher.py`, 단위 = **청크**, 이름은 `ingestion_settings.json` 의 `ingestion_pace` 가 고른다) · 어드민 선택지는 같은 파일에서 조립되고(§3 「닫힌 집합은 선언에서」) 등록부 연산 **둘**(`chain_replay`·`ledger_backfill`)이 `pace` 를 파라미터로 선언한다.
+- **어디**: 선언 `server/pacing.json`(🔴 **`server/config/` 가 아니라 «코드 옆»에 있고 git 추적된다** — `.sample` 이 없는 이유가 그것이다) · 읽기 `server/pacing.py`(`load_paces` · `resolve` · `UnknownPace`) · 소비자 **셋**: 원장 백필(`ledger/backfill.py`, 단위 = **페이지**) · 체인 재적용 R1(`chain/replay.py`, 단위 = **페이지** — 2026-09-02 합류) · 파일 인제션(`parsers/directory_watcher.py`, 단위 = **청크**, 이름은 `ingestion_settings.json` 의 `ingestion_pace` 가 고른다) · 어드민 선택지는 같은 파일에서 조립되고(§3 「닫힌 집합은 선언에서」) 등록부 연산 **둘**(`chain_replay`·`ledger_backfill`)이 `pace` 를 파라미터로 선언한다.
 - **언제 재사용**: 「이 작업이 도는 동안 화면이 느리다」가 나올 때. 그리고 **새 장기 작업을 만들 때** — 자기 노브를 만들지 말고 이 표를 읽어라.
 - **함정**:
   - 🔴 **`units_per_cycle` 의 «단위»가 소비자마다 다르다**(페이지 ↔ 청크). 표가 선언하는 것은 «리듬»이지 «양»이 아니다 — 새 소비자를 붙이면 그 단위를 문서에 적어라. 안 적으면 같은 `slow` 가 두 곳에서 전혀 다른 부하가 된다.
@@ -1167,7 +1167,7 @@
 
 ### ⭐ **진입점은 라이브러리가 아니다 — 몸통을 «자기 이름을 가진 모듈»로 내보내고 진입점이 그 이름을 «재수출»한다** (2026-08-30 등록 · **세 번째 사례**)
 - **무엇**: 진입점(`main.py`)에 있는 함수를 **두 번째 호출자**가 필요로 할 때, `import main` 하지 않는다. 몸통을 자기 이름을 가진 모듈로 옮기고 **진입점이 그 이름을 재수출**한다 — 옛 철자 `main.<이름>` 이 계속 풀리므로 **옮긴 것이지 계약을 깬 것이 아니고**, 호출자·문서·테스트를 훑어 고칠 필요가 없다.
-- **어디**: `server/utils/time_format.py` · `server/column_filter.py`(2026-08-04) · `server/system_reload.py`(2026-08-30) — **셋 다 같은 이유로 태어났다.** 규칙 서술의 정본은 [backend §1.2](./backend.md), 그물은 `server/tests/test_entrypoint_import_isolation.py`(소스 규칙 + 미끼 `main.py` 를 `sys.path` 맨 앞에 둔 subprocess 프로브).
+- **어디**: `server/utils/time_format.py` · `server/column_filter.py`(2026-08-04) · `server/runtime/system_reload.py`(2026-08-30) — **셋 다 같은 이유로 태어났다.** 규칙 서술의 정본은 [backend §1.2](./backend.md), 그물은 `server/tests/test_entrypoint_import_isolation.py`(소스 규칙 + 미끼 `main.py` 를 `sys.path` 맨 앞에 둔 subprocess 프로브).
 - **언제 재사용**: 「진입점에 있는 그 함수를 여기서도 부르고 싶다」가 나오는 모든 자리. 부르는 쪽이 워커든, 수집기든, **같은 프로세스의 다른 라우터든 똑같다** — 세 번째 사례가 바로 그 마지막 경우였다.
 - **함정**:
   - 🔴 **모듈 수준 «상태»가 몸통에 딸려 있으면 같이 옮긴다.** 안 옮기면 옮긴 함수가 진입점을 다시 import 하게 되어 원점이다. 옮긴 뒤에는 그 상태가 **다른 프로세스에서 비어 있다**는 사실을 서술에 적어라 — 오늘 그 절이 조용히 건너뛰어지는 것이 «정상»인지 «결함»인지는 문서 말고는 답할 자리가 없다.
@@ -1176,7 +1176,7 @@
 
 ### ⭐ **「import되는가」는 공유 인터프리터 안에서 테스트할 수 없다 — `server/scripts`는 한 방향 문** (2026-07-31 등록 · `9c6a1c9`)
 - **무엇**: `server/scripts/`는 **어느 운영 프로세스의 `sys.path`에도 없다.** 각 스크립트가 `__main__`으로 돌 때 자기 힘으로 `server/`를 부트스트랩하므로 **스크립트 → `server/`는 되고 그 반대는 안 된다.** 그래서 규율은 하나다 — **의미론은 `server/`에, argparse와 보고서 서식만 `scripts/`에.**
-- **어디**: 이미 이 형태인 짝들 — `chain_replay.py` ↔ `server/scripts/chain_replay_cli.py` · `enrichment_analysis.py` ↔ `server/scripts/enrichment_insights.py` · `enrichment_backfill.py` ↔ `server/scripts/backfill_enrichment.py`. 판정기는 `server/tests/prod_import_check.py`(진입 `test_prod_import_env.py`).
+- **어디**: 이미 이 형태인 짝들 — `chain/replay.py` ↔ `server/scripts/chain_replay_cli.py` · `enrichment/analysis.py` ↔ `server/scripts/enrichment_insights.py` · `enrichment/backfill.py` ↔ `server/scripts/backfill_enrichment.py`. 판정기는 `server/tests/prod_import_check.py`(진입 `test_prod_import_env.py`).
 - **언제 재사용**: **CLI에만 있던 기능에 라우트·워커·스케줄러가 붙는 모든 순간.** 「이미 있는 함수를 부르기만 하면 된다」가 참인 자리에서 정확히 이 결함이 난다.
 - **함정**:
   - 🔴 **증상이 최악의 모양이다 — 초록 버튼, 쓰인 행 0, 표면에 에러 없음.** 트리거가 아웃박스에 한 줄 쓰고 즉시 반환하는 형태(§6 Outbox)라면 **검증은 통과하고 200 `queued`가 나가며** import 실패는 **워커 스레드 안**에서 로그로만 끝난다. 실패가 **요청과 다른 프로세스에서** 일어나는 설계일수록 이 계급이 비싸다.
@@ -1198,7 +1198,7 @@
 
 ### ⭐ **모르는 인자는 무동작이 아니라 거절이다 — 그리고 철자 목록 하나가 파싱·제안·문서의 출처다** (2026-08-04 등록 · `63b17f7`)
 - **무엇**: 플래그를 `"--flag" in sys.argv` 멤버십으로 읽으면 **런처가 모르는 인자는 에러가 아니라 아무것도 아니다.** 오타 하나가 조용히 **다른 모드**를 띄운다. 처방: ① 모르는 인자가 **하나라도** 있으면 **아무것도 기동하지 않고** 거절 ② 가장 가까운 철자를 **제안하되 자동 교정하지 않는다** ③ 철자·도움말·제안 후보를 **튜플 하나**(`FLAGS`)에서만 만든다.
-- **어디**: `server/launcher_args.py`(`FLAGS`·`parse_launcher_args`·`suggest_flag`·`help_lines`) → `run_decoupled_app.main()`의 **첫 문장**. 회귀 그물 `server/tests/test_launcher_arguments.py`.
+- **어디**: `server/runtime/launcher_args.py`(`FLAGS`·`parse_launcher_args`·`suggest_flag`·`help_lines`) → `run_decoupled_app.main()`의 **첫 문장**. 회귀 그물 `server/tests/test_launcher_arguments.py`.
 - **언제 재사용**: CLI를 가진 모든 스크립트 — 특히 **운영자가 손으로 치는** 진입점(런처·백필·소급·config 도구).
 - **함정**:
   - 🔴 **실측이 이 항목의 근거다**: `--server_only`(밑줄)는 자식 **6개**(= 풀스택), `--server-only`는 **5개**를 계획했다. 운영자가 일부러 피하려던 것이 오타 하나로 떴고, 이미 스택이 떠 있었으므로 포트 바인더 둘이 백오프 루프로 들어갔다.
@@ -1209,7 +1209,7 @@
 
 ### ⭐ **배포 사실은 부팅이 스스로 묻는다 — 묻되 막지 말고, 게이트는 *아무것도 안 도는 자리*에만 둔다** (2026-08-05 등록 · `f6406b1`)
 - **무엇**: 「코드가 아는 스키마를 DB가 안다」 같은 **배포 전제**는 아무도 나르지 않으면 **운영 화면에서만** 드러난다(개발·테스트 박스는 마이그레이션이 돌아 있어 절대 안 보인다). 그 질문이 값싸면 **부팅이 스스로 묻게** 하고, 답을 **배너로 크게** 내되 **기동을 막지는 않는다.**
-- **어디**: `server/schema_drift.py`(로직) · 두 발화 지점 — 런처 `report_schema_drift()`(자식을 하나도 띄우기 전) + 웹서버 `startup_event`(자기 마이그레이션 **뒤**) · CLI 껍데기 `server/scripts/check_schema_drift.py` · 게이트는 `--preflight-only`. 서술 [backend §1.3 ①-ter](./backend.md), 채점 `server/tests/test_schema_drift_startup.py`.
+- **어디**: `server/admin/schema_drift.py`(로직) · 두 발화 지점 — 런처 `report_schema_drift()`(자식을 하나도 띄우기 전) + 웹서버 `startup_event`(자기 마이그레이션 **뒤**) · CLI 껍데기 `server/scripts/check_schema_drift.py` · 게이트는 `--preflight-only`. 서술 [backend §1.3 ①-ter](./backend.md), 채점 `server/tests/test_schema_drift_startup.py`.
 - **언제 재사용**: 「배포할 때 사람이 잊으면 조용히 반쯤 도는」 모든 전제 — 마이그레이션·인덱스·config 키·번들 재빌드·환경변수.
 - **함정**:
   - 🔴 **막을지 말지는 「재시도가 고칠 수 있나」로 가른다** — 포트 충돌과 **일부러 다르게 갈랐다.** 남이 쥔 포트는 아무 일도 못 하지만, 스키마 드리프트는 **드리프트난 테이블만 빼고 제품이 돈다**. 여기서 거절하면 컬럼 하나가 **무인 재기동에 스택 전체를 계속 죽여 놓을 권한**을 준다 — 재기동은 정확히 아무도 안 보고 있는 시각이다.
@@ -1276,7 +1276,7 @@
 
 ### 공유 비밀 요청 게이트 — 로그인 없이 표면 하나를 잠근다 (2026-07-27 등록)
 - **무엇**: 사용자·세션·비밀번호 저장소를 **만들지 않고**, 환경변수 비밀 하나를 요청 헤더로 제시받아 상수시간 비교한다. "인증이 전혀 없다"와 "인증 시스템을 짓는다" 사이에서, 소수 사내 공유 환경에 유일하게 정당한 중간 형태다.
-- **어디**: `server/admin_auth.py` — 소비: `/admin/*` API 전부(2026-08-04 실측 **24개** — 종전 「22개」에서 `GET /admin/config/notation/preview`와 `GET /admin/transfer-plan/dry-run`이 늘었다(⚠️ 2026-08-04 정정 — 종전 서술은 메서드를 `POST`로, 출처를 `92b8d6f`로 적었으나 둘 다 틀렸다. `92b8d6f`는 라우트를 하나도 더하지 않았고, 이 조회 라우트는 파생 컬럼 철회 라운드에서 처음 생겼다). ⚠️ **이 수는 라우트가 추가될 때마다 낡으므로 커버리지의 정본은 수가 아니라 `test_admin_auth.py`의 라우트 테이블 열거**다) + `/internal/events/*` 4개, 게이트는 `require_admin_token{,_strict}`. 워커는 런처 환경을 상속해 `internal_event_headers()`로 자동 부착.
+- **어디**: `server/admin/auth.py` — 소비: `/admin/*` API 전부(2026-08-04 실측 **24개** — 종전 「22개」에서 `GET /admin/config/notation/preview`와 `GET /admin/transfer-plan/dry-run`이 늘었다(⚠️ 2026-08-04 정정 — 종전 서술은 메서드를 `POST`로, 출처를 `92b8d6f`로 적었으나 둘 다 틀렸다. `92b8d6f`는 라우트를 하나도 더하지 않았고, 이 조회 라우트는 파생 컬럼 철회 라운드에서 처음 생겼다). ⚠️ **이 수는 라우트가 추가될 때마다 낡으므로 커버리지의 정본은 수가 아니라 `test_admin_auth.py`의 라우트 테이블 열거**다) + `/internal/events/*` 4개, 게이트는 `require_admin_token{,_strict}`. 워커는 런처 환경을 상속해 `internal_event_headers()`로 자동 부착.
 - **언제 재사용**: **같은 신뢰 경계에 있는 다음 표면 전부.** 새 비밀·새 헤더·새 비교 코드를 만들지 마라 — `/internal/events/*`가 정확히 같은 것을 필요로 했고 **같은 커밋에서 이것을 재사용**했다. "워커만 부르는 내부 경로니까 괜찮다"는 근거가 아니다(네트워크에서 그냥 보인다).
 - **함정** — 셋은 실제로 값을 치르고 배운 것이다:
   - **① 헤더는 latin-1로 디코딩되는데 순진한 비교는 utf-8로 인코딩한다.** 비-ASCII 비밀은 **구조적으로 인증에 성공할 수 없는데 기동 배너는 "설정됨"이라고 말한다** — 16개 라우트가 전부 죽고 올바른 값에 403이 돌아오며, 변수를 지우고 재기동해야만 풀린다. **기동 시점에 검출해 "미설정" 상태로 강등**하고 `ERROR`로 이유를 이름 붙여 알려라. 잠긴 것보다 **잠겼다고 착각하는 것**이 나쁘다.
@@ -1415,7 +1415,7 @@
 
 ### ⭐⭐ **무엇을 지우기 전에 «다시 만드는» 경로를 grep으로 세어라 — 워커를 멈추는 것으로는 부족하다** (2026-08-14 등록 · `2ec78b9`)
 - **무엇**: 저장소를 DROP하고 그 생산자를 멈춰도, **살아남은 다른 프로세스**가 표를 다시 만들 수 있다. 그러면 재기동이 **빈 표**를 돌려주고 화면은 「아직 비어 있습니다」라 말한다 — **은퇴가 「아직 안 채워짐」의 옷을 입는 것**이고, 그 둘은 운영자가 할 일이 정반대다. 실측으로 경로가 **셋**이었고 각각 **변이 주입으로 증명**됐다: ① 부팅 `create_all`이 셋 전부 재생성 ② 핫리로드가 `ensure_graph_tables` 호출 ③ 🔴 **스케줄러가 생산자보다 오래 살아남아** 유지보수 스윕이 **첫 동작으로** 같은 함수를 부름.
-- **어디**: `run_decoupled_app.py`(자식 목록) · `server/database/models.py`(`create_all`·`ensure_*` 호출 지점) · `server/run_auto_update.py`(스윕 호출) · `server/retroactive.py`(`OPERATIONS` 등록 해제). 각 자리에 **묘비 주석**이 남아 「여기 있었다」를 말한다.
+- **어디**: `run_decoupled_app.py`(자식 목록) · `server/database/models.py`(`create_all`·`ensure_*` 호출 지점) · `server/run_auto_update.py`(스윕 호출) · `server/admin/retroactive.py`(`OPERATIONS` 등록 해제). 각 자리에 **묘비 주석**이 남아 「여기 있었다」를 말한다.
 - **언제 재사용**: 테이블·큐·캐시·디렉터리를 폐기하는 모든 라운드. **「생산자를 껐다」는 「생성되지 않는다」가 아니다.**
 - **함정**:
   - 🔴 **세 번째 경로가 가장 안 보인다** — 유지보수·스윕·GC처럼 **자기 대상이 없으면 그냥 아무것도 안 할 것 같은** 작업이 **존재 보장 호출을 첫 줄에** 갖고 있다. 「지우는 일」이 「만드는 일」로 시작하는 것은 흔하다.
@@ -1450,7 +1450,7 @@
 
 ### 진행 박동 (pid 검사 아님)
 - **무엇**: 워커가 **자기 작업 루프 안에서** 박동을 남긴다. 루프가 멈추면 박동도 멈춘다 — 죽었든, 데드락이든, 블로킹 호출에 걸렸든.
-- **어디**: `server/utils/heartbeat.py` · 판정은 `server/health.py`
+- **어디**: `server/utils/heartbeat.py` · 판정은 `server/runtime/health.py`
 - **언제**: "이거 살아 있나?"를 묻는 모든 곳. **pid/`tasklist` 검사는 답이 아니다** — 우리가 실제로 겪은 장애는 프로세스가 살아 있는 채 멈춘 이벤트 루프 동결이었고, 정지 드릴에서 pid 계열 검사 3종이 전부 "정상"일 때 박동만이 알아챘다.
 - **함정**:
   - **존재와 진행은 소유자가 다르다.** 프로세스가 있는지는 감시자가, 일이 되고 있는지는 워커 자신이 안다. 한쪽만으로는 `down`과 `wedged`를 구분할 수 없고 둘은 대응이 다르다.
@@ -1465,7 +1465,7 @@
 - **무엇**: 「누가 돌고 있어야 하나」를 **디스크에 있는 박동 파일에서 유추**하면 두 가지가 동시에 깨진다 — ① 한 번 돌고 은퇴한 이름이 **영원히 명부에 남아** 스택이 상시 `unhealthy` 가 되고 ② 아직 첫 박동을 못 쓴 프로세스가 **`down` 으로 읽혀 재기동마다 503** 이 난다. 답은 새 선언도 **새 판정자도 아니다** — **런처가 이미 들고 있는 목록을 «쓰고», 이미 판정하는 루프에 «먹이는 것»**이다.
 - **어디**: `run_decoupled_app` 이 `ChildSpec` 목록에서 `heartbeat.write_roster([...])` 를 부른다(`<DATA_ROOT>/config/worker_heartbeats/_roster.json`, `{이름: 시작 epoch}`) · 읽기 `heartbeat.read_roster()` · 판정은 **`health.compute_health` 의 «기존» 워커 루프 하나**다(감시자 정보가 없을 때 명부로 `expected` 를 만들고, `uptime` 이 `None` 인 갈래에서 명부의 시작 시각으로 나이를 잰다). 채점 `server/tests/test_health_roster_feeds_the_loop.py` · `test_roster_is_published_not_redeclared.py`.
   🪦 **믿지 말 것**: `health.roster_states(roster, heartbeats)` 라는 «둘째 판정자»와 그 전용 시험(`test_roster_has_four_states.py`) — 둘 다 «없다»(`f00ac31d`).
-  ✅ **살아남은 것**: 넷째 상태 **`off_roster`**(「박동은 있는데 아무도 선언 안 함」)는 지워지지 않고 **그 한 루프 안으로 들어갔다**(`health.py` 의 명부 밖 박동 열거 — 이름과 나이를 대고 «격상하지 않는다»). 앞의 셋은 원래부터 루프의 어휘였고, 루프는 그보다 **더 자세히** 답한다(`wedged`·`foreign_beat`·`stale`·`unknown` — 전수는 [backend §1.3](./backend.md) 표).
+  ✅ **살아남은 것**: 넷째 상태 **`off_roster`**(「박동은 있는데 아무도 선언 안 함」)는 지워지지 않고 **그 한 루프 안으로 들어갔다**(`runtime/health.py` 의 명부 밖 박동 열거 — 이름과 나이를 대고 «격상하지 않는다»). 앞의 셋은 원래부터 루프의 어휘였고, 루프는 그보다 **더 자세히** 답한다(`wedged`·`foreign_beat`·`stale`·`unknown` — 전수는 [backend §1.3](./backend.md) 표).
 - **언제 재사용**: **「무엇이 있어야 하나」를 «있는 것»에서 유추하고 있는 모든 자리** — 워커·큐 컨슈머·연결·플러그인. 판별 질문: **「이 목록이 «없어진 것»을 알아챌 수 있나?」** 관측에서 유추한 목록은 구조적으로 못 알아챈다.
 - **함정**:
   - 🔴 **「공표」와 「두 번째 선언」을 구별하라.** 목록은 이미 있었고 **읽을 수 있는 자리에 없었을 뿐**이다(저장소 루트 스크립트 안, 모듈 본문이 import 시점에 돈다). 쓰는 값이 그 목록이 «이미 말하는 것»이면 공표이고, 손으로 다시 적으면 그때부터 갈라진다.
@@ -1478,7 +1478,7 @@
 
 ### ⭐⭐ **「지금 이걸 누가 돌리나」는 «박동 이름»으로 답한다 — 그리고 «기록»과 «판정»을 같은 라운드에 하지 않는다** (2026-09-05 등록 · `retroactive.runner_identity` + `retroactive_runs.runner`)
 - **무엇**: 오래 도는 일의 등록부 행은 **자기 트랜잭션과 따로** 쓰이므로 **프로세스보다 오래 산다.** 도중에 죽으면 `state='running'` 이 영원히 남고 게이트가 다시 안 열리는데, 행에 «누구»가 없으면 **「죽었다」와 「느리다」가 문자 그대로 같은 행**이다. 신원 한 칸이 그 둘을 가른다.
-- **어디**: `server/retroactive.py::runner_identity()` → `박동이름/호스트/pid` 를 `_mark_run(..., started=True)` 이 `retroactive_runs.runner` 에 찍는다 · 판정 `_runner_state()` → `owned`/`orphaned`/`unknown` · 소비는 표시뿐(`GET /admin/chain/queue` 의 `blocked_by.runner` · `queue.orphaned[]`) · 마이그레이션 `server/migrations/add_retroactive_runs_runner.sql` · 이름의 정본은 `utils/heartbeat.own_name()`.
+- **어디**: `server/admin/retroactive.py::runner_identity()` → `박동이름/호스트/pid` 를 `_mark_run(..., started=True)` 이 `retroactive_runs.runner` 에 찍는다 · 판정 `_runner_state()` → `owned`/`orphaned`/`unknown` · 소비는 표시뿐(`GET /admin/chain/queue` 의 `blocked_by.runner` · `queue.orphaned[]`) · 마이그레이션 `server/migrations/add_retroactive_runs_runner.sql` · 이름의 정본은 `utils/heartbeat.own_name()`.
 - **언제 재사용**: **행이 자기를 쓴 프로세스보다 오래 사는 모든 등록부** — 잡 큐 · 락 · 리스 · 배치 체크포인트. 판별 질문: **「이 행을 보고 «아직 살아 있나»를 물을 수 있나?」**
 - **함정**:
   - 🔴 **신원은 «실행이 시작될 때» 읽어라. import 시점이 아니다.** fork 하거나 제자리 재실행된 프로세스는 **처음 import 한 쪽의 신원**을 찍고, **물려받을 수 있는 신원은 없는 것보다 나쁘다 — 구체적으로 «보이기» 때문이다.**
@@ -1490,14 +1490,14 @@
 
 ### 큐가 막혔는지는 **크기가 아니라 나이**로 본다
 - **무엇**: "미처리가 많은가"가 아니라 "**가장 오래된 미처리가 얼마나 오래됐나**"를 본다. 빠지고 있으면 아무리 밀려도 선두는 젊다.
-- **어디**: `server/health.py`의 `probe_outbox`
+- **어디**: `server/runtime/health.py`의 `probe_outbox`
 - **언제**: 큐·아웃박스·백로그 경보 전부.
 - **함정**: 크기 임계는 **정상 부하와 고장을 구분하지 못한다** — 정상적인 10만 행 적재 하나가 outbox 11.6만 행을 만든다. 멈춘 워커를 잡을 만큼 낮추면 **큰 파일마다 오경보**하고, 오경보를 피할 만큼 올리면 고장을 놓친다. 크기는 참고값으로만 싣고 **상한 캡을 씌워** 질의 비용이 테이블 크기를 따라 자라지 않게 하라.
 
 ### 재시작 예산 — **혼자 죽었을 때만 포기한다**
 - **무엇**: 죽은 자식을 지수 백오프(2/4/8/16/32초, 상한 있음)로 되살린다. 포기 여부는 **횟수가 아니라 혼자인지**로 갈린다 — 혼자 계속 죽으면 영구 `FAILED`, **동료가 함께 죽었거나 공유 의존성이 실제로 죽어 있으면 무한 재시도**(`RETRYING_CORRELATED`).
 - **왜 무한이 여기서는 옳은가**: 실측(2026-07-27) — DB를 5분 끊어도 워커는 **하나도 안 죽는다**(루프가 `OperationalError`를 잡는다). 진짜 아픈 건 PG 없이 콜드 스타트할 때로, **웹서버 하나만** 죽고 t+94초에 혼자 영구 실패했다. 즉 "혼자면 포기"만으로는 **가장 있을 법한 사고를 놓친다.** 그래서 포기 시점에만 공유 의존성을 탐침해 증거를 넓혔고, 판정은 **재시도 쪽으로 기운다.**
-- **어디**: `server/process_supervisor.py`
+- **어디**: `server/runtime/process_supervisor.py`
 - **언제**: 프로세스·잡·재시도 루프 전부.
 - **함정**:
   - **아무 조건 없는 무한 재시작은 최악**이다 — CPU를 태우고 로그를 덮고, 무엇보다 **감시가 정상 작동하는 것처럼 보이게 한다.** 영구 고장을 숨기는 감시자는 감시자가 없는 것보다 나쁘다. 위의 무한 재시도는 **원인이 자기 밖에 있다는 증거가 있을 때만** 성립한다 — 증거 없이 복사하지 마라.
@@ -1508,7 +1508,7 @@
 
 ### ⭐ **재시도로 고칠 수 없는 실패는 예산을 태우기 전에 이름을 얻어야 한다 — 포트 충돌** (2026-08-04 등록 · `06b7761`)
 - **무엇**: 위의 이분법(환경 장애 = 무한 재시도 / 고장난 자식 = 6회 뒤 포기)에 **어느 쪽도 아닌 세 번째 계급**이 있다. **자원을 남이 쥐고 있는 실패**는 재시도가 원리적으로 못 고친다 — 재시도는 남의 프로세스에서 포트를 빼앗을 수 없다. 그래서 판정을 둘로 나눠 둔다: ① **런처가 아무것도 띄우기 전에 거절**한다(`refuse_if_ports_are_taken` → `preflight_port_check`), ② 그래도 여기까지 온 자식은 **예산이 다 탄 순간 포트 프로브를 동료 규칙보다 *먼저* 돌려** `VERDICT_PORT_CONFLICT`로 즉시 영구 실패시킨다.
-- **어디**: `run_decoupled_app.refuse_if_ports_are_taken` · `server/process_supervisor.py`의 `port_is_taken`/`port_owner`/`describe_port_conflict`/`preflight_port_check`/`port_conflict` + `VERDICT_PORT_CONFLICT`·`VERDICT_BROKEN_CHILD`. 채점 `server/tests/test_duplicate_launcher.py`.
+- **어디**: `run_decoupled_app.refuse_if_ports_are_taken` · `server/runtime/process_supervisor.py`의 `port_is_taken`/`port_owner`/`describe_port_conflict`/`preflight_port_check`/`port_conflict` + `VERDICT_PORT_CONFLICT`·`VERDICT_BROKEN_CHILD`. 채점 `server/tests/test_duplicate_launcher.py`.
 - **⭐ 가드가 찌르는 주소는 서버가 무는 주소에서 파생돼야 한다** (2026-08-04 추가): `bind_targets(host)`가 **「이 host 문자열이 실제로 어떤 소켓을 여는가」의 단일 정의**이고, 프리플라이트 프로브·운영자에게 보이는 리슨 주소 줄이 **모두 그 함수에서** 나온다. 종전엔 프로브가 `AF_INET`을 하드코딩해서, 서버의 바인드가 바뀌는 순간 **가드가 다른 주소를 검사하는** 상태가 될 수 있었다 — 그런 가드는 정확히 필요한 순간에 조용해진다. 🔴 **부분 충돌은 전면 실패다**: 두 패밀리 중 하나만 물려도 `create_server`는 반쪽으로 뜨지 않고 예외를 낸다(실측). 그러니 **모든 대상을 찌르고 하나라도 물리면 충돌**로 판정한다. 🔴 **와일드카드의 패밀리 집합을 하드코딩하지 마라** — `getaddrinfo(AF_UNSPEC, AI_PASSIVE)`로 되물어야 IPv6가 꺼진 호스트에서 **멀쩡한 스택의 기동을 거절**하지 않는다. 채점 `server/tests/test_dual_stack_bind.py`.
 - **언제 재사용**: 포트·락파일·단일 인스턴스 뮤텍스·독점 디바이스 — **"이미 누가 쥐고 있으면 기다려도 안 되는" 모든 자원.** 그리고 **중복 기동을 막고 싶은 모든 런처**.
 - **함정**:
@@ -1524,7 +1524,7 @@
 
 ### ⭐⭐ **그래프를 지키는 가드는 «선언된 대상»이 아니라 «실제 쓰기 전부»를 꼭짓점으로 삼아야 한다 — 한 규칙이 표를 둘 쓰면 엣지도 둘이다** (2026-09-04 등록 · `chain_ingestion_worker._validate_chain_cascade_graph`)
 - **무엇**: 규칙 사이의 고리를 로드 시점에 거절하는 검증기가, 규칙마다 **「이 규칙의 대상 표」 한 칸**을 읽어 엣지를 하나씩 놓고 있었다. 그런데 그 규칙은 **부수 쓰기**로 다른 표에도 쓰고 그 쓰기가 **자기 이벤트를 낸다.** 즉 엣지는 **도는 시스템에 있었고 그래프에만 없었다** — 그래서 **살아 있는 순환이 검증을 통과했다.** 처방은 임계값도 새 선언도 아니다: **한 규칙이 «쓰는 표를 전부» 열거해 엣지를 그만큼 놓는다.**
-- **어디**: `server/chain_ingestion_worker.py::_validate_chain_cascade_graph` — 켜짐(`enabled`)이고 옵트인(`allow_chain_trigger`)인 규칙마다 `trigger_table → target_table`, 그리고 `allow_map_metadata_upsert` 이면 `trigger_table → map_meta_registrar.META_TABLE` 을 **하나 더**. 채점 `server/tests/test_cascade_graph_sees_metadata_writes.py`. 서술 [chain_ingestion_guide](../guide/chain_ingestion_guide.md) · [event_driven_backend §3.4](./event_driven_backend.md).
+- **어디**: `server/chain/ingestion_worker.py::_validate_chain_cascade_graph` — 켜짐(`enabled`)이고 옵트인(`allow_chain_trigger`)인 규칙마다 `trigger_table → target_table`, 그리고 `allow_map_metadata_upsert` 이면 `trigger_table → map_meta_registrar.META_TABLE` 을 **하나 더**. 채점 `server/tests/test_cascade_graph_sees_metadata_writes.py`. 서술 [chain_ingestion_guide](../guide/chain_ingestion_guide.md) · [event_driven_backend §3.4](./event_driven_backend.md).
 - **언제 재사용**: **의존 그래프·순환 검사·영향 반경·무효화(invalidation) 계산 전부.** 판별 질문: **「이 노드가 «선언한» 산출 말고 «부수적으로» 쓰는 것이 있나 — 그리고 그 쓰기도 남을 깨우나?」** 답이 예면 그래프는 지금 절반만 보고 있다.
 - **함정**:
   - 🔴 **부수 쓰기의 «주소»를 규칙에서 빌려 오지 마라 — 실제로 착지하는 자리에서 가져와라.** 이 사고에서 규칙은 메타데이터 표를 **아예 선언하지 않았고**, 이름이 비슷한 칸(`metadata_target_table`)은 다른 규칙에서 **맵퍼의 «소스»**를 가리킨다. 그 칸을 빌렸으면 엣지가 **엉뚱한 꼭짓점**을 향한 채 초록이 됐을 것이다. 주소의 정본은 **쓰기를 하는 코드의 상수**다.
@@ -1561,7 +1561,7 @@
 
 ### ⭐⭐ **「없음」을 적는 «글자»는 한 곳에서 정한다 — 그리고 JS 에서 이 부류는 «오류를 안 낸다»** (2026-09-05 등록 · `client2/src/absent.js` + `count_with_absence.js`)
 - **무엇**: 화면이 **못 받은 것을 `0` 으로 그리는** 병은 언제나 같은 자리에서 난다. JS 가 조용하기 때문이다 — `Number(null) === 0` · `Number('') === 0` · **`Number('   ') === 0`**(공백도 유한하다) · `Number(undefined)` 는 `NaN` 이고 `NaN` 은 **모든 비교가 거짓** · `undefined.toLocaleString()` 은 **던진다**. 그래서 `Number.isFinite(Number(v))` «하나»로는 부족하다: `null` 과 빈/공백 문자열을 **먼저** 걸러야 한다. 결측의 글자(`—`)와 그 판별식을 **한 모듈**에 두고, 「0 인데 일감이 있다」는 **0 옆의 «한 낱말»**로 답한다.
-- **어디**: `client2/src/absent.js` — `ABSENT` · `isCount(v)` · `countText(v)`(좁은 배지, 천단위 없음) · `localeCountText(v)`(문장 안). 부재 낱말은 `count_with_absence.js::countWithAbsence({value, absence, unread})`, 그 어휘의 **정본은 서버**다(`server/retroactive.py::ABSENCE_WORDS` — `not_yet` · `not_exhaustive` · `cannot_point` · `truly_none` · `already_missing` · `not_applicable`). 채점 `client2/tests/absent_harness.mjs` · `count_with_absence_harness.mjs`.
+- **어디**: `client2/src/absent.js` — `ABSENT` · `isCount(v)` · `countText(v)`(좁은 배지, 천단위 없음) · `localeCountText(v)`(문장 안). 부재 낱말은 `count_with_absence.js::countWithAbsence({value, absence, unread})`, 그 어휘의 **정본은 서버**다(`server/admin/retroactive.py::ABSENCE_WORDS` — `not_yet` · `not_exhaustive` · `cannot_point` · `truly_none` · `already_missing` · `not_applicable`). 채점 `client2/tests/absent_harness.mjs` · `count_with_absence_harness.mjs`.
 - **언제 재사용**: **수를 그리는 모든 자리.** 그리고 「이 화면에서만 `—` 대신 `N/A` 로 쓰자」가 떠오르는 순간 — 그것이 여섯 번째 철자가 태어나는 소리다.
 - **함정**:
   - 🔴 **0 으로 «대체»하지 마라. 「없음」은 값이 아니고 0 은 값이다.** 그리고 **못 읽은 것은 0 이 아니다** — `unread` 는 수를 아예 안 그리고 그 자리에 사유가 선다.
@@ -1777,7 +1777,7 @@
 
 ### ⭐ **요청 경로의 수는 「어떤 종류의 수인지」를 함께 답한다** (2026-07-31 등록 · `fbc1053`)
 - **무엇**: 「몇 건입니까」가 **비싼 연산 자체**인 경우가 있다(테이블 전수 + 매퍼). 그때 답은 ① 타임아웃 나는 라우트를 내놓는 것도 ② 부분 결과를 전체인 척 돌려주는 것도 아니고, **수와 함께 그 수의 종류를 반환하는 것**이다 — `exact`(값싼 질의가 전부를 답함) · `sample`(경계 있는 스캔, `scanned`+`truncated` 동반) · `upper_bound`(값싼 질의가 **상위집합**을 답함, **부족분을 말로** 설명하는 필드 동반). 그리고 **사람이 읽을 문장(`detail`)은 서버가 만들고 클라는 그대로 렌더한다.**
-- **어디**: `server/retroactive.py`(`COUNT_EXACT`/`COUNT_SAMPLE`/`COUNT_UPPER_BOUND` · `count()` · `extra.why_upper_bound`) → `GET /admin/retroactive/{op}/count`. **원형은 `GET /admin/enrichment/auto-confirm/dry-run`**(F9 — 200행 표본을 보고 `truncated`를 선언하며 부분 카운트를 큐 깊이인 척하지 않았다). 운영자 관점 [BACKFILL_GUIDE §7.2](../guide/BACKFILL_GUIDE.md).
+- **어디**: `server/admin/retroactive.py`(`COUNT_EXACT`/`COUNT_SAMPLE`/`COUNT_UPPER_BOUND` · `count()` · `extra.why_upper_bound`) → `GET /admin/retroactive/{op}/count`. **원형은 `GET /admin/enrichment/auto-confirm/dry-run`**(F9 — 200행 표본을 보고 `truncated`를 선언하며 부분 카운트를 큐 깊이인 척하지 않았다). 운영자 관점 [BACKFILL_GUIDE §7.2](../guide/BACKFILL_GUIDE.md).
 - **언제 재사용**: 「미리보기」·「영향 범위」·「대기열 깊이」 류 전부. 판별 질문 — **「이 수를 정확히 내려면 작업 자체를 해야 하는가?」** 그렇다면 정확한 수를 약속하지 마라.
 - **함정**:
   - 🔴 **정확한 척하는 수가 이 항목이 막는 대상 전부다.** 표본 200행에서 나온 「12건」은 테이블에 대한 12건이 아닌데, 종류를 안 붙이면 읽는 사람에게 그 둘은 **같은 글자**다.
@@ -1788,7 +1788,7 @@
 
 ### ⭐ **"최신 N개"를 찾는 걸음은 발견과 재구성을 나누고, 커서 원시는 한 모듈에만 둔다** (2026-08-11 등록 · `dab9152`+`2630790`)
 - **무엇**: "테이블에서 최신 N개의 *다른* 무언가(그룹·행)를 찾아라"는 얼핏 `LIMIT N`처럼 보이지만, 그룹핑 키가 페이지 경계와 안 맞으면(예: 트랜잭션 하나가 파일 하나라 100,000행이 그룹 1개) 목표한 N개를 채우려면 훨씬 더 많은 행을 걸어야 한다. 이때 **DISCOVERY**(걷는 것 — `(정렬키, id)` 위 인덱스 스캔으로 세 컬럼만 읽고 **하드 스캔 천장**을 갖는다)와 **HYDRATION**(찾은 것만 실제로 fetch+검증하는 두 번째 패스, 상한은 `N × 그룹당_보관수`)을 분리하라. 합쳐서 한 패스로 짜면, 걷다가 버릴 행까지 전부 무거운 역직렬화(pydantic 등)를 거치게 된다.
-- **어디**: `server/audit_cache.py`(discovery/hydration 두 단계, `RECENT_DEFAULTS`의 `recent_max_scan_rows`가 걸음의 천장) · **커서 원시는 `server/audit_history.py`가 단독 소유**(`encode_cursor`/`decode_cursor`/`order_desc`/`apply_cursor`/`fetch_page`) — `audit_cache`는 이것을 **재사용**하고 재구현하지 않는다. 같은 두 단어(`truncated`/`next_cursor`)가 §7 아래 「닫힌 어휘」 규율처럼 세 소비자(전역 캐시·행 이력·셀 이력)에서 동일하게 쓰인다.
+- **어디**: `server/admin/audit_cache.py`(discovery/hydration 두 단계, `RECENT_DEFAULTS`의 `recent_max_scan_rows`가 걸음의 천장) · **커서 원시는 `server/admin/audit_history.py`가 단독 소유**(`encode_cursor`/`decode_cursor`/`order_desc`/`apply_cursor`/`fetch_page`) — `audit_cache`는 이것을 **재사용**하고 재구현하지 않는다. 같은 두 단어(`truncated`/`next_cursor`)가 §7 아래 「닫힌 어휘」 규율처럼 세 소비자(전역 캐시·행 이력·셀 이력)에서 동일하게 쓰인다.
 - **언제 재사용**: "최신 N개"·"고유값 상위 M개"·"그룹당 대표 1건" 같은 **그룹핑 단위가 저장 단위와 다른** 모든 조회. 판별 질문 — **「내가 원하는 개수의 단위와 내가 걸어야 하는 행의 단위가 같은가?」** 다르면 이 형태를 써라.
 - **함정**:
   - 🔴 **`LIMIT`을 인덱스의 대체재로 쓰지 마라 — 아무것도 하지 않는다.** `LIMIT 201`이 이미 쿼리에 있어도, 정렬 리딩 인덱스가 없으면 플랜은 여전히 **전체 후보를 스캔+정렬한 뒤에** 자른다(실측: 300,019행 매치에 `LIMIT 201`을 붙여도 9,421 buffers/121.6ms — 인덱스가 있으면 207 buffers/0.40ms). `LIMIT`은 와이어와 역직렬화 비용만 줄이고, DB 쪽 스캔 비용은 인덱스가 줄인다. 둘 다 있어야 하고 **어느 하나도 다른 하나의 대체재가 아니다.**

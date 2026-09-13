@@ -584,7 +584,7 @@ tape slot → dt slot 매핑은 **개별로는 미지**지만 **순서를 보존
 |---|---|---|
 | 맵 테이블은 `business_key_val` 하나에 셀이 여러 행인가 | **아니다** | `dt_map`의 `composite_key_source = [dt_job, dt_x, dt_y]` ― **키 1개 = 셀 1개**. 「한 키에 437행」은 **맵 키**(`map_key_columns`, 맵 한 장의 범위)와 **행 키**를 혼동한 것이다 |
 | 체인이 셀 하나를 주소할 수 있는가 | **있다** | `crud.apply_batch_updates`가 **복합 키를 대신 조립**한다(`crud.py:1051-1059`) ― 단 `business_key_val`을 **비우고** `composite_key_source` 컬럼을 **전부** `updates`에 담았을 때만 |
-| 체인이 `replace_map`을 쓸 수 있는가 | 🔴 **없다** | `replace_map`은 **배치**에 있고(`schemas.py:138`) `chain_ingestion_worker.py:437-441`이 배치를 직접 만들며 **설정하지 않는다**. 매퍼의 반환값 중 `updates`만 소비된다(`:410-411`) |
+| 체인이 `replace_map`을 쓸 수 있는가 | 🔴 **없다** | `replace_map`은 **배치**에 있고(`schemas.py:138`) `chain/ingestion_worker.py:437-441`이 배치를 직접 만들며 **설정하지 않는다**. 매퍼의 반환값 중 `updates`만 소비된다(`:410-411`) |
 
 **결론**: 체인은 맵 셀을 **업서트**할 수 있으나 **낡은 셀을 지울 수 없다.** `dt_job`의 셀 집합이 줄어들지 않는다는 것이 보장될 때만 안전하다. 그래서 규칙은 **이번 라운드에도 `enabled: false`**로 둔다 ― 지시대로이자, 실측이 그 판단을 뒷받침한다.
 **동봉 샘플의 버그도 함께 고쳤다**: 종전 `dt_map_mapper.py.sample`은 `business_key_val = dt_job`을 보내 **한 job의 모든 셀을 한 행으로 접었고**, `dt_map`에 없는 컬럼을 써서 전부 조용히 탈락했을 것이다(`crud.py:1079-1083`).
@@ -603,7 +603,7 @@ tape slot → dt slot 매핑은 **개별로는 미지**지만 **순서를 보존
 
 ### 10-4. `enrichment_rules.json`에는 **주석 채널이 없다**
 
-`ontology_mapping.json`은 `__` 접두 키를 어디서나 허용하고 `virtual_join_rules.json`은 `_` 접두 키를 건너뛴다. **`enrichment_rules.json`은 최상위 키를 전부 규칙으로 보고** 문자열이면 `rule must be an object`로 거부한다(`enrichment_config.py:352-357`). 실측으로 확인했고, 그래서 파일 안내는 **각 규칙 안의 `__comment`**에 넣었다(규칙 내부의 미지 키는 무시된다).
+`ontology_mapping.json`은 `__` 접두 키를 어디서나 허용하고 `virtual_join_rules.json`은 `_` 접두 키를 건너뛴다. **`enrichment_rules.json`은 최상위 키를 전부 규칙으로 보고** 문자열이면 `rule must be an object`로 거부한다(`enrichment/config.py:352-357`). 실측으로 확인했고, 그래서 파일 안내는 **각 규칙 안의 `__comment`**에 넣었다(규칙 내부의 미지 키는 무시된다).
 
 ### 10-5. 좌표 프레임 프리미티브는 **이미 있다** ― 새로 쓰지 않았다
 

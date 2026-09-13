@@ -1102,7 +1102,7 @@ const table = (key === shown.key) ? shown.table : VALID_DIE_TABLE;
 
 ### 5.8 로드 시 프리셋 라우팅 — 이 맵을 **어떤 규격으로 열 것인가** (F5 서버 절반 · `50bddda` · 2026-07-30)
 
-종전에는 모든 맵이 같은 기본 규격으로 열렸고, 랏 명명이 제품마다 다른 현장에서는 운영자가 **맵마다 손으로 규격을 다시 입력**했습니다. `GET /api/maps/preset-routing?table=&map_key=`(`server/map_preset_routing.py`)가 그 답을 **선언에서** 냅니다. 엔드포인트 계약 전문은 [architecture/backend §2](../architecture/backend.md), 선언 절차·키 사전은 [guide/config/map_overlay_config §2-bis](../guide/config/map_overlay_config.md)입니다. §5가 붙드는 것은 **정렬 계약과의 관계** 넷입니다.
+종전에는 모든 맵이 같은 기본 규격으로 열렸고, 랏 명명이 제품마다 다른 현장에서는 운영자가 **맵마다 손으로 규격을 다시 입력**했습니다. `GET /api/maps/preset-routing?table=&map_key=`(`server/maps/preset_routing.py`)가 그 답을 **선언에서** 냅니다. 엔드포인트 계약 전문은 [architecture/backend §2](../architecture/backend.md), 선언 절차·키 사전은 [guide/config/map_overlay_config §2-bis](../guide/config/map_overlay_config.md)입니다. §5가 붙드는 것은 **정렬 계약과의 관계** 넷입니다.
 
 > 🔑 **우선순위는 절대적입니다 — `wafer_map_metadata` > 라우팅 > 패널.**
 > §5.0이 말하는 대로 메타는 그 맵 프레임의 SSOT입니다. 규격이 이미 등록된 맵은 `status: meta_present` + `preset_key: null`로 답하므로 **클라가 저장된 규격을 덮는 것이 구조적으로 불가능**합니다. 이 판정을 클라 규율에 맡기지 않고 **서버가 강제**하는 이유는 규격이 `inside`를 바꾸고 `inside`가 저장 가능 집합을 바꾸기 때문입니다(§6.0-ter 적재 대조 게이트). 라우팅은 **메타가 아직 없는 맵의 첫 열림 기본값**일 뿐이고, 그 맵의 첫 Push가 메타를 등록하면(§4-bis.3) 그때부터 라우팅은 답하지 않습니다.

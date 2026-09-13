@@ -189,7 +189,7 @@ GET /api/ledger/gaps             「무엇이 아직 없나」 (인자 없으면
 ⚠️ **[2026-09-02 정정] 여기가 「둘이다」였다.** `gaps` 는 2026-08-31 에 붙었고 그날 다른 문서
 넷은 고쳐졌는데 이 파일만 빠졌다 — **입문서라 「전부 다」로 읽히는 자리**여서 특히 나쁘다.
 🔴 **수를 세는 문장은 라우트가 하나 늘 때마다 거짓이 된다.** 정본은
-`server/ledger_trace_router.py` 의 `@router.get` 전수다.
+`server/ledger/trace_router.py` 의 `@router.get` 전수다.
 
 ⚰️ **2026-08-28 에 은퇴한 것**: `subgraph/table` · `structure` · `trends` · `lot_map` ·
 `composition` · `siblings` · `kinds` · `selection/resolve`, 그리고 그 앞의 `trace` · `explore` ·

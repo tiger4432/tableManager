@@ -453,7 +453,7 @@ Returns the column contract a client needs to build a grid for one table.
 
 ## 6. Retroactive (Backfill) Admin Surface
 
-Four retroactive operations that previously existed only as CLIs get an inventory route, a count route and a trigger route. The registry (`server/retroactive.py`) is **pure dispatch** — every count calls the operation's own dry-run and every run calls the same function with `apply=True`, so no operation is reimplemented here.
+Four retroactive operations that previously existed only as CLIs get an inventory route, a count route and a trigger route. The registry (`server/admin/retroactive.py`) is **pure dispatch** — every count calls the operation's own dry-run and every run calls the same function with `apply=True`, so no operation is reimplemented here.
 
 All three routes are behind the shared admin token (`X-Admin-Token`). `POST .../run` is **strict**: it refuses with `503` when no token is configured, rather than falling back to open.
 

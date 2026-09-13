@@ -372,7 +372,7 @@ unknown Entity/column을 숨길 수 없다. 모든 오류는 `code`, 정확한 J
 대해서는 아무 말도 하지 않는다). 실제로 샘플 root 쪽 사본은 이미 **어디에도 없는 컬럼**으로
 갈라져 있었고 아무 검사도 그것을 잡지 못했다.
 
-🔴 **옮기면 실물 DB 대조가 공짜로 따라온다.** `server/schema_drift.py`(`_register_dynamic_models`)가
+🔴 **옮기면 실물 DB 대조가 공짜로 따라온다.** `server/admin/schema_drift.py`(`_register_dynamic_models`)가
 SQLAlchemy에 매핑된 표 전부를 훑는데, 여기에 `table_config.json`에서 만들어진 동적 표가
 포함된다. 즉 `table_config.json`에 적힌 컬럼이 DB에 없으면 **이미 잡힌다**. 원장 전용
 「선언 대 DB」 검사는 **만들지 않는다** — 검증기가 둘이면 둘이 어긋날 수 있고, 그것이 이

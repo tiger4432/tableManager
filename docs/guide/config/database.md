@@ -9,7 +9,7 @@
     malformed/keyless file -> logger "paths" ERROR naming the file, then fall through)
   consume: server/database/database.py (read ONCE at import -> SQLALCHEMY_DATABASE_URL, DB_URL_SOURCE; no hot reload)
   boot log: server/main.py right after "[paths]" line -> "[db] url source=... target=<password masked>"
-  launcher probe: server/process_supervisor.py _database_endpoint (same precedence, stdlib-only)
+  launcher probe: server/runtime/process_supervisor.py _database_endpoint (same precedence, stdlib-only)
 -->
 
 ## 1. 언제 이 파일을 만지는가

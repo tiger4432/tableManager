@@ -82,7 +82,7 @@
 ### D-4. `ingestion_settings.json` 리더 — **3곳**
 
 - **무엇이 중복인가**: 같은 파일을 읽어 dict로 돌려주는 10줄짜리 함수가 셋.
-- **몇 곳 (2, 실측 — 2026-09-07 에 셋에서 줄었다)**: `parsers/directory_watcher.py` `load_ingestion_settings`(원형) · `enrichment_candidates.py` `_load_ingestion_settings`. ⚰️ `map_meta_registrar.py` 의 사본은 자동 등록 은퇴와 «같이» 사라졌다 — 사본을 «합쳐서»가 아니라 «읽을 이유가 없어져서»다. 뒤 둘은 본문이 사실상 동일하다.
+- **몇 곳 (2, 실측 — 2026-09-07 에 셋에서 줄었다)**: `parsers/directory_watcher.py` `load_ingestion_settings`(원형) · `enrichment/candidates.py` `_load_ingestion_settings`. ⚰️ `map_meta_registrar.py` 의 사본은 자동 등록 은퇴와 «같이» 사라졌다 — 사본을 «합쳐서»가 아니라 «읽을 이유가 없어져서»다. 뒤 둘은 본문이 사실상 동일하다.
 - **어느 것이 정본인가**: `directory_watcher.load_ingestion_settings`. 나머지 둘은 **자기 docstring에 사본임을 명시**하고 있다.
 - **왜 아직 안 합쳤나** — **이유가 적혀 있고 타당하다**: `directory_watcher`를 import하면 **10줄짜리 파일 읽기 하나 때문에 체인 워커가 `watchdog`과 레거시 import shim을 통째로 끌어온다.**
 - **합칠 때의 함정**: 🔴 **정답은 「하나를 부르게 하기」가 아니라 「의존성 없는 모듈로 내리기」다** — `utils/time_format.py`가 정확히 그 이유로 만들어졌다(그 모듈 docstring이 근거의 정본). 사본을 지우고 `directory_watcher`를 import하게 만들면 **부작용을 새 프로세스 셋에 배달한다.** 그리고 **셋이 같은 기본값·같은 비-boolean 처리 자세를 유지해야** 한다 — `auto_register_map_meta` 계열 노브가 프로세스마다 다르게 해석되면 무음 발산이 된다.
@@ -91,7 +91,7 @@
 
 - **무엇이 중복인가**: UTC datetime → 현지 시각 문자열. 두 구현의 **답이 다르다.**
 - **몇 곳 (2, 실측)**: `utils/time_format.py`(정본 — naive는 UTC로 간주해 `astimezone(LOCAL_TIMEZONE)`) · `graph_sync_worker.py`(**타임존 변환이 아예 없다** — `dt.strftime(...)` 한 줄).
-- **어느 것이 정본인가**: `utils/time_format.to_local_str`. 소비자는 `main.py`(재수출 포함)와 `chain_ingestion_worker.py`.
+- **어느 것이 정본인가**: `utils/time_format.to_local_str`. 소비자는 `main.py`(재수출 포함)와 `chain/ingestion_worker.py`.
 - **왜 아직 안 합쳤나**: **이유 없음 — 그냥 안 했다.** `utils/time_format.py`가 분리될 때 이 사본이 함께 걷히지 않았다. ⚰️ **[2026-08-14 `2ec78b9`] 사본의 «집»이 은퇴했다** — `graph_sync_worker.py`는 프로세스 스택에서 빠졌고 모듈은 판정 ④의 코드 제거 라운드에서 파일째 사라진다. **이 D-5 항목은 그때 자동으로 닫힌다**(중복이 합쳐져서가 아니라 사본이 없어져서 — 두 결말은 대장에 다르게 적어야 한다).
 - **합칠 때의 함정**:
   - ✅ **지금은 호출자가 0이다**(`graph_sync_worker.py` 안에서 정의 줄 말고는 등장하지 않고, 밖에서 import하는 곳도 없다). 즉 **삭제가 안전하고, 그것이 옳은 조치다.**
@@ -134,7 +134,7 @@
 |---|---|---|
 | **정렬 변환의 두 번째 구현** — `bonding_plan.normalize_align`/`make_align_transform`(+`align_status_label`·`VALID_ROTATIONS`·`VALID_FLIPS`). 사본이 저장 좌표의 **bbox 상대값 규약을 반영하지 않아**, 원에 잘리는 실격자에서 거울 변환이 끼면 전 셀이 `2·minC`만큼 어긋났다 | `4ba13ae` (2026-07-27) — `map_overlay`의 프레임 합성 경로로 대체 | ✅ **회귀 테스트가 있다**: `server/tests/test_bonding_plan.py::test_deleted_transform_copy_is_gone`이 다섯 이름의 부활을 즉시 실패시킨다 |
 | **중복 프로브** — 조인 키 유일성을 `GROUP BY` 전수 스캔으로 재는 자체 게이트(`statement_timeout`·`incomplete`·3등급 모델·SAVEPOINT 봉쇄 일습) | `b6942ec` (2026-07-31) | `CREATE UNIQUE INDEX`가 **같은 진단을 더 정확히** 낸다(`Key (lot, slot)=(…) is duplicated`). 인덱스는 config가 아니라 DB에 살아 **영속**이므로 등급·스냅샷·예산이 필요 없다 |
-| **`server/scripts/reapply_chain.py`** — `chain_replay.py`의 R1과 같은 일을 하면서 `source_name="reapply_chain"`을 썼는데, 그 이름이 `SOURCE_PRIORITY`에 **미등재라 99로 떨어졌다**(등록된 모든 소스보다 아래). 옳은 값을 쓰고도 아무것에나 지고, R2로 철회하려면 그 이름을 알아야 했다 | `8f8be4b` (2026-07-31) | 소급 진입점의 정본은 [guide/BACKFILL_GUIDE](../guide/BACKFILL_GUIDE.md)의 결정표 하나다 |
+| **`server/scripts/reapply_chain.py`** — `chain/replay.py`의 R1과 같은 일을 하면서 `source_name="reapply_chain"`을 썼는데, 그 이름이 `SOURCE_PRIORITY`에 **미등재라 99로 떨어졌다**(등록된 모든 소스보다 아래). 옳은 값을 쓰고도 아무것에나 지고, R2로 철회하려면 그 이름을 알아야 했다 | `8f8be4b` (2026-07-31) | 소급 진입점의 정본은 [guide/BACKFILL_GUIDE](../guide/BACKFILL_GUIDE.md)의 결정표 하나다 |
 | **브로드캐스트 크기 임계 리터럴 `100`** — 발신 지점마다 `len(msg_items) > 100`을 자기 자리에 적고 있었다(`apply_batch_updates_endpoint` · `set_cell_priority_batch_endpoint` · `delete_cell_source_batch_endpoint` · `chain_ingestion_worker.process_chain_transaction_group`). **같은 클라 계약에 대한 하나의 판단인데 철자가 발신자 수만큼 있었고**, 이 코드베이스의 실제 실패 이력이 바로 「한 발신자만 고쳐지고 나머지가 옛 리터럴을 유지」다 | `25de4ae` (2026-08-06 P1b) — `event_constants.BROADCAST_ITEM_LIMIT` 단일 선언 | `MAX_NOTIFY_CREATED_LOGS`와 **같은 파일·같은 이유**. 🔴 **판정을 항목 구성 *앞*으로 옮길 수 있게 한 근거는 등식 하나다** — 구성 루프가 결과 항목마다 **무조건 하나씩** append하므로 `len(msg_items) == len(results)`. 그 루프에 `continue`가 생기면 등식이 깨지고 **판정을 되돌려야 한다.** 그물 `server/tests/test_discarded_merge_budget.py` · 서술 [backend §1.1](./backend.md) |
 
 ---
