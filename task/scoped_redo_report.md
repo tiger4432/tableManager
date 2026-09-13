@@ -42029,3 +42029,59 @@ server/mappers/*.py (소유자 파일, 추적 안 됨, 제가 «고칠 수 없�
 ⚠️ 커밋은 «제 두 파일만» 담았습니다 — 공유 트리에 응용 레인의 문서 수정 «55개»가 미커밋으로 있어서, 경로를 명시해 제 것만 올렸습니다.
 
 > 📌 **[09-13 14:47] 이 채널의 미답 질문: «없음».** 큐: S-215 · S-214 (둘 다 «뒤»로 잡혀 있습니다).
+
+---
+
+## 📋 [09-13 14:58] S-215 블록 — 「맵퍼가 import 해도 되는 표면」을 «재서» 냈습니다 (코드 0줄)
+
+지시받은 둘(패키지화·S-216)이 닫혔고 큐의 다음이 S-215 라 그 «입력»을 먼저 잽니다. 설계는 판정 뒤에 짓겠습니다.
+
+### 실측 — 오늘 그 표면은 «모듈 10 · 이름 43» 입니다
+```
+alignment_view_service  2   declared_alignment_rule · resolve_alignment_view
+chain_bindings          6   ColumnBindingRefused · declared_columns · model_column · resolve_column
+                            · resolve_decision_c… 외
+dt_frame_transform      4   apply_dt_equations · core_equations · dt_equations · standard_meta
+dt_map_derivation      10   CONFIRMED_JOIN_RULE · DerivationRefused · FRAME_JOIN_RULE
+                            · REFUSE_SCOPE_TOO_LARGE · SCOPE_R… 외
+map_alignment           8   INDEX_AXIS_RANKING · METRIC_INDEX · PLACEMENT_ANCHOR · STATE_SCORED
+                            · _cells_of · _load_metas 외
+map_overlay             5   MAX_VALID_DIE_CELLS · VALID_DIE_REF_KEY · apply_valid_die_ref
+                            · load_map_meta · load_overlay…
+map_meta_registrar      2   compose_map_id · meta_business_key
+notation_norm           3   DEFAULT_RULES · fold_notation · fold_notation_sql
+mapper_sdk              2   BaseMapper · payloads_to_df      <- «SDK 로 들어오는» 것은 오늘 둘뿐입니다
+event_constants         1   slow_warn_ms
+(그리고 `database.models`)
+그중 «상수»가 11, «사설(밑줄)»이 «2»
+```
+
+### 🔴 그 «둘»이 이 라운드의 진짜 문제입니다
+```
+map_alignment._cells_of · map_alignment._load_metas
+=> 소유자의 맵퍼가 «밑줄 이름»을 씁니다. 즉 그 모듈의 «내부»가 이미 표면입니다
+=> SDK 를 세워도 이 둘이 남아 있으면 `map_alignment` 의 내부는 «여전히 못 움직입니다»
+```
+🔵 나머지 41 은 공개 이름이라 SDK 로 «올릴» 수 있습니다. 사설 둘은 셋 중 하나여야 합니다:
+```
+㉠ 공개 계약으로 «승격»       이름을 바꿔(`cells_of`) SDK 에 올리고, 옛 이름은 «약속 목록»에 남김
+                            -> 맵퍼 무수정. 다만 그 둘이 «설계상 내부»였다면 계약이 늘어납니다
+㉡ 맵퍼가 «안 쓰게» 대체물 제공  그 둘이 하는 일을 SDK 함수 하나로 덮고, 소유자께 «한 줄»로 알림
+                            -> 맵퍼 «수정 필요». 「사용자 스크립트 무수정 원칙」과 부딪힙니다
+㉢ 그대로 두고 `map_alignment` 를 «영구 최상위»로
+                            -> S-215 가 「내부를 나중에 옮길 수 있게」를 목표로 하는데 그 하나는 못 옮깁니다
+제 권고: ㉠ — 「이미 계약인 것을 계약이라 적는 것」이고, 무수정 원칙을 안 건드립니다.
+        그리고 그 둘이 «왜» 내부였는지는 제가 모릅니다(소유자 맵퍼의 사정) — ㉡ 을 고르시면
+        무엇으로 덮을지는 그 둘의 호출부를 보고 정해야 합니다
+```
+
+### 그리고 이 블록이 제안하는 «게이트»
+```
+① 약속 목록(11 모듈)은 이미 시험이 붙듦 — 여기에 «이름 단위» 한 겹: 맵퍼가 쓰는 43 이
+   전부 「SDK 또는 약속 모듈의 «공개» 이름」인지. 사설이 새로 하나 늘면 그때 빨개집니다
+② 수는 «안 적습니다» — 이 박스의 맵퍼 수는 운영을 말하지 않습니다. 집합 관계만
+```
+⚠️ 바깥 `MAPPING_GUIDE` 의 그 절은 응용 몫이고, 위 표가 그 절의 «입력»입니다.
+
+> 📌 **[09-13 14:58] 이 채널의 미답 질문: «하나» — 사설 둘(`_cells_of`·`_load_metas`)의 처분 ㉠/㉡/㉢ (제 권고 ㉠).**
+> 🔵 그리고 앞 둘은 닫혔습니다: 패키지화 `aa77a2fe`(스위트 6,151 초록) · S-216 `09217e2e`. 둘 다 «재기동 필요»입니다.
