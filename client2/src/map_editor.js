@@ -4706,10 +4706,7 @@ export function renderLegendTable() {
     const tdVal = document.createElement('td');
     const inputVal = document.createElement('input');
     inputVal.type = 'text';
-    inputVal.className = 'glass-input';
-    inputVal.style.padding = '6px 10px';
-    inputVal.style.fontSize = '0.9rem';
-    inputVal.style.width = '100%';
+    inputVal.className = 'glass-input legend-value-input';
     inputVal.value = item.value;
     inputVal.addEventListener('change', (e) => {
       const oldVal = item.value;
@@ -4763,11 +4760,6 @@ export function renderLegendTable() {
     inputDesc.className = 'glass-input legend-desc-input';
     inputDesc.rows = 1;
     inputDesc.placeholder = '실험 split 조건 서술…';
-    inputDesc.style.padding = '6px 10px';
-    inputDesc.style.fontSize = '0.9rem';
-    inputDesc.style.width = '100%';
-    inputDesc.style.resize = 'none';
-    inputDesc.style.overflow = 'hidden';
     inputDesc.style.lineHeight = '1.4';
     inputDesc.style.fontFamily = 'inherit';
     inputDesc.style.display = 'block';
@@ -4791,12 +4783,6 @@ export function renderLegendTable() {
     // 마지막 수정자·시각 (서버 registry 메타 — 미저장 시 '서버 미저장')
     const metaLine = document.createElement('div');
     metaLine.className = 'legend-meta-line';
-    metaLine.style.fontSize = '0.7rem';
-    metaLine.style.color = 'var(--text-muted)';
-    metaLine.style.marginTop = '3px';
-    metaLine.style.whiteSpace = 'nowrap';
-    metaLine.style.overflow = 'hidden';
-    metaLine.style.textOverflow = 'ellipsis';
     metaLine.textContent = formatLegendMetaText(legendMeta[item.value]);
     tdDesc.appendChild(metaLine);
 
@@ -4834,7 +4820,6 @@ export function renderLegendTable() {
     const tdDel = document.createElement('td');
     const btnDel = document.createElement('button');
     btnDel.className = 'glass-page-btn btn-delete hover-danger';
-    btnDel.style.padding = '2px 6px';
     btnDel.innerHTML = '&times;';
     btnDel.addEventListener('click', () => {
       if (legend.length <= 1) {

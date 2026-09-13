@@ -916,3 +916,37 @@
   color: var(--warning);
   font-weight: 600;
 }
+
+/* ── 범례 편집기의 세 부품 (C-99 ④) ────────────────────────────────────────────────
+   실측 2026-09-13: 이 세 클래스는 요소에 붙어 있는데 저장소 전체에 규칙이 «0 건»이었고,
+   겉모양이 전부 `map_editor.js` 의 `.style.x =` 에서 왔습니다. 이름만 있는 클래스는 시트가
+   그 부품에 대해 «아무 말도 못 한다»는 뜻이고, 그것이 「인라인이 스타일시트를 이긴다」의
+   극단입니다. 값은 옮기면서 가장 가까운 토큰으로 붙였습니다. */
+/* 🔴 복합 선택자입니다. 같은 특이도로 적으면 «집니다» — `style.css` 가 이 시트 «뒤»에
+   실리고, `.glass-input` 이 같은 칸을 선언합니다(실측: 옮기고 나니 8px 14px 가 이기고
+   6.8/10.2 가 안 먹었습니다). 종전에는 «인라인»이 그것을 이기고 있었고, 그 6/10 은
+   「범례 줄은 좀 더 좁게」라는 의도였습니다. 의도를 지키는 자리는 인라인이 아니라 여기입니다. */
+.glass-input.legend-value-input,
+.glass-input.legend-desc-input {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--fs-body);
+}
+.glass-input.legend-desc-input {
+  resize: none;
+  overflow: hidden;
+}
+.legend-meta-line {
+  margin-top: var(--space-1);
+  font-size: var(--fs-tag);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.glass-page-btn.btn-delete {
+  padding: var(--space-1) var(--space-2);
+}
+.legend-count-cell {
+  color: var(--text-muted);
+}

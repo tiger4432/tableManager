@@ -3619,8 +3619,7 @@ function ovCard({ status, title, metrics, events, emptyText, onOpen, extraButton
 
   (extraButtons || []).forEach(({ label, onClick }) => {
     const b = document.createElement('button');
-    b.className = 'admin-btn btn-primary';
-    b.style.cssText = 'padding: 4px 12px; font-size: 0.78rem;';
+    b.className = 'admin-btn btn-primary admin-btn--sm';
     b.textContent = label;
     b.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -3630,8 +3629,7 @@ function ovCard({ status, title, metrics, events, emptyText, onOpen, extraButton
   });
 
   const openBtn = document.createElement('button');
-  openBtn.className = 'admin-btn';
-  openBtn.style.cssText = 'padding: 4px 12px; font-size: 0.78rem;';
+  openBtn.className = 'admin-btn admin-btn--sm';
   openBtn.textContent = '탭 열기 →';
   openBtn.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -4136,15 +4134,10 @@ function selectWorkspaceRow(ws) {
     tracebackViewer.innerHTML = '';
     ws.custom_scripts.forEach(s => {
       const div = document.createElement('div');
-      div.style.marginBottom = '10px';
-      div.style.display = 'flex';
-      div.style.alignItems = 'center';
-      div.style.justifyContent = 'space-between';
-      div.style.borderBottom = '1px solid var(--border-color)';
-      div.style.paddingBottom = '8px';
+      div.className = 'ws-script-row';
       div.innerHTML = `
-        <span>📄 <strong style="color: var(--text); font-family: var(--font-mono);">${s}</strong> (Active Custom Parser)</span>
-        <button class="admin-btn btn-primary btn-inline-edit-script" data-script="${s}" style="padding: 2px 8px; font-size: 0.75rem;">🛠️ Edit Parser</button>
+        <span>📄 <strong>${s}</strong> (Active Custom Parser)</span>
+        <button class="admin-btn btn-primary admin-btn--sm btn-inline-edit-script" data-script="${s}">🛠️ Edit Parser</button>
       `;
 
       const btn = div.querySelector('.btn-inline-edit-script');
