@@ -84,14 +84,26 @@ def test_a_relation_that_declares_none_is_unchanged(catalog):
         entry = catalog[name]
         if str(entry.get("kind") or "table") == "view":
             # 🔴 A VIEW HAS NO FRAMEWORK COLUMNS TO BE UNCHANGED BY (S-186). It is built
-            # from its declared columns alone, so its mapped key is its declared
-            # `business_key` — and where a view DOES declare `row_id` the key stays
-            # `row_id` (판정 296), which the sibling assertion above already covers.
+            # from its declared columns alone, and its mapped key is the SAME three-step
+            # answer the read path gives (`main.total_order_keys`): `row_id`, else the
+            # declared `business_key`, else `composite_key_source` (S-229-b) - and where a
+            # view DOES declare `row_id` the key stays `row_id` (판정 296), which the
+            # sibling assertion above already covers.
             #
-            # ⚠️ Split rather than loosened: asserting 「row_id or business_key」 for
-            # everything would stop this test noticing a real table that lost its PK.
-            expected = [str(entry.get("business_key") or
-                            list(entry.get("column_types") or {"?": 1})[0])]
+            # ⚠️ THE COMPOSITE STEP IS NOT COSMETIC. Mapped on one nominated column,
+            # `bonding_core_lot` folded 3,658 rows onto 160 objects and a page of 1,000 came
+            # back as 41 - the model and the sort disagreeing about identity.
+            #
+            # ⚠️ Split rather than loosened: asserting 「any of the three」 for everything
+            # would stop this test noticing a real table that lost its PK.
+            declared_columns = list(entry.get("column_types") or {"?": 1})
+            composite = [str(part) for part in (entry.get("composite_key_source") or ())]
+            if entry.get("business_key") in declared_columns:
+                expected = [str(entry["business_key"])]
+            elif composite and all(part in declared_columns for part in composite):
+                expected = composite
+            else:
+                expected = [str(declared_columns[0])]
             assert [c.name for c in table.primary_key] == expected, name
             continue
         assert [c.name for c in table.primary_key] == ["row_id"], name
