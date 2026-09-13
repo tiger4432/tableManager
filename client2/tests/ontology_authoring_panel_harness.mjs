@@ -699,13 +699,16 @@ const renderDraft = (plan) => {
 {
   const RUN = { status: 'ok', rows_read: 12, molecules: 3, atoms: 9, sentences: [],
                 refusal: null, relation: 'dt_job' };
-  const draw = (run, blockers) => {
+  const draw = (run, blockers, redo) => {
     const root = element('div');
     // `target_key` is what puts the EDITOR on screen (the view asks whether the
     // selection and the draft are the same declaration), and the controls live in it.
     const draft = { target_kind: 'source_plan', target_id: 'dt_job',
                     target_key: 'source_plan|dt_job' };
     if (blockers !== undefined) draft.activation_blockers = blockers;
+    // C-96. The server puts this ON the draft record (`config_explorer_service.py`), so the
+    // fixture puts it where the server does rather than inventing a second route for it.
+    if (redo !== undefined) draft.redo = redo;
     renderOntologyExplorer(root, {
       // the editor -- and so the Save control -- lives on the 원본 JSON tab
       ...stateWith(PLAN), detailTab: 'raw', draft, editorText: JSON.stringify(DOCUMENT),
@@ -748,6 +751,47 @@ const renderDraft = (plan) => {
   // the control it sits beside still exists, and there is still only one of it
   check('G9 Save is still the one primary control',
     byClass(draw(undefined, []), 'oe-editor-action-primary').length === 1);
+
+  // ③ what this save would make RE-RUN, beside the same button (C-96 / S-143)
+  //
+  // 🔴 THIS SEAT IS WHERE IT BELONGS BECAUSE SAVE IS THE WRITE. 「저장이 곧 설정 파일 반영」 --
+  //    there is no 활성화 button any more, so the cost has to be readable BEFORE the press, and
+  //    beside the other answer to the same question (what would refuse this save).
+  const costText = (root) =>
+    byClass(root, 'oe-editor-cost').map((x) => x.textContent).join('|');
+  check('G10 a counted redo says how many sources and the server`s own row name',
+    costText(draw(undefined, [], { op: 'ledger_backfill', params: { source: 'dt_job' },
+                                   sources: ['dt_job'],
+                                   count: { affected: 1234, affected_label: '아직 번역되지 않은 행',
+                                            count_kind: 'exact' } }))
+      === '소스 1 · 아직 번역되지 않은 행 1234',
+    costText(draw(undefined, [], { sources: ['dt_job'], count: { affected: 1234,
+      affected_label: '아직 번역되지 않은 행', count_kind: 'exact' } })));
+  // 🔴 A NUMBER THAT IS NOT EXACT SAYS SO, and an exact one does not say 「exact」 -- the first
+  //    is the lie this repository keeps closing, the second is prose.
+  check('G11 a sample carries the server`s word for what kind of number it is',
+    costText(draw(undefined, [], { sources: ['a', 'b'],
+                                   count: { affected: 50, affected_label: '행',
+                                            count_kind: 'sample' } }))
+      === '소스 2 · 행 50 · sample');
+  // 🔴 TWO EMPTIES, AND THEY ARE NOT THE SAME WORD. 「셀 수 있으나 이 자리에서 안 셌다」 versus
+  //    「정말 없다」 -- an operator does something different about each, so the server's word
+  //    travels untranslated.
+  check('G12 「not counted here」 is carried as the server wrote it',
+    costText(draw(undefined, [], { op: null, params: null, sources: ['a', 'b', 'c'],
+                                   count: { absence: 'not_counted_here' } }))
+      === '소스 3 · not_counted_here');
+  check('G13 ... and 「truly none」 is a different word, not the same empty',
+    costText(draw(undefined, [], { op: null, params: null, sources: [],
+                                   count: { absence: 'truly_none' } }))
+      === '소스 0 · truly_none');
+  // 🔴 THE THIRD STATE, AND THE REASON THIS FUNCTION EXISTS. `redo: null` is 「nobody asked」 --
+  //    no session on the request -- and drawing 「다시 돌 것 없음」 there would turn a question
+  //    nobody put into an answer. Same shape as G8 one group above.
+  check('G14 a redo nobody asked for draws nothing at all',
+    byClass(draw(undefined, [], null), 'oe-editor-cost').length === 0);
+  check('G15 ... and so does an absent key, which is the older server',
+    byClass(draw(undefined, []), 'oe-editor-cost').length === 0);
 }
 
 // --- H. R2: how many rows, what execution will do, and every issue's code ----------

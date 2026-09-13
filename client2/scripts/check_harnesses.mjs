@@ -1151,7 +1151,7 @@ const FLOORS = new Map([
   // 「나머지는 들어가겠지」, which is the promise the server was forbidden to make, so a
   // screen that omits it makes that promise on the server's behalf. H5/H6 hold the two
   // silent states, and I3 holds that a code-less issue draws no code rather than a blank.
-  ['ontology_authoring_panel_harness.mjs', 84],
+  ['ontology_authoring_panel_harness.mjs', 90],
   // New with the N2 round (overlay markers coloured by the overlay cell's own value). Same
   // rule: floor is the count it reports on the commit that introduces it.
   // 70 as of 2026-08-04: A12 (loading an overlay REGISTERS its values, so the colouring this

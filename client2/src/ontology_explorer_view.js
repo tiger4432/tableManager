@@ -1,3 +1,4 @@
+import { redoCostText } from './redo_cost.js';
 import { isDraftRevisionEditable, declarationIdFor, fieldOpensByDefault }
   from './ontology_explorer_store.js';
 import { commitTree } from './dom_patch.js';
@@ -695,6 +696,15 @@ function renderRaw(state) {
                           ? state.draft.activation_blockers.join(' · ')
                           : '막는 것 없음'));
     }
+    // 🔴 C-96 (S-143). 「이 저장이 무엇을 다시 돌리나」. 저장이 «곧» 설정 파일 반영이라 이 수는
+    //    누르기 «전»에 보여야 하고, 그래서 막는 것 옆입니다 — 같은 물음의 두 답입니다
+    //    (무엇이 막나 · 무엇이 다시 도나).
+    //    ⚠️ 안 그리는 경우가 «둘»이고 둘 다 옳습니다: 서버가 안 물었으면(`redo` 가 null) 이
+    //       화면은 비용에 대해 «아무 말도 하지 않습니다» — 「없음」이라고 적으면 안 물어본 것을
+    //       답으로 만듭니다. 그리고 컴파일 안 된 초안에도 비용이 «없습니다»(서버가 일부러
+    //       안 싣습니다). 거절 옆의 수는 돌지 않을 것의 비용이라 거짓입니다.
+    const cost = redoCostText(state.draft.redo);
+    if (cost) controls.append(h('span', 'oe-editor-cost', cost));
     // 🔴 DELETE WHERE THE FILE HOLDS IT, WHICH IS NOT THE SAME AS "IN THE INDEX".
     // This used to require a selection, so an UNREAD declaration -- visible, in the file,
     // not in the snapshot -- had no delete button. That was a dead end with no other exit:
