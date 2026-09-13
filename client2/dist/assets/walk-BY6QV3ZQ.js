@@ -21,6 +21,19 @@ import"./tokens-D5tlFQmo.js";import{A as e,C as t,D as n,E as r,O as i,S as a,T 
   font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; }
 .wk-check.is-on { background: var(--accent-soft, rgba(37, 99, 235, 0.10)); }
 .wk-check input[type="checkbox"] { width: 22px; height: 22px; flex: none; }
+/* 🔴 고르는 목록은 «폭»을 씁니다. 높이 44 는 손가락이라 그대로이고, 한 줄에 하나씩 세우는
+   것만 그만둡니다 — 실측(480px 틀): 폼 1,623px 중 1,214px 가 체크박스 23줄이고, 줄마다
+   438px 중 열 글자만 씁니다. 390px 휴대폰에서 「걸음」까지 두 화면 반을 내려야 했습니다.
+   ⚠️ 고르는 상자만 고릅니다 — :has(.wk-check) 하나입니다. 키 줄과 걸음 손잡이는 체크박스가 없어서
+      선택자에 «걸리지도» 않고, 그래서 렌더러는 한 글자도 안 바뀝니다.
+   🔴 칸은 «자기 이름만큼» 자랍니다(flex 0 1 auto) — 고정 폭으로 나누면 긴 이름이 잘리고,
+   잘린 이름은 읽을 방법이 없습니다(이 폼에 hover 가 없습니다 — 휴대폰입니다). 최소 9.5em 은
+   손가락이 옆 칸을 안 누르게 하는 바닥이고, 화면보다 긴 이름만 마지막 수단으로 잘립니다. */
+.wk-field:has(.wk-check) { flex-flow: row wrap; column-gap: 6px; }
+.wk-field:has(.wk-check) > .wk-label,
+.wk-field:has(.wk-check) > .wk-note { flex: 1 0 100%; }
+.wk-check { flex: 0 1 auto; min-width: 9.5em; max-width: 100%; }
+.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .wk-go { width: 100%; border: 0; border-radius: 8px;
   background: var(--accent, #2563eb); color: #fff; font-weight: 600; }
