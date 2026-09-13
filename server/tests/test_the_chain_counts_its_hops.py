@@ -103,7 +103,7 @@ def test_the_worker_sets_it_once_and_resets_it():
     chain's at all."""
     import inspect
 
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     # 판정 193 moved this body behind an `asyncio.to_thread` wrapper that carries the
     # public name, so the source to read is the sync function that still holds the work.
@@ -116,7 +116,7 @@ def test_the_worker_sets_it_once_and_resets_it():
 def test_the_depth_is_one_more_than_what_woke_it():
     import inspect
 
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     body = inspect.getsource(worker._process_chain_transaction_group_sync)
     assert "incoming_depth + 1" in body
@@ -130,7 +130,7 @@ def test_the_refusal_is_in_one_place_and_is_not_silent():
     nothing is the failure this mechanism replaces."""
     import inspect
 
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     predicate = inspect.getsource(worker._rule_accepts_event)
     assert event_constants.CHAIN_DEPTH_KEY not in predicate
@@ -148,7 +148,7 @@ def test_the_refused_row_is_finished_not_left_pending():
     behind it -- the poisoned-row defect, reintroduced by a new feature."""
     import inspect
 
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     loop = inspect.getsource(worker.start_chain_ingestion_worker)
     head = loop.split("[Chain Depth]", 1)[1][:600]
@@ -162,7 +162,7 @@ def test_the_static_cycle_check_is_untouched():
     second before the first is shown to bite opens a real unbounded loop."""
     import inspect
 
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     body = inspect.getsource(worker._validate_chain_cascade_graph)
     assert "cycle" in body and "raise" in body

@@ -61,12 +61,12 @@ def test_the_two_words_are_distinct_and_not_new():
 def test_the_words_were_borrowed_rather_than_coined():
     """🔵 THE SAME SPELLINGS THIS CODEBASE ALREADY USES. Asserted so a later rename to
     something prettier has to notice that three other modules disagree with it."""
-    import ledger_trace
+    from ledger import trace
 
-    assert event_constants.RETROACTIVE_READ_READY in ledger_trace.COVERAGE_STATES
-    import enrichment_candidates
+    assert event_constants.RETROACTIVE_READ_READY in trace.COVERAGE_STATES
+    import enrichment.candidates
 
-    assert enrichment_candidates.EXPECT_UNKNOWN == event_constants.RETROACTIVE_READ_UNKNOWN
+    assert enrichment.candidates.EXPECT_UNKNOWN == event_constants.RETROACTIVE_READ_UNKNOWN
 
 
 # ------------------------------------------------------------------- both branches speak

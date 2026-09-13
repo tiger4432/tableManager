@@ -561,8 +561,8 @@ def _table_config_refusal(code: str, path: str, message: str):
 
 def chain_rules_path() -> str:
     """Where `chain_rules.json` lives. Read from the worker, never respelled here."""
-    import chain_ingestion_worker
-    return chain_ingestion_worker.RULES_PATH
+    from chain import ingestion_worker
+    return ingestion_worker.RULES_PATH
 
 
 def chain_rule_raw_view(name: str = None) -> dict:
@@ -687,8 +687,8 @@ def save_chain_rule_raw(name: str, declaration, base: str) -> dict:
     # A DIFFERENT AXIS, not a second opinion: this one reads the WHOLE set and refuses a
     # cycle of opt-in chain triggers, which no single rule can be asked about.
     try:
-        import chain_ingestion_worker
-        chain_ingestion_worker._validate_chain_cascade_graph(rules)
+        from chain import ingestion_worker
+        ingestion_worker._validate_chain_cascade_graph(rules)
     except Exception as exc:                                   # noqa: BLE001
         raise _table_config_refusal(
             "chain_cycle", f"rules.{name}", str(exc)) from exc
@@ -1098,7 +1098,7 @@ def ingestion_view(db, declared) -> dict:
                 # meaning (`ledger_trace._unaccounted` states it): 0 ordinary, >0 refusals
                 # counted before the column existed, <0 a real bookkeeping fault. Imported,
                 # never respelled - two spellings would disagree about a fault.
-                from ledger_trace import _unaccounted
+                from ledger.trace import _unaccounted
                 entry["refusals_unaccounted"] = _unaccounted(
                     {"molecules_refused": row.get("molecules_refused")}, reasons)
             rows.append(entry)

@@ -37,8 +37,8 @@ import uuid
 import anyio
 import pytest
 
-import enrichment_backfill as bf
-import enrichment_config
+import enrichment.backfill as bf
+import enrichment.config
 from database import crud, models, schemas
 
 BKFL_TABLES = {
@@ -140,7 +140,7 @@ def bkfl_env(db_session, tmp_path, monkeypatch):
 
     rules_path = tmp_path / "enrichment_rules.json"
     rules_path.write_text(json.dumps(RULES_FILE), encoding="utf-8")
-    monkeypatch.setattr(enrichment_config, "ENRICHMENT_RULES_PATH", str(rules_path))
+    monkeypatch.setattr(enrichment.config, "ENRICHMENT_RULES_PATH", str(rules_path))
     return db_session
 
 
@@ -163,10 +163,10 @@ def _seed_source(db, rows, tx_id=None, silent=True):
 def _run_chain_for_tx(db, tx_id):
     """Process one transaction's outbox events through the REAL chain path -
     used to create the 'already derived' baseline."""
-    from chain_ingestion_worker import process_chain_transaction_group
+    from chain.ingestion_worker import process_chain_transaction_group
     from database.models import DatabaseOutbox
 
-    rules = enrichment_config.load_enrichment_chain_rules(known_tables=crud.TABLE_CONFIG)
+    rules = enrichment.config.load_enrichment_chain_rules(known_tables=crud.TABLE_CONFIG)
     assert rules, "enrichment chain rules must be synthesized"
 
     events = db.query(DatabaseOutbox).filter(
@@ -396,8 +396,8 @@ def test_apply_outbox_events_do_not_retrigger_rule(bkfl_env):
     # ...but running the REAL chain path over them is a no-op for this rule:
     # its trigger table is the SOURCE table, and these events are on the
     # derived table -> no re-trigger, no cycle.
-    from chain_ingestion_worker import process_chain_transaction_group
-    rules = enrichment_config.load_enrichment_chain_rules(known_tables=crud.TABLE_CONFIG)
+    from chain.ingestion_worker import process_chain_transaction_group
+    rules = enrichment.config.load_enrichment_chain_rules(known_tables=crud.TABLE_CONFIG)
     derived_before = [(r.row_id, r.chip_count) for r in _derived_rows(db)]
 
     async def run():
@@ -524,14 +524,14 @@ def test_one_predicate_gates_both_row_creation_and_candidate_resolution(bkfl_env
     _seed_source(db, [{"equipment": "EQPQ", "event_time": "TQ", "chip_id": "CQ"}])
     rule = _rule()
 
-    monkeypatch.setattr(enrichment_config, "key_is_wholly_blank",
+    monkeypatch.setattr(enrichment.config, "key_is_wholly_blank",
                         lambda r, kv: True)
 
     stats = bf.run_backfill(db, rule, apply=True, log=lambda *_: None)
     assert stats["created_rows"] == 0 and _derived_rows(db) == [], (
         "row creation did not go through the shared predicate")
 
-    import enrichment_candidates
+    from enrichment import candidates as _candidates
     # A rule with a DECLARING view, so resolution gets past `not_declared` and
     # reaches the gate under test. The patched predicate short-circuits before
     # any view executes, so the query body is never read.
@@ -540,9 +540,9 @@ def test_one_predicate_gates_both_row_creation_and_candidate_resolution(bkfl_env
          "query": "SELECT lot_hint FROM bkfl_test_src WHERE event_time = :event_time",
          "required_binds": ["event_time"]},
     ])
-    verdict = enrichment_candidates.resolve_target_candidate(
+    verdict = _candidates.resolve_target_candidate(
         db, probe_rule, {"equipment": "EQPQ", "event_time": "TQ"}, "wafer_id")
-    assert verdict["reason"] == enrichment_candidates.REASON_NO_DECISION_KEY, (
+    assert verdict["reason"] == _candidates.REASON_NO_DECISION_KEY, (
         "candidate resolution did not go through the shared predicate")
 
 
@@ -773,7 +773,7 @@ def test_loader_rejected_rule_fails_loudly_with_reason(bkfl_env):
 def test_unknown_rule_and_missing_file_refused(bkfl_env, tmp_path, monkeypatch):
     with pytest.raises(bf.BackfillRefused, match="available rules"):
         _rule(name="ghost_rule")
-    monkeypatch.setattr(enrichment_config, "ENRICHMENT_RULES_PATH",
+    monkeypatch.setattr(enrichment.config, "ENRICHMENT_RULES_PATH",
                         str(tmp_path / "nope.json"))
     with pytest.raises(bf.BackfillRefused, match="not found"):
         _rule()

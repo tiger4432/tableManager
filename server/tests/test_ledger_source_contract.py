@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from ledger.backfill import fetch_page                                      # noqa: E402
 from ledger.observability import probe_source_head                          # noqa: E402
 from ledger.source_contract import compile_source                          # noqa: E402
-import ledger_admin                                                         # noqa: E402
+from ledger import admin                                                         # noqa: E402
 
 
 def lineage_declaration():
@@ -99,10 +99,10 @@ def test_admin_save_gate_rejects_translator_vocabulary_conflict_before_dry_run(
         }],
     }
     columns = {"created_at", "updated_at", "id", "product", "run"}
-    monkeypatch.setattr(ledger_admin, "declared_tables", lambda: ["product_registry"])
-    monkeypatch.setattr(ledger_admin, "relation_columns", lambda _db, _name: columns)
+    monkeypatch.setattr(admin, "declared_tables", lambda: ["product_registry"])
+    monkeypatch.setattr(admin, "relation_columns", lambda _db, _name: columns)
 
-    violations = ledger_admin.check_source_declaration(
+    violations = admin.check_source_declaration(
         object(), "product_registry", source)
     # 🔴 `in`, NOT `==`, AND THE REASON IS A SEAM THAT IS MID-MOVE. `ledger/config.py`
     # takes its entity types from the DECLARATION as of 2026-08-27; `ledger_admin.py` still

@@ -20,7 +20,7 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import enrichment_config                                             # noqa: E402
+import enrichment.config                                             # noqa: E402
 
 CATALOGUE = {
     "s136_derived": {
@@ -34,7 +34,7 @@ RULE = {"name": "r", "derived_table": "s136_derived", "decision_key": ["lot"],
 
 
 def test_every_declared_column_of_the_derived_row_is_bindable():
-    names = enrichment_config.view_bind_names(RULE, CATALOGUE)
+    names = enrichment.config.view_bind_names(RULE, CATALOGUE)
 
     assert names == {"lot", "equipment", "bonding_time_min", "wafer_id"}
     assert "equipment" in names, "a plain column, neither key nor aggregate"
@@ -56,9 +56,9 @@ def test_the_widening_is_worthless_unless_the_catalogue_is_handed_over():
     """
     row = {"lot": "L1", "equipment": "EQ1", "wafer_id": "W1"}
 
-    with_catalogue = enrichment_config.view_bind_values(RULE, row,
+    with_catalogue = enrichment.config.view_bind_values(RULE, row,
                                                         known_tables=CATALOGUE)
-    without = enrichment_config.view_bind_values(RULE, row)
+    without = enrichment.config.view_bind_values(RULE, row)
 
     assert with_catalogue["equipment"] == "EQ1", (
         "a plain column of the derived row must be supplied, not just allowed")
@@ -71,21 +71,21 @@ def test_the_validator_and_the_execution_read_one_function():
     """⛔ TWO SETS WOULD LET A VIEW VALIDATE AND THEN FAIL WHEN ASKED."""
     import inspect
 
-    body = inspect.getsource(enrichment_config._normalize_reference_views)
+    body = inspect.getsource(enrichment.config._normalize_reference_views)
     assert "derived_binds" in body, body[:900]
 
-    assert inspect.getsource(enrichment_config.view_bind_names).count(
+    assert inspect.getsource(enrichment.config.view_bind_names).count(
         "derived_columns(") == 1
 
 
 def test_a_name_the_derived_row_does_not_carry_is_still_refused_by_name():
-    assert "no_such_column" not in enrichment_config.view_bind_names(RULE, CATALOGUE)
+    assert "no_such_column" not in enrichment.config.view_bind_names(RULE, CATALOGUE)
 
 
 def test_a_column_that_is_present_but_empty_binds_as_null_rather_than_going_missing():
     """🔴 「있고 비어 있다」는 그 행이 «아는» 사실이다. Dropping it would turn a row that says
     「this is empty」 into a view that cannot be asked at all."""
-    values = enrichment_config.view_bind_values(
+    values = enrichment.config.view_bind_values(
         RULE, {"lot": "L", "equipment": "", "bonding_time_min": None, "wafer_id": "W"},
         CATALOGUE)
 
@@ -96,7 +96,7 @@ def test_a_column_that_is_present_but_empty_binds_as_null_rather_than_going_miss
             "required_binds": ["equipment", "bonding_time_min"],
             "blank_is_missing": []}
 
-    assert enrichment_config.missing_binds(view, values) == []
+    assert enrichment.config.missing_binds(view, values) == []
 
 
 def test_a_blank_decision_key_is_still_missing_because_it_matches_nothing():
@@ -106,15 +106,15 @@ def test_a_blank_decision_key_is_still_missing_because_it_matches_nothing():
     view = {"query": "SELECT 1 WHERE lot = :lot", "required_binds": ["lot"],
             "blank_is_missing": ["lot"]}
 
-    assert enrichment_config.missing_binds(view, {"lot": ""}) == ["lot"]
-    assert enrichment_config.missing_binds(view, {"lot": "L"}) == []
+    assert enrichment.config.missing_binds(view, {"lot": ""}) == ["lot"]
+    assert enrichment.config.missing_binds(view, {"lot": "L"}) == []
 
 
 def test_a_column_the_row_does_not_have_at_all_is_named_as_missing():
     view = {"query": "SELECT 1 WHERE e = :equipment", "required_binds": ["equipment"],
             "blank_is_missing": []}
 
-    assert enrichment_config.missing_binds(view, {"lot": "L"}) == ["equipment"]
+    assert enrichment.config.missing_binds(view, {"lot": "L"}) == ["equipment"]
 
 
 def test_a_view_that_never_went_through_the_normalizer_behaves_exactly_as_before():
@@ -122,11 +122,11 @@ def test_a_view_that_never_went_through_the_normalizer_behaves_exactly_as_before
     this function did before S-136. An old view must not change meaning."""
     view = {"query": "SELECT 1 WHERE lot = :lot", "required_binds": ["lot"]}
 
-    assert enrichment_config.missing_binds(view, {"lot": ""}) == ["lot"]
+    assert enrichment.config.missing_binds(view, {"lot": ""}) == ["lot"]
 
 
 def test_the_normalizer_stamps_only_the_key_columns_a_view_actually_binds():
-    views = enrichment_config._normalize_reference_views(
+    views = enrichment.config._normalize_reference_views(
         "r", [{"label": "x", "query": "SELECT 1 WHERE lot = :lot AND e = :equipment"}],
         ["lot"], ["wafer_id"], derived_binds={"lot", "equipment", "wafer_id"})
 

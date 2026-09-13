@@ -23,11 +23,11 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import ledger_explorer                                              # noqa: E402
+from ledger import explorer                                              # noqa: E402
 from ledger_api import ledger_subgraph                              # noqa: E402
 
 NOW = datetime(2026, 9, 8, 1, 0, tzinfo=timezone.utc)
-DTJOB = ledger_explorer.entity_id("dtjob", {"dt_job": "J1"})
+DTJOB = explorer.entity_id("dtjob", {"dt_job": "J1"})
 
 
 def atom(number, predicate, *, kind=None, payload=None, occurred_at=None):

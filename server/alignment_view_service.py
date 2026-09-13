@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
-import alignment_batch_counts
-import enrichment_config
+from maps import alignment_batch_counts
+import enrichment.config
 import map_alignment
 import map_overlay
 from database import crud
@@ -21,7 +21,7 @@ class AlignmentViewRequestError(ValueError):
 
 
 def declared_alignment_rule(rule_name: str) -> dict:
-    rules = enrichment_config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
+    rules = enrichment.config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
     decl = next((r for r in rules if r["name"] == rule_name), None)
     if decl is None:
         raise AlignmentViewRequestError("Enrichment rule '%s' not found" % rule_name)

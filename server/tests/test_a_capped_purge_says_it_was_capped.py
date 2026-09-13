@@ -27,16 +27,16 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import chain_activity                                             # noqa: E402
-from chain_ingestion_worker import purge_expired_outbox_sync      # noqa: E402
+from chain import activity                                             # noqa: E402
+from chain.ingestion_worker import purge_expired_outbox_sync      # noqa: E402
 from database import models                                       # noqa: E402
 
 
 @pytest.fixture(autouse=True)
 def a_clean_registry():
-    chain_activity.registry.clear()
+    activity.registry.clear()
     yield
-    chain_activity.registry.clear()
+    activity.registry.clear()
 
 
 def expired_rows(db, count):
@@ -51,7 +51,7 @@ def expired_rows(db, count):
 
 
 def published():
-    return chain_activity.registry.ages()
+    return activity.registry.ages()
 
 
 # ------------------------------------------------------- the three states are separate
@@ -68,9 +68,9 @@ def test_a_process_that_never_purged_says_none_on_all_three():
 def test_a_capped_cycle_and_a_drained_one_are_different_values():
     """🔴 THE WHOLE DEFECT IN ONE ASSERTION. These two cycles removed the SAME number of
     rows; only this field can tell them apart."""
-    chain_activity.registry.note_outbox_purge(20, True)
+    activity.registry.note_outbox_purge(20, True)
     assert published()["outbox_purge_capped"] is True
-    chain_activity.registry.note_outbox_purge(20, False)
+    activity.registry.note_outbox_purge(20, False)
     assert published()["outbox_purge_capped"] is False
     assert published()["outbox_purge_deleted"] == 20
 
@@ -78,21 +78,21 @@ def test_a_capped_cycle_and_a_drained_one_are_different_values():
 def test_an_unfinished_cycle_is_none_rather_than_false():
     """⚠️ `is False` would be a claim ("nothing more expired") about a cycle that raised
     partway and counted only some of what it removed."""
-    chain_activity.registry.note_outbox_purge(7, None)
+    activity.registry.note_outbox_purge(7, None)
     assert published()["outbox_purge_capped"] is None
     assert published()["outbox_purge_deleted"] == 7
 
 
 def test_the_age_starts_counting_from_the_purge():
-    chain_activity.registry.note_outbox_purge(1, False)
+    activity.registry.note_outbox_purge(1, False)
     age = published()["outbox_purge_age_seconds"]
     assert isinstance(age, float) and age >= 0.0
 
 
 def test_clear_forgets_the_purge_too():
     """A stale purge left behind `clear()` would read as this process's own."""
-    chain_activity.registry.note_outbox_purge(5, True)
-    chain_activity.registry.clear()
+    activity.registry.note_outbox_purge(5, True)
+    activity.registry.clear()
     assert published()["outbox_purge_capped"] is None
 
 
@@ -137,10 +137,10 @@ def test_the_return_shape_did_not_change(db_session):
 def test_the_worker_records_on_the_registry_the_route_reads():
     import inspect
 
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     body = inspect.getsource(worker.purge_expired_outbox_sync)
-    assert "chain_activity.registry.note_outbox_purge(" in body
+    assert "activity.registry.note_outbox_purge(" in body
 
 
 def test_the_route_spreads_the_ages_dict_these_keys_live_in():
@@ -151,6 +151,6 @@ def test_the_route_spreads_the_ages_dict_these_keys_live_in():
     import main
 
     body = inspect.getsource(main.get_chain_queue_depth)
-    assert "**chain_activity.registry.ages()" in body
+    assert "**activity.registry.ages()" in body
     for key in ("outbox_purge_age_seconds", "outbox_purge_deleted", "outbox_purge_capped"):
-        assert key in chain_activity.registry.ages()
+        assert key in activity.registry.ages()

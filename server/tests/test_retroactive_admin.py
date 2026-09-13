@@ -26,14 +26,14 @@ import types
 
 import pytest
 
-import admin_auth
-import chain_replay
+from admin import auth
+from chain import replay
 import event_constants
-import retroactive
+from admin import retroactive
 from database import crud, models, schemas
 
 TOKEN = "correct-horse-battery-staple"
-HEADER = admin_auth.ADMIN_TOKEN_HEADER
+HEADER = auth.ADMIN_TOKEN_HEADER
 
 
 @pytest.fixture()
@@ -45,7 +45,7 @@ def admin_token(monkeypatch):
     and asserted in test_admin_auth.py. Every test that wants to reach the handler
     must therefore configure a token, exactly as an operator does.
     """
-    monkeypatch.setenv(admin_auth.ADMIN_TOKEN_ENV, TOKEN)
+    monkeypatch.setenv(auth.ADMIN_TOKEN_ENV, TOKEN)
     return {HEADER: TOKEN}
 
 RETRO_TABLES = {
@@ -128,7 +128,7 @@ def retro_env(db_session, monkeypatch):
     _install_mapper_module()
     # The REAL rule loader reads the user's chain config; pin it to the test rule
     # so `find_rule` resolves without touching a gitignored file.
-    monkeypatch.setattr(chain_replay, "load_rules", lambda: [RULE_MIXED])
+    monkeypatch.setattr(replay, "load_rules", lambda: [RULE_MIXED])
     monkeypatch.setattr("database.database.SessionLocal",
                         lambda: _NoCloseSession(db_session))
     yield db_session
@@ -458,7 +458,7 @@ def retro_enrich_env(db_session, tmp_path, monkeypatch):
     `test_backfill_enrichment.py`'s `bkfl_test_*` so the two files cannot share
     state through the module-level `DYNAMIC_TABLES` registry.
     """
-    import enrichment_config
+    import enrichment.config
 
     models.init_dynamic_models(ENRICH_TABLES)
     saved = dict(crud.TABLE_CONFIG)
@@ -468,7 +468,7 @@ def retro_enrich_env(db_session, tmp_path, monkeypatch):
 
     rules_path = tmp_path / "enrichment_rules.json"
     rules_path.write_text(json.dumps(ENRICH_RULES), encoding="utf-8")
-    monkeypatch.setattr(enrichment_config, "ENRICHMENT_RULES_PATH", str(rules_path))
+    monkeypatch.setattr(enrichment.config, "ENRICHMENT_RULES_PATH", str(rules_path))
     monkeypatch.setattr("database.database.SessionLocal",
                         lambda: _NoCloseSession(db_session))
     yield db_session
@@ -505,11 +505,11 @@ def _backfill_layer_rows(db):
     the file's closing note generalises it: the displayed value is not a witness
     for a write, only the layer is.
     """
-    import enrichment_backfill
+    import enrichment.backfill
 
     return db.query(models.CellSource).filter(
         models.CellSource.table_name == "retro_enrich_derived",
-        models.CellSource.source_name == enrichment_backfill.SOURCE_NAME).all()
+        models.CellSource.source_name == enrichment.backfill.SOURCE_NAME).all()
 
 
 class TestTheEnrichmentBackfillRouteIsReachable:
@@ -612,14 +612,14 @@ class TestTheEnrichmentBackfillRouteIsReachable:
         stayed unbounded - which is the same request-path cost the sample was
         introduced to avoid.
         """
-        import enrichment_backfill
+        import enrichment.backfill
 
         def _refuse(*a, **k):
             raise AssertionError(
                 "the count preloaded every derived identity; at 10M rows that is "
                 "the unbounded read scan_limit exists to prevent")
 
-        monkeypatch.setattr(enrichment_backfill, "_load_existing_business_keys",
+        monkeypatch.setattr(enrichment.backfill, "_load_existing_business_keys",
                             _refuse)
         _seed_enrich_source(retro_enrich_env,
                             [{"equipment": "E", "event_time": "T", "chip_id": "C"}])
@@ -710,7 +710,7 @@ class TestTheEnrichmentBackfillRouteIsReachable:
         admin button must not change that - the button is a new caller, not a new
         privilege.
         """
-        import enrichment_backfill
+        import enrichment.backfill
 
         db = retro_enrich_env
         _seed_enrich_source(db, [{"equipment": "EQP1", "event_time": "T1",
@@ -721,8 +721,8 @@ class TestTheEnrichmentBackfillRouteIsReachable:
 
         layer = _backfill_layer_rows(db)
         assert layer, "non-vacuous: the run wrote no layer at all"
-        assert {s.source_name for s in layer} == {enrichment_backfill.SOURCE_NAME}
-        assert crud.get_source_priority(enrichment_backfill.SOURCE_NAME) == 99
+        assert {s.source_name for s in layer} == {enrichment.backfill.SOURCE_NAME}
+        assert crud.get_source_priority(enrichment.backfill.SOURCE_NAME) == 99
         assert crud.get_source_priority("user") == 0
 
     def test_a_failed_backfill_does_not_kill_the_scheduler(self, retro_enrich_env):
@@ -747,9 +747,9 @@ class TestTheWithdrawalPreviewMatchesTheOperationItPreviews:
         db = retro_env
         self._two_sources_on_one_cell(db)
 
-        cheap = chain_replay.count_withdrawable(db, "retro_test_target",
+        cheap = replay.count_withdrawable(db, "retro_test_target",
                                                 "chain_ingestion")
-        full = chain_replay.withdraw_source(db, "retro_test_target", "chain_ingestion",
+        full = replay.withdraw_source(db, "retro_test_target", "chain_ingestion",
                                             apply=False, log=lambda m: None)
         assert cheap["cells_claimed"] == full["cells_matched"]
         # Non-vacuous: 0 == 0 would satisfy the line above.
@@ -763,7 +763,7 @@ class TestTheWithdrawalPreviewMatchesTheOperationItPreviews:
         # Scoped to the pinned column: seeding a row claims every column in it
         # (`part_no` too), and this test is about the pin, not about arity. The
         # scope also exercises the `columns` allowlist the CLI exposes.
-        c = chain_replay.count_withdrawable(db, "retro_test_target",
+        c = replay.count_withdrawable(db, "retro_test_target",
                                             "chain_ingestion", columns=["reserved"])
         assert c["cells_claimed"] == 1 and c["pinned"] == 1
         assert max(0, c["cells_claimed"] - c["pinned"]) == 0, (
@@ -777,7 +777,7 @@ class TestTheWithdrawalPreviewMatchesTheOperationItPreviews:
         row = self._two_sources_on_one_cell(db)
         _pin(db, row.row_id, "reserved", "pipeline_parser")
 
-        c = chain_replay.count_withdrawable(db, "retro_test_target",
+        c = replay.count_withdrawable(db, "retro_test_target",
                                             "chain_ingestion", columns=["reserved"])
         assert c["pinned"] == 0 and c["cells_claimed"] == 1
 
@@ -835,9 +835,9 @@ class TestTheTriggerQueuesAndReturns:
         later must not need someone to remember this call site."""
         import inspect
 
-        import chain_ingestion_worker
+        from chain import ingestion_worker
 
-        src = inspect.getsource(chain_ingestion_worker.start_chain_ingestion_worker)
+        src = inspect.getsource(ingestion_worker.start_chain_ingestion_worker)
         assert "CONTROL_EVENT_TYPES" in src, (
             "the chain worker skips control events by name; a new control type "
             "would be processed as a data transaction")
@@ -1009,7 +1009,7 @@ class TestTheSchedulerRunsItOffTheTickThread:
             release.wait(5)
             return {"status": "ok"}
 
-        import retroactive as retro_mod
+        from admin import retroactive as retro_mod
         original = retro_mod.execute
         retro_mod.execute = slow
         try:
@@ -1213,9 +1213,9 @@ def test_every_operation_that_CLAIMS_it_can_be_cancelled_actually_passes_the_hoo
             return collections.defaultdict(int)
         return fake
 
-    import chain_replay
-    import enrichment_analysis
-    import enrichment_backfill
+    from chain import replay
+    from enrichment import analysis
+    import enrichment.backfill
     from ledger import backfill as ledger_backfill
 
     control = retroactive.RunControl(
@@ -1223,12 +1223,12 @@ def test_every_operation_that_CLAIMS_it_can_be_cancelled_actually_passes_the_hoo
     log = lambda *a, **k: None
 
     with pytest.MonkeyPatch.context() as mp:
-        mp.setattr(chain_replay, "find_rule", lambda name: {"name": name})
-        mp.setattr(chain_replay, "replay_rule", recorder("chain_replay"))
-        mp.setattr(chain_replay, "withdraw_source", recorder("withdraw"))
-        mp.setattr(enrichment_backfill, "load_rule", lambda *a, **k: {"name": "r"})
-        mp.setattr(enrichment_backfill, "run_backfill", recorder("enrichment_backfill"))
-        mp.setattr(enrichment_analysis, "run_auto_confirm_sweep",
+        mp.setattr(replay, "find_rule", lambda name: {"name": name})
+        mp.setattr(replay, "replay_rule", recorder("chain_replay"))
+        mp.setattr(replay, "withdraw_source", recorder("withdraw"))
+        mp.setattr(enrichment.backfill, "load_rule", lambda *a, **k: {"name": "r"})
+        mp.setattr(enrichment.backfill, "run_backfill", recorder("enrichment_backfill"))
+        mp.setattr(analysis, "run_auto_confirm_sweep",
                    recorder("enrichment_confirm"))
         mp.setattr(retroactive, "_enrichment_rule", lambda name: {"name": name})
         mp.setattr(ledger_backfill, "rescope", recorder("ledger_rescope"))

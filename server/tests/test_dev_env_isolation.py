@@ -35,7 +35,7 @@ SERVER_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
-import admin_auth
+from admin import auth
 
 #: POST /admin/scripts/code is one of the two code-execution routes, so it now
 #: refuses with 503 unless an admin token is configured (see admin_auth.py). The
@@ -48,12 +48,12 @@ _ISOLATION_TEST_TOKEN = "isolation-suite-token"
 @pytest.fixture
 def admin_client(client, monkeypatch):
     """`client` with the admin gate configured and the header attached."""
-    monkeypatch.setenv(admin_auth.ADMIN_TOKEN_ENV, _ISOLATION_TEST_TOKEN)
-    client.headers[admin_auth.ADMIN_TOKEN_HEADER] = _ISOLATION_TEST_TOKEN
+    monkeypatch.setenv(auth.ADMIN_TOKEN_ENV, _ISOLATION_TEST_TOKEN)
+    client.headers[auth.ADMIN_TOKEN_HEADER] = _ISOLATION_TEST_TOKEN
     try:
         yield client
     finally:
-        client.headers.pop(admin_auth.ADMIN_TOKEN_HEADER, None)
+        client.headers.pop(auth.ADMIN_TOKEN_HEADER, None)
 
 
 # --------------------------------------------------------------------------- 1
@@ -115,8 +115,9 @@ import os, sys, json
 sys.path.insert(0, os.environ["PROBE_SERVER_DIR"])
 import paths
 from database import crud
-import map_overlay, bonding_plan, transfer_plan, enrichment_config
-import chain_ingestion_worker
+import map_overlay, bonding_plan, transfer_plan
+import enrichment.config
+from chain import ingestion_worker
 from utils import auto_update_control as auc
 print("@@" + json.dumps({
     "DATA_ROOT": paths.DATA_ROOT,
@@ -127,8 +128,8 @@ print("@@" + json.dumps({
     "map_overlay.CONFIG_PATH": map_overlay.CONFIG_PATH,
     "bonding_plan.CONFIG_PATH": bonding_plan.CONFIG_PATH,
     "transfer_plan.CONFIG_PATH": transfer_plan.CONFIG_PATH,
-    "enrichment_config.CONFIG_DIR": enrichment_config.CONFIG_DIR,
-    "chain.RULES_PATH": chain_ingestion_worker.RULES_PATH,
+    "enrichment_config.CONFIG_DIR": enrichment.config.CONFIG_DIR,
+    "chain.RULES_PATH": ingestion_worker.RULES_PATH,
     "auc.control_path": auc.get_control_path(),
     "auc.script_file": auc.resolve_script_file("wsprobe/scriptprobe.py"),
     "paths.log_path": paths.log_path("server.log"),

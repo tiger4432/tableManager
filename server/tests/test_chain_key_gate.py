@@ -46,9 +46,9 @@ server_dir = os.path.abspath(os.path.join(script_dir, ".."))
 if server_dir not in sys.path:
     sys.path.insert(0, server_dir)
 
-import chain_key_gate
-import chain_ingestion_worker as worker
-import chain_replay
+from chain import key_gate
+from chain import ingestion_worker as worker
+from chain import replay
 from database.database import Base
 from database import crud, models, schemas
 from database.models import DatabaseOutbox
@@ -106,11 +106,11 @@ def fixture_db():
     Base.metadata.create_all(bind=engine)
     models.sync_dynamic_tables_schema(engine)
 
-    chain_key_gate.reset_counters()
+    key_gate.reset_counters()
     session = Session()
     yield session
     session.close()
-    chain_key_gate.reset_counters()
+    key_gate.reset_counters()
     Base.metadata.drop_all(bind=engine)
 
 
@@ -277,7 +277,7 @@ def test_without_the_gate_the_worker_writes_a_row_with_no_business_key(db, monke
     rows out, and one of them carries `business_key_val` NULL — unaddressable by any
     upsert, so the next delivery of the same data adds another.
     """
-    monkeypatch.setattr(chain_key_gate, "screen",
+    monkeypatch.setattr(key_gate, "screen",
                         lambda table, items, rule_names=(), transaction_id=None: (
                             list(items), {"refused_rows": 0, "by_column": {}, "rules": []}))
 
@@ -330,8 +330,8 @@ def test_a_healthy_chain_write_is_unchanged_and_refuses_nothing(db, monkeypatch)
     assert ok and err is None
     assert len(_rows(db, CELLS)) == 25
     assert _keyless(db, CELLS) == []
-    assert chain_key_gate.refusals() == {}
-    assert chain_key_gate.note() is None, "a clean run must leave the heartbeat unchanged"
+    assert key_gate.refusals() == {}
+    assert key_gate.note() is None, "a clean run must leave the heartbeat unchanged"
 
 
 def test_the_plain_key_target_is_gated_too(db, monkeypatch):
@@ -349,7 +349,7 @@ def test_the_plain_key_target_is_gated_too(db, monkeypatch):
     assert ok
     rows = _rows(db, UNITS)
     assert [r.business_key_val for r in rows] == ["J1"]
-    assert chain_key_gate.refused_rows() == {UNITS: 2}
+    assert key_gate.refused_rows() == {UNITS: 2}
 
 
 # ---------------------------------------------------------------------------
@@ -400,7 +400,7 @@ def test_an_existing_row_is_updated_not_refused_when_the_payload_repeats_its_key
 
     rows = _rows(db, CELLS)
     assert len(rows) == 1 and rows[0].grade == "B"
-    assert chain_key_gate.refusals() == {}
+    assert key_gate.refusals() == {}
 
 
 # ---------------------------------------------------------------------------
@@ -413,7 +413,7 @@ def test_a_refusal_names_the_rule_the_table_the_column_and_the_count(db):
     A silent skip is the same class of defect as a bad write; today cost a full day
     precisely because the drop was invisible.
     """
-    kept, report = chain_key_gate.screen(CELLS, [
+    kept, report = key_gate.screen(CELLS, [
         _item(updates={"job": "J1", "x": 1, "y": 1}),
         _item(updates={"job": "", "x": 2, "y": 2}),
         _item(updates={"job": "J1", "x": 3, "y": None}),
@@ -421,7 +421,7 @@ def test_a_refusal_names_the_rule_the_table_the_column_and_the_count(db):
 
     assert len(kept) == 1
     assert report["table"] == CELLS
-    assert report["reason"] == chain_key_gate.REFUSAL_UNKEYED_ROW
+    assert report["reason"] == key_gate.REFUSAL_UNKEYED_ROW
     assert report["rules"] == ["ckgate_rule"]
     assert report["transaction_id"] == "tx-loud"
     assert report["refused_rows"] == 2
@@ -484,11 +484,11 @@ def test_the_report_states_what_it_withheld_rather_than_ending_silently(db):
     how the original defect hid.
     """
     items = [_item(updates={"job": "", "x": i, "y": 0}) for i in range(60)]
-    _kept, report = chain_key_gate.screen(CELLS, items, rule_names=["r"], transaction_id="t")
+    _kept, report = key_gate.screen(CELLS, items, rule_names=["r"], transaction_id="t")
 
     assert report["refused_rows"] == 60, "counts are never capped"
-    assert len(report["rows"]) == chain_key_gate.MAX_REFUSAL_ROWS
-    assert report["truncated"]["rows"]["omitted"] == 60 - chain_key_gate.MAX_REFUSAL_ROWS
+    assert len(report["rows"]) == key_gate.MAX_REFUSAL_ROWS
+    assert report["truncated"]["rows"]["omitted"] == 60 - key_gate.MAX_REFUSAL_ROWS
     assert report["truncated"]["rows"]["cut"] is True
 
 
@@ -506,7 +506,7 @@ def test_replay_cannot_recreate_in_bulk_what_the_live_worker_refuses(db):
     """
     stats = {"cells_written": 0, "rows_created": 0, "rows_updated": 0,
              "unkeyed_rows_refused": 0, "unkeyed_key_columns": {}}
-    chain_replay._apply_replay_batch(
+    replay._apply_replay_batch(
         db, schemas, crud, CELLS,
         [_item(updates={"job": "J1", "x": 1, "y": 1, "grade": "A"}),
          _item(updates={"x": 2, "y": 2, "grade": "B"})],
@@ -522,14 +522,14 @@ def test_replay_does_not_purge_a_map_it_refused_whole(db):
     """KILLS: removing the `if not kept: return` arm in `_apply_replay_batch`."""
     seed = {"cells_written": 0, "rows_created": 0, "rows_updated": 0,
             "unkeyed_rows_refused": 0, "unkeyed_key_columns": {}}
-    chain_replay._apply_replay_batch(
+    replay._apply_replay_batch(
         db, schemas, crud, CELLS,
         [_item(updates={"job": "J1", "x": x, "y": 0, "grade": "A"}) for x in range(3)],
         "run1", seed, 1, rule_name="ckgate_rule")
     assert len(_rows(db, CELLS)) == 3
 
     stats = dict(seed, unkeyed_rows_refused=0, unkeyed_key_columns={})
-    chain_replay._apply_replay_batch(
+    replay._apply_replay_batch(
         db, schemas, crud, CELLS,
         [_item(updates={"job": "", "x": x, "y": 0}) for x in range(3)],
         "run2", stats, 2, replace_map=True, scope={"job": "J1"}, rule_name="ckgate_rule")

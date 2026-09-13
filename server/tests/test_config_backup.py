@@ -31,7 +31,7 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import config_backup
-import health as health_mod
+from runtime import health as health_mod
 
 
 NOW = datetime(2026, 7, 28, 3, 0, 0)

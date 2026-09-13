@@ -50,8 +50,8 @@ def reload_local_process_cache():
     # processes that never reach this hook, but the web server must not wait it out:
     # a declaration edited in the admin UI has to take effect on the next read.
     try:
-        import virtual_join_executor
-        virtual_join_executor.reset_cache()
+        from virtual_join import executor
+        executor.reset_cache()
     except Exception:
         pass
 
@@ -69,13 +69,13 @@ def reload_local_process_cache():
     # 걷기가 들고 있는 파생 목록(fetch 집합·통과 술어)도 어휘에서 나온 사본이므로 같이
     # 버린다. 어휘만 갱신하고 이걸 두면 새 술어가 게이트에는 있고 걷기에는 없다.
     try:
-        import ledger_trace
-        ledger_trace.reset_walk_cache()
+        from ledger import trace
+        trace.reset_walk_cache()
         # 🔴 그리고 해소기 캐시도. 선언형 소스의 `emit` 규칙이 «클래스»를 선언하므로
         # (`class: "inference"`), 그 목록은 이제 `ledger_config.json`에서 온다 — admin에서
         # 규칙 하나를 추가하고 이 캐시를 안 버리면, 새 규칙의 원자가 «다음 재기동까지»
         # 3류가 아니라 2류로 순위된다. 그건 조용히 가정이 실측을 이기는 상태다.
-        ledger_trace.load_resolver_config(force_reload=True)
+        trace.load_resolver_config(force_reload=True)
     except Exception:
         pass
 

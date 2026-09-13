@@ -915,7 +915,7 @@ except Exception as exc:
 
 # 2. The chain worker must still be able to format the timestamps its WebSocket
 #    payload needs. Rows are already COMMITTED by the time this runs.
-import chain_ingestion_worker as worker
+from chain import ingestion_worker as worker
 print("NOTIFY_TS " + worker.to_local_str(datetime(2026, 7, 29, 12, 34, 56)))
 print("MAIN_IN_MODULES " + str("main" in sys.modules))
 """
@@ -978,7 +978,7 @@ def test_h4_chain_worker_never_imports_main():
     is allowed to raise. Comment lines are stripped so the rule can be written
     down next to the import it replaced.
     """
-    src_path = os.path.join(_SERVER_DIR, "chain_ingestion_worker.py")
+    src_path = os.path.join(_SERVER_DIR, "chain", "ingestion_worker.py")
     with open(src_path, encoding="utf-8") as f:
         code_lines = [l for l in f if not l.lstrip().startswith("#")]
     offenders = [

@@ -219,10 +219,10 @@ def _report_unsearchable_declarations(config: dict, engine=None):
             known = None
             if session is not None:
                 try:
-                    import virtual_join_executor
+                    from virtual_join import executor
 
                     known = (set(table_info.get("column_types") or ())
-                             | virtual_join_executor.exposed_columns(session, table_name))
+                             | executor.exposed_columns(session, table_name))
                 except Exception as exc:                             # noqa: BLE001
                     logger.warning(
                         "[Config] '%s': could not enumerate virtual-join columns (%s), so "

@@ -290,14 +290,14 @@ def test_a_non_postgresql_session_sends_no_notify_at_all(db_session):
 def test_the_channel_is_the_one_the_chain_worker_listens_on(notify_db):
     """Emitter and listener, pinned against each other. A renamed channel on one
     side is silent: writes commit, nobody wakes, and the only symptom is latency."""
-    import chain_ingestion_worker
+    from chain import ingestion_worker
 
     db, sent = notify_db
     with counting(sent) as notifies:
         _add(db, 1)
         db.commit()
 
-    listener = chain_ingestion_worker.OutboxListener(db_session_factory=lambda: None)
+    listener = ingestion_worker.OutboxListener(db_session_factory=lambda: None)
     channel = listener._channel
     assert channel == "outbox_event"
     assert notifies == [f"NOTIFY {channel};"]
@@ -467,7 +467,7 @@ def test_the_listen_connection_never_comes_from_the_pool(monkeypatch):
     connection `session.begin()` issues no BEGIN, so the savepoint still has nothing to sit
     in; this is the seat that has to stop leaking, and this test is what holds it there.
     """
-    import chain_ingestion_worker as ciw
+    from chain import ingestion_worker as ciw
 
     taken_from_pool = []
 

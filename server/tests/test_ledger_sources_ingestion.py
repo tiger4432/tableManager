@@ -25,7 +25,7 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import ledger_admin                                                  # noqa: E402
+from ledger import admin                                                  # noqa: E402
 
 
 class _Cursor:
@@ -38,7 +38,7 @@ class _Cursor:
         self.queries.append(str(statement))
         if self.raises is not None:
             raise self.raises
-        return [(source,) + tuple(row.get(f) for f in ledger_admin._CURSOR_FIELDS)
+        return [(source,) + tuple(row.get(f) for f in admin._CURSOR_FIELDS)
                 for source, row in self.rows.items()]
 
 
@@ -79,7 +79,7 @@ def test_each_state_is_a_value_and_each_is_a_different_instruction():
     never having run however much it had translated. The discriminator is the census now,
     and 「no row」 became `not_measured` - which is what an unwritten row actually says.
     """
-    view = ledger_admin.ingestion_view(
+    view = admin.ingestion_view(
         _Cursor({"alive": wrote(), "empty": wrote(indexed=0, refused=3),
                  "quiet": wrote(indexed=0), "pending": wrote(measured=False),
                  "gone": wrote()}),
@@ -100,14 +100,14 @@ def test_a_census_that_refused_to_count_is_not_a_zero():
     row = wrote(indexed=0)
     row["row_census"] = {"source": "s", "relation": "r", "refused": "relation is gone",
                          "remedy": "declare it or drop the source"}
-    view = ledger_admin.ingestion_view(_Cursor({"broken": row}), declared=["broken"])
+    view = admin.ingestion_view(_Cursor({"broken": row}), declared=["broken"])
     assert view["sources"][0]["state"] == "not_measured"
 
 
 def test_a_source_that_ran_and_wrote_nothing_still_carries_its_numbers():
     """Its zero is the ANSWER, so it arrives as a number rather than as a missing key -
     otherwise the row is indistinguishable from the one nobody has measured."""
-    view = ledger_admin.ingestion_view(
+    view = admin.ingestion_view(
         _Cursor({"empty": wrote(indexed=0, refused=90, reasons={})}), declared=["empty"])
     row = view["sources"][0]
     assert row["molecules_refused"] == 90
@@ -119,7 +119,7 @@ def test_the_source_with_no_row_carries_no_invented_zeros():
     """The opposite rule, and the reason the states are values: there is no row, so there
     is no count. Emitting `molecules_refused: 0` here would state something nobody
     measured."""
-    view = ledger_admin.ingestion_view(_Cursor({}), declared=["quiet"])
+    view = admin.ingestion_view(_Cursor({}), declared=["quiet"])
     row = view["sources"][0]
     assert row["state"] == "not_measured"
     assert "molecules_refused" not in row and "row_census" not in row, row
@@ -128,11 +128,11 @@ def test_the_source_with_no_row_carries_no_invented_zeros():
 def test_the_answer_carries_what_each_state_means():
     """The screen renders what it was told rather than keeping its own copy of the rule
     (ruling 223) - so a state that changes meaning cannot go on being drawn the old way."""
-    view = ledger_admin.ingestion_view(_Cursor({"alive": wrote()}), declared=["alive"])
+    view = admin.ingestion_view(_Cursor({"alive": wrote()}), declared=["alive"])
     assert set(view["states"]) == {
-        ledger_admin.SOURCE_RAN_AND_WROTE, ledger_admin.SOURCE_RAN_WROTE_NOTHING,
-        ledger_admin.SOURCE_NEVER_RAN, ledger_admin.SOURCE_ORPHAN,
-        ledger_admin.SOURCE_NOT_MEASURED}
+        admin.SOURCE_RAN_AND_WROTE, admin.SOURCE_RAN_WROTE_NOTHING,
+        admin.SOURCE_NEVER_RAN, admin.SOURCE_ORPHAN,
+        admin.SOURCE_NOT_MEASURED}
     assert view["states"][states(view)["alive"]], view["states"]
     assert all(view["states"].values()), view["states"]
 
@@ -141,7 +141,7 @@ def test_an_unreadable_cursor_is_named_and_never_rendered_as_never_ran():
     """🔴 THE GUARD THIS FILE IS FOR. If the table cannot be read, every source would fall
     into the `never_ran` branch by construction - fifteen sources reported as never having
     run, from a database error. The answer is that there is no answer, said out loud."""
-    view = ledger_admin.ingestion_view(
+    view = admin.ingestion_view(
         _Cursor(raises=RuntimeError("relation does not exist")),
         declared=["alive", "empty", "quiet"])
     assert view["sources"] == []
@@ -153,7 +153,7 @@ def test_the_numbers_never_travel_without_the_sentence_that_says_what_they_are()
     """`atoms_written` is what the translator RECORDED WRITING. Nothing decrements it, so
     beside a ledger that has been rebuilt it is not a count of anything present. Read as
     "how many are in the ledger", it is wrong and looks authoritative."""
-    view = ledger_admin.ingestion_view(_Cursor({"alive": wrote()}), declared=["alive"])
+    view = admin.ingestion_view(_Cursor({"alive": wrote()}), declared=["alive"])
     assert view["note"], "the numbers shipped bare"
     assert "번역기" in view["note"] and "재건" in view["note"], view["note"]
 
@@ -162,7 +162,7 @@ def test_it_reads_the_cursor_table_and_not_the_ledger():
     """The whole reason this view exists. A query naming `ledger_events` would be the
     scan this replaces, and it would still return plausible numbers."""
     cursor = _Cursor({"alive": wrote()})
-    ledger_admin.ingestion_view(cursor, declared=["alive"])
+    admin.ingestion_view(cursor, declared=["alive"])
     assert len(cursor.queries) == 1, cursor.queries
     assert "ledger_translator_cursor" in cursor.queries[0]
     assert "ledger_events" not in cursor.queries[0]
@@ -171,7 +171,7 @@ def test_it_reads_the_cursor_table_and_not_the_ledger():
 def test_the_added_key_leaves_the_declaration_view_as_it_was():
     """Additive, so a reader that does not know `ingestion` is unaffected - and the form's
     own keys are asserted by name rather than by count."""
-    view = ledger_admin.sources_view(_Cursor({}))
+    view = admin.sources_view(_Cursor({}))
     for key in ("kinds", "unsupported_kinds", "sources", "config_path", "error"):
         assert key in view, key
     assert "ingestion" in view
@@ -187,7 +187,7 @@ def test_a_breakdown_travels_with_the_count():
     aggregate, so the two cannot drift - but the only code that read them hung off a route
     that retired on 2026-08-28 and took the read with it.
     """
-    view = ledger_admin.ingestion_view(
+    view = admin.ingestion_view(
         _Cursor({"alive": wrote(refused=3, reasons={"missing_occurred_at":
                                                     {"count": 3, "last_at": None}})}),
         declared=["alive"])
@@ -206,7 +206,7 @@ def test_nothing_refused_and_cannot_be_broken_down_are_DIFFERENT_states():
     ⛔ And the empty state is not dropped because this box happens to have no NULLs:
     fifteen rows here are all `{}`, and production is not this box.
     """
-    view = ledger_admin.ingestion_view(
+    view = admin.ingestion_view(
         _Cursor({"quiet": wrote(reasons={}), "ancient": wrote(refused=1, reasons=None)}),
         declared=["quiet", "ancient"])
     states = {r["source"]: r["refusals"] for r in view["sources"]}
@@ -217,7 +217,7 @@ def test_refusals_counted_before_the_column_existed_are_reported_as_such():
     """⚠️ The SIGN carries the meaning, which is why the number travels rather than a
     boolean: >0 is deployment history, not a fault. A screen rendering "1 refused" beside
     an empty list would be reporting a bookkeeping problem that is not there."""
-    view = ledger_admin.ingestion_view(
+    view = admin.ingestion_view(
         _Cursor({"ancient": wrote(refused=4, reasons=None)}), declared=["ancient"])
     assert view["sources"][0]["refusals_unaccounted"] == 4
 
@@ -225,6 +225,6 @@ def test_refusals_counted_before_the_column_existed_are_reported_as_such():
 def test_the_unaccounted_figure_is_the_shared_one_not_a_local_sum():
     """Two spellings would disagree about a fault. `ledger_trace._unaccounted` states the
     sign convention; this view imports it."""
-    from ledger_trace import _unaccounted
+    from ledger.trace import _unaccounted
     assert _unaccounted({"molecules_refused": 5},
                         {"a": {"count": 2}, "b": {"count": 3}}) == 0

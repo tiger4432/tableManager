@@ -313,7 +313,7 @@ def test_a_collapsed_event_that_loads_no_rows_is_refused_not_succeeded(obx):
     between write and consumption is a legitimate answer the warning names; the refusal
     is narrowed to the all-missing shape so it cannot swallow that one.
     """
-    import chain_ingestion_worker as ciw
+    from chain import ingestion_worker as ciw
     db = obx
 
     _seed(db, "obxcol_src", [_row(i) for i in range(3)], "tx-blind", mode=COLLAPSED)
@@ -396,7 +396,7 @@ async def test_unreadable_rows_are_deferred_without_charging_a_retry(obx, monkey
     ⚠️ THE CAP IS THE OTHER HALF. "Defer forever" is the same silent loss one room over,
     just in the queue instead of the ledger, so this also pins that the patience ENDS.
     """
-    import chain_ingestion_worker as ciw
+    from chain import ingestion_worker as ciw
     db = obx
     monkeypatch.setattr(ciw, "_RULES_DOCUMENT", {"max_rows_not_visible_defers": 3})
     ciw._ROWS_NOT_VISIBLE_DEFERS.clear()
@@ -436,7 +436,7 @@ async def test_third_failure_reexpands_instead_of_quarantining_the_chunk(obx, mo
     exactly as it always did, so the new branch is proven to be the collapsed one
     and not a change to everyone's retry semantics.
     """
-    import chain_ingestion_worker as ciw
+    from chain import ingestion_worker as ciw
     db = obx
 
     async def always_fails(tx_id, events, db_, rules):
@@ -446,7 +446,7 @@ async def test_third_failure_reexpands_instead_of_quarantining_the_chunk(obx, mo
     # ⚠️ THESE MEASURE RETRY/HOL MECHANICS, NOT THE DEFAULT (S-139). The cap moved
     # to 1, so the declaration keeps this test's SUBJECT intact - and doubles as
     # the ruling's gate that 「3 을 적으면 옛 동작」 is literally true.
-    import chain_ingestion_worker as _ciw
+    from chain import ingestion_worker as _ciw
     monkeypatch.setattr(_ciw, "_RULES_DOCUMENT", {"max_group_attempts": 3})
 
     # --- control: a per-row event still quarantines, unchanged ---
@@ -492,7 +492,7 @@ async def test_cheap_retries_come_first(obx, monkeypatch):
     Paying 1,000 per-row writes for a blip would spend the failure budget on the
     case the fine granularity does not exist for.
     """
-    import chain_ingestion_worker as ciw
+    from chain import ingestion_worker as ciw
     db = obx
 
     async def always_fails(tx_id, events, db_, rules):
@@ -502,7 +502,7 @@ async def test_cheap_retries_come_first(obx, monkeypatch):
     # ⚠️ THESE MEASURE RETRY/HOL MECHANICS, NOT THE DEFAULT (S-139). The cap moved
     # to 1, so the declaration keeps this test's SUBJECT intact - and doubles as
     # the ruling's gate that 「3 을 적으면 옛 동작」 is literally true.
-    import chain_ingestion_worker as _ciw
+    from chain import ingestion_worker as _ciw
     monkeypatch.setattr(_ciw, "_RULES_DOCUMENT", {"max_group_attempts": 3})
     _seed(db, "obxcol_src", [_row(i) for i in range(3)], "tx-blip", mode=COLLAPSED)
     ev = _events(db, "obxcol_src", "tx-blip")[0]

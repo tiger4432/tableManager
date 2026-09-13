@@ -43,7 +43,7 @@ if parsers_dir not in sys.path:
     sys.path.insert(0, parsers_dir)
 
 import directory_watcher
-import ingestion_checkpoint
+import ingestion.checkpoint
 from directory_watcher import IngestionHandler, WorkspaceWatcher
 from database.database import Base
 from database import crud, models
@@ -126,15 +126,15 @@ def env(tmp_path, monkeypatch):
         counter["config_reads"] += 1
         return table_config
 
-    real_sig = ingestion_checkpoint.compute_file_signature
+    real_sig = ingestion.checkpoint.compute_file_signature
 
     def counting_sig(p):
         counter["hashes"] = counter.get("hashes", 0) + 1
         hashed.append(os.path.basename(p))
         return real_sig(p)
 
-    real_single = ingestion_checkpoint.find_terminal_by_path_stat
-    real_batch = ingestion_checkpoint.find_terminal_by_path_stat_batch
+    real_single = ingestion.checkpoint.find_terminal_by_path_stat
+    real_batch = ingestion.checkpoint.find_terminal_by_path_stat_batch
 
     def counting_single(*a, **kw):
         counter["tier1_single"] += 1
@@ -153,8 +153,8 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(directory_watcher, "load_global_table_config", counting_config)
     monkeypatch.setattr(directory_watcher, "SessionLocal", counting_session)
     monkeypatch.setattr(directory_watcher, "compute_file_signature", counting_sig)
-    monkeypatch.setattr(ingestion_checkpoint, "find_terminal_by_path_stat", counting_single)
-    monkeypatch.setattr(ingestion_checkpoint, "find_terminal_by_path_stat_batch", counting_batch)
+    monkeypatch.setattr(ingestion.checkpoint, "find_terminal_by_path_stat", counting_single)
+    monkeypatch.setattr(ingestion.checkpoint, "find_terminal_by_path_stat_batch", counting_batch)
     monkeypatch.setattr(IngestionHandler, "_handle_event", recording_handle)
     # Tree quiescence: two identical snapshots, taken fast.
     monkeypatch.setattr(directory_watcher, "FLATTEN_STABILITY_INTERVAL_SECONDS", 0.05)
@@ -431,14 +431,14 @@ def test_fault_batch_ignores_mtime(env):
         found = {}
         rows = (db.query(Model)
                 .filter(Model.table_name == table_name,
-                        Model.status.in_(ingestion_checkpoint.TERMINAL_STATUSES))
+                        Model.status.in_(ingestion.checkpoint.TERMINAL_STATUSES))
                 .order_by(Model.updated_at.desc(), Model.id.desc()).all())
         for row in rows:
             if row.filepath in wanted and row.filepath not in found:
                 found[row.filepath] = row
         return found
 
-    with mock.patch.object(ingestion_checkpoint, "find_terminal_by_path_stat_batch",
+    with mock.patch.object(ingestion.checkpoint, "find_terminal_by_path_stat_batch",
                            mtime_blind):
         blind = env["sweep"]()
 
@@ -452,8 +452,8 @@ def test_fault_a_failed_file_is_redispatched(env):
     sealed failure on every sweep — the infinite retry the ledger exists to stop
     once files are no longer moved to `err/`."""
     _build_scenario(env)
-    with mock.patch.object(ingestion_checkpoint, "TERMINAL_STATUSES",
-                           (ingestion_checkpoint.STATUS_DONE,)):
+    with mock.patch.object(ingestion.checkpoint, "TERMINAL_STATUSES",
+                           (ingestion.checkpoint.STATUS_DONE,)):
         leaky = env["sweep"]()
 
     assert "broken.csv" in leaky["dispatched"], "premise: the fault must be active"
@@ -587,7 +587,7 @@ def test_batching_is_by_size_not_by_file(env):
         _write(env["raws"] / name, _csv_for(name))
     env["sweep"]()
 
-    with mock.patch.object(ingestion_checkpoint, "TIER1_BATCH_SIZE", 5):
+    with mock.patch.object(ingestion.checkpoint, "TIER1_BATCH_SIZE", 5):
         chunked = env["sweep"]()
     assert chunked["dispatched"] == []
     # 12 files at 5 per query = 3 SELECTs, in ONE call and ONE session.
@@ -607,15 +607,15 @@ def test_batch_and_single_lookup_agree_file_by_file(env):
     _build_scenario(env)
     raws = str(env["raws"])
     entries = [(os.path.abspath(os.path.join(raws, n)),
-                ingestion_checkpoint.read_file_stat(os.path.abspath(os.path.join(raws, n))))
+                ingestion.checkpoint.read_file_stat(os.path.abspath(os.path.join(raws, n))))
                for n in sorted(os.listdir(raws))]
 
     db = env["SessionLocal"]()
     try:
-        batched = ingestion_checkpoint.find_terminal_by_path_stat_batch(db, TABLE, entries)
+        batched = ingestion.checkpoint.find_terminal_by_path_stat_batch(db, TABLE, entries)
         one_at_a_time = {}
         for p, st in entries:
-            row = ingestion_checkpoint.find_terminal_by_path_stat(db, TABLE, p, st)
+            row = ingestion.checkpoint.find_terminal_by_path_stat(db, TABLE, p, st)
             if row is not None:
                 one_at_a_time[p] = row
         assert set(batched) == set(one_at_a_time)

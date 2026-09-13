@@ -277,7 +277,7 @@ def canonical_basis(db, config: dict, map_pairs, meta_cache: dict = None):
     `frame_confirmation.derived_cell_scope`가 이미 풀었고, 넷째 철자를 만들지 않는다.
     이 함수는 **조회 시점에** 무엇이 기준인지 답할 뿐이다.
     """
-    import frame_confirmation
+    from maps import frame_confirmation
 
     roles = list(CANONICAL_FRAME_ROLES)
     try:

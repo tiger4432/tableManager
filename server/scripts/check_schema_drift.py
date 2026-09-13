@@ -21,10 +21,7 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from sqlalchemy import create_engine, text  # noqa: E402
 
 # Re-exported so anything already importing them from this script keeps working.
-from schema_drift import (  # noqa: E402,F401
-    MIGRATION_OWNER, SEVERITY_ORDER, TYPE_KINDS, banner_lines, check,
-    finding_label, run_at_startup,
-)
+from admin.schema_drift import MIGRATION_OWNER, SEVERITY_ORDER, TYPE_KINDS, banner_lines, check, finding_label, run_at_startup
 
 
 def main():

@@ -159,10 +159,10 @@ def _pace_param():
 # ---------------------------------------------------------------------------
 
 def _count_chain_replay(db, params, scan_limit):
-    import chain_replay
+    from chain import replay
 
-    rule = chain_replay.find_rule(params["rule"])
-    s = chain_replay.replay_rule(db, rule, apply=False, limit=scan_limit,
+    rule = replay.find_rule(params["rule"])
+    s = replay.replay_rule(db, rule, apply=False, limit=scan_limit,
                                  log=lambda m: logger.debug(m),
                                  business_keys=params.get("business_keys"))
     truncated = s["rows_scanned"] >= scan_limit
@@ -196,12 +196,12 @@ def _count_chain_replay(db, params, scan_limit):
 
 
 def _count_withdraw(db, params, scan_limit):
-    import chain_replay
+    from chain import replay
 
     table = params["table"]
     source = params["source"]
     columns = params.get("columns")
-    c = chain_replay.count_withdrawable(db, table, source, columns=columns)
+    c = replay.count_withdrawable(db, table, source, columns=columns)
     affected = max(0, c["cells_claimed"] - c["pinned"])
     return {
         "affected": affected,
@@ -237,11 +237,11 @@ def _count_enrichment_backfill(db, params, scan_limit):
     # `enrichment_backfill`, NOT `scripts/backfill_enrichment`: the CLI is not
     # importable from a runtime process (server/scripts is on nobody's sys.path),
     # and importing it here is what made this route raise ModuleNotFoundError.
-    import enrichment_backfill
+    import enrichment.backfill
     from database import crud
 
-    rule = enrichment_backfill.load_rule(params["rule"], crud.TABLE_CONFIG)
-    s = enrichment_backfill.run_backfill(db, rule, apply=False, scan_limit=scan_limit,
+    rule = enrichment.backfill.load_rule(params["rule"], crud.TABLE_CONFIG)
+    s = enrichment.backfill.run_backfill(db, rule, apply=False, scan_limit=scan_limit,
                                          log=lambda m: logger.debug(m))
     truncated = s["rows_scanned"] >= scan_limit
     return {
@@ -293,16 +293,16 @@ def _count_enrichment_backfill(db, params, scan_limit):
 
 
 def _count_enrichment_confirm(db, params, scan_limit):
-    import enrichment_analysis
-    import enrichment_candidates
+    from enrichment import analysis
+    import enrichment.candidates
 
     rule = _enrichment_rule(params["rule"])
-    knob_on = enrichment_candidates.rule_auto_confirm_enabled(rule)
+    knob_on = enrichment.candidates.rule_auto_confirm_enabled(rule)
     # ignore_knob=True so a rule whose knob is OFF can still be measured - "what
     # happens if I turn it on" has to be answerable before turning it on. The knob
     # state travels separately so the client can disable the button rather than
     # letting the operator discover the refusal by pressing it.
-    s = enrichment_analysis.run_auto_confirm_sweep(
+    s = analysis.run_auto_confirm_sweep(
         db, rule, apply=False, limit=scan_limit, ignore_knob=True,
         log=lambda m: logger.debug(m))
     truncated = s.get("queue_size", 0) >= scan_limit
@@ -550,10 +550,10 @@ def _run_ledger_rescope(db, params, log, control=None):
 
 
 def _run_chain_replay(db, params, log, control=None):
-    import chain_replay
+    from chain import replay
 
-    rule = chain_replay.find_rule(params["rule"])
-    s = chain_replay.replay_rule(db, rule, apply=True, log=log,
+    rule = replay.find_rule(params["rule"])
+    s = replay.replay_rule(db, rule, apply=True, log=log,
                                  checkpoint=_checkpoint(control),
                                  business_keys=params.get("business_keys"),
                                  pace=params.get("pace"))
@@ -564,9 +564,9 @@ def _run_chain_replay(db, params, log, control=None):
 
 
 def _run_withdraw(db, params, log, control=None):
-    import chain_replay
+    from chain import replay
 
-    s = chain_replay.withdraw_source(db, params["table"], params["source"],
+    s = replay.withdraw_source(db, params["table"], params["source"],
                                      columns=params.get("columns"), apply=True, log=log,
                                      checkpoint=_checkpoint(control))
     _final_progress(control, s.get("cells_claimed", s.get("cells_withdrawn")))
@@ -575,11 +575,11 @@ def _run_withdraw(db, params, log, control=None):
 
 
 def _run_enrichment_backfill(db, params, log, control=None):
-    import enrichment_backfill
+    import enrichment.backfill
     from database import crud
 
-    rule = enrichment_backfill.load_rule(params["rule"], crud.TABLE_CONFIG)
-    s = enrichment_backfill.run_backfill(db, rule, apply=True, log=log,
+    rule = enrichment.backfill.load_rule(params["rule"], crud.TABLE_CONFIG)
+    s = enrichment.backfill.run_backfill(db, rule, apply=True, log=log,
                                          checkpoint=_checkpoint(control))
     _final_progress(control, s.get("rows_scanned"))
     return {"created_rows": s["created_rows"], "updated_rows": s["updated_rows"],
@@ -594,11 +594,11 @@ def _run_enrichment_confirm(db, params, log, control=None):
     # only in the first instant is worse than none - an operator would press it mid-run and
     # watch it do nothing. The registry entry declares `cancellable: False` so the screen
     # does not offer the button at all.
-    import enrichment_analysis
+    from enrichment import analysis
 
     # ignore_knob stays FALSE here: the knob is where a human consents to
     # automatic writes, and `run_auto_confirm_sweep` refuses apply without it.
-    s = enrichment_analysis.run_auto_confirm_sweep(
+    s = analysis.run_auto_confirm_sweep(
         db, _enrichment_rule(params["rule"]), apply=True, ignore_knob=False, log=log)
     _final_progress(control, s.get("queue_size"))
     return {"confirmed": s.get("confirmed", 0), "written_cells": s.get("written_cells", 0),
@@ -606,10 +606,10 @@ def _run_enrichment_confirm(db, params, log, control=None):
 
 
 def _enrichment_rule(name):
-    import enrichment_config
+    import enrichment.config
     from database import crud
 
-    rules = enrichment_config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
+    rules = enrichment.config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
     rule = next((r for r in rules if r["name"] == name), None)
     if rule is None:
         available = ", ".join(sorted(r["name"] for r in rules)) or "<none>"
@@ -1262,7 +1262,7 @@ def inventory() -> list:
 
 def validate(op: str, params: dict) -> dict:
     """-> the normalized parameter dict, or raise `RetroactiveRefused`."""
-    import chain_replay
+    from chain import replay
 
     spec = operation(op)
     params = params or {}
@@ -1306,7 +1306,7 @@ def validate(op: str, params: dict) -> dict:
     # R2's first refusal, re-stated here so the operator gets a 400 instead of a
     # queued job that dies in a worker log. `withdraw_source` refuses it AGAIN -
     # this check is convenience, that one is the safety property.
-    if op == "withdraw" and out.get("source") in chain_replay.PROTECTED_SOURCES:
+    if op == "withdraw" and out.get("source") in replay.PROTECTED_SOURCES:
         raise RetroactiveRefused(
             f"refusing to withdraw source '{out['source']}': it is the layer that means "
             f"'a human typed this'. There is no supported way to remove a human's value "

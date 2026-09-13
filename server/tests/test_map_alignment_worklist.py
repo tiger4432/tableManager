@@ -164,7 +164,7 @@ def test_the_unit_is_whatever_the_rule_declares_and_is_echoed_back(env):
 def test_the_unit_key_is_the_same_string_the_confirmation_record_composes(env):
     """If the worklist composed its own unit key, a confirmed unit would look pending -
     the lookup would simply miss. One spelling, in `frame_confirmation`."""
-    import frame_confirmation as fc
+    from maps import frame_confirmation as fc
     _seed_unit(env, "E1", "P1", ["J1"])
     w = _wl(env)
     assert w["units"][0]["unit_key"] == fc.compose_unit_key(
@@ -266,7 +266,7 @@ def test_a_map_table_the_source_cannot_key_is_named_not_silently_empty(env):
 
 
 def test_a_live_confirmation_makes_the_unit_confirmed(env):
-    import frame_confirmation as fc
+    from maps import frame_confirmation as fc
     _seed_unit(env, "E1", "P1", ["J1"])
     fc.record_confirmation(env, RULE, {"eqp": "E1", "product": "P1"},
                            [{"role": "r", "source_table": SRC, "map_id": "J1",
@@ -281,7 +281,7 @@ def test_a_live_confirmation_makes_the_unit_confirmed(env):
 def test_a_superseded_confirmation_alone_does_not_confirm_the_unit(env):
     """Only the LIVE record counts. Reading superseded rows would keep a unit marked
     confirmed after its decision was withdrawn."""
-    import frame_confirmation as fc
+    from maps import frame_confirmation as fc
     from database import models as m
     _seed_unit(env, "E1", "P1", ["J1"])
     # `frame` named because a confirmation that names none is refused [D-1, 2026-08-06].
@@ -393,7 +393,7 @@ def test_the_route_answers_two_hundred_rather_than_five_hundred(env, client, mon
     """The production symptom, at the seam it was reported from. `ConfirmationRefused` is
     not a `ValueError`, so widening `main.py`'s handler would only have turned a 500 into a
     400 - blaming the request for a row in the derived table."""
-    import frame_confirmation as fc
+    from maps import frame_confirmation as fc
     assert not issubclass(fc.ConfirmationRefused, ValueError), \
         "the route's `except ValueError` would catch this and the 500 story changes"
     _rules_patch(monkeypatch)
@@ -513,7 +513,7 @@ def test_sorting_by_state_orders_on_strength_not_on_the_spelling(env):
     assert (ma.UNIT_STATE_STRENGTH["unscorable"]
             < ma.UNIT_STATE_STRENGTH["pending"]
             < ma.UNIT_STATE_STRENGTH["confirmed"])
-    import frame_confirmation as fc
+    from maps import frame_confirmation as fc
     _seed_unit(env, "E1", "P1", ["J1"], meta_for={"J1": None})
     _seed_unit(env, "E2", "P1", ["J2"])
     fc.record_confirmation(env, RULE, {"eqp": "E2", "product": "P1"},
@@ -773,8 +773,8 @@ def test_the_undeclared_target_to_column_mapping_is_reported_not_resolved(env):
 # ---------------------------------------------------------------------------
 
 def _rules_patch(monkeypatch):
-    import enrichment_config
-    monkeypatch.setattr(enrichment_config, "load_enrichment_rules",
+    import enrichment.config
+    monkeypatch.setattr(enrichment.config, "load_enrichment_rules",
                         lambda *a, **k: [dict(RULE)])
 
 

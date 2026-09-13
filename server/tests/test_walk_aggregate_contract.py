@@ -26,7 +26,7 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import ledger_explorer                                             # noqa: E402
+from ledger import explorer                                             # noqa: E402
 from ledger_api import ledger_subgraph                             # noqa: E402
 
 VECTORS = os.path.abspath(os.path.join(
@@ -87,7 +87,7 @@ def test_the_contract_vector_exercises_every_measure():
 # ---------------------------------------------------------------------------
 
 NOW = datetime(2026, 9, 13, 1, 0, tzinfo=timezone.utc)
-SEED = ledger_explorer.entity_id("wafer", {"wid": "W1"})
+SEED = explorer.entity_id("wafer", {"wid": "W1"})
 
 
 def _atom(number, predicate, *, payload=None, kind=None):
@@ -181,9 +181,9 @@ def test_the_handler_turns_the_refusal_into_a_named_422_with_the_choices():
     """
     import inspect
 
-    import ledger_trace_router
+    from ledger import trace_router
 
-    body = inspect.getsource(ledger_trace_router.evidence_subgraph)
+    body = inspect.getsource(trace_router.evidence_subgraph)
     assert "AggregateRefused" in body, (
         "the named refusal has no arm, so it falls into the generic ValueError one")
 
@@ -212,9 +212,9 @@ def test_the_route_declares_both_arguments():
     that the fold happens where the population is, which it cannot if nobody can ask."""
     import inspect
 
-    import ledger_trace_router
+    from ledger import trace_router
 
-    signature = inspect.signature(ledger_trace_router.evidence_subgraph)
+    signature = inspect.signature(trace_router.evidence_subgraph)
     assert "group_by" in signature.parameters
     assert "measure" in signature.parameters
 

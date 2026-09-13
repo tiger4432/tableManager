@@ -24,7 +24,7 @@ server_dir = os.path.abspath(os.path.join(script_dir, ".."))
 if server_dir not in sys.path:
     sys.path.insert(0, server_dir)
 
-import dev_bench                                                      # noqa: E402
+from admin import dev_bench                                                      # noqa: E402
 
 SAMPLES = os.path.join(script_dir, "samples")
 FOLDERS = dev_bench.sample_folders(SAMPLES)

@@ -297,7 +297,7 @@ def test_the_queue_says_what_it_is_holding():
 def test_the_worker_heartbeat_carries_it():
     """The digest rides the note the chain worker already sends, rather than a second
     channel: `/health` reads that note across the process boundary today."""
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     assert worker.ledger_followup is followup
     followup.enqueue("dt_log", ["r1"], "EDIT")
@@ -332,7 +332,7 @@ def test_the_chain_group_queues_above_its_trigger_filter_and_translates_nothing(
     ㉩ -- and the chain path itself must translate nothing. `rescope` is replaced with a
     detonator: if the follow-up were inline, the chain transaction would pay for it here.
     """
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     def boom(*args, **kwargs):
         raise AssertionError("the chain path re-translated inline")
@@ -353,7 +353,7 @@ def test_an_empty_queue_never_becomes_a_hot_loop(monkeypatch):
     declares zero rest, and zero rest around an empty deque is a spin -- on the chain
     worker's own event loop. So an idle cycle waits the floor whatever the declaration
     says, and this drives the loop with the fastest pace there is to prove it."""
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     class Stop(Exception):
         pass

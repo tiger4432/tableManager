@@ -36,7 +36,7 @@ server_dir = os.path.abspath(os.path.join(script_dir, ".."))
 if server_dir not in sys.path:
     sys.path.insert(0, server_dir)
 
-import frame_confirmation as fc                      # noqa: E402
+from maps import frame_confirmation as fc                      # noqa: E402
 import map_alignment                                 # noqa: E402
 import map_meta_registrar                            # noqa: E402
 import map_overlay                                   # noqa: E402

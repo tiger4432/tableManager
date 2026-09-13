@@ -58,7 +58,7 @@ def _chain_rules():
     neither duplicated the other. A file read and a loader are 「같은 기능 두 경로」, and
     this was the half that was wrong.
     """
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     try:
         return worker.load_chain_rules() or []
@@ -243,7 +243,7 @@ def _vjoin_edges(db, rules):
     something different: the right table feeds the left WITHOUT writing, which is exactly the
     distinction a materialised rule stops making.
     """
-    import virtual_join_config as vjc
+    import virtual_join.config as vjc
 
     edges = []
     for rule in rules:
@@ -324,15 +324,15 @@ def _wakes(worker, rules, table):
 
 def chain_graph(db):
     """The four declarations on one picture. Reads only; decides nothing."""
-    import chain_ingestion_worker as worker
-    import enrichment_config
-    import virtual_join_config as vjc
+    from chain import ingestion_worker as worker
+    import enrichment.config
+    import virtual_join.config as vjc
     from database import crud
 
     catalogue = crud.TABLE_CONFIG or {}
     chain_rules = _chain_rules()
     try:
-        enrichment_rules = enrichment_config.load_enrichment_rules(
+        enrichment_rules = enrichment.config.load_enrichment_rules(
             known_tables=catalogue) or []
     except Exception:
         enrichment_rules = []

@@ -23,12 +23,12 @@ SERVER_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
-import admin_auth
+from admin import auth
 from main import app
 
 TOKEN = "correct-horse-battery-staple"
-HEADER = admin_auth.ADMIN_TOKEN_HEADER
-ENV = admin_auth.ADMIN_TOKEN_ENV
+HEADER = auth.ADMIN_TOKEN_HEADER
+ENV = auth.ADMIN_TOKEN_ENV
 
 
 # --------------------------------------------------------------------------
@@ -150,7 +150,7 @@ class TestEveryAdminRouteIsCovered:
                 exempt.add((method, path))
                 continue
             calls = _dependency_calls(route)
-            if calls & set(admin_auth.ADMIN_GATES):
+            if calls & set(auth.ADMIN_GATES):
                 gated.add((method, path))
             else:
                 ungated.add((method, path))
@@ -193,7 +193,7 @@ class TestEveryAdminRouteIsCovered:
         """
         strict_observed = set()
         for method, path, route in admin_routes():
-            if admin_auth.require_admin_token_strict in _dependency_calls(route):
+            if auth.require_admin_token_strict in _dependency_calls(route):
                 strict_observed.add((method, path))
 
         assert strict_observed == STRICT_ADMIN_ROUTES, (
@@ -205,7 +205,7 @@ class TestEveryAdminRouteIsCovered:
         """/health is the monitoring surface; locking it defeats its purpose."""
         for route in app.routes:
             if getattr(route, "path", None) == "/health":
-                assert not (_dependency_calls(route) & set(admin_auth.ADMIN_GATES)), \
+                assert not (_dependency_calls(route) & set(auth.ADMIN_GATES)), \
                     "/health must stay unauthenticated for external monitors"
                 return
         pytest.fail("/health route not found")
@@ -302,13 +302,13 @@ class TestConfiguredTokenIsEnforced:
 
     def test_matches_is_total_on_any_header_string(self):
         """Unit-level statement of the same contract, without the transport."""
-        assert admin_auth._matches(TOKEN, TOKEN) is True
-        assert admin_auth._matches(TOKEN + "x", TOKEN) is False
-        assert admin_auth._matches("", TOKEN) is False
+        assert auth._matches(TOKEN, TOKEN) is True
+        assert auth._matches(TOKEN + "x", TOKEN) is False
+        assert auth._matches("", TOKEN) is False
         # latin-1 decoded bytes: the shape Starlette actually delivers.
-        assert admin_auth._matches("토큰".encode("utf-8").decode("latin-1"),
+        assert auth._matches("토큰".encode("utf-8").decode("latin-1"),
                                    TOKEN) is False
-        assert admin_auth._matches("\udcff", TOKEN) is False  # lone surrogate
+        assert auth._matches("\udcff", TOKEN) is False  # lone surrogate
 
     def test_the_token_is_not_accepted_as_a_query_parameter(self, client, token_set):
         """Query strings land in the uvicorn access log; the header does not.
@@ -373,7 +373,7 @@ class TestUnconfiguredServerFailsClosedOnlyWhereItMatters:
     def test_whitespace_only_token_counts_as_unset(self, client, monkeypatch):
         """`export ASSY_ADMIN_TOKEN=` must not create a guessable secret."""
         monkeypatch.setenv(ENV, "   ")
-        assert admin_auth.configured_token() is None
+        assert auth.configured_token() is None
         res = client.post("/admin/scripts/code",
                           json={"path": "ingestion_workspace/x/s/a.py", "code": ""})
         assert res.status_code == 503
@@ -431,7 +431,7 @@ class TestTheTokenNeverLeaks:
 
     def test_startup_banner_never_prints_the_token(self, monkeypatch):
         monkeypatch.setenv(ENV, TOKEN)
-        level, msg = admin_auth.startup_banner()
+        level, msg = auth.startup_banner()
         assert level == "info"
         assert TOKEN not in msg
         assert ENV in msg
@@ -440,7 +440,7 @@ class TestTheTokenNeverLeaks:
             self, monkeypatch):
         """The operator must not have to discover the requirement by trial."""
         monkeypatch.delenv(ENV, raising=False)
-        level, msg = admin_auth.startup_banner()
+        level, msg = auth.startup_banner()
         assert level == "warning"
         assert ENV in msg                            # which variable
         assert "/admin/scripts/code" in msg          # what stopped working
@@ -536,17 +536,17 @@ class TestNonAsciiTokenIsRejectedNotSilentlyBroken:
 
     def test_non_ascii_token_does_not_count_as_configured(self, monkeypatch):
         monkeypatch.setenv(ENV, "관리자토큰")
-        assert admin_auth.configured_token() is None
-        assert admin_auth.token_is_unusable() is True
+        assert auth.configured_token() is None
+        assert auth.token_is_unusable() is True
 
     def test_ascii_token_is_still_accepted(self, monkeypatch):
         monkeypatch.setenv(ENV, TOKEN)
-        assert admin_auth.configured_token() == TOKEN
-        assert admin_auth.token_is_unusable() is False
+        assert auth.configured_token() == TOKEN
+        assert auth.token_is_unusable() is False
 
     def test_banner_is_an_error_that_names_the_cause_and_the_fix(self, monkeypatch):
         monkeypatch.setenv(ENV, "관리자토큰")
-        level, msg = admin_auth.startup_banner()
+        level, msg = auth.startup_banner()
         assert level == "error", "a non-ASCII token must not log as 'is set'"
         assert "NON-ASCII" in msg
         assert "IGNORED" in msg
@@ -637,11 +637,11 @@ class TestInternalEventsAreGated:
 
     def test_workers_send_the_header_when_a_token_is_configured(self, monkeypatch):
         monkeypatch.setenv(ENV, TOKEN)
-        assert admin_auth.internal_event_headers() == {HEADER: TOKEN}
+        assert auth.internal_event_headers() == {HEADER: TOKEN}
 
     def test_workers_send_nothing_when_it_is_not(self, monkeypatch):
         monkeypatch.delenv(ENV, raising=False)
-        assert admin_auth.internal_event_headers() == {}
+        assert auth.internal_event_headers() == {}
 
     def test_only_the_assembler_attaches_them(self):
         """All daemons that post to /internal/events/* attach the header — and
@@ -657,7 +657,7 @@ class TestInternalEventsAreGated:
         import inspect
         import internal_event_client
         import run_watcher
-        import chain_ingestion_worker
+        from chain import ingestion_worker
 
         assembler = inspect.getsource(internal_event_client.send_internal_event)
         assert "internal_event_headers" in assembler, (
@@ -665,7 +665,7 @@ class TestInternalEventsAreGated:
             "would 401 on a locked server")
 
         for mod, fn in ((run_watcher, "post_event"),
-                        (chain_ingestion_worker, "post_event_async")):
+                        (ingestion_worker, "post_event_async")):
             src = inspect.getsource(getattr(mod, fn))
             assert "send_internal_event" in src, (
                 f"{mod.__name__}.{fn} does not go through the one assembler")
@@ -684,7 +684,7 @@ HEX = set("0123456789abcdef")
 
 #: What the gate attaches to its own rejections, and therefore the only proof a
 #: 4xx came from us rather than from a proxy in front of the app.
-OUR_CHALLENGE = {admin_auth.GATE_CHALLENGE_HEADER: HEADER}
+OUR_CHALLENGE = {auth.GATE_CHALLENGE_HEADER: HEADER}
 
 
 def _fingerprint_for(monkeypatch, value):
@@ -692,7 +692,7 @@ def _fingerprint_for(monkeypatch, value):
         monkeypatch.delenv(ENV, raising=False)
     else:
         monkeypatch.setenv(ENV, value)
-    return admin_auth.token_fingerprint()
+    return auth.token_fingerprint()
 
 
 class TestTokenFingerprint:
@@ -709,12 +709,12 @@ class TestTokenFingerprint:
         """
         import hashlib
         expected = hashlib.sha256(TOKEN.encode("utf-8")).hexdigest()[
-            :admin_auth.TOKEN_FINGERPRINT_CHARS]
+            :auth.TOKEN_FINGERPRINT_CHARS]
         assert _fingerprint_for(monkeypatch, TOKEN) == expected
 
     def test_it_is_short_lowercase_hex(self, monkeypatch):
         fp = _fingerprint_for(monkeypatch, TOKEN)
-        assert len(fp) == admin_auth.TOKEN_FINGERPRINT_CHARS == 8
+        assert len(fp) == auth.TOKEN_FINGERPRINT_CHARS == 8
         assert set(fp) <= HEX, f"not comparable-by-eye hex: {fp!r}"
 
     def test_two_different_tokens_do_not_share_a_fingerprint(self, monkeypatch):
@@ -745,8 +745,8 @@ class TestTokenFingerprint:
         """
         none_fp = _fingerprint_for(monkeypatch, None)
         unusable_fp = _fingerprint_for(monkeypatch, NON_ASCII_TOKEN)
-        assert none_fp == admin_auth.FINGERPRINT_NONE
-        assert unusable_fp == admin_auth.FINGERPRINT_UNUSABLE
+        assert none_fp == auth.FINGERPRINT_NONE
+        assert unusable_fp == auth.FINGERPRINT_UNUSABLE
         assert none_fp != unusable_fp
         for marker in (none_fp, unusable_fp):
             assert marker, "a state with no digest still has to print something"
@@ -755,7 +755,7 @@ class TestTokenFingerprint:
 
     def test_a_whitespace_only_value_reads_as_unset_not_as_a_token(self, monkeypatch):
         """It resolves to None in `configured_token`; the fingerprint must agree."""
-        assert _fingerprint_for(monkeypatch, "   ") == admin_auth.FINGERPRINT_NONE
+        assert _fingerprint_for(monkeypatch, "   ") == auth.FINGERPRINT_NONE
 
 
 class TestNoOutputCarriesTheRawToken:
@@ -780,14 +780,14 @@ class TestNoOutputCarriesTheRawToken:
     @staticmethod
     def _emitted_text(label="Some Worker"):
         """Every operator-facing string `admin_auth` can produce right now."""
-        out = [admin_auth.token_fingerprint(),
-               admin_auth.startup_banner()[1],
-               admin_auth.worker_token_banner(label)[1]]
+        out = [auth.token_fingerprint(),
+               auth.startup_banner()[1],
+               auth.worker_token_banner(label)[1]]
         for status in (401, 403, 407, 500):
             for headers in (None, {}, dict(OUR_CHALLENGE),
-                            {admin_auth.GATE_CHALLENGE_HEADER: "Basic realm=x",
+                            {auth.GATE_CHALLENGE_HEADER: "Basic realm=x",
                              "Server": "nginx/1.24.0", "Via": "1.1 proxy"}):
-                note = admin_auth.internal_event_failure_note(status, headers)
+                note = auth.internal_event_failure_note(status, headers)
                 if note is not None:
                     out.append(note)
         return out
@@ -816,7 +816,7 @@ class TestNoOutputCarriesTheRawToken:
         """
         import inspect
 
-        public = {name for name, fn in inspect.getmembers(admin_auth, inspect.isfunction)
+        public = {name for name, fn in inspect.getmembers(auth, inspect.isfunction)
                   if not name.startswith("_") and fn.__module__ == "admin_auth"}
         covered = {"token_fingerprint", "startup_banner", "worker_token_banner",
                    "internal_event_failure_note"}
@@ -836,8 +836,8 @@ class TestNoOutputCarriesTheRawToken:
         """
         monkeypatch.setenv(ENV, TOKEN)
         monkeypatch.setattr(
-            admin_auth, "startup_banner",
-            lambda: ("info", f"[admin-auth] token is {admin_auth.configured_token()}"))
+            auth, "startup_banner",
+            lambda: ("info", f"[admin-auth] token is {auth.configured_token()}"))
         leaked = [t for t in self._emitted_text() if TOKEN in t]
         assert leaked, "the injected leak was not visible to _emitted_text()"
 
@@ -917,7 +917,7 @@ class TestGateStatusSemanticsAreUnchanged:
         assert res.status_code == 401, (
             "a no-header internal event must answer 401; if this is ever 403 the "
             "diagnosis 'a 403 with no header cannot be us' stops being true")
-        assert res.headers.get(admin_auth.GATE_CHALLENGE_HEADER) == HEADER
+        assert res.headers.get(auth.GATE_CHALLENGE_HEADER) == HEADER
 
 
 class TestTheFailureNoteNamesWhoRefusedAndWhatToDo:
@@ -926,31 +926,31 @@ class TestTheFailureNoteNamesWhoRefusedAndWhatToDo:
     def test_our_gate_403_says_the_tokens_differ_and_names_the_remedy(
             self, monkeypatch):
         monkeypatch.setenv(ENV, TOKEN)
-        note = admin_auth.internal_event_failure_note(403, dict(OUR_CHALLENGE))
+        note = auth.internal_event_failure_note(403, dict(OUR_CHALLENGE))
         assert "admin-gate=yes" in note
-        assert admin_auth.token_fingerprint() in note   # comparable with the server
+        assert auth.token_fingerprint() in note   # comparable with the server
         assert "DIFFERENT" in note
         assert "WHOLE launcher tree" in note, "the remedy must be stated, not implied"
 
     def test_a_403_without_our_challenge_says_it_is_not_us(self, monkeypatch):
         """The production case: a no-token probe answered 403, which we cannot do."""
         monkeypatch.setenv(ENV, TOKEN)
-        note = admin_auth.internal_event_failure_note(
+        note = auth.internal_event_failure_note(
             403, {"Server": "nginx/1.24.0", "Via": "1.1 corp-proxy"})
         assert "admin-gate=no" in note
         assert "NOT AN ADMIN-TOKEN FAILURE" in note
         assert "nginx/1.24.0" in note, "whoever answered must be named if it says so"
         assert "1.1 corp-proxy" in note
         assert "proxy" in note.lower()
-        assert admin_auth.token_fingerprint() not in note, (
+        assert auth.token_fingerprint() not in note, (
             "an upstream refusal must not invite a token comparison; that is the "
             "hour of restarts this note exists to prevent")
 
     def test_a_foreign_www_authenticate_does_not_count_as_ours(self, monkeypatch):
         """A proxy's own Basic challenge must not be read as the admin gate."""
         monkeypatch.setenv(ENV, TOKEN)
-        note = admin_auth.internal_event_failure_note(
-            403, {admin_auth.GATE_CHALLENGE_HEADER: 'Basic realm="corp"'})
+        note = auth.internal_event_failure_note(
+            403, {auth.GATE_CHALLENGE_HEADER: 'Basic realm="corp"'})
         assert "admin-gate=no" in note
         assert "Basic" in note
 
@@ -963,22 +963,22 @@ class TestTheFailureNoteNamesWhoRefusedAndWhatToDo:
         """
         from requests.structures import CaseInsensitiveDict
         monkeypatch.setenv(ENV, TOKEN)
-        note = admin_auth.internal_event_failure_note(
+        note = auth.internal_event_failure_note(
             403, CaseInsensitiveDict({"www-authenticate": "x-admin-token"}))
         assert "admin-gate=yes" in note
 
     def test_401_with_no_token_here_tells_the_operator_to_set_it(self, monkeypatch):
         monkeypatch.delenv(ENV, raising=False)
-        note = admin_auth.internal_event_failure_note(401, dict(OUR_CHALLENGE))
-        assert admin_auth.FINGERPRINT_NONE in note
+        note = auth.internal_event_failure_note(401, dict(OUR_CHALLENGE))
+        assert auth.FINGERPRINT_NONE in note
         assert ENV in note
         assert "run_decoupled_app.py" in note
 
     def test_401_with_a_non_ascii_token_says_replace_not_add(self, monkeypatch):
         """Reporting this as "unset" sends the operator to add what is already there."""
         monkeypatch.setenv(ENV, NON_ASCII_TOKEN)
-        note = admin_auth.internal_event_failure_note(401, dict(OUR_CHALLENGE))
-        assert admin_auth.FINGERPRINT_UNUSABLE in note
+        note = auth.internal_event_failure_note(401, dict(OUR_CHALLENGE))
+        assert auth.FINGERPRINT_UNUSABLE in note
         assert "ASCII" in note
         assert "do not just add it" in note
 
@@ -986,19 +986,19 @@ class TestTheFailureNoteNamesWhoRefusedAndWhatToDo:
             self, monkeypatch):
         """The gate saw nothing although we sent something - a third remedy."""
         monkeypatch.setenv(ENV, TOKEN)
-        note = admin_auth.internal_event_failure_note(401, dict(OUR_CHALLENGE))
+        note = auth.internal_event_failure_note(401, dict(OUR_CHALLENGE))
         assert "stripped in transit" in note
 
     @pytest.mark.parametrize("status", [200, 404, 422, 500, 502, 503])
     def test_non_auth_statuses_get_no_auth_paragraph(self, monkeypatch, status):
         monkeypatch.setenv(ENV, TOKEN)
-        assert admin_auth.internal_event_failure_note(status, {}) is None
+        assert auth.internal_event_failure_note(status, {}) is None
 
     def test_a_hostile_upstream_cannot_forge_log_lines_through_its_headers(
             self, monkeypatch):
         """The echoed value is not our secret, but it is not our data either."""
         monkeypatch.setenv(ENV, TOKEN)
-        note = admin_auth.internal_event_failure_note(
+        note = auth.internal_event_failure_note(
             403, {"Server": "evil\r\n[admin-auth] ALL CLEAR, token fingerprint deadbeef"})
         assert "\n" not in note and "\r" not in note
         assert "ALL CLEAR" not in note or len(note.splitlines()) == 1
@@ -1013,8 +1013,8 @@ class TestTheFailureNoteNamesWhoRefusedAndWhatToDo:
             def get(self, name):
                 raise RuntimeError("no headers for you")
 
-        assert "admin-gate=no" in admin_auth.internal_event_failure_note(403, Hostile())
-        assert "admin-gate=no" in admin_auth.internal_event_failure_note(403, None)
+        assert "admin-gate=no" in auth.internal_event_failure_note(403, Hostile())
+        assert "admin-gate=no" in auth.internal_event_failure_note(403, None)
 
 
 # --------------------------------------------------------------------------
@@ -1093,7 +1093,9 @@ def _drive_sender(monkeypatch, module_name, response):
 #: Every daemon that POSTs to /internal/events/*. A fix applied to one sender
 #: only is a defect this repo has already shipped on this exact endpoint, which is
 #: why every case below is parametrized across all three rather than spot-checked.
-SENDERS = ["run_watcher", "chain_ingestion_worker"]
+# 🪦 [S-211 packaging] the worker lives in `chain/` now; these strings are the
+#    module names the cases import, so they move with it.
+SENDERS = ["run_watcher", "chain.ingestion_worker"]
 
 
 class TestEverySenderLogsWhoRefused:
@@ -1107,7 +1109,7 @@ class TestEverySenderLogsWhoRefused:
         text = cap.text()
         assert "403" in text
         assert "admin-gate=yes" in text, f"{module_name} discarded the gate signal"
-        assert admin_auth.token_fingerprint() in text
+        assert auth.token_fingerprint() in text
         assert TOKEN not in text, f"{module_name} logged the raw token"
 
     @pytest.mark.parametrize("module_name", SENDERS)
@@ -1121,7 +1123,7 @@ class TestEverySenderLogsWhoRefused:
         assert "admin-gate=no" in text, f"{module_name} discarded the gate signal"
         assert "NOT AN ADMIN-TOKEN FAILURE" in text
         assert "nginx/1.24.0" in text
-        assert admin_auth.token_fingerprint() not in text
+        assert auth.token_fingerprint() not in text
 
     @pytest.mark.parametrize("module_name", SENDERS)
     def test_a_401_names_the_missing_variable(self, monkeypatch, module_name):
@@ -1158,9 +1160,9 @@ class TestEverySenderLogsWhoRefused:
         """
         monkeypatch.setenv(ENV, TOKEN)
         import asyncio
-        import chain_ingestion_worker as ciw
+        from chain import ingestion_worker as ciw
 
-        cap = _drive_sender(monkeypatch, "chain_ingestion_worker",
+        cap = _drive_sender(monkeypatch, "chain.ingestion_worker",
                             _FakeResponse(403, dict(OUR_CHALLENGE)))
         assert "admin-gate=yes" in cap.text()  # the new branch really ran
 
@@ -1207,11 +1209,11 @@ class TestEveryDaemonAnnouncesItsFingerprintAtStartup:
 
     def test_the_server_banner_carries_it_in_every_state(self, monkeypatch):
         monkeypatch.setenv(ENV, TOKEN)
-        assert admin_auth.token_fingerprint() in admin_auth.startup_banner()[1]
+        assert auth.token_fingerprint() in auth.startup_banner()[1]
         monkeypatch.delenv(ENV, raising=False)
-        assert admin_auth.FINGERPRINT_NONE in admin_auth.startup_banner()[1]
+        assert auth.FINGERPRINT_NONE in auth.startup_banner()[1]
         monkeypatch.setenv(ENV, NON_ASCII_TOKEN)
-        assert admin_auth.FINGERPRINT_UNUSABLE in admin_auth.startup_banner()[1]
+        assert auth.FINGERPRINT_UNUSABLE in auth.startup_banner()[1]
 
     @pytest.mark.parametrize("env_value,level", [
         (TOKEN, "info"),
@@ -1224,14 +1226,14 @@ class TestEveryDaemonAnnouncesItsFingerprintAtStartup:
             monkeypatch.delenv(ENV, raising=False)
         else:
             monkeypatch.setenv(ENV, env_value)
-        got_level, msg = admin_auth.worker_token_banner("Some Worker")
+        got_level, msg = auth.worker_token_banner("Some Worker")
         assert got_level == level
-        assert admin_auth.token_fingerprint() in msg
+        assert auth.token_fingerprint() in msg
         assert "Some Worker" in msg, "the line must say which process it describes"
 
     @pytest.mark.parametrize("module_name,func_name", [
         ("run_watcher", "main"),
-        ("chain_ingestion_worker", "start_chain_ingestion_worker"),
+        ("chain.ingestion_worker", "start_chain_ingestion_worker"),
     ])
     def test_each_daemon_startup_path_logs_the_banner(self, module_name, func_name):
         import importlib
@@ -1365,13 +1367,13 @@ class TestInternalCallsNeverConsultProxyConfiguration:
 
     def test_one_place_defines_the_web_servers_address(self):
         """Three modules previously repeated the literal independently."""
-        import chain_ingestion_worker
+        from chain import ingestion_worker
         import internal_event_client
         import run_watcher
 
         assert (internal_event_client.DEFAULT_API_BASE_URL
                 == "http://127.0.0.1:8080")
-        for mod in (chain_ingestion_worker, run_watcher):
+        for mod in (ingestion_worker, run_watcher):
             assert mod.API_BASE_URL == internal_event_client.api_base_url(), (
                 f"{mod.__name__} resolves the API address by itself")
 
@@ -1438,7 +1440,7 @@ class TestTheStartupCheckSaysWhatAFirstBroadcastWouldHaveDiscovered:
         lines = internal_event_client.startup_lines("Some Worker",
                                                     "http://127.0.0.1:8080")
         text = "\n".join(m for _, m in lines)
-        assert admin_auth.token_fingerprint() in text
+        assert auth.token_fingerprint() in text
         assert "Some Worker" in text
         assert "probed" in text
         assert TOKEN not in text

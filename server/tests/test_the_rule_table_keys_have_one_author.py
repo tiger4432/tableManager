@@ -61,7 +61,7 @@ def test_the_shipped_declaration_uses_no_key_the_model_does_not_know():
 
 def test_nobody_re_enumerates_the_keys():
     """🔴 ④ — 저자가 «하나»여야 한다. 두 번째 목록은 새 키가 생긴 날 «한쪽만» 모른다."""
-    for name in ("chain_ingestion_worker.py", "chain_bindings.py"):
+    for name in ("chain/ingestion_worker.py", "chain_bindings.py"):
         src = open(os.path.join(SERVER, name), encoding="utf-8").read()
         doc = set()
         tree = ast.parse(src)

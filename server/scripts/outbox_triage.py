@@ -144,16 +144,16 @@ def replay_cancelled(db, table, apply=False, chunk=1000):
 
     from database import crud, models
     models.init_dynamic_models(crud.TABLE_CONFIG)
-    import chain_replay
+    from chain import replay
 
     keys = [r[0] for r in db.execute(text(
         "SELECT business_key_val FROM " + table + " WHERE row_id = ANY(:i)"),
         {"i": ids}).fetchall()]
     print("   business keys resolved: %d" % len(keys))
-    rules = [r for r in chain_replay.load_rules()
+    rules = [r for r in replay.load_rules()
              if r.get("trigger_table") == table and r.get("enabled", True)]
-    for rule in chain_replay.order_rules(rules):
-        chain_replay.replay_rule(db, rule, apply=True, business_keys=keys,
+    for rule in replay.order_rules(rules):
+        replay.replay_rule(db, rule, apply=True, business_keys=keys,
                                  log=lambda *a, **k: None)
         print("   replayed %s" % rule.get("name"))
     return len(ids)

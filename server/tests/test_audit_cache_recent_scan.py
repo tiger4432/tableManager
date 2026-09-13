@@ -12,9 +12,9 @@ from datetime import datetime, timedelta, timezone
 import pytest
 import sqlalchemy as sa
 
-import audit_cache
-import audit_history
-from audit_cache import AuditLogCache
+from admin import audit_cache
+from admin import audit_history
+from admin.audit_cache import AuditLogCache
 from database import models
 
 TABLE = "audit_recent_scan_probe"

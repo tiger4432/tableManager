@@ -21,7 +21,7 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import ledger_trace as lt
+from ledger import trace as lt
 from database import crud
 
 

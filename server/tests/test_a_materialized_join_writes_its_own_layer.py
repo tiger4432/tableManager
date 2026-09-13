@@ -26,8 +26,8 @@ server_dir = os.path.abspath(os.path.join(script_dir, ".."))
 if server_dir not in sys.path:
     sys.path.insert(0, server_dir)
 
-import virtual_join_config as vjc                                     # noqa: E402
-import virtual_join_executor as vje                                   # noqa: E402
+import virtual_join.config as vjc                                     # noqa: E402
+from virtual_join import executor as vje                                   # noqa: E402
 
 KNOWN = {
     "left_t": {"column_types": {"k": "string", "frame": "string"}},
@@ -175,7 +175,7 @@ def test_retraction_withdraws_the_layer_by_the_rule_name(monkeypatch):
     🚩 IT LIVES IN `cell_layer` SINCE S-211 ① (판정 358). It was in `chain_replay`, imported
     here inside `retract_rows`, and that one line was the last seam of a four-module ring.
     Patching the OLD home would leave this green while the executor called the real thing."""
-    import cell_layer
+    from chain import cell_layer
 
     seen = {}
 

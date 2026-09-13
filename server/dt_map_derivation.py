@@ -240,11 +240,11 @@ def join_rule(db, name: str) -> dict:
     Returns the loader's normalized rule (it carries `name`, `right_columns`,
     `required_index` and the DDL that would create it).
     """
-    import virtual_join_config
+    import virtual_join.config
     from database import crud
 
     rejections = []
-    rules = virtual_join_config.load_verified_rules(
+    rules = virtual_join.config.load_verified_rules(
         db, known_tables=crud.TABLE_CONFIG, rejections=rejections)
     for rule in rules or []:
         if rule.get("name") == name:

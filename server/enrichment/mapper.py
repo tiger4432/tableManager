@@ -222,9 +222,9 @@ def map_enrichment_dedup(db, payloads, rule=None):
     # 병합**된다(`enrichment_config.partial_key_identity_supported` 참조 — 실측). 담지
     # 못하는 계약에서는 부분 키 행을 만들지 않고 **이름 붙여 센다**. 조용한 덮어쓰기
     # 대신 고칠 수 있는 config 한 줄을 가리키는 쪽을 고른다.
-    import enrichment_config
+    import enrichment.config
 
-    partial_ok = enrichment_config.partial_key_identity_supported(decision_key, derived_cfg)
+    partial_ok = enrichment.config.partial_key_identity_supported(decision_key, derived_cfg)
 
     groups = {}          # clean_key_tuple -> {"reps": {list_col: 값}}
     key_raw_values = {}  # clean_key_tuple -> typed_raw_tuple (count 재계산 바인딩용)
@@ -234,10 +234,10 @@ def map_enrichment_dedup(db, payloads, rule=None):
         data = p.get("data") or {}
         clean_vals = [crud.clean_str_value(_cell_value(data, k)) for k in decision_key]
         key_values = dict(zip(decision_key, clean_vals))
-        if enrichment_config.key_is_wholly_blank(enrich, key_values):
+        if enrichment.config.key_is_wholly_blank(enrich, key_values):
             skipped += 1
             continue
-        if not partial_ok and enrichment_config.blank_key_columns(enrich, key_values):
+        if not partial_ok and enrichment.config.blank_key_columns(enrich, key_values):
             unexpressible += 1
             continue
         # 빈 컬럼의 raw는 None이다 — 타입 캐스트를 태우지 않는다. 재계산 쿼리가 그
@@ -294,7 +294,7 @@ def map_enrichment_dedup(db, payloads, rule=None):
     for key, g in groups.items():
         key_map = dict(zip(decision_key, key))
         # 같은 술어 하나 — 아래 정체성 조립과 `partial_keys` 회계가 이것을 공유한다.
-        blank_key_cols = enrichment_config.blank_key_columns(enrich, key_map)
+        blank_key_cols = enrichment.config.blank_key_columns(enrich, key_map)
         if blank_key_cols:
             partial_keys += 1
         upd_cols = {}

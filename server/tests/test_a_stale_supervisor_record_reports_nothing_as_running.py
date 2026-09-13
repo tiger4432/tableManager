@@ -23,7 +23,7 @@ server_dir = os.path.abspath(os.path.join(script_dir, ".."))
 if server_dir not in sys.path:
     sys.path.insert(0, server_dir)
 
-import health as health_mod                                          # noqa: E402
+from runtime import health as health_mod                                          # noqa: E402
 
 NOW = 1_000_000.0
 FRESH = {

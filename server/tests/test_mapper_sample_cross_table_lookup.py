@@ -172,7 +172,7 @@ def _trigger_payloads(db, rows):
 
 def _run(db, payloads, rule=None):
     """Through the worker's own dispatcher, not by calling the function directly."""
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     return worker.execute_custom_mapper(
         MODULE_NAME, RULE["mapper_function"], db, payloads, rule=rule or RULE)
@@ -192,7 +192,7 @@ def test_the_worker_passes_the_rule_to_this_mapper(env):
     A sample whose signature failed this probe would be called `f(db, payload)`, every
     declaration would fall back to its default, and the failure would look like a
     config that is being ignored."""
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     _db, module = env
     assert worker._mapper_accepts_rule(module.build_pack_weight_batch) is True

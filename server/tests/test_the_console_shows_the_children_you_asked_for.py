@@ -17,8 +17,8 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from launcher_args import parse_launcher_args                        # noqa: E402
-from process_supervisor import Supervisor                            # noqa: E402
+from runtime.launcher_args import parse_launcher_args                        # noqa: E402
+from runtime.process_supervisor import Supervisor                            # noqa: E402
 
 
 def _supervisor(names=()):

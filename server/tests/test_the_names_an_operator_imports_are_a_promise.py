@@ -133,3 +133,58 @@ def test_the_shims_actually_name_something(request):
         ours = {n for n in _imported_names(shim) if not _is_stdlib_or_third_party(n)}
         assert ours, shim
         assert "void_sat_format" in ours
+
+
+# ---------------------------------------------------------------------------
+# 🔴 the live mappers - the half that was missed
+# ---------------------------------------------------------------------------
+
+#: `server/mappers/` is gitignored: the operator's own files, which this repo never edits.
+#: It CAN read them, and 「which top-level names does this file import」 is a structural fact
+#: rather than a number about this box - so no count is recorded here, only the set
+#: relation. (S-211, 판정 364.)
+LIVE_MAPPERS = os.path.join(SERVER_DIR, "mappers")
+
+
+def _live_mapper_imports():
+    """Top-level server modules the live mappers name. Empty if the folder is not here."""
+    found = set()
+    if not os.path.isdir(LIVE_MAPPERS):
+        return found
+    for entry in sorted(os.listdir(LIVE_MAPPERS)):
+        if not entry.endswith(".py"):
+            continue
+        try:
+            tree = ast.parse(io.open(os.path.join(LIVE_MAPPERS, entry),
+                                     encoding="utf-8").read())
+        except Exception:
+            continue
+        for node in ast.walk(tree):
+            heads = ([a.name.split(".")[0] for a in node.names]
+                     if isinstance(node, ast.Import)
+                     else ([node.module.split(".")[0]]
+                           if isinstance(node, ast.ImportFrom) and node.module
+                           and not node.level else []))
+            for head in heads:
+                if os.path.isfile(os.path.join(SERVER_DIR, head + ".py")):
+                    found.add(head)
+    return found
+
+
+@pytest.mark.skipif(not os.path.isdir(LIVE_MAPPERS),
+                    reason="no live mappers here: %s" % LIVE_MAPPERS)
+def test_every_name_the_live_mappers_import_is_promised():
+    """🔴 THE GATE THAT WAS MISSING. A package move renamed modules the operator's mappers
+    import; it was applied, the suite broke, and it was reverted. Nothing measured that
+    surface, so nothing objected until the tree was already moved.
+
+    ⚠️ SET RELATION, NOT A COUNT. How many mappers this box happens to hold says nothing
+    about production; which NAMES a mapper may rely on is the same everywhere, because it is
+    what the product promises.
+    """
+    named = _live_mapper_imports()
+    unpromised = sorted(named - set(OPERATOR_IMPORT_NAMES))
+
+    assert not unpromised, (
+        "the live mappers import top-level modules that are not promised: %s - either add "
+        "them to OPERATOR_IMPORT_NAMES or stop them being importable" % unpromised)

@@ -20,11 +20,8 @@ import sys
 
 import pytest
 
-import process_supervisor as ps
-from process_supervisor import (
-    ChildSpec, Supervisor, STATE_FAILED, STATE_RETRYING_CORRELATED,
-    VERDICT_BROKEN_CHILD, VERDICT_PORT_CONFLICT,
-)
+from runtime import process_supervisor as ps
+from runtime.process_supervisor import ChildSpec, Supervisor, STATE_FAILED, STATE_RETRYING_CORRELATED, VERDICT_BROKEN_CHILD, VERDICT_PORT_CONFLICT
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 

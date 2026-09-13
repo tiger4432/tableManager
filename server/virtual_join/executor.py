@@ -67,7 +67,7 @@ provenance가 있는가**를 묻는다(쓰기 전 검사라 영속 흔적이 답
 import logging
 import time
 
-import cell_layer
+from chain import cell_layer
 from verified_join_contract import usable_expose
 
 logger = logging.getLogger("VirtualJoinExecutor")
@@ -124,7 +124,7 @@ def _verified_by_left_table(db) -> dict:
     if cached is not None and (now - _RULES_CACHE["at"]) < RULES_CACHE_TTL:
         return cached
 
-    import virtual_join_config as vjc
+    import virtual_join.config as vjc
     from database import crud
 
     by_left, by_right = {}, {}
@@ -814,7 +814,7 @@ def on_reference_rows_changed(db, rule: dict, key_values: list) -> dict:
     ⛔ OVER THE CEILING WRITES NOTHING. Not the first N rows: a table left part new and part
     old says nothing about which row is which.
     """
-    import virtual_join_config as vjc
+    import virtual_join.config as vjc
 
     counted = vjc.rewrite_row_count(db.connection(), rule, key_values)
     refusal = vjc.rewrite_refusal(rule, counted)
@@ -831,7 +831,7 @@ def _left_row_ids_for_key(db, rule: dict, key_values: list) -> list:
     """Which target rows carry this join key — folded the SAME way the counter folds it."""
     from sqlalchemy import text
 
-    import virtual_join_config as vjc
+    import virtual_join.config as vjc
     from database.crud import fold_key_value
 
     left_columns = [p["left"] for p in rule["join_key"]]

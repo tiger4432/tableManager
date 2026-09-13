@@ -23,7 +23,7 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import ledger_admin                                             # noqa: E402
+from ledger import admin                                             # noqa: E402
 
 #: 🔴 WHAT MAKES A RULE RUNNABLE (S-204 (3), 판정 326). These cases are about `enabled`,
 #: and they used to save rules that named NO mapper -- which the boot loader drops with
@@ -42,14 +42,14 @@ def rules_file(tmp_path, monkeypatch):
         {"name": "live_one", "trigger_table": "a", "target_table": "b",
          "mapper_module": "m", "mapper_function": "f", "enabled": True},
     ]}), encoding="utf-8")
-    monkeypatch.setattr(ledger_admin, "chain_rules_path", lambda: str(path))
-    monkeypatch.setattr(ledger_admin.config_backup, "backup_dir_for",
+    monkeypatch.setattr(admin, "chain_rules_path", lambda: str(path))
+    monkeypatch.setattr(admin.config_backup, "backup_dir_for",
                         lambda p: str(tmp_path / "backup"))
     return path
 
 
 def base_of(path):
-    return ledger_admin.file_fingerprint(str(path))
+    return admin.file_fingerprint(str(path))
 
 
 def rules_of(path):
@@ -58,7 +58,7 @@ def rules_of(path):
 
 def test_a_NEW_rule_is_saved_armed_but_not_firing(rules_file):
     """🔴 THE RULING. Saving is loading; it must not also be firing."""
-    result = ledger_admin.save_chain_rule_raw(
+    result = admin.save_chain_rule_raw(
         "fresh", {"trigger_table": "x", "target_table": "y", **RUNNABLE}, base_of(rules_file))
     assert result["created"] is True
     assert result["enabled"] is False
@@ -68,7 +68,7 @@ def test_a_NEW_rule_is_saved_armed_but_not_firing(rules_file):
 def test_editing_an_existing_rule_does_not_switch_it_off(rules_file):
     """⚠️ The worse half of the same mistake: a rule that was running stops, silently,
     because somebody fixed a typo in it."""
-    ledger_admin.save_chain_rule_raw(
+    admin.save_chain_rule_raw(
         "live_one", {"trigger_table": "a2", "target_table": "b", **RUNNABLE},
         base_of(rules_file))
     saved = rules_of(rules_file)["live_one"]
@@ -78,23 +78,23 @@ def test_editing_an_existing_rule_does_not_switch_it_off(rules_file):
 
 def test_an_explicit_enabled_is_respected_on_both_paths(rules_file):
     """Turning it on IS the raw editor - no second control was invented for it."""
-    ledger_admin.save_chain_rule_raw(
+    admin.save_chain_rule_raw(
         "fresh", {"trigger_table": "x", "target_table": "y", "enabled": True, **RUNNABLE},
         base_of(rules_file))
     assert rules_of(rules_file)["fresh"]["enabled"] is True
 
 
 def test_the_other_rules_are_left_alone(rules_file):
-    ledger_admin.save_chain_rule_raw(
+    admin.save_chain_rule_raw(
         "fresh", {"trigger_table": "x", "target_table": "y", **RUNNABLE}, base_of(rules_file))
     assert set(rules_of(rules_file)) == {"live_one", "fresh"}
 
 
 def test_a_moved_file_is_refused_by_name(rules_file):
     stale = base_of(rules_file)
-    ledger_admin.save_chain_rule_raw("one", {"trigger_table": "x", **RUNNABLE}, stale)
+    admin.save_chain_rule_raw("one", {"trigger_table": "x", **RUNNABLE}, stale)
     with pytest.raises(Exception) as raised:
-        ledger_admin.save_chain_rule_raw("two", {"trigger_table": "x", **RUNNABLE}, stale)
+        admin.save_chain_rule_raw("two", {"trigger_table": "x", **RUNNABLE}, stale)
     assert raised.value.detail["code"] == "stale_base"
 
 
@@ -102,11 +102,11 @@ def test_a_cycle_is_refused_by_the_validator_that_already_exists(rules_file):
     """⚠️ Found by measuring rather than by building: this is the ONE validator these
     rules have, and it reads the whole set. Nothing validates a single rule's shape -
     chain_bindings refuses at run time - and none was invented here."""
-    ledger_admin.save_chain_rule_raw(
+    admin.save_chain_rule_raw(
         "a_to_b", {"trigger_table": "a", "target_table": "b", **RUNNABLE,
                    "allow_chain_trigger": True, "enabled": True}, base_of(rules_file))
     with pytest.raises(Exception) as raised:
-        ledger_admin.save_chain_rule_raw(
+        admin.save_chain_rule_raw(
             "b_to_a", {"trigger_table": "b", "target_table": "a", **RUNNABLE,
                        "allow_chain_trigger": True, "enabled": True},
             base_of(rules_file))
@@ -114,7 +114,7 @@ def test_a_cycle_is_refused_by_the_validator_that_already_exists(rules_file):
 
 
 def test_the_view_offers_one_rule_and_its_switch(rules_file):
-    view = ledger_admin.chain_rule_raw_view("live_one")
+    view = admin.chain_rule_raw_view("live_one")
     assert view["editable_unit"] == "rule"
     assert view["rules"] == ["live_one"]
     assert view["enabled"] is True

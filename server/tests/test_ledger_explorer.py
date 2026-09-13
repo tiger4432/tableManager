@@ -4,8 +4,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import ledger_explorer
-import ledger_trace
+from ledger import explorer
+from ledger import trace
 
 
 NOW = datetime(2026, 8, 15, tzinfo=timezone.utc)
@@ -18,7 +18,7 @@ def claim(atom_id, subject, predicate, target_type=None, target_keys=None,
     if target_type:
         kind = "entity_ref"
         payload = {"type": target_type, "keys": target_keys, "qualifiers": {}}
-    return ledger_trace.Claim(
+    return trace.Claim(
         id=atom_id, subject_type="Lot", subject_keys={"lot": subject},
         predicate=predicate, object_kind=kind, object_payload=payload or {},
         occurred_at=NOW, source_who="fixture", source_translator_ver="1",
@@ -46,7 +46,7 @@ def fixture():
 
 
 def test_entity_ids_are_order_independent_and_opaque():
-    a = ledger_explorer.entity_id("WaferLeg", {"wafer": "W1", "bonding_leg": "L"})
-    b = ledger_explorer.entity_id("WaferLeg", {"bonding_leg": "L", "wafer": "W1"})
+    a = explorer.entity_id("WaferLeg", {"wafer": "W1", "bonding_leg": "L"})
+    b = explorer.entity_id("WaferLeg", {"bonding_leg": "L", "wafer": "W1"})
     assert a == b
     assert a.startswith("ledger-entity:v1:")

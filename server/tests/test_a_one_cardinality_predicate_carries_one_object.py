@@ -306,16 +306,16 @@ def test_the_router_reads_cardinality_from_the_same_declaration_as_its_siblings(
     how two answers about one predicate appear."""
     import inspect
 
-    import ledger_trace_router
+    from ledger import trace_router
 
-    body = inspect.getsource(ledger_trace_router._predicate_cardinalities)
+    body = inspect.getsource(trace_router._predicate_cardinalities)
 
     assert "from ledger import config as _config" in body
     assert '(declared.get("vocabulary") or {})' in body
     # Keyed by the unversioned name, which is the spelling the edges use.
     assert 'str(key).split("@", 1)[0]' in body
 
-    call = inspect.getsource(ledger_trace_router)
+    call = inspect.getsource(trace_router)
     assert "cardinalities=_predicate_cardinalities()" in call
 
 
@@ -324,9 +324,9 @@ def test_a_declaration_that_cannot_be_read_still_draws_the_graph():
     about cardinality rather than refusing to draw."""
     import inspect
 
-    import ledger_trace_router
+    from ledger import trace_router
 
-    body = inspect.getsource(ledger_trace_router._predicate_cardinalities)
+    body = inspect.getsource(trace_router._predicate_cardinalities)
 
     assert "except Exception:" in body
     assert body.rstrip().endswith("return cardinalities")
@@ -336,7 +336,7 @@ def test_live_claims_drops_the_atom_a_later_one_replaced():
     """🔴 THE HALF THAT MAKES ① VISIBLE (게이트, 판정 256). Writing `supersedes` is only
     worth anything if the walk stops showing what it replaced - and this is the reader that
     has been waiting for a writer since the column existed."""
-    import ledger_trace
+    from ledger import trace
 
     class _Claim:
         def __init__(self, claim_id, supersedes=None):
@@ -346,13 +346,13 @@ def test_live_claims_drops_the_atom_a_later_one_replaced():
     old = _Claim("A")
     new = _Claim("B", supersedes="A")
 
-    live = ledger_trace.live_claims([old, new])
+    live = trace.live_claims([old, new])
 
     assert [c.id for c in live] == ["B"], "the replaced atom is gone from the answer"
 
 
 def test_nothing_is_dropped_when_nothing_supersedes():
-    import ledger_trace
+    from ledger import trace
 
     class _Claim:
         def __init__(self, claim_id):
@@ -361,4 +361,4 @@ def test_nothing_is_dropped_when_nothing_supersedes():
 
     claims = [_Claim("A"), _Claim("B")]
 
-    assert len(ledger_trace.live_claims(claims)) == 2
+    assert len(trace.live_claims(claims)) == 2

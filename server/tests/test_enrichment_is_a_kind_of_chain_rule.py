@@ -21,8 +21,8 @@ server_dir = os.path.abspath(os.path.join(script_dir, ".."))
 if server_dir not in sys.path:
     sys.path.insert(0, server_dir)
 
-import chain_graph                                                    # noqa: E402
-import enrichment_config as ec                                        # noqa: E402
+import chain.graph                                                    # noqa: E402
+import enrichment.config as ec                                        # noqa: E402
 
 RULE = {
     "name": "s179_rule",
@@ -93,7 +93,7 @@ def test_a_follow_up_rule_is_never_matched_to_a_trigger_event(one_rule):
     inlining cost 0.875 s per group)."""
     import types
 
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     confirm = ec.load_enrichment_chain_rules()[1]
     for source in ("user", "chain_ingestion"):
@@ -152,8 +152,8 @@ def test_the_graph_reads_the_product_loader_not_the_file():
 
     ⚰️ The old function is gone by NAME, not merely unused: a dormant second reader is
     what the next person restores by accident."""
-    assert not hasattr(chain_graph, "_chain_rule_file")
-    assert hasattr(chain_graph, "_chain_rules")
+    assert not hasattr(chain.graph, "_chain_rule_file")
+    assert hasattr(chain.graph, "_chain_rules")
 
 
 def test_the_dedup_projection_is_drawn_now(monkeypatch):
@@ -164,7 +164,7 @@ def test_the_dedup_projection_is_drawn_now(monkeypatch):
         {"name": "enrichment_auto_confirm:r", "trigger_table": "drv",
          "target_table": "drv", "enabled": True, "follow_up": True, "params": {}},
     ]
-    edges = chain_graph._mapper_edges(synthesized)
+    edges = chain.graph._mapper_edges(synthesized)
     pairs = {(e["from"], e["to"]) for e in edges}
     assert ("src", "drv") in pairs, "the dedup projection is still invisible"
     assert ("drv", "drv") in pairs, "the auto-confirm self-loop lost its arrow"
@@ -174,7 +174,7 @@ def test_the_dedup_projection_is_drawn_now(monkeypatch):
 def test_the_enrich_self_loop_is_no_longer_drawn_twice():
     """The fold's whole claim: the endpoints do not move, only the label. If
     `_enrich_edges` still drew the self-loop it would now be drawn by both builders."""
-    edges = chain_graph._enrich_edges([dict(RULE, reference_views=[])])
+    edges = chain.graph._enrich_edges([dict(RULE, reference_views=[])])
     assert [e for e in edges if e["from"] == e["to"]] == []
 
 
@@ -184,7 +184,7 @@ def test_a_reference_view_that_declares_reads_still_draws_its_arrow():
     rule that does not exist. They keep `kind: "enrich"` — which is why that kind does not
     reach zero, contrary to what 판정 292 assumed when it queued C-78."""
     rule = dict(RULE, reference_views=[{"label": "v", "reads": ["other_table"]}])
-    edges = chain_graph._enrich_edges([rule])
+    edges = chain.graph._enrich_edges([rule])
     assert ("other_table", "s179_derived") in {(e["from"], e["to"]) for e in edges}
     assert {e["kind"] for e in edges} == {"enrich"}
 
@@ -196,7 +196,7 @@ def test_the_mapper_edge_carries_what_the_self_loop_used_to_say():
             "target_table": "drv", "enabled": True,
             "params": {"decision_key": ["job"],
                        "reference_views": [{"label": "v", "reads": None}]}}
-    edge = chain_graph._mapper_edges([rule])[0]
+    edge = chain.graph._mapper_edges([rule])[0]
     assert edge["decision_key"] == ["job"]
     assert edge["reference_views"] == [
         {"label": "v", "required_binds": [], "reads": None}]
@@ -213,7 +213,7 @@ def test_every_chain_edge_says_which_file_it_came_from(one_rule):
     counts come from this cell now, and a second loader is forbidden."""
     written = {"name": "written_rule", "trigger_table": "a", "target_table": "b"}
     synthesized = ec.load_enrichment_chain_rules()
-    edges = chain_graph._mapper_edges([written] + synthesized)
+    edges = chain.graph._mapper_edges([written] + synthesized)
     by_origin = {}
     for edge in edges:
         by_origin.setdefault(edge["origin"], []).append(edge["rule"])
@@ -231,7 +231,7 @@ def test_no_rule_is_drawn_twice(one_rule):
     import collections
 
     synthesized = ec.load_enrichment_chain_rules()
-    edges = (chain_graph._mapper_edges(synthesized)
-             + chain_graph._enrich_edges([dict(RULE)]))
+    edges = (chain.graph._mapper_edges(synthesized)
+             + chain.graph._enrich_edges([dict(RULE)]))
     counted = collections.Counter((e["from"], e["to"], e.get("rule")) for e in edges)
     assert [pair for pair, n in counted.items() if n > 1] == []

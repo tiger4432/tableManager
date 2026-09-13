@@ -218,10 +218,10 @@ def reclaim_stranded_claims(db):
     file is stuck. Counting is what keeps the remaining hole visible: nobody knows today how
     often those arms fire, and this line is what will answer it.
     """
-    import ingestion_checkpoint
+    import ingestion.checkpoint
 
     now = datetime.now(timezone.utc)
-    grace = ingestion_checkpoint.reclaim_after_seconds(reclaim_grace_setting())
+    grace = ingestion.checkpoint.reclaim_after_seconds(reclaim_grace_setting())
     cutoff = now - timedelta(seconds=grace)
 
     claimed = (db.query(models.FileIngestionLog)
@@ -233,7 +233,7 @@ def reclaim_stranded_claims(db):
 
     reclaimed = skipped = 0
     for log in claimed:
-        has_checkpoint, moved_at = ingestion_checkpoint.liveness(
+        has_checkpoint, moved_at = ingestion.checkpoint.liveness(
             db, log.table_name, log.filename)
         if not has_checkpoint:
             skipped += 1

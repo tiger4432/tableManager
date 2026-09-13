@@ -6,7 +6,7 @@ true, this record has no reason to exist separately from `eqp_frame_attribution`
 """
 import pytest
 
-import frame_confirmation as fc
+from maps import frame_confirmation as fc
 from database import models
 
 # The unit is whatever the enrichment rule declares. These tests carry a miniature
@@ -418,8 +418,8 @@ def declared_rule(monkeypatch):
     `crud.TABLE_CONFIG` with a SQLite-shaped fixture, so the real rule is not loadable here.
     Serving the declaration from the fixture keeps these tests about the ROUTE - its
     validation, its refusals, its response - rather than about one site's config file."""
-    import enrichment_config
-    monkeypatch.setattr(enrichment_config, "load_enrichment_rules",
+    import enrichment.config
+    monkeypatch.setattr(enrichment.config, "load_enrichment_rules",
                         lambda **kw: [RULE])
     return RULE
 
@@ -476,8 +476,8 @@ def test_a_second_confirmation_through_the_route_is_version_two(client, declared
 def other_declared_rule(monkeypatch):
     """The rule whose target fields are not the two storage columns - the defect axis, served
     through the route rather than only the module."""
-    import enrichment_config
-    monkeypatch.setattr(enrichment_config, "load_enrichment_rules",
+    import enrichment.config
+    monkeypatch.setattr(enrichment.config, "load_enrichment_rules",
                         lambda **kw: [RULE, OTHER_RULE])
     return OTHER_RULE
 

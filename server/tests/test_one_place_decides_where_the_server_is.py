@@ -52,10 +52,10 @@ dev_bench retroactive schema_drift audit_cache audit_history
 #: ⛔ Named one by one. A pattern would widen silently, which is how an allow-list becomes
 #: a permission.
 ALLOWED = {
-    "enrichment_candidates.py":
+    "enrichment/candidates.py":
         "`except ImportError` fallback that is FINDING `paths` - it cannot route through "
         "the module it is in the act of importing",
-    "ledger_trace.py":
+    "ledger/trace.py":
         "the same bootstrap, the same reason",
 }
 
@@ -85,12 +85,30 @@ def test_the_data_root_falls_back_to_the_server_directory():
     assert paths.CONFIG_DIR == os.path.join(paths.SERVER_DIR, "config")
 
 
+def _module_path(name):
+    """`server/<name>.py`, or wherever the packaging round put it."""
+    flat = os.path.join(SERVER_DIR, name + ".py")
+    if os.path.exists(flat):
+        return flat
+    for package in ("chain", "virtual_join", "ledger", "maps", "enrichment", "ingestion",
+                    "runtime", "admin"):
+        for stem in (name, name[len(package) + 1:] if name.startswith(package + "_") else name,
+                     name[4:] if package == "maps" and name.startswith("map_") else name):
+            candidate = os.path.join(SERVER_DIR, package, stem + ".py")
+            if os.path.exists(candidate):
+                return candidate
+    return flat
+
+
 def _computing_sites():
     """Modules in `MOVING` that derive a directory from `__file__`, module level or inside a
     `def` - a computation tucked in a function body is exactly as wrong and harder to see."""
     found = []
     for name in sorted(MOVING):
-        path = os.path.join(SERVER_DIR, name + ".py")
+        # 🪦 [S-211 packaging] these live in packages now. The gate follows them rather than
+        # dropping them: a module that stopped being findable would silently stop being
+        # scored, which is the shape of a gate that quietly goes quiet.
+        path = _module_path(name)
         if not os.path.exists(path):
             continue
         tree = ast.parse(io.open(path, encoding="utf-8").read())
@@ -100,7 +118,8 @@ def _computing_sites():
                 continue
             if any(isinstance(sub, ast.Name) and sub.id == "__file__"
                    for sub in ast.walk(node)):
-                found.append((name + ".py", node.lineno))
+                found.append((os.path.relpath(path, SERVER_DIR).replace(os.sep, "/"),
+                              node.lineno))
     return found
 
 

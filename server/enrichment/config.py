@@ -925,7 +925,9 @@ def load_enrichment_chain_rules(path: str = None, known_tables: dict = None) -> 
             "name": dedup_name,
             "trigger_table": rule["source_table"],
             "target_table": rule["derived_table"],
-            "mapper_module": "enrichment_mapper",
+            # 🪦 [S-211, 판정 364] The module moved into `enrichment/`. This is a STRING,
+            # so no import rewriter could see it - the chain worker resolves it at run time.
+            "mapper_module": "enrichment.mapper",
             "mapper_function": "map_enrichment_dedup",
             "is_batch": True,
             "enabled": enabled,

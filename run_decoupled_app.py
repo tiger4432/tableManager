@@ -8,11 +8,8 @@ import signal
 _ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_ROOT_DIR, "server"))
 
-from process_supervisor import (  # noqa: E402
-    ChildSpec, Supervisor, preflight_port_check, psutil_status,
-    DUAL_STACK_HOST, describe_bind_host,
-)
-from launcher_args import parse_launcher_args  # noqa: E402
+from runtime.process_supervisor import ChildSpec, Supervisor, preflight_port_check, psutil_status, DUAL_STACK_HOST, describe_bind_host
+from runtime.launcher_args import parse_launcher_args  # noqa: E402
 import paths  # noqa: E402  (single ASSY_DATA_ROOT override point)
 from utils.logger import get_process_logger  # noqa: E402
 
@@ -137,7 +134,7 @@ def report_schema_drift():
         # The runtime module, not the CLI in server/scripts - `server/` is already
         # on this process's sys.path (top of this file) and server/scripts must
         # never be (server/tests/test_prod_import_env.py).
-        import schema_drift
+        from admin import schema_drift
         import paths as _paths
         from database.database import (SQLALCHEMY_DATABASE_URL, DB_URL_SOURCE,
                                        engine as _engine)

@@ -57,7 +57,7 @@ def test_the_writer_and_the_sweeper_read_the_same_names(db_session):
     change on one side cannot leave the other behind."""
     import inspect
 
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     sweeper = inspect.getsource(worker.sweep_undelivered_broadcasts)
     writer = inspect.getsource(internal_event_client.record_undelivered_notification)

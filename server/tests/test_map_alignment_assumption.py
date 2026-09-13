@@ -27,7 +27,7 @@ import json
 
 import pytest
 
-import frame_confirmation as fc
+from maps import frame_confirmation as fc
 import map_alignment as ma
 import map_overlay
 from database import crud, models

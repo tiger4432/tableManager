@@ -151,22 +151,22 @@ def _queue_condition(table_model, rule: dict, resolved: bool = False,
     per-target `blank` specs, so a partly filled row was outside the queue on
     every surface at once. `resolved=True` is meaningful for SCOPE_KEYED only.
     """
-    import enrichment_config
+    import enrichment.config
 
     if resolved and scope == SCOPE_KEYED:
-        named = enrichment_config.QUEUE_SCOPE_RESOLVED
+        named = enrichment.config.QUEUE_SCOPE_RESOLVED
     else:
         named = {
-            SCOPE_QUEUE: enrichment_config.QUEUE_SCOPE_QUEUE,
-            SCOPE_KEYED: enrichment_config.QUEUE_SCOPE_KEYED,
-            SCOPE_BLANK_KEY: enrichment_config.QUEUE_SCOPE_BLANK_KEY,
+            SCOPE_QUEUE: enrichment.config.QUEUE_SCOPE_QUEUE,
+            SCOPE_KEYED: enrichment.config.QUEUE_SCOPE_KEYED,
+            SCOPE_BLANK_KEY: enrichment.config.QUEUE_SCOPE_BLANK_KEY,
         }.get(scope)
         if named is None:
             raise AnalysisRefused(f"unknown queue scope '{scope}'")
     try:
-        return enrichment_config.queue_predicate_condition(table_model, rule,
+        return enrichment.config.queue_predicate_condition(table_model, rule,
                                                            scope=named)
-    except enrichment_config.QueuePredicateError as e:
+    except enrichment.config.QueuePredicateError as e:
         raise AnalysisRefused(str(e))
 
 
@@ -371,7 +371,7 @@ def classify_queue(db, rule: dict, max_keys: int = 200, limit: int = None,
     # specs; the answer wanted here is the same one it always gave. Calling the same
     # function with a count spec keeps the blank-key partitioning in ONE place - the
     # comment above already says why a second copy of it goes wrong.
-    from enrichment_mapper import _aggregate_affected_keys
+    from enrichment.mapper import _aggregate_affected_keys
 
     _ROW_TOTAL = "__rows__"
     totals = _aggregate_affected_keys(
@@ -381,9 +381,9 @@ def classify_queue(db, rule: dict, max_keys: int = 200, limit: int = None,
     presence = {t: _source_target_presence(db, rule, t, key_raw) for t in same_name_targets}
 
     # 2) Per row: cheap classes first, reference probe only for what survives.
-    import enrichment_candidates
-    import enrichment_config
-    caps = caps if caps is not None else enrichment_config.load_read_caps()
+    import enrichment.candidates
+    import enrichment.config
+    caps = caps if caps is not None else enrichment.config.load_read_caps()
     # Same shape `confirm_keys` produces, so `classify` and `confirm` report a
     # clipped read with the same words and the same repair.
     cap_stats = {"cap_hits": {}}
@@ -424,17 +424,17 @@ def classify_queue(db, rule: dict, max_keys: int = 200, limit: int = None,
         probed += 1
         # ONE VERDICT PER BLANK COLUMN, and the row's class is a function of the
         # SET of them - not of the first one that happened to succeed.
-        verdicts = [enrichment_candidates.resolve_target_candidate(db, rule, r["keys"], t,
+        verdicts = [enrichment.candidates.resolve_target_candidate(db, rule, r["keys"], t,
                                                                    caps=caps)
                     for t in blanks]
         for v in verdicts:
-            enrichment_candidates._record_cap_hit(cap_stats, v)
-            name = ("single" if v["status"] == enrichment_candidates.STATUS_SINGLE
+            enrichment.candidates._record_cap_hit(cap_stats, v)
+            name = ("single" if v["status"] == enrichment.candidates.STATUS_SINGLE
                     else v["reason"])
             slot = target_verdicts.setdefault(v["target_field"], {})
             slot[name] = slot.get(name, 0) + 1
-        singles = [v for v in verdicts if v["status"] == enrichment_candidates.STATUS_SINGLE]
-        still_open = [v for v in verdicts if v["status"] != enrichment_candidates.STATUS_SINGLE]
+        singles = [v for v in verdicts if v["status"] == enrichment.candidates.STATUS_SINGLE]
+        still_open = [v for v in verdicts if v["status"] != enrichment.candidates.STATUS_SINGLE]
         decided = ", ".join(f"{v['target_field']}={v['value']!r} (support {v['support']})"
                             for v in singles[:SAMPLES_PER_CLASS])
         if singles and not still_open:
@@ -444,9 +444,9 @@ def classify_queue(db, rule: dict, max_keys: int = 200, limit: int = None,
                  decided + "; still open: " + ", ".join(
                      f"{v['target_field']}:{v['reason']}"
                      for v in still_open[:SAMPLES_PER_CLASS]))
-        elif any(v["reason"] == enrichment_candidates.REASON_AMBIGUOUS for v in verdicts):
+        elif any(v["reason"] == enrichment.candidates.REASON_AMBIGUOUS for v in verdicts):
             amb = next(v for v in verdicts
-                       if v["reason"] == enrichment_candidates.REASON_AMBIGUOUS)
+                       if v["reason"] == enrichment.candidates.REASON_AMBIGUOUS)
             bump(CLS_AMBIGUOUS, r,
                  f"{amb['target_field']}: {amb.get('distinct_count')} candidates "
                  f"{amb['candidates']}")
@@ -538,7 +538,7 @@ def analyze_promotions(db, rule: dict, min_support: int = 3, limit: int = None,
     """
     from itertools import combinations
     from database import crud
-    import enrichment_config
+    import enrichment.config
 
     decision_key = list(rule["decision_key"])
     target_fields = list(rule["target_fields"])
@@ -604,7 +604,7 @@ def analyze_promotions(db, rule: dict, min_support: int = 3, limit: int = None,
             if not entries:
                 continue
             view = _proposed_reference_view(rule, ant, t, entries)
-            err = enrichment_config._validate_view_sql(view["query"], decision_key)
+            err = enrichment.config._validate_view_sql(view["query"], decision_key)
             if err is not None:
                 # Never propose something the real loader would reject.
                 conflicts.append({"antecedent_columns": list(ant), "target_field": t,
@@ -675,23 +675,23 @@ def run_auto_confirm_sweep(db, rule: dict, apply: bool = False, limit: int = Non
     WRITE with another and never be told the two surfaces disagreed. Whatever the
     caller declares here is what both the probe and the refusal report.
     """
-    import enrichment_candidates
-    import enrichment_config
+    import enrichment.candidates
+    import enrichment.config
     from database import crud
 
-    caps = caps if caps is not None else enrichment_config.load_read_caps()
+    caps = caps if caps is not None else enrichment.config.load_read_caps()
 
-    if apply and not ignore_knob and not enrichment_candidates.rule_auto_confirm_enabled(rule):
+    if apply and not ignore_knob and not enrichment.candidates.rule_auto_confirm_enabled(rule):
         raise AnalysisRefused(
-            f"rule '{rule['name']}' has '{enrichment_candidates.RULE_KNOB}' off "
+            f"rule '{rule['name']}' has '{enrichment.candidates.RULE_KNOB}' off "
             f"(default). Dry-run works regardless; to WRITE, set "
-            f"\"{enrichment_candidates.RULE_KNOB}\": true on the rule in "
+            f"\"{enrichment.candidates.RULE_KNOB}\": true on the rule in "
             f"enrichment_rules.json.")
     if apply and ignore_knob:
         raise AnalysisRefused(
             "--ignore-knob is a measurement-only flag and cannot be combined with --apply: "
             "the knob is where a human consents to automatic writes.")
-    if not enrichment_candidates.candidate_target_fields(rule):
+    if not enrichment.candidates.candidate_target_fields(rule):
         raise AnalysisRefused(
             f"rule '{rule['name']}' declares no 'candidate_for' on any reference view, so "
             f"there is nothing to confirm. Declare which view column carries a target's "
@@ -706,12 +706,12 @@ def run_auto_confirm_sweep(db, rule: dict, apply: bool = False, limit: int = Non
     log(f"[confirm] rule '{rule['name']}': {len(keyed)} queue entr"
         f"{'y' if len(keyed) == 1 else 'ies'} to examine")
 
-    stats = enrichment_candidates.confirm_keys(
+    stats = enrichment.candidates.confirm_keys(
         db, rule, keyed, apply=apply, tx_prefix="enrichment_sweep", caps=caps)
     stats["mode"] = "apply" if apply else "dry-run"
     stats["rule"] = rule["name"]
     stats["queue_size"] = len(keyed)
     if not apply:
         db.rollback()  # belt and braces: a dry-run holds no writes, make it structural
-    enrichment_candidates.log_stats(rule["name"], stats, apply=apply)
+    enrichment.candidates.log_stats(rule["name"], stats, apply=apply)
     return stats

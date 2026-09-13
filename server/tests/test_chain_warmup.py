@@ -9,7 +9,7 @@ warmup_worker 가:
 """
 import sys
 
-import chain_ingestion_worker as ciw
+from chain import ingestion_worker as ciw
 
 
 DUMMY_MODULE = "warmup_dummy_mapper_mod"

@@ -32,7 +32,7 @@ def _walk():
 @pytest.fixture()
 def collectable(monkeypatch):
     """Stands in for the walk's own set, so the cases are about THIS step."""
-    import ledger_trace_router
+    from ledger import trace_router
 
     def build(names, boom=None):
         def fake():
@@ -40,7 +40,7 @@ def collectable(monkeypatch):
                 raise boom
             return set(names)
 
-        monkeypatch.setattr(ledger_trace_router, "_collectable_types", fake)
+        monkeypatch.setattr(trace_router, "_collectable_types", fake)
         return _walk()
 
     return build
@@ -100,13 +100,13 @@ def test_one_step_failing_does_not_take_the_report_down(collectable):
     """⚠️ THE WHOLE REPORT IS THE UNIT AN OPERATOR READS. A step that threw would leave them
     with nothing, including the five steps that are fine."""
     from fastapi import HTTPException
-    import ledger_trace_router
+    from ledger import trace_router
 
     def boom():
         raise HTTPException(status_code=503, detail={"message": "nope"})
 
     monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setattr(ledger_trace_router, "_collectable_types", boom)
+    monkeypatch.setattr(trace_router, "_collectable_types", boom)
     try:
         report = crr.resolve_report()
         assert len(report["domains"]) >= 6

@@ -133,7 +133,7 @@ def test_the_lap_line_separates_what_it_measured_from_what_it_rested():
     """
     import inspect
 
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     body = inspect.getsource(worker._ledger_census_loop) if hasattr(
         worker, "_ledger_census_loop") else inspect.getsource(worker)

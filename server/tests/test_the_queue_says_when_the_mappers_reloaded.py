@@ -22,60 +22,60 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import chain_activity                                            # noqa: E402
+from chain import activity                                            # noqa: E402
 
 
 @pytest.fixture(autouse=True)
 def clean_registry():
-    chain_activity.registry.clear()
+    activity.registry.clear()
     yield
-    chain_activity.registry.clear()
+    activity.registry.clear()
 
 
 def test_a_process_that_never_reloaded_says_none_rather_than_zero():
     """🔴 THE WHOLE POINT OF TWO FIELDS. A loop that has been up for an hour and never
     reloaded is not a loop that reloaded an hour ago."""
-    chain_activity.registry.attach()
-    ages = chain_activity.registry.ages()
+    activity.registry.attach()
+    ages = activity.registry.ages()
     assert ages["mapper_reload_age_seconds"] is None
     assert ages["loop_uptime_seconds"] is not None
 
 
 def test_a_loop_that_never_started_reports_neither():
-    ages = chain_activity.registry.ages()
+    ages = activity.registry.ages()
     assert ages["loop_uptime_seconds"] is None
     assert ages["mapper_reload_age_seconds"] is None
 
 
 def test_the_reload_age_starts_counting_when_the_reload_is_noted():
-    chain_activity.registry.attach()
-    chain_activity.registry.note_reload()
-    first = chain_activity.registry.ages()["mapper_reload_age_seconds"]
+    activity.registry.attach()
+    activity.registry.note_reload()
+    first = activity.registry.ages()["mapper_reload_age_seconds"]
     assert first is not None and first < 5
     time.sleep(0.01)
-    assert chain_activity.registry.ages()["mapper_reload_age_seconds"] >= first
+    assert activity.registry.ages()["mapper_reload_age_seconds"] >= first
 
 
 def test_the_two_ages_are_independent():
     """Attaching does not stamp a reload, and reloading does not restart the uptime --
     which is what makes "a restart clears it" answerable from the pair."""
-    chain_activity.registry.attach()
-    attached_first = chain_activity.registry.ages()["loop_uptime_seconds"]
+    activity.registry.attach()
+    attached_first = activity.registry.ages()["loop_uptime_seconds"]
     time.sleep(0.01)
-    chain_activity.registry.note_reload()
-    after = chain_activity.registry.ages()
+    activity.registry.note_reload()
+    after = activity.registry.ages()
     assert after["loop_uptime_seconds"] >= attached_first
     assert after["mapper_reload_age_seconds"] < after["loop_uptime_seconds"]
 
 
 def test_clear_forgets_both():
-    chain_activity.registry.attach()
-    chain_activity.registry.note_reload()
-    chain_activity.registry.clear()
+    activity.registry.attach()
+    activity.registry.note_reload()
+    activity.registry.clear()
     # [P-6] The purge names joined this dict. The equality is kept EXACT rather than
     # relaxed to a subset: this assertion's job is to notice a field arriving or
     # leaving, and a subset check would stop doing that in both directions.
-    assert chain_activity.registry.ages() == {"loop_uptime_seconds": None,
+    assert activity.registry.ages() == {"loop_uptime_seconds": None,
                                               "mapper_reload_age_seconds": None,
                                               "outbox_purge_age_seconds": None,
                                               "outbox_purge_deleted": None,
@@ -90,11 +90,11 @@ def test_the_loop_notes_the_reload_on_the_registry_the_route_reads():
     somewhere the route still cannot see."""
     import inspect
 
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     body = inspect.getsource(worker.start_chain_ingestion_worker)
     assert "head_watch.note_reload()" in body
-    assert "chain_activity.registry.note_reload()" in body, (
+    assert "activity.registry.note_reload()" in body, (
         "the reload is recorded only where the queue view cannot read it again")
 
 
@@ -107,8 +107,8 @@ def test_the_route_publishes_both_names():
     import main
 
     body = inspect.getsource(main.get_chain_queue_depth)
-    assert "chain_activity.registry.ages()" in body
-    assert set(chain_activity.registry.ages()) == {"loop_uptime_seconds",
+    assert "activity.registry.ages()" in body
+    assert set(activity.registry.ages()) == {"loop_uptime_seconds",
                                                    "mapper_reload_age_seconds",
                                                    "outbox_purge_age_seconds",
                                                    "outbox_purge_deleted",

@@ -32,7 +32,7 @@ import main                                                           # noqa: E4
 # for the rest of the session, in every later file. Measured, not foreseen:
 # `test_api.py::test_chained_ingestion` went red only when this file ran before it, and
 # passed alone either way.
-import chain_ingestion_worker                                         # noqa: E402,F401
+from chain import ingestion_worker                                         # noqa: E402,F401
 
 
 @pytest.fixture()
@@ -118,7 +118,7 @@ def test_a_top_level_list_is_REFUSED_the_way_the_loader_refuses_it(rules_file):
 def test_the_route_and_the_loader_agree_on_that_file(rules_file):
     """🔴 THE PROPERTY, NOT THE SPELLING. Both go through `read_rules_document`, so this
     cannot be satisfied by two checks that happen to match today."""
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     rules_file.write_text(json.dumps([{"name": "top_level"}]), encoding="utf-8")
     read = worker.read_rules_document(str(rules_file))

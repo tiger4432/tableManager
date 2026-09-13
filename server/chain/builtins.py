@@ -32,11 +32,11 @@ def synthesize_chain_rules(known_tables: dict = None) -> list:
     test compares the list before and against after, because a move that quietly reorders or
     drops a rule would be invisible until a chain stopped firing.
     """
-    import enrichment_config
-    import virtual_join_config
+    import enrichment.config
+    import virtual_join.config
 
-    rules = list(enrichment_config.load_enrichment_chain_rules(known_tables=known_tables))
-    rules.extend(virtual_join_config.synthesized_join_chain_rules(known_tables=known_tables))
+    rules = list(enrichment.config.load_enrichment_chain_rules(known_tables=known_tables))
+    rules.extend(virtual_join.config.synthesized_join_chain_rules(known_tables=known_tables))
     return rules
 
 
@@ -47,17 +47,17 @@ def synthesized_kind_counts(rules) -> dict:
     shape that reported 8 of a kind there were 4 of, which is why S-179 ① split its own
     count in the first place.
     """
-    import enrichment_config
-    import virtual_join_config
+    import enrichment.config
+    import virtual_join.config
 
     counts = {"dedup": 0, "auto_confirm": 0, "join": 0}
     for rule in rules or ():
         name = str(rule.get("name") or "")
-        if name.startswith(virtual_join_config.JOIN_PREFIX):
+        if name.startswith(virtual_join.config.JOIN_PREFIX):
             counts["join"] += 1
-        elif name.startswith(enrichment_config.AUTO_CONFIRM_PREFIX):
+        elif name.startswith(enrichment.config.AUTO_CONFIRM_PREFIX):
             counts["auto_confirm"] += 1
-        elif name.startswith(enrichment_config.DEDUP_PREFIX):
+        elif name.startswith(enrichment.config.DEDUP_PREFIX):
             counts["dedup"] += 1
     return counts
 
@@ -79,7 +79,7 @@ def _run_join(db, rule, row_ids=None, key_values=None):
     (counts first, refuses over the rule's declared ceiling). The caller says which by which
     argument it passes; both land in the same declaration.
     """
-    import virtual_join_executor as vje
+    from virtual_join import executor as vje
 
     joined = (rule or {}).get("params") or {}
     if key_values is not None:
@@ -107,7 +107,7 @@ def _run_auto_confirm(db, rule, row_ids=None, done=None, **_):
 
     ⚠️ CONTAINED. A failure here must not cost the ledger follow-up that already succeeded.
     """
-    import enrichment_candidates
+    import enrichment.candidates
 
     table = (done or {}).get("table")
     rows = list(row_ids or ())
@@ -115,7 +115,7 @@ def _run_auto_confirm(db, rule, row_ids=None, done=None, **_):
         return {"confirmed": 0, "refused": 0}
 
     declared = (rule or {}).get("params") or None
-    collector = enrichment_candidates.AutoConfirmCollector(
+    collector = enrichment.candidates.AutoConfirmCollector(
         table, rules=[declared] if isinstance(declared, dict) else None)
     if not collector.active:
         return {"confirmed": 0, "refused": 0}
@@ -131,7 +131,7 @@ def _run_auto_confirm(db, rule, row_ids=None, done=None, **_):
         done["auto_confirmed"] = confirmed
         done["auto_refused"] = refused
     return {"confirmed": confirmed, "refused": refused,
-            "source_name": enrichment_candidates.SOURCE_NAME}
+            "source_name": enrichment.candidates.SOURCE_NAME}
 
 
 #: kind -> callable. One table, the registry's posture: a name, a callable, nothing implicit.
@@ -159,13 +159,13 @@ def run_builtin(kind: str, db, rule, **kwargs):
 
 
 def _install():
-    import enrichment_config
-    import virtual_join_config
+    import enrichment.config
+    import virtual_join.config
 
-    register_builtin(virtual_join_config.JOIN_MAPPER, _run_join)
+    register_builtin(virtual_join.config.JOIN_MAPPER, _run_join)
     # S-195: the kind S-179 declared finally has an implementation, so the table carries the
     # whole `builtin:` vocabulary and the named temporary two-path condition is over.
-    register_builtin(enrichment_config.AUTO_CONFIRM_MAPPER, _run_auto_confirm)
+    register_builtin(enrichment.config.AUTO_CONFIRM_MAPPER, _run_auto_confirm)
 
 
 _install()

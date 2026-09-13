@@ -70,13 +70,13 @@ def test_only_the_first_at_is_a_separator():
 def test_the_three_common_callers_share_one_function():
     """🔴 IDENTITY, NOT EQUALITY. Two functions that agree today are exactly what this file
     exists about; asserting `is` is what makes a re-copied body fail here."""
-    import ledger_admin
+    from ledger import admin
     from ledger import gaps
     from ledger_api import ledger_subgraph
 
     assert gaps._bare is declaration_names.bare_name
     assert ledger_subgraph._bare is declaration_names.bare_name
-    assert ledger_admin._bare is declaration_names.bare_name
+    assert admin._bare is declaration_names.bare_name
 
 
 def test_the_fourth_keeps_its_own_extra_and_only_that():

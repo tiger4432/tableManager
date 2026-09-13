@@ -347,7 +347,7 @@ def _truncation_error(label, reason, cap_key, cap_value, cap_declared, read, dis
     `limit` clipped it, raised the one they could reach (the CLI key budget,
     which touches no read), and nothing changed.
     """
-    import enrichment_config
+    from enrichment import config as _enrichment_config
 
     return {
         "label": label,
@@ -357,7 +357,7 @@ def _truncation_error(label, reason, cap_key, cap_value, cap_declared, read, dis
         "cap": cap_key,
         "cap_value": cap_value,
         "cap_declared": bool(cap_declared),
-        "cap_home": enrichment_config.read_cap_home(cap_key),
+        "cap_home": _enrichment_config.read_cap_home(cap_key),
         "expected_if_raised": (EXPECT_AMBIGUOUS if distinct_so_far >= 2
                                else EXPECT_UNKNOWN),
         "distinct_values_read": distinct_so_far,
@@ -379,7 +379,7 @@ def _diagnose_probe_failure(db, view: dict, column: str, key_values: dict) -> st
     view's own row limit) and ask whether the column is there. The happy path
     still costs exactly one query.
     """
-    import enrichment_config
+    from enrichment import config as _enrichment_config
     try:
         # `follow_up=True`: the caller has ALREADY reported the probe's driver
         # error. If this read fails too it fails for the same root cause reached
@@ -387,9 +387,9 @@ def _diagnose_probe_failure(db, view: dict, column: str, key_values: dict) -> st
         # second traceback - that doubling is what made one broken view cost
         # ~400 tracebacks per work unit. It still answers the question it exists
         # to answer; it just stops announcing the answer as news.
-        columns, _ = enrichment_config.execute_reference_view(
+        columns, _ = _enrichment_config.execute_reference_view(
             db, view, key_values, follow_up=True)
-    except enrichment_config.ReferenceViewError:
+    except _enrichment_config.ReferenceViewError:
         return REASON_VIEW_ERROR      # the view itself does not execute
     return REASON_VIEW_ERROR if column in columns else REASON_CANDIDATE_COLUMN_MISSING
 
@@ -435,10 +435,10 @@ def resolve_target_candidate(db, rule: dict, key_values: dict, target_field: str
     from the work-unit boundary so every key in one sweep is measured against the
     same ceilings; loaded here only when a caller has none.
     """
-    import enrichment_config
+    from enrichment import config as _enrichment_config
     from database import crud
 
-    caps = caps if caps is not None else enrichment_config.load_read_caps()
+    caps = caps if caps is not None else _enrichment_config.load_read_caps()
     views = declaring_views(rule, target_field)
     if not views:
         return _refused(target_field, REASON_NOT_DECLARED)
@@ -450,9 +450,9 @@ def resolve_target_candidate(db, rule: dict, key_values: dict, target_field: str
     # to `all blank`. That divergence was invisible from here: it meant the row
     # never reached a writer at all, so the ruling that landed on this function
     # could not be observed on a partial-key source row.
-    blank_key_cols = enrichment_config.blank_key_columns(rule, key_values)
+    blank_key_cols = _enrichment_config.blank_key_columns(rule, key_values)
     partial = {"partial_key": bool(blank_key_cols), "blank_key_columns": blank_key_cols}
-    if enrichment_config.key_is_wholly_blank(rule, key_values):
+    if _enrichment_config.key_is_wholly_blank(rule, key_values):
         return _refused(target_field, REASON_NO_DECISION_KEY, **partial)
 
     values = {}      # canonical value -> supporting row count
@@ -469,9 +469,9 @@ def resolve_target_candidate(db, rule: dict, key_values: dict, target_field: str
             errors.append({"label": label, "reason": REASON_MISSING_BIND, "detail": missing})
             continue
         try:
-            probe = enrichment_config.execute_candidate_probe(db, view, column, key_values,
+            probe = _enrichment_config.execute_candidate_probe(db, view, column, key_values,
                                                               caps=caps)
-        except enrichment_config.ReferenceViewError as e:
+        except _enrichment_config.ReferenceViewError as e:
             errors.append({"label": label,
                            "reason": _diagnose_probe_failure(db, view, column, key_values),
                            "detail": str(e)})
@@ -514,12 +514,12 @@ def resolve_target_candidate(db, rule: dict, key_values: dict, target_field: str
         if probe["row_truncated"]:
             errors.append(_truncation_error(
                 label, REASON_PROBE_TRUNCATED,
-                enrichment_config.CAP_PROBE_SCAN_ROWS, probe["scan_rows_cap"],
+                _enrichment_config.CAP_PROBE_SCAN_ROWS, probe["scan_rows_cap"],
                 probe["scan_rows_cap_declared"], probe["scanned"], len(view_values)))
         if probe["distinct_truncated"]:
             errors.append(_truncation_error(
                 label, REASON_DISTINCT_TRUNCATED,
-                enrichment_config.CAP_PROBE_DISTINCT_VALUES, probe["distinct_values_cap"],
+                _enrichment_config.CAP_PROBE_DISTINCT_VALUES, probe["distinct_values_cap"],
                 probe["distinct_values_cap_declared"], len(probe["pairs"]),
                 len(view_values)))
     distinct = sorted(values)
@@ -647,9 +647,9 @@ def confirm_keys(db, rule: dict, keyed_rows: list, apply: bool = False,
                 so that work reported as a thousand rows still queued.
     """
     from database import crud, schemas
-    import enrichment_config
+    from enrichment import config as _enrichment_config
 
-    caps = caps if caps is not None else enrichment_config.load_read_caps()
+    caps = caps if caps is not None else _enrichment_config.load_read_caps()
     st = stats if stats is not None else {}
     st.setdefault("keys_examined", 0)
     st.setdefault("confirmed", 0)
@@ -846,9 +846,9 @@ class AutoConfirmCollector:
         if not global_auto_confirm_enabled(settings):
             return
         if rules is None:
-            import enrichment_config
+            from enrichment import config as _enrichment_config
             from database import crud
-            rules = enrichment_config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
+            rules = _enrichment_config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
         for r in rules or []:
             if r.get("derived_table") != derived_table:
                 continue
@@ -862,10 +862,10 @@ class AutoConfirmCollector:
                     "DECLARED candidate column - it never guesses one.",
                     r.get("name"), RULE_KNOB)
                 continue
-            import enrichment_config
+            from enrichment import config as _enrichment_config
             self.rule = r
             self._max_keys = max_keys_per_unit(settings)
-            self._caps = enrichment_config.load_read_caps(settings)
+            self._caps = _enrichment_config.load_read_caps(settings)
             self.active = True
             return
 
@@ -878,7 +878,7 @@ class AutoConfirmCollector:
         """
         if not self.active:
             return
-        import enrichment_config
+        from enrichment import config as _enrichment_config
         from database import crud
 
         decision_key = self.rule["decision_key"]
@@ -898,9 +898,9 @@ class AutoConfirmCollector:
             # cannot see the derived table's columns and silently falls back to the
             # pre-S-136 set, so a view binding any other column is told the bind is
             # missing - while the allowed set says it is fine.
-            keys = enrichment_config.view_bind_values(self.rule, updates,
+            keys = _enrichment_config.view_bind_values(self.rule, updates,
                                                       known_tables=crud.TABLE_CONFIG)
-            if enrichment_config.key_is_wholly_blank(self.rule, keys):
+            if _enrichment_config.key_is_wholly_blank(self.rule, keys):
                 # NOTHING survives - not "part of the key is missing". A partial
                 # key is worked on what remains [2026-08-05 ruling]; a wholly
                 # blank one has nothing to bind any view to, and
@@ -930,7 +930,7 @@ class AutoConfirmCollector:
         """
         if not self.active or not row_ids:
             return
-        import enrichment_config
+        from enrichment import config as _enrichment_config
         from database import crud, models
 
         model = models.DYNAMIC_TABLES.get(self.derived_table)
@@ -943,9 +943,9 @@ class AutoConfirmCollector:
             for row in db.query(model).filter(model.row_id.in_(chunk)).all():
                 updates = {name: getattr(row, name, None) for name in columns}
                 bk = updates.get("business_key_val")
-                keys = enrichment_config.view_bind_values(self.rule, updates,
+                keys = _enrichment_config.view_bind_values(self.rule, updates,
                                                           known_tables=crud.TABLE_CONFIG)
-                if enrichment_config.key_is_wholly_blank(self.rule, keys):
+                if _enrichment_config.key_is_wholly_blank(self.rule, keys):
                     continue
                 if not bk:
                     continue
@@ -1010,6 +1010,6 @@ class AutoConfirmCollector:
         # traceback again. Without the clear, a view that broke this morning
         # would log once and stay silent all day - suppression that hides how
         # often something happened is how a broken view looks like a one-off.
-        import enrichment_config
-        enrichment_config.drain_driver_error_incidents()
+        from enrichment import config as _enrichment_config
+        _enrichment_config.drain_driver_error_incidents()
         return stats

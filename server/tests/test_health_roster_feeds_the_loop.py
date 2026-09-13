@@ -19,7 +19,7 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import health                                                    # noqa: E402
+from runtime import health                                                    # noqa: E402
 from utils import heartbeat                                      # noqa: E402
 
 

@@ -21,7 +21,7 @@ if server_dir not in sys.path:
     sys.path.insert(0, server_dir)
 
 from database.database import SessionLocal
-import alignment_batch_counts
+from maps import alignment_batch_counts
 from sqlalchemy import text as _sa_text
 from database import crud, schemas
 from utils import heartbeat
@@ -86,14 +86,8 @@ from event_constants import MAX_NOTIFY_CREATED_LOGS
 
 
 # [P2] 오프셋 체크포인트 재개 + 파일 시그니처 dedup (설계 근거·해시 비용 실측은 모듈 docstring)
-import ingestion_checkpoint
-from ingestion_checkpoint import (
-    CheckpointPlan,
-    compute_file_signature,
-    is_force_reingest,
-    mtime_ns_to_datetime,
-    read_file_stat,
-)
+import ingestion.checkpoint
+from ingestion.checkpoint import CheckpointPlan, compute_file_signature, is_force_reingest, mtime_ns_to_datetime, read_file_stat
 
 # [Drop visibility] Per-file budget for the undeclared-column drop summary. The keys
 # come from the payload, not from the schema, so a malformed header row or a parser
@@ -974,6 +968,30 @@ OPERATOR_IMPORT_NAMES = (
     "pipeline_base",
     "html_topology_parser",
     "database",
+    # 🔴 THE SECOND HALF, AND IT COST A REVERTED COMMIT TO LEARN (S-211, 판정 364). The four
+    # above came from the two TRACKED `.sample` shims. The operator's LIVE mappers -
+    # `server/mappers/*.py`, gitignored, their files - import these, and a package move
+    # renamed them out from under those files. The move was applied, the suite broke, and
+    # it was reverted.
+    #
+    # 🔴 THE MISTAKE WAS A CATEGORY, NOT A COUNT: I wrote twice that what those files import
+    # 「cannot be counted」. They are on disk, and 「which names does this file import」 reads
+    # perfectly well. Not being allowed to EDIT a file is not the same as being unable to
+    # MEASURE it, and letting the first stand in for the second is what hid this.
+    #
+    # ⚠️ The last three were found by the gate below the moment it existed, because my hand
+    # count used a line-anchored grep and never saw an import inside a function.
+    # `event_constants` was in the moving set: without the gate the same failure lands twice.
+    "chain_bindings",
+    "map_overlay",
+    "map_meta_registrar",
+    "map_alignment",
+    "dt_frame_transform",
+    "dt_map_derivation",
+    "alignment_view_service",
+    "event_constants",
+    "mapper_sdk",
+    "notation_norm",
 )
 
 
@@ -2092,7 +2110,7 @@ class IngestionHandler(FileSystemEventHandler):
 
         db = SessionLocal()
         try:
-            row = ingestion_checkpoint.find_terminal_by_path_stat(
+            row = ingestion.checkpoint.find_terminal_by_path_stat(
                 db, t_name, abs_path, file_stat)
         except Exception as e:
             # 가용성 우선 — 조회 실패는 처리를 막지 않는다(전체 해시 경로로 떨어진다).
@@ -2117,7 +2135,7 @@ class IngestionHandler(FileSystemEventHandler):
         # `_archive_file`/`_move_to_err_folder` log their own failures, so this
         # stays quiet on the (normal) success.
         if archive_processed_files_enabled() and self.is_managed_source(abs_path):
-            if row.status == ingestion_checkpoint.STATUS_FAILED:
+            if row.status == ingestion.checkpoint.STATUS_FAILED:
                 self._move_to_err_folder(abs_path)
             else:
                 self._archive_file(abs_path)
@@ -2183,7 +2201,7 @@ class IngestionHandler(FileSystemEventHandler):
 
         db = SessionLocal()  # ONE session for the whole batch, not one per file
         try:
-            found = ingestion_checkpoint.find_terminal_by_path_stat_batch(
+            found = ingestion.checkpoint.find_terminal_by_path_stat_batch(
                 db, t_name, askable)
             statuses = {p: row.status for p, row in found.items()}
         except Exception as e:
@@ -2225,7 +2243,7 @@ class IngestionHandler(FileSystemEventHandler):
                     continue
                 self.processing_files.add(abs_path)
             try:
-                if status == ingestion_checkpoint.STATUS_FAILED:
+                if status == ingestion.checkpoint.STATUS_FAILED:
                     self._move_to_err_folder(abs_path)
                 else:
                     self._archive_file(abs_path)
@@ -2237,7 +2255,7 @@ class IngestionHandler(FileSystemEventHandler):
         """실패를 **원장에 종결 상태로** 남긴다 — 파일을 옮기지 않을 때의 `err/` 대체물."""
         db = SessionLocal()
         try:
-            ingestion_checkpoint.record_failure(
+            ingestion.checkpoint.record_failure(
                 db, t_name, signature, basename, os.path.abspath(filepath),
                 error_msg, file_stat=file_stat,
             )
@@ -2269,7 +2287,7 @@ class IngestionHandler(FileSystemEventHandler):
         if is_force_reingest(basename):
             logger.info(
                 f"[{t_name}] 🔁 Force re-ingestion requested by filename token "
-                f"('{ingestion_checkpoint.FORCE_REINGEST_TOKEN}') — dedup skip bypassed: {basename}"
+                f"('{ingestion.checkpoint.FORCE_REINGEST_TOKEN}') — dedup skip bypassed: {basename}"
             )
             return False
         if not dedup_by_signature_enabled():
@@ -2277,7 +2295,7 @@ class IngestionHandler(FileSystemEventHandler):
 
         db = SessionLocal()
         try:
-            done = ingestion_checkpoint.find_completed_ingestion(db, t_name, signature)
+            done = ingestion.checkpoint.find_completed_ingestion(db, t_name, signature)
         except Exception as e:
             # dedup 조회 실패는 처리를 막지 않는다(가용성 우선) — 단, 조용히 넘어가지 않는다.
             logger.warning(f"[{t_name}] Dedup lookup failed (proceeding with ingestion): {e}")
@@ -2294,8 +2312,8 @@ class IngestionHandler(FileSystemEventHandler):
         if file_stat:
             db = SessionLocal()
             try:
-                fresh = ingestion_checkpoint.find_completed_ingestion(db, t_name, signature)
-                ingestion_checkpoint.adopt_new_location(
+                fresh = ingestion.checkpoint.find_completed_ingestion(db, t_name, signature)
+                ingestion.checkpoint.adopt_new_location(
                     db, fresh, os.path.abspath(file_path), file_stat)
             except Exception as e:
                 db.rollback()
@@ -2308,7 +2326,7 @@ class IngestionHandler(FileSystemEventHandler):
             f"[dedup-skip] 동일 내용 파일이 이미 적재 완료됨 — 재처리 생략 "
             f"(기존 적재: '{done.filename}', {done.processed_rows:,}행, "
             f"signature={signature[:23]}…). 강제 재처리하려면 파일명에 "
-            f"'{ingestion_checkpoint.FORCE_REINGEST_TOKEN}'를 포함하거나 "
+            f"'{ingestion.checkpoint.FORCE_REINGEST_TOKEN}'를 포함하거나 "
             f"ingestion_settings.json의 dedup_by_signature를 false로 두십시오."
         )
         if not self.is_managed_source(file_path) or not archive_processed_files_enabled():
@@ -2345,7 +2363,7 @@ class IngestionHandler(FileSystemEventHandler):
             force_restart = True
         db = SessionLocal()
         try:
-            return ingestion_checkpoint.plan_ingestion(
+            return ingestion.checkpoint.plan_ingestion(
                 db, t_name, signature, basename, abs_path,
                 total_rows, source_kind, force_restart=force_restart,
                 file_stat=file_stat,
@@ -2367,7 +2385,7 @@ class IngestionHandler(FileSystemEventHandler):
             return
         db = SessionLocal()
         try:
-            ingestion_checkpoint.mark_done(db, plan, processed_rows=processed_rows)
+            ingestion.checkpoint.mark_done(db, plan, processed_rows=processed_rows)
         except Exception as e:
             db.rollback()
             # DONE 미기록 = 다음에 같은 파일이 오면 dedup되지 않고 재적재된다(업서트라 무해).
@@ -2483,7 +2501,7 @@ class IngestionHandler(FileSystemEventHandler):
             return False
         db = SessionLocal()
         try:
-            return ingestion_checkpoint.find_completed_ingestion(db, t_name, signature) is not None
+            return ingestion.checkpoint.find_completed_ingestion(db, t_name, signature) is not None
         except Exception as e:
             logger.warning(f"[{t_name}] Retry checkpoint lookup failed (resuming if possible): {e}")
             return False
@@ -3102,7 +3120,7 @@ class IngestionHandler(FileSystemEventHandler):
                         #  데이터는 들어갔는데 오프셋은 안 오르는 창이 생긴다 — 그래도 업서트
                         #  멱등성 덕에 유실이 아니라 재적재로만 열화되지만, 원자성이 더 낫다.)
                         if checkpoint is not None:
-                            ingestion_checkpoint.record_chunk_progress(
+                            ingestion.checkpoint.record_chunk_progress(
                                 db, checkpoint, processed_rows + len(chunk), chunk_index
                             )
 

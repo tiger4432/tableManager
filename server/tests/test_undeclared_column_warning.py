@@ -179,12 +179,12 @@ def test_the_worker_heartbeat_carries_the_drop_digest(db_session, warn_capture):
     /health. This pins the existing cross-process channel actually carrying them --
     and pins the note staying None on a healthy worker, so a clean deployment's
     heartbeat is unchanged."""
-    import chain_ingestion_worker
+    from chain import ingestion_worker
 
-    assert chain_ingestion_worker._undeclared_drop_note() is None
+    assert ingestion_worker._undeclared_drop_note() is None
 
     crud.apply_batch_updates(db_session, "inventory_master", _bulk_batch(4))
-    note = chain_ingestion_worker._undeclared_drop_note()
+    note = ingestion_worker._undeclared_drop_note()
     assert "total=4" in note
     assert "inventory_master.eventtime=4" in note
 
@@ -197,9 +197,9 @@ def test_the_digest_is_bounded_and_says_what_it_left_out(db_session, warn_captur
         crud.apply_batch_updates(
             db_session, "inventory_master",
             _batch(f"PN-D{i}", {"part_no": f"PN-D{i}", f"dcol_{i}": 1}))
-    import chain_ingestion_worker
+    from chain import ingestion_worker
 
-    note = chain_ingestion_worker._undeclared_drop_note()
+    note = ingestion_worker._undeclared_drop_note()
     assert "total=9" in note
     assert note.count("dcol_") == 5, note
     assert "(+4 more)" in note, note

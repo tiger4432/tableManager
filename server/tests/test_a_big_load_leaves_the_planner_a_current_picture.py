@@ -79,7 +79,7 @@ def test_every_caller_of_the_builder_speaks_the_same_three_words():
     regression that shipped a `COULD NOT BE ENSURED` line about an index that exists."""
     import inspect
 
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     assert {models.INDEX_BUILT, models.INDEX_PRESENT,
             models.INDEX_FAILED} == {"built", "present", "failed"}
@@ -108,7 +108,7 @@ def test_the_boot_sequence_calls_it():
     comes up without the index and nothing says so."""
     import inspect
 
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     body = inspect.getsource(worker.start_chain_ingestion_worker)
     assert "_ensure_dynamic_table_indexes_sync" in body, body[:400]
@@ -290,7 +290,7 @@ def test_a_table_the_database_calls_stale_is_analysed_at_boot(monkeypatch):
     ⚠️ THE DATABASE IS ASKED RATHER THAN GUESSED. `n_mod_since_analyze` is the count of
     rows changed since the last analyse, so 「stale enough」 is read, not inferred.
     """
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
     from parsers import directory_watcher as dw
 
     monkeypatch.setattr(dw, "analyze_after_rows", lambda: 10000)
@@ -318,7 +318,7 @@ def test_a_table_the_database_calls_stale_is_analysed_at_boot(monkeypatch):
 def test_a_relation_this_application_did_not_declare_is_left_alone(monkeypatch):
     """⚠️ BOUNDED. A shared database may carry relations that are not ours to touch, so
     the set is the dynamic catalogue plus the framework models - not every user table."""
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
     from parsers import directory_watcher as dw
 
     monkeypatch.setattr(dw, "analyze_after_rows", lambda: 10)
@@ -351,7 +351,7 @@ def test_the_framework_tables_are_in_scope_because_the_grid_reads_them(monkeypat
 
 
 def test_a_threshold_of_zero_turns_the_boot_pass_off(monkeypatch):
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
     from parsers import directory_watcher as dw
 
     monkeypatch.setattr(dw, "analyze_after_rows", lambda: 0)
@@ -364,7 +364,7 @@ def test_a_threshold_of_zero_turns_the_boot_pass_off(monkeypatch):
 def test_a_database_that_cannot_answer_does_not_stop_the_boot(monkeypatch):
     """A boot that dies reading statistics is a worse outage than a stale plan - and the
     view does not exist outside PostgreSQL, which is where the suite runs."""
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
     from parsers import directory_watcher as dw
 
     monkeypatch.setattr(dw, "analyze_after_rows", lambda: 10)
@@ -383,7 +383,7 @@ def test_the_boot_sequence_calls_it_too():
     """착지는 배선이 아니다 - the same check its neighbour needed."""
     import inspect
 
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     body = inspect.getsource(worker.start_chain_ingestion_worker)
     assert "_analyze_stale_tables_sync" in body, body[:600]
@@ -394,7 +394,7 @@ def test_the_load_path_and_the_boot_path_share_one_function_and_one_threshold():
     not be the one anybody had measured."""
     import inspect
 
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     body = inspect.getsource(worker._analyze_stale_tables_sync)
     assert "dw._analyze_after_load(" in body, body[:800]
@@ -423,7 +423,7 @@ def test_only_partitions_that_exist_are_reached_because_the_database_names_them(
     """⚠️ EXISTING ONLY, and it falls out of asking rather than generating. Month names are
     never built here; what is matched is what the statistics view reported, so a month that
     was never created cannot appear."""
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
     from parsers import directory_watcher as dw
 
     monkeypatch.setattr(dw, "analyze_after_rows", lambda: 10000)
@@ -453,7 +453,7 @@ def test_only_partitions_that_exist_are_reached_because_the_database_names_them(
 def test_the_boot_pass_asks_the_ledger_rather_than_listing_its_tables_again():
     import inspect
 
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     body = inspect.getsource(worker._analyze_stale_tables_sync)
     assert "ledger_schema.owns_table(name)" in body, body[-900:]

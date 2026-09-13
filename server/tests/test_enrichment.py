@@ -13,7 +13,7 @@ import uuid
 import anyio
 import pytest
 
-import enrichment_config
+import enrichment.config
 from database import crud, models, schemas
 
 # ---------------------------------------------------------------------------
@@ -82,7 +82,7 @@ def enrich_env(db_session, tmp_path, monkeypatch):
 
     rules_path = tmp_path / "enrichment_rules.json"
     rules_path.write_text(json.dumps(RULES_FILE), encoding="utf-8")
-    monkeypatch.setattr(enrichment_config, "ENRICHMENT_RULES_PATH", str(rules_path))
+    monkeypatch.setattr(enrichment.config, "ENRICHMENT_RULES_PATH", str(rules_path))
 
     import main
     main.TABLE_COUNT_CACHE.clear()
@@ -101,10 +101,10 @@ def _seed_source(db, rows, tx_id, source_name="pipeline_parser"):
 
 def _run_chain_for_tx(db, tx_id):
     """체인 워커 실경로(process_chain_transaction_group)로 해당 tx의 outbox 이벤트를 처리한다."""
-    from chain_ingestion_worker import process_chain_transaction_group
+    from chain.ingestion_worker import process_chain_transaction_group
     from database.models import DatabaseOutbox
 
-    rules = enrichment_config.load_enrichment_chain_rules(known_tables=crud.TABLE_CONFIG)
+    rules = enrichment.config.load_enrichment_chain_rules(known_tables=crud.TABLE_CONFIG)
     assert rules, "enrichment chain rules must be synthesized"
 
     events = db.query(DatabaseOutbox).filter(
@@ -156,7 +156,7 @@ def test_loader_valid_rule_normalized():
         {"label": "v1", "query": "SELECT chip_id FROM enrich_test_src WHERE equipment = :equipment"},
         {"label": "v2", "query": "SELECT chip_id FROM enrich_test_src", "limit": 5000},
     ])}
-    rules = enrichment_config.validate_enrichment_rules(raw, known_tables=KNOWN)
+    rules = enrichment.config.validate_enrichment_rules(raw, known_tables=KNOWN)
     assert len(rules) == 1
     r = rules[0]
     assert r["name"] == "r1"
@@ -167,11 +167,11 @@ def test_loader_valid_rule_normalized():
     # unchanged, which is the compatibility this pins.
     assert r["aggregations"] == {"chip_count": {"fn": "count", "column": None}}
     # 표시용 행 상한: 기본값과 천장이 이제 **선언값**이다(코드 상수 아님).
-    caps = enrichment_config.load_read_caps({})
-    assert r["reference_views"][0]["limit"] == enrichment_config.cap_value(
-        caps, enrichment_config.CAP_REFERENCE_ROWS_DEFAULT)
-    assert r["reference_views"][1]["limit"] == enrichment_config.cap_value(
-        caps, enrichment_config.CAP_REFERENCE_ROWS_MAX)
+    caps = enrichment.config.load_read_caps({})
+    assert r["reference_views"][0]["limit"] == enrichment.config.cap_value(
+        caps, enrichment.config.CAP_REFERENCE_ROWS_DEFAULT)
+    assert r["reference_views"][1]["limit"] == enrichment.config.cap_value(
+        caps, enrichment.config.CAP_REFERENCE_ROWS_MAX)
 
 
 def test_the_reference_row_caps_are_declared_not_hardcoded():
@@ -183,10 +183,10 @@ def test_the_reference_row_caps_are_declared_not_hardcoded():
         {"label": "v1", "query": "SELECT chip_id FROM enrich_test_src"},
         {"label": "v2", "query": "SELECT chip_id FROM enrich_test_src", "limit": 5000},
     ])}
-    caps = enrichment_config.load_read_caps(
-        {enrichment_config.READ_CAPS_SETTINGS_KEY: {
+    caps = enrichment.config.load_read_caps(
+        {enrichment.config.READ_CAPS_SETTINGS_KEY: {
             "reference_rows_default": 7, "reference_rows_max": 4000}})
-    views = enrichment_config.validate_enrichment_rules(
+    views = enrichment.config.validate_enrichment_rules(
         raw, known_tables=KNOWN, caps=caps)[0]["reference_views"]
     assert views[0]["limit"] == 7, "an undeclared view limit follows the declared default"
     assert views[1]["limit"] == 4000, "the declared ceiling is what clamps, not 1000"
@@ -196,15 +196,15 @@ def test_an_unreadable_cap_declaration_is_not_a_declaration():
     """A typo must not become policy. It falls back to the shipped value AND reports
     itself as undeclared - otherwise the refusal would tell an operator their broken
     number is in force."""
-    enrichment_config.reset_cap_warnings()
-    caps = enrichment_config.load_read_caps(
-        {enrichment_config.READ_CAPS_SETTINGS_KEY: {
+    enrichment.config.reset_cap_warnings()
+    caps = enrichment.config.load_read_caps(
+        {enrichment.config.READ_CAPS_SETTINGS_KEY: {
             "probe_scan_rows": "lots", "reference_rows_max": 0}})
-    for key in (enrichment_config.CAP_PROBE_SCAN_ROWS,
-                enrichment_config.CAP_REFERENCE_ROWS_MAX):
-        assert enrichment_config.cap_value(caps, key) == \
-            enrichment_config.SHIPPED_READ_CAPS[key]
-        assert enrichment_config.cap_declared(caps, key) is False
+    for key in (enrichment.config.CAP_PROBE_SCAN_ROWS,
+                enrichment.config.CAP_REFERENCE_ROWS_MAX):
+        assert enrichment.config.cap_value(caps, key) == \
+            enrichment.config.SHIPPED_READ_CAPS[key]
+        assert enrichment.config.cap_declared(caps, key) is False
 
 
 def test_loader_missing_required_fields_skipped():
@@ -213,22 +213,22 @@ def test_loader_missing_required_fields_skipped():
         "no_key": _base_rule(decision_key=[]),
         "no_target": _base_rule(target_fields=[]),
     }
-    assert enrichment_config.validate_enrichment_rules(raw, known_tables=KNOWN) == []
+    assert enrichment.config.validate_enrichment_rules(raw, known_tables=KNOWN) == []
 
 
 def test_loader_decision_target_overlap_skipped():
     raw = {"r": _base_rule(target_fields=["equipment"])}
-    assert enrichment_config.validate_enrichment_rules(raw, known_tables=KNOWN) == []
+    assert enrichment.config.validate_enrichment_rules(raw, known_tables=KNOWN) == []
 
 
 def test_loader_unknown_tables_or_columns_skipped():
-    assert enrichment_config.validate_enrichment_rules(
+    assert enrichment.config.validate_enrichment_rules(
         {"r": _base_rule(source_table="nope")}, known_tables=KNOWN) == []
-    assert enrichment_config.validate_enrichment_rules(
+    assert enrichment.config.validate_enrichment_rules(
         {"r": _base_rule(derived_table="nope")}, known_tables=KNOWN) == []
-    assert enrichment_config.validate_enrichment_rules(
+    assert enrichment.config.validate_enrichment_rules(
         {"r": _base_rule(decision_key=["equipment", "ghost_col"])}, known_tables=KNOWN) == []
-    assert enrichment_config.validate_enrichment_rules(
+    assert enrichment.config.validate_enrichment_rules(
         {"r": _base_rule(target_fields=["ghost_col"])}, known_tables=KNOWN) == []
 
 
@@ -243,7 +243,7 @@ def test_loader_derived_key_contract_enforced():
             "column_types": ENRICH_TABLES["enrich_test_derived"]["column_types"],
         },
     }
-    assert enrichment_config.validate_enrichment_rules({"r": _base_rule()}, known_tables=bad_known) == []
+    assert enrichment.config.validate_enrichment_rules({"r": _base_rule()}, known_tables=bad_known) == []
 
 
 def test_loader_reference_view_safety():
@@ -254,7 +254,7 @@ def test_loader_reference_view_safety():
         {"label": "bad_ref", "query_ref": "../evil"},
         {"label": "good", "query": "SELECT chip_id FROM enrich_test_src WHERE equipment = :equipment"},
     ]
-    rules = enrichment_config.validate_enrichment_rules(
+    rules = enrichment.config.validate_enrichment_rules(
         {"r": _base_rule(reference_views=views)}, known_tables=KNOWN)
     assert len(rules) == 1
     # 무효 뷰는 로드 시점에 제거되어 /rules 목록과 /references 인덱스가 항상 정합
@@ -264,15 +264,15 @@ def test_loader_reference_view_safety():
 
 def test_loader_disabled_rule_and_missing_file(tmp_path):
     raw = {"r": _base_rule(enabled=False)}
-    assert enrichment_config.validate_enrichment_rules(raw, known_tables=KNOWN) == []
+    assert enrichment.config.validate_enrichment_rules(raw, known_tables=KNOWN) == []
     # 파일 없음 → 빈 목록 (오류 아님)
-    assert enrichment_config.load_enrichment_rules(path=str(tmp_path / "none.json")) == []
+    assert enrichment.config.load_enrichment_rules(path=str(tmp_path / "none.json")) == []
 
 
 def test_loader_synthesized_chain_rule_shape(tmp_path):
     rules_path = tmp_path / "enrichment_rules.json"
     rules_path.write_text(json.dumps(RULES_FILE), encoding="utf-8")
-    chain_rules = enrichment_config.load_enrichment_chain_rules(
+    chain_rules = enrichment.config.load_enrichment_chain_rules(
         path=str(rules_path), known_tables=KNOWN)
     # ONE RULE NOW YIELDS TWO KINDS (S-179 (1), ruling 292): the dedup projection and the
     # auto-confirm follow-up. Picked BY NAME rather than by index - an index silently
@@ -283,7 +283,7 @@ def test_loader_synthesized_chain_rule_shape(tmp_path):
     cr = next(r for r in chain_rules if r["name"].startswith("enrichment_dedup:"))
     assert cr["trigger_table"] == "enrich_test_src"
     assert cr["target_table"] == "enrich_test_derived"
-    assert cr["mapper_module"] == "enrichment_mapper"
+    assert cr["mapper_module"] == "enrichment.mapper"
     assert cr["mapper_function"] == "map_enrichment_dedup"
     assert cr["is_batch"] is True and cr["enabled"] is True
     assert cr["enrichment"]["name"] == "bonding_wafer_attribution"
@@ -728,7 +728,7 @@ def _decl(**kw):
 
 
 def _one(raw):
-    rules = enrichment_config.validate_enrichment_rules({"r": raw}, known_tables=KNOWN)
+    rules = enrichment.config.validate_enrichment_rules({"r": raw}, known_tables=KNOWN)
     assert len(rules) == 1, "the fixture rule must be valid apart from the marker"
     return rules[0]
 
@@ -761,15 +761,15 @@ def test_the_marker_is_not_inferred_from_frame_shaped_target_fields():
         {"core_frame": "string", "dt_frame": "string"})
     raw = {"r": _base_rule(target_fields=["core_frame", "dt_frame"],
                            list_columns=[], aggregations={})}
-    rules = enrichment_config.validate_enrichment_rules(raw, known_tables=known)
+    rules = enrichment.config.validate_enrichment_rules(raw, known_tables=known)
     assert len(rules) == 1
     assert rules[0]["alignment"] is False
 
 
 def test_the_marker_survives_to_the_public_shape():
-    import enrichment_config
-    marked = enrichment_config.to_public_rule(_one(_decl(alignment=True)))
-    unmarked = enrichment_config.to_public_rule(_one(_decl()))
+    import enrichment.config
+    marked = enrichment.config.to_public_rule(_one(_decl(alignment=True)))
+    unmarked = enrichment.config.to_public_rule(_one(_decl()))
     assert marked["alignment"] is True
     assert unmarked["alignment"] is False
 
@@ -784,17 +784,17 @@ def test_the_live_declaration_is_read_rather_than_backfilled():
     unknown columns, and the test skips - proving nothing while looking green.
     """
     import os
-    if not os.path.exists(enrichment_config.ENRICHMENT_RULES_PATH):
+    if not os.path.exists(enrichment.config.ENRICHMENT_RULES_PATH):
         pytest.skip("live enrichment_rules.json absent (gitignored; fresh checkout)")
-    with open(enrichment_config.ENRICHMENT_RULES_PATH, encoding="utf-8") as f:
+    with open(enrichment.config.ENRICHMENT_RULES_PATH, encoding="utf-8") as f:
         declared = json.load(f)
     live_tables = crud.load_table_config_or_raise()
-    rules = enrichment_config.validate_enrichment_rules(declared, known_tables=live_tables)
+    rules = enrichment.config.validate_enrichment_rules(declared, known_tables=live_tables)
     assert rules, "the live rule file parsed to nothing - the check below would be vacuous"
     for r in rules:
         want = declared[r["name"]].get("alignment") is True
         assert r["alignment"] is want, r["name"]
-        assert enrichment_config.to_public_rule(r)["alignment"] is want, r["name"]
+        assert enrichment.config.to_public_rule(r)["alignment"] is want, r["name"]
 
 
 # --------------------------------------------------- S-102: a drop nobody sees is a defect
@@ -809,7 +809,7 @@ def test_an_unsupported_aggregation_function_is_refused_by_name():
     same shape (S-84, `value_type` outside `number`): the declaration asks for something
     the engine will not do, so there is no version of this rule that is what was written.
     """
-    normalized, error = enrichment_config._validate_rule(
+    normalized, error = enrichment.config._validate_rule(
         "r1", _base_rule(aggregations={"chip_count": "sum"}), KNOWN)
 
     assert normalized is None
@@ -824,7 +824,7 @@ def test_an_aggregation_on_a_column_the_derived_table_lacks_is_refused_by_name()
 
     An aggregation is not decoration: with no column to write, the number lands nowhere.
     """
-    normalized, error = enrichment_config._validate_rule(
+    normalized, error = enrichment.config._validate_rule(
         "r1", _base_rule(aggregations={"not_a_column": "count"}), KNOWN)
 
     assert normalized is None
@@ -837,7 +837,7 @@ def test_a_display_column_the_derived_table_lacks_is_named_and_the_rule_still_st
     the drop is NAMED in the channel `config_resolve_report` puts in front of an operator -
     which is what this module's `_record` exists for."""
     rejections = []
-    normalized, error = enrichment_config._validate_rule(
+    normalized, error = enrichment.config._validate_rule(
         "r1", _base_rule(list_columns=["chip_count", "not_a_column"]), KNOWN,
         rejections=rejections)
 
@@ -853,7 +853,7 @@ def test_a_second_load_is_the_same_answer_without_reading_the_file(tmp_path, mon
     every call and the alignment mapper calls it once per job, so a 1,000-row chain group
     read this file and re-validated every rule a thousand times - and the cost grows with
     how many rules a deployment declares, which is a number nobody here knows."""
-    import enrichment_config as ec
+    import enrichment.config as ec
     from database import crud
 
     # ⚠️ THE MEMO ONLY ANSWERS FOR `crud.TABLE_CONFIG`, ON PURPOSE: what a rule is judged
@@ -883,7 +883,7 @@ def test_editing_the_file_is_visible_on_the_next_call(tmp_path, monkeypatch):
     silently lags the screen showing it."""
     import os
 
-    import enrichment_config as ec
+    import enrichment.config as ec
     from database import crud
 
     monkeypatch.setattr(crud, "TABLE_CONFIG", KNOWN)
@@ -903,7 +903,7 @@ def test_a_remembered_load_still_reports_why_a_rule_was_refused(tmp_path):
     """⛔ REJECTIONS ARE REPLAYED, NOT SKIPPED. A caller collecting them is building the
     operator's report, and a memo that answered with rules and no reasons would make a
     declaration that was refused look accepted on the second call."""
-    import enrichment_config as ec
+    import enrichment.config as ec
 
     rules_file = tmp_path / "enrichment_rules.json"
     rules_file.write_text(json.dumps({

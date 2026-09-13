@@ -33,8 +33,8 @@ import pytest
 
 import directory_watcher
 from directory_watcher import HeavyIngestionLane, IngestionHandler, WorkspaceWatcher
-import ingestion_activity
-from ingestion_activity import IngestionActivityRegistry
+from ingestion import activity
+from ingestion.activity import IngestionActivityRegistry
 
 
 HVY_INFO = {
@@ -671,7 +671,7 @@ def test_batch_refresh_ws_payload_includes_total_log_count(client, monkeypatch):
 
 
 def test_active_api_snapshot_shape(client):
-    ingestion_activity.registry.clear()
+    activity.registry.clear()
     try:
         res = client.post("/internal/events/ingestion-state", json={
             "table_name": "hvy_test_api", "filename": "big.csv", "lane": "heavy",
@@ -697,4 +697,4 @@ def test_active_api_snapshot_shape(client):
         body = client.get("/admin/file-ingestion/active").json()
         assert body["total"] == 0 and body["data"] == []
     finally:
-        ingestion_activity.registry.clear()
+        activity.registry.clear()

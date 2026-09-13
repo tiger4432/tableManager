@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-import audit_history
-from audit_cache import AuditLogCache
+from admin import audit_history
+from admin.audit_cache import AuditLogCache
 from database import models
 
 

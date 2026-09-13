@@ -37,10 +37,8 @@ _SERVER_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _SERVER_DIR not in sys.path:
     sys.path.insert(0, _SERVER_DIR)
 
-import enrichment_backfill  # noqa: E402  (the single implementation; see its docstring)
-from enrichment_backfill import (  # noqa: E402
-    DEFAULT_CHUNK_SIZE, SAMPLE_NEW_KEYS, BackfillRefused,
-)
+import enrichment.backfill  # noqa: E402  (the single implementation; see its docstring)
+from enrichment.backfill import DEFAULT_CHUNK_SIZE, SAMPLE_NEW_KEYS, BackfillRefused
 
 
 def format_report(stats: dict, limit: int = None) -> str:
@@ -136,7 +134,7 @@ def main(argv=None):
     models.init_dynamic_models(crud.TABLE_CONFIG)
 
     try:
-        rule = enrichment_backfill.load_rule(args.rule_name, crud.TABLE_CONFIG,
+        rule = enrichment.backfill.load_rule(args.rule_name, crud.TABLE_CONFIG,
                                              force_disabled=args.force_disabled)
     except BackfillRefused as e:
         print(f"REFUSED: {e}")
@@ -144,7 +142,7 @@ def main(argv=None):
 
     db = SessionLocal()
     try:
-        stats = enrichment_backfill.run_backfill(
+        stats = enrichment.backfill.run_backfill(
             db, rule, apply=args.apply, limit=args.limit, chunk_size=args.chunk_size)
         print(format_report(stats, limit=args.limit))
         return 0

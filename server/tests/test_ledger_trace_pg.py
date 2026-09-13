@@ -24,7 +24,7 @@ from sqlalchemy import text
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import ledger_trace as lt
+from ledger import trace as lt
 
 
 #: Fixtures carry a REAL +09:00 offset, not UTC (see the unit-test file).
@@ -1578,7 +1578,7 @@ def test_the_coverage_route_answers_200_when_the_ledger_is_not_deployed(
         ledger_client, monkeypatch):
     """An absent ledger is an ANSWER over HTTP too. A 500 here is what the
     product owner would read as "the screen itself is broken"."""
-    import ledger_trace_router as router_module
+    from ledger import trace_router as router_module
     monkeypatch.setattr(router_module, "LEDGER_RELATION", "ledger_events_not_migrated")
     monkeypatch.setattr(router_module, "LEDGER_CURSOR_RELATION",
                         "ledger_cursor_not_migrated")
@@ -1597,7 +1597,7 @@ def test_the_trace_route_names_an_absent_ledger_in_a_field_not_in_prose(
     Korean. The relation is now judged by the catalogue and the body is
     machine-readable. This is the test that fires it.
     """
-    import ledger_trace_router as router_module
+    from ledger import trace_router as router_module
     monkeypatch.setattr(router_module, "LEDGER_RELATION", "ledger_events_not_migrated")
 
     resp = ledger_client.get("/api/ledger/trace", params={"lot": "L-D", "slot": "3"})

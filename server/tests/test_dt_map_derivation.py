@@ -50,7 +50,7 @@ import pytest
 
 import dt_map_derivation as derivation
 import map_overlay
-import virtual_join_config
+import virtual_join.config
 from database import crud, models
 
 # ---------------------------------------------------------------------------
@@ -150,7 +150,7 @@ def env(db_session, monkeypatch):
     crud.TABLE_CONFIG.update(TABLES)
     from database.database import Base
     Base.metadata.create_all(bind=db_session.get_bind())
-    monkeypatch.setattr(virtual_join_config, "load_verified_rules",
+    monkeypatch.setattr(virtual_join.config, "load_verified_rules",
                         lambda *a, **k: [dict(r) for r in VJOIN_RULES])
     map_overlay._FRAME_TF_CACHE.clear()
     return db_session
@@ -855,7 +855,7 @@ def test_an_unverified_join_rule_is_a_named_refusal(env, monkeypatch):
     the join key, so a second attribution row for one key would silently overwrite the
     first and one arbitrary lot would win the identity.
     """
-    monkeypatch.setattr(virtual_join_config, "load_verified_rules", lambda *a, **k: [])
+    monkeypatch.setattr(virtual_join.config, "load_verified_rules", lambda *a, **k: [])
     with pytest.raises(derivation.DerivationRefused) as exc:
         derivation.join_rule(env, derivation.CONFIRMED_JOIN_RULE)
     assert exc.value.code == derivation.REFUSE_JOIN_RULE_MISSING
@@ -866,7 +866,7 @@ def test_the_gate_reads_the_verified_loader_and_not_the_shape_only_one(env, monk
     nothing else; `virtual_join_config` names `load_verified_rules` the only entry point
     for code that executes a join, and quotes the difference as 130 million rows."""
     called = []
-    monkeypatch.setattr(virtual_join_config, "load_virtual_join_rules",
+    monkeypatch.setattr(virtual_join.config, "load_virtual_join_rules",
                         lambda *a, **k: called.append("shape") or [])
     derivation.join_rule(env, derivation.CONFIRMED_JOIN_RULE)
     assert called == [], "the gate must not consume the shape-only loader"
@@ -1077,7 +1077,7 @@ def test_live_virtual_join_rules_resolve_the_gate_if_they_are_present():
     the gate it feeds is actually resolvable - `server/config/` is gitignored, so it is
     skipped rather than failed where the file does not exist."""
     by_name = {r["name"]: r
-               for r in (virtual_join_config.load_virtual_join_rules() or [])}
+               for r in (virtual_join.config.load_virtual_join_rules() or [])}
     if derivation.CONFIRMED_JOIN_RULE not in by_name:
         pytest.skip("live virtual_join_rules.json not present in this checkout")
     confirmed = by_name[derivation.CONFIRMED_JOIN_RULE]

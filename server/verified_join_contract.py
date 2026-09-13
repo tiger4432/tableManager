@@ -210,12 +210,16 @@ def _build_verification_boundary():
             loader = (
                 caller.f_globals.get("load_verified_rules")
                 if caller is not None else None)
-            if (module_name not in {"virtual_join_config", "server.virtual_join_config"}
-                    or loader is None
-                    or caller.f_code is not getattr(loader, "__code__", None)):
+            # 🔴 WHAT THE CALLER IS DOING, NOT WHAT IT IS CALLED (S-211, 판정 364). The
+            # test that does the work is the last one: the running frame must BE the code
+            # object of a `load_verified_rules` defined in the caller's own module. A
+            # module-name comparison sat in front of it and added nothing that test does
+            # not already cover - while breaking the moment the module is packaged, which
+            # is how a capability keyed to a name fails.
+            if loader is None or caller.f_code is not getattr(loader, "__code__", None):
                 raise TypeError(
-                    "verified join descriptors can only be issued inside "
-                    "virtual_join_config.load_verified_rules")
+                    "verified join descriptors can only be issued inside the loader's own "
+                    "load_verified_rules")
             descriptor = object.__new__(VerifiedJoinDescriptor)
             object.__setattr__(
                 descriptor, "_data", VerifiedJoinDescriptor._validated_data(rule))
@@ -229,12 +233,14 @@ def _build_verification_boundary():
         )
 
     def bind_issuer():
-        frame = inspect.currentframe()
-        caller = frame.f_back if frame is not None else None
-        module_name = caller.f_globals.get("__name__") if caller is not None else None
-        if module_name not in {"virtual_join_config", "server.virtual_join_config"}:
-            raise TypeError(
-                "physical verifier issuer is only available to virtual_join_config")
+        """Hand out the issuer. 🔴 THE GATE IS ON USE, NOT ON WHO ASKS.
+
+        This compared the caller's `__name__` to `virtual_join_config`, and that comparison
+        is what broke when the module became `virtual_join.config` - a capability measured
+        by a name (S-211, 판정 364). Holding an issuer grants nothing on its own: `issue()`
+        still refuses unless the running frame IS the caller's own `load_verified_rules`,
+        which is a fact about what the code does rather than what it is called.
+        """
         return _PhysicalVerifierIssuer(issuer_token)
 
     return is_issued, bind_issuer

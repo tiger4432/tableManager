@@ -86,7 +86,7 @@ import sqlalchemy as sa
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
 
-import audit_history
+from admin import audit_history
 from database import models
 from database import schemas
 

@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-import chain_ingestion_worker as worker
+from chain import ingestion_worker as worker
 from database.models import DatabaseOutbox
 
 

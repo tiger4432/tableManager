@@ -18,7 +18,7 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import retroactive                                               # noqa: E402
+from admin import retroactive                                               # noqa: E402
 from database import models                                      # noqa: E402
 
 NOW = datetime(2026, 9, 5, 12, 0, tzinfo=timezone.utc)

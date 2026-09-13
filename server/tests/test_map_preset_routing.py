@@ -42,7 +42,7 @@ from contextlib import contextmanager
 import pytest
 
 import map_overlay
-import map_preset_routing as routing_mod
+from maps import preset_routing as routing_mod
 from database import crud, models
 
 MAP_TABLE = "pr_test_map"

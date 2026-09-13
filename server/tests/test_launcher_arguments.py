@@ -39,11 +39,8 @@ import sys
 
 import pytest
 
-import launcher_args as la
-from launcher_args import (
-    EXIT_BAD_ARGUMENT, FLAGS, KNOWN_FLAGS, help_lines, parse_launcher_args,
-    suggest_flag,
-)
+from runtime import launcher_args as la
+from runtime.launcher_args import EXIT_BAD_ARGUMENT, FLAGS, KNOWN_FLAGS, help_lines, parse_launcher_args, suggest_flag
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 LAUNCHER = os.path.join(ROOT, "run_decoupled_app.py")

@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 import dt_map_derivation as dmd                                  # noqa: E402
 
 SERVER = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-CONSUMERS = ("chain_ingestion_worker.py", "chain_replay.py")
+CONSUMERS = ("chain/ingestion_worker.py", "chain/replay.py")
 RULE = {"name": "r", "allow_replace_map": True, "allow_retraction": True}
 
 

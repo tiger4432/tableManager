@@ -111,7 +111,7 @@ _QUEUE_PREDICATE_PROBE = textwrap.dedent(
         eip_key = Column(String)
         eip_target = Column(String)
 
-    import enrichment_analysis
+    from enrichment import analysis
 
     rule = {
         "name": "entrypointiso_probe_rule",
@@ -122,7 +122,7 @@ _QUEUE_PREDICATE_PROBE = textwrap.dedent(
         "list_columns": [],
         "reference_views": [],
     }
-    cond = enrichment_analysis._queue_condition(Probe, rule)
+    cond = analysis._queue_condition(Probe, rule)
     print("CONDITION", cond is not None)
     print("MAIN_IN_MODULES", "main" in sys.modules)
 

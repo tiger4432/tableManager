@@ -7,11 +7,11 @@ import uuid
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ledger.envelope import source_event_identity
-import ledger_explorer
+from ledger import explorer
 from ledger_api import ledger_subgraph
 import pytest
 from fastapi import HTTPException
-import ledger_trace_router
+from ledger import trace_router
 
 
 NOW = datetime(2026, 8, 15, 3, 0, tzinfo=timezone.utc)
@@ -73,7 +73,7 @@ def test_source_event_identity_groups_one_utterance_but_not_sources_or_times():
 
 def test_direction_and_value_projection_are_explicit_parameters():
     lookup = ledger_subgraph.InMemoryEvidenceLookup(fixture())
-    entity_id = ledger_explorer.entity_id("Lot", {"lot": "A"})
+    entity_id = explorer.entity_id("Lot", {"lot": "A"})
     outgoing = ledger_subgraph.subgraph(
         entity_id, lookup, hops=3, direction="outgoing")
     labels = {node["label"] for node in outgoing["nodes"]}
@@ -86,7 +86,7 @@ def test_direction_and_value_projection_are_explicit_parameters():
 def test_legacy_atom_is_one_honest_event_and_can_be_reseeded():
     legacy = atom(9, "OLD", "register", event=None, event_state=None)
     lookup = ledger_subgraph.InMemoryEvidenceLookup([legacy])
-    entity_id = ledger_explorer.entity_id("Lot", {"lot": "OLD"})
+    entity_id = explorer.entity_id("Lot", {"lot": "OLD"})
     body = ledger_subgraph.subgraph(entity_id, lookup, hops=2)
     # 🔴 a legacy atom no longer becomes an event NODE -- it is still one honest fact, now
     # carried as an edge. `register` has no object, so what it leaves is the subject itself.
@@ -109,7 +109,7 @@ def test_caps_are_reported_instead_of_looking_complete():
     """
     many = [atom(index + 100, "FAN", "derived_from", target=f"LOT-{index:02d}")
             for index in range(30)]
-    seed = ledger_explorer.entity_id("Lot", {"lot": "FAN"})
+    seed = explorer.entity_id("Lot", {"lot": "FAN"})
     body = ledger_subgraph.subgraph(
         seed, ledger_subgraph.InMemoryEvidenceLookup(many),
         hops=4, node_limit=10, edge_limit=20)
@@ -153,8 +153,8 @@ def signed_fixture():
 
 def test_a_single_id_still_works_and_the_three_seed_states_stay_three():
     lookup = ledger_subgraph.InMemoryEvidenceLookup(signed_fixture())
-    marked = ledger_explorer.entity_id("Lot", {"lot": "MARK"})
-    control = ledger_explorer.entity_id("Lot", {"lot": "CTRL"})
+    marked = explorer.entity_id("Lot", {"lot": "MARK"})
+    control = explorer.entity_id("Lot", {"lot": "CTRL"})
 
     plain = ledger_subgraph.subgraph(marked, lookup, hops=4)
     assert plain["seed"]["id"] == marked
@@ -212,7 +212,7 @@ def uneven_fixture():
 
 
 def test_the_two_open_routes_take_the_signed_seeds_and_the_frozen_ones_do_not():
-    routes = {route.path: route for route in ledger_trace_router.router.routes}
+    routes = {route.path: route for route in trace_router.router.routes}
     def params(path):
         return {field.alias or field.name
                 for field in routes[path].dependant.query_params}
@@ -253,12 +253,12 @@ def test_the_two_open_routes_take_the_signed_seeds_and_the_frozen_ones_do_not():
     assert set(routes) == {"/api/ledger/subgraph", "/api/ledger/declaration",
                            "/api/ledger/gaps", "/api/ledger/key-values"}
     # `id` alone must reach subgraph() as the very same argument it always was.
-    seed = ledger_explorer.entity_id("Lot", {"lot": "A"})
-    assert ledger_trace_router._signed_start(seed, None, None) == seed
-    assert ledger_trace_router._signed_start(seed, [], []) == seed
-    assert ledger_trace_router._signed_start(seed, ["b"], ["c"]) == {
+    seed = explorer.entity_id("Lot", {"lot": "A"})
+    assert trace_router._signed_start(seed, None, None) == seed
+    assert trace_router._signed_start(seed, [], []) == seed
+    assert trace_router._signed_start(seed, ["b"], ["c"]) == {
         "positive": [seed, "b"], "negative": ["c"]}
-    assert ledger_trace_router._signed_start(seed, None, ["c"]) == {
+    assert trace_router._signed_start(seed, None, ["c"]) == {
         "positive": [seed], "negative": ["c"]}
 
 
@@ -275,12 +275,12 @@ def test_an_undeclared_follow_predicate_is_refused_by_walking_the_refusal():
     Calling the route function is the point of this test. Asserting the message without
     executing the branch would reproduce exactly the hole it closes.
     """
-    followable = ledger_trace_router._followable_predicates()
+    followable = trace_router._followable_predicates()
     assert "processed_with" in followable, "a real predicate must be followable"
 
     with pytest.raises(HTTPException) as raised:
-        ledger_trace_router.evidence_subgraph(
-            node_id=ledger_explorer.entity_id("Lot", {"lot": "A"}),
+        trace_router.evidence_subgraph(
+            node_id=explorer.entity_id("Lot", {"lot": "A"}),
             hops=4, direction="both",
             node_limit=100, edge_limit=200,
             positive=None, negative=None,
@@ -312,7 +312,7 @@ def test_entity_label_takes_its_key_order_from_the_live_declaration():
         # Nothing else about the node moves.
         node = ledger_subgraph._entity_node("die", keys)
         assert node["node_kind"] == "entity" and node["keys"] == keys
-        assert node["id"] == ledger_explorer.entity_id("die", keys)
+        assert node["id"] == explorer.entity_id("die", keys)
     finally:
         ledger_subgraph._entity_key_order = saved
 
@@ -343,7 +343,7 @@ def test_each_undeclared_subject_type_seeds_on_its_own():
     """
     for subject_type, keys in sorted(MIXED_GENERATION_SEEDS.items()):
         ref = ledger_subgraph.decode_node_id(
-            ledger_explorer.entity_id(subject_type, keys))
+            explorer.entity_id(subject_type, keys))
         assert ref["kind"] == "entity", subject_type
         assert ref["type"] == subject_type, subject_type
         assert ref["keys"] == keys, subject_type
@@ -367,7 +367,7 @@ def test_restoring_the_write_gate_on_the_read_path_refuses_all_three():
         str(key).split("@", 1)[0]: set((value or {}).get("keys") or ())
         for key, value in ((ledger_config.load() or {}).get("entities") or {}).items()
     }
-    original = ledger_explorer.decode_entity_id
+    original = explorer.decode_entity_id
 
     def gate_guarded(value):
         entity_type, keys = original(value)
@@ -390,12 +390,12 @@ def test_restoring_the_write_gate_on_the_read_path_refuses_all_three():
                if name not in declared_entities}
     assert refused, ("every mixed-generation seed is declared now - this mutation no "
                      "longer restores anything and should be retired, not adjusted")
-    ledger_explorer.decode_entity_id = gate_guarded
+    explorer.decode_entity_id = gate_guarded
     try:
         for subject_type, keys in sorted(refused.items()):
             try:
                 ledger_subgraph.decode_node_id(
-                    ledger_explorer.entity_id(subject_type, keys))
+                    explorer.entity_id(subject_type, keys))
             except ValueError as exc:
                 assert "is not a declared entity type" in str(exc), subject_type
             else:
@@ -414,9 +414,9 @@ def test_restoring_the_write_gate_on_the_read_path_refuses_all_three():
             if declared_spelling not in declared_entities:
                 continue
             assert ledger_subgraph.decode_node_id(
-                ledger_explorer.entity_id(declared_spelling, keys))["type"]                 == declared_spelling
+                explorer.entity_id(declared_spelling, keys))["type"]                 == declared_spelling
     finally:
-        ledger_explorer.decode_entity_id = original
+        explorer.decode_entity_id = original
 
     # 🔴 THE JUDGEMENT ITSELF IS UNCHANGED, and this is where that is pinned.  The
     # declaration still refuses these two spellings; only the READ stopped asking.  If
@@ -556,7 +556,7 @@ def test_a_name_is_FETCHED_with_the_narrower_follow_rather_than_filtered_after()
     """
     lookup = RecordingLookup(NAME_FIXTURE)
     body = ledger_subgraph.subgraph(
-        ledger_explorer.entity_id("wafer", {"wafer": "W1"}), lookup,
+        explorer.entity_id("wafer", {"wafer": "W1"}), lookup,
         hops=4, direction="both", follow=["measures", "leads_to"],
         static_types={"quantity"}, static_follow={"leads_to"})
 
@@ -606,13 +606,13 @@ def test_the_static_step_predicates_are_DERIVED_from_the_declaration(monkeypatch
     }
     from ledger import config as ledger_config
     monkeypatch.setattr(ledger_config, "load", lambda *a, **k: declared)
-    assert ledger_trace_router._static_step_predicates() == {"s_to_s"}
+    assert trace_router._static_step_predicates() == {"s_to_s"}
 
     def unreadable(*args, **kwargs):
         raise RuntimeError("declaration unreadable")
 
     monkeypatch.setattr(ledger_config, "load", unreadable)
-    assert ledger_trace_router._static_step_predicates() == set(), (
+    assert trace_router._static_step_predicates() == set(), (
         "an unreadable declaration must expand no name, not every name")
 
 
@@ -634,7 +634,7 @@ def test_backbone_hops_buys_depth_for_steps_that_stay_inside_the_world():
 
     🔴 WAKE IT: fix `budget_hops` at `hops` and the second half returns two nodes.
     """
-    seed = ledger_explorer.entity_id("die", {"die": "D0"})
+    seed = explorer.entity_id("die", {"die": "D0"})
     lookup = ledger_subgraph.InMemoryEvidenceLookup(BACKBONE_CHAIN)
 
     near = ledger_subgraph.subgraph(seed, lookup, hops=1, backbone_hops=0,
@@ -675,7 +675,7 @@ def test_the_fetch_does_not_climb_a_container_and_come_back_down_to_its_siblings
     this -- only the predicate rule can.
     """
     body = ledger_subgraph.subgraph(
-        ledger_explorer.entity_id("die", {"die": "D1"}),
+        explorer.entity_id("die", {"die": "D1"}),
         ledger_subgraph.InMemoryEvidenceLookup(SIBLING_FIXTURE),
         hops=4, direction="both", follow=["inspected"])
 
@@ -700,7 +700,7 @@ def test_an_empty_static_intersection_skips_the_fetch_instead_of_passing_an_empt
     """
     lookup = RecordingLookup(NAME_FIXTURE)
     body = ledger_subgraph.subgraph(
-        ledger_explorer.entity_id("wafer", {"wafer": "W1"}), lookup,
+        explorer.entity_id("wafer", {"wafer": "W1"}), lookup,
         hops=4, direction="both", follow=["measures"],
         static_types={"quantity"}, static_follow={"leads_to"})
 
@@ -783,7 +783,7 @@ def test_sql_lookup_round_trip_uses_persisted_event_identity(pg_engine):
         connection.commit()
         assert (attempted, inserted) == (2, 2)
         assert atoms[0].source_event_id == atoms[1].source_event_id
-        seed = ledger_explorer.entity_id("Lot", {"lot": "SQL-A"})
+        seed = explorer.entity_id("Lot", {"lot": "SQL-A"})
         body = ledger_subgraph.subgraph(
             seed, ledger_subgraph.SqlEvidenceLookup(connection), hops=3)
     finally:
@@ -823,7 +823,7 @@ def test_the_offered_scope_columns_are_exactly_the_ones_the_scope_reader_accepts
     from ledger.setup import LedgerSetupError, load_setup
     from ledger.source_preparation import base_select_columns
 
-    catalogue = ledger_trace_router.ledger_declaration_catalog()
+    catalogue = trace_router.ledger_declaration_catalog()
     assert "sources" in catalogue, "an absent key means 'could not find out', not 'none'"
     plans = load_setup().snapshot.source_plans
     assert {entry["source"] for entry in catalogue["sources"]} == set(plans)
@@ -862,7 +862,7 @@ def test_a_setup_that_will_not_compile_OMITS_the_key_instead_of_answering_none(m
         raise RuntimeError("compilation failed")
 
     monkeypatch.setattr(ledger_setup, "load_setup", _refuse)
-    catalogue = ledger_trace_router.ledger_declaration_catalog()
+    catalogue = trace_router.ledger_declaration_catalog()
 
     assert "sources" not in catalogue
     assert catalogue["entities"] and catalogue["predicates"]
@@ -909,7 +909,7 @@ def _seat_route(index, seed_x, seed_y, coordinates):
         atoms.append(_seat_atom(
             base + 2 + offset, "wafer", wafer, "inspected", "die",
             {"mat_id": "T%d" % index, "x": x, "y": y}))
-    return ledger_explorer.entity_id("die", seed_keys), atoms
+    return explorer.entity_id("die", seed_keys), atoms
 
 
 def _dies_reached(body, seed_ids):
@@ -974,7 +974,7 @@ def test_an_unconstrained_follow_answers_exactly_what_it_answered_before():
     """A colon-less request is not a new code path with the same result -- it must reach
     `subgraph` with NO keys at all, which is what keeps today's client running unchanged."""
     _, atoms = _seat_route(1, 1, 1, [(1.0, 1.0), (5, 5), (9, 9)])
-    seed = ledger_explorer.entity_id("die", {"mat_id": "S1", "x": 1, "y": 1})
+    seed = explorer.entity_id("die", {"mat_id": "S1", "x": 1, "y": 1})
     lookup = ledger_subgraph.InMemoryEvidenceLookup(atoms)
     walk = dict(hops=6, direction="both", follow=["slot_map", "inspected"])
     def _body(**extra):
@@ -987,18 +987,18 @@ def test_an_unconstrained_follow_answers_exactly_what_it_answered_before():
 
     assert _body() == _body(follow_keys={})
     # `follow=name` with a trailing colon and nothing after it is the same statement
-    assert ledger_trace_router._split_follow(["inspected:", "slot_map"]) == (
+    assert trace_router._split_follow(["inspected:", "slot_map"]) == (
         ["inspected", "slot_map"], {})
 
 
 def test_the_follow_key_parser_keeps_the_bare_name_for_the_declaration_check():
-    names, keys = ledger_trace_router._split_follow(
+    names, keys = trace_router._split_follow(
         ["inspected:x,y", "slot_map", "observed: run_uid "])
     assert names == ["inspected", "slot_map", "observed"], (
         "the declaration check sees the bare names, or every keyed request is a 422")
     assert keys == {"inspected": ("x", "y"), "observed": ("run_uid",)}
     # a declared predicate with keys is NOT refused -- the half that is checked is bare
-    followable = ledger_trace_router._followable_predicates()
+    followable = trace_router._followable_predicates()
     assert "inspected" in followable and set(names[:1]) <= followable
 
 
@@ -1015,13 +1015,13 @@ def test_a_seed_that_cannot_carry_the_key_is_REFUSED_not_answered_with_zero(monk
         def connection(self):
             return None
 
-    monkeypatch.setattr(ledger_trace_router.ledger_trace, "relation_exists",
+    monkeypatch.setattr(trace_router.trace, "relation_exists",
                         lambda *a, **k: True)
-    monkeypatch.setattr(ledger_trace_router, "_subgraph_contract_state",
+    monkeypatch.setattr(trace_router, "_subgraph_contract_state",
                         lambda *a, **k: [])
     with pytest.raises(HTTPException) as raised:
-        ledger_trace_router.evidence_subgraph(
-            node_id=ledger_explorer.entity_id("wafer", {"wafer": "T1"}),
+        trace_router.evidence_subgraph(
+            node_id=explorer.entity_id("wafer", {"wafer": "T1"}),
             hops=4, direction="both", node_limit=100, edge_limit=200,
             positive=None, negative=None,
             follow=["inspected:x,y"], backbone_hops=0, db=_Db())
@@ -1040,7 +1040,7 @@ def test_a_seed_that_cannot_carry_the_key_is_REFUSED_not_answered_with_zero(monk
 def _collect_fixture():
     legacy = atom(9, "OLD", "register", event=None, event_state=None)
     return (ledger_subgraph.InMemoryEvidenceLookup([legacy]),
-            ledger_explorer.entity_id("Lot", {"lot": "OLD"}))
+            explorer.entity_id("Lot", {"lot": "OLD"}))
 
 
 def test_no_collect_answers_exactly_what_it_answered_before():
@@ -1072,7 +1072,7 @@ def _two_type_fixture():
         source_raw_ref="row:91", supersedes=None, source_event_id=EVENT,
         source_event_state="source_molecule")
     return (ledger_subgraph.InMemoryEvidenceLookup([lot_to_wafer]),
-            ledger_explorer.entity_id("Lot", {"lot": "OLD"}))
+            explorer.entity_id("Lot", {"lot": "OLD"}))
 
 
 def test_collect_keeps_the_named_type_and_nothing_else():
@@ -1125,8 +1125,8 @@ def test_an_undeclared_node_type_is_refused_by_name():
     never match, so an empty graph would be indistinguishable from 'there is nothing
     here' and a typo would read as a fact."""
     with pytest.raises(HTTPException) as raised:
-        ledger_trace_router.evidence_subgraph(
-            node_id=ledger_explorer.entity_id("Lot", {"lot": "A"}),
+        trace_router.evidence_subgraph(
+            node_id=explorer.entity_id("Lot", {"lot": "A"}),
             hops=4, direction="both", node_limit=100, edge_limit=200,
             positive=None, negative=None, follow=None,
             collect=["definitely_not_a_node_type"], db=None)
@@ -1156,7 +1156,7 @@ def _registration(number, subject, when, **qualifiers):
 
 def _walk(atoms, subject="A"):
     lookup = ledger_subgraph.InMemoryEvidenceLookup(atoms)
-    seed = ledger_explorer.entity_id("Lot", {"lot": subject})
+    seed = explorer.entity_id("Lot", {"lot": subject})
     body = ledger_subgraph.subgraph(seed, lookup, hops=2)
     return {node["id"]: node for node in body["nodes"]}[seed]
 

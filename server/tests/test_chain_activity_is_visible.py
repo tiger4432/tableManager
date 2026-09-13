@@ -19,17 +19,17 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import chain_activity                                            # noqa: E402
-import chain_ingestion_worker as worker                          # noqa: E402
+from chain import activity                                            # noqa: E402
+from chain import ingestion_worker as worker                          # noqa: E402
 
 RULE = {"name": "some_rule", "target_table": "some_target"}
 
 
 @pytest.fixture(autouse=True)
 def clean_registry():
-    chain_activity.registry.clear()
+    activity.registry.clear()
     yield
-    chain_activity.registry.clear()
+    activity.registry.clear()
 
 
 def install(monkeypatch, fn, name="activity_probe_module"):
@@ -50,7 +50,7 @@ def test_a_running_mapper_is_visible_while_it_runs(monkeypatch):
     seen = {}
 
     def slow(db, p):
-        seen["snapshot"] = chain_activity.registry.snapshot()
+        seen["snapshot"] = activity.registry.snapshot()
         return {"updates": []}
 
     mod, fn = install(monkeypatch, slow)
@@ -68,7 +68,7 @@ def test_a_running_mapper_is_visible_while_it_runs(monkeypatch):
 def test_the_entry_is_gone_once_the_mapper_returns(monkeypatch):
     mod, fn = install(monkeypatch, lambda db, p: {"updates": []})
     worker.execute_custom_mapper(mod, fn, None, payloads(1), rule=RULE)
-    assert chain_activity.registry.snapshot() == []
+    assert activity.registry.snapshot() == []
 
 
 def test_a_mapper_that_throws_does_not_leave_itself_running(monkeypatch):
@@ -81,13 +81,13 @@ def test_a_mapper_that_throws_does_not_leave_itself_running(monkeypatch):
     mod, fn = install(monkeypatch, boom)
     with pytest.raises(ValueError):
         worker.execute_custom_mapper(mod, fn, None, payloads(2), rule=RULE)
-    assert chain_activity.registry.snapshot() == [], "the throw left an entry in flight"
+    assert activity.registry.snapshot() == [], "the throw left an entry in flight"
 
 
 def test_two_mappers_in_flight_are_two_entries(monkeypatch):
     """Concurrency is real here - the loop runs rules within a group one after another,
     but nothing in the registry may assume a single slot."""
-    reg = chain_activity.registry
+    reg = activity.registry
     a = reg.start("rule_a", "m.a", "t_a", 1)
     b = reg.start("rule_b", "m.b", "t_b", 2)
     assert [e["rule"] for e in reg.snapshot()] == ["rule_a", "rule_b"]
@@ -103,7 +103,7 @@ def test_two_mappers_in_flight_are_two_entries(monkeypatch):
 def test_an_empty_list_is_not_the_same_answer_as_a_blind_one():
     """`attached` is False until this process's own chain loop starts. Without it,
     "no mapper is running" and "the loop is in another process" are one value."""
-    reg = chain_activity.ChainActivityRegistry()
+    reg = activity.ChainActivityRegistry()
     assert reg.snapshot() == [] and reg.attached is False
     reg.attach()
     assert reg.snapshot() == [] and reg.attached is True
@@ -127,9 +127,9 @@ def test_the_loop_marks_itself_attached_when_it_starts(monkeypatch):
         raise Stop()
     monkeypatch.setattr(worker, "load_chain_rules", refuse)
 
-    fresh = chain_activity.ChainActivityRegistry()
-    monkeypatch.setattr(chain_activity, "registry", fresh)
-    monkeypatch.setattr(worker.chain_activity, "registry", fresh)
+    fresh = activity.ChainActivityRegistry()
+    monkeypatch.setattr(activity, "registry", fresh)
+    monkeypatch.setattr(worker.activity, "registry", fresh)
     assert fresh.attached is False
 
     with pytest.raises(Stop):

@@ -56,11 +56,11 @@ import os
 #    ⚠️ 이 모듈을 «모듈 수준»에서 읽는 제품 코드는 없다(실측: `main.py` 셋 다 함수 안). 그래서
 #    이 import 들의 비용은 보고서를 «처음 부르는» 요청에 붙고, 기동 경로에는 붙지 않는다.
 import chain_bindings
-import chain_builtins
-import chain_ingestion_worker as worker
+from chain import builtins
+from chain import ingestion_worker as worker
 import mapper_sdk
-import virtual_join_config as vjc
-from virtual_join_refusal import virtual_join_detail             # noqa: F401
+import virtual_join.config as vjc
+from virtual_join.refusal import virtual_join_detail             # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -271,7 +271,7 @@ def _resolve_chain() -> dict:
     # 🔴 합성 규칙은 «같은 목록에» 서되 이름이 붙습니다 — 운영자가 고칠 수 없는 줄이라,
     # 안 붙이면 「내가 안 적었는데」가 되고 붙이면 「제품이 넣어 준 것」이 됩니다.
     try:
-        synthesized = chain_builtins.synthesize_chain_rules() or ()
+        synthesized = builtins.synthesize_chain_rules() or ()
     except Exception as exc:
         synthesized = ()
         rejected.append(entry(
@@ -359,7 +359,7 @@ def _view_report(rule: dict, view: dict) -> dict:
 
 
 def _rule_fields(rule: dict, views: list, knob_on: bool, raw_knob, max_keys: int) -> dict:
-    import enrichment_candidates as ec
+    import enrichment.candidates as ec
 
     return {
         "auto_confirm": knob_on,
@@ -385,15 +385,15 @@ def _resolve_enrichment() -> dict:
     드라이런 숫자(「몇 건이 사람 없이 확정 가능한가」)는 큐 전체를 걷는 분석 질의라
     여기 있지 않다 — `GET /admin/enrichment/auto-confirm/dry-run`이 별도로 답한다.
     """
-    import enrichment_candidates as ec
-    import enrichment_config
+    import enrichment.candidates as ec
+    import enrichment.config
     from database import crud
 
-    rules_path = enrichment_config.ENRICHMENT_RULES_PATH
+    rules_path = enrichment.config.ENRICHMENT_RULES_PATH
     rejections = []
     # `/enrichment/rules`와 **같은 인자로** 로드한다 — 보고서와 라우트가 다른 답을 내면
     # 보고서가 답하려던 질문 자체가 무의미해진다(같은 신호원 규율).
-    rules = enrichment_config.load_enrichment_rules(
+    rules = enrichment.config.load_enrichment_rules(
         known_tables=crud.TABLE_CONFIG, rejections=rejections)
 
     settings_path = ec.INGESTION_SETTINGS_PATH
@@ -1232,7 +1232,7 @@ def _resolve_walk() -> dict:
 
     collectable, failure = set(), None
     try:
-        from ledger_trace_router import _collectable_types
+        from ledger.trace_router import _collectable_types
 
         collectable = _collectable_types()
     except Exception as exc:

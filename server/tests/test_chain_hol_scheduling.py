@@ -7,7 +7,7 @@ process_pending_groups 가 한 배치 안에서:
 를 확인한다.
 """
 import pytest
-import chain_ingestion_worker as ciw
+from chain import ingestion_worker as ciw
 
 
 class FakeEvent:
@@ -79,7 +79,7 @@ async def test_failed_head_does_not_block_different_target(monkeypatch):
     # ⚠️ THESE MEASURE RETRY/HOL MECHANICS, NOT THE DEFAULT (S-139). The cap moved
     # to 1, so the declaration keeps this test's SUBJECT intact - and doubles as
     # the ruling's gate that 「3 을 적으면 옛 동작」 is literally true.
-    import chain_ingestion_worker as _ciw
+    from chain import ingestion_worker as _ciw
     monkeypatch.setattr(_ciw, "_RULES_DOCUMENT", {"max_group_attempts": 3})
     db = FakeDB()
 
@@ -106,7 +106,7 @@ async def test_failed_group_defers_same_target_follower(monkeypatch):
     # ⚠️ THESE MEASURE RETRY/HOL MECHANICS, NOT THE DEFAULT (S-139). The cap moved
     # to 1, so the declaration keeps this test's SUBJECT intact - and doubles as
     # the ruling's gate that 「3 을 적으면 옛 동작」 is literally true.
-    import chain_ingestion_worker as _ciw
+    from chain import ingestion_worker as _ciw
     monkeypatch.setattr(_ciw, "_RULES_DOCUMENT", {"max_group_attempts": 3})
     db = FakeDB()
 
@@ -134,7 +134,7 @@ async def test_same_target_blocked_but_other_target_proceeds(monkeypatch):
     # ⚠️ THESE MEASURE RETRY/HOL MECHANICS, NOT THE DEFAULT (S-139). The cap moved
     # to 1, so the declaration keeps this test's SUBJECT intact - and doubles as
     # the ruling's gate that 「3 을 적으면 옛 동작」 is literally true.
-    import chain_ingestion_worker as _ciw
+    from chain import ingestion_worker as _ciw
     monkeypatch.setattr(_ciw, "_RULES_DOCUMENT", {"max_group_attempts": 3})
     db = FakeDB()
 

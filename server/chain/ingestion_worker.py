@@ -30,7 +30,7 @@ from utils import heartbeat
 from utils.time_format import to_local_str
 
 # [C-5 확장] 통지 동봉 created_logs 상한 — 워처(directory_watcher)와 공유하는 공용 상수.
-import alignment_batch_counts
+from maps import alignment_batch_counts
 import event_constants
 from event_constants import (MAX_NOTIFY_CREATED_LOGS, BROADCAST_ITEM_LIMIT,
                             OUTBOX_GROUP_MAX_ROWS, trim_events_to_row_budget)
@@ -44,18 +44,18 @@ import map_meta_registrar
 
 # [Enrichment ①] Absent-only automatic confirmation when the declared reference
 # views leave exactly one candidate (per-rule knob `auto_confirm`, default OFF).
-import enrichment_candidates
+import enrichment.candidates
 
 # [ChainKeyGate] A chain may not emit a row whose key columns are not filled. The gate
 # sits on the write loop below - the one place every chain-emitted row passes through -
 # rather than in each mapper, because `server/mappers/*.py` is gitignored and a guard
 # written there does not deploy.
-import chain_key_gate
+from chain import key_gate
 
 # [Retraction] Removing what ONE SOURCE owns, for a map fed by several. `replace_map`
 # removes by map and cannot express it - see the retract branch in the write loop.
 import dt_map_derivation
-import chain_activity
+from chain import activity
 import chain_bindings
 import mapper_sdk
 import validation
@@ -305,7 +305,7 @@ def purge_expired_outbox_sync(db_session_factory, retention_days=OUTBOX_RETENTIO
     # (`asyncio.create_task(asyncio.to_thread(...))`). 그래서 반환을 넓히면 «독자 0» 인
     # 값이 하나 더 생길 뿐이고, 대신 이미 GET /admin/chain/queue 가 펼치는 레지스트리에
     # 싣는다 — 새 표면이 아니라 «있는 표면의 한 칸»이다. 반환 모양은 «안 바꾼다».
-    chain_activity.registry.note_outbox_purge(total_deleted, capped)
+    activity.registry.note_outbox_purge(total_deleted, capped)
     return total_deleted
 
 
@@ -558,7 +558,7 @@ def load_chain_rules():
     #   그대로 탄다. SYSTEM_RELOAD 시 본 함수가 재호출되므로 enrichment 규칙도 무중단 반영된다.
     try:
         from database import crud
-        import enrichment_config
+        import enrichment.config
         # 🔴 A NAME CLAIMED TWICE IS REFUSED BY NAME, NEVER RESOLVED (S-179 ①, 판정 292).
         # If `chain_rules.json` declares a name a synthesized rule also produces, the rule
         # would run TWICE and say nothing about it. Which of the two an operator meant is
@@ -573,13 +573,13 @@ def load_chain_rules():
         # 🔴 A NAME CLAIMED TWICE IS REFUSED BY NAME, NEVER RESOLVED (S-179 ①, 판정 292).
         # The join half gets the same treatment as the enrichment half: which of the two an
         # operator meant is not a thing this product can know.
-        import chain_builtins
-        import virtual_join_config
+        from chain import builtins
+        import virtual_join.config
 
         declared_names = [r.get("name") for r in rules]
-        collisions = set(enrichment_config.enrichment_name_collisions(
+        collisions = set(enrichment.config.enrichment_name_collisions(
             declared_names, known_tables=crud.TABLE_CONFIG))
-        collisions |= set(virtual_join_config.join_name_collisions(
+        collisions |= set(virtual_join.config.join_name_collisions(
             declared_names, known_tables=crud.TABLE_CONFIG))
         if collisions:
             logger.error(
@@ -587,13 +587,13 @@ def load_chain_rules():
                 "한쪽을 지우십시오 — 어느 쪽이 참인지는 제품이 고를 수 없습니다.",
                 ", ".join(sorted(collisions)))
         synthesized = [r for r in
-                       chain_builtins.synthesize_chain_rules(known_tables=crud.TABLE_CONFIG)
+                       builtins.synthesize_chain_rules(known_tables=crud.TABLE_CONFIG)
                        if r.get("name") not in collisions]
         if synthesized:
             rules = rules + synthesized
             # ⚠️ IT SAYS WHICH KINDS. 「N synthesized」 over three kinds is the shape that once
             # reported 8 of a kind there were 4 of, which is why S-179 ① split its own count.
-            counts = chain_builtins.synthesized_kind_counts(synthesized)
+            counts = builtins.synthesized_kind_counts(synthesized)
             logger.info(
                 "[ChainRules] Synthesized %d chain rule(s) "
                 "(%d dedup · %d auto-confirm · %d join)",
@@ -606,7 +606,7 @@ def load_chain_rules():
     # 🔴 선언된 규칙을 «값»으로 세운다 — 처리 루프가 결과를 덮어쓰고, 한 번도 안 걸린 규칙은
     #    「아직 평가 안 됨」으로 «말해진다». 부재는 「옛 서버」 하나만 뜻해야 한다.
     #    로더 «안»이라 호출자가 둘이어도 저자는 하나다.
-    chain_activity.registry.seed_rules(
+    activity.registry.seed_rules(
         (r or {}).get("name") or "<unnamed rule>" for r in (rules or ()))
     return rules
 
@@ -888,7 +888,7 @@ def execute_custom_mapper(module_name: str, function_name: str, db, payload, rul
                 MAPPER_LOG_TAG, rule_name, who, target_table, rows_in)
     # The log says what RAN; this says what is running. A line in a file cannot answer
     # "is it in one right now" without somebody tailing it.
-    token = chain_activity.registry.start(rule_name, who, target_table, rows_in)
+    token = activity.registry.start(rule_name, who, target_table, rows_in)
     try:
         if registered is not None:
             mapper_func = registered
@@ -931,7 +931,7 @@ def execute_custom_mapper(module_name: str, function_name: str, db, payload, rul
         #    `ran:unchanged` 는 «확실»하고(행이 0이면 바뀐 것이 없다), `ran:changed` 는
         #    「행을 냈다」까지가 참이다. 그 마지막 한 걸음은 별도 줄이다 — 대리를 성질처럼
         #    적지 않으려고 여기 적는다.
-        chain_activity.registry.record_outcome(
+        activity.registry.record_outcome(
             rule_name,
             event_constants.RULE_OUTCOME_RAN_CHANGED if rows_out
             else event_constants.RULE_OUTCOME_RAN_UNCHANGED,
@@ -945,7 +945,7 @@ def execute_custom_mapper(module_name: str, function_name: str, db, payload, rul
                      "-> %s: %s",
                      MAPPER_LOG_TAG, rule_name, who, target_table, rows_in,
                      time.monotonic() - started, type(e).__name__, e)
-        chain_activity.registry.record_outcome(
+        activity.registry.record_outcome(
             rule_name, event_constants.RULE_OUTCOME_FAILED,
             "%s: %s" % (type(e).__name__, e))
         raise e
@@ -954,7 +954,7 @@ def execute_custom_mapper(module_name: str, function_name: str, db, payload, rul
         # where an entry left behind would sit in the view forever, saying a mapper is
         # still running - and a stuck-looking chain is the symptom this whole step exists
         # to stop inventing.
-        chain_activity.registry.finish(token)
+        activity.registry.finish(token)
 
 def _rule_outcome_before_running(rule, events):
     """이 규칙이 이 그룹에 대해 «돌기 전에» 결정되는 결과 — 또는 `(None, None)`(돌 자격 있음).
@@ -997,7 +997,7 @@ def _record_pre_run_outcomes(rules, events):
     for rule in rules or ():
         outcome, reason = _rule_outcome_before_running(rule, events)
         if outcome is not None:
-            chain_activity.registry.record_outcome(
+            activity.registry.record_outcome(
                 (rule or {}).get("name") or "<unnamed rule>", outcome, reason)
 
 
@@ -1333,7 +1333,7 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                 # runs inside `apply_batch_updates` would narrow a whole-map purge to a
                 # single die.
                 with alignment_batch_counts.stage("key gate"):
-                    kept, key_gate_report = chain_key_gate.screen(
+                    kept, key_gate_report = key_gate.screen(
                         target_table, batch_data.updates,
                         rule_names=rules_by_target.get(target_table, ()),
                         transaction_id=chain_tx_id)
@@ -1711,11 +1711,11 @@ def _followup_builtin_rules():
     """The follow-up rules a `builtin:` kind could run, loaded once per reload."""
     global _FOLLOWUP_BUILTIN_RULES
     if _FOLLOWUP_BUILTIN_RULES is None:
-        import chain_builtins
+        from chain import builtins
 
         _FOLLOWUP_BUILTIN_RULES = [
             r for r in load_chain_rules()
-            if r.get("follow_up") and r.get("mapper") in chain_builtins.BUILTIN_KINDS]
+            if r.get("follow_up") and r.get("mapper") in builtins.BUILTIN_KINDS]
     return _FOLLOWUP_BUILTIN_RULES
 
 
@@ -2180,7 +2180,7 @@ def _worker_note():
 
     `None` when both are clean, so a healthy deployment's heartbeat file is unchanged.
     """
-    parts = [p for p in (_undeclared_drop_note(), chain_key_gate.note(),
+    parts = [p for p in (_undeclared_drop_note(), key_gate.note(),
                          ledger_followup.note()) if p]
     return " | ".join(parts) or None
 
@@ -2322,13 +2322,13 @@ def _run_builtin_followups(db, done):
     if done.get("event_type") == "DELETE":
         return
     try:
-        import chain_builtins
+        from chain import builtins
 
         for rule in _followup_builtin_rules():
             if rule.get("trigger_table") != table:
                 continue
             kind = rule.get("mapper")
-            result = chain_builtins.run_builtin(
+            result = builtins.run_builtin(
                 kind, db, rule, row_ids=list(row_ids), done=done)
             # 🔴 THE GROUP LINE CARRIES THE RULE NAME. A count with no name is a line nobody
             # can act on — and with several join rules watching one table it cannot even be
@@ -3047,7 +3047,7 @@ async def start_chain_ingestion_worker(db_session_factory):
     # 🔴 THIS PROCESS RUNS THE LOOP, AND THE QUEUE VIEW HAS TO KNOW THAT. Without it an
     # empty "running" list means both "no mapper is in flight" and "the loop is in
     # another process and I cannot see it" - the second dressed as the first.
-    chain_activity.registry.attach()
+    activity.registry.attach()
 
     # [F8] Everything about this process's path to /internal/events/*, before any
     # data is in flight: which token it holds (as a one-way fingerprint the API
@@ -3146,7 +3146,7 @@ async def start_chain_ingestion_worker(db_session_factory):
                     # 1. Reload dynamic modules cache
                     reload_worker_process_cache()
                     head_watch.note_reload()
-                    chain_activity.registry.note_reload()
+                    activity.registry.note_reload()
                     # 1-1. [이슈 #7] config 재로드 + 신규 테이블 ORM 등록 + 물리 CREATE 보충
                     #      (웹서버가 1차 CREATE — information_schema 게이트 + checkfirst로 경합 무해)
                     try:

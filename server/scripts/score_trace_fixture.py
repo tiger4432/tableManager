@@ -19,8 +19,8 @@ if _SERVER not in sys.path:
     sys.path.insert(0, _SERVER)
 
 import paths                                        # noqa: E402
-import enrichment_candidates as ec                   # noqa: E402
-import enrichment_config                             # noqa: E402
+import enrichment.candidates as ec                   # noqa: E402
+import enrichment.config                             # noqa: E402
 from database import crud                            # noqa: E402
 from database.database import SessionLocal           # noqa: E402
 from trace_fixture import scoring                    # noqa: E402
@@ -69,7 +69,7 @@ def main(argv=None):
 
     db = SessionLocal()
     try:
-        rules = {r["name"]: r for r in enrichment_config.load_enrichment_rules(
+        rules = {r["name"]: r for r in enrichment.config.load_enrichment_rules(
             known_tables=crud.TABLE_CONFIG)}
         r1, r2 = rules[RULE1], rules[RULE2]
 

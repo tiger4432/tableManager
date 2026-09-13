@@ -79,17 +79,14 @@ import keyset_scan
 import event_constants
 # [ChainKeyGate] The same gate the live chain worker runs. Replay re-runs the same
 # mappers, so it must not be able to re-create in bulk the unkeyed rows the worker refuses.
-import chain_key_gate
+from chain import key_gate
 
 # 🔴 [S-211 ①, 판정 358] 셀 «층»의 연산은 이 모듈의 것이 아니라 «둘 다 쓰는 것»이다.
 #    `virtual_join_executor` 가 `withdraw_source` 를 쓰려고 이 모듈을 함수 안에서 import 했고,
 #    그 한 줄이 네 모듈짜리 고리의 마지막 이음매였다. 연산이 둘보다 «아래»로 내려갔다.
 #    ⚠️ 여기서 읽는 이름들은 «재수출»이 아니라 이 모듈이 그것들을 «쓰기» 때문이다 —
 #       `ReplayRefused` 는 스무 자리에서 raise 되고, 헬퍼 셋은 다른 함수들이 부른다.
-from cell_layer import (                                            # noqa: F401
-    DEFAULT_CHUNK_SIZE, PROTECTED_SOURCES, R1_SOURCE_NAME, R2_AUDIT_SOURCE,
-    ReplayRefused, SAMPLE_LIMIT, _claimed_filter, _load_cell_state, _resolve_cell,
-    withdraw_source)
+from chain.cell_layer import DEFAULT_CHUNK_SIZE, PROTECTED_SOURCES, R1_SOURCE_NAME, R2_AUDIT_SOURCE, ReplayRefused, SAMPLE_LIMIT, _claimed_filter, _load_cell_state, _resolve_cell, withdraw_source
 
 WRITE_CHUNK = 1000
 
@@ -146,7 +143,7 @@ def load_rules() -> list:
     enrichment_rules.json, so replay sees exactly the rule set the live worker
     sees - including enrichment. There is no second rule-loading path.
     """
-    from chain_ingestion_worker import load_chain_rules
+    from chain.ingestion_worker import load_chain_rules
     return [r for r in load_chain_rules() if r.get("enabled", True)]
 
 
@@ -258,7 +255,7 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
     """
     from database import crud, models, schemas
     import map_meta_registrar
-    from chain_ingestion_worker import execute_custom_mapper
+    from chain.ingestion_worker import execute_custom_mapper
 
     trigger_table = rule.get("trigger_table")
     target_table = rule.get("target_table")
@@ -541,7 +538,7 @@ def _apply_replay_batch(db, schemas, crud, table_name, items, run_id, stats, pag
     # worker now refuses. Note the interaction with `SKIP_BLANK` above: a blank key column
     # is stripped from `updates` there, which is precisely what makes the item unkeyable
     # here.
-    kept, report = chain_key_gate.screen(
+    kept, report = key_gate.screen(
         table_name, batch.updates, rule_names=(rule_name,) if rule_name else (),
         transaction_id=batch.transaction_id)
     if report["refused_rows"]:

@@ -25,7 +25,7 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import ingestion_checkpoint                                      # noqa: E402
+import ingestion.checkpoint                                      # noqa: E402
 import run_watcher                                               # noqa: E402
 from database import models                                      # noqa: E402
 from utils import heartbeat                                      # noqa: E402
@@ -45,7 +45,7 @@ def claimed_row(db, *, table="dt_map", filename="a.csv", updated_at=OLD):
 
 
 def checkpoint(db, *, table="dt_map", filename="a.csv", updated_at=OLD,
-               status=ingestion_checkpoint.STATUS_IN_PROGRESS):
+               status=ingestion.checkpoint.STATUS_IN_PROGRESS):
     row = models.FileIngestionCheckpoint(
         table_name=table, file_signature="sig-" + filename, filename=filename,
         status=status, processed_rows=1, chunk_index=1)
@@ -61,39 +61,39 @@ def checkpoint(db, *, table="dt_map", filename="a.csv", updated_at=OLD,
 def test_the_grace_calls_the_derivation_rather_than_copying_it():
     """🔴 ONE AUTHOR. `DEFAULT_STALL_AFTER_SEC` already carries the measurement and the
     floor it clears; a 300 written here would be a second author for one number."""
-    assert ingestion_checkpoint.reclaim_after_seconds() == heartbeat.DEFAULT_STALL_AFTER_SEC
-    assert "300" not in inspect.getsource(ingestion_checkpoint.reclaim_after_seconds)
+    assert ingestion.checkpoint.reclaim_after_seconds() == heartbeat.DEFAULT_STALL_AFTER_SEC
+    assert "300" not in inspect.getsource(ingestion.checkpoint.reclaim_after_seconds)
 
 
 def test_a_declared_grace_wins():
-    assert ingestion_checkpoint.reclaim_after_seconds(900) == 900.0
+    assert ingestion.checkpoint.reclaim_after_seconds(900) == 900.0
 
 
 @pytest.mark.parametrize("junk", [None, 0, -1, True, "600"])
 def test_anything_not_a_positive_number_falls_back(junk):
-    assert ingestion_checkpoint.reclaim_after_seconds(junk) == \
+    assert ingestion.checkpoint.reclaim_after_seconds(junk) == \
         heartbeat.DEFAULT_STALL_AFTER_SEC
 
 
 # ------------------------------------------------- liveness keeps its two answers apart
 
 def test_no_checkpoint_and_a_stale_one_are_different_answers(db_session):
-    assert ingestion_checkpoint.liveness(db_session, "dt_map", "nothing.csv") == (False, None)
+    assert ingestion.checkpoint.liveness(db_session, "dt_map", "nothing.csv") == (False, None)
     checkpoint(db_session, filename="b.csv")
-    has, moved = ingestion_checkpoint.liveness(db_session, "dt_map", "b.csv")
+    has, moved = ingestion.checkpoint.liveness(db_session, "dt_map", "b.csv")
     assert has is True and moved is not None
 
 
 def test_a_finished_checkpoint_is_not_liveness(db_session):
     """Only IN_PROGRESS says "still working"; a DONE row would make a stranded claim look
     alive for ever."""
-    checkpoint(db_session, filename="c.csv", status=ingestion_checkpoint.STATUS_DONE)
-    assert ingestion_checkpoint.liveness(db_session, "dt_map", "c.csv")[0] is False
+    checkpoint(db_session, filename="c.csv", status=ingestion.checkpoint.STATUS_DONE)
+    assert ingestion.checkpoint.liveness(db_session, "dt_map", "c.csv")[0] is False
 
 
 @pytest.mark.parametrize("table,name", [(None, "a.csv"), ("dt_map", None), ("", "")])
 def test_liveness_needs_both_names(db_session, table, name):
-    assert ingestion_checkpoint.liveness(db_session, table, name) == (False, None)
+    assert ingestion.checkpoint.liveness(db_session, table, name) == (False, None)
 
 
 # -------------------------------------------------------------- the sweep, on real rows

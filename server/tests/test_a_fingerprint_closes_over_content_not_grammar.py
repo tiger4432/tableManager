@@ -118,7 +118,7 @@ def test_a_boot_restamps_the_moved_cursors_and_names_every_one(monkeypatch, capl
     in the ledger and land them AGAIN under the new fingerprint.
     """
     import logging
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
     from ledger import setup as ledger_setup, store as ledger_store
     from ledger import setup_registry
 

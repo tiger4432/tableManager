@@ -19,7 +19,7 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import chain_ingestion_worker as worker                              # noqa: E402
+from chain import ingestion_worker as worker                              # noqa: E402
 
 
 class _Event:

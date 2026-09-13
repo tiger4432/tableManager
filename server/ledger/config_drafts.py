@@ -185,7 +185,7 @@ def _redo_for(active_setup: Any, node: ExplorerNode, db) -> Mapping[str, Any] | 
     if db is None:
         return None
 
-    import retroactive
+    from admin import retroactive
 
     if getattr(node, "kind", None) == SOURCE_NODE_KIND:
         params = {"source": node.canonical_id}

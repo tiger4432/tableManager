@@ -45,10 +45,10 @@ def hand_built(module_file):
 
 def test_no_sender_builds_it_by_hand_any_more():
     """🔴 THE POINT. Drifting apart now takes editing the one function."""
-    import chain_ingestion_worker
+    from chain import ingestion_worker
     import main
 
-    for module in (main, chain_ingestion_worker):
+    for module in (main, ingestion_worker):
         left = hand_built(module.__file__)
         assert not left, "%s still spells the payload at lines %s" % (
             os.path.basename(module.__file__), left)

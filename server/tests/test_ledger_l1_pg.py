@@ -561,10 +561,10 @@ def refusals_unaccounted(engine, source="dt_job"):
     """
     from datetime import timezone as _tz
 
-    import ledger_trace
+    from ledger import trace
     connection = engine.raw_connection()
     try:
-        rows = ledger_trace._cursor_rows(connection, schema.CURSOR_TABLE, _tz.utc)
+        rows = trace._cursor_rows(connection, schema.CURSOR_TABLE, _tz.utc)
     finally:
         connection.close()
     for entry in rows:
@@ -1024,7 +1024,7 @@ def test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row(ledger):
     bookkeeping fault. Writing the names without the number would make every refusing
     source look faulty - which is why they are one statement and why this pins both.
     """
-    from ledger_trace import _unaccounted
+    from ledger.trace import _unaccounted
 
     connection = ledger.raw_connection()
     try:

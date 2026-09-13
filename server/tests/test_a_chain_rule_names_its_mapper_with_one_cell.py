@@ -44,7 +44,7 @@ def _rule(**cells):
 @pytest.fixture()
 def load(tmp_path, monkeypatch):
     """Drives the real `load_chain_rules` over a file we write."""
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     def run(rules):
         path = tmp_path / "chain_rules.json"
@@ -92,7 +92,7 @@ def test_a_flat_cell_is_read_as_a_param_and_the_block_wins():
 def test_the_worker_prefers_a_registered_mapper_over_the_two_cells(monkeypatch):
     """The one cell wins when it resolves; otherwise the module/function path runs, which is
     what every rule in a box with no decorated mappers still does."""
-    import chain_ingestion_worker as worker
+    from chain import ingestion_worker as worker
 
     calls = []
 

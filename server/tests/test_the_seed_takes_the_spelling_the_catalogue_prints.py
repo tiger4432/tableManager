@@ -22,7 +22,7 @@ import uuid
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import ledger_explorer                                          # noqa: E402
+from ledger import explorer                                          # noqa: E402
 import pytest                                                   # noqa: E402
 from ledger_api import ledger_subgraph                          # noqa: E402
 
@@ -43,8 +43,8 @@ def _lookup():
     return ledger_subgraph.InMemoryEvidenceLookup([atom])
 
 
-BARE = ledger_explorer.entity_id("Lot", {"lot": "L-25"})
-VERSIONED = ledger_explorer.entity_id("Lot@1", {"lot": "L-25"})
+BARE = explorer.entity_id("Lot", {"lot": "L-25"})
+VERSIONED = explorer.entity_id("Lot@1", {"lot": "L-25"})
 
 
 def test_the_two_spellings_are_different_ids_or_this_file_proves_nothing():

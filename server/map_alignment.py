@@ -38,7 +38,7 @@ import sys
 import time
 import uuid
 
-import alignment_batch_counts
+from maps import alignment_batch_counts
 import event_constants
 import map_overlay
 from dt_map_derivation import parse_frame, source_meta_for_frame
@@ -6845,7 +6845,7 @@ def build_alignment_worklist(db, cfg: dict, rule: dict, map_table: str,
     """
     from database import crud, models
     from sqlalchemy import func as _func
-    import frame_confirmation
+    from maps import frame_confirmation
 
     t0 = time.monotonic()
     rule_name = rule.get("name")

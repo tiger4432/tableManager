@@ -27,9 +27,9 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import ledger_admin                                              # noqa: E402
+from ledger import admin                                              # noqa: E402
 import main                                                      # noqa: E402
-from admin_auth import require_admin_token                       # noqa: E402
+from admin.auth import require_admin_token                       # noqa: E402
 
 ROUTE = "/admin/chain/rules/raw"
 
@@ -49,7 +49,7 @@ def rules_file(tmp_path, monkeypatch):
         {"name": "other_one", "trigger_table": "c", "target_table": "d",
          "mapper_module": "m", "mapper_function": "g", "enabled": False},
     ]}), encoding="utf-8")
-    monkeypatch.setattr(ledger_admin, "chain_rules_path", lambda: str(path))
+    monkeypatch.setattr(admin, "chain_rules_path", lambda: str(path))
     return path
 
 

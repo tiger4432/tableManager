@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 from database.database import get_db
 
 from ledger_api import ledger_subgraph
-import ledger_trace
+from ledger import trace
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +64,7 @@ LEDGER_CURSOR_RELATION = "ledger_translator_cursor"
 
 def _subgraph_contract_state(connection):
     """Name missing deployment pieces before the evidence query can scan slowly."""
-    rows = ledger_trace._fetch(connection, """
+    rows = trace._fetch(connection, """
         SELECT
           EXISTS (SELECT 1 FROM pg_attribute
                   WHERE attrelid = to_regclass(%(relation)s)
@@ -484,7 +484,7 @@ def _evidence_graph(connection, *, node_id, hops, direction,
                     collect=None, since=None, until=None, rows=False,
                     group_by=None, measure=None,
                     seed_type=None, seed_limit=ledger_subgraph.DEFAULT_SEED_LIMIT):
-    if not ledger_trace.relation_exists(connection, LEDGER_RELATION):
+    if not trace.relation_exists(connection, LEDGER_RELATION):
         raise _relation_absent()
     missing = _subgraph_contract_state(connection)
     if missing:
@@ -570,7 +570,7 @@ def ledger_key_values(
             "message": "'%s' 가 선언하지 않은 키입니다: %s" % (wanted_type, key)})
 
     connection = db.connection()
-    if not ledger_trace.relation_exists(connection, LEDGER_RELATION):
+    if not trace.relation_exists(connection, LEDGER_RELATION):
         raise _relation_absent()
 
     # 🔴 THE GROUPING KEYS ARE THE SUBJECT, NOT ONE AXIS OF IT. Asked per key, a composite
@@ -709,7 +709,7 @@ def _relation_absent() -> HTTPException:
     """
     logger.warning("ledger relation missing: %s", LEDGER_RELATION)
     return HTTPException(status_code=503, detail={
-        "reason": ledger_trace.REASON_RELATION_ABSENT,
+        "reason": trace.REASON_RELATION_ABSENT,
         "state": "absent",
         "relation": LEDGER_RELATION,
         "message": (f"원장 테이블 {LEDGER_RELATION} 없음 — 마이그레이션 미실행 "

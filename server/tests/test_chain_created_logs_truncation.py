@@ -26,11 +26,11 @@ from event_constants import MAX_NOTIFY_CREATED_LOGS
 def test_truncation_constant_is_shared_single_definition():
     """워처·체인 워커가 동일한 공용 상수(event_constants.MAX_NOTIFY_CREATED_LOGS=500)를 써야 한다."""
     import directory_watcher
-    import chain_ingestion_worker
+    from chain import ingestion_worker
 
     assert MAX_NOTIFY_CREATED_LOGS == 500
     assert directory_watcher.MAX_NOTIFY_CREATED_LOGS == MAX_NOTIFY_CREATED_LOGS
-    assert chain_ingestion_worker.MAX_NOTIFY_CREATED_LOGS == MAX_NOTIFY_CREATED_LOGS
+    assert ingestion_worker.MAX_NOTIFY_CREATED_LOGS == MAX_NOTIFY_CREATED_LOGS
 
 
 # ---------------------------------------------------------------------------
@@ -102,7 +102,7 @@ def _patch_apply_batch_updates(monkeypatch, num_rows, num_logs):
 @pytest.mark.anyio
 async def test_chain_broadcast_upsert_branch_truncates_created_logs(monkeypatch):
     """batch_row_upsert 분기(≤100 items): created_logs 501건 -> 500건 절단 + total_log_count=501."""
-    from chain_ingestion_worker import process_chain_transaction_group
+    from chain.ingestion_worker import process_chain_transaction_group
 
     _patch_apply_batch_updates(monkeypatch, num_rows=1, num_logs=501)
 
@@ -128,7 +128,7 @@ async def test_chain_broadcast_upsert_branch_truncates_created_logs(monkeypatch)
 @pytest.mark.anyio
 async def test_chain_broadcast_refresh_branch_truncates_created_logs(monkeypatch):
     """batch_refresh_required 분기(>100 items): 동일하게 500건 절단 + total_log_count 동봉."""
-    from chain_ingestion_worker import process_chain_transaction_group
+    from chain.ingestion_worker import process_chain_transaction_group
 
     _patch_apply_batch_updates(monkeypatch, num_rows=101, num_logs=501)
 
@@ -169,7 +169,7 @@ def _make_audit_log_dict(tx_id, i):
 @pytest.fixture
 def loaded_audit_cache(monkeypatch):
     """audit_cache를 '로드 완료·빈 상태'로 격리한다 (테스트 간 오염 방지)."""
-    from audit_cache import audit_cache
+    from admin.audit_cache import audit_cache
 
     monkeypatch.setattr(audit_cache, "is_loaded", True)
     monkeypatch.setattr(audit_cache, "groups", [])

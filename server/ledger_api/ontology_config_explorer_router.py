@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from admin_auth import require_admin_token, require_admin_token_strict
+from admin.auth import require_admin_token, require_admin_token_strict
 from database.database import get_db
 from ledger.column_stats import ColumnStatsError
 from ledger.config_explorer import ConfigExplorerError
@@ -268,7 +268,7 @@ def delete_declaration(
     db: Session = Depends(get_db),
 ):
     try:
-        import system_reload
+        from runtime import system_reload
         return _service.delete_declaration(
             target_key, base_snapshot_hash=base_snapshot_hash,
             reload_callback=lambda: system_reload.reload_system_configs(db))
@@ -285,7 +285,7 @@ def activate_draft(
 ):
     try:
         # Import at the write boundary, as the sibling handler does.
-        import system_reload
+        from runtime import system_reload
         return _service.activate_draft(
             draft_id,
             expected_revision=payload.get("expected_revision"),

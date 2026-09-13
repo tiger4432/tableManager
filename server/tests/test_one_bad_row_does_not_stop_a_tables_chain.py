@@ -38,9 +38,9 @@ server_dir = os.path.abspath(os.path.join(script_dir, ".."))
 if server_dir not in sys.path:
     sys.path.insert(0, server_dir)
 
-import chain_ingestion_worker as worker                            # noqa: E402
-import virtual_join_config as vjc                                  # noqa: E402
-import virtual_join_executor as vje                                # noqa: E402
+from chain import ingestion_worker as worker                            # noqa: E402
+import virtual_join.config as vjc                                  # noqa: E402
+from virtual_join import executor as vje                                # noqa: E402
 from database.database import Base                                 # noqa: E402
 from database import crud, models, schemas                         # noqa: E402
 from database.models import DatabaseOutbox                         # noqa: E402
@@ -334,7 +334,7 @@ def test_the_right_side_index_is_built_from_the_same_single_load(monkeypatch):
     # The autouse fixture above substitutes `rules_for_right` for every other test here;
     # this one is about the real body, so its substitution is lifted first.
     monkeypatch.undo()
-    assert vje.rules_for_right.__module__ == "virtual_join_executor"
+    assert vje.rules_for_right.__module__ == "virtual_join.executor"
 
     calls = []
     rule = {"name": "vjuq_shared", "left_table": TRIGGER, "right_table": DERIVED,

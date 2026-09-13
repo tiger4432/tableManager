@@ -13,10 +13,10 @@ import json
 from collections import Counter, defaultdict, deque
 from datetime import datetime
 
-import ledger_trace
+from ledger import trace
 
 
-MAX_HOPS = ledger_trace.DEFAULT_MAX_DEPTH
+MAX_HOPS = trace.DEFAULT_MAX_DEPTH
 DEFAULT_NODE_LIMIT = 400
 DEFAULT_EDGE_LIMIT = 1200
 
@@ -122,8 +122,8 @@ def _edge_rows(claims, config, zone):
         target_id = entity_id(target[0], target[1])
         key = (source_id, str(claim.predicate), target_id)
         row = groups.get(key)
-        rank = ledger_trace.claim_class(claim, config)
-        basis = ledger_trace.hop_basis(claim, config)
+        rank = trace.claim_class(claim, config)
+        basis = trace.hop_basis(claim, config)
         instant = _instant(claim.occurred_at, zone)
         if row is None:
             row = {

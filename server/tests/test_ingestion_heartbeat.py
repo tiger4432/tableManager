@@ -42,7 +42,7 @@ if parsers_dir not in sys.path:
 import directory_watcher
 from directory_watcher import IngestionHandler
 from utils import heartbeat
-import health as health_mod
+from runtime import health as health_mod
 
 
 TBL_INFO = {

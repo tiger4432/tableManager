@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 import main                                                        # noqa: E402
 import mapper_sdk                                                  # noqa: E402
-from admin_auth import require_admin_token                         # noqa: E402
+from admin.auth import require_admin_token                         # noqa: E402
 
 ROUTE = "/admin/mappers/list"
 

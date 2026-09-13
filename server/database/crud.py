@@ -29,7 +29,7 @@ from datetime import datetime, date, timezone
 # it here cannot pull an application module into the write path.
 from utils import time_format
 import event_constants
-import alignment_batch_counts
+from maps import alignment_batch_counts
 
 logger = logging.getLogger("Server")
 
@@ -1601,7 +1601,7 @@ def create_audit_log(db: Session, table_name: str, row_id: str, col_name: str, o
         "timestamp": ts
     }
     if add_to_cache:
-        from audit_cache import audit_cache
+        from admin.audit_cache import audit_cache
         audit_cache.add_log(log_dict)
         
     return log_dict
@@ -3835,8 +3835,8 @@ def _virtual_join_right_keys(db: Session, table_name: str):
     re-validating the declaration file once per batch on the write path.
     """
     try:
-        import virtual_join_executor
-        rules = virtual_join_executor.rules_for_right(db, table_name)
+        from virtual_join import executor
+        rules = executor.rules_for_right(db, table_name)
     except Exception as e:
         # Same posture as the sibling guard below: an unreadable declaration means NO join
         # is in effect, so there is no uniqueness to protect. Failing the write here would
@@ -3989,8 +3989,8 @@ def refuse_virtual_join_columns(db: Session, table_name: str, batch: schemas.Gen
     if not batch.updates:
         return
     try:
-        import virtual_join_executor
-        virtual_cols = virtual_join_executor.virtual_only_columns(db, table_name)
+        from virtual_join import executor
+        virtual_cols = executor.virtual_only_columns(db, table_name)
     except Exception as e:
         # Unreadable declarations mean NO join is in effect (the executor logs it and
         # attaches nothing), so there is no virtual column to protect and nothing to
@@ -4732,7 +4732,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
         db.commit()
         
         if logs_to_cache:
-            from audit_cache import audit_cache
+            from admin.audit_cache import audit_cache
             audit_cache.add_logs_batch(logs_to_cache)
 
         # [adopt] A replace_map write can resolve a row that was NOT in the scope it
@@ -4853,7 +4853,7 @@ def create_empty_rows_batch(db: Session, table_name: str, count: int, user_name:
         db.commit()
 
         if logs_to_cache:
-            from audit_cache import audit_cache
+            from admin.audit_cache import audit_cache
             audit_cache.add_logs_batch(logs_to_cache)
 
         return new_rows
@@ -4947,10 +4947,10 @@ def delete_rows_batch(db: Session, table_name: str, row_ids: list[str], user_nam
             db.commit()
 
             if logs_to_cache:
-                from audit_cache import audit_cache
+                from admin.audit_cache import audit_cache
                 audit_cache.add_logs_batch(logs_to_cache)
                 
-            from audit_cache import audit_cache
+            from admin.audit_cache import audit_cache
             audit_cache.remove_deleted_rows(row_ids)
             
         return deleted_count
@@ -5108,7 +5108,7 @@ def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], so
     db.commit()
 
     if logs_to_cache:
-        from audit_cache import audit_cache
+        from admin.audit_cache import audit_cache
         audit_cache.add_logs_batch(logs_to_cache)
 
     serialized_logs = []
@@ -5467,7 +5467,7 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
     db.commit()
     
     if logs_to_cache:
-        from audit_cache import audit_cache
+        from admin.audit_cache import audit_cache
         audit_cache.add_logs_batch(logs_to_cache)
         
     serialized_logs = []

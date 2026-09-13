@@ -14,11 +14,7 @@ import json
 import time
 import pytest
 
-from process_supervisor import (
-    ChildSpec, Supervisor, MAX_EVENTS,
-    STATE_RUNNING, STATE_BACKOFF, STATE_FAILED, STATE_STOPPED,
-    STATE_RETRYING_CORRELATED,
-)
+from runtime.process_supervisor import ChildSpec, Supervisor, MAX_EVENTS, STATE_RUNNING, STATE_BACKOFF, STATE_FAILED, STATE_STOPPED, STATE_RETRYING_CORRELATED
 
 
 class FakeProc:
@@ -666,7 +662,7 @@ def test_the_environment_probe_is_only_consulted_at_the_giving_up_point(tmp_path
 def test_unknown_environments_count_as_healthy():
     """No DATABASE_URL, sqlite, or an unparseable URL must not be read as an
     outage - that would make every lone failure un-failable."""
-    import process_supervisor as ps
+    from runtime import process_supervisor as ps
     for url in ("", "sqlite:///:memory:", "not a url at all", "postgresql:///nohost"):
         down, detail = ps.shared_dependency_down(url=url)
         assert down is False, f"{url!r} was read as a database outage"
@@ -676,7 +672,7 @@ def test_unknown_environments_count_as_healthy():
 def test_an_unreachable_database_is_detected_for_real():
     """A closed port, actually opened against, not a mocked return value."""
     import socket
-    import process_supervisor as ps
+    from runtime import process_supervisor as ps
 
     # A port nothing is listening on: bind it, read the number, close it.
     s = socket.socket()
@@ -708,7 +704,7 @@ def test_psutil_absence_is_announced_not_silent():
     """Grandchild cleanup degrades to a no-op without psutil. Silent degradation
     of a cleanup path is how orphans accumulate unnoticed."""
     import sys as _sys
-    import process_supervisor as ps
+    from runtime import process_supervisor as ps
 
     ok, detail = ps.psutil_status()
     assert ok, "psutil is a declared dependency and must be importable"

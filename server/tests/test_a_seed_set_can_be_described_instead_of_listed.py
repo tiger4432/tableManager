@@ -24,7 +24,7 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import ledger_explorer                                             # noqa: E402
+from ledger import explorer                                             # noqa: E402
 from ledger_api import ledger_subgraph                             # noqa: E402
 
 NOW = datetime(2026, 9, 13, 2, 0, tzinfo=timezone.utc)
@@ -92,7 +92,7 @@ def test_the_description_and_negatives_are_the_whole_of_set_difference():
     """🔴 THE POINT OF THE ROUND. Two arguments, no algebra: the walk gets 「everything of
     this type」 and 「except these」, which is what a control group has always meant."""
     atoms = _registered(4)
-    case = ledger_explorer.entity_id("wafer", {"wid": "W0"})
+    case = explorer.entity_id("wafer", {"wid": "W0"})
 
     body = ledger_subgraph.subgraph(
         {"positive": [], "negative": [case]},
@@ -111,7 +111,7 @@ def test_the_two_sides_come_back_as_a_pair_exactly_as_they_do_today():
     seed set must not invent a second way of saying which side a number came from."""
     atoms = _registered(3)
     body = ledger_subgraph.subgraph(
-        {"positive": [], "negative": [ledger_explorer.entity_id("wafer", {"wid": "W0"})]},
+        {"positive": [], "negative": [explorer.entity_id("wafer", {"wid": "W0"})]},
         ledger_subgraph.InMemoryEvidenceLookup(atoms), hops=1, seed_type="wafer")
 
     assert body["walk"]["start"]["positive"] == 2
@@ -148,7 +148,7 @@ def test_a_count_not_a_flag_because_the_number_is_what_narrows_the_question():
 def test_an_enumerated_walk_carries_neither_key():
     """⛔ ABSENT, NOT ZERO. A listed seed set has no ceiling of its own, and `seeds: 0` would
     state one that was never applied."""
-    seed = ledger_explorer.entity_id("wafer", {"wid": "W0"})
+    seed = explorer.entity_id("wafer", {"wid": "W0"})
     body = ledger_subgraph.subgraph(
         seed, ledger_subgraph.InMemoryEvidenceLookup(_registered(3)), hops=1)
 
@@ -165,9 +165,9 @@ def test_the_route_refuses_an_id_and_a_description_together():
     would read a walk from subjects they did not ask for."""
     import inspect
 
-    import ledger_trace_router
+    from ledger import trace_router
 
-    body = inspect.getsource(ledger_trace_router.evidence_subgraph)
+    body = inspect.getsource(trace_router.evidence_subgraph)
     assert "seeds_defined_twice" in body
     assert body.index("seeds_defined_twice") < body.index("_evidence_graph("), (
         "the refusal must come before the walk, or the walk happens anyway")
@@ -176,9 +176,9 @@ def test_the_route_refuses_an_id_and_a_description_together():
 def test_the_route_declares_both_arguments():
     import inspect
 
-    import ledger_trace_router
+    from ledger import trace_router
 
-    signature = inspect.signature(ledger_trace_router.evidence_subgraph)
+    signature = inspect.signature(trace_router.evidence_subgraph)
     assert "seed_type" in signature.parameters
     assert "seed_limit" in signature.parameters
 
@@ -243,13 +243,13 @@ def route_client(monkeypatch):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    import ledger_trace_router
-    from admin_auth import require_admin_token
+    from ledger import trace_router
+    from admin.auth import require_admin_token
     from database.database import get_db
 
-    monkeypatch.setattr(ledger_trace_router.ledger_trace, "relation_exists",
+    monkeypatch.setattr(trace_router.trace, "relation_exists",
                         lambda *a, **k: True)
-    monkeypatch.setattr(ledger_trace_router, "_subgraph_contract_state",
+    monkeypatch.setattr(trace_router, "_subgraph_contract_state",
                         lambda *a, **k: [])
     monkeypatch.setattr(
         ledger_subgraph, "SqlEvidenceLookup",
@@ -262,7 +262,7 @@ def route_client(monkeypatch):
     app = FastAPI()
     app.dependency_overrides[require_admin_token] = lambda: None
     app.dependency_overrides[get_db] = lambda: _Db()
-    app.include_router(ledger_trace_router.router)
+    app.include_router(trace_router.router)
     return TestClient(app)
 
 
@@ -286,7 +286,7 @@ def test_naming_no_seeds_at_all_is_refused_by_name(route_client):
 
 def test_naming_seeds_twice_is_refused_by_name(route_client):
     answer = route_client.get("/api/ledger/subgraph", params={
-        "id": ledger_explorer.entity_id("wafer", {"wid": "W0"}),
+        "id": explorer.entity_id("wafer", {"wid": "W0"}),
         "seed_type": "wafer", "hops": 1})
 
     assert answer.status_code == 422
@@ -297,7 +297,7 @@ def test_an_enumerated_seed_still_answers_exactly_as_before(route_client):
     """⚠️ THE HALF THAT MUST NOT MOVE. `id` became optional so a description could arrive;
     a caller that passes one must see no change at all."""
     answer = route_client.get("/api/ledger/subgraph", params={
-        "id": ledger_explorer.entity_id("wafer", {"wid": "W0"}), "hops": 1})
+        "id": explorer.entity_id("wafer", {"wid": "W0"}), "hops": 1})
 
     assert answer.status_code == 200, answer.text
     assert len(answer.json()["seeds"]) == 1
@@ -339,8 +339,8 @@ def test_the_description_resolves_on_the_connection_the_route_actually_holds():
     described = lookup.subjects_of_type("wafer@1", 10)
 
     assert described.cut == 0
-    assert described.ids == [ledger_explorer.entity_id("wafer", {"wid": "W0"}),
-                             ledger_explorer.entity_id("wafer", {"wid": "W1"})]
+    assert described.ids == [explorer.entity_id("wafer", {"wid": "W0"}),
+                             explorer.entity_id("wafer", {"wid": "W1"})]
 
 
 def test_the_budget_reaches_the_database_and_asks_for_one_more():

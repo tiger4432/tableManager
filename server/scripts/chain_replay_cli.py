@@ -170,7 +170,7 @@ def main(argv=None):
 
     from database import crud, models
     from database.database import SessionLocal
-    import chain_replay
+    from chain import replay
 
     if not crud.TABLE_CONFIG:
         print("REFUSED: table_config.json is empty or missing - nothing is registered")
@@ -180,41 +180,41 @@ def main(argv=None):
     db = SessionLocal()
     try:
         if args.cmd == "list":
-            rules = chain_replay.load_rules()
+            rules = replay.load_rules()
             print(f"\n{len(rules)} enabled chain rule(s):")
-            for r in chain_replay.order_rules(rules):
-                self_note = "  [SELF-TRIGGERING]" if chain_replay.is_self_triggering(r) else ""
+            for r in replay.order_rules(rules):
+                self_note = "  [SELF-TRIGGERING]" if replay.is_self_triggering(r) else ""
                 print(f"  {r.get('name'):<40} {r.get('trigger_table')} -> "
                       f"{r.get('target_table')}{self_note}")
             print("\n(listed in replay order: a producer before its consumer)\n")
             return 0
 
         if args.cmd == "replay":
-            rule = chain_replay.find_rule(args.rule_name)
+            rule = replay.find_rule(args.rule_name)
             selected = ([k.strip() for k in args.business_keys.split(",") if k.strip()]
                         if args.business_keys is not None else None)
-            print(_report_replay(chain_replay.replay_rule(
+            print(_report_replay(replay.replay_rule(
                 db, rule, apply=args.apply, limit=args.limit,
                 chunk_size=args.chunk_size, business_keys=selected, pace=args.pace,
                 log=lambda m: print(f"  {m}"))))
         elif args.cmd == "replay-all":
-            out = chain_replay.replay_all(db, apply=args.apply, limit=args.limit,
+            out = replay.replay_all(db, apply=args.apply, limit=args.limit,
                                           chunk_size=args.chunk_size,
                                           log=lambda m: print(f"  {m}"))
             for s in out["rules"]:
                 print(_report_replay(s))
         elif args.cmd == "resolve":
             cols = [c.strip() for c in args.columns.split(",")] if args.columns else None
-            print(_report_resolve(chain_replay.recompute_display_values(
+            print(_report_resolve(replay.recompute_display_values(
                 db, args.table, columns=cols, apply=args.apply, limit=args.limit,
                 chunk_size=args.chunk_size, log=lambda m: print(f"  {m}")),
                 list_all=args.list_all))
         else:
             cols = [c.strip() for c in args.columns.split(",")] if args.columns else None
-            print(_report_withdraw(chain_replay.withdraw_source(
+            print(_report_withdraw(replay.withdraw_source(
                 db, args.table, args.source, columns=cols, apply=args.apply,
                 log=lambda m: print(f"  {m}"))))
-    except chain_replay.ReplayRefused as e:
+    except replay.ReplayRefused as e:
         print(f"REFUSED: {e}")
         return 2
     finally:

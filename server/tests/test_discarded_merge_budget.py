@@ -309,7 +309,7 @@ def _chain_trigger(tx_id):
 async def test_chain_above_threshold_builds_no_items_it_would_discard(db_session):
     """The chain worker has no metadata merge, so its whole bill IS the reloads:
     `to_local_str(row.created_at)` on a row expired by crud's commit."""
-    from chain_ingestion_worker import process_chain_transaction_group
+    from chain.ingestion_worker import process_chain_transaction_group
 
     _seed_chain_rows(db_session, BROADCAST_ITEM_LIMIT + 1)
     tx_id = "p1b_chain_over"
@@ -332,7 +332,7 @@ async def test_chain_above_threshold_builds_no_items_it_would_discard(db_session
 
 @pytest.mark.anyio
 async def test_chain_at_threshold_still_builds_the_items_it_ships(db_session):
-    from chain_ingestion_worker import process_chain_transaction_group
+    from chain.ingestion_worker import process_chain_transaction_group
 
     _seed_chain_rows(db_session, BROADCAST_ITEM_LIMIT)
     tx_id = "p1b_chain_under"
@@ -362,8 +362,8 @@ def test_every_sender_reads_the_same_threshold():
     mode of this codebase is one of them being corrected while the others keep the
     old literal (see the created_logs truncation history)."""
     import main
-    import chain_ingestion_worker
+    from chain import ingestion_worker
 
     assert BROADCAST_ITEM_LIMIT == 100
     assert main.BROADCAST_ITEM_LIMIT is BROADCAST_ITEM_LIMIT
-    assert chain_ingestion_worker.BROADCAST_ITEM_LIMIT is BROADCAST_ITEM_LIMIT
+    assert ingestion_worker.BROADCAST_ITEM_LIMIT is BROADCAST_ITEM_LIMIT

@@ -121,9 +121,7 @@ _IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 #    이 모듈이 그것을 읽는 것은 «아래로» 가는 방향이라 고리를 만들지 않는다. 종전에는 이
 #    파일이 문장을 지으려고 «보고서»(`config_resolve_report`)를 함수 안에서 import 했고,
 #    보고서는 이 파일을 import 했다 — 함수 안에 둬서 «보이지 않던» 고리다.
-from virtual_join_refusal import (                              # noqa: F401
-    CODE_FANOUT_DECLARED, CODE_NO_LEFT_INDEX, CODE_NO_REWRITE_CAP,
-    CODE_NO_UNIQUE_INDEX, CODE_SHAPE, virtual_join_detail)
+from virtual_join.refusal import CODE_FANOUT_DECLARED, CODE_NO_LEFT_INDEX, CODE_NO_REWRITE_CAP, CODE_NO_UNIQUE_INDEX, CODE_SHAPE, virtual_join_detail
 
 # 인덱스 이름 규약. PostgreSQL 식별자 상한은 63바이트라 넘치면 해시로 접는다
 # (`value_suggest.suggest_index_name`과 같은 규율·같은 상한).

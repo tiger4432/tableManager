@@ -51,7 +51,8 @@ def test_the_walk_calls_the_shared_filter_rather_than_its_own():
     import inspect
 
     helper = inspect.getsource(ledger_subgraph._split_superseded)
-    assert "ledger_trace.live_claims(" in helper
+    # 🪦 [S-211 packaging] the walk reaches it as `from ledger import trace`.
+    assert "trace.live_claims(" in helper
 
     body = inspect.getsource(ledger_subgraph.subgraph)
     assert "_split_superseded(batch)" in body, "the fetch path must pass through it"
@@ -81,10 +82,10 @@ def test_including_them_marks_the_edge_rather_than_drawing_it_plain():
 def test_the_route_offers_it_and_defaults_to_current_only():
     import inspect
 
-    import ledger_trace_router
+    from ledger import trace_router
 
-    params = inspect.signature(ledger_trace_router.evidence_subgraph).parameters
+    params = inspect.signature(trace_router.evidence_subgraph).parameters
     assert "include_superseded" in params
 
-    body = inspect.getsource(ledger_trace_router)
+    body = inspect.getsource(trace_router)
     assert "include_superseded=include_superseded" in body, "착지는 배선이 아니다"

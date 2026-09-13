@@ -26,7 +26,7 @@ server_dir = os.path.abspath(os.path.join(script_dir, ".."))
 if server_dir not in sys.path:
     sys.path.insert(0, server_dir)
 
-import retroactive                                                    # noqa: E402
+from admin import retroactive                                                    # noqa: E402
 from ledger import config_drafts                                      # noqa: E402
 
 #: What the counter would answer. 🔴 A SENTINEL OBJECT, so "verbatim" can be asserted by

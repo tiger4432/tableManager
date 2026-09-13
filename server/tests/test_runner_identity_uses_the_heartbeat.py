@@ -17,7 +17,7 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import retroactive                                               # noqa: E402
+from admin import retroactive                                               # noqa: E402
 from utils import heartbeat                                      # noqa: E402
 
 

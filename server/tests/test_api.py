@@ -95,7 +95,7 @@ def test_chained_ingestion(client, db_session):
     assert len(events) > 0
     
     # 3. 체인 워커 수동 트리거링 (트랜잭션 그룹 단위 호출)
-    from chain_ingestion_worker import process_chain_transaction_group, load_chain_rules
+    from chain.ingestion_worker import process_chain_transaction_group, load_chain_rules
     rules = load_chain_rules()
     
     import anyio
@@ -472,7 +472,7 @@ def test_internal_events_endpoints(client):
 
 
 def test_internal_events_updates_cache_and_broadcasts(client):
-    from audit_cache import audit_cache
+    from admin.audit_cache import audit_cache
     # Initialize cache & force loaded state for testing add_logs_batch
     audit_cache.groups = []
     audit_cache.is_loaded = True

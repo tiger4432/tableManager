@@ -34,8 +34,8 @@ server_dir = os.path.abspath(os.path.join(script_dir, ".."))
 if server_dir not in sys.path:
     sys.path.insert(0, server_dir)
 
-import chain_graph                                                   # noqa: E402
-import chain_ingestion_worker as worker                              # noqa: E402
+import chain.graph                                                   # noqa: E402
+from chain import ingestion_worker as worker                              # noqa: E402
 
 
 TRIGGER = "cg_test_trigger"
@@ -67,8 +67,8 @@ def node(graph, name):
 @pytest.fixture(name="graph")
 def fixture_graph(monkeypatch):
     """The four loaders, each answering with one declaration, through the real assembler."""
-    import enrichment_config
-    import virtual_join_config as vjc
+    import enrichment.config
+    import virtual_join.config as vjc
     from database import crud
 
     rules = [chain_rule()]
@@ -77,7 +77,7 @@ def fixture_graph(monkeypatch):
     # rules from synthesized ones. That split is gone, and the fixture getting SHORTER is
     # the evidence: there is one way in.
     monkeypatch.setattr(worker, "load_chain_rules", lambda: rules)
-    monkeypatch.setattr(enrichment_config, "load_enrichment_rules",
+    monkeypatch.setattr(enrichment.config, "load_enrichment_rules",
                         lambda **kw: [{"name": "cg_enrich", "derived_table": DERIVED,
                                        "enabled": True,
                                        "decision_key": ["job", "slot"]}])
@@ -98,7 +98,7 @@ def fixture_graph(monkeypatch):
     monkeypatch.setattr("ledger.setup.load_setup",
                         lambda *a, **kw: type("Setup", (), {"snapshot": snapshot})())
     monkeypatch.setattr("ledger.followup.base_tables_of", lambda e, r: (r,))
-    return chain_graph.chain_graph(_FakeDb())
+    return chain.graph.chain_graph(_FakeDb())
 
 
 # ---------------------------------------------------------------------------
@@ -145,9 +145,9 @@ def test_the_vjoin_edge_points_from_the_right_table_and_names_its_index(graph):
 
 def test_the_ledger_is_one_node(graph):
     edge = by_kind(graph, "ledger")[0]
-    assert edge["to"] == chain_graph.LEDGER_NODE_ID
+    assert edge["to"] == chain.graph.LEDGER_NODE_ID
     assert edge["from"] == TARGET and edge["source"] == "cg_source"
-    ledger_nodes = [n for n in graph["nodes"] if n["kind"] == chain_graph.NODE_LEDGER]
+    ledger_nodes = [n for n in graph["nodes"] if n["kind"] == chain.graph.NODE_LEDGER]
     assert len(ledger_nodes) == 1, (
         "fifteen ledger nodes would invent a distinction the declaration does not make")
 
@@ -163,7 +163,7 @@ def test_a_rule_that_also_writes_map_metadata_draws_both_edges(monkeypatch, grap
     the same blind spot would hide the same cycle."""
     import map_meta_registrar
 
-    edges = chain_graph._mapper_edges(
+    edges = chain.graph._mapper_edges(
         [chain_rule(allow_map_metadata_upsert=True)])
     assert len(edges) == 2
     assert {e["to"] for e in edges} == {TARGET, map_meta_registrar.META_TABLE}
@@ -178,7 +178,7 @@ def test_the_metadata_edge_is_not_taken_from_the_rule(monkeypatch):
     registrar."""
     import map_meta_registrar
 
-    edges = chain_graph._mapper_edges([chain_rule(
+    edges = chain.graph._mapper_edges([chain_rule(
         allow_map_metadata_upsert=True, metadata_target_table="cg_not_this_one")])
     assert all(e["to"] != "cg_not_this_one" for e in edges)
     assert any(e["to"] == map_meta_registrar.META_TABLE for e in edges)
@@ -202,10 +202,10 @@ def test_a_chain_write_wakes_only_what_opted_in(graph, monkeypatch):
     """🔴 THE OPT-IN IS MOST OF WHAT MAKES THE WEB A WEB, so it is a value rather than
     something a reader infers from the edges."""
     rules = [chain_rule()]
-    assert chain_graph._wakes(worker, rules, TRIGGER)["chain"] == []
+    assert chain.graph._wakes(worker, rules, TRIGGER)["chain"] == []
 
     rules = [chain_rule(allow_chain_trigger=True)]
-    assert chain_graph._wakes(worker, rules, TRIGGER)["chain"] == ["cg_rule"]
+    assert chain.graph._wakes(worker, rules, TRIGGER)["chain"] == ["cg_rule"]
 
 
 def test_a_table_nothing_watches_wakes_nothing(graph):
@@ -219,7 +219,7 @@ def test_a_table_nothing_watches_wakes_nothing(graph):
 def test_a_declared_reads_becomes_a_real_edge():
     """판정 283. `reads:` is the cell an operator writes, and a written one draws the arrow
     the SQL could only have been guessed at."""
-    edges = chain_graph._enrich_edges([{
+    edges = chain.graph._enrich_edges([{
         "name": "cg_enrich", "derived_table": DERIVED, "enabled": True,
         "decision_key": ["job"],
         "reference_views": [{"label": "recent runs", "required_binds": ["job"],
@@ -239,14 +239,14 @@ def test_an_undeclared_reads_is_counted_on_the_rule_that_replaced_the_self_loop(
     mapper edge — carried from the rule's own `params`. Had it been left behind, the fold
     would have been a loss of information dressed as a change of label."""
     views = [{"label": "recent runs", "required_binds": ["job"]}]
-    edge = chain_graph._mapper_edges([{
+    edge = chain.graph._mapper_edges([{
         "name": "enrichment_auto_confirm:cg_enrich",
         "trigger_table": DERIVED, "target_table": DERIVED, "enabled": True,
         "params": {"decision_key": ["job"], "reference_views": views}}])[0]
     assert edge["reads_unknown"] == 1
     assert edge["reference_views"][0]["reads"] is None
     # And the reads half draws NO arrow when nobody declared one.
-    assert not [e for e in chain_graph._enrich_edges([{
+    assert not [e for e in chain.graph._enrich_edges([{
         "name": "cg_enrich", "derived_table": DERIVED, "enabled": True,
         "decision_key": ["job"], "reference_views": views}])
         if e.get("via_reference_view")]
@@ -255,10 +255,10 @@ def test_an_undeclared_reads_is_counted_on_the_rule_that_replaced_the_self_loop(
 def test_an_unknown_table_in_reads_drops_the_view_by_name():
     """A typo would otherwise draw an edge from a table that does not exist, and a graph is
     read as fact. Refused at the DECLARATION, per view, with the name in the message."""
-    import enrichment_config
+    import enrichment.config
 
     rejections = []
-    views = enrichment_config._normalize_reference_views(
+    views = enrichment.config._normalize_reference_views(
         "cg_enrich",
         [{"label": "typo", "query": "SELECT 1", "reads": ["cg_no_such_table"]}],
         ["job"], rejections=rejections, known_tables={TRIGGER: {}})
@@ -267,9 +267,9 @@ def test_an_unknown_table_in_reads_drops_the_view_by_name():
 
 
 def test_a_declared_reads_survives_the_loader():
-    import enrichment_config
+    import enrichment.config
 
-    views = enrichment_config._normalize_reference_views(
+    views = enrichment.config._normalize_reference_views(
         "cg_enrich",
         [{"label": "ok", "query": "SELECT 1", "reads": [TRIGGER, TRIGGER]}],
         ["job"], known_tables={TRIGGER: {}})
@@ -284,7 +284,7 @@ def test_two_declarations_writing_one_cell_are_listed():
     """소유자 「이 둘이 충돌 안 나?」. Not an error — layering decides, and decides
     correctly. What is not normal is the fact being spread across three files with nowhere
     to read it."""
-    contested = chain_graph._contested(
+    contested = chain.graph._contested(
         [chain_rule(name="mapper_rule", target_table=DERIVED,
                     target_field="grade")],
         [{"name": "enrich_rule", "derived_table": DERIVED,
@@ -295,14 +295,14 @@ def test_two_declarations_writing_one_cell_are_listed():
 
 
 def test_one_writer_is_not_contested():
-    assert chain_graph._contested(
+    assert chain.graph._contested(
         [chain_rule(target_table=DERIVED, target_field="grade")], [], []) == []
 
 
 def test_a_virtual_join_counts_as_a_writer_of_the_cell_it_presents():
     """It writes nothing to disk and a reader of that cell still sees its value where a
     mapper's may also be — which is exactly the question being asked."""
-    contested = chain_graph._contested(
+    contested = chain.graph._contested(
         [chain_rule(name="mapper_rule", target_table=TARGET, target_field="grade")],
         [],
         [{"name": "cg_vjoin", "left_table": TARGET, "expose": ["grade"]}])
@@ -313,12 +313,12 @@ def test_a_shared_table_with_no_declared_column_is_the_weaker_list():
     """⚠️ SEPARATE, AND DELIBERATELY WEAKER. Two rules on one table may touch disjoint
     columns and only the mapper's Python knows; folding this into `contested` would let a
     reader take a question for a fact."""
-    weak = chain_graph._contested_tables(
+    weak = chain.graph._contested_tables(
         [chain_rule(name="a", target_table=TARGET),
          chain_rule(name="b", target_table=TARGET)], [])
     assert weak == [{"table": TARGET, "writers": ["a", "b"]}]
     # And a rule that DID name its column is not in the weak list - it is in the strong one.
-    assert chain_graph._contested_tables(
+    assert chain.graph._contested_tables(
         [chain_rule(name="a", target_table=TARGET, target_field="grade"),
          chain_rule(name="b", target_table=TARGET)], []) == []
 
@@ -326,7 +326,7 @@ def test_a_shared_table_with_no_declared_column_is_the_weaker_list():
 def test_the_derived_table_still_feeds_itself_under_the_new_label():
     """The fold's whole claim: the ENDPOINTS do not move, only the label. This is the
     assertion that would catch the arrow being lost rather than relabelled."""
-    edge = chain_graph._mapper_edges([{
+    edge = chain.graph._mapper_edges([{
         "name": "enrichment_auto_confirm:cg_enrich",
         "trigger_table": DERIVED, "target_table": DERIVED, "enabled": True,
         "follow_up": True, "origin": "synthesized:cg_enrich",
@@ -349,14 +349,14 @@ def test_a_refused_cycle_is_shown_rather_than_hidden(monkeypatch):
             chain_rule(name="b", trigger_table="t2", target_table="t1",
                        allow_chain_trigger=True)]
     monkeypatch.setattr(worker, "load_chain_rules", lambda: loop)
-    import enrichment_config
-    import virtual_join_config as vjc
-    monkeypatch.setattr(enrichment_config, "load_enrichment_rules", lambda **kw: [])
+    import enrichment.config
+    import virtual_join.config as vjc
+    monkeypatch.setattr(enrichment.config, "load_enrichment_rules", lambda **kw: [])
     monkeypatch.setattr(vjc, "load_virtual_join_rules", lambda **kw: [])
     monkeypatch.setattr("ledger.setup.load_setup",
                         lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("no ledger")))
 
-    graph = chain_graph.chain_graph(_FakeDb())
+    graph = chain.graph.chain_graph(_FakeDb())
     assert graph["cycles"] and "cycle" in graph["cycles"][0]
     # And a quarter of the picture missing is NAMED, not silently empty.
     assert "no ledger" in graph["ledger_error"]
@@ -374,12 +374,12 @@ def test_a_healthy_load_carries_no_error_key(graph):
 # ---------------------------------------------------------------------------
 
 def test_the_route_answers_and_is_gated(client, monkeypatch):
-    import admin_auth
+    from admin import auth
     from main import app
 
     token = "s178-graph-token"
-    monkeypatch.setenv(admin_auth.ADMIN_TOKEN_ENV, token)
-    res = client.get("/chain/graph", headers={admin_auth.ADMIN_TOKEN_HEADER: token})
+    monkeypatch.setenv(auth.ADMIN_TOKEN_ENV, token)
+    res = client.get("/chain/graph", headers={auth.ADMIN_TOKEN_HEADER: token})
     assert res.status_code == 200, res.text
     payload = res.json()
     assert "nodes" in payload and "edges" in payload and "counts" in payload
@@ -392,6 +392,6 @@ def test_the_route_answers_and_is_gated(client, monkeypatch):
         if getattr(route, "path", None) == "/chain/graph":
             calls = {getattr(d, "dependency", None)
                      for d in getattr(route, "dependencies", ())}
-            assert calls & set(admin_auth.ADMIN_GATES)
+            assert calls & set(auth.ADMIN_GATES)
             return
     raise AssertionError("/chain/graph is not registered")

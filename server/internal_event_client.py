@@ -52,13 +52,13 @@ def send_internal_event(base_url, endpoint, payload, timeout):
     미전달로 적어 두고, 체인 워커는 broadcast_at 스탬프를 안 찍는다. 그 판단은 부르는
     쪽의 것이고, 로그 문장도 부르는 쪽이 그대로 들고 있다(그 문장들이 오늘 서로 다르다).
     """
-    import admin_auth
+    from admin import auth
     url = "%s%s" % (base_url, endpoint)
     res = internal_event_session().post(
         url, json=payload, timeout=timeout,
-        headers=admin_auth.internal_event_headers())
+        headers=auth.internal_event_headers())
     note = (None if res.ok
-            else admin_auth.internal_event_failure_note(res.status_code, res.headers))
+            else auth.internal_event_failure_note(res.status_code, res.headers))
     return url, res, note
 
 
@@ -364,10 +364,10 @@ def startup_lines(process_label, base_url=None):
     Returns a list of ``(level, message)``. Bundled into one function so the three
     daemons cannot drift into logging different subsets of the same diagnosis.
     """
-    import admin_auth
+    from admin import auth
 
     base = base_url or api_base_url()
-    lines = [admin_auth.worker_token_banner(f"{process_label} -> {base}")]
+    lines = [auth.worker_token_banner(f"{process_label} -> {base}")]
 
     if not is_loopback(base):
         # Not a refusal. A notification that fails costs a delayed grid refresh

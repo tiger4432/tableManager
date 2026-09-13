@@ -14,8 +14,8 @@ import json
 import pytest
 
 import config_resolve_report as crr
-import enrichment_candidates
-import enrichment_config
+import enrichment.candidates
+import enrichment.config
 from database import crud, models, schemas
 
 RT_TABLES = {
@@ -78,11 +78,11 @@ def rt_env(db_session, tmp_path, monkeypatch):
     Base.metadata.create_all(bind=db_session.get_bind())
 
     rules_path = tmp_path / "enrichment_rules.json"
-    monkeypatch.setattr(enrichment_config, "ENRICHMENT_RULES_PATH", str(rules_path))
+    monkeypatch.setattr(enrichment.config, "ENRICHMENT_RULES_PATH", str(rules_path))
     settings_path = tmp_path / "ingestion_settings.json"
     settings_path.write_text("{}", encoding="utf-8")
-    monkeypatch.setattr(enrichment_candidates, "INGESTION_SETTINGS_PATH", str(settings_path))
-    enrichment_candidates.reset_warnings()
+    monkeypatch.setattr(enrichment.candidates, "INGESTION_SETTINGS_PATH", str(settings_path))
+    enrichment.candidates.reset_warnings()
 
     def write(rules):
         rules_path.write_text(json.dumps(rules), encoding="utf-8")
@@ -131,14 +131,14 @@ def test_resolve_report_reports_the_settings_file_it_did_not_find(client, rt_env
     The global switch therefore defaults to true and nothing said so anywhere."""
     _db, write = rt_env
     write({"f9rt_rule": _rule([NARROW])})
-    monkeypatch.setattr(enrichment_candidates, "INGESTION_SETTINGS_PATH",
+    monkeypatch.setattr(enrichment.candidates, "INGESTION_SETTINGS_PATH",
                         str(tmp_path / "absent.json"))
     domain = next(d for d in client.get("/admin/config/resolve").json()["domains"]
                   if d["domain"] == crr.DOMAIN_ENRICHMENT)
     src = {s["key"]: s for s in domain["sources"]}["settings"]
     assert src["exists"] is False and src["status"] == "ok"
     switch = {s["key"]: s for s in domain["settings"]}[
-        enrichment_candidates.GLOBAL_KILL_SWITCH_KEY]
+        enrichment.candidates.GLOBAL_KILL_SWITCH_KEY]
     assert switch["value"] is True and switch["origin"] == "default"
     assert switch["path"].endswith("absent.json"), "the report must name the file it read"
 

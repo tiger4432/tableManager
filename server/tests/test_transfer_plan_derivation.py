@@ -386,9 +386,9 @@ def test_dry_run_route_is_admin_gated_and_read_only(deriv_env, client, monkeypat
     body = resp.json()
     assert "counts" in body and "stages" in body
 
-    import admin_auth
+    from admin import auth
     monkeypatch.setenv("ASSY_ADMIN_TOKEN", "s3cret")
-    monkeypatch.setattr(admin_auth, "_admin_token_cache", None, raising=False)
+    monkeypatch.setattr(auth, "_admin_token_cache", None, raising=False)
     assert client.get("/admin/transfer-plan/dry-run").status_code == 401
 
 

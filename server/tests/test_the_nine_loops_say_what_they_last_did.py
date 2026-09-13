@@ -28,7 +28,7 @@ server_dir = os.path.abspath(os.path.join(script_dir, ".."))
 if server_dir not in sys.path:
     sys.path.insert(0, server_dir)
 
-import runtime_loops                                                 # noqa: E402
+import runtime.loops                                                 # noqa: E402
 from utils import heartbeat                                          # noqa: E402
 
 
@@ -76,7 +76,7 @@ def clean_laps():
 # ---------------------------------------------------------------------------
 
 def test_all_nine_loops_are_answered_for():
-    payload = runtime_loops.runtime_loops(_FakeDb(), heartbeats={})
+    payload = runtime.loops.runtime_loops(_FakeDb(), heartbeats={})
     loops = [item["loop"] for item in payload["loops"]]
     assert loops == ["web", "watcher", "chain", "outbox_purge", "listen",
                      "ledger_followup", "ledger_census", "scheduler", "postgres"]
@@ -88,7 +88,7 @@ def test_the_loop_and_the_process_are_two_columns():
     """Five loops live in ONE process. Collapsing them would make 「the chain process is
     alive」 read as 「the census loop is turning」, which is the false green this exists to
     prevent."""
-    payload = runtime_loops.runtime_loops(_FakeDb(), heartbeats={})
+    payload = runtime.loops.runtime_loops(_FakeDb(), heartbeats={})
     in_chain = [i["loop"] for i in payload["loops"] if i["process"] == "chain"]
     assert in_chain == ["chain", "outbox_purge", "listen", "ledger_followup",
                         "ledger_census"]
@@ -101,7 +101,7 @@ def test_the_loop_and_the_process_are_two_columns():
 def test_a_loop_that_never_reported_has_no_lap_keys():
     """⛔ NOT `last_seconds: 0`. 「it has not said」 and 「it said none」 are different
     facts, and a screen cannot tell them apart once one is written as the other."""
-    payload = runtime_loops.runtime_loops(_FakeDb(), heartbeats={})
+    payload = runtime.loops.runtime_loops(_FakeDb(), heartbeats={})
     census = by_loop(payload)["ledger_census"]
     for absent in ("last_at", "last_seconds", "depth", "pace"):
         assert absent not in census, absent
@@ -110,7 +110,7 @@ def test_a_loop_that_never_reported_has_no_lap_keys():
 def test_web_is_alive_and_claims_no_lap():
     """① has no heartbeat and needs none -- this route IS the web process answering. A lap
     here would be a number invented to fill the table."""
-    web = by_loop(runtime_loops.runtime_loops(_FakeDb(), heartbeats={}))["web"]
+    web = by_loop(runtime.loops.runtime_loops(_FakeDb(), heartbeats={}))["web"]
     assert web["alive"] is True
     assert "last_seconds" not in web and "knob" not in web
 
@@ -127,7 +127,7 @@ def test_a_recorded_lap_reaches_the_route_with_its_own_numbers():
     entry = {"age_seconds": 0.5, "stale": False,
              "laps": {"ledger_followup": dict(heartbeat._laps["chain"]["ledger_followup"],
                                               age_seconds=2.0)}}
-    payload = runtime_loops.runtime_loops(_FakeDb(), heartbeats={"chain": entry})
+    payload = runtime.loops.runtime_loops(_FakeDb(), heartbeats={"chain": entry})
 
     followup = by_loop(payload)["ledger_followup"]
     assert followup["last_seconds"] == 1.25
@@ -147,7 +147,7 @@ def test_a_loop_carries_words_as_well_as_numbers():
     heartbeat.record_lap("chain", "listen", state="reconnecting", reconnects=4)
     entry = {"age_seconds": 0.1, "stale": False,
              "laps": {"listen": heartbeat._laps["chain"]["listen"]}}
-    listen = by_loop(runtime_loops.runtime_loops(
+    listen = by_loop(runtime.loops.runtime_loops(
         _FakeDb(), heartbeats={"chain": entry}))["listen"]
     assert listen["state"] == "reconnecting" and listen["reconnects"] == 4
 
@@ -158,7 +158,7 @@ def test_alive_is_the_processs_and_the_lap_age_is_the_loops():
     entry = {"age_seconds": 0.2, "stale": False,
              "laps": {"ledger_census": {"at": 10.0, "age_seconds": 3600.0,
                                         "seconds": 0.4}}}
-    census = by_loop(runtime_loops.runtime_loops(
+    census = by_loop(runtime.loops.runtime_loops(
         _FakeDb(), heartbeats={"chain": entry}))["ledger_census"]
     assert census["alive"] is True, "the process is beating"
     assert census["last_age_seconds"] == 3600.0, "and the loop has not turned in an hour"
@@ -170,13 +170,13 @@ def test_alive_is_the_processs_and_the_lap_age_is_the_loops():
 
 def test_the_chains_depth_is_the_outbox_backlog():
     db = _FakeDb(pending=1234)
-    chain = by_loop(runtime_loops.runtime_loops(db, heartbeats={}))["chain"]
+    chain = by_loop(runtime.loops.runtime_loops(db, heartbeats={}))["chain"]
     assert chain["depth"] == 1234
     assert db.asked.count("outbox") == 1, "one query, not one per loop in that process"
 
 
 def test_postgres_says_idle_when_nothing_is_vacuuming():
-    pg = by_loop(runtime_loops.runtime_loops(
+    pg = by_loop(runtime.loops.runtime_loops(
         _FakeDb(vacuum=None), heartbeats={}))["postgres"]
     assert pg["alive"] is True and pg["state"] == "idle"
 
@@ -184,7 +184,7 @@ def test_postgres_says_idle_when_nothing_is_vacuuming():
 def test_postgres_names_the_phase_and_what_is_left():
     row = type("Row", (), {"relation": "cell_sources", "phase": "scanning heap",
                            "heap_blks_scanned": 400, "heap_blks_total": 1000})()
-    pg = by_loop(runtime_loops.runtime_loops(
+    pg = by_loop(runtime.loops.runtime_loops(
         _FakeDb(vacuum=row), heartbeats={}))["postgres"]
     assert pg["state"] == "vacuuming" and pg["phase"] == "scanning heap"
     assert pg["relation"] == "cell_sources" and pg["depth"] == 600
@@ -193,7 +193,7 @@ def test_postgres_names_the_phase_and_what_is_left():
 def test_a_non_postgres_bind_says_it_does_not_know():
     """⛔ NOT `alive: False`. SQLite cannot answer the question, and 「no」 would be a
     claim about the database rather than about this route's reach."""
-    pg = by_loop(runtime_loops.runtime_loops(
+    pg = by_loop(runtime.loops.runtime_loops(
         _FakeDb(dialect="sqlite"), heartbeats={}))["postgres"]
     assert pg["alive"] is None
     assert "state" not in pg
@@ -254,11 +254,11 @@ def test_the_route_answers_200_with_the_nine(client, monkeypatch):
     client component (C-74) will be written against: 200, nine entries, and every entry
     naming its loop, its process and its board number.
     """
-    import admin_auth
+    from admin import auth
 
     token = "s176-runtime-token"
-    monkeypatch.setenv(admin_auth.ADMIN_TOKEN_ENV, token)
-    res = client.get("/runtime", headers={admin_auth.ADMIN_TOKEN_HEADER: token})
+    monkeypatch.setenv(auth.ADMIN_TOKEN_ENV, token)
+    res = client.get("/runtime", headers={auth.ADMIN_TOKEN_HEADER: token})
 
     assert res.status_code == 200, res.text
     payload = res.json()
@@ -275,14 +275,14 @@ def test_the_route_answers_200_with_the_nine(client, monkeypatch):
 def test_the_route_is_gated():
     """⚠️ `/runtime` IS NOT UNDER `/admin`, so the durable audit in `test_admin_auth`
     does not walk it. The gate is asserted here instead, by name, rather than assumed."""
-    import admin_auth
+    from admin import auth
     from main import app
 
     for route in app.routes:
         if getattr(route, "path", None) == "/runtime":
             calls = {getattr(d, "dependency", None)
                      for d in getattr(route, "dependencies", ())}
-            assert calls & set(admin_auth.ADMIN_GATES), (
+            assert calls & set(auth.ADMIN_GATES), (
                 "/runtime publishes queue depths and knob paths; it carries the same "
                 "gate /admin/chain/queue does")
             return

@@ -85,9 +85,9 @@ def load_rule(rule_name: str, known_tables: dict, force_disabled: bool = False) 
     `validate_enrichment_rules` swallows rejection reasons into log warnings,
     while this path must fail loudly WITH the loader's reason.
     """
-    import enrichment_config
+    import enrichment.config
 
-    path = enrichment_config.ENRICHMENT_RULES_PATH
+    path = enrichment.config.ENRICHMENT_RULES_PATH
     if not os.path.exists(path):
         raise BackfillRefused(f"enrichment rules file not found: {path}")
     try:
@@ -115,7 +115,7 @@ def load_rule(rule_name: str, known_tables: dict, force_disabled: bool = False) 
         # explicitly forced this run, so validate it as if it were enabled.
         raw = {**raw, "enabled": True}
 
-    normalized, err = enrichment_config._validate_rule(rule_name, raw, known_tables)
+    normalized, err = enrichment.config._validate_rule(rule_name, raw, known_tables)
     if err is not None:
         raise BackfillRefused(f"rule '{rule_name}' rejected by the loader: {err}")
     if normalized is None:
@@ -261,8 +261,8 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
       new meaning.
     """
     from database import crud, models, schemas
-    from enrichment_mapper import map_enrichment_dedup
-    import enrichment_config
+    from enrichment.mapper import map_enrichment_dedup
+    import enrichment.config
 
     if limit is not None and limit <= 0:
         raise BackfillRefused(f"--limit must be a positive integer (got {limit})")
@@ -417,7 +417,7 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
                 # Accounting only - the SAME shared predicate the mapper used to
                 # let this row through, asked again of the item it produced. Not
                 # a second gate: nothing here can admit or refuse a row.
-                if enrichment_config.blank_key_columns(rule, item["updates"]):
+                if enrichment.config.blank_key_columns(rule, item["updates"]):
                     partial_key_bks.add(bk)
                 if len(stats["sample_new_keys"]) < SAMPLE_NEW_KEYS:
                     stats["sample_new_keys"].append(bk)

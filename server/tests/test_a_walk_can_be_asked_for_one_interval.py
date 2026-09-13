@@ -18,12 +18,12 @@ import uuid
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import ledger_explorer                                               # noqa: E402
+from ledger import explorer                                               # noqa: E402
 from ledger_api import ledger_subgraph                               # noqa: E402
 
 NOW = datetime(2026, 9, 9, 12, 0, tzinfo=timezone.utc)
 OLD = NOW - timedelta(days=30)
-SEED = ledger_explorer.entity_id("Lot", {"lot": "A"})
+SEED = explorer.entity_id("Lot", {"lot": "A"})
 
 
 def atom(number, subject, target, when):
@@ -108,17 +108,17 @@ def test_a_bound_that_is_not_a_time_is_refused_by_name(monkeypatch):
     """⛔ REFUSED, NOT IGNORED. A dropped bound answers the WHOLE history to a caller who
     asked for a window, and they read that as 「there is nothing outside my window」 - the
     same silent-zero shape the scope refusal exists to stop."""
-    import ledger_trace_router
+    from ledger import trace_router
     from fastapi import HTTPException
     import pytest
 
-    monkeypatch.setattr(ledger_trace_router.ledger_trace, "relation_exists",
+    monkeypatch.setattr(trace_router.trace, "relation_exists",
                         lambda *a, **k: True)
-    monkeypatch.setattr(ledger_trace_router, "_subgraph_contract_state",
+    monkeypatch.setattr(trace_router, "_subgraph_contract_state",
                         lambda *a, **k: [])
 
     with pytest.raises(HTTPException) as raised:
-        ledger_trace_router.evidence_subgraph(
+        trace_router.evidence_subgraph(
             node_id=SEED, hops=4, direction="both", node_limit=100, edge_limit=200,
             since="yesterday", until=None, positive=None, negative=None,
             follow=None, backbone_hops=0, db=None)
@@ -130,17 +130,17 @@ def test_a_bound_that_is_not_a_time_is_refused_by_name(monkeypatch):
 def test_a_window_that_cannot_contain_anything_is_refused(monkeypatch):
     """`since >= until` selects nothing at all, and answering it with an empty graph would
     look exactly like a seed with no evidence."""
-    import ledger_trace_router
+    from ledger import trace_router
     from fastapi import HTTPException
     import pytest
 
-    monkeypatch.setattr(ledger_trace_router.ledger_trace, "relation_exists",
+    monkeypatch.setattr(trace_router.trace, "relation_exists",
                         lambda *a, **k: True)
-    monkeypatch.setattr(ledger_trace_router, "_subgraph_contract_state",
+    monkeypatch.setattr(trace_router, "_subgraph_contract_state",
                         lambda *a, **k: [])
 
     with pytest.raises(HTTPException) as raised:
-        ledger_trace_router.evidence_subgraph(
+        trace_router.evidence_subgraph(
             node_id=SEED, hops=4, direction="both", node_limit=100, edge_limit=200,
             since="2026-09-09T12:00:00Z", until="2026-09-01T00:00:00Z",
             positive=None, negative=None, follow=None, backbone_hops=0, db=None)
@@ -150,11 +150,11 @@ def test_a_window_that_cannot_contain_anything_is_refused(monkeypatch):
 def test_a_naive_bound_is_read_as_utc_rather_than_refused():
     """⚠️ `?since=2026-09-01` is the ordinary request. The ledger stores `timestamptz`, so a
     bound with no zone has to mean something, and every instant this module renders is UTC."""
-    import ledger_trace_router
+    from ledger import trace_router
 
-    assert ledger_trace_router._instant_arg("2026-09-01") == datetime(
+    assert trace_router._instant_arg("2026-09-01") == datetime(
         2026, 9, 1, tzinfo=timezone.utc)
-    assert ledger_trace_router._instant_arg("2026-09-01T00:00:00Z") == datetime(
+    assert trace_router._instant_arg("2026-09-01T00:00:00Z") == datetime(
         2026, 9, 1, tzinfo=timezone.utc)
 
 
