@@ -40894,3 +40894,53 @@ docs/guide/INGESTION_GUIDE.md:287        「수정이 `git pull` 하나로 끝�
 트리에 남의 파일이 섞입니다(응용이 커밋 주체라 그쪽 첫 커밋을 오염시킵니다).
 
 > 📌 **[09-13 08:04] 이 채널의 미답 질문: «하나» — 운영 절차 둘의 처분.**
+
+---
+
+## ✅ [09-13 11:09] S-212 — 규칙을 고르면 폼이 채워집니다. 한 낱말의 두 철자를 «하나»로 (`3bdab11c`)
+
+**🔴 재기동 «필요»합니다** (라우트 시그니처 변경 — API 프로세스 `uvicorn main:app`). 워커·스케줄러는 이 라우트를 부르지 않습니다.
+
+### 진단 — 제 손으로 다시 잰 것
+```
+화면이 보내는 낱말   client2/src/admin.js:1121   `?name=<규칙>`
+패널의 계약         chain_rule_panel.js:38      nameKey: 'name'
+POST 의 payload 키  main.py:5766                payload.get("name")
+뷰 함수의 인자       ledger_admin.py:568         def chain_rule_raw_view(name=None)
+🔴 GET 라우트만      main.py:5747                def get_chain_rule_raw(rule: str = None)
+=> FastAPI 가 «모르는 질의»를 버림 -> chain_rule_raw_view(None) -> `declaration` 없이 응답
+   -> 규칙을 골라도 폼이 «항상» 빔. 던지지도 남기지도 않습니다
+표 쪽이 되는 이유     get_table_config_raw(table=...) — 양끝이 «같은 낱말»
+```
+지시대로 라우트를 «`name`» 으로 고쳤습니다. **둘째 철자를 «더하지» 않았습니다** — `?rule=` 도 받게 하면 같은 질문에 길이 둘이 되고, 그 둘이 갈라지는 날 라우트는 계속 답하면서 화면과 핸들러가 다른 낱말을 계약으로 믿습니다(상설 ④).
+
+### S-204 의 라우트 시험이 왜 이걸 못 봤나 — 재발 방지의 «본체»
+```
+그 시험은 라우트를 «몹니다». 다만 «서버의 철자»로 몹니다:  params={"rule": ...}
+🔴 핸들러가 쓰는 낱말을 시험도 쓰면 «이음매»는 구조적으로 안 보입니다 —
+   이 자리를 가르는 유일한 읽기는 «클라가 선에 싣는» 낱말입니다
+```
+그래서 ① 그 두 호출 자리를 «클라의 철자»로 바꾸고, ② 새 파일은 **클라 쪽에서만** 채점합니다. 클라의 낱말을 상수 하나(`CLIENT_QUERY_KEY`)로 두어 어느 쪽이 이름을 바꿔도 그 상수가 «같이» 움직여야 하게 했습니다.
+
+### 시험 — 라우트 «실호출», 그리고 데코레이터가 «등록한» 객체로
+`server/tests/test_a_picked_chain_rule_fills_the_form.py` (신규 4)
+```
+?name=X            -> X 의 declaration · raw · enabled
+?name=이웃          -> «이웃의» 것 (읽되 «다른 자리»에 읽는 결함은 빈 폼보다 나쁩니다)
+?name 없음          -> rules 목록만, `declaration`·`name` 키가 «없음» (null 이 아니라 부재)
+?rule=X            -> 아무것도 안 채움  (둘째 철자가 안 생겼다는 단언)
+```
+마운트는 `main.app.routes` 에서 **데코레이터가 등록한 라우트 객체를 꺼내»** 씁니다 — 손으로 경로에 함수를 다시 매다는 방식은 「데코레이터가 엉뚱한 def 에 붙는」 같은 부류의 결함을 대신 답해 줍니다. 토큰 오버라이드는 «`main.app` 에» 겁니다(그런 라우트가 들고 다니는 overrides provider 가 그것이라, 다른 앱에 걸면 조회되지 않습니다).
+
+### 게이트 — «되돌려» 재고, 그다음 통과
+```
+라우트를 되돌린 상태   5 빨강  (새 3 + 철자 고친 2)      <- 셋째 「둘째 철자 없음」도 빨강이었습니다
+                             즉 옛 라우트는 `?rule=` 로 «채웠고», 그것이 이 단언의 판별력입니다
+고친 상태             171 passed  exit 0
+   (test_a_picked_chain_rule_fills_the_form · test_the_chain_tab_can_add_a_rule_it_did_not_have
+    · test_chain_rule_editor_arms_without_firing · test_admin_auth)
+커밋 뒤 수집          6,231 collected  exit 0   (6,227 + 새 4)
+```
+클라는 «한 글자도» 안 건드렸습니다 — 화면 쪽은 이미 `name` 으로 묻고 있었습니다(`client2/dist` 빌드 없음).
+
+> 📌 **[09-13 11:09] 이 채널의 미답 질문: «없음».** 다음: S-209(판정 348·349 + 08:10 정정) 착수.
