@@ -74,7 +74,7 @@ import { initOntologyExplorer, refreshOntologyExplorer } from './ontology_explor
 import { LedgerSourcesPanel } from './ledger_sources_panel.js';
 import { censusBySource } from './source_backlog.js';
 import { TableConfigPanel } from './table_config_panel.js';
-import { ChainRulePanel } from './chain_rule_panel.js';
+import { ChainRulePanel, mapperChoices, mapperNotes } from './chain_rule_panel.js';
 import { countWithAbsence } from './count_with_absence.js';
 import { takeRescopeHandoff } from './rescope_handoff.js';
 
@@ -1085,21 +1085,24 @@ let chainRulePanel = null;
 //    `data` 는 `server/mappers/*.py` 를 AST 로 읽은 «모든 최상위 def» 이고, 저장을 판정하는 것은
 //    `mapper_sdk.MAPPER_REGISTRY` 입니다(`@mapper(name=…)` 가 준 이름). 전자로 채우면 서버가
 //    거절할 이름을 목록으로 내놓게 됩니다 (S-207 이 그래서 `registered` 를 실었습니다).
-let chainMapperNames = null;
+// 🔴 C-101 ③. 응답 «전체»를 듭니다 — 고를 수 있는 것이 `registered`(등록된 이름)와 `data`(파일의
+//    함수) «둘»에서 나오고, 그 둘을 후보 목록 «하나»로 접는 것은 등록부의 일입니다
+//    (`mapperChoices`). 여기서 접으면 그 철자의 저자가 둘이 됩니다.
+let chainMapperBody = null;
 
-async function loadChainMapperNames() {
-  if (chainMapperNames !== null) return chainMapperNames;
+async function loadChainMappers() {
+  if (chainMapperBody !== null) return chainMapperBody;
   try {
     const res = await adminFetch(`${API_BASE}/admin/mappers/list`);
     if (!res.ok) return null;
     const body = await res.json().catch(() => null);
     // 키가 «없으면» 옛 서버입니다 — 그때도 「없음」이 아니라 「못 읽음」입니다.
     if (!body || !Array.isArray(body.registered)) return null;
-    chainMapperNames = body.registered.map(String);
+    chainMapperBody = body;
   } catch (e) {                                              // noqa
     return null;
   }
-  return chainMapperNames;
+  return chainMapperBody;
 }
 // C-101 ②. 규칙이 읽고 쓰는 «표»의 이름들. `null` 은 「아직/못 읽음」이고 `[]` 는 「없음」입니다 —
 // 맵퍼 목록과 같은 세 상태이고, 같은 이유입니다.
@@ -1138,7 +1141,11 @@ async function refreshChainRule(name, extra = {}) {
   // 등록부를 다시 묻는 것은 같은 답에 대한 두 번째 질문입니다.
   // 🔴 C-101 ②. 목록이 «둘»이고 상태도 각자입니다 — 안 넣으면 「모름」, 빈 배열이면 「없음」.
   //    하나를 못 읽었을 때 다른 하나까지 「없음」으로 그리면 안 물어본 것이 답이 됩니다.
-  const [mappers, tables] = await Promise.all([loadChainMapperNames(), loadTableNames()]);
+  const [mapperBody, tables] = await Promise.all([loadChainMappers(), loadTableNames()]);
+  const mappers = mapperChoices(mapperBody);
+  // C-101 ③. 목록 «밖»의 줄들 — 서버가 그 칸들을 낼 때만 섭니다(S-223). 없으면 빈 배열이고
+  // 패널은 아무것도 안 그립니다: 「못 읽음」을 「없음」으로 그리지 않는 자리입니다.
+  chainRulePanel.setNotes(mapperNotes(mapperBody));
   chainRulePanel.setLists({
     ...(mappers === null ? {} : { mappers }),
     ...(tables === null ? {} : { tables }),

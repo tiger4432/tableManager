@@ -261,7 +261,7 @@ const FLOORS = new Map([
   // does not show that value the operator reads "saved" as "running". Three states, because
   // the list response carries no `enabled` at all and drawing that as `false` would answer
   // a question nobody asked.
-  ['chain_rule_panel_harness.mjs', 38],
+  ['chain_rule_panel_harness.mjs', 56],
   ['absent_harness.mjs', 35],
   // THE ZERO THAT LIES. Four tabs each grew their own sentence for "0 but there is work",
   // while the server has shipped a closed list of six absence words that nothing read.
@@ -1268,7 +1268,7 @@ const FLOORS = new Map([
   // which table an audit is about, when the answer comes from a declaration
   ['audit_target_table_harness.mjs', 12],
   // a one-member list is a value; and 「not arrived」 stays distinct from 「no members」
-  ['closed_list_harness.mjs', 34],
+  ['closed_list_harness.mjs', 44],
   // the grid says WHERE its rows came from
   ['grid_source_label_harness.mjs', 18],
   // one writer for "a person overwrote this cell", and it writes the half the paint rule reads
@@ -1291,9 +1291,9 @@ const FLOORS = new Map([
   //    a fixture whose keys are the real ones -- a form that hardcoded them would pass. The
   //    decoy's keys exist nowhere in this product, so drawing them is the proof, and drawing a
   //    real routing key beside them is the failure.
-  ['chain_rule_form_harness.mjs', 38],
+  ['chain_rule_form_harness.mjs', 47],
   ['clipboard_type_modal_harness.mjs', 21],
-  ['chain_rule_user_path_harness.mjs', 40],
+  ['chain_rule_user_path_harness.mjs', 44],
   // a value carrying markup does not come back out as markup, and the backlog has a ceiling
   ['escaping_harness.mjs', 56],
   // clicking a derived route fills follow, and a later-hop predicate stays visible

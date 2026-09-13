@@ -71,6 +71,11 @@ function ok(cond, name) {
   return !!cond;
 }
 
+/** 두 목록이 같은가 — 문구를 짚는 것이 아니라 «서버가 준 값»이 그대로 섰는지. */
+function eqTexts(got, want, name) {
+  ok(JSON.stringify(got) === JSON.stringify(want), `${name} ${JSON.stringify(got)}`);
+}
+
 const leafKeys = (skeleton) => (skeleton.root.fields || [])
   .filter((f) => f.node && f.node.kind === 'leaf').map((f) => f.key);
 
@@ -379,6 +384,86 @@ function suite(M) {
   ok(sectOffered.includes('Asia/Seoul') && !sectOffered.includes('lot_event'),
     `I6 a leaf that names its own section gets THAT list -- [${sectOffered.join(',')}]`);
 
+  // ── J: one dropdown writes either spelling, and says which one is held (C-101 ③) ───
+  // 🔴 Measured on the server (`chain_bindings.mapper_cells` / `mapper_resolvable`): `mapper`
+  //    resolves ONLY through the registry, so a file function cannot be named in that cell --
+  //    it is two cells or nothing. That is why one choice has to write two cells, and why
+  //    putting a token in `mapper` would make the document lie to every other reader.
+  const MEMBERS = [
+    { value: 'build_dt_map', group: '등록 이름' },
+    { value: 'mappers.lot:build_rows', label: 'mappers.lot · build_rows', group: '파일 함수' },
+  ];
+  const SPLIT = (value) => {
+    const at = String(value).lastIndexOf(':');
+    return at <= 0 ? null : { mapper: null, mapper_module: String(value).slice(0, at),
+                              mapper_function: String(value).slice(at + 1) };
+  };
+  const JOIN = (doc) => (doc.mapper || (doc.mapper_module && doc.mapper_function
+    ? `${doc.mapper_module}:${doc.mapper_function}` : ''));
+  const TWO_SPELLINGS = {
+    ...SPEC,
+    firstScreen: ['mapper'],
+    oneOf: [{ one: ['mapper'], other: ['mapper_module', 'mapper_function'], list: 'mappers',
+              split: SPLIT, join: JOIN }],
+  };
+  const pick = (host) => walk(host).find(
+    (n2) => n2.attrs && n2.attrs['data-value'] === 'mapper' && n2.tagName === 'SELECT');
+  const docOf = (host) => {
+    try { return JSON.parse((byCls(host, 'chain-rule-raw')[0] || {}).value || 'null'); }
+    catch (e) { return null; }
+  };
+
+  const two = makePanel(M, TWO_SPELLINGS, { lists: { mappers: MEMBERS } });
+  two.panel.render(payloadFor(SKELETON, { name: 'alpha', trigger_table: 't' }));
+  const chooser = pick(two.host);
+  const chooserGroups = chooser
+    ? (chooser.children || []).filter((c) => c.tagName === 'OPTGROUP')
+      .map((g) => g.getAttribute('label')) : [];
+  ok(Boolean(chooser) && chooserGroups.length === 2,
+    `J1 the mapper cell is a dropdown of two groups [${chooserGroups.join(',')}]`);
+  if (chooser) { chooser.value = 'mappers.lot:build_rows'; chooser.dispatch('change', {}); }
+  const afterPick = docOf(two.host) || {};
+  ok(afterPick.mapper_module === 'mappers.lot' && afterPick.mapper_function === 'build_rows',
+    `J2 choosing a file function fills BOTH cells (${JSON.stringify([afterPick.mapper_module, afterPick.mapper_function])})`);
+  ok(!('mapper' in afterPick),
+    'J3 ... and clears the one-cell spelling, because that cell means 「a registered name」');
+  const chooser2 = pick(two.host);
+  if (chooser2) { chooser2.value = 'build_dt_map'; chooser2.dispatch('change', {}); }
+  const afterName = docOf(two.host) || {};
+  ok(afterName.mapper === 'build_dt_map',
+    `J4 choosing a registered name writes that one cell (${JSON.stringify(afterName.mapper)})`);
+  // 🔴 AND THE CONTROL SAYS WHAT THE RULE HOLDS. A rule written with the two cells left this
+  //    dropdown EMPTY while the rule did name a mapper -- one response carrying two states.
+  const held2 = makePanel(M, TWO_SPELLINGS, { lists: { mappers: MEMBERS } });
+  held2.panel.render(payloadFor(SKELETON, { name: 'alpha', mapper_module: 'mappers.lot',
+                                            mapper_function: 'build_rows' }));
+  const shown2 = pick(held2.host);
+  const chosen2 = shown2
+    ? (shown2.children || []).flatMap((c) => (c.tagName === 'OPTGROUP' ? c.children : [c]))
+      .filter((o) => o.selected).map((o) => o.value) : [];
+  ok(chosen2.length === 1 && chosen2[0] === 'mappers.lot:build_rows',
+    `J5 a rule spelled in two cells shows its mapper in the dropdown [${chosen2.join(',')}]`);
+  // 🔴 AND THE DROPDOWN IS ON THE FIRST SCREEN FOR THAT RULE. It is the only place the mapper
+  //    can be CHANGED now, so hiding it behind 「고급」 is hiding the control, not a duplicate.
+  const advanced = byCls(held2.host, 'chain-rule-advanced')[0];
+  const hidden = advanced ? (advanced.children || []).map((c) => (c.attrs || {})['data-path']) : [];
+  ok(hidden.indexOf('mapper') === -1,
+    `J6 ... and that dropdown is not folded away [${hidden.filter(Boolean).slice(0, 6).join(',')}]`);
+  // ── lines OUTSIDE the list: 「here but not choosable」 ────────────────────────────
+  const noted = makePanel(M, TWO_SPELLINGS, { lists: { mappers: MEMBERS },
+    notes: [{ kind: 'other', text: 'mappers.rf · not a chain mapper' },
+             { kind: 'refused', text: 'mappers.x · ImportError' }] });
+  noted.panel.render(payloadFor(SKELETON, { name: 'alpha' }));
+  const lines = byCls(noted.host, 'chain-rule-list-note');
+  eqTexts(lines.map((l) => l.textContent),
+    ['mappers.rf · not a chain mapper', 'mappers.x · ImportError'],
+    'J7 what is here but not choosable gets one line each, in the server`s words');
+  ok(lines.length === 2 && lines[0].attrs['data-note'] === 'other'
+    && lines[1].attrs['data-note'] === 'refused',
+    'J8 ... and each line says which of the two it is, as a value not a sentence');
+  ok(byCls(two.host, 'chain-rule-list-note').length === 0,
+    'J9 no such cells means no lines at all -- an empty row would claim there are none');
+
   return { pass: pass - before.pass, fail: fail - before.fail };
 }
 
@@ -419,15 +504,12 @@ const DEFECTS = [
   //    NEW document; reading them as in-place writers silently throws the edit away, and the
   //    screen looks like a form that does nothing. It cost D2 one debug round.
   ['the writer is read as mutating in place, so the edit is thrown away',
-    s => s.replace('          const updated = writeShapeAtPath(held2, String(path), next);\n'
-                   + '          if (updated === null) return;\n'
-                   + '          area.value = JSON.stringify(updated, null, 2);\n'
-                   + '          this._keep(key, area.value);\n'
-                   + '          draw(updated);',
-                   '          writeShapeAtPath(held2, String(path), next);\n'
-                   + '          area.value = JSON.stringify(held2, null, 2);\n'
-                   + '          this._keep(key, area.value);\n'
-                   + '          draw(held2);')],
+    // Re-aimed by C-101 ③: the write became a LOOP over the cells the registry named, so the
+    // same misreading now lives on the value returned inside it. Same claim, same D2.
+    s => s.replace('            const written = writeShapeAtPath(updated, at, val);\n'
+                   + '            if (written === null) return;\n'
+                   + '            updated = written;',
+                   '            writeShapeAtPath(updated, at, val);')],
   ['the refused field is not marked',
     s => s.replace('        markRefusedField(box, view, spec);\n', '')],
   ['the mark carries a sentence instead of the code',
@@ -463,6 +545,19 @@ const DEFECTS = [
     s => s.replace('    declared: (section) => named(section || refList),', '    declared: () => [],')],
   ['one list answers for every reference cell, whatever section the skeleton named',
     s => s.replace('named(section || refList)', 'named(refList)')],
+  // 🔴 C-101 ③. Five ways one choice stops writing what the operator chose.
+  ['the registry`s translation is ignored, so a file function writes the wrong cell',
+    s => s.replace('      const spread = group.split(value);', '      const spread = null;')],
+  ['the one-cell spelling is left behind, so the document names a mapper twice',
+    s => s.replace('            if (val === null) {', '            if (false) {')],
+  ['the dropdown cannot say what a two-cell rule holds',
+    s => s.replace('        return group.join(held && typeof held === \'object\' ? held : {});',
+                   '        return \'\';')],
+  ['the only control that can change the mapper is folded behind 「고급」',
+    s => s.replace('      const useOne = (Array.isArray(list) && list.length) ? true',
+                   '      const useOne = false ? true')],
+  ['what is here but not choosable is never drawn, so 「why is my file missing」 has no answer',
+    s => s.replace('    if (picked && root && this.notes.length) {', '    if (false) {')],
   ['the add control is drawn for a registry that declared no word for it',
     s => s.replace('    if (spec.addLabel) {', '    if (true) {')],
 ];

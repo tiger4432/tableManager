@@ -13,7 +13,10 @@
 //      「꺼져 있다」, which is the class this repository has closed four times.
 //
 // Run: node client2/tests/chain_rule_panel_harness.mjs
-import { chainRuleView, ChainRulePanel, CHAIN_RULE_REGISTRY } from '../src/chain_rule_panel.js';
+import {
+  chainRuleView, ChainRulePanel, CHAIN_RULE_REGISTRY,
+  MAPPER_GROUPS, mapperChoices, mapperNotes, splitMapper, joinMapper,
+} from '../src/chain_rule_panel.js';
 import { TABLE_REGISTRY } from '../src/table_config_panel.js';
 import { ABSENT } from '../src/absent.js';
 
@@ -180,6 +183,63 @@ console.log('\n[4] two registries, one part');
   p3.render(PAYLOAD); p3.render(PAYLOAD);
   ok('a re-render replaces rather than appends',
     byClass(p3.root, 'chain-rule-save').length === 1);
+}
+
+// ═══ ⑤ 맵퍼 후보 — 두 묶음, 그리고 두 철자 사이의 번역 (C-101 ③) ═══════════════════
+// 🔴 소유자 2026-09-13: 「테이블이랑 맵퍼 설정은 리스트 좀 나오게해」 + 「내 파일이 왜 안 보이지」.
+//    실측이 그 원인이었다: 드롭다운이 `registered`(데코레이터가 등록한 이름)«만» 읽고, 같은
+//    응답의 `data`(파일별 def 목록)는 «안 읽었다». 소유자의 맵퍼는 `BaseMapper` 상속이라
+//    등록부에 없다 — 그래서 화면이 「선택지 없음」이라고 «참이 아닌 것»을 말했다.
+console.log('\n[5] the mapper candidates, and the translation between the two spellings');
+{
+  const BODY = {
+    registered: ['build_dt_map'],
+    data: [{ filename: 'lot.py', module_name: 'mappers.lot',
+             functions: [{ name: 'build_rows' }, { name: 'helper' }] }],
+  };
+  const got = mapperChoices(BODY);
+  eq('both cells become candidates, in two groups',
+    got.map((c) => [c.value, c.group]),
+    [['build_dt_map', MAPPER_GROUPS.registered],
+     ['mappers.lot:build_rows', MAPPER_GROUPS.file],
+     ['mappers.lot:helper', MAPPER_GROUPS.file]]);
+  ok('a file function is shown by module and name, not by its token',
+    got[1].label === 'mappers.lot · build_rows');
+  eq('an unread answer is 「모름」, not 「없음」', mapperChoices(null), null);
+  eq('an answer with neither cell is 「없음」', mapperChoices({}), []);
+  // 🔴 S-223 이 오면 `candidates` 가 «이깁니다» — 그때 위 다리는 지워지고, 그 전에도 두 읽기가
+  //    «같은 모양»을 냅니다(한 push 를 지나므로).
+  const AFTER = { registered: ['ignored'], data: [{ module_name: 'm', functions: [{ name: 'x' }] }],
+                  candidates: [{ module: 'mappers.a', name: 'run', kind: 'registered' },
+                               { module: 'mappers.a', name: 'inner', kind: 'function' }] };
+  eq('when the server names candidates, that is the list',
+    mapperChoices(AFTER).map((c) => c.value), ['run', 'mappers.a:inner']);
+  // ── 고른 것이 어느 칸들에 적히나 ───────────────────────────────────────────────
+  eq('a registered name writes its own cell only', splitMapper('build_dt_map'), null);
+  eq('a file function writes the two cells and CLEARS the one',
+    splitMapper('mappers.lot:build_rows'),
+    { mapper: null, mapper_module: 'mappers.lot', mapper_function: 'build_rows' });
+  eq('a token with nothing after the mark is not one', splitMapper('mappers.lot:'), null);
+  eq('...nor one with nothing before it', splitMapper(':build_rows'), null);
+  eq('nothing chosen writes nothing special', splitMapper(''), null);
+  // ── 문서가 든 것을 고르개의 값으로 ─────────────────────────────────────────────
+  eq('the one cell is read as itself', joinMapper({ mapper: 'build_dt_map' }), 'build_dt_map');
+  eq('the two cells are read back as the token',
+    joinMapper({ mapper_module: 'mappers.lot', mapper_function: 'build_rows' }),
+    'mappers.lot:build_rows');
+  eq('half of the two-cell spelling is not a mapper',
+    joinMapper({ mapper_module: 'mappers.lot' }), '');
+  eq('a rule that names none reads as none', joinMapper({}), '');
+  ok('the one cell wins when a rule carries both',
+    joinMapper({ mapper: 'one', mapper_module: 'm', mapper_function: 'f' }) === 'one');
+  // ── 목록 «밖»의 줄들 ───────────────────────────────────────────────────────────
+  eq('no such cells means no lines -- 「못 읽음」 is not 「없음」', mapperNotes({}), []);
+  eq('a module that is here but not for chains gets one line, in the server\'s words',
+    mapperNotes({ other: [{ module: 'mappers.rf', kind: 'ledger_roleframe', why: 'not a chain mapper' }] }),
+    [{ kind: 'other', text: 'mappers.rf · not a chain mapper' }]);
+  eq('...and one that would not import says why',
+    mapperNotes({ refused: [{ module: 'mappers.x', why: 'ImportError: no pandas' }] }),
+    [{ kind: 'refused', text: 'mappers.x · ImportError: no pandas' }]);
 }
 
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);

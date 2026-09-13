@@ -28,6 +28,8 @@
  *      edited is still there afterwards -- while the LIST it went for does refresh (C-101 ①)
  *   I  choosing rather than typing: the table catalogue reaches the reference cells, and a name
  *      the catalogue does not hold is still accepted as typed (C-101 ②)
+ *   J  the mapper list: BOTH what the decorator registered and what the files define, in two
+ *      groups, and choosing a file function fills the two cells (C-101 ③)
  *
  * ⚠️ WHAT IT DOES NOT SCORE, AND WHY. The query parameter's SPELLING is a seam between two
  *    files in two lanes (`admin.js` sends one word, `main.get_chain_rule_raw` declares another
@@ -143,6 +145,16 @@ const rawView = (name) => {
 // ⚠️ Matched on the END of the path: `/admin/tables/config/raw` contains 「/tables」 too, and a
 //    fixture that answered both would be feeding one route's body to another route's reader.
 const TABLES = ['lot_event', 'lot_slot_wafer', 'dt_log', 'dt_map'];
+// 🔴 THE SHAPE THE ROUTE ANSWERS WITH TODAY, both cells. `registered` is what the decorator
+//    registered; `data` is every top-level def the AST found. The owner's mappers subclass
+//    `BaseMapper`, so they are in the SECOND cell and in no other -- which is why a screen
+//    reading only the first told them 「선택지 없음」 while their files sat right there.
+const MAPPERS = {
+  status: 'success',
+  registered: ['build_dt_map'],
+  data: [{ filename: 'lot_slot_wafer_mapper.py', module_name: 'mappers.lot_slot_wafer_mapper',
+           functions: [{ name: 'build_lot_slot_wafer_rows', arguments: ['rows'], summary: '' }] }],
+};
 const isCatalogue = (call) => /\/tables$/.test(call.url.split('?')[0]);
 
 /** The name the page asked for, whatever cell it used to ask. */
@@ -229,7 +241,7 @@ async function suite(probe) {
 
   // ── A. the tab opens: no name yet, so the page asks for the list ────────────────────────
   answer = (call) => (call.url.includes('/admin/mappers/list')
-    ? { status: 200, body: { registered: [] } }
+    ? { status: 200, body: MAPPERS }
     : isCatalogue(call) ? { status: 200, body: { tables: TABLES } }
       : { status: 200, body: rawView(null) });
   calls.length = 0;
@@ -255,7 +267,7 @@ async function suite(probe) {
 
   // ── B. picking: one request, carrying the chosen name ───────────────────────────────────
   answer = (call) => (call.url.includes('/admin/mappers/list')
-    ? { status: 200, body: { registered: [] } }
+    ? { status: 200, body: MAPPERS }
     : isCatalogue(call) ? { status: 200, body: { tables: TABLES } }
       : { status: 200, body: rawView(askedName(call)) });
   calls.length = 0;
@@ -298,6 +310,31 @@ async function suite(probe) {
      `I the table cells offer the catalogue rather than a blank box (${refOptions.length} name(s))`);
   ok(TABLES.every((name) => refOptions.includes(name)),
      `I ... and it is the served catalogue, whole [${refOptions.join(',')}]`);
+  // ── J. the mapper list carries BOTH cells, in two groups (C-101 ③) ──────────────────────
+  // 🔴 THE OWNER'S RULE IS THE FIXTURE: `RULE` names its mapper with `mapper_module` +
+  //    `mapper_function`, which is the spelling every rule in this box uses. Before this round
+  //    the dropdown read `registered` only, so their file was not on it -- and the cell that
+  //    held their mapper was a text box.
+  const chooser = all(panelRoot()).find(
+    (el) => el.tagName === 'SELECT' && el.attrs && el.attrs['data-value'] === 'mapper');
+  const groups = chooser
+    ? (chooser.children || []).filter((c) => c.tagName === 'OPTGROUP')
+      .map((g) => g.getAttribute('label')) : [];
+  ok(groups.length === 2, `J the mapper cell is a dropdown of two groups [${groups.join(',')}]`);
+  const offeredMappers = chooser
+    ? (chooser.children || []).flatMap((c) => (c.tagName === 'OPTGROUP' ? c.children : [c]))
+      .map((o) => o.value) : [];
+  ok(offeredMappers.includes('build_dt_map'),
+     `J a decorator-registered name is offered [${offeredMappers.join(' | ')}]`);
+  ok(offeredMappers.includes('mappers.lot_slot_wafer_mapper:build_lot_slot_wafer_rows'),
+     'J ... and so is a function the FILES define, which is where this box`s mappers live');
+  const picked2 = chooser
+    ? (chooser.children || []).flatMap((c) => (c.tagName === 'OPTGROUP' ? c.children : [c]))
+      .filter((o) => o.selected).map((o) => o.value) : [];
+  ok(picked2.length === 1
+     && picked2[0] === 'mappers.lot_slot_wafer_mapper:build_lot_slot_wafer_rows',
+     `J the rule's own two-cell mapper is what the dropdown shows [${picked2.join(',')}]`);
+
   // ── D. editing: the document the save will send is rewritten ────────────────────────────
   type('target_table', 'lot_slot_wafer_v2');
   await flush();
@@ -313,7 +350,7 @@ async function suite(probe) {
   // ⚠️ Called exactly as the timer calls it: no arguments. A harness that passed the background
   //    flag itself would be making the page's decision and would stay green with the page broken.
   answer = (call) => (call.url.includes('/admin/mappers/list')
-    ? { status: 200, body: { registered: [] } }
+    ? { status: 200, body: MAPPERS }
     : isCatalogue(call) ? { status: 200, body: { tables: TABLES } }
       : { status: 200, body: rawView(null) });
   await refreshChainRule();
@@ -334,7 +371,7 @@ async function suite(probe) {
   // 🔴 THE OTHER HALF, OR THE GUARD IS JUST 「IGNORE THE SERVER」. The page went for the list
   //    because the list can change under it; a rule added by somebody else must appear.
   answer = (call) => {
-    if (call.url.includes('/admin/mappers/list')) return { status: 200, body: { registered: [] } };
+    if (call.url.includes('/admin/mappers/list')) return { status: 200, body: MAPPERS };
     if (isCatalogue(call)) return { status: 200, body: { tables: TABLES } };
     const body = rawView(null);
     body.rules = [...NAMES, 'a_rule_somebody_else_added'];
@@ -354,7 +391,7 @@ async function suite(probe) {
   // ── E. saving: one POST, the shape the route reads ──────────────────────────────────────
   let saved = null;
   answer = (call) => {
-    if (call.url.includes('/admin/mappers/list')) return { status: 200, body: { registered: [] } };
+    if (call.url.includes('/admin/mappers/list')) return { status: 200, body: MAPPERS };
     if (isCatalogue(call)) return { status: 200, body: { tables: TABLES } };
     if (call.method === 'POST') { saved = call; return { status: 200, body: { name: call.body.name, rules: NAMES, backup: '/box/bak', enabled: true } }; }
     return { status: 200, body: rawView(askedName(call)) };
@@ -456,6 +493,11 @@ const DEFECTS = [
                    '    chainTableNames = (body.data || []).map(String);')],
   ['the catalogue is re-read every time a rule is opened',
     s => s.replace('  if (chainTableNames !== null) return chainTableNames;', '')],
+  // 🔴 C-101 ③. S-207's shape, one route over: the page folds the answer itself and only the
+  //    registered half survives -- which is the screen the owner met.
+  ['the page folds the mapper answer itself, so only the registered half is offered',
+    s => s.replace('  const mappers = mapperChoices(mapperBody);',
+                   '  const mappers = mapperBody ? mapperBody.registered : null;')],
   // ⚠️ THE SAME LINE, SPELLED WRONG. 「!name」 is the whole judgement: a read that names a rule
   //    is a person opening it, and one that names none is the clock. Inverting it makes every
   //    real open silently refuse to draw, which is the failure mode nobody would guess from
