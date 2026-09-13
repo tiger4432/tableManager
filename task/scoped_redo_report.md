@@ -41241,3 +41241,110 @@ outputs/syn_p/                           (DIR)    2026-09-08 14:42   🆕 빈 �
 `server/scripts/diagnose_wal_headroom.py:3` 의 사용법이 `python agent_workspace/reports/wal_headroom.py` 를 실행하라고 적는데, **그 파일은 추적본에 없습니다**(0건). 제 이동 «전부터» 거짓이었고, 범위 밖이라 손대지 않았습니다.
 
 > 📌 **[09-13 11:37] 이 채널의 미답 질문: «없음».** 다음: **S-211 계획 블록**(패키지 경계 표 · 이동 파일 수 · import 갱신 자리 수 · 위험 · 되돌리기) — 짓기는 «판정 뒤».
+
+---
+
+## 📋 [09-13 11:42] S-211 계획 블록 — import 그래프를 «재서» 낸 경계. 그리고 고리 하나가 그 경계를 «가로지릅니다»
+
+지시대로 «짓기 전»이고, 코드는 «0 줄» 건드렸습니다. 아래 수는 전부 `ast` 로 전수 파싱한 것입니다(문자열 grep 아님).
+
+### 규모 — 이것이 이 라운드의 «진짜 크기»입니다
+```
+최상위 평면 모듈            66      (⚠️ `git ls-files 'server/*.py'` 는 «재귀»라 654 가 나옵니다.
+                                   `:(glob)server/*.py` 로 다시 세서 66 — 지시의 「~60」과 맞습니다)
+그 66 을 이름 대는 import 문   1,172
+그 문을 실은 파일             376
+이미 패키지인 것             chain · ledger · ledger_api · database · parsers · mappers · migrations
+                            · source_fixtures · trace_fixture · scripts/support · tests/support
+아무도 import 안 하는 것       1  (`run_chain_worker` — 명령줄이 이름을 드는 런처. 「소비자 0」이 아닙니다)
+```
+🔴 **「이동 파일 수」보다 「고칠 import 자리 수」가 이 작업의 크기입니다 — 1,172.** 그리고 호환 재수출이 «0» 이어야 하므로 그 1,172 이 «한 커밋»에 다 맞아야 합니다.
+
+### 제안 경계 — 오늘의 접두에서, import 방향으로 검증
+```
+패키지        모듈                                                                     수
+chain/*      chain_activity · chain_bindings · chain_builtins · chain_graph ·          7
+             chain_ingestion_worker · chain_key_gate · chain_replay
+ledger/*     ledger_admin · ledger_explorer · ledger_trace · ledger_trace_router        4
+map/*        map_alignment · map_meta_registrar · map_overlay · map_preset_routing      4
+             + alignment_batch_counts · alignment_view_service · dt_frame_transform     (+3)
+enrichment/* enrichment_analysis · enrichment_backfill · enrichment_candidates ·        5
+             enrichment_config · enrichment_materialize
+ingestion/*  ingestion_activity · ingestion_checkpoint · file_ingestion_status          3
+runtime/*    paths · event_constants · system_reload · process_supervisor · pacing ·    ~8
+             runtime_loops · health · launcher_args
+admin/*      admin_auth · dev_bench · retroactive · schema_drift · audit_cache ·        ~6
+             audit_history
+남는 것       main · run_* 셋 · transfer_plan · bonding_plan · mapper_sdk · db_safety …  ~26
+```
+⚠️ **접두가 «하나뿐»인 모듈이 31 입니다.** 즉 절반은 「오늘의 접두」가 경계를 안 정해 줍니다 — 그 31 은 import 방향으로 붙이거나 최상위에 남겨야 하고, 그것이 이 설계의 «실제 판단»입니다.
+
+### 🔴 고리 둘 — 하나가 «경계를 가로지릅니다». 이게 이 라운드의 핵심 위험입니다
+```
+① 여덟 짜리  chain_bindings ↔ chain_builtins ↔ chain_ingestion_worker ↔ chain_replay
+            ↔ config_resolve_report ↔ dt_map_derivation ↔ virtual_join_config ↔ virtual_join_executor
+   🔴 chain · config · dt · virtual «넷»을 관통합니다. 넷을 다른 패키지로 가르면
+      패키지 «사이»에 순환 의존이 생깁니다 — 파이썬은 돌긴 하지만 import 순서에 따라
+      «가끔» 터지고, 그 터짐은 「누가 먼저 import 됐나」로 갈려 재현이 어렵습니다
+② 둘 짜리    frame_confirmation ↔ map_alignment    (map/ 안에 «같이» 넣으면 경계를 안 넘습니다)
+```
+🔴 **그래서 갈래가 셋입니다 — 판정 필요:**
+```
+㉠ 여덟을 «한 패키지»에 같이 넣는다      경계가 도메인이 아니라 «고리 모양»이 됩니다. 정직하지만 이름이 안 붙습니다
+㉡ 고리를 «먼저» 끊고 그다음 패키지화    옳은 순서입니다. 다만 라운드가 «둘»이 되고, 끊는 것은 설계 변경입니다
+㉢ 이번엔 «고리 밖» 모듈만 옮긴다        고리 여덟은 최상위에 남깁니다. 가장 작지만 「평면 60」이 「평면 8+」로만 줄어듭니다
+제 권고: ㉡ — 다만 「끊기」가 이 라운드의 «진짜 일»이고 패키지화는 그 뒤의 «결과»라는 뜻입니다.
+         ㉠ 을 고르시면 그 패키지 이름을 제가 짓지 않고 올리겠습니다(고리는 도메인이 아니므로)
+```
+
+### 위험 다섯 — 이름으로 주소를 대는 자리
+```
+① 🔴 «운영자 스크립트»가 이름으로 import 합니다 — 그리고 저는 그것을 «잴 수 없습니다»
+   손복사 shim 둘이 증거입니다:  void_obs_parser.py.sample:17  `from void_sat_format import …`
+                              inspection_run_parser.py.sample:20  같은 줄
+   `void_sat_format` 은 «이 66 중 하나»입니다. 옮기면 운영자가 자기 워크스페이스에 복사해 둔
+   파일이 전부 깨지고, 그 파일들은 gitignored 라 제가 고칠 수도 셀 수도 없습니다
+   그리고 `directory_watcher.py:955 _register_legacy_import_shim()` 이 「사용자 스크립트는
+   «무수정» 원칙」을 자기 docstring 에 적으며 `server.parsers.*`·`server.database.*` 를
+   이름으로 별칭 등록합니다 — 즉 «이름 안정성»이 이미 제품의 약속입니다
+   => 권고: 「운영자가 import 하는 이름」을 S-209 의 SDK 진입점처럼 «고정 목록»으로 선언하고,
+      그 목록의 모듈은 «안 옮깁니다». 최소 `void_sat_format`·`pipeline_base`
+② 설정 문자열   chain_rules 의 `mapper_module: "mappers.X"` — `mappers/` 는 이동 대상이 아니라 무사
+③ 시험의 문자열 주소   monkeypatch.setattr("<모듈>.…") «32». 이름이 바뀌면 «빨개집니다»(조용하지 않음 — 좋은 쪽)
+④ sys.modules 를 «이름으로» 만지는 자리 «81»   그중 chain_ingestion_worker:1727 은 `mappers.` 접두,
+   :1732 는 `pipeline_plugin_` 접두로 «지웁니다». 둘 다 이동 대상 밖이지만, 패키지화로 모듈의
+   dotted 이름이 바뀌면 이 접두 비교가 «조용히» 빗나갈 수 있는 부류입니다 — 전건 확인 필요
+⑤ importlib.import_module 리터럴 «26» · `__import__` «6»   리터럴 중 66 을 드는 것은 현재 0
+   (`mappers.*` · `ledger.__main__` · `chain.__main__` 뿐)
+```
+
+### 되돌리기 · 게이트
+```
+되돌리기   한 커밋 revert. 그래서 「통째 착지」가 요구인 것이고, 이 블록의 ㉡ 갈래는 «커밋 둘»이 됩니다
+게이트     시험 6,252 무변 · 런처 넷 · 호환 재수출 0(`git grep` 으로 옛 최상위 이름 import 0)
+          · 고리 재측정(SCC>1 이 늘지 않았나) · 운영자 고정 목록의 모듈이 «안 움직였나»
+```
+
+### 판정 347 — `client/` → `desktop/` (자기 커밋, 패키지화와 «따로»)
+```
+파일 다섯   AssyManagerClient.spec · assets/app_icon.png · client_settings.json
+           · desktop_wrapper.py · package_client.py
+제가 본 소비자   run_decoupled_app.py:336 (자식 프로세스 경로 `os.path.join(root_dir, "client", …)`)
+              · main.py:637 :658 (주석·라우트 서술) · .gitignore :54 :55 :56 :61 «네 줄»
+              ⚠️ 완전한 소비자 표는 클라 실측 `1ca4089a` 가 정본입니다 — 그것을 입력으로 쓰겠습니다
+크기       작습니다. S-211 본체와 «독립»이므로 «먼저» 착지시켜도 됩니다(권고: 먼저 — 위험이 분리됩니다)
+```
+
+### 🔴 모르는 것 — 적어 둡니다
+```
+운영자 워크스페이스 스크립트가 «무엇을» import 하는지 셀 수 없습니다. gitignored 이고,
+「박스를 재지 않는다」가 여기 그대로 걸립니다. 손복사 shim 둘이 «하한»이고 상한은 모릅니다
+=> 그래서 위험 ①의 답은 「세어서」가 아니라 「약속으로」 나와야 합니다 — 고정 목록 선언
+```
+
+> 📌 **[09-13 11:42] 이 채널의 미답 질문: «셋».**
+> ① 고리 여덟의 처리 ㉠/㉡/㉢ (제 권고: ㉡ — 끊기가 먼저, 패키지화는 결과)
+> ② 「운영자가 import 하는 이름」 고정 목록을 만들까요 (제 권고: 예 — 최소 `void_sat_format`·`pipeline_base`,
+>    그 모듈은 이동 대상에서 «뺌». 없으면 운영자 파일이 깨지고 그것은 제가 못 고칩니다)
+> ③ `client/` → `desktop/` 를 S-211 본체 «앞»에 따로 착지시킬까요 (제 권고: 예)
+> 판정 주시면 그때 «짓습니다». 지금은 코드 0 줄입니다.
