@@ -45,10 +45,36 @@ function originalDirOf(copyDir) {
 const RELATIVE_RE = /^\.\.?\//;
 const STUB_RE = /\.__probe_stub__\.([A-Za-z0-9_]+)\.js$/;
 
+// 🔴 C-95. A STYLESHEET IS INERT HERE, NOT A WALL. `import './tokens.css'` is the sentence
+// CLAUDE.md gives for why a file cannot be imported by a harness -- node has no loader for the
+// extension, so the import statement itself dies and the whole module is unreachable. Measured
+// 2026-09-13 with a ten-line spike: resolve `.css` to an empty module and `admin.js` -- 4,957
+// lines, the file that seats every admin panel -- imports cleanly. The wall was one line of
+// resolution, which is the third time this week a named wall turned out to be one argument.
+//
+// ⚠️ NOTHING IS CUT. The copy still carries the import; only what the specifier RESOLVES to
+//    changes, exactly as it already does for a stubbed sibling. The byte-prefix assertion in
+//    `probe.mjs` passes unchanged, and that passing assertion is the evidence.
+// 🔴 THE WHOLE IMPORT GRAPH, NOT ONLY THE COPY'S OWN LINE -- and that is a DIFFERENT argument
+//    from the one that scopes the sibling redirect below, so it is written out rather than
+//    assumed. Measured: the copy of `admin.js` imports the REAL `ontology_explorer.js`, which
+//    imports its stylesheet; the importer there carries no tag, the scoped test never fired,
+//    and the run died three modules deep. Nothing carries a tag down the graph and these hooks
+//    run on another thread that cannot be told.
+//    The sibling redirect must stay scoped because it displaces a module that WOULD have
+//    loaded. A `.css` specifier displaces nothing: node has no loader for the extension, so
+//    every such import is a crash in every process today. Turning a crash into an inert module
+//    cannot make a passing thing fail or a failing thing pass -- it can only move the line
+//    where a harness stops. And this module is registered by `probe.mjs` alone; it is never in
+//    the product's process.
+const STYLE_RE = /\.(css|scss|sass|less)(\?.*)?$/;
+const EMPTY_MODULE = 'data:text/javascript,export default undefined';
+
 export async function resolve(specifier, context, nextResolve) {
   const parent = context && context.parentURL ? context.parentURL : '';
   const tagged = COPY_RE.exec(parent);
   const fromStub = !tagged && STUB_RE.test(parent);
+  if (STYLE_RE.test(specifier)) return { url: EMPTY_MODULE, shortCircuit: true };
   if (fromStub) {
     const sib = SIBLING_RE.exec(specifier);
     if (sib) {

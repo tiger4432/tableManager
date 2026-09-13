@@ -417,39 +417,86 @@
       padding: 10.2px 13.6px 13.6px;
     }
 
-    .chain-rule-picker,
-    .table-config-picker {
-      max-width: 320px;
-      margin: 0 0 10.2px;
-    }
-    /* C-86. 「+ 규칙 추가」는 고르개 «옆»에 섭니다 — 같은 줄의 두 동작(고르기 · 새로 짓기)이고,
-       고르개가 inline-block 이라 자리가 이미 있습니다. 왼쪽 간격만 3.4 그리드에서 집습니다. */
-    .chain-rule-add,
-    .table-config-add {
-      margin: 0 0 var(--space-3) var(--space-2);
-      vertical-align: top;
-    }
-    .chain-rule-new-name,
-    .table-config-new-name {
-      display: block;
-      width: 100%;
-      max-width: 320px;
+    /* 🔴 C-95 ①⑤. 카드의 «머리 한 줄» — 고르개 · 추가/취소 · 상태 · 저장. 실측(2026-09-13,
+       토큰 우회 보기 전용 앱 1440px): 저장 버튼이 원문 상자 «아래»에 있어 스크롤 없이는 안
+       보였고, 폼 상자가 자기 스크롤을 가져 스크롤이 «삼중»이었습니다. 저장은 카드를 여는
+       순간부터 보여야 하는 컨트롤이라 머리에 «고정»합니다.
+       상태는 «값 하나»입니다 — 거절 코드가 있으면 그것이고, 없으면 등록부의 상태입니다. */
+    .chain-rule-head,
+    .table-config-head {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-2);
       margin: 0 0 var(--space-3);
     }
+    .chain-rule-picker,
+    .table-config-picker {
+      flex: 1 1 240px;
+      min-width: 0;
+      max-width: 320px;
+      margin: 0;
+    }
+    .chain-rule-add,
+    .table-config-add { margin: 0; }
+    .chain-rule-new-name,
+    .table-config-new-name {
+      flex: 1 1 200px;
+      min-width: 0;
+      max-width: 320px;
+      margin: 0;
+    }
+    /* 저장은 «오른쪽 끝». 그 왼쪽 여백이 상태와 버튼을 갈라 놓습니다. */
+    .chain-rule-save,
+    .table-config-save { margin-left: auto; }
     /* 폼은 «원문 옆»이 아니라 «위»입니다 — 어드민 절의 폭이 두 열을 담기엔 좁고, 두 열로
        두면 둘 다 좁아져 글자가 테두리에 닿습니다(상설: 마진). 안쪽 여백은 토큰 하나. */
+    /* 🔴 C-95 ①. 폼은 «자기 높이»로 섭니다. 종전에는 상한이 걸려 있어 스켈레톤 23칸 중 세
+       칸만 보였고(실측: 보이는 높이 420 · 실제 1,444), 절 스크롤 «안»에 폼 스크롤이 또 있어
+       마우스 휠이 어느 것을 미는지 알 수 없었습니다. 절이 이미 스크롤을 갖고 있습니다. */
     .chain-rule-form,
     .table-config-form {
       margin: 0 0 var(--space-3);
       padding: var(--space-3);
       border: 1px solid var(--border);
-      max-height: var(--graph-max-height);
-      overflow: auto;
     }
-    /* 거절은 «그 칸 옆»에. 코드 한 낱말이고 문장은 아래 거절 상자의 것입니다. */
+    /* C-95 ②⑥. 접는 두 자리. 「접힌 것은 개수를 보인다」 — 말 없이 접는 것은 단계를 늘린
+       삭제입니다. 모양은 탐색기의 접기 버튼(`.oe-node-fold`)과 같은 성격이라 같은 값입니다. */
+    .chain-rule-more,
+    .chain-rule-raw-fold,
+    .table-config-more,
+    .table-config-raw-fold {
+      display: block;
+      width: 100%;
+      text-align: left;
+      margin: 0 0 var(--space-3);
+      padding: var(--space-2) var(--space-3);
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-dim);
+      font-family: var(--oe-font-body);
+      font-size: var(--fs-label);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+    .chain-rule-more:hover,
+    .chain-rule-raw-fold:hover,
+    .table-config-more:hover,
+    .table-config-raw-fold:hover { background: var(--oe-tint-hover); color: var(--text); }
+    /* 🔴 `hidden` 이 이기게. 위의 `display: block` 이 없으면 UA 의 `[hidden]` 이 이기지만,
+       있으면 «켜진 채로» 남습니다 — 접었는데 그대로 보이는 결함이 그렇게 태어납니다. */
+    .chain-rule-advanced[hidden],
+    .table-config-advanced[hidden],
+    .chain-rule-raw[hidden],
+    .table-config-raw[hidden] { display: none; }
+    /* 거절은 «그 칸 옆»에. 코드 한 낱말이고 문장은 아래 거절 상자의 것입니다.
+       C-95: 값 열 «안»에서 입력 바로 아래에 섭니다 — 줄의 결을 끊지 않으면서 어느 칸의
+       답인지가 «자리»로 보입니다(상태 열은 92px 고정이라 코드가 카드 밖으로 넘쳤습니다). */
     .chain-rule-field-refusal,
     .table-config-field-refusal {
-      margin-left: var(--space-2);
+      display: block;
+      margin: var(--space-1) 0 0;
       color: var(--danger);
       font-size: var(--fs-label);
       font-style: normal;
@@ -472,17 +519,19 @@
       color: var(--text);
       caret-color: var(--accent);
     }
-    .chain-rule-controls,
-    .table-config-controls { margin: 10.2px 0 0; }
     /* 🔴 「도는가」는 «값»입니다. 서버의 낱말 그대로 두고, 꺼진 것만 눈에 띄게 합니다 —
        저장이 «장전»까지라는 사실을 운영자가 놓치면 없는 고장을 찾게 됩니다.
-       ⛔ 문장은 없습니다. `enabled true` / `enabled false` 가 전부입니다. */
-    .chain-rule-state {
-      margin: 0 0 10.2px;
+       ⛔ 문장은 없습니다. `enabled true` / `enabled false` / 거절 코드가 전부입니다. */
+    .chain-rule-state,
+    .table-config-state {
+      margin: 0;
       font-family: var(--font-mono);
+      font-size: var(--fs-label);
       color: var(--text-dim);
     }
     .chain-rule-state[data-state="false"] { color: var(--warning); font-weight: 600; }
+    .chain-rule-state[data-state="refused"],
+    .table-config-state[data-state="refused"] { color: var(--danger); font-weight: 600; }
     /* 거절은 서버의 낱말로. 세 칸이고, 없는 칸은 안 그립니다. */
     .chain-rule-refusal,
     .table-config-refusal {

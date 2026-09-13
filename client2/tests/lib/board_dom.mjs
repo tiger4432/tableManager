@@ -131,9 +131,32 @@ export function makeDoc(theme) {
   const doc = {
     createElement(tag) { return makeNode(doc, tag); },
     createElementNS(ns, tag) { return makeNode(doc, tag); },
+    // 🔴 ADDED 2026-09-13 (C-95). `admin.js` reaches every panel with `byId(...)`, so a stub
+    //    without this cannot run the SEATING code -- only the panel's own. The difference is
+    //    「this panel draws that」 versus 「the page puts that panel there」, and the second is
+    //    where the chain rule editor's user path actually broke.
+    // ⚠️ A WALK, NOT A REGISTRY. An id set after the node is attached must still be found, and
+    //    a registry filled at creation time would answer for detached nodes as well -- which
+    //    is how a harness scores a screen nobody assembled.
+    getElementById(id) {
+      const want = String(id);
+      for (const root of [doc.body, doc.documentElement]) {
+        if (!root) continue;
+        const hit = walk(root).find((el) => el.attrs && el.attrs.id === want);
+        if (hit) return hit;
+      }
+      return null;
+    },
+    // The document's own two, delegated to the tree it owns. `admin.js` reaches a dozen
+    // page parts this way before it ever seats a panel.
+    querySelector(sel) { return doc.documentElement.querySelector(sel); },
+    querySelectorAll(sel) { return doc.documentElement.querySelectorAll(sel); },
+    addEventListener() {},
   };
   doc.documentElement = makeNode(doc, 'html');
   doc.documentElement.setAttribute('data-theme', theme || 'light');
+  doc.body = makeNode(doc, 'body');
+  doc.documentElement.appendChild(doc.body);
   return doc;
 }
 
