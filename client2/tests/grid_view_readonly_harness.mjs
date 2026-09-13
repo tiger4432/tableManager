@@ -26,6 +26,8 @@
  *      become 「[object Object]」 on the screen
  *   R  a refused READ is an answer, not an exception (C-105): the page's data fetch draws the
  *      server's sentence, empties the grid, and says 「not counted」 rather than 「0」
+ *   S  ONE RULE (C-107): every write control on this screen is armed from the same answer, the
+ *      four funnels ask that same answer, and the table says what it is in its own header
  *
  * 🔴 NOT INFERRED FROM THE DATA SHAPE. A view cell is `{value}` only -- and so is a page of an
  *    ordinary table nobody has overwritten. Reading the shape would turn a healthy table
@@ -172,6 +174,7 @@ function ok(cond, name) {
 
 const REAL = {
   state: await import('../src/state.js'),
+  guard: await import('../src/write_guard.js'),
   api: await import('../src/api.js'),
   grid: await import('../src/grid.js'),
   clipboard: await import('../src/clipboard.js'),
@@ -362,13 +365,57 @@ async function suite(M) {
   // 마크업이 이미 다는 말. index.html 의 `title="Add Row"` 그대로입니다.
   addBtn.setAttribute('title', 'Add Row');
   delete addBtn.dataset.titleWas;
-  M.ui.applyViewWriteGuard();
+  M.guard.applyWriteGuards();
   ok(addBtn.disabled === true && addBtn.getAttribute('title') === NOTE,
     `F7 the guard disables the control and names the reason [${addBtn.getAttribute('title')}]`);
   realState.currentTableKind = 'table';
-  M.ui.applyViewWriteGuard();
+  M.guard.applyWriteGuards();
   ok(addBtn.disabled === false && addBtn.getAttribute('title') === 'Add Row',
     `F8 ... and gives it back on a table WITH the markup's own words [${addBtn.getAttribute('title')}]`);
+
+  // ── S: one rule for every write control, and the table says what it is (C-107) ───────
+  // 🔴 C-84 covered six seats ONE AT A TIME and C-102 found the seventh by watching the owner
+  //    click it. The judgement was already single (`tableIsView`); what was copied five times
+  //    was ASKING it. A list in one place is what stops an eighth from being forgotten.
+  const CONTROLS = ['add-row-btn', 'delete-row-btn', 'tx-apply-btn',
+                    'smart-paste-btn', 'ingest-file-btn', 'folder-upload-btn'];
+  const controls = () => CONTROLS.map((id) => document.getElementById(id));
+  realState.currentTableKind = 'view';
+  for (const btn of controls()) { btn.disabled = false; delete btn.dataset.titleWas; }
+  M.guard.applyWriteGuards();
+  const locked = controls().filter((b) => b.disabled === true).length;
+  ok(locked === CONTROLS.length,
+    `S1 every write control on this screen is locked on a view (${locked}/${CONTROLS.length})`);
+  ok(controls().every((b) => b.getAttribute('title') === NOTE),
+    'S2 ... each carrying the same one reason');
+  // 🔴 AND THE TABLE SAYS SO BEFORE ANYTHING IS CLICKED. Until now 「this is a view」 was only
+  //    discoverable by trying to write; a locked control with no visible reason is a puzzle.
+  const kindBadge = document.getElementById('table-kind');
+  ok(kindBadge.textContent === NOTE && kindBadge.hidden === false,
+    `S3 the header says what the table is [${kindBadge.textContent}]`);
+  realState.currentTableKind = 'table';
+  M.guard.applyWriteGuards();
+  const free = controls().filter((b) => b.disabled === false).length;
+  ok(free === CONTROLS.length, `S4 ... and a table gives all of them back (${free}/${CONTROLS.length})`);
+  ok(kindBadge.hidden === true && kindBadge.textContent === '',
+    'S5 ... with no badge, because an ordinary table is not news');
+  // ⚠️ 「모름」은 거절이 아닙니다 — 옛 서버가 `kind` 를 안 보내면 멀쩡한 표가 잠기면 안 됩니다.
+  realState.currentTableKind = '';
+  M.guard.applyWriteGuards();
+  ok(controls().every((b) => b.disabled === false) && kindBadge.hidden === true,
+    'S6 a server that never said which is not a refusal -- P3 of the predicate, at the controls');
+  // 🔴 그리고 «규칙의 함수» 자체. 이 파일은 한 번에 모듈 «하나»만 갈아 끼우므로(머리글),
+  //    진짜 깔때기들은 언제나 진짜 규칙을 import 합니다 — 규칙 안의 결함은 여기서만 보입니다.
+  //    C1~C7 이 「넷이 같이 움직인다」를 행동으로 이미 재고, 이 둘은 그 답이 «어디서» 나오는지를 잽니다.
+  realState.currentTableKind = 'view';
+  log().textContent = '';
+  const refused = M.guard.refuseWrite();
+  ok(refused === true && log().textContent === NOTE,
+    `S7 the rule refuses and SAYS why, in one place [${log().textContent}]`);
+  realState.currentTableKind = 'table';
+  log().textContent = '';
+  ok(M.guard.refuseWrite() === false && log().textContent === '',
+    'S8 ... and on a table it refuses nothing and says nothing');
 
   // ── G: the refusal is the SERVER's sentence (C-102 ②) ────────────────────────────────
   // 🔴 `api.js` already reads `detail` where a cell edit is refused (:528). This one funnel
@@ -441,14 +488,26 @@ const DEFECTS = [
   ['grid.js: edit entry is offered on a view again', 'grid',
     s => s.replace('      editable: !isSystem && !viewTable,', '      editable: !isSystem,')],
   ['clipboard.js: the paste guard is gone', 'clipboard',
-    s => s.replace('    if (tableIsView()) {\n      e.preventDefault();\n'
-                   + '      elements.performanceLog.textContent = VIEW_READ_ONLY_NOTE;\n      return;\n    }\n', '')],
+    s => s.replace('    if (refuseWrite()) { e.preventDefault(); return; }\n', '')],
   ['clipboard.js: the clear guard is gone', 'clipboard',
-    s => s.replace('  if (tableIsView()) { elements.performanceLog.textContent = VIEW_READ_ONLY_NOTE; return; }\n', '')],
+    s => s.replace('  if (refuseWrite()) return;\n', '')],
   ['ui.js: the bulk-fill guard is gone', 'ui',
-    s => s.replace('  if (tableIsView()) { elements.performanceLog.textContent = VIEW_READ_ONLY_NOTE; return; }\n', '')],
-  ['clipboard.js: the refusal is silent', 'clipboard',
-    s => s.replace('      elements.performanceLog.textContent = VIEW_READ_ONLY_NOTE;\n', '')],
+    s => s.replace('  if (refuseWrite()) return;\n', '')],
+  // Re-keyed by C-107: the refusal's SENTENCE is written in one place now, so this is where
+  // a silent no-op would be made -- and it would silence all four funnels at once.
+  ['the refusal is silent, in every funnel at once', 'guard',
+    s => s.replace('  if (el) el.textContent = why;\n', '')],
+  // 🔴 THE CLAIM OF THIS ROUND, AS ONE MUTANT: one rule feeds every seat. Break the rule and
+  //    the paste, the clear, the bulk fill, the add AND the controls all go wrong together.
+  // ⚠️ NAMED FOR WHAT IT ACTUALLY BREAKS HERE. The funnels import the REAL rule (one module is
+  //    swapped per run), so what this mutant reddens is the controls, the badge and S7 -- the
+  //    funnels moving together is scored by C1-C7 on the real modules instead.
+  ['the rule stops refusing, so no control is armed and nothing says why', 'guard',
+    s => s.replace("  return tableIsView() ? VIEW_READ_ONLY_NOTE : '';", "  return '';")],
+  ['the control list loses a seat, which is how the seventh went missing', 'guard',
+    s => s.replace("  'addRowBtn', 'deleteRowBtn', 'txApplyBtn',", "  'deleteRowBtn', 'txApplyBtn',")],
+  ['the table never says what it is', 'guard',
+    s => s.replace('  badge.textContent = why;\n  badge.hidden = !why;', '')],
   // 🔴 C-105. The read path, which is where the owner's 422 arrived as an exception.
   ['api.js: a refused read is read as a page of rows again', 'api',
     s => s.replace('    if (!res.ok) {', '    if (false) {')],
@@ -459,13 +518,13 @@ const DEFECTS = [
     s => s.replace("  if (state.gridApi) state.gridApi.setGridOption('rowData', []);\n", '')],
   // 🔴 C-102. Four ways the owner's click gets back to the server, or its answer gets lost.
   ['api.js: the add-row funnel is unguarded again', 'api',
-    s => s.replace('  if (tableIsView()) { setBadge(elements.performanceLog, VIEW_READ_ONLY_NOTE); return; }\n', '')],
-  ['api.js: the control is never told the table changed', 'api',
-    s => s.replace('  applyViewWriteGuard();\n', '')],
-  ['ui.js: the guard eats the words the markup already wrote', 'ui',
-    s => s.replace("  else if (btn.dataset.titleWas) btn.setAttribute('title', btn.dataset.titleWas);\n", '')],
-  ['ui.js: the control is told, and stays clickable anyway', 'ui',
-    s => s.replace('  btn.disabled = view;', '  btn.disabled = false;')],
+    s => s.replace('  if (refuseWrite()) return;\n', '')],
+  ['api.js: the controls are never told the table changed', 'api',
+    s => s.replace('  applyWriteGuards();\n', '')],
+  ['the guard eats the words the markup already wrote', 'guard',
+    s => s.replace("    else if (back) btn.setAttribute('title', back);\n", '')],
+  ['the controls are told, and stay clickable anyway', 'guard',
+    s => s.replace('    btn.disabled = Boolean(why);', '    btn.disabled = false;')],
   ['api.js: the server`s sentence is folded into one of ours', 'api',
     // Re-aimed by C-105: the sentence is built in ONE place now (`refusalText`), shared with the
     // READ path -- so this is where folding it away happens. Same claim, same G1.
@@ -477,13 +536,14 @@ const DEFECTS = [
 ];
 const CONTROLS = [
   ['grid.js: a local rename', 'grid',
-    s => s.replace('  const viewTable = tableIsView();', '  const isAView = tableIsView();')
+    s => s.replace('  const viewTable = Boolean(writeRefusal());', '  const isAView = Boolean(writeRefusal());')
           .replace('      editable: !isSystem && !viewTable,', '      editable: !isSystem && !isAView,')],
   ['state.js: comments stripped', 'state',
     s => s.split('\n').filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n')],
 ];
 
-const FILES = { state: 'state.js', api: 'api.js', grid: 'grid.js', clipboard: 'clipboard.js', ui: 'ui.js', rows: 'source_rows.js' };
+const FILES = { state: 'state.js', api: 'api.js', grid: 'grid.js', clipboard: 'clipboard.js',
+                ui: 'ui.js', rows: 'source_rows.js', guard: 'write_guard.js' };
 
 async function scoreMutant(key, mutate, tag) {
   try {

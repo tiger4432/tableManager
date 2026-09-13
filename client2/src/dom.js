@@ -40,6 +40,8 @@ export const elements = {
   get modalMetaInfo() { return document.getElementById('modal-meta-info'); },
   get refreshGridBtn() { return document.getElementById('refresh-grid-btn'); },
   get addRowBtn() { return document.getElementById('add-row-btn'); },
+  // C-107. 이 표가 무엇인가(오늘은 뷰라는 사실 하나) — 비어 있으면 안 보입니다.
+  get tableKind() { return document.getElementById('table-kind'); },
   get deleteRowBtn() { return document.getElementById('delete-row-btn'); },
   get graphSyncBtn() { return document.getElementById('graph-sync-btn'); },
   get traceBtn() { return document.getElementById('trace-btn'); },

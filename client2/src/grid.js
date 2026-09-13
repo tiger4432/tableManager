@@ -1,6 +1,8 @@
 import { createGrid } from 'ag-grid-community';
 import { pageLimit } from './config.js';
-import { state, updateVisibleColIndexMap, joinResolvedColumn, visibleRangeColIds, tableIsView } from './state.js';
+import { state, updateVisibleColIndexMap, joinResolvedColumn, visibleRangeColIds } from './state.js';
+// C-107. 「쓸 수 있나」는 한 규칙이 답합니다 — 편집 진입도 쓰기의 문입니다.
+import { writeRefusal } from './write_guard.js';
 import { elements } from './dom.js';
 import { pagingView } from './match_count.js';
 // 🔴 닫는 방법은 Re-translate 드롭다운과 «같은 한 벌»입니다. 둘째가 나왔을 때 두 번째를
@@ -774,7 +776,7 @@ export function buildColumnDefs() {
   // must not be able to change halfway down the list.
   const fillTargets = fillTargetOrdinals();
   // C-84. 표의 «종류»도 한 번만 읽는다 — 컬럼마다 물으면 목록 중간에서 답이 바뀔 수 있다.
-  const viewTable = tableIsView();
+  const viewTable = Boolean(writeRefusal());
   // 🔴 은퇴한 기능의 잔해는 «만들지 않습니다» (숨기는 것이 아니라). 그래프 동기화는 서버가
   //    은퇴시켰고(`/graph/mapping-summary` -> 410 Gone), `main.js` 의 GRAPH_SYNC_RETIRED 는
   //    켤 경로가 없는 «리터럴»입니다.

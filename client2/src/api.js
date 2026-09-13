@@ -1,9 +1,10 @@
 import { API_BASE, WS_URL, CURRENT_USER, pageLimit } from './config.js';
 import { narrowingParams as buildNarrowing } from './narrowing.js';
-import { state, tableIsView, VIEW_READ_ONLY_NOTE } from './state.js';
+import { state } from './state.js';
+import { refuseWrite, applyWriteGuards } from './write_guard.js';
 import { elements } from './dom.js';
 import { clearRangeSelection } from './clipboard.js';
-import { updateSelectedCellUI, updateTxModeUI, applyViewWriteGuard } from './ui.js';
+import { updateSelectedCellUI, updateTxModeUI } from './ui.js';
 import { renderGrid, updateGridSortState, updateLoadedCount, updatePaginationUI, ensureCellObject, markCellOverwritten, applyFillTargetHeaders, sortQueryTail } from './grid.js';
 // 「Matches:」를 쓰는 자리는 다섯입니다. 철자와 «세는 중» 판정은 한 곳에 삽니다.
 import { setMatchCount } from './match_count.js';
@@ -180,7 +181,8 @@ export async function switchTable(tableName) {
   await loadSchema(tableName);
   // 🔴 C-102 ①. 자리가 여기인 이유: 표의 «종류»를 `loadSchema` 가 읽고, 그다음 줄이 그것을
   //    아는 «첫» 자리입니다. 컨트롤이 각자 물으면 새 컨트롤마다 한 번씩 빠집니다.
-  applyViewWriteGuard();
+  //    C-107: 이제 «쓰는 컨트롤 전부»와 머리의 배지가 같은 줄에서 맞춰집니다.
+  applyWriteGuards();
   // Re-create empty grid to bind new columns
   renderGrid([]);
   // Fetch initial chunk of data (reset skip to 0)
@@ -602,7 +604,7 @@ export async function addRows(count) {
   // 🔴 C-102 ①. 네 번째 깔때기. 붙여넣기·지우기·일괄채우기가 이미 이 모양이고, 이것만
   //    빠져 있어서 뷰에서 «서버까지» 갔습니다. 거절이 깔때기에 있어야 버튼이 아닌 다른
   //    경로로 불려도 같은 답이 납니다 (criterion ④).
-  if (tableIsView()) { setBadge(elements.performanceLog, VIEW_READ_ONLY_NOTE); return; }
+  if (refuseWrite()) return;
   setBadge(elements.performanceLog, `Creating ${count} empty row(s)...`);
   // 🔴 C-102 ②. 거절의 «사유»는 서버의 것입니다 — 이 파일이 이미 그렇게 하는 자리가 있고
   //    (:528 `errData.detail`), 이 한 자리만 `Error('Create failed')` 로 접고 있었습니다.

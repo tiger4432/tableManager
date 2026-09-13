@@ -10,7 +10,8 @@ import { narrowingTail } from './narrowing.js';
 // C-14: 값의 «출처»를 찍는 두 행. 하니스가 import 로 채점할 수 있게 자기 모듈에 삽니다 —
 // 이 파일은 ag-grid 의 CSS 를 import 해서 node 가 못 읽습니다.
 import { sourceRowHtml, sourceRowAllHtml } from './source_rows.js';
-import { state, tableIsView } from './state.js';
+import { state } from './state.js';
+import { writeRefusal } from './write_guard.js';
 import { elements } from './dom.js';
 import {
   checkServerHealth,
@@ -1562,7 +1563,8 @@ async function refreshSourcesList() {
         const isPinned = manualPriority === sourceName;
 
         const tr = document.createElement('tr');
-        tr.innerHTML = sourceRowHtml(sourceName, sourceVal, { isPinned, writable: !tableIsView() });
+        tr.innerHTML = sourceRowHtml(sourceName, sourceVal,
+                                     { isPinned, writable: !writeRefusal() });
 
         // Bind Pin Action
         const pinBtn = tr.querySelector('.pin-btn');
@@ -1683,7 +1685,7 @@ async function refreshSourcesList() {
         //    「this source covers all of them」, and those looked identical.
         tr.innerHTML = sourceRowAllHtml(sourceName, values,
                                         { isPinnedAll, cellCount: cells.length,
-                                          writable: !tableIsView() });
+                                          writable: !writeRefusal() });
 
         // Bind batch Pin Action
         const pinBtn = tr.querySelector('.pin-btn');

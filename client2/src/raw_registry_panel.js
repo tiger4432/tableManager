@@ -522,6 +522,10 @@ export class RawRegistryPanel {
       if (addBtn.addEventListener) {
         addBtn.addEventListener('click', () => {
           // 취소는 «보고 있던 것»으로 돌아갑니다. 다시 묻지 않습니다 — 응답이 그대로 있습니다.
+          // 🔴 C-106 ④ 의 뒷면: 취소는 «버리는» 것입니다. 새 이름의 초안을 보관에 남기면 다음
+          //    [+ 규칙 추가] 가 «지난번에 버린 글자»로 열리고, 배지가 그것을 「복원」이라 말합니다 —
+          //    운영자는 버렸는데 화면이 되살립니다.
+          if (this.newMode) this._forget();
           this.newMode = !this.newMode;
           this._again();
         });
