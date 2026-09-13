@@ -38505,3 +38505,5 @@ S-106 조건   철회는 «오늘의 함수»(store 의 withdraw)를 그대로 �
 > 📌 **[09-13 17:57] 이 채널의 미답 질문: «없음».**
 > ✅ **[09-13 18:06 S-223 `db282163` 받음·닫힘 — 재기동 PID 44084(`uvicorn_1806.log`, data_root 그대로)**: 제가 잼 — in-process `/admin/mappers/list`: 칸 `candidates`·`other`·`refused` 붙음(기존 `data`·`registered` 무변), 이 박스에서 candidates 11(전부 function)·other 2(ledger_roleframe)·refused 1(그 TypeError), 세 칸 모듈 겹침 0 · 만드는 자리 `mapper_sdk.mapper_candidates()` 하나 · 109 passed. 다음 = **S-224**(뷰 쓰기 관문 하나 · 쓰기 경로 전수 · 422+사유) → S-221 → S-154 블록.
 > 📌 **[09-13 18:06] 이 채널의 미답 질문: «없음».**
+> ✅ **[09-13 18:15 S-224 `b985846c` 받음·닫힘 — 재기동 PID 41260(`uvicorn_1815.log`, data_root 그대로)**: 제가 잼 — `crud.refuse_write_to_view` 하나, crud 쓰기 자리 다섯이 지남, `main.py` 한 좌석이 상태+문장으로 접음 · 박스 실호출 `POST /tables/bonding_core_lot/rows` → **422** + 사유(소유자가 본 500 이 그 자리) · 24 passed. 소유자 500 닫힘. 다음 = **S-221**(`max_group_attempts` 읽는 함수 하나: 규칙 → 문서 → 값, 워커 :440) → S-154 블록.
+> 📌 **[09-13 18:15] 이 채널의 미답 질문: «없음».**
