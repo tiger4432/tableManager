@@ -41611,3 +41611,81 @@ SCC                                4 -> «0» (열 모듈 전수 재측정)
 🔵 변이: `cell_layer` 가 `chain_replay` 를 import 하게 만들면 빨강 셋.
 
 > 📌 **[09-13 12:2x] 이 채널의 미답 질문: «없음».** 다음: 지시대로 **패키지화 «짓기 전 블록 갱신»** — 고리 0 이 됐으니 `virtual_join_executor` 의 자리를 import 방향으로 확정하고, 1,172 자리 · 재수출 0 · 런처 넷 · `sys.modules` 접두 81 전건을 블록에 싣겠습니다.
+
+---
+
+## 📋 [09-13 12:31] 패키지화 «짓기 전 블록» 갱신 — 고리 0 위에서 다시 잼 (코드 0줄)
+
+### 수 — 두 모듈이 늘어 다시 셌습니다
+```
+최상위 평면 모듈   66 -> «68»   (+virtual_join_refusal +cell_layer)
+import 문         1,172 -> «1,179»
+그 문을 실은 파일   376 -> «379»
+고리               SCC «0» (import 시점·지연 «둘 다» 비순환) — 이 블록의 전제가 바뀐 자리입니다
+```
+
+### 🔴 `sys.modules` 접두 비교 «전건» — 지시하신 81 자리를 분류했습니다
+```
+prose(주석)        14      membership(`in sys.modules`)   9      lookup   3      기타   24
+assign alias       11      delete by name                12      🔴 PREFIX COMPARE   «8»
+```
+그 여덟이 «전부»입니다:
+```
+chain_ingestion_worker:1727 "mappers."          ·  :1732 "pipeline_plugin_"
+run_watcher:177 "pipeline_plugin_"              ·  :182 "mappers."
+system_reload:108 "mappers."                    ·  :134 "pipeline_plugin_"
+run_auto_update:949 "dynamic_collector…"        ·  tests/test_contention_fixes:70 "server…"
+```
+🔵 **결론: 이번 패키지화가 «닿지 않습니다».** 여덟 중 «하나도» 68 의 이름을 비교하지 않습니다 — 비교 대상은 `mappers.`(운영자 맵퍼) · `pipeline_plugin_`(운영자 파서) · `dynamic_collector`(수집기) · `server.`(레거시 별칭)이고 넷 다 이동 대상 «밖»입니다. 게이트로는 「그 여덟의 접두 문자열 무변」을 걸겠습니다.
+
+### 🔴 두 새 모듈의 자리 — import «방향»이 정합니다 (지시대로)
+```
+cell_layer        읽는 쪽: chain_replay · virtual_join_executor  «둘뿐»
+                  -> 그 둘이 가는 패키지의 «아래». 자기 import 는 logging·uuid·keyset_scan 뿐이라
+                     어디에 놓아도 고리를 못 만듭니다. 시험이 그 성질을 붙들고 있습니다
+virtual_join_refusal  읽는 쪽: config_resolve_report · virtual_join_config -> virtual join 계열과 같이
+```
+🔴 **그런데 `virtual_join_executor` 는 «체인의 것이 아닙니다» — 실측이 그렇게 말합니다:**
+```
+읽는 쪽   chain_builtins · database/config_watcher · database/crud · main · system_reload
+=> 체인 «밖»이 셋(데이터 층 둘 + 기동/리로드 둘). 즉 이것은 «공용 설비»이지 체인 내부가 아닙니다
+=> `chain/*` 안에 넣으면 `database/` 가 `chain/` 을 import 하게 됩니다 — 층이 거꾸로입니다
+권고     virtual join 셋(config · executor · refusal)은 «자기 패키지»(`vjoin/`) 또는 최상위 잔류.
+         `chain/` 에 넣지 «않습니다»
+🔵 완화 하나: `database/crud` 의 둘은 «함수 안»입니다(:3838 :3992) — 모듈 수준 층 위반은 «아직» 없습니다.
+   그래서 이것은 「오늘 깨진다」가 아니라 「그 경계를 그으면 내일 깨진다」입니다
+```
+
+### 갱신된 경계 표 (제안)
+```
+chain/          chain_activity · chain_bindings · chain_builtins · chain_graph ·
+                chain_ingestion_worker · chain_key_gate · chain_replay + cell_layer      8
+vjoin/          virtual_join_config · virtual_join_executor · virtual_join_refusal       3   <- 체인 아님
+ledger/*        ledger_admin · ledger_explorer · ledger_trace · ledger_trace_router      4
+map/            map_alignment · map_meta_registrar · map_overlay · map_preset_routing
+                + alignment_batch_counts · alignment_view_service · dt_frame_transform
+                + frame_confirmation (map_alignment 과 «서로» 부름 — 같이 넣어야 경계를 안 넘음)  8
+enrichment/     enrichment_* 다섯                                                        5
+ingestion/      ingestion_activity · ingestion_checkpoint · file_ingestion_status         3
+runtime/        paths · event_constants · system_reload · process_supervisor · pacing ·
+                runtime_loops · health · launcher_args                                    8
+admin/          admin_auth · dev_bench · retroactive · schema_drift · audit_cache ·
+                audit_history                                                             6
+최상위 잔류      main · run_* 셋 · transfer_plan · bonding_plan · mapper_sdk · db_safety …  ~23
+                🔴 그리고 «운영자 고정 목록»(void_sat_format · pipeline_base ·
+                   html_topology_parser · database) 은 «절대» 안 움직입니다 — 약속입니다
+```
+⚠️ 「못 붙이면 최상위에 남김」을 지시받았고, 그래서 억지로 안 넣습니다 — 접두가 하나뿐인 31 중 상당수가 여기입니다.
+
+### 게이트 · 되돌리기
+```
+시험 6,284 무변 · 런처 넷(`main:app` · run_watcher · run_chain_worker · run_auto_update ·
+run_decoupled_app) 모듈 본문 실행 · 호환 재수출 «0»(옛 최상위 이름을 import 하는 자리 git grep 0)
+· SCC «0» 유지 · `sys.modules` 접두 여덟 문자열 무변 · 운영자 고정 목록 시험 초록
+되돌리기  한 커밋 revert. 그래서 1,179 자리가 «한 커밋»이어야 합니다
+```
+
+### 🔴 모르는 것 — 그대로입니다
+운영자 워크스페이스 스크립트가 무엇을 import 하는지 셀 수 없습니다. 답은 «약속»(`OPERATOR_IMPORT_NAMES`)이고, 그 목록의 모듈은 이동 대상에서 뺍니다.
+
+> 📌 **[09-13 12:31] 이 채널의 미답 질문: «하나» — `virtual_join_*` 셋을 `vjoin/` 로 낼까요, 최상위에 남길까요 (제 권고: `vjoin/` — `chain/` 에 넣는 것만 «안 됩니다», 데이터 층이 체인을 읽게 되므로).**
