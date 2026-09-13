@@ -1495,6 +1495,19 @@ body.resizing-active .history-sidebar {
   color: var(--text-muted);
 }
 
+/* C-102 ①. 비활성이 «보여야» 비활성입니다. `.glass-btn` 에는 이 규칙이 없어서, 뷰에서 잠긴
+   「행 추가」가 눌리는 버튼과 똑같이 보였을 것입니다 — 그러면 운영자는 누르고 «아무 일도
+   안 일어나는» 것을 봅니다. 값은 위 `.glass-page-btn:disabled` 와 «같은» 것을 씁니다:
+   같은 사실(못 누름)에 두 모양을 주지 않습니다. */
+.glass-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  border-color: var(--border);
+  color: var(--text-muted);
+}
+
+.glass-btn:hover:not(:disabled) { cursor: pointer; }
+
 #page-info {
   color: var(--text-muted);
   font-size: 0.75rem;

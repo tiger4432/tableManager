@@ -1284,7 +1284,7 @@ const FLOORS = new Map([
   //    `loadSchema`, and the same staged table is then asked at edit entry, the three write
   //    funnels, the badge rules and the two source rows. A per-seat answer is how one rule
   //    turns into two spellings, so the gate asks them all with one fixture.
-  ['grid_view_readonly_harness.mjs', 24],
+  ['grid_view_readonly_harness.mjs', 34],
   // New 2026-09-13 with C-86 (the chain tab can add a rule it did not have). Floor is the
   // count it reports on the commit that introduces it.
   // 🔴 IT CARRIES A DECOY SKELETON. 「the fields come from the declaration」 cannot be scored by
