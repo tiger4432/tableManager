@@ -1,5 +1,7 @@
 import { API_BASE, CURRENT_USER, pageLimit } from './config.js';
-import { state, isVirtualColumn, tableIsView, VIEW_READ_ONLY_NOTE } from './state.js';
+import { state, isVirtualColumn } from './state.js';
+// C-107. 「쓸 수 있나」를 묻는 자리가 «한 곳»입니다 — 두 줄씩 다섯 번 적혀 있던 것을 접었습니다.
+import { refuseWrite } from './write_guard.js';
 import { elements } from './dom.js';
 import { ensureCellObject, markCellOverwritten, updateGridSortState } from './grid.js';
 import { updateTxModeUI, updateSelectedCellUI, setupBeforeUnloadWarning } from './ui.js';
@@ -373,11 +375,7 @@ export function setupClipboardHandlers() {
     if (!state.gridApi) return;
 
     // C-84. 뷰에는 붙여넣지 않는다. 조용히 지나가면 「자막 없는 실패」라 한 줄 적는다.
-    if (tableIsView()) {
-      e.preventDefault();
-      elements.performanceLog.textContent = VIEW_READ_ONLY_NOTE;
-      return;
-    }
+    if (refuseWrite()) { e.preventDefault(); return; }
 
     // Determine target cells from selection map or drag bounds
     let targetCells = Object.values(state.selectedCellsMap);
@@ -735,7 +733,7 @@ export function setupClipboardHandlers() {
 export async function clearSelectedCells() {
   if (!state.gridApi || !state.currentTable) return;
   // C-84. 지우기도 쓰기다.
-  if (tableIsView()) { elements.performanceLog.textContent = VIEW_READ_ONLY_NOTE; return; }
+  if (refuseWrite()) return;
 
   let cellsToClear = []; // Array of { rowIndex, colId }
   const selectedCells = Object.values(state.selectedCellsMap);

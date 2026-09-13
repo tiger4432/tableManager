@@ -1,5 +1,6 @@
 import { API_BASE, CURRENT_USER, pageLimit } from './config.js';
-import { state, isVirtualColumn, tableIsView, VIEW_READ_ONLY_NOTE } from './state.js';
+import { state, isVirtualColumn } from './state.js';
+import { refuseWrite } from './write_guard.js';
 import { elements } from './dom.js';
 import { getLocalTimeString, escapeHtml } from './utils.js';
 import { updateGridSortState } from './grid.js';
@@ -130,33 +131,10 @@ export function setTransactionFilter(txId) {
   fetchData(true);
 }
 
-/**
- * 뷰에서 «쓰는 컨트롤»의 상태. C-102 ①.
- *
- * 🔴 자리가 «하나»인 것이 요점입니다. C-84 가 쓰기 좌석 여섯을 덮었는데 「행 추가」 버튼이
- *    빠졌고, 소유자가 뷰에서 그것을 눌러 서버까지 갔습니다 — 컨트롤마다 «자기가» 물으면
- *    여덟 번째가 또 빠집니다. 쓰기 컨트롤 전부를 이 한 자리로 모으는 것은 제안 표에 있습니다.
- * ⚠️ 이건 «보이는 절반»입니다. 거절 자체는 깔때기(`addRows`)가 하고, 그래야 다른 경로로 불려도
- *    같은 답이 납니다 — 나머지 세 깔때기가 이미 그 모양입니다.
- */
-export function applyViewWriteGuard() {
-  const btn = elements.addRowBtn;
-  if (!btn) return;
-  const view = tableIsView();
-  btn.disabled = view;
-  // 사유는 «한 줄»이고 철자는 `state.js` 하나입니다 — 자리마다 다르게 안 적힙니다.
-  // ⚠️ 마크업이 «이미» 자기 말을 답니다(`title="Add Row"`). 그것을 지우면 표로 돌아왔을 때
-  //    버튼이 말을 잃습니다 — 기억했다가 되돌립니다.
-  if (btn.dataset.titleWas === undefined) btn.dataset.titleWas = btn.getAttribute('title') || '';
-  if (view) btn.setAttribute('title', VIEW_READ_ONLY_NOTE);
-  else if (btn.dataset.titleWas) btn.setAttribute('title', btn.dataset.titleWas);
-  else btn.removeAttribute('title');
-}
-
 export async function applyValueToSelectedRange(newValue) {
   if (!state.gridApi) return;
-  // C-84. 일괄 채우기도 쓰기다.
-  if (tableIsView()) { elements.performanceLog.textContent = VIEW_READ_ONLY_NOTE; return; }
+  // C-84. 일괄 채우기도 쓰기다. C-107: 묻는 자리는 «한 곳».
+  if (refuseWrite()) return;
 
   let cellsToUpdate = Object.values(state.selectedCellsMap);
   if (cellsToUpdate.length === 0) {
