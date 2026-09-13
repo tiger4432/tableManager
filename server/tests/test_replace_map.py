@@ -37,7 +37,16 @@ def test_replace_map_clean_purge(client):
     🔴 AND THE SCOPE NEIGHBOUR IS WHY THIS IS STILL A TEST. With one row before and one
     after, "purged then re-inserted" and "did nothing at all" look identical. A row under
     a DIFFERENT key makes the assertion discriminating again: the legacy derivation pins
-    `EQP_ID`, so a purge that ignored its filters would take that row too."""
+    `EQP_ID`, so a purge that ignored its filters would take that row too.
+    🔴 AND THIS IS NOT THIS FIXTURE'S ACCIDENT (판정 395). The legacy derivation carries
+    the business key in `target_cols` on every plain-keyed table, so the scope always pins
+    exactly one row. Counted in the shipped catalogue: TWELVE of thirty-five tables are
+    plain-keyed with no `map_key_columns`, and all twelve carry their business key outside
+    `skip_cols`. Moving this test to another table would not bring the old scenario back.
+    ⚠️ WHAT IS NOT KNOWN: whether any of those twelve is pushed with `replace_map` today.
+    That is a property of the CALLERS and no declaration states it, so it is left unmeasured
+    rather than guessed.
+    """
     unique_eqp = "EQP_UNIQUE_999"
     neighbour = "EQP_UNIQUE_998"
 
@@ -109,7 +118,16 @@ def test_replace_map_fallback_scope_reported(client):
     `business_key_val`; it is one row now, so the scope covers one row and the report
     says so. The subject - that the response states the filters and the counts it
     really used - is unchanged, and `deleted: 1` still separates a purge that ran from
-    one that did not."""
+    one that did not.
+    🔴 AND THIS IS NOT THIS FIXTURE'S ACCIDENT (판정 395). The legacy derivation carries
+    the business key in `target_cols` on every plain-keyed table, so the scope always pins
+    exactly one row. Counted in the shipped catalogue: TWELVE of thirty-five tables are
+    plain-keyed with no `map_key_columns`, and all twelve carry their business key outside
+    `skip_cols`. Moving this test to another table would not bring the old scenario back.
+    ⚠️ WHAT IS NOT KNOWN: whether any of those twelve is pushed with `replace_map` today.
+    That is a property of the CALLERS and no declaration states it, so it is left unmeasured
+    rather than guessed.
+    """
     eqp = "EQP_SCOPE_FB"
     client.put("/tables/raw_table_1/data/updates", json={
         "updates": [{"updates": {"EQP_ID": eqp}}, {"updates": {"EQP_ID": eqp}}],

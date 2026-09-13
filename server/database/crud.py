@@ -4401,15 +4401,18 @@ def _apply_batch_updates_once(db: Session, table_name: str,
             # `business_key_val`, so such rows ARE matched and such a table could in
             # principle be diffed.
             #
-            # 🔴 THE GATE IS UNCHANGED ON PURPOSE (판정 394). Dropping the conjunct would
-            # turn diffing ON for a shape no test exercises, and a guard is not switched
-            # on at the end of a round. Measured in the shipped catalogue: of the nine
-            # tables declaring `map_key_columns`, NINE declare a composite key - so no
-            # shipped map reaches the other arm at all, and the only thing that does is a
-            # test fixture. Whether the conjunct should become a property is queue row
-            # S-233; until then `unresolvable_row_identity` is the reason this branch
-            # reports, and for a plain-keyed table that sentence is no longer true of the
-            # write path - which is exactly what S-233 holds.
+            # 🔴 THE GATE IS UNCHANGED, AND THE SHAPE IT DECIDES HAS NO SUBJECT
+            # (판정 394, corrected by 395). Counted in the shipped catalogue: of the NINE
+            # tables declaring `map_key_columns`, nine declare a composite key - so the
+            # other arm is reached by ZERO shipped tables and the only thing that takes
+            # it is a test fixture. There was never a behaviour question here, only two
+            # sentences that stopped being true; a queue row opened for it was closed on
+            # that count. A guard is not turned on for a shape nothing has.
+            #
+            # ⚠️ SO ONE SENTENCE STAYS SLIGHTLY WRONG, KNOWINGLY. `unresolvable_row_identity`
+            # is what this branch reports, and for a plain-keyed table the write path DOES
+            # resolve identity now. Nothing shipped can reach that reason, so it is named
+            # here rather than repaired by widening a gate at the end of a round.
             _cfg = TABLE_CONFIG.get(table_name, {})
             use_diff = bool(_cfg.get("map_key_columns")) and bool(_cfg.get("composite_key_source"))
 
