@@ -64,6 +64,7 @@ from chain import activity
 from chain.mapper_call import (                                      # noqa: F401
     MAPPER_LOG_TAG, execute_custom_mapper, without_missing)
 import chain_bindings
+from chain import rule_order
 import mapper_sdk
 import validation
 from ledger import followup as ledger_followup
@@ -764,6 +765,27 @@ def load_chain_rules():
                 len(synthesized), counts["dedup"], counts["auto_confirm"], counts["join"])
     except Exception as e:
         logger.error(f"[Enrichment] Failed to synthesize enrichment chain rules: {e}")
+
+    # 🔴 [S-156, 판정 385] THE DERIVED ORDER, READ HERE, ONCE. `rule_order` orders producers
+    #    before consumers from `trigger_table` ↔ `target_table` - the same derivation replay
+    #    has always used - and the worker's rule loop walks `rules` in this order, so the
+    #    order it runs in is the one the DECLARATION states rather than the one the file
+    #    happens to be typed in. No new cell: a cell would be a SECOND expression of the
+    #    order, free to disagree with the declaration.
+    #
+    # ⛔ A CYCLE IS NAMED AND THE ORDER IS LEFT ALONE - it does not stop the chain. This
+    #    loader's posture is 「거절된 분자는 세고 건너뛴다」: one unorderable pair must not cost
+    #    the other rules, and raising here would turn a bad pair into 「no chain at all」.
+    #    The sentence is the shared one, so the operator reads the same words replay gives.
+    #
+    # ⚠️ NOT THE SAME CYCLE `_validate_chain_cascade_graph` REFUSES. That one walks ONLY
+    #    `allow_chain_trigger` edges and is about a RUNTIME LOOP; this one walks every
+    #    producer→consumer edge and is about an IMPOSSIBLE ORDER. Two questions, two edge
+    #    sets - naming them the same thing is how one name comes to carry two meanings.
+    try:
+        rules = rule_order.order_rules(rules)
+    except rule_order.RuleCycleRefused as exc:
+        logger.error("[ChainRules] %s", exc)
 
     _validate_chain_cascade_graph(rules)
     _report_unwatchable_trigger_columns(rules)

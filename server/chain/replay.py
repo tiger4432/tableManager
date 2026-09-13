@@ -157,48 +157,18 @@ def find_rule(rule_name: str, rules: list = None) -> dict:
 
 
 def order_rules(rules: list) -> list:
-    """Topologically order rules so a producer replays before its consumer.
+    """생산자가 소비자보다 먼저 — 저자는 `chain.rule_order` 다 (S-156).
 
-    The live config makes this mandatory rather than nice-to-have:
-        production_plan  -> inventory_master
-        inventory_master -> inventory_master     (trigger == target)
-    Rule 1's output is rule 2's input, so replaying 2 first would recompute from
-    stale data. And rule 2 triggers itself, so it is a self-edge.
-
-    SELF-EDGES ARE IGNORED FOR ORDERING and handled by the snapshot guard in
-    `replay_rule` instead (a rule cannot be ordered before itself). A cycle
-    between DIFFERENT tables is refused by name: there is no correct order for
-    it, and picking one silently would produce a result nobody could reason
-    about.
+    ⚠️ THE SENTENCE AND THE EXCEPTION ARE DIFFERENT THINGS. The sentence is written once, in
+    the shared home; `ReplayRefused` is what this module's callers already catch, so the
+    refusal is re-raised under that name rather than making every caller learn a second one.
     """
-    by_target = {}
-    for r in rules:
-        by_target.setdefault(r.get("target_table"), []).append(r)
+    from chain.rule_order import RuleCycleRefused, order_rules as _ordered
 
-    state = {}   # rule name -> 0 visiting / 1 done
-    ordered = []
-
-    def visit(rule, path):
-        name = rule.get("name")
-        if state.get(name) == 1:
-            return
-        if state.get(name) == 0:
-            cycle = " -> ".join(path + [name])
-            raise ReplayRefused(
-                f"chain rules form a cycle across tables and cannot be ordered: {cycle}. "
-                f"Replay them one at a time with an explicit order you can justify.")
-        state[name] = 0
-        trigger = rule.get("trigger_table")
-        for producer in by_target.get(trigger, []):
-            if producer.get("name") == name:
-                continue  # self-edge: the snapshot guard handles it, not the order
-            visit(producer, path + [name])
-        state[name] = 1
-        ordered.append(rule)
-
-    for r in rules:
-        visit(r, [])
-    return ordered
+    try:
+        return _ordered(rules)
+    except RuleCycleRefused as exc:
+        raise ReplayRefused(str(exc)) from exc
 
 
 def is_self_triggering(rule: dict) -> bool:
