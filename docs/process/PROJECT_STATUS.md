@@ -986,9 +986,14 @@
 **① 감시 여섯** (TaskList 에 «안 뜸» — 출력 mtime 을 `…/tasks/<id>.output` 에서 센다). 이벤트가 한 번도 안 온 감시는 «다시 건다».
 ```
 b6ewyy4cl 착지(main)   b7mvc5zvj 라이브설정(09-08, 변화 시만)   bqzib9rk2 심박(:05)
-bpgna7r98 design       blqunpgwj 정지(15분)                    b4xdrhdbd 박스(변화 시만)
+bpgna7r98 design       b4xdrhdbd 박스(변화 시만)
+🔴🔴 정지 감시 `blqunpgwj` 는 **[09-14 00:3x] «제가 일부러 내렸습니다» — 죽은 게 «아닙니다»**
+   사유: 세 레인이 «영구 정지»(라운드 마감)라 밤새 15분마다 「예상된 침묵」만 보고합니다. 그건 소음입니다
+   🔴 **일이 재개되면 «다시 거십시오».** 안 걸면 레인이 멈춘 것을 제가 «볼 수 없습니다»
+   술어(그대로): IMP main `task/scoped_redo_report.md` · APP main `task/ontology_application_report.md`
+                CLI origin/design `task/axis_and_material_report.md` — 마지막 커밋 ≥30분이면 15분마다 STALL
+   ⚠️ 그리고 이 줄이 없으면 내일의 제가 「여섯 중 다섯 = 하나 죽었다」로 읽습니다. 그래서 «내린 것»도 적습니다
 ```
-⚠️ 정지 감시의 CLI=NNNm 은 «정상»입니다 — 클라는 이 라운드 정지 지시 중입니다.
 **② 박스: PID 2184** (23:52 기동, `uvicorn_2352.log`, 경로는 `uvicorn_current.txt`). 🔵 **기동 ERROR «0»** — 어젯밤의 가짜 고리 한 줄은 S-232+S-232-b 로 «사라졌습니다»(17 규칙 로드 · admin.html 200 · 어드민 문 401). 재기동 명령은 이 파일 위쪽 ②의 것을 «읽어서» 쓸 것 — 🔴 `-WindowStyle Hidden` 포함.
 **③ 지금 도는 것 (소유자 「저것들만 하고 끝내. 한도가 없어」 · 「나잘테니까 남은거 끝내고 쉬어」)**
 ```
