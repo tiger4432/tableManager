@@ -167,11 +167,15 @@ def test_a_target_change_has_no_ceiling(captured, monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_retraction_withdraws_the_layer_by_the_rule_name(monkeypatch):
-    """🔴 THE MECHANISM ALREADY EXISTED. `chain_replay.withdraw_source` retracts a named
-    source's layer and the join layer is named for the rule — so a reference row disappearing
-    costs the layer and NOTHING is written in its place. Inventing a `0` or a blank where a
-    value used to be is how a screen stops telling absence from measurement."""
-    import chain_replay
+    """🔴 THE MECHANISM ALREADY EXISTED. `withdraw_source` retracts a named source's layer
+    and the join layer is named for the rule — so a reference row disappearing costs the layer
+    and NOTHING is written in its place. Inventing a `0` or a blank where a value used to be is
+    how a screen stops telling absence from measurement.
+
+    🚩 IT LIVES IN `cell_layer` SINCE S-211 ① (판정 358). It was in `chain_replay`, imported
+    here inside `retract_rows`, and that one line was the last seam of a four-module ring.
+    Patching the OLD home would leave this green while the executor called the real thing."""
+    import cell_layer
 
     seen = {}
 
@@ -179,7 +183,7 @@ def test_retraction_withdraws_the_layer_by_the_rule_name(monkeypatch):
         seen.update(table=table_name, source=source_name, columns=columns)
         return {"withdrawn": 3}
 
-    monkeypatch.setattr(chain_replay, "withdraw_source", fake_withdraw)
+    monkeypatch.setattr(cell_layer, "withdraw_source", fake_withdraw)
     out = vje.retract_rows(None, _rule(materialize=True, max_rewrite_rows=10))
     assert seen == {"table": "left_t", "source": "join_frame", "columns": ["frame"]}
     assert out == {"withdrawn": 3}

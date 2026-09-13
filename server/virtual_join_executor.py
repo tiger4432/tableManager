@@ -67,6 +67,7 @@ provenance가 있는가**를 묻는다(쓰기 전 검사라 영속 흔적이 답
 import logging
 import time
 
+import cell_layer
 from verified_join_contract import usable_expose
 
 logger = logging.getLogger("VirtualJoinExecutor")
@@ -852,12 +853,14 @@ def _left_row_ids_for_key(db, rule: dict, key_values: list) -> list:
 def retract_rows(db, rule: dict, columns=None) -> dict:
     """The reference row is GONE, so the join's layer goes with it.
 
-    🔴 THE MECHANISM ALREADY EXISTED — `chain_replay.withdraw_source` retracts a named
-    source's layer, and the join layer is named for the rule. Nothing is written in its
-    place: 「투영은 지워도 기록은 안 된다」, and inventing a `0` or a blank where a value used
-    to be is how a screen stops being able to tell absence from measurement.
-    """
-    from chain_replay import withdraw_source
+    🔴 THE MECHANISM ALREADY EXISTED — `withdraw_source` retracts a named source's layer,
+    and the join layer is named for the rule. Nothing is written in its place:
+    「투영은 지워도 기록은 안 된다」, and inventing a `0` or a blank where a value used to be is
+    how a screen stops being able to tell absence from measurement.
 
-    return withdraw_source(db, rule["left_table"], rule["name"],
+    🪦 It lived in `chain_replay` and was imported HERE, inside this function - the last seam
+    of a four-module ring (S-211 ①, 판정 358). Retraction is not replay's behaviour; it is an
+    operation both of us use, so it moved below both.
+    """
+    return cell_layer.withdraw_source(db, rule["left_table"], rule["name"],
                            columns=list(columns or rule.get("expose") or ()))
