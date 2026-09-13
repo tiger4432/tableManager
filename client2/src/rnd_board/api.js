@@ -352,11 +352,15 @@ export async function fetchSubgraph(params) {
           node_limit: nodeLimit, hops, follow, collect, direction,
           backbone_hops: backboneHops, since, until,
           // C-90 ②. 무리와 잴 것. 좌석이 «선언»하고 이 함수는 실어 나르기만 합니다.
-          group_by: groupBy, measure } = params || {};
+          group_by: groupBy, measure,
+          // C-97 (S-148-a). 씨앗을 «열거하지 않고 서술»합니다 — 그 타입으로 등록된 주어 전부.
+          seed_type: seedType, seed_limit: seedLimit } = params || {};
   // 🔴 THE GATE (contract §4). Refused HERE rather than at the server, because the server
   //    would answer 200 with an empty walk and the screen would read that as 「없다」.
   //    A refusal is CONTENT: `subgraphModel` already renders `ok:false` with its reason.
-  if (isStampedNodeId(nodeId)) {
+  // ⚠️ 이 관문은 «id 가 있을 때»의 물음입니다. 서술된 씨앗에는 id 가 없고, 없는 id 를
+  //    「서버 노드가 아니다」로 판정하면 그건 안 물어본 것에 답하는 것입니다.
+  if (nodeId && isStampedNodeId(nodeId)) {
     return { ok: false, status: null, body: null,
              detail: { detail: { reason: 'seed_is_not_a_server_node' } } };
   }
@@ -365,12 +369,25 @@ export async function fetchSubgraph(params) {
   //    그건 「아직 안 골랐다」를 «고장»으로 그리는 것이고, 오늘 밤 같은 자리를 세 번 고쳤습니다.
   //    같은 층에서 «한 번» 막는 것이 부품마다 관문을 다는 것보다 짧습니다.
   //    실측 2026-08-29: 좌석 3 을 걷기로 옮기자마자 이 요청이 나갔습니다.
-  if (!nodeId) {
+  // 🔴 C-97. «서술된 씨앗도 씨앗입니다». 이 관문은 「아직 안 골랐다」를 422 로 바꾸지 않으려고
+  //    서 있고, 타입을 골랐다는 것은 «골랐다»는 뜻입니다 — 열거하지 않았을 뿐입니다.
+  if (!nodeId && !seedType) {
     return { ok: false, status: null, body: null,
              detail: { detail: { reason: 'no_seed_chosen' } } };
   }
   const query = new URLSearchParams();
-  query.set('id', nodeId);
+  // 🔴 둘 중 «하나»만 실립니다. 서버가 `id` 와 `seed_type` 을 «같이» 주는 것을 거절하므로,
+  //    둘 다 싣는 길을 여기서 열면 그 거절이 화면에서는 「고장」으로 보입니다.
+  //    서술이 이깁니다: 부른 쪽이 둘 다 줬다면 열거하지 않겠다는 뜻입니다.
+  if (seedType) {
+    query.set('seed_type', String(seedType));
+    // 상한은 예산과 «같은 규율»입니다 — 안 고르면 안 싣고, 안 실으면 서버 기본값이 섭니다.
+    if (seedLimit !== undefined && seedLimit !== null) {
+      query.set('seed_limit', String(seedLimit));
+    }
+  } else {
+    query.set('id', nodeId);
+  }
   // 🔴 `collect` LEFT 2026-08-28 (round Z). It was TRUE and load-bearing when it was written:
   //    the walk collected one node KIND and this argument chose which, and naming it here was
   //    the fix for a screen that had been landing on the server default by accident. Revision 6
@@ -554,11 +571,25 @@ export function measuredFromHops__untilServerServesIt(row, edges) {
 //    (depth true, every other axis false) two of the three said 「cut」, and the walk screen
 //    printed 「절단됨 · depth」 directly under 「요청 2홉 · 도달 2홉」 -- two lines denying each
 //    other, live. `reachModel` was the only one honouring what this file already knew.
+// 🔴 C-97. 잘린 축이 «불리언으로만» 오지 않습니다. 서술된 씨앗의 절단은 `seeds: 1` — 몇을
+//    «안 걸었는지»를 수로 말합니다(실측 2026-09-13). `=== true` 만 보면 그 절단이 화면에서
+//    «사라지고», 사라진 절단은 「그게 전부였다」로 읽힙니다 — 이 함수가 존재하는 이유 그대로입니다.
+// ⚠️ `interval_excluded` «하나»는 예외이고, 그건 이름이 아니라 «뜻» 때문입니다: 그 수는 예산에
+//    걸려 못 간 것이 아니라 «구간 밖이라 안 가져온» 것이고, 자기 독자(`intervalExcluded`)가
+//    따로 있습니다. 이 하나를 빼는 대신 「수는 절단」을 일반 규칙으로 두면, 서버가 다음 수치
+//    절단 축을 더하는 날 이 줄이 «저절로» 압니다 — 이름 목록은 그날 조용히 짧아집니다.
+const NOT_A_CUT = 'interval_excluded';
 function truncationAxes(raw, options) {
   if (!raw || typeof raw !== 'object') return null;
   const hopsChosen = !!(options && options.hopsChosen);
+  const isCut = (key) => {
+    if (key === NOT_A_CUT) return false;
+    const value = raw[key];
+    if (value === true) return true;
+    return typeof value === 'number' && Number.isFinite(value) && value > 0;
+  };
   return Object.keys(raw)
-    .filter((key) => raw[key] === true && !(key === 'depth' && hopsChosen));
+    .filter((key) => isCut(key) && !(key === 'depth' && hopsChosen));
 }
 
 // 🔴 C-51 / S-98. 「구간 밖이라 안 가져온 수」 — `truncated.interval_excluded`, 홉 합.
@@ -1958,9 +1989,24 @@ export function createWalkBoxWalk(deps) {
     //    예산 0 도 「안 골랐다」의 표시입니다. 정본 생성기는 「없으면 안 싣는다」만 압니다.
     //    두 규칙을 하나로 접으면 좌석 쪽 전선이 «조용히» 바뀝니다.
     try {
+      // 🔴 C-97 (판정 365). 키를 «안 골랐으면» 씨앗을 «서술»합니다 — 그 타입으로 등록된 주어
+      //    전부. 실측 2026-09-13: 오늘 이 자리는 `entitySeedId(type, {})` 를 보내 «422»
+      //    (`entity id must contain [type, structured keys]`)를 받습니다. 즉 주어를 모르면
+      //    걸을 수가 없었는데, 「이 타입이 무엇에 닿나」는 주어를 «모를 때» 묻는 질문입니다.
+      // ⚠️ 새 낱말도 새 선언도 «없습니다» — 화면이 이미 든 타입 하나가 그대로 인자가 됩니다.
+      //    상한은 «안 싣습니다»: 서버의 기본값이 곧 이 화면의 기본값이고, 그 수를 여기 적으면
+      //    서버가 그것을 바꾸는 날 화면만 옛 예산으로 묻습니다.
+      const described = Object.keys(keys || {}).length === 0;
       const got = await fetchSubgraph({
         apiBase: apiBase || '', fetchImpl: doFetch,
-        nodeId: entitySeedId(type, keys),
+        // 🔴 «버전을 벗겨서» — `entitySeedId` 가 같은 이음매를 이미 그렇게 넘습니다(그 줄의 주석).
+        //    서버는 「선언됐나」를 «벗긴 이름»으로 보고(`_bare`) 주어를 «적힌 그대로» 찾으므로,
+        //    `wafer@1` 을 실으면 선언 검사는 통과하고 주어가 «하나도» 안 맞습니다 — 거절이
+        //    「그 타입에 등록된 주어가 없다」로 나오고, 그건 데이터에 대한 거짓입니다.
+        //    하니스가 제 첫 판을 이 줄에서 잡았습니다.
+        ...(described
+          ? { seed_type: String(type).split('@')[0] }
+          : { nodeId: entitySeedId(type, keys) }),
         follow, collect, direction,
         hops: hops || undefined,
         node_limit: nodeLimit || undefined,
