@@ -155,6 +155,89 @@ async def test_the_log_says_the_same_number_the_verdict_used(monkeypatch, caplog
     assert f"/{LAX})" not in said, said
 
 
+# ---------------------------------------------------------------------------
+# 🔴 S-227 - the unit's attempts are its members' MAX
+#
+# Under `group_by` (S-154) a row committed later joins a group that has already failed. It
+# arrives with `retry_count` 0, so counting PER EVENT let it keep the unit alive while the
+# veterans were quarantined - a group could be fed forever as long as new rows for that key
+# kept coming.
+#
+# MEASURED BEFORE THE CHANGE: cap 2, one event that had tried once and one that had not ->
+# the veteran went FAILED, the joiner went RETRYING, and the log said 「(2/2)」 ABOUT THE
+# RETRIED ONE. The log already spoke for the unit while the verdict spoke for the event.
+# ---------------------------------------------------------------------------
+
+def _mixed_group(monkeypatch, cap, veteran_attempts):
+    async def always_fails(tx_id, events, db, rules):
+        return False, f"boom:{tx_id}", []
+
+    monkeypatch.setattr(worker, "process_chain_transaction_group", always_fails)
+    monkeypatch.setattr(worker, "_RULES_DOCUMENT", {"max_group_attempts": cap})
+    veteran = FakeEvent("s227_old", "s227_src", "s227_tx")
+    veteran.retry_count = veteran_attempts
+    joiner = FakeEvent("s227_new", "s227_src", "s227_tx")
+    rules = [{"name": "r", "trigger_table": "s227_src", "target_table": "s227_out",
+              "enabled": True}]
+    return ["s227_tx"], {"s227_tx": [veteran, joiner]}, rules, veteran, joiner
+
+
+@pytest.mark.anyio
+async def test_a_joiner_does_not_keep_a_spent_group_alive(monkeypatch):
+    """🔴 THE POINT OF S-227. The joiner has tried once; the veteran has tried twice. The
+    UNIT has tried twice, so the unit is out - both of it."""
+    order, groups, rules, veteran, joiner = _mixed_group(monkeypatch, cap=2, veteran_attempts=1)
+
+    await worker.process_pending_groups(FakeDB(), order, groups, rules, lambda: FakeDB())
+
+    assert (veteran.retry_count, veteran.status) == (2, "FAILED")
+    assert (joiner.retry_count, joiner.status) == (1, "FAILED")
+    assert joiner.processed_chain is True, "half a quarantined group is not quarantined"
+
+
+@pytest.mark.anyio
+async def test_the_max_does_not_isolate_a_group_that_has_attempts_left(monkeypatch):
+    """⚠️ THE CONTROL. Taking the MAX must not mean 「isolate sooner」 - with the cap at three
+    a unit that has tried twice still has a try left, and both members keep it."""
+    order, groups, rules, veteran, joiner = _mixed_group(monkeypatch, cap=3, veteran_attempts=1)
+
+    await worker.process_pending_groups(FakeDB(), order, groups, rules, lambda: FakeDB())
+
+    assert (veteran.retry_count, veteran.status) == (2, "RETRYING")
+    assert (joiner.retry_count, joiner.status) == (1, "RETRYING")
+    assert veteran.processed_chain is False and joiner.processed_chain is False
+
+
+@pytest.mark.anyio
+async def test_the_log_and_the_verdict_no_longer_disagree(monkeypatch, caplog):
+    """🔴 THE DEFECT AS THE OPERATOR SAW IT. 「(2/2)」 next to 「set to RETRYING」 is a line that
+    is wrong about the very row it describes."""
+    import logging
+
+    order, groups, rules, _veteran, _joiner = _mixed_group(monkeypatch, cap=2, veteran_attempts=1)
+
+    with caplog.at_level(logging.WARNING):
+        await worker.process_pending_groups(FakeDB(), order, groups, rules, lambda: FakeDB())
+
+    said = " ".join(record.getMessage() for record in caplog.records)
+    assert "RETRYING" not in said, said
+    assert "permanently failed" in said, said
+
+
+@pytest.mark.anyio
+async def test_a_group_of_one_is_unchanged(monkeypatch):
+    """⚠️ THE NO-REGRESSION. Most groups hold one event, and for them the member max IS that
+    event's count - this round must not move them by a single attempt."""
+    order, groups, event = _one_failing_group(monkeypatch)
+    monkeypatch.setattr(worker, "_RULES_DOCUMENT", {"max_group_attempts": 2})
+
+    await worker.process_pending_groups(FakeDB(), order, groups, [], lambda: FakeDB())
+    assert (event.retry_count, event.status) == (1, "RETRYING")
+
+    await worker.process_pending_groups(FakeDB(), order, groups, [], lambda: FakeDB())
+    assert (event.retry_count, event.status) == (2, "FAILED")
+
+
 @pytest.mark.anyio
 async def test_a_group_that_woke_no_rule_still_gets_a_number(monkeypatch):
     """⚠️ THE FALLBACK, RUN. With no rule matching, the document answers - and without this

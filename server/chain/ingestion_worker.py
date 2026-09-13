@@ -1987,10 +1987,29 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                 attempts_cap = min(_caps) if _caps else max_group_attempts(None, _RULES_DOCUMENT)
 
                 reexpanded_rows = 0
+                # 🔴 [S-227] THE UNIT'S ATTEMPTS ARE ITS MEMBERS' MAX, AND THE VERDICT IS THE
+                #    UNIT'S. Counting per event made the number depend on WHO IS IN THE GROUP:
+                #    under `group_by` (S-154) a row committed later joins a group that has
+                #    already failed, arrives with `retry_count` 0, and kept the unit alive while
+                #    its veterans were quarantined - so a group could be fed forever as long as
+                #    new rows for that key kept coming.
+                #
+                # ⚠️ MEASURED BEFORE IT WAS CHANGED: cap 2, one event that had tried once and one
+                #    that had not - the veteran went FAILED, the joiner went RETRYING, and the log
+                #    said 「(2/2)」 ABOUT THE RETRIED ONE. The log already spoke for the unit while
+                #    the verdict spoke for the event; one of the two was wrong, and it was the
+                #    verdict.
+                #
+                # ⚠️ THE MERGED UNIT SUCCEEDS OR FAILS TOGETHER - S-153 said so when it built the
+                #    merge, and this is that sentence applied to the attempt count. Splitting a
+                #    failed unit back apart is S-222 and is deliberately not here.
                 for event in events_in_tx:
                     event.retry_count += 1
                     max_retry_num = max(max_retry_num, event.retry_count)
-                    if event.retry_count >= attempts_cap:
+
+                isolate_group = max_retry_num >= attempts_cap
+                for event in events_in_tx:
+                    if isolate_group:
                         pay_dict = get_payload_dict(event)
                         payload_copy = dict(pay_dict) if pay_dict else {}
                         reason = error_reason or (
