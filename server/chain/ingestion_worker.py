@@ -734,6 +734,7 @@ def load_chain_rules():
     # [Enrichment Queue] enrichment_rules.json으로부터 dedup 투영 체인 룰을 자동 파생하여 병합.
     #   파생 룰은 일반 체인 룰과 동일 형태이므로 워커 파이프라인(HOL 가드·SLO 계측·warmup·재시도)을
     #   그대로 탄다. SYSTEM_RELOAD 시 본 함수가 재호출되므로 enrichment 규칙도 무중단 반영된다.
+    _synthesized_names = set()
     try:
         from database import crud
         import enrichment.config
@@ -783,6 +784,7 @@ def load_chain_rules():
                            and r.get("enabled", True)]
         if synthesized:
             rules = rules + synthesized
+            _synthesized_names = {r.get("name") for r in synthesized}
             # ⚠️ IT SAYS WHICH KINDS. 「N synthesized」 over three kinds is the shape that once
             # reported 8 of a kind there were 4 of, which is why S-179 ① split its own count.
             counts = builtins.synthesized_kind_counts(synthesized)
@@ -817,6 +819,22 @@ def load_chain_rules():
         rules = rule_order.order_rules(rules)
     except rule_order.RuleCycleRefused as exc:
         logger.error("[ChainRules] %s", exc)
+
+    # 🔴 THE SET, BY NAME, EVERY LOAD (S-234 0단계). On 2026-09-14 eight rules were running
+    # that the operator had not written and the boot line said only "8"; separately a rule
+    # was DROPPED by a spelling complaint and nothing named it. Both questions - what is
+    # running, and what stopped - are answered by writing the set down each time it is built.
+    try:
+        from chain import rule_census
+        _rows = rule_census.census(
+            rules, {name: "synthesized" for name in _synthesized_names})
+        logger.info("[ChainRules] set(%d): %s", len(_rows), " | ".join(
+            "%s[%s,%s] %s->%s%s" % (row["name"], row["origin"][:4], row["derive"],
+                                    row["trigger_table"], row["target_table"],
+                                    "" if row["enabled"] else " OFF")
+            for row in _rows))
+    except Exception as census_error:  # 사진이 못 찍혀도 체인은 돈다
+        logger.warning("[ChainRules] census unavailable: %s", census_error)
 
     _validate_chain_cascade_graph(rules)
     _report_unwatchable_trigger_columns(rules)
