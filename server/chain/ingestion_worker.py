@@ -2179,9 +2179,15 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
             if not _why and _tx in _ROWS_NOT_VISIBLE_DEFERS:
                 _why = "rows_not_visible defer %d/%d" % (
                     _ROWS_NOT_VISIBLE_DEFERS[_tx], max_rows_not_visible_defers())
+            # 🔴 NAME THE DECLARATIONS, NOT ONLY THE TABLE (2026-09-14 outage). A head-of-
+            # line report an operator cannot act on is not a report: the only lever is
+            # "which rule do I switch off", and that word was the one word missing.
+            _blocking = ", ".join(sorted(
+                str(r.get("name")) for r in (rules or [])
+                if r.get("trigger_table") == _t)) or "(no rule triggers on this table)"
             logger.info(
-                "[HOL Guard] %s: %d group(s) deferred behind %s (sweep #%d, head: %s)",
-                _t, _hol_deferred[_t], str(_tx)[:12], _HOL_SWEEP,
+                "[HOL Guard] %s: %d group(s) deferred behind %s (sweep #%d) | rules: %s | head: %s",
+                _t, _hol_deferred[_t], str(_tx)[:12], _HOL_SWEEP, _blocking,
                 (_why or "reason not recorded")[:80])
     return failed_any
 
