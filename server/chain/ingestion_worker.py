@@ -195,6 +195,9 @@ class OutboxListener:
 import paths  # single override point (ASSY_DATA_ROOT)
 RULES_PATH = paths.config_path("chain_rules.json")
 
+#: 직전 적재의 규칙 사진. «두 장을 견줘야» 「무엇이 사라졌나」가 나온다 (S-234 0단계).
+_LAST_CENSUS = None
+
 import internal_event_client
 
 API_BASE_URL = internal_event_client.api_base_url()
@@ -841,6 +844,19 @@ def load_chain_rules():
         if refused_here:
             logger.error("[ChainRules] refused(%d): %s", len(refused_here),
                          " | ".join("%s(%s)" % pair for pair in refused_here))
+        # 🔴 그리고 «지난번과 무엇이 달라졌나». 사진은 한 장만으로는 아무것도 안 막는다 —
+        #    2026-09-14 에 필요했던 문장은 「지금 이렇다」가 아니라 「어제 돌던 그것이
+        #    사라졌다」였고, 그것은 «두 장을 견줘야» 나온다. 로드는 설정이 바뀔 때마다
+        #    다시 도므로(SYSTEM_RELOAD), 이 자리가 그 견줌이 사는 자리다.
+        global _LAST_CENSUS
+        if _LAST_CENSUS is not None:
+            changes = rule_census.census_diff(_LAST_CENSUS, _rows)
+            if not changes["same"]:
+                # 사라짐이 있으면 «오류»다: 돌던 선언이 없어진 것은 언제나 볼 만한 일이다
+                say = logger.error if changes["removed"] else logger.warning
+                say("[ChainRules] 지난 적재와 다름 — %s",
+                        rule_census.describe(changes))
+        _LAST_CENSUS = _rows
     except Exception as census_error:  # 사진이 못 찍혀도 체인은 돈다
         logger.warning("[ChainRules] census unavailable: %s", census_error)
 
