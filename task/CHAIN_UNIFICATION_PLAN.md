@@ -91,7 +91,7 @@
   "on":     { "table": "dt_log", "columns": ["b_wx","b_wy"] },   // ③ 컬럼 트리거는 «이미 있다»(S-140)
 
   "derive": { "mapper": "frame_map", "params": { } },
-  //        | { "join":   { "table": "...", "on": {...}, "take": [...], "fold": {...} } }
+  //        | { "join":   { "table": "...", "on": {...}, "take": [...] } }   // fold 는 칸이 아니다 — 두 표의 표기 선언에서 «계산»(판정 397)
   //        | { "decide": { "key": [...], "contract": "..." } }
 
   "into":   { "table": "dt_inventory" },     // 저장
