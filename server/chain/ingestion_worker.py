@@ -686,6 +686,27 @@ def load_chain_rules():
     # a stale one from a live one because the mapper that reads it lives in a gitignored
     # file. So those are NAMED, not refused; what is refused is a rule missing `name` or
     # `trigger_table`, or one whose mapper resolves to nothing at all.
+    # 🔴 새 문법도 «읽는다» (S-234 2단계). 판별은 `derive` «한 칸»이다 — 오늘의 세 문법 중
+    #    아무것도 그 이름을 쓰지 않으므로, 있는 선언은 새 모양이고 없는 선언은 오늘 그대로다.
+    #    번역은 왕복이 증명된 어댑터를 지나 «오늘의 dict»가 되므로, 아래 전부가 무변이다
+    #    (rule_shape 의 왕복 게이트: 출하 선언 전건 + 무작위 300 모양).
+    #    ⚠️ 감지를 넓히지 않는다 — `on`/`into` 로 감지하면 그 이름을 맵퍼 인자로 쓰던
+    #    선언이 «다른 뜻»이 된다. 새 칸 하나로만 가른다.
+    try:
+        from chain import rule_shape
+        translated = []
+        for rule in rules:
+            if isinstance(rule, dict) and isinstance(rule.get("derive"), dict):
+                translated.append(
+                    rule_shape.as_chain_rule(rule_shape.from_declaration(rule)))
+            else:
+                translated.append(rule)
+        rules = translated
+    except Exception as grammar_error:
+        # 못 읽으면 «오늘 그대로» 간다 — 새 문법 때문에 옛 선언이 멈추는 일은 없다
+        logger.error("[ChainRules] unified grammar unreadable, old shapes only: %s",
+                     grammar_error)
+
     kept = []
     refused_here = []  # (이름, 코드) — 아래 census 가 「안 도는 것」으로 같이 말한다
     for index, rule in enumerate(rules):

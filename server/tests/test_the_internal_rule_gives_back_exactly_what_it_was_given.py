@@ -209,3 +209,62 @@ def test_the_preview_refuses_to_write_when_a_declaration_would_not_round_trip(tm
     assert preview.main(["--config", str(config),
                          "--out", str(tmp_path / "never.json")]) == 1
     assert not (tmp_path / "never.json").exists()
+
+
+# ---------------------------------------------------------------------------
+# 「출하 선언에서 참」을 「어떤 선언에서도 참」으로 — 운영 선언은 내가 못 본다
+# ---------------------------------------------------------------------------
+
+import itertools  # noqa: E402
+import random  # noqa: E402
+
+#: 모델이 «아는» 칸과 «모르는» 칸을 섞는다. 뒤쪽이 운영 선언의 절반이고, 내가 못 보는 절반이다.
+_KNOWN = {"trigger_table": "t", "trigger_columns": ["a", "b"], "target_table": "u",
+          "mapper": "m", "mapper_module": "mm", "mapper_function": "ff",
+          "params": {"gate": 7.0}, "group_by": ["lot"], "max_group_rows": 10,
+          "max_group_attempts": 2, "idempotent": False, "enabled": True}
+_UNKNOWN = {"allow_chain_trigger": True, "follow_up": False, "어떤_한글_칸": "값",
+            "nested": {"a": [1, {"b": None}]}, "n": None, "zero": 0,
+            "empty_list": [], "empty_dict": {}, "false": False}
+
+
+def _shapes(seed=20260914, count=300):
+    """아는 칸과 모르는 칸을 무작위로 섞은 선언들. 내가 «떠올린» 모양만 재지 않기 위해서."""
+    rng = random.Random(seed)
+    keys = list(_KNOWN) + list(_UNKNOWN)
+    for _ in range(count):
+        chosen = rng.sample(keys, rng.randint(0, len(keys)))
+        raw = {"name": "r%d" % rng.randint(0, 999)}
+        for key in chosen:
+            raw[key] = _KNOWN.get(key, _UNKNOWN.get(key))
+        yield raw
+
+
+def test_any_chain_declaration_round_trips_not_only_the_ones_i_thought_of():
+    """🔴 이 게이트가 ③(로더 이관)의 «허가증»이다. 운영 선언을 나는 볼 수 없으므로,
+    「내가 본 것에서 참」이 아니라 「어떤 모양에서도 참」이어야 갈아 끼울 수 있다.
+
+    ⚠️ 특히 «없는 칸»·None·0·False·빈 목록 — 이 다섯은 화면에서 똑같이 생겼고, 왕복이
+    그중 하나를 다른 하나로 바꾸면 선언이 조용히 다른 뜻이 된다."""
+    for raw in _shapes():
+        back = rule_shape.as_chain_rule(rule_shape.from_chain_rule(raw))
+        assert back == raw, raw
+
+        written = rule_shape.to_declaration(rule_shape.from_chain_rule(raw))
+        assert rule_shape.as_chain_rule(rule_shape.from_declaration(written)) == raw, raw
+
+
+def test_a_falsy_value_is_not_confused_with_an_absent_cell():
+    """0 · False · [] · {} · None 은 «적힌 것»이다. 「없음」과 같은 칸에 접히면 안 된다."""
+    for value in (0, False, [], {}, None, ""):
+        raw = {"name": "r", "trigger_table": "t", "target_table": "u",
+               "mapper": "m", "some_cell": value}
+        back = rule_shape.as_chain_rule(rule_shape.from_chain_rule(raw))
+        assert "some_cell" in back and back["some_cell"] == value, value
+
+
+def test_a_declaration_with_nothing_but_a_name_survives():
+    """⚠️ 반쯤 적힌 선언도 «그대로» 돌아와야 한다 — 적재기가 거절하든 말든, 그 판단은
+    이 모듈의 것이 아니다. 여기서 칸을 만들거나 지우면 거절 사유가 바뀐다."""
+    raw = {"name": "only"}
+    assert rule_shape.as_chain_rule(rule_shape.from_chain_rule(raw)) == raw
