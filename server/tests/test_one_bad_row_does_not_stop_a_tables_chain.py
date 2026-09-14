@@ -278,14 +278,20 @@ def test_a_payload_that_does_not_carry_the_join_key_is_not_judged(db):
     assert _rows(db)[0].grade == "Z"
 
 
-def test_a_collision_with_a_stored_row_is_not_caught_yet(db):
-    """THE STATED BOUNDARY (S-174 ①). One batch is what this reads, so a new row taking a
-    key an EARLIER batch already stored still dies on the index. Pinned rather than left
-    implicit: a limit nobody wrote down reads as a limit nobody has."""
+def test_a_collision_with_a_stored_row_is_refused_by_name_too(db):
+    """⚰️ THIS TEST ASSERTED THE OPPOSITE UNTIL 2026-09-14, and the boundary it pinned
+    (S-174 ①) is what a production outage was made of: a new row taking a key an EARLIER
+    batch stored died on the index, and since `uq_vjoin_*` is not the statement's
+    `ON CONFLICT` target it took the WHOLE push with it. Pinning the limit was right;
+    living with it was not. Both halves now refuse by name, so the boundary is gone rather
+    than documented."""
     _push(db, [_item("U-FIRST", "J-DUP")])
-    with pytest.raises(Exception):
-        _push(db, [_item("U-SECOND", "J-DUP")])
-    db.rollback()
+    report = {}
+    _push(db, [_item("U-SECOND", "J-DUP")], report=report)
+
+    assert sorted(r.business_key_val for r in _rows(db)) == ["U-FIRST"]
+    assert report["rows_refused"][crud.DROP_UNIQUE_VIOLATED] == 1
+    assert report["refusals"][0]["others"] == ["U-FIRST"]
 
 
 # ---------------------------------------------------------------------------
@@ -390,3 +396,41 @@ def test_a_replace_map_push_whose_every_row_is_refused_does_not_empty_the_map(db
     db.rollback()
     assert [r.business_key_val for r in _rows(db)] == ["U-KEEP"], (
         "the purge must have been unwound with the refusal")
+
+
+# ---------------------------------------------------------------------------
+# The STORED half (2026-09-14 outage)
+# ---------------------------------------------------------------------------
+
+def test_a_row_colliding_with_a_stored_key_is_skipped_and_the_rest_are_written(db):
+    """🔴 THE HALF THIS FILE'S SUBJECT SAID IT DID NOT COVER, and the one that cost a
+    production day. Everything above is a pair inside ONE batch. Here the key is already
+    in the TABLE, which breaks the same index - and because `uq_vjoin_*` is not the
+    statement's `ON CONFLICT` target there is no DO UPDATE arm for it, so the whole
+    statement used to die: the entire push, not the offending row. No chain rule has to be
+    involved, which is why disabling every chain rule did not stop it."""
+    _push(db, [_item("U-FIRST", "J-HELD")])
+    assert sorted(r.business_key_val for r in _rows(db)) == ["U-FIRST"]
+
+    report = {}
+    _push(db, [_item("U-CLASH", "J-HELD"), _item("U-OK", "J-FREE")], report=report)
+
+    written = sorted(r.business_key_val for r in _rows(db))
+    assert written == ["U-FIRST", "U-OK"], written
+    assert report["rows_refused"][crud.DROP_UNIQUE_VIOLATED] == 1, report["rows_refused"]
+
+    refusal = [r for r in report["refusals"] if r["row"] == "U-CLASH"][0]
+    assert refusal["others"] == ["U-FIRST"], refusal["others"]
+    assert refusal["key"] == ["J-HELD"]
+    assert "U-FIRST" in refusal["message"]
+
+
+def test_updating_the_row_that_already_holds_the_key_is_not_a_collision(db):
+    """⚠️ AN UPSERT IS NOT A CLASH. The row holding the key re-pushing its own key must
+    still be written, or every second push of an unchanged file would refuse itself."""
+    _push(db, [_item("U-SAME", "J-OWN", grade="A")])
+    report = {}
+    _push(db, [_item("U-SAME", "J-OWN", grade="B")], report=report)
+
+    assert sorted(r.business_key_val for r in _rows(db)) == ["U-SAME"]
+    assert not report.get("refusals"), report.get("refusals")

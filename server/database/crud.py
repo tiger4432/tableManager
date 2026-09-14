@@ -3967,7 +3967,11 @@ def _stored_join_key_owners(db: Session, table_name: str, columns: list, folds: 
     for row in db.execute(sa_text(sql), params).fetchall():
         key = tuple(row[2 + i] for i in range(len(exprs)))
         if key in wanted:
-            owners[key] = row[0] or row[1] or "(stored row)"
+            # 🔴 BOTH HANDLES, BECAUSE THE ITEM MAY CARRY EITHER. Returning one of them
+            # and comparing it against the other is how a row re-pushing its OWN key was
+            # read as a clash - an upsert refused as a duplicate, silently dropping a
+            # legitimate update. The caller must be able to match on whichever the item has.
+            owners[key] = (row[0], row[1])
     return owners
 
 def refuse_virtual_join_duplicates(db: Session, table_name: str,
@@ -4066,10 +4070,16 @@ def refuse_virtual_join_duplicates(db: Session, table_name: str,
             holder = owners.get(key)
             if not holder:
                 continue
+            held_row_id, held_bk = holder
+            holder_name = held_bk or held_row_id or "(stored row)"
             for index in indexes:
-                mine = str(_item_identity(items[index], index))
-                if mine == str(holder):
-                    continue  # the same row being updated - that is an upsert, not a clash
+                item = items[index]
+                mine = str(_item_identity(item, index))
+                own_row_id = getattr(item, "row_id", None)
+                own_bk = getattr(item, "business_key_val", None)
+                if ((own_row_id and held_row_id and str(own_row_id) == str(held_row_id))
+                        or (own_bk and held_bk and str(own_bk) == str(held_bk))):
+                    continue  # the same row being updated - an upsert, not a clash
                 refused_indexes.add(index)
                 refusals.append({
                     "reason": DROP_UNIQUE_VIOLATED,
@@ -4077,18 +4087,18 @@ def refuse_virtual_join_duplicates(db: Session, table_name: str,
                     "columns": list(columns),
                     "key": list(key),
                     "row": mine,
-                    "others": [str(holder)],
+                    "others": [str(holder_name)],
                     "message": (
                         f"규칙 '{rule_name}' 의 행 {mine} 이(가) 가상 조인의 오른쪽 "
                         f"유일성({', '.join(columns)}={', '.join(str(v) for v in key)})을 "
-                        f"어겨 건너뜀 — 같은 조인 키를 «이미 가진» 행: {holder}"),
+                        f"어겨 건너뜀 — 같은 조인 키를 «이미 가진» 행: {holder_name}"),
                 })
             if any(i in refused_indexes for i in indexes):
                 logger.warning(
                     "⚠️ [VirtualJoinUnique] %s: rule '%s' - incoming row(s) carry the "
                     "right-side key %s=%s already held by stored row %s; skipped by name "
                     "instead of failing the whole statement.",
-                    table_name, rule_name, list(columns), list(key), holder)
+                    table_name, rule_name, list(columns), list(key), holder_name)
 
     if not refused_indexes:
         return []
