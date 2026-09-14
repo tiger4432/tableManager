@@ -38650,3 +38650,23 @@ S-106 조건   철회는 «오늘의 함수»(store 의 withdraw)를 그대로 �
 > 🔵 **오늘 밤 이 레인의 값은 코드가 아니었습니다 — 제 «문장»을 세 번 고쳤습니다**: ① 판정 387 의 «넓이»를 시험으로 박아 제가 뒤집게 함(→388) ② 388 의 전제(`by_target` 셋뿐)를 재서 «여덟»로 반증 ③ 394 를 배포 카탈로그 0/35 로 «주어 없음»으로 정정(→395, S-233 닫음). 그리고 ㉡ 진짜 회귀 0 을 «전 스위트»가 확인했고, 제가 놓친 셋째 빨강도 그 실행이 잡았습니다.
 > 🛑 **영구 정지.** 재개는 이 채널의 다음 지시로만. 남은 서버 줄(열린 50)은 소유자 판단 뒤입니다 — 그중 「박스 모양」 아홉은 판정 390 으로 «안 잽니다».
 > 📌 **[09-14 00:2x] 이 채널의 미답 질문: «없음».**
+> 🔴🔴 **[09-15 09:x 소유자 판정 셋 → S-237 «지금»** (재개): ① 「그냥 체인을 만드는 «껍데기»만 다른 거지 — enrich · join · chain」 ② 「옛 껍데기도 버리고, 일단 **조인은 통합 선언에** 넣어. enrich · mapper 는 그 뒤에 이관」 ③ 「**가상 조인은 그대로 두고**, 이건 «조인»이라고 하자」.
+> **한 문장**: 통합 선언(`derive` 문법, 로더가 이미 읽음 `11646ddb`)에 **`join` 종류**를 새로 넣는다. 그것은 «체인 맵퍼»로 돈다. **가상 조인(`virtual_join/*` · `builtin:join` · 읽기 시점 실행기)은 이 라운드에 «한 줄도» 안 건드린다** — 운영이 그 위에서 돌고 있다. 이관은 그 뒤 별 라운드.
+> **CODE_MAP 해당 절부터**(chain_builtins · rule_shape · crud apply_batch_updates), 그다음 grep 검증.
+> **짓는 것 셋**
+> ```
+> ㉠ 번역   chain/rule_shape.as_chain_rule — 지금 derive.kind == "join" 이면 맵퍼 없는 dict 가 나와 unresolvable_mapper 로 «거절»된다(제가 잼).
+>          -> kind == "join" 을 «내부 맵퍼 id + params(조인 명세)» 로 번역. 🔴 id 는 `builtin:join` 이 «아니다» — 그 이름은 가상 조인이 등록해 쓴다(JOIN_MAPPER, 실측). 충돌 없는 id 하나를 정하고 이유를 그 자리에 적을 것(제안: `builtin:unified_join` — 낱말은 당신이, 게이트가 충돌 0 을 잰다)
+>          왕복 게이트(`test_the_internal_rule_gives_back_exactly_what_it_was_given`)는 «그대로 초록»이어야 한다 — 이 번역은 «통합 문법 → 체인 dict» 한 방향이고 옛 dict 왕복은 안 건드린다
+> ㉡ 맵퍼   chain/builtins 의 `builtin:` 표에 새 종류 «자기 완결»로 등록(register_builtin). 가상 조인 모듈을 import 하지 «않는다»
+>          읽음  params: right_table · on(왼쪽↔오른쪽 키 쌍) · take(가져올 컬럼) · fold(접기)
+>          함    SELECT «하나» — 대상 왼쪽 행(row_id IN …) LEFT JOIN 오른쪽 ON «접힌 키 식» + matched(오른쪽 row_id IS NOT NULL)
+>                접힌 키 식은 `virtual_join.config.index_key_expression`/`notation_norm.fold_sql_text` «함수만» 빌린다(모듈 import 는 함수 하나짜리 — 실행기·캐시는 안 빌림)
+>          씀    crud.apply_batch_updates, source_name = 규칙 이름(자기 층). matched 이고 값 null → «null 로 씀»(f3c04dee 판정) · 안 맞으면 «건너뜀»
+>          참조 쪽  오른쪽 표를 trigger 로 하는 «둘째 규칙»을 껍데기가 같이 낳는다(follow_up: True 페이싱 — S-151 70,800행 부류) · WHERE 만 다름(바뀐 오른쪽 키를 든 왼쪽 행)
+> ㉢ 껍데기  통합 선언 한 건(derive.join + into.table) → 체인 규칙 «둘»(왼쪽 트리거 + 오른쪽 트리거 follow_up). census 에 둘 다 origin=declared 로 뜬다
+> ```
+> **안 하는 것(명시)**: 가상 조인 파일·`builtin:join`·읽기 시점 실행기·`synthesized_join_chain_rules`·column_filter·source_preparation «전부 무접촉». 기존 가상 조인 시험 «전부 초록 그대로»가 게이트다. enrich·mapper 의 통합 선언 이관은 «다음 라운드».
+> **게이트** ① 통합 선언 한 건을 파일에 적고 진짜 `load_chain_rules` 로 읽어 규칙 «둘»이 선다(`test_the_loader_reads_the_unified_grammar` 모양) ② 박스의 가상 조인 선언 하나를 «같은 뜻의 통합 join» 으로 «옆에» 적고(이름 다르게, 대상 컬럼 다르게 — 옛것과 «동시에» 같은 컬럼을 쓰지 않는다) 실행 → 옛 읽기 시점 값과 «같은 행·같은 값»(값 하나하나 대조) ③ matched-null=null · unmatched 건너뜀 ④ 참조 쪽 규칙이 follow_up 으로 «페이싱»(인라인 아님) ⑤ 내부 id 충돌 0(`builtin:` 표에 두 번 등록되면 빨강) ⑥ 가상 조인 시험 전부 «변화 없이» 초록 ⑦ 변이: 접힌 키 식을 빼면 빨강(fold 있는 픽스처) · matched 판정을 값 null 로 대신하면 빨강.
+> 🔴 **첫 실행은 «보고 나서»**: ②의 첫 바퀴 행 수를 «세고» 보고 → 제가 재기동. 그 뒤 전 스위트 → 정지.
+> 📌 **[09-15 09:x] 이 채널의 미답 질문: «없음».**
