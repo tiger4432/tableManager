@@ -777,9 +777,17 @@ def materialize_rows(db, rule: dict, row_ids: list) -> dict:
     expose = list(rule.get("expose") or ())
     items = []
     for row_id, answer in results.items():
-        values = (answer or {}).get("values") or {}
-        cells = {col: values[col] for col in expose
-                 if col in values and values[col] is not None}
+        answer = answer or {}
+        values = answer.get("values") or {}
+        # 🔴 「null 로 쓰면 null 이 되어야 한다」(소유자 2026-09-15). 종전에는 오른쪽 값이
+        #    None 이면 그 칸을 «빼고» 썼고, 전부 None 이면 행을 통째로 건너뛰었다 — 그래서
+        #    「오른쪽 기록이 null 이다」라는 사실이 «아무 데도 안 남았다».
+        #    ⚠️ 그렇다고 «안 맞은 행»에 null 을 쓰지는 않는다. 그건 「값이 null 이다」라는
+        #    «다른 주장»이고, 이 저장소가 「없는 것/0인 것」이라 부르는 바로 그 병이다.
+        #    두 경우를 가르는 것이 `matched` 이고, 그 필드는 «그러라고» 있다(execute_rule 계약).
+        if not answer.get("matched"):
+            continue
+        cells = {col: values.get(col) for col in expose}
         if not cells:
             continue
         items.append(schemas.GeneralUpdateItem(

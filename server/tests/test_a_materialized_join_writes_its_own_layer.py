@@ -87,18 +87,28 @@ def test_every_written_cell_carries_the_rule_as_its_source(captured, monkeypatch
     assert [i.updates for i in items] == [{"frame": "F-1"}, {"frame": "F-2"}]
 
 
-def test_a_row_the_join_did_not_match_is_skipped_not_written_blank(captured, monkeypatch):
-    """⚠️ 「없는 것」 AND 「0인 것」 MUST NOT LAND THE SAME. Writing `None` for an unmatched row
-    would make an absent right-hand row indistinguishable from a right-hand row holding an
-    empty value, and the layer could never be told apart from a real one afterwards."""
+def test_an_unmatched_row_is_skipped_but_a_matched_null_is_written_as_null(captured,
+                                                                          monkeypatch):
+    """⚠️ 「없는 것」 AND 「0인 것」 MUST NOT LAND THE SAME - and that is exactly why these two
+    cases now part company.
+
+    ⚰️ THIS TEST ASSERTED THAT BOTH WERE SKIPPED UNTIL 2026-09-15, when the owner ruled
+    「null 로 쓰면 null 이 되어야 한다」. A matched right-hand row holding NULL is a FACT - the
+    record exists and its value is empty - and skipping it left that fact recorded nowhere.
+    An UNMATCHED row is a different thing: there is no record, and writing null there would
+    assert 「the value is null」, which is a claim nobody made. So `miss` is still skipped and
+    `null` is now written, which is the distinction `matched` exists to carry."""
     monkeypatch.setattr(vje, "execute_rule", _joined({
         "hit": {"matched": True, "values": {"frame": "F"}},
         "miss": {"matched": False, "values": {}},
         "null": {"matched": True, "values": {"frame": None}}}))
     out = vje.materialize_rows(None, _rule(materialize=True, max_rewrite_rows=10),
                                ["hit", "miss", "null"])
-    assert out["written"] == 1
-    assert [i.row_id for i in captured[0][1]] == ["hit"]
+    assert out["written"] == 2
+    written = {i.row_id: i.updates for i in captured[0][1]}
+    assert set(written) == {"hit", "null"}, "miss 가 써졌거나 null 이 빠졌다"
+    assert written["hit"] == {"frame": "F"}
+    assert written["null"] == {"frame": None}, "null 이 null 로 안 써졌다"
 
 
 def test_nothing_is_written_when_nothing_matched(captured, monkeypatch):
