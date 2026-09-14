@@ -107,3 +107,51 @@ def as_join_rule(internal: dict) -> dict:
 
 def _rename(source: dict, mapping: dict) -> dict:
     return {mapping[key]: value for key, value in source.items() if key in mapping}
+
+
+# ---------------------------------------------------------------------------
+# 새 문법 — 내부 객체를 «적는» 모양 (S-234 §2). 읽기와 쓰기가 한 쌍이다.
+# ---------------------------------------------------------------------------
+
+def to_declaration(internal: dict) -> dict:
+    """내부 규칙 -> 새 문법 dict. 「사람이 적는 모양」이므로 «빈 칸을 만들지 않는다».
+
+    ⚠️ 빈 `limits: {}` 나 `on: {}` 를 적어 두면 선언이 「무언가 설정됐다」고 읽힌다 —
+    운영자에게 «없는 것»과 «비어 있게 정한 것»은 다른 문장이다.
+    """
+    out = {"name": internal.get("name")}
+    if internal.get("enabled_written"):
+        out["enabled"] = internal.get("enabled")
+    for key in ("on", "derive", "into", "limits"):
+        value = internal.get(key)
+        if value:
+            out[key] = value
+    if internal.get("extra"):
+        # 🔴 제품이 뜻을 모르는 칸은 «한 자리»에 모아 둔다 — 흩어 두면 새 문법의 칸과
+        #    구별이 안 되고, 그러면 다음 사람이 그것을 문법이라 읽는다.
+        out["extra"] = internal["extra"]
+    return out
+
+
+def from_declaration(raw: dict, origin: str = "declared") -> dict:
+    """새 문법 dict -> 내부 규칙. `to_declaration` 의 역이다."""
+    raw = raw if isinstance(raw, dict) else {}
+    derive = raw.get("derive") or {}
+    kind = derive.get("kind")
+    if not kind:
+        for name in ("mapper", "join", "decide"):
+            if name in derive:
+                kind = name
+                break
+    return {
+        "name": raw.get("name"),
+        "enabled": raw.get("enabled", True),
+        "enabled_written": "enabled" in raw,
+        "on": dict(raw.get("on") or {}),
+        "derive": dict(derive, kind=kind or "unknown"),
+        "into": dict(raw.get("into") or {}),
+        "limits": dict(raw.get("limits") or {}),
+        "origin": origin,
+        "grammar": "unified",
+        "extra": dict(raw.get("extra") or {}),
+    }

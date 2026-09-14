@@ -128,3 +128,84 @@ def test_every_shipped_join_declaration_survives_the_round_trip():
     for name, raw in declarations.items():
         back = rule_shape.as_join_rule(rule_shape.from_join_rule(name, raw))
         assert back == raw, name
+
+
+# ---------------------------------------------------------------------------
+# 새 문법 — 「옛것 -> 새 문법 -> 옛것」이 같아야 이행이 무손실이다 (S-234 8.3 ④)
+# ---------------------------------------------------------------------------
+
+def test_a_chain_rule_written_in_the_new_grammar_comes_back_as_itself():
+    """🔴 이행의 게이트. 새 문법으로 «적어 두고» 다시 읽었을 때 오늘의 소비자가 받는 dict 가
+    원본과 달라지면, 3단계(기계가 파일을 옮겨 씀)는 선언을 조용히 바꾸는 것이 된다."""
+    for raw in CHAIN_RULES:
+        written = rule_shape.to_declaration(rule_shape.from_chain_rule(raw))
+        back = rule_shape.as_chain_rule(rule_shape.from_declaration(written))
+        assert back == raw, (raw.get("name"), written, back)
+
+
+def test_a_join_written_in_the_new_grammar_comes_back_as_itself():
+    for name, raw in JOIN_RULES:
+        written = rule_shape.to_declaration(rule_shape.from_join_rule(name, raw))
+        back = rule_shape.as_join_rule(rule_shape.from_declaration(written))
+        assert back == raw, (name, written, back)
+
+
+def test_every_shipped_declaration_survives_the_new_grammar():
+    """출하 선언 전건으로 같은 것을 다시 — 이행이 붙을 대상이 바로 이것들이다."""
+    document = _shipped("chain_rules.json.sample")
+    rules = document.get("rules", document)
+    rules = rules if isinstance(rules, list) else list(rules.values())
+    for raw in rules:
+        if not isinstance(raw, dict):
+            continue
+        written = rule_shape.to_declaration(rule_shape.from_chain_rule(raw))
+        assert rule_shape.as_chain_rule(rule_shape.from_declaration(written)) == raw, \
+            raw.get("name")
+
+    joins = {name: raw for name, raw in _shipped("virtual_join_rules.json.sample").items()
+             if isinstance(raw, dict) and not name.startswith("_")}
+    for name, raw in joins.items():
+        written = rule_shape.to_declaration(rule_shape.from_join_rule(name, raw))
+        assert rule_shape.as_join_rule(rule_shape.from_declaration(written)) == raw, name
+
+
+def test_the_new_grammar_does_not_invent_empty_cells():
+    """⚠️ «없는 것»과 «비어 있게 정한 것»은 다른 문장이다. 빈 limits 를 적어 두면
+    운영자가 「무언가 설정돼 있다」고 읽는다."""
+    written = rule_shape.to_declaration(rule_shape.from_chain_rule(CHAIN_RULES[0]))
+    assert "limits" not in written
+    assert "enabled" not in written
+    assert written["on"] == {"table": "dt_log"}
+
+
+# ---------------------------------------------------------------------------
+# 미리보기 도구 — «깨지면 안 쓴다» 가 그 도구의 전부다
+# ---------------------------------------------------------------------------
+
+def test_the_preview_refuses_to_write_when_a_declaration_would_not_round_trip(tmp_path,
+                                                                             monkeypatch):
+    """🔴 반쯤 옳은 이행 파일은 없느니만 못하다. 하나라도 왕복이 깨지면 «쓰지 않고», 그
+    선언을 이름으로 든다. 이 경로를 안 태우면 그것은 「돈다고 믿는 거절」이다."""
+    sys.path.insert(0, os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
+    import preview_unified_declarations as preview
+
+    config = tmp_path / "config"
+    config.mkdir()
+    (config / "chain_rules.json").write_text(json.dumps({"rules": [
+        {"name": "ok", "trigger_table": "t", "target_table": "u", "mapper": "m"}]}),
+        encoding="utf-8")
+
+    document, report = preview.build(str(config))
+    assert report["broken"] == []
+    assert report["count"] == 1
+    assert report["kinds"] == {"mapper→table": 1}
+
+    # 왕복을 «고의로» 깨뜨린다 — 어댑터가 칸 하나를 잃는 세상에서 도구가 무엇을 하는가
+    monkeypatch.setattr(preview.rule_shape, "as_chain_rule",
+                        lambda internal: {"name": internal.get("name")})
+    document, report = preview.build(str(config))
+    assert report["broken"] == [("chain", "ok")]
+    assert preview.main(["--config", str(config),
+                         "--out", str(tmp_path / "never.json")]) == 1
+    assert not (tmp_path / "never.json").exists()
