@@ -63,7 +63,19 @@ def test_rewiring_a_rule_to_another_table_is_a_change():
     after = _census([_rule("r", trigger="dt_log", target="dt_job_attribution")])
 
     fields = rule_census.census_diff(before, after)["changed"][0]["fields"]
-    assert fields["target_table"]["after"] == "dt_job_attribution"
+    assert fields["tables"]["after"]["target_table"] == "dt_job_attribution"
+
+
+def test_a_table_key_beyond_the_obvious_two_is_photographed_too():
+    """🔴 전 스위트가 잡은 결함. 표를 이름 대는 칸은 «일곱»이고, 처음 이 사진은 둘만 찍었다 —
+    나머지로 배선이 바뀌면 「같다」고 답했을 것이다. 목록은 저자에게 묻는다."""
+    keys = rule_census.table_keys()
+    assert len(keys) > 2 and "map_table" in keys
+
+    before = _census([_rule("r", map_table="dt_map")])
+    after = _census([_rule("r", map_table="core_usage_map")])
+    fields = rule_census.census_diff(before, after)["changed"][0]["fields"]
+    assert fields["tables"]["after"]["map_table"] == "core_usage_map"
 
 
 def test_narrowing_a_column_trigger_is_a_change_and_order_of_columns_is_not():

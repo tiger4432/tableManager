@@ -856,9 +856,10 @@ def load_chain_rules():
         _rows = rule_census.census(
             rules, {name: "synthesized" for name in _synthesized_names})
         logger.info("[ChainRules] set(%d): %s", len(_rows), " | ".join(
-            "%s[%s,%s] %s->%s%s" % (row["name"], row["origin"][:4], row["derive"],
-                                    row["trigger_table"], row["target_table"],
-                                    "" if row["enabled"] else " OFF")
+            "%s[%s,%s] %s%s" % (
+                row["name"], row["origin"][:4], row["derive"],
+                " ".join("%s=%s" % pair for pair in sorted(row["tables"].items())),
+                "" if row["enabled"] else " OFF")
             for row in _rows))
         # 🔴 「도는 것」 옆에 「안 도는 것」. 2026-09-14 에 하루를 쓴 물음이 정확히 이 둘이었고,
         #    둘이 서로 다른 로그 줄에 흩어져 있어 «수만 줄» 속에서 짝지을 수가 없었다.

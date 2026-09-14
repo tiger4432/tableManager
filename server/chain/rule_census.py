@@ -23,8 +23,20 @@ from __future__ import annotations
 
 
 #: 사진 한 장의 칸. 바뀌면 그것이 «보고할 차이»다.
-CENSUS_FIELDS = ("name", "enabled", "trigger_table", "target_table",
-                 "trigger_columns", "derive", "origin")
+CENSUS_FIELDS = ("name", "enabled", "tables", "trigger_columns", "derive", "origin")
+
+
+def table_keys():
+    """표를 이름 대는 칸의 «유일한 저자»에게 묻는다 (`chain_bindings.RULE_TABLE_KEYS`).
+
+    🔴 여기 «글자로» 적지 않는 이유가 실물로 드러났다. 처음 이 파일은 `trigger_table` 과
+    `target_table` «둘»만 찍었는데, 저자가 든 목록은 «일곱»이다 — `source_table` ·
+    `map_table` · `inventory_table` · `metadata_target_table` · `derivation_source_table`.
+    그 다섯 중 하나로 배선이 바뀌면 사진이 그것을 «못 본다». 두 번째 목록은 새 키가
+    생긴 날 한쪽만 모른다는 그 규칙이 정확히 이 결함을 잡았다(전 스위트가 잡음).
+    """
+    import chain_bindings
+    return tuple(chain_bindings.RULE_TABLE_KEYS)
 
 
 def derive_kind(rule: dict) -> str:
@@ -58,8 +70,8 @@ def rule_row(rule: dict, position: int, origin: str = "declared") -> dict:
     return {
         "name": rule.get("name"),
         "enabled": bool(rule.get("enabled", True)),
-        "trigger_table": rule.get("trigger_table"),
-        "target_table": rule.get("target_table"),
+        # 선언이 «든» 표 칸만. 없는 칸을 None 으로 채우면 「배선이 생겼다」와 구별이 안 된다
+        "tables": {key: rule[key] for key in table_keys() if key in rule},
         # 정렬해 담는다 — 선언이 적은 «순서»는 이 축의 사실이 아니다
         "trigger_columns": sorted(str(c) for c in columns) if columns else None,
         "derive": derive_kind(rule),
