@@ -109,3 +109,51 @@ def test_a_blank_bucket_is_noted_but_does_not_hide_the_real_duplicates():
 
     assert "LOT-A" in sentence
     assert "900" in sentence and "부재" in sentence
+
+
+# ---------------------------------------------------------------------------
+# 접기 계획 — 「접어도 되는 것」과 「접으면 안 되는 것」을 가르는 것이 요점이다
+# ---------------------------------------------------------------------------
+
+def test_rows_that_differ_are_never_offered_as_foldable():
+    """🔴 이 도구의 존재 이유. 같은 키의 행들이 «실제로 다르면» 그것은 사본이 아니라
+    「신원이 이 컬럼이 아니다」는 증거다 — S-226 이 가르쳐 준 것. 접으면 데이터가 사라진다."""
+    plan = {"table": "dt_log", "columns": ["dt_job_id"], "safe": [],
+            "blank_keys": [],
+            "unsafe": [{"key": ["JOB-1"], "rows": 400,
+                        "differing_columns": ["b_wx", "b_wy", "dt_cell_key"]}]}
+    sentence = unique_key.describe_fold_plan(plan)
+
+    assert "데이터가 사라지는" in sentence
+    assert "b_wx" in sentence
+    assert "키를 넓히십시오" in sentence
+    assert "접어도 되는" not in sentence
+
+
+def test_true_copies_are_offered_and_counted():
+    plan = {"table": "t", "columns": ["k"], "unsafe": [], "blank_keys": [],
+            "safe": [{"key": ["A"], "rows": 3, "keep": "r1", "drop": ["r2", "r3"],
+                      "differing_columns": []}]}
+    sentence = unique_key.describe_fold_plan(plan)
+
+    assert "접어도 되는 키 1" in sentence
+    assert "3 행 중 1 남김" in sentence
+
+
+def test_the_two_kinds_are_never_merged_into_one_count():
+    """⚠️ 「중복 N」 하나로 합치면 운영자가 «접어도 되는지»를 못 고른다 — 그 판단이
+    이 화면의 전부다."""
+    plan = {"table": "t", "columns": ["k"], "blank_keys": [],
+            "safe": [{"key": ["A"], "rows": 2, "differing_columns": []}],
+            "unsafe": [{"key": ["B"], "rows": 5, "differing_columns": ["x"]}]}
+    sentence = unique_key.describe_fold_plan(plan)
+
+    assert "접어도 되는 키 1" in sentence
+    assert "데이터가 사라지는» 키 1" in sentence
+
+
+def test_a_json_cell_can_be_compared_without_blowing_up():
+    """dict·list 는 해시가 안 된다. 비교하다 던지면 계획 자체가 «안 나온다»."""
+    assert unique_key._comparable({"b": 1, "a": 2}) == unique_key._comparable({"a": 2, "b": 1})
+    assert unique_key._comparable([1, 2]) != unique_key._comparable([2, 1])
+    assert unique_key._comparable(None) is None

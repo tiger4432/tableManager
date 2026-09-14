@@ -223,3 +223,82 @@ def forget(rule_name: str = None):
         _TRIED.clear()
     else:
         _TRIED.pop(rule_name, None)
+
+#: 접기 계획에 담는 키의 최대 수. 운영 표에서 중복이 수천이면 계획서가 진단이 아니라 덤프가 된다.
+MAX_PLANNED_KEYS = 50
+
+
+def fold_plan(db, table: str, columns: list, folds=None, limit: int = MAX_PLANNED_KEYS) -> dict:
+    """접기 «전»에 무엇을 접을지 — 그리고 «접어도 되는지»를 가를 재료 (S-235, 판정 「접든가 해」).
+
+    🔴 이 함수의 요점은 접는 것이 아니라 «두 경우를 가르는 것»이다:
+
+        행들이 사실상 «같다»      -> 사본이다. 접어도 잃는 것이 없다
+        행들이 «다르다»          -> 그 표의 신원은 이 컬럼이 아니다. 접으면 «데이터가 사라진다»
+                                   고칠 것은 데이터가 아니라 «선언»이고, 그것이 S-226 의 교훈이다
+
+    그래서 각 키마다 «어느 컬럼이 서로 다른가»를 같이 센다. 그 목록이 비어 있으면 접기는 안전하고,
+    비어 있지 않으면 이 도구는 접자고 말하지 «않는다» — 사람이 볼 사실을 줄 뿐이다.
+
+    ⛔ 아무것도 쓰지 않는다. 적용은 별도의 명시적 걸음이다.
+    """
+    from sqlalchemy import text as sa_text
+
+    duplicates, blanks = duplicate_keys(db, table, columns, folds, limit=limit)
+    exprs = _expressions(columns, folds)
+    plans, unsafe = [], []
+
+    for entry in duplicates:
+        where = " AND ".join("%s = :v%d" % (expr, index)
+                             for index, expr in enumerate(exprs))
+        params = {"v%d" % index: str(value) for index, value in enumerate(entry["key"])}
+        rows = db.execute(sa_text(
+            'SELECT * FROM "%s" WHERE %s ORDER BY updated_at DESC NULLS LAST, row_id DESC'
+            % (table, where)), params).mappings().fetchall()
+        if len(rows) < 2:
+            continue
+
+        # 🔴 «메타 칸»은 비교에서 뺀다 — 그것들이 다른 것은 사본의 증거이지 차이의 증거가 아니다
+        meta = {"row_id", "created_at", "updated_at", "business_key_val"}
+        differing = sorted({
+            column for column in rows[0].keys() if column not in meta
+            and len({_comparable(row[column]) for row in rows}) > 1})
+
+        plan = {"key": entry["key"], "rows": len(rows),
+                "keep": rows[0].get("row_id"),
+                "drop": [row.get("row_id") for row in rows[1:]],
+                "differing_columns": differing}
+        (unsafe if differing else plans).append(plan)
+
+    return {"table": table, "columns": list(columns),
+            "safe": plans, "unsafe": unsafe, "blank_keys": blanks}
+
+
+def _comparable(value):
+    """dict·list 는 해시가 안 되므로 비교 가능한 모양으로. «값이 같은가»만 물으면 된다."""
+    if isinstance(value, (dict, list)):
+        import json
+        return json.dumps(value, sort_keys=True, ensure_ascii=False, default=str)
+    return value
+
+
+def describe_fold_plan(plan: dict) -> str:
+    """접기 계획을 사람이 읽는 문단으로. «안전한 것»과 «아닌 것»을 절대 같은 칸에 두지 않는다."""
+    lines = []
+    safe, unsafe = plan.get("safe") or [], plan.get("unsafe") or []
+    if safe:
+        lines.append("접어도 되는 키 %d - 메타 칸 말고는 값이 «같은» 행들입니다:" % len(safe))
+        for entry in safe[:10]:
+            lines.append("   %s -> %d 행 중 1 남김"
+                         % (", ".join(str(v) for v in entry["key"]), entry["rows"]))
+    if unsafe:
+        lines.append("[!] 접으면 «데이터가 사라지는» 키 %d - 행들이 실제로 다릅니다:" % len(unsafe))
+        for entry in unsafe[:10]:
+            lines.append("   %s -> %d 행, 다른 컬럼: %s"
+                         % (", ".join(str(v) for v in entry["key"]), entry["rows"],
+                            ", ".join(entry["differing_columns"][:6])))
+        lines.append("   [!] 이쪽은 «신원이 이 컬럼이 아니라는 뜻»입니다. 접지 말고 키를 넓히십시오")
+    if plan.get("blank_keys"):
+        total = sum(entry["rows"] for entry in plan["blank_keys"])
+        lines.append("키가 «비어 있는» 행 %d - 중복이 아니라 부재입니다(접기 대상 아님)" % total)
+    return "\n".join(lines) or "중복 없음"
