@@ -136,6 +136,28 @@ DEFAULT_UNRESOLVED_LABEL = "미상"
 MAX_EXPOSE_COLUMNS = 32
 
 
+
+#: 🔴 A STANDING REFUSAL IS NOT NEWS (2026-09-14 outage). The verified-rules cache expires
+#: every RULES_CACHE_TTL seconds and every read that misses it re-runs this loader, so a
+#: join missing its unique index logged the SAME rejection every few seconds, forever, on
+#: the READ path - with no chain rule involved. That is what "I disabled every chain and
+#: the errors keep coming" was. The refusal still reaches the operator through the config
+#: report and `/admin/config/virtual-join/verify`, which are the places you go to ask;
+#: the log says it when it CHANGES.
+_REPORTED_REJECTIONS = {}
+
+
+def _say_once(key, logger_, message, *args):
+    """Log `message` only when this key's state is new or different."""
+    stamp = message % args if args else message
+    if _REPORTED_REJECTIONS.get(key) == stamp:
+        return False
+    if len(_REPORTED_REJECTIONS) >= 1000:
+        _REPORTED_REJECTIONS.clear()
+    _REPORTED_REJECTIONS[key] = stamp
+    logger_.warning("%s (repeats are silenced until this changes)", stamp)
+    return True
+
 def _record(rejections, scope: str, subject, detail: str, code: str = CODE_SHAPE,
             facts: dict = None):
     """무효 선언 1건을 수집기에 남긴다 ― `enrichment_config._record`와 같은 형태.
@@ -558,7 +580,7 @@ def validate_virtual_join_rules(raw_config, known_tables: dict = None,
         normalized, err, code, facts = _validate_join(name, raw, known_tables,
                                                       rejections=rejections)
         if err is not None:
-            logger.warning("[VirtualJoin:%s] declaration rejected: %s", name, err)
+            _say_once(("shape", name), logger, "[VirtualJoin:%s] declaration rejected: %s", name, err)
             _record(rejections, "rule", name, err, code=code, facts=facts)
             continue
         if normalized is not None:
@@ -783,9 +805,10 @@ def load_verified_rules(db, path: str = None, known_tables: dict = None,
     for rule in rules:
         result = verify_uniqueness(db, rule)
         if result["refused"]:
-            logger.warning("[VirtualJoin:%s] rejected: no unique index covers %s(%s)",
-                           rule["name"], rule["right_table"],
-                           ", ".join(rule["right_columns"]))
+            _say_once(("unique", rule["name"]), logger,
+                      "[VirtualJoin:%s] rejected: no unique index covers %s(%s)",
+                      rule["name"], rule["right_table"],
+                      ", ".join(rule["right_columns"]))
             _record(rejections, "rule", rule["name"],
                     f"no valid UNIQUE index covers "
                     f"{rule['right_table']}({', '.join(rule['right_columns'])})",
