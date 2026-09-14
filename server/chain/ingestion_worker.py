@@ -927,6 +927,31 @@ def _validate_chain_cascade_graph(rules):
 
 
 
+
+#: 🔴 THE SAME FAILURE, ONCE (2026-09-14 outage). A poisoned group is NARROWED down to
+#: single rows on purpose, so one bad row becomes thousands of identical failures - and
+#: each one printed a full traceback. The operator could not read the log at all, which
+#: means the log stopped being a diagnosis and became the thing being diagnosed.
+#: First occurrence carries the traceback. After that: one short line, with how many.
+_FAILURE_SEEN = {}
+_FAILURE_LOG_EVERY = 500
+
+
+def log_failure_folded(logger_, rule_name, target_table, reason: str):
+    """One line per distinct failure, with a count - never one per row."""
+    lines = [ln for ln in str(reason or "").strip().splitlines() if ln.strip()]
+    gist = lines[-1] if lines else "(no reason)"
+    key = (rule_name, target_table, gist)
+    seen = _FAILURE_SEEN.get(key, 0) + 1
+    _FAILURE_SEEN[key] = seen
+    if seen == 1:
+        logger_.error("[Chain] rule=%s target=%s FAILED: %s%s%s",
+                      rule_name, target_table, gist, "\n", reason)
+    elif seen % _FAILURE_LOG_EVERY == 0:
+        logger_.error("[Chain] rule=%s target=%s FAILED x%d (same reason): %s",
+                      rule_name, target_table, seen, gist)
+    return seen
+
 def mark_processed(event, status: str):
     """The ONE place an outbox event stops being work. Status, the flag, and the time.
 
@@ -1294,7 +1319,8 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                 # thousands of failures could not tell WHICH declaration to switch off.
                 error_msg = "[rule=%s target=%s] %s" % (
                     rule.get("name"), rule.get("target_table"), error_msg)
-                logger.error(f"Failed to execute mapper in tx {tx_id}: {error_msg}")
+                log_failure_folded(logger, rule.get("name"), rule.get("target_table"),
+                                   error_msg)
                 return False, error_msg, []
 
     # 4. Perform chained batch updates by target table
