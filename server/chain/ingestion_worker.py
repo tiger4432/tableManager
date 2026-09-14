@@ -696,12 +696,25 @@ def load_chain_rules():
         one_cell, _module_name, _function_name = chain_bindings.mapper_cells(rule)
         resolvable = bool(mapper_sdk.MAPPER_REGISTRY.get(one_cell)) if one_cell else False
 
-        if issues:
+        # 🔴 AN UNKNOWN CELL DOES NOT DELETE A RULE THAT WAS RUNNING (2026-09-14, outage).
+        # S-152 turned "a cell nobody declared" from a WARNING into a refusal, and this
+        # loop DROPS a refused rule - so the auto-update silently removed live production
+        # rules and, with them, the virtual join they drove. The typo diagnosis is worth
+        # keeping; deleting the operator's declaration to deliver it is not. An unknown
+        # cell is named loudly and the rule still runs. Everything else still refuses.
+        fatal = [i for i in issues if i.code != "unknown_field"]
+        unknown = [i for i in issues if i.code == "unknown_field"]
+        if fatal:
             logger.error(
                 "[ChainRules] %s refused (%d): %s",
-                (rule or {}).get("name") or path, len(issues),
-                " | ".join("%s %s: %s" % (i.code, i.path, i.message) for i in issues))
+                (rule or {}).get("name") or path, len(fatal),
+                " | ".join("%s %s: %s" % (i.code, i.path, i.message) for i in fatal))
             continue
+        if unknown:
+            logger.warning(
+                "[ChainRules] %s: %d unknown cell(s) - running anyway, fix the spelling: %s",
+                (rule or {}).get("name") or path, len(unknown),
+                ", ".join(i.path.rsplit(".", 1)[-1] for i in unknown))
         kept.append(rule)
 
         flat = [w.path.rsplit(".", 1)[-1] for w in chain_bindings.rule_warnings(rule)]
