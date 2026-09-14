@@ -805,6 +805,22 @@ def load_verified_rules(db, path: str = None, known_tables: dict = None,
     for rule in rules:
         result = verify_uniqueness(db, rule)
         if result["refused"]:
+            # 🔴 포기하기 «전»에 제품이 한 번 세워 본다 (S-235, 소유자 2026-09-14).
+            #    종전에는 여기서 운영자에게 DDL 을 내밀었고, 그 결과 운영자가 «조인을 전부
+            #    끄는» 것으로 끝났다. 인덱스가 그냥 없거나 «INVALID 잔해»가 이름을 붙잡고
+            #    있을 뿐이면 - 중복은 하나도 없이 - 세우면 그대로 살아난다.
+            #    ⚠️ 프로세스당 규칙당 한 번뿐이다: 이 자리는 5초 TTL 캐시가 다시 부른다.
+            try:
+                from virtual_join import unique_key
+                built = unique_key.ensure_once(
+                    db, rule["name"], rule["right_table"], rule["right_columns"],
+                    rule.get("right_folds"))
+                if built.get("created"):
+                    result = verify_uniqueness(db, rule)
+            except Exception as ensure_error:
+                logger.warning("[VirtualJoin:%s] 유일 인덱스 자동 설치 실패: %s",
+                               rule["name"], ensure_error)
+        if result["refused"]:
             _say_once(("unique", rule["name"]), logger,
                       "[VirtualJoin:%s] rejected: no unique index covers %s(%s)",
                       rule["name"], rule["right_table"],
