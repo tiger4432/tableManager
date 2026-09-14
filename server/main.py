@@ -568,8 +568,20 @@ async def startup_event():
         logger.info(f"Directory Watcher started with {global_watcher.watch_count} watches.")
 
         # Start Chained Ingestion Worker
-        from chain.ingestion_worker import start_chain_ingestion_worker
-        chain_task = main_loop.create_task(start_chain_ingestion_worker(SessionLocal))
+        # 🔴 A KILL SWITCH, BECAUSE THERE WAS NONE (2026-09-14, outage). The worker was
+        # started unconditionally, so an operator whose chain is failing on every row had
+        # no way to stop it short of stopping the server. `ASSY_CHAIN_WORKER=0` leaves the
+        # API, the watcher and every read path running and starts no chain loop. Default
+        # is unchanged: absent or anything other than 0/false/off, the worker starts.
+        _chain_switch = os.getenv("ASSY_CHAIN_WORKER", "1").strip().lower()
+        chain_task = None
+        if _chain_switch in ("0", "false", "off", "no"):
+            logger.warning(
+                "[Chain Worker] NOT started: ASSY_CHAIN_WORKER=%s. No chain rule will run "
+                "and no outbox event will be consumed until this is unset.", _chain_switch)
+        else:
+            from chain.ingestion_worker import start_chain_ingestion_worker
+            chain_task = main_loop.create_task(start_chain_ingestion_worker(SessionLocal))
         # 🔴 「spawned」를 «참으로» 만드는 콜백. `create_task` 는 성공하므로 아래 except 는
         #    태스크 «안»의 예외를 못 봅니다 — 그래서 종전에는 로더가 거절해도(설계상 거절입니다,
         #    event_driven_backend.md §3.4 ②) 이 줄이 그대로 찍히고 사유는 asyncio 의

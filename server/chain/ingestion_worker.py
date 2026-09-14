@@ -1288,7 +1288,13 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
             except Exception as e:
                 import traceback
                 error_msg = traceback.format_exc()
-                logger.error(f"Failed to execute mapper in tx {tx_id} for rule '{rule.get('name')}': {error_msg}")
+                # 🔴 THE RULE NAME GOES IN THE REASON, NOT ONLY IN THIS LINE (2026-09-14).
+                # This string becomes the quarantine `reason` and every downstream FAILED
+                # log, and those said only a transaction id - so an operator staring at
+                # thousands of failures could not tell WHICH declaration to switch off.
+                error_msg = "[rule=%s target=%s] %s" % (
+                    rule.get("name"), rule.get("target_table"), error_msg)
+                logger.error(f"Failed to execute mapper in tx {tx_id}: {error_msg}")
                 return False, error_msg, []
 
     # 4. Perform chained batch updates by target table
@@ -2110,7 +2116,10 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                         f"two per narrowing step until a single row is reached."
                     )
                 if failed_permanently_count > 0:
-                    logger.error(f"Transaction {tx_id} permanently failed: {failed_permanently_count} events moved to FAILED status.")
+                    _why = str(error_reason or "").strip().splitlines()
+                    logger.error(
+                        "Transaction %s permanently failed: %d event(s) -> FAILED. %s",
+                        tx_id, failed_permanently_count, _why[0] if _why else "(no reason recorded)")
                 if retrying_count > 0:
                     logger.warning(f"Transaction {tx_id} marked for retry: {retrying_count} events set to RETRYING status ({max_retry_num}/{attempts_cap}).")
 
