@@ -684,6 +684,7 @@ def load_chain_rules():
     # file. So those are NAMED, not refused; what is refused is a rule missing `name` or
     # `trigger_table`, or one whose mapper resolves to nothing at all.
     kept = []
+    refused_here = []  # (이름, 코드) — 아래 census 가 「안 도는 것」으로 같이 말한다
     for index, rule in enumerate(rules):
         path = "rules[%d]" % index
         # 🔴 ONE JUDGE (S-180 ⓑ-0). This block WAS the grammar, and the explorer's chain draft
@@ -709,6 +710,8 @@ def load_chain_rules():
                 "[ChainRules] %s refused (%d): %s",
                 (rule or {}).get("name") or path, len(fatal),
                 " | ".join("%s %s: %s" % (i.code, i.path, i.message) for i in fatal))
+            refused_here.append(((rule or {}).get("name") or path,
+                                 ",".join(sorted({i.code for i in fatal}))))
             continue
         if unknown:
             logger.warning(
@@ -833,6 +836,11 @@ def load_chain_rules():
                                     row["trigger_table"], row["target_table"],
                                     "" if row["enabled"] else " OFF")
             for row in _rows))
+        # 🔴 「도는 것」 옆에 「안 도는 것」. 2026-09-14 에 하루를 쓴 물음이 정확히 이 둘이었고,
+        #    둘이 서로 다른 로그 줄에 흩어져 있어 «수만 줄» 속에서 짝지을 수가 없었다.
+        if refused_here:
+            logger.error("[ChainRules] refused(%d): %s", len(refused_here),
+                         " | ".join("%s(%s)" % pair for pair in refused_here))
     except Exception as census_error:  # 사진이 못 찍혀도 체인은 돈다
         logger.warning("[ChainRules] census unavailable: %s", census_error)
 
