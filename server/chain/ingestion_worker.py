@@ -764,18 +764,36 @@ def load_chain_rules():
                 "[ChainRules] %s: chain_rules.json 과 «합성 규칙»이 같은 이름을 선언합니다. "
                 "한쪽을 지우십시오 — 어느 쪽이 참인지는 제품이 고를 수 없습니다.",
                 ", ".join(sorted(collisions)))
-        synthesized = [r for r in
-                       builtins.synthesize_chain_rules(known_tables=crud.TABLE_CONFIG)
-                       if r.get("name") not in collisions]
+        # 🔴 THE OPERATOR MUST BE ABLE TO STOP THESE (2026-09-14 outage). These rules are
+        # DERIVED from enrichment_rules.json / virtual_join_rules.json, so an operator who
+        # set `enabled: false` on every rule in chain_rules.json has NOT stopped them - they
+        # were never in that file. During the outage that read as "everything is off and it
+        # still errors", with no way to tell these existed: the boot line printed COUNTS and
+        # never the names.
+        _synth_switch = os.getenv("ASSY_CHAIN_SYNTHESIZE", "1").strip().lower()
+        if _synth_switch in ("0", "false", "off", "no"):
+            synthesized = []
+            logger.warning("[ChainRules] synthesis OFF (ASSY_CHAIN_SYNTHESIZE=%s): no derived "
+                           "rule from enrichment or virtual-join declarations will run.",
+                           _synth_switch)
+        else:
+            synthesized = [r for r in
+                           builtins.synthesize_chain_rules(known_tables=crud.TABLE_CONFIG)
+                           if r.get("name") not in collisions
+                           and r.get("enabled", True)]
         if synthesized:
             rules = rules + synthesized
             # ⚠️ IT SAYS WHICH KINDS. 「N synthesized」 over three kinds is the shape that once
             # reported 8 of a kind there were 4 of, which is why S-179 ① split its own count.
             counts = builtins.synthesized_kind_counts(synthesized)
+            # 🔴 NAMES, NOT ONLY COUNTS. A rule an operator did not write and cannot see is
+            # a rule they cannot switch off.
             logger.info(
                 "[ChainRules] Synthesized %d chain rule(s) "
-                "(%d dedup · %d auto-confirm · %d join)",
-                len(synthesized), counts["dedup"], counts["auto_confirm"], counts["join"])
+                "(%d dedup · %d auto-confirm · %d join): %s",
+                len(synthesized), counts["dedup"], counts["auto_confirm"], counts["join"],
+                ", ".join(str(r.get("name")) + "->" + str(r.get("target_table"))
+                          for r in synthesized))
     except Exception as e:
         logger.error(f"[Enrichment] Failed to synthesize enrichment chain rules: {e}")
 
@@ -1227,6 +1245,11 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
     # 2. Map of updates grouped by target table
     # target_table -> list of GeneralUpdateItem dicts
     table_updates = defaultdict(list)
+    # 🔴 WHO PUT THESE ROWS HERE (2026-09-14 outage). Updates from EVERY rule targeting a
+    # table are merged into one batch, so when the write fails the batch names the TABLE
+    # and the rules vanish - an operator with five rules on `dt_log` is told a table is
+    # broken and given no way to tell which declaration to switch off.
+    table_contributors = defaultdict(list)
     # A mapper may request one or more isolated scoped replacements.  They are
     # deliberately separate from the normal per-target aggregation: one batch
     # has one replace scope, and merging two DT jobs would make a purge broader
@@ -1279,6 +1302,8 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                     target_payload = execute_custom_mapper(module_name, func_name, db, payloads, rule=rule)
                     if target_payload and isinstance(target_payload, dict) and target_payload.get("updates"):
                         table_updates[target_table].extend(target_payload.get("updates"))
+                        if rule.get("name") not in table_contributors[target_table]:
+                            table_contributors[target_table].append(rule.get("name"))
                     if target_payload and isinstance(target_payload, dict) and target_payload.get("map_metadata_updates"):
                         if not rule.get("allow_map_metadata_upsert", False):
                             raise ValueError(
@@ -1318,6 +1343,8 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                             target_payload = execute_custom_mapper(module_name, func_name, db, row_payload, rule=rule)
                             if target_payload and isinstance(target_payload, dict) and target_payload.get("updates"):
                                 table_updates[target_table].extend(target_payload.get("updates"))
+                                if rule.get("name") not in table_contributors[target_table]:
+                                    table_contributors[target_table].append(rule.get("name"))
             except Exception as e:
                 import traceback
                 error_msg = traceback.format_exc()
@@ -1690,7 +1717,10 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
         except Exception as e:
             import traceback
             error_msg = traceback.format_exc()
-            logger.error(f"Failed executing chained batch update for tx {tx_id}: {error_msg}")
+            _who = ", ".join(n for ns in table_contributors.values() for n in ns if n) or "(unknown)"
+            _tbls = ", ".join(sorted(table_contributors)) or "(unknown)"
+            error_msg = "[rules=%s target=%s] %s" % (_who, _tbls, error_msg)
+            log_failure_folded(logger, _who, _tbls, error_msg)
             return False, error_msg, []
         finally:
             request_user.reset(token_user)
