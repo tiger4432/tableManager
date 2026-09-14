@@ -941,8 +941,16 @@ def log_failure_folded(logger_, rule_name, target_table, reason: str):
     """One line per distinct failure, with a count - never one per row."""
     lines = [ln for ln in str(reason or "").strip().splitlines() if ln.strip()]
     gist = lines[-1] if lines else "(no reason)"
-    key = (rule_name, target_table, gist)
+    # 🔴 THE KEY MUST NOT CARRY THE ROW. A unique-violation message names the offending
+    # VALUE ("Key (lot, slot)=(LOT-A, 01) is duplicated"), so keying on the whole line
+    # gives every row its own bucket - nothing folds and the map grows without bound,
+    # which is the very flood this function exists to stop. The bucket is the exception
+    # CLASS; the values stay in the first occurrence, where they are the diagnosis.
+    kind = gist.split(":", 1)[0].strip()[:120] or "(unknown)"
+    key = (rule_name, target_table, kind)
     seen = _FAILURE_SEEN.get(key, 0) + 1
+    if key not in _FAILURE_SEEN and len(_FAILURE_SEEN) >= 2000:
+        _FAILURE_SEEN.clear()  # a bounded map beats a leak; the count restarts, the log does not stop
     _FAILURE_SEEN[key] = seen
     if seen == 1:
         logger_.error("[Chain] rule=%s target=%s FAILED: %s%s%s",
