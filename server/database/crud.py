@@ -3925,6 +3925,51 @@ def _item_identity(item, index: int):
             or ("#%d" % index))
 
 
+
+def _stored_join_key_owners(db: Session, table_name: str, columns: list, folds: list,
+                            wanted: dict):
+    """`{folded key: identity}` for rows ALREADY STORED under one of `wanted`'s keys.
+
+    🔴 THE HALF `refuse_virtual_join_duplicates` SAID IT DID NOT DO (2026-09-14 outage).
+    The in-batch pass catches one mapper emitting the pair. A row colliding with one that
+    is already in the table breaks the same index, is NOT part of the statement's
+    `ON CONFLICT` target, and therefore kills the WHOLE statement - so nothing is written,
+    a file ingestion fails entirely, and no chain rule has to be involved for it to happen.
+    That is why disabling every chain rule did not stop it.
+
+    The filter uses the SAME folded expression the index is built on
+    (`index_key_expression`), per column, and the exact tuple match is done in Python.
+    Column-wise `IN` is a SUPERSET of the wanted tuples - never a subset - so the Python
+    pass decides and nothing is missed.
+    """
+    if not wanted:
+        return {}
+    model = models.DYNAMIC_TABLES.get(table_name)
+    if model is None:
+        return {}
+    import virtual_join.config as vjc
+    from sqlalchemy import text as sa_text
+
+    exprs = [vjc.index_key_expression(column, folds[i] if i < len(folds) else None)
+             for i, column in enumerate(columns)]
+    params, wheres = {}, []
+    for i, expr in enumerate(exprs):
+        values = sorted({str(key[i]) for key in wanted})
+        names = []
+        for j, value in enumerate(values):
+            names.append(":k%d_%d" % (i, j))
+            params["k%d_%d" % (i, j)] = value
+        wheres.append("%s IN (%s)" % (expr, ", ".join(names)))
+    sql = 'SELECT row_id, business_key_val, %s FROM "%s" WHERE %s' % (
+        ", ".join("%s AS k%d" % (expr, i) for i, expr in enumerate(exprs)),
+        table_name, " AND ".join(wheres))
+    owners = {}
+    for row in db.execute(sa_text(sql), params).fetchall():
+        key = tuple(row[2 + i] for i in range(len(exprs)))
+        if key in wanted:
+            owners[key] = row[0] or row[1] or "(stored row)"
+    return owners
+
 def refuse_virtual_join_duplicates(db: Session, table_name: str,
                                    batch: schemas.GeneralUpdateBatch):
     """Two rows claiming one virtual join's key are refused BY NAME; the rest are written.
@@ -3991,6 +4036,60 @@ def refuse_virtual_join_duplicates(db: Session, table_name: str,
                 "is true. Rows: %s",
                 table_name, rule_name, len(identities), list(columns), list(key),
                 named[:MAX_DROP_REPORT_ROWS])
+    # 🔴 AND NOW THE STORED HALF (2026-09-14 outage). Everything above is within ONE batch.
+    # A row whose join key is already held by a DIFFERENT stored row breaks the same index,
+    # is not the statement's ON CONFLICT target, and kills the whole statement - every row
+    # in the file, not just the offender. Skipping the offender by name is what the owner
+    # ruled ("키 중복되면 접어라") and what this function already does for its in-batch twin.
+    for rule_name, columns, folds in keys:
+        wanted = {}
+        for index, item in enumerate(items):
+            if index in refused_indexes:
+                continue
+            key = _folded_join_key(getattr(item, "updates", None), columns, folds)
+            if key is not None:
+                wanted.setdefault(key, []).append(index)
+        if not wanted:
+            continue
+        try:
+            owners = _stored_join_key_owners(db, table_name, columns, folds, wanted)
+        except Exception as probe_error:
+            # ⚠️ A PROBE THAT CANNOT RUN MUST NOT REFUSE. Failing open leaves today's
+            # behaviour exactly as it was; failing closed would drop good rows on a
+            # dialect quirk.
+            logger.warning("[VirtualJoinUnique] %s: stored-key probe skipped (%s)",
+                           table_name, probe_error)
+            continue
+        if not owners:
+            continue
+        for key, indexes in wanted.items():
+            holder = owners.get(key)
+            if not holder:
+                continue
+            for index in indexes:
+                mine = str(_item_identity(items[index], index))
+                if mine == str(holder):
+                    continue  # the same row being updated - that is an upsert, not a clash
+                refused_indexes.add(index)
+                refusals.append({
+                    "reason": DROP_UNIQUE_VIOLATED,
+                    "rule": rule_name,
+                    "columns": list(columns),
+                    "key": list(key),
+                    "row": mine,
+                    "others": [str(holder)],
+                    "message": (
+                        f"규칙 '{rule_name}' 의 행 {mine} 이(가) 가상 조인의 오른쪽 "
+                        f"유일성({', '.join(columns)}={', '.join(str(v) for v in key)})을 "
+                        f"어겨 건너뜀 — 같은 조인 키를 «이미 가진» 행: {holder}"),
+                })
+            if any(i in refused_indexes for i in indexes):
+                logger.warning(
+                    "⚠️ [VirtualJoinUnique] %s: rule '%s' - incoming row(s) carry the "
+                    "right-side key %s=%s already held by stored row %s; skipped by name "
+                    "instead of failing the whole statement.",
+                    table_name, rule_name, list(columns), list(key), holder)
+
     if not refused_indexes:
         return []
     batch.updates = [item for index, item in enumerate(items)
