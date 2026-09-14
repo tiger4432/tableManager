@@ -302,3 +302,26 @@ def describe_fold_plan(plan: dict) -> str:
         total = sum(entry["rows"] for entry in plan["blank_keys"])
         lines.append("키가 «비어 있는» 행 %d - 중복이 아니라 부재입니다(접기 대상 아님)" % total)
     return "\n".join(lines) or "중복 없음"
+
+
+def narrower_than_identity(table: str, columns: list, known_tables: dict = None):
+    """조인이 «그 표의 신원보다 좁은» 키로 묻고 있으면, 그 신원을 돌려준다. 아니면 None.
+
+    🔴 「행 하나는 사실 하나」(소유자 2026-09-15)의 «선언만으로 잡히는» 위반이다.
+    카탈로그가 그 표의 신원을 이미 적어 두므로(`composite_key_source`), 조인 키가 그
+    부분집합이면 **그 유일 인덱스는 영원히 설 수 없다** — 데이터를 한 행도 안 읽고 안다.
+
+    ⚠️ 그리고 이 경우 «접기»는 답이 아니라 «파괴»다. 같은 키의 행들은 사본이 아니라 서로
+    다른 사실이고(셀 좌표가 다르다), 접으면 그 사실들이 사라진다. 고칠 것은 데이터가 아니라
+    조인이 선언한 «키»다.
+
+    2026-09-14 에 운영자가 이 모양을 만나 «조인을 전부 껐다». 그날 필요했던 것은 중복 조회도
+    DDL 도 아니고 이 한 줄이었다 — 「당신이 물은 키가 그 표의 신원보다 좁습니다」.
+    """
+    catalogue = (known_tables or {}).get(table) or {}
+    identity = catalogue.get("composite_key_source")
+    if not identity or not columns:
+        return None
+    asked, declared = set(columns), set(identity)
+    # 부분집합이면서 «같지는 않은» 것 — 같으면 올바른 키다
+    return list(identity) if asked < declared else None

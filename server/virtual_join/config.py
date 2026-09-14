@@ -789,6 +789,10 @@ def verify_uniqueness(db, rule: dict) -> dict:
     return {"unique_index": None, "refused": True, "code": CODE_NO_UNIQUE_INDEX}
 
 
+
+class _NarrowKey(Exception):
+    """선언만으로 «설 수 없음»이 확정된 경우. 값을 나르지 않는다 — 문장은 이미 말해졌다."""
+
 def load_verified_rules(db, path: str = None, known_tables: dict = None,
                         rejections: list = None) -> list:
     """모양 + 유일성 **둘 다** 통과한 선언만. **조인을 실행하는 코드의 유일한 진입점.**
@@ -812,11 +816,29 @@ def load_verified_rules(db, path: str = None, known_tables: dict = None,
             #    ⚠️ 프로세스당 규칙당 한 번뿐이다: 이 자리는 5초 TTL 캐시가 다시 부른다.
             try:
                 from virtual_join import unique_key
+                # 🔴 「행 하나는 사실 하나」의 선언만으로 잡히는 위반부터 (소유자 2026-09-15).
+                #    조인 키가 그 표의 «신원보다 좁으면» 유일 인덱스는 영원히 설 수 없다 —
+                #    데이터를 한 행도 안 읽고 안다. 이때 만들어 보는 것은 시간 낭비이고,
+                #    중복 목록을 내미는 것은 «틀린 곳»을 가리키는 것이다: 고칠 것은
+                #    데이터가 아니라 이 선언의 키다. 2026-09-14 에 그 한 줄이 없어서
+                #    운영자가 조인을 전부 껐다.
+                identity = unique_key.narrower_than_identity(
+                    rule["right_table"], rule["right_columns"], known_tables)
+                if identity:
+                    _say_once(("narrow", rule["name"]), logger,
+                              "[VirtualJoin:%s] 조인 키 (%s) 가 %s 의 «신원»(%s)보다 "
+                              "좁습니다 - 유일 인덱스는 설 수 없고 접기로도 못 고칩니다. "
+                              "이 조인의 키를 신원까지 넓히십시오",
+                              rule["name"], ", ".join(rule["right_columns"]),
+                              rule["right_table"], ", ".join(identity))
+                    raise _NarrowKey()
                 built = unique_key.ensure_once(
                     db, rule["name"], rule["right_table"], rule["right_columns"],
                     rule.get("right_folds"))
                 if built.get("created"):
                     result = verify_uniqueness(db, rule)
+            except _NarrowKey:
+                pass  # 문장은 위에서 이미 말했다. 만들어 보지 않는다
             except Exception as ensure_error:
                 logger.warning("[VirtualJoin:%s] 유일 인덱스 자동 설치 실패: %s",
                                rule["name"], ensure_error)

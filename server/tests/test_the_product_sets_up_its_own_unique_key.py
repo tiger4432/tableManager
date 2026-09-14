@@ -157,3 +157,37 @@ def test_a_json_cell_can_be_compared_without_blowing_up():
     assert unique_key._comparable({"b": 1, "a": 2}) == unique_key._comparable({"a": 2, "b": 1})
     assert unique_key._comparable([1, 2]) != unique_key._comparable([2, 1])
     assert unique_key._comparable(None) is None
+
+
+# ---------------------------------------------------------------------------
+# 「행 하나는 사실 하나」 — 선언만으로 잡히는 위반 (소유자 2026-09-15)
+# ---------------------------------------------------------------------------
+
+_KNOWN = {"dt_log": {"composite_key_source": ["dt_job_id", "b_wx", "b_wy"]},
+          "plainly_keyed": {"business_key": "k"}}
+
+
+def test_a_key_narrower_than_the_identity_is_known_without_reading_a_row():
+    """🔴 이것이 2026-09-14 에 없어서 운영자가 조인을 전부 껐다. 카탈로그가 그 표의 신원을
+    «이미» 적어 두므로, 조인 키가 그 부분집합이면 유일 인덱스는 영원히 설 수 없다 —
+    중복을 세지 않고도, 데이터를 한 행도 안 읽고도 안다."""
+    assert unique_key.narrower_than_identity(
+        "dt_log", ["dt_job_id"], _KNOWN) == ["dt_job_id", "b_wx", "b_wy"]
+
+
+def test_the_right_key_is_not_flagged():
+    assert unique_key.narrower_than_identity(
+        "dt_log", ["dt_job_id", "b_wx", "b_wy"], _KNOWN) is None
+
+
+def test_a_table_that_declares_no_composite_identity_is_not_judged():
+    """⚠️ 신원을 «안 적은» 표에 대해서는 이 검사가 할 말이 없다. 없는 선언을 근거로
+    거절하면 그것은 「내가 기대한 모양」을 강요하는 것이다."""
+    assert unique_key.narrower_than_identity("plainly_keyed", ["k"], _KNOWN) is None
+    assert unique_key.narrower_than_identity("unknown_table", ["k"], _KNOWN) is None
+
+
+def test_a_key_wider_than_the_identity_is_not_flagged():
+    """⚠️ 넓은 키는 «유일하다». 좁은 것만 불가능하다 — 방향을 뒤집으면 멀쩡한 선언을 막는다."""
+    assert unique_key.narrower_than_identity(
+        "dt_log", ["dt_job_id", "b_wx", "b_wy", "c_wx"], _KNOWN) is None
