@@ -149,9 +149,14 @@ def test_mapping_gap_is_detected_and_is_not_vacuous(an_env):
     assert res["counts"].get(analysis.CLS_MAPPING_GAP) == 1
 
     # INJECTED: the source no longer has the value -> no longer a pipeline bug.
+    # 🔴 [S-243, 판정 405] AS A PERSON, NOT AS THE FILE. A file's empty cell no longer
+    # erases anything - it means 「아직 입력하지 않은 것」, so `wafer_id` would keep
+    # standing and this injection would inject nothing. Clearing a cell on purpose is a
+    # human act, and that is the writer this step has to be. The CLAIM is unchanged: take
+    # the value away and the row must leave the bug class.
     _seed(an_env, "enan_test_src",
           [{"log_key": "a1", "lot": "L1", "slot": "S1", "chip_id": "C1", "wafer_id": ""}],
-          tx_id="blank")
+          source_name="user", tx_id="blank")
     res2 = analysis.classify_queue(an_env, rule, log=lambda *_: None)
     assert res2["counts"].get(analysis.CLS_MAPPING_GAP) is None
 

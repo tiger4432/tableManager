@@ -198,6 +198,11 @@ DROP_UNIQUE_VIOLATED = "unique_violated"
 #: A column the write path owns (`row_id`, `updated_at`, graph-sync flags ...). A payload
 #: may name it; it is never taken from one.
 DROP_SYSTEM_COLUMN = "system_column"
+#: [S-243, 판정 405] A blank cell from a writer that cannot mean 「I emptied this」. It is
+#: 「not entered yet」, so it makes no layer - and that is not a failure, which is why it is
+#: COUNTED rather than warned about. Without a name in this report, a file whose column
+#: went blank would look exactly like a file that never named the column at all.
+DROP_ABSENT_NOT_WRITTEN = "absent_not_written"
 
 # Both caps exist for the same reason the undeclared-column registry has a budget: every
 # name and every row id in this report comes from the PAYLOAD, so a malformed file must
@@ -664,6 +669,11 @@ class LightCellOverwrite:
         self.manual_priority_source = manual_priority_source
 
 # 소스별 우선순위 정의 (숫자가 낮을수록 높음)
+#: The derived-table worker's layer. Named here because S-243 has to ASK who wrote a
+#: blank, and a second literal in the asking would be a second answer to 「is this the
+#: chain」 - the repository already spells this string in six other modules.
+CHAIN_SOURCE = "chain_ingestion"
+
 SOURCE_PRIORITY = {
     "user": 0,
     "collision_merge": 1,
@@ -671,7 +681,7 @@ SOURCE_PRIORITY = {
     "custom_script": 3,
     # [QA G1-⑥] 체인 파생 쓰기 소스 서열 명시(구: 미등재 기본 99). 기존 4대 소스와의
     # 상대 서열은 불변(4 > 3)이라 표시값 레이어링 결과는 유지되며, 미등재 소스 대비로만 승격된다.
-    "chain_ingestion": 4,
+    CHAIN_SOURCE: 4,
 }
 
 # The priority-0 layer above is the only source that means "a human typed this".
@@ -3108,7 +3118,30 @@ def apply_row_update_internal(
         # 3. 소스 데이터 upsert
         col_type = (config.get("column_types") or {}).get(col_name, "string")
         clean_val = cast_value_by_type(val, col_type, col_name, table_name)
-        
+
+        # 🔴 [S-243, 판정 405] ABSENCE MAKES NO LAYER; ONLY A DELIBERATE BLANK DOES.
+        # 소유자 2026-09-15: 「빈 층 고의 입력은 진짜 빈 것, 그냥 없던 것은 아직 입력하지
+        # 않은 것」. A file's empty cell used to be cast to NULL and STORED as that source's
+        # layer - and because a file source outranks the chain (2 or 99 vs 4), that NULL
+        # then hid a value the join had correctly written, forever. The virtual join's
+        # COALESCE fills; this path did not, and nothing said so.
+        #
+        # ⛔ THE WRITER IS SELECTED POSITIVELY, for the reason `USER_SOURCE` states twenty
+        # lines above: file parsers write under the INGESTED FILENAME, so the set of
+        # automatic source names is open-ended and cannot be blacklisted. Only two writers
+        # can MEAN an empty cell - a person clearing it, and the chain asserting that the
+        # matched right row is empty (판정 f3c04dee).
+        #
+        # ⚠️ AND THE EXISTING LAYER IS LEFT ALONE, not deleted. 「Not entered」 is not
+        # 「withdraw what you said before」 - so yesterday's value stays, and removing it is
+        # the business of a person, of `withdraw_source` (R2), or of `replace_map`.
+        if (is_blank_value(clean_val)
+                and update_item.source_name not in (USER_SOURCE, CHAIN_SOURCE)):
+            if drop_stats is not None:
+                _record_dropped_cell(drop_stats, row.row_id, update_item.business_key_val,
+                                     col_name, DROP_ABSENT_NOT_WRITTEN)
+            continue
+
         src_obj = next((s for s in col_srcs if s.source_name == update_item.source_name), None)
 
         # [no-op write] Re-storing a source layer that already holds this exact value from
