@@ -240,3 +240,56 @@ def test_a_cycle_at_load_names_itself_and_does_not_stop_the_chain(load, caplog):
     assert names == ["there", "back"], "the rules still load"
     said = " ".join(record.getMessage() for record in caplog.records)
     assert "cycle" in said and "there" in said, said
+
+
+# ---------------------------------------------------------------------------
+# 🔴 2026-09-15 — a rule that cannot fire cannot order anything (production cycle)
+# ---------------------------------------------------------------------------
+
+def test_a_switched_off_rule_does_not_close_a_cycle():
+    """🔴 THE OWNER'S QUESTION, VERBATIM: 「enable false 여도 고리 인식하나?」 It did. The
+    trigger path skips a disabled rule (SKIPPED_DISABLED) but the ordering walk never
+    asked, so a rule the operator had switched OFF kept closing cycles with live ones."""
+    there = _rule("there", "x", "y")
+    back = _rule("back", "y", "x", enabled=False)
+
+    # No cycle from either file order, both rules kept, and the SAME answer either way -
+    # the walk is a post-order DFS, so the answer is a property of the graph, not of the
+    # file order. Pinning the reversed input to a reversed output was my own mistake.
+    forward = [r["name"] for r in rule_order.order_rules([there, back])]
+    reverse = [r["name"] for r in rule_order.order_rules([back, there])]
+    assert sorted(forward) == ["back", "there"] and forward == reverse, (forward, reverse)
+
+
+def test_a_paced_follow_up_does_not_close_a_cycle():
+    """🔴 THE SHAPE A UNIFIED JOIN EMITS (S-237): its right-side rule is `right -> left`
+    with follow_up=True, which never runs on the trigger path at all. With any live
+    `left -> right` rule that read as a cycle of one edge that cannot fire."""
+    live = _rule("inventory_to_attribution", "dt_inventory", "dt_job_attribution")
+    paced = _rule("attribution_to_inventory", "dt_job_attribution", "dt_inventory",
+                  follow_up=True)
+
+    assert [r["name"] for r in rule_order.order_rules([live, paced])] == [
+        "inventory_to_attribution", "attribution_to_inventory"]
+
+
+def test_a_real_cycle_between_two_live_rules_is_still_refused_by_name():
+    """⚠️ THE NO-REGRESSION. Two live, non-paced rules that feed each other across tables
+    still have no correct order, and picking one silently is what this walk refuses to do."""
+    there = _rule("there", "x", "y")
+    back = _rule("back", "y", "x")
+
+    with pytest.raises(rule_order.RuleCycleRefused) as caught:
+        rule_order.order_rules([there, back])
+    assert "there" in str(caught.value) and "back" in str(caught.value)
+
+
+def test_a_switched_off_producer_no_longer_orders_its_consumer():
+    """🔴 THE EXTENT, PINNED - the same discipline as the 판정 388 test. A disabled rule
+    that writes `t` used to be ordered before a live rule reading `t`; it is not any
+    more, because it writes nothing. If that changes back, this goes red, on purpose."""
+    off_producer = _rule("fills_t_but_off", "s", "t", enabled=False)
+    consumer = _rule("reads_t", "t", "u")
+
+    assert [r["name"] for r in rule_order.order_rules([consumer, off_producer])] == [
+        "reads_t", "fills_t_but_off"]

@@ -136,8 +136,16 @@ def test_one_declared_join_becomes_two_rules_that_watch_both_tables(load):
     # the table the target rule triggers on, so the walk orders producer before consumer. The
     # assertion above is by NAME for that reason: pinning the list order here would be
     # pinning the ordering walk's answer in a file that is not about ordering.
-    assert [r["name"] for r in mine][0] == reference, (
-        "the producer did not come first; S-156's ordering is inert for these two")
+    # ⚰️ THIS PINNED 「the paced reference rule comes FIRST」 UNTIL 2026-09-15. A follow_up
+    # rule never runs in a trigger group - `_rule_accepts_event` returns False for it - so
+    # it never shares a group with the left rule and 「before」 has no operational content.
+    # Worse, that very edge (right -> left, paced) plus any live left -> right rule read as
+    # a CYCLE in production of one edge that cannot fire. The ordering walk now asks what
+    # the trigger path asks: an edge that cannot fire orders nothing. So the two keep
+    # file order, and the fact worth asserting is that no cycle is reported for them.
+    assert [r["name"] for r in mine] == [DECLARATION["name"], reference], (
+        "a paced reference rule must not be ORDERED against its left rule - it never "
+        "shares a trigger group with it; that edge was the production phantom cycle")
 
 
 def test_the_loader_no_longer_refuses_a_join_as_an_unrunnable_mapper(load):

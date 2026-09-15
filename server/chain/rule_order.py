@@ -72,6 +72,17 @@ def order_rules(rules: list) -> list:
         state[name] = 0
         trigger = rule.get("trigger_table")
         for producer in by_target.get(trigger, []):
+            # 🔴 AN EDGE THAT CANNOT FIRE CANNOT ORDER ANYTHING (2026-09-15, production
+            # cycle). The trigger path already asks two questions before running a
+            # rule - `_rule_accepts_event` returns False for a follow_up kind, and a
+            # rule declaring enabled: false is SKIPPED_DISABLED - and this walk asked
+            # neither. So a switched-off rule kept ordering its neighbours, and the
+            # paced right-side rule a unified join emits (right -> left, follow_up)
+            # combined with any live left -> right rule into a "cycle" of one edge that
+            # never fires. The owner met exactly that: 「enable false 여도 고리 인식하나?」
+            # Yes, it did. Now the walk asks what the trigger path asks.
+            if not producer.get("enabled", True) or producer.get("follow_up"):
+                continue  # not on the trigger path: it fires nothing, it orders nothing
             if (producer.get("trigger_table") == trigger
                     and rule.get("target_table") == trigger):
                 continue  # both ends live on `trigger`: no order exists between them
