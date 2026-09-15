@@ -25106,3 +25106,8 @@ S-50 클라 `contracts/config_resolve_report` 의 클라 하니스가 새 낱말
 > **그대로인 것:** 저장 경로(`/admin/chain/rules/raw`, S-244 로 통합 선언도 받음) · `ontology_path.writeShapeAtPath` 하나 · 템플릿 `raw_registry_panel`.
 > **게이트:** ① 하니스(import): 스켈레톤 픽스처(택1 둘)로 폼이 «택1 컨트롤 둘 + 고른 가지의 칸만» 그림 · 손그림 입력 0(폼 DOM 의 input 은 전부 스켈레톤 키에서 나옴 — 단언) ② 옛 평면 규칙은 오늘 그대로 ③ 실제 페이지 경로(`?name=`)로 통합 규칙 하나 열어 폼이 참(상설) ④ 빌드 포함 · 스샷 · 「5분 쓰면 짜증나는 것」 제안 표(상설) ⑤ 「마진」 상설(tokens.css) · 「설명 문구 주저리 금지」.
 > 📌 **[09-15 22:3x] 이 채널의 미답 질문: «없음».**
+> ## C-112 — 그리드 «다시 돌리기»는 `row_id` 로 보낸다 (총괄 지시 2026-09-15 22:5x). ⏳ 서버 S-254(소급 R1 이 `row_ids` 를 받음) «뒤», 그때 초인종. C-111 보다 «먼저»
+> **실측(박스 장애):** 배너가 보낸 `business_keys: ['DT_JOB_ID PROBE-S124-ANALYZE-0029']` 는 dt_log 의 저장 업무키(`GEN-dt_cell_key-…`, composite 조립값)와 «다른 세계» → `rows_scanned 0`. 그리드는 행의 `row_id` 를 «이미» 들고 있다 — 그것이 신원이다.
+> **바뀌는 층:** `redo_banner` 의 `params` 가 `row_ids`(선택 행의 row_id)를 싣는다. `business_keys` 는 «평키 표»(business_key 컬럼이 곧 신원인 표)에서만, 그것도 서버가 받는 칸이면. 「N keys from M rows」 문구는 「M rows」로.
+> **게이트:** ① 하니스: 선택 행 셋 → `params.row_ids` 셋, 업무키 없음 ② 실제 페이지(composite 표 dt_log)에서 «세기»가 0 이 아님(서버 S-254 착지 뒤 총괄이 봄) ③ 빌드 포함 · 스샷.
+> 📌 **[09-15 22:5x] 이 채널의 미답 질문: «없음».**
