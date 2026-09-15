@@ -374,11 +374,10 @@ def chain_graph(db):
     # 🔴 A CYCLE THE LOADER REFUSED IS PART OF THE PICTURE. It is the one thing an
     # operator cannot see anywhere else: the rule is in the file, looks live, and the
     # worker refused the whole document over it.
-    cycles = []
-    try:
-        worker._validate_chain_cascade_graph(chain_rules)
-    except Exception as exc:                                    # noqa: BLE001
-        cycles.append(str(exc))
+    # ⚰️ IT USED TO CATCH AN EXCEPTION HERE. 판정 402 made the cycle a reported SHAPE rather
+    # than a refusal, so the validator returns what it found and this reads it - the screen
+    # shows exactly what it showed before, from a value instead of a raise.
+    cycles = list(worker._validate_chain_cascade_graph(chain_rules) or ())
 
     out = {
         "generated_at": round(time.time(), 3),

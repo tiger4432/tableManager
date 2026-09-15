@@ -165,5 +165,18 @@ def test_the_static_cycle_check_is_untouched():
     from chain import ingestion_worker as worker
 
     body = inspect.getsource(worker._validate_chain_cascade_graph)
-    assert "cycle" in body and "raise" in body
-    assert event_constants.CHAIN_DEPTH_KEY not in body
+    assert "cycle" in body
+    # ⚰️ 「AND `raise`」 WAS THE ASSERTION, and 판정 402 removed the raise: the ceiling this
+    # file is about is what bounds a loop, so the second check became a refusal for a shape
+    # the first one already handles. The walk still FINDS the cycle and now returns it.
+    assert "return cycles" in body
+
+    # 🔴 THE CODE, NOT THE PROSE. This asks 「does the validator READ the depth cell」, and a
+    # substring check over the source answers 「does the word appear」 - which it now does, in
+    # the sentence explaining why the raise went. A drift oracle that reads the note
+    # explaining the defect is scoring the explanation.
+    referenced = set(worker._validate_chain_cascade_graph.__code__.co_names)
+    for constant in worker._validate_chain_cascade_graph.__code__.co_consts:
+        if isinstance(constant, str):
+            referenced.add(constant)
+    assert event_constants.CHAIN_DEPTH_KEY not in referenced

@@ -17,12 +17,42 @@ invisible here, exactly as it is to every other declaration-driven guard - 「�
 """
 
 
-class RuleCycleRefused(ValueError):
-    """⛔ REFUSED BY NAME. There is no correct order for a cycle across tables, and picking one
-    silently would produce a result nobody could reason about."""
+#: Cycles already announced in this process, by trail. The drain re-reads the rules file
+#: every batch, so a line said on every load is a line that scrolls the log - which is what
+#: the operator saw ("사이클 오류 계속 뜨네") before 판정 402.
+_SAID = set()
 
 
-def order_rules(rules: list) -> list:
+def cycle_note(trail, ceiling=None) -> str:
+    """The ONE sentence about a cycle, in the shape S-247 gave every operator line.
+
+    🔴 [판정 402] A CYCLE IS A SHAPE, NOT AN ERROR. `dt_log → dt_inventory` by mapper and
+    `dt_inventory → dt_log` by join is an INTENDED loop, and what makes it finite is the hop
+    ceiling the drain already enforces (`max_chain_depth`). Refusing it at load time refused a
+    declaration that works, twice a second, in a log the operator needs for other things.
+    """
+    return ("[ChainRules] 고리: %s (순서는 선언 순 · 홉 상한 max_chain_depth=%s 이 막습니다). "
+            "다음: 없음. 상한을 바꾸려면 chain_rules.json 의 max_chain_depth"
+            % (" -> ".join(str(node) for node in trail),
+               ceiling if ceiling is not None else "기본값"))
+
+
+def say_cycle_once(logger_, trail, ceiling=None) -> bool:
+    """Say it the first time this process meets this trail. Returns whether it spoke."""
+    key = tuple(trail)
+    if key in _SAID:
+        return False
+    _SAID.add(key)
+    logger_.info(cycle_note(trail, ceiling))
+    return True
+
+
+def forget_cycles():
+    """선언이 바뀌면 다시 말한다 — 기억은 «이 선언에 대한» 것이다."""
+    _SAID.clear()
+
+
+def order_rules(rules: list, on_cycle=None) -> list:
     """Topologically order rules so a producer replays before its consumer.
 
     The live config makes this mandatory rather than nice-to-have:
@@ -49,9 +79,11 @@ def order_rules(rules: list) -> list:
     `dt_inventory -> dt_inventory`) did exactly that: every load logged a cycle
     and left the order alone, so S-156's ordering was inert here.
 
-    A cycle between DIFFERENT tables is still refused by name: there is no
-    correct order for it, and picking one silently would produce a result nobody
-    could reason about - the same split this function's own sentence already made.
+    ⚰️ A CYCLE BETWEEN DIFFERENT TABLES USED TO BE REFUSED BY NAME, and 판정 402
+    ended that: the loop `dt_log → dt_inventory → dt_log` is INTENDED (a mapper one
+    way, a join the other) and the drain's `max_chain_depth` already makes it
+    finite. So the walk reports the trail through `on_cycle`, leaves those rules in
+    the order the declaration gives them, and nothing is refused.
     """
     by_target = {}
     for r in rules:
@@ -59,16 +91,21 @@ def order_rules(rules: list) -> list:
 
     state = {}   # rule name -> 0 visiting / 1 done
     ordered = []
+    found_cycle = []
 
     def visit(rule, path):
         name = rule.get("name")
         if state.get(name) == 1:
             return
         if state.get(name) == 0:
-            cycle = " -> ".join(path + [name])
-            raise RuleCycleRefused(
-                f"chain rules form a cycle across tables and cannot be ordered: {cycle}. "
-                f"Replay them one at a time with an explicit order you can justify.")
+            # 🔴 [판정 402] NOT AN ERROR - A SHAPE. There is no total order for this pair, so
+            # the walk stops descending and the declaration's own order stands for them. The
+            # caller is TOLD (once), and the hop ceiling is what keeps the loop finite at run
+            # time. Raising here refused a working declaration and scrolled the log.
+            found_cycle.append(True)
+            if on_cycle is not None:
+                on_cycle(path + [name])
+            return
         state[name] = 0
         trigger = rule.get("trigger_table")
         for producer in by_target.get(trigger, []):
@@ -92,4 +129,11 @@ def order_rules(rules: list) -> list:
 
     for r in rules:
         visit(r, [])
+    if found_cycle:
+        # 🔴 [판정 402] A CYCLE MEANS 「순서는 선언 순」, AND THAT IS THE WHOLE ANSWER.
+        # A partial walk hands back the loop's members in the order the DESCENT happened to
+        # unwind, which is neither the declaration's order nor a derived one - a third
+        # order nobody wrote. When there is no total order to find, the operator's own is
+        # the only one anybody can reason about.
+        return list(rules)
     return ordered

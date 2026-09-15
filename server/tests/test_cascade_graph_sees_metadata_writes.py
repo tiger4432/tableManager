@@ -35,10 +35,12 @@ def test_a_loop_closed_by_the_metadata_write_is_refused():
     write does."""
     rules = [rule("writes_map_and_meta", "dt_inventory", "dt_map", meta=True),
              rule("meta_back_to_trigger", META, "dt_inventory")]
-    with pytest.raises(ValueError) as raised:
-        worker._validate_chain_cascade_graph(rules)
-    assert "cycle" in str(raised.value)
-    assert META in str(raised.value) and "dt_inventory" in str(raised.value)
+    found = worker._validate_chain_cascade_graph(rules)
+
+    # ⚰️ IT USED TO RAISE (판정 402). The finding is the same - this edge closes the loop
+    # and the guard sees it - and what changed is that seeing it is reported, not fatal.
+    assert found and "cycle" in found[0]
+    assert META in found[0] and "dt_inventory" in found[0]
 
 
 def test_the_same_pair_without_the_metadata_flag_is_fine():

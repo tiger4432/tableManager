@@ -707,20 +707,20 @@ def save_chain_rule_raw(name: str, declaration, base: str) -> dict:
                 first.code, first.path,
                 " | ".join("%s: %s" % (issue.path, issue.message) for issue in grammar))
 
-    # A DIFFERENT AXIS, not a second opinion: this one reads the WHOLE set and refuses a
+    # A DIFFERENT AXIS, not a second opinion: this one reads the WHOLE set and REPORTS a
     # cycle of opt-in chain triggers, which no single rule can be asked about.
-    # ⚠️ ON THE TRANSLATED SET, for the same reason as above: a cycle is a fact about the
-    # rules that will RUN, and a unified declaration is not one of them until it is expanded.
-    try:
-        expanded_set = []
-        for saved in rules:
-            more, _why, _notes2 = rule_shape.expand_declaration(
-                saved, _catalogue.TABLE_CONFIG)
-            expanded_set.extend(more)
-        ingestion_worker._validate_chain_cascade_graph(expanded_set)
-    except Exception as exc:                                   # noqa: BLE001
-        raise _table_config_refusal(
-            "chain_cycle", f"rules.{name}", str(exc)) from exc
+    # ⚠️ ON THE TRANSLATED SET: a cycle is a fact about the rules that will RUN, and a
+    # unified declaration is not one of them until it is expanded.
+    # ⚰️ IT USED TO REFUSE THE SAVE (판정 402 ended that). A loop of `dt_log → dt_inventory`
+    # by mapper and back by join is INTENDED, and `max_chain_depth` is what makes it finite -
+    # so refusing here refused a declaration that runs correctly, at the one door an operator
+    # has. The validator says its line and the save goes through.
+    expanded_set = []
+    for saved in rules:
+        more, _why, _notes2 = rule_shape.expand_declaration(
+            saved, _catalogue.TABLE_CONFIG)
+        expanded_set.extend(more)
+    ingestion_worker._validate_chain_cascade_graph(expanded_set)
 
     backup = _atomic_write(path, merged)
     return {"ok": True, "name": name, "base": file_fingerprint(path),

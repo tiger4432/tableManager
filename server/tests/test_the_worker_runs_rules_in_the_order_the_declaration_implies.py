@@ -135,32 +135,41 @@ def test_a_self_feeding_rule_still_orders_a_rule_that_reads_the_table_it_writes(
         "feeds_t_from_t", "reads_t_writes_u"]
 
 
-def test_a_cycle_across_tables_is_refused_by_name():
-    """🔴 THERE IS NO CORRECT ORDER FOR IT, and picking one silently would produce a result
-    nobody could reason about."""
+def test_a_cycle_across_tables_is_named_once_and_never_refused():
+    """🔴 [판정 402] A CYCLE IS A SHAPE, NOT AN ERROR. ⚰️ This used to raise: there is no total
+    order for the pair, and the walk called that a refusal. But `dt_log → dt_inventory` by
+    mapper and `dt_inventory → dt_log` by join is an INTENDED loop, and what keeps it finite
+    is the hop ceiling the drain already enforces - so refusing it at load refused a
+    declaration that works, on every load, in the log the operator needs for other things
+    (「사이클 오류 계속 뜨네」).
+
+    ⚠️ AND THE RULES STILL STAND. The walk stops descending into the loop and the
+    declaration's own order holds for those two, which is the only honest answer when no
+    total order exists."""
+    there = _rule("there", "x", "y")
+    back = _rule("back", "y", "x")
+    trails = []
+
+    ordered = rule_order.order_rules([there, back], on_cycle=trails.append)
+
+    assert sorted(r["name"] for r in ordered) == ["back", "there"], "both rules stand"
+    assert trails and "there" in trails[0] and "back" in trails[0]
+    note = rule_order.cycle_note(trails[0], 5)
+    assert "there -> back" in note and "max_chain_depth=5" in note
+
+
+def test_replay_has_no_cycle_refusal_left_to_translate():
+    """⚰️ IT USED TO RE-RAISE THE CYCLE AS `ReplayRefused`, so replay's callers could catch one
+    name. 판정 402 removed the refusal itself, and a translation of something that is never
+    raised is dead code wearing a docstring - so replay just orders and replays.
+
+    ⚠️ THE OTHER `ReplayRefused` CASES ARE UNTOUCHED; what went is the CYCLE one."""
     there = _rule("there", "x", "y")
     back = _rule("back", "y", "x")
 
-    with pytest.raises(rule_order.RuleCycleRefused) as caught:
-        rule_order.order_rules([there, back])
-
-    assert "cycle" in str(caught.value)
-    assert "there" in str(caught.value) and "back" in str(caught.value)
-
-
-def test_replay_still_raises_its_own_refusal_with_the_same_sentence():
-    """⚠️ ONE SENTENCE, TWO NAMES. `ReplayRefused` is what replay's callers already catch, so
-    the refusal is re-raised under that name rather than making every caller learn a second
-    one - and the words come from the shared home, so they cannot drift apart."""
-    there = _rule("there", "x", "y")
-    back = _rule("back", "y", "x")
-
-    with pytest.raises(rule_order.RuleCycleRefused) as home:
-        rule_order.order_rules([there, back])
-    with pytest.raises(ReplayRefused) as through_replay:
-        replay.order_rules([there, back])
-
-    assert str(through_replay.value) == str(home.value)
+    assert sorted(r["name"] for r in replay.order_rules([there, back])) == ["back", "there"]
+    assert not hasattr(rule_order, "RuleCycleRefused"), (
+        "the exception class outlived the last place that raised it")
 
 
 def test_the_order_does_not_depend_on_the_hash_seed():
@@ -234,12 +243,20 @@ def test_a_cycle_at_load_names_itself_and_does_not_stop_the_chain(load, caplog):
     there = _rule("there", "x", "y")
     back = _rule("back", "y", "x")
 
-    with caplog.at_level(logging.ERROR):
+    with caplog.at_level(logging.INFO):
         names = load([there, back])
 
-    assert names == ["there", "back"], "the rules still load"
+    assert names == ["there", "back"], "the rules still load, in the declaration's order"
     said = " ".join(record.getMessage() for record in caplog.records)
-    assert "cycle" in said and "there" in said, said
+    assert "고리" in said and "there" in said, said
+    # ⚰️ AND THE CYCLE IS NOT AN ERROR ANY MORE (판정 402). The operator watched this scroll
+    # past on every load; a shape the product handles is not something to alarm about.
+    # ⚠️ ABOUT THE CYCLE LINE ONLY - this loader emits other ERROR lines for other reasons
+    # (a rule set that differs from the previous load, for one), and swallowing those into
+    # this assertion would make it fail for facts it is not about.
+    assert not [r for r in caplog.records
+                if r.levelno >= logging.ERROR and "고리" in r.getMessage()], (
+        "a cycle is still being reported as a fault")
 
 
 # ---------------------------------------------------------------------------
@@ -273,15 +290,17 @@ def test_a_paced_follow_up_does_not_close_a_cycle():
         "inventory_to_attribution", "attribution_to_inventory"]
 
 
-def test_a_real_cycle_between_two_live_rules_is_still_refused_by_name():
-    """⚠️ THE NO-REGRESSION. Two live, non-paced rules that feed each other across tables
-    still have no correct order, and picking one silently is what this walk refuses to do."""
+def test_a_real_cycle_between_two_live_rules_is_still_named():
+    """⚠️ THE NO-REGRESSION, in its post-402 shape: the walk still SEES the loop and still
+    says which rules make it - what changed is that seeing it is not a refusal."""
     there = _rule("there", "x", "y")
     back = _rule("back", "y", "x")
+    trails = []
 
-    with pytest.raises(rule_order.RuleCycleRefused) as caught:
-        rule_order.order_rules([there, back])
-    assert "there" in str(caught.value) and "back" in str(caught.value)
+    ordered = rule_order.order_rules([there, back], on_cycle=trails.append)
+
+    assert len(ordered) == 2
+    assert trails and "there" in trails[0] and "back" in trails[0]
 
 
 def test_a_switched_off_producer_no_longer_orders_its_consumer():
@@ -293,3 +312,30 @@ def test_a_switched_off_producer_no_longer_orders_its_consumer():
 
     assert [r["name"] for r in rule_order.order_rules([consumer, off_producer])] == [
         "reads_t", "fills_t_but_off"]
+
+
+def test_the_cycle_line_is_said_once_rather_than_on_every_load():
+    """🔴 THE DRAIN RE-READS THE RULES FILE EVERY BATCH, so a line said on every load is a
+    line that scrolls the log - which is exactly what the operator reported. Once per trail
+    per process, and a declaration change forgets it."""
+    import logging
+
+    class _Spy(logging.Logger):
+        def __init__(self):
+            super().__init__("s249")
+            self.said = []
+
+        def info(self, message, *args):
+            self.said.append(message % args if args else message)
+
+    rule_order.forget_cycles()
+    spy = _Spy()
+    trail = ["a", "b", "a"]
+
+    assert rule_order.say_cycle_once(spy, trail, 3) is True
+    assert rule_order.say_cycle_once(spy, trail, 3) is False
+    assert len(spy.said) == 1
+
+    rule_order.forget_cycles()
+    assert rule_order.say_cycle_once(spy, trail, 3) is True
+    assert len(spy.said) == 2

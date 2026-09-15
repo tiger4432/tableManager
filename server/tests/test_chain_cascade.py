@@ -28,12 +28,26 @@ def test_chain_events_are_opt_in_per_rule_and_target_group():
     assert worker._rule_accepts_event(blocked, _event("user"))
 
 
-def test_rejects_opt_in_chain_cycles():
-    with pytest.raises(ValueError, match="allow_chain_trigger cycle"):
+def test_names_an_opt_in_chain_cycle_without_killing_the_load(caplog):
+    """⚰️ THIS USED TO RAISE, AND THE RAISE KILLED THE LOAD (판정 402). `_validate_chain_cascade_graph`
+    answers 「do the opt-in chain triggers loop」, and the answer 「yes」 is not a fault: the
+    drain enforces `max_chain_depth`, so the loop is finite. Raising here took the whole rules
+    file down - and the save route with it, so a declaration that RUNS correctly could not be
+    written at all."""
+    import logging
+
+    from chain import rule_order
+
+    rule_order.forget_cycles()
+    with caplog.at_level(logging.INFO):
         worker._validate_chain_cascade_graph([
             {"name": "a_to_b", "trigger_table": "a", "target_table": "b", "allow_chain_trigger": True},
             {"name": "b_to_a", "trigger_table": "b", "target_table": "a", "allow_chain_trigger": True},
         ])
+
+    said = " ".join(record.getMessage() for record in caplog.records)
+    assert "고리" in said and "max_chain_depth" in said, said
+    assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
 
 
 def test_processor_only_invokes_the_opted_in_rule(monkeypatch):

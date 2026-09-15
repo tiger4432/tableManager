@@ -258,12 +258,16 @@ def test_r1_self_edge_is_not_treated_as_a_cycle(rep_env):
     assert set(order) == {"crep_self", "crep_reserve"}
 
 
-def test_r1_cross_table_cycle_is_refused_by_name(rep_env):
+def test_r1_cross_table_cycle_replays_in_declaration_order(rep_env):
+    """⚰️ THIS USED TO EXPECT `ReplayRefused` (판정 402 ended it). A loop across tables is an
+    INTENDED shape - a mapper one way, a join the other - and the drain's `max_chain_depth`
+    is what keeps it finite. A replay of rules that loop is a replay in the order the
+    operator declared them, which is the only order anybody can reason about when no total
+    order exists."""
     a = dict(RULE_RESERVE, name="a", trigger_table="t1", target_table="t2")
     b = dict(RULE_RESERVE, name="b", trigger_table="t2", target_table="t1")
-    with pytest.raises(replay.ReplayRefused) as e:
-        replay.order_rules([a, b])
-    assert "cycle" in str(e.value)
+
+    assert [r["name"] for r in replay.order_rules([a, b])] == ["a", "b"]
 
 
 def test_r1_refuses_an_unknown_rule_with_the_available_list(rep_env):

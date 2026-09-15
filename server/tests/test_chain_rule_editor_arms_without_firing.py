@@ -105,12 +105,15 @@ def test_a_cycle_is_refused_by_the_validator_that_already_exists(rules_file):
     admin.save_chain_rule_raw(
         "a_to_b", {"trigger_table": "a", "target_table": "b", **RUNNABLE,
                    "allow_chain_trigger": True, "enabled": True}, base_of(rules_file))
-    with pytest.raises(Exception) as raised:
-        admin.save_chain_rule_raw(
-            "b_to_a", {"trigger_table": "b", "target_table": "a", **RUNNABLE,
-                       "allow_chain_trigger": True, "enabled": True},
-            base_of(rules_file))
-    assert raised.value.detail["code"] == "chain_cycle"
+    # ⚰️ THE SAVE USED TO BE REFUSED FOR THIS (판정 402). A loop of opt-in triggers is an
+    # INTENDED shape and `max_chain_depth` bounds it, so refusing here refused a declaration
+    # that runs correctly - at the one door an operator has.
+    answer = admin.save_chain_rule_raw(
+        "b_to_a", {"trigger_table": "b", "target_table": "a", **RUNNABLE,
+                   "allow_chain_trigger": True, "enabled": True},
+        base_of(rules_file))
+
+    assert answer["ok"] is True
 
 
 def test_the_view_offers_one_rule_and_its_switch(rules_file):

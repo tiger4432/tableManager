@@ -887,10 +887,9 @@ def load_chain_rules():
     #    `allow_chain_trigger` edges and is about a RUNTIME LOOP; this one walks every
     #    producer→consumer edge and is about an IMPOSSIBLE ORDER. Two questions, two edge
     #    sets - naming them the same thing is how one name comes to carry two meanings.
-    try:
-        rules = rule_order.order_rules(rules)
-    except rule_order.RuleCycleRefused as exc:
-        logger.error("[ChainRules] %s", exc)
+    rules = rule_order.order_rules(
+        rules, on_cycle=lambda trail: rule_order.say_cycle_once(
+            logger, trail, event_constants.max_chain_depth(_RULES_DOCUMENT)))
 
     # 🔴 THE SET, BY NAME, EVERY LOAD (S-234 0단계). On 2026-09-14 eight rules were running
     # that the operator had not written and the boot line said only "8"; separately a rule
@@ -1003,8 +1002,19 @@ def _report_unwatchable_trigger_columns(rules):
                 rule.get("name") or rule.get("target_table"), unknown, table)
 
 
-def _validate_chain_cascade_graph(rules):
-    """Reject cycles made solely from opt-in chain-trigger edges at config load."""
+def _validate_chain_cascade_graph(rules) -> list:
+    """The cycles made solely from opt-in chain-trigger edges, as trails. Never raises.
+
+    ⚰️ IT USED TO RAISE, AND THE RAISE KILLED THE LOAD (판정 402). 「do the opt-in triggers
+    loop」 is a question with a legitimate 「yes」: `dt_log → dt_inventory` by mapper and back by
+    join is an INTENDED loop, and the drain's `max_chain_depth` is what keeps it finite. The
+    raise took the whole rules document down and the save route with it, so a declaration that
+    RUNS correctly could not be written at all.
+
+    🔴 IT STILL ANSWERS, AND THE ANSWER IS THE RETURN VALUE. The admin graph shows cycles -
+    「the one thing an operator cannot see anywhere else」 - so this reports rather than logs
+    only: a validator that merely printed would have made that screen go quietly blank.
+    """
     graph = defaultdict(set)
     for rule in rules:
         if not rule.get("enabled", True) or not rule.get("allow_chain_trigger"):
@@ -1034,9 +1044,20 @@ def _validate_chain_cascade_graph(rules):
                 graph[src].add(dst)
 
     visiting, visited = set(), set()
+    cycles = []
     def visit(node, trail):
         if node in visiting:
-            raise ValueError("allow_chain_trigger cycle: " + " -> ".join(trail + [node]))
+            # 🔴 [판정 402] SAID ONCE, NEVER RAISED. This walk answers 「do the opt-in chain
+            # triggers loop」, and the answer 「yes」 is not a fault: the drain enforces
+            # `max_chain_depth`, so the loop is finite. Raising here KILLED the load and the
+            # save route with it - a declaration that runs correctly could not be written.
+            from chain import rule_order
+
+            found = trail + [node]
+            rule_order.say_cycle_once(logger, found,
+                                      event_constants.max_chain_depth(_RULES_DOCUMENT))
+            cycles.append("allow_chain_trigger cycle: " + " -> ".join(found))
+            return
         if node in visited:
             return
         visiting.add(node)
@@ -1046,6 +1067,7 @@ def _validate_chain_cascade_graph(rules):
         visited.add(node)
     for node in graph:
         visit(node, [])
+    return cycles
 
 
 

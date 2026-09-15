@@ -159,16 +159,14 @@ def find_rule(rule_name: str, rules: list = None) -> dict:
 def order_rules(rules: list) -> list:
     """생산자가 소비자보다 먼저 — 저자는 `chain.rule_order` 다 (S-156).
 
-    ⚠️ THE SENTENCE AND THE EXCEPTION ARE DIFFERENT THINGS. The sentence is written once, in
-    the shared home; `ReplayRefused` is what this module's callers already catch, so the
-    refusal is re-raised under that name rather than making every caller learn a second one.
+    ⚰️ IT USED TO RE-RAISE A CYCLE AS `ReplayRefused`, and 판정 402 ended that: a cycle is a
+    SHAPE, not an error, and the drain's `max_chain_depth` is what keeps it finite. A replay
+    of rules that loop is a replay in declaration order, which is what the shared walk now
+    returns - there is no refusal left for this module to translate.
     """
-    from chain.rule_order import RuleCycleRefused, order_rules as _ordered
+    from chain.rule_order import order_rules as _ordered
 
-    try:
-        return _ordered(rules)
-    except RuleCycleRefused as exc:
-        raise ReplayRefused(str(exc)) from exc
+    return _ordered(rules)
 
 
 def is_self_triggering(rule: dict) -> bool:
