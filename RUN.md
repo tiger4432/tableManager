@@ -95,4 +95,4 @@ Transaction … permanently failed: N event(s) -> FAILED. 원인: <예외 문장
 * 오른쪽 행이 «둘 이상» 이면 그 왼쪽 행은 안 씁니다(둘 다 답이 아님) — 나머지 행은 그대로 써집니다. 로그 한 줄:
   `[join_into:이름] N left row(s) matched MORE THAN ONE right row and are skipped by name ...`
   이 줄이 보이면 «오른쪽 표의 데이터»에 같은 키가 둘인 것입니다 — 2번(접기)으로 가십시오. 선언을 고칠 일이 아닙니다.
-* ⚠️ 켜면 «지금부터 바뀌는 행»만 조인됩니다. 기존 행 소급은 어드민 소급 탭 chain_replay(R1)인데 **오늘은 `builtin:` 종류를 못 돌립니다(S-242, 구현자 최우선)** — 착지 뒤 「소급 탭 → chain_replay → 규칙 이름(왼쪽 규칙) → pace `slow`/`trickle` → 세기 → 실행」. 왼쪽 표 전체 행이 대상입니다(박스 실측 488,429 행).
+* 켜면 «지금부터 바뀌는 행»이 조인됩니다. **기존 행 소급(S-242 착지):** 어드민 소급 탭 → `chain_replay` → 규칙 이름은 **왼쪽 규칙**(오른쪽 `…:reference` 는 이름 대고 거절됨) → pace `slow` 또는 `trickle` → «세기»(「다시 계산할 행」 수가 뜸) → 실행. 왼쪽 표 전체 행이 대상입니다(박스 실측 488,429 행). 한 페이지가 던지면 그 페이지만 세고 계속 갑니다(`pages_failed`).
