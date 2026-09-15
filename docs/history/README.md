@@ -1,13 +1,20 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **857개** 이력. (거버넌스 규칙 #4)
+> 총 **864개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-09 (September 2026)
 
+- **2026-09-15 13:08** — [A Declared Join Can Be Backfilled And A Bad Page Costs One Page](./20260915_130844_a_declared_join_can_be_backfilled_and_a_bad_page_costs_one_page.md)
+- **2026-09-15 12:55** — [The Follow Up Lap Became A Hop And One Cause Gets One Helping](./20260915_125527_the_follow_up_lap_became_a_hop_and_one_cause_gets_one_helping.md)
+- **2026-09-15 12:11** — [A Cycle Is A Shape Not An Error Said Once Refused Nowhere](./20260915_121153_a_cycle_is_a_shape_not_an_error_said_once_refused_nowhere.md)
+- **2026-09-15 11:56** — [An Index Lives Exactly As Long As The Join That Requires It](./20260915_115619_an_index_lives_exactly_as_long_as_the_join_that_requires_it.md)
+- **2026-09-15 11:37** — [The Joins Writes Carry The Chains Layer So They Cannot Wake The Enrich That Feeds Them](./20260915_113722_the_joins_writes_carry_the_chains_layer_so_they_cannot_wake_the_enrich_that_feeds_them.md)
+- **2026-09-15 11:32** — [The Save Gate Judges What The Loader Would Stand](./20260915_113216_the_save_gate_judges_what_the_loader_would_stand.md)
+- **2026-09-15 11:26** — [A Number Key Is Compared As Text So The Machine Folds The Type](./20260915_112608_a_number_key_is_compared_as_text_so_the_machine_folds_the_type.md)
 - **2026-09-15 10:31** — [Enrich Became A Decide Kind Through One Expander With Two Front Doors](./20260915_103121_enrich_became_a_decide_kind_through_one_expander_with_two_front_doors.md)
 - **2026-09-15 10:05** — [A Left Row With Two Right Answers Is Written By Neither](./20260915_100554_a_left_row_with_two_right_answers_is_written_by_neither.md)
 - **2026-09-15 09:47** — [One Declarations Failure No Longer Blocks Another Tables Read](./20260915_094712_one_declarations_failure_no_longer_blocks_another_tables_read.md)
