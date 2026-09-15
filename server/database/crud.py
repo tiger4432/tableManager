@@ -693,6 +693,25 @@ SOURCE_PRIORITY = {
 # automatic ones.
 USER_SOURCE = "user"
 
+
+def can_mean_emptied(source_name: str) -> bool:
+    """Can this writer MEAN 「I emptied this cell」? (S-243, 판정 405)
+
+    🔴 TWO WRITERS CAN, AND THE SET IS CLOSED BY CONSTRUCTION. A person clearing a cell
+    (rank 0) and the chain asserting that a matched right row IS empty (판정 f3c04dee).
+    Everything else that arrives blank means 「아직 입력하지 않은 것」 and makes no layer.
+
+    🔴 POSITIVELY, NEVER BY BLACKLIST - the reason is twenty lines above this one: file
+    parsers write under the INGESTED FILENAME, so the set of automatic source names is
+    open-ended (10,750 distinct values on the live database) and cannot be enumerated.
+
+    ⚠️ IT IS A FUNCTION RATHER THAN A CONDITION AT ITS ONE SEAT because it has a SECOND
+    reader now: `scripts/count_absent_null_layers.py` asks the same question of layers
+    already stored (S-243-b). Two spellings of 「who may empty a cell」 is how the counting
+    and the writing come to disagree about what they are counting.
+    """
+    return source_name in (USER_SOURCE, CHAIN_SOURCE)
+
 # Config location comes from the single override point (server/paths.py, ASSY_DATA_ROOT).
 # Same import guard as event_constants above: crud can be imported without server/ on sys.path.
 try:
@@ -3135,8 +3154,7 @@ def apply_row_update_internal(
         # ⚠️ AND THE EXISTING LAYER IS LEFT ALONE, not deleted. 「Not entered」 is not
         # 「withdraw what you said before」 - so yesterday's value stays, and removing it is
         # the business of a person, of `withdraw_source` (R2), or of `replace_map`.
-        if (is_blank_value(clean_val)
-                and update_item.source_name not in (USER_SOURCE, CHAIN_SOURCE)):
+        if is_blank_value(clean_val) and not can_mean_emptied(update_item.source_name):
             if drop_stats is not None:
                 _record_dropped_cell(drop_stats, row.row_id, update_item.business_key_val,
                                      col_name, DROP_ABSENT_NOT_WRITTEN)

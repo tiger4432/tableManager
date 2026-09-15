@@ -149,11 +149,11 @@ def test_the_writer_is_chosen_positively_never_by_blacklist():
     the INGESTED FILENAME - 10,750 distinct values on the live DB per `USER_SOURCE`'s own
     note - so 「is this a file」 cannot be asked, and 「is this one of the two writers that
     can MEAN empty」 can."""
-    import inspect
-
-    body = inspect.getsource(crud.apply_row_update_internal)
-
-    assert "not in (USER_SOURCE, CHAIN_SOURCE)" in body
+    assert crud.can_mean_emptied(crud.USER_SOURCE)
+    assert crud.can_mean_emptied(crud.CHAIN_SOURCE)
+    assert not crud.can_mean_emptied("some_file_2026_09_15.csv")
+    assert not crud.can_mean_emptied("pipeline_parser")
+    assert not crud.can_mean_emptied("collision_merge")
     assert crud.get_source_priority(crud.USER_SOURCE) == 0
     assert crud.get_source_priority("some_file_2026_09_15.csv") == 99
 
