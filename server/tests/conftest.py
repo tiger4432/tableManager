@@ -581,5 +581,23 @@ def client(db_session):
 def pytest_configure(config):
     config.addinivalue_line(
         "markers",
-        "pg: a proof only PostgreSQL can carry; skips on sqlite, runs under "
-        "server/scripts/run_pg_tests.py (S-256)")
+        "pg: a proof only PostgreSQL can carry; skips on sqlite, runs under "
+        "server/scripts/run_pg_tests.py (S-256)")
+
+
+def pytest_collection_modifyitems(config, items):
+    """A `pg` proof runs only when it was ASKED for (`-m pg`, which the runner passes).
+
+    🔴 S-257 gave `pg_engine` the dev_env door, so on a box that declares a QA database
+    the plain `pytest` run - the gate every lane runs - would start executing the PG
+    proofs too, and the first one it met (S-259, retired plumbing) turned that gate red
+    for a defect the run was never about. The plain run keeps yesterday's meaning; the PG
+    seat is `run_pg_tests.py`, on purpose, one command (S-256).
+    """
+    import pytest as _pytest
+    if "pg" in (config.getoption("-m") or ""):
+        return
+    asked_out = _pytest.mark.skip(reason="pg proof: run server/scripts/run_pg_tests.py (S-256)")
+    for item in items:
+        if item.get_closest_marker("pg") is not None:
+            item.add_marker(asked_out)
