@@ -340,6 +340,31 @@ def test_an_empty_ledger_table_still_answers(ledger):
     assert body["edges"] == []
 
 
+def test_the_partition_key_forbids_a_pk_on_id_alone(ledger):
+    """🔴 A contract fact L1 and the resolver both depend on, asked of the engine.
+
+    "`id` is a unique primary key so the last tiebreak always decides" is the
+    obvious totality argument and it is not available: a table partitioned on
+    `occurred_at` cannot have a unique constraint that omits `occurred_at`. The
+    resolver's totality therefore rests on levels 2b+3 being JOINTLY the primary
+    key, which is a different claim, and this test is what stops it from being
+    quietly assumed back.
+    """
+    import sqlalchemy.exc
+    with ledger.begin() as conn:
+        with pytest.raises(sqlalchemy.exc.DatabaseError):
+            conn.execute(text(
+                "CREATE TABLE l2_pk_probe (id uuid NOT NULL, "
+                "occurred_at timestamptz NOT NULL, PRIMARY KEY (id)) "
+                "PARTITION BY RANGE (occurred_at)"))
+    with ledger.begin() as conn:
+        conn.execute(text(
+            "CREATE TABLE l2_pk_probe (id uuid NOT NULL, "
+            "occurred_at timestamptz NOT NULL, PRIMARY KEY (id, occurred_at)) "
+            "PARTITION BY RANGE (occurred_at)"))
+        conn.execute(text("DROP TABLE l2_pk_probe"))
+
+
 # ---------------------------------------------------------------------------
 # 🔴 THE SEAM — the lookup is replaceable, demonstrated rather than asserted
 # ---------------------------------------------------------------------------
