@@ -194,10 +194,13 @@ async def _read_only_relation_refused(request: Request, exc: crud.ReadOnlyRelati
     return _JSONResponse(status_code=422, content={"detail": str(exc)})
 
 
-# --- Ledger lineage trace (GET /api/ledger/trace) --------------------------
+# --- Ledger read routes (GET /api/ledger/subgraph and nine others) ---------
 # Registered HERE for the same reason /health is: FastAPI matches in registration
 # order and the SPA catch-all `@app.get("/{file_name:path}")` at the bottom of
-# this file would otherwise serve index.html with a 200 for this path too.
+# this file would otherwise serve index.html with a 200 for these paths too.
+# ⚠️ THIS LINE USED TO NAME `/api/ledger/trace`, WHICH IS RETIRED. The router's own
+# docstring lists what it opens today; a section header naming a dead route sends a
+# reader looking for it, and S-259 spent a pass finding out it was gone.
 from ledger import trace_router  # noqa: E402
 app.include_router(trace_router.router)
 
