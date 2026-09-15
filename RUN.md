@@ -77,4 +77,4 @@ python scripts/preview_unified_declarations.py --out ../unified_preview.json
 * 오른쪽 행이 «둘 이상» 이면 그 왼쪽 행은 안 씁니다(둘 다 답이 아님) — 나머지 행은 그대로 써집니다. 로그 한 줄:
   `[join_into:이름] N left row(s) matched MORE THAN ONE right row and are skipped by name ...`
   이 줄이 보이면 «오른쪽 표의 데이터»에 같은 키가 둘인 것입니다 — 2번(접기)으로 가십시오. 선언을 고칠 일이 아닙니다.
-* ⚠️ 첫 실행은 왼쪽 표 «전체» 행을 씁니다(박스 실측: dt_inventory 488,429 행). 운영에서는 페이싱 창을 정하고 켜십시오.
+* ⚠️ 켜면 «지금부터 바뀌는 행»만 조인됩니다. 기존 행 소급은 어드민 소급 탭 chain_replay(R1)인데 **오늘은 `builtin:` 종류를 못 돌립니다(S-242, 구현자 최우선)** — 착지 뒤 「소급 탭 → chain_replay → 규칙 이름(왼쪽 규칙) → pace `slow`/`trickle` → 세기 → 실행」. 왼쪽 표 전체 행이 대상입니다(박스 실측 488,429 행).

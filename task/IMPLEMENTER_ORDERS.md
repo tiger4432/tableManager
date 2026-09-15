@@ -38743,3 +38743,23 @@ S-106 조건   철회는 «오늘의 함수»(store 의 withdraw)를 그대로 �
 > 📌 **[09-15 10:4x] 이 채널의 미답 질문: «없음».**
 > ✅ **[09-15 10:3x 구현자] S-239 착지 `4e72ec0b` + 보고 `fd7ad068`** — 확장기 하나에 문 둘(`chain_rules_for`), 판정 400·401 그대로, ③′ 는 join·decide 둘 다. 게이트 11 · 변이 다섯 전부 빨강 · 1,158 passed · collect 6,615. 첫 실행 없음 · 재기동은 총괄.
 > 📌 **[09-15 10:3x] 이 채널의 미답 질문: «없음».**
+---
+
+> ## 🔴 S-242 — «먼저». 소급(R1 chain_replay)이 `builtin:` 종류를 «못 돌린다» — 통합 join 의 기존 행 소급이 오늘 없다 (총괄 지시, 2026-09-15 11:2x). S-240 은 이것 «뒤»
+>
+> **소유자 지금:** 가상 조인을 통합 join 으로 이관 중 — 「이거 켜려면 어케해 소급」. 답이 «없었다».
+> **실측(총괄):** `chain/replay.py` 에 `builtin` 낱말 0. `replay_rule` 은 `find_rule` 로 «번역된» 규칙(통합 join 포함)을 찾고는 `execute_custom_mapper(rule["mapper_module"], rule["mapper_function"], …)` 로 부른다 — builtin 규칙은 그 두 칸이 None 이라 `importlib.import_module(None)` 에서 «던진다». 워커는 같은 규칙을 `builtins.run_builtin(kind, db, rule, row_ids=…)`(`ingestion_worker` :2635) 로 부른다 — 라이브와 소급이 «다른 문»이다(깔끔 ④).
+> **도착지 두 줄:** 「어드민 소급 탭(또는 `chain_replay_cli.py replay <이름>`)에서 통합 join 규칙 이름을 고르고 pace 를 고르면, 기존 행 전부가 «그 규칙의 라이브 경로 그대로» 페이지 단위로 돈다」.
+> **바뀌는 층 «하나»:** `chain/replay.py::replay_rule` — 규칙의 mapper 가 `builtins.BUILTIN_KINDS` 에 있으면 페이지의 row_id 목록으로 `builtins.run_builtin(kind, db, rule, row_ids=[…])` 를 부르고, 반환 `{"written": n, "refusal": …}` 를 stats 에 싣는다(`cells_proposed` 대신 `rows_written` 한 칸 — 이름은 당신이). 파일 맵퍼 경로는 «한 글자도» 안 바뀐다. `_count_chain_replay`(admin/retroactive.py :161) 의 «세기»는 트리거 표 행 수 그대로면 맞는지 «재고» 적을 것.
+> **그대로인 것:** `join_into.py` · `builtins.py` · `virtual_join/*` · `mapper_call.py` 무접촉. 페이싱(`resolve_pace`)·체크포인트·취소는 «같은 루프»라 그대로 탄다.
+> ⚠️ **오른쪽(참조) 트리거 규칙은 소급 대상이 «아니다»** — 통합 join 의 둘째 규칙(follow_up, trigger=오른쪽 표)을 소급하면 오른쪽 행마다 왼쪽을 다시 찾는 «두 배 일»이다. 왼쪽 규칙 하나만 돌면 전부 덮인다. `find_rule` 이 follow_up 규칙 이름을 받으면 «이름 대고 거절»(한 줄) — 아니면 운영자가 둘 다 돌린다.
+> **게이트 — §0-ter 단언**
+> ```
+> ① 읽기 경로 무접촉   diff 는 chain/replay.py(+시험)뿐. 새 SQL 0 — join_into 가 자기 SELECT 를 «이미» 가진다
+> ② 값 하나 ≠ 배치     한 페이지에서 join_into 가 던져도 «그 페이지만» 실패로 세고 다음 페이지로(기존 페이지 격리 그대로인지 재서) · 세션이 SELECT 1 에 답함
+> ③′ 스위치           `enabled:false` 규칙은 `find_rule` 이 이미 안 찾는다(그대로) — 시험 한 줄로 고정
+> ④ 동작 0 + 되돌림     파일 맵퍼 규칙의 replay 시험 전부 «그대로 초록» · 한 커밋
+> ⑤ 첫 실행 없음        박스에 통합 join 선언 없음. 시험은 S-237 픽스처(왼쪽 2행·오른쪽 1행)로 replay → 왼쪽 `lot_confirmed` 가 채워짐 + `apply=False` 면 0 행
+> ```
+> ⛔ 짓기 «전» §0-ter 셋을 이 채널 답으로 먼저(짧게 — 이건 작다). 재기동은 제가. 끝나면 보고 + 「미답 없음」 + 그다음 S-240.
+> 📌 **[09-15 11:2x] 이 채널의 미답 질문: «없음».**
