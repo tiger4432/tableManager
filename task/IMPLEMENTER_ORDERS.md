@@ -38894,3 +38894,17 @@ S-106 조건   철회는 «오늘의 함수»(store 의 withdraw)를 그대로 �
 > ```
 > 게이트에 한 줄 더: Ⅴ 고리 셋(맵퍼 log→inventory · 조인 inventory→log · auto_confirm)을 세운 로드가 «오류 0·규칙 전부 set»이고 INFO 한 줄이 «한 번». 순서는 S-249 → 그대로.
 > 📌 **[09-15 12:2x] 이 채널의 미답 질문: «없음».**
+---
+
+> ## 🔴🔴🔴 S-249 «원인 확정» — 뒤따르기 랩은 홉을 안 달고 이벤트를 안 접는다 (총괄 실측, 2026-09-15 12:3x). ⓐ 재현은 «이것을 확인»하는 것으로 줄이고 «바로 ⓒ». 소유자: 「조인 체인 무한 실행되는데 뭐 땜에 실행되는지 모르겠음」 · 「한 행당 로그가 하나씩 뜨는 듯, 로그 엄청 많게」
+>
+> ```
+> 그룹 경로(:1494)          request_chain_depth.set(incoming+1)  + outbox_mode(COLLAPSED)(:1589)   → 홉이 오르고 max_chain_depth 가 «건다» · 쓰기 N 행 = 이벤트 «하나»(≤1,000)
+> 뒤따르기 랩(:2599 → :2604) _drain_ledger_followup_sync 스레드 — 둘 다 «없음»                       → 홉 = None(0 으로 리셋) · 쓰기 N 행 = 이벤트 «N 개»
+> ```
+> 그래서 `inventory → (B2, 뒤따르기) → log 행마다 이벤트 → … → inventory → B2 …` 는 홉 상한에 «절대» 안 걸리고, 행마다 이벤트·행마다 `[ChainBuiltin]` 줄이 난다. 이것이 «무한»과 «로그 폭주» «둘 다»의 자리다. ③(층 이름) 은 이 고리의 «입구»였고 어제부터의 고리는 auto_confirm(inventory 자기 뒤따르기)이 같은 자리에서 돈다.
+> **ⓒ 를 이렇게 (자리 하나):** `_run_builtin_followups` 가 각 rule 을 부를 때 «그룹 경로와 같은 두 컨텍스트» 안에서 부른다 — `request_chain_depth.set(<이 done 이 실어 온 홉>+1)` + `outbox_mode(COLLAPSED)`. 그러려면 `done` 이 홉을 실어야 한다: `ledger_followup.enqueue(…)` :1282 에 이벤트의 `chain_depth_of(payload)` 를 한 칸 더 넘기고 `drain_once` 가 `done["hop"]` 으로 돌려준다(큐 튜플 한 칸). 상한 초과는 그룹 경로와 «같은 줄»(`[Chain Depth] … refusing`)이 «같은 함수»에서 나오게 — 두 번째 철자 금지.
+> **줄 하나(S-247 모양):** `[ChainBuiltin] rule=%s kind=%s table=%s rows_in=%d written=%s ← woke_by=%s#%s tx=%s hop=%d/%d` — «왜 돌았나»가 줄에 있어야 소유자가 고리를 «본다». 그리고 이 줄은 «접는다»: written=0 이면 INFO 가 아니라 DEBUG, 같은 (rule, table) 은 첫 줄 + 500 마다(`log_failure_folded` 와 같은 손).
+> **게이트 정정:** Ⅰ 수렴은 그대로. Ⅱ 끊김 = «뒤따르기로 도는» 고리가 `max_chain_depth` 에서 «규칙 이름 둘»을 대고 끊긴다(그룹 경로 시험이 이미 있으면 그 시험을 뒤따르기 랩으로 «한 번 더»). Ⅵ 로그 = 1,000 행 뒤따르기 쓰기가 이벤트 «1»·`[ChainBuiltin]` 줄 «1».
+> ⛔ 이것이 오늘 «최우선»이다. 판정 402(고리 = 정보 한 줄)도 같은 커밋에.
+> 📌 **[09-15 12:3x] 이 채널의 미답 질문: «없음».**
