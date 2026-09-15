@@ -6,16 +6,19 @@
 
 ## 0. 프로세스 — 둘 중 하나의 모양으로 돈다
 ```
-통합 모드 (기본)        uvicorn 한 프로세스 안에 ①웹 + ②워처 + ③체인(+④⑤) 이 «같이» 산다
+통합 모드 (uvicorn 단독)  uvicorn 한 프로세스 안에 ①웹 + ②워처 + ③체인(+④⑤) 이 «같이» 산다 — 개발·박스용
                       기동 로그: 「Directory Watcher started …」 · 「Chained Ingestion Worker background task spawned.」
-분리 모드 (DECOUPLED=True)  웹은 「Decoupled mode active. Skipping inline …」 을 찍고 «웹만» 한다
+                      · 🆕 경고 「[Chain Worker] running INSIDE the API process - a slow tick blocks every HTTP request …」(판정 406 ②)
+분리 모드 (런처 = 운영)  런처(run_decoupled_app.py)가 API 자식에 DECOUPLED=True «와» ASSY_CHAIN_WORKER=0 을 넘긴다
+                      웹은 「Decoupled mode active. Skipping inline …」 을 찍고 «웹만» 한다(체인 루프는 이 프로세스에 «없다»)
                       워처(run_watcher.py) · 체인(run_chain_worker.py) · 수집기(run_auto_update.py) 가 «각자 프로세스»
                       감독(runtime/process_supervisor.py)이 살리고 죽인다(백오프 2·4·8·16·32 s)
+ASSY_CHAIN_WORKER=0   uvicorn 을 손으로 띄웠는데 체인만 «안» 돌리고 싶을 때의 스위치. 로그는 info 「[Chain Worker] NOT started in this process」(경고가 아니다 — 런처 아래서는 정상)
 ```
 🔴 통합 모드에서는 아래 표의 «모든 고리가 한 파이썬 프로세스(GIL)와 한 DB 풀»을 나눠 쓴다.
    조회가 «출렁이면»(같은 질의가 0 → 1.5 s) 먼저 이 줄을 본다 — 질의 모양이 아니라 «옆 고리»다.
-🔴 [2026-09-15 22:3x 박스 장애 · 판정 406 — «지시됨, 미착지»] 통합 모드의 ③은 ①과 «같은 이벤트 루프»다. 소비할 수 없는 제어 행(`RETROACTIVE_RUN` 은 수집기의 것)이 대기열에 남으면 ③이 틱마다 그것을 집고 «비지 않았다»며 대기를 건너뛰어 ①이 굶는다(await 없는 고리 — py-spy 로 잰 것 · DB 막힘 0).
-   그래서 API 프로세스는 체인 루프를 «안 돌리게 될 것»이다 — 런처가 uvicorn 에 `ASSY_CHAIN_WORKER=0`(오늘은 킬스위치, 기본 «켬») 을 넘기고 체인은 `run_chain_worker` 로. S-252 는 ③이 «자기 행만 · 처리 0 이면 대기»하게 한다. 착지하면 위 상자의 「통합 모드 (기본)」 줄을 고칠 것.
+🔴 [2026-09-15 22:3x 박스 장애 · 판정 406 · S-252 — 착지 `07143bbe`·`86016d10`] 통합 모드의 ③은 ①과 «같은 이벤트 루프»다. 그날 소비할 수 없는 제어 행(`RETROACTIVE_RUN` 은 수집기의 것)이 대기열에 남아 ③이 틱마다 그것을 집고 «비지 않았다»며 대기를 건너뛰어 ①이 굶었다(await 없는 고리 — py-spy 로 잰 것 · DB 막힘 0).
+   오늘: ③은 «자기 행만» 집고(`pending_chain_events` — 제어 타입을 SQL 에서 뺀다) «처리 0 인 틱»은 `idle_wait()` 로 기다린다(S-252). 그리고 운영(런처)에서 ③은 API 프로세스에 «없다» — 위 상자대로 `run_chain_worker.py` 하나다(판정 406). 통합 모드는 남아 있되 «경고하며» 돈다. 속은 [event_driven_backend §3 머리](./event_driven_backend.md).
 
 ## 1. 고리 — 여섯 칸: 어디서 · 무엇이 깨우나 · 주기 · 만지는 표 · 자기 로그 줄 · 손잡이
 | # | 고리 | 어디서 | 깨우는 것 · 주기 | 만지는 표 | 자기 로그 줄 (grep 낱말) | 늦추기 / 끄기 |

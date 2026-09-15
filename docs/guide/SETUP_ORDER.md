@@ -77,8 +77,8 @@ strip 뒤 길이가 0 이면 — NULL 이고, 키를 «견주는» 자리에서�
       (`chain_bindings.routing_keys()`) — 그래서 문법이 한 칸 늘면 거절도 «같이» 압니다
 🔵 두 칸 철자(`mapper_module` + `mapper_function`)도 «그대로 읽힙니다» — 은퇴가 아닙니다
 ```
-📎 규칙 «하나»의 모양은 `server/chain_skeleton.json` 이 들고 있고, 그 파일은 위 목록에서 «생성»됩니다 —
-손으로 맞추는 둘째 목록이 아닙니다. ⚠️ 다만 **모양은 스켈레톤, 「무엇이 좋은가」는 로더**입니다.
+📎 규칙 «하나»의 모양은 `server/chain_skeleton.json` 이 들고 있고, 그 파일은 «생성»됩니다 — 평면 모양(`root`)은 위 목록에서, 통합 모양(`unified_root` — `on`/`derive`/`into`, 2026-09-16 S-241)은 `rule_shape`·`join_into` 의 상수에서.
+손으로 맞추는 둘째 목록이 아닙니다. 폼이 어느 모양을 그릴지는 raw 응답의 `grammar` 칸이 말합니다. ⚠️ 다만 **모양은 스켈레톤, 「무엇이 좋은가」는 로더**입니다.
 
 ⚠️ 🆕 **[2026-09-13 S-221 `fc0914a7`] `max_group_attempts` 는 이제 «규칙 칸이 먼저»이고 문서 칸은 «기본값»이다**(합친 단위는 최소). `max_rows_not_visible_defers`(기본 30)는 문서 «최상단»이고 규칙이 아니라
 «문서»의 칸이고, SYSTEM_RELOAD 로 반영된다(재기동 불필요).
