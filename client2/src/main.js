@@ -276,6 +276,15 @@ function initRedoBanner() {
     // 🔴 값을 넘기지 «않습니다». 있는지만 답합니다 -- 그래서 이 부품의 하니스는 진짜 토큰
     //    없이도 「토큰이 없을 때 문장이 뜬다」를 채점할 수 있습니다.
     hasToken: () => readAdminToken() !== '',
+    // 🔴 C-114. 부품은 「이 행」을 들고 있고, «보여 주는 법»은 이 페이지가 압니다.
+    //    ⚠️ 행을 «신원»으로 못 찾습니다 — 그게 없는 행이 바로 이 줄의 주어입니다.
+    //    그래서 «객체 동일성»으로 찾습니다: 그리드가 준 바로 그 행입니다.
+    reveal: (row) => {
+      if (!state.gridApi || !row) return;
+      let found = null;
+      state.gridApi.forEachNode((node) => { if (!found && node.data === row) found = node; });
+      if (found) state.gridApi.ensureNodeVisible(found, 'middle');
+    },
     run: (op, params) => runRetroactive(op, params),
     handOff: (payload) => {
       if (!putRescopeHandoff(payload)) {

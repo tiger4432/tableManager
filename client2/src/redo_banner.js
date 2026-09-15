@@ -39,13 +39,20 @@ export function scopeValuesFor(rows, column, readValue) {
   const read = readValue || ((row, col) => (row ? row[col] : undefined));
   const seen = [];
   let missing = 0;
+  // 🔴 C-114. 세는 것만으로는 「어느 행이냐」에 답할 수 없습니다. «같은 걸음»에서 첫 행을
+  //    같이 들고 나옵니다 — 밖에서 다시 걸으면 «비었다»의 판별식이 두 벌이 됩니다(기준 ④).
+  let firstMissing = null;
   for (const row of rows || []) {
     const raw = read(row, column);
-    if (raw === undefined || raw === null || raw === '') { missing += 1; continue; }
+    if (raw === undefined || raw === null || raw === '') {
+      missing += 1;
+      if (firstMissing === null) firstMissing = row;
+      continue;
+    }
     const value = String(raw);
     if (!seen.includes(value)) seen.push(value);
   }
-  return { values: seen, missing };
+  return { values: seen, missing, firstMissing };
 }
 
 /** 원장 쪽 그룹: 선언된 범위 컬럼마다 하나. 값이 하나도 없는 컬럼은 «그룹이 아닙니다».
@@ -92,6 +99,9 @@ export class RedoBanner {
     //    1000 입니다(운영 규격: 한 트랜잭션에 수천 행). 숫자를 박으면 그 숫자가
     //    다른 설치에서도 맞다고 말하는 것이 됩니다.
     this.warnAbove = typeof options.warnAbove === 'number' ? options.warnAbove : 1000;
+    // 🔴 C-114. «그 행을 보여 달라»는 함수 하나를 받습니다. 이 부품은 그리드 API 를
+    //    모릅니다 — `run` 과 같은 규율이고, 그래서 하니스가 진짜 그리드 없이 채점합니다.
+    this.reveal = typeof options.reveal === 'function' ? options.reveal : null;
     this.relation = null;
     this.open = null;
     // 줄마다의 상태. 누른 뒤 «그 줄이» 말합니다 -- 조용히 닫으면 운영자는 두 번 누릅니다.
@@ -260,7 +270,11 @@ export class RedoBanner {
 
     assembled.rows.forEach((entry, index) => {
       const pressable = runnable && !!entry.params;
-      const line = doc.createElement(pressable ? 'button' : 'div');
+      // 🔴 C-114. «돌리는 줄»과 «보여 주는 줄»은 다릅니다. 둘째는 토큰과 무관하고
+      //    (읽기만 합니다), 주입된 함수가 없으면 그냥 줄입니다 — 누르면 아무 일도 안 나는
+      //    버튼은 화면이 하는 거짓입니다.
+      const showable = !pressable && entry.reveal != null && typeof this.reveal === 'function';
+      const line = doc.createElement(pressable || showable ? 'button' : 'div');
       // 🔴 «태그가 달라도 클래스는 같습니다». 여기서 갈리면 토큰이 있을 때만 줄이 가로로
       //    흐르고, 토큰이 없는 사람은 그 결함을 «볼 수가 없습니다» (2026-09-02 소유자 지적).
       line.className = 'dropdown-item redo-panel__group';
@@ -268,6 +282,10 @@ export class RedoBanner {
         line.type = 'button';
         // 확인 창은 없습니다. 줄에 «크기»가 적혀 있고, 그것을 누르는 것이 확인입니다.
         line.addEventListener('click', () => this.fire(index, assembled.op, entry.params));
+      } else if (showable) {
+        line.type = 'button';
+        line.dataset.reveal = 'row';
+        line.addEventListener('click', () => this.reveal(entry.reveal));
       }
       const said = this.said[index];
       line.textContent = said ? `${entry.text} — ${said}` : entry.text;
@@ -341,7 +359,7 @@ export class RedoBanner {
     //    `rows_scanned 0`, 그리고 «오류는 없었습니다».
     // ⛔ 둘 다 보내지 않습니다 — 서버가 «거절»합니다(한 물음에 두 답). 그리고 평키 표만
     //    다른 길을 타면 «그 표에서만» 나는 고장이 생깁니다(기준 ④).
-    const { values, missing } = scopeValuesFor(rows, 'row_id', this.readValue);
+    const { values, missing, firstMissing } = scopeValuesFor(rows, 'row_id', this.readValue);
     if (!values.length) return { note: '선택 행에 row_id 없음' };
     // 🔴 셈은 «행 수»입니다(판정 407 ②) — row_id 는 중복이 없으므로 값의 수가 곧 행의 수입니다.
     //    종전의 「N keys from M rows」는 둘이 갈라질 수 있을 때의 문구였고, 이제 갈라지지 않습니다.
@@ -369,7 +387,10 @@ export class RedoBanner {
     // 🔴 판정 407 ②. row_id 가 없는 행은 «조용히 빠지지» 않고 이름을 달고 섭니다 —
     //    그 행들은 다시 돌아가지 «않습니다», 그리고 그것이 화면에 없으면 운영자는 전부 돌았다고 읽습니다.
     const skipped = missing
-      ? [{ text: `row_id 없는 행 ${missing} — 다시 돌릴 수 없음`, params: null }] : [];
+      ? [{ text: `row_id 없는 행 ${missing} — 다시 돌릴 수 없음`, params: null,
+           // 🔴 C-114. 수만 보여 주면 운영자는 «어느 행인지»를 모릅니다 — 그 처음 행으로
+           //    그리드를 보냅니다. 돌리는 줄이 아니므로 `params` 는 그대로 `null` 입니다.
+           reveal: firstMissing }] : [];
     return {
       op: 'chain_replay',
       payload,
