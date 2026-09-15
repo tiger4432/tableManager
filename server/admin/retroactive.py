@@ -164,7 +164,8 @@ def _count_chain_replay(db, params, scan_limit):
     rule = replay.find_rule(params["rule"])
     s = replay.replay_rule(db, rule, apply=False, limit=scan_limit,
                                  log=lambda m: logger.debug(m),
-                                 business_keys=params.get("business_keys"))
+                                 business_keys=params.get("business_keys"),
+                                 row_ids=params.get("row_ids"))
     truncated = s["rows_scanned"] >= scan_limit
     # 🔴 [S-242] A `builtin:` KIND WRITES ITSELF, SO IT PROPOSES NO CELLS. Measured: this
     # count reads `cells_proposed`, which a builtin rule leaves at 0 - so the screen an
@@ -567,6 +568,7 @@ def _run_chain_replay(db, params, log, control=None):
     s = replay.replay_rule(db, rule, apply=True, log=log,
                                  checkpoint=_checkpoint(control),
                                  business_keys=params.get("business_keys"),
+                                 row_ids=params.get("row_ids"),
                                  pace=params.get("pace"))
     _final_progress(control, s.get("rows_scanned"))
     return {"cells_written": s["cells_written"], "rows_created": s["rows_created"],
@@ -649,11 +651,20 @@ OPERATIONS = {
                       help="replay only these rows, by business_key_val; omit for the "
                            "whole rule. This selects WHICH rows - `limit` still bounds "
                            "how many are scanned"),
+                   # 🔴 [S-254] THE GRID HOLDS `row_id`, NOT THE STORED BUSINESS KEY.
+                   # On a `composite_key_source` table that key is an ASSEMBLED string
+                   # appearing in no column, so a screen sending what it can SEE matched
+                   # nothing and the run reported `rows_scanned 0` with no error.
+                   _p("row_ids", required=False, kind="csv",
+                      help="replay only these rows, by row_id - the identity a grid "
+                           "holds for every table. Use this from a screen; "
+                           "`business_keys` is for a plain-keyed table's operator and "
+                           "the CLI. Sending both is refused"),
                    _pace_param()],
         "count": _count_chain_replay,
         "run": _run_chain_replay,
         "cli": ("server/scripts/chain_replay_cli.py replay <rule> "
-                "[--business-keys a,b,c] [--pace slow] --apply"),
+                "[--business-keys a,b,c] [--row-ids r1,r2] [--pace slow] --apply"),
         "deletes": None,
         "reads_as": "number",
         "cancellable": True,

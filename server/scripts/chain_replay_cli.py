@@ -137,6 +137,14 @@ def main(argv=None):
                    help="comma-separated business_key_val list: replay only these rows. "
                         "Omit to replay the whole rule. This chooses WHICH rows; --limit "
                         "still bounds how many are scanned")
+    # 🔴 [S-254] AND THE OTHER IDENTITY, for the same reason: the button takes it, so
+    # the promised `cli` line has to do the same job. A grid holds `row_id`; on a
+    # `composite_key_source` table the stored business key is an ASSEMBLED string that
+    # appears in no column, so a screen sending what it can SEE matched nothing.
+    p.add_argument("--row-ids", default=None,
+                   help="comma-separated row_id list: replay only these rows. This is the "
+                        "identity a grid holds for every table; --business-keys is for a "
+                        "plain-keyed table. Sending both is refused")
     # Same reason as --business-keys above: the button takes a pace, so the `cli` line has
     # to do the same job or an operator who types it gets an unpaced run and no error.
     p.add_argument("--pace", default=None,
@@ -193,10 +201,12 @@ def main(argv=None):
             rule = replay.find_rule(args.rule_name)
             selected = ([k.strip() for k in args.business_keys.split(",") if k.strip()]
                         if args.business_keys is not None else None)
+            rows = ([r.strip() for r in args.row_ids.split(",") if r.strip()]
+                    if args.row_ids is not None else None)
             print(_report_replay(replay.replay_rule(
                 db, rule, apply=args.apply, limit=args.limit,
-                chunk_size=args.chunk_size, business_keys=selected, pace=args.pace,
-                log=lambda m: print(f"  {m}"))))
+                chunk_size=args.chunk_size, business_keys=selected, row_ids=rows,
+                pace=args.pace, log=lambda m: print(f"  {m}"))))
         elif args.cmd == "replay-all":
             out = replay.replay_all(db, apply=args.apply, limit=args.limit,
                                           chunk_size=args.chunk_size,

@@ -295,7 +295,7 @@ def _refuse_unless_idempotent(rule, force):
 
 def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
                 chunk_size: int = DEFAULT_CHUNK_SIZE, log=logger.info,
-                checkpoint=None, business_keys=None, pace=None,
+                checkpoint=None, business_keys=None, row_ids=None, pace=None,
                 force: bool = False) -> dict:
     """[R1] Re-run one chain rule over the trigger table's current contents.
 
@@ -389,7 +389,33 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
     # target side first gave the same verdict for the wrong reason, which is why the table
     # is named here rather than left to be inferred from the variable.)
     selection = None
-    if business_keys is not None:
+    # 🔴 [S-254] THE GRID SENDS THE IDENTITY IT ACTUALLY HOLDS. A screen shows COLUMN
+    # values; on a `composite_key_source` table the stored `business_key_val` is an
+    # ASSEMBLED string (`GEN-dt_cell_key-…`) that appears in no column, so the banner sent
+    # what it could see (`DT_JOB_ID PROBE-…`) and the scan matched nothing - `rows_scanned
+    # 0`, no error, and an operator who pressed the button and watched nothing happen.
+    # The two worlds never met. `row_id` is the one identity the grid carries for every
+    # table, plain-keyed or composite.
+    #
+    # ⚠️ BESIDE `business_keys`, NOT INSTEAD OF IT. A plain-keyed table's operator
+    # thinks in business keys, the CLI takes them, and that call is unchanged - what was
+    # missing was a way to say 「these rows」 when the key is not a thing anyone can see.
+    if row_ids is not None and business_keys is not None:
+        # ⛔ TWO SELECTIONS ARE TWO ANSWERS TO 「which rows」. Silently AND-ing them
+        # would replay the intersection, which is neither of the things the caller asked
+        # for, and silently preferring one would make the other cell a lie.
+        raise ReplayRefused(
+            "both row_ids and business_keys were given; they are two answers to 「which "
+            "rows」. Send one - the grid holds row_ids, the CLI takes business keys.")
+    if row_ids is not None:
+        ids = [str(value).strip() for value in row_ids if str(value).strip()]
+        if not ids:
+            raise ReplayRefused(
+                "row_ids was given but empty; an empty selection would replay the whole "
+                "rule instead of nothing. Omit it to replay everything, on purpose.")
+        selection = trg_model.row_id.in_(ids)
+        log(f"[replay] selection: {len(ids)} row id(s)")
+    elif business_keys is not None:
         keys = [str(k).strip() for k in business_keys if str(k).strip()]
         if not keys:
             # An empty selection would scan the whole table and replay ALL of it, which is
