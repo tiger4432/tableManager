@@ -11,11 +11,12 @@
 // checks it against the validator's own field tuples in both directions -- see
 // `server/tests/test_ledger_skeleton.py`, which prints both counts and requires 0.
 //
-// Three node kinds and no fourth:
+// Four node kinds and no fifth:
 //   record  fixed field names        { fields: [ { key, required, when?, node } ] }
 //   map     members named elsewhere  { keyed_by: 'name' | 'index', member, of }
+//   oneOf   one shape out of several { hint: 'choice', branches: { <value>: node } }
 //   leaf    a value                  { hint: free | ref | role | choice | flag }
-// plus `{ use: '<name>' }`, which is not a fourth kind but a name for one of the three --
+// plus `{ use: '<name>' }`, which is not a fifth kind but a name for one of the four --
 // a binding holds bindings under its identity keys, and a document that cannot say so
 // would have to stop one level in and call that the grammar.
 
@@ -31,22 +32,41 @@ function deref(node, defs) {
   return cursor || null;
 }
 
+/** The node one step under `node` -- by field key, by member, or by branch key. Null under a
+ *  leaf, and null for a key the node does not hold.
+ *
+ *  🔴 DESCENT HAS ONE AUTHOR (C-115). `shapeAt` walks steps and `emptyOf` seeds children, and
+ *  each used to spell record-and-map descent for itself -- so when `oneOf` joined the
+ *  vocabulary, a oneOf nested under a oneOf was invisible to both while every caller happened
+ *  to hand them a node already picked. Spelled here once, the next node kind is one branch in
+ *  one place, not one per reader.
+ *
+ *  A oneOf is descended BY BRANCH KEY, because that is where the branch node lives (ruling
+ *  411: for a oneOf at P, the picked value V's node is the shape at P.V -- `derive.join` is a
+ *  record and `into.table` is a leaf, and the key is already the cell).
+ */
+function childOf(node, step, defs) {
+  if (!node) return null;
+  if (node.kind === 'record') {
+    const field = (node.fields || []).find((item) => item.key === String(step));
+    return field ? deref(field.node, defs) : null;
+  }
+  // Every member of a map has the same shape; which one this is does not matter.
+  if (node.kind === 'map') return deref(node.of, defs);
+  if (node.kind === 'oneOf') {
+    const branches = node.branches && typeof node.branches === 'object' ? node.branches : {};
+    const branch = branches[String(step)];
+    return branch ? deref(branch, defs) : null;
+  }
+  return null;                                   // a leaf has nothing under it
+}
+
 /** The node describing the value at `steps`, walking from `node`. */
 export function shapeAt(node, steps, defs) {
   let cursor = deref(node, defs);
   for (const step of steps) {
     if (!cursor) return null;
-    if (cursor.kind === 'record') {
-      const field = (cursor.fields || []).find((item) => item.key === String(step));
-      cursor = field ? deref(field.node, defs) : null;
-      continue;
-    }
-    if (cursor.kind === 'map') {
-      // Every member of a map has the same shape; which one this is does not matter.
-      cursor = deref(cursor.of, defs);
-      continue;
-    }
-    return null;                                 // a leaf has nothing under it
+    cursor = childOf(cursor, step, defs);
   }
   return cursor;
 }
@@ -82,6 +102,15 @@ export function emptyOf(node, defs, depth = 0) {
   const shape = deref(node, defs);
   if (!shape) return '';
   if (shape.kind === 'map') return shape.keyed_by === 'index' ? [] : {};
+  // 🔴 A oneOf STARTS AS 「NOTHING PICKED」, AND THAT IS AN OBJECT HOLDING NO BRANCH KEY. The
+  // renderer draws the picker blank and no branch for any value that names none (it
+  // normalises a non-object to `{}`, then reads `kind`, then a held branch key -- the
+  // loader's order), and the loader folds `''` and `{}` alike into kind "unknown". Of the
+  // two, `{}` is the one the grammar spells: a oneOf's value is a mapping with the branch
+  // under its key, so an unpicked one is that mapping with no key yet. Before this, a
+  // required oneOf fell through to the leaf tail below and was seeded `''` -- a string where
+  // a mapping belongs, drawn the same and loaded the same only while both sides stay lenient.
+  if (shape.kind === 'oneOf') return {};
   if (shape.kind === 'record') {
     // 🔴 A REQUIRED CONTAINER IS THERE FROM THE START, NOT WHEN SOMEBODY FILLS IT. Same
     // rule the server seeds a new declaration with (`empty_declaration`), applied to a
@@ -122,7 +151,7 @@ export function emptyOf(node, defs, depth = 0) {
     for (const field of shape.fields || []) {
       if (field.required !== true) continue;
       if (!fieldApplies(field, seeded)) continue;
-      const child = deref(field.node, defs);
+      const child = childOf(shape, field.key, defs);
       if (!child) continue;
       if (child.kind === 'leaf' && child.hint !== 'flag') continue;
       seeded[field.key] = emptyOf(field.node, defs, depth + 1);
