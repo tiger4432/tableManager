@@ -456,7 +456,13 @@ console.log('\n── I. THE CHAIN RULES: UNREAD IS NOT EMPTY ──────
   };
   const unread = mk(null);
   const declaredEmpty = mk([]);
-  const loaded = mk(['r_alpha', 'r_beta']);
+  // ⚠️ C-109: 목록은 «객체»입니다({name, trigger_table, target_table, kind}).
+  //    이 절이 재는 것은 그대로입니다 — 「못 읽음 ≠ 빈 목록」과 「규칙마다 한 줄」.
+  //    줄이 «어디서 어디로»를 말하는지는 `replay_rules_harness.mjs` 가 import 로 쟐니다.
+  const loaded = mk([
+    { name: 'r_alpha', trigger_table: 'dt_log', target_table: 'dt_a', kind: 'join' },
+    { name: 'r_beta', trigger_table: 'dt_log', target_table: 'dt_b', kind: 'mapper' },
+  ]);
 
   // 🔴 THE PAIR THIS SECTION EXISTS FOR. 403 and an empty config are different facts, and a
   //    screen that paints them the same sends the operator to fix the wrong thing.
@@ -467,8 +473,11 @@ console.log('\n── I. THE CHAIN RULES: UNREAD IS NOT EMPTY ──────
   ok('I2 unread says it could not be loaded',
     unread.lines.some((n) => n.textContent.includes('not loaded')),
     unread.lines.map((n) => n.textContent));
-  ok('I3 declared-empty says the server declares none',
-    declaredEmpty.lines.some((n) => n.textContent.includes('declares no chain rule')),
+  // ⚠️ C-109 에서 문구가 «좁아졌습니다»: 목록이 이제 「이 표를 트리거로 하는」 규칙만이라,
+  //    「서버에 규칙이 없다」는 오늘 «거짓»입니다(다른 표에는 있을 수 있습니다).
+  //    단언을 지우지 «않고» 문구를 바꿉니다 — 지우면 새 규칙을 재는 것이 아무것도 안 남습니다.
+  ok('I3 declared-empty says no rule is triggered by THIS table',
+    declaredEmpty.lines.some((n) => n.textContent.includes('이 표를 트리거로 하는 규칙 없음')),
     declaredEmpty.lines.map((n) => n.textContent));
   ok('I4 neither offers a line to press, because `rule` is required',
     unread.lines.every((n) => n.tagName === 'DIV')
@@ -517,7 +526,7 @@ const DEFECTS = [
     swap("      why.className = 'redo-panel__nogo';", "      why.className = 'redo-panel__quiet';")],
   ['M14 the unread rule list paints the same as a declared-empty one',
     swap("        { text: 'chain rules not loaded — open in admin to pick one', params: null },",
-      "        { text: 'the server declares no chain rule', params: null },")],
+      "        { text: '이 표를 트리거로 하는 규칙 없음', params: null },")],
   ['M16 the line drops the item class when it becomes a button',
     swap("      line.className = 'dropdown-item redo-panel__group';",
       "      line.className = pressable ? 'redo-panel__group'\n"

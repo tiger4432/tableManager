@@ -262,6 +262,12 @@ async function drive(mainSrc, apiSrc, wsSrc, cfgSrc, {
     // The re-translate moved to the header banner, so the name `init()` calls moved with it --
     // and the banner needs to hear about selection, which is a third call from the same line.
     initRedoBanner: () => null,
+    // C-109: `init` now tells the banner which table was chosen through ONE function in
+    // main.js (`redoBannerFollows`), and that function also asks for THAT table's replayable
+    // rules. It is a module-level name, not an import, so the slice cannot see it -- and
+    // without this stub every scenario in section C rejects with a ReferenceError, which is
+    // this harness doing its job. What the function DOES is scored by `replay_rules_harness`.
+    redoBannerFollows: noop,
     registerSelectionListener: noop,
     resetSuggestLearning: noop, loadSchema: async () => {}, loadHistory: async () => {},
     showIngestionProgress: noop, finishIngestionProgress: noop, showToast: noop,
@@ -529,11 +535,14 @@ const SITE_SOCKET_LAST = [
     find: '  initWebSocket();\n\n  // Load cached settings from localStorage',
     repl: '  // Load cached settings from localStorage' },
   { file: 'main',
-    // The tail of `init()` is what this site anchors on, and it has moved once already
-    // (two setRelation calls landed after the awaits). If it moves again this site goes
-    // INERT and says so out loud, which is the whole point of anchoring on the code.
-    find: '    redoBanner.setBusinessKey(state.currentBusinessKey);\n  }\n}',
-    repl: '    redoBanner.setBusinessKey(state.currentBusinessKey);\n  }\n  initWebSocket();\n}' },
+    // The tail of `init()` is what this site anchors on, and it has moved TWICE now: two
+    // setRelation calls landed after the awaits (2026-09), and C-109 folded that block into
+    // ONE call (`redoBannerFollows`) so the boot path and the table-change path cannot drift.
+    // Both times the site went INERT and said so out loud rather than going quietly green --
+    // which is the whole point of anchoring on the code. The CLAIM is unchanged: the socket
+    // back at the last statement of `init()`.
+    find: '  redoBannerFollows(state.currentTable);\n}',
+    repl: '  redoBannerFollows(state.currentTable);\n  initWebSocket();\n}' },
 ];
 const SITE_HEALTH_CATCH_UNGUARDED = {
   file: 'api',

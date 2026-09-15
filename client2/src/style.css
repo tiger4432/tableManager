@@ -3068,6 +3068,14 @@ body.resizing-active .history-sidebar {
    폰트를 썬서, 같은 글자가 31px 와 36px 로 다르게 섬니다 (실측 2026-09-02).
    줄의 모양이 토큰 유무로 갈리면 그것이 이 라운드가 고치는 바로 그 부류입니다. */
 .redo-panel__group { text-align: left; font-family: inherit; line-height: 1.5; }
+/* C-109. 종류 배지(join · decide · mapper)는 줄의 «끝»에 섭니다 — `.dropdown-item` 이
+   flex 이라 `margin-left: auto` 한 줄이면 이름이 길어도 배지 자리가 안 밀립니다. */
+.redo-panel__kind {
+  margin-left: auto; flex: 0 0 auto; align-self: center;
+  font-size: var(--fs-meta); letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--text-dim); border: 1px solid var(--border); border-radius: 2px;
+  padding: 0 var(--space-1);
+}
 .redo-panel__go { margin-top: 4px; width: 100%; }
 
 

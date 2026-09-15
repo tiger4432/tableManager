@@ -260,6 +260,15 @@ export class RedoBanner {
       }
       const said = this.said[index];
       line.textContent = said ? `${entry.text} — ${said}` : entry.text;
+      // 🔴 C-109. 종류는 «한 낱말»입니다(join · decide · mapper). 글자로 잉지 않고 칸으로
+      //    달아서, 누른 뒤의 답(`said`)과 한 문장이 되지 않게 합니다.
+      // ⚠️ 서버가 종류를 안 말했으면 배지도 없습니다 — 지어내지 않습니다.
+      if (entry.kind) {
+        const kind = doc.createElement('span');
+        kind.className = 'redo-panel__kind';
+        kind.textContent = entry.kind;
+        line.appendChild(kind);
+      }
       box.appendChild(line);
     });
 
@@ -332,19 +341,35 @@ export class RedoBanner {
       ] };
     }
     if (!this.rules.length) {
+      // 🔴 C-109. 목록은 이제 «이 표를 트리거로 하는» 규칙만입니다. 그래서 «빈 것»의
+      //    뜻도 좀음해졌습니다: 「서버에 규칙이 없다」가 아니라 「이 표가 트리거인 규칙이 없다」.
       return { op: 'chain_replay', payload, rows: [
         { text: from, params: null },
-        { text: 'the server declares no chain rule', params: null },
+        { text: '이 표를 트리거로 하는 규칙 없음', params: null },
       ] };
     }
     const keys = values.join(',');
     return {
       op: 'chain_replay',
       payload,
-      rows: this.rules.map((rule) => ({
-        text: `${rule} — ${from}`,
-        params: { rule, business_keys: keys },
-      })),
+      // 🔴 줄은 «어떤 규칙이 어디서 어디로 도는가»를 말합니다(소유자 2026-09-15:
+      //    「같은 체인문이면 보여야지」). 이름만 있을 때는 같은 이름의 조인과 합성이
+      //    화면에서 같아 보였습니다.
+      // ⚠️ 크기(`from`)는 그대로 줄에 남습니다 — 확인 창이 없고, «그 줄을 누르는 것»이
+      //    확인이기 때문입니다. 거기서 크기를 뺀다면 운영자는 무엇을 돌리는지 모르고 누릅니다.
+      rows: this.rules.map((rule) => {
+        const name = (rule && rule.name) || '';
+        // ⚠️ 가른이는 «기호»입니다. 공백 둘로 띠다가 브라우저에서 재 보니 HTML 이 그것을
+        //    «하나로 접어» 이름과 트리거 표가 한 낱말처럼 붙었습니다(「lot_slot_wafer dt_lot」).
+        const path = (rule && rule.trigger_table && rule.target_table)
+          ? ` · ${rule.trigger_table} → ${rule.target_table}` : '';
+        return {
+          text: `${name}${path} — ${from}`,
+          kind: (rule && rule.kind) || '',
+          // 이름이 없는 규칙은 돌릴 수 없습니다(`rule` 은 필수) — 누르는 줄로 두지 않습니다.
+          params: name ? { rule: name, business_keys: keys } : null,
+        };
+      }),
     };
   }
 }
