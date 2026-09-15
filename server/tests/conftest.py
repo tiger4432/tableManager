@@ -389,7 +389,20 @@ def db_session():
 #     unaffected. Nothing but the operator's declared database becomes legal.
 #
 # Skips, never fails, when no declaration or no server is present.
-PG_TEST_URL_ENV = "ASSY_PG_TEST_DATABASE_URL"
+#
+# TOMBSTONE: THE GATE MOVED OUT (S-257). `_resolve_pg_test_url` and
+# `_declared_as_test_database` were a second copy of
+# `tests/support/isolated_pg.resolve_url` / `declared_as_test_database` - the
+# copy without the `dev_env` door, and without the `public` comma on the search
+# path (below). A safety gate with two spellings has a lenient one; the names
+# stay so the three files that import them from here keep working.
+from tests.support.isolated_pg import (       # noqa: E402
+    PG_TEST_URL_ENV,
+    declared_as_test_database as _declared_as_test_database,
+    install_trigram,
+    resolve_url as _resolve_pg_test_url,
+    scratch_connect_args,
+)
 
 #: All DDL lands here, never in `public`. Suffixed with the xdist worker id
 #: when there is one, so parallel workers cannot drop each other's schema.
@@ -411,76 +424,19 @@ PG_TEST_TABLE_CONFIG = {
 }
 
 
-def _resolve_pg_test_url():
-    """`(url, None)` when a PostgreSQL test database is declared, else `(None, reason)`.
-
-    A pure decision - nothing is connected to and no environment is written.
-    The reason string is what the skip message shows, so an operator who
-    expected these tests to run learns which door was shut.
-    """
-    import db_safety
-    from database.database import DEFAULT_PG_URL
-
-    url = os.environ.get(PG_TEST_URL_ENV) or None
-    if not url:
-        # Second door: an operator who already declared an isolated
-        # PostgreSQL for the whole suite has declared one for this too.
-        candidate = os.environ.get(db_safety.TEST_DATABASE_URL_ENV) or ""
-        url = candidate if candidate.startswith("postgres") else None
-    if not url:
-        return None, (
-            f"no PostgreSQL test database declared. Set {PG_TEST_URL_ENV} to an "
-            f"ISOLATED database to run this: "
-            f"{PG_TEST_URL_ENV}=postgresql://postgres:...@localhost:5432/assy_qa")
-
-    # The same allowlist decision the production guard takes, asked here so the
-    # refusal is a readable skip instead of a RuntimeError from inside a
-    # connection attempt. `opt_in=url` = "this URL is what is being declared";
-    # `production_url` is what makes declaring production still illegal.
-    violations = db_safety.check_test_database(
-        url, production_url=DEFAULT_PG_URL, opt_in=url)
-    if violations:
-        return None, f"{PG_TEST_URL_ENV} is not usable: {violations[0]}"
-
-    from sqlalchemy.engine import make_url
-    parsed = make_url(url)
-    if parsed.get_backend_name() != "postgresql":
-        return None, f"{PG_TEST_URL_ENV} is not a PostgreSQL URL ({url})"
-    # Belt and braces over the allowlist above: this fixture creates and DROPS
-    # a schema, so it refuses the production database by name even if
-    # `DEFAULT_PG_URL` is ever edited to point elsewhere.
-    if (parsed.database or "") == "assy_manager":
-        return None, "refusing to run schema DDL against 'assy_manager'"
-    return url, None
-
-
-@contextlib.contextmanager
-def _declared_as_test_database(url):
-    """Declare `url` under the name `db_safety` reads, for this block only."""
-    import db_safety
-    key = db_safety.TEST_DATABASE_URL_ENV
-    previous = os.environ.get(key)
-    os.environ[key] = url
-    try:
-        yield
-    finally:
-        if previous is None:
-            os.environ.pop(key, None)
-        else:
-            os.environ[key] = previous
-
-
 @pytest.fixture(scope="session")
 def pg_engine():
     """An Engine on a scratch SCHEMA of the declared isolated database.
 
     The ORM models are mapped to schema-less `Table` objects and
     `_pg_multirow_upsert` emits `INSERT INTO cell_sources` unqualified, so the
-    redirection has to happen at the connection: `-csearch_path=<schema>` with
-    `public` NOT on the path, which makes an unqualified write physically
-    unable to reach the real tables. The DDL itself is explicit rather than
-    ambient - `Table.to_metadata(MetaData(schema=...), schema=None)` for every
-    table in `Base.metadata`.
+    redirection has to happen at the connection: the scratch schema FIRST on
+    the search path (`isolated_pg.scratch_connect_args`, the one spelling), so
+    an unqualified write lands in the scratch copy of every table in
+    `Base.metadata`. `public` is readable behind it - `pg_trgm` may live there,
+    and with it invisible every `gin_trgm_ops` index fails (S-257). The DDL
+    itself is explicit rather than ambient -
+    `Table.to_metadata(MetaData(schema=...), schema=None)` for every table.
 
     CLEANS UP AFTER ITSELF, at both ends. Teardown drops the schema and then
     ASKS THE CATALOGUE whether it is gone (a reviewer reported a dropped
@@ -508,7 +464,7 @@ def pg_engine():
     with _declared_as_test_database(url):
         engine = create_engine(
             url, poolclass=NullPool,
-            connect_args={"options": f"-csearch_path={PG_TEST_SCHEMA}"})
+            connect_args=scratch_connect_args(PG_TEST_SCHEMA))
         try:
             with engine.begin() as conn:
                 conn.execute(text("SELECT 1"))
@@ -524,6 +480,9 @@ def pg_engine():
         with engine.begin() as conn:
             conn.execute(text(f'DROP SCHEMA IF EXISTS "{PG_TEST_SCHEMA}" CASCADE'))
             conn.execute(text(f'CREATE SCHEMA "{PG_TEST_SCHEMA}"'))
+            # The ledger's trigram index needs `pg_trgm`; inside the scratch
+            # schema it goes with the DROP above and nothing lands in `public`.
+            install_trigram(conn, PG_TEST_SCHEMA)
         scratch.create_all(engine)
 
         # The UNIQUE business-key index that makes a cross-process collision an

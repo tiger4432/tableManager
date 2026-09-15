@@ -35,6 +35,7 @@ from sqlalchemy.exc import IntegrityError
 pytestmark = pytest.mark.pg
 
 from conftest import PG_TEST_SCHEMA, _resolve_pg_test_url
+from tests.support.isolated_pg import scratch_connect_args
 from database import crud, schemas
 
 
@@ -518,10 +519,9 @@ def _competing_writer(url, business_key, row_id, withdraw_first=False):
     genuinely a different transaction.
     """
     import psycopg2
-    conn = psycopg2.connect(url)
+    conn = psycopg2.connect(url, **scratch_connect_args(PG_TEST_SCHEMA))
     try:
         with conn.cursor() as cur:
-            cur.execute(f'SET search_path TO "{PG_TEST_SCHEMA}"')
             if withdraw_first:
                 cur.execute(f'DELETE FROM "{TABLE}" WHERE business_key_val = %s',
                             (business_key,))
@@ -538,10 +538,9 @@ def _competing_writer(url, business_key, row_id, withdraw_first=False):
 def _competitor_withdraws(url, business_key):
     """The competitor's row is gone again by the time we re-prefetch."""
     import psycopg2
-    conn = psycopg2.connect(url)
+    conn = psycopg2.connect(url, **scratch_connect_args(PG_TEST_SCHEMA))
     try:
         with conn.cursor() as cur:
-            cur.execute(f'SET search_path TO "{PG_TEST_SCHEMA}"')
             cur.execute(f'DELETE FROM "{TABLE}" WHERE business_key_val = %s',
                         (business_key,))
         conn.commit()

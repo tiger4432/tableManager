@@ -47,7 +47,9 @@ from ledger import backfill                                             # noqa: 
 from tests.support.isolated_pg import (       # noqa: E402
     PG_TEST_URL_ENV,
     declared_as_test_database as _declared_as_test_database,
+    install_trigram,
     resolve_url as _resolve_url,
+    scratch_connect_args,
     scratch_schema,
 )
 
@@ -255,22 +257,11 @@ def pg():
     from sqlalchemy.pool import NullPool
 
     with _declared_as_test_database(url):
-        # `public` is deliberately OFF the search path: an unqualified statement then
-        # cannot reach a real table even if one of these tests is wrong.
+        # Scratch FIRST, `public` readable behind it - the one spelling, and why it has
+        # the comma, is `isolated_pg.scratch_connect_args` (S-64-b, S-257).
         engine = create_engine(
             url, poolclass=NullPool,
-            # ⚠️ `public` IS ON THE READ PATH, AND ONLY FOR READING (S-64-b). The
-            # scratch schema stays FIRST, so everything this suite creates is still created
-            # in it and still dropped with it. What changed is that `pg_trgm` may already
-            # exist in this database - `schema.py` says the live box had it installed by
-            # hand and nobody recorded it, and any other process running `ensure_schema`
-            # against the same isolated database installs it into `public` too. When it
-            # does, the `CREATE EXTENSION IF NOT EXISTS ... WITH SCHEMA` below is a silent
-            # no-op and every index using `gin_trgm_ops` then fails with `UndefinedObject`
-            # - a premise that is invisible wherever it already holds, which is the exact
-            # sentence `_ensure_trigram` was written to answer.
-            connect_args={
-                "options": f"-csearch_path={SCRATCH_SCHEMA},public"})
+            connect_args=scratch_connect_args(SCRATCH_SCHEMA))
         try:
             with engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
@@ -284,13 +275,9 @@ def pg():
             # Reclaim a leftover from a run that was killed mid-suite, then build fresh.
             conn.execute(text(f'DROP SCHEMA IF EXISTS "{SCRATCH_SCHEMA}" CASCADE'))
             conn.execute(text(f'CREATE SCHEMA "{SCRATCH_SCHEMA}"'))
-            # Ledger's existing text-search indexes use ``gin_trgm_ops``.  ``public`` is
-            # deliberately absent from this test engine's search_path, so the extension
-            # must live inside the same disposable schema as the ledger objects.  Dropping
-            # the schema at teardown drops the extension too; nothing is installed into
-            # the isolated database's public schema and production is never connected.
-            conn.execute(text(
-                f'CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA "{SCRATCH_SCHEMA}"'))
+            # Ledger's text-search indexes use ``gin_trgm_ops``; the extension lives in
+            # the disposable schema and goes with it.
+            install_trigram(conn, SCRATCH_SCHEMA)
         with engine.begin() as conn:
             conn.execute(text(SOURCE_DDL))
             conn.execute(text(LOT_EVENT_DDL))

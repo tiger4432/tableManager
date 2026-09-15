@@ -41,6 +41,47 @@ def scratch_schema(prefix: str) -> str:
     return f"{prefix}_{RUN_TOKEN}"
 
 
+def scratch_connect_args(schema: str) -> dict:
+    """Connection options that put `schema` FIRST on the search path and `public` after it.
+
+    The ONE spelling (S-257). The ORM models are mapped to schema-less tables and the ledger
+    DDL is unqualified, so the redirection into a scratch schema happens at the connection,
+    and the scratch schema being FIRST is what makes everything a proof creates land in it
+    and go with it on the DROP.
+
+    ⚠️ `public` IS ON THE PATH, AND FOR READING (S-64-b). `pg_trgm` may already live in
+    `public` - the live box had it installed by hand, and any `ensure_schema` run against
+    the isolated database installs it there too. When it does, `CREATE EXTENSION IF NOT
+    EXISTS` is a silent no-op wherever it is asked for, and with `public` invisible every
+    `gin_trgm_ops` index then fails with `UndefinedObject`. Measured on the first run of
+    `scripts/run_pg_tests.py`: 47 of 48 `pg_engine` tests, because conftest was the one
+    spelling without the comma. Three sibling suites had already learned it; a fourth
+    spelling is how one of them comes to be the broken one.
+
+    The same dict is what `psycopg2.connect(url, **...)` takes, so a raw competitor
+    connection is pinned the same way as the engine.
+    """
+    return {"options": f"-csearch_path={schema},public"}
+
+
+def install_trigram(connection, schema: str) -> None:
+    """`pg_trgm` inside the scratch schema, so it dies with it on the DROP ... CASCADE.
+
+    A no-op when the extension already exists anywhere in the database - which is fine,
+    because `scratch_connect_args` keeps `public` readable. Skips the calling test when the
+    role cannot create extensions: the ledger schema cannot be built there at all.
+    """
+    import pytest
+    from sqlalchemy import text
+
+    try:
+        connection.execute(text(
+            f'CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA "{schema}"'))
+    except Exception as exc:
+        pytest.skip(f"pg_trgm is not installable on this box, so the ledger schema "
+                    f"cannot be built here: {exc}")
+
+
 
 def declared_qa_database():
     """The QA database `dev_env` declares, or `None` if that module cannot say.

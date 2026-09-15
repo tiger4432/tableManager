@@ -38,7 +38,8 @@ from ledger import dry_run, schema                                   # noqa: E40
 # (S-104). It goes now, with the v1 declaration it named.
 from test_ledger_l1_pg import (BASE_ROWS, SOURCE_DDL, _declared_as_test_database,
                                _resolve_url, _seed)                  # noqa: E402
-from tests.support.isolated_pg import scratch_schema                 # noqa: E402
+from tests.support.isolated_pg import (                              # noqa: E402
+    install_trigram, scratch_connect_args, scratch_schema)
 
 SCRATCH_SCHEMA = scratch_schema("assy_ledger_dryrun_pytest")
 
@@ -60,15 +61,9 @@ def pg():
     with _declared_as_test_database(url):
         engine = create_engine(
             url, poolclass=NullPool,
-            # ⚠️ `public` IS ON THE READ PATH (S-64-b), scratch still FIRST. Same
-            # reason as `test_ledger_l1_pg.py`, and `test_ledger_v2_pg.py` has said
-            # `{SCRATCH_SCHEMA},public` all along - three sibling suites, two spellings, and
-            # the one that survived a database where `pg_trgm` already lives in `public` is
-            # the one with this comma. `CREATE EXTENSION IF NOT EXISTS ... WITH SCHEMA` is a
-            # silent no-op when the extension exists elsewhere, and every `gin_trgm_ops`
-            # index then fails.
-            connect_args={
-                "options": f"-csearch_path={SCRATCH_SCHEMA},public"})
+            # Scratch FIRST, `public` readable behind it - the one spelling, and why it
+            # has the comma, is `isolated_pg.scratch_connect_args` (S-64-b, S-257).
+            connect_args=scratch_connect_args(SCRATCH_SCHEMA))
         try:
             with engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
@@ -83,15 +78,8 @@ def pg():
             conn.execute(text(f'CREATE SCHEMA "{SCRATCH_SCHEMA}"'))
             # `ensure_schema` builds a partial TRIGRAM index over registrations, so
             # `pg_trgm` is a prerequisite of the ledger schema (`setup/init_db.py` calls
-            # it a bootstrap step). `public` is off this suite's search path by design, so
-            # an extension installed there is unreachable - it goes INTO the scratch
-            # schema instead and dies with it on the DROP ... CASCADE below.
-            try:
-                conn.execute(text(
-                    f'CREATE EXTENSION IF NOT EXISTS pg_trgm SCHEMA "{SCRATCH_SCHEMA}"'))
-            except Exception as exc:
-                pytest.skip(f"pg_trgm is not installable on this box, so the ledger "
-                            f"schema cannot be built here: {exc}")
+            # it a bootstrap step). It goes INTO the scratch schema and dies with it.
+            install_trigram(conn, SCRATCH_SCHEMA)
         with engine.begin() as conn:
             conn.execute(text(SOURCE_DDL))
         connection = engine.raw_connection()

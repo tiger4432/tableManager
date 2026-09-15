@@ -110,6 +110,7 @@ def test_the_catalogue_matches_what_ensure_schema_builds(catalog):
     hold on a box with no PostgreSQL.
     """
     from conftest import _declared_as_test_database, _resolve_pg_test_url
+    from tests.support.isolated_pg import scratch_connect_args
 
     url, reason = _resolve_pg_test_url()
     if url is None:
@@ -128,7 +129,7 @@ def test_the_catalogue_matches_what_ensure_schema_builds(catalog):
     scratch = "assy_pytest_s186b"
     with _declared_as_test_database(url):
         engine = create_engine(url, poolclass=NullPool,
-                               connect_args={"options": "-csearch_path=%s" % scratch})
+                               connect_args=scratch_connect_args(scratch))
         admin = create_engine(url, poolclass=NullPool)
         try:
             with admin.begin() as conn:

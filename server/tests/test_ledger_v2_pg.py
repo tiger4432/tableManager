@@ -49,7 +49,9 @@ import virtual_join.config
 from tests.support.isolated_pg import (       # noqa: E402
     PG_TEST_URL_ENV,
     declared_as_test_database as _declared,
+    install_trigram,
     resolve_url as _resolve_url,
+    scratch_connect_args,
     scratch_schema,
 )
 
@@ -121,16 +123,9 @@ def pg_v2(tmp_path_factory):
         admin = create_engine(url, poolclass=NullPool)
         runtime = create_engine(
             url, poolclass=NullPool,
-            connect_args={"options": f"-csearch_path={SCRATCH_SCHEMA},public"},
+            connect_args=scratch_connect_args(SCRATCH_SCHEMA),
         )
-        extension_created = False
         with admin.begin() as connection:
-            existing = connection.execute(text(
-                "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname='pg_trgm')"
-            )).scalar()
-            if not existing:
-                connection.execute(text("CREATE EXTENSION pg_trgm"))
-                extension_created = True
             connection.execute(text(
                 f'DROP TABLE IF EXISTS public."{SOURCE_TABLE}" CASCADE'))
             connection.execute(text(
@@ -138,6 +133,9 @@ def pg_v2(tmp_path_factory):
             connection.execute(text(
                 f'DROP SCHEMA IF EXISTS "{SCRATCH_SCHEMA}" CASCADE'))
             connection.execute(text(f'CREATE SCHEMA "{SCRATCH_SCHEMA}"'))
+            # `pg_trgm` inside the scratch schema, so it goes with the DROP at teardown
+            # instead of needing its own `extension_created` bookkeeping in `public`.
+            install_trigram(connection, SCRATCH_SCHEMA)
             connection.execute(text(f'''
                 CREATE TABLE public."{SOURCE_TABLE}" (
                     record_id TEXT PRIMARY KEY,
@@ -217,8 +215,6 @@ def pg_v2(tmp_path_factory):
                     f'DROP TABLE IF EXISTS public."{SOURCE_TABLE}" CASCADE'))
                 connection.execute(text(
                     f'DROP TABLE IF EXISTS public."{RIGHT_TABLE}" CASCADE'))
-                if extension_created:
-                    connection.execute(text("DROP EXTENSION IF EXISTS pg_trgm"))
                 left = connection.execute(text(
                     "SELECT count(*) FROM information_schema.schemata "
                     "WHERE schema_name=:schema"), {"schema": SCRATCH_SCHEMA}).scalar()
