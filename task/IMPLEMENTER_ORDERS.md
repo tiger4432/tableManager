@@ -39084,3 +39084,17 @@ S-106 조건   철회는 «오늘의 함수»(store 의 withdraw)를 그대로 �
 > 게이트 10 신설 · 변이 8 전부 빨강 · 134 passed · collect 6,740. RUN.md §1-bis 에 명령 + 답의 뜻 셋.
 > 🔴 안 말하는 것: 이 명령의 「없음」은 «조인이 잘 보인다»가 아닙니다 — «파일이 세운 빈 층» 하나만 셉니다. 그리고 «지울 후보»를 세지 «지금 무엇이 보이나»를 세지 않습니다(그건 지우기 전 내보내기의 몫).
 > 📌 **[09-15 16:5x] 이 채널의 미답 질문: «하나» — PG 실행 시험(S-240·S-245 의 `::text` 인덱스가 진짜로 서는지). 급하지 않습니다.**
+---
+
+> ## S-250 — 그리드 «다시 돌리기»가 «이 표를 트리거로 하는» 규칙만, 조인 포함 (총괄 지시, 2026-09-15 16:5x — 소유자 「그리드 상단 리플레이 버튼에 조인도 달아줘. 같은 체인문이면 보여야지. 누를 시 목록은 해당 테이블이 트리거인 체인 규칙만」). 서버 절반. 클라 절반은 C-109
+>
+> **실측(총괄):** 그리드 배너(`client2/src/redo_banner.js` :344)는 `main.js::loadChainRuleNames` :243 이 `GET /admin/chain/rules` 에서 받은 «파일 원문»의 이름 «전부»를 표와 «무관하게» 늘어놓는다. 원문이라 ① 통합 join 은 `on.table` 이지 `trigger_table` 이 없고 ② 합성 규칙(옛 enrichment·가상 조인 파일에서 나온 것)은 «아예 없고» ③ 어느 표의 규칙인지 «거를 수 없다». 소급이 실제로 도는 집합은 `replay.load_rules()`(= 로더의 번역·합성 뒤, enabled 만)이고, 오른쪽 규칙은 `replay.is_reference_side` 로 거절된다 — 그 집합을 «표로 걸러» 내주는 자리가 없다.
+> **도착지 두 줄:** 「그리드에서 «이 표»를 열고 다시 돌리기를 누르면, «이 표가 트리거»인 «돌 수 있는» 규칙만(조인 왼쪽 포함, 오른쪽·꺼진 것·다른 표 제외) 이름 + 「트리거 → 대상」 으로 보인다」.
+> **바뀌는 층 «하나», 저자 하나:**
+> ```
+> chain/replay.py   `replayable_rules_for(table: str) -> list[dict]` — `load_rules()` 에서 `trigger_table == table` 이고 `not is_reference_side(rule)` 인 것. 각 항목은 {name, trigger_table, target_table, kind}(kind = "join"|"decide"|"mapper" — rule_shape 의 낱말, 배관 낱말 금지). 소급의 «돌 수 있는 규칙» 판단과 «같은 함수»를 지나므로 목록과 실행이 갈릴 수 없다
+> main.py           `GET /admin/chain/rules/replayable?table=<표>` (require_admin_token, 기존 `/admin/chain/rules` 옆) → {"status":"success","data":[…]} · 표를 안 주면 422 · 모르는 표는 «빈 목록»이 아니라 이름 대고 거절(없는 표와 규칙 없는 표는 다른 답)
+> ```
+> **그대로인 것:** `/admin/chain/rules`(원문, chain 탭이 씀) 무변 · `load_rules`/`find_rule`/`is_reference_side` 무변 · 소급 라우트 무변.
+> **게이트:** ① 라우트 실호출: S-237 픽스처(통합 join)를 로더가 세운 뒤 `?table=<왼쪽 표>` → 왼쪽 규칙 «하나»(오른쪽 `:reference` 없음), `?table=<오른쪽 표>` → 오른쪽 규칙은 «안 나옴»(참조 쪽은 소급 대상이 아님) ② `enabled:false` 규칙 제외 ③ 합성 enrich 규칙이 자기 트리거 표에서 «나옴»(같은 체인문) ④ 없는 표 → 거절 문구 ⑤ 한 커밋 · §0-ter: 읽기 라우트지만 «로더가 이미 읽은 것»을 되돌려 줄 뿐 새 SQL 0 · 재기동은 제가.
+> 📌 **[09-15 16:5x] 이 채널의 미답 질문: «없음».**
