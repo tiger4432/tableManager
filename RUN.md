@@ -57,6 +57,8 @@ python scripts/preview_unified_declarations.py --out ../unified_preview.json
 
 ## 5. 통합 선언에 «join» 적기 (S-237 착지 — 가상 조인은 그대로, 이건 «체인»)
 
+🔴 **지금은 «파일에 직접» 적으십시오.** 어드민 chain 탭의 저장은 이 모양을 옛 문법으로 재서 «거절»합니다(S-244, 구현자 맨 먼저). 적은 뒤 재기동하거나 어드민 「설정 반영」(SYSTEM_RELOAD)을 누르면 로더가 읽습니다.
+
 `chain_rules.json` 의 `rules` 에 이 모양 하나를 적으면 체인 규칙 **둘**이 섭니다(왼쪽 트리거 + 오른쪽 트리거는 페이싱). 값은 대상 표의 «진짜 컬럼»에 «자기 층»으로 써지고, 원장이 그대로 봅니다.
 
 ```jsonc

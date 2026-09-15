@@ -38771,3 +38771,22 @@ S-106 조건   철회는 «오늘의 함수»(store 의 withdraw)를 그대로 �
 > **③′ 스위치 → ✅.** `find_rule` 은 `load_rules()` 에서 찾고 없으면 「not found or disabled」로 거절합니다 — 시험 한 줄로 고정하겠습니다.
 > **미답 «하나»**: 위 제안(② 를 builtin 갈래에만) 로 가도 됩니까. 「예」면 바로 짓습니다.
 > 📌 **[09-15 11:3x] 이 채널의 미답 질문: «하나» — ②의 격리 범위.**
+---
+
+> ## 🔴🔴 S-244 — «맨 먼저». 어드민 chain 탭의 저장 관문이 통합 선언을 «번역 없이» 옛 문법으로 재서 거절한다 (총괄 지시, 2026-09-15 11:3x). 순서: S-244 → S-242 → S-240
+>
+> **소유자 지금:** 「지금 조인 해봤는데 안 도는데」 — 이관 중.
+> **실측(총괄):** `ledger/admin.py::save_chain_rule_raw` 가 `chain_bindings.rule_refusals(entry, …, mapper_resolvable=mapper_sdk.MAPPER_REGISTRY.get)` 를 «원문 entry» 에 건다. `rule_refusals` 는 `problems.exact(required=RULE_ROUTING_REQUIRED, optional=RULE_ROUTING_OPTIONAL)` — 통합 선언(`name·on·derive·into`)은 `trigger_table` 이 없고 `derive/on/into` 가 모르는 칸이며 `mapper` 칸이 없어 `unresolvable_mapper` 까지 난다. 로더(`ingestion_worker` :722)는 `derive` 가 있으면 «먼저 번역»(`rule_shape.from_declaration` → `as_chain_rule`/`companion_rules`/`decide_rules`)하고 그 결과에 관문을 건다. 저장 관문과 로더가 «같은 판정자»라던 S-204 의 문장이 통합 문법에 대해 «거짓»이 됐다 — 두 자리가 다른 입력을 준다(깔끔 ④).
+> 둘째: `mapper_resolvable=MAPPER_REGISTRY.get` 은 `builtin:` 종류를 모른다. 로더는 `_can_run` :642 가 `MAPPER_REGISTRY.get(name) or builtins.BUILTIN_KINDS.get(name)` — 번역 뒤 mapper 가 `builtin:join_into` 인 규칙은 저장 관문에서 «또» 거절된다.
+> **도착지 두 줄:** 「어드민 chain 탭에서 통합 선언(derive)을 저장하면 로더가 하는 «같은 번역·같은 판정»을 지나 «같은 답»을 받는다 — 파일에 손으로 적은 것과 저장 버튼이 다르게 답하지 않는다」.
+> **바뀌는 층 «하나» — 저자 하나로:** 로더의 「derive 면 번역 → 규칙 목록」 블록(:722~)을 함수 하나로 뽑아(`rule_shape` 또는 `ingestion_worker` 에, 이름은 당신이 — 예 `expand_declaration(rule, table_config) -> (rules, refusal)`) 로더와 `save_chain_rule_raw` 가 «같이» 부른다. 저장 관문은 번역된 규칙 «각각»에 `rule_refusals` 를 걸고, `mapper_resolvable` 은 로더의 `_can_run` 과 «같은 함수»를 받는다(builtin 포함). `_validate_chain_cascade_graph(rules)` 도 번역된 목록으로.
+> **그대로인 것:** 옛 평면 규칙의 저장 경로 «한 글자도» 무변(번역 함수는 derive 없으면 원문 그대로 돌려줌) · `rule_refusals` 자체 무변 · join_into/virtual_join 무접촉.
+> **게이트**
+> ```
+> ① 라우트 실호출   `POST /admin/chain/rules/raw` 에 S-237 픽스처의 통합 join 선언 → 200 · 파일에 «원문 모양 그대로» 저장(번역본을 저장하지 않는다 — 문서는 운영자의 것) · 이어 `load_chain_rules()` 가 그 규칙 둘을 세움. decide 선언도 한 줄
+> ② 같은 답         같은 선언을 «파일에 손으로 적고 로더» vs «라우트로 저장» — 거절 유무·거절 문구가 같다(시험이 두 길을 같은 입력으로 태워 비교)
+> ③ 옛 문법 무회귀   admin 저장 시험 전부 초록 그대로 · S-204 시험 그대로
+> ④ 한 커밋 · 첫 실행 없음 · 재기동은 제가
+> ```
+> ⛔ §0-ter 셋은 이 라운드엔 «읽기/쓰기 = 관문(쓰기 전 판정), 행/배치 = 해당 없음, 스위치 = 해당 없음»으로 짧게 적고 바로 짓기. 끝나면 보고 + 「미답 없음」 + S-242.
+> 📌 **[09-15 11:3x] 이 채널의 미답 질문: «없음».**
