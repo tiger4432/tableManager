@@ -117,8 +117,12 @@ if (!X || !X.RedoBanner) die('redo_banner.js did not evaluate — its exports mo
 
 const SOURCES = [{ relation: 'dt_log', source: 'dt_log_src',
                    scope_columns: ['lot_id', 'wafer_id'] }];
-const envelope = (obj) => ({ data: Object.fromEntries(
-  Object.entries(obj).map(([k, v]) => [k, { value: v }])) });
+// 🔴 C-112. 그리드 행은 `row_id` 를 «봉투 밖» 최상위에 들고 있습니다 — 체인 다시 돌리기가
+//    보내는 신원이 그것입니다. `rowId: null` 은 «그 칸이 빈 행»을 일부러 만드는 자리입니다.
+let rowSeq = 0;
+const envelope = (obj, rowId) => ({
+  row_id: rowId === undefined ? `r${(rowSeq += 1)}` : rowId,
+  data: Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, { value: v }])) });
 const readEnvelope = (row, col) => {
   const cell = row && row.data ? row.data[col] : undefined;
   if (cell && typeof cell === 'object' && 'value' in cell) return cell.value;
@@ -243,16 +247,25 @@ console.log('\n── D. THE CHAIN KEYS, GROUPED ELSEWHERE ───────
   press(b.host, 'chain');
   byClass(b.host, 'redo-panel__go')[0].click();
   const handed = b.handed();
-  ok('D1 the chain hand-off carries the KEYS, de-duplicated',
-    handed.op === 'chain_replay' && handed.businessKeys.join(',') === 'L1,L2', handed);
+  // ⚠️ C-112 에서 «무엇을» 넘기는지가 바뀜 이 단언이 뒤집혔습니다: 업무 키는 중복이 있어
+  //    접었지만(L1,L1,L2 → L1,L2), row_id 는 행마다 하나라 «접을 것이 없습니다».
+  //    지우지 않고 반대로 세웁니다 — 지우면 「세 행이 세 개로 간다」를 재는 것이 안 남습니다.
+  ok('D1 the chain hand-off carries every selected ROW, by row_id',
+    handed.op === 'chain_replay'
+    && handed.params.row_ids === rows.map((r) => r.row_id).join(','), handed);
   // 🔴 THE ONE THIS PART EXISTS TO GET RIGHT. Grouping by rule here would mean calling a gated
   //    route from the grid page, so the payload must NOT pretend to know the rules.
   ok('D2 ... and no rule grouping is invented here, because the rules are behind the token',
     handed.groups === undefined, handed);
+  // ⚠️ 이 단언은 «반대로» 섬니다(C-112). 종전에는 업무 키가 신원이라 그게 없으면
+  //    판이 문장 하나였고, 지금은 신원이 `row_id` 라 업무 키가 없어도 돌릴 수 있습니다.
+  //    종전 문장을 지우면 「신원이 바뀌었다」를 재는 줄이 아무데도 안 남습니다.
   const noKey = build(rows, { businessKey: null });
   press(noKey.host, 'chain');
-  ok('D3 a table with no business key says so rather than handing over nothing',
-    (note(noKey.host) || '').includes('business key'), note(noKey.host));
+  ok('D3 a table with no business key still replays, because row_id is the identity',
+    note(noKey.host) === undefined
+    && byClass(noKey.host, 'redo-panel__group').length > 0,
+    [note(noKey.host), groupsShown(noKey.host)]);
 }
 
 console.log('\n── E. THE ENVELOPE ─────────────────────────────────────────────────');
@@ -508,8 +521,8 @@ const DEFECTS = [
       'if (!values.length) { groups.push({ key: column, values, missing, '
       + 'rows: (rows || []).length }); continue; }')],
   ['M5 the chain hand-off invents a rule grouping admin would not read',
-    swap("const payload = { op: 'chain_replay', businessKeys: values };",
-      "const payload = { op: 'chain_replay', businessKeys: values, "
+    swap("const payload = { op: 'chain_replay', params: { row_ids: values.join(',') } };",
+      "const payload = { op: 'chain_replay', params: { row_ids: values.join(',') }, "
       + "groups: values.map((v) => ({ label: v })) };")],
   ['M9 closing leaves the document listeners attached',
     swap('    if (this.dismiss) this.dismiss();', '    if (false) this.dismiss();')],
@@ -738,8 +751,9 @@ async function runMutant({ name, mutate }) {
             .every((n) => n.textContent.includes('no value'))],
         ['R7 the chain hand-off invents no rule grouping',
           () => !!handed && handed.groups === undefined],
-        ['R8 ...and carries the business keys verbatim',
-          () => handed.businessKeys.join(',') === 'L1,L2'],
+        ['R8 ...and carries the selected rows verbatim, by row_id',
+          () => typeof handed.params.row_ids === 'string'
+            && handed.params.row_ids.split(',').length === 3],
         ['R9 rows without a value are counted apart from the ones that have it',
           () => groupsShown(partial.host)[1]
             === 'wafer_id \u2014 1 group from 1 row \u00b7 2 without a value'],

@@ -80,7 +80,6 @@ export class RedoBanner {
     // 「이 행의 이 컬럼 값」을 어떻게 꺼내는가. 그리드의 행 모양은 «화면»이 압니다.
     this.readValue = options.readValue || null;
     // 업무 키 «컬럼 이름». 체인은 이 값들로 고릅니다.
-    this.businessKey = options.businessKey || null;
     // 조립한 것을 넘기는 «한 함수». 이 부품은 저장소도 주소도 모릅니다.
     this.handOff = options.handOff || null;
     // «돌리는» 한 함수. (op, params) -> Promise<{ok, state?, error?}>.
@@ -145,7 +144,6 @@ export class RedoBanner {
     this.render();
   }
 
-  setBusinessKey(column) { this.businessKey = column || null; this.render(); }
 
   /** 선택이 바뀌면 버튼의 활성/비활성이 바뀝니다. 화면이 알려 줍니다. */
   selectionChanged() { this.render(); }
@@ -260,7 +258,7 @@ export class RedoBanner {
       }
       const said = this.said[index];
       line.textContent = said ? `${entry.text} — ${said}` : entry.text;
-      // 🔴 C-109. 종류는 «한 낱말»입니다(join · decide · mapper). 글자로 잉지 않고 칸으로
+      // 🔴 C-109. 종류는 «한 낱말»입니다(join · decide · mapper). 글자로 잇지 않고 칸으로
       //    달아서, 누른 뒤의 답(`said`)과 한 문장이 되지 않게 합니다.
       // ⚠️ 서버가 종류를 안 말했으면 배지도 없습니다 — 지어내지 않습니다.
       if (entry.kind) {
@@ -324,14 +322,20 @@ export class RedoBanner {
   }
 
   chainPayload(rows) {
-    if (!this.businessKey) return { note: 'this table declares no business key' };
-    const { values, missing } = scopeValuesFor(rows, this.businessKey, this.readValue);
-    if (!values.length) return { note: 'the selected rows carry no business key' };
-    const skipped = missing ? ` · ${missing} without a value` : '';
-    const many = values.length === 1 ? '' : 's';
-    const from = `${values.length} key${many} from ${rows.length} row${rows.length === 1 ? '' : 's'}${skipped}`;
-    // 넘기는 모양은 «그대로»입니다 -- admin.js 의 adoptRescopeHandoff 가 이것을 읽습니다.
-    const payload = { op: 'chain_replay', businessKeys: values };
+    // 🔴 C-112. 신원은 `row_id` 입니다 — 그리드가 «모든 표»에서 들고 있는 그것.
+    //    저장된 업무 키는 composite 표에서 «조립된 문자열»이라 어느 컬럼에도 없고,
+    //    화면이 «보이는 것»을 보내면 서버는 한 행도 못 찾습니다 — 박스 실측(2026-09-15):
+    //    `rows_scanned 0`, 그리고 «오류는 없었습니다».
+    // ⛔ 둘 다 보내지 않습니다 — 서버가 «거절»합니다(한 물음에 두 답). 그리고 평키 표만
+    //    다른 길을 타면 «그 표에서만» 나는 고장이 생깁니다(기준 ④).
+    const { values, missing } = scopeValuesFor(rows, 'row_id', this.readValue);
+    if (!values.length) return { note: 'the selected rows carry no row_id' };
+    // 🔴 셈은 «행 수»입니다(판정 407 ②) — row_id 는 중복이 없으므로 값의 수가 곧 행의 수입니다.
+    //    종전의 「N keys from M rows」는 둘이 갈라질 수 있을 때의 문구였고, 이제 갈라지지 않습니다.
+    const from = `${values.length} row${values.length === 1 ? '' : 's'}`;
+    // 넘기는 모양도 같은 신원입니다 — `adoptRescopeHandoff` 가 `params` 를 그대로 앉힙니다.
+    //    여기서만 업무 키를 보내면 «누르는 길»과 «넘기는 길»이 다른 것을 가리키게 됩니다.
+    const payload = { op: 'chain_replay', params: { row_ids: values.join(',') } };
     // 🔴 `rule` 은 이 연산의 «필수» 파라미터라, 규칙을 모르면 돌릴 줄이 없습니다.
     //    그때 「규칙이 없다」로 그리면 «못 읽은 것»과 «선언에 비어 있는 것»이 같아집니다.
     if (!Array.isArray(this.rules)) {
@@ -342,13 +346,17 @@ export class RedoBanner {
     }
     if (!this.rules.length) {
       // 🔴 C-109. 목록은 이제 «이 표를 트리거로 하는» 규칙만입니다. 그래서 «빈 것»의
-      //    뜻도 좀음해졌습니다: 「서버에 규칙이 없다」가 아니라 「이 표가 트리거인 규칙이 없다」.
+      //    뜻도 좁아졌습니다: 「서버에 규칙이 없다」가 아니라 「이 표가 트리거인 규칙이 없다」.
       return { op: 'chain_replay', payload, rows: [
         { text: from, params: null },
         { text: '이 표를 트리거로 하는 규칙 없음', params: null },
       ] };
     }
     const keys = values.join(',');
+    // 🔴 판정 407 ②. row_id 가 없는 행은 «조용히 빠지지» 않고 이름을 달고 섭니다 —
+    //    그 행들은 다시 돌아가지 «않습니다», 그리고 그것이 화면에 없으면 운영자는 전부 돌았다고 읽습니다.
+    const skipped = missing
+      ? [{ text: `row_id 없는 행 ${missing} — 다시 돌릴 수 없음`, params: null }] : [];
     return {
       op: 'chain_replay',
       payload,
@@ -357,9 +365,9 @@ export class RedoBanner {
       //    화면에서 같아 보였습니다.
       // ⚠️ 크기(`from`)는 그대로 줄에 남습니다 — 확인 창이 없고, «그 줄을 누르는 것»이
       //    확인이기 때문입니다. 거기서 크기를 뺀다면 운영자는 무엇을 돌리는지 모르고 누릅니다.
-      rows: this.rules.map((rule) => {
+      rows: skipped.concat(this.rules.map((rule) => {
         const name = (rule && rule.name) || '';
-        // ⚠️ 가른이는 «기호»입니다. 공백 둘로 띠다가 브라우저에서 재 보니 HTML 이 그것을
+        // ⚠️ 구분자는 «기호»입니다. 공백 둘로 띠다가 브라우저에서 재 보니 HTML 이 그것을
         //    «하나로 접어» 이름과 트리거 표가 한 낱말처럼 붙었습니다(「lot_slot_wafer dt_lot」).
         const path = (rule && rule.trigger_table && rule.target_table)
           ? ` · ${rule.trigger_table} → ${rule.target_table}` : '';
@@ -367,9 +375,9 @@ export class RedoBanner {
           text: `${name}${path} — ${from}`,
           kind: (rule && rule.kind) || '',
           // 이름이 없는 규칙은 돌릴 수 없습니다(`rule` 은 필수) — 누르는 줄로 두지 않습니다.
-          params: name ? { rule: name, business_keys: keys } : null,
+          params: name ? { rule: name, row_ids: keys } : null,
         };
-      }),
+      })),
     };
   }
 }
