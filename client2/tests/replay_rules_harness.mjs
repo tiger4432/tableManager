@@ -335,6 +335,44 @@ function bannerSuite(mod) {
   s.say('W4 the threshold is an option, not a number baked into the part',
     byDefault.warn.length === 0 && warnLines(1001).warn.length === 1,
     byDefault.warn.length);
+  // ═══ R. C-114 — 못 도는 줄이 «그 행을 보여 준다» ═════════════════════════
+  //
+  // 🔴 수만 있으면 운영자는 «어느 행인지»를 모릅니다. 그리고 그 행은 «row_id 가 없어서»
+  //    신원으로 찾을 수도 없습니다 — 부품은 «행 그 자체»를 들고 있고, 보여 주는 법은 페이지가
+  //    주입한 함수 하나입니다(이 부품은 그리드 API 를 모릅니다 — 그것이 이 경계의 값어치입니다).
+  const holeRows = [envelope({ lot_id: 'L1' }, null), envelope({ lot_id: 'L2' }),
+                    envelope({ lot_id: 'L3' }, null)];
+  const shown = [];
+  const ranOps = [];
+  const holeHost = (() => {
+    const doc = mkDoc();
+    const host = doc.createElement('div');
+    const part = new mod.RedoBanner(host, {
+      doc, sources: [], getSelection: () => holeRows, readValue: readEnvelope, handOff: () => {},
+      hasToken: () => true, run: (op) => { ranOps.push(op); return Promise.resolve({ ok: true }); },
+      rules: [JOIN], reveal: (row) => shown.push(row),
+    });
+    part.setRelation('dt_lot');
+    part.render();
+    walk(host).find((n2) => n2.dataset && n2.dataset.redo === 'chain').click();
+    return host;
+  })();
+  const holeLine = byClass(holeHost, 'redo-panel__group')
+    .find((n2) => /row_id 없는 행/.test(n2.textContent));
+  s.say('R1 with a way to show it, the un-runnable line becomes pressable',
+    Boolean(holeLine) && holeLine.tagName === 'BUTTON',
+    holeLine ? `${holeLine.tagName}:${holeLine.textContent}` : '(no line)');
+  if (holeLine && holeLine.handlers.click) holeLine.handlers.click();
+  // 🔴 «첫» 행입니다 — 세 행 중 구멍이 둘이고, 둘째를 보여 주면 운영자는 첫째를
+  //    못 찾은 채 「여기 있네」로 읽습니다.
+  s.say('R2 ... and it shows the FIRST row that had none, by identity',
+    shown.length === 1 && shown[0] === holeRows[0], shown.length);
+  s.say('R3 ... and nothing was replayed by that press', ranOps.length === 0, ranOps);
+  // ⚠️ 보여 줄 방법이 없으면 «그냥 줄»입니다 — 누르면 아무 일도 안 나는 버튼은
+  //    화면이 하는 거짓입니다(이 파일이 다른 자리에서도 재는 그 규율).
+  s.say('R4 without one, it is a line and not a control that does nothing',
+    withHole.filter((n2) => /row_id 없는 행/.test(n2.textContent))
+      .every((n2) => n2.tagName === 'DIV'), withHole.map((n2) => n2.tagName).join(','));
   return { ran: s.names.length, names: s.names, failures: s.failures };
 }
 
@@ -404,6 +442,14 @@ const BANNER_MUTANTS = [
       "    const payload = { op: 'chain_replay', params: { row_ids: values.join(',') } };",
       "    const payload = { op: 'chain_replay', params: { row_ids: values.join(',') },\n"
       + "      businessKeys: values };") },
+  { id: 'N15', what: 'the un-runnable line stops offering to show the row',
+    catches: 'R1 with a way to show it',
+    mutate: (t) => swap(t, '      const showable = !pressable && entry.reveal != null',
+      '      const showable = false && entry.reveal != null') },
+  { id: 'N16', what: 'it shows the LAST row with no id instead of the first',
+    catches: 'R2 ... and it shows the FIRST row',
+    mutate: (t) => swap(t, '      if (firstMissing === null) firstMissing = row;',
+      '      firstMissing = row;') },
   { id: 'N13', what: 'every selection is called big, so the warning stops meaning anything',
     catches: 'W1 a selection under the threshold',
     mutate: (t) => swap(t, '    if (picked.length > this.warnAbove) {', '    if (picked.length >= 0) {') },
