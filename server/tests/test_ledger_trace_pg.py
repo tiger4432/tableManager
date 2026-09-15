@@ -176,16 +176,11 @@ def straight_chain(lots, slots, wafers, who="lot_event"):
     return rows
 
 
-def raw_atom(id, lot, predicate, payload, occurred_at=T0, who="lot_event"):
-    """An atom with a CHOSEN id. Payload still goes through `_object`, so these
-    exercise the real shape too."""
-    import json
-    kind, ref = _object(predicate, payload)
-    ref = None if ref is None else json.dumps(ref)
-    return {"id": id, "st": "Lot", "sk": json.dumps({"lot": lot}),
-            "p": predicate, "ok": kind, "op": ref,
-            "oa": occurred_at, "who": who, "ver": "lot_event/1",
-            "raw": "r", "sup": None}
+# ⚰️ [S-261] `raw_atom` MINTED A CHOSEN ID, and the only thing that needed one was
+#    `coverage`'s `last_atom`, which decoded a uuid7's first 48 bits to say when an atom
+#    was RECORDED. That decode has not moved - `ledger.uuid7.timestamp_ms` is where it
+#    lives and where it is proved - but the report that published it has retired, and a
+#    helper kept 「for when somebody needs a fixed id」 is the shape this round removes.
 
 
 def lot_seed(lot):
@@ -540,144 +535,26 @@ def test_an_unknown_lot_and_an_undeployed_ledger_are_different_responses(
 
 
 # ---------------------------------------------------------------------------
-# COVERAGE — the four "nothings" have to become four different answers
+# THE FOUR "NOTHINGS" have to become four different answers
 # ---------------------------------------------------------------------------
 #
 # The defect these tests exist for was found on a real box, not imagined: the
 # product owner opened the trace screen on `assy_manager` and got nothing,
 # because that database had no `ledger_events` table at all. A deployment
 # problem and a data boundary rendered identically and the screen said neither.
-# Each test below pins ONE of the four situations apart from the others.
 #
-#     1 relation absent    deployment — the migration has not been run
-#     2 present, no atoms  the backfill has not been run
-#     3 unknown lot        a data boundary
-#     4 known, no lineage  registered, nothing claimed about its parentage
-
-def _coverage(conn, **kw):
-    return lt.coverage(conn, config=lt.DEFAULT_RESOLVER_CONFIG, **kw)
-
-
-#: 🔴 THE PINNED SHAPE, IN ONE PLACE. A client lane renders this body and the status
-#: strip added by ruling R-2026-08-13-F reads the SAME response rather than fetching its
-#: own — so a key appearing or vanishing here is a contract change, not an edit, and the
-#: set is asserted rather than sampled so a field cannot quietly disappear.
-#:
-#: `atoms`, `partitions`, `cursors` and `last_atom` are the ruling's four additions.
-#: There is deliberately no verification-run key: no such log exists and the ruling
-#: declined to build one, so the screen renders its own 「검산 기록 없음」 rather than
-#: reading an empty field that would imply the log exists and is empty.
-COVERAGE_KEYS = {"state", "lots", "sources", "occurred_at", "sample",
-                 "atoms", "partitions", "cursors", "last_atom"}
-
-
-def test_coverage_says_absent_when_the_relation_is_not_there(ledger):
-    """SITUATION 1. Asked of a relation the catalogue does not know — exactly
-    what `to_regclass` sees on a database whose migration never ran.
-
-    It must be an ANSWER, not an exception: an operator in front of a blank
-    screen needs the word `absent`, not a stack trace.
-    """
-    with ledger.connect() as conn:
-        answer = _coverage(conn, relation="ledger_events_not_migrated",
-                           cursor_relation="ledger_cursor_not_migrated")
-    assert answer["state"] == "absent"
-    assert answer["lots"] == 0
-    assert answer["sources"] == []
-    assert answer["occurred_at"] == {"from": None, "to": None}
-    assert answer["sample"] == []
-
-
-def test_coverage_says_empty_when_the_table_is_there_and_holds_nothing(ledger):
-    """SITUATION 2.
-
-    🔴 This is the one the trace screen CANNOT tell from situation 3 on its own:
-    against an empty ledger every lot comes back `[unknown_subject]`, exactly as
-    an unknown lot does against a full one. The difference is a property of the
-    box, so it is answered here rather than guessed there.
-    """
-    with ledger.connect() as conn:
-        answer = _coverage(conn)
-    assert answer["state"] == "empty"
-    assert answer["lots"] == 0
-    assert answer["occurred_at"] == {"from": None, "to": None}
-    assert answer["sample"] == []
-
-
-def test_coverage_reports_a_ready_ledger_in_the_pinned_shape(ledger):
-    with ledger.begin() as conn:
-        insert(conn, straight_chain(LOTS, SLOTS, WAFERS))
-    with ledger.connect() as conn:
-        answer = _coverage(conn)
-
-    assert set(answer) == COVERAGE_KEYS
-    assert answer["state"] == "ready"
-    # The `register` atoms ARE the catalog — four lots, four registers.
-    assert answer["lots"] == len(LOTS)
-    assert answer["sources"] == []          # nothing wrote a cursor row here
-    assert answer["occurred_at"]["from"] is not None
-    assert answer["occurred_at"]["from"] <= answer["occurred_at"]["to"]
-
-
-def test_coverage_renders_times_in_the_declared_zone(ledger):
-    """The same rule `_iso` follows everywhere else, so the response does not
-    depend on the PostgreSQL session's TimeZone or on the machine's."""
-    with ledger.begin() as conn:
-        insert(conn, straight_chain(LOTS, SLOTS, WAFERS))
-    seoul = dict(lt.DEFAULT_RESOLVER_CONFIG, display_timezone="Asia/Seoul")
-    utc = dict(lt.DEFAULT_RESOLVER_CONFIG, display_timezone="UTC")
-    with ledger.connect() as conn:
-        in_seoul = lt.coverage(conn, config=seoul)["occurred_at"]["from"]
-        in_utc = lt.coverage(conn, config=utc)["occurred_at"]["from"]
-
-    assert in_seoul.endswith("+09:00"), in_seoul
-    assert in_utc.endswith("+00:00"), in_utc
-    # The SAME instant said twice. If these differed, the zone would be being
-    # applied to the VALUE rather than to its rendering — the defect `bee1aeb`
-    # closed, which nothing complains about because a wrong instant is still a
-    # well-formed one.
-    assert datetime.fromisoformat(in_seoul) == datetime.fromisoformat(in_utc)
-
-
-def test_the_sample_leads_with_the_lot_that_has_the_most_lineage(ledger):
-    """Rule 2 of `_coverage_sample`, and it is what puts a CONTENDED lot first.
-
-    The most informative thing the screen can open on is a lot whose lineage is
-    disputed, because that is where the state vocabulary earns its keep. On
-    `assy_manager` this rule surfaces `CL-2601-005-A5` — three `derived_from`
-    atoms, two of which disagree — ahead of lots carrying one.
-    """
-    with ledger.begin() as conn:
-        insert(conn, straight_chain(LOTS, SLOTS, WAFERS))
-        # L-B gains a SECOND, contending parent claim. Nothing else changes.
-        insert(conn, [atom("df-L-B-alt", "L-B", "derived_from", {"lot": "L-A"},
-                           occurred_at=T0 + timedelta(hours=9))])
-    with ledger.connect() as conn:
-        sample = _coverage(conn)["sample"]
-    assert sample[0]["lot"] == "L-B", (
-        f"the contended lot is not first: {[e['lot'] for e in sample]}")
-
-
-def test_a_lot_nothing_is_derived_from_is_never_sampled(ledger):
-    """SITUATION 4, and the junk filter in one test.
-
-    `assy_manager`'s ledger legitimately registers a lot called `adsfas` —
-    somebody typed it into `lot_event`. The ledger MUST keep counting it: the
-    translator records what the source uttered and does not judge it, and `lots`
-    is a fact about the source. But it must not be the first thing an operator
-    reads, and rule 1 excludes it by a PROPERTY OF THE DATA (nothing is derived
-    from it) rather than by a blocklist somebody would have to maintain.
-    """
-    with ledger.begin() as conn:
-        insert(conn, straight_chain(LOTS, SLOTS, WAFERS))
-        insert(conn, [atom("reg-junk", "adsfas", "register", {}),
-                      atom("hw-junk", "adsfas", "has_wafer",
-                           {"slot": "1", "wafer": "W-JUNK"})])
-    with ledger.connect() as conn:
-        answer = _coverage(conn)
-    assert answer["lots"] == len(LOTS) + 1, "the junk lot was dropped from the count"
-    assert "adsfas" not in [e["lot"] for e in answer["sample"]]
-
+#     1 relation absent    deployment — `ledger_relation_absent`, above
+#     2 present, no atoms  `test_an_empty_ledger_table_still_answers`, above
+#     3 unknown lot        a data boundary — `state: empty`, above
+#     4 known, no lineage  registered, nothing claimed about its parentage — below
+#
+# ⚰️ [S-261] `coverage` ANSWERED ALL FOUR IN ONE BODY AND HAS RETIRED. Its route went in
+#    `67cc2e8a`, no client asks for it, and the four are now answered by seats that RUN:
+#    the walk route for 1-3, and for 4 the registration this walk reached. The fifteen
+#    proofs that drove the report went with it; the questions it answered that are not
+#    about the walk live at `ledger.admin.ingestion_view` (which sources wrote, and the
+#    three refusal states - proved in `test_ledger_sources_ingestion`), at `backfill`
+#    (the `reltuples` estimate) and at `ledger.schema` (the partition list).
 
 def test_a_lot_with_only_a_register_is_told_apart_from_a_lot_nobody_knows(ledger):
     """SITUATION 4 vs SITUATION 3 — the two that are both "the ledger says
@@ -685,10 +562,6 @@ def test_a_lot_with_only_a_register_is_told_apart_from_a_lot_nobody_knows(ledger
     with ledger.begin() as conn:
         insert(conn, [atom("reg-LONELY", "L-LONELY", "register", {"owner": "fab-2"})])
     with ledger.connect() as conn:
-        answer = _coverage(conn)
-        assert answer["state"] == "ready"
-        assert answer["lots"] == 1
-        assert answer["sample"] == []
         known = walk_on(conn, "L-LONELY", hops=3)
         unknown = walk_on(conn, "L-NEVER-SEEN", hops=3)
 
@@ -706,25 +579,6 @@ def test_a_lot_with_only_a_register_is_told_apart_from_a_lot_nobody_knows(ledger
         "boundary from a lot with no lineage claim")
 
 
-def test_coverage_names_the_sources_that_have_written_to_the_ledger(ledger):
-    """`sources` comes from the cursor table, so it still answers when the ledger
-    is EMPTY — "a translator ran and produced nothing" is a different fact from
-    "no translator has ever run", and both render as zero atoms."""
-    with ledger.begin() as conn:
-        conn.execute(text(
-            "INSERT INTO ledger_translator_cursor "
-            "(source, translator_ver, cursor_value) "
-            "VALUES ('lot_event', 'lot_event/1', '{}'::jsonb)"))
-    try:
-        with ledger.connect() as conn:
-            answer = _coverage(conn)
-        assert answer["state"] == "empty"
-        assert answer["sources"] == ["lot_event"]
-    finally:
-        with ledger.begin() as conn:
-            conn.execute(text("DELETE FROM ledger_translator_cursor"))
-
-
 # ---------------------------------------------------------------------------
 # THE STATUS STRIP'S THREE SIGNALS (ruling R-2026-08-13-F)
 # ---------------------------------------------------------------------------
@@ -735,146 +589,6 @@ def test_coverage_names_the_sources_that_have_written_to_the_ledger(ledger):
 # read out of the database at all. Each test below pins one of them, and the two
 # that could lie quietly — an estimate that has never been analysed, and a
 # recorded time decoded out of an id that has none — are pinned on BOTH arms.
-
-def test_the_atom_count_is_an_estimate_and_the_response_says_so(ledger):
-    """🔴 APPROXIMATED ON PURPOSE, AND HONEST ABOUT IT.
-
-    `store.atom_count()` is `count(*)` across every partition — the cost this
-    endpoint may not pay at ten million atoms. The catalogue answers instead, and
-    the field carries `exact: false` so the screen can render an approximation
-    rather than a number that will be quoted back as a discrepancy.
-    """
-    with ledger.begin() as conn:
-        insert(conn, straight_chain(LOTS, SLOTS, WAFERS))
-        actual = conn.execute(text("SELECT count(*) FROM ledger_events")).scalar()
-        # 🔴 ANALYZE FIRST, AND SAY WHY. `reltuples` is maintained by VACUUM and
-        # ANALYZE, so a table nobody has analysed reports -1 or 0 — and this project
-        # has already lost a round to a measurement taken on a relation with no
-        # statistics (lessons file, 2026-08-12). The un-analysed arm is the test
-        # below; this one is the analysed one.
-        conn.execute(text("ANALYZE ledger_events"))
-    with ledger.connect() as conn:
-        answer = _coverage(conn)
-
-    atoms = answer["atoms"]
-    assert atoms["exact"] is False
-    assert atoms["method"] == "pg_class.reltuples"
-    assert atoms["estimate"] == actual, (
-        f"the estimate is {atoms['estimate']} against {actual} real atoms — on a "
-        f"freshly analysed table these agree, so a difference here means the sum is "
-        f"reading the wrong relations (the partitioned PARENT holds no rows of its own)")
-
-
-def test_an_unanalysed_partition_is_counted_and_named_rather_than_read_as_empty(ledger):
-    """The estimate's blind spot, reported instead of smoothed over.
-
-    A partition PostgreSQL has never analysed carries `reltuples = -1`. Treating that
-    as zero would let a freshly restored database report an empty ledger that is full
-    — the estimate would be confidently wrong with nothing on the screen to hint at
-    it. So those partitions are counted, and the response says how many of its inputs
-    it could not see.
-    """
-    # Put the catalogue into the state a never-analysed database is in. Written
-    # directly rather than by finding a partition PostgreSQL happens not to have
-    # analysed yet, because that would make the test depend on autovacuum's timing —
-    # and a guard that fires only when the scheduler cooperates is not a guard.
-    # 🔴 `pg_stat_reset()` is deliberately NOT used: it would throw away this
-    # database's whole statistics ledger to test one field, and reading a reset
-    # counter as a fact is a defect this project has already paid a round for.
-    with ledger.begin() as conn:
-        conn.execute(text("UPDATE pg_class SET reltuples = -1, relpages = 0 "
-                          "WHERE oid IN (SELECT inhrelid FROM pg_inherits "
-                          "WHERE inhparent = to_regclass('ledger_events'))"))
-    try:
-        with ledger.connect() as conn:
-            answer = _coverage(conn)
-        assert answer["atoms"]["unanalyzed_partitions"] == len(FIXTURE_MONTHS), (
-            "a partition with no statistics is being reported as a partition with "
-            "zero atoms")
-        assert answer["atoms"]["estimate"] == 0
-    finally:
-        with ledger.begin() as conn:
-            conn.execute(text("ANALYZE ledger_events"))
-
-
-def test_the_partitions_are_reported_exactly_from_the_catalogue(ledger):
-    """Exact and free — `pg_inherits` is a catalogue join, no heap is touched.
-
-    The bound is carried VERBATIM as PostgreSQL renders it. Re-parsing
-    `FOR VALUES FROM (…) TO (…)` into a pair of instants here would be a second
-    spelling of the partition grammar, and the operator needs to see what the
-    database says rather than this module's re-reading of it.
-    """
-    with ledger.connect() as conn:
-        answer = _coverage(conn)
-    partitions = answer["partitions"]
-    assert partitions["count"] == len(FIXTURE_MONTHS)
-    assert len(partitions["list"]) == partitions["count"]
-    names = [p["name"] for p in partitions["list"]]
-    assert "ledger_events_2026_01" in names, names[:3]
-    assert names == sorted(names), "the partition list must not shuffle between calls"
-    for entry in partitions["list"]:
-        assert entry["bound"].startswith("FOR VALUES FROM"), entry
-
-
-def test_the_partitions_answer_for_a_deployed_but_EMPTY_ledger(ledger):
-    """An empty ledger is deployed, partitioned and covering months — and saying
-    nothing about that would leave "the table is there and holds nothing" and "the
-    table is there and I cannot tell you anything" rendering identically, which is
-    the exact conflation `state` exists to end."""
-    with ledger.connect() as conn:
-        answer = _coverage(conn)
-    assert answer["state"] == "empty"
-    assert answer["partitions"]["count"] == len(FIXTURE_MONTHS)
-    assert answer["last_atom"] == {"occurred_at": None, "recorded_at": None}
-
-
-def test_the_last_atom_carries_the_time_it_HAPPENED_and_the_time_it_was_RECORDED(ledger):
-    """🔴 THE SAME DECODE AS `ledger.uuid7.timestamp_ms`, PROVEN EQUAL.
-
-    There is no `recorded_at` column and ruling R-2026-08-13-F refused to add one —
-    a second home for one fact. The write time lives in the UUIDv7 `id`, and the web
-    server decodes it in SQL because it does not import the translator package
-    (`server/ledger/__init__.py`'s stated safety property: nothing in `server/`
-    imports it).
-
-    That leaves TWO spellings of one decode, in two languages, and two spellings of
-    one key is how this project's schema notes say a writer and a reader silently
-    stop agreeing. So the test drives BOTH and requires the same instant.
-    """
-    uuid7 = pytest.importorskip("ledger.uuid7")
-    minted = uuid7.uuid7()
-    when = T0 + timedelta(days=3)
-    with ledger.begin() as conn:
-        insert(conn, straight_chain(LOTS, SLOTS, WAFERS))
-        insert(conn, [dict(raw_atom(str(minted), "L-NEWEST", "register", {},
-                                    occurred_at=when))])
-    with ledger.connect() as conn:
-        answer = _coverage(conn)
-
-    assert answer["last_atom"]["occurred_at"] == lt._iso(
-        when, lt.resolve_display_zone(lt.DEFAULT_RESOLVER_CONFIG))
-    recorded = datetime.fromisoformat(answer["last_atom"]["recorded_at"])
-    expected_ms = uuid7.timestamp_ms(minted)
-    assert round(recorded.timestamp() * 1000) == expected_ms, (
-        f"the SQL decode says {recorded.isoformat()} and `uuid7.timestamp_ms` says "
-        f"{expected_ms} — the two spellings of the UUIDv7 stamp have drifted")
-
-
-def test_an_id_that_is_not_a_v7_reports_NO_recorded_time_rather_than_inventing_one(
-        ledger):
-    """The other arm, and it is not hypothetical: every fixture in this file mints
-    `uuid5`. Decoding a v5's first 48 bits would yield a perfectly well-formed
-    instant made of hash bits — a confident wrong answer, which is the failure mode
-    this project keeps paying for. NULL is the honest report."""
-    with ledger.begin() as conn:
-        insert(conn, straight_chain(LOTS, SLOTS, WAFERS))
-    with ledger.connect() as conn:
-        answer = _coverage(conn)
-    assert answer["last_atom"]["occurred_at"] is not None, (
-        "the fixture did not land, so this test would prove nothing")
-    assert answer["last_atom"]["recorded_at"] is None
-
 
 def test_an_index_can_serve_the_newest_atom_without_scanning_the_ledger(ledger):
     """The newest-atom lookup is the ONLY one of the ruling's four additions that
@@ -921,100 +635,4 @@ def test_an_index_can_serve_the_newest_atom_without_scanning_the_ledger(ledger):
     assert "Seq Scan" not in plan, (
         f"even with sequential scans disabled the newest-atom lookup will not use an "
         f"index — there is none it can use:\n{plan}")
-
-
-def test_the_cursor_report_names_what_was_refused_and_what_it_cannot_explain(ledger):
-    """🔴 THE ONLY READ OF NAMED REFUSALS THAT EXISTS.
-
-    `gate._refusals` is process-local to the backfill, the web server never imports
-    that package, and the heartbeat note is not served — so this column is the whole
-    of the answer to "what was refused, by name" for anybody who is not the backfill
-    process itself.
-
-    Both row shapes are here in one test because they are told apart by a field:
-
-      * a row the current writer owns  -> a breakdown, `refusals_unaccounted == 0`
-      * a row that PREDATES the column -> NULL, and its aggregate is unaccounted for
-
-    The second is not hypothetical: both development databases carried exactly that
-    (`molecules_refused = 1`, no breakdown) when the migration ran. A screen that
-    rendered "1 refused" beside an empty list would be reporting a bookkeeping fault
-    that is not there, and a status strip that cries wolf about its own bookkeeping
-    is worse than no status strip.
-    """
-    with ledger.begin() as conn:
-        conn.execute(text("""
-            INSERT INTO ledger_translator_cursor
-                (source, translator_ver, cursor_value, molecules_refused,
-                 refusal_reasons)
-            VALUES ('written_by_the_new_writer', 'v/1', '{}'::jsonb, 3,
-                    '{"no_identity": {"count": 2,
-                                      "last_at": "2026-08-13T01:02:03+00:00"},
-                      "atomicity_violation": {"count": 1,
-                                              "last_at": "2026-08-13T04:05:06+00:00"}}')
-        """))
-        conn.execute(text("""
-            INSERT INTO ledger_translator_cursor
-                (source, translator_ver, cursor_value, molecules_refused)
-            VALUES ('predates_the_column', 'v/1', '{}'::jsonb, 1)
-        """))
-    try:
-        with ledger.connect() as conn:
-            answer = _coverage(conn)
-        rows = {c["source"]: c for c in answer["cursors"]}
-        assert set(rows) == {"written_by_the_new_writer", "predates_the_column"}
-        assert answer["sources"] == sorted(rows), (
-            "`sources` must keep naming exactly the cursor rows it always did")
-
-        owned = rows["written_by_the_new_writer"]
-        assert owned["molecules_refused"] == 3
-        assert set(owned["refusal_reasons"]) == {"no_identity", "atomicity_violation"}
-        assert owned["refusal_reasons"]["no_identity"]["count"] == 2
-        assert owned["refusals_unaccounted"] == 0, (
-            "the breakdown does not add up to the aggregate it explains")
-        # Rendered in the DECLARED display zone, like every other instant in this
-        # response. The stored value is UTC; +09:00 here is the same instant said
-        # in the zone the operator reads.
-        assert owned["refusal_reasons"]["no_identity"]["last_at"].endswith("+09:00")
-
-        legacy = rows["predates_the_column"]
-        assert legacy["refusal_reasons"] is None, (
-            "NULL became {} somewhere — 'this predates the breakdown' and 'nothing "
-            "was refused' are now indistinguishable")
-        assert legacy["refusals_unaccounted"] == 1
-    finally:
-        with ledger.begin() as conn:
-            conn.execute(text("DELETE FROM ledger_translator_cursor"))
-
-
-def test_coverage_answers_when_the_cursor_table_predates_the_refusal_column(ledger):
-    """The migration-ordering arm, from the READER's side.
-
-    `add_frame_confirmation.py` documents the hazard: a column added to an existing
-    table is a 500 in every process that reads it before the migration runs. A status
-    endpoint that answers 500 is the screen reporting itself broken, which is exactly
-    the blank-screen incident this endpoint was built for. So the reader asks the
-    catalogue which columns exist and selects only those.
-    """
-    with ledger.begin() as conn:
-        conn.execute(text(
-            "INSERT INTO ledger_translator_cursor "
-            "(source, translator_ver, cursor_value, molecules_refused) "
-            "VALUES ('lot_event', 'v/1', '{}'::jsonb, 4)"))
-        conn.execute(text("ALTER TABLE ledger_translator_cursor "
-                          "DROP COLUMN refusal_reasons"))
-    try:
-        with ledger.connect() as conn:
-            answer = _coverage(conn)
-        row = answer["cursors"][0]
-        assert row["source"] == "lot_event"
-        assert row["molecules_refused"] == 4
-        assert "refusal_reasons" not in row, (
-            "a column the database does not have was reported as present")
-        assert row["refusals_unaccounted"] == 4
-    finally:
-        with ledger.begin() as conn:
-            conn.execute(text("DELETE FROM ledger_translator_cursor"))
-            conn.execute(text("ALTER TABLE ledger_translator_cursor "
-                              "ADD COLUMN refusal_reasons JSONB"))
 

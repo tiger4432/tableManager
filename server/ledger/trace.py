@@ -1,39 +1,34 @@
-"""Lot lineage trace over the canonical ledger — the resolver, the lookup, the walk.
+"""The ledger's resolver — which claim is current when several speak about one subject.
 
-Design source: `docs/architecture/CANONICAL_LEDGER_DESIGN.md` §6 (resolution order)
-and `docs/process/LEDGER_SLICE_1_BRIEF.md` §3-2 (query-time resolution, per-hop state).
-Neither is edited from here; this module implements them.
+Design source: `docs/architecture/CANONICAL_LEDGER_DESIGN.md` §6 (resolution order).
+It is not edited from here; this module implements it.
 
-🔴 **THREE THINGS LIVE HERE AND TWO OF THEM MUST NOT KNOW ABOUT EACH OTHER.**
+    RESOLUTION   `claim_class` / `claim_rank_key` / `resolve` / `live_claims`
+                 Pure Python over `Claim` objects. No SQL, no table name, no
+                 connection. This is "THE resolver" of §6 — there is exactly one,
+                 and `ledger_subgraph`'s walk and `runtime_v2` both ask it.
 
-    RESOLUTION   `claim_class` / `claim_rank_key` / `resolve`
-                 Pure Python over `Claim` objects. Contains no SQL, no table
-                 name, no connection. This is "THE resolver" of §6 — there is
-                 exactly one, and every hop state in the answer comes out of it.
+    A FEW READS  `relation_exists` (three callers ask it before touching the
+                 ledger), `measured` and `_unaccounted` (the shared shapes for
+                 「this is an estimate」 and 「the breakdown does not add up」 —
+                 `backfill` and `ledger.admin`'s ingestion view import them so a
+                 second spelling cannot disagree about a fault), and
+                 `COVERAGE_STATES`, whose three words `event_constants` and
+                 `listing_absence` both point at rather than re-inventing.
 
-    LOOKUP       `ClaimLookup` and its subclasses.
-                 Fetches claims. Does NOT rank, does NOT decide, does NOT know
-                 what a class is. `SqlClaimLookup` runs the recursive CTE against
-                 `ledger_events`; `InMemoryClaimLookup` serves a list.
-
-    WALK         `trace`
-                 Asks the lookup once, then asks the resolver one question per
-                 hop. Its output is the pinned response shape.
-
-**Why the separation is a structural requirement and not a style note.** Measured
-2026-08-12 on a 1000-lot synthetic probe (`agent_workspace/reports/
-Incremental_materialization_1000lots.md`, synthetic — not production evidence):
-query-time resolution holds for LOT-level tracing (0.95 ms/hop) and COLLAPSES for
-SLOT-level lineage — 452 ms inline against 0.58 ms materialised, a 780x gap that
-goes superlinear (34.8x at 20x the ledger). This slice is lot-level, so it goes
-query-time and NOTHING is materialised here. Week 2's void work needs the
-slot-level `slot_map` chain and that one cannot go query-time. So the lookup is a
-replaceable object: swapping `SqlClaimLookup` for a lookup backed by a
-materialised closure table changes ONE constructor argument and rewrites NONE of
-the resolver, because the resolver never learns where a `Claim` came from.
-`InMemoryClaimLookup` exists to make that swappability a *checked* property
-rather than a claim — `test_ledger_trace_pg.py` runs the same trace through both
-lookups and asserts the two answers are identical.
+🪦 **THE LOOKUP AND THE WALK LIVED HERE AND DO NOT ANY MORE (S-261).** `trace`,
+`ClaimLookup`/`SqlClaimLookup`/`OneShotSqlClaimLookup`/`InMemoryClaimLookup`,
+`Neighbourhood` and the two recursive CTEs were the lot-lineage walk of slice 1;
+`95940d45` (2026-08-27) replaced all of it with `ledger_subgraph.subgraph` over
+`SqlEvidenceLookup`, and `67cc2e8a` (2026-08-25) had already retired the routes
+that called them. `coverage` and its helpers went the same way: `/api/ledger/coverage`
+retired with them, no client asks for it, and every question it answered is answered
+somewhere that runs — deployment absence by the walk route's `ledger_relation_absent`
+and `admin/schema_drift`, 「which sources wrote」 and the three refusal states by
+`ledger.admin.ingestion_view`, the `reltuples` estimate by `backfill`, the partition
+list by `ledger.schema`. The shells stayed because deleting the last CALLER does not
+delete the callee, and a module that still exports them reads as a module that still
+offers them.
 """
 
 import json
@@ -815,188 +810,9 @@ def live_claims(claims):
     return [c for c in claims if str(c.id) not in retired]
 
 
-# --------------------------------------------------------------------------
-# THE LOOKUP — replaceable. Knows nothing about ranking.
-# --------------------------------------------------------------------------
-
-@dataclass
-class Neighbourhood:
-    """Everything the walk needs, fetched. No ordering decision has been taken."""
-    claims: List[Claim] = field(default_factory=list)
-    lots: Tuple = ()
-    truncated: bool = False
-    truncation_reason: Optional[str] = None
-
-
-class ClaimLookup:
-    """Fetch claims. Two primitives, and a `neighbourhood` written in terms of them.
-
-    A materialised lookup (week 2, slot-level) overrides `reachable_lots` with a
-    single indexed SELECT against a closure table and inherits everything else.
-    `SqlClaimLookup` overrides `neighbourhood` instead, to do both primitives in
-    one round trip. Neither override touches the resolver, and that is the point.
-    """
-
-
-
-
-
-class InMemoryClaimLookup(ClaimLookup):
-    """A lookup over a list. Exercises the DEFAULT `neighbourhood` path, so a
-    trace served from it and a trace served from `SqlClaimLookup` agreeing is
-    evidence the two primitives and the one-shot CTE compute the same set."""
-
-    def __init__(self, claims):
-        self._claims = list(claims)
-
-
-
-
+#: A relation name may be interpolated into SQL only after this says it is a bare
+#: identifier — the reads below take a table name as an argument.
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-
-#: The whole neighbourhood in one round trip: the recursive CTE walks Lot -> Lot
-#: on `derived_from` and the outer SELECT drags back every lineage atom of every
-#: lot it reached. Used by `OneShotSqlClaimLookup`, which is the MEASURED-WORSE
-#: alternative and is kept only so the finding stays reproducible.
-#:
-#: 🔴 It does NOT rank and it does NOT filter superseded atoms. Both of those are
-#: the resolver's job (see `resolve` / `live_claims`); a CTE that ordered the
-#: candidates would have to be re-written in the materialised lookup, which is
-#: the shape the brief forbids.
-#:
-#: `CYCLE lot SET is_cycle USING path` (PostgreSQL 14+) is the cycle guard. A
-#: `UNION` on (lot, depth) is NOT one — the same lot at two depths is two
-#: distinct rows, so a genuine cycle would spin until the depth cap and report
-#: `depth_cap` for what is really a loop. The screen exists to say WHY, so those
-#: two must not be told apart by a guess.
-_TRACE_CTE = """
-WITH RECURSIVE reach(lot, depth) AS (
-        SELECT CAST(%(start_lot)s AS text), 0
-    UNION ALL
-        SELECT COALESCE(e.object_payload->'keys'->>'lot', e.object_payload->>'lot'), r.depth + 1
-        FROM reach r
-        JOIN {relation} e
-          ON e.subject_type = 'Lot'
-         AND e.subject_keys->>'lot' = r.lot
-         AND e.predicate = %(traverse)s
-        WHERE r.depth < %(max_depth)s
-          AND COALESCE(e.object_payload->'keys'->>'lot', e.object_payload->>'lot') IS NOT NULL
-) CYCLE lot SET is_cycle USING path
-, reached AS (
-    -- One row per lot, not one per PATH. A diamond genealogy reaches the same
-    -- lot twice; without this the join would return each of that lot's claims
-    -- twice and the resolver would count one witness as two.
-    SELECT lot, min(depth) AS depth
-    FROM reach WHERE NOT is_cycle AND lot IS NOT NULL GROUP BY lot
-)
-SELECT e.id, e.subject_type, e.subject_keys, e.predicate, e.object_kind,
-       e.object_payload, e.occurred_at, e.source_who, e.source_translator_ver,
-       e.source_raw_ref, e.supersedes,
-       r.depth
-FROM reached r
-JOIN {relation} e
-  ON e.subject_type = 'Lot'
- AND e.subject_keys->>'lot' = r.lot
- AND e.predicate = ANY(%(predicates)s)
-"""
-
-_REACH_ONLY_CTE = """
-WITH RECURSIVE reach(lot, depth) AS (
-        SELECT CAST(%(start_lot)s AS text), 0
-    UNION ALL
-        SELECT COALESCE(e.object_payload->'keys'->>'lot', e.object_payload->>'lot'), r.depth + 1
-        FROM reach r
-        JOIN {relation} e
-          ON e.subject_type = 'Lot'
-         AND e.subject_keys->>'lot' = r.lot
-         AND e.predicate = %(traverse)s
-        WHERE r.depth < %(max_depth)s
-          AND COALESCE(e.object_payload->'keys'->>'lot', e.object_payload->>'lot') IS NOT NULL
-) CYCLE lot SET is_cycle USING path
-SELECT lot, min(depth) AS depth
-FROM reach WHERE NOT is_cycle AND lot IS NOT NULL GROUP BY lot
-"""
-
-
-class SqlClaimLookup(ClaimLookup):
-    """The ledger itself: a recursive CTE for the reach, an indexed fetch for the
-    claims. TWO round trips, and that is a measured choice rather than an
-    oversight — see `OneShotSqlClaimLookup` for the one that was rejected.
-
-    `relation` is the seam. It is the ONLY thing that has to change to point the
-    walk at a materialised projection instead of at `ledger_events`, and it is
-    validated as a bare identifier because it is interpolated into SQL (a bound
-    parameter cannot name a relation).
-    """
-
-    def __init__(self, connection, relation="ledger_events"):
-        if not _IDENTIFIER.match(relation or ""):
-            raise ValueError(f"relation must be a bare SQL identifier: {relation!r}")
-        self.connection = connection
-        self.relation = relation
-
-
-
-    def _execute(self, sql, params):
-        """Run `sql` on either a DBAPI connection or a SQLAlchemy Connection."""
-        conn = self.connection
-        if hasattr(conn, "cursor"):                      # psycopg2 connection
-            with conn.cursor() as cur:
-                cur.execute(sql, params)
-                return cur.fetchall()
-        # SQLAlchemy Connection / Session — pyformat params go through exec_driver_sql
-        exec_driver = getattr(conn, "exec_driver_sql", None)
-        if exec_driver is None and hasattr(conn, "connection"):   # Session
-            exec_driver = conn.connection().exec_driver_sql       # pragma: no cover
-        return list(exec_driver(sql, params))
-
-
-class OneShotSqlClaimLookup(SqlClaimLookup):
-    """The whole neighbourhood in ONE round trip. **Measured slower — kept as the
-    rejected alternative, not as the default.**
-
-    Interleaved arms, rotated order, 40 rounds, this box, synthetic ledger,
-    2026-08-13 (ms per 14-hop trace):
-
-        ledger     one-shot   two-step (default)
-        18,000       8.63        2.22
-        360,000      2.07        2.15
-
-    At 360k the two are the same query within noise (1.04x). At 18k the one-shot
-    is 4x WORSE, and `EXPLAIN` says why: the outer join's driving side is the
-    recursive CTE, and **PostgreSQL cannot estimate a recursive CTE's output — it
-    uses a fixed guess** (it estimated 149-200 rows against an actual 5). On the
-    small ledger that fiction made a hash join with a SEQ SCAN OF THE WHOLE
-    PARTITION look cheaper than five index probes, so the cost of one trace
-    became O(ledger).
-
-    The two-step is immune because its second query is `= ANY(<array of 5>)` —
-    the planner counts the array, so the estimate is grounded in a fact instead
-    of a constant, and the plan is an index scan at both sizes (0.97x across a
-    20x ledger, i.e. flat).
-
-    🔴 The hazard is NOT "small ledgers are slow". It is that the join method for
-    this query is chosen from a number that does not come from the data, so a
-    ledger that grows past a crossover can flip to O(ledger) per trace with no
-    code change. That is the kind of defect that ships green.
-    """
-
-
-
-def _claim_from_row(row):
-    payload = row[5]
-    if isinstance(payload, str):                          # pragma: no cover
-        payload = json.loads(payload)
-    keys = row[2]
-    if isinstance(keys, str):                             # pragma: no cover
-        keys = json.loads(keys)
-    return Claim(
-        id=str(row[0]), subject_type=row[1], subject_keys=keys or {},
-        predicate=row[3], object_kind=row[4], object_payload=payload or {},
-        occurred_at=row[6], source_who=row[7], source_translator_ver=row[8],
-        source_raw_ref=row[9],
-        supersedes=str(row[10]) if row[10] is not None else None)
-
 
 # --------------------------------------------------------------------------
 # Payload readers — the ONE place a predicate's object shape is spelled
@@ -1045,34 +861,9 @@ def _payload_lot(claim):
     return _object_key(claim, "lot")
 
 
-def _slot_text(value):
-    """Slots arrive as `3`, `"3"` and `"03"` from three sources. Compared as text
-    with leading zeros stripped, because `3 != "3"` is how a chain silently
-    reads as broken."""
-    if value is None or value == "":
-        return None
-    s = str(value).strip()
-    if not s:
-        return None
-    if s.lstrip("0").isdigit():
-        return str(int(s))
-    return s
-
-
 # --------------------------------------------------------------------------
 # THE WALK — asks the lookup once, then the resolver once per question
 # --------------------------------------------------------------------------
-
-def _lot_node(lot, slot=None):
-    node = {"type": "Lot", "keys": {"lot": lot}}
-    if slot is not None:
-        node["slot"] = slot
-    return node
-
-
-def _wafer_node(wafer):
-    return {"type": "Wafer", "keys": {"wafer": wafer}}
-
 
 def _iso(dt, zone):
     """ISO 8601, `T` separator, rendered in the DECLARED zone. See
@@ -1096,26 +887,6 @@ def _iso(dt, zone):
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=zone)
     return dt.astimezone(zone).isoformat()
-
-
-def resolve_display_zone(config=None):
-    """The declared render zone as a tzinfo. Refused loudly if unusable.
-
-    No fallback to UTC and no fallback to the machine zone: a display zone that
-    silently became something else is precisely the failure being designed out,
-    and a screen that renders a fab record in the wrong zone looks completely
-    normal.
-    """
-    cfg = config or load_resolver_config()
-    name = cfg.get("display_timezone") or DEFAULT_RESOLVER_CONFIG["display_timezone"]
-    try:
-        from zoneinfo import ZoneInfo
-        return ZoneInfo(name)
-    except Exception as exc:
-        raise ResolverConfigError(
-            f"display_timezone {name!r} is not a usable IANA zone: {exc}. "
-            f"On a bare Windows install this usually means the `tzdata` package "
-            f"is missing.")
 
 
 def _hop(frm, to, resolution, predicate, zone, config=None):
@@ -1200,9 +971,8 @@ DEFAULT_SAMPLE_SIZE = 3
 def _fetch(connection, sql, params=None):
     """Run `sql` on either a DBAPI connection or a SQLAlchemy Connection/Session.
 
-    Same two-shaped handling `SqlClaimLookup._execute` does, and for the same
-    reason: the route hands over a `Session`'s connection while the tests and
-    any operator script hand over psycopg2.
+    Two shapes on purpose: the route hands over a `Session`'s connection while the
+    tests and any operator script hand over psycopg2.
     """
     conn = connection
     # `params` stays None rather than becoming `{}` when there is nothing to
@@ -1236,146 +1006,6 @@ def relation_exists(connection, relation):
     return bool(rows and rows[0][0])
 
 
-def coverage(connection, relation="ledger_events",
-             cursor_relation="ledger_translator_cursor", config=None,
-             sample_size=DEFAULT_SAMPLE_SIZE):
-    """What this box's ledger covers, in the pinned coverage shape.
-
-    Never raises for an absent or empty ledger — those ARE the answers. The only
-    refusal is `ResolverConfigError` from an unusable display zone, which is the
-    same door `trace` refuses at and for the same reason: a screen that renders a
-    fab record in the wrong zone looks completely normal.
-
-    [SCALE — every query here is bounded by something other than atom count]
-    * existence      `to_regclass`, a catalogue lookup.
-    * any atom?      `EXISTS (SELECT 1 …)` stops at the first row; with no
-                     partitions it stops without touching a heap at all.
-    * `lots`         `count(*) WHERE predicate='register' AND subject_type='Lot'`
-                     is served by the PARTIAL index `idx_ledger_register`, which
-                     is O(entities) while the table is O(atoms) — that index's
-                     own admission note says so.
-    * `occurred_at`  `min`/`max` ride `uq_ledger_atom`, whose LEADING column is
-                     `occurred_at` (`schema.DEDUPE_COLUMNS`), so each partition
-                     answers from one end of an index and PostgreSQL merges them.
-                     🔴 This is why no new index was added for this endpoint: the
-                     one that idempotency already pays for happens to be sorted
-                     on exactly the column the header needs.
-    * `sample`       an ordered index scan on `idx_ledger_subject_lot` with a
-                     LIMIT, so it stops after a handful rather than sorting the
-                     ledger, plus one indexed seek per sampled lot.
-    * `atoms`        `pg_class.reltuples` summed over the partitions. THE CATALOGUE,
-                     never `count(*)`: `store.atom_count()` counts every row of
-                     every partition and is exactly the cost this endpoint may not
-                     pay. It is an ESTIMATE and the response says so in a field
-                     (`exact: false`), because a screen that prints a maintained
-                     statistic as if it were a count is how "the ledger lost rows"
-                     gets reported after an autovacuum has simply not run yet.
-    * `partitions`   `pg_inherits` + `pg_class`, the same catalogue query
-                     `schema.partitions` runs. Free, and exact.
-    * `cursors`      the whole cursor table. O(sources) — one row per translator,
-                     not per atom — so it is a handful of rows forever.
-    * `last_atom`    `ORDER BY occurred_at DESC LIMIT 1`, which rides
-                     `uq_ledger_atom`'s leading column exactly as min/max above do:
-                     one index descent per partition and a MergeAppend, O(partitions)
-                     rather than O(atoms). `recorded_at` costs NOTHING extra — it is
-                     decoded from the `id` that row already carries.
-    There is deliberately NO `SELECT DISTINCT source_who` — see `sources` below.
-    There is deliberately no verification-run log: none exists, and ruling
-    R-2026-08-13-F declined to build one for a status strip. The screen says so.
-
-    🔴 ONE REQUEST, NOT TWO (ruling R-2026-08-13-F). The status strip reuses THIS
-    body rather than fetching its own, so everything added above had to be O(1) in
-    atoms or it would have made the page-load call heavier. `lots` remains the only
-    field that grows, under the ruling that already governs it.
-
-    MEASURED 2026-08-13, throwaway probe DB, 280,000 atoms / 100,000 lots across
-    12 monthly partitions, VACUUM ANALYZEd (a probe without statistics reports a
-    plan nobody will ever run):
-
-        EXISTS               0.12 ms   3 buffers, 11 of 12 partitions unvisited
-        min/max occurred_at  0.13 ms   8 buffers, Index Only Scan + Limit 1
-        sample               1.07 ms  38 buffers, MergeAppend of index scans
-        count(register)     24.06 ms 636 buffers, Index Only Scan, 0 heap fetches
-        coverage() total    31 ms
-
-    🔴 `lots` IS THE ONLY ONE THAT GROWS, and it grows with ENTITIES, not atoms —
-    it walks the whole partial index. At this source's density (909 atoms / 25
-    lots) a ten-million-atom ledger is ~275,000 lots, so ~66 ms.
-
-    **It is deliberately NOT cached, and that is the interesting decision.** This
-    project caches counts for 5 s elsewhere (`main.TABLE_COUNT_CACHE`) and the
-    same trick would work here. But this endpoint exists to tell an operator
-    whether the migration and backfill they JUST RAN took effect — a cache would
-    make it answer "absent" or "empty" for five seconds at the exact moment its
-    answer matters most, which is a worse defect than 66 ms. If a future consumer
-    polls it, cache it THERE.
-    """
-    cfg = config or load_resolver_config()
-    zone = resolve_display_zone(cfg)
-
-    answer = {"state": "absent", "lots": 0, "sources": [],
-              "occurred_at": {"from": None, "to": None}, "sample": [],
-              "atoms": dict(ATOMS_UNKNOWN), "partitions": {"count": 0, "list": []},
-              "cursors": [], "last_atom": {"occurred_at": None, "recorded_at": None}}
-
-    # `sources` comes from the CURSOR table, not from `DISTINCT source_who`.
-    #
-    # Two reasons, and the second one is the better one. (1) There is no index on
-    # `source_who` and there is no consumer that would justify adding one, so a
-    # DISTINCT over it is a sequential scan of the whole ledger — at ten million
-    # atoms that is a multi-second page load for a header field. (2) The cursor
-    # table is the ledger's own registry of WHO HAS WRITTEN HERE, and it still
-    # answers when the ledger is empty: a translator that ran and refused every
-    # molecule leaves a cursor row and no atoms, and "a translator has been here
-    # and produced nothing" is precisely the distinction `state: "empty"` exists
-    # to draw. `DISTINCT source_who` would say `[]` for both "never ran" and
-    # "ran, refused everything".
-    #
-    # The two spellings agree by construction for every translator that exists:
-    # `backfill.run(source=…)` keys the cursor row, and the same string is the
-    # translator's `who`, which becomes `source_who` on every atom
-    # (`lot_event_translator.SOURCE`). A future translator whose `who` differs
-    # from its cursor key would make this field name a source rather than an
-    # author — worth a test at that point, not a scan today.
-    if relation_exists(connection, cursor_relation):
-        answer["cursors"] = _cursor_rows(connection, cursor_relation, zone)
-        answer["sources"] = [c["source"] for c in answer["cursors"] if c["source"]]
-
-    if not relation_exists(connection, relation):
-        return answer                                   # state stays "absent"
-
-    # Catalogue facts, and they are answered for an EMPTY ledger too: "the table is
-    # deployed and partitioned and holds nothing" is a different report from "the table
-    # is deployed and I cannot tell you anything about it", and the second one is what an
-    # early return here would produce.
-    answer["partitions"] = _partition_report(connection, relation)
-    answer["atoms"] = _atom_estimate(connection, relation)
-
-    populated = _fetch(connection, f"SELECT EXISTS (SELECT 1 FROM {relation})")
-    if not (populated and populated[0][0]):
-        answer["state"] = "empty"
-        return answer
-
-    answer["state"] = "ready"
-    answer["last_atom"] = _last_atom(connection, relation, zone)
-    rows = _fetch(connection, f"SELECT count(*) FROM {relation} "
-                              f"WHERE predicate = 'register' AND subject_type = 'Lot'")
-    answer["lots"] = int(rows[0][0]) if rows else 0
-
-    rows = _fetch(connection,
-                  f"SELECT min(occurred_at), max(occurred_at) FROM {relation}")
-    if rows:
-        answer["occurred_at"] = {"from": _iso(rows[0][0], zone),
-                                 "to": _iso(rows[0][1], zone)}
-
-    answer["sample"] = _coverage_sample(connection, relation, sample_size)
-    return answer
-
-
-#: The atom count before the catalogue has been asked, and the shape every answer
-#: keeps. 🔴 `exact` is FALSE in every spelling of this field — there is no branch
-#: of this endpoint that counts rows — so a client that reads it can render "약"
-#: without deciding when to.
 def measured(value, *, exact, method, measured_at=None, **extra):
     """A number that says HOW it was obtained and WHEN. One shape, one author.
 
@@ -1396,69 +1026,19 @@ def measured(value, *, exact, method, measured_at=None, **extra):
             "measured_at": measured_at, **extra}
 
 
+#: An atom count before the catalogue has been asked — BUILT FROM `measured` rather than
+#: written beside it, because two shapes for 「this is an estimate」 is how one of them
+#: starts rendering as a fact. `exact` is FALSE in every spelling of it, so a client can
+#: render 「약」 without deciding when to.
+#:
+#: ⚠️ IT OUTLIVED ITS CALLER ON PURPOSE (S-261). `coverage` built its `atoms` field from
+#: this and retired with the route; the SHAPE is what
+#: `test_a_source_says_when_its_counts_were_taken` pins, and the census route publishes a
+#: number of the same shape. Deleting the constant with its last caller would have left
+#: the next writer of that field free to invent a second spelling — 「축과 값을 같이 죽이지
+#: 않는다」, the same reason `COVERAGE_STATES` stayed.
 ATOMS_UNKNOWN = measured(0, exact=False, method="pg_class.reltuples",
                          unanalyzed_partitions=0)
-
-
-def _atom_estimate(connection, relation):
-    """How many atoms, APPROXIMATELY, from the catalogue alone.
-
-    `reltuples` is maintained by VACUUM and ANALYZE rather than by the statistics
-    collector, which is why it is trustworthy in exactly the situation
-    `pg_stat_user_tables` is not: this project spent a round on five phantom
-    "bloated" tables because `n_live_tup` had been reset while the tables were
-    fine (server-pm lessons, 2026-08-06). It is still an estimate, and the two
-    ways it lies are both reported rather than smoothed over:
-
-      * a partition that has never been analysed carries `-1` (PostgreSQL 14+)
-        or `0`. Counting either as "no atoms" would let a freshly restored
-        database report an empty ledger that is full, so those partitions are
-        COUNTED and named in `unanalyzed_partitions`, and the estimate says how
-        many of its inputs it could not see.
-      * between a bulk write and the next autovacuum the number is simply old.
-        `exact: false` is the whole of the defence, and it is the client's job to
-        render it as an approximation.
-
-    Summed over the PARTITIONS, never read off the parent: a partitioned parent
-    holds no rows of its own, so its own `reltuples` is 0 and a reader that took
-    it would report an empty ledger with total confidence.
-    """
-    rows = _fetch(connection, """
-        SELECT coalesce(sum(GREATEST(c.reltuples, 0)), 0)::bigint,
-               count(*) FILTER (WHERE c.reltuples < 0 OR c.relpages = 0)
-        FROM pg_class parent
-        JOIN pg_inherits inh ON inh.inhparent = parent.oid
-        JOIN pg_class c ON c.oid = inh.inhrelid
-        WHERE parent.oid = to_regclass(%(rel)s)
-    """, {"rel": relation})
-    if not rows:
-        return dict(ATOMS_UNKNOWN)                           # pragma: no cover
-    return dict(ATOMS_UNKNOWN, estimate=int(rows[0][0] or 0),
-                unanalyzed_partitions=int(rows[0][1] or 0))
-
-
-def _partition_report(connection, relation):
-    """The partitions and their bounds — the same catalogue query `schema.partitions`
-    runs, spelled here rather than imported for the reason the relation names at the
-    top of `ledger_trace_router` are: the web server must not import the translator
-    package to answer a read (`server/ledger/__init__.py` states that coupling is
-    empty, and it is worth keeping empty).
-
-    The BOUND is carried verbatim, as PostgreSQL renders it. Parsing
-    `FOR VALUES FROM (…) TO (…)` into a pair of instants here would be a second
-    spelling of the partition grammar, and the screen needs to show the operator what
-    the database says, not this module's re-reading of it.
-    """
-    rows = _fetch(connection, """
-        SELECT c.relname, pg_get_expr(c.relpartbound, c.oid)
-        FROM pg_class parent
-        JOIN pg_inherits inh ON inh.inhparent = parent.oid
-        JOIN pg_class c ON c.oid = inh.inhrelid
-        WHERE parent.oid = to_regclass(%(rel)s)
-        ORDER BY c.relname
-    """, {"rel": relation})
-    return {"count": len(rows),
-            "list": [{"name": name, "bound": bound} for name, bound in rows]}
 
 
 #: Every column the cursor report would like, in the order the response carries them.
@@ -1474,70 +1054,6 @@ CURSOR_FIELDS = ("source", "translator_ver", "cursor_value", "molecules_done",
 #: Cursor columns that are instants and are rendered in the declared display zone,
 #: the same rule every other time in this response follows.
 CURSOR_TIME_FIELDS = frozenset({"head_probed_at", "started_at", "updated_at"})
-
-
-def _cursor_rows(connection, cursor_relation, zone):
-    """The translator cursor table, whole. O(sources), and that is the point.
-
-    🔴 `refusal_reasons` IS THE ONLY READ OF NAMED REFUSALS THAT EXISTS. The gate's
-    counters are process-local to the backfill, the web server never imports that
-    package, and the heartbeat note it writes is not served — so before ruling
-    R-2026-08-13-F no read of this database could produce a reason breakdown at all.
-    This is that read.
-
-    `refusals_unaccounted` is computed here rather than left to the client, and it is
-    the anti-false-alarm field. A row written before the column existed carries NULL
-    with a non-zero `molecules_refused` — both development databases had exactly that,
-    `molecules_refused = 1` and no breakdown — and a screen that rendered "1 refused"
-    beside an empty list would be reporting a bookkeeping fault that is not there. So
-    the response states how much of the aggregate the breakdown accounts for, and the
-    remainder is a fact about deployment history rather than a discrepancy.
-    """
-    present = _existing_columns(connection, cursor_relation, CURSOR_FIELDS)
-    if "source" not in present:
-        return []                                            # pragma: no cover
-    selected = [f for f in CURSOR_FIELDS if f in present]
-    rows = _fetch(connection,
-                  f"SELECT {', '.join(selected)} FROM {cursor_relation} ORDER BY source")
-    out = []
-    for row in rows:
-        entry = dict(zip(selected, row))
-        for field in CURSOR_TIME_FIELDS & set(entry):
-            entry[field] = _iso(entry[field], zone)
-        reasons = entry.get("refusal_reasons")
-        if "refusal_reasons" in entry:
-            # Only when the DATABASE has the column. Setting the key regardless would
-            # make "this server is running ahead of its migration" and "this row
-            # predates the breakdown" render identically, and only the first of those
-            # is fixed by running something.
-            entry["refusal_reasons"] = _rendered_reasons(reasons, zone)
-        entry["refusals_unaccounted"] = _unaccounted(entry, reasons)
-        out.append(entry)
-    return out
-
-
-def _rendered_reasons(reasons, zone):
-    """`{reason: {count, last_at}}` with `last_at` moved into the display zone.
-
-    The column stores UTC (`store.LedgerStore._NOW_ISO`) so that two writers can never
-    disagree about what a stored string means; the rendering happens here, once, exactly
-    as `occurred_at` is rendered. NULL survives as NULL — see `_cursor_rows`.
-    """
-    if not isinstance(reasons, dict):
-        return reasons
-    out = {}
-    for name, entry in reasons.items():
-        if not isinstance(entry, dict):                      # pragma: no cover
-            out[name] = entry
-            continue
-        last_at = entry.get("last_at")
-        if isinstance(last_at, str):
-            try:
-                last_at = _iso(datetime.fromisoformat(last_at), zone)
-            except ValueError:                               # pragma: no cover
-                pass
-        out[name] = {"count": entry.get("count"), "last_at": last_at}
-    return out
 
 
 def _unaccounted(entry, reasons):
@@ -1577,20 +1093,6 @@ def _unaccounted(entry, reasons):
     return total - explained
 
 
-def _existing_columns(connection, relation, wanted):
-    """Which of `wanted` the relation actually has, per the catalogue.
-
-    Resolved through `to_regclass` rather than by matching `information_schema` on a
-    bare table name: this box carries a second copy of these tables in a scratch schema
-    and a name match would answer about whichever one it met first.
-    """
-    rows = _fetch(connection, """
-        SELECT attname FROM pg_attribute
-        WHERE attrelid = to_regclass(%(rel)s) AND attnum > 0 AND NOT attisdropped
-    """, {"rel": relation})
-    return {r[0] for r in rows} & set(wanted)
-
-
 #: The 48-bit millisecond stamp RFC 9562 puts in the first 12 hex digits of a UUIDv7,
 #: decoded in SQL. 🔴 THERE IS NO `recorded_at` COLUMN AND THERE MUST NOT BE ONE
 #: (ruling R-2026-08-13-F: a second home for one fact) — the write time lives inside
@@ -1614,107 +1116,7 @@ UUID7_MS_SQL = """
 """
 
 
-def _last_atom(connection, relation, zone):
-    """The newest atom's event time and the time it was RECORDED.
-
-    Two different questions that look like one: `occurred_at` is when the world did
-    something, and the id's stamp is when this box heard about it. A ledger whose
-    newest event time is yesterday is either quiet or stuck, and the gap between these
-    two numbers is what tells them apart — the distinction `observability.lag_report`
-    exists for, made visible without asking the source table anything.
-    """
-    rows = _fetch(connection, f"""
-        SELECT occurred_at, {UUID7_MS_SQL.format(column="id")}
-        FROM {relation} ORDER BY occurred_at DESC LIMIT 1
-    """)
-    if not rows:
-        return {"occurred_at": None, "recorded_at": None}    # pragma: no cover
-    return {"occurred_at": _iso(rows[0][0], zone),
-            "recorded_at": _iso(rows[0][1], zone)}
-
-
 #: How many `derived_from` atoms the sample ranks over. See `_coverage_sample`
 #: for why this is a WINDOW and not "all of them".
 SAMPLE_CANDIDATE_WINDOW = 300
 
-
-def _coverage_sample(connection, relation, sample_size):
-    """A handful of lots the trace screen will actually have something to say about.
-
-    THE RULE, in two parts:
-
-    1. **Eligible** = the lot is the SUBJECT of a `derived_from` atom, i.e. the
-       ledger claims where it came from, so the walk produces a real lineage hop
-       rather than an immediate `[root]`. A lot with only a `register` is
-       registered, not traceable, and offering it would demonstrate the very
-       emptiness this endpoint exists to explain.
-    2. **Ordered** by how many `derived_from` atoms name it, most first, ties
-       broken by lot name so the answer is stable across calls (an operator's
-       "try this" link must not shuffle on refresh).
-
-    Rule 1 is also what keeps hand-typed junk out without the translator judging
-    its source. `assy_manager`'s ledger legitimately registers a lot called
-    `adsfas` — somebody typed it into `lot_event` — and the ledger MUST keep
-    counting it, because the count is a fact about the source. But nothing is
-    derived from `adsfas`, so it is not eligible here. The junk is excluded by
-    a property of the data, not by a blocklist that would need maintaining.
-
-    Rule 2 surfaces contended lineage first, which is the most informative thing
-    the screen can open on: on `assy_manager` it puts `CL-2601-005-A5` (three
-    `derived_from` atoms, two of which disagree) ahead of lots with one.
-
-    [WHY A WINDOW AND NOT `GROUP BY` OVER THE WHOLE LEDGER]
-    Measured 2026-08-13 on a throwaway probe, 280,828 atoms / 80,828
-    `derived_from`, VACUUM ANALYZEd:
-
-        index-ordered LIMIT, no ranking      2.3 ms     36 buffers
-        GROUP BY over ALL derived_from      98.4 ms  7,796 buffers
-        this: ranked over a 300-row window   ~2 ms     ~40 buffers
-
-    The middle one is O(lineage events) — ~1.2 s at ten million atoms, on an
-    endpoint a screen calls when it loads. So the ranking runs over a BOUNDED
-    window of the index-ordered scan and the aggregation happens in Python. The
-    ranking is therefore EXACT for any ledger whose lineage fits in the window
-    (every ledger this box has: `assy_manager` holds 20 `derived_from` atoms)
-    and is an honest "best of the first {SAMPLE_CANDIDATE_WINDOW}" beyond it.
-    A sample is a "try one of these" affordance; paying a second of page load to
-    rank it perfectly would be the wrong trade.
-
-    The slot is carried because the screen's interesting questions are
-    slot-shaped (`has_wafer` and `slot_map` hops only exist when a slot is
-    given), so a sample without one would demo a third of the feature. It is
-    normalised through `_slot_text`, the same reader the walk uses, so what the
-    client sends back matches what the walk compares against — `3` and `03` are
-    the same slot and `3 != "03"` is exactly how a chain silently reads broken.
-    """
-    if sample_size <= 0:
-        return []
-    # ORDER BY on the index's leading expression makes this a MergeAppend of
-    # per-partition index scans that stops at the window, rather than a sort of
-    # the ledger. The ORDER BY is also what makes the window DETERMINISTIC —
-    # without it the rows come back in whatever order the partitions are read.
-    counts = {}
-    for row in _fetch(connection, f"""
-            SELECT subject_keys->>'lot' FROM {relation}
-            WHERE predicate = 'derived_from'
-            ORDER BY subject_keys->>'lot' LIMIT %(w)s""",
-            {"w": int(SAMPLE_CANDIDATE_WINDOW)}):
-        if row[0]:
-            counts[row[0]] = counts.get(row[0], 0) + 1
-    lots = [lot for lot, _ in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
-            ][:int(sample_size)]
-
-    sample = []
-    for lot in lots:
-        rows = _fetch(connection, f"""
-            SELECT object_payload->'qualifiers'->>'slot'
-            FROM {relation}
-            WHERE subject_keys->>'lot' = %(lot)s AND predicate = 'has_wafer'
-              AND object_payload->'qualifiers'->>'slot' IS NOT NULL
-            ORDER BY 1 LIMIT 1""", {"lot": lot})
-        slot = _slot_text(rows[0][0]) if rows else None
-        if slot is not None:
-            # Only a (lot, slot) the walk can answer BOTH questions for is
-            # offered. Fewer honest samples beat a padded list.
-            sample.append({"lot": lot, "slot": slot})
-    return sample

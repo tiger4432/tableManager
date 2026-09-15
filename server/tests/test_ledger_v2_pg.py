@@ -35,7 +35,7 @@ from ledger.source_preparation import (
 )
 from ledger.setup_registry import cursor_translator_version
 from ledger.store import LedgerStore
-from ledger.trace import DEFAULT_RESOLVER_CONFIG, coverage
+from ledger.trace import relation_exists
 from test_ledger_setup_bundle import logical_bundle, logical_catalog
 from test_ledger_setup_registry import trusted_implementations
 import virtual_join.config
@@ -322,12 +322,21 @@ def test_postgres_bundle_to_read_apis_is_one_compiler_and_one_transaction(clean_
     assert _counts(case) == (1, 0)
     assert result.preview.translator_version == cursor_translator_version(
         case["compiled"], "input_rows")
+    # ⚰️ [S-261] THIS ASKED `ledger_trace.coverage` FOR `state == "ready"`. That report
+    # retired with its route; the question - 「the atom reached a REAL ledger, not a
+    # fixture's idea of one」 - is asked directly of the relation, through the same
+    # `relation_exists` `schema_drift` and the walk route use.
     raw = case["runtime"].raw_connection()
     try:
-        cov = coverage(raw, config=DEFAULT_RESOLVER_CONFIG)
+        assert relation_exists(raw, "ledger_events")
+        cursor = raw.cursor()
+        try:
+            cursor.execute("SELECT count(*) FROM ledger_events")
+            assert cursor.fetchone()[0] == 1
+        finally:
+            cursor.close()
     finally:
         raw.close()
-    assert cov["state"] == "ready"
     # ⚰️ THE WALK HALF CALLED A FUNCTION THAT DOES NOT EXIST. `ledger_trace.trace` is gone
     # (`resolve` and the subgraph walk replaced it) and the line raised `NameError` before
     # any assertion - unnoticed because this whole module skips unless

@@ -73,9 +73,10 @@ def chain(lots, slots=None, wafers=None, who="lot_event"):
     return atoms
 
 
-def run(atoms, lot, slot=None, max_depth=lt.DEFAULT_MAX_DEPTH):
-    return lt.trace(lot, slot, lookup=lt.InMemoryClaimLookup(atoms),
-                    config=lt.DEFAULT_RESOLVER_CONFIG, max_depth=max_depth)
+# ⚰️ [S-261] `run` DROVE `lt.trace` THROUGH `lt.InMemoryClaimLookup`, and it had no caller
+#    left: `trace` was replaced by `ledger_subgraph.subgraph` in 95940d45 (2026-08-27) and
+#    stopped existing there, so every test in this file that still passes is a RESOLVER
+#    test. `_derived_from_hop`, its only user, went with it.
 
 
 def states(answer, predicate=None):
@@ -124,11 +125,6 @@ def states(answer, predicate=None):
 #
 #     contested   the class DECLARED a winner; a lower class still disagrees
 #     candidate   the top class is split k ways; only a tiebreak separates them
-
-
-def _derived_from_hop(atoms, lot="L-C"):
-    return [h for h in run(atoms, lot)["hops"]
-            if h["predicate"] == "derived_from"][0]
 
 
 REGISTER = claim("reg", "L-C", "register", {})
@@ -401,12 +397,18 @@ def test_the_key_set_pin_goes_red_when_a_field_arrives_unnoticed():
 
 
 
-def test_sql_lookup_refuses_a_relation_that_is_not_an_identifier():
-    lt.SqlClaimLookup(None, relation="ledger_events")
-    lt.SqlClaimLookup(None, relation="ledger_trace_lot_closure")
+def test_a_relation_name_that_is_not_an_identifier_is_refused_before_any_sql():
+    """🔴 THE GUARD MOVED SEATS, THE QUESTION DID NOT (S-261). It was asserted through
+    `SqlClaimLookup`'s constructor; that class retired with the walk it served, and the
+    same `_IDENTIFIER` now guards `relation_exists` - which `schema_drift`, `ledger.schema`
+    and `trace_router` all call with a name before touching the ledger.
+
+    ⛔ AND IT MUST RAISE BEFORE THE CONNECTION IS TOUCHED, which `None` here proves: a
+    guard that ran after the query would be interpolating the string it is refusing.
+    """
     for bad in ("ledger_events; DROP TABLE x", "public.ledger_events", "", None):
         with pytest.raises(ValueError):
-            lt.SqlClaimLookup(None, relation=bad)
+            lt.relation_exists(None, bad)
 
 
 def test_resolver_config_refuses_unknown_keys():
