@@ -3416,6 +3416,40 @@ def _ensure_business_key_unique_indexes_sync(db_session_factory):
         db.close()
 
 
+def pending_chain_events(db, limit: int = 200) -> list:
+    """The waiting rows THIS loop can consume, oldest first (S-252).
+
+    🔴 ANOTHER DAEMON'S ROW IS NOT THIS LOOP'S QUEUE. A CONTROL row is addressed to
+    `run_auto_update.py` (`SCHEDULER_OWNED_EVENT_TYPES`), and this loop has always skipped
+    one a few lines after fetching it. What it could not do was stop FETCHING it - so on a
+    deployment where the scheduler is not running, a single `RETROACTIVE_RUN` row made
+    every tick find work, do none, and start again, with no `await` in between. Measured
+    2026-09-15 with py-spy: the loop ran on the event-loop thread, so every uvicorn request
+    - static HTML included - stopped answering. Nothing was blocked in the database
+    (`pg_blocking_pids` = 0); starting the scheduler consumed the row and HTTP came back
+    without a restart.
+
+    ⚠️ THE PREDICATE IS THE ONE ALREADY APPLIED, MOVED EARLIER. The skip inside the
+    loop tests membership in this same set - this is not a new judgement about which rows
+    matter, it is the existing judgement asked in SQL instead of in Python. `event_type` is
+    NOT NULL, so `NOT IN` cannot swallow a row.
+
+    ⚠️ IT IS A FUNCTION SO ITS GATE CAN ASK THE SAME QUESTION. Scored against a real
+    session with real rows, rather than against the loop's source text: a test that reads
+    the query as prose goes green on a query that no longer runs.
+
+    ⚠️ THE PLAN IS UNCHANGED, MEASURED. `EXPLAIN` on this box, before and after: the same
+    `Index Scan using idx_outbox_unprocessed`, with the type test as a Filter on top - no
+    sequential scan. (Those cost numbers are this box's; the PLAN SHAPE is the fact.)
+    """
+    from database.models import DatabaseOutbox
+
+    return db.query(DatabaseOutbox).filter(
+        DatabaseOutbox.processed_chain == False,          # noqa: E712
+        ~DatabaseOutbox.event_type.in_(tuple(event_constants.CONTROL_EVENT_TYPES))
+    ).order_by(DatabaseOutbox.id.asc()).limit(limit).all()
+
+
 async def start_chain_ingestion_worker(db_session_factory):
     logger.info("Initializing Chained Ingestion Worker Daemon...")
 
@@ -3527,6 +3561,28 @@ async def start_chain_ingestion_worker(db_session_factory):
     # [Latency Fix #4] LISTEN 전용 커넥션을 워커 수명 동안 상시 유지(대기마다 재등록하던 레이스 제거).
     listener = OutboxListener(db_session_factory, "outbox_event")
 
+    async def idle_wait():
+        """The ONE place this loop yields when a tick did no work (S-252).
+
+        🔴 A TICK THAT DID NOTHING MUST STILL AWAIT. On 2026-09-15 a single
+        `RETROACTIVE_RUN` row - owned by the SCHEDULER, which was not running on that box -
+        was fetched every tick, skipped as CONTROL, and left `pending_events` non-empty, so
+        the wait below was never reached and the tick fell straight through to the next one.
+        A loop with no `await` on the event-loop thread starves everything sharing it:
+        every uvicorn request, static HTML included, stopped answering. Nothing was blocked
+        in the database (`pg_blocking_pids` = 0) and no restart was needed - starting the
+        scheduler consumed the row and HTTP came back.
+
+        ⚠️ 「ROWS WERE FETCHED」 AND 「THERE IS WORK」 ARE DIFFERENT FACTS, and assuming
+        they were the same IS the loop. Both exits now come through here, so a third exit
+        added later inherits the yield instead of re-deciding it.
+        """
+        nonlocal loop_wake_ts
+        loop_wake_ts = None
+        if await listener.wait(2.0):
+            # [Latency SLO 계측] NOTIFY 감지 시각 — 다음 반복의 배치 처리에서 wake 기준점으로 소비.
+            loop_wake_ts = time.monotonic()
+
     # [Latency SLO 계측] 마지막 LISTEN wake 시각. NOTIFY로 깨어난 직후 기록하고, 배치 처리 시 소비한다.
     #   wake 없이 연속 배치를 처리하는 경우(백로그 소진 중)는 반복 시작 시각을 기준점으로 쓴다.
     loop_wake_ts = None
@@ -3618,9 +3674,19 @@ async def start_chain_ingestion_worker(db_session_factory):
                         db.commit()
 
                 # Fetch pending outbox records
-                pending_events = db.query(DatabaseOutbox).filter(
-                    DatabaseOutbox.processed_chain == False
-                ).order_by(DatabaseOutbox.id.asc()).limit(200).all()
+                #
+                # 🔴 [S-252] ANOTHER DAEMON'S ROW IS NOT THIS LOOP'S QUEUE. A CONTROL row
+                # is addressed to `run_auto_update.py` (`SCHEDULER_OWNED_EVENT_TYPES`); this
+                # loop cannot consume one and has always skipped it a few lines below. What
+                # it could not do is stop FETCHING it - so on a deployment where the
+                # scheduler is not running, one such row made every tick find work, do none,
+                # and start again.
+                #
+                # ⚠️ THE PREDICATE IS THE ONE ALREADY APPLIED, MOVED EARLIER. The skip
+                # below tests membership in this same set; this is not a new judgement about
+                # which rows matter, it is the existing judgement asked in SQL instead of in
+                # Python. `event_type` is NOT NULL, so `NOT IN` cannot swallow a row.
+                pending_events = pending_chain_events(db)
 
                 # The head of this ordered fetch is the oldest waiting row. If it is still
                 # the head next time round, and the time after that, the loop is running
@@ -3632,10 +3698,7 @@ async def start_chain_ingestion_worker(db_session_factory):
                     logger.error(stalled)
                 
                 if not pending_events:
-                    loop_wake_ts = None
-                    if await listener.wait(2.0):
-                        # [Latency SLO 계측] NOTIFY 감지 시각 — 다음 반복의 배치 처리에서 wake 기준점으로 소비.
-                        loop_wake_ts = time.monotonic()
+                    await idle_wait()
                     continue
 
                 # [Latency SLO 계측] 배치의 wake 기준점: NOTIFY로 깨어났으면 그 시각, 아니면(백로그 연속 처리
@@ -3693,6 +3756,13 @@ async def start_chain_ingestion_worker(db_session_factory):
                     db.commit()          # the FAILED marks, so they are not re-read
 
                 if not normalized_events:
+                    # ⛔ [S-252] THIS `continue` WAS THE HOT LOOP. Rows were fetched and
+                    # every one of them was filtered out - by the CONTROL skip above, or by
+                    # the depth refusal - so the tick had nothing to do and went round again
+                    # without ever yielding. Filtering the query (above) removes today's
+                    # cause; this removes the SHAPE, so the next kind of row this loop
+                    # fetches and cannot use costs a wait rather than a starved process.
+                    await idle_wait()
                     continue
 
                 last_event = normalized_events[-1]
