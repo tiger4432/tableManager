@@ -27,10 +27,15 @@ logger = logging.getLogger("VirtualJoin.UniqueKey")
 MAX_REPORTED_DUPLICATES = 20
 
 
-def _expressions(columns, folds):
+def _expressions(table, columns, folds):
+    """🔴 [S-245] THE PROBE GROUPS BY THE EXPRESSION THE INDEX IS BUILT ON, TYPE AND ALL.
+
+    It used not to be handed the table, so it could not ask whether a column is text - and
+    `GROUP BY coalesce(number_col, '')` is the statement that aborted the READ path's own
+    transaction on 2026-09-15."""
     from virtual_join import config as vjc
     return [vjc.index_key_expression(column, (folds or [None] * len(columns))[index]
-                                     if index < len(folds or []) else None)
+                                     if index < len(folds or []) else None, table)
             for index, column in enumerate(columns)]
 
 
@@ -59,7 +64,7 @@ def duplicate_keys(db, table: str, columns: list, folds=None,
                    limit: int = MAX_REPORTED_DUPLICATES) -> list:
     """유일성을 막고 있는 «값»과 «건수». 운영자가 읽는 것은 이것이지 DDL 이 아니다."""
     from sqlalchemy import text as sa_text
-    exprs = _expressions(columns, folds)
+    exprs = _expressions(table, columns, folds)
     select = ", ".join("%s AS k%d" % (expr, index) for index, expr in enumerate(exprs))
     group = ", ".join(exprs)
     rows = db.execute(sa_text(
@@ -380,7 +385,7 @@ def fold_plan(db, table: str, columns: list, folds=None, limit: int = MAX_PLANNE
     from sqlalchemy import text as sa_text
 
     duplicates, blanks = duplicate_keys(db, table, columns, folds, limit=limit)
-    exprs = _expressions(columns, folds)
+    exprs = _expressions(table, columns, folds)
     plans, unsafe = [], []
 
     for entry in duplicates:

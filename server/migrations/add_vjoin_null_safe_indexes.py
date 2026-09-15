@@ -54,7 +54,8 @@ def _duplicate_census(db, table, columns, folds):
     """
     import virtual_join.config as vjc
 
-    keys = ", ".join(vjc.index_key_expression(c, f) for c, f in zip(columns, folds))
+    keys = ", ".join(vjc.index_key_expression(c, f, table)
+                     for c, f in zip(columns, folds))
     rows = db.execute(text(f"""
         SELECT {keys}, count(*) AS n
           FROM "{table}"

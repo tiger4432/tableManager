@@ -3950,7 +3950,8 @@ def _stored_join_key_owners(db: Session, table_name: str, columns: list, folds: 
     import virtual_join.config as vjc
     from sqlalchemy import text as sa_text
 
-    exprs = [vjc.index_key_expression(column, folds[i] if i < len(folds) else None)
+    exprs = [vjc.index_key_expression(column, folds[i] if i < len(folds) else None,
+                                      table_name)
              for i, column in enumerate(columns)]
     params, wheres = {}, []
     for i, expr in enumerate(exprs):

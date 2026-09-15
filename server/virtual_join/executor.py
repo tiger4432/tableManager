@@ -193,7 +193,7 @@ def join_onclause(left_model, right_model, rule: dict):
     깨끗한 쪽에 선언할 이유가 있는 운영자는 없고, 한쪽만 접힌 조인은 **이미 맞고 있던
     매치를 조용히 잃는다**.
     """
-    from sqlalchemy import and_, func
+    from sqlalchemy import and_
     import notation_norm
 
     parts = []
@@ -201,9 +201,6 @@ def join_onclause(left_model, right_model, rule: dict):
         left_col = getattr(left_model, p["left"])
         right_col = getattr(right_model, p["right"])
         fold = p.get("fold")
-        if fold:
-            left_col = notation_norm.fold_notation_sql(left_col, fold)
-            right_col = notation_norm.fold_notation_sql(right_col, fold)
         # 🔴 NULL EQUALS NULL WHERE KEYS ARE COMPARED (S-181, 판정 285). `==` is SQL's
         # rule and SQL's rule is the opposite one: a NULL key matched nothing, including
         # another NULL, so a join on a partly-empty key silently returned no row rather
@@ -215,7 +212,12 @@ def join_onclause(left_model, right_model, rule: dict):
         # — a mismatch here does not fail, it quietly turns a join into a sequential scan.
         # `IS NOT DISTINCT FROM` would answer the same question and would NOT match the
         # index, which is why the coalesce spelling is the one used on both sides.
-        parts.append(func.coalesce(left_col, "") == func.coalesce(right_col, ""))
+        # 🔴 [S-245] AND THE CAST IS PART OF THAT SHAPE NOW. `coalesce(col, '')` is a
+        # text sentence, and on a `number` key PostgreSQL answered this very clause with
+        # 「invalid input syntax for type double precision: ""」 - so the pair in
+        # `notation_norm` folds the TYPE too, and the index DDL asks the same function.
+        parts.append(notation_norm.key_expression_sql(left_col, fold)
+                     == notation_norm.key_expression_sql(right_col, fold))
     return and_(*parts)
 
 
@@ -860,7 +862,7 @@ def _left_row_ids_for_key(db, rule: dict, key_values: list) -> list:
     left_columns = [p["left"] for p in rule["join_key"]]
     folds = vjc._folds_list(rule["right_columns"], rule.get("right_folds"))
     where = " AND ".join(
-        "%s = :k%d" % (vjc.index_key_expression(col, fold), i)
+        "%s = :k%d" % (vjc.index_key_expression(col, fold, rule["left_table"]), i)
         for i, (col, fold) in enumerate(zip(left_columns, folds)))
 
     def _bound(col, value):

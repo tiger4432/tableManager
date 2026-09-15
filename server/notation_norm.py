@@ -392,6 +392,108 @@ def fold_notation_sql(text_expr, rules: dict):
                          bool(rules.get(RULE_CASE)))
 
 
+# ---------------------------------------------------------------------------
+# The KEY expression - fold, type, null. One author, two spellings (S-245)
+# ---------------------------------------------------------------------------
+#
+# 🔴 THE FOLD IS ONLY HALF OF A KEY. What a join compares, what a unique index is
+# built on and what a duplicate probe groups by is not the fold - it is
+# `coalesce(fold(col), '')`, and after 2026-09-15 it is `coalesce(fold(col::text), '')`
+# when the column is not text. Those three pieces were spelled in FOUR places:
+# `virtual_join.config.index_key_expression` (the DDL and every probe built on it),
+# `virtual_join.executor.join_onclause` (the read-time ON clause), `chain.join_into._folded`
+# (the write-time join), and each of them decided the type question on its own - which is
+# how a `number` key answered an operator with 「invalid input syntax for type double
+# precision: ""」 at one seat while another seat had already learned to cast.
+#
+# ⛔ AND A DISAGREEMENT HERE DOES NOT FAIL - IT GOES QUIET. PostgreSQL uses an expression
+# index only when the query's expression MATCHES it, so a second spelling turns a join into
+# a sequential scan with every test still green (S-181). That is why this is one function
+# per rendering and not one per caller.
+
+
+def is_text_type(sa_type) -> bool:
+    """True when this SQLAlchemy type needs no cast to sit in a text key expression."""
+    from sqlalchemy.types import String
+
+    return isinstance(sa_type, String)
+
+
+def _install_text_cast_construct():
+    """`x::text` on PostgreSQL, `CAST(x AS TEXT)` everywhere else.
+
+    🔴 THE SPELLING MATTERS BECAUSE THE INDEX COMPARATOR READS IT.
+    `virtual_join.config.normalize_index_expression` strips `::text` as noise PostgreSQL
+    adds when it renders an index definition - so a required expression written `::text`
+    normalises to exactly what an index without the cast normalises to, and an index built
+    either way is still recognised. `CAST(... AS TEXT)` is NOT stripped there, so rendering
+    it that way on PostgreSQL would make every folded join unapproved.
+
+    ⚠️ AND SQLITE, WHICH IS THE SUITE, HAS NO `::`. Same shape as the fold construct above,
+    for the same reason: one element, two dialect renderings, so the suite can score the
+    WIRING and `contracts/` scores the spelling against a real PostgreSQL.
+    """
+    from sqlalchemy.ext.compiler import compiles
+    from sqlalchemy.sql.expression import FunctionElement
+    from sqlalchemy.types import String as _String
+
+    class _TextCast(FunctionElement):
+        type = _String()
+        name = "assy_text_cast"
+        inherit_cache = True
+
+    @compiles(_TextCast, "postgresql")
+    def _pg(element, compiler, **kw):                              # noqa: ANN001
+        return "%s::text" % compiler.process(list(element.clauses)[0], **kw)
+
+    @compiles(_TextCast)
+    def _default(element, compiler, **kw):                         # noqa: ANN001
+        return "CAST(%s AS TEXT)" % compiler.process(list(element.clauses)[0], **kw)
+
+    return _TextCast
+
+
+_TextCast = _install_text_cast_construct()
+
+
+def key_expression_sql(column, rules=None):
+    """The key expression as a SQLAlchemy element - what a join COMPARES.
+
+    🔴 THE CAST COMES FIRST, AND IT IS THE MACHINE'S JOB (owner 2026-09-15: 「내가
+    이런거 뜨게하지 말랬지 알아서 접어서 하라고」). `coalesce(col, '')` is a text sentence;
+    on a `number` column PostgreSQL answers it with 「invalid input syntax for type double
+    precision: ""」 and the operator gets a type error for a column they did not choose.
+
+    ⚠️ A TEXT COLUMN IS LEFT BYTE-IDENTICAL. Every index built yesterday is still the index
+    this expression matches - which is the whole reason the cast is conditional rather than
+    unconditional.
+    """
+    if not is_text_type(getattr(column, "type", None)):
+        column = _TextCast(column)
+    if rules:
+        column = fold_notation_sql(column, rules)
+    from sqlalchemy import func
+
+    return func.coalesce(column, "")
+
+
+def key_expression_text(inner_sql: str, rules=None, text_column: bool = True) -> str:
+    """The same expression as PostgreSQL text - what an index is BUILT on.
+
+    `inner_sql` is already quoted by the caller (`"col"`), the way `fold_sql_text` takes it.
+
+    ⚠️ `text_column` DEFAULTS TO THE OLD ANSWER. A caller that cannot resolve the column's
+    type gets exactly the expression this product emitted before S-245 - the numeric case
+    stays unfixed at that seat rather than the text case silently changing shape at all of
+    them, because the second is an outage and the first is the status quo.
+    """
+    if not text_column:
+        inner_sql = "%s::text" % inner_sql
+    if rules:
+        inner_sql = fold_sql_text(inner_sql, rules)
+    return "coalesce(%s, '')" % inner_sql
+
+
 _SQLITE_FOLD_INSTALLED = {"done": False}
 
 

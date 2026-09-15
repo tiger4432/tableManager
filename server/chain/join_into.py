@@ -115,21 +115,19 @@ def _folded(column, fold):
     expression MATCHES it - a mismatch here does not fail, it turns a join into a sequential
     scan while every test stays green.
     """
-    from sqlalchemy import Text, cast, func
-    from sqlalchemy.types import String
     import notation_norm
 
-    if fold:
-        column = notation_norm.fold_notation_sql(column, fold)
-    # 🔴 THE MACHINE FOLDS THE TYPE (owner, 2026-09-15: 「내가 이런거 뜨게하지 말랬지 알아서
-    # 접어서 하라고」). `coalesce(col, '')` is a text sentence, and on a `number` column
-    # PostgreSQL answered it with 「invalid input syntax for type double precision: ""」 —
-    # the join declared by an operator died on the type of a column they did not choose.
-    # A non-text key is compared AS TEXT on both sides; a text key is left byte-identical,
-    # so every join that worked yesterday still matches its index today.
-    if not isinstance(column.type, String):
-        column = cast(column, Text)
-    return func.coalesce(column, "")
+    # 🔴 [S-245] ONE AUTHOR. This seat learned the type fold first (the owner met the
+    # `number` key here), and the read-time ON clause and the index DDL did NOT - so one key
+    # had two shapes depending on which door asked. The pair in `notation_norm` is now the
+    # only place any of the three is spelled.
+    #
+    # ⚠️ AND THE ORDER CHANGED WITH THE MOVE: the cast is applied to the COLUMN, before
+    # the fold, rather than to whatever the fold returned. The fold construct declares a
+    # String type, so asking it afterwards could only ever answer 「already text」 - which is
+    # right today only because the declaration validator refuses a fold on a non-string
+    # column. Asking the column is the question we actually mean.
+    return notation_norm.key_expression_sql(column, fold)
 
 
 def _models(spec: dict, left_table: str):

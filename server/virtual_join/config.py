@@ -217,7 +217,29 @@ def required_index_name(table: str, columns: list, folds=None) -> str:
                         ("%s_%s%s" % (table, "_".join(columns), suffix))[:keep], digest)
 
 
-def index_key_expression(column: str, fold_rules=None) -> str:
+def column_is_text(table: str, column: str) -> bool:
+    """Is `table.column` a text column? Unknown answers 「yes」 (S-245).
+
+    ⚠️ UNKNOWN MEANS 「THE OLD EXPRESSION」, WHICH IS THE SAFE DIRECTION. Saying
+    「not text」 for a column we cannot resolve would put `::text` into an index expression
+    that existing indexes do not have, and every join on that table would go unapproved -
+    an outage. Saying 「text」 leaves a numeric key at that seat exactly as broken as it was
+    before this round, which is the status quo and is loud rather than silent.
+    """
+    try:
+        from database import models
+        import notation_norm
+
+        model = models.DYNAMIC_TABLES.get(table) if table else None
+        attribute = getattr(model, str(column), None) if model is not None else None
+        if attribute is None:
+            return True
+        return notation_norm.is_text_type(getattr(attribute, "type", None))
+    except Exception:                                              # noqa: BLE001
+        return True
+
+
+def index_key_expression(column: str, fold_rules=None, table: str = None) -> str:
     """인덱스 키 1개의 SQL 식 ― 평범한 컬럼이거나, **접힌 식**이거나.
 
     🔴 접힌 식은 `notation_norm.fold_sql_text` **하나에서만** 나온다. 조회 시점 식
@@ -225,10 +247,12 @@ def index_key_expression(column: str, fold_rules=None) -> str:
     **쓰지 않는다** ― 함수 인덱스는 질의 식이 인덱스 식과 일치할 때만 쓰이므로, 두 철자는
     이론적 불일치가 아니라 1,000만 행 순차 스캔이 되고 테스트는 전부 통과한다.
     """
-    inner = '"%s"' % column
-    if fold_rules:
-        import notation_norm
-        inner = notation_norm.fold_sql_text(inner, fold_rules)
+    import notation_norm
+    # 🔴 [S-245] THE EXPRESSION ITSELF IS SPELLED IN ONE PLACE - `notation_norm`. This
+    # function decides ONE thing the other renderings cannot: whether the column is text,
+    # which only a caller holding the TABLE can answer. Everything below is why the
+    # expression has the shape it has, and it now describes what that pair builds.
+    #
     # 🔴 NULL MUST EQUAL NULL HERE, AND THE INDEX IS HALF OF THAT (S-181, 판정 285·287).
     # A plain UNIQUE index calls two NULLs DISTINCT, so the uniqueness a virtual join is
     # approved against was not being enforced for a NULL key at all — measured on this
@@ -245,7 +269,8 @@ def index_key_expression(column: str, fold_rules=None) -> str:
     # change. And this function is the ONE spelling: `join_onclause` builds the same
     # expression, because a query whose expression differs from the index's silently stops
     # using the index rather than failing.
-    return "coalesce(%s, '')" % inner
+    return notation_norm.key_expression_text(
+        '"%s"' % column, fold_rules, text_column=column_is_text(table, column))
 
 
 def rewrite_row_count(connection, rule, key_values) -> int:
@@ -263,7 +288,7 @@ def rewrite_row_count(connection, rule, key_values) -> int:
     left_columns = [p["left"] for p in rule["join_key"]]
     folds = _folds_list(rule["right_columns"], rule.get("right_folds"))
     where = " AND ".join(
-        "%s = :k%d" % (index_key_expression(col, fold), i)
+        "%s = :k%d" % (index_key_expression(col, fold, rule["left_table"]), i)
         for i, (col, fold) in enumerate(zip(left_columns, folds)))
     # 🔴 THE VALUE IS FOLDED TOO, AND MEASURING CAUGHT THIS. The expression folds the
     # COLUMN (`coalesce(col,'')`), so binding a raw `None` compares `'' = NULL` -> NULL and
@@ -351,7 +376,7 @@ def required_index_ddl(table: str, columns: list, folds=None) -> str:
     fl = _folds_list(columns, folds)
     return 'CREATE UNIQUE INDEX CONCURRENTLY %s ON "%s" (%s);' % (
         required_index_name(table, columns, folds), table,
-        ", ".join(index_key_expression(c, f) for c, f in zip(columns, fl)))
+        ", ".join(index_key_expression(c, f, table) for c, f in zip(columns, fl)))
 
 
 # ---------------------------------------------------------------------------
@@ -758,7 +783,7 @@ def unique_index_covering(db, table: str, columns: list, folds=None):
           AND x.indisunique AND x.indisvalid
           AND x.indpred IS NULL AND x.indexprs IS NOT NULL
     """), {"t": table}).fetchall()
-    wanted = {normalize_index_expression(index_key_expression(c, f))
+    wanted = {normalize_index_expression(index_key_expression(c, f, table))
               for c, f in zip(columns, fl)}
     for idx, oid, nkeys in rows:
         keys = {normalize_index_expression(e)

@@ -457,5 +457,11 @@ def test_a_number_key_is_compared_as_text_and_a_text_key_is_left_alone():
     t = Table("t", MetaData(), Column("num", Float), Column("txt", String))
     num_sql = str(join_into._folded(t.c.num, None).compile(dialect=postgresql.dialect()))
     txt_sql = str(join_into._folded(t.c.txt, None).compile(dialect=postgresql.dialect()))
-    assert "CAST(t.num AS TEXT)" in num_sql, num_sql
+    # 🔴 [S-245] THE SPELLING MOVED FROM `CAST(... AS TEXT)` TO `::text`, AND THAT IS THE
+    # POINT, NOT A DETAIL. This seat cast in a spelling the INDEX COMPARATOR cannot see:
+    # `virtual_join.config.normalize_index_expression` strips `::text` as noise PostgreSQL
+    # adds when it renders an index definition, and leaves `CAST(...)` standing. So the
+    # write-time join and the index that has to serve it were casting in two shapes, and
+    # only one of them normalises to what the other seats require.
+    assert "t.num::text" in num_sql, num_sql
     assert txt_sql == "coalesce(t.txt, %(coalesce_1)s)", txt_sql
