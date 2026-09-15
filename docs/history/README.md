@@ -1,13 +1,18 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **890개** 이력. (거버넌스 규칙 #4)
+> 총 **895개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-09 (September 2026)
 
+- **2026-09-16 07:33** — [The Slice One Walk And The Coverage Report Retire And Two Words Stay On Purpose](./20260916_073318_the_slice_one_walk_and_the_coverage_report_retire_and_two_words_stay_on_purpose.md)
+- **2026-09-16 07:20** — [The Seventh Caller Was Marked Pg So The Plain Runs Pass Count Said Nothing About It](./20260916_072009_the_seventh_caller_was_marked_pg_so_the_plain_runs_pass_count_said_nothing_about_it.md)
+- **2026-09-16 07:13** — [The Registration Sweep Reads Its Predicate From The Declaration And The Word Moved To Six Callers](./20260916_071354_the_registration_sweep_reads_its_predicate_from_the_declaration_and_the_word_moved_to_six_callers.md)
+- **2026-09-16 07:00** — [The Pg Harness Does Not Author A Relation Whose Shape Is Written Elsewhere](./20260916_070056_the_pg_harness_does_not_author_a_relation_whose_shape_is_written_elsewhere.md)
+- **2026-09-16 03:02** — [Three Comments Stop Naming Things That Are Not There](./20260916_030201_three_comments_stop_naming_things_that_are_not_there.md)
 - **2026-09-16 02:48** — [Skeleton Descent Has One Author And A Oneof Starts As Nothing Picked](./20260916_024831_skeleton_descent_has_one_author_and_a_oneof_starts_as_nothing_picked.md)
 - **2026-09-16 02:38** — [The Scratch Search Path Has One Spelling The Bk Proof Asks Its Author And The Pg Seat Runs Only When Asked](./20260916_023822_the_scratch_search_path_has_one_spelling_the_bk_proof_asks_its_author_and_the_pg_seat_runs_only_when_asked.md)
 - **2026-09-16 02:28** — [The Startup Socket Gate Harness Imports Its Subjects And The Boot Order Moved To A File Node Can Import](./20260916_022822_the_startup_socket_gate_harness_imports_its_subjects_and_the_boot_order_moved_to_a_file_node_can_import.md)
