@@ -1,13 +1,14 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **851개** 이력. (거버넌스 규칙 #4)
+> 총 **852개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-09 (September 2026)
 
+- **2026-09-15 09:31** — [The Day Strictness Invalidated What Was Already Running](./20260915_093113_the_day_strictness_invalidated_what_was_already_running.md)
 - **2026-09-13 23:54** — [The Order Landed Twice And A View Pages By Its Composite](./20260913_235436_the_order_landed_twice_and_a_view_pages_by_its_composite.md)
 - **2026-09-13 21:32** — [The Authoring Guides Moved To The Repository Entrance](./20260913_213255_the_authoring_guides_moved_to_the_repository_entrance.md)
 - **2026-09-13 19:58** — [The Iteration Order Stopped Being A Hash](./20260913_195800_the_iteration_order_stopped_being_a_hash.md)
@@ -875,4 +876,4 @@
 - **2026-04-12 22:22** — [Ws Debug Staggered Init](./20260412_222200_ws_debug_staggered_init.md)
 - **2026-04-12 22:10** — [Phase19 Integrity And Stability Fixes](./20260412_221000_phase19_integrity_and_stability_fixes.md)
 
-*Last generated: 2026-09-13 by gen_index.py*
+*Last generated: 2026-09-15 by gen_index.py*

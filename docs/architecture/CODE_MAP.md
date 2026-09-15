@@ -1534,6 +1534,75 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 그 `None` 을 「괜찮다」로 읽으면 조용히 통과한다. 물음이 둘이면 함수도 둘이다.
 📎 여덟 자리가 각자 답하던 것을 접은 라운드다(실측표: 없음·UTC·+09:00·선언·거절·통과·기계 로컬·브라우저 로컬).
 
+## 4-ter. 🆕㉕ 통합 라운드의 신설 모듈 «여섯» — 2026-09-14 밤 ~ 09-15 (D-38 등재)
+
+> 🔴 **왜 한 절이 필요한가:** 여섯이 하룻밤에 생겼고 지도에 «하나도» 없었다. 문서 없는 모듈은
+> 다음 사람이 «다시 유도»한다(발화 관문 ①). 아래 호출자 수는 등재 «전»에 `git grep` 으로 센 것이다 —
+> 「착지는 배선이 아니다」.
+> ⚠️ **모두 이 라운드의 «안전망»이다.** 2026-09-14 운영 장애 넷이 전부 「어제까지 관대하던 것이
+> 오늘 엄해졌고 그 엄함이 «이미 돌던 것»을 무효로 만들었다」였고, 이 여섯 중 셋은 기능이 아니라
+> **「바꾸기 전과 바꾼 뒤가 같은가」를 묻는 자리**다.
+
+### 4-ter-a. `server/chain/rule_census.py` (**146줄**, `edf73016` 신설, S-234 0단계)
+
+| | |
+|---|---|
+| 무엇 | 규칙 목록 하나를 «비교 가능한 사진»으로 접고, 사진 «둘의 차이»를 낸다. `CENSUS_FIELDS` «여섯»(name · enabled · tables · trigger_columns · derive · origin) · `census()` · `census_diff()` · `describe()` |
+| 왜 | 사진에 담는 것은 «운영자가 잃으면 아는 것»이다. 09-14 에 운영자의 선언이 «삭제»됐는데 부팅 로그가 개수만 찍어 **사라진 줄을 아무도 몰랐다** |
+| 누가 부르나 | **`chain/ingestion_worker.py` «하나»** — 로더가 매 적재마다 찍는다 |
+| 🔵 여기 사는 다른 것 | `derive_kind(rule)` :42 — **세 문법을 «한 낱말»로 읽는 함수.** 통합의 내부 표현이 이 함수에서 자랐다(계획안 §8.2) |
+| 시험 | `tests/test_the_rule_census_catches_what_yesterday_lost_silently.py` |
+
+### 4-ter-b. `server/chain/rule_shape.py` (**271줄**, `b7b5010f` 신설, S-234 2단계)
+
+| | |
+|---|---|
+| 무엇 | 세 문법을 담는 «내부 규칙» 하나 + 어댑터 둘(`from_chain_rule`/`as_chain_rule` · `from_join_rule`/`as_join_rule`) + 새 문법의 입출력(`to_declaration`/`from_declaration` :142·:162) |
+| 계약 | `from_* → as_*` 가 **원본과 같은 dict** 를 돌려준다(왕복 동일성) |
+| 🔴 그래서 `extra` 가 있다 | 아는 칸만 접고 나머지는 «순서까지» 보존한다. 아는 척하고 버리면 왕복이 깨지고, 그러면 이 파일은 위험을 «옮기기만» 한다. 파일 자신이 적는다: 「`extra` 가 큰 것은 흠이 아니라 «오늘의 정직한 크기»」 |
+| 누가 부르나 | `chain/ingestion_worker.py` · `scripts/preview_unified_declarations.py` (+시험) |
+| 시험 | `test_the_internal_rule_gives_back_exactly_what_it_was_given.py` · `test_a_declared_join_writes_what_it_says_into_the_table.py` · `test_enrichment.py` |
+
+### 4-ter-c. `server/chain/join_into.py` (**260줄**, `7f3c3634` 신설, S-237 · 판정 396~398)
+
+| | |
+|---|---|
+| 무엇 | `builtin:join_into` — 통합 선언의 `join` 종류가 «쓰는» 조인. 선언 하나가 규칙 «둘»이 된다 |
+| 🔴 이름이 `builtin:join` 이 «아닌» 이유 | 그 id 는 **이미 임자가 있다** — `virtual_join.config` 가 «읽기 시점» 조인으로 등록해 두었고 `register_builtin` 이 같은 이름의 둘째를 «거절»한다. 둘을 가르는 것은 내부 규칙이 이미 쓰는 칸이다: 읽기 쪽은 `into.read`, 이쪽은 `into.table` |
+| 🔴 가상 조인 «무접촉» — 코드로도 | 실행기·캐시·로더를 «import 하지 않는다». 빌려 오는 것은 `notation_norm` 의 접기 «함수»뿐이고, 그것이 키 식을 유일 인덱스와 맞추는 자리다 |
+| 🔵 **허용 목록이 «있다»** | `JOIN_CELLS = ("right_table","on","take")` :71 + `unknown_cells()` :74 — `rule_shape.py:270` 이 그것을 부른다. ⚠️ **옛 가상 조인 선언에는 그 자리가 «없다»**(D-37 실측: `virtual_join/config.py` 전체에 허용 목록 0 → 큐 S-238). 즉 오타 칸이 **새 문법에선 이름이 대어지고 옛 껍데기에선 조용하다** |
+| 누가 부르나 | `chain/builtins.py`(디스패처 표) · `chain/rule_shape.py`(허용 목록) (+시험) |
+| 시험 | `test_a_declared_join_writes_what_it_says_into_the_table.py` · `test_the_product_synthesizes_chain_rules_in_one_seat.py` |
+
+### 4-ter-d. `server/virtual_join/unique_key.py` (**328줄**, `d3a92648` 신설, S-235)
+
+| | |
+|---|---|
+| 무엇 | 선언이 `cardinality: one` 이라 말하면 **«제품이» 그 유일성을 세운다**. `inspect` :85 · `ensure` :134 · `duplicate_keys` :58 · `invalid_leftovers` :37 · `describe` :102 |
+| 왜 | 소유자 2026-09-14 「유니크 키는 **기계가 알아서** 세팅하게 해. 절대 인간에게 복잡한 행위 요구하지 말 것」 · 「키 중복되면 **접든가** 해」 |
+| 무엇을 대체하나 | 오늘까지 제품은 유일 인덱스가 없으면 조인을 «거절»하고 운영자에게 DDL 을 내밀었다 — 운영자 할 일 «넷»(거절 찾기 · 중복 찾기 · 지울지 접을지 정하기 · `CREATE UNIQUE INDEX` 손으로). 완성의 정의(「두 줄 이내」)에 정면으로 걸렸고, **09-14 에 운영자가 «조인을 전부 끄는» 것으로 끝났다** |
+| 누가 부르나 | `virtual_join/config.py` · `scripts/check_one_row_one_fact.py` (+시험) |
+| 시험 | `test_the_product_sets_up_its_own_unique_key.py` (+ 이름을 드는 시험 셋) |
+
+### 4-ter-e. `server/scripts/check_one_row_one_fact.py` (**98줄**, `d1f55417` 신설)
+
+| | |
+|---|---|
+| 무엇 | 「행 하나는 사실 하나」를 **이 설치에 대고 한 번에** 묻는다. `--db` 없이는 «선언만»(DB 무접촉), 붙이면 유일 인덱스·중복·빈 키까지. **읽기만 한다** |
+| 왜 | 09-14 에 조인이 꺼진 원인을 찾느라 하루가 갔고, 답은 «선언 두 줄»을 나란히 놓으면 나오는 것이었다 — 조인이 «물은 키»와 그 표가 «선언한 신원» |
+| 누가 부르나 | ⚠️ **import 소비자 «0» — 그리고 그것이 정상이다.** `__main__` 을 든 **명령줄 도구**라 import 소비자가 «있을 수 없다»(CLAUDE.md 의 「소비자 0」 네 예외 중 넷째). 「죽었다」로 읽지 말 것 |
+| 시험 | «없음» — 이름이 나오는 파일이 자기 하나다(실측). 그 부재는 도구의 성격(읽기 전용 진단)과 맞물리지만 **부재는 부재다** |
+
+### 4-ter-f. `server/scripts/preview_unified_declarations.py` (**128줄**, `657f9d51` 신설, S-234)
+
+| | |
+|---|---|
+| 무엇 | 옛 선언 파일들을 «새 문법 한 파일»로 적어 본다. 기본 입력은 «출하 샘플», `--config` 는 읽되 «절대 안 쓰고», 쓰는 곳은 `--out` 뿐 — 그것도 **왕복이 «전건» 통과했을 때만** |
+| ⚰️ 격하 | 🔴 **[2026-09-15 판정 396~398 라운드] 「이행 도구」가 아니라 «검증용»이다.** D-37 판정으로 계획에서 «3단계 이행»이 빠졌다(종류를 하나씩 «새로» 넣으므로 기계가 옛 선언을 새 문법으로 써 줄 일이 없다). 남는 쓸모는 「옛 선언이 새 문법으로 «적히긴 하나»」를 보는 것 |
+| 누가 부르나 | 시험 «하나»뿐(`test_the_internal_rule_gives_back_exactly_what_it_was_given.py`). 그 밖엔 명령줄 |
+| 시험 | 위 하나 |
+
+
 ## 5. 소형 서버 모듈
 
 ### `server/paths.py` (**188줄**(🆕⑨ `5359fdd` 실측 — 구 표기 165) — `2728bd9`로 70→165) — 데이터 루트 + **DB URL 단일 해석 지점**
