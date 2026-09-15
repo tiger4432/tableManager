@@ -1,19 +1,29 @@
-"""The ledger trace against a real PostgreSQL — the recursive CTE and the seam.
+"""The ledger walk against a real PostgreSQL — the SQL lookup, the seam, the route.
 
 Everything here needs an isolated PostgreSQL, declared as
 `ASSY_PG_TEST_DATABASE_URL`, and skips loudly without one. It has to be
-PostgreSQL and not the suite's SQLite: the query is `jsonb` operators and a
-`CYCLE` clause, and a green SQLite run would be evidence about a database this
-code never touches (this project has paid for that three times).
+PostgreSQL and not the suite's SQLite: the lookup is `jsonb` operators over real
+`timestamptz` and real partitions, and a green SQLite run would be evidence about
+a database this code never touches (this project has paid for that three times).
 
 `ledger_events` is created HERE, inside the scratch schema `pg_engine` already
 drops on teardown. The table itself is another lane's to build; this file only
 needs the CONTRACT shape to exist somewhere isolated so the query can be scored
 against real `jsonb`, real `timestamptz` and real partitions.
+
+🔴 THE SUBJECT MOVED (S-259, 2026-09-16). This file used to drive `ledger.trace.trace`
+— the recursive CTE, the per-hop resolver and `GET /api/ledger/trace`. That walk came out
+whole in `95940d45` (2026-08-27) and its routes in `67cc2e8a` (2026-08-25); the one data
+route is `GET /api/ledger/subgraph`, served by `ledger_api.ledger_subgraph.subgraph` over
+`SqlEvidenceLookup`. Every test whose QUESTION survived that revision now asks it of the
+walk; every test whose question was the resolver's (hop states, rank/n, class order,
+basis, the declared display zone) went with the resolver, as the unit file's did in the
+same commit. What is left here is what only PostgreSQL can answer: the jsonb frontier
+join, uuid `supersedes`, the session-timezone independence of `occurred_at`, the
+relation seam, the catalogue-judged 503, and the route over HTTP against a real table.
 """
 
 import os
-import statistics
 import sys
 import time
 import uuid
@@ -28,7 +38,9 @@ pytestmark = pytest.mark.pg
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from ledger import explorer
 from ledger import trace as lt
+from ledger_api import ledger_subgraph
 
 
 #: Fixtures carry a REAL +09:00 offset, not UTC (see the unit-test file).
@@ -48,13 +60,8 @@ ledger_schema = pytest.importorskip(
 #: a table nobody has.
 #:
 #: So this file calls `ledger.schema.ensure_schema` — the translator lane's own
-#: single spelling — and inherits every constraint, including the two CHECKs that
-#: make `register` the ONLY predicate allowed a NULL `object_kind`. When that
-#: schema changes, these tests change with it instead of drifting away from it.
-#:
-#: The one index this lane cares about, `idx_ledger_subject_lot`, is in there and
-#: is named after this consumer in `schema.py`'s own comment. It is NOT re-spelled
-#: here.
+#: single spelling — and inherits every constraint. When that schema changes,
+#: these tests change with it instead of drifting away from it.
 
 #: Months the fixtures write into. `occurred_at` is the partition key, so a month
 #: with no partition is an insert that fails outright rather than a slow one.
@@ -91,11 +98,8 @@ def ledger(ledger_engine):
 
 
 def _uuid(seed):
-    """A DETERMINISTIC uuid per logical atom name.
-
-    Deterministic because level 3 of the resolver is the event id, so a test
-    about ordering that minted random ids would pass or fail by luck.
-    """
+    """A DETERMINISTIC uuid per logical atom name, so an edge's `claim_id` can be
+    asserted by the atom's name rather than read back and compared to itself."""
     return str(uuid.uuid5(uuid.NAMESPACE_URL, f"ledger-l2/{seed}"))
 
 
@@ -111,34 +115,23 @@ def insert(conn, atoms):
         atoms)
 
 
-#: 🔴 A resolver config whose class 1 is decided by `source_who`, NOT by a flag in
-#: the payload. That is not a preference: `ledger.vocabulary` REFUSES any
-#: qualifier a predicate did not declare, and `slot_map`/`has_wafer` declare
-#: exactly {from,to,wafer} and {slot}. So an atom carrying `"confirmed": true`
-#: cannot get past the translator's gate, and a resolver that could only be
-#: driven that way could never be driven at all.
-CONFIRMED_CFG = dict(lt.DEFAULT_RESOLVER_CONFIG,
-                     confirmed_sources=["chain_confirm"])
-
-
 def _object(predicate, payload):
     """`(object_kind, object_payload)` in the translator's OWN shape.
 
     🔴 These fixtures used to be flat (`{"lot": "L-A"}`) and every test passed,
     while the real payload is `envelope.entity_ref` — `{"type", "keys",
-    "qualifiers"}` — and the SQL that reads it (`object_payload->'keys'->>'lot'`)
-    was therefore never once executed against the shape it exists for. Fixtures
+    "qualifiers"}` — and the SQL that reads it (`object_payload->'keys'`) was
+    therefore never once executed against the shape it exists for. Fixtures
     written by the lane under test agree with the lane under test.
     """
     p = dict(payload)
     if predicate == "register":
-        # 🔴 NULL, not the string "none" and not `{}`. `register`'s object is ∅
-        # (§4.1) and the shipped table enforces it BOTH ways:
-        #   (predicate = 'register') = (object_kind IS NULL)
-        # so a `register` with a non-null kind is refused, and so is any other
-        # predicate with a null one. The trace must therefore tolerate a NULL
-        # `object_kind` on exactly this predicate and never read it as malformed.
-        return None, None
+        # 🔴 NULL kind, not the string "none". `register`'s object is ∅ (§4.1); what it
+        # may carry is the subject's OWN values, as `{"qualifiers": {...}}` (S-52) —
+        # the shipped CHECK refuses anything else there. The walk turns those into the
+        # node's `attributes` rather than into an edge, and must never read a bare
+        # registration (NULL payload) as malformed.
+        return None, ({"qualifiers": p} if p else None)
     if predicate == "has_wafer":
         ref = {"type": "Wafer", "keys": {"wafer": p.pop("wafer")}}
         ref["qualifiers"] = {"slot": p.pop("slot")}
@@ -153,9 +146,7 @@ def _object(predicate, payload):
 def atom(name, lot, predicate, payload, occurred_at=T0, who="lot_event",
          supersedes=None, derivation=None):
     """One row of `ledger_events`. `derivation` stamps `source_translator_ver`'s
-    `#<derivation>` suffix — the ONLY place an atom's basis lives, which is why a
-    convention-backed fixture stamps it here and not in a column that does not
-    exist."""
+    `#<derivation>` suffix, the only place an atom's basis lives."""
     import json
     kind, ref = _object(predicate, payload)
     ref = None if ref is None else json.dumps(ref)
@@ -168,7 +159,6 @@ def atom(name, lot, predicate, payload, occurred_at=T0, who="lot_event",
 
 
 def straight_chain(lots, slots, wafers, who="lot_event"):
-    import itertools
     rows = []
     for i, lot in enumerate(lots):
         rows.append(atom(f"reg-{lot}", lot, "register", {},
@@ -186,16 +176,9 @@ def straight_chain(lots, slots, wafers, who="lot_event"):
     return rows
 
 
-def trace_on(conn, lot, slot=None, config=None, **kw):
-    return lt.trace(lot, slot,
-                    lookup=lt.SqlClaimLookup(conn, relation="ledger_events"),
-                    config=config or lt.DEFAULT_RESOLVER_CONFIG, **kw)
-
-
 def raw_atom(id, lot, predicate, payload, occurred_at=T0, who="lot_event"):
-    """An atom with a CHOSEN id — for the ordering tests, where the id is the
-    thing under test. Payload still goes through `_object`, so these exercise the
-    real shape too."""
+    """An atom with a CHOSEN id. Payload still goes through `_object`, so these
+    exercise the real shape too."""
     import json
     kind, ref = _object(predicate, payload)
     ref = None if ref is None else json.dumps(ref)
@@ -203,6 +186,31 @@ def raw_atom(id, lot, predicate, payload, occurred_at=T0, who="lot_event"):
             "p": predicate, "ok": kind, "op": ref,
             "oa": occurred_at, "who": who, "ver": "lot_event/1",
             "raw": "r", "sup": None}
+
+
+def lot_seed(lot):
+    return explorer.entity_id("Lot", {"lot": lot})
+
+
+def walk_on(conn, lot, relation="ledger_events", **kw):
+    """The live seat, in process: the walk over the ledger through the SQL lookup —
+    exactly what `GET /api/ledger/subgraph` hands `subgraph` (minus the declaration
+    lookups the route adds, which are not what PostgreSQL is asked here)."""
+    return ledger_subgraph.subgraph(
+        lot_seed(lot),
+        ledger_subgraph.SqlEvidenceLookup(conn, relation=relation), **kw)
+
+
+def lots_of(body):
+    return sorted(node["keys"]["lot"] for node in body["nodes"]
+                  if node["keys"].get("lot") is not None)
+
+
+def edges_of(body, predicate):
+    """`(source label, target label, edge)` for every edge of one predicate."""
+    label = {node["id"]: node["label"] for node in body["nodes"]}
+    return [(label[e["source"]], label[e["target"]], e)
+            for e in body["edges"] if e["predicate"] == predicate]
 
 
 LOTS = ["L-D", "L-C", "L-B", "L-A"]
@@ -215,206 +223,47 @@ WAFERS = ["W-D", "W-C", "W-B", "W-A"]
 # ---------------------------------------------------------------------------
 
 def test_a_real_chain_walks_end_to_end(ledger):
+    """The whole chain, over the jsonb frontier join, edges citing their atoms."""
     with ledger.begin() as conn:
         insert(conn, straight_chain(LOTS, SLOTS, WAFERS))
-        answer = trace_on(conn, "L-D", "3")
+        body = walk_on(conn, "L-D", hops=12, direction="outgoing")
 
-    assert [(h["predicate"], h["state"]) for h in answer["hops"]] == [
-        ("has_wafer", "resolved"), ("derived_from", "resolved"), ("slot_map", "resolved"),
-        ("has_wafer", "resolved"), ("derived_from", "resolved"), ("slot_map", "resolved"),
-        ("has_wafer", "resolved"), ("derived_from", "resolved"), ("slot_map", "resolved"),
-        ("has_wafer", "resolved"), ("derived_from", "unresolvable"),
-    ]
-    lineage = [h["to"]["keys"]["lot"] for h in answer["hops"]
-               if h["predicate"] == "derived_from" and h["to"]]
-    assert lineage == ["L-C", "L-B", "L-A"]
-    wafers = [h["to"]["keys"]["wafer"] for h in answer["hops"]
-              if h["predicate"] == "has_wafer" and h["to"]]
-    assert wafers == WAFERS
-    slots = [h["to"]["slot"] for h in answer["hops"] if h["predicate"] == "slot_map"]
-    assert slots == ["7", "11", "22"]
-    assert "root" in answer["terminal_reason"] and "L-A" in answer["terminal_reason"]
-    # every hop cites the atom it was decided by
-    for hop in answer["hops"]:
-        if hop["state"] != "unresolvable":
-            assert hop["event_id"] and hop["occurred_at"]
-
-
-def test_deleting_a_has_wafer_atom_names_the_hop_on_real_sql(ledger):
-    """🔴 The acceptance criterion, run against PostgreSQL rather than a list."""
-    with ledger.begin() as conn:
-        insert(conn, straight_chain(LOTS, SLOTS, WAFERS))
-        before = trace_on(conn, "L-D", "3")
-        conn.execute(text("DELETE FROM ledger_events WHERE id = CAST(:i AS uuid)"),
-                     {"i": _uuid("hw-L-B")})
-        after = trace_on(conn, "L-D", "3")
-
-    assert all(h["state"] == "resolved" for h in before["hops"]
-               if h["predicate"] == "has_wafer")
-
-    wafer_hops = [h for h in after["hops"] if h["predicate"] == "has_wafer"]
-    assert [h["state"] for h in wafer_hops] == \
-        ["resolved", "resolved", "unresolvable", "resolved"]
-    broken = wafer_hops[2]
-    assert broken["from"] == {"type": "Lot", "keys": {"lot": "L-B"}, "slot": "11"}
-    assert broken["to"] is None
-    assert "no_claim" in broken["reason"] and "has_wafer" in broken["reason"]
-    assert "lot=L-B" in broken["reason"] and "slot=11" in broken["reason"]
-    # and the answer is not shorter - the lineage is untouched
-    assert len(after["hops"]) == len(before["hops"])
-
-
-def test_a_candidate_hop_on_real_sql_reports_rank_and_n(ledger):
-    rows = straight_chain(LOTS, SLOTS, WAFERS)
-    rows += [
-        atom("df-L-D-alt1", "L-D", "derived_from", {"lot": "L-ALT1"},
-             occurred_at=T0 + timedelta(days=1)),
-        atom("df-L-D-alt2", "L-D", "derived_from", {"lot": "L-ALT2"},
-             occurred_at=T0 + timedelta(days=1)),
-    ]
-    with ledger.begin() as conn:
-        insert(conn, rows)
-        answer = trace_on(conn, "L-D", "3")
-    hop = [h for h in answer["hops"] if h["predicate"] == "derived_from"][0]
-    assert hop["state"] == "candidate"
-    assert (hop["rank"], hop["n"]) == (1, 3)
-    for name in ("L-C", "L-ALT1", "L-ALT2"):
-        assert name in hop["reason"]
-
-
-def test_a_confirmed_claim_beats_a_newer_observation_on_real_sql(ledger):
-    """§6's class boundary, with `timestamptz` doing the comparing rather than
-    a Python datetime — the level a naive/aware mix would have broken."""
-    rows = [
-        atom("reg", "L-D", "register", {}),
-        atom("conf", "L-D", "derived_from", {"lot": "L-TRUE"},
-             occurred_at=T0 - timedelta(days=300), who="chain_confirm"),
-        atom("obs", "L-D", "derived_from", {"lot": "L-WRONG"},
-             occurred_at=T0 + timedelta(days=300), who="user"),
-        atom("reg-t", "L-TRUE", "register", {}),
-    ]
-    with ledger.begin() as conn:
-        insert(conn, rows)
-        answer = trace_on(conn, "L-D", config=CONFIRMED_CFG)
-    hop = [h for h in answer["hops"] if h["predicate"] == "derived_from"][0]
-    assert hop["to"]["keys"]["lot"] == "L-TRUE"
-    # The observation named a DIFFERENT parent, so the hop reports the contest —
-    # but the ranking is not in doubt and the confirmed claim is what is followed.
-    # The class DECLARED this winner, so the word is `contested` (R-2026-08-13-B
-    # week 2), not the `candidate` umbrella it sheltered under for slice 1.
-    assert hop["state"] == lt.STATE_CONTESTED
-    assert hop["n"] == 2
-    assert "하위 계급 반대" in hop["reason"] and "L-WRONG" in hop["reason"]
-
-
-def test_totality_survives_a_round_trip_through_postgres(ledger):
-    """Two atoms equal on class, source and `occurred_at`, differing only in id.
-
-    Run repeatedly with the rows physically reordered between runs, because the
-    defect this level exists to stop was PHYSICAL ORDER deciding the answer.
-    """
-    a, b = sorted([_uuid("tie-a"), _uuid("tie-b")])
-    rows = [
-        atom("reg", "L-D", "register", {}),
-        raw_atom(a, "L-D", "derived_from", {"lot": "P-FIRST-ID"}),
-        raw_atom(b, "L-D", "derived_from", {"lot": "P-SECOND-ID"}),
-    ]
-    answers = set()
-    for i in range(6):
-        with ledger.begin() as conn:
-            conn.execute(text("TRUNCATE ledger_events"))
-            insert(conn, rows if i % 2 == 0 else list(reversed(rows)))
-            hop = [h for h in trace_on(conn, "L-D")["hops"]
-                   if h["predicate"] == "derived_from"][0]
-            answers.add((hop["to"]["keys"]["lot"], hop["event_id"], hop["n"]))
-    assert answers == {("P-FIRST-ID", a, 2)}, f"the answer moved: {answers}"
-
-
-def test_the_partition_key_forbids_a_pk_on_id_alone(ledger):
-    """🔴 A contract fact L1 and the resolver both depend on, asked of the engine.
-
-    "`id` is a unique primary key so the last tiebreak always decides" is the
-    obvious totality argument and it is not available: a table partitioned on
-    `occurred_at` cannot have a unique constraint that omits `occurred_at`. The
-    resolver's totality therefore rests on levels 2b+3 being JOINTLY the primary
-    key, which is a different claim, and this test is what stops it from being
-    quietly assumed back.
-    """
-    import sqlalchemy.exc
-    with ledger.begin() as conn:
-        with pytest.raises(sqlalchemy.exc.DatabaseError):
-            conn.execute(text(
-                "CREATE TABLE l2_pk_probe (id uuid NOT NULL, "
-                "occurred_at timestamptz NOT NULL, PRIMARY KEY (id)) "
-                "PARTITION BY RANGE (occurred_at)"))
-    with ledger.begin() as conn:
-        conn.execute(text(
-            "CREATE TABLE l2_pk_probe (id uuid NOT NULL, "
-            "occurred_at timestamptz NOT NULL, PRIMARY KEY (id, occurred_at)) "
-            "PARTITION BY RANGE (occurred_at)"))
-        conn.execute(text("DROP TABLE l2_pk_probe"))
-
-
-def test_a_repeated_id_at_a_different_time_is_still_ordered(ledger):
-    """The row the primary key above CANNOT forbid, resolved deterministically.
-
-    Seen for real: a demo translation of `assy_qa`'s `lot_event` minted the same
-    logical atom from two source rows with different `event_time`, and both rows
-    landed. Level 2b separates them, so the answer does not move.
-    """
-    dup = _uuid("dup-id")
-    rows = [
-        atom("reg", "L-D", "register", {}),
-        raw_atom(dup, "L-D", "derived_from", {"lot": "P-OLD"}, occurred_at=T0),
-        raw_atom(dup, "L-D", "derived_from", {"lot": "P-NEW"},
-                 occurred_at=T0 + timedelta(days=1)),
-    ]
-    seen = set()
-    for i in range(4):
-        with ledger.begin() as conn:
-            conn.execute(text("TRUNCATE ledger_events"))
-            insert(conn, rows if i % 2 == 0 else list(reversed(rows)))
-            hop = [h for h in trace_on(conn, "L-D")["hops"]
-                   if h["predicate"] == "derived_from"][0]
-            seen.add((hop["to"]["keys"]["lot"], hop["n"]))
-    assert seen == {("P-NEW", 2)}, f"a repeated id made the answer move: {seen}"
+    assert body["state"] == "ready"
+    assert lots_of(body) == sorted(LOTS)
+    assert sorted(n["keys"]["wafer"] for n in body["nodes"]
+                  if n["keys"].get("wafer")) == sorted(WAFERS)
+    assert [(s, t) for s, t, _ in edges_of(body, "derived_from")] == [
+        ("L-D", "L-C"), ("L-C", "L-B"), ("L-B", "L-A")]
+    assert [e["qualifiers"] for _, _, e in edges_of(body, "slot_map")] == [
+        {"from": "3", "to": "7"}, {"from": "7", "to": "11"}, {"from": "11", "to": "22"}]
+    assert [(s, t, e["qualifiers"]["slot"]) for s, t, e in edges_of(body, "has_wafer")] == \
+        list(zip(LOTS, WAFERS, SLOTS))
+    # every edge cites the atom it was read from, by that atom's id
+    for lot, (_, _, edge) in zip(LOTS, edges_of(body, "derived_from")):
+        assert edge["claim_id"] == _uuid(f"df-{lot}")
+    assert not any(body["truncated"][k] for k in ("depth", "nodes", "edges", "claims"))
 
 
 #: 🔴 The acceptance datum, end to end. Source text `2026-05-03 02:17:00` is a
-#: local Asia/Seoul wall clock; it stores as `2026-05-02T17:17:00+00:00`; the
-#: screen must show `2026-05-03 02:17`, matching the source exactly.
-ACCEPTANCE_SOURCE_TEXT = "2026-05-03 02:17:00"
+#: local Asia/Seoul wall clock; it stores as `2026-05-02T17:17:00+00:00`. The walk
+#: puts the INSTANT on the wire (`_instant`: UTC, ISO 8601) and the screen renders
+#: the wall clock — so what must not move here is the instant.
 ACCEPTANCE_INSTANT = datetime(2026, 5, 2, 17, 17, 0, tzinfo=timezone.utc)
-ACCEPTANCE_RENDERED = "2026-05-03T02:17:00+09:00"
-
-
-def test_the_rendered_time_matches_the_source_document(ledger):
-    with ledger.begin() as conn:
-        insert(conn, [
-            atom("reg", "L-D", "register", {}, occurred_at=ACCEPTANCE_INSTANT),
-            atom("hw", "L-D", "has_wafer", {"slot": "3", "wafer": "WF.01"},
-                 occurred_at=ACCEPTANCE_INSTANT),
-        ])
-        answer = trace_on(conn, "L-D", "3")
-    hop = [h for h in answer["hops"] if h["predicate"] == "has_wafer"][0]
-    assert hop["occurred_at"] == ACCEPTANCE_RENDERED
-    assert hop["occurred_at"][:19].replace("T", " ") == ACCEPTANCE_SOURCE_TEXT
+ACCEPTANCE_ON_THE_WIRE = "2026-05-02T17:17:00+00:00"
 
 
 def test_the_rendered_time_does_not_depend_on_the_postgres_session_timezone(ledger):
     """🔴 THE TEST THAT WOULD HAVE CAUGHT THE ACCIDENT.
 
-    Before the display zone was declared, `_iso` emitted an aware value verbatim,
-    so the offset came from the PostgreSQL SESSION's TimeZone. `assy_qa`'s default
-    is `Asia/Seoul`, so the acceptance condition passed while nothing the ledger
-    declares was doing the work — and on a box whose PostgreSQL `TimeZone` is UTC
-    the same atom would have rendered nine hours off, from a completely different
-    cause than the bug that had just been fixed.
+    psycopg2 hands back an aware datetime in the SESSION's TimeZone. `assy_qa`'s
+    default is `Asia/Seoul`; on a box whose PostgreSQL `TimeZone` is UTC the same
+    atom would come back with a different offset, and a renderer that emitted the
+    value verbatim would put a different string on the wire for the same instant.
 
     So the session is FORCED to three different zones, including UTC, and the
     rendered string must not move. Setting `TimeZone` here is the whole point:
-    a test that only ever ran under the box's default could not tell a declared
-    zone from an inherited one.
+    a test that only ever ran under the box's default could not tell a
+    normalised instant from an inherited one.
     """
     with ledger.begin() as conn:
         insert(conn, [
@@ -429,9 +278,9 @@ def test_the_rendered_time_does_not_depend_on_the_postgres_session_timezone(ledg
             conn.exec_driver_sql(f"SET TimeZone = '{session_zone}'")
             probe = conn.exec_driver_sql(
                 "SELECT occurred_at FROM ledger_events LIMIT 1").scalar()
-            answer = trace_on(conn, "L-D", "3")
-        hop = [h for h in answer["hops"] if h["predicate"] == "has_wafer"][0]
-        rendered[session_zone] = (hop["occurred_at"], probe.isoformat())
+            body = walk_on(conn, "L-D", hops=1, direction="outgoing")
+        (_, _, edge), = edges_of(body, "has_wafer")
+        rendered[session_zone] = (edge["occurred_at"], probe.isoformat())
 
     # The driver really did hand back three different offsets - otherwise this
     # test proves nothing about the code.
@@ -440,21 +289,14 @@ def test_the_rendered_time_does_not_depend_on_the_postgres_session_timezone(ledg
         f"the session TimeZone did not change what psycopg2 returned, so this "
         f"scenario does not discriminate: {driver_offsets}")
 
-    assert {v[0] for v in rendered.values()} == {ACCEPTANCE_RENDERED}, (
+    assert {v[0] for v in rendered.values()} == {ACCEPTANCE_ON_THE_WIRE}, (
         f"the rendered time follows the PostgreSQL session TimeZone: {rendered}")
 
 
-def test_an_unusable_display_timezone_is_refused_rather_than_defaulted(ledger):
-    """A display zone that silently became UTC is the failure being designed out,
-    and a screen rendering a fab record in the wrong zone looks entirely normal."""
-    broken = dict(lt.DEFAULT_RESOLVER_CONFIG, display_timezone="Mars/Olympus")
-    with ledger.begin() as conn:
-        insert(conn, [atom("reg", "L-D", "register", {})])
-        with pytest.raises(lt.ResolverConfigError):
-            trace_on(conn, "L-D", "3", config=broken)
-
-
 def test_supersedes_is_honoured_against_real_uuid_columns(ledger):
+    """A later atom that names an earlier one in `supersedes` (a uuid column read back
+    as text) retires it: the walk draws the correction only, and says how many it
+    dropped (`walk.superseded_dropped`, S-141)."""
     rows = [
         atom("reg", "L-D", "register", {}),
         atom("wrong", "L-D", "derived_from", {"lot": "L-WRONG"},
@@ -464,15 +306,15 @@ def test_supersedes_is_honoured_against_real_uuid_columns(ledger):
     ]
     with ledger.begin() as conn:
         insert(conn, rows)
-        answer = trace_on(conn, "L-D")
-    hop = [h for h in answer["hops"] if h["predicate"] == "derived_from"][0]
-    assert hop["to"]["keys"]["lot"] == "L-RIGHT" and hop["n"] == 1
+        body = walk_on(conn, "L-D", hops=1, direction="outgoing")
+    assert [(s, t) for s, t, _ in edges_of(body, "derived_from")] == [("L-D", "L-RIGHT")]
+    assert body["walk"]["superseded_dropped"] == 1
 
 
-def test_a_cycle_in_the_ledger_does_not_spin_the_cte(ledger):
-    """Without the `CYCLE` clause this recursion has no floor but the depth cap,
-    and a genuine loop would be reported as `depth_cap` — the screen would say
-    "the chain continues" about a chain that eats itself."""
+def test_a_cycle_in_the_ledger_does_not_spin_the_walk(ledger):
+    """A genuine loop must terminate on its own and must NOT be reported as the depth
+    budget running out — the screen exists to say WHY a walk stopped, and "the chain
+    continues" about a chain that eats itself is the wrong why."""
     rows = [
         atom("r1", "L-A", "register", {}), atom("r2", "L-B", "register", {}),
         atom("d1", "L-A", "derived_from", {"lot": "L-B"}),
@@ -481,62 +323,34 @@ def test_a_cycle_in_the_ledger_does_not_spin_the_cte(ledger):
     with ledger.begin() as conn:
         insert(conn, rows)
         t0 = time.perf_counter()
-        answer = trace_on(conn, "L-A")
+        body = walk_on(conn, "L-A", hops=40, direction="outgoing")
         elapsed = time.perf_counter() - t0
-    assert "cycle" in answer["terminal_reason"]
-    assert elapsed < 2.0, "the CTE did not stop at the cycle"
+    assert lots_of(body) == ["L-A", "L-B"]
+    assert sorted((s, t) for s, t, _ in edges_of(body, "derived_from")) == [
+        ("L-A", "L-B"), ("L-B", "L-A")]
+    assert body["truncated"]["depth"] is False, "a loop was reported as a depth cut"
+    assert elapsed < 2.0, "the walk did not stop at the cycle"
 
 
 def test_an_empty_ledger_table_still_answers(ledger):
     with ledger.begin() as conn:
-        answer = trace_on(conn, "L-NOTHING", "3")
-    assert len(answer["hops"]) == 1
-    assert answer["hops"][0]["state"] == "unresolvable"
-    assert "unknown_subject" in answer["terminal_reason"]
+        body = walk_on(conn, "L-NOTHING", hops=3)
+    assert body["state"] == "empty"
+    assert [n["id"] for n in body["nodes"]] == [lot_seed("L-NOTHING")]
+    assert body["edges"] == []
 
 
 # ---------------------------------------------------------------------------
 # 🔴 THE SEAM — the lookup is replaceable, demonstrated rather than asserted
 # ---------------------------------------------------------------------------
 
-
-
-def test_the_one_shot_cte_and_the_two_primitives_ask_the_same_question(ledger):
-    """`OneShotSqlClaimLookup` is an optimisation of the two primitives — a
-    rejected one (see its docstring), but it must still be the SAME question.
-
-    Kept as a test because it is what makes the default path's answer checkable
-    against an independently written query rather than against itself.
-    """
-    with ledger.begin() as conn:
-        insert(conn, straight_chain(LOTS, SLOTS, WAFERS))
-        default = lt.SqlClaimLookup(conn, "ledger_events")
-        one_shot = lt.OneShotSqlClaimLookup(conn, "ledger_events")
-        nb_default = default.neighbourhood("L-D", max_depth=lt.DEFAULT_MAX_DEPTH)
-        nb_one_shot = one_shot.neighbourhood("L-D", max_depth=lt.DEFAULT_MAX_DEPTH)
-        answer_default = trace_on(conn, "L-D", "3")
-        answer_one_shot = lt.trace("L-D", "3", lookup=one_shot,
-                                   config=lt.DEFAULT_RESOLVER_CONFIG)
-
-    assert sorted(nb_default.lots) == sorted(nb_one_shot.lots)
-    assert sorted(c.id for c in nb_default.claims) == \
-        sorted(c.id for c in nb_one_shot.claims)
-    assert nb_default.truncated is False and nb_one_shot.truncated is False
-    assert answer_default["hops"] == answer_one_shot["hops"]
-
-
 def test_a_diamond_genealogy_does_not_duplicate_claims(ledger):
     """A lot reached by TWO paths must be fetched once, not once per path.
 
     A MERGE gives exactly this shape, so it is not a corner case — it is half of
-    what `lot_event` contains. Duplicated claims would not change the winner
-    (they carry the same answer), which is what makes this quiet: the hop would
-    stay `resolved` and only the witness count in the reason would inflate. That
-    is a number a human reads off this screen, so it has to be true.
-
-    Added after mutation scoring: removing the `GROUP BY lot` from the CTE left
-    the whole suite GREEN, because every fixture until this one was a straight
-    chain.
+    what `lot_event` contains. A duplicated fetch would be quiet: the same edge id
+    twice, or one witness counted as two in `claim_count`. Those are numbers a
+    human reads off this screen, so they have to be true.
     """
     rows = [
         atom("reg-D", "L-D", "register", {}),
@@ -556,47 +370,39 @@ def test_a_diamond_genealogy_does_not_duplicate_claims(ledger):
     ]
     with ledger.begin() as conn:
         insert(conn, rows)
-        default_nb = lt.SqlClaimLookup(conn, "ledger_events").neighbourhood("L-D")
-        one_shot_nb = lt.OneShotSqlClaimLookup(
-            conn, "ledger_events").neighbourhood("L-D")
-        answer = trace_on(conn, "L-D", "1")
+        body = walk_on(conn, "L-D", hops=12, direction="outgoing")
 
-    for label, nb in (("default", default_nb), ("one-shot", one_shot_nb)):
-        ids = [c.id for c in nb.claims]
-        assert len(ids) == len(set(ids)), (
-            f"{label} lookup returned L-A's claims once per path: "
-            f"{len(ids)} rows, {len(set(ids))} distinct")
-        assert sorted(nb.lots) == ["L-A", "L-B1", "L-B2", "L-D"]
-
+    assert lots_of(body) == ["L-A", "L-B1", "L-B2", "L-D"]
+    claim_ids = [e["claim_id"] for e in body["edges"]]
+    assert len(claim_ids) == len(set(claim_ids)) == 10, (
+        f"L-A's atoms came back once per path: {len(claim_ids)} edges, "
+        f"{len(set(claim_ids))} distinct")
     # L-A is the lot reached twice; its wafer is stated by exactly ONE atom and
     # the answer must say so.
-    a_hop = [h for h in answer["hops"]
-             if h["predicate"] == "has_wafer" and h["from"]["keys"]["lot"] == "L-A"]
-    assert len(a_hop) == 1
-    assert a_hop[0]["state"] == "resolved"
-    assert "[single]" in a_hop[0]["reason"], (
-        f"one atom reported as several: {a_hop[0]['reason']!r}")
+    a_hop = [e for s, _, e in edges_of(body, "has_wafer") if s == "L-A"]
+    assert len(a_hop) == 1 and a_hop[0]["claim_id"] == _uuid("hw-A")
+    (a_node,) = [n for n in body["nodes"] if n["keys"].get("lot") == "L-A"]
+    # df-B1, df-B2, sm-B1, sm-B2 arrive and hw-A leaves: five atoms, counted once each
+    assert a_node["claim_count"] == 5
 
 
 def test_the_relation_name_is_the_only_thing_that_moves(ledger):
     """Pointing the walk at a different relation is one constructor argument.
-    Here that relation is a VIEW, which is the crudest possible stand-in for the
-    materialised table week 2 will need."""
+    Here that relation is a VIEW, which is the crudest possible stand-in for a
+    materialised projection."""
     with ledger.begin() as conn:
         insert(conn, straight_chain(LOTS, SLOTS, WAFERS))
         conn.execute(text(
             "CREATE OR REPLACE VIEW ledger_projection AS "
             "SELECT * FROM ledger_events"))
         try:
-            direct = lt.trace("L-D", "3",
-                              lookup=lt.SqlClaimLookup(conn, "ledger_events"),
-                              config=lt.DEFAULT_RESOLVER_CONFIG)
-            swapped = lt.trace("L-D", "3",
-                               lookup=lt.SqlClaimLookup(conn, "ledger_projection"),
-                               config=lt.DEFAULT_RESOLVER_CONFIG)
+            direct = walk_on(conn, "L-D", hops=12, direction="outgoing")
+            swapped = walk_on(conn, "L-D", relation="ledger_projection",
+                              hops=12, direction="outgoing")
         finally:
             conn.execute(text("DROP VIEW IF EXISTS ledger_projection"))
-    assert direct["hops"] == swapped["hops"]
+    for key in ("nodes", "edges", "state", "walk", "truncated"):
+        assert direct[key] == swapped[key], key
 
 
 # ---------------------------------------------------------------------------
@@ -628,420 +434,76 @@ def ledger_client(ledger):
         db.close()
 
 
-def test_the_route_serves_the_pinned_shape(ledger_client, ledger):
+WALK_ROUTE = "/api/ledger/subgraph"
+
+
+def test_the_route_serves_the_walk_over_real_postgres(ledger_client, ledger):
     with ledger.begin() as conn:
         insert(conn, straight_chain(LOTS, SLOTS, WAFERS))
 
-    resp = ledger_client.get("/api/ledger/trace", params={"lot": "L-D", "slot": "3"})
-    assert resp.status_code == 200
+    resp = ledger_client.get(WALK_ROUTE, params={
+        "id": lot_seed("L-D"), "hops": 12, "direction": "outgoing"})
+    assert resp.status_code == 200, resp.text
     assert resp.headers["content-type"].startswith("application/json"), (
         "the route was shadowed by the SPA catch-all and served index.html - "
         "include_router must stay ABOVE it in main.py")
     body = resp.json()
-    assert set(body) == {"hops", "terminal_reason", "generated_at"}
-    assert len(body["hops"]) == 11
-    assert [h["to"]["keys"]["lot"] for h in body["hops"]
-            if h["predicate"] == "derived_from" and h["to"]] == ["L-C", "L-B", "L-A"]
-    assert "root" in body["terminal_reason"]
-
-
-def test_the_route_reports_a_break_rather_than_an_empty_answer(ledger_client, ledger):
-    """🔴 A broken chain is a 200 that SAYS where it broke. Not a 404, not `[]`."""
-    with ledger.begin() as conn:
-        insert(conn, straight_chain(LOTS, SLOTS, WAFERS))
-        conn.execute(text("DELETE FROM ledger_events WHERE id = CAST(:i AS uuid)"),
-                     {"i": _uuid("hw-L-B")})
-
-    resp = ledger_client.get("/api/ledger/trace", params={"lot": "L-D", "slot": "3"})
-    assert resp.status_code == 200
-    body = resp.json()
-    broken = [h for h in body["hops"] if h["state"] == "unresolvable"]
-    assert broken, "the break was not reported at all"
-    named = [h for h in broken if h["predicate"] == "has_wafer"]
-    assert len(named) == 1
-    assert "lot=L-B" in named[0]["reason"] and "slot=11" in named[0]["reason"]
+    assert {"state", "nodes", "edges", "seeds", "propagation", "walk", "limits",
+            "truncated", "generated_at"} <= set(body)
+    assert body["state"] == "ready"
+    assert lots_of(body) == sorted(LOTS)
+    assert [(s, t) for s, t, _ in edges_of(body, "derived_from")] == [
+        ("L-D", "L-C"), ("L-C", "L-B"), ("L-B", "L-A")]
 
 
 def test_the_route_answers_for_a_lot_the_ledger_never_heard_of(ledger_client, ledger):
-    resp = ledger_client.get("/api/ledger/trace", params={"lot": "L-GHOST", "slot": "1"})
-    assert resp.status_code == 200
+    resp = ledger_client.get(WALK_ROUTE, params={"id": lot_seed("L-GHOST"), "hops": 1})
+    assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert len(body["hops"]) == 1
-    assert body["hops"][0]["state"] == "unresolvable"
-    assert "unknown_subject" in body["terminal_reason"]
+    assert body["state"] == "empty"
+    assert [n["id"] for n in body["nodes"]] == [lot_seed("L-GHOST")]
 
 
-def test_the_route_works_without_a_slot(ledger_client, ledger):
+def test_the_route_names_an_absent_ledger_in_a_field_not_in_prose(
+        ledger_client, monkeypatch):
+    """🔴 THE ALARM THAT HAD NEVER BEEN RUNG.
+
+    The 503-for-an-absent-relation branch once matched the English words "does not
+    exist" in the driver's message, while this PostgreSQL emits Korean. The relation
+    is judged by the catalogue and the body is machine-readable. This is the test
+    that fires it, against a real catalogue.
+    """
+    from ledger import trace_router as router_module
+    monkeypatch.setattr(router_module, "LEDGER_RELATION", "ledger_events_not_migrated")
+
+    resp = ledger_client.get(WALK_ROUTE, params={"id": lot_seed("L-D"), "hops": 3})
+    assert resp.status_code == 503, resp.text
+    detail = resp.json()["detail"]
+    assert isinstance(detail, dict), (
+        "the client would have to parse Korean prose to tell a deployment "
+        "problem from a data boundary")
+    # 🔴 THE LITERAL, NOT THE CONSTANT. `detail["reason"] == lt.REASON_RELATION_
+    # ABSENT` compares the code to itself and stays green while the token the
+    # client lane branches on changes underneath it — a mutant renaming the
+    # constant passed that version of this assertion. The wire value is the
+    # contract, so the wire value is what is written out here.
+    assert detail["reason"] == "ledger_relation_absent"
+    assert lt.REASON_RELATION_ABSENT == "ledger_relation_absent"
+    assert detail["state"] == "absent"
+    assert detail["relation"] == "ledger_events_not_migrated"
+    assert detail["message"]
+
+
+def test_an_unknown_lot_and_an_undeployed_ledger_are_different_responses(
+        ledger_client, ledger):
+    """SITUATION 3 vs SITUATION 1, over HTTP. One is a 200 carrying `state: empty`,
+    the other (the test above) a 503 carrying a machine-readable reason. They must
+    never coincide, and a populated ledger must not change the 200."""
     with ledger.begin() as conn:
         insert(conn, straight_chain(LOTS, SLOTS, WAFERS))
-    body = ledger_client.get("/api/ledger/trace", params={"lot": "L-D"}).json()
-    assert {h["predicate"] for h in body["hops"]} == {"derived_from"}
-    assert len(body["hops"]) == 4
-
-
-def test_the_route_refuses_a_request_with_no_lot(ledger_client):
-    assert ledger_client.get("/api/ledger/trace").status_code == 422
-    assert ledger_client.get("/api/ledger/trace",
-                             params={"lot": "  "}).status_code == 422
-
-
-# ---------------------------------------------------------------------------
-# 🔴 The EXPANDED contract, on the wire — R-2026-08-13-B week 2 + R-2026-08-13-C
-# ---------------------------------------------------------------------------
-
-def _contested_by_convention(lots, slots, wafers):
-    """A chain whose FIRST slot hop has a measurement and a convention that
-    DISAGREE — the real shape, and the one the default resolver config produces.
-
-    Deliberately not built out of a class-1 claim: the ROUTE loads the shipped
-    resolver config, whose class 1 is `frame_confirmed`, and no translator emits
-    that yet. Class 2 over class 3 is the contest that actually happens today —
-    `slot_preserving` is an ASSUMPTION (class 3) and any uttered mapping outranks
-    it, which is the ontology owner's ruling doing its job.
-    """
-    rows = straight_chain(lots, slots, wafers)
-    rows.append(atom("sm-conv", lots[0], "slot_map",
-                     # the assumption: "a split keeps its slot numbers"
-                     {"lot": lots[1], "from": slots[0], "to": slots[0]},
-                     derivation="slot_preserving"))
-    return rows
-
-
-def test_the_route_puts_contested_and_basis_on_the_wire(ledger_client, ledger):
-    """🔴 THE EXPANDED CONTRACT, END TO END, THROUGH REAL POSTGRESQL AND HTTP.
-
-    Both fields at once, because they shipped in one commit on purpose — the
-    route contract is not shaken twice.
-
-      `state: "contested"`  a winner was DECLARED by the class and a lower class
-                            still disagrees. Distinct from `candidate`, which is
-                            "k answers at one authority, no winner declared".
-      `basis: {kind, name}` what the WINNER rests on, as a field. The losing
-                            convention is named in the prose of the same
-                            sentence, and a consumer reading the prose gets it
-                            BACKWARDS — that read inverted once already.
-    """
-    with ledger.begin() as conn:
-        insert(conn, _contested_by_convention(LOTS, SLOTS, WAFERS))
-
-    body = ledger_client.get("/api/ledger/trace",
-                             params={"lot": "L-D", "slot": "3"}).json()
-
-    hop = [h for h in body["hops"] if h["predicate"] == "slot_map"][0]
-    assert hop["state"] == "contested", (
-        f"a declared winner with a live contradiction under it must not read "
-        f"'{hop['state']}': {hop['reason']}")
-    assert hop["n"] == 2
-    # The measurement won. `slot_preserving` would have kept slot 3.
-    assert hop["to"]["slot"] == SLOTS[1] != SLOTS[0]
-
-    # 🔴 THE INVERSION, ON THE WIRE. `convention:` is in the sentence and belongs
-    # to the LOSER; the winner uttered its mapping and carries no derivation.
-    assert "convention:slot_preserving" in hop["reason"], hop["reason"]
-    assert hop["basis"] is None, (
-        f"the losing convention leaked into the winner's basis: {hop['basis']}")
-
-    # And every hop on the wire carries the key set, `basis` included.
-    for h in body["hops"]:
-        assert "basis" in h, "a hop reached the client without the field"
-        assert h["basis"] is None or set(h["basis"]) == {"kind", "name"}
-        assert h["state"] in lt.HOP_STATES
-
-
-def test_the_route_carries_a_convention_basis_when_the_convention_WINS(
-        ledger_client, ledger):
-    """The other side of the branch, and the one the enrich graft acts on.
-
-    With no measurement to overrule it the assumption IS the answer, and the hop
-    is `resolved` — a state that says nothing at all about how much was assumed.
-    THAT is why `basis` cannot be inferred from `state`: this hop and a fully
-    measured one are the same word, and only the field tells them apart.
-    """
-    rows = straight_chain(LOTS, SLOTS, WAFERS)
-    rows = [r for r in rows if r["id"] != _uuid(f"sm-{LOTS[0]}")]
-    rows.append(atom("sm-conv", LOTS[0], "slot_map",
-                     {"lot": LOTS[1], "from": SLOTS[0], "to": SLOTS[1]},
-                     derivation="slot_preserving"))
-    with ledger.begin() as conn:
-        insert(conn, rows)
-
-    body = ledger_client.get("/api/ledger/trace",
-                             params={"lot": "L-D", "slot": "3"}).json()
-    hop = [h for h in body["hops"] if h["predicate"] == "slot_map"][0]
-
-    assert hop["state"] == "resolved", "nothing disagreed with it"
-    assert hop["basis"] == {"kind": "convention", "name": "slot_preserving"}, (
-        "the hop the graft may NEVER pre-mark confirmed is indistinguishable "
-        "from a measured one without this field")
-
-
-# ---------------------------------------------------------------------------
-# Cost — interleaved arms
-# ---------------------------------------------------------------------------
-
-def _build_synthetic_ledger(conn, relation, n_chains, chain_len=5,
-                            span_days=None, start=None):
-    """`n_chains` independent chains of `chain_len` lots each, one wafer per lot.
-
-    Atoms per chain: chain_len register + chain_len has_wafer +
-    (chain_len-1) derived_from + (chain_len-1) slot_map.
-
-    The lot names do NOT carry the size, so arm A and arm B ask the IDENTICAL
-    question of two differently sized ledgers. If the name encoded the arm, the
-    two arms would be two different questions and the ratio would be noise.
-    """
-    rows = []
-    for i in range(n_chains):
-        lots = [f"C{i}-{d}" for d in range(chain_len)]
-        for d, lot in enumerate(lots):
-            offset = i * chain_len + d
-            if span_days is not None:   # keep every atom in one month
-                offset %= 60 * 24 * span_days
-            when = (T0 if start is None else start) + timedelta(minutes=offset)
-            # Through `raw_atom`, so the COST is measured on the real payload
-            # shape. A cost measured on flat payloads would be measuring a
-            # jsonb path one operator shorter than the one that ships.
-            rows.append(raw_atom(_uuid(f"{relation}/{lot}/reg"), lot,
-                                 "register", {}, occurred_at=when))
-            rows.append(raw_atom(_uuid(f"{relation}/{lot}/hw"), lot, "has_wafer",
-                                 {"slot": str(d + 1), "wafer": f"W-{lot}"},
-                                 occurred_at=when))
-            if d + 1 < chain_len:
-                parent = lots[d + 1]
-                rows.append(raw_atom(_uuid(f"{relation}/{lot}/df"), lot,
-                                     "derived_from", {"lot": parent},
-                                     occurred_at=when))
-                rows.append(raw_atom(_uuid(f"{relation}/{lot}/sm"), lot,
-                                     "slot_map",
-                                     {"lot": parent, "from": str(d + 1),
-                                      "to": str(d + 2), "wafer": f"W-{lot}"},
-                                     occurred_at=when))
-    sql_rel = relation
-    for start in range(0, len(rows), 2000):
-        conn.execute(text(
-            f"INSERT INTO {sql_rel} (id, subject_type, subject_keys, predicate, "
-            f"object_kind, object_payload, occurred_at, source_who, "
-            f"source_translator_ver, source_raw_ref, supersedes, source_event_id, "
-            f"source_event_state) VALUES "
-            f"(CAST(:id AS uuid), :st, CAST(:sk AS jsonb), :p, :ok, "
-            f" CAST(:op AS jsonb), :oa, :who, :ver, :raw, CAST(:sup AS uuid), "
-            f" CAST(:id AS uuid), 'source_record')"),
-            rows[start:start + 2000])
-    return len(rows)
-
-
-def _create_ledger_like(conn, relation, months=None):
-    """A second relation with the SHIPPED shape under a different name.
-
-    Derived from `ledger.schema`'s own statements by renaming the relation and
-    its indexes, rather than by keeping a second copy of the DDL here. The cost
-    numbers are then measured against the constraints, index set and partition
-    grain that actually ship — a probe against a leaner table would report a
-    write and read cost nobody will ever see.
-    """
-    conn.execute(text(f"DROP TABLE IF EXISTS {relation} CASCADE"))
-
-    def rename(sql):
-        return (sql.replace(ledger_schema.LEDGER_TABLE, relation)
-                   .replace("idx_ledger_", f"idx_{relation}_")
-                   .replace("uq_ledger_", f"uq_{relation}_")
-                   .replace("ck_ledger_", f"ck_{relation}_"))
-
-    conn.execute(text(rename(ledger_schema.CREATE_LEDGER)))
-    for stmt in ledger_schema.INDEXES:
-        conn.execute(text(rename(stmt)))
-    for when in (FIXTURE_MONTHS if months is None else months):
-        conn.execute(text(rename(ledger_schema.create_partition_sql(when))))
-
-
-@pytest.mark.skipif(
-    not os.environ.get("ASSY_LEDGER_COST_PROBE"),
-    reason="cost probe; set ASSY_LEDGER_COST_PROBE=1")
-def test_trace_cost_tracks_partition_count_not_ledger_size(ledger, capsys):
-    """🔴 What this walk actually costs is PARTITIONS, not atoms.
-
-    The walk carries no `occurred_at` predicate — "everything about this lot" has
-    no time bound — so partition pruning can never fire and EVERY partition is
-    visited on every hop. `ledger.schema` says exactly this in its own comment
-    about `idx_ledger_subject_lot`; this measures the price.
-
-    Two relations, IDENTICAL atoms (18,000, all inside one month), differing only
-    in how many monthly partitions exist. If cost tracked data, the two would be
-    equal.
-
-    🔴 Synthetic, on this box. NOT production evidence. It does not argue against
-    the monthly grain — pruning and detaching are decided by other queries and by
-    storage — it prices this one query under it, so the number is on the table
-    when week 2 decides whether the slot-level chain gets materialised.
-    """
-    # The single partition and the data must be the SAME month, or the
-    # insert fails on the partition key instead of measuring anything.
-    one_month_start = datetime(2026, 6, 2, tzinfo=timezone.utc)
-    same_month = [one_month_start]
-    five_years = [datetime(y, m, 15, tzinfo=timezone.utc)
-                  for y in range(2023, 2028) for m in range(1, 13)]
-    try:
-        with ledger.begin() as conn:
-            _create_ledger_like(conn, "ledger_1part", months=same_month)
-            _create_ledger_like(conn, "ledger_60part", months=five_years)
-            for rel in ("ledger_1part", "ledger_60part"):
-                _build_synthetic_ledger(conn, rel, 1000, span_days=20,
-                                        start=one_month_start)
-                conn.execute(text(f"ANALYZE {rel}"))
-
-        arms = [("1 partition ", "ledger_1part"), ("60 partitions", "ledger_60part")]
-        per = {a[0]: [] for a in arms}
-        rounds = 40
-        with ledger.connect() as conn:
-            for name, rel in arms:
-                lt.trace("C0-0", "1", lookup=lt.SqlClaimLookup(conn, rel),
-                         config=lt.DEFAULT_RESOLVER_CONFIG)
-            for r in range(rounds):
-                for name, rel in (arms if r % 2 == 0 else list(reversed(arms))):
-                    t0 = time.perf_counter()
-                    answer = lt.trace(f"C{(r * 37) % 1000}-0", "1",
-                                      lookup=lt.SqlClaimLookup(conn, rel),
-                                      config=lt.DEFAULT_RESOLVER_CONFIG)
-                    per[name].append((time.perf_counter() - t0) * 1000.0)
-                    assert len(answer["hops"]) == 14
-
-        lines = ["[partition cost] identical 18,000 atoms, 14 hops/trace, "
-                 f"{rounds} rounds, order alternated"]
-        for name, _ in arms:
-            s = sorted(per[name])
-            lines.append(f"  {name}: {statistics.median(s):6.2f} ms/trace  "
-                         f"{statistics.median(s) / 14:6.3f} ms/hop")
-        a = statistics.median(per[arms[0][0]])
-        b = statistics.median(per[arms[1][0]])
-        lines.append(f"  60x partitions -> {b / a:.2f}x per trace "
-                     f"(+{(b - a) / 59:.3f} ms per extra partition)")
-        with capsys.disabled():
-            print("\n" + "\n".join(lines))
-
-        assert b > a * 2, (
-            "the partition count stopped mattering - either pruning started "
-            "firing (it cannot, there is no time predicate) or this probe broke")
-    finally:
-        with ledger.begin() as conn:
-            for rel in ("ledger_1part", "ledger_60part"):
-                conn.execute(text(f"DROP TABLE IF EXISTS {rel} CASCADE"))
-
-
-@pytest.mark.skipif(
-    not os.environ.get("ASSY_LEDGER_COST_PROBE"),
-    reason="cost probe builds a ~400k-atom ledger; set ASSY_LEDGER_COST_PROBE=1")
-def test_cost_per_hop_at_two_ledger_sizes_interleaved(ledger, capsys):
-    """Per-hop cost at two ledger sizes, measured with the arms INTERLEAVED.
-
-    🔴 Sequential arms are how a lane reported 24.9% today where the real figure
-    was 7-15%: the box drifts (cache warmth, other lanes, the OS) and a
-    sequential A-then-B assigns all of that drift to B. Arms here alternate
-    A,B,A,B within one loop and the reported figure is the per-arm MEDIAN, so
-    drift lands on both arms.
-
-    The two arms are two SEPARATE RELATIONS of the same shape - which is only
-    possible because the relation is the lookup's seam. Two sizes sharing one
-    table would not be two ledger sizes at all: both traces would scan the same
-    heap and the ratio would measure nothing.
-
-    Four arms, because the interesting comparison turned out to be TWO
-    comparisons at once: ledger size AND which lookup. The default
-    `SqlClaimLookup` (two round trips) against `OneShotSqlClaimLookup` (one),
-    each at 18k and 360k atoms.
-
-    🔴 Synthetic, on this box, one process. NOT production evidence.
-    """
-    small, big = 1000, 20000              # 20x, the ratio §7-bis reported on
-    try:
-        with ledger.begin() as conn:
-            _create_ledger_like(conn, "ledger_small")
-            _create_ledger_like(conn, "ledger_big")
-            n_small = _build_synthetic_ledger(conn, "ledger_small", small)
-            n_big = _build_synthetic_ledger(conn, "ledger_big", big)
-            # 🔴 ANALYZE, explicitly. A table with no statistics makes the
-            # planner invent a seq scan and a fake "scale is non-linear" with
-            # it - the instrument fault caught on 2026-08-12.
-            conn.execute(text("ANALYZE ledger_small"))
-            conn.execute(text("ANALYZE ledger_big"))
-
-        sizes = {"ledger_small": n_small, "ledger_big": n_big}
-        with ledger.connect() as conn:
-            arms = []
-            for relation, n in (("ledger_small", small), ("ledger_big", big)):
-                arms.append((f"2step/{relation}", lt.SqlClaimLookup(conn, relation), n))
-                arms.append((f"1shot/{relation}",
-                             lt.OneShotSqlClaimLookup(conn, relation), n))
-            per_trace = {name: [] for name, _, _ in arms}
-
-            for name, lookup, n in arms:        # warm-up, discarded
-                lt.trace("C0-0", "1", lookup=lookup,
-                         config=lt.DEFAULT_RESOLVER_CONFIG)
-
-            rounds = 40
-            for r in range(rounds):
-                # 🔴 The order within the round ROTATES. Interleaving in a FIXED
-                # order still hands arm 1 every first-in-round cost there is -
-                # a position bias wearing an interleaving costume, and it is
-                # what the first run of this probe was reporting.
-                k = r % len(arms)
-                for name, lookup, n in arms[k:] + arms[:k]:
-                    lot = f"C{(r * 37) % n}-0"
-                    t0 = time.perf_counter()
-                    answer = lt.trace(lot, "1", lookup=lookup,
-                                      config=lt.DEFAULT_RESOLVER_CONFIG)
-                    elapsed_ms = (time.perf_counter() - t0) * 1000.0
-                    assert len(answer["hops"]) == 14, \
-                        f"{name}: {len(answer['hops'])} hops, expected 14"
-                    per_trace[name].append(elapsed_ms)
-
-        lines = [f"[ledger trace cost] {rounds} rounds, order ROTATED each round, "
-                 f"5-lot chain = 14 hops/trace",
-                 f"  ledger sizes: {sizes}"]
-        for name, _, _ in arms:
-            t = sorted(per_trace[name])
-            lines.append(
-                f"  {name:22s} {statistics.median(t):6.2f} ms/trace  "
-                f"{statistics.median(t)/14:6.3f} ms/hop  "
-                f"(p10 {t[len(t)//10]:6.2f} / p90 {t[(len(t)*9)//10]:6.2f})")
-        for tag in ("2step", "1shot"):
-            a = statistics.median(per_trace[f"{tag}/ledger_small"])
-            b = statistics.median(per_trace[f"{tag}/ledger_big"])
-            lines.append(f"  {tag}: 20x ledger -> {b / a:.2f}x")
-
-        # 🔴 The number is not reported without the PLAN behind it. A per-hop
-        # cost that goes DOWN as the ledger grows 20x is not a scaling result,
-        # it is two different plans, and saying which is the difference between
-        # a measurement and a rumour.
-        with ledger.connect() as conn:
-            for relation in ("ledger_small", "ledger_big"):
-                plan = conn.exec_driver_sql(
-                    "EXPLAIN (ANALYZE) "
-                    + lt._TRACE_CTE.format(relation=relation),
-                    {"start_lot": "C7-0", "max_depth": 20,
-                     # `LINEAGE_PREDICATES` retired 2026-08-27 with the lineage walk;
-                     # the plan SHAPE this asserts does not depend on which words are asked.
-                     "predicates": ["derived_from"]}).fetchall()
-                joins = [ln[0].strip() for ln in plan
-                         if ln[0].strip().startswith(("Hash Join", "Nested Loop",
-                                                      "Merge Join"))]
-                lines.append(f"  1shot/{relation} outer join: "
-                             f"{joins[0].split('(')[0].strip() if joins else '?'}")
-        with capsys.disabled():
-            print("\n" + "\n".join(lines))
-
-        # 🔴 The gate that matters is FLATNESS of the default path, not an
-        # absolute threshold invented to be passed. A 20x ledger that costs more
-        # than 2x per trace means the walk is reading the ledger rather than
-        # indexing into it, and that is the failure this design has to avoid.
-        ratio = (statistics.median(per_trace["2step/ledger_big"])
-                 / statistics.median(per_trace["2step/ledger_small"]))
-        assert ratio < 2.0, (
-            f"the default lookup is not flat across a 20x ledger: {ratio:.2f}x")
-        assert statistics.median(per_trace["2step/ledger_big"]) / 14 < 50.0
-    finally:
-        with ledger.begin() as conn:
-            conn.execute(text("DROP TABLE IF EXISTS ledger_small CASCADE"))
-            conn.execute(text("DROP TABLE IF EXISTS ledger_big CASCADE"))
+    resp = ledger_client.get(WALK_ROUTE, params={"id": lot_seed("L-NEVER-SEEN"), "hops": 3})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["state"] == "empty"
 
 
 # ---------------------------------------------------------------------------
@@ -1144,36 +606,6 @@ def test_coverage_renders_times_in_the_declared_zone(ledger):
     assert datetime.fromisoformat(in_seoul) == datetime.fromisoformat(in_utc)
 
 
-def test_every_sampled_lot_is_one_the_trace_can_actually_walk(ledger):
-    """🔴 THE SAMPLE IS SCORED BY ITS CONSUMER, NOT BY ITS OWN SQL.
-
-    A "try one of these" affordance that offered a lot with no lineage would
-    demonstrate the very emptiness this endpoint exists to explain. So every
-    sampled `(lot, slot)` is fed to the walk and required to produce a RESOLVED
-    lineage hop and a resolved `has_wafer` hop — i.e. the screen opens on
-    something, for both of the questions a slot makes askable.
-    """
-    with ledger.begin() as conn:
-        insert(conn, straight_chain(LOTS, SLOTS, WAFERS))
-    with ledger.connect() as conn:
-        sample = _coverage(conn)["sample"]
-        assert sample, "a ready ledger with three lineage links sampled nothing"
-        for entry in sample:
-            assert set(entry) == {"lot", "slot"}
-            assert isinstance(entry["slot"], str) and entry["slot"]
-            answer = trace_on(conn, entry["lot"], entry["slot"])
-            resolved = [h for h in answer["hops"]
-                        if h["predicate"] == "derived_from"
-                        and h["state"] == "resolved"]
-            assert resolved, (
-                f"sampled lot {entry['lot']!r} produced no resolved lineage hop: "
-                f"{answer['terminal_reason']}")
-            wafer_hops = [h for h in answer["hops"] if h["predicate"] == "has_wafer"]
-            assert wafer_hops and wafer_hops[0]["state"] == "resolved", (
-                f"sampled slot {entry['slot']!r} is not one lot "
-                f"{entry['lot']!r} holds")
-
-
 def test_the_sample_leads_with_the_lot_that_has_the_most_lineage(ledger):
     """Rule 2 of `_coverage_sample`, and it is what puts a CONTENDED lot first.
 
@@ -1218,24 +650,25 @@ def test_a_lot_with_only_a_register_is_told_apart_from_a_lot_nobody_knows(ledger
     """SITUATION 4 vs SITUATION 3 — the two that are both "the ledger says
     nothing about this lot" and are NOT the same fact."""
     with ledger.begin() as conn:
-        insert(conn, [atom("reg-LONELY", "L-LONELY", "register", {})])
+        insert(conn, [atom("reg-LONELY", "L-LONELY", "register", {"owner": "fab-2"})])
     with ledger.connect() as conn:
         answer = _coverage(conn)
         assert answer["state"] == "ready"
         assert answer["lots"] == 1
         assert answer["sample"] == []
-        known = trace_on(conn, "L-LONELY")
-        unknown = trace_on(conn, "L-NEVER-SEEN")
+        known = walk_on(conn, "L-LONELY", hops=3)
+        unknown = walk_on(conn, "L-NEVER-SEEN", hops=3)
 
-    # The two facts live in two places, and BOTH are anchored rather than free
-    # prose — `[root]` / `[unknown_subject]` in `terminal_reason`, and the
-    # register marker on the hop that could not be resolved. A client branches on
-    # the anchors (L3's provisional canon under R-2026-08-13-C); the sentence
-    # around them is for the operator.
-    assert known["terminal_reason"].startswith("[root]")
-    assert unknown["terminal_reason"].startswith("[unknown_subject]")
-    assert "register 있음" in known["hops"][-1]["reason"], known["hops"][-1]["reason"]
-    assert known["terminal_reason"] != unknown["terminal_reason"], (
+    # Neither walk finds a neighbour, so both say `empty` — the WALK is the same. What
+    # tells them apart is the node: a registration this walk reached puts the entity's
+    # own values on it as `attributes`, and a node no registration was reached for gets
+    # NO such key (not `{}`, not `null` — `_apply_registrations`, WALK.md §4). A client
+    # branches on the key; nothing here is prose.
+    assert known["state"] == unknown["state"] == "empty"
+    (known_node,) = known["nodes"]
+    (unknown_node,) = unknown["nodes"]
+    assert known_node["attributes"] == {"owner": "fab-2"}
+    assert "attributes" not in unknown_node, (
         "situations 3 and 4 render identically — the operator cannot tell a data "
         "boundary from a lot with no lineage claim")
 
@@ -1552,83 +985,3 @@ def test_coverage_answers_when_the_cursor_table_predates_the_refusal_column(ledg
             conn.execute(text("ALTER TABLE ledger_translator_cursor "
                               "ADD COLUMN refusal_reasons JSONB"))
 
-
-# --- the same distinctions, over HTTP ---------------------------------------
-
-def test_the_coverage_route_serves_the_pinned_shape(ledger_client, ledger):
-    with ledger.begin() as conn:
-        insert(conn, straight_chain(LOTS, SLOTS, WAFERS))
-    resp = ledger_client.get("/api/ledger/coverage")
-    assert resp.status_code == 200
-    assert resp.headers["content-type"].startswith("application/json"), (
-        "the route was shadowed by the SPA catch-all - include_router must stay "
-        "ABOVE it in main.py")
-    body = resp.json()
-    assert set(body) == COVERAGE_KEYS
-    assert body["state"] == "ready"
-    assert body["lots"] == len(LOTS)
-    assert set(body["occurred_at"]) == {"from", "to"}
-    # The status strip's three signals, over HTTP, in ONE request. Asserted here and
-    # not only against the function because the ruling's requirement is that the SCREEN
-    # can read them from the body it already fetches — a field that serialises to
-    # something FastAPI cannot encode would pass every in-process test and 500 here.
-    assert body["atoms"]["exact"] is False, "the atom count must declare itself an estimate"
-    assert body["partitions"]["count"] > 0
-    assert set(body["last_atom"]) == {"occurred_at", "recorded_at"}
-    assert isinstance(body["cursors"], list)
-
-
-def test_the_coverage_route_answers_200_when_the_ledger_is_not_deployed(
-        ledger_client, monkeypatch):
-    """An absent ledger is an ANSWER over HTTP too. A 500 here is what the
-    product owner would read as "the screen itself is broken"."""
-    from ledger import trace_router as router_module
-    monkeypatch.setattr(router_module, "LEDGER_RELATION", "ledger_events_not_migrated")
-    monkeypatch.setattr(router_module, "LEDGER_CURSOR_RELATION",
-                        "ledger_cursor_not_migrated")
-    resp = ledger_client.get("/api/ledger/coverage")
-    assert resp.status_code == 200
-    assert resp.json()["state"] == "absent"
-
-
-def test_the_trace_route_names_an_absent_ledger_in_a_field_not_in_prose(
-        ledger_client, monkeypatch):
-    """🔴 THE ALARM THAT HAD NEVER BEEN RUNG.
-
-    The 503-for-an-absent-relation branch shipped with NO test, so nothing had
-    ever driven it — and it did not work on this box: it matched the English
-    words "does not exist" in the driver's message, while this PostgreSQL emits
-    Korean. The relation is now judged by the catalogue and the body is
-    machine-readable. This is the test that fires it.
-    """
-    from ledger import trace_router as router_module
-    monkeypatch.setattr(router_module, "LEDGER_RELATION", "ledger_events_not_migrated")
-
-    resp = ledger_client.get("/api/ledger/trace", params={"lot": "L-D", "slot": "3"})
-    assert resp.status_code == 503
-    detail = resp.json()["detail"]
-    assert isinstance(detail, dict), (
-        "the client would have to parse Korean prose to tell a deployment "
-        "problem from a data boundary")
-    # 🔴 THE LITERAL, NOT THE CONSTANT. `detail["reason"] == lt.REASON_RELATION_
-    # ABSENT` compares the code to itself and stays green while the token the
-    # client lane branches on changes underneath it — a mutant renaming the
-    # constant passed that version of this assertion. The wire value is the
-    # contract, so the wire value is what is written out here.
-    assert detail["reason"] == "ledger_relation_absent"
-    assert lt.REASON_RELATION_ABSENT == "ledger_relation_absent"
-    assert detail["state"] == "absent"
-    assert detail["relation"] == "ledger_events_not_migrated"
-    assert detail["message"]
-
-
-def test_an_unknown_lot_and_an_undeployed_ledger_are_different_responses(
-        ledger_client, ledger):
-    """SITUATION 3 vs SITUATION 1, over HTTP. One is a 200 carrying a reason, the
-    other a 503 carrying a machine-readable one. They must never coincide."""
-    with ledger.begin() as conn:
-        insert(conn, straight_chain(LOTS, SLOTS, WAFERS))
-    resp = ledger_client.get("/api/ledger/trace",
-                             params={"lot": "L-NEVER-SEEN", "slot": "1"})
-    assert resp.status_code == 200
-    assert "unknown_subject" in resp.json()["terminal_reason"]
