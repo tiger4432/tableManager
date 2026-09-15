@@ -914,49 +914,92 @@ def load_enrichment_chain_rules(path: str = None, known_tables: dict = None) -> 
     """
     chain_rules = []
     for rule in load_enrichment_rules(path=path, known_tables=known_tables):
-        params = dict(rule)
-        enabled = bool(rule.get("enabled", True))
-        dedup_name, confirm_name = synthesized_rule_names(rule["name"])
-        # The cell that lets ONE loader answer per-file counts (판정 293-b). The graph used
-        # to keep a second reader so it could tell written rules from synthesized ones;
-        # that reader was the 「같은 기능 두 경로」, and this cell is what replaces it.
-        origin = "synthesized:" + rule["name"]
-        chain_rules.append({
-            "name": dedup_name,
-            "trigger_table": rule["source_table"],
-            "target_table": rule["derived_table"],
-            # 🪦 [S-211, 판정 364] The module moved into `enrichment/`. This is a STRING,
-            # so no import rewriter could see it - the chain worker resolves it at run time.
-            "mapper_module": "enrichment.mapper",
-            "mapper_function": "map_enrichment_dedup",
-            "is_batch": True,
-            "enabled": enabled,
-            "params": params,
-            # ⚠️ KEPT BESIDE `params`, NOT INSTEAD OF IT. `map_enrichment_dedup` reads
-            # `rule["enrichment"]` today; removing it here would be a second change riding
-            # on this one, and the mapper's own round is where that key retires.
-            "enrichment": rule,
-            "origin": origin,
-        })
-        chain_rules.append({
-            "name": confirm_name,
-            # 🔴 A SELF-LOOP, AND THAT IS WHAT MAKES THE PING-PONG GUARD FREE. The derived
-            # table both triggers and receives, so the only thing that could make this
-            # re-enter itself is `allow_chain_trigger` — which this kind DOES NOT DECLARE.
-            # Its own writes therefore cannot wake it, and the load-time cycle validator
-            # does not see this loop as an edge at all.
-            "trigger_table": rule["derived_table"],
-            "target_table": rule["derived_table"],
-            "mapper": AUTO_CONFIRM_MAPPER,
-            # ⚠️ THE WORK RUNS ON THE FOLLOW-UP LAP, NOT IN THE GROUP. It already did
-            # (S-151, 판정 264) — inlining it cost 0.875 s per group and that measurement
-            # is why the seat moved. This cell is what says so in the declaration instead
-            # of only in the code.
-            "follow_up": True,
-            "enabled": enabled,
-            "params": params,
-            "origin": origin,
-        })
+        chain_rules.extend(chain_rules_for(rule))
+    return chain_rules
+
+
+def chain_rules_from_cells(name: str, enabled_written: bool, enabled: bool,
+                           source_table, derived_table, cells: dict,
+                           known_tables: dict = None) -> tuple:
+    """A unified `derive.decide` declaration -> (chain rules, refusal).
+
+    🔴 [S-239] IT GOES THROUGH THE SAME NORMALIZER THE FILE GOES THROUGH. The old path is
+    `_validate_rule` then `chain_rules_for`; this is the same two calls with the cells arriving
+    from a different grammar. Anything else would be a second normalizer - and the cell it
+    read differently would be invisible until a derived table quietly stopped matching.
+
+    🔴 `auto_confirm_declared` IS DERIVED HERE, NOT WRITTEN (판정 401). The normalizer reads
+    「is the key present」 off the raw dict, which is exactly `"auto_confirm" in cells` - so the
+    round trip keeps 「written」 and 「absent」 apart without the author ever writing that they
+    wrote something.
+    """
+    raw = {"source_table": source_table, "derived_table": derived_table}
+    raw.update(cells or {})
+    if enabled_written:
+        raw["enabled"] = enabled
+    normalized, why = _validate_rule(name, raw, known_tables)
+    if normalized is None:
+        return [], why or "the declaration is disabled"
+    return chain_rules_for(normalized), None
+
+
+def chain_rules_for(rule: dict) -> list:
+    """ONE normalized enrichment rule -> its two chain rules.
+
+    🔴 [S-239] THE UNIFIED `decide` KIND REACHES THIS FUNCTION, NOT A COPY OF IT. That
+    round's whole claim is 「같은 답」 - a declaration written in the new grammar produces what
+    the old file produces - and the strongest form of that claim is not a comparison between
+    two builders but ONE builder with two front doors. A second expander would agree on the
+    day it was written and drift on the first cell added to the vocabulary.
+
+    ⚠️ THE BODY IS UNCHANGED; only the loop around it moved. A move that quietly reordered
+    or dropped a cell would be invisible until a chain stopped firing, which is why the
+    round's gate compares a census rather than trusting this sentence.
+    """
+    chain_rules = []
+    params = dict(rule)
+    enabled = bool(rule.get("enabled", True))
+    dedup_name, confirm_name = synthesized_rule_names(rule["name"])
+    # The cell that lets ONE loader answer per-file counts (판정 293-b). The graph used
+    # to keep a second reader so it could tell written rules from synthesized ones;
+    # that reader was the 「같은 기능 두 경로」, and this cell is what replaces it.
+    origin = "synthesized:" + rule["name"]
+    chain_rules.append({
+        "name": dedup_name,
+        "trigger_table": rule["source_table"],
+        "target_table": rule["derived_table"],
+        # 🪦 [S-211, 판정 364] The module moved into `enrichment/`. This is a STRING,
+        # so no import rewriter could see it - the chain worker resolves it at run time.
+        "mapper_module": "enrichment.mapper",
+        "mapper_function": "map_enrichment_dedup",
+        "is_batch": True,
+        "enabled": enabled,
+        "params": params,
+        # ⚠️ KEPT BESIDE `params`, NOT INSTEAD OF IT. `map_enrichment_dedup` reads
+        # `rule["enrichment"]` today; removing it here would be a second change riding
+        # on this one, and the mapper's own round is where that key retires.
+        "enrichment": rule,
+        "origin": origin,
+    })
+    chain_rules.append({
+        "name": confirm_name,
+        # 🔴 A SELF-LOOP, AND THAT IS WHAT MAKES THE PING-PONG GUARD FREE. The derived
+        # table both triggers and receives, so the only thing that could make this
+        # re-enter itself is `allow_chain_trigger` — which this kind DOES NOT DECLARE.
+        # Its own writes therefore cannot wake it, and the load-time cycle validator
+        # does not see this loop as an edge at all.
+        "trigger_table": rule["derived_table"],
+        "target_table": rule["derived_table"],
+        "mapper": AUTO_CONFIRM_MAPPER,
+        # ⚠️ THE WORK RUNS ON THE FOLLOW-UP LAP, NOT IN THE GROUP. It already did
+        # (S-151, 판정 264) — inlining it cost 0.875 s per group and that measurement
+        # is why the seat moved. This cell is what says so in the declaration instead
+        # of only in the code.
+        "follow_up": True,
+        "enabled": enabled,
+        "params": params,
+        "origin": origin,
+    })
     return chain_rules
 
 

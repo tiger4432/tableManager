@@ -268,3 +268,58 @@ def unknown_join_cells(internal: dict) -> list:
     if derive.get("kind") != "join":
         return []
     return join_into.unknown_cells(derive.get("join") or {})
+
+
+#: The sub-cells of `derive.decide` this product reads. `auto_confirm_declared` is NOT among
+#: them (판정 401): 「was it written」 is DERIVED from the key being present, the same way
+#: `enabled_written` is, and a cell for it would be a place to write that you wrote something.
+DECIDE_CELLS = ("key", "fields", "list_columns", "aggregations", "reference_views",
+                "auto_confirm", "alignment")
+
+#: How a `decide` cell is spelled in the enrichment vocabulary the normalizer already reads.
+_DECIDE_TO_ENRICHMENT = {"key": "decision_key", "fields": "target_fields"}
+
+
+def decide_rules(internal: dict, known_tables: dict = None) -> tuple:
+    """A unified `decide` declaration -> (its chain rules, refusal).
+
+    🔴 [S-239] THE SHELL IS THE WHOLE ROUND. `enrich` is ALREADY a chain mapper - dedup on
+    the ordinary path, auto-confirm on the follow-up lap - so nothing about how it RUNS moves
+    here. What moves is where the declaration may be written, and the proof that the two
+    writings agree is that they reach one expander, not two.
+    """
+    from enrichment import config as enrichment_config
+
+    derive = internal.get("derive") or {}
+    if derive.get("kind") != "decide":
+        return [], None
+    cells = {}
+    for key, value in (derive.get("decide") or {}).items():
+        cells[_DECIDE_TO_ENRICHMENT.get(key, key)] = value
+    return enrichment_config.chain_rules_from_cells(
+        internal.get("name"), bool(internal.get("enabled_written")),
+        bool(internal.get("enabled", True)),
+        (internal.get("on") or {}).get("table"),
+        (internal.get("into") or {}).get("table"),
+        cells, known_tables)
+
+
+def unknown_decide_cells(internal: dict) -> list:
+    """Sub-cells of `derive.decide` this product does not read. NAMED, never refused."""
+    derive = internal.get("derive") or {}
+    if derive.get("kind") != "decide":
+        return []
+    return sorted(str(key) for key in (derive.get("decide") or {})
+                  if key not in DECIDE_CELLS)
+
+
+def is_switched_off(internal: dict) -> bool:
+    """⛔ [판정 399, ③′] `enabled: false` IS THE ONE OFF SWITCH A UNIFIED DECLARATION HAS.
+
+    So OFF has to mean what §0-ter demands of a switch: the loader touches no database and
+    stands no rule - not 「stands it and filters it later」, which is the shape that let an
+    operator turn everything off and watch it keep erroring. `ASSY_CHAIN_SYNTHESIZE` is a
+    DIFFERENT switch with a different subject (rules the product derived from files the
+    operator did not write), and it deliberately does not reach here.
+    """
+    return internal.get("enabled_written") and internal.get("enabled") is False

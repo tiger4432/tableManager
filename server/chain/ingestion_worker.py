@@ -714,10 +714,32 @@ def load_chain_rules():
     #    선언이 «다른 뜻»이 된다. 새 칸 하나로만 가른다.
     try:
         from chain import rule_shape
+        from database import crud as _catalogue
+
         translated = []
         for rule in rules:
             if isinstance(rule, dict) and isinstance(rule.get("derive"), dict):
                 internal = rule_shape.from_declaration(rule)
+                if rule_shape.is_switched_off(internal):
+                    # ⛔ [판정 399, ③′] OFF MEANS NOTHING HAPPENS. No rule stands, and nothing
+                    # below this line runs - which is the whole difference between a switch
+                    # and a filter. Not counted as refused either: the operator turned it off
+                    # on purpose and a refusal list is for declarations that are wrong.
+                    logger.info("[ChainRules] %s: enabled=false — no rule stands for it.",
+                                rule.get("name"))
+                    continue
+                decided, decide_refusal = rule_shape.decide_rules(
+                    internal, _catalogue.TABLE_CONFIG)
+                if decide_refusal:
+                    logger.error("[ChainRules] %s: %s", rule.get("name"), decide_refusal)
+                    continue
+                if decided:
+                    for unknown in rule_shape.unknown_decide_cells(internal):
+                        logger.warning(
+                            "[ChainRules] %s: derive.decide cell this product does not read "
+                            "— %s. The rule runs.", rule.get("name"), unknown)
+                    translated.extend(decided)
+                    continue
                 try:
                     rule_shape.refuse_join_trigger_conflict(internal)
                 except rule_shape.JoinTriggerConflict as conflict:
