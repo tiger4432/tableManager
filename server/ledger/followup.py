@@ -335,7 +335,7 @@ def event_transaction_id():
 
 # ------------------------------------------------------------------- the chain's one line
 
-def enqueue(table_name, row_ids, event_type, transaction_id=None):
+def enqueue(table_name, row_ids, event_type, transaction_id=None, chain_depth=None):
     """Remember that rows of `table_name` changed. Returns whether anything was queued.
 
     Called from the chain worker's group step BEFORE its trigger filter, because the
@@ -347,6 +347,15 @@ def enqueue(table_name, row_ids, event_type, transaction_id=None):
     writes lands in the SAME audit group as the table change that caused it (S-117,
     판정 248). Absent for a backfill or retroactive filler, and LEFT absent - see
     `event_transaction_id`.
+
+    🔴 [S-249 ⓒ] `chain_depth` RIDES ALONG BECAUSE THE FOLLOW-UP LAP IS A HOP. Measured
+    before building: `request_chain_depth` is set in exactly ONE place - the chain group step
+    - and the follow-up drain runs in its own thread outside that scope, so everything this
+    lap writes carried NO hop at all and could never meet `max_chain_depth`. A loop that goes
+    through the follow-up lap was therefore unbounded while a loop that stayed in the group
+    step was bounded, which is one ceiling with two answers.
+    ⚠️ ABSENT STAYS ABSENT. A change that is not the chain's has no hop, and inventing a
+    zero for it would make every ordinary edit look like the first step of a cascade.
     """
     global _dropped
     if event_type not in FOLLOWED_EVENT_TYPES:
@@ -359,7 +368,8 @@ def enqueue(table_name, row_ids, event_type, transaction_id=None):
             _dropped += 1
             return False
         _queue.append((str(table_name), ids, str(event_type), time.time(),
-                       str(transaction_id) if transaction_id else None))
+                       str(transaction_id) if transaction_id else None,
+                       chain_depth))
     return True
 
 
@@ -526,7 +536,7 @@ def drain_once(engine, setup):
     item = _take()
     if item is None:
         return None
-    table, row_ids, event_type, queued_at, transaction_id = item
+    table, row_ids, event_type, queued_at, transaction_id, chain_depth = item
     from . import backfill
 
     # 🔴 `row_ids` IS RETURNED AS A VALUE so a caller can act on the rows this batch
@@ -534,8 +544,12 @@ def drain_once(engine, setup):
     # enrichment auto-confirm rides this drain, and it is called from the worker loop:
     # importing it here would tie the ledger basis to the enrichment one in code, and the
     # ledger only ever READS these tables.
+    # 🔴 [S-249 ⓒ] THE CAUSE TRAVELS WITH THE BATCH. A follow-up kind cannot ask 「have I
+    # already answered for this change」 unless it can name the change, and the transaction
+    # that caused it is that name. It was taken off the queue and dropped here.
     done = {"table": table, "event_type": event_type, "rows": len(row_ids),
-            "row_ids": list(row_ids),
+            "row_ids": list(row_ids), "transaction_id": transaction_id,
+            "chain_depth": chain_depth,
             "waited": time.time() - queued_at, "sources": {}}
     # 🔴 ASKED BEFORE THE DELETE BRANCH, because a deletion has view followers too (S-65-d).
     view_followers, cannot_follow = view_followers_of(engine, setup, table)

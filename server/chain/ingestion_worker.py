@@ -8,7 +8,7 @@ import inspect
 import uuid
 import select
 import time
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 
 import numpy as np
 import pandas as pd
@@ -1321,7 +1321,10 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                 event.table_name,
                 ledger_followup.row_ids_of(get_payload_dict(event)),
                 event.event_type,
-                tx_id)
+                tx_id,
+                # [S-249 ⓒ] The hop this event arrived at, so the follow-up lap is a STEP of
+                # the same cascade rather than a place where the ceiling stops applying.
+                event_constants.chain_depth_of(get_payload_dict(event)))
 
     # Named for the same reason as `mark processed`: it walks every event against every
     # rule, so it is O(events x rules) on a thousand-row group and nothing on the line
@@ -2604,6 +2607,48 @@ def another_chain_loop_is_running(now=None):
 FOLLOWUP_IDLE_SECONDS = 1.0
 
 
+#: (origin tx) -> {(table, rule name): frozenset(row ids already served)}. Bounded: a cause
+#: is finished when its cascade stops, and the oldest are evicted rather than kept forever.
+_FOLLOWUP_SERVED = OrderedDict()
+MAX_REMEMBERED_CAUSES = 512
+
+
+def followup_already_served(transaction_id, table, rule_name, row_ids) -> list:
+    """The rows of this cause this rule has NOT been handed yet, remembering these.
+
+    🔴 [S-249 ⓒ] ONE CAUSE, ONE HELPING. The principle the group step already has - 「체인이
+    쓴 행은 체인을 다시 깨우지 않는다, 선언으로 켠 것만 예외」 - had no counterpart on the
+    follow-up lap: a rule could be handed the same row for the same original transaction
+    again and again, because each pass through the lap looked like a fresh batch.
+
+    ⚠️ AND THE EXCEPTION STAYS AN EXCEPTION. This does not stop a rule from seeing a row
+    again under a DIFFERENT cause; that is the ordinary case and the reason the key is the
+    transaction rather than the row.
+
+    ⚠️ NO TRANSACTION, NO MEMORY. A backfill or a retroactive filler queues rows with no
+    transaction id, and remembering those under one shared key would make the second
+    backfill of a row look like a repeat of the first.
+    """
+    rows = [str(r) for r in (row_ids or ()) if r]
+    if not transaction_id or not rows:
+        return rows
+
+    served = _FOLLOWUP_SERVED.setdefault(transaction_id, {})
+    _FOLLOWUP_SERVED.move_to_end(transaction_id)
+    key = (table, rule_name)
+    already = served.get(key) or frozenset()
+    fresh = [r for r in rows if r not in already]
+    served[key] = already | frozenset(rows)
+    while len(_FOLLOWUP_SERVED) > MAX_REMEMBERED_CAUSES:
+        _FOLLOWUP_SERVED.popitem(last=False)
+    return fresh
+
+
+def forget_followups():
+    """선언이 바뀌거나 시험이 끝나면 다시 센다 — 기억은 «이 실행에 대한» 것이다."""
+    _FOLLOWUP_SERVED.clear()
+
+
 def _run_builtin_followups(db, done):
     """Route this follow-up batch to every `builtin:` kind whose rule watches its table.
 
@@ -2621,6 +2666,8 @@ def _run_builtin_followups(db, done):
     ⚠️ CONTAINED, like its neighbour. A failure here must not cost the ledger follow-up that
     already succeeded, and must not propagate into the drain loop.
     """
+    from database.context import request_chain_depth
+
     if not done:
         return
     table, row_ids = done.get("table"), done.get("row_ids")
@@ -2633,20 +2680,42 @@ def _run_builtin_followups(db, done):
     try:
         from chain import builtins
 
-        for rule in _followup_builtin_rules():
-            if rule.get("trigger_table") != table:
-                continue
-            kind = rule.get("mapper")
-            result = builtins.run_builtin(
-                kind, db, rule, row_ids=list(row_ids), done=done)
+        # 🔴 [S-249 ⓒ] THE LAP IS A HOP. `request_chain_depth` is set in exactly one place -
+        # the chain group step - and this drain runs in its own thread outside that scope, so
+        # everything written here carried NO hop and could never meet `max_chain_depth`. A
+        # loop through this lap was unbounded while the same loop inside the group step was
+        # bounded: one ceiling, two answers. Setting it here makes this lap a STEP.
+        incoming_depth = done.get("chain_depth")
+        token_depth = request_chain_depth.set((incoming_depth or 0) + 1)
+        try:
+            for rule in _followup_builtin_rules():
+                if rule.get("trigger_table") != table:
+                    continue
+                kind = rule.get("mapper")
+                # ⛔ ONE CAUSE, ONE HELPING. Rows this rule has already been handed for this
+                # original transaction are named and skipped - the follow-up half of 「체인이
+                # 쓴 행은 체인을 다시 깨우지 않는다」.
+                fresh = followup_already_served(
+                    done.get("transaction_id"), table, rule.get("name"), row_ids)
+                if not fresh:
+                    logger.info(
+                        "[ChainBuiltin] rule=%s kind=%s table=%s — 이 원인(tx %s)의 행은 "
+                        "이미 한 번 받았습니다. 건너뜁니다.",
+                        rule.get("name"), kind, table, done.get("transaction_id"))
+                    continue
+                result = builtins.run_builtin(
+                    kind, db, rule, row_ids=list(fresh), done=done)
             # 🔴 THE GROUP LINE CARRIES THE RULE NAME. A count with no name is a line nobody
             # can act on — and with several join rules watching one table it cannot even be
             # attributed.
-            logger.info("[ChainBuiltin] rule=%s kind=%s table=%s rows_in=%d written=%s%s",
-                        rule.get("name"), kind, table, len(row_ids),
-                        (result or {}).get("written"),
-                        (" REFUSED: " + result["refusal"]) if (result or {}).get("refusal")
-                        else "")
+                logger.info(
+                    "[ChainBuiltin] rule=%s kind=%s table=%s rows_in=%d written=%s%s",
+                    rule.get("name"), kind, table, len(fresh),
+                    (result or {}).get("written"),
+                    (" REFUSED: " + result["refusal"]) if (result or {}).get("refusal")
+                    else "")
+        finally:
+            request_chain_depth.reset(token_depth)
     except Exception as err:                                       # noqa: BLE001
         logger.error("[ChainBuiltin] follow-up dispatch failed for table %s "
                      "(the ledger follow-up itself is unaffected): %s", table, err)

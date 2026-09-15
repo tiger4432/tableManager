@@ -29,12 +29,17 @@ from ledger import followup, runtime_v2, store                         # noqa: E
 def test_the_queue_carries_the_transaction_of_the_event_it_followed():
     followup._queue.clear()
     try:
-        assert followup.enqueue("t", ["r1"], "EDIT", "tx-9")
+        assert followup.enqueue("t", ["r1"], "EDIT", "tx-9", 2)
         item = followup._take()
-        table, row_ids, event_type, _queued_at, transaction_id = item
+        table, row_ids, event_type, _queued_at, transaction_id, chain_depth = item
 
         assert (table, row_ids, event_type) == ("t", ("r1",), "EDIT")
         assert transaction_id == "tx-9"
+        # 🔴 [S-249 ⓒ] THE HOP RIDES WITH THE CAUSE. Measured before building: the
+        # follow-up drain runs outside the one scope that stamps a hop, so everything this
+        # lap wrote carried none and could never meet `max_chain_depth` - a loop through the
+        # lap was unbounded while the same loop inside the group step was bounded.
+        assert chain_depth == 2
     finally:
         followup._queue.clear()
 
