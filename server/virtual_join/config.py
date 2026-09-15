@@ -625,19 +625,89 @@ def load_virtual_join_rules(path: str = None, known_tables: dict = None,
     파일 **부재**는 거부가 아니다(선언이 없을 뿐) ― 수집기에 남기지 않는다.
     """
     rules_path = path or VIRTUAL_JOIN_RULES_PATH
-    if not os.path.exists(rules_path):
-        return []
+    raw_config = {}
+    if os.path.exists(rules_path):
+        try:
+            with open(rules_path, "r", encoding="utf-8") as f:
+                raw_config = json.load(f)
+        except Exception as e:
+            logger.error("Failed to load virtual join rules from %s: %s", rules_path, e)
+            _record(rejections, "file", None,
+                    f"virtual_join_rules.json could not be read ({e.__class__.__name__}) ― "
+                    f"NO virtual join is in effect")
+            return []
+    rules = validate_virtual_join_rules(raw_config, known_tables=known_tables,
+                                        rejections=rejections)
+    # 🔴 [S-251] AND THE UNIFIED FILE DECLARES THESE TOO. `into: {read: true}` was in the
+    # grammar with nobody reading it - `rule_shape` translated a virtual join INTO that
+    # shape, and nothing ever translated one back out, so a read-time join could live only
+    # in `virtual_join_rules.json`. They join the SAME list here, so they get the same
+    # validation, the same namespace, the same uniqueness gate (S-235) and the same
+    # retraction (S-248) - one join, one set of answers, wherever it was written.
+    #
+    # ⚠️ THE FILE'S ABSENCE IS NOT THE END OF THE QUESTION ANY MORE. This used to return
+    # `[]` the moment `virtual_join_rules.json` was missing; a deployment that declared its
+    # joins only in the unified file would have had none of them.
+    #
+    # ⛔ AND A PARTIAL LIST IS STILL NOT RETRACTED FROM. A caller passing `path` is reading
+    # a subset on purpose, so it does not get the unified half either - the two halves of
+    # 「what is declared」 stay together.
+    if path is None:
+        rules.extend(_read_time_joins_from_unified(
+            {rule["name"] for rule in rules}, known_tables, rejections))
+    return rules
+
+
+def _read_time_joins_from_unified(taken: set, known_tables, rejections) -> list:
+    """`into: {read: true}` declarations in `chain_rules.json`, as virtual join rules.
+
+    ⚠️ THE SAME VALIDATOR, ON PURPOSE. These go through `_validate_join` exactly as a
+    declaration in the old file does - a second validator would be a second answer to
+    「is this join runnable」, and the whole point of the unified grammar is that where you
+    wrote it does not change what it means.
+    """
     try:
-        with open(rules_path, "r", encoding="utf-8") as f:
-            raw_config = json.load(f)
-    except Exception as e:
-        logger.error("Failed to load virtual join rules from %s: %s", rules_path, e)
-        _record(rejections, "file", None,
-                f"virtual_join_rules.json could not be read ({e.__class__.__name__}) ― "
-                f"NO virtual join is in effect")
+        from chain import ingestion_worker, rule_shape
+    except Exception:                                              # noqa: BLE001
         return []
-    return validate_virtual_join_rules(raw_config, known_tables=known_tables,
-                                       rejections=rejections)
+
+    out = []
+    for raw in ingestion_worker.read_rules_document()["rules"] or ():
+        if not isinstance(raw, dict) or not isinstance(raw.get("derive"), dict):
+            continue
+        internal = rule_shape.from_declaration(raw)
+        if (internal.get("derive") or {}).get("kind") != "join":
+            continue
+        if not (internal.get("into") or {}).get("read"):
+            continue
+        name = str(internal.get("name") or "")
+        if rule_shape.is_switched_off(internal):
+            # ⛔ OFF IS OFF (판정 399 ③′). Not validated, not counted, not complained about.
+            continue
+        if name in taken:
+            # 🔴 ONE NAME, ONE JOIN. The same name in both files is two declarations
+            # claiming one identity, and picking either silently would make the other file
+            # a lie. Named once, through the collector every other refusal uses.
+            _say_once(("unified_name", name), logger,
+                      "[VirtualJoin:%s] declared in BOTH virtual_join_rules.json and "
+                      "chain_rules.json; the unified one is ignored", name)
+            _record(rejections, "rule", name,
+                    "declared in both virtual_join_rules.json and chain_rules.json - "
+                    "one name is one join. Remove it from one of the two files",
+                    code=CODE_SHAPE)
+            continue
+        normalized, err, code, facts = _validate_join(
+            name, rule_shape.as_join_rule(internal), known_tables,
+            rejections=rejections)
+        if err is not None:
+            _say_once(("shape", name), logger,
+                      "[VirtualJoin:%s] declaration rejected: %s", name, err)
+            _record(rejections, "rule", name, err, code=code, facts=facts)
+            continue
+        if normalized is not None:
+            normalized["origin"] = "decl"
+            out.append(normalized)
+    return out
 
 
 # ---------------------------------------------------------------------------

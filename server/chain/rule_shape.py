@@ -396,6 +396,18 @@ def expand_declaration(declaration, table_config=None) -> tuple:
     if is_switched_off(internal):
         return ([], None, ["%s: enabled=false \u2014 no rule stands for it." % name])
 
+    # 🔴 [S-251] A READ-TIME JOIN IS NOT A CHAIN RULE, AND SAYING SO IS NOT A REFUSAL.
+    # `into: {read: true}` declares a join that answers when somebody READS - it writes
+    # nothing, has no trigger and runs no mapper. Before this it came out of here as a rule
+    # with no mapper cell and the loader dropped it as `unresolvable_mapper`: a correct
+    # declaration reported as a typo. It stands in `virtual_join.config.load_virtual_join_rules`
+    # instead, through the adapter that has always known how to write one (`as_join_rule`).
+    if ((internal.get("derive") or {}).get("kind") == "join"
+            and (internal.get("into") or {}).get("read")):
+        return ([], None,
+                ["%s: into.read \u2014 a READ-TIME join. It stands beside the ones declared "
+                 "in virtual_join_rules.json, not as a chain rule." % name])
+
     decided, decide_refusal = decide_rules(internal, table_config)
     if decide_refusal:
         return ([], "%s: %s" % (name, decide_refusal), [])

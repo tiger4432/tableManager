@@ -122,3 +122,24 @@ Transaction … permanently failed: N event(s) -> FAILED. 원인: <예외 문장
   `[join_into:이름] N left row(s) matched MORE THAN ONE right row and are skipped by name ...`
   이 줄이 보이면 «오른쪽 표의 데이터»에 같은 키가 둘인 것입니다 — 2번(접기)으로 가십시오. 선언을 고칠 일이 아닙니다.
 * 켜면 «지금부터 바뀌는 행»이 조인됩니다. **기존 행 소급(S-242 착지):** 어드민 소급 탭 → `chain_replay` → 규칙 이름은 **왼쪽 규칙**(오른쪽 `…:reference` 는 이름 대고 거절됨) → pace `slow` 또는 `trickle` → «세기»(「다시 계산할 행」 수가 뜸) → 실행. 왼쪽 표 전체 행이 대상입니다(박스 실측 488,429 행). 한 페이지가 던지면 그 페이지만 세고 계속 갑니다(`pages_failed`).
+
+### 5-bis. 같은 파일에 «읽기 시점» 조인 적기 (S-251)
+
+`into` 가 «택1» 입니다 — `table` 이면 «쓰는» 조인(위 §5), `read: true` 면 «읽을 때 답하는» 조인입니다. 읽기 조인은 값을 «저장하지 않고» 조회 응답에서 채워집니다.
+
+```jsonc
+{
+  "name": "log_frame_from_inventory",
+  "on":     { "table": "dt_log" },                     // 왼쪽 표
+  "derive": { "kind": "join",
+              "join": { "right_table": "dt_inventory",
+                        "join_key": [ { "left": "dt_job", "right": "dt_job" } ],
+                        "expose": [ "dt_frame" ] } },
+  "into":   { "read": true }                           // ← 이 한 칸이 «읽기 시점»
+}
+```
+
+* `virtual_join_rules.json` 에 적은 것과 «완전히 같습니다» — 같은 검증 · 같은 이름공간 · 같은 유일 인덱스 요구 · 같은 회수 대상. 두 파일 중 «어디에 적었나»가 뜻을 바꾸지 않습니다.
+* ⛔ **같은 이름을 두 파일에 적으면 «거절»입니다** — 한 이름은 한 조인입니다. 거절 줄이 그 이름을 댑니다.
+* 이 선언은 «체인 규칙이 아닙니다» — 부팅 줄의 `[ChainRules] set(N)` 에 «안 뜹니다»(쓰는 게 없으니 트리거도 맵퍼도 없습니다). 가상 조인 쪽 줄에서 확인하십시오.
+* 기존 `virtual_join_rules.json` 은 «그대로 읽힙니다». 옮길 필요 없습니다.
