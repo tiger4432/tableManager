@@ -439,3 +439,20 @@ def test_a_left_row_with_two_right_answers_is_skipped_by_name_and_the_rest_are_w
     assert written == 1
     assert [i.row_id for i in captured["items"]] == ["ok"]
     assert captured["items"][0].updates == {"v": "C"}
+# ---------------------------------------------------------------------------
+# 2026-09-15 - a numeric join key is folded by the machine, not refused by the database
+# ---------------------------------------------------------------------------
+
+def test_a_number_key_is_compared_as_text_and_a_text_key_is_left_alone():
+    """Owner, migrating a live join: 「double precision 자료형 오류」. The fold said
+    `coalesce(col, '')` to a Float column and PostgreSQL refused the '' - the operator had
+    declared a join and lost it to a type they never chose. Scored on the SQL this module
+    EMITS for PostgreSQL, because SQLite accepts what PostgreSQL refuses."""
+    from sqlalchemy import Column, Float, MetaData, String, Table
+    from sqlalchemy.dialects import postgresql
+
+    t = Table("t", MetaData(), Column("num", Float), Column("txt", String))
+    num_sql = str(join_into._folded(t.c.num, None).compile(dialect=postgresql.dialect()))
+    txt_sql = str(join_into._folded(t.c.txt, None).compile(dialect=postgresql.dialect()))
+    assert "CAST(t.num AS TEXT)" in num_sql, num_sql
+    assert txt_sql == "coalesce(t.txt, %(coalesce_1)s)", txt_sql
