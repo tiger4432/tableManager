@@ -44,6 +44,20 @@ TABLE = "pgqa_bk_table"
 
 # --- instrumentation --------------------------------------------------------
 
+def _invariant_tail(action):
+    """What an `operator_line` action says no matter what it is filled with.
+
+    The action functions take names and set them into a fixed sentence, and the part
+    after the LAST name is what every caller shares. Rendering with sentinels and cutting
+    after the last one reads that part off the author - the alternative is to copy the
+    Korean sentence here, and a copy is a second author the day the wording moves.
+    """
+    sentinels = tuple("<%d>" % i for i in range(action.__code__.co_argcount))
+    rendered = action(*sentinels)
+    last = sentinels[-1]
+    return rendered[rendered.rindex(last) + len(last):]
+
+
 @contextlib.contextmanager
 def upsert_decisions():
     """Record what `_pg_multirow_upsert` ANSWERED, per call.
@@ -688,7 +702,17 @@ def test_a_persistent_business_key_conflict_is_refused_not_replayed(pg_session, 
         "the re-raised error no longer classifies as a business-key "
         "violation, so the endpoint would answer 500 instead of 409")
     assert caught.value.orig.diag.constraint_name == f"uq_bk_{TABLE}"
-    assert any("BK Conflict Unresolved" in r.message for r in caplog.records)
+    # The refusal is an operator line (S-247): its search prefix is `line()`'s and its
+    # next-action clause is `widen_the_key` - the OPPOSITE repair of `fold_the_data`,
+    # because two rows the table's own identity cannot tell apart is a declaration
+    # defect, not a data one. Both are asked of `operator_line` rather than copied, so
+    # the sentence has one author and this test cannot go green on a lookalike.
+    import operator_line
+    prefix = operator_line.line("BKConflict", TABLE, "", "").split(" ", 1)[0]
+    refusals = [r.message for r in caplog.records if r.message.startswith(prefix)]
+    assert refusals, f"no {prefix} operator line was logged"
+    assert refusals[-1].endswith(_invariant_tail(operator_line.widen_the_key)), (
+        refusals[-1])
 
     pg_session.rollback()
     # The session must be USABLE after the refusal - the caller's `finally`
