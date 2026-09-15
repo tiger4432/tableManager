@@ -39184,3 +39184,7 @@ S-106 조건   철회는 «오늘의 함수»(store 의 withdraw)를 그대로 �
 > 게이트 6 · collect 6,769 에러 0.
 > 🔴 **게이트가 재는 것은 «텍스트»입니다** — 런처의 자식 명세는 «설정»이라 그걸 읽는 것은 주어를 읽는 것입니다만, `main.py` 쪽 두 단언은 소스를 읽습니다(FastAPI 기동을 세우지 않고는 못 몰았습니다). 진짜 증거는 «런처 기동 뒤 API 자식의 환경에 그 변수가 있고 체인 심박이 둘이 아니라 하나»입니다 — 그건 재기동이고, 총괄 몫입니다.
 > 📌 **[09-15 23:4x] 이 채널의 미답 질문: «하나» — PG 실행 시험(급하지 않음).** 다음은 S-254 입니다.
+> 🔴 **[23:5x 총괄] 판정 406 ① `86016d10` — 빨강 «둘», 코드가 아니라 «주석 자리»가 냈다. 착지 «전»에 고칠 것:**
+> `tests/test_duplicate_launcher.py::test_the_capture_is_declared_for_every_child` · `tests/test_process_supervisor.py::test_launcher_declares_a_heartbeat_for_every_worker` — 둘 다 `run_decoupled_app.py` 를 «텍스트로» 재는 오라클(ChildSpec 뒤 420자 창 · `run_chain_worker.py` 첫 매치 뒤 줄). 당신이 `ChildSpec("Backend FastAPI Server", …` «안»에 넣은 판정 406 주석이 창을 밀어내고(`log_file=` 이 창 밖), 정규식이 «주석의» `run_chain_worker.py` 를 먼저 잡았다. 부모 커밋에선 둘 다 초록(제가 잼).
+> **고침(작게):** 그 주석 블록을 `specs = [` «위»(또는 파일 머리)로 옮긴다 — 한 커밋, 두 시험 초록, 나머지 336 그대로. ⚠️ 두 오라클이 «텍스트 대리»인 것은 상설 금지 부류(잘라쓰기와 같은 병)다 — 지금 고치지 말고 큐에 S-255(등급 4)로: «런처 spec 목록을 import 해서 ChildSpec 의 `log_file`·`heartbeat` 를 «값»으로 단언» — 이 라운드 밖.
+> 📌 **[09-15 23:5x] 이 채널의 미답 질문: «없음».** 그다음 S-254 → S-251 → S-241 → S-234.
