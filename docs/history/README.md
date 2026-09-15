@@ -1,13 +1,22 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **875개** 이력. (거버넌스 규칙 #4)
+> 총 **884개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-09 (September 2026)
 
+- **2026-09-16 01:34** — [The Unreplayable Line Can Still Show You The Row](./20260916_013410_the_unreplayable_line_can_still_show_you_the_row.md)
+- **2026-09-16 01:22** — [A Big Selection Says Its Size And The Banner Speaks One Language](./20260916_012250_a_big_selection_says_its_size_and_the_banner_speaks_one_language.md)
+- **2026-09-16 01:09** — [Pick One Is Drawn From The Skeleton And The Flat Registry Stays Until The Flat Grammar Retires](./20260916_010926_pick_one_is_drawn_from_the_skeleton_and_the_flat_registry_stays_until_the_flat_grammar_retires.md)
+- **2026-09-16 00:41** — [The Skeleton Declares The Unified Grammar And A Branch Node Lives Under Its Key](./20260916_004105_the_skeleton_declares_the_unified_grammar_and_a_branch_node_lives_under_its_key.md)
+- **2026-09-16 00:09** — [The Banner Sends Row Ids And Names The Rows That Have None](./20260916_000955_the_banner_sends_row_ids_and_names_the_rows_that_have_none.md)
+- **2026-09-15 23:55** — [A Read Time Join Can Be Declared In The Unified File And Was Being Called A Typo](./20260915_235541_a_read_time_join_can_be_declared_in_the_unified_file_and_was_being_called_a_typo.md)
+- **2026-09-15 23:48** — [The Grid Replays By The Identity It Holds And Two Answers Are Refused](./20260915_234857_the_grid_replays_by_the_identity_it_holds_and_two_answers_are_refused.md)
+- **2026-09-15 23:38** — [The Launcher Stands The Apis Chain Loop Down And The Off Switch Had Never Run](./20260915_233809_the_launcher_stands_the_apis_chain_loop_down_and_the_off_switch_had_never_run.md)
+- **2026-09-15 23:33** — [The Chain Loop Fetches Only What It Can Consume And A Dead Tick Still Yields](./20260915_233348_the_chain_loop_fetches_only_what_it_can_consume_and_a_dead_tick_still_yields.md)
 - **2026-09-15 22:35** — [The Chain Loop Hot Spun On A Control Event It Could Not Consume And Froze The Api](./20260915_223500_the_chain_loop_hot_spun_on_a_control_event_it_could_not_consume_and_froze_the_api.md)
 - **2026-09-15 22:28** — [The Retirement Marker Was Deleted And The Guides Point At The History Entry](./20260915_222824_the_retirement_marker_was_deleted_and_the_guides_point_at_the_history_entry.md)
 - **2026-09-15 17:07** — [The Grids Replay List Belongs To The Table And The Loader Left Main Js](./20260915_170746_the_grids_replay_list_belongs_to_the_table_and_the_loader_left_main_js.md)
@@ -899,4 +908,4 @@
 - **2026-04-12 22:22** — [Ws Debug Staggered Init](./20260412_222200_ws_debug_staggered_init.md)
 - **2026-04-12 22:10** — [Phase19 Integrity And Stability Fixes](./20260412_221000_phase19_integrity_and_stability_fixes.md)
 
-*Last generated: 2026-09-15 by gen_index.py*
+*Last generated: 2026-09-16 by gen_index.py*
