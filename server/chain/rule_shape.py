@@ -55,6 +55,16 @@ def from_chain_rule(raw: dict, origin: str = "declared") -> dict:
     }
 
 
+#: The cells of `key`. Named so the form and the reader cannot drift: `builtins`
+#: asks `key.unique` when it decides whether to build an index (S-240), and a form that
+#: spelled its own cell names would be a second author of this list.
+KEY_CELLS = ("columns", "unique")
+
+#: The two things `into` can say, and they are exclusive: a join that WRITES names its
+#: table, a join that answers at READ time says so (S-251). The form draws one or the
+#: other, never both.
+INTO_KINDS = ("table", "read")
+
 #: The three words a declaration's `derive.kind` can say. A LOADED rule has already been
 #: translated to today's flat shape, so the word has to be read back off what it RUNS.
 DECLARED_KINDS = ("join", "decide", "mapper")

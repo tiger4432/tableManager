@@ -92,9 +92,20 @@ def test_no_node_kind_the_form_has_never_seen():
     """⛔ THE VOCABULARY IS READ OUT OF THE LEDGER SKELETON, not listed here — a list here
     would be a third statement of the same contract, which is the defect this file is about.
     """
-    allowed_kinds, allowed_hints = _vocabulary(_load(LEDGER_SKELETON))
+    # 🔴 [S-241] THE KINDS NOW COME FROM A DECLARED LIST, NOT FROM A WALK. Deriving
+    # them by walking the ledger skeleton answered 「is this kind known」 with 「did somebody
+    # already use it」 - so a kind could not be ADDED without first being used, and deleting
+    # the last use of one would silently narrow the language. 판정 407 adds `oneOf`, which
+    # the ledger document does not use, and a vocabulary that cannot express that is a
+    # vocabulary with no author.
+    #
+    # ⚠️ HINTS ARE STILL WALKED, deliberately: this round did not add one, and moving
+    # both at once would make the change bigger than the ruling.
+    from ledger.config_authoring import SKELETON_NODE_KINDS
+
+    allowed_hints = _vocabulary(_load(LEDGER_SKELETON))[1]
     kinds, hints = _vocabulary(_load(CHAIN_SKELETON))
-    assert kinds <= allowed_kinds, sorted(kinds - allowed_kinds)
+    assert kinds <= set(SKELETON_NODE_KINDS), sorted(kinds - set(SKELETON_NODE_KINDS))
     assert hints <= allowed_hints, sorted(hints - allowed_hints)
 
 

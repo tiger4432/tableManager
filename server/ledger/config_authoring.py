@@ -403,6 +403,19 @@ def is_remaining(row: Mapping[str, Any]) -> bool:
 # the grammar that module enforces, and it ships with the code rather than with the data.
 SKELETON_PATH = Path(__file__).parent / "ledger_skeleton.json"
 
+#: 🔴 [S-241, 판정 407] THE FORM'S NODE VOCABULARY, WRITTEN DOWN. It had no author: the
+#: conformance test derived 「what a form can draw」 by WALKING this ledger skeleton, so the
+#: vocabulary was 「whatever this document happens to use today」. That answers 「is this kind
+#: known」 with 「did somebody already use it」 - which makes adding a kind impossible without
+#: first using it somewhere, and makes DELETING the last use of one silently narrow the
+#: language.
+#:
+#: ⚠️ `oneOf` IS THE ONE THIS ROUND ADDS, and the ledger skeleton does not use it. The
+#: chain grammar has two 「pick one」 axes (`derive` of three kinds, `into` of two) and the
+#: vocabulary could not say so - `hint: choice` picks a VALUE, not a SHAPE. A form drawing
+#: that by hand would be a second author of the grammar.
+SKELETON_NODE_KINDS = ("record", "map", "leaf", "oneOf")
+
 
 @lru_cache(maxsize=1)
 def skeleton() -> dict[str, Any]:

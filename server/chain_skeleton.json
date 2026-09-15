@@ -217,5 +217,266 @@
         }
       }
     ]
+  },
+  "unified_root": {
+    "kind": "record",
+    "fields": [
+      {
+        "key": "name",
+        "required": true,
+        "node": {
+          "kind": "leaf",
+          "hint": "free"
+        }
+      },
+      {
+        "key": "enabled",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "flag"
+        }
+      },
+      {
+        "key": "on",
+        "required": false,
+        "node": {
+          "kind": "record",
+          "fields": [
+            {
+              "key": "table",
+              "required": true,
+              "node": {
+                "kind": "leaf",
+                "hint": "ref"
+              }
+            },
+            {
+              "key": "columns",
+              "required": false,
+              "node": {
+                "kind": "leaf",
+                "hint": "free"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "key": "derive",
+        "required": true,
+        "node": {
+          "kind": "oneOf",
+          "hint": "choice",
+          "branches": {
+            "join": {
+              "kind": "record",
+              "fields": [
+                {
+                  "key": "right_table",
+                  "required": false,
+                  "node": {
+                    "kind": "leaf",
+                    "hint": "free"
+                  }
+                },
+                {
+                  "key": "on",
+                  "required": false,
+                  "node": {
+                    "kind": "leaf",
+                    "hint": "free"
+                  }
+                },
+                {
+                  "key": "take",
+                  "required": false,
+                  "node": {
+                    "kind": "leaf",
+                    "hint": "free"
+                  }
+                }
+              ]
+            },
+            "decide": {
+              "kind": "record",
+              "fields": [
+                {
+                  "key": "key",
+                  "required": false,
+                  "node": {
+                    "kind": "leaf",
+                    "hint": "free"
+                  }
+                },
+                {
+                  "key": "fields",
+                  "required": false,
+                  "node": {
+                    "kind": "leaf",
+                    "hint": "free"
+                  }
+                },
+                {
+                  "key": "list_columns",
+                  "required": false,
+                  "node": {
+                    "kind": "leaf",
+                    "hint": "free"
+                  }
+                },
+                {
+                  "key": "aggregations",
+                  "required": false,
+                  "node": {
+                    "kind": "leaf",
+                    "hint": "free"
+                  }
+                },
+                {
+                  "key": "reference_views",
+                  "required": false,
+                  "node": {
+                    "kind": "leaf",
+                    "hint": "free"
+                  }
+                },
+                {
+                  "key": "auto_confirm",
+                  "required": false,
+                  "node": {
+                    "kind": "leaf",
+                    "hint": "free"
+                  }
+                },
+                {
+                  "key": "alignment",
+                  "required": false,
+                  "node": {
+                    "kind": "leaf",
+                    "hint": "free"
+                  }
+                }
+              ]
+            },
+            "mapper": {
+              "kind": "record",
+              "fields": [
+                {
+                  "key": "mapper",
+                  "required": false,
+                  "node": {
+                    "kind": "leaf",
+                    "hint": "choice"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "key": "into",
+        "required": true,
+        "node": {
+          "kind": "oneOf",
+          "hint": "choice",
+          "branches": {
+            "table": {
+              "kind": "record",
+              "fields": [
+                {
+                  "key": "table",
+                  "required": true,
+                  "node": {
+                    "kind": "leaf",
+                    "hint": "ref"
+                  }
+                }
+              ]
+            },
+            "read": {
+              "kind": "record",
+              "fields": [
+                {
+                  "key": "read",
+                  "required": true,
+                  "node": {
+                    "kind": "leaf",
+                    "hint": "flag"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "key": "key",
+        "required": false,
+        "node": {
+          "kind": "record",
+          "fields": [
+            {
+              "key": "columns",
+              "required": false,
+              "node": {
+                "kind": "leaf",
+                "hint": "free"
+              }
+            },
+            {
+              "key": "unique",
+              "required": false,
+              "node": {
+                "kind": "leaf",
+                "hint": "free"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "key": "limits",
+        "required": false,
+        "node": {
+          "kind": "record",
+          "fields": [
+            {
+              "key": "group_by",
+              "required": false,
+              "node": {
+                "kind": "leaf",
+                "hint": "free"
+              }
+            },
+            {
+              "key": "max_group_rows",
+              "required": false,
+              "node": {
+                "kind": "leaf",
+                "hint": "number"
+              }
+            },
+            {
+              "key": "max_group_attempts",
+              "required": false,
+              "node": {
+                "kind": "leaf",
+                "hint": "number"
+              }
+            },
+            {
+              "key": "idempotent",
+              "required": false,
+              "node": {
+                "kind": "leaf",
+                "hint": "flag"
+              }
+            }
+          ]
+        }
+      }
+    ]
   }
 }

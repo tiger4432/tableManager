@@ -504,7 +504,78 @@ def skeleton():
                  "`chain_bindings.routing_keys()`; the loader still decides what is good. "
                  "server/tests/test_chain_skeleton.py counts the two against each other."),
         "root": {"kind": "record", "fields": fields},
+        # 🔴 [S-241] THE SECOND SHAPE, BECAUSE THE GRAMMAR HAS TWO. A rule may be written
+        # flat (today's cells) or unified (`on`/`derive`/`into`), and the form could draw
+        # only the first - so the grammar this product added could be READ by the loader and
+        # never WRITTEN by the screen. Both shapes ride together and the rule itself says
+        # which one it is (`chain_rule_raw_view`'s `grammar`).
+        "unified_root": _unified_root(),
     }
+
+
+def _field(key, node, required=False):
+    return {"key": key, "required": required, "node": node}
+
+
+def _record(*fields):
+    return {"kind": "record", "fields": list(fields)}
+
+
+def _leaf(key):
+    return {"kind": "leaf", "hint": _SKELETON_HINTS.get(key, "free")}
+
+
+def _unified_root():
+    """The unified rule's shape, GENERATED from `rule_shape`'s own words (S-241).
+
+    🔴 [판정 407] `derive` AND `into` ARE 「PICK ONE」, WHICH THE VOCABULARY COULD NOT SAY.
+    The client measured it: kind = record|map|leaf, six hints, and no `oneOf` anywhere -
+    `hint: choice` picks a VALUE, not a SHAPE. So drawing 「one of three derive kinds」 meant
+    the form hand-drawing what the grammar knows, which is how a screen comes to disagree
+    with a loader. One node kind closes it.
+
+    ⚠️ THE BRANCH KEYS ARE THE LIST. 판정 407's node also carries a `list` naming a
+    closed list, and this file does NOT emit one: nothing serves closed lists on the chain
+    side (`chain_rule_raw_view` publishes none, and the only `closed_lists()` in the
+    repository belongs to the ledger authoring screen). Naming a list nobody serves would be
+    the 「the form draws it and nothing reads it」 defect three of this week's rounds removed -
+    so the values have ONE author, `branches`. Adding a `lists` cell later is additive; a
+    dangling name would not have been. This choice is reported, not assumed - if the ruling
+    goes the other way it is one cell to add.
+    """
+    from chain import join_into, rule_shape
+
+    derive_branches = {
+        "join": _record(*[_field(cell, _leaf(cell)) for cell in join_into.JOIN_CELLS]),
+        "decide": _record(*[_field(cell, _leaf(cell))
+                            for cell in rule_shape.DECIDE_CELLS]),
+        # ⚠️ The mapper kind's argument is the mapper's own name, the same cell the flat
+        # shape already carries - so it is a leaf here rather than a second vocabulary.
+        "mapper": _record(_field("mapper", _leaf("mapper"))),
+    }
+    into_branches = {
+        "table": _record(_field("table", _leaf("target_table"), required=True)),
+        "read": _record(_field("read", {"kind": "leaf", "hint": "flag"},
+                               required=True)),
+    }
+    return _record(
+        _field("name", _leaf("name"), required=True),
+        _field("enabled", _leaf("enabled")),
+        _field("on", _record(_field("table", _leaf("trigger_table"), required=True),
+                             _field("columns", _leaf("trigger_columns")))),
+        _field("derive", {"kind": "oneOf", "hint": "choice",
+                          "branches": {kind: derive_branches[kind]
+                                       for kind in rule_shape.DECLARED_KINDS}},
+               required=True),
+        _field("into", {"kind": "oneOf", "hint": "choice",
+                        "branches": {kind: into_branches[kind]
+                                     for kind in rule_shape.INTO_KINDS}},
+               required=True),
+        _field("key", _record(*[_field(cell, _leaf(cell))
+                                for cell in rule_shape.KEY_CELLS])),
+        _field("limits", _record(*[_field(cell, _leaf(cell))
+                                   for cell in rule_shape._LIMIT_KEYS])),
+    )
 
 
 def routing_keys():

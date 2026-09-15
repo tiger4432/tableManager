@@ -607,6 +607,13 @@ def chain_rule_raw_view(name: str = None) -> dict:
         out["declaration"] = named.get(name)
         out["raw"] = json.dumps(named.get(name), ensure_ascii=False, indent=2)
         out["enabled"] = bool((named.get(name) or {}).get("enabled", True))
+        # 🔴 [S-241] WHICH GRAMMAR THIS RULE IS WRITTEN IN, as a CELL rather than as
+        # something the form re-derives. The two shapes ride together in `skeleton`, and a
+        # screen guessing which to draw would be guessing at a fact the file states: one
+        # cell, `derive`, is what tells them apart everywhere else in this product.
+        out["grammar"] = ("unified"
+                          if isinstance((named.get(name) or {}).get("derive"), dict)
+                          else "flat")
     return out
 
 
