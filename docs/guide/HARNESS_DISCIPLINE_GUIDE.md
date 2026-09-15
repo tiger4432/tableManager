@@ -2,7 +2,8 @@
 
 > **이 문서가 정본입니다.** CLAUDE.md 의 「잘라쓰기 하니스 절대 금지」 절은 «왜»를 적고, 여기는 «어떻게»를 적습니다.
 > 신설 2026-09-10 (D-2). 아래 모든 심볼·줄 번호는 그날 소스에 대고 확인했습니다.
-> 갱신 2026-09-16 — §1 「순서도, 목록도 이름으로」(C-110 · S-255) · §5-nonies 신설(PG 만 나를 수 있는 증명의 자리 — S-256 · S-257 · S-258) · §6 행 넷.
+> 갱신 2026-09-16 «후속» — §5-nonies 에 둘: 「하니스는 «모양이 딴 데 적힌» 관계를 짓지 않는다」(S-260 — 그 29 건은 «내용»이 아니라 «자리»였다) · 「돌았다 ≠ 단언이 돌았다」(S-263-b).
+> 직전 2026-09-16 — §1 「순서도, 목록도 이름으로」(C-110 · S-255) · §5-nonies 신설(PG 만 나를 수 있는 증명의 자리 — S-256 · S-257 · S-258) · §6 행 넷.
 
 ---
 
@@ -378,7 +379,37 @@ isolated_pg.install_trigram(connection, schema)  pg_trgm 을 스크래치 «안�
 
 `test_a_persistent_business_key_conflict_is_refused_not_replayed` 가 은퇴한 영어 표지 「BK Conflict Unresolved」를 단언하고 있었다 — 제품은 S-247 부터 `[BKConflict:<표>] … → 다음: <widen_the_key>` 를 낸다. 수리는 한국어 문장을 베끼지 않는다: 접두는 `operator_line.line("BKConflict", TABLE, …)` 이 «앞에 붙이는 것», 다음-행동 절은 `operator_line.widen_the_key` 를 «함수에서 읽어»(`_invariant_tail` — 표지 값으로 렌더해 마지막 표지 «뒤»만 남긴다) «행동의 부류»를 판다(선언을 넓혀라 — `fold_the_data` 의 «반대» 수리). 실측: `fold_the_data` 로 지은 같은 접두의 줄은 «빨강», widen 줄은 초록. 문장을 베끼면 하니스가 «둘째 저자»가 된다(2026-09-13 의 여덟 빈-상태 문장이 같은 병이었다).
 
-⚠️ **표지 없이 «일부러» 둔 sqlite-skip 둘** — `test_set_based_write_path` · `test_a_walk_can_be_read_as_rows` 는 `db_session`/앱 엔진을 타고, 러너는 그 엔진을 «다시 겨누지» 않는다. 📌 첫 실행이 «자리가 숨기던 것»을 드러냈다: `ledger.trace.trace` 없음 · `/api/ledger/trace` 404 · `hops`/`neighbourhood` 없음(29 건, S-259). 자리의 결함이 아니라 내용의 결함이고, 이 절이 고친 것이 아니다.
+⚠️ **표지 없이 «일부러» 둔 sqlite-skip 둘** — `test_set_based_write_path` · `test_a_walk_can_be_read_as_rows` 는 `db_session`/앱 엔진을 타고, 러너는 그 엔진을 «다시 겨누지» 않는다. 📌 첫 실행이 «자리가 숨기던 것»을 드러냈다 — 그리고 **그 29 건이 무엇이었나는 «두 번 틀리게» 읽혔다**(바로 아래 S-260 절).
+
+### 🆕 하니스는 «모양이 딴 데 적힌» 관계를 짓지 않는다 (S-260 `01b9d85d`, 2026-09-16)
+
+```
+증상   1 failed / 73 passed / 29 errors   ← 29 = 원장 trace 파일 통째 + test_ledger_subgraph 의 신원 왕복
+원인   pg_engine 이 Base.metadata 의 표를 «전부» 스크래치로 복사해 create_all 했다.
+      동적 모델은 카탈로그의 `kind: view` 항목도 매핑하고 그 `column_types` 는 «읽는 사람이 보는 모양»이라,
+      스크래치에 varchar `ledger_events` 가 서고 제품의 ensure_schema 가 CHECK jsonb_typeof(object_payload) 를 붙이다 죽었다
+      => 하니스의 «닮은꼴»이 진짜 저자(원장의 파티션 jsonb DDL)보다 «먼저» 도착했다
+수리   conftest.creatable_tables(metadata, catalogue=None) — DB 가 아니라 «선언»에 묻는다
+      (models.sync_dynamic_tables_schema 가 inspector.get_view_names() 를 쓰는 것은 그때는 «관계가 이미 있어서»다.
+       픽스처에는 아직 아무것도 없으므로 답할 수 있는 것은 카탈로그뿐이고, 그것도 낱말의 기본값을 매기는
+       «한 자리» ledger.setup_bundle.catalog_kind 를 통해서다 — S-187)
+      카탈로그가 «안 든» 이름은 표다 => 프레임워크 자신의 관계는 전부 그대로 지어진다
+      거절된 것은 «한 줄로 이름 대어» 찍는다 — 나중에 못 찾는 증명이 설명 없는 UndefinedTable 대신 그 줄을 읽도록
+결과   103 passed / 0 failed / 0 errors    (그 뒤 S-261 이 coverage 증명 15 를 은퇴시켜 오늘은 88 passed / 0 failed)
+```
+🔴 **이 절이 「부재로 초록」의 «뒷면»이다 — 픽스처 결함은 «내용 결함의 옷»을 입고 온다.** 실패가 아니라 **ERROR** 로 왔고, 그래서 「은퇴한 배관을 재는 시험」으로 **두 번** 읽혔다(S-257 의 보고 · 그것을 근거로 나간 S-259 지시). 표지가 준 것은 「이제 돈다」이고, 돌기 시작한 첫날의 빨강은 **「자리인가 내용인가」를 먼저 갈라야 한다** — `pytest` 가 failure 와 error 를 다르게 부르는 것이 그 첫 단서다.
+
+🔴 **채점은 «박스의 카탈로그»가 아니라 «먹인 카탈로그»로 한다.** 이 결함은 라이브 `table_config.json` 이 있는 박스에서만 나고, 스위트는 sqlite 에 핀돼 있으며 새 체크아웃엔 그 파일이 아예 없다 — 거기서 「초록」은 **「이 박스의 카탈로그가 한 번도 안 실렸다」**와 같은 뜻이다. 그래서 증명 셋은 판정자에게 카탈로그를 «먹인다»: 다른 것은 같고 `kind` 만 다른 관계 둘(=«종류»가 답을 정한다) · 빈 카탈로그(회귀선) · 낱말이 `catalog_kind` 에서 온다는 것(다섯째 철자가 아니라).
+
+### 🆕 「돌았다」와 「단언이 돌았다」는 다른 사실이다 — 표지가 만든 «둘째» 부재로 초록 (S-263-b `d95d5527`, 2026-09-16)
+
+걷기의 등록 술어를 모듈에서 호출자로 옮기며 좌석을 «여섯» 셌는데 **일곱**이었다. 빠진 것은 `test_ledger_trace_pg.walk_on` — 실제 PostgreSQL 위의 인프로세스 걷기다.
+```
+모집단 실행   `ledger_subgraph` 또는 `trace_router` 를 이름 대는 시험 파일 전부 → 279 passed
+그 파일은?   «목록에 있었고 돌았다». 그런데 그 안의 증명은 @pytest.mark.pg 라 sqlite 에서 skip 했다
+=> 「파일이 돌았다」가 「그 단언이 채점됐다」로 읽혔다. 평범한 실행의 «통과 수»는 표지 달린 절반에 대해 아무 말도 안 한다
+```
+🔴 **그러므로 걷기·원장·스키마를 만지는 변경의 모집단은 `server/scripts/run_pg_tests.py` «도» 다.** 맨 `pytest` 하나로 닫지 않는다 — 표지는 「부재로 초록」을 «읽을 수 있게» 만들었지 «없애지» 않았다.
 
 ## 6. 이 문서가 부르는 이름 (2026-09-10 실측)
 

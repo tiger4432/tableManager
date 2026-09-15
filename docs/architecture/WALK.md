@@ -83,6 +83,14 @@ format              `json`(기본) | `rows` — 아래 「행 투영」 절 (S-1
 
 ```
 nodes        {id, type, label, keys, attributes}    🔵 type 이 «도메인 낱말»(die·wafer·defect…)
+             🔵 **`attributes` 는 `follow` 로 «오지 않는다»** — 걷기가 무엇을 따라갔든 노드마다
+             «자기 컬럼»을 따로 쓸어 온다(S-52-i). 🔴 그리고 **그 쓸기가 쓰는 술어는 «선언»이 정한다**
+             (S-263, 2026-09-16): 종전엔 코드가 `follow=["register"]` 라고 «도메인 낱말»을 적고 있어
+             등록 술어를 달리 부르는 설치는 «모든» 노드의 속성이 영구히 비었고 아무것도 그렇게 말하지
+             않았다. 오늘은 `trace_router._self_describing_predicates()` 가 답한다 —
+             **어휘가 목적어를 «안» 준 술어(`object.kind == "none"`)는 «자기 주어»를 말하는 문장**이고,
+             엔터티의 값은 바로 그 원자들의 `qualifiers` 에 실린다. 그 집합이 «비면» 이 걷기는 컬럼을
+             하나도 안 나른다(거절이 아니다 — 사유를 아는 자리는 선언이고 이 모듈이 아니다)
              🔴 `attributes` 는 «선언된 이름만» 든다. 같은 이름을 여러 문장이 먹이면
              **최신 `occurred_at` 이 이긴다** · 그때 `attribute_conflicts` 가 «수»로 실린다(목록이 아니다)
              ⚠️ «닿지 않은» 속성은 `null` 이 아니라 **키가 없다** — 「값이 없다」와 「안 걸어졌다」가
@@ -103,7 +111,10 @@ edges        {id, source, target, predicate, predicate_label, original_predicate
               🔴 `None` 은 「선언이 말하지 않았다」이지 `many` «가 아니다» — 합성 엣지와 미선언 술어가
               둘 다 여기로 오고, 어느 쪽에든 `many` 라고 답하면 «없는 답을 지어내는» 것이다.
               값의 출처는 라우트의 `_predicate_cardinalities()` «하나»이고, 그것이 `_static_types` ·
-              `_static_step_predicates` 와 «같은 선언»을 읽는다(읽는 곳이 둘이면 한 술어에 답이 둘이 된다)
+              `_static_step_predicates` · 🆕 `_self_describing_predicates()`(S-263 — 위 `attributes` 의
+              쓸기) 와 «같은 선언»을 읽는다(읽는 곳이 둘이면 한 술어에 답이 둘이 된다).
+              🔴 넷은 «같은 모양»이되 «빈 집합의 뜻»이 넷째만 다르다 — 앞의 셋은 「오늘 걷기가 그렇다」이고
+              넷째의 빈 집합은 「어느 노드도 자기 컬럼을 안 나른다」이다
 seeds        씨앗과 «부호»(+/-)
 propagation  🔴 «닿은 노드 전부»를 두 부호의 «도달 대비»로 순위 매긴다
              모집단이 전부인 것은 «소유자 판정»(2026-08-28)이다 — 한 타입으로 거르면
