@@ -30,6 +30,8 @@ logger = logging.getLogger("Chain.JoinInto")
 #: The kind an operator's `derive: {kind: "join"}` becomes. One string, read by the translator
 #: that writes it and by the table that runs it, so the two cannot drift.
 JOIN_INTO_MAPPER = "builtin:join_into"
+#: The one layer every chain write carries; the worker's wake filter reads exactly this.
+CHAIN_LAYER = "chain_ingestion"
 
 
 def join_spec(rule: dict) -> dict:
@@ -206,11 +208,16 @@ def _write(db, left_table: str, rows, spec, source_name: str) -> int:
             row_id=mapping["row_id"],
             updates={into_col: mapping["take_%d" % index]
                      for index, (_right, into_col) in enumerate(takes)},
-            # 🔴 THE LAYER IS THE RULE'S NAME. Layering asks 「who wrote this cell」, and
-            # 「the chain」 is not an answer an operator can act on when three declarations
-            # write the same table.
-            source_name=source_name,
-            updated_by="system"))
+            # 🔴 THE LAYER IS THE CHAIN'S, THE AUTHOR IS THE RULE'S (owner 2026-09-15, 「핑퐁은
+            # 제대로 고쳐」). The first cut put the rule name in the LAYER so an operator could
+            # see who wrote the cell - and that name was also what the worker's wake filter
+            # reads: a write labelled anything but `chain_ingestion` wakes every rule on that
+            # table, so this join's writes re-woke the enrich that feeds it. One label for
+            # every chain write keeps the opt-in (`allow_chain_trigger`) the ONLY way a chain
+            # write wakes a rule; `updated_by` still says which rule, and it is constant per
+            # rule so an unchanged value stays a no-op write.
+            source_name=CHAIN_LAYER,
+            updated_by=source_name))
     if not updates:
         return 0
     crud.apply_batch_updates(db, left_table,

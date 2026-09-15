@@ -240,7 +240,10 @@ def test_the_written_layer_is_the_rules_own_name(db, monkeypatch):
     seen.clear()
     join_into.run(db, _rule(), row_ids=[r.row_id for r in _rows(db, LEFT)])
 
-    assert seen and seen[0].updates[0].source_name == DECLARATION["name"]
+    # The LAYER is the chain's (so the wake filter treats this write like every other
+    # chain write) and the AUTHOR is the rule's (so an operator can still see who wrote it).
+    assert seen and seen[0].updates[0].source_name == join_into.CHAIN_LAYER
+    assert seen[0].updates[0].updated_by == DECLARATION["name"]
 
 
 def test_a_rule_that_cannot_run_says_why_rather_than_writing_nothing_quietly(db):
