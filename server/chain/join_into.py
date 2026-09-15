@@ -212,10 +212,21 @@ def _write(db, left_table: str, rows, spec, source_name: str) -> int:
         seen[rid] = seen.get(rid, 0) + 1
     fanned = sorted(rid for rid, n in seen.items() if n > 1)
     if fanned:
-        logger.warning("[join_into:%s] %d left row(s) matched MORE THAN ONE right row and are "
-                       "skipped by name (no answer is the answer): %s%s", source_name,
-                       len(fanned), ", ".join(str(r) for r in fanned[:10]),
-                       " ..." if len(fanned) > 10 else "")
+        # 🔴 [S-247] THE LINE CARRIES ITS NEXT ACTION. 소유자 2026-09-15: 「난 이 에러를
+        # 이해할 수가 없다, 조치를 뭘 해야 하는지 안 알려줌」 - and production logs cannot
+        # be pasted out, so the line has to answer alone. This one is DATA: the right table
+        # holds two rows under one join key, and widening the declaration would not change
+        # that.
+        import operator_line
+
+        logger.warning("%s", operator_line.line(
+            "join_into", source_name,
+            "왼쪽 행 %d 개가 오른쪽에서 «둘 이상»과 맞아 건너뜁니다 — 어느 쪽이 답인지 "
+            "제품이 고를 수 없습니다" % len(fanned),
+            operator_line.fold_the_data(
+                str(spec.get("right_table") or "오른쪽 표"),
+                [right for _l, right, _f in _pairs(spec, left_table)]),
+            fanned))
     updates = []
     for row in rows:
         if not row.matched or seen.get(row._mapping["row_id"], 0) > 1:

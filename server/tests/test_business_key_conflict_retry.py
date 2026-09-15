@@ -188,7 +188,20 @@ def test_persistent_conflict_gives_up_and_reraises(monkeypatch, caplog):
             crud.apply_batch_updates(db, "dt_log", FakeBatch())
     assert len(calls) == crud.BK_CONFLICT_MAX_RETRIES + 1
     assert db.rollbacks == crud.BK_CONFLICT_MAX_RETRIES + 1
-    assert any("BK Conflict Unresolved" in r.message for r in caplog.records)
+    # 🔴 [S-247] THE LINE HAS TO SAY WHAT TO DO NEXT, and this assertion used to pin
+    # only the TAG. 「중복 키」 here means the table's own identity does not tell two rows
+    # apart, so the repair is the DECLARATION - the opposite of the join-key lines, which
+    # send the operator to the data. An operator who reaches for the fix that worked there
+    # gets it backwards, and the tag alone gave them nothing to tell the two apart with.
+    import operator_line
+
+    refusal = [r.message for r in caplog.records if "[BKConflict:dt_log]" in r.message]
+    assert len(refusal) == 1, [r.message for r in caplog.records]
+    assert "→ 다음: " in refusal[0]
+    assert "composite_key_source" in refusal[0]
+    assert operator_line.widen_the_key(
+        "table_config 의 'dt_log' 의 `composite_key_source`",
+        "두 행을 가르는 컬럼") in refusal[0]
 
 
 def test_retry_count_is_bounded_by_the_declared_constant(monkeypatch):

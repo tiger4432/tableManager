@@ -4035,12 +4035,20 @@ def refuse_virtual_join_duplicates(db: Session, table_name: str,
                         f"어겨 건너뜀 — 같은 조인 키의 다른 행: "
                         f"{', '.join(name for name in named if name != mine)}"),
                 })
-            logger.warning(
-                "⚠️ [VirtualJoinUnique] %s: rule '%s' - %d row(s) share the right-side "
-                "key %s=%s and are ALL skipped, because the product cannot choose which "
-                "is true. Rows: %s",
-                table_name, rule_name, len(identities), list(columns), list(key),
-                named[:MAX_DROP_REPORT_ROWS])
+            # 🔴 [S-247] AND THE ACTION IS NOT OBVIOUS FROM THE SYMPTOM. 「같은 조인
+            # 키의 행이 둘」 has two opposite repairs - fold the data, or widen the
+            # declaration - and which one is right depends on whether those rows are the
+            # SAME fact. The line says so rather than leaving the operator to guess.
+            import operator_line
+
+            logger.warning("%s", operator_line.line(
+                "VirtualJoinUnique", rule_name,
+                "%s 에 같은 오른쪽 키(%s=%s)를 쓰는 행 %d 개가 «한 배치 안»에 있어 "
+                "«모두» 건너뜁니다 — 어느 쪽이 사실인지 제품이 고를 수 없습니다"
+                % (table_name, ", ".join(columns),
+                   ", ".join(str(v) for v in key), len(identities)),
+                operator_line.fold_the_data(table_name, columns),
+                named))
     # 🔴 AND NOW THE STORED HALF (2026-09-14 outage). Everything above is within ONE batch.
     # A row whose join key is already held by a DIFFERENT stored row breaks the same index,
     # is not the statement's ON CONFLICT target, and kills the whole statement - every row
@@ -4095,11 +4103,16 @@ def refuse_virtual_join_duplicates(db: Session, table_name: str,
                         f"어겨 건너뜀 — 같은 조인 키를 «이미 가진» 행: {holder_name}"),
                 })
             if any(i in refused_indexes for i in indexes):
-                logger.warning(
-                    "⚠️ [VirtualJoinUnique] %s: rule '%s' - incoming row(s) carry the "
-                    "right-side key %s=%s already held by stored row %s; skipped by name "
-                    "instead of failing the whole statement.",
-                    table_name, rule_name, list(columns), list(key), holder_name)
+                import operator_line
+
+                logger.warning("%s", operator_line.line(
+                    "VirtualJoinUnique", rule_name,
+                    "들어온 행이 %s 에 «이미 있는» 행 %s 과 같은 오른쪽 키(%s=%s)를 "
+                    "들고 있어 건너뜁니다 — 나머지 행은 정상으로 써집니다"
+                    % (table_name, holder_name, ", ".join(columns),
+                       ", ".join(str(v) for v in key)),
+                    operator_line.fold_the_data(table_name, columns),
+                    [holder_name]))
 
     if not refused_indexes:
         return []
@@ -4363,13 +4376,21 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
                 raise
             db.rollback()
             if attempt >= BK_CONFLICT_MAX_RETRIES:
-                logger.error(
-                    f"🔴 [BK Conflict Unresolved] Table: '{table_name}' | "
-                    f"TX: {batch.transaction_id} | Rows: {len(batch.updates)} | "
-                    f"attempts: {attempt + 1} | A business key kept colliding after "
-                    f"re-reading. This is NOT a lost race - it is a genuine duplicate "
-                    f"identity, and the batch is refused rather than replayed forever."
-                )
+                # 🔴 [S-247] THE OPPOSITE REPAIR OF THE TWO LINES ABOVE, AND IT
+                # READS THE SAME. 「중복 키」 here means the TABLE'S OWN identity does not
+                # tell two rows apart - so folding the data would destroy a fact, and what
+                # has to change is the declaration. An operator who reads 「duplicate」 and
+                # reaches for the fix that worked last time gets it backwards.
+                import operator_line
+
+                logger.error("%s", operator_line.line(
+                    "BKConflict", table_name,
+                    "업무키가 다시 읽은 뒤에도 계속 충돌해 이 배치(%s 행, tx %s)를 "
+                    "«거절»했습니다 — 경합이 아니라 «같은 신원»이 둘입니다"
+                    % (len(batch.updates), batch.transaction_id),
+                    operator_line.widen_the_key(
+                        "table_config 의 '%s' 의 `composite_key_source`" % table_name,
+                        "두 행을 가르는 컬럼")))
                 raise
             logger.warning(
                 f"⚠️ [BK Conflict Recovered] Table: '{table_name}' | "

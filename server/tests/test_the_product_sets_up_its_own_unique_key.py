@@ -82,9 +82,16 @@ def test_an_invalid_leftover_is_named_as_the_cause_and_not_as_duplicates():
 
 
 def test_when_there_is_nothing_in_the_way_it_says_it_will_build_it():
+    """⚠️ [S-247] THE SENTENCE MOVED TO ONE AUTHOR, so this asks the author rather than
+    copying its words. A test that spells the prose itself becomes the string's SECOND
+    author and goes red for a rewording that changed nothing an operator acts on."""
+    import operator_line
+
     sentence = unique_key.describe(
         "dt_log", ["lot"], {"state": "missing", "invalid": [], "duplicates": []})
-    assert "제품이 만듭니다" in sentence
+
+    assert sentence.startswith("[VirtualJoinIndex:dt_log] ")
+    assert sentence.endswith(operator_line.restart_to_apply())
 
 
 def test_an_empty_key_is_absence_and_gets_its_own_sentence():

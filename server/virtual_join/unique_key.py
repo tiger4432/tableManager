@@ -106,21 +106,30 @@ def inspect(db, table: str, columns: list, folds=None) -> dict:
 
 def describe(table: str, columns: list, report: dict) -> str:
     """운영자가 읽는 한 문장. «다음에 무엇이 일어나는지»까지 말한다."""
+    import operator_line
+
     state = report.get("state")
     if state == "ok":
         return "유일 인덱스 있음: %s" % report.get("index")
     if state == "missing":
-        return ("%s(%s) 를 덮는 유일 인덱스가 없습니다 - 중복은 «없으므로» 제품이 만듭니다"
-                % (table, ", ".join(columns)))
+        return operator_line.line(
+            "VirtualJoinIndex", table,
+            "%s 를 덮는 유일 인덱스가 없습니다 — 중복은 «없습니다»" % ", ".join(columns),
+            operator_line.restart_to_apply())
     if state == "invalid":
-        return ("%s(%s) 의 유일 인덱스가 «INVALID» 로 남아 있습니다(%s) - 취소된 빌드의 잔해라 "
-                "제약을 강제하지 않으면서 이름만 붙잡고 있습니다. 지우고 다시 만듭니다"
-                % (table, ", ".join(columns), ", ".join(report.get("invalid") or ())))
+        return operator_line.line(
+            "VirtualJoinIndex", table,
+            "%s 의 유일 인덱스가 «INVALID» 로 남아 있습니다 — 취소된 빌드의 잔해라 제약을 "
+            "강제하지 않으면서 이름만 붙잡고 있습니다" % ", ".join(columns),
+            operator_line.restart_to_apply(),
+            report.get("invalid") or ())
     if state == "blank_keys":
         total = sum(entry["rows"] for entry in (report.get("blank_keys") or ()))
-        return ("%s(%s) 의 %d 행에 그 키가 «비어 있습니다» - 중복이 아니라 «부재»입니다. "
-                "채우거나, 카탈로그에서 그 컬럼의 null 정책을 정하십시오"
-                % (table, ", ".join(columns), total))
+        return operator_line.line(
+            "VirtualJoinIndex", table,
+            "%s 행에 그 키(%s)가 «비어 있습니다» — 중복이 아니라 «부재»입니다"
+            % (total, ", ".join(columns)),
+            operator_line.fill_or_declare_null(table, columns))
     lines = ["%s(%s) 에 같은 조인 키를 가진 행이 있습니다 - 유일 인덱스를 세울 수 없습니다:"
              % (table, ", ".join(columns))]
     for entry in (report.get("duplicates") or [])[:MAX_REPORTED_DUPLICATES]:
@@ -133,6 +142,10 @@ def describe(table: str, columns: list, report: dict) -> str:
         #    순서를 바꾸면 고칠 것이 무엇인지가 뒤집힌다
         lines.append("   (그리고 키가 «비어 있는» 행 %d - 중복이 아니라 부재입니다)"
                      % sum(entry["rows"] for entry in blanks))
+    # 🔴 [S-247] THE DUPLICATE CASE ENDS WITH ITS ACTION LIKE THE OTHERS. This one is a
+    # LIST rather than one line - the values ARE the diagnosis - but the last line still has
+    # to say what to do with them, because that is the sentence the operator acts on.
+    lines.append("→ 다음: %s" % operator_line.fold_the_data(table, columns))
     return "\n".join(lines)
 
 
