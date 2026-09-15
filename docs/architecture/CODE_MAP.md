@@ -4814,7 +4814,8 @@ export const COMPUTABLE_TOKENS = Object.freeze([DECLARED, ASSUMED, CONFIRMED]);
   - **`chainPayload(rows)` → `{op: 'chain_replay', businessKeys: [...]}`** — 체인은 «업무 키»로 고른다(`businessKey` 컬럼 이름을 화면이 준다).
   - 🔴 **`ledgerPayload` 의 「Open in admin」 버튼은 «일부러 남겼다»** — 세어 보거나 규칙을 고르려면 그 자리이고, 지우면 `rescope_handoff.js` 와 `admin.js::adoptRescopeHandoff` 가 «가리키는 곳 없는» 코드가 된다(소스 주석).
   - 닫기는 자기 것이 아니다 → `dropdown.js::watchForDismiss` 를 쓴다.
-- **소비자**: `main.js`(`initRedoBanner()` · `runRetroactive(op, params)` → `POST /admin/retroactive/{op}/run` · `loadChainRuleNames()` → `GET /admin/chain/rules`). **채점자**: `client2/tests/redo_banner_harness.mjs`.
+- **소비자**: `main.js`(`initRedoBanner()` · `runRetroactive(op, params)` → `POST /admin/retroactive/{op}/run` · 🆕 **`redoBannerFollows(table)`** — 부팅과 표 바꿈이 지나는 «한 줄»). **채점자**: `client2/tests/redo_banner_harness.mjs` + 🆕 `client2/tests/replay_rules_harness.mjs`(import 기반).
+  - ⚰️ 🆕 **[2026-09-15 C-109] `main.js::loadChainRuleNames()` → `GET /admin/chain/rules` 는 «없다»** — `client2/src/replayable_rules.js::loadReplayableRules(table)` → **`GET /admin/chain/rules/replayable?table=`**(S-250)로 갈렸다. 🔴 그리고 `setRules` 가 받는 것이 «이름 문자열»이 아니라 **객체**다(`{name, trigger_table, target_table, kind}`) — 줄이 「어디서 어디로, 무슨 종류로」를 말한다. 자기 모듈로 나온 사유는 그 파일 머리글에 있다(`main.js` 는 node 가 import 못 한다 → 재는 길이 잘라쓰기뿐이 된다).
 
 ### 🆕⑰ `dropdown.js` (**38줄**, `0e48f79f` 신설) — 「버튼 아래로 열리고 바깥을 누르면 닫힌다」의 **한 벌**
 
