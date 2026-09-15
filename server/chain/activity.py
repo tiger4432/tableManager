@@ -22,6 +22,7 @@ started, and a reader that gets `attached: false` knows the list is blind rather
 empty.
 """
 
+import contextlib
 import threading
 import time
 
@@ -202,3 +203,62 @@ class ChainActivityRegistry:
 
 #: Process singleton, the same shape `ingestion_activity` publishes.
 registry = ChainActivityRegistry()
+
+
+#: The sentence a custom mapper's 「no rows」 outcome has always carried. It is a default
+#: rather than a constant inside `running` because a `builtin:` kind is not a mapper and
+#: saying so in its own words is the point of naming the reason at all.
+NO_ROWS_REASON = "the mapper produced no rows"
+
+
+class _Run:
+    """The one thing a caller inside `running` can say: how many rows came out."""
+
+    def __init__(self):
+        self.rows_out = None
+
+    def produced(self, rows_out):
+        self.rows_out = rows_out
+
+
+@contextlib.contextmanager
+def running(rule, mapper, target_table, rows_in, no_rows_reason=NO_ROWS_REASON):
+    """Register ONE run of ONE rule - whichever door is running it (S-246).
+
+    🔴 THE REGISTRATION LIVED INSIDE THE CUSTOM-MAPPER DOOR, AND THERE ARE TWO DOORS.
+    `execute_custom_mapper` started an entry, recorded an outcome and finished the entry;
+    `builtins.run_builtin` did none of the three. So `join_into`, `builtin:join` and
+    `auto_confirm` ran with no entry in the queue view and no outcome ever recorded - and
+    because the loader SEEDS every declared rule as `never_evaluated`, a builtin that ran a
+    thousand times still said 「아직 평가 안 됨」 forever. 소유자 2026-09-15: 「체인 대기열에서
+    안 뜨고 돌고 있었네」.
+
+    ⚠️ AN ABSENT ROW COUNT IS NOT ZERO. A caller that never says `produced` leaves the
+    outcome alone rather than claiming 「ran, changed nothing」 - the two are different facts
+    and this registry exists because they were being told apart wrongly.
+
+    ⛔ AND IT NEVER RAISES ON ITS OWN BEHALF. Instrumentation that can take down the thing
+    it describes is worse than no instrumentation; `record_outcome` and `finish` already
+    hold that line and this adds nothing that can break it.
+    """
+    import event_constants
+
+    entry = _Run()
+    token = registry.start(rule, mapper, target_table, rows_in)
+    try:
+        yield entry
+    except Exception as error:                                     # noqa: BLE001
+        registry.record_outcome(rule, event_constants.RULE_OUTCOME_FAILED,
+                                "%s: %s" % (type(error).__name__, error))
+        raise
+    else:
+        if entry.rows_out is not None:
+            registry.record_outcome(
+                rule,
+                event_constants.RULE_OUTCOME_RAN_CHANGED if entry.rows_out
+                else event_constants.RULE_OUTCOME_RAN_UNCHANGED,
+                None if entry.rows_out else no_rows_reason)
+    finally:
+        # 🔴 IN `finally`. A run that threw is exactly the case where an entry left
+        # behind sits in the view forever saying something is still running.
+        registry.finish(token)

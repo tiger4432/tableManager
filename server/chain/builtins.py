@@ -130,7 +130,13 @@ def _run_auto_confirm(db, rule, row_ids=None, done=None, **_):
         # loop reads these two keys, so they keep their names.
         done["auto_confirmed"] = confirmed
         done["auto_refused"] = refused
-    return {"confirmed": confirmed, "refused": refused,
+    # 🔴 [S-246] `written` IS WHAT A `builtin:` KIND CALLS ITS ROW COUNT.
+    # `join_into.run` and `materialize_rows` already answer under that name, and this one
+    # did not - so the follow-up line S-249 added printed `written=None` for auto-confirm,
+    # and the registration below would have had nothing to read. `confirmed` and `refused`
+    # keep their names for the readers that have them; this adds the count, it does not
+    # rename the fact.
+    return {"written": confirmed, "confirmed": confirmed, "refused": refused,
             "source_name": enrichment.candidates.SOURCE_NAME}
 
 
@@ -260,14 +266,51 @@ def register_builtin(kind: str, fn):
     return fn
 
 
+def _rows_handed(kwargs) -> int:
+    """How many rows this call was handed. The two trigger arms name them differently."""
+    for cell in ("row_ids", "key_values"):
+        handed = kwargs.get(cell)
+        if isinstance(handed, (list, tuple, set)):
+            return len(handed)
+    return 0
+
+
 def run_builtin(kind: str, db, rule, **kwargs):
-    """Route one synthesised rule to its implementation, or refuse by name."""
+    """Route one synthesised rule to its implementation, or refuse by name.
+
+    🔴 [S-246] AND REGISTER IT, THE SAME WAY THE OTHER DOOR DOES. 소유자
+    2026-09-15: 「체인 대기열에서 안 뜨고 돌고 있었네」. `activity.registry` was started,
+    recorded and finished inside `mapper_call.execute_custom_mapper` - the door a FILE
+    mapper comes through - and this door did none of the three. So `join_into`,
+    `builtin:join` and `auto_confirm` ran with no entry in the queue view, and because the
+    loader SEEDS every declared rule as `never_evaluated`, a builtin that had run a
+    thousand times still reported 「아직 평가 안 됨」 for the life of the process. 「같은
+    기능에 두 경로」, and the half nobody could see was the half that was running.
+
+    ⚠️ THE REFUSAL IS OUTSIDE THE REGISTRATION, deliberately. An unknown kind never ran,
+    so an entry saying it did - even for the length of one raise - would be a false
+    sentence about a rule this function is in the middle of refusing.
+    """
     fn = BUILTIN_KINDS.get(kind)
     if fn is None:
         raise UnknownBuiltinKind(
             "no implementation for %r; known kinds: %s"
             % (kind, ", ".join(sorted(BUILTIN_KINDS)) or "none"))
-    return fn(db, rule, **kwargs)
+    from chain import activity
+
+    name = (rule or {}).get("name") or "<unnamed rule>"
+    with activity.running(name, kind, (rule or {}).get("target_table") or "<none>",
+                          _rows_handed(kwargs),
+                          no_rows_reason="the rule wrote no rows") as run:
+        result = fn(db, rule, **kwargs)
+        # ⚠️ ONLY WHEN THE KIND SAID SO. A kind that reports no count leaves the outcome
+        # alone rather than being recorded as 「ran, changed nothing」 - 「안 셌다」 and
+        # 「0 이었다」 are different facts and this registry exists because they were being
+        # confused.
+        written = (result or {}).get("written") if isinstance(result, dict) else None
+        if written is not None:
+            run.produced(int(written))
+        return result
 
 
 def _install():
