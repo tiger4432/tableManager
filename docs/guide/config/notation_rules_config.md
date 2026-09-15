@@ -1,6 +1,6 @@
 # `notation_rules.json` 세팅 — 표기 정규화(조회 시점 폴드)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-04 (🔴 **전면 재작성 — 이 문서가 서술하던 모델은 철회됐습니다.** `92b8d6f`가 출하한 **물리 파생 컬럼(`<컬럼>_norm`)**은 `8d306a5`에서 **아무도 소비하기 전에** 통째로 제거됐습니다(사용자 확정 2026-08-04). 지금 선언이 뜻하는 것은 「이 컬럼의 **표기가 정규화된 것으로 선언됐다**」 하나이고, 소비자가 **조회 시점에 비교의 양쪽을 SQL에서 접습니다**. **저장되는 것은 없습니다** — 파생 컬럼도, `<컬럼>_norm` 관례도, 재파생 스크립트도 이제 없습니다. 종전 판의 §2(층 셋)·§4.1·§4.2·§4.4·§7은 **전부 소멸했고**, 그 자리를 §2(한 단계)·§5.2(병합군 라우트)·§6(가상 조인의 함수 인덱스)이 대신합니다) | **Owner:** Backend / Ops
+> **Status:** 🟢 Living | **Last-verified:** 2026-09-15 (§6 — 소비자는 ON 절 하나가 아니라 «키 식» `notation_norm.key_expression_sql/_text` 하나를 지나는 네 자리, 텍스트 아닌 컬럼은 `::text` — S-245 `ddd5b3ba`) · 직전 2026-08-04 (🔴 **전면 재작성 — 이 문서가 서술하던 모델은 철회됐습니다.** `92b8d6f`가 출하한 **물리 파생 컬럼(`<컬럼>_norm`)**은 `8d306a5`에서 **아무도 소비하기 전에** 통째로 제거됐습니다(사용자 확정 2026-08-04). 지금 선언이 뜻하는 것은 「이 컬럼의 **표기가 정규화된 것으로 선언됐다**」 하나이고, 소비자가 **조회 시점에 비교의 양쪽을 SQL에서 접습니다**. **저장되는 것은 없습니다** — 파생 컬럼도, `<컬럼>_norm` 관례도, 재파생 스크립트도 이제 없습니다. 종전 판의 §2(층 셋)·§4.1·§4.2·§4.4·§7은 **전부 소멸했고**, 그 자리를 §2(한 단계)·§5.2(병합군 라우트)·§6(가상 조인의 함수 인덱스)이 대신합니다) | **Owner:** Backend / Ops
 > 상위: [폴더 인덱스](./README.md) · 지도는 [CONFIG_GUIDE §1](../CONFIG_GUIDE.md) · **소비자는 [virtual_join_rules](./virtual_join_rules.md)** · 정본 코드는 `server/notation_norm.py`
 
 <!-- Loader evidence (2026-08-04, 8d306a5 - measured against the tree, not transcribed):
@@ -16,8 +16,13 @@
   read entry:     normalized_by_table() -> rules_for_column / is_normalized
                   join_pair_rules(lt, lc, rt, rc)  <- "either side declared = both folded"
   cache:          RULES_CACHE_TTL = 5.0 + reset_cache()  (main.reload_local_process_cache)
+  key expression: notation_norm.key_expression_sql(column, rules)                 (SQLAlchemy - what a join COMPARES)
+                  notation_norm.key_expression_text(inner_sql, rules, text_column)  (PG text - what an index is BUILT on)
+                  = coalesce(fold(col), '') ; non-text column -> coalesce(fold(col::text), '')   (S-245 ddd5b3ba, 2026-09-15)
   consumers:      virtual_join_executor.join_onclause      (the ON clause, both sides)
-                  virtual_join_config.index_key_expression / required_index_ddl
+                  virtual_join_config.index_key_expression / required_index_ddl   (decides text-or-not: it holds the table)
+                  virtual_join.unique_key                  (duplicate probe groups by the same expression)
+                  chain.join_into._folded                  (the unified join's write-time join)
   preview:        notation_norm.fold_preview / declared_previews (PREVIEW_GROUP_LIMIT 500)
                   GET /admin/config/notation/preview   (admin token; DB scan; read-only)
   report:         config_resolve_report._resolve_notation + notation_preview_detail
@@ -248,7 +253,7 @@ GET /admin/config/notation/preview?table=dt_log&column=core_lot 가 병합군으
 
 ## 6. 🔴 소비자 — 가상 조인, 그리고 **평범한 UNIQUE 인덱스로는 안 되는 이유**
 
-오늘 이 선언을 읽는 유일한 소비자는 **가상 조인의 키 비교**입니다(`virtual_join_executor.join_onclause` — ON 절의 **단일 철자**).
+이 선언을 읽는 소비자는 **키 비교** 하나입니다 — 다만 그 철자는 ON 절이 아니라 **키 식** `notation_norm.key_expression_sql`(조인이 비교하는 것) · `key_expression_text`(인덱스가 서는 것)에 있고, 네 자리가 그것을 지납니다: 가상 조인 ON 절(`virtual_join_executor.join_onclause`) · 인덱스 DDL(`virtual_join_config.index_key_expression`) · 중복 탐침(`virtual_join.unique_key`) · 통합 join 의 쓰기 조인(`chain/join_into`)(S-245 `ddd5b3ba`). 키 식은 `coalesce(fold(col), '')` 이고 컬럼이 텍스트가 아니면 `coalesce(fold(col::text), '')` 입니다 — 텍스트 컬럼은 바이트 그대로라 어제 세운 인덱스에 오늘도 맞습니다.
 
 **① 어느 한쪽이라도 선언됐으면 양쪽이 접힙니다.** 한쪽만 접을 수 있는 인자도, 플래그도, 호출 모양도 **일부러 없습니다**(`notation_norm.join_pair_rules`). 양쪽이 서로 다른 규칙으로 선언돼 있으면 유효 집합은 **합집합**입니다 — 폴드는 컬럼의 성질이 아니라 **비교의 성질**이고, 합집합은 두 선언을 모두 만족하는 최소 집합이자 **더 합칠 수는 있어도 매치를 잃지는 않는** 유일한 단조 선택입니다.
 

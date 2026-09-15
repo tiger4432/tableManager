@@ -1,6 +1,6 @@
 # `virtual_join_rules.json` 세팅 — 저장하지 않는 조인(virtual join) 선언
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-09-15 «후속» (제품이 세운 `uq_vjoin_*` 는 요구하는 조인만큼만 산다 — `retract_unrequired_once`, §운영 메모) · 직전 2026-09-15 (검증은 자기 세션 · 규칙 단위 거절 · 자동 인덱스 스위치는 DB 무접촉 — §운영 메모) · 직전 2026-08-12 (**§2-ter 신설 — 조인 비용의 실측 모양**(`16b49ef`): `attach`의 **58%가 SQL**(10,000행 페이지 하나에 왕복 20회 = 선언 둘 × 청크 10, `CHUNK_SIZE=1000`)이고 노출 컬럼 넷이 **전부 `virtual_only`**라 비용은 구성상 O(행)이다 — 깎을 수 있는 것은 셀당 상수뿐. 🔴 **「이 루프는 무조건 돈다」가 거짓**이었다: `attach`는 테이블당 단락하고 선언을 가진 왼쪽 테이블은 14개 중 `dt_log` 하나이며, **격리 `assy_qa`에서는 두 선언 모두 거부**돼(중복 키 → UNIQUE 인덱스 생성 불가) 그 박스의 `attach`는 0.0 ms다. 함께 §「정확성 제약」에 **코드 사본 경고** 추가 — `virtual_join/executor.py`·`main.py`가 아직 「UNIQUE 인덱스를 그대로 탄다」고 적고 있다(성능 주장으로는 거짓, 총괄 라우팅 대상). 직전 2026-08-04: **§2-bis 신설 — 표기 정규화가 걸린 조인 키에서는 세 번째 배제가 뒤집힌다**(`8d306a5`): 접힌 비교는 컬럼 유일성이 아니라 **식 유일성**을 요구하므로 **함수 인덱스만 후보**가 되고 평범한 컬럼 UNIQUE는 배제된다. 🔴 이유는 성능이 아니라 **정확성**이다 — 원본으로 다른 두 행이 접히면 한 값이라 컬럼 UNIQUE가 있어도 접힌 키로는 중복이다. 함께 **「이 인덱스는 정확성 제약이지 조회 계획이 아니다」** 절 신설: 실측 플랜은 `Hash Left Join` + 오른쪽 `Seq Scan`이고 **인덱스의 성능 역할은 한 번도 행사된 적이 없다**(조인이 더한 버퍼는 왼쪽 15,469행에서도 103,040행에서도 **4**). 인덱스는 팬아웃 방지로 **여전히 필수**다. 직전 라운드: **N7 — 숫자 expose 컬럼이 읽기 표면 전체에서 동작한다.** 2026-08-02 사용자 보고: `number` 타입 컬럼을 노출하면 조회가 SQL 계층에서 500이었다 — 해석식이 `COALESCE(double precision, '미상')`을 만들었고 PostgreSQL이 타입 불일치로 거절했다. 수정: 숫자 컬럼은 COALESCE **이전에** 정본 비교 텍스트로 렌더한다(`crud.numeric_text_sql` — 정수값이면 INT 철자, `3.0`이 아니라 `3`). §4-ter 참조. **§9의 검색·CSV 두 미해결은 `cd3e0f4`(2026-07-31)로 이미 해소**돼 있었고 이번에 문서를 따라잡혔다. 직전 라운드 기록은 히스토리로) — 이전: 2026-07-31 (**같은 날 네 번째 라운드 — 화면 착지 `9200f20`+`4b50135`**: `/schema`가 가상 컬럼을 **별도 키 `virtual_columns`로** 알리고 그리드가 그것을 **덧붙여** 그린다. 🔴 **`columns`에 합치지 않는 것이 설계의 전부**다 — 그 배열의 뜻은 「저장하는 컬럼」이고 소비자 넷이 그 뜻에 기댄다. 🔴 **그리는 순간 그 컬럼은 붙여넣기·비우기·일괄채우기의 대상이 되므로** 클라에 술어 하나(`isVirtualColumn`)를 두어 제안을 막는다(강제는 여전히 서버 깔때기). §9의 첫 미해결 항목이 **해소**됐고 **새 미해결 둘**(CSV 추출 누락 · `미상` 행 검색 불가)이 그 자리에 들어왔다. 직전: **신설 → 같은 날 게이트 확정 → 같은 날 실행기 착지 `d70a33d`**. 사용자 판정 「인덱스 없으면 거절해」로 **승인 근거가 UNIQUE 인덱스 하나**가 됐고, 직전 판의 3등급 모델(`unique_index`/`probe_clean`/`unverified`)과 중복 프로브·예산·`incomplete` 상태는 **삭제**됐다. **조인은 이제 실제로 실행된다** — `server/virtual_join/executor.py`가 읽기 경로에서 `expose` 컬럼을 붙이고, **이름 충돌 거부는 해제**돼 「부재일 때만 채운다」가 됐다(§4-bis)) | **Owner:** Backend / 총괄
+> **Status:** 🟢 Living | **Last-verified:** 2026-09-15 «후속 2» (통합 join 의 `key.unique` 도 같은 `ensure_once` 로 워커 웜업이 세우고 철회의 요구 집합은 둘의 «합» — S-240 · 키 식의 저자는 `notation_norm` 하나, 비텍스트는 `::text` — S-245 · 인덱스 보고·쓰기 게이트 줄은 `→ 다음:` 을 싣는다 — S-247 · §3 DDL 예시를 오늘 인쇄되는 식으로) · 직전 2026-09-15 «후속» (제품이 세운 `uq_vjoin_*` 는 요구하는 조인만큼만 산다 — `retract_unrequired_once`, §운영 메모) · 직전 2026-09-15 (검증은 자기 세션 · 규칙 단위 거절 · 자동 인덱스 스위치는 DB 무접촉 — §운영 메모) · 직전 2026-08-12 (**§2-ter 신설 — 조인 비용의 실측 모양**(`16b49ef`): `attach`의 **58%가 SQL**(10,000행 페이지 하나에 왕복 20회 = 선언 둘 × 청크 10, `CHUNK_SIZE=1000`)이고 노출 컬럼 넷이 **전부 `virtual_only`**라 비용은 구성상 O(행)이다 — 깎을 수 있는 것은 셀당 상수뿐. 🔴 **「이 루프는 무조건 돈다」가 거짓**이었다: `attach`는 테이블당 단락하고 선언을 가진 왼쪽 테이블은 14개 중 `dt_log` 하나이며, **격리 `assy_qa`에서는 두 선언 모두 거부**돼(중복 키 → UNIQUE 인덱스 생성 불가) 그 박스의 `attach`는 0.0 ms다. 함께 §「정확성 제약」에 **코드 사본 경고** 추가 — `virtual_join/executor.py`·`main.py`가 아직 「UNIQUE 인덱스를 그대로 탄다」고 적고 있다(성능 주장으로는 거짓, 총괄 라우팅 대상). 직전 2026-08-04: **§2-bis 신설 — 표기 정규화가 걸린 조인 키에서는 세 번째 배제가 뒤집힌다**(`8d306a5`): 접힌 비교는 컬럼 유일성이 아니라 **식 유일성**을 요구하므로 **함수 인덱스만 후보**가 되고 평범한 컬럼 UNIQUE는 배제된다. 🔴 이유는 성능이 아니라 **정확성**이다 — 원본으로 다른 두 행이 접히면 한 값이라 컬럼 UNIQUE가 있어도 접힌 키로는 중복이다. 함께 **「이 인덱스는 정확성 제약이지 조회 계획이 아니다」** 절 신설: 실측 플랜은 `Hash Left Join` + 오른쪽 `Seq Scan`이고 **인덱스의 성능 역할은 한 번도 행사된 적이 없다**(조인이 더한 버퍼는 왼쪽 15,469행에서도 103,040행에서도 **4**). 인덱스는 팬아웃 방지로 **여전히 필수**다. 직전 라운드: **N7 — 숫자 expose 컬럼이 읽기 표면 전체에서 동작한다.** 2026-08-02 사용자 보고: `number` 타입 컬럼을 노출하면 조회가 SQL 계층에서 500이었다 — 해석식이 `COALESCE(double precision, '미상')`을 만들었고 PostgreSQL이 타입 불일치로 거절했다. 수정: 숫자 컬럼은 COALESCE **이전에** 정본 비교 텍스트로 렌더한다(`crud.numeric_text_sql` — 정수값이면 INT 철자, `3.0`이 아니라 `3`). §4-ter 참조. **§9의 검색·CSV 두 미해결은 `cd3e0f4`(2026-07-31)로 이미 해소**돼 있었고 이번에 문서를 따라잡혔다. 직전 라운드 기록은 히스토리로) — 이전: 2026-07-31 (**같은 날 네 번째 라운드 — 화면 착지 `9200f20`+`4b50135`**: `/schema`가 가상 컬럼을 **별도 키 `virtual_columns`로** 알리고 그리드가 그것을 **덧붙여** 그린다. 🔴 **`columns`에 합치지 않는 것이 설계의 전부**다 — 그 배열의 뜻은 「저장하는 컬럼」이고 소비자 넷이 그 뜻에 기댄다. 🔴 **그리는 순간 그 컬럼은 붙여넣기·비우기·일괄채우기의 대상이 되므로** 클라에 술어 하나(`isVirtualColumn`)를 두어 제안을 막는다(강제는 여전히 서버 깔때기). §9의 첫 미해결 항목이 **해소**됐고 **새 미해결 둘**(CSV 추출 누락 · `미상` 행 검색 불가)이 그 자리에 들어왔다. 직전: **신설 → 같은 날 게이트 확정 → 같은 날 실행기 착지 `d70a33d`**. 사용자 판정 「인덱스 없으면 거절해」로 **승인 근거가 UNIQUE 인덱스 하나**가 됐고, 직전 판의 3등급 모델(`unique_index`/`probe_clean`/`unverified`)과 중복 프로브·예산·`incomplete` 상태는 **삭제**됐다. **조인은 이제 실제로 실행된다** — `server/virtual_join/executor.py`가 읽기 경로에서 `expose` 컬럼을 붙이고, **이름 충돌 거부는 해제**돼 「부재일 때만 채운다」가 됐다(§4-bis)) | **Owner:** Backend / 총괄
 > 상위: [폴더 인덱스](./README.md) · 절차 요약은 [CONFIG_GUIDE §1](../CONFIG_GUIDE.md) · 선언·검증 정본은 `server/virtual_join/config.py` · **실행 정본은 `server/virtual_join/executor.py`**
 
 <!-- Loader evidence (2026-07-31, 실행기 착지 후 재확인 · d70a33d):
@@ -13,6 +13,12 @@
   index retraction:  unique_key.retract_unrequired_once, called at the end of load_verified_rules ONLY when path is None (default file)
                      drops every uq_vjoin_* (config.INDEX_PREFIX) no enabled+verified rule requires; once per required-set per process;
                      PostgreSQL only; ASSY_VJOIN_AUTO_INDEX=0 neither builds nor drops; can never break loading (S-248 90d971ba, 2026-09-15)
+                     required set = read-time verified rules UNION chain.builtins.declared_unique_index_names() (S-240 8cab58da);
+                     if the unified half cannot be read the retraction does not run at all
+  unified join:      chain.builtins.ensure_declared_unique_keys <- ingestion_worker.warmup_worker (boot + every reload, never the read path;
+                     same ensure_once, same uq_vjoin_ name; enabled:false = zero calls; key.columns is a check only) (S-240)
+  key expression:    notation_norm.key_expression_sql / key_expression_text - ONE author for coalesce(fold(col), ''); non-text -> col::text (S-245 ddd5b3ba)
+  operator lines:    unique_key.describe -> operator_line.line("VirtualJoinIndex", table, ...); crud.refuse_virtual_join_duplicates -> "VirtualJoinUnique" (S-247 3aab7173)
   verification seat: virtual_join_executor._verified_by_left_table opens its OWN SessionLocal and closes it - never the reader's session
                      one rule whose verify_uniqueness raises is refused BY NAME (CODE_SHAPE) and the loop continues (2026-09-15)
   execution:         virtual_join_executor.rules_for / execute_rule / _resolve_one / attach
@@ -158,8 +164,12 @@
 
 ```
 CREATE UNIQUE INDEX CONCURRENTLY uq_vjoin_core_wafer_map_core_lot_core_slot
-  ON "core_wafer_map" ("core_lot", "core_slot");
+  ON "core_wafer_map" (coalesce("core_lot", ''), coalesce("core_slot", ''));
 ```
+
+- 키는 «식»이다 — `coalesce(<컬럼>, '')`(09-11 S-181: 평범한 UNIQUE 는 `(L1, NULL)` 둘을 들여보낸다), 컬럼이 텍스트가 아니면
+  `coalesce(<컬럼>::text, '')`(09-15 S-245), 접기가 걸리면 그 안에 접기 함수(§2-bis). 그 식의 저자는 `notation_norm.key_expression_text`
+  «하나»이고 조인이 비교하는 식과 같은 함수에서 나온다 — 손으로 다르게 적은 인덱스는 «있어도 승인되지 않는다».
 
 - `CONCURRENTLY`는 쓰기를 잠그지 않는다. 대신 **취소되면 무효 인덱스가 남으므로**,
   취소했다면 `DROP INDEX` 후 다시 만들어야 판정이 인정한다(§2의 배제 1번).
@@ -362,6 +372,15 @@ x1288 조인이 언제나 틀린 것은 아니다 — **행 조인으로서** �
   🔴 접두어가 안전의 전부다 — 운영자가 자기 이름으로 세운 인덱스는 모집단에 없다. 기본 선언 파일일 때만(`path` 를
   넘긴 부분 목록에서는 안 걷는다) · PostgreSQL 만 · 위 스위치가 0 이면 세우지도 걷지도 않는다 · 로딩은 절대 안 깨진다.
   그 조인을 다시 켜면 제품이 다시 세운다.
+- **통합 join 이 선언한 `key: {unique: true}` 도 «같은 빌더»가 세운다**(2026-09-15 S-240 `8cab58da`·`07a568ad`) —
+  다만 자리는 «체인 워커 웜업»(부팅 + 리로드마다. 읽기 경로가 아니다)이고, 같은 `ensure_once`·같은 `uq_vjoin_*` 이름이다.
+  그래서 위 철회의 «요구 집합»은 읽기 시점 선언과 통합 선언의 «합»이다(`chain/builtins.declared_unique_index_names`) —
+  통합 쪽을 못 읽으면 철회가 «안 돈다»(반쪽 집합은 덜 걷는 것이 아니라 틀린 것을 걷는다). 선언 쪽 절차는 `RUN.md` §5,
+  키 뜻은 [config/chain_rules §5-B-bis](./chain_rules.md).
+- **인덱스 보고와 쓰기 게이트의 줄은 «다음 행동»을 싣는다**(2026-09-15 S-247 `3aab7173`) — `[VirtualJoinIndex:<표>] … → 다음: …`
+  (없음·INVALID → 재기동 · 빈 키 → 채우거나 카탈로그 `null_policy` · 진짜 중복 → 데이터 접기) · `[VirtualJoinUnique:<규칙>] … → 다음: …`(데이터 접기).
+  저자는 `server/operator_line.py` 하나이고 «다음:» 절을 그대로 따른다 — 같은 「중복 키」라도 `[BKConflict:<표>]` 는 «선언»을 넓히라는
+  «반대» 수리다(`RUN.md` §2-bis).
 - **«파일»을 읽지 못하면 「조인 없음」으로 간다.** 붙지 않은 컬럼은 눈에 보이는 부재이고,
   잘못 붙은 컬럼은 조용한 오답이기 때문이다. 🔴 선언 «하나»의 검증이 던지면 그 규칙만 이름 대고
   거절되고 나머지 표의 조인은 선다 — 그리고 검증은 독자의 세션이 아니라 «자기 세션»에서 돌므로

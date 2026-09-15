@@ -808,6 +808,8 @@ publish_parser(name, read_body, process_body, file=…, …)      «같은 프�
 - **던진 페이지는 그 페이지만** 잃습니다 — `pages_failed`·`page_failures`(처음 10 개), 세션 롤백 뒤 계속. ⚠️ 이 격리는 «이 가지만»이고 파일 맵퍼 호출은 그대로입니다(S-242-b).
 - 🔴 **오른쪽(참조 쪽) 규칙 이름은 거절됩니다** — 「읽는 표를 트리거로 갖고 그 표가 쓰는 표가 아닌」 규칙(`is_reference_side`, «칸»이 아니라 «성질» — 양쪽 다 `follow_up` 이라 그 칸으로는 못 가릅니다). 왼쪽 규칙을 돌리면 모든 대상 행을 덮습니다. 운영자 결정표는 [BACKFILL_GUIDE §0](./BACKFILL_GUIDE.md).
 
+🆕 **[2026-09-15 «후속 2»] 같은 `builtin:` 종류에 대해 그날 둘이 더 착지했습니다.** ① S-240(`8cab58da`·`07a568ad`) — 통합 join 의 `key: {unique: true}` 를 워커 «웜업»(`warmup_worker` 0-bis, 부팅 + 리로드마다)이 읽어 오른쪽 표에 유일 인덱스를 «제품이» 세웁니다(읽기 시점 가상 조인과 같은 `unique_key.ensure_once`). 못 세우면 `[Warmup]` 한 줄이고 워커는 섭니다. 키 뜻은 [config/chain_rules §5-B-bis](./config/chain_rules.md). ② S-246(`38b5d8e1`) — `builtin:` 종류도 어드민 대기열(`GET /admin/chain/queue`)에 «도는 중»으로 뜹니다: 등록이 파일 맵퍼 문 안에만 있어 builtin 은 돌아도 `never_evaluated` 로 남았고, 이제 두 문이 `chain/activity.running` 컨텍스트 «하나»를 지납니다. ③ 그리고 S-247(`3aab7173`) — 워커가 내는 거절·경고 줄(`[join_into:<규칙>]` · `[VirtualJoinUnique:<규칙>]` · `[BKConflict:<표>]` · `[VirtualJoinIndex:<표>]`)은 끝에 `→ 다음: <행동>` 을 싣습니다. 해독표는 없습니다 — «다음:» 절을 그대로 따르십시오(저자 `server/operator_line.py`, `RUN.md` §2-bis).
+
 ```bash
 conda run -n assy_manager python server/scripts/chain_replay_cli.py list          # 룰 + 재적용 순서
 conda run -n assy_manager python server/scripts/chain_replay_cli.py replay <룰>    # dry-run

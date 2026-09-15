@@ -381,7 +381,7 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 - **인덱스**: `server/migrations/add_business_key_unique_index.py`가 테이블별 `uq_bk_<table>` UNIQUE 인덱스를 `CONCURRENTLY`로 만든다. **`models.py`에 선언하지 않는다** — `create_all`은 이미 있는 테이블에 인덱스를 추가하지 않으므로, 중복이 쌓일 수 있는 바로 그 데이터베이스들에서 조용한 무동작이 된다(`idx_sources_by_source`와 같은 계급의 함정).
 - **NULL은 그대로 여러 개 허용된다.** PostgreSQL의 평범한 UNIQUE 인덱스는 NULL을 서로 다르게 보고, `create_empty_rows_batch`는 업무 키 없는 행을 만든다. `NULLS NOT DISTINCT`로 바꾸면 「빈 행 추가」가 두 번째 클릭부터 실패한다.
 - **회복**: `crud.apply_batch_updates`가 이제 `IntegrityError`를 잡는다(`_is_business_key_unique_violation` — SQLSTATE 23505 + 제약 이름이 `uq_bk_` 접두일 때만). 롤백 후 배치를 재실행하면 **새 READ COMMITTED 스냅샷의 프리페치가 상대가 커밋한 행을 보므로** 그 행에 병합된다. 별도의 병합 코드는 없다 — **재실행 자체가 병합**이고, 신원 해석기는 여전히 하나다.
-  🔴 **회복은 이름이 붙고 로그에 남는다**(`[BK Conflict Recovered]`). 조용한 재시도는 보이지 않는 실패를 다른 보이지 않는 실패로 바꾼다. 상한(`BK_CONFLICT_MAX_RETRIES`)을 넘기면 `[BK Conflict Unresolved]`로 **거절한다** — 진짜 중복 신원은 영원히 재시도할 대상이 아니다.
+  🔴 **회복은 이름이 붙고 로그에 남는다**(`[BK Conflict Recovered]`). 조용한 재시도는 보이지 않는 실패를 다른 보이지 않는 실패로 바꾼다. 상한(`BK_CONFLICT_MAX_RETRIES`)을 넘기면 `[BKConflict:<표>] … → 다음: <composite_key_source 에 두 행을 가르는 컬럼을 더 적으십시오>` 로 **거절한다**(S-247 `3aab7173` — 줄의 저자는 `server/operator_line.py`, 행동은 «선언 넓히기»다: 데이터를 접으면 사실이 사라진다. 같은 「중복 키」인 `[VirtualJoinUnique:…]` 는 반대로 «데이터 접기») — 진짜 중복 신원은 영원히 재시도할 대상이 아니다.
   ⚠️ **롤백의 대가 하나**: `ingestion_checkpoint.record_chunk_progress`가 같은 세션에서 미리 낸 오프셋 UPDATE도 함께 사라진다. 결과는 그 모듈이 이미 문서화한 열화(다음 크래시 시 그 청크 재처리, 업서트가 멱등이라 유실 아님)다.
 
 ### 3.1-bis 업무 키를 못 구한 행은 **빈 문자열이 아니라 NULL을 받는다** · 2026-08-07
