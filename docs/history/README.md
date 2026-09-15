@@ -1,13 +1,19 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **884개** 이력. (거버넌스 규칙 #4)
+> 총 **890개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-09 (September 2026)
 
+- **2026-09-16 02:48** — [Skeleton Descent Has One Author And A Oneof Starts As Nothing Picked](./20260916_024831_skeleton_descent_has_one_author_and_a_oneof_starts_as_nothing_picked.md)
+- **2026-09-16 02:38** — [The Scratch Search Path Has One Spelling The Bk Proof Asks Its Author And The Pg Seat Runs Only When Asked](./20260916_023822_the_scratch_search_path_has_one_spelling_the_bk_proof_asks_its_author_and_the_pg_seat_runs_only_when_asked.md)
+- **2026-09-16 02:28** — [The Startup Socket Gate Harness Imports Its Subjects And The Boot Order Moved To A File Node Can Import](./20260916_022822_the_startup_socket_gate_harness_imports_its_subjects_and_the_boot_order_moved_to_a_file_node_can_import.md)
+- **2026-09-16 02:24** — [The Postgresql Only Proofs Get A Seat And The First Run Showed What Skipping Had Hidden](./20260916_022404_the_postgresql_only_proofs_get_a_seat_and_the_first_run_showed_what_skipping_had_hidden.md)
+- **2026-09-16 02:12** — [The Launcher Roster Is A Value The Oracles Import And It Carried A Premise The Board Had Already Refuted](./20260916_021201_the_launcher_roster_is_a_value_the_oracles_import_and_it_carried_a_premise_the_board_had_already_refuted.md)
+- **2026-09-16 01:49** — [Three Rule Files Are One Namespace And The Second Copy Of A Name Had Been Dropped In Silence](./20260916_014925_three_rule_files_are_one_namespace_and_the_second_copy_of_a_name_had_been_dropped_in_silence.md)
 - **2026-09-16 01:34** — [The Unreplayable Line Can Still Show You The Row](./20260916_013410_the_unreplayable_line_can_still_show_you_the_row.md)
 - **2026-09-16 01:22** — [A Big Selection Says Its Size And The Banner Speaks One Language](./20260916_012250_a_big_selection_says_its_size_and_the_banner_speaks_one_language.md)
 - **2026-09-16 01:09** — [Pick One Is Drawn From The Skeleton And The Flat Registry Stays Until The Flat Grammar Retires](./20260916_010926_pick_one_is_drawn_from_the_skeleton_and_the_flat_registry_stays_until_the_flat_grammar_retires.md)
