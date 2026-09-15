@@ -38877,3 +38877,20 @@ S-106 조건   철회는 «오늘의 함수»(store 의 withdraw)를 그대로 �
 > 📌 **[09-15 12:1x] 이 채널의 미답 질문: «없음».**
 > ✅ **[09-15 12:4x 구현자] S-248 착지 `90d971ba`** — `product_indexes` + `retract_unrequired_once`(요구 집합마다 한 번 · OFF 는 DB 무접촉 · 하나 실패해도 나머지 계속) · `load_verified_rules` 는 `path is None` 일 때만 · 접두는 `config.INDEX_PREFIX` 하나 · 실패 줄은 `failure_cause` 로 «마지막 줄». 게이트 8 · 변이 다섯 전부 빨강 · 977 passed · collect 6,634. ⚠️ 박스의 그 인덱스가 실제로 걷히는지는 «재기동»에서 드러납니다(총괄 몫) — 제가 안 잰 것입니다.
 > 📌 **[09-15 12:4x] 이 채널의 미답 질문: «둘» — S-242 ②의 격리 범위 · S-249 의 ㉠/㉡/㉢.**
+---
+
+> ## 판정 402 — 「고리는 오류가 아니다」 · S-249 에 ⓓ 추가, ⓒ 정정 (총괄, 2026-09-15 12:2x)
+>
+> **소유자:** 「사이클은 어차피 max depth 로 막혔는데 에러 띄울 이유가 있어? 사이클 오류 계속 뜨네」. 맞다.
+> **실측(총괄):** 홉 상한은 «이미 있다» — `event_constants.max_chain_depth(_RULES_DOCUMENT)`(`chain_rules.json` 최상위 `max_chain_depth`, 기본값 있음)를 드레인이 :3497~3525 에서 «강제»한다(「[Chain Depth] … refusing it and marking it finished」). 그러므로 고리는 «유한»이고, 로드 시점 고리 «거절»은 남는 이유가 없다. 고리를 말하는 자리 «둘»:
+> ```
+> ① rule_order.order_rules → RuleCycleRefused  :891 에서 잡아 logger.error   «순서를 못 정한다»는 뜻뿐. 규칙은 그대로 선다. 드레인이 :3448 에서 load_chain_rules 를 다시 부르므로 이 ERROR 가 «반복»된다 — 소유자가 본 것
+> ② _validate_chain_cascade_graph → ValueError  :930 에서 «안 잡음» → 로드가 «죽는다» · ledger/admin.py :720 저장도 거절
+> ```
+> **판정:** 고리는 «모양»이지 결함이 아니다. log→inventory 맵퍼 + inventory→log 조인은 «의도된 고리»이고 홉 상한이 그것을 «유한하게» 만든다.
+> ```
+> ⓒ 정정   S-249 ⓒ의 「홉 상한 선언(기본 3)」은 «새로 만들지 않는다» — `max_chain_depth` 가 그것이다. follow_up 랩의 «같은 (원 tx, 표, 행) 한 번»과 «홉 수 나르기»는 그 상한을 «지나게» 한다(뒤따르기 랩의 쓰기도 홉을 +1 하고 같은 상한에 걸린다 — 오늘은 안 걸리는지 «재서» 적을 것)
+> ⓓ 추가   ①②를 «거절»에서 «한 번 말하기»로: `_say_once` 로 INFO 한 줄 — `[ChainRules] 고리: A → B → A (순서는 선언 순 · 홉 상한 max_chain_depth=N 이 막습니다). 다음: 없음. 상한을 바꾸려면 chain_rules.json 의 max_chain_depth`. ②는 raise 를 없애고 같은 줄. 저장 라우트(:720)도 고리로 «거절하지 않는다». RuleCycleRefused 는 «던지지 않고» 순서만 «선언 순»으로 돌려준다(예외 클래스는 지운다 — 던지는 곳 0 이면 잔해)
+> ```
+> 게이트에 한 줄 더: Ⅴ 고리 셋(맵퍼 log→inventory · 조인 inventory→log · auto_confirm)을 세운 로드가 «오류 0·규칙 전부 set»이고 INFO 한 줄이 «한 번». 순서는 S-249 → 그대로.
+> 📌 **[09-15 12:2x] 이 채널의 미답 질문: «없음».**
