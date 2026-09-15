@@ -576,20 +576,38 @@ async def startup_event():
         _chain_switch = os.getenv("ASSY_CHAIN_WORKER", "1").strip().lower()
         chain_task = None
         if _chain_switch in ("0", "false", "off", "no"):
-            logger.warning(
-                "[Chain Worker] NOT started: ASSY_CHAIN_WORKER=%s. No chain rule will run "
-                "and no outbox event will be consumed until this is unset.", _chain_switch)
+            logger.info(
+                "[Chain Worker] NOT started in this process: ASSY_CHAIN_WORKER=%s. Under "
+                "the launcher this is CORRECT - `run_chain_worker.py` is the chain's own "
+                "process (판정 406). If you started uvicorn by hand and meant the chain to "
+                "run, unset this.", _chain_switch)
         else:
             from chain.ingestion_worker import start_chain_ingestion_worker
             chain_task = main_loop.create_task(start_chain_ingestion_worker(SessionLocal))
+            # ⚠️ [판정 406 ②] IT RUNS HERE, AND THAT COSTS SOMETHING THE OPERATOR SHOULD
+            # KNOW. The loop body is synchronous database work on the event-loop thread, so
+            # a slow tick freezes every HTTP request for exactly that long - which is how
+            # one unconsumable outbox row took the whole API down on 2026-09-15. Fine for a
+            # box or a development run; production starts the launcher, which gives the
+            # chain its own process.
+            logger.warning(
+                "[Chain Worker] running INSIDE the API process - a slow tick blocks every "
+                "HTTP request for that long. This is the single-process mode; production "
+                "runs `run_decoupled_app.py`, which gives the chain its own process.")
         # 🔴 「spawned」를 «참으로» 만드는 콜백. `create_task` 는 성공하므로 아래 except 는
         #    태스크 «안»의 예외를 못 봅니다 — 그래서 종전에는 로더가 거절해도(설계상 거절입니다,
         #    event_driven_backend.md §3.4 ②) 이 줄이 그대로 찍히고 사유는 asyncio 의
         #    「Task exception was never retrieved」로만, 그것도 GC 시점에 이 로거 «밖»으로
         #    나갔습니다. 운영자에게 남는 것은 심박 없는 워커 하나였고 「왜」가 없었습니다.
         # ⛔ 재시작도 복구도 알림도 하지 않습니다. 사유를 이 로거로 «꺼내는» 것뿐입니다.
-        chain_task.add_done_callback(_log_chain_worker_exit)
-        logger.info("Chained Ingestion Worker background task spawned.")
+        # ⛔ ONLY IF ONE WAS STARTED. This ran unconditionally, and `chain_task` is
+        # `None` on the off branch - so `ASSY_CHAIN_WORKER=0` raised `AttributeError`
+        # straight into the handler below, which reported it as 「Startup step failed
+        # (watcher/chain worker)」. The switch had never been exercised, and 판정 406 ① is
+        # the day it becomes the normal path: a guard goes wrong the day it is reachable.
+        if chain_task is not None:
+            chain_task.add_done_callback(_log_chain_worker_exit)
+            logger.info("Chained Ingestion Worker background task spawned.")
     except Exception as e:
         # 🔴 주어를 «지웠습니다». 이 try 는 워처«와» 체인 워커를 둘 다 감싸는데 문구가
         #    워처를 지목하고 있어, 체인 쪽 실패가 「워처 탓」으로 보고됐습니다 — 오진을

@@ -320,7 +320,15 @@ def main():
     # error live there and nowhere else.
     specs = [
         ChildSpec("Backend FastAPI Server", server_cmd, server_dir,
-                  env={"DECOUPLED": "True"},
+                  # 🔴 [판정 406] THE CHAIN LOOP RUNS IN ITS OWN PROCESS, AND THIS IS THE
+                  # LINE THAT MAKES THAT TRUE. This launcher already starts
+                  # `run_chain_worker.py` as a child of its own - and did NOT tell the API
+                  # child to stand down, so a launcher-run deployment had TWO chain loops
+                  # and one of them lived inside uvicorn. The loop body is synchronous
+                  # database work on the event-loop thread, so ANY slow tick there - a
+                  # query, a mapper, a cycle - freezes every HTTP request for that long.
+                  # S-252 was one instance of that shape; this removes the shape.
+                  env={"DECOUPLED": "True", "ASSY_CHAIN_WORKER": "0"},
                   ports=(int(api_port),), port_host=api_host,
                   log_file=paths.log_path("server_stdout.log")),
         # The workers assume the web server is accepting /internal/events/*.
