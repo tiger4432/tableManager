@@ -27,6 +27,9 @@ import { RedoBanner } from './redo_banner.js';
 import { putRescopeHandoff } from './rescope_handoff.js';
 import { setMatchCount } from './match_count.js';
 import { ADMIN_TOKEN_HEADER, readAdminToken } from './admin_token.js';
+// C-109. 다시 돌릴 수 있는 규칙의 목록은 «표마다» 다릅니다. 그 물음이 자기 모듈에 사는
+// 사유는 그 파일 머리글에 있습니다(이 파일은 node 가 import 못 합니다).
+import { loadReplayableRules } from './replayable_rules.js';
 import {
   loadHistory,
   triggerHistoryReloadDebounced,
@@ -168,12 +171,9 @@ async function init() {
   // 🔴 부팅 자동 선택도 «표를 고른 것»입니다. 여기서 안 알려 주면 첫 화면의 라벨만
   //    조용히 비고, 사용자가 표를 «한 번 바꿔야» 나타납니다 (그 침묵이 「아님」처럼 보입니다).
   if (sourceLabel) sourceLabel.setRelation(state.currentTable);
-  if (redoBanner) {
-    redoBanner.setRelation(state.currentTable);
-    // 부팅 자동 선택도 «표를 고른 것»입니다. 여기서 안 알려 주면 체인 버튼이 첫 화면에서
-    //  「업무 키가 없다」고 말합니다 -- 있는데도 (라이브 실측 2026-08-31).
-    redoBanner.setBusinessKey(state.currentBusinessKey);
-  }
+  // 부팅 자동 선택도 «표를 고른 것»입니다. 여기서 안 알려 주면 체인 버튼이 첫 화면에서
+  // 「업무 키가 없다」고 말합니다 -- 있는데도 (라이브 실측 2026-08-31).
+  redoBannerFollows(state.currentTable);
 }
 
 // 🔴 주소는 «합성 루트»가 압니다 (조립식 상설). 부품은 라우트도 apiBase 도 모르고
@@ -240,19 +240,18 @@ async function runRetroactive(op, params) {
 
 /** 체인 규칙 «이름» 목록. 🔴 `null`(못 읽음)과 `[]`(서버가 하나도 선언 안 함)을 «가릅니다» --
  *  합치면 403 과 빈 설정이 화면에서 같은 픽셀이 되고, 운영자는 엉뚱한 곳을 고칩니다. */
-async function loadChainRuleNames() {
-  const token = readAdminToken();
-  if (!token) return null;
-  try {
-    const res = await fetch(`${API_BASE}/admin/chain/rules`,
-      { headers: { [ADMIN_TOKEN_HEADER]: token } });
-    if (!res.ok) return null;
-    const body = await res.json();
-    if (!body || body.status !== 'success' || !Array.isArray(body.data)) return null;
-    return body.data.map((rule) => (rule && rule.name) || '').filter(Boolean);
-  } catch (e) {
-    return null;
-  }
+/**
+ * 배너가 «이 표»를 알게 되는 한 자리. 부팅과 표 바꿈이 «같은 줄»을 지납니다 —
+ * 갈라지면 한쪽 경로에서만 목록이 낡습니다(기준 ④: 「둘이 갈라질 수 있나」).
+ */
+function redoBannerFollows(table) {
+  if (!redoBanner) return;
+  redoBanner.setRelation(table);
+  // 업무 키는 표마다 다릅니다. 체인은 그 값들로 고르므로 표가 바뀌면 같이 바뀝니다.
+  redoBanner.setBusinessKey(state.currentBusinessKey);
+  // 🔴 C-109. 고를 규칙도 «이 표»의 것입니다 — 트리거가 이 표인 규칙만, 조인 포함.
+  //    거르는 것은 서버입니다 — 화면이 거르면 그 규칙이 «두 곳»에 살게 됩니다.
+  loadReplayableRules(table).then((rules) => redoBanner.setRules(rules));
 }
 
 /**
@@ -293,8 +292,8 @@ function initRedoBanner() {
   loadLedgerDeclaration().then((got) => {
     part.setSources(got && got.ok ? got.sources : null);
   });
-  // 체인은 `rule` 이 «필수» 파라미터라, 이름을 모르면 돌릴 줄이 없습니다.
-  loadChainRuleNames().then((names) => part.setRules(names));
+  // 체인은 `rule` 이 «필수» 파라미터라, 이름을 모르면 돌릴 줄이 없습니다. 그 목록은
+  // 이제 «표가 정해질 때» 옴니다(`redoBannerFollows`) — 부팅도 그 자리를 지납니다.
   return part;
 }
 
@@ -476,11 +475,7 @@ function setupEventListeners() {
       countNav(ROUTES.GRID, 'grid:table');
       await switchTable(table);
       if (sourceLabel) sourceLabel.setRelation(table);
-      if (redoBanner) {
-        redoBanner.setRelation(table);
-        // 업무 키는 표마다 다릅니다. 체인은 그 값들로 고르므로 표가 바뀌면 같이 바뀝니다.
-        redoBanner.setBusinessKey(state.currentBusinessKey);
-      }
+      redoBannerFollows(table);
     }
   });
 
