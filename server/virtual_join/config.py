@@ -1109,16 +1109,7 @@ def synthesized_join_chain_rules(path: str = None, known_tables: dict = None) ->
     return rules
 
 
-def join_name_collisions(chain_rule_names, path: str = None,
-                         known_tables: dict = None) -> list:
-    """Names `chain_rules.json` declares that a synthesised join would also claim.
-
-    ⛔ REFUSED BY NAME, NEVER RESOLVED — the same posture `enrichment_name_collisions` takes
-    (S-179 ①, 판정 292). Which of the two an operator meant is not a thing this product can
-    know, so it names both and drops the synthesised half.
-    """
-    declared = {name for name in (chain_rule_names or ()) if name}
-    return sorted(name for name in
-                  (r["name"] for r in synthesized_join_chain_rules(
-                      path=path, known_tables=known_tables))
-                  if name in declared)
+# 🪦 `join_name_collisions` (S-179 ①, 판정 292) sat here beside `synthesized_join_chain_rules`.
+#    S-234 ① (판정 409) made the three rule files ONE namespace, judged once at the loader's
+#    set-aware seat (`chain.ingestion_worker.load_chain_rules`) — a checker per file was the
+#    evidence of a namespace per file.

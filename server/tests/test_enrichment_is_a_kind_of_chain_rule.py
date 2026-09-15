@@ -123,21 +123,11 @@ def test_a_disabled_rule_does_not_become_an_enabled_chain_rule(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Gate ⓑ — a name claimed twice is refused BY NAME
+# 🪦 Gate ⓑ — a name claimed twice is refused BY NAME — moved (S-234 ①, 판정 409)
 # ---------------------------------------------------------------------------
-
-def test_a_name_declared_on_both_sides_is_named(one_rule):
-    assert ec.enrichment_name_collisions(["enrichment_dedup:s179_rule"]) == [
-        "enrichment_dedup:s179_rule"]
-    assert ec.enrichment_name_collisions(["enrichment_auto_confirm:s179_rule"]) == [
-        "enrichment_auto_confirm:s179_rule"]
-
-
-def test_a_clean_declaration_collides_with_nothing(one_rule):
-    """The sensitivity control: a checker that named everything would pass the test above
-    and refuse every deployment."""
-    assert ec.enrichment_name_collisions(["some_other_rule"]) == []
-    assert ec.enrichment_name_collisions([]) == []
+# `enrichment_name_collisions` is gone: the three rule files are ONE namespace, judged once
+# at the loader's set-aware seat. The refusal and its sensitivity control are scored in
+# `test_three_files_declare_one_chain_namespace.py`.
 
 
 # ---------------------------------------------------------------------------

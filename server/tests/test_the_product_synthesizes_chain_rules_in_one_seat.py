@@ -66,13 +66,10 @@ def test_the_loader_calls_the_seat_and_not_a_half():
     assert "load_enrichment_chain_rules" not in body, "the half is called directly again"
 
 
-def test_the_boot_line_counts_the_three_kinds_apart():
-    """⚠️ 「N synthesized」 OVER THREE KINDS is the shape that once reported 8 of a kind there
-    were 4 of, which is why S-179 ① split its own count."""
-    rules = builtins.synthesize_chain_rules()
-    counts = builtins.synthesized_kind_counts(rules)
-    assert set(counts) == {"dedup", "auto_confirm", "join"}
-    assert sum(counts.values()) == len(rules)
+# 🪦 `test_the_boot_line_counts_the_three_kinds_apart` died with `synthesized_kind_counts`
+#    (S-234 ③): the 「Synthesized N (a · b · c)」 line folded into the loader's set line, which
+#    names every rule with its origin and kind. That line is scored in
+#    `test_three_files_declare_one_chain_namespace.py`.
 
 
 # ---------------------------------------------------------------------------
@@ -120,11 +117,19 @@ def test_a_materializing_rule_arrives_as_a_paced_builtin(tmp_path):
     assert rule["params"]["materialize"] is True
 
 
-def test_a_name_claimed_by_both_files_is_refused_by_name(tmp_path):
+def test_the_seat_says_which_file_a_synthesised_rule_was_written_in(tmp_path):
+    """S-234 ①: the one-namespace refusal names the files to look in, and this is the cell
+    that tells the two halves apart. ⚠️ Only for rules out of THIS seat - the loader tags
+    `chain_rules.json` by position."""
     path = _declared(tmp_path, materialize=True, max_rewrite_rows=10)
-    claimed = vjc.synthesized_join_rule_name("j1")
-    assert vjc.join_name_collisions([claimed], path=path, known_tables=KNOWN) == [claimed]
-    assert vjc.join_name_collisions(["something_else"], path=path, known_tables=KNOWN) == []
+    join = vjc.synthesized_join_chain_rules(path=path, known_tables=KNOWN)[0]
+    assert builtins.written_in(join) == "virtual_join_rules.json"
+    assert builtins.written_in({"mapper_module": "enrichment.mapper"}) == "enrichment_rules.json"
+
+
+# 🪦 `test_a_name_claimed_by_both_files_is_refused_by_name` died with `join_name_collisions`
+#    (S-234 ①, 판정 409): the three files are one namespace, judged once at the loader. That
+#    refusal is scored in `test_three_files_declare_one_chain_namespace.py`.
 
 
 # ---------------------------------------------------------------------------
