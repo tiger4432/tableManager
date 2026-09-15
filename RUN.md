@@ -64,6 +64,8 @@ python scripts/preview_unified_declarations.py --out ../unified_preview.json
 [ChainRules] refused(N): 이름(사유)                          <- 무엇이 «안» 도는가
 [ChainRules] 지난 적재와 다름 - 사라짐 1: ...                  <- 선언을 바꾼 뒤 무엇이 달라졌나
 [VirtualJoin:이름] 조인 키 (...) 가 ... 의 «신원»(...)보다 좁습니다   <- 1번과 같은 진단
+[VirtualJoin] 인덱스 uq_vjoin_… (표) 를 «제품이» 걷어냈습니다 … 다음: 없음   <- 규칙 없는 인덱스가 그 표의 쓰기를 막던 것이 풀림 (S-248). 이 줄 뒤 dedup 영구 실패가 멎어야 함
+Transaction … permanently failed: N event(s) -> FAILED. 원인: <예외 문장>   <- 이제 traceback 첫 줄이 아니라 «원인»이 실림
 ```
 
 ## 5. 통합 선언에 «join» 적기 (S-237 착지 — 가상 조인은 그대로, 이건 «체인»)
