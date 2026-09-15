@@ -192,3 +192,89 @@ def test_a_different_cause_still_reaches_the_rule(monkeypatch):
                                          "transaction_id": "tx-2"})
 
     assert calls == [["r1"], ["r1"]]
+
+
+# ---------------------------------------------------------------------------
+# 🔴 ⓔ — the lap collapses its events, and one line says why it ran
+# ---------------------------------------------------------------------------
+
+def test_the_lap_writes_inside_the_collapsed_outbox_mode(monkeypatch):
+    """🔴 [ⓔ-1] ONE EVENT, NOT ONE PER ROW. Per-row events made 1,000 follow-up writes into
+    1,000 outbox events, 1,000 queue items, 1,000 laps and 1,000 lines - the owner's
+    「한 행당 로그 하나」. The group path has collapsed its writes since OUTBOX-4; the lap had
+    not, and it is the same context manager for the same reason."""
+    import event_constants
+    from chain import builtins
+    from database.context import request_outbox_mode
+
+    seen = []
+    rule = {"name": "s249_rule", "trigger_table": "t", "mapper": "builtin:s249",
+            "follow_up": True}
+    monkeypatch.setattr(worker, "_followup_builtin_rules", lambda: [rule])
+    monkeypatch.setitem(builtins.BUILTIN_KINDS, "builtin:s249",
+                        lambda db, r, **kw: seen.append(request_outbox_mode.get()) or
+                        {"written": len(kw.get("row_ids") or ())})
+
+    worker._run_builtin_followups(None, {"table": "t", "row_ids": ["r%d" % n
+                                                                  for n in range(1000)],
+                                         "transaction_id": "tx-1", "chain_depth": 1})
+
+    assert seen == [event_constants.OUTBOX_MODE_COLLAPSED]
+    assert request_outbox_mode.get() != event_constants.OUTBOX_MODE_COLLAPSED, (
+        "the collapsed mode leaked out of the lap")
+
+
+def test_the_line_says_what_woke_it_and_at_which_hop(caplog):
+    """🔴 [ⓔ-2] 「WHY DID THIS RUN」 WAS NOT IN THE LINE. rule, kind, table and counts were
+    there - everything except the change that woke it - so an operator watching a cascade
+    could not tell which edit was still echoing."""
+    import logging
+
+    worker.forget_followup_lines()
+    with caplog.at_level(logging.INFO):
+        worker.log_followup_folded(worker.logger, "rule_a", "t", 3, 2, "t#tx-1", 2, 8)
+
+    said = " ".join(r.getMessage() for r in caplog.records)
+    assert "woke_by=t#tx-1" in said and "hop=2/8" in said
+    assert "rows_in=3" in said and "written=2" in said
+
+
+def test_a_lap_that_wrote_nothing_is_debug_rather_than_noise(caplog):
+    """⚠️ NOTHING WRITTEN IS THE ORDINARY CASE ON EVERY LAP. At INFO it is the noise that
+    hides the laps that DID something."""
+    import logging
+
+    worker.forget_followup_lines()
+    with caplog.at_level(logging.INFO):
+        worker.log_followup_folded(worker.logger, "rule_a", "t", 3, 0, "t#tx-1", 1, 8)
+
+    assert not caplog.records, "a lap that wrote nothing spoke at INFO"
+
+
+def test_a_refusal_is_said_even_when_nothing_was_written(caplog):
+    """⛔ A REFUSAL IS NOT 「nothing happened」. It is the one thing an operator has to see."""
+    import logging
+
+    worker.forget_followup_lines()
+    with caplog.at_level(logging.INFO):
+        worker.log_followup_folded(worker.logger, "rule_a", "t", 3, 0, "t#tx-1", 1, 8,
+                                   "right table is not declared")
+
+    assert "REFUSED: right table is not declared" in " ".join(
+        r.getMessage() for r in caplog.records)
+
+
+def test_the_same_pair_folds_after_the_first_line(caplog):
+    """🔴 THE FIRST IS THE DIAGNOSIS, THE REST ARE A COUNT - the same hand
+    `log_failure_folded` already has, for the same reason: a log that floods stops being a
+    diagnosis and becomes the thing being diagnosed."""
+    import logging
+
+    worker.forget_followup_lines()
+    with caplog.at_level(logging.INFO):
+        for _ in range(worker.FOLLOWUP_LOG_EVERY + 1):
+            worker.log_followup_folded(worker.logger, "rule_a", "t", 1, 1, "t#tx", 1, 8)
+
+    lines = [r.getMessage() for r in caplog.records]
+    assert len(lines) == 2, lines
+    assert "(x%d)" % worker.FOLLOWUP_LOG_EVERY in lines[1]

@@ -2649,6 +2649,47 @@ def forget_followups():
     _FOLLOWUP_SERVED.clear()
 
 
+#: (rule, table) -> how many times the lap has said this line. Same hand as
+#: `log_failure_folded`: the first is the diagnosis, and after that one line per 500.
+_FOLLOWUP_SAID = {}
+FOLLOWUP_LOG_EVERY = 500
+
+
+def log_followup_folded(logger_, rule_name, table, rows_in, written, woke_by, hop,
+                        max_hop, refusal=None):
+    """One line that says WHY this ran, folded so a thousand rows are not a thousand lines.
+
+    🔴 [S-249 ⓔ-2] 「WHY DID THIS RUN」 WAS NOT IN THE LINE. The lap printed rule, kind,
+    table and counts - everything except the change that woke it - so an operator watching a
+    cascade could not tell which edit was still echoing. `woke_by` and the hop are what turn
+    a count into a trail.
+
+    ⚠️ NOTHING WRITTEN IS DEBUG. A follow-up that had nothing to do is the ordinary case on
+    every lap, and at INFO it is the noise that hides the laps that DID something.
+    """
+    import logging
+
+    key = (rule_name, table)
+    seen = _FOLLOWUP_SAID.get(key, 0) + 1
+    if key not in _FOLLOWUP_SAID and len(_FOLLOWUP_SAID) >= 2000:
+        _FOLLOWUP_SAID.clear()   # bounded beats a leak; the count restarts, the log does not
+    _FOLLOWUP_SAID[key] = seen
+    level = logging.INFO if (written or refusal) else logging.DEBUG
+    if level == logging.INFO and seen != 1 and seen % FOLLOWUP_LOG_EVERY != 0:
+        return seen
+    logger_.log(level,
+                "[ChainBuiltin] rule=%s table=%s rows_in=%s written=%s \u2190 woke_by=%s "
+                "hop=%s/%s%s%s",
+                rule_name, table, rows_in, written, woke_by, hop, max_hop,
+                (" REFUSED: " + refusal) if refusal else "",
+                (" (x%d)" % seen) if seen > 1 else "")
+    return seen
+
+
+def forget_followup_lines():
+    _FOLLOWUP_SAID.clear()
+
+
 def _run_builtin_followups(db, done):
     """Route this follow-up batch to every `builtin:` kind whose rule watches its table.
 
@@ -2666,7 +2707,7 @@ def _run_builtin_followups(db, done):
     ⚠️ CONTAINED, like its neighbour. A failure here must not cost the ledger follow-up that
     already succeeded, and must not propagate into the drain loop.
     """
-    from database.context import request_chain_depth
+    from database.context import outbox_mode, request_chain_depth
 
     if not done:
         return
@@ -2703,17 +2744,23 @@ def _run_builtin_followups(db, done):
                         "이미 한 번 받았습니다. 건너뜁니다.",
                         rule.get("name"), kind, table, done.get("transaction_id"))
                     continue
-                result = builtins.run_builtin(
-                    kind, db, rule, row_ids=list(fresh), done=done)
+                # 🔴 [S-249 ⓔ-1] THE LAP COLLAPSES ITS EVENTS, like the group path already
+                # does. Per-row events made 1,000 follow-up writes into 1,000 outbox
+                # events, 1,000 queue items, 1,000 laps and 1,000 lines - the owner's
+                # 「한 행당 로그 하나」. Same context manager, same reason.
+                with outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED):
+                    result = builtins.run_builtin(
+                        kind, db, rule, row_ids=list(fresh), done=done)
             # 🔴 THE GROUP LINE CARRIES THE RULE NAME. A count with no name is a line nobody
             # can act on — and with several join rules watching one table it cannot even be
             # attributed.
-                logger.info(
-                    "[ChainBuiltin] rule=%s kind=%s table=%s rows_in=%d written=%s%s",
-                    rule.get("name"), kind, table, len(fresh),
+                log_followup_folded(
+                    logger, rule.get("name"), table, len(fresh),
                     (result or {}).get("written"),
-                    (" REFUSED: " + result["refusal"]) if (result or {}).get("refusal")
-                    else "")
+                    "%s#%s" % (table, done.get("transaction_id") or "?"),
+                    (incoming_depth or 0) + 1,
+                    event_constants.max_chain_depth(_RULES_DOCUMENT),
+                    (result or {}).get("refusal"))
         finally:
             request_chain_depth.reset(token_depth)
     except Exception as err:                                       # noqa: BLE001
