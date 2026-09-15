@@ -807,7 +807,24 @@ def load_verified_rules(db, path: str = None, known_tables: dict = None,
                                     rejections=rejections)
     verified = []
     for rule in rules:
-        result = verify_uniqueness(db, rule)
+        # 🔴 ONE DECLARATION, ONE VERDICT (2026-09-15). This call was outside any try, so
+        # one declaration whose catalog query raised took every other table's join down
+        # with it - 「모든 선언 무조건 다 돌면서 다 막아버렸네」. A rule that cannot be
+        # verified is refused BY NAME and the loop goes on; the session is rolled back so
+        # the next rule's query is not answered by an aborted transaction.
+        try:
+            result = verify_uniqueness(db, rule)
+        except Exception as verify_error:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            _say_once(("verify", rule["name"]), logger,
+                      "[VirtualJoin:%s] uniqueness could not be verified (this rule only): %s",
+                      rule["name"], str(verify_error).strip().splitlines()[0] if str(verify_error).strip() else verify_error)
+            _record(rejections, "rule", rule["name"],
+                    "uniqueness could not be verified: %s" % verify_error, code=CODE_SHAPE)
+            continue
         if result["refused"]:
             # 🔴 포기하기 «전»에 제품이 한 번 세워 본다 (S-235, 소유자 2026-09-14).
             #    종전에는 여기서 운영자에게 DDL 을 내밀었고, 그 결과 운영자가 «조인을 전부

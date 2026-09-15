@@ -127,9 +127,18 @@ def _verified_by_left_table(db) -> dict:
     import virtual_join.config as vjc
     from database import crud
 
+    # 🔴 NOT THE READER'S SESSION (2026-09-15, outage five). Verifying every declaration
+    # ran catalog SQL - and, since yesterday, an index probe - on the session of whoever
+    # happened to miss the cache. One declaration on table B raising left the transaction
+    # of a read of table A aborted, and nothing here rolled it back: the operator's own
+    # words were 「내가 건드리던 테이블과 완전 다른 건데 왜 튀어나와서 막았던 거야」. The
+    # verification now runs on its own session and closes it; a failure there can not
+    # touch the read that asked. The reader only ever reads memory.
+    from database.database import SessionLocal
+    own = SessionLocal()
     by_left, by_right = {}, {}
     try:
-        for rule in vjc.load_verified_rules(db, known_tables=crud.TABLE_CONFIG):
+        for rule in vjc.load_verified_rules(own, known_tables=crud.TABLE_CONFIG):
             by_left.setdefault(rule["left_table"], []).append(rule)
             by_right.setdefault(rule["right_table"], []).append(rule)
     except Exception as e:
@@ -137,6 +146,12 @@ def _verified_by_left_table(db) -> dict:
         # ― 붙지 않은 컬럼은 눈에 보이는 부재고, 잘못 붙은 컬럼은 조용한 오답이다.
         logger.error("[VirtualJoin] verified rules unavailable, NO join is in effect: %s", e)
         by_left, by_right = {}, {}
+    finally:
+        try:
+            own.rollback()
+            own.close()
+        except Exception:
+            pass
 
     _RULES_CACHE["by_left"] = by_left
     _RULES_CACHE["by_right"] = by_right
