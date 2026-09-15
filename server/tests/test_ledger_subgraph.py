@@ -785,14 +785,26 @@ def test_sql_lookup_round_trip_uses_persisted_event_identity(pg_engine):
         assert (attempted, inserted) == (2, 2)
         assert atoms[0].source_event_id == atoms[1].source_event_id
         seed = explorer.entity_id("Lot", {"lot": "SQL-A"})
-        body = ledger_subgraph.subgraph(
-            seed, ledger_subgraph.SqlEvidenceLookup(connection), hops=3)
+        lookup = ledger_subgraph.SqlEvidenceLookup(connection)
+        body = ledger_subgraph.subgraph(seed, lookup, hops=3)
+        # 🔴 THE IDENTITY THE STORE PERSISTED IS THE ONE THE SQL LOOKUP READS BACK. Claim
+        # and source-event NODES retired (claims became edges 2026-08-25, the event node
+        # 2026-08-28), so the round trip is asserted on the atoms the lookup hands the
+        # walk: both carry the id the writer stamped, from the same `molecule_ref`.
+        fetched, cut = lookup.claims_for_entities(
+            [("Lot", {"lot": "SQL-A"})], "outgoing", 10)
     finally:
         connection.close()
-    assert sum(node["node_kind"] == "claim" for node in body["nodes"]) == 2
-    events = [node for node in body["nodes"] if node["node_kind"] == "event"]
-    assert len(events) == 1
-    assert events[0]["source_event_state"] == "source_molecule"
+    assert cut is False and len(fetched) == 2
+    assert {item.source_event_id for item in fetched} == {str(atoms[0].source_event_id)}
+    assert {item.source_event_state for item in fetched} == {"source_molecule"}
+    # And the walk over that read draws the declared world only: two lots, one edge that
+    # cites the atom it came from. The value atom is an observation, not a node.
+    assert sorted(node["label"] for node in body["nodes"]) == ["SQL-A", "SQL-B"]
+    assert all(node["node_kind"] == "entity" for node in body["nodes"])
+    (edge,) = body["edges"]
+    assert edge["predicate"] == "derived_from"
+    assert edge["claim_id"] == str(atoms[0].id)
 
 
 #: 🔴 NINE TESTS RETIRED HERE 2026-08-28, WITH THE NODE KINDS THEY MEASURED. They
