@@ -25,7 +25,7 @@
 
 import { ABSENT, countText } from './absent.js';
 import { renderSkeletonForm } from './ontology_explorer_view.js';
-import { emptyOf } from './ontology_skeleton.js';
+import { emptyOf, shapeAt } from './ontology_skeleton.js';
 import { writeShapeAtPath, deleteAtPath, splitBundlePath, getAtPath } from './ontology_path.js';
 
 /**
@@ -558,6 +558,16 @@ export class RawRegistryPanel {
       if (status.value != null) line.setAttribute('data-state', String(status.value));
       head.appendChild(line);
     }
+    // 🔴 C-111 (계획 §9.3 ③). «어느 문법인가» 한 낱말. 이행 중에는 두 문법이 다
+    //    열려 있어서, 이 낱말이 없으면 같은 화면이 규칙마다 다른 칸을 내미는 이유가
+    //    화면 밖에 있습니다. ⚠️ 서버가 안 말했으면 안 그립니다 — 「모름」을 지어내지 않습니다.
+    const grammar = picked && typeof spec.grammarOf === 'function'
+      ? String(spec.grammarOf(payload) || '') : '';
+    if (grammar) {
+      const line = this._line(`${spec.cls}-grammar`, grammar);
+      line.setAttribute('data-grammar', grammar);
+      head.appendChild(line);
+    }
 
     // 🔴 C-106 ①. 「저장 안 됨」은 «값»입니다 — 배지 하나, 문장 없음. C-101 이 세운 가드(타이머가
     //    편집 중인 폼을 안 갈아 끼움)는 «보이지 않았고», 안 보이는 가드는 운영자에게 없는 것과
@@ -650,11 +660,42 @@ export class RawRegistryPanel {
         const write = (event) => {
           const el = event && event.target;
           const action = el && el.dataset ? el.dataset.action : '';
-          if (action !== 'edit-shape' && action !== 'edit-shape-flag') return;
+          if (action !== 'edit-shape' && action !== 'edit-shape-flag'
+              && action !== 'edit-shape-branch') return;
           const path = el.dataset.value || el.dataset.path || '';
           if (!path) return;
           let held2;
           try { held2 = JSON.parse(area.value || '{}'); } catch (e) { return; }
+          // 🔴 C-111 (판정 407 · 411). «셋 중 하나»를 고르는 것은 칸 하나를 적는 것이
+          //    아니라 «짐을 갈아 끼우는» 일입니다: 고른 가지 하나만 남고 나머지는 사라집니다.
+          //    둔 것을 남기면(예: `join` 과 `mapper` 를 동시에) 로더가 둘 중 하나를 골라야 하고,
+          //    그 고르기는 화면이 안 보여 준 판정입니다.
+          // ⚠️ 적혀 있던 `kind` 는 «지키되 고른 것과 맞춥니다» — 운영자가 적은 칸을 지우지도,
+          //    없던 칸을 만들지도 않습니다(로더는 `kind` 를 먼저 읽습니다).
+          if (action === 'edit-shape-branch') {
+            const picked2 = String(el.value || '');
+            if (!picked2) return;
+            const was = getAtPath(held2, splitBundlePath(String(path)));
+            const kept = was && typeof was === 'object' && !Array.isArray(was) ? was : {};
+            const next2 = {};
+            if (Object.prototype.hasOwnProperty.call(kept, 'kind')) next2.kind = picked2;
+            // 🔴 새 가지의 «빈 값»은 스켈레톤이 정합니다(`emptyOf`) — 레코드면 `{}`,
+            //    잎이면 빈 문자열입니다. 항상 `{}` 를 적으면 잎 자리에 «문법에 없는 모양»을
+            //    적는 것이고, 그 문서는 로더가 거절합니다.
+            const oneOfNode = shapeAt(root, splitBundlePath(String(path)),
+                                      (payload.skeleton || {}).defs);
+            const branchNode = oneOfNode && oneOfNode.branches
+              ? oneOfNode.branches[picked2] : null;
+            next2[picked2] = kept[picked2] === undefined
+              ? (branchNode ? emptyOf(branchNode, (payload.skeleton || {}).defs) : {})
+              : kept[picked2];
+            const written2 = writeShapeAtPath(held2, String(path), next2);
+            if (written2 === null) return;
+            area.value = JSON.stringify(written2, null, 2);
+            this._keep(key, area.value);
+            draw(written2);
+            return;
+          }
           const next = action === 'edit-shape-flag' ? Boolean(el.checked) : el.value;
           // 🔴 탐색기와 «같은 함수»입니다. 그리고 새 문서를 «돌려받습니다» — `setAtPath` 는
           //    제자리에서 안 고칩니다(그렇게 읽어 이 줄이 한 번 죽었습니다).

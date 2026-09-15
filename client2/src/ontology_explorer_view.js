@@ -1681,6 +1681,12 @@ export function renderSkeletonForm(context, node, path, value, depth = 0, label 
   if (shape.kind === 'leaf') {
     return renderTreeLeaf(context, shape, path, value, depth, label, required);
   }
+  // 🔴 C-111 (판정 407 · 서버 S-241). 「셋 중 하나」는 값이 아니라 «모양»을 고르는
+  //    자리입니다 — 고르면 아래 짐이 바뀝니다. 이 갈래 없이는 폼이 그것을 «손으로»
+  //    그려야 하고, 그순간 화면이 문법의 둘째 저자가 됩니다(계획 §9.2).
+  if (shape.kind === 'oneOf') {
+    return renderSkeletonOneOf(context, shape, path, value, depth, label, required);
+  }
   // 🔴 A BRANCH THE PLAN OFFERS CANDIDATES FOR IS PICKED AT THE BRANCH. See `covering`.
   // An index map becomes ONE row carrying the picker -- its members are the picked values,
   // so drawing them again below would be the same list twice with two ways to edit it.
@@ -1794,6 +1800,51 @@ function branchOwnRow(context, path, depth) {
     : own.refusals && own.refusals.length ? 'is-refused' : '';
   return treeRow(depth + 1, '이 자리', [],
                  context.renderRow(own, null, true), state, cls);
+}
+
+/**
+ * 「셋 중 하나」 — 고르개 하나와 «고른 가지만».
+ *
+ * 🔴 고르개는 이 화면이 이미 들고 있는 «닫힌 목록 컨트롤»입니다 — 새 입력을 짓지
+ *    않습니다(계획 §9.2 의 「새 칸을 위한 화면 코드 0줄」). 선택지는 `branches` 의 «키»입니다 —
+ *    서버가 `list` 를 안 내는 사유는 그 파일에 적혀 있고(체인 쪽에 닫힌 목록 서버가 없음),
+ *    안 내는 목록 이름을 적는 것이 바로 「폼은 그리는데 읽는 쪽이 없다」입니다.
+ * 🔴 «안 고른» 자리는 가지를 그리지 않습니다 — 「모른다」와 「비어 있다」는 다른 사실이고,
+ *    셋을 다 펼쳐 놓으면 운영자가 「무엇을 적어야 하나」를 못 고릅니다(계획 §9.3 ①).
+ * ⚠️ 고른 가지의 노드는 «가지 키 밑»에 살고, 그것이 오늘 선언이 적힌 모양입니다
+ *    (`derive: {kind:'join', join:{…}}`). 서버의 `from_declaration` 도 그 키를 봅니다.
+ */
+function renderSkeletonOneOf(context, node, path, value, depth, label, required) {
+  const branches = node.branches && typeof node.branches === 'object' ? node.branches : {};
+  const names = Object.keys(branches);
+  const held = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  // 🔴 「지금 무엇을 고랐나」는 로더와 «같은 순서»로 읽습니다: 적힌 `kind` 가 먼저고,
+  //    없으면 «든 가지 키»가 답입니다(`rule_shape.from_declaration`). 화면이 다른 순서를 쓰면
+  //    같은 문서를 두고 로더와 화면이 다른 답을 합니다.
+  const stated = typeof held.kind === 'string' && branches[held.kind] ? held.kind : '';
+  const chosen = stated || names.find((name) => held[name] !== undefined) || '';
+  const box = h('div', 'oe-node');
+  box.dataset.path = path;
+  const head = h('div', 'oe-node-head');
+  head.appendChild(h('span', 'oe-node-label', label === null ? path : label));
+  if (required) head.appendChild(h('i', 'oe-node-badge', '필수'));
+  head.appendChild(renderClosedList(
+    closedListChoice(names, chosen, { loaded: true, name: path }),
+    h, { action: 'edit-shape-branch', path, label: label === null ? path : label }));
+  box.appendChild(head);
+  // 고른 가지만 내려갑니다. 안 고른 자리에는 «아무것도» 없습니다.
+  // 🔴 가지의 칸들을 «고르개 바로 밑»에 펴서 놓습니다 — 그것을 다시 한 상자에 넣으면
+  //    그 상자가 접힐 수 있고(깊이 규칙), 실측해 보니 접혀 있었습니다: 고르고 나서도
+  //    «적을 칸이 안 보였습니다». 그리고 상자의 이름은 바로 위 고르개가 이미 말합니다 —
+  //    같은 낱말을 두 번 적는 줄이 됩니다.
+  if (chosen && branches[chosen]) {
+    const branch = context.deref(branches[chosen]) || branches[chosen];
+    box.appendChild(branch.kind === 'record'
+      ? renderSkeletonRecord(context, branch, `${path}.${chosen}`, held[chosen], depth)
+      : renderSkeletonForm(context, branches[chosen], `${path}.${chosen}`,
+                           held[chosen], depth + 1, chosen));
+  }
+  return box;
 }
 
 function renderSkeletonRecord(context, node, path, value, depth, covers = null) {

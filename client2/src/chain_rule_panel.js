@@ -177,7 +177,20 @@ export const CHAIN_RULE_REGISTRY = Object.freeze({
   addLabel: '규칙 추가',
   // C-86 ②. 칸 이름·종류는 «서버가 실어 준» 스켈레톤에서 나옵니다(S-204). 이 파일도 칸 이름을
   // 적지 않습니다 — `chain_bindings.routing_keys()` 가 유일한 저자입니다.
-  formRoot: (payload) => (payload && payload.skeleton && payload.skeleton.root) || null,
+  // 🔴 C-111 (S-241). 문법이 «둘»이 됐고(평면 · 통합), 서버가 몸소 둘을 다 실어
+  //    보내며 «이 규칙이 어느 쪽인지»를 칸으로 말합니다(`grammar`). 화면이 그것을 다시
+  //    유도하면(예: `derive` 가 있나 보기) 그 유도가 곳 둘째 저자입니다 — 서버와 화면이
+  //    같은 파일을 두고 다른 문법이라 말하게 되는 날이 그러면 오류 없이 옵니다.
+  formRoot: (payload) => {
+    const skeleton = (payload && payload.skeleton) || {};
+    return (payload && payload.grammar === 'unified'
+      ? skeleton.unified_root : skeleton.root) || null;
+  },
+  // 🔴 계획 §9.3 ③. 화면은 «어느 문법인지»를 말합니다 — 이행 중에는 둘 다 열려
+  //    있고, 그러면 같은 화면이 규칙마다 다른 칸을 내미는데 이유가 화면에 없습니다.
+  //    ⚠️ 서버가 안 말했으면 «안 그립니다» — 「모름」을 「평면」으로 적으면 그것이 거짓입니다.
+  grammarOf: (payload) => (payload && typeof payload.grammar === 'string'
+    ? payload.grammar : ''),
   // C-86 ③. 맵퍼 칸의 목록 이름. 값은 화면이 `GET /admin/mappers/list` 에서 받아 넣습니다 —
   // 이 파일은 «이름»만 대고 «목록»은 서버의 등록부입니다.
   choiceList: 'mappers',

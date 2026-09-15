@@ -625,6 +625,88 @@ function suite(M) {
   ok(byCls(cancelled.host, 'chain-rule-unsaved').length === 0,
     'K22 ... with nothing calling it 「restored」 -- the operator discarded it');
 
+  // ═══ U. C-111 — 「셋 중 하나」는 스켈레톤이 말하고 폼이 «따라» 그린다 (판정 407·411) ═══
+  //
+  // 🔴 이 절이 재는 것은 «폼이 문법을 안 짓는다»입니다. 새 칸을 그리려고 손으로 그린 입력이
+  //    하나라도 생기면 그 단계는 실패입니다(계획 §9.2) — 그래서 U6 이 모든 입력의 주소가
+  //    스켈레톤의 키에서 나왔는지 셉니다.
+  // ⚠️ 여기 쓰는 스켈레톤은 «서버가 낸 것»입니다(`server/chain_skeleton.json` 의 `unified_root`).
+  //    사본을 두면 서버가 가지를 하나 더 낸 날 이 절이 «조용히» 옛 모양을 재게 됩니다.
+  const UNI = SKELETON.unified_root;
+  const UNI_SPEC = { ...SPEC,
+    formRoot: (p) => (p && p.grammar === 'unified'
+      ? (p.skeleton || {}).unified_root : (p.skeleton || {}).root) || null,
+    grammarOf: (p) => (p && typeof p.grammar === 'string' ? p.grammar : '') };
+  const uniPayload = (declaration) => payloadFor(SKELETON, declaration, { grammar: 'unified' });
+  const JOINED = { name: 'alpha', on: { table: 'dt_left' },
+                   derive: { kind: 'join', join: { right_table: 'dt_right' } },
+                   into: { table: 'dt_left' } };
+
+  const u = makePanel(M, UNI_SPEC);
+  u.panel.render(uniPayload(JOINED));
+  const uniPaths = new Set(paths(u.host));
+  ok(uniPaths.has('derive') && uniPaths.has('into') && uniPaths.has('on'),
+    'U1 a unified rule draws the unified root, not the flat one');
+  ok(!uniPaths.has('trigger_table') && !uniPaths.has('mapper_module'),
+    'U2 ... and none of the flat cells come with it');
+  // 🔴 고른 가지 «만». 셋을 다 펼치면 운영자가 「무엇을 적어야 하나」를 못 고릅니다(§9.3 ①).
+  const deriveDrawn = [...uniPaths].filter((p) => p.startsWith('derive.'));
+  ok(deriveDrawn.length > 0 && deriveDrawn.every((p) => p.startsWith('derive.join.')),
+    `U3 only the CHOSEN branch is drawn [${[...uniPaths].filter((p) => p.startsWith('derive')).join('|')}]`);
+  // 🔴 판정 411: 가지의 노드는 «가지 키 밑»에 삽니다 — 선언이 그 모양이기 때문입니다.
+  ok(uniPaths.has('derive.join.right_table'),
+    `U4 ... at the branch KEY, which is where the declaration puts it`);
+  const pickers = attrOf(u.host, 'data-action').filter(
+    (el) => el.attrs['data-action'] === 'edit-shape-branch');
+  ok(pickers.length === 2, `U5 one picker per 「pick one」, no more [${pickers.length}]`);
+  const options = (el) => walk(el).filter((k) => k.tagName === 'OPTION')
+    .map((k) => (k.attrs || {}).value ?? k.textContent);
+  ok(options(pickers[0]).join(',') === 'join,decide,mapper',
+    `U6 the options are the BRANCH KEYS, in the server's order [${options(pickers[0]).join(',')}]`);
+  // 🔴 안 고른 자리는 «비어 있는 것이 아니라 모르는 것»입니다 — 가지를 안 그립니다.
+  const u2 = makePanel(M, UNI_SPEC);
+  u2.panel.render(uniPayload({ name: 'alpha', on: { table: 'dt_left' } }));
+  const bare = new Set(paths(u2.host));
+  ok(bare.has('derive') && ![...bare].some((p) => p.startsWith('derive.')),
+    `U7 nothing chosen draws no branch at all [${[...bare].filter((p) => p.startsWith('derive')).join('|')}]`);
+  // 🔴 «손그림 입력 0» — 폼의 모든 컨트롤이 스켈레톤의 키에서 나온 주소를 답니다.
+  // ⚠️ «폼 안»만 섭니다 — 머리의 규칙 고르개는 폼의 칸이 아니고 스켈레톤의 주소를 안 달았습니다.
+  //    그것까지 세면 「손그림 1」이 되지만, 그건 이 단언이 묻는 것이 아닙니다.
+  const formBox = byCls(u.host, 'chain-rule-form')[0] || u.host;
+  const controls = walk(formBox).filter((el) => el.tagName === 'INPUT' || el.tagName === 'SELECT');
+  const addressed = controls.filter((el) => (el.attrs || {})['data-value']);
+  ok(controls.length > 0 && controls.length === addressed.length,
+    `U8 every control in the form carries a skeleton address [${addressed.length}/${controls.length}]`);
+  // 🔴 그리고 옛 평면 규칙은 «오늘 그대로»입니다 (무회귀).
+  const u3 = makePanel(M, UNI_SPEC);
+  u3.panel.render(payloadFor(SKELETON, { name: 'alpha', trigger_table: 't' }, { grammar: 'flat' }));
+  const flat = new Set(paths(u3.host));
+  ok(flat.has('trigger_table') && !flat.has('derive'),
+    'U9 a flat rule still draws the flat root');
+  ok(byCls(u3.host, 'chain-rule-grammar').length === 1
+    && byCls(u3.host, 'chain-rule-grammar')[0].textContent === 'flat',
+    `U10 the screen says which grammar this rule is in`);
+  // 🔴 고르는 것은 «짐을 갈아 끼우는» 일입니다: 고른 가지 하나만 남고 나머지는 사라집니다.
+  //    둘이 남으면 로더가 둘 중 하나를 고르게 되고, 그 고르기는 화면이 안 보여 준 판정입니다.
+  //    ⚠️ 적혀 있던 `kind` 는 «고른 것과 맞춰» 지킵니다 — 지우지도, 없던 것을 만들지도 않습니다.
+  const u4 = makePanel(M, UNI_SPEC);
+  u4.panel.render(uniPayload(JOINED));
+  const branchPicker = attrOf(u4.host, 'data-action').find(
+    (el) => el.attrs['data-action'] === 'edit-shape-branch'
+      && el.attrs['data-value'] === 'derive');
+  if (branchPicker) {
+    branchPicker.value = 'mapper';
+    branchPicker.dispatch('change', {});
+  }
+  let wroteDoc = {};
+  const rawBox = byCls(u4.host, 'chain-rule-raw')[0];
+  try { wroteDoc = JSON.parse((rawBox && rawBox.value) || '{}'); } catch (e) { wroteDoc = {}; }
+  const derive = wroteDoc.derive || {};
+  ok(Object.prototype.hasOwnProperty.call(derive, 'mapper')
+    && !Object.prototype.hasOwnProperty.call(derive, 'join')
+    && derive.kind === 'mapper',
+    `U11 picking a branch leaves exactly that branch [${JSON.stringify(derive)}]`);
+
   return { pass: pass - before.pass, fail: fail - before.fail };
 }
 
@@ -633,6 +715,18 @@ suite(await import('../src/raw_registry_panel.js'));
 
 // -- mutants ---------------------------------------------------------------------------
 const DEFECTS = [
+  // C-111. 「셋 중 하나」의 «패널 쪽» 절반 — 고르기가 문서에 닿는 자리와 문법 낱말.
+  // ⚠️ 렌더러 쪽 절반(고른 가지만 그린다 · 가지 키 밑에 그린다)은 여기서 변이를 못 겁니다:
+  //    이 하니스는 한 번에 «모듈 하나»만 갈아 끼우고, 폼을 그리는 것은 `ontology_explorer_view.js`
+  //    입니다. 그 주장들은 U3·U4·U7 이 «진짜 모듈»로 채점합니다 — 과장하지 않고 적어 둡니다.
+  ['picking a branch keeps the old one, so the document names two',
+    s => s.replace('            const oneOfNode = shapeAt(root, splitBundlePath(String(path)),',
+                   '            Object.assign(next2, kept);\n'
+                   + '            const oneOfNode = shapeAt(root, splitBundlePath(String(path)),')],
+  ['the branch picker writes nothing at all',
+    s => s.replace("          if (action === 'edit-shape-branch') {", '          if (false) {')],
+  ['the screen stops saying which grammar the rule is in',
+    s => s.replace('    if (grammar) {', '    if (false) {')],
   ['the form is drawn from a list of its own instead of the skeleton',
     s => s.replace('    const root = spec.formRoot ? spec.formRoot(payload) : null;',
                    "    const root = spec.formRoot ? { kind: 'record', fields: ["
