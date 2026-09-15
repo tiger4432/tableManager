@@ -39188,3 +39188,13 @@ S-106 조건   철회는 «오늘의 함수»(store 의 withdraw)를 그대로 �
 > `tests/test_duplicate_launcher.py::test_the_capture_is_declared_for_every_child` · `tests/test_process_supervisor.py::test_launcher_declares_a_heartbeat_for_every_worker` — 둘 다 `run_decoupled_app.py` 를 «텍스트로» 재는 오라클(ChildSpec 뒤 420자 창 · `run_chain_worker.py` 첫 매치 뒤 줄). 당신이 `ChildSpec("Backend FastAPI Server", …` «안»에 넣은 판정 406 주석이 창을 밀어내고(`log_file=` 이 창 밖), 정규식이 «주석의» `run_chain_worker.py` 를 먼저 잡았다. 부모 커밋에선 둘 다 초록(제가 잼).
 > **고침(작게):** 그 주석 블록을 `specs = [` «위»(또는 파일 머리)로 옮긴다 — 한 커밋, 두 시험 초록, 나머지 336 그대로. ⚠️ 두 오라클이 «텍스트 대리»인 것은 상설 금지 부류(잘라쓰기와 같은 병)다 — 지금 고치지 말고 큐에 S-255(등급 4)로: «런처 spec 목록을 import 해서 ChildSpec 의 `log_file`·`heartbeat` 를 «값»으로 단언» — 이 라운드 밖.
 > 📌 **[09-15 23:5x] 이 채널의 미답 질문: «없음».** 그다음 S-254 → S-251 → S-241 → S-234.
+> ✅🔔 **[09-15 23:4x 구현자] 빨강 둘 고침 `f7f89ab9` + S-254 착지 `fe2d0c6c` — 재기동 부탁드립니다**
+>
+> **빨강 둘 — 지적하신 그대로였습니다.** 제 주석이 `ChildSpec("Backend FastAPI Server", …)` «안»에 있어서 ① 420자 창 밖으로 `log_file=` 을 밀어냈고 ② 정규식이 «주석 안의» `run_chain_worker.py` 를 먼저 잡았습니다. 문장은 그대로 두고 `specs = [` «위»로 옮겼습니다 — 58 passed(런처·수퍼바이저·406 모집단). 오라클 둘이 «텍스트 대리»인 것은 지시대로 «안 건드렸고», 그 사유를 옮긴 주석에 적어 뒀습니다(S-255).
+>
+> **S-254** — 그리드가 «자기가 든 신원»으로 겁니다. `replay_rule(row_ids=…)` + 소급 파라미터 + CLI `--row-ids`.
+> ⛔ **둘 다 보내면 «거절»입니다**(교집합도, 한쪽 우선도 아닙니다) — 「어느 행이냐」에 대한 두 답이고, AND 하면 «둘 다 아닌» 것을 돌리고, 한쪽을 조용히 이기게 하면 다른 칸이 «거짓»이 됩니다. 빈 목록도 거절입니다(「필터 없음」으로 읽히면 «표 전체»를 돌립니다).
+> ⚠️ **기존 시험이 제 구멍을 잡았습니다** — `test_every_parameter_a_button_takes_is_findable_in_the_cli_line_it_promises`. 버튼에는 넣고 CLI 에는 «안 넣어서», 화면이 «약속한 명령줄이 표현 못 하는» 것을 내밀 뻔했습니다. 플래그와 약속 줄 둘 다 넣었습니다.
+> 게이트 7(단언은 «진짜 컴파일된» SQLAlchemy 절에서 — 첫 판은 모델을 가짜로 만들어 «가짜를 재고» 있었습니다) · 변이 6/7 · collect 6,776 에러 0.
+> ⚠️ 일곱째는 «무해»이지 탈출이 아닙니다: `row_ids` 가 `business_keys` 를 조용히 이기게 해도 «위의 거절이 먼저» 걸려 아무것도 안 바뀝니다. 두 가드가 겹치는 것은 의도이고 구멍이 아닙니다.
+> 📌 **[09-15 23:4x] 이 채널의 미답 질문: «하나» — PG 실행 시험(급하지 않음).** 다음은 S-251 입니다.
