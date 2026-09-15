@@ -247,8 +247,8 @@ async function runRetroactive(op, params) {
 function redoBannerFollows(table) {
   if (!redoBanner) return;
   redoBanner.setRelation(table);
-  // 업무 키는 표마다 다릅니다. 체인은 그 값들로 고르므로 표가 바뀌면 같이 바뀝니다.
-  redoBanner.setBusinessKey(state.currentBusinessKey);
+  // ⚰️ C-112 전에는 여기서 «업무 키»를 같이 넘겼습니다. 이제 배너가 보내는 신원은
+  //    `row_id` 이고, 그것은 행이 «이미 들고 있는» 것이라 표마다 알려 줄 것이 없습니다.
   // 🔴 C-109. 고를 규칙도 «이 표»의 것입니다 — 트리거가 이 표인 규칙만, 조인 포함.
   //    거르는 것은 서버입니다 — 화면이 거르면 그 규칙이 «두 곳»에 살게 됩니다.
   loadReplayableRules(table).then((rules) => redoBanner.setRules(rules));
@@ -273,7 +273,6 @@ function initRedoBanner() {
       if (cell && typeof cell === 'object' && 'value' in cell) return cell.value;
       return row ? row[column] : undefined;
     },
-    businessKey: state.currentBusinessKey || null,
     // 🔴 값을 넘기지 «않습니다». 있는지만 답합니다 -- 그래서 이 부품의 하니스는 진짜 토큰
     //    없이도 「토큰이 없을 때 문장이 뜬다」를 채점할 수 있습니다.
     hasToken: () => readAdminToken() !== '',

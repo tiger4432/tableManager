@@ -81,8 +81,13 @@ const walk = (node) => (node.children || [])
 const byClass = (root, cls) => walk(root)
   .filter((n) => String(n.className || '').split(/\s+/).includes(cls));
 
-const envelope = (obj) => ({ data: Object.fromEntries(
-  Object.entries(obj).map(([k, v]) => [k, { value: v }])) });
+// 🔴 C-112. 진짜 그리드 행은 `row_id` 를 «봉투 밖» 최상위에 들고 있습니다(`grid.js` 의
+//    `getRowId` · 삭제 경로의 `node.data.row_id`). 픽스처가 그것을 안 달면 이 하니스는
+//    «없는 표»를 재게 됩니다. `rowId: null` 은 «그 칸이 빈 행»을 일부러 만드는 자리입니다.
+let rowSeq = 0;
+const envelope = (obj, rowId) => ({
+  row_id: rowId === undefined ? `r${(rowSeq += 1)}` : rowId,
+  data: Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, { value: v }])) });
 const readEnvelope = (row, col) => {
   const cell = row && row.data ? row.data[col] : undefined;
   if (cell && typeof cell === 'object' && 'value' in cell) return cell.value;
@@ -174,32 +179,40 @@ function bannerSuite(mod) {
   };
 
   const two = lines([JOIN, MAP]);
+  // 🔴 줄이 «없을» 수 있습니다 — 신원을 못 읽으면 판은 문장 하나입니다. 그때 첨자로
+  //    들어가면 하니스가 «던지고», 던진 하니스는 「잡았다」가 아니라 구멍입니다(변이 채점기의 규율).
+  const rowText = (i) => (two.rows[i] ? two.rows[i].textContent : '(no line)');
   s.say('B1 one pressable line per rule the server sent',
     two.rows.length === 2 && two.rows.every((n) => n.tagName === 'BUTTON'),
     two.rows.map((n) => `${n.tagName}:${n.textContent}`));
   // 🔴 소유자의 물음이 이것입니다 — 「같은 체인문이면 보여야지」. 이름만으로는 조인과 합성이
   //    화면에서 구별되지 않습니다.
   s.say('B2 the line says where the rule runs FROM and TO',
-    two.rows[0].textContent.includes('dt_lot → dt_wafer')
-    && two.rows[1].textContent.includes('dt_lot → dt_yield'),
+    rowText(0).includes('dt_lot → dt_wafer') && rowText(1).includes('dt_lot → dt_yield'),
     two.rows.map((n) => n.textContent));
+  const kindOf = (i) => (two.rows[i] ? byClass(two.rows[i], 'redo-panel__kind') : []);
   s.say('B3 the kind is its own cell, one word — not glued onto the sentence',
-    byClass(two.rows[0], 'redo-panel__kind').length === 1
-    && byClass(two.rows[0], 'redo-panel__kind')[0].textContent === 'join'
-    && byClass(two.rows[1], 'redo-panel__kind')[0].textContent === 'mapper',
+    kindOf(0).length === 1 && kindOf(0)[0].textContent === 'join'
+    && kindOf(1).length === 1 && kindOf(1)[0].textContent === 'mapper',
     two.rows.map((n) => byClass(n, 'redo-panel__kind').map((k) => k.textContent)));
   // ⚠️ 확인 창이 없습니다 — 줄에 «크기»가 적혀 있고 그것을 누르는 것이 확인입니다.
+  // ⚠️ C-112 에서 문구가 «좁아졌습니다»: 종전의 「N keys from M rows」는 업무 키와 행이
+  //    갈라질 수 있을 때의 문구였고, row_id 는 중복이 없으므로 둘이 같습니다(판정 407 ②).
   s.say('B4 the size stays on the line, because pressing it IS the confirmation',
-    two.rows.every((n) => /2 keys from 2 rows/.test(n.textContent)),
+    two.rows.length === 2 && two.rows.every((n) => /2 rows/.test(n.textContent))
+    && two.rows.every((n) => !/keys from/.test(n.textContent)),
     two.rows.map((n) => n.textContent));
   // 🔴 넘기는 것은 «이름»입니다. 서버는 `rule` 에 이름을 받지 객체를 받지 않습니다.
   const fired = [];
+  // ⚠️ 행의 id 를 «글자로» 박으면 이 파일이 몇 번째로 만든 행인가에 달려 변이마다 움직입니다.
+  //    재려는 것은 «그 행의 id 가 그대로 실렸나»이므로 행을 들고 비교합니다.
+  const only = envelope({ lot_id: 'L1' });
   {
     const doc = mkDoc();
     const host = doc.createElement('div');
     const part = new mod.RedoBanner(host, {
       doc, sources: [],
-      getSelection: () => [envelope({ lot_id: 'L1' })],
+      getSelection: () => [only],
       readValue: readEnvelope, businessKey: 'lot_id', handOff: () => {},
       hasToken: () => true,
       run: (op, params) => { fired.push({ op, params }); return Promise.resolve({ ok: true }); },
@@ -211,24 +224,82 @@ function bannerSuite(mod) {
     const row = byClass(host, 'redo-panel__group')[0];
     if (row && row.handlers.click) row.handlers.click();
   }
-  s.say('B5 pressing it runs THAT rule by name, with the business keys',
+  // 🔴 C-112. 보내는 신원은 `row_ids` 입니다 — 그리드가 들고 있는 그것. 저장된 업무 키는
+  //    composite 표에서 «조립된 문자열»이라 화면이 보내면 서버가 한 행도 못 찾습니다
+  //    (박스 실측: `rows_scanned 0`, 오류 없이). 그리고 둘 다 보내면 서버가 거절합니다.
+  s.say('B5 pressing it runs THAT rule by name, with the ROW IDS',
     fired.length === 1 && fired[0].params.rule === 'lot_slot_join'
-    && fired[0].params.business_keys === 'L1', fired);
+    && fired[0].params.row_ids === only.row_id
+    && !('business_keys' in fired[0].params), [fired, only.row_id]);
 
   // 🔴 서버가 안 말한 것은 화면이 «지어내지» 않습니다 — 세 상태의 셋째입니다.
   const bare = lines([{ name: 'only_a_name' }]);
+  // ⚠️ 위와 같은 사유로 첫자를 막습니다 — 줄이 없는 것도 «답»이고, 그것을 받아 적어야
+  //    신원을 잃은 변이가 «구멍»이 아니라 «잡힌 것»이 됩니다.
+  const bareRow = bare.rows[0] || null;
+  const bareText = bareRow ? bareRow.textContent : '(no line)';
   s.say('B6 a rule with no kind gets no badge',
-    byClass(bare.rows[0], 'redo-panel__kind').length === 0,
-    bare.rows[0].textContent);
+    bareRow !== null && byClass(bareRow, 'redo-panel__kind').length === 0, bareText);
   s.say('B7 ... and with no tables, no arrow is invented',
-    !bare.rows[0].textContent.includes('→')
-    && !bare.rows[0].textContent.includes('undefined'),
-    bare.rows[0].textContent);
+    bareRow !== null && !bareText.includes('→') && !bareText.includes('undefined'),
+    bareText);
   // 이름이 없으면 돌릴 수가 없습니다(`rule` 은 필수). 누르는 줄로 두면 400 을 부르는 줄입니다.
   const nameless = lines([{ trigger_table: 'dt_lot', target_table: 'dt_wafer', kind: 'join' }]);
   s.say('B8 a rule with no name is not a line you can press',
-    nameless.rows.length === 1 && nameless.rows[0].tagName === 'DIV',
+    nameless.rows.length === 1 && nameless.rows[0]
+    && nameless.rows[0].tagName === 'DIV',
     nameless.rows.map((n) => `${n.tagName}:${n.textContent}`));
+  // 🔴 C-112 — «한 물음에 두 답»을 보내지 않습니다. 서버는 둘 다 오면 거절하고
+  //    (교집합이 아닙니다), 평키 표만 다른 길을 타면 그 표에서만 나는 고장이 생깁니다.
+  const seen = JSON.stringify(two.rows.map((n) => n.textContent));
+  // ⚠️ «보내는 것»은 둔러입니다: 줄을 누를 때의 `params` 와 「Open in admin」이 넘기는 짐.
+  //    한쪽만 보면 다른 쪽에 업무 키가 남아도 이 줄이 초록입니다(실측: 변이 N12 가 탈출했습니다).
+  let handed = null;
+  {
+    const doc = mkDoc();
+    const host = doc.createElement('div');
+    const part = new mod.RedoBanner(host, {
+      doc, sources: [],
+      getSelection: () => [envelope({ lot_id: 'L1' })],
+      readValue: readEnvelope, handOff: (p) => { handed = p; },
+      hasToken: () => true, run: () => Promise.resolve({ ok: true }), rules: [JOIN],
+    });
+    part.setRelation('dt_lot');
+    part.render();
+    walk(host).find((n) => n.dataset && n.dataset.redo === 'chain').click();
+    const go = byClass(host, 'redo-panel__go')[0];
+    if (go) go.click();
+  }
+  s.say('B9 no business key is anywhere on this screen or in EITHER thing it sends',
+    !/business/i.test(seen)
+    && !JSON.stringify(fired).includes('business')
+    && handed !== null && !JSON.stringify(handed).includes('business')
+    && handed.params && typeof handed.params.row_ids === 'string',
+    [seen, fired, handed]);
+  // 🔴 판정 407 ②. row_id 가 없는 행은 «이름을 달고» 섭니다 — 조용히 빠지면
+  //    운영자는 고른 행이 전부 돌았다고 읽습니다.
+  const withHole = (() => {
+    const doc = mkDoc();
+    const host = doc.createElement('div');
+    const part = new mod.RedoBanner(host, {
+      doc, sources: [],
+      getSelection: () => [envelope({ lot_id: 'L1' }), envelope({ lot_id: 'L2' }, null)],
+      readValue: readEnvelope, handOff: () => {},
+      hasToken: () => true, run: () => Promise.resolve({ ok: true }), rules: [JOIN],
+    });
+    part.setRelation('dt_lot');
+    part.render();
+    walk(host).find((n) => n.dataset && n.dataset.redo === 'chain').click();
+    return byClass(host, 'redo-panel__group');
+  })();
+  s.say('B10 a row with no row_id is NAMED and counted, not dropped',
+    withHole.some((n) => /row_id 없는 행 1/.test(n.textContent)),
+    withHole.map((n) => n.textContent));
+  s.say('B11 ... and that line cannot be pressed, because those rows do not run',
+    withHole.filter((n) => /row_id 없는 행/.test(n.textContent))
+      .every((n) => n.tagName === 'DIV')
+    && withHole.some((n) => n.tagName === 'BUTTON' && /— 1 row/.test(n.textContent)),
+    withHole.map((n) => `${n.tagName}:${n.textContent}`));
   return { ran: s.names.length, names: s.names, failures: s.failures };
 }
 
@@ -283,8 +354,21 @@ const BANNER_MUTANTS = [
       '          text: `${name}${path}`,') },
   { id: 'N8', what: 'the whole rule object is handed to the server as `rule`',
     catches: 'B5 pressing it runs THAT rule by name',
-    mutate: (t) => swap(t, '          params: name ? { rule: name, business_keys: keys } : null,',
+    mutate: (t) => swap(t, '          params: name ? { rule: name, row_ids: keys } : null,',
       '          params: name ? { rule, business_keys: keys } : null,') },
+  { id: 'N10', what: 'the screen sends what it can SEE instead of the row identity',
+    catches: 'B1 one pressable line per rule',
+    mutate: (t) => swap(t, "scopeValuesFor(rows, 'row_id', this.readValue)",
+      "scopeValuesFor(rows, 'business_key_val', this.readValue)") },
+  { id: 'N11', what: 'rows without a row_id are dropped in silence',
+    catches: 'B10 a row with no row_id is NAMED',
+    mutate: (t) => swap(t, '    const skipped = missing', '    const skipped = false') },
+  { id: 'N12', what: 'both identities are sent, which the server refuses outright',
+    catches: 'B9 no business key is anywhere',
+    mutate: (t) => swap(t,
+      "    const payload = { op: 'chain_replay', params: { row_ids: values.join(',') } };",
+      "    const payload = { op: 'chain_replay', params: { row_ids: values.join(',') },\n"
+      + "      businessKeys: values };") },
   { id: 'N9', what: 'a rule that never said its tables is drawn with an arrow anyway',
     catches: 'B7 ... and with no tables, no arrow is invented',
     mutate: (t) => swap(t, '        const path = (rule && rule.trigger_table && rule.target_table)',
