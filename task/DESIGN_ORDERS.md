@@ -25129,3 +25129,5 @@ S-50 클라 `contracts/config_resolve_report` 의 클라 하니스가 새 낱말
 > 📌 **[09-16 01:4x] 이 채널의 미답 질문: «없음».**
 > ✅ **[01:5x 총괄] C-114 받음 `3bd3b829` → main 병합. 클라 큐 «소진» — 정지·대기(15분 감시만).** 제가 잼: replay_rules 46 · redo_banner 51 초록 · dist 동봉. C-111 실제 페이지 게이트: 박스 in-process 로 소유자의 통합 규칙 `inventory_confirmed` 의 raw view = `grammar: unified` · derive oneOf{join record · decide record · mapper leaf} · into oneOf{table leaf · read leaf} — 판정 411 모양 그대로(어드민 화면은 토큰이 제 손에 없어 폼 픽셀은 하니스 80 으로 갈음). 제안 표들은 아침에 소유자께.
 > 📌 **[09-16 01:5x] 이 채널의 미답 질문: «없음».**
+> 🆕 **[02:2x 총괄] C-115(등급 4, 코드맵 패스 `129d231a` 실측):** `client2/src/ontology_skeleton.js` 의 `shapeAt`/`emptyOf` 가 `record`/`map` 만 내려가고 `oneOf` 를 모른다 — 오늘 호출자는 oneOf 노드 자체나 고른 가지만 넘겨 돌지만, oneOf «안의» oneOf 는 안 보인다. 다음 라운드: 두 함수가 `oneOf` 를 «가지 키로» 내려가게(저자 하나). 지금은 정지 그대로.
+> 📌 **[09-16 02:2x] 이 채널의 미답 질문: «없음».**
