@@ -622,6 +622,22 @@ def max_group_attempts(rule, document) -> int:
     return DEFAULT_MAX_GROUP_ATTEMPTS
 
 
+def failure_cause(error_reason) -> str:
+    """The one sentence an operator needs from a recorded failure.
+
+    🔴 [S-248] THE LAST NON-EMPTY LINE, NEVER THE FIRST. A traceback's first line is
+    「Traceback (most recent call last):」, so the single line the permanent-failure log
+    carried said nothing at all while the sentence that names the cause sat below the cut.
+    Measured on the box 2026-09-15: a full day of 「매번 다른 행에서 permanently
+    failed」 with the reason invisible, over an index nobody could see.
+
+    ⚠️ A PLAIN ONE-LINE REASON IS ITSELF, which is why this is 「last line」 rather than
+    「the line after Traceback」 - the recorded reason is not always a traceback.
+    """
+    lines = [line.strip() for line in str(error_reason or "").splitlines() if line.strip()]
+    return lines[-1] if lines else "(no reason recorded)"
+
+
 def _resolvable_mapper(name):
     """A mapper this process can actually run - a registered one OR a `builtin:` kind.
 
@@ -2273,10 +2289,9 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                         f"two per narrowing step until a single row is reached."
                     )
                 if failed_permanently_count > 0:
-                    _why = str(error_reason or "").strip().splitlines()
                     logger.error(
-                        "Transaction %s permanently failed: %d event(s) -> FAILED. %s",
-                        tx_id, failed_permanently_count, _why[0] if _why else "(no reason recorded)")
+                        "Transaction %s permanently failed: %d event(s) -> FAILED. 원인: %s",
+                        tx_id, failed_permanently_count, failure_cause(error_reason))
                 if retrying_count > 0:
                     logger.warning(f"Transaction {tx_id} marked for retry: {retrying_count} events set to RETRYING status ({max_retry_num}/{attempts_cap}).")
 

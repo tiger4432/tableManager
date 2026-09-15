@@ -238,6 +238,120 @@ def ensure_once(db, rule_name: str, table: str, columns: list, folds=None) -> di
     return report
 
 
+#: Required-set -> report. One memo per (frozenset of required index names), because that set
+#: is what the answer depends on: asking twice with the same set can only give the same answer,
+#: and this runs behind the read path's TTL where a second database call buys nothing.
+_RETRACTED = {}
+
+
+def product_indexes(db) -> list:
+    """Every unique index THIS PRODUCT made, as (table, index name).
+
+    🔴 BY PREFIX, AND THAT IS THE WHOLE SAFETY OF IT. An index an operator built under their
+    own name does not start with `uq_vjoin_`, so it can never be retracted here - the product
+    only ever takes back what the product put there.
+    """
+    from sqlalchemy import text
+
+    # ⚠️ THE PREFIX IS NOT RE-SPELLED HERE. `config.INDEX_PREFIX` is what NAMES these
+    # indexes; a second copy of the string would be a second answer to 「which are ours」.
+    from virtual_join.config import INDEX_PREFIX
+
+    rows = db.execute(text(
+        "SELECT t.relname AS table_name, i.relname AS index_name "
+        "FROM pg_index x "
+        "JOIN pg_class i ON i.oid = x.indexrelid "
+        "JOIN pg_class t ON t.oid = x.indrelid "
+        "WHERE x.indisunique AND i.relname LIKE :prefix"),
+        {"prefix": INDEX_PREFIX + "%"}).fetchall()
+    return [(row[0], row[1]) for row in rows]
+
+
+def retract_unrequired_once(db, required) -> dict:
+    """Drop the product's own unique indexes that no live join requires. Once per set.
+
+    🔴 AN INDEX LIVES EXACTLY AS LONG AS THE JOIN THAT REQUIRES IT (S-248). Measured on the
+    box 2026-09-15: S-235 built `uq_vjoin_dt_inventory_…` while that join was live and the
+    data happened to be clean; the join was later refused, migrated and switched off, and the
+    INDEX stayed. `dedup` then inserted an inventory row that collided with it - 23505, the
+    group permanently failed, and every retry failed the same way.
+    ⛔ AND THE WRITE GATE COULD NOT SEE IT. `crud.refuse_virtual_join_duplicates` knows the
+    keys of VERIFIED rules, so an index whose rule is gone bites from OUTSIDE the gate. An
+    index with no rule is the defect; this is the product taking its own thing back.
+
+    ⚠️ OFF IS OFF - NO DATABASE AT ALL, the same sentence `ensure_once` learned on the day
+    a switch that still probed took the read path down with it.
+    """
+    import os
+
+    from sqlalchemy import text
+
+    key = frozenset(required or ())
+    if key in _RETRACTED:
+        return _RETRACTED[key]
+
+    switch = os.getenv("ASSY_VJOIN_AUTO_INDEX", "1").strip().lower()
+    if switch in ("0", "false", "off", "no"):
+        report = {"dropped": [], "kept": [], "skipped":
+                  "ASSY_VJOIN_AUTO_INDEX=%s" % switch}
+        _RETRACTED[key] = report
+        return report
+
+    bind = getattr(db, "get_bind", lambda: None)()
+    dialect = getattr(getattr(bind, "dialect", None), "name", "")
+    if dialect != "postgresql":
+        report = {"dropped": [], "kept": [], "skipped": "dialect=%s" % (dialect or "unknown")}
+        _RETRACTED[key] = report
+        return report
+
+    try:
+        present = product_indexes(db)
+    except Exception as probe_error:                                   # noqa: BLE001
+        try:
+            db.rollback()
+        except Exception:                                              # noqa: BLE001
+            pass
+        report = {"dropped": [], "kept": [],
+                  "skipped": str(probe_error).strip().splitlines()[0] or "probe failed"}
+        _RETRACTED[key] = report
+        logger.warning("[VirtualJoin] 제품 인덱스 목록을 읽지 못했습니다(로딩은 계속): %s",
+                       report["skipped"])
+        return report
+
+    dropped, kept = [], []
+    for table, index_name in present:
+        if index_name in key:
+            kept.append(index_name)
+            continue
+        # ⚠️ CONCURRENTLY CANNOT RUN INSIDE A TRANSACTION, so this takes its own autocommit
+        # connection - and one failure must not cost the rest: an index still in use by a
+        # running query is a reason to leave THAT one and go on.
+        statement = 'DROP INDEX CONCURRENTLY IF EXISTS "%s"' % index_name
+        try:
+            with bind.connect().execution_options(
+                    isolation_level="AUTOCOMMIT") as connection:
+                connection.execute(text(statement))
+        except Exception as drop_error:                                # noqa: BLE001
+            logger.warning("[VirtualJoin] 인덱스 %s 를 걷어내지 못했습니다: %s",
+                           index_name, str(drop_error).strip().splitlines()[0])
+            continue
+        dropped.append(index_name)
+        logger.warning(
+            "[VirtualJoin] 인덱스 %s (%s) 를 «제품이» 걷어냈습니다 — 켜진 가상 조인 "
+            "어느 것도 이 키를 요구하지 않습니다. 그 표의 쓰기가 이 인덱스에 막히던 것이 "
+            "풀립니다. 다음: 없음. 그 조인을 다시 켜면 제품이 다시 세웁니다.",
+            index_name, table)
+
+    report = {"dropped": dropped, "kept": kept, "skipped": None}
+    _RETRACTED[key] = report
+    return report
+
+
+def forget_retractions():
+    """선언이 바뀌면 다시 묻는다 — `forget` 과 같은 이유, 같은 자세."""
+    _RETRACTED.clear()
+
+
 def forget(rule_name: str = None):
     """선언이 바뀌면 다시 물어야 한다 — 기억은 «이 선언에 대한» 것이지 영구 판정이 아니다."""
     if rule_name is None:

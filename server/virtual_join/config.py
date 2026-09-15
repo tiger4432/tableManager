@@ -876,6 +876,28 @@ def load_verified_rules(db, path: str = None, known_tables: dict = None,
         rule = dict(rule)
         rule["unique_index"] = result["unique_index"]
         verified.append(_VERIFIED_JOIN_ISSUER.issue(rule))
+
+    # 🔴 [S-248] AN INDEX LIVES EXACTLY AS LONG AS THE JOIN THAT REQUIRES IT. The product
+    # builds `uq_vjoin_*`; when the join that asked for it is refused, migrated or switched
+    # off, nothing took it back - and the write gate cannot see it, because that gate knows
+    # the keys of VERIFIED rules only. So the index bit from outside the gate: 23505 on every
+    # insert of a colliding row, and the group failed permanently on every retry.
+    #
+    # ⚠️ ONLY FOR THE DEFAULT DECLARATION FILE. A caller passing `path` is reading a PARTIAL
+    # list (a test, a report), and 「required」 computed from a partial list would retract
+    # indexes real joins still need.
+    #
+    # ⛔ AND IT CAN NEVER BREAK LOADING. Whatever happens in there, the rules this function
+    # was asked for come back.
+    if path is None:
+        try:
+            from virtual_join import unique_key
+
+            unique_key.retract_unrequired_once(
+                db, {r["unique_index"] for r in verified if r.get("unique_index")})
+        except Exception as retract_error:                             # noqa: BLE001
+            logger.warning("[VirtualJoin] 제품 인덱스 회수를 건너뜁니다"
+                           "(로딩은 계속): %s", retract_error)
     return verified
 
 
