@@ -44057,3 +44057,42 @@ import    stdlib 뿐. 네 자리가 세 패키지에 흩어져 있고 어느 쪽
 > ⚠️ **부수 실측 하나(제 라운드 밖 · 기존 빨강):** `test_a_registration_may_carry_its_attributes_into_the_table.py` 의 둘(`..._is_still_a_null_payload` · `..._is_widened_once`)이 **제 변경 «전»에도 빨강**이었습니다(클린 트리에서 확인). 라이브 PG 파티션에 은퇴한 `ck_ledger_objectless_has_no_payload` 가 남아 있어 나는 것이고, 이 둘은 `@pytest.mark.pg` 표시가 «없어» 평범한 `pytest` 에서도 라이브 DB 를 칩니다. 손대지 않았습니다 — 판정 주시면 S-256 의 표시 대상에 넣겠습니다.
 
 > 📌 **[09-16 07:14] 이 채널의 미답 질문: «하나» — 위 ⚠️ 의 「표시 없는 PG 시험 둘」.** 다음은 S-261(`trace.py` 잔해).
+
+---
+
+> ## ✅ **[09-16 07:34 구현자] S-261 착지 `8868d1a0` — `trace.py` 1,721 → 1,050 줄. «물음 먼저» 표 첨부
+
+> ### 지운 것
+> ```
+> 걷기 잔해   ClaimLookup · SqlClaimLookup · OneShotSqlClaimLookup · InMemoryClaimLookup ·
+>            Neighbourhood · 재귀 CTE 둘        (95940d45 가 walk 로 갈아탄 뒤 «호출자 0»)
+> 보고서      coverage + 자기만 쓰던 헬퍼 여덟   (67cc2e8a 가 라우트를 내린 뒤 «호출자 0» · 클라도 «0»)
+> 덤          앞의 것들이 이미 고아로 만든 private 넷
+> 합계        1,059 줄 · 시험 15 · 다시 쓴 시험 «둘»
+> ```
+
+> ### 🔴 「물음이 사는지 먼저」 — 시험 15 를 하나씩 짚었습니다 (지시하신 그 순서)
+> ```
+> 릴레이션 부재 · 빈 원장 · 모르는 랏     walk 라우트의 `ledger_relation_absent`·`state: empty`
+>                                    (S-259 가 «이미» 그쪽으로 다시 씀) + `admin/schema_drift`
+> 등록만 있는 랏 vs 모르는 랏            «이미 walk 기반»이었습니다 — 산 절반만 남기고 coverage 비계 제거
+> 어느 소스가 썼나                      `ledger.admin.ingestion_view` (설계상 «커서»를 읽습니다)
+> 거절 named/none/unknowable · >0       같은 뷰. 세 갈래 «전부» + `refusals_unaccounted` 0·4 가
+>                                    `test_ledger_sources_ingestion` 에 «평범한 스위트»로 이미 있습니다
+>                                    ⚠️ 지운 시험의 「THE ONLY READ THAT EXISTS」 는 «낡은 문장»이었습니다
+> reltuples 추정 · 미분석 파티션        `backfill` 이 자기 자리에서 같은 것을 읽습니다
+> 파티션 목록                          `ledger.schema` 의 `pg_inherits` 조인
+> HAPPENED vs RECORDED (uuid7)         `ledger.uuid7.timestamp_ms` — 거기서 증명됩니다
+> 고정된 응답 모양 · 표본 순서           보고서 «자신의» 성질 — 보고서와 함께 은퇴합니다
+> ```
+
+> ### 🔴 이 라운드가 «거의» 틀릴 뻔한 절반 — 이름 «둘»이 호출자보다 오래 삽니다
+> `COVERAGE_STATES` 와 `ATOMS_UNKNOWN` 을 «지웠다가 되살렸습니다.» 전자는 `event_constants`·`listing_absence` 가 「absent/empty/ready」의 «저자»로 가리키고(살아 있는 시험이 `RETROACTIVE_READ_READY` 가 그중 하나임을 단언합니다), 후자는 「이건 추정치다」의 «공유 모양»으로 `test_a_source_says_when_its_counts_were_taken` 이 못 박고 있습니다. **시험이 잡았고, 주석에 왜 남는지 적어 두었습니다** — 「축과 값을 «같이» 죽이지 않는다」 그대로입니다: 투영은 죽고 그것이 «지은 낱말»은 안 죽습니다.
+
+> ### ⚠️ 안 건드린 것 — 재발견되게 두지 않고 «이름 대고» 남깁니다
+> `rollup_subject_types` 는 호출자가 «어디에도 0» 인데 `LEDGER_TECHNICAL_SPEC`·`PRIMITIVES` 에 «적혀» 있습니다 — 스펙이 이름을 든 것을 은퇴시키는 것은 정리가 아니라 «판정»입니다. `_object_qualifier`·`_payload_lot`·`_hop` 은 `test_ledger_trace_contract` «만» 부릅니다(시험 단위로 따로 판단해야 합니다). 넷 다 이 커밋 «이전»부터 그랬습니다.
+
+> 게이트: collect **6,773 · 에러 0** · `ledger.trace`/`trace_router` 를 부르는 «모든» 시험 273 passed/34 skipped · `run_pg_tests.py` **88 passed · 0 failed**(103 − 은퇴한 15).
+> ⚠️ **문서 앵커:** `CODE_MAP`·`PRIMITIVES` 등에 위 심볼들이 남아 있습니다 — 총괄께서 말씀하신 아침 정비 패스 대상에 이 커밋도 넣어 주십시오(제 레인 밖).
+
+> 📌 **[09-16 07:34] 이 채널의 미답 질문: «둘» — ① 표시 없는 PG 시험 둘(앞 보고) ② `rollup_subject_types`(스펙엔 있고 호출자 0).**

@@ -39310,3 +39310,8 @@ S-106 조건   철회는 «오늘의 함수»(store 의 withdraw)를 그대로 �
 > ✅🔔 **[09-16 07:14 구현자] S-263 착지 `53106c38`.** 걷기의 `follow=["register"]` 리터럴 → `trace_router._self_describing_predicates()`(어휘에서 «목적어 없는» 술어). 샘플·이 박스 «둘 다» 정확히 `{register}`. 치른 값도 세어 적었습니다 — 낱말이 모듈 하나에서 호출 «여섯»으로 옮겨갔고(제품 하나 + 시험 다섯), 운영 쪽은 이음매 시험으로 못 박았습니다. 새 시험 5 · 모집단 279 passed · collect 6,788 에러 0.
 > ❓ **미답 하나:** `test_a_registration_may_carry_its_attributes_into_the_table.py` 의 빨강 둘은 **제 변경 전에도 빨강**이었고(라이브 PG 에 은퇴한 `ck_ledger_objectless_has_no_payload` 잔존), 그 둘은 `@pytest.mark.pg` 표시가 «없어» 평범한 pytest 가 라이브 DB 를 칩니다. **S-256 표시 대상에 넣을까요?** 손대지 않았습니다. 다음은 S-261.
 > 📌 **[09-16 07:14] 이 채널의 미답 질문: «하나»(위 ❓).**
+
+> ✅🔔 **[09-16 07:34 구현자] S-261 착지 `8868d1a0` — 오늘 지시하신 넷(검수·S-260·S-263·S-261) «전부 닫힘».** `trace.py` 1,721 → 1,050 줄(−1,059). 시험 15 은퇴 «전에» 물음 하나씩 자리 확인했고 그 표를 보고서에 실었습니다. 🔴 `COVERAGE_STATES`·`ATOMS_UNKNOWN` 은 지웠다가 «시험이 잡아» 되살렸습니다 — 둘 다 다른 모듈이 가리키는 «낱말의 저자»입니다(축과 값을 같이 죽이지 않는다). 게이트: collect 6,773 에러 0 · 관련 시험 273 passed · `run_pg_tests.py` 88 passed 0 failed.
+> ❓ **미답 둘:** ① 표시(`@pytest.mark.pg`) 없이 라이브 DB 를 치는 시험 둘(`test_a_registration_may_carry_its_attributes_into_the_table`, 제 변경 전부터 빨강) ② `rollup_subject_types` — 호출자 «어디에도 0» 인데 `LEDGER_TECHNICAL_SPEC`·`PRIMITIVES` 가 이름을 듭니다. 은퇴는 판정이라 손대지 않았습니다.
+> ⚠️ 문서 앵커(`CODE_MAP`·`PRIMITIVES`)에 은퇴 심볼이 남습니다 — 아침 정비 패스에 이 커밋도.
+> 📌 **[09-16 07:34] 이 채널의 미답 질문: «둘»(위 ❓).** 큐 비었습니다 — 다음 지시 기다립니다.
