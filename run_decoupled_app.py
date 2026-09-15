@@ -318,16 +318,19 @@ def main():
     # `log_file=` is where the child's stdout/stderr is tee'd - the console still
     # shows it, and now so does a file. uvicorn's start-up lines and its bind
     # error live there and nowhere else.
+    # 🔴 [판정 406] THE CHAIN LOOP RUNS IN ITS OWN PROCESS. The API child is told to
+    # stand down (`ASSY_CHAIN_WORKER=0`) because THIS launcher already starts the chain's
+    # own process below - without that, a launcher-run deployment had TWO chain loops and
+    # one of them lived inside uvicorn, whose event-loop thread the loop body blocks on
+    # every slow tick. S-252 was one instance of that shape; this removes the shape.
+    #
+    # ⚠️ AND IT LIVES ABOVE THIS LIST, NOT INSIDE A ChildSpec. Two oracles read this file
+    # as TEXT - one takes a fixed window after `ChildSpec(`, the other regex-matches the
+    # first mention of the worker script - so a comment inside a spec pushed `log_file=`
+    # out of the window and gave the regex a comment to match. (Those oracles are a text
+    # PROXY for a value, which is the prohibited shape; converting them is S-255.)
     specs = [
         ChildSpec("Backend FastAPI Server", server_cmd, server_dir,
-                  # 🔴 [판정 406] THE CHAIN LOOP RUNS IN ITS OWN PROCESS, AND THIS IS THE
-                  # LINE THAT MAKES THAT TRUE. This launcher already starts
-                  # `run_chain_worker.py` as a child of its own - and did NOT tell the API
-                  # child to stand down, so a launcher-run deployment had TWO chain loops
-                  # and one of them lived inside uvicorn. The loop body is synchronous
-                  # database work on the event-loop thread, so ANY slow tick there - a
-                  # query, a mapper, a cycle - freezes every HTTP request for that long.
-                  # S-252 was one instance of that shape; this removes the shape.
                   env={"DECOUPLED": "True", "ASSY_CHAIN_WORKER": "0"},
                   ports=(int(api_port),), port_host=api_host,
                   log_file=paths.log_path("server_stdout.log")),
