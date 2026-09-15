@@ -26,6 +26,17 @@ from runtime.process_supervisor import ChildSpec, Supervisor, STATE_FAILED, STAT
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
+def _launcher_roster():
+    """The children `main()` always supervises, built by the function `main()` calls (S-255).
+
+    Nothing is spawned: `child_specs` returns a list. The arguments are placeholders - the
+    assertions below are about what each spec DECLARES, not about where uvicorn binds.
+    """
+    from runtime.launcher_specs import child_specs
+    return child_specs(sys.executable, os.path.join(ROOT, "server"),
+                       [sys.executable, "-m", "uvicorn", "main:app"], "::", "18080")
+
+
 @pytest.fixture
 def held_port():
     """A real listening socket owned by this test process. Yields its port."""
@@ -155,20 +166,25 @@ def test_the_guard_runs_before_any_child_is_spawned():
 def test_the_launcher_declares_the_ports_its_children_bind():
     """The supervisor can only reach the port-conflict verdict for a child whose
     spec names its ports. A future child that binds something and forgets to say
-    so silently inherits the 60 s-forever policy again."""
-    src = open(os.path.join(ROOT, "run_decoupled_app.py"), encoding="utf-8").read()
-    assert "ports=(int(api_port),)" in src
+    so silently inherits the 60 s-forever policy again.
+
+    Scored on the roster VALUE since S-255 (it used to assert `ports=(int(api_port),)`
+    as text, which stopped being true of the launcher file the day the list moved into
+    `runtime/launcher_specs.py` while the launcher was still correct).
+    """
+    by_name = {s.name: s for s in _launcher_roster()}
+    assert by_name["Backend FastAPI Server"].ports == (18080,), \
+        "the API child no longer declares the port it binds"
     # `ports=(int(graph_port),)` was asserted here too. R-2026-08-14-H retired the
     # graph sync worker, so the API server is now the ONLY child that binds a port
     # - which is why the assertion below matters more than it used to: if a future
     # child starts binding something and forgets to declare it, there is no longer
     # a second declared example sitting next to it in the spec list to copy.
-    # Pinned on the ChildSpec CONSTRUCTION, not on the file name. The launcher
-    # keeps a tombstone comment naming `run_graph_sync.py`, and a bare
-    # `"run_graph_sync.py" not in src` would match that comment and fail on a
-    # launcher that is perfectly correct - the same trap the heartbeat guard in
-    # test_process_supervisor.py already fell into once.
-    assert 'ChildSpec("Graph DB Sync Worker"' not in src, (
+    # Pinned on the roster, not on the file: the launcher keeps a tombstone comment
+    # naming `run_graph_sync.py`, and a text search would match that comment and
+    # fail on a launcher that is perfectly correct - the same trap the heartbeat
+    # guard in test_process_supervisor.py already fell into once.
+    assert "Graph DB Sync Worker" not in by_name, (
         "the retired graph sync worker is back in the launcher; R-2026-08-14-H "
         "removed it and its storage was dropped")
 
@@ -459,17 +475,27 @@ def test_a_childs_bind_error_lands_in_a_file(tmp_path, held_port):
 
 def test_the_capture_is_declared_for_every_child():
     """A child added later without a log_file is invisible again for exactly the
-    reason this fix exists."""
-    src = open(os.path.join(ROOT, "run_decoupled_app.py"), encoding="utf-8").read()
+    reason this fix exists.
+
+    Scored on the roster VALUE (S-255). Until then this read the launcher as text - a
+    fixed 420-character window after each `ChildSpec(` - and a comment placed inside a
+    spec pushed `log_file=` out of the window and turned it red on 2026-09-15
+    (`86016d10`) while the launcher was correct. Mutation note, measured on a scratch
+    copy of `runtime/launcher_specs.py`: a comment inserted inside a ChildSpec leaves
+    this test GREEN; dropping a child's `log_file=` turns it RED.
+    """
+    by_name = {s.name: s for s in _launcher_roster()}
     # "Graph DB Sync Worker" was the third member until R-2026-08-14-H retired the
     # old graph branch; the stack is four children now (five with the desktop UI).
     for name in ("Backend FastAPI Server", "File Ingestion Watcher",
                  "Chained Ingestion Worker",
                  "Auto Update Scheduler"):
-        i = src.index(f'ChildSpec("{name}"')
-        window = src[i:i + 420]
-        assert "log_file=" in window, \
+        assert by_name[name].log_file, \
             f"the child '{name}' has no output capture"
+    # Two children tee'd into ONE file would be a capture nobody can read back per
+    # child; text could not see that, the value can.
+    captures = [s.log_file for s in _launcher_roster()]
+    assert len(set(captures)) == len(captures), captures
 
 
 def test_a_child_with_no_log_file_still_starts(tmp_path):

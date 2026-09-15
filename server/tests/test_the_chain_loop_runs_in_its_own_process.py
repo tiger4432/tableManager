@@ -25,7 +25,6 @@ prove the pair is a launcher start with `ASSY_CHAIN_WORKER` observed in the API 
 environment and one chain heartbeat rather than two. That is a restart, and the restart is
 총괄's.
 """
-import io
 import os
 import sys
 
@@ -37,8 +36,16 @@ if SERVER_DIR not in sys.path:
 LAUNCHER = os.path.join(REPO_ROOT, "run_decoupled_app.py")
 
 
-def _launcher_source() -> str:
-    return io.open(LAUNCHER, encoding="utf-8").read()
+def _launcher_roster():
+    """The children the launcher always supervises, as the VALUE `main()` builds (S-255).
+
+    The three launcher assertions below used to slice the launcher's TEXT at each
+    `ChildSpec("..."` and so were red for a launcher that was correct whenever a comment
+    landed inside a spec; the roster is a function now and they read it.
+    """
+    from runtime.launcher_specs import child_specs
+    return {s.name: s for s in child_specs(
+        sys.executable, SERVER_DIR, [sys.executable, "-m", "uvicorn"], "::", "18080")}
 
 
 # ---------------------------------------------------------------------------
@@ -48,32 +55,28 @@ def _launcher_source() -> str:
 def test_the_api_child_is_told_not_to_run_a_chain_loop():
     """🔴 THE ONE LINE THIS RULING IS. Without it the launcher runs two chain loops and one
     of them is inside the process serving HTTP."""
-    source = _launcher_source()
-    api_spec = source[source.index('ChildSpec("Backend FastAPI Server"'):]
-    api_spec = api_spec[:api_spec.index("ChildSpec(", 10)]
+    api_spec = _launcher_roster()["Backend FastAPI Server"]
 
-    assert '"ASSY_CHAIN_WORKER": "0"' in api_spec, api_spec[-400:]
+    assert api_spec.env.get("ASSY_CHAIN_WORKER") == "0", api_spec.env
 
 
 def test_the_chain_worker_child_is_still_started_by_the_launcher():
     """⚠️ THE CONTROL. Telling the API to stand down is only right because a process whose
     whole job is the chain is started beside it - otherwise this ruling would switch the
     chain off in production."""
-    source = _launcher_source()
+    worker_spec = _launcher_roster()["Chained Ingestion Worker"]
 
-    assert "run_chain_worker.py" in source
-    assert 'heartbeat="chain"' in source
+    assert "run_chain_worker.py" in worker_spec.cmd
+    assert worker_spec.heartbeat == "chain"
 
 
 def test_the_chain_worker_child_is_not_told_to_stand_down():
     """⛔ THE OBVIOUS WAY TO GET THIS WRONG. The variable is read by `main.py` at startup,
     and a launcher that exported it globally rather than per-child would silence the very
     process it just started."""
-    source = _launcher_source()
-    worker_spec = source[source.index('ChildSpec("Chained Ingestion Worker"'):]
-    worker_spec = worker_spec[:worker_spec.index("ChildSpec(", 10)]
+    worker_spec = _launcher_roster()["Chained Ingestion Worker"]
 
-    assert "ASSY_CHAIN_WORKER" not in worker_spec
+    assert "ASSY_CHAIN_WORKER" not in (worker_spec.env or {})
 
 
 # ---------------------------------------------------------------------------

@@ -360,21 +360,28 @@ def test_status_file_names_the_heartbeat_each_child_publishes(tmp_path):
 
 def test_launcher_declares_a_heartbeat_for_every_worker():
     """Guards the wiring in run_decoupled_app.py: a worker added later without a
-    heartbeat would be supervised but invisible to /health."""
-    import re
-    root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    src = open(os.path.join(root, "run_decoupled_app.py"), encoding="utf-8").read()
-    # Scoped to the spec list. The whole file is not searchable for a runner
-    # name: a comment mentioning `run_graph_sync.py` above main() matched first
-    # and made this guard fail on a launcher whose specs were perfectly correct.
-    src = src[src.index("    specs = ["):]
+    heartbeat would be supervised but invisible to /health.
+
+    Scored on the roster VALUE `main()` builds (S-255). Until then this regex-matched
+    the first mention of each runner script in the launcher's text, so a comment
+    naming `run_chain_worker.py` inside a spec was what got matched and the guard went
+    red on 2026-09-15 (`86016d10`) while the launcher was correct - the second time a
+    comment had done that to it (the first was `run_graph_sync.py` above main()).
+    Mutation note, measured on a scratch copy of `runtime/launcher_specs.py`: a comment
+    inserted inside a ChildSpec leaves this test GREEN; dropping a worker's
+    `heartbeat=` turns it RED.
+    """
+    import sys as _sys
+    from runtime.launcher_specs import child_specs
+    specs = child_specs(_sys.executable, ".", [_sys.executable, "-m", "uvicorn"],
+                        "::", "18080")
     # `run_graph_sync.py`/"graph" was here until R-2026-08-14-H retired the old
     # graph branch and removed that child from the launcher entirely.
     for runner, hb in [("run_watcher.py", "watcher"),
                        ("run_chain_worker.py", "chain"), ("run_auto_update.py", "scheduler")]:
-        m = re.search(re.escape(runner) + r"[^\n]*\n?[^\n]*", src)
-        assert m, f"{runner} is no longer spawned by the launcher"
-        assert f'heartbeat="{hb}"' in m.group(0), \
+        spec = next((s for s in specs if runner in s.cmd), None)
+        assert spec is not None, f"{runner} is no longer spawned by the launcher"
+        assert spec.heartbeat == hb, \
             f"{runner} is supervised but publishes no heartbeat to /health"
 
 

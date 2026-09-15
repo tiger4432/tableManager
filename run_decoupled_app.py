@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.join(_ROOT_DIR, "server"))
 
 from runtime.process_supervisor import ChildSpec, Supervisor, preflight_port_check, psutil_status, DUAL_STACK_HOST, describe_bind_host
 from runtime.launcher_args import parse_launcher_args  # noqa: E402
+from runtime.launcher_specs import child_specs  # noqa: E402  (S-255: the roster is a value)
 import paths  # noqa: E402  (single ASSY_DATA_ROOT override point)
 from utils.logger import get_process_logger  # noqa: E402
 
@@ -305,54 +306,13 @@ def main():
     # ⚰️ [R-2026-08-14-H] 「그래프 싱크 리슨 주소」 배너가 여기 있었다. 아무도
     # 바인드하지 않는 포트를 계속 announce하면 운영자는 그 프로세스가 있다고 믿는다.
 
-    # `heartbeat=` names the progress beat each child publishes (see
-    # server/utils/heartbeat.py). /health joins this list to those beats: the
-    # supervisor is authoritative about whether a process exists, the beat is
-    # authoritative about whether it is getting anything done.
-    #
-    # `ports=` names the TCP ports a child must be able to bind, which is what
-    # lets the supervisor answer "somebody else owns it" instead of "the
-    # environment is down". Only two children bind anything, and in the 74-death
-    # sample those two accounted for 100% of the deaths.
-    #
-    # `log_file=` is where the child's stdout/stderr is tee'd - the console still
-    # shows it, and now so does a file. uvicorn's start-up lines and its bind
-    # error live there and nowhere else.
-    # 🔴 [판정 406] THE CHAIN LOOP RUNS IN ITS OWN PROCESS. The API child is told to
-    # stand down (`ASSY_CHAIN_WORKER=0`) because THIS launcher already starts the chain's
-    # own process below - without that, a launcher-run deployment had TWO chain loops and
-    # one of them lived inside uvicorn, whose event-loop thread the loop body blocks on
-    # every slow tick. S-252 was one instance of that shape; this removes the shape.
-    #
-    # ⚠️ AND IT LIVES ABOVE THIS LIST, NOT INSIDE A ChildSpec. Two oracles read this file
-    # as TEXT - one takes a fixed window after `ChildSpec(`, the other regex-matches the
-    # first mention of the worker script - so a comment inside a spec pushed `log_file=`
-    # out of the window and gave the regex a comment to match. (Those oracles are a text
-    # PROXY for a value, which is the prohibited shape; converting them is S-255.)
-    specs = [
-        ChildSpec("Backend FastAPI Server", server_cmd, server_dir,
-                  env={"DECOUPLED": "True", "ASSY_CHAIN_WORKER": "0"},
-                  ports=(int(api_port),), port_host=api_host,
-                  log_file=paths.log_path("server_stdout.log")),
-        # The workers assume the web server is accepting /internal/events/*.
-        ChildSpec("File Ingestion Watcher", [python_exe, "run_watcher.py"], server_dir,
-                  heartbeat="watcher", start_delay=2.0,
-                  log_file=paths.log_path("watcher_stdout.log")),
-        # ⚰️ [R-2026-08-14-H] "Graph DB Sync Worker" (`run_graph_sync.py`, :8090)가
-        # 여기 있었다. 스택은 5프로세스에서 4프로세스가 된다.
-        # 이 자식이 하던 일은 outbox를 증분 소비해 행을 `graph_nodes`/`graph_edges`의
-        # 사본으로 머티리얼라이즈하는 것이었다. 소유자 판정으로 그 사본이 폐기됐다 —
-        # 원장(`ledger_events`)이 개체 층이고, 실측상 이 워커에는 `ledger` 참조가
-        # 0건이었다. 두 갈래가 같은 소스 표를 각자 읽으며 서로를 몰랐다는 뜻이다.
-        # 진입(라우트)은 `server/main.py`의 `_graph_branch_retired`가 막고,
-        # 저장소는 `server/migrations/drop_graph_storage.py`가 폐기한다.
-        ChildSpec("Chained Ingestion Worker", [python_exe, "run_chain_worker.py"], server_dir,
-                  heartbeat="chain",
-                  log_file=paths.log_path("chain_worker_stdout.log")),
-        ChildSpec("Auto Update Scheduler", [python_exe, "run_auto_update.py"], server_dir,
-                  heartbeat="scheduler",
-                  log_file=paths.log_path("auto_update_stdout.log")),
-    ]
+    # The roster is a VALUE in server/runtime/launcher_specs.py (S-255): what each child
+    # declares (`heartbeat=` / `ports=` / `log_file=`, and 판정 406's `ASSY_CHAIN_WORKER=0`
+    # on the API child) is documented there, and the tests that guard those declarations
+    # import that function instead of reading this file as text. This module cannot be
+    # imported for free - its body opens the live launcher.log - which is why the list
+    # does not live here.
+    specs = child_specs(python_exe, server_dir, server_cmd, api_host, api_port)
     if not server_only:
         # The desktop window closing means "stop everything", not "restart me".
         specs.append(ChildSpec("Desktop Client UI",
