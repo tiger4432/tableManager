@@ -1,13 +1,20 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **868개** 이력. (거버넌스 규칙 #4)
+> 총 **875개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-09 (September 2026)
 
+- **2026-09-15 22:35** — [The Chain Loop Hot Spun On A Control Event It Could Not Consume And Froze The Api](./20260915_223500_the_chain_loop_hot_spun_on_a_control_event_it_could_not_consume_and_froze_the_api.md)
+- **2026-09-15 22:28** — [The Retirement Marker Was Deleted And The Guides Point At The History Entry](./20260915_222824_the_retirement_marker_was_deleted_and_the_guides_point_at_the_history_entry.md)
+- **2026-09-15 17:07** — [The Grids Replay List Belongs To The Table And The Loader Left Main Js](./20260915_170746_the_grids_replay_list_belongs_to_the_table_and_the_loader_left_main_js.md)
+- **2026-09-15 16:55** — [The Replay List Is The Set That Actually Runs Filtered By Trigger](./20260915_165535_the_replay_list_is_the_set_that_actually_runs_filtered_by_trigger.md)
+- **2026-09-15 16:39** — [The Orders Predicate Would Have Counted Zero On A Database Full Of The Rows](./20260915_163917_the_orders_predicate_would_have_counted_zero_on_a_database_full_of_the_rows.md)
+- **2026-09-15 16:30** — [The Cycle Note Spelled By Hand The Shape It Claimed To Follow](./20260915_163019_the_cycle_note_spelled_by_hand_the_shape_it_claimed_to_follow.md)
+- **2026-09-15 16:25** — [Absence Makes No Layer Only A Deliberate Blank Does](./20260915_162502_absence_makes_no_layer_only_a_deliberate_blank_does.md)
 - **2026-09-15 15:50** — [Every Refusal Line Says What To Do Next Because Nobody Can Ask](./20260915_155029_every_refusal_line_says_what_to_do_next_because_nobody_can_ask.md)
 - **2026-09-15 15:37** — [The Registration Lived Inside One Of Two Doors And The Other Half Was Running](./20260915_153723_the_registration_lived_inside_one_of_two_doors_and_the_other_half_was_running.md)
 - **2026-09-15 15:17** — [The Fold Was Half The Key And The Other Half Had Four Authors](./20260915_151725_the_fold_was_half_the_key_and_the_other_half_had_four_authors.md)
