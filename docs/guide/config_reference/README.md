@@ -37,7 +37,7 @@
 > ### ✅ 2026-08-14 — `transfer_plan_config.json` 사본을 **재복사**했다 (위 ①② 중 전자를 닫음)
 >
 > 트리거 ⓐⓒ. `dt` stage가 `source_config_ref` 위임에서 **인라인 `source`로** 옮겨가고
-> (`server/M1_SOURCE_CONFIG_REF.RETIRED.md`), `bonding.total_chips`의 `x`/`y`가 `dt_x`/`dt_y`로
+> (`docs/history/20260814_103500_the_deletion_removed_the_only_sign_and_left_the_capability_off.md`), `bonding.total_chips`의 `x`/`y`가 `dt_x`/`dt_y`로
 > 복원됐다. 사본은 `cp`로 다시 뜼으며(손편집 아님), 재복사 직후 라이브와 파싱 동일을
 > 확인했다. ⚠️ **`bonding_plan_config.json` 사본은 이미 라이브와 동일했고, 그것이 문제다** —
 > 위 ②가 적은 「존재하지 않는 테이블 셋」은 사본의 낛음이 아니라 **라이브의 상태**였다.

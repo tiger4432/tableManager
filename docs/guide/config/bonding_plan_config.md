@@ -7,7 +7,7 @@
 >
 > **① M2가 더 이상 이 파일을 읽지 않습니다.** `transfer_plan_config.json`의 `dt` stage가
 > `"source_config_ref": "bonding_plan"`으로 여기 바인딩을 재사용하던 경로는 **은퇴했습니다**
-> → `server/M1_SOURCE_CONFIG_REF.RETIRED.md`. dt stage의 소스를 바꾸려면 이제 그쪽 파일의
+> → `docs/history/20260814_103500_the_deletion_removed_the_only_sign_and_left_the_capability_off.md`. dt stage의 소스를 바꾸려면 이제 그쪽 파일의
 > 인라인 `source` 블록을 만집니다. **아래 본문에서 「M2가 위임받는다」고 말하는 문장은 전부
 > 과거형으로 읽으십시오.**
 >

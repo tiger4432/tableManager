@@ -36,7 +36,7 @@
   dry-run:              `_role_dry_run` · `dry_run` [transfer_plan.py]
                         / route GET /admin/transfer-plan/dry-run (require_admin_token) [main.py]
   source_config_ref:    🗄️ RETIRED 2026-08-14 — `M1_SOURCE_REFS` and its five branch sites are
-                        gone. `server/M1_SOURCE_CONFIG_REF.RETIRED.md` (approval, measured
+                        gone. `docs/history/20260814_103500_the_deletion_removed_the_only_sign_and_left_the_capability_off.md` (approval, measured
                         cause, revival). A config still carrying the key now falls through
                         to the inline branch and reads its own `source` block.
   degradation engine:   `_status_is_degraded` · `_degradation_effect` · `assess_degradation`
@@ -225,7 +225,7 @@ plan_store      registry         ACCEPTED
                 source_region    not_declared
 ```
 
-🗄️ **`not_reached`는 이제 나오지 않습니다** (2026-08-14). 그것은 위임(`source_config_ref`) stage의 상태였고 — 「채워도 읽히지 않는다」 — 위임 경로가 은퇴했습니다(`server/M1_SOURCE_CONFIG_REF.RETIRED.md`). 모든 stage가 자기 `source` 블록을 읽으므로 미선언 역할은 `not_declared`입니다. 어휘 자체(`bonding_plan.BINDING_NOT_REACHED`)는 향후 위임자를 위해 남아 있습니다.
+🗄️ **`not_reached`는 이제 나오지 않습니다** (2026-08-14). 그것은 위임(`source_config_ref`) stage의 상태였고 — 「채워도 읽히지 않는다」 — 위임 경로가 은퇴했습니다(`docs/history/20260814_103500_the_deletion_removed_the_only_sign_and_left_the_capability_off.md`). 모든 stage가 자기 `source` 블록을 읽으므로 미선언 역할은 `not_declared`입니다. 어휘 자체(`bonding_plan.BINDING_NOT_REACHED`)는 향후 위임자를 위해 남아 있습니다.
 
 ### 3.3 같은 파일, 2026-08-14 (dt 인라인 전환 + `total_chips` x/y 복원 이후)
 
@@ -270,7 +270,7 @@ plan_store      registry         ACCEPTED
    }
    ```
 
-   🗄️ **소스 선언 형태는 이제 하나뿐입니다** — 인라인 `"source": {...}`. 예전에는 `"source_config_ref": "bonding_plan"`으로 M1 바인딩을 재사용할 수 있었고, 위 `dt` 예시가 바로 그 stage입니다. 그 경로는 2026-08-14에 은퇴했습니다 — 이유와 부활 조건은 `server/M1_SOURCE_CONFIG_REF.RETIRED.md`. ⚠️ **`x`/`y`를 `total_chips`에 반드시 쓰십시오**: 유도는 호출자가 `required`로 표시한 역할만 메우는데, `total_chips`는 어느 사이트에서도 `("lot", "slot")`만 요구합니다(§1.1 참조).
+   🗄️ **소스 선언 형태는 이제 하나뿐입니다** — 인라인 `"source": {...}`. 예전에는 `"source_config_ref": "bonding_plan"`으로 M1 바인딩을 재사용할 수 있었고, 위 `dt` 예시가 바로 그 stage입니다. 그 경로는 2026-08-14에 은퇴했습니다 — 이유와 부활 조건은 `docs/history/20260814_103500_the_deletion_removed_the_only_sign_and_left_the_capability_off.md`. ⚠️ **`x`/`y`를 `total_chips`에 반드시 쓰십시오**: 유도는 호출자가 `required`로 표시한 역할만 메우는데, `total_chips`는 어느 사이트에서도 `("lot", "slot")`만 요구합니다(§1.1 참조).
 5. **`plan_store`** — 기존 환경이 zone 이전 상태면 라이브 파일에 손으로 역할키를 더해야 합니다(gitignored라 `.sample` 갱신이 따라오지 않음). 유도 대상이 아니므로 **7종 전부** 씁니다:
 
    ```json
@@ -411,7 +411,7 @@ dt_job_attribution, dt_log, dt_map, ...
 ### ⑦ 🗄️ `not_reached` — 은퇴했습니다 (2026-08-14)
 
 이 사유는 위임(`source_config_ref`) stage만이 받았고, 그 경로가 사라졌습니다
-(`server/M1_SOURCE_CONFIG_REF.RETIRED.md`). 지금 그 키가 남아 있는 config는 키가
+(`docs/history/20260814_103500_the_deletion_removed_the_only_sign_and_left_the_capability_off.md`). 지금 그 키가 남아 있는 config는 키가
 **조용히 무시되고** stage가 자기 `source` 블록을 읽습니다 — 비어 있으면 `not_declared`
 입니다. 어휘(`bonding_plan.BINDING_NOT_REACHED`)는 `BINDING_REFUSALS`에 남아 있으므로
 향후 위임자가 같은 단어를 쓸 수 있습니다.
@@ -491,7 +491,7 @@ conda run -n assy_manager python server/scripts/backup_config.py restore transfe
 - 함정: 두 stage가 같은 `table`을 선언하면 **먼저 선언된 stage가 이깁니다**(첫 매치).
 
 🗄️ **`source_config_ref`** — **RETIRED 2026-08-14**
-- 무엇이었나: 소스 가용을 M1 `bonding_plan_config.json`의 바인딩으로 위임하는 키였고, 허용값은 `"bonding_plan"` 하나였습니다. 그 경로를 쓰던 유일한 stage(`dt`)의 역할 다섯이 전부 `missing`이었고, 원인은 M1 config가 **`table_config.json`에서 빠진 테이블**과 **선언에서 빠진 컴럼**을 가리키고 있었기 때문입니다. 근거·부활 조건은 `server/M1_SOURCE_CONFIG_REF.RETIRED.md`.
+- 무엇이었나: 소스 가용을 M1 `bonding_plan_config.json`의 바인딩으로 위임하는 키였고, 허용값은 `"bonding_plan"` 하나였습니다. 그 경로를 쓰던 유일한 stage(`dt`)의 역할 다섯이 전부 `missing`이었고, 원인은 M1 config가 **`table_config.json`에서 빠진 테이블**과 **선언에서 빠진 컴럼**을 가리키고 있었기 때문입니다. 근거·부활 조건은 `docs/history/20260814_103500_the_deletion_removed_the_only_sign_and_left_the_capability_off.md`.
 - 지금 이 키가 남아 있으면: **조용히 무시**되고 stage가 자기 `source` 블록을 읽습니다. 비어 있으면 전부 `not_declared`이고 `total_chips`가 없어 `chips.total=0`·`remaining=null`입니다. **지우십시오.**
 - 대체: 인라인 `"source": {...}`. 더 표현력이 놓습니다 — `origin_log`·원천별 `frame`을 가진 `fail_sources`·`bin_map`·`lot_membership`은 위임 경로가 도달할 수 없던 것들입니다.
 - ⚠️ **M1 자체는 은퇴하지 않았습니다** — `GET /api/bonding-plan/core-summary`와 `bonding_plan_config.json`은 살아 있습니다. 다만 **그 라우트도 같은 이유로 역할 다섯이 `missing`이고 `remaining: 0`을 냅니다**(2026-08-14 실측). 총괄 판정 대기 — `bonding_plan_config` 가이드 참조.
