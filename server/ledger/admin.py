@@ -676,20 +676,48 @@ def save_chain_rule_raw(name: str, declaration, base: str) -> dict:
     import chain_bindings
     import mapper_sdk
 
-    grammar = chain_bindings.rule_refusals(
-        entry, f"rules.{name}", mapper_resolvable=mapper_sdk.MAPPER_REGISTRY.get,
-        mapper_params=mapper_sdk.MAPPER_PARAMS.get)
-    if grammar:
-        first = grammar[0]
-        raise _table_config_refusal(
-            first.code, first.path,
-            " | ".join("%s: %s" % (issue.path, issue.message) for issue in grammar))
+    # 🔴 [S-244] JUDGE WHAT THE LOADER WOULD STAND, NOT THE RAW ENTRY. A unified declaration
+    # (`name·on·derive·into`) has no `trigger_table` and no `mapper`, so scoring the entry
+    # itself refused - with three sentences - exactly what the loader accepts from the same
+    # file. S-204's 「저장 관문과 로더가 같은 판정자」 stayed true of the JUDGE and had gone
+    # false about its INPUT, which is the same defect one level down.
+    #
+    # ⚠️ AN OLD FLAT RULE COMES BACK UNCHANGED from this call, so that path is byte for byte
+    # what it was: no `derive`, no translation, one rule judged exactly as before.
+    from chain import ingestion_worker
+    from chain import rule_shape
+    from database import crud as _catalogue
+
+    stood, expand_refusal, _notes = rule_shape.expand_declaration(
+        entry, _catalogue.TABLE_CONFIG)
+    if expand_refusal:
+        raise _table_config_refusal("declaration_refused", f"rules.{name}", expand_refusal)
+
+    for candidate in stood:
+        # 🔴 AND THE SAME RESOLVER THE LOADER USES. `MAPPER_REGISTRY.get` alone does not know
+        # the `builtin:` kinds, so a translated rule naming `builtin:join_into` was refused
+        # here while running there - two answers to 「can this run」 from one product.
+        grammar = chain_bindings.rule_refusals(
+            candidate, f"rules.{name}",
+            mapper_resolvable=ingestion_worker._resolvable_mapper,
+            mapper_params=mapper_sdk.MAPPER_PARAMS.get)
+        if grammar:
+            first = grammar[0]
+            raise _table_config_refusal(
+                first.code, first.path,
+                " | ".join("%s: %s" % (issue.path, issue.message) for issue in grammar))
 
     # A DIFFERENT AXIS, not a second opinion: this one reads the WHOLE set and refuses a
     # cycle of opt-in chain triggers, which no single rule can be asked about.
+    # ⚠️ ON THE TRANSLATED SET, for the same reason as above: a cycle is a fact about the
+    # rules that will RUN, and a unified declaration is not one of them until it is expanded.
     try:
-        from chain import ingestion_worker
-        ingestion_worker._validate_chain_cascade_graph(rules)
+        expanded_set = []
+        for saved in rules:
+            more, _why, _notes2 = rule_shape.expand_declaration(
+                saved, _catalogue.TABLE_CONFIG)
+            expanded_set.extend(more)
+        ingestion_worker._validate_chain_cascade_graph(expanded_set)
     except Exception as exc:                                   # noqa: BLE001
         raise _table_config_refusal(
             "chain_cycle", f"rules.{name}", str(exc)) from exc

@@ -718,50 +718,18 @@ def load_chain_rules():
 
         translated = []
         for rule in rules:
-            if isinstance(rule, dict) and isinstance(rule.get("derive"), dict):
-                internal = rule_shape.from_declaration(rule)
-                if rule_shape.is_switched_off(internal):
-                    # ⛔ [판정 399, ③′] OFF MEANS NOTHING HAPPENS. No rule stands, and nothing
-                    # below this line runs - which is the whole difference between a switch
-                    # and a filter. Not counted as refused either: the operator turned it off
-                    # on purpose and a refusal list is for declarations that are wrong.
-                    logger.info("[ChainRules] %s: enabled=false — no rule stands for it.",
-                                rule.get("name"))
-                    continue
-                decided, decide_refusal = rule_shape.decide_rules(
-                    internal, _catalogue.TABLE_CONFIG)
-                if decide_refusal:
-                    logger.error("[ChainRules] %s: %s", rule.get("name"), decide_refusal)
-                    continue
-                if decided:
-                    for unknown in rule_shape.unknown_decide_cells(internal):
-                        logger.warning(
-                            "[ChainRules] %s: derive.decide cell this product does not read "
-                            "— %s. The rule runs.", rule.get("name"), unknown)
-                    translated.extend(decided)
-                    continue
-                try:
-                    rule_shape.refuse_join_trigger_conflict(internal)
-                except rule_shape.JoinTriggerConflict as conflict:
-                    # ⛔ ONE RULE, DROPPED AND NAMED - never the whole file. 「거절된 분자는
-                    # 세고 건너뛰다」: the other declarations in this file are not at fault.
-                    logger.error("[ChainRules] join_trigger_conflict: %s", conflict)
-                    continue
-                unknown = rule_shape.unknown_join_cells(internal)
-                if unknown:
-                    # Named loudly, and the rule still runs (판정 397 자세).
-                    logger.warning(
-                        "[ChainRules] %s: derive.join cell(s) this product does not read "
-                        "— %s. The rule runs; check the spelling if it was meant to do "
-                        "something.", rule.get("name"), ", ".join(unknown))
-                translated.append(rule_shape.as_chain_rule(internal))
-                # 🔴 [S-237] ONE DECLARATION MAY IMPLY MORE THAN ONE RULE. A join has to be
-                # recomputed from either side and a rule watches ONE `trigger_table`, so the
-                # shell hands the loader both. They carry the SAME `params`, so there is one
-                # spec and two triggers rather than two declarations to keep in step.
-                translated.extend(rule_shape.companion_rules(internal))
-            else:
-                translated.append(rule)
+            # 🔴 [S-244] ONE AUTHOR. The save gate calls this same function with the same
+            # catalogue, so 「what does this declaration stand」 has one answer no matter which
+            # door the operator came through.
+            stood, refusal, notes = rule_shape.expand_declaration(
+                rule, _catalogue.TABLE_CONFIG)
+            for note in notes:
+                logger.warning("[ChainRules] %s", note)
+            if refusal:
+                # ⛔ ONE RULE, DROPPED AND NAMED - never the whole file.
+                logger.error("[ChainRules] %s", refusal)
+                continue
+            translated.extend(stood)
         rules = translated
     except Exception as grammar_error:
         # 못 읽으면 «오늘 그대로» 간다 — 새 문법 때문에 옛 선언이 멈추는 일은 없다

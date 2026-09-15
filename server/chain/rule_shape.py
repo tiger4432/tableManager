@@ -323,3 +323,52 @@ def is_switched_off(internal: dict) -> bool:
     operator did not write), and it deliberately does not reach here.
     """
     return internal.get("enabled_written") and internal.get("enabled") is False
+
+
+def expand_declaration(declaration, table_config=None) -> tuple:
+    """A rules-file entry -> (the chain rules it stands, refusal, notes).
+
+    🔴 [S-244] ONE AUTHOR, TWO CALLERS. The loader translated a unified declaration before
+    scoring it; the save gate scored the RAW entry - so `POST /admin/chain/rules/raw` refused
+    (`trigger_table` missing, `derive` unknown, `unresolvable_mapper`) what the loader accepts
+    from the same file. S-204's sentence 「저장 관문과 로더가 같은 판정자」 had quietly become
+    false for this grammar: same judge, different input is the same defect as two judges.
+
+    ⚠️ AN OLD FLAT RULE COMES BACK UNTOUCHED, and that is what keeps the old save path byte
+    for byte: no `derive`, no translation, the entry itself is the one rule it stands.
+
+    🔴 THREE OUTCOMES, AND 「OFF」 IS NOT A REFUSAL (판정 399). A disabled declaration stands
+    no rule and says so in `notes`; a refusal list is for declarations that are WRONG, and an
+    operator who turned something off did not make a mistake.
+    """
+    if not isinstance(declaration, dict) or not isinstance(declaration.get("derive"), dict):
+        return ([declaration], None, [])
+
+    internal = from_declaration(declaration)
+    name = declaration.get("name")
+    if is_switched_off(internal):
+        return ([], None, ["%s: enabled=false \u2014 no rule stands for it." % name])
+
+    decided, decide_refusal = decide_rules(internal, table_config)
+    if decide_refusal:
+        return ([], "%s: %s" % (name, decide_refusal), [])
+    if decided:
+        return (decided,
+                None,
+                ["%s: derive.decide cell this product does not read \u2014 %s. "
+                 "The rule runs." % (name, cell)
+                 for cell in unknown_decide_cells(internal)])
+
+    try:
+        refuse_join_trigger_conflict(internal)
+    except JoinTriggerConflict as conflict:
+        return ([], "join_trigger_conflict: %s" % conflict, [])
+
+    notes = []
+    unknown = unknown_join_cells(internal)
+    if unknown:
+        notes.append(
+            "%s: derive.join cell(s) this product does not read \u2014 %s. The rule runs; "
+            "check the spelling if it was meant to do something."
+            % (name, ", ".join(unknown)))
+    return ([as_chain_rule(internal)] + companion_rules(internal), None, notes)
