@@ -1,13 +1,17 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **864개** 이력. (거버넌스 규칙 #4)
+> 총 **868개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-09 (September 2026)
 
+- **2026-09-15 15:50** — [Every Refusal Line Says What To Do Next Because Nobody Can Ask](./20260915_155029_every_refusal_line_says_what_to_do_next_because_nobody_can_ask.md)
+- **2026-09-15 15:37** — [The Registration Lived Inside One Of Two Doors And The Other Half Was Running](./20260915_153723_the_registration_lived_inside_one_of_two_doors_and_the_other_half_was_running.md)
+- **2026-09-15 15:17** — [The Fold Was Half The Key And The Other Half Had Four Authors](./20260915_151725_the_fold_was_half_the_key_and_the_other_half_had_four_authors.md)
+- **2026-09-15 14:51** — [A Declared Unique Key Reached Nothing So The Warmup Became Its Reader](./20260915_145145_a_declared_unique_key_reached_nothing_so_the_warmup_became_its_reader.md)
 - **2026-09-15 13:08** — [A Declared Join Can Be Backfilled And A Bad Page Costs One Page](./20260915_130844_a_declared_join_can_be_backfilled_and_a_bad_page_costs_one_page.md)
 - **2026-09-15 12:55** — [The Follow Up Lap Became A Hop And One Cause Gets One Helping](./20260915_125527_the_follow_up_lap_became_a_hop_and_one_cause_gets_one_helping.md)
 - **2026-09-15 12:11** — [A Cycle Is A Shape Not An Error Said Once Refused Nowhere](./20260915_121153_a_cycle_is_a_shape_not_an_error_said_once_refused_nowhere.md)
