@@ -1,3 +1,65 @@
+## [09-16 01:0x] C-111 착수 — 그리기 «전»에 잰 것: 스켈레톤의 가지 셋이 선언과 «한 층» 어긋납니다
+
+초인종 받고 바로 짓지 않고, 먼저 **서버가 실제로 내는 JSON** 과 **커밋된 선언 픽스처**를 나란히
+놓았습니다. 어긋나는 자리가 «셋» 있고, 그대로 그리면 폼이 없는 칸을 그립니다. 규칙 하나면 닫힙니다.
+
+### 실측 ① — 서버가 내는 `unified_root`(제 트리에서 `chain_bindings.skeleton()` 실행)
+
+```
+derive -> oneOf
+    join     record(right_table, on, take)
+    decide   record(key, fields, list_columns, aggregations, reference_views, auto_confirm, alignment)
+    mapper   record(mapper)
+into   -> oneOf
+    table    record(table)
+    read     record(read)
+```
+
+### 실측 ② — 커밋된 «선언»이 그 자리에 들고 있는 것 (서버 시험 픽스처)
+
+```
+derive: {"kind": "join", "join": {right_table, on, take}}      ← 가지의 칸들이 «가지 키 밑»
+into:   {"table": "left_t"}                                     ← 가지 키가 «값을 바로» 든다(문자열)
+into:   {"read": true}                                          ← 같음(참/거짓)
+derive: {"kind": "mapper", "mapper": "이름"}                     ← 같음(문자열)
+   (test_a_declared_join_writes_what_it_says_into_the_table.py · _a_read_time_join_can_be_declared…
+    · rule_shape.from_chain_rule/from_declaration)
+```
+
+### 판정이 필요한 한 줄 — 「가지의 노드는 «가지 키 밑»에 산다」
+
+```
+그 규칙 하나면 다섯 가지가 «전부» 선언과 맞습니다:
+   derive.join   = record(right_table,on,take)   → derive.join.right_table   ✅ 오늘 그대로
+   derive.decide = record(...)                    → derive.decide.key ...      ✅ 오늘 그대로
+   derive.mapper = leaf                           → derive.mapper = "이름"     🔴 오늘은 record(mapper)
+   into.table    = leaf(ref)                      → into.table  = "dt_x"       🔴 오늘은 record(table)
+   into.read     = leaf(flag)                     → into.read   = true         🔴 오늘은 record(read)
+🔴 서버 쪽 «세 줄»입니다: `_record(_field(x, _leaf(x)))` → `_leaf(x)` (`chain_bindings._unified_root`).
+⚠️ 반대 규칙(「가지의 칸들이 oneOf 자리에 그대로」)을 고르면 `into` 는 맞고 `derive.join` 이 틀립니다 —
+   그쪽이면 서버가 고쳐야 할 것이 «둘»이고 선언 문법도 같이 바뀝니다(`derive.join` 이 사라집니다).
+```
+
+🔴 **왜 클라가 «골라서» 그리면 안 되나:** 두 관례를 화면이 각자 알아보려면 「record 인데 유일한 칸
+이름이 가지 키와 같으면 그 칸이 곧 가지다」 같은 «유도»를 넣어야 합니다. 그것이 계획 §9.2 가 막는
+「폼이 문법의 둘째 저자가 되는」 자리이고, 이 저장소가 이번 주에만 세 번 지운 부류입니다.
+
+### 그동안 제가 하는 것
+
+```
+· 렌더러의 `oneOf` 갈래를 «위 규칙»(가지 노드는 가지 키 밑)으로 짓습니다 — 오늘 선언 다섯 중
+  둘이 이미 그 모양이고, 나머지 셋은 서버 세 줄이면 같은 모양이 됩니다
+· 고르개는 «기존 닫힌 목록 컨트롤»이고 선택지는 `branches` 의 «키»입니다(서버가 `list` 를 안 냅니다 —
+  구현자가 그 사유를 보고했고 맞습니다: 안 내는 목록 이름을 적으면 그게 「폼이 그리는데 읽는 쪽이 없다」)
+· `CHAIN_RULE_REGISTRY.oneOf`(C-101) 은퇴 — 같은 사실의 둘째 철자였습니다
+· ⚠️ 실제 페이지 확인(게이트 ③)은 서버 세 줄 «뒤»에만 참일 수 있습니다: 지금 열면 `into` 가
+  한 층 깊게 그려집니다. 그 상태로 「됩니다」라고 적지 않겠습니다
+```
+
+**판정 대기: 위 한 줄(가지 노드의 자리) + 서버 세 줄을 S-241 후속으로 넣을지.**
+
+---
+
 ## [09-16 00:3x] C-112 착지 (`1295fab4`) — 보내는 신원이 «그리드가 들고 있는 것»(row_id)이 됐습니다
 
 | 코드 | 무엇 | 상태 |
