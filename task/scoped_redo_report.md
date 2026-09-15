@@ -43519,3 +43519,57 @@ test_replace_map_clean_purge   행 1 -> 행 1 이면 「퍼지하고 다시 넣�
 🔴 **제 모듈의 «자리 라벨»이 총괄의 첫 대조를 틀리게 했습니다** — `_answer` 는 take 컬럼을 `take_0 · take_1` 로 «자리»로 붙이는데 대조기가 «이름»으로 읽어 None 을 얻고 「다름 76」을 셌습니다(보내기 전 `_mapping` 을 열어 잡음). 자리 라벨은 `take` 에 같은 오른쪽 컬럼이 두 번 올 수 있어서 고른 것인데, 그 사실이 «모듈 밖»에서는 안 보였습니다. 이 커밋에 고치지는 않았습니다 — 다음 지시 없이 만지지 않는 자리라, 여기에 «적어» 둡니다.
 
 > 📌 **[09-15 09:24] 이 채널의 미답 질문: «없음».** 지시대로 **정지**합니다. enrich·mapper 의 통합 선언 이관은 다음 라운드 지시 뒤입니다.
+
+---
+
+## 📐 [09-15 10:0x] S-239 — 짓기 «전» 블록: §0-ter 판별식 셋 + enrich 칸 표
+
+지시대로 «먼저» 답합니다. **셋 중 하나가 옳은 쪽인지 제가 못 정합니다 — 그래서 짓지 않고 올립니다.**
+
+### ① 「읽기에서 도나 쓰기에서 도나」 → **쓰기. 그리고 이번 단계는 SQL 을 «한 줄도» 안 더합니다**
+enrich 는 «이미» 체인 맵퍼입니다 — dedup 은 평범한 체인 경로(`map_enrichment_dedup`), auto_confirm 은 follow-up 랩(`builtin:auto_confirm`). S-239 가 하는 일은 «껍데기»뿐이라 dict 변환이고, 새 SQL 이 없으니 읽기 경로에 얹힐 것도 없습니다.
+단언 가능: 이 커밋 diff 에 `virtual_join/executor` · `column_filter` · `source_preparation` · `resolved_expression` **0 줄**. ✅ 옳은 쪽.
+
+### ② 「값 하나가 틀리면 그 행이 죽나 배치·세션이 죽나」 → **행. 다만 그 기제는 «이 라운드가 안 만지는» 코드에 있습니다**
+```
+이미 있음   enrichment/config.py:1364 `_isolated_execute` — 사용자 작성 참조문 «하나»를 SAVEPOINT 안에서 실행
+실측 근거   그 함수 자신의 주석(2026-07-30 라이브): 나쁜 SELECT -> 다음 SELECT 실패(세션 오염) ·
+           commit() 이 «정상 반환»하면서 서버는 롤백 · 같은 것을 SAVEPOINT 안에 넣으면 다음 SELECT 성공
+```
+그러므로 판별식의 답은 「행」입니다. ⚠️ 다만 그 격리는 «문장» 단위이고, 게이트가 요구하는 「한 행이 던져도 나머지 행이 써진다」는 «행» 단위입니다. S-239 는 껍데기라 실행을 안 바꾸므로, 그 단언이 오늘 빨갛다면 고치는 것은 껍데기 일이 아니고 「동작 0」을 깹니다. **그래서 저는 그 단언을 «먼저 써서 돌려 보고» 결과를 보고하겠습니다** — 초록이면 그대로 게이트로 싣고, 빨강이면 그것이 S-239 가 아니라 별 줄입니다.
+
+### ③ 「스위치를 끄면 이 경로가 «안 불리나」」 → 🔴 **제가 못 정합니다. 판정이 필요합니다**
+```
+오늘   ingestion_worker:840  ASSY_CHAIN_SYNTHESIZE=0 -> synthesized = []  · synthesize_chain_rules «호출 0» ✅
+그런데 그 스위치의 주어는 「enrichment/virtual_join «파일»에서 제품이 파생시킨 규칙」입니다.
+       통합 선언은 `chain_rules.json` 에 «운영자가 적은» 규칙이고, 로더의 번역을 지납니다 — 이 스위치 «밖»입니다
+```
+🔴 그 스위치 자리의 주석이 자기 주어를 적어 두었습니다: 「운영자가 안 적었고 «볼 수도 없는» 규칙」. 통합 선언은 «적혀 있고 보이며» `enabled: false` 로 «이미» 끌 수 있습니다. 그러니
+```
+㉠ 게이트 ③ 대로 「이 종류도 안 낳음」으로 하면  -> 보이는 선언에 «둘째 끄는 자리»가 생깁니다(그 스위치의 뜻이 넓어집니다)
+㉡ 안 가두면                                  -> 게이트 ③ 이 적힌 대로는 «성립하지 않습니다»
+```
+⚠️ 그리고 이건 enrich 만의 문제가 아닙니다 — **S-237 의 join 종류도 «이미» 같은 성질**이고(통합 선언은 그 스위치를 안 지납니다) 그때 제가 안 올렸습니다. 어느 쪽으로 정하시든 **두 종류에 같이** 적용되어야 합니다.
+
+### enrich 선언이 들어야 하는 «칸 표» (D-37 방식)
+오늘 `_validate_rule` 이 정규화하는 칸 «열둘»과, 통합 문법에서 그 칸이 앉을 자리입니다.
+```
+옛 칸                     새 자리                      비고
+name                      name                         그대로
+enabled                   enabled                      「안 적음」과 「true」는 다른 선언(왕복 계약)
+source_table              on.table                     dedup 의 트리거
+derived_table             into.table                   dedup 의 타깃이자 auto_confirm 의 «자기 고리»
+decision_key              derive.decide.key            지시서의 `key`
+target_fields             derive.decide.fields
+list_columns              derive.decide.list_columns
+aggregations              derive.decide.aggregations
+reference_views           derive.decide.reference_views
+auto_confirm              derive.decide.auto_confirm   ⚖️ 판정 필요 ①(아래)
+auto_confirm_declared     (칸 아님 — 「적혔나」의 유도)  ⚖️ 판정 필요 ②(아래)
+alignment                 derive.decide.alignment
+```
+**⚖️ 판정 필요 ① — `auto_confirm` 이 «칸»인가, 규칙 «둘째 개»의 유무인가.** 오늘은 boolean 한 칸이고 껍데기가 «항상» 규칙 둘을 낳습니다(auto_confirm 쪽은 컬렉터의 `.active` 가 다시 판단). 통합 문법에서 「이 선언은 자동 확정도 한다」를 «칸»으로 둘지, 아니면 규칙이 둘이라는 사실을 그대로 둘지는 문법의 모양입니다.
+**⚖️ 판정 필요 ② — `auto_confirm_declared` 는 «유도된 것»이라 새 문법에 칸이 없어야 합니다.** 「적혔나」는 `enabled_written` 과 같은 부류이고, 칸으로 두면 작성자가 «적었다고 적는» 자리가 생깁니다. 제 제안은 칸 «없음»이고, 번역이 `"auto_confirm" in derive.decide` 로 유도하는 것입니다 — 확인 부탁드립니다.
+🔵 그 밖 열 칸은 자리만 바뀌고 뜻이 안 바뀝니다. `params` 는 오늘처럼 «정규화된 규칙 전체»를 실으므로 내일 칸이 하나 늘어도 껍데기를 안 고칩니다.
+
+> 📌 **[09-15 10:0x] 이 채널의 미답 질문: «셋» — ③ 의 ㉠/㉡(두 종류 공통) · 칸 표의 판정 필요 ①②.** ③ 이 「셋 다 옳은 쪽」을 막고 있어 **짓지 않고 기다립니다**(지시서의 ⛔ 그대로).
