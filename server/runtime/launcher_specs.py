@@ -39,9 +39,12 @@ def child_specs(python_exe, server_dir, server_cmd, api_host, api_port):
 
     🔴 [판정 406] THE CHAIN LOOP RUNS IN ITS OWN PROCESS. The API child is told to
     stand down (`ASSY_CHAIN_WORKER=0`) because the launcher already starts the chain's
-    own process below - without that, a launcher-run deployment had TWO chain loops and
-    one of them lived inside uvicorn, whose event-loop thread the loop body blocks on
-    every slow tick. S-252 was one instance of that shape; this removes the shape.
+    own process below. ⚠️ This is a SECOND, explicit guard, not the first: `main.py`
+    already returned before the chain start when `DECOUPLED=True` (which the launcher
+    passes), so a launcher-run deployment never had the loop inside uvicorn - the board
+    corrected that claim on 2026-09-16 02:1x. The shape it guards against is real for a
+    hand-started uvicorn, whose event-loop thread the loop body blocks on every slow tick
+    (S-252 was one instance); under the launcher this line says so in the environment.
 
     The desktop shell is NOT here: `main()` appends it only when the launcher is not
     in server-only mode, and its path is `run_decoupled_app.desktop_shell_path`.

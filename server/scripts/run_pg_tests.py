@@ -15,12 +15,12 @@ them against THIS box's PostgreSQL: the server the product itself resolves.
 WHAT IT DECIDES, IN ORDER
   1. Which PostgreSQL. The URL the server resolves - `paths.resolve_database_url`, i.e.
      env DATABASE_URL > config/database.json > the default - names the server. If that is
-     not PostgreSQL there is nothing to prove against: one REFUSED line, exit 2.
+     not PostgreSQL there is nothing to prove against: one REFUSED line, exit 64.
   2. Which DATABASE on it. Never the product's own: the proofs create and drop scratch
      schemas. `tests/support/isolated_pg.resolve_url` is the ONE spelling of which
      database they may use (ASSY_PG_TEST_DATABASE_URL > ASSY_TEST_DATABASE_URL > the
      dev_env QA database), and it passes the answer through `db_safety`, so declaring
-     production is still refused. No usable declaration is a REFUSED line, exit 2 - not
+     production is still refused. No usable declaration is a REFUSED line, exit 64 - not
      a skip, because a skip is how these proofs stayed quiet for months (S-104, S-115).
   3. `pytest tests -m pg -rs --continue-on-collection-errors`, with that database
      exported under the variable BOTH PG fixture families read (`pg_engine` in conftest
