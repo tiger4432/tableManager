@@ -166,19 +166,30 @@ def _count_chain_replay(db, params, scan_limit):
                                  log=lambda m: logger.debug(m),
                                  business_keys=params.get("business_keys"))
     truncated = s["rows_scanned"] >= scan_limit
+    # 🔴 [S-242] A `builtin:` KIND WRITES ITSELF, SO IT PROPOSES NO CELLS. Measured: this
+    # count reads `cells_proposed`, which a builtin rule leaves at 0 - so the screen an
+    # operator consents on would have said 「0 셀을 다시 씁니다」 before a backfill that
+    # rewrites every target row. A pre-count that says 「nothing」 about a run that does
+    # everything is worse than no pre-count.
+    #
+    # ⚠️ AND IT IS COUNTED IN ITS OWN UNIT, under its own label. Rows and cells are different
+    # things, and calling rows 「셀」 to fit one field is how a number comes to be read wrong.
+    is_builtin = bool(s.get("builtin_kind"))
+    affected = s["mapper_items"] if is_builtin else s["cells_proposed"]
     return {
-        "affected": s["cells_proposed"],
+        "affected": affected,
         "absence": (ABSENCE_NOT_EXHAUSTIVE if truncated
-                    else ABSENCE_TRULY_NONE if not s["cells_proposed"] else None),
-        "affected_label": "덮어쓸 셀",
+                    else ABSENCE_TRULY_NONE if not affected else None),
+        "affected_label": "다시 계산할 행" if is_builtin else "덮어쓸 셀",
         "count_kind": COUNT_SAMPLE,
         "scanned": s["rows_scanned"],
         "scan_limit": scan_limit,
         "truncated": truncated,
         "detail": (
             f"트리거 테이블 {s['rows_scanned']}행을 표본으로 검사해 "
-            f"{s['cells_proposed']}개 셀을 다시 씁니다. "
-            f"사람이 입력한 값이 지키는 셀 {s['user_protected_cells']}개는 화면상 값이 "
+            + (f"{affected}행을 다시 계산합니다. "
+               if is_builtin else f"{s['cells_proposed']}개 셀을 다시 씁니다. ")
+            + f"사람이 입력한 값이 지키는 셀 {s['user_protected_cells']}개는 화면상 값이 "
             f"바뀌지 않습니다(레이어만 갱신)."
         ),
         "extra": {

@@ -153,7 +153,36 @@ def find_rule(rule_name: str, rules: list = None) -> dict:
     if rule is None:
         available = ", ".join(sorted(r.get("name", "?") for r in rules)) or "<none>"
         raise ReplayRefused(f"chain rule '{rule_name}' not found or disabled; available: {available}")
+    # ⛔ [S-242] THE REFERENCE SIDE IS NOT A BACKFILL SUBJECT. A unified join stands two
+    # rules: one triggered on the table it writes, one on the table it reads. Replaying the
+    # SECOND walks every reference row and re-finds its targets - the same work the first
+    # already does for every target row, done once per reference instead. Replaying the first
+    # covers everything. An operator who ran both would pay twice for one answer, so the name
+    # is refused rather than quietly accepted.
+    if is_reference_side(rule):
+        raise ReplayRefused(
+            f"chain rule '{rule_name}' is the follow-up half of a declaration; replaying it "
+            f"would redo, once per reference row, what replaying the target-side rule "
+            f"already does for every row. Replay that one instead.")
     return rule
+
+
+def is_reference_side(rule: dict) -> bool:
+    """Is this the half of a declaration that watches the table it READS?
+
+    🔴 THE PROPERTY, NOT THE CELL. The first cut asked 「is it `follow_up`」 - and BOTH
+    halves of a unified join are paced, so it refused the very rule an operator should
+    replay. My own discriminator caught it, which is the whole reason that test exists.
+    What tells the two apart is where the trigger sits: the reference side is triggered on
+    the join's RIGHT table, which is not the table it writes.
+    """
+    from chain import builtins
+
+    if (rule or {}).get("mapper") not in builtins.BUILTIN_KINDS:
+        return False
+    right = ((rule.get("params") or {}).get("right_table")) or ""
+    trigger = rule.get("trigger_table") or ""
+    return bool(right) and trigger == right and trigger != (rule.get("target_table") or "")
 
 
 def order_rules(rules: list) -> list:
@@ -274,8 +303,17 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
         log(f"[replay] '{rule['name']}' is self-triggering ({trigger_table} -> {target_table}); "
             f"scan bounded at row_id <= {max_row_id!r}")
 
+    # [S-242] Which door this rule goes through, decided ONCE before the first page and
+    # REPORTED rather than inferred: a reader guessing from 「items but no cells」 would be
+    # wrong about the first file mapper that legitimately proposes nothing.
+    from chain import builtins
+
+    builtin_kind = (rule.get("mapper")
+                    if rule.get("mapper") in builtins.BUILTIN_KINDS else None)
+
     stats = {
         "mode": "apply" if apply else "dry-run",
+        "builtin_kind": builtin_kind,
         "rule": rule.get("name"), "trigger_table": trigger_table,
         "target_table": target_table, "self_triggering": is_self_triggering(rule),
         "rows_scanned": 0, "pages": 0, "mapper_items": 0,
@@ -288,6 +326,11 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
         # folded into it: a skipped CELL still writes its row, a refused ROW writes
         # nothing, and an operator reading a replay report has to be able to tell a
         # value that went missing from a row that never existed.
+        # [S-242] A `builtin:` kind WRITES ITSELF and returns what it wrote, so there are no
+        # proposed cells to count for it - `rows_written` is its answer, beside the file
+        # mapper's cells rather than folded into them. Two different facts under one name is
+        # how a report comes to be read wrong.
+        "rows_written": 0, "pages_failed": 0, "page_failures": [],
         "unkeyed_rows_refused": 0, "unkeyed_key_columns": {},
         "withdrawal_candidates": [], "samples": [],
     }
@@ -339,6 +382,50 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
         stats["pages"] += 1
         stats["rows_scanned"] += len(page)
         payloads = _to_payloads(page, columns)
+
+        # 🔴 [S-242] A `builtin:` KIND IS RUN THE WAY THE WORKER RUNS IT. `replay` knew only
+        # `mapper_module`/`mapper_function`, which a builtin rule leaves empty - so
+        # `importlib.import_module(None)` threw and a migrated join had NO backfill at all.
+        # Live and retroactive were two doors to one rule; this is the second door learning
+        # the first one's move.
+        if builtin_kind is not None:
+            # ⛔ ISOLATED ON THIS BRANCH ONLY (판정 403). One page that throws costs THAT
+            # page - counted, named, and the run goes on - and the session is rolled back so
+            # the next page's SELECT is not talking to an aborted transaction. The file
+            # mapper's call below is byte for byte what it was: whether IT should isolate is
+            # a different question, and answering it here would change a path this round
+            # promised not to touch.
+            page_ids = [getattr(row, "row_id", None) for row in page]
+            page_ids = [row_id for row_id in page_ids if row_id]
+            if not apply:
+                # A dry run of a self-writing kind would have to WRITE to say what it would
+                # do. It says what it would be handed instead, which is the honest answer.
+                stats["mapper_items"] += len(page_ids)
+                continue
+            try:
+                outcome = builtins.run_builtin(
+                    builtin_kind, db, rule, row_ids=page_ids) or {}
+            except Exception as page_error:                            # noqa: BLE001
+                db.rollback()
+                gist = str(page_error).strip().splitlines()
+                stats["pages_failed"] += 1
+                if len(stats["page_failures"]) < 10:
+                    stats["page_failures"].append(
+                        {"page": stats["pages"], "rows": len(page_ids),
+                         "error": gist[-1] if gist else "(no reason)"})
+                log("[replay] page %d (%d rows) failed and was skipped: %s"
+                    % (stats["pages"], len(page_ids), gist[-1] if gist else "(no reason)"))
+                continue
+            stats["mapper_items"] += len(page_ids)
+            stats["rows_written"] += int(outcome.get("written") or 0)
+            if outcome.get("refusal"):
+                stats["pages_failed"] += 1
+                if len(stats["page_failures"]) < 10:
+                    stats["page_failures"].append(
+                        {"page": stats["pages"], "rows": len(page_ids),
+                         "error": outcome["refusal"]})
+            db.commit()
+            continue
 
         # The REAL mapper invocation path (rule kwarg support, error handling).
         if is_batch:
