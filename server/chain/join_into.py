@@ -175,9 +175,22 @@ def _write(db, left_table: str, rows, spec, source_name: str) -> int:
     from database import crud, schemas
 
     takes = _takes(spec)
+    # THE ROW-LEVEL NET (principle 2). If the SELECT returned two answers for one left
+    # row, the right side fanned out for THAT key despite the gates. Neither answer is
+    # THE answer, so neither is written; those rows are named once and the rest proceed.
+    seen = {}
+    for row in rows:
+        rid = row._mapping["row_id"]
+        seen[rid] = seen.get(rid, 0) + 1
+    fanned = sorted(rid for rid, n in seen.items() if n > 1)
+    if fanned:
+        logger.warning("[join_into:%s] %d left row(s) matched MORE THAN ONE right row and are "
+                       "skipped by name (no answer is the answer): %s%s", source_name,
+                       len(fanned), ", ".join(str(r) for r in fanned[:10]),
+                       " ..." if len(fanned) > 10 else "")
     updates = []
     for row in rows:
-        if not row.matched:
+        if not row.matched or seen.get(row._mapping["row_id"], 0) > 1:
             continue
         mapping = row._mapping
         updates.append(schemas.GeneralUpdateItem(

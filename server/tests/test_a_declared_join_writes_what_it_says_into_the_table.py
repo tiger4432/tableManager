@@ -37,12 +37,14 @@ RIGHT = "s237_right_attribution"
 TABLES = {
     LEFT: {
         "business_key": "log_key",
+        "composite_key_source": ["log_key"],
         "column_types": {"log_key": "string", "job": "string",
                          "lot_confirmed": "string", "note": "string"},
         "display_columns": ["log_key", "job", "lot_confirmed", "note"],
     },
     RIGHT: {
         "business_key": "job",
+        "composite_key_source": ["job"],
         "column_types": {"job": "string", "lot": "string"},
         "display_columns": ["job", "lot"],
     },
@@ -405,3 +407,35 @@ def test_this_module_does_not_borrow_the_read_time_executor():
     assert not [line for line in imports if "virtual_join" in line], imports
     assert [line for line in imports if "notation_norm" in line], (
         "the shared fold is what keeps the two joins' keys from drifting")
+
+
+# ---------------------------------------------------------------------------
+# 2026-09-15 - two answers for one left row: neither is written (found at migration time)
+# The catalogue gate (narrow key / no unique index) is NOT here on purpose: it would import
+# virtual_join, and the test above forbids that so the key has one author. The row-level
+# net below is what protects the write; it needs no catalogue and no second author.
+# ---------------------------------------------------------------------------
+
+def test_a_left_row_with_two_right_answers_is_skipped_by_name_and_the_rest_are_written(
+        monkeypatch):
+    """The row-level net (principle 2). Two answers for one left row means neither is the
+    answer; that row is skipped by name and every other row is still written."""
+    from database import crud
+    captured = {}
+
+    def fake_apply(db, table, batch):
+        captured["items"] = list(batch.updates)
+    monkeypatch.setattr(crud, "apply_batch_updates", fake_apply)
+
+    class Row:
+        def __init__(self, rid, matched, v):
+            self._mapping = {"row_id": rid, "matched": matched, "take_0": v}
+            self.matched = matched
+    rows = [Row("fan", True, "A"), Row("fan", True, "B"), Row("ok", True, "C"),
+            Row("miss", False, None)]
+    spec = {"right_table": "right_t", "on": [{"left": "k", "right": "k"}], "take": ["v"]}
+
+    written = join_into._write(None, "left_t", rows, spec, "rule_x")
+    assert written == 1
+    assert [i.row_id for i in captured["items"]] == ["ok"]
+    assert captured["items"][0].updates == {"v": "C"}

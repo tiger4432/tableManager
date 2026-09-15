@@ -74,4 +74,7 @@ python scripts/preview_unified_declarations.py --out ../unified_preview.json
 * fold 는 적지 않습니다 — 두 표의 표기 선언에서 «계산»됩니다(판정 397). `max_rewrite_rows` 도 없습니다 — 페이싱(판정 396).
 * 재기동 뒤 부팅 줄에서 확인: `[ChainRules] set(N): inventory_confirmed[decl,join] …` 가 «둘» 보여야 합니다.
 * 오른쪽 값이 null 이면 «null 로» 써집니다. 오른쪽 행이 없으면 안 씁니다.
+* 오른쪽 행이 «둘 이상» 이면 그 왼쪽 행은 안 씁니다(둘 다 답이 아님) — 나머지 행은 그대로 써집니다. 로그 한 줄:
+  `[join_into:이름] N left row(s) matched MORE THAN ONE right row and are skipped by name ...`
+  이 줄이 보이면 «오른쪽 표의 데이터»에 같은 키가 둘인 것입니다 — 2번(접기)으로 가십시오. 선언을 고칠 일이 아닙니다.
 * ⚠️ 첫 실행은 왼쪽 표 «전체» 행을 씁니다(박스 실측: dt_inventory 488,429 행). 운영에서는 페이싱 창을 정하고 켜십시오.
