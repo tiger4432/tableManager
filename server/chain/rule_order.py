@@ -30,11 +30,21 @@ def cycle_note(trail, ceiling=None) -> str:
     `dt_inventory → dt_log` by join is an INTENDED loop, and what makes it finite is the hop
     ceiling the drain already enforces (`max_chain_depth`). Refusing it at load time refused a
     declaration that works, twice a second, in a log the operator needs for other things.
+
+    🔴 [S-247-b] AND IT GOES THROUGH THE ONE AUTHOR NOW. This line's own docstring claimed
+    it was 「in the shape S-247 gave every operator line」 while SPELLING that shape by hand -
+    which is how one author quietly becomes two. Measured by the code-map pass: the seed was
+    already there, because `operator_line.nothing_to_do` had zero callers and this had zero
+    imports.
     """
-    return ("[ChainRules] 고리: %s (순서는 선언 순 · 홉 상한 max_chain_depth=%s 이 막습니다). "
-            "다음: 없음. 상한을 바꾸려면 chain_rules.json 의 max_chain_depth"
-            % (" -> ".join(str(node) for node in trail),
-               ceiling if ceiling is not None else "기본값"))
+    import operator_line
+
+    return operator_line.line(
+        "ChainRules", " -> ".join(str(node) for node in trail),
+        "고리 (순서는 선언 순 · 홉 상한 max_chain_depth=%s 이 막습니다)"
+        % (ceiling if ceiling is not None else "기본값"),
+        operator_line.nothing_to_do(
+            "더 긴 고리가 필요하면 chain_rules.json 의 max_chain_depth"))
 
 
 def say_cycle_once(logger_, trail, ceiling=None) -> bool:
