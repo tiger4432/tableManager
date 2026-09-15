@@ -1,6 +1,6 @@
 # 📖 체인 인제션 DB 세션 활용 데이터 조회 및 계산 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-09-15 (통합 선언 `decide` 종류 · 순서 유도가 꺼진/`follow_up` 규칙을 무시) · 직전 2026-09-05 (§순환 가드가 «두 엣지»를 세운다 · «맵 메타데이터 쓰기는 체인 홉이 아니다»가 거짓이었다 · §2 예시가 어느 키도 실재 이름이 아니었다) · 직전 2026-09-02 (**§5 에 `--pace` 신설** — R1 이 페이싱 표에 합류했다(단위 = **페이지**), 표는 `server/pacing.json` «하나»이고 사본을 안 만들었다. 모르는 이름은 **첫 페이지 전에** 거절된다. 멈춤이 «페이지 경계에서 묻는 것»이라는 계약도 같은 자리에. ⚠️ **§1 의 「세션으로 읽기」·「비-복합 열다섯」 두 절은 총괄이 같은 날 쓴 것이고 이 패스가 손대지 않았다.** 🔴 **`lot_slot_wafer` 는 «뷰»가 아니라 체인이 만드는 표다** — 뷰와 그 생성 스크립트(`server/scripts/create_lot_slot_wafer_view.py`)는 삭제됐고, 파생 계보의 정본은 [LEDGER_GUIDE](./LEDGER_GUIDE.md) 다) · 직전 2026-08-13 (**§1 「제거 전략은 둘이고, 하나만 고르는 것이 아니라 맵의 생산자 수가 고른다」 신설**(`4d5198c` — 구현 라인이 같은 커밋에서 썼다) + doc-keeper 정정 둘: 🔴 **파생 스코프 실측표 아래 문장 「`dt_map`·`core_usage_map`은 맵 키가 하나라 안 걸린다」의 절반이 거짓이 됐다** — `dt_map`이 두 키가 되어 **노출 쪽으로 넘어왔다**(체인은 명시 경로라 무관, 위험은 API/맵 Push). **노출은 테이블의 성질이 아니라 선언의 arity다.** 🔴 **§6은 `dt_map`이 `dt_job`으로 키가 잡혀 있던 시절의 글이라 그 전제가 깨졌다** — 절 머리에 경고를 달았다(철회 레시피 자체는 유효 · 표의 세 룰 중 실재하는 것은 하나뿐이라는 **선행 드리프트**도 함께 기록). 직전 2026-08-11 **§5.6 신설 — 「측정하지 않았다」가 닫혔고, 세 연산 중 *둘*이 같은 결함이었다**(`ffb23d6` R3 · `53f9187` R2). 소급 패스는 아웃박스 이벤트를 **낸다**(변경 *행*마다 `EDIT` 하나 — 셀마다 아님, `--chunk-size`는 커밋·NOTIFY만 움직인다). 🔴 **결함은 개수가 아니라 라벨**이었다: `user`/`system`+이벤트마다 uuid4로 나가 사람의 그리드 편집과 구별되지 않아 하류 매퍼 전원이 깨어났다. 지금은 둘 다 `chain_ingestion` 라벨 + 실행당 tx id 하나이고 🔴 **억제가 아니라 옵트인**이다. 🔴 **라벨(`request_source`)과 층(`update_item.source_name`)은 다른 필드**이고, R2에서는 **삭제 술어**가 파라미터로 짜여 라벨과 경로가 없다는 것을 생존 집합 sha256으로 확인했다. 🔴 **R2의 WS 프레임 4→0은 손실이 아니다** — 클라는 실제로 바뀐 셀을 전후 어느 쪽에서도 못 듣고 있었고, 없어진 것은 엉뚱한 캐스케이드 통지다. ⚠️ **R1은 라벨이 구성상 옳지만 tx id가 *페이지당* 하나로 남아 있다**(같은 비용의 약한 형태 — 미수리). §1 매퍼 계약 절과 쓰기 능력 표에 **R3 행 + 라벨=채널 규율**을 함께 실었다. 직전 **§5.5 신설 — Chain Replay에 세 번째 연산 R3(`resolve`)가 들어왔다.** 저장된 층을 하나도 바꾸지 않고 **「그중 무엇이 이기는가」만 다시 답해** materialise된 표시 컬럼을 고친다 — R1(매퍼 재실행·새 층 쓰기)도 R2(주장 삭제)도 답할 수 없던 질문이다. 층이 2개 미만인 셀은 **구조적으로** 손대지 않고(0개면 컬럼을 비워 버린다), 값이 움직인 셀마다 `resolution_recompute` 감사 행이 남는다(**CLI 전용** — 어드민 소급 등록부에 없다). ✅ ~~**「아웃박스 이벤트를 안 낸다」는 문장은 일부러 적지 않았다** — 전역 `before_flush`가 dirty 행마다 `EDIT`을 실을 것으로 읽히고 측정되지 않았다(총괄 확인 대기).~~ **적지 않은 것이 옳았고, 그 읽기가 맞았다** — 위 §5.6 참조. 계기가 된 해결 순서 수리는 [data_model §2.1](../architecture/data_model.md). 직전 **§1 — 컬럼 이름 해석 계약 신설**: 맵퍼는 정체성 컬럼 이름을 리터럴로도 기본값으로도 갖지 않는다. `server/chain_bindings.py`가 `룰 선언 > table_config 유도 > 이름을 대고 거절`로 해석하며, `dt_job` 기본값은 전부 삭제됐다. `replace_map` 경계 절에 **스코프 철자가 틀렸을 때 실제로 무엇이 지워지는가**를 실측표로 추가 — 명시 스코프는 삭제 전에 거절하고, 유도 경로는 map_key가 둘 이상일 때 필터를 조용히 빼서 **삭제를 넓힌다**. 직전 2026-08-05 **§1 — 트래킹되는 `.sample`이 셋으로 늘었습니다**: 트리거 테이블 밖을 읽는 맵퍼의 참조 구현 `cross_table_lookup_mapper.py.sample` 추가. "둘뿐"이라 적혀 있던 문장을 교정하고, virtual join과의 경계·세션 소유권·SAVEPOINT 격리 진입점을 링크했습니다. 맵퍼 호출 계약 자체는 변화 없음. 직전 2026-07-31 **§5 머리에 운영자 진입점 링크 추가** — 소급 경로 다섯 개의 운영자 정본은 [BACKFILL_GUIDE](./BACKFILL_GUIDE.md)로 신설됐고 이 절은 **개발자 계약**으로 남습니다. 서술 변경 없음. 직전 2026-07-30 **§4.4 ① 자동 확정** + **§5 Chain Replay R1/R2** 신설 — 맵퍼 계약 변화 없음) | **Owner:** Ingester | **Source-of-truth:** `server/chain/ingestion_worker.py`, `server/mappers/`, `server/enrichment/config.py`, `server/enrichment/mapper.py`, `server/enrichment/candidates.py`, `server/chain/replay.py`, `server/keyset_scan.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-09-15 «후속» (고리는 거절이 아니라 «이름 댐» — 판정 402 · §5 R1 이 `builtin:` 규칙(선언된 join)을 돌린다 — S-242) · 직전 2026-09-15 (통합 선언 `decide` 종류 · 순서 유도가 꺼진/`follow_up` 규칙을 무시) · 직전 2026-09-05 (§순환 가드가 «두 엣지»를 세운다 · «맵 메타데이터 쓰기는 체인 홉이 아니다»가 거짓이었다 · §2 예시가 어느 키도 실재 이름이 아니었다) · 직전 2026-09-02 (**§5 에 `--pace` 신설** — R1 이 페이싱 표에 합류했다(단위 = **페이지**), 표는 `server/pacing.json` «하나»이고 사본을 안 만들었다. 모르는 이름은 **첫 페이지 전에** 거절된다. 멈춤이 «페이지 경계에서 묻는 것»이라는 계약도 같은 자리에. ⚠️ **§1 의 「세션으로 읽기」·「비-복합 열다섯」 두 절은 총괄이 같은 날 쓴 것이고 이 패스가 손대지 않았다.** 🔴 **`lot_slot_wafer` 는 «뷰»가 아니라 체인이 만드는 표다** — 뷰와 그 생성 스크립트(`server/scripts/create_lot_slot_wafer_view.py`)는 삭제됐고, 파생 계보의 정본은 [LEDGER_GUIDE](./LEDGER_GUIDE.md) 다) · 직전 2026-08-13 (**§1 「제거 전략은 둘이고, 하나만 고르는 것이 아니라 맵의 생산자 수가 고른다」 신설**(`4d5198c` — 구현 라인이 같은 커밋에서 썼다) + doc-keeper 정정 둘: 🔴 **파생 스코프 실측표 아래 문장 「`dt_map`·`core_usage_map`은 맵 키가 하나라 안 걸린다」의 절반이 거짓이 됐다** — `dt_map`이 두 키가 되어 **노출 쪽으로 넘어왔다**(체인은 명시 경로라 무관, 위험은 API/맵 Push). **노출은 테이블의 성질이 아니라 선언의 arity다.** 🔴 **§6은 `dt_map`이 `dt_job`으로 키가 잡혀 있던 시절의 글이라 그 전제가 깨졌다** — 절 머리에 경고를 달았다(철회 레시피 자체는 유효 · 표의 세 룰 중 실재하는 것은 하나뿐이라는 **선행 드리프트**도 함께 기록). 직전 2026-08-11 **§5.6 신설 — 「측정하지 않았다」가 닫혔고, 세 연산 중 *둘*이 같은 결함이었다**(`ffb23d6` R3 · `53f9187` R2). 소급 패스는 아웃박스 이벤트를 **낸다**(변경 *행*마다 `EDIT` 하나 — 셀마다 아님, `--chunk-size`는 커밋·NOTIFY만 움직인다). 🔴 **결함은 개수가 아니라 라벨**이었다: `user`/`system`+이벤트마다 uuid4로 나가 사람의 그리드 편집과 구별되지 않아 하류 매퍼 전원이 깨어났다. 지금은 둘 다 `chain_ingestion` 라벨 + 실행당 tx id 하나이고 🔴 **억제가 아니라 옵트인**이다. 🔴 **라벨(`request_source`)과 층(`update_item.source_name`)은 다른 필드**이고, R2에서는 **삭제 술어**가 파라미터로 짜여 라벨과 경로가 없다는 것을 생존 집합 sha256으로 확인했다. 🔴 **R2의 WS 프레임 4→0은 손실이 아니다** — 클라는 실제로 바뀐 셀을 전후 어느 쪽에서도 못 듣고 있었고, 없어진 것은 엉뚱한 캐스케이드 통지다. ⚠️ **R1은 라벨이 구성상 옳지만 tx id가 *페이지당* 하나로 남아 있다**(같은 비용의 약한 형태 — 미수리). §1 매퍼 계약 절과 쓰기 능력 표에 **R3 행 + 라벨=채널 규율**을 함께 실었다. 직전 **§5.5 신설 — Chain Replay에 세 번째 연산 R3(`resolve`)가 들어왔다.** 저장된 층을 하나도 바꾸지 않고 **「그중 무엇이 이기는가」만 다시 답해** materialise된 표시 컬럼을 고친다 — R1(매퍼 재실행·새 층 쓰기)도 R2(주장 삭제)도 답할 수 없던 질문이다. 층이 2개 미만인 셀은 **구조적으로** 손대지 않고(0개면 컬럼을 비워 버린다), 값이 움직인 셀마다 `resolution_recompute` 감사 행이 남는다(**CLI 전용** — 어드민 소급 등록부에 없다). ✅ ~~**「아웃박스 이벤트를 안 낸다」는 문장은 일부러 적지 않았다** — 전역 `before_flush`가 dirty 행마다 `EDIT`을 실을 것으로 읽히고 측정되지 않았다(총괄 확인 대기).~~ **적지 않은 것이 옳았고, 그 읽기가 맞았다** — 위 §5.6 참조. 계기가 된 해결 순서 수리는 [data_model §2.1](../architecture/data_model.md). 직전 **§1 — 컬럼 이름 해석 계약 신설**: 맵퍼는 정체성 컬럼 이름을 리터럴로도 기본값으로도 갖지 않는다. `server/chain_bindings.py`가 `룰 선언 > table_config 유도 > 이름을 대고 거절`로 해석하며, `dt_job` 기본값은 전부 삭제됐다. `replace_map` 경계 절에 **스코프 철자가 틀렸을 때 실제로 무엇이 지워지는가**를 실측표로 추가 — 명시 스코프는 삭제 전에 거절하고, 유도 경로는 map_key가 둘 이상일 때 필터를 조용히 빼서 **삭제를 넓힌다**. 직전 2026-08-05 **§1 — 트래킹되는 `.sample`이 셋으로 늘었습니다**: 트리거 테이블 밖을 읽는 맵퍼의 참조 구현 `cross_table_lookup_mapper.py.sample` 추가. "둘뿐"이라 적혀 있던 문장을 교정하고, virtual join과의 경계·세션 소유권·SAVEPOINT 격리 진입점을 링크했습니다. 맵퍼 호출 계약 자체는 변화 없음. 직전 2026-07-31 **§5 머리에 운영자 진입점 링크 추가** — 소급 경로 다섯 개의 운영자 정본은 [BACKFILL_GUIDE](./BACKFILL_GUIDE.md)로 신설됐고 이 절은 **개발자 계약**으로 남습니다. 서술 변경 없음. 직전 2026-07-30 **§4.4 ① 자동 확정** + **§5 Chain Replay R1/R2** 신설 — 맵퍼 계약 변화 없음) | **Owner:** Ingester | **Source-of-truth:** `server/chain/ingestion_worker.py`, `server/mappers/`, `server/enrichment/config.py`, `server/enrichment/mapper.py`, `server/enrichment/candidates.py`, `server/chain/replay.py`, `server/keyset_scan.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 체인 인제션 파서 및 맵퍼 모듈을 작성할 때, 단순히 유입되는 파일의 값뿐만 아니라 **데이터베이스의 기존 테이블(예: 재고 정보, 설비 마스터 등)을 직접 검색 및 조인(Join)하여 파생 컬럼을 계산**해야 하는 경우가 많습니다.
 
@@ -119,9 +119,13 @@ a downstream mapper only when that downstream rule explicitly sets
 `allow_chain_trigger: true`.
 
 Because those opt-in edges can form a loop, `load_chain_rules` builds a graph of them at
-config load and **refuses cycles before the worker starts**
-(`_validate_chain_cascade_graph`). Three field names decide what that graph sees, and two
-of them are easy to confuse:
+config load and **names every cycle it finds** (`_validate_chain_cascade_graph` — one
+INFO line per trail per process, and the trails come back as a value the admin graph
+draws). ⚰️ **It used to REFUSE the load (판정 402, 2026-09-15 `2504fbde`).** A loop such
+as `dt_log → dt_inventory` by mapper and back by join is an intended shape; what keeps it
+finite is `max_chain_depth`, and nothing refuses a cycle at load, at save
+(`save_chain_rule_raw`) or at replay. Three field names decide what that graph sees, and
+two of them are easy to confuse:
 
 | 필드 | 그래프에서 하는 일 |
 |---|---|
@@ -460,6 +464,9 @@ for it — in `dt_metadata_to_dt_inventory` that same key names the mapper's **s
 The one place metadata actually lands is the registrar constant, so that is what the edge
 points at. Guard: `chain_ingestion_worker._validate_chain_cascade_graph`, scored by
 `server/tests/test_cascade_graph_sees_metadata_writes.py`.
+⚰️ **[2026-09-15 판정 402] The guard still SEES this loop; it no longer refuses it.** It
+returns the trail (the admin graph shows it) and says it once; `max_chain_depth` is what
+bounds the loop at run time.
 
 ## 💡 실전 예시 시나리오: 생산 부족 수량 자동 계산
 
@@ -796,6 +803,11 @@ publish_parser(name, read_body, process_body, file=…, …)      «같은 프�
 
 체인 인제션은 **증분(outbox) 구동**입니다. 룰을 바꿔도 과거 데이터는 옛 룰이 남긴 상태 그대로입니다. R1은 트리거 테이블의 **현재 내용**을 키셋 페이지로 훑어 **실제 맵퍼·실제 쓰기 경로**로 다시 흘려보냅니다. `backfill_enrichment.py`(규칙 1개 전용)를 **모든 체인 룰로 일반화**한 것이고, 기본값도 같습니다 — `--apply` 없이는 아무것도 쓰지 않습니다.
 
+🆕 **[2026-09-15 S-242 `bd0a3db7`, 판정 403] `builtin:` 규칙(선언된 join `derive: {kind: join}`)도 R1 이 돌립니다.** 종전엔 `mapper_module` 이 비어 `import_module(None)` 로 죽었고 — 이행한 조인에 «소급이 없었습니다». 이제 워커와 같은 `builtins.run_builtin` 을 «페이지마다» 돌립니다(라이브와 소급이 «같은 함수»).
+- 보고는 **`rows_written`** — 자기가 쓰는 종류는 셀을 «제안하지 않으므로» `cells_proposed` «옆»에 따로 섭니다. 어드민 사전 계수도 그 종류에는 「다시 계산할 행」으로 «행»을 말합니다(종전엔 「0 셀」). 드라이런은 «넘겨받을 행 수»를 말합니다.
+- **던진 페이지는 그 페이지만** 잃습니다 — `pages_failed`·`page_failures`(처음 10 개), 세션 롤백 뒤 계속. ⚠️ 이 격리는 «이 가지만»이고 파일 맵퍼 호출은 그대로입니다(S-242-b).
+- 🔴 **오른쪽(참조 쪽) 규칙 이름은 거절됩니다** — 「읽는 표를 트리거로 갖고 그 표가 쓰는 표가 아닌」 규칙(`is_reference_side`, «칸»이 아니라 «성질» — 양쪽 다 `follow_up` 이라 그 칸으로는 못 가릅니다). 왼쪽 규칙을 돌리면 모든 대상 행을 덮습니다. 운영자 결정표는 [BACKFILL_GUIDE §0](./BACKFILL_GUIDE.md).
+
 ```bash
 conda run -n assy_manager python server/scripts/chain_replay_cli.py list          # 룰 + 재적용 순서
 conda run -n assy_manager python server/scripts/chain_replay_cli.py replay <룰>    # dry-run
@@ -838,7 +850,7 @@ conda run -n assy_manager python server/scripts/chain_replay_cli.py replay <룰>
 | ② | **룰당 정확히 1회** — `replay-all`은 캐스케이드 재발화를 하지 않습니다                                                                                          | `chain_replay.replay_all`                                                |
 | ③ | **라이브 워커의 기존 필터** — 재적용 쓰기는 `source_name="chain_ingestion"`이고 워커는 그 이벤트를 이미 버립니다. **새 가드가 아니라 기존 가드의 재사용** | `process_chain_transaction_group`                                        |
 
-**재적용 순서**는 계약입니다: 생산자(`→ inventory_master`)가 소비자보다 먼저 갑니다. 자기 간선은 순서에서 제외하고 ①로 다룹니다. **서로 다른 테이블 사이의 순환**은 올바른 순서가 없으므로 순환 경로를 이름으로 밝히며 **거부**합니다.
+**재적용 순서**는 계약입니다: 생산자(`→ inventory_master`)가 소비자보다 먼저 갑니다. 자기 간선은 순서에서 제외하고 ①로 다룹니다. **서로 다른 테이블 사이의 순환**은 전순서가 없으므로 ⚰️ ~~순환 경로를 이름으로 밝히며 **거부**합니다~~ → **[2026-09-15 판정 402] 이름을 대되 «선언 순»으로 돌립니다** — 부분 하강이 풀리며 나오는 순서는 아무도 안 쓴 «셋째 순서»라 쓰지 않습니다(`rule_order.order_rules`, `RuleCycleRefused` 삭제).
 
 ### 5.3 R1이 절대 하지 않는 두 가지
 

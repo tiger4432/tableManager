@@ -1,6 +1,6 @@
 # AssyManager 설정 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-09-05 (S8 순환 검사가 «두 엣지» · 페이싱 소비자 「둘」이 SSOT 와 갈려 「셋」으로 정정) · 직전 2026-08-31 (§1 에 **「`server/config/` 밖에 사는 선언」 신설** — `server/pacing.json` · `server/ledger/gap_names.json`) · 직전 2026-08-19 (§1 원장 config 행만 재대조) | **Owner:** Lead / Backend
+> **Status:** 🟢 Living | **Last-verified:** 2026-09-15 (S8 — 순환은 거절이 아니라 «이름 댐», 판정 402) · 직전 2026-09-05 (S8 순환 검사가 «두 엣지» · 페이싱 소비자 「둘」이 SSOT 와 갈려 「셋」으로 정정) · 직전 2026-08-31 (§1 에 **「`server/config/` 밖에 사는 선언」 신설** — `server/pacing.json` · `server/ledger/gap_names.json`) · 직전 2026-08-19 (§1 원장 config 행만 재대조) | **Owner:** Lead / Backend
 > **Source-of-truth:** `server/config/` · 각 config loader
 
 이 문서는 **설정 파일의 위치, 의존 순서, 반영 확인 방법**만 설명한다.
@@ -133,8 +133,9 @@ auto-confirm dry-run으로 효과와 예상 건수를 확인한다.
 ### S8. Chain 규칙 추가
 
 생산자→소비자 방향과 business key를 확인하고 dry-run/replay로 과거 행에 적용될 범위를
-본다. 순환이나 자기 트리거 규칙을 허용하지 않는다 — 로더가 **config 로드 시점에 그래프를 세워
-거절**한다(`_validate_chain_cascade_graph`).
+본다. 순환은 **오류가 아니다**(2026-09-15 판정 402) — 로더가 config 로드 시점에 그래프를 세워 trail 을
+«한 번» 말하고 어드민 그래프에 보이며(`_validate_chain_cascade_graph`), 유한성은 `max_chain_depth`(파일
+최상단, 기본 8)가 맡는다. 저장 라우트도 순환으로 거절하지 않고 순서는 «선언 순»이다.
 🔴 **방향을 그리는 칸은 `trigger_table` 이다. `source_table` 은 맵퍼가 «읽는» 곳이고 엣지가 아니다.**
 🔴 **[2026-09-04] 그리고 한 규칙이 표를 «둘» 쓸 수 있다** — `allow_map_metadata_upsert` 를 선언한
 규칙은 `target_table` 말고 **맵 메타데이터 표에도** 쓰고 그 쓰기가 자기 체인 이벤트를 낸다.

@@ -1,6 +1,6 @@
 # DT/Core frame derivation chains
 
-> **Status:** active implementation | **Owner:** Lead / Backend | **Last verified:** 2026-08-30
+> **Status:** active implementation | **Owner:** Lead / Backend | **Last verified:** 2026-09-15 (the cycle guard reports, it no longer refuses — 판정 402; nothing else re-checked) · previously 2026-08-30
 > ("Active chains" 1 and 2 only — two rule names corrected against `chain_rules.json`,
 > and chain 2's shipped refusal recorded. Everything else is at the 2026-08-13 date below.)
 >
@@ -110,8 +110,9 @@ and that sentence was true only while one map had one producer.
 | `dt_map` | **several `dt_job`s converge on one wafer** | `retract` — remove only what *this* source owns and no longer derives |
 
 Neither appends a second version of the same map.  The ingestion worker permits
-the inventory-to-map dependency explicitly, while cycle validation continues to
-reject unapproved chain loops.
+the inventory-to-map dependency explicitly, while cycle validation names every
+opt-in loop it finds (⚰️ it used to reject them — 판정 402, 2026-09-15; the hop
+ceiling `max_chain_depth` is what bounds a loop now).
 
 🔴 **[2026-09-04] These are the exact rules the cycle guard used to be blind to — read
 this before enabling the middle hop.**  The `dt_inventory → dt_map` rule declares
@@ -119,10 +120,13 @@ this before enabling the middle hop.**  The `dt_inventory → dt_map` rule decla
 table.  That second write raises its own chain event, which wakes the
 `wafer_map_metadata → dt_inventory` rule, which feeds the first rule again.  Measured:
 5 metadata rows per run, a live loop, and the load-time validator **passed it** because
-it modelled one edge per rule.  It now builds both edges, so the same config is refused
-at load with `allow_chain_trigger cycle: wafer_map_metadata -> dt_inventory ->
-wafer_map_metadata`.  ⚠️ **A refusal here is the guard working, not a regression** —
-the resolution is to decide which hop should not be opt-in, not to widen the guard.
+it modelled one edge per rule.  It now builds both edges, so the same config is named
+at load — `[ChainRules] 고리: wafer_map_metadata -> dt_inventory -> wafer_map_metadata
+(순서는 선언 순 · 홉 상한 max_chain_depth=N 이 막습니다)`, once per process, and the
+trail shows in the admin graph.  ⚰️ **[2026-09-15 판정 402] It was a REFUSAL between
+2026-09-04 and 2026-09-15; it is not one now.**  A cycle is a shape, `max_chain_depth`
+keeps it finite, and the line here is the guard seeing what it saw before — the
+resolution, if a loop is unwanted, is still to decide which hop should not be opt-in.
 Contract: [chain_ingestion_guide 「Target-map metadata within a chain」](../guide/chain_ingestion_guide.md).
 
 ### The retraction is a prerequisite of the key, not an enhancement

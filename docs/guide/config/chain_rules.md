@@ -1,6 +1,6 @@
 # `chain_rules.json` 세팅 — 체인 인제션 룰
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-09-15 (§5-B-bis 통합 선언 키 신설 — join · decide · `enabled` 의 두 뜻) · 직전 2026-09-08 00:5x (§5 를 «코드가 읽는 키» 전수로 다시 씀 — 파일 수준·프레임워크·맵퍼 사설 «세 층», `reads`·`slow_warn_ms`·`max_chain_depth`·표 역할 키 추가, «없는 것» 절) · 직전 2026-09-05 (§5 키 표에 `source_table`·`allow_chain_trigger`·`allow_map_metadata_upsert` 세 행 추가 — 그중 마지막이 «둘째 엣지»다) · 직전 2026-08-13 (§5 키 표에 **제거 전략 옵트인 둘**(`allow_replace_map`·`allow_retraction`)과 **`*_job_column` 명시 선언** 행 추가 — `4d5198c`. 셋 다 표에 없어서, `dt_map`처럼 맵 키가 둘인 타깃에서 왜 체인이 이름을 대며 거절하는지 이 문서만으로는 알 수 없었다) | **Owner:** Ingester
+> **Status:** 🟢 Living | **Last-verified:** 2026-09-15 «후속» (고리는 거절 사유가 아니다 — `max_chain_depth` 가 유일한 상한 · 저장 관문과 로더가 «확장기 하나» · join 의 키 접기·층·소급) · 직전 2026-09-15 (§5-B-bis 통합 선언 키 신설 — join · decide · `enabled` 의 두 뜻) · 직전 2026-09-08 00:5x (§5 를 «코드가 읽는 키» 전수로 다시 씀 — 파일 수준·프레임워크·맵퍼 사설 «세 층», `reads`·`slow_warn_ms`·`max_chain_depth`·표 역할 키 추가, «없는 것» 절) · 직전 2026-09-05 (§5 키 표에 `source_table`·`allow_chain_trigger`·`allow_map_metadata_upsert` 세 행 추가 — 그중 마지막이 «둘째 엣지»다) · 직전 2026-08-13 (§5 키 표에 **제거 전략 옵트인 둘**(`allow_replace_map`·`allow_retraction`)과 **`*_job_column` 명시 선언** 행 추가 — `4d5198c`. 셋 다 표에 없어서, `dt_map`처럼 맵 키가 둘인 타깃에서 왜 체인이 이름을 대며 거절하는지 이 문서만으로는 알 수 없었다) | **Owner:** Ingester
 > 상위: [폴더 인덱스](./README.md) · 동작 원리 정본은 [chain_ingestion_guide](../chain_ingestion_guide.md) · 절차 요약은 [CONFIG_GUIDE §3-S8](../CONFIG_GUIDE.md)
 
 <!-- Loader evidence (2026-07-28):
@@ -70,7 +70,7 @@ conda run -n assy_manager python server/scripts/backup_config.py restore chain_r
 
 | 키 | 읽는 곳 | 의미 · 기본값 |
 |---|---|---|
-| `max_chain_depth` | `event_constants.max_chain_depth` | 체인이 체인을 깨우는 «홉 상한». 양의 정수 아니면 **기본 8**. 깊이 초과 행은 `[Chain Depth]` 로 이름 대어 거절되고 «끝난 것»으로 표시된다(2026-09-06) |
+| `max_chain_depth` | `event_constants.max_chain_depth` | 체인이 체인을 깨우는 «홉 상한». 양의 정수 아니면 **기본 8**. 깊이 초과 행은 `[Chain Depth]` 로 이름 대어 거절되고 «끝난 것»으로 표시된다(2026-09-06). 🔴 **[2026-09-15 판정 402] 고리의 «유일한» 상한이다** — 규칙 고리(`dt_log → dt_inventory` 맵퍼 · 되돌아오는 join)는 «모양»이지 오류가 아니라 로드·저장 어디서도 거절되지 않고, 순서는 «선언 순»이며, 로그는 프로세스당 trail 당 한 번(`[ChainRules] 고리: … 다음: 없음`). 뒤따르기 랩도 이 상한을 만난다(S-249 — 종전엔 홉을 안 실어 그 길은 «무한»이었다) |
 | `rules[]` | 워커 로더 | 규칙 목록. 아래 5-B |
 | `__comment` · `_*_comment` | 아무도 안 읽음 | 주석 자리 |
 
@@ -98,10 +98,11 @@ conda run -n assy_manager python server/scripts/backup_config.py restore chain_r
 ### 5-B-bis. 통합 선언 키 — `derive` 가 있는 규칙 (S-237 join · S-239 decide, 2026-09-15)
 
 `derive` «한 칸»이 새 문법의 판별이다. 있으면 `chain/rule_shape` 가 오늘의 규칙 dict 로 번역하고, 없으면 위 5-B 그대로다. 모양·절차는 `RUN.md` §5, 왜는 [BASIS §0-bis](../../architecture/BASIS.md).
+🔴 **번역기는 `rule_shape.expand_declaration` «하나»이고 로더와 어드민 raw 저장 라우트(`POST /admin/chain/rules/raw`)가 같이 부른다**(S-244 `00da7e91`) — 저장 버튼은 «로더가 세울 규칙»을 판정하지 날것을 판정하지 않는다(종전엔 `trigger_table` 없음·`derive` 모름으로 저장에서 거절되고 같은 파일로 부팅은 됐다). 파일에는 운영자가 적은 그대로 남고 번역본은 «판정에만» 쓴다. 소급은 [BACKFILL_GUIDE §0](../BACKFILL_GUIDE.md) — 선언된 join 은 왼쪽 규칙에 R1.
 
 | 키 | 읽는 곳 | 의미 |
 |---|---|---|
-| `derive.kind` | `rule_shape` | `join` = `builtin:join_into` 가 오른쪽 값을 «표에 쓴다»(선언 하나 → 규칙 둘: 왼쪽 트리거 + 오른쪽 트리거 `follow_up`) · `decide` = enrich(`enrichment.config.chain_rules_for` — 옛 `enrichment_rules.json` 과 «같은 확장기») |
+| `derive.kind` | `rule_shape` | `join` = `builtin:join_into` 가 오른쪽 값을 «표에 쓴다»(선언 하나 → 규칙 둘: 왼쪽 트리거 + 오른쪽 트리거 `follow_up`). 쓰기의 층은 `chain_ingestion`·`updated_by` 가 규칙 이름(`1aa50d3d` — 규칙 이름을 층에 두면 깨우기 필터가 사람 편집으로 읽어 핑퐁) · 텍스트가 아닌 키는 «기계가» 양쪽을 TEXT 로 접는다(`fd53b87b`) · `decide` = enrich(`enrichment.config.chain_rules_for` — 옛 `enrichment_rules.json` 과 «같은 확장기») |
 | `derive.join` / `derive.decide` | `rule_shape` | 종류별 칸. 모르는 칸은 «이름 대고» 규칙은 돈다(`unknown_join_cells`·`unknown_decide_cells`). `decide.auto_confirm` 은 칸이다(판정 400); «적었나»는 칸이 아니라 키 존재에서 유도(판정 401) |
 | `on.table` · `into.table` | `rule_shape` | 트리거 표 · 쓰는 표. `on.columns` 는 join 에서 적지 않는다 — 왼쪽 키에서 유도(판정 398) |
 | `key.columns` · `key.unique` | 🔴 **오늘 아무도 안 읽는다**(S-240 대기) | join 의 오른쪽 중복은 인덱스가 아니라 쓰기 시점 «행 단위 그물»이 잡는다 — 답이 둘인 왼쪽 행만 이름 대고 건너뛴다(배치당 경고 한 줄), 나머지는 써진다 |
