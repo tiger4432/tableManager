@@ -50,6 +50,11 @@ def counted(number=2):
 
 
 def walk(atoms, **kwargs):
+    # ⚠️ THE WORD IS THE CALLER'S NOW (S-263). The sweep used to spell `["register"]` inside
+    # `subgraph`; the route derives it from the declaration's objectless predicate, so this
+    # fixture names the one IT wrote above. That is the whole point of the change - the
+    # module no longer knows a domain word, and the seat that writes the atoms does.
+    kwargs.setdefault("registration_follow", {"register"})
     return ledger_subgraph.subgraph(
         DTJOB, ledger_subgraph.InMemoryEvidenceLookup(atoms), hops=2, **kwargs)
 
@@ -139,7 +144,8 @@ def test_the_whole_result_is_asked_in_one_query():
         return real(entities, direction, limit, follow=follow)
 
     lookup.claims_for_entities = spy
-    ledger_subgraph.subgraph(DTJOB, lookup, hops=2, follow=["has_netdie"])
+    ledger_subgraph.subgraph(DTJOB, lookup, hops=2, follow=["has_netdie"],
+                             registration_follow={"register"})
     sweeps = [call for call in asked if call["follow"] == ["register"]]
     assert len(sweeps) == 1, asked
     assert sweeps[0]["limit"] == (len(sweeps[0]["entities"])
@@ -158,5 +164,6 @@ def test_a_walk_that_kept_no_entity_asks_nothing():
 
     lookup.claims_for_entities = spy
     ledger_subgraph.subgraph(DTJOB, lookup, hops=2, node_limit=1,
-                             follow=["has_netdie"])
+                             follow=["has_netdie"],
+                             registration_follow={"register"})
     assert asked.count(["register"]) <= 1

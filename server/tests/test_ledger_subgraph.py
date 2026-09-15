@@ -1168,9 +1168,13 @@ def _registration(number, subject, when, **qualifiers):
 
 
 def _walk(atoms, subject="A"):
+    # ⚠️ THE WORD IS THE CALLER'S NOW (S-263). `subgraph` used to spell `follow=["register"]`
+    # for itself; the route derives it from the declaration's objectless predicate, and this
+    # fixture - which writes the atoms - names the one IT wrote.
     lookup = ledger_subgraph.InMemoryEvidenceLookup(atoms)
     seed = explorer.entity_id("Lot", {"lot": subject})
-    body = ledger_subgraph.subgraph(seed, lookup, hops=2)
+    body = ledger_subgraph.subgraph(seed, lookup, hops=2,
+                                    registration_follow={"register"})
     return {node["id"]: node for node in body["nodes"]}[seed]
 
 

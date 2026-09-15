@@ -1711,7 +1711,8 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
              static_follow=None, follow_keys=None, collect=None,
              cardinalities=None, include_superseded=False, rows=False,
              entities=None, group_by=None, measure=None,
-             seed_type=None, seed_limit=DEFAULT_SEED_LIMIT):
+             seed_type=None, seed_limit=DEFAULT_SEED_LIMIT,
+             registration_follow=None):
     """Return a typed evidence subgraph from any public node id, or from a signed SET.
 
     `seed_id` is one opaque id as before, or `{"positive": [ids], "negative": [ids]}`.
@@ -1953,7 +1954,7 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         whatever `follow` happened to fetch; that is exactly the dependence S-52-i removes,
         and once the sweep below asks for EVERY node the second call could only ever record
         a subset of what the first already had. Which atoms these are is stated once, by the
-        sweep's `follow=["register"]`, rather than restated as a predicate check here.
+        sweep's `registration_follow`, rather than restated as a predicate check here.
         """
         subject_id = explorer.entity_id(atom.subject_type, atom.subject_keys)
         for name, value in ((atom.object_payload or {}).get("qualifiers") or {}).items():
@@ -2256,13 +2257,21 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     #
     # ⚠️ A TRUNCATED SWEEP IS SAID OUT LOUD rather than left to look like an absence: the cut
     # rides the flag `truncated` already carries for a walk that ran out of claims.
+    # {red} WHICH PREDICATE THAT IS COMES FROM THE DECLARATION, NOT FROM HERE (S-263).
+    # This read `follow=["register"]` - a domain word in the code, so an installation that
+    # calls its registration anything else got every attribute column permanently empty and
+    # nothing said so. `trace_router._self_describing_predicates()` answers it: a sentence
+    # the declaration gives NO OBJECT is a sentence about its subject. Empty means this
+    # walk carries no columns, and the seat that can explain why - the declaration - is the
+    # caller's, not this module's: `ledger_subgraph` reads no declaration at all.
     registration_refs = []
-    for node in nodes.values():
-        try:
-            ref = decode_node_id(node["id"])
-        except ValueError:
-            continue
-        registration_refs.append((ref["type"], ref["keys"]))
+    if registration_follow:
+        for node in nodes.values():
+            try:
+                ref = decode_node_id(node["id"])
+            except ValueError:
+                continue
+            registration_refs.append((ref["type"], ref["keys"]))
     if registration_refs:
         # Generous on purpose (owner, 2026-09-08: 「성능 마진 넉넉하게」). An entity registers
         # once per distinct attribute STATE, so a node with eight generations of one name is
@@ -2271,7 +2280,7 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         found, registration_cut = lookup.claims_for_entities(
             registration_refs, "outgoing",
             len(registration_refs) * REGISTRATIONS_FETCHED_PER_NODE,
-            follow=["register"])
+            follow=sorted(registration_follow))
         claim_cut |= registration_cut
         for atom in found:
             _record_registration(atom)

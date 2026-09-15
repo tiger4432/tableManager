@@ -233,8 +233,11 @@ def _registration(number, value, *, at=None):
 
 
 def _walk(atoms):
+    # ⚠️ [S-263] the registration predicate is the CALLER's word now, and this fixture wrote
+    # its atoms under `register` above.
     return ledger_subgraph.subgraph(
-        SUBJECT, ledger_subgraph.InMemoryEvidenceLookup(atoms), hops=1)
+        SUBJECT, ledger_subgraph.InMemoryEvidenceLookup(atoms), hops=1,
+        registration_follow={"register"})
 
 
 def test_the_response_says_which_names_are_lists(declared):

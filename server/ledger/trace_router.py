@@ -352,6 +352,42 @@ def _predicate_cardinalities() -> dict:
     return cardinalities
 
 
+def _self_describing_predicates():
+    """Predicates the declaration gives NO OBJECT -- the ones that describe their subject.
+
+    🔴 THE WALK USED TO SPELL THIS `follow=["register"]`, A DOMAIN WORD IN THE CODE
+    (S-263). 「코드에 도메인 낱말이 없다」: an installation whose registration predicate is
+    called anything else got nodes with permanently empty attribute columns, and nothing
+    said so - the same silence S-52-i removed one layer up. The declaration already
+    answers this: a sentence with no object says nothing about an object and everything
+    about its SUBJECT, which is what `roleframe` says where it compiles one, and the
+    attributes an entity carries ride in exactly those atoms' qualifiers.
+
+    SAME SHAPE AS `_static_types` and `_predicate_cardinalities`: the declaration is the
+    only authority, bare names because the declaration versions its ids, and a second
+    objectless predicate widens this with no edit here.
+
+    ⚠️ EMPTY DOES NOT MEAN 「today's walk」 HERE, WHICH IS WHERE THIS SIBLING DIFFERS.
+    An empty static set expands no static node and an empty cardinality map says nothing;
+    an empty set here means NO NODE CARRIES ITS COLUMNS. It arises two ways and they are
+    not the same: a declaration that has no objectless predicate genuinely has no
+    registration to sweep, and a declaration that cannot be READ is a walk already
+    answering without cardinalities and without static types. Refusing the graph over it
+    would be this function deciding a question the route owns.
+    """
+    try:
+        from ledger import config as _config
+
+        declared = _config.load() or {}
+    except Exception:                                                  # noqa: BLE001
+        return set()
+    names = set()
+    for key, rule in (declared.get("vocabulary") or {}).items():
+        if str((((rule or {}).get("object") or {}).get("kind")) or "") == "none":
+            names.add(str(key).split("@", 1)[0])
+    return names
+
+
 def _followable_predicates():
     """Every predicate a caller may name in `follow` -- read from the DECLARATION, only.
 
@@ -502,6 +538,7 @@ def _evidence_graph(connection, *, node_id, hops, direction,
         follow_keys=follow_keys,
         backbone_hops=backbone_hops, static_types=_static_types(),
         static_follow=_static_step_predicates(), collect=collect,
+        registration_follow=_self_describing_predicates(),
         cardinalities=_predicate_cardinalities(),
         include_superseded=include_superseded,
         # The declaration is the ONLY authority for which columns exist — the same source
