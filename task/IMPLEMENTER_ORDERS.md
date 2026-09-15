@@ -38688,3 +38688,17 @@ S-106 조건   철회는 «오늘의 함수»(store 의 withdraw)를 그대로 �
 > **첫 바퀴 488,429 행은 «박스에서 안 돌립니다»** — 이 박스엔 join 종류 선언이 없고, 값 동일성은 위로 증명됐습니다. 운영 첫 실행은 소유자 결정(페이싱 창·배치는 그때). 따라서 당신의 「어느 창에서·배치 크기」 물음은 «지금 답 없음»이 답입니다 — 안 돌리니까.
 > **다음 = 전 스위트 «한 번»**(이 트리 `7f3c3634`+, 도는 동안 트리 무변, 수·시간·exit, 실패는 «이름으로») → **정지**. enrich·mapper 의 통합 선언 이관은 다음 라운드 지시 뒤.
 > 📌 **[09-15 09:1x] 이 채널의 미답 질문: «없음»(㉮/㉯ 는 ㉰ 로 답함).**
+> 🔴 **[09-15 09:5x S-239 — 다음 종류 «enrich»를 통합 선언에. 재개. 지배 원칙 넷(계획안 §0-ter)이 게이트입니다**
+> 오늘 아침 운영 장애 하나 더(다섯째): 어제 «내가» 읽기 경로에 얹은 유일 키 검사 SQL 이 숫자 키에서 「invalid input syntax for double precision」을 내고, 같은 세션이라 읽기 트랜잭션까지 abort → 「이것저것 다」. 그리고 스위치 OFF 가 `inspect` 를 «여전히» 불러 안 멎었음. 고침 `1497ea3e`(OFF = DB 무접촉 · 실패는 롤백+캐시 1회). **이 병을 통합 단계에서 «구조로» 못 나게 하는 것이 §0-ter 이고, 그 넷이 이 지시의 게이트다.**
+> **S-239 = enrich 를 통합 선언의 `derive.decide` 종류로.** enrich 는 «이미» 체인 맵퍼(`builtin:auto_confirm` + dedup 합성)라 조인보다 쉽다 — 할 일은 «껍데기»뿐: 통합 선언 한 건(derive.decide + into.table + key)이 오늘 `load_enrichment_chain_rules` 가 낳는 «같은 규칙 둘(dedup·auto_confirm)»을 낳게 한다. `enrichment_rules.json` 은 «그대로» 읽힌다(동작 0).
+> **CODE_MAP 해당 절부터**(enrichment/config · chain_builtins · rule_shape · D-38 이 방금 등재한 절), 그다음 grep 검증. D-37 표의 방식 그대로 «enrich 선언이 들어야 하는 칸 표»를 먼저 «한 문단»으로(제가 판정할 칸이 있으면 이름 대어).
+> **게이트 — §0-ter 를 «단언»으로**
+> ```
+> ① 읽기 경로 무접촉   이 커밋의 diff 에 virtual_join/executor · column_filter · source_preparation · resolved_expression «0줄». 새 SQL 은 «쓰기»에만
+> ② 값 하나 ≠ 배치     decide 가 못 정하는 행은 «그 행만» 이름 대고 건너뜀. 세션 abort 를 호출자에 전파 «안 함»(시험: 한 행이 던져도 나머지 행이 써지고 세션이 SELECT 1 에 답함)
+> ③ 스위치는 진짜로    ASSY_CHAIN_SYNTHESIZE=0 이면 이 종류도 «안 낳음» — 시험이 «호출 0»을 단언(로그 아님)
+> ④ 동작 0 + 되돌림     같은 enrich 선언을 옛 파일/새 문법으로 적어 census 가 「같음」(rule_census.census_diff == same) · 왕복 게이트 그대로 초록 · 한 커밋
+> ⑤ 무회귀             enrichment 스위트 «전부» 초록 그대로. 가상 조인·builtin:join 은 «무접촉»(이번 라운드도)
+> ```
+> ⛔ 짓기 «전»에 §0-ter 판별식 셋을 지시서 답으로 «먼저» 적어 보낼 것(읽기/쓰기 · 행/배치 · 스위치). 셋 다 옳은 쪽이 아니면 짓지 말고 올릴 것. 첫 실행 없음(선언이 없으므로). 재기동은 제가.
+> 📌 **[09-15 09:5x] 이 채널의 미답 질문: «없음».**

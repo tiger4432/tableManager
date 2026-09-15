@@ -33,7 +33,7 @@ python -c "import sys;sys.path.insert(0,'.');sys.stdout.reconfigure(encoding='ut
 ```bash
 ASSY_CHAIN_WORKER=0        # 체인 루프 자체를 안 띄움 (API·읽기는 그대로)
 ASSY_CHAIN_SYNTHESIZE=0    # enrichment/가상조인에서 «파생되는» 규칙을 안 만듦
-ASSY_VJOIN_AUTO_INDEX=0    # 제품이 유일 인덱스를 자동으로 세우지 않음
+ASSY_VJOIN_AUTO_INDEX=0    # 제품이 유일 인덱스를 자동으로 세우지 않음 — 🔴 1497ea3e 부터 OFF 는 «DB 를 한 번도 안 만짐»(그 전엔 점검 SQL 이 여전히 돌아 안 멎었음)
 ```
 
 ## 4. 통합 뒤 모양 미리보기 (읽기 전용, 안 써도 됨)
