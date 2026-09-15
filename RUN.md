@@ -86,10 +86,12 @@ Transaction … permanently failed: N event(s) -> FAILED. 원인: <예외 문장
                         "on":   [ { "left": "dt_job", "right": "dt_job" } ],
                         "take": [ "dt_lot_confirmed", "dt_slot_confirmed" ] } },
   "into":   { "table": "dt_inventory" },
-  "key":    { "columns": ["dt_job"], "unique": true }          // ⚠️ 오늘은 «읽히지 않습니다»(S-240). 오른쪽 중복은 아래 로그 줄이 «행 단위로» 잡습니다
+  "key":    { "unique": true }                                 // 재기동/반영 때 «제품이» 오른쪽 표에 유일 인덱스를 세웁니다(S-240)
 }
 ```
 * fold 는 적지 않습니다 — 두 표의 표기 선언에서 «계산»됩니다(판정 397). `max_rewrite_rows` 도 없습니다 — 페이싱(판정 396).
+* `key.unique: true` 면 재기동/반영 때 «오른쪽 표»에 유일 인덱스가 섭니다. 중복이 있으면 «안 세우고» 값과 건수를 로그에 냅니다 — 그때는 2번(접기)으로 가르십시오. `ASSY_VJOIN_AUTO_INDEX=0` 이면 아무것도 안 만듭니다.
+  `key.columns` 는 «맞는지 보는» 칸입니다 — 조인의 오른쪽 키와 다르면 두 목록을 이름 대고 «안 세웁니다»(다른 컬럼에 세우면 이 조인이 그 인덱스를 안 씁니다). 안 적어도 됩니다.
 * 재기동 뒤 부팅 줄에서 확인: `[ChainRules] set(N): inventory_confirmed[decl,join] …` 가 «둘» 보여야 합니다.
 * 오른쪽 값이 null 이면 «null 로» 써집니다. 오른쪽 행이 없으면 안 씁니다.
 * 오른쪽 행이 «둘 이상» 이면 그 왼쪽 행은 안 씁니다(둘 다 답이 아님) — 나머지 행은 그대로 써집니다. 로그 한 줄:
