@@ -1,5 +1,6 @@
 // Harness — NOTHING IN STARTUP CAN LEAVE THE PAGE WITHOUT A WEBSOCKET.
-// Run: node client2/tests/startup_socket_gate_harness.mjs   (no node_modules — vm sandbox)
+// Run: node client2/tests/startup_socket_gate_harness.mjs   (needs client2/node_modules: the
+//      real api.js pulls ag-grid-community through grid.js, exactly as the page does)
 //
 // WHAT WAS ACTUALLY WRONG (user report 2026-08-04: "웹소켓이 안 붙는다", and the Network tab
 // showed NO /ws request at all — not a failed one, none). `init()` in main.js ended:
@@ -29,29 +30,62 @@
 // WHY THIS HARNESS EXECUTES RATHER THAN READS. "The socket is not gated on unrelated work" is a
 // statement about REACHABILITY UNDER FAILURE, and reachability is invisible to a source-shape
 // assertion — `initWebSocket()` at the top and at the bottom of a function are the same shape.
-// So the real `init` (main.js), the real `checkServerHealth`/`loadTables` (api.js) and the real
-// `initWebSocket`/`scheduleReconnect`/`wakeNow` (websocket.js) are sliced out and driven against
-// a fake socket and a fake `fetch` on a virtual clock. The scored quantity is a literal
+// So the real boot order (`startup.js`), the real `checkServerHealth`/`loadTables` (api.js) and
+// the real `initWebSocket`/`scheduleReconnect`/`wakeNow` (websocket.js) are driven against a
+// fake socket and a fake `fetch` on a virtual clock. The scored quantity is a literal
 // `new WebSocket('ws://…/ws')` — the same event whose absence the user read in the Network tab.
 // Nothing here re-implements the code under test; re-implementing it would score this file
 // against itself.
+//
+// HOW THE SUBJECTS ARE REACHED (C-110, 2026-09-16). They are IMPORTED, whole. Until this round
+// the harness read main.js, api.js and websocket.js as TEXT, regex-sliced twelve functions out
+// of them and evaluated the fragments in `vm` with a hand-written sandbox of every collaborator
+// the fragments named. That measured the shape of the letters, not the behaviour: every
+// module-level name main.js gained (`installAuditFilters`, `initGridSourceLabel`,
+// `redoBannerFollows` …) made all 24 section-C scenarios throw ReferenceError on CORRECT code,
+// and each time this file grew a stub and an anchor. The owner's rule (CLAUDE.md, 2026-09-02):
+// a harness imports its subject; if the subject cannot be imported, THAT is the defect.
+//   · The boot order was the one thing that lived in a file node cannot import (main.js seats
+//     the whole page). It is now `src/startup.js`, which main.js calls and this file imports.
+//   · api.js and websocket.js import under node already. They are loaded through the probe
+//     bridge (`lib/probe.mjs`) rather than a bare `import` for two reasons that `export` cannot
+//     serve: every scenario needs a FRESH module (the hung-REST scenario leaves the
+//     `tablesLoadInFlight` latch holding a promise that never settles, which would poison the
+//     next scenario), and the mutation sweep needs the WHOLE module mutated, not a fragment.
+//     The probe copies the file byte-for-byte, appends an accessor, and asserts on every load
+//     that the copy begins with the subject's own bytes — nothing is cut.
+//   · Sibling modules the subjects import are redirected to stubs ONLY where the question
+//     being scored does not run through them (`state` and `elements` so each scenario has its
+//     own; the grid, history, toast and reference-view collaborators of `switchTable`). The
+//     probe refuses a stub for a name the subject does not import, so a stub cannot go stale
+//     silently.
+//   · `switchTable` is api.js-internal and runs FOR REAL now, so the damage of a duplicate
+//     bootstrap is measured at its doors: one `/schema` fetch and one `renderGrid` per run.
+//   VERIFIED 2026-09-16: with the order extracted, a new name in main.js cannot touch this
+//   harness — main.js is not read here at all. Measured with a module-level
+//   `let c110ScratchState = 0;` and `export function c110ScratchProbe() {…}` appended to
+//   main.js (then restored byte-for-byte): 111 passed, 9/9 caught, 3/3 escaped — identical
+//   to the untouched tree. Under the sliced version the same edit was the C-110 defect.
 //
 // MUTATION DISCIPLINE. Every `find` string is required to occur EXACTLY ONCE in its file;
 // `applyOnce` fails on 0 or >1 matches rather than proceeding, and the mutated text is re-read
 // to confirm the mutation is present and the original gone before anything is scored. This
 // directory has twice had a mutation land on its first match inside a COMMENT and silently
-// score a different function.
-import { readFileSync } from 'node:fs';
+// score a different function. The mutant is then loaded as a WHOLE module through the probe,
+// which itself refuses a `mutate` that changed nothing.
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import vm from 'node:vm';
+import { loadWithProbe, readSourceText } from './lib/probe.mjs';
+import * as CFG from '../src/config.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = (f) => join(HERE, '..', 'src', f);
-const MAIN0 = readFileSync(SRC('main.js'), 'utf8').replace(/\r\n/g, '\n');
-const API0 = readFileSync(SRC('api.js'), 'utf8').replace(/\r\n/g, '\n');
-const WS0 = readFileSync(SRC('websocket.js'), 'utf8').replace(/\r\n/g, '\n');
-const CFG0 = readFileSync(SRC('config.js'), 'utf8').replace(/\r\n/g, '\n');
+const PATHS = { startup: SRC('startup.js'), api: SRC('api.js'), ws: SRC('websocket.js') };
+// LF text for the anchor checks — the same normalisation the probe hands to `mutate`, so an
+// anchor written with a bare `\n` means the same thing in every worktree.
+const TEXT = { startup: readSourceText(PATHS.startup).text,
+               api: readSourceText(PATHS.api).text,
+               ws: readSourceText(PATHS.ws).text };
 
 function die(msg) {
   console.error(`HARNESS FAILURE: ${msg}`);
@@ -60,40 +94,9 @@ function die(msg) {
   process.exit(2);
 }
 
-// ── Extraction ──────────────────────────────────────────────────────────────────
-function sliceBalanced(src, startIdx, open, close) {
-  const i = src.indexOf(open, startIdx);
-  if (i < 0) return null;
-  let depth = 0;
-  for (let j = i; j < src.length; j++) {
-    const ch = src[j];
-    if (ch === open) depth++;
-    else if (ch === close) { depth--; if (depth === 0) return src.slice(startIdx, j + 1); }
-  }
-  return null;
-}
-// Anchored at a real declaration, never at a bare name — a bare name matches its own mentions
-// in comments, which is how a sibling harness spent a round scoring the wrong function.
-function fn(src, name, where) {
-  const m = new RegExp(`(?:export\\s+)?(?:async\\s+)?function\\s+${name}\\s*\\(`).exec(src);
-  if (!m) die(`function ${name} not found in ${where} — renamed or reshaped.`);
-  const body = sliceBalanced(src, m.index, '{', '}');
-  if (!body) die(`unbalanced braces for ${name} in ${where}`);
-  return body.replace(/^export\s+/, '');
-}
-function cfgNumber(src, name) {
-  const m = new RegExp(`export\\s+const\\s+${name}\\s*=\\s*([0-9.]+)\\s*;`).exec(src);
-  if (!m) die(`\`export const ${name}\` not found in config.js — renamed, moved, or no longer a literal.`);
-  return Number(m[1]);
-}
-// The de-dupe latch is module state, not a function, so it is carried across by DECLARATION and
-// its presence is required: if the binding disappears the slice would silently run against an
-// undeclared global and the latch assertions would score nothing.
-function latchDecl(src) {
-  const m = /^let\s+tablesLoadInFlight\s*=\s*null\s*;$/m.exec(src);
-  if (!m) die('`let tablesLoadInFlight = null;` not found in api.js — the loadTables de-dupe latch '
-            + 'is gone or reshaped. Its assertions below would score nothing.');
-  return m[0];
+// The reconnect tuning is IMPORTED from config.js, not regex-lifted out of it.
+for (const k of ['WS_RECONNECT_BASE_MS', 'WS_RECONNECT_CEILING_MS']) {
+  if (typeof CFG[k] !== 'number') die(`config.js does not export a numeric ${k}`);
 }
 
 // ── Scoring ─────────────────────────────────────────────────────────────────────
@@ -117,15 +120,55 @@ function checkFn(name, actual, pred, describe) {
 const OPEN_MS = 5;    // measured localhost WS handshake: median 2.54ms, max 4.15ms (rounded up)
 const FAIL_MS = 3;    // measured ECONNREFUSED: median 0.49ms, max 2.71ms (rounded up)
 const REST_MS = 20;   // a REST round trip, deliberately SLOWER than the handshake so `onopen`
-                      // lands while `init()`'s own `loadTables()` is still in flight — that
+                      // lands while startup's own `loadTables()` is still in flight — that
                       // overlap is the ordering hazard the latch exists for, and a fixture
                       // where the socket opened last would never exercise it.
 
+const noop = () => {};
+const mkEl = () => ({
+  textContent: '', className: '', innerHTML: '', value: '', checked: false, style: {},
+  appendChild(o) { this.value = this.value || o.value; },
+  classList: { add: noop, remove: noop },
+});
+
+// The globals the subjects reach for by bare name. Each scenario installs its own fakes and
+// puts the originals back, so the probe (which runs between scenarios) never sees a fake clock.
+const REAL = {
+  fetch: globalThis.fetch, WebSocket: globalThis.WebSocket,
+  setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout,
+  console: globalThis.console, dateNow: Date.now, random: Math.random,
+};
+function installGlobals(fakes) {
+  globalThis.fetch = fakes.fetch;
+  globalThis.WebSocket = fakes.WebSocket;
+  globalThis.setTimeout = fakes.setTimeout;
+  globalThis.clearTimeout = fakes.clearTimeout;
+  globalThis.console = fakes.console;
+  Date.now = fakes.dateNow;
+  Math.random = () => 0;
+  globalThis.document = fakes.document;
+  globalThis.window = fakes.window;
+  globalThis.localStorage = { getItem: () => null, setItem: noop };
+}
+function restoreGlobals() {
+  globalThis.fetch = REAL.fetch;
+  globalThis.WebSocket = REAL.WebSocket;
+  globalThis.setTimeout = REAL.setTimeout;
+  globalThis.clearTimeout = REAL.clearTimeout;
+  globalThis.console = REAL.console;
+  Date.now = REAL.dateNow;
+  Math.random = REAL.random;
+  delete globalThis.document;
+  delete globalThis.window;
+  delete globalThis.localStorage;
+}
+
 /**
  * `restMode` decides what `fetch` does. The DOM handles listed in `missing` resolve to null,
- * which is the mechanism behind reproduction #2 above.
+ * which is the mechanism behind reproduction #2 above. `mut` carries an optional whole-module
+ * mutation per subject (`{ startup, api, ws }`), each a `(text) => text`.
  */
-async function drive(mainSrc, apiSrc, wsSrc, cfgSrc, {
+async function drive(mut, {
   restMode = 'ok', missing = [], serverUp = true, horizonMs = 400000, extraLoads = 0,
 } = {}) {
   let now = 0, seq = 0;
@@ -142,7 +185,7 @@ async function drive(mainSrc, apiSrc, wsSrc, cfgSrc, {
   // it. It is RECORDED, not discarded — the socket's own bootstrap
   // (`checkServerHealth` + `loadTables`) failing is a real defect and is asserted on below.
   const onopenRejections = [];
-  let switchTableCalls = 0, fetchDataCalls = 0, restSettled = 0;
+  let gridRebuilds = 0, fetchDataCalls = 0, restSettled = 0;
 
   const callHandler = (h, arg) => {
     if (!h) return;
@@ -173,12 +216,6 @@ async function drive(mainSrc, apiSrc, wsSrc, cfgSrc, {
     close() { this._dead = true; this.readyState = 3; }
   }
 
-  const noop = () => {};
-  const mkEl = () => ({
-    textContent: '', className: '', innerHTML: '', value: '', checked: false, style: {},
-    appendChild(o) { this.value = this.value || o.value; },
-    classList: { add: noop, remove: noop },
-  });
   const cache = {};
   const elements = new Proxy({}, { get(_, k) {
     if (typeof k !== 'string') return undefined;
@@ -186,6 +223,15 @@ async function drive(mainSrc, apiSrc, wsSrc, cfgSrc, {
     return cache[k] || (cache[k] = mkEl());
   } });
 
+  // What a healthy server answers, by route. `switchTable` runs for real now, so the schema
+  // and data reads it makes after `/tables` have to be answered too; the shapes are the
+  // minimum those readers consume. In every failure mode all routes fail alike, as before.
+  const okBody = (url) => {
+    if (/\/schema$/.test(url)) return { columns: ['pkg_id'], column_types: {}, kind: 'table',
+      business_key: 'pkg_id', composite_key_source: [], virtual_columns: [], join_resolved_columns: [] };
+    if (/\/data\?/.test(url)) return { data: [], total: 0 };
+    return { tables: ['bonding_map', 'dt_log'] };
+  };
   const fetchFake = (url) => new Promise((resolve, reject) => {
     restCalls.push({ t: now, url });
     if (restMode === 'hang') return;                                    // never settles, ever
@@ -194,34 +240,29 @@ async function drive(mainSrc, apiSrc, wsSrc, cfgSrc, {
       if (restMode === 'reject') return reject(new TypeError('Failed to fetch'));
       if (restMode === 'http500') return resolve({ ok: false, status: 500, json: async () => ({}) });
       if (restMode === 'badjson') return resolve({ ok: true, status: 200, json: async () => { throw new SyntaxError('Unexpected token <'); } });
-      resolve({ ok: true, status: 200, json: async () => ({ tables: ['bonding_map', 'dt_log'] }) });
+      resolve({ ok: true, status: 200, json: async () => okBody(url) });
     }, REST_MS);
   });
 
-  const sandbox = {
-    WebSocket: FakeWebSocket,
-    WS_URL: 'ws://127.0.0.1:8080/ws',
-    WS_RECONNECT_BASE_MS: cfgNumber(cfgSrc, 'WS_RECONNECT_BASE_MS'),
-    WS_RECONNECT_CEILING_MS: cfgNumber(cfgSrc, 'WS_RECONNECT_CEILING_MS'),
-    WS_RECONNECT_JITTER: cfgNumber(cfgSrc, 'WS_RECONNECT_JITTER'),
-    WS_HEALTHY_SESSION_MS: cfgNumber(cfgSrc, 'WS_HEALTHY_SESSION_MS'),
-    WS_WAKE_MIN_GAP_MS: cfgNumber(cfgSrc, 'WS_WAKE_MIN_GAP_MS'),
-    WS_CONNECT_TIMEOUT_MS: cfgNumber(cfgSrc, 'WS_CONNECT_TIMEOUT_MS'),
-    WS_CONNECT_STALE_MS: cfgNumber(cfgSrc, 'WS_CONNECT_STALE_MS'),
-    API_BASE: 'http://127.0.0.1:8080',
-    CURRENT_USER: 'tester',
-    state: {
-      ws: null, wsRetryTimer: null, wsOpenedAt: 0, wsLastWakeAt: 0, wsWakeSignalsInstalled: false,
-      wsReconnectDelay: cfgNumber(cfgSrc, 'WS_RECONNECT_BASE_MS'),
-      wsPrevReconnectDelay: cfgNumber(cfgSrc, 'WS_RECONNECT_BASE_MS'),
-      // The connect watchdog's state. This harness's fake socket always resolves, so the
-      // watchdog never trips here — the hang it exists for is scored in
-      // `ws_connect_watchdog_harness.mjs`. These are present because the sliced code reads them.
-      wsConnectWatchdog: null, wsConnectingSince: 0, wsWatchdogTrips: 0,
-      currentTable: '', pendingTxEdits: {}, pageCache: new Map(), gridApi: null,
-    },
-    elements,
-    localStorage: { getItem: () => null, setItem: noop },
+  // A fresh `state` per scenario, with the containers `switchTable`/`fetchData` mutate and a
+  // grid handle that accepts what they hand it. The reconnect fields start where state.js
+  // starts them (base delay, no socket, no timer).
+  const state = {
+    ws: null, wsRetryTimer: null, wsOpenedAt: 0, wsLastWakeAt: 0, wsWakeSignalsInstalled: false,
+    wsReconnectDelay: CFG.WS_RECONNECT_BASE_MS, wsPrevReconnectDelay: CFG.WS_RECONNECT_BASE_MS,
+    // The connect watchdog's state. This harness's fake socket always resolves, so the
+    // watchdog never trips here — the hang it exists for is scored in
+    // `ws_connect_watchdog_harness.mjs`. Present because the real code reads them.
+    wsConnectWatchdog: null, wsConnectingSince: 0, wsWatchdogTrips: 0,
+    currentTable: '', currentTransactionId: null, pendingTxEdits: {}, pageCache: new Map(),
+    currentColumns: [], currentSkip: 0, isLoadingMore: false, viewMode: 'pagination',
+    gridApi: { setGridOption: noop, applyTransaction: noop, getFilterModel: () => ({}) },
+  };
+
+  const fakes = {
+    fetch: fetchFake, WebSocket: FakeWebSocket, setTimeout: rawSchedule, clearTimeout: clearFake,
+    console: { log: noop, warn: noop, error: (...a) => errors.push(a.map(String).join(' ')) },
+    dateNow: () => now,
     document: {
       createElement: () => mkEl(),
       getElementById: () => null,
@@ -230,112 +271,105 @@ async function drive(mainSrc, apiSrc, wsSrc, cfgSrc, {
       get visibilityState() { return 'visible'; },
     },
     window: { addEventListener: noop, location: { search: '', pathname: '/', origin: 'http://localhost' } },
-    console: { log: noop, warn: noop, error: (...a) => errors.push(a.map(String).join(' ')) },
-    fetch: fetchFake,
-    setTimeout: rawSchedule, clearTimeout: clearFake,
-    Date: { now: () => now },
-    Math: Object.assign(Object.create(Math), { random: () => 0 }),
-    JSON, Set, Map, Object, Array, Number, String, Boolean, Promise, Error, TypeError, SyntaxError,
-    // Collaborators OUTSIDE the question being scored. `switchTable` is counted rather than
-    // sliced because the damage a duplicate bootstrap does is measured at its door: two
-    // `switchTable` runs mean two schema loads and two grid teardowns.
-    switchTable: async (t) => { switchTableCalls++; sandbox.state.currentTable = t; },
-    fetchData: () => { fetchDataCalls++; },
-    initTheme: noop, startSession: noop, installGlobalListeners: noop, installNavLinkCounting: noop,
-    ROUTES: { GRID: 'grid' }, setupEventListeners: noop, initTraceEntry: noop,
-    setupClipboardHandlers: noop, registerSmartPasteHandler: noop, smartPasteFromPasteEvent: noop,
-    setupDragAndDrop: noop, clearRangeSelection: noop, updateSelectedCellUI: noop,
-    updateTxModeUI: noop, renderGrid: noop, refreshTraceEntry: noop,
-    // `init` installs the reference panel's keyboard isolation (main.js). Outside the question
-    // scored here, but its absence made every `init` slice die with a ReferenceError.
-    installReferenceKeyboardIsolation: noop,
-    // `init` installs the 2c audit filters too. A missing stub here does not fail quietly:
-    // the ReferenceError rejects `init` and takes the socket gate's whole section C red,
-    // which is the harness doing its job.
-    installAuditFilters: noop,
-    // And it now stands up the grid's two assembled parts (the ledger-source label and the
-    // re-translate menu, main.js). Same story as the two above: outside the question scored
-    // here, and their absence rejected `init` with a ReferenceError in all 26 scenarios of
-    // section C -- which is how this line came to be written. They return null so the
-    // `if (sourceLabel)` / `if (rescopeMenu)` calls after the awaits stay out of the way.
-    initGridSourceLabel: () => null,
-    // The re-translate moved to the header banner, so the name `init()` calls moved with it --
-    // and the banner needs to hear about selection, which is a third call from the same line.
-    initRedoBanner: () => null,
-    // C-109: `init` now tells the banner which table was chosen through ONE function in
-    // main.js (`redoBannerFollows`), and that function also asks for THAT table's replayable
-    // rules. It is a module-level name, not an import, so the slice cannot see it -- and
-    // without this stub every scenario in section C rejects with a ReferenceError, which is
-    // this harness doing its job. What the function DOES is scored by `replay_rules_harness`.
-    redoBannerFollows: noop,
-    registerSelectionListener: noop,
-    resetSuggestLearning: noop, loadSchema: async () => {}, loadHistory: async () => {},
-    showIngestionProgress: noop, finishIngestionProgress: noop, showToast: noop,
-    getLocalTimeString: () => '', updatePageCacheOnUpsert: noop, updatePageCacheOnDelete: noop,
-    triggerHistoryReloadDebounced: noop, appendHistoryLocally: noop,
-    updateGridSortState: noop, updateLoadedCount: noop, updatePaginationUI: noop,
   };
-  vm.createContext(sandbox);
 
-  try {
-    vm.runInContext([
-      latchDecl(apiSrc),
-      fn(apiSrc, 'setBadge', 'api.js'),
-      fn(apiSrc, 'checkServerHealth', 'api.js'),
-      fn(apiSrc, 'loadTablesOnce', 'api.js'),
-      fn(apiSrc, 'loadTables', 'api.js'),
-      fn(wsSrc, 'scheduleReconnect', 'websocket.js'),
-      fn(wsSrc, 'clearConnectWatchdog', 'websocket.js'),
-      fn(wsSrc, 'abandonConnectingSocket', 'websocket.js'),
-      fn(wsSrc, 'armConnectWatchdog', 'websocket.js'),
-      fn(wsSrc, 'wakeNow', 'websocket.js'),
-      fn(wsSrc, 'installWakeSignals', 'websocket.js'),
-      fn(wsSrc, 'initWebSocket', 'websocket.js'),
-      fn(mainSrc, 'init', 'main.js'),
-      'globalThis.__init = init; globalThis.__loadTables = loadTables;',
-    ].join('\n\n'), sandbox);
-  } catch (e) {
-    die(`the sliced startup code does not evaluate: ${e && e.message}`);
-  }
+  // ── the subjects, whole ───────────────────────────────────────────────────────
+  // Loaded BEFORE the fake globals go in: the probe and node's own loader run here.
+  let api, ws;
+  const apiLoad = await loadWithProbe(PATHS.api, {
+    stubs: {
+      './config.js': { API_BASE: 'http://127.0.0.1:8080' },
+      './state.js': { state },
+      './dom.js': { elements },
+      // Collaborators OUTSIDE the question being scored — what `switchTable` calls once the
+      // table list is in. `renderGrid` is counted rather than run: two bootstraps mean two
+      // grid teardowns, and that is the door the damage is measured at.
+      './clipboard.js': { clearRangeSelection: noop },
+      './ui.js': { updateSelectedCellUI: noop, updateTxModeUI: noop },
+      './write_guard.js': { applyWriteGuards: noop },
+      './grid.js': { renderGrid: () => { gridRebuilds++; }, updateGridSortState: noop,
+                     updateLoadedCount: noop, updatePaginationUI: noop, applyFillTargetHeaders: noop,
+                     sortQueryTail: () => '' },
+      './timeline.js': { loadHistory: async () => {} },
+      './utils.js': { showToast: noop, getLocalTimeString: () => '' },
+      './value_suggest.js': { resetSuggestLearning: noop },
+      './enrichment_reference_view.js': { syncReferenceViewRule: async () => {} },
+      './match_count.js': { setMatchCount: noop },
+    },
+    mutate: mut.api, tag: 'sgapi',
+  });
+  api = apiLoad.module;
+  const wsLoad = await loadWithProbe(PATHS.ws, {
+    stubs: {
+      './config.js': { WS_URL: 'ws://127.0.0.1:8080/ws' },
+      './state.js': { state },
+      './dom.js': { elements },
+      // The socket's bootstrap runs THIS scenario's api.js, so `onopen` and startup share one
+      // latch — which is the overlap section D scores.
+      './api.js': { checkServerHealth: (...a) => api.checkServerHealth(...a),
+                    loadTables: (...a) => api.loadTables(...a),
+                    fetchData: () => { fetchDataCalls++; } },
+    },
+    mutate: mut.ws, tag: 'sgws',
+  });
+  ws = wsLoad.module;
+  const bootLoad = await loadWithProbe(PATHS.startup, {
+    stubs: {
+      './websocket.js': { initWebSocket: (...a) => ws.initWebSocket(...a) },
+      './api.js': { checkServerHealth: (...a) => api.checkServerHealth(...a),
+                    loadTables: (...a) => api.loadTables(...a) },
+    },
+    mutate: mut.startup, tag: 'sgboot',
+  });
+  const boot = bootLoad.module;
 
   const flush = () => new Promise(r => setImmediate(r));
 
-  // `init()` IS NOT AWAITED. Awaiting it would hang the harness on the very scenario that
-  // matters most (`restMode: 'hang'`) and, worse, would make the socket look reachable only
-  // because the harness waited for something the browser never waits for.
   let settled = 'pending', rejection = null;
-  sandbox.__init().then(() => { settled = 'fulfilled'; },
-                          e => { settled = 'rejected'; rejection = e; });
-  await flush();
-
-  let guard = 0;
-  while (guard++ < 200000) {
-    if (timers.length === 0) break;
-    const next = Math.min(...timers.map(t => t.at));
-    if (next > horizonMs) break;                    // the horizon is a wall, not a loop condition
-    timers.sort((a, b) => a.at - b.at || a.seq - b.seq);
-    const t = timers.shift();
-    now = t.at;
-    t.fn();
+  installGlobals(fakes);
+  try {
+    // `startup()` IS NOT AWAITED. Awaiting it would hang the harness on the very scenario that
+    // matters most (`restMode: 'hang'`) and, worse, would make the socket look reachable only
+    // because the harness waited for something the browser never waits for. `prepare` and
+    // `tableChosen` are main.js's business (listeners, parts); the order is what is scored.
+    boot.startup({ prepare: noop, tableChosen: noop })
+      .then(() => { settled = 'fulfilled'; }, e => { settled = 'rejected'; rejection = e; });
     await flush();
-  }
 
-  // Sequential extra loads exist to prove the latch RELEASES. A latch that never clears looks
-  // identical to a correct one in the concurrent case.
-  for (let i = 0; i < extraLoads; i++) {
-    sandbox.__loadTables();
-    let g2 = 0;
-    while (timers.length && g2++ < 10000) {
+    let guard = 0;
+    while (guard++ < 200000) {
+      if (timers.length === 0) break;
+      const next = Math.min(...timers.map(t => t.at));
+      if (next > horizonMs) break;                    // the horizon is a wall, not a loop condition
       timers.sort((a, b) => a.at - b.at || a.seq - b.seq);
       const t = timers.shift();
-      if (t.at > horizonMs) break;
-      now = t.at; t.fn(); await flush();
+      now = t.at;
+      t.fn();
+      await flush();
     }
-    await flush();
+
+    // Sequential extra loads exist to prove the latch RELEASES. A latch that never clears looks
+    // identical to a correct one in the concurrent case.
+    for (let i = 0; i < extraLoads; i++) {
+      api.loadTables();
+      let g2 = 0;
+      while (timers.length && g2++ < 10000) {
+        timers.sort((a, b) => a.at - b.at || a.seq - b.seq);
+        const t = timers.shift();
+        if (t.at > horizonMs) break;
+        now = t.at; t.fn(); await flush();
+      }
+      await flush();
+    }
+  } finally {
+    restoreGlobals();
   }
 
   return {
-    wsAttempts, errors, restCalls, restSettled, switchTableCalls, fetchDataCalls, settled, rejection,
+    wsAttempts, errors, restCalls, restSettled, gridRebuilds, fetchDataCalls, settled, rejection,
+    // One `switchTable` run = one `/schema` read. Counted at the door, since the function
+    // itself is api.js-internal and runs for real.
+    switchTableCalls: restCalls.filter(c => /\/schema$/.test(c.url)).length,
     onopenRejections: onopenRejections.map(e => (e && e.message) || String(e)),
     wsAttemptCount: wsAttempts.length,
     firstWsAttemptAt: wsAttempts.length ? wsAttempts[0].t : null,
@@ -346,11 +380,11 @@ async function drive(mainSrc, apiSrc, wsSrc, cfgSrc, {
 }
 
 // ── The checks ──────────────────────────────────────────────────────────────────
-async function runChecks(mainSrc, apiSrc, wsSrc, cfgSrc, { strict = true } = {}) {
+async function runChecks(mut, { strict = true } = {}) {
   const r = {};
 
   // ── A. THE FLOOR: A SOCKET IS ATTEMPTED, WHATEVER STARTUP DOES ───────────────
-  //   Every one of these is a way `init()` can fail to reach its own last statement. The
+  //   Every one of these is a way startup can fail to reach its own last statement. The
   //   scored quantity is a literal `new WebSocket(...)` — the request the Network tab showed
   //   none of.
   {
@@ -371,7 +405,7 @@ async function runChecks(mainSrc, apiSrc, wsSrc, cfgSrc, { strict = true } = {})
     ];
     r.scenarios = {};
     for (const [label, opts] of SCENARIOS) {
-      const run = await drive(mainSrc, apiSrc, wsSrc, cfgSrc, opts);
+      const run = await drive(mut, opts);
       r.scenarios[label] = { ws: run.wsAttemptCount, settled: run.settled, errs: run.errors.length };
       if (strict) {
         checkFn(`A: a socket is attempted — ${label}`, run.wsAttemptCount, v => v >= 1, '>= 1 `new WebSocket(...)`');
@@ -384,24 +418,24 @@ async function runChecks(mainSrc, apiSrc, wsSrc, cfgSrc, { strict = true } = {})
   //   "A socket eventually appeared" is not the property. The property is that the socket does
   //   not WAIT on REST work: it must be attempted before the first REST call has even settled.
   {
-    const hung = await drive(mainSrc, apiSrc, wsSrc, cfgSrc, { restMode: 'hang' });
+    const hung = await drive(mut, { restMode: 'hang' });
     r.hungWsAt = hung.firstWsAttemptAt;
     r.hungRestSettled = hung.restSettled;
-    const okRun = await drive(mainSrc, apiSrc, wsSrc, cfgSrc, { restMode: 'ok' });
+    const okRun = await drive(mut, { restMode: 'ok' });
     r.okWsAt = okRun.firstWsAttemptAt;
 
     if (strict) {
       check('B: with REST hung forever, the socket was still attempted', hung.wsAttemptCount >= 1, true);
       check('B: ...and it happened with ZERO REST calls settled', hung.restSettled, 0);
-      check('B: ...and `init` is indeed still pending (the fixture really is stuck)', hung.settled, 'pending');
+      check('B: ...and startup is indeed still pending (the fixture really is stuck)', hung.settled, 'pending');
       checkFn('B: on a healthy start the socket is attempted before the first REST round trip returns',
         okRun.firstWsAttemptAt, v => v !== null && v < REST_MS, `< ${REST_MS}ms (the REST latency)`);
     }
   }
 
   // ── C. A CATCH BLOCK MUST NOT BE ABLE TO THROW ───────────────────────────────
-  //   Scored directly on the two functions rather than only through `init`, so the property is
-  //   pinned where it lives. Every subset of the handles their catches touch.
+  //   Scored directly on the two functions rather than only through startup, so the property
+  //   is pinned where it lives. Every subset of the handles their catches touch.
   {
     const HANDLE_SETS = [
       [], ['serverStatus'], ['performanceLog'], ['tableSelect'],
@@ -411,7 +445,7 @@ async function runChecks(mainSrc, apiSrc, wsSrc, cfgSrc, { strict = true } = {})
     r.catchSafe = true;
     for (const missing of HANDLE_SETS) {
       for (const restMode of ['reject', 'http500', 'badjson']) {
-        const run = await drive(mainSrc, apiSrc, wsSrc, cfgSrc, { restMode, missing });
+        const run = await drive(mut, { restMode, missing });
         const label = `[${missing.join(',') || 'all present'}] / ${restMode}`;
         if (run.settled === 'rejected') r.catchSafe = false;
         if (strict) {
@@ -441,24 +475,26 @@ async function runChecks(mainSrc, apiSrc, wsSrc, cfgSrc, { strict = true } = {})
   }
 
   // ── D. THE ORDERING THE MOVE COULD HAVE BROKEN ───────────────────────────────
-  //   `onopen` bootstraps the table list when it finds the picker empty. With the socket now
-  //   started first, that fires WHILE `init()`'s own `loadTables()` is in flight. Two concurrent
+  //   `onopen` bootstraps the table list when it finds the picker empty. With the socket
+  //   started first, that fires WHILE startup's own `loadTables()` is in flight. Two concurrent
   //   bootstraps would mean two `switchTable` runs — two schema loads, two grid rebuilds.
   {
-    const run = await drive(mainSrc, apiSrc, wsSrc, cfgSrc, { restMode: 'ok' });
+    const run = await drive(mut, { restMode: 'ok' });
     r.switchTableCalls = run.switchTableCalls;
+    r.gridRebuilds = run.gridRebuilds;
     r.tablePicker = run.tablePicker;
     r.serverBadge = run.serverBadge;
 
     if (strict) {
-      check('D: the overlapping bootstraps collapse into ONE switchTable', run.switchTableCalls, 1);
+      check('D: the overlapping bootstraps collapse into ONE switchTable (one schema load, one grid rebuild)',
+        [run.switchTableCalls, run.gridRebuilds], [1, 1]);
       check('D: ...and the table list actually got loaded (the run is not vacuous)', run.tablePicker, 'bonding_map');
       check('D: a healthy start reports the API online', run.serverBadge, 'API: ONLINE');
       checkFn('D: the socket connected exactly once on a healthy start',
         run.wsAttemptCount, v => v === 1, 'exactly 1 attempt');
     }
 
-    const offline = await drive(mainSrc, apiSrc, wsSrc, cfgSrc, { restMode: 'reject', serverUp: false, horizonMs: 60000 });
+    const offline = await drive(mut, { restMode: 'reject', serverUp: false, horizonMs: 60000 });
     r.offlineBadge = offline.serverBadge;
     if (strict) {
       check('D: a failed start reports the API offline', offline.serverBadge, 'API: OFFLINE');
@@ -470,7 +506,7 @@ async function runChecks(mainSrc, apiSrc, wsSrc, cfgSrc, { strict = true } = {})
   //   case, and it would freeze the table list for the rest of the session — including the
   //   reconnect bootstrap this whole round exists to protect.
   {
-    const run = await drive(mainSrc, apiSrc, wsSrc, cfgSrc, { restMode: 'ok', extraLoads: 2 });
+    const run = await drive(mut, { restMode: 'ok', extraLoads: 2 });
     r.loadsAfterExtra = run.switchTableCalls;
     if (strict) {
       check('E: two later sequential loadTables() calls each run (the latch clears)', run.switchTableCalls, 3);
@@ -481,13 +517,13 @@ async function runChecks(mainSrc, apiSrc, wsSrc, cfgSrc, { strict = true } = {})
   //   Starting the socket earlier must not cost the retry behaviour. A refused socket has to
   //   keep retrying on a rising interval, from inside the new call site.
   {
-    const run = await drive(mainSrc, apiSrc, wsSrc, cfgSrc, { restMode: 'reject', serverUp: false, horizonMs: 120000 });
+    const run = await drive(mut, { restMode: 'reject', serverUp: false, horizonMs: 120000 });
     const gaps = [];
     for (let i = 1; i < run.wsAttempts.length; i++) gaps.push(run.wsAttempts[i].t - run.wsAttempts[i - 1].t);
     r.retryAttempts = run.wsAttempts.length;
     r.retryGaps = gaps.slice(0, 5);
     r.ladderRises = gaps.slice(0, 3).every((g, i) => i === 0 || g >= gaps[i - 1]);
-    const CEIL = cfgNumber(cfgSrc, 'WS_RECONNECT_CEILING_MS');
+    const CEIL = CFG.WS_RECONNECT_CEILING_MS;
     r.maxGap = gaps.length ? Math.max(...gaps) : 0;
 
     if (strict) {
@@ -503,8 +539,9 @@ async function runChecks(mainSrc, apiSrc, wsSrc, cfgSrc, { strict = true } = {})
 }
 
 // ── Baseline ────────────────────────────────────────────────────────────────────
+const NO_MUTATION = { startup: undefined, api: undefined, ws: undefined };
 console.log('=== BASELINE (the code as it stands) ===');
-const base = await runChecks(MAIN0, API0, WS0, CFG0, { strict: true });
+const base = await runChecks(NO_MUTATION, { strict: true });
 console.log(`  socket attempted in every startup scenario : ${
   Object.entries(base.scenarios).map(([k, v]) => `${k}=${v.ws}`).join(', ')}`);
 console.log(`  hung-REST run: first /ws at t=${base.hungWsAt}ms with ${base.hungRestSettled} REST calls settled`);
@@ -526,23 +563,18 @@ function applyOnce(src, find, repl) {
 
 // Every mutation is a LIST OF SITES, possibly spanning files. Two of the defects this round
 // removes are independent, and modelling either one alone understates the other: with the
-// catches hardened, moving the socket back to the end of `init()` is survivable on the
+// catches hardened, moving the socket back to the end of startup is survivable on the
 // catch-throws scenarios (they no longer throw), and with the socket started first, a throwing
 // catch no longer costs the socket. M9 is the combination — the code as it actually shipped —
 // and it is the one that reproduces the LIVE symptom on the catch-throws path.
 const SITE_SOCKET_LAST = [
-  { file: 'main',
-    find: '  initWebSocket();\n\n  // Load cached settings from localStorage',
-    repl: '  // Load cached settings from localStorage' },
-  { file: 'main',
-    // The tail of `init()` is what this site anchors on, and it has moved TWICE now: two
-    // setRelation calls landed after the awaits (2026-09), and C-109 folded that block into
-    // ONE call (`redoBannerFollows`) so the boot path and the table-change path cannot drift.
-    // Both times the site went INERT and said so out loud rather than going quietly green --
-    // which is the whole point of anchoring on the code. The CLAIM is unchanged: the socket
-    // back at the last statement of `init()`.
-    find: '  redoBannerFollows(state.currentTable);\n}',
-    repl: '  redoBannerFollows(state.currentTable);\n  initWebSocket();\n}' },
+  { file: 'startup',
+    find: '  initWebSocket();\n\n  prepare();',
+    repl: '  prepare();' },
+  { file: 'startup',
+    // The CLAIM: the socket back at the last statement of startup, after both awaits.
+    find: '  tableChosen();\n}',
+    repl: '  tableChosen();\n  initWebSocket();\n}' },
 ];
 const SITE_HEALTH_CATCH_UNGUARDED = {
   file: 'api',
@@ -554,7 +586,7 @@ const SITE_HEALTH_CATCH_UNGUARDED = {
 };
 
 const MUTATIONS = [
-  { name: 'M1 socket moved back to the LAST statement of init() (half of the original defect)',
+  { name: 'M1 socket moved back to the LAST statement of startup (half of the original defect)',
     sites: SITE_SOCKET_LAST },
 
   { name: 'M2 checkServerHealth\'s catch writes its badges unguarded (catch can throw again)',
@@ -565,7 +597,7 @@ const MUTATIONS = [
       find: '    if (elements.tableSelect) elements.tableSelect.innerHTML = \'<option value="">Failed to load</option>\';',
       repl: '    elements.tableSelect.innerHTML = \'<option value="">Failed to load</option>\';' }] },
 
-  { name: 'M4 the loadTables de-dupe latch is bypassed (onopen races init)',
+  { name: 'M4 the loadTables de-dupe latch is bypassed (onopen races startup)',
     sites: [{ file: 'api',
       find: '  if (tablesLoadInFlight) return tablesLoadInFlight;',
       repl: '  if (false && tablesLoadInFlight) return tablesLoadInFlight;' }] },
@@ -619,13 +651,15 @@ async function sweep(list, expectCaught, heading) {
   for (const m of list) {
     // Sites are applied cumulatively, each to the text the previous one produced, so a
     // multi-site mutation in ONE file cannot have its second anchor invalidated by its first.
-    const src = { main: MAIN0, api: API0, ws: WS0 };
+    const src = { ...TEXT };
+    const touched = new Set();
     let bad = null;
     for (let i = 0; i < m.sites.length && !bad; i++) {
       const s = m.sites[i];
       const a = applyOnce(src[s.file], s.find, s.repl);
       if (!a.ok) { bad = `site ${i + 1}/${m.sites.length} (${s.file}.js): ${a.why}`; break; }
       src[s.file] = a.src;
+      touched.add(s.file);
     }
     // CONFIRM THE MUTATED STATE, NOT MERELY THE OUTCOME. A mutation a later site repaired, or
     // one whose anchor survived, would score green and prove nothing. Re-checked against the
@@ -640,12 +674,15 @@ async function sweep(list, expectCaught, heading) {
     if (bad) { notApplied.push(m.name); console.error(`  NOT APPLIED  ${m.name}\n    ${bad}`); continue; }
     applied++;
 
-    const mainS = src.main, apiS = src.api, wsS = src.ws;
+    // The mutant is handed to the probe as a WHOLE-MODULE `mutate`, one per touched file. The
+    // probe re-checks that the text actually changed and dies otherwise.
+    const mut = { startup: undefined, api: undefined, ws: undefined };
+    for (const f of touched) mut[f] = () => src[f];
 
     const before = { pass, fail, n: failures.length };
     quiet = true;
     let threw = null;
-    try { await runChecks(mainS, apiS, wsS, CFG0, { strict: true }); }
+    try { await runChecks(mut, { strict: true }); }
     catch (e) { threw = e; failures.push(`${m.name}: threw ${e && e.message}`); fail++; }
     quiet = false;
     const newFails = failures.slice(before.n);

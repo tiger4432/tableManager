@@ -14,14 +14,12 @@ import { state } from './state.js';
 import { writeRefusal } from './write_guard.js';
 import { elements } from './dom.js';
 import {
-  checkServerHealth,
-  loadTables,
   switchTable,
   fetchData,
   addRows,
   deleteSelectedRows
 } from './api.js';
-import { initWebSocket } from './websocket.js';
+import { startup } from './startup.js';
 import { GridSourceLabel } from './grid_source_label.js';
 import { RedoBanner } from './redo_banner.js';
 import { putRescopeHandoff } from './rescope_handoff.js';
@@ -112,68 +110,53 @@ async function init() {
   }
   */
 
-  // THE LIVE CHANNEL IS NOT GATED ON ANYTHING ELSE. This used to be the LAST statement of
-  // `init()`, after `await checkServerHealth()` and `await loadTables()`. Since the whole
-  // reconnect ladder lives inside `initWebSocket`, anything that stopped `init()` short of this
-  // line left the page with no socket AND no retry, for the rest of the session — reproduced
-  // three ways (see startup_socket_gate_harness.mjs): a `catch` block that itself throws on a
-  // null DOM handle, and a `fetch` that never settles (a hung backend or proxy), which does not
-  // even reject and so logs nothing at all.
-  //
-  // FIRST, not merely "earlier". Every setup call below can throw too — `elements.sortLatestToggle
-  // .checked` on the next lines is an unguarded handle — so the socket goes ahead of ALL of it.
-  // (It used to name `copyHeaderToggle`; that one is now read through a `filter(Boolean)` list,
-  // which is why the example moved rather than the rule.)
-  // Opening it has no dependency on health status or the table list: `initWebSocket` reads only
-  // WS_URL, `state`, and the wake signals, and its `onopen` re-derives what it needs
-  // (`checkServerHealth`, then `loadTables` only if the picker is still empty). The overlap that
-  // creates with `loadTables()` below is de-duplicated by an in-flight latch in api.js.
-  initWebSocket();
+  // THE ORDER LIVES IN startup.js (C-110): the socket is opened FIRST, before anything below
+  // that can throw or hang, and node can import that file to score it. This function only
+  // supplies the two things startup cannot know -- what to install, and what to tell the parts
+  // once a table is chosen.
+  await startup({
+    prepare() {
+      // Load cached settings from localStorage
+      const cachedCopyHeader = localStorage.getItem('copyHeader');
+      if (cachedCopyHeader !== null) {
+        copyHeaderToggles().forEach(toggle => { toggle.checked = cachedCopyHeader === 'true'; });
+      }
+      const cachedSortLatest = localStorage.getItem('sortLatest');
+      if (cachedSortLatest !== null) {
+        elements.sortLatestToggle.checked = cachedSortLatest === 'true';
+      }
 
-  // Load cached settings from localStorage
-  const cachedCopyHeader = localStorage.getItem('copyHeader');
-  if (cachedCopyHeader !== null) {
-    copyHeaderToggles().forEach(toggle => { toggle.checked = cachedCopyHeader === 'true'; });
-  }
-  const cachedSortLatest = localStorage.getItem('sortLatest');
-  if (cachedSortLatest !== null) {
-    elements.sortLatestToggle.checked = cachedSortLatest === 'true';
-  }
-
-  initTheme();
-  // V1 instrument: start counting human effort before any listener can fire.
-  // Invisible by design — no UI, no badge. See effort_meter.js.
-  startSession();
-  installGlobalListeners();
-  installNavLinkCounting(ROUTES.GRID); // covers the nav dropdown anchors in index.html
-  setupEventListeners();
-  // 라벨은 표보다 «먼저» 섭니다 -- 선언 읽기가 표 로드와 나란히 가고, 표가 정해지면
-  // `setRelation` 한 번으로 문장이 확정됩니다.
-  sourceLabel = initGridSourceLabel();
-  redoBanner = initRedoBanner();
-  // 버튼의 활성/비활성은 «선택»이 정합니다. 그 신호를 여기서 부품에 잃습니다 --
-  // 그리드는 배너를 모르고, 배너는 그리드를 모릅니다.
-  registerSelectionListener(() => { if (redoBanner) redoBanner.selectionChanged(); });
-  installReferenceKeyboardIsolation();
-  installAuditFilters();
-  setupClipboardHandlers();
-  // The `paste` listener in clipboard.js owns the only readable clipboard on plain HTTP;
-  // this hands it the smart-paste reader without clipboard.js having to import main.js.
-  registerSmartPasteHandler(smartPasteFromPasteEvent);
-  setupDragAndDrop();
-  // 소켓은 이 함수 **첫 줄**에서 이미 열렸다(위 참조). 이 둘은 이제 소켓을 막을 수 없다.
-  // 📌 남은 결: `checkServerHealth`가 reject하면 `loadTables`가 건너뛰어져 테이블 목록이
-  //    비어 있게 된다. 각각 감싸면 막히지만, 그러면 하네스의 M1/M9 앵커(원래 사고를
-  //    재조립하는 변이)가 안 맞아 **적용조차 안 된다** ― 앵커를 같이 옮기는 일이라
-  //    운영 사고 수리에 얹지 않는다. 별건으로 남긴다.
-  await checkServerHealth();
-  await loadTables();
-  // 🔴 부팅 자동 선택도 «표를 고른 것»입니다. 여기서 안 알려 주면 첫 화면의 라벨만
-  //    조용히 비고, 사용자가 표를 «한 번 바꿔야» 나타납니다 (그 침묵이 「아님」처럼 보입니다).
-  if (sourceLabel) sourceLabel.setRelation(state.currentTable);
-  // 부팅 자동 선택도 «표를 고른 것»입니다. 여기서 안 알려 주면 체인 버튼이 첫 화면에서
-  // 「업무 키가 없다」고 말합니다 -- 있는데도 (라이브 실측 2026-08-31).
-  redoBannerFollows(state.currentTable);
+      initTheme();
+      // V1 instrument: start counting human effort before any listener can fire.
+      // Invisible by design — no UI, no badge. See effort_meter.js.
+      startSession();
+      installGlobalListeners();
+      installNavLinkCounting(ROUTES.GRID); // covers the nav dropdown anchors in index.html
+      setupEventListeners();
+      // 라벨은 표보다 «먼저» 섭니다 -- 선언 읽기가 표 로드와 나란히 가고, 표가 정해지면
+      // `setRelation` 한 번으로 문장이 확정됩니다.
+      sourceLabel = initGridSourceLabel();
+      redoBanner = initRedoBanner();
+      // 버튼의 활성/비활성은 «선택»이 정합니다. 그 신호를 여기서 부품에 잃습니다 --
+      // 그리드는 배너를 모르고, 배너는 그리드를 모릅니다.
+      registerSelectionListener(() => { if (redoBanner) redoBanner.selectionChanged(); });
+      installReferenceKeyboardIsolation();
+      installAuditFilters();
+      setupClipboardHandlers();
+      // The `paste` listener in clipboard.js owns the only readable clipboard on plain HTTP;
+      // this hands it the smart-paste reader without clipboard.js having to import main.js.
+      registerSmartPasteHandler(smartPasteFromPasteEvent);
+      setupDragAndDrop();
+    },
+    tableChosen() {
+      // 🔴 부팅 자동 선택도 «표를 고른 것»입니다. 여기서 안 알려 주면 첫 화면의 라벨만
+      //    조용히 비고, 사용자가 표를 «한 번 바꿔야» 나타납니다 (그 침묵이 「아님」처럼 보입니다).
+      if (sourceLabel) sourceLabel.setRelation(state.currentTable);
+      // 부팅 자동 선택도 «표를 고른 것»입니다. 여기서 안 알려 주면 체인 버튼이 첫 화면에서
+      // 「업무 키가 없다」고 말합니다 -- 있는데도 (라이브 실측 2026-08-31).
+      redoBannerFollows(state.currentTable);
+    },
+  });
 }
 
 // 🔴 주소는 «합성 루트»가 압니다 (조립식 상설). 부품은 라우트도 apiBase 도 모르고

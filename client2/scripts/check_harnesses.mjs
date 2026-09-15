@@ -1196,6 +1196,9 @@ const FLOORS = new Map([
   // and no retry, because `initWebSocket()` was the last statement of `init()` behind two
   // awaited REST calls). Same rule as the other new entries: the floor is the count it reports
   // on the commit that introduces it — there is no earlier tree to measure it against.
+  // C-110 (2026-09-16): it stopped slicing main.js/api.js/websocket.js as text. The boot order
+  // moved to `src/startup.js` and all three subjects are loaded whole through the probe. Same
+  // 111 assertions, same 9 mutants and 3 controls -- the floor did not move.
   ['startup_socket_gate_harness.mjs', 111],
   ['startxy_probe.mjs', 75],
   // 🔴 RAISED 10 -> 13 ON 2026-09-10 WITH C-57. This gauge already existed and was aimed at
