@@ -1089,6 +1089,7 @@ S-226   빈 칸 -> 채워진 키   잠자던 «유일 인덱스»가 깨어나 �
 🆕 **[16:5x 소유자 「리플레이 버튼에 조인도 · 해당 테이블이 트리거인 규칙만」 → S-250(서버) + C-109(클라)]** 목록의 출처를 파일 원문에서 «적재된·돌 수 있는» 집합(`replay.load_rules` + `is_reference_side`)으로 — 저자 하나 `replayable_rules_for(table)` + 라우트. 클라는 표 바뀔 때마다 그 라우트로. 🔴 클라 레인은 09-13 정지 지시 중이라 «소유자 창 두드림» 필요.
 ✅ **[17:0x S-250 서버 절반 «닫힘» `df824a9a` — 재기동 PID 36636]** `replay.replayable_rules_for(table)`(= `load_rules` + `is_reference_side`, 소급과 «같은 집합») + `GET /admin/chain/rules/replayable?table=`(토큰 게이트 401 실측) + `rule_shape` 의 kind 낱말. 제가 잼: replay 모집단 246 passed · 박스 in-process 로 dt_log/dt_inventory 목록 «나옴». 클라 C-109 대기(창 두드림 필요).
 ✅ **[17:2x C-109 «닫힘» `c87080e3`(design) → main 병합 `8527e886`]** `replayable_rules.js`(새 부품) + `main.js` 가 표 바뀔 때마다 `/admin/chain/rules/replayable?table=` 로 · `redo_banner` 행 = `이름  트리거 → 대상` + kind · dist 포함. 제가 잼: 하니스 28 + 51 assertions 초록 · dist 번들에 라우트 낱말 있음 · 실제 페이지(8080) dt_log 행 선택 → Replay chain → 팝업이 「토큰 없음 — 어드민 한 번 열고」와 「1 key from 1 row」를 가름(토큰은 제가 못 넣으므로 목록 자체는 하니스 + in-process 로 확인). 클라 «정지».
+🔴 **[22:3x 소유자 「체인 통합 모양 완성했어?」→ 남은 셋 「나머지 다 해」]** 구현자 순서 S-251(`into.read` 를 통합 파일에서 세움) → S-241(스켈레톤이 두 모양) → S-234(옛 껍데기 은퇴 — 파일은 남고 «생성 이후 갈래»만 접음: 이름공간·끄기·부팅 줄·거절 어휘 하나, 충돌 검사기 둘 삭제, `ASSY_CHAIN_SYNTHESIZE` 은퇴). 클라 C-111(폼이 스켈레톤대로 택1 둘)은 S-241 뒤 초인종. 완성의 정의 = 「`chain_rules.json` 에 `on·derive·into` 한 덩이를 적으면 됩니다」가 «읽기 조인까지» 참이 되는 것.
 ```
 ```
 정본 계획   task/CHAIN_UNIFICATION_PLAN.md (§1~9: 모양 · 0~5단계 · 쓰기 가상화 «안 함» 사유 · 2단계 설계 · UI)
