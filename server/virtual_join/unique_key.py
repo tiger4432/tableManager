@@ -198,12 +198,33 @@ def ensure_once(db, rule_name: str, table: str, columns: list, folds=None) -> di
         return _TRIED[rule_name]
     switch = os.getenv("ASSY_VJOIN_AUTO_INDEX", "1").strip().lower()
     if switch in ("0", "false", "off", "no"):
-        report = inspect(db, table, columns, folds)
-        report["created"] = None
-        report["dropped"] = []
-        report["skipped"] = "ASSY_VJOIN_AUTO_INDEX=%s" % switch
-    else:
+        # 🔴 OFF MEANS OFF - TOUCH NO DATABASE (2026-09-15 outage). The first cut still
+        # called inspect() here, whose duplicate/blank probes run GROUP BY on the folded
+        # join key; on a numeric key that raised 「invalid input syntax for double
+        # precision」 on the READ path, aborting the read's own transaction. So the
+        # switch an operator reached for did not stop the flood. Off is now a bare report.
+        report = {"state": "skipped", "index": None, "invalid": [], "duplicates": [],
+                  "blank_keys": [], "created": None, "dropped": [],
+                  "skipped": "ASSY_VJOIN_AUTO_INDEX=%s" % switch}
+        _TRIED[rule_name] = report
+        return report
+    # 🔴 A PROBE ON THE READ PATH MUST NOT POISON THE READ. Any failure here (a bad cast
+    # in the fold SQL, a dialect quirk) is caught, the session is rolled back so the read
+    # that follows is not aborted, and the join simply is not auto-fixed this time.
+    try:
         report = ensure(db, table, columns, folds, apply=True)
+    except Exception as probe_error:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        report = {"state": "probe_failed", "index": None, "invalid": [],
+                  "duplicates": [], "blank_keys": [], "created": None, "dropped": [],
+                  "error": str(probe_error).strip().splitlines()[0] if str(probe_error).strip() else "probe failed"}
+        _TRIED[rule_name] = report
+        logger.warning("[VirtualJoin:%s] 유일 인덱스 자동 점검 실패(읽기는 계속): %s",
+                       rule_name, report["error"])
+        return report
     _TRIED[rule_name] = report
     if report.get("created"):
         logger.warning("[VirtualJoin:%s] 유일 인덱스를 «제품이» 세웠습니다%s: %s",
