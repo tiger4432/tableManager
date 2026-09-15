@@ -534,6 +534,13 @@ def _unified_root():
     the form hand-drawing what the grammar knows, which is how a screen comes to disagree
     with a loader. One node kind closes it.
 
+    🔴 [S-241-b, 판정 411] A BRANCH NODE IS WHAT LIVES UNDER THE BRANCH KEY - the key is
+    already the cell. My first cut wrapped three of the five in a record, so the form would
+    have asked for `into: {"table": {"table": "dt_x"}}` where the declaration says
+    `into: {"table": "dt_x"}`. The client measured it against the committed declaration
+    fixtures before building against it (`fedf6a15`). `join` and `decide` were right because
+    their cell IS a record; `mapper`, `table` and `read` are a name, a name and a flag.
+
     ⚠️ THE BRANCH KEYS ARE THE LIST. 판정 407's node also carries a `list` naming a
     closed list, and this file does NOT emit one: nothing serves closed lists on the chain
     side (`chain_rule_raw_view` publishes none, and the only `closed_lists()` in the
@@ -551,12 +558,11 @@ def _unified_root():
                             for cell in rule_shape.DECIDE_CELLS]),
         # ⚠️ The mapper kind's argument is the mapper's own name, the same cell the flat
         # shape already carries - so it is a leaf here rather than a second vocabulary.
-        "mapper": _record(_field("mapper", _leaf("mapper"))),
+        "mapper": _leaf("mapper"),
     }
     into_branches = {
-        "table": _record(_field("table", _leaf("target_table"), required=True)),
-        "read": _record(_field("read", {"kind": "leaf", "hint": "flag"},
-                               required=True)),
+        "table": _leaf("target_table"),
+        "read": {"kind": "leaf", "hint": "flag"},
     }
     return _record(
         _field("name", _leaf("name"), required=True),

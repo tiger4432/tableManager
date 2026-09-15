@@ -15,6 +15,8 @@ what the grammar already knows, which is how a screen comes to disagree with a l
 import os
 import sys
 
+import pytest
+
 SERVER_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
@@ -65,8 +67,10 @@ def test_into_is_a_pick_one_of_writing_or_reading():
 
     assert into["kind"] == "oneOf"
     assert sorted(into["branches"]) == sorted(rule_shape.INTO_KINDS)
-    assert [f["key"] for f in into["branches"]["table"]["fields"]] == ["table"]
-    assert [f["key"] for f in into["branches"]["read"]["fields"]] == ["read"]
+    # [S-241-b, 판정 411] the branch node lives UNDER the key: `into: {"table": "dt_x"}`
+    # is a name, `into: {"read": true}` is a flag - neither is a record wrapping itself.
+    assert into["branches"]["table"]["kind"] == "leaf"
+    assert into["branches"]["read"] == {"kind": "leaf", "hint": "flag"}
 
 
 def test_the_key_and_limit_cells_come_from_their_own_lists():
@@ -76,6 +80,44 @@ def test_the_key_and_limit_cells_come_from_their_own_lists():
         list(rule_shape.KEY_CELLS)
     assert [f["key"] for f in _field(root, "limits")["node"]["fields"]] == \
         list(rule_shape._LIMIT_KEYS)
+
+
+# ---------------------------------------------------------------------------
+# 🔴 ⓐ-bis — [S-241-b, 판정 411] a branch node is what lives UNDER the branch key
+# ---------------------------------------------------------------------------
+
+#: What a real declaration puts at each branch, taken from the shapes this repository
+#: actually commits. The KEY is already the cell - so `into: {"table": "dt_x"}` means the
+#: `table` branch is the table NAME, not a record containing a `table` field.
+DECLARED_AT_BRANCH = {
+    ("derive", "join"): {"right_table": "r", "on": [], "take": []},
+    ("derive", "decide"): {"key": ["a"], "fields": ["b"]},
+    ("derive", "mapper"): "mappers.x.y",
+    ("into", "table"): "dt_x",
+    ("into", "read"): True,
+}
+
+
+@pytest.mark.parametrize("where,branch", sorted(DECLARED_AT_BRANCH))
+def test_a_branch_node_matches_what_a_declaration_puts_there(where, branch):
+    """🔴 MY FIRST CUT WRAPPED THREE OF THE FIVE ONE LAYER TOO DEEP, and the client
+    caught it by putting the server's JSON beside the committed declaration fixtures before
+    building against it (`fedf6a15`). A form built on the wrapped shape would have asked for
+    `into: {"table": {"table": "dt_x"}}` - a screen that cannot produce a declaration the
+    loader accepts, which is the two-authors defect arriving through a schema instead of
+    through prose.
+
+    ⚠️ `join` AND `decide` WERE ALREADY RIGHT, and that is the tell: their cell IS a
+    record. `mapper`, `table` and `read` are a name, a name and a flag."""
+    node = _field(_unified(), where)["node"]["branches"][branch]
+    declared = DECLARED_AT_BRANCH[(where, branch)]
+
+    if isinstance(declared, dict):
+        assert node["kind"] == "record", (where, branch, node)
+        drawn = {f["key"] for f in node["fields"]}
+        assert set(declared) <= drawn, (where, branch, sorted(set(declared) - drawn))
+    else:
+        assert node["kind"] == "leaf", (where, branch, node)
 
 
 # ---------------------------------------------------------------------------

@@ -360,17 +360,8 @@
               ]
             },
             "mapper": {
-              "kind": "record",
-              "fields": [
-                {
-                  "key": "mapper",
-                  "required": false,
-                  "node": {
-                    "kind": "leaf",
-                    "hint": "choice"
-                  }
-                }
-              ]
+              "kind": "leaf",
+              "hint": "choice"
             }
           }
         }
@@ -383,30 +374,12 @@
           "hint": "choice",
           "branches": {
             "table": {
-              "kind": "record",
-              "fields": [
-                {
-                  "key": "table",
-                  "required": true,
-                  "node": {
-                    "kind": "leaf",
-                    "hint": "ref"
-                  }
-                }
-              ]
+              "kind": "leaf",
+              "hint": "ref"
             },
             "read": {
-              "kind": "record",
-              "fields": [
-                {
-                  "key": "read",
-                  "required": true,
-                  "node": {
-                    "kind": "leaf",
-                    "hint": "flag"
-                  }
-                }
-              ]
+              "kind": "leaf",
+              "hint": "flag"
             }
           }
         }
