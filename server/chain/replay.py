@@ -185,6 +185,41 @@ def is_reference_side(rule: dict) -> bool:
     return bool(right) and trigger == right and trigger != (rule.get("target_table") or "")
 
 
+def replayable_rules_for(table: str) -> list:
+    """The rules an operator may replay FOR THIS TABLE - the loaded set, filtered (S-250).
+
+    🔴 THE SAME SET THE BACKFILL ACTUALLY RUNS. The grid's list came from
+    `GET /admin/chain/rules`, which hands back the FILE - so a unified join was invisible
+    (it declares `on.table`, not `trigger_table`), every synthesised rule was missing
+    (enrichment and the virtual joins are built by the loader, not written in that file),
+    and nothing could be filtered by table at all. A list that is not the set that runs is
+    a list that offers names the backfill will refuse.
+
+    ⛔ AND THE REFERENCE SIDE IS NOT ON IT, through the function that already decides
+    that (S-242). Replaying the follow-up half redoes, once per reference row, what the
+    target half does for every row - so `find_rule` refuses it by name, and a list that
+    offered it would be a screen inviting a refusal.
+
+    ⚠️ 「ENABLED」 IS ALREADY DECIDED UPSTREAM: `load_rules` keeps only enabled rules, so
+    a switched-off declaration cannot appear here and this function does not re-ask.
+    """
+    from chain import rule_shape
+
+    wanted = str(table or "")
+    out = []
+    for rule in load_rules():
+        if str(rule.get("trigger_table") or "") != wanted:
+            continue
+        if is_reference_side(rule):
+            continue
+        out.append({"name": rule.get("name"),
+                    "trigger_table": rule.get("trigger_table"),
+                    "target_table": rule.get("target_table"),
+                    "kind": rule_shape.declared_kind(rule)})
+    out.sort(key=lambda entry: str(entry["name"] or ""))
+    return out
+
+
 def order_rules(rules: list) -> list:
     """생산자가 소비자보다 먼저 — 저자는 `chain.rule_order` 다 (S-156).
 

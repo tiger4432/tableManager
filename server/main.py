@@ -5593,6 +5593,39 @@ def get_chain_rules():
         return {"status": "error", "message": read["error"], "data": []}
     return {"status": "success", "data": read["rules"]}
 
+
+@app.get("/admin/chain/rules/replayable", dependencies=[Depends(require_admin_token)])
+def get_replayable_chain_rules(table: str):
+    """이 표를 «트리거»로 하는, «다시 돌릴 수 있는» 체인 규칙만 (S-250).
+
+    🔴 그리드 배너가 쓰던 것은 위의 `/admin/chain/rules` — «파일 원문»입니다. 그래서
+    통합 join 은 «안 보였고»(`on.table` 을 쓰지 `trigger_table` 이 없습니다), 합성 규칙은
+    «아예 없었고»(enrichment·가상 조인은 로더가 세웁니다), 어느 표의 규칙인지 «거를 수»도
+    없었습니다. 소유자: 「같은 체인문이면 보여야지」.
+
+    ⛔ 목록과 실행이 «갈릴 수 없습니다» — `replay.replayable_rules_for` 는 소급이
+    실제로 도는 집합(`load_rules`)을 «그 함수»로 거르고, 참조 쪽 거절도 `find_rule` 이
+    쓰는 «그 판별식»(`is_reference_side`)을 지납니다. 두 번째 철자였다면 화면이 내미는
+    이름을 소급이 거절할 수 있습니다.
+
+    ⚠️ 모르는 표는 «빈 목록»이 아니라 «거절»입니다. 「이 표엔 규칙이 없다」와 「그런 표가
+    없다」는 다른 사실이고, 빈 목록으로 합치면 오타 친 운영자가 「규칙이 없구나」로 읽습니다.
+
+    ⚠️ 새 SQL 은 «0» 입니다 — 로더가 이미 읽은 것을 되돌려 줄 뿐입니다(§0-ter ①).
+    """
+    from chain import replay
+    from database import crud
+
+    wanted = str(table or "").strip()
+    if wanted not in crud.TABLE_CONFIG:
+        raise HTTPException(
+            status_code=404,
+            detail=("표 '%s' 가 카탈로그에 없습니다 — 「규칙이 없다」가 아니라 「그런 표가 "
+                    "없다」입니다. table_config.json 에 등록된 이름인지 확인하십시오"
+                    % wanted))
+    return {"status": "success", "data": replay.replayable_rules_for(wanted)}
+
+
 @app.get("/admin/mappers/list", dependencies=[Depends(require_admin_token)])
 def get_mappers():
     """등록된 맵퍼 파일들과 내부 매핑 함수 목록을 반환합니다.

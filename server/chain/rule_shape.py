@@ -55,6 +55,43 @@ def from_chain_rule(raw: dict, origin: str = "declared") -> dict:
     }
 
 
+#: The three words a declaration's `derive.kind` can say. A LOADED rule has already been
+#: translated to today's flat shape, so the word has to be read back off what it RUNS.
+DECLARED_KINDS = ("join", "decide", "mapper")
+
+
+def declared_kind(rule: dict) -> str:
+    """A loaded chain rule -> the word its DECLARATION would use for it.
+
+    🔴 THE OPERATOR'S WORD, NOT THE PLUMBING'S. A screen that offers 「builtin:join_into」
+    or 「enrichment_dedup:」 is asking the reader to know this product's internals to pick a
+    rule - the same defect the COLLECT dropdown had when it offered `point` and `collection`
+    (2026-08-27: 「사용자가 claim, point, collection 이런 걸 어케 암」).
+
+    ⚠️ IT IS NOT `builtins.synthesized_kind_counts`, AND THE DIFFERENCE IS THE QUESTION.
+    That function asks 「how many rules did the PRODUCT synthesise, of each origin」 for the
+    boot line; this asks 「what does the DECLARATION behind this rule say it is」. Same
+    prefixes, different subjects - folding them would make one answer serve two questions.
+    """
+    from chain import join_into
+    from enrichment import config as enrichment_config
+    import virtual_join.config as vjc
+
+    rule = rule if isinstance(rule, dict) else {}
+    mapper = rule.get("mapper")
+    if mapper in (join_into.JOIN_INTO_MAPPER, vjc.JOIN_MAPPER):
+        return "join"
+    # ⚠️ BOTH HALVES OF A `decide` DECLARATION ANSWER 「decide」. The dedup half and its
+    # auto-confirm companion come from ONE declaration, and an operator reading a list of
+    # rules for one table should see what the declaration says, not which half they got.
+    name = str(rule.get("name") or "")
+    if (mapper == enrichment_config.AUTO_CONFIRM_MAPPER
+            or name.startswith(enrichment_config.DEDUP_PREFIX)
+            or name.startswith(enrichment_config.AUTO_CONFIRM_PREFIX)):
+        return "decide"
+    return "mapper"
+
+
 def as_chain_rule(internal: dict) -> dict:
     """내부 규칙 -> 오늘의 체인 규칙 dict. `from_chain_rule` 의 역이다."""
     out = {}
