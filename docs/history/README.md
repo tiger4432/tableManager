@@ -1,13 +1,18 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **852개** 이력. (거버넌스 규칙 #4)
+> 총 **857개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-09 (September 2026)
 
+- **2026-09-15 10:31** — [Enrich Became A Decide Kind Through One Expander With Two Front Doors](./20260915_103121_enrich_became_a_decide_kind_through_one_expander_with_two_front_doors.md)
+- **2026-09-15 10:05** — [A Left Row With Two Right Answers Is Written By Neither](./20260915_100554_a_left_row_with_two_right_answers_is_written_by_neither.md)
+- **2026-09-15 09:47** — [One Declarations Failure No Longer Blocks Another Tables Read](./20260915_094712_one_declarations_failure_no_longer_blocks_another_tables_read.md)
+- **2026-09-15 09:41** — [Off Still Touched The Database And A Probe Poisoned The Read](./20260915_094114_off_still_touched_the_database_and_a_probe_poisoned_the_read.md)
+- **2026-09-15 09:33** — [A Rule That Cannot Fire Was Closing Cycles](./20260915_093316_a_rule_that_cannot_fire_was_closing_cycles.md)
 - **2026-09-15 09:31** — [The Day Strictness Invalidated What Was Already Running](./20260915_093113_the_day_strictness_invalidated_what_was_already_running.md)
 - **2026-09-13 23:54** — [The Order Landed Twice And A View Pages By Its Composite](./20260913_235436_the_order_landed_twice_and_a_view_pages_by_its_composite.md)
 - **2026-09-13 21:32** — [The Authoring Guides Moved To The Repository Entrance](./20260913_213255_the_authoring_guides_moved_to_the_repository_entrance.md)
