@@ -424,6 +424,36 @@ PG_TEST_TABLE_CONFIG = {
 }
 
 
+
+def creatable_tables(metadata, catalogue=None):
+    """The tables of `metadata` whose SHAPE this harness is entitled to author (S-260).
+
+    🔴 A RELATION THE CATALOGUE DECLARES `kind: view` HAS ITS SHAPE WRITTEN SOMEWHERE
+    ELSE, and `create_all` authors a LOOKALIKE that gets there first. Ten of this box's
+    eleven are SQL views the operator wrote; the eleventh is `ledger_events` - a physical
+    table declared a view so the write door refuses it (S-186) - and its real author is the
+    ledger's own DDL: partitioned, `object_payload` jsonb. A catalogue entry's
+    `column_types` for such a relation describes what a READER sees, so copying it built a
+    varchar `ledger_events` in the scratch schema and the product's own `ensure_schema`
+    then died adding `CHECK jsonb_typeof(object_payload)` to it. Measured 2026-09-16: 29
+    proofs down, as ERRORS rather than failures, and only on a box that has a live
+    `table_config.json` - which is why the suite pinned to sqlite never saw it.
+
+    ⚠️ ASKED OF THE DECLARATION, NOT OF THE DATABASE. `models.sync_dynamic_tables_schema`
+    asks `inspector.get_view_names()` because by then the relation exists; here NOTHING
+    exists yet, so the catalogue is the only thing that can answer - through
+    `setup_bundle.catalog_kind`, the one place that defaults the word (S-187). A name the
+    catalogue does not hold is a table, which is the framework's own relations.
+    """
+    from ledger.setup_bundle import catalog_kind
+
+    if catalogue is None:
+        from database import crud
+        catalogue = crud.TABLE_CONFIG
+    return [table for table in metadata.tables.values()
+            if catalog_kind((catalogue or {}).get(table.name)) != "view"]
+
+
 @pytest.fixture(scope="session")
 def pg_engine():
     """An Engine on a scratch SCHEMA of the declared isolated database.
@@ -473,8 +503,19 @@ def pg_engine():
             pytest.skip(f"PostgreSQL is not reachable at the declared URL: "
                         f"{str(exc).strip().splitlines()[0]}")
 
+        # ⛔ NOT EVERY MAPPED TABLE IS THIS HARNESS'S TO BUILD (S-260). A relation
+        # declared `kind: view` is shaped by its own author - the operator's SQL, or for
+        # `ledger_events` the ledger's partitioned jsonb DDL - and a copy built from the
+        # catalogue's read-side `column_types` would get there FIRST. Named rather than
+        # skipped in silence: a proof that later cannot find one of these should read this
+        # line instead of an unexplained `UndefinedTable`.
         scratch = MetaData(schema=PG_TEST_SCHEMA)
-        for table in list(Base.metadata.tables.values()):
+        creatable = creatable_tables(Base.metadata)
+        declined = sorted(set(Base.metadata.tables) - {t.name for t in creatable})
+        if declined:
+            print("[pg_engine] not built here, declared `kind: view` (%d): %s"
+                  % (len(declined), ", ".join(declined)))
+        for table in creatable:
             table.to_metadata(scratch, schema=None)
 
         with engine.begin() as conn:
