@@ -205,8 +205,11 @@ console.log('\n[5] the rule has one home');
   ok('the view builds no closed-list dropdown of its own', !view.includes("oe-field-select"));
   ok('...it asks the part instead', view.includes('renderClosedList')
     && view.includes('closedListChoice'));
-  eq('and it asks from BOTH sites, not one',
-    (view.match(/renderClosedList\(/g) || []).length, 2);
+  // ⚠️ C-111 에서 자리가 «셋»이 됐습니다: 잎의 닫힌 목록 · 후보 고르기 · 「셋 중 하나」의
+  //    가지 고르개(판정 407). 수를 올리는 것이 이 오라클을 무디게 하지 않습니다 — 이 줄이 한 일이
+  //    바로 「새 자리가 생겼다」를 말해 준 것이고, 그 자리도 «부품에게 묻습니다».
+  eq('and it asks from ALL THREE sites, never building one',
+    (view.match(/renderClosedList\(/g) || []).length, 3);
 }
 
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
