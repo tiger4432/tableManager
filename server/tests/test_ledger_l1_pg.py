@@ -405,6 +405,7 @@ def count(engine, where="TRUE", params=()):
 
 
 # ----------------------------------------------------------------------- idempotency
+@pytest.mark.pg
 def test_a_second_run_reads_nothing_and_duplicates_no_atom(ledger):
     """Net 1. The brief's risk 1: a re-run must not duplicate atoms.
 
@@ -474,6 +475,7 @@ def _rebuilt_mapper_registry():
 
 # ⚰️ `test_a_rule_change_produces_NEW_atoms_rather_than_silently_none` - died with `run(reset_cursor=...)` and a v1 `vocabulary.slot_pairing` edit. The property - a changed fingerprint writes NEW atoms rather than deduping into silence - is what `source_translator_ver` in `uq_ledger_atom` enforces and what S-87's cases now measure.
 
+@pytest.mark.pg
 def test_a_molecule_the_declaration_cannot_say_is_refused_counted_and_NAMED(ledger, caplog):
     """🔴 THE REFUSAL IS READ FROM THE OPERATOR'S LOG, not from the return value (판정 219).
     A refusal a caller can see and an operator cannot is the silent-skip defect wearing a
@@ -638,6 +640,7 @@ def atoms_per_subject(engine):
 
 # ⚰️ `test_a_subject_type_the_source_never_declared_is_refused_by_the_REAL_backfill` - died with `subject_types` - absent from the v5 grammar entirely.
 
+@pytest.mark.pg
 def test_a_molecule_cannot_land_half(ledger):
     """🔴 The brief's rule: the transaction unit is one source event. Force a failure
     after the first chunk of a molecule has already been INSERTed and show that nothing
@@ -651,6 +654,7 @@ def test_a_molecule_cannot_land_half(ledger):
                         f"is not holding")
 
 
+@pytest.mark.pg
 def test_the_cursor_does_not_advance_past_a_failed_batch(ledger):
     _forced_failure_run(ledger, commit_between_chunks=False)
     connection = ledger.raw_connection()
@@ -661,6 +665,7 @@ def test_the_cursor_does_not_advance_past_a_failed_batch(ledger):
 
 
 # ------------------------------------------------------------- type preservation, real
+@pytest.mark.pg
 def test_integer_zero_and_string_zero_survive_the_jsonb_round_trip(ledger):
     """Design section 3: the render audit where integer 0 and string "0" became the
     same thing, and NULL became empty. Asserted against the real column, because the
@@ -721,6 +726,7 @@ def _expect_integrity_error(engine, sql, params):
 
 # ⚰️ `test_only_register_may_have_no_object_and_register_may_have_nothing_else` - died with `ck_ledger_register_has_no_object`, which S-77 RETIRED ON PURPOSE on 2026-09-09: it read `(predicate = 'register') = (object_kind IS NULL)`, a domain word in the storage layer. Which predicates are objectless is a declared fact now and `roleframe` refuses an emission that disagrees - the same reason the matching injection was buried.
 
+@pytest.mark.pg
 def test_atoms_route_into_the_month_partition_they_belong_to(ledger):
     run(ledger)
     # ⚠️ READ FROM THE DATABASE, NOT FROM THE RETURN. The result used to carry a
@@ -740,6 +746,7 @@ def test_atoms_route_into_the_month_partition_they_belong_to(ledger):
     assert sum(routed.values()) == count(ledger)
 
 
+@pytest.mark.pg
 def test_the_ledger_is_partitioned_at_all(ledger):
     """A `CREATE TABLE` that quietly lost its `PARTITION BY` would pass every other
     test in this file, and re-adding it later is a full table rewrite."""
@@ -905,6 +912,7 @@ def test_pg_injection_count_is_declared():
 
 @pytest.mark.parametrize("name,injection", PG_INJECTIONS,
                          ids=[n for n, _ in PG_INJECTIONS])
+@pytest.mark.pg
 def test_pg_guard_goes_red_under_injection(ledger, name, injection):
     with pytest.raises((AssertionError, ValueError)) as caught:
         injection(ledger)
@@ -914,6 +922,7 @@ def test_pg_guard_goes_red_under_injection(ledger, name, injection):
     assert not isinstance(caught.value, AssertionError), str(caught.value)
 
 
+@pytest.mark.pg
 def test_two_independent_refusals_are_counted_and_named_in_one_run(ledger, caplog):
     """🔴 A BREAKDOWN THAT COULD ONLY EVER HOLD ONE KEY WOULD BE USELESS (판정 220).
 
@@ -957,6 +966,7 @@ def test_two_independent_refusals_are_counted_and_named_in_one_run(ledger, caplo
 
 # ---------------------------------------------------------------- S-113 ⓑ-1: the registry row
 
+@pytest.mark.pg
 def test_the_census_tick_creates_the_registry_row_and_never_moves_a_fingerprint(ledger):
     """S-113 ⓑ-1 (ruling 221): the ONE place a source gets its row, and what it must not do.
 
@@ -1008,6 +1018,7 @@ def test_the_census_tick_creates_the_registry_row_and_never_moves_a_fingerprint(
 
 # ------------------------------------------------------- S-113 ⓓ-2 / S-114: the breakdown lands
 
+@pytest.mark.pg
 def test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row(ledger):
     """S-114: the process that TRANSLATES is the one that writes why it refused.
 

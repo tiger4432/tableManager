@@ -15,6 +15,9 @@ import os
 import pandas as pd
 import pytest
 from sqlalchemy import Column, DateTime, String, create_engine, text
+
+# Every test here drives `clean_pg_v2`, which skips without a declared PostgreSQL (S-256).
+pytestmark = pytest.mark.pg
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.pool import NullPool
 

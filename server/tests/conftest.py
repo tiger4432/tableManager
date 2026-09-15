@@ -605,3 +605,22 @@ def client(db_session):
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as test_client:
         yield test_client
+
+
+# ===========================================================================
+# Markers  [S-256]
+# ===========================================================================
+# There is no pytest.ini / pyproject [tool.pytest] in this repository, so this hook IS
+# the pytest configuration. `pg` names the proofs only PostgreSQL can carry - the ones
+# whose fixtures (`pg_engine`, `pg_session`, the isolated_pg suites) already skip on the
+# in-memory sqlite this suite is pinned to. SQLite accepts what PostgreSQL refuses, so a
+# green sqlite run says nothing about them; `server/scripts/run_pg_tests.py` runs
+# `pytest -m pg` against this box's PostgreSQL before a restart, and `-m "not pg"` is
+# the rest of the suite. A marker that is not registered is only a warning, and a
+# warning is how a typo like `pgs` would silently drop a proof out of both runs.
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "pg: a proof only PostgreSQL can carry; skips on sqlite, runs under "
+        "server/scripts/run_pg_tests.py (S-256)")

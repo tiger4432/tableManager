@@ -756,6 +756,7 @@ def test_a_reach_of_zero_reports_whether_the_side_could_have_reached_that_kind()
     assert ranked["rB"]["reach"] == [0, 1] and ranked["rB"]["reachable"] == [1, 1]
 
 
+@pytest.mark.pg
 def test_sql_lookup_round_trip_uses_persisted_event_identity(pg_engine):
     from ledger.envelope import Atom
     from ledger.store import LedgerStore

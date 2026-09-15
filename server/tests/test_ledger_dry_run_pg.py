@@ -26,6 +26,9 @@ import sys
 
 import pytest
 
+# Every test here drives `pg`, which skips without a declared PostgreSQL (S-256).
+pytestmark = pytest.mark.pg
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from ledger import dry_run, schema                                   # noqa: E402

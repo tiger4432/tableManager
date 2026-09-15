@@ -31,6 +31,9 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
+# Every test here drives `pg_session`, which skips without a declared PostgreSQL (S-256).
+pytestmark = pytest.mark.pg
+
 from conftest import PG_TEST_SCHEMA, _resolve_pg_test_url
 from database import crud, schemas
 

@@ -143,3 +143,11 @@ Transaction … permanently failed: N event(s) -> FAILED. 원인: <예외 문장
 * ⛔ **같은 이름을 두 파일에 적으면 «거절»입니다** — 한 이름은 한 조인입니다. 거절 줄이 그 이름을 댑니다.
 * 이 선언은 «체인 규칙이 아닙니다» — 부팅 줄의 `[ChainRules] set(N)` 에 «안 뜹니다»(쓰는 게 없으니 트리거도 맵퍼도 없습니다). 가상 조인 쪽 줄에서 확인하십시오.
 * 기존 `virtual_join_rules.json` 은 «그대로 읽힙니다». 옮길 필요 없습니다.
+
+## 6. 재기동 «전» PG 시험 (S-256)
+
+```bash
+python scripts/run_pg_tests.py
+```
+
+* SQLite 가 «받아 주는» 것을 PostgreSQL 이 «거절하는지»를 이 박스의 PG 서버(격리 DB, 운영 DB 는 이름으로 거절)에서 잽니다 — `passed` 면 재기동 · `skipped` 는 «통과가 아닙니다»(`-rs` 줄이 이유: 서버 도달 불가·확장 없음) · `failed` 면 재기동 «전»에 고침 · `REFUSED` 한 줄(종료 64)이면 서버 DB 가 PG 가 아니거나 격리 DB 선언이 없는 것 — `ASSY_PG_TEST_DATABASE_URL=postgresql://…/assy_qa` 로 선언합니다.

@@ -520,6 +520,7 @@ def _assert_guard_holds(opener, url):
 
 
 @pytest.mark.parametrize("opener", DOORS)
+@pytest.mark.pg
 def test_every_one_of_the_seven_doors_refuses_a_real_write(opener, pg_url):
     """🔴 THE TABLE. Each script's own read-only path, exercised as the script
     opens it, against a live server."""
@@ -527,6 +528,7 @@ def test_every_one_of_the_seven_doors_refuses_a_real_write(opener, pg_url):
 
 
 @pytest.mark.parametrize("module", GUARDS)
+@pytest.mark.pg
 def test_the_guard_does_not_depend_on_the_isolation_level(module, pg_url):
     """The connect-time arm holds on a connection nobody put into AUTOCOMMIT.
 
@@ -545,6 +547,7 @@ def test_the_guard_does_not_depend_on_the_isolation_level(module, pg_url):
         engine.dispose()
 
 
+@pytest.mark.pg
 def test_the_same_three_writes_succeed_without_the_guard(pg_url):
     """The control arm. Without it, the refusals above would be equally
     consistent with three broken statements."""
@@ -559,6 +562,7 @@ def test_the_same_three_writes_succeed_without_the_guard(pg_url):
         engine.dispose()
 
 
+@pytest.mark.pg
 def test_the_old_pattern_fails_the_property_this_file_pins(pg_url):
     """🔴 THE DEFECT, RUN. Without this the assertions above have never been seen
     to fail and could all be tautologies.
@@ -593,6 +597,7 @@ def test_the_old_pattern_fails_the_property_this_file_pins(pg_url):
 
 
 @pytest.mark.parametrize("module", GUARDS)
+@pytest.mark.pg
 def test_the_repaired_engine_refuses_where_the_old_pattern_did_not(module, pg_url):
     """The two arms side by side, on one server, in one test: the arrangement
     that accepts a write above is refused by the engine these scripts now open."""
@@ -708,6 +713,7 @@ def test_the_home_exposes_both_working_spellings_rather_than_picking_one():
         db_safety.open_readonly_connection(object(), mode="whatever-looks-safe")
 
 
+@pytest.mark.pg
 def test_choosing_the_wrong_mode_is_a_refusal_and_not_a_hole(pg_url):
     """The mode names a MECHANISM, so a caller can pick the wrong one for their
     engine. That must surface as a refusal, because the verdict comes from the

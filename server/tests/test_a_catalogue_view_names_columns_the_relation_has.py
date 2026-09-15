@@ -99,6 +99,7 @@ def test_the_entry_is_still_a_read_only_view_with_a_total_order(catalog):
 # The witness that owes nothing to a Python list
 # ---------------------------------------------------------------------------
 
+@pytest.mark.pg
 def test_the_catalogue_matches_what_ensure_schema_builds(catalog):
     """🔴 ASKS POSTGRESQL, because both assertions above lean on `ROW_COLUMNS` and a list
     can be wrong in the same direction as the declaration that copied it. This runs the
