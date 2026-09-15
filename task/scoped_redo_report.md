@@ -43629,3 +43629,30 @@ expand_declaration(declaration, table_config) -> (세울 규칙들, 거절, 노�
 게이트 **10** 신설 · 변이 넷 전부 빨강(원문 재판정 5 · 반쪽 해결기 5 · 평면 규칙도 번역 7 · OFF 를 거절로 1) · 저장 관문·`rule_refusals`·`rule_shape`·로더·raw 라우트·고리 검증기를 이름 대는 시험 **344 passed** · `--collect-only` **6,626** 에러 0. 첫 실행 없음 · 재기동은 총괄 몫입니다.
 
 > 📌 **[09-15 11:5x] 이 채널의 미답 질문: «하나» — S-242 ②의 격리 범위(그대로 열려 있음).** 다음은 지시대로 S-242 입니다.
+
+---
+
+## ✅ [09-15 12:4x] S-248 착지 `90d971ba` — 인덱스가 산다 ⇔ 조인이 산다
+
+운영을 막고 있던 줄입니다. 제품이 세운 `uq_vjoin_*` 은 «켜지고 검증된» 가상 조인이 요구하는 동안만 살고, 그 조인이 거절·이관·꺼지면 제품이 걷어내고 한 줄로 말합니다.
+
+```
+unique_key.product_indexes(db)            접두 uq_vjoin_ 인 «제품의» 유일 인덱스 전부 (접두가 안전장치 — 운영자 이름은 애초에 모집단 밖)
+unique_key.retract_unrequired_once(db, required)
+      · 요구 집합(frozenset)마다 «한 번» 메모 — 읽기 경로 TTL 뒤에서 두 번째부터 DB 무접촉
+      · ASSY_VJOIN_AUTO_INDEX=0 이면 «DB 를 한 번도» 안 만짐(ensure_once 가 배운 그 문장)
+      · postgresql 아니면 이름 대고 skip · probe 실패는 롤백 + 사유 (세션을 안 죽임)
+      · DROP INDEX CONCURRENTLY IF EXISTS "이름" — 하나 실패해도 나머지 계속
+config.load_verified_rules 끝            path is None 일 때만 호출(부분 목록으로 실물을 지우지 않게) · try/except 로 로딩을 절대 안 깨뜨림
+```
+🔴 접두 문자열은 여기서 «다시 적지 않았습니다» — `config.INDEX_PREFIX` 를 읽습니다. 「어느 것이 우리 것인가」에 답이 둘이면 안 됩니다.
+
+### 🔴 그리고 이 장애가 «하루 동안 안 보였던» 이유를 고쳤습니다
+「permanently failed」 줄이 실은 것이 traceback 의 «첫 줄»(=「Traceback (most recent call last):」)이었습니다. 운영자가 받은 한 줄이 아무 말도 안 하고, 원인을 적은 문장은 잘린 아래에 있었습니다. 지금은 «마지막» 비어 있지 않은 줄을 「원인: 」과 함께 싣습니다.
+⚠️ 그 자리를 «함수로 빼서»(`failure_cause`) 직접 채점했습니다 — 모듈 텍스트를 읽는 단언은 줄이 재배치되면 빨개지고 주석에 낱말이 들어가면 초록이 됩니다.
+
+게이트 **8** · 변이 다섯 전부 빨강(메모 망각 1 · 스위치 무시 1 · 요구되는 것까지 DROP 2 · probe 실패를 던짐 1 · 원인을 첫 줄로 1) · `unique_key`·`virtual_join`·실패 줄을 이름 대는 시험 **977 passed** · `--collect-only` **6,634** 에러 0.
+
+⚠️ **제가 «안 잰» 것**: 이 박스의 라이브 `uq_vjoin_dt_inventory_…` 가 다음 로드에서 실제로 걷히는지. 그건 재기동이고 총괄 몫이며, 첫 실행에서 드러납니다.
+
+> 📌 **[09-15 12:4x] 이 채널의 미답 질문: «둘» — S-242 ②의 격리 범위 · S-249 의 ㉠/㉡/㉢.** 다음은 지시 순서대로 S-249 입니다.
