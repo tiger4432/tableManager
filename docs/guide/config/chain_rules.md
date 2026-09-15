@@ -1,6 +1,6 @@
 # `chain_rules.json` 세팅 — 체인 인제션 룰
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-09-08 00:5x (§5 를 «코드가 읽는 키» 전수로 다시 씀 — 파일 수준·프레임워크·맵퍼 사설 «세 층», `reads`·`slow_warn_ms`·`max_chain_depth`·표 역할 키 추가, «없는 것» 절) · 직전 2026-09-05 (§5 키 표에 `source_table`·`allow_chain_trigger`·`allow_map_metadata_upsert` 세 행 추가 — 그중 마지막이 «둘째 엣지»다) · 직전 2026-08-13 (§5 키 표에 **제거 전략 옵트인 둘**(`allow_replace_map`·`allow_retraction`)과 **`*_job_column` 명시 선언** 행 추가 — `4d5198c`. 셋 다 표에 없어서, `dt_map`처럼 맵 키가 둘인 타깃에서 왜 체인이 이름을 대며 거절하는지 이 문서만으로는 알 수 없었다) | **Owner:** Ingester
+> **Status:** 🟢 Living | **Last-verified:** 2026-09-15 (§5-B-bis 통합 선언 키 신설 — join · decide · `enabled` 의 두 뜻) · 직전 2026-09-08 00:5x (§5 를 «코드가 읽는 키» 전수로 다시 씀 — 파일 수준·프레임워크·맵퍼 사설 «세 층», `reads`·`slow_warn_ms`·`max_chain_depth`·표 역할 키 추가, «없는 것» 절) · 직전 2026-09-05 (§5 키 표에 `source_table`·`allow_chain_trigger`·`allow_map_metadata_upsert` 세 행 추가 — 그중 마지막이 «둘째 엣지»다) · 직전 2026-08-13 (§5 키 표에 **제거 전략 옵트인 둘**(`allow_replace_map`·`allow_retraction`)과 **`*_job_column` 명시 선언** 행 추가 — `4d5198c`. 셋 다 표에 없어서, `dt_map`처럼 맵 키가 둘인 타깃에서 왜 체인이 이름을 대며 거절하는지 이 문서만으로는 알 수 없었다) | **Owner:** Ingester
 > 상위: [폴더 인덱스](./README.md) · 동작 원리 정본은 [chain_ingestion_guide](../chain_ingestion_guide.md) · 절차 요약은 [CONFIG_GUIDE §3-S8](../CONFIG_GUIDE.md)
 
 <!-- Loader evidence (2026-07-28):
@@ -79,7 +79,7 @@ conda run -n assy_manager python server/scripts/backup_config.py restore chain_r
 | 키 | 읽는 곳 | 의미 · 기본값 |
 |---|---|---|
 | `name` | 워커 · 리플레이 · bindings · 큐 패널 | 규칙 식별자. 로그·화면·소급 실행의 «인자»가 이 이름이다 |
-| `enabled` | 워커 | `false` 면 비활성. **생략 = 켜짐**. 꺼진 규칙은 순환 검사 그래프에 안 들어간다 |
+| `enabled` | 워커 | `false` 면 비활성. **생략 = 켜짐**. 꺼진 규칙은 순환 검사 그래프에 안 들어가고, 순서 유도(`chain/rule_order`)도 꺼진 규칙·`follow_up` 규칙을 엣지로 안 센다(2026-09-15) |
 | `trigger_table` | 워커 · 리플레이 · bindings(역할 read) | 이 표의 변경이 발화. 순환 검사의 «엣지 출발점». 🔴 **정확히 한 트리거** |
 | `target_table` | 워커 · 리플레이 · SDK · bindings(역할 write) | 맵퍼 행이 가는 표. «엣지 도착점». `@mapper` 는 «이 선언»에서 비즈니스 키 층을 정한다 — 규칙이 안 주면 데코레이터 인자로 |
 | `source_table` | bindings(역할 read) · 맵퍼 | 맵퍼가 «읽는» 표. 엣지가 «아니다» — `trigger_table` 과 뜻이 겹쳐 보여 바꿔 읽기 쉽다 |
@@ -94,6 +94,18 @@ conda run -n assy_manager python server/scripts/backup_config.py restore chain_r
 | `map_table` · `inventory_table` · `derivation_source_table` · `metadata_target_table` | bindings `RULE_TABLE_KEYS`(역할 read) · 각 맵퍼 | 맵퍼가 «여는» 표 이름들. 순서 가드가 «읽기»로 센다. ⚠️ `metadata_target_table` 은 이름과 달리 «소스»(read)다 — 개명 가부는 S-29(소유자) |
 | `reference` `{table, …}` | bindings `REFERENCE_BLOCK` · `core_alignment_mapper` | 실행 시점에 map_id 가 정해지되 «표 집합»은 선언인 참조. 순서 가드는 «표»만 본다 |
 | `*_job_column` (`trigger_`·`source_`·`target_`·`inventory_`·`reference_`) · `job_column` | `chain_bindings.resolve_column` | 잡 컬럼 이름의 «명시 선언». 미선언이면 `table_config`(`map_key_columns` 단일 컬럼 → `business_key`)에서 유도, 그래도 없으면 «이름 대어 거절». 🔴 `map_key_columns` 가 둘 이상인 타깃은 «반드시» 선언 |
+
+### 5-B-bis. 통합 선언 키 — `derive` 가 있는 규칙 (S-237 join · S-239 decide, 2026-09-15)
+
+`derive` «한 칸»이 새 문법의 판별이다. 있으면 `chain/rule_shape` 가 오늘의 규칙 dict 로 번역하고, 없으면 위 5-B 그대로다. 모양·절차는 `RUN.md` §5, 왜는 [BASIS §0-bis](../../architecture/BASIS.md).
+
+| 키 | 읽는 곳 | 의미 |
+|---|---|---|
+| `derive.kind` | `rule_shape` | `join` = `builtin:join_into` 가 오른쪽 값을 «표에 쓴다»(선언 하나 → 규칙 둘: 왼쪽 트리거 + 오른쪽 트리거 `follow_up`) · `decide` = enrich(`enrichment.config.chain_rules_for` — 옛 `enrichment_rules.json` 과 «같은 확장기») |
+| `derive.join` / `derive.decide` | `rule_shape` | 종류별 칸. 모르는 칸은 «이름 대고» 규칙은 돈다(`unknown_join_cells`·`unknown_decide_cells`). `decide.auto_confirm` 은 칸이다(판정 400); «적었나»는 칸이 아니라 키 존재에서 유도(판정 401) |
+| `on.table` · `into.table` | `rule_shape` | 트리거 표 · 쓰는 표. `on.columns` 는 join 에서 적지 않는다 — 왼쪽 키에서 유도(판정 398) |
+| `key.columns` · `key.unique` | 🔴 **오늘 아무도 안 읽는다**(S-240 대기) | join 의 오른쪽 중복은 인덱스가 아니라 쓰기 시점 «행 단위 그물»이 잡는다 — 답이 둘인 왼쪽 행만 이름 대고 건너뛴다(배치당 경고 한 줄), 나머지는 써진다 |
+| `enabled` | 로더(`rule_shape.is_switched_off`) | `false` 면 규칙이 «안 선다» — DB 도 안 만진다(판정 399, ③′). 5-B 의 `enabled` 가 로드 «뒤» 걸러지는 것과 다르다. `ASSY_CHAIN_SYNTHESIZE` 는 여기 닿지 않는다(옛 파일 파생분만 끈다) |
 
 ### 5-bis. 맵퍼 «사설» 키 — 프레임워크가 «안 읽고 안 검증한다» (출하 샘플 기준)
 

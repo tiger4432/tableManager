@@ -1,6 +1,6 @@
 # `virtual_join_rules.json` 세팅 — 저장하지 않는 조인(virtual join) 선언
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-12 (**§2-ter 신설 — 조인 비용의 실측 모양**(`16b49ef`): `attach`의 **58%가 SQL**(10,000행 페이지 하나에 왕복 20회 = 선언 둘 × 청크 10, `CHUNK_SIZE=1000`)이고 노출 컬럼 넷이 **전부 `virtual_only`**라 비용은 구성상 O(행)이다 — 깎을 수 있는 것은 셀당 상수뿐. 🔴 **「이 루프는 무조건 돈다」가 거짓**이었다: `attach`는 테이블당 단락하고 선언을 가진 왼쪽 테이블은 14개 중 `dt_log` 하나이며, **격리 `assy_qa`에서는 두 선언 모두 거부**돼(중복 키 → UNIQUE 인덱스 생성 불가) 그 박스의 `attach`는 0.0 ms다. 함께 §「정확성 제약」에 **코드 사본 경고** 추가 — `virtual_join/executor.py`·`main.py`가 아직 「UNIQUE 인덱스를 그대로 탄다」고 적고 있다(성능 주장으로는 거짓, 총괄 라우팅 대상). 직전 2026-08-04: **§2-bis 신설 — 표기 정규화가 걸린 조인 키에서는 세 번째 배제가 뒤집힌다**(`8d306a5`): 접힌 비교는 컬럼 유일성이 아니라 **식 유일성**을 요구하므로 **함수 인덱스만 후보**가 되고 평범한 컬럼 UNIQUE는 배제된다. 🔴 이유는 성능이 아니라 **정확성**이다 — 원본으로 다른 두 행이 접히면 한 값이라 컬럼 UNIQUE가 있어도 접힌 키로는 중복이다. 함께 **「이 인덱스는 정확성 제약이지 조회 계획이 아니다」** 절 신설: 실측 플랜은 `Hash Left Join` + 오른쪽 `Seq Scan`이고 **인덱스의 성능 역할은 한 번도 행사된 적이 없다**(조인이 더한 버퍼는 왼쪽 15,469행에서도 103,040행에서도 **4**). 인덱스는 팬아웃 방지로 **여전히 필수**다. 직전 라운드: **N7 — 숫자 expose 컬럼이 읽기 표면 전체에서 동작한다.** 2026-08-02 사용자 보고: `number` 타입 컬럼을 노출하면 조회가 SQL 계층에서 500이었다 — 해석식이 `COALESCE(double precision, '미상')`을 만들었고 PostgreSQL이 타입 불일치로 거절했다. 수정: 숫자 컬럼은 COALESCE **이전에** 정본 비교 텍스트로 렌더한다(`crud.numeric_text_sql` — 정수값이면 INT 철자, `3.0`이 아니라 `3`). §4-ter 참조. **§9의 검색·CSV 두 미해결은 `cd3e0f4`(2026-07-31)로 이미 해소**돼 있었고 이번에 문서를 따라잡혔다. 직전 라운드 기록은 히스토리로) — 이전: 2026-07-31 (**같은 날 네 번째 라운드 — 화면 착지 `9200f20`+`4b50135`**: `/schema`가 가상 컬럼을 **별도 키 `virtual_columns`로** 알리고 그리드가 그것을 **덧붙여** 그린다. 🔴 **`columns`에 합치지 않는 것이 설계의 전부**다 — 그 배열의 뜻은 「저장하는 컬럼」이고 소비자 넷이 그 뜻에 기댄다. 🔴 **그리는 순간 그 컬럼은 붙여넣기·비우기·일괄채우기의 대상이 되므로** 클라에 술어 하나(`isVirtualColumn`)를 두어 제안을 막는다(강제는 여전히 서버 깔때기). §9의 첫 미해결 항목이 **해소**됐고 **새 미해결 둘**(CSV 추출 누락 · `미상` 행 검색 불가)이 그 자리에 들어왔다. 직전: **신설 → 같은 날 게이트 확정 → 같은 날 실행기 착지 `d70a33d`**. 사용자 판정 「인덱스 없으면 거절해」로 **승인 근거가 UNIQUE 인덱스 하나**가 됐고, 직전 판의 3등급 모델(`unique_index`/`probe_clean`/`unverified`)과 중복 프로브·예산·`incomplete` 상태는 **삭제**됐다. **조인은 이제 실제로 실행된다** — `server/virtual_join/executor.py`가 읽기 경로에서 `expose` 컬럼을 붙이고, **이름 충돌 거부는 해제**돼 「부재일 때만 채운다」가 됐다(§4-bis)) | **Owner:** Backend / 총괄
+> **Status:** 🟢 Living | **Last-verified:** 2026-09-15 (검증은 자기 세션 · 규칙 단위 거절 · 자동 인덱스 스위치는 DB 무접촉 — §운영 메모) · 직전 2026-08-12 (**§2-ter 신설 — 조인 비용의 실측 모양**(`16b49ef`): `attach`의 **58%가 SQL**(10,000행 페이지 하나에 왕복 20회 = 선언 둘 × 청크 10, `CHUNK_SIZE=1000`)이고 노출 컬럼 넷이 **전부 `virtual_only`**라 비용은 구성상 O(행)이다 — 깎을 수 있는 것은 셀당 상수뿐. 🔴 **「이 루프는 무조건 돈다」가 거짓**이었다: `attach`는 테이블당 단락하고 선언을 가진 왼쪽 테이블은 14개 중 `dt_log` 하나이며, **격리 `assy_qa`에서는 두 선언 모두 거부**돼(중복 키 → UNIQUE 인덱스 생성 불가) 그 박스의 `attach`는 0.0 ms다. 함께 §「정확성 제약」에 **코드 사본 경고** 추가 — `virtual_join/executor.py`·`main.py`가 아직 「UNIQUE 인덱스를 그대로 탄다」고 적고 있다(성능 주장으로는 거짓, 총괄 라우팅 대상). 직전 2026-08-04: **§2-bis 신설 — 표기 정규화가 걸린 조인 키에서는 세 번째 배제가 뒤집힌다**(`8d306a5`): 접힌 비교는 컬럼 유일성이 아니라 **식 유일성**을 요구하므로 **함수 인덱스만 후보**가 되고 평범한 컬럼 UNIQUE는 배제된다. 🔴 이유는 성능이 아니라 **정확성**이다 — 원본으로 다른 두 행이 접히면 한 값이라 컬럼 UNIQUE가 있어도 접힌 키로는 중복이다. 함께 **「이 인덱스는 정확성 제약이지 조회 계획이 아니다」** 절 신설: 실측 플랜은 `Hash Left Join` + 오른쪽 `Seq Scan`이고 **인덱스의 성능 역할은 한 번도 행사된 적이 없다**(조인이 더한 버퍼는 왼쪽 15,469행에서도 103,040행에서도 **4**). 인덱스는 팬아웃 방지로 **여전히 필수**다. 직전 라운드: **N7 — 숫자 expose 컬럼이 읽기 표면 전체에서 동작한다.** 2026-08-02 사용자 보고: `number` 타입 컬럼을 노출하면 조회가 SQL 계층에서 500이었다 — 해석식이 `COALESCE(double precision, '미상')`을 만들었고 PostgreSQL이 타입 불일치로 거절했다. 수정: 숫자 컬럼은 COALESCE **이전에** 정본 비교 텍스트로 렌더한다(`crud.numeric_text_sql` — 정수값이면 INT 철자, `3.0`이 아니라 `3`). §4-ter 참조. **§9의 검색·CSV 두 미해결은 `cd3e0f4`(2026-07-31)로 이미 해소**돼 있었고 이번에 문서를 따라잡혔다. 직전 라운드 기록은 히스토리로) — 이전: 2026-07-31 (**같은 날 네 번째 라운드 — 화면 착지 `9200f20`+`4b50135`**: `/schema`가 가상 컬럼을 **별도 키 `virtual_columns`로** 알리고 그리드가 그것을 **덧붙여** 그린다. 🔴 **`columns`에 합치지 않는 것이 설계의 전부**다 — 그 배열의 뜻은 「저장하는 컬럼」이고 소비자 넷이 그 뜻에 기댄다. 🔴 **그리는 순간 그 컬럼은 붙여넣기·비우기·일괄채우기의 대상이 되므로** 클라에 술어 하나(`isVirtualColumn`)를 두어 제안을 막는다(강제는 여전히 서버 깔때기). §9의 첫 미해결 항목이 **해소**됐고 **새 미해결 둘**(CSV 추출 누락 · `미상` 행 검색 불가)이 그 자리에 들어왔다. 직전: **신설 → 같은 날 게이트 확정 → 같은 날 실행기 착지 `d70a33d`**. 사용자 판정 「인덱스 없으면 거절해」로 **승인 근거가 UNIQUE 인덱스 하나**가 됐고, 직전 판의 3등급 모델(`unique_index`/`probe_clean`/`unverified`)과 중복 프로브·예산·`incomplete` 상태는 **삭제**됐다. **조인은 이제 실제로 실행된다** — `server/virtual_join/executor.py`가 읽기 경로에서 `expose` 컬럼을 붙이고, **이름 충돌 거부는 해제**돼 「부재일 때만 채운다」가 됐다(§4-bis)) | **Owner:** Backend / 총괄
 > 상위: [폴더 인덱스](./README.md) · 절차 요약은 [CONFIG_GUIDE §1](../CONFIG_GUIDE.md) · 선언·검증 정본은 `server/virtual_join/config.py` · **실행 정본은 `server/virtual_join/executor.py`**
 
 <!-- Loader evidence (2026-07-31, 실행기 착지 후 재확인 · d70a33d):
@@ -8,6 +8,10 @@
   the gate:          unique_index_covering (pg_index, excludes indisvalid=false / indpred / indexprs)
                      verify_uniqueness -> load_verified_rules  (the only accepting path)
   operator action:   required_index_name / required_index_ddl  (computed from the declaration alone)
+  auto index:        unique_key.ensure_once, called from load_verified_rules when the gate refuses (once per process per rule)
+                     ASSY_VJOIN_AUTO_INDEX=0 -> touches NO database; a raising probe is rolled back and cached, the read goes on (2026-09-15)
+  verification seat: virtual_join_executor._verified_by_left_table opens its OWN SessionLocal and closes it - never the reader's session
+                     one rule whose verify_uniqueness raises is refused BY NAME (CODE_SHAPE) and the loop continues (2026-09-15)
   execution:         virtual_join_executor.rules_for / execute_rule / _resolve_one / attach
                      (load_verified_rules is its ONLY entry - a shape-only rule never executes)
   read path:         main.fetch_and_merge_metadata -> virtual_join_executor.attach
@@ -345,8 +349,13 @@ x1288 조인이 언제나 틀린 것은 아니다 — **행 조인으로서** �
 - **선언을 고쳤는데 안 먹으면 캐시를 의심하기 전에 승인부터 보라.** 승인된 선언은 웹서버에서
   짧은 TTL 캐시로 들고 있고 `POST /admin/reload-configs`가 즉시 무효화한다. 워커 프로세스는
   그 훅이 없어 TTL이 지나야 바뀐다.
-- **선언을 읽지 못하면 「조인 없음」으로 간다.** 붙지 않은 컬럼은 눈에 보이는 부재이고,
-  잘못 붙은 컬럼은 조용한 오답이기 때문이다. 조인이 통째로 안 보이면 서버 로그의
+- **승인이 거절되면 제품이 유일 인덱스를 «한 번» 세워 본다**(`unique_key.ensure_once`, 프로세스당 규칙당 1회).
+  `ASSY_VJOIN_AUTO_INDEX=0` 이면 DB 를 «한 번도» 안 만지고, 점검 SQL 이 던지면 롤백하고 그 규칙은
+  이번 실행에 자동 수리 없음 — 읽기는 계속된다(2026-09-15).
+- **«파일»을 읽지 못하면 「조인 없음」으로 간다.** 붙지 않은 컬럼은 눈에 보이는 부재이고,
+  잘못 붙은 컬럼은 조용한 오답이기 때문이다. 🔴 선언 «하나»의 검증이 던지면 그 규칙만 이름 대고
+  거절되고 나머지 표의 조인은 선다 — 그리고 검증은 독자의 세션이 아니라 «자기 세션»에서 돌므로
+  남의 표 선언 하나가 내 읽기 트랜잭션을 abort 시키지 못한다(2026-09-15 `e88cb2be`). 조인이 통째로 안 보이면 서버 로그의
   `[VirtualJoin]`을 먼저 본다 — 그리드는 죽지 않는다.
 - **`expose`한 이름이 왼쪽의 *시스템* 컬럼과 같으면 그리드에 뜨지 않는다** — `created_at`처럼
   config가 선언하지 않았는데 스키마 응답이 무조건 붙이는 꼬리가 있고, 라우트가 최종 컬럼
