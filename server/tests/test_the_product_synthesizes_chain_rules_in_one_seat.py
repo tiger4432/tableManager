@@ -251,13 +251,22 @@ def test_the_cache_holds_only_what_the_dispatcher_could_run():
 # S-195 — auto-confirm joins the table, and the named temporary ends
 # ---------------------------------------------------------------------------
 
-def test_both_builtin_kinds_are_in_the_table():
+def test_every_builtin_kind_is_in_the_table():
     """🔵 THE TEMPORARY IS OVER. It carried one kind while auto-confirm still ran from its own
-    sweep, so a `follow_up` kind had two ways to run."""
+    sweep, so a `follow_up` kind had two ways to run.
+
+    ⚠️ THE SET GREW BY ONE (S-237), and the assertion is a SET on purpose: a third kind has
+    to be added here deliberately, so a kind that appears in the table without anybody
+    deciding it should cannot arrive quietly. `builtin:join_into` is the unified declaration's
+    `join` - it WRITES what the declaration says, where `builtin:join` answers at read time,
+    and `register_builtin` refuses two claimants of one id by name."""
     import enrichment.config
+    from chain import join_into
 
     assert set(builtins.BUILTIN_KINDS) == {
-        vjc.JOIN_MAPPER, enrichment.config.AUTO_CONFIRM_MAPPER}
+        vjc.JOIN_MAPPER, enrichment.config.AUTO_CONFIRM_MAPPER,
+        join_into.JOIN_INTO_MAPPER}
+    assert join_into.JOIN_INTO_MAPPER != vjc.JOIN_MAPPER, "the read-time id is taken"
 
 
 def test_the_drain_has_no_second_route_left():

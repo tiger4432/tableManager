@@ -622,6 +622,26 @@ def max_group_attempts(rule, document) -> int:
     return DEFAULT_MAX_GROUP_ATTEMPTS
 
 
+def _resolvable_mapper(name):
+    """A mapper this process can actually run - a registered one OR a `builtin:` kind.
+
+    🔴 [S-237] THE FILE MAY NOW NAME A KIND THE PRODUCT OWNS. Until this, only the decorator
+    registry counted, because every `builtin:` rule was SYNTHESISED and synthesised rules skip
+    this grammar check by design. A unified declaration lives in the operator's file, so it
+    goes through the check - and `builtin:join_into` would have been refused as
+    `unresolvable_mapper` while being the one thing that can run it.
+
+    ⚠️ STILL 「CAN THIS RUN」, NOT 「IS THIS FAMILIAR」. A `builtin:` name with no entry in the
+    table is refused exactly as before; what changed is that the table is now one of the two
+    places a runnable name may live.
+    """
+    from chain import builtins
+
+    if not name:
+        return None
+    return mapper_sdk.MAPPER_REGISTRY.get(name) or builtins.BUILTIN_KINDS.get(name)
+
+
 def read_rules_document(path=None):
     """The chain rules FILE, read in ONE place. Absence is a VALUE, never an exception.
 
@@ -697,8 +717,27 @@ def load_chain_rules():
         translated = []
         for rule in rules:
             if isinstance(rule, dict) and isinstance(rule.get("derive"), dict):
-                translated.append(
-                    rule_shape.as_chain_rule(rule_shape.from_declaration(rule)))
+                internal = rule_shape.from_declaration(rule)
+                try:
+                    rule_shape.refuse_join_trigger_conflict(internal)
+                except rule_shape.JoinTriggerConflict as conflict:
+                    # ⛔ ONE RULE, DROPPED AND NAMED - never the whole file. 「거절된 분자는
+                    # 세고 건너뛰다」: the other declarations in this file are not at fault.
+                    logger.error("[ChainRules] join_trigger_conflict: %s", conflict)
+                    continue
+                unknown = rule_shape.unknown_join_cells(internal)
+                if unknown:
+                    # Named loudly, and the rule still runs (판정 397 자세).
+                    logger.warning(
+                        "[ChainRules] %s: derive.join cell(s) this product does not read "
+                        "— %s. The rule runs; check the spelling if it was meant to do "
+                        "something.", rule.get("name"), ", ".join(unknown))
+                translated.append(rule_shape.as_chain_rule(internal))
+                # 🔴 [S-237] ONE DECLARATION MAY IMPLY MORE THAN ONE RULE. A join has to be
+                # recomputed from either side and a rule watches ONE `trigger_table`, so the
+                # shell hands the loader both. They carry the SAME `params`, so there is one
+                # spec and two triggers rather than two declarations to keep in step.
+                translated.extend(rule_shape.companion_rules(internal))
             else:
                 translated.append(rule)
         rules = translated
@@ -716,7 +755,7 @@ def load_chain_rules():
         # dry-run screen accepted what this loop drops. The sentences below are unchanged;
         # only where the verdict comes from moved.
         issues = chain_bindings.rule_refusals(
-            rule, path, mapper_resolvable=mapper_sdk.MAPPER_REGISTRY.get,
+            rule, path, mapper_resolvable=_resolvable_mapper,
             mapper_params=mapper_sdk.MAPPER_PARAMS.get)
         one_cell, _module_name, _function_name = chain_bindings.mapper_cells(rule)
         resolvable = bool(mapper_sdk.MAPPER_REGISTRY.get(one_cell)) if one_cell else False

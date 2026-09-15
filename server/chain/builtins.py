@@ -161,8 +161,14 @@ def run_builtin(kind: str, db, rule, **kwargs):
 def _install():
     import enrichment.config
     import virtual_join.config
+    from chain import join_into
 
     register_builtin(virtual_join.config.JOIN_MAPPER, _run_join)
+    # 🔴 [S-237] THE UNIFIED DECLARATION'S `join` KIND, AND IT IS A DIFFERENT ENTRY ON
+    # PURPOSE. `builtin:join` is the READ-TIME join and production runs on it; this one
+    # WRITES what the declaration says into a column. `register_builtin` refuses two
+    # claimants of one id by name, so the distinction is enforced here rather than trusted.
+    register_builtin(join_into.JOIN_INTO_MAPPER, join_into.run)
     # S-195: the kind S-179 declared finally has an implementation, so the table carries the
     # whole `builtin:` vocabulary and the named temporary two-path condition is over.
     register_builtin(enrichment.config.AUTO_CONFIRM_MAPPER, _run_auto_confirm)

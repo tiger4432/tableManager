@@ -12,6 +12,8 @@
 """
 from __future__ import annotations
 
+from chain import join_into
+
 #: 체인 문법에서 «모양으로 접히는» 칸. 나머지는 전부 `extra` 로 간다.
 CHAIN_MODELLED = ("name", "enabled", "trigger_table", "trigger_columns",
                   "target_table", "mapper", "mapper_module", "mapper_function",
@@ -66,7 +68,31 @@ def as_chain_rule(internal: dict) -> dict:
     into = internal.get("into") or {}
     if "table" in into:
         out["target_table"] = into["table"]
-    out.update((internal.get("derive") or {}).get("mapper") or {})
+    derive = internal.get("derive") or {}
+    if derive.get("kind") == "join" and "table" in into:
+        # 🔴 [S-237] A `join` KIND IS A MAPPER THE PRODUCT OWNS. Until this, a unified
+        # declaration saying `derive: {kind: "join"}` came out of here with NO mapper cell
+        # and the loader refused it as `unresolvable_mapper` (measured) - the grammar could
+        # be written and could never run.
+        #
+        # ⚠️ ONLY WHEN IT WRITES. `into.read` is the READ-TIME virtual join, which is not a
+        # chain rule at all and must keep coming out of `as_join_rule` untouched; the two are
+        # told apart by which `into` the declaration carries, which is the distinction the
+        # internal shape already makes.
+        out["mapper"] = join_into.JOIN_INTO_MAPPER
+        out["params"] = dict(derive.get("join") or {})
+        # 🔴 [판정 398] THE AUTHOR WRITES THE JOIN ONCE AND THE SHELL DERIVES THE TRIGGER.
+        # The left join key IS the trigger column - true by coincidence in every virtual join
+        # declared today, and the new grammar says it instead of leaving it to be rediscovered.
+        # A second place to write one value is a second place for it to be wrong.
+        derived = join_trigger_columns(derive.get("join") or {})
+        if derived:
+            out["trigger_columns"] = derived
+        # 🔴 PACED, NOT INLINE. One reference row reaches 70,800 target rows on this
+        # product's own measurement (S-151), and 「요청·커밋 경로 인라인 금지」 is standing.
+        # The cell says so in the rule rather than only in the dispatcher.
+        out["follow_up"] = True
+    out.update(derive.get("mapper") or {})
     out.update(internal.get("limits") or {})
     out.update(internal.get("extra") or {})
     # `enabled` 는 «생략된 것»과 «적힌 것»이 다른 문장이므로 «적혀 있었을 때만» 되돌린다
@@ -155,3 +181,90 @@ def from_declaration(raw: dict, origin: str = "declared") -> dict:
         "grammar": "unified",
         "extra": dict(raw.get("extra") or {}),
     }
+
+
+#: What the reference-side companion's name is built from. One spelling, because the loader
+#: writes it and the census reads it.
+REFERENCE_SUFFIX = ":reference"
+
+
+def companion_rules(internal: dict) -> list:
+    """The EXTRA chain rules one unified declaration implies. Today: a join's reference side.
+
+    🔴 ONE DECLARATION, TWO TRIGGERS (S-237 ㉢). A join has to be recomputed when a target row
+    moves AND when the row it points at moves, and those are two different `trigger_table`
+    values - the loader matches a rule to an event by that cell, so one rule cannot watch two
+    tables. What must NOT be duplicated is the SPEC, and it is not: both rules carry the same
+    `params`, and the mapper reads the side from `trigger_table`.
+
+    ⚠️ EMPTY FOR EVERY OTHER KIND, and that is the point of a named function rather than a
+    branch inside the translator: 「this declaration implies more rules」 is a question every
+    kind will eventually answer, and the answer belongs somewhere a reader can find it.
+    """
+    derive = internal.get("derive") or {}
+    into = internal.get("into") or {}
+    if derive.get("kind") != "join" or "table" not in into:
+        return []
+    spec = dict(derive.get("join") or {})
+    right_table = spec.get("right_table")
+    name = internal.get("name")
+    if not right_table or not name:
+        return []
+    primary = as_chain_rule(internal)
+    if primary.get("trigger_table") == right_table:
+        # The declaration already watches the reference table; a second rule would be the
+        # same rule twice and the dispatcher would run the join twice per event.
+        return []
+    companion = dict(primary)
+    companion["name"] = str(name) + REFERENCE_SUFFIX
+    companion["trigger_table"] = right_table
+    return [companion]
+
+
+class JoinTriggerConflict(ValueError):
+    """⛔ TWO ANSWERS TO 「WHICH COLUMNS WAKE THIS JOIN」 (판정 398). Writing `on.columns`
+    beside `derive.join.on` is allowed only while the two AGREE; when they differ the product
+    cannot know which the author meant, and picking one silently is how a join comes to watch
+    a column nobody asked it to watch."""
+
+
+def join_trigger_columns(spec: dict) -> list:
+    """The left key columns of a join spec, in declared order - the trigger columns."""
+    out = []
+    for pair in (spec or {}).get("on") or ():
+        if isinstance(pair, dict) and pair.get("left"):
+            out.append(str(pair["left"]))
+    return out
+
+
+def refuse_join_trigger_conflict(internal: dict) -> None:
+    """Raise when the author wrote `on.columns` AND it differs from the derived ones.
+
+    ⚠️ AGREEING IS NOT AN ERROR. An author who writes both has said one thing twice, which is
+    redundant rather than wrong, and refusing it would break declarations that are correct.
+    """
+    derive = internal.get("derive") or {}
+    if derive.get("kind") != "join":
+        return
+    written = (internal.get("on") or {}).get("columns")
+    if written is None:
+        return
+    derived = join_trigger_columns(derive.get("join") or {})
+    if list(written) != derived:
+        raise JoinTriggerConflict(
+            "%r writes on.columns %r while derive.join.on implies %r; "
+            "write the join once and let the trigger follow it"
+            % (internal.get("name"), list(written), derived))
+
+
+def unknown_join_cells(internal: dict) -> list:
+    """Sub-cells of `derive.join` this product does not read. NAMED, never refused.
+
+    ⚠️ A CELL THE PRODUCT DOES NOT KNOW MAY BE A LIVE ARGUMENT IT HAS NOT LEARNED YET, so
+    the posture is yesterday's: say the name loudly and let the rule run. Refusing here would
+    stop a declaration that works over a word nobody has defined.
+    """
+    derive = internal.get("derive") or {}
+    if derive.get("kind") != "join":
+        return []
+    return join_into.unknown_cells(derive.get("join") or {})

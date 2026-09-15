@@ -1,0 +1,259 @@
+# -*- coding: utf-8 -*-
+"""`builtin:join_into` — 통합 선언의 `join` 종류가 «쓰는» 조인 (S-237, 소유자 판정 셋).
+
+🔴 WHY THE NAME IS `join_into` AND NOT `builtin:join`. That id is taken: `virtual_join.config`
+registers it for the READ-TIME join, and `register_builtin` refuses a second claimant by name
+(measured — the gate scores that collision). The two are told apart by the cell the internal
+rule already uses to tell them apart: the read-time one answers at `into.read`, this one writes
+`into.table`. So `join_into` names the axis rather than the round it arrived in — 「unified」
+stops distinguishing anything the day enrich and mapper move over too.
+
+🔴 THE VIRTUAL JOIN IS NOT TOUCHED, BY INSTRUCTION AND BY IMPORT. Production runs on it, so
+this module borrows FUNCTIONS (`notation_norm`'s folding, which is what makes a key expression
+match the unique index) and never the executor, its caches or its config loader. A join that
+writes and a join that answers at read time are two subjects; what they must NOT disagree
+about is the KEY, and that is why the fold comes from the shared function rather than from a
+second spelling here.
+
+⚠️ AND THAT LEAVES ONE HONEST COST, WRITTEN DOWN. `virtual_join.executor.join_onclause` calls
+itself 「ON 절의 유일한 철자」, and this module now builds an ON clause too. Two spellings that
+must agree is the 「같은 기능에 두 경로」 shape - so the fold and the `coalesce` are taken from
+the same place the index is built from, and the round's gate ② compares this path's values
+against the read-time path's, value by value, rather than trusting that they agree.
+"""
+from __future__ import annotations
+
+import logging
+
+logger = logging.getLogger("Chain.JoinInto")
+
+#: The kind an operator's `derive: {kind: "join"}` becomes. One string, read by the translator
+#: that writes it and by the table that runs it, so the two cannot drift.
+JOIN_INTO_MAPPER = "builtin:join_into"
+
+
+def join_spec(rule: dict) -> dict:
+    """The join this rule describes. `params` IS the spec - no second shape in between."""
+    return dict((rule or {}).get("params") or {})
+
+
+def _pairs(spec: dict, left_table: str = "") -> list:
+    """`on` as (left column, right column, fold rules).
+
+    🔴 THE FOLD IS COMPUTED, NEVER AUTHORED (판정 397). Today it is derived from the two
+    TABLES' notation declarations by `notation_norm.join_pair_rules`, and the unique index is
+    built from the same source - so letting a join declare its own fold would make a second
+    author of one fact, free to disagree with the index expression. An author who wants a
+    different fold changes the table's notation declaration, where the index can see it.
+
+    ⚠️ 「EITHER SIDE DECLARED」 MEANS BOTH SIDES FOLDED, and that rule lives in the shared
+    function rather than here: a join folded on one side does not merely fail to help, it
+    silently drops matches the unfolded join was already making."""
+    import notation_norm
+
+    right_table = str(spec.get("right_table") or "")
+    out = []
+    for pair in spec.get("on") or ():
+        if not isinstance(pair, dict):
+            continue
+        left, right = pair.get("left"), pair.get("right")
+        if left and right:
+            fold = (notation_norm.join_pair_rules(left_table, str(left),
+                                                  right_table, str(right))
+                    if left_table and right_table else None)
+            out.append((str(left), str(right), fold))
+    return out
+
+
+#: The sub-cells of `derive.join` this product reads. Anything else is NAMED, never refused
+#: (판정 397 자세) - a cell the product does not know may be a live argument it has not
+#: learned yet, and refusing it would stop a rule that works.
+JOIN_CELLS = ("right_table", "on", "take")
+
+
+def unknown_cells(spec: dict) -> list:
+    return sorted(str(key) for key in (spec or {}) if key not in JOIN_CELLS)
+
+
+def _takes(spec: dict) -> list:
+    """`take` as (right column, left column). `into` defaults to the right column's name."""
+    out = []
+    for item in spec.get("take") or ():
+        if isinstance(item, str):
+            out.append((item, item))
+        elif isinstance(item, dict) and item.get("from"):
+            out.append((str(item["from"]), str(item.get("into") or item["from"])))
+    return out
+
+
+def _folded(column, fold):
+    """The key expression, folded and NULL-safe - the SAME shape the unique index has.
+
+    🔴 `coalesce(..., '')` IS NOT A STYLE CHOICE (S-181, 판정 285·287). NULL equals NULL where
+    keys are compared, and PostgreSQL uses an expression index only when the query's
+    expression MATCHES it - a mismatch here does not fail, it turns a join into a sequential
+    scan while every test stays green.
+    """
+    from sqlalchemy import func
+    import notation_norm
+
+    if fold:
+        column = notation_norm.fold_notation_sql(column, fold)
+    return func.coalesce(column, "")
+
+
+def _models(spec: dict, left_table: str):
+    from database import models
+
+    left = models.DYNAMIC_TABLES.get(left_table)
+    right = models.DYNAMIC_TABLES.get(str(spec.get("right_table") or ""))
+    return left, right
+
+
+def _missing(spec: dict, left_table: str, left_model, right_model) -> str:
+    """Why this rule cannot run, by NAME, or `""`.
+
+    ⛔ A JOIN THAT CANNOT RUN IS REFUSED WITH ITS REASON, never skipped quietly: a rule that
+    sits enabled and writes nothing is indistinguishable from one that had nothing to write.
+    """
+    if not left_table:
+        return "the rule names no table to write into"
+    if left_model is None:
+        return "left table %r is not among this process's declared tables" % left_table
+    if right_model is None:
+        return "right table %r is not among this process's declared tables" % (
+            spec.get("right_table") or "")
+    if not _pairs(spec, left_table):
+        return "`on` names no usable left/right column pair"
+    if not _takes(spec):
+        return "`take` names no column to bring across"
+    for left_col, right_col, _fold in _pairs(spec, left_table):
+        if not hasattr(left_model, left_col):
+            return "left column %r does not exist on %r" % (left_col, left_table)
+        if not hasattr(right_model, right_col):
+            return "right column %r does not exist on %r" % (
+                right_col, spec.get("right_table"))
+    for right_col, into_col in _takes(spec):
+        if not hasattr(right_model, right_col):
+            return "take column %r does not exist on %r" % (
+                right_col, spec.get("right_table"))
+        if not hasattr(left_model, into_col):
+            return "target column %r does not exist on %r" % (into_col, left_table)
+    return ""
+
+
+def _answer(db, spec, left_model, right_model, where, left_table=""):
+    """One SELECT: the left rows in scope, LEFT JOINed to their right row.
+
+    🔴 LEFT JOIN, NOT A SECOND QUERY FOR THE UNMATCHED. `matched` is 「the right row exists」,
+    and it has to be a fact the database states - deciding it from 「the value came back NULL」
+    would make a matched row whose value is legitimately NULL indistinguishable from a row
+    that matched nothing, and those two get OPPOSITE treatment below.
+    """
+    from sqlalchemy import and_, select
+
+    onclause = and_(*[_folded(getattr(left_model, left_col), fold)
+                      == _folded(getattr(right_model, right_col), fold)
+                      for left_col, right_col, fold in _pairs(spec, left_table)])
+    columns = [left_model.row_id.label("row_id"),
+               (right_model.row_id.isnot(None)).label("matched")]
+    columns.extend(getattr(right_model, right_col).label("take_%d" % index)
+                   for index, (right_col, _into) in enumerate(_takes(spec)))
+    stmt = select(*columns).select_from(
+        left_model.__table__.outerjoin(right_model.__table__, onclause)).where(where)
+    return db.execute(stmt).fetchall()
+
+
+def _write(db, left_table: str, rows, spec, source_name: str) -> int:
+    """Write what matched, through the one write door. Returns rows written.
+
+    🔴 A MATCHED NULL IS WRITTEN AS NULL, AN UNMATCHED ROW IS NOT WRITTEN (판정 f3c04dee).
+    The first is an answer - the right row exists and says the value is empty - and skipping
+    it would leave a stale value standing where the declaration says there is none. The second
+    is 「no answer」, and writing NULL for it would erase a value this join never spoke about.
+    """
+    from database import crud, schemas
+
+    takes = _takes(spec)
+    updates = []
+    for row in rows:
+        if not row.matched:
+            continue
+        mapping = row._mapping
+        updates.append(schemas.GeneralUpdateItem(
+            row_id=mapping["row_id"],
+            updates={into_col: mapping["take_%d" % index]
+                     for index, (_right, into_col) in enumerate(takes)},
+            # 🔴 THE LAYER IS THE RULE'S NAME. Layering asks 「who wrote this cell」, and
+            # 「the chain」 is not an answer an operator can act on when three declarations
+            # write the same table.
+            source_name=source_name,
+            updated_by="system"))
+    if not updates:
+        return 0
+    crud.apply_batch_updates(db, left_table,
+                             schemas.GeneralUpdateBatch(updates=updates, silent=True))
+    return len(updates)
+
+
+def run(db, rule: dict, row_ids=None, done=None, **_):
+    """Materialise this join for the rows that just moved.
+
+    ⚠️ ONE KIND, TWO SIDES, AND THE RULE SAYS WHICH. A rule triggered on the LEFT table
+    recomputes the rows that moved; a rule triggered on the RIGHT table recomputes the left
+    rows whose key now resolves differently. The side is read from the declaration
+    (`trigger_table` against `right_table`) rather than from which argument the caller passed,
+    so a caller cannot put a rule on the wrong side by accident.
+    """
+    spec = join_spec(rule)
+    left_table = str((rule or {}).get("target_table") or "")
+    rows_in = list(row_ids or ())
+    if not rows_in:
+        return {"written": 0}
+
+    left_model, right_model = _models(spec, left_table)
+    refusal = _missing(spec, left_table, left_model, right_model)
+    if refusal:
+        return {"written": 0, "refusal": refusal}
+
+    reference_side = str((rule or {}).get("trigger_table") or "") == str(
+        spec.get("right_table") or "")
+    if reference_side:
+        where = _left_rows_for_reference(db, spec, left_model, right_model,
+                                         rows_in, left_table)
+    else:
+        where = left_model.row_id.in_(rows_in)
+    if where is None:
+        return {"written": 0}
+
+    rows = _answer(db, spec, left_model, right_model, where, left_table)
+    written = _write(db, left_table, rows, spec, str((rule or {}).get("name") or ""))
+    return {"written": written, "rows_in": len(rows_in), "side":
+            "reference" if reference_side else "target"}
+
+
+def _left_rows_for_reference(db, spec, left_model, right_model, right_row_ids,
+                            left_table=""):
+    """The left rows whose key matches the right rows that just moved.
+
+    🔴 ONLY THE WHERE CLAUSE DIFFERS between the two sides, which is the whole reason this is
+    one kind and not two. The key expression comes from the same `_folded`, so a fold declared
+    once cannot apply on one side and not the other.
+    """
+    from sqlalchemy import select, tuple_
+
+    pairs = _pairs(spec, left_table)
+    keys = db.execute(
+        select(*[_folded(getattr(right_model, right_col), fold).label("k%d" % index)
+                 for index, (_left, right_col, fold) in enumerate(pairs)])
+        .where(right_model.row_id.in_(list(right_row_ids)))).fetchall()
+    if not keys:
+        return None
+    left_key = [_folded(getattr(left_model, left_col), fold)
+                for left_col, _right, fold in pairs]
+    # ⚠️ A TUPLE `IN`, NOT A COLUMN-WISE `IN` PER PART. Matching each part independently
+    # would pull in every left row that shares ONE part of the key with ONE changed right
+    # row - a cross product wearing the shape of a filter. One spelling for one key and
+    # several, because a second branch for the single-column case is a second answer to the
+    # same question (verified on this SQLite/SQLAlchemy pair by S-229's paging).
+    return tuple_(*left_key).in_([tuple(row) for row in keys])
