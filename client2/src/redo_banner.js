@@ -88,6 +88,10 @@ export class RedoBanner {
     this.hasToken = options.hasToken || (() => false);
     // 체인 규칙 «이름» 목록. `null` 은 「아직/못 읽음」이고 `[]` 와 다릅니다.
     this.rules = Array.isArray(options.rules) ? options.rules : null;
+    // 🔴 C-113 ①. «얼마부터 큰가»는 이 부품이 정하지 않습니다 — 옵션 하나이고 기본은
+    //    1000 입니다(운영 규격: 한 트랜잭션에 수천 행). 숫자를 박으면 그 숫자가
+    //    다른 설치에서도 맞다고 말하는 것이 됩니다.
+    this.warnAbove = typeof options.warnAbove === 'number' ? options.warnAbove : 1000;
     this.relation = null;
     this.open = null;
     // 줄마다의 상태. 누른 뒤 «그 줄이» 말합니다 -- 조용히 닫으면 운영자는 두 번 누릅니다.
@@ -235,13 +239,22 @@ export class RedoBanner {
       return box;
     }
 
+    // 🔴 C-113 ①. 선택이 크면 «한 줄»로 말합니다 — 막지 않습니다(막으면 운영자가 정당하게
+    //    큰 범위를 돌릴 길이 없어집니다). 수와 기준만 적고, «누를지»는 사람이 정합니다.
+    const picked = this.getSelection ? (this.getSelection() || []) : [];
+    if (picked.length > this.warnAbove) {
+      const big = doc.createElement('div');
+      big.className = 'redo-panel__warn';
+      big.textContent = `선택 ${picked.length}행 · 권장 ${this.warnAbove}행 이하`;
+      box.appendChild(big);
+    }
     // 🔴 토큰이 없으면 «문장으로» 말합니다. 조용히 회색으로 두면 운영자는 자기 선택이
     //    잘못된 줄 알고 골랐던 것을 다시 고릅니다.
     const runnable = this.hasToken() === true && typeof this.run === 'function';
     if (!runnable) {
       const why = doc.createElement('div');
       why.className = 'redo-panel__nogo';
-      why.textContent = 'no admin token on this browser — open admin once, then come back';
+      why.textContent = '관리자 토큰 없음 · 어드민 한 번 열기';
       box.appendChild(why);
     }
 
@@ -275,7 +288,7 @@ export class RedoBanner {
     const go = doc.createElement('button');
     go.type = 'button';
     go.className = 'glass-btn redo-panel__go';
-    go.textContent = 'Open in admin';
+    go.textContent = '어드민에서 열기';
     go.addEventListener('click', () => {
       if (this.handOff) this.handOff(assembled.payload);
     });
@@ -284,11 +297,11 @@ export class RedoBanner {
   }
 
   ledgerPayload(rows, sourceRow) {
-    if (!sourceRow) return { note: 'this table is not a ledger source' };
+    if (!sourceRow) return { note: '원장 소스 아님' };
     const columns = Array.isArray(sourceRow.scope_columns) ? sourceRow.scope_columns : [];
-    if (!columns.length) return { note: 'this source declares no scope column' };
+    if (!columns.length) return { note: '범위 컬럼 선언 없음' };
     const { groups, dropped } = ledgerGroups(rows, columns, this.readValue);
-    if (!groups.length) return { note: 'no scope column has a value in the selected rows' };
+    if (!groups.length) return { note: '선택 행에 범위 값 없음' };
     const lineRows = groups.map((g) => {
       const skipped = g.missing ? ` · ${g.missing} without a value` : '';
       const n = g.values.length;
@@ -304,7 +317,7 @@ export class RedoBanner {
     // 못 넘긴 컬럼도 «말합니다». 조용히 빼면 운영자는 그 컬럼을 기다립니다.
     // 돌릴 것이 없으므로 `params` 가 없고, 그래서 «누르는 줄이 아닙니다».
     dropped.forEach((column) => lineRows.push({
-      text: `${column} — no value in the selected rows`, params: null,
+      text: `${column} — 선택 행에 값 없음`, params: null,
     }));
     return {
       op: 'ledger_rescope',
@@ -329,7 +342,7 @@ export class RedoBanner {
     // ⛔ 둘 다 보내지 않습니다 — 서버가 «거절»합니다(한 물음에 두 답). 그리고 평키 표만
     //    다른 길을 타면 «그 표에서만» 나는 고장이 생깁니다(기준 ④).
     const { values, missing } = scopeValuesFor(rows, 'row_id', this.readValue);
-    if (!values.length) return { note: 'the selected rows carry no row_id' };
+    if (!values.length) return { note: '선택 행에 row_id 없음' };
     // 🔴 셈은 «행 수»입니다(판정 407 ②) — row_id 는 중복이 없으므로 값의 수가 곧 행의 수입니다.
     //    종전의 「N keys from M rows」는 둘이 갈라질 수 있을 때의 문구였고, 이제 갈라지지 않습니다.
     const from = `${values.length} row${values.length === 1 ? '' : 's'}`;
@@ -341,7 +354,7 @@ export class RedoBanner {
     if (!Array.isArray(this.rules)) {
       return { op: 'chain_replay', payload, rows: [
         { text: from, params: null },
-        { text: 'chain rules not loaded — open in admin to pick one', params: null },
+        { text: '규칙 목록 못 읽음 · 어드민에서 선택', params: null },
       ] };
     }
     if (!this.rules.length) {
