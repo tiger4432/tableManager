@@ -54,3 +54,24 @@ python scripts/preview_unified_declarations.py --out ../unified_preview.json
 [ChainRules] 지난 적재와 다름 - 사라짐 1: ...                  <- 선언을 바꾼 뒤 무엇이 달라졌나
 [VirtualJoin:이름] 조인 키 (...) 가 ... 의 «신원»(...)보다 좁습니다   <- 1번과 같은 진단
 ```
+
+## 5. 통합 선언에 «join» 적기 (S-237 착지 — 가상 조인은 그대로, 이건 «체인»)
+
+`chain_rules.json` 의 `rules` 에 이 모양 하나를 적으면 체인 규칙 **둘**이 섭니다(왼쪽 트리거 + 오른쪽 트리거는 페이싱). 값은 대상 표의 «진짜 컬럼»에 «자기 층»으로 써지고, 원장이 그대로 봅니다.
+
+```jsonc
+{
+  "name": "inventory_confirmed",
+  "on":     { "table": "dt_inventory" },                       // columns 는 적지 마십시오 — 왼쪽 키에서 유도됩니다(판정 398)
+  "derive": { "kind": "join",
+              "join": { "right_table": "dt_job_attribution",
+                        "on":   [ { "left": "dt_job", "right": "dt_job" } ],
+                        "take": [ "dt_lot_confirmed", "dt_slot_confirmed" ] } },
+  "into":   { "table": "dt_inventory" },
+  "key":    { "columns": ["dt_job"], "unique": true }          // 오른쪽 유일성 — 제품이 인덱스를 세웁니다(S-235)
+}
+```
+* fold 는 적지 않습니다 — 두 표의 표기 선언에서 «계산»됩니다(판정 397). `max_rewrite_rows` 도 없습니다 — 페이싱(판정 396).
+* 재기동 뒤 부팅 줄에서 확인: `[ChainRules] set(N): inventory_confirmed[decl,join] …` 가 «둘» 보여야 합니다.
+* 오른쪽 값이 null 이면 «null 로» 써집니다. 오른쪽 행이 없으면 안 씁니다.
+* ⚠️ 첫 실행은 왼쪽 표 «전체» 행을 씁니다(박스 실측: dt_inventory 488,429 행). 운영에서는 페이싱 창을 정하고 켜십시오.
