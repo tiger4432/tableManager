@@ -21,6 +21,7 @@ temporary nobody records is just a drift with a date on it.
 from __future__ import annotations
 
 import logging
+import os
 
 logger = logging.getLogger("Chain.Builtins")
 
@@ -40,26 +41,27 @@ def synthesize_chain_rules(known_tables: dict = None) -> list:
     return rules
 
 
-def synthesized_kind_counts(rules) -> dict:
-    """How many of each synthesised kind, for the boot line (판정 304).
+def written_in(rule) -> str:
+    """The file a rule THIS SEAT produced was written in, by basename (S-234 ①).
 
-    🔴 THE LINE SAYS WHICH KINDS, not just how many. 「N synthesized」 over three kinds is the
-    shape that reported 8 of a kind there were 4 of, which is why S-179 ① split its own
-    count in the first place.
+    🔴 FOR THE LOADER'S ONE-NAMESPACE REFUSAL: a name claimed twice is named with the files
+    to look in. The join half emits `JOIN_MAPPER` and nothing else out of this seat does, so
+    that one cell separates the two files.
+
+    ⚠️ ONLY FOR RULES THAT CAME OUT OF `synthesize_chain_rules`. The loader tags what it read
+    from `chain_rules.json` by position, never through here — a unified `decide` written in
+    that file also carries `origin: synthesized:` and would otherwise be misfiled.
+
+    🪦 `synthesized_kind_counts` sat here for the 「Synthesized N (a dedup · b auto-confirm ·
+    c join)」 boot line. That line folded into the loader's set line, which names every rule
+    with its origin and kind, so a count of kinds had no reader left.
     """
     import enrichment.config
     import virtual_join.config
 
-    counts = {"dedup": 0, "auto_confirm": 0, "join": 0}
-    for rule in rules or ():
-        name = str(rule.get("name") or "")
-        if name.startswith(virtual_join.config.JOIN_PREFIX):
-            counts["join"] += 1
-        elif name.startswith(enrichment.config.AUTO_CONFIRM_PREFIX):
-            counts["auto_confirm"] += 1
-        elif name.startswith(enrichment.config.DEDUP_PREFIX):
-            counts["dedup"] += 1
-    return counts
+    if (rule or {}).get("mapper") == virtual_join.config.JOIN_MAPPER:
+        return os.path.basename(virtual_join.config.VIRTUAL_JOIN_RULES_PATH)
+    return os.path.basename(enrichment.config.ENRICHMENT_RULES_PATH)
 
 
 # ---------------------------------------------------------------------------

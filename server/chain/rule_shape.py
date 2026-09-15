@@ -78,10 +78,9 @@ def declared_kind(rule: dict) -> str:
     rule - the same defect the COLLECT dropdown had when it offered `point` and `collection`
     (2026-08-27: 「사용자가 claim, point, collection 이런 걸 어케 암」).
 
-    ⚠️ IT IS NOT `builtins.synthesized_kind_counts`, AND THE DIFFERENCE IS THE QUESTION.
-    That function asks 「how many rules did the PRODUCT synthesise, of each origin」 for the
-    boot line; this asks 「what does the DECLARATION behind this rule say it is」. Same
-    prefixes, different subjects - folding them would make one answer serve two questions.
+    ⚠️ SAME PREFIXES THE SYNTHESISER STAMPS, DIFFERENT QUESTION. The synthesiser says what
+    the PRODUCT made; this reads back what the DECLARATION behind a loaded rule says it is.
+    Folding the two would make one answer serve two questions.
     """
     from chain import join_into
     from enrichment import config as enrichment_config
@@ -375,9 +374,12 @@ def is_switched_off(internal: dict) -> bool:
 
     So OFF has to mean what §0-ter demands of a switch: the loader touches no database and
     stands no rule - not 「stands it and filters it later」, which is the shape that let an
-    operator turn everything off and watch it keep erroring. `ASSY_CHAIN_SYNTHESIZE` is a
-    DIFFERENT switch with a different subject (rules the product derived from files the
-    operator did not write), and it deliberately does not reach here.
+    operator turn everything off and watch it keep erroring.
+
+    🪦 [S-234 ②, 판정 408] A process switch for 「the rules the product derived」 used to sit
+    beside this one. Its subject is gone - the loader's set line names every rule whichever
+    file wrote it - so `enabled: false` in the file a rule was written in is the one off
+    switch for one rule, and `ASSY_CHAIN_WORKER=0` is the one for all of them.
     """
     return internal.get("enabled_written") and internal.get("enabled") is False
 

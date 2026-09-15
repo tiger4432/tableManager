@@ -803,73 +803,52 @@ def load_chain_rules():
                      len(rules) - len(kept), len(rules))
     rules = kept
 
-    # [Enrichment Queue] enrichment_rules.json으로부터 dedup 투영 체인 룰을 자동 파생하여 병합.
-    #   파생 룰은 일반 체인 룰과 동일 형태이므로 워커 파이프라인(HOL 가드·SLO 계측·warmup·재시도)을
-    #   그대로 탄다. SYSTEM_RELOAD 시 본 함수가 재호출되므로 enrichment 규칙도 무중단 반영된다.
+    # 🔴 [S-234 ①②, 판정 408·409] THREE FILES, ONE NAMESPACE, ONE OFF SWITCH.
+    #    `chain_rules.json` (flat and unified), `enrichment_rules.json` and
+    #    `virtual_join_rules.json` are three ways of WRITING a chain rule, so their names are
+    #    one set: a name that appears twice is refused by name below, at the one seat that
+    #    sees the whole set, and the off switch for any of them is `enabled: false` in the
+    #    file it was written in. Stopping the chain altogether is `ASSY_CHAIN_WORKER=0`.
+    #
+    # 🪦 Two per-file checkers (`enrichment_name_collisions` · `join_name_collisions`) and a
+    #    process switch for 「the derived rules」 lived here. Two checkers were the evidence of
+    #    two namespaces; the switch's subject - rules the operator could not see - is gone,
+    #    because the set line below names every rule whichever file wrote it (판정 408).
+    #    Synthesis stays ONE seat (판정 304): `builtins.synthesize_chain_rules`, nothing else.
+    #    SYSTEM_RELOAD re-runs this function, so the other two files reload without a restart.
+    written_in = [os.path.basename(RULES_PATH)] * len(rules)
     _synthesized_names = set()
     try:
         from database import crud
-        import enrichment.config
-        # 🔴 A NAME CLAIMED TWICE IS REFUSED BY NAME, NEVER RESOLVED (S-179 ①, 판정 292).
-        # If `chain_rules.json` declares a name a synthesized rule also produces, the rule
-        # would run TWICE and say nothing about it. Which of the two an operator meant is
-        # not a thing this product can know, so it names both and drops the synthesized
-        # half — the same posture the S-181 migration takes toward duplicate keys.
-        # 🔴 ONE SYNTHESIS SEAT (판정 304). `chain_builtins.synthesize_chain_rules` calls
-        # each half — enrichment reads its file, the join half reads its own — so there is
-        # one synthesiser and one call site, and no function reads a file its name does not
-        # mention. The MOVE is behaviour-zero and a test compares the enrichment output
-        # before and after.
-        #
-        # 🔴 A NAME CLAIMED TWICE IS REFUSED BY NAME, NEVER RESOLVED (S-179 ①, 판정 292).
-        # The join half gets the same treatment as the enrichment half: which of the two an
-        # operator meant is not a thing this product can know.
         from chain import builtins
-        import virtual_join.config
 
-        declared_names = [r.get("name") for r in rules]
-        collisions = set(enrichment.config.enrichment_name_collisions(
-            declared_names, known_tables=crud.TABLE_CONFIG))
-        collisions |= set(virtual_join.config.join_name_collisions(
-            declared_names, known_tables=crud.TABLE_CONFIG))
-        if collisions:
-            logger.error(
-                "[ChainRules] %s: chain_rules.json 과 «합성 규칙»이 같은 이름을 선언합니다. "
-                "한쪽을 지우십시오 — 어느 쪽이 참인지는 제품이 고를 수 없습니다.",
-                ", ".join(sorted(collisions)))
-        # 🔴 THE OPERATOR MUST BE ABLE TO STOP THESE (2026-09-14 outage). These rules are
-        # DERIVED from enrichment_rules.json / virtual_join_rules.json, so an operator who
-        # set `enabled: false` on every rule in chain_rules.json has NOT stopped them - they
-        # were never in that file. During the outage that read as "everything is off and it
-        # still errors", with no way to tell these existed: the boot line printed COUNTS and
-        # never the names.
-        _synth_switch = os.getenv("ASSY_CHAIN_SYNTHESIZE", "1").strip().lower()
-        if _synth_switch in ("0", "false", "off", "no"):
-            synthesized = []
-            logger.warning("[ChainRules] synthesis OFF (ASSY_CHAIN_SYNTHESIZE=%s): no derived "
-                           "rule from enrichment or virtual-join declarations will run.",
-                           _synth_switch)
-        else:
-            synthesized = [r for r in
-                           builtins.synthesize_chain_rules(known_tables=crud.TABLE_CONFIG)
-                           if r.get("name") not in collisions
-                           and r.get("enabled", True)]
+        synthesized = [r for r in
+                       builtins.synthesize_chain_rules(known_tables=crud.TABLE_CONFIG)
+                       if r.get("enabled", True)]
         if synthesized:
             rules = rules + synthesized
+            written_in += [builtins.written_in(r) for r in synthesized]
             _synthesized_names = {r.get("name") for r in synthesized}
-            # ⚠️ IT SAYS WHICH KINDS. 「N synthesized」 over three kinds is the shape that once
-            # reported 8 of a kind there were 4 of, which is why S-179 ① split its own count.
-            counts = builtins.synthesized_kind_counts(synthesized)
-            # 🔴 NAMES, NOT ONLY COUNTS. A rule an operator did not write and cannot see is
-            # a rule they cannot switch off.
-            logger.info(
-                "[ChainRules] Synthesized %d chain rule(s) "
-                "(%d dedup · %d auto-confirm · %d join): %s",
-                len(synthesized), counts["dedup"], counts["auto_confirm"], counts["join"],
-                ", ".join(str(r.get("name")) + "->" + str(r.get("target_table"))
-                          for r in synthesized))
     except Exception as e:
-        logger.error(f"[Enrichment] Failed to synthesize enrichment chain rules: {e}")
+        logger.error(f"[ChainRules] Failed to synthesize chain rules from the enrichment "
+                     f"and virtual-join files: {e}")
+
+    # 🔴 [S-234 ①, 판정 409] A NAME CLAIMED TWICE IS REFUSED BY NAME, ONCE, HERE - the seat
+    #    that knows the whole set. `rule_refusals` judges ONE rule and cannot see a twin, and
+    #    `rule_order` below keys its walk by name: it would keep the first copy and drop the
+    #    second WITHOUT A WORD, which is the class of silence 2026-09-14 was made of. Which
+    #    of the two the operator meant is not a thing this product can know, so neither runs
+    #    and the line says which files to look in.
+    rules, twice = _refuse_names_claimed_twice(rules, written_in)
+    if twice:
+        import operator_line
+        for name, files in twice:
+            logger.error(operator_line.line(
+                "ChainRules", name,
+                "같은 규칙 이름이 %d 번 선언돼 있습니다 (%s) — 어느 쪽도 돌지 않습니다"
+                % (len(files), " · ".join(sorted(set(files)))),
+                operator_line.rename_one_declaration(files)))
+            refused_here.append((name, "name_claimed_twice"))
 
     # 🔴 [S-156, 판정 385] THE DERIVED ORDER, READ HERE, ONCE. `rule_order` orders producers
     #    before consumers from `trigger_table` ↔ `target_table` - the same derivation replay
@@ -934,6 +913,23 @@ def load_chain_rules():
     activity.registry.seed_rules(
         (r or {}).get("name") or "<unnamed rule>" for r in (rules or ()))
     return rules
+
+
+def _refuse_names_claimed_twice(rules, written_in):
+    """The set's one judge (S-234 ①): every rule whose name appears more than once is
+    dropped, and the caller is told each such name with the files it was written in.
+
+    `written_in[i]` is the file `rules[i]` came from, by basename. Returns
+    `(kept, [(name, [file, file, ...]), ...])` — the second list is empty for a clean set.
+    """
+    files_by_name = {}
+    for rule, where in zip(rules, written_in):
+        files_by_name.setdefault((rule or {}).get("name"), []).append(where)
+    twice = sorted(((name, files) for name, files in files_by_name.items()
+                    if len(files) > 1), key=lambda pair: str(pair[0]))
+    claimed_twice = {name for name, _files in twice}
+    kept = [rule for rule in rules if (rule or {}).get("name") not in claimed_twice]
+    return kept, twice
 
 
 def rule_watches_changed_columns(rule, event) -> bool:

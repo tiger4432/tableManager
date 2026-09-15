@@ -1003,24 +1003,10 @@ def chain_rules_for(rule: dict) -> list:
     return chain_rules
 
 
-def enrichment_name_collisions(chain_rule_names, path: str = None,
-                               known_tables: dict = None) -> list:
-    """Names declared in `chain_rules.json` that a synthesized rule would also claim.
-
-    🔴 REFUSED BY NAME, NEVER RESOLVED (판정 292). Two declarations under one name would
-    run the rule TWICE and say nothing — and which of the two an operator meant is not a
-    thing this product can know. So it names both and stops, the same posture the S-181
-    migration takes toward duplicate keys.
-    """
-    declared = set(chain_rule_names or ())
-    if not declared:
-        return []
-    collisions = []
-    for rule in load_enrichment_rules(path=path, known_tables=known_tables):
-        for name in synthesized_rule_names(rule["name"]):
-            if name in declared:
-                collisions.append(name)
-    return sorted(collisions)
+# 🪦 `enrichment_name_collisions` (판정 292) sat here: names in `chain_rules.json` that a
+#    synthesized rule would also claim. S-234 ① (판정 409) made the three files ONE namespace,
+#    judged once at the loader's set-aware seat (`chain.ingestion_worker.load_chain_rules`) —
+#    a checker per file was the evidence of a namespace per file.
 
 
 # 서버가 강제하는 LIMIT 래핑 — 참조뷰 **표시** 실행의 유일한 형태.

@@ -147,7 +147,7 @@ def test_a_declaration_that_cannot_be_normalized_is_refused_by_name():
 
 
 # ---------------------------------------------------------------------------
-# 🔴 ⓒ — 판정 399 ③′: OFF means nothing happens, and the OTHER switch does not reach here
+# 🔴 ⓒ — 판정 399 ③′: OFF means nothing happens (and it is the ONE off switch — S-234 ②)
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(name="load")
@@ -168,9 +168,7 @@ def fixture_load(tmp_path, monkeypatch):
                         {"business_key": "lot",
                          "column_types": {"lot": "string", "grade": "string"}})
 
-    def run(declarations, env=None):
-        for key, value in (env or {}).items():
-            monkeypatch.setenv(key, value)
+    def run(declarations):
         path = tmp_path / "chain_rules.json"
         path.write_text(json.dumps({"rules": declarations}), encoding="utf-8")
         monkeypatch.setattr(worker, "RULES_PATH", str(path))
@@ -228,11 +226,7 @@ def test_a_disabled_join_declaration_also_stands_no_rule(load):
             if "s239_off_join" in str(r.get("name"))] == []
 
 
-def test_the_synthesis_switch_does_not_reach_a_unified_declaration(load):
-    """🔴 판정 399 = ㉡. `ASSY_CHAIN_SYNTHESIZE` is the switch for rules the product DERIVED
-    from files the operator did not write and cannot see. A unified declaration is written and
-    visible and already has `enabled: false`; gating it there would be a second off switch for
-    one thing, and two switches for one thing is how one of them comes to be forgotten."""
-    kept = load([UNIFIED], env={"ASSY_CHAIN_SYNTHESIZE": "0"})
-
-    assert "enrichment_dedup:s239_lot_rollup" in [r.get("name") for r in kept]
+# 🪦 `test_the_synthesis_switch_does_not_reach_a_unified_declaration` (판정 399 ㉡) died with
+#    the switch it scored (S-234 ②, 판정 408). `enabled: false` in the file a rule was written
+#    in is the one off switch for one rule; the absence of the old name is asserted in
+#    `test_three_files_declare_one_chain_namespace.py`.

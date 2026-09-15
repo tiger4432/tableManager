@@ -55,6 +55,18 @@ def fill_or_declare_null(table: str, columns) -> str:
             "적으십시오" % (table, _names(columns)))
 
 
+def rename_one_declaration(files) -> str:
+    """같은 이름이 «두 선언»에 있다 — 한쪽 이름을 바꿔라. 어느 쪽인지는 제품이 못 고른다 (S-234 ①).
+
+    `files` 는 그 이름이 적힌 파일들. 서로 다른 파일이 둘이면 판정 409 의 문장 그대로이고,
+    한 파일 안에서 두 번이면 그 파일을 가리킨다.
+    """
+    distinct = sorted(set(str(item) for item in (files or ())))
+    if len(distinct) > 1:
+        return "두 파일 중 하나에서 이름을 바꾸십시오"
+    return "%s 에서 한쪽 선언의 이름을 바꾸십시오" % (_names(distinct) or "그 파일")
+
+
 def restart_to_apply() -> str:
     """제품이 알아서 할 일이 남아 있다 — 한 번 재기동."""
     return "재기동하면 제품이 «스스로» 세웁니다. 손으로 DDL 을 돌릴 일은 없습니다"
