@@ -44001,3 +44001,40 @@ import    stdlib 뿐. 네 자리가 세 패키지에 흩어져 있고 어느 쪽
 > ⚠️ **판정 407 의 `list` 칸은 «안 냈습니다» — 이건 제가 «고르고 보고»하는 것입니다.** 그 칸은 닫힌 목록의 «이름»인데 체인 쪽엔 목록을 내주는 자리가 없습니다(`chain_rule_raw_view` 목록 칸 0 · 저장소의 `closed_lists()` 는 원장 작성 화면 것). 없는 이름을 가리키면 그게 바로 이번 주에 세 번 고친 「폼이 그리는데 읽는 쪽이 없다」입니다. 그래서 `branches` 가 곧 목록이고 값의 저자는 하나입니다. 00:0x 에 이 빈칸을 «짓기 전에» 올렸고(`6e6cdbdf`), 초인종이 움직임을 요구하셔서 «되돌릴 수 있는 쪽»으로 지었습니다 — `lists` 칸을 «더하는» 것은 나중에 되지만, 내보낸 계약에서 매달린 이름을 «빼는» 것은 안 됩니다. 판정이 ㉠ 이면 칸 하나 더하면 끝입니다.
 > 게이트 8 신설 · `chain_skeleton.json` 재생성 · `test_chain_skeleton`·`test_ledger_skeleton` 초록 · 63 passed(폼·로더·저장 관문 모집단) · collect 6,792 에러 0.
 > 📌 **[09-16 00:5x] 이 채널의 미답 질문: «둘» — ① `oneOf.list` (㉡ 로 착지, 되돌림 쉬움 — 판정 주시면 바꿉니다) ② PG 실행 시험.** 다음은 S-234 입니다.
+
+---
+
+> ## ✅ **[09-16 07:02 구현자] ① 밤새 착지 여섯 «검수» 끝 · ② S-260 착지 `01b9d85d` — PG 실행 29 errors + 1 failed → **0**
+
+> ### ① 검수 — 당신이 지목한 셋 + 제가 찾은 하나
+> ```
+> S-234 `_refuse_names_claimed_twice` 자리   ✅ 옳습니다. 합성 «뒤» · `rule_order` «앞» — 조용히 떨어뜨리던
+>                                           바로 그 함수 앞입니다. 색인 정합도 맞습니다: `written_in` 이
+>                                           `rules = kept` «뒤»에 잡히고 `rules + synthesized` 와 «같은 순서»로
+>                                           늘어, `zip` 이 어긋날 자리가 없습니다. 합성이 던져도 길이가 안 틀어집니다
+> S-234 `written_in` 태그                  ✅ 좁아지지 «않았습니다». 은퇴한 `join_name_collisions` 도 판정 대상이
+>                                           `synthesized_join_chain_rules()` 가 «지은 이름»(접두 붙은 것)이었습니다 —
+>                                           새 거절이 «같은 집합»을 봅니다. 갈래는 `mapper == JOIN_MAPPER` 한 칸이고
+>                                           그 상수를 내는 자리는 저장소에 `virtual_join/config.py` «하나»입니다
+> S-257 `scratch_connect_args`             ✅ raw psycopg2 까지 지납니다 — `test_pg_multirow_upsert.py:536·555`.
+>                                           `git grep -- "-csearch_path"` 히트 «1»(`isolated_pg.py`), `SET search_path` «0»
+> S-259 삭제 16                             ✅ 은퇴 커밋을 댑니다(95940d45·67cc2e8a) 그리고 «오늘 코드가 그것을 받칩니다»:
+>                                           `ledger/trace.py` 에 `def trace` «없음» · `trace_router` 자기 독스트링이
+>                                           「`/trace`·`/coverage` 은퇴」라고 적고 살아 있는 열을 셉니다
+> ```
+> ⚠️ **검수에서 남긴 것 하나(S-261 로 넘김, 제 판단 아님):** `SqlClaimLookup`·`OneShotSqlClaimLookup`·`Neighbourhood` 는 `ledger/trace.py` 에 «아직 있습니다». 그런데 S-259 가 지운 것 중에 「one-shot vs two-step CTE 비교」가 있고, 그게 `OneShotSqlClaimLookup` 을 «남겨 둔 이유»였습니다 — 그 클래스 독스트링이 「Measured slower — kept as the …」입니다. **S-261 이 그 셋을 은퇴시키면 아무 문제 없고, «남기면» 그날부터 근거 없는 클래스입니다.** S-261 에서 이 순서로 재겠습니다.
+> 🔴 **제가 찾은 것 하나 — 별 커밋 `fcabe5ff`:** `main.py:196` 절 머리글이 「Ledger lineage trace (GET `/api/ledger/trace`)」였습니다. 그 라우트는 «없습니다». 라우터 자기 독스트링은 옳게 적혀 있었고 머리글만 낡아 있었습니다 — 「이 줄이 «참»인가」에 걸립니다. 주석만 고쳤고 등록·순서는 한 글자도 안 건드렸습니다.
+
+> ### ② S-260 착지 `01b9d85d` — «하니스의 사본이 진짜 저자를 선점»했습니다
+> ```
+> 실측   server/scripts/run_pg_tests.py, 이 박스
+>       전   1 failed · 73 passed · «29 errors»   (원장 트레이스 파일 통째 + subgraph 의 지속 동일성 왕복)
+>       후   «103 passed» · 0 failed · 0 errors
+> ```
+> `pg_engine` 이 `Base.metadata` 의 «모든» 표를 스크래치 스키마로 복사해 `create_all` 했고, `init_dynamic_models` 는 `kind: view` 항목«도» 맵으로 만듭니다 — 그 `column_types` 는 「읽는 쪽이 보는 모양」입니다. 그래서 스크래치에 **varchar `ledger_events`** 가 섰고, 제품의 `ensure_schema` 가 거기에 `CHECK jsonb_typeof(object_payload)` 를 걸다 죽었습니다. **제품 SQL 은 옳았고 하니스 사본이 원장 DDL(파티션·jsonb)보다 «먼저» 도착한 것**입니다.
+> 🔴 **판별은 «선언»에 묻습니다 — DB 가 아니라.** `sync_dynamic_tables_schema` 가 `get_view_names()` 를 묻는 것은 그때는 «이미 있어서»입니다. 픽스처엔 «아직 아무것도 없어서» 답할 수 있는 것은 카탈로그뿐이고, 그 낱말의 저자는 `setup_bundle.catalog_kind` «하나»입니다(S-187 이 네 철자를 하나로 접은 그 자리). 다섯째 철자를 안 만들었습니다.
+> ⛔ **조용히 안 건너뜁니다** — 안 지은 것을 한 줄에 «이름 대고» 찍습니다. 나중에 어떤 증명이 그중 하나를 못 찾으면 영문 모를 `UndefinedTable` 대신 그 줄을 읽습니다.
+> ⚠️ **게이트는 «박스 밖»에서도 서야 했습니다.** 이 결함은 라이브 `table_config.json` «있는» 박스에서만 나고, 스위트는 sqlite 에 고정돼 있어 초록이 「이 박스 카탈로그를 한 번도 안 읽었다」는 뜻이었습니다. 그래서 판정기에 «카탈로그를 먹입니다» — 종류만 다른 릴레이션 둘 · 빈 카탈로그(회귀선: 프레임워크 표가 스크래치의 «전부»입니다) · 낱말이 `catalog_kind` 에서 온다는 것. 3 passed.
+> 게이트: `run_pg_tests.py` **0 failed** · 새 시험 3 · conftest 이웃 스위트 59 passed/53 skipped · `pytest tests --collect-only -q` **6,783 · 에러 0**.
+
+> 📌 **[09-16 07:02] 이 채널의 미답 질문: «없음».** 다음은 S-263(`follow=["register"]` 리터럴) → S-261(`trace.py` 잔해, 위 ⚠️ 부터).
