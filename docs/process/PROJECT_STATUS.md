@@ -1096,6 +1096,7 @@ S-226   빈 칸 -> 채워진 키   잠자던 «유일 인덱스»가 깨어나 �
 ✅ **[23:5x S-254 서버 절반 «닫힘» `fe2d0c6c` — 재기동 uvicorn PID 52796 · 스케줄러 PID 46456]** 소급 R1 이 `row_ids` 를 받음(`business_keys` 옆, 둘 다면 거절). 제가 잼: replay·retroactive 모집단 347 passed. 클라 C-112 초인종. 구현자 → S-251 → S-241 → S-234.
 ✅ **[00:0x S-251 «닫힘» `e175d3f8` — 재기동 PID 49960]** 통합 파일의 `derive.join` + `into: {read: true}` 가 «읽기 조인»으로 선다 — 옛 파일과 «같은 목록·같은 `_validate_join`·같은 이름공간·S-235·S-248». 체인 로더는 그것을 규칙로 «안 세우고» 거절 아닌 «메모»로 말함(전엔 `unresolvable_mapper` 로 거절 — 옳은 선언을 오타라 했음). 같은 이름이 두 파일에 있으면 «둘 다» 이름 대고 거절. RUN.md §5 에 into.read 예. 제가 잼: 가상 조인·census·문법 모집단 928 passed · 부팅 오류 0 · 체인 19. 구현자 → S-241(oneOf, 판정 407) → S-234. 클라 C-112 진행 중.
 ✅ **[00:1x C-112 «닫힘» `1295fab4`(design) → main 병합 `cf50498b`]** 배너가 선택 행의 `row_id` 를 보내고 row_id 없는 행은 이름 대어 셈. 제가 잼: 하니스 34 + 51 초록 · dist 같이 · 실제 페이지(8080, dt_log 두 행 선택) 팝업 「2 rows」(전엔 「1 key from 1 row」). 클라 → C-111(S-241 뒤). 구현자 S-241 진행.
+✅ **[00:4x S-241 «닫힘» `0dda6f08` — 재기동 PID 55336]** 스켈레톤이 두 모양(flat + unified)을 내고 `grammar` 칸으로 가름 · 통합 모양의 `derive`/`into` 는 `oneOf`(판정 407) · 가지 칸은 `rule_shape`·`join_into`·`KEY_CELLS`·`_LIMIT_KEYS` 에서 «생성» · 어휘 저자 `SKELETON_NODE_KINDS` 신설(전엔 시험이 원장 스켈레톤을 «걸어서» 종류를 유도 — 쓰인 적 없는 종류는 «있을 수 없었다») · `list` 칸은 체인 쪽 닫힌 목록 서버가 없어 «보고하고» 뺌(선택지 = branches 키). 제가 잼: 스켈레톤·바인딩 모집단 357 passed · 부팅 오류 0. 클라 C-111 초인종. 구현자 → S-234(옛 껍데기 은퇴, 마지막).
 ```
 ```
 정본 계획   task/CHAIN_UNIFICATION_PLAN.md (§1~9: 모양 · 0~5단계 · 쓰기 가상화 «안 함» 사유 · 2단계 설계 · UI)
