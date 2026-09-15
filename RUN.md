@@ -36,6 +36,7 @@ python -c "import sys;sys.path.insert(0,'.');sys.stdout.reconfigure(encoding='ut
 | `uq_vjoin_` · `refused by name` · `virtual join` | 어떤 쓰기가 «가상 조인의 오른쪽 키»를 같은 값으로 두 행 만들려 함. 둘 다 안 쓰고 나머지는 씀 | 같은 사실이면 **데이터**(합침). 다른 사실이면 키가 «좁은» 것 → **선언**의 키에 컬럼을 더함 |
 | `BK Conflict Unresolved … genuine duplicate identity` | 한 배치 안에 같은 업무키가 두 번. 그 배치 전체 거절 | **선언**: 표의 신원이 그 컬럼 하나가 아님 → `table_config` 의 `composite_key_source` 에 컬럼을 더 적음 |
 | `유일 인덱스가 없습니다` / `키가 비어 있습니다` | 가상 조인 로드 시점 점검. 그 조인이 «안 섬» | 「없습니다」= 제품이 만듦(재기동 한 번, `ASSY_VJOIN_AUTO_INDEX` 켜진 채). 「비어 있습니다」= 키가 NULL 인 행들 → **선언** `null_policy: {키: "skip"}` |
+| `invalid input syntax for type double precision: ""` | 🪦 **`ddd5b3ba` 부터 안 납니다**(S-245). 숫자 컬럼이 조인 키일 때 키 식이 텍스트 문장이라 PG 가 거절하던 것 — 이제 숫자 키는 «양쪽 다» TEXT 로 접습니다. 문자 키의 식은 «안 바뀌므로» 기존 인덱스 그대로 | 재기동 뒤에도 나면 «다른 자리»입니다 — 줄의 SQL 을 보고 올려 주십시오 |
 
 🔴 위 넷이 «조치»를 줄 자체에 안 싣고 있는 것이 결함이다(S-247). 착지하면 이 표는 지운다.
 
