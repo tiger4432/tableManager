@@ -68,7 +68,7 @@ python scripts/preview_unified_declarations.py --out ../unified_preview.json
                         "on":   [ { "left": "dt_job", "right": "dt_job" } ],
                         "take": [ "dt_lot_confirmed", "dt_slot_confirmed" ] } },
   "into":   { "table": "dt_inventory" },
-  "key":    { "columns": ["dt_job"], "unique": true }          // 오른쪽 유일성 — 제품이 인덱스를 세웁니다(S-235)
+  "key":    { "columns": ["dt_job"], "unique": true }          // ⚠️ 오늘은 «읽히지 않습니다»(S-240). 오른쪽 중복은 아래 로그 줄이 «행 단위로» 잡습니다
 }
 ```
 * fold 는 적지 않습니다 — 두 표의 표기 선언에서 «계산»됩니다(판정 397). `max_rewrite_rows` 도 없습니다 — 페이싱(판정 396).
