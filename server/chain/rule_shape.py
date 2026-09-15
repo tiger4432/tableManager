@@ -92,6 +92,11 @@ def as_chain_rule(internal: dict) -> dict:
         # product's own measurement (S-151), and 「요청·커밋 경로 인라인 금지」 is standing.
         # The cell says so in the rule rather than only in the dispatcher.
         out["follow_up"] = True
+        # The cell travels with the rule so the SHELL can read it at load time. It is not a
+        # mapper argument - `join_into` never sees it - which is why it sits beside `params`
+        # rather than inside it.
+        if internal.get("key"):
+            out["key"] = dict(internal["key"])
     out.update(derive.get("mapper") or {})
     out.update(internal.get("limits") or {})
     out.update(internal.get("extra") or {})
@@ -148,7 +153,7 @@ def to_declaration(internal: dict) -> dict:
     out = {"name": internal.get("name")}
     if internal.get("enabled_written"):
         out["enabled"] = internal.get("enabled")
-    for key in ("on", "derive", "into", "limits"):
+    for key in ("on", "derive", "into", "key", "limits"):
         value = internal.get(key)
         if value:
             out[key] = value
@@ -176,6 +181,11 @@ def from_declaration(raw: dict, origin: str = "declared") -> dict:
         "on": dict(raw.get("on") or {}),
         "derive": dict(derive, kind=kind or "unknown"),
         "into": dict(raw.get("into") or {}),
+        # 🔴 [S-240] `key` WAS DROPPED ON THE FLOOR. The plan says 「선언이 key.unique 라고
+        # 말하면 제품이 성립시킨다」 and RUN.md said the product builds the index - and for a
+        # unified join both were FALSE, because the cell never survived the translation:
+        # nothing carried it, so nothing could read it.
+        "key": dict(raw.get("key") or {}),
         "limits": dict(raw.get("limits") or {}),
         "origin": origin,
         "grammar": "unified",

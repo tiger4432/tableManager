@@ -77,6 +77,25 @@ def unknown_cells(spec: dict) -> list:
     return sorted(str(key) for key in (spec or {}) if key not in JOIN_CELLS)
 
 
+def right_key(rule: dict) -> tuple:
+    """(the right table, its join columns, the folds) - what a unique index on it would need.
+
+    🔴 [S-240] ASKED HERE BECAUSE THE FOLD IS DECIDED HERE. The index and the join must be
+    built from the SAME expression or PostgreSQL silently stops using the index (S-181), and
+    this module already computes the fold from the two tables' notation declarations. A
+    second computation in the shell would be the second author 판정 397 removed.
+
+    ⚠️ AND THIS MODULE STILL DOES NOT KNOW `virtual_join` EXISTS. It hands back the three
+    values; whoever builds an index is the shell's business.
+    """
+    spec = join_spec(rule)
+    left_table = str((rule or {}).get("target_table") or "")
+    pairs = _pairs(spec, left_table)
+    return (str(spec.get("right_table") or ""),
+            [right for _left, right, _fold in pairs],
+            [fold for _left, _right, fold in pairs])
+
+
 def _takes(spec: dict) -> list:
     """`take` as (right column, left column). `into` defaults to the right column's name."""
     out = []

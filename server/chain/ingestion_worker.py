@@ -1990,6 +1990,28 @@ def warmup_worker(rules, db_session_factory=None):
     except Exception as e:
         logger.error("[Warmup] Mapper discovery failed entirely: %s", e)
 
+    # 0-bis) 🔴 [S-240] THE UNIQUE KEY A UNIFIED JOIN DECLARED, MADE AT LOAD TIME.
+    #    This is the seat because it is where 「the rules were just (re)read」 meets 「there is
+    #    a database」 - `load_chain_rules()` has no session, and the read path is exactly
+    #    where §0-ter ① forbids new SQL. It runs at boot AND after every reload, which is
+    #    when a declaration can have changed.
+    #    ⛔ CONTAINED. An index that cannot be built is a named line, never a worker that
+    #    will not start: the join still refuses a fanned-out left row by itself.
+    if db_session_factory is not None:
+        try:
+            from chain import builtins as _chain_builtins
+
+            _index_db = db_session_factory()
+            try:
+                _report = _chain_builtins.ensure_declared_unique_keys(_index_db, rules)
+            finally:
+                _index_db.close()
+            for _name, _why in _report.get("skipped") or ():
+                logger.info("[Warmup] 유일 키 설치 건너뜀: %s (%s)", _name, _why)
+        except Exception as _key_error:                                # noqa: BLE001
+            logger.error("[Warmup] 선언된 유일 키를 세우지 못했습니다"
+                         "(체인은 계속): %s", _key_error)
+
     # 1) 활성 규칙의 매퍼 모듈 선(先)import — importlib 캐시를 덥힌다(기동 + 리로드 재웜업 공통).
     for rule in rules:
         if not rule.get("enabled", True):

@@ -891,10 +891,18 @@ def load_verified_rules(db, path: str = None, known_tables: dict = None,
     # was asked for come back.
     if path is None:
         try:
+            from chain import builtins as chain_builtins
             from virtual_join import unique_key
 
-            unique_key.retract_unrequired_once(
-                db, {r["unique_index"] for r in verified if r.get("unique_index")})
+            # 🔴 [S-240] BOTH PRODUCERS OR NEITHER. A unified join declares its unique key
+            # too, and its index carries the same `uq_vjoin_` prefix - so a required set
+            # computed from the read-time declarations alone is the very PARTIAL list this
+            # function already refuses to retract from when a caller passes `path`. Half a
+            # required set does not retract a little less; it retracts the wrong thing.
+            required = {r["unique_index"] for r in verified if r.get("unique_index")}
+            required |= chain_builtins.declared_unique_index_names(
+                known_tables=known_tables)
+            unique_key.retract_unrequired_once(db, required)
         except Exception as retract_error:                             # noqa: BLE001
             logger.warning("[VirtualJoin] 제품 인덱스 회수를 건너뜁니다"
                            "(로딩은 계속): %s", retract_error)

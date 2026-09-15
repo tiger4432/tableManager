@@ -134,6 +134,106 @@ def _run_auto_confirm(db, rule, row_ids=None, done=None, **_):
             "source_name": enrichment.candidates.SOURCE_NAME}
 
 
+def ensure_declared_unique_keys(db, rules) -> dict:
+    """[S-240] Make the unique key a unified join DECLARED, at load time. Returns a report.
+
+    🔴 THE CELL WAS WRITTEN AND READ BY NOBODY. `key.unique: true` never survived the
+    translation (`rule_shape` dropped it), and the only place that builds a `uq_vjoin_*` is
+    the OLD read-time shell - so the plan's 「선언이 key.unique 라고 말하면 제품이
+    성립시킨다」 and RUN.md's 「제품이 인덱스를 세웁니다」 were both false for a unified join.
+
+    ⚠️ THE SHELL CALLS IT, NOT `join_into`. That module must not import `virtual_join` -
+    a boundary its own test asserts - so it hands back the right table, its columns and the
+    folds, and this seat, which already knows both halves, does the building.
+
+    ⛔ LOAD TIME, NEVER THE READ PATH (§0-ter ①), and `enabled: false` means ZERO calls
+    (판정 399 ③′): a switch that still probes is the defect that took the read path down
+    on 2026-09-14.
+    """
+    from virtual_join import config as vjc
+    from virtual_join import unique_key
+
+    report = {"ensured": [], "skipped": []}
+    seen = set()
+    for name, table, columns, folds, skip in declared_unique_targets(rules):
+        if skip:
+            report["skipped"].append((name, skip))
+            continue
+        # ⚠️ ONE DECLARATION STANDS TWO RULES AND NEEDS ONE INDEX. The target half and
+        # its `:reference` companion join the same two tables on the same key, so they ask
+        # for the SAME index name - asking twice would probe `pg_index` twice at every
+        # reload and report one index as two.
+        index_name = vjc.required_index_name(table, columns, folds)
+        if index_name in seen:
+            continue
+        seen.add(index_name)
+        report["ensured"].append(
+            (name, unique_key.ensure_once(db, name, table, columns, folds)))
+    return report
+
+
+def declared_unique_targets(rules):
+    """(name, right table, columns, folds, skip reason) per unified join that DECLARED one.
+
+    🔴 ONE WALKER, BECAUSE THEY ARE ONE QUESTION. 「which index do we build」 and
+    「which index do we require」 must never be able to disagree - the day they do, the
+    product builds an index at warmup and retracts it on the next read, forever.
+    """
+    from chain import join_into
+
+    for rule in rules or ():
+        if not isinstance(rule, dict):
+            continue
+        if rule.get("mapper") != join_into.JOIN_INTO_MAPPER:
+            continue
+        name = rule.get("name")
+        if not rule.get("enabled", True):
+            yield (name, None, None, None, "enabled=false")
+            continue
+        if not (rule.get("key") or {}).get("unique"):
+            # ⚠️ ABSENT IS NOT 「no」 TO A QUESTION NOBODY ASKED. A declaration that says
+            # nothing about uniqueness gets no index and no complaint; `join_into`'s own
+            # row-level net still refuses a left row with two right answers.
+            continue
+        table, columns, folds = join_into.right_key(rule)
+        if not table or not columns:
+            yield (name, None, None, None, "no right key to cover")
+            continue
+        yield (name, table, columns, folds, None)
+
+
+def declared_unique_index_names(known_tables: dict = None) -> set:
+    """Every `uq_vjoin_*` name the LIVE unified declarations require (S-240 · S-248).
+
+    🔴 AN INDEX LIVES EXACTLY AS LONG AS THE JOIN THAT REQUIRES IT - and after S-240
+    there are TWO kinds of join that require one. The retraction that enforces that lifetime
+    computes 「required」 from the read-time declarations alone, so without this the index
+    THIS module builds at warmup is dropped by the next read-path load, rebuilt at the next
+    restart, and dropped again: a switch flapping on its own.
+
+    ⚠️ THE DECLARATION IS EXPANDED BY THE SAME JUDGE THE LOADER USES (S-244). A second
+    reading of the file would be a second answer to 「what does this declaration stand」,
+    and this one has to agree with the seat that built the index.
+    """
+    from chain import ingestion_worker, rule_shape
+    from database import crud
+    from virtual_join import config as vjc
+
+    catalogue = known_tables if known_tables is not None else crud.TABLE_CONFIG
+    names = set()
+    for raw in ingestion_worker.read_rules_document()["rules"] or ():
+        stood, refusal, _notes = rule_shape.expand_declaration(raw, catalogue)
+        if refusal:
+            # ⚠️ The loader already says this out loud; saying it again here would put a
+            # refusal on the read path every few seconds - the flood 2026-09-14 was.
+            continue
+        for _name, table, columns, folds, skip in declared_unique_targets(stood):
+            if skip:
+                continue
+            names.add(vjc.required_index_name(table, columns, folds))
+    return names
+
+
 #: kind -> callable. One table, the registry's posture: a name, a callable, nothing implicit.
 BUILTIN_KINDS = {}
 
