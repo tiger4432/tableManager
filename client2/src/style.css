@@ -3049,6 +3049,12 @@ body.resizing-active .history-sidebar {
 .redo-panel__note, .redo-panel__nogo {
   padding: 8px 12px; width: 100%; opacity: 0.7;
 }
+/* C-113 ①. «막지 않는» 경고 한 줄 — 색은 경고 토큰이고, 자리는 줄들 «위»입니다
+   (아래에 두면 누른 뒤에 읽게 됩니다). 투명도를 낮추지 않습니다 — 이것은 주문이 아니라 수입니다. */
+.redo-panel__warn {
+  padding: 8px 12px; width: 100%;
+  color: var(--warning); border-bottom: 1px solid var(--border);
+}
 
 /* 🔴 «방향»만 이 판이 선언합니다 -- 껍데기는 column 이지만 칩은 가로로 감싸는 것이 맞습니다
    (총괄 판정: 그건 결함이 아닙니다).

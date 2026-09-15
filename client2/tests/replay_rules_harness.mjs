@@ -300,6 +300,41 @@ function bannerSuite(mod) {
       .every((n) => n.tagName === 'DIV')
     && withHole.some((n) => n.tagName === 'BUTTON' && /— 1 row/.test(n.textContent)),
     withHole.map((n) => `${n.tagName}:${n.textContent}`));
+  // ═══ W. C-113 ① — 선택이 크면 «한 줄»로 말하고, 막지는 않는다 ═════════════
+  //
+  // 🔴 운영 규격은 「한 트랜잭션에 수천 행」입니다(소유자 2026-09-08). 그보다 큰 선택은
+  //    «틀린 것이 아니라» 큰 것이라, 화면은 수와 기준만 적고 누를지는 사람이 정합니다.
+  // ⚠️ 기준은 «옵션»입니다(`warnAbove`) — 숫자를 박으면 그 숫자가 다른 설치에서도
+  //    맞다고 말하는 것이 됩니다(「임시로 박스에 설정한 것으로 말하지 말 것」 상설).
+  const warnLines = (rowCount, opts = {}) => {
+    const doc = mkDoc();
+    const host = doc.createElement('div');
+    const rows = Array.from({ length: rowCount }, (_, i) => envelope({ lot_id: `L${i}` }));
+    const part = new mod.RedoBanner(host, {
+      doc, sources: [], getSelection: () => rows, readValue: readEnvelope, handOff: () => {},
+      hasToken: () => true, run: () => Promise.resolve({ ok: true }), rules: [JOIN], ...opts,
+    });
+    part.setRelation('dt_lot');
+    part.render();
+    const chain = walk(host).find((n2) => n2.dataset && n2.dataset.redo === 'chain');
+    if (chain) chain.click();
+    return { warn: byClass(host, 'redo-panel__warn'), rows: byClass(host, 'redo-panel__group') };
+  };
+  const small = warnLines(3, { warnAbove: 5 });
+  s.say('W1 a selection under the threshold says nothing about size',
+    small.warn.length === 0, small.warn.map((n2) => n2.textContent));
+  const big = warnLines(7, { warnAbove: 5 });
+  s.say('W2 over it, ONE line with the count and the threshold',
+    big.warn.length === 1 && /7/.test(big.warn[0].textContent)
+    && /5/.test(big.warn[0].textContent), big.warn.map((n2) => n2.textContent));
+  // 🔴 막지 않습니다 — 막으면 정당하게 큰 범위를 돌릴 길이 없어집니다.
+  s.say('W3 ... and it does not block: the rule lines are still pressable',
+    big.rows.length === 1 && big.rows[0].tagName === 'BUTTON',
+    big.rows.map((n2) => `${n2.tagName}:${n2.textContent}`));
+  const byDefault = warnLines(3);
+  s.say('W4 the threshold is an option, not a number baked into the part',
+    byDefault.warn.length === 0 && warnLines(1001).warn.length === 1,
+    byDefault.warn.length);
   return { ran: s.names.length, names: s.names, failures: s.failures };
 }
 
@@ -369,6 +404,13 @@ const BANNER_MUTANTS = [
       "    const payload = { op: 'chain_replay', params: { row_ids: values.join(',') } };",
       "    const payload = { op: 'chain_replay', params: { row_ids: values.join(',') },\n"
       + "      businessKeys: values };") },
+  { id: 'N13', what: 'every selection is called big, so the warning stops meaning anything',
+    catches: 'W1 a selection under the threshold',
+    mutate: (t) => swap(t, '    if (picked.length > this.warnAbove) {', '    if (picked.length >= 0) {') },
+  { id: 'N14', what: 'the threshold is baked in rather than declared by the page',
+    catches: 'W2 over it, ONE line',
+    mutate: (t) => swap(t, '    if (picked.length > this.warnAbove) {',
+      '    if (picked.length > 1000) {') },
   { id: 'N9', what: 'a rule that never said its tables is drawn with an arrow anyway',
     catches: 'B7 ... and with no tables, no arrow is invented',
     mutate: (t) => swap(t, '        const path = (rule && rule.trigger_table && rule.target_table)',

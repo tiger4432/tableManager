@@ -218,7 +218,7 @@ console.log('\n── C. THE LEDGER GROUPS, ASSEMBLED HERE ───────
   press(holed.host, 'ledger');
   const hl = groupsShown(holed.host);
   ok('C6 a column with nothing in it is not handed over',
-    hl.filter((l) => l.startsWith('wafer_id')).every((l) => l.includes('no value')), hl);
+    hl.filter((l) => l.startsWith('wafer_id')).every((l) => l.includes('값 없음')), hl);
   byClass(holed.host, 'redo-panel__go')[0].click();
   ok('C7 ... and the payload holds only the column that has values',
     holed.handed().groups.length === 1
@@ -276,7 +276,7 @@ console.log('\n── E. THE ENVELOPE ──────────────
   const plain = build(rows, { readValue: (row, col) => (row ? row[col] : undefined) });
   press(plain.host, 'ledger');
   ok('E1 without the injected reader the enveloped rows read as empty',
-    (note(plain.host) || '').includes('no scope column has a value'), note(plain.host));
+    (note(plain.host) || '').includes('범위 값 없음'), note(plain.host));
   const wired = build(rows);
   press(wired.host, 'ledger');
   ok('E2 with the reader the values are found where the grid keeps them',
@@ -339,7 +339,7 @@ console.log('\n── G. A LINE IS PRESSED AND IT RUNS ────────�
     lines()[0].tagName === 'BUTTON', lines().map((n) => n.tagName));
   // The dropped column has nothing to run, so it is a line and not a control that does nothing.
   ok('G2 a line with nothing to run is not a button',
-    lines()[1].tagName === 'DIV' && lines()[1].textContent.includes('no value'),
+    lines()[1].tagName === 'DIV' && lines()[1].textContent.includes('값 없음'),
     lines().map((n) => n.tagName));
   lines()[0].click();
   ok('G3 pressing it calls the injected runner once, with the declared parameter names',
@@ -392,7 +392,7 @@ console.log('\n── H. NO TOKEN SAYS SO ────────────�
   const with_ = mk(true);
   ok('H1 without a token the panel says so in a sentence',
     (byClass(without, 'redo-panel__nogo')[0] || {}).textContent !== undefined
-    && byClass(without, 'redo-panel__nogo')[0].textContent.includes('token'),
+    && byClass(without, 'redo-panel__nogo')[0].textContent.includes('토큰'),
     byClass(without, 'redo-panel__nogo').length);
   ok('H2 ... and its lines are not controls that would do nothing',
     byClass(without, 'redo-panel__group').every((n) => n.tagName === 'DIV'));
@@ -484,7 +484,7 @@ console.log('\n── I. THE CHAIN RULES: UNREAD IS NOT EMPTY ──────
     !== declaredEmpty.lines.map((n) => n.textContent).join('|'),
     [unread.lines.map((n) => n.textContent), declaredEmpty.lines.map((n) => n.textContent)]);
   ok('I2 unread says it could not be loaded',
-    unread.lines.some((n) => n.textContent.includes('not loaded')),
+    unread.lines.some((n) => n.textContent.includes('못 읽음')),
     unread.lines.map((n) => n.textContent));
   // ⚠️ C-109 에서 문구가 «좁아졌습니다»: 목록이 이제 「이 표를 트리거로 하는」 규칙만이라,
   //    「서버에 규칙이 없다」는 오늘 «거짓»입니다(다른 표에는 있을 수 있습니다).
@@ -538,7 +538,7 @@ const DEFECTS = [
   ['M13 no token goes quietly grey instead of saying so',
     swap("      why.className = 'redo-panel__nogo';", "      why.className = 'redo-panel__quiet';")],
   ['M14 the unread rule list paints the same as a declared-empty one',
-    swap("        { text: 'chain rules not loaded — open in admin to pick one', params: null },",
+    swap("        { text: '규칙 목록 못 읽음 · 어드민에서 선택', params: null },",
       "        { text: '이 표를 트리거로 하는 규칙 없음', params: null },")],
   ['M16 the line drops the item class when it becomes a button',
     swap("      line.className = 'dropdown-item redo-panel__group';",
@@ -748,7 +748,7 @@ async function runMutant({ name, mutate }) {
         ['R6 a column with no values says so instead of going out as an empty scope',
           () => byClass(holed.host, 'redo-panel__group')
             .filter((n) => n.textContent.startsWith('wafer_id'))
-            .every((n) => n.textContent.includes('no value'))],
+            .every((n) => n.textContent.includes('값 없음'))],
         ['R7 the chain hand-off invents no rule grouping',
           () => !!handed && handed.groups === undefined],
         ['R8 ...and carries the selected rows verbatim, by row_id',
