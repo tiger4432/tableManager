@@ -195,7 +195,15 @@ def lot_seed(lot):
 def walk_on(conn, lot, relation="ledger_events", **kw):
     """The live seat, in process: the walk over the ledger through the SQL lookup —
     exactly what `GET /api/ledger/subgraph` hands `subgraph` (minus the declaration
-    lookups the route adds, which are not what PostgreSQL is asked here)."""
+    lookups the route adds, which are not what PostgreSQL is asked here).
+
+    ⚠️ WITH ONE EXCEPTION, AND IT IS A DECLARATION LOOKUP THAT CHANGES THE SQL (S-263).
+    The registration sweep's predicate is the route's to derive - `subgraph` no longer
+    holds the word - and this fixture writes its atoms under `register`, so it names the
+    one IT wrote. Leaving it out would not make this 「closer to PostgreSQL」; it would
+    stop a query from being issued at all, which is the opposite of what this seat tests.
+    """
+    kw.setdefault("registration_follow", {"register"})
     return ledger_subgraph.subgraph(
         lot_seed(lot),
         ledger_subgraph.SqlEvidenceLookup(conn, relation=relation), **kw)
