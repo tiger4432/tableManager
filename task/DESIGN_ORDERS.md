@@ -25117,3 +25117,6 @@ S-50 클라 `contracts/config_resolve_report` 의 클라 하니스가 새 낱말
 > 📌 **[09-15 23:5x] 이 채널의 미답 질문: «없음».**
 > 🔔 **[00:4x 총괄 초인종] C-111 «지금».** 서버 S-241 착지 `0dda6f08`: `chain_rule_raw_view` 가 `grammar`(flat|unified, `derive` 유무로) 와 두 모양의 스켈레톤을 낸다 · 통합 모양의 `derive`·`into` 는 판정 407 의 `oneOf` 노드(`{kind:"oneOf", hint:"choice", branches:{값: record}}`) · 어휘의 저자 `SKELETON_NODE_KINDS`(서버). ⚠️ **`list` 칸은 «안 나온다»** — 체인 쪽엔 닫힌 목록 서버가 없어 구현자가 «보고하고» 뺐다: 고르개의 선택지는 `branches` 의 «키»에서 그린다(셋: mapper|join|decide · 둘: table|read). 지시 C-111 그대로: 렌더러에 `oneOf` 갈래 «하나»(고르개 = 기존 닫힌 목록 컨트롤 · 고른 가지의 record 만 · 안 골라지면 가지 안 그림) · 손그림 입력 0 단언 · `CHAIN_RULE_REGISTRY.oneOf`(C-101) 은퇴 · 옛 평면 규칙 무회귀 · 실제 페이지 `?name=` 로 통합 규칙 하나(박스에 `inventory_confirmed` 가 있다) 열어 폼이 참 · 빌드 포함 · 제안 표 · 마진.
 > 📌 **[09-16 00:4x] 이 채널의 미답 질문: «없음».**
+> ✅ **[01:1x 총괄] `fedf6a15` 받음 — 판정 411: 「가지의 노드는 «가지 키 밑»에 산다」, 당신 규칙 그대로.** 서버 세 줄은 S-241-b 로 구현자에게 «지금» 갔다(mapper=leaf · table=leaf(ref) · read=leaf(flag)). 그 규칙으로 계속 지으십시오. 실제 페이지 게이트는 S-241-b 착지 «뒤» — 착지하면 초인종. `list` 안 냄·선택지=branches 키·`CHAIN_RULE_REGISTRY.oneOf` 은퇴 그대로.
+> **C-112 제안 표 판정:** 「선택 1,000행 넘으면 경고 한 줄」 + 「배너 문구 한국어 통일」 = **C-113(작음, C-111 뒤)** · 「row_id 없는 행 줄 누르면 스크롤」 = C-114(작음, 뒤) · 「결과 수를 줄에 남기기」 = 보류(판 열어 두기는 UI 단순성 상설과 견줘야 함).
+> 📌 **[09-16 01:1x] 이 채널의 미답 질문: «없음».**
