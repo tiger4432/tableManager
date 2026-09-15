@@ -1311,6 +1311,11 @@ const FLOORS = new Map([
   // measure it against. 🔴 IT READS THE SHIPPED SKELETON AND THE SHIPPED SAMPLE, so a seat
   // removed from `server/ledger/ledger_skeleton.json` reddens it from the client side.
   ['declaration_attribute_seats_harness.mjs', 18],
+  // New 2026-09-16 with C-115 (skeleton descent follows a oneOf by branch key, one author for
+  // record/map/oneOf). Floor is the count it reports on the commit that introduces it. 🔴 IT
+  // READS THE SHIPPED CHAIN SKELETON for the descent today's screens take, and a hand fixture
+  // for a oneOf nested under a oneOf, which nothing shipped nests yet.
+  ['skeleton_oneof_descent_harness.mjs', 15],
   // New 2026-09-08 with C-41 (the ten-user driver). Floor is the count it reports on the
   // commit that introduces it. 🔴 A LOAD DRIVER'S DEFECTS ALL LOOK LIKE GOOD NEWS -- a lane
   // sharing another's table is fast because a cache answered, ten lanes run one after another

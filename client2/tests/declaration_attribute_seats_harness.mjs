@@ -210,8 +210,11 @@ console.log(`\n${base.fail === 0 ? '✓' : '✗'} baseline: ${base.pass} passed,
 console.log(`ASSERTIONS ${base.pass + base.fail} ${base.fail}`);
 
 const DEFECTS = [
+  // Re-aimed by C-115: descent moved into the one shared `childOf`, so the map step is one
+  // line there now. Same claim, same seats.
   ['a map stops being walked through, so the two binding seats disappear',
-    (s) => s.replace('      cursor = deref(cursor.of, defs);\n      continue;', '      return null;')],
+    (s) => s.replace("  if (node.kind === 'map') return deref(node.of, defs);",
+                     "  if (node.kind === 'map') return null;")],
   ['`use` stops being followed, so a seat behind a shared def is invisible',
     (s) => s.replace('    cursor = (defs || {})[cursor.use];', '    return null;')],
   ['every field is seeded, so a new binding is born carrying a refused key',
