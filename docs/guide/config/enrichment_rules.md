@@ -1,6 +1,6 @@
 # `enrichment_rules.json` 세팅 — 결손 보정 워크리스트 규칙
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-06 (§7.3-bis의 `curl` 포트를 **8000 → 8080**으로 정정 — `:8000`은 `uvicorn`을 직접 쳤을 때의 기본값이라 복사해 붙인 운영자가 「연결 거부」를 자기 선언 문제로 읽습니다. 모집단 목록 옆의 **수를 지웠습니다**. 🔴 **`alignment` 키를 어느 규칙에 붙이는가의 체크리스트는 [CONFIG_GUIDE §3 S9](../CONFIG_GUIDE.md)에 생겼습니다** — 이 저장소의 현재 선언이 어긋나 있다는 실측도 그쪽에 있습니다) | **Owner:** 총괄
+> **Status:** 🟢 Living | **Last-verified:** 2026-09-16 (§4 반영 확인 — 파생 확인 줄은 `[ChainRules] set(N)` 하나, S-234) · 직전 2026-08-06 (§7.3-bis의 `curl` 포트를 **8000 → 8080**으로 정정 — `:8000`은 `uvicorn`을 직접 쳤을 때의 기본값이라 복사해 붙인 운영자가 「연결 거부」를 자기 선언 문제로 읽습니다. 모집단 목록 옆의 **수를 지웠습니다**. 🔴 **`alignment` 키를 어느 규칙에 붙이는가의 체크리스트는 [CONFIG_GUIDE §3 S9](../CONFIG_GUIDE.md)에 생겼습니다** — 이 저장소의 현재 선언이 어긋나 있다는 실측도 그쪽에 있습니다) | **Owner:** 총괄
 > 
 > ### 이번 라운드 (2026-07-31)
 > - **§7.3-bis의 ⏳ 해제** (`93610cb`) — 사유(`not_declared`/`not_reached`/`scope_unresolved`/`mapping_unavailable`)가 **어드민 Overview 탭의 세 번째 계기 줄에 그대로 나옵니다.** `detail`은 **서버가 만들고 화면은 그대로 렌더**하므로, 화면 문장과 `curl` 응답이 다르면 그 자체가 결함입니다.
@@ -20,7 +20,7 @@
     reference view SQL/bind validation :81-100 (bind error :96-99), view drop log :123 (view-level, rule survives),
     rule skip log format :243 "[Enrichment:{name}] rule skipped: {err}"
   chain synthesis: enrichment/config.py:264 -> merged in chain/ingestion_worker.py:296
-    (log "[Enrichment] Synthesized N dedup chain rule(s)"; reload on SYSTEM_RELOAD)
+    (boot line "[ChainRules] set(N): ..." names every rule whichever file wrote it - S-234 5c845e67; reload on SYSTEM_RELOAD)
   ontology promotion: server/ontology_config.py:218 (RESOLVED_AS)
   web query API per-request: server/main.py:3442
   query_ref dir: enrichment/config.py:43 config/enrichment_queries/<ref>.sql (dir absent by default)
@@ -135,7 +135,7 @@
 ## 4. 반영 확인
 
 1. `GET /enrichment/rules` — 규칙이 공개 메타에 뜨는지 (여긴 **요청마다 재읽기**라 리로드 전에도 보입니다 — 이것만 보고 파생까지 됐다고 판단하지 마십시오).
-2. **체인 워커 로그**에서 파생 확인: `[Enrichment] Synthesized N dedup chain rule(s) from enrichment_rules.json` — 리로드 후 N이 기대만큼 늘었는지.
+2. **체인 워커 로그**에서 파생 확인: `[ChainRules] set(N): …` 한 줄이 규칙을 «이름으로 전부» 댑니다 — 어느 파일이 썼든, 출처·종류·표가 규칙마다 붙습니다(S-234 `5c845e67` — 종전의 「Synthesized N dedup …」 별도 줄은 여기에 접혔습니다). 리로드 후 여러분의 규칙 이름이 그 줄에 있고 `[ChainRules] refused(N)` 에 없는지. ⛔ 같은 이름을 `chain_rules.json` 에도 적으면 «어느 쪽도 돌지 않습니다»(세 파일이 한 이름공간, 판정 409).
 3. 참조뷰 실행: `GET /enrichment/rules/{name}/references/{index}?params=...`.
 4. 원본 테이블에 새 행을 넣어 `derived_table`에 판단키당 1행이 생기는지 왕복 확인.
 

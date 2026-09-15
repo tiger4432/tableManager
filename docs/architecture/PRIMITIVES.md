@@ -1,22 +1,24 @@
 # 🧩 프리미티브 카탈로그 — 이 시스템이 이미 할 줄 아는 것
 
-> **Status:** 🟢 Living | **작성:** 2026-07-27 · 총괄 · **유지: doc-keeper** | **Last-verified:** 2026-09-16(아무 일도 안 한 틱은 그래도 기다린다 · 화면은 자기가 든 신원으로 묻는다 · 택1은 값이 아니라 모양을 고른다 — **신규 3 · 정정 1**) · 직전 2026-09-15 «후속 3»(빈 칸은 층이 아니다 · 화면의 목록은 도는 집합에서 거른다 · 고리 줄도 저자 하나 — **신규 2 · 정정 1**) · 직전 «후속 2»(선언한 유일 키는 웜업이 세운다 · 키 식의 저자는 하나 · 문이 둘이어도 등록은 하나 · 거절 줄은 다음 행동을 싣는다 — **신규 4 · 정정 4**) | **Owner:** 전 에이전트 공용
+> **Status:** 🟢 Living | **작성:** 2026-07-27 · 총괄 · **유지: doc-keeper** | **Last-verified:** 2026-09-16 «후속»(세 파일 한 이름공간 · 명부는 값 · PG 증명의 자리 · 부팅 순서는 자기 모듈 — **신규 4 · 정정 3**) · 직전 2026-09-16(아무 일도 안 한 틱은 그래도 기다린다 · 화면은 자기가 든 신원으로 묻는다 · 택1은 값이 아니라 모양을 고른다 — **신규 3 · 정정 1**) · 직전 2026-09-15 «후속 3»(빈 칸은 층이 아니다 · 화면의 목록은 도는 집합에서 거른다 · 고리 줄도 저자 하나 — **신규 2 · 정정 1**) | **Owner:** 전 에이전트 공용
 > **왜 있나:** 문제를 만나면 **만들기 전에 여기부터 본다.** "이건 무엇과 구조적으로 같은가"에 한 문장으로 답하지 못하면 아직 설계할 준비가 안 된 것이다.
 > **CODE_MAP과의 차이:** CODE_MAP은 *어디에 무엇이 있나*(파일·심볼). 이 문서는 ***무엇을 할 줄 아나*(연산·패턴)**. 새 기능을 만들 때 읽는 쪽은 이쪽이다.
 > **[중복 원장](./DUPLICATION_LEDGER.md)과의 차이:** 이 문서는 「**할 줄 아는 것**」이고 **만들기 전에** 읽는다. 원장은 「이미 **두 번 이상 만들어져 있는 것**」이고 **그중 하나를 건드리기 직전에** 읽는다. 조언의 방향이 반대다(재사용하라 ↔ N+1로 만들지도 순진하게 합치지도 마라). 어떤 프리미티브에 **알려진 사본이 있으면 그 항목에서 원장 항목을 링크**하고, 상세는 한쪽에만 둔다.
 > **작성 규율:** 한 항목 = `무엇 · 어디 · 언제 재사용 · 함정`. 구현 상세·라인 앵커는 최소로 — 앵커가 낡는 것보다 **개념이 남는 것**이 중요하다.
 > 🔴 **이 헤더에 라운드를 쌓지 마십시오.** 2026-07-31 이전 이 줄 하나가 **13,000자 넘는 changelog**로 자라 있었고, *문서가 현재인지 알려 주는 자리*가 그 자체로 읽을 수 없게 됐습니다. `Last-verified`는 **날짜**까지이고, 라운드 기록은 [`docs/history/`](../history/)에 있습니다.
 >
-> ### 이번 라운드 (2026-09-16 · doc-keeper · **아무 일도 안 한 틱은 그래도 기다린다 · 화면은 자기가 든 신원으로 묻는다 · 택1은 값이 아니라 모양을 고른다**) — **신규 3 · 항목 정정 1**
+> ### 이번 라운드 (2026-09-16 «후속» · doc-keeper · **세 파일 한 이름공간 · 명부는 값 · PG 증명의 자리 · 부팅 순서는 자기 모듈**) — **신규 4 · 항목 정정 3**
+> - **§7 ⭐⭐「한 뜻을 «여러 파일»에 적을 수 있으면 이름공간은 «하나»고 판정 자리도 «하나»다.」** S-234(`5c845e67`) · 판정 408·409. 파일 쌍마다 검사기 둘이 «두 이름공간의 증거»였고, 못 보는 사본은 순서 유도가 말없이 버렸다. 로더의 집합 자리 «한 곳»에서 두 사본 «다» 안 세우고 한 번 거절 · `ASSY_CHAIN_SYNTHESIZE` 은퇴 · 부팅 줄 `[ChainRules] set(N)` 하나.
+> - **§6 ⭐⭐「런처의 자식 명부는 «값»이다.」** S-255(`8c824a1e`). 오라클 다섯이 런처를 텍스트로 잘라 주석 하나에 빨개졌다. `runtime/launcher_specs.child_specs()`.
+> - **§6 ⭐⭐「PostgreSQL 만 나를 수 있는 증명은 «표지»를 달고 «한 명령»으로만 돈다.」** S-256·S-257·S-258(`baf17cfa`·`ae28b356`·`27f5d7d9`) · `69f7a130`. `@pytest.mark.pg` · `scripts/run_pg_tests.py` · 검색 경로 한 철자 `<scratch>,public`.
+> - **§6 ⭐⭐「부팅 «순서»는 자기 모듈에 산다.」** C-110(`c96527d9`). `client2/src/startup.js` — 소켓이 첫 줄, 하니스가 자르지 않고 import 한다.
+> - **정정 3** — §3 「택1」: 빈 값은 `{}`, 내려가기의 저자는 `childOf` 하나(C-115 `dd4cd689`) · §3 「화면이 내미는 목록」: `synthesized_kind_counts` 는 없다 · §7 「스위치는 안 세우기」: `ASSY_CHAIN_SYNTHESIZE` 는 주어와 함께 은퇴.
+>
+> ### 직전 라운드 (2026-09-16 · doc-keeper · **아무 일도 안 한 틱은 그래도 기다린다 · 화면은 자기가 든 신원으로 묻는다 · 택1은 값이 아니라 모양을 고른다**) — **신규 3 · 항목 정정 1**
 > - **§6 ⭐⭐「아무 일도 안 한 틱은 그래도 기다린다 — 남의 행은 내 대기열이 아니고, 이 루프의 자리는 «자기 프로세스»다.」** S-252(`07143bbe`) · 판정 406(`86016d10`·`f7f89ab9`). 소비 못 하는 제어 행 하나가 «await 없는 고리»를 만들어 API 가 굶었다. 집는 질의가 제어 타입을 SQL 에서 빼고(`pending_chain_events`), «할 일 없음»의 두 출구가 `idle_wait()` 하나를 지난다. 런처는 API 자식에 `ASSY_CHAIN_WORKER=0` 을 넘기고, 단일 프로세스는 «경고하며» 돈다. 꺼진 가지는 한 번도 돈 적이 없었다(가드는 도달 가능해지는 날 틀린다).
 > - **§2 ⭐⭐「화면은 «자기가 든 신원»으로 묻는다 — 보이는 값이 아니라 `row_id`, 두 신원이 같이 오면 거절.」** S-254(`fe2d0c6c`) · C-112(`1295fab4`) · C-113(`7156ee62`) · C-114(`3bd3b829`). 조립된 업무 키는 어느 컬럼에도 없어 `rows_scanned 0` 에 «오류 없음». `replay_rule(row_ids=)` 가 `business_keys` «옆»에 서고, 배너는 `row_id` 만 보내며, 없는 행은 이름을 달고 서서 «보여 주고», 큰 선택은 크기를 «말한다».
 > - **§3 ⭐⭐「「택1」은 값이 아니라 «모양»을 고르는 노드다 — 가지 키가 목록이고, 고른 가지만 그린다.」** S-241(`0dda6f08`) · S-241-b(`7c81c6d5`) · C-111(`321e03c3`). 스켈레톤 어휘에 `oneOf` 가 생기고 어휘에 «저자»가 생겼다(`SKELETON_NODE_KINDS`). 체인 스켈레톤이 두 문법을 들고 raw 응답이 `grammar` 를 말한다. 가지 노드는 «가지 키 밑»에(판정 411).
 > - **정정 1** — §3 「저장하지 않고 조회 시점에 잇는다」: 선언 자리가 «둘»이 됐다(S-251 `e175d3f8`) — `chain_rules.json` 의 `into: {read: true}` 가 «같은 목록·같은 검증기»로 든다, 같은 이름은 거절, 파일 부재는 더는 「조인 없음」이 아니다.
->
-> ### 직전 라운드 (2026-09-15 «후속 3» · doc-keeper · **빈 칸은 층이 아니다 · 화면의 목록은 도는 집합에서 거른다 · 고리 줄도 저자 하나**) — **신규 2 · 항목 정정 1**
-> - **§1 ⭐⭐「빈 칸은 층이 아니다 — 「비웠다」를 뜻할 수 있는 저자만 NULL 층을 세운다.」** 판정 405(S-243 `fac454af` · S-243-b `478fcf32`). 파일의 빈 셀이 NULL 층이 되어 조인 값을 «영구히» 가렸다. 쓰기 깔때기 한 자리에서 `crud.can_mean_emptied` 가 답하고, 층을 안 세운 것은 `absent_not_written` 으로 센다. 있던 층은 그대로. 쌓인 것은 «세기만»(`scripts/count_absent_null_layers.py`, `--apply` 없음).
-> - **§3 ⭐⭐「화면이 내미는 «할 수 있는 것» 목록은 «실제로 도는 집합»에서 거른다 — 파일이 아니라 로더, 배관 이름이 아니라 선언의 낱말.」** S-250(`df824a9a`) · C-109(`c87080e3`). 그리드 리플레이 목록이 파일 원문을 읽어 통합 join·합성 규칙이 없었고 표로 거를 수 없었다. `replay.replayable_rules_for` + `rule_shape.declared_kind` · 클라 `replayable_rules.js`.
-> - **정정 1** — §7 「거절·경고 줄은 다음 행동을 싣는다」: 자리가 넷 → «다섯»(`rule_order.cycle_note` 합류, S-247-b `d469bacf` — 손으로 철자하던 줄이 저자를 지난다) · `nothing_to_do(unless)` 는 어느 자리에서나 참인 문장만 말한다.
 >
 > ### 그 이전
 > **[`docs/history/`](../history/)에 있습니다** — 이 헤더는 **이번 · 직전**까지입니다(위 규율).
@@ -405,7 +407,7 @@
 
 ### ⭐⭐ **「택1」은 값이 아니라 «모양»을 고르는 노드다 — 가지 키가 목록이고, 고른 가지만 그린다** (2026-09-16 등록 · S-241 `0dda6f08` · S-241-b `7c81c6d5` · C-111 `321e03c3`)
 - **무엇**: 선언 문법에 「셋 중 하나를 고르면 «아래 칸»이 바뀌는」 축이 있다(`derive` = join·decide·mapper, `into` = table·read). 스켈레톤 어휘(record·map·leaf)로는 그것을 말할 수 없었다 — `hint: choice` 는 «값»을 고르지 «모양»을 고르지 않는다. 그래서 폼은 그 축을 «손으로» 그려야 했고, 그 순간 화면이 문법의 «둘째 저자»가 된다. 노드 종류 **`oneOf`** 하나가 닫는다: `branches: {키: 노드}` — 가지 «키»가 목록이고, 고르개는 있던 닫힌 목록 컨트롤이며, «고른 가지만» 그린다(안 고른 자리는 «아무것도» 없다 — 「안 골랐다」와 「비었다」는 다른 사실). 고르면 «짐을 갈아 끼운다»: 고른 가지 하나만 남는다(둘을 남기면 로더가 «화면이 안 보여 준» 판정을 한다).
-- **어디**: 어휘 `ledger/config_authoring.SKELETON_NODE_KINDS`(record·map·leaf·oneOf — 종전엔 «저자가 없어» 적합성 시험이 원장 스켈레톤을 «걸어서» 유도했다: 「이 종류를 아나」= 「누가 이미 썼나」라 마지막 사용을 지우면 어휘가 조용히 줄었다) · 체인 스켈레톤 `chain_bindings.skeleton()` 의 `unified_root`(`_unified_root` — 가지 칸은 `rule_shape.DECLARED_KINDS`·`INTO_KINDS`·`KEY_CELLS`·`DECIDE_CELLS`·`_LIMIT_KEYS`·`join_into.JOIN_CELLS` 에서 «생성». 폼이 칸 이름을 철자하면 둘째 저자다) · `ledger/admin.chain_rule_raw_view` 의 `grammar: flat|unified`(두 문법이 같이 실려 오니 «어느 쪽인지»는 서버가 «칸»으로 말한다) · 클라 `ontology_explorer_view.js::renderSkeletonOneOf` · `raw_registry_panel.js` `edit-shape-branch`(갈아 끼우기 — 적혀 있던 `kind` 는 «맞추고», 새 가지의 빈 값은 `emptyOf`: 잎 `''` · 레코드 `{}`). 화면 쪽은 [frontend §3.3 끝](./frontend.md), 키 뜻은 [config/chain_rules §5-B-bis](../guide/config/chain_rules.md).
+- **어디**: 어휘 `ledger/config_authoring.SKELETON_NODE_KINDS`(record·map·leaf·oneOf — 종전엔 «저자가 없어» 적합성 시험이 원장 스켈레톤을 «걸어서» 유도했다: 「이 종류를 아나」= 「누가 이미 썼나」라 마지막 사용을 지우면 어휘가 조용히 줄었다) · 체인 스켈레톤 `chain_bindings.skeleton()` 의 `unified_root`(`_unified_root` — 가지 칸은 `rule_shape.DECLARED_KINDS`·`INTO_KINDS`·`KEY_CELLS`·`DECIDE_CELLS`·`_LIMIT_KEYS`·`join_into.JOIN_CELLS` 에서 «생성». 폼이 칸 이름을 철자하면 둘째 저자다) · `ledger/admin.chain_rule_raw_view` 의 `grammar: flat|unified`(두 문법이 같이 실려 오니 «어느 쪽인지»는 서버가 «칸»으로 말한다) · 클라 `ontology_explorer_view.js::renderSkeletonOneOf` · `raw_registry_panel.js` `edit-shape-branch`(갈아 끼우기 — 적혀 있던 `kind` 는 «맞추고», 새 가지의 빈 값은 `emptyOf`: 잎 `''` · 레코드 `{}` · 🆕 택1 `{}` — C-115 `dd4cd689`: 「안 골랐다」는 가지 키 없는 매핑이고, 내려가기의 저자는 `ontology_skeleton.js::childOf(node, step, defs)` «하나»(record 는 키 · map 은 member · oneOf 는 «가지 키»)라 택1 밑의 택1도 `shapeAt`·`emptyOf` 가 같이 본다 — 종전엔 둘이 각자 record·map 만 내려가 그 자리가 둘 다에 안 보였고, 필수 택1이 잎 꼬리로 떨어져 `''` 로 씨앗됐다). 화면 쪽은 [frontend §3.3 끝](./frontend.md), 키 뜻은 [config/chain_rules §5-B-bis](../guide/config/chain_rules.md).
 - **언제 재사용**: 「종류를 고르면 «칸 집합»이 바뀌는」 모든 선언 축 — 소스의 `read` 종류 · 술어의 목적어 종류 · 연산의 파라미터 묶음. 판별 질문: 「고르면 «아래 칸»이 바뀌나」 — 바뀌면 `oneOf` 다, `hint: choice` 가 아니다. 그리고 「이 어휘의 «저자»가 누구인가」 — 답이 「지금 쓰이는 것」이면 저자가 없는 것이다.
 - **함정**:
   - 🔴 **가지 노드는 «가지 키 밑»에 산다 — 키가 이미 칸이다**(판정 411). 첫 판이 `mapper`·`table`·`read` 셋을 레코드로 감싸 폼이 `into: {"table": {"table": "dt_x"}}` 를 요구할 뻔했다 — 선언은 `into: {"table": "dt_x"}` 다. `join`·`decide` 가 맞았던 것은 «그 칸 자체가 레코드»라서다. 클라가 «커밋된 선언 픽스처»에 대고 재서 잡았다 — 스켈레톤이 그리는 모양은 «있는 선언»에 대고 잰다.
@@ -930,7 +932,7 @@
 - **언제 재사용**: 화면이 «실행 가능한 것»을 고르게 하는 모든 목록 — 규칙 · 연산 · 소스 · 프리셋. 판별 질문: 「이 목록의 저자가 «그것을 실행하는 함수»와 같은 집합을 읽나」. 아니면 목록과 실행이 갈릴 수 있고, 갈린 것은 오류를 안 낸다.
 - **함정**:
   - 🔴 **종류 낱말은 배관이 아니라 «선언»의 것이다.** `builtin:join_into` · `enrichment_dedup:` 을 내미는 것은 COLLECT 드롭다운의 결함(2026-08-27 「사용자가 claim, point, collection 이런 걸 어케 암」)과 같은 병이다.
-  - 🔴 **`builtins.synthesized_kind_counts` 와 접두어가 같고 «질문이 다르다».** 그쪽은 「제품이 «몇 개» 합성했나」(부팅 줄), 이쪽은 「이 규칙의 선언이 «무엇»이라 하나」. 합치면 답 하나가 두 질문을 섬긴다.
+  - 🔴 **합성기가 찍는 접두어와 같고 «질문이 다르다».** 합성기는 「제품이 «무엇을» 만들었나」, 이쪽은 「이 규칙의 선언이 «무엇»이라 하나」. 합치면 답 하나가 두 질문을 섬긴다(⚰️ 부팅 줄용 `builtins.synthesized_kind_counts` 는 S-234 `5c845e67` 에서 사라졌다 — 그 줄이 `[ChainRules] set(N)` 에 접혀 종류 «수»를 읽는 쪽이 없어졌다).
   - 🔴 **모르는 표는 빈 목록이 아니다** — 「규칙 없음」과 「그런 표 없음」을 접으면 오타 낸 운영자가 「규칙이 없구나」로 읽고 멈춘다. 클라도 같은 이유로 `[]`(없음) 와 `null`(못 읽음) 을 접지 않는다.
   - `/admin/chain/rules` 는 «그대로»다 — 체인 탭이 편집하는 것은 원문이다. 이름이 비슷한 두 라우트는 «다른 청중»이다.
   - 서버가 안 말한 것은 «안 그린다» — 종류 없으면 배지 없음, 표 없으면 화살표 없음, 이름 없으면 누를 수 없는 행. 그리고 이 프로세스의 로더가 읽은 것을 되돌려 주므로 리로드 전 파일 변경은 안 보인다(다른 로드 답과 같은 창).
@@ -1566,6 +1568,32 @@
   - 안 쓴 랩은 DEBUG 다 — 그것이 «매 랩의 보통»이고 INFO 면 «한 일 있는 랩»을 묻는 소음이다. 거절은 어느 쪽이든 말한다 — 거절은 「아무 일 없음」이 아니다. 접기는 `log_failure_folded` 와 같은 손(첫 줄, 이후 500 마다).
   - ⚠️ 이 항목이 주는 것은 «유한성»이지 «원인 제거»가 아니다 — 판정 404 의 두 가설(그룹 안 세 로그 행 · take 컬럼 = 판단키) 둘 다 «수렴»했고, 그 핑퐁의 저자는 운영 선언 없이는 못 본다. 「고쳤다」로 요약하지 말 것.
 
+### ⭐⭐ **런처의 자식 명부는 «값»이다 — 시험은 그 값을 import 하지 런처 파일을 «텍스트로 자르지» 않는다** (2026-09-16 등록 · S-255 `8c824a1e`)
+- **무엇**: 「런처가 무엇을 띄우나」(자식 넷 · `heartbeat=` · `ports=` · `log_file=` · API 자식의 `ASSY_CHAIN_WORKER=0`)를 오라클 다섯이 `run_decoupled_app.py` 를 «텍스트로» 읽어 쟀다 — `ChildSpec(` 뒤 420자 창, `run_chain_worker.py` 첫 언급의 정규식. 스펙 «안»에 주석 하나가 들어가자 «런처가 맞는데» 둘이 빨개졌다(2026-09-15 `86016d10`, `f7f89ab9` 로 주석을 밖으로). 값의 대리로 텍스트를 재는 금지 모양이다.
+- **어디**: `server/runtime/launcher_specs.child_specs(python_exe, server_dir, server_cmd, api_host, api_port)` — 모듈 본문이 아무것도 «안 여는» 값. 런처 `main()` 이 부르고(데스크톱 셸은 여전히 `main()` 이 `--server-only` 아닐 때 붙인다), 오라클 다섯(`test_duplicate_launcher` 둘 · `test_process_supervisor` 하나 · `test_the_chain_loop_runs_in_its_own_process` 셋)이 그 반환값을 단언한다. 변이: 스펙 안 주석 → 초록 · `log_file=`/`heartbeat=`/`ASSY_CHAIN_WORKER=0` 삭제 · 두 자식이 한 로그 파일 → 빨강.
+- **언제 재사용**: 「저장소 루트의 스크립트 안에 사는 목록」을 시험이 읽어야 할 때 전부. 판별 질문: 「이 파일을 import 하면 «부작용»이 있나」 — 있으면(`run_decoupled_app.py` 는 import 시점에 라이브 `launcher.log` 를 열고 루트 로거를 옮긴다) 목록을 «부작용 없는 모듈»로 빼라. [HARNESS_DISCIPLINE_GUIDE §1](../guide/HARNESS_DISCIPLINE_GUIDE.md) 「이름을 내는 것이 이관의 전부」의 서버 판이다.
+- **함정**:
+  - 🔴 **묘비 주석도 «값»과 같이 옮겨진다** — 「Graph DB Sync Worker」 묘비는 이제 `launcher_specs.py` 명부 안에 있고, 텍스트 오라클이 그 묘비를 «실물»로 잘못 잡던 병(두 번)은 값을 읽는 순간 없어진다.
+  - ⚠️ 명부 파일(`_roster.json`, [backend §1](./backend.md))은 그대로 필요하다 — 그것이 나르는 것은 목록이 아니라 «시작 시각»이다.
+
+### ⭐⭐ **PostgreSQL 만 나를 수 있는 증명은 «표지»를 달고 «한 명령»으로만 돈다 — 맨 `pytest` 는 그것을 이름 대어 건너뛴다** (2026-09-16 등록 · S-256 `baf17cfa` · S-257 `ae28b356` · S-258 `27f5d7d9` · `69f7a130`)
+- **무엇**: SQLite 는 PostgreSQL 이 거절하는 것을 받는다(jsonb · 파티션 · `ON CONFLICT` · NULL 위 UNIQUE). 그래서 «PG 만» 증명할 수 있는 시험은 `sqlite:///:memory:` 스위트에서 픽스처가 skip 했고 «부재로 초록»이었다 — S-104·S-115 가 몇 달 조용했던 이유. 자리를 준 것이 이 항목이다: 표지 `@pytest.mark.pg` + 명령 `python server/scripts/run_pg_tests.py`(`RUN.md` §6).
+- **어디**: 정본은 [HARNESS_DISCIPLINE_GUIDE §5-nonies](../guide/HARNESS_DISCIPLINE_GUIDE.md) — 표지 등록 `tests/conftest.py::pytest_configure`(이 저장소엔 `pytest.ini` 가 없어 «그 훅이 설정»이다) · 맨 `pytest` 는 `pytest_collection_modifyitems` 가 `-m pg` 없으면 «이름 대어» skip · 러너는 서버 DB 를 제품과 «같은 길»(`paths.resolve_database_url`)로 정하고 PG 가 아니거나 격리 DB 선언이 없으면 `REFUSED` 종료 64 · 쓸 DB 는 `tests/support/isolated_pg.resolve_url` «한 철자»가 정해 `ASSY_PG_TEST_DATABASE_URL` 로 «내보낸다»(`pg_engine` 과 isolated_pg 스위트가 같은 답) · 스크래치 검색 경로 «한 철자» `isolated_pg.scratch_connect_args` = `<scratch>,public` + `install_trigram`.
+- **언제 재사용**: 「이 스위트가 초록인데 운영이 터진다」의 첫 물음 — 「그 성질을 SQLite 가 «잴 수 있나»」. 못 재면 `pg` 표지이고, 픽스처 skip 으로 «충분하다»고 읽지 않는다(skip 은 통과가 아니다 — `-rs` 줄이 이유를 댄다).
+- **함정**:
+  - 🔴 **`--continue-on-collection-errors` 가 하중을 받는다** — pytest 는 «선택 안 된» 모듈의 수집 오류 하나로 «전체»를 중단한다(이 박스의 gitignore 맵퍼 시험이 새 체크아웃에서 그렇다). 없으면 `-m pg` 가 «아무것도 안 돌고» 2 로 끝난다.
+  - 🔴 **`public` 을 검색 경로에서 빼면 «이미 설치된» 확장이 안 보인다** — `CREATE EXTENSION IF NOT EXISTS` 가 조용히 no-op 이 되고 47 개가 `gin_trgm_ops` 로 죽었다(S-257).
+  - 🔴 **거절 줄의 단언은 «저자를 import»한다**(S-258) — 한국어 문장을 베끼면 하니스가 «둘째 저자»가 된다. 접두는 `operator_line.line` 이 붙이는 것, 다음-행동은 `widen_the_key` 를 함수에서 읽어 «행동의 부류»로 판다.
+
+### ⭐⭐ **부팅 «순서»는 자기 모듈에 산다 — 소켓이 «첫 줄»이고, 그 순서를 재는 하니스는 그 모듈을 import 한다** (2026-09-16 등록 · C-110 `c96527d9`)
+- **무엇**: 그리드 페이지의 부팅 순서(라이브 채널을 «무엇에도 안 걸고» 먼저 → 설치 → health → 표 목록 → 「표를 골랐다」)는 `main.js::init()` 의 본문이었고, `main.js` 는 브라우저 밖에서 import 가 안 된다(ag-grid 스타일시트 · 페이지 전체 앉힘). 그래서 하니스가 `init()` 을 «텍스트로 잘라» `vm` 에 넣었고, `main.js` 가 모듈 이름을 하나 얻을 때마다(`redoBannerFollows` 가 마지막) 24 시나리오가 «맞는 코드»에 ReferenceError 를 던져 스텁이 하나씩 늘었다 — 금지된 잘라쓰기의 실물.
+- **어디**: `client2/src/startup.js::startup({prepare, tableChosen})` — 모듈 최상단에서 DOM·CSS 를 «안 만진다». 순서: `initWebSocket()` → `prepare()` → `await checkServerHealth()` → `await loadTables()` → `tableChosen()`. `main.js::init` 은 그 둘(설치할 것 · 표가 정해지면 부품에 알릴 것)만 넘긴다. 하니스 `tests/startup_socket_gate_harness.mjs` 는 `startup.js`·`api.js`·`websocket.js` «전문»을 `lib/probe.mjs` 로 싣고(시나리오마다 새 사본 — 멈춘 REST 래치가 다음 판을 못 물들인다), 변이는 «모듈 통째». 같은 111 단언 · 9 변이 포착 · 3 대조군.
+- **언제 재사용**: 「순서」가 결함의 주어인 모든 곳(부팅 · 재연결 사다리 · 저장 뒤 갱신). 판별 질문: 「그 순서를 재는 시험이 «무엇을 import» 하나」 — 답이 「파일을 읽어서」면 순서를 «이름 있는 모듈»로 뺀다([HARNESS_DISCIPLINE_GUIDE §1](../guide/HARNESS_DISCIPLINE_GUIDE.md)).
+- **함정**:
+  - 🔴 **«먼저»가 아니라 «첫 줄»이다.** `prepare` 안의 어느 설치 호출도 던질 수 있으므로(빈 DOM 핸들) 소켓은 «그 전부» 앞에 선다. 소켓은 health 도 표 목록도 필요 없다 — `onopen` 이 다시 유도한다.
+  - 📌 남은 결은 그대로다 — `checkServerHealth` 가 reject 하면 `loadTables` 가 건너뛰어진다(둘 다 reject 하지 않게 짜여 있고, 감싸는 것은 «자기 앵커를 가진» 별건).
+  - ⚠️ `main.js` 는 여전히 node 가 import 못 한다 — 옮겨진 것은 «순서»뿐이고, 배선(`redoBannerFollows` 같은)은 실제 페이지에서 본다([frontend §3.1](./frontend.md)).
+
 ## 6-bis. 살아 있음을 판정하기
 
 ### ⭐⭐ **두 번째 판정자를 짓지 말고 «진짜»를 한 배치 돌려라 — 쓰지 않고, 커서를 안 움직이고, 거절은 그대로** (2026-08-21 등록 · `fd3dda05`)
@@ -1699,9 +1727,18 @@
 - **어디**: `chain/rule_shape.is_switched_off`(통합 선언 `enabled: false` → 로더가 규칙을 «안 세운다», 거절 목록에도 안 센다 — 판정 399, 통합 계획 ③′; `expand_declaration` 은 OFF 를 «거절이 아니라 노트»로 낸다) · `virtual_join/unique_key.ensure_once` **와 `retract_unrequired_once`**(`ASSY_VJOIN_AUTO_INDEX=0` → 맨 보고서, DB 무접촉 — 세우지도 걷지도 않는다). 강제 자리: 세 시험 — «OFF 로 그 경로가 불리는지»를 «호출 0» 으로 단언한다.
 - **언제 재사용**: 새 스위치·`enabled`·환경변수 전부. 판별 질문: 「끄면 «어느 줄»부터 안 도나」. 답이 「마지막 필터」면 반쪽 스위치다.
 - **함정**:
-  - 🔴 **스위치마다 «주어»를 적어라.** `ASSY_CHAIN_SYNTHESIZE` 의 주어는 «옛 파일에서 제품이 파생한» 규칙(운영자가 안 썼고 못 보는 것)이고 통합 선언에는 «일부러» 닿지 않는다 — 통합 선언은 보이고 자기 `enabled` 가 있다. 주어를 안 적으면 「전부 껐다」가 거짓이 된다.
+  - 🔴 **스위치마다 «주어»를 적어라 — 그리고 주어가 없어지면 스위치도 «없앤다».** `ASSY_CHAIN_SYNTHESIZE` 의 주어는 «운영자가 못 보는» 파생 규칙이었고, 부팅 줄 `[ChainRules] set(N)` 이 어느 파일이 썼든 «전부» 대게 되자 그 주어가 사라져 스위치도 은퇴했다(S-234 `5c845e67`, 판정 408 — 아래 「한 뜻을 여러 파일에」 항목). 오늘 손잡이는 둘 — 규칙을 «적은 파일»의 `enabled: false`, 전부는 `ASSY_CHAIN_WORKER=0`. 주어를 안 적으면 「전부 껐다」가 거짓이 된다.
   - 옛 문법의 `enabled: false` 는 여전히 «로드 뒤 걸러진다»(그래프에 안 들어감) — 두 뜻이 같은 이름을 쓴다. 문서에서 어느 쪽인지 «적는다»([config/chain_rules §5-B-bis](../guide/config/chain_rules.md)).
   - 「껐는데 안 멎는다」를 데이터 탓으로 읽지 마라 — 그 증상의 첫 용의자는 반쪽 스위치다.
+
+### ⭐⭐ **한 뜻을 «여러 파일»에 적을 수 있으면 이름공간은 «하나»고 판정 자리도 «하나»다 — 파일마다 검사기를 두는 것이 「파일마다 이름공간」의 증거다** (2026-09-16 등록 · S-234 `5c845e67` · 판정 408·409)
+- **무엇**: 체인 규칙은 `chain_rules.json`(평면·통합)·`enrichment_rules.json`·`virtual_join_rules.json` «세 파일 어디에나» 적을 수 있다 — 세 문법, 한 뜻. 그러면 이름은 «한 집합»이고, 같은 이름이 두 번이면 어느 쪽이 참인지 제품은 «고를 수 없다». 종전엔 파일 «쌍»마다 검사기가 있었고(`enrichment_name_collisions`·`join_name_collisions`), 그 둘이 못 보는 사본은 이름으로 걷는 순서 유도(`rule_order`)가 «말없이» 버렸다 — 2026-09-14 장애의 «침묵» 부류다.
+- **어디**: `chain/ingestion_worker._refuse_names_claimed_twice(rules, written_in)` — 합성 «뒤», `rule_order` «앞», 집합 «전체»를 보는 한 자리. 두 사본 «다» 안 세우고 `operator_line.line("ChainRules", 이름, "같은 규칙 이름이 N 번 선언돼 있습니다 (파일 · 파일) — 어느 쪽도 돌지 않습니다", operator_line.rename_one_declaration(files))` 한 줄(→ 「두 파일 중 하나에서 이름을 바꾸십시오」). 규칙이 «어느 파일에서 왔나»는 `builtins.written_in`(합성분 — `JOIN_MAPPER` 한 칸이 두 파일을 가른다) + 위치(`chain_rules.json`) 가 댄다. 강제 자리: `tests/test_three_files_declare_one_chain_namespace.py` + `git grep` 드리프트 오라클(`ASSY_CHAIN_SYNTHESIZE` 가 `server/` 어디에도 없다).
+- **언제 재사용**: 한 선언이 «둘 이상의 파일·문법»으로 적힐 수 있는 모든 자리(맵퍼 이름 · 소스 이름 · 프리셋). 판별 질문: 「같은 이름을 두 파일에 적으면 «누가» 그것을 보나」. 답이 「파일 쌍마다 하나씩」이면 못 보는 쌍이 «반드시» 있다.
+- **함정**:
+  - 🔴 **거절은 «집합을 아는 자리»에서 한 번.** `rule_refusals` 는 규칙 «하나»를 판정하므로 쌍둥이를 «볼 수 없다» — 거기에 넣으면 조용히 통과한다.
+  - 🔴 **둘 다 안 세운다.** 「첫 것을 남긴다」는 «고르는 것»이고, 그러면 파일 순서가 정답을 정한다.
+  - 🔴 **주어 없는 스위치는 은퇴시킨다.** `ASSY_CHAIN_SYNTHESIZE` 의 주어(«운영자가 못 보는» 파생 규칙)는 `[ChainRules] set(N)` 이 파일 불문 «전부»를 대는 순간 없어졌다 — 남긴 스위치는 「전부 껐다」를 다시 거짓으로 만든다. 오늘 손잡이는 «적은 파일»의 `enabled: false` 와 `ASSY_CHAIN_WORKER=0` 둘뿐이고, 「Synthesized N (a dedup · b auto-confirm · c join)」 별도 줄과 `synthesized_kind_counts` 도 같이 갔다(관문: 세 파일 선언 집합의 센서스가 전후 바이트 동일, 로그 차이는 접힌 줄 하나).
 
 ### ⭐⭐ **돌 수 없는 엣지는 순서를 못 정한다 — 순서 유도는 트리거 경로와 «같은 질문»을 묻는다** (2026-09-15 등록 · `ea8f91d2`)
 - **무엇**: 규칙 «사이»의 순서를 선언에서 유도할 때, 그래프 걷기가 «발화 여부»를 묻지 않으면 꺼진 규칙과 후속 랩(`follow_up`) 규칙이 이웃을 정렬하고, 그 엣지 하나가 «살아 있는» 반대 방향 규칙과 만나 「고리」가 된다 — 한 번도 발화할 수 없는 고리다. 걷기는 트리거 경로가 이미 묻는 두 질문(`enabled` · `_rule_accepts_event` 의 `follow_up` 거절)을 «똑같이» 묻는다.

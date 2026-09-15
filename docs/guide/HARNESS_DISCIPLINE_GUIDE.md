@@ -2,6 +2,7 @@
 
 > **이 문서가 정본입니다.** CLAUDE.md 의 「잘라쓰기 하니스 절대 금지」 절은 «왜»를 적고, 여기는 «어떻게»를 적습니다.
 > 신설 2026-09-10 (D-2). 아래 모든 심볼·줄 번호는 그날 소스에 대고 확인했습니다.
+> 갱신 2026-09-16 — §1 「순서도, 목록도 이름으로」(C-110 · S-255) · §5-nonies 신설(PG 만 나를 수 있는 증명의 자리 — S-256 · S-257 · S-258) · §6 행 넷.
 
 ---
 
@@ -41,6 +42,11 @@ history_paging_harness       24 함수를 정규식으로 뽑아 `vm` 에 넣고
 - `client2/src/enrichment_reference_view.js:126` `export function fillPlan(...)`
 - `client2/src/enrichment_reference_view.js:531` `export { render as renderReferenceResults }`
 - `client2/src/clipboard.js:27` `export function isReferenceSidebarCopy(e)` — 문서 수준 `copy` 핸들러의 «조건»을 이름 있는 함수로 뺀 것. 전에는 하니스가 «앵커 문자열»을 찾고 술어를 «자기가» 다시 써서, 철자만 바꿔도 맞는 코드가 빨개지고 같은 철자로 틀리게 고치면 통과했습니다
+
+🔵 **[2026-09-16] «순서»도, «목록»도 이름으로 낼 수 있다 — 양쪽 도메인에서 같은 밤에 하나씩.**
+- **C-110 `c96527d9` (클라)** — `client2/src/startup.js:32` `export async function startup({ prepare, tableChosen })`. 그리드 페이지의 부팅 «순서»(소켓 «첫 줄» → `prepare` → `checkServerHealth` → `loadTables` → `tableChosen`)를 `main.js::init()` 에서 빼서 모듈 최상단이 DOM·CSS 를 안 만지는 파일에 뒀다. `tests/startup_socket_gate_harness.mjs` 는 `startup.js`·`api.js`·`websocket.js` «전문»을 §2 의 프로브로 싣고 시나리오마다 «새 사본»을 쓴다(멈춘 REST 래치가 다음 판을 못 물들인다) · `switchTable` 은 «진짜로» 돌고 그 중복 부트스트랩의 피해는 문에서 센다(`/schema` 읽기 1 · `renderGrid` 1) · 재연결 튜닝은 `config.js` 에서 import(정규식 아님) · 변이는 모듈 «통째». 종전엔 `init()` 을 잘라 `vm` 에 넣어 `main.js` 가 모듈 이름 하나를 얻을 때마다(`redoBannerFollows` 가 마지막) 24 시나리오가 «맞는 코드»에 ReferenceError 를 던지고 스텁이 하나씩 늘었다. 같은 111 단언 · 9 변이 포착 · 3 대조군 — 그리고 `main.js` 에 `let` + `export function` 을 «덧붙여도» 초록.
+- **S-255 `8c824a1e` (서버)** — `server/runtime/launcher_specs.py:23` `def child_specs(python_exe, server_dir, server_cmd, api_host, api_port)`. 런처의 자식 명부(넷 · `heartbeat=` · `ports=` · `log_file=` · API 자식의 `ASSY_CHAIN_WORKER=0`)를 «부작용 없는 모듈의 값»으로 빼서, `run_decoupled_app.py` 를 텍스트(`ChildSpec(` 뒤 420자 창 · `run_chain_worker.py` 첫 언급의 정규식)로 자르던 오라클 다섯(`test_duplicate_launcher` 둘 · `test_process_supervisor` 하나 · `test_the_chain_loop_runs_in_its_own_process` 셋)이 반환값을 단언한다. 런처 «자신»은 import 시점에 라이브 `launcher.log` 를 열고 루트 로거를 옮기니 목록이 거기 살 수 없었다. 변이(스크래치 사본): 스펙 «안» 주석 → 초록(2026-09-15 `86016d10` 에선 그것이 빨강이었다 — 런처는 맞았는데) · `log_file=`/`heartbeat=`/`ASSY_CHAIN_WORKER=0` 삭제 · 두 자식이 한 로그 파일 → 빨강(텍스트는 마지막 것을 «볼 수 없었다»).
+📌 같은 부류의 셋째, 같은 밤 — S-234 `5c845e67` 의 드리프트 오라클은 `git grep` 으로 「`ASSY_CHAIN_SYNTHESIZE` 가 `server/` 어디에도 없다」를 단언한다. 텍스트가 «주어»라 §3 의 예외이고, 대리가 아니다.
 
 ---
 
@@ -331,6 +337,49 @@ def test_…            -> `ASSY_TEST_LIVE=1` 없으면 «이름 대어» skip
 `test_trace_fixture`(S-199-e 의 표별 parametrize) · `test_virtual_join_types`) — «다른 모집단»이라
 겹쳐 쓰면 둘 다 거짓이 된다.
 
+## 🆕 5-nonies. PostgreSQL «만» 나를 수 있는 증명 — `@pytest.mark.pg` 는 «불렀을 때만» 돈다 (2026-09-16 S-256 `baf17cfa` · S-257 `ae28b356` · S-258 `27f5d7d9` · `69f7a130`)
+
+📎 정본은 `server/scripts/run_pg_tests.py` 의 docstring 과 `server/tests/conftest.py` 의 표지 등록 주석이다. 아래는 «옮겨 적기»다. 운영자용 한 줄은 `RUN.md` §6.
+
+```
+왜        SQLite 는 PostgreSQL 이 거절하는 것을 받는다 — jsonb · 파티션 · ON CONFLICT · CHECK · NULL 위 UNIQUE
+          그래서 «PG 만» 증명할 수 있는 시험은 sqlite:///:memory: 스위트에서 픽스처가 skip 했고 «부재로 초록»이었다
+          (S-104 · S-115 가 몇 달 조용했던 이유). 이 절이 준 것은 «자리»다
+표지      @pytest.mark.pg — tests/conftest.py::pytest_configure 가 등록한다
+          (이 저장소엔 pytest.ini 도 [tool.pytest] 도 없다: «그 훅이 설정»이다. 등록 안 된 표지는 경고뿐이라 `pgs` 오타가 증명을 «두 실행 모두»에서 조용히 떨어뜨린다)
+          붙이는 곳: PG 픽스처(pg_engine · pg_session · clean_pg_v2 · ledger · pg_url · isolated_pg 스위트)로 «이미 sqlite 에서 skip 하던» 시험만
+맨 pytest  tests/conftest.py::pytest_collection_modifyitems — `-m pg` 가 없으면 pg 표지를 «이름 대어» skip 한다 (`69f7a130`)
+          🔴 왜: S-257 이 pg_engine 에 dev_env QA 문을 열자 QA DB 를 선언한 박스에선 «모든 레인이 돌리는 기본 게이트»가 PG 증명까지 돌기 시작했고,
+             첫 만난 S-259(은퇴한 배관을 재는 trace 시험)가 «그 게이트»를 빨갛게 했다. 기본 실행은 어제의 뜻을 지키고, PG 자리는 아래 «한 명령»이다
+한 명령    conda run -n assy_manager python server/scripts/run_pg_tests.py   (인자는 전부 pytest 로 그대로)
+          ① 어느 서버: 제품이 푸는 «같은 길» paths.resolve_database_url (env DATABASE_URL > config/database.json > 기본). PG 가 아니면 REFUSED 한 줄, 종료 64
+          ② 어느 DB: tests/support/isolated_pg.resolve_url — «한 철자» (ASSY_PG_TEST_DATABASE_URL > ASSY_TEST_DATABASE_URL > dev_env QA), db_safety 를 지나
+             운영은 «이름으로» 거절. 선언이 없으면 REFUSED, 종료 64 — skip 이 «아니다»(skip 이 몇 달의 침묵이었다)
+          ③ pytest tests -m pg -rs --continue-on-collection-errors — 그 DB 를 ASSY_PG_TEST_DATABASE_URL 로 «내보내서» conftest 의 pg_engine 과
+             isolated_pg 스위트가 같은 박스에 대해 «다르게 결정할 수 없다». 종료 코드는 pytest 의 것
+답 읽기    passed = 이 박스의 PG 에서 참 · skipped = «통과가 아니다»(-rs 줄이 이유: 서버 도달 불가 · 확장 없음) · failed/error = 재기동 «전»에 고침
+          (맵퍼 시험 모듈의 error 는 이 박스의 gitignore 맵퍼·설정 부재이지 PG 의 사실이 아니다) · REFUSED + 64 = 아무것도 안 돌았다 (pytest 의 2 「interrupted」와 갈리도록 64)
+```
+
+🔴 **`--continue-on-collection-errors` 가 하중을 받는다.** pytest 는 «선택 안 된» 모듈의 수집 오류 하나로 «전체 실행»을 중단한다 — 이 박스의 gitignore 맵퍼를 import 하는 시험이 새 체크아웃에서 그렇고, 그래서 `-m pg` 가 «아무것도 안 돌고» 2 로 끝났다(실측 2026-09-16). 플래그가 있으면 증명은 돌고, 수집 오류는 여전히 찍히며 종료 코드도 0 이 아니다 — 박스가 «그것 때문에» 깨끗해 보일 수는 없다.
+
+### 스크래치 검색 경로는 «한 철자»다 (S-257)
+
+```
+isolated_pg.scratch_connect_args(schema)   -> {"options": "-csearch_path=<scratch>,public"}
+                                            스크래치가 «먼저»(증명이 만드는 것은 전부 거기 떨어져 DROP 과 같이 간다) · public 은 «뒤에서 읽기만»
+                                            같은 dict 를 psycopg2.connect 도 받는다 — 경쟁 커넥션도 자기 SET search_path 없이 같은 자리에 선다
+isolated_pg.install_trigram(connection, schema)  pg_trgm 을 스크래치 «안»에. 역할이 확장을 못 만들면 그 시험을 skip
+```
+🔴 **`public` 을 빼면 «이미 설치된» 확장이 안 보인다** — `CREATE EXTENSION IF NOT EXISTS pg_trgm` 이 «조용히 no-op» 이 되고 첫 실행에서 48 중 47 이 `UndefinedObject: gin_trgm_ops` 로 죽었다. 형제 스위트 셋은 이미 쉼표를 배웠고 conftest 와 카탈로그 시험 둘이 «없는 철자»였다 — 「전제가 성립하는 자리에서 전제가 안 보인다」 부류(`_ensure_trigram` 이 생긴 이유와 같다). `git grep -n "-csearch_path" -- server/tests` 가 `isolated_pg.py` 하나만 대야 한다.
+⚰️ `conftest._resolve_pg_test_url` · `_declared_as_test_database` 는 `isolated_pg.resolve_url` / `declared_as_test_database` 의 «둘째 사본»(dev_env 문이 빠진)이었고 삭제됐다 — 그 이름은 import 로만 남아 세 시험 파일이 그대로 돈다.
+
+### 거절 줄의 단언은 «저자를 import»한다 (S-258)
+
+`test_a_persistent_business_key_conflict_is_refused_not_replayed` 가 은퇴한 영어 표지 「BK Conflict Unresolved」를 단언하고 있었다 — 제품은 S-247 부터 `[BKConflict:<표>] … → 다음: <widen_the_key>` 를 낸다. 수리는 한국어 문장을 베끼지 않는다: 접두는 `operator_line.line("BKConflict", TABLE, …)` 이 «앞에 붙이는 것», 다음-행동 절은 `operator_line.widen_the_key` 를 «함수에서 읽어»(`_invariant_tail` — 표지 값으로 렌더해 마지막 표지 «뒤»만 남긴다) «행동의 부류»를 판다(선언을 넓혀라 — `fold_the_data` 의 «반대» 수리). 실측: `fold_the_data` 로 지은 같은 접두의 줄은 «빨강», widen 줄은 초록. 문장을 베끼면 하니스가 «둘째 저자»가 된다(2026-09-13 의 여덟 빈-상태 문장이 같은 병이었다).
+
+⚠️ **표지 없이 «일부러» 둔 sqlite-skip 둘** — `test_set_based_write_path` · `test_a_walk_can_be_read_as_rows` 는 `db_session`/앱 엔진을 타고, 러너는 그 엔진을 «다시 겨누지» 않는다. 📌 첫 실행이 «자리가 숨기던 것»을 드러냈다: `ledger.trace.trace` 없음 · `/api/ledger/trace` 404 · `hops`/`neighbourhood` 없음(29 건, S-259). 자리의 결함이 아니라 내용의 결함이고, 이 절이 고친 것이 아니다.
+
 ## 6. 이 문서가 부르는 이름 (2026-09-10 실측)
 
 | 심볼 | 자리 |
@@ -342,5 +391,9 @@ def test_…            -> `ASSY_TEST_LIVE=1` 없으면 «이름 대어» skip
 | `isReferenceSidebarCopy` | `client2/src/clipboard.js:27` |
 | `MINUTE_SECONDS` | `client2/src/chain_queue_panel.js:58` |
 | 프로브 잔해 단언 | `client2/scripts/check_harnesses.mjs:1642` |
+| 🆕 `startup` (부팅 순서, C-110) | `client2/src/startup.js:32` |
+| 🆕 `child_specs` (자식 명부의 값, S-255) | `server/runtime/launcher_specs.py:23` |
+| 🆕 `PG_TEST_URL_ENV` · `scratch_connect_args` · `install_trigram` · `resolve_url` | `server/tests/support/isolated_pg.py:21` · `:44` · `:67` · `:109` |
+| 🆕 `pytest_configure` · `pytest_collection_modifyitems` (pg 표지) · `run_pg_tests.main` · `REFUSED` | `server/tests/conftest.py:581` · `:588` · `server/scripts/run_pg_tests.py` |
 
 ⚠️ **`referenceHeadBand` 는 export 가 «아닙니다»** — `enrichment_reference_view.js:342` 의 모듈 지역 함수이고, 두 갈래(primary·evidence)가 그것을 부릅니다. 띠가 «한 벌»이라는 것이 요점이지 내보내는 것이 요점이 아닙니다.

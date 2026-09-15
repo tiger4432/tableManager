@@ -40,6 +40,7 @@
 (`chain/builtins.synthesize_chain_rules` → `enrichment.config.load_enrichment_chain_rules` +
 `virtual_join.config.synthesized_join_chain_rules`). 갈라진 것은 **생성 «이후»**다 —
 이름·끄기·거절·순서·로그가 각자 논다. 통합은 «그 이후»를 하나로 만드는 일이다.
+🔵 **[2026-09-16 S-234 `5c845e67`] 그중 이름·끄기·거절·로그가 «하나»가 됐다** — 아래 `enabled` 줄. 순서는 S-156 이 먼저 하나였다.
 
 🆕 **[2026-09-15 소유자 판정] 가는 길은 「이행」이 아니라 「하나씩 새로」다.**
 통합 선언에 «종류를 하나씩» 넣고(join — S-237 `7f3c3634` · decide(enrich) — S-239 `dc29056a`; 남은 것은 mapper), 옛 껍데기는 그 종류가
@@ -57,7 +58,8 @@ join     `builtin:join_into`(`chain/join_into.py`). 선언 «하나» → 규칙
          소급: 왼쪽(`into` 표를 트리거하는) 규칙에 R1 — `builtin:` 종류도 워커와 같은 `run_builtin` 을 페이지마다 돈다(S-242 `bd0a3db7`). 오른쪽 규칙 이름은 거절
 decide   enrich. 확장기는 «하나» — `enrichment.config.chain_rules_for`. 옛 `enrichment_rules.json` 과 새 문법이 «같은 함수»를 지나 셀 단위로 같은 규칙 둘을 낸다
 enabled  `enabled: false` 면 로더가 «규칙을 안 세우고 DB 를 안 만진다»(판정 399 · ③′). 거르는 것이 아니라 «안 서는» 것이다 — 강제 자리: `rule_shape.is_switched_off` + 로더 시험
-         `ASSY_CHAIN_SYNTHESIZE` 는 «옛 파일에서 제품이 파생한» 규칙만 끈다. 통합 선언에는 «닿지 않는다» — 스위치 둘의 주어가 다르다
+         ⚰️ `ASSY_CHAIN_SYNTHESIZE` 은퇴(S-234 `5c845e67`, 판정 408) — 그 주어(«운영자가 못 보는» 파생 규칙)가 없어졌다: 부팅 줄 `[ChainRules] set(N)` 이 어느 파일이 썼든 규칙을 «전부» 댄다. 남은 손잡이는 «적은 파일»의 `enabled: false` 와 `ASSY_CHAIN_WORKER=0` 둘뿐
+         이름공간은 «하나»다(판정 409) — `chain_rules.json`(평면·통합)·`enrichment_rules.json`·`virtual_join_rules.json` 에 같은 이름이 두 번이면 로더가 «어느 쪽도 안 세우고» 한 번 거절한다(`ingestion_worker._refuse_names_claimed_twice`, 합성 뒤·`rule_order` 앞 — 종전엔 이름으로 걷는 순서 유도가 둘째 사본을 «말없이» 버렸다). 파일 쌍마다 있던 검사기 둘(`enrichment_name_collisions`·`join_name_collisions`)은 «두 이름공간의 증거»라 같이 갔다
 ```
 
 ### 0-bis-2. 가상 조인 — **그대로 둔다**

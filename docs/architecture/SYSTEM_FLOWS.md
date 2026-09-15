@@ -255,7 +255,7 @@ Enrichment Queue · 맵 오버레이 · 전사 계획 · 어드민 5탭 · 실�
 | C-4 | `crud.apply_batch_updates` (사람 편집·인제션·체인 자기 쓰기) | `database_outbox` | **행 쓰기** — `@event.listens_for(Session,"before_flush")` | DB 행 + `NOTIFY` | **per-row**: `payload={row_id, business_key, data{col:{value,is_overwrite,updated_by}}, transaction_id, updated_by, source_name, timestamp}` · **collapsed**: `payload={row_ids[≤1000], row_count, table_name, transaction_id, updated_by, source_name, timestamp}` · 행 칸: `event_uuid, event_type, table_name, payload, status="PENDING"` (나머지는 기본값) | 리스너 등록 1 (전역 Session) | 🔇 **`NOTIFY` 실패는 통째로 삼킨다** (`except: pass`). 대가는 유실이 아니라 «2초 폴백 폴링» | ✅ |
 | C-5 | `request_outbox_mode` | `stage_collapsed_event` | 축약 **옵트인** | ContextVar | 켜는 곳 **정확히 둘**: `directory_watcher._upsert_to_local_db`(파일 전체 루프) · `chain_ingestion_worker`(파생 쓰기 «한 호출»만) | 2 | — | ✅ (문서 §2.4 의 「둘뿐」 **여전히 참**) |
 | C-6 | `database_outbox` | `OutboxListener` / 폴링 | **`LISTEN outbox_event`** (워커 수명 내내 1회 등록) + 2초 타임아웃 폴링 | 소켓 통지 / SELECT | `processed_chain == False` 를 `id asc LIMIT 200`. `SYSTEM_RELOAD` 는 별도 스로틀 질의(1초) | 1 | 🔊 큐 머리가 `heartbeat.DEFAULT_STALE_AFTER_SEC` 동안 안 움직이면 `QueueHeadWatch` 가 ERROR 한 줄(그 간격당 1회) | ✅ |
-| C-7 | `chain_rules.json` | `load_chain_rules()` | **워커 기동 1회** + **`SYSTEM_RELOAD` 이벤트** | 파일 read | `data["rules"]` 원문(🆕 `derive` 가 있는 선언은 `rule_shape.expand_declaration` 이 번역 — 저장 관문과 «같은 함수»(S-244) — join 은 규칙 둘, decide 는 `enrichment.config.chain_rules_for` 를 지나 규칙 둘, `enabled:false` 는 규칙이 «안 선다») + `builtins.synthesize_chain_rules()` 파생분(옛 enrichment/virtual_join 파일 — `ASSY_CHAIN_SYNTHESIZE=0` 은 «이것만» 끈다) 병합 → **끝에 `_validate_chain_cascade_graph(rules)`**(🆕 판정 402: 고리를 «보고»하지 거절하지 않는다) | 운영 호출자 **3** (기동 · SYSTEM_RELOAD · `chain_replay`) · 시험 3 | 🔴 §3-② 참조 — **기동과 리로드가 서로 다르게 실패한다** | ⚠️ |
+| C-7 | `chain_rules.json` | `load_chain_rules()` | **워커 기동 1회** + **`SYSTEM_RELOAD` 이벤트** | 파일 read | `data["rules"]` 원문(🆕 `derive` 가 있는 선언은 `rule_shape.expand_declaration` 이 번역 — 저장 관문과 «같은 함수»(S-244) — join 은 규칙 둘, decide 는 `enrichment.config.chain_rules_for` 를 지나 규칙 둘, `enabled:false` 는 규칙이 «안 선다») + `builtins.synthesize_chain_rules()` 파생분(옛 enrichment/virtual_join 파일 — ⚰️ `ASSY_CHAIN_SYNTHESIZE` 은퇴, S-234 `5c845e67`) 병합 → 🆕 **`_refuse_names_claimed_twice`**(세 파일이 «한 이름공간» — 두 번 선언된 이름은 «어느 쪽도» 안 세우고 `operator_line` 꼴로 한 번 거절, 판정 409) → `rule_order` → **끝에 `_validate_chain_cascade_graph(rules)`**(🆕 판정 402: 고리를 «보고»하지 거절하지 않는다) | 운영 호출자 **3** (기동 · SYSTEM_RELOAD · `chain_replay`) · 시험 3 | 🔴 §3-② 참조 — **기동과 리로드가 서로 다르게 실패한다** | ⚠️ |
 | C-8 | 규칙 집합 | 순환 그래프 검증 | `load_chain_rules` 끝 · **그리고** `ledger_admin.save_chain_rule_raw` | 함수 인자 | 규칙 하나가 **엣지 «둘»**: `trigger_table→target_table`, 그리고 `allow_map_metadata_upsert` 면 `trigger_table→map_meta_registrar.META_TABLE`(=`wafer_map_metadata`) | 2 (`load_chain_rules`, `ledger_admin` — 둘 다 «번역된» 집합에) | 🔊 ⚰️ ~~`ValueError("allow_chain_trigger cycle: …")`~~ → **[2026-09-15 판정 402] 던지지 않는다.** trail 목록을 «반환»(어드민 그래프가 그린다) + `[ChainRules] 고리: … (순서는 선언 순 · 홉 상한 max_chain_depth=N 이 막습니다)` INFO 를 프로세스당 trail 당 «한 번» | ✅ |
 | C-9 | 운영자 | `chain_rules.json` | **`POST /admin/chain/rules/raw`** → `ledger_admin.save_chain_rule_raw` | HTTP 바디 | `{name, declaration, base}`; `base` 는 fingerprint(낙관적 잠금) · 신규 규칙은 **`enabled=False` 로 착지** · 저장 «전»에 `rule_shape.expand_declaration` 으로 «로더가 세울 규칙»을 판정(S-244 `00da7e91` — 통합 선언이 저장에서 거절되고 부팅은 되던 것을 접었다; 맵퍼 해석기도 로더의 `_resolvable_mapper`) · 순환 검증은 그 번역 집합에 «보고만»(판정 402) · 파일은 운영자의 텍스트 그대로 | 라우트 1 + 클라 `admin.js` | 🔊 `declaration_refused` / `stale_base` / `declaration_rejected` refusal 로 거절 · ⚰️ `chain_cycle` 은 2026-09-15 삭제 — 고리는 거절 사유가 아니다 | ✅ |
 | C-10 | 이벤트 그룹 | `process_chain_transaction_group` | `transaction_id` 로 묶은 그룹 | 함수 인자 | `valid_events = [e for e in events if e.event_type in ["CREATE","EDIT"] and any(rule.trigger_table == e.table_name and enabled and _rule_accepts_event(r,e))]` — 🔴 `DELETE`·`SYSTEM_RELOAD` 는 여기서 **빠진다**(그리고 no-op 그룹으로 `SUCCESS` 확정된다) | 1 | 🔊 실패 시 rollback + `retry_count += 1`, 3회 후 `FAILED` 격리 | ✅ |
@@ -605,10 +605,10 @@ rnd_board_walk_harness.mjs     (329줄)   `hops` 히트 2 — 둘 다 픽스처 
 
 ```
 수명주기  `ledger/config_drafts.OntologyDraftStore` :354   — «하나». 문서를 «인자»로 받는다
-문서 ①    `ledger/config_drafts.LedgerDocument` :319       — 기본값. 오늘의 코드를 «옮긴 것»
-문서 ②    `chain_bindings.ChainRuleDocument` :591          — 체인 규칙
-색인      `chain_bindings.ChainRuleIndex` :537             — 체인의 «탐색기 인덱스» 대용
-맥락      `ledger/config_drafts.DraftContext` :304
+문서 ①    ⚰️ `ledger/config_drafts.LedgerDocument`          — «없다». 남은 것은 `OntologyDraftStore` 하나(위 머리)
+문서 ②    ⚰️ `chain_bindings.ChainRuleDocument`             — «없다»(S-205 `6cfd921a`, 2026-09-13) — 제품 호출자를 못 가진 채 은퇴
+색인      ⚰️ `chain_bindings.ChainRuleIndex`                — «없다»(같은 커밋). 후계: 체인 규칙의 문은 chain 탭 raw 라우트(`GET/POST /admin/chain/rules/raw`, 판정 325 · §C-9)
+맥락      ⚰️ `ledger/config_drafts.DraftContext`            — «없다»
 ```
 
 🔴 **`LedgerDocument` 는 아무것도 «다르게 정하지 않는다».** 판정 303 이 요구한 관문이
@@ -618,13 +618,14 @@ rnd_board_walk_harness.mjs     (329줄)   `hops` 히트 2 — 둘 다 픽스처 
 
 ⚠️ **「번들 인자 하나면 열린다」가 «거짓»이었고, 그것을 재서 알았다** — 체인에는 «탐색기 인덱스»가
 없다. 기계가 실제로 요구하는 것은 작았다: 편집 가능한 대상의 매핑 · 대상이 아닌 키에 대한
-«이름 있는 거절» · 초안의 base 를 견줄 무엇. `ChainRuleIndex` 가 그 셋이다.
+«이름 있는 거절» · 초안의 base 를 견줄 무엇. `ChainRuleIndex` 가 그 셋«이었다» — 오늘 그 셋은 raw 라우트의 `{name, declaration, base}` 와 `stale_base` 거절이 든다(§C-9).
 🔴 **스냅샷 해시는 «로더가 보는 규칙»에 대한 것이지 파일 «바이트»에 대한 것이 아니다.**
-🔴 **검증은 «로더의 것»이고 «둘째 의견»이 아니다** — `ChainRuleDocument.preview` :632 가
+🔴 **검증은 «로더의 것»이고 «둘째 의견»이 아니다** — ⚰️ `ChainRuleDocument.preview` 가
 `validation.Problems().exact(...)` 를 로더와 «같은 상수»(`RULE_ROUTING_REQUIRED` · `RULE_ROUTING_OPTIONAL` —
 `routing_keys()` 가 이어 붙이는 바로 그 둘)로 돌린다(S-188 ⓐⓑ). 그래서 **화면이 좋다고 부른 초안을
 로더가 곧이어 거절하는 일이 «있을 수 없다»** — 이 흐름이 반복해서 치른 부류(「같은 질문에 답하는 자리가
 둘」)를 여기서 «구조로» 막는다.
+🔵 **오늘 그 성질을 지키는 자리는 `ledger/admin.save_chain_rule_raw` 가 부르는 `rule_shape.expand_declaration` «하나»다**(S-244 `00da7e91` — 로더와 «같은 함수»로 «세울 규칙»을 판정한다, §C-9). 판정은 그대로고 기제만 옮겨졌다.
 🔵 **그리고 거절만 보이면 «화면이 로그보다 눈이 어둡다»** — 로더는 평평한 최상위 칸을 «받아 주고»
 이름 대어 «경고»한다(S-188 ⓓ). 거절만 보고하는 프리뷰는 저자가 파일을 «매일 아침 기동 줄이 불평하는
 상태»로 두게 두면서 화면은 「좋다」고 말하게 된다. 그래서 프리뷰도 `flat_param_cell` 경고를 «같이» 낸다.
