@@ -38845,3 +38845,33 @@ S-106 조건   철회는 «오늘의 함수»(store 의 withdraw)를 그대로 �
 > ```
 > 제 권고는 ㉡ 입니다(가장 싸고, 재현이 되면 ⓑ 가 진짜로 채점됩니다). ㉢ 으로 가시면 위 한계를 보고에 그대로 적겠습니다.
 > 📌 **[09-15 12:1x] 이 채널의 미답 질문: «둘» — S-242 ②의 격리 범위 · 위 ㉠/㉡/㉢.**
+---
+
+> ## 🔴🔴🔴 S-248 — «S-249 보다 먼저, 지금». 인덱스가 산다 ⇔ 조인이 산다 (총괄 지시, 2026-09-15 12:1x). 순서: S-248 → S-249 → S-242 → S-240 → S-245 → S-246 → S-247
+>
+> **운영 상황(소유자 답안, 질문지):** 오늘 main 재기동 뒤에도 `enrichment_dedup:` 규칙이 «매번 다른 행»에서 「Transaction … permanently failed」. 그 줄 밑 traceback 은 잘려 원인이 «안 보인다». 앞서 「중복 키」 낱말은 `uq_vjoin`. 소유자 선택: 「제품이 되돌리게 기다림」(손으로 DROP 안 함).
+> **총괄 산정(코드로):** 09-14 S-235 가 dt_inventory 에 `uq_vjoin_dt_inventory_…` 를 «그 순간의 데이터»(중복 0)로 세웠다. 그 표는 `composite_key_source` 가 없어 `narrower_than_identity` 가 판단할 수 없었다(신원 미선언 → None). 이튿날 그 조인이 거절·이관·꺼진 뒤에도 인덱스는 남았고, dedup 이 넣는 새 inventory 행이 그 키에 부딪혀 23505 → 그룹 영구 실패. 쓰기 관문 `crud.refuse_virtual_join_duplicates` 는 `_virtual_join_right_keys` = «검증된 규칙»의 키만 알므로, 규칙이 사라진 인덱스는 관문 «밖»에서 문다. 즉 «규칙 없는 인덱스»가 병이다.
+> **도착지 두 줄:** 「제품이 세운 유일 인덱스(`uq_vjoin_*`)는 «켜지고 검증된» 가상 조인이 요구하는 동안만 산다. 조인이 거절·이관·꺼지면 제품이 «걷어내고» 한 줄로 말한다」.
+> **바뀌는 층 «둘», 저자 하나:**
+> ```
+> ⓐ virtual_join/unique_key.py   `product_indexes(db) -> [(표, 이름)]`  pg_index 에서 접두 `INDEX_PREFIX`(uq_vjoin_) 인 유일 인덱스 전부
+>                                `retract_unrequired_once(db, required: set[str]) -> report`
+>                                  · 프로세스당 «요구 집합(frozenset)마다 한 번» 메모(`_RETRACTED`) — 읽기 경로 TTL 뒤에서 두 번째부터 DB 무접촉
+>                                  · `ASSY_VJOIN_AUTO_INDEX=0` 이면 세우기도 걷어내기도 «안 함»(§0-ter ③, `ensure_once` 와 같은 문장) · postgresql 아니면 skip
+>                                  · probe 실패 → rollback + 메모 + skipped(사유)
+>                                  · required 에 없는 것을 autocommit 연결로 `DROP INDEX CONCURRENTLY IF EXISTS` — 하나 실패해도 나머지 계속
+>                                  · 줄(S-247 모양): `[VirtualJoin] 인덱스 X (표) 를 «제품이» 걷어냈습니다 — 켜진 가상 조인 어느 것도 이 키를 요구하지 않습니다. 그 표의 쓰기가 이 인덱스에 막히던 것이 풀립니다. 다음: 없음. 그 조인을 다시 켜면 제품이 다시 세웁니다.`
+> ⓑ virtual_join/config.py       `load_verified_rules` 끝(:877 뒤): `if path is None:` 에서만 `retract_unrequired_once(db, {r["unique_index"] for r in verified if r.get("unique_index")})` — try/except 로 감싸 로딩을 절대 안 깨뜨림. «기본 선언 파일»에 대해서만인 이유: 시험·보고서가 «부분 목록»으로 부를 때 실물을 지우지 않게
+> ⓒ chain/ingestion_worker.py :2276  「permanently failed」 줄이 traceback «첫 줄»(=「Traceback (most recent call last):」)을 싣는다 → 빈 줄 제외 «마지막 줄»(예외 문장)을 싣고 앞에 「원인: 」. 한 줄 수정
+> ```
+> **그대로인 것:** `ensure`/`ensure_once`/`inspect` 무변 · 운영자가 «다른 이름»으로 세운 유일 인덱스는 접두가 달라 «절대» 안 잡힘 · 쓰기 관문 무변 · join_into 무접촉.
+> **게이트(시험, 페이크 bind 로 DDL 문자열 캡처 — 이미 있는 스타일)**
+> ```
+> ① 요구 안 되는 제품 인덱스는 DROP, 요구되는 것은 kept — DDL 문자열이 정확히 `DROP INDEX CONCURRENTLY IF EXISTS "이름"` 하나
+> ② 같은 required 집합으로 두 번 → product_indexes 호출 «1», DDL «1»
+> ③ 스위치 OFF → product_indexes 호출 «0», DDL «0», report.skipped 가 스위치 이름
+> ④ ⓒ: error_reason 이 traceback 문자열이면 줄에 마지막 줄(예외 문장)이 실린다
+> ⑤ 무회귀: unique_key · virtual_join 스위트 전부 초록 · 한 커밋 · 재기동은 제가 · 첫 실행 없음
+> ```
+> ⛔ §0-ter 셋: 읽기 경로 = 메모로 «한 번»(새 SQL 은 pg_index 한 번) / 한 인덱스 실패 ≠ 나머지 / 스위치 OFF = DB 무접촉. 짧게 적고 «바로» 짓기 — 운영이 이것에 막혀 있다. 끝나면 보고 + 「미답 없음」 + S-249.
+> 📌 **[09-15 12:1x] 이 채널의 미답 질문: «없음».**
