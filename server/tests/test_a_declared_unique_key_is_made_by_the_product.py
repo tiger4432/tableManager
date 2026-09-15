@@ -168,6 +168,33 @@ def test_a_rule_that_is_not_this_kind_is_not_this_seats_business(calls):
     assert calls == []
 
 
+def test_the_columns_cell_is_read_and_agreeing_with_the_join_changes_nothing(calls):
+    """⚠️ `key.columns` IS A CHECK, NOT A CHOICE. The index must be built over the join's own
+    right key or PostgreSQL will not use it (S-181), so the list cannot pick other columns -
+    but it is READ, because a cell nobody looks at is the defect this whole round is about."""
+    rule = _rule()
+    rule["key"] = {"unique": True, "columns": ["job"]}
+
+    builtins.ensure_declared_unique_keys(None, [rule])
+
+    assert calls == [("s240_join", "s240_right", ["job"], [None])]
+
+
+def test_columns_that_are_not_the_joins_right_key_are_refused_by_name(calls):
+    """🔴 HONOURING IT SILENTLY WOULD BUILD AN INDEX THAT COVERS NOTHING THIS JOIN COMPARES.
+    The operator gets a sentence naming both lists and fixes one word; `join_into`'s own
+    row-level net still refuses a left row with two right answers meanwhile."""
+    rule = _rule()
+    rule["key"] = {"unique": True, "columns": ["lot"]}
+
+    report = builtins.ensure_declared_unique_keys(None, [rule])
+
+    assert calls == []
+    assert len(report["skipped"]) == 1
+    name, why = report["skipped"][0]
+    assert name == "s240_join" and "['lot']" in why and "['job']" in why
+
+
 def test_a_join_with_no_right_key_is_skipped_by_name(calls):
     rule = _rule()
     rule["params"] = dict(rule["params"], on=[])

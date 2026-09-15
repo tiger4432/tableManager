@@ -199,6 +199,18 @@ def declared_unique_targets(rules):
         if not table or not columns:
             yield (name, None, None, None, "no right key to cover")
             continue
+        # ⚠️ `key.columns` IS A CHECK, NOT A CHOICE. The index has to be built over the
+        # join's OWN right key or PostgreSQL will not use it (S-181) - so a list that names
+        # other columns cannot be honoured, and honouring it silently would build an index
+        # that covers nothing this join compares. It is read so that a typo is a sentence
+        # rather than a cell nobody looks at, which is the whole defect of this round.
+        declared = [str(column) for column in
+                    ((rule.get("key") or {}).get("columns") or ()) if column]
+        if declared and declared != list(columns):
+            yield (name, table, columns, folds,
+                   "key.columns %s is not this join's right key %s — the index covers "
+                   "the right key" % (declared, list(columns)))
+            continue
         yield (name, table, columns, folds, None)
 
 
