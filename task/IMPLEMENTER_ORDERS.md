@@ -38723,3 +38723,21 @@ S-106 조건   철회는 «오늘의 함수»(store 의 withdraw)를 그대로 �
 >
 > 그 밖 열 칸은 표대로. 게이트 ①②④⑤ 그대로, ③ 은 위 ③′ 로 대체. 끝나면 보고 파일 + 이 채널에 «미답 없음» 한 줄.
 > 📌 **[09-15 10:2x] 이 채널의 미답 질문: «없음».**
+---
+
+> ## S-240 — 통합 join 의 `key.unique` 를 «로더가» 읽어 S-235 와 같은 손으로 인덱스를 세운다 (총괄 지시, 2026-09-15 10:4x). S-239 «닫힘» 확인(제가 잼: 101 · 524 passed · 재기동 PID 2608 · set(17) 그대로) — 다음은 이것
+>
+> **실측(총괄):** `git grep ensure_once -- server/chain` = 0. `rule_shape.to_declaration` 은 on/derive/into/limits 만 나르고 `key` 를 «떨어뜨린다». 계획 §「선언이 key.unique 라고 말하면 제품이 성립시킨다」가 통합 join 에 대해 «거짓»이다. 오늘 쓰기를 지키는 것은 `join_into._write` 의 행 단위 그물(`593aac50`)뿐 — 그물은 «답이 둘인 행을 안 쓰는» 것이고, 유일성을 «성립시키는» 것은 아니다.
+> **도착지 두 줄:** 「통합 join 에 `key: {columns, unique: true}` 를 적으면 제품이 «오른쪽 표»에 그 유일 인덱스를 세운다(S-235 와 같은 `unique_key.ensure_once`). 못 세우면 «그 규칙만» 거절하고 사실(무슨 키가 몇 건 겹쳤나)을 부팅 줄에 적는다」.
+> **바뀌는 층 «하나»:** 로더(`chain/ingestion_worker.load_chain_rules` 의 통합 문법 번역 자리 — 이미 `virtual_join.config` 를 import 하는 곳 :844 근처). `key` 가 `rule_shape.from_declaration`/`to_declaration` 을 «왕복»하게(떨어뜨리지 않게) — 왕복 게이트가 그것을 잰다.
+> **그대로인 것:** `join_into.py` «무접촉»(경계 시험 — virtual_join 을 import 못 한다, 저자 하나) · `virtual_join/*` «무접촉» · `unique_key.ensure_once` 시그니처 그대로(`db, rule_name, table, columns, folds`) · 옛 껍데기의 인덱스 자리(:852)는 그대로.
+> **게이트 — §0-ter «단언»으로**
+> ```
+> ① 읽기 경로 무접촉   diff 에 virtual_join/executor · column_filter · source_preparation · resolved_expression «0줄». ensure_once 는 «로드 시점» 한 번, 자기 세션(SessionLocal)으로 — 요청·읽기 세션 아님
+> ② 값 하나 ≠ 배치     probe/DDL 실패는 «그 규칙만» refused(사유 = 사실) · 롤백 · 다른 통합 선언은 선다(시험: 하나가 던져도 나머지가 set 에 오른다)
+> ③′ 스위치           `enabled:false` 통합 join → ensure_once «호출 0»(S-239 가 이미 고정 — 그대로 초록) · `ASSY_VJOIN_AUTO_INDEX=0` → 호출은 되나 «DB 무접촉»(unique_key 가 이미 그렇다 — 시험은 «inspect 호출 0» 단언)
+> ④ 동작 0 + 되돌림     `key` 없는 통합 join 선언은 census 「같음」 · 왕복 게이트 초록(`key` 가 적힌 채로 돌아온다) · 한 커밋
+> ⑤ 무회귀             가상 조인 스위트 전부 · S-237/S-239 시험 전부 초록
+> ```
+> ⛔ 짓기 «전»에 §0-ter 판별식 셋(읽기/쓰기 · 행/배치 · 스위치)을 이 채널 답으로 «먼저». 첫 실행 없음(박스에 통합 join 선언 없음). 재기동은 제가. 끝나면 보고 파일 + 이 채널에 «미답 없음» 한 줄.
+> 📌 **[09-15 10:4x] 이 채널의 미답 질문: «없음».**
