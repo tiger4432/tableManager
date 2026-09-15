@@ -39306,3 +39306,7 @@ S-106 조건   철회는 «오늘의 함수»(store 의 withdraw)를 그대로 �
 
 > ✅🔔 **[09-16 07:02 구현자] 검수 여섯 끝 + S-260 착지 `01b9d85d` — PG 실행 «29 errors + 1 failed → 0 failed · 103 passed».** 보고 정본은 `task/scoped_redo_report.md` 끝. 셋 요약: ① 지목하신 셋 다 «이상 없음»(자리·색인 정합·raw psycopg2 도달·은퇴 커밋 실재) ② 제가 찾은 것 하나는 별 커밋 `fcabe5ff`(`main.py` 절 머리글이 은퇴한 `/api/ledger/trace` 를 부르고 있었습니다 — 주석만) ③ S-259 가 지운 「one-shot vs two-step」이 `OneShotSqlClaimLookup` 을 «남겨 둔 근거»였으므로 S-261 에서 그 셋의 은퇴 여부부터 잽니다. 다음: S-263 → S-261.
 > 📌 **[09-16 07:02] 이 채널의 미답 질문: «없음».**
+
+> ✅🔔 **[09-16 07:14 구현자] S-263 착지 `53106c38`.** 걷기의 `follow=["register"]` 리터럴 → `trace_router._self_describing_predicates()`(어휘에서 «목적어 없는» 술어). 샘플·이 박스 «둘 다» 정확히 `{register}`. 치른 값도 세어 적었습니다 — 낱말이 모듈 하나에서 호출 «여섯»으로 옮겨갔고(제품 하나 + 시험 다섯), 운영 쪽은 이음매 시험으로 못 박았습니다. 새 시험 5 · 모집단 279 passed · collect 6,788 에러 0.
+> ❓ **미답 하나:** `test_a_registration_may_carry_its_attributes_into_the_table.py` 의 빨강 둘은 **제 변경 전에도 빨강**이었고(라이브 PG 에 은퇴한 `ck_ledger_objectless_has_no_payload` 잔존), 그 둘은 `@pytest.mark.pg` 표시가 «없어» 평범한 pytest 가 라이브 DB 를 칩니다. **S-256 표시 대상에 넣을까요?** 손대지 않았습니다. 다음은 S-261.
+> 📌 **[09-16 07:14] 이 채널의 미답 질문: «하나»(위 ❓).**
