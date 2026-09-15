@@ -1088,6 +1088,7 @@ S-226   빈 칸 -> 채워진 키   잠자던 «유일 인덱스»가 깨어나 �
 ✅ **[16:4x S-243-b «닫힘» `478fcf32`]** `scripts/count_absent_null_layers.py`(읽기만, `--apply` 없음) — S-243 과 같은 술어를 import · 표·컬럼·소스별 NULL 층 수 + «아래 층이 있어 실제로 가리는» 수 · RUN.md §1-bis 에 운영 명령 + 답의 뜻. 제가 잼: 21 passed · 박스에서 돌림 — 「이 박스에서는」 가림 310(박스 수, 운영 주장 아님). 🔴 소유자 할 것: 운영에서 그 명령 → 「가림 N」 을 질문지로. N>0 이면 S-243-c(내보낸 뒤 지우기, 되돌릴 수 있게)를 go 로 올림. 구현자 «정지»(큐 소진).
 🆕 **[16:5x 소유자 「리플레이 버튼에 조인도 · 해당 테이블이 트리거인 규칙만」 → S-250(서버) + C-109(클라)]** 목록의 출처를 파일 원문에서 «적재된·돌 수 있는» 집합(`replay.load_rules` + `is_reference_side`)으로 — 저자 하나 `replayable_rules_for(table)` + 라우트. 클라는 표 바뀔 때마다 그 라우트로. 🔴 클라 레인은 09-13 정지 지시 중이라 «소유자 창 두드림» 필요.
 ✅ **[17:0x S-250 서버 절반 «닫힘» `df824a9a` — 재기동 PID 36636]** `replay.replayable_rules_for(table)`(= `load_rules` + `is_reference_side`, 소급과 «같은 집합») + `GET /admin/chain/rules/replayable?table=`(토큰 게이트 401 실측) + `rule_shape` 의 kind 낱말. 제가 잼: replay 모집단 246 passed · 박스 in-process 로 dt_log/dt_inventory 목록 «나옴». 클라 C-109 대기(창 두드림 필요).
+✅ **[17:2x C-109 «닫힘» `c87080e3`(design) → main 병합 `8527e886`]** `replayable_rules.js`(새 부품) + `main.js` 가 표 바뀔 때마다 `/admin/chain/rules/replayable?table=` 로 · `redo_banner` 행 = `이름  트리거 → 대상` + kind · dist 포함. 제가 잼: 하니스 28 + 51 assertions 초록 · dist 번들에 라우트 낱말 있음 · 실제 페이지(8080) dt_log 행 선택 → Replay chain → 팝업이 「토큰 없음 — 어드민 한 번 열고」와 「1 key from 1 row」를 가름(토큰은 제가 못 넣으므로 목록 자체는 하니스 + in-process 로 확인). 클라 «정지».
 ```
 ```
 정본 계획   task/CHAIN_UNIFICATION_PLAN.md (§1~9: 모양 · 0~5단계 · 쓰기 가상화 «안 함» 사유 · 2단계 설계 · UI)
