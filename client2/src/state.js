@@ -123,6 +123,21 @@ export const state = {
   // is no longer on screen — appending the previous row's page 2 onto this row's page 1 is the
   // defect this counter exists to prevent, and those rows would all be real.
   cellRowHistorySession: 0,
+  // [History paging] The GLOBAL tab's half of the same envelope, and it exists because the
+  // route that publishes `next_cursor` now ACCEPTS one (판정 473). Until then this tab could
+  // only state 「일부만」 as a fact with nowhere to go.
+  //
+  // The cursor is OPAQUE, exactly as above: never parsed, never built here, handed back verbatim.
+  globalHistoryCursor: null,
+  // Groups PAGED IN from the server across this session. Deliberately not
+  // `globalHistoryData.length`: a live WebSocket log with no group on screen is unshifted into
+  // that array as a new group, so its length climbs on its own and would make the pager's count
+  // — and the 「일부만 (N건)」 fact beside it — drift upward while nothing was fetched.
+  globalHistoryLoaded: 0,
+  // The paging session token, same discipline as `cellRowHistorySession`: bumped by every fresh
+  // global load, so a 더 보기 resolving after the operator reloaded or switched tabs can tell
+  // that its page belongs to a list that is no longer on screen.
+  globalHistorySession: 0,
   expandedTransactions: new Set(),
   fetchingTransactions: new Set(),
   currentTransactionId: null,
