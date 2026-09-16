@@ -21989,6 +21989,9 @@ cell_layer.withdraw_source(db, table, source, columns=None, row_ids=None, apply=
 
 ## 🔵 Q-18 [09-16 22:00 실측] **쪽지는 «이미 있습니다» — DELETE 아웃박스 이벤트가 지워진 행의 «모든 컬럼 값»을 싣습니다**
 
+> ⚰️🔴 **[09-16 22:11 정정 — 이 블록은 «기각»됐고 그게 «옷습니다» (판정 436)]** 제품의 삭제 문 둘은 `stage_event` 를 «안 지납니다» — `crud.py:5280 delete_rows_batch` · `crud.py:3831 purge_map_rows` 가 `stage_collapsed_event(db, "DELETE", table, row_ids)` 를 부릅니다(«row_ids 뿐», 값 없음). 단일 행 삭제도 배치로 접힙니다(판정 431). 🔴 제가 근거로 인용한 `database.py:196` 의 「DELETE NEVER COLLAPSES, IN EITHER MODE」은 «오늘 거짓»이었고(지금은 「THROUGH *THIS HOOK*」로 고쳐져 있습니다), 저는 «주석을 동작의 증거로» 썼습니다 — 제 기억에 그 이름으로 있는 부류입니다. ⚠️ 그리고 제가 안 재서 놓친 것은 «문»입니다: `stage_event` 를 열고 «그것을 부르는 삭제 경로가 있나»를 안 셀습니다 — 제가 오늘 밤 남에게 다섯 번 지적한 «기제가 있다 ≠ 이 길이 그리로 간다»입니다.
+
+
 > 판정 434 가 「쪽지의 단위는 «셀»」을 정하는 중이고, 총괄이 「세기 전에 크기를 말하지 말라」 했습니다.
 > 그래서 «세고» 올립니다 — 이 측정이 라운드의 크기를 바꿉니다.
 
