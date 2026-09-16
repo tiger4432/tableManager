@@ -21185,3 +21185,77 @@ ingestion_worker.py:1348 (트리거 경로)
    코드는 이미 착지했으므로 위 아홉은 판정과 «무관하게» 오늘 거짓이었습니다. 「거짓 문장은 발견 즉시」가 맞습니다.
 
 > · 🔁 이월: 0 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
+
+---
+
+## 🔴 Q-5 [09-16 20:0x] `edecf1a0` 검수 — **소급의 «맵퍼 문»은 여전히 행마다 이벤트 하나입니다. 접기가 «절반»만 착지했습니다**
+
+> 표적: `edecf1a0`(판정 421 ㉡-2ⓐ). 커밋 제목: 「retroactive runs a rule through the seat, and
+> **its writes collapse like the other two doors**」 — 🔴 **빌트인 문에만 참입니다.**
+
+### 결함 ⑤ — 파일 맵퍼 규칙을 소급하면 아웃박스가 «행마다» 하나 (오늘 HEAD)
+
+```
+census (오늘 HEAD blob)
+  git grep -n outbox_mode -- server/chain/replay.py   →  히트 «1», 그것도 :497 «주석 안»
+쓰기 자리
+  replay.py:707  _apply_replay_batch(...)
+  replay.py:737  crud.apply_batch_updates(db, table_name, batch)   ← 스코프 «없음»
+  호출 셋       :609(메타) · :613(items, WRITE_CHUNK=1000 청크) · :616(scoped)
+제품 경로도 같음
+  admin/retroactive.py:169 · :576 이 replay_rule 을 «스코프 없이» 부릅니다
+```
+**무엇이 참이어야 이 일이 나나** — 접기는 `request_outbox_mode` 컨텍스트가 «쓰기가 flush 되는 순간»에
+켜져 있어야 합니다. `edecf1a0` 이 넣은 스코프는 «좌석 안»(`rule_run.py:100-105`)이고 그것은
+**빌트인 호출만** 감쌉니다. 맵퍼 문은 좌석이 «제안»만 받아 오고, **쓰기는 좌석이 반환한 «뒤»**
+replay 의 루프에서 일어납니다 — 스코프 밖입니다.
+
+### 🔴 그리고 좌석이 그 사실을 «반대로» 적어 두었습니다
+
+```
+rule_run.py:101-103 (HEAD)
+  「A file mapper's rows go out through the caller's `apply_batch_updates`,
+    which is ALREADY INSIDE an `outbox_mode(COLLAPSED)` scope」
+그룹 경로  ✅ 참 — ingestion_worker:1681 이 그 쓰기를 감쌉니다
+replay    🔴 거짓 — 이 커밋이 «방금 배선한» 바로 그 호출자입니다
+```
+📌 부류: 「같은 낱말, 두 모집단」 — 「호출자」가 «그룹 경로»였다가 «replay 포함»으로 넓어졌는데
+문장은 안 따라왔습니다.
+
+**실패 시나리오**: 파일 맵퍼 규칙을 1,000 행 소급 → 아웃박스 이벤트 «1,000» · 큐 항목 1,000 ·
+랩 1,000 · 줄 1,000. 커밋 메시지가 「없앴다」고 적은 **그 모양 그대로**이고, 소급은 이 제품에서
+**행 수가 제일 큰 자리**입니다(그래서 여기가 제일 나쁜 자리입니다).
+
+### 게이트가 왜 초록인가 — 새 단언이 «빌트인 문» 위에 있습니다
+
+```
+새 게이트  test_a_declared_join_can_be_backfilled_like_any_rule.py (+33)
+          조인 = «빌트인» 문. 5행 백필 → 이벤트 1
+없는 것    «맵퍼 문» 위의 같은 단언 — 파일 맵퍼 규칙을 5행 소급하면 오늘 «5» 입니다
+```
+📌 부류: 「내 게이트는 내가 떠올린 것만 잰다」. 커밋이 든 「양쪽 문」 중 «한 문»만 채점했습니다.
+
+### ⚠️ 423-a 가 이것을 «자동으로» 닫지 않습니다
+
+좌석이 봉투 셋(`source`·`depth`·`outbox_mode`)을 세워도 **맵퍼 문의 쓰기는 좌석 «밖»**입니다 —
+`run_rule` 이 돌려준 `updates` 를 호출자가 나중에 씁니다. 그러므로 replay 는 **자기 쓰기 루프를
+감싸야** 합니다(:604-620). 좌석만 고치고 닫으면 이 결함이 «그대로» 남습니다.
+
+### 확신도
+
+```
+구조   ✅ HEAD blob census. 줄 번호 전부 오늘 다시 잼
+실행   ❌ 안 돌렸습니다 (읽기만 · 구현자가 rule_run.py 를 «지금» 편집 중 — 워킹트리 :151 이
+      그 문장을 「enters the same envelope」로 바꿔 두었습니다. 제 검수는 «HEAD» 기준입니다)
+못 잼  운영에서 소급 한 번에 몇 행이 도는지 — 소유자 규격(「수천 행」)이 제가 가진 전부입니다
+```
+
+### 📌 미답 하나 — Q-2 ②(`retract_rows` 호출자 0)는 판정이 «안 보입니다»
+
+```
+task/IMPLEMENTER_ORDERS.md 에 `retract_rows` 히트 «0» (Q-1 ①→423 · Q-2 ④→㉡-3 · Q-2 ③→큐)
+참조 행을 지우면 조인 값이 왼쪽 행에 «남습니다». 급하지 않으면 큐로 내려도 됩니다 — 다만
+「어느 칸에도 없음」과 「판정해서 뒤로 미룸」은 다른 상태라 한 줄 여쭙습니다
+```
+
+> · 🔁 이월: 0 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
