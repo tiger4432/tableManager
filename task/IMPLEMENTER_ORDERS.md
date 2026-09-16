@@ -47269,3 +47269,57 @@ const empty = emptyOf(node.of, …);        // <- 도달 안 함
 같은 부류 «세 번째»라 하셨는데 맞습니다(감싸는 def · 잘린 이름 · 오늘의 `or 0` 방어층).
 **이건 계측기 규율로 올릴 값어치가 있습니다** — 다음 계측기를 지을 때 「앵커를 내기 전에 «한 층 위»를 본다」를
 그 도구의 출력에 «적어» 두십시오. 세 번 났으면 부류입니다.
+
+---
+
+> 🔵 **[09-17 06:43 구현자] 489 ① — 소비자 표 «전수». 그리고 ㈢ 만으로는 «안 닫히는 자리 둘»을 찾았습니다. 코드 변경 «0**
+
+## ⚠️ ① 먼저 낱말 주의 — `chips.total` 과 `total_chips` 는 «다른 것»입니다
+```
+`chips.total`   응답 필드 (이번 판정의 주어)
+`total_chips`   «역할 이름» (선언된 소스). bonding_plan.ROLES 의 하나
+제 첫 훑기가 이 둘을 섞었습니다. 아래 표는 «응답 필드»만 셉니다
+그리고 클라의 `chips` 히트 대부분은 «UI 필터 칩»입니다 — 또 다른 뜻입니다
+```
+
+## ② 표 — 낳는 자리 «2» · `chips.total` 읽는 자리 «2» · `population_ref` 읽는 자리 «2»
+```
+낳는다  transfer_plan.py:2242   "chips": chips_block            <- 응답 필드
+       transfer_plan.py:1285   "population_ref": chips_total   <- 블록 하나치
+
+chips.total 을 읽는다
+  ㉠ :1285   population_ref 가 «여기서» 만들어집니다
+  🔴 ㉡ :2476  "chips_total": (one.get("chips") or {}).get("total")
+             -> lot 범위 응답의 `by_slot` 행에 «다른 이름으로 다시 실립니다».
+                ㈢ 을 해도 이 칸은 None 을 그대로 나르므로 «맞습니다» — 다만 이름이 달라
+                소비자가 「chips_total 은 숫자」로 읽고 있으면 거기서 터집니다. 열어 봐야 합니다
+
+population_ref 를 읽는다
+  ✅ ㉢ :2330  `_bin_warnings` — `isinstance(ref, int)`.  판정 489 ③㉡ 그대로 «공짜로» 낫습니다
+  🔴 ㉣ :1374  sum(int(b.get("population_ref") or 0) for b in blocks)
+             -> «or 0 이 None 을 0 으로 되돌립니다».  병합 블록의 population_ref 가 다시 «int» 가 되고
+                :2330 의 `isinstance(ref, int)` 가 그것을 «받습니다» -> 틀린 경고가 «병합 층에서 부활»합니다
+
+chips 블록을 읽지만 total 은 «안» 읽는다
+       transfer_plan.py:3776   remaining_reliable 만 봅니다 — 영향 없음
+클라   client2/src/transfer_plan.js:1909-1913
+       `const chips = data.chips || {}` -> `remaining_reliable` · `remaining` 만 읽습니다
+       🔵 **클라는 오늘 `chips.total` 을 «안 읽습니다»** — 이 착지의 클라 몫은 «없을» 수 있습니다
+계약   contracts/map_seam/test_seam_contract.py:503·525·540 + :542
+       `remaining_upper_bound == c["total"] - fail` — «뺄셈»입니다. total 이 None 이면 터집니다
+       vectors.json 의 그 칸은 오늘 전부 int
+문서   docs/architecture/backend.md:362 이 `chips{total, …}` 모양을 적고 있습니다
+```
+
+## 🔴 ③ 그래서 판정 하나가 «더» 필요합니다 — ㈢ 이 답하지 않는 자리입니다
+```
+물음   블록이 여럿일 때 «병합된» population_ref 는 무엇입니까 (:1374)
+       한 블록이라도 안 믿기면 합계는 «무슨 뜻»입니까
+㈎ 지금대로 or 0    -> 🔴 틀린 경고가 병합 층에서 그대로 삽니다. ㈢ 이 «반만» 듣습니다
+㈏ 하나라도 None 이면 합계도 None   <- 제 권고.
+   형제 `remaining_reliable` 규율과 «같은 모양»이고, 판정 489 ②의 「기제를 하나로」 그대로입니다
+㈐ 믿을 수 있는 블록만 더한다      -> ⛔ 권고 안 합니다. 「부분합」이 «전체»로 읽혀 오늘 버그가 이름만 바뀝니다
+```
+📌 ㈏ 로 주시면 그대로 갑니다. 착지는 «한 커밋»으로: 서버(:1730 + :1374) + 계약(벡터 + None 단언) + 문서 한 줄.
+   클라는 위 표대로 «읽는 자리가 없어» 안 건드립니다 — 다만 ㉡(`by_slot.chips_total`)의 소비자를 먼저 열겠습니다.
+⛔ 아직 한 줄도 안 고쳤습니다.
