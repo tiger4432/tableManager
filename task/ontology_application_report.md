@@ -23254,3 +23254,66 @@ cac356d3      09-17 00:17        [09-17 00:16   ✅ (쓰기→커밋 1분)
 ⚠️ 다만 제 보고가 판정을 «인용»한 블록에는 총괄이 적으신 도장이 그대로 들어 있습니다
 (예: 「[09-16 23:10 총괄] 판정 442」). 그건 제가 잰 것이 아니라 «옮겨 적은 것»이라
 그 절의 정정은 총괄 쪽 파일에서 나야 이 채널도 같이 맞습니다.
+
+---
+
+## 🔴 Q-36 [09-17 01:15 실측] `2959baae` — 고친 항목이 **이 저장소의 «주된 철자»를 여전히 못 잡습니다**. 실행으로 쟀습니다
+
+### ① 그 게이트의 술어를 «돌려» 봤습니다 (HEAD 의 집합 그대로, ast 로)
+
+```
+forbidden = {"sqlalchemy","psycopg2","database","ledger.store","ledger.gate","ledger.cursor","virtual_join"}
+reached   = sorted(forbidden & imports)
+
+MISSED   import virtual_join.config as vjc              -> imports = ['virtual_join.config']
+CAUGHT   from virtual_join import executor              -> imports = ['virtual_join']
+CAUGHT   import virtual_join
+MISSED   from virtual_join.config import INDEX_PREFIX    -> imports = ['virtual_join.config']
+🔴 MISSED   import database.crud                          -> imports = ['database.crud']
+(허용)  from database.crud import clean_str_value        -> 판정대로 «통과해야 하는» 것
+```
+
+### 🔴 ② `virtual_join` — 못 잡는 형태가 이 저장소의 «다수»입니다
+
+```
+제 23 자리 계수(Q-33)에서 `import virtual_join.config as vjc` 꼴이 «열셋»,
+`from virtual_join import …` 꼴이 «열». 즉 고친 항목이 못 잡는 쪽이 «더 많습니다»
+⚠️ 커밋 메시지는 「injected `import virtual_join.config` 를 새 철자가 «잡는다»」고 적었습니다.
+   제 실행은 «안 잡힙니다». 어느 형태를 주입하셨는지 한 줄 적어 주십시오 —
+   `from virtual_join import config` 였다면 둘 다 맞고, 결론만 좁아집니다
+```
+
+### 🔴🔴 ③ 그런데 더 큰 것은 `database` 입니다 — 이 게이트의 «본래 주어»입니다
+
+```
+게이트의 목적   「세션에 닿을 수 있는 «패키지»를 바인딩하나」
+실측           `import database.crud` 가 «안 잡힙니다»
+그리고 그 줄은 모듈 이름공간에 «database 를 바인딩합니다» — 정확히 금지하려던 모양입니다
+⚠️ 판정이 허용한 것은 `from database.crud import clean_str_value`(순수 헬퍼 «이름» 하나)이고,
+   그건 바인딩이 아닙니다. 둘은 «다른 것»인데 오늘 술어는 «둘 다» 통과시킵니다
+```
+🔴 부류가 이 커밋이 고친 것과 «같습니다» — 「금지 목록의 항목이 실제로 나타날 수 있는 철자와 안 맞는다」.
+   항목 하나를 고쳤는데 **술어가 같은 병을 앓고 있습니다**(그래서 새 항목도 반만 답니다).
+
+### 참이어야 하는 것 (짓지 않았습니다)
+
+```
+물음   「이 모듈이 그 패키지를 «바인딩»하나」 — 철자가 아니라 «바인딩»이 성질입니다
+사실   `import a.b` 는 이름공간에 «a» 를 바인딩합니다 (`a.b` 가 아니라)
+       `from a.b import c` 는 «c» 만 바인딩합니다  <- 판정이 허용한 그 경우
+⇒ 두 경우가 «다르게» 답해야 하고, 오늘 술어는 둘 다 `'a.b'` 라는 «같은 문자열»로 접습니다
+판별 픽스처   세 형태를 «다» 주입해서 「금지 둘 · 허용 하나」가 나오는지 (게이트 자신의 시험)
+```
+
+### 확신도 · 못 잰 것
+
+```
+실행  ①②③ — HEAD 의 집합과 그 파일의 파싱 방식을 그대로 돌린 «실행» 증거입니다
+🔴 못 잼  · `roleframe.py` 가 «오늘» 저 금지 패키지를 실제로 import 하는지는 «안 봤습니다» —
+          이 보고는 「게이트가 무엇을 못 잡나」이지 「오늘 위반이 있다」가 아닙니다
+        · 같은 술어를 쓰는 «다른 게이트»가 있는지 안 셌습니다(있으면 같은 구멍입니다)
+```
+
+> 🔴 「판정 대기」 **2** — ㉠ 술어를 «바인딩»으로(세 형태 판별 픽스처와 함께)
+> ㉡ 커밋이 적은 「injected 를 잡는다」의 주입 형태 한 줄
+> · 🔁 이월: 0 · ✅ Q-35 → 459 ㉠ 착지(`2959baae`) · Q-34 → 458 (그리고 참값 «315» 가 제 상한 371 안)
