@@ -199,6 +199,58 @@ function suite(M) {
       JSON.stringify(gate));
   }
 
+
+// ── a leaf with ONE legal value is seeded with it, and the class is walked, not named ──────
+//
+// 🔴 판정 484 + the application lane's Q-50. The server's seed learned to read `const`; the
+//    CLIENT builds a new member with no server round trip (`ontology_explorer.js` seeds with
+//    `emptyOf` and writes it straight into the draft), so the screen went on producing the one
+//    value the bundle validator refuses. Two seeds, one fixed.
+//
+// ⛔ THE FIELD IS NOT NAMED HERE. Asserting on `virtual_joins.materialize` would make this file
+//    the second place that knows which field it is, and the next `const` leaf would land unscored
+//    while this stayed green. The skeleton is WALKED for the property instead, so a leaf declared
+//    next week is covered the day it appears.
+function constLeavesIn(node, path, out) {
+  if (Array.isArray(node)) {
+    node.forEach((item, i) => constLeavesIn(item, path.concat(String(i)), out));
+  } else if (node && typeof node === 'object') {
+    if (Object.prototype.hasOwnProperty.call(node, 'const')) out.push({ node, path: path.slice() });
+    Object.keys(node).forEach((k) => constLeavesIn(node[k], path.concat(k), out));
+  }
+  return out;
+}
+{
+  const defs = SKELETON.defs;
+  const leaves = constLeavesIn(SKELETON, [], []);
+  // 🔴 WITHOUT THIS THE BLOCK IS VACUOUS. A skeleton that declares no `const` would make every
+  //    assertion below pass by having nothing to check -- the legend making the claim empty.
+  ok(leaves.length > 0,
+    `the shipped skeleton declares at least one const leaf (found ${leaves.length})`);
+  leaves.forEach(({ node, path }) => {
+    ok(M.emptyOf(node, defs) === node.const,
+      `a const leaf seeds its one legal value, not its kind's empty (${path.join('/')})`);
+  });
+
+  // ...and END TO END, through the seat the form actually uses: a brand-new member of a map.
+  // This is where the defect lived -- the leaf was right in isolation and the member was born
+  // wrong, because the record branch seeded required flags by hint.
+  (SKELETON.root.fields || []).forEach((field) => {
+    const map = field.node;
+    if (!map || map.kind !== 'map') return;
+    const member = M.shapeAt(SKELETON.root, [field.key, 'A_NEW_MEMBER'], defs);
+    if (!member || member.kind !== 'record') return;
+    const seeded = M.emptyOf(member, defs);
+    (member.fields || []).forEach((sub) => {
+      if (!sub.node || !Object.prototype.hasOwnProperty.call(sub.node, 'const')) return;
+      ok(seeded[sub.key] === sub.node.const,
+        `a new ${field.key} member is born with ${sub.key} = `
+        + JSON.stringify(sub.node.const),
+        `got ${JSON.stringify(seeded[sub.key])}`);
+    });
+  });
+}
+
   return { fail: failures.length - before };
 }
 
@@ -223,6 +275,11 @@ const DEFECTS = [
     (s) => s.replace('      if (!fieldApplies(field, seeded)) continue;', '')],
   ['a gated field is treated as always applying',
     (s) => s.replace('  if (!field || !field.when) return true;', '  return true;')],
+  // The shipped defect, put back: the seed ignores `const` and falls through to the kind's
+  // empty, which for a required flag is `false` -- the value the bundle validator refuses.
+  ['a const leaf is seeded by its kind, so a new member is born refused',
+    (s) => s.replace(
+      "  if (Object.prototype.hasOwnProperty.call(shape, 'const')) return shape.const;", '')],
 ];
 const CONTROLS = [
   ['comments stripped', (s) => s.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n')],

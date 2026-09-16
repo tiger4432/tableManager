@@ -101,6 +101,24 @@ export function fieldApplies(field, siblings, held) {
 export function emptyOf(node, defs, depth = 0) {
   const shape = deref(node, defs);
   if (!shape) return '';
+  // 🔴 ONE LEGAL VALUE IS NOT A DECISION — IT IS A SEED. `const` says the grammar admits exactly
+  // one value here, so a newly named member is BORN with it. Before this the client fell through
+  // to the tail below, and for a `const: true` flag that meant seeding `false` — the one value
+  // the bundle validator refuses. The form produced a member that could not be saved, and the
+  // operator had to find the box and tick it. 「가드는 도달 가능해지는 날 틀린다」 in its seeding
+  // form: `hint: flag` was read correctly and the answer was still wrong.
+  //
+  // ⛔ NO DOMAIN WORD HERE. The server's twin reads the same key rather than naming the field
+  // (`config_authoring.empty_value`: 「THE SEED IS NOT HARDCODED … The SKELETON says what the one
+  // legal value is」), so the next `const` leaf costs zero edits instead of one on each side.
+  // This is the CLIENT half: the form builds a new member without a server round trip, so the
+  // server fix alone left the screen producing the refused value.
+  //
+  // ⚠️ IT STAMPS A DEFAULT, NOT A LOCK. Somebody who clears it deliberately still meets the
+  // validator by name, with its repairs — an informed refusal of a deliberate act, not a trap
+  // sprung on a default. Drawing a `const` leaf as SETTLED rather than as a live checkbox is the
+  // other half of that and is a separate round.
+  if (Object.prototype.hasOwnProperty.call(shape, 'const')) return shape.const;
   if (shape.kind === 'map') return shape.keyed_by === 'index' ? [] : {};
   // 🔴 A oneOf STARTS AS 「NOTHING PICKED」, AND THAT IS AN OBJECT HOLDING NO BRANCH KEY. The
   // renderer draws the picker blank and no branch for any value that names none (it

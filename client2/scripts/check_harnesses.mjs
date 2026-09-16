@@ -1315,7 +1315,7 @@ const FLOORS = new Map([
   // the count it reports on the commit that introduces it -- there is no earlier tree to
   // measure it against. 🔴 IT READS THE SHIPPED SKELETON AND THE SHIPPED SAMPLE, so a seat
   // removed from `server/ledger/ledger_skeleton.json` reddens it from the client side.
-  ['declaration_attribute_seats_harness.mjs', 18],
+  ['declaration_attribute_seats_harness.mjs', 21],
   // New 2026-09-16 with C-115 (skeleton descent follows a oneOf by branch key, one author for
   // record/map/oneOf). Floor is the count it reports on the commit that introduces it. 🔴 IT
   // READS THE SHIPPED CHAIN SKELETON for the descent today's screens take, and a hand fixture
