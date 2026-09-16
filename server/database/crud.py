@@ -4489,12 +4489,17 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
                 # that had been working, while every other table went in.
                 db.rollback()
                 # 🔴 [S-275] THE LINE THAT EXPLAINS THE REFUSAL MAY NOT REPLACE IT.
-                # 「진단기는 자기가 진단하는 것을 죽일 수 없다」 - the class `d00ac580`
-                # landed under nine minutes before this seat was written, and this call
-                # was left bare. It reads `batch.updates`, asks the exception for a
-                # constraint name and imports two modules; any of that can raise, and
-                # then `raise` below is never reached and the operator gets something
-                # other than the named `IntegrityError` S-269 exists to hand them.
+                # 「진단기는 자기가 진단하는 것을 죽일 수 없다」. This call reads
+                # `batch.updates`, asks the exception for a constraint name and imports
+                # two modules; any of that can raise, and then the `raise` below is never
+                # reached and the operator gets something other than the named
+                # `IntegrityError` S-269 exists to hand them.
+                #
+                # ⚠️ AND THE CLASS WAS NAMED NINE MINUTES *AFTER* THIS CALL WAS WRITTEN
+                # (`503b6129` 10:27:06, `d00ac580` 10:36:18). Nobody swept back over the
+                # seats that already existed, which is why the other refusal seats are
+                # owed a census rather than a guess - a wrapper applied where nobody
+                # measured is how a repair becomes a habit.
                 # ⚠️ THE FOLD IS SAID OUT LOUD. A diagnostic that quietly stops being
                 # written is a diagnostic nobody knows to miss.
                 try:
