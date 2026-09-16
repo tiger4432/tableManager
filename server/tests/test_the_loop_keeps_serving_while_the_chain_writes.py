@@ -26,6 +26,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from chain import ingestion_worker as worker
+from chain import mapper_call
 from database.models import DatabaseOutbox
 
 WAIT = 5.0
@@ -76,7 +77,7 @@ async def test_another_coroutine_completes_while_a_group_is_being_processed(monk
         release.wait(WAIT)
         return {"updates": []}
 
-    monkeypatch.setattr(worker, "execute_custom_mapper", blocking_mapper)
+    monkeypatch.setattr(mapper_call, "execute_custom_mapper", blocking_mapper)
 
     task = asyncio.create_task(
         worker.process_chain_transaction_group("s93-tx", [_event()], MagicMock(), _rules()))

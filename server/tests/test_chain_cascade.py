@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from chain import ingestion_worker as worker
+from chain import mapper_call
 from database.models import DatabaseOutbox
 
 
@@ -65,7 +66,7 @@ def test_processor_only_invokes_the_opted_in_rule(monkeypatch):
         worker.outbox_expand.event_key(event): [{"data": {}}] for event in events
     })
     monkeypatch.setattr(
-        worker,
+        mapper_call,
         "execute_custom_mapper",
         lambda _module, _function, _db, _payload, rule=None: calls.append(rule["name"]) or {"updates": []},
     )

@@ -42,12 +42,12 @@ SUFFIXES = (".py", ".py.sample")
 #: AST on 2026-09-16, before the seat had a single caller; the lead split the round so the
 #: seat could be built while part one was still in a worktree touching the same file. Each
 #: line is a rewiring that has not happened yet, NOT a site that is allowed to stay.
-NOT_YET_MOVED = {
-    "chain/ingestion_worker.py::_process_chain_transaction_group_sync",
-    "chain/ingestion_worker.py::_run_builtin_followups",
-    # 🪦 `chain/replay.py::replay_rule` left this list in ㉡-2ⓐ (판정 421). It was the first
-    #    one rewired because it is the only caller in a file part one was not touching.
-}
+#: 🪦 EMPTY SINCE ㉡-2ⓑ, and every name that was here left in the commit that rewired it:
+#:    `chain/replay.py::replay_rule` (ⓐ, 판정 421), then
+#:    `chain/ingestion_worker.py::_process_chain_transaction_group_sync` and
+#:    `::_run_builtin_followups` (ⓑ, 판정 423). An empty set is the gate's real shape - from
+#:    here on, ANY site that runs a rule outside the seat is red the day it appears.
+NOT_YET_MOVED = set()
 
 
 def _files():

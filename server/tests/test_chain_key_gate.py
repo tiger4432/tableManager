@@ -48,6 +48,7 @@ if server_dir not in sys.path:
 
 from chain import key_gate
 from chain import ingestion_worker as worker
+from chain import mapper_call
 from chain import replay
 from database.database import Base
 from database import crud, models, schemas
@@ -157,7 +158,7 @@ def _run_chain(db, monkeypatch, rules, mapper_result, tx="ckgate-tx"):
     monkeypatch.setattr(worker.outbox_expand, "expand_events",
                         lambda _db, events: {worker.outbox_expand.event_key(e): [{"data": {}}]
                                              for e in events})
-    monkeypatch.setattr(worker, "execute_custom_mapper",
+    monkeypatch.setattr(mapper_call, "execute_custom_mapper",
                         lambda _m, _f, _db, _payload, rule=None: mapper_result)
     return asyncio.run(worker.process_chain_transaction_group(tx, [event], db, rules))
 

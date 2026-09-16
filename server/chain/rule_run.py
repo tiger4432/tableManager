@@ -29,6 +29,7 @@ caller. The choice lives here now; the doors are unchanged.
     itself; that is the door's sentence about the mapper. This seat's line is the sentence
     about the RULE, and it is the one spelled identically for both kinds.
 """
+import contextlib
 import logging
 import time
 
@@ -41,6 +42,70 @@ logger = logging.getLogger(__name__)
 #: (⚠️ the lead's census said the mapper line carries no rule name; re-measured, it has
 #:  carried `rule=` since S-246. What actually differed was the PREFIX and the COUNT NAMES.)
 RULE_LOG_TAG = "ChainRule"
+
+
+#: The `source_name` every chain-caused write leaves on its outbox envelope. One spelling,
+#: here, because `_outbox_envelope` reads it from a context var and ten mappers spelling it in
+#: the rows they return is the ROW's source column, which is a different cell.
+CHAIN_SOURCE = "chain_ingestion"
+
+
+def outgoing_depth(incoming):
+    """The hop number a write caused by a rule woken at `incoming` carries.
+
+    🔴 ONE ARITHMETIC. The `+ 1` was written in the group step and again in the follow-up lap;
+    「한 천장, 두 답」 is about two COMPUTATIONS of one number, and a caller that keeps its own
+    scope shape (the group step's runs across a try/finally it needs for its error return) can
+    still take the VALUE from here and cannot drift.
+    """
+    return (incoming or 0) + 1
+
+
+@contextlib.contextmanager
+def chain_envelope(depth=None):
+    """The envelope a chain-caused write goes out in: source, hop, collapsed events.
+
+    🔴 [S-279, 판정 423] THE THREE CELLS HAD FOUR DIFFERENT ANSWERS. Measured 2026-09-16
+    across every path that writes because a rule ran:
+
+        group builtin (`:1484`)   source ✗   depth ✗   collapsed ✓
+        group mapper  (`:1681`)   source ✓   depth ✓   collapsed ✓
+        follow-up lap (`:2852`)   source ✗   depth ✓   collapsed ✓
+        retroactive               source ✗   depth ✗   collapsed ✓ (and ✗ before 판정 421)
+
+    The depth column is the one that costs something. 판정 402 removed the load-time refusal
+    of cycles on the stated ground that 「고리는 오류가 아니라 모양이다 — 막는 것은
+    max_chain_depth 다」; a hop that carries no depth is a hop the ceiling cannot count, so a
+    loop through a join reset the counter to zero every lap and the ceiling never fired. The
+    group path's own comment at `:2825` already named this class - 「THE LAP IS A HOP ... one
+    ceiling, two answers」 - and S-278 reintroduced it at a new address.
+
+    ⚠️ THE SCOPE IS NOT ALWAYS THIS ONE, AND THAT IS DELIBERATE. A rule causes writes from two
+    places: a builtin writes for ITSELF inside `run_rule`, which uses this manager, and a
+    mapper's proposals are written by the CALLER after `run_rule` returns. Stripping the
+    caller's stamps - the literal reading of 판정 423-a - would leave the mapper half of every
+    group with no source and no depth at all, so the group step keeps its own scope: it spans a
+    try/finally it needs for its error return, and turning that into a `with` is a refactor this
+    round was not asked for. What it does NOT keep is the values - it sets `CHAIN_SOURCE` and
+    `outgoing_depth()` from here. 「한 천장, 두 답」 forbids two COMPUTATIONS of one number, and
+    there is now one.
+
+    ⚠️ `user` AND `transaction_id` ARE NOT HERE. They belong to the caller's transaction, not
+    to the rule - the group step's `chain_<tx>` is its own identity and replay's is another.
+    """
+    from database.context import outbox_mode, request_chain_depth, request_source
+    import event_constants
+
+    token_source = request_source.set(CHAIN_SOURCE)
+    token_depth = request_chain_depth.set(outgoing_depth(depth))
+    try:
+        with outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED):
+            yield
+    finally:
+        # Reset together: a depth left set stamps the NEXT write, and the next write may not
+        # be the chain's at all.
+        request_chain_depth.reset(token_depth)
+        request_source.reset(token_source)
 
 
 def builtin_kind(rule):
@@ -73,7 +138,7 @@ def _uniform():
             "written": None, "refusal": None}
 
 
-def run_rule(db, rule, payloads=None, row_ids=None, done=None):
+def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None):
     """Run ONE chain rule over the input it was handed, whichever door it goes through.
 
     `payloads` are expanded trigger rows a file mapper is handed; `row_ids` are the rows a
@@ -95,19 +160,15 @@ def run_rule(db, rule, payloads=None, row_ids=None, done=None):
             # one does not have to remember to.
             return answer
         from chain import builtins
-        from database.context import outbox_mode
-        import event_constants
 
-        # 🔴 COLLAPSED, BECAUSE A BUILTIN WRITES FOR ITSELF. A file mapper's rows go out
-        # through the caller's `apply_batch_updates`, which is already inside an
-        # `outbox_mode(COLLAPSED)` scope; a builtin never passes through it, so without this
-        # 1,000 written rows became 「1,000 outbox events, 1,000 queue items, 1,000 laps and
-        # 1,000 lines」 - the owner's 「한 행당 로그 하나」, removed from the follow-up lap by
-        # S-249 ⓔ-1 and from the group path by S-278 A-bis. Two of the three callers wrap
-        # this call today and the third (replay) predates the ruling; putting it in the seat
-        # is how it stops being something each caller has to remember.
+        # 🔴 IN THE ENVELOPE, BECAUSE A BUILTIN WRITES FOR ITSELF. A file mapper's rows go out
+        # through the CALLER's `apply_batch_updates`, which enters the same envelope; a builtin
+        # never passes through it. Without the collapsed cell, 1,000 written rows became
+        # 「1,000 outbox events, 1,000 queue items, 1,000 laps and 1,000 lines」 - the owner's
+        # 「한 행당 로그 하나」; without the depth cell, the hop is invisible to the ceiling that
+        # 판정 402 made the ONLY thing standing between a declared cycle and an endless one.
         extra = {"done": done} if done is not None else {}
-        with outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED):
+        with chain_envelope(depth):
             outcome = builtins.run_builtin(kind, db, rule, row_ids=handed, **extra) or {}
         answer["written"] = outcome.get("written")
         answer["refusal"] = outcome.get("refusal")

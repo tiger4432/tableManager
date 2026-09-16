@@ -124,9 +124,14 @@ def order_rules(rules: list, on_cycle=None) -> list:
             # rule - `_rule_accepts_event` returns False for a follow_up kind, and a
             # rule declaring enabled: false is SKIPPED_DISABLED - and this walk asked
             # neither. So a switched-off rule kept ordering its neighbours, and the
-            # paced right-side rule a unified join emits (right -> left, follow_up)
+            # paced right-side rule a unified join emitted THEN (right -> left, follow_up)
             # combined with any live left -> right rule into a "cycle" of one edge that
-            # never fires. The owner met exactly that: 「enable false 여도 고리 인식하나?」
+            # never fires. ⚰️ THAT EXAMPLE IS PAST TENSE SINCE `c41f9c6d`: a unified join no
+            # longer carries `follow_up`, so its reference side IS on the trigger path and
+            # this walk orders it. The PREDICATE below is unchanged and still right - what
+            # it asks is 「is this producer on the trigger path」, and `follow_up` is that
+            # property itself, not a stand-in for 「is it a builtin」.
+            # The owner met exactly that: 「enable false 여도 고리 인식하나?」
             # Yes, it did. Now the walk asks what the trigger path asks.
             if not producer.get("enabled", True) or producer.get("follow_up"):
                 continue  # not on the trigger path: it fires nothing, it orders nothing

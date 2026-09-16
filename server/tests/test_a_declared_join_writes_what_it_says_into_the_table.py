@@ -223,7 +223,14 @@ def test_the_group_path_actually_calls_the_join(db, caplog):
         models.CellSource.table_name == LEFT,
         models.CellSource.column_name == "lot_confirmed").all()}
     assert cell_layer.R1_SOURCE_NAME in layers, layers
-    said = [r.getMessage() for r in caplog.records if "[ChainBuiltin]" in r.getMessage()]
+    # 🔴 [S-279] THE LINE'S AUTHOR IS THE SEAT NOW, and the count still has to be on it. The
+    #    prefix moved from `[ChainBuiltin]` to one spelling shared with a file mapper -
+    #    「로그도 «문»이다」 - so what is asserted is the COUNT, which is the thing an operator
+    #    staring at a long group needs and the thing that would silently vanish.
+    from chain import rule_run
+
+    said = [r.getMessage() for r in caplog.records
+            if ("[%s]" % rule_run.RULE_LOG_TAG) in r.getMessage()]
     assert said and "written=1" in said[0], (
         "the count the paced lap used to publish must not vanish with the lap")
 

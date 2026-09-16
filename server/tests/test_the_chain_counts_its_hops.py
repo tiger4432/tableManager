@@ -114,12 +114,23 @@ def test_the_worker_sets_it_once_and_resets_it():
 
 
 def test_the_depth_is_one_more_than_what_woke_it():
+    """🔴 [S-279, 판정 423] MEASURED, NOT READ. This asserted the literal `incoming_depth + 1`
+    inside the group step - a proxy that said nothing about the follow-up lap, which spelled
+    the same arithmetic separately, or about a builtin's own write, which carried NO depth at
+    all. The arithmetic has one author now, so the NUMBER is what this asks, and the second
+    half asserts the group step takes it from there rather than spelling its own."""
     import inspect
 
     from chain import ingestion_worker as worker
+    from chain import rule_run
+
+    assert rule_run.outgoing_depth(None) == 1, (
+        "an event from outside the chain carries no depth, and the count starts at 1")
+    assert rule_run.outgoing_depth(0) == 1
+    assert rule_run.outgoing_depth(3) == 4
 
     body = inspect.getsource(worker._process_chain_transaction_group_sync)
-    assert "incoming_depth + 1" in body
+    assert "rule_run.outgoing_depth(incoming_depth)" in body
 
 
 # ------------------------------------------------- ㉱ over the limit refuses, and says so

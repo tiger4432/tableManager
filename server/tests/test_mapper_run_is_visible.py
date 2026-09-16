@@ -24,6 +24,7 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from chain import ingestion_worker as worker                          # noqa: E402
+from chain import mapper_call                                 # noqa: E402
 
 RULE = {"name": "some_rule", "target_table": "some_target"}
 SECRET = "PAYLOAD-BODY-MUST-NOT-BE-LOGGED"
@@ -56,7 +57,7 @@ def lines(caplog, marker):
 def test_a_mapper_that_runs_logs_a_start_and_an_end(monkeypatch, caplog):
     mod, fn = install(monkeypatch, lambda db, p: {"updates": [{"updates": {"a": 1}}]})
     with caplog.at_level(logging.INFO):
-        worker.execute_custom_mapper(mod, fn, None, payloads(3), rule=RULE)
+        mapper_call.execute_custom_mapper(mod, fn, None, payloads(3), rule=RULE)
 
     start, end = lines(caplog, "START"), lines(caplog, "END")
     assert len(start) == 1, "one line per group, not per row"
@@ -88,7 +89,7 @@ def test_the_payload_body_never_reaches_the_log(monkeypatch, caplog):
     """Names and counts, never content."""
     mod, fn = install(monkeypatch, lambda db, p: {"updates": [{"updates": {"a": SECRET}}]})
     with caplog.at_level(logging.INFO):
-        worker.execute_custom_mapper(mod, fn, None, payloads(2), rule=RULE)
+        mapper_call.execute_custom_mapper(mod, fn, None, payloads(2), rule=RULE)
     assert SECRET not in "\n".join(r.getMessage() for r in caplog.records)
 
 
@@ -107,7 +108,7 @@ def test_a_mapper_that_raises_gets_its_own_line_and_still_raises(monkeypatch, ca
     mod, fn = install(monkeypatch, boom)
     with caplog.at_level(logging.INFO):
         with pytest.raises(ValueError):
-            worker.execute_custom_mapper(mod, fn, None, payloads(2), rule=RULE)
+            mapper_call.execute_custom_mapper(mod, fn, None, payloads(2), rule=RULE)
 
     raised = lines(caplog, "RAISED")
     assert len(raised) == 1
@@ -119,7 +120,7 @@ def test_a_mapper_that_raises_gets_its_own_line_and_still_raises(monkeypatch, ca
 def test_a_mapper_with_nothing_to_do_says_zero_rather_than_going_quiet(monkeypatch, caplog):
     mod, fn = install(monkeypatch, lambda db, p: {"updates": []})
     with caplog.at_level(logging.INFO):
-        worker.execute_custom_mapper(mod, fn, None, payloads(4), rule=RULE)
+        mapper_call.execute_custom_mapper(mod, fn, None, payloads(4), rule=RULE)
     assert "rows_out=0" in lines(caplog, "END")[0]
 
 
@@ -135,7 +136,7 @@ def test_the_batch_shape_is_counted_and_not_reported_as_zero(monkeypatch, caplog
                           {"updates": [{"updates": {}}] * 5}]}
     mod, fn = install(monkeypatch, lambda db, p: result)
     with caplog.at_level(logging.INFO):
-        worker.execute_custom_mapper(mod, fn, None, payloads(1), rule=RULE)
+        mapper_call.execute_custom_mapper(mod, fn, None, payloads(1), rule=RULE)
     assert "rows_out=13" in lines(caplog, "END")[0]      # 7 + 5 + 1 metadata
 
 
@@ -143,7 +144,7 @@ def test_a_single_payload_mapper_counts_one_row(monkeypatch, caplog):
     """Non-batch rules hand over one payload dict, not a list."""
     mod, fn = install(monkeypatch, lambda db, p: {"updates": []})
     with caplog.at_level(logging.INFO):
-        worker.execute_custom_mapper(mod, fn, None, payloads(1)[0], rule=RULE)
+        mapper_call.execute_custom_mapper(mod, fn, None, payloads(1)[0], rule=RULE)
     assert "rows_in=1" in lines(caplog, "START")[0]
 
 
@@ -152,5 +153,5 @@ def test_a_rule_that_names_nothing_still_logs(monkeypatch, caplog):
     one. An instrument that only works when its context is complete is not one."""
     mod, fn = install(monkeypatch, lambda db, p: {"updates": []})
     with caplog.at_level(logging.INFO):
-        worker.execute_custom_mapper(mod, fn, None, payloads(1))
+        mapper_call.execute_custom_mapper(mod, fn, None, payloads(1))
     assert len(lines(caplog, "START")) == 1 and len(lines(caplog, "END")) == 1

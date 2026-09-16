@@ -26,6 +26,7 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from chain import ingestion_worker as worker                            # noqa: E402
+from chain import mapper_call                                 # noqa: E402
 
 
 def cell(value):
@@ -72,7 +73,7 @@ def test_a_nan_in_the_mappers_RETURN_value_is_cleaned_too(monkeypatch):
         {"updates": {"qty": float("nan"), "part_no": "P1"}}]}
     monkeypatch.setitem(sys.modules, "fake_mapper_module", module)
 
-    got = worker.execute_custom_mapper("fake_mapper_module", "emit", None, [])
+    got = mapper_call.execute_custom_mapper("fake_mapper_module", "emit", None, [])
     assert got["updates"][0]["updates"]["qty"] is None
     assert got["updates"][0]["updates"]["part_no"] == "P1"
 
@@ -89,7 +90,7 @@ def test_the_mapper_receives_the_cleaned_payload(monkeypatch):
     module.emit = emit
     monkeypatch.setitem(sys.modules, "fake_mapper_module2", module)
 
-    worker.execute_custom_mapper(
+    mapper_call.execute_custom_mapper(
         "fake_mapper_module2", "emit", None,
         [{"row_id": "r1", "data": {"qty": cell(float("nan"))}}])
     assert seen["payload"][0]["data"]["qty"]["value"] is None

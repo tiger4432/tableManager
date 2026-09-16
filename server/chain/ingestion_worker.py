@@ -62,9 +62,12 @@ from chain import activity
 #    집에 산다」는 뜻이었다. S-211 ① 의 `withdraw_source` 와 같은 기제, 반대 방향.
 #    ⚠️ 여기서 읽는 이름들은 «재수출»이 아니라 이 모듈이 그것들을 «쓰기» 때문이다.
 from chain.mapper_call import (                                      # noqa: F401
-    MAPPER_LOG_TAG, execute_custom_mapper, without_missing)
+    MAPPER_LOG_TAG, without_missing)
 import chain_bindings
 from chain import rule_order
+# 🔴 [S-279, 판정 420 ㉡] The seat that runs a rule. This module no longer names either
+#    door: it hands the rule and its input over and reads one answer.
+from chain import rule_run
 import mapper_sdk
 import validation
 from ledger import followup as ledger_followup
@@ -1420,6 +1423,21 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
     # To support batch rules, we group rules by trigger table to execute them efficiently.
     # First, gather trigger tables present in valid_events
     
+    # 🔴 [DEPTH, 판정 423] COMPUTED BEFORE THE FIRST RULE RUNS, because a `builtin:` kind
+    # WRITES inside the loop below. This sat further down, beside the mapper-proposal write,
+    # and a group whose only rule is a builtin never reached it - so the join's write left
+    # with no hop and `max_chain_depth` could not count a cycle that went through one.
+    # 판정 402 removed the load-time cycle refusal on the stated ground that the ceiling is
+    # what stops a loop, so a hop the ceiling cannot see is that ruling's premise failing.
+    #
+    # The depth of what we are ABOUT to write is one more than the deepest thing that woke
+    # us; the `+ 1` is `rule_run.chain_envelope`'s, so this stays the INCOMING number.
+    # Events from outside the chain carry no depth, so `chain_depth_of` answers `None` for
+    # them and `max(..., default)` starts the count at 1.
+    incoming_depth = max(
+        [d for d in (event_constants.chain_depth_of(get_payload_dict(e))
+                     for e in events) if d is not None] or [0])
+
     for table_name in trigger_tables_in_order(valid_events):
         matched_rules = [
             r for r in rules
@@ -1431,8 +1449,9 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
             
         for rule in matched_rules:
             target_table = rule.get("target_table")
-            module_name = rule.get("mapper_module")
-            func_name = rule.get("mapper_function")
+            # 🪦 `module_name` / `func_name` were read here and carried to the door. The seat
+            #    reads them off the rule, so a rule naming its mapper in the ONE cell (the
+            #    decorator registry) no longer arrives as a pair of Nones.
             is_batch = rule.get("is_batch", False)
             _rule_name = rule.get("name") or "<unnamed rule>"
             rules_by_target[target_table].add(_rule_name)
@@ -1463,36 +1482,27 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                 # in its signature and nowhere else in that module), so nothing is lost.
                 # `_run_auto_confirm` does read it - and auto-confirm stays on the paced lap,
                 # which this branch does not touch.
-                builtin_kind = rule.get("mapper")
-                if builtin_kind in _builtins_table().BUILTIN_KINDS:
+                builtin_kind = rule_run.builtin_kind(rule)
+                if builtin_kind is not None:
                     builtin_rows = [p.get("row_id")
                                     for e in trigger_events
                                     for p in expanded[outbox_expand.event_key(e)]
                                     if p.get("row_id")]
                     if not builtin_rows:
                         continue
-                    # 🔴 COLLAPSED, LIKE THE PACED LAP AND LIKE THE MAPPER BRANCH'S WRITE.
-                    # A builtin writes for ITSELF, so it never passes through the
-                    # `outbox_mode(COLLAPSED)` scope this function puts around
-                    # `apply_batch_updates` for `table_updates`. Measured with five rows
-                    # (one row cannot tell the two apart): the join wrote 5 and produced
-                    # FIVE outbox events - the shape S-249 ⓔ-1 removed from the follow-up
-                    # lap, where 1,000 writes became 「1,000 outbox events, 1,000 queue
-                    # items, 1,000 laps and 1,000 lines」, the owner's 「한 행당 로그 하나」.
-                    from database.context import outbox_mode as _outbox_mode
-
-                    with _outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED):
-                        outcome = _builtins_table().run_builtin(
-                            builtin_kind, db, rule, row_ids=builtin_rows) or {}
-                    # 🔴 THE COUNT SURVIVES THE MOVE. The paced lap said how many rows a
-                    # builtin wrote (`[ChainBuiltin] ... written=`); off that lap the join
-                    # would have written silently, and a write nobody can size is a write
-                    # nobody can question when a group runs long.
-                    logger.info(
-                        "[ChainBuiltin] rule=%s kind=%s table=%s rows_in=%s written=%s"
-                        " side=%s ← group tx=%s",
-                        rule.get("name"), builtin_kind, table_name, len(builtin_rows),
-                        outcome.get("written"), outcome.get("side"), tx_id)
+                    # 🔴 THE ENVELOPE IS THE SEAT'S (판정 423). This branch used to wrap the
+                    # call in `outbox_mode(COLLAPSED)` and nothing else, so the join's write
+                    # left with NO `chain_depth` - and it happens HERE, before the
+                    # `if table_updates ...` block below that stamps one. A group whose only
+                    # rule is a builtin never enters that block at all, so the hop was
+                    # invisible to `max_chain_depth`, which 판정 402 made the only thing
+                    # standing between a declared cycle and an endless one.
+                    #
+                    # ⚠️ AND THE LINE MOVED WITH IT. The count the paced lap published
+                    # (`written=`) is said by `run_rule` now, in the same words it uses for a
+                    # file mapper - 「로그도 «문»이다」.
+                    rule_run.run_rule(db, rule, row_ids=builtin_rows,
+                                      depth=incoming_depth)
                     rules_by_target[target_table].add(_rule_name)
                     continue
                 if is_batch:
@@ -1500,12 +1510,13 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                     payloads = [p for e in trigger_events
                                 for p in expanded[outbox_expand.event_key(e)]]
                     # Pass the whole list to custom mapper
-                    target_payload = execute_custom_mapper(module_name, func_name, db, payloads, rule=rule)
-                    if target_payload and isinstance(target_payload, dict) and target_payload.get("updates"):
+                    target_payload = rule_run.run_rule(db, rule, payloads=payloads,
+                                                      depth=incoming_depth)
+                    if target_payload["updates"]:
                         table_updates[target_table].extend(target_payload.get("updates"))
                         if rule.get("name") not in table_contributors[target_table]:
                             table_contributors[target_table].append(rule.get("name"))
-                    if target_payload and isinstance(target_payload, dict) and target_payload.get("map_metadata_updates"):
+                    if target_payload["map_metadata_updates"]:
                         if not rule.get("allow_map_metadata_upsert", False):
                             raise ValueError(
                                 f"rule '{rule.get('name')}' returned map metadata without allow_map_metadata_upsert")
@@ -1519,7 +1530,7 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                             if not isinstance(updates.get("map_id"), str) or not updates["map_id"]:
                                 raise ValueError("chain map metadata update requires a non-empty map_id")
                             map_metadata_updates.append(requested)
-                    if target_payload and isinstance(target_payload, dict) and target_payload.get("batches"):
+                    if target_payload["batches"]:
                         # Either permission opens the envelope; the per-batch checks below
                         # then require the one that matches the strategy the batch actually
                         # asked for. A retract-only rule must not have to grant itself
@@ -1534,18 +1545,21 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                                 dt_map_derivation.normalize_scoped_batch(
                                     requested, rule, target_table))
                 else:
-                    # Single event execution - one call per ROW, which for a per-row
-                    # event is one call per event exactly as before.
-                    for event in trigger_events:
-                        # Indexed, not `.get(..., ())`: a missing key means the
-                        # expander and this loop disagree about the batch, and
-                        # deriving nothing silently is the failure mode to avoid.
-                        for row_payload in expanded[outbox_expand.event_key(event)]:
-                            target_payload = execute_custom_mapper(module_name, func_name, db, row_payload, rule=rule)
-                            if target_payload and isinstance(target_payload, dict) and target_payload.get("updates"):
-                                table_updates[target_table].extend(target_payload.get("updates"))
-                                if rule.get("name") not in table_contributors[target_table]:
-                                    table_contributors[target_table].append(rule.get("name"))
+                    # Single event execution - one call per ROW. The fan-out moved INTO the
+                    # seat with the door it belongs to, so this hands over the whole
+                    # expansion and the seat makes the same N calls.
+                    #
+                    # Indexed, not `.get(..., ())`: a missing key means the expander and this
+                    # loop disagree about the batch, and deriving nothing silently is the
+                    # failure mode to avoid.
+                    row_payloads = [p for event in trigger_events
+                                    for p in expanded[outbox_expand.event_key(event)]]
+                    target_payload = rule_run.run_rule(db, rule, payloads=row_payloads,
+                                                      depth=incoming_depth)
+                    if target_payload.get("updates"):
+                        table_updates[target_table].extend(target_payload["updates"])
+                        if rule.get("name") not in table_contributors[target_table]:
+                            table_contributors[target_table].append(rule.get("name"))
             except Exception as e:
                 import traceback
                 error_msg = traceback.format_exc()
@@ -1568,23 +1582,23 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
         chain_tx_id = f"chain_{tx_id}"
         token_user = request_user.set("chain_worker")
         token_tx = request_transaction_id.set(chain_tx_id)
-        token_src = request_source.set("chain_ingestion")
-        # 🔴 [DEPTH] STAMPED ONCE, HERE, BECAUSE THIS IS WHERE THE CHAIN'S WRITES CONVERGE.
-        # Ten mappers spell `source_name: "chain_ingestion"` in the rows they return, but
-        # that is the ROW's source column; the OUTBOX envelope is built in exactly one
-        # place (`database._outbox_envelope`, whose own docstring says it exists so the
-        # per-row and collapsed events cannot drift) and it reads these context vars.
-        # Stamping in the mappers would be ten places to keep in step - the fourth
-        # cleanliness rule, and the same shape as `bffa792b`.
-        #
-        # The depth of what we are ABOUT to write is one more than the deepest thing that
-        # woke us. Events from outside the chain carry no depth, so `chain_depth_of`
-        # answers `None` for them and `max(..., default)` starts the count at 1.
-        incoming_depth = max(
-            [d for d in (event_constants.chain_depth_of(get_payload_dict(e))
-                         for e in events) if d is not None] or [0])
-        token_depth = request_chain_depth.set(incoming_depth + 1)
+        # 🔴 [판정 423] THE VALUES ARE THE SEAT'S. The source string and the `+ 1` were spelled
+        # here AND in the follow-up lap AND nowhere at all on the builtin's own write, which is
+        # how the join's write left with no hop: it happens in the rule loop above, and a group
+        # whose only rule is a builtin never reaches this block. `run_rule` puts the same
+        # envelope on its own write; what stays here is the SCOPE, because this one has to span
+        # a try/finally that must also run on the error return below.
+        token_src = request_source.set(rule_run.CHAIN_SOURCE)
+        token_depth = request_chain_depth.set(rule_run.outgoing_depth(incoming_depth))
 
+        # 🔴 [판정 423] THE SAME ENVELOPE THE SEAT PUTS ON A BUILTIN'S OWN WRITE. `source`,
+        # `chain_depth` and the collapsed outbox mode were spelled here, and a builtin's write
+        # happens in the rule loop above which never reaches this block - so the two halves of
+        # one group went out differently dressed. There is ONE author of those three values
+        # now; this block and `run_rule` both enter it.
+        #
+        # ⚠️ `user` AND `transaction_id` STAY HERE. They are this transaction's identity, not
+        # the rule's - replay's writes are the same rule with a different one.
         try:
             # Map metadata goes first. Its fixed standard frame and
             # valid_die_ref must be visible before the job's dt_map cells are
@@ -2808,7 +2822,7 @@ def _run_builtin_followups(db, done):
     ⚠️ CONTAINED, like its neighbour. A failure here must not cost the ledger follow-up that
     already succeeded, and must not propagate into the drain loop.
     """
-    from database.context import outbox_mode, request_chain_depth
+    from database.context import request_chain_depth
 
     if not done:
         return
@@ -2820,15 +2834,13 @@ def _run_builtin_followups(db, done):
     if done.get("event_type") == "DELETE":
         return
     try:
-        from chain import builtins
-
         # 🔴 [S-249 ⓒ] THE LAP IS A HOP. `request_chain_depth` is set in exactly one place -
         # the chain group step - and this drain runs in its own thread outside that scope, so
         # everything written here carried NO hop and could never meet `max_chain_depth`. A
         # loop through this lap was unbounded while the same loop inside the group step was
         # bounded: one ceiling, two answers. Setting it here makes this lap a STEP.
         incoming_depth = done.get("chain_depth")
-        token_depth = request_chain_depth.set((incoming_depth or 0) + 1)
+        token_depth = request_chain_depth.set(rule_run.outgoing_depth(incoming_depth))
         try:
             for rule in _followup_builtin_rules():
                 if rule.get("trigger_table") != table:
@@ -2849,9 +2861,11 @@ def _run_builtin_followups(db, done):
                 # does. Per-row events made 1,000 follow-up writes into 1,000 outbox
                 # events, 1,000 queue items, 1,000 laps and 1,000 lines - the owner's
                 # 「한 행당 로그 하나」. Same context manager, same reason.
-                with outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED):
-                    result = builtins.run_builtin(
-                        kind, db, rule, row_ids=list(fresh), done=done)
+                # 🔴 [S-279] THE SEAT, like the group step and retroactive. The collapse
+                # scope this line used to open is the envelope's now, and so is the hop -
+                # which is why `incoming_depth` goes in RAW and the `+ 1` happens once.
+                result = rule_run.run_rule(db, rule, row_ids=list(fresh), done=done,
+                                           depth=incoming_depth)
             # 🔴 THE GROUP LINE CARRIES THE RULE NAME. A count with no name is a line nobody
             # can act on — and with several join rules watching one table it cannot even be
             # attributed.
@@ -2859,7 +2873,7 @@ def _run_builtin_followups(db, done):
                     logger, rule.get("name"), table, len(fresh),
                     (result or {}).get("written"),
                     "%s#%s" % (table, done.get("transaction_id") or "?"),
-                    (incoming_depth or 0) + 1,
+                    rule_run.outgoing_depth(incoming_depth),
                     event_constants.max_chain_depth(_RULES_DOCUMENT),
                     (result or {}).get("refusal"))
         finally:

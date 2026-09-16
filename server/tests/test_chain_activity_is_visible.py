@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from chain import activity                                            # noqa: E402
 from chain import ingestion_worker as worker                          # noqa: E402
+from chain import mapper_call                                 # noqa: E402
 
 RULE = {"name": "some_rule", "target_table": "some_target"}
 
@@ -54,7 +55,7 @@ def test_a_running_mapper_is_visible_while_it_runs(monkeypatch):
         return {"updates": []}
 
     mod, fn = install(monkeypatch, slow)
-    worker.execute_custom_mapper(mod, fn, None, payloads(3), rule=RULE)
+    mapper_call.execute_custom_mapper(mod, fn, None, payloads(3), rule=RULE)
 
     assert len(seen["snapshot"]) == 1
     entry = seen["snapshot"][0]
@@ -67,7 +68,7 @@ def test_a_running_mapper_is_visible_while_it_runs(monkeypatch):
 
 def test_the_entry_is_gone_once_the_mapper_returns(monkeypatch):
     mod, fn = install(monkeypatch, lambda db, p: {"updates": []})
-    worker.execute_custom_mapper(mod, fn, None, payloads(1), rule=RULE)
+    mapper_call.execute_custom_mapper(mod, fn, None, payloads(1), rule=RULE)
     assert activity.registry.snapshot() == []
 
 
@@ -80,7 +81,7 @@ def test_a_mapper_that_throws_does_not_leave_itself_running(monkeypatch):
 
     mod, fn = install(monkeypatch, boom)
     with pytest.raises(ValueError):
-        worker.execute_custom_mapper(mod, fn, None, payloads(2), rule=RULE)
+        mapper_call.execute_custom_mapper(mod, fn, None, payloads(2), rule=RULE)
     assert activity.registry.snapshot() == [], "the throw left an entry in flight"
 
 

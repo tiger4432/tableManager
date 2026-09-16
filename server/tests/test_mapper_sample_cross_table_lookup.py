@@ -3,7 +3,7 @@
 `server/mappers/cross_table_lookup_mapper.py.sample` is a reference implementation
 somebody will copy. A sample that is only read is a sample that drifts from the worker
 it claims to describe, so this file loads that exact `.sample` text and drives it
-through `chain_ingestion_worker.execute_custom_mapper` - the real entry point, with the
+through `chain_ingestion_mapper_call.execute_custom_mapper` - the real entry point, with the
 real payloads taken out of the real outbox rows that `database.stage_event` wrote.
 
 WHAT IS ASSERTED, AND WHY EACH ONE HAS TO BE HERE
@@ -173,8 +173,9 @@ def _trigger_payloads(db, rows):
 def _run(db, payloads, rule=None):
     """Through the worker's own dispatcher, not by calling the function directly."""
     from chain import ingestion_worker as worker
+    from chain import mapper_call
 
-    return worker.execute_custom_mapper(
+    return mapper_call.execute_custom_mapper(
         MODULE_NAME, RULE["mapper_function"], db, payloads, rule=rule or RULE)
 
 
@@ -193,6 +194,7 @@ def test_the_worker_passes_the_rule_to_this_mapper(env):
     declaration would fall back to its default, and the failure would look like a
     config that is being ignored."""
     from chain import ingestion_worker as worker
+    from chain import mapper_call
 
     _db, module = env
     # 🪦 [S-214, 판정 370] the executor and its helpers live in `chain/mapper_call.py`

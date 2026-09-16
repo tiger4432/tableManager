@@ -3,7 +3,10 @@ import json
 from unittest.mock import MagicMock
 from database.models import DatabaseOutbox
 from utils.payload_helper import get_payload_dict
-from chain.ingestion_worker import process_chain_transaction_group, execute_custom_mapper
+from chain.ingestion_worker import process_chain_transaction_group
+# 🏠 [S-279] FROM ITS OWN HOME. The worker re-exported it while the worker still
+#    called it; it calls the seat now, so this import names where the executor lives.
+from chain.mapper_call import execute_custom_mapper
 
 def test_get_payload_dict_various_inputs():
     # 1. Plain dictionary

@@ -45,6 +45,7 @@ def _rule(**cells):
 def load(tmp_path, monkeypatch):
     """Drives the real `load_chain_rules` over a file we write."""
     from chain import ingestion_worker as worker
+    from chain import mapper_call
 
     def run(rules):
         path = tmp_path / "chain_rules.json"
@@ -93,6 +94,7 @@ def test_the_worker_prefers_a_registered_mapper_over_the_two_cells(monkeypatch):
     """The one cell wins when it resolves; otherwise the module/function path runs, which is
     what every rule in a box with no decorated mappers still does."""
     from chain import ingestion_worker as worker
+    from chain import mapper_call
 
     calls = []
 
@@ -101,7 +103,7 @@ def test_the_worker_prefers_a_registered_mapper_over_the_two_cells(monkeypatch):
         return {"updates": []}
 
     monkeypatch.setitem(mapper_sdk.MAPPER_REGISTRY, "build_rows", fake)
-    out = worker.execute_custom_mapper(None, None, None, [],
+    out = mapper_call.execute_custom_mapper(None, None, None, [],
                                       rule={"name": "r", "mapper": "build_rows"})
     assert calls == ["registered"] and out == {"updates": []}
 

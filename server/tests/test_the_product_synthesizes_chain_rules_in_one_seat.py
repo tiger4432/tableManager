@@ -194,7 +194,10 @@ def test_the_dispatcher_rides_the_paced_lap_beside_its_neighbour():
     body = inspect.getsource(worker._drain_ledger_followup_sync)
     assert "_run_builtin_followups(db, done)" in body
     hook = inspect.getsource(worker._run_builtin_followups)
-    assert "run_builtin(" in hook
+    # 🔴 [S-279] THROUGH THE SEAT. This read `run_builtin(` - the door - and the lap calls
+    #    `run_rule` now, which asks which door for it. The property is unchanged: the work is
+    #    HERE, on the drain, and not on the commit path.
+    assert "rule_run.run_rule(" in hook
     # 🔴 the group line names the rule — a count nobody can attribute is a count nobody acts on
     assert "rule=%s" in hook
     # ⚠️ a delete follows no values

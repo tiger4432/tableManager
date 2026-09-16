@@ -39,6 +39,7 @@ if server_dir not in sys.path:
     sys.path.insert(0, server_dir)
 
 from chain import ingestion_worker as worker                            # noqa: E402
+from chain import mapper_call                                 # noqa: E402
 import virtual_join.config as vjc                                  # noqa: E402
 from virtual_join import executor as vje                                # noqa: E402
 from database.database import Base                                 # noqa: E402
@@ -161,7 +162,7 @@ def _run_chain(db, monkeypatch, mapper_result, tx="vjuq-tx"):
     monkeypatch.setattr(worker.outbox_expand, "expand_events",
                         lambda _db, events: {worker.outbox_expand.event_key(e): [{"data": {}}]
                                              for e in events})
-    monkeypatch.setattr(worker, "execute_custom_mapper",
+    monkeypatch.setattr(mapper_call, "execute_custom_mapper",
                         lambda _m, _f, _db, _payload, rule=None: mapper_result)
     return asyncio.run(worker.process_chain_transaction_group(tx, [event], db, rules))
 
