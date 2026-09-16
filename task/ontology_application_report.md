@@ -21647,3 +21647,68 @@ server/main.py:4094   ← 위 스무 줄과 «코드가 바이트 동일»입니
 > 🔴 「판정 대기」 **1** — 이름 중복을 로더가 «거절»합니까(이름 대어), 아니면 `order_rules` 가 신원을
 > 이름이 아닌 것으로 잡습니까. ⛔ 저는 짓지 않았습니다
 > · 🔁 이월: 0 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
+
+---
+
+## ⚠️ Q-12 [09-16 21:0x → 아래 실측] `2046bdb4` 검수 — **수리는 옳습니다. 다만 커밋이 주장하는 「4일간 TypeError」는 «조건부»입니다**
+
+> 커밋 문장: 「`_run_join` … declared neither `done` nor `**kwargs`, so the follow-up lap, which always
+> passes one, **had been raising `TypeError` on `builtin:join` since 92257825** (2026-09-12 15:20 …)
+> and its outer `except` ended the WHOLE batch's lap」
+
+### ① 커밋의 «사실 부분»은 전부 참입니다 — 넷 다 확인했습니다
+
+```
+92257825  09-12 15:20  랩이 done=done 를 «무조건» 넘기기 시작 (그 diff :150) ✅
+          같은 커밋이 _run_auto_confirm(…, done=None, **_) 를 만듦 — 그쪽은 받습니다 ✅
+_run_join 서명   09-12 그때 :75  (db, rule, row_ids=None, key_values=None)      ← done 없음 ✅
+                오늘 밤 직전 :77 «같은 서명» ✅
+                2046bdb4 뒤 :77 (…, done=None, **_) ✅   ← 수리 자체는 옳습니다
+랩이 그 종류를 고르나  virtual_join/config.py:1104 가 "follow_up": True 를 답니다 ✅
+```
+
+### 🔴 ② 그런데 «어느 철자»가 그 함수로 가는지가 결론을 바꿉니다
+
+```
+builtin:join        (구 철자 · virtual_join.config.JOIN_MAPPER)  → _run_join        ❌ done 못 받음
+builtin:join_into   (통합 선언 S-237)                            → join_into.run    ✅ done=None, **_
+builtin:auto_confirm                                            → _run_auto_confirm ✅ **_
+   (builtins.py:323 · :328 · :331 의 register_builtin 세 줄)
+```
+🔴 **그러므로 TypeError 는 «구 철자»에서만 납니다.** 그리고 구 철자의 규칙은
+**`materialize: true` 인 가상 조인 선언이 있어야** 합성됩니다(`virtual_join/config.py:1092-1095`).
+같은 파일 :1080-1082 가 적어 둔 문장:
+> 「ONLY THE MATERIALISING ONES … **this box's two production rules are read-time today.**
+>  They must come out of here byte-identically absent」
+
+```
+그러므로 정확한 문장은
+   ❌ 「09-12 부터 4일간 랩이 TypeError 를 내고 있었다」
+   ✅ 「09-12 15:20 부터 그 서명 불일치가 «있었고», materialize 선언이 선 설치에서는 랩이 통째로 죽었다.
+       이 저장소가 스스로 적은 바로는 이 박스의 가상 조인 둘은 read-time 이라 «합성되지 않는다»」
+🔵 그리고 «오늘 밤 조인»(통합 선언)은 이 결함과 «무관»합니다 — join_into.run 이 done 을 받습니다.
+   즉 「조인이 라이브로 안 돌았다」의 원인 목록에 이 건은 «안 들어갑니다»
+```
+
+### 왜 이 구분이 값진가
+
+```
+이 문장은 «장애 기록»이 됩니다. 「4일간 라이브에서 죽어 있었다」로 적히면
+   ① 그 나흘의 다른 증상들이 이 원인으로 «귀속»되고
+   ② 실제 원인(그룹 경로에 빌트인 갈래가 없었던 것)이 «덜» 조사됩니다
+📌 부류: 「실패하는 것이 무해한 것은 아니다」의 «반대쪽» — 도달 조건을 안 적고 「나고 있었다」로 적는 것.
+   오늘 밤 제가 반대 방향으로 두 번 걸렸습니다(Q-7 커밋 지목 · D-43 종속절) — 같은 병입니다
+```
+
+### 확신도 · 못 잰 것
+
+```
+구조   ✅ register_builtin 세 줄 · 세 서명 · 합성 조건 · 랩의 done 전달 — 전부 blob 에서
+실행   ❌ 안 돌렸습니다
+못 잼  · 이 박스 라이브 선언에 materialize: true 가 «있는지» — gitignore 입니다.
+        저장소의 문장(:1080)은 «09-12 시점»의 것이고 그 뒤 바뀌었을 수 있습니다 → 「아마 안 났다」이지 「안 났다」가 아닙니다
+      · 운영 설치는 «모릅니다». materialize 선언이 선 곳에서는 랩이 통째로 죽어 있었습니다
+```
+
+> 🔴 「판정 대기」 **1** — 커밋 메시지의 그 문장을 «조건부»로 정정합니까(장애 기록에 들어가기 «전»에)
+> ⛔ 수리 자체는 옳으므로 코드는 건드릴 것이 없습니다 · 🔁 이월: 0 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
