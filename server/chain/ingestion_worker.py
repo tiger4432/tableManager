@@ -1909,12 +1909,10 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                             }
                         # 껍데기 행 실시간 제거 이벤트를 먼저(순서 보존) 큐잉한 뒤 upsert/refresh 이벤트를 큐잉
                         if deleted_row_ids:
-                            broadcast_messages.append({
-                                "event": "batch_row_delete",
-                                "table_name": target_table,
-                                "row_ids": deleted_row_ids,
-                                "transaction_id": chain_tx_id
-                            })
+                            broadcast_messages.append(
+                                event_constants.row_delete_message(
+                                    target_table, deleted_row_ids,
+                                    transaction_id=chain_tx_id))
 
                         broadcast_messages.append(msg)
                     except Exception as ws_err:

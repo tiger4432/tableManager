@@ -258,6 +258,57 @@ def max_chain_depth(rules):
     return declared
 
 
+#: 🔴 [S-279, 판정 431] WHAT THE AUDIT WRITES WHEN THE CALLER DID NOT SAY WHO. It was
+#: `"system"`, as a DEFAULT ARGUMENT on the delete functions, which is not an absence - it is a
+#: false author: the history said 「system 이 했다」 about a deletion a person asked for. An
+#: unnamed caller is a fact and this is its word; 「모른다」를 적어야 하면 그 낱말을 적는다.
+#: ⚠️ It lives here rather than in `crud` because the same word has to be recognisable to the
+#: client and to anyone reading the history across processes - the reason every other
+#: cross-process constant in this module is in this module.
+AUTHOR_NOT_STATED = "unknown"
+
+
+#: The `batch_row_delete` event name, and the ONE place its payload is built.
+EVENT_BATCH_ROW_DELETE = "batch_row_delete"
+
+
+def row_delete_message(table_name, row_ids, *, transaction_id=None,
+                       updated_by=None, created_logs=None):
+    """The `batch_row_delete` payload, built in one place.
+
+    🔴 SIX SENDERS WERE EACH WRITING THIS DICT BY HAND, and three of its six keys were carried
+    by exactly ONE of them (measured 2026-09-16 off the AST):
+
+        chain/ingestion_worker.py:1912   event, row_ids, table_name, transaction_id
+        main.py:2542                     event, row_ids, table_name
+        main.py:2595                     event, row_ids, table_name, updated_by, created_logs
+        main.py:3585 · :3936 · :4009     event, row_ids, table_name
+
+    That is the same picture `batch_refresh_message`'s own docstring records for its nine, and
+    the same consequence: the client reads `table_name` as a guard and the rest of the body
+    loosely, so a sender that dropped a key produced no error and no visible change.
+
+    ⛔ THE PAYLOAD IS UNCHANGED - NOT ONE KEY ADDED OR REMOVED, per sender. The optional three
+    are omitted when not given, so each of the six still produces exactly the object it
+    produced before. Making the six agree on WHICH keys they send is a boundary-contract
+    decision and a different change; this one gives them one place to disagree in.
+    """
+    message = {
+        "event": EVENT_BATCH_ROW_DELETE,
+        "table_name": table_name,
+        "row_ids": row_ids,
+    }
+    # `is not None` for the same reason the refresh builder gives: an empty list and a zero are
+    # things a sender meant to say, and dropping them makes 「말 안 함」 look like 「없음」.
+    if transaction_id is not None:
+        message["transaction_id"] = transaction_id
+    if updated_by is not None:
+        message["updated_by"] = updated_by
+    if created_logs is not None:
+        message["created_logs"] = created_logs
+    return message
+
+
 #: The `batch_refresh_required` event name, and the ONE place its payload is built.
 EVENT_BATCH_REFRESH_REQUIRED = "batch_refresh_required"
 
