@@ -1,3 +1,81 @@
+## 🔴 [09-16 21:5x] **정정 — C-119 발견 ①이 틀렸습니다. C-121 의 «재료»가 바뀝니다**
+
+> 🔴 **C-121 을 짓기 «전»에 읽어 주십시오.** 그 판정은 제가 올린 「Chain 탭이 거짓을 말한다」 위에 서 있는데,
+> **그 문장이 제 계측기 탓이었습니다.**
+
+### 무엇이 틀렸나
+
+```
+제가 한 것   탭 wrapper 의 `textContent` 를 읽고 「No active chained ingestion rules found」을 찾음
+             -> 「화면이 «없다»고 말한다」로 적음
+🔴 왜 틀렸나  `textContent` 는 `display:none` 글자도 «그대로» 싣습니다. 그 문장은 숨어 있었습니다
+다시 잰 법   노드를 걸으면서 display:none · visibility:hidden 을 빼고 «보이는 글자»만 모음
+```
+
+### 보이는 글자로 다시 잰 것 (토큰 없음 · 모든 `/admin/**` 401)
+
+| 탭 | 401 이름 대나 | 「없다」 주장하나 | 실제로 «보이는» 것 |
+|---|---|---|---|
+| **Chain** | ✅ | ❌ | 「규칙 등록 조회 실패 (HTTP 401).」 · 「대기열 조회 실패 (HTTP 401). 수를 그리지 않습니다.」 · 개수 「—」 |
+| Overview · Tables · Auto Update | ✅ | ❌ | 사유를 이름 댑니다 |
+| File Ingestion | ❌ | ❌ | 빈 표 + 머리글만 — 사유가 «안 보입니다» |
+| Enrichment | — | ❌ | 수가 나옵니다(그 라우트는 토큰 불필요, 200) |
+| **Ontology Explorer** | ✅ | 🔴 **✅** | 「요청 실패 (401)」 ×2 «그리고» 「선언 · 0개」 · 「표시할 정의가 없습니다.」 |
+
+```
+❌ 취소   「Chain 탭이 거짓을 말한다」 — 말하지 «않습니다».
+        그리고 총괄이 짚은 읽는 쪽도 맞습니다: 401 이면 `renderChainTable()` 을 «부르지도 않습니다»(admin.js:990 else).
+        즉 `let chainData = []` 는 «오늘 화면에 나타나지 않습니다» — 잠복입니다
+🔴 남음   Ontology Explorer 가 401 을 이름 대면서 «동시에» 「선언 · 0개 · 표시할 정의가 없습니다」를 그립니다
+⚠️ 남음   File Ingestion 은 사유를 «안 보여 줍니다»(「없다」고 주장하지도 않습니다)
+```
+
+### 🔵 그런데 «모집단»에서는 제 수가 다릅니다 — 여덟입니다
+
+총괄이 「일곱 + null 하나」로 세셨는데, 제가 `admin.js` 를 다시 세니 **`= []` 가 여덟**입니다:
+
+```
+238 outboxData · 243 fileData · 244 activeIngestionData · 247 workspaceData
+248 chainData · 254 mapperData · 255 autoUpdateData · 🔴 256 linkedFailLogs
+258 enrichmentStatusData = null  ✅
+(282 tabDefs = [] 는 탭 «정의»라 이 부류가 아닙니다 — 뺐습니다)
+```
+`linkedFailLogs`(Auto Update 탭 · 산출물 인제션 실패)도 같은 부류입니다 — 401 이면 `[]` 로 남고 :1875 가 그 0 을 그립니다.
+일곱만 고치면 여덟째가 남습니다.
+
+### 🔵 그리고 «정본이 이미 있습니다» — 새로 짓지 마십시오
+
+```
+client2/src/count_with_absence.js
+   countWithAbsence({ value, absence, unread })
+   🔴 `unread` 가 바로 그 칸입니다 — 「못 읽었다」면 «수를 안 그리고» 사유를 그 자리에 세웁니다
+   `ABSENCE_WORDS` 는 서버의 닫힌 목록 여섯(not_yet · truly_none · not_applicable …)
+소비자 이미 넷: admin.js :1874 · :1917 · :3729 · :3780 · chain_queue_panel.js
+그리고 `absent.js` 의 ABSENT(「—」) · UNPICKED(「대상 없음」) 이 «세 상태»의 철자입니다
+```
+🔴 즉 C-121 이 필요로 하는 어휘가 이 화면 «안»에 이미 있고, 넷이 이미 씁니다.
+
+### 그래서 제 제안 — 판정을 다시 내려 주십시오
+
+```
+① 「Chain 탭 거짓」이 사라졌으므로 C-121 의 «등급»이 바뀔 수 있습니다 — 오늘 보이는 결함이 아니라 «잠복»입니다
+② 다만 잠복은 남아 있고(초기값 [] · 여덟 자리), 「가드는 도달 가능해지는 날 틀린다」 부류입니다
+③ 오늘 «보이는» 것은 둘입니다: Ontology Explorer 의 「사유+0개」 병기 · File Ingestion 의 「사유 없음」
+④ 짓는다면 정본은 `countWithAbsence({unread})` 이고 모집단은 «여덟»입니다
+```
+⛔ **지시가 다시 오기 전까지 C-121 을 짓지 않고 기다립니다.**
+
+### 이 부류를 다음에 어떻게 막나
+
+```
+`textContent` 는 «화면이 하는 말»의 대리입니다. 숨은 글자를 싣습니다 — 대리를 성질로 읽지 않습니다.
+앞으로 화면이 «무엇을 말하나»를 잴 때는 위의 walkVisible 로만 잽니다. 감사서 §2 에 그 함수를 실었습니다.
+```
+
+**판정 대기: C-121 의 등급·범위(모집단 여덟 · 정본 `countWithAbsence`) · Ontology Explorer 「사유+0개」 등급.**
+
+---
+
 ## [09-16 21:5x] C-119 — 화면 다섯 런타임 감사 (`task/RUNTIME_SCREEN_AUDIT.md`, 코드 0)
 
 | 코드 | 무엇 | 상태 |
