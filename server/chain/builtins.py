@@ -26,18 +26,52 @@ import os
 logger = logging.getLogger("Chain.Builtins")
 
 
-def synthesize_chain_rules(known_tables: dict = None) -> list:
+#: (half, what stops running when that half does) - the sentence a failure has to be able
+#: to say. 🔴 IT IS A TABLE AND NOT TWO `except` BLOCKS because the two must be reported the
+#: same way: a half that fails quietly in a different voice is how 「what is not running」
+#: becomes 「nothing is declared」.
+_SYNTHESIS_HALVES = (
+    ("enrichment", "dedup and auto-confirm rules are NOT running"),
+    ("virtual join", "materialised join rules are NOT running"),
+)
+
+
+def synthesize_chain_rules(known_tables: dict = None, failures: list = None) -> list:
     """Every chain rule the product derives from a declaration the operator wrote.
 
-    ⚠️ THE ENRICHMENT HALF IS UNCHANGED, BYTE FOR BYTE. This seat only moved its CALL; a
-    test compares the list before and against after, because a move that quietly reorders or
-    drops a rule would be invisible until a chain stopped firing.
-    """
-    import enrichment.config
-    import virtual_join.config
+    🔴 THE TWO HALVES FAIL SEPARATELY (판정 452 ②). They used to be one expression, so
+    ANYTHING raising in the virtual-join half took the enrichment half down with it - and
+    the caller's `except` logged one line and carried on with NO synthesised rules at all,
+    dedup and auto-confirm included. That matters this round in particular: step 4 removes
+    the `virtual_join` package, which makes that import raise, and the failure would have
+    read as 「this box declares no enrichment」 rather than 「the join half is gone」.
 
-    rules = list(enrichment.config.load_enrichment_chain_rules(known_tables=known_tables))
-    rules.extend(virtual_join.config.synthesized_join_chain_rules(known_tables=known_tables))
+    ⚠️ A FAILING HALF IS REPORTED, NEVER GUESSED AT. `failures` collects
+    `(half, what stops running, the error)` the way `rejections` does elsewhere in this
+    codebase; a caller that passes nothing still gets whichever half stood, because the
+    alternative - raising - is what made one half able to kill the other.
+
+    ⚠️ THE ENRICHMENT HALF IS UNCHANGED, BYTE FOR BYTE, and it still runs FIRST. This seat
+    only moved its CALL; a test compares the list before against after, because a move that
+    quietly reorders or drops a rule would be invisible until a chain stopped firing.
+    """
+    def _enrichment():
+        import enrichment.config
+        return enrichment.config.load_enrichment_chain_rules(known_tables=known_tables)
+
+    def _joins():
+        import virtual_join.config
+        return virtual_join.config.synthesized_join_chain_rules(known_tables=known_tables)
+
+    rules = []
+    for (half, stops), produce in zip(_SYNTHESIS_HALVES, (_enrichment, _joins)):
+        try:
+            rules.extend(produce() or ())
+        except Exception as exc:                                   # noqa: BLE001
+            logger.error("[ChainRules] the %s half of synthesis failed, so %s: %s",
+                         half, stops, exc)
+            if failures is not None:
+                failures.append({"half": half, "stops": stops, "error": str(exc)})
     return rules
 
 
