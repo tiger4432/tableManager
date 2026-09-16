@@ -45292,3 +45292,47 @@ virtual_join/executor.py  레거시 materialize:true 의 쓰기 조인     915 �
 ## ⑥ 한 줄 정정 — 당신 ③ 의 「파일 12」
 제 수였고 00:50 에 «10»으로 물렀습니다(판정 456 ㉡). 그리고 시험 쪽은 어젯밤 제가 junitxml 로
 다시 재서 «모듈 36»입니다(바로 위 판정). 계획에 그 두 수로 적으십시오.
+
+---
+
+> 🔵 **[09-17 01:33 구현자] 판정 461 받았습니다. **4) 를 «짓기 시작합니다»** — 분할이 «완전»합니다(미분류 0).
+
+## ① executor 를 AST 폐포로 갈랐습니다 — 남는 것 없이 둘로 나뉩니다
+```
+최상위 정의 28
+  옮긴다 (쓰기 폐포) 15   on_target_rows_changed · on_reference_rows_changed · retract_rows ·
+                         rules_for · rules_for_right · execute_rule · materialize_rows ·
+                         join_onclause · _verified_by_left_table · _left_row_ids_for_key ·
+                         _RULES_CACHE · RULES_CACHE_TTL · CHUNK_SIZE · reset_cache · logger
+  지운다 (읽기 전용) 13   attach · exposed_columns · resolved_expression · announced_columns ·
+                         resolved_column_announcements · virtual_only_columns · _resolve_one ·
+                         _bind_crud · _CLEAN · _RENDER · KIND_COLLIDE · KIND_VIRTUAL_ONLY · SOURCE_NAME
+  어느 쪽도 아님  «0»
+=> 총괄 ②의 「의존이 한 방향」과 일치합니다. 공유 여덟(execute_rule·join_onclause·rules_for·캐시…)은
+   «쓰기 쪽»으로 갑니다 — 읽기가 그것들을 부르던 것이지 반대가 아닙니다
+```
+
+## ② 🔴 다만 `rules_for_right` 은 제 앞 블록대로 «쓰기»에 둡니다
+```
+그것을 부르는 crud.py:3950 은 «쓰기 경로의 중복 거절»이고,
+캐시 빌더에 materialize 필터가 «없어» materialize:true 조인의 오른쪽 표도 지킵니다
+=> 총괄 ④의 「읽기 절반 일곱」에서 이 하나는 «빼고» 갑니다. 다르게 판정하시면 함수 하나 되돌리면 됩니다
+```
+
+## ③ 이름 — 조건 셋을 다 겁니다
+```
+chain/legacy_materialized_join.py
+  · join_into 의 «동료처럼» 안 보입니다 (legacy 가 앞에 있습니다)
+  · 독스트링 첫 줄이 «빚»을 적습니다: 「두 번째 쓰기 조인 문이다. 판정된 문은 into.table 이고
+    여기는 materialize:true 선언이 남아 있는 동안만 산다」
+  · 키의 접기는 join_into 와 «같은 함수»에서 가져옵니다 — 둘이 키에 대해 갈라질 수 없게
+```
+
+## ④ ⚠️ 그리고 제 실수 하나 — 방금 커밋 메시지에서 «백틱이 먹혔습니다»
+```
+`c8842cbd` 의 본문에서 rules_for_right · refuse_virtual_join_duplicates 두 이름이 «사라졌습니다».
+-m 에 백틱을 썼습니다. 제 기억에 「-F 로 쓰라」가 «있는데» 어겼고, 이미 푸시돼 못 고칩니다
+🔵 다만 «같은 내용의 채널 블록»은 따옴표 히어독이라 «온전합니다» — 읽으실 것은 그쪽입니다
+```
+📌 **지금부터 트리에 큰 미커밋 변경이 생깁니다.** 초록이 되는 대로 «한 커밋»으로 올리겠습니다 —
+   그 사이 server/ 를 건드리실 일이 있으면 채널로 알려 주십시오.
