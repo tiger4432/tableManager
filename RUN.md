@@ -1,6 +1,6 @@
 # 지금 돌리면 되는 것
 
-> 🔵 **23:58 갱신 (HEAD 는 아래 3단계 착지).** 아래 ⓞ 가 «제일 먼저»입니다. 나머지는 그다음입니다.
+> 🔵 **00:40 갱신.** 아래 ⓞ 가 «제일 먼저»입니다. 나머지는 그다음입니다.
 
 ## 🔴🔴 이번 pull 에서 «달라지는 것» 셋 — 먼저 읽어 주십시오
 
@@ -33,6 +33,25 @@
           조용히 무시하는 것이 아니라 그 자리에서 거절합니다
 할 일      그 두 선언을 위 ③ 의 모양으로 옮기십시오. 조인 키는 `on`, 가져올 컬럼은 `take`
 ⚠️ 파생을 안 쓰시면 아무것도 안 보입니다. 그게 정상입니다
+```
+
+### ⑤ 합성 실패가 이제 «어느 쪽»인지 말합니다 — 재기동 뒤 로그에서 볼 줄
+```
+정상이면 이 줄은 «안 뜹니다». 뜨면 그것만으로 무엇이 멈췄는지 알 수 있습니다:
+  [ChainRules] the virtual join half of synthesis failed, so materialised join rules are NOT running: ...
+  [ChainRules] the enrichment half of synthesis failed, so dedup and auto-confirm rules are NOT running: ...
+전   한 쪽이 죽으면 «둘 다» 죽었고, 로그는 「두 파일」을 묶어 말했습니다
+    -> «사라진 규칙이 무엇인지» 알 수 없었습니다
+할 일  그 줄이 뜨면 «그 반쪽만» 고치십시오. 다른 반쪽은 도는 중입니다
+```
+
+### ⑥ 조인 거절 문구가 «꺼져 있다»와 «없다»를 가릅니다
+```
+꺼두었을 때   ... is declared but no rule stands for it. The loader said: <이름>: enabled=false ...
+없을 때      ... is absent from the chain declaration. Next: declare it there as
+               `derive: {kind: "join"}` with `on` ... and `take` ...
+전          둘 다 「absent」 한 줄이었습니다 -> 꺼 둔 운영자가 「안 썼다」는 말을 들었습니다
+읽는 법     「enabled=false」 가 보이면 «선언은 있습니다» — 켜면 됩니다
 ```
 
 ### ⏪ 되돌려야 할 때 — 2단계는 «커밋 둘»입니다

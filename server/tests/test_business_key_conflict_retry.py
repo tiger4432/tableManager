@@ -230,7 +230,7 @@ def test_an_index_the_product_built_is_repaired_by_retracting_its_declaration(mo
 
     ⚠️ The fixture's constraint differs from the one above in EXACTLY the claimed thing:
     the prefix that says who built it."""
-    from virtual_join import config as vjc
+    from chain import join_key_index as vjc
 
     class Diag:
         constraint_name = vjc.INDEX_PREFIX + "dt_log_wafer"

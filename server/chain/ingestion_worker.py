@@ -833,8 +833,16 @@ def load_chain_rules():
             written_in += [builtins.written_in(r) for r in synthesized]
             _synthesized_names = {r.get("name") for r in synthesized}
     except Exception as e:
-        logger.error(f"[ChainRules] Failed to synthesize chain rules from the enrichment "
-                     f"and virtual-join files: {e}")
+        # ⚰️ THIS USED TO BE WHERE A WHOLE HALF DIED QUIETLY (판정 452 ②). The two
+        # syntheses were one expression, so anything raising in the virtual-join half took
+        # the enrichment half with it and this line reported 「the enrichment and
+        # virtual-join files」 without saying WHICH, or what had stopped running - the
+        # worker then carried on with no synthesised rules at all, dedup and auto-confirm
+        # included. A half now fails inside `synthesize_chain_rules`, which names itself
+        # and what it takes down; this catch is left for what is genuinely outside either
+        # half, and says only that.
+        logger.error(f"[ChainRules] synthesis could not be attempted, so NO synthesised "
+                     f"rule is running - neither enrichment's nor the joins': {e}")
 
     # 🔴 [S-234 ①, 판정 409] A NAME CLAIMED TWICE IS REFUSED BY NAME, ONCE, HERE - the seat
     #    that knows the whole set. `rule_refusals` judges ONE rule and cannot see a twin, and

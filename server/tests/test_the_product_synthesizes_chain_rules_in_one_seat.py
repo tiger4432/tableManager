@@ -34,6 +34,68 @@ import virtual_join.config as vjc                                     # noqa: E4
 # 🔴 the seat, and the move that must change nothing
 # ---------------------------------------------------------------------------
 
+def test_one_half_failing_does_not_take_the_other_down(monkeypatch):
+    """🔴 [판정 452 ②] THE TWO HALVES WERE ONE EXPRESSION. Anything raising in the
+    virtual-join half took the enrichment half with it, the caller logged a single line
+    about 「the enrichment and virtual-join files」 and carried on with NO synthesised rule
+    at all - dedup and auto-confirm included.
+
+    ⚠️ AND STEP 4 IS EXACTLY THAT FAILURE. Removing the `virtual_join` package makes that
+    import raise, so without this the removal would have read as 「this box declares no
+    enrichment」 - a silent loss wearing the shape of an empty declaration, which is the
+    class this repository keeps closing.
+    """
+    expected = list(enrichment.config.load_enrichment_chain_rules())
+    monkeypatch.setattr(vjc, "synthesized_join_chain_rules",
+                        lambda **k: (_ for _ in ()).throw(RuntimeError("package removed")))
+    failures = []
+
+    rules = builtins.synthesize_chain_rules(failures=failures)
+
+    assert rules == expected, "the enrichment half did not survive the join half's failure"
+    assert [f["half"] for f in failures] == ["virtual join"]
+    assert "NOT running" in failures[0]["stops"], failures
+    assert "package removed" in failures[0]["error"]
+
+
+def test_the_other_direction_too_so_neither_half_is_privileged(monkeypatch):
+    """⚠️ THE EMPTY CELL OF THE TABLE, ASSERTED. Testing only the join half would leave
+    「enrichment fails」 reading as covered, and the two are symmetric only if both are
+    actually wrapped - one `try` around the pair looks identical from the outside until the
+    untested half is the one that raises.
+    """
+    expected = list(vjc.synthesized_join_chain_rules())
+    monkeypatch.setattr(enrichment.config, "load_enrichment_chain_rules",
+                        lambda **k: (_ for _ in ()).throw(RuntimeError("enrichment gone")))
+    failures = []
+
+    rules = builtins.synthesize_chain_rules(failures=failures)
+
+    assert rules == expected, "the join half did not survive the enrichment half's failure"
+    assert [f["half"] for f in failures] == ["enrichment"]
+    assert "dedup" in failures[0]["stops"],         "the sentence does not name what stopped running: %r" % failures[0]["stops"]
+
+
+def test_a_healthy_synthesis_reports_no_failure_at_all(monkeypatch):
+    """🔴 THE BLANK THAT WOULD OTHERWISE READ AS 「PASSED」. A collector that always put
+    something in the list would make the two tests above pass while telling an operator every
+    boot that something is broken - the flood shape, arriving from the other side.
+    """
+    failures = []
+
+    builtins.synthesize_chain_rules(failures=failures)
+
+    assert failures == [], failures
+
+
+def test_the_seat_still_answers_when_the_caller_passes_no_collector():
+    """⚠️ `failures` IS OPTIONAL AND A FAILING HALF STILL MUST NOT RAISE. One of the two
+    live callers (`config_resolve_report`) passes nothing, and raising there would put the
+    package's removal in front of an operator as a broken report rather than a named loss.
+    """
+    assert builtins.synthesize_chain_rules() == builtins.synthesize_chain_rules(failures=[])
+
+
 def test_the_enrichment_half_is_byte_identical_through_the_seat():
     """🔴 THE GATE 판정 304 ASKED FOR. Same rules, same order, same cells — the seat only
     moved the CALL."""

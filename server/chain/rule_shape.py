@@ -141,10 +141,12 @@ def as_chain_rule(internal: dict) -> dict:
         # and the loader refused it as `unresolvable_mapper` (measured) - the grammar could
         # be written and could never run.
         #
-        # ⚠️ ONLY WHEN IT WRITES. `into.read` is the READ-TIME virtual join, which is not a
-        # chain rule at all and must keep coming out of `as_join_rule` untouched; the two are
-        # told apart by which `into` the declaration carries, which is the distinction the
-        # internal shape already makes.
+        # ⚠️ ONLY WHEN IT WRITES, AND THE OTHER SIDE OF THAT TEST NO LONGER EXISTS. This
+        # said `into.read` 「must keep coming out of `as_join_rule` untouched」, which was
+        # true until 판정 440 ① retired the read-time join: `expand_declaration` refuses it by
+        # name now, so nothing reaches that path from here. The `into` cell still tells the
+        # two apart - that is why the refusal can be aimed at one of them - but it separates
+        # 「writes」 from 「refused」, not 「writes」 from 「answers at read time」.
         out["mapper"] = join_into.JOIN_INTO_MAPPER
         out["params"] = dict(derive.get("join") or {})
         # 🔴 [판정 398] THE AUTHOR WRITES THE JOIN ONCE AND THE SHELL DERIVES THE TRIGGER.
@@ -463,17 +465,21 @@ def expand_declaration(declaration, table_config=None) -> tuple:
     if is_switched_off(internal):
         return ([], None, ["%s: enabled=false \u2014 no rule stands for it." % name])
 
-    # 🔴 [S-251] A READ-TIME JOIN IS NOT A CHAIN RULE, AND SAYING SO IS NOT A REFUSAL.
-    # `into: {read: true}` declares a join that answers when somebody READS - it writes
-    # nothing, has no trigger and runs no mapper. Before this it came out of here as a rule
-    # with no mapper cell and the loader dropped it as `unresolvable_mapper`: a correct
-    # declaration reported as a typo. It stands in `virtual_join.config.load_virtual_join_rules`
-    # instead, through the adapter that has always known how to write one (`as_join_rule`).
-    # 🔴 [S-282 · 판정 440] AND NOW IT IS A REFUSAL, BECAUSE THE CAPABILITY IS RETIRED.
-    # The paragraph above is why this is not a silent drop: before S-251 a correct
+    # 🔴 [S-282 · 판정 440] A READ-TIME JOIN IS REFUSED HERE, BY NAME. `into: {read: true}`
+    # declares a join that answers when somebody READS; the owner's ruling is that production
+    # writes its join columns into the table, so the capability is retired.
+    #
+    # ⚰️ [S-251, 지나간 일] THIS PARAGRAPH USED TO SAY, IN THE PRESENT TENSE, THAT SUCH A
+    # DECLARATION 「stands in `load_virtual_join_rules` instead, through `as_join_rule`」 - and
+    # the adoption path it described was deleted. A correction was added on the NEXT LINE and
+    # that is not a fix (판정 453): whoever arrives by `git grep` reads the present-tense
+    # sentence first and has their answer before reaching the line under it. The adapter
+    # itself is still there; what went is the path that used it.
+    #
+    # 🔴 AND THE DEAD PARAGRAPH IS WHY THE REFUSAL SAYS ITS OWN NAME. Before S-251 a correct
     # `into.read` came out of here with no mapper cell and the loader reported it as
     # `unresolvable_mapper` - a right declaration called a typo. Retiring the capability
-    # brings that shape back unless the retirement says its own name, so it does.
+    # brings that exact shape back unless the retirement names itself, so it does.
     if ((internal.get("derive") or {}).get("kind") == "join"
             and (internal.get("into") or {}).get("read")):
         return ([], "%s: %s" % (name, READ_TIME_RETIRED), [])
