@@ -25,7 +25,6 @@ import { readFileSync } from 'node:fs';
 import { readSourceText } from './lib/probe.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import vm from 'node:vm';
 import { loadWithProbe } from './lib/probe.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -95,73 +94,69 @@ function makeEl(over = {}) {
   };
 }
 
-function buildSandbox(mutator) {
-  const parts = [
-    fn('physNum'), fn('gridDimNum'),
-    fn('getScreenShift'), fn('getTransformedPhysicalConfig'),
-    fn('getDieIndex'), fn('getCanvasCellFromDb'), fn('getDbCoords'),
-    fn('isCellInsideWaferFast'), fn('getWaferBoundingBox'),
-    keyFn('canonIntString'), keyFn('canonicalKeyValue'), keyFn('composeMapId'),
-    keyFn('decomposeMapKey'), keyFn('canonicalMapKey'),
-    fn('parseValidDieRef'), fn('validDieBasis'), fn('isValidDieAt'),
-    // M4 phase 2
-    fn('buildValidDieTemplate'), fn('validDieRefDisplay'), fn('validDieRefForPush'),
-    fn('validDieRefFromControls'), fn('syncValidDieRefControls'), fn('validDieRefPayload'),
-    fn('applyValidDieRef'), fn('validDieChainError'),
-    // [rule 6] projectCellsToPhys is stated in terms of the mm projection -- both or neither.
-    fn('projectCellsToWaferMm'), fn('projectCellsToPhys'), fn('currentFrame'), fn('resolveFrame'),
-  ];
-  let code = parts.join('\n\n');
-  if (mutator) {
-    const before = code;
-    code = mutator(code);
-    // A mutation that does not apply reports "caught" or "missed" about NOTHING. This is the
-    // failure mode that makes a mutation suite decorative, so it is fatal.
-    if (code === before) die('a mutation did not apply - its target text no longer exists');
-  }
-  const ctx = {
-    console, currentRotation: 0, currentSide: 'front',
-    validDie: null, boundingBoxCache: {}, el: makeEl(),
-    CANON_INT_RE: /^[+-]?\d+$/, CANON_FLOAT_RE: /^[+-]?\d+\.0+$/,
-    // [1-a] `syncValidDieRefControls` now also decides the key control's SHAPE (<select> when
-    // the list is the whole population, text input otherwise). That decision is scored in
-    // map_key_datalist_harness.mjs against a real DOM tree; stubbed here so this harness keeps
-    // scoring the declaration round-trip and does not quietly become a second DOM model.
-    renderValidDieKeyControl() {},
+// 🔴 THE SUBJECTS ARE IMPORTED. This file used to cut 29 functions and 3 constants out of two
+//    files and evaluate the concatenation in `vm`; the constants had to be scraped with regexes
+//    beside them or the fragment threw. Nothing is cut now, and the regexes are gone with it.
+//
+//    ROUTING WAS MEASURED BEFORE THIS WAS WRITTEN: all 19 mutants anchor in `map_editor.js` and
+//    each anchor occurs there exactly once. That matters because the sandbox's concatenation was
+//    small and the real file is 6,939 lines -- a `replace` with no count takes the FIRST match.
+const KEY_NAMES = ['canonIntString', 'canonicalKeyValue', 'composeMapId', 'decomposeMapKey',
+  'canonicalMapKey', 'CANON_INT_RE', 'CANON_FLOAT_RE'];
+const MAP_NAMES = ['physNum', 'gridDimNum', 'getScreenShift', 'getTransformedPhysicalConfig',
+  'getDieIndex', 'getCanvasCellFromDb', 'getDbCoords', 'isCellInsideWaferFast',
+  'getWaferBoundingBox', 'parseValidDieRef', 'validDieBasis', 'isValidDieAt',
+  'buildValidDieTemplate', 'validDieRefDisplay', 'validDieRefForPush', 'validDieRefFromControls',
+  'syncValidDieRefControls', 'validDieRefPayload', 'applyValidDieRef', 'validDieChainError',
+  'projectCellsToWaferMm', 'projectCellsToPhys', 'currentFrame', 'resolveFrame',
+  // The FIXED storage table, read from the module instead of scraped off its source line. This
+  // harness asserts the exact table a new designation carries, and a copy that drifted would
+  // score the WRONG table green -- the defect the designation path exists to prevent.
+  'VALID_DIE_TABLE',
+  // `el` is READ, not replaced: the subject declares `const el = {}` and fills it in
+  //    `initDOMElements()`, so the stub's fields are assigned INTO the module's own
+  //    object. That keeps the subject's `el` identity, which replacing the binding
+  //    never did -- and a `const` cannot be reassigned through the probe anyway.
+  'el'];
+// Module state the subject READS and this file writes. `renderValidDieKeyControl` is here rather
+// than in MAP_NAMES because the sandbox stubbed it out: its control-shape decision is scored in
+// `map_key_datalist_harness.mjs` against a real DOM, and this file must not become a second DOM
+// model. A `state` name is writable, so the stub survives the conversion without a source change.
+const MAP_STATE = ['currentRotation', 'currentSide', 'validDie', 'boundingBoxCache',
+  'renderValidDieKeyControl'];
+
+async function buildSandbox(mutator) {
+  const key = (await loadWithProbe(SRC_KEY_PATH, { expose: KEY_NAMES, tag: 'key' })).probe;
+  const map = (await loadWithProbe(SRC_MAP, {
+    mutate: mutator || undefined, expose: MAP_NAMES, state: MAP_STATE, tag: 'map',
+  })).probe;
+  map.currentRotation = 0;
+  map.currentSide = 'front';
+  map.validDie = null;
+  map.boundingBoxCache = {};
+  Object.assign(map.el, makeEl());
+  map.renderValidDieKeyControl = () => {};
+
+  const ctx = map;
+  ctx.VALID_DIE_TABLE_EXPECTED = map.VALID_DIE_TABLE;
+  const H = {
+    getDieIndex: map.getDieIndex, getDbCoords: map.getDbCoords,
+    getCanvasCellFromDb: map.getCanvasCellFromDb,
+    isCellInsideWaferFast: map.isCellInsideWaferFast,
+    getTransformedPhysicalConfig: map.getTransformedPhysicalConfig,
+    getWaferBoundingBox: map.getWaferBoundingBox,
+    parseValidDieRef: map.parseValidDieRef, validDieBasis: map.validDieBasis,
+    isValidDieAt: map.isValidDieAt, buildValidDieTemplate: map.buildValidDieTemplate,
+    validDieRefDisplay: map.validDieRefDisplay, validDieRefForPush: map.validDieRefForPush,
+    applyValidDieRef: map.applyValidDieRef, validDieChainError: map.validDieChainError,
+    syncValidDieRefControls: map.syncValidDieRefControls,
+    validDieRefPayload: map.validDieRefPayload,
+    projectCellsToPhys: map.projectCellsToPhys,
+    // from the key module, which the subject imports for real now
+    canonicalMapKey: key.canonicalMapKey,
   };
-  // The two regexes above are read from the source, not restated, so a change to either
-  // reaches this harness instead of being shadowed by a stale copy.
-  const reSrc = (name) => {
-    const m = new RegExp(`const\\s+${name}\\s*=\\s*(\\/[^\\n]*\\/[a-z]*)\\s*;`).exec(SRC_KEY);
-    if (!m) die(`const ${name} (regex) not found in ${SRC_KEY_PATH}`);
-    return m[1];
-  };
-  // The FIXED valid-die storage table. Lifted from the source line, never re-typed: this
-  // harness asserts the exact table name a new designation carries, and a copy that drifted
-  // would score the WRONG table green — which is precisely the class of defect (the screen is
-  // fine, the value points elsewhere) the designation path exists to prevent.
-  const validDieTableSrc = (() => {
-    const m = /const\s+VALID_DIE_TABLE\s*=\s*('[^']*'|"[^"]*")\s*;/.exec(SRC);
-    if (!m) die('const VALID_DIE_TABLE not found in map_editor.js — the fixed storage table is gone or renamed.');
-    return m[1];
-  })();
-  ctx.VALID_DIE_TABLE_EXPECTED = JSON.parse(validDieTableSrc.replace(/'/g, '"'));
-  vm.createContext(ctx);
-  try {
-    vm.runInContext(
-      `const CANON_INT_RE = ${reSrc('CANON_INT_RE')};\n`
-      + `const CANON_FLOAT_RE = ${reSrc('CANON_FLOAT_RE')};\n`
-      + `const VALID_DIE_TABLE = ${validDieTableSrc};\n`
-      + code
-      + `\nglobalThis.__h = { getDieIndex, getDbCoords, getCanvasCellFromDb,`
-      + ` isCellInsideWaferFast, getTransformedPhysicalConfig, getWaferBoundingBox,`
-      + ` parseValidDieRef, validDieBasis, isValidDieAt, buildValidDieTemplate,`
-      + ` validDieRefDisplay, validDieRefForPush, applyValidDieRef, validDieChainError,`
-      + ` syncValidDieRefControls, validDieRefPayload, projectCellsToPhys, canonicalMapKey };`, ctx);
-  } catch (e) {
-    die(`sandbox evaluation failed - ${e && e.message ? e.message : e}`);
-  }
-  return { ctx, H: ctx.__h };
+  ctx.__h = H;
+  return { ctx, H };
 }
 
 // ── assertion plumbing ──────────────────────────────────────────────────────────
@@ -642,10 +637,9 @@ function runSuite(sb, st) {
 }
 
 // ── run ─────────────────────────────────────────────────────────────────────────
-const sb = buildSandbox(null);
+const sb = await buildSandbox(null);
 // projectCellsToPhys / currentFrame / resolveFrame live in the sandbox scope; expose the
 // context so the suite can call them with the module state it just set.
-sb.ctx.projectCellsToPhys = vm.runInContext('projectCellsToPhys', sb.ctx);
 
 if (!JSON_OUT) console.log('\n=== M4 phase 2 - valid-die authoring ===\n');
 const main = newRun();
@@ -841,17 +835,18 @@ const MUTATIONS = [
 
 let mutCaught = 0, mutMissed = [];
 if (MUTATE || true) {
-  MUTATIONS.forEach(([name, mut]) => {
+  for (const [name, mut] of MUTATIONS) {
     let sbm;
-    try { sbm = buildSandbox(mut); } catch (e) { mutCaught++; return; }
-    sbm.ctx.projectCellsToPhys = vm.runInContext('projectCellsToPhys', sbm.ctx);
+    // A build that THROWS is a caught mutant: the probe refuses a mutation that changed
+    //    nothing, and a subject that will not load is a defect the checks never reach.
+    try { sbm = await buildSandbox(mut); } catch (e) { mutCaught++; continue; }
     const st = newRun();
     st.quiet = true;
     let threw = false;
     try { runSuite(sbm, st); } catch (e) { threw = true; }
     if (st.failures.length > 0 || threw) mutCaught++;
     else mutMissed.push(name);
-  });
+  }
 }
 
 const result = {
