@@ -53,10 +53,8 @@ function sliceBalanced(src, startIdx, open, close) {
 const SRC = readSourceText(SRC_MAP).text;
 // The 7b canonicalisation (canonIntString / canonicalKeyValue / composeMapId /
 // decomposeMapKey / canonicalMapKey + the two regexes) lives in its own module since the
-// map-key extraction round. It is sliced from THERE now; the slices and everything scored
-// with them are unchanged. `keyFn` dies just as loudly as `fn` if a name goes missing.
+// map-key extraction round. It is IMPORTED from there -- see KEY_NAMES below.
 const SRC_KEY_PATH = join(HERE, '..', 'src', 'map_key.js');
-const SRC_KEY = readSourceText(SRC_KEY_PATH).text;
 
 function sliceFn(src, path, name) {
   const m = new RegExp(`(?:async\\s+)?function\\s+${name}\\s*\\(`).exec(src);
@@ -65,8 +63,10 @@ function sliceFn(src, path, name) {
   if (!out) die(`unbalanced braces for ${name}`);
   return out;
 }
+// 🔵 `fn` READS text and never runs it -- see the two call sites, each labelled there.
+//    `keyFn` went with the conversion: its seven names are imported now, so it had no
+//    callers left. Leaving it would have been the loaded gun this round exists to remove.
 function fn(name) { return sliceFn(SRC, SRC_MAP, name); }
-function keyFn(name) { return sliceFn(SRC_KEY, SRC_KEY_PATH, name); }
 
 // ── the fixture: every defect axis ACTIVE ───────────────────────────────────────
 // chipX != chipY  (a pitch swap under rot 90/270 shows up)
@@ -237,6 +237,9 @@ function runSuite(sb, st) {
   // The basis alphabet reachable FROM METADATA is unchanged: circle | ref | refused.
   // `template` is an authoring state, never a stored declaration - so the seam contract's
   // `valid_die_basis_cases` keep scoring the same three tokens.
+  // 🔵 TEXT IS THE SUBJECT (㉠), not a proxy: the claim is that this function CANNOT emit
+  //    the token at all. Running it samples inputs; reading it settles the question. The
+  //    body is sliced only to SCOPE the search -- nothing here is evaluated.
   const resolveSrc = fn('resolveValidDie');
   chk('INV-1', "resolveValidDie never produces the `template` basis (metadata cannot reach it)",
     /['"]template['"]/.test(resolveSrc), false);
@@ -618,6 +621,8 @@ function runSuite(sb, st) {
     forPush(undefined, { key: '  TPL_01  ' }),
     { table: ctx.VALID_DIE_TABLE_EXPECTED, map_id: 'TPL_01' });
   chk('INV-7', 'validDieRefForPush contains no canonicalisation of its own',
+    // 🔵 TEXT IS THE SUBJECT (㉠) for the same reason: 「this function does no
+    //    canonicalisation of its own」 is a structural claim, and behaviour can only sample it.
     /canonical/i.test(fn('validDieRefForPush')), false);
 
   // display is the exact inverse of the compose above - checked key -> value, because a
@@ -849,16 +854,40 @@ if (MUTATE || true) {
   }
 }
 
+// 🔴 THE RETIRED MECHANISM'S OWN SYMPTOM, KEPT AS A CONTROL THAT MUST ESCAPE. The probe proves
+//    the copy starts with the subject's bytes; what it cannot say is that this file never goes
+//    back to concatenating slices. Adding ONE import to the subject is what killed a harness
+//    of that shape in C-120, so it is mutated in here deliberately and must change nothing.
+//    Put the concatenation back and this line stops escaping.
+const CONTROLS = [
+  ['an import is added to map_editor.js',
+    s => s.replace("import { parseTsv, serializeTsv } from './tsv.js';",
+                   "import { parseTsv, serializeTsv } from './tsv.js';\nimport { ABSENT } from './absent.js';")],
+];
+const ctlCaught = [];
+for (const [name, mut] of CONTROLS) {
+  let sbc;
+  try { sbc = await buildSandbox(mut); } catch (e) { ctlCaught.push(`${name} (build threw)`); continue; }
+  const st = newRun();
+  st.quiet = true;
+  let threw = false;
+  try { runSuite(sbc, st); } catch (e) { threw = true; }
+  if (st.failures.length > 0 || threw) ctlCaught.push(name);
+}
+
 const result = {
   passed: main.pass, failed: main.failures.length, failures: main.failures,
+  controls: { total: CONTROLS.length, wronglyCaught: ctlCaught },
   mutations: { total: MUTATIONS.length, caught: mutCaught, missed: mutMissed },
 };
 if (JSON_OUT) console.log(JSON.stringify(result, null, 2));
 else {
   console.log(`\n--- ${main.pass} passed, ${main.failures.length} failed ---`);
   console.log(`--- mutation check: ${mutCaught}/${MUTATIONS.length} defects caught ---`);
+  console.log(`--- controls: ${CONTROLS.length - ctlCaught.length}/${CONTROLS.length} escaped (all must) ---`);
+  ctlCaught.forEach(c => console.log(`    CONTROL WRONGLY CAUGHT: ${c}`));
   mutMissed.forEach(m => console.log(`    MISSED: ${m}`));
   // H1 protocol: the runner reads this line to tell "red with N assertions" from a crash.
   console.log(`ASSERTIONS ${main.pass + main.failures.length} ${main.failures.length}`);
 }
-process.exit((main.failures.length === 0 && mutMissed.length === 0) ? 0 : 1);
+process.exit((main.failures.length === 0 && mutMissed.length === 0 && ctlCaught.length === 0) ? 0 : 1);
