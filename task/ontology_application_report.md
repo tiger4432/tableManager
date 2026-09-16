@@ -23030,3 +23030,69 @@ virtual_join_config   20회   (오늘의 철자는 `virtual_join.config`)   예:
 
 > 🔴 「판정 대기」 **1** — ㉠ 그 게이트를 ㉡ 모양으로 다시 쓰나, 아니면 안 짓나
 > · 🔁 이월: 0 · ✅ Q-29 → 451 · Q-30 → 452 · Q-31 → 453
+
+---
+
+## 🔴 Q-33 [09-17 00:45 실측] 4단계 이름 목록 — **수 하나가 안 맞고, «안 깨지고 거짓말하는» 자리 둘이 빠졌습니다**
+
+### ✅ ① import 23 — 독립으로 세서 «일치»합니다
+
+```
+제 계수(HEAD, 비시험, 패키지 밖, `^\s*(import|from) virtual_join`)
+   main 5 · chain/builtins 4 · migrations/add_vjoin_null_safe_indexes 3 · database/crud 3 ·
+   config_resolve_report 2 · chain/graph 2 · scripts/check_one_row_one_fact 1 ·
+   runtime/system_reload 1 · database/config_watcher 1 · chain/rule_shape 1   = «23» ✅
+```
+
+### ⚠️ ② 그런데 그 표의 «파일 수»가 안 맞습니다
+
+```
+머리글   「import «23 자리 / 파일 12»」
+표의 합  파일 «열»  (위 목록 그대로)
+```
+🔴 수를 셋을 때 «단위»를 같이 적는 규율의 자리입니다 — 23 은 맞고 12 는 «어디서도 안 나옵니다».
+   (제 술어로는 10 입니다. 다른 술어로 12 가 나온다면 그 술어를 적어 주십시오)
+
+### 🔴 ③ ④ 목록에 «빠진» 자리 둘 — 안 깨집니다. «거짓말합니다»
+
+`main.py` 는 ① 에 있지만 ① 은 「import 에서 깨지는」 자리입니다. 아래 둘은 **안 깨지고**,
+**운영자에게 가는 422 본문**입니다:
+
+```
+main.py:1853-1854
+   "'%s' is a virtual-join column on '%s' but its expression could not be built,
+     so it cannot be sorted. Check virtual_join_rules.json for that column's rule."
+   -> 4) 뒤: 아무도 안 읽는 파일로 «고치러 가라»고 보냅니다
+
+main.py:1860-1862
+   "Sortable names are the table's declared columns (table_config.json),
+     the columns a virtual join exposes (virtual_join_rules.json), and …"
+   -> 4) 뒤: 「가상 조인이 노출하는 컬럼」이라는 «선택지»가 남습니다. 그런 컬럼이 없습니다
+```
+⇒ ④(「행동이 바뀌어야 하는 자리」)에 **운영자 문장**이 한 줄도 없습니다. 상설:
+「로그도 «문»이다」 · 「거절은 사유와 «다음 행동»」. 4)는 이 둘을 «같은 커밋»에 고쳐야 합니다.
+⚠️ 그리고 이건 ③(산문만 드는 파일)에도 안 들어갑니다 — `main.py` 는 ① 에 있어서 ③ 에서 빠집니다.
+   **「import 하는 파일」과 「문장을 가진 파일」을 같은 표로 가르면 이 부류가 매번 샙니다.**
+
+### ✅ ④ 하나 닫아 드립니다 — 맵퍼는 «선언된 표면»으로 이 패키지에 못 닿습니다
+
+```
+server/mapper_sdk.py:422 MAPPER_SURFACE — 값에 `virtual_join` «0»
+   (그 파일 전체에 virtual_join 히트가 MAPPER_SURFACE 두 줄 말고 «없습니다»)
+=> 판정 416 이 만든 「live 호출자 셀 수 없음」 걱정이 이 패키지에는 «표면으로는» 안 붙습니다
+⚠️ 다만 맵퍼가 `import virtual_join` 을 «직접» 쓰는 것은 여전히 못 셉니다(gitignore).
+   그건 표면 밖이고, 판정 416 의 규칙대로 「tracked 23 · live 셀 수 없음」으로 적으면 됩니다
+```
+
+### 확신도 · 못 잰 것
+
+```
+실행  ①②③④ 전부 HEAD blob 실측
+🔴 못 잼  · 「12」가 나오는 술어가 무엇인지 — 제 술어로는 재현이 안 됩니다
+        · 구현자의 ② (시험 944 중 몇이 «엔진에 의존»하나)는 저도 «안 쟀습니다».
+          그 칸을 「못 잰 것」으로 적은 것은 옳습니다
+```
+
+> 🔴 「판정 대기」 **2** — ㉠ ④ 에 `main.py:1853`·`:1860` 두 운영자 문장을 «올리기»
+> ㉡ 「파일 12」의 술어(혹은 10 으로 정정)
+> · 🔁 이월: 0
