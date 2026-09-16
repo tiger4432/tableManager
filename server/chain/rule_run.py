@@ -73,6 +73,17 @@ def chain_envelope(depth=None):
         follow-up lap (`:2852`)   source ✗   depth ✓   collapsed ✓
         retroactive               source ✗   depth ✗   collapsed ✓ (and ✗ before 판정 421)
 
+    ⚠️ THE `source ✓` IS ABOUT THIS VARIABLE, NOT ABOUT THE ENVELOPE (판정 425, measured by the
+    lead). `crud.apply_batch_updates` opens its own `transaction_context` and sets
+    `request_source` AGAIN, to the ITEM'S LAYER NAME, and `_outbox_envelope` reads it at that
+    moment - so a write whose layer is `enrichment_auto_confirm` leaves with THAT on the
+    envelope, and `_rule_accepts_event` reads it as 「not the chain」 and never asks about
+    `allow_chain_trigger`. The opt-in is inert at that door. 🔴 NOT FIXED HERE AND DELIBERATELY:
+    the easy repair renames the layer, which is what the join paid in `join_into.py:239-248`,
+    and the layer's identity is how an operator reads 「why is this cell this value」. The real
+    defect is one variable carrying two facts - the cell's LAYER and the write's CHANNEL - and
+    splitting them is queued as S-280.
+
     The depth column is the one that costs something. 판정 402 removed the load-time refusal
     of cycles on the stated ground that 「고리는 오류가 아니라 모양이다 — 막는 것은
     max_chain_depth 다」; a hop that carries no depth is a hop the ceiling cannot count, so a

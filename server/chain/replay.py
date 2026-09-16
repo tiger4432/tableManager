@@ -602,23 +602,35 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
                     scoped_batches.append((scope, retract, batch_items))
 
         if apply and (items or metadata_items or scoped_batches):
+            # 🔴 [판정 421, 완성] THE MAPPER HALF OF RETROACTIVE GOES OUT IN THE SAME ENVELOPE.
+            # ㉡-2ⓐ put the collapse in the seat, which covered the door a BUILTIN writes
+            # through - and a file mapper does not write through it at all: it proposes, and
+            # these lines write. So a backfill through the builtin door made one event per page
+            # and a backfill of the same rows through the mapper door made one PER ROW. The
+            # lead's own measurement for 판정 421 was 「replay.py calls outbox_mode ZERO times」,
+            # which is both halves; the six-cell gate (판정 424 ㉠) is what caught that only one
+            # of them had moved.
+            #
             # Metadata first is the live worker's ordering too: absent-only map
             # registration must not synthesize a frame before the explicit
             # standard frame and valid_die_ref arrive.
-            if metadata_items:
-                _apply_replay_batch(db, schemas, crud, map_meta_registrar.META_TABLE,
-                                    metadata_items, run_id, stats, stats["pages"],
-                                    rule_name=rule.get("name"))
-            for i in range(0, len(items), WRITE_CHUNK):
-                _apply_replay_batch(db, schemas, crud, target_table, items[i:i + WRITE_CHUNK],
-                                    run_id, stats, stats["pages"], rule_name=rule.get("name"))
-            for scope, retract, batch_items in scoped_batches:
-                _apply_replay_batch(db, schemas, crud, target_table, batch_items,
-                                    run_id, stats, stats["pages"],
-                                    replace_map=scope is not None, scope=scope,
-                                    retract=retract, rule_name=rule.get("name"))
-                if scope is not None:
-                    stats["maps_replaced"] += 1
+            with rule_run.chain_envelope():
+                if metadata_items:
+                    _apply_replay_batch(db, schemas, crud, map_meta_registrar.META_TABLE,
+                                        metadata_items, run_id, stats, stats["pages"],
+                                        rule_name=rule.get("name"))
+                for i in range(0, len(items), WRITE_CHUNK):
+                    _apply_replay_batch(db, schemas, crud, target_table,
+                                        items[i:i + WRITE_CHUNK],
+                                        run_id, stats, stats["pages"],
+                                        rule_name=rule.get("name"))
+                for scope, retract, batch_items in scoped_batches:
+                    _apply_replay_batch(db, schemas, crud, target_table, batch_items,
+                                        run_id, stats, stats["pages"],
+                                        replace_map=scope is not None, scope=scope,
+                                        retract=retract, rule_name=rule.get("name"))
+                    if scope is not None:
+                        stats["maps_replaced"] += 1
         elif items:
             # Dry-run: count the cells a human's value would keep protected. This
             # is the number that makes "the user layer is safe" observable rather
