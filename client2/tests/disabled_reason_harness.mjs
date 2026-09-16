@@ -233,7 +233,13 @@ const CENSUS_TABLE = new Map([
   ['grid.js :: elements.prevPageBtn.disabled = view.prevDisabled', ['END', '첫 쪽 — 총괄이 `‹ Prev` 로 «직접» 판정']],
   ['grid.js :: elements.nextPageBtn.disabled = view.nextDisabled', ['END', '끝 쪽']],
   ['map2/main.js :: child.disabled = opt.disabled === true', ['PASSTHROUGH', '옵션 «라벨»이 사유입니다(그 파일 주석)']],
-  ['map2/main.js :: node.disabled = options.length === 0', ['UNRULED', '🔴 옵션이 0 인 빈 드롭다운. 읽어서 못 가렸습니다']],
+  // 🔵 09-17 «재서» 가렸습니다(총괄 요청). 이 한 자리가 드롭다운 «여섯»(규칙·표·X·Y·값·참조)을
+  //    덮고, 비는 경우마다 그 줄의 `notice` 가 사유를 «먼저» 세웁니다 — 그 파일 주석이
+  //    「화면이 규칙이나 표조차 못 찾았으면, 그게 답에 대한 어떤 말보다 «앞선다»」로 적어 두었고,
+  //    호출도 그렇습니다: 표 0 -> 「맵 테이블 없음」(map_editor2.js:310) · 규칙을 못 고름 ->
+  //    그 사유 그대로(:211/:245) · 셋업 실패 -> 그 문장(:255/:316). 컬럼 쪽은
+  //    `WORDS.columnsUnstated` 가 같은 줄에 섭니다. 즉 사유가 «옆에» 있습니다.
+  ['map2/main.js :: node.disabled = options.length === 0', ['STATED', '빈 경우마다 questionNote 의 `notice` 가 그 줄에 먼저 선다 (map_editor2.js:211·245·255·310·316)']],
   ['map2/main.js :: row.disabled = single', ['STATED', '그 행이 «가진 것과 부재»를 자기가 적습니다']],
   ['map2/main.js :: cell.disabled = card.inert', ['STATED', '칸마다 data-me2-state · 「미상」을 그립니다']],
   ['map2/main.js :: el.indexToggle.disabled = !ready', ['STATED', '옆의 indexNote 가 INDEX_NOTE 를 그립니다']],
@@ -261,7 +267,9 @@ const CENSUS_TABLE = new Map([
   ['transfer_plan.js :: btn.disabled = false', ['BUSY', '되돌아옴']],
 ]);
 // 🔴 이 둘은 «허용»이 아니라 «세어 둔 빚»입니다. 늘면 빨개집니다 — 조용히 늘 길이 없습니다.
-const OPEN_DEBT = { CONFLICT: 1, UNRULED: 1 };
+// 🔴 열쇠는 «남겨 둡니다». 0 이라도 키가 있어야 다음에 하나 생길 때 이 줄이 빨개집니다 —
+//    분류를 못 한 자리를 «조용히» 둘 길이 없습니다.
+const OPEN_DEBT = { CONFLICT: 1, UNRULED: 0 };
 
 const SRC_DIR = path.join(HERE, '..', 'src');
 /** 이 저장소에서 컨트롤을 끄는 «모든» 자리. 좌석을 지나는 것은 자기 파일이 답하므로 뺍니다. */
