@@ -1,3 +1,65 @@
+## 🔵 [09-17 03:23] **㉯ 착수 — 「첫 하나의 비용」을 «재서» 올립니다. 그리고 첫 대상이 바뀌었습니다**
+
+판정 470 이 「부류 A 첫 하나를 전환하면 나머지 여섯의 비용이 «측정»으로 나온다」고 하셨습니다.
+그 측정을 먼저 냅니다.
+
+### 🔴 첫 대상을 `valid_die_dirty_guard` 로 잡았다가 «바꿨습니다» — 읽어 보니 템플릿이 아닙니다
+
+```
+그 하니스가 자르는 것   함수 N개 + const 둘 + 🔴 «문장 블록 둘»
+                      (`sliceBlock(src, KEY_WIRING_HEAD)` 두 개를 이어 붙여
+                       `function __wireValidDieControls(){…}` 를 «지어냅니다»)
+왜 템플릿이 아닌가      프로브는 «최상위 이름»에 접근자를 붙입니다. 「이 머리글 아래 문장들」은
+                      이름이 아니라서 노출할 대상이 «없습니다»
+그럼 답은              CLAUDE.md 가 적어 둔 그대로 — 「재려는 로직을 «import 되는 모듈»로 뺀다」,
+                      즉 `map_editor.js` 에서 그 배선을 «이름 있는 함수»로 빼는 «소스 변경»입니다
+=> 옳은 도착지이지만 «첫 걸음»으로는 틀렸습니다. 템플릿은 소스를 안 건드리는 것이어야 합니다
+```
+
+### 🔵 그래서 부류 B 의 `ws_connect_watchdog_harness` 로 시작합니다 (판정 470: B 는 «아무 때나»)
+
+```
+바닥 39 — 구성원 중 «제일 작습니다» · 자르는 것이 «이름 있는 함수 일곱»뿐입니다
+```
+
+### 실측 — 「되나」를 «돌려서» 확인했습니다. **첫 시도에 깨끗이 실렸습니다**
+
+```
+loadWithProbe(websocket.js, {
+  expose: 일곱 (scheduleReconnect · clearConnectWatchdog · abandonConnectingSocket ·
+                armConnectWatchdog · wakeNow · installWakeSignals · initWebSocket),
+  stubs:  './state.js' · './dom.js' · './api.js'      <- 전부 «형제»라 프로브가 그대로 받습니다
+})
+전역 셋   window · document · WebSocket
+결과      LOADED — 일곱 «전부» 노출됨. 소스 변경 «0»
+🔵 그리고 딸려 오는 `ui.js` · `timeline.js` · `grid.js` · `chain_refresh_note.js` 는
+   «진짜로» 실려 들어왔고 아무것도 안 던졌습니다
+```
+
+### 그래서 나머지 여섯의 비용이 이렇게 갈립니다 — «측정 기반»입니다
+
+```
+싼 것    자르는 것이 «이름 있는 함수/상수»뿐   -> stubs + 전역 몇 개. 소스 변경 0
+         (ws ×2 · 그리고 부류 A 중 같은 모양인 것들)
+비싼 것  «문장 블록»을 잘라 함수를 지어내는 것 -> 소스에서 «이름 있는 함수»로 빼야 합니다
+         지금까지 확인된 것: `valid_die_dirty_guard`(배선 블록 둘) · `copy_header_count`(게이트 본문)
+🔴 아직 «안 센» 것: 부류 A 나머지가 어느 쪽인지 전수. 첫 전환을 끝내고 «그 자로» 세겠습니다
+```
+
+### 이 전환의 모양 (다음 커밋에서 짓습니다)
+
+```
+`runChecks(wsSrc, cfgSrc)` 가 «소스 텍스트»를 받던 것을 «변이 함수»를 받게 바꿉니다
+  ws 변이   -> loadWithProbe(WS_PATH, { mutate, expose, stubs })
+  cfg 변이  -> loadWithProbe(CFG_PATH, { mutate }) 로 «상수»를 얻어 `./config.js` 를 stub
+             (C-125 의 dropdown 변이와 «같은 모양»입니다 — 대상이 자기 사본에서 변이합니다)
+🔵 덤: 지금은 상수를 «정규식으로 config.js 텍스트에서» 읽습니다(`cfgNumber` 14회).
+   전환 뒤에는 «진짜 import 한 값»이라, 그 자체로 잘라쓰기 14 자리가 사라집니다
+착지 게이트  바닥 «39» 무변 · 변이 전부 «자기가 이름 댄» 검사에 잡힘 · vm 0 · 자르기 0
+```
+
+---
+
 ## 🔴 [09-17 03:17] **정정 둘 — 「전부 게이트에 있습니다」가 «거짓»이었고, 독촉의 시각도 제 탓입니다**
 
 판정 469·470 받았습니다. ㉯ 착수 «전»에 제 published 주장 둘을 고칩니다.
