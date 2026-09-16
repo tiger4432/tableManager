@@ -73,6 +73,7 @@ THE QUEUE PREDICATE IS NOT REDEFINED HERE
 """
 import logging
 
+import event_constants
 import keyset_scan
 
 logger = logging.getLogger(__name__)
@@ -88,6 +89,30 @@ SCAN_CHUNK = 1000
 KEY_CHUNK = 500
 
 SAMPLES_PER_CLASS = 5
+
+
+def _read_note(rows, limit, what):
+    """「이 읽기가 `--limit` 에 걸렸나」 — 세 보고가 «같은 한 자리»에서 답한다.
+
+    🔴 [판정 480 ④ · 475 ⓓ] EVERY NUMBER IN THESE THREE REPORTS SITS ON A BOUNDED READ,
+    AND NONE OF THEM SAID SO. `--limit` reaches `iter_derived_rows` in `classify_queue`,
+    `analyze_promotions` and `run_auto_confirm_sweep` alike, so 「total human decisions:
+    412」 could be 412 out of a capped 5,000 and read as a total. That is the class that
+    was already caught twice (판정 427 · 430).
+
+    ⛔ NO NEW WORD. The spelling is `event_constants.truncated_note` and the shape is the
+    canonical axis map - nine seats in this repository already carry it, the client's one
+    reader (`truncation.js saysTruncated`) knows it, and S-34 ② folded the last three
+    private spellings into it. Inventing a fourth here is precisely what cost this module
+    a day on 2026-08-05, when three different numbers were all called `limit`.
+
+    `omitted` is None ON PURPOSE: the read stopped at the ceiling and never counted what
+    lay beyond it, so 「how many were left out」 is unknown rather than zero. The helper
+    already distinguishes those two.
+    """
+    return event_constants.truncated_note(
+        limit is not None and len(rows) >= limit, None,
+        "%s read stopped at --limit (%s)" % (what, limit))
 
 # Which scope of the named queue predicate a walk uses. The definitions live in
 # `enrichment_config.QUEUE_SCOPE_*`; `_queue_condition` maps these onto them.
@@ -474,6 +499,12 @@ def classify_queue(db, rule: dict, max_keys: int = 200, limit: int = None,
         "probe_limit": max_keys,
         "cap_hits": cap_stats["cap_hits"],
         "probed": probed,
+        # 🔴 [판정 480 ④] TWO READS, TWO AXES. `--limit` bounds the keyed walk and the
+        # blank-key walk SEPARATELY, so one boolean would let a cut blank-key read hide
+        # behind a complete keyed one - which is exactly the pair S-34 ② folded
+        # (`units_truncated` + `maps_truncated`) and for the same reason.
+        "truncated": {"queue_rows": _read_note(rows, limit, "queue"),
+                      "blank_key_rows": _read_note(keyless, limit, "blank-key")},
         "same_name_targets_checked": same_name_targets,
         "unchecked_targets": [t for t in target_fields if t not in same_name_targets],
     }
@@ -621,6 +652,10 @@ def analyze_promotions(db, rule: dict, min_support: int = 3, limit: int = None,
 
     return {"rule": rule["name"], "refused": None, "min_support": min_support,
             "resolved_rows": len(rows), "human_cells": len(human),
+            # 🔴 [판정 480 ④] `total_support` AND `support` ARE DERIVED FROM THIS READ, so
+            # the axis qualifies them too. It names `resolved_rows` because that is the
+            # number a reader can see being bounded; the supports are sums over it.
+            "truncated": {"resolved_rows": _read_note(rows, limit, "resolved-row")},
             "proposals": proposals, "conflicts": conflicts}
 
 
@@ -731,5 +766,9 @@ def run_auto_confirm_sweep(db, rule: dict, apply: bool = False, limit: int = Non
     stats["mode"] = "apply" if apply else "dry-run"
     stats["rule"] = rule["name"]
     stats["queue_size"] = len(keyed)
+    # 🔴 [판정 480 ④] AND THIS ONE APPLIES WRITES. A sweep that says 「queue_size: 5,000」
+    # off a read capped at 5,000 tells an operator the queue is drained when it is not,
+    # and on `--apply` that is a decision about what to stop looking at.
+    stats["truncated"] = {"queue_rows": _read_note(keyed, limit, "queue")}
     enrichment.candidates.log_stats(rule["name"], stats, apply=apply)
     return stats

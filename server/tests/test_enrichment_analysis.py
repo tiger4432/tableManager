@@ -967,3 +967,83 @@ def test_the_route_refuses_a_queue_it_cannot_compose_instead_of_answering_everyt
     assert unfiltered == 4 and queued == 3, (
         f"the count cache served the unfiltered total ({unfiltered}) as the queue "
         f"remainder ({queued}) - the predicate is missing from the cache key")
+
+
+# ---------------------------------------------------------------------------
+# 판정 480 ④ — every number in these three reports sits on a bounded read, and
+# for three rounds none of them said so.
+# ---------------------------------------------------------------------------
+
+def _seed_five(db):
+    """Five of EACH population the three reports read, because they read three.
+
+    🔴 MY FIRST CUT SEEDED ONLY KEYED, UNRESOLVED ROWS and two of the axes went red
+    for having nothing to count - `blank_key_rows` and `resolved_rows` were being asserted
+    over values the fixture never made. A fixture that cannot hold the defect scores
+    「no problem」 rather than 「no defect」, and here it happened to fail loudly only
+    because the assertion demanded `cut is True`.
+    """
+    _seed(db, "enan_test_src", [
+        {"log_key": f"t{i}", "lot": f"T{i}", "slot": "S1", "chip_id": "C1"}
+        for i in range(5)])
+    # ① keyed and unresolved - `classify_queue`'s `rows`, the sweep's queue
+    _seed(db, "enan_test_derived", [
+        {"wafer_key": f"T{i}_S1", "lot": f"T{i}", "slot": "S1"} for i in range(5)])
+    # ② blank decision key - `classify_queue` walks these SEPARATELY, which is why they
+    #    are their own axis: one `--limit` bounds each read on its own.
+    _seed(db, "enan_test_derived", [
+        {"wafer_key": f"NOKEY{i}", "lot": "", "slot": ""} for i in range(5)])
+    # ③ resolved by a human - the only population `analyze_promotions` reads
+    _resolve_by_hand(db, [
+        {"wafer_key": f"R{i}_S1", "lot": f"R{i}", "slot": "S1", "wafer_id": "WF_R"}
+        for i in range(5)])
+
+
+def _axis(note):
+    """A canonical truncation note, or a failure that says which spelling appeared."""
+    assert isinstance(note, dict) and set(note) == {"cut", "omitted", "reason"}, (
+        "the repository has ONE spelling for 「잘렸다」 - `event_constants.truncated_note`, "
+        "read by `client2/src/truncation.js`. A private shape here is the fourth spelling "
+        "S-34 ② folded three of. Got: %r" % (note,))
+    return note
+
+
+@pytest.mark.parametrize("call, axes", [
+    (lambda db, rule, limit: analysis.classify_queue(
+        db, rule, limit=limit, log=lambda *_: None),
+     ("queue_rows", "blank_key_rows")),
+    (lambda db, rule, limit: analysis.analyze_promotions(
+        db, rule, min_support=1, limit=limit),
+     ("resolved_rows",)),
+    (lambda db, rule, limit: analysis.run_auto_confirm_sweep(
+        db, rule, apply=False, limit=limit, log=lambda *_: None),
+     ("queue_rows",)),
+])
+def test_a_bounded_read_says_so_in_all_three_reports(an_env, call, axes):
+    """ALARM FOR: a number off a capped read printed as a total (판정 427 · 430 · 480 ④).
+
+    🔴 PARAMETRIZED OVER THE THREE ON PURPOSE. One `--limit` reaches all of them through
+    `iter_derived_rows`, so fixing one leaves the other two saying the opposite about the
+    same flag - which is the 「문 가르기」 defect this repair exists to close, not a smaller
+    version of it. 475 ⓓ found this by sampling and the four red rows were four lines of
+    ONE of these three; the other two were never sampled and were just as blind.
+
+    Both directions are scored. A flag that is always set says nothing, and this module's
+    own history is a flag whose name meant three things.
+    """
+    _seed_five(an_env)
+    rule = _loaded()
+
+    cut = call(an_env, rule, 2)
+    for axis in axes:
+        note = _axis(cut["truncated"][axis])
+        assert note["cut"] is True, f"{axis} was capped at 2 and does not say so: {note!r}"
+        assert "--limit" in (note["reason"] or ""), (
+            "the sentence must name the knob the operator would turn, because the one "
+            "this file already burned a day on was reaching for the wrong one")
+
+    whole = call(an_env, rule, None)
+    for axis in axes:
+        assert _axis(whole["truncated"][axis])["cut"] is False, (
+            f"{axis} was NOT bounded and claims it was - a flag that is always true "
+            "carries no information at all")
