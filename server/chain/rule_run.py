@@ -178,9 +178,17 @@ def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None):
         # 「1,000 outbox events, 1,000 queue items, 1,000 laps and 1,000 lines」 - the owner's
         # 「한 행당 로그 하나」; without the depth cell, the hop is invisible to the ceiling that
         # 판정 402 made the ONLY thing standing between a declared cycle and an endless one.
-        extra = {"done": done} if done is not None else {}
+        # 🔴 [판정 428] EVERY KIND TAKES THE SAME SIGNATURE, so this hands the lap's batch over
+        # WITHOUT asking. The conditional that used to sit here passed `done` only when a
+        # caller gave one - which worked, but only because `_run_join` would have refused it:
+        # it declared neither `done` nor `**kwargs`, so the follow-up lap, which always passes
+        # one, had been raising `TypeError` on `builtin:join` since 92257825 (2026-09-12
+        # 15:20, fifty minutes after that kind joined the table) and its outer `except` ended
+        # the WHOLE batch's lap. 「구분되지 않는다」 applied to the signature: a kind that does
+        # not use a cell receives it and ignores it, and the AST gate keeps that true for the
+        # next kind somebody registers.
         with chain_envelope(depth):
-            outcome = builtins.run_builtin(kind, db, rule, row_ids=handed, **extra) or {}
+            outcome = builtins.run_builtin(kind, db, rule, row_ids=handed, done=done) or {}
         answer["written"] = outcome.get("written")
         answer["refusal"] = outcome.get("refusal")
         who, rows_in = kind, len(handed)

@@ -184,42 +184,61 @@ def test_the_seats_builtin_write_makes_ONE_event_not_one_per_row(db):
         "S-249 removed from the follow-up lap" % made)
 
 
-def test_the_lap_kwarg_is_forwarded_only_when_the_caller_gave_one(db, monkeypatch):
-    """🔴 `done=` IS THE FOLLOW-UP LAP'S ARGUMENT AND NOT EVERY KIND TAKES IT. Measured
-    2026-09-16 against the three registered kinds: `builtin:auto_confirm` and
-    `builtin:join_into` declare `done=None, **_`; `builtin:join` declares neither, so a call
-    that always passes `done=` raises `TypeError: _run_join() got an unexpected keyword
-    argument 'done'` - which is how the live lap has been ending its whole batch since
-    2026-09-12 15:20 (`92257825`, fifty minutes after `builtin:join` joined the table).
+def test_every_registered_builtin_accepts_the_vocabulary_the_seat_passes():
+    """🔴 [판정 428] ONE SIGNATURE, WHOEVER THE KIND IS. Measured 2026-09-16: of the three
+    registered kinds, `builtin:join` declared neither `done` nor `**kwargs`, and the follow-up
+    lap passes `done=` to every kind - so it raised `TypeError` there, and because that lap's
+    `for` sits inside its `try`, the first raising rule ended the WHOLE batch: the auto-confirm
+    rules behind it never ran, and the outer `except` left one line. It started at 92257825
+    (2026-09-12 15:20), fifty minutes after `builtin:join` joined the table.
 
-    ⛔ SO THE SEAT PASSES IT ONLY WHEN GIVEN, and the probe below has the NARROW signature on
-    purpose. A probe written with `**kwargs` would accept either behaviour and decide nothing
-    - 「두 규칙이 같은 답을 내는 표본은 판별식이 아니다」. Fixing `_run_join` itself is a
-    separate ruling; this pins that the seat does not make the situation worse.
+    ⛔ THE FIX THAT WAS REFUSED, recorded so nobody re-derives it: 「pass `done` only to the
+    kinds that take it」 makes the CALLER ask which kind it is, which is precisely what 판정 420
+    removed from every other site. A kind that does not use a cell receives it and ignores it.
+
+    ⚠️ READ OFF THE REGISTRY, NOT A LIST. A list would be true of the kinds I thought of, and
+    the defect this stands in front of arrives with the NEXT kind somebody registers.
     """
+    import inspect
+
+    from chain import builtins
+
+    assert builtins.BUILTIN_KINDS, "the table is empty, so this asserts nothing"
+
+    refuses = []
+    for kind, fn in sorted(builtins.BUILTIN_KINDS.items()):
+        parameters = inspect.signature(fn).parameters
+        takes_anything = any(p.kind is inspect.Parameter.VAR_KEYWORD
+                             for p in parameters.values())
+        for cell in ("row_ids", "done"):
+            if cell not in parameters and not takes_anything:
+                refuses.append("%s (no %s, no **kwargs): %s"
+                               % (kind, cell, inspect.signature(fn)))
+
+    assert refuses == [], (
+        "these kinds refuse a cell the doors pass to every kind, so a caller would have to "
+        "know which kind it was calling: %s" % refuses)
+
+
+def test_the_seat_hands_the_laps_batch_to_the_kind(db, monkeypatch):
+    """The runtime half of the above: `done` reaches the kind, and reaches it unconditionally
+    rather than through a test of what the caller supplied."""
     from chain import builtins
 
     seen = []
 
-    def narrow(db_, rule_, row_ids=None):          # no `done`, no `**kwargs` - like _run_join
-        seen.append(("no-done", tuple(row_ids or ())))
+    def probe(db_, rule_, row_ids=None, done=None, **_):
+        seen.append(done)
         return {"written": len(row_ids or ())}
 
-    def wide(db_, rule_, row_ids=None, done=None, **_):
-        seen.append(("done", done))
-        return {"written": 0}
-
     rule = {"name": "s279_kwarg", "mapper": "builtin:s279_probe", "target_table": LEFT}
+    monkeypatch.setitem(builtins.BUILTIN_KINDS, "builtin:s279_probe", probe)
 
-    monkeypatch.setitem(builtins.BUILTIN_KINDS, "builtin:s279_probe", narrow)
-    rule_run.run_rule(db, rule, row_ids=["r-1"])
-    assert seen == [("no-done", ("r-1",))], (
-        "the seat handed `done` to a kind that cannot take it")
-
-    del seen[:]
-    monkeypatch.setitem(builtins.BUILTIN_KINDS, "builtin:s279_probe", wide)
     rule_run.run_rule(db, rule, row_ids=["r-1"], done={"table": LEFT})
-    assert seen == [("done", {"table": LEFT})], "the lap's batch did not reach the kind"
+    rule_run.run_rule(db, rule, row_ids=["r-1"])
+
+    assert seen == [{"table": LEFT}, None], (
+        "the lap's batch did not arrive, or the group path's absence of one did not")
 
 
 def test_a_builtin_handed_no_rows_neither_runs_nor_claims_to(db, caplog):

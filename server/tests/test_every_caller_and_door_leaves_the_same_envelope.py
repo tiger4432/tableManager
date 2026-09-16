@@ -253,3 +253,50 @@ def test_retroactive_through_the_mapper_door(db, file_mapper):
     before = set(e.id for e in _events(db))
     replay.replay_rule(db, _mapper_rule(), apply=True, log=lambda m: None)
     _score(db, before, "retroactive/mapper", _written(db, "note"))
+
+
+# ---------------------------------------------------------------------------
+# 🔴 판정 426 — the ARGUMENT, one layer below the dispatcher
+# ---------------------------------------------------------------------------
+
+def test_both_callers_hand_a_mapper_the_same_payload_keys(db, tmp_path, monkeypatch):
+    """🔴 A MAPPER IS WRITTEN BY THE USER AND WAS BEING CALLED WITH TWO SHAPES. The live path
+    built seven keys and retroactive built two, so a mapper reading `business_key` wrote on the
+    trigger path and returned nothing on a backfill - silently, because a missing key is `None`
+    and not an error. 판정 420 unified the CALL; this is the ARGUMENT.
+
+    ⛔ THE KEY SETS ARE COMPARED, NOT CHECKED AGAINST A LIST I TYPED. A hand-written expectation
+    passes the day both callers drop the same cell, which is the failure this is for.
+
+    ⚠️ AND THE VALUES ARE NOT COMPARED, deliberately: `timestamp` differs by construction and
+    `transaction_id` names the run. What must agree is the SHAPE the user's mapper reads.
+    """
+    (tmp_path / "s426_recording_mapper.py").write_text(textwrap.dedent('''
+        SEEN = []
+
+        def map_it(db, payload):
+            for p in (payload if isinstance(payload, list) else [payload]):
+                SEEN.append(sorted(p.keys()))
+            return {"updates": []}
+    '''), encoding="utf-8")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    sys.modules.pop("s426_recording_mapper", None)
+    import importlib
+
+    probe = importlib.import_module("s426_recording_mapper")
+    rule = _mapper_rule(name="s426_shape", mapper_module="s426_recording_mapper")
+
+    _seed(db)
+    worker._process_chain_transaction_group_sync("tx-426", _events(db), db, [rule])
+    from_group = list(probe.SEEN)
+
+    del probe.SEEN[:]
+    replay.replay_rule(db, rule, apply=True, log=lambda m: None)
+    from_retroactive = list(probe.SEEN)
+    sys.modules.pop("s426_recording_mapper", None)
+
+    assert from_group and from_retroactive, (
+        "one of the two doors handed the mapper nothing, so this compares nothing")
+    assert from_group[0] == from_retroactive[0], (
+        "the same mapper is handed different keys depending on which caller ran it:\n"
+        "  group       %s\n  retroactive %s" % (from_group[0], from_retroactive[0]))

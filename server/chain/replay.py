@@ -72,10 +72,12 @@ HOW A WITHDRAWAL BECOMES VISIBLE (not silent)
 import logging
 import time
 import uuid
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
 import keyset_scan
+import outbox_expand
 import event_constants
 # [ChainKeyGate] The same gate the live chain worker runs. Replay re-runs the same
 # mappers, so it must not be able to re-create in bulk the unkeyed rows the worker refuses.
@@ -284,19 +286,27 @@ def _payload_columns(rule: dict, model) -> list:
     return [c for c in declared if c in have]
 
 
-def _to_payloads(page, columns: list) -> list:
-    """Synthesize the outbox payload shape the mappers expect.
+def _to_payloads(page, columns: list, envelope: dict) -> list:
+    """Synthesize the payload shape the mappers expect - THE shape, not a subset of it.
 
-    Same construction as `backfill_enrichment.run_backfill`: {"row_id", "data":
-    {col: {"value": v}}}. `payloads_to_df` reads exactly these two keys.
+    🔴 [S-279, 판정 426] THIS USED TO BUILD TWO KEYS. `{"row_id", "data"}` is what
+    `payloads_to_df` reads, and building only that was true of every mapper the repository can
+    see - but mappers are written by the USER and live under a gitignored path, so 「nobody
+    reads the other five」 is a claim this repository cannot make. A mapper reading
+    `business_key` worked on the trigger path and returned nothing here, silently.
+
+    ⚠️ THE FIVE ENVELOPE CELLS ARE ALL FILLABLE, which is why 「소급엔 두 칸이면 충분」 was not
+    accepted: `business_key` comes off the row, `transaction_id` is this replay run's own id,
+    `updated_by` names the run, `source_name` is the chain, and `timestamp` is now.
     """
     payloads = []
     for row in page:
-        # row[0] is row_id (keyset_scan contract), then the requested columns.
-        payloads.append({
-            "row_id": row[0],
-            "data": {col: {"value": val} for col, val in zip(columns, row[1:])},
-        })
+        # row[0] is row_id (keyset_scan contract), then the requested columns, and
+        # `business_key_val` last - appended by the caller for exactly this cell.
+        payloads.append(outbox_expand.synthesize_payload(
+            row[0], row[len(columns) + 1],
+            dict(zip(columns, row[1:len(columns) + 1])),
+            envelope))
     return payloads
 
 
@@ -460,7 +470,16 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
     # written anything rather than partway through.
     pages_per_cycle, rest_seconds = resolve_pace(pace)
 
-    for page in keyset_scan.iter_pages(db, trg_model, columns=[getattr(trg_model, c) for c in columns],
+    # 🔴 [판정 426] `business_key_val` RIDES ALONG, LAST AND OUTSIDE `columns`. It is not a
+    # declared data column, so it must not land in `data` - it is its own cell of the payload,
+    # and without selecting it here retroactive could not fill the cell the live path fills.
+    envelope = {"transaction_id": "chain_replay_%s" % run_id,
+                "updated_by": "chain_replay_%s" % run_id,
+                "source_name": R1_SOURCE_NAME,
+                "timestamp": datetime.now(timezone.utc).isoformat()}
+    for page in keyset_scan.iter_pages(db, trg_model,
+                                       columns=([getattr(trg_model, c) for c in columns]
+                                                + [trg_model.business_key_val]),
                                        condition=selection,
                                        chunk_size=chunk_size, limit=limit, max_row_id=max_row_id):
         # The batch boundary, and the only place a stop is safe: the previous page is
@@ -471,7 +490,7 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
             break
         stats["pages"] += 1
         stats["rows_scanned"] += len(page)
-        payloads = _to_payloads(page, columns)
+        payloads = _to_payloads(page, columns, envelope)
 
         # 🔴 [S-242] A `builtin:` KIND IS RUN THE WAY THE WORKER RUNS IT. `replay` knew only
         # `mapper_module`/`mapper_function`, which a builtin rule leaves empty - so

@@ -75,28 +75,47 @@ def _data_columns(model) -> list:
             if c.name not in OUTBOX_PAYLOAD_EXCLUDED_COLUMNS]
 
 
-def _synthesize_payload(row, columns, envelope) -> dict:
-    """One ORM row -> the payload shape `stage_event` would have staged.
+def synthesize_payload(row_id, business_key, values: dict, envelope: dict) -> dict:
+    """THE payload shape a chain mapper is handed. One author, every caller.
 
-    Same construction as `chain_replay._to_payloads`, extended with the envelope
-    keys the live path carries (`transaction_id` drives the worker's grouping,
-    `source_name` drives the circular-loop filter), so an expanded payload is
-    indistinguishable from a per-row one apart from its point in time.
+    🔴 [S-279, 판정 426] A MAPPER IS WRITTEN BY THE USER, AND IT WAS BEING CALLED WITH TWO
+    DIFFERENT SHAPES. The live path handed seven keys and `replay._to_payloads` handed two
+    (`row_id`, `data`), so a mapper reading `business_key` worked on the trigger path and
+    returned nothing on a backfill - silently, because a missing key is `None` and not an
+    error. 상설 ④ 「같은 기능에 두 경로」 one layer below the dispatcher 판정 420 unified: it is
+    not the CALL that was split any more, it is the ARGUMENT.
+
+    ⚠️ IT TAKES VALUES, NOT A ROW, ON PURPOSE. The two callers hold different things - the live
+    path an ORM row, replay a keyset tuple - and a function that owned both 「what a payload
+    looks like」 and 「how to read a row」 would have to grow a branch per caller, which is the
+    shape being removed. Reading the row belongs to the caller; the shape belongs here.
     """
     return {
-        "row_id": row.row_id,
-        "business_key": getattr(row, "business_key_val", None),
+        "row_id": row_id,
+        "business_key": business_key,
         "data": {
-            col: {"value": getattr(row, col, None),
-                  "is_overwrite": False,
-                  "updated_by": "system"}
-            for col in columns
+            col: {"value": value, "is_overwrite": False, "updated_by": "system"}
+            for col, value in values.items()
         },
         "transaction_id": envelope.get("transaction_id"),
         "updated_by": envelope.get("updated_by"),
         "source_name": envelope.get("source_name"),
         "timestamp": envelope.get("timestamp"),
     }
+
+
+def _synthesize_payload(row, columns, envelope) -> dict:
+    """One ORM row -> the shape above. The live path's way of reading a row, and nothing else.
+
+    `transaction_id` drives the worker's grouping and `source_name` drives the circular-loop
+    filter, so an expanded payload is indistinguishable from a per-row one apart from its
+    point in time.
+    """
+    return synthesize_payload(
+        row.row_id,
+        getattr(row, "business_key_val", None),
+        {col: getattr(row, col, None) for col in columns},
+        envelope)
 
 
 def load_rows_by_ids(db, table_name: str, row_ids, chunk_size: int = OUTBOX_COLLAPSE_CHUNK_ROWS):

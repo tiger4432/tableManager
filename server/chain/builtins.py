@@ -74,7 +74,7 @@ class UnknownBuiltinKind(ValueError):
     `_report_unwatchable_trigger_columns` exists to break for a mistyped trigger column."""
 
 
-def _run_join(db, rule, row_ids=None, key_values=None):
+def _run_join(db, rule, row_ids=None, key_values=None, done=None, **_):
     """`builtin:join` — materialise one join rule's answer onto its target rows.
 
     ⚠️ TWO TRIGGERS, ONE KIND. Target rows moved (cheap, no ceiling) or a reference row moved
