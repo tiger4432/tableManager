@@ -1,6 +1,6 @@
 # 🧩 프리미티브 카탈로그 — 이 시스템이 이미 할 줄 아는 것
 
-> **Status:** 🟢 Living | **작성:** 2026-07-27 · 총괄 · **유지: doc-keeper** | **Last-verified:** 2026-09-17 (정비 사이클 — 신규 5 · 정정 2. 🔴 **읽기 시점 조인은 이 패스의 «범위 밖»이다** — 그 패키지가 지금 갈라지는 중이라 §3·§6·§7 의 `virtual_join` 항목은 «손대지 않았다») · 직전 2026-09-16 «후속 3»(§7 신규 1 — 「여기 무슨 값을 적나」는 자유 텍스트 칸이 물어야 할 질문이고 그 답의 절단은 «둘»이다. 🔴 등재 사유: 그 기능(`GET /api/ledger/key-values`)이 **SSOT·CODE_MAP·LEDGER_GUIDE 어디에도 없어서** 이 라운드가 났다 — 「파일을 모르면 못 찾는」 전형) · 직전 2026-09-16 «후속 2»(특수한 항목은 모양으로 집는다 · 하니스는 남의 관계를 안 짓는다 — **신규 2 · 정정 1**) · 직전 2026-09-16 «후속»(세 파일 한 이름공간 · 명부는 값 · PG 증명의 자리 · 부팅 순서는 자기 모듈 — **신규 4 · 정정 3**) · 직전 2026-09-16(아무 일도 안 한 틱은 그래도 기다린다 · 화면은 자기가 든 신원으로 묻는다 · 택1은 값이 아니라 모양을 고른다 — **신규 3 · 정정 1**) | **Owner:** 전 에이전트 공용
+> **Status:** 🟢 Living | **작성:** 2026-07-27 · 총괄 · **유지: doc-keeper** | **Last-verified:** 2026-09-17 «읽기 시점 조인 은퇴 반영»(`306419fd` · 판정 461 — §3 「저장하지 않고 조회 시점에 잇는다」를 **🗄️ 로 내리고 후계(`chain/join_into.py` · `into.table`)를 적었다** · 정정 **«20줄»**(센 것 — §3 그 항목 블록 «여덟» · 죽은 좌석을 든 다른 항목 «열하나» · 이 헤더). ⛔ **`chain/legacy_materialized_join.py` 는 `join_into` 의 동급이 아니다** — 둘째 문이자 부채이므로 「고를 수 있는 두 방식」으로 쓰지 말 것) · 직전 2026-09-17 (정비 사이클 — 신규 5 · 정정 2. 그 패스는 이 주제를 «범위 밖»으로 두었다 — 패키지가 갈라지는 중이었다) · 직전 2026-09-16 «후속 3»(§7 신규 1 — 「여기 무슨 값을 적나」는 자유 텍스트 칸이 물어야 할 질문이고 그 답의 절단은 «둘»이다. 🔴 등재 사유: 그 기능(`GET /api/ledger/key-values`)이 **SSOT·CODE_MAP·LEDGER_GUIDE 어디에도 없어서** 이 라운드가 났다 — 「파일을 모르면 못 찾는」 전형) · 직전 2026-09-16 «후속 2»(특수한 항목은 모양으로 집는다 · 하니스는 남의 관계를 안 짓는다 — **신규 2 · 정정 1**) · 직전 2026-09-16 «후속»(세 파일 한 이름공간 · 명부는 값 · PG 증명의 자리 · 부팅 순서는 자기 모듈 — **신규 4 · 정정 3**) · 직전 2026-09-16(아무 일도 안 한 틱은 그래도 기다린다 · 화면은 자기가 든 신원으로 묻는다 · 택1은 값이 아니라 모양을 고른다 — **신규 3 · 정정 1**) | **Owner:** 전 에이전트 공용
 > **왜 있나:** 문제를 만나면 **만들기 전에 여기부터 본다.** "이건 무엇과 구조적으로 같은가"에 한 문장으로 답하지 못하면 아직 설계할 준비가 안 된 것이다.
 > **CODE_MAP과의 차이:** CODE_MAP은 *어디에 무엇이 있나*(파일·심볼). 이 문서는 ***무엇을 할 줄 아나*(연산·패턴)**. 새 기능을 만들 때 읽는 쪽은 이쪽이다.
 > **[중복 원장](./DUPLICATION_LEDGER.md)과의 차이:** 이 문서는 「**할 줄 아는 것**」이고 **만들기 전에** 읽는다. 원장은 「이미 **두 번 이상 만들어져 있는 것**」이고 **그중 하나를 건드리기 직전에** 읽는다. 조언의 방향이 반대다(재사용하라 ↔ N+1로 만들지도 순진하게 합치지도 마라). 어떤 프리미티브에 **알려진 사본이 있으면 그 항목에서 원장 항목을 링크**하고, 상세는 한쪽에만 둔다.
@@ -177,7 +177,7 @@
 
 ### ⭐ **부재일 때만 채운다(absent-only merge) — 그리고 합친 컬럼은 셀마다 출처를 실어야 한다** (2026-07-31 등록 · `d70a33d`)
 - **무엇**: 두 출처가 같은 컬럼을 채우려 하면 **덮지 않고 빈칸만 채운다**. 왼쪽(기존) 값 있음 → **그대로 두고 다른 쪽 값을 버린다** · 비었음 → 다른 쪽 값 · 둘 다 없음 → **선언된 라벨**(`미상`). 「비었음」은 시스템 공용 정규화 **하나**(`crud.clean_str_value(v) == ""`)로만 판정한다.
-- **어디**: `server/enrichment/candidates.py`(빈칸 전용 관문 — 쓰기 **전**, **영속 provenance**를 묻는다) · `server/virtual_join/executor.py`의 `_resolve_one`(조회 시점 — 쓰지 않으므로 **표시값이 비었는가**만 묻는다) · 형제 형태로 `server/map_meta_registrar.py`(동반 행 부재 시 등록, §5).
+- **어디**: `server/enrichment/candidates.py`(빈칸 전용 관문 — 쓰기 **전**, **영속 provenance**를 묻는다) · 형제 형태로 `server/map_meta_registrar.py`(동반 행 부재 시 등록, §5). ⚰️ **[2026-09-17 `306419fd` · 판정 461] 셋째 자리 `virtual_join/executor._resolve_one`(조회 시점 — 쓰지 않으므로 «표시값이 비었는가»만 물었다)은 읽기 시점 조인과 «함께» 은퇴했다. 후계 없음** — 읽기 페이로드에서만 계산되는 값이 없어졌으므로 그 물음이 «사라진» 것이지 다른 자리로 옮겨간 것이 아니다. ✅ 살아남는 생각은 바로 아래 함정의 「영속 흔적 vs 표시값」 한 줄이다.
 - **언제 재사용**: "자동 계산이 사람 값을 덮으면 안 된다"의 **병합** 버전 전부 — 한 컬럼에 두 출처가 들어오는 모든 자리. 새 정책을 설계하기 전에 이 세 줄이 답인지 먼저 보라.
 - **함정**:
   - 🔴 **셀 단위 provenance 없이 합치지 마라.** 합쳐진 컬럼은 **셀마다 출처가 다르다** — 그것이 보이지 않으면 "없는 값을 있다고 읽는다"는 원래의 오독이 컬럼 **안에서** 다시 일어난다. 어휘는 이미 있다(`sources` + `priority_source`, 그리드가 이미 렌더한다) — **새 키·새 UI를 만들지 마라.** 그리고 **진 쪽은 흔적을 남기지 않는다**: 참여했다가 진 것은 출처가 아니고, 표식을 달면 "이 값은 그쪽이 만들었다"는 거짓말이 된다.
@@ -208,7 +208,7 @@
 
 ### 가로지르는 거부는 **호출부가 아니라 깔때기 하나에** 둔다 (2026-07-31 등록 · `d70a33d`)
 - **무엇**: "이런 쓰기는 절대 안 된다" 류 검사를 호출부마다 반복하지 않고, **모든 쓰기가 수렴하는 함수의 첫 문장**에 한 번 둔다. 그러면 **새 호출부가 검사를 잊을 자리가 구조적으로 없다.**
-- **어디**: `crud.apply_batch_updates` — 그리드 편집·붙여넣기·맵/DOE Push·파일 인제션·체인 워커·enrichment 자동확정·재생·맵 메타 등록이 전부 이 함수로 온다(`apply_row_update_internal`의 호출자는 이 함수 **하나**뿐이다). 사례: `crud.refuse_virtual_join_columns`.
+- **어디**: `crud.apply_batch_updates` — 그리드 편집·붙여넣기·맵/DOE Push·파일 인제션·체인 워커·enrichment 자동확정·재생·맵 메타 등록이 전부 이 함수로 온다(`apply_row_update_internal`의 호출자는 이 함수 **하나**뿐이다). 사례: `crud.refuse_virtual_join_duplicates`. ⚰️ **[`306419fd` · 판정 461] 원래 사례였던 `crud.refuse_virtual_join_columns` 는 은퇴했다 — 후계 없음.** 그것이 막던 것은 「읽기 페이로드에만 있는 컬럼(`virtual_only`)에 쓰기」였고, 읽기 시점 조인이 은퇴하면서 «거절할 대상 자체»가 없어졌다(`crud.py` 가 그 자리에 묘비를 남겼다 — 「논거가 틀린 게 아니라 주어가 철회됐다」). 깔때기 규율은 그대로다.
 - **언제 재사용**: 쓰기 경로 전체에 걸리는 금지·정책 전부. **호출부 목록을 세고 있다면 이미 틀린 자리를 고르고 있는 것**이다.
 - 📒 **알려진 반례가 클라에 있다** — 같은 질문(「이 컬럼에 써도 되나」)이 `client2/src`에 **하드코딩 배열 10곳**으로 흩어져 있고, 그중 하나(`main.js:1171`)가 지키는 표면은 이 깔때기를 **지나지도 않는다**: [중복 원장 D-1](./DUPLICATION_LEDGER.md#d-1--이-컬럼은-시스템-컬럼인가--하드코딩-배열-10곳). 🔴 **거기에 이름을 더해서 풀지 마라**(열 번 틀릴 기회를 만든다).
 - **함정**: 🔴 **위치가 계약이다** — 트랜잭션을 열기 **전**이라야 거부가 반쯤 적용된 트랜잭션을 남기지 않고, `replace_map` 소거보다 **앞**이라야 「거절당하러 가는 길에 행을 지운 페이로드」가 없다. 그리고 **선언을 읽지 못했을 때는 거부하지 마라** — config 문제를 장애로 바꾸는 방향이다(보호할 대상 자체를 모르는 상태다).
@@ -345,7 +345,7 @@
 
 ### ⭐ **비교 텍스트가 두 언어에 있으면 철자도 두 벌 만들어라 — 파이썬 렌더의 SQL 쌍둥이** (2026-08-04 등록 · `5be96f5`)
 - **무엇**: 같은 값을 **파이썬이 한 번, SQL이 한 번** 텍스트로 만드는 자리에서는, 파이썬 쪽 정규화기의 **SQL 쌍둥이**를 명시적으로 쓴다. 방언 기본 캐스트에 맡기면 두 철자가 갈라지고, 갈라진 순간 **화면에 보이는 값으로 검색하면 0행**이 된다. 숫자의 경우 「정수값은 정수 철자로」가 그 규칙이다(`3.0` → `'3'`, `'3.0'`이 아니라).
-- **어디**: `server/database/crud.py`의 **깔때기 `column_text_sql(col_expr)` 하나**와 그 아래 렌더러 셋 — `numeric_text_sql`(정수값은 INT 철자, ±9.2e18 범위 가드) · `boolean_text_sql`(`'true'`/`'false'` — 파이썬의 `'True'`가 아니다) · `temporal_text_sql`(못박은 `TEMPORAL_TEXT_FORMAT`). 소비: `virtual_join_executor.resolved_expression`의 `_text_part`가 **깔때기만** 부른다. 양측 채점은 `contracts/blank_predicate/` + `server/tests/test_virtual_join_types.py`.
+- **어디**: `server/database/crud.py`의 **깔때기 `column_text_sql(col_expr)` 하나**와 그 아래 렌더러 셋 — `numeric_text_sql`(정수값은 INT 철자, ±9.2e18 범위 가드) · `boolean_text_sql`(`'true'`/`'false'` — 파이썬의 `'True'`가 아니다) · `temporal_text_sql`(못박은 `TEMPORAL_TEXT_FORMAT`). 소비: `enrichment/mapper.py`의 빈칸 조건(`crud.blank_sql_condition(crud.column_text_sql(...))`)이 **깔때기만** 부르고, `column_filter`·`notation_norm` 이 그 철자를 «정본으로 가리킨다»(AG-Grid JSON 값 쪽은 파이썬 쌍둥이 `comparison_text_value`). 양측 채점은 `contracts/blank_predicate/` + `server/tests/test_a_value_is_rendered_to_text_before_it_is_compared.py`. ⚰️ **[`306419fd` · 판정 461] 최초 소비자 `virtual_join_executor.resolved_expression._text_part` 와 그 시험 `test_virtual_join_types.py` 는 읽기 시점 조인과 함께 은퇴했다** — **깔때기는 후계 없이 «그대로 산다»**(소비자가 넷 더 있었다). 그 시험 파일에서 «조인 이음매»를 안 묻는 단언만 위 파일로 옮겨졌고, 그 파일 머리글이 무엇이 죽고 무엇이 살았는지 적어 두었다.
 - 🔴 **판정은 「이미 텍스트인가」이지 「우리가 아는 문제 타입인가」가 아니다** (2026-08-04 N8 `9e02e3f`). 아래 함정의 「한 타입만 고치면 나머지는 그대로다」가 **예언이 아니라 청구서로 돌아왔다** — 숫자만 고친 뒤 `timestamp`·`boolean` expose 컬럼이 같은 500을 냈다. 지금 깔때기는 **화이트리스트가 아니라 잔여 분기**로 끝난다: 아는 타입 셋을 렌더하고, `String`(단 `Enum` 제외)만 그대로 두며, **그 밖의 모든 것은 먼저 `CAST(... AS String)`** 한다. 타입은 `table_config`의 선언이 아니라 **모델**에서 읽는다.
 - 🔴 **NULL 분기를 값 분기보다 앞에 둬라.** `boolean_text_sql`이 `case((col.is_(None), None), (col, "true"), else_="false")`인 것은 취향이 아니다 — NULL 팔이 없으면 짝 없는 행이 전부 `'false'`라는 **값**이 되어 `미상` 라벨로 접히지 못한다. `False`는 값이고 부재가 아니다.
 - 🔴 **시각 철자를 방언 기본값에 맡기지 마라.** 실측(PostgreSQL 18.3): `CAST(timestamptz AS varchar)`는 **세션 `TimeZone` GUC를 따라** 오프셋을 붙이고 **소수부가 0이면 통째로 떨어뜨린다**. 둘 다 움직이는 과녁이라 같은 행을 든 두 서버가 다른 답을 낸다. 못박은 형식(UTC · 공백 구분 · 마이크로초 **항상 6자리**)은 덤도 준다 — **사전순 = 시간순**이라 `lessThan`이 거짓말이 아니다.
@@ -360,7 +360,7 @@
 
 ### ⭐⭐ **키 식은 접기만이 아니다 — cast · fold · coalesce 세 조각의 저자는 하나다** (2026-09-15 등록 · S-245 `ddd5b3ba`)
 - **무엇**: 조인이 비교하고, 유일 인덱스가 서고, 중복 탐침이 묶는 것은 `fold(col)` 이 아니라 `coalesce(fold(col), '')` 이고, 컬럼이 텍스트가 아니면 `coalesce(fold(col::text), '')` 다. 접기(`fold_sql_text`)만 저자가 하나였고 둘레의 두 조각은 네 자리가 각자 철자하며 타입 질문에 각자 답했다 — 그래서 `number` 키가 세 자리에서 「invalid input syntax for type double precision: ""」로 죽었고, 탐침의 것은 읽기 경로에서 던져 독자의 트랜잭션을 abort 시켰다(「체인을 다 껐는데 에러가 난다」).
-- **어디**: `notation_norm.key_expression_sql(column, rules)`(SQLAlchemy 요소 — 조인이 «비교»하는 것) · `key_expression_text(inner_sql, rules, text_column)`(PG 텍스트 — 인덱스가 «서는» 것). 지나는 네 자리: `virtual_join.executor.join_onclause` · 🆕 **[`21abf176` 은퇴 2/5] `chain.join_key_index.index_key_expression` :84**(표를 들고 있어 «텍스트인가»를 답한다 — 구 철자 ~~`virtual_join.config.index_key_expression`~~ 는 되-import 라 오늘도 같은 함수다) · `chain.unique_key` 탐침 · `chain.join_into._folded`. 🔴 이 넷이 «한 함수»에서 나와야 하는 이유는 성능이다 — 식이 어긋나면 PostgreSQL 이 그 인덱스를 «조용히» 안 쓴다(순차 스캔, 시험은 전부 초록). 「돈다」로 재는 자리는 `server/tests/test_ledger_v2_pg.py:475`(EXPLAIN 이 «Index Scan» 인지, `@pytest.mark.pg`). 운영자 쪽은 [config/notation_rules_config §6](../guide/config/notation_rules_config.md).
+- **어디**: `notation_norm.key_expression_sql(column, rules)`(SQLAlchemy 요소 — 조인이 «비교»하는 것) · `key_expression_text(inner_sql, rules, text_column)`(PG 텍스트 — 인덱스가 «서는» 것). 지나는 네 자리: `chain.legacy_materialized_join.join_onclause`(🆕 **[`306419fd`]** 구 경로 ~~`virtual_join.executor`~~ — 쓰기 절반이 «통째로» 이사한 것이라 같은 함수다) · 🆕 **[`21abf176` 은퇴 2/5] `chain.join_key_index.index_key_expression` :84**(표를 들고 있어 «텍스트인가»를 답한다 — 구 철자 ~~`virtual_join.config.index_key_expression`~~ 는 `chain.legacy_join_declaration` 이 되-import 라 오늘도 같은 함수다) · `chain.unique_key` 탐침 · `chain.join_into._folded`. 🔴 이 넷이 «한 함수»에서 나와야 하는 이유는 성능이다 — 식이 어긋나면 PostgreSQL 이 그 인덱스를 «조용히» 안 쓴다(순차 스캔, 시험은 전부 초록). 「돈다」로 재는 자리는 `server/tests/test_ledger_v2_pg.py:475`(EXPLAIN 이 «Index Scan» 인지, `@pytest.mark.pg`). 운영자 쪽은 [config/notation_rules_config §6](../guide/config/notation_rules_config.md).
 - **언제 재사용**: 같은 식이 «비교»와 «인덱스 정의» 양쪽에 나타나는 모든 자리. 판별 질문: 「이 식을 렌더하는 함수가 «호출자마다» 있나, «렌더링마다» 있나」. 호출자마다면 언젠가 갈라지고, PG 는 갈라진 것을 «오류가 아니라 순차 스캔»으로 답한다(S-181) — 시험은 전부 초록인 채로.
 - **함정**:
   - 🔴 **캐스트 철자는 `::text` 여야 한다 — 취향이 아니다.** 인덱스 비교기(`normalize_index_expression`)가 `::text` 를 PG 가 붙이는 잡음으로 «벗기고» `CAST(… AS TEXT)` 는 세워 둔다. `CAST` 로 쓰면 인덱스가 있어도 모든 접힌 조인이 «미승인»이 된다. 첫 판(`fd53b87b`)이 정확히 그 철자였다.
@@ -724,21 +724,27 @@
   - 🔴 **정규화가 다른 인덱스 지름길을 쓰지 마라.** 인덱스가 붙은 미러 컬럼(`business_key_val` = `str(v).strip()`)은 정체 정규화(`canonical_key_value`)와 **다른 규칙**이라, 둘이 어긋나면 **없는 miss를 만들어낸다** — 그리고 이 설계는 miss를 의도적으로 조용하게 두므로 그 오답은 절대 표면화되지 않는다. 느려도 같은 정규화로 조회하고, 인덱스는 문서로 요구하라(프로세스당 1회 `INFO`, 경고 아님).
   - **API가 다시 쓰는 파일에 손으로 쓴 규칙을 두지 마라.** `maps.json`은 `POST/DELETE /api/map-presets`가 통째로 재작성한다 — 운영 규칙은 **기계가 쓰지 않는** 선언 파일에 둔다.
 
-### ⭐ **저장하지 않고 조회 시점에 잇는다 — 선언된 virtual join** (2026-07-31 등록 · `d70a33d`)
-- **무엇**: 다른 테이블의 컬럼이 이 표에 필요하면 **비정규화(복사 저장)도 DB 뷰도 아니라**, 선언된 조인 키로 **조회 시점에 붙인다.** `/api/maps/overlay`가 **좌표**로 하는 일의 **행(row) 버전**이고, 아무것도 영속하지 않으므로 원본이 바뀌면 다음 조회가 곧 최신이다.
-- **어디**: 선언·승인 `server/virtual_join/config.py` · 실행 `server/virtual_join/executor.py`(`attach`) · 붙는 자리는 `main.fetch_and_merge_metadata` **하나**(행 페이로드의 유일한 직렬화 지점 — 그리드 페이지·단건·배치 응답·WS가 전부 여기를 지난다). 절차·키 사전은 [guide/config/virtual_join_rules](../guide/config/virtual_join_rules.md).
-- **언제 재사용**: "이 표에 저 테이블의 값도 같이 보여야 한다" 전부. **컬럼을 복사해 채우는 배치를 만들기 전에 여기부터 보라** — 복사는 그 순간부터 원본과 갈라지고, 갈라짐을 되잡는 동기화가 다음 부채가 된다.
-- **짝(쓰는 쪽, 2026-09-15)**: 값이 «행»에 있어야 하면(원장이 번역해야 · 걷기의 주어여야 하면) 이쪽이 아니라 통합 선언의 `join` 종류(`builtin:join_into`, `chain/join_into.py`)다 — 같은 키 식(접기 «함수» 하나)을 쓰고 표에 층 `chain_ingestion`·`updated_by`=규칙 이름으로 쓴다(⚰️ 「자기 층」은 `1aa50d3d` 로 거짓이 됐다 — §1 「답이 둘이면」 함정). 두 조인은 «두 주어»다(BASIS §0-bis-2) — 이 항목은 은퇴가 아니다.
+### 🗄️ **저장하지 않고 조회 시점에 잇는다 — 선언된 virtual join** (2026-07-31 등록 · `d70a33d` → **2026-09-17 은퇴 `306419fd` · 판정 461**)
+
+> 🗄️ **믿지 말 것 — 「읽을 때 붙는다 · 아무것도 저장하지 않는다 · 가상 컬럼이 페이로드에 실린다」.** 엔진(`virtual_join/executor.py` 915줄)과 패키지가 «삭제»됐고, `materialize: false` 인 선언은 로더가 **이름 대어 거절**한다(`chain/join_refusal.CODE_READ_TIME_RETIRED`, 문장은 `chain/legacy_join_declaration.py`). 「읽기 시점에 조인하는 능력」은 **오늘 이 제품에 없다.**
+> ➡️ **후계 — 조인 컬럼은 «표에 쓴다».** 소유자 판정(2026-09-16): 조인은 `into.table` 로 말한다. 정본 문은 `chain/join_into.py`(통합 선언 `derive: {kind: "join"}` + `into: {table: …}`) — §1 「답이 둘이면 둘 다 답이 아니다」가 그 문의 항목이다.
+> ⚠️ **`chain/legacy_materialized_join.py` 를 그 문의 «동급»으로 읽지 마라.** 그것은 «둘째 문»이고 «부채»다(자기 docstring 첫 줄이 그렇게 적었다) — 오늘 도는 `materialize: true` 선언을 죽이지 않으려고 사는 것이지, 새로 쓸 선언이 고를 수 있는 선택지가 «아니다». 새 조인은 전부 `join_into` 로 간다. 둘이 살아남을 수 있는 유일한 이유는 **키를 `notation_norm` 으로 «같이» 접는다는 것**이고, 그 접기가 갈라지면 두 문이 같은 키를 다르게 읽는다.
+> ✅ **살아남는 생각(아래 함정에 그대로 산다)**: 유일 인덱스가 «승인 조건»이라는 것 · 팬아웃의 정체 · LEFT vs INNER · 「값이 없다」가 두 경우라는 것 · 비용은 «왕복 수»라는 것. 이 다섯은 `into.table` 조인에도 그대로 참이다.
+
+- ⚰️ **무엇이었나**: 다른 테이블의 컬럼이 이 표에 필요하면 **비정규화(복사 저장)도 DB 뷰도 아니라**, 선언된 조인 키로 **조회 시점에 붙였다.** `/api/maps/overlay`가 **좌표**로 하는 일의 **행(row) 버전**이고, 아무것도 영속하지 않으므로 원본이 바뀌면 다음 조회가 곧 최신이었다. 🔴 은퇴의 대가가 바로 그것이다 — 지금은 **쓰는 순간에 값이 굳고**, 원본이 바뀌면 조인이 «다시 돌아야» 최신이 된다.
+- **어디**(오늘): 선언·승인 `server/chain/legacy_join_declaration.py`(구 `virtual_join/config.py` — `git mv`) · 쓰기 엔진 `server/chain/legacy_materialized_join.py`(구 `virtual_join/executor.py` 의 **쓰기 절반** 15정의, 의존 폐포로 잘렸다) · 거절 문장 `server/chain/join_refusal.py`(구 `virtual_join/refusal.py`). ⚰️ **읽기 절반(`attach`·`exposed_columns`·`resolved_expression`·`announced_columns`·`_resolve_one`·`virtual_only_columns` 등 13정의)은 후계 없이 사라졌고, 붙던 자리 `main.fetch_and_merge_metadata` 는 살아 있으나 «조인을 붙이지 않는다».** 운영자 문서는 [guide/config/virtual_join_rules](../guide/config/virtual_join_rules.md)(배너부터 읽을 것).
+- **언제 재사용**: "이 표에 저 테이블의 값도 같이 보여야 한다" 전부 — **답은 이제 `join_into` 다.** **컬럼을 복사해 채우는 배치를 만들기 전에 여기부터 보라** — 손으로 복사하면 그 순간부터 원본과 갈라지고, 갈라짐을 되잡는 동기화가 다음 부채가 된다. 선언된 조인은 그 동기화를 «제품이» 진다.
+- **짝(쓰는 쪽, 2026-09-15)**: 값이 «행»에 있어야 하면(원장이 번역해야 · 걷기의 주어여야 하면) 이쪽이 아니라 통합 선언의 `join` 종류(`builtin:join_into`, `chain/join_into.py`)다 — 같은 키 식(접기 «함수» 하나)을 쓰고 표에 층 `chain_ingestion`·`updated_by`=규칙 이름으로 쓴다(⚰️ 「자기 층」은 `1aa50d3d` 로 거짓이 됐다 — §1 「답이 둘이면」 함정). ⚰️ **[2026-09-17 `306419fd`] 「두 조인은 «두 주어»다(BASIS §0-bis-2) — 이 항목은 은퇴가 아니다」는 «이틀 만에 거짓»이 됐다.** 소유자가 `into.table` 하나로 판정했고(판정 461), 그래서 주어는 «하나»다 — 이 짝이 «유일한» 답이다.
 - **함정**:
-  - 🔵 **[2026-09-16 S-251 `e175d3f8`] 선언 자리가 «둘»이다 — 목록은 하나, 검증기도 하나.** `virtual_join_rules.json` «또는» `chain_rules.json` 의 통합 문법(`derive.kind: join` + `into: {read: true}` — `into.table` 이면 «쓰는» 짝, 위 「짝」 줄). `load_virtual_join_rules` 가 옛 파일을 읽은 «뒤» 통합 선언을 «같은 목록»에 «같은 `_validate_join`» 으로 붙인다(`_read_time_joins_from_unified`, `origin: "decl"`) — 같은 이름공간 · 같은 유일 게이트(S-235) · 같은 철회(S-248). 둘째 검증기는 「이 조인이 돌 수 있나」의 «둘째 답»이라 없다. ⛔ 같은 이름이 두 파일에 있으면 «이름 대고» 거절(골라 주면 다른 파일이 거짓이 된다). ⚠️ 파일 «부재»는 더는 「조인 없음」이 아니다(종전엔 곧 `[]` — 통합 파일에만 적은 배포는 조인이 «하나도» 없었다). ⚠️ `path` 를 넘긴 «부분» 읽기는 통합 반쪽을 «안» 집는다. 체인 로더는 그 선언을 «거절이 아니라 노트»로 넘긴다 — 종전엔 맵퍼 칸 없는 규칙으로 `unresolvable_mapper` 에 «버려져» 옳은 선언이 오타로 보고됐다(문법에 칸이 있는데 «아무도 안 읽는» 이 저장소의 반복 결함).
+  - ⚰️ **[2026-09-17 `306419fd`] 「선언 자리가 «둘»이다」(S-251 `e175d3f8`, 2026-09-16)는 «하루 만에» 은퇴했다 — 오늘 읽기 시점 조인의 선언 자리는 «0» 이다.** `chain_rules.json` 의 `into: {read: true}` 는 «수집기가 이름 대어 거절»하고(`rule_shape.READ_TIME_RETIRED`, `_read_time_joins_from_unified` 가 «아무것도 채택하지 않는 루프»로 남았다), `virtual_join_rules.json` 의 `materialize: false` 는 «검증기가» 거절한다(`CODE_READ_TIME_RETIRED`). **두 자리가 «각자» 거절하는 것이 일부러다** — 한쪽만 거절하면 로더가 다른 쪽이 «아직 돌리는» 규칙을 보고하게 된다. ✅ 살아남는 생각: 「검증기를 둘 만들지 마라 — 「이 조인이 돌 수 있나」에 둘째 답이 생긴다」와 「같은 이름이 두 파일에 있으면 골라 주지 말고 «이름 대어» 거절하라」. 둘 다 `join_into` 의 `into.table` 선언에 그대로 적용된다.
   - 🔴 **승인 검증은 독자의 세션에서 돌지 않는다**(2026-09-15 `e88cb2be`) — 검증은 자기 `SessionLocal()` 을 열고 닫고, 한 선언의 검증 실패는 «그 규칙만» 거절한다. 그 전엔 남의 표 선언 하나가 내 읽기 트랜잭션을 5초마다 abort 시켰다. 그리고 `ASSY_VJOIN_AUTO_INDEX=0` 은 DB 를 «한 번도» 안 만진다(`1497ea3e`) — 세우지도, 걷지도 않는다.
   - 🔴 **제품이 세운 인덱스는 그것을 요구하는 조인만큼만 산다**(2026-09-15 S-248 `90d971ba`) — 규칙이 거절·이행·꺼진 뒤에 남은 `uq_vjoin_*` 는 쓰기 게이트가 «못 보는» 자리에서 문다. §7 「제품이 세운 것은 제품이 걷는다」. 🔵 [S-240 `8cab58da`] 요구 집합은 읽기 시점 선언에 통합 join 이 선언한 것(`chain/builtins.declared_unique_index_names`)을 «합쳐» 센다 — 안 합치면 웜업이 세우고 다음 읽기가 걷는 «혼자 깜빡이는 스위치»가 된다. 통합 쪽을 못 읽으면 철회가 «안 돈다».
   - 🔴 **승인 조건은 오른쪽의 UNIQUE 인덱스 하나다** — 없으면 왼쪽 행이 맞는 행 수만큼 불어난다(실측 x1288). 그 판정은 **config가 아니라 DB 카탈로그**를 읽으므로 등급·스냅샷·유효기간이 없다. 실행기의 입구를 **승인 경로 하나**로 두어 가드를 우회할 길을 만들지 마라.
   - 🔴 **INNER 금지.** 오른쪽이 없는 왼쪽 행이 조용히 사라져 **페이지에서 행이 증발**한다.
   - **「값이 없다」는 두 경우다** — ①오른쪽 행 없음 ②행은 있는데 값이 빔. LEFT 조인은 ①만 준다. ②는 값의 **빈 여부**로 판정해야 잡히고(§1 absent-only), 실측에서 전량 매치인데 26%가 빈 사례가 있다. 그리고 ①/②를 같은 라벨로 접은 뒤에는 **두 분기를 따로 관측할 수단**(오른쪽 행 유무 플래그)이 없으면 회귀가 잡히지 않는다.
   - **비용은 규칙당 페이지당 SELECT 1회**여야 한다 — 이미 페이징된 `row_id` 목록으로 좁히고 청킹한다. 행당 조회로 쓰면 같은 페이지에서 수십 배 느려진다.
-  - **가상 컬럼은 저장 컬럼이 아니다** — 쓰기는 §1 「깔때기 하나」에서 거부하고, **이름이 겹쳐 실재하는 컬럼은 반대로 계속 쓸 수 있어야 한다**(그 쓰기가 사용자가 조인 값을 고치는 유일한 방법).
-  - **붙이기만 하고 알리지 않으면 절반만 한 것이다** — 값은 페이로드에 실려 오는데 스키마가 말하지 않으면 클라는 컬럼을 만들 근거가 없다. 알리는 방법은 아래 항목이 정본이다.
+  - ⚰️ **「가상 컬럼은 저장 컬럼이 아니다」는 «주어가 철회»됐다**(`306419fd`) — 저장되지 않는 컬럼이 없어졌으므로 `crud.refuse_virtual_join_columns` 도 함께 은퇴했다(후계 없음, §1 「깔때기 하나」 참조). ✅ 남는 것은 그 논거다: **읽기 페이로드에만 있는 값에 쓰기가 오면 «조용히 떨어뜨리지 말고 이름 대어 거절»한다.** 읽기 시점 계산이 다시 생기는 날 이 가드가 같이 돌아온다(`crud.py` 의 묘비가 그렇게 적었다). 이름이 겹쳐 실재하던 `collide` 컬럼은 이제 그냥 «저장 컬럼»이다.
+  - ⚰️ **「붙이기만 하고 알리지 않으면 절반만 한 것이다」도 «주어가 철회»됐다** — 페이로드에 조인 값이 실리지 않으므로 알릴 것이 없다. ✅ 남는 것은 그 규율이고, 그 정본은 아래 「능력을 *알리되* 기존 목록에 합치지 마라」 항목이다(그 항목은 «살아 있다» — 키 둘이 `[]` 로 «계속 나가는» 이유가 거기 적혀 있다).
 
 ### ⭐⭐ **선언이 유일 키를 요구하면 제품이 «로드 시점»에 세운다 — 자리는 워커 웜업이지 읽기 경로가 아니다** (2026-09-15 등록 · S-240 `8cab58da`·`07a568ad`)
 - **무엇**: 「이 조인의 오른쪽 키는 유일해야 한다」를 운영자가 선언 한 칸(`key: {unique: true}`)으로 말하면, 제품이 부팅과 리로드마다 오른쪽 표에 식 인덱스를 세운다 — 읽기 시점 가상 조인이 거절 뒤 «한 번» 세워 보는 것과 «같은 빌더»(`unique_key.ensure_once`), 같은 이름(`uq_vjoin_*`), 같은 접기. 중복이 있으면 안 세우고 값·건수를 줄로 낸다. 그 칸은 번역(`rule_shape`)에서 «떨어지고» 있었다 — 폼이 그리는데 읽는 쪽이 없는 칸의 한 사례.
@@ -758,7 +764,7 @@
 - **함정**:
   - 🔴 **어느 한쪽만 접히면 이미 맞고 있던 매치를 조용히 잃는다.** 그래서 규칙 결정은 **쌍 단위**(`join_pair_rules`)이고 **한쪽만 접을 수 있는 인자·플래그·호출 모양을 일부러 두지 않는다.** 실측이 이유다 — `dt_log.core_lot`은 병합군 15개인데 `core_wafer_map.core_lot`은 **0개**라, 깨끗한 쪽에 선언할 이유가 있는 운영자가 없다.
   - 🔴 **양쪽이 다른 규칙으로 선언되면 합집합이다.** 폴드는 컬럼이 아니라 **비교**의 성질이고, 합집합은 두 선언을 모두 만족하는 최소 집합이자 **더 합칠 수는 있어도 매치를 잃지는 않는** 유일한 단조 선택이다.
-  - 🔴 **접힌 비교는 인덱스를 갈아탄다 — 그리고 그 인덱스는 성능이 아니라 *정확성* 때문에 필요하다.** 원본으로 서로 다른 두 행(`'CL-1'`·`'CL_1'`)이 접히면 한 값이므로, **컬럼에 UNIQUE가 있어도 접힌 키로는 중복**이고 그 중복이 곧 팬아웃이다. 유일성 게이트는 평범한 b-tree를 배제하고 **함수 인덱스**를 요구하는 쪽으로 방향이 뒤집힌다(`virtual_join_config.unique_index_covering`).
+  - 🔴 **접힌 비교는 인덱스를 갈아탄다 — 그리고 그 인덱스는 성능이 아니라 *정확성* 때문에 필요하다.** 원본으로 서로 다른 두 행(`'CL-1'`·`'CL_1'`)이 접히면 한 값이므로, **컬럼에 UNIQUE가 있어도 접힌 키로는 중복**이고 그 중복이 곧 팬아웃이다. 유일성 게이트는 평범한 b-tree를 배제하고 **함수 인덱스**를 요구하는 쪽으로 방향이 뒤집힌다(`chain/join_key_index.unique_index_covering` — 🆕 **[`21abf176`·`306419fd`]** 구 철자 ~~`virtual_join_config.unique_index_covering`~~ 는 `chain/legacy_join_declaration` 이 되-import 라 오늘도 같은 함수다).
   - 🔴 **조회 식과 인덱스 식은 반드시 같은 함수에서 나와야 한다** — 접기(`fold_sql_text`)만이 아니라 «키 식 전체»(cast · fold · coalesce — `key_expression_sql/_text`, S-245)가 그렇다. PostgreSQL은 두 식이 **일치할 때만** 함수 인덱스를 쓰므로, 철자를 둘 두면 이론적 불일치가 아니라 **순차 스캔**이 되고 테스트는 전부 통과한다.
   - **철회한 모델의 거절이 「완화」로 읽히지 않게 하라.** 파생 컬럼과 함께 죽은 두 거절(`would_rewrite_raw`·`key_column`)은 **쓰기를 막던 것**이라 지금은 주어가 없다. 언젠가 접힌 값을 저장하게 되면 **둘은 함께 돌아와야 하고**, 그 사실을 모듈 docstring에 남겨 두는 것까지가 이 항목이다.
   - ⚠️ **공짜가 아니다** — 실측 폴드 3.06µs/행, 함수 인덱스 이전 `dt_log` 조인 3.1ms → 151.6ms. 켜기 전에 **무엇이 합쳐지는지**(§7의 병합군 미리보기) 보고, 켠 뒤 인덱스를 만든다.
@@ -766,7 +772,7 @@
 
 ### ⭐ **능력을 *알리되* 기존 목록에 합치지 마라 — 그리고 렌더는 그 자체로 쓰기 노출이다** (2026-07-31 등록 · `9200f20`+`4b50135`)
 - **무엇**: 계약에 새 능력을 더할 때, 이미 **뜻이 있는 목록**(여기서는 `/schema`의 `columns` = 「이 테이블이 **저장하는** 컬럼」)에 항목을 더하지 말고 **새 키로 알린다**. 그래야 **「이 키를 무시하는 소비자는 키가 없던 때와 글자 그대로 같게 동작한다」**가 참이 되고, 그 문장이 참이라야 가산적 변경이라고 말할 수 있다.
-- **어디**: `main.get_table_schema`의 `virtual_columns`(항목 = `{name, type, editable, right_table, rule, unresolved_label}`) · 생산자 `virtual_join_executor.announced_columns` · 소비 `client2/src/api.js`(→ `state.currentVirtualColumns`)와 `grid.buildColumnDefs`(**append**).
+- **어디**: `main.get_table_schema`의 `virtual_columns` · `join_resolved_columns`(항목 = `{name, type, editable, right_table, rule, unresolved_label}`) · 소비 `client2/src/api.js`(→ `state.currentVirtualColumns`)와 `grid.buildColumnDefs`(**append**). ⚰️ **[2026-09-17 `306419fd` · 판정 461] 생산자 `virtual_join_executor.announced_columns` 는 읽기 시점 조인과 함께 은퇴했고, 후계가 «없다» — 두 키는 오늘 «항상 `[]`» 다.** 🔴 **그런데 키는 «지웠지 않았고, 그것이 이 항목의 요지다»**: 클라가 그 키를 색인하므로 서버가 키를 빼면 은퇴가 «빈 화면»이 된다. 「모양은 안정적이고 정직하다」가 애초에 그 키를 「항상 존재」로 만든 이유였고, 그 이유가 은퇴 뒤에도 그대로 값을 낸다. 키 제거는 클라 레인과의 «합동 라운드»다(`main.py` 가 그 자리에 그렇게 적었다).
 - **언제 재사용**: 오래된 응답에 필드를 더할 때 전부. 판별 질문은 **「이 목록의 *뜻*에 기대는 소비자가 있는가」**다 — 있으면 합치는 순간 그들이 **조용히** 틀린다. 우리 경우 넷이었다(그리드 편집 가능성 · 붙여넣기 대상 · 검색 드롭다운 · 맵 push 게이트의 「보호 없는 데이터 컬럼」 계수).
 - **함정**:
   - 🔴 **「목록에 안 넣었으니 안전하다」는 검증해야 한다. 우리는 여기서 틀렸다.** 붙여넣기 경로는 그 목록을 **읽지 않고 그리드 컬럼 id**에서 배치를 만들었다 — **컬럼이 렌더되는 순간 그것은 쓰기 대상**이고 어느 목록에 사는지는 무관했다. 같은 모양의 문이 둘 더 있었다(delete 비우기 · 일괄 채우기). **의도한 결과는 맞았고 메커니즘이 틀렸는데, 설계를 지탱한 것은 틀린 쪽이었다.**
@@ -1330,7 +1336,7 @@
 
 ### ⭐⭐ **읽기 경로의 검증은 «자기 세션»에서 돌린다 — 독자의 트랜잭션에 닿을 수 없게, 그리고 한 항목의 실패는 그 항목만** (2026-09-15 등록 · `e88cb2be` · `1497ea3e`)
 - **무엇**: 캐시 미스 때 «모든 선언»을 검증하는 코드가 «검증을 요청한 독자»의 세션 위에서 돌면, 선언 하나의 카탈로그 질의가 던지는 순간 독자의 트랜잭션이 abort 되고 그 뒤 모든 읽기가 「current transaction is aborted」로 죽는다 — 운영자가 안 만지던 표의 선언이 자기 읽기를 막는다. 답은 둘 다 «구조»다: ① 검증은 `SessionLocal()` 을 «자기가» 열고 `finally` 에서 롤백·닫는다 — 독자는 메모리만 읽는다 ② 루프 안에서 한 규칙이 던지면 «그 규칙만» 이름 대고 거절하고 세션을 롤백한 뒤 계속한다.
-- **어디**: `virtual_join/executor._verified_by_left_table`(자기 세션) · `virtual_join/config.load_verified_rules`(규칙 단위 try → `CODE_SHAPE` 거절, `_say_once`) · `virtual_join/unique_key.ensure_once`(점검 SQL 이 던지면 롤백 + `_TRIED` 에 «한 번만» 기록, 읽기는 계속).
+- **어디**(🆕 **[2026-09-17 `306419fd`]** 세 자리 모두 `server/chain/` 으로 이사했다 — 같은 함수, 구 경로 `virtual_join/*` 는 «없다»): `chain/legacy_materialized_join._verified_by_left_table`(자기 세션) · `chain/legacy_join_declaration.load_verified_rules`(규칙 단위 try → `CODE_SHAPE` 거절, `_say_once`) · `chain/unique_key.ensure_once`(점검 SQL 이 던지면 롤백 + `_TRIED` 에 «한 번만» 기록, 읽기는 계속).
 - **언제 재사용**: 요청 세션 위에서 «부수적으로» 도는 모든 것 — 캐시 워밍 · 카탈로그 점검 · 자동 수리 프로브. 판별 질문: 「이 코드가 던지면 «누구의» 트랜잭션이 abort 되나」. 답이 「요청한 사람」이면 세션이 틀린 것이다.
 - **함정**:
   - 🔴 **읽기 경로는 «매 읽기·모든 사용자»에게 발화한다.** 쓰기 경로의 가드는 한 번 돌지만 5초 캐시 뒤의 읽기 검증은 값 하나가 틀리면 «모든 화면»에서 «계속» 터진다 — 그래서 값을 «한 번» 실물화하는 쪽(`join_into`)이 답이고, 이 항목은 그때까지의 방어다.
@@ -1794,7 +1800,7 @@
 
 ### ⭐⭐ **제품이 세운 것은 제품이 걷는다 — 인덱스는 그것을 요구하는 조인만큼만 산다, 그리고 실패 줄은 «마지막 줄»을 나른다** (2026-09-15 등록 · S-248 `90d971ba`)
 - **무엇**: 제품이 가상 조인의 승인을 위해 `uq_vjoin_*` 를 세웠는데, 그 조인이 거절·이행·꺼진 뒤에 «아무도 걷지 않았다». 쓰기 게이트(`crud.refuse_virtual_join_duplicates`)는 «검증된» 규칙의 키만 알므로 규칙이 사라진 인덱스는 게이트 «밖»에서 문다 — `dedup` 의 insert 가 23505 로 죽고 그룹이 «영구 실패», 재시도마다 다른 행에서 같은 실패. 「규칙 없는 인덱스」가 결함이고, 제품이 자기 것을 «되가져가는» 것이 수리다.
-- **어디**: 🆕 **[`21abf176` 은퇴 2/5]** `chain/unique_key.product_indexes` :269(접두어는 `chain.join_key_index.INDEX_PREFIX` :32 «하나»로만 — 여기서 다시 철자하지 않는다. 구 경로 ~~`virtual_join/unique_key`~~ · 구 철자 ~~`config.INDEX_PREFIX`~~ 는 `virtual_join.config` 가 «되-import» 해 오늘도 같은 값이다) · `retract_unrequired_once(db, required)`(요구 집합당 한 번 · `DROP INDEX CONCURRENTLY IF EXISTS` 를 자기 autocommit 커넥션으로 · 하나가 못 걷어지면 «그 하나»만) · 호출은 `virtual_join/config.load_verified_rules` 끝, **`path is None` 일 때만**. 실패 줄: `ingestion_worker.failure_cause` → `Transaction … permanently failed … 원인: <마지막 비어 있지 않은 줄>`.
+- **어디**: 🆕 **[`21abf176` 은퇴 2/5]** `chain/unique_key.product_indexes` :269(접두어는 `chain.join_key_index.INDEX_PREFIX` :32 «하나»로만 — 여기서 다시 철자하지 않는다. 구 경로 ~~`virtual_join/unique_key`~~ · 구 철자 ~~`config.INDEX_PREFIX`~~ 는 `chain.legacy_join_declaration`(🆕 **[`306419fd`]** 구 `virtual_join.config`)이 «되-import» 해 오늘도 같은 값이다) · `retract_unrequired_once(db, required)`(요구 집합당 한 번 · `DROP INDEX CONCURRENTLY IF EXISTS` 를 자기 autocommit 커넥션으로 · 하나가 못 걷어지면 «그 하나»만) · 호출은 `chain/legacy_join_declaration.load_verified_rules` 끝, **`path is None` 일 때만**. 실패 줄: `ingestion_worker.failure_cause` → `Transaction … permanently failed … 원인: <마지막 비어 있지 않은 줄>`.
 - **언제 재사용**: 제품이 «자동으로» 세우는 모든 DB 객체(인덱스·뷰·트리거) — 세우는 자리가 있으면 «걷는 자리»가 같은 조건으로 있어야 한다. 판별 질문: 「이것을 요구하던 선언이 사라지면 «누가» 이것을 치우나」. 답이 「아무도」면 다음 장애가 이미 예약돼 있다.
 - **함정**:
   - 🔴 **접두어가 안전의 «전부»다.** 운영자가 자기 이름으로 세운 인덱스는 이 모집단에 «아예 없다». 접두어를 두 곳에 철자하면 「어느 것이 우리 것인가」의 답이 둘이 된다.
@@ -1804,7 +1810,7 @@
 
 ### ⭐⭐ **스위치는 «거르기»가 아니라 «안 세우기»다 — 끄면 DB 를 «한 번도» 안 만진다** (2026-09-15 등록 · `dc29056a` · `1497ea3e`)
 - **무엇**: 「켜짐/꺼짐」을 «세운 뒤 걸러서» 구현하면 꺼진 것이 여전히 로드·검증·점검 SQL 을 «돈다». 운영자가 다 껐는데 계속 오류가 나는 장애의 모양이 그것이다(2026-09-14~15). 스위치는 그 «앞»에 앉는다 — 꺼지면 규칙이 «안 서고», 그 아래 아무 줄도 «안 돈다».
-- **어디**: `chain/rule_shape.is_switched_off`(통합 선언 `enabled: false` → 로더가 규칙을 «안 세운다», 거절 목록에도 안 센다 — 판정 399, 통합 계획 ③′; `expand_declaration` 은 OFF 를 «거절이 아니라 노트»로 낸다) · `virtual_join/unique_key.ensure_once` **와 `retract_unrequired_once`**(`ASSY_VJOIN_AUTO_INDEX=0` → 맨 보고서, DB 무접촉 — 세우지도 걷지도 않는다). 강제 자리: 세 시험 — «OFF 로 그 경로가 불리는지»를 «호출 0» 으로 단언한다.
+- **어디**: `chain/rule_shape.is_switched_off`(통합 선언 `enabled: false` → 로더가 규칙을 «안 세운다», 거절 목록에도 안 센다 — 판정 399, 통합 계획 ③′; `expand_declaration` 은 OFF 를 «거절이 아니라 노트»로 낸다) · `chain/unique_key.ensure_once` **와 `retract_unrequired_once`**(`ASSY_VJOIN_AUTO_INDEX=0` → 맨 보고서, DB 무접촉 — 세우지도 걷지도 않는다). 강제 자리: 세 시험 — «OFF 로 그 경로가 불리는지»를 «호출 0» 으로 단언한다.
 - **언제 재사용**: 새 스위치·`enabled`·환경변수 전부. 판별 질문: 「끄면 «어느 줄»부터 안 도나」. 답이 「마지막 필터」면 반쪽 스위치다.
 - **함정**:
   - 🔴 **스위치마다 «주어»를 적어라 — 그리고 주어가 없어지면 스위치도 «없앤다».** `ASSY_CHAIN_SYNTHESIZE` 의 주어는 «운영자가 못 보는» 파생 규칙이었고, 부팅 줄 `[ChainRules] set(N)` 이 어느 파일이 썼든 «전부» 대게 되자 그 주어가 사라져 스위치도 은퇴했다(S-234 `5c845e67`, 판정 408 — 아래 「한 뜻을 여러 파일에」 항목). 오늘 손잡이는 둘 — 규칙을 «적은 파일»의 `enabled: false`, 전부는 `ASSY_CHAIN_WORKER=0`. 주어를 안 적으면 「전부 껐다」가 거짓이 된다.
@@ -1846,7 +1852,7 @@
 - **함정**:
   - 🆕 **[S-247-b `d469bacf`] 다섯째 자리 — `chain/rule_order.cycle_note`.** 첫 판은 자기 docstring 이 「S-247 의 모양대로」라 하면서 그 모양을 «손으로» 철자했고, 그래서 `nothing_to_do` 는 부르는 자리가 «0»이었다(어휘에 독자 없는 칸 — S-240·S-243 이 잡은 그 결함을 그 수리 «안»에서 냈다). 지금은 `operator_line.line(...)` 을 지나고, `nothing_to_do(unless=...)` — 문장은 «어느 자리에서나 참인 것»만 말하고(「없음 — 이 줄은 알림이고 지금 조치할 것이 없습니다」) 자리 고유 조건(「더 긴 고리가 필요하면 … `max_chain_depth`」)은 `unless` 로 받는다. 종전 문장 「이 줄은 건너뛴 것을 셉니다」는 고리 줄에 «거짓»이라 아무도 못 불렀다.
   - 🔴 **행동은 «고르는» 것이지 «쓰는» 것이 아니다.** 네 자리가 각자 문장을 지으면 정반대의 두 수리가 «같게» 읽히기 시작한다 — 그것이 이 모듈의 출생이다. 새 행동이 필요하면 어휘에 «함수»를 더한다(문자열 상수면 부르는 자리가 포맷을 짜고 저자가 다시 넷이 된다).
-  - 🔴 **`virtual_join/refusal.py` 와 다르다.** 그쪽은 «화면»(설정 보고서 · verify 라우트)이 읽는 문장의 저자다. 화면엔 저자가 있었고 «로그»엔 없었다 — 그리고 운영에 있는 채널은 로그뿐이다. 둘을 합치지 마라 — 청중이 다르다. §7 「거절은 문장이 아니라 주소를 나른다」의 «로그 판»이다.
+  - 🔴 **`chain/join_refusal.py`(🆕 **[`306419fd`]** 구 `virtual_join/refusal.py`) 와 다르다.** 그쪽은 «화면»(설정 보고서 · verify 라우트)이 읽는 문장의 저자다. 화면엔 저자가 있었고 «로그»엔 없었다 — 그리고 운영에 있는 채널은 로그뿐이다. 둘을 합치지 마라 — 청중이 다르다. §7 「거절은 문장이 아니라 주소를 나른다」의 «로그 판»이다.
   - 표본은 셋 + «전체 수» — 셋만 보이고 수를 안 말하면 「셋뿐」으로 읽힌다. 이름 목록은 repr(`['slot']`)이 아니라 문장이다. 「없음」도 행동이다(`nothing_to_do`) — 아무것도 안 해도 된다는 것을 모르면 운영자는 무엇이든 한다.
   - 접두 대괄호 `[자리:…]` 는 «검색어»다 — 자리마다 모양이 다르면 찾을 수 없다. 하니스가 문구를 «베끼면» 둘째 저자가 된다 — 시험은 `operator_line` 에 문장을 «묻는다»(옛 프로즈를 박아 둔 시험 둘이 그래서 고쳐졌다).
 
@@ -2065,7 +2071,7 @@
 
 ### ⭐ **한 항목의 결함이 목록 전체를 죽이면 안 된다 — 배치 판정에선 예외를 사유 코드로 접어라** (2026-08-11 등록 · `c4a3159`)
 - **무엇**: 여러 항목을 순회하며 각각에 상태를 매기는 루프에서, 한 항목이 예외를 던지면 그 예외를 잡는 자리가 보통 **루프 밖**(라우트 핸들러)이다 — 그러면 건강한 나머지 항목까지 통째로 실패한다. 답은 그 항목 하나만 **「채점 불가 + 이름 붙은 사유」**로 접고 루프를 계속하는 것이다. **형제 호출부 여럿에 이미 있는 가드가 한 곳에만 없다면, 그것은 정책이 아니라 누락이다** — 나머지와 같은 모양으로 채운다.
-- **어디**: `server/map_alignment.py`의 `build_alignment_worklist`(§9.11) — 결정키가 빈 파생 행 하나가 `compose_unit_key`에서 `ConfirmationRefused`를 던지면 **요청 전체**가 500이었다(그 예외가 `ValueError`가 아니라서 라우트의 `except ValueError`가 못 잡음). 같은 원인을 이미 가드하던 형제 셋: `dt_alignment_metadata_mapper.py:46` · `core_alignment_mapper.py:41` · `dt_inventory_metadata_mapper.py:96`. **둘째 사례(2026-09-15 `e88cb2be`)**: `virtual_join/config.load_verified_rules` 의 규칙 루프 — `verify_uniqueness` 가 던지면 «그 규칙만» `CODE_SHAPE` 로 거절하고 세션을 롤백한 뒤 계속한다. 그 전엔 선언 하나가 «모든 표»의 조인을 「조인 없음」으로 무너뜨렸다.
+- **어디**: `server/map_alignment.py`의 `build_alignment_worklist`(§9.11) — 결정키가 빈 파생 행 하나가 `compose_unit_key`에서 `ConfirmationRefused`를 던지면 **요청 전체**가 500이었다(그 예외가 `ValueError`가 아니라서 라우트의 `except ValueError`가 못 잡음). 같은 원인을 이미 가드하던 형제 셋: `dt_alignment_metadata_mapper.py:46` · `core_alignment_mapper.py:41` · `dt_inventory_metadata_mapper.py:96`. **둘째 사례(2026-09-15 `e88cb2be`)**: `chain/legacy_join_declaration.load_verified_rules`(🆕 **[`306419fd`]** 구 `virtual_join/config.py`) 의 규칙 루프 — `verify_uniqueness` 가 던지면 «그 규칙만» `CODE_SHAPE` 로 거절하고 세션을 롤백한 뒤 계속한다. 그 전엔 선언 하나가 «모든 표»의 조인을 「조인 없음」으로 무너뜨렸다.
 - **언제 재사용**: 파생 테이블·배치 페이로드를 단위별로 순회해 상태(`state`/`reason_code`)를 매기는 모든 목록 API. 판별 질문 — **"이 루프 안에서 하나가 실패하면 나머지는 어떻게 되나?"** 대답이 "루프 전체가 죽는다"면 이 가드가 없는 것이다.
 - **함정**:
   - 🔴 **가드는 두 겹이 필요할 수 있다.** 여기서는 `compose_unit_key`의 raise를 잡는 것만으로 부족했다 — 이름 없는 단위(`unit_key=None`)가 이후 정렬(`_sk`)에서 `None < str` `TypeError`를 또 던져 **같은 500이 한 줄 아래서 재발**했다. 뮤테이션 채점(가드 하나만 제거)으로 둘 다 독립적으로 필요함을 확인했다.

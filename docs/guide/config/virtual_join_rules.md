@@ -26,11 +26,13 @@
 > 📎 이 문서의 전면 개정은 «별도 라운드»입니다 — 지금은 잘못 따라가지 않도록 배너만 답니다.
 
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-09-16 «은퇴 1» (통합 문법의 `into: {read: true}` 가 «은퇴»해 이름으로 거절된다 — 그래서 읽기 시점 조인의 «선언 자리»는 다시 이 파일 «하나»이고, 여기 적은 것은 그대로 돈다 — `6580c30f`) · 직전 2026-09-16 (읽기 시점 조인은 `chain_rules.json` 의 통합 문법(`into: {read: true}`)으로도 적힌다 — 같은 목록·같은 검증기·같은 이름공간, 같은 이름이 두 파일에 있으면 거절, 파일 부재가 더는 「조인 없음」이 아니다 — S-251 `e175d3f8`) · 직전 2026-09-15 «후속 2» (통합 join 의 `key.unique` 도 같은 `ensure_once` 로 워커 웜업이 세우고 철회의 요구 집합은 둘의 «합» — S-240 · 키 식의 저자는 `notation_norm` 하나, 비텍스트는 `::text` — S-245 · 인덱스 보고·쓰기 게이트 줄은 `→ 다음:` 을 싣는다 — S-247 · §3 DDL 예시를 오늘 인쇄되는 식으로) · 직전 2026-09-15 «후속» (제품이 세운 `uq_vjoin_*` 는 요구하는 조인만큼만 산다 — `retract_unrequired_once`, §운영 메모) · 직전 2026-09-15 (검증은 자기 세션 · 규칙 단위 거절 · 자동 인덱스 스위치는 DB 무접촉 — §운영 메모) · 직전 2026-08-12 (**§2-ter 신설 — 조인 비용의 실측 모양**(`16b49ef`): `attach`의 **58%가 SQL**(10,000행 페이지 하나에 왕복 20회 = 선언 둘 × 청크 10, `CHUNK_SIZE=1000`)이고 노출 컬럼 넷이 **전부 `virtual_only`**라 비용은 구성상 O(행)이다 — 깎을 수 있는 것은 셀당 상수뿐. 🔴 **「이 루프는 무조건 돈다」가 거짓**이었다: `attach`는 테이블당 단락하고 선언을 가진 왼쪽 테이블은 14개 중 `dt_log` 하나이며, **격리 `assy_qa`에서는 두 선언 모두 거부**돼(중복 키 → UNIQUE 인덱스 생성 불가) 그 박스의 `attach`는 0.0 ms다. 함께 §「정확성 제약」에 **코드 사본 경고** 추가 — `virtual_join/executor.py`·`main.py`가 아직 「UNIQUE 인덱스를 그대로 탄다」고 적고 있다(성능 주장으로는 거짓, 총괄 라우팅 대상). 직전 2026-08-04: **§2-bis 신설 — 표기 정규화가 걸린 조인 키에서는 세 번째 배제가 뒤집힌다**(`8d306a5`): 접힌 비교는 컬럼 유일성이 아니라 **식 유일성**을 요구하므로 **함수 인덱스만 후보**가 되고 평범한 컬럼 UNIQUE는 배제된다. 🔴 이유는 성능이 아니라 **정확성**이다 — 원본으로 다른 두 행이 접히면 한 값이라 컬럼 UNIQUE가 있어도 접힌 키로는 중복이다. 함께 **「이 인덱스는 정확성 제약이지 조회 계획이 아니다」** 절 신설: 실측 플랜은 `Hash Left Join` + 오른쪽 `Seq Scan`이고 **인덱스의 성능 역할은 한 번도 행사된 적이 없다**(조인이 더한 버퍼는 왼쪽 15,469행에서도 103,040행에서도 **4**). 인덱스는 팬아웃 방지로 **여전히 필수**다. 직전 라운드: **N7 — 숫자 expose 컬럼이 읽기 표면 전체에서 동작한다.** 2026-08-02 사용자 보고: `number` 타입 컬럼을 노출하면 조회가 SQL 계층에서 500이었다 — 해석식이 `COALESCE(double precision, '미상')`을 만들었고 PostgreSQL이 타입 불일치로 거절했다. 수정: 숫자 컬럼은 COALESCE **이전에** 정본 비교 텍스트로 렌더한다(`crud.numeric_text_sql` — 정수값이면 INT 철자, `3.0`이 아니라 `3`). §4-ter 참조. **§9의 검색·CSV 두 미해결은 `cd3e0f4`(2026-07-31)로 이미 해소**돼 있었고 이번에 문서를 따라잡혔다. 직전 라운드 기록은 히스토리로) — 이전: 2026-07-31 (**같은 날 네 번째 라운드 — 화면 착지 `9200f20`+`4b50135`**: `/schema`가 가상 컬럼을 **별도 키 `virtual_columns`로** 알리고 그리드가 그것을 **덧붙여** 그린다. 🔴 **`columns`에 합치지 않는 것이 설계의 전부**다 — 그 배열의 뜻은 「저장하는 컬럼」이고 소비자 넷이 그 뜻에 기댄다. 🔴 **그리는 순간 그 컬럼은 붙여넣기·비우기·일괄채우기의 대상이 되므로** 클라에 술어 하나(`isVirtualColumn`)를 두어 제안을 막는다(강제는 여전히 서버 깔때기). §9의 첫 미해결 항목이 **해소**됐고 **새 미해결 둘**(CSV 추출 누락 · `미상` 행 검색 불가)이 그 자리에 들어왔다. 직전: **신설 → 같은 날 게이트 확정 → 같은 날 실행기 착지 `d70a33d`**. 사용자 판정 「인덱스 없으면 거절해」로 **승인 근거가 UNIQUE 인덱스 하나**가 됐고, 직전 판의 3등급 모델(`unique_index`/`probe_clean`/`unverified`)과 중복 프로브·예산·`incomplete` 상태는 **삭제**됐다. **조인은 이제 실제로 실행된다** — `server/virtual_join/executor.py`가 읽기 경로에서 `expose` 컬럼을 붙이고, **이름 충돌 거부는 해제**돼 「부재일 때만 채운다」가 됐다(§4-bis)) | **Owner:** Backend / 총괄
-> 상위: [폴더 인덱스](./README.md) · 절차 요약은 [CONFIG_GUIDE §1](../CONFIG_GUIDE.md) · 선언·검증 정본은 `server/virtual_join/config.py` · **실행 정본은 `server/virtual_join/executor.py`**
+> **Status:** 🗄️ 은퇴(읽기 절반) | **Last-verified:** 2026-09-17 «은퇴 2 — 기제까지»(`306419fd` · 판정 461: 엔진·패키지 «삭제», `materialize: false` 는 **이름 대어 거절**. 이 라운드가 고친 것은 «24줄» — 죽은 좌석을 든 줄 · 로더 증거 블록 · **§5 키 사전(그대로 베끼면 거절되던 표)** 이고, 본문 전면 개정은 «별도 라운드»다 — 맨 위 배너부터 읽으십시오) · ⚰️ 직전 2026-09-16 «은퇴 1» (통합 문법의 `into: {read: true}` 가 «은퇴»해 이름으로 거절된다 — 그래서 읽기 시점 조인의 «선언 자리»는 다시 이 파일 «하나»이고, ~~여기 적은 것은 그대로 돈다~~ **그 꼬리는 하루 만에 거짓이 됐다** — `6580c30f`) · 직전 2026-09-16 (읽기 시점 조인은 `chain_rules.json` 의 통합 문법(`into: {read: true}`)으로도 적힌다 — 같은 목록·같은 검증기·같은 이름공간, 같은 이름이 두 파일에 있으면 거절, 파일 부재가 더는 「조인 없음」이 아니다 — S-251 `e175d3f8`) · 직전 2026-09-15 «후속 2» (통합 join 의 `key.unique` 도 같은 `ensure_once` 로 워커 웜업이 세우고 철회의 요구 집합은 둘의 «합» — S-240 · 키 식의 저자는 `notation_norm` 하나, 비텍스트는 `::text` — S-245 · 인덱스 보고·쓰기 게이트 줄은 `→ 다음:` 을 싣는다 — S-247 · §3 DDL 예시를 오늘 인쇄되는 식으로) · 직전 2026-09-15 «후속» (제품이 세운 `uq_vjoin_*` 는 요구하는 조인만큼만 산다 — `retract_unrequired_once`, §운영 메모) · 직전 2026-09-15 (검증은 자기 세션 · 규칙 단위 거절 · 자동 인덱스 스위치는 DB 무접촉 — §운영 메모) · 직전 2026-08-12 (**§2-ter 신설 — 조인 비용의 실측 모양**(`16b49ef`): `attach`의 **58%가 SQL**(10,000행 페이지 하나에 왕복 20회 = 선언 둘 × 청크 10, `CHUNK_SIZE=1000`)이고 노출 컬럼 넷이 **전부 `virtual_only`**라 비용은 구성상 O(행)이다 — 깎을 수 있는 것은 셀당 상수뿐. 🔴 **「이 루프는 무조건 돈다」가 거짓**이었다: `attach`는 테이블당 단락하고 선언을 가진 왼쪽 테이블은 14개 중 `dt_log` 하나이며, **격리 `assy_qa`에서는 두 선언 모두 거부**돼(중복 키 → UNIQUE 인덱스 생성 불가) 그 박스의 `attach`는 0.0 ms다. 함께 §「정확성 제약」에 **코드 사본 경고** 추가 — `virtual_join/executor.py`·`main.py`가 아직 「UNIQUE 인덱스를 그대로 탄다」고 적고 있다(성능 주장으로는 거짓, 총괄 라우팅 대상). 직전 2026-08-04: **§2-bis 신설 — 표기 정규화가 걸린 조인 키에서는 세 번째 배제가 뒤집힌다**(`8d306a5`): 접힌 비교는 컬럼 유일성이 아니라 **식 유일성**을 요구하므로 **함수 인덱스만 후보**가 되고 평범한 컬럼 UNIQUE는 배제된다. 🔴 이유는 성능이 아니라 **정확성**이다 — 원본으로 다른 두 행이 접히면 한 값이라 컬럼 UNIQUE가 있어도 접힌 키로는 중복이다. 함께 **「이 인덱스는 정확성 제약이지 조회 계획이 아니다」** 절 신설: 실측 플랜은 `Hash Left Join` + 오른쪽 `Seq Scan`이고 **인덱스의 성능 역할은 한 번도 행사된 적이 없다**(조인이 더한 버퍼는 왼쪽 15,469행에서도 103,040행에서도 **4**). 인덱스는 팬아웃 방지로 **여전히 필수**다. 직전 라운드: **N7 — 숫자 expose 컬럼이 읽기 표면 전체에서 동작한다.** 2026-08-02 사용자 보고: `number` 타입 컬럼을 노출하면 조회가 SQL 계층에서 500이었다 — 해석식이 `COALESCE(double precision, '미상')`을 만들었고 PostgreSQL이 타입 불일치로 거절했다. 수정: 숫자 컬럼은 COALESCE **이전에** 정본 비교 텍스트로 렌더한다(`crud.numeric_text_sql` — 정수값이면 INT 철자, `3.0`이 아니라 `3`). §4-ter 참조. **§9의 검색·CSV 두 미해결은 `cd3e0f4`(2026-07-31)로 이미 해소**돼 있었고 이번에 문서를 따라잡혔다. 직전 라운드 기록은 히스토리로) — 이전: 2026-07-31 (**같은 날 네 번째 라운드 — 화면 착지 `9200f20`+`4b50135`**: `/schema`가 가상 컬럼을 **별도 키 `virtual_columns`로** 알리고 그리드가 그것을 **덧붙여** 그린다. 🔴 **`columns`에 합치지 않는 것이 설계의 전부**다 — 그 배열의 뜻은 「저장하는 컬럼」이고 소비자 넷이 그 뜻에 기댄다. 🔴 **그리는 순간 그 컬럼은 붙여넣기·비우기·일괄채우기의 대상이 되므로** 클라에 술어 하나(`isVirtualColumn`)를 두어 제안을 막는다(강제는 여전히 서버 깔때기). §9의 첫 미해결 항목이 **해소**됐고 **새 미해결 둘**(CSV 추출 누락 · `미상` 행 검색 불가)이 그 자리에 들어왔다. 직전: **신설 → 같은 날 게이트 확정 → 같은 날 실행기 착지 `d70a33d`**. 사용자 판정 「인덱스 없으면 거절해」로 **승인 근거가 UNIQUE 인덱스 하나**가 됐고, 직전 판의 3등급 모델(`unique_index`/`probe_clean`/`unverified`)과 중복 프로브·예산·`incomplete` 상태는 **삭제**됐다. **조인은 이제 실제로 실행된다** — `server/virtual_join/executor.py`가 읽기 경로에서 `expose` 컬럼을 붙이고, **이름 충돌 거부는 해제**돼 「부재일 때만 채운다」가 됐다(§4-bis)) | **Owner:** Backend / 총괄
+> 상위: [폴더 인덱스](./README.md) · 절차 요약은 [CONFIG_GUIDE §1](../CONFIG_GUIDE.md) · 선언·검증 정본은 `server/chain/legacy_join_declaration.py`(구 `virtual_join/config.py`) · **`materialize: true` 실행 정본은 `server/chain/legacy_materialized_join.py`**(구 `virtual_join/executor.py` 의 쓰기 절반 — ⚠️ **새 조인의 문이 아니다**: 오늘 조인을 새로 쓰는 문은 `server/chain/join_into.py` 하나이고 이 모듈은 오늘 도는 선언을 죽이지 않으려고만 산다) · ⚰️ **읽기 실행기는 «없다»**(패키지째 삭제)
 
 <!-- Loader evidence (2026-07-31, 실행기 착지 후 재확인 · d70a33d):
-  shape only, no DB: virtual_join_config.load_virtual_join_rules / validate_virtual_join_rules / _validate_join
+  (paths updated 2026-09-17 306419fd: the `virtual_join` package is gone - `config.py` -> chain/legacy_join_declaration.py,
+   `refusal.py` -> chain/join_refusal.py, the write half of `executor.py` -> chain/legacy_materialized_join.py)
+  shape only, no DB: legacy_join_declaration.load_virtual_join_rules / validate_virtual_join_rules / _validate_join
   the gate:          unique_index_covering (pg_index, excludes indisvalid=false / indpred / indexprs)
                      verify_uniqueness -> load_verified_rules  (the only accepting path)
   operator action:   required_index_name / required_index_ddl  (computed from the declaration alone)
@@ -45,19 +47,33 @@
                      same ensure_once, same uq_vjoin_ name; enabled:false = zero calls; key.columns is a check only) (S-240)
   key expression:    notation_norm.key_expression_sql / key_expression_text - ONE author for coalesce(fold(col), ''); non-text -> col::text (S-245 ddd5b3ba)
   operator lines:    unique_key.describe -> operator_line.line("VirtualJoinIndex", table, ...); crud.refuse_virtual_join_duplicates -> "VirtualJoinUnique" (S-247 3aab7173)
-  verification seat: virtual_join_executor._verified_by_left_table opens its OWN SessionLocal and closes it - never the reader's session
+  verification seat: chain.legacy_materialized_join._verified_by_left_table opens its OWN SessionLocal and closes it - never the reader's session
                      one rule whose verify_uniqueness raises is refused BY NAME (CODE_SHAPE) and the loop continues (2026-09-15)
-  execution:         virtual_join_executor.rules_for / execute_rule / _resolve_one / attach
+  execution:         chain.legacy_materialized_join.rules_for / execute_rule       [materialize: true ONLY]
                      (load_verified_rules is its ONLY entry - a shape-only rule never executes)
-  read path:         main.fetch_and_merge_metadata -> virtual_join_executor.attach
-                     (the single serialization point for row payloads)
-  write refusal:     crud.refuse_virtual_join_columns, first statement of crud.apply_batch_updates
-                     (virtual_only columns only; collide columns stay writable)
-  cache invalidation: main.reload_local_process_cache -> virtual_join_executor.reset_cache
+  read-time engine:  GONE (306419fd, ruling 461). `_resolve_one` / `attach` / `exposed_columns` /
+                     `resolved_expression` / `announced_columns` / `virtual_only_columns` and 7 more
+                     were deleted with the capability - 13 of the old file's 28 definitions, no successor.
+                     `materialize: false` is now refused BY NAME: chain.join_refusal.CODE_READ_TIME_RETIRED,
+                     sentence at chain/legacy_join_declaration.py; the unified `into: {read: true}` half is
+                     refused separately by the collector (rule_shape.READ_TIME_RETIRED) - BOTH on purpose,
+                     because if only one refused, the loader would report a rule the other still ran.
+  read path:         main.fetch_and_merge_metadata  (still the single serialization point for row
+                     payloads - it just no longer attaches anything)
+  write refusal:     GONE with the capability. crud.refuse_virtual_join_columns refused writes aimed at a
+                     `virtual_only` column; no column exists only in the read payload any more, so there is
+                     nothing left to refuse (tombstone in crud.py says the argument survives, the subject withdrew).
+                     Still live and NOT the same thing: crud.refuse_virtual_join_duplicates (write gate, S-247)
+  cache invalidation: main.reload_local_process_cache -> chain.legacy_materialized_join.reset_cache
   routes:            GET /admin/config/resolve?domain=virtual_join  (config only, zero DB queries)
                      GET /admin/config/virtual-join/verify          (catalog read, names the missing index)
   report:            config_resolve_report._resolve_virtual_join (DOMAIN_VIRTUAL_JOIN)
-  tests:             server/tests/test_virtual_join_guard.py + server/tests/test_virtual_join_executor.py
+  tests:             server/tests/test_virtual_join_guard.py
+                     + server/tests/test_a_read_time_join_is_retired_by_name.py   (refused BY NAME; control: materialize:true untouched)
+                     + server/tests/test_a_materialized_join_declares_its_cost.py
+                     (test_virtual_join_executor.py / test_schema_virtual_columns.py died with the seam they measured;
+                      the funnel-only assertions of test_virtual_join_types.py moved to
+                      server/tests/test_a_value_is_rendered_to_text_before_it_is_compared.py)
 -->
 
 ## 1. 무엇인가
@@ -154,11 +170,14 @@
 - ⚠️ **접히는 키에서는 이야기가 또 다르다** — §2-bis. 함수 인덱스가 없으면 접힌 비교는
   선택의 여지 없이 순차 스캔이고, 실측으로 `dt_log` 조인이 **3.1ms → 151.6ms**였다.
 
-> 🔴 **코드에는 아직 반대로 적혀 있다.** `server/virtual_join/executor.py` 모듈 docstring의
-> 「오른쪽은 승인 조건이었던 UNIQUE 인덱스를 그대로 탄다」와 `server/main.py`의 같은 취지
-> 주석 — **둘 다 성능 주장으로는 거짓**이고 위 표가 정본이다. 2026-08-04 감사에서 발견됐고
-> 코드 사본 둘은 총괄 라우팅 대상으로 남아 있다(이 절이 신설된 이유가 바로 **그 문장을 코드
-> 에서 읽은 사람이 다시 유도하지 않게** 하려는 것이다). 성능 판단이 필요하면 **여기를 읽어라.**
+> ✅ **[2026-09-17] 「코드에는 아직 반대로 적혀 있다」는 오늘 «거짓»이다 — 두 사본이 다 없어졌다.**
+> 원래 경고: `server/virtual_join/executor.py` 모듈 docstring 의 「오른쪽은 승인 조건이었던
+> UNIQUE 인덱스를 그대로 탄다」와 `server/main.py` 의 같은 취지 주석 — **둘 다 성능 주장으로는
+> 거짓**이었고 위 표가 정본이다(2026-08-04 감사 발견 · 총괄 라우팅 대상이었다).
+> 실측: `git grep "그대로 탄다" -- server/` = «0». executor 쪽 사본은 파일과 함께 갔고(`306419fd`),
+> `main.py` 쪽은 그 문구로 «되짚을 수 없어» 언제 사라졌는지는 «모른다» — 없다는 것만 잰 것이다.
+> 🔴 **위 표는 그대로 정본이다.** 성능 판단이 필요하면 **여기를 읽어라** — 인덱스는 팬아웃을 막는
+> **정확성 제약**이고, 그 역할은 `into.table` 로 쓰는 조인에서도 한 글자도 안 바뀐다.
 
 ### 2-ter. 조인 비용의 실측 모양 — **파이썬이 아니라 SQL이고, 그 SQL은 왕복 수다** (2026-08-12 `16b49ef`)
 
@@ -223,11 +242,14 @@ CREATE UNIQUE INDEX CONCURRENTLY uq_vjoin_core_wafer_map_core_lot_core_slot
 INNER 조인은 ①을 조용히 지우므로 쓰지 않는다.
 
 > **②가 사는 곳은 SQL이 아니라 파이썬이다.** LEFT 조인은 ①만 준다 — 오른쪽 행이 있으면
-> 빈 값을 그대로 돌려주기 때문이다. `virtual_join_executor._resolve_one`이 조인 값을
-> **행의 유무가 아니라 비어 있는지**로 판정하는 것이 ②를 덮는 유일한 이유다. 빈 판정은
-> `crud.clean_str_value(v) == ""` — 시스템의 나머지와 **같은 뜻**이라야 한다.
-> 실행기는 오른쪽 행의 유무(`matched`)를 따로 들고 다니는데, 표시용이 아니라 **①과 ②가
-> 같은 `미상`으로 접힌 뒤에도 두 분기를 관측할 수 있게** 하기 위한 것이다.
+> 빈 값을 그대로 돌려주기 때문이다. ⚰️ **[2026-09-17 `306419fd`] 그 판정을 하던 자리
+> `virtual_join_executor._resolve_one`(조인 값을 «행의 유무가 아니라 비어 있는지»로 판정했다)은
+> 읽기 시점 조인과 함께 은퇴했다 — 후계 없음.** ✅ **그래도 이 절은 읽을 값이 있다**: ①과 ②를
+> 가르는 것은 여전히 설계 판단이고, `into.table` 로 «쓰는» 조인에서 그 자리는 「쓸 것인가」를
+> 정하는 자리로 옮겨 앉는다. 빈 판정의 철자는 시스템 공용 하나여야 한다는 것도 그대로다
+> (`crud.clean_str_value(v) == ""` · 길이 0 문자열 = NULL, S-181 `fold_key_value`).
+> 그리고 은퇴한 실행기가 오른쪽 행의 유무(`matched`)를 «따로» 들고 다닌 이유가 이 절의 핵심이다 —
+> 표시용이 아니라 **①과 ②가 같은 `미상`으로 접힌 뒤에도 두 분기를 관측할 수 있게** 하려던 것이다.
 
 ## 4-bis. 이름 충돌 — 거부가 아니라 「부재일 때만 채운다」 (2026-07-31 `d70a33d`)
 
@@ -336,8 +358,15 @@ INNER 조인은 ①을 조용히 지우므로 쓰지 않는다.
 
 ## 5. 키 사전
 
+🔴 **[2026-09-17 `306419fd`] 이 표를 «그대로 베끼면 거절됩니다».** 아래 두 칸이 없으면 로더가
+`materialize` 를 `false` 로 읽고 **이름 대어 거절**합니다(`read_time_retired`) — 그래서 두 칸을
+표의 «맨 위»에 둡니다. 새 조인이라면 이 파일이 아니라 `chain_rules.json` 의
+`derive: {kind: "join"}` + `into: {table: …}` 로 적으십시오(맨 위 배너).
+
 | 키 | 필수 | 뜻 |
 |---|---|---|
+| `materialize` | ✅ | **`true` «만»** 받는다 — 조인 값을 왼쪽 표에 «쓴다». `false`(와 «칸 없음»)는 은퇴한 읽기 시점 조인이라 **이름 대어 거절**된다(`read_time_retired`). `true`/`false` 가 아닌 값은 `shape` 거절 |
+| `max_rewrite_rows` | ✅ | `materialize: true` 면 **필수이고 기본값이 «없다»**(판정 302). 참조된 오른쪽 «한 행»이 바뀌면 그 조인 키를 든 왼쪽 행이 «전부» 다시 써지므로, 그 상한은 제품이 추측할 것이 아니라 **운영자가 적는 것**이다. 세는 법은 거절문이 SQL 로 같이 준다 |
 | `left_table` | ✅ | 왼쪽(구동) 테이블. `table_config`에 등록돼 있어야 한다 |
 | `right_table` | ✅ | 오른쪽(참조) 테이블. 조인 키를 덮는 UNIQUE 인덱스 필요(§2) |
 | `join_key` | ✅ | `{left, right}` 쌍의 목록. 같은 `right` 컬럼을 두 번 묶을 수 없다(키가 넓어 보이지만 고정하는 성분은 하나다) |
@@ -346,7 +375,7 @@ INNER 조인은 ①을 조용히 지우므로 쓰지 않는다.
 | `enabled` | | 기본 `true`. `false`는 오류가 아니라 조용한 제외 |
 | `join_cardinality` | | `"one"`만 지원. 집계 형태는 **구현이 없어** 선언하면 거부된다(§7) |
 
-🔵 **[2026-09-16 S-251] 같은 조인을 `chain_rules.json` 의 통합 문법으로 적을 수 있다** — `on.table` 이 `left_table`, `derive: {kind: "join", join: {right_table, join_key, expose, …}}` 가 나머지, 그리고 **`into: {read: true}`** 한 칸이 「읽기 시점」이다(`into.table` 이면 «쓰는» 조인, [config/chain_rules §5-B-bis](./chain_rules.md)). 뜻은 이 표와 «같다» — 어디에 적었나가 뜻을 바꾸지 않는다. 옮길 필요는 없다; 이 파일은 그대로 읽힌다.
+🔵 **[2026-09-16 S-251] 같은 조인을 `chain_rules.json` 의 통합 문법으로 적을 수 있다** — `on.table` 이 `left_table`, `derive: {kind: "join", join: {right_table, join_key, expose, …}}` 가 나머지, 그리고 **`into: {read: true}`** 한 칸이 「읽기 시점」이다(`into.table` 이면 «쓰는» 조인, [config/chain_rules §5-B-bis](./chain_rules.md)). ⚰️ **[2026-09-17 `306419fd`] 「뜻은 같다 · 옮길 필요 없다 · 이 파일은 그대로 읽힌다」는 «오늘 거짓»이다** — `into: {read: true}` 는 수집기가 «이름 대어 거절»하고(`rule_shape.READ_TIME_RETIRED`) 이 파일의 `materialize: false` 는 검증기가 거절한다. ➡️ **오늘 «옮겨야 하고», 옮기는 곳은 `into: {table: …}` 다** — 그게 소유자 판정(461)이고, 그러면 조인 컬럼이 저장 컬럼이 되어 추출·필터·검색이 «따로 지을 것 없이» 따라온다(§9).
 
 ## 6. 확인하는 법 — 라우트가 둘인 이유
 
@@ -408,8 +437,8 @@ x1288 조인이 언제나 틀린 것은 아니다 — **행 조인으로서** �
 - ⚰ **[2026-09-16 은퇴 1단계 `6580c30f`] 「읽기 시점 조인은 `chain_rules.json` 에도 산다」는 «오늘 거짓»이다**(그 문장은 직전 2026-09-16 S-251 `e175d3f8`).
   통합 파일의 `derive.kind: join` + `into: {read: true}` 는 이제 «붙지 않고 이름 대고 거절»된다 — `_read_time_joins_from_unified`(`config.py` :576, 거절은 :605-613)와 체인 로더(`rule_shape.expand_declaration` :479)가 `rule_shape.READ_TIME_RETIRED`(:82) «한 상수»를 «같이» 읽는다.
   🔴 한쪽만 거절했으면 «로더가 버린 선언을 수집기가 여전히 돌렸다» — 그것이 이 은퇴가 좌석을 둘로 센 이유다. 소유자 판정: 운영은 조인 값을 «표에 써서» 쓴다(`into.table`).
-  🔴 **그래서 오늘 읽기 시점 조인의 «선언 자리»는 이 파일 «하나»이고, 여기 적은 것은 그대로 돈다** — `load_virtual_join_rules`(:531)도 엔진도 검증기도 은퇴 1단계가 «안 건드렸다».
-  ⚠ 그러므로 삭제 단계 «전»에 이 파일의 선언들을 «같이 은퇴시키나, 대상 밖인가»를 정해야 한다 — 전자면 여기 적은 조인이 그날 멈추고, 후자면 엔진을 «못 지운다»(그 선언이 엔진을 부른다).
+  ⚰ **[2026-09-17 은퇴 2단계 `306419fd`] 그 바로 아래 줄 ~~「오늘 선언 자리는 이 파일 «하나»이고 여기 적은 것은 그대로 돈다」~~ 는 «하루 만에» 거짓이 됐다** — 오늘 읽기 시점 조인의 선언 자리는 «0» 이다. 이 파일의 `materialize: false`(와 «칸 없음»)도 이제 **이름 대어 거절**된다.
+  ✅ **그리고 그 「정해야 한다」가 정해졌다**: 위 두 갈래 중 «전자» — 이 파일의 «읽기» 선언은 «같이 은퇴»했고 엔진은 삭제됐다. 남은 것은 `materialize: true` 선언«뿐»이고, 그것이 `chain/legacy_materialized_join.py` 를 살려 두는 «유일한» 이유다.
   ⚰ 같이 낡은 문장 둘: 「같은 목록 · 같은 `_validate_join` · 같은 이름공간 · 같은 유일 게이트(S-235) · 같은 철회(S-248)」와 「같은 이름이 두 파일에 있으면 거절」 — 붙는 선언이 없으니 둘 다 «공허»하다.
   ⚠ 다만 **이 파일이 «없어도» 질문이 끝나지 않는다**는 그대로다 — 통합 파일의 `key: {unique: true}` 가 아래 철회의 «요구 집합»에 여전히 들어온다(`chain/builtins.declared_unique_index_names`).
 - **인덱스 보고와 쓰기 게이트의 줄은 «다음 행동»을 싣는다**(2026-09-15 S-247 `3aab7173`) — `[VirtualJoinIndex:<표>] … → 다음: …`
