@@ -21755,3 +21755,68 @@ row/cell 이력         main.py:3157 _history_page -> server/audit_history.py (�
 ```
 
 > · 🔁 이월: 0 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
+
+---
+
+## 🔴 Q-14 [09-16 21:15 실측] `344d7464`(판정 427) 검수 — **그 커밋의 «자기 경고»가 자기 호출자 «둘»에서 안 지켜졌습니다**
+
+> 커밋이 스스로 적은 ⚠️: 「**A CALLER THAT ALREADY TRUNCATED KEEPS ITS OWN TOTAL.** … re-deriving it
+> from the list it handed over would report **the sample's size as the population's**」
+> 🔵 빌더가 절단 규칙을 갖게 한 것은 **옳습니다** — 다섯 자리의 `<= 5000` 드롭이 사라졌습니다 ✅
+
+### 결함 ⑦ — 사전 절단본을 받는 콜백 «둘»이 그 총계를 «버립니다»
+
+```
+인제션이 넘기는 것 (directory_watcher.py)
+   :3239  total_log_count += len(created_logs)          ← «진짜 총계»
+   :3240-3242  remaining = MAX_NOTIFY_CREATED_LOGS - len(all_created_logs)
+               all_created_logs.extend(created_logs[:remaining])   ← «500 으로 잘린 표본»
+   :3327  self.on_refresh_callback(t_name, total_changed, all_created_logs, total_log_count)  ← 둘 다 넘김
+
+받는 쪽 (오늘 HEAD)
+   main.py:507  trigger_ws_refresh(…, created_logs=None, total_log_count=None)
+   main.py:6337 sync_refresh_callback(…, created_logs=None, total_log_count=None)
+      둘 다 인자를 «받아 놓고»  batch_refresh_message(t, n, created_logs=created_logs) 로만 부릅니다
+      -> 빌더(:294-311)가 「total 이 None 이면 len(created_logs) 로 채운다」 -> **표본 크기 = 모집단 크기**
+   🔵 run_watcher.py:107-125 (별도 프로세스)는 «제대로 넘깁니다» — 그 파일이 C-5 사유까지 적어 뒀습니다
+```
+
+**무엇이 참이어야 이 일이 나나** — 인제션이 500 을 넘는 감사 로그를 낳고, 그 통지가 이 «둘» 중 한 자리로
+나가야 합니다. `main.py:6305 @app.post("/admin/file-ingestion/retry-failed")` 는 **라우트**이므로
+분리 모드에서도 삽니다.
+
+```
+실패 시나리오
+① 재적재로 감사 로그 12,000 개가 생깁니다
+② 워처: 표본 500 + total 12,000 을 콜백에 넘깁니다
+③ 콜백이 total 을 «버리고» 빌더가 total=500 으로 채웁니다
+④ 클라(websocket.js:381): logsTruncated = (500 < 500) = false → «다시 읽지 않습니다»
+   화면은 500 줄을 «전부»로 보여 줍니다
+```
+🔴 **어제와의 차이**: 어제는 그 자리가 total 을 «아예 안 보냈고»(「말 안 함」), 오늘은 «틀리게 말합니다».
+클라의 오늘 행동은 같지만(둘 다 리로드 안 함), **거짓 수가 전선에 올라갑니다** — 그 값을 읽는 다른 소비자
+(HTTP 경로의 `audit_cache.add_logs_batch(sliced, actual_count)` 가 트랜잭션 total_count 표기에 씁니다)에게는
+「없음」과 「500」이 다른 사실입니다. 📌 부류: 「없어서 0」이 「틀려서 500」이 된 것 — 침묵보다 나쁜 주장.
+
+### 왜 놓쳤나 (구조로)
+
+```
+빌더가 규칙을 가져갔는데, «이미 절단한 호출자»를 가르는 것은 여전히 «호출자의 손»에 있습니다 —
+total_log_count 를 «넘기느냐»로. 그 한 인자가 빠지면 빌더는 두 경우를 «구분할 수 없습니다».
+🔵 구분할 방법이 «있습니다»: 호출자가 이미 자른 경우에만 total 을 주므로,
+   빌더가 아니라 «콜백 서명»이 그것을 강제해야 합니다(총괄 판정 자리)
+```
+
+### 확신도 · 못 잰 것
+
+```
+구조   ✅ 다섯 자리 전부 오늘 HEAD (watcher :3239·:3242·:3327 · main :507·:6337 · builder :294-311 · run_watcher :107)
+실행   ❌ 안 돌렸습니다
+못 잼  · `main.py:558`(인프로세스 워처)이 이 설치에서 «쓰이는지» — 분리 모드면 안 쓰입니다.
+        다만 `:6305` 는 라우트라 «항상» 삽니다
+      · 한 파일 적재가 500 로그를 넘는 «빈도» — 운영 수는 못 잽니다
+```
+
+> 🔴 「판정 대기」 **1** — 콜백 둘이 `total_log_count=total_log_count` 를 넘기게 합니까(두 줄),
+> 아니면 빌더가 「잘린 표본인지」를 인자 «모양»으로 강제합니까
+> ⛔ 저는 짓지 않았습니다 · 🔁 이월: 0 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
