@@ -80,10 +80,21 @@ export function makeNode(doc, tag) {
       c.parentNode = null;
       return c;
     },
+    // 🔴 ADDED 2026-09-16 (C-116). `el.remove()` 는 자기를 부모에서 떼냅니다. 없으면
+    //    `utils.js` 의 `removeToast` 가 400ms 뒤 «비동기로» 던집니다 — 단언 하나도
+    //    안 빨개지고, 리모브를 재는 하니스는 «사라지지 않는 노드»를 정상으로 읽습니다.
+    remove() { if (this.parentNode) this.parentNode.removeChild(this); },
     setAttribute(k, v) {
       this.attrs[String(k)] = String(v);
       if (String(k) === 'class') this.className = String(v);
     },
+    // 🔴 ADDED 2026-09-16 (C-116). 브라우저에서 `el.id = 'x'` 는 `setAttribute('id','x')`
+    //    와 «같은 것»이다. 이 스텁은 대입을 평범한 속성으로 받아 `attrs.id` 에 안 넣었고,
+    //    그래서 `getElementById` 가 그 노드를 «영원히 못 찾았다». 그 차이는 오류를 안 낸다 —
+    //    `utils.js` 의 `toastContainer()` 는 못 찾으면 «새로 만들므로», 하니스가 보는 토스트는
+    //    매번 «새 컨테이너에 하나»였고 쌓임도 접힘도 «한 번도 안 재졌다».
+    get id() { return this.getAttribute('id') || ''; },
+    set id(v) { this.setAttribute('id', v); },
     getAttribute(k) {
       return Object.prototype.hasOwnProperty.call(this.attrs, String(k))
         ? this.attrs[String(k)] : null;

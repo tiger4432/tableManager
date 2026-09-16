@@ -50,7 +50,7 @@ export function getLocalTimeString(date = new Date()) {
 // ============================================================
 const TOAST_MAX_VISIBLE = 4;
 const TOAST_TTL = { info: 5000, success: 5000, warning: 9000, error: 15000 };
-const toastItems = [];   // { el, type, expireAt, dedupeKey, count, baseMessage, sticky }
+const toastItems = [];   // { el, type, expireAt, dedupeKey, foldKey, count, baseMessage, sticky }
 let toastSweepTimer = null;
 
 function toastContainer() {
@@ -161,9 +161,19 @@ export function showToast(message, type = 'info', opts = {}) {
   const ttl = Number(opts.ttl) || TOAST_TTL[type] || 5000;
   const text = String(message);
 
-  // ④ 동종 집계 — 실패는 집계하지 않는다(개별 사유가 중요하므로)
-  if (opts.dedupeKey && type !== 'error') {
-    const hit = toastItems.find(it => it.dedupeKey === opts.dedupeKey && it.type === type);
+  // ④ 동종 집계 — 「같은 사유」끼리만 접힌다
+  //
+  // 🔴 C-116. 여기서 실패가 «제외»돼 있었고(예전 주석: 「개별 사유가 중요하므로」),
+  //    그 판단은 «옆대로» 오늘도 유효하다. 다만 «사유는 문장» 이다 — 문장이 글자 그대로
+  //    같으면 그것은 «다른 사유가 아니다». 그래서 실패는 «같은 문장»끼리만 접고,
+  //    다른 문장은 오늘처럼 그대로 쌓인다.
+  //    ⚠️ 호출자가 준 `dedupeKey` 로는 실패를 접지 «않는다» — 그 키는 서로 «다른 문장»을
+  //    한 덩이로 묶을 수 있고, 그러면 위 판단이 깨진다.
+  //    실측 2026-09-16: 서로 다른 실패 넷이 640×278px = 뉴포트 높이의 31% 를 15초 동안 덮었다.
+  //    `dedupeKey` 는 별도로 남긴다 — `dismissToasts(key)` 가 그것으로 거두기 때문이다.
+  const foldKey = type === 'error' ? `msg:${text}` : (opts.dedupeKey || null);
+  if (foldKey) {
+    const hit = toastItems.find(it => it.foldKey === foldKey && it.type === type);
     if (hit) {
       hit.count += 1;
       hit.baseMessage = text;          // 최신 메시지로 갱신 (예: 최근 파일명)
@@ -183,11 +193,28 @@ export function showToast(message, type = 'info', opts = {}) {
   bodyEl.className = 'toast-body';
   el.appendChild(iconEl);
   el.appendChild(bodyEl);
-  el.addEventListener('click', () => { const it = toastItems.find(x => x.el === el); if (it) removeToast(it); });
+  // 🔴 C-116. 전에는 «토스트 전체»가 클릭을 받아 닫혔습니다. 그러면 그 밑에 버튼이
+  //    있을 때 운영자의 클릭을 «가져갑니다» — 실측 2026-09-16: 어드민 오버뷰에서
+  //    「탭 열기 →」 가 토스트 밑에 깔려 누르면 탭이 열리지 않고 토스트만 사라졌습니다.
+  //    판정: «클릭은 사용자의 것»입니다. 안 부른 알림이 사용자가 «다른 것을 겨냥한»
+  //    클릭을 삼키면 그건 편의가 아니라 의도를 «조용히 버리는» 것입니다.
+  //    그래서 본체는 CSS 에서 `pointer-events: none` 이고, 닫는 일은 «닫기 단추»가
+  //    합니다 — 닫을 수 있다는 것도 이제 «보입니다»(전에는 숨은 기능이었습니다).
+  const closeEl = document.createElement('button');
+  closeEl.className = 'toast-close';
+  closeEl.type = 'button';
+  closeEl.setAttribute('aria-label', '닫기');
+  closeEl.textContent = '×';
+  closeEl.addEventListener('click', () => {
+    const it = toastItems.find(x => x.el === el);
+    if (it) removeToast(it);
+  });
+  el.appendChild(closeEl);
 
   const item = {
     el, type, expireAt: now + ttl,
     dedupeKey: opts.dedupeKey || null,
+    foldKey,
     count: 1, baseMessage: text,
     sticky: !!opts.sticky,
   };

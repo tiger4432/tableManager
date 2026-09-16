@@ -1471,6 +1471,7 @@ const FLOORS = new Map([
   ['runtime_panel_harness.mjs', 39],
   ['reference_view_head_harness.mjs', 69],
   ['replay_rules_harness.mjs', 47],
+  ['toast_stack_harness.mjs', 23],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

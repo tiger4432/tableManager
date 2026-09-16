@@ -285,8 +285,16 @@ body {
   width: min(640px, calc(100vw - 48px));
   display: flex;
   flex-direction: column;
+  /* 🔴 C-116. 상자가 이제 «내용만큼»이므로 가운데로 모은다 — 띄는 가운데인데
+     안의 상자만 왼쪽에 붙으면 «가운데도 왼쪽도 아닌» 모양이 된다. */
+  align-items: center;
   gap: 10px;
   z-index: 9999;
+  /* 🔴 C-116. 이 띄는 «보는» 층이지 누르는 층이 아니다. 실측 2026-09-16:
+     토스트 넷이 떴 상태에서 그 밑의 「탭 열기 →」 버튼이 «눌러지지 않았고»,
+     토스트 «사이의 빈 여백»조차 클릭을 먹었다(elementFromPoint 가 컨테이너를 돌려줌).
+     토스트 «자기»는 닫기 위해 눌려야 하므로 아래에서 다시 `auto` 로 돌린다. */
+  pointer-events: none;
 }
 
 .toast {
@@ -296,7 +304,15 @@ body {
   box-shadow: var(--shadow-pop);
   color: var(--text);
   padding: 12px 20px;
-  width: 100%;
+  /* 🔴 C-116. `width: 100%` 였다 — 메시지가 25px 여도 상자는 «항상 640px» 이었고,
+     그래서 덮는 면적이 «내용»이 아니라 «상수»였다(실측 2026-09-16).
+     이제 문장만큼만 차지하고, 길면 띄 폭(640)에서 멈추고 줄바꿈한다. */
+  width: auto;
+  max-width: 100%;
+  /* 🔴 C-116. 본체는 «읽는» 것입니다 — 클릭은 그대로 밑으로 지나갑니다.
+     안 그러면 토스트가 «덮는 데» 그치지 않고 그 밑 버튼의 클릭을 «가져갑니다».
+     닫는 것은 아래 `.toast-close` 하나만 받습니다. */
+  pointer-events: none;
   border-radius: 8px;
   font-family: var(--font-sans);
   font-size: 0.85rem;
@@ -307,6 +323,22 @@ body {
   animation: toastFadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
   transition: opacity 0.3s;
 }
+
+/* 🔴 C-116. 토스트에서 «누를 수 있는» 유일한 자리. 본체가 클릭을 안 받으므로
+   이 줄이 없으면 토스트를 «손으로 못 닫습니다». */
+.toast-close {
+  pointer-events: auto;
+  margin-left: auto;
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 1.05rem;
+  line-height: 1;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+.toast-close:hover { color: var(--text); }
 
 .toast.toast-success, .toast.success { border-left-color: var(--success); }
 .toast.toast-error, .toast.error { border-left-color: var(--danger); }
