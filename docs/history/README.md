@@ -1,13 +1,14 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **903개** 이력. (거버넌스 규칙 #4)
+> 총 **904개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-09 (September 2026)
 
+- **2026-09-16 19:42** — [The Join Came Onto The Trigger Path And Left Two Guards On The Lap It Left](./20260916_194223_the_join_came_onto_the_trigger_path_and_left_two_guards_on_the_lap_it_left.md)
 - **2026-09-16 13:16** — [The Join Declaration Is Hoisted Out Of The Row Loop And The Sibling Ruling Was Built Reverted And Stood Down](./20260916_131629_the_join_declaration_is_hoisted_out_of_the_row_loop_and_the_sibling_ruling_was_built_reverted_and_stood_down.md)
 - **2026-09-16 12:32** — [A Dry Run Undoes Its Own Savepoint And The Sibling Shares One Body So The Refusal Cannot Grow A Second Spelling](./20260916_123244_a_dry_run_undoes_its_own_savepoint_and_the_sibling_shares_one_body_so_the_refusal_cannot_grow_a_second_spelling.md)
 - **2026-09-16 12:01** — [The Line That Explains A Refusal May Not Replace It And The Commit Carried Two Claims About What Came Before](./20260916_120128_the_line_that_explains_a_refusal_may_not_replace_it_and_the_commit_carried_two_claims_about_what_came_before.md)
