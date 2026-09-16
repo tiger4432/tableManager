@@ -22820,3 +22820,79 @@ setup_registry.py:679-688   번들의 enabled 조인마다 «공급된 서술자
 > 🔴 「판정 대기」 **2** — ㉠ 447 ① 되돌리기(그 모듈은 4단계 «삭제 대상 밖»입니다)
 > ㉡ 449 의 ③ 자리 착지 조건을 「거절을 단다」에서 「거절이 «할 수 있는 다음 행동»을 싣게 한다」로
 > · 🔁 이월: 0 · ✅ Q-28 → 판정 450(셋 다 수용) · Q-27 → 449
+
+---
+
+## 🔴🔴 Q-30 [09-17 00:20 실측] 449 의 「입구를 전수로」 — **네 번째가 있고, 그건 «쓰기» 입구입니다.** 그리고 4단계의 폭발 반경이 인리치까지 갑니다
+
+> 449 착수 조건: 「4) 를 열기 «전»에 «이 능력을 선언할 수 있는 모든 길»을 전수로 적으십시오」
+
+### ① 실행에 닿는 길은 «둘»뿐입니다 — 그건 확인했습니다 ✅
+
+```
+엔진   executor.rules_for / rules_for_right / attach …  ← 전부 `_verified_by_left_table` 하나를 지납니다
+       그것이 부르는 것은 `load_verified_rules` 하나
+       그것이 읽는 것은 `load_virtual_join_rules` 하나
+       그것이 읽는 곳은 «둘»: 레거시 파일 · 통합 `into.read`(1단계가 거절)
+번들 절 ③ 은 실행에 «안 닿습니다» (Q-29 ②)
+```
+
+### 🔴 ② 그런데 «네 번째 입구»가 있습니다 — 같은 파일의 다른 칸, 그리고 방향이 «반대»입니다
+
+```
+server/virtual_join/config.py:868  synthesized_join_chain_rules(path, known_tables)
+   for rule in load_virtual_join_rules(...):
+       if not rule.get("materialize"): continue          ← 🔴 «materialize: true» 만
+       -> {"name": "virtual_join:<이름>", "trigger_table": left, "target_table": left,
+           "mapper": JOIN_MAPPER, "follow_up": True, "params": dict(rule)}
+server/chain/builtins.py:40        그 목록을 synthesize_chain_rules 가 «체인 규칙»에 더합니다
+server/chain/ingestion_worker.py:828-834  로더가 그것을 규칙 집합에 «싣습니다»
+```
+⇒ **레거시 파일은 입구 «하나»가 아니라 «둘»입니다**:
+```
+materialize: false (기본)  -> 읽기 시점 조인        ← 446 이 은퇴시키기로 판정한 것
+materialize: true          -> «쓰기» 체인 규칙      ← 은퇴 대상이 «아닙니다».
+                                                  오히려 소유자가 «옮겨 간» 쪽과 같은 일입니다
+```
+🔴 **그래서 446 의 착지가 «파일 단위»로 서면 안 됩니다.** 거절의 «주어»는 파일이 아니라
+`materialize: false` 인 선언입니다. 파일째 거절하면 **도는 쓰기 조인을 같이 죽입니다.**
+
+### 🔴 ③ 4단계의 폭발 반경 — 패키지가 사라지면 «인리치 파생 규칙까지» 같이 사라집니다
+
+```
+chain/builtins.py:29 synthesize_chain_rules
+   :37  import enrichment.config
+   :38  import virtual_join.config          🔴 4단계 뒤 여기서 던집니다
+   :40  rules = enrichment … ; rules.extend(virtual_join …)
+chain/ingestion_worker.py:835-837
+   except Exception as e:
+       logger.error("[ChainRules] Failed to synthesize chain rules from the enrichment
+                     and virtual-join files: %s")
+   -> 체인은 «계속 돕니다». 규칙 집합에서 «합성분 전부»가 빠진 채로
+```
+⇒ 한 함수가 «둘»을 만들기 때문에, 가상 조인 쪽이 던지면 **인리치 파생 체인 규칙도 같이 안 실립니다.**
+   시끄럽긴 하나(ERROR 한 줄) «멈추지 않습니다» — 그리고 그 줄은 「인리치와 가상 조인 파일에서
+   합성 실패」라고만 말해, 운영자는 «무엇이 안 도는지»를 모릅니다.
+🔴 4단계의 이름 목록에 `synthesized_join_chain_rules` 의 «거처»가 들어가야 합니다 —
+   지우면 되는 것이 아니라 «인리치 쪽과 갈라 놓아야» 하는 자리입니다.
+
+### ⚰️ ④ 그리고 그 함수의 주석이 오늘 거짓입니다
+
+```
+config.py:870-871  「A read-time rule writes nothing … and this box's two production rules
+                    are read-time today. They must come out of here byte-identically absent.」
+446 이 그 둘을 «은퇴»시켰고, 애초에 「this box」 문장입니다(상설: 박스 수는 운영 주장이 아니다)
+```
+
+### 확신도 · 못 잰 것
+
+```
+실행  ①②③④ 전부 HEAD blob 실측
+🔴 못 잼  · 레거시 파일에 «materialize: true» 선언이 «몇 개»인지 — gitignore 라 못 셉니다.
+          ②는 「그 칸이 있고 그 경로가 돈다」는 «구조»의 주장이지 개수 주장이 아닙니다
+        · `config_resolve_report.py:275` 도 같은 합성기를 부릅니다 — 그쪽 감싸기는 «안 열었습니다»
+```
+
+> 🔴 「판정 대기」 **3** — ㉠ 446 의 거절 주어를 「파일」이 아니라 「`materialize: false` 선언」으로
+> ㉡ 합성기(`synthesized_join_chain_rules`)의 거처 — 4단계 목록에 «이름으로»
+> ㉢ (이월) 447 ① 되돌리기 (Q-29 ①)
