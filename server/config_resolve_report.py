@@ -59,8 +59,8 @@ import chain_bindings
 from chain import builtins
 from chain import ingestion_worker as worker
 import mapper_sdk
-import virtual_join.config as vjc
-from virtual_join.refusal import virtual_join_detail             # noqa: F401
+from chain import legacy_join_declaration as vjc
+from chain.join_refusal import virtual_join_detail             # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -582,6 +582,16 @@ _VJ_CODE_TO_REASON = {
     "no_unique_index": REASON_SCOPE_UNRESOLVED,
     "fanout_declared": REASON_MAPPING_UNAVAILABLE,
     "shape": REASON_MAPPING_UNAVAILABLE,
+    # ⚠️ [S-283, 판정 446] `read_time_retired` IS DELIBERATELY NOT LISTED, and that is a
+    # question rather than an oversight. It falls to the default below, so the screen calls
+    # a RETIREMENT 「매핑을 못 찾았습니다」 — which reads as 「무언가 빠졌다」 when the truth is
+    # 「이 능력이 없어졌다」. The right answer is probably a fifth reason.
+    #
+    # 🔴 WHY IT IS NOT ADDED HERE. `REASONS` is a CLOSED vocabulary whose 정본 is the
+    # contract vector (`contracts/config_resolve_report/vectors.json`) and which the client
+    # reads; a fifth value is a cross-lane change, not a line in this dict. The refusal's
+    # own SENTENCE is already correct and names the next action, so an operator who reads
+    # the row is not misled — only the machine-readable bucket is approximate.
 }
 
 # 🪦 [S-211 ①, 판정 355] `_VJ_CODE_LEAD` 와 `virtual_join_detail` 의 «본체»가

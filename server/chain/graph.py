@@ -259,7 +259,7 @@ def _vjoin_edges(db, rules):
     What it must never do is draw an arrow for a declaration the product refused, and it
     cannot: every refusal happens in the loader, above this.
     """
-    import virtual_join.config as vjc
+    from chain import legacy_join_declaration as vjc
 
     edges = []
     for rule in rules:
@@ -342,7 +342,7 @@ def chain_graph(db):
     """The four declarations on one picture. Reads only; decides nothing."""
     from chain import ingestion_worker as worker
     import enrichment.config
-    import virtual_join.config as vjc
+    from chain import legacy_join_declaration as vjc
     from database import crud
 
     catalogue = crud.TABLE_CONFIG or {}

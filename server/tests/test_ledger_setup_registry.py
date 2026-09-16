@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import pytest
 import notation_norm
-import virtual_join.config as virtual_join_config_module
+from chain import legacy_join_declaration as virtual_join_config_module
 
 from ledger import setup_bundle as setup_bundle_module
 from ledger import setup_registry as setup_registry_module

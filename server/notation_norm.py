@@ -10,7 +10,7 @@ to backfill.
 
 Consumers apply the SAME fold to BOTH sides of the comparison, in SQL, at query
 time. Today the consumer is virtual-join key resolution
-(`virtual_join_executor`); the fold expression itself is consumer-agnostic.
+(`chain.legacy_materialized_join`); the fold expression itself is consumer-agnostic.
 
 [Why the stored derived column was withdrawn - user ruling 2026-08-04]
 The first shipped shape (92b8d6f) put the folded value in a physical `<col>_norm`
@@ -117,10 +117,10 @@ flip: `wafer_map_metadata` rows are registered under RAW identities, so existing
 
 [PERFORMANCE - stated, not buried]
 A folded predicate cannot use a plain b-tree index on the column; it needs a
-FUNCTIONAL index on the fold expression. That is why `virtual_join_config`'s
+FUNCTIONAL index on the fold expression. That is why `chain.join_key_index`'s
 approval gate moves with the fold: a plain UNIQUE index does not even establish
 the uniqueness the gate is asking about, because two rows that are distinct raw
-('CL-1' and 'CL_1') fold to one value. See `virtual_join_config` for the DDL and
+('CL-1' and 'CL_1') fold to one value. See `chain.join_key_index` for the DDL and
 the measured cost.
 """
 import json
@@ -212,7 +212,7 @@ _check_pattern_shape()
 _SEPARATOR_RUN_RE = re.compile(SEPARATOR_PATTERN)
 _CASE_TABLE = str.maketrans(CASE_SOURCE_ALPHABET, CASE_TARGET_ALPHABET)
 
-# --- Rejection codes (mirrors virtual_join_config's {scope,subject,detail,code})
+# --- Rejection codes (mirrors chain.legacy_join_declaration's {scope,subject,detail,code})
 
 CODE_SHAPE = "shape"
 CODE_ZERO_PAD_UNIMPLEMENTED = "zero_pad_unimplemented"
@@ -224,7 +224,7 @@ SCOPE_FILE = "file"
 SCOPE_TABLE = "table"
 SCOPE_COLUMN = "column"
 
-# TTL cache, same discipline as `virtual_join_executor.RULES_CACHE_TTL`: the
+# TTL cache, same discipline as `chain.legacy_materialized_join.RULES_CACHE_TTL`: the
 # explicit invalidation (`reset_cache`) is wired into the web server's reload
 # hook, and the TTL is what covers the worker processes that never reach it.
 RULES_CACHE_TTL = 5.0
@@ -291,7 +291,7 @@ def fold_sql_text(inner_sql: str, rules: dict) -> str:
 
     🔴 **THE ONLY PLACE THE POSTGRES FOLD IS SPELLED.** The query-time expression
     (`fold_notation_sql`) and the functional-index DDL
-    (`virtual_join_config.required_index_ddl`) both come out of here, and they
+    (`chain.join_key_index.required_index_ddl`) both come out of here, and they
     HAVE to: PostgreSQL will only use a functional index when the query expression
     matches the index expression, so two spellings would not merely disagree in
     theory - they would silently produce a sequential scan on a 10-million-row
@@ -401,8 +401,8 @@ def fold_notation_sql(text_expr, rules: dict):
 # `coalesce(fold(col), '')`, and after 2026-09-15 it is `coalesce(fold(col::text), '')`
 # when the column is not text. Those three pieces were spelled in FOUR places:
 # `chain.join_key_index.index_key_expression` (the DDL and every probe built on it;
-# S-283 moved it out of `virtual_join`, which is being removed),
-# `virtual_join.executor.join_onclause` (the read-time ON clause), `chain.join_into._folded`
+# S-283 moved it out of `virtual_join` before that package was deleted),
+# `chain.legacy_materialized_join.join_onclause` (the write join's ON clause), `chain.join_into._folded`
 # (the write-time join), and each of them decided the type question on its own - which is
 # how a `number` key answered an operator with 「invalid input syntax for type double
 # precision: ""」 at one seat while another seat had already learned to cast.
@@ -424,7 +424,7 @@ def _install_text_cast_construct():
     """`x::text` on PostgreSQL, `CAST(x AS TEXT)` everywhere else.
 
     🔴 THE SPELLING MATTERS BECAUSE THE INDEX COMPARATOR READS IT.
-    `virtual_join.config.normalize_index_expression` strips `::text` as noise PostgreSQL
+    `chain.join_key_index.normalize_index_expression` strips `::text` as noise PostgreSQL
     adds when it renders an index definition - so a required expression written `::text`
     normalises to exactly what an index without the cast normalises to, and an index built
     either way is still recognised. `CAST(... AS TEXT)` is NOT stripped there, so rendering

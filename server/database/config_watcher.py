@@ -153,7 +153,7 @@ class ConfigChangeHandler(FileSystemEventHandler):
             # own scope - 「Semantic complaints must never keep a production server
             # down」 - so a bad name must not abort a reload that also carries a schema
             # edit. The declaration falls back to the identity and says so.
-            _report_unsearchable_declarations(new_config, self.engine)
+            _report_unsearchable_declarations(new_config)
 
             # 2. models.DYNAMIC_TABLES 동적 모델 갱신 및 핫스왑
             models.init_dynamic_models(new_config)
@@ -191,53 +191,38 @@ def start_config_watcher(engine=None):
     return observer
 
 
-def _report_unsearchable_declarations(config: dict, engine=None):
+def _report_unsearchable_declarations(config: dict):
     """Name every `search_columns` entry that nothing can search. Never raises.
 
-    🔴 THE VERDICT COMES FROM `crud.resolve_search_columns`, the same function the search
-    path calls, because two spellings of "is this column searchable" is how a reload comes
-    to bless a name the search then ignores. Only the set of KNOWN columns differs, and
-    that difference is the reason the decision was factored out rather than copied.
+    🔴 THE VERDICT COMES FROM `crud.resolve_search_columns`, the same function the
+    search path calls, because two spellings of "is this column searchable" is how a reload
+    comes to bless a name the search then ignores. Only the set of KNOWN columns differs,
+    and that difference is the reason the decision was factored out rather than copied.
 
-    ⚠️ WITHOUT AN ENGINE THE VIRTUAL HALF CANNOT BE SEEN, so nothing is reported rather
-    than reporting absences that are really just invisibility - `known_columns=None` is
-    how the resolver is told 「do not judge」.
+    ⚰️ IT USED TO TAKE AN `engine`, and open a session, to ask the read-time join which
+    columns it exposed - a name could be searchable without being stored. Read-time joins
+    are gone (S-283), so a searchable column is a DECLARED column and the known set is the
+    declaration itself. Nothing here needs a connection any more, which also retires the
+    「without an engine the virtual half is invisible, so do not judge」 arm: there is no
+    invisible half left, and every declared name can now be judged on every reload.
     """
     from database import crud
 
-    session = None
     try:
-        if engine is not None:
-            from sqlalchemy.orm import Session
-
-            session = Session(bind=engine)
         for table_name, table_info in (config or {}).items():
             if not isinstance(table_info, dict):
                 continue
             if not table_info.get(crud.SEARCH_COLUMNS_KEY):
                 continue
-            known = None
-            if session is not None:
-                try:
-                    from virtual_join import executor
-
-                    known = (set(table_info.get("column_types") or ())
-                             | executor.exposed_columns(session, table_name))
-                except Exception as exc:                             # noqa: BLE001
-                    logger.warning(
-                        "[Config] '%s': could not enumerate virtual-join columns (%s), so "
-                        "its search_columns were not judged.", table_name, exc)
-                    known = None
-            used, unknown = crud.resolve_search_columns(table_name, known)
+            used, unknown = crud.resolve_search_columns(
+                table_name, set(table_info.get("column_types") or ()))
             if unknown:
                 logger.error(
                     "[Config] '%s' declares search_columns that nothing can search: %s. "
-                    "They are in neither column_types nor a virtual join, so `?q=` will "
-                    "use %s instead. Fix the names or remove them.",
+                    "They are not in column_types, so `?q=` will use %s instead. "
+                    "Fix the names or remove them.",
                     table_name, sorted(unknown), list(used))
     except Exception as exc:                                         # noqa: BLE001
         # A reload that dies here would trade a typo for an outage.
         logger.warning("[Config] search_columns check skipped: %s", exc)
-    finally:
-        if session is not None:
-            session.close()
+

@@ -334,12 +334,19 @@ def _seed_asymmetric(db):
 
 
 def _rule(folded_expected):
-    import virtual_join.config as vjc
+    from chain import legacy_join_declaration as vjc
     rules = vjc.validate_virtual_join_rules({
         "notnorm_join": {
             "left_table": "notnorm_test_log", "right_table": "notnorm_test_ref",
             "join_key": [{"left": "core_lot", "right": "core_lot"}],
             "expose": ["wafer_id"],
+            # ⚰️ [S-283] `materialize: true` IS PART OF THE FIXTURE NOW. The legacy file
+            # refuses `materialize: false` by name (판정 446) because that declared a
+            # READ-TIME join and the read-time engine is gone. The fold this module
+            # measures lives in `execute_rule` / `join_onclause`, which are the WRITE
+            # half and are untouched - so the fixture moves to the surviving half
+            # rather than the assertions moving to the retirement.
+            "materialize": True, "max_rewrite_rows": 100000,
         }}, known_tables=TABLES, rejections=[])
     assert len(rules) == 1
     assert rules[0]["folded"] is folded_expected, (
@@ -361,7 +368,7 @@ def test_both_sides_fold_when_only_the_dirty_side_is_declared(norm_env):
     """
     db = norm_env
     _seed_asymmetric(db)
-    from virtual_join import executor as vje
+    from chain import legacy_materialized_join as vje
 
     rule = _rule(True)
     left = models.DYNAMIC_TABLES["notnorm_test_log"]
@@ -391,7 +398,7 @@ def test_without_the_declaration_the_dirty_rows_do_not_match(norm_env, tmp_path,
     db = norm_env
     _seed_asymmetric(db)
     _write_decl(tmp_path, monkeypatch, {"columns": {}})
-    from virtual_join import executor as vje
+    from chain import legacy_materialized_join as vje
 
     rule = _rule(False)
     left = models.DYNAMIC_TABLES["notnorm_test_log"]
@@ -412,16 +419,19 @@ def test_there_is_no_call_shape_that_folds_one_side(norm_env):
     while every behavioural test still passed.
     """
     import inspect
-    from virtual_join import executor as vje
+    from chain import legacy_materialized_join as vje
 
     params = list(inspect.signature(vje.join_onclause).parameters)
     assert params == ["left_model", "right_model", "rule"], (
         f"join_onclause grew parameters {params}. If one of them can select which side "
         f"folds, the silent-match-drop defect is back.")
-    # And both consumers go through it, so they cannot disagree about the row set.
+    # ⚰️ IT USED TO BE THREE, because `resolved_expression` built an ON clause too -
+    # the read-time half, retired in S-283. The property is unchanged and the number
+    # is not: every consumer that still exists goes through this one builder, so they
+    # cannot disagree about the row set.
     src = inspect.getsource(vje)
-    assert src.count("join_onclause(") >= 3, (
-        "execute_rule and resolved_expression must BOTH build their ON clause here")
+    assert src.count("join_onclause(") >= 2, (
+        "execute_rule must build its ON clause here, and so must its definition")
 
 
 # ---------------------------------------------------------------------------
@@ -430,7 +440,7 @@ def test_there_is_no_call_shape_that_folds_one_side(norm_env):
 
 def test_the_required_ddl_becomes_a_functional_index(norm_env):
     """A folded key needs a functional UNIQUE index, and the DDL says the fold."""
-    import virtual_join.config as vjc
+    from chain import legacy_join_declaration as vjc
 
     fold = notation_norm.join_pair_rules(
         "notnorm_test_log", "core_lot", "notnorm_test_ref", "core_lot")
@@ -460,8 +470,8 @@ def test_the_ddl_and_the_query_expression_come_from_one_spelling():
     `coalesce` added to the index but not to the join. Both halves are therefore taken from
     the functions that actually produce them.
     """
-    import virtual_join.config as vjc
-    from virtual_join import executor as vje
+    from chain import legacy_join_declaration as vjc
+    from chain import legacy_materialized_join as vje
     from sqlalchemy import Column, MetaData, String, Table
     from sqlalchemy.dialects import postgresql
 
@@ -492,7 +502,7 @@ def test_normalize_index_expression_folds_what_postgres_adds():
     `idx_suggest_graph_nodes_identity_key` on the live database (measured 2026-08-04) -
     so the cast-and-paren noise this has to absorb is measured, not imagined.
     """
-    import virtual_join.config as vjc
+    from chain import legacy_join_declaration as vjc
     assert vjc.normalize_index_expression("lower((identity_key)::text)") == \
         vjc.normalize_index_expression('lower("identity_key")')
     assert vjc.normalize_index_expression("(core_lot)") == "core_lot"
@@ -504,7 +514,7 @@ def test_normalize_index_expression_folds_what_postgres_adds():
 
 def test_the_gate_says_nothing_on_a_dialect_it_cannot_read(norm_env):
     """Not PostgreSQL -> None -> refused. Safe-direction ignorance, unchanged."""
-    import virtual_join.config as vjc
+    from chain import legacy_join_declaration as vjc
     fold = notation_norm.join_pair_rules(
         "notnorm_test_log", "core_lot", "notnorm_test_ref", "core_lot")
     assert vjc.unique_index_covering(norm_env, "notnorm_test_ref", ["core_lot"],

@@ -1066,22 +1066,12 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
             "updated_at": u_at_str
         })
 
-    # [Virtual join] Attach the declared `expose` columns of every VERIFIED join whose
-    # left table is this one. Here and only here: this is the single serialization point
-    # for row payloads (grid page, single-row read, batch-update response, WS items), so
-    # a joined column cannot be present on one of those and absent on another.
-    #
-    # Cost is one LEFT JOIN per rule per CALL, not per row - the page's row_ids are
-    # already in hand and the right side rides the UNIQUE index that approved the rule.
-    #
-    # A failure here must not take the grid down. The safe direction is the ABSENT
-    # column: an unattached column is a visible absence, a wrongly attached one is a
-    # silent wrong answer.
-    try:
-        from virtual_join import executor
-        executor.attach(db, table_name, data_list)
-    except Exception as e:
-        logger.error(f"[VirtualJoin] attach failed on '{table_name}', columns omitted: {e}")
+    # ⚰️ [S-283] THE VERIFIED JOIN'S `expose` COLUMNS WERE ATTACHED HERE, and only here,
+    # because this is the single serialization point for row payloads (grid page, single-row
+    # read, batch-update response, WS items) - so a joined column could not be present on one
+    # of those and absent on another. Read-time joins are retired (ruling 461): a payload now
+    # carries the table's stored columns and nothing is computed into it on the way out.
+
 
     return data_list
 
@@ -1649,44 +1639,16 @@ from column_filter import get_column_filter_condition
 # disagreed about what "search this column" means. One implementation, two callers.
 # ---------------------------------------------------------------------------
 
-class VirtualColumnBinder:
-    """Binds virtual-join columns into ONE query, adding each column's LEFT JOIN once.
-
-    A route holds one of these for its lifetime. `?filters=`, `?q=` and (in the export)
-    the SELECT list can all name the same virtual column; without the memo each mention
-    would add its own join. Duplicate joins are still CORRECT here - the right side is
-    unique on the join key, so they cannot fan out - but they are paid for.
-    """
-
-    def __init__(self, db, table_model, table_name):
-        self.db = db
-        self.table_model = table_model
-        self.table_name = table_name
-        self.columns = set()
-        self._cache = {}
-        self._vjx = None
-        try:
-            from virtual_join import executor
-            self._vjx = executor
-            # collide AND virtual_only - see `exposed_columns` for why this is wider
-            # than what `/schema` announces.
-            self.columns = executor.exposed_columns(db, table_name)
-        except Exception as e:
-            # Same safe direction as the read path: unreadable declarations mean NO join
-            # is in effect, so no column is virtual and every caller falls through to the
-            # ordinary stored-column path.
-            logger.error(f"[VirtualJoin] search columns unavailable on '{table_name}': {e}")
-
-    def __contains__(self, col):
-        return col in self.columns
-
-    def expr(self, query, col):
-        """`(query_with_join, expr)`. `expr` is None when no expression could be built."""
-        if col not in self._cache:
-            query, e, _label = self._vjx.resolved_expression(
-                self.db, self.table_model, self.table_name, col, query)
-            self._cache[col] = e
-        return query, self._cache[col]
+# ⚰️ [S-283] `VirtualColumnBinder` LIVED HERE. It bound a virtual-join column into ONE
+# query, adding each column's LEFT JOIN once, and a route held one for its lifetime because
+# `?filters=`, `?q=`, `?order_by=` and the export's SELECT list could all name the same
+# virtual column. Read-time joins are retired (ruling 461): every name a route can be handed
+# is now a stored column, so there is no expression to build and no join to memoise, and the
+# five functions that took a `binder` take one fewer argument.
+#
+# 🔴 The memo is not what is gone - the JOIN is. If a read-time join is ever declared
+# again, it needs this class back, and for the reason written above: without the memo each
+# mention of the same column adds its own join.
 
 
 #: `?order_by=` 이름 중 표의 컬럼이 «아닌» 셋. 화면이 오늘 보내는 철자이고 각자 자기
@@ -1824,7 +1786,7 @@ def _named_sort(table_model, table_name, order_by, order_desc):
     return None
 
 
-def resolve_sort(query, table_model, table_name, order_by, order_desc, binder):
+def resolve_sort(query, table_model, table_name, order_by, order_desc):
     """`?order_by=` 이름 -> `(query, ORDER BY 목록)`. 모르는 이름은 «이름 대어» 거절한다.
 
     🔴 조용한 기본값이 «없다**. 종전에는 아는 이름 둘 «밖»의 모든 값이 `row_id.asc()` 로
@@ -1833,8 +1795,8 @@ def resolve_sort(query, table_model, table_name, order_by, order_desc, binder):
        맨 위에 서고, 기호는 전수 정렬과 «같다**.
 
     선언 «축**을 만들지 않는다 — 표가 선언한 컬럼이면 정렬된다(`sortable` 같은 칸은 없다).
-    가상 조인 컬럼은 `VirtualColumnBinder` 를 지난다: 필터·검색이 이미 그 자리를 쓰고,
-    「화면에 보이는 컬럼」과 「서버가 정렬할 수 있는 컬럼」이 갈리면 아무 에러도 안 난다.
+    읽는 시점에 계산되는 컬럼은 «없다»(S-283). 그래서 정렬할 수 있는 이름은 표가 선언한
+    컬럼과 화면이 쓰는 이름 셋이 «전부»다.
     """
     named = _named_sort(table_model, table_name, order_by, order_desc)
     if named is not None:
@@ -1843,30 +1805,19 @@ def resolve_sort(query, table_model, table_name, order_by, order_desc, binder):
     stored = table_model.__table__.columns
     if order_by in stored.keys():
         expr = stored[order_by]
-    elif order_by in binder:
-        query, expr = binder.expr(query, order_by)
-        if expr is None:
-            # 가상인 줄은 아는데 식을 «못 지었다**. 물러나면 row_id 순서를 정렬이라
-            # 부르게 되므로, `?filters=` 가 같은 자리에서 하는 것과 같이 거절한다.
-            raise HTTPException(
-                status_code=422,
-                detail=("'%s' is a virtual-join column on '%s' but its expression could "
-                        "not be built, so it cannot be sorted. Check virtual_join_rules.json "
-                        "for that column's rule." % (order_by, table_name)))
     else:
         raise HTTPException(
             status_code=422,
-            detail=("cannot sort by '%s': '%s' declares no such column and no verified "
-                    "join exposes it. Sortable names are the table's declared columns "
-                    "(table_config.json), the columns a virtual join exposes "
-                    "(virtual_join_rules.json), and the screen's own 'id'/'updated_at'/"
-                    "'row_id'." % (order_by, table_name)))
+            detail=("cannot sort by '%s': '%s' declares no such column. Sortable "
+                    "names are the table's declared columns (table_config.json) and "
+                    "the screen's own 'id'/'updated_at'/'row_id'."
+                    % (order_by, table_name)))
 
     return query, _order_by_clause(
         expr, total_order_keys(table_model, table_name), order_desc)
 
 
-def apply_column_filters(query, table_model, table_name, filters, binder):
+def apply_column_filters(query, table_model, table_name, filters):
     """`?filters=` (AG-Grid filter model) -> query. Shared by the grid and the export."""
     if not filters:
         return query
@@ -1879,25 +1830,7 @@ def apply_column_filters(query, table_model, table_name, filters, binder):
         filter_dict = json.loads(filters)
         for col_name, f_info in filter_dict.items():
             failing_item = col_name
-            override = None
-            if col_name in binder:
-                # The filter must run against the value the user SEES. For a virtual_only
-                # column there is no stored column at all; for a collide column the stored
-                # one is only half the answer (the join fills it where it is blank).
-                query, override = binder.expr(query, col_name)
-                if override is None:
-                    # We know this column is virtual and we FAILED to build its
-                    # expression. Falling through would drop the condition and answer with
-                    # MORE rows than were asked for, while the response still implies the
-                    # column was filtered. Refuse, for the same reason the `?cols=` path
-                    # refuses.
-                    raise HTTPException(
-                        status_code=400,
-                        detail=(f"'{table_name}'의 가상 조인 컬럼 '{col_name}'에 대한 "
-                                f"필터를 만들 수 없습니다(조인 대상 테이블이 로드되지 "
-                                f"않았습니다). 필터 없이 전체를 돌려주지 않습니다."))
-            cond = get_column_filter_condition(table_model, col_name, f_info,
-                                               col_expr_override=override)
+            cond = get_column_filter_condition(table_model, col_name, f_info)
             if cond is not None:
                 query = query.filter(cond)
     except HTTPException:
@@ -1911,9 +1844,9 @@ def apply_column_filters(query, table_model, table_name, filters, binder):
         # whose shape the parser could not read came back with 1,006,147 rows instead of
         # 400, HTTP 200, and nothing in the answer saying which half was wrong.
         #
-        # ⚠️ IT IS THE SAME REFUSAL THE BLOCK ABOVE ALREADY MAKES for a virtual-join column
-        # it cannot express -- one rule, both reasons, rather than a 400 for the case
-        # somebody thought of and a silent 200 for the rest.
+        # ⚠️ ONE RULE, BOTH REASONS. This used to be paired with a 400 one block above for a
+        # virtual-join column whose expression could not be built; that block is gone with
+        # the read-time join (S-283), and this refusal - the general one - is what remains.
         where = (f"'{failing_item}' 항목" if failing_item else "filters 파라미터")
         raise HTTPException(
             status_code=400,
@@ -1941,8 +1874,7 @@ def apply_enrichment_queue_predicate(query, table_model, table_name, rule_name, 
 
     A 400 rather than a silent fallback: answering an unfiltered page to a caller
     who asked for the queue would return MORE rows than were asked for while the
-    response implied the queue - the same refusal `?cols=` and the virtual-join
-    filter path make.
+    response implied the queue - the same refusal `?cols=` makes.
     """
     if not rule_name:
         return query
@@ -1968,7 +1900,7 @@ def apply_enrichment_queue_predicate(query, table_model, table_name, rule_name, 
     return query.filter(cond)
 
 
-def apply_search_filter(query, table_model, table_name, q, cols, binder,
+def apply_search_filter(query, table_model, table_name, q, cols,
                         scope_report=None):
     """`?q=` (+ optional `?cols=` scope) -> query. Shared by the grid and the export.
 
@@ -1995,7 +1927,7 @@ def apply_search_filter(query, table_model, table_name, q, cols, binder,
         # rule lives in `crud.resolve_search_columns` because the config load has to reach
         # the same verdict from a different set of known columns.
         col_list, unknown_declared = crud.resolve_search_columns(
-            table_name, set(col_types) | set(binder.columns))
+            table_name, set(col_types))
         col_list = list(col_list)
         if unknown_declared:
             # Named, not dropped: an entry nothing matches is a scope the operator
@@ -2003,20 +1935,14 @@ def apply_search_filter(query, table_model, table_name, q, cols, binder,
             # searched something, and a 500 here would take the grid down over a typo.
             logger.warning(
                 f"[Search] Table '{table_name}' declares search_columns that nothing can "
-                f"search: {sorted(unknown_declared)}. They are not in column_types and "
-                f"are not virtual-join columns; the search used {col_list}."
+                f"search: {sorted(unknown_declared)}. They are not in column_types; the "
+                f"search used {col_list}."
             )
 
     conditions = []
     unsearchable = []
     for col in col_list:
-        if col in binder:
-            query, expr = binder.expr(query, col)
-            if expr is None:
-                unsearchable.append(col)
-            else:
-                conditions.append(cast(expr, String).ilike(f"%{safe_q}%", escape="\\"))
-        elif col in ["created_at", "updated_at"]:
+        if col in ["created_at", "updated_at"]:
             target_col = table_model.created_at if col == "created_at" else table_model.updated_at
             conditions.append(cast(target_col, String).ilike(f"%{safe_q}%", escape="\\"))
         elif col in ["row_id", "id"]:
@@ -2139,12 +2065,8 @@ def narrowed_table_query(db, table_name, table_model, *, q=None, cols=None,
         )
         query = query.filter(table_model.row_id.in_(subquery))
 
-    # Virtual-join binder for this request. Shared with the CSV export - see the block
-    # above `get_table_data` for why these two routes must not hold separate copies.
-    binder = VirtualColumnBinder(db, table_model, table_name)
-
     # [NEW] AG-Grid 컬럼 필터링
-    query = apply_column_filters(query, table_model, table_name, filters, binder)
+    query = apply_column_filters(query, table_model, table_name, filters)
 
     # [2026-08-05] 이름 붙은 큐 술어 (일반 필터 DSL이 표현할 수 없는 컬럼 간 OR)
     query = apply_enrichment_queue_predicate(query, table_model, table_name,
@@ -2154,7 +2076,7 @@ def narrowed_table_query(db, table_name, table_model, *, q=None, cols=None,
     # ⚠️ AN OUT-PARAM, NOT A FOURTH RETURN VALUE. This function's own docstring
     # says why the 3-tuple is load-bearing, and two call sites unpack it; the codebase
     # already answers 「extra detail for the caller who asks」 with `drop_report`.
-    query = apply_search_filter(query, table_model, table_name, q, cols, binder,
+    query = apply_search_filter(query, table_model, table_name, q, cols,
                                 scope_report=scope_report)
 
     # [Fix] transaction_id 필터링 시에도 캐시 정합성을 보장하기 위해 키에 포함
@@ -2171,7 +2093,7 @@ def narrowed_table_query(db, table_name, table_model, *, q=None, cols=None,
         cache_key_parts.append(f"eq:{enrichment_queue}:{enrichment_queue_scope or ''}")
     # 🔴 키 철자는 `build_count_cache_key` 하나뿐이다. 여기서 `"|".join(...)`을 다시
     #    쓰면 무효화 쪽 판정과 갈라져 여덟 개 호출 지점이 전부 죽는다(그 사고의 재발).
-    return query, binder, build_count_cache_key(table_name, *cache_key_parts)
+    return query, build_count_cache_key(table_name, *cache_key_parts)
 
 
 def cached_table_count(query, cache_key):
@@ -2257,7 +2179,7 @@ def get_table_data(
         raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
         
     search_scope: dict = {}
-    query, _binder, cache_key = narrowed_table_query(
+    query, cache_key = narrowed_table_query(
         db, table_name, table_model, q=q, cols=cols, transaction_id=transaction_id,
         filters=filters, enrichment_queue=enrichment_queue,
         enrichment_queue_scope=enrichment_queue_scope,
@@ -2266,7 +2188,7 @@ def get_table_data(
     # ── [Step 0] 정렬 이름을 «먼저** 해석한다 ──
     # 세는 것보다 앞이다: 모르는 이름이면 34,939행을 세고 나서 거절할 이유가 없다.
     query, final_sort = resolve_sort(
-        query, table_model, table_name, order_by, order_desc, _binder)
+        query, table_model, table_name, order_by, order_desc)
 
     # ── [Step 1] 타겟 위치(Offset) 자동 계산 (Unified Jump) ──
     actual_target_offset = -1
@@ -2513,7 +2435,7 @@ def get_table_data_count(
     if not table_model:
         raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
 
-    query, _binder, cache_key = narrowed_table_query(
+    query, cache_key = narrowed_table_query(
         db, table_name, table_model, q=q, cols=cols, transaction_id=transaction_id,
         filters=filters, enrichment_queue=enrichment_queue,
         enrichment_queue_scope=enrichment_queue_scope)
@@ -2738,15 +2660,11 @@ def export_table_csv(
         )
         query = query.filter(table_model.row_id.in_(subquery))
 
-    # Virtual-join binder for this request. THE SAME implementation the grid route uses -
-    # these two blocks were verbatim copies and drifted the moment one was fixed.
-    binder = VirtualColumnBinder(db, table_model, table_name)
-
     # [NEW] AG-Grid 컬럼 필터링
-    query = apply_column_filters(query, table_model, table_name, filters, binder)
+    query = apply_column_filters(query, table_model, table_name, filters)
 
     # [Filter] get_table_data와 검색 로직 동기화 - 이제 주석이 아니라 같은 함수가 보장한다
-    query = apply_search_filter(query, table_model, table_name, q, cols, binder)
+    query = apply_search_filter(query, table_model, table_name, q, cols)
 
     # [Sort] 정렬 조건 동기화
     from sqlalchemy.sql import func
@@ -2766,38 +2684,16 @@ def export_table_csv(
     col_types = cfg.get("column_types", {})
     business_cols = [c for c in sorted(col_types.keys()) if c not in ["created_at", "updated_at"]]
 
-    # [Virtual join] The extract must carry what the screen carries. There are TWO shapes
-    # and only handling one of them would have shipped nothing for the live declaration:
+    # ⚰️ [S-283] THE EXTRACT USED TO CARRY THE JOIN'S COLUMNS, in two shapes that had to
+    # be handled together: a `collide` name was already a business column and only its
+    # EXPRESSION changed, while a `virtual_only` name needed a header slot of its own. Both
+    # are gone with the read-time join (ruling 461), so the header is the stored columns and
+    # the system pair, and the SELECT list is the stored columns themselves.
     #
-    #   collide      - the name is ALREADY a stored column and already in `business_cols`.
-    #                  The header does not change; what changes is WHICH EXPRESSION fills
-    #                  it. Selecting the raw stored column here is precisely the
-    #                  "empty cell in the CSV where the screen said 미상" lie, and it is
-    #                  the ONLY shape the production declaration has today
-    #                  (`bonding_log.wafer_id`), so an append-only fix would have been a
-    #                  no-op in production while looking complete.
-    #   virtual_only - the name is not stored at all, so it is a NEW column and needs a
-    #                  header slot.
-    #
-    # `announced_columns` is the virtual_only list and is the SAME source `/schema` gives
-    # the grid, in the same order, so the extract's virtual columns appear in the order
-    # the operator saw them. They go after the business columns and BEFORE the system
-    # pair, which keeps "created_at/updated_at last" - an invariant the row writer below
-    # depends on positionally (`row[-2]`, `row[-1]`).
-    virtual_only_cols = []
-    try:
-        from virtual_join import executor
-        virtual_only_cols = [c["name"] for c in
-                             executor.announced_columns(db, table_name)
-                             if c["name"] not in business_cols
-                             and c["name"] not in ("created_at", "updated_at")]
-    except Exception as e:
-        # Safe direction, same as every other virtual-join call site: the ABSENT column.
-        # A missing column is a visible absence; a wrong one is a silent wrong answer.
-        logger.error(f"[VirtualJoin] export could not announce columns on "
-                     f"'{table_name}', extract omits them: {e}")
+    # 🔴 "created_at/updated_at last" is still an invariant the row writer below depends
+    # on positionally (`row[-2]`, `row[-1]`).
 
-    header = business_cols + virtual_only_cols + ["created_at", "updated_at"]
+    header = business_cols + ["created_at", "updated_at"]
 
     # [정규화 스키마] native 컬럼을 직접 SELECT하여 JSONB 파싱 부하 완전 제거
     #
@@ -2809,31 +2705,7 @@ def export_table_csv(
     # the one statement costs zero extra queries and keeps memory constant.
     select_entities = []
     for col in business_cols:
-        entity = None
-        if col in binder:
-            query, expr = binder.expr(query, col)
-            if expr is not None:
-                entity = expr.label(col)
-        select_entities.append(entity if entity is not None
-                               else getattr(table_model, col).label(col))
-
-    for col in virtual_only_cols:
-        query, expr = binder.expr(query, col)
-        if expr is None:
-            # 🔴 THE PREMISE OF THIS BRANCH CHANGED ON 2026-09-03, so it is written out
-            # rather than left saying something that is no longer why. It used to read
-            # "cannot happen while both lists come from the same `rules_for`" - and it DID
-            # happen: a name the right model does not carry was announced, had no
-            # expression, and this refusal took the whole export down for one column while
-            # its siblings were fine. `announced_columns` now drops what it cannot answer
-            # (`verified_join_contract.usable_expose`), so the header only holds columns
-            # that resolve. The refusal stays because a header slot with no expression
-            # would shift every column after it, and a misaligned CSV looks complete.
-            raise HTTPException(
-                status_code=500,
-                detail=(f"'{table_name}'의 가상 조인 컬럼 '{col}'을(를) 추출 쿼리에 실을 수 "
-                        f"없습니다. 컬럼이 밀린 CSV를 내보내지 않습니다."))
-        select_entities.append(expr.label(col))
+        select_entities.append(getattr(table_model, col).label(col))
 
     select_entities.append(table_model.created_at)
     select_entities.append(table_model.updated_at)
@@ -3002,65 +2874,20 @@ def get_table_schema(table_name: str, db: Session = Depends(get_db)):
     # 아니라 «없는 컬럼의 타입을 지어내는» 것이었습니다 — 그리고 페이로드가 그 컬럼을
     # 나르는 것을 멈춘 지금, 타입만 남으면 클라가 «영원히 빈» 컬럼의 머리를 세웁니다.
 
-    # [Virtual join] Announce the columns a VERIFIED join ADDS to this table's read
-    # payload. The payload has carried them since `d70a33d`; without this key the grid
-    # never heard of a `virtual_only` column, so an operator who declared an expose got
-    # neither the column nor a reason - the same defect class as a config that takes
-    # effect silently, which is what the F9 surface exists to end.
+    # ⚰️ [S-283] BOTH KEYS BELOW ARE NOW ALWAYS EMPTY, AND THEY STAY IN THE RESPONSE.
+    # They announced the columns a VERIFIED read-time join added to this table (`virtual_only`)
+    # and the columns whose displayed value the server RESOLVED through a join (collide AND
+    # virtual_only, which is why it was never `columns` minus `virtual_columns`). Read-time
+    # joins are retired (ruling 461), so no column is added at read time and none is resolved
+    # through a join: `[]` is the true answer for every table, not a degraded one.
     #
-    # STRICTLY ADDITIVE. `columns`/`column_types` above describe STORED columns and are
-    # untouched, so a client that ignores this key behaves exactly as it did before the
-    # key existed - no new entry in the column list, no change in the push gate's
-    # "unprotected data column" arithmetic, no new paste target.
-    #
-    # `virtual_only` columns only. A `collide` column is a real stored column that a join
-    # also fills; it is already in `columns` and announcing it again would give two
-    # answers to "is this column stored?". A collide-only declaration therefore leaves
-    # this response BYTE-IDENTICAL (test_schema_virtual_columns proves it on res.text).
-    #
-    # 🔴 Read-only is NOT enforced here. `crud.refuse_virtual_join_columns` refuses the
-    # write at the single funnel every write path converges on; `editable: False` only
-    # stops the client OFFERING an edit that would come back 400.
-    #
-    # A failure must not take the schema route down, and the safe direction is the read
-    # path's: announce NOTHING. An unannounced column is a visible absence; a phantom
-    # column is a silent wrong answer (and a write target that does not exist).
+    # 🔴 THE KEYS ARE NOT REMOVED HERE. `client2/src` reads them and belongs to the client
+    # lane; a server that drops a key a client indexes turns a retirement into a blank screen.
+    # Their removal is a joint round with that lane, and until then the shape is stable and
+    # honest - which was the stated reason they were "always present" in the first place.
     virtual_columns = []
-    # [Virtual join] The columns whose displayed value the server RESOLVES THROUGH A JOIN -
-    # collide AND virtual_only. A collide column is a real stored column that a join also
-    # fills, so it is already in `columns` and looks perfectly ordinary; its AG-Grid Blank
-    # filter then matches nothing, because the value the operator sees COALESCEs to a
-    # non-empty label. This key is the only way a client can know that, and it must not be
-    # deduced by differencing `columns` against `virtual_columns` - that arithmetic is
-    # wrong for the collide case by construction.
-    #
-    # 🔴 NOT the write guard. `crud.refuse_virtual_join_columns` refuses the write at the
-    # funnel; this only stops the UI proposing an edit that would come back 400.
     join_resolved_columns = []
-    try:
-        from virtual_join import executor
-        join_resolved_columns = executor.resolved_column_announcements(
-            db, table_name)
-    except Exception as e:
-        # Safe direction, same as every other virtual-join call site: announce NOTHING.
-        # A missing announcement costs the client a greyed cell; a phantom one names a
-        # column that does not resolve.
-        logger.error(f"[VirtualJoin] join_resolved_columns unavailable on '{table_name}': {e}")
 
-    try:
-        announced = executor.announced_columns(db, table_name)
-        # 🔴 A name already in `columns` is never announced again. The executor drops
-        # `collide` names, but `collide` is computed against `column_types` and that is
-        # NOT the whole of `columns`: the system tail above is appended unconditionally
-        # and belongs to no config. A right table declaring `created_at` would therefore
-        # reach `virtual_only` and be announced twice. Only this function knows the final
-        # list, so the de-duplication belongs here - and it only ever REMOVES, so a stored
-        # column keeps its stored identity and its editability.
-        known = set(columns)
-        virtual_columns = [c for c in announced if c["name"] not in known]
-    except Exception as e:
-        logger.error(f"[VirtualJoin] schema announcement failed on '{table_name}', "
-                     f"virtual columns omitted: {e}")
 
     from ledger.setup_bundle import catalog_kind
 
@@ -6002,9 +5829,10 @@ def verify_virtual_join_declarations(db: Session = Depends(get_db)):
     중복이 있으면 PostgreSQL이 그 중복 키 값을 지목하며 인덱스 생성에 실패하므로,
     데이터 정리가 필요하다는 사실도 같은 자리에서 드러난다.
     """
-    import virtual_join.config
+    from chain import legacy_join_declaration
     from database import crud
-    return virtual_join.config.verification_report(db, known_tables=crud.TABLE_CONFIG)
+    return legacy_join_declaration.verification_report(
+        db, known_tables=crud.TABLE_CONFIG)
 
 
 @app.get("/admin/config/notation/preview", dependencies=[Depends(require_admin_token)])

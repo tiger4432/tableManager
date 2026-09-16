@@ -123,8 +123,10 @@ _IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 # two match. A second spelling would not raise - it would read ten million rows and leave
 # every test green.
 #
-# ⚠️ THIS IMPORT IS THE ALIAS STEP 4 DELETES. Until then `virtual_join` keeps working under
-# its old names while the package is taken apart one step at a time.
+# ⚰️ IT USED TO SAY 「THIS IMPORT IS THE ALIAS STEP 4 DELETES」. Step 4 is this commit, and
+# what it deleted was the PACKAGE, not this import: both seats live in `chain` now, so this
+# is an ordinary import between neighbours rather than a bridge holding a dismantled package
+# together. The names are still taken from one definition, which is the part that mattered.
 from chain.join_key_index import (                                  # noqa: F401
     INDEX_PREFIX, _MAX_IDENTIFIER, _folds_list, required_index_name, column_is_text,
     index_key_expression, required_index_ddl, _dialect_of, _INDEX_EXPR_CASTS,
@@ -136,7 +138,10 @@ from chain.join_key_index import (                                  # noqa: F401
 #    이 모듈이 그것을 읽는 것은 «아래로» 가는 방향이라 고리를 만들지 않는다. 종전에는 이
 #    파일이 문장을 지으려고 «보고서»(`config_resolve_report`)를 함수 안에서 import 했고,
 #    보고서는 이 파일을 import 했다 — 함수 안에 둬서 «보이지 않던» 고리다.
-from virtual_join.refusal import CODE_FANOUT_DECLARED, CODE_NO_LEFT_INDEX, CODE_NO_REWRITE_CAP, CODE_NO_UNIQUE_INDEX, CODE_SHAPE, virtual_join_detail
+from chain.join_refusal import (CODE_FANOUT_DECLARED, CODE_NO_LEFT_INDEX,
+                               CODE_NO_REWRITE_CAP, CODE_NO_UNIQUE_INDEX,
+                               CODE_READ_TIME_RETIRED, CODE_SHAPE,
+                               virtual_join_detail)
 
 # 인덱스 이름 규약. PostgreSQL 식별자 상한은 63바이트라 넘치면 해시로 접는다
 # (`value_suggest.suggest_index_name`과 같은 규율·같은 상한).
@@ -317,20 +322,33 @@ def _validate_join(name: str, raw: dict, known_tables: dict, rejections: list = 
     # ⛔ 그래서 상한에 «기본값이 없다»(판정 302). 제품이 숫자를 고르면 그 숫자는 «아무도 안 본
     # 숫자»가 되고, 92 초가 조용히 도는 것을 제품이 «허락»한 것이 된다. `occurred_at_basis` 와
     # 같은 자세다 — 선언 가능한 것은 선언하게 하고, 없으면 이름 대어 거절한다.
+    # ------------------------------------------------------------------ S-283
+    # 🔴 `materialize: false` 는 «읽는 시점»에 조인해서 값을 만들어 내보내던 선언이고,
+    # 그 기제는 은퇴했다(판정 461). 조용히 떨어뜨리지 «않는다» — 조용히 떨어지면 운영자
+    # 화면에서 「선언은 있는데 컬럼이 없다」가 되고, 그것이 「없다」와 같은 모양이다.
+    # 이름을 대어 거부하고, 다음 행동을 같이 적는다.
     materialize = raw.get("materialize", False)
-    if materialize is not False:
-        if materialize is not True:
-            return None, ("'materialize' must be true or false, not "
-                          + json.dumps(materialize, ensure_ascii=False)), CODE_SHAPE, None
-        cap = raw.get("max_rewrite_rows")
-        if not isinstance(cap, int) or isinstance(cap, bool) or cap <= 0:
-            return None, (
-                "'materialize' is on and 'max_rewrite_rows' is not declared. A change to "
-                "ONE referenced row rewrites every target row carrying that join key, and "
-                "this product says what a change costs before making it - so the ceiling "
-                "is yours to write, not the product's to guess. Count it first: "
-                "SELECT max(k) FROM (SELECT count(*) k FROM <left_table> GROUP BY "
-                "<join key>) s"), CODE_NO_REWRITE_CAP, None
+    if materialize is False:
+        return None, (
+            "'materialize' is false, which declared a READ-TIME join: the column was "
+            "computed on the way out and never stored. That mechanism is retired. Declare "
+            "the join in chain_rules.json instead - `derive: {kind: \"join\"}` with `on` "
+            "and `take` - which writes the value into the table, or set 'materialize': "
+            "true here with a 'max_rewrite_rows' ceiling to keep it as a write join."
+        ), CODE_READ_TIME_RETIRED, None
+
+    if materialize is not True:
+        return None, ("'materialize' must be true or false, not "
+                      + json.dumps(materialize, ensure_ascii=False)), CODE_SHAPE, None
+    cap = raw.get("max_rewrite_rows")
+    if not isinstance(cap, int) or isinstance(cap, bool) or cap <= 0:
+        return None, (
+            "'materialize' is on and 'max_rewrite_rows' is not declared. A change to "
+            "ONE referenced row rewrites every target row carrying that join key, and "
+            "this product says what a change costs before making it - so the ceiling "
+            "is yours to write, not the product's to guess. Count it first: "
+            "SELECT max(k) FROM (SELECT count(*) k FROM <left_table> GROUP BY "
+            "<join key>) s"), CODE_NO_REWRITE_CAP, None
 
     left_table = raw.get("left_table")
     right_table = raw.get("right_table")

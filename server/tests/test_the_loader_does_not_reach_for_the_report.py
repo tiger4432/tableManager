@@ -29,9 +29,12 @@ if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
 # 🪦 [S-211 packaging] these live in packages now; the assertions are unchanged.
-LOADER = "virtual_join/config"
+# ⚰️ [S-283] AND THEY MOVED AGAIN with the read-time join's retirement: the
+#    declaration loader and the sentence are `chain` modules now. The ring, and every
+#    assertion about it, is the same - only the spelling of two nodes changed.
+LOADER = "chain/legacy_join_declaration"
 REPORT = "config_resolve_report"
-SENTENCE = "virtual_join/refusal"
+SENTENCE = "chain/join_refusal"
 
 
 def _imports(module_name):
@@ -68,8 +71,8 @@ def test_the_loader_never_names_the_report():
 
 
 def test_both_read_the_sentence_from_the_light_module():
-    assert "virtual_join.refusal" in _imports(LOADER)
-    assert "virtual_join.refusal" in _imports(REPORT)
+    assert "chain.join_refusal" in _imports(LOADER)
+    assert "chain.join_refusal" in _imports(REPORT)
 
 
 def test_the_light_module_imports_nothing_of_ours():
@@ -86,7 +89,7 @@ def test_the_report_still_reads_the_loader_because_that_way_is_correct():
     """⚠️ NOT EVERY EDGE IS A DEFECT. A report reading a loader is the right direction; only
     the reverse was wrong. Asserting this keeps a later 「cycle cleanup」 from cutting the good
     edge and calling the graph tidy."""
-    assert "virtual_join" in _imports(REPORT)
+    assert "chain.legacy_join_declaration" in _imports(REPORT)
 
 
 # ---------------------------------------------------------------------------
@@ -115,7 +118,8 @@ def _deferred_pairs(module_name):
 
 #: The ring as the IMPORT GRAPH names it today - package-qualified where they moved.
 RING = ("chain_bindings", "builtins", "ingestion_worker", "replay",
-        "config_resolve_report", "dt_map_derivation", "config", "executor")
+        "config_resolve_report", "dt_map_derivation",
+        "legacy_join_declaration", "legacy_materialized_join")
 
 
 @pytest.mark.parametrize("module", (REPORT, LOADER))

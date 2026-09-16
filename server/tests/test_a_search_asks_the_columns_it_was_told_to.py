@@ -141,13 +141,18 @@ def test_the_config_reload_names_them_and_uses_the_same_resolver():
 
     body = inspect.getsource(config_watcher._report_unsearchable_declarations)
     assert "crud.resolve_search_columns(" in body
-    assert "exposed_columns(" in body, "the virtual half comes from the search's own source"
+    # ⚰️ [S-283] THE VIRTUAL HALF IS GONE, so this no longer asks for it. The reload
+    # used to open a session and union the read-time join's exposed columns into the
+    # known set; read-time joins are retired (ruling 461), a searchable column is a
+    # DECLARED column, and the reload needs no connection at all.
+    assert "column_types" in body, "the known set no longer comes from the declaration"
+    assert "exposed_columns(" not in body, "the retired half came back"
     # ⚠️ A reload that dies over a typo would trade a semantic complaint for an outage,
     # which `load_table_config_or_raise` states is not this file's contract.
     assert "except Exception as exc:" in body
 
     caller = inspect.getsource(config_watcher)
-    assert "_report_unsearchable_declarations(new_config, self.engine)" in caller
+    assert "_report_unsearchable_declarations(new_config)" in caller
 
 
 def test_the_timing_line_carries_the_arm_count_and_never_the_term():

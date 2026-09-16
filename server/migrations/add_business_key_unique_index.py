@@ -176,7 +176,7 @@ def open_readonly_engine(url: str = None):
 def unique_index_name(table: str) -> str:
     """`uq_bk_<table>`, folded to PostgreSQL's 63-byte identifier limit.
 
-    Same discipline (and same limit) as `virtual_join_config.required_index_name` and
+    Same discipline (and same limit) as `chain.join_key_index.required_index_name` and
     `value_suggest.suggest_index_name`: when the natural name is too long, truncate and
     append a digest of the FULL name so two long table names cannot collide onto one
     index. Lower-cased because PostgreSQL folds unquoted identifiers, and a name we
@@ -214,7 +214,7 @@ def tables_with_business_key(conn) -> list:
 def existing_unique_index(conn, table: str):
     """`(name, is_valid)` of a unique index on exactly `(business_key_val)`, or None.
 
-    The three exclusions are the ones `virtual_join_config` documents, and they matter
+    The three exclusions are the ones `chain.join_key_index` documents, and they matter
     for the same reason here:
       * `indpred IS NOT NULL` - a partial index is unique only inside its predicate.
       * `indexprs IS NOT NULL` - unique on an expression, not on the column.

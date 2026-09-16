@@ -32,7 +32,7 @@ if server_dir not in sys.path:
     sys.path.insert(0, server_dir)
 
 import map_overlay                                                   # noqa: E402
-import virtual_join.config as vjc                                    # noqa: E402
+from chain import legacy_join_declaration as vjc                                    # noqa: E402
 from database import crud                                            # noqa: E402
 
 TABLE = "s181_test_table"
@@ -171,7 +171,7 @@ def test_the_join_compares_the_same_expression_the_index_is_built_on():
     from sqlalchemy import Column, MetaData, String, Table
     from sqlalchemy.dialects import postgresql
 
-    from virtual_join import executor as vje
+    from chain import legacy_materialized_join as vje
 
     metadata = MetaData()
     left = Table("s181_left", metadata, Column("a", String))

@@ -2,18 +2,18 @@
 """조인 키가 요구하는 «유일 색인» — 이름 · DDL · 식 · 카탈로그 조회가 여기 «한 자리»에 산다.
 
 🔴 [S-283 · 판정 440 ③㉠ · 442 ③] WHY IT MOVED. This cluster lived in
-`virtual_join/config.py`, and the virtual join is being removed — but the thing that needs
-it is not going anywhere: `chain.builtins.ensure_declared_unique_keys` builds the UNIFIED
-join's `key.unique` index through these names. Deleting the package by name would have
-taken the uniqueness of the join the owner migrated TO (S-248: a leftover `uq_vjoin_*`
+`virtual_join/config.py`, and the virtual join has since been removed — but the thing that
+needs it did not go anywhere: `chain.builtins.ensure_declared_unique_keys` builds the
+UNIFIED join's `key.unique` index through these names. Deleting the package by name would
+have taken the uniqueness of the join the owner migrated TO (S-248: a leftover `uq_vjoin_*`
 refuses every insert on that table with 23505, and the group fails permanently on retry).
-So the seat moves first and the package is deleted after.
+So the seat moved first and the package was deleted after.
 
 🔴 `INDEX_PREFIX` IS A VALUE, NOT A NAME TO TIDY. The retraction population is defined BY
 that prefix — 「접두로 고르는 것이 이 안전장치의 전부」. Rename it and every existing index
-falls outside the product's reach; widen it and an operator's hand-built index falls
-inside. It will look wrong once `virtual_join` is gone. Leave it wrong: changing it is a
-migration, and a separate round.
+falls outside the product's reach; widen it and an operator's hand-built index falls inside.
+It names a package that is gone, so it LOOKS wrong. Leave it wrong: the value is written
+into live databases, and changing it is a migration and a separate round.
 
 🔴 AND THE EXPRESSION COMES WITH THEM, WHICH IS THE POINT. `index_key_expression` is not
 the index's private spelling — the index DDL, `join_onclause` and `crud`'s key comparison
@@ -22,8 +22,9 @@ expression matches it. Two spellings are not a type error; they are a sequential
 ten million rows with every test green. Keeping the definition single is what makes that
 guarantee structural rather than a thing to remember.
 
-⚠️ `virtual_join.config` IMPORTS THESE NAMES BACK, so the old spellings keep working while
-the package is dismantled step by step. That alias is the only thing step 4 removes here.
+⚰️ THE BACK-ALIAS IS GONE (step 4). `virtual_join.config` used to import these names back so
+the old spellings kept working while the package was dismantled; the surviving half of that
+module is `chain.legacy_join_declaration` and it imports them from here directly.
 """
 import hashlib
 import re

@@ -28,6 +28,8 @@ CODE_SHAPE = "shape"                         # 평범한 문법/존재 오류
 # S-189 ⓐ (판정 302). 실체화는 «쓰기»라서 비용이 선언에 적혀야 한다.
 CODE_NO_REWRITE_CAP = "no_rewrite_cap"       # materialize 인데 상한을 안 적었다
 CODE_NO_LEFT_INDEX = "no_left_index"         # 역방향(참조→대상) 색인이 없다
+# S-283 (판정 446·452 ①). 읽는 시점에 계산하는 조인은 «은퇴했다». 남은 것은 쓰기 조인뿐이다.
+CODE_READ_TIME_RETIRED = "read_time_retired"  # materialize 가 false 다
 
 # 코드별 한국어 앞머리. 로더가 만든 영문 사유를 그대로 붙이지 않고, 운영자가 무엇을
 # 고쳐야 하는지 먼저 말한다(INV-F9-8 ― `detail`은 그가 읽는 최종 문장이다).
@@ -38,6 +40,8 @@ CODE_LEAD = {
         "아직 구현되지 않은 조인 형태라 선언을 거부했습니다",
     CODE_SHAPE:
         "선언이 반영되지 않았습니다",
+    CODE_READ_TIME_RETIRED:
+        "읽는 시점에 계산하는 조인은 더 이상 없어서 이 선언을 이름 대어 거부했습니다",
 }
 
 

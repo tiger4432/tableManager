@@ -2701,9 +2701,9 @@ def fold_key_value(table_name: str, column: str, value):
     whitespace-only value never reaches the database, and a `btrim` here would be an
     incomplete imitation of `str.strip()` that the next schema change invalidates.
     `chain.join_key_index.index_key_expression` is where that spelling lives (S-283 moved it
-    out of `virtual_join`, which is being removed), so the DDL and
-    the query expression cannot drift — a mismatch there does not fail, it silently stops
-    using the index.
+    out of `virtual_join` before that package was deleted), so the DDL and the query
+    expression cannot drift — a mismatch there does not fail, it silently stops using the
+    index.
     """
     return None if is_blank_key_part(value) else value
 
@@ -3941,12 +3941,12 @@ def _virtual_join_right_keys(db: Session, table_name: str):
     (`index_key_expression`); comparing raw values would miss exactly the duplicates the
     index catches, which is the under-approximation that is not safe here.
 
-    ⚠️ ONE LOAD, SHARED. This reads `virtual_join_executor`'s TTL cache - the same one the
+    ⚠️ ONE LOAD, SHARED. This reads `chain.legacy_materialized_join`'s TTL cache - the same one the
     sibling guard below already warms on this path - rather than re-reading and
     re-validating the declaration file once per batch on the write path.
     """
     try:
-        from virtual_join import executor
+        from chain import legacy_materialized_join as executor
         rules = executor.rules_for_right(db, table_name)
     except Exception as e:
         # Same posture as the sibling guard below: an unreadable declaration means NO join
@@ -4021,7 +4021,7 @@ def _stored_join_key_owners(db: Session, table_name: str, columns: list, folds: 
     model = models.DYNAMIC_TABLES.get(table_name)
     if model is None:
         return {}
-    import virtual_join.config as vjc
+    from chain import legacy_join_declaration as vjc
     from sqlalchemy import text as sa_text
 
     exprs = [vjc.index_key_expression(column, folds[i] if i < len(folds) else None,
@@ -4195,52 +4195,19 @@ def refuse_virtual_join_duplicates(db: Session, table_name: str,
     return refusals
 
 
-def refuse_virtual_join_columns(db: Session, table_name: str, batch: schemas.GeneralUpdateBatch):
-    """A write aimed at a virtual-join column is REFUSED here, for every write path.
-
-    A `virtual_only` column is not stored on the left table - it exists only in the read
-    payload, computed from a verified join. A write targeting it would target a column
-    that does not exist, and the pre-existing undeclared-column gate in
-    `apply_row_update_internal` would DROP it silently: the API answers 200, the client
-    re-renders from the joined value, and the user's edit vanishes with no explanation.
-    Silence is the defect; the drop was always correct.
-
-    This lives in `apply_batch_updates` because that is the single funnel every write
-    converges on - the grid edit and paste and the map/DOE Push (all `PUT
-    /tables/{t}/data/updates`), file ingestion, the chain worker, enrichment
-    auto-confirm, replay, map-meta registration. `apply_row_update_internal` has exactly
-    one caller (this function), so there is no write that can reach a column while
-    bypassing this check, and a new call site cannot forget it.
-
-    `collide` columns are deliberately NOT refused. They are ordinary stored columns that
-    a join also feeds; writing one is how a user overrides the joined value, and that
-    write is precisely the "left value present" arm of the absent-only rule. Refusing it
-    would leave the user no way to correct a joined cell.
-
-    Raises ValueError, which the API layer already maps to 400 (same as the replace_map
-    scope refusal). Batch-level, so one message names every offending column at once.
-    """
-    if not batch.updates:
-        return
-    try:
-        from virtual_join import executor
-        virtual_cols = executor.virtual_only_columns(db, table_name)
-    except Exception as e:
-        # Unreadable declarations mean NO join is in effect (the executor logs it and
-        # attaches nothing), so there is no virtual column to protect and nothing to
-        # refuse. Failing the write here would turn a config problem into an outage.
-        logger.error(f"[VirtualJoin] write guard could not load declarations for "
-                     f"'{table_name}', no column is refused: {e}")
-        return
-    if not virtual_cols:
-        return
-    offending = sorted({c for u in batch.updates for c in (u.updates or {}) if c in virtual_cols})
-    if offending:
-        raise ValueError(
-            f"'{table_name}' 테이블의 컬럼 {', '.join(offending)}은(는) 가상 조인으로 "
-            f"조회 시점에 계산되는 값이라 저장할 수 없습니다. 이 테이블에는 그 컬럼이 "
-            f"실제로 존재하지 않습니다. 값을 고치려면 조인 원본 테이블에서 수정하세요."
-        )
+# [S-283] `refuse_virtual_join_columns` LIVED HERE, and it is gone rather than relaxed.
+# It refused a write aimed at a `virtual_only` column - a column not stored on the left
+# table, computed in the read payload from a verified join - because the undeclared-column
+# gate would otherwise DROP it silently: 200 from the API, the client re-rendering the
+# joined value, and the user's edit vanishing with no explanation. Silence was the defect.
+#
+# The read-time join was retired (ruling 461), so there is no column that exists only in
+# the read payload and nothing is left to refuse. `collide` columns were never refused -
+# they were stored columns a join also fed, and writing one was the override - and they
+# are now simply stored columns.
+#
+# 🔴 The argument was never wrong, only its subject was withdrawn: if a future round
+# computes a column at read time again, this guard comes back with it.
 
 
 # [Notation normalization] `refuse_notation_derived_columns` USED TO LIVE HERE, and it
@@ -4575,11 +4542,11 @@ def _apply_batch_updates_once(db: Session, table_name: str,
     drop_report: optional out-param (dict) with the same contract - see
     `apply_batch_updates`, which owns it and clears it per attempt.
     """
-    # Before anything is opened or purged: a batch aimed at a virtual-join column is
-    # refused whole. Placed ahead of transaction_context so the refusal cannot leave a
-    # half-applied transaction, and ahead of the replace_map purge so a bad payload
-    # cannot delete rows on its way to being rejected.
-    refuse_virtual_join_columns(db, table_name, batch)
+    # ⚰️ [S-283] A BATCH AIMED AT A VIRTUAL-JOIN COLUMN WAS REFUSED HERE, whole, ahead
+    # of transaction_context and ahead of the replace_map purge. The refusal is gone with
+    # its subject: read-time joins are retired, so no column is computed at read time and
+    # every name in a payload is either a stored column or already dropped by the
+    # undeclared-column gate in `apply_row_update_internal`.
 
     tx_id = batch.transaction_id or str(uuid6.uuid7())
     

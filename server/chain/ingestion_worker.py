@@ -2023,8 +2023,8 @@ def _builtins_table():
     """The `builtin:` kind table, imported at CALL time (S-278 후반).
 
     ⚠️ NOT AT MODULE LEVEL. `chain.builtins` imports `enrichment.config` and
-    `virtual_join.config`, which import back into this module's neighbourhood; every other
-    seat here reaches it the same way, inside the function that needs it.
+    `chain.legacy_join_declaration`, which import back into this module's neighbourhood;
+    every other seat here reaches it the same way, inside the function that needs it.
     """
     from chain import builtins
 

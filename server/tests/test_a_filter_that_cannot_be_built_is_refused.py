@@ -5,7 +5,7 @@ S-71: `apply_column_filters` used to log the failure and fall through, so the an
 every row of the table while still implying the column had been filtered. Measured
 2026-09-08 on a `dt_map` holding 1,006,147 rows: a filter whose shape the parser could not
 read came back HTTP 200 with all 1,006,147 instead of the 400 the map has. The refusal that
-already existed one block above -- for a virtual-join column the binder cannot express -- now
+already existed one block above -- for a read-time join column that could not be expressed -- now
 covers both reasons.
 
 S-72: `GET /tables` carries `map_key_columns`, because the only other way to learn which
@@ -39,7 +39,7 @@ class _Model:
 def _apply(filters):
     return main.apply_column_filters(
         query=object(), table_model=_Model, table_name="dt_map",
-        filters=filters, binder={})
+        filters=filters)
 
 
 def test_a_filter_the_parser_cannot_read_is_refused():
@@ -65,7 +65,7 @@ def test_no_filter_is_not_a_failure():
     sentinel = object()
     assert main.apply_column_filters(
         query=sentinel, table_model=_Model, table_name="dt_map",
-        filters=None, binder={}) is sentinel
+        filters=None) is sentinel
 
 
 def test_the_table_list_carries_the_map_key_columns():

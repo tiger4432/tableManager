@@ -1,6 +1,6 @@
 """Immutable hand-off produced only after virtual-join physical verification.
 
-The shape-only declaration remains owned by ``virtual_join_config``.  This module owns
+The shape-only declaration remains owned by ``chain.legacy_join_declaration``.  This module owns
 the neutral value passed from that verifier to every consumer, including the UI join
 executor and Ledger v2 setup compiler.  It has no database imports or execution methods.
 """
@@ -93,14 +93,14 @@ class VerifiedJoinDescriptor(Mapping[str, Any]):
     def __new__(cls, *args: Any, **kwargs: Any) -> "VerifiedJoinDescriptor":
         raise TypeError(
             "VerifiedJoinDescriptor cannot be constructed directly; "
-            "use virtual_join_config.load_verified_rules")
+            "use chain.legacy_join_declaration.load_verified_rules")
 
     @classmethod
     def _issue(cls, *args: Any, **kwargs: Any) -> "VerifiedJoinDescriptor":
         """Reject the former raw issuance API, including callers holding the issuer."""
         raise TypeError(
             "direct VerifiedJoinDescriptor issuance is not allowed; "
-            "use virtual_join_config.load_verified_rules")
+            "use chain.legacy_join_declaration.load_verified_rules")
 
     @staticmethod
     def _validated_data(rule: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -193,7 +193,7 @@ def _build_verification_boundary():
     issuer_token = object()
 
     class _PhysicalVerifierIssuer:
-        """Capability bound to ``virtual_join_config`` production code."""
+        """Capability bound to ``chain.legacy_join_declaration`` production code."""
 
         __slots__ = ("_token",)
 

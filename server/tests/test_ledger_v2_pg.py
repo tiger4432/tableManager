@@ -38,7 +38,7 @@ from ledger.store import LedgerStore
 from ledger.trace import relation_exists
 from test_ledger_setup_bundle import logical_bundle, logical_catalog
 from test_ledger_setup_registry import trusted_implementations
-import virtual_join.config
+from chain import legacy_join_declaration
 from chain import join_key_index
 
 

@@ -50,7 +50,7 @@ import pytest
 
 import dt_map_derivation as derivation
 import map_overlay
-import virtual_join.config
+from chain import legacy_join_declaration
 from chain import ingestion_worker
 from chain import join_key_index
 from database import crud, models
@@ -898,19 +898,27 @@ def test_a_join_key_no_unique_index_covers_is_a_named_refusal(env, monkeypatch):
     assert "CREATE UNIQUE INDEX" in str(exc.value),         "and it must carry the next action, not just the verdict"
 
 
-def test_the_gate_does_not_read_the_package_being_removed(env, monkeypatch):
-    """⚰️ THIS TEST USED TO PIN THE OPPOSITE. It asserted the gate consumed
-    `load_verified_rules` and not the shape-only loader, which was right while the
-    read-time join existed. 판정 440 retires it, so what has to be pinned now is that
-    nothing here reaches back into `virtual_join` - a seat that still did would stand
-    today and break at step 4, which is the half-move this round refused to land.
+def test_the_gate_does_not_read_the_legacy_join_loader(env, monkeypatch):
+    """⚰️ THIS TEST HAS BEEN WRONG TWICE AND BOTH SENTENCES ARE KEPT. It first pinned that
+    the gate consumed `load_verified_rules` rather than the shape-only loader, which was
+    right while the read-time join existed. 판정 440 retired that, and the assertion became
+    「nothing here reaches back into `virtual_join`」.
+
+    🔴 The package is now GONE (S-283), so 「does not import it」 is satisfied by the universe
+    rather than by this code — and a test that passes because its subject cannot exist
+    asserts nothing. What is still real is the SURVIVING legacy loader
+    (`chain.legacy_join_declaration`, which holds the `materialize: true` half): this gate
+    must not read that one either, because its rules come from the unified chain declaration.
     """
+    from chain import legacy_join_declaration
     called = []
     for door in ("load_verified_rules", "load_virtual_join_rules"):
-        monkeypatch.setattr(virtual_join.config, door,
+        monkeypatch.setattr(legacy_join_declaration, door,
                             lambda *a, _d=door, **k: called.append(_d) or [])
+
     rule = derivation.join_rule(env, derivation.CONFIRMED_JOIN_RULE)
-    assert called == [], "the gate reached back into the package being removed: %r" % called
+
+    assert called == [], "the gate reached into the legacy join loader: %r" % called
     assert rule["right_table"] == JOBATTR
 
 

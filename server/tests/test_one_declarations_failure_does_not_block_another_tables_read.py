@@ -13,8 +13,8 @@ from sqlalchemy import text
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import virtual_join.config as vjc  # noqa: E402
-from virtual_join import executor as vje  # noqa: E402
+from chain import legacy_join_declaration as vjc  # noqa: E402
+from chain import legacy_materialized_join as vje  # noqa: E402
 
 
 def _rule(name, left, right):

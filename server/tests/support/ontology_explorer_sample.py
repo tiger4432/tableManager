@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import virtual_join.config as virtual_join_config_module
+from chain import legacy_join_declaration as virtual_join_config_module
 
 from ledger.implementations import trusted_implementations
 from ledger.setup_bundle import (

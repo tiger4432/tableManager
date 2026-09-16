@@ -20,8 +20,8 @@ import json
 
 import pytest
 
-import virtual_join.config as vjc
-from virtual_join import executor as vjx
+from chain import legacy_join_declaration as vjc
+from chain import legacy_materialized_join as vjx
 from database import crud, models, schemas
 
 ROWS = 25
@@ -123,7 +123,7 @@ def test_an_undeclared_sort_name_is_refused_by_name(env):
     assert "no_such_column" in detail, detail
     assert "a6_test_row" in detail, detail
     # 운영자가 «어디에» 적어야 하는지가 문장 안에 있어야 한다.
-    assert "table_config.json" in detail and "virtual_join_rules.json" in detail, detail
+    assert "table_config.json" in detail, detail
 
 
 # ---------------------------------------------------------------------------
@@ -147,17 +147,19 @@ def test_a_declared_column_sorts_the_whole_table_not_the_first_page(env):
 # ㉢ 가상 조인 컬럼도 — 화면이 보여 주는 컬럼과 서버가 정렬하는 컬럼이 갈리면 안 된다
 # ---------------------------------------------------------------------------
 
-def test_a_virtual_join_column_sorts_through_the_binder(env):
-    """`?filters=`·`?q=` 가 이미 지나는 그 자리를 정렬도 지난다.
+def test_a_name_a_join_used_to_expose_is_refused_like_any_other(env):
+    """🪦 [S-283] THIS WAS `test_a_virtual_join_column_sorts_through_the_binder`, and its
+    subject is gone: there is no binder and no read-time join, so `fab_site` is simply a
+    name this table does not declare.
 
-    ⚰️ 종전 `test_no_sorting_was_added` 가 「정렬은 범위 밖」을 못 박고 있었다. 그 시험은
-       행 «개수»만 셌기 때문에 정렬이 붙어도 초록이었다 — 못 박은 것이 없었다.
+    🔴 THE POINT IS THAT IT IS REFUSED, NOT THAT IT IS IGNORED. The retirement's operator-
+    visible face at this seat is 422 with the name in it. Falling back to `row_id.asc()`
+    would be 「조용한 기본값」 — the exact defect the neighbour above was written for, arriving
+    through a different door.
     """
-    sites = ["S%02d" % (ROWS - 1 - i) for i in range(ROWS)]
-    desc = _vals(_page(env, order_by="fab_site", order_desc=True), "fab_site")
-    assert desc == sorted(sites, reverse=True)[:LIMIT], desc
-    asc = _vals(_page(env, order_by="fab_site", order_desc=False), "fab_site")
-    assert asc == sorted(sites)[:LIMIT], asc
+    res = _refused(env, order_by="fab_site")
+    assert res.status_code == 422, res.text
+    assert "fab_site" in res.json()["detail"], res.text
 
 
 # ---------------------------------------------------------------------------
