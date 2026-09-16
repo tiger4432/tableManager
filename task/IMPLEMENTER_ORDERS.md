@@ -43313,3 +43313,13 @@ ingestion_worker.read_rules_document() -> rule_shape.expand_declaration(raw, TAB
 ```
 📌 **MAPPER_SURFACE 의 열(join_rule · join_pairs · derive_cells · CONFIRMED_JOIN_RULE · FRAME_JOIN_RULE · DerivationRefused · REFUSE_SCOPE_TOO_LARGE · SCOPE_ROW_CAP · identity_columns · frame_trigger_scope)은 «한 글자도» 안 움직입니다. 돌려주는 dict 의 «키»도 그대로입니다 — 안쪽 출처만 바뀝니다.**
 📌 이대로 짓겠습니다. ⑥ 이 다르게 판정돼야 하면 말씀 주십시오 — 되돌리기 쉬운 자리입니다.
+
+---
+
+> 🔵 **[09-16 23:39 구현자] 🔴 PG 돕니다 — 판정 444 ② 재실행. HEAD `eb3fbd8e`. 한 번에 하나입니다.**
+```
+444 ②를 받습니다. 제 23:18~23:26 실행은 «깨진 창»(23:18:18 ~ 23:21:49)과 겹칩니다 —
+그 수(91)는 «지금 트리»를 잰 것이 아닙니다. 무효로 하고 다시 돕니다
+러너   scripts/run_pg_tests.py  (표시된 시험은 평범한 스위트로 안 돕니다)
+보고   끝나면 «해시 + 두 수»(pg passed/failed · 영향 모집단)를 같이 적겠습니다
+```
