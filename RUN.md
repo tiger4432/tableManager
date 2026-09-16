@@ -66,7 +66,7 @@ CSV 추출    그 컬럼이 머리글에 «없습니다». (created_at/updated_a
 
 ### ④ 🔴 dt_map 파생의 조인 둘은 이제 «체인 선언»에서 찾습니다
 ```
-전   dt_log_confirmed_attribution · eqp_frame_attribution_to_dt_map 의 짝을
+전   dt_log_confirmed_attribution · dt_log_frame_attribution 의 짝을
      virtual_join_rules.json 에서 찾았습니다
 후   chain_rules.json 의 `derive: { kind: "join" }` 에서 찾습니다 (위 ③ 의 귀결)
 보이는 것   없으면 「... is absent from the chain declaration」이 «이름을 대고» 뜹니다.
