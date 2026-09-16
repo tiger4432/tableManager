@@ -22123,3 +22123,55 @@ git grep stamps_origin  →  자리 «다섯», 전부 builtins.py:
 ```
 
 > · 🔁 이월: 0 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
+
+---
+
+## 🔵 Q-20 [09-16 22:45 실측] 채널의 «둘째 계수»를 적대적으로 쟀습니다 — **NO-GO 의 셋째 근거는 참입니다.** 그리고 이동에 함정 하나
+
+> ⚠️ 먼저 자리 정리: `5a07b3ef` 은 제 «지시 채널»에 들어왔지만 지시가 아니라 «다른 저자(QA 표기)의 계수 보고»입니다.
+> 저는 그것을 «지시로» 읽지 않았고, 제 역할(적대 QA)대로 «그 보고»를 쟀습니다. 계수를 다시 하지 «않았습니다» —
+> 마감 중에 같은 것을 두 번 세는 것이 제일 비쌉니다.
+
+### ① 판정을 뒤집을 수 있는 근거부터 — ③ 「통합 조인이 이 패키지에 의존한다」 **✅ 참**
+
+```
+chain/builtins.py:161-179  ensure_declared_unique_keys
+   from virtual_join import config as vjc · from virtual_join import unique_key
+   :179  unique_key.ensure_once(db, name, table, columns, folds)   ← 통합 조인의 유일 인덱스를 «여기가 세웁니다»
+virtual_join/config.py:990-1000
+   required = {읽기 시점 규칙의 인덱스} | chain_builtins.declared_unique_index_names(…)
+   :1000 unique_key.retract_unrequired_once(db, required)
+   주석: 「BOTH PRODUCERS OR NEITHER … it retracts the wrong thing」
+```
+🔴 즉 **오늘 지우면 ① 통합 조인의 인덱스를 세울 자리가 없어지고 ② 회수 자리도 같이 사라집니다.**
+②가 없어지면 S-248(남은 `uq_vjoin_*` 이 그 표의 «모든 쓰기»를 23505 로 막던 장애)이 «되돌아옵니다».
+그러므로 「가상 조인은 배관이고 통합이 대체한다」는 **오늘 코드에서 거짓**이라는 그 보고의 문장은 참입니다.
+
+### 🔴 ② 보고의 순서 ②(「좌석을 밖으로 옮긴다」)에 «함정»이 있습니다 — 제가 덧붙입니다
+
+```
+virtual_join/config.py:128   INDEX_PREFIX = "uq_vjoin_"
+virtual_join/unique_key.py:265-275  product_indexes(db)
+   「BY PREFIX, AND THAT IS THE WHOLE SAFETY OF IT … an index an operator built under their own
+     name does not start with `uq_vjoin_`, so it can never be retracted here」
+   그리고 바로 아래: 「THE PREFIX IS NOT RE-SPELLED HERE … a second copy would be a second answer」
+```
+**무엇이 참이어야 이 일이 나나** — 회수의 모집단이 «이름 접두»로 정의됩니다. 좌석을 옮기면서
+접두를 «새 이름»으로 바꾸면(예: `uq_join_`):
+```
+① 기존 인덱스 전부가 「우리 것이 아님」이 되어 «영원히 회수 불가» — S-248 이 다시 가능해집니다
+② 반대로 넓히면(접두를 떼면) 운영자가 손으로 만든 인덱스가 «회수 대상»이 됩니다 — 더 나쁩니다
+```
+🔵 그래서 이동의 규칙은 한 줄입니다: **접두 상수는 «값 그대로» 따라간다. 이름이 바뀌면 그건 이동이 아니라
+«다른 제품»이다.** 그리고 옮긴 뒤 회수 좌석이 «건설 좌석과 같은 모듈»에 있어야 합니다(오늘 그렇습니다).
+
+### ③ 제가 «확인 안 한» 것 — 그 보고의 나머지
+
+```
+· 갈래 ㉠ 「여섯」과 줄 수 2,649 · import 98/파일 44 는 «다시 안 셌습니다». 방법(AST·git ls-files)은 옳게 적혀 있습니다
+· `into.read` 가 «축»이라는 판정도 다시 안 쟀습니다 — 다만 그 결론은 제 D-42(어휘 넷)와 «같은 방향»입니다
+🔴 그러므로 제 이 글은 「그 보고가 전부 맞다」가 아니라 **「판정을 떠받치는 근거 ③ 은 제가 직접 확인했다」**입니다
+```
+
+> 🔴 「판정 대기」 **1** — 좌석 이동 시 `INDEX_PREFIX` 를 «값 그대로» 옮기는 것을 계획서에 못 박습니까
+> · 🔁 이월: 0 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
