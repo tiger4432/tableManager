@@ -2997,9 +2997,9 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 >
 > 🔴 **`server/mappers/*.py`는 gitignored다 — 추적되는 것은 `.sample`뿐이다.** 아래는 **구조**(모듈·함수 이름과 계약)이고 운영 인스턴스의 값이 아니다. 리빙 문서는 [`DT_CORE_FRAME_CHAINS.md`](./DT_CORE_FRAME_CHAINS.md)(doc-keeper 소관).
 
-### `server/dt_map_derivation.py` (🆕㊲ **1,020줄** @`6ab1dce2`(이 구간 «무변» — `6ea4f7b2` 에서도 1,020) — ~~940 @`5359fdd`~~, 구 표기 849) — 프레임 **어휘**와 DT 맵 유도
+### `server/dt_map_derivation.py` (🆕 **1,102줄** @`0a6786f6`(은퇴 3/5 — +82) — ~~1,020 @`6ab1dce2`~~ — ~~940 @`5359fdd`~~, 구 표기 849) — 프레임 **어휘**와 DT 맵 유도
 
-> 🆕㊲ **[2026-09-16 · 판정 416 «되돌림» · S-276] `join_rule(db, name: str) -> dict`** :225 — **«검증된» 가상 조인 선언 하나.** `virtual_join.config.load_verified_rules` 를 부른다(`load_virtual_join_rules` 가 «아니다» — 후자는 선언의 «모양»만 보고, 전자는 `pg_index` 에 유일 인덱스가 조인 키를 정말 덮는지까지 묻는다). 없거나 미검증이면 `DerivationRefused(REFUSE_JOIN_RULE_MISSING)`.
+> 🆕㊲ **[2026-09-16 · 판정 416 «되돌림» · S-276] `join_rule(db, name: str) -> dict`** 🆕 :289(~~:225~~) — ⚰ 🆕 **[`0a6786f6` 은퇴 3/5 · 판정 440 ③] 이 좌석은 이제 «통합 선언»에서 읽는다** — `ingestion_worker.read_rules_document()` + `rule_shape.expand_declaration`(로더가 쓰는 «그 판사», S-244) «한 쌍»으로 읽고, 유일성은 `chain.join_key_index.unique_index_covering` :254 에 묻는다(오른쪽 키·접기는 `join_into.right_key` :243 가 계산한 것 그대로 — 선언당 한 번이 아니라 «카탈로그 질의 한 번»). 돌려주는 dict 의 «키»와 `MAPPER_SURFACE` 의 이름은 «그대로»다. ⚠️ `enabled: false` 는 여기 «없음»으로 도착한다(판사가 세우는 규칙이 0) — 다만 판사의 «셋째 반환값 `notes`»가 그 사실을 이름과 함께 말하고 이 좌석이 그것을 «버린다»(응용 Q-28 ①). 🪦 종전엔 `virtual_join.config.load_verified_rules` 를 불렀다(`load_virtual_join_rules` 가 «아니다» — 후자는 선언의 «모양»만 보고, 전자는 `pg_index` 에 유일 인덱스가 조인 키를 정말 덮는지까지 묻는다). 없거나 미검증이면 `DerivationRefused(REFUSE_JOIN_RULE_MISSING)`.
 > - 🔴 **`db` 인자는 «남아 있다» — 판정 416 이 그것을 떼려다 되돌려졌다.** 사유는 §5-G 「체인 맵퍼 — DT/core 계열 5종」 절 머리의 «호출자 수는 셀 수 없다» 규칙에 있다.
 > - **tracked 호출자 «셋»** (`git grep "join_rule(" HEAD -- server`, 시험 제외): 같은 파일 :562 `join_rule(db, CONFIRMED_JOIN_RULE)` · :563 `join_rule(db, FRAME_JOIN_RULE)` · `mappers/dt_map_mapper.py.sample::_matching_join_rule` :142. 🔴 **live 호출자: 셀 수 없음** — `server/mappers/*.py` 는 `.gitignore:75` 다.
 > - ⚠️ **이 로더는 «비싸다»** — 선언 파일을 다시 읽고 선언마다 유일성 질의를 돈다. 그래서 그것을 «행마다» 부르던 자리가 S-276 이었다(위 맵퍼 절).

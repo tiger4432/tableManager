@@ -1,13 +1,14 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **911개** 이력. (거버넌스 규칙 #4)
+> 총 **912개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-09 (September 2026)
 
+- **2026-09-17 00:00** — [The Dt Map Gate Resolves Its Joins From The Unified Declaration](./20260917_000000_the_dt_map_gate_resolves_its_joins_from_the_unified_declaration.md)
 - **2026-09-16 23:21** — [The Join Key Index Seat Moves Into Chain And The Rename Rode In One Commit Early](./20260916_232149_the_join_key_index_seat_moves_into_chain_and_the_rename_rode_in_one_commit_early.md)
 - **2026-09-16 23:04** — [A Read Time Join Declaration Is Refused By Name And The Legacy File Still Runs](./20260916_230400_a_read_time_join_declaration_is_refused_by_name_and_the_legacy_file_still_runs.md)
 - **2026-09-16 20:11** — [The Seat That Asks Which Door Was Built And Nothing Called It](./20260916_201128_the_seat_that_asks_which_door_was_built_and_nothing_called_it.md)
@@ -935,4 +936,4 @@
 - **2026-04-12 22:22** — [Ws Debug Staggered Init](./20260412_222200_ws_debug_staggered_init.md)
 - **2026-04-12 22:10** — [Phase19 Integrity And Stability Fixes](./20260412_221000_phase19_integrity_and_stability_fixes.md)
 
-*Last generated: 2026-09-16 by gen_index.py*
+*Last generated: 2026-09-17 by gen_index.py*
