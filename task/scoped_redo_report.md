@@ -45096,3 +45096,59 @@ rule_shape.INTO_KINDS = ("table", "read")   <- into.read 는 통합 문법 «안
 **못 세는 것:** 운영이 읽기 시점 조인을 실제로 «선언»하고 있는지 — 선언이 gitignore 입니다.
 그래서 「읽기 동작이 바뀐다」는 «구조»로 참이고, 「몇 표가·몇 컬럼이 영향받나」는 «사건»이라 못 셉니다.
 📌 제 계수는 여기서 «못 박습니다». 이제 `task/MARKING_CONTRACT.md` 를 열어 대조하고, 어긋난 자리를 따로 올립니다.
+
+---
+> 🔵 **[09-16 22:48 구현자] 판정 439 — 세기 «끝까지». 열한 소비자를 «갈래»로 전수 분류했습니다. 한 줄도 안 지웠습니다.**
+> (QA 보고는 여전히 «안 열었습니다». 총괄이 전해 주신 「import 열하나」는 제 계수 `5f03bec5` 와 «같습니다» — 그건 못 박은 뒤에 들었습니다)
+
+## ① 전수 분류 — 파일 «열하나», 쓰임 «열둘»(builtins 가 둘)
+```
+갈래 ㉠ 읽기 경로 — «0 이 아닙니다. 셋입니다»
+  main.py:1082                executor.attach(db, table, data_list)
+                              그 자리 주석: 「row payload 의 «단일» 직렬화 지점 —
+                              그리드 페이지 · 단일 행 조회 · 배치 업데이트 응답 · WS 항목」
+  main.py:1686                resolved_expression(...)          검색·필터 식
+  database/config_watcher.py:222  executor.exposed_columns(session, table)
+                              표의 «알려진 컬럼 집합»에 조인 컬럼을 더한다
+  runtime/system_reload.py:53     executor.reset_cache()        읽기 캐시 수명
+
+갈래 ㉡ 쓰기 게이트 — «하나»
+  database/crud.py:3929·4051·4074·4737   refuse_virtual_join_duplicates
+  database/crud.py:4023                  vjc.index_key_expression (키 식 한 철자)
+
+🔴 갈래 ㉢ «통합 조인이 엔진에 의존하는 자리» — «하나». 제거의 급소입니다
+  chain/builtins.py:161-179   ensure_declared_unique_keys 가
+                              declared_unique_targets(= join_into «통합» 선언만 고름) 를 돌며
+                              vjc.required_index_name + unique_key.ensure_once 로 인덱스를 «세운다»
+  => 통합 조인의 key.unique 를 «가상 조인 코드»가 세웁니다. 제가 직접 열어 확인했습니다
+
+갈래 ㉣ 다리 — «하나»
+  chain/builtins.py:37-40     synthesized_join_chain_rules -> 체인의 builtin:join 규칙이 여기서 «난다»
+
+갈래 ㉤ 선언·보고·화면 — «넷»
+  chain/rule_shape.py:88 · chain/graph.py:246·329 · config_resolve_report.py:62-63 ·
+  dt_map_derivation.py:243-247(load_verified_rules)
+
+갈래 ㉥ 도구 — «둘»
+  migrations/add_vjoin_null_safe_indexes.py · scripts/check_one_row_one_fact.py
+```
+
+## ② 그래서 제 쪽 결론 «둘» — 둘 다 «구조»입니다
+```
+① 갈래 ㉠ 이 «0 이 아닙니다». 438 ③ 의 정지 조건 그대로 — 이 제거는 읽기 동작을 바꿉니다
+② 갈래 ㉢ 때문에 「이름째 지우기」가 «통합 조인을 같이 죽입니다».
+   총괄 ②의 「한 이름이 두 뜻」이 맞고, 코드 쪽 뜻은 «엔진»입니다
+```
+
+## ③ 못 세는 것 — 그대로입니다
+```
+운영이 into.read 를 «선언»하나 · 몇 표·몇 컬럼이 걸리나   -> 선언이 gitignore. «사건»이라 못 셉니다
+그래서 소유자 답(439 ④)이 «범위»를 정합니다. 제가 박스에서 대신 못 정합니다
+```
+
+## ④ 지금 상태
+```
+지운 것 «0» · 계획 «안 씀»(439 ③②) · 437 되돌림 완료 · QA 보고 «안 열었음»
+S-280(판정 434·435·436)은 착지해 있습니다 — `e1318d28`, 마이그레이션은 박스에 걸었고 RUN.md 에 순서가 있습니다
+```
+📌 **미답 둘:** ① 소유자 답(into.table 뿐인가 / into.read 도 쓰나) · ② 429 의 커서 ⓐ/ⓑ.
