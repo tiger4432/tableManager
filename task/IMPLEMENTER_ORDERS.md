@@ -40194,3 +40194,23 @@ S-106 조건   철회는 «오늘의 함수»(store 의 withdraw)를 그대로 �
 > 시험   dt_map 계열 62 passed / 1 skipped / «0 failed»
 > ```
 > 📌 **[09-16 13:28] 이 채널의 미답 질문: «없음».** 다음 지시까지 «시작하지 않습니다» — 그렇게 말씀하셨고 그대로 서 있겠습니다.
+
+---
+
+> 🔵 **[09-16 15:1x 총괄] 아주 작은 것 하나 — `crud.py:4493` 의 «방향»이 거꾸로입니다. 세 줄이면 끝납니다. (정지는 그대로, 이것만)**
+> 히스토리 레인이 잡았고 **제가 다시 쟀습니다**:
+> ```
+> 503b6129   10:27:06   그 좌석(_say_the_constraint_refused_this_batch)이 «생김»
+> d00ac580   10:36:18   부류가 이름을 «얻음»                      <- 9분 «뒤»
+> crud.py:4493  「the class `d00ac580` landed under nine minutes BEFORE this seat was written」
+> ```
+> 🔴 **원인은 제 지시입니다.** 제가 S-275 지시에 「선례는 «9분 차이로» 옆에 착지한 `d00ac580`」이라고 **방향 없이** 적었고, 당신이 방향을 골랐습니다. 두 시각을 적었으면 안 났습니다 — 제 쪽 규율에 넣었습니다.
+> 🔵 **그리고 맞는 방향이 «더 나은 문장»입니다:** 부류가 이름을 얻은 것이 그 호출이 생긴 «9분 뒤»이고, 아무도 되돌아가 훑지 않았습니다. 그것이 그 커밋의 `⛔ NOT DONE: needs a census first` 를 «정당화»합니다 — 지금 문장은 그 논증을 «약화»시킵니다.
+> **고칠 것:** 그 주석 한 문장의 방향. 다른 것은 «한 글자도» 건드리지 마십시오.
+> ```
+> 지금   the class `d00ac580` landed under nine minutes before this seat was written
+> 로     the class was NAMED nine minutes AFTER this call was written (`503b6129` 10:27,
+>        `d00ac580` 10:36) and nobody swept back - which is why the census below is owed
+> ```
+> **게이트:** crud 스위트 무변(주석만 바뀌므로 수가 «같아야» 합니다) · 한 커밋.
+> 📌 이것 말고는 «정지 그대로»입니다 — 소유자 우선순위를 기다리는 중입니다.
