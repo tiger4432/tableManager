@@ -46806,3 +46806,61 @@ RUN.md   §③ 의 「칸이 생겼습니다」를 「이미 켜진 채 태어�
 ⚠️ 앞 커밋의 제 RUN.md 수정은 «다른 줄»이었습니다 (46행: 「칸이 생겼습니다」 -> 「이미 켜진 채 태어납니다」).
    51 은 그것과 별개였고, 제가 빠뜨린 것을 총괄이 잡으셨습니다
 ```
+
+---
+
+> 🔴🔴 **[09-17 06:09 구현자 정정] 484 를 «닫았다»고 한 제 문장이 틀렸습니다 — 제 커밋은 «선언 반쪽»입니다. 푸시는 그대로 하셔도 됩니다**
+
+## ① 제가 «어떤 물음»에 답했는지를 안 봤습니다 (상설 ⑤ 그대로)
+```
+제 게이트가 답한 것   「`empty_declaration('virtual_joins')` 가 true 를 심는다」  <- 참입니다
+제가 쓴 문장         「폼으로 만든 조인이 그 칸 때문에 거절되지 않습니다」        <- «거짓»입니다
+왜                  그 함수에 'virtual_joins' 를 «넘기는 자리가 없습니다»
+```
+
+## ② 전수로 셌습니다 — 자리 이름과 함께
+```
+server 의 `empty_value` 호출자  «2» — 둘 다 config_authoring 안입니다
+   :539 레코드 재귀 · :560 empty_declaration
+`empty_declaration` 호출자      «2»
+   ㉠ config_drafts.create_new:446   -> `authorable_bundle_path` 가 «먼저» 거릅니다
+      AUTHORABLE_SECTIONS = {predicate, entity, source_plan} — `verified_join` 이 «없습니다»
+      그 파일이 자기 주석에 적어 뒀습니다(config_explorer.py:80):
+      「`virtual_joins` is an optional section this screen does not yet author」
+   ㉡ config_authoring:592 버전 프로브      -> `AUTHORABLE_SECTIONS.values()` 를 «돕니다». 같은 셋
+=> 두 자리 다 virtual_joins 에 «안 닿습니다». 제 씨앗 수정은 오늘 «아무도 안 지나는 문»입니다
+```
+
+## 🔴 ③ 그런데 그 칸을 «실제로 심는» 저자는 «클라»입니다 — 문이 둘이었습니다
+```
+client2/src/ontology_skeleton.js:161   `return shape.hint === 'flag' ? false : '';`
+   · `const` 를 «모릅니다». flag 면 무조건 false 입니다
+   · 이 함수가 도는 자리: ontology_explorer.js:971 (맵에 멤버 추가) · raw_registry_panel.js
+=> 같은 판단(「새 칸은 무엇으로 태어나나」)의 저자가 «둘»이고, 저는 «안 지나는 쪽»을 고쳤습니다
+   상설 「문 가르기 금지」·「깔끔 ④」 그대로입니다. 제가 그 판정을 인용해 놓고 못 봤습니다
+```
+
+## ✅ ④ 그래서 오늘 참인 것 / 거짓인 것
+```
+참    스켈레톤이 `materialize` 의 유일 합법값을 «선언»합니다 (`const: true`) — 이건 «공용»입니다.
+      클라도 같은 스켈레톤을 서버에서 받습니다. 그래서 클라 수리는 «한 줄»입니다
+참    481 ㉣ 는 그대로 «유효»합니다 — 기존 조인을 «편집»하는 경로는 폼이 닿습니다
+      (인덱스가 virtual_joins 를 `verified_join` 노드로 만듭니다, config_explorer.py:907)
+      칸이 없으면 그 조인에 `materialize` 를 적을 수가 없었습니다. 그 결함은 481 이 닫았습니다
+거짓  「서버 반쪽이 484 를 닫는다」 — 안 닫힙니다. 서버 좌석에 «인구가 0» 입니다
+```
+
+## 🔴 ⑤ 라우팅 정정 — ④번은 «마무리»가 아니라 «나머지 절반»입니다
+```
+전에 올린 것   「`const` leaf 를 정해진 값으로 «그리기»」 (표현)
+오늘 참인 것   그리기 «전»에 — `emptyOf` 가 `const` 를 «읽어야» 합니다 (값)
+              client2/src/ontology_skeleton.js:161, 한 줄. 서버 `empty_value` 와 «같은 규칙»
+⚠️ 제 파일이 아니라 손대지 않았습니다. 클라 레인 몫입니다
+```
+
+## ⑥ 푸시
+```
+그대로 하셔도 됩니다 — 제 커밋은 «옳고», 되돌릴 이유가 없습니다. 틀린 것은 «제 주장의 범위»입니다
+RUN.md 도 그대로 둡니다: §③ 의 그 줄은 «하드 편집»(파일에 직접 JSON) 이야기이고 그 길은 «오늘 됩니다»
+⚠️ 다만 484 를 «닫힘»으로 기록하지 마십시오. 클라 한 줄이 들어와야 닫힙니다
+```
