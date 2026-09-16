@@ -20,7 +20,12 @@ import { showToast, escapeHtml } from './utils.js';
 import {
   fileLogRowHtml, activeIngestionRowHtml, workspaceRowHtml, mapperRowHtml, autoUpdateRowHtml,
 } from './admin_rows.js';
-import { ADMIN_TOKEN_KEY, ADMIN_TOKEN_HEADER } from './admin_token.js';
+// 🔴 C-122. 전송과 게이트 판정은 이제 «그 파일»이 소유합니다. 여기 남은 것은 이 페이지만
+//    아는 둘입니다 — 모달로 «묻는 법»과, 503 문장을 «어디에 세우나».
+import {
+  ADMIN_TOKEN_KEY, ADMIN_TOKEN_HEADER, adminFetch as sendWithAdminToken,
+  isGateRejection, tokenGeneration, bumpTokenGeneration,
+} from './admin_token.js';
 // Enrichment 결손 카운트는 큐를 세는 것이다. 그 요청의 유일한 철자 (ui.js·enrichment.js 공용).
 import { queueQuery } from './enrichment_queue.js';
 // 「체인 요청이 몇 개 씹히는 것 같다」를 수로 바꾸는 계측기. 뷰 모델이 DOM 없는 자기 모듈에
@@ -48,6 +53,7 @@ import { ROUTES, startSession, installGlobalListeners, installNavLinkCounting } 
 // page renders `detail` VERBATIM. Nothing here decides what counts as ineffective.
 import {
   buildConfigResolveView, buildDryRunView, CHROME, fetchFailureLine,
+  failureFactOf, retroFailureLine,
 } from './config_resolve_view.js';
 // The other half of the same question: `/admin/config/resolve` says whether a virtual-join
 // declaration is VALID, and this says whether it is APPROVED -- plus the DDL that would
@@ -99,9 +105,9 @@ const byId = (id) => document.getElementById(id);
 //    그 자리에서 돌립니다), 여기 사본을 두면 키가 두 벌이 됩니다.
 
 
-function getAdminToken() {
-  try { return localStorage.getItem(ADMIN_TOKEN_KEY) || ''; } catch (e) { return ''; }
-}
+// 🔴 C-122. `getAdminToken` 이 여기 있었고, `admin_token.readAdminToken` 과 «글자까지 같은»
+//    함수였습니다. 전송이 옮겨가면서 소비자가 «0» 이 됐고, 남겨 두면 다음 사람이 둘 중
+//    아무거나 골라 쓰게 됩니다 — 한 사실에 철자 둘이 생기는 가장 흔한 길입니다.
 
 function storeAdminToken(value) {
   try {
@@ -110,32 +116,12 @@ function storeAdminToken(value) {
   } catch (e) { /* private mode / storage disabled: token lives for this page only */ }
 }
 
-// Bumped every time the stored token changes. A response that was already in
-// flight when the token changed is stale evidence: it says nothing about the
-// NEW token, so it must not trigger a second prompt. Without this the "one
-// prompt for seven concurrent requests" property is timing luck - with a
-// realistic multi-second modal, responses arriving after it closed produced
-// extra prompts that accused a perfectly correct token of being wrong.
-let adminTokenGeneration = 0;
+// 🔴 C-122. 세대 카운터는 «토큰 파일»로 갔습니다 — 전송이 그걸 읽어야 하고, 사본을 두면
+//    「토큰이 바뀌었나」에 답이 둘이 됩니다. 여기서는 부릅니다.
 // Set when the operator dismisses the prompt. Re-prompting on every 30s refresh
 // forever is not a fix, it is a trap; they can reload the page to be asked again.
 let adminTokenDeclined = false;
 let tokenPromptInFlight = null;
-
-/** True only for rejections the admin GATE issued.
- *
- * Status alone is not enough: `_resolve_admin_script_path` answers 403 when an
- * isolated server refuses a write into the live mappers/ tree, which has nothing
- * to do with the token. Treating that as an auth failure made the page demand a
- * token and then OVERWRITE the correct stored one with whatever was retyped.
- * The server marks its own rejections with `WWW-Authenticate: X-Admin-Token`.
- */
-function isGateRejection(res) {
-  if (res.status !== 401 && res.status !== 403) return false;
-  const challenge = res.headers && res.headers.get
-    ? (res.headers.get('WWW-Authenticate') || '') : '';
-  return challenge.toLowerCase().includes(ADMIN_TOKEN_HEADER.toLowerCase());
-}
 
 function askForAdminToken(message) {
   if (!tokenPromptInFlight) {
@@ -165,7 +151,7 @@ function askForAdminToken(message) {
           value = String(entered).trim();
           if (value) {
             storeAdminToken(value);
-            adminTokenGeneration += 1;
+            bumpTokenGeneration();
           }
         } finally {
           // 🔴 어떤 경로로 끝나든 «반드시» 지우고 «반드시» 푼다.
@@ -182,52 +168,17 @@ function askForAdminToken(message) {
   return tokenPromptInFlight;
 }
 
-function withAdminToken(init) {
-  const token = getAdminToken();
-  if (!token) return init;
-  const next = Object.assign({}, init || {});
-  // Header only, never a query parameter: query strings are written to the
-  // server's access log, headers are not.
-  next.headers = Object.assign({}, (init && init.headers) || {},
-    { [ADMIN_TOKEN_HEADER]: token });
-  return next;
-}
-
-/** fetch() for /admin/* — attaches the token, and re-asks once if the GATE rejects it. */
-async function adminFetch(url, init) {
-  const generationAtSend = adminTokenGeneration;
-  let res = await fetch(url, withAdminToken(init));
-
-  // 503 = the server has no token configured and this route refuses to run
-  // without one. The body names the variable and says to restart; surfacing it
-  // here is the whole point of the 503 split, and the call sites would otherwise
-  // show a generic "저장 중 오류 발생".
-  if (res.status === 503) {
-    try {
-      const body = await res.clone().json();
-      if (body && body.detail) showToast(body.detail, 'error', { ttl: 12000 });
-    } catch (e) { /* not a JSON body - let the caller report it */ }
-    return res;
-  }
-
-  if (!isGateRejection(res)) return res;
-
-  // Someone else already replaced the token while this was in flight. Retry
-  // silently with the new one instead of accusing it of being wrong.
-  if (adminTokenGeneration !== generationAtSend) {
-    return fetch(url, withAdminToken(init));
-  }
-
-  if (adminTokenDeclined) return res;
-
-  const message = getAdminToken()
-    ? '관리자 토큰이 거부되었습니다. 다시 입력해 주세요.'
-    : '관리자 토큰을 입력하세요.';
-  const token = await askForAdminToken(message);
-  // Retry once only. A second rejection returns to the caller so the page shows
-  // its own error instead of looping the operator on a modal.
-  if (token) res = await fetch(url, withAdminToken(init));
-  return res;
+/** `/admin/*` 로 가는 이 페이지의 전송. 몸통은 `admin_token.js` «하나»이고, 여기서 넘기는
+ *  둘이 이 페이지만 아는 것입니다.
+ *
+ * 🔴 「거절했으면 다시 묻지 않는다」는 여전히 여기 규칙입니다 — 그 플래그를 세우는 모달이
+ *    여기 살기 때문입니다. 안 물으면 전송은 «응답 그대로» 돌려줍니다(예전과 같은 결말).
+ */
+function adminFetch(url, init) {
+  return sendWithAdminToken(url, init, {
+    onServiceUnavailable: (detail) => showToast(detail, 'error', { ttl: 12000 }),
+    askForToken: (message) => (adminTokenDeclined ? '' : askForAdminToken(message)),
+  });
 }
 
 // ── State Cache ─────────────────────────────────────────────
@@ -2183,20 +2134,9 @@ function initConfigResolveLine() {
   if (hint) hint.textContent = CHROME.DETAIL_HINT;
 }
 
-/** What a failing response says about ITSELF, for `fetchFailureLine`.
- *
- * `isGateRejection` is the load-bearing part and it is REUSED, not re-derived: a 401 is only
- * ours if it carries `WWW-Authenticate: X-Admin-Token`, and a proxy answering the port with its
- * own `Basic realm=...` must not be reported as a bad token. That test already exists at the
- * top of this file for the same reason and a second copy of it would drift from the first.
- */
-function failureFactOf(res) {
-  return {
-    status: res.status,
-    gate: isGateRejection(res),
-    server: (res.headers && res.headers.get ? res.headers.get('Server') : '') || '',
-  };
-}
+// 🔴 C-122. `failureFactOf` 는 `config_resolve_view.js` 로 갔습니다 — 그리드 페이지가
+//    같은 판단을 «손으로» 짓고 있어서입니다. 여기 사본을 남기면 그게 둘째 철자이고,
+//    그 이름은 이 파일 맨 위에서 import 합니다.
 
 /** 🔴 THE HALF `/admin/config/resolve` CANNOT ANSWER, ASKED ON THE SAME REFRESH.
  *
@@ -2404,10 +2344,10 @@ async function refreshConfigResolve(force = false) {
   // A token that ARRIVED since the last attempt is a changed cause, not a timer tick. Without
   // this, the operator does exactly what the failure line told them to do and the line goes on
   // saying it for the rest of the window - which reads as "it did not work".
-  const tokenChanged = adminTokenGeneration !== configResolveTokenGeneration;
+  const tokenChanged = tokenGeneration() !== configResolveTokenGeneration;
   if (!force && !tokenChanged
       && now - configResolveLastAt < CONFIG_RESOLVE_MIN_INTERVAL_MS) return;
-  configResolveTokenGeneration = adminTokenGeneration;
+  configResolveTokenGeneration = tokenGeneration();
   // Stays null until a response actually arrives, which is what lets the catch below tell
   // "nothing is listening" apart from "the server answered, and the answer was 404".
   let failure = null;
@@ -3018,11 +2958,11 @@ function retroParamEntries(op, opView) {
 }
 
 async function refreshRetroactiveOperations(force = false) {
-  const tokenChanged = adminTokenGeneration !== retroactiveTokenGeneration;
+  const tokenChanged = tokenGeneration() !== retroactiveTokenGeneration;
   if (retroactiveInFlight) return;
   if (!force && !tokenChanged && retroactiveLoaded) return;
   retroactiveInFlight = true;
-  retroactiveTokenGeneration = adminTokenGeneration;
+  retroactiveTokenGeneration = tokenGeneration();
   let failure = null;
   try {
     const res = await adminFetch(`${API_BASE}/admin/retroactive/operations`);
@@ -3427,22 +3367,8 @@ function retroQueuedEl(view) {
   return box;
 }
 
-/** 실패 응답의 문장은 **서버 것을 먼저 쓴다.**
- *
- * 400 거절(알 수 없는 연산·파라미터 누락·보호된 소스 회수 시도·계산 불가)에는 서버가 이유를
- * 문장으로 담아 보낸다. 그것을 버리고 「조회 실패」로 뭉개면 운영자를 로그로 돌려보내는 것이다.
- * 반대로 404·401/403·무응답은 서버가 자기에 대해 말할 수 없는 상태라 클라의 다섯 상수가 답이다
- * — 그 가름은 `fetchFailureText`가 이미 소유하고 있으므로, 서버 문장을 **fallback으로 넘기는
- * 것만으로** 두 규칙이 하나의 분류기 안에서 만난다. 새 분기를 만들지 않는다.
- */
-async function retroFailureLine(res, failure, fallback) {
-  let detail = '';
-  try {
-    const body = await res.json();
-    if (body && typeof body.detail === 'string') detail = body.detail;
-  } catch (e) { /* 본문 없는 실패 응답 — 클라 상수로 답한다 */ }
-  return fetchFailureLine(failure, detail || fallback);
-}
+// 🔴 C-122. `retroFailureLine` 도 같은 곳으로 갔습니다. 문장 규칙과 분류기가 «한 파일»에
+//    있어야 「서버 문장을 fallback 으로 넘긴다」가 두 번 쓰이지 않습니다.
 
 // 읽기 전용 계기다 — `apply`류 파라미터는 이 라우트에 존재하지 않고 서버가 구조적으로
 // rollback한다. 그래서 확인 없이 클릭 한 번(「읽기 무마찰」). 다만 다섯 중 셋은 이 수를 얻는

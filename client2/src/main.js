@@ -24,7 +24,12 @@ import { GridSourceLabel } from './grid_source_label.js';
 import { RedoBanner } from './redo_banner.js';
 import { putRescopeHandoff } from './rescope_handoff.js';
 import { setMatchCount } from './match_count.js';
-import { ADMIN_TOKEN_HEADER, readAdminToken } from './admin_token.js';
+// 🔴 C-122. 이 페이지가 `/admin/**` 을 «맨 fetch»로 부르는 저장소의 «유일한» 자리였습니다
+//    (실측: adminFetch 호출 59 · 맨 fetch 로 /admin 을 부르는 자리 1 — 바로 아래).
+//    그래서 토큰 부착·503 본문·게이트 재시도 넷을 «전부» 안 받고 있었습니다.
+import { readAdminToken, adminFetch } from './admin_token.js';
+// 그리고 «거절을 읽는» 규칙도 하나입니다 — 여기서 상태 코드로 문자열을 짓지 않습니다.
+import { failureFactOf, retroFailureLine, CHROME } from './config_resolve_view.js';
 // C-109. 다시 돌릴 수 있는 규칙의 목록은 «표마다» 다릅니다. 그 물음이 자기 모듈에 사는
 // 사유는 그 파일 머리글에 있습니다(이 파일은 node 가 import 못 합니다).
 import { loadReplayableRules } from './replayable_rules.js';
@@ -197,21 +202,27 @@ function initGridSourceLabel() {
  *    문제를 구별할 수 없고, 구별 못 하면 고칠 곳을 못 찾습니다.
  */
 async function runRetroactive(op, params) {
-  const token = readAdminToken();
-  if (!token) return { ok: false, error: 'no admin token on this browser' };
+  // 토큰이 «아예 없으면» 물을 자리가 이 페이지에 없습니다 — 모달은 어드민의 것입니다.
+  // 그래서 보내 보지 않고 그 사실을 그대로 돌려줍니다(예전과 같은 결말, 같은 문장).
+  if (!readAdminToken()) return { ok: false, error: 'no admin token on this browser' };
   try {
-    const res = await fetch(`${API_BASE}/admin/retroactive/${encodeURIComponent(op)}/run`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', [ADMIN_TOKEN_HEADER]: token },
-      body: JSON.stringify({ params }),
-    });
+    // 🔴 `askForToken` 을 «안 넘깁니다» — 이 화면에 모달이 없습니다.
+    // 🔴 `onServiceUnavailable` 도 «안 넘깁니다». 503 본문은 아래 문장에 실려 그 «줄»에
+    //    섭니다. 어드민은 토스트를 넘기고 자기 쪽 토스트를 접는데(실측 주석: 「두 번 뜬다」),
+    //    여기서 넘기면 같은 문장이 토스트와 줄에 «둘» 뜹니다. 줄이 남는 쪽이 답입니다.
+    const res = await adminFetch(
+      `${API_BASE}/admin/retroactive/${encodeURIComponent(op)}/run`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ params }),
+      });
     if (!res.ok) {
-      let why = `${res.status}`;
-      try {
-        const body = await res.json();
-        if (body && body.detail) why = `${res.status} ${body.detail}`;
-      } catch (e) { /* not a JSON body — the status is still a fact */ }
-      return { ok: false, error: why };
+      // ⛔ 상태 코드로 문자열을 «짓지» 않습니다. 400 의 서버 문장을 먼저 쓰고, 서버가 자기에
+      //    대해 말할 수 없는 상태(404 · 게이트 · 무응답)면 분류기의 상수가 답합니다 — 그
+      //    가름이 어드민과 «같은 한 자리»에 있습니다.
+      return { ok: false, error: await retroFailureLine(res, failureFactOf(res),
+                                                        CHROME.FETCH_FAILED) };
     }
     const body = await res.json().catch(() => ({}));
     // 서버가 «말한» 상태입니다. 없으면 큐에 들어갔다는 것까지가 아는 전부입니다.

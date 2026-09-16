@@ -1497,6 +1497,13 @@ const FLOORS = new Map([
   // measured value. The population is what the BROWSER loads (top-level pages + `src/`),
   // never `tests/`: the first draft counted this file's own mutation anchors and reddened itself.
   ['css_token_definition_harness.mjs', 7],
+  // New 2026-09-17 with C-122. 🔴 ONE TRANSPORT AND ONE REFUSAL READER for `/admin/**`.
+  // Half of it is behaviour (the transport really does attach the token, surface a 503 body,
+  // retry silently when the token changed mid-flight, and ask exactly once) and half of it is
+  // the SEAM: `admin.js:91` has always claimed in prose that a grep for a bare fetch to
+  // /admin must return nothing. Prose stops nothing; that sentence is a gate now, and it
+  // was false when it was written -- one call site had been going around it.
+  ['refusal_seat_harness.mjs', 22],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────
