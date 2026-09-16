@@ -260,7 +260,12 @@
     .cg-edge.is-synth { stroke: var(--accent, #7a5cff); }
     .cg-edge.is-dim, .cg-node.is-dim { opacity: 0.35; }
     .cg-edge.is-cycle { stroke: var(--danger); stroke-width: 2.5; }
-    .cg-node circle { fill: var(--bg); stroke: var(--text); stroke-width: 1.5; cursor: pointer; }
+    /* 🔴 C-117 ㉰. 여기 `var(--bg)` 가 있었고, 그 이름은 이 저장소에 «정의가 없습니다».
+       정의 없는 커스텀 속성은 «무효»이고, `fill` 의 무효는 상속이 아니라 «초기값» — 검정입니다.
+       그래서 원이 검정으로 칠해지고 그 위의 라벨(`--text`)이 안 읽혔습니다.
+       ⛔ 새 이름을 «정의하지» 않습니다. `--bg` 를 만들면 `--bg-surface` 와 «같은 역할에 두 이름»이
+          되고, 그건 토큰 층의 문 가르기입니다. 이 상자가 앉은 면의 이름을 그대로 씁니다. */
+    .cg-node circle { fill: var(--bg-surface); stroke: var(--text); stroke-width: 1.5; cursor: pointer; }
     .cg-node text { fill: var(--text); font-size: 11px; }
     .cg-node.is-cycle circle { stroke: var(--danger); }
     .cg-optin { fill: var(--text-dim); font-size: 11px; }
@@ -1148,27 +1153,33 @@
        분모 없는 비율은 표본이 8개일 때도 그럴듯해 보인다.
        (클래스 이름은 재교정률이 먼저 생겨서 그대로 쓴다. 두 줄이 같은 문법으로 읽혀야
         해서 스타일을 공유하는 것이지, 교정 공수가 재교정률의 부속이라는 뜻이 아니다.) */
+    /* 🔴 C-117 ㉰. 이 네 줄이 `--text-primary` / `--text-secondary` 를 불렀는데 그 둘은
+       이 저장소에 «정의가 없습니다»(git 이력상 «한 번도» 없었습니다 — 지어진 이름입니다).
+       `color` 의 무효는 «상속»이라 값도 라벨도 muted 도 «전부 같은 색»이 됐고, 그래서
+       아래 `[data-tone="muted"]` 이 «무효»였습니다 — 「측정 안 함」이 「측정된 값」과
+       같은 픽셀입니다. 제 기억의 부류 「같아 보이는 다섯 개의 0」 그대로입니다.
+       ⛔ 정의를 «더하지» 않습니다: 캐논에 `--text` · `--text-dim` 이 이미 그 두 역할입니다. */
     .recorrection-line {
       display: flex;
       align-items: baseline;
       gap: 10px;
       padding: 14px 20px 0;
       font-size: 0.84rem;
-      color: var(--text-secondary);
+      color: var(--text-dim);
     }
     .recorrection-line .rc-label {
       font-weight: 600;
-      color: var(--text-primary);
+      color: var(--text);
     }
     .recorrection-line .rc-value {
       font-variant-numeric: tabular-nums;
       font-weight: 700;
       font-size: 1.05rem;
-      color: var(--text-primary);
+      color: var(--text);
     }
     .recorrection-line[data-tone="warn"] .rc-value { color: var(--warning); }
     .recorrection-line[data-tone="danger"] .rc-value { color: var(--danger); }
-    .recorrection-line[data-tone="muted"] .rc-value { color: var(--text-secondary); }
+    .recorrection-line[data-tone="muted"] .rc-value { color: var(--text-dim); }
     .recorrection-line .rc-sub { font-size: 0.78rem; }
     /* 교정 공수 줄에 한해, 위험 상태에서는 값(대시)뿐 아니라 사유 문장도 붉게 한다.
        이 줄의 존재 이유가 수집 중단 감지라서, 붉은 대시 하나로는 눈에 걸리지 않는다.

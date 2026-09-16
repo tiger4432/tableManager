@@ -1485,6 +1485,13 @@ const FLOORS = new Map([
   // is the easiest option to pick, because it is written by doing nothing. Half of it is the
   // control direction: a live button must NOT keep the reason, or the fix only moved it.
   ['disabled_reason_harness.mjs', 19],
+  // New 2026-09-16 with C-117 ㈰. 🔴 THE SUBJECT IS TEXT AND TEXT IS THE SUBJECT: a CSS
+  // custom property either has a declaration somewhere or it does not, and an undefined one
+  // fails SILENTLY and DIFFERENTLY per property -- `fill` falls to its initial value (black),
+  // `color` inherits, which is how the 「not measured」 tone came to look exactly like a
+  // measured value. The population is what the BROWSER loads (top-level pages + `src/`),
+  // never `tests/`: the first draft counted this file's own mutation anchors and reddened itself.
+  ['css_token_definition_harness.mjs', 7],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────
