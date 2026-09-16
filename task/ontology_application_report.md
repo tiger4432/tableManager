@@ -23162,3 +23162,68 @@ server/chain/builtins.py:373-376
 > 🔴 「판정 대기」 **2** — ㉠ 오라클 술어를 한 줄로 적고, 371 을 «상한»으로 표기
 > ㉡ `builtins.py:373-376` 주석을 4)와 같은 커밋에
 > · 🔁 이월: 0 · ✅ Q-33 → 456 + `6df349b9`(그 줄에서 고침)
+
+---
+
+## 🔴 Q-35 [09-17 01:01 실측] 457 이 「제 술어가 못 셉니다」라 한 갈래 — 셌습니다. 그리고 **하나는 «오늘 이미» 공허합니다**
+
+> 457 ①: 「이것은 «하한»입니다. 패키지 이름을 «안 들고도» 공허해질 수 있습니다 … 그건 제 술어가 «못 셉니다»」
+
+### ① 모집단을 둘로 갈랐습니다 — 위험한 쪽은 «이름만 드는» 파일입니다
+
+```
+virtual_join 을 드는 시험 «파일» 48
+   패키지를 import 하는 파일  28   -> 삭제되면 «수집»에서 죽습니다. 빨갛게 «보입니다»
+   이름만 «드는» 파일         20   🔴 삭제 뒤에도 «삽니다» — 공허는 여기서만 납니다
+그 20 안의 「비어 있음/0」 단언   «94 줄»   <- 상한(대부분 조인과 무관합니다)
+virtual_join 언급에서 ±15줄 안  «5 줄 / 파일 4»   <- 근접을 대리로 쓴 좁힌 목록
+   test_a_broken_source_falls_alone.py:299 · :316
+   test_ledger_roleframe.py:491
+   test_the_loader_does_not_reach_for_the_report.py:82
+   test_the_setup_order_is_one_list_and_the_report_knows_it.py:100
+```
+
+### 🔴 ② 그중 하나는 «4) 를 기다릴 것도 없이 오늘 공허»합니다
+
+```
+server/tests/test_ledger_roleframe.py:491-493
+   assert not any(name in imports for name in {
+       "sqlalchemy", "psycopg2", "database", "ledger.store", "ledger.gate",
+       "ledger.cursor", "virtual_join_config",          🔴 «옛 철자»
+   })
+오늘의 철자   `virtual_join.config`  (모듈 `virtual_join_config` 는 «없습니다»)
+=> 그 항목은 «영원히 거짓»이라 금지 목록에서 «한 자리를 차지하고 아무것도 안 막습니다».
+   나머지 여섯은 그대로 일합니다 — 그래서 단언 전체가 초록이고, «아무도 안 봅니다»
+```
+📌 이것이 Q-32 ③ 에서 「그 술어가 실제로 잡는 유일한 갈래」로 적은 «개명»의 실물입니다
+   (`virtual_join_config` 20 자리 중 하나). 그리고 상설 「영원히 거짓인 필터는 거짓이 정답인 동안 숨는다」 그대로입니다.
+
+### 🔴 ③ 그리고 457 의 술어가 그것을 «구조적으로» 못 봅니다
+
+```
+457 술어   「tests/*.py 의 assert «줄» 중 'virtual_join' 을 문자열로 든 것」  -> 17줄 / 12파일
+못 보는 것  «이어지는 줄»에 토큰이 있는 assert — 위 예가 정확히 그것입니다
+           (:491 이 `assert not any(...)` 로 열고, 금지 목록은 :492-493 에 있습니다)
+✅ 술어를 «줄»이 아니라 «AST 의 assert 노드 전체»로 두면 그 자리가 닫힙니다
+```
+
+### ⚠️ ④ 참고 — 넷 중 하나는 공허가 «아니라» 정상 신호입니다
+
+```
+test_the_loader_does_not_reach_for_the_report.py:74
+   assert "virtual_join.refusal" in _imports(REPORT)      <- «양성» 단언
+=> 4) 뒤에는 «빨개집니다». 공허 부류가 아니라 「4)가 손대야 하는 자리」이고, 457 의 17 에 들어 있습니다
+```
+
+### 확신도 · 못 잰 것
+
+```
+실행  ①②③④ 전부 HEAD blob 실측(AST 아님 — 정규식 + 근접)
+🔴 못 잼  · 94 중 «몇이 진짜 조인에 대한 단언»인지 — 근접(±15줄)은 «대리»입니다.
+          성질로 세려면 그 단언이 «무엇을 부르는지»를 AST 로 봐야 하고, 저는 안 했습니다
+        · 20 파일이 «정말로» 삭제 뒤 수집되는지 — 그건 4) 리허설의 수입니다(Q-34 와 같은 이유)
+```
+
+> 🔴 「판정 대기」 **2** — ㉠ `test_ledger_roleframe.py:492` 의 `virtual_join_config` 를 오늘 철자로(지금 거짓)
+> ㉡ 457 의 술어를 «assert 노드» 단위로
+> · 🔁 이월: 0 · ✅ Q-34 → 458 ㉠(오라클을 meta_path 로, 371 을 «상한»으로 표기)
