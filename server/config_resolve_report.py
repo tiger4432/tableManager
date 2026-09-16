@@ -582,16 +582,36 @@ _VJ_CODE_TO_REASON = {
     "no_unique_index": REASON_SCOPE_UNRESOLVED,
     "fanout_declared": REASON_MAPPING_UNAVAILABLE,
     "shape": REASON_MAPPING_UNAVAILABLE,
-    # ⚠️ [S-283, 판정 446] `read_time_retired` IS DELIBERATELY NOT LISTED, and that is a
-    # question rather than an oversight. It falls to the default below, so the screen calls
-    # a RETIREMENT 「매핑을 못 찾았습니다」 — which reads as 「무언가 빠졌다」 when the truth is
-    # 「이 능력이 없어졌다」. The right answer is probably a fifth reason.
+    # ⚠️ [S-283, 판정 446] `read_time_retired` IS DELIBERATELY NOT LISTED. It falls to the
+    # default below, so the screen calls a RETIREMENT 「매핑을 못 찾았습니다」 — which reads as
+    # 「무언가 빠졌다」 when the truth is 「이 능력이 없어졌다」. The two send an operator to
+    # OPPOSITE repairs: fix the declaration, versus move the join to `into.table`.
     #
-    # 🔴 WHY IT IS NOT ADDED HERE. `REASONS` is a CLOSED vocabulary whose 정본 is the
-    # contract vector (`contracts/config_resolve_report/vectors.json`) and which the client
-    # reads; a fifth value is a cross-lane change, not a line in this dict. The refusal's
-    # own SENTENCE is already correct and names the next action, so an operator who reads
-    # the row is not misled — only the machine-readable bucket is approximate.
+    # 🔵 판정 474 SETTLED IT: yes, a fifth reason. This is no longer an open question, and
+    # the word 「probably」 that stood here was collecting a re-derivation every session.
+    # What is left is WHEN and HOW, and both were measured on 2026-09-17:
+    #
+    #   WHEN — how many seats bucket/filter/count on this machine-readable code TODAY?
+    #     product code           0   the client renders `reason` as DATA and never branches
+    #                                on it (`config_resolve_view.js` states that as its own
+    #                                rule); the server only ever WRITES the code
+    #     contract + tests       5   the closed-set equalities, the runtime-twin rule, and
+    #                                the per-case vector lookups
+    #   -> 0 product seats, so by 판정 474 ③ this lands WHOLE in a cross-lane round
+    #      (dict + vectors.json + client harness, one commit), not as a line here.
+    #
+    #   HOW — 🔴 AND THE CONTRACT WILL NOT SIMPLY ACCEPT A FIFTH WORD. Its rule is that
+    #   config-time degradation BORROWS the runtime's degradation vocabulary, and that
+    #   vocabulary is literally `bonding_plan.BINDING_*` = {not_declared,
+    #   mapping_unavailable, candidate_column_missing, not_reached}. `read_time_retired`
+    #   is not one of them and does not belong in a ROLE-BINDING vocabulary, so adding it
+    #   here goes red at `test_the_vocabulary_is_borrowed_from_the_runtime_not_invented`.
+    #   The fifth value therefore arrives the way `scope_unresolved` did — as a second
+    #   named entry in that contract's `_AWAITING_RUNTIME`, with the xfail that records
+    #   which word is outstanding and why. That is a Lead PM decision, not a local one.
+    #
+    # Until then the refusal's own SENTENCE is correct and names the next action, so an
+    # operator who reads the row is not misled — only the machine-readable bucket is.
 }
 
 # 🪦 [S-211 ①, 판정 355] `_VJ_CODE_LEAD` 와 `virtual_join_detail` 의 «본체»가
