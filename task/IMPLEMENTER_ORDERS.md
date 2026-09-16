@@ -44093,3 +44093,70 @@ failures 는 rejections 와 «같은 관용구»이고 «선택»입니다 — c
 => 미답으로 남습니다: 「446 과 4) 를 한 착지로 갈지」
 ```
 📌 **다음: 4) 를 엽니다.** 452 ②의 «분리»는 위에서 이미 들어갔습니다. 목록의 나머지를 «이름으로» 재고 시작하겠습니다.
+
+---
+
+> 🔴🔴 **[09-17 00:43 구현자] 4) 의 «이름 목록» — 전수로 셌습니다. 그리고 4) 는 «한 착지»이며 지금 «막혀 있습니다».**
+
+## ① 코드가 깨지는 자리 — import «23 자리 / 파일 12» (비시험, 패키지 밖)
+```
+main.py                 5   :1081 · :1669 · :2789 · :3041 · :6005
+chain/builtins.py       4   :63 · :94 · :118 · :365
+database/crud.py        3   :3949 · :4024 · :4226
+migrations/add_vjoin_null_safe_indexes.py  3   :41 · :55 · :89
+chain/graph.py          2   :262 · :345
+config_resolve_report.py 2  :62 · :63
+chain/rule_shape.py     1   :107
+database/config_watcher.py 1 :222
+runtime/system_reload.py   1 :53
+scripts/check_one_row_one_fact.py 1 :38
+```
+🔴 **「별칭만 지운다」가 왜 세 번 거짓이었는지 이 표가 말합니다** — 별칭은 `virtual_join/config.py` 안의
+   되import 이고, 위 23 은 «패키지 밖»에서 패키지를 «부르는» 자리입니다. main.py 가 다섯입니다.
+
+## ② 시험 — 「든다」와 「의존한다」를 «가려서» 적습니다
+```
+virtual_join 이름을 «드는» 시험 파일   49   (그 안의 시험 944)
+446 만으로 «빨개진» 시험             78   (제가 어제 실측 — 그게 «읽기 시점 엔진»의 게이트입니다)
+❌ 못 잰 것   944 중 «몇이 엔진에 의존»하는지. 이름을 드는 것과 엔진이 없으면 죽는 것은 다릅니다
+             78 은 «잰 수»이고 944 는 «모집단의 상한»입니다. 그 사이는 안 쟀습니다
+```
+
+## ③ 산문·선언만 드는 파일 «32» (import «0»)
+```
+서버 코드 «18»   notation_norm(11) · verified_join_contract(7) · column_filter(4) ·
+                ingestion_worker(4) · join_into(3) · join_key_index(3) · operator_line(3) ·
+                dt_map_derivation(2) · cell_layer(2) · replay(1) · unique_key(1) …
+원장 «7»        setup_bundle(15) · config_explorer(8) · setup_registry(3) ·
+                config_authoring(3) · source_preparation(1) · roleframe(1) · admin(1)
+선언·스켈레톤 «5» ledger_skeleton.json(3) · ledger_config.json.sample(15) ·
+                notation_rules.json.sample(2) · table_config.json.sample(1) · 외 1
+맵퍼 견본 «2»    dt_map_mapper.py.sample(3) · cross_table_lookup_mapper.py.sample(3)
+```
+🔴 **원장 일곱이 판정 449·451 의 «세 번째 입구»입니다** — setup_bundle 15 · config_explorer 8 은
+   «작성 폼»이지 산문이 아닙니다. 이건 삭제가 아니라 «판정»이 먼저입니다.
+
+## ④ 🔴 그리고 «행동이 바뀌어야» 하는 자리 — 이게 목록의 제일 위입니다
+```
+database/config_watcher.py:222   패키지가 없으면 ImportError -> except 가 잡고
+                                «search_columns 를 가진 표마다 · 재적재마다» warning 을 찍습니다.
+                                그리고 known=None 이라 그 점검이 «조용히 멈춥니다»
+                                ✅ 옳은 답: ImportError 는 「셀 수 없다」가 아니라 「셀 것이 없다」입니다
+                                   -> known = column_types 로 두면 점검이 «다시 돕니다»
+chain/builtins.py:36-41          ✅ 이미 착지 `9365c580` (452 ②)
+chain/graph.py:345               vjoin_rules=[] -> counts.virtual_joins = 0 «조용히» (448 ②)
+446 의 거절                       materialize:false 에만 (452 ①)
+```
+
+## ⑤ 🔴 그래서 구조적 결론 — 4) 는 «한 커밋»이고, 지금 «둘»에 막혀 있습니다
+```
+왜 한 커밋인가   23 자리 중 «하나라도» 남으면 그 프로세스가 import 에서 죽습니다.
+               나눠 착지하면 「그 사이」가 «기동 실패»입니다 — 상설 ⑤ 의 제일 비싼 판
+막는 것 ㉠      Q-28: 446 + 78 게이트를 «같이» 은퇴시키나 (아직 미답)
+막는 것 ㉡      원장 일곱 = 입구 ③. 449·451 이 「작성 폼 제거」라 하셨는데
+               그건 «삭제 목록»이 아니라 «별도 라운드»로 보입니다 — 4) 안인지 밖인지 정해 주십시오
+```
+🔵 **제가 지금 할 수 있는 것:** ④ 의 `config_watcher` 는 «삭제와 같은 커밋»이라야 합니다
+   (오늘 고치면 «아무도 못 타는 갈래»를 짓는 것이고, 그건 바로 어제 제가 450 ①로 맞은 부류입니다).
+   그러니 4) 를 여는 대신 **㉠㉡ 의 답을 기다립니다.** 그동안 ②의 「944 중 몇이 «진짜 의존»인가」를 재 두겠습니다 —
+   그 수가 ㉠ 의 «비용»입니다.
