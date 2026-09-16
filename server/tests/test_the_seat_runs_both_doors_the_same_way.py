@@ -184,6 +184,44 @@ def test_the_seats_builtin_write_makes_ONE_event_not_one_per_row(db):
         "S-249 removed from the follow-up lap" % made)
 
 
+def test_the_lap_kwarg_is_forwarded_only_when_the_caller_gave_one(db, monkeypatch):
+    """🔴 `done=` IS THE FOLLOW-UP LAP'S ARGUMENT AND NOT EVERY KIND TAKES IT. Measured
+    2026-09-16 against the three registered kinds: `builtin:auto_confirm` and
+    `builtin:join_into` declare `done=None, **_`; `builtin:join` declares neither, so a call
+    that always passes `done=` raises `TypeError: _run_join() got an unexpected keyword
+    argument 'done'` - which is how the live lap has been ending its whole batch since
+    2026-09-12 15:20 (`92257825`, fifty minutes after `builtin:join` joined the table).
+
+    ⛔ SO THE SEAT PASSES IT ONLY WHEN GIVEN, and the probe below has the NARROW signature on
+    purpose. A probe written with `**kwargs` would accept either behaviour and decide nothing
+    - 「두 규칙이 같은 답을 내는 표본은 판별식이 아니다」. Fixing `_run_join` itself is a
+    separate ruling; this pins that the seat does not make the situation worse.
+    """
+    from chain import builtins
+
+    seen = []
+
+    def narrow(db_, rule_, row_ids=None):          # no `done`, no `**kwargs` - like _run_join
+        seen.append(("no-done", tuple(row_ids or ())))
+        return {"written": len(row_ids or ())}
+
+    def wide(db_, rule_, row_ids=None, done=None, **_):
+        seen.append(("done", done))
+        return {"written": 0}
+
+    rule = {"name": "s279_kwarg", "mapper": "builtin:s279_probe", "target_table": LEFT}
+
+    monkeypatch.setitem(builtins.BUILTIN_KINDS, "builtin:s279_probe", narrow)
+    rule_run.run_rule(db, rule, row_ids=["r-1"])
+    assert seen == [("no-done", ("r-1",))], (
+        "the seat handed `done` to a kind that cannot take it")
+
+    del seen[:]
+    monkeypatch.setitem(builtins.BUILTIN_KINDS, "builtin:s279_probe", wide)
+    rule_run.run_rule(db, rule, row_ids=["r-1"], done={"table": LEFT})
+    assert seen == [("done", {"table": LEFT})], "the lap's batch did not reach the kind"
+
+
 def test_a_builtin_handed_no_rows_neither_runs_nor_claims_to(db, caplog):
     caplog.clear()
     with caplog.at_level(logging.INFO):
