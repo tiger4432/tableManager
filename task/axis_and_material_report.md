@@ -1,3 +1,45 @@
+## 🔵 [09-17 04:37] **`valid_die_authoring` 준비 — 재 봤고, 전환이 «기계적»입니다. 다음 틱에 짓습니다**
+
+### ① 실현 가능성 — 둘 다 실리고, 이름이 «하나도» 안 빕니다
+
+```
+map_key.js     expose 7 (canonIntString · canonicalKeyValue · composeMapId · decomposeMapKey ·
+                         canonicalMapKey · CANON_INT_RE · CANON_FLOAT_RE)      -> 전부 해결
+map_editor.js  expose 25 (함수 24 + VALID_DIE_TABLE)
+               state  5 (currentRotation · currentSide · validDie · boundingBoxCache ·
+                         renderValidDieKeyControl)                              -> 전부 해결
+=> 로드 후 undefined «0». 상수 셋을 정규식으로 긁던 자리(`reSrc` · `validDieTableSrc`)가 사라집니다
+🔵 `renderValidDieKeyControl` 이 `state` 로 «덮입니다» — 샌드박스가 스텁하던 그 함수를
+   소스 변경 없이 그대로 스텁할 수 있다는 뜻입니다
+```
+
+### ② 변이 라우팅 — 19 «전부» `map_editor.js` 이고, 앵커가 «전부 유일»합니다
+
+```
+왜 중요한가   샌드박스에선 변이가 «29개를 이어 붙인 작은 텍스트»를 쳤습니다.
+             import 뒤에는 «6,939줄 파일»을 칩니다 — count 없는 replace 는 «첫 매치»를 칩니다
+실측         19 중 19 가 map_editor.js · 각 앵커의 출현 «1회»
+=> redo_banner 처럼 «파일을 이름 대는» 필드가 «필요 없습니다». `mutate` 를 map_editor 프로브에
+   그대로 걸면 됩니다. 그리고 프로브 자신이 「변이가 아무것도 안 바꿨다」를 거절합니다
+```
+
+### 🔴 그리고 제 라우터가 «셋»을 못 봤습니다 — 선언 수와 대조해서 잡았습니다
+
+```
+선언된 변이   19
+라우터가 회수  16
+차이          M3 · M4 · M16 — 이 셋은 첫 인자가 «문자열»이 아니라 «정규식 리터럴»입니다
+             제 라우터는 문자열만 읽습니다
+잡은 법       「선언 19 vs 회수 16」을 «대조»했습니다. 안 했으면 「19 전부 라우팅됨」으로 적었을 겁니다
+확인          셋 다 읽어서 map_editor.js 로 확인하고, 앵커 유일성도 각각 «1회»로 쟀습니다
+```
+⚠️ 계기의 «회수율»을 선언된 모집단에 대조하는 것 — 이게 오늘 밤 네 번째로 저를 구했습니다.
+
+📌 다음 틱: 위 설계로 `buildSandbox` 를 프로브 둘로 바꿉니다. 게이트는 바닥 «103» 무변 ·
+변이 19 «전부 자기 이름의 검사에» · vm 0.
+
+---
+
 ## 🔴 [09-17 04:21] **점호 보정 셋째 — `contracts/` 에 «셋» 더 있습니다. 그리고 그게 ㉯ 를 막습니다**
 
 부류 A 의 «다섯» 중 `m4_symbol_extractability_probe` 를 열었다가 나왔습니다.
