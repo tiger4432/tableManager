@@ -45152,3 +45152,45 @@ rule_shape.INTO_KINDS = ("table", "read")   <- into.read 는 통합 문법 «안
 S-280(판정 434·435·436)은 착지해 있습니다 — `e1318d28`, 마이그레이션은 박스에 걸었고 RUN.md 에 순서가 있습니다
 ```
 📌 **미답 둘:** ① 소유자 답(into.table 뿐인가 / into.read 도 쓰나) · ② 429 의 커서 ⓐ/ⓑ.
+
+---
+> 🔴 **[09-16 23:08 구현자] 440 «1) 착지»(`6580c30f`) · 전체 스위트 결과 · 그리고 **2) 를 짓기 전에 멈췄습니다** — 좌석이 제 생각보다 «큽니다».**
+
+## ① 1) 의 게이트 — 전체 스위트 «6,739 passed / 5 failed». 다섯 다 제 것이 아닙니다
+```
+셋   test_a_registration_may_carry_its_attributes_into_the_table.py   <- ledger_events. 스태시 베이스라인에서도 빨강
+둘   test_ddl_never_reaches_production.py · test_dev_env_isolation.py
+     🔴 «단독으로 돌리면 65 passed». 전체 실행에서만 빨갛습니다 — 스위트 «순서/환경 오염»이지
+        제 변경이 아닙니다. 확인하고 적습니다(제 변경이 아니라는 것을 «재서» 말합니다)
+영향 모집단(grep) 146 passed · 새 파일 7 passed · collect 은 아래 2) 뒤에 다시 재겠습니다
+```
+
+## ② 🛑 2) 를 «안 지었습니다» — 옮길 좌석이 «둘»이 아니라 «여덟 이름»입니다
+440 ③㉠ 은 「`required_index_name` + `unique_key.ensure_once`」로 적혀 있습니다. 옮기려고 열었더니
+`unique_key` 가 `virtual_join.config` 를 «네 군데»에서 되부릅니다:
+```
+unique_key.py:37   vjc.index_key_expression      <- 🔴 여기가 덫입니다 (아래 ③)
+unique_key.py:93   vjc.unique_index_covering     카탈로그 조회(「유효한 인덱스가 이 키를 덮나」)
+unique_key.py:186  vjc.required_index_ddl
+그리고 그 넷이 다시 INDEX_PREFIX · _MAX_IDENTIFIER · column_is_text · _folds_list 를 씁니다
+=> 실제 좌석 = INDEX_PREFIX · _MAX_IDENTIFIER · required_index_name · required_index_ddl ·
+              index_key_expression · column_is_text · _folds_list · unique_index_covering (+ 사설 헬퍼 셋)
+   `virtual_join/config.py` 1,115줄 중 «대략 300~400줄»입니다
+```
+🔴 **「모듈만 옮기기」는 «반쪽 이전»입니다** — 옮긴 모듈이 여전히 virtual_join 을 import 하므로
+   4)에서 그 패키지가 사라지는 순간 터집니다. 그래서 `git mv` 를 «되돌렸습니다». 반쪽으로 착지시키지 않습니다.
+
+## ③ 🔴 덫 «둘째» — `index_key_expression` 은 «인덱스의 것»이 아니라 «둘의 공유 철자»입니다
+```
+그 함수의 자기 주석: 「조회 식과 인덱스 식이 «같은 함수»에서 안 나오면 PostgreSQL 이 인덱스를 «안 쓴다» —
+   이론적 불일치가 아니라 1,000만 행 순차 스캔이 되고 «시험은 전부 통과한다»」
+오늘 그 함수를 쓰는 곳: 인덱스 DDL · join_onclause(조인 SQL) · crud.py:4023(키 비교)
+=> 인덱스 좌석과 «같이» 옮기면 조인 SQL 이 그것을 chain 에서 가져오게 됩니다.
+   안 옮기면 좌석이 virtual_join 에 묶인 채 남습니다. 둘 중 하나를 골라야 합니다
+```
+**제 제안(짓지 않았습니다):** 클러스터를 «통째로» `chain/join_key_index.py` 한 자리로 옮기고,
+`virtual_join/config.py` 는 그 이름들을 «되import» 해서 씁니다 — 정의는 «하나», 옛 이름은 별칭.
+그러면 ① 한 철자 보장이 «구조적으로» 유지되고 ② 4)에서 별칭만 지우면 됩니다 ③ 중간 커밋에서도 트리가 섭니다.
+게이트는 440 이 준 그대로: 「이전 전후로 인덱스 «이름»이 동일」 — 핀 박은 리터럴로 재겠습니다.
+📌 **미답 하나: 위 ③ 의 방향 승인.** 승인 주시면 바로 짓겠습니다. 그 전엔 한 줄도 안 옮깁니다.
+⚠️ `INDEX_PREFIX = "uq_vjoin_"` 은 440 대로 «값 그대로» 갑니다 — 패키지가 사라져도 이름은 안 바꿉니다.
