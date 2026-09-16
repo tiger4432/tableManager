@@ -1,6 +1,6 @@
 // Harness — the reconnect ladder wakes the page up promptly when a LOCAL server comes back,
 // and still refuses to hammer one that never does.
-// Run: node client2/tests/ws_reconnect_backoff_harness.mjs   (no node_modules — vm sandbox)
+// Run: node client2/tests/ws_reconnect_backoff_harness.mjs   (no node_modules; the subject is IMPORTED)
 //
 // WHAT WAS ACTUALLY WRONG (user report 2026-08-04: "포트 비어도 소켓 켜지는거 느림").
 // `onclose` scheduled `setTimeout(initWebSocket, state.wsReconnectDelay)` and then doubled the
@@ -35,7 +35,9 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import vm from 'node:vm';
+import { loadWithProbe } from './lib/probe.mjs';
+// The tunables are READ FROM THE MODULE now, not scraped out of its text. (ruling 470)
+import * as REAL_CFG from '../src/config.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WS_PATH = join(HERE, '..', 'src', 'websocket.js');
@@ -51,31 +53,12 @@ function die(msg) {
 }
 
 // ── Extraction ──────────────────────────────────────────────────────────────────
-function sliceBalanced(src, startIdx, open, close) {
-  const i = src.indexOf(open, startIdx);
-  if (i < 0) return null;
-  let depth = 0;
-  for (let j = i; j < src.length; j++) {
-    const ch = src[j];
-    if (ch === open) depth++;
-    else if (ch === close) { depth--; if (depth === 0) return src.slice(startIdx, j + 1); }
-  }
-  return null;
-}
-// Anchored at a real declaration, never at a bare name.
-function fn(src, name) {
-  const m = new RegExp(`(?:export\\s+)?(?:async\\s+)?function\\s+${name}\\s*\\(`).exec(src);
-  if (!m) die(`function ${name} not found in websocket.js — renamed or reshaped.`);
-  const body = sliceBalanced(src, m.index, '{', '}');
-  if (!body) die(`unbalanced braces for ${name}`);
-  return body.replace(/^export\s+/, '');
-}
-// A tunable's declared VALUE, read out of config.js. Anchored at `export const <NAME> =` so a
-// mention in a comment cannot be mistaken for the declaration.
-function cfgNumber(src, name) {
-  const m = new RegExp(`export\\s+const\\s+${name}\\s*=\\s*([0-9.]+)\\s*;`).exec(src);
-  if (!m) die(`\`export const ${name}\` not found in config.js — renamed, moved, or no longer a literal.`);
-  return Number(m[1]);
+/** The tunables as the module sees them. A `config.js` mutant is loaded as its own copy and
+ *  handed to the subject through a stub, so the value under test is one the product could
+ *  really read -- not a number scraped back out of the source text. */
+async function cfgModule(cfgSrc) {
+  if (cfgSrc === CFG0) return REAL_CFG;
+  return (await loadWithProbe(CFG_PATH, { mutate: () => cfgSrc, tag: 'cfg' })).module;
 }
 
 // ── Scoring ─────────────────────────────────────────────────────────────────────
@@ -184,77 +167,98 @@ async function drive(wsSrc, cfgSrc, {
 
   const badge = { textContent: '', className: '' };
   const badgeTrace = [];
+  const CFG = await cfgModule(cfgSrc);
   const calls = { checkServerHealth: 0, loadTables: 0, fetchData: [] };
   const listenerAdds = { document: 0, window: 0 };
 
-  const sandbox = {
-    WebSocket: FakeWebSocket,
-    WS_URL: 'ws://127.0.0.1:8080/ws',
-    WS_RECONNECT_BASE_MS: cfgNumber(cfgSrc, 'WS_RECONNECT_BASE_MS'),
-    WS_RECONNECT_CEILING_MS: cfgNumber(cfgSrc, 'WS_RECONNECT_CEILING_MS'),
-    WS_RECONNECT_JITTER: cfgNumber(cfgSrc, 'WS_RECONNECT_JITTER'),
-    WS_HEALTHY_SESSION_MS: cfgNumber(cfgSrc, 'WS_HEALTHY_SESSION_MS'),
-    WS_WAKE_MIN_GAP_MS: cfgNumber(cfgSrc, 'WS_WAKE_MIN_GAP_MS'),
-    WS_CONNECT_TIMEOUT_MS: cfgNumber(cfgSrc, 'WS_CONNECT_TIMEOUT_MS'),
-    WS_CONNECT_STALE_MS: cfgNumber(cfgSrc, 'WS_CONNECT_STALE_MS'),
-    state: {
-      ws: null, wsReconnectDelay: cfgNumber(cfgSrc, 'WS_RECONNECT_BASE_MS'),
-      wsRetryTimer: null, wsOpenedAt: 0,
-      wsPrevReconnectDelay: cfgNumber(cfgSrc, 'WS_RECONNECT_BASE_MS'),
-      wsLastWakeAt: 0, wsWakeSignalsInstalled: false,
-      // The connect watchdog's state. This harness's fake socket always resolves in single-digit
-      // milliseconds, so the watchdog never trips here — the hang it exists for is scored in
-      // `ws_connect_watchdog_harness.mjs`. These fields are present because the sliced code
-      // reads and writes them, not because this file measures them.
-      wsConnectWatchdog: null, wsConnectingSince: 0, wsWatchdogTrips: 0,
-      currentTable: hasTable ? 'bonding_map' : '', pageCache: new Map(),
-    },
-    elements: { get wsStatus() { return badge; }, tableSelect: { value: hasTable ? 'bonding_map' : '' } },
-    document: {
-      querySelector: () => ({ classList: { add() {}, remove() {} } }),
-      addEventListener: (ev, f) => { listenerAdds.document++; (listeners[ev] || (listeners[ev] = [])).push(f); },
-      get visibilityState() { return visibility; },
-    },
-    window: {
-      addEventListener: (ev, f) => { listenerAdds.window++; (listeners[ev] || (listeners[ev] = [])).push(f); },
-    },
-    console: { log() {}, error() {}, warn() {} },
-    setTimeout: setTimeoutFake,
-    clearTimeout: clearTimeoutFake,
-    Date: { now: () => now },
-    Math: Object.assign(Object.create(Math), { random: () => rand() }),
-    JSON, Set, Map, Object, Array, Number, String, Promise, Error,
-    checkServerHealth: async () => { calls.checkServerHealth++; },
-    loadTables: async () => { calls.loadTables++; },
-    fetchData: reset => { calls.fetchData.push({ t: now, reset }); },
+  // ── what the old sandbox injected, split by HOW the subject actually gets it ──────────
+  //    Imports become STUBS, globals are patched and put back in a `finally`. Same shape as
+  //    `ws_connect_watchdog_harness`; the VALUES below are this file's own.
+  const fakeState = {
+    ws: null, wsReconnectDelay: CFG.WS_RECONNECT_BASE_MS,
+    wsRetryTimer: null, wsOpenedAt: 0,
+    wsPrevReconnectDelay: CFG.WS_RECONNECT_BASE_MS,
+    wsLastWakeAt: 0, wsWakeSignalsInstalled: false,
+    // The connect watchdog's state. This harness's fake socket always resolves in single-digit
+    // milliseconds, so the watchdog never trips here -- the hang it exists for is scored in
+    // `ws_connect_watchdog_harness.mjs`. These fields are present because the subject reads and
+    // writes them, not because this file measures them.
+    wsConnectWatchdog: null, wsConnectingSince: 0, wsWatchdogTrips: 0,
+    currentTable: hasTable ? 'bonding_map' : '', pageCache: new Map(),
   };
-  vm.createContext(sandbox);
+  const fakeDocument = {
+    querySelector: () => ({ classList: { add() {}, remove() {} } }),
+    addEventListener: (ev, f) => { listenerAdds.document++; (listeners[ev] || (listeners[ev] = [])).push(f); },
+    get visibilityState() { return visibility; },
+  };
+  const fakeWindow = {
+    addEventListener: (ev, f) => { listenerAdds.window++; (listeners[ev] || (listeners[ev] = [])).push(f); },
+  };
+
+  const { probe } = await loadWithProbe(WS_PATH, {
+    mutate: wsSrc === WS0 ? undefined : () => wsSrc,
+    expose: ['scheduleReconnect', 'clearConnectWatchdog', 'abandonConnectingSocket',
+             'armConnectWatchdog', 'wakeNow', 'installWakeSignals', 'initWebSocket'],
+    stubs: {
+      './config.js': {
+        WS_URL: 'ws://127.0.0.1:8080/ws',
+        WS_RECONNECT_BASE_MS: CFG.WS_RECONNECT_BASE_MS,
+        WS_RECONNECT_CEILING_MS: CFG.WS_RECONNECT_CEILING_MS,
+        WS_RECONNECT_JITTER: CFG.WS_RECONNECT_JITTER,
+        WS_HEALTHY_SESSION_MS: CFG.WS_HEALTHY_SESSION_MS,
+        WS_WAKE_MIN_GAP_MS: CFG.WS_WAKE_MIN_GAP_MS,
+        WS_CONNECT_TIMEOUT_MS: CFG.WS_CONNECT_TIMEOUT_MS,
+        WS_CONNECT_STALE_MS: CFG.WS_CONNECT_STALE_MS,
+      },
+      './state.js': { state: fakeState },
+      './dom.js': {
+        elements: { get wsStatus() { return badge; }, tableSelect: { value: hasTable ? 'bonding_map' : '' } },
+      },
+      './api.js': {
+        checkServerHealth: async () => { calls.checkServerHealth++; },
+        loadTables: async () => { calls.loadTables++; },
+        fetchData: reset => { calls.fetchData.push({ t: now, reset }); },
+      },
+    },
+    tag: 'ws',
+  });
+
+  const saved = {
+    WebSocket: globalThis.WebSocket, document: globalThis.document, window: globalThis.window,
+    setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout,
+    dateNow: Date.now, random: Math.random, console: globalThis.console,
+  };
+  const restoreGlobals = () => {
+    globalThis.WebSocket = saved.WebSocket; globalThis.document = saved.document;
+    globalThis.window = saved.window; globalThis.setTimeout = saved.setTimeout;
+    globalThis.clearTimeout = saved.clearTimeout;
+    Date.now = saved.dateNow; Math.random = saved.random; globalThis.console = saved.console;
+  };
+  globalThis.WebSocket = FakeWebSocket;
+  globalThis.document = fakeDocument;
+  globalThis.window = fakeWindow;
+  globalThis.setTimeout = setTimeoutFake;
+  globalThis.clearTimeout = clearTimeoutFake;
+  Date.now = () => now;
+  Math.random = () => rand();
+  // 🔴 THE SILENCE IS LOAD-BEARING. The subject logs a line per connect attempt; inside `vm` those
+  //    went to a no-op console. Imported for real they reach stdout, and the gate reads this file
+  //    through `spawnSync` -- measured on the sibling: 260,363 bytes, then ENOBUFS and no
+  //    ASSERTIONS line, which the runner correctly reported as "it now measures nothing".
+  globalThis.console = { log() {}, error() {}, warn() {}, info() {}, debug() {} };
   try {
-    vm.runInContext([
-      fn(wsSrc, 'scheduleReconnect'),
-      fn(wsSrc, 'clearConnectWatchdog'),
-      fn(wsSrc, 'abandonConnectingSocket'),
-      fn(wsSrc, 'armConnectWatchdog'),
-      fn(wsSrc, 'wakeNow'),
-      fn(wsSrc, 'installWakeSignals'),
-      fn(wsSrc, 'initWebSocket'),
-      'globalThis.__go = initWebSocket;',
-    ].join('\n\n'), sandbox);
-  } catch (e) {
-    die(`the sliced reconnect code does not evaluate: ${e && e.message}`);
-  }
 
   const flush = () => new Promise(r => setImmediate(r));
   // Sampled at every point where the code is at rest, which is where an invariant like "exactly
   // one reconnect is queued" is actually meaningful. `noteWatchdog` must run FIRST so the timer
   // armed during the step just taken is already excluded when the retry count is read.
   const sample = () => {
-    if (sandbox.state.wsConnectWatchdog !== null) watchdogIds.add(sandbox.state.wsConnectWatchdog);
+    if (fakeState.wsConnectWatchdog !== null) watchdogIds.add(fakeState.wsConnectWatchdog);
     const retries = [...codePending].filter(id => !watchdogIds.has(id)).length;
     if (retries > maxCodePending) maxCodePending = retries;
   };
   const pending = [...signals].sort((a, b) => a.at - b.at);
-  sandbox.__go();
+  probe.initWebSocket();
   await flush();
   sample();
 
@@ -292,16 +296,18 @@ async function drive(wsSrc, cfgSrc, {
   return {
     events, calls, openedAt, openCount, badgeTrace, listenerAdds, scheduled, maxCodePending,
     attempts: events.filter(e => e.kind === 'attempt').map(e => e.t),
-    finalDelay: sandbox.state.wsReconnectDelay,
-    finalTimer: sandbox.state.wsRetryTimer,
+    finalDelay: fakeState.wsReconnectDelay,
+    finalTimer: fakeState.wsRetryTimer,
   };
+  } finally { restoreGlobals(); }
 }
 
 // ── The checks ──────────────────────────────────────────────────────────────────
 async function runChecks(wsSrc, cfgSrc, { strict = true } = {}) {
+  const CFG = await cfgModule(cfgSrc);
   const r = {};
-  const CEIL = cfgNumber(cfgSrc, 'WS_RECONNECT_CEILING_MS');
-  const BASE = cfgNumber(cfgSrc, 'WS_RECONNECT_BASE_MS');
+  const CEIL = CFG.WS_RECONNECT_CEILING_MS;
+  const BASE = CFG.WS_RECONNECT_BASE_MS;
   r.ceiling = CEIL;
   r.base = BASE;
 
