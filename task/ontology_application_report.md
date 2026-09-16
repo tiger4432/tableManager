@@ -22535,3 +22535,71 @@ parsers/directory_watcher.py:3240   «모으면서» 자른다 — 그 파일은
    ㉢ Q-21 `verified_join_contract.py` 처분
 ✅ 방금 닫힌 것: Q-23(판정 「게이트 셋째 철회」) · Q-25(판정 445 — 모집단 단위)
 ```
+
+---
+
+## 🔴 Q-26 [09-16 23:56 실측] 판정 446 ④ 의 「4)에서 «읽는 쪽이 0» 이 된다」 — **오늘 거짓입니다. 패키지 «밖»에 넷 있습니다**
+
+> 446 ④: 「4)에서 엔진이 사라지면 그 파일은 «읽는 쪽이 0» 이 됩니다 — 그때 「파일이 남아 있는데
+> 아무도 안 읽는」 상태를 «말하게» 하십시오」
+> 447 ③: 「4) 전에 «문자열로 부르는 자리»를 세십시오」 ← 그 지시가 «맞습니다». 다만 **import 로 세도
+> 나오는 자리가 이미 넷** 있고, 447 의 목록(`verified_join_contract` · `config_watcher` 의 try)에 «없습니다».
+
+### ① `load_virtual_join_rules` 를 부르는 «패키지 밖 · 비시험» 자리 — «호출 자리 넷 / 파일 넷»
+
+```
+server/chain/graph.py:340              🔴 조용합니다   (:329 함수 안 import · :341-342 except → [])
+server/config_resolve_report.py:577    🟡 시끄럽습니다 (:62 모듈 최상단 `import virtual_join.config as vjc`
+                                                    :63 `from virtual_join.refusal import …`)
+server/migrations/add_vjoin_null_safe_indexes.py:44
+server/scripts/check_one_row_one_fact.py:42
++ 이름만 부르는 자리 둘   chain/builtins.py:63 (`VIRTUAL_JOIN_RULES_PATH`) ·
+                       chain/graph.py:259 (`unique_index_covering`, :258 try 안)
+```
+🔴 **둘이 `chain/` 안입니다 — 4)가 «안 지우는» 패키지입니다.** 그러므로 4) 는 이번에도
+「별칭만 지운다」가 아닙니다(Q-24 ③ 과 같은 결론이 «다른 문»에서 또 나왔습니다).
+
+### 🔴 ② 그중 하나는 446 ④ 가 «금지한 그 병»을 그대로 만듭니다
+
+```
+chain/graph.py:325 chain_graph(db)   ← 어드민 라우트가 부릅니다 (main.py:4277)
+  :340  vjoin_rules = vjc.load_virtual_join_rules(...)
+  :341  except Exception:  vjoin_rules = []          🔴 조용히 «빈 목록»
+  :394  "virtual_joins": len(vjoin_rules)             → 화면에 «0»
+그리고 그 수의 «용도»가 :389-390 에 적혀 있습니다:
+   「The gate's number: what each file declared, so the picture can be checked
+     against the files rather than believed」
+```
+⇒ 4) 이후 **「선언이 0 개」와 「모듈이 사라져 못 읽음」이 화면에서 «같은 0»** 이 됩니다.
+446 ④ 의 「조용히 무시되면 운영자는 그 선언이 «돈다»고 믿습니다」의 **거울상**입니다 —
+이쪽은 「«안 돈다»고 믿습니다」이고, 파일에 대고 «검산하라»고 내놓은 수가 그 거짓을 싣습니다.
+
+### ⚰️ ③ 그리고 446 이 «방금» 거짓으로 만든 주석 하나
+
+```
+server/chain/graph.py:242-244
+   「⚠️ THE READ-TIME RULES STAY, and on this box that is both of them.」
+446 ②: 레거시 파일의 읽기 시점 조인도 «같이 은퇴한다»(귀결)
+⇒ 이 주석은 오늘 «거짓»입니다. 그리고 이 문장이 그 아래 «엣지를 그리는 이유»를 떠받치고 있습니다
+```
+
+### 착지 조건으로 제안하는 것 (짓지 않았습니다 — 판정 요청)
+
+```
+· 4)의 «이름 목록»에 위 넷 + 이름만 부르는 둘을 «올린다» (447 ①의 목록과 같은 자리)
+· chain/graph.py 의 except 는 «0 을 그리지 말고» 「못 읽었다」를 말해야 합니다 —
+  그 수의 계약이 「파일에 대고 검산」이므로, 검산 불가를 «0»으로 적으면 계약이 깨집니다
+· :242-244 주석은 은퇴와 «같은 커밋»에서 고쳐야 합니다(안 고치면 다음 사람이 그 문장을 전제로 씁니다)
+```
+
+### 확신도 · 못 잰 것
+
+```
+실행  ①②③ 전부 HEAD blob 실측(git grep + 파일 열기). 워킹트리 «안 봤습니다»
+🔴 못 잼  · 447 ③ 이 시킨 «문자열로 부르는 자리»는 «제가 안 셌습니다» — 이 보고는 «import 로도 보이는» 넷입니다.
+          그러므로 이 넷은 그 계수의 «하한»이지 모집단이 아닙니다
+        · migrations/ 와 scripts/ 의 둘이 «운영에서 도는지»는 못 잽니다(그 실행은 이 저장소 밖 결정입니다)
+```
+
+> 🔴 「판정 대기」 **1** — 위 착지 조건 셋 · 🔁 이월: 0
+> ✅ 닫힘: Q-22 ②→446 · Q-21→447 · Q-24→444 ③ · Q-23·Q-25
