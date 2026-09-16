@@ -749,7 +749,7 @@ const FLOORS = new Map([
   //    prefix the column names, a second separator, a blank rendered as an empty slot, the
   //    markup regrowing an axis hook, the shell not writing the slot) and all seven died with
   //    their ASSERTIONS line printed; a comment-only control stayed green.
-  ['map_editor2_shell_harness.mjs', 594],
+  ['map_editor2_shell_harness.mjs', 599],
   //
   // THE SEAT ITSELF. Scores that the screen draws where the server says it seated the map,
   // rather than recomposing `seatOf(frame) + shift` from a frame it built out of absent fields.

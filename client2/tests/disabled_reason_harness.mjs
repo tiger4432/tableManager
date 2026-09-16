@@ -244,7 +244,10 @@ const CENSUS_TABLE = new Map([
   ['map2/main.js :: cell.disabled = card.inert', ['STATED', '칸마다 data-me2-state · 「미상」을 그립니다']],
   ['map2/main.js :: el.indexToggle.disabled = !ready', ['STATED', '옆의 indexNote 가 INDEX_NOTE 를 그립니다']],
   ['map2/main.js :: btn.disabled = !vm.confirm.enabled || confirmInFlight', ['STATED', 'inertHint 가 «왜»를 말합니다 + 도는 중']],
-  ['map2/main.js :: el.exportBtn.disabled = !artifactImplemented()', ['CONFLICT', '🔴 사유가 «콘솔»로 갑니다. 그 코드가 그렇게 «일부러» 적어 두었습니다 — 판정 청합니다']],
+  // 🔵 09-17 판정 455 — `el.exportBtn` 은 이 표에서 «사라졌습니다». 끄는 것이 아니라
+  //    «안 내놓습니다»: `el.exportBtn.hidden = !artifactImplemented()`. 깃발이 «셸이 그것을
+  //    내놓아도 되나»를 말하므로, 안 된다면 그려서도 안 됩니다. 빚의 기록은
+  //    `task/FEATURE_INVENTORY_CLIENT.md` §A-4 에 살고, 운영자의 «화면»에는 안 삽니다 — 그게 그 판정의 한 줄입니다.
   ['map_editor.js :: el.btnLoadMap.disabled = true', ['BUSY', '표 목록/맵 로드 중']],
   ['map_editor.js :: el.tableSelect.disabled = true', ['BUSY', '표 목록 로드 중']],
   ['map_editor.js :: el.tableSelect.disabled = false', ['BUSY', '로드가 끝나 되돌아옴']],
@@ -269,7 +272,7 @@ const CENSUS_TABLE = new Map([
 // 🔴 이 둘은 «허용»이 아니라 «세어 둔 빚»입니다. 늘면 빨개집니다 — 조용히 늘 길이 없습니다.
 // 🔴 열쇠는 «남겨 둡니다». 0 이라도 키가 있어야 다음에 하나 생길 때 이 줄이 빨개집니다 —
 //    분류를 못 한 자리를 «조용히» 둘 길이 없습니다.
-const OPEN_DEBT = { CONFLICT: 1, UNRULED: 0 };
+const OPEN_DEBT = { CONFLICT: 0, UNRULED: 0 };
 
 const SRC_DIR = path.join(HERE, '..', 'src');
 /** 이 저장소에서 컨트롤을 끄는 «모든» 자리. 좌석을 지나는 것은 자기 파일이 답하므로 뺍니다. */

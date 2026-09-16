@@ -34,6 +34,8 @@
 
 // The page's markup, for section S's hook census only. See the header's exception note.
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { loadWithProbe } from './lib/probe.mjs';
 import { candidateList, candidateGrid, candidateId, parseCandidateId, START_HEADERS,
          INVERSION_FOOTNOTE } from '../src/map2/candidates.js';
 import { createMapSession, withDecision, withPayload, withError, withSelectedCandidate,
@@ -1315,6 +1317,51 @@ function throws(fn, what) {
      'I5 rejections are aggregated by reason, not listed per row');
   eq(rejectionSummary([{ reason: REJECTED.UNPARSABLE_CELL, count: 0 }]), '',
      'I6 a zero count is not reported as a rejection');
+  // ── the control that flag governs ───────────────────────────────────────────────
+  //
+  // 🔴 RULING 455 -- A GREYED CONTROL IS STILL AN OFFER. `isImplemented` reports whether the
+  //    SHELL MAY OFFER the affordance, so it HIDES the control instead of dimming it. The
+  //    button's own title promised 「Excel 양식으로 내보내기」 while the gateway's docstring said
+  //    the shell may not offer it yet, and the screen was the half that lied.
+  //
+  //    BOTH HALVES ARE SCORED. A harness that proved only the dark side would first be wrong on
+  //    the day the wiring lane flips the flag -- the one day nobody re-reads this section.
+  const exportBtnAfterBoot = (boot) => {
+    const doc = makeDocument();
+    boot({ document: doc,
+           api: { counters: { reads: 0, writes: 0 },
+                  loadReferenceView: () => Promise.resolve(null),
+                  loadWorklist: () => Promise.resolve({ rows: [] }),
+                  loadAlignConfig: () => Promise.resolve({}),
+                  confirmFrame: () => Promise.resolve({}) } });
+    return doc.getElementById('me2-export-btn');
+  };
+  const offBtn = exportBtnAfterBoot(bootstrap);
+  eq(offBtn.hidden, true, 'I7 the flag is false, so the shell does not draw the control at all');
+  eq(offBtn.disabled, false,
+     'I8 and it is not ALSO dimmed -- one predicate decides, and a dim control still offers');
+
+  // The flag is a literal `false` inside the gateway, so the only way to score the other half is
+  // to load the shell against a stubbed one. `stubs` refuses a name the subject never imported,
+  // so this cannot go quietly green against a rename.
+  const flagOn = await loadWithProbe(fileURLToPath(new URL('../src/map2/main.js', import.meta.url)),
+    { tag: 'exportflag', stubs: { './artifact_gateway.js': { artifactImplemented: () => true } } });
+  const onBtn = exportBtnAfterBoot(flagOn.module.bootstrap);
+  eq(onBtn.hidden, false,
+     'I9 and the day the flag is true the control stands, with nothing to re-add');
+
+  // `hidden` is only as strong as the stylesheet: a component that sets `display:` outranks the
+  // UA rule and turns the attribute into a no-op. `.ghost-btn` is exactly such a component
+  // (`display: inline-flex`), so the page's global guard is what makes I7 mean "absent from the
+  // accessibility tree" rather than "still there, still focusable".
+  const pageCss = readFileSync(
+    new URL('../src/map_editor2.css', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  ok(/\[hidden\]\s*\{[^}]*display:\s*none\s*!important/.test(pageCss),
+     'I10 the page makes `hidden` win over a component that sets display');
+  const pageMarkup = readFileSync(
+    new URL('../map_editor2.html', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  ok(/<button[^>]*id="me2-export-btn"[^>]*\shidden[\s>]/.test(pageMarkup.replace(/\n\s*/g, ' ')),
+     'I11 and the markup starts hidden, so nothing is offered before the flag is read');
 }
 
 // ── J. a tie shows the tie ──────────────────────────────────────────────────────
