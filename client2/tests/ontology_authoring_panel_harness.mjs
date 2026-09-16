@@ -74,6 +74,9 @@ globalThis.requestAnimationFrame = (fn) => fn();
 
 const { renderOntologyExplorer } = await import('../src/ontology_explorer_view.js');
 const { initialExplorerState } = await import('../src/ontology_explorer_store.js');
+// The absence vocabulary comes from the module that owns it, so the expectations below
+// are BUILT from it rather than retyped -- see the note at G12.
+const { ABSENCE_WORDS } = await import('../src/count_with_absence.js');
 
 const walk = (node, out = []) => {
   out.push(node);
@@ -774,17 +777,34 @@ const renderDraft = (plan) => {
                                    count: { affected: 50, affected_label: '행',
                                             count_kind: 'sample' } }))
       === '소스 2 · 행 50 · sample');
-  // 🔴 TWO EMPTIES, AND THEY ARE NOT THE SAME WORD. 「셀 수 있으나 이 자리에서 안 셌다」 versus
-  //    「정말 없다」 -- an operator does something different about each, so the server's word
-  //    travels untranslated.
-  check('G12 「not counted here」 is carried as the server wrote it',
+  // 🔴 TWO EMPTIES, AND THEY ARE NOT THE SAME WORD. 「셀 수 있으나 이 자리에서 안 셈」 versus
+  //    「정말 없다」 -- an operator does something different about each.
+  //
+  //    ⚠️ THIS USED TO ASSERT THE RAW TOKEN (`소스 3 · not_counted_here`), because redo_cost
+  //    carried the server's word untranslated so the client could not invent the distinction.
+  //    That was right about the danger and wrong about the cure: what reached the operator was
+  //    an English token. The distinction is kept by having ONE place that translates, not by
+  //    refusing to translate -- and that place already existed, imported by this same screen.
+  //
+  //    🔴 THE EXPECTATION IS BUILT FROM THAT TABLE, NOT TYPED HERE. A harness that copies the
+  //    Korean becomes the word's SECOND AUTHOR, and then the screen and this file can drift
+  //    apart while both stay green.
+  check('G12 「not counted here」 arrives as a word an operator reads, out of the ONE table',
     costText(draw(undefined, [], { op: null, params: null, sources: ['a', 'b', 'c'],
                                    count: { absence: 'not_counted_here' } }))
-      === '소스 3 · not_counted_here');
+      === `소스 3 · ${ABSENCE_WORDS.not_counted_here}`);
   check('G13 ... and 「truly none」 is a different word, not the same empty',
     costText(draw(undefined, [], { op: null, params: null, sources: [],
                                    count: { absence: 'truly_none' } }))
-      === '소스 0 · truly_none');
+      === `소스 0 · ${ABSENCE_WORDS.truly_none}`);
+  // 🔴 AND A WORD THE TABLE DOES NOT KNOW STILL REACHES THE SCREEN, RAW. Folding an unknown
+  //    token into the known ones is exactly how a word the server adds next week disappears
+  //    without anyone noticing. This assertion is what keeps translating from becoming
+  //    filtering, and it is the reason the table may be extended without fear.
+  check('G13b an absence word the table does not know passes through instead of vanishing',
+    costText(draw(undefined, [], { op: null, params: null, sources: [],
+                                   count: { absence: 'a_word_added_next_week' } }))
+      === '소스 0 · a_word_added_next_week');
   // 🔴 THE THIRD STATE, AND THE REASON THIS FUNCTION EXISTS. `redo: null` is 「nobody asked」 --
   //    no session on the request -- and drawing 「다시 돌 것 없음」 there would turn a question
   //    nobody put into an answer. Same shape as G8 one group above.

@@ -268,7 +268,7 @@ const FLOORS = new Map([
   // This scores the part that draws them: a zero and an unread number are different
   // pixels, the word belongs to zero and not to any other count, and a token this build
   // has never seen survives instead of folding into the six.
-  ['count_with_absence_harness.mjs', 27],
+  ['count_with_absence_harness.mjs', 28],
   // PROGRESS CARD. An unknown percentage is not zero: a replay can run with no total at
   // all, and a 0% bar claims nothing has happened about something that may be nearly
   // done. The bar is a LENGTH, so with no number it is not drawn and the percent reads
@@ -1156,7 +1156,7 @@ const FLOORS = new Map([
   // 「나머지는 들어가겠지」, which is the promise the server was forbidden to make, so a
   // screen that omits it makes that promise on the server's behalf. H5/H6 hold the two
   // silent states, and I3 holds that a code-less issue draws no code rather than a blank.
-  ['ontology_authoring_panel_harness.mjs', 90],
+  ['ontology_authoring_panel_harness.mjs', 91],
   // New with the N2 round (overlay markers coloured by the overlay cell's own value). Same
   // rule: floor is the count it reports on the commit that introduces it.
   // 70 as of 2026-08-04: A12 (loading an overlay REGISTERS its values, so the colouring this
