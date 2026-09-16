@@ -24499,3 +24499,50 @@ crud    :2703 주석이 `chain.join_key_index.index_key_expression` 을 «주인
 🔴 못 잼 · 구현자의 «8 목록»을 못 봤습니다 · 「production」의 정의도 못 봤습니다
         · `DEFAULT_UNRESOLVED_LABEL` 은 저도 «안 셌습니다» — 구현자가 안 분류한 그대로 둡니다
 ```
+
+---
+
+## 🟡 Q-56 [09-17 07:09 실측] 판정 493 이 물은 둘 — «조용해지지 않습니다». 대신 마이그레이션 «안»에 문이 갈라져 있습니다
+
+### ✅ ① 둘 다 «삼키지 않습니다» — 열어서 쟀습니다
+
+```
+CLI  scripts/check_one_row_one_fact.py
+   로더 의존 «한 호출»: :42 `vjc.load_virtual_join_rules(known_tables=known)`
+   :81 의 `try` 는 `finally: session.close()` 짝입니다 — `except` «없습니다»
+   (:25 의 except 는 «콘솔 인코딩»용이고 그 세 줄 안에서 끝납니다)
+마이그레이션  migrations/add_vjoin_null_safe_indexes.py (157줄)
+   `except` 가 파일 통틀어 «하나» — :36, 역시 콘솔 인코딩(AttributeError/ValueError/OSError)
+   :93 · :144 는 둘 다 `finally` 짝(engine.dispose · 계획 루프)
+   모듈이 사라지면 :88 `from chain import legacy_join_declaration as vjc` 에서 «터집니다»
+   -> `raise SystemExit(main())` 이라 역추적이 «찍힙니다»
+```
+⇒ **486 이 막으려던 «침묵»은 오늘 이 둘에 없습니다.** 그러니 이 둘에 대해 물을 것은
+   「소리를 내나」가 아니라 **「그 소리가 «무엇을 하라»고 말하나」**입니다(상설: 거절은 사유와 다음 행동).
+
+### 🔴 ② 대신 마이그레이션 «안»에서 문이 갈라져 있습니다 — «네 줄» 사이에서
+
+```
+:102  vjc._folds_list(columns, …)                     <- «비공개» 이름을, «재수출»로
+:105  from chain import join_key_index as jki
+      jki.required_index_name(table, columns, …)      <- 주인에게 «직접»
+:106  vjc.required_index_ddl(table, columns, …)       <- 같은 주인을, 다시 «재수출»로
+```
+🔴 한 함수 안에서 «한 모듈»을 세 철자로 듭니다. ㉡ 부류의 가장 좁은 실물이고 **옮길 코드는 0** 입니다.
+⚠️ 다만 `_folds_list` 는 «밑줄 이름»이라, 재수출이 사라지면 «공개면 하나»가 필요해집니다 —
+   그건 이름 짓기라 판정거리입니다. (⛔ 제가 안 짓습니다)
+
+### ⚠️ ③ 단위 하나 — 「설치에서 돈다」와 「재기동에서 돈다」는 «다릅니다»
+
+```
+486 의 시험    「옛 규칙 파일을 «가진 설치»에서 «재기동이» 무엇을 찍나」
+이 둘         «운영자가 부를 때» 돕니다 (CLI 한 번 · 마이그레이션 한 번)
+재기동 쪽     최소한 `chain/builtins.py` 의 «모듈 최상단» `_install()` 호출이 프로세스 기동에 돕니다
+⇒ 493 이 물은 둘과 486 의 시험이 «같은 인구가 아닙니다». 둘 다 세야 하지만 «한 시험»으로는 안 갈립니다
+```
+
+```
+🔴 못 잼 · 재기동 경로가 옛 파일에 «무엇을 찍는지» 안 쟀습니다 — 서버를 안 돌립니다(기동은 총괄 몫)
+        · 재기동에 그 선언을 읽는 자리를 «전수»로 세지 않았습니다. `builtins` 하나만 앞서 확인했고
+          나머지는 이름으로만 압니다 — 그래서 위 ③ 에 수를 «안 적었습니다»
+```
