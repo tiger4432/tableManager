@@ -166,13 +166,103 @@ def test_sqlite_conflict_is_recovered_too(monkeypatch):
 
 
 def test_unrelated_integrity_error_is_raised_immediately(monkeypatch):
-    """No retry, and NO ROLLBACK - the caller owns that failure and its transaction."""
+    """No retry — the narrowness of the detector is the point and it is unchanged.
+
+    ⚰️ THIS USED TO ASSERT `rollbacks == 0`, on 「the caller owns that failure and its
+    transaction」. Production disproved it on 2026-09-16 (S-269): the caller cannot own a
+    transaction it does not know is aborted, and its next attribute read raised
+    「Instance is not bound to a Session」 — an error naming SQLAlchemy, with the
+    constraint's name nowhere and no action in it. See the two tests below.
+    """
     calls = _script(monkeypatch, _unrelated_error(), "NEVER")
     db = FakeDB()
     with pytest.raises(IntegrityError):
         crud.apply_batch_updates(db, "dt_log", FakeBatch())
     assert len(calls) == 1
-    assert db.rollbacks == 0
+
+
+# --- S-269: a constraint this lane cannot recover from is refused BY NAME --
+
+def test_a_constraint_this_lane_cannot_recover_from_rolls_the_session_back(monkeypatch):
+    """🔴 THE GATE. One rollback, before the raise — so the caller's next statement meets a
+    usable session instead of an aborted transaction. The mutation this kills is the
+    original code: `raise` with no rollback, which is green on every assertion about
+    retries and control flow and was wrong for a year."""
+    _script(monkeypatch, _unrelated_error(), "NEVER")
+    db = FakeDB()
+
+    with pytest.raises(IntegrityError):
+        crud.apply_batch_updates(db, "dt_log", FakeBatch())
+
+    assert db.rollbacks == 1, "the session was left holding an aborted transaction"
+
+
+def test_the_refusal_names_the_constraint_and_the_next_action(monkeypatch, caplog):
+    """⚠️ THE LINE IS THE ONLY RECORD — production logs cannot be pasted, so the sentence
+    carries the constraint, the size of the refused batch and what to do next.
+
+    🔴 AND THE ACTION IS NOT GUESSED HERE. `idx_sources_lookup_source` is not an index this
+    product built from a declaration, and the two repairs for a unique violation are
+    OPPOSITE (fold the rows / widen the key), so the line says 「가르십시오」 and names where
+    that is decided. Choosing one would destroy a fact whenever it chose wrong."""
+    _script(monkeypatch, _unrelated_error(), "NEVER")
+    caplog.clear()
+
+    with caplog.at_level(logging.ERROR):
+        with pytest.raises(IntegrityError):
+            crud.apply_batch_updates(FakeDB(), "dt_log", FakeBatch())
+
+    lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("[Ingest:")]
+    assert len(lines) == 1, [r.getMessage() for r in caplog.records]
+    assert "idx_sources_lookup_source" in lines[0]
+    assert "dt_log" in lines[0]
+    assert "→ 다음: " in lines[0]
+    assert "RUN.md" in lines[0], "the operator is told where the two repairs are told apart"
+    assert "Instance is not bound" not in lines[0]
+
+
+def test_an_index_the_product_built_is_repaired_by_retracting_its_declaration(monkeypatch,
+                                                                              caplog):
+    """🔴 THE ONE CASE WHERE THE PRODUCT DOES KNOW THE REPAIR (S-248). A `uq_vjoin_` index
+    exists because a join declaration asked for it, and it lives exactly as long as that
+    declaration — so the action is to retract the declaration, never a hand-rolled
+    `DROP INDEX`, which the next restart would undo.
+
+    ⚠️ The fixture's constraint differs from the one above in EXACTLY the claimed thing:
+    the prefix that says who built it."""
+    from virtual_join import config as vjc
+
+    class Diag:
+        constraint_name = vjc.INDEX_PREFIX + "dt_log_wafer"
+
+    class Orig(Exception):
+        pgcode = "23505"
+        diag = Diag()
+
+        def __str__(self):
+            return 'duplicate key value violates unique constraint "%s"' % Diag.constraint_name
+
+    _script(monkeypatch, IntegrityError("INSERT ...", {}, Orig()), "NEVER")
+    caplog.clear()
+
+    with caplog.at_level(logging.ERROR):
+        with pytest.raises(IntegrityError):
+            crud.apply_batch_updates(FakeDB(), "dt_log", FakeBatch())
+
+    line = [r.getMessage() for r in caplog.records if r.getMessage().startswith("[Ingest:")][0]
+    assert Diag.constraint_name in line
+    assert "DROP INDEX" in line and "하지 마십시오" in line
+    assert "RUN.md" not in line, "the product knows this repair; it must not punt"
+
+
+def test_the_constraint_name_is_read_in_both_dialects():
+    """SQLite gives no `diag` at all, and a reader that only understood PostgreSQL could
+    never be exercised by this suite - the same two-dialect reason
+    `_is_business_key_unique_violation` has."""
+    assert crud._violated_constraint_name(_pg_error("uq_bk_dt_log")) == "uq_bk_dt_log"
+    assert crud._violated_constraint_name(_sqlite_error()) == "dt_log.business_key_val"
+    assert crud._violated_constraint_name(
+        IntegrityError("INSERT ...", {}, Exception("something else"))) == ""
 
 
 def test_persistent_conflict_gives_up_and_reraises(monkeypatch, caplog):

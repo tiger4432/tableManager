@@ -4342,6 +4342,60 @@ def _is_business_key_unique_violation(exc) -> bool:
     return "unique" in text and "business_key_val" in text
 
 
+def _violated_constraint_name(exc) -> str:
+    """The constraint an `IntegrityError` names, or `""` when it names none (S-269).
+
+    PostgreSQL is authoritative — `exc.orig.diag.constraint_name` is what the server
+    itself reports. SQLite gives no field at all, only
+    `UNIQUE constraint failed: <table>.<column>`, so the message's own tail is the only
+    name available there; a reader that understood PostgreSQL alone could never be
+    exercised by this suite, which is how untested refusal paths get shipped
+    (`_is_business_key_unique_violation` is two dialects for the same reason).
+    """
+    orig = getattr(exc, "orig", None)
+    diag = getattr(orig, "diag", None)
+    name = getattr(diag, "constraint_name", None)
+    if name:
+        return str(name)
+    text = str(orig or exc).strip().splitlines()[0] if (orig or exc) else ""
+    marker = "constraint failed:"
+    if marker in text:
+        return text.split(marker, 1)[1].strip()
+    return ""
+
+
+def _say_the_constraint_refused_this_batch(table_name, batch, exc) -> None:
+    """One operator line for a constraint this lane cannot recover from (S-269).
+
+    🔴 THE ACTION IS CHOSEN, NOT GUESSED, AND ONLY WHERE THE PRODUCT KNOWS IT. An index
+    this product BUILT from a declaration (`uq_vjoin_`) has one correct repair and it is
+    not a data edit: retract the declaration and the product drops the index itself
+    (S-248). For any other constraint the two repairs are OPPOSITE — fold the rows, or
+    widen the declaration — and naming the wrong one destroys a fact, so the line says
+    「가르십시오」 and points at where that is decided rather than picking.
+
+    ⚠️ THE LINE IS THE ONLY RECORD. Production logs cannot be pasted here, so the sentence
+    has to carry what an operator needs in itself: the constraint's name, how many rows the
+    refused batch held, a sample, and the next action.
+    """
+    import operator_line
+    from virtual_join import config as vjc
+
+    constraint = _violated_constraint_name(exc)
+    samples = [item.business_key_val for item in (batch.updates or [])
+               if getattr(item, "business_key_val", None) is not None]
+    if constraint.startswith(vjc.INDEX_PREFIX):
+        action = operator_line.retract_the_declaration(
+            "`virtual_join_rules.json` / `chain_rules.json` 의 그 조인 선언")
+    else:
+        action = operator_line.decide_the_repair(table_name, constraint or "(이름 없음)")
+    logger.error("%s", operator_line.line(
+        "Ingest", table_name,
+        "제약 `%s` 위반으로 이 배치(%s 행, tx %s)를 «거절»했습니다 — 세션은 되돌렸습니다"
+        % (constraint or "(이름 없음)", len(batch.updates or []), batch.transaction_id),
+        action, samples))
+
+
 def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpdateBatch,
                         replace_report: Optional[dict] = None,
                         drop_report: Optional[dict] = None):
@@ -4424,6 +4478,17 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
                                              drop_report)
         except IntegrityError as exc:
             if not _is_business_key_unique_violation(exc):
+                # 🔴 [S-269] EVERY OTHER CONSTRAINT IS STILL REFUSED - BY NAME, AND AFTER A
+                # ROLLBACK. Only the business-key race is recoverable here and that
+                # narrowness stays; what was wrong was the EXIT. Raising without rolling
+                # back leaves the session on an aborted transaction, so the caller's next
+                # attribute read raises 「Instance is not bound to a Session」 / 「current
+                # transaction is aborted」 - an error naming SQLAlchemy instead of the
+                # constraint, with no action in it. The owner met exactly that on
+                # 2026-09-16: 「인제션 세션에 바운드 안 되어 있다고 안 들어감」, on a table
+                # that had been working, while every other table went in.
+                db.rollback()
+                _say_the_constraint_refused_this_batch(table_name, batch, exc)
                 raise
             db.rollback()
             if attempt >= BK_CONFLICT_MAX_RETRIES:
