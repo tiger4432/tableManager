@@ -1,13 +1,24 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **912개** 이력. (거버넌스 규칙 #4)
+> 총 **923개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-09 (September 2026)
 
+- **2026-09-17 00:50** — [The Enumeration Before Step Four Found Two More Doorways And Took Three Of My Own Counts Back](./20260917_005022_the_enumeration_before_step_four_found_two_more_doorways_and_took_three_of_my_own_counts_back.md)
+- **2026-09-17 00:44** — [Two More Gates Read The Index Prefix From The Seat That Owns It And The Count That Led Here Was A Proxy](./20260917_004449_two_more_gates_read_the_index_prefix_from_the_seat_that_owns_it_and_the_count_that_led_here_was_a_proxy.md)
+- **2026-09-17 00:40** — [Run Md Had Drifted Two Pushes Behind And Both Drifts Were Operator Visible](./20260917_004044_run_md_had_drifted_two_pushes_behind_and_both_drifts_were_operator_visible.md)
+- **2026-09-17 00:38** — [A Correction On The Next Line Does Not Fix The Sentence Above It](./20260917_003854_a_correction_on_the_next_line_does_not_fix_the_sentence_above_it.md)
+- **2026-09-17 00:37** — [The Two Syntheses Fail Separately So One Half Can No Longer Silence The Other](./20260917_003744_the_two_syntheses_fail_separately_so_one_half_can_no_longer_silence_the_other.md)
+- **2026-09-17 00:32** — [The Empty Dropdown Is Measured Not Left As I Could Not Tell](./20260917_003247_the_empty_dropdown_is_measured_not_left_as_i_could_not_tell.md)
+- **2026-09-17 00:29** — [The Join Gate Stops Discarding What The Loader Told It And Stops Claiming Another Rules Refusal](./20260917_002911_the_join_gate_stops_discarding_what_the_loader_told_it_and_stops_claiming_another_rules_refusal.md)
+- **2026-09-17 00:25** — [The Sliced Harness Becomes An Imported One And The Sentence That Justified The Slicing Was False](./20260917_002520_the_sliced_harness_becomes_an_imported_one_and_the_sentence_that_justified_the_slicing_was_false.md)
+- **2026-09-17 00:22** — [The Unreachable Tail Is Deleted And Ruling 446 Was Built Measured And Backed Out](./20260917_002254_the_unreachable_tail_is_deleted_and_ruling_446_was_built_measured_and_backed_out.md)
+- **2026-09-17 00:13** — [One Transport And One Refusal Reader For Admin And The Prose Seam Rule Became A Gate](./20260917_001357_one_transport_and_one_refusal_reader_for_admin_and_the_prose_seam_rule_became_a_gate.md)
+- **2026-09-17 00:05** — [Two Monitors Watched The Same Target And Reported Different Outages](./20260917_000556_two_monitors_watched_the_same_target_and_reported_different_outages.md)
 - **2026-09-17 00:00** — [The Dt Map Gate Resolves Its Joins From The Unified Declaration](./20260917_000000_the_dt_map_gate_resolves_its_joins_from_the_unified_declaration.md)
 - **2026-09-16 23:21** — [The Join Key Index Seat Moves Into Chain And The Rename Rode In One Commit Early](./20260916_232149_the_join_key_index_seat_moves_into_chain_and_the_rename_rode_in_one_commit_early.md)
 - **2026-09-16 23:04** — [A Read Time Join Declaration Is Refused By Name And The Legacy File Still Runs](./20260916_230400_a_read_time_join_declaration_is_refused_by_name_and_the_legacy_file_still_runs.md)
