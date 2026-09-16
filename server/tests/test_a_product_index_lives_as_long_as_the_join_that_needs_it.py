@@ -24,7 +24,7 @@ if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
 from chain import unique_key                                   # noqa: E402
-from virtual_join.config import INDEX_PREFIX                          # noqa: E402
+from chain.join_key_index import INDEX_PREFIX                         # noqa: E402
 
 PRESENT = [("dt_inventory", INDEX_PREFIX + "dt_inventory_dt_job_ns"),
            ("dt_log", INDEX_PREFIX + "dt_log_core_lot_ns")]
