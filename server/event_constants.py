@@ -302,12 +302,26 @@ def batch_refresh_message(table_name, change_count, *, transaction_id=None,
     # appends nor reloads and the timeline silently falls behind. The 5,000 dates to
     # 2026-06-02, before that contract existed.
     #
-    # ⚠️ A CALLER THAT ALREADY TRUNCATED KEEPS ITS OWN TOTAL. The chain worker slices to
-    # `MAX_NOTIFY_CREATED_LOGS` itself and passes the pre-truncation count; re-deriving it from
-    # the list it handed over would report the sample's size as the population's.
+    # 🔴 [판정 430] AND THE TOTAL IS THE CALLER'S TO SAY - THIS FUNCTION DOES NOT GUESS IT.
+    # It did for one commit (`344d7464`), and that commit's own two callers dropped the
+    # argument they were built to carry, so the derivation filled in `len(sample)` and put a
+    # FALSE number on the wire. That is worse than the absence it replaced: the client's
+    # contract reads a missing total as 「말 안 함」 and does nothing, but `total=500` beside
+    # 500 rows reads as 「this is all of it」. A caller handing over a list without saying how
+    # many there were cannot be told apart from one that forgot - so it is refused by name
+    # rather than guessed at. 「조용한 불가 0」.
+    #
+    # ⚠️ A SENDER WITH NO LIST IS UNTOUCHED: both cells stay None and this branch is not
+    # entered, which is the seven senders that have nothing to report.
     if created_logs is not None:
         if total_log_count is None:
-            total_log_count = len(created_logs)
+            raise ValueError(
+                "batch_refresh_message was handed created_logs (%d) with no total_log_count. "
+                "The list may be a sample - `created_logs` is cut at %d - so the count before "
+                "cutting is the only thing that tells a sample from the whole set, and this "
+                "function must not invent it. Pass total_log_count=len(created_logs) if the "
+                "list IS the whole set."
+                % (len(created_logs), MAX_NOTIFY_CREATED_LOGS))
         message["created_logs"] = created_logs[:MAX_NOTIFY_CREATED_LOGS]
     if total_log_count is not None:
         message["total_log_count"] = total_log_count

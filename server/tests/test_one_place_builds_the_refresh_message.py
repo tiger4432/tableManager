@@ -91,17 +91,23 @@ def test_an_optional_that_was_not_given_is_absent_rather_than_null():
 
 #: 🔴 인자 이름은 «발신자의 말»이고 전선의 이름은 «정본»이다 — S-5 이후 그 둘이 다르다.
 #:    그래서 읽는 자리를 따로 받는다. 단언의 뜻은 그대로다: 0 도 «간다».
-@pytest.mark.parametrize("field,value,on_wire", [
-    ("created_logs", [], lambda m: m["created_logs"]),
-    ("total_log_count", 0, lambda m: m["total_log_count"]),
+@pytest.mark.parametrize("field,value,on_wire,also", [
+    # ⚠️ [판정 430] `created_logs` NOW TRAVELS WITH ITS PARTNER. A list without a count cannot
+    #    be told from a SAMPLE without one, so the builder refuses that pair rather than
+    #    guessing - it guessed for one commit and put a false total on the wire. The property
+    #    under test is unchanged: an EMPTY list still travels rather than being dropped as
+    #    falsy.
+    ("created_logs", [], lambda m: m["created_logs"], {"total_log_count": 0}),
+    ("total_log_count", 0, lambda m: m["total_log_count"], {}),
     ("deleted_row_ids_omitted", 0,
-     lambda m: m["truncated"]["deleted_row_ids"]["omitted"]),
+     lambda m: m["truncated"]["deleted_row_ids"]["omitted"], {}),
 ])
-def test_an_empty_or_zero_optional_still_travels(field, value, on_wire):
+def test_an_empty_or_zero_optional_still_travels(field, value, on_wire, also):
     """⚠️ `is not None`, NOT truthiness. An empty list and a zero are things a sender MEANT
     to say; dropping them would make "nothing was omitted" look like "this sender does not
     report omissions" -- the absence-versus-zero confusion this repository keeps closing."""
-    assert on_wire(event_constants.batch_refresh_message("t", 1, **{field: value})) == value
+    built = event_constants.batch_refresh_message("t", 1, **dict({field: value}, **also))
+    assert on_wire(built) == value
 
 
 def test_change_count_zero_is_carried_not_dropped():

@@ -103,13 +103,68 @@ def test_nothing_edits_the_message_after_the_builder_returned_it():
 # what the rule now IS, measured rather than read off the source
 # ---------------------------------------------------------------------------
 
+def test_a_list_handed_over_without_its_total_is_refused_by_name():
+    """🔴 [판정 430] THE FUNCTION DOES NOT GUESS, AND THIS TEST EXISTS BECAUSE IT DID. For one
+    commit it filled a missing total with `len(created_logs)` - and that commit's own two
+    callers dropped the argument they were built to carry, so the guess put `total=500` beside
+    a 500-row SAMPLE of 12,000. Worse than the absence it replaced: 「없음」 is read by the
+    client as 「말 안 함」 and does nothing, while 「500 of 500」 reads as 「this is all of it」.
+
+    ⛔ 「이게 전부다」 AND 「깜빡했다」 ARE THE SAME OBJECT unless the caller says which, so the
+    caller says which. 「조용한 불가 0」.
+    """
+    with pytest.raises(ValueError) as refused:
+        event_constants.batch_refresh_message("t", 3, created_logs=[{"row_id": "r1"}])
+
+    assert "total_log_count" in str(refused.value)
+    assert "sample" in str(refused.value), "the refusal must say WHY, not just what"
+
+
+def test_a_function_that_receives_a_total_hands_it_on():
+    """🔴 [판정 430] PAIRS, NOT COUNTS. Both defects were a signature that ACCEPTS
+    `total_log_count` and a call inside it that does not pass one - the argument's only reason
+    to exist is to be carried, so accepting and dropping it is always wrong. A count of call
+    sites would have been 6-of-6 and said nothing; this asks each function about itself.
+    """
+    offenders = []
+    for path in _files():
+        with io.open(path, encoding="utf-8") as handle:
+            try:
+                tree = ast.parse(handle.read(), path)
+            except SyntaxError:                                        # pragma: no cover
+                continue
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            takes = any(a.arg == "total_log_count"
+                        for a in list(node.args.args) + list(node.args.kwonlyargs))
+            if not takes:
+                continue
+            for call in ast.walk(node):
+                if not isinstance(call, ast.Call):
+                    continue
+                called = (getattr(call.func, "attr", None)
+                          or getattr(call.func, "id", None))
+                if called != BUILDER:
+                    continue
+                if not any(kw.arg == "total_log_count" for kw in call.keywords):
+                    offenders.append(
+                        "%s:%d  %s() takes total_log_count and does not pass it"
+                        % (os.path.relpath(path, SERVER_DIR).replace(os.sep, "/"),
+                           call.lineno, node.name))
+
+    assert offenders == [], (
+        "the only reason that argument is in these signatures is to be carried: %s" % offenders)
+
+
 def test_a_long_list_is_cut_and_the_cut_is_reported():
     """⛔ THE DEFECT IN ONE OBJECT. The old rule dropped the whole list past its limit and said
     nothing, so the client saw no `created_logs` and no `total_log_count` - indistinguishable
     from a sender that has nothing to report."""
     logs = [{"row_id": "r%d" % n} for n in range(event_constants.MAX_NOTIFY_CREATED_LOGS + 700)]
 
-    message = event_constants.batch_refresh_message("t", 1200, created_logs=logs)
+    message = event_constants.batch_refresh_message(
+        "t", 1200, created_logs=logs, total_log_count=len(logs))
 
     assert len(message["created_logs"]) == event_constants.MAX_NOTIFY_CREATED_LOGS
     assert message["total_log_count"] == len(logs), (
@@ -122,7 +177,8 @@ def test_a_long_list_is_cut_and_the_cut_is_reported():
 def test_a_short_list_says_it_is_complete():
     logs = [{"row_id": "r1"}, {"row_id": "r2"}]
 
-    message = event_constants.batch_refresh_message("t", 2, created_logs=logs)
+    message = event_constants.batch_refresh_message(
+        "t", 2, created_logs=logs, total_log_count=len(logs))
 
     assert message["created_logs"] == logs
     assert message["total_log_count"] == 2, "a complete list still says how many"

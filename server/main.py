@@ -511,7 +511,7 @@ async def startup_event():
             invalidate_table_cache(table_name)
                 
             msg = event_constants.batch_refresh_message(
-                table_name, count, created_logs=created_logs)
+                table_name, count, created_logs=created_logs, total_log_count=total_log_count)
                 
             # 스레드 안전하게 메인 이벤트 루프에 브로드캐스트 예약
             try:
@@ -3592,7 +3592,8 @@ async def apply_batch_updates_endpoint(
             if not broadcast_needs_items:
                 # len(msg_items) on this arm; msg_items is now empty by construction.
                 msg = event_constants.batch_refresh_message(
-                    table_name, len(results), created_logs=created_logs)
+                    table_name, len(results), created_logs=created_logs,
+                        total_log_count=len(created_logs))
                 await manager.broadcast(json.dumps(msg))
             else:
                 CHUNK_SIZE = 500
@@ -4026,7 +4027,8 @@ async def set_cell_priority_batch_endpoint(
         if len(changed_rows) > BROADCAST_ITEM_LIMIT:
             # 대량 업데이트: 경량화된 새로고침 신호만 전송
             msg = event_constants.batch_refresh_message(
-                table_name, len(changed_rows), created_logs=created_logs)
+                table_name, len(changed_rows), created_logs=created_logs,
+                    total_log_count=len(created_logs))
             await manager.broadcast(json.dumps(msg))
         else:
             # Split into chunks of 500
@@ -4088,7 +4090,8 @@ async def delete_cell_source_batch_endpoint(
         if len(changed_rows) > BROADCAST_ITEM_LIMIT:
             # 대량 업데이트: 경량화된 새로고침 신호만 전송
             msg = event_constants.batch_refresh_message(
-                table_name, len(changed_rows), created_logs=created_logs)
+                table_name, len(changed_rows), created_logs=created_logs,
+                    total_log_count=len(created_logs))
             await manager.broadcast(json.dumps(msg))
         else:
             # Split into chunks of 500
@@ -6336,7 +6339,7 @@ async def retry_failed_file_ingestion(log_id: int = None, db: Session = Depends(
     
     def sync_refresh_callback(t_name: str, count: int, created_logs: list = None, total_log_count: int = None):
         msg = event_constants.batch_refresh_message(
-            t_name, count, created_logs=created_logs)
+            t_name, count, created_logs=created_logs, total_log_count=total_log_count)
         
         loop.call_soon_threadsafe(
             lambda: asyncio.create_task(manager.broadcast(json.dumps(msg)))
@@ -6529,9 +6532,16 @@ async def internal_event_batch_refresh(
     # 워처(무절단 전량 전송) 호환을 위해 서버측 절단도 유지한다 — 🔴 [판정 427] 그 절단은 이제
     # 빌더의 규칙이고, 이 자리는 «자기 사본을 안 만듭니다». 캐시가 쓸 두 값은 빌더가 실은 것을
     # 그대로 읽습니다: 두 벌이 있으면 그 둘이 갈라질 수 있고, 갈라져도 오류가 안 납니다.
+    # 🔴 [판정 430] THIS SEAT KNOWS WHAT A MISSING TOTAL MEANS, so it SAYS it rather than
+    # leaving the builder to guess. An older watcher sends the list untruncated and no total
+    # (the compatibility this endpoint has always carried), and for that sender the list IS the
+    # population - `len()` is the true count, not a guess. A newer watcher cuts at 500 and
+    # sends the real total, which passes through untouched. The builder refuses the ambiguous
+    # case precisely so that it has to be resolved HERE, where the two senders are told apart.
     msg = event_constants.batch_refresh_message(
-        table_name, change_count,
-        created_logs=created_logs, total_log_count=total_log_count)
+        table_name, change_count, created_logs=created_logs,
+        total_log_count=(total_log_count if total_log_count is not None
+                         else (len(created_logs) if created_logs is not None else None)))
     if created_logs:
         sliced_logs = msg["created_logs"]
         actual_count = msg["total_log_count"]
