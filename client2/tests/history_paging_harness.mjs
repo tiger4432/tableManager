@@ -144,6 +144,10 @@ const WANTED = [
   // section I against the harness's own idea of the empty slot.
   'renderTimeline', 'createHistoryEmptyDom', 'renderHistoryMore', 'historyMoreLabel', 'createHistoryMoreDom',
   'markMoreFailed', 'markMoreLost', 'loadMoreHistory',
+  // The pane declarations themselves. A pager that takes a pane has to be driven with
+  // ONE -- and with the one belonging to THIS module copy, which is why it is read off
+  // `S.ctx` at each call site rather than aliased once at the top of the section.
+  'HISTORY_PANES',
   'renderTimelineIncremental', 'createTimelineItemDom', 'appendHistoryLocally', 'formatVal',
   // The global tab, for section H. `renderGlobalTimeline` is the function that dies when the
   // envelope is assigned where the array belongs, and `createGlobalTimelineItemDom` is what
@@ -406,6 +410,13 @@ async function buildSandbox() {
   }
   CURRENT = sandbox;
   sandbox.ctx = ctx;
+  // 🔴 A DATA EXPORT CANNOT COME THROUGH `ctx`. Every WANTED name is wrapped there as a
+  //    CALLABLE (the stall guard above), so `ctx.HISTORY_PANES` is that wrapper and
+  //    `.global` off it is `undefined` -- which falls through to `loadMoreHistory`'s
+  //    default pane and pages the WRONG TAB while every assertion still runs. Measured
+  //    while writing section J: the calls issued no request at all and the failures read
+  //    like a broken pager. The panes come off the module copy itself, and off THIS one.
+  sandbox.panes = subject.HISTORY_PANES;
   return sandbox;
 }
 
@@ -958,6 +969,124 @@ async function sectionF() {
 const txIds = (v) => Array.isArray(v) ? v.map(g => g.transaction_id) : `NOT AN ARRAY: ${typeof v}`;
 const entryHtml = (tl, i) => { const el = items(tl)[i]; return el ? el.innerHTML : '(nothing rendered)'; };
 
+// ════════════════════════════════════════════════════════════════════════════════
+// J — the GLOBAL tab pages, through the pager the other tab already had
+//
+// 🔴 WHY THIS IS A SECTION AND NOT A LINE. Until 판정 473 the route published `next_cursor` and
+//    accepted none, so this module stated 「일부만」 as a fact and REFUSED to draw a control that
+//    could not move. The route takes a cursor now, and the temptation is a second pager: this
+//    list renders differently (filtered client-side, redrawn whole), and a copy written for that
+//    difference would start life without the three states the first one has — transport failed,
+//    position expired, session moved on. Each of those cost a round to get right.
+//
+//    So the pager is ONE function reading a PANE DECLARATION, and this section drives the new
+//    pane through the same states sections C and D drive the old one through. A cell left out of
+//    that table reads as a pass, so none is.
+//
+// ⚠️ THE REFUSAL WAS NOT DELETED, IT NARROWED (J2). `truncated` without a usable cursor is still
+//    a control with nowhere to go, and still draws as a fact — the rule A4 pins for the other tab.
+// ════════════════════════════════════════════════════════════════════════════════
+async function sectionJ() {
+  // -- J1: a capped global list carries the control, and the control states the fact first --
+  let S = await buildSandbox();
+  resetState();
+  state.activeHistoryTab = 'global';
+  S.responses.push({ status: 200, body: recentPage(
+    [group('TX-1', [log(1)]), group('TX-2', [log(2)])], 'GCUR1') });
+  await S.ctx.loadHistory();
+  const b1 = moreBtn(S.timeline);
+  check('J1 a capped global list carries the pager', mores(S.timeline).length, 1);
+  check('J1b ... and it states the fact before it offers the page',
+    b1 ? b1.textContent : null, '일부만 (2건) · 더 보기');
+  check('J1c ... and the position to resume from was kept', state.globalHistoryCursor, 'GCUR1');
+  check('J1d ... and the paged count is its own number', state.globalHistoryLoaded, 2);
+
+  // -- J2: truncated with NO cursor is a fact with nowhere to go, and draws as one --
+  S = await buildSandbox();
+  resetState();
+  state.activeHistoryTab = 'global';
+  S.responses.push({ status: 200, body: { ...recentPage([group('TX-1', [log(1)])]),
+    truncated: true, next_cursor: null } });
+  await S.ctx.loadHistory();
+  check('J2 truncated with no cursor draws no control', mores(S.timeline).length, 0);
+  check('J2b ... and says so as a fact instead',
+    S.timeline.children.some(c => textOf(c) === '일부만 (1건)'), true);
+
+  // -- J3: the page is FETCHED with the cursor and APPENDED, and the count follows --
+  S = await buildSandbox();
+  resetState();
+  state.activeHistoryTab = 'global';
+  S.responses.push({ status: 200, body: recentPage([group('TX-1', [log(1)])], 'GCUR1') });
+  await S.ctx.loadHistory();
+  S.responses.push({ status: 200, body: recentPage([group('TX-2', [log(2)])], 'GCUR2') });
+  await S.ctx.loadMoreHistory(moreBtn(S.timeline), S.panes.global);
+  check('J3 the page was asked for at the recent route, carrying the cursor',
+    urlAt(S, 1), `${API_BASE}/audit_logs/recent?limit_groups=100&cursor=GCUR1`);
+  check('J3b ... and the groups were APPENDED, not replaced',
+    txIds(state.globalHistoryData), ['TX-1', 'TX-2']);
+  check('J3c ... the panel shows both', items(S.timeline).length, 2);
+  check('J3d ... the cursor advanced', state.globalHistoryCursor, 'GCUR2');
+  check('J3e ... and the control counts what was paged in',
+    (moreBtn(S.timeline) || {}).textContent, '일부만 (2건) · 더 보기');
+
+  // -- J4: the last page takes the control away, because a complete list carries none --
+  S.responses.push({ status: 200, body: recentPage([group('TX-3', [log(3)])]) });
+  await S.ctx.loadMoreHistory(moreBtn(S.timeline), S.panes.global);
+  check('J4 the last page removes the control', mores(S.timeline).length, 0);
+  check('J4b ... and the rows it brought are still there',
+    txIds(state.globalHistoryData), ['TX-1', 'TX-2', 'TX-3']);
+
+  // -- J5: a 400 is a POSITION problem, so retrying the same token is the trap --
+  S = await buildSandbox();
+  resetState();
+  state.activeHistoryTab = 'global';
+  S.responses.push({ status: 200, body: recentPage([group('TX-1', [log(1)])], 'GCUR1') });
+  await S.ctx.loadHistory();
+  S.responses.push({ status: 400, body: { detail: 'bad cursor' } });
+  await S.ctx.loadMoreHistory(moreBtn(S.timeline), S.panes.global);
+  const b5 = moreBtn(S.timeline);
+  check('J5 a 400 turns the pager into the one move that recovers',
+    b5 ? [b5.textContent, b5.disabled, b5.dataset.mode] : null,
+    ['위치 만료 · 새로고침', false, 'reload']);
+  check('J5b ... and the rows already on screen are untouched',
+    txIds(state.globalHistoryData), ['TX-1']);
+
+  // -- J6: a transport failure says nothing about the position, so the cursor stays good --
+  S = await buildSandbox();
+  resetState();
+  state.activeHistoryTab = 'global';
+  S.responses.push({ status: 200, body: recentPage([group('TX-1', [log(1)])], 'GCUR1') });
+  await S.ctx.loadHistory();
+  S.responses.push({ throws: true });
+  await S.ctx.loadMoreHistory(moreBtn(S.timeline), S.panes.global);
+  const b6 = moreBtn(S.timeline);
+  check('J6 a failed page offers a retry and stays live',
+    b6 ? [b6.textContent, enabled(b6), b6.dataset.mode] : null,
+    ['조회 실패 · 재시도', true, undefined]);
+  check('J6b ... on the same cursor, which is still good', state.globalHistoryCursor, 'GCUR1');
+
+  // -- J7: PAGE 2 OF A LIST THAT IS NO LONGER ON SCREEN. Those rows are real and they belong to
+  //    a view the operator has already left; section D drives the same interleaving on the other
+  //    tab, and this pane carries a session token for exactly this.
+  S = await buildSandbox();
+  resetState();
+  state.activeHistoryTab = 'global';
+  S.responses.push({ status: 200, body: recentPage([group('TX-1', [log(1)])], 'GCUR1') });
+  await S.ctx.loadHistory();
+  S.responses.push({ status: 200, body: recentPage([group('TX-OLD', [log(9)])], 'GCUR9'),
+                    hang: true });
+  const inFlight = parked(S,
+    S.ctx.loadMoreHistory(moreBtn(S.timeline), S.panes.global));
+  // ...the operator reloads the tab while that page is still out.
+  S.responses.push({ status: 200, body: recentPage([group('TX-NEW', [log(5)])], 'GCUR5') });
+  await S.ctx.loadHistory();
+  await releaseAndAwait(S, inFlight);
+  check('J7 a page from a replaced session is dropped',
+    txIds(state.globalHistoryData), ['TX-NEW']);
+  check('J7b ... and the live list keeps its own cursor', state.globalHistoryCursor, 'GCUR5');
+  resetState();
+}
+
 async function sectionH() {
   let S = await buildSandbox();
   resetState();
@@ -1228,9 +1357,11 @@ const MUTANTS = [
     find: '    state.cellRowHistoryData.push(log);',
     repl: '    state.cellRowHistoryData = [log];' },
   { name: 'the pager stops checking whether its session survived', defect: true,
+    // Re-anchored 2026-09-17: the pager reads its session off the PANE, so both tabs are
+    // guarded by this one line instead of one each.
     find: '  // The session moved on while this was in flight (another cell, another tab, a refresh). These\n'
         + '  // rows are real and they belong to a list that is no longer on screen.\n'
-        + '  if (session !== state.cellRowHistorySession) return;',
+        + '  if (session !== pane.session()) return;',
     repl: '' },
   { name: 'a 400 becomes a retry on the same dead cursor', defect: true,
     find: '      markMoreLost(btn);',
@@ -1239,8 +1370,10 @@ const MUTANTS = [
     find: "  btn.disabled = false;\n  btn.textContent = '조회 실패 · 재시도';",
     repl: "  btn.disabled = true;\n  btn.textContent = '조회 실패 · 재시도';" },
   { name: 'the control offers the page without stating the list is capped', defect: true,
-    find: 'return `일부만 (${state.cellRowHistoryLoaded}건) · 더 보기`;',
-    repl: 'return `더 보기`;' },
+    // Re-anchored 2026-09-17: the label is what the PANE declares, not what the function
+    // types. Same claim, same words, one line up the file.
+    find: '    label: () => `일부만 (${state.cellRowHistoryLoaded}건) · 더 보기`,',
+    repl: '    label: () => `더 보기`,' },
   { name: 'a complete list keeps a pager anyway', defect: true,
     find: '  if (!state.cellRowHistoryTruncated || !state.cellRowHistoryCursor) return;',
     repl: '  if (false) return;' },
@@ -1256,22 +1389,41 @@ const MUTANTS = [
     // puts the envelope where the array belongs. This harness died loudly instead of scoring
     // nothing, which is the only reason the split was noticed.
     find: "      const body = await res.json();\n"
-        + "      const { logs: groups } = readHistoryPage(body, 'groups');\n"
-        + '      state.globalHistoryData = groups;',
+        + "      const page = readHistoryPage(body, 'groups');\n"
+        + '      state.globalHistoryData = page.logs;',
     repl: '      state.globalHistoryData = await res.json();' },
   // Half-flipped: the envelope is opened, under the wrong list name. The panel then declares an
   // empty history over a full database, which is a wrong answer wearing an empty state.
   { name: 'the global read opens the wrong list of the envelope', defect: true,
     find: "readHistoryPage(body, 'groups')",
     repl: 'readHistoryPage(body)' },
+  // ── the global pane, added 2026-09-17. Its states are section J; these are the defects
+  //    that make each of them fail, so none of that section can pass by being unreachable.
+  { name: 'the global control is drawn with no position to page from', defect: true,
+    find: '    if (state.globalHistoryCursor) {',
+    repl: '    if (true) {' },
+  { name: 'the global page is requested without its cursor', defect: true,
+    find: "    url: (cursor) => `${API_BASE}/audit_logs/recent?limit_groups=100`\n"
+        + '      + `&cursor=${encodeURIComponent(cursor)}`,',
+    repl: '    url: () => `${API_BASE}/audit_logs/recent?limit_groups=100`,' },
+  { name: 'the global page replaces the list instead of appending', defect: true,
+    find: '      page.logs.forEach(group => state.globalHistoryData.push(group));',
+    repl: '      state.globalHistoryData = page.logs.slice();' },
+  { name: 'a fresh global load does not open a new session', defect: true,
+    find: '      state.globalHistorySession += 1;',
+    repl: '      state.globalHistorySession += 0;' },
+  { name: 'the global count is read off the array live updates grow', defect: true,
+    find: '      state.globalHistoryLoaded = page.logs.length;',
+    repl: '      state.globalHistoryLoaded = 0;' },
+
   // Controls: real edits that change nothing observable. If either of these "fails", the
   // sections above are keyed on something other than the behaviour they claim to score.
   { name: 'CONTROL: a comment is reworded', defect: false,
     find: '// [History paging] Fetch the next page and APPEND it. Never replaces what is on screen.',
     repl: '// [History paging] fetch and append.' },
   { name: 'CONTROL: a local is renamed', defect: false,
-    find: '  const cursor = state.cellRowHistoryCursor;',
-    repl: '  const cursorToken = state.cellRowHistoryCursor;\n  const cursor = cursorToken;' },
+    find: '  const cursor = pane.cursor();',
+    repl: '  const cursorToken = pane.cursor();\n  const cursor = cursorToken;' },
 ];
 
 async function sectionG() {
@@ -1297,6 +1449,7 @@ async function sectionG() {
       await sectionF();
       await sectionH();
       await sectionI();
+      await sectionJ();
     } catch (e) {
       // A mutant that throws while RUNNING (a DOM operation that cannot apply, a value that is
       // no longer the shape its reader expects) is caught as surely as one that fails an
@@ -1329,6 +1482,7 @@ await sectionE();
 await sectionF();
 await sectionH();
 await sectionI();
+await sectionJ();
 const beforeG = { pass, fail };
 await sectionG();
 

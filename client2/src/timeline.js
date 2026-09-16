@@ -42,10 +42,21 @@ export async function loadHistory() {
       //    right for `/history` and wrong here -- and reading the body does not depend on
       //    whether the cursorless state is reachable, so a query predicate changing upstream
       //    cannot silently turn this back off.
+      // [History paging] A FRESH LOAD OPENS A NEW SESSION, so a 더 보기 still in flight from the
+      // previous one can tell that its page belongs to a list no longer on screen. Same counter
+      // discipline as `beginHistorySession` for the other tab; appending the previous view's
+      // page 2 onto this view's page 1 is what it prevents, and those rows would all be real.
+      state.globalHistorySession += 1;
       const body = await res.json();
-      const { logs: groups } = readHistoryPage(body, 'groups');
-      state.globalHistoryData = groups;
+      const page = readHistoryPage(body, 'groups');
+      state.globalHistoryData = page.logs;
       state.globalHistoryTruncated = saysTruncated(body && body.truncated) === true;
+      // The position to resume from, and the count the control reads. `globalHistoryLoaded` is
+      // deliberately NOT `globalHistoryData.length`: live WebSocket logs are unshifted into that
+      // array, so its length drifts upward on its own — the defect `cellRowHistoryLoaded` exists
+      // to prevent, arriving on the other tab.
+      state.globalHistoryCursor = page.nextCursor;
+      state.globalHistoryLoaded = page.logs.length;
       renderGlobalTimeline();
     } catch (err) {
       console.error('Failed to load global history', err);
@@ -730,6 +741,69 @@ function createHistoryEmptyDom() {
   return li;
 }
 
+// [History paging] THE PANE DECLARATION — one pager, two tabs.
+//
+// 🔴 WHY A DECLARATION AND NOT A SECOND PAGER. The cell/row tabs and the global tab page the
+//    same way: hold a cursor, ask for the next page, append it, stop when the server says there
+//    is no more. What differs is DATA — which URL, which list key, where the rows go. A second
+//    copy of the pager would be the 「같은 기능에 두 경로」 defect, and the copy is the one that
+//    drifts: the three error states below (transport failed / position expired / session moved
+//    on) each cost this repository a round to get right, and a second implementation starts by
+//    not having them.
+//
+// ⚠️ THE GLOBAL TAB COULD NOT PAGE AT ALL UNTIL TODAY, and this module said so in two places:
+//    「`/audit_logs/recent` EMITS `next_cursor` but its signature does not ACCEPT one」 and 「a
+//    pager here would be the 「clickable, goes nowhere」 control this module refuses to build」.
+//    Both were TRUE when written and are FALSE now — 판정 473 put `cursor` on the route that
+//    publishes it, with the gap/overlap gate on the server side. The sentences are rewritten
+//    where they stand rather than deleted, because why a control was refused is the record.
+const HISTORY_PANES = {
+  // The cell and row tabs share one pane: they page the same population through the same state,
+  // and which of the two is active only changes the URL `historyUrl` builds.
+  cellRow: {
+    label: () => `일부만 (${state.cellRowHistoryLoaded}건) · 더 보기`,
+    cursor: () => state.cellRowHistoryCursor,
+    session: () => state.cellRowHistorySession,
+    // A page is only wanted while the list it belongs to is still the list on screen.
+    live: () => !!state.selectedCell,
+    url: (cursor) => historyUrl(state.selectedCell.rowId, state.selectedCell.colId, cursor),
+    listKey: 'logs',
+    absorb(page, btn) {
+      page.logs.forEach(log => {
+        state.cellRowHistoryData.push(log);
+        elements.timeline.insertBefore(createTimelineItemDom(log), btn.parentElement);
+      });
+      state.cellRowHistoryLoaded += page.logs.length;
+      state.cellRowHistoryCursor = page.nextCursor;
+      state.cellRowHistoryTruncated = page.truncated;
+    },
+    // Rows were inserted where they belong; the control stays put and relabels itself.
+    redraw: null,
+  },
+  global: {
+    label: () => `일부만 (${state.globalHistoryLoaded}건) · 더 보기`,
+    cursor: () => state.globalHistoryCursor,
+    session: () => state.globalHistorySession,
+    live: () => state.activeHistoryTab === 'global',
+    url: (cursor) => `${API_BASE}/audit_logs/recent?limit_groups=100`
+      + `&cursor=${encodeURIComponent(cursor)}`,
+    // Each entry of this list is a transaction GROUP carrying its own `logs`; the envelope's
+    // list is named `groups`, and `readHistoryPage` is told which key to open.
+    listKey: 'groups',
+    absorb(page) {
+      page.logs.forEach(group => state.globalHistoryData.push(group));
+      state.globalHistoryLoaded += page.logs.length;
+      state.globalHistoryCursor = page.nextCursor;
+      state.globalHistoryTruncated = page.truncated;
+    },
+    // 🔴 THIS LIST IS FILTERED CLIENT-SIDE, so a new page cannot be inserted as DOM: which rows
+    //    belong on screen is decided by the filter, not by arrival order, and 「N건 중 M」 is
+    //    computed from the whole list. Re-drawing from state is what keeps that count true, and
+    //    it rebuilds the control from state as part of the same pass.
+    redraw: () => renderGlobalTimeline(),
+  },
+};
+
 // [History paging] The one control at the end of a capped list, and the only thing on this
 // screen that says the list IS capped. Appended last, so `renderTimelineIncremental` — which
 // prepends live logs at `firstChild` — keeps it at the bottom without knowing it exists.
@@ -737,7 +811,7 @@ function createHistoryEmptyDom() {
 // A COMPLETE LIST CARRIES NO CONTROL. That is the whole affordance: its presence is the fact.
 function renderHistoryMore() {
   if (!state.cellRowHistoryTruncated || !state.cellRowHistoryCursor) return;
-  elements.timeline.appendChild(createHistoryMoreDom());
+  elements.timeline.appendChild(createHistoryMoreDom(HISTORY_PANES.cellRow));
 }
 
 // The label the operator reads. `일부만` is this client's existing word for a server-truncated
@@ -748,18 +822,18 @@ function renderHistoryMore() {
 //    feel like it"; the question an operator actually has in front of a history list is "is
 //    this the whole thing?". A trailing row that only offers to fetch answers that question by
 //    implication, and by implication is how a capped list passes for a complete one.
-function historyMoreLabel() {
-  return `일부만 (${state.cellRowHistoryLoaded}건) · 더 보기`;
+function historyMoreLabel(pane = HISTORY_PANES.cellRow) {
+  return pane.label();
 }
 
-export function createHistoryMoreDom() {
+export function createHistoryMoreDom(pane = HISTORY_PANES.cellRow) {
   const li = document.createElement('li');
   li.className = 'timeline-more';
 
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'timeline-more-btn';
-  btn.textContent = historyMoreLabel();
+  btn.textContent = historyMoreLabel(pane);
 
   btn.addEventListener('click', () => {
     // After a 400 the cursor names a position the server cannot decode, so the same token can
@@ -768,7 +842,7 @@ export function createHistoryMoreDom() {
       loadHistory();
       return;
     }
-    loadMoreHistory(btn);
+    loadMoreHistory(btn, pane);
   });
 
   li.appendChild(btn);
@@ -795,14 +869,13 @@ function markMoreLost(btn) {
 }
 
 // [History paging] Fetch the next page and APPEND it. Never replaces what is on screen.
-export async function loadMoreHistory(btn) {
+export async function loadMoreHistory(btn, pane = HISTORY_PANES.cellRow) {
   if (!btn || btn.disabled) return;
-  const cursor = state.cellRowHistoryCursor;
-  if (!cursor || !state.selectedCell) return;
+  const cursor = pane.cursor();
+  if (!cursor || !pane.live()) return;
 
-  const session = state.cellRowHistorySession;
-  const { rowId, colId } = state.selectedCell;
-  const url = historyUrl(rowId, colId, cursor);
+  const session = pane.session();
+  const url = pane.url(cursor);
 
   btn.disabled = true;
   btn.classList.remove('is-error');
@@ -812,15 +885,15 @@ export async function loadMoreHistory(btn) {
   let page;
   try {
     const res = await fetch(url);
-    if (session !== state.cellRowHistorySession) return;
+    if (session !== pane.session()) return;
     if (res.status === 400) {
       markMoreLost(btn);
       return;
     }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    page = readHistoryPage(await res.json());
+    page = readHistoryPage(await res.json(), pane.listKey);
   } catch (err) {
-    if (session !== state.cellRowHistorySession) return;
+    if (session !== pane.session()) return;
     console.error('Failed to load more history', err);
     markMoreFailed(btn);
     return;
@@ -828,15 +901,15 @@ export async function loadMoreHistory(btn) {
 
   // The session moved on while this was in flight (another cell, another tab, a refresh). These
   // rows are real and they belong to a list that is no longer on screen.
-  if (session !== state.cellRowHistorySession) return;
+  if (session !== pane.session()) return;
 
-  page.logs.forEach(log => {
-    state.cellRowHistoryData.push(log);
-    elements.timeline.insertBefore(createTimelineItemDom(log), btn.parentElement);
-  });
-  state.cellRowHistoryLoaded += page.logs.length;
-  state.cellRowHistoryCursor = page.nextCursor;
-  state.cellRowHistoryTruncated = page.truncated;
+  pane.absorb(page, btn);
+
+  if (pane.redraw) {
+    // The pane rebuilds itself from state, control included, so nothing below applies.
+    pane.redraw();
+    return;
+  }
 
   if (!page.truncated) {
     // Nothing further to page toward: the list is complete now, and a complete list says so by
@@ -846,7 +919,7 @@ export async function loadMoreHistory(btn) {
   }
 
   btn.disabled = false;
-  btn.textContent = historyMoreLabel();
+  btn.textContent = historyMoreLabel(pane);
 }
 
 // Render overall table audit history logs (recent transactions)
@@ -854,11 +927,16 @@ export async function loadMoreHistory(btn) {
  * The audit filter strip, mockup 2c.
  *
  * 🔴 CLIENT-SIDE OVER WHAT IS ALREADY LOADED, and the count says so: 「N건 중 M」 counts the
- * groups in hand, not the table. `/audit_logs/recent` EMITS `next_cursor` but its signature
- * does not ACCEPT one, so there is no honest way to claim these filters searched all history.
+ * groups in hand, not the table. That reading is unchanged; its REASON is not. It used to be
+ * 「`/audit_logs/recent` EMITS `next_cursor` but its signature does not ACCEPT one, so there is
+ * no honest way to claim these filters searched all history」 — 판정 473 put `cursor` on the
+ * route that publishes it, so history can be PAGED IN and the filter widens with what arrives.
+ * What the filter still cannot do is search what was never fetched, which is exactly why the
+ * count names its own denominator instead of the table's.
  *
  * Options come from the loaded groups rather than a fixed list, so a source this screen has
- * never seen still gets an entry the day it first appears.
+ * never seen still gets an entry the day it first appears — and one that only exists further
+ * down the history appears the moment a page brings it in.
  */
 function auditFilterState() {
   return {
@@ -930,15 +1008,30 @@ export function renderGlobalTimeline() {
   if (!shown.length) {
     elements.timeline.innerHTML = '<li class="timeline-empty">\uc870\uac74\uc5d0 \ub9de\ub294 \uae30\ub85d\uc774 \uc5c6\uc2b5\ub2c8\ub2e4.</li>';
   } else if (state.globalHistoryTruncated) {
-    // 🔴 FACT ONLY, NO CONTROL. The cell/row tabs pair 「일부만」 with 더 보기, but this route
-    //    PUBLISHES `next_cursor` and ACCEPTS none -- `get_recent_audit_logs` takes
-    //    `limit_groups` and nothing else (server/main.py:1085). A pager here would be the
-    //    「clickable, goes nowhere」 control this module already refuses to build. The word is
-    //    the one this client already uses for a server-capped list; no third spelling.
-    const li = document.createElement('li');
-    li.className = 'timeline-empty';
-    li.textContent = `\uc77c\ubd80\ub9cc (${state.globalHistoryData.length}\uac74)`;
-    elements.timeline.appendChild(li);
+    // 🔴 THE FACT, AND NOW THE CONTROL — BUT ONLY WHEN THERE IS A POSITION TO PAGE FROM.
+    //    This read 「FACT ONLY, NO CONTROL … a pager here would be the 「clickable, goes nowhere」
+    //    control this module already refuses to build」, and that was TRUE when written: the
+    //    route published `next_cursor` and its signature accepted none. 판정 473 put `cursor` on
+    //    the route that publishes it, with the no-gap/no-overlap gate on the server side, so the
+    //    reason for the refusal is gone and the control is the one this screen already has.
+    //
+    //    ⚠️ THE REFUSAL ITSELF HAS NOT EXPIRED, IT HAS NARROWED. `truncated` arriving without a
+    //    usable cursor is still a fact with nowhere to go, and it still draws as a fact — the
+    //    same rule `renderHistoryMore` applies to the other tab, and the same one A4 pins. A
+    //    control is offered when it can actually move, and not otherwise.
+    if (state.globalHistoryCursor) {
+      elements.timeline.appendChild(createHistoryMoreDom(HISTORY_PANES.global));
+    } else {
+      const li = document.createElement('li');
+      li.className = 'timeline-empty';
+      // 🔴 THE PAGED COUNT, NOT THE LIST LENGTH. Live WebSocket logs are unshifted into
+      //    `globalHistoryData` (a log with no group on screen becomes a group), so its length
+      //    drifts upward on its own and would make this number grow while nothing was fetched.
+      //    That is the same reason `cellRowHistoryLoaded` is kept beside its array rather than
+      //    read off it.
+      li.textContent = `일부만 (${state.globalHistoryLoaded}건)`;
+      elements.timeline.appendChild(li);
+    }
   }
   if (count) count.textContent = `${state.globalHistoryData.length}건 중 ${shown.length}`;
 }
