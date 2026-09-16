@@ -1,7 +1,7 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **923개** 이력. (거버넌스 규칙 #4)
+> 총 **929개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
@@ -20,8 +20,14 @@
 - **2026-09-17 00:13** — [One Transport And One Refusal Reader For Admin And The Prose Seam Rule Became A Gate](./20260917_001357_one_transport_and_one_refusal_reader_for_admin_and_the_prose_seam_rule_became_a_gate.md)
 - **2026-09-17 00:05** — [Two Monitors Watched The Same Target And Reported Different Outages](./20260917_000556_two_monitors_watched_the_same_target_and_reported_different_outages.md)
 - **2026-09-17 00:00** — [The Dt Map Gate Resolves Its Joins From The Unified Declaration](./20260917_000000_the_dt_map_gate_resolves_its_joins_from_the_unified_declaration.md)
+- **2026-09-16 23:50** — [The Roll Call Of 45 Disabled Sites And The Predicate That Replaced Self Evident](./20260916_235033_the_roll_call_of_45_disabled_sites_and_the_predicate_that_replaced_self_evident.md)
+- **2026-09-16 23:38** — [Three Called Tokens Had No Declaration And The Repair Added No Fourth Name](./20260916_233824_three_called_tokens_had_no_declaration_and_the_repair_added_no_fourth_name.md)
 - **2026-09-16 23:21** — [The Join Key Index Seat Moves Into Chain And The Rename Rode In One Commit Early](./20260916_232149_the_join_key_index_seat_moves_into_chain_and_the_rename_rode_in_one_commit_early.md)
+- **2026-09-16 23:18** — [The Seat That Says Why A Control Is Off Was Moved Not Invented](./20260916_231844_the_seat_that_says_why_a_control_is_off_was_moved_not_invented.md)
 - **2026-09-16 23:04** — [A Read Time Join Declaration Is Refused By Name And The Legacy File Still Runs](./20260916_230400_a_read_time_join_declaration_is_refused_by_name_and_the_legacy_file_still_runs.md)
+- **2026-09-16 22:43** — [A Refused Screen Draws No Count And No Emptiness Through One Seat](./20260916_224305_a_refused_screen_draws_no_count_and_no_emptiness_through_one_seat.md)
+- **2026-09-16 21:11** — [The Toast Folds On Its Own Sentence Sizes To It And Stops Taking The Click](./20260916_211144_the_toast_folds_on_its_own_sentence_sizes_to_it_and_stops_taking_the_click.md)
+- **2026-09-16 20:33** — [The Header Takes Another Line Because Overflow Hidden Zeroed Its Flex Minimum](./20260916_203303_the_header_takes_another_line_because_overflow_hidden_zeroed_its_flex_minimum.md)
 - **2026-09-16 20:11** — [The Seat That Asks Which Door Was Built And Nothing Called It](./20260916_201128_the_seat_that_asks_which_door_was_built_and_nothing_called_it.md)
 - **2026-09-16 20:11** — [Retroactive Went Through The Seat And The Fold Covered One Of The Two Doors](./20260916_201129_retroactive_went_through_the_seat_and_the_fold_covered_one_of_the_two_doors.md)
 - **2026-09-16 20:11** — [Three Ux Audits Of The Admin Screen And One Finding Was An Owners Instruction](./20260916_201130_three_ux_audits_of_the_admin_screen_and_one_finding_was_an_owners_instruction.md)
