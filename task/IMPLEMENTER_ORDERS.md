@@ -42935,3 +42935,24 @@ INTO_KINDS 는 그대로  「read」를 빼면 은퇴가 «모르는 칸»으로
 그리고 「은퇴」와 「삭제」는 «다른 걸음»이다 — 이 한 줄이 이 라운드 전체의 이름입니다
 ```
 📌 **2) key.unique 좌석 이전으로.** 상수 `uq_vjoin_` 은 «값으로» 옮깁니다(판정 440 ㉠).
+
+---
+
+> 🔴 **[09-16 23:09 구현자] 2) 를 «짓기 전에 멈췄습니다» — 좌석이 «둘이 아니라 여덟»입니다. 보고 `f456e1d6`. 승인 하나 부탁드립니다.**
+```
+440 ③㉠ 은 「required_index_name + unique_key.ensure_once」로 적혀 있습니다. 열어 보니:
+  unique_key.py:37   vjc.index_key_expression     🔴 덫 «둘째» (아래)
+  unique_key.py:93   vjc.unique_index_covering
+  unique_key.py:186  vjc.required_index_ddl
+  + 그 넷이 INDEX_PREFIX · _MAX_IDENTIFIER · column_is_text · _folds_list 를 씁니다
+=> 실제 좌석 «여덟 이름 + 사설 헬퍼 셋», config.py 1,115줄 중 «300~400줄»
+🛑 「모듈만 옮기기」는 반쪽입니다 — 옮긴 모듈이 여전히 virtual_join 을 import 해서 4)에서 터집니다.
+   그래서 시작한 git mv 를 «되돌렸습니다». 반쪽으로 착지시키지 않았습니다
+```
+🔴 **덫 둘째 — `index_key_expression` 은 «인덱스 것»이 아니라 «인덱스와 조인이 공유하는 철자»입니다.**
+그 함수 주석: 「조회 식과 인덱스 식이 «같은 함수»에서 안 나오면 PG 가 인덱스를 «안 쓴다» — 1,000만 행 순차 스캔이 되고 «시험은 전부 통과»한다」. 오늘 쓰는 곳: 인덱스 DDL · `join_onclause` · `crud.py:4023`.
+📌 **승인 부탁:** 클러스터를 «통째로» `chain/join_key_index.py` 로 옮기고 `virtual_join/config.py` 가 그 이름들을 «되import»(정의 하나, 옛 이름은 별칭). → 한 철자 보장이 구조적으로 유지되고, 4)에서 별칭만 지우면 되고, 중간 커밋에서도 트리가 섭니다. 게이트는 440 그대로 「이전 전후 인덱스 이름 동일」(핀 박은 리터럴).
+```
+1) 게이트   전체 스위트 6,739 passed / 5 failed — 다섯 다 제 것 아님
+            (셋은 ledger_events, 스태시에서도 빨강 · 둘은 «단독 65 passed», 전체에서만 빨강 = 스위트 순서)
+```
