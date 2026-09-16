@@ -46073,3 +46073,85 @@ classify_queue · analyze_promotions 둘 다 호출자가 «scripts/enrichment_i
 🔴 **제 기억에 「백틱이 들어가면 -F 로, 델리미터는 «항상» 따옴표로」가 있습니다.** 커밋 메시지에서는
 지켰고(-F 로 냈습니다) «보고 본문»에서 어겼습니다 — 같은 덫의 다른 옷입니다.
 ✅ 앞으로 채널 보고도 «따옴표 히어독»으로 쓰고, 시각은 본문 밖에서 `sed` 로 끼웁니다.
+
+---
+
+> 🔴 **[09-17 04:11 구현자] 판정 471 착지 `b0dbdffc` — 사본이 «둘이 아니라 넷»이었고, 그중 하나는 산문이 아니라 «죽은 가드»였습니다.**
+
+## ⓪ 먼저 — 제가 이 판정을 «세 번» 밟고 지나갔습니다
+```
+471 도착   09-17 03:46
+제 초인종   03:49 (S-284 B 축) · 03:55 (A 축) · 03:59 (헬퍼 118 판정 청구)
+           세 번 다 「미답 둘/셋」을 적었고 «471 을 한 번도 안 적었습니다»
+왜         제 큐가 «제가 시작한 것»으로만 차 있었습니다. 판정이 라운드 «중간»에 오면
+           제 목록에 들어가는 자리가 없었습니다 — 초인종이 그 자리였는데 제 목록을
+           «기억»에서 만들었습니다(독촉 때와 «같은 병»입니다)
+고침       초인종의 「미답」 줄을 이제 채널 «끝»을 읽고 만듭니다. 기억에서 만들지 않습니다
+```
+
+## ① 오늘의 참 — 문단이 «자기 일»을 다시 합니다
+판정 471 ③ 이 맞았습니다. 절만 지우면 문단이 설명을 못 합니다 — 그 문단의 «일»은
+「왜 `join_into` 가 별도 항목인가」이고, 그 사유가 「하나는 읽고 하나는 쓴다」였습니다.
+```
+오늘   builtin:join        virtual_join_rules.json 의 `materialize: true` 가 낳은 «쓰기» 조인
+                           (`_run_join` -> legacy_materialized_join.on_*_rows_changed)
+      builtin:join_into   chain_rules.json 의 `into.table` 이 낳은 «쓰기» 조인
+갈라지는 축   «읽기/쓰기»가 아니라 «어느 선언 파일이 낳았나»
+🔴 빚(판정 461 ③)이 그 문단에 «적혔습니다» — 한 일에 쓰기 문이 «둘»이고, 둘이 KEY 에서
+   안 갈라지는 이유는 «둘 다» notation_norm.key_expression_sql 로 접기 때문이며,
+   마지막 `materialize: true` 선언이 `into.table` 로 옮겨가는 날 닫힙니다
+```
+
+## ② 🔴 468 이 «둘»을 셌는데 넷이었습니다. 그리고 넷째가 제일 셉니다
+```
+㉠ chain/builtins.py:390                        그 문단                      (471 이 지목)
+㉡ test_a_declared_join_...into_the_table.py:481 시험 «이름»이 읽기 시점 조인   (471 이 지목)
+㉢ 같은 파일 :495  「the executor … production runs on」                     🆕 안 세어졌음
+㉣ test_a_declared_unique_key_...py:154 「THE OLD READ-TIME JOIN」            🆕 안 세어졌음
+```
+🔴 **㉢ 은 산문이 아니었습니다 — «단언»이었습니다.**
+```
+그 시험   test_this_module_does_not_borrow_the_read_time_executor
+단언      join_into 의 import 줄에 "virtual_join" 이 «없다»
+사실      `virtual_join` 패키지는 판정 461 이 «지웠습니다» (git ls-files: 파이썬 모듈 «0»)
+=> 그 커밋부터 이 가드는 «빨개질 수가 없습니다». 그리고 진짜로 살아남은 엔진
+   (chain.legacy_materialized_join — «두 번째 쓰기 문» 그 자체)은 «안 지켜지고» 있었습니다
+🔴 주어가 지워진 가드는 「결함 없음」이 아니라 「문제 없음」을 찍습니다
+```
+
+## ③ 그래서 가드가 «빨개질 수 있는지»를 재고 나서 바꿨습니다
+```
+바꾼 것   가드의 주어 -> legacy_materialized_join · legacy_join_declaration (살아 있는 둘)
+변이      join_into.py 에 `from chain import legacy_materialized_join as _mutant` 를 «심고» 실행
+결과      1 failed  <- 잡힙니다
+복원      심기 «전»에 사본을 떠 두고 되돌린 뒤 `git diff --numstat` «빈 출력»으로 확인
+         (바이트 동일. 줄끝 경고만 났고 `git checkout --` 로 한 번 더 확정)
+```
+
+## ④ 게이트
+```
+고친 파일의 시험      39 passed   (건드린 두 시험 파일)
+builtins 소스를 «읽는» 시험  19 passed   (test_a_rule_is_run_by_one_seat · index_seat_moved ·
+                                 mapper_call_sits_below · a_read_time_join_is_retired_by_name)
+커밋 뒤 수집          6,822 tests collected · error 0
+                    이 커밋의 델타 «0» — diff 의 `def test_` 는 «이름 둘 바꾼 것»뿐입니다(+0/-0)
+제품 동작 변경        «0» — 주석 · 시험 이름 둘 · 가드 주어 하나
+```
+
+## ⑤ RUN.md — 이번 라운드는 «고칠 것이 없습니다», 그리고 그 근거
+```
+확인     RUN.md 에 「production runs on it」류 «0 히트». §③ 은 이미 참을 적고 있습니다 —
+        「✅ 안 거절되는 것: `materialize: true` 인 선언은 «쓰기 조인»이라 그대로 «돕니다»」
+운영 행동  이번 커밋으로 «바뀌는 것 없음». 그래서 안 적었습니다 — 상설은 「푸시마다 «지금 할 일»」이지
+        「푸시마다 «한 줄 더»」가 아닙니다. 안 바뀌었다는 것을 여기 적는 것으로 갈음합니다
+```
+
+## ⑥ 딸린 것 하나 (지시 밖이라 «안 했습니다»)
+```
+저장소 루트에 «미추적» scratchpad/ 가 있습니다 — probe/verify 스크립트 여섯 (09-16 20:09~23:33).
+제 어젯밤 라운드의 프로브로 보이나 «확신 못 합니다». 추적 안 되므로 지우면 되돌릴 것이 없습니다.
+모든 레인의 `git status` 를 더럽히고 있습니다. 지울까요, 제 것으로 확정해 옮길까요
+```
+
+📌 **다음: S-284 ⓑ 로 돌아갑니다** — `dt_map_derivation.py` 7 행부터(제일 작고, 4)에서 제가 연 파일입니다).
+   ③ 판정(ⓐ/ⓑ/ⓒ)이 오면 그 자리에서 따릅니다.
