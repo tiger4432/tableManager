@@ -79,7 +79,9 @@
     ],
     "unresolved_label": "미상",
     "join_cardinality": "one",
-    "enabled": true
+    "enabled": true,
+    "materialize": true,
+    "max_rewrite_rows": 50000
   },
   "dt_inventory_confirmed_from_attribution": {
     "__comment": "dt_inventory 의 dt_lot/dt_slot 옆에 확정값을 세운다. 오른쪽 유일성은 uq_vjoin_dt_job_attribution_dt_job (252/252 distinct). dt_inventory 401 행 중 251 행이 붙는다.",
@@ -97,6 +99,9 @@
     ],
     "unresolved_label": "미상",
     "join_cardinality": "one",
-    "enabled": true
-  }
+    "enabled": true,
+    "materialize": true,
+    "max_rewrite_rows": 50000
+  },
+  "_materialize_2026_09_17_comment": "판정 446·481 (2026-09-17): `materialize` 가 «없으면» 그것은 «읽는 시점 조인»이라는 뜻이고 그 기제는 은퇴했습니다 — 이름을 대고 거절됩니다. 살아남은 것은 «쓰기 조인»뿐이라 `materialize: true` 와 `max_rewrite_rows` 상한을 «같이» 적습니다. 🔴 아래 상한은 «예시 값»입니다. 운영에서는 세고 적으십시오: SELECT max(k) FROM (SELECT count(*) k FROM <left_table> GROUP BY <join_key>) t. 참조 행 하나가 바뀌면 그 키를 든 대상 행이 «전부» 다시 써지고, 이 제품은 비용을 «치르기 전에» 말합니다. 그 조인을 아예 옮기시려면 chain_rules.json 의 `derive: {kind: \"join\"}` + `into.table` 입니다."
 }

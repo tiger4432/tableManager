@@ -130,6 +130,8 @@ def dt_chain_bundle():
                 "final_chip",
             ],
             "join_cardinality": "one", "enabled": True,
+            # 🔴 [판정 446·481] `materialize` 없음 = 「읽는 시점 조인」 = 은퇴.
+            "materialize": True, "max_rewrite_rows": 10000,
         },
     }
     raw["vocabulary"] = {

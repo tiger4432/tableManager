@@ -316,6 +316,8 @@ def test_former_internal_issue_cannot_use_the_bound_capability_directly():
                 ],
                 "expose": ["target_id"],
                 "join_cardinality": "one",
+                "materialize": True,
+                "max_rewrite_rows": 10000,
                 "unique_index": "NOT_PROBED_FAKE_INDEX",
             },
             issuer=virtual_join_config_module._VERIFIED_JOIN_ISSUER,
@@ -366,6 +368,8 @@ def test_fake_index_name_cannot_bypass_the_physical_verifier():
         "join_key": [{"left": "join_id", "right": "join_id", "fold": None}],
         "expose": ["target_id"],
         "join_cardinality": "one",
+        "materialize": True,
+        "max_rewrite_rows": 10000,
         "unique_index": "NOT_PROBED_FAKE_INDEX",
     }
 

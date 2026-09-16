@@ -134,6 +134,12 @@ def logical_bundle(*, source_name="input_rows", prefix=""):
                 "expose": [target_key],
                 "join_cardinality": "one",
                 "enabled": True,
+                # 🔴 [판정 446 · 481] A WRITE JOIN, because a read-time one no longer
+                # exists. `materialize` absent MEANS 「read-time」 since 446, and 481 made
+                # the bundle validator mirror that - so this fixture declares what an
+                # operator is told to declare (RUN.md §③) rather than the retired shape.
+                "materialize": True,
+                "max_rewrite_rows": 10000,
             },
         },
         "vocabulary": {
@@ -455,8 +461,14 @@ def test_same_bundle_normalizes_and_serializes_deterministically():
     # is unchanged and the movement here is `order_by` gaining the column plus the three
     # binding fields leaving. `setup_version` does not move: nothing routes on
     # it, and a config that still writes all four still loads (they are read and dropped).
+    #
+    # 2026-09-17 (판정 481 · 446): c2d0be6a... -> the fixture's virtual join gained
+    # `materialize: true` and `max_rewrite_rows`. 446 changed what an ABSENT `materialize`
+    # MEANS - from a default to 「read-time join」, which is retired - and 481 made this
+    # validator mirror that, so the fixture now declares what an operator is told to
+    # declare. The movement is those two keys and nothing else.
     assert hashlib.sha256(first.serialize().encode()).hexdigest() == (
-        "c2d0be6a8d6eaabdbbdbd46eb4211c8f2ecaac4c60aa6580f6144b862e894248")
+        "2f78cf2f0ab8b4dfac12cb72038d19734a62fb182985fa08e11649d9f5f269f9")
 
 
 def test_list_order_is_preserved_but_object_order_is_not():

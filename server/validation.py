@@ -43,6 +43,27 @@ class DeclarationValidationError(ValueError):
 #: How many declared names a refusal lists before it says 「+N more」.
 CANDIDATE_LIMIT = 8
 
+#: 🔴 [판정 481 ③ · 300] ONE SENTENCE FOR A RETIRED READ-TIME JOIN, because TWO
+#: validators refuse it. 판정 446 changed what an ABSENT `materialize` means - from a
+#: default to 「read-time join」, which is retired - and two seats now have to say so: the
+#: chain-side join loader (`chain/join_refusal`, which binds it beside its refusal CODE) and
+#: the ledger bundle validator (`ledger/setup_bundle`).
+#:
+#: It lives HERE for the reason 판정 300 already settled when the refusal language moved out
+#: of `setup_bundle`: that module is held to stdlib-only imports, so a sentence it shares
+#: with a domain module cannot live in the domain module. The same ruling, the same seat.
+#:
+#: ⛔ The words matter as much as the sharing. 「field is required」 would send an operator
+#: to add a key; the truth is that a capability was RETIRED and the join has to move. 판정
+#: 474 is that hazard by name - one judgement spelled two ways points at opposite repairs.
+READ_TIME_RETIRED_DETAIL = (
+    "'materialize' is false, which declared a READ-TIME join: the column was "
+    "computed on the way out and never stored. That mechanism is retired. Declare "
+    "the join in chain_rules.json instead - `derive: {kind: \"join\"}` with `on` "
+    "and `take` - which writes the value into the table, or set 'materialize': "
+    "true here with a 'max_rewrite_rows' ceiling to keep it as a write join."
+)
+
 
 def path_of(base: str, child: str) -> str:
     return f"{base}.{child}" if base else child

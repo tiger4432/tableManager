@@ -73,22 +73,11 @@ def _bundle():
     join = raw["virtual_joins"]["input_to_reference"]
     join["left_table"] = SOURCE_TABLE
     join["right_table"] = RIGHT_TABLE
-    # 🔴 [판정 446] DECLARED AS A WRITE JOIN, BECAUSE A READ-TIME ONE NO LONGER VERIFIES.
-    # The shared `logical_bundle` still spells this join without `materialize`, which now
-    # MEANS 「read-time」 and is refused by name - so `load_verified_rules` below returned
-    # `()` and the step-6 assertions had nothing to measure. What this file is about is
-    # unchanged: a VERIFIED join hands its unique index to the setup snapshot, and that is
-    # a property of the write join that survived.
-    #
-    # Declared here rather than in `logical_bundle` on purpose. Eleven test files share
-    # that fixture and most of them never verify a join at all; widening the change to
-    # them would be eleven files' blast radius for this file's repair. This function
-    # already exists to specialise the shared bundle for this run.
-    #
-    # The pair is what an operator is told to write (RUN.md §③): `materialize: true`
-    # REQUIRES a `max_rewrite_rows` ceiling, and the loader refuses the flag without it.
-    join["materialize"] = True
-    join["max_rewrite_rows"] = 10_000
+    # ⚰️ `materialize` / `max_rewrite_rows` WERE SET HERE FOR ONE COMMIT. I declared them
+    # locally because only this file needed them and eleven files share `logical_bundle`.
+    # 판정 481 then made the BUNDLE VALIDATOR require the field of every bundle, so the
+    # shared fixture had to carry it - and a local copy would have been a second author of
+    # the same declaration. It is in `logical_bundle` now.
     raw["sources"]["input_rows"]["relation"] = SOURCE_TABLE
     return raw
 

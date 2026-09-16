@@ -909,6 +909,22 @@
                 }
               },
               {
+                "key": "materialize",
+                "required": true,
+                "node": {
+                  "kind": "leaf",
+                  "hint": "flag"
+                }
+              },
+              {
+                "key": "max_rewrite_rows",
+                "required": false,
+                "node": {
+                  "kind": "leaf",
+                  "hint": "number"
+                }
+              },
+              {
                 "key": "fold",
                 "required": false,
                 "node": {

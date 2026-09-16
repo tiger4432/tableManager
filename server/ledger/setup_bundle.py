@@ -1151,12 +1151,39 @@ def _validate_virtual_joins(section: Mapping[str, Any], problems: _Problems) -> 
         path = f"bundle.virtual_joins.{rule_id}"
         _nonblank_id(rule_id, path, problems)
         rule = section[rule_id]
+        # 🔴 [판정 481 · 446] `materialize` IS REQUIRED HERE, NOT MERELY ALLOWED.
+        # 판정 446 changed what the field's ABSENCE means: it used to be a default and it
+        # now means 「read-time join」, which is retired. This validator was left on the old
+        # meaning and refused the field outright, so a bundle join could pass NEITHER seat -
+        # omit it and the join loader refuses the declaration, write it and this refused the
+        # key. Mirroring 446 rather than just permitting the name is what keeps the two from
+        # drifting apart again: there is one answer to 「is this join declared correctly」.
+        #
+        # `max_rewrite_rows` is OPTIONAL here on purpose. It is a ceiling, not a switch, and
+        # the loader is the seat that knows whether a ceiling is required for the shape it
+        # sees; requiring it in two places would be two answers to one question.
         if not problems.exact(
                 rule, path,
                 required=("left_table", "right_table", "join_key", "expose",
-                          "join_cardinality", "enabled"),
-                optional=("fold",)):
+                          "join_cardinality", "enabled", "materialize"),
+                optional=("fold", "max_rewrite_rows")):
             continue
+        # 🔴 AND THE SENTENCE IS 446's, IMPORTED. 「field is required」 would send an operator
+        # to add a key; the truth is that a capability was retired and the join has to MOVE
+        # (판정 474: the same judgement spelled two ways points at opposite repairs).
+        if rule.get("materialize") is not True:
+            problems.add("invalid_join", f"{path}.materialize",
+                         validation.READ_TIME_RETIRED_DETAIL)
+        # ⚠️ SHAPE ONLY. Whether a ceiling is REQUIRED, and whether the one written is the
+        # right size, is the join loader's judgement and stays there - asking it twice would
+        # be two answers to one question. What this seat owes is that a DECLARED ceiling is
+        # a number: an optional field with no shape check is a node whose mutation produces
+        # no error, which `test_every_json_node_shape_mutation_returns_only_structured_errors`
+        # exists to catch, and it caught this one.
+        cap = rule.get("max_rewrite_rows")
+        if cap is not None and (isinstance(cap, bool) or not isinstance(cap, int) or cap < 1):
+            problems.add("invalid_join", f"{path}.max_rewrite_rows",
+                         "must be a positive integer")
         for field in ("left_table", "right_table"):
             _nonblank_text(rule.get(field), f"{path}.{field}", problems)
         pairs = rule.get("join_key")

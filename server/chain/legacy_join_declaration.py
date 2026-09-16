@@ -142,6 +142,9 @@ from chain.join_refusal import (CODE_FANOUT_DECLARED, CODE_NO_LEFT_INDEX,
                                CODE_NO_REWRITE_CAP, CODE_NO_UNIQUE_INDEX,
                                CODE_READ_TIME_RETIRED, CODE_SHAPE,
                                virtual_join_detail)
+# 🔴 [판정 481 ③] SHARED WITH THE LEDGER BUNDLE VALIDATOR, which is stdlib-only and
+# cannot import `chain.*` - so the sentence is authored one level down (판정 300).
+from validation import READ_TIME_RETIRED_DETAIL
 
 # 인덱스 이름 규약. PostgreSQL 식별자 상한은 63바이트라 넘치면 해시로 접는다
 # (`value_suggest.suggest_index_name`과 같은 규율·같은 상한).
@@ -329,13 +332,10 @@ def _validate_join(name: str, raw: dict, known_tables: dict, rejections: list = 
     # 이름을 대어 거부하고, 다음 행동을 같이 적는다.
     materialize = raw.get("materialize", False)
     if materialize is False:
-        return None, (
-            "'materialize' is false, which declared a READ-TIME join: the column was "
-            "computed on the way out and never stored. That mechanism is retired. Declare "
-            "the join in chain_rules.json instead - `derive: {kind: \"join\"}` with `on` "
-            "and `take` - which writes the value into the table, or set 'materialize': "
-            "true here with a 'max_rewrite_rows' ceiling to keep it as a write join."
-        ), CODE_READ_TIME_RETIRED, None
+        # 🔴 [판정 481 ③] THE SENTENCE IS IMPORTED, NOT WRITTEN HERE. The ledger bundle
+        # validator refuses the same declaration and must say the same thing; two copies
+        # drift into two repairs (판정 474).
+        return None, READ_TIME_RETIRED_DETAIL, CODE_READ_TIME_RETIRED, None
 
     if materialize is not True:
         return None, ("'materialize' must be true or false, not "

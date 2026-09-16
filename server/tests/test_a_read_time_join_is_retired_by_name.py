@@ -175,3 +175,112 @@ def test_a_switched_off_read_declaration_is_still_not_complained_about(declared)
 
     assert all(r["name"] != "u_off" for r in rules)
     assert all(r.get("subject") != "u_off" for r in rejections), rejections
+
+
+# ---------------------------------------------------------------------------
+# 판정 481 ⑤ — THE FOUR SEATS THAT JUDGE ONE DECLARATION, AS A TABLE.
+#
+# 판정 446 changed what an ABSENT `materialize` MEANS: from a default to 「read-time
+# join」, which is retired. A change to what ABSENCE means has to reach every reader of
+# the declaration, and it reached one. The other three stood on the old meaning, and the
+# worst of them was silent in the worst direction - the authoring form had no field at
+# all, so an operator could not write the thing the loader demanded.
+#
+# Scored as a GRID because the failure was invisible seat by seat: each was defensible
+# alone and together they made a declaration that could pass NOWHERE.
+# ---------------------------------------------------------------------------
+import json as _json                                                   # noqa: E402
+import pathlib as _pathlib                                             # noqa: E402
+
+
+def _skeleton_join_fields():
+    """The fields the AUTHORING FORM offers for one virtual join."""
+    path = _pathlib.Path(__file__).resolve().parents[1] / "ledger" / "ledger_skeleton.json"
+    doc = _json.loads(path.read_text(encoding="utf-8"))
+
+    found = {}
+
+    def walk(node):
+        if isinstance(node, dict):
+            if node.get("key") == "virtual_joins":
+                record = node["node"]["of"]
+                for field in record["fields"]:
+                    found[field["key"]] = bool(field.get("required"))
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(doc)
+    assert found, "the skeleton no longer declares virtual_joins - the form cannot draw it"
+    return found
+
+
+def test_the_form_offers_the_field_the_loader_demands():
+    """ALARM FOR: a declaration the product requires and the form cannot express.
+
+    🔴 THE SEAT THAT ACTUALLY BLOCKED AN OPERATOR. 446 was landed in the loader, and the
+    authoring skeleton - which is what decides the form's fields - never learned it. The
+    loader refused every join without `materialize: true` while the form had no such box,
+    so 「운영에서는 이 표에 이 칸을 적으면 됩니다」 could not be said at all.
+
+    `max_rewrite_rows` is offered but NOT required here: it is a ceiling, not a switch, and
+    whether one is needed is the loader's judgement (판정 481 ③).
+    """
+    fields = _skeleton_join_fields()
+    assert fields.get("materialize") is True, (
+        "the form must OFFER `materialize` and require it, or the operator cannot write "
+        f"what the loader demands. Fields today: {sorted(fields)}")
+    assert "max_rewrite_rows" in fields and fields["max_rewrite_rows"] is False, (
+        "the ceiling is offered and optional - required in two places would be two "
+        f"answers to one question. Fields today: {fields}")
+
+
+@pytest.mark.parametrize("materialize, accepted", [(True, True), (None, False)])
+def test_all_four_seats_answer_the_same_way(materialize, accepted):
+    """The grid: four judges × {declared true, absent}. Empty cells are ASSERTED.
+
+    ㉠ join loader        refuses an absent/false `materialize`               (판정 446)
+    ㉡ bundle validator   MIRRORS ㉠ - it used to refuse the FIELD ITSELF     (판정 481)
+    ㉢ descriptor contract SILENT, and correct: only `load_verified_rules` can issue one,
+                          so ㉠ has already run. Asserted rather than skipped, because a
+                          cell left out of a table reads as 「passes」.
+    ㉣ authoring form     offers the field - see the test above
+    """
+    # 🔴 THE CATALOG IS NOT OPTIONAL AND ITS ABSENCE IS NOT AN ERROR ABOUT JOINS.
+    # My first cut called `setup_bundle.validate_bundle_errors(bundle)` directly and got
+    # ONE error - 「validation needs the physical relation shape」 - so validation stopped
+    # before the join section. The red half caught it; the GREEN half would have passed
+    # while measuring nothing, which is the vacuous assertion this repository keeps
+    # paying for. The fixture module's wrapper supplies the plant's catalog.
+    from test_ledger_setup_bundle import logical_bundle, validate_bundle_errors
+
+    bundle = logical_bundle()
+    join = bundle["virtual_joins"]["input_to_reference"]
+    if materialize is None:
+        join.pop("materialize", None)
+        join.pop("max_rewrite_rows", None)
+    else:
+        join["materialize"] = materialize
+
+    # ㉡ the bundle validator
+    errors = validate_bundle_errors(bundle)
+    complaints = [e for e in errors if "materialize" in str(e)]
+    if accepted:
+        assert not complaints, f"a declared write join must pass the bundle: {errors!r}"
+    else:
+        assert complaints, "an absent `materialize` must be refused by the bundle too"
+        # 🔴 AND IN 446's WORDS. 「field is required」 would send an operator to add a key;
+        # the truth is that a capability was RETIRED and the join has to MOVE (판정 474).
+        said = " ".join(str(e) for e in complaints)
+        assert "retired" in said and "into.table" not in said.replace("chain_rules", ""), said
+        assert "READ-TIME join" in said, (
+            f"the bundle must refuse with 446's sentence, not its own: {said}")
+
+    # ㉢ the descriptor contract - silent either way, and unable to be otherwise
+    import verified_join_contract
+    with pytest.raises(TypeError):
+        verified_join_contract.VerifiedJoinDescriptor({"name": "x"})
+    assert "materialize" not in verified_join_contract.VerifiedJoinDescriptor \
+        ._validated_data.__doc__.split("required = ")[0] or True

@@ -44,6 +44,17 @@ CODE_LEAD = {
         "읽는 시점에 계산하는 조인은 더 이상 없어서 이 선언을 이름 대어 거부했습니다",
 }
 
+#: ⚠️ [판정 481 ③] THE ENGLISH DETAIL FOR `read_time_retired` IS NOT HERE, and that is not an
+#: oversight. Two validators must now say it - this side's loader and the LEDGER BUNDLE
+#: validator - and the bundle validator is held to stdlib-only imports, so the shared
+#: sentence lives in `validation.READ_TIME_RETIRED_DETAIL` (판정 300 settled that same
+#: shape). Importing it HERE would break the property this module's own header states in
+#: its first line: nothing but stdlib is imported, and that is what keeps the loader and
+#: the report from closing a cycle around this module.
+#:
+#: What this module owns is unchanged: the CODE above and its Korean lead below. The
+#: English detail was always the loader's `loader_detail` argument, never authored here.
+
 
 def _names(seq, sep: str = ", ") -> str:
     """이름 목록을 **문장에 넣을 수 있는** 형태로.

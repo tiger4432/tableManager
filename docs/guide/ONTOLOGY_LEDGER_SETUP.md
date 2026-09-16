@@ -308,7 +308,7 @@ physical relation 컬럼이어야 한다.
 | `vocabulary` | 예 | 술어의 닫힌 서명 — **Role과 emission도 여기서 도출된다** (§7.1·§7.5) |
 | `entities` | 예 | 개체 ID와 key shape (§7.2) |
 | `sources` | 예 | 소스 하나 = `relation`+`read`+`prepare`+`map`+`bind` (§7.3·§7.4·§7.6·§7.7) |
-| `virtual_joins` | **아니오** | verified read-only batch join (§6) |
+| `virtual_joins` | **아니오** | verified **write** batch join (§6) — `materialize: true` 필수 |
 
 정본은 `server/ledger/setup_bundle.py`의 `LOGICAL_SECTIONS`(필수 셋) ·
 `OPTIONAL_SECTIONS`(`virtual_joins`) · `SETUP_VERSION`이다. **개수를 외우지 말고 거기서 읽어라.**
@@ -424,7 +424,7 @@ unknown_relation @ bundle.sources.<id>.relation
 
 ---
 
-## 6. `virtual_joins` — verified read-only batch join (선택 section)
+## 6. `virtual_joins` — verified **write** batch join (선택 section)
 
 🔴 **이 section만 선택이다.** 운영 root(`server/config/ontology/ledger_config.json`)는
 `virtual_joins`를 **갖고 있지 않다** — 그 자리에 있던 registry가 비어 있었고, enabled rule은
@@ -457,10 +457,22 @@ join이 필요 없으면 이 키를 아예 쓰지 않는다. 빈 `{}`를 두어�
       "final_chip"
     ],
     "join_cardinality": "one",
-    "enabled": true
+    "enabled": true,
+    "materialize": true,
+    "max_rewrite_rows": 50000
   }
 }
 ```
+
+> 🔴 **`materialize` 가 «없으면» 이 선언은 이름을 대고 거절됩니다 (판정 446·481).**
+> 이 절은 «read-only» 조인을 설명하고 있었고, 그 기제는 은퇴했습니다. 살아남은 것은 «쓰기 조인»뿐입니다 —
+> 값이 표에 «써집니다». 그래서 위 블록을 베끼실 때 `materialize: true` 와 상한을 같이 적으셔야 합니다.
+>
+> ⚠️ **위 `max_rewrite_rows` 는 «예시 값»입니다.** 참조 행 하나가 바뀜면 그 키를 든 대상 행이
+> «전부» 다시 써지므로, 이 제품은 비용을 «치르기 전에» 말합니다. 세고 적으십시오:
+> `SELECT max(k) FROM (SELECT count(*) k FROM <left_table> GROUP BY <join_key>) t`
+>
+> 조인을 아예 옮기시려면 `chain_rules.json` 의 `derive: {kind: "join"}` + `into.table` 입니다.
 
 | 필드 | 필수 | 설명 |
 |---|---:|---|
@@ -471,6 +483,8 @@ join이 필요 없으면 이 키를 아예 쓰지 않는다. 빈 `{}`를 두어�
 | `expose` | 예 | 오른쪽에서 EventFrame에 노출할 컬럼 목록 |
 | `join_cardinality` | 예 | 현재 정확히 `"one"` |
 | `enabled` | 예 | `true`인 rule만 상속 가능 |
+| `materialize` | 예 | **`true` 만 유효.** 없거나 `false` 면 「읽는 시점 조인」이라 이름을 대고 거절된다(판정 446·481) |
+| `max_rewrite_rows` | 아니오 | 참조 행 하나가 바꿀 대상 행의 상한. 쓰기 조인의 «비용 선언»이다 |
 | `fold` | 아니오 | 제한된 표기 정규화 선언. 임의 식/SQL/Python이 아니다. |
 
 ### 6.1 join이 승인되려면
@@ -489,7 +503,8 @@ config의 `unique: true`만으로 `VerifiedJoinDescriptor`를 만들 수 없다.
 
 ### 6.2 실행 의미
 
-- 키를 모아 기본 1,000개 단위 read-only batch query를 수행한다.
+- 키를 모아 기본 1,000개 단위 batch query를 수행하고, **그 값을 대상 표에 «쓴다»**
+  (읽는 시점에 계산해 내보내던 절반은 판정 461 에서 은퇴했다).
 - 0건은 `missing`, 2건 이상은 `ambiguous`로 mapper 전에 거절한다.
 - 필요한 expose 값이 비면 `incomplete`로 거절한다.
 - EventFrame에 이미 존재하는 이름과 expose가 충돌하면 조용히 덮지 않고 거절한다.
@@ -1567,7 +1582,8 @@ dt_inventory
 ```
 
 Source cursor는 `dt_log`만 읽는다. Preparer가 한 batch의 `dt_job_id`를 모아
-`dt_inventory`를 read-only batch join하고 EventFrame에 목적지 identity를 붙인다. 따라서
+`dt_inventory`를 batch join하고 EventFrame에 목적지 identity를 붙인다(오른쪽은 읽기만,
+값은 대상 표에 «써진다» — 판정 461·446). 따라서
 Profile에는 `declared_lookup`이 필요 없고, 완성된 EventFrame column을 binding하면 된다.
 
 이 예제가 보여 주는 의미 계보는 다음과 같다.

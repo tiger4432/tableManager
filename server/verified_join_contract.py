@@ -104,6 +104,17 @@ class VerifiedJoinDescriptor(Mapping[str, Any]):
 
     @staticmethod
     def _validated_data(rule: Mapping[str, Any]) -> Mapping[str, Any]:
+        """⚠️ [판정 481 ㉢] `materialize` IS ABSENT FROM `required` AND THAT IS CORRECT.
+
+        판정 446 made a declaration without `materialize: true` a retired read-time join,
+        and 481 swept the seats that judge that. This one stays silent, checked rather
+        than assumed: a `VerifiedJoinDescriptor` cannot be built by anyone - `__new__` and
+        `_issue` both raise - so the only way one exists is `load_verified_rules`, which
+        has ALREADY applied 446. By the time a rule reaches here it is a join that passed.
+
+        Asking again would make this the THIRD judge of one question, which is the defect
+        481 exists to close, and it would also be a judge that can never fire.
+        """
         if not isinstance(rule, Mapping):
             raise TypeError("verified join rule must be a mapping")
         required = (

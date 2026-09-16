@@ -475,7 +475,9 @@
         "final_chip"
       ],
       "join_cardinality": "one",
-      "enabled": true
+      "enabled": true,
+      "materialize": true,
+      "max_rewrite_rows": 50000
     }
   }
 }
