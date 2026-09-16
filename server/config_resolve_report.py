@@ -271,13 +271,37 @@ def _resolve_chain() -> dict:
 
     # 🔴 합성 규칙은 «같은 목록에» 서되 이름이 붙습니다 — 운영자가 고칠 수 없는 줄이라,
     # 안 붙이면 「내가 안 적었는데」가 되고 붙이면 「제품이 넣어 준 것」이 됩니다.
+    # 🔴 [판정 454 ③] THE `except` HERE WAS A DEAD BRANCH AND THE SCREEN WENT QUIET.
+    # Since 452 ② a half that fails is caught INSIDE `synthesize_chain_rules`, so this call
+    # does not raise any more - and a report built with the join half dead showed it:
+    # one unrelated rejection, the half named nowhere, and THIRTY-EIGHT tables told
+    # 「이것이 정상입니다」. The repair moved the defect from the worker's log to this screen,
+    # which is 452's own disease wearing the other surface.
+    #
+    # ⚠️ THE OUTER `except` STAYS for what is genuinely outside either half (this seat
+    # importing, the catalogue). It is no longer the only thing standing between a dead
+    # half and a report that reads as healthy.
+    synthesis_failures = []
     try:
-        synthesized = builtins.synthesize_chain_rules() or ()
+        synthesized = builtins.synthesize_chain_rules(
+            failures=synthesis_failures) or ()
     except Exception as exc:
         synthesized = ()
         rejected.append(entry(
             SCOPE_FILE, "synthesized",
             "제품이 파생 규칙을 합성하지 못했습니다 (%s: %s)." % (exc.__class__.__name__, exc),
+            reason=REASON_MAPPING_UNAVAILABLE))
+
+    # ⛔ THE SENTENCE IS NOT WRITTEN HERE. `builtins.synthesis_half_says` is the one author
+    # of 「what stops when this half stops」; the log takes its English out of the same table.
+    # A screen composing its own Korean would be a second author of one fact.
+    for failure in synthesis_failures:
+        rejected.append(entry(
+            SCOPE_FILE, "synthesized:%s" % failure.get("half"),
+            "제품의 합성 중 «%s» 반쪽이 실패했습니다 — %s. (%s)"
+            % (failure.get("half"),
+               builtins.synthesis_half_says(failure.get("half")),
+               failure.get("error")),
             reason=REASON_MAPPING_UNAVAILABLE))
 
     for rule in synthesized:
@@ -296,10 +320,21 @@ def _resolve_chain() -> dict:
                         if not str(t).startswith("__")):
         if table in triggered:
             continue
+        # 🔴 [판정 454 ③] 「정상입니다」 IS A JUDGEMENT, AND A DEAD HALF TAKES AWAY THE
+        # EVIDENCE FOR IT. With one half gone this seat cannot know which of these tables
+        # a missing rule belonged to - the rules are not there to ask - so the honest
+        # sentence says the judgement is incomplete instead of calling it normal. Leaving
+        # 「정상」 here and putting a file-level rejection above it would be the shape 판정 453
+        # just ruled on: a correction above does not repair the sentence below.
         ineffective.append(entry(
             SCOPE_TABLE, table,
             "`%s` 의 변화는 «아무것도 깨우지 않습니다» — 이 표를 `trigger_table` 로 적은 "
-            "규칙이 없습니다. 파생이 필요 없는 표라면 이것이 정상입니다." % table,
+            "규칙이 없습니다. %s" % (
+                table,
+                ("합성의 반쪽이 실패했으므로 이 판단은 «불완전»입니다 — "
+                 "위의 거절 항목을 먼저 보십시오."
+                 if synthesis_failures
+                 else "파생이 필요 없는 표라면 이것이 정상입니다.")),
             reason=REASON_NOT_DECLARED))
 
     return build_domain(DOMAIN_CHAIN, "파생 (체인 규칙)", sources, [],

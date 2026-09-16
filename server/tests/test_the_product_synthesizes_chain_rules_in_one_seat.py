@@ -34,6 +34,72 @@ import virtual_join.config as vjc                                     # noqa: E4
 # 🔴 the seat, and the move that must change nothing
 # ---------------------------------------------------------------------------
 
+def _chain_report_with(monkeypatch, dead_half):
+    """The report as it is actually BUILT, with one half forced to fail.
+
+    🔴 [판정 454 ④] THE GATE MEASURES 「돌다」, NOT 「간다」. Four tests already
+    assert that `synthesize_chain_rules` takes a `failures` list and fills it, and all four
+    were green while the SCREEN said nothing at all - the argument had zero product
+    consumers. An assertion about the function's signature says nothing about what an
+    operator reads, so this builds the report and reads its output.
+    """
+    import config_resolve_report as rep
+
+    def boom(**k):
+        raise RuntimeError("forced: %s" % dead_half)
+
+    if dead_half == "virtual join":
+        monkeypatch.setattr(vjc, "synthesized_join_chain_rules", boom)
+    else:
+        monkeypatch.setattr(enrichment.config, "load_enrichment_chain_rules", boom)
+    return rep._resolve_chain()
+
+
+@pytest.mark.parametrize("dead_half", ["virtual join", "enrichment"])
+def test_the_report_names_the_half_that_died(monkeypatch, dead_half):
+    """⚠️ BOTH HALVES, BECAUSE AN EMPTY CELL READS AS 「PASSED」. Testing one would leave
+    the other's silence covered, and the two are symmetric only if both are wired.
+    """
+    domain = _chain_report_with(monkeypatch, dead_half)
+    said = " ".join(str(r.get("detail") or "") for r in domain.get("rejected") or ())
+
+    assert dead_half in said, "the report does not name the half that died: %r" % said
+    assert builtins.synthesis_half_says(dead_half) in said, (
+        "the screen wrote its own sentence instead of the one author's: %r" % said)
+
+
+def test_the_report_stops_calling_it_normal_while_a_half_is_dead(monkeypatch):
+    """🔴 [판정 454 ③] 「정상입니다」 IS A JUDGEMENT AND A DEAD HALF REMOVES ITS
+    EVIDENCE. Measured before the repair: thirty-eight tables carried 「파생이 필요 없는
+    표라면 이것이 정상입니다」 while the join half was gone. A file-level rejection above
+    them does not repair that - 판정 453 ruled on exactly that shape.
+    """
+    domain = _chain_report_with(monkeypatch, "virtual join")
+    normal = [e for e in domain.get("ineffective") or ()
+              if "정상입니다" in str(e.get("detail") or "")]
+
+    assert normal == [], (
+        "%d tables are called normal while a half of synthesis is dead" % len(normal))
+    incomplete = [e for e in domain.get("ineffective") or ()
+                  if "불완전" in str(e.get("detail") or "")]
+    assert incomplete, "and it does not say the judgement is incomplete either"
+
+
+def test_a_healthy_report_still_says_normal_and_names_no_half(monkeypatch):
+    """🔴 THE BLANK THAT WOULD READ AS 「PASSED」. A report that always warned would be
+    noise on every healthy box, and noise is not read - so the two tests above would pass
+    while the screen became useless. This is the other side of that cell.
+    """
+    import config_resolve_report as rep
+
+    domain = rep._resolve_chain()
+    said = " ".join(str(r.get("detail") or "") for r in domain.get("rejected") or ())
+
+    assert "반쪽이 실패" not in said, said
+    assert not [e for e in domain.get("ineffective") or ()
+                if "불완전" in str(e.get("detail") or "")]
+
+
 def test_one_half_failing_does_not_take_the_other_down(monkeypatch):
     """🔴 [판정 452 ②] THE TWO HALVES WERE ONE EXPRESSION. Anything raising in the
     virtual-join half took the enrichment half with it, the caller logged a single line

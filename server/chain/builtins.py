@@ -26,14 +26,30 @@ import os
 logger = logging.getLogger("Chain.Builtins")
 
 
-#: (half, what stops running when that half does) - the sentence a failure has to be able
-#: to say. 🔴 IT IS A TABLE AND NOT TWO `except` BLOCKS because the two must be reported the
-#: same way: a half that fails quietly in a different voice is how 「what is not running」
-#: becomes 「nothing is declared」.
+#: (half, what stops running - for the LOG, and for the SCREEN). 🔴 IT IS A TABLE AND NOT
+#: TWO `except` BLOCKS because the two halves must be reported the same way: a half that
+#: fails quietly in a different voice is how 「what is not running」 becomes 「nothing is
+#: declared」.
+#:
+#: 🔴 AND BOTH RENDERINGS LIVE HERE, WHICH IS THE POINT (판정 454 ③). This repository writes
+#: logs in English and screens in Korean, so a screen that composed its own sentence would
+#: make one fact have two authors, free to disagree about WHICH half and WHAT stopped - the
+#: door-splitting this round removes. The seat that knows the halves holds both spellings
+#: and each surface takes its own out of here.
 _SYNTHESIS_HALVES = (
-    ("enrichment", "dedup and auto-confirm rules are NOT running"),
-    ("virtual join", "materialised join rules are NOT running"),
+    ("enrichment", "dedup and auto-confirm rules are NOT running",
+     "중복 제거·자동 확정 규칙이 돌지 않습니다"),
+    ("virtual join", "materialised join rules are NOT running",
+     "표에 쓰는 조인 규칙이 돌지 않습니다"),
 )
+
+
+def synthesis_half_says(half: str) -> str:
+    """The Korean sentence for what a failed half takes down. One author, two surfaces."""
+    for name, _log, screen in _SYNTHESIS_HALVES:
+        if name == half:
+            return screen
+    return ""
 
 
 def synthesize_chain_rules(known_tables: dict = None, failures: list = None) -> list:
@@ -64,14 +80,15 @@ def synthesize_chain_rules(known_tables: dict = None, failures: list = None) -> 
         return virtual_join.config.synthesized_join_chain_rules(known_tables=known_tables)
 
     rules = []
-    for (half, stops), produce in zip(_SYNTHESIS_HALVES, (_enrichment, _joins)):
+    for (half, stops, says), produce in zip(_SYNTHESIS_HALVES, (_enrichment, _joins)):
         try:
             rules.extend(produce() or ())
         except Exception as exc:                                   # noqa: BLE001
             logger.error("[ChainRules] the %s half of synthesis failed, so %s: %s",
                          half, stops, exc)
             if failures is not None:
-                failures.append({"half": half, "stops": stops, "error": str(exc)})
+                failures.append({"half": half, "stops": stops, "says": says,
+                                 "error": str(exc)})
     return rules
 
 
