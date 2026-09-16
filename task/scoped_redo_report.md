@@ -44267,3 +44267,45 @@ import    stdlib 뿐. 네 자리가 세 패키지에 흩어져 있고 어느 쪽
 > ⚠️ **`6f45a004` 정정 확인했습니다** — 제 보고에 그 쌍을 「오늘 진단기 때문에 들어간 rollback」으로 쓴 적은 없지만(그건 응용 ⓒ②), 그 커밋 «하나»가 이 부류 둘(만료 객체 읽기 + 빌린 세션 롤백)을 224줄·시험 0으로 넣었다는 사실은 2단계 근거로 받았습니다.
 > 게이트 수: 평범 **668 passed / 1 skipped**(`run_auto_confirm_sweep`·`session_contract`·`enrichment.analysis`·`retroactive` 를 부르는 «모든» 시험) · `run_pg_tests.py` **91 passed / 0 failed** · collect **6,812 · 에러 0**.
 > 📌 **[09-16 12:33] 이 채널의 미답 질문: «없음».** 2단계 지시 주시면 이어서 하겠습니다.
+
+> ## ❓🔔 **[09-16 13:02 구현자] S-274 «2단계» — 여덟 쌍을 «열었고», 오늘 «파괴하는» 쌍은 «0» 입니다. 다만 하나는 «진짜인데 막혔습니다» — 판정 부탁드립니다**
+> 지시하신 그대로 명단을 «그대로 쓰지» 않고 쌍마다 열었습니다. 코드는 «한 줄도 안 넣었습니다** — 억지로 넣지 말라 하신 그 자리입니다.
+
+> ### 열어 본 여덟 — 판정과 사유
+> ```
+> ㉠ handle_retroactive_trigger ← run(:1028)        건너뜀
+>    그 rollback 은 «실패 팔»에 있고 «두 줄 아래 db.commit() 과 짝»입니다 — 중단된 트랜잭션을
+>    치워야 outbox 행을 FAILED 로 «찍을 수» 있습니다. savepoint 로 바꾸면 그 목적이 사라집니다.
+>    그리고 호출자는 «바로 다음 줄»에서 db.close() 합니다
+> ㉡ _get_recorrection_stat / _get_effort_stat ← get_dashboard_summary   건너뜀(잠복)
+>    그 라우트는 «집계 읽기뿐»이라 롤백이 지울 것이 없습니다. 호출자 주석이 이미 그 사유로
+>    두 계기를 «마지막에» 부릅니다. 쌍은 참이고 결함은 «아직» 아닙니다
+> ㉢ suggest_values ← get_column_unique_values      건너뜀
+>    호출자가 그 호출을 «return» 합니다 — 세션을 뒤에서 «안 씁니다»
+> ㉣ _approx_row_count · _index_state ← suggest_values   건너뜀 (같은 읽기 전용 경로)
+> ㉤ load_verified_rules ← executor.py:141          «이 부류가 아님»
+>    자기 SessionLocal() 을 열고 닫습니다. 그리고 그 파일 주석이 «바로 이 사고»를 적어 두었습니다 —
+>    소유자 원문 「내가 건드리던 테이블과 완전 다른 건데 왜 튀어나와서 막았던 거야」
+> ㉥ _log_reduced_ingestion_record 둘레             건너뜀
+>    rollback 이 «호출자 자기 팔»에 있고, 바로 뒤에 «축소 행으로 재시도»가 옵니다 — 치우는 것이 목적
+> ㉦ migrations/normalize_schema 셋                 «이 부류가 아님»
+>    :331 의 main() 이 SessionLocal() 로 «소유»하고 내려 줍니다. 잃을 남의 작업이 없습니다
+> ㉧ _plan_digest                                   지시대로 제외
+> ```
+
+> ### 🔴 하나는 «진짜입니다» — 그런데 이 모양으로는 못 넣습니다 (재고 되돌렸습니다)
+> `load_verified_rules` ← `dt_map_derivation.join_rule` · **`mappers/dt_map_mapper.py.sample:129`**
+> ```
+> 왜 진짜인가   본보기가 그 좌석에 «체인 워커의 세션»을 넘깁니다. 거기서 db.rollback() 이 돌면
+>              그룹의 processed_chain=True 커밋이 롤백되고 배치 루프가 «영원히» 재실행됩니다 —
+>              `enrichment/config._isolated_execute` 가 적어 둔 «그 사고» 그대로입니다
+> 왜 막혔나     그 좌석은 조인 로더의 «유일한 입구»라 시험이 «더블»로 몹니다.
+>              in_savepoint 를 넣고 재니 «83 failed / 12 errors» — FakeDB 에 begin_nested 가 없습니다
+>              (실측 후 «되돌렸습니다». 트리에 남은 제 편집은 없습니다)
+> ```
+> ❓ **판정 부탁드립니다.** 제가 보는 답은 «좌석»이 아니라 «호출자»입니다 — `executor.py` 가 이미 그렇게 고쳤습니다(자기 세션을 열어 넘김). 그러면 더블 83은 그대로 두고, `dt_map_derivation.join_rule` 과 본보기가 «자기 세션»을 엽니다. 다만 그건 «좌석을 감싸는» 이번 지시의 모양이 아니라 «호출자를 바꾸는» 별개 모양이라 제가 정하지 않았습니다.
+> ㉠ 호출자에게 자기 세션(executor 선례) · ㉡ 좌석에 primitive + 더블 83 갱신 · ㉢ 3단계로 미룸.
+
+> ### 게이트
+> 코드 변경이 «0» 이므로 1단계의 수가 그대로 유효합니다 — 되돌린 뒤 다시 확인: 평범 **6 passed / 1 skipped**(이 라운드 파일) · 트리 «깨끗». 새 시험도 «안 넣었습니다**(넣었던 것은 되돌린 코드를 단언하므로 같이 뺐습니다).
+> 📌 **[09-16 13:02] 이 채널의 미답 질문: «하나»(위 ❓ — load_verified_rules 의 모양).**
