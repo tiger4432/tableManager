@@ -46408,3 +46408,95 @@ client2/src/timeline.js:934   「PUBLISHES `next_cursor` and ACCEPTS none … A 
 되돌리기 절도 고쳤습니다 — 이번 pull 에 라운드가 «여럿»이라 ①만 적혀 있던 것이 거짓이었습니다.
 항목마다 따로 적었고, ⑩ 의 되돌리기는 「화면은 어느 쪽이든 똑같다」까지 적었습니다(버튼이 아직 없으므로)
 ```
+
+---
+
+> 🟡 **[09-17 04:46 구현자] 판정 475 ⓓ — 비율 나왔습니다. **행으로 4/20 · 자리로 1/14**. 그리고 그 하나가 «진짜»입니다.**
+
+## ① 모집단부터 — 🔴 «118 이 아니라 114» 입니다. 제 커밋들이 줄였습니다
+```
+판정 475 가 든 수   118   (제가 03:20 에 잰 것)
+오늘 04:4x 재측정    114   A 행 전체도 142 -> 137
+왜               오늘 착지한 제 커밋들이 코드를 바꿨습니다 — 읽기 시점 조인 은퇴로 모듈이 사라졌고,
+                 S-284 B 축이 graph.py·chain_bindings·map_alignment 의 자리를 닫았습니다
+=> 표본은 «오늘의 114» 에서 뽑았습니다. 「118 중 20」이 아니라 「114 중 20」입니다
+```
+
+## ② 재현 가능하게 뽑았습니다
+```
+SEED = 20260917   ·  random.seed(SEED); random.sample(helpers, 20)
+helpers = 계측기 A 행 중 «라우트 함수 밖»에 쓰인 것 (ROUTE 플래그 없음)
+⚠️ 상위 네 파일을 «안 골랐습니다» — 무작위라 그중 9 행이 우연히 걸렸을 뿐입니다
+🔴 그리고 그 9 행도 «다시» 판정했습니다. ⓑ 의 물음(「0 이 무엇의 0 인가」)과 475 의 물음
+   (「이 수가 나가나 / 잘렸다고 말하나」)은 «다른 물음»이라 재활용하면 안 됩니다.
+   실제로 하나가 그 때문에 뒤집혔습니다 — enrichment/analysis 는 ⓑ 에서 「모집단 밖」이었는데
+   (호출자가 CLI 하나라서), 475 의 물음에선 «CLI 의 stdout 도 프로세스 밖»입니다
+```
+
+## ③ 결과 — 초록 16 · 빨강 4
+```
+ 1 admin/dev_bench.py:549        counted      ✅ 이 수 «자체»가 공시다 — 「2,000/400,000 은 표본이지 총계가 아니다」를 독스트링이 적었고 값이 그것을 말한다
+ 2 database/crud.py:4839         rows         ✅ 로그 줄이 스코프를 댄다 — 「… out of N row(s) «in this batch»」
+ 3 dt_map_derivation.py:806      derived      ✅ 이 자리는 상한을 «안 겁니다»(받은 행 전부 처리). held 가 옆에 있습니다
+ 4 enrichment/analysis.py:589    support      🔴
+ 5 enrichment/analysis.py:592    support      🔴
+ 6 enrichment/analysis.py:613    total_support 🔴
+ 7 enrichment/analysis.py:622    human_cells  🔴
+ 8 ledger/backfill.py:457        rows_in_scope ✅ 이 호출 경로는 limit 을 «안 넘깁니다». 독스트링이 scope≠limit 을 못 박습니다
+ 9 ledger/config_authoring:2097  declared     ✅ 상한 없음 · 0 이면 status 가 "empty" 라고 «이름»을 댑니다
+10 ledger/config_explorer:1214   total        ✅ page · limit · total 이 «셋 다» 한 응답에 — 교과서
+11 map_alignment.py:2509         n            ✅ 같은 dict 에 truncated(=truncated or capped)
+12 map_alignment.py:3962         reference_indices  ✅ stats 에 truncated · cell_cap 과 나란히
+13 map_alignment.py:3962         reference_values   ✅ 같음
+14 map_alignment.py:3962         source_maps_usable ✅ 같음
+15 map_alignment.py:7200         map_pairs    ✅ 최상위 truncated «축 지도»(units·maps)가 그 상한을 둘 다 이름 댑니다 (S-34 ②)
+16 notation_norm.py:877          distinct_raw ✅ truncated + group_limit «값까지» 실립니다. 그룹마다 variants_truncated 도
+17 transfer_plan.py:752          removable_declarations ✅ 선언을 읽습니다. 상한 없음
+18 transfer_plan.py:752          total        ✅ 같음. 그리고 네 사유가 total 의 «분할»이라 서로가 서로를 설명합니다
+19 transfer_plan.py:3546         refused      ✅ 비어 있으면 그 경고 «자체가 없습니다». 0 이 안 나옵니다
+20 utils/heartbeat.py:266        open         ✅ 라이브 집합입니다(읽기 아님). 0 이면 형제 칸이 «아예 없습니다»
+```
+
+## ④ 🔴 빨강 넷은 «한 자리»입니다 — `enrichment/analysis.analyze_promotions`
+```
+경로   scripts/enrichment_insights.py 가 `--limit` 을 받아 그대로 넘깁니다 (:281-282)
+      -> analyze_promotions(limit=…)  ->  rows = list(iter_derived_rows(..., limit=limit))  (:560)
+      -> iter_derived_rows 가 그 limit 을 «실제로 겁니다» (:200)
+나가는 것   반환 dict: {resolved_rows, human_cells, total_support, support, distinct_antecedent_values}
+          CLI 가 그대로 찍습니다:  「resolved rows scanned : N」 · 「total human decisions : M」
+🔴 그 반환 dict 에 limit 도 truncated 도 «없습니다». 「total human decisions」 가 «상한 걸린 읽기»
+   위의 수인데 «총계처럼» 나갑니다 — 427/430 이 진짜였던 바로 그 부류입니다
+⚠️ 그리고 이 파일은 그 값을 «이미 치렀습니다» — CLI 머리글이 적고 있습니다:
+   「THREE NUMBERS THAT ARE NOT THE SAME NUMBER (2026-08-05: they were all `limit`)」
+```
+🔴 **정정 — 제가 쓰려던 문장 하나가 틀렸습니다.** 처음엔 「형제 `classify_queue` 는 공시하는데
+이쪽만 안 한다」로 쓰려다 열어 봤더니, `classify_queue` 가 공시하는 것은 «키 예산»(`max_keys`·
+`probe_limit`·`cap_hits`)이고 «행 limit» 은 «그쪽도 안 적습니다».
+```
+=> 그러니 이건 「함수 하나가 형제보다 허술」이 아니라 «모듈 전체의 한 구멍»입니다:
+   한 CLI 플래그가 세 함수의 읽기를 자르는데 «셋 다» 그 사실을 반환에 안 싣습니다
+   (classify_queue · analyze_promotions · run_auto_confirm_sweep)
+   더 큰 결함이고, 제가 안 열었으면 더 작게 보고할 뻔했습니다
+```
+
+## ⑤ 그래서 «안 고쳤습니다» — 이름이 이 모듈의 «사고 이력»입니다
+```
+고치는 것 자체는 작습니다   반환에 칸 하나 + CLI 줄 하나
+🔴 그런데 «그 칸의 이름»이 이 파일이 2026-08-05 에 하루를 태운 바로 그것입니다.
+   「limit」 이라 적으면 세 번째 뜻이 되고, 그게 그때의 사고입니다
+   (그때 운영자는 「limit 을 올리라」는 말을 듣고 «다른 축»을 올렸고 아무것도 안 바뀌었습니다)
+=> 이름은 판정이지 제 선택이 아닙니다. 지시도 「빨강이면 그 자리」였고 「고쳐라」가 아니었습니다
+```
+
+## ⑥ 📮 그래서 비율은 이렇게 읽으셔야 합니다 — 단위가 둘입니다
+```
+행 기준   4/20   -> 판정 475 의 규칙대로면 「≥3/20 = 114 전수가 다음 라운드」
+자리 기준 1/14   -> 넷이 «한 함수»의 네 줄입니다. 자리로 세면 규칙의 문턱 아래입니다
+🔴 어느 쪽이 맞는지는 «제가 못 정합니다» — 계측기가 «행»을 세므로 표본도 행이었고,
+   그래서 한 자리가 행을 여럿 가지면 비율이 그만큼 올라갑니다. 그건 표본의 결함이 아니라
+   «모집단의 단위»가 행이라는 뜻이고, 그 단위를 고르는 것이 우선순위 판단입니다
+제 관찰 (추정 아님)   초록 16 중 «아홉»이 truncated/cap/limit 을 «값까지» 싣고 있었습니다.
+   이 저장소는 이 부류를 대체로 «이미» 지키고 있고, 안 지키는 자리가 뭉쳐 있는 것으로 보입니다
+```
+⛔ **그리고 이 표본으로 「114 는 깨끗하다」고 안 씁니다** — 판정 475 가 미리 막아 둔 문장이고,
+   16/20 초록은 «표본»이지 부재의 증거가 아닙니다. 114 는 «안 훑었습니다».
