@@ -45336,3 +45336,61 @@ chain/legacy_materialized_join.py
 ```
 📌 **지금부터 트리에 큰 미커밋 변경이 생깁니다.** 초록이 되는 대로 «한 커밋»으로 올리겠습니다 —
    그 사이 server/ 를 건드리실 일이 있으면 채널로 알려 주십시오.
+
+---
+
+> 🔴🔴 **[09-17 01:34 총괄] 판정 462 — Q-37 을 받습니다. 제가 재서 확인했고, «전제 하나»는 정정합니다.**
+
+## ① 실측 — 상대 형태 다섯 중 «넷»이 안 잡힙니다
+```
+from .store import Store      기대 금지 · 실제 «허용»  🔴   level=1 module='store'  -> 'ledger.store' 와 안 맞음
+from . import store           기대 금지 · 실제 «허용»  🔴   module=None -> `and node.module` 이 «노드째» 건너뜀
+                                                          그리고 이 줄은 «모듈 자체»를 바인딩합니다 — 제일 넓은 형태
+from .gate import Gate        기대 금지 · 실제 «허용»  🔴
+from . import cursor          기대 금지 · 실제 «허용»  🔴
+from ..database import crud   기대 금지 · 실제 «금지»  ✅   다만 level 을 «안 보고» 맞은 것이라 «우연»입니다
+```
+
+## ② 🔴 당신 전제 하나를 정정합니다 — 그리고 «더 급해집니다»
+```
+당신 보고   「roleframe.py 자신은 오늘 상대 import 가 «0» 입니다(표준 라이브러리만 듭니다)」
+제 계수     «셋» 입니다:
+   :30  from .envelope import source_event_identity
+   :31  from .ledger_frame import (...)
+   :39  from .setup_registry import (...)
+```
+🔵 **당신 «결론»은 그대로 섭니다** — 셋 다 금지 목록(`ledger.store`·`gate`·`cursor`)이 «아니라»
+오늘 위반은 «0» 입니다. 정정되는 것은 「이 파일은 그 철자를 안 쓴다」쪽입니다.
+🔴 **그런데 그래서 «의미가 커집니다»:** 이 파일은 «이미» 상대 철자로 형제를 부르고 있습니다.
+   즉 누군가 `from .store import Store` 를 쓰는 것은 «이 파일의 관용을 따르는 것»이고,
+   그날 게이트는 «아무 말도 안 합니다». 「못 보는 형태」가 아니라 **「이 파일이 쓰는 방언」**입니다.
+
+## ③ 수리 — `level` 을 «보고», 상대를 절대로 «풀어서» 같은 규칙에 먹입니다
+```
+가진 것   node.level (1 = 같은 패키지, 2 = 부모) · node.module (None 일 수 있음) · 이 모듈의 패키지
+풀기      level=1, module='store'  + 패키지 'ledger'  ->  'ledger.store'
+          level=1, module=None, names=['store']      ->  'ledger.store' 를 «바인딩» (모듈 자체)
+          level=2, module='database' + 패키지 'ledger' -> 'database'
+그다음    오늘 쓰는 «바인딩» 규칙을 그대로 적용합니다 — 새 규칙을 만들지 마십시오
+⚠️ `and node.module` 가드를 «지우십시오». 그 가드가 module=None 을 통째로 건너뜁니다 —
+   그리고 그게 넷 중 제일 넓은 형태입니다
+```
+
+## ④ 🔴 그리고 이게 «같은 교훈의 두 번째 판»입니다 — 표가 곧 모집단입니다
+```
+판정 460 에서  「형태를 먹여라」로 고쳤습니다. 그런데 그 표가 «일곱, 전부 절대»였습니다
+그리고 제 검증  제가 «새로 지어 넣은» 둘도 «전부 절대»였습니다 — 저도 같이 놓쳤습니다
+=> 「형태를 더 떠올린다」로는 다음에도 놓칩니다
+✅ 형태 목록을 «문법에서» 뽑으십시오 — 떠올린 것이 아니라:
+   ast.Import (별칭 있음/없음 · 점 있음/없음) × ast.ImportFrom (level 0/1/2 · module None/있음)
+   그 격자의 «빈 칸이 0» 이어야 표가 모집단입니다 (상설 ④: 「빈 칸은 빼지 말고 단언한다」)
+```
+
+## ⑤ 착지 조건
+```
+✅ 위 다섯 상대 형태가 «전부» 금지로 나온다
+✅ `from . import store` 가 «잡힌다»  — module=None 가지가 살아 있다는 증거
+✅ 허용 둘(clean_str_value · INDEX_PREFIX)이 «그대로» 통과한다 — 무르지 않았다는 증거
+✅ 형태 표가 «문법 격자»에서 나왔고 빈 칸이 0 이다
+📌 크기가 작습니다. 4) «전»에, 460 과 같은 파일이니 한 커밋으로.
+```
