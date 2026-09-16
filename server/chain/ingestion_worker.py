@@ -1443,6 +1443,47 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                 trigger_events = [e for e in valid_events
                                   if e.table_name == table_name
                                   and _rule_accepts_event(rule, e)]
+                # 🔴 [S-278 후반] A `builtin:` KIND IS CALLED BY NAME, NOT BY MODULE. Every
+                # other rule here names a file mapper and is dispatched through
+                # `execute_custom_mapper(module, function, ...)`; a builtin rule carries no
+                # `mapper_module` and no `mapper_function`, so that call reached it as
+                # `(None, None)` and raised `'NoneType' object has no attribute
+                # 'startswith'`. Measured before building: until S-278 no builtin had ever
+                # been on this path - `_run_builtin_followups` was the only dispatcher the
+                # vocabulary had - so taking the join off the paced lap took it off the only
+                # lap that could run it.
+                #
+                # ⚠️ IT WRITES ITSELF AND PROPOSES NOTHING. `join_into.run` returns
+                # `{"written", "rows_in", "side"}` and has already written; it does not
+                # return `updates`, so this branch must NOT feed `table_updates` the way the
+                # mapper branch does. That is why it is a branch and not a call swap.
+                #
+                # ⚠️ `done=` IS THE FOLLOW-UP LAP'S ARGUMENT AND IS NOT PASSED HERE.
+                # Measured: `join_into.run` accepts it and never reads it (the name appears
+                # in its signature and nowhere else in that module), so nothing is lost.
+                # `_run_auto_confirm` does read it - and auto-confirm stays on the paced lap,
+                # which this branch does not touch.
+                builtin_kind = rule.get("mapper")
+                if builtin_kind in _builtins_table().BUILTIN_KINDS:
+                    builtin_rows = [p.get("row_id")
+                                    for e in trigger_events
+                                    for p in expanded[outbox_expand.event_key(e)]
+                                    if p.get("row_id")]
+                    if not builtin_rows:
+                        continue
+                    outcome = _builtins_table().run_builtin(
+                        builtin_kind, db, rule, row_ids=builtin_rows) or {}
+                    # 🔴 THE COUNT SURVIVES THE MOVE. The paced lap said how many rows a
+                    # builtin wrote (`[ChainBuiltin] ... written=`); off that lap the join
+                    # would have written silently, and a write nobody can size is a write
+                    # nobody can question when a group runs long.
+                    logger.info(
+                        "[ChainBuiltin] rule=%s kind=%s table=%s rows_in=%s written=%s"
+                        " side=%s ← group tx=%s",
+                        rule.get("name"), builtin_kind, table_name, len(builtin_rows),
+                        outcome.get("written"), outcome.get("side"), tx_id)
+                    rules_by_target[target_table].add(_rule_name)
+                    continue
                 if is_batch:
                     # Collect all payloads for this trigger table in the current transaction group
                     payloads = [p for e in trigger_events
@@ -1945,6 +1986,18 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
 #: ⚠️ INVALIDATED WHERE EVERY OTHER WORKER CACHE IS. A cache with no reset is the reason a
 #: reload stops meaning anything, and this process already has one seat for that.
 _FOLLOWUP_BUILTIN_RULES = None
+
+
+def _builtins_table():
+    """The `builtin:` kind table, imported at CALL time (S-278 후반).
+
+    ⚠️ NOT AT MODULE LEVEL. `chain.builtins` imports `enrichment.config` and
+    `virtual_join.config`, which import back into this module's neighbourhood; every other
+    seat here reaches it the same way, inside the function that needs it.
+    """
+    from chain import builtins
+
+    return builtins
 
 
 def _followup_builtin_rules():

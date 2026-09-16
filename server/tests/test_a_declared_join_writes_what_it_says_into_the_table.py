@@ -184,6 +184,50 @@ def test_both_rules_run_on_the_trigger_path(load):
 # 🔴 ⓑ — what it writes, and what it deliberately does not
 # ---------------------------------------------------------------------------
 
+def test_the_group_path_actually_calls_the_join(db, caplog):
+    """🔴 [S-278 후반] THE ASSERTION THAT WAS MISSING, AND ITS ABSENCE IS THE WHOLE STORY.
+    Every other gate in this round asked the DISPATCHER'S PREDICATE - 「does this event
+    reach this rule」 - and none asked 「and then what CALLS it」. Taking the join off the
+    paced lap took it off the only lap that had a `builtin:` dispatcher at all: the group
+    path reads `mapper_module`/`mapper_function`, which a builtin rule does not carry, so
+    it reached `execute_custom_mapper(None, None, ...)` and raised
+    `'NoneType' object has no attribute 'startswith'`. Measured, not imagined.
+
+    ⛔ SO THIS DRIVES THE WRITE, NOT THE PREDICATE. It runs the real group function and
+    asserts the VALUE arrived and that the layer it arrived under is the chain's.
+    「착지는 배선이 아니다」 - this is the wiring.
+    """
+    import logging
+
+    from chain import cell_layer
+
+    _push(db, RIGHT, [{"job": "J-GROUP", "lot": "LOT-GROUP"}])
+    _push(db, LEFT, [{"log_key": "L-GROUP", "job": "J-GROUP"}])
+    db.commit()
+
+    # ⚠️ THE REAL OUTBOX ROWS, NOT A DOUBLE. The group path expands events through
+    # `outbox_expand`, keyed by `event_uuid`; a fake would let this pass while the real
+    # payload shape failed, which is the class of green this round is already full of.
+    events = db.query(models.DatabaseOutbox).filter(
+        models.DatabaseOutbox.table_name == LEFT).all()
+    assert events, "the seed wrote no outbox event, so this proves nothing"
+
+    stood = rule_shape.expand_declaration(DECLARATION, crud.TABLE_CONFIG)[0]
+    caplog.clear()
+    with caplog.at_level(logging.INFO):
+        worker._process_chain_transaction_group_sync("tx-s278", events, db, stood)
+
+    assert [r.lot_confirmed for r in _rows(db, LEFT)] == ["LOT-GROUP"], (
+        "the group path did not call the join at all")
+    layers = {s.source_name for s in db.query(models.CellSource).filter(
+        models.CellSource.table_name == LEFT,
+        models.CellSource.column_name == "lot_confirmed").all()}
+    assert cell_layer.R1_SOURCE_NAME in layers, layers
+    said = [r.getMessage() for r in caplog.records if "[ChainBuiltin]" in r.getMessage()]
+    assert said and "written=1" in said[0], (
+        "the count the paced lap used to publish must not vanish with the lap")
+
+
 def test_a_matched_row_gets_the_right_tables_value(db):
     _push(db, RIGHT, [{"job": "J1", "lot": "LOT-1"}])
     _push(db, LEFT, [{"log_key": "L1", "job": "J1"}])
