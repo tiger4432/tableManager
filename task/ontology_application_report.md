@@ -21054,3 +21054,5 @@ server/tests/test_the_follow_up_lap_is_a_hop_and_serves_one_cause_once.py:110 ·
 
 > · 🔁 이월: 0 (문서 정비는 이 라운드 판정 뒤에 — 거짓이 될 문장을 먼저 못 박으면 두 번 고칩니다)
 > · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
+
+> ⚠️ **이 Q-1 블록은 제 커밋이 아니라 총괄의 `3d0d69a2`(C-116 지시) 에 «실려» 갔습니다** — 제가 `add` 와 `commit` 을 «두 호출»로 나눈 사이에 경로 없는 커밋이 지나갔습니다. 내용은 그대로이고, 초인종만 엉뚱한 메시지로 울렸습니다. 이 줄이 그 초인종을 다시 울립니다.
