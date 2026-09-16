@@ -41,7 +41,8 @@ def cycle_note(trail, ceiling=None) -> str:
 
     return operator_line.line(
         "ChainRules", " -> ".join(str(node) for node in trail),
-        "고리 (순서는 선언 순 · 홉 상한 max_chain_depth=%s 이 막습니다)"
+        "고리 (이 고리의 규칙들«끼리만» 선언 순 · 나머지 규칙의 순서는 그대로 · "
+        "홉 상한 max_chain_depth=%s 이 막습니다)"
         % (ceiling if ceiling is not None else "기본값"),
         operator_line.nothing_to_do(
             "더 긴 고리가 필요하면 chain_rules.json 의 max_chain_depth"))
@@ -102,6 +103,7 @@ def order_rules(rules: list, on_cycle=None) -> list:
     state = {}   # rule name -> 0 visiting / 1 done
     ordered = []
     found_cycle = []
+    in_a_cycle = set()   # 판정 422: the names a cycle actually runs through
 
     def visit(rule, path):
         name = rule.get("name")
@@ -113,6 +115,12 @@ def order_rules(rules: list, on_cycle=None) -> list:
             # caller is TOLD (once), and the hop ceiling is what keeps the loop finite at run
             # time. Raising here refused a working declaration and scrolled the log.
             found_cycle.append(True)
+            # 🔴 [판정 422] THE MEMBERS, NOT ONLY THE FACT. The trail this walk already hands
+            # `on_cycle` contains the DESCENT as well as the loop; the loop itself is the
+            # suffix from where `name` first appears. Everything before that is an innocent
+            # bystander that reached the loop, and 판정 422 is about not charging it.
+            trail = (path[path.index(name):] if name in path else list(path)) + [name]
+            in_a_cycle.update(trail)
             if on_cycle is not None:
                 on_cycle(path + [name])
             return
@@ -145,10 +153,23 @@ def order_rules(rules: list, on_cycle=None) -> list:
     for r in rules:
         visit(r, [])
     if found_cycle:
-        # 🔴 [판정 402] A CYCLE MEANS 「순서는 선언 순」, AND THAT IS THE WHOLE ANSWER.
-        # A partial walk hands back the loop's members in the order the DESCENT happened to
-        # unwind, which is neither the declaration's order nor a derived one - a third
-        # order nobody wrote. When there is no total order to find, the operator's own is
-        # the only one anybody can reason about.
-        return list(rules)
+        # 🔴 [판정 402] A CYCLE MEANS 「순서는 선언 순」 - FOR ITS OWN MEMBERS (판정 422).
+        # Returning `list(rules)` threw away the order of every rule in the set, including
+        # rules the loop never touches, so one declared cycle made S-156's ordering inert for
+        # everything. This function's own docstring records that happening once before, by a
+        # different route: three synthesized rules formed a cycle and 「every load logged a
+        # cycle and left the order alone」.
+        #
+        # ⚠️ THE POSITIONS DO NOT MOVE, which is what keeps 판정 402 true. A partial walk hands
+        # back the loop's members in the order the descent happened to unwind - a third order
+        # nobody wrote. So the SLOTS the walk assigned stay exactly where they are, and only
+        # the members sitting in them are re-seated, in the order the operator declared them.
+        # Every rule reaches `ordered` exactly once (a re-entry returns early, but the frame
+        # already on the stack still appends), so these two lists are the same length.
+        slots = [i for i, r in enumerate(ordered) if r.get("name") in in_a_cycle]
+        members = [r for r in rules if r.get("name") in in_a_cycle]
+        seated = list(ordered)
+        for slot, member in zip(slots, members):
+            seated[slot] = member
+        return seated
     return ordered
