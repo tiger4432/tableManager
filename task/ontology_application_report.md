@@ -24196,3 +24196,58 @@ max_rewrite_rows 선택       「상한이지 스위치가 아니다 · 요구�
         · 폼은 여전히 «안 열었습니다»(토큰). Q-48 ① 의 확신도는 그대로 「코드가 그렇게 심는다」까지입니다
 ```
 > 🔁 이월 그대로: Q-47 ②③ · Q-46 ③④ · Q-42 ㉠ · `_quarter` 인자 · `config_resolve_report:600`
+
+---
+
+## 🔴🔴 Q-50 [09-17 06:10 실측] `01dbb31e` — 수리가 «운영자가 쓰는 경로»에 안 닿았습니다. 484 가 푸시를 세운 «그 사유»가 브라우저에서 그대로입니다
+
+### 🔴 ① 씨앗은 «둘»이고, 고쳐진 것은 «하나»입니다
+
+```
+서버 씨앗  server/ledger/config_authoring.py  `empty_value`
+           +  `if "const" in shape: return shape["const"]`            ✅ 고쳐졌습니다
+클라 씨앗  client2/src/ontology_skeleton.js   `emptyOf`
+           · 그 파일에 `const` 히트 «0»
+           · 꼬리가 그대로입니다:  `return shape.hint === 'flag' ? false : '';`
+```
+🔴 그리고 **브라우저에서 새 멤버는 «클라가» 짓습니다 — 서버 왕복이 «없습니다»**:
+```
+client2/src/ontology_explorer.js:971   const empty = emptyOf(node.of, state.authoringSchema?.skeleton?.defs);
+                            :977/:983  editShapeAtPath(born, empty)
+```
+⇒ **폼에서 만든 가상 조인은 오늘도 `materialize: false` 로 태어납니다.**
+
+### 🔴🔴 ② 그래서 판정 484 가 «푸시를 세운 사유»가 아직 살아 있습니다
+
+```
+484 의 사유   「운영자가 pull 해서 «폼으로» 조인을 만들면 «거절되는 것»이 태어납니다」
+오늘          서버 경로는 닫혔고, «폼 경로»는 그대로입니다
+그런데       `de06f38f` 는 「484 통과 · 푸시는 RUN.md 한 줄 대기」로 적혀 있습니다
+```
+📮 **청합니다 — 푸시 정지 사유가 «풀렸습니까».** 저는 「안 풀렸다」로 읽습니다. 다만 이건
+   푸시 판단이라 제 것이 아닙니다.
+
+### ⚠️ ③ 착지가 그 반쪽을 «알고» 적었는데, 적힌 낱말이 «다른 반쪽»입니다
+
+```
+착지 주석   「Drawing a `const` leaf as settled rather than as a live checkbox is
+            the client's half and is routed」
+⇒ 그 문장이 말하는 것은 «그리기»입니다 — 체크박스를 «정해진 것»으로 그리기.
+   그런데 남은 것은 그리기가 아니라 «심기»입니다: 값이 `false` 로 «써집니다».
+   그리기만 고치면 화면은 「켜짐」인데 문서는 `false` 인 상태가 됩니다 — 픽셀과 파일이 «또» 어긋납니다
+```
+🔴 그리고 **클라의 산문은 이미 갱신됐습니다** — 「three fields of the skeleton are required flags
+today … a fourth is covered the day it is declared」. 새 필드를 «세었습니다». 그런데 «코드는 안 세었습니다».
+⚠️ 이건 제가 30분 전에 어긴 그 규칙입니다 — 주석은 «의도»의 증거이지 «동작»의 증거가 아닙니다.
+   여기서는 주석이 「덮인다」고 말하고 코드는 «안 덮습니다».
+
+### 확신도 · 못 잰 것
+
+```
+구조  세 자리 전부 HEAD blob. 특히 :971 을 열어 「서버 왕복이 없다」까지 확인했습니다
+🔴 못 잼 · **폼을 안 열었습니다**(토큰) — 「화면에서 만들면 false 가 써진다」는 «코드가 그렇게 짓는다»까지입니다
+       · `dist` 를 «안 봤습니다». 다만 클라 소스가 «안 바뀌었으므로» dist 는 같거나 더 낡습니다 —
+         이 항목에 대해서는 어느 쪽이든 결론이 같습니다
+       · 이 반쪽이 «이미 항목으로 열려 있는지»(routed 가 가리키는 자리) 못 찾았습니다 — 그 목록을 못 봤습니다
+```
+> 🔁 이월: Q-47 ②③ · Q-46 ③④ · Q-42 ㉠ · `_quarter` 인자 · `config_resolve_report:600`
