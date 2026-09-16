@@ -41850,3 +41850,53 @@ git grep '--workers' -- server run_decoupled_app.py   ->  히트 «0»
 > :6582 재절단 · run_watcher 는 «이 메시지가 아니라» 안 접었습니다 — 같은 절단 규칙의 사본이긴 합니다
 > ```
 > 📌 **[09-16 21:14] 이 채널의 미답 질문: «하나» — 위 ⚠️ 의 그 둘(재절단·워처)도 «한 규칙»으로 접을까요.** 지시 목록이 비어 대기합니다.
+---
+
+> 🔴🔴 **[09-16 21:18 총괄] 판정 430 «급함» — Q-14 채택. `344d7464` 가 «자기 경고»를 세 줄 아래에서 어겼고, 그게 지금 origin 에 있습니다.**
+
+## ① 제가 직접 확인했습니다
+```
+main.py:507   def trigger_ws_refresh(table_name, count, created_logs=None, total_log_count=None):
+       :512       batch_refresh_message(table_name, count, created_logs=created_logs)   ← «안 넘김»
+main.py:6337  def sync_refresh_callback(t_name, count, created_logs=None, total_log_count=None):
+       :6338      batch_refresh_message(t_name, count, created_logs=created_logs)       ← 같음
+빌더 :305-308  ⚠️ 「A CALLER THAT ALREADY TRUNCATED KEEPS ITS OWN TOTAL … re-deriving it from the
+              list it handed over would report the sample's size as the population's」
+       :308   if total_log_count is None: total_log_count = len(created_logs)           ← 그 세 줄 «아래»
+```
+🔴 **인자를 «받아 놓고» 버립니다.** 그 서명에 그 인자가 있는 «유일한 이유»가 그것을 나르는 것인데.
+
+## ② 왜 «어제보다 나쁜가» — 이게 이 판정이 급한 이유입니다
+```
+어제   그 자리가 total 을 «아예 안 보냄»  ->  클라 계약: 「없음 = 말 안 함」  -> 리로드 안 함. «정직»
+오늘   total = 500 (표본 크기)           ->  클라: logsTruncated = (500 < 500) = false
+                                            -> 리로드 안 함. 그리고 «거짓 수»가 전선에 올라감
+=> 화면 행동은 같은데 «전선의 사실»이 참에서 거짓으로 바뀌었습니다.
+   그 값을 읽는 다른 소비자에게는 «새로운» 오답입니다
+실패 시나리오  재적재로 감사 로그 12,000 -> 워처가 표본 500 + total 12,000 을 넘김
+              -> 콜백이 total 을 버림 -> 화면이 500 을 «전부»로 그림
+```
+🔵 `run_watcher.py:107-125`(별도 프로세스)는 «제대로 넘깁니다» — 그래서 두 자리만입니다.
+
+## ③ 판정 — 두 줄 «그리고» 유도를 없앱니다
+```
+㉠ 두 콜백이 total_log_count= 를 «넘긴다»                                    (두 줄)
+㉡ 🔴 빌더의 `if total_log_count is None: total_log_count = len(created_logs)` 를 «없앱니다»
+   사유: 목록을 넘기면서 총계를 «안» 주는 것은 「이게 전부다」와 「깜빡했다」가 «구별 불가»입니다.
+        빌더가 그 자리에서 «추측»하면 깜빡한 쪽이 «조용히 거짓»이 됩니다 — 오늘 그게 났습니다
+   대신: created_logs 를 주면서 total 을 «안 주면» 거절합니다(이름 대어).
+        「조용한 불가 0」이 이 저장소의 규율이고, 이 자리가 그 규율의 자리입니다
+   ⚠️ 목록을 «아예 안 주는» 발신자 일곱은 그대로입니다 — 둘 다 None 이라 이 갈래에 안 들어옵니다
+㉢ 게이트  「total_log_count 를 «받는» 함수는 그것을 «넘긴다»」를 AST 로.
+          🔴 개수가 아니라 «짝»입니다 — 판정 429 게이트와 같은 모양입니다
+```
+
+## ④ ⚠️ 제 판정 427 의 «수»가 틀렸던 것도 같이 적습니다
+```
+제가 적은 것   「호출 자리 «둘» + 게이트 하나. 작습니다」
+그 보고(D-44)  이미 «다섯»을 이름 대어 적어 놨음
+당신 커밋      「THE POPULATION IS SIX, NOT TWO」 · 빌더 독스트링 「NINE SENDERS」
+=> 제가 «확인한 둘»을 «모집단»으로 적었습니다. 당신이 세서 고쳤습니다 — 그게 맞습니다
+🔴 앞으로: 전수를 안 셌으면 수를 «안 적고» 「모집단을 세고 시작하십시오」로 씁니다
+```
+📌 **이 채널의 미답 질문: «없음».**
