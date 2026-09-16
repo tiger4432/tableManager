@@ -1876,6 +1876,16 @@ export async function fetchDeclaration(params) {
 }
 
 /**
+ * 「타입을 «먼저» 골라야 한다」의 한 철자.
+ *
+ * 🔴 C-120. 이 전선이 거절문으로 이 말을 하고 있었고, 걷기 화면의 「날리기」가 꺼진 사유도
+ *    «같은 사실»입니다. 그 화면에 한 줄 더 적었다가 되돌렸습니다 — 같은 사실에 두 문구를
+ *    쓰면 그 둘은 언젠가 갈라지고, 갈라진 것은 오류를 내지 않습니다.
+ * ⛔ 새 문구가 아닙니다. 여기 있던 문장 «그대로»이고, 옮긴 것은 자리뿐입니다.
+ */
+export const PICK_TYPE_FIRST = '노드 타입을 먼저 고르십시오';
+
+/**
  * 「이 타입에 어떤 주어가 있나」 — 키 칸을 «외워서» 치지 않게 하는 목록.
  *
  * 🔴 돌아오는 것은 «키 하나의 값»이 아니라 «주어 하나»(`keys` 통째)입니다. 그 구별이 이 라우트의
@@ -1888,7 +1898,7 @@ export async function fetchDeclaration(params) {
  */
 export async function fetchKeyValues(params) {
   const { apiBase, fetchImpl, type, limit } = params || {};
-  if (!type) return { ok: false, message: '노드 타입을 먼저 고르십시오' };
+  if (!type) return { ok: false, message: PICK_TYPE_FIRST };
   const query = new URLSearchParams();
   // 전선은 «버전 없는» 이름을 씁니다 — follow · collect 와 같은 규율입니다.
   query.set('type', String(type).split('@')[0]);

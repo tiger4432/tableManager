@@ -1372,7 +1372,7 @@ const FLOORS = new Map([
   // how many matched, and the difference between 0 and unmeasured
   ['match_count_harness.mjs', 20],
   // the banner that offers a re-run, and what it refuses to offer one for
-  ['redo_banner_harness.mjs', 51],
+  ['redo_banner_harness.mjs', 53],
   // the board part: composition
   ['rnd_board_composition_harness.mjs', 40],
   // the board part: control trend
@@ -1472,6 +1472,19 @@ const FLOORS = new Map([
   ['reference_view_head_harness.mjs', 69],
   ['replay_rules_harness.mjs', 47],
   ['toast_stack_harness.mjs', 23],
+  // New 2026-09-16 with C-121. 🔴 THE SUBJECTS ARE TWO SCREENS AND THE PROPERTY IS ONE:
+  // on a refusal nothing draws a number and nothing says 「없습니다」. Half of the assertions
+  // are the CONTROL -- a genuine 0 must still print its count and its own empty sentence --
+  // because a harness that only measured the suppression would give full marks to a screen
+  // that hid everything. Measured on VISIBLE nodes, never `textContent`: that proxy is what
+  // put a retracted headline into an audit the day before.
+  ['absence_on_refusal_harness.mjs', 39],
+  // New 2026-09-16 with C-120. 🔴 THE ASSERTION IS A PROPERTY, NOT A LIST OF SENTENCES:
+  // if a screen has a dead control, that control says why IN ITS OWN PLACE. Counting the
+  // sentences would leave the fifth control out the day it appears -- and "no reason at all"
+  // is the easiest option to pick, because it is written by doing nothing. Half of it is the
+  // control direction: a live button must NOT keep the reason, or the fix only moved it.
+  ['disabled_reason_harness.mjs', 19],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

@@ -24,7 +24,7 @@
 //
 // ⛔ 걷기 API 는 «안 건드립니다» — 소유자 지시. 부르기만 합니다.
 
-import { fetchDeclaration, createWalkBoxWalk, pathsBetween, fetchKeyValues }
+import { fetchDeclaration, createWalkBoxWalk, pathsBetween, fetchKeyValues, PICK_TYPE_FIRST }
   from '../rnd_board/api.js';
 // 🔴 겉모양은 «부품과 같이» 다닙니다 (총괄 판정 2026-09-06). 호스트가 스타일시트를
 //    챙기게 하면 호스트가 하나 늘 때마다 챙기기를 «기억»해야 하고, 안 챙기면 맨몸으로
@@ -36,6 +36,11 @@ import {
 // 🔴 C-72. 표의 «결정»은 전부 여기 있고 이 파일에는 DOM 쓰기만 남습니다. 결정이 `boot()` 안
 //    클로저로 있는 동안은 「이 화면이 그 함수를 부르나」를 «거동으로» 잴 자리가 없었습니다.
 import { walkTableView } from './table_view.js';
+// 🔴 C-120. 「꺼짐 + 왜」의 좌석 하나 — 메인 그리드의 쓰기 버튼 셋이 쓰던 그 기제입니다.
+import { setDisabledReason } from '../disabled_reason.js';
+
+/** 라벨«이자» 꺼진 사유. 한 상수라 둘이 갈라질 수 없습니다. */
+const RUNNING = '걷는 중';
 
 /** 서버가 받는 값 그대로. 화면이 «자기 이름»을 만들지 않습니다. */
 const DIRECTIONS = ['both', 'outgoing', 'incoming'];
@@ -346,9 +351,17 @@ export function boot(doc, host, deps) {
     root.append(knobs);
 
     // ── 날리기 ────────────────────────────────────────────────────────────────
-    const go = el(doc, 'button', 'wk-go', state.run === 'running' ? '걷는 중' : '날리기');
+    const go = el(doc, 'button', 'wk-go', state.run === 'running' ? RUNNING : '날리기');
     go.type = 'button';
-    go.disabled = !state.type || state.run === 'running';
+    // 🔴 C-120. 꺼진 이유가 «둘»이고, 전에는 둘 다 말하지 않았습니다. 옆 드롭다운의
+    //    「— 고르십시오 —」가 «간접으로» 답하고 있었는데, 그것은 이 버튼의 자리가 아닙니다.
+    //    ⚠️ 「걷는 중」은 라벨과 «같은 상수»입니다 — 다른 낱말로 적으면 한 사실이 두 글자가 됩니다.
+    // ⚠️ 문장을 «새로 짓지» 않습니다. 이 화면의 전선이 같은 사실에 대고 이미 이 말을
+    //    하고 있었습니다(`fetchKeyValues` 의 거절문). 여기 한 줄을 더 적었다가 되돌렸습니다 —
+    //    같은 사실에 두 문구를 쓰면 그 둘은 언젠가 갈라집니다.
+    setDisabledReason(go, state.run === 'running'
+      ? RUNNING
+      : (state.type ? '' : PICK_TYPE_FIRST));
     go.addEventListener('click', fire);
     root.append(go);
   }

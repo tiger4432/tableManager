@@ -7,6 +7,9 @@ import {
   declarationShape, fieldApplies, memberPath, membersOf, shapeAt,
 } from './ontology_skeleton.js';
 import { closedListChoice, renderClosedList } from './closed_list.js';
+// 🔴 C-121. 이 화면이 보내는 수 옆에 «그 0 이 무엇인지»를 붙이는 정본. 새 어휘가 아니라서
+//    호출자가 여섯째입니다(admin 넷 · chain_queue_panel 둘).
+import { countWithAbsence } from './count_with_absence.js';
 import { orderingVerdicts, UNIQUENESS_UNREAD } from './uniqueness.js';
 import { demandState } from './form_demand.js';
 import { refusalSummary, excludedNote, refusalSamples, testRunRows } from './refusal_cell.js';
@@ -35,6 +38,19 @@ const button = (text, action, value, cls = '') => {
   el.dataset.action = action;
   if (value !== undefined) el.dataset.value = value;
   return el;
+};
+
+// 🔴 C-121. 「못 읽었으면 «없습니다»도 말하지 않는다」를 이 화면이 «한 번» 적는 자리.
+//    판단은 `countWithAbsence` 가 합니다 — `unread` 가 차 있으면 `read` 가 거짓이고,
+//    그러면 수도 빈 상태 문장도 «안 나갑니다». 여기는 그 답을 노드로 바꿀 뿐입니다.
+// 🔴 다섯 자리가 각자 `if (!state.error)` 를 적으면 그것이 «문 가르기»입니다 —
+//    여섯째가 생기는 날 그 자리만 다른 답을 냅니다. 종류를 묻는 좌석은 하나입니다.
+// ⚠️ 「불러오는 중」도 이 문을 지납니다. 못 읽은 화면은 «아무것도 주장하지 않습니다» —
+//    거절 문구는 이미 `.oe-error` 가 «한 번» 이름 대고 있습니다.
+const appendEmptyLine = (parent, count, unread, text, cls = 'oe-empty') => {
+  const cell = countWithAbsence({ value: count, unread: unread || '' });
+  if (!cell.read || Number(count) !== 0) return;
+  parent.append(h('div', cls, text));
 };
 
 // The one place the panel reaches the screen. It used to be `replaceChildren`, which
@@ -172,8 +188,15 @@ function renderTree(state) {
   // 🔴 THE COUNT COUNTS WHAT IS ON SCREEN. It used to say `state.total`, every node in the
   // index -- which was true of the index and false of the list, and would now read 62 above
   // 20 rows. A heading that disagrees with the list under it is the quiet kind of lie.
+  // 🔴 C-121. 못 읽었으면 `listed` 는 «빈 배열» 이고, 그 `0` 은 세어서 나온 수가
+  //    아닙니다. 이 배지가 「선언 · 0개」로 서면 옆의 「요청 실패 (401)」과 «서로 반대를»
+  //    말합니다. 새 어휘를 지지 않고 이 화면이 이미 가진 `countWithAbsence` 를 지납니다 —
+  //    `unread` 가 바로 「못 읽었으므로 수를 안 그린다」의 칸입니다.
+  const listedCell = countWithAbsence({ value: listed.length, unread: state.error || '' });
   nav.append(h('div', 'oe-tree-title',
-                searching ? `검색 결과 · ${listed.length}개` : `선언 · ${listed.length}개`));
+                listedCell.read
+                  ? (searching ? `검색 결과 · ${listedCell.text}개` : `선언 · ${listedCell.text}개`)
+                  : (searching ? `검색 결과 · ${listedCell.text}` : `선언 · ${listedCell.text}`)));
   const groups = new Map();
   for (const item of listed) {
     if (!groups.has(item.kind)) groups.set(item.kind, []);
@@ -267,13 +290,17 @@ function renderTree(state) {
     // An empty section SAYS SO rather than rendering as a bare heading, which reads as a
     // broken screen. Reaching a layer before its members exist is normal -- the layers are
     // declared in order -- so the sentence names the next move instead of an error.
-    if (!items.length && state.newDeclaration?.kind !== kind) {
-      group.append(h('div', 'oe-tree-none', 'None defined'));
+    // 🔴 C-121. 못 읽었으면 `items` 가 빈 것은 «세어서»가 아닙니다. 그리고 층 목록은
+    //    다른 요청(`authoringSchema`)에서 오므로 그것만 살아남으면 이 줄이 층마다 —
+    //    즉 «여섯 번» — 「없다」를 말하게 됩니다. 옆의 거절 문구 하나에 대고.
+    if (state.newDeclaration?.kind !== kind) {
+      appendEmptyLine(group, items.length, state.error, 'None defined', 'oe-tree-none');
     }
     nav.append(group);
   }
-  if (state.query.trim() && !state.items.length) {
-    nav.append(h('div', 'oe-empty', '일치하는 정의가 없습니다.'));
+  // 🔴 C-121. 「일치하는 것이 없다」는 «찾아봤다»는 뜻입니다. 못 읽었으면 안 찾아본 것입니다.
+  if (state.query.trim()) {
+    appendEmptyLine(nav, state.items.length, state.error, '일치하는 정의가 없습니다.');
   }
   return nav;
 }
@@ -2440,7 +2467,11 @@ function renderIntegrity(state) {
   }
   checks.append(list);
   const uses = h('section', 'oe-side-section');
-  uses.append(h('h3', '', `이 정의를 사용하는 곳 · ${state.usedByTotal}`));
+  // 🔴 C-121. 이 패널은 «선택이 없어도» 그려집니다(renderOntologyExplorer 의 side 열) —
+  //    그래서 «첫 로드가 거절된» 화면에서도 이 수와 아래 문장이 나갑니다. 그때 둘 다
+  //    초기값이고, 「0」과 「상위 참조가 없습니다」는 세어서 나온 답이 아닙니다.
+  const usedByCell = countWithAbsence({ value: state.usedByTotal, unread: state.error || '' });
+  uses.append(h('h3', '', `이 정의를 사용하는 곳 · ${usedByCell.text}`));
   const usageList = h('div', 'oe-usage-list');
   const nodes = nodeMap(state);
   for (const edge of state.usedBy) {
@@ -2451,7 +2482,7 @@ function renderIntegrity(state) {
     addPopover(row, node);
     usageList.append(row);
   }
-  if (!state.usedBy.length) usageList.append(h('div', 'oe-empty', '상위 참조가 없습니다.'));
+  if (!state.usedBy.length) appendEmptyLine(usageList, 0, state.error, '상위 참조가 없습니다.');
   else if (state.referencesTruncated) usageList.append(
     h('div', 'oe-empty', `표시 상한 ${state.usedBy.length}개 · 전체 수는 상단에 표시`));
   uses.append(usageList);
@@ -2580,7 +2611,12 @@ export function renderOntologyExplorer(root, state) {
   } else if (state.authoring) {
     workspace.append(renderAuthoring(state));
   } else {
-    workspace.append(h('div', 'oe-empty', state.loading ? '불러오는 중…' : '표시할 정의가 없습니다.'));
+    // 🔴 C-121. 상태가 «둘»이었습니다(불러오는 중 / 없음). 그래서 401 이면 loading 이 꺼져
+    //    「표시할 정의가 없습니다」가 나가고, 위의 거절 문구와 «나란히» 섭니다.
+    //    거절은 이미 `state.error` 가 이름 대고 있으므로 여기서는 «아무것도 주장하지 않습니다».
+    //    ⛔ 문구를 늘리지 않습니다 — 거절을 두 번 말하는 것도 같은 병의 반쪽입니다.
+    appendEmptyLine(workspace, 0, state.error,
+                    state.loading ? '불러오는 중…' : '표시할 정의가 없습니다.');
   }
   main.append(workspace);
   // 6b's third column, and what stands in it is now the MAP -- 「일종의 현재 항목의 지도」.

@@ -1,0 +1,1 @@
+function e(e,t){if(!e)return;let n=t||``;e.disabled=!!n,e.dataset&&e.dataset.titleWas===void 0&&(e.dataset.titleWas=e.getAttribute&&e.getAttribute(`title`)||``);let r=e.dataset?e.dataset.titleWas:``;n?e.setAttribute&&e.setAttribute(`title`,n):r?e.setAttribute&&e.setAttribute(`title`,r):e.removeAttribute&&e.removeAttribute(`title`)}export{e as t};

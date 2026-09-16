@@ -37,6 +37,12 @@ import { SIGN } from './marking_store.js';
 import { TablePart } from './table_part.js';
 import { typeGraph, pathsBetween } from './api.js';
 import { UNPICKED } from '../absent.js';
+// 🔴 C-120. 「꺼짐 + 왜」의 좌석 하나. 이 부품의 「걷기」가 그 넷 중 «간접»이었습니다 —
+//    사유를 옆 패널에서 읽어야 했습니다.
+import { setDisabledReason } from '../disabled_reason.js';
+
+/** 시작 타입이 없을 때의 «한 문장». 이 부품이 두 자리에서 같은 말을 하므로 상수입니다. */
+const PICK_START_TYPE = '시작 타입을 고르십시오';
 // 🔴 C-70. 구획과 컬럼을 «걷기 페이지와 같은 함수»에서 받습니다. 이 파일이 컬럼 셋을 자기
 //    소스에 적고 있던 동안 두 걷기 표는 «갈라질 수» 있었고, 갈라져도 오류가 안 납니다.
 import { sectionsByType, sectionHeading, tableColumns, cellSource, pluralAttributes, COLUMNS }
@@ -337,7 +343,7 @@ export class WalkBoxPanel extends Panel {
     const box = this._field('무엇을 볼까 (도착 타입)');
     const from = bareTypeName(this.nodeType);
     if (!from) {
-      box.appendChild(this._note('먼저 시작 타입을 고르십시오'));
+      box.appendChild(this._note(PICK_START_TYPE));
       return box;
     }
     const select = doc.createElement('select');
@@ -527,7 +533,10 @@ export class WalkBoxPanel extends Panel {
     btn.className = 'rb-walkbox-go';
     btn.setAttribute('data-action', 'walk');
     btn.textContent = '걷기';
-    if (!this.nodeType) btn.setAttribute('disabled', 'disabled');
+    // 🔴 C-120. 전에는 «꺼지기만» 했습니다. 사유는 옆 패널의 「마킹 1 · 0 marked」에서
+    //    «간접으로» 읽어야 했고, 그것은 이 버튼의 자리가 아닙니다. 철자는 이 부품이 이미
+    //    쓰던 것(`PICK_START_TYPE`)이라 두 낱말이 갈라질 자리가 없습니다.
+    setDisabledReason(btn, this.nodeType ? '' : PICK_START_TYPE);
     btn.addEventListener('click', () => this.run());
     box.appendChild(btn);
     return box;

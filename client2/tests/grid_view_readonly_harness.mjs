@@ -521,10 +521,19 @@ const DEFECTS = [
     s => s.replace('  if (refuseWrite()) return;\n', '')],
   ['api.js: the controls are never told the table changed', 'api',
     s => s.replace('  applyWriteGuards();\n', '')],
-  ['the guard eats the words the markup already wrote', 'guard',
-    s => s.replace("    else if (back) btn.setAttribute('title', back);\n", '')],
-  ['the controls are told, and stay clickable anyway', 'guard',
-    s => s.replace('    btn.disabled = Boolean(why);', '    btn.disabled = false;')],
+  // ⚰️ C-120. TWO MUTANTS MOVED, THEY DID NOT DIE. 「the guard eats the words the markup
+  //    already wrote」 and 「the controls are told, and stay clickable anyway」 both aimed at the
+  //    loop body inside `applyWriteGuards`, and that body is now `disabled_reason.setDisabledReason`
+  //    -- one seat, because the redo banner and two walk buttons ask a DIFFERENT question
+  //    (「is a row/type chosen」) and were answering it four different ways, none of them here.
+  //    Their claims are scored in `disabled_reason_harness.mjs` as M3 (the markup's own words
+  //    are forgotten) and M4 (a reason that does not disable). Mutating the seat FROM HERE would
+  //    not bite: `write_guard.js` imports the real module, not this harness's copy.
+  // 🔴 WHAT STAYS HERE IS WHAT STAYED IN THIS FILE: that the list of controls is complete
+  //    ('the control list loses a seat') and that the page tells them at all
+  //    ('api.js: the controls are never told the table changed'). The assertions below are
+  //    unchanged and still run through the seat, so a broken seat still reddens this harness --
+  //    it is the MUTANTS that moved to the file that can now mutate it.
   ['api.js: the server`s sentence is folded into one of ours', 'api',
     // Re-aimed by C-105: the sentence is built in ONE place now (`refusalText`), shared with the
     // READ path -- so this is where folding it away happens. Same claim, same G1.
