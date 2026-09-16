@@ -684,6 +684,19 @@ def _read_time_joins_from_unified(taken: set, known_tables, rejections) -> list:
         if rule_shape.is_switched_off(internal):
             # ⛔ OFF IS OFF (판정 399 ③′). Not validated, not counted, not complained about.
             continue
+        # 🔴 [S-282 · 판정 440] RETIRED, AND THE COLLECTOR SAYS SO IN THE LOADER'S WORDS.
+        # The owner declared that production writes its join columns into the table
+        # (`into.table`), so this capability is being retired rather than kept alive for
+        # nobody. The refusal is `rule_shape.READ_TIME_RETIRED` and not a second spelling:
+        # `expand_declaration` meets the same declaration, and if only IT refused, the
+        # loader would report a rule this collector still RAN.
+        #
+        # ⚠️ NOTHING IS DELETED HERE. The validator, the adapter and the engine all still
+        # stand; what stops is ADOPTING a unified `into.read` declaration as a live join.
+        _say_once(("read_time_retired", name), logger,
+                  "[VirtualJoin:%s] %s", name, rule_shape.READ_TIME_RETIRED)
+        _record(rejections, "rule", name, rule_shape.READ_TIME_RETIRED, code=CODE_SHAPE)
+        continue
         if name in taken:
             # 🔴 ONE NAME, ONE JOIN. The same name in both files is two declarations
             # claiming one identity, and picking either silently would make the other file
