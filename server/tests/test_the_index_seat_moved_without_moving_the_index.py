@@ -24,8 +24,6 @@ else would have.
 import os
 import sys
 
-import pytest
-
 SERVER_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
@@ -85,97 +83,23 @@ def test_the_seat_does_not_reach_back_into_the_package_being_removed():
         assert reached == [], reached
 
 
-def test_the_ddl_and_the_join_render_the_key_through_one_function():
-    """🔴 [판정 442 ②] THE GUARANTEE THAT DOES NOT ANNOUNCE ITSELF WHEN IT BREAKS.
-    PostgreSQL uses an expression index only when the query's expression MATCHES it, so a
-    second spelling is not an error - it is a sequential scan with every test green.
-
-    ⚠️ THIS SCORES THE SPELLING, WHICH IS 「간다」. The execution gate below is 「돈다」 and
-    needs a PostgreSQL; S-245's file makes the same distinction about itself in its own
-    docstring, and this one is here because the seat MOVED, not because the rule is new.
-    """
-    from virtual_join import executor as vje
-
-    rendered = jki.index_key_expression("core_lot", None, "s283_right")
-    assert rendered in jki.required_index_ddl("s283_right", ["core_lot"], None)
-    assert vje.join_onclause.__module__.startswith("virtual_join"), (
-        "the on-clause moved; re-point this gate at its new home rather than deleting it")
-
-
 # ---------------------------------------------------------------------------
-# 🔴 [판정 442 ②] 「돈다」 — the one nobody had. It asks PostgreSQL, not the source.
+# ⛔ WHAT THIS FILE DELIBERATELY DOES NOT MEASURE — both halves are already seated
 # ---------------------------------------------------------------------------
-
-@pytest.mark.pg
-def test_postgresql_actually_uses_the_index_the_product_asked_for():
-    """🔴 THE GATE 442 ASKED FOR, AND IT DID NOT EXIST. Every assertion above - and every
-    one in S-245's file - compares STRINGS. The failure this protects against is that the
-    two strings differ and PostgreSQL silently plans a sequential scan, which no string
-    comparison can see and no green suite reports. So this builds the index with the
-    product's own DDL, asks the product for the query expression, and reads the PLAN.
-
-    ⚠️ It skips without a declared test database. That is why the spelling gates above stay
-    - a skipped test reports nothing.
-    """
-    from conftest import _declared_as_test_database, _resolve_pg_test_url
-    from tests.support.isolated_pg import scratch_connect_args
-
-    url, reason = _resolve_pg_test_url()
-    if url is None:
-        pytest.skip(reason)
-    try:
-        import psycopg2  # noqa: F401
-    except Exception as exc:                                     # pragma: no cover
-        pytest.skip("psycopg2 is not importable: %s" % exc)
-
-    from sqlalchemy import create_engine, text
-    from sqlalchemy.exc import OperationalError
-    from sqlalchemy.pool import NullPool
-
-    scratch = "assy_pytest_s283"
-    table, column = "s283_right", "core_lot"
-    with _declared_as_test_database(url):
-        engine = create_engine(url, poolclass=NullPool,
-                               connect_args=scratch_connect_args(scratch))
-        admin = create_engine(url, poolclass=NullPool)
-        try:
-            with admin.begin() as conn:
-                conn.execute(text('DROP SCHEMA IF EXISTS "%s" CASCADE' % scratch))
-                conn.execute(text('CREATE SCHEMA "%s"' % scratch))
-        except OperationalError as exc:
-            pytest.skip("PostgreSQL is not reachable: %s"
-                        % str(exc).strip().splitlines()[0])
-        try:
-            with engine.begin() as conn:
-                conn.execute(text('CREATE TABLE "%s" (row_id text, "%s" text)'
-                                  % (table, column)))
-                # Enough rows that a sequential scan is not simply the cheaper plan - the
-                # question is whether the planner CAN use the index, and on a tiny table it
-                # rightly would not bother.
-                conn.execute(text(
-                    'INSERT INTO "%s" (row_id, "%s") SELECT g::text, '
-                    "'CL-' || g::text FROM generate_series(1, 20000) g" % (table, column)))
-
-            # 🔴 THE PRODUCT'S OWN DDL, not a hand-written CREATE INDEX. If the two ever
-            # part company, this gate is measuring something the product does not build.
-            ddl = jki.required_index_ddl(table, [column], None)
-            with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-                conn.execute(text(ddl))
-                conn.execute(text('ANALYZE "%s"' % table))
-
-            expression = jki.index_key_expression(column, None, table)
-            with engine.begin() as conn:
-                plan = "\n".join(row[0] for row in conn.execute(text(
-                    'EXPLAIN SELECT row_id FROM "%s" WHERE %s = %s'
-                    % (table, expression, "'cl-1'"))).fetchall())
-
-            assert jki.required_index_name(table, [column], None) in plan, (
-                "PostgreSQL planned this without the index the product built, which is what "
-                "two spellings of the key expression look like - no error, no red test, and "
-                "a sequential scan on every read:\n%s\nexpression: %s\nddl: %s"
-                % (plan, expression, ddl))
-        finally:
-            with admin.begin() as conn:
-                conn.execute(text('DROP SCHEMA IF EXISTS "%s" CASCADE' % scratch))
-            engine.dispose()
-            admin.dispose()
+#
+# 🔴 THE KEY EXPRESSION HAS TWO GATES ALREADY, AND I WROTE A THIRD BEFORE CHECKING.
+# 판정 442 ② asked for an execution gate and said to look for one first. I grepped, had
+# `test_ledger_v2_pg.py` IN THE HIT LIST, opened a different file, and concluded none
+# existed. QA opened it. Both halves stand at HEAD:
+#
+#   간다 (spelling)    `test_one_key_expression_at_every_seat_that_compares_a_key.py`
+#                      (S-245) — eleven cases scoring four renderings against one fixture,
+#                      and its docstring says plainly that it scores spelling, not running
+#   돈다 (running)     `test_ledger_v2_pg.py::test_postgres_right_unique_index_is_used_by_
+#                      the_join_probe` — `SET LOCAL enable_seqscan = off`, probe built from
+#                      `index_key_expression`, EXPLAIN, asserts the index NAME and
+#                      「Index Scan」. Stronger than what I wrote: forcing seqscan off proves
+#                      the index is USABLE, where a large fixture only shows it was cheapest
+#
+# So this file stays about THE MOVE — that the names, the prefix and the identity of the
+# definitions did not shift - and adds no second door to a property two gates already hold.

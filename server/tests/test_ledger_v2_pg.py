@@ -39,6 +39,7 @@ from ledger.trace import relation_exists
 from test_ledger_setup_bundle import logical_bundle, logical_catalog
 from test_ledger_setup_registry import trusted_implementations
 import virtual_join.config
+from chain import join_key_index
 
 
 # TOMBSTONE: THE GATE MOVED OUT (S-115). This file carried its own `_resolve_url` and its
@@ -161,7 +162,7 @@ def pg_v2(tmp_path_factory):
             connection.execute(text(
                 f'CREATE UNIQUE INDEX "{UNIQUE_INDEX}" '
                 f'ON public."{RIGHT_TABLE}" '
-                f'({virtual_join.config.index_key_expression("join_id")})'))
+                f'({join_key_index.index_key_expression("join_id")})'))
 
         raw = _bundle()
         config_path = tmp_path_factory.mktemp("ledger_v2_s6") / "virtual_joins.json"
@@ -483,7 +484,7 @@ def test_postgres_right_unique_index_is_used_by_the_join_probe(clean_pg_v2):
         # join. This is what scores the two halves of S-181 against PostgreSQL itself:
         # the index is built on that expression and the query is written on it, and an
         # expression index is used ONLY when those match.
-        probe = virtual_join.config.index_key_expression("join_id")
+        probe = join_key_index.index_key_expression("join_id")
         plan = "\n".join(row[0] for row in connection.execute(text(
             f'EXPLAIN SELECT target_id FROM public."{RIGHT_TABLE}" '
             f"WHERE {probe} = 'J-0001'")))
