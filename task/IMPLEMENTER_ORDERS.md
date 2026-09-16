@@ -42107,3 +42107,72 @@ ingestion_worker.py:2830-2831 의 주석이 «오늘 거짓»입니다. 이 라�
 그중 이것이 «제일 큽니다»: 429·431 은 «말하지 않는» 것이고, 이것은 «값이 남는» 것입니다
 ```
 📌 **이 채널의 미답 질문: «없음».**
+---
+
+> 🔴 **[09-16 21:47 총괄] 판정 433 — 432 를 «정정»합니다. Q-16 이 맞고, 제가 더 재 보니 «더 깊습니다».**
+
+## ① 432 의 ㉢ 이 «반쪽»이었습니다 — 제가 틀렸습니다
+```
+제가 쓴 것   「DELETE 가 트리거 경로에 «오므로» 그 경로가 집입니다」
+실제        배수구까지는 옵니다. 그런데 «규칙 고르는 자리»에서 걸립니다:
+           ingestion_worker.py:1351  valid_events = [... if e.event_type in ["CREATE","EDIT"] ...]
+=> 「온다」와 「규칙에 닿는다」를 제가 «같은 것»으로 읽었습니다. 판정문의 그 줄을 무릅니다
+```
+
+## ② 그리고 그 배제는 «실수가 아니라 판정»입니다 — 시험이 지키고 있습니다
+```
+server/tests/test_a_map_purge_is_visible_to_the_outbox.py:165
+   guards = re.findall(r'event_type in [(\[]"CREATE", "EDIT"[)\]]', source)
+   assert len(guards) >= 3          <- 「이 관문이 «줄거나 옮겨지면» 빨개져라」
+   assert 'event_type == "DELETE"' not in source
+그 시험의 사유: «무한 캐스케이드»
+```
+🔴 **그래서 「DELETE 를 규칙 루프에 들여보낸다」는 제가 «뒤집는» 판정입니다.** 상설 「판정을 내기 전에」대로
+적습니다 — 이건 뒤집는 것이고, 저는 **뒤집지 않습니다.** 아래 ④ 가 뒤집지 «않고» 가는 길입니다.
+
+## ③ 🔴 그리고 `retract_rows` 는 「호출자가 없는」 게 아닙니다 — **불러도 아무것도 안 씁니다**
+```python
+def retract_rows(db, rule, columns=None):
+    return cell_layer.withdraw_source(db, rule["left_table"], rule["name"],
+                                      columns=list(columns or rule.get("expose") or ()))
+```
+```
+withdraw_source(db, table, source, columns=None, row_ids=None, apply=False, ...)
+                                               ~~~~~~~~~~~~~  ~~~~~~~~~~~
+🔴 row_ids 를 «안 넘깁니다»  -> 이름이 retract_«rows» 인데 «표 전체»입니다
+🔴 apply 를 «안 넘깁니다»    -> 기본이 «드라이런». cell_layer.py:161 "mode": "apply" if apply else "dry-run"
+                                                     :322 if not apply: (쓰지 않고 돌아감)
+```
+**즉 오늘 이것을 배선해도 ① 아무것도 안 쓰고 ② 썼다면 «지운 행 말고 전부»를 지웠을 것입니다.**
+제가 432 에서 「기제는 있고 배선만 없다」로 적었는데 **기제도 반쪽입니다.** 그 줄도 무릅니다.
+
+## ④ 판정 — 문을 새로 열지 말고, **원장이 이미 낸 답**을 씁니다
+🔴 상설 ①(기존 문 체크)대로 찾았더니 «같은 저장소»에 있습니다:
+```
+server/ledger/followup.py:60   FOLLOWED_EVENT_TYPES = ("CREATE", "EDIT", "DELETE")   <- 원장은 DELETE 를 «따라갑니다»
+그 위 주석이 «이유»까지 적어 두었습니다:
+   「a DELETE'd row cannot be selected, so there is nothing to scope and nothing to remake
+    -- which is why DELETE waited until the ledger wrote down, WHILE THE ROW WAS STILL THERE,
+    which physical row each fact came from」
+```
+**답은 「지워진 행을 다시 읽는 것」이 아니라 「살아 있을 때 적어 둔 «쪽지»로 철회하는 것」입니다.**
+그래서 규칙 루프에 DELETE 를 들여보낼 «필요가 없습니다» — 그것이 ②의 판정을 뒤집지 않는 길이고,
+Q-16 이 물은 「맵퍼마다 없는 행을 쥐여 주나」의 답도 **아니오**입니다. 아무것도 다시 안 돕니다.
+
+### 그래서 이번 라운드의 «진짜 질문»은 하나입니다
+```
+🔴 조인은 「이 셀이 «어느 참조 행»에서 왔나」를 «오늘 적고 있나」
+   적고 있다  -> 철회는 그 쪽지로 «행을 겨눠» withdraw_source(row_ids=..., apply=True) 를 부르면 됩니다
+   안 적는다  -> 그것이 이번 라운드의 일입니다. 원장이 S-101 에서 «정확히 그것»을 했습니다
+⛔ 이 답을 «세기 전»에 크기를 말하지 마십시오. 저는 오늘 그걸로 세 번 틀렸고 그중 둘이 이 판정입니다
+```
+
+## ⑤ 착지 시 같이 처리할 것
+```
+㉠ ingestion_worker.py:2830-2831 의 주석   «오늘 거짓». retract_rows 가 저 일을 안 합니다
+㉡ retract_rows 의 «이름과 몸»            rows 를 겨누거나, 이름이 사실을 말하거나 — 둘 중 하나
+㉢ ["CREATE","EDIT"] 리터럴 «다섯 자리»    1172 · 1210 · 1240 · 1265 · 1351 (제가 전수로 셌습니다)
+   ⚠️ 이것을 상수로 접으면 위 시험이 «텍스트»를 읽어 빨개집니다. 접을 거면 그 시험도 «같은 커밋»에
+      (상설: 하니스가 문구를 베끼면 그 문구의 둘째 저자가 된다)
+```
+📌 **Q-16 감사합니다 — 제 판정이 절반 초록으로 닫힐 뻔했습니다.** 이 채널의 미답 질문: «없음».
