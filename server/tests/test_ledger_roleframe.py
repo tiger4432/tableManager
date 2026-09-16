@@ -515,15 +515,44 @@ def _forbidden_root(dotted, forbidden):
     return None
 
 
-def capability_reaches(tree, forbidden=CAPABILITY_FORBIDDEN, allowed=CAPABILITY_ALLOWED):
+#: `roleframe.py` lives here, and a relative import resolves against THIS package.
+CAPABILITY_PACKAGE = "ledger"
+
+
+def _resolve_relative(module, level, package):
+    """The absolute dotted path a `from ... import` names, relative spellings included.
+
+    `level` is the leading-dot count: 1 = this package, 2 = its parent. A relative import
+    with a `level` and NO `module` names the package ITSELF, and then each alias is a
+    SUBMODULE of it - the widest form there is, and the one the old predicate dropped
+    whole, because `and node.module` discarded the node before anything looked at it.
+    """
+    if not level:
+        return module or ""
+    base = package
+    for _ in range(level - 1):
+        base = base.rpartition(".")[0]
+    if not module:
+        return base
+    return "%s.%s" % (base, module) if base else module
+
+
+def capability_reaches(tree, forbidden=CAPABILITY_FORBIDDEN, allowed=CAPABILITY_ALLOWED,
+                       package=CAPABILITY_PACKAGE):
     """Every import in `tree` that BINDS something from a forbidden package.
 
-    🔴 THREE FORMS BIND THREE DIFFERENT THINGS, AND THE OLD PREDICATE FOLDED THEM INTO
-    ONE STRING (판정 460 ㉢):
+    🔴 FOUR FORMS BIND FOUR DIFFERENT THINGS, AND THE OLD PREDICATE FOLDED THEM INTO ONE
+    STRING (판정 460, then 판정 462 for the last):
         import a.b            binds `a`        - the package itself is in reach
         import a.b as x       binds module a.b - a module of it is in hand
         from a.b import c     binds `c`        - depends entirely on what `c` IS
-    Only the third can be safe, and only when somebody has said which name.
+        from . import b       binds module a.b - the `import` case in another spelling
+    Only the third can ever be safe, and only when somebody has written down which name.
+
+    ⚠️ THE RELATIVE SPELLING IS THIS FILE'S OWN DIALECT, not a form nobody would write:
+    `roleframe.py` already calls three siblings as `from .envelope import ...`. So
+    `from .store import Store` is what FOLLOWING THE FILE'S HABIT looks like, and until
+    판정 462 the gate had nothing to say about it.
     """
     import ast as _ast
 
@@ -535,14 +564,23 @@ def capability_reaches(tree, forbidden=CAPABILITY_FORBIDDEN, allowed=CAPABILITY_
                 if bad:
                     reached.append("%s (binds %s)"
                                    % (alias.name, alias.asname or alias.name.split(".")[0]))
-        elif isinstance(node, _ast.ImportFrom) and node.module:
-            bad = _forbidden_root(node.module, forbidden)
-            if not bad:
+        elif isinstance(node, _ast.ImportFrom):
+            base = _resolve_relative(node.module, node.level, package)
+            if node.level and not node.module:
+                # Binds MODULES. The allowance table cannot speak for this form: it names
+                # (module, name) pairs, and here every name IS a module.
+                for alias in node.names:
+                    dotted = "%s.%s" % (base, alias.name) if base else alias.name
+                    if _forbidden_root(dotted, forbidden):
+                        reached.append("%s (binds %s)"
+                                       % (dotted, alias.asname or alias.name))
+                continue
+            if not _forbidden_root(base, forbidden):
                 continue
             for alias in node.names:
-                if (node.module, alias.name) in allowed:
+                if (base, alias.name) in allowed:
                     continue
-                reached.append("%s.%s" % (node.module, alias.name))
+                reached.append("%s.%s" % (base, alias.name))
     return sorted(reached)
 
 
@@ -551,27 +589,61 @@ def test_roleframe_module_has_no_runtime_or_database_imports():
     assert capability_reaches(ast.parse(path.read_text(encoding="utf-8"))) == []
 
 
-#: (source, is it reached) - the seven forms 판정 460 ㉡ measured, as a table.
+#: (cell, source, is it reached) - the form table, drawn from the GRAMMAR GRID rather
+#: than from the forms I could think of (판정 462 ④). 460 fixed the predicate by feeding
+#: it seven forms; all seven were absolute, and so were the two I added to check the fix,
+#: so the relative half of the grammar stayed unmeasured and four of its five spellings
+#: were let through. A remembered list is a sample; the grid is the population:
+#:     ast.Import      × {dotted · plain} × {as · no as}          = 4 cells
+#:     ast.ImportFrom  × {level 0 · 1 · 2} × {module · bare}      = 6 cells
+#: `ImportFrom L0 bare` is the one cell the grammar does not build, and it is ASSERTED
+#: below rather than dropped - a missing row reads as a pass.
+CAPABILITY_GRID = tuple("Import %s" % k for k in ("dotted", "dotted+as", "plain", "plain+as")) + \
+    tuple("ImportFrom L%d %s" % (level, kind)
+          for level in (0, 1, 2) for kind in ("module", "bare"))
+
+#: The cell the grammar refuses to produce, so no source line can occupy it.
+CAPABILITY_UNGRAMMATICAL = "ImportFrom L0 bare"
+
 CAPABILITY_FORMS = (
-    ("import virtual_join.config as vjc", True),
-    ("from virtual_join import executor", True),
-    ("import virtual_join", True),
-    ("import database.crud", True),
-    ("from database.crud import SessionLocal", True),
-    ("from database.crud import clean_str_value", False),
-    ("from virtual_join.config import INDEX_PREFIX", False),
+    ("Import dotted", "import virtual_join.config", True),
+    ("Import dotted", "import database.crud", True),
+    ("Import dotted", "import utils.time_format", False),
+    ("Import dotted+as", "import virtual_join.config as vjc", True),
+    ("Import plain", "import virtual_join", True),
+    ("Import plain", "import json", False),
+    ("Import plain+as", "import virtual_join as vj", True),
+    ("Import plain+as", "import pandas as pd", False),
+    ("ImportFrom L0 module", "from virtual_join import executor", True),
+    ("ImportFrom L0 module", "from database.crud import SessionLocal", True),
+    ("ImportFrom L0 module", "from database.crud import clean_str_value", False),
+    ("ImportFrom L0 module", "from virtual_join.config import INDEX_PREFIX", False),
+    ("ImportFrom L1 module", "from .store import Store", True),
+    ("ImportFrom L1 module", "from .gate import Gate", True),
+    ("ImportFrom L1 module", "from .envelope import source_event_identity", False),
+    ("ImportFrom L1 bare", "from . import store", True),
+    ("ImportFrom L1 bare", "from . import cursor", True),
+    ("ImportFrom L1 bare", "from . import envelope", False),
+    ("ImportFrom L2 module", "from ..database import crud", True),
+    ("ImportFrom L2 module", "from ..utils import time_format", False),
+    ("ImportFrom L2 bare", "from .. import database", True),
+    ("ImportFrom L2 bare", "from .. import utils", False),
 )
 
 
-@pytest.mark.parametrize("source,reached", CAPABILITY_FORMS)
-def test_the_capability_predicate_is_fed_forms_rather_than_trusted(source, reached):
+@pytest.mark.parametrize("cell,source,reached", CAPABILITY_FORMS)
+def test_the_capability_predicate_is_fed_forms_rather_than_trusted(cell, source, reached):
     """⚰️ RUNNING THE GATE AND READING 「35 passed」 PROVED NOTHING, AND I DID IT TWICE.
 
     A green there means 「roleframe does not use a forbidden name IN A SHAPE THIS PREDICATE
     CAN SEE」, and I read it as 「the predicate is fixed」. The step between them - 「can it
-    see?」 - was missing, so four of these seven forms went unnoticed, `SessionLocal`
-    included: the session factory itself, in the gate whose entire question is 「could this
-    reach a session」.
+    see?」 - was missing, so four of seven forms went unnoticed, `SessionLocal` included:
+    the session factory itself, in the gate whose entire question is 「could this reach a
+    session」.
+
+    ⚰️ AND THE REPAIR REPEATED THE DEFECT ONE AXIS OVER. The seven forms were all absolute,
+    so `from .store import Store` - the spelling this very file uses for its siblings - was
+    still permitted afterwards. The rows now come off the grammar grid.
 
     🔴 I ALSO 「VERIFIED DIRECTLY」 WITH A PROBE THAT DID NOT MATCH THE GATE. My check
     used `startswith`; the assertion used set intersection. So the probe answered a question
@@ -579,7 +651,34 @@ def test_the_capability_predicate_is_fed_forms_rather_than_trusted(source, reach
     predicate its own inputs is the only check that cannot drift from it.
     """
     got = capability_reaches(ast.parse(source))
-    assert bool(got) is reached, (source, got)
+    assert bool(got) is reached, (cell, source, got)
+
+
+def test_every_grammar_cell_carries_a_form():
+    """🔴 빈 칸은 «빼지 말고 단언한다» — a cell with no row reads as a pass."""
+    covered = {cell for cell, _s, _r in CAPABILITY_FORMS}
+    assert covered == set(CAPABILITY_GRID) - {CAPABILITY_UNGRAMMATICAL}
+    for cell in CAPABILITY_GRID:
+        if cell == CAPABILITY_UNGRAMMATICAL:
+            continue
+        # every cell that CAN hold a forbidden import has one that is actually caught
+        assert any(c == cell and reach for c, _s, reach in CAPABILITY_FORMS), cell
+
+
+def test_the_empty_cell_is_empty_because_the_grammar_refuses_it():
+    """`from import x` is not a Python statement, which is why L0 has no bare form."""
+    with pytest.raises(SyntaxError):
+        ast.parse("from import store")
+
+
+def test_a_bare_relative_import_binds_the_module_itself():
+    """🔴 `from . import store` is the WIDEST form and the one that was skipped whole.
+
+    `and node.module` dropped the node before the alias loop, so the single line that hands
+    over a whole sibling module was the one line the gate never read.
+    """
+    reached = capability_reaches(ast.parse("from . import store, envelope, cursor"))
+    assert reached == ["ledger.cursor (binds cursor)", "ledger.store (binds store)"]
 
 
 def test_the_allowances_are_named_rather_than_invisible():
