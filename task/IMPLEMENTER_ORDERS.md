@@ -44799,3 +44799,68 @@ monkeypatch 공급이 대리를 조용히 지나갔습니다.
 ```
 📌 **다음: 4) + 446 «한 커밋».** 그 안에서 457 ㉡ 의 AST 술어(assert «노드» 전문)로
    「빨개지는 것」과 «별도로» 「초록인 채 뜻을 잃는 것」을 전수로 세겠습니다.
+
+---
+
+> 🔴🔴 **[09-17 01:11 구현자] 4) 는 «삭제»가 아니라 «쪼개기»입니다. 짓기 전에 재서 올립니다 — 판정이 필요합니다.**
+
+## ① 🔴 핵심 사실: «쓰기 시점 조인»이 «읽기 시점 엔진» 위에서 돕니다
+```
+판정 452 ①   「materialize: true 는 «살아 있는 쓰기 조인»이다. 죽이지 마라」
+그 규칙이 도는 길 (실측)
+  virtual_join/config.py:848  synthesized_join_chain_rules  ->  mapper = JOIN_MAPPER
+  chain/builtins.py:371       register_builtin(JOIN_MAPPER, _run_join)
+  chain/builtins.py:137       _run_join  ->  from virtual_join import executor as vje
+                              vje.on_reference_rows_changed / on_target_rows_changed
+=> 🔴 «executor.py 를 지우면 살려 두라고 하신 그 조인이 죽습니다».
+   4) 를 「패키지 삭제」로 읽으면 452 ①과 «정면으로» 부딪힙니다
+```
+
+## ② executor 의 «공개 함수 15» 를 호출자로 갈랐습니다 — 깨끗하게 갈립니다
+```
+🔴 살아야 함 (쓰기 · 체인이 부름)      on_target_rows_changed · on_reference_rows_changed
+   그 밑의 몸통                      execute_rule · materialize_rows · retract_rows ·
+                                    join_onclause · rules_for
+⚰️ 은퇴 (읽기 · 능력과 함께 감)       호출 자리 «일곱»
+   attach                    main.py:1082          그리드 payload 에 가상 컬럼을 붙임
+   exposed_columns           main.py:1673 · config_watcher.py:225
+   resolved_expression       main.py:1686          검색·필터가 가상 컬럼을 품
+   announced_columns         main.py:2791 · :3051  스키마 공표
+   resolved_column_announcements  main.py:3042
+   rules_for_right           crud.py:3950          쓰기 거절(가상 컬럼에 쓰기 금지)
+   virtual_only_columns      crud.py:4227          같은 거절의 다른 반쪽
+🔧 양쪽 아님                          reset_cache  ->  runtime/system_reload.py:54
+```
+
+## ③ 그래서 4) 의 «진짜 모양»은 이렇습니다 — 그리고 «작지 않습니다»
+```
+옮긴다   executor 의 «쓰기 절반» -> chain/ 아래 한 모듈 (이름은 판정 주십시오)
+        config 의 「materialize:true 선언을 읽고 검증하는」 절반도 같이 — 쓰기 조인이 그걸 씁니다
+        refusal.py -> config_resolve_report 가 virtual_join_detail 을 import 합니다
+지운다   읽기 절반(위 일곱) + 그 호출 자리 일곱 + 446 의 대상(materialize:false 선언)
+크기     패키지 1,877 줄 · 패키지 밖 import 23 자리 / 파일 12 · 시험 파일 35(하한)
+```
+
+## ④ 🔴 그리고 ②의 「은퇴 일곱」은 «운영자에게 보이는 기능»입니다
+```
+사라지는 것   그리드에서 «가상 컬럼이 안 보입니다» · 그 컬럼으로 «검색/필터가 안 됩니다» ·
+            «내보내기»에서 빠집니다 · 스키마가 «공표를 안 합니다» ·
+            그 컬럼에 쓰기를 막던 «거절도 같이 사라집니다»
+🔴 마지막 것이 제일 조용합니다 — 거절이 없어지면 그 이름의 컬럼이 «평범한 컬럼»이 됩니다
+⚠️ 소유자 말씀(「운영 가상 조인 다 통합 맵퍼로 이관했으니」)이 참이면 «보일 것이 없습니다».
+   저는 그것을 «확인할 수 없습니다» — 운영 선언은 gitignore 입니다
+```
+
+## ⑤ 그래서 «묻습니다» — 셋입니다
+```
+Ⓐ 쓰기 절반이 «어디로» 가나          제안: chain/join_materialize.py (새 이름) —
+                                  chain/join_into.py 와 «다른 것»입니다(그쪽은 통합 선언의 조인)
+                                  합치면 「한 파일 두 문법」이 됩니다. 나눠 두는 쪽을 권합니다
+Ⓑ 읽기 일곱을 «이번 커밋에서» 지우나  「한 착지」 원칙대로면 예입니다. 다만 ④의 화면 변화가
+                                  같이 갑니다 — RUN.md 에 적겠습니다만, 승인이 필요해 보입니다
+Ⓒ 선언 «파일»은 어떻게 되나          materialize:true 가 살아 있으면 virtual_join_rules.json 도 삽니다.
+                                  그러면 446 의 거절은 «그 파일 안의 materialize:false 항목»에만 겁니다
+                                  (452 ① 그대로). 파일 자체는 «안 없어집니다» — 맞습니까?
+```
+📌 **답 주시면 «한 커밋»으로 짓겠습니다.** ⑤ 셋 다 제 판단으로 정하면 되돌리기 비싼 자리라 묻습니다 —
+   특히 Ⓑ 는 운영자 화면에서 기능 일곱이 사라지는 일이고, 그건 제 몫이 아닙니다.
