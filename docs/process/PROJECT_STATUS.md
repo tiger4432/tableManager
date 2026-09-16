@@ -200,6 +200,46 @@
 
 ---
 
+---
+
+# 🟢🟢🟢 【2026-09-16 오전 — 사흘 장애 «닫힘» + 열린 것 하나】 깨어난 총괄은 이 절부터
+
+## ✅ 닫힘 — 「특정 오토 업데이트 출력물이 안 들어감」(사흘)
+```
+원인   _maybe_explain_slow_prefetch (선인출 진단기, 착지 6f45a004 09-11, 시험 파일 «0»)
+       커밋이 «만료»시키고 finally: db.close() 가 «분리»한 ORM 객체를 읽음
+       -> DetachedInstanceError -> 감싸이지 않아 «파일을 통째로» 데려감
+관문   prefetch > 1.0 s  (운영 10 s · 이 박스 0.03 s)
+       => 「산출물 하나만 · 매번 같은 자리 · __force__ 무효」가 «전부» 이 한 줄에서 나온다
+수리   d00ac580 — 식별키를 «왕복 0» 으로 읽고, 호출 자리를 감싼다(계획만 건너뛰고 청크는 간다)
+재현   시험이 결함 자체를 재현(분리된 행의 row_id 가 던진다) · 워처 108 passed/0 skipped · PG 88 passed
+독립 확인  응용 레인 census 3128b024 — 후보 7 → 6 소거 → 같은 좌석
+복기   docs/process/INCIDENTS_2026-09.md  ·  판별식 셋은 CLAUDE.md 「계측 상설」로 승격(fbfd7cae)
+```
+🔴 **소유자께 남은 것:** pull + 재기동. 그 뒤 `[Ingest] … PLAN (once per file) | target: … | cell_sources: …` 줄이 **파일당 한 번** 뜹니다 — 그 줄의 `Seq Scan` / `Index Scan` 이 다음 수리를 가릅니다(RUN.md §0 ①).
+
+## 🔴 열림 — S-270 (구현자 진행 중, 11:0x 지시 `461cc6a3`)
+소유자 신고: 「조인 체인이 리플레이 리스트에 안 뜬다」 · 「조인이 참조하는 게 트리거잖아」 · 「통합 선언에서 on 이 트리거지」 — **셋 다 맞습니다**(`rule_shape.py:111`).
+```
+제가 «잰» 것 (in-process)
+  on.table = 참조표 인 선언 -> primary trigger=참조표 · companions «[]» (짝이 없다)
+                              replay.is_reference_side(primary) = «True»
+  => 유일한 규칙을 「반쪽」으로 읽어 목록에서 빼고, 실행은 «없는 규칙»을 대신 돌리라고 거절
+그리고 ② 행을 골라 돌리는 길에서는 참조 쪽을 막을 이유가 «애초에» 없다
+  배너 payload 는 row_ids «뿐» · replay_rule 이 그것으로 트리거 표를 좁힌다(:410, :468)
+  S-242 의 거절 사유는 «범위 전체»의 비용 논증이라 행 범위에서는 참이 아니다
+```
+바꾸는 층 셋(한 커밋): 짝이 «자기가 짝이라고» 칸으로 말한다 · 거절이 «범위»를 본다 · 목록도 «같은 술어»로 답한다.
+
+## ✅ 답한 것 — `run_decoupled_app` 이 체인을 띄우나
+**예.** `server/runtime/launcher_specs.py` 의 자식 넷 중 `Chained Ingestion Worker`(`run_chain_worker.py`, heartbeat `chain`). API 자식에만 `ASSY_CHAIN_WORKER=0` 이 걸리고 `run_chain_worker.py` 는 그 스위치를 «안 읽습니다». 확인: 부팅 줄의 그 이름 + `/health` 의 `chain` 박동.
+
+## 🔴 소유자 손에 남은 것 (누적)
+```
+① 「가림 N」 — python scripts/count_absent_null_layers.py 의 마지막 줄 수 하나 (S-243-b)
+② 위 PLAN 줄의 target: / cell_sources: 한 줄
+```
+
 # 🛑🛑 【앱 재기동 브리프 — 2026-09-07 07:5x】 **재기동 «뒤» 첫 세션은 여기부터**
 
 > 소유자: 「일단 레인 끝나면 앱 재부팅하게 잠시 다 세워」
