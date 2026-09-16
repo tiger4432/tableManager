@@ -142,3 +142,60 @@
 📎 잰 날: 2026-09-11. 근거는 `chain/ingestion_worker.py` · `mapper_sdk.py` · `chain_bindings.py` ·
 `ledger/admin.py` · `chain/replay.py` · 출하 샘플 `chain_rules.json.sample`(규칙 10) ·
 그리고 D-5 의 실측(`task/ontology_application_report.md` 09-11).
+
+---
+
+# 🔴 실행 — 선언은 «하나»인데 규칙을 «부르는 자리»는 셋, 디스패처는 둘 (2026-09-16 신설)
+
+> **왜 이 절이 생겼나:** 이 문서는 «선언»의 완전성을 재는데, 2026-09-16 에 조인이 「안 돈다」로 하루를 먹었고
+> 원인은 선언이 아니라 «실행»이었습니다. 그리고 이 문서에 `execute_custom_mapper`·`run_builtin` 이
+> **한 번도 안 나왔습니다**(그날 grep 히트 0). 선언이 통합된 것만 적혀 있고, 실행이 갈라져 있다는 것은
+> «어디에도» 없었습니다. 소유자: 「빌트인이라 다른 건 너가 체인문을 제대로 안 만들어서 그런 거잖아」.
+
+## 흐름 — 쓰기에서 규칙이 도는 데까지
+
+```
+① 쓰기        파일 인제션 · 그리드 편집 · 체인 자신
+              crud.apply_batch_updates  ->  cell_sources 층 + database_outbox 행 «하나»
+              payload: columns · row_ids · source_name · transaction_id
+
+② 체인 워커   run_chain_worker.py — «자기 프로세스». API 도 아니고 커밋 경로도 «아니다»
+              pending_chain_events   processed_chain=false · CONTROL 종류 제외
+              이벤트를 transaction_id 로 «묶어» 그룹
+              관문 둘
+                 rule_watches_changed_columns   trigger_columns ∩ payload.columns
+                                                («columns 없음»은 「모른다」라 통과)
+                 _rule_accepts_event            체인이 쓴 이벤트는 allow_chain_trigger 옵트인만
+              -> 실행 (아래 표)
+              그리고 «관문 위»에서 ledger_followup.enqueue — 모든 이벤트가 들어간다
+
+③ 후속 랩     같은 프로세스의 별도 task. 속도는 pacing.json 의 `chain_followup`
+              load_setup() + drain_once(원장 재번역)  ->  _run_builtin_followups
+              ⚠️ load_setup 이 batch «마다» 돈다 (2026-09-16 실측 48.8 ms, 캐시 없음)
+```
+
+## 🔴 실행 — 이 표가 이 절의 요점입니다 (2026-09-16 전수 실측)
+
+|  | 파이썬 맵퍼 | `builtin:` 종류 (조인 · 확정) |
+|---|---|---|
+| 선언 | `derive.kind: mapper` → `mapper_module`/`mapper_function` | `derive.kind: join`/`decide` → `mapper: builtin:…` |
+| 그룹(트리거) 경로 | `execute_custom_mapper` `ingestion_worker` :1451(배치) :1492(행별) | — |
+| 후속 랩 | — | `run_builtin` `ingestion_worker` :2789 |
+| 소급(replay) | `execute_custom_mapper` `replay` :518 :520 | `run_builtin` `replay` :492 |
+
+```
+🔴 규칙을 «실행»하는 자리가 «셋»이고, 그중 둘을 «같이» 아는 것은 소급뿐이다
+   -> 그래서 조인은 소급으로는 돌고(소유자 「백필하니 돈다」) 라이브로는 후속 랩에서만 돌았다
+   -> 그리고 2026-09-16 에 조인을 그 랩에서 떼자 «갈 곳이 없어졌다» — 그룹 경로엔 builtin 갈래가 없다
+📌 부류: 기준 ④ 「같은 기능에 두 경로」. 그리고 최악의 판이다 — 두 경로가 갈라져 있는데
+   «오류를 안 낸다». 한쪽이 조용히 아무것도 안 할 뿐이다
+```
+
+## 판별식 — 체인에 무엇을 더할 때
+```
+「이 종류를 «누가» 부르나」를 «선언»이 아니라 «호출 자리»에서 답한다
+   세 자리(그룹 배치 · 그룹 행별 · 소급) 전부에서 답이 나와야 한다. 하나라도 «—» 면 그 종류는 그 길에서 «안 돈다»
+⛔ 술어(_rule_accepts_event)가 True 인 것은 「간다」이지 「돈다」가 «아니다»
+   2026-09-16 에 술어 다섯 개가 초록인 채로 조인이 아무것도 안 썼다
+✅ 「돈다」의 증거는 «하나»다 — cell_sources 에 그 규칙의 층이 «생긴다»
+```
