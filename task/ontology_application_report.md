@@ -22679,3 +22679,79 @@ server/ledger/config_explorer.py:125     ISOLATION_ROOTS … | {"virtual_joins"}
 > 🔴 「판정 대기」 **2** — ㉠ 번들 `virtual_joins` 절과 `inherit_virtual_join_rules` 의 처분(은퇴 대상인가)
 > ㉡ 그 절이 «실행에 닿나» — 이건 구현자가 한 번 열면 답이 나옵니다
 > · 🔁 이월: 0
+
+---
+
+## 🔴 Q-28 [09-17 00:08 실측] `0a6786f6` (은퇴 3단계) — **문서화된 「어쩔 수 없는 손실」을 판사가 «이미» 답하고 있습니다**
+
+### 🔴 ① 「없다」와 「꺼져 있다」 — 두 번째 읽기가 «필요 없습니다». 셋째 반환값에 있습니다
+
+```
+커밋의 문장 (dt_map_derivation.py:309-313 docstring)
+  「⚠️ A SWITCHED-OFF DECLARATION READS AS ABSENT … Telling them apart would take a
+    SECOND reading of the raw declaration beside the judge's, which is the door-splitting
+    this round exists to remove; the loss is the loader's to fix」
+
+실측 — 판사가 «그것을 이미 말합니다»
+  server/chain/rule_shape.py:464
+     return ([], None, ["%s: enabled=false — no rule stands for it." % name])
+                        └─ 셋째 반환값 `notes`. «이름을 달고» 나옵니다. 거절이 아니라 노트입니다
+  server/dt_map_derivation.py:318
+     stood, refusal, _notes = rule_shape.expand_declaration(raw, crud.TABLE_CONFIG)
+                     ^^^^^^ 🔴 «버립니다»
+```
+⇒ **「둘째 읽기가 필요하다」가 거짓입니다.** 같은 판사의 «같은 호출»이 이미 돌려주고 있고,
+이 함수가 그것을 `_notes` 로 버립니다. 그러므로 이 손실은 「로더가 나중에 고칠 것」이 아니라
+**이 라운드에서 «안 버리면» 끝나는 것**입니다. 문도 안 갈립니다 — 둘째 문이 없으니까요.
+🔴 그리고 이 손실의 부류가 오늘 밤 내내 고치던 그것입니다 — 운영자가 선언을 «내려놓았는데»
+「없습니다」라고 듣습니다(「없어서 0」과 「꺼져서 0」이 같은 답).
+
+### 🔴 ② 거절을 «부분 문자열»로 고릅니다 — 같은 커밋이 방금 잡은 그 부류
+
+```
+server/dt_map_derivation.py:324-327
+   if name and name in str(refusal):          🔴 «부분 문자열»
+       refused_by_name = str(refusal)
+거절문의 모양 (rule_shape.py)
+   :479  "%s: %s" % (name, READ_TIME_RETIRED)
+   :483  "%s: %s" % (name, decide_refusal)
+   :494  "join_trigger_conflict: %s" % conflict     ← 이 안에 다른 규칙 이름이 실립니다
+```
+실패 시나리오: 찾는 이름이 `dt_map` 이고 «다른» 선언 `dt_map_extra` 가 거절됐다면
+`"dt_map_extra: …"` 가 `"dt_map"` 을 «포함»하므로 `refused_by_name` 이 «남의 거절»로 찹니다.
+그러면 마지막 메시지가 「Refused: …」로 **운영자를 다른 선언으로 보냅니다** — 고칠 자리가 아닙니다.
+🔵 **같은 커밋이 `startswith` 변이를 잡아 규칙 «조회»를 정확 일치로 굳혔습니다.**
+   그 변이를 돌린 자리 «옆»에 같은 부류가 하나 남았습니다 — 조회가 아니라 «거절문»에서.
+   참이어야 하는 것: 거절을 고르는 것도 «이름 필드»로, 문장 매칭이 아니라.
+
+### ✅ ③ 제가 때린 나머지 — 참입니다
+
+```
+「판사를 통해 읽는다」      read_rules_document + expand_declaration «한 쌍» ✅
+                        (builtins.declared_unique_index_names 도 같은 쌍을 같은 방식으로)
+「거절은 조용하지 않다」    이름 없는 규칙이면 DerivationRefused 를 «올립니다» — 0 행을 조용히 내지 않습니다 ✅
+「enabled:false 는 빈 목록」 rule_shape.py:464 실측 — 맞습니다(다만 ① 처럼 «노트»가 같이 옵니다) ✅
+「조인이 아닌 규칙」        이름은 있는데 join 이 아니면 «이름 대고» 거절 ✅
+```
+
+### ⚠️ ④ 작은 것 하나 — 이 거절에는 «다음 행동»이 없습니다
+
+```
+오늘   「join rule %r is absent from the chain declaration; the gate cannot be resolved without it.」
+상설   S-247 「거절 줄은 «무엇 · 몇 · 다음 행동»을 싣는다」
+비교   같은 밤 은퇴의 거절은 「→ 다음: 이 선언의 `into` 를 …」를 «싣습니다»
+```
+운영자가 받는 것은 「없습니다」까지이고, 「어디에 무엇을 적어야 하나」가 없습니다.
+
+### 확신도 · 못 잰 것
+
+```
+실행  ①②③④ 전부 HEAD blob 실측(워킹트리 안 봄)
+🔴 못 잼  · `MAPPER_SURFACE` 를 지나는 «소유자 맵퍼»는 gitignore 라 못 봅니다 —
+          「돌려주는 dict 의 키가 충분한가」는 제가 못 셉니다(커밋이 시험으로 둘을 되찾았다고 적습니다)
+        · `DerivationRefused` 가 «운영자 줄»까지 어떤 모양으로 도착하는지 안 열었습니다 —
+          ④ 는 그 문장 자체에 대한 지적이고, 렌더 경로는 못 쟀습니다
+```
+
+> 🔴 「판정 대기」 **2** — ㉠ ① 의 노트를 살리나(이 라운드인가, 로더 라운드인가) ㉡ ② 의 거절 선택을 이름 필드로
+> · 🔁 이월: Q-27 ㉡(번들 절이 «실행에 닿나») — 00:03 판정 449 로 접수됨
