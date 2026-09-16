@@ -611,30 +611,10 @@ def _read_time_joins_from_unified(taken: set, known_tables, rejections) -> list:
         _say_once(("read_time_retired", name), logger,
                   "[VirtualJoin:%s] %s", name, rule_shape.READ_TIME_RETIRED)
         _record(rejections, "rule", name, rule_shape.READ_TIME_RETIRED, code=CODE_SHAPE)
-        continue
-        if name in taken:
-            # 🔴 ONE NAME, ONE JOIN. The same name in both files is two declarations
-            # claiming one identity, and picking either silently would make the other file
-            # a lie. Named once, through the collector every other refusal uses.
-            _say_once(("unified_name", name), logger,
-                      "[VirtualJoin:%s] declared in BOTH virtual_join_rules.json and "
-                      "chain_rules.json; the unified one is ignored", name)
-            _record(rejections, "rule", name,
-                    "declared in both virtual_join_rules.json and chain_rules.json - "
-                    "one name is one join. Remove it from one of the two files",
-                    code=CODE_SHAPE)
-            continue
-        normalized, err, code, facts = _validate_join(
-            name, rule_shape.as_join_rule(internal), known_tables,
-            rejections=rejections)
-        if err is not None:
-            _say_once(("shape", name), logger,
-                      "[VirtualJoin:%s] declaration rejected: %s", name, err)
-            _record(rejections, "rule", name, err, code=code, facts=facts)
-            continue
-        if normalized is not None:
-            normalized["origin"] = "decl"
-            out.append(normalized)
+    # ⚰️ EVERYTHING BELOW THIS LOOP WAS LEFT UNREACHABLE BY STEP 1 AND IS GONE: the
+    # both-files name collision, `_validate_join` and the adoption. They sat after an
+    # unconditional `continue`, so `git grep` showed a name-collision refusal this file could
+    # no longer produce - a reader counting doorways would have counted one that was shut.
     return out
 
 

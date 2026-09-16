@@ -239,9 +239,25 @@ def _vjoin_edges(db, rules):
     the same pair of tables for one declaration, and a reader counting arrows would see a
     flow that does not exist.
 
-    ⚠️ THE READ-TIME RULES STAY, and on this box that is both of them. Their arrow means
-    something different: the right table feeds the left WITHOUT writing, which is exactly the
-    distinction a materialised rule stops making.
+⚰️ THIS SAID 「THE READ-TIME RULES STAY, and on this box that is both of them」 AND
+    BOTH HALVES OF THAT ARE NOW WRONG. It was not an aside - it was the PREMISE of the
+    arrows drawn below, so a reader took them for a flow that still runs everywhere.
+
+    🔴 THEY DO NOT ALL STAY. A read-time join written in the UNIFIED file is refused by
+    name (`rule_shape.READ_TIME_RETIRED`, 판정 440 ①), so those never reach this loop. What
+    still reaches it is a declaration in the legacy `virtual_join_rules.json`; 판정 446
+    retires that doorway too, and when it lands this loop is handed an empty list.
+
+    ⛔ AND THE SECOND HALF WAS A COUNT OF THIS BOX, IN A COMMENT. 「both of them」 described
+    a gitignored file, so it said nothing about any other installation and went stale the
+    moment that file changed - which is the thing this repository forbids in answers and had
+    written into a docstring.
+
+    🔴 THE LOOP IS KEPT, AND THE ARROW IT DRAWS IS WHY. A read-time arrow means the right
+    table feeds the left WITHOUT writing - the distinction a materialised rule stops making -
+    so while any rule still reaches here the picture tells the operator which kind it is.
+    What it must never do is draw an arrow for a declaration the product refused, and it
+    cannot: every refusal happens in the loader, above this.
     """
     import virtual_join.config as vjc
 
