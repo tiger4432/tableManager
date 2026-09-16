@@ -22067,3 +22067,59 @@ Q-15 ②   빌더 raise 의 «여집합» 단언 한 줄                      21
 📌 같은 항목 세 번째 독촉은 «안 올립니다» — 세 번 치면 그건 초인종이 아니라 소음입니다.
 
 > · 🔁 이월: 0 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
+
+---
+
+## 🔵 Q-19 [09-16 22:31 실측] `e1318d28` 검수 — **제 Q-2 ②·Q-16 이 요구한 것을 «다» 합니다. 배포 관문도 섭니다**
+
+> 제 Q-2 ②(호출자 0)에서 시작해 판정 432~436 을 지나 착지한 라운드입니다. 반증거리를 찾으러 봤고,
+> 넷을 확인했는데 **넷 다 옳습니다.** 반증 «없음»으로 적는 것도 검수의 답입니다.
+
+### ① Q-16 이 물은 자리 — 우회했습니다 ✅
+
+```
+`_retract_what_those_rows_fed` 가 `ledger_followup.enqueue` 자리에서 듣습니다
+   = 트리거 필터(:1351 CREATE/EDIT) «위» → DELETE 가 규칙 루프에 «안 들어갑니다»
+   그래서 「무한 캐스케이드」를 지키는 시험(test_a_map_purge_is_visible_to_the_outbox:165)을 «안 뒤집습니다»
+🔵 제가 Q-16 에서 「:1351 을 여는 것」을 들었던 것보다 «나은» 길입니다 — 제 처방이 틀렸고 이게 맞습니다
+```
+
+### ② 쪽지의 단위와 «없는 것»을 스스로 적었습니다 ✅
+
+```
+models.py:556  origin_row_id = Column(String, nullable=True)
+   주석: 「NULL means "this writer did not say", and that is the state of every pre-existing
+         row — there is no backfill」   ← 소급 없음을 «먼저» 말합니다
+   여러 입력 행에서 나온 셀은 «하나를 고르지 않고» NULL 을 둡니다 — 철회할 수 없는 것을 철회 가능한 척 안 합니다
+읽기 색인  Index("idx_sources_by_origin", origin_row_id, …) + `WHERE origin_row_id IS NOT NULL` 부분 색인
+```
+
+### ③ 종류 플래그가 «둘째 문»이 아닙니다 ✅ (제가 제일 의심한 자리)
+
+```
+git grep stamps_origin  →  자리 «다섯», 전부 builtins.py:
+   :270 서명 · :277 표에 등록 · :337 join(구) · :342 join_into(통합) · :345 auto_confirm «제외» 사유
+=> 종류를 묻는 자리가 «등록 표 하나»입니다. 읽는 쪽은 그 표를 봅니다 — 「문 가르기」가 아닙니다
+```
+
+### ④ 배포 관문 — «안 돌린 DB»가 조용하지 않습니다 ✅
+
+```
+마이그레이션 머리글이 실패를 «글자 그대로» 적습니다:
+   「column cell_sources.origin_row_id does not exist … Run this BEFORE deploying the code」 + psql 한 줄
+그리고 제품이 그것을 «말합니다» (제가 확인):
+   schema_drift 의 모집단 = Base.metadata.tables «전부» — 시스템 표 포함(:25 · :197) → cell_sources 가 «보입니다»
+   _MIGRATION_GLOBS 에 `server/migrations/*.sql` «있음»(:101) → 처방으로 그 파일이 «이름 대어» 나옵니다
+=> 운영자가 「no migration is recorded」를 안 봅니다. 그 배너가 과거에 두 번 틀렸던 부류를 이번엔 안 밟습니다
+```
+
+### 🔴 제가 «안 잰» 것 — 여기가 이 검수의 한계입니다
+
+```
+① 안 돌렸습니다. 구현자·총괄의 착지 검증(4 조건)과 탐침은 «그들의» 관측입니다
+② 철회가 도는 «사이»에 그 셀이 다시 쓰였으면? origin 이 새 값으로 갱신되는지, 옛 쪽지로 지워지는지
+   — `withdraw_by_origin` 의 동시성은 «안 읽었습니다»
+③ 부분 색인이 있는데 `origin_row_id IS NULL` 인 셀이 대다수인 표에서 삭제가 «몇 행»을 훑는지 — 못 잽니다
+```
+
+> · 🔁 이월: 0 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
