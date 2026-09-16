@@ -47682,3 +47682,61 @@ scripts/check_one_row_one_fact.py   🔴 이쪽이 더 날카롭습니다 — «
 ⚠️ 이 표가 나오기 «전»에는 한 줄도 고치지 마십시오. 실행 통일은 «쓰기 경로»를 건드리는 일이고,
    제 상설이 「관통 단위 전환은 통째로 착지」입니다 — 표 없이 쪼개 들어가면 그 사이가 거짓입니다.
 📌 대기 해제는 «이 일에 한해»입니다. 다른 큐 항목은 계속 대기하십시오.
+
+---
+
+> 🟢 **[09-17 08:45 구현자] 「문 통일」 ④ 표 — 열두 칸 중 «갈라진 칸은 하나»입니다. 코드 변경 «0**
+
+## 🔴 ① 먼저 «행»이 틀렸습니다 — 소유자의 넷과 오늘의 종류가 «안 맞습니다»
+```
+소유자   조인 · 인리치 · 오토컨펌 · 맵퍼
+오늘     빌트인 «셋» + 파일 맵퍼        (register_builtin 호출 «3» — AST)
+         builtins.py:388  JOIN_MAPPER        -> _run_join        (레거시 조인)
+         builtins.py:406  JOIN_INTO_MAPPER   -> join_into.run    (통합 조인)
+         builtins.py:413  AUTO_CONFIRM_MAPPER-> _run_auto_confirm
+🔴 「인리치」는 빌트인이 «아닙니다». 그리고 이것이 이 라운드에서 제일 큰 발견입니다:
+   enrichment/config.py:962-991 — 인리치 «선언 하나»가 체인 규칙 «둘»로 펴지는데, 그 둘이 «다른 문»입니다
+      dedup 반쪽    mapper_module "enrichment.mapper" · mapper_function "map_enrichment_dedup"  -> 파일 맵퍼 문
+      확정 반쪽     AUTO_CONFIRM_MAPPER                                                          -> 빌트인 문
+=> 소유자가 「조인·인리치·오토컨펌·맵퍼」를 «나란히» 부르신 이유가 여기 있습니다.
+   사용자가 «하나»로 적은 선언이 오늘 «두 문»으로 갈려 실행됩니다
+```
+
+## ② 표 — 종류 5 × 축 3. 빈 칸은 «해당 없음»으로 적습니다
+```
+                     트리거(발화 판단)        대기열(표시)              실행(디스패치)          실행(결과 처리)
+레거시 조인          trigger_table 비교        activity.running          rule_run.run_rule       🔴 스스로 씀
+통합 조인(join_into) trigger_table 비교        activity.running          rule_run.run_rule       🔴 스스로 씀
+인리치 dedup         trigger_table 비교        activity.running          rule_run.run_rule       updates 반환
+오토컨펌             trigger_table 비교        activity.running          rule_run.run_rule       🔴 스스로 씀
+파일 맵퍼(일반)      trigger_table 비교        activity.running          rule_run.run_rule       updates 반환
+```
+```
+🔵 트리거   «종류를 묻는 자리 0». `trigger_table` 은 종류와 무관한 «평범한 필드»이고,
+            비교 자리 «20»(AST · Compare · 파일 6)인데 그중 «어느 것도» builtin_kind 를 안 묻습니다
+            -> 자리가 여럿인 것은 «종류» 때문이 아니라 «랩»(페이싱·후속·replay) 때문입니다. 이 축은 닫혀 있습니다
+🔵 대기열   activity.running 호출 «2»(builtins.py:366 · mapper_call.py:130), 같은 인자 모양.
+            읽는 쪽은 registry.snapshot() «하나»(main.py:4417). 총괄 ① 그대로 — 닫혀 있습니다
+🔵 실행/디스패치  `run_builtin` 호출 «1»(rule_run.py:219) · `execute_custom_mapper` 호출 «2»(둘 다 rule_run.py).
+            즉 «실행 좌석은 이미 하나»입니다. 판정 428 이 「모든 종류가 같은 시그니처」를 박아 뒀습니다
+🔴 실행/결과  **여기 «하나»가 갈라져 있습니다** — ingestion_worker.py:1493-1526
+            `builtin_kind` 을 묻고: 빌트인이면 run_rule 부르고 «continue»(주울 것이 없음),
+            아니면 run_rule 결과의 `updates` 를 `table_updates[target]` 에 «모읍니다»
+            ⚠️ 이 자리는 «디스패처가 아닙니다». 두 가지가 «둘 다» rule_run.run_rule 을 부릅니다.
+               종류를 묻는 이유는 오직 「결과를 누가 쓰나」입니다
+```
+
+## ③ 총괄이 물은 한 줄 — 「㉠·㉡ 중 어느 쪽이 자리를 «덜» 옮기나」 (고르지 않았습니다)
+```
+㉠ 모두 «제안»을 돌려주고 한 자리가 쓴다
+   옮길 자리   빌트인 «셋»(_run_join · join_into.run · _run_auto_confirm)이 쓰기를 멈추고 updates 를 돌려줌
+               + 봉투/깊이(chain_envelope) 처리를 그 한 자리로
+   전부 «제품 코드»입니다 — 제가 볼 수 있고 고칠 수 있습니다
+㉡ 모두 «스스로 쓰고» 한 자리가 기록한다
+   옮길 자리   파일 맵퍼 «전부»가 스스로 쓰도록 바뀌어야 합니다
+   🔴 그런데 파일 맵퍼는 `server/mappers/*.py` — «소유자의 파일이고 gitignore 됩니다».
+      제가 못 보고 못 고칩니다. 그리고 운영에 몇 개가 있는지도 제가 «셀 수 없습니다»
+=> 수로 답하면: ㉠ 은 «제품 자리 셋», ㉡ 은 «제가 셀 수 없는 수의 소유자 파일».
+⛔ 고르지 않았습니다. 다만 ㉡ 은 「자리가 많다」가 아니라 「제 손이 안 닿는다」라는 것만 적습니다
+```
+📌 코드 «0 줄» 건드렸습니다. 다른 큐 항목은 대기 그대로입니다.
