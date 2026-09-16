@@ -22175,3 +22175,48 @@ virtual_join/unique_key.py:265-275  product_indexes(db)
 
 > 🔴 「판정 대기」 **1** — 좌석 이동 시 `INDEX_PREFIX` 를 «값 그대로» 옮기는 것을 계획서에 못 박습니까
 > · 🔁 이월: 0 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
+
+---
+
+## 🔵 Q-21 [09-16 23:00 실측] 판정 441 ③ 의 «답 안 된 물음» — **셋 다 «산문»이고 import 는 0. 제거의 중심은 안 옮겨집니다**
+
+> 판정 441 ③: 「`notation_norm` 이 virtual_join 에 «기대고» 있으면 그건 이 제거의 «중심»이지 변두리가 아닙니다.
+> 의존 «방향»을 확인하십시오」 — 그 물음이 답이 없어 잽니다.
+> 🔵 그리고 441 의 새 상설대로 **수마다 «단위»를 붙입니다.**
+
+### 답 — 셋 다 «언급»이지 «의존»이 아닙니다 (AST · 추적 파일)
+
+| 파일 | virtual_join 언급 «줄» | virtual_join «import» | 그 파일을 import 하는 «제품 파일» |
+|---|---|---|---|
+| `server/notation_norm.py` | 9 | **0** | 10 |
+| `server/verified_join_contract.py` | 6 | **0** | 5 |
+| `server/operator_line.py` | 3 | **0** | 6 |
+
+```
+언급 아홉/여섯/셋 은 전부 «독스트링·주석의 이름 참조»입니다 (백틱으로 감싼 모듈 이름).
+operator_line 은 :21 에서 «자기가» 그렇게 적어 뒀습니다 — 「이 모듈은 stdlib 말고 아무것도 import 하지 않습니다」
+```
+🔵 **그러므로 의존 방향은 «안전한 쪽»입니다** — `notation_norm` 이 접기 식의 «저자»이고 virtual_join 이
+그것을 «씁니다»(:294 「`virtual_join_config.required_index_ddl` … both come out of here」).
+`join_into` 도 같은 저자에게서 빌립니다(S-245). **패키지를 지워도 `notation_norm` 은 안 흔들립니다.**
+
+### ⚠️ 다만 `verified_join_contract.py` 는 «주어»가 은퇴합니다 — 처분이 필요합니다
+
+```
+:3   「The shape-only declaration remains owned by `virtual_join_config`. This module owns …」
+=> import 은 0 이지만 그 «계약의 대상»이 읽기 시점 선언입니다.
+   선언이 은퇴하면 이 모듈은 «없는 것의 계약»이 됩니다 — 지우기 대상이되 «import 때문»이 아닙니다
+   (그래서 「import 에서 터지게 두라」는 이 파일을 «안 잡습니다». 조용히 남습니다)
+🔴 이것이 441 ②의 config_watcher 함정과 «같은 부류»입니다: 터지지 않아서 «안 보이는» 잔해
+```
+
+### 확신도 · 못 잰 것
+
+```
+구조   ✅ AST import 전수 + 언급 줄 전부 열어 봄 — 오늘 HEAD
+못 잼  · «문자열로» virtual_join 을 드는 자리(설정 값·source_name)는 이 계수가 «안 셌습니다».
+        `SOURCE_NAME = "virtual_join"` 은 executor.py 에 살고 클라가 그 문자열을 읽습니다(둘째 계수 §1)
+      · 시험·계약 파일은 «뺐습니다»(제품 파일만)
+```
+
+> · 🔁 이월: 0 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n

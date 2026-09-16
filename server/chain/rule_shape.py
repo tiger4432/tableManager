@@ -66,6 +66,25 @@ KEY_CELLS = ("columns", "unique")
 #: other, never both.
 INTO_KINDS = ("table", "read")
 
+#: 🔴 [S-282 · 판정 440] `read` IS RETIRED AND IS STILL LISTED ABOVE, deliberately. The
+#: grammar has to RECOGNISE the word to refuse it BY NAME; dropping it from `INTO_KINDS`
+#: would make a retired declaration come back as 「into 에 모르는 칸」 and send an operator
+#: hunting a typo they did not make. 「은퇴」 and 「삭제」 are different steps, and the
+#: engine is not touched in this one.
+#:
+#: 🔴 ONE SENTENCE, TWO SEATS. `expand_declaration` below and
+#: `virtual_join.config._read_time_joins_from_unified` both meet this declaration. Said
+#: differently they would refuse one file in two voices; said by only one of them, the
+#: loader would refuse what the collector still RUNS.
+#:
+#: ⚠️ IT NAMES THE NEXT ACTION (소유자 2026-09-16: 운영은 `into.table` 로만 씁니다), so the
+#: replacement is not a workaround - it is what every live declaration already does.
+READ_TIME_RETIRED = (
+    "읽기 시점 조인(into.read)은 은퇴했습니다 — "
+    "조인 값을 «표에 써서» 씁니다. "
+    "→ 다음: 이 선언의 `into` 를 "
+    "`{\"table\": \"<대상 표>\"}` 로 바꾸십시오")
+
 #: The three words a declaration's `derive.kind` can say. A LOADED rule has already been
 #: translated to today's flat shape, so the word has to be read back off what it RUNS.
 DECLARED_KINDS = ("join", "decide", "mapper")
@@ -450,11 +469,14 @@ def expand_declaration(declaration, table_config=None) -> tuple:
     # with no mapper cell and the loader dropped it as `unresolvable_mapper`: a correct
     # declaration reported as a typo. It stands in `virtual_join.config.load_virtual_join_rules`
     # instead, through the adapter that has always known how to write one (`as_join_rule`).
+    # 🔴 [S-282 · 판정 440] AND NOW IT IS A REFUSAL, BECAUSE THE CAPABILITY IS RETIRED.
+    # The paragraph above is why this is not a silent drop: before S-251 a correct
+    # `into.read` came out of here with no mapper cell and the loader reported it as
+    # `unresolvable_mapper` - a right declaration called a typo. Retiring the capability
+    # brings that shape back unless the retirement says its own name, so it does.
     if ((internal.get("derive") or {}).get("kind") == "join"
             and (internal.get("into") or {}).get("read")):
-        return ([], None,
-                ["%s: into.read \u2014 a READ-TIME join. It stands beside the ones declared "
-                 "in virtual_join_rules.json, not as a chain rule." % name])
+        return ([], "%s: %s" % (name, READ_TIME_RETIRED), [])
 
     decided, decide_refusal = decide_rules(internal, table_config)
     if decide_refusal:
