@@ -15,6 +15,7 @@ forever; the first test here is `@pytest.mark.pg` and runs under
 the rule S-167 wrote down in PROSE three seats ago becomes a measurement here.
 """
 import ast
+import logging
 import os
 import subprocess
 import sys
@@ -81,6 +82,51 @@ def test_a_session_after_the_analyze_seat_can_still_open_a_savepoint(pg_engine, 
         with pinned.begin() as conn:
             conn.execute(text("DROP TABLE IF EXISTS s272_probe"))
         pinned.dispose()
+
+
+# ---------------------------------------------------------------------------
+# ⚠️ ⓐ-bis — the arm where the search path cannot be read (S-275 ③)
+# ---------------------------------------------------------------------------
+
+def test_an_unreadable_search_path_is_named_and_costs_only_the_statistics(monkeypatch,
+                                                                          caplog):
+    """⚠️ MEASURED RATHER THAN ASSUMED, WHICH IS WHY IT HAS A TEST NOW. The dedicated
+    connection does not inherit the app's `search_path`, so the seat asks for it - and
+    that ask can fail. The answer is the one this seat always gives: it says what it
+    could not read, falls back to the server's default path, and NEVER raises, because
+    the rows are already durable and a failed re-analyse must not turn into a file
+    reported as FAILED.
+
+    🔴 THE TWO ARMS WERE ONE `try` UNTIL THIS TEST. A `SHOW` that raised left `url`
+    unbound and the seat died three lines later on a NameError, reported as 「could not
+    re-analyse」 - true, and silent about why. They are separate arms now and this pins it.
+    """
+    from parsers import directory_watcher as watcher
+
+    class Session:
+        def __init__(self):
+            self.closed = False
+            self.bind = type("Bind", (), {"url": "postgresql://u@h/db"})()
+
+        def execute(self, *_args, **_kwargs):
+            raise RuntimeError("SHOW is not allowed here")
+
+        def close(self):
+            self.closed = True
+
+    made = []
+    monkeypatch.setattr(watcher, "SessionLocal", lambda: made.append(Session()) or made[-1])
+    monkeypatch.setattr(watcher, "analyze_after_rows", lambda: 1)
+    caplog.clear()
+
+    with caplog.at_level(logging.INFO):
+        answer = watcher._analyze_after_load("s275_probe", rows=10)
+
+    assert answer is False, "a failed re-analyse must be an answer, never an exception"
+    assert made and made[0].closed, "the borrowed session is closed on every arm"
+    said = [r.getMessage() for r in caplog.records if "search_path unreadable" in r.getMessage()]
+    assert len(said) == 1, [r.getMessage() for r in caplog.records]
+    assert "s275_probe" in said[0]
 
 
 # ---------------------------------------------------------------------------

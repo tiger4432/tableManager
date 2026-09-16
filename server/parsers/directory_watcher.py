@@ -122,8 +122,7 @@ def _analyze_after_load(table_name: str, rows: int, why: str = None) -> bool:
     # across the ANALYZE only because the connection came out of it, which is the defect.
     db = SessionLocal()
     try:
-        engine = db.bind or db.get_bind()
-        url = engine.url
+        url = (db.bind or db.get_bind()).url
         # 🔴 AND THE SEARCH PATH, EXPLICITLY (S-272). The pooled connection carried the
         # app's `search_path` for free; a connection this function opens itself does not,
         # and `ANALYZE "t"` resolves an UNQUALIFIED name through it. Measured while
@@ -131,9 +130,23 @@ def _analyze_after_load(table_name: str, rows: int, why: str = None) -> bool:
         # dedicated connection reported 「relation does not exist」 and the seat returned
         # False - silently, because it never raises. Asking the session that already told
         # us the URL costs one round trip and makes the inheritance a stated fact.
-        search_path = db.execute(_sa_text("SHOW search_path")).scalar()
-    except Exception:                                                  # noqa: BLE001
-        search_path = None
+        #
+        # ⚠️ ITS OWN ARM, SO A FAILURE HERE DOES NOT COST THE URL (S-275 ③). Folded into
+        # one `try`, a `SHOW` that raised left `url` unbound and the seat died on a
+        # NameError three lines later - reported as 「could not re-analyse」, which is true
+        # and says nothing about why. Now the fallback is stated: no path means the
+        # server's default, and the line below says so if the table is not on it.
+        try:
+            search_path = db.execute(_sa_text("SHOW search_path")).scalar()
+        except Exception as path_err:                                  # noqa: BLE001
+            logger.info("[%s] search_path unreadable (%s) - ANALYZE will use the "
+                        "server's default path", table_name, path_err)
+            search_path = None
+    except Exception as bind_err:                                      # noqa: BLE001
+        logger.warning("[%s] could not reach the database URL (%s) - statistics are "
+                       "stale and a page query may sort until autovacuum catches up.",
+                       table_name, bind_err)
+        return False
     finally:
         db.close()
 

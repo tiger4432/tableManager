@@ -255,6 +255,32 @@ def test_an_index_the_product_built_is_repaired_by_retracting_its_declaration(mo
     assert "RUN.md" not in line, "the product knows this repair; it must not punt"
 
 
+def test_a_failing_refusal_line_does_not_replace_the_refusal(monkeypatch, caplog):
+    """🔴 [S-275] 「진단기는 자기가 진단하는 것을 죽일 수 없다」. The line that EXPLAINS the
+    refusal reads `batch.updates`, asks the exception for a constraint name and imports two
+    modules; any of that can raise, and then the `raise` below it is never reached - the
+    operator gets something other than the named `IntegrityError` this seat exists to hand
+    them. The class landed nine minutes before this seat was written (`d00ac580`) and this
+    call was left bare.
+
+    ⚠️ AND THE FOLD IS SAID OUT LOUD - a diagnostic that quietly stops being written is one
+    nobody knows to miss."""
+    original = _unrelated_error()
+    _script(monkeypatch, original, "NEVER")
+    monkeypatch.setattr(crud, "_say_the_constraint_refused_this_batch",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("line is broken")))
+    caplog.clear()
+
+    with caplog.at_level(logging.WARNING):
+        with pytest.raises(IntegrityError) as raised:
+            crud.apply_batch_updates(FakeDB(), "dt_log", FakeBatch())
+
+    assert raised.value is original, "the diagnostic replaced the refusal it describes"
+    folded = [r.getMessage() for r in caplog.records if "refusal line skipped" in r.getMessage()]
+    assert len(folded) == 1, [r.getMessage() for r in caplog.records]
+    assert "dt_log" in folded[0] and "RuntimeError" in folded[0]
+
+
 def test_the_constraint_name_is_read_in_both_dialects():
     """SQLite gives no `diag` at all, and a reader that only understood PostgreSQL could
     never be exercised by this suite - the same two-dialect reason

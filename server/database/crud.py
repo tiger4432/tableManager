@@ -4488,7 +4488,22 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
                 # 2026-09-16: 「인제션 세션에 바운드 안 되어 있다고 안 들어감」, on a table
                 # that had been working, while every other table went in.
                 db.rollback()
-                _say_the_constraint_refused_this_batch(table_name, batch, exc)
+                # 🔴 [S-275] THE LINE THAT EXPLAINS THE REFUSAL MAY NOT REPLACE IT.
+                # 「진단기는 자기가 진단하는 것을 죽일 수 없다」 - the class `d00ac580`
+                # landed under nine minutes before this seat was written, and this call
+                # was left bare. It reads `batch.updates`, asks the exception for a
+                # constraint name and imports two modules; any of that can raise, and
+                # then `raise` below is never reached and the operator gets something
+                # other than the named `IntegrityError` S-269 exists to hand them.
+                # ⚠️ THE FOLD IS SAID OUT LOUD. A diagnostic that quietly stops being
+                # written is a diagnostic nobody knows to miss.
+                try:
+                    _say_the_constraint_refused_this_batch(table_name, batch, exc)
+                except Exception as line_err:                          # noqa: BLE001
+                    logger.warning(
+                        "[Ingest] %s refusal line skipped (%s: %s) - the batch is still "
+                        "refused and the original error is raised unchanged",
+                        table_name, type(line_err).__name__, line_err)
                 raise
             db.rollback()
             if attempt >= BK_CONFLICT_MAX_RETRIES:
