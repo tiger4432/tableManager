@@ -82,6 +82,21 @@ def _cap_lines(res):
     return lines
 
 
+def _cut_lines(truncated):
+    """Any axis of a report's canonical truncation map that actually bit, as lines.
+
+    🔴 [판정 480 ④] THE DICT WAS NOT ENOUGH. The defect 475 ⓓ found is that a number
+    from a bounded read is PRINTED as a total; a `truncated` key the printer never reads
+    leaves the operator exactly where they were. One reader for all three reports, so a
+    fourth report cannot quietly print without it.
+    """
+    out = []
+    for axis, note in sorted((truncated or {}).items()):
+        if note and note.get("cut"):
+            out.append(f"  ⚠ NOT A TOTAL ({axis}) : {note.get('reason')}")
+    return out
+
+
 def _report_classify(res):
     from enrichment import analysis as ea
 
@@ -93,6 +108,7 @@ def _report_classify(res):
         f"=== [4] gap causes - rule '{res['rule']}' ===",
         f"  source / derived      : {res['source_table']} -> {res['derived_table']}",
         f"  queue size            : {res['queue_size']}",
+        *_cut_lines(res.get("truncated")),
         "",
         f"  A PIPELINE BUG (a human should never pay this): {bug}",
         f"      {ea.CLS_MAPPING_GAP:<26} {res['counts'].get(ea.CLS_MAPPING_GAP, 0)}",
@@ -148,6 +164,7 @@ def _report_propose(res):
         return "\n".join(lines)
     lines += [
         f"  resolved rows scanned : {res['resolved_rows']}",
+        *_cut_lines(res.get("truncated")),
         f"  human-written cells   : {res['human_cells']}",
         f"  min support           : {res['min_support']}",
         f"  proposals             : {len(res['proposals'])}",
@@ -183,6 +200,7 @@ def _report_confirm(stats):
         f"=== [1] single-candidate confirmation {stats['mode'].upper()} - "
         f"rule '{stats['rule']}' ===",
         f"  queue size              : {stats['queue_size']}",
+        *_cut_lines(stats.get("truncated")),
         f"  key-fields probed       : {stats.get('keys_examined', 0)}",
         f"  single candidates       : {stats.get('confirmed', 0)}",
         f"  cells {'written' if stats['mode'] == 'apply' else 'that would be written'}"

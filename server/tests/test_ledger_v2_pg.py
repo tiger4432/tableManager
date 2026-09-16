@@ -73,6 +73,22 @@ def _bundle():
     join = raw["virtual_joins"]["input_to_reference"]
     join["left_table"] = SOURCE_TABLE
     join["right_table"] = RIGHT_TABLE
+    # 🔴 [판정 446] DECLARED AS A WRITE JOIN, BECAUSE A READ-TIME ONE NO LONGER VERIFIES.
+    # The shared `logical_bundle` still spells this join without `materialize`, which now
+    # MEANS 「read-time」 and is refused by name - so `load_verified_rules` below returned
+    # `()` and the step-6 assertions had nothing to measure. What this file is about is
+    # unchanged: a VERIFIED join hands its unique index to the setup snapshot, and that is
+    # a property of the write join that survived.
+    #
+    # Declared here rather than in `logical_bundle` on purpose. Eleven test files share
+    # that fixture and most of them never verify a join at all; widening the change to
+    # them would be eleven files' blast radius for this file's repair. This function
+    # already exists to specialise the shared bundle for this run.
+    #
+    # The pair is what an operator is told to write (RUN.md §③): `materialize: true`
+    # REQUIRES a `max_rewrite_rows` ceiling, and the loader refuses the flag without it.
+    join["materialize"] = True
+    join["max_rewrite_rows"] = 10_000
     raw["sources"]["input_rows"]["relation"] = SOURCE_TABLE
     return raw
 
@@ -170,12 +186,19 @@ def pg_v2(tmp_path_factory):
         Maker = sessionmaker(bind=admin, autoflush=False)
         verifier_session = Maker()
         try:
-            verified = tuple(virtual_join.config.load_verified_rules(
+            # 🔴 `rejections` IS COLLECTED SO THE FAILURE CAN SAY WHY. Without it this
+            # fixture failed as `assert 0 == 1  where 0 = len(())` - true, and silent about
+            # which of the loader's several refusals fired. The loader already offers the
+            # list; not passing it was the whole distance between a number and a sentence.
+            rejections = []
+            verified = tuple(legacy_join_declaration.load_verified_rules(
                 verifier_session, path=str(config_path),
-                known_tables=_known_tables(CATALOG)))
+                known_tables=_known_tables(CATALOG), rejections=rejections))
         finally:
             verifier_session.close()
-        assert len(verified) == 1
+        assert len(verified) == 1, (
+            "the join declaration did not verify, so nothing below measures anything. "
+            "Refusals: %r" % (rejections,))
         assert verified[0].unique_index == UNIQUE_INDEX
         compiled = compile_setup_snapshot(
             validate_bundle(raw, catalog=CATALOG), trusted_implementations(),
