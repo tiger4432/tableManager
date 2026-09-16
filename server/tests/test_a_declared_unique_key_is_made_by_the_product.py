@@ -24,7 +24,7 @@ if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
 from chain import builtins, join_into, rule_shape                    # noqa: E402
-from virtual_join import unique_key                                  # noqa: E402
+from chain import unique_key                                  # noqa: E402
 
 DECLARATION = {
     "name": "s240_join", "enabled": True,

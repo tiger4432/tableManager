@@ -201,7 +201,7 @@ def test_a_disabled_declaration_stands_no_rule_and_touches_no_database(load, mon
 
     🔴 SCORED BY CALL COUNT, NOT BY LOG. A log line saying OFF is exactly what a half-switch
     also prints (ASSY_VJOIN_AUTO_INDEX printed one while still probing the database)."""
-    from virtual_join import unique_key
+    from chain import unique_key
 
     touched = []
     monkeypatch.setattr(unique_key, "ensure_once",

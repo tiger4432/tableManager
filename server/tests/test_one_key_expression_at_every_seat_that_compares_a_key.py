@@ -192,7 +192,7 @@ def test_the_duplicate_probe_groups_by_the_expression_the_index_is_built_on(know
     inside the auto-index probe, and a raised statement aborts the transaction the read was
     already in - so the switch an operator reached for did not stop the flood (S-248's
     sibling). The probe could not ask the type because it was never handed the table."""
-    from virtual_join import unique_key
+    from chain import unique_key
 
     assert (unique_key._expressions("s245_left", ["num", "txt"], None)
             == ["coalesce(\"num\"::text, '')", "coalesce(\"txt\", '')"])

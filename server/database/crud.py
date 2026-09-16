@@ -2700,7 +2700,8 @@ def fold_key_value(table_name: str, column: str, value):
     `blank_sql_condition` states: storage is canonical (`normalize_stored_text`), so a
     whitespace-only value never reaches the database, and a `btrim` here would be an
     incomplete imitation of `str.strip()` that the next schema change invalidates.
-    `virtual_join_config.index_key_expression` is where that spelling lives, so the DDL and
+    `chain.join_key_index.index_key_expression` is where that spelling lives (S-283 moved it
+    out of `virtual_join`, which is being removed), so the DDL and
     the query expression cannot drift — a mismatch there does not fail, it silently stops
     using the index.
     """
@@ -4401,12 +4402,12 @@ def _say_the_constraint_refused_this_batch(table_name, batch, exc) -> None:
     refused batch held, a sample, and the next action.
     """
     import operator_line
-    from virtual_join import config as vjc
+    from chain import join_key_index
 
     constraint = _violated_constraint_name(exc)
     samples = [item.business_key_val for item in (batch.updates or [])
                if getattr(item, "business_key_val", None) is not None]
-    if constraint.startswith(vjc.INDEX_PREFIX):
+    if constraint.startswith(join_key_index.INDEX_PREFIX):
         action = operator_line.retract_the_declaration(
             "`virtual_join_rules.json` / `chain_rules.json` 의 그 조인 선언")
     else:

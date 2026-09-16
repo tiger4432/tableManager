@@ -23,7 +23,7 @@ SERVER_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
-from virtual_join import unique_key                                   # noqa: E402
+from chain import unique_key                                   # noqa: E402
 from virtual_join.config import INDEX_PREFIX                          # noqa: E402
 
 PRESENT = [("dt_inventory", INDEX_PREFIX + "dt_inventory_dt_job_ns"),
