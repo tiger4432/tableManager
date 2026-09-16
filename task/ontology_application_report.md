@@ -24450,3 +24450,52 @@ server/tests/test_ontology_config_explorer.py:874-876
       큐 S-177 ③(그건 `ISOLATION_ROOTS` 얘기라 «다른 축»입니다). 뒤집는 판정이 있으면 ①이 낡습니다
      · 「도달 가능한가」를 재는 술어를 «안 지었습니다» — 그건 시험 짓기이고 제 일이 아닙니다
 ```
+
+---
+
+## 🟡 Q-55 [09-17 07:00 실측] 소비자 수가 «셋»입니다 — 14 / 9 / 8. 빠진 «하나»가 판정 486 의 제약에 걸립니다
+
+### ① AST 로 다시 셌습니다 — «9** 입니다
+
+```
+술어 ㉠ 이름을 «드는» 비시험 파일        14   <- 총괄 수
+술어 ㉡ AST 로 «import 하는» 파일         9   <- 제 수 (문자열·독스트링 안의 import 꼴을 뺐습니다)
+   chain/builtins · chain/graph · chain/legacy_materialized_join · chain/rule_shape
+   · config_resolve_report · database/crud · main
+   · migrations/add_vjoin_null_safe_indexes · scripts/check_one_row_one_fact
+술어 ㉢ 「AST · 파일 단위 · production only」  8   <- 구현자 수
+산문/문자열뿐 (셋 다 같은 다섯)            5   ingestion_worker · join_key_index · column_filter
+                                          · notation_norm · verified_join_contract
+```
+⇒ 14 와 9 는 «둘 다 맞습니다» — 술어가 다릅니다. 9 와 8 은 **「production」의 정의 하나**가 가릅니다.
+
+### 🔴 ② 그 «하나»가 무엇인지가 이번 라운드의 제약에 걸립니다
+
+```
+후보는 둘   migrations/add_vjoin_null_safe_indexes.py   ·   scripts/check_one_row_one_fact.py
+🔴 그런데 판정 486 이 «스스로 세운 제약»이 그중 앞의 인구를 겨눕니다:
+   「거절이 엔진보다 «오래 살아야» 한다 … 옛 규칙 파일을 가진 설치에서 «재기동이 무엇을 찍나»」
+   -> 그 설치에서 도는 것이 정확히 «마이그레이션»입니다
+```
+⛔ 어느 쪽이 빠졌는지 저는 **모릅니다** — 구현자 목록도 「production」의 정의도 못 봤습니다.
+   그래서 「8 이 틀렸다」가 아니라 **「그 8 의 단위를 한 줄로 적어 주십시오」**입니다.
+   마이그레이션이 빠진 것이면 제약이 겨눈 자리가 센서스 «밖»입니다.
+
+### ✅ ③ 구현자의 두 발견은 «열어서» 확인했습니다 — 둘 다 섭니다
+
+```
+재수출  legacy_join_declaration:130-134
+        `from chain.join_key_index import (INDEX_PREFIX, required_index_name,
+         index_key_expression, required_index_ddl, normalize_index_expression,
+         unique_index_covering, …)   # noqa: F401`
+        -> 정의가 «거기 없습니다». 그러니 ㉡ 부류는 「옮기기」가 아니라
+           «import 를 이미 있는 주인에게 돌리기»가 맞습니다. 옮길 코드 «0» 도 맞습니다
+crud    :2703 주석이 `chain.join_key_index.index_key_expression` 을 «주인으로» 이름 대는데,
+        :4024 는 `from chain import legacy_join_declaration as vjc` 로 «조인 모듈을 거쳐» 듭니다
+        -> 「그 한 줄이 crud 의 의존 전부」도 맞습니다
+```
+
+```
+🔴 못 잼 · 구현자의 «8 목록»을 못 봤습니다 · 「production」의 정의도 못 봤습니다
+        · `DEFAULT_UNRESOLVED_LABEL` 은 저도 «안 셌습니다» — 구현자가 안 분류한 그대로 둡니다
+```
