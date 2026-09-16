@@ -42,7 +42,7 @@ chain_key_gate chain_replay cell_layer virtual_join_config virtual_join_executor
 virtual_join_refusal ledger_admin ledger_explorer ledger_trace ledger_trace_router
 map_alignment map_meta_registrar map_overlay map_preset_routing alignment_batch_counts
 alignment_view_service dt_frame_transform frame_confirmation enrichment_analysis
-enrichment_backfill enrichment_candidates enrichment_config enrichment_materialize
+enrichment_backfill enrichment_candidates enrichment_config
 ingestion_activity ingestion_checkpoint file_ingestion_status event_constants
 system_reload process_supervisor runtime_loops health launcher_args admin_auth
 dev_bench retroactive schema_drift audit_cache audit_history
@@ -108,9 +108,17 @@ def _computing_sites():
         # 🪦 [S-211 packaging] these live in packages now. The gate follows them rather than
         # dropping them: a module that stopped being findable would silently stop being
         # scored, which is the shape of a gate that quietly goes quiet.
+        #
+        # ⚰️ AND THE NEXT LINE USED TO DO THAT VERY THING (판정 459 ㆜). `continue` on a
+        # missing file is 「silently stop being scored」 written out - the comment above
+        # forbade it and the code did it. Measured: 43 names, 42 resolved, ONE skipped in
+        # silence. Nothing was missed today, but the population this gate declares was
+        # false, and the next name that drifts is the one it does miss.
         path = _module_path(name)
-        if not os.path.exists(path):
-            continue
+        assert os.path.exists(path), (
+            "%r is in MOVING but no file answers to it (%s). A name that stops resolving "
+            "must fail this gate rather than leave it scoring a smaller population than it "
+            "claims - fix the name or take it out of MOVING." % (name, path))
         tree = ast.parse(io.open(path, encoding="utf-8").read())
         for node in ast.walk(tree):
             if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)

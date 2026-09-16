@@ -488,10 +488,23 @@ def test_roleframe_module_has_no_runtime_or_database_imports():
             imports.update(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module:
             imports.add(node.module)
-    assert not any(name in imports for name in {
-        "sqlalchemy", "psycopg2", "database", "ledger.store", "ledger.gate",
-        "ledger.cursor", "virtual_join_config",
-    })
+    # ⚰️ `virtual_join_config` WAS A SPELLING THAT CANNOT OCCUR (판정 459 ㆚). The module
+    # is `virtual_join.config` - there has never been a top-level `virtual_join_config` - so
+    # that entry held a seat in a forbidden list and forbade nothing, while the other six
+    # kept the test green. 「영원히 거짓인 필터는 거짓이 정답인 동안 숨는다」 exactly. It is
+    # the PACKAGE name now, which is the spelling that can actually appear.
+    #
+    # ⛔ AND THE MATCH STAYS EXACT, DELIBERATELY - I TRIED PREFIX AND IT WAS WRONG. Making
+    # it `startswith(bad + ".")` immediately caught `from database.crud import
+    # clean_str_value`, and `roleframe`'s own docstring had already ruled on that import:
+    # a PURE helper that happens to live there, 「which is why the capability guard forbids
+    # the `database` package rather than that one import」. The rule is about binding a
+    # package you could reach a session through, not about every name underneath it. The
+    # judgement was in the file and I generalised past it.
+    forbidden = {"sqlalchemy", "psycopg2", "database", "ledger.store", "ledger.gate",
+                 "ledger.cursor", "virtual_join"}
+    reached = sorted(forbidden & imports)
+    assert reached == [], reached
 
 
 def test_all_eventframe_context_attributes_are_preserved_in_roleframe():
