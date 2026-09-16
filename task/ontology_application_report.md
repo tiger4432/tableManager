@@ -21510,3 +21510,86 @@ client2/src/gap_catalogue.js  화면이 그것을 «이미 읽는다»
 
 > 🔴 「판정 대기」 **1** — ② 액션의 착지처가 «표»입니까 (그렇다면 ⓒ 가 ⓑ 와 한 커밋입니다)
 > · 🔁 이월: 0 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
+
+---
+
+## 🔴 D-44 [09-16 20:50 실측] audit · 브로드캐스트 — **문은 하나인데 «저자»가 여럿이고, 둘이 그 문 앞을 지나갑니다**
+
+> 소유자 물음: 「audit log 브로드캐스트가 모두 같은 문을 지나는지」. 앞부분(조인 체인이 audit 에 드나)은
+> 총괄이 이미 실측으로 답했으므로 다시 재지 않았습니다.
+> 🔵 **판정 먼저**(지시 ③): `docs/history/20260607_233700_websocket_audit_log_push_mechanism_fix.md` 가
+> 이 이음매의 기존 판정입니다 — autoflush 가 `db.new` 를 비워 `created_logs` 가 «누락»되던 사건.
+
+### ㉮ audit 을 «쓰는» 문 — «하나»입니다 ✅
+
+```
+crud.create_audit_log()  가 유일한 생성자 (models.AuditLog( 은 그 함수 «안», crud.py:1642)
+호출자 전수(추적 파일, 시험 제외)  crud 10 · chain/cell_layer:298 · chain/replay:1102 ·
+                              ledger/followup:501 · ledger/runtime_v2:125
+⚠️ 문 «밖» 하나: scripts/migrate_to_postgres.py:83 이 models.AuditLog( 를 «직접» 짓습니다
+   -> 네 갈래 중 「명령줄이 이름을 드는 것」(일회성 마이그레이션)이라 운영 경로가 아닙니다. 그래도 «둘째 저자»입니다
+```
+
+### ㉯ 브로드캐스트 — 팬아웃은 «하나», 메시지의 «저자»는 셋 모양 (AST 전수)
+
+```
+.broadcast( 호출 22 자리, 전부 main.py.   인자의 «모양»으로 가르면:
+   변수 msg        15     어딘가에서 지어진 것
+   dict 리터럴      6     🔴 그 자리에서 «손으로» 지음
+   빌더 호출        1     event_constants.batch_refresh_message()
+그리고 event_constants 의 메시지 빌더는 «둘»뿐입니다 (batch_refresh · file_ingestion_completed)
+```
+```
+audit 을 «싣는» 자리 (created_logs 키를 AST 로 확인)
+   main.py:4041 · :4104   dict 리터럴 «인라인»      (batch_row_upsert 청크)
+   main.py:6533-6552      /internal/events/batch-refresh — 빌더 + 손으로 created_logs·total_log_count
+   chain/ingestion_worker:1892 · :1908  체인 워커 — 빌더에 total_log_count «인자로»
+🔵 클라 주석이 같은 수를 «독립적으로» 적어 뒀습니다: 「the field is on the wire from FOUR senders」
+   (`client2/src/websocket.js:372-375`, 2026-09-07 실측) — 제 census 와 일치합니다
+```
+
+### 🔴 ㉰ 짝이 안 맞는 자리 «둘» — 같은 사건인데 «한쪽만» 절단을 말합니다
+
+```
+server/main.py:4030   msg = event_constants.batch_refresh_message(table_name, len(changed_rows))
+         :4031          if created_logs and len(created_logs) <= 5000: msg["created_logs"] = created_logs
+server/main.py:4094   ← 위 스무 줄과 «코드가 바이트 동일»입니다(주석 두 줄만 다름 — diff 로 확인)
+```
+**무엇이 참이어야 이 일이 나나** — 그 빌더는 `created_logs=` 와 **`total_log_count=` 를 «인자로 받습니다»**
+(`event_constants.py:266 · :299-300`). 이 두 자리는 **그 인자를 안 쓰고** 딕셔너리에 손으로 넣으며,
+**`total_log_count` 를 «한 번도» 싣지 않습니다.** 즉 문은 있는데 그 앞을 지나갑니다.
+
+```
+클라의 계약 (client2/src/websocket.js:377-381)
+   const totalLogs = msg.total_log_count;
+   const logsTruncated = totalLogs != null && createdLogs.length < totalLogs;
+   ⚠️ 주석: 「ABSENT IS NOT COMPLETE … 「말 안 함」, not 「안 잘렸음」, so it does not trigger a reload either」
+```
+**실패 시나리오 (구체)**
+```
+① 제품 라우트로 «5,000 행 초과» 배치를 씁니다 (이 저장소 자기 주석에 「20,000-cell map re-push」가 있습니다)
+② :4031 의 `len(created_logs) <= 5000` 이 거짓 -> created_logs 가 «통째로 빠집니다»
+③ total_log_count 도 «없습니다» -> 클라: createdLogs=[] · logsTruncated=false
+④ => 화면은 «아무 이력도 안 붙이고», 「잘렸으니 다시 읽어라」도 «안 받습니다»
+   운영자는 「그 편집이 이력에 없다」를 봅니다. 오류는 «안 납니다»
+```
+🔵 같은 사건이 «워커 문»으로 오면 옳습니다 — 500 으로 절단하고 total_log_count 를 실어 클라가 다시 읽습니다.
+📌 부류: 기준 ④ 「같은 기능에 두 경로」 + 「같아 보이는 다섯 개의 0」(없어서 0 · 잘려서 0 · 안 실려서 0).
+📌 그리고 이 병은 **이미 한 번 났습니다** — `main.py:6540` 의 「[C-5 대칭화 — 라이브 드릴 관찰] 체인 경로는
+   total_log_count 가 실리는데 이 경로는 msg 재구성 과정에서 «누락»됐다」. 그때 고친 것은 «그 한 자리»였고,
+   **같은 모양의 나머지 둘은 남았습니다.**
+
+### 확신도 · 🔴 못 잰 것
+
+```
+구조   ✅ AST 전수(22 자리) · 빌더 시그니처 · 클라 계약 · 쌍둥이 diff — 전부 오늘 HEAD
+실행   ❌ 안 돌렸습니다 (지시: 고치지 말 것 · 저는 «읽기»만)
+못 잼  ① 그 두 라우트가 «운영에서» 5,000 행을 넘기는지 — 못 잽니다. 저장소 주석의 20,000-cell 이 «가능»의 근거일 뿐입니다
+       ② 변수 msg 15 자리가 «각자 무엇을 싣는지»는 이번 census 가 «안 폈습니다»(지은 자리를 따라가야 합니다) —
+          그래서 위 「audit 싣는 자리 넷」은 «하한»입니다. 클라 주석의 「four senders」와 일치하지만 둘 다 같은 방법의 수입니다
+       ③ `batch_row_upsert` 청크 경로(:4041 · :4104)는 청크마다 «자기 로그»를 다 실으므로 절단이 없습니다 —
+          다만 total_log_count 가 없어 클라는 그 사실도 «모릅니다»
+```
+
+> 🔴 「판정 대기」 **1** — 이 둘을 빌더의 «인자»로 넣습니까(최소 수정 두 줄), 아니면 쌍둥이 둘을 «한 함수»로 접습니까
+> ⛔ 저는 둘 다 짓지 않았습니다 · 🔁 이월: 0 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
