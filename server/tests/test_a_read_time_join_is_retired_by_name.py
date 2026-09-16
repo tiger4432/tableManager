@@ -289,27 +289,42 @@ def test_all_four_seats_answer_the_same_way(materialize, accepted):
 # ---------------------------------------------------------------------------
 # 판정 484 — ㉤ THE SEAT THAT WRITES, not the one that offers.
 #
-# 481 gave the form the field, and the state it meant to end did not end: the form SEEDED
-# that required flag `False`, so a join born in the form was still refused - the same
+# 481 gave the form the field, and the state it meant to end did not end: the seeding rule
+# put that required flag in as `False`, so what it produced was refused - the same
 # 「폼이 만들 수 있는 것이 거절된다」, through a different door. A field whose domain is one
 # value is not a question; it is stamped, and the skeleton says with what.
+#
+# ⚰️ AND THE FIRST VERSION OF THIS BLOCK SAID "a join born in the FORM", WHICH IS NOT WHAT
+# IT MEASURES. Counted afterwards: `empty_declaration` has two callers and both are gated by
+# `AUTHORABLE_SECTIONS` = {predicate, entity, source_plan}, so nothing passes it
+# "virtual_joins" - `config_explorer.py:80` says as much in its own words. The author that
+# seeds the box an operator SEES is `emptyOf` in `client2/src/ontology_skeleton.js`, which
+# returns `false` for any flag and does not read `const`. One judgement, two authors, and
+# this file holds the server's. Corrected rather than deleted, because the overclaim is the
+# lesson: a green here answers 「what does this function seed」, never 「what does the
+# operator get」.
 # ---------------------------------------------------------------------------
 from ledger import config_authoring                                    # noqa: E402
 
 
-def test_a_join_born_in_the_form_is_not_refused_for_what_the_form_wrote():
-    """ALARM FOR: the authoring form producing a declaration the validator rejects.
+def test_the_servers_seed_for_this_field_is_a_value_the_validator_accepts():
+    """ALARM FOR: the server's seeding rule producing a value the bundle validator rejects.
 
-    🔴 THE FORM'S ANSWER IS CARRIED, NOT RETYPED. The seed alone cannot reach this check -
+    ⚠️ WHAT THIS DOES **NOT** SAY: that an operator's form produces it. That seat is the
+    client's `emptyOf` and is not reachable from here - see the block above. What is pinned
+    here is the SERVER's answer to 「what does a new `materialize` start as」, which is the
+    half of the shared judgement this lane owns.
+
+    🔴 THE SEED'S ANSWER IS CARRIED, NOT RETYPED. The seed alone cannot reach this check -
     it has no `left_table`, so `problems.exact` refuses the shape and `continue`s past the
     `materialize` line, and an assertion written over that would be green while measuring
     nothing. So the one field under test is lifted from the seed onto a rule that is
-    otherwise good: whatever the FORM decided is what the validator now judges.
+    otherwise good: whatever the SEEDING RULE decided is what the validator now judges.
     """
     seeded = config_authoring.empty_declaration("virtual_joins")
     assert "materialize" in seeded, (
-        "the form no longer seeds `materialize` at all - a required field the operator "
-        f"must then know to add by hand. Seeded today: {sorted(seeded)}")
+        "the skeleton no longer seeds `materialize` at all - a required field whoever "
+        f"builds a declaration must add by hand. Seeded today: {sorted(seeded)}")
 
     from test_ledger_setup_bundle import logical_bundle, validate_bundle_errors
 
@@ -319,8 +334,8 @@ def test_a_join_born_in_the_form_is_not_refused_for_what_the_form_wrote():
     errors = validate_bundle_errors(bundle)
     complaints = [e for e in errors if "materialize" in str(e)]
     assert not complaints, (
-        "a join created through the authoring form is refused by the bundle validator on "
-        f"the value the FORM wrote ({seeded['materialize']!r}): {complaints!r}")
+        "the bundle validator refuses the value the SEEDING RULE writes for this field "
+        f"({seeded['materialize']!r}): {complaints!r}")
 
 
 def test_a_flag_with_a_choice_left_in_it_is_still_seeded_unanswered():
