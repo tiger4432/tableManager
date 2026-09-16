@@ -45167,3 +45167,58 @@ from ledger.store import Store                 금지   금지  ✅  🔵 제가
 **맞는 답이 틀린 이유로 오고, 틀린 답이 그 옆에서 조용히 같이 오고 있었습니다.**
 
 📌 **이제 4)뿐입니다.** 크기는 바로 위 판정(모듈 36 · ㉠31 ㉡2 ㉢3)에 적어 뒀습니다.
+
+---
+
+> 🔴🔴 **[09-17 01:31 구현자] 「열어 보라」 하신 둘을 열었습니다 — 답은 «제품»입니다. 그리고 «제 쪼개기»에 틀린 항목이 하나 있습니다.**
+
+## ① `test_enrichment_candidates` — 픽스처가 아닙니다. «제품 경로»가 죽습니다
+```
+[Chain] rule=enrichment_dedup:encand_rule target=encand_test_derived FAILED: ImportError: virtual_join
+=> «인리치 dedup 규칙»이 조인 패키지 때문에 죽습니다. 452 ②가 고친 것은 «합성 함수»였고,
+   이건 그 아래 chain/builtins._install() 자리입니다 (제가 앞서 올린 그 좌석과 «같은» 것입니다)
+```
+🔴 **그리고 «같이 나온 것»이 더 큽니다 — 쓰기 경로의 가드 둘이 «아무것도 안 막고» 지나갑니다:**
+```
+crud.py:3955  [VirtualJoinUnique] could not load declarations for '…', «no row is refused»
+crud.py:4232  [VirtualJoin] write guard could not load declarations for '…', «no column is refused»
+둘 다 except 에서 로그 한 줄 찍고 «통과»시킵니다. 자기 주석이 그 자세를 «의도»라고 적어 뒀습니다
+(「설정 문제를 장애로 바꾸지 않는다」) — 오늘은 맞는 자세입니다
+```
+
+## ② 🔴 그런데 그중 «하나»는 제가 «읽기 절반»으로 분류한 것이고, 틀렸습니다
+```
+제 쪼개기   rules_for_right -> crud.py:3950  «읽기 소비자 일곱» 중 하나로 넣었습니다
+실측       rules_for_right 은 «승인된 규칙 전부»를 오른쪽 표로 색인합니다 —
+          캐시 빌더(executor.py:141-143)에 materialize 필터가 «없습니다»:
+             for rule in vjc.load_verified_rules(...):
+                 by_left.setdefault(...) ;  by_right.setdefault(...)
+=> 그러니 refuse_virtual_join_duplicates 는 «materialize: true 조인의 오른쪽 표»도 지킵니다.
+   그건 452 ①이 「살려 두라」 한 바로 그 조인입니다
+🔴 **지우면 «살아 있는 쓰기 조인»의 오른쪽 표에서 중복 방지가 사라집니다.** 조용히.
+✅ 정정: rules_for_right 은 «읽기 절반이 아니라 쓰기 절반»입니다. 읽기 소비자는 «일곱이 아니라 여섯»입니다
+⚠️ 제가 「호출자가 crud.py 이니 읽기 소비자」로 분류했습니다 — 자리를 보고 성질을 안 봤습니다.
+   오늘 밤 같은 부류의 다섯째입니다
+```
+
+## ③ `test_notation_normalization` — «판단 아홉»이 아닙니다. 열어서 가른 표
+```
+MECHANICAL (지금 repoint 하면 삶)   2   required_index_ddl/name · normalize_index_expression
+                                      -> 2단계가 chain.join_key_index 로 «이미 옮긴» 이름들입니다
+쓰기 절반을 따라감                   4   vje.execute_rule ×2 · vje.join_onclause ×2
+                                      -> 그 함수들이 «사는» 쪽이라 은퇴가 아니라 «이사»입니다
+진짜 판단                            1   vjc.verify_uniqueness (+ CODE_NO_UNIQUE_INDEX)
+귀속 안 됨                           2   vjc/vje 를 «직접» 안 씁니다 (파일 최상단 import 로 같이 죽음)
+=> 「판단 20 · 모듈 넷」 중 이 모듈의 몫은 «1~3» 이지 9 가 아닙니다
+```
+
+## ④ 그래서 4) 의 크기를 «한 자리» 더 좁혔습니다
+```
+총괄 표     ㉠31 기계적 · ㉡2 픽스처 · ㉢ 판단 20건/모듈 넷
+제 실측 뒤   ㉢ 안에서 notation 의 9 중 «6 이 기계적/이사», 판단은 «1» + 귀속 안 됨 2
+           그리고 enrichment 의 8 은 «단언이 기대는 것»이 아니라 «제품이 죽는 것» — ㉠ 의 원인이 고쳐지면 같이 삽니다
+❌ 아직 안 잰 것   enrichment 8 을 «_install 수리 뒤»에 다시 돌리면 몇이 사는지.
+                그건 4) 의 첫 커밋 안에서 재는 것이 맞습니다 (지금 재면 그 수리가 없어서 전부 빨강입니다)
+```
+📌 **Ⓑ 만 기다립니다.** ②의 정정으로 읽기 쪽이 여섯으로 줄었고, 그만큼 Ⓑ 의 무게도 줄었습니다 —
+   다만 「그 여섯이 운영자 화면에서 사라진다」는 그대로라 여전히 제 몫이 아닙니다.
