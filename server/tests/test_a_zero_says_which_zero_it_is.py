@@ -264,9 +264,18 @@ def test_the_two_causes_do_not_share_a_sentence(monkeypatch):
 #    「그 줄에 도달하는가」를 안 잽니다. 목록을 «열어 보지» 않았으면 죽은 가지를 착지시킬
 #    뻔했습니다 (실제로 한 번 넣었다가 뺐습니다).
 #
-# ⚠️ 그리고 세면서 «안 재지고 있는 성질» 하나를 봤습니다 — `heartbeat.record_lap` 의
-#    「`depth=None` 은 키째 빠지고 `0` 은 남는다」는 오늘 «독스트링에만» 있고 시험이 없습니다.
-#    이 라운드의 지시 밖이라 짓지 않고 올립니다.
+# ⚰️ [해소됨 2026-09-17] 여기 「`heartbeat.record_lap` 의 그 성질은 시험이 «없습니다»」라고
+#    적어 두었는데, 그 말이 «반만 맞았습니다». 열어 보니 이웃이 절반을 «이미» 재고 있었습니다:
+#      ✅ 「아예 보고 안 함 -> 키 없음」   test_a_loop_that_never_reported_has_no_lap_keys
+#      ✅ 「depth=7 -> 7 로 나옴」        test_a_recorded_lap_reaches_the_route_with_its_own_numbers
+#      🔴 「depth=0 -> «0 으로 남는다»」  <- 이 절반이 «진짜로» 비어 있었습니다
+#    그 절반이 이 축의 «핵심»입니다: `if depth is not None` 을 `if depth` 로 바꾸면
+#    「큐가 비었다(0)」가 「아무 말도 안 했다」로 조용히 바뀌는데, 그러고도 «28 시험이 초록»이었습니다.
+#    -> 변이로 재서 구멍을 «확인한 뒤» 채웠습니다:
+#       test_the_nine_loops_say_what_they_last_did.py::test_a_real_zero_survives_...
+#       (그리고 `**extra` 도 같은 규칙이라 같이 — 인자 이름으로 문이 갈리면 안 됩니다)
+# 🔴 교훈은 「시험이 없다」를 적기 «전»에 이웃을 열라는 것입니다. 없다고 적은 자리가 반은 있었고,
+#    정작 «비어 있던 절반»은 제가 적은 문장과 다른 것이었습니다.
 
 # ---------------------------------------------------------------------------
 # main.get_ingestion_workspaces — 🔎 서버는 «이미» 가른다. 화면이 안 읽는다

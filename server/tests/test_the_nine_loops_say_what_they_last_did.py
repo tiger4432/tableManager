@@ -107,6 +107,48 @@ def test_a_loop_that_never_reported_has_no_lap_keys():
         assert absent not in census, absent
 
 
+def test_a_real_zero_survives_while_an_unsaid_one_stays_absent():
+    """⛔ THE OTHER HALF OF THE SAME SENTENCE, and the half nothing was scoring.
+
+    `record_lap`'s docstring says `seconds` and `depth` are omitted when None 「rather than
+    written as zero -- 「it did not say」 and 「it said none」 are different facts」. The
+    sibling above scores the FIRST half (never reported -> no key). This scores the second:
+    a loop that DID report, and reported ZERO, keeps its key.
+
+    🔴 MEASURED AS A HOLE BEFORE IT WAS FILLED. Rewriting `if depth is not None` as
+    `if depth` makes a `depth=0` lap vanish into 「did not say」 - the queue reports empty
+    and the screen reads 「the loop never spoke」 - and 28 tests stayed GREEN. That is the
+    exact axis this round spent itself on, in the one seat that carries it for nine loops.
+
+    `seconds` is scored in the same test on purpose: one sentence states the rule for both,
+    so one of them going quiet while the other is watched is how the pair drifts apart.
+    """
+    heartbeat.record_lap("chain", "ledger_followup", seconds=0.0, depth=0)
+    lap = heartbeat._laps["chain"]["ledger_followup"]
+    assert lap["depth"] == 0, (
+        "a loop that reported an EMPTY queue said something. Dropping the key turns "
+        f"「none pending」 into 「never reported」: {lap!r}")
+    assert lap["seconds"] == 0.0, f"a lap that took no measurable time still ran: {lap!r}"
+
+    # And the omission is still an omission - the two halves are asserted together so
+    # neither can be satisfied by making the other unconditional.
+    heartbeat.record_lap("chain", "outbox_purge", seconds=1.0)
+    quiet = heartbeat._laps["chain"]["outbox_purge"]
+    assert "depth" not in quiet, f"nothing was said about depth here: {quiet!r}"
+
+
+def test_an_extra_word_follows_the_same_rule_as_the_numbers():
+    """`**extra` drops None too, and a `0` in it is a value like any other.
+
+    The loops carry their own words through this door (`reconnects`, `items`), so the rule
+    that governs `depth` has to govern them or the door is split by argument name.
+    """
+    heartbeat.record_lap("chain", "listen", reconnects=0, state=None)
+    lap = heartbeat._laps["chain"]["listen"]
+    assert lap["reconnects"] == 0, f"「reconnected zero times」 is news: {lap!r}"
+    assert "state" not in lap, f"nothing was said about state: {lap!r}"
+
+
 def test_web_is_alive_and_claims_no_lap():
     """① has no heartbeat and needs none -- this route IS the web process answering. A lap
     here would be a number invented to fill the table."""
