@@ -22603,3 +22603,79 @@ server/chain/graph.py:242-244
 
 > 🔴 「판정 대기」 **1** — 위 착지 조건 셋 · 🔁 이월: 0
 > ✅ 닫힘: Q-22 ②→446 · Q-21→447 · Q-24→444 ③ · Q-23·Q-25
+
+---
+
+## 🔴🔴 Q-27 [09-16 00:01 실측] 447 ③ 의 «문자열 계수» — 은퇴가 선 입구는 «둘 중 하나»가 아니라 **«셋 중 둘»입니다**
+
+> 447 ③: 「4) 전에 «문자열로 부르는 자리»를 세십시오 — import 로 세는 술어는 그 자리를 «영원히 못 봅니다»」
+> Q-26 에서 「제가 안 셌습니다」라 적은 그 계수입니다. 셌습니다. 그리고 «입구 하나»가 더 나왔습니다.
+
+### 🔴 ① 세 번째 선언 입구 — **원장 setup 번들의 `virtual_joins` 절**
+
+```
+server/ledger/setup_bundle.py:72      OPTIONAL_SECTIONS = ("virtual_joins",)
+                          :815-816    _validate_virtual_joins(value["virtual_joins"], …)
+                          :1149       def _validate_virtual_joins(section, problems)
+                          :2104/:2225 번들의 규칙을 rule_id 로 훑는다
+server/ledger/setup_registry.py:679   declared = bundle.section("virtual_joins")
+                                      enabled = {… if rule["enabled"]}
+                                      -> left_table · right_table · join_key · expose ·
+                                         join_cardinality · fold 를 «물리 UNIQUE 검증 기술자»와 대조
+```
+🔴 **이건 «읽기 시점 조인 선언»의 전체 모양입니다.** 그리고 «화면에서 작성됩니다**:
+```
+server/ledger/ledger_skeleton.json:827   "key": "virtual_joins"          <- 작성 폼이 «그립니다»
+                              :597-606   "key": "inherit_virtual_join_rules" → "section": "virtual_joins"
+server/ledger/config_explorer.py:125     ISOLATION_ROOTS … | {"virtual_joins"}
+                            :886/:907/:911-912  번들의 조인을 «열거하고 포인터를 답니다»
+```
+⇒ **은퇴는 입구 셋 중 둘에만 섰습니다** — ① 통합 `into.read`(1단계) ② 레거시 파일(446) ③ **원장 번들 절(미판정)**.
+446 이 적은 「입구 둘 중 하나에만 섰다」의 «분모»가 틀렸습니다.
+
+### ② 그리고 이 입구는 «지우면» 다른 결함이 됩니다
+
+```
+4) 가 엔진을 지우면
+   작성 폼은 «여전히 그립니다»(스켈레톤이 그 절을 들고 있습니다)
+   번들 검증도 «여전히 거절/통과를 말합니다»
+   그런데 «돌릴 것»이 없습니다
+=> 「문법이 살아 있고 작성 폼이 그리는데 읽는 쪽이 «없다»」 — CLAUDE.md 가 2026-09-05 에
+   «이미 적어 둔» 그 부류입니다(references). 조용하고, 운영자는 적은 것이 돈다고 믿습니다
+```
+그리고 딸린 축이 하나 더 있습니다 — 소스 준비의 **`inherit_virtual_join_rules`**
+(`config_authoring.py:1144·:1173` · `config_explorer.py:1025·:1031` · `setup_bundle.py:1574·:1585-1586·:2219`):
+원장 «소스»가 조인을 «이름으로» 상속합니다. 엔진이 가면 그 이름들이 «아무것도 안 가리킵니다».
+
+### ③ 문자열 계수 — 갈래와 «단위»
+
+```
+㉠ 번들 절 이름 "virtual_joins"      비시험 .py 자리 «열셋 / 파일 넷»
+                                   (config_explorer 5 · setup_bundle 5 · setup_registry 1 ·
+                                    scripts/convert_ontology_to_single_file 2)
+                                   + 스켈레톤 JSON «자리 둘»(:597-606 · :827)
+㉡ inherit_virtual_join_rules       비시험 .py 자리 «여덟 / 파일 셋» + 스켈레톤 «하나»
+㉢ 파일 이름을 «손으로» 적은 자리     scripts/preview_unified_declarations.py:36 JOIN_FILE
+㉣ 층·접두 문자열                    executor.py:77 SOURCE_NAME (447 ② 가 「읽는 쪽은 남긴다」로 판정함) ·
+                                   config.py:859 JOIN_PREFIX = "virtual_join:"  ← «미판정»
+㉤ 응답 키                          chain/graph.py:394 "virtual_joins" (Q-26 의 그 수)
+🔴 ㉠㉡ 는 import 술어로 «한 자리도» 안 나옵니다 — 447 ③ 이 옳았고, 그 자리가 «제일 큽니다»
+```
+
+### 확신도 · 🔴 못 잰 것
+
+```
+실행  ①②③ 의 앵커·자리 수 전부 HEAD blob `git grep` 실측(워킹트리 안 봄)
+🔴 못 잼 «중요»  번들의 `virtual_joins` 절이 «실행에 닿는지»를 못 쟀습니다.
+                제가 연 것은 «검증»(setup_bundle)과 «등록 대조»(setup_registry)까지입니다.
+                그것이 executor 까지 가서 «돌면» 입구 셋이고,
+                검증만 하고 «안 돌면» 입구 둘 + «죽은 작성면 하나»입니다 —
+                둘 다 판정이 필요하지만 «착지 조건이 다릅니다»
+                (`virtual_join/config.py:690` 은 검증 규칙을 「UI executor 와 Ledger setup compiler 가
+                 «함께» 소비한다」고 적습니다 — 주석이지 제 측정이 아닙니다)
+못 잼           ㉣ 의 JOIN_PREFIX 를 «읽는» 쪽이 어디인지 안 셌습니다
+```
+
+> 🔴 「판정 대기」 **2** — ㉠ 번들 `virtual_joins` 절과 `inherit_virtual_join_rules` 의 처분(은퇴 대상인가)
+> ㉡ 그 절이 «실행에 닿나» — 이건 구현자가 한 번 열면 답이 나옵니다
+> · 🔁 이월: 0
