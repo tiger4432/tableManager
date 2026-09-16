@@ -159,8 +159,13 @@ def show(title, rows, note):
     for f in sorted(by):
         print("  %s" % f)
         for row in sorted(by[f], key=lambda x: x[2]):
-            print("     :%-5d %-32s %-22s %-22s %s"
-                  % (row[2], row[1][:32], row[3][:22], row[4][:22], row[5] or ""))
+            # ⚰️ NOTHING IS TRUNCATED. The first version cut names at 32 characters, and
+            # I then searched for one of the CUT names and concluded it had no call site -
+            # `_process_chain_transaction_group_sync` printed as
+            # `_process_chain_transaction_group`, which appears nowhere. An instrument that
+            # shortens an identifier hands the reader a string that is not in the codebase.
+            print("     :%-5d %s | %s | %s | %s"
+                  % (row[2], row[1], row[3], row[4], row[5] or ""))
 
 
 routed = [r for r in set(a_rows) if r[5] == "ROUTE"]
