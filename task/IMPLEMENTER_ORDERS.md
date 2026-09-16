@@ -45222,3 +45222,73 @@ MECHANICAL (지금 repoint 하면 삶)   2   required_index_ddl/name · normaliz
 ```
 📌 **Ⓑ 만 기다립니다.** ②의 정정으로 읽기 쪽이 여섯으로 줄었고, 그만큼 Ⓑ 의 무게도 줄었습니다 —
    다만 「그 여섯이 운영자 화면에서 사라진다」는 그대로라 여전히 제 몫이 아닙니다.
+
+---
+
+> 🔴🔴 **[09-17 01:31 총괄] 판정 461 — 받습니다. «쪼개기»가 맞고, 「패키지 삭제」는 «제 틀이 틀린 것»이었습니다.**
+> 짓기 «전»에 재서 올리신 것이 이 라운드에서 제일 값진 자리입니다.
+
+## ① 제 잘못부터 — 저는 «서로 어긋나는 두 문장»을 밤새 같이 들고 있었습니다
+```
+판정 452 ①   「materialize: true 는 «살아 있는 쓰기 조인»이다 — 죽이지 마라」
+보드·판정 전부  「4단계 = 레거시 패키지 «삭제»」
+=> 그 규칙이 `virtual_join/executor.py` 를 «지나는데» 저는 그 파일을 지우라고 적고 있었습니다
+```
+제가 «확인»했습니다: `chain/builtins.py:137 _run_join` 이 `from virtual_join import executor` 하고
+`on_reference_rows_changed` / `on_target_rows_changed` 를 부릅니다. 당신 말이 맞습니다.
+
+## ② 🔵 그리고 쪼개기가 «깨끗합니다» — 제가 AST 로 쟀습니다
+```
+쓰기 절반 일곱이 «읽기 절반»을 부르는 횟수     «0»      <- 자립합니다
+읽기 절반 일곱 중 다섯이 «쓰기 절반»을 부름    rules_for · execute_rule · join_onclause
+=> 의존이 «한 방향»(읽기 -> 쓰기)입니다. 읽기를 걷어내면 쓰기는 «그대로 섭니다»
+executor 가 config 에서 쓰는 이름 «다섯»: rewrite_row_count · rewrite_refusal ·
+   load_verified_rules · index_key_expression · _folds_list
+   🔵 그중 index_key_expression 은 2단계에서 «이미» chain/join_key_index.py 로 옮겼습니다
+refusal.py 의 패키지 밖 제품 소비자 «하나»: config_resolve_report.py:63 (virtual_join_detail)
+```
+
+## ③ 🔴 그런데 «옮길 곳»을 정하기 전에 — 그 쓰기 엔진은 «두 번째 문»입니다
+
+`chain/join_into.py` 가 «이미» 쓰기 시점 조인입니다. 그리고 **그 파일이 자기 독스트링에 적어 뒀습니다**:
+> `virtual_join.executor.join_onclause` calls itself 「ON 절의 유일한 철자」, and this module now
+> builds an ON clause too. **Two spellings that must agree is the 「같은 기능에 두 경로」 shape**
+
+```
+chain/join_into.py        통합 선언 `into.table` 의 쓰기 조인      323 줄   <- 소유자가 판정한 문
+virtual_join/executor.py  레거시 materialize:true 의 쓰기 조인     915 줄   <- 두 번째 문
+소유자 판정 (2026-09-16)   「조인 컬럼은 표에 써서 쓴다 — `into.table` «뿐»」
+```
+🔴 **그러니 쓰기 절반을 `chain/` 으로 옮기는 것은 «영구 좌석을 하나 더 만드는 것»이 아닙니다.**
+옮기는 이유는 «오늘 도는 것을 안 죽이려고»이고, 그 자리는 «빚»입니다.
+
+### 그래서 이름에 거는 조건 (철자는 당신이)
+```
+⛔ join_into 의 «동료»처럼 보이는 이름   둘은 동료가 아닙니다 — 하나는 판정된 문, 하나는 «물러나는» 문
+✅ 독스트링 첫 줄에 «빚»을 적습니다: 「이것은 두 번째 쓰기 조인 문이다. 판정된 문은 into.table 이고,
+   여기는 materialize:true 선언이 «남아 있는 동안만» 산다」
+✅ 그리고 join_into 가 이미 한 «그 일»을 그대로 지킵니다 — 키의 접기를 «같은 함수»에서 가져와
+   둘이 키에 대해 «갈라질 수 없게». 그게 그 파일이 빚을 적으면서 같이 해 둔 것입니다
+```
+
+## ④ 그래서 4)의 모양 — 당신 ③ 에 이것만 더합니다
+```
+옮긴다   executor 의 쓰기 절반 + config 의 「materialize:true 를 읽고 검증하는」 절반
+        refusal.py -> 화면이 살아 있으므로 같이 (config_resolve_report 가 유일 소비자)
+지운다   executor 의 읽기 절반 일곱 + 그 호출 자리 일곱 + 446 의 대상(materialize:false)
+🔴 남긴다  「두 번째 문」이라는 «사실»을 독스트링과 큐에 — 조용히 영구 좌석이 되지 않게
+```
+
+## ⑤ 🔴 소유자께 올릴 것 «하나» — 그리고 그것 때문에 4)가 «안 멈춥니다»
+```
+물음   「오늘 라이브 선언 중 `materialize: true` 가 «하나라도» 있나」
+왜 소유자만 아나   그 선언 파일은 gitignore 입니다. 제가 박스에서 센 수는 운영에 대해 아무 말도 안 합니다
+답이 「없다」면    쓰기 절반은 «옮길 것이 아니라 지울 것»이고, 두 번째 문이 «오늘» 닫힙니다
+답이 「있다」면    위 ③④ 대로 옮기고, 그 선언들의 `into.table` 이관이 다음 라운드입니다
+```
+📌 **기다리지 마십시오.** 「옮긴다」는 두 답 «모두에서 안전»합니다 — 없으면 옮긴 것이 소비자 0 이라
+지우기만 하면 되고, 있으면 살아 있습니다. 제가 소유자께 올려 두겠습니다.
+
+## ⑥ 한 줄 정정 — 당신 ③ 의 「파일 12」
+제 수였고 00:50 에 «10»으로 물렀습니다(판정 456 ㉡). 그리고 시험 쪽은 어젯밤 제가 junitxml 로
+다시 재서 «모듈 36»입니다(바로 위 판정). 계획에 그 두 수로 적으십시오.
