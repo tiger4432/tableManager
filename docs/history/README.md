@@ -1,13 +1,18 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **895개** 이력. (거버넌스 규칙 #4)
+> 총 **900개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-09 (September 2026)
 
+- **2026-09-16 11:32** — [One Seat Opens Every Savepoint And The Guard Is The Thing That Runs The Statement](./20260916_113249_one_seat_opens_every_savepoint_and_the_guard_is_the_thing_that_runs_the_statement.md)
+- **2026-09-16 11:15** — [The Analyze Seat Opens Its Own Connection And The Borrowed Search Path Became A Stated Fact](./20260916_111526_the_analyze_seat_opens_its_own_connection_and_the_borrowed_search_path_became_a_stated_fact.md)
+- **2026-09-16 11:04** — [A Sole Join Declaration Is Not A Half And The Companion Now Says What It Is](./20260916_110446_a_sole_join_declaration_is_not_a_half_and_the_companion_now_says_what_it_is.md)
+- **2026-09-16 10:36** — [The Diagnostic Killed The Ingestion It Was Built To Diagnose](./20260916_103618_the_diagnostic_killed_the_ingestion_it_was_built_to_diagnose.md)
+- **2026-09-16 10:27** — [A Constraint This Lane Cannot Recover From Is Refused By Name After A Rollback](./20260916_102706_a_constraint_this_lane_cannot_recover_from_is_refused_by_name_after_a_rollback.md)
 - **2026-09-16 07:33** — [The Slice One Walk And The Coverage Report Retire And Two Words Stay On Purpose](./20260916_073318_the_slice_one_walk_and_the_coverage_report_retire_and_two_words_stay_on_purpose.md)
 - **2026-09-16 07:20** — [The Seventh Caller Was Marked Pg So The Plain Runs Pass Count Said Nothing About It](./20260916_072009_the_seventh_caller_was_marked_pg_so_the_plain_runs_pass_count_said_nothing_about_it.md)
 - **2026-09-16 07:13** — [The Registration Sweep Reads Its Predicate From The Declaration And The Word Moved To Six Callers](./20260916_071354_the_registration_sweep_reads_its_predicate_from_the_declaration_and_the_word_moved_to_six_callers.md)
