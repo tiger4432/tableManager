@@ -952,17 +952,16 @@ def test_the_gate_matches_the_name_exactly_and_not_as_a_prefix(env, monkeypatch)
     assert exc.value.code == derivation.REFUSE_JOIN_RULE_MISSING
 
 
-def test_a_switched_off_join_reads_as_absent_and_that_is_the_loaders_to_fix(env, monkeypatch):
-    """⚰️ I WROTE A BRANCH FOR THIS AND IT WAS UNREACHABLE. `join_rule` raised a
-    separate 「`enabled: false`」 refusal - and `expand_declaration` stands NOTHING for a
-    disabled declaration (measured: an empty list), so nothing could ever take that branch.
-    A gate for a state the code cannot be in is the third item of 「깔끔」, so it came out.
+def test_a_switched_off_join_says_SWITCHED_OFF_and_not_absent(env, monkeypatch):
+    """⚰️ I ASSERTED THE OPPOSITE ONE COMMIT AGO AND IT WAS WRONG (판정 450 ①). The test
+    here said 「없다」 and 「꺼져 있다」 reach this gate as one fact and called the loss the
+    loader's - but `expand_declaration` returns THREE things and `join_rule` was throwing
+    the third away. A disabled declaration stands no rule, raises no refusal, and says so
+    in `notes`; the judge's own docstring says exactly that.
 
-    🔴 WHAT REMAINS IS A REAL LOSS, PINNED HERE RATHER THAN WORKED AROUND. 「없다」 and
-    「꺼져 있다」 reach this gate as one fact, and an operator can only fix the second.
-    Telling them apart HERE would need a second reading of the raw declaration beside the
-    judge's - the door-splitting this round removes - so it belongs to the loader, for every
-    kind of rule at once. This test states today's answer so a change to it is visible.
+    🔴 SO THIS IS THE 「없어서 0 / 못 읽어서 0」 CLASS WITH A THIRD MEMBER - 「꺼서 0」 -
+    and an operator who switched a declaration off has to be told that, because it is the
+    only one of the three they can undo in a second.
     """
     off = [dict(JOIN_DECLARATIONS[0], enabled=False), JOIN_DECLARATIONS[1]]
     monkeypatch.setattr(ingestion_worker, "read_rules_document",
@@ -970,10 +969,52 @@ def test_a_switched_off_join_reads_as_absent_and_that_is_the_loaders_to_fix(env,
                                            "exists": True, "error": None})
     with pytest.raises(derivation.DerivationRefused) as exc:
         derivation.join_rule(env, derivation.CONFIRMED_JOIN_RULE)
+    said = str(exc.value)
     assert exc.value.code == derivation.REFUSE_JOIN_RULE_MISSING
-    assert derivation.CONFIRMED_JOIN_RULE in str(exc.value),         "whatever it cannot distinguish, it still has to NAME the rule"
+    assert derivation.CONFIRMED_JOIN_RULE in said, "it still has to NAME the rule"
+    assert "enabled=false" in said,         "a switched-off declaration is reported as never written: %r" % said
+    assert "absent" not in said,         "it is not absent - it is there and off, and those are different repairs: %r" % said
     # The other declaration is untouched, so this is a per-rule answer and not a collapse.
     assert derivation.join_rule(env, derivation.FRAME_JOIN_RULE)["right_table"] == FRAMEATTR
+
+
+def test_another_rules_refusal_is_not_claimed_by_a_name_it_merely_contains(env, monkeypatch):
+    """🔴 [판정 450 ②] THE NAME FIELD, NOT THE NAME INSIDE THE SENTENCE. A loader
+    refusal reads "<name>: <detail>", so testing `name in refusal` let a short name claim a
+    longer one's refusal and send the operator to somebody else's declaration to fix a
+    problem that is not theirs.
+
+    ⚠️ AND IT IS THE SAME QUESTION THE LOOKUP BELOW ASKS. Spelling 「is this my rule」 two
+    ways one line apart is door-splitting inside a single function - the exact shape the
+    round was removing - and the prefix mutant that survived on the lookup side came from
+    the same blind spot.
+    """
+    stale = dict(JOIN_DECLARATIONS[0],
+                 name=derivation.CONFIRMED_JOIN_RULE + "_extra", into={"read": True})
+    monkeypatch.setattr(ingestion_worker, "read_rules_document",
+                        lambda path=None: {"document": {}, "rules": [stale], "path": None,
+                                           "exists": True, "error": None})
+    with pytest.raises(derivation.DerivationRefused) as exc:
+        derivation.join_rule(env, derivation.CONFIRMED_JOIN_RULE)
+    said = str(exc.value)
+    assert stale["name"] not in said,         "this gate reported another declaration's refusal as its own: %r" % said
+    assert "absent" in said, "with nothing of its own declared, absent is the honest answer"
+
+
+def test_the_absent_refusal_carries_the_next_action(env, monkeypatch):
+    """🔴 [상설] 「거절의 «사유»와 «다음 행동»」. The retirement refusal landed
+    the same night says 「→ 다음: …」 and this one stopped at 「absent」 - two ways of
+    speaking in one house, and the half without an action leaves the operator guessing.
+    """
+    monkeypatch.setattr(ingestion_worker, "read_rules_document",
+                        lambda path=None: {"document": {}, "rules": [], "path": None,
+                                           "exists": True, "error": None})
+    with pytest.raises(derivation.DerivationRefused) as exc:
+        derivation.join_rule(env, derivation.CONFIRMED_JOIN_RULE)
+    said = str(exc.value)
+    assert "Next:" in said, "the refusal names no next action: %r" % said
+    for cell in ("join", "on", "take"):
+        assert cell in said, "the action does not say what to write (%r missing)" % cell
 
 
 def test_a_declaration_refused_by_name_is_carried_into_the_gates_sentence(env, monkeypatch):

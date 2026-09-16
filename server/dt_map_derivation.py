@@ -300,12 +300,13 @@ def join_rule(db, name: str) -> dict:
     `chain.builtins.declared_unique_index_names` asks the same pair the same way. A second
     reading here would be a second answer to 「what does this declaration stand」.
 
-    ⚠️ A SWITCHED-OFF DECLARATION READS AS ABSENT, AND THERE IS NO BRANCH FOR IT HERE.
-    `expand_declaration` stands nothing for `enabled: false` (measured: it returns an empty
-    list), so 「없다」 and 「꺼져 있다」 arrive at this function as the same fact. Telling
-    them apart would take a SECOND reading of the raw declaration beside the judge's, which
-    is the door-splitting this round exists to remove; the loss is the loader's to fix, for
-    every kind of rule at once, not this gate's to work around.
+    ⚰️ I WROTE THAT 「없다」 AND 「꺼져 있다」 COULD NOT BE TOLD APART HERE, AND THAT WAS
+    WRONG (판정 450 ①). `expand_declaration` returns THREE things and this function was
+    discarding the third: a disabled declaration stands no rule, raises no refusal, and says
+    so in `notes` - its own docstring says 「OFF IS NOT A REFUSAL … and SAYS SO IN notes」.
+    The loss was not the loader's to fix later; it was this call throwing the answer away.
+    Both the loader's refusal and its notes are carried into the sentence now, so an
+    operator who switched a declaration off is told that, not that it was never written.
 
     Returns a dict carrying `name`, `left_table`, `right_table`, `join_key`, `expose`,
     `right_columns`, `required_index` and the DDL that would create it - the cells the
@@ -314,16 +315,21 @@ def join_rule(db, name: str) -> dict:
     from chain import ingestion_worker, join_into, rule_shape
     from database import crud
 
-    refused_by_name = None
+    withheld = None
     for raw in ingestion_worker.read_rules_document()["rules"] or ():
-        stood, refusal, _notes = rule_shape.expand_declaration(raw, crud.TABLE_CONFIG)
-        if refusal:
-            # ⚠️ A REFUSAL NAMING THIS RULE IS THE ANSWER, not noise to skip past: it is
-            # the difference between 「there is no such join」 and 「it is there and unusable」,
-            # and the operator can only fix the second one.
-            if name and name in str(refusal):
-                refused_by_name = str(refusal)
-            continue
+        stood, refusal, notes = rule_shape.expand_declaration(raw, crud.TABLE_CONFIG)
+        # 🔴 THE NAME FIELD, NOT THE NAME INSIDE THE SENTENCE (판정 450 ②). A refusal
+        # reads "<name>: <detail>", so a substring test let `dt_map` claim `dt_map_extra`'s
+        # refusal and send the operator to somebody else's declaration. It is also the SAME
+        # question the lookup below asks - 「is this the rule I was asked for」 - and the two
+        # were spelled differently one line apart, inside a single commit.
+        declared_name = str(raw.get("name") or "") if isinstance(raw, dict) else ""
+        if declared_name == name and (refusal or notes):
+            # ⚠️ WHATEVER THE LOADER SAID ABOUT THIS NAME IS THE ANSWER, not noise to skip
+            # past: it is the difference between 「there is no such join」 and 「it is there
+            # and not standing」, and the operator can only act on the second. `notes` is
+            # where a switched-off declaration says so.
+            withheld = str(refusal) if refusal else "; ".join(str(n) for n in notes)
         for rule in stood or ():
             if rule.get("name") != name:
                 continue
@@ -333,10 +339,24 @@ def join_rule(db, name: str) -> dict:
                     "rule %r exists but is not a join (`derive: {kind: \"join\"}`); the "
                     "gate cannot be resolved from it." % name)
             return _join_from_unified(db, rule)
+    # 🔴 A REFUSAL CARRIES THE NEXT ACTION (판정 450 ③). The retirement refusal landed
+    # the same night says 「→ 다음: …」 and this one stopped at 「absent」, which is two ways of
+    # speaking in one house - and the half without an action leaves the operator to guess.
+    #
+    # ⚠️ THE LOADER'S SENTENCE IS QUOTED, NOT MERGED. It is written for the operator in
+    # Korean and this one is the module's own English; running them together would build the
+    # half-translated sentence `_record`'s own docstring warns about, so it rides in quotes
+    # as what the loader said.
+    if withheld:
+        raise DerivationRefused(
+            REFUSE_JOIN_RULE_MISSING,
+            "join rule %r is declared but no rule stands for it, so the gate has no "
+            "source. The loader said: %s" % (name, withheld))
     raise DerivationRefused(
         REFUSE_JOIN_RULE_MISSING,
         "join rule %r is absent from the chain declaration; the gate cannot be resolved "
-        "without it.%s" % (name, (" Refused: %s" % refused_by_name) if refused_by_name else ""))
+        "without it. Next: declare it there as `derive: {kind: \"join\"}` with `on` for the "
+        "join key and `take` for the columns to bring across." % name)
 
 
 def join_pairs(rule: dict) -> list:
