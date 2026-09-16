@@ -2110,12 +2110,12 @@ export function bootstrap(deps) {
     return !(tag === 'BODY' || tag === 'HTML' || tag === '#DOCUMENT' || tag === '');
   }
   if (el.exportBtn) {
-    el.exportBtn.disabled = !artifactImplemented();
-    // The reason is an explanation, so it goes to the console. The disabled control is what
-    // the screen says; a sentence hanging off a tooltip is neither one line nor a decision.
-    if (!artifactImplemented() && doc.defaultView && doc.defaultView.console) {
-      doc.defaultView.console.log('[map2] excel artifact export is not wired to a control yet.');
-    }
+    // The gateway's flag reports whether the SHELL MAY OFFER the affordance, so the same flag
+    // hides the control. A greyed button is still an offer -- it says 'this exists, just not
+    // now', and the markup's title promised it could export -- while the gateway's own
+    // docstring says the shell may not offer it yet. Hiding on the SAME predicate keeps one
+    // seat and needs no re-adding: the day the wiring lane flips the flag, the button stands.
+    el.exportBtn.hidden = !artifactImplemented();
   }
 
   // ── helpers that touch the DOM ───────────────────────────────────────────────

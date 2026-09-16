@@ -178,7 +178,7 @@ DOM 핸들은 `src/dom.js` 의 `elements` 게터가 «한 자리»에서 소유�
 | 기준 맵 `#me2-reference-select` | `map2/main.js:1998` | `GET /api/maps/alignment/view` | O |
 | 순번 색 `#me2-index-colour` | `map2/main.js:2026` | 클라 | 조건부 |
 | **확정 `#me2-confirm-btn`** (Enter 포함) | `map2/main.js:2027 / :2044` | `POST /api/maps/alignment/confirm` | O |
-| **양식 내보내기 `#me2-export-btn`** | `map2/main.js:2112-2113` | — | **X — click 핸들러 0건, `disabled = !artifactImplemented()`. §A-4** |
+| **양식 내보내기 `#me2-export-btn`** | `map2/main.js:2112-2118` | — | **X — click 핸들러 0건. 🔵 09-17 판정 455 로 «화면에서 내려갔습니다» — `hidden = !artifactImplemented()`. 빚이 사라진 게 아니라 «화면이 약속하지 않는 상태로 대기»합니다. §A-4** |
 | **붙여넣기 결과 `#me2-paste-result`** | `showArtifactResult` (`map2/main.js:2219`) | — | **X — 호출자 0건, 페이지에 `paste` 리스너 0건. §A-4** |
 | (자동) 정렬 임계값 | `map2/api.js:106` `config: null` | **라우트가 없다는 사실이 값으로 적혀 있다** | 의도적 (항상 `RouteNotServedError`) |
 
@@ -280,9 +280,10 @@ HTML 은 66줄이고 컨트롤이 **0**이다 (`#wk-host` 하나). 전부 `src/w
 기능 손실은 없다 — 같은 반응(`reseatCellsToStoredCoords`)이 `applyPhysicalGeometry:2902` 에 살아 있다.
 readonly 가 풀릴 날의 보험인지 지나간 배선의 잔해인지 **소스가 말하지 않는다.**
 
-### A-4. map_editor2 「양식 내보내기」 · 「붙여넣기 결과」 — **하나는 의도적, 하나는 모름**
+### A-4. map_editor2 「양식 내보내기」 · 「붙여넣기 결과」 — **하나는 판정으로 닫혔고, 하나는 여전히 모름**
 ```
-#me2-export-btn      map_editor2.html:309 · click 리스너 0건 · disabled = !artifactImplemented()
+#me2-export-btn      map_editor2.html:309 · click 리스너 0건 · hidden = !artifactImplemented()
+                     (판정 455, 09-17 — 그 전에는 disabled 였고 사유가 «콘솔»로 갔습니다)
 #me2-paste-result    map_editor2.html:660 · showArtifactResult 호출자 0건 · 페이지에 paste 리스너 0건
 ```
 `artifact_gateway.js:184-191` 원문:
