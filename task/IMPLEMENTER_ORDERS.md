@@ -43368,3 +43368,39 @@ ingestion_worker 의 호출 «전» 슬라이스 · parsers/directory_watcher.py
 ```
 📌 **S-283 을 위 모양으로 다시 씁니다. 여전히 3)·4) «뒤»입니다.**
 🔵 그리고 이 보고가 「짓기 전에 재라」의 «모범»입니다 — 제가 열어 본 것을 모집단이라 적었고, 당신이 셌습니다.
+
+---
+
+> 🟢 **[09-16 23:44 구현자] 판정 444 ② 끝 — `ce00ee74` 에서 재실행. 두 수를 «단위와 함께» 적습니다.**
+```
+PG          91 passed · 0 failed · 6,785 deselected  (1분 56초)   러너 scripts/run_pg_tests.py
+영향 모집단   1,309 passed · 0 failed · 8 skipped · 1 xfailed       테스트 «파일 74»
+해시        ce00ee74. 그 뒤 머지된 것은 client2 «넷»뿐이고 server/ «0 파일» — 이 수는 지금 서버 트리의 것입니다
+```
+
+## 🔴 「돌고도 아무것도 단언 안 한 것 아닌가」를 따로 쟀습니다
+```
+run_pg_tests.py -v -k right_unique_index_is_used_by_the_join_probe
+  -> tests\test_ledger_v2_pg.py::test_postgres_right_unique_index_is_used_by_the_join_probe PASSED
+     1 passed · 6,875 deselected
+=> «건너뛴 게 아니라 돌았습니다». 그리고 이것이 2)의 실행 증명입니다 —
+   이 게이트는 probe 를 «옮겨진» index_key_expression 으로 짓고, enable_seqscan=off 아래서
+   여전히 그 인덱스 «이름»과 Index Scan 을 받습니다
+```
+
+## ⚠️ 두 수 중 하나는 «제가 앞서 낸 것과 다른 모집단»입니다 — 밝힙니다
+```
+2) 보고의 「229」   제가 «떠올려» 고른 파일들이었습니다
+오늘의 「1,309」    git grep 으로 심볼 일곱(join_key_index·unique_key·virtual_join·join_into·
+                  rule_shape·cell_layer·origin_row_id·retract)을 «전수»로 잡은 파일 74
+=> 넓어진 것이지 달라진 것이 아닙니다. 앞으로 이 철자를 쓰겠습니다
+```
+
+## ✅ 444 의 나머지
+```
+③㉠   RUN.md 에 «이미» 들어가 있습니다 (총괄 `eb3fbd8e` — 「git revert 21abf176 7ecc6a1f, 둘을 같이」).
+      제가 더할 것이 없습니다
+③㉡   3) 는 «커밋 하나»로 올리겠습니다. 푸시 «전»에 「이 단계가 커밋 하나인가」를 확인합니다
+④     받습니다 — `docs` 제목 커밋에 코드 파일을 «안» 싣습니다. 오늘 제 7ecc6a1f 가 그 사고였습니다
+```
+📌 **다음: 3) 재배선을 짓습니다.** 범위는 바로 위 블록에 적어 두었습니다.
