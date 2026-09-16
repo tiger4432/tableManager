@@ -21056,3 +21056,109 @@ server/tests/test_the_follow_up_lap_is_a_hop_and_serves_one_cause_once.py:110 ·
 > · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
 
 > ⚠️ **이 Q-1 블록은 제 커밋이 아니라 총괄의 `3d0d69a2`(C-116 지시) 에 «실려» 갔습니다** — 제가 `add` 와 `commit` 을 «두 호출»로 나눈 사이에 경로 없는 커밋이 지나갔습니다. 내용은 그대로이고, 초인종만 엉뚱한 메시지로 울렸습니다. 이 줄이 그 초인종을 다시 울립니다.
+
+---
+
+## 🔴 Q-2 [09-16 19:4x] 반증 셋 더 — **순서가 통째로 죽는 자리 · 철자가 둘 · 철회는 배선이 없다**
+
+### 🔴 결함 ④ (새로 생김, S-278 A 가 «직접» 만듦) — 소유자의 «의도된 고리»가 있으면 **순서 walk 이 규칙 «전부»의 순서를 버립니다**
+
+```
+server/chain/rule_order.py:131   if ... producer.get("follow_up"): continue   ← 「트리거 경로에 없는 것은 순서를 안 만든다」
+server/chain/rule_order.py:133-135  자기 고리(양 끝이 같은 표)만 따로 건너뜀
+server/chain/rule_order.py:142-148  if found_cycle: return list(rules)       ← 🔴 «선언 순». 계산한 순서를 «통째로» 버립니다
+server/chain/ingestion_worker.py:869  로더가 그 함수를 씁니다 (replay.py:812 도)
+```
+**무엇이 참이어야 이 일이 나나** — 조인의 «참조 쪽»(trigger = 오른쪽 표)이 «follow_up 이 아니»면 walk 이 그 엣지를
+«봅니다». 어제까지는 못 봤습니다 — `rule_order.py:124-130` 이 그 상황을 이름 대어 적어 뒀습니다:
+> 「the paced right-side rule a unified join emits (right -> left, follow_up) combined with any live
+>  left -> right rule into a "cycle"」 … 「Now the walk asks what the trigger path asks」
+
+🔴 **S-278 A 가 그 `follow_up` 을 뗐습니다.** 그래서 그 조건문이 «이제 안 걸러 냅니다».
+
+```
+실패 시나리오 (규칙 둘이면 충분합니다)
+  R1 인리치   dt_log      → dt_inventory     (오늘 이 제품이 «의도된 고리»라고 적어 둔 그 규칙)
+  R2 조인 참조 dt_inventory → dt_log          (S-278 뒤 follow_up 아님)
+  visit(R1): dt_log 의 생산자 → R2 → R2 의 트리거 dt_inventory 의 생산자 → R1 «방문 중» → 고리
+  → order_rules 가 `list(rules)` 를 돌려줍니다 = 선언 순
+  → 🔴 그 고리에 «안 낀» 규칙들의 순서까지 «같이» 사라집니다 (S-156 의 순서가 통째로 무효)
+```
+🔴 **그리고 이 커밋이 «이겼다»고 적은 것이 바로 그 자리입니다** — 커밋 메시지:
+> 「gate ⑤ cycles: the ordering walk over both halves reports NONE. The order does change —
+>  reference before target — and that is the walk doing its job」
+
+그 측정은 «조인 두 쪽만» 있는 모집단에서 참입니다. 오른쪽 표에 쓰는 «맵퍼 하나»가 같이 서 있으면
+고리가 «생기고», 그 순간 얻었다는 「reference before target」이 «제일 먼저» 없어집니다.
+⚠️ 못 잼: 오늘 라이브 규칙에 그 맵퍼가 «있는지» — `server/config/*.json` 은 gitignore 입니다.
+   다만 이 저장소의 주석 셋이 그 조합을 「INTENDED · 운영에서 만났다(09-15)」로 적고 있습니다.
+
+### 🔴🔴 사슬 — ④ 와 ①(Q-1) 이 «같은 문장»에 매달려 있습니다
+
+```
+판정 402   「고리는 오류가 아니라 «모양»이다 — 막는 것은 max_chain_depth 다」
+           그 문장이 세 자리를 떠받칩니다:
+             rule_order.py:29-31      (로드 시 raise 를 걷어낸 사유)
+             rule_order.py:93-96      (다른 표 사이의 고리를 허용한 사유)
+             ingestion_worker.py:1025 (고리 검증기가 «보고만» 하는 사유)
+Q-1 ①      그런데 조인의 쓰기에는 `chain_depth` 가 «없습니다» → 천장이 그 홉을 «못 봅니다»
+운영자 줄   rule_order.py:44 「고리 (순서는 선언 순 · 홉 상한 max_chain_depth=%s 이 막습니다)」
+🔴 즉 오늘 조인이 낀 고리에서 이 줄은 «두 번» 틀립니다 — 순서를 버렸다고 말하면서,
+   막아 준다고 가리킨 천장은 그 고리를 «셀 수 없습니다»
+```
+
+### ⚠️ 결함 ③ (잠복) — 조인 철자가 «둘»이고, 같은 측정을 인용해 «반대» 칸을 답니다
+
+```
+통합 선언  rule_shape.py:138-157      follow_up «뗌» → 트리거 경로   (S-278, 소유자 판정)
+구 선언    virtual_join/config.py:1083·1104
+           「🔴 `follow_up: True`, FOR THE REASON S-151 MEASURED. One reference row can reach
+             70,800 target rows here (≈92 s …)」                    ← «그대로» 남아 있습니다
+🔴 같은 S-151 70,800 을 한 칸은 「그래서 페이스드」로, 다른 칸은 「그건 랩을 안 정한다」로 읽습니다
+```
+그래서 오늘 제품에는 「조인」이 **두 철자**입니다 — `builtin:join`(구, `_run_join`→`executor.on_*_rows_changed`)과
+`join_into`(통합). 소유자 판정은 「조인은 다른 규칙처럼 돈다」인데 **움직인 것은 한 철자뿐**입니다.
+```
+오늘 «실제로» 갈라지나  — 못 잼. 구 철자는 `materialize: true` 인 vjoin 선언에만 규칙이 생기고
+                        `virtual_join/config.py:1080` 이 「이 박스의 운영 규칙 «둘»은 오늘 read-time」이라 적습니다
+                        (그 문장도 라이브 선언에 대한 것이라 제가 확인 못 합니다)
+그래서 «잠복»으로 셉니다 — materialize 선언이 하나 생기는 날 두 조인이 «다른 랩»에서 돕니다
+```
+
+### ⚠️ 결함 ② (S-278 것이 아님 · 그러나 이제 «고칠 랩이 없습니다») — 철회가 배선이 없습니다
+
+```
+server/virtual_join/executor.py:878  retract_rows  「The reference row is GONE, so the join's layer goes with it」
+git grep 전수(추적 파일)             제품 호출자 «0» — 시험 하나(test_a_materialized_join_writes_its_own_layer.py:197)
+                                    + 주석 둘(cell_layer.py:7 · ingestion_worker.py:2819)
+```
+🔴 그리고 그 주석 둘 중 하나가 **거짓 문장**입니다:
+```
+ingestion_worker.py:2818-2822 (페이스드 랩)
+   「A DELETE FOLLOWS NO VALUES … a join's answer for them is retracted by `retract_rows`」
+   → 부르는 자가 «없습니다»
+ingestion_worker.py:1348 (트리거 경로)
+   valid_events = [e for e in events if e.event_type in ["CREATE","EDIT"] …]  ← DELETE 는 «여기서» 빠집니다
+```
+**실패 시나리오**: 오른쪽(참조) 표의 행을 지웁니다 → 왼쪽 행에 조인이 써 둔 값이 «그대로 남습니다».
+사용자는 「없는 참조에서 온 값」을 «영원히» 봅니다. 오류는 안 납니다. (VOC 부류: 틀린 답을 «조용히» 봄)
+⚠️ 네 갈래 빼기 완료 — 데코레이터 등록 «아님»(BUILTIN_KINDS 에 없음) · 설정 문자열 «아님» · 명령줄 «아님» · 시험만 «맞음».
+
+### 확신도
+
+```
+④ 구조 ✅ (조건문·호출자·폴백 전부 오늘 HEAD 에서 읽음) · 실행 ❌ · 라이브 규칙 모집단 «못 잼»
+③ 구조 ✅ 잠복 — 오늘 갈라지는지는 라이브 선언이라 «못 잼»
+② 구조 ✅ 전수 census(추적 파일). ⚠️ mappers/*.py 는 gitignore 라 «하한»입니다
+```
+
+### 🔴 판정 대기 (Q-1 의 ① 과 «같이» 보셔야 합니다)
+
+```
+② 고리가 잡히면 순서를 «통째로» 버리는 것이 맞습니까 — 아니면 고리 «밖» 규칙의 순서는 지킵니까
+③ 구 철자(`builtin:join`)도 같이 옮깁니까, 아니면 그 칸의 S-151 인용을 «정정»합니까
+④ 철회(`retract_rows`)를 어느 자리에 답니까 — DELETE 는 오늘 두 랩 «어느 쪽에도» 안 옵니다
+⛔ 저는 넷 다 수리를 «짓지 않았습니다»
+```
+
+> · 🔁 이월: 0 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
