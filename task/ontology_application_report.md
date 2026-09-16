@@ -20947,3 +20947,110 @@ ingestion_worker.py:2020~2023
 > ① 액션 발급 설계를 «저장소로» 들여올까요 — 지금은 레인이 못 읽습니다
 > ② (그 밖) 20 을 4일 계획에 «넣습니까, 뺍니까»
 > · 🔁 이월: 0 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
+
+---
+
+## 🔴 Q-1 [09-16 19:3x] 적대 QA 첫 반증 — **트리거 경로의 빌트인 갈래는 «홉을 안 찍는다»**
+
+> 표적: S-278 A (`c41f9c6d`) + A-bis (`486eb92e`). 물음 「조인이 도나 — 도는 것이 옳나」의 후반.
+> ⏱️ 하나 찾았으니 그때그때 올립니다. 나머지(접기가 잃은 것 · 회귀 · 도달 불가)는 계속 봅니다.
+
+### 결함 ① — 조인의 쓰기가 **`chain_depth` 없이** 나갑니다 (S-249 ⓒ 가 페이스드 랩에서 고친 그것이 «새 자리»에서 부활)
+
+```
+server/chain/ingestion_worker.py:1481-1495   빌트인 갈래 — 조인은 이제 «여기서» 돕니다
+server/chain/ingestion_worker.py:1563        if table_updates or ... :      ← 스코프가 여기서 «열립니다»
+server/chain/ingestion_worker.py:1571        request_source.set("chain_ingestion")
+server/chain/ingestion_worker.py:1586        request_chain_depth.set(incoming_depth + 1)
+🔴 1484 는 1586 «앞»입니다. 빌트인 갈래는 그 두 토큰 «밖»에서 씁니다
+```
+
+**무엇이 참이어야 이 일이 나나** — 아웃박스 봉투는 «한 자리»에서만 만들어지고(`database/database.py:208-226`
+`_outbox_envelope`), 그 자리는 `request_chain_depth.get()` 을 읽습니다. 기본값은 `None` 이고,
+`None` 이면 `chain_depth` 키가 «아예 안 실립니다»(`database.py:296`, `:349`). 그리고 `crud.transaction_context`
+는 user·tx·source «셋만» 잡습니다(`crud.py:8-18`) — 깊이는 안 잡습니다.
+
+```
+쓰기 경로  join_into._write → crud.apply_batch_updates
+           → transaction_context(user, tx, source_val)   ← source_val = 항목의 source_name
+           → join_into.py:247 이 CHAIN_LAYER("chain_ingestion") 를 «항목마다» 싣습니다
+✅ 그래서 «source» 가드는 «삽니다» — 커밋 메시지가 말한 「자기 쓰기에 자기가 안 깨어난다」는 참입니다
+   (crud.py:4564-4566 이 항목의 source_name 을 컨텍스트로 올려 주기 때문입니다)
+🔴 그러나 «깊이»는 그 길에 없습니다. 조인의 아웃박스 이벤트에는 `chain_depth` 키가 «없습니다»
+```
+
+**그래서 무엇이 깨지나** — 천장이 「None 은 안 막는다」로 쓰여 있습니다:
+```
+ingestion_worker.py:3819-3830
+   depth = chain_depth_of(payload)
+   if depth is not None and depth > max_depth:  ← 없는 깊이는 «영원히 안 걸립니다»
+ingestion_worker.py:1583-1586
+   incoming_depth = max([...깊이들...] or [0])  ← 조인의 이벤트는 기여를 «0» 으로 하고
+                                                  다음 홉이 «1 부터» 다시 셉니다
+```
+🔴 **즉 조인을 지나는 고리는 매 바퀴 계수기가 «0 으로 되돌아갑니다». `max_chain_depth` 가 그 고리를 못 막습니다.**
+그리고 그 천장은 **이 제품이 「이 고리는 의도된 것」이라고 판정할 때 든 «유일한 근거»**입니다:
+> `ingestion_worker.py:1020-1026` — 「`dt_log → dt_inventory` by mapper and back by join is an
+> INTENDED loop, and the drain's `max_chain_depth` is what keeps it finite」 (판정 402, 로드 시 raise 를 걷어낸 사유)
+
+### ⚰️ 그리고 이것은 «이미 판정된 부류»입니다 — 같은 파일이 그 문장을 들고 있습니다
+
+```
+ingestion_worker.py:2825-2831  [S-249 ⓒ] THE LAP IS A HOP.
+  「request_chain_depth is set in exactly one place — the chain group step — and this drain runs
+   in its own thread outside that scope, so everything written here carried NO hop and could
+   never meet max_chain_depth. A loop through this lap was unbounded while the same loop inside
+   the group step was bounded: one ceiling, two answers.」
+```
+🔴 **S-249 ⓒ 는 «페이스드 랩»을 그 스코프 안으로 들여서 고쳤습니다. S-278 A 는 조인을 그 랩에서 «빼내»
+트리거 경로의 «스코프 밖 자리»로 옮겼습니다 — 같은 병, 자리만 바뀌었습니다.** 「한 천장, 두 답」이 그대로입니다.
+
+### 실패 시나리오 (구체)
+
+```
+① 조인 규칙이 `extra`/`limits` 로 `allow_chain_trigger: true` 를 답니다
+   -> 가능합니다: rule_shape.py:161-163 이 `derive.mapper` · `limits` · `extra` 를 «그대로» out 에 얹습니다.
+      as_chain_rule 이 그 칸을 «막지 않습니다»
+② dt_log ─(인리치, allow_chain_trigger)→ dt_inventory ─(조인 reference side)→ dt_log ─(인리치)→ …
+③ 인리치의 쓰기는 깊이 1,2,3… 을 달지만 «조인의 쓰기»가 깊이를 안 달아서
+   그다음 인리치가 다시 «1» 부터 셉니다
+④ max_chain_depth 는 «영원히 도달되지 않습니다». 소유자가 만났던 「인벤토리→로그 조인→다시 enrich 무한반복」이
+   그대로 돌아옵니다 — 이번엔 «막을 것이 없는 채로»
+```
+⚠️ **그리고 ① 없이도 한 문장은 이미 거짓입니다**: 조인의 쓰기는 «체인의 쓰기»인데 이벤트가
+「체인이 안 썼다」(깊이 키 없음)라고 말합니다. `request_chain_depth` 주석이 그 둘을 «다른 사실»이라고
+못 박아 두었습니다(`database/context.py:22-27`).
+
+### 왜 게이트가 초록인가 — 게이트는 «조인이 더 이상 안 도는 랩»을 재고 있습니다
+
+```
+server/tests/test_the_follow_up_lap_is_a_hop_and_serves_one_cause_once.py:110 · :132
+   둘 다 worker._run_builtin_followups(...) 를 «직접» 부릅니다 — «페이스드 랩»입니다
+🔴 조인은 c41f9c6d 로 그 랩에서 나갔습니다. 그래서 이 게이트는 «참인 채로» 조인을 안 덮습니다
+   (부류: 「시그니처 단언은 못 부르는 라우트에도 참이다」의 랩 판)
+```
+그리고 c41f9c6d 가 새로 단 다섯 시험은 `_rule_accepts_event(rule, _event("chain_ingestion"))` 를
+«손으로 만든 이벤트»로 재고 있습니다 — **술어가 참임을 재지, 「그 쓰기가 그런 이벤트를 낳는가」를 안 잽니다.**
+✅ source 쪽은 우연이 아니라 `join_into.py:239-248` 이 «항목마다» 라벨을 실어서 참입니다(제가 길을 따라가 확인).
+🔴 depth 쪽은 그 길이 «없습니다».
+
+### 확신도
+
+```
+구조   ✅ 읽어서 확인. 줄 번호 전부 오늘 HEAD 에서 다시 잼
+실행   ❌ 안 돌렸습니다 — 지시가 「코드 0 · 읽기만」이고 구현자가 ingestion_worker 를 만지는 중입니다
+못 잼  · 오늘 «라이브» 규칙에 `allow_chain_trigger` 를 단 조인이 «있는지»: server/config/*.json 이
+        gitignore 라 못 봅니다. 그래서 위 ①은 「가능하다」이지 「오늘 그렇다」가 아닙니다
+      · 깊이 키가 빠진 채 «실제로» 몇 바퀴 도는지: 박스에서 안 돌렸습니다
+```
+
+### 🔴 판정 대기
+
+```
+① 이 갈래를 깊이 스코프 «안»으로 넣습니까 — 아니면 조인의 쓰기는 «홉이 아니다»로 판정하십니까
+   (후자면 1020-1026 의 「max_chain_depth 가 막는다」가 거짓이 되므로 «그 문장»을 고쳐야 합니다)
+⛔ 저는 수리를 «짓지 않았습니다». 모양은 총괄이 정합니다
+```
+
+> · 🔁 이월: 0 (문서 정비는 이 라운드 판정 뒤에 — 거짓이 될 문장을 먼저 못 박으면 두 번 고칩니다)
+> · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
