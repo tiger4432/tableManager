@@ -134,6 +134,34 @@ def builtin_kind(rule):
     return kind if kind in builtins.BUILTIN_KINDS else None
 
 
+def retraction_refusal(rule):
+    """None if this rule's answer can be withdrawn when its input row is deleted, or the
+    operator sentence saying it cannot — 「이 종류는 되돌릴 수 없다」.
+
+    🔴 [판정 434 ④] THE SEAT ANSWERS, AND IT ANSWERS BY NAME. A retraction aims with
+    `cell_sources.origin_row_id`, so a kind whose writer never stamps it leaves cells
+    nothing can find — and the note's NULL cannot carry that meaning, because NULL already
+    means 「이 행은 도장이 생기기 전에 쓰였다」. Two facts under one spelling is the defect
+    this whole round is about, so the second one is said out loud here instead.
+
+    ⚠️ A FILE MAPPER IS 「말 안 함」 AND NOT 「못 한다」. `GeneralUpdateItem.origin_row_id`
+    is on the schema every mapper already builds, so a mapper CAN stamp; whether the live
+    ones do is not countable from here (`server/mappers/` is the owner's and gitignored).
+    Naming them as unable would be a claim about rows I cannot see.
+    """
+    from chain import builtins
+
+    kind = builtin_kind(rule)
+    name = (rule or {}).get("name") or "<이름 없는 규칙>"
+    if kind is None:
+        return ("%s: 파일 맵퍼는 자기가 읽은 행을 «적을 수 있지만», 이 맵퍼가 적는지는 "
+                "제품이 모릅니다 — 도장이 없으면 이 규칙이 쓴 칸은 철회되지 않습니다" % name)
+    if kind in builtins.ORIGIN_STAMPING_KINDS:
+        return None
+    return ("%s: 「%s」 종류는 자기 답이 «어느 행에서 왔는지»를 안 적습니다 — 그래서 그 행이 "
+            "지워져도 이 규칙이 쓴 칸은 «그대로 남습니다»" % (name, kind))
+
+
 def _uniform():
     """The answer's shape, with every cell present whichever door ran.
 

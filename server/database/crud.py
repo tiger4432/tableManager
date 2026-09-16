@@ -647,8 +647,13 @@ def log_version_gate_summary(table_name, version_col, source_name, stats):
 
 
 class LightCellSource:
-    __slots__ = ('table_name', 'row_id', 'column_name', 'source_name', 'value', 'updated_by', 'ingested_at')
-    def __init__(self, table_name, row_id, column_name, source_name, value, updated_by, ingested_at):
+    # 🔴 [S-280] `origin_row_id` IS A SLOT AND IS SELECTED BY EVERY PREFETCH, not an
+    # afterthought defaulted to None. This object is what `apply_row_update_internal`
+    # compares the incoming item against, so an origin the cache does not carry reads as
+    # 「the origin changed」 on EVERY write - which would bump `ingested_at`, and that
+    # timestamp is the layering tiebreak.
+    __slots__ = ('table_name', 'row_id', 'column_name', 'source_name', 'value', 'updated_by', 'ingested_at', 'origin_row_id')
+    def __init__(self, table_name, row_id, column_name, source_name, value, updated_by, ingested_at, origin_row_id=None):
         self.table_name = table_name
         self.row_id = row_id
         self.column_name = column_name
@@ -656,6 +661,7 @@ class LightCellSource:
         self.value = value
         self.updated_by = updated_by
         self.ingested_at = ingested_at
+        self.origin_row_id = origin_row_id
 
 class LightCellOverwrite:
     __slots__ = ('table_name', 'row_id', 'column_name', 'is_overwrite', 'updated_by', 'updated_at', 'manual_priority_source')
@@ -2207,6 +2213,18 @@ def _pg_multirow_upsert(db: Session, table, mappings: list[dict],
     return True
 
 
+#: What an existing `cell_sources` row takes from the incoming one on conflict.
+#
+# 🔴 ONE LIST, BECAUSE THERE WERE THREE AND THEY HAD TO AGREE. `bulk_upsert_cell_sources`
+# spells its update set three times — once as `update_cols` for the multi-row send and
+# twice as `set_={...}` for the two fallbacks — and a column added to two of the three is
+# a column that updates or does not depending on which path the batch takes and on nothing
+# else. Nothing would raise: the insert would carry the value and the conflicting row would
+# quietly keep its old one.
+CELL_SOURCE_CONFLICT_COLS = ('table_name', 'row_id', 'column_name', 'source_name')
+CELL_SOURCE_UPDATE_COLS = ('value', 'updated_by', 'ingested_at', 'origin_row_id')
+
+
 def bulk_upsert_cell_sources(db: Session, mappings: list[dict], chunk_size: int = BULK_CHUNK_SIZE):
     if not mappings:
         return
@@ -2249,8 +2267,8 @@ def bulk_upsert_cell_sources(db: Session, mappings: list[dict], chunk_size: int 
         # `_pg_multirow_upsert` for the census and why it stays inside SQLAlchemy.
         if _pg_multirow_upsert(
                 db, models.CellSource.__table__, deduped_mappings,
-                conflict_cols=['table_name', 'row_id', 'column_name', 'source_name'],
-                update_cols=['value', 'updated_by', 'ingested_at'],
+                conflict_cols=list(CELL_SOURCE_CONFLICT_COLS),
+                update_cols=list(CELL_SOURCE_UPDATE_COLS),
                 chunk_size=chunk_size):
             return
 
@@ -2258,12 +2276,8 @@ def bulk_upsert_cell_sources(db: Session, mappings: list[dict], chunk_size: int 
         # send. Still one compiled statement and one parameter set per row.
         stmt = upsert_insert(models.CellSource)
         stmt = stmt.on_conflict_do_update(
-            index_elements=['table_name', 'row_id', 'column_name', 'source_name'],
-            set_={
-                'value': stmt.excluded.value,
-                'updated_by': stmt.excluded.updated_by,
-                'ingested_at': stmt.excluded.ingested_at
-            }
+            index_elements=list(CELL_SOURCE_CONFLICT_COLS),
+            set_={col: getattr(stmt.excluded, col) for col in CELL_SOURCE_UPDATE_COLS}
         )
         for chunk in _chunks(deduped_mappings, chunk_size):
             db.execute(stmt, chunk)
@@ -2272,12 +2286,8 @@ def bulk_upsert_cell_sources(db: Session, mappings: list[dict], chunk_size: int 
     for chunk in _chunks(deduped_mappings, chunk_size):
         stmt = upsert_insert(models.CellSource).values(chunk)
         stmt = stmt.on_conflict_do_update(
-            index_elements=['table_name', 'row_id', 'column_name', 'source_name'],
-            set_={
-                'value': stmt.excluded.value,
-                'updated_by': stmt.excluded.updated_by,
-                'ingested_at': stmt.excluded.ingested_at
-            }
+            index_elements=list(CELL_SOURCE_CONFLICT_COLS),
+            set_={col: getattr(stmt.excluded, col) for col in CELL_SOURCE_UPDATE_COLS}
         )
         db.execute(stmt)
 
@@ -3188,10 +3198,16 @@ def apply_row_update_internal(
         # statement, so it must not jump ahead of a differing source that spoke after
         # it. "Newest" means newest assertion of a value, not newest touch. Removing
         # this guard would let a periodic re-delivery of a stale value silently win.
+        # 🔴 [S-280 · 판정 434] THE ORIGIN IS PART OF THE STATEMENT. A cell whose value is
+        # unchanged but whose INPUT ROW changed is a new statement about where the value
+        # came from, and this is the note a retraction aims with - leaving it stale would
+        # withdraw cells on the strength of a row that no longer feeds them, which is the
+        # defect class this column exists to close.
         source_unchanged = (
             src_obj is not None
             and src_obj.value == clean_val
             and src_obj.updated_by == update_item.updated_by
+            and getattr(src_obj, "origin_row_id", None) == update_item.origin_row_id
         )
 
         if not src_obj:
@@ -3224,6 +3240,7 @@ def apply_row_update_internal(
         if not source_unchanged:
             src_obj.value = clean_val
             src_obj.updated_by = update_item.updated_by
+            src_obj.origin_row_id = update_item.origin_row_id
             src_obj.ingested_at = datetime.now()
 
             if cell_sources_to_upsert is not None:
@@ -3235,6 +3252,11 @@ def apply_row_update_internal(
                     "source_name": update_item.source_name,
                     "value": clean_val,
                     "updated_by": update_item.updated_by,
+                    # Unconditionally, never omitted when absent: `_is_executemany_safe`
+                    # requires every mapping to carry the SAME keys, and a ragged list
+                    # falls back to the slow send for a reason that has nothing to do
+                    # with this column.
+                    "origin_row_id": update_item.origin_row_id,
                     "ingested_at": src_obj.ingested_at
                 }
 
@@ -4800,16 +4822,17 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                     models.CellSource.source_name,
                     models.CellSource.value,
                     models.CellSource.updated_by,
-                    models.CellSource.ingested_at
+                    models.CellSource.ingested_at,
+                    models.CellSource.origin_row_id
                 ).filter(
                     models.CellSource.table_name == table_name,
                     models.CellSource.row_id.in_(all_row_ids)
                 ).order_by(models.CellSource.source_name.asc()).all()
-                for t_name, r_id, col_name, src_name, val, upd_by, ing_at in all_sources:
+                for t_name, r_id, col_name, src_name, val, upd_by, ing_at, origin in all_sources:
                     key = (r_id, col_name)
                     if key not in sources_cache:
                         sources_cache[key] = []
-                    sources_cache[key].append(LightCellSource(t_name, r_id, col_name, src_name, val, upd_by, ing_at))
+                    sources_cache[key].append(LightCellSource(t_name, r_id, col_name, src_name, val, upd_by, ing_at, origin))
                 
                 all_overwrites = db.query(
                     models.CellOverwrite.table_name,
@@ -5317,18 +5340,19 @@ def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], so
         models.CellSource.source_name,
         models.CellSource.value,
         models.CellSource.updated_by,
-        models.CellSource.ingested_at
+        models.CellSource.ingested_at,
+        models.CellSource.origin_row_id
     ).filter(
         models.CellSource.table_name == table_name,
         models.CellSource.row_id.in_(row_ids)
     ).order_by(models.CellSource.source_name.asc()).all()
     
     sources_cache = {}
-    for t_name, r_id, col_name, src_name, val, upd_by, ing_at in all_sources:
+    for t_name, r_id, col_name, src_name, val, upd_by, ing_at, origin in all_sources:
         key = (r_id, col_name)
         if key not in sources_cache:
             sources_cache[key] = []
-        sources_cache[key].append(LightCellSource(t_name, r_id, col_name, src_name, val, upd_by, ing_at))
+        sources_cache[key].append(LightCellSource(t_name, r_id, col_name, src_name, val, upd_by, ing_at, origin))
 
     all_overwrites = db.query(
         models.CellOverwrite.table_name,
@@ -5469,18 +5493,19 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
         models.CellSource.source_name,
         models.CellSource.value,
         models.CellSource.updated_by,
-        models.CellSource.ingested_at
+        models.CellSource.ingested_at,
+        models.CellSource.origin_row_id
     ).filter(
         models.CellSource.table_name == table_name,
         models.CellSource.row_id.in_(row_ids)
     ).order_by(models.CellSource.source_name.asc()).all()
     
     sources_cache = {}
-    for t_name, r_id, col_name, src_name, val, upd_by, ing_at in all_sources:
+    for t_name, r_id, col_name, src_name, val, upd_by, ing_at, origin in all_sources:
         key = (r_id, col_name)
         if key not in sources_cache:
             sources_cache[key] = []
-        sources_cache[key].append(LightCellSource(t_name, r_id, col_name, src_name, val, upd_by, ing_at))
+        sources_cache[key].append(LightCellSource(t_name, r_id, col_name, src_name, val, upd_by, ing_at, origin))
 
     all_overwrites = db.query(
         models.CellOverwrite.table_name,

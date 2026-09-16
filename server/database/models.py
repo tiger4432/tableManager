@@ -528,6 +528,32 @@ class CellSource(Base):
     # `chain_replay.withdraw_source`; `frame_trigger_scope`, `chain_replay` R1/R2 and
     # `plan_retraction` remain the only spellings of that.
     confirmation_uid = Column(String, nullable=True)
+    # 🔴 [S-280 · 판정 434] WHICH INPUT ROW THIS CELL'S VALUE CAME FROM. NULL means
+    # "this writer did not say", and that is the state of every pre-existing row — there
+    # is no backfill, exactly as `confirmation_uid` above has none.
+    #
+    # WHY THE CELL AND NOT THE ROW OR THE KEY. `cell_layer.withdraw_source` already works
+    # one cell at a time: it deletes that cell's `cell_sources` row, recomputes priority
+    # over what remains and writes the revealed value back. A note taken per cell therefore
+    # needs no translation step. A note taken per KEY would need somebody to resolve
+    # 「key -> cells」, and only a join can do that — which is why the key-shaped answer
+    # served one of the four kinds and this one serves all four: a writer knows its own
+    # input at the moment it writes, whatever it computed on the way.
+    #
+    # ⛔ AND NOT A SPELLING OF `source_name`, for the reason the block above already
+    # argues: `get_source_priority` is an exact-name dict returning 99 on a miss, so a
+    # name that varies per input row can never be registered and every stamped cell would
+    # sink below `chain_ingestion`. The stamp would demote the value it stamps. An origin
+    # supplies no value; it names the row the value was read FROM. Different axis,
+    # different column.
+    #
+    # ⚠️ ONE ROW, BECAUSE THAT IS WHAT CAN BE WITHDRAWN BY IT. A writer that derives one
+    # cell from SEVERAL input rows leaves this NULL rather than naming one of them — a
+    # half-true origin would retract on a row that is only part of the answer. 「말 안 함」
+    # and 「이 행에서 왔다」 stay different facts, and the seat answers for the kinds that
+    # cannot say (판정 434 ④), rather than this column answering with a second meaning
+    # for NULL.
+    origin_row_id = Column(String, nullable=True)
 
     __table_args__ = (
         # [index retirement 2026-08-11] `idx_sources_lookup` (table_name, row_id,
@@ -593,6 +619,19 @@ class CellSource(Base):
         # migrations/add_frame_confirmation.py is the path onto a live database.
         Index("idx_sources_confirmation", "confirmation_uid", "table_name", "row_id",
               postgresql_where=text("confirmation_uid IS NOT NULL")),
+        # [S-280 · 판정 434] "which cells did THESE deleted rows feed". PARTIAL for the same
+        # reason as the sibling above, and the reason is measured on that one: a FULL index
+        # on this table carried 5,164 MB at 34M rows, and only a chain write stamps here.
+        #
+        # 🔴 AND IT LEADS ON `origin_row_id`, because that is the only column the reader
+        # has. A retraction starts from an outbox DELETE, which names row ids and nothing
+        # else - the deleted row's table is not the table being withdrawn FROM, so leading
+        # on `table_name` (as the two indexes above do) would serve a predicate nobody
+        # writes. The projection (table_name, source_name, column_name, row_id) is what
+        # `cell_layer.cells_stamped_by` groups by; it is left off the key so the index stays
+        # narrow, and a deletion is rare and batched where an ingest is neither.
+        Index("idx_sources_by_origin", "origin_row_id",
+              postgresql_where=text("origin_row_id IS NOT NULL")),
     )
 
 

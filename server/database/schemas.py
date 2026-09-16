@@ -176,6 +176,11 @@ class GeneralUpdateItem(BaseModel):
     updates: Dict[str, Any]                # { "column_name": value }
     source_name: str = "user"
     updated_by: Optional[str] = "system"
+    # 🔴 [S-280 · 판정 434] The row this item's values were read FROM, when the writer can
+    # name one. It lands in `cell_sources.origin_row_id` and is what a retraction aims
+    # with once that row is deleted; a writer that cannot name a single input row leaves
+    # it None, and the seat answers for that kind rather than this field guessing.
+    origin_row_id: Optional[str] = None
 
     # 🔴 판정 191. THE KEY THE CALLER SENT, once `business_key_val` has been
     # overwritten by the one the row's own columns assemble to.

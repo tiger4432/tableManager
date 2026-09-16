@@ -184,19 +184,48 @@ def test_retraction_withdraws_the_layer_by_the_rule_name(monkeypatch):
 
     🚩 IT LIVES IN `cell_layer` SINCE S-211 ① (판정 358). It was in `chain_replay`, imported
     here inside `retract_rows`, and that one line was the last seam of a four-module ring.
-    Patching the OLD home would leave this green while the executor called the real thing."""
+    Patching the OLD home would leave this green while the executor called the real thing.
+
+    ⛔ [S-280 · 판정 433 ③] AND THIS TEST WAS GREEN WHILE THE FUNCTION WROTE NOTHING. It
+    asserted the three arguments it named and let a `**k` swallow the two that decide
+    whether anything happens: without `row_ids` the withdrawal takes the WHOLE table, and
+    without `apply=True` it rolls back. Both are `withdraw_source` defaults, so both were
+    invisible at the call site AND at this assertion - a gate scoring the proxy (「누구의
+    층인가」) while the property (「그 행들에 «썼나»」) went unmeasured. It now scores every
+    argument that decides the outcome.
+    """
     from chain import cell_layer
 
     seen = {}
 
-    def fake_withdraw(db, table_name, source_name, columns=None, **k):
-        seen.update(table=table_name, source=source_name, columns=columns)
+    def fake_withdraw(db, table_name, source_name, columns=None, row_ids=None, apply=False,
+                      **k):
+        seen.update(table=table_name, source=source_name, columns=columns,
+                    row_ids=row_ids, apply=apply)
         return {"withdrawn": 3}
 
     monkeypatch.setattr(cell_layer, "withdraw_source", fake_withdraw)
-    out = vje.retract_rows(None, _rule(materialize=True, max_rewrite_rows=10))
-    assert seen == {"table": "left_t", "source": "join_frame", "columns": ["frame"]}
+    out = vje.retract_rows(None, _rule(materialize=True, max_rewrite_rows=10),
+                           ["r1", "r2"], True)
+    assert seen == {"table": "left_t", "source": "join_frame", "columns": ["frame"],
+                    "row_ids": ["r1", "r2"], "apply": True}
     assert out == {"withdrawn": 3}
+
+
+def test_retraction_cannot_be_called_without_saying_which_rows_or_whether_to_write():
+    """🔴 [판정 433 ③] THE SHAPE, NOT ONLY THE VALUE — the same argument 판정 431 made about
+    the deletion author. A default that means 「the whole table」 and one that means 「do not
+    actually write」 cannot be seen at a call site, which is how a function called
+    `retract_rows` sat for a round as a whole-table dry run with nobody able to read that
+    off the code. Removing them makes the omission a TypeError at the boundary."""
+    import inspect
+
+    parameters = inspect.signature(vje.retract_rows).parameters
+    for required in ("row_ids", "apply"):
+        assert parameters[required].default is inspect.Parameter.empty, (
+            "retract_rows still has a default for %r, so a caller can silently get "
+            "「whole table」 or 「write nothing」: %r"
+            % (required, parameters[required].default))
 
 
 def test_the_join_is_not_respelled_for_the_write():

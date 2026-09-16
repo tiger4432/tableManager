@@ -123,6 +123,62 @@ def _resolve_cell(table_name: str, col_types: dict, row, col: str,
         "changed": crud.clean_str_value(old_val) != crud.clean_str_value(new_val),
     }
 
+def cells_stamped_by(db, origin_row_ids, chunk_size: int = DEFAULT_CHUNK_SIZE) -> dict:
+    """`{(table_name, source_name): (columns, row_ids)}` for cells these rows fed.
+
+    🔴 [S-280 · 판정 434] THE NOTE READ BACK. `origin_row_id` was written while the input
+    row was still there, so this answers 「그 행이 먹인 칸이 어디인가」 after the row is
+    gone — which is the one question a deleted row cannot be asked itself.
+
+    READ ONLY, and grouped the way `withdraw_source` takes its arguments, so the caller
+    does no regrouping of its own.
+    """
+    from database import models
+
+    ids = [str(item) for item in (origin_row_ids or ()) if item]
+    found = {}
+    for i in range(0, len(ids), chunk_size):
+        rows = (db.query(models.CellSource.table_name, models.CellSource.source_name,
+                         models.CellSource.column_name, models.CellSource.row_id)
+                .filter(models.CellSource.origin_row_id.in_(ids[i:i + chunk_size])).all())
+        for table_name, source_name, column_name, row_id in rows:
+            columns, row_ids = found.setdefault((table_name, source_name), (set(), set()))
+            columns.add(column_name)
+            row_ids.add(row_id)
+    return found
+
+
+def withdraw_by_origin(db, origin_row_ids, apply: bool = False, log=logger.info) -> dict:
+    """Withdraw every cell stamped as having been read FROM one of these rows.
+
+    🔴 [S-280 · 판정 435 ③] `columns` AND `row_ids` AND `apply`, all three. Narrowing by
+    the source NAME alone is the whole-table withdrawal ruling 433 ③ found standing in
+    `retract_rows`; narrowing by (columns x rows) resolves even a shared channel name —
+    `chain_ingestion`, which `join_into` writes under by the owner's own ruling — down to
+    exactly the cells one rule wrote on the rows it wrote them on.
+
+    ⛔ A `user` LAYER IS SKIPPED AND COUNTED, NOT RAISED ON. `withdraw_source` refuses that
+    source outright, and one such group would otherwise abort the withdrawal of every other
+    group in the same deletion. A human's value carrying a chain's origin stamp is a
+    contradiction worth a line, not a reason to leave the rest standing.
+    """
+    stats = {"mode": "apply" if apply else "dry-run", "groups": 0, "cells_withdrawn": 0,
+             "protected_skipped": 0}
+    for (table_name, source_name), (columns, row_ids) in sorted(
+            cells_stamped_by(db, origin_row_ids).items()):
+        if source_name in PROTECTED_SOURCES:
+            stats["protected_skipped"] += len(columns) * len(row_ids)
+            log("[withdraw-origin] '%s' on '%s' is a protected layer and was NOT withdrawn "
+                "— a human's value cannot carry a chain's origin, so this is worth reading",
+                source_name, table_name)
+            continue
+        stats["groups"] += 1
+        one = withdraw_source(db, table_name, source_name, columns=sorted(columns),
+                              row_ids=sorted(row_ids), apply=apply, log=log)
+        stats["cells_withdrawn"] += one.get("cells_withdrawn", 0)
+    return stats
+
+
 def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
                     row_ids: list = None, apply: bool = False,
                     chunk_size: int = DEFAULT_CHUNK_SIZE, log=logger.info,

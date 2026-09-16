@@ -525,8 +525,12 @@ def test_a_left_row_with_two_right_answers_is_skipped_by_name_and_the_rest_are_w
     monkeypatch.setattr(crud, "apply_batch_updates", fake_apply)
 
     class Row:
-        def __init__(self, rid, matched, v):
-            self._mapping = {"row_id": rid, "matched": matched, "take_0": v}
+        # ⚠️ [S-280] `origin_row_id` IS PART OF THE SHAPE `_answer` RETURNS, so this stand-in
+        # carries it. A fixture that hand-builds the row the code reads is the second author
+        # of that shape, and one that lags it tests a row the SELECT no longer produces.
+        def __init__(self, rid, matched, v, origin="ref_row"):
+            self._mapping = {"row_id": rid, "matched": matched, "take_0": v,
+                             "origin_row_id": origin if matched else None}
             self.matched = matched
     rows = [Row("fan", True, "A"), Row("fan", True, "B"), Row("ok", True, "C"),
             Row("miss", False, None)]

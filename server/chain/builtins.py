@@ -257,14 +257,25 @@ def declared_unique_index_names(known_tables: dict = None) -> set:
 #: kind -> callable. One table, the registry's posture: a name, a callable, nothing implicit.
 BUILTIN_KINDS = {}
 
+#: The kinds whose writer stamps `cell_sources.origin_row_id` — 「이 칸은 어느 행에서 왔나」
+#: (판정 434). A kind that is NOT in here writes cells nothing can aim a retraction at, and
+#: 판정 434 ④ says that must be answered BY NAME rather than by a quiet nothing.
+#:
+#: 🔴 REGISTERED BY THE SAME CALL AS THE IMPLEMENTATION, deliberately. A second table filled
+#: from a second place is how 「이 종류가 무엇을 하나」 comes to have two answers; `_install`
+#: below states both facts about a kind on one line, so they cannot drift apart.
+ORIGIN_STAMPING_KINDS = set()
 
-def register_builtin(kind: str, fn):
+
+def register_builtin(kind: str, fn, stamps_origin: bool = False):
     existing = BUILTIN_KINDS.get(kind)
     if existing is not None and existing is not fn:
         raise UnknownBuiltinKind(
             "two implementations claim %r; a rule naming it could not say which it meant"
             % kind)
     BUILTIN_KINDS[kind] = fn
+    if stamps_origin:
+        ORIGIN_STAMPING_KINDS.add(kind)
     return fn
 
 
@@ -320,14 +331,21 @@ def _install():
     import virtual_join.config
     from chain import join_into
 
-    register_builtin(virtual_join.config.JOIN_MAPPER, _run_join)
+    # `stamps_origin`: `materialize_rows` carries the right row that answered into
+    # `GeneralUpdateItem.origin_row_id` (S-280), so what it wrote can be withdrawn when
+    # that row is deleted.
+    register_builtin(virtual_join.config.JOIN_MAPPER, _run_join, stamps_origin=True)
     # 🔴 [S-237] THE UNIFIED DECLARATION'S `join` KIND, AND IT IS A DIFFERENT ENTRY ON
     # PURPOSE. `builtin:join` is the READ-TIME join and production runs on it; this one
     # WRITES what the declaration says into a column. `register_builtin` refuses two
     # claimants of one id by name, so the distinction is enforced here rather than trusted.
-    register_builtin(join_into.JOIN_INTO_MAPPER, join_into.run)
+    register_builtin(join_into.JOIN_INTO_MAPPER, join_into.run, stamps_origin=True)
     # S-195: the kind S-179 declared finally has an implementation, so the table carries the
     # whole `builtin:` vocabulary and the named temporary two-path condition is over.
+    # ⛔ NOT `stamps_origin`. The sweep's answer comes from a candidate PROBE over a
+    # reference view, not from one reference row, so there is no single row to write down —
+    # and 판정 434 forbids answering that with a NULL that already means 「기존 행」. The
+    # seat names this kind instead (`rule_run.retraction_refusal`).
     register_builtin(enrichment.config.AUTO_CONFIRM_MAPPER, _run_auto_confirm)
 
 
