@@ -186,11 +186,18 @@ def test_the_seats_builtin_write_makes_ONE_event_not_one_per_row(db):
 
 def test_every_registered_builtin_accepts_the_vocabulary_the_seat_passes():
     """🔴 [판정 428] ONE SIGNATURE, WHOEVER THE KIND IS. Measured 2026-09-16: of the three
-    registered kinds, `builtin:join` declared neither `done` nor `**kwargs`, and the follow-up
-    lap passes `done=` to every kind - so it raised `TypeError` there, and because that lap's
-    `for` sits inside its `try`, the first raising rule ended the WHOLE batch: the auto-confirm
-    rules behind it never ran, and the outer `except` left one line. It started at 92257825
-    (2026-09-12 15:20), fifty minutes after `builtin:join` joined the table.
+    registered kinds, `builtin:join` declared neither `done` nor `**kwargs`, while the
+    follow-up lap passes `done=` to every kind it dispatches. So the CAPABILITY is broken -
+    that call raises `TypeError`, and because that lap's `for` sits inside its `try`, one
+    raising rule would end the whole batch and the auto-confirm rules behind it would not run.
+    The mismatch dates to 92257825 (2026-09-12 15:20), fifty minutes after `builtin:join`
+    joined the table.
+
+    ⚠️ 「IT HAS BEEN RAISING FOR FOUR DAYS」 IS A SENTENCE I CANNOT WRITE, and I wrote it in the
+    channel before the lead corrected it (Q-12). The EVENT needs a declaration that puts that
+    kind on the lap; declarations live in `server/config/*.json`, which is gitignored, and
+    production cannot be measured. 「이 길로 가면 터진다」 is structure and is true; 「터지고
+    있었다」 is an event and is uncounted. The reverse of 「기제가 있다 ≠ 돈다」.
 
     ⛔ THE FIX THAT WAS REFUSED, recorded so nobody re-derives it: 「pass `done` only to the
     kinds that take it」 makes the CALLER ask which kind it is, which is precisely what 판정 420

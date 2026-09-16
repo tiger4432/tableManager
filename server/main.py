@@ -510,9 +510,8 @@ async def startup_event():
             # 캐시 무효화
             invalidate_table_cache(table_name)
                 
-            msg = event_constants.batch_refresh_message(table_name, count)
-            if created_logs and len(created_logs) <= 5000:
-                msg["created_logs"] = created_logs
+            msg = event_constants.batch_refresh_message(
+                table_name, count, created_logs=created_logs)
                 
             # 스레드 안전하게 메인 이벤트 루프에 브로드캐스트 예약
             try:
@@ -3592,9 +3591,8 @@ async def apply_batch_updates_endpoint(
 
             if not broadcast_needs_items:
                 # len(msg_items) on this arm; msg_items is now empty by construction.
-                msg = event_constants.batch_refresh_message(table_name, len(results))
-                if created_logs and len(created_logs) <= 5000:
-                    msg["created_logs"] = created_logs
+                msg = event_constants.batch_refresh_message(
+                    table_name, len(results), created_logs=created_logs)
                 await manager.broadcast(json.dumps(msg))
             else:
                 CHUNK_SIZE = 500
@@ -4027,9 +4025,8 @@ async def set_cell_priority_batch_endpoint(
         # by construction, exactly as in the batch-update endpoint.
         if len(changed_rows) > BROADCAST_ITEM_LIMIT:
             # 대량 업데이트: 경량화된 새로고침 신호만 전송
-            msg = event_constants.batch_refresh_message(table_name, len(changed_rows))
-            if created_logs and len(created_logs) <= 5000:
-                msg["created_logs"] = created_logs
+            msg = event_constants.batch_refresh_message(
+                table_name, len(changed_rows), created_logs=created_logs)
             await manager.broadcast(json.dumps(msg))
         else:
             # Split into chunks of 500
@@ -4090,9 +4087,8 @@ async def delete_cell_source_batch_endpoint(
         # construction on this arm now. See `_delete_and_merge`.
         if len(changed_rows) > BROADCAST_ITEM_LIMIT:
             # 대량 업데이트: 경량화된 새로고침 신호만 전송
-            msg = event_constants.batch_refresh_message(table_name, len(changed_rows))
-            if created_logs and len(created_logs) <= 5000:
-                msg["created_logs"] = created_logs
+            msg = event_constants.batch_refresh_message(
+                table_name, len(changed_rows), created_logs=created_logs)
             await manager.broadcast(json.dumps(msg))
         else:
             # Split into chunks of 500
@@ -6339,9 +6335,8 @@ async def retry_failed_file_ingestion(log_id: int = None, db: Session = Depends(
     loop = asyncio.get_running_loop()
     
     def sync_refresh_callback(t_name: str, count: int, created_logs: list = None, total_log_count: int = None):
-        msg = event_constants.batch_refresh_message(t_name, count)
-        if created_logs and len(created_logs) <= 5000:
-            msg["created_logs"] = created_logs
+        msg = event_constants.batch_refresh_message(
+            t_name, count, created_logs=created_logs)
         
         loop.call_soon_threadsafe(
             lambda: asyncio.create_task(manager.broadcast(json.dumps(msg)))
@@ -6530,18 +6525,16 @@ async def internal_event_batch_refresh(
     import json
     from fastapi.concurrency import run_in_threadpool
     invalidate_table_cache(table_name)
-    msg = event_constants.batch_refresh_message(table_name, change_count)
+    # [C-5] 워처가 이미 500건으로 절단해 보내며(total_log_count = 실제 총 건수), 구버전
+    # 워처(무절단 전량 전송) 호환을 위해 서버측 절단도 유지한다 — 🔴 [판정 427] 그 절단은 이제
+    # 빌더의 규칙이고, 이 자리는 «자기 사본을 안 만듭니다». 캐시가 쓸 두 값은 빌더가 실은 것을
+    # 그대로 읽습니다: 두 벌이 있으면 그 둘이 갈라질 수 있고, 갈라져도 오류가 안 납니다.
+    msg = event_constants.batch_refresh_message(
+        table_name, change_count,
+        created_logs=created_logs, total_log_count=total_log_count)
     if created_logs:
-        # [C-5] 워처가 이미 500건으로 절단해 보내며(total_log_count = 실제 총 건수),
-        # 구버전 워처(무절단 전량 전송) 호환을 위해 서버측 절단도 유지한다.
-        actual_count = total_log_count if total_log_count is not None else len(created_logs)
-        sliced_logs = created_logs[:MAX_NOTIFY_CREATED_LOGS] if len(created_logs) > MAX_NOTIFY_CREATED_LOGS else created_logs
-        msg["created_logs"] = sliced_logs
-        # [C-5 대칭화 — 라이브 드릴 관찰] 체인 경로(/internal/events/broadcast passthrough)는
-        # WS 페이로드에 total_log_count가 실리는데 이 경로는 msg 재구성 과정에서 누락됐다.
-        # 순수 추가 필드로 동봉해 클라이언트가 절단 여부(len(created_logs) < total_log_count)를
-        # 양 경로에서 동일하게 판별할 수 있게 한다.
-        msg["total_log_count"] = actual_count
+        sliced_logs = msg["created_logs"]
+        actual_count = msg["total_log_count"]
         # Update the web server's in-memory audit cache
         # [C-1] pydantic 검증(add_logs_batch)은 CPU 바운드 — threadpool로 이관(루프 비블로킹, 내부 Lock으로 안전)
         try:

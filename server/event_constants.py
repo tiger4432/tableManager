@@ -294,8 +294,21 @@ def batch_refresh_message(table_name, change_count, *, transaction_id=None,
     # from "this sender does not report omissions".
     if transaction_id is not None:
         message["transaction_id"] = transaction_id
+    # 🔴 [S-279, 판정 427] THE TRUNCATION RULE IS THIS FUNCTION'S, because it was FIVE
+    # senders' and they all had it wrong the same way: `if created_logs and
+    # len(created_logs) <= 5000: msg["created_logs"] = created_logs` - over the limit the list
+    # was dropped WHOLE and nothing said so. The client's contract (websocket.js) is
+    # 「absent is not complete」: with no `total_log_count` it cannot compare, so it neither
+    # appends nor reloads and the timeline silently falls behind. The 5,000 dates to
+    # 2026-06-02, before that contract existed.
+    #
+    # ⚠️ A CALLER THAT ALREADY TRUNCATED KEEPS ITS OWN TOTAL. The chain worker slices to
+    # `MAX_NOTIFY_CREATED_LOGS` itself and passes the pre-truncation count; re-deriving it from
+    # the list it handed over would report the sample's size as the population's.
     if created_logs is not None:
-        message["created_logs"] = created_logs
+        if total_log_count is None:
+            total_log_count = len(created_logs)
+        message["created_logs"] = created_logs[:MAX_NOTIFY_CREATED_LOGS]
     if total_log_count is not None:
         message["total_log_count"] = total_log_count
     if deleted_row_ids_omitted is not None:
