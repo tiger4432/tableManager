@@ -97,9 +97,11 @@ def test_an_unreadable_search_path_is_named_and_costs_only_the_statistics(monkey
     the rows are already durable and a failed re-analyse must not turn into a file
     reported as FAILED.
 
-    🔴 THE TWO ARMS WERE ONE `try` UNTIL THIS TEST. A `SHOW` that raised left `url`
-    unbound and the seat died three lines later on a NameError, reported as 「could not
-    re-analyse」 - true, and silent about why. They are separate arms now and this pins it.
+    🔴 THE TWO ARMS WERE ONE `try` UNTIL THIS TEST, AND THEIR FALLBACKS DIFFER. A failure
+    reaching the URL (`db.bind` / `get_bind` / `engine.url`) left `url` unbound while the
+    single `except` set only `search_path`, and the seat died on a NameError below -
+    reported as 「could not re-analyse」, true and silent about why. A raising `SHOW` was
+    never the trigger: `url` is assigned before it. They are separate arms now.
     """
     from parsers import directory_watcher as watcher
 

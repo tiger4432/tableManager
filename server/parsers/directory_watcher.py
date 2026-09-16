@@ -131,11 +131,12 @@ def _analyze_after_load(table_name: str, rows: int, why: str = None) -> bool:
         # False - silently, because it never raises. Asking the session that already told
         # us the URL costs one round trip and makes the inheritance a stated fact.
         #
-        # ⚠️ ITS OWN ARM, SO A FAILURE HERE DOES NOT COST THE URL (S-275 ③). Folded into
-        # one `try`, a `SHOW` that raised left `url` unbound and the seat died on a
-        # NameError three lines later - reported as 「could not re-analyse」, which is true
-        # and says nothing about why. Now the fallback is stated: no path means the
-        # server's default, and the line below says so if the table is not on it.
+        # ⚠️ ITS OWN ARM, BECAUSE THE TWO HAVE DIFFERENT FALLBACKS (S-275 ③). Folded into
+        # one `try`, a failure REACHING THE URL (`db.bind` / `get_bind` / `engine.url`)
+        # left `url` unbound while the `except` set only `search_path`, and the seat died
+        # on a NameError below - reported as 「could not re-analyse」, which is true and
+        # says nothing about why. Split, each says what it lost: no path means the
+        # server's default, and no URL means this seat cannot run at all.
         try:
             search_path = db.execute(_sa_text("SHOW search_path")).scalar()
         except Exception as path_err:                                  # noqa: BLE001
