@@ -200,8 +200,8 @@ def test_the_target_side_rule_is_found_normally():
     assert replay.find_rule(rules[0]["name"], rules)["name"] == "s242_join"
     assert replay.is_reference_side(rules[1]) is True
     assert replay.is_reference_side(rules[0]) is False
-    assert rules[0].get("follow_up") == rules[1].get("follow_up") is True, (
-        "the two halves differ by their trigger, not by pacing")
+    assert rules[0].get("follow_up") == rules[1].get("follow_up") is None, (
+        "the two halves differ by their trigger; S-278 took BOTH off the paced lap")
 
 
 def test_a_rule_that_is_not_in_the_set_is_refused_as_before():

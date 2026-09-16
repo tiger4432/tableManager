@@ -114,8 +114,13 @@ def test_a_unified_join_declaration_can_be_saved_and_then_stands_two_rules(clien
     answer = _save(client, rules_file, "s244_join", JOIN_DECLARATION)
 
     assert answer.status_code == 200, answer.text
-    assert [r.get("name") for r in worker.load_chain_rules()] == [
-        "s244_join", "s244_join" + rule_shape.REFERENCE_SUFFIX]
+    # ⚰️ THE ORDER FLIPPED WITH S-278 AND THAT IS THE POINT OF THE ORDERING WALK. Both
+    # halves are on the trigger path now (the owner's 2026-09-16 ruling), so the reference
+    # rule - which WRITES the table the target rule triggers on - is ordered first,
+    # producer before consumer. While it stood `follow_up` the walk skipped it and the two
+    # kept file order. This asserts the SET by name either way; the order is the walk's.
+    assert sorted(r.get("name") for r in worker.load_chain_rules()) == sorted([
+        "s244_join", "s244_join" + rule_shape.REFERENCE_SUFFIX])
 
 
 def test_a_unified_decide_declaration_can_be_saved_too(client, rules_file):

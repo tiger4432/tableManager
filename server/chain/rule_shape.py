@@ -135,10 +135,23 @@ def as_chain_rule(internal: dict) -> dict:
         derived = join_trigger_columns(derive.get("join") or {})
         if derived:
             out["trigger_columns"] = derived
-        # 🔴 PACED, NOT INLINE. One reference row reaches 70,800 target rows on this
-        # product's own measurement (S-151), and 「요청·커밋 경로 인라인 금지」 is standing.
-        # The cell says so in the rule rather than only in the dispatcher.
-        out["follow_up"] = True
+        # 🔴 [S-278, 소유자 2026-09-16] A JOIN RUNS LIKE ANY OTHER CHAIN RULE — ON THE
+        # TRIGGER PATH. It used to stand `follow_up: True`, which put it on the paced lap
+        # instead, and the owner's ruling is that the join is not a follow-up: the outbox
+        # event for a write to its trigger table is what wakes it, the same door every
+        # other mapper comes through.
+        #
+        # ⚰️ THE CELL SAID 「PACED, NOT INLINE」 ON S-151's 70,800-row measurement. That
+        # number is about how far ONE reference row can reach, and it stands; what it does
+        # not settle is which lap the work belongs on, which is the owner's call and has
+        # now been made. The paced lane keeps its other kinds.
+        #
+        # ⚠️ AND NOTHING HERE OPTS IT INTO ITS OWN WRITES. A join whose target IS its
+        # trigger (`dt_log -> dt_log`) writes with `source_name=chain_ingestion`, and
+        # `_rule_accepts_event` drops a chain-produced event for a rule that did not
+        # declare `allow_chain_trigger` - which this does not. That is what keeps the
+        # 「인벤토리→로그 조인→다시 enrich 무한반복」 the owner met from coming back, and it
+        # is pinned by a test rather than by this sentence.
         # The cell travels with the rule so the SHELL can read it at load time. It is not a
         # mapper argument - `join_into` never sees it - which is why it sits beside `params`
         # rather than inside it.

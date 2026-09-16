@@ -134,20 +134,19 @@ def test_one_declared_join_becomes_two_rules_that_watch_both_tables(load):
     assert {r["mapper"] for r in mine} == {join_into.JOIN_INTO_MAPPER}
     assert by_name[DECLARATION["name"]]["params"] == by_name[reference]["params"], (
         "one spec, two triggers")
-    # 🔵 AND THE ORDER IS NOT THE FILE'S - S-156 PUT THEM IN IT. The reference rule writes
-    # the table the target rule triggers on, so the walk orders producer before consumer. The
-    # assertion above is by NAME for that reason: pinning the list order here would be
-    # pinning the ordering walk's answer in a file that is not about ordering.
-    # ⚰️ THIS PINNED 「the paced reference rule comes FIRST」 UNTIL 2026-09-15. A follow_up
-    # rule never runs in a trigger group - `_rule_accepts_event` returns False for it - so
-    # it never shares a group with the left rule and 「before」 has no operational content.
-    # Worse, that very edge (right -> left, paced) plus any live left -> right rule read as
-    # a CYCLE in production of one edge that cannot fire. The ordering walk now asks what
-    # the trigger path asks: an edge that cannot fire orders nothing. So the two keep
-    # file order, and the fact worth asserting is that no cycle is reported for them.
-    assert [r["name"] for r in mine] == [DECLARATION["name"], reference], (
-        "a paced reference rule must not be ORDERED against its left rule - it never "
-        "shares a trigger group with it; that edge was the production phantom cycle")
+    # 🔴 AND THE ORDER IS THE WALK'S ANSWER: producer before consumer. The reference
+    # rule writes the table the target rule triggers on, so `rule_order` puts it first.
+    #
+    # ⚰️ THIS PINNED FILE ORDER UNTIL S-278, on the reasoning that a `follow_up` rule
+    # never shares a trigger group with the left rule so 「before」 had no operational
+    # content - and that the edge read as a phantom cycle of one edge that cannot fire.
+    # The owner ruled on 2026-09-16 that a join runs like any other chain rule, so both
+    # halves are on the trigger path now: the edge FIRES, 「before」 means what it says,
+    # and the walk orders them. Measured with the ordering walk on this shape: no cycle
+    # is reported.
+    assert [r["name"] for r in mine] == [reference, DECLARATION["name"]], (
+        "the reference half writes what the target half triggers on, so it is ordered "
+        "first - producer before consumer")
 
 
 def test_the_loader_no_longer_refuses_a_join_as_an_unrunnable_mapper(load):
@@ -158,14 +157,25 @@ def test_the_loader_no_longer_refuses_a_join_as_an_unrunnable_mapper(load):
             if r.get("name") == DECLARATION["name"]] == [DECLARATION["name"]]
 
 
-def test_both_rules_are_paced_rather_than_inline(load):
-    """🔴 「요청·커밋 경로 인라인 금지」. One reference row reaches 70,800 target rows on this
-    product's own measurement (S-151), so neither side rides the commit path - and the cell
-    says so in the RULE, where the dispatcher reads it, not only in the dispatcher."""
+def test_both_rules_run_on_the_trigger_path(load):
+    """🔴 [S-278, 소유자 2026-09-16] A JOIN RUNS LIKE ANY OTHER CHAIN RULE. Both halves
+    are woken by the outbox event for a write to the table they watch - the same door every
+    mapper comes through.
+
+    ⚰️ THIS ASSERTED `follow_up: True` ON BOTH, on 「요청·커밋 경로 인라인 금지」 and
+    S-151's 70,800-row reach. That number is about how far ONE reference row goes and it
+    stands; which lap the work belongs on is a different question, and the owner answered
+    it. The paced lane keeps its other kinds.
+
+    ⚠️ WHAT MAKES IT SAFE IS ASSERTED SEPARATELY, in
+    `test_a_join_runs_on_the_trigger_path_like_any_mapper`: a join declares no
+    `allow_chain_trigger`, so the rows it writes cannot wake it again."""
     mine = [r for r in load([DECLARATION])
             if str(r.get("name") or "").startswith(DECLARATION["name"])]
 
-    assert [r.get("follow_up") for r in mine] == [True, True]
+    assert [r.get("follow_up") for r in mine] == [None, None]
+    assert not any("allow_chain_trigger" in r for r in mine), (
+        "a join that opted into chain-produced events would feed itself")
     assert all(r["mapper"] in builtins.BUILTIN_KINDS for r in mine), (
         "the dispatcher only reaches rules whose mapper is in the table")
 
