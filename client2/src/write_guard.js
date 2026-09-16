@@ -18,6 +18,10 @@
 
 import { tableIsView, VIEW_READ_ONLY_NOTE } from './state.js';
 import { elements } from './dom.js';
+// 🔴 C-120. 「꺼짐 + 왜」를 그리는 «몸통»은 이제 여기 있지 않습니다. 이 파일이 답하는 것은
+//    「이 표에 쓸 수 있나」이고, 「행을 골랐나」 같은 «다른 물음»이 같은 기제를 쓰기 때문입니다.
+//    한 함수가 두 물음에 답하기 시작하면 그것이 다음 라운드의 결함입니다.
+import { setDisabledReason } from './disabled_reason.js';
 
 /**
  * 이 화면에서 «쓰는» 컨트롤들. 실측 2026-09-13: 여섯 다 `state.currentTable` 에 씁니다 —
@@ -67,16 +71,7 @@ export function refuseWrite() {
 export function applyWriteGuards() {
   const why = writeRefusal();
   for (const handle of WRITE_CONTROLS) {
-    const btn = elements[handle];
-    if (!btn) continue;
-    btn.disabled = Boolean(why);
-    if (btn.dataset && btn.dataset.titleWas === undefined) {
-      btn.dataset.titleWas = (btn.getAttribute && btn.getAttribute('title')) || '';
-    }
-    const back = btn.dataset ? btn.dataset.titleWas : '';
-    if (why) btn.setAttribute('title', why);
-    else if (back) btn.setAttribute('title', back);
-    else if (btn.removeAttribute) btn.removeAttribute('title');
+    setDisabledReason(elements[handle], why);
   }
   // 🔴 C-107. 그리고 «표 자체»가 그 사실을 말합니다. 종전에는 뷰라는 것이 화면에 «없었고»,
   //    쓰려고 해야 알 수 있었습니다 — 잠긴 컨트롤의 «이유»가 눌러 보기 전에는 안 보입니다.

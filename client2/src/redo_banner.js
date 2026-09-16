@@ -27,6 +27,15 @@
 // 🔴 닫는 방법은 «한 벌»입니다. 필터 칩 펼침이 둘째로 같은 것을 필요로 했고, 두 번째를
 //    손으로 그리는 대신 올렸습니다 (상설: 근원 템플릿 요소 개발 후 데이터 갈아끼우기).
 import { watchForDismiss } from './dropdown.js';
+// 🔴 C-120. 「꺼짐 + 왜」는 이 저장소에 좌석이 «하나»입니다. 메인 그리드의 쓰기 버튼 셋이
+//    쓰던 그 기제이고, 그래서 이 배너와 그 버튼들이 «같은 방식»으로 말합니다.
+import { setDisabledReason } from './disabled_reason.js';
+
+/** 꺼진 사유 «한 줄». 소급 목록이 `row_scoped` 라 돌릴 «행»이 있어야 합니다.
+ *
+ * ⛔ 설명을 붙이지 않습니다 — 「다음 행동」이 답이고, 그것은 한 동사입니다(상설).
+ *    「행이 선택되지 않았습니다」는 «상태»를 다시 말하는 것이라 아무것도 더하지 않습니다. */
+const NEEDS_A_ROW = '행을 고르십시오';
 
 /** 고른 행들이 이 컬럼에서 «실제로 들고 있는» 값. 없는 값은 지어내지 않고 «셉니다».
  *
@@ -218,7 +227,10 @@ export class RedoBanner {
     btn.dataset.redo = which;
     btn.textContent = label;
     // 선택이 없으면 «비활성». 눌러도 아무 일이 없는 버튼은 화면이 하는 거짓말입니다.
-    btn.disabled = !enabled;
+    // 🔴 C-120. 그런데 «말 없이» 꺼진 버튼도 거짓말입니다 — 총괄 실측: 이 배너의 `title` 이
+    //    빈 문자열이라, 같은 바의 옆 버튼 셋이 사유를 다는 동안 이 둘만 아무 말이 없었습니다.
+    //    조건은 옳습니다(소급 목록이 `row_scoped` 라 «행»이 필요합니다). 말을 안 했을 뿐입니다.
+    setDisabledReason(btn, enabled ? '' : NEEDS_A_ROW);
     btn.addEventListener('click', () => {
       if (this.open === which) { this.close(); return; }
       this.open = which;

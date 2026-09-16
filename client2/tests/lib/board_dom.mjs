@@ -108,6 +108,11 @@ export function makeNode(doc, tag) {
       return Object.prototype.hasOwnProperty.call(this.attrs, String(k))
         ? this.attrs[String(k)] : null;
     },
+    // 🔴 ADDED 2026-09-16 (C-120). 이것이 없어서 「켜지면 사유를 «거둔다»」가 이 문서에서
+    //    «한 번도» 참이 될 수 없었습니다 — 속성을 지우는 철자가 없으니 지우는 코드가
+    //    건너뛰어집니다. 스텁 구멍 넷째이고, 넷 다 같은 모양입니다: 없는 철자는 결함이
+    //    아니라 «채점되지 않은 주장»을 만듭니다.
+    removeAttribute(k) { delete this.attrs[String(k)]; },
     // 🔴 ADDED 2026-09-13 (C-100). A part that says 「열림」 with a class needs this, and it
     //    reads and writes THE SAME STRING as `className` -- two separate lists would let a
     //    class added through one be invisible to the other, so the harness would see 「닫힘」

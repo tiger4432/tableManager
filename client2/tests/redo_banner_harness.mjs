@@ -37,7 +37,13 @@ const read = (p) => readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
 // The dependency is INLINED, not stubbed: `load()` evaluates a plain script, so an import
 // statement would not survive it -- and a stub would score a dismiss that is not the one
 // shipping. Two of the mutants live in that file now.
-const SOURCE = read(DROPDOWN_PATH) + '\n'
+// ⚰️ C-120 에서 이 자리가 «비싸다»는 것이 드러났습니다. `redo_banner.js` 에 import 를 «하나»
+//    더하니 이 하니스가 `ReferenceError` 로 죽었습니다 — CLAUDE.md 가 잘라쓰기 금지의 사유로
+//    적어 둔 바로 그 문장입니다(「import 를 하나 더하면 … 던집니다」). 오늘은 목록에 한 줄을
+//    더해 초록을 지키고, 이 파일은 C-117 ㉱(하니스 잘라쓰기 제거)의 «이름 있는 구성원»입니다.
+//    같은 라운드에서 안 고치는 이유는 순서입니다 — 총괄이 ② C-120 -> ③ ㉱ 로 세웠습니다.
+const DISABLED_REASON_PATH = join(HERE, '..', 'src', 'disabled_reason.js');
+const SOURCE = read(DROPDOWN_PATH) + '\n' + read(DISABLED_REASON_PATH) + '\n'
   + read(SRC_PATH).replace(/^import .*$/gm, '');
 
 let passed = 0;
@@ -65,9 +71,18 @@ function mkDoc() {
   const el = (tag) => {
     const node = {
       tagName: String(tag).toUpperCase(), children: [], className: '',
+      // 🔴 C-120. `attrs` 와 `dataset` 은 «다른 칸»입니다. 여기 `setAttribute` 가 dataset 에
+      //    쓰고 있었고, 그래서 `title` 을 다는 코드를 이 스텁으로는 «잴 수 없었습니다» —
+      //    스텁에 없는(또는 틀린) 철자는 「아무도 채점하지 않은 주장」입니다. 오늘까지
+      //    이 부품이 setAttribute 를 안 써서 그 틀림이 조용했습니다.
+      attrs: {},
       dataset: {}, disabled: false, type: '', handlers: {}, parentNode: null,
       appendChild(child) { child.parentNode = this; this.children.push(child); return child; },
-      setAttribute(k, v) { this.dataset[k] = String(v); },
+      setAttribute(k, v) { this.attrs[k] = String(v); },
+      getAttribute(k) {
+        return Object.prototype.hasOwnProperty.call(this.attrs, k) ? this.attrs[k] : null;
+      },
+      removeAttribute(k) { delete this.attrs[k]; },
       addEventListener(name, fn) { this.handlers[name] = fn; },
       click() { if (this.handlers.click) this.handlers.click(); },
     };
@@ -177,10 +192,21 @@ console.log('\n── B. THE BUTTONS ──────────────�
   ok('B1 with nothing selected both buttons are dead',
     buttons(empty.host).length === 2 && buttons(empty.host).every((b) => b.disabled === true),
     buttons(empty.host).map((b) => b.disabled));
+  // 🔴 C-120. 꺼진 것만으로는 부족합니다 — 총괄 실측: 이 둘의 `title` 이 «빈 문자열»이라,
+  //    같은 바의 옆 버튼 셋이 사유를 다는 동안 이 둘만 아무 말이 없었습니다. 조건은 옳았고
+  //    «말»이 없었습니다. 그래서 「꺼짐」과 「왜」를 따로 단언합니다.
+  ok('B1b ... and each says WHY, in its own place',
+    buttons(empty.host).every((b) => b.getAttribute('title') === '행을 고르십시오'),
+    buttons(empty.host).map((b) => b.getAttribute('title')));
   const chosen = build([envelope({ lot_id: 'L1', wafer_id: 'W1' })]);
   ok('B2 selecting a row brings both to life',
     buttons(chosen.host).every((b) => b.disabled === false),
     buttons(chosen.host).map((b) => b.disabled));
+  // ⚠️ 그리고 살아나면 그 사유는 «사라져야» 합니다. 남으면 켜진 버튼이 「고르십시오」라고
+  //    말하게 되고, 그것은 고친 것이 아니라 자리를 옮긴 것입니다.
+  ok('B2b ... and the reason goes away with it',
+    buttons(chosen.host).every((b) => !b.getAttribute('title')),
+    buttons(chosen.host).map((b) => b.getAttribute('title')));
   // 🔴 THE DISCRIMINATING PAIR: on a table the declaration does not name, "nothing selected"
   //    and "not a ledger source" must not paint the same. The ledger button is ABSENT there.
   const notSource = build([envelope({ lot_id: 'L1' })], { relation: 'not_declared' });
@@ -511,7 +537,13 @@ const swap = (from, to) => (src) => {
 
 const DEFECTS = [
   ['M1 the buttons are live with nothing selected',
-    swap('btn.disabled = !enabled;', 'btn.disabled = false;')],
+    swap("setDisabledReason(btn, enabled ? '' : NEEDS_A_ROW);",
+      "setDisabledReason(btn, '');")],
+  // 🔴 C-120. 꺼지는 것과 «왜»가 한 줄이라 갈라질 수 없습니다 — 그래도 「말 없이 꺼진다」를
+  //    따로 겨눕니다. 그것이 총괄이 실측한 오늘의 모양이었습니다(`title` 이 빈 문자열).
+  ['M1b the buttons are off and say nothing, which is the C-120 defect itself',
+    swap("setDisabledReason(btn, enabled ? '' : NEEDS_A_ROW);",
+      'btn.disabled = !enabled;')],
   ['M2 the ledger button is drawn on a table that is not a source',
     swap('if (row) bar.appendChild', 'bar.appendChild')],
   ['M3 the group count counts rows instead of distinct values',
@@ -581,6 +613,8 @@ const CATCHES = {
   M1: 'R1', M2: 'R2', M3: 'R3', M4: 'R6', M5: 'R7', M6: 'R5', M7: 'R3', M8: 'R9',
   M9: 'R12', M10: 'R14', M11: 'R15', M12: 'R16', M13: 'R21', M14: 'R22', M15: 'R19',
   M16: 'R23', M17: 'R24',
+  // C-120. M1 은 R1(꺼짐)이 잡고, M1b 는 R25(왜)가 잡습니다 — 실제 run 에서 읽었습니다.
+  M1b: 'R25',
 };
 /** `['M1 …', fn]` -> the shape `lib/mutation_scorer.mjs` scores. */
 const named = (list) => list.map(([name, mutate]) => ({
@@ -776,6 +810,10 @@ async function runMutant({ name, mutate }) {
         ['R23 the line wears the same class with a token and without one',
           () => sameClassBothWays === true],
         ['R24 the panel wears the shell rather than styling itself', () => wearsTheShell === true],
+        // 🔴 C-120. 「꺼졌다」와 「왜 꺼졌는지 말한다」는 «다른 사실»입니다. R1 만 있으면
+        //    말 없이 끄는 코드가 만점을 받습니다 — 그것이 오늘 고친 결함의 모양이었습니다.
+        ['R25 ...and a dead button says why, in its own place',
+          () => buttons(empty.host).every((b) => b.getAttribute('title') === '행을 고르십시오')],
       ];
       // Recorded once, so the 「unexercised」 line below is COMPUTED from the checks that
       // actually ran rather than typed out beside them -- a hand-written list of names drifts
