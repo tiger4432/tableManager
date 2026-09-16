@@ -116,13 +116,26 @@ def _rule_columns(rule, key, default):
     return tuple(declared) if declared else tuple(default)
 
 
-def _payload_filters(db, rule, payload: Dict[str, Any], source_table: str) -> Dict[str, Any]:
-    """Which source rows this attribution payload is about.
+def _matching_join_rule(db, rule, source_table: str):
+    """The ONE virtual-join declaration this group is about, resolved ONCE (S-276, 판정 417).
 
-    Read from the virtual-join rule's own `join_key`, so the revisit scope and the gate
-    that consumes it are decided by the same declaration. Two independent spellings of
-    "which rows does this attribution cover" is how a revisit ends up covering a
-    different set than the gate it was meant to unblock.
+    🔴 IT USED TO BE READ PER PAYLOAD, AND THAT IS A DECLARATION BEING RE-READ ONCE PER
+    ROW. `_payload_filters` looped over the two rule names and called
+    `derivation.join_rule` inside the per-payload loop, so a 1,000-row group asked the
+    join loader 2,000 times - and that loader re-reads the file and runs a uniqueness
+    query per declaration. Measured on this box (2 live declarations): 3.4 ms a call,
+    so ≈6.9 s per 1,000-row group from this helper alone, against an owner spec of 5 s
+    for the whole group.
+
+    ⛔ HOISTED, NEVER CACHED. A declaration does not change while one group is running,
+    so its lifetime IS the loop's - which is what makes this a MOVE and not a cache. A
+    cache would create the question 「when is it stale」, and that question is what the
+    2026-09-14 outage was partly made of (`virtual_join/config`'s own note: every read
+    that missed the TTL re-ran the loader and re-logged the same refusal, forever).
+
+    ⚠️ THE ANSWER IS UNCHANGED. The old loop picked the first declaration whose
+    `right_table` is the trigger and whose `left_table` is the source; so does this, and
+    the per-payload work that remains is reading the payload.
     """
     trigger = (rule or {}).get("trigger_table")
     for rule_name in (derivation.CONFIRMED_JOIN_RULE, derivation.FRAME_JOIN_RULE):
@@ -131,14 +144,30 @@ def _payload_filters(db, rule, payload: Dict[str, Any], source_table: str) -> Di
             continue
         if vj.get("left_table") != source_table:
             continue
-        filters = {}
-        for left, right in derivation.join_pairs(vj):
-            value = payload.get(right)
-            if value is None or str(value).strip() == "":
-                return {}          # an incomplete key selects nothing, never everything
-            filters[left] = value
-        return filters
-    return {}
+        return vj
+    return None
+
+
+def _payload_filters(vj, payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Which source rows this attribution payload is about.
+
+    Read from the virtual-join rule's own `join_key`, so the revisit scope and the gate
+    that consumes it are decided by the same declaration. Two independent spellings of
+    "which rows does this attribution cover" is how a revisit ends up covering a
+    different set than the gate it was meant to unblock.
+
+    ⚠️ TAKES THE RESOLVED DECLARATION, NOT A SESSION (S-276). This is the per-row half,
+    and a per-row function that can reach the database is a per-row function that will.
+    """
+    if not vj:
+        return {}
+    filters = {}
+    for left, right in derivation.join_pairs(vj):
+        value = payload.get(right)
+        if value is None or str(value).strip() == "":
+            return {}              # an incomplete key selects nothing, never everything
+        filters[left] = value
+    return filters
 
 
 def expand_trigger(db: Session, payloads: List[Dict[str, Any]], rule) -> List[Dict[str, Any]]:
@@ -157,9 +186,14 @@ def expand_trigger(db: Session, payloads: List[Dict[str, Any]], rule) -> List[Di
         logger.error("[DtMapMapper] source table '%s' has no model", source_table)
         return []
 
+    # 🔴 [S-276, 판정 417] THE DECLARATION IS RESOLVED ONCE, OUTSIDE THE LOOP. It does not
+    # change while this group runs, so its lifetime is the loop's - a MOVE, not a cache,
+    # and therefore no 「when is it stale」 question is created.
+    vj = _matching_join_rule(db, rule, source_table)
+
     scopes = []
     for payload in payloads:
-        filters = _payload_filters(db, rule, payload, source_table)
+        filters = _payload_filters(vj, payload)
         if filters:
             scopes.append(filters)
     if not scopes:
