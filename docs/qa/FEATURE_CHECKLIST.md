@@ -1,6 +1,6 @@
 # ✅ FEATURE_CHECKLIST — 기능 인벤토리 + QA 수동 점검 체크리스트
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-09-05 (🔴 **§1.9 · §2.11 의 「은퇴가 정직하게 보이는가」 점검이 «돌릴 수 없게» 됐다** — 소유자가 갈래를 통째로 지워 묘비·`successor`·`graph.html`·「🕸️ 추적」 버튼·그 그물 시험이 전부 삭제됐다. 남은 점검은 「저장소 표 셋이 재기동 후 다시 안 생긴다」 하나, 살아남는 생각은 「`successor` 는 «그대로 호출»해 확인한다」) · 직전 2026-08-31 (**L4-bis 결측 카탈로그 신설** · L4 에 `sources` 절 · **§1.8 / §2.8-quinquies 재작성** — 소급 화면·실행 등록부·협조적 취소가 착지해 「화면은 아직 없다」가 거짓이 됐다) · 직전 2026-08-29 심야 `290bb1af` 재측정 | **Owner:** QA / Client
+> **Status:** 🟢 Living | **Last-verified:** 2026-09-17 (🔴 **토큰 절의 번들 판정이 «제대로 빌드된» 번들에서 운영자를 세우고 있었다** — `grep -c … admin-*.js` → `grep -l … *.js`(C-122 로 문자열이 공유 청크로 이사) · 클라 토큰 흐름의 호출자가 «둘» · `isGateRejection` 의 집이 `admin_token.js` · §「화면이 「없다」를 말하는 법」 문구 다섯이 오늘 철자와 달랐다) · 직전 2026-09-05 (🔴 **§1.9 · §2.11 의 「은퇴가 정직하게 보이는가」 점검이 «돌릴 수 없게» 됐다** — 소유자가 갈래를 통째로 지워 묘비·`successor`·`graph.html`·「🕸️ 추적」 버튼·그 그물 시험이 전부 삭제됐다. 남은 점검은 「저장소 표 셋이 재기동 후 다시 안 생긴다」 하나, 살아남는 생각은 「`successor` 는 «그대로 호출»해 확인한다」) · 직전 2026-08-31 (**L4-bis 결측 카탈로그 신설** · L4 에 `sources` 절 · **§1.8 / §2.8-quinquies 재작성** — 소급 화면·실행 등록부·협조적 취소가 착지해 「화면은 아직 없다」가 거짓이 됐다) · 직전 2026-08-29 심야 `290bb1af` 재측정 | **Owner:** QA / Client
 >
 > 🔴 **이 헤더에 라운드 기록을 쌓지 마십시오.** 변경 이력은 [`docs/history/`](../history/)가 소유합니다.
 >
@@ -289,8 +289,8 @@ dirty 3선택, ACTIVE/DRAFT, review→revise와 reviewed JSON read-only를 확�
 | **통지 4xx가 누가 거절했는지 말한다** (2026-07-30 `23a346d`) | `/internal/events/*`의 401/403 로그에 **`admin-gate=yes\|no`**가 붙는다. 판정은 게이트가 **자기 거부에만** 다는 `WWW-Authenticate: X-Admin-Token` 헤더 하나이고(대소문자 무시 **정확 일치** — 프록시의 `WWW-Authenticate: Basic realm=…`이 우리 것으로 읽히면 안 된다), `admin-gate=yes`면 **토큰 지문**과 모집단별 REMEDY가 함께 나온다(403 = 양쪽 토큰 다름 / 401+지문 있음 = 전송 중 탈락 / 401+`none` = 이 프로세스에 변수 없음 / 401+`unusable-non-ascii` = 비-ASCII라 헤더를 못 만듦). 🔴 **`admin-gate=no`면 토큰을 아무리 만져도 안 고쳐진다** — 앞단(프록시·방화벽·포트를 뺏은 다른 프로세스)이 답한 것이다. 2026-07-30 인시던트의 3시간이 이 한 줄이 없어서 들었다 | 워커 로그 | `admin_auth.internal_event_failure_note` · [DEPLOY_SETUP §1-4/§1-5](../guide/DEPLOY_SETUP.md) |
 | **loopback HTTP는 프록시를 참조하지 않는다** (2026-07-30 `23a346d`) | 워커→웹서버 호출의 세션은 **`internal_event_client.internal_event_session()` 하나**에서만 나오고 `trust_env=False`다(환경변수·Windows 프록시 레지스트리 **둘 다** 차단, 스레드 로컬). 웹서버→GraphSync의 `httpx`도 같다. 원 사고: 레지스트리 `ProxyOverride`의 `<local>`은 **점 없는 호스트명만** 우회시켜 `localhost`는 통과하고 **`127.0.0.1`은 프록시로 나갔다** → 사설 주소 중계 거부 403(게이트 없는 `/health`까지). 🔴 **네 번째 발신자가 기억해야 하는 규칙이 아니라 테스트다** — 같은 결함이 발신자별로 세 번 재발해, 이제 발신자가 세션을 직접 만들면 `test_admin_auth.py`가 실패한다. 기동 시 데몬 3종이 `/health` 프로브 + `proxy-env` 요약을 찍는다 | (자동) 데몬 기동 로그 `[internal-events]` | `server/internal_event_client.py` · `test_admin_auth.py::test_no_sender_builds_its_own_client` · [PRIMITIVES §6](../architecture/PRIMITIVES.md) |
 | 정적 폴백 봉쇄 (traversal 차단) | SPA catch-all이 **결과 기반 containment 검사** 후에만 파일을 낸다. 이전에는 **무인증으로 임의 파일**(`table_config.json`, `Windows/win.ini`, 게이트 자신의 소스)이 200이었다 — 잠근 조회 라우트가 지키던 바로 그 바이트가 옆문으로 나가고 있었다. 탈출은 **403이 아니라 404**(탈출이 파싱됐다는 사실조차 확인해 주지 않는다) | `GET /{경로}` | `main.py serve_static_or_index` · `_resolve_admin_script_path`(재사용된 원형) |
-| 클라 토큰 흐름 | 게이트 거부에만 붙는 **`WWW-Authenticate: X-Admin-Token`** 헤더로 판정 → `prompt` 1회 → `localStorage['assy.adminToken']` 보관 → 이후 `X-Admin-Token` 헤더 전송. **새 화면·탭·설정 패널 없음**(구현은 `adminFetch()` 하나) | 어드민 페이지 최초 진입 | `client2/src/admin.js adminFetch` · [frontend §5](../architecture/frontend.md) |
-| 서빙되는 것은 **번들**이다 | 서버가 보내는 것은 `client2/src/admin.js`가 아니라 git에 올라간 `client2/dist/assets/admin-*.js`다. 소스만 고치고 번들을 안 올리면 **토큰을 켜는 순간 어드민이 죽는다**(401은 오는데 물어보는 코드가 서빙 파일에 없어 프롬프트가 안 뜬다) | `cd client2 && npm run build` | 판정: `grep -c X-Admin-Token client2/dist/assets/admin-*.js` |
+| 클라 토큰 흐름 | 게이트 거부에만 붙는 **`WWW-Authenticate: X-Admin-Token`** 헤더로 판정 → `prompt` 1회 → `localStorage['assy.adminToken']` 보관 → 이후 `X-Admin-Token` 헤더 전송. **새 화면·탭·설정 패널 없음**(전송의 몸통은 `adminFetch()` 하나). 🆕 **호출자는 «둘»** — 어드민 페이지와 **그리드 페이지**(`main.js::runRetroactive`). `prompt` 는 어드민만 — 그리드는 `askForToken` 을 «안 넘겨» 묻지 않는다 | 어드민 페이지 최초 진입 · 그리드의 소급 실행 | `client2/src/admin_token.js adminFetch`(`admin.js:177` 은 deps 둘을 주입하는 래퍼) · [frontend §3.1-bis](../architecture/frontend.md) |
+| 서빙되는 것은 **번들**이다 | 서버가 보내는 것은 `client2/src/*.js` 가 아니라 git 에 올라간 `client2/dist/assets/*.js` 다(🆕 **어느 청크인지는 번들러가 정한다** — 이름을 절차에 박지 말 것). 소스만 고치고 번들을 안 올리면 **토큰을 켜는 순간 어드민이 죽는다**(401은 오는데 물어보는 코드가 서빙 파일에 없어 프롬프트가 안 뜬다) | `cd client2 && npm run build` | 판정: `grep -l X-Admin-Token client2/dist/assets/*.js` → **파일이 하나 이상**(§A 와 같은 명령 · HEAD 실측 자리는 `config_resolve_view-*.js`) |
 | 회귀 방어(범위 있음) | `test_admin_auth.py`가 FastAPI 라우트 테이블을 **열거**해 커버리지를 단언 — 나중에 추가되는 admin 라우트는 무방비 배포 대신 스위트를 빨갛게 만든다. ⚠️ **WebSocket 라우트와 mount는 걸리지 않는다**(`route.methods`가 `None`) — 그 축은 사람이 봐야 한다(§2.16) | `pytest server/tests/test_admin_auth.py` | `ADMIN_GATES` |
 
 ---
@@ -601,14 +601,15 @@ dirty 3선택, ACTIVE/DRAFT, review→revise와 reviewed JSON read-only를 확�
 
 | 상황 | 화면이 말해야 하는 것 | 운영자의 손이 가야 할 곳 |
 |---|---|---|
-| 응답 자체가 없음 | `서버에 연결할 수 없습니다 ― 서버가 실행 중인지 확인하세요` | 서버 프로세스 |
-| `404` | `실행 중인 서버가 구버전입니다 ― 서버를 재시작하세요` | **배포** (서버가 「나에게 그 라우트가 없다」고 답한 것) |
-| `401`·`403` **+ `WWW-Authenticate: X-Admin-Token`** | `관리자 토큰이 거부되었습니다 ― 새로고침 후 다시 입력하세요` | 토큰 |
-| `401`·`403` **그 헤더 없이** | `관리자 게이트가 아닌 응답입니다 ― 프록시 등 앞단에 …` | **이 포트에 무엇이 답하는가** |
+| 응답 자체가 없음 | `서버 연결 불가 · 실행 중인지 확인` | 서버 프로세스 |
+| `404` | `구버전 서버 · 재시작 필요` | **배포** (서버가 「나에게 그 라우트가 없다」고 답한 것) |
+| `401`·`403` **+ `WWW-Authenticate: X-Admin-Token`** | `토큰 거부 · 새로고침 후 재입력` | 토큰 |
+| `401`·`403` **그 헤더 없이** | `관리자 게이트 아님 · 앞단 프록시 확인` | **이 포트에 무엇이 답하는가** |
 | 그 외(5xx 등) | `조회 실패` | 라우트는 있고 깨진 것 — **이것만이 진짜 조회 실패** |
 
-- [ ] 🎯 **401 갈래가 상태코드가 아니라 헤더로 갈린다**: 토큰을 틀리게 넣어 게이트 401을 받는다 → 「관리자 토큰이 거부되었습니다」. 🔴 **`WWW-Authenticate` 없이 401을 내는 것을 앞단에 두고** 같은 조회를 한다 → 「관리자 게이트가 아닌 응답입니다」로 **갈려야 한다.**
-  - **왜 이것이 가장 비싼 항목인가**: 포트 앞의 프록시는 **자기** `WWW-Authenticate: Basic realm=…`으로 답하고, 2026-07-30에 정확히 그것이 **인증 실패로 읽혀 오후 하나를 썼습니다**. 판정은 `admin.js`의 `isGateRejection`이고 **재사용이지 재유도가 아닙니다** — 사본이 생기면 두 판정이 갈립니다.
+- [ ] 🎯 **401 갈래가 상태코드가 아니라 헤더로 갈린다**: 토큰을 틀리게 넣어 게이트 401을 받는다 → 「**토큰 거부 · 새로고침 후 재입력**」. 🔴 **`WWW-Authenticate` 없이 401을 내는 것을 앞단에 두고** 같은 조회를 한다 → 「**관리자 게이트 아님 · 앞단 프록시 확인**」으로 **갈려야 한다.**
+  - ⚠️ **화면 줄과 «프롬프트» 문구를 혼동하지 말 것** — `admin_token.js` 의 재입력 프롬프트는 여전히 「관리자 토큰이 거부되었습니다. 다시 입력해 주세요.」이고, 위 둘은 `config_resolve_view.js::CHROME` 의 «화면 줄»이다. 프롬프트를 보고 통과시키면 낡은 줄이 그대로 남는다.
+  - **왜 이것이 가장 비싼 항목인가**: 포트 앞의 프록시는 **자기** `WWW-Authenticate: Basic realm=…`으로 답하고, 2026-07-30에 정확히 그것이 **인증 실패로 읽혀 오후 하나를 썼습니다**. 판정은 🆕 **`admin_token.js` 의 `isGateRejection`**(C-122 로 `admin.js` 에서 이사)이고 **재사용이지 재유도가 아닙니다** — 사본이 생기면 두 판정이 갈립니다.
 - [ ] 🎯 **vite dev 오리진(`:5173`)에서도 갈린다** (`cde3398`): 🔴 **브라우저는 노출되지 않은 응답 헤더를 교차 출처에서 지웁니다.** `WWW-Authenticate`가 CORS `expose_headers`에 없으면 **진짜 게이트 거부가 「앞단이 답했다」로 확신 있게 잘못 표시**됩니다. `:8080`/`:8081` 직접 서빙(같은 출처)에서는 원래 읽혔으므로 **이 결함은 dev 오리진에서만 보입니다** — 두 오리진에서 각각 확인하십시오.
   - 값에 비밀이 없습니다(원하는 헤더의 **이름**뿐). 노출 목록은 `server/main.py`의 `CORSMiddleware` 한 줄이 정본입니다.
 - [ ] **`Server:` 헤더는 증거이지 문장이 아니다**: 앞단이 자기 이름을 대면 사유 문장 **옆에** 붙어 나온다(문장 자체는 고정 `CHROME` 항목 그대로). ⚠️ **`uvicorn`이면 표시되지 않는다** — 우리 서버가 자기 이름을 대는 것은 운영자에게 아무것도 알려 주지 않는다. 길이도 잘린다(의심받는 쪽이 준 입력이므로).
@@ -888,7 +889,8 @@ dirty 3선택, ACTIVE/DRAFT, review→revise와 reviewed JSON read-only를 확�
 
 **A. 토큰을 켜기 전에**
 
-- [ ] 🎯 **번들 선행 확인**: `grep -c X-Admin-Token client2/dist/assets/admin-*.js` → **1 이상**. **0이면 여기서 멈추고** `cd client2 && npm run build` 후 `dist/` 커밋. 0인 채로 토큰을 켜면 어드민 페이지가 401만 받고 **프롬프트조차 뜨지 않는다**(서버가 서빙하는 것은 소스가 아니라 번들이다).
+- [ ] 🎯 **번들 선행 확인**: `grep -l X-Admin-Token client2/dist/assets/*.js` → **파일이 하나 이상 나와야 한다**. **아무것도 안 나오면 여기서 멈추고** `cd client2 && npm run build` 후 `dist/` 커밋.
+  > 🔴 **[2026-09-17 정정] 종전의 `grep -c … admin-*.js` 는 «제대로 빌드된» 번들에서도 0 을 냅니다** — 전송이 `admin_token.js` 로 옮겨지며(C-122 `c66a7332`) 그 문자열이 **공유 청크**로 갔습니다(HEAD 실측: `dist/assets/config_resolve_view-*.js` 하나). 청크 «이름»을 절차에 박으면 번들러가 가르는 날 운영자를 잘못 세웁니다 — 그래서 `*.js` 전체를 봅니다. 0인 채로 토큰을 켜면 어드민 페이지가 401만 받고 **프롬프트조차 뜨지 않는다**(서버가 서빙하는 것은 소스가 아니라 번들이다).
 - [ ] 🎯 **traversal은 404다**(토큰 설정 여부와 무관 — **인증 없이** 확인할 것):
   ```bash
   # 🚨 --path-as-is 가 없으면 curl이 클라이언트에서 ../를 접어 버린다.

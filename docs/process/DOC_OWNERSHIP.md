@@ -1,16 +1,23 @@
 # 🗂️ DOC_OWNERSHIP — 서브시스템 ↔ 문서 소유 매핑
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-09-05 (`closed_lists()` 행 정정 — 「검증기 상수에서 직접」이 이제 «전부»에 대해 참이 아니다) · 직전 2026-09-02 (아래 「이번 라운드」의 행만 · 다른 행은 각 라운드 날짜 기준 그대로) · 직전 2026-08-31 · 그 직전 2026-08-30 (`system_reload` 행만) | **Owner:** Lead / PM
+> **Status:** 🟢 Living | **Last-verified:** 2026-09-17 (행 «추가 3 · 정정 1» — 아래 「이번 라운드」. ⛔ 읽기 시점 조인은 범위 제외) · 직전 2026-09-05 (`closed_lists()` 행 정정 — 「검증기 상수에서 직접」이 이제 «전부»에 대해 참이 아니다) · 직전 2026-09-02 (아래 「이번 라운드」의 행만 · 다른 행은 각 라운드 날짜 기준 그대로) · 직전 2026-08-31 · 그 직전 2026-08-30 (`system_reload` 행만) | **Owner:** Lead / PM
 >
 > 🔴 **행을 더하거나 고치면 이 헤더의 「이번 라운드」도 함께 쓴다** — 직전에 F9 행이 추가될 때 그것을 어겼고, 그래서 새 행이 어느 라운드의 것인지 알 수 없었습니다.
 > 🔴 **소유 행이 없는 문서·계약은 조용히 낡습니다.** 새 문서를 만들거나 새 계약(`contracts/<name>/`)을 추가하면 **그 자리에서 행을 만드십시오.**
 >
-> **이번 라운드 (2026-09-02 · doc-keeper · 정비 사이클 173 커밋 · 행 «추가 1 · 정정 1»)**
+> **이번 라운드 (2026-09-17 · doc-keeper · 정비 사이클 `fcf72594..HEAD` **215 커밋** · 행 «추가 3 · 정정 1»)**
+> ⛔ **범위 제외 — 읽기 시점(가상) 조인.** `server/virtual_join/*` · `chain/join_*` · `chain/legacy_join_declaration.py` · `chain/builtins.py` 와 «그 주제의 문서 절»은 이 패스가 **손대지 않았다**: 그 패키지가 지금 갈라지는 중(쓰기 절반은 `server/chain/` 으로, 읽기 절반은 제거)이라 오늘 적는 것이 내일 거짓이 된다. 남겨 둔 자리 목록은 이 라운드 보고서에 있다.
+> - **[신규 소유 — 셀의 «출처 행»] `cell_sources.origin_row_id` + `server/chain/cell_layer.py`**(S-280 `e1318d28`). 🔴 **이 행의 전부는 「철회의 «방아쇠»가 둘이 됐다」는 것**이다 — 운영자/CLI 말고 «입력 행의 DELETE»가 같은 `withdraw_source` 를 부른다(옵트인 없음). ⚠️ **`chain/replay.py` 는 `withdraw_source` 만 재수출하고 새 둘은 «안 한다»** — 좌석은 `cell_layer.py` 다. ⚠️ **마이그레이션 `add_cell_source_origin_row.sql` 은 «선행 조건»이다**(안 돌리면 쓰기 전부가 `UndefinedColumn`). 서술은 [data_model §1·§2.2-bis](../architecture/data_model.md) · 맵퍼 계약은 [chain_ingestion_guide §1](../guide/chain_ingestion_guide.md) · 개념은 [PRIMITIVES §1](../architecture/PRIMITIVES.md).
+> - **[신규 소유 — 클라 좌석 둘] `client2/src/disabled_reason.js`**(C-124 `dbdd3443` · 전수 게이트 `tests/disabled_reason_harness.mjs`, 빚 상한 0) **· `client2/src/admin_token.js`**(C-122 `c66a7332` — 전송의 «몸통»이 `admin.js` 에서 이사했다). 🔴 **둘 다 「이 화면도 저 화면도 같은 답을 내야 하는」 자리라 사본이 생기면 조용히 갈라진다.** ⚠️ `admin_token` 은 **이 표에 행이 없던 채로 2026-09-02 부터 살아 있었고**, 그 사이 `backend.md`·`SYSTEM_FLOWS.md`·`FEATURE_CHECKLIST.md` 셋이 판정자의 집을 `admin.js` 라 적고 있었다(이번에 정정). 서술은 [frontend §3 표](../architecture/frontend.md).
+> - **[정정 1]** `docs/architecture/SYSTEM_FLOWS.md` ⑨ 의 `dt_map_derivation.join_rule` 행이 소스를 «가상 조인 선언»이라 적고 거절문을 인용하고 「🔴 끊김」을 판정하고 있었다 — `0a6786f6` 이 **읽는 자리를 통째로 바꿔**(체인 선언 `derive: {kind:"join"}`) 셋 다 동시에 거짓이 됐다. 🔴 **판정은 «미측정»으로 내렸다** — 그 끊김의 근거가 배포의 `chain_rules.json` 이고 이 패스는 그것을 못 잰다.
+> - ⚠️ **총괄 보고 대상 셋** — ① **`RUN.md:69`(저장소 루트, `docs/` 밖이라 미수정)** 이 짝의 둘째 이름을 **`eqp_frame_attribution_to_dt_map`** 이라 적는데 코드의 짝은 `dt_log_frame_attribution` 이다(`dt_map_derivation.py:105`) — 바로 다음 줄이 「그 두 선언을 옮기십시오」라 **틀린 이름이 실린다**. ② `docs/architecture/CODE_MAP.md:5403` 이 `_RESOLVERS` 등록기를 「현재 `enrichment` 하나」라 적는데 HEAD 는 **여덟**이다(코드맵은 code-mapper 소관이라 미수정). ③ `server/config_resolve_report.py:46` 모듈 docstring 이 「두 번째를 붙일 때 드러난다」를 현재형으로 들고 있는데 일곱이 더 붙었다(코드 주석이라 미수정).
+>
+> **직전 라운드 (2026-09-02 · doc-keeper · 정비 사이클 173 커밋 · 행 «추가 1 · 정정 1»)**
 > - **[신규 소유 — 개수가 늦게 오는 계약] `GET /tables/{t}/data?defer_total=true` + `GET /tables/{t}/data/count` + `client2/src/match_count.js`.** 🔴 **이 계약의 전부는 «두 라우트가 좁히기를 한 번만 해석한다»는 것**(`main.py::narrowed_table_query` — 질의와 캐시 키를 «같이» 낸다). 두 벌이 되면 두 수가 갈리고 **그 불일치는 오류를 안 낸다**. 클라 쪽 정본은 `match_count.js` 하나이고, 「Matches:」를 다시 철자하는 자리를 만들지 마십시오(직전에 «다섯 + 마크업 하나»였다).
 > - **[정정 1]** 페이싱 행의 소비자가 **둘 → 셋**(`chain_replay` 합류, 단위 = 페이지). 모르는 이름의 갈림도 「둘이 다르다」가 아니라 **2 대 1**로 고쳤다 — 기준이 「사람의 요청인가 데몬의 기본값인가」라 그것이 답이지 통일할 일이 아니다.
 > - ⚠️ **총괄 보고 대상 넷** — ① `LEDGER_TECHNICAL_SPEC §2.1` 의 `idx_ledger_register_search` 가 **은퇴한 라우트(`GET /api/ledger/entities`)를 「이름 붙은 소비자」로** 대고 있어 그 절의 admission rule 을 어긴다(표시만 했고 **삭제/존치는 총괄 판정**). ② `server/ledger/schema.py:252` 의 `CONSUMER:` 주석이 같은 죽은 라우트를 댄다(코드 주석이라 미수정). ③ `server/ledger/backfill.py:1176` CLI 도움말이 페이싱 경로를 **`ledger/pacing.json`**이라 적는다(실제 `server/pacing.json` — **직전 라운드에도 보고된 미수정 건**). ④ `server/ledger/backfill.py:11` 모듈 docstring 이 **없는 함수 넷**(`_run_lineage`·`_run_observation`·`_run_transfer`·`_run_declared`)을 댄다.
 >
-> **직전 라운드 (2026-08-31 · doc-keeper · 정비 사이클 229 커밋 · 행 «추가 3 · 정정 1»)**
+> **그 직전 (2026-08-31 · doc-keeper · 정비 사이클 229 커밋 · 행 «추가 3 · 정정 1»)**
 > - **[신규 소유 — 실행 등록부] `retroactive_runs` + `server/admin/retroactive.py`의 취소 규약.** 🔴 **취소가 「죽이기」가 아니라 «선언 + 협조»라는 사실이 이 행의 전부다** — 그리고 **「멈출 수 있나」는 취향이 아니라 «커밋 입자»가 정한다.** 새 장기 연산을 등록부에 더하면 `cancellable`·`commit_granularity`를 반드시 선언한다.
 > - **[신규 소유 — 선언 둘이 `server/config/` «밖»에 산다] `server/pacing.json` · `server/ledger/gap_names.json`.** 🔴 **디렉터리 훑기로는 안 잡힌다** — 이 표가 그 자리를 아는 유일한 색인이라 행을 만들었다(같은 계급의 실패가 이 저장소에 이미 여럿 있었다).
 > - **[신규 소유 — 결측 검출기] `server/ledger/gaps.py`.** 🔴 **분업이 계약이다**: 찾기는 코드가 어휘를 순회, 이름은 명세가 공급. ⚠️ **이름의 정본은 `docs/spec/APPLICATION_GAP_SPEC.md`이고 소유는 «응용»이다**(2026-08-31 이동 — 런타임 계약이 채널 파일에 살면 안 되므로). 문서 에이전트는 고치지 않고 가리키기만 한다. `task/` 의 같은 이름은 «포인터»다.
