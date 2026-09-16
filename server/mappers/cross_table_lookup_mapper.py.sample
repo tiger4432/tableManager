@@ -302,15 +302,22 @@ def _isolated_fetch(db, query):
 
     Rolls back and RE-RAISES. Containment and degradation are different jobs: this
     function keeps the session alive, and the caller decides what the row should say.
+
+    🔴 THE SAVEPOINT IS OPENED BY `session_contract.in_savepoint`, NOT HERE, AND THAT IS
+    DELIBERATE IN A FILE MEANT TO BE COPIED (S-271, 판정 414). This template used to open
+    it inline with NO check that a transaction was open at all - and a SAVEPOINT with
+    nothing to sit in raises 25P01, which reaches an operator as a driver sentence naming
+    no seat. The product's own reference-view seat had that check; the template a mapper
+    is copied FROM did not, so the two disagreed and only one of them was visible to this
+    repository (live mappers are gitignored).
+
+    ⚠️ IT TAKES THE WORK RATHER THAN SITTING BESIDE IT, so a copy that deletes this line
+    deletes the read as well - a guard you can drop while the feature keeps working is a
+    guard that gets dropped.
     """
-    nested = db.begin_nested()
-    try:
-        rows = query.all()
-    except Exception:
-        nested.rollback()
-        raise
-    nested.commit()
-    return rows
+    import session_contract
+
+    return session_contract.in_savepoint(db, "cross_table_lookup", query.all)
 
 
 # --- RULE C: one statement per chunk, never one per row ---------------------------
