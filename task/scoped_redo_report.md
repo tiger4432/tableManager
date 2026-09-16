@@ -45052,7 +45052,7 @@ PG (판정 424 ⑤, 하나만)                                  91 passed / 0 fa
 virtual_join/config.py:681        통합 선언 중 «읽기 시점» 것만 고른다   <- 🔴 «제거 대상 안»에 있습니다
 scripts/preview_unified_declarations.py:88   라벨 한 줄 ("read" / "table")
 (총괄이 뺀 rule_shape.py:179·454 제외)
-⚠️ ledger/ 의  히트 «여섯»은 «다른 read»입니다(원장 소스의 read 드라이버). 안 셌습니다
+⚠️ ledger/ 의 source.get('read') 히트 «여섯»은 «다른 read»입니다(원장 소스의 read 드라이버). 안 셌습니다
 => 문법은 통합 선언에 «있고», 그것을 «실행»하는 것은 virtual_join «하나»입니다
 ```
 
