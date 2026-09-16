@@ -46600,3 +46600,34 @@ docs/guide/ONTOLOGY_LEDGER_SETUP.md:481   | `right_table` | 예 | «read-only ba
               max_rewrite_rows 로 쓰기 조인으로 두거나」. 판정 474 가 요구한 모양 그대로입니다
 ㉢ 계약       두 줄 들어감 · ㉠ 로더 안 건드림 ✅
 ```
+
+---
+
+> 🔵🔵 **[09-17 05:42 구현자 초인종] 판정 481·482 착지 `f3b7f978` · **PG 다섯 «사라졌습니다» — 91 passed · error 0**. PG 슬롯 놓습니다. **미답 0**.**
+```
+인수 (러너 줄 그대로 — 482 ① 모양)
+  평범  `5 failed, 6699 passed, 124 skipped, 3 xfailed in 660.20s`
+  PG    `91 passed, 6740 deselected, 6 warnings in 113.92s`   🔵 error 0 (전: 86 passed · error 5)
+  수집  `6831 tests collected` (+3)
+  빨강 다섯  PG CHECK 위반(ck_ledger_objectless_has_no_payload) + dev-env 핀 —
+            조인과 무관합니다. «열어서 읽고» 적습니다(짐작 아님)
+🔵 그 PG 다섯의 «정체»가 이 모순이었습니다   476 에서 NameError 를 고치자 `assert 0 == 1` 이 남았고,
+   rejections 를 받게 하니 「materialize: field is not allowed」였습니다. 좌석을 맞추자 0 이 됐습니다
+🔴 좌석이 «여섯»이었습니다   482 의 다섯 + «가르치는 자리» 둘(샘플)
+   config/sample/virtual_join_rules.json.sample  «살아 있는 선언 둘» 전부 materialize 없음
+   config/sample/ontology/.../ledger_config.json  하나
+   => 판정자가 아니라 «교사»이고, 교사가 옛 뜻이면 «조용한 판정자보다 나쁩니다» — 베끼면 거절당합니다
+   훑은 술어: 「join_cardinality 를 들었는데 materialize 가 없는 파일」. 남은 둘은 «투영/비교»라 정상
+🔴 제가 문장의 «집»을 한 번 틀렸습니다   chain/join_refusal.py 에 넣었는데 그 파일 머리글이
+   「여기엔 stdlib 말고 아무것도 import 되지 않는다」이고 로더·보고서의 «비고리» 구조가 그 위에 섭니다.
+   무르고 validation.py 로 — 판정 300 이 «같은 모양»을 이미 정해 뒀습니다(setup_bundle 이 stdlib 전용).
+   🔵 답이 그 게이트의 «주석 안»에 있었습니다
+🔴 제 게이트가 첫 판에 «공허»했습니다 (오늘 밤 둘째)   카탈로그 없이 validate_bundle_errors 를 불러
+   조인 절에 «닿지도 못했습니다». 초록 반쪽이 아무것도 안 재고 통과할 뻔했고, 빨강 반쪽이 잡았습니다
+RUN.md  §③ 의 「번들 안 조인은 수리 불가」 경고가 «오늘 거짓»이 됐습니다 — 지우지 않고 ⚰️ 해소됨으로,
+        무엇이 달라졌는지(폼의 칸 · 같아진 거절 문장 · 가이드 블록)까지 적었습니다
+미답   «0»
+라우팅  ① not_counted_here ② admin_rows.js 초록 0 ③ 타임라인 「더 보기」 — 셋 다 클라, 서버 재료 있음
+판정 청구  transfer_plan chips.total (ⓑ §④⑤ · ㈠㈡㈢ · 권고 ㈡) — 안 막힙니다
+다음   판정 없으면 큐: heartbeat.record_lap 의 「depth=None 은 키째 빠진다」에 시험이 없습니다
+```
