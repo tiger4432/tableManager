@@ -179,7 +179,7 @@
 |  | 파이썬 맵퍼 | `builtin:` 종류 (조인 · 확정) |
 |---|---|---|
 | 선언 | `derive.kind: mapper` → `mapper_module`/`mapper_function` | `derive.kind: join`/`decide` → `mapper: builtin:…` |
-| 그룹(트리거) 경로 | `execute_custom_mapper` `ingestion_worker` :1503(배치) :1544(행별) | 🆕 `run_builtin` :1485 — [09-16 S-278 A `c41f9c6d`] 이 갈래가 «생겼다». A-bis `486eb92e` 로 `outbox_mode(COLLAPSED)` «안»에서 부른다 |
+| 그룹(트리거) 경로 | `execute_custom_mapper` `ingestion_worker` :1503(배치) :1544(행별) | 🆕 `run_builtin` :1485 — [09-16 18:45 `75ef33fe`] 이 갈래가 «생겼다»(`c41f9c6d` 18:20 은 `follow_up` 칸을 뗀 커밋이고 이 파일을 «안 건드렸다»). A-bis `486eb92e` 로 `outbox_mode(COLLAPSED)` «안»에서 부른다 |
 | 후속 랩 | — | `run_builtin` `ingestion_worker` :2853 |
 | 소급(replay) | `execute_custom_mapper` `replay` :518 :520 | `run_builtin` `replay` :492 |
 
@@ -187,7 +187,7 @@
 🔴 규칙을 «실행»하는 자리가 «셋»이고, 그중 둘을 «같이» 아는 것은 소급뿐이다
    -> 그래서 조인은 소급으로는 돌고(소유자 「백필하니 돈다」) 라이브로는 후속 랩에서만 돌았다
    -> 그리고 2026-09-16 에 조인을 그 랩에서 떼자 «갈 곳이 없어졌다» — 그룹 경로엔 builtin 갈래가 없었다
-   ⚰️ **[09-16 18:20 `c41f9c6d`] 그 문장은 «40분» 참이었다** — 같은 라운드가 그 갈래를 냈다(:1485).
+   ⚰️ **[09-16] 그 칸은 «3분» 참이었다** — 이 절은 `9b3af739`(18:42)이고 갈래는 `75ef33fe`(18:45)다. 🔴 제가 먼저 «40분 · `c41f9c6d`»라고 적었는데 «둘 다 틀렸다» — 커밋 시각을 재지 않고 라운드 이름으로 짚었다(응용 Q-7).
    🔴 그런데 그 자리는 `request_source`/`request_chain_depth` 스코프(:1571·:1586) «앞»이다 —
       조인의 쓰기는 `source_name` 은 얻고(항목이 나른다) `chain_depth` 는 «못 얻는다»(응용 Q-1 ①, 판정 대기)
 📌 부류: 기준 ④ 「같은 기능에 두 경로」. 그리고 최악의 판이다 — 두 경로가 갈라져 있는데
