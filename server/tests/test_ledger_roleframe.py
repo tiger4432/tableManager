@@ -479,32 +479,124 @@ def test_naive_time_role_is_rejected_with_exact_path():
     assert caught.value.path == "role_frame.rows[0].roles.occurred_at"
 
 
+#: Packages `roleframe` must not bind. The rule is 「could this name reach a session」, so
+#: the subject is what an import BINDS, never how it is spelled (판정 460 ㉢).
+CAPABILITY_FORBIDDEN = ("sqlalchemy", "psycopg2", "database", "ledger.store",
+                        "ledger.gate", "ledger.cursor", "virtual_join")
+
+#: (module, name) -> why this ONE name is allowed out of a forbidden package.
+#:
+#: 🔴 WRITTEN DOWN, BECAUSE 「PASSES」 AND 「IS PERMITTED」 WERE THE SAME PICTURE (판정 460 ㉡).
+#: `clean_str_value` was passing not because anything allowed it but because the predicate
+#: could not SEE it - and `SessionLocal`, the session factory itself, passed the same way.
+#: The right answer was arriving for the wrong reason, and the wrong answer was arriving
+#: silently beside it. An allowance has to be a sentence somebody wrote.
+#:
+#: The reason for the first two is quoted, not invented: `roleframe`'s own docstring says
+#: they are 「a PURE helper that happens to live in `database.crud`, which is why the
+#: capability guard forbids the `database` package rather than that one import」.
+CAPABILITY_ALLOWED = {
+    ("database.crud", "clean_str_value"): "pure helper, no session (roleframe's docstring)",
+    ("database.crud", "is_blank_key_part"): "pure predicate, pinned by contracts/blank_predicate",
+    ("virtual_join.config", "INDEX_PREFIX"): "a bare string constant; binds no module",
+}
+
+
+def _forbidden_root(dotted, forbidden):
+    """The forbidden package `dotted` sits under, or None.
+
+    🔴 BY DOTTED PREFIX, NOT BY EQUALITY. `import database.crud` puts 「database」 in the
+    namespace, and an equality test against 「database」 never saw it because the alias records
+    the full path. That one was the gate's whole reason for existing.
+    """
+    for bad in forbidden:
+        if dotted == bad or dotted.startswith(bad + "."):
+            return bad
+    return None
+
+
+def capability_reaches(tree, forbidden=CAPABILITY_FORBIDDEN, allowed=CAPABILITY_ALLOWED):
+    """Every import in `tree` that BINDS something from a forbidden package.
+
+    🔴 THREE FORMS BIND THREE DIFFERENT THINGS, AND THE OLD PREDICATE FOLDED THEM INTO
+    ONE STRING (판정 460 ㉢):
+        import a.b            binds `a`        - the package itself is in reach
+        import a.b as x       binds module a.b - a module of it is in hand
+        from a.b import c     binds `c`        - depends entirely on what `c` IS
+    Only the third can be safe, and only when somebody has said which name.
+    """
+    import ast as _ast
+
+    reached = []
+    for node in _ast.walk(tree):
+        if isinstance(node, _ast.Import):
+            for alias in node.names:
+                bad = _forbidden_root(alias.name, forbidden)
+                if bad:
+                    reached.append("%s (binds %s)"
+                                   % (alias.name, alias.asname or alias.name.split(".")[0]))
+        elif isinstance(node, _ast.ImportFrom) and node.module:
+            bad = _forbidden_root(node.module, forbidden)
+            if not bad:
+                continue
+            for alias in node.names:
+                if (node.module, alias.name) in allowed:
+                    continue
+                reached.append("%s.%s" % (node.module, alias.name))
+    return sorted(reached)
+
+
 def test_roleframe_module_has_no_runtime_or_database_imports():
     path = Path(__file__).parents[1] / "ledger" / "roleframe.py"
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    imports = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imports.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            imports.add(node.module)
-    # ⚰️ `virtual_join_config` WAS A SPELLING THAT CANNOT OCCUR (판정 459 ㆚). The module
-    # is `virtual_join.config` - there has never been a top-level `virtual_join_config` - so
-    # that entry held a seat in a forbidden list and forbade nothing, while the other six
-    # kept the test green. 「영원히 거짓인 필터는 거짓이 정답인 동안 숨는다」 exactly. It is
-    # the PACKAGE name now, which is the spelling that can actually appear.
-    #
-    # ⛔ AND THE MATCH STAYS EXACT, DELIBERATELY - I TRIED PREFIX AND IT WAS WRONG. Making
-    # it `startswith(bad + ".")` immediately caught `from database.crud import
-    # clean_str_value`, and `roleframe`'s own docstring had already ruled on that import:
-    # a PURE helper that happens to live there, 「which is why the capability guard forbids
-    # the `database` package rather than that one import」. The rule is about binding a
-    # package you could reach a session through, not about every name underneath it. The
-    # judgement was in the file and I generalised past it.
-    forbidden = {"sqlalchemy", "psycopg2", "database", "ledger.store", "ledger.gate",
-                 "ledger.cursor", "virtual_join"}
-    reached = sorted(forbidden & imports)
-    assert reached == [], reached
+    assert capability_reaches(ast.parse(path.read_text(encoding="utf-8"))) == []
+
+
+#: (source, is it reached) - the seven forms 판정 460 ㉡ measured, as a table.
+CAPABILITY_FORMS = (
+    ("import virtual_join.config as vjc", True),
+    ("from virtual_join import executor", True),
+    ("import virtual_join", True),
+    ("import database.crud", True),
+    ("from database.crud import SessionLocal", True),
+    ("from database.crud import clean_str_value", False),
+    ("from virtual_join.config import INDEX_PREFIX", False),
+)
+
+
+@pytest.mark.parametrize("source,reached", CAPABILITY_FORMS)
+def test_the_capability_predicate_is_fed_forms_rather_than_trusted(source, reached):
+    """⚰️ RUNNING THE GATE AND READING 「35 passed」 PROVED NOTHING, AND I DID IT TWICE.
+
+    A green there means 「roleframe does not use a forbidden name IN A SHAPE THIS PREDICATE
+    CAN SEE」, and I read it as 「the predicate is fixed」. The step between them - 「can it
+    see?」 - was missing, so four of these seven forms went unnoticed, `SessionLocal`
+    included: the session factory itself, in the gate whose entire question is 「could this
+    reach a session」.
+
+    🔴 I ALSO 「VERIFIED DIRECTLY」 WITH A PROBE THAT DID NOT MATCH THE GATE. My check
+    used `startswith`; the assertion used set intersection. So the probe answered a question
+    the product never asks, and its answer went into a commit message as proof. Feeding the
+    predicate its own inputs is the only check that cannot drift from it.
+    """
+    got = capability_reaches(ast.parse(source))
+    assert bool(got) is reached, (source, got)
+
+
+def test_the_allowances_are_named_rather_than_invisible():
+    """⚠️ 「PASSES」 MUST NOT BE THE SAME PICTURE AS 「IS PERMITTED」. Every name that gets
+    out of a forbidden package is in the table with a sentence; delete the entry and the
+    import goes red, which is what makes the next pure helper a decision rather than a
+    coincidence.
+    """
+    for (module, name), why in CAPABILITY_ALLOWED.items():
+        assert _forbidden_root(module, CAPABILITY_FORBIDDEN), (module, "not even forbidden")
+        assert why.strip(), (module, name)
+        assert capability_reaches(
+            ast.parse("from %s import %s" % (module, name))) == [], (module, name)
+        # ... and with the allowance removed it is caught, so the entry is load-bearing.
+        without = {k: v for k, v in CAPABILITY_ALLOWED.items() if k != (module, name)}
+        assert capability_reaches(
+            ast.parse("from %s import %s" % (module, name)), allowed=without) != []
 
 
 def test_all_eventframe_context_attributes_are_preserved_in_roleframe():
