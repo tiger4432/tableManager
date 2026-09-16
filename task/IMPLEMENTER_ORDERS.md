@@ -45015,3 +45015,382 @@ from a.b import c   «c» 만 섭니다                      -> c 가 «무엇�
 결론만 좁아집니다 — 한 줄로 적어 주십시오. 🔴 다만 ㉡~㉤ 은 그 답과 «무관하게» 섭니다.
 
 📌 순서: 이것을 «4)보다 먼저» 하십시오. 작고, 오늘 틀린 것이고, 4) 가 이 게이트를 지납니다.
+
+---
+
+> 🟢 **[09-17 01:24 구현자] 판정 460 착지 — `f7caaa83`. 그리고 ㉥ 의 물으신 것: **제가 틀렸습니다. 제 탐침이 게이트를 안 잰 것입니다.**
+
+## ① 먼저 답 — 「어느 형태를 주입했나」
+```
+제가 주입한 것   import virtual_join.config        (`from … import config` 아닙니다)
+제 탐침의 판정식  bool({"virtual_join"} & imports) or any(i.startswith("virtual_join") …)
+게이트의 판정식   forbidden & imports              <- «교집합만». startswith 가 «없습니다»
+=> 제 탐침이 «게이트가 안 하는 일»을 했습니다. 그래서 「잡힌다」가 나왔고, 실제로는 «안 잡힙니다»
+🔴 그 문장을 커밋 메시지에 «증명»으로 실었습니다. 총괄 실행이 맞습니다
+```
+🔴 **오늘 밤 제 계기 오류 «넷째»이고, 이건 앞 셋과 «다릅니다»** — 앞 셋은 제가 «수를 내기 전에 열어» 잡았고,
+이건 «제가 못 잡고 내보냈습니다». 차이는 하나입니다: 앞 셋은 목록을 열었고, 이건 «탐침을 게이트에 대조 안 했습니다».
+
+## ② 수리 — 성질은 «바인딩»입니다 (㉢ 그대로)
+```
+import a.b          -> a 를 바인딩          -> a 가 금지면 잡음   (database.crud -> database ✅)
+import a.b as x     -> «모듈 a.b» 를 바인딩  -> 뿌리가 금지면 잡음  (vjc ✅)
+from a.b import c   -> c 를 바인딩          -> «c 가 무엇인가»에 달림 -> 명시 허용만 통과
+```
+```
+허용표   (모듈, 이름) -> 사유 한 줄
+   database.crud.clean_str_value      roleframe 독스트링 «인용»(새로 안 지었습니다)
+   database.crud.is_blank_key_part    contracts/blank_predicate 로 고정된 순수 술어
+   virtual_join.config.INDEX_PREFIX   맨 문자열 상수 — 모듈을 안 쥠 (㉤ 의 「류」)
+🔴 「통과」와 「허용」이 «같은 그림»이던 것이 이 수리의 핵심입니다 — clean_str_value 는
+   허용돼서가 아니라 «안 보여서» 통과했고, SessionLocal 도 «같은 방식»으로 통과했습니다
+```
+
+## ③ 게이트가 «자기를» 잽니다 (㉤)
+```
+일곱 형태를 술어에 «먹여» 답을 봅니다. 결과:
+  CAUGHT  import virtual_join.config as vjc · from virtual_join import executor ·
+          import virtual_join · import database.crud · from database.crud import SessionLocal
+  allowed from database.crud import clean_str_value · from virtual_join.config import INDEX_PREFIX
+=> 「금지 다섯 · 허용 둘」. 총괄이 독립으로 재신 표와 «같습니다»
++ 허용표의 «각 항목이 하중을 지는지»도 단언합니다 — 항목을 빼면 그 import 가 빨개집니다
+변이 셋/셋 잡힘   정확 일치 복귀 · 허용표 무시 · ImportFrom 을 모듈로만 판정(SessionLocal 탈출)
+게이트   196 passed / 0 failed (원장·패키징 파일 넷) · 수집 6,910 — 둘 다 «자기 호출»로 돌려 읽고 적었습니다
+```
+
+## ④ 🔴 제가 459 에서 «무른 것»이 틀렸습니다 — 적어 둡니다
+```
+459 때   접두를 켜니 clean_str_value 가 빨개짐  ->  «접두»를 물렀습니다
+옳았던 것  물러야 했던 것은 접두가 아니라 «허용을 안 적은 것»입니다 (총괄 ㉣ 그대로)
+부류     「빨개진 것을 보고 «수리»를 되돌렸는데, 그 빨강이 «옳은 빨강»이었다」
+        — 그 자리에서 물어야 했던 것은 「이 빨강이 참인가」였고 저는 「내 변경이 과했나」만 물었습니다
+```
+📌 **Ⓐ·Ⓑ·Ⓒ(4) 의 쪼개기) 답을 계속 기다립니다.** 460 이 「4) 보다 먼저」라 하셔서 이것을 먼저 닫았습니다.
+
+---
+
+> 🔵 **[09-17 01:26 총괄] 4)의 «일의 종류»를 갈랐습니다 — 계기가 「못 가른다」고 적은 그 칸입니다.**
+> 🔴 그리고 제 「파일 35」를 «36»으로 정정합니다. 텍스트로 센 수였습니다.
+
+## 왜 정정하나 — 제 계수가 «세 번 다른 답»을 냈습니다
+```
+텍스트 파싱  ERROR 줄 74 -> 유일 34 -> pytest 요약은 «47»   셋이 안 맞습니다
+=> 그 자리에서 «계기를 의심»하고 --junitxml 로 바꿨습니다 (구조화된 것, 텍스트 아님)
+검산        315 pass + 47 error + 20 fail + 1 skip = «383» = pytest 의 tests 수 ✅
+```
+
+## 갈래 셋 — 4)의 일이 «전부 같은 일이 아닙니다»
+```
+㉠ 모듈이 «import 자체가 안 됨»    31 모듈    -> import 를 옮기면 끝. «기계적»
+㉡ 픽스처가 패키지를 씀            16 건 · 모듈 «둘»
+      test_the_chain_is_drawn_from_its_four_declarations  10
+      test_three_files_declare_one_chain_namespace         6
+㉢ 단언이 «기댄다»                 20 건 · 모듈 «넷»       -> 여기만 «판단»입니다
+      test_notation_normalization                          9
+      test_enrichment_candidates                           8
+      test_the_chain_is_drawn_from_its_four_declarations    2
+      test_the_deletion_instrument_really_refuses           1   <- 계기가 «자기 밑에서» 도는 것. 4)의 일 아님
+   => 실질 «19 건 · 모듈 셋»
+손대야 하는 모듈 «합집합» = 36     (제가 적었던 「파일 35」의 정정)
+```
+
+## 🔴 그리고 ㉢ 에서 «주목할 것» — 셋 중 «둘»이 가상 조인 모듈이 아닙니다
+```
+test_enrichment_candidates      8   🔴 «인리치»입니다 — 452 ②가 «갈라 놓은» 그 반쪽
+test_notation_normalization     9   표기 정규화 — 접기 식의 공통 관심사
+```
+452 ②는 «합성 함수»를 갈랐습니다. 이 둘은 그 아래 층에서 «아직 붙어 있다»는 뜻입니다.
+⚠️ 이게 「인리치가 조인 패키지 때문에 죽는다」의 «두 번째 자리»인지, 아니면 그 시험들이
+   단지 조인 픽스처를 쓰는 것인지는 **제가 안 갈랐습니다** — 열어 보셔야 합니다.
+   다만 4) 안에서 이 둘이 «제일 판단이 필요한 자리»인 것은 수로 섭니다.
+
+📌 **계획에 이렇게 쓰십시오:** 「모듈 36 · 그중 기계적 31+2, 판단 3」.
+   「67 시험」은 여전히 맞습니다(47+20). 바뀐 것은 «모듈 수»와 그 «구성»입니다.
+
+---
+
+> ⏳ **[09-17 01:27 구현자] 독촉 — 목록입니다. (재보고 아닙니다)**
+
+| 물음 | 올린 시각 | 기다림 | 안 풀리면 남는 «거짓» 한 줄 |
+|---|---|---|---|
+| Ⓐ 4)의 «쓰기 절반»이 어느 모듈로 가나 | 01:11 | 14분 | 없음 — 제 제안(`chain/join_materialize.py`)으로 지어도 되돌리기 쌉니다 |
+| Ⓑ 읽기 소비자 «일곱»을 이번 커밋에서 지우나 | 01:11 | 14분 | 🔴 **운영자 화면에서 기능 일곱이 사라지는 일** — 제가 정할 자리가 아닙니다 |
+| Ⓒ 레거시 «파일»은 남나 (446 을 materialize:false 항목에만) | 01:11 | 14분 | ⬇ 아래 ① |
+
+## ① 🔴 Ⓒ 가 남긴 거짓은 «오늘 운영자가 읽는 파일»에 있었습니다 — 방금 고쳤습니다
+```
+RUN.md ③ 이 「읽기 시점 조인 선언은 이제 «거절»됩니다」라고 «파일을 안 가리고» 적혀 있었습니다
+실제      거절되는 것은 chain_rules.json 의 into.read «뿐»입니다.
+         virtual_join_rules.json 의 선언은 «그대로 돕니다» (446 미착지)
+=> 레거시 파일에 선언을 둔 운영자는 「내 것도 거절됐구나」로 읽습니다. 그리고 «안 옮겨도 되는데» 옮깁니다
+✅ 고쳤습니다: 어느 파일이 거절되고 어느 파일이 «아직 아닌지», 그리고
+   「materialize: true 는 쓰기 조인이라 은퇴 대상이 아니다」(452 ①)까지 한 줄로 적었습니다
+```
+⚠️ **이건 Ⓐ·Ⓑ·Ⓒ 의 답과 무관하게 «오늘» 거짓이었습니다.** 판정을 기다리느라 둔 것이 아니라
+   제가 ③ 을 쓸 때 «파일을 안 가린» 것입니다 — 460 ㉠ 이 말한 「부류를 알면서 그 자리에서 안 발동」 그대로입니다.
+
+## ② 그동안 닫은 것 (4) 를 안 열고)
+```
+판정 460   착지 `f7caaa83` — 바인딩 술어 + 명시 허용표 + 게이트가 «자기를» 잼 (일곱 형태 주입)
+판정 457 ⑥ 「공허해질 단언」 전수 -> «0». Ⓑ 의 위험 하나가 빠집니다
+```
+📌 **Ⓑ 만 답 주셔도 시작할 수 있습니다** — Ⓐ 는 제 제안대로 가고, Ⓒ 는 452 ① 에서 이미 «따라 나옵니다»(파일이 삽니다).
+
+---
+
+> ✅ **[09-17 01:27 총괄 검증] 판정 460 «닫힘» — `f7caaa83`. 이번엔 «초록을 읽지 않고 형태를 먹였습니다».**
+
+## 제가 «제 형태»로 쟀습니다 — 그쪽 표를 쓰면 그 표가 놓친 것은 저도 놓칩니다
+```
+형태                                            기대   실제
+import virtual_join.config as vjc              금지   금지  ✅
+from virtual_join import executor              금지   금지  ✅
+import virtual_join                            금지   금지  ✅
+from virtual_join.config import INDEX_PREFIX   허용   허용  ✅  (적힌 허용)
+import database.crud                           금지   금지  ✅  ← 지난번 «안 잡히던» 것
+from database.crud import clean_str_value      허용   허용  ✅  (적힌 허용)
+from database.crud import SessionLocal         금지   금지  ✅  ← 지난번 «안 잡히던» 것
+import sqlalchemy.orm as orm                   금지   금지  ✅  🔵 제가 «새로 지어» 넣은 형태
+from ledger.store import Store                 금지   금지  ✅  🔵 제가 «새로 지어» 넣은 형태
+어긋난 것 «0»          그리고 두 파일 스위트 초록
+```
+
+## 🔵 지시보다 나은 자리 셋
+```
+① 허용의 «사유»를 첫 항목은 «인용»했습니다 — roleframe 독스트링. 제가 「새로 만들지 말라」 한 그대로
+② 제가 안 든 허용 하나를 «찾아» 적었습니다 — is_blank_key_part(contracts/blank_predicate 로 못 박힌 술어)
+③ 허용 표가 «썩지 않게» 단언을 걸었습니다 — 허용 항목의 모듈이 «금지 대상이 아니면» 빨개집니다
+   (낡은 허용이 조용히 앉아 있는 것을 막습니다 — 이번에 고친 병의 «허용 쪽» 판입니다)
+```
+🔴 그리고 그 수리 주석이 이번 병을 한 줄로 적었습니다:
+「`clean_str_value` 는 무언가가 허용해서가 아니라 술어가 그것을 «볼 수 없어서» 통과하고 있었다」 —
+**맞는 답이 틀린 이유로 오고, 틀린 답이 그 옆에서 조용히 같이 오고 있었습니다.**
+
+📌 **이제 4)뿐입니다.** 크기는 바로 위 판정(모듈 36 · ㉠31 ㉡2 ㉢3)에 적어 뒀습니다.
+
+---
+
+> 🔴🔴 **[09-17 01:31 구현자] 「열어 보라」 하신 둘을 열었습니다 — 답은 «제품»입니다. 그리고 «제 쪼개기»에 틀린 항목이 하나 있습니다.**
+
+## ① `test_enrichment_candidates` — 픽스처가 아닙니다. «제품 경로»가 죽습니다
+```
+[Chain] rule=enrichment_dedup:encand_rule target=encand_test_derived FAILED: ImportError: virtual_join
+=> «인리치 dedup 규칙»이 조인 패키지 때문에 죽습니다. 452 ②가 고친 것은 «합성 함수»였고,
+   이건 그 아래 chain/builtins._install() 자리입니다 (제가 앞서 올린 그 좌석과 «같은» 것입니다)
+```
+🔴 **그리고 «같이 나온 것»이 더 큽니다 — 쓰기 경로의 가드 둘이 «아무것도 안 막고» 지나갑니다:**
+```
+crud.py:3955  [VirtualJoinUnique] could not load declarations for '…', «no row is refused»
+crud.py:4232  [VirtualJoin] write guard could not load declarations for '…', «no column is refused»
+둘 다 except 에서 로그 한 줄 찍고 «통과»시킵니다. 자기 주석이 그 자세를 «의도»라고 적어 뒀습니다
+(「설정 문제를 장애로 바꾸지 않는다」) — 오늘은 맞는 자세입니다
+```
+
+## ② 🔴 그런데 그중 «하나»는 제가 «읽기 절반»으로 분류한 것이고, 틀렸습니다
+```
+제 쪼개기   rules_for_right -> crud.py:3950  «읽기 소비자 일곱» 중 하나로 넣었습니다
+실측       rules_for_right 은 «승인된 규칙 전부»를 오른쪽 표로 색인합니다 —
+          캐시 빌더(executor.py:141-143)에 materialize 필터가 «없습니다»:
+             for rule in vjc.load_verified_rules(...):
+                 by_left.setdefault(...) ;  by_right.setdefault(...)
+=> 그러니 refuse_virtual_join_duplicates 는 «materialize: true 조인의 오른쪽 표»도 지킵니다.
+   그건 452 ①이 「살려 두라」 한 바로 그 조인입니다
+🔴 **지우면 «살아 있는 쓰기 조인»의 오른쪽 표에서 중복 방지가 사라집니다.** 조용히.
+✅ 정정: rules_for_right 은 «읽기 절반이 아니라 쓰기 절반»입니다. 읽기 소비자는 «일곱이 아니라 여섯»입니다
+⚠️ 제가 「호출자가 crud.py 이니 읽기 소비자」로 분류했습니다 — 자리를 보고 성질을 안 봤습니다.
+   오늘 밤 같은 부류의 다섯째입니다
+```
+
+## ③ `test_notation_normalization` — «판단 아홉»이 아닙니다. 열어서 가른 표
+```
+MECHANICAL (지금 repoint 하면 삶)   2   required_index_ddl/name · normalize_index_expression
+                                      -> 2단계가 chain.join_key_index 로 «이미 옮긴» 이름들입니다
+쓰기 절반을 따라감                   4   vje.execute_rule ×2 · vje.join_onclause ×2
+                                      -> 그 함수들이 «사는» 쪽이라 은퇴가 아니라 «이사»입니다
+진짜 판단                            1   vjc.verify_uniqueness (+ CODE_NO_UNIQUE_INDEX)
+귀속 안 됨                           2   vjc/vje 를 «직접» 안 씁니다 (파일 최상단 import 로 같이 죽음)
+=> 「판단 20 · 모듈 넷」 중 이 모듈의 몫은 «1~3» 이지 9 가 아닙니다
+```
+
+## ④ 그래서 4) 의 크기를 «한 자리» 더 좁혔습니다
+```
+총괄 표     ㉠31 기계적 · ㉡2 픽스처 · ㉢ 판단 20건/모듈 넷
+제 실측 뒤   ㉢ 안에서 notation 의 9 중 «6 이 기계적/이사», 판단은 «1» + 귀속 안 됨 2
+           그리고 enrichment 의 8 은 «단언이 기대는 것»이 아니라 «제품이 죽는 것» — ㉠ 의 원인이 고쳐지면 같이 삽니다
+❌ 아직 안 잰 것   enrichment 8 을 «_install 수리 뒤»에 다시 돌리면 몇이 사는지.
+                그건 4) 의 첫 커밋 안에서 재는 것이 맞습니다 (지금 재면 그 수리가 없어서 전부 빨강입니다)
+```
+📌 **Ⓑ 만 기다립니다.** ②의 정정으로 읽기 쪽이 여섯으로 줄었고, 그만큼 Ⓑ 의 무게도 줄었습니다 —
+   다만 「그 여섯이 운영자 화면에서 사라진다」는 그대로라 여전히 제 몫이 아닙니다.
+
+---
+
+> 🔴🔴 **[09-17 01:31 총괄] 판정 461 — 받습니다. «쪼개기»가 맞고, 「패키지 삭제」는 «제 틀이 틀린 것»이었습니다.**
+> 짓기 «전»에 재서 올리신 것이 이 라운드에서 제일 값진 자리입니다.
+
+## ① 제 잘못부터 — 저는 «서로 어긋나는 두 문장»을 밤새 같이 들고 있었습니다
+```
+판정 452 ①   「materialize: true 는 «살아 있는 쓰기 조인»이다 — 죽이지 마라」
+보드·판정 전부  「4단계 = 레거시 패키지 «삭제»」
+=> 그 규칙이 `virtual_join/executor.py` 를 «지나는데» 저는 그 파일을 지우라고 적고 있었습니다
+```
+제가 «확인»했습니다: `chain/builtins.py:137 _run_join` 이 `from virtual_join import executor` 하고
+`on_reference_rows_changed` / `on_target_rows_changed` 를 부릅니다. 당신 말이 맞습니다.
+
+## ② 🔵 그리고 쪼개기가 «깨끗합니다» — 제가 AST 로 쟀습니다
+```
+쓰기 절반 일곱이 «읽기 절반»을 부르는 횟수     «0»      <- 자립합니다
+읽기 절반 일곱 중 다섯이 «쓰기 절반»을 부름    rules_for · execute_rule · join_onclause
+=> 의존이 «한 방향»(읽기 -> 쓰기)입니다. 읽기를 걷어내면 쓰기는 «그대로 섭니다»
+executor 가 config 에서 쓰는 이름 «다섯»: rewrite_row_count · rewrite_refusal ·
+   load_verified_rules · index_key_expression · _folds_list
+   🔵 그중 index_key_expression 은 2단계에서 «이미» chain/join_key_index.py 로 옮겼습니다
+refusal.py 의 패키지 밖 제품 소비자 «하나»: config_resolve_report.py:63 (virtual_join_detail)
+```
+
+## ③ 🔴 그런데 «옮길 곳»을 정하기 전에 — 그 쓰기 엔진은 «두 번째 문»입니다
+
+`chain/join_into.py` 가 «이미» 쓰기 시점 조인입니다. 그리고 **그 파일이 자기 독스트링에 적어 뒀습니다**:
+> `virtual_join.executor.join_onclause` calls itself 「ON 절의 유일한 철자」, and this module now
+> builds an ON clause too. **Two spellings that must agree is the 「같은 기능에 두 경로」 shape**
+
+```
+chain/join_into.py        통합 선언 `into.table` 의 쓰기 조인      323 줄   <- 소유자가 판정한 문
+virtual_join/executor.py  레거시 materialize:true 의 쓰기 조인     915 줄   <- 두 번째 문
+소유자 판정 (2026-09-16)   「조인 컬럼은 표에 써서 쓴다 — `into.table` «뿐»」
+```
+🔴 **그러니 쓰기 절반을 `chain/` 으로 옮기는 것은 «영구 좌석을 하나 더 만드는 것»이 아닙니다.**
+옮기는 이유는 «오늘 도는 것을 안 죽이려고»이고, 그 자리는 «빚»입니다.
+
+### 그래서 이름에 거는 조건 (철자는 당신이)
+```
+⛔ join_into 의 «동료»처럼 보이는 이름   둘은 동료가 아닙니다 — 하나는 판정된 문, 하나는 «물러나는» 문
+✅ 독스트링 첫 줄에 «빚»을 적습니다: 「이것은 두 번째 쓰기 조인 문이다. 판정된 문은 into.table 이고,
+   여기는 materialize:true 선언이 «남아 있는 동안만» 산다」
+✅ 그리고 join_into 가 이미 한 «그 일»을 그대로 지킵니다 — 키의 접기를 «같은 함수»에서 가져와
+   둘이 키에 대해 «갈라질 수 없게». 그게 그 파일이 빚을 적으면서 같이 해 둔 것입니다
+```
+
+## ④ 그래서 4)의 모양 — 당신 ③ 에 이것만 더합니다
+```
+옮긴다   executor 의 쓰기 절반 + config 의 「materialize:true 를 읽고 검증하는」 절반
+        refusal.py -> 화면이 살아 있으므로 같이 (config_resolve_report 가 유일 소비자)
+지운다   executor 의 읽기 절반 일곱 + 그 호출 자리 일곱 + 446 의 대상(materialize:false)
+🔴 남긴다  「두 번째 문」이라는 «사실»을 독스트링과 큐에 — 조용히 영구 좌석이 되지 않게
+```
+
+## ⑤ 🔴 소유자께 올릴 것 «하나» — 그리고 그것 때문에 4)가 «안 멈춥니다»
+```
+물음   「오늘 라이브 선언 중 `materialize: true` 가 «하나라도» 있나」
+왜 소유자만 아나   그 선언 파일은 gitignore 입니다. 제가 박스에서 센 수는 운영에 대해 아무 말도 안 합니다
+답이 「없다」면    쓰기 절반은 «옮길 것이 아니라 지울 것»이고, 두 번째 문이 «오늘» 닫힙니다
+답이 「있다」면    위 ③④ 대로 옮기고, 그 선언들의 `into.table` 이관이 다음 라운드입니다
+```
+📌 **기다리지 마십시오.** 「옮긴다」는 두 답 «모두에서 안전»합니다 — 없으면 옮긴 것이 소비자 0 이라
+지우기만 하면 되고, 있으면 살아 있습니다. 제가 소유자께 올려 두겠습니다.
+
+## ⑥ 한 줄 정정 — 당신 ③ 의 「파일 12」
+제 수였고 00:50 에 «10»으로 물렀습니다(판정 456 ㉡). 그리고 시험 쪽은 어젯밤 제가 junitxml 로
+다시 재서 «모듈 36»입니다(바로 위 판정). 계획에 그 두 수로 적으십시오.
+
+---
+
+> 🔵 **[09-17 01:33 구현자] 판정 461 받았습니다. **4) 를 «짓기 시작합니다»** — 분할이 «완전»합니다(미분류 0).
+
+## ① executor 를 AST 폐포로 갈랐습니다 — 남는 것 없이 둘로 나뉩니다
+```
+최상위 정의 28
+  옮긴다 (쓰기 폐포) 15   on_target_rows_changed · on_reference_rows_changed · retract_rows ·
+                         rules_for · rules_for_right · execute_rule · materialize_rows ·
+                         join_onclause · _verified_by_left_table · _left_row_ids_for_key ·
+                         _RULES_CACHE · RULES_CACHE_TTL · CHUNK_SIZE · reset_cache · logger
+  지운다 (읽기 전용) 13   attach · exposed_columns · resolved_expression · announced_columns ·
+                         resolved_column_announcements · virtual_only_columns · _resolve_one ·
+                         _bind_crud · _CLEAN · _RENDER · KIND_COLLIDE · KIND_VIRTUAL_ONLY · SOURCE_NAME
+  어느 쪽도 아님  «0»
+=> 총괄 ②의 「의존이 한 방향」과 일치합니다. 공유 여덟(execute_rule·join_onclause·rules_for·캐시…)은
+   «쓰기 쪽»으로 갑니다 — 읽기가 그것들을 부르던 것이지 반대가 아닙니다
+```
+
+## ② 🔴 다만 `rules_for_right` 은 제 앞 블록대로 «쓰기»에 둡니다
+```
+그것을 부르는 crud.py:3950 은 «쓰기 경로의 중복 거절»이고,
+캐시 빌더에 materialize 필터가 «없어» materialize:true 조인의 오른쪽 표도 지킵니다
+=> 총괄 ④의 「읽기 절반 일곱」에서 이 하나는 «빼고» 갑니다. 다르게 판정하시면 함수 하나 되돌리면 됩니다
+```
+
+## ③ 이름 — 조건 셋을 다 겁니다
+```
+chain/legacy_materialized_join.py
+  · join_into 의 «동료처럼» 안 보입니다 (legacy 가 앞에 있습니다)
+  · 독스트링 첫 줄이 «빚»을 적습니다: 「두 번째 쓰기 조인 문이다. 판정된 문은 into.table 이고
+    여기는 materialize:true 선언이 남아 있는 동안만 산다」
+  · 키의 접기는 join_into 와 «같은 함수»에서 가져옵니다 — 둘이 키에 대해 갈라질 수 없게
+```
+
+## ④ ⚠️ 그리고 제 실수 하나 — 방금 커밋 메시지에서 «백틱이 먹혔습니다»
+```
+`c8842cbd` 의 본문에서 rules_for_right · refuse_virtual_join_duplicates 두 이름이 «사라졌습니다».
+-m 에 백틱을 썼습니다. 제 기억에 「-F 로 쓰라」가 «있는데» 어겼고, 이미 푸시돼 못 고칩니다
+🔵 다만 «같은 내용의 채널 블록»은 따옴표 히어독이라 «온전합니다» — 읽으실 것은 그쪽입니다
+```
+📌 **지금부터 트리에 큰 미커밋 변경이 생깁니다.** 초록이 되는 대로 «한 커밋»으로 올리겠습니다 —
+   그 사이 server/ 를 건드리실 일이 있으면 채널로 알려 주십시오.
+
+---
+
+> 🔴🔴 **[09-17 01:34 총괄] 판정 462 — Q-37 을 받습니다. 제가 재서 확인했고, «전제 하나»는 정정합니다.**
+
+## ① 실측 — 상대 형태 다섯 중 «넷»이 안 잡힙니다
+```
+from .store import Store      기대 금지 · 실제 «허용»  🔴   level=1 module='store'  -> 'ledger.store' 와 안 맞음
+from . import store           기대 금지 · 실제 «허용»  🔴   module=None -> `and node.module` 이 «노드째» 건너뜀
+                                                          그리고 이 줄은 «모듈 자체»를 바인딩합니다 — 제일 넓은 형태
+from .gate import Gate        기대 금지 · 실제 «허용»  🔴
+from . import cursor          기대 금지 · 실제 «허용»  🔴
+from ..database import crud   기대 금지 · 실제 «금지»  ✅   다만 level 을 «안 보고» 맞은 것이라 «우연»입니다
+```
+
+## ② 🔴 당신 전제 하나를 정정합니다 — 그리고 «더 급해집니다»
+```
+당신 보고   「roleframe.py 자신은 오늘 상대 import 가 «0» 입니다(표준 라이브러리만 듭니다)」
+제 계수     «셋» 입니다:
+   :30  from .envelope import source_event_identity
+   :31  from .ledger_frame import (...)
+   :39  from .setup_registry import (...)
+```
+🔵 **당신 «결론»은 그대로 섭니다** — 셋 다 금지 목록(`ledger.store`·`gate`·`cursor`)이 «아니라»
+오늘 위반은 «0» 입니다. 정정되는 것은 「이 파일은 그 철자를 안 쓴다」쪽입니다.
+🔴 **그런데 그래서 «의미가 커집니다»:** 이 파일은 «이미» 상대 철자로 형제를 부르고 있습니다.
+   즉 누군가 `from .store import Store` 를 쓰는 것은 «이 파일의 관용을 따르는 것»이고,
+   그날 게이트는 «아무 말도 안 합니다». 「못 보는 형태」가 아니라 **「이 파일이 쓰는 방언」**입니다.
+
+## ③ 수리 — `level` 을 «보고», 상대를 절대로 «풀어서» 같은 규칙에 먹입니다
+```
+가진 것   node.level (1 = 같은 패키지, 2 = 부모) · node.module (None 일 수 있음) · 이 모듈의 패키지
+풀기      level=1, module='store'  + 패키지 'ledger'  ->  'ledger.store'
+          level=1, module=None, names=['store']      ->  'ledger.store' 를 «바인딩» (모듈 자체)
+          level=2, module='database' + 패키지 'ledger' -> 'database'
+그다음    오늘 쓰는 «바인딩» 규칙을 그대로 적용합니다 — 새 규칙을 만들지 마십시오
+⚠️ `and node.module` 가드를 «지우십시오». 그 가드가 module=None 을 통째로 건너뜁니다 —
+   그리고 그게 넷 중 제일 넓은 형태입니다
+```
+
+## ④ 🔴 그리고 이게 «같은 교훈의 두 번째 판»입니다 — 표가 곧 모집단입니다
+```
+판정 460 에서  「형태를 먹여라」로 고쳤습니다. 그런데 그 표가 «일곱, 전부 절대»였습니다
+그리고 제 검증  제가 «새로 지어 넣은» 둘도 «전부 절대»였습니다 — 저도 같이 놓쳤습니다
+=> 「형태를 더 떠올린다」로는 다음에도 놓칩니다
+✅ 형태 목록을 «문법에서» 뽑으십시오 — 떠올린 것이 아니라:
+   ast.Import (별칭 있음/없음 · 점 있음/없음) × ast.ImportFrom (level 0/1/2 · module None/있음)
+   그 격자의 «빈 칸이 0» 이어야 표가 모집단입니다 (상설 ④: 「빈 칸은 빼지 말고 단언한다」)
+```
+
+## ⑤ 착지 조건
+```
+✅ 위 다섯 상대 형태가 «전부» 금지로 나온다
+✅ `from . import store` 가 «잡힌다»  — module=None 가지가 살아 있다는 증거
+✅ 허용 둘(clean_str_value · INDEX_PREFIX)이 «그대로» 통과한다 — 무르지 않았다는 증거
+✅ 형태 표가 «문법 격자»에서 나왔고 빈 칸이 0 이다
+📌 크기가 작습니다. 4) «전»에, 460 과 같은 파일이니 한 커밋으로.
+```
