@@ -40593,3 +40593,59 @@ S-106 조건   철회는 «오늘의 함수»(store 의 withdraw)를 그대로 �
 > 수: 조인 스위트 21 passed · `ingestion_worker`·`join_into`·`outbox` 모집단 **1,750 passed / 2 failed** — 그 둘은 «기존 순서 오염»입니다(스태시한 트리에선 «3 failed», 둘만 따로 돌리면 65 passed) · `run_pg_tests.py` **91 passed / 0 failed** · collect **6,823 · 에러 0**.
 > ⚠️ 보드의 「조인이 다는다」 확인은 `75ef33fe` 기준입니다. 그 확인 자체는 유효하고, 이 커밋은 «그 뒤에 뭐가 쌓이나»를 고칩니다.
 > 📌 **[09-16 19:02] 이 채널의 미답 질문: «없음».** 판정 419 읽고 B 의 ① 로 갑니다.
+
+> ## 📊🔔 **[09-16 19:04 구현자] B ① 전수 census — 「builtin 인가」를 «묻는» 자리 «20», 철자 «일곱». 표와 제안을 올립니다(코드 0)**
+> 지시대로 «실행 자리 셋»이 아니라 «그 물음»을 셌습니다. AST 로 — 같은 판단이 다른 낱말로 쓰인 자리를 grep 은 못 셉니다.
+
+> ### ① 철자별 — 한 물음이 «일곱 낱말»로 쓰여 있습니다
+> ```
+> mapper_module          8   파일 맵퍼 이름이 «있나»로 가른다
+> follow_up              8   «랩»으로 가른다  🔴 S-278 뒤로 이 대리는 «거짓»입니다(조인은 builtin 인데 follow_up 아님)
+> mapper_function        7   위와 같은 갈래의 둘째 철자
+> BUILTIN_KINDS          6   표에 견준다 — «유일하게 성질을 직접 묻는» 철자
+> builtin_kind           3   답을 변수에 담아 나른다
+> run_builtin 2 · execute_custom_mapper 2      «문» 자체
+> ```
+
+> ### ② 실행 — 물음이 «안»에 있나 «밖»에 있나
+> ```
+> 안에 있다   chain/ingestion_worker.py:1278  _process_chain_transaction_group_sync   (A 가 넣은 갈래)
+>            chain/replay.py:321             replay_rule                             ← 제가 «맞춘» 선례
+>            => 둘은 «같은 모양»입니다. 갈래가 함수 안에 한 번
+> 밖에 있다   chain/ingestion_worker.py:2794  _run_builtin_followups                  builtin «만» 부른다
+>            그 규칙 목록을 _followup_builtin_rules 가 «미리 걸러» 줍니다(follow_up AND BUILTIN_KINDS)
+>            => 이 자리는 「맵퍼면 어쩌지」를 «물을 필요가 없게» 되어 있습니다 — 다른 해법입니다
+> ```
+
+> ### ③ 「말하는 방식」 — 소유자 ③의 근거가 표에 그대로 나옵니다
+> ```
+> chain/rule_census.py:42    derive_kind      mapper_module/function 으로 «종류 이름»을 가른다
+> chain/rule_shape.py:37     from_chain_rule  같은 갈래
+> chain_bindings.py:252      mapper_cells     같은 갈래
+> => 실행뿐 아니라 «규칙을 뭐라 부르나»도 그 둘로 갈립니다. 로그 문구가 갈리는 것과 같은 뿌리입니다
+> ```
+
+> ### ④ 순서·거절 — `follow_up` 이 대리로 쓰이는 자리
+> ```
+> rule_order.py:65/106   follow_up 인 생산자를 건너뛴다            (ea8f91d2 — 「못 도는 간선」)
+> ingestion_worker:974   _rule_accepts_event 가 follow_up 을 먼저 거절
+> enrichment/config.py   946·1320·1580 — 세 자리
+> 🔴 이 다섯은 «랩»을 묻는 것이 옳습니다(성질이 랩입니다). 다만 S-278 로 「follow_up == builtin」이
+>    깨졌으니, 이 낱말을 «builtin 의 대리»로 읽는 자리가 하나라도 있으면 그날 조용히 틀립니다
+> ```
+
+> ### 🔵 제안 — 한 좌석 «하나» (판정 주시면 짓습니다. 지금은 표까지입니다)
+> ```
+> 좌석      chain/rule_run.py :  run_rule(db, rule, payloads=None, row_ids=None) -> 균일한 결과
+>           「이 규칙을 이 입력으로 돌린다」를 아는 «유일한» 함수. 갈래는 «그 안에 한 번»
+> 지나는 곳  그룹(배치·행별) · 소급 · 후속 랩 셋 -> 전부 이것을 부른다
+>           후속 랩은 «미리 거른 목록»을 계속 써도 됩니다 — 부르는 문만 같아지면 됩니다
+> 결과 모양  {updates, written, refusal} 하나로. builtin 은 written 을 채우고 맵퍼는 updates 를 채우되
+>           «부르는 쪽은 그것을 안 갈라도» 되게 — 그것이 「구분되지 않는다」의 실무 뜻입니다
+> 로그      그 좌석이 «한 줄»을 찍습니다 — 접두·주어(규칙 이름)·수의 이름이 builtin/맵퍼에서 «같게»
+>           오늘: builtin 은 규칙 이름 있고 맵퍼는 없습니다(총괄 실측 ③)
+> 오라클    AST: 규칙을 «실행»하는 자리가 그 좌석 말고 있으면 빨강 (S-271 의 begin_nested 오라클 모양)
+> ⛔ 안 접는 것  rule_order·_rule_accepts_event 의 follow_up — 그건 «랩»을 묻는 것이고 성질이 맞습니다
+>              다만 「follow_up == builtin」으로 읽는 자리가 있는지는 ②에서 따로 봐야 합니다
+> ```
+> 📌 **[09-16 19:04] 이 채널의 미답 질문: «하나» — 위 제안(좌석 모양·결과 모양·로그 저자)을 그대로 갈까요.** 판정 전엔 안 짓습니다.
