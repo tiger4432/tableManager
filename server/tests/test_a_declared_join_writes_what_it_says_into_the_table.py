@@ -478,9 +478,13 @@ def test_a_join_cell_nobody_reads_is_named_and_the_rule_still_runs(load, caplog)
     assert "wobble" in " ".join(r.getMessage() for r in caplog.records)
 
 
-def test_the_read_time_join_keeps_its_own_id():
-    """⛔ `builtin:join` IS TAKEN, and production runs on it. `register_builtin` refuses a
-    second claimant by name, so this is enforced rather than remembered."""
+def test_the_two_write_join_doors_keep_separate_ids():
+    """⛔ `builtin:join` IS TAKEN - by the LEGACY DECLARATION's join, which WRITES too.
+    ⚰️ This test was called `..._the_read_time_join_keeps_its_own_id` and said production
+    ran on it; ruling 461 deleted the read-time executor and the owner ruled that production
+    writes into the table. What the two ids actually separate is which declaration file
+    birthed the rule (판정 461 ③ - two write doors, and that is the debt).
+    `register_builtin` refuses a second claimant by name, so this is enforced not remembered."""
     from chain import legacy_join_declaration as vjc
 
     assert join_into.JOIN_INTO_MAPPER != vjc.JOIN_MAPPER
@@ -489,19 +493,26 @@ def test_the_read_time_join_keeps_its_own_id():
         builtins.register_builtin(vjc.JOIN_MAPPER, join_into.run)
 
 
-def test_this_module_does_not_borrow_the_read_time_executor():
+def test_this_module_does_not_borrow_the_other_doors_engine():
     """🔴 BORROW THE FUNCTION, NOT THE ENGINE (the ruling's words). The fold has to be shared
-    or the two joins would disagree about the key; the executor, its caches and its config
-    loader are what production runs on and are deliberately not in this path."""
+    or the two write doors would disagree about the key; the other door's engine, its caches
+    and its declaration loader are deliberately not in this path.
+
+    ⚰️ THIS GUARD NAMED A PACKAGE THAT NO LONGER EXISTS. It forbade importing `virtual_join`,
+    which ruling 461 deleted - so from that commit it could not go red for anything, while the
+    engine that actually survived (`chain.legacy_materialized_join`, the second write door)
+    was unguarded. A guard whose subject was deleted scores 「no problem」, not 「no defect」."""
     import inspect
 
     body = inspect.getsource(join_into)
-    # ⚠️ IMPORTS, NOT MENTIONS. The module NAMES the read-time join in prose - that is the
-    # point of the prose - so a substring check would score the docstring instead of the
-    # dependency and would go red for explaining itself.
+    # ⚠️ IMPORTS, NOT MENTIONS. The module NAMES the other door in prose - that is the point
+    # of the prose - so a substring check would score the docstring instead of the dependency
+    # and would go red for explaining itself.
     imports = [line.strip() for line in body.splitlines()
                if line.strip().startswith(("import ", "from "))]
-    assert not [line for line in imports if "virtual_join" in line], imports
+    borrowed = [line for line in imports
+                if "legacy_materialized_join" in line or "legacy_join_declaration" in line]
+    assert not borrowed, borrowed
     assert [line for line in imports if "notation_norm" in line], (
         "the shared fold is what keeps the two joins' keys from drifting")
 

@@ -152,8 +152,10 @@ def test_a_declaration_that_says_nothing_about_uniqueness_gets_nothing(calls):
 
 
 def test_a_rule_that_is_not_this_kind_is_not_this_seats_business(calls):
-    """⚠️ THE OLD READ-TIME JOIN KEEPS ITS OWN SEAT. Two places building one table's index
-    would be two answers to 「does this exist」.
+    """⚠️ THE LEGACY DECLARATION'S JOIN KEEPS ITS OWN SEAT. Two places building one table's
+    index would be two answers to 「does this exist」. (It was called 「the old read-time
+    join」 here; it is not one - ruling 461 retired that half and `builtin:join` is the
+    OTHER WRITE DOOR, 판정 461 ③.)
 
     🔴 THE FIXTURE DIFFERS FROM THE TARGET BY THE MAPPER NAME AND NOTHING ELSE. My first
     cut handed this seat rules with no `params` at all, so dropping the kind check changed

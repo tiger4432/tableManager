@@ -386,10 +386,23 @@ def _install():
     # `GeneralUpdateItem.origin_row_id` (S-280), so what it wrote can be withdrawn when
     # that row is deleted.
     register_builtin(legacy_join_declaration.JOIN_MAPPER, _run_join, stamps_origin=True)
-    # 🔴 [S-237] THE UNIFIED DECLARATION'S `join` KIND, AND IT IS A DIFFERENT ENTRY ON
-    # PURPOSE. `builtin:join` is the READ-TIME join and production runs on it; this one
-    # WRITES what the declaration says into a column. `register_builtin` refuses two
-    # claimants of one id by name, so the distinction is enforced here rather than trusted.
+    # 🔴 [S-237 · 판정 461 ③] TWO ENTRIES, AND BOTH OF THEM WRITE. THAT IS THE DEBT.
+    # ⚰️ This paragraph used to read 「`builtin:join` is the READ-TIME join and production
+    # runs on it」. Both halves were false: ruling 461 deleted the read-time executor, and
+    # production writes into the table. `_run_join` above reaches
+    # `legacy_materialized_join.on_*_rows_changed`, which writes exactly as `join_into.run`
+    # does. So the axis these two entries split on is NOT read-vs-write - it is WHICH
+    # DECLARATION FILE BIRTHED THE RULE:
+    #     builtin:join       virtual_join_rules.json with `materialize: true`. Alive only
+    #                        while such a declaration is; `materialize: false` declared a
+    #                        read-time join and is now refused by name.
+    #     builtin:join_into  chain_rules.json, `derive: {kind: "join"}` with `into.table`.
+    # 🔴 Two write doors for one job is a debt, not a design, and it is written down here
+    # because this registry is where the two are visible at once. They are kept from
+    # disagreeing about the KEY by both folding it through `notation_norm.key_expression_sql`
+    # rather than by either trusting the other. The debt closes when the last
+    # `materialize: true` declaration moves to `into.table`. `register_builtin` refuses two
+    # claimants of one id by name, so the separation is enforced here rather than trusted.
     register_builtin(join_into.JOIN_INTO_MAPPER, join_into.run, stamps_origin=True)
     # S-195: the kind S-179 declared finally has an implementation, so the table carries the
     # whole `builtin:` vocabulary and the named temporary two-path condition is over.
