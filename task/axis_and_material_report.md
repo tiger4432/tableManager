@@ -1,3 +1,62 @@
+## 🔴 [09-17 04:21] **점호 보정 셋째 — `contracts/` 에 «셋» 더 있습니다. 그리고 그게 ㉯ 를 막습니다**
+
+부류 A 의 «다섯» 중 `m4_symbol_extractability_probe` 를 열었다가 나왔습니다.
+
+### ① 그 파일은 «일부러» 다른 파일의 슬라이서를 씁니다
+
+```
+그 파일 머리글 원문:
+   「Symbols are sliced with the HARNESS'S OWN slicer, lifted from its source rather than
+     reimplemented, so a change to how the contract extracts symbols reaches this file too.」
+=> `contracts/map_seam/client_harness.mjs` 의 `sliceFunction` 을 정규식으로 «떠서» vm 에 돌립니다
+   결합이 «의도»입니다 — 계약 하니스가 추출 방식을 바꾸면 이 파일도 따라가라는 뜻입니다
+🔴 그래서 m4 «혼자» 전환하면 그 의도된 결합이 끊깁니다. m4 는 그 계약 하니스의 «하류»입니다
+```
+
+### ② 🔴 그래서 열어 봤고 — 제 점호의 «모집단 밖»에 셋이 더 있습니다
+
+제 점호는 범위를 「`client2/tests` 만」이라고 «적어 뒀습니다». 정직했지만, «부류»는 그 선을 넘습니다 —
+이것들은 클라 코드이고 **클라 빌드 게이트가 돌립니다**(`prebuild` -> `check:contracts`, 계약 12/12).
+
+| 파일 | 읽어서 본 것 |
+|---|---|
+| `contracts/band_arithmetic/client_harness.mjs` (294줄) | 🔴 **SLICE** — `pieces.join` -> `vm.runInContext` |
+| `contracts/doe_band_rules/client_harness.mjs` (597줄) | 🔴 **SLICE** — 같은 모양 + 샌드박스에서 상수를 다시 꺼냅니다(`vm.runInContext('ZONES', …)`) |
+| `contracts/map_seam/client_harness.mjs` (1,678줄) | ⚠️ **부분** — `loadWithProbe` 를 «쓰면서»(:277) `sliceFunction` 도 «부릅니다»(:87, :695). 그리고 `sliceConst` 는 «정의만 하고 안 부릅니다» — 제가 C-124 에서 걷어낸 그 죽은 도구와 «같은 모양» |
+
+```
+🔴 즉 클라 레인의 금지 부류는 «열»이 아니라 «열셋»입니다 — 다만 «누구의 것인지»가 먼저입니다
+```
+
+### ③ 판정 청합니다 — `contracts/*/client_harness.mjs` 는 «누구의 것»인가
+
+```
+같은 부류의 선례  판정 464 ㉢ 에서 `seam_7b_oracle.py` 를 「이음매 계약 — 클라 레인 밖」으로 판정하셨습니다
+이쪽이 다른 점    ㉠ 파일이 «클라 소스»를 대상으로 합니다 (client2/src/*)
+                 ㉡ «클라 빌드»가 돌립니다 (prebuild 안, 12/12)
+                 ㉢ 그리고 «제 점호 구성원 하나»(m4)가 이 중 하나에 «의존»합니다
+그래서 셋 중 하나  ⓚ 제 것 — ㉯ 에 넣어 같이 전환합니다
+                 ⓛ contract-keeper 의 것 — 저는 m4 를 «그쪽이 끝난 뒤»로 미룹니다
+                 ⓜ 반반 — 클라 절반만 제 것
+⛔ 제가 정하지 않습니다. 계약은 «양쪽을 같은 기댓값에 채점»하는 자리라 한쪽만 바꾸면
+   CLAUDE.md 가 경고한 「두 쪽이 다른 질문에 답하기 시작한다」가 그대로 납니다
+```
+
+### ④ 그동안 막히지 않은 것부터 합니다
+
+```
+✅ `valid_die_authoring_harness` — 자기 안에서 `map_editor.js`·`map_key.js` 를 자릅니다.
+   contracts 의존 «없습니다». 다음 전환은 이것입니다
+⏸ `m4_symbol_extractability_probe` — 위 판정 뒤로
+⏸ `valid_die_frame_adoption`(known-red) · `head_parity`(㉡) · `reposition_regime`(ⓘ/ⓙ 대기)
+```
+
+⚠️ 그리고 이게 오늘 밤 제 점호의 «셋째» 보정입니다(게이트 아님 ×1 · 세 목록 ×1 · 모집단 ×1).
+셋 다 같은 모양입니다 — **제가 그은 선은 정직했는데, «부류»가 그 선을 넘었습니다.**
+📎 다음 점호부터는 술어에 「범위」와 함께 「이 부류가 그 범위를 넘나」를 «같이» 적겠습니다.
+
+---
+
 ## 🔵 [09-17 04:06] **C-126 착지 — 부류 B «완료». 그리고 부류 A 의 비용을 «재서» 나눕니다. `b46df3c6` · `40afd424`**
 
 ### ① 부류 B 둘 다 착지 — 수는 «전과 같습니다**
