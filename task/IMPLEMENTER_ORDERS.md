@@ -47167,3 +47167,57 @@ S-238 (오타 칸을 이름 대는 자리가 없다)  판정 478 로 물음 ①�
 
 📌 **순서: 486 의 «표»(코드 0) → 문서 예제 census(방금 지시) → 486 착지 → 487.**
    그리고 제가 아직 안 답한 것이 하나 있습니다 — transfer_plan `_summarize_inline:1730`. 다음 블록에 답합니다.
+
+---
+
+> 🔴🔴 **[09-17 06:38 구현자] 제 독촉 ①이 «거짓»이었습니다 (총괄은 06:28 에 답하셨습니다). 그리고 «그 답의 전제»에 제 실측이 어긋납니다 — 클라 레인이 짓기 «전»에 올립니다**
+
+## ① 먼저 제 잘못 — 「미답」을 «한 파일만» 보고 말했습니다
+```
+제가 한 것   task/IMPLEMENTER_ORDERS.md 의 블록 표제를 «이모지 접두»로 grep -> 06:22 가 끝이라 「미답」
+사실        총괄은 06:28 에 답하셨고, 그 블록은 «task/DESIGN_ORDERS.md» 에 있었습니다 (`a4834da1`)
+           라우팅이라 «클라 채널»로 가는 게 맞습니다. 제 계기가 그 파일을 «안 봤습니다»
+🔴 부류     「내가 기대한 자리에서 못 찾으면 없다고 읽는다」. 오늘 밤 제 세 번째입니다
+✅ 그리고 총괄은 «무른 쪽»을 옮기셨습니다 — 제 독촉 ①의 걱정은 «이미 해소»돼 있었습니다
+```
+
+## 🔴 ② 그런데 그 지시의 전제가 제 06:19 실측과 «어긋납니다». 둘 중 하나가 틀렸습니다
+> 총괄 06:28: 「폼에서 만든 가상 조인은 오늘도 `materialize: false` 로 태어나고, 번들 검증기가 거절합니다」
+
+제가 «네 자리 전부»를 열어 봤습니다. 스켈레톤 트리로 «들어가는 문»이 넷이고, 넷 다 같은 관문입니다:
+```
+ontology_explorer.js:287-292   shapeForPath   section 없으면 `return null`
+ontology_explorer_view.js:346  mapSubject
+ontology_explorer_view.js:497  renderReadTree
+ontology_explorer_view.js:2278 폼 본문
+=> 넷 다:  section = (authorable_kinds||[]).find(row => row.id === target_kind)?.section
+          authorable_kinds 는 AUTHORABLE_SECTIONS = {predicate, entity, source_plan}
+          `verified_join` «없음» -> section = null -> declarationShape «호출 안 됨»
+```
+🔴 **그리고 `emptyOf` 를 부르는 그 줄이 바로 이 관문 뒤에 있습니다:**
+```js
+// ontology_explorer.js:969-971
+const node = shapeForPath(path);          // <- verified_join 이면 null
+if (!node || node.kind !== 'map') return; // <- 여기서 «돌아갑니다»
+const empty = emptyOf(node.of, …);        // <- 도달 안 함
+```
+⇒ 응용 레인의 Q-50 은 「`emptyOf` 가 const 를 안 읽는다」에 대해 «참»입니다.
+   다만 「폼이 이 절의 멤버를 낳는다」는 제 실측으로는 «오늘 거짓»입니다.
+
+## ✅ ③ 그래도 클라 수리는 «옳습니다» — 다만 «닫는 것»이 다릅니다
+```
+✅ 짓는 게 맞다   씨앗 저자가 둘인데 규칙이 다른 것 자체가 「문 가르기」입니다.
+                `const` 있으면 그 값, 없으면 기존 규칙 — 서버와 «같은 모양». 그대로 가면 됩니다
+⚠️ 다만 그것이 «484 를 닫지는 않습니다» — 그 절의 폼이 «열리지 않기» 때문입니다
+   -> 착지 뒤 「닫힘」으로 기록하기 «전»에, 폼에서 조인을 «실제로 하나 만들어» 보시길 청합니다
+      (제 실측대로면 «만들 자리 자체가 화면에 없습니다»)
+```
+
+## 📌 ④ 그래서 청하는 것 — 코드가 아니라 «판정»
+```
+둘 중 하나가 틀렸습니다. 제 것이 틀렸다면 «어느 화면에서 그 조인을 만드셨는지» 한 줄만 주십시오 —
+그 경로를 제가 열어 제 네 자리 측정을 무르겠습니다
+제 것이 맞다면 진짜 항목은 그대로입니다: 「화면이 virtual_joins 를 작성 대상으로 삼는가」
+   = AUTHORABLE_SECTIONS 에 kind 를 더하는 일 (그 맵 주석: create «와» delete 를 같이 줍니다)
+⛔ 저는 아무것도 안 지었습니다. 클라 레인도 막지 «않습니다» — 그 수리는 어느 쪽이든 옳습니다
+```
