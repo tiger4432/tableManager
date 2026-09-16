@@ -1,13 +1,17 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **904개** 이력. (거버넌스 규칙 #4)
+> 총 **909개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-09 (September 2026)
 
+- **2026-09-16 20:11** — [The Seat That Asks Which Door Was Built And Nothing Called It](./20260916_201128_the_seat_that_asks_which_door_was_built_and_nothing_called_it.md)
+- **2026-09-16 20:11** — [Retroactive Went Through The Seat And The Fold Covered One Of The Two Doors](./20260916_201129_retroactive_went_through_the_seat_and_the_fold_covered_one_of_the_two_doors.md)
+- **2026-09-16 20:11** — [Three Ux Audits Of The Admin Screen And One Finding Was An Owners Instruction](./20260916_201130_three_ux_audits_of_the_admin_screen_and_one_finding_was_an_owners_instruction.md)
+- **2026-09-16 20:11** — [One Code Map Row Carried Two False Sentences And One Of Them Had Been False For A Day](./20260916_201131_one_code_map_row_carried_two_false_sentences_and_one_of_them_had_been_false_for_a_day.md)
 - **2026-09-16 19:42** — [The Join Came Onto The Trigger Path And Left Two Guards On The Lap It Left](./20260916_194223_the_join_came_onto_the_trigger_path_and_left_two_guards_on_the_lap_it_left.md)
 - **2026-09-16 13:16** — [The Join Declaration Is Hoisted Out Of The Row Loop And The Sibling Ruling Was Built Reverted And Stood Down](./20260916_131629_the_join_declaration_is_hoisted_out_of_the_row_loop_and_the_sibling_ruling_was_built_reverted_and_stood_down.md)
 - **2026-09-16 12:32** — [A Dry Run Undoes Its Own Savepoint And The Sibling Shares One Body So The Refusal Cannot Grow A Second Spelling](./20260916_123244_a_dry_run_undoes_its_own_savepoint_and_the_sibling_shares_one_body_so_the_refusal_cannot_grow_a_second_spelling.md)
@@ -93,6 +97,7 @@
 - **2026-09-09 23:56** — [The Grammar Got The Slots And Every Seed Left By The Product Door](./20260909_235600_the_grammar_got_the_slots_and_every_seed_left_by_the_product_door.md)
 - **2026-09-08 22:19** — [The Node Learned To Carry Its Own Values And A Deleted Row Learned To Take Its Facts](./20260908_221900_the_node_learned_to_carry_its_own_values_and_a_deleted_row_learned_to_take_its_facts.md)
 - **2026-09-07 23:56** — [Fourteen Product Lines Landed And Two Of Them Repaired The Same Day They Broke](./20260907_235600_fourteen_product_lines_landed_and_two_of_them_repaired_the_same_day_they_broke.md)
+- **2026-09-07 07:41** — [A Map Says What Its Origin Box Stood On Because The Two Fallbacks Draw The Same Box](./20260907_074114_a_map_says_what_its_origin_box_stood_on_because_the_two_fallbacks_draw_the_same_box.md)
 - **2026-09-06 18:28** — [A Bare Call Meant The Merge History Was Always Lost](./20260906_182800_a_bare_call_meant_the_merge_history_was_always_lost.md)
 - **2026-09-06 16:45** — [The One Write The Outbox Could Not See](./20260906_164500_the_one_write_the_outbox_could_not_see.md)
 - **2026-09-06 16:25** — [The Grid Reads The Stored Pin Instead Of Whichever Read It Made](./20260906_162500_the_grid_reads_the_stored_pin_instead_of_whichever_read_it_made.md)
