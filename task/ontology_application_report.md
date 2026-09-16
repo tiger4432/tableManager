@@ -21356,3 +21356,79 @@ docs/history/20260916_194223_…                    간격 둘(「한 시간」�
 ⚠️ 인덱스 재생성 «불필요» — 제목이 안 바뀌었습니다(파일명·제목 동일).
 
 > · 🔁 이월: 0 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
+
+---
+
+## 🔴 Q-8 [09-16 20:4x] `027168c2` 검수 — **봉투의 `source` 칸은 좌석의 것이 아닙니다. 쓰기 문이 «층 이름»으로 덮어씁니다**
+
+> 깊이 산술은 **맞습니다** — 먼저 확인했습니다: 그룹(:1437 raw · :1505/:1514/:1558 raw 전달 · :1592
+> `outgoing_depth`)과 랩(:2842 raw · :2843 · :2868 raw 전달) 양쪽 다 `+1` 이 «한 번»입니다. 이중 계수 없음 ✅
+> `rule_order` 의 술어도 안 건드렸고 주석만 고쳤습니다 ✅
+
+### 결함 ⑥ — `chain_envelope` 가 세운 `source` 가 «flush 시점»에 다른 값으로 서 있습니다
+
+```
+rule_run.py:99      token_source = request_source.set(CHAIN_SOURCE)     ← 좌석이 «chain_ingestion» 을 세움
+crud.py:4564        source_val = batch.updates[0].source_name           ← «항목의 층 이름»
+crud.py:4566        with transaction_context(user_val, tx_id, source_val):   ← 🔴 request_source 를 «다시» 세움
+database.py:221     _outbox_envelope() 가 request_source.get() 을 읽음   ← 그때 값은 «층 이름»입니다
+```
+🔴 **봉투 안에서 쓰기를 하면, 그 쓰기가 자기 «층 이름»으로 봉투의 source 를 덮습니다.**
+`transaction_context` 는 user·tx·source «셋»을 세우고 **depth 는 안 건드리므로**, 이 커밋이 고친
+`chain_depth` 는 «살아남습니다» ✅. 덮이는 것은 **source «하나»**입니다.
+
+### 그래서 커밋의 표 「source ✓」가 «한 문에서만» 참입니다
+
+```
+join_into    항목의 층 = CHAIN_LAYER = "chain_ingestion"          → 덮어써도 «같은 값» ✅
+auto_confirm 항목의 층 = "enrichment_auto_confirm"                 → 🔴 봉투가 그 값으로 나갑니다
+             (candidates.py:758-764 `source_name=src` · :770-772 `crud.apply_batch_updates`)
+```
+**실패 시나리오**: 자동 확정이 파생 표에 씁니다 → 아웃박스 이벤트의 `source_name` =
+`enrichment_auto_confirm` → `ingestion_worker.py:987` 이 「chain_ingestion 이 아니다」로 읽고
+**`allow_chain_trigger` 를 안 물은 채 통과**시킵니다 → 그 표의 규칙이 «전부» 깨어납니다.
+즉 **체인이 쓴 것에 대한 옵트인이 이 문에서만 무력**입니다.
+🔵 다행히 «무한»은 아닙니다 — 깊이는 살아 있어 천장이 셉니다. 잃은 것은 «옵트인»이지 «유한성»이 아닙니다.
+
+### 🔵 그리고 이것이 «추측이 아니라는» 증거가 코드 안에 있습니다
+
+```
+join_into.py:239-248 (구현자가 09-15 에 적음)
+  「a write labelled anything but `chain_ingestion` wakes every rule on that table,
+    so this join's writes re-woke the enrich that feeds it」
+  -> 그래서 조인은 «층»에 규칙 이름 대신 chain_ingestion 을 넣고 규칙 이름을 `updated_by` 로 옮겼습니다
+```
+🔴 **즉 제품은 이 결함을 이미 한 번 «만났고», 고친 방법이 「층 이름을 채널 이름으로 바꾸기」였습니다** —
+층의 정체성을 «지불»한 것입니다. 그리고 그 대가를 안 치른 문(auto_confirm)이 오늘 그대로 남아 있습니다.
+
+### 📌 부류 — 문서가 이미 「둘은 다른 필드」라고 적어 두었습니다
+
+```
+docs/guide/chain_ingestion_guide.md (§ 머리글)
+  「🔴 라벨(`request_source`)과 층(`update_item.source_name`)은 «다른 필드»」
+그런데 crud.py:4564 가 «층에서 라벨을 유도»합니다 — 한 값이 두 뜻을 지고 있습니다
+```
+📌 「한 이름이 두 뜻」 + 「같은 기능에 두 저자」. 좌석이 봉투의 저자가 되려면 **쓰기 문이 라벨을 층에서
+유도하는 것을 그만둬야** 합니다 — 그러지 않으면 `chain_envelope` 의 source 칸은 «선언적 장식»입니다.
+
+### 확신도 · 모르는 것
+
+```
+구조   ✅ 네 자리 전부 오늘 HEAD 에서 읽음(rule_run:99 · crud:4564-4566 · database:221 · candidates:758)
+실행   ❌ 안 돌렸습니다
+못 잼  · 오늘 라이브에 `candidate_for` 를 선언한 참조 뷰가 «있는지» — 없으면 auto_confirm 은 안 돕니다
+       (`server/config/*.json` gitignore). 그래서 「오늘 새는가」는 «모릅니다» — 「샐 수 있는 모양인가」는 «예»입니다
+       · 다른 빌트인이 생길 때 «층 이름을 무엇으로 쓸지»는 이 결함이 고쳐지기 전까지 «함정»입니다
+```
+
+### 🔴 판정 대기
+
+```
+① 라벨을 층에서 유도하는 것을 끊습니까 — `apply_batch_updates` 가 request_source 를 «이미 세워져 있으면
+   안 덮는» 것이 최소 수정입니다(한 줄). 다만 그 한 줄이 «모든 쓰기 경로»에 걸리므로 제가 짓지 않았습니다
+② 아니면 auto_confirm 의 층 이름을 조인처럼 chain_ingestion 으로 바꾸고 규칙 이름을 updated_by 로 옮깁니까
+   (그건 «같은 대가»를 한 번 더 치르는 것이고, 레이어링에서 그 층이 사라집니다)
+⛔ 저는 둘 다 짓지 않았습니다
+```
+
+> · 🔁 이월: 0 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
