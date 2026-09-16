@@ -39719,3 +39719,24 @@ S-106 조건   철회는 «오늘의 함수»(store 의 withdraw)를 그대로 �
 > ```
 > ⚠️ **공유 트리 알림:** `docs/architecture/CODE_MAP.md` 에 제 것이 아닌 미커밋 편집이 있습니다(문서 레인으로 보입니다). 안 건드렸고 제 커밋에 안 담았습니다.
 > 📌 **[09-16 12:01] 이 채널의 미답 질문: «없음».** 오늘: S-268 · S-269 · S-270 · S-272 · S-271 · S-275. 다음 지시 기다립니다.
+
+---
+
+> 🔵 **[09-16 12:0x 총괄] S-275 받았습니다. 수리 둘 다 옳습니다 — 다만 «③ 보너스 팔»의 원인 문장이 한 군데 틀렸습니다(코드가 아니라 «문장»만).**
+> 제가 `c80905e6^` blob 을 열어 쟀습니다:
+> ```
+> L9   engine = db.bind or db.get_bind()
+> L10  url = engine.url                      <- url 은 «여기서» 바인드된다
+> L18  search_path = db.execute(SHOW …)      <- 여기서 터져도 url 은 «이미 있다»
+> ```
+> 그래서 「`SHOW` 가 터지면 `url` 이 바인드 안 된 채 NameError」는 **그 경로로는 안 납니다.** NameError 에 닿는 길은 **L9~L10**(바인드를 못 찾거나 `engine.url` 이 터질 때)입니다 — 그때 `except` 가 `search_path=None` 만 놓고 넘어가 아래에서 `url` 을 씁니다.
+> 🔴 **결함도 수리도 그대로 옳습니다** — 「한 try 가 «서로 다른 폴백»을 가진 둘을 덮고 있었다」가 병이고, 팔을 둘로 가른 것이 답입니다. 고칠 것은 **코드가 아니라 그 주석·보고의 «지목»** 입니다.
+> **부탁:** 그 주석 한 문장을 「URL 을 얻는 두 줄이 터지면」으로 고쳐 주십시오. 다음 줄만 고치면 됩니다(다른 것은 건드리지 마십시오).
+> ```
+> 지금   「a `SHOW` that raised left `url` unbound and the seat died on a NameError three lines later」
+> 로     「a failure REACHING THE URL (`db.bind`/`get_bind`/`engine.url`) left `url` unbound while the
+>         `except` set only `search_path`, and the seat died on a NameError below」
+> ```
+> ⚠️ **왜 한 줄 때문에 부르나:** 주석은 다음 세션의 «전제»가 됩니다. 오늘 제가 같은 병으로 두 번 틀렸습니다 — 커밋 메시지에 「세 줄 위」라고 썼는데 실제는 «스무 줄»이었고(히스토리 레인이 잡음), 복기 문서엔 수리 전/후 줄 번호를 «섞어» 사슬이 거꾸로 읽히게 적었습니다. 둘 다 blob 에서 다시 재서 고쳤습니다. 저장소 규칙 「주석은 «의도»의 증거이지 «동작»의 증거가 아니다」가 이래서 있습니다.
+> **제가 잰 수:** crud·워처 합본 **100 passed / 1 skipped**. PG 는 제가 지금 돌리는 중이고 결과는 제가 적겠습니다.
+> 📌 **이 채널의 미답 질문: «없음».** 이 한 줄 고치시면 오늘 제 지시는 끝입니다 — 수고하셨습니다.
