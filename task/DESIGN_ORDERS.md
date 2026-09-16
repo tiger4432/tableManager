@@ -25284,3 +25284,57 @@ client2/tests/health_card_absence_harness.mjs:33   indexOf 로 함수 본문을 
 ```
 🔴 **착지할 때마다 «어드민을 열어» 스샷을 붙이십시오.** 상설입니다 — 하니스 초록은 화면에 대해 아무 말도 안 합니다.
 📌 **이 채널의 미답 질문: «없음».**
+
+---
+
+> 🔴🔴 **[09-16 20:2x 총괄] C-118 — 클라 레인 D1 을 «제가 재서» 확인했습니다. **C-117 보다 «위»입니다.** 메인 그리드 상단 바가 자기 컨트롤의 클릭을 먹습니다.**
+
+## 제 실측 (브라우저 MCP · `http://127.0.0.1:8080/` · 1280×720 · 표 `ledger_events`)
+```
+상단 컨트롤 9 중 «6» 이 elementFromPoint 로 자기 자신을 못 돌려받습니다 = 클릭이 그 버튼에 «안 갑니다»
+  🔄 Refresh        <- controls-area (Table 고르개를 감싼 요소)
+  ➕ Row · 🗑️ Row · 📁 폴더 업로드   <- glass-log-badge 「Loaded 1000 rows in 360.2ms」
+  💻 Desktop        <- log-indicator-area
+  Replay chain      <- glass-btn 「⚙️ Options」
+```
+🔴 **오늘 «실손해»인 것 둘 — `🔄 Refresh` 와 `💻 Desktop` 은 `disabled: false` 입니다.** 토큰이 없는 이 화면에서도 이미 안 눌립니다. 나머지 넷은 오늘 `disabled` 라 안 보일 뿐이고, **토큰 있는 운영자에게는 열립니다** — 「아직 그럴 일이 없어서 안전」은 안전이 아닙니다.
+
+## 🔴 그리고 이건 «z-index 문제가 아닙니다» — 그래서 z-index 로 고치면 안 됩니다
+```
+.glass-log-badge   position: static · z-index: auto · pointer-events: auto
+=> 겹치는 둘이 «같은 흐름의 static 형제»라 «DOM 뒤쪽»이 이깁니다. 쌓임 맥락이 관여하지 «않습니다»
+=> 진짜 원인은 바에 «넘침 전략이 없다»는 것입니다 — 줄바꿈도 가로 스크롤도 없어서
+   좁아지면 서로 «위에» 그려집니다 (레인 실측: scrollWidth 1241 > clientWidth 1024)
+```
+
+## 판정 — 고치는 것은 «배치»입니다. 둘 다 하십시오
+```
+① 바가 겹치지 않게 한다   넘침 전략을 «정한다» — 줄바꿈이든 가로 스크롤이든 축약이든.
+                        🔵 무엇을 고를지는 레인 판단. 다만 「좁아지면 어떻게 되나」가 «선언»돼 있어야 합니다
+                        (flex 자식에 min-width:0 이 빠진 전형입니다 — 먼저 그것부터 보십시오)
+② 읽기 전용 표시는 클릭을 «안 받는다»   「Loaded 1000 rows in …」는 «읽는 것»이지 누르는 것이 아닙니다
+                        -> pointer-events: none
+⚠️ ② «만» 하면 안 됩니다 — `Replay chain` 을 먹는 것은 «진짜 버튼»(⚙️ Options)이라 ② 로 안 풀립니다
+⚠️ ① «만» 해도 ② 는 하십시오 — 값이 길어지는 날(「Loaded 100000 rows in 12345.6ms」) 다시 납니다
+```
+
+### 게이트 — 제품의 «진짜 화면»에서, 폭 «셋»
+레인이 준 한 줄을 그대로 씁니다. 브라우저 콘솔에서 `blocked === 0` 이어야 합니다:
+```js
+[...document.querySelectorAll('button')].filter(b=>{const r=b.getBoundingClientRect();return r.top<60&&r.width>20&&r.height>0}).map(b=>{const r=b.getBoundingClientRect(),t=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return[b.textContent.trim().slice(0,18),(t===b||b.contains(t))?'OK':'가림']}).filter(x=>x[1]!=='OK').length
+```
+```
+폭 1024 · 1280 · 1440 «셋 다» 0        <- 하나라도 0 이 아니면 안 끝난 것입니다
+그리고 표를 «둘» 로 (ledger_events · dt_log) — 쓰기 가능한 표는 버튼이 하나 더 섭니다
+🔴 하니스로 «대체하지 마십시오». 이 결함은 렌더돼야만 존재합니다 — 소스에는 안 보입니다
+```
+
+## 순서 (갱신)
+```
+① C-118 (이것)      메인 그리드 · 상시 · 오늘 이미 둘이 안 눌림
+② C-117 ㉯ ㉮       어드민 「정상」 거짓 -> /health · 그다음 표시줄 켜기
+③ C-116 토스트       (레인이 이미 쟀습니다 — 넷이면 640×278px = 높이의 31%, 어드민에선 «클릭도» 먹음)
+④ C-117 ㉰ ㉱       토큰 셋 정의 · 하니스 잘라쓰기 제거
+```
+🔵 **레인 보고에 「스샷을 파일로 못 냈다」고 적혀 있었는데, «좌표와 한 줄 재현»을 실은 것이 더 나았습니다.** 제가 그 한 줄로 30초에 같은 수를 얻었습니다. 앞으로도 그렇게 하십시오.
+📌 **이 채널의 미답 질문: «없음».**
