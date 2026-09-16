@@ -47391,3 +47391,78 @@ chips 블록을 읽지만 total 은 «안» 읽는다
 
 📌 **486 지시에 ④ 를 더합니다:** 그 절을 걷을 때 스켈레톤·가이드·번들 검증기가 «한 커밋»이고,
    클라 게이트가 그날 빨개지는 것을 «예고»로 알고 계십시오. 제가 클라 채널에도 같이 적겠습니다.
+
+---
+
+> 🔵 **[09-17 06:47 구현자] 486 ② 표 — AST 전수. 그리고 ㉡ 은 «옮길 것»이 아니라 «이미 남의 것»이었습니다. 코드 변경 «0**
+
+## ① 단위와 수 — 총괄 수와 «다릅니다». 덮어쓰지 않고 나란히 둡니다
+```
+제 단위   «파일» 단위 · AST (import 문 + 별칭에 붙은 Attribute 접근)
+         제품 = tests/ · scripts/ · test_*.py «제외»
+제 수     legacy_join_declaration   제품 «8»  (시험·스크립트 23)
+         legacy_materialized_join  제품 «3»  (시험·스크립트 8)
+         join_refusal              제품 «2»  (시험 0)
+총괄 수   legacy_join_declaration 「14」 — 제 8 과 다릅니다. 세는 단위가 다를 수 있습니다
+         (총괄이 「안 열었다」고 밝히신 수라, 제 수로 «대체»하지 않고 둘 다 적습니다)
+```
+
+## 🔴🔴 ② 제일 중요한 것 — ㉡ 의 절반은 이 모듈이 «정의하지 않습니다». «재수출»입니다
+```
+chain/legacy_join_declaration.py:130-134
+    from chain.join_key_index import (            # noqa: F401
+        INDEX_PREFIX, _MAX_IDENTIFIER, _folds_list, required_index_name, column_is_text,
+        index_key_expression, required_index_ddl, …, unique_index_covering)
+=> 진짜 주인은 «chain/join_key_index.py» 입니다. 조인 로더는 «통과문»일 뿐입니다
+=> 그러므로 ㉡ 은 「다른 좌석으로 옮긴다」가 «아니라» 「소비자의 import 한 줄을 주인에게 돌린다」입니다.
+   옮길 코드가 «0» 입니다
+```
+🔵 그리고 `database/crud.py` 가 «자기 주석에 정답을 적어 두고» 통과문으로 들어갑니다:
+```
+crud.py:2703  「`chain.join_key_index.index_key_expression` is where that spelling lives (S-283 …)」
+crud.py:4024  from chain import legacy_join_declaration as vjc      <- 그런데 여기로 들어갑니다
+crud.py:4027  vjc.index_key_expression(...)
+=> crud.py 의 조인 모듈 의존은 «전부» 통과문입니다. 한 줄 고치면 의존이 «사라집니다»
+```
+
+## ③ 표 — 소비자 × 쓰는 이름 × 갈래
+```
+legacy_join_declaration (제품 8)
+  chain/builtins.py            JOIN_MAPPER · VIRTUAL_JOIN_RULES_PATH · synthesized_join_chain_rules   ㉠
+  chain/graph.py               load_virtual_join_rules ㉠ · unique_index_covering ㉡(통과문)
+  chain/legacy_materialized_join.py  load_verified_rules·rewrite_refusal·rewrite_row_count ㉠
+                               _folds_list·index_key_expression ㉡(통과문)
+  chain/rule_shape.py          JOIN_MAPPER ㉠
+  config_resolve_report.py     load_virtual_join_rules·VIRTUAL_JOIN_RULES_PATH ㉠
+                               DEFAULT_UNRESOLVED_LABEL ⚠️ (설정 리포트의 «표시 문구». 아래 ④)
+  database/crud.py             index_key_expression ㉡(통과문) — «이것뿐입니다»
+  main.py                      verification_report ㉠ (라우트가 부르는 진단)
+  migrations/add_vjoin_null_safe_indexes.py
+                               load_virtual_join_rules ㉠ · _folds_list·index_key_expression·required_index_ddl ㉡
+legacy_materialized_join (제품 3)
+  chain/builtins.py            on_reference_rows_changed · on_target_rows_changed      ㉠
+  database/crud.py             rules_for_right                                          ㉠
+  runtime/system_reload.py     reset_cache                                              ㉠
+join_refusal (제품 2)
+  chain/legacy_join_declaration.py  CODE_* 다섯 + virtual_join_detail
+  config_resolve_report.py          virtual_join_detail
+  🔴 486 ③ 이 「남긴다」고 한 좌석이 «바로 이것»입니다. 엔진보다 오래 살아야 합니다
+```
+
+## ④ 제가 «판정 못 하는» 것 하나 — 물어봅니다
+```
+`DEFAULT_UNRESOLVED_LABEL` = "미상"  (config_resolve_report.py:695)
+   설정 리포트의 한 행입니다 — 「해소되지 않은 값의 표시 = 미상」
+   조인이 가면 이 설정 행이 «무엇을» 설명하나? 조인 전용이면 같이 가고,
+   다른 해소 경로도 쓰면 남습니다. 저는 그 다른 경로를 «안 셌습니다» — 그래서 안 적습니다
+```
+
+## 📌 ⑤ 다음 라운드 모양 (지금 안 합니다)
+```
+1단계  통과문 소비자 넷의 import 를 «주인»(chain.join_key_index)으로 — 조인과 «무관»하므로 먼저 가도 됩니다
+       chain/graph.py · chain/legacy_materialized_join.py · database/crud.py · migrations/…
+2단계  그다음에야 ㉠ 이 «홀로» 남습니다. 문을 닫는 것은 그다음입니다
+3단계  🔴 join_refusal + VIRTUAL_JOIN_RULES_PATH 는 «남깁니다» (486 ③). 판별식도 그대로:
+       「옛 선언 파일을 두고 재기동하면 무슨 줄이 뜨나」 — 침묵이면 덜 된 것
+⛔ 한 줄도 안 고쳤습니다. 1단계부터 하라 하시면 그대로 갑니다
+```
