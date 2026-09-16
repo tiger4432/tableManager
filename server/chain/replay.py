@@ -333,9 +333,11 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
 
     from database import crud, models, schemas
     import map_meta_registrar
-    # 🪦 [S-214, 판정 370] It lived in the worker and this line was the whole of the
-    # `replay -> worker` edge: a shared primitive in one caller's house.
-    from chain.mapper_call import execute_custom_mapper
+    # 🪦 [S-214, 판정 370] `execute_custom_mapper` lived in the worker and this line was the
+    # whole of the `replay -> worker` edge: a shared primitive in one caller's house. It moved
+    # to `chain.mapper_call`, and now this function does not name either door at all - it asks
+    # `rule_run` to run the rule and does not care which one answered (S-279, 판정 420 ㉡-2ⓐ).
+    from chain import rule_run
 
     trigger_table = rule.get("trigger_table")
     target_table = rule.get("target_table")
@@ -366,10 +368,11 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
     # [S-242] Which door this rule goes through, decided ONCE before the first page and
     # REPORTED rather than inferred: a reader guessing from 「items but no cells」 would be
     # wrong about the first file mapper that legitimately proposes nothing.
-    from chain import builtins
-
-    builtin_kind = (rule.get("mapper")
-                    if rule.get("mapper") in builtins.BUILTIN_KINDS else None)
+    # 🔴 AND THE QUESTION IS ASKED WHERE IT IS ANSWERED (S-279). This was a comparison against
+    # `BUILTIN_KINDS` spelled here; the census (판정 419 ①) found that one judgement written in
+    # SEVEN spellings across 20 sites, so the comparison itself belongs to the seat that runs
+    # the answer, not to each caller that needs to know.
+    builtin_kind = rule_run.builtin_kind(rule)
 
     stats = {
         "mode": "apply" if apply else "dry-run",
@@ -396,7 +399,6 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
     }
 
     run_id = uuid.uuid4().hex[:8]
-    is_batch = bool(rule.get("is_batch"))
 
     # 🔴 THE SELECTION GOES BESIDE `limit`, NOT INSTEAD OF IT, and it goes into the QUERY
     # rather than into a filter after the fetch. `limit` bounds how much is SCANNED;
@@ -451,7 +453,9 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
                 "whole rule instead of nothing. Omit it to replay everything, on purpose.")
         selection = trg_model.business_key_val.in_(keys)
         log(f"[replay] selection: {len(keys)} business key(s)")
-    module_name, func_name = rule.get("mapper_module"), rule.get("mapper_function")
+    # 🪦 `module_name` / `func_name` / `is_batch` were read here and carried to the call. The
+    # seat reads them off the rule itself now, so a rule that names its mapper in the ONE cell
+    # (the decorator registry) no longer arrives at the door as a pair of Nones.
     # Resolved BEFORE the first page, so an undeclared pace is refused before the run has
     # written anything rather than partway through.
     pages_per_cycle, rest_seconds = resolve_pace(pace)
@@ -489,8 +493,15 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
                 stats["mapper_items"] += len(page_ids)
                 continue
             try:
-                outcome = builtins.run_builtin(
-                    builtin_kind, db, rule, row_ids=page_ids) or {}
+                # 🔴 AND THE PAGE'S EVENTS COLLAPSE NOW (판정 421, 소유자 ⓐ). Measured before
+                # wiring: `replay.py` called `outbox_mode` ZERO times, so this was the last
+                # door that did not - the group path collapses, the follow-up lap collapses,
+                # and a backfill of the SAME rule over the SAME rows made one event per row.
+                # 「같은 기능에 두 경로」 in its quiet form: whatever watches the target table
+                # saw a different shape depending on which door the write came in through,
+                # and nothing raised. The scope lives in the seat, so this line does not
+                # mention it - which is the point.
+                outcome = rule_run.run_rule(db, rule, row_ids=page_ids)
             except Exception as page_error:                            # noqa: BLE001
                 db.rollback()
                 gist = str(page_error).strip().splitlines()
@@ -513,12 +524,15 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
             db.commit()
             continue
 
-        # The REAL mapper invocation path (rule kwarg support, error handling).
-        if is_batch:
-            results = [execute_custom_mapper(module_name, func_name, db, payloads, rule=rule)]
-        else:
-            results = [execute_custom_mapper(module_name, func_name, db, p, rule=rule)
-                       for p in payloads]
+        # The REAL mapper invocation path. `is_batch` fan-out moved INTO the seat with the
+        # door it belongs to, so both spellings of 「run this rule over this page」 - here and
+        # in the worker's group step - are now one call and cannot drift apart.
+        #
+        # ⚠️ ONE MERGED ANSWER WHERE THERE WERE N. The loop below read `updates`,
+        # `map_metadata_updates` and `batches` off each result; the seat concatenates those
+        # three lists across its calls and every reader below takes only its own key, so the
+        # totals and the envelope validation are unchanged. Measured, not assumed.
+        results = [rule_run.run_rule(db, rule, payloads=payloads)]
 
         items, metadata_items, scoped_batches = [], [], []
         for res in results:

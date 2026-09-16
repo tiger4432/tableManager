@@ -107,6 +107,39 @@ def test_a_replay_of_a_declared_join_fills_the_rows_that_were_already_there(db):
     assert stats["builtin_kind"] == join_into.JOIN_INTO_MAPPER
 
 
+def test_a_backfill_page_makes_ONE_event_not_one_per_row(db):
+    """🔴 [S-279, 판정 421] THE LAST DOOR THAT DID NOT COLLAPSE. Measured before wiring:
+    `replay.py` called `outbox_mode` ZERO times, while the group path and the follow-up lap
+    both collapse. So the SAME rule writing the SAME rows produced one event live and N events
+    retroactively, and whatever watched the target table saw a different shape depending on
+    which door the write came in through - 「같은 기능에 두 경로」 in the quiet form that raises
+    nothing. A backfill is the largest batch this product runs, so it was also the worst place
+    for it.
+
+    ⛔ FIVE ROWS, BECAUSE ONE CANNOT TELL THE TWO APART. With a single row 「collapsed」 and
+    「one per row」 produce the same count, and a fixture both rules agree on decides nothing.
+    """
+    crud.apply_batch_updates(db, RIGHT, schemas.GeneralUpdateBatch(updates=[
+        schemas.GeneralUpdateItem(updates={"job": "J5", "lot": "LOT-5"},
+                                  source_name="seed", updated_by="s279")], silent=True))
+    crud.apply_batch_updates(db, LEFT, schemas.GeneralUpdateBatch(updates=[
+        schemas.GeneralUpdateItem(updates={"log_key": "M%d" % n, "job": "J5"},
+                                  source_name="seed", updated_by="s279")
+        for n in range(5)], silent=True))
+    db.commit()
+    before = db.query(models.DatabaseOutbox).filter(
+        models.DatabaseOutbox.table_name == LEFT).count()
+
+    stats = replay.replay_rule(db, _rules()[0], apply=True, log=lambda m: None)
+
+    assert stats["rows_written"] == 5, "the backfill did not write, so this proves nothing"
+    made = db.query(models.DatabaseOutbox).filter(
+        models.DatabaseOutbox.table_name == LEFT).count() - before
+    assert made == 1, (
+        "the backfill wrote 5 rows and produced %d outbox events - the shape S-249 removed "
+        "from the follow-up lap and S-278 from the group path" % made)
+
+
 def test_a_dry_run_writes_nothing_and_says_what_it_would_be_handed(db):
     """⚠️ A DRY RUN OF A SELF-WRITING KIND CANNOT SAY WHICH CELLS IT WOULD CHANGE without
     writing to find out. It says how many ROWS it would recompute, which is the honest answer

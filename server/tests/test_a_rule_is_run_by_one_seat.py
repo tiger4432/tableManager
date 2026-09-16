@@ -45,7 +45,8 @@ SUFFIXES = (".py", ".py.sample")
 NOT_YET_MOVED = {
     "chain/ingestion_worker.py::_process_chain_transaction_group_sync",
     "chain/ingestion_worker.py::_run_builtin_followups",
-    "chain/replay.py::replay_rule",
+    # 🪦 `chain/replay.py::replay_rule` left this list in ㉡-2ⓐ (판정 421). It was the first
+    #    one rewired because it is the only caller in a file part one was not touching.
 }
 
 
