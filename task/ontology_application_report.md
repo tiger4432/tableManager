@@ -22755,3 +22755,68 @@ server/dt_map_derivation.py:324-327
 
 > 🔴 「판정 대기」 **2** — ㉠ ① 의 노트를 살리나(이 라운드인가, 로더 라운드인가) ㉡ ② 의 거절 선택을 이름 필드로
 > · 🔁 이월: Q-27 ㉡(번들 절이 «실행에 닿나») — 00:03 판정 449 로 접수됨
+
+---
+
+## 🔴 Q-29 [09-17 00:16 실측] **제 수가 틀렸습니다** — `verified_join_contract` 는 import 0 이 «아닙니다». 그리고 판정 447 ① 을 되돌려야 합니다
+
+### 🔴 ① 자기 정정 — Q-21 의 「import 0」이 틀렸습니다
+
+```
+제가 적은 것   「`verified_join_contract.py` — import 0 이라 「남은 소비자는 import 에서 터지게」가 못 잡는다」
+판정 447 ①    그 수를 받아 «4단계 삭제의 «이름 목록»»에 올렸습니다
+오늘 실측 (git grep, HEAD, 비시험)
+   server/ledger/setup.py:35              from verified_join_contract import VerifiedJoinDescriptor
+   server/ledger/setup_registry.py:17     from verified_join_contract import (…)
+   server/ledger/source_preparation.py:23 from verified_join_contract import (usable_expose,
+                                            VerifiedJoinDescriptor, is_physically_verified_descriptor)
+   server/virtual_join/config.py:102      from verified_join_contract import (…)
+   server/virtual_join/executor.py:71     from verified_join_contract import usable_expose
+   (+ main.py:2829 는 «주석»입니다 — import 아님)
+=> **import «자리 다섯 / 파일 다섯»**. 0 이 아닙니다
+```
+🔴 **그리고 그중 «셋»이 `ledger/` 입니다 — 4단계가 «안 지우는» 곳입니다.**
+`source_preparation` 은 `usable_expose` 와 `is_physically_verified_descriptor` 를 씁니다.
+**그 모듈을 지우면 원장 setup 이 «import 에서» 죽습니다.**
+⇒ 판정 447 ①(「4)의 삭제 목록에 올리십시오」)은 **제 틀린 수 위에 서 있습니다. 되돌려야 합니다.**
+🔴 부류: 「확증해 주는 수가 가장 덜 검증받는다」 — 제 「import 0」이 제 논지를 도와서 다시 안 쟀습니다.
+
+### ② Q-27 ㉡ 의 답 — 번들 절은 **실행에 안 닿습니다. 그리고 «오늘도 컴파일이 안 됩니다»**
+
+```
+setup_registry.py:679-688   번들의 enabled 조인마다 «공급된 서술자»를 찾습니다.
+                            없으면 LedgerSetupValidationError("unverified_join")
+서술자는 «인자»입니다        setup.py:353-357  load_setup(root, *, verified_joins=(), catalog=None)
+                            -> 기본값 «빈 튜플»
+추적 호출자 «전수 열둘»(비시험): admin/retroactive 3 · chain/graph 1 · chain/ingestion_worker 4 ·
+                            ledger/backfill 3 (:273 은 root·catalog 만) · 그 외 1
+                            🔴 **`verified_joins=` 를 넘기는 자리 «0»**
+```
+⇒ **오늘 이 박스가 아니라 «코드 구조상», 번들에 «켜진» 가상 조인이 있으면 원장 setup 컴파일이
+«항상» `unverified_join` 으로 거절됩니다.** 즉 입구 ③ 은 «작성은 되는데 서지 않는» 표면이고,
+**은퇴가 여기서 멈출 실행은 «0» 입니다**(작성면 비용은 그대로 실재합니다).
+
+### 🔴 ③ 그래서 449 의 착지 조건 하나가 «바뀝니다»
+
+```
+449 가 시킨 것   「폼에서 빼고 + 로드에서 거절하고, 같은 커밋에」
+실측             «거절은 이미 있습니다»(unverified_join). 없는 것은 거절이 아니라 «다음 행동»입니다
+                 오늘 그 거절이 시키는 것: 「물리 UNIQUE 검증 서술자를 공급하라」
+                 -> 제품의 «어느 경로도» 그것을 공급하지 않습니다. 운영자가 «할 수 없는» 행동입니다
+✅ 그러므로 이 자리의 일은 「거절을 «단다»」가 아니라 「거절이 «할 수 있는 일»을 말하게 한다」입니다
+   (상설: 거절은 사유 + «다음 행동». 그리고 「자막 단 실패도 실패다」)
+⚠️ 그리고 이 결함은 «은퇴와 무관하게 오늘 있습니다» — 은퇴가 만든 것이 아닙니다
+```
+
+### 확신도 · 못 잰 것
+
+```
+실행  ①②③ 전부 HEAD blob `git grep`·파일 열기 실측
+🔴 못 잼  · «라이브 맵퍼»가 `load_setup(verified_joins=…)` 를 부를 수 있는지 — gitignore 라 못 셉니다.
+          다만 `load_setup` 은 `MAPPER_SURFACE` 의 이름이 아니므로 그 경로는 «선언된 표면 밖»입니다
+        · 번들에 «켜진» 가상 조인을 둔 배포가 실제로 있는지 — 운영 설정은 못 봅니다
+```
+
+> 🔴 「판정 대기」 **2** — ㉠ 447 ① 되돌리기(그 모듈은 4단계 «삭제 대상 밖»입니다)
+> ㉡ 449 의 ③ 자리 착지 조건을 「거절을 단다」에서 「거절이 «할 수 있는 다음 행동»을 싣게 한다」로
+> · 🔁 이월: 0 · ✅ Q-28 → 판정 450(셋 다 수용) · Q-27 → 449
