@@ -1,3 +1,62 @@
+## 🔵 [09-17 00:4x] **⑤ 답 — 인용입니다. 그리고 «찾아보니 제 초안이 틀렸습니다»**
+
+> 인용 자체는 00:33 보고(`a3528446`)의 ㉯ 절에 이미 있었습니다 — 00:36 메모와 3분 차이라
+> 못 보신 듯해 여기 떼어 놓습니다. **그런데 그 김에 「판정인가」를 재 봤고, 답이 바뀌었습니다.**
+
+### 인용 — `client2/src/map2/main.js:2113-2118`, 전문입니다
+
+```js
+    el.exportBtn.disabled = !artifactImplemented();
+    // The reason is an explanation, so it goes to the console. The disabled control is what
+    // the screen says; a sentence hanging off a tooltip is neither one line nor a decision.
+    if (!artifactImplemented() && doc.defaultView && doc.defaultView.console) {
+      doc.defaultView.console.log('[map2] excel artifact export is not wired to a control yet.');
+    }
+```
+
+### 🔴 제가 «안 재고» 쓸 뻔한 것
+
+```
+초안에 쓰려던 것   「판정 기록 «0». 저자의 판단이지 승인된 판정이 아닙니다」
+보내기 전에 쟀더니  기록이 «셋»입니다. 제 문장은 거짓이었습니다
+   ① 위 주석 (map2/main.js) — caf44a93 에서 들어왔습니다
+   🔴 ② map2/artifact_gateway.js `isImplemented()` 의 독스트링 — 이게 핵심입니다
+   ③ task/FEATURE_INVENTORY_CLIENT.md §A-4 — 그 버튼을 «이름 대고» 분류해 둡니다
+      (「X — click 핸들러 0건 · disabled = !artifactImplemented()」)
+```
+**②의 원문:**
+> 🔴 IT STAYS `false` UNTIL THE WIRING LANE FLIPS IT, AND THAT IS DELIBERATE. … this flag does
+> not report whether a module works — it reports whether **the SHELL may offer the affordance**,
+> and no control has been driven end to end yet. The map lane does not own that control, so it
+> does not get to enable it.
+
+### 그래서 답이 바뀝니다 — «툴팁 얘기가 아닙니다»
+
+```
+제가 물으려던 것   「사유를 툴팁에 달까, 콘솔에 둘까」
+실제 물어야 할 것  🔴 「셸이 아직 그 affordance 를 «내놓으면 안 된다»면, 그 컨트롤이 왜 «그려져» 있나」
+                 꺼진 컨트롤은 «제안»입니다 — 「이건 있다, 지금만 안 된다」고 말합니다.
+                 인벤토리는 그것을 «click 핸들러 0건»으로 적어 두었습니다. 즉 있지도 않습니다
+=> 그러면 답은 「한 줄을 단다」가 아니라 «둘 중 하나»입니다:
+   ⓐ 안 그린다 (셸이 아직 못 내놓는 것이므로) — 그 독스트링과 «같은 말»이 됩니다
+   ⓑ 그리되 「아직 안 만들었습니다」를 그 자리에 적는다 — 그러면 꺼진 이유가 «보입니다»
+⛔ 어느 쪽도 제가 정하지 않습니다. 그 컨트롤은 «맵 레인의 것이 아니라»고 그 파일이 적어 뒀고,
+   ⓐ 는 화면에서 무언가를 «없애는» 일입니다
+```
+
+### 점호 표에 어떻게 적히나
+
+지금은 `CONFLICT 1` 로 «세어 둔 빚»입니다(하니스가 그 수를 못 박아 조용히 늘 수 없습니다).
+판정이 ⓐ 면 그 자리가 «사라져» 표에서 빠지고, ⓑ 면 `SEAT` 가 되어 `CONFLICT` 가 0 이 됩니다.
+그대로 두기로 판정하시면 `CONFLICT` 를 유지하되 사유를 「판정 — 셸이 아직 안 내놓음」으로 고칩니다.
+
+---
+⚠️ **이 자리가 제 상설 하나를 다시 증명했습니다** — 「확증해 주는 수가 가장 덜 검증받는다」.
+「기록 0」은 제 결론을 «편들어 주는» 수였고, 그래서 재기 전에 문장이 먼저 나왔습니다.
+`git log -S` 와 `git grep` 두 번으로 3분 만에 뒤집혔습니다.
+
+---
+
 ## 🔵 [09-17 00:3x] **C-117 ㉱ 착지 — 잘라쓰기 하니스가 «import» 로. 그리고 열린 둘에 답합니다**
 
 **착지 `d11723b1`(하니스 전환) · `fcc61f9c`(빈 드롭다운 재분류)** ·
