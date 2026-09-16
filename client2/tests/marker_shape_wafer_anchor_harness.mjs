@@ -51,7 +51,6 @@ import { readFileSync } from 'node:fs';
 import { loadWithProbe } from './lib/probe.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import vm from 'node:vm';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC_PATH = join(HERE, '..', 'src', 'map_editor.js');
@@ -61,26 +60,6 @@ const SRC0 = readFileSync(SRC_PATH, 'utf8').replace(/\r\n/g, '\n');
 const VERBOSE = process.argv.includes('-v');
 
 const die = (m) => { console.error(`HARNESS FAILURE: ${m}\n(Nothing was compared.)`); process.exit(2); };
-
-function sliceFunction(source, name) {
-  const decl = new RegExp(`(^|\\n)\\s*(?:async\\s+)?function\\s+${name}\\s*\\(`);
-  const m = decl.exec(source);
-  if (!m) die(`'${name}' is gone from map_editor.js -- renamed or reshaped. Nothing compared.`);
-  const start = m.index + (m[1] ? m[1].length : 0);
-  let i = m.index + m[0].length - 1, paren = 0;
-  for (; i < source.length; i++) {
-    if (source[i] === '(') paren++;
-    else if (source[i] === ')') { paren--; if (paren === 0) { i++; break; } }
-  }
-  i = source.indexOf('{', i);
-  if (i < 0) die(`no body for ${name}`);
-  let depth = 0;
-  for (; i < source.length; i++) {
-    if (source[i] === '{') depth++;
-    else if (source[i] === '}') { depth--; if (depth === 0) return source.slice(start, i + 1); }
-  }
-  die(`unbalanced braces extracting '${name}'`);
-}
 
 const SYMBOLS = [
   // [2b] `physDeclaration` no longer spells "did this control say anything" inline: that

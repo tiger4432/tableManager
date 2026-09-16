@@ -77,7 +77,6 @@ import { readFileSync } from 'node:fs';
 import { loadWithProbe } from './lib/probe.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import vm from 'node:vm';
 import { getMapIdFromMeta } from '../src/map_key.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));

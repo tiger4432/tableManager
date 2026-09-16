@@ -30,7 +30,6 @@ import { readFileSync } from 'node:fs';
 import { loadWithProbe } from './lib/probe.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import vm from 'node:vm';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
@@ -56,28 +55,6 @@ const VALID_DIE_TABLE = (() => {
   if (!m) die('const VALID_DIE_TABLE not found in map_editor.js — the fixed storage table is gone or renamed.');
   return m[1];
 })();
-
-// ── Slicer (same shape as the sibling harnesses) ────────────────────────────────────────
-function sliceFunction(source, name) {
-  const decl = new RegExp(`(^|\\n)\\s*(?:async\\s+)?function\\s+${name}\\s*\\(`);
-  const m = decl.exec(source);
-  if (!m) return null;
-  const start = m.index + (m[1] ? m[1].length : 0);
-  let i = m.index + m[0].length - 1;
-  let paren = 0;
-  for (; i < source.length; i++) {
-    if (source[i] === '(') paren++;
-    else if (source[i] === ')') { paren--; if (paren === 0) { i++; break; } }
-  }
-  i = source.indexOf('{', i);
-  if (i < 0) return null;
-  let depth = 0;
-  for (; i < source.length; i++) {
-    if (source[i] === '{') depth++;
-    else if (source[i] === '}') { depth--; if (depth === 0) return source.slice(start, i + 1); }
-  }
-  die(`unbalanced braces extracting '${name}'`);
-}
 
 const SYMBOLS = [
   'physNum', 'gridDimNum', // `physDeclaration` + `cellMetrics`: the cell's pixel size is now derived from the declared
