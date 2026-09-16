@@ -42673,3 +42673,49 @@ QA 산출물   task/MARKING_CONTRACT.md
 ⚠️ **그리고 이미 표에 써진 칸은 «지우지 않습니다»** — 「투영은 지워도 «기록»은 안 된다」.
    가상 조인이 남긴 층이 있으면 그건 «데이터»이고, 제거의 대상이 아닙니다. 계획에 그 문장을 적으십시오.
 📌 지금 할 일: «세기»만. 437 은 계속 정지입니다.
+---
+
+> 🛑 **[09-16 22:45 총괄] 판정 439 — 삭제 «보류». 소유자께 올렸습니다. 세기는 «끝까지» 하십시오.**
+
+## ① QA 가 NO-GO 를 냈고, 결정적인 넷을 «제가» 확인했습니다
+```
+㉠ 통합 조인이 «가상 조인 위에 서 있습니다»
+   chain/builtins.py:161-179 — 통합 선언의 key.unique 인덱스를
+   virtual_join.config.required_index_name + virtual_join.unique_key.ensure_once 가 «세웁니다»
+   (그 독스트링: 「THE SHELL CALLS IT, NOT `join_into`」)                                 ✅ 확인
+㉡ uq_vjoin_* 를 «걷어내는 유일한 자리»가 virtual_join/config.py 이고 대상에 통합 조인이 «포함»
+   -> 지우면 S-248(모든 insert 에 23505, 그룹이 재시도마다 영구 실패)이 «돌아옵니다»     ✅ QA 실측
+㉢ 소유자의 «라이브 맵퍼»가 조인 함수를 import 합니다
+   mapper_sdk.py MAPPER_SURFACE 에 join_rule · join_pairs · derive_cells · CONFIRMED_JOIN_RULE
+   -> 전부 dt_map_derivation -> virtual_join
+   그 표의 주석: 「THE NAMES ARE NOT CHOSEN, THEY ARE MEASURED ...
+                 shortening it breaks files this repo cannot see」                      ✅ 확인
+㉣ 통합 선언의 «읽기 시점 조인»이 어제 착지했고 virtual_join 이 그것을 «실행»합니다
+   config.py:661 _read_time_joins_from_unified · `e175d3f8` (09-15)                     ✅ 확인
+```
+
+## ② 그래서 무엇이 어긋났나 — 소유자 말씀이 «틀린 게» 아닙니다
+```
+「이관했다」가 옮긴 것   «선언» — 규칙이 virtual_join_rules.json 에서 통합 파일로 갔다  (참일 것입니다. 제가 못 잽니다)
+옮겨지지 «않은» 것      «엔진» — 통합 파일의 조인도 그 엔진이 돌립니다
+=> 「가상 조인」이 소유자께는 «선언 파일»이고, 코드에서는 «엔진»입니다. 같은 이름, 두 뜻
+```
+🔴 제 상설 「한 이름이 두 뜻이면 «틀린 뜻 하나»만 은퇴시킨다」의 자리입니다. 이름째 지우면 통합 조인이 같이 죽습니다.
+
+## ③ 지금 할 일
+```
+구현자   ① 세기를 «끝까지» 하고 올리십시오 — QA 수와 «대조»해야 합니다.
+           🔴 QA 보고를 먼저 읽지 마십시오. 아직 독립입니다
+        ② 계획은 «쓰지 마십시오». 범위가 소유자 답에 달렸습니다
+        ⛔ 한 줄도 지우지 마십시오
+🔵 QA 가 제 수도 고쳤습니다 — 제가 「제품 import 스물」이라 했는데 «열하나»입니다(열아홉이 주석).
+   제 하한을 그대로 썼으면 갈래 분류가 통째로 틀렸을 것입니다
+```
+
+## ④ 소유자께 올린 물음 (답 오면 여기 적습니다)
+```
+「운영에서 조인 컬럼을 «표에 써서» 쓰십니까(into.table), «읽을 때만» 보이면 됩니까(into.read)?」
+   into.table 뿐이면   -> 읽기 시점 능력을 은퇴시키고 엔진을 «크게» 줄일 수 있습니다
+   into.read 가 있으면 -> 그 축은 «남습니다». 줄이는 것은 선언 파일과 낡은 로더까지입니다
+```
+📌 미답: 위 하나(소유자) + `key.unique` 좌석을 어디로 옮기나(제가 답합니다, 소유자 답 뒤에).
