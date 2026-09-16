@@ -27,9 +27,9 @@ Every column this module touches is resolved from the live declarations at call 
   * identity columns      <- target table's `map_key_columns`
   * coordinate columns    <- target's `composite_key_source` minus the identity columns
   * raw source coordinates<- the same coordinate columns, looked up on the SOURCE table
-  * the confirmed lot/slot <- the `expose` list of the confirmed-attribution virtual join
-  * the frame             <- the `expose` list of the frame-attribution virtual join
-  * the join keys         <- both rules' `join_key`
+  * the confirmed lot/slot <- the `take` list of the confirmed-attribution join
+  * the frame             <- the `take` list of the frame-attribution join
+  * the join keys         <- both rules' `on`
 
 This matters more than style. The dev database and production disagree about
 `dt_map`'s shape, so a module that reads `dt_lot` because someone typed `dt_lot`
@@ -44,7 +44,7 @@ population of those accumulates until nobody can tell a bug from normal.
 
 Three refusals that must not be relaxed:
 
-  * NEVER fall back to the stored lot/slot. `virtual_join_rules.json` says in its own
+  * NEVER fall back to the stored lot/slot. The join declaration says in its own
     words that `dt_log` carries lot/slot that are absent 40% of the time and WRONG 10%
     of the time, and that the confirmed columns were given non-colliding names
     precisely so the wrong value could not win an absent-only merge. In a map key that
@@ -52,7 +52,7 @@ Three refusals that must not be relaxed:
     lot's map, and the cell count is identical either way. `_forbidden_fallback_columns`
     exists to make the refusal structural rather than a habit.
   * NEVER substitute `core_frame` for a missing `dt_frame`. They are different frames
-    and only `dt_frame` applies here (user ruling). The frame-attribution join exposes
+    and only `dt_frame` applies here (user ruling). The frame-attribution join takes
     both; this module reads one, and
     `test_core_frame_is_never_substituted_for_a_missing_dt_frame` proves it by seeding
     a readable `core_frame` and requiring the row to be held back anyway.
@@ -222,39 +222,121 @@ def _declared_columns(table: str) -> dict:
     return _table_config(table).get("column_types") or {}
 
 
-def join_rule(db, name: str) -> dict:
-    """One VERIFIED virtual-join rule.
+def _join_from_unified(db, rule: dict) -> dict:
+    """One unified `derive: {kind: "join"}` rule -> the dict this module has always read.
 
-    `load_verified_rules` and not `load_virtual_join_rules`. The latter checks the
-    SHAPE of a declaration only; the former also asks `pg_index` whether a UNIQUE index
-    actually covers the join key, and `virtual_join_config` names itself "the only
-    entry point for code that executes a join" for that reason - the difference it
-    quotes is 130 million rows.
+    THE KEYS DO NOT MOVE, DELIBERATELY. `join_pairs`, `resolve_identity_sources` and the
+    two `load_attribution` calls read `join_key`, `expose` and `right_table`, and
+    `mapper_sdk.MAPPER_SURFACE` puts `join_rule` and `join_pairs` in the operator's own
+    mappers. So the SOURCE of these four cells changes and their spelling does not.
 
-    This module executes those joins. A rule whose uniqueness was never checked can
-    fan out, and a fan-out here is not a slow query: `load_attribution` keys results by
-    the join key, so a second attribution row for the same key would silently overwrite
-    the first and one arbitrary lot would win. Refusing an unverified rule is the only
-    honest option.
-
-    Returns the loader's normalized rule (it carries `name`, `right_columns`,
-    `required_index` and the DDL that would create it).
+    🔴 `expose` IS `take`'s `from` SIDE, NOT ITS `into`. `expose` names columns to
+    SELECT on the RIGHT table - the read-time loader refuses one absent from `right_cols`,
+    and `load_attribution` reads them there - and `from` is the right column while `into`
+    is the name the value lands under on the LEFT. Reading `into` here would SELECT a
+    column that does not exist on the table being read.
     """
-    import virtual_join.config
+    from chain import join_into, join_key_index
+
+    spec = join_into.join_spec(rule)
+    name = rule.get("name")
+    right_table, right_columns, right_folds = join_into.right_key(rule)
+
+    # 🔴 THE SAME UNIQUENESS QUESTION, ASKED WITH THE SAME FUNCTION. The read-time
+    # path's `verify_uniqueness` is a thin wrapper on this call, and a fan-out here is not a
+    # slow query: `load_attribution` keys results by the join key, so a second attribution
+    # row for one key silently overwrites the first and an arbitrary lot wins. Calling the
+    # one definition rather than re-asking keeps the answer from being able to differ.
+    #
+    # `folds` travels ONLY when something actually folds - the call shape the read-time seat
+    # uses, for the reason written there.
+    kwargs = {"folds": right_folds} if any(right_folds or []) else {}
+    unique_index = join_key_index.unique_index_covering(
+        db, right_table, right_columns, **kwargs)
+    if not unique_index:
+        raise DerivationRefused(
+            REFUSE_JOIN_RULE_MISSING,
+            "join rule %r declares %s(%s) but no valid UNIQUE index covers that key, so "
+            "the join may fan out and one attribution row would silently win. Build it: %s"
+            % (name, right_table, ", ".join(right_columns),
+               join_key_index.required_index_ddl(right_table, right_columns, right_folds)))
+
+    left_table = str(rule.get("target_table") or "")
+    pairs = join_into._pairs(spec, left_table)
+    return {
+        "name": name,
+        "_name": name,
+        # 🔴 `left_table` IS ON THE CONTRACT TOO, AND MY FIRST CENSUS MISSED IT.
+        # I counted the cells THIS module reads; `mapper_sdk.MAPPER_SURFACE` hands the same
+        # dict to the operator's mappers, and `_matching_join_rule` there picks a rule by
+        # comparing BOTH `right_table` and `left_table`. Dropping it did not raise - the
+        # comparison just never matched and the revisit derived nothing. Two tests caught it.
+        "left_table": left_table,
+        "left_columns": [left for left, _r, _f in pairs],
+        "right_table": right_table,
+        "join_key": [{"left": left, "right": right} for left, right, _f in pairs],
+        "expose": [source for source, _into in join_into._takes(spec)],
+        "right_columns": list(right_columns),
+        "right_folds": list(right_folds or []),
+        "required_index": join_key_index.required_index_name(
+            right_table, right_columns, right_folds),
+        "required_index_ddl": join_key_index.required_index_ddl(
+            right_table, right_columns, right_folds),
+        "unique_index": unique_index,
+    }
+
+
+def join_rule(db, name: str) -> dict:
+    """One VERIFIED join, read from the UNIFIED declaration (판정 440 ③ㅡ).
+
+    🔴 WHY THIS MOVED. The read-time virtual join is being retired - the owner's
+    ruling is that production writes join columns into the TABLE (`into.table`) - so the
+    declaration this module used to resolve against will not exist. Nothing about what it
+    resolves changes: the same two rule names, the same four cells, the same refusal when
+    a name is absent. Only where the answer comes from.
+
+    🔴 AND IT READS THE DECLARATION THROUGH THE JUDGE THE LOADER USES (S-244).
+    `read_rules_document` + `expand_declaration` is the one reading of that file;
+    `chain.builtins.declared_unique_index_names` asks the same pair the same way. A second
+    reading here would be a second answer to 「what does this declaration stand」.
+
+    ⚠️ A SWITCHED-OFF DECLARATION READS AS ABSENT, AND THERE IS NO BRANCH FOR IT HERE.
+    `expand_declaration` stands nothing for `enabled: false` (measured: it returns an empty
+    list), so 「없다」 and 「꺼져 있다」 arrive at this function as the same fact. Telling
+    them apart would take a SECOND reading of the raw declaration beside the judge's, which
+    is the door-splitting this round exists to remove; the loss is the loader's to fix, for
+    every kind of rule at once, not this gate's to work around.
+
+    Returns a dict carrying `name`, `left_table`, `right_table`, `join_key`, `expose`,
+    `right_columns`, `required_index` and the DDL that would create it - the cells the
+    previous return carried, under the same names.
+    """
+    from chain import ingestion_worker, join_into, rule_shape
     from database import crud
 
-    rejections = []
-    rules = virtual_join.config.load_verified_rules(
-        db, known_tables=crud.TABLE_CONFIG, rejections=rejections)
-    for rule in rules or []:
-        if rule.get("name") == name:
-            return rule
-    why = [r for r in rejections if r.get("subject") == name]
+    refused_by_name = None
+    for raw in ingestion_worker.read_rules_document()["rules"] or ():
+        stood, refusal, _notes = rule_shape.expand_declaration(raw, crud.TABLE_CONFIG)
+        if refusal:
+            # ⚠️ A REFUSAL NAMING THIS RULE IS THE ANSWER, not noise to skip past: it is
+            # the difference between 「there is no such join」 and 「it is there and unusable」,
+            # and the operator can only fix the second one.
+            if name and name in str(refusal):
+                refused_by_name = str(refusal)
+            continue
+        for rule in stood or ():
+            if rule.get("name") != name:
+                continue
+            if rule.get("mapper") != join_into.JOIN_INTO_MAPPER:
+                raise DerivationRefused(
+                    REFUSE_JOIN_RULE_MISSING,
+                    "rule %r exists but is not a join (`derive: {kind: \"join\"}`); the "
+                    "gate cannot be resolved from it." % name)
+            return _join_from_unified(db, rule)
     raise DerivationRefused(
         REFUSE_JOIN_RULE_MISSING,
-        "virtual join rule '%s' is absent or was not verified; the gate cannot be "
-        "resolved without it.%s"
-        % (name, (" Rejected: %r" % why) if why else ""))
+        "join rule %r is absent from the chain declaration; the gate cannot be resolved "
+        "without it.%s" % (name, (" Refused: %s" % refused_by_name) if refused_by_name else ""))
 
 
 def join_pairs(rule: dict) -> list:

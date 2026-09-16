@@ -51,6 +51,8 @@ import pytest
 import dt_map_derivation as derivation
 import map_overlay
 import virtual_join.config
+from chain import ingestion_worker
+from chain import join_key_index
 from database import crud, models
 
 # ---------------------------------------------------------------------------
@@ -104,27 +106,46 @@ TABLES = {
     },
 }
 
-# The shape `virtual_join_config.load_verified_rules` actually returns: a LIST of
-# normalized rules each carrying its own `name`, NOT a {name: rule} dict. Getting this
-# wrong is silent - `rules, rejections = load_...()` unpacks a two-element list into
-# two rule dicts and every lookup then misses - so the fixture mirrors the real shape.
-VJOIN_RULES = [
+# 🔴 [판정 440 ③ㅡ] THE DECLARATION, IN THE PRODUCT'S OWN GRAMMAR - NOT A
+# NORMALIZED RULE HANDED STRAIGHT TO THE MODULE. The fixture used to stand in for
+# `load_verified_rules` and return the shape that loader produces, which made the fixture
+# the SECOND AUTHOR of that shape: a rule the real loader would have refused still arrived
+# here fully formed. These are file entries, `expand_declaration` stands them, and the
+# derivation reads what the product stood.
+#
+# ⚠️ ONE DECLARATION STANDS TWO RULES - `<name>` and `<name>:reference` - so the lookup
+# has to match the name EXACTLY. Taking the companion would be silent: it carries the same
+# `params`, so every assertion here would still pass while the gate resolved the wrong rule.
+JOIN_DECLARATIONS = [
     {
-        "name": derivation.CONFIRMED_JOIN_RULE,
-        "left_table": LOG, "right_table": JOBATTR,
-        "join_key": [{"left": "job", "right": "job"}],
-        "left_columns": ["job"], "right_columns": ["job"],
-        "expose": ["lot_confirmed", "slot_confirmed"],
-        "join_cardinality": "one", "unique_index": "uq_test_jobattr_job",
+        "name": derivation.CONFIRMED_JOIN_RULE, "enabled": True,
+        "on": {"table": LOG}, "into": {"table": LOG},
+        "key": {"unique": True},
+        "derive": {"kind": "join",
+                   "join": {"right_table": JOBATTR,
+                            "on": [{"left": "job", "right": "job"}],
+                            # 🔴 `into` DIFFERS FROM `from` ON PURPOSE, ON ONE OF THE
+                            # TWO. Written the easy way - `take: [{from: x}]` - `_takes`
+                            # defaults `into` to `from` and the two sides are the SAME
+                            # STRING, so an assertion that `expose` is the `from` side
+                            # cannot fail and says nothing. One column that renames on
+                            # landing is what gives that assertion something to be wrong
+                            # about; the other stays plain so both spellings are covered.
+                            "take": [{"from": "lot_confirmed",
+                                      "into": "lot_from_the_join"},
+                                     {"from": "slot_confirmed"}]}},
     },
     {
-        "name": derivation.FRAME_JOIN_RULE,
-        "left_table": LOG, "right_table": FRAMEATTR,
-        "join_key": [{"left": "eqp", "right": "eqp"}, {"left": "prod", "right": "prod"}],
-        "left_columns": ["eqp", "prod"], "right_columns": ["eqp", "prod"],
-        # Exposes BOTH frames, exactly as the live rule does. Only one may be read.
-        "expose": ["core_frame", "dt_frame"],
-        "join_cardinality": "one", "unique_index": "uq_test_frameattr_eqp_prod",
+        "name": derivation.FRAME_JOIN_RULE, "enabled": True,
+        "on": {"table": LOG}, "into": {"table": LOG},
+        "key": {"unique": True},
+        "derive": {"kind": "join",
+                   "join": {"right_table": FRAMEATTR,
+                            "on": [{"left": "eqp", "right": "eqp"},
+                                   {"left": "prod", "right": "prod"}],
+                            # Takes BOTH frames, exactly as the live rule does. Only one
+                            # may be read.
+                            "take": [{"from": "core_frame"}, {"from": "dt_frame"}]}},
     },
 ]
 
@@ -150,8 +171,19 @@ def env(db_session, monkeypatch):
     crud.TABLE_CONFIG.update(TABLES)
     from database.database import Base
     Base.metadata.create_all(bind=db_session.get_bind())
-    monkeypatch.setattr(virtual_join.config, "load_verified_rules",
-                        lambda *a, **k: [dict(r) for r in VJOIN_RULES])
+    # The product's ONE reader of the rules file (S-180 ⓑ). Handing it the document
+    # rather than the parsed rules keeps `expand_declaration` - the judge the loader uses
+    # (S-244) - in the path, so a declaration this suite accepts is one the loader accepts.
+    monkeypatch.setattr(ingestion_worker, "read_rules_document",
+                        lambda path=None: {"document": {}, "rules": list(JOIN_DECLARATIONS),
+                                           "path": None, "exists": True, "error": None})
+    # 🔴 A DOUBLE FOR THE CATALOG, NOT FOR THE GATE. `unique_index_covering` reads
+    # `pg_index` and answers None on any other dialect ("모르면 거부"), so on this suite's
+    # SQLite the real call refuses every join. The double answers the question the catalog
+    # would answer on PostgreSQL; what it must NOT do is remove the question, which is why
+    # `test_a_join_key_no_unique_index_covers_is_a_named_refusal` lets it answer None.
+    monkeypatch.setattr(join_key_index, "unique_index_covering",
+                        lambda db, table, columns, folds=None: "uq_test_%s" % table)
     map_overlay._FRAME_TF_CACHE.clear()
     return db_session
 
@@ -847,29 +879,160 @@ def test_an_undeclared_map_key_is_a_named_refusal(env):
         crud.TABLE_CONFIG[MAP] = TABLES[MAP]
 
 
-def test_an_unverified_join_rule_is_a_named_refusal(env, monkeypatch):
-    """`load_verified_rules` drops a rule whose join key has no UNIQUE index, and this
-    module consumes only that loader.
+def test_a_join_key_no_unique_index_covers_is_a_named_refusal(env, monkeypatch):
+    """The fan-out refusal, asked of the CATALOG and not of the declaration.
 
     A rule that can fan out must not run this gate: `load_attribution` keys results by
     the join key, so a second attribution row for one key would silently overwrite the
-    first and one arbitrary lot would win the identity.
+    first and one arbitrary lot would win the identity. 판정 440 ③ㅡ moved where the
+    declaration is read; it did not soften this, so the question is still put to
+    `unique_index_covering` - the same function the read-time seat's `verify_uniqueness`
+    wraps - and a None answer is still a refusal that names the rule.
     """
-    monkeypatch.setattr(virtual_join.config, "load_verified_rules", lambda *a, **k: [])
+    monkeypatch.setattr(join_key_index, "unique_index_covering",
+                        lambda db, table, columns, folds=None: None)
+    with pytest.raises(derivation.DerivationRefused) as exc:
+        derivation.join_rule(env, derivation.CONFIRMED_JOIN_RULE)
+    assert exc.value.code == derivation.REFUSE_JOIN_RULE_MISSING
+    assert derivation.CONFIRMED_JOIN_RULE in str(exc.value), "the refusal must name the rule"
+    assert "CREATE UNIQUE INDEX" in str(exc.value),         "and it must carry the next action, not just the verdict"
+
+
+def test_the_gate_does_not_read_the_package_being_removed(env, monkeypatch):
+    """⚰️ THIS TEST USED TO PIN THE OPPOSITE. It asserted the gate consumed
+    `load_verified_rules` and not the shape-only loader, which was right while the
+    read-time join existed. 판정 440 retires it, so what has to be pinned now is that
+    nothing here reaches back into `virtual_join` - a seat that still did would stand
+    today and break at step 4, which is the half-move this round refused to land.
+    """
+    called = []
+    for door in ("load_verified_rules", "load_virtual_join_rules"):
+        monkeypatch.setattr(virtual_join.config, door,
+                            lambda *a, _d=door, **k: called.append(_d) or [])
+    rule = derivation.join_rule(env, derivation.CONFIRMED_JOIN_RULE)
+    assert called == [], "the gate reached back into the package being removed: %r" % called
+    assert rule["right_table"] == JOBATTR
+
+
+def test_the_gate_takes_the_rule_and_not_its_reference_companion(env):
+    """🔴 ONE DECLARATION STANDS TWO CHAIN RULES. `expand_declaration` yields
+    `<name>` and `<name>:reference`, and they carry IDENTICAL `params` - so a lookup that
+    took the companion would satisfy every other assertion in this file while resolving
+    the gate from the wrong rule. The name has to match exactly.
+    """
+    from chain import rule_shape
+    stood, refusal, _notes = rule_shape.expand_declaration(JOIN_DECLARATIONS[0], TABLES)
+    assert refusal is None
+    names = [r.get("name") for r in stood]
+    assert len(names) == 2 and names[0] == derivation.CONFIRMED_JOIN_RULE, names
+    assert names[1] != names[0], "the companion must be distinguishable by name"
+
+    assert derivation.join_rule(env, derivation.CONFIRMED_JOIN_RULE)["name"] ==         derivation.CONFIRMED_JOIN_RULE
+
+
+def test_the_gate_matches_the_name_exactly_and_not_as_a_prefix(env, monkeypatch):
+    """⚰️ THE ORDER WAS DOING THE WORK, NOT THE COMPARISON. Loosening the lookup to
+    `startswith` left the suite GREEN - the exactly-named rule simply comes first, so the
+    wrong comparison never got to be wrong. Ordering is not a guarantee: `<name>` and
+    `<name>:reference` come out of one declaration, and any future companion or a rule an
+    operator names with the same stem would resolve this gate from the wrong declaration,
+    silently, because the companion carries identical `params`.
+
+    So this asks the question ordering cannot answer: with ONLY a longer-named rule
+    declared, asking for the short name must refuse.
+    """
+    longer = dict(JOIN_DECLARATIONS[0],
+                  name=derivation.CONFIRMED_JOIN_RULE + "_v2")
+    monkeypatch.setattr(ingestion_worker, "read_rules_document",
+                        lambda path=None: {"document": {}, "rules": [longer], "path": None,
+                                           "exists": True, "error": None})
+    assert derivation.join_rule(env, longer["name"])["name"] == longer["name"],         "the longer name itself must still resolve - this is about the SHORT one"
     with pytest.raises(derivation.DerivationRefused) as exc:
         derivation.join_rule(env, derivation.CONFIRMED_JOIN_RULE)
     assert exc.value.code == derivation.REFUSE_JOIN_RULE_MISSING
 
 
-def test_the_gate_reads_the_verified_loader_and_not_the_shape_only_one(env, monkeypatch):
-    """Pins WHICH loader. `load_virtual_join_rules` checks the declaration's shape and
-    nothing else; `virtual_join_config` names `load_verified_rules` the only entry point
-    for code that executes a join, and quotes the difference as 130 million rows."""
-    called = []
-    monkeypatch.setattr(virtual_join.config, "load_virtual_join_rules",
-                        lambda *a, **k: called.append("shape") or [])
-    derivation.join_rule(env, derivation.CONFIRMED_JOIN_RULE)
-    assert called == [], "the gate must not consume the shape-only loader"
+def test_a_switched_off_join_reads_as_absent_and_that_is_the_loaders_to_fix(env, monkeypatch):
+    """⚰️ I WROTE A BRANCH FOR THIS AND IT WAS UNREACHABLE. `join_rule` raised a
+    separate 「`enabled: false`」 refusal - and `expand_declaration` stands NOTHING for a
+    disabled declaration (measured: an empty list), so nothing could ever take that branch.
+    A gate for a state the code cannot be in is the third item of 「깔끔」, so it came out.
+
+    🔴 WHAT REMAINS IS A REAL LOSS, PINNED HERE RATHER THAN WORKED AROUND. 「없다」 and
+    「꺼져 있다」 reach this gate as one fact, and an operator can only fix the second.
+    Telling them apart HERE would need a second reading of the raw declaration beside the
+    judge's - the door-splitting this round removes - so it belongs to the loader, for every
+    kind of rule at once. This test states today's answer so a change to it is visible.
+    """
+    off = [dict(JOIN_DECLARATIONS[0], enabled=False), JOIN_DECLARATIONS[1]]
+    monkeypatch.setattr(ingestion_worker, "read_rules_document",
+                        lambda path=None: {"document": {}, "rules": off, "path": None,
+                                           "exists": True, "error": None})
+    with pytest.raises(derivation.DerivationRefused) as exc:
+        derivation.join_rule(env, derivation.CONFIRMED_JOIN_RULE)
+    assert exc.value.code == derivation.REFUSE_JOIN_RULE_MISSING
+    assert derivation.CONFIRMED_JOIN_RULE in str(exc.value),         "whatever it cannot distinguish, it still has to NAME the rule"
+    # The other declaration is untouched, so this is a per-rule answer and not a collapse.
+    assert derivation.join_rule(env, derivation.FRAME_JOIN_RULE)["right_table"] == FRAMEATTR
+
+
+def test_a_declaration_refused_by_name_is_carried_into_the_gates_sentence(env, monkeypatch):
+    """🔴 「없다」 AND 「있는데 쓸 수 없다」 ARE DIFFERENT REPAIRS, and only the second one
+    the operator can act on. The realistic case tonight is a declaration still written as
+    `into: {read: true}`: 판정 440 ① retires it BY NAME, `expand_declaration` stands
+    nothing for it, and without carrying that refusal through, this gate would report the
+    rule as never declared - sending the operator to write a declaration that is already
+    there.
+    """
+    stale = dict(JOIN_DECLARATIONS[0])
+    stale["into"] = {"read": True}
+    monkeypatch.setattr(ingestion_worker, "read_rules_document",
+                        lambda path=None: {"document": {}, "rules": [stale], "path": None,
+                                           "exists": True, "error": None})
+    with pytest.raises(derivation.DerivationRefused) as exc:
+        derivation.join_rule(env, derivation.CONFIRMED_JOIN_RULE)
+    assert exc.value.code == derivation.REFUSE_JOIN_RULE_MISSING
+    said = str(exc.value)
+    assert derivation.CONFIRMED_JOIN_RULE in said
+    assert "into.read" in said or "read" in said,         "the loader's own refusal must ride along, not be replaced by 「absent」: %r" % said
+
+
+def test_a_rule_of_another_kind_under_that_name_is_refused_rather_than_used(env, monkeypatch):
+    """⚠️ A NAME IS NOT A KIND. Chain rules share one namespace, so nothing stops a
+    mapper rule from carrying the name this gate resolves; reading `params` off it would
+    hand `join_pairs` an empty list and derive every row with no attribution at all.
+    """
+    impostor = {"name": derivation.CONFIRMED_JOIN_RULE, "enabled": True,
+                "on": {"table": LOG}, "into": {"table": LOG},
+                "derive": {"mapper": {"mapper": "dt_map_mapper"}}}
+    monkeypatch.setattr(ingestion_worker, "read_rules_document",
+                        lambda path=None: {"document": {}, "rules": [impostor],
+                                           "path": None, "exists": True, "error": None})
+    with pytest.raises(derivation.DerivationRefused) as exc:
+        derivation.join_rule(env, derivation.CONFIRMED_JOIN_RULE)
+    assert exc.value.code == derivation.REFUSE_JOIN_RULE_MISSING
+    assert "not a join" in str(exc.value)
+
+
+def test_the_four_cells_the_gate_reads_come_out_of_the_unified_declaration(env):
+    """판정 440 ③ㅡ's whole content: the SOURCE of these cells changes, their
+    spelling does not. `expose` resolves to `take`'s `from` side - the right column -
+    because that is what `load_attribution` SELECTs on the right table.
+    """
+    confirmed = derivation.join_rule(env, derivation.CONFIRMED_JOIN_RULE)
+    assert derivation.join_pairs(confirmed) == [("job", "job")]
+    assert confirmed["expose"] == ["lot_confirmed", "slot_confirmed"]
+    assert confirmed["right_table"] == JOBATTR
+    assert confirmed["_name"] == derivation.CONFIRMED_JOIN_RULE
+
+    frame = derivation.join_rule(env, derivation.FRAME_JOIN_RULE)
+    assert derivation.join_pairs(frame) == [("eqp", "eqp"), ("prod", "prod")]
+    assert frame["expose"] == ["core_frame", "dt_frame"]
+
+    # And the identity resolution that consumes `expose` still lands on the RIGHT
+    # column, which is the half that would have gone wrong had this read `into`.
+    assert derivation.resolve_identity_sources(MAP, confirmed) == {
+        "lot": "lot_confirmed", "slot": "slot_confirmed"}
 
 
 def test_frame_parsing_refuses_everything_it_does_not_recognise():
@@ -1072,22 +1235,38 @@ def test_retraction_refuses_when_the_target_does_not_carry_the_source(env):
 # The live declarations resolve. Fixtures prove the code; this proves the config.
 # ---------------------------------------------------------------------------
 
-def test_live_virtual_join_rules_resolve_the_gate_if_they_are_present():
-    """A fixture can only prove the code. This asks the REAL declaration file whether
-    the gate it feeds is actually resolvable - `server/config/` is gitignored, so it is
-    skipped rather than failed where the file does not exist."""
-    by_name = {r["name"]: r
-               for r in (virtual_join.config.load_virtual_join_rules() or [])}
+def test_the_live_chain_declaration_resolves_the_gate_if_it_declares_it():
+    """A fixture can only prove the code. This asks the REAL declaration file whether the
+    gate it feeds is actually resolvable.
+
+    ⚰️ IT USED TO ASK `virtual_join_rules.json`, AND AFTER 판정 440 ③ㅡ THAT FILE NO
+    LONGER FEEDS THIS GATE. Left pointing there it would have kept passing - the file is
+    gitignored, so it skips - while asserting a property of a declaration nothing reads:
+    a green line about the wrong document. It asks the chain declaration now, through the
+    product's own reader and the judge the loader uses.
+
+    `server/config/` is gitignored, so absence is a skip and not a failure.
+    """
+    from chain import ingestion_worker as worker, rule_shape as shape
+    from database import crud
+
+    stood = []
+    for raw in worker.read_rules_document()["rules"] or ():
+        rules, refusal, _notes = shape.expand_declaration(raw, crud.TABLE_CONFIG)
+        if not refusal:
+            stood.extend(rules or ())
+    by_name = {r.get("name"): r for r in stood}
     if derivation.CONFIRMED_JOIN_RULE not in by_name:
-        pytest.skip("live virtual_join_rules.json not present in this checkout")
-    confirmed = by_name[derivation.CONFIRMED_JOIN_RULE]
-    frame = by_name[derivation.FRAME_JOIN_RULE]
-    assert derivation.join_pairs(confirmed), "the confirmed join declares no join key"
-    assert derivation.FRAME_COLUMN in (frame.get("expose") or []), \
-        "the frame join must expose the column the gate reads"
-    assert derivation.FORBIDDEN_FRAME_SUBSTITUTE in (frame.get("expose") or []), \
-        "core_frame is expected to be present and to be ignored - if it is gone, the " \
-        "substitution test is no longer testing anything"
+        pytest.skip("the live chain declaration does not declare %s in this checkout"
+                    % derivation.CONFIRMED_JOIN_RULE)
+    from chain import join_into
+
+    confirmed = join_into.join_spec(by_name[derivation.CONFIRMED_JOIN_RULE])
+    frame = join_into.join_spec(by_name[derivation.FRAME_JOIN_RULE])
+    takes = [source for source, _into in join_into._takes(frame)]
+    assert confirmed.get("on"), "the confirmed join declares no join key"
+    assert derivation.FRAME_COLUMN in takes,         "the frame join must take the column the gate reads"
+    assert derivation.FORBIDDEN_FRAME_SUBSTITUTE in takes,         "core_frame is expected to be present and to be ignored - if it is gone, the "         "substitution test is no longer testing anything"
 
 
 # ---------------------------------------------------------------------------
