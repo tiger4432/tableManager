@@ -21984,3 +21984,61 @@ cell_layer.withdraw_source(db, table, source, columns=None, row_ids=None, apply=
 ```
 
 > · 🔁 이월: 0 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
+
+---
+
+## 🔵 Q-18 [09-16 22:00 실측] **쪽지는 «이미 있습니다» — DELETE 아웃박스 이벤트가 지워진 행의 «모든 컬럼 값»을 싣습니다**
+
+> 판정 434 가 「쪽지의 단위는 «셀»」을 정하는 중이고, 총괄이 「세기 전에 크기를 말하지 말라」 했습니다.
+> 그래서 «세고» 올립니다 — 이 측정이 라운드의 크기를 바꿉니다.
+
+### ① 실측 — DELETE 이벤트의 payload 는 «지워진 행 전체»입니다
+
+```
+database.py:314-330  stage_event(...)
+   for col in data_row.__table__.columns:
+       if col.name not in OUTBOX_PAYLOAD_EXCLUDED_COLUMNS:
+           data_dict[col.name] = {"value": getattr(data_row, col.name), …}
+   payload = {"row_id": …, "business_key": …, "data": data_dict, …}
+🔴 이 루프는 `before_flush` 에서 돕니다 — 즉 «행이 아직 세션에 살아 있을 때» 값을 읽습니다
+🔴 그리고 DELETE 는 «절대 접히지 않습니다»(database.py:196-201, 「a collapsed DELETE would name
+   rows nobody can ever resolve」) -> 지워진 행마다 «자기 값 전부»를 가진 이벤트가 하나씩 남습니다
+제외 컬럼   row_id · business_key_val · created_at · updated_at · 그래프 메타 셋
+           (row_id 와 business_key 는 payload 의 «자기 칸»으로 따로 실립니다)
+```
+
+### 🔵 ② 그래서 「살아 있을 때 적어 둔 쪽지」가 «이미» 있습니다
+
+```
+원장이 S-101 에서 한 일   「행이 살아 있을 때 어느 물리 행에서 왔는지 적어 둔다」
+조인에 필요한 것          「지워진 «참조» 행의 «조인 키 값»」
+그 값이 있는 곳           그 참조 행의 DELETE 이벤트 payload["data"][<키 컬럼>]["value"]
+=> 조인은 그 키로 `_left_rows_for_reference` 와 «같은 계산»을 해서 왼쪽 행들을 얻습니다
+   (그 함수가 오늘 하는 일이 정확히 그것입니다 — 오른쪽 행 id → 키 → 왼쪽 tuple IN)
+=> 그다음은 구현자가 오늘 정정한 그대로:
+   withdraw_source(table, "chain_ingestion", columns=<into 칸>, row_ids=<그 왼쪽 행들>, apply=True)
+```
+🔴 **그러므로 「새 칸/새 표를 만들어 쪽지를 남긴다」가 «필요 없을 수» 있습니다.** 아는 것은 이미 있고,
+없는 것은 **그것을 읽는 좌석**입니다(제 Q-16 · 판정 433 ②가 이미 그 자리를 이름 댔습니다).
+
+### ⚠️ ③ 제가 «확인 못 한» 것 — 이 문장을 그대로 쓰기 전에 재야 합니다
+
+```
+① 조인 키가 «제외 컬럼»을 쓰면? row_id·business_key_val 은 payload 의 다른 칸에 있어 살아 있지만,
+   created_at/updated_at 을 키로 쓰는 선언이 있으면 그 값은 «data 에 없습니다». 그런 선언이 있는지 못 셉니다
+② 여러 참조 행이 «한 트랜잭션»에 지워지면 이벤트가 여럿입니다 — 왼쪽 행 목록을 «합쳐서» 한 번 철회할지
+   이벤트마다 부를지는 설계입니다(제 몫 아님)
+③ 그리고 «타이밍»: 그 DELETE 이벤트를 읽는 좌석이 돌기 «전»에 같은 왼쪽 행을 다른 규칙이 다시 쓰면
+   철회가 그 새 값을 지웁니다. 판정 434 의 「셀 단위」가 이 문제를 어떻게 다루는지는 안 읽었습니다
+```
+
+### 확신도
+
+```
+구조   ✅ stage_event 본문 · 제외 목록 · DELETE 무접힘 주석 — 오늘 HEAD
+실행   ❌ 실제 DELETE 이벤트를 «열어» 보지는 않았습니다(공유 데이터라 행을 안 지웁니다)
+      -> 🔴 그래서 이 문장은 «구조»이고, 총괄이 탐침 행 하나로 «열어 보면» 1분에 확인됩니다
+         (지울 행이 제 탐침이면 저도 됩니다 — 지시 주시면 하겠습니다)
+```
+
+> · 🔁 이월: 0 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
