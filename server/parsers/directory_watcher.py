@@ -117,15 +117,57 @@ def _analyze_after_load(table_name: str, rows: int, why: str = None) -> bool:
     threshold = analyze_after_rows()
     if threshold <= 0 or not table_name or rows < threshold:
         return False
+    started = time.time()
+    # ⚠️ THE SESSION IS BORROWED FOR THE URL AND CLOSED BEFORE THE WORK. It was held open
+    # across the ANALYZE only because the connection came out of it, which is the defect.
     db = SessionLocal()
     try:
-        started = time.time()
-        # Autocommit: `ANALYZE` cannot run inside this session's implicit transaction
-        # block and stay outside the caller's, which is the whole point of the seat.
-        connection = db.connection().engine.raw_connection()
+        engine = db.bind or db.get_bind()
+        url = engine.url
+        # 🔴 AND THE SEARCH PATH, EXPLICITLY (S-272). The pooled connection carried the
+        # app's `search_path` for free; a connection this function opens itself does not,
+        # and `ANALYZE "t"` resolves an UNQUALIFIED name through it. Measured while
+        # building this round's proof: against an engine pointed at a scratch schema the
+        # dedicated connection reported 「relation does not exist」 and the seat returned
+        # False - silently, because it never raises. Asking the session that already told
+        # us the URL costs one round trip and makes the inheritance a stated fact.
+        search_path = db.execute(_sa_text("SHOW search_path")).scalar()
+    except Exception:                                                  # noqa: BLE001
+        search_path = None
+    finally:
+        db.close()
+
+    try:
+        # 🔴 A DEDICATED CONNECTION, NEVER THE POOL'S (S-272; the rule is S-167's).
+        # `ANALYZE` needs autocommit, and this seat used to reach it through
+        # `db.connection().engine.raw_connection()` - a POOLED connection.
+        # `set_isolation_level(0)` mutates it, and closing the proxy CHECKS IT BACK IN
+        # still in autocommit. Measured on this box 2026-09-16 with `pool_size=1`: the
+        # very next checkout was the SAME DBAPI connection with `autocommit=True`.
+        # Whatever session took it next never began a transaction, so every
+        # `begin_nested()` on it raised 25P01 `no_active_sql_transaction` - which is what
+        # production was emitting. `psycopg2.connect` gives a connection the pool has
+        # never seen, so `close()` here is a real close and nothing is returned.
+        #
+        # ⚠️ `execution_options(isolation_level="AUTOCOMMIT")` WAS MEASURED AND IT DOES
+        # RESTORE on checkin in this SQLAlchemy (same box, same probe: autocommit True
+        # inside, False on the next checkout). It is not taken because it would be a THIRD
+        # mechanism for one need - `chain/ingestion_worker` and the wait sampler 220 lines
+        # below both already open a dedicated connection - and because that restoration is
+        # a library version's promise, which is the kind of guard that goes wrong on the
+        # day it changes rather than the day it is written.
+        #
+        # ⚠️ IT STILL NEVER RAISES. The rows are durable by the time this runs; a box whose
+        # driver is not psycopg2 lands in the warning below exactly as it did before.
+        import psycopg2
+
+        connection = psycopg2.connect(
+            url.set(drivername="postgresql").render_as_string(hide_password=False))
         try:
             connection.set_isolation_level(0)
             with connection.cursor() as cursor:
+                if search_path:
+                    cursor.execute("SET search_path TO %s" % search_path)
                 cursor.execute(f'ANALYZE "{table_name}"')
         finally:
             connection.close()
@@ -139,8 +181,6 @@ def _analyze_after_load(table_name: str, rows: int, why: str = None) -> bool:
                        "the statistics are stale, and a page query may sort instead of "
                        "scanning until autovacuum catches up.", table_name, rows, err)
         return False
-    finally:
-        db.close()
 
 
 def _announce_dropped_columns(t_name, dropped_value_counts, defined_cols, filename, row_count):
