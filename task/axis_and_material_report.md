@@ -1,3 +1,127 @@
+## 🔵 [09-17 01:5x] **슬라이서 점호 — «읽어서» 셌습니다. 금지 부류는 «열하나»입니다**
+
+술어는 앞 글(`44553479`)에 먼저 적었습니다. 이 글이 그 술어로 «읽은» 결과입니다.
+범위는 `client2/tests` «만»입니다 — `server/tests` 는 구현자 레인입니다.
+
+### 🔴 먼저, 오늘 밤 제 두 기계 계수의 판정: **「31」이 맞았습니다. 다만 «다른 질문»의 답이었습니다**
+
+```
+기계가 낸 31    이 점호가 «만진 파일»의 수와 «정확히 같습니다» (실측: 31)
+                => 기계는 «모집단»을 맞혔습니다
+기계가 못 낸 것  그 31 중 «금지 부류»가 몇인지. 그건 읽어야 갈립니다 — 답은 «11» 입니다
+제가 낸 3       조심한 것 말고는 아무것도 안 맞혔습니다. 셋 중 하나(`board_modules`)는
+                읽어 보니 «금지 부류가 아닙니다»
+```
+🔴 **그래서 「기계로 세면 다음 판정이 틀린 모집단 위에 선다」는 제 말이 절반만 옳았습니다.**
+기계는 모집단을 «잘» 셌습니다. 틀릴 뻔한 것은 «분류»였습니다. 정정합니다.
+
+### 🔴 금지 부류 — **SLICE 10 + STRIP-WHOLE 1**. 전부 게이트에 있습니다
+
+| # | 파일 | 기제 — «무엇을 잘라 무엇에 넣나» |
+|---|---|---|
+| 1 | `copy_header_count_harness.mjs` | `gateSlice(src,label)` 본문을 «지어낸 함수»로 감싸 vm |
+| 2 | `m4_symbol_extractability_probe.mjs` | 🔴 «다른 하니스에서» `sliceFunction` 을 정규식으로 떠서 vm 에 돌리고, 그걸로 또 자른다 |
+| 3 | `reposition_regime_probe.mjs` | `SYMBOLS.map(n => sliceFunction(SRC,n)).join()` -> vm |
+| 4 | `valid_die_authoring_harness.mjs` | 상수·정규식을 정규식으로 뽑아 «소스를 지어» vm (vm 호출 4) |
+| 5 | `valid_die_dirty_guard_harness.mjs` | `pieces.join()` -> vm |
+| 6 | `valid_die_frame_adoption_harness.mjs` | `pieces.join()` -> vm · ⚠️ 이미 known-red(241/13) |
+| 7 | `valid_die_head_parity_oracle.mjs` | `parts.join()` + `frameAdaptedSource()` -> vm, **리비전 «둘»** (바닥 17,498) |
+| 8 | `ws_connect_watchdog_harness.mjs` | `fn(wsSrc,'name')` 목록 -> vm |
+| 9 | `ws_reconnect_backoff_harness.mjs` | 같음 |
+| 10 | `seam_7b_oracle.py` | 파이썬 안의 JS 가 `slice()`/`sliceConst()` -> `require('vm')`. 🔴 **JS 게이트에 «없습니다»** |
+| 11 | `redo_banner_harness.mjs` | **STRIP-WHOLE** — `^import`·`^export ` 를 «벗기고» 전문을 concat -> vm |
+
+### ✅ 금지 부류가 «아닌» 것 — 읽어서 갈린 자리들
+
+| 부류 | 수 | 무엇이며 왜 밖인가 |
+|---|---|---|
+| **WHOLE-COPY (기준선이 진짜 import)** | 4 | `alignment_verdict` · `excel_form_roundtrip` · `frame_declaration` · `push_gate`. 기준선은 `import * as LIVE from '../src/…'` 이고 data: URL 은 **변이만** 탑니다. 잘라낸 양 «0» |
+| **WHOLE-COPY (양쪽 다 사본)** | 3 | `grid_source_label` · `retroactive_view` · `lib/board_modules`(보드 하니스 «여덟»이 탑니다). 전문 그대로, 바뀌는 것은 «변이»와 «import 경로 재작성»뿐 |
+| **TEXT-AS-SUBJECT (자르지만 «안 돌린다»)** | 4 | `company_roundtrip` · `coord_table_paste` · `map_key_datalist` 는 함수 하나를 떠서 «그 텍스트에» 정규식을 겁니다(「이 핸들러가 fetch 를 부르나」). `overlay_provenance` 는 **CSS** 규칙 본문을 텍스트로 봅니다 |
+
+🔴 **셋을 안 돌린다는 것이 결정적입니다.** 술어의 「일부」와 「돌린다」가 «둘 다» 참이어야 하는데
+이 넷은 뒤가 거짓입니다. 기계 계수는 이 넷을 슬라이서로 셌습니다.
+
+### 🔵 그리고 «새 부류»가 하나 나왔습니다 — **DEAD-SCAFFOLD 12**
+
+```
+vm 을 import 하고 «한 번도 안 부르는» 파일: 12
+   그중 5 는 `sliceFunction` 을 «정의만» 하고 안 부릅니다 (정의 1 · 언급 1)
+   1 은 `extractFunction` 을 같은 모양으로 들고 있습니다 (effort_instrument)
+   12 «전부» 이미 `loadWithProbe` 로 갈아탔습니다 — 전환이 «끝난» 파일들입니다
+company_roundtrip · coord_table_paste · effort_instrument · effort_meter · geometry_origin_reseat
+isotropic_cell · load_shows_loaded_map · map_key_datalist · map_spec_only_save
+marker_shape_wafer_anchor · offset_pitch_guard · valid_die_origin_alignment
+```
+⚠️ **이건 금지 부류가 아니라 «장전된 총»입니다.** 다음 사람이 급할 때 `sliceFunction` 이
+그 파일 안에 이미 앉아 있습니다 — 부르기만 하면 됩니다. 그리고 기계 계수는 이 12를
+«슬라이서»로 셉니다. 제 31 중 12가 이것이었습니다.
+
+🔴 **셋이 두 줄에 «같이» 섭니다** — `company_roundtrip`·`coord_table_paste`·`map_key_datalist` 는
+TEXT-AS-SUBJECT «이면서» DEAD-SCAFFOLD 입니다. 단위가 «파일»이 아니라 «기제»라서 그렇고,
+CLAUDE.md 가 그렇게 세라고 적어 둔 이유가 이 자리입니다. **위 수들을 더하지 마십시오.**
+
+---
+
+## 🔴 판정을 청하는 것 «셋»
+
+### ㉠ STRIP-WHOLE 은 금지 부류인가 (`redo_banner_harness`)
+
+```
+금지의 «글자»   「일부를 잘라낸다」 — 이건 잘라낸 양이 «0 에 가깝습니다»
+금지의 «사유»   「import 를 하나 더하면 조각이 못 찾아 던진다」 — 🔴 이건 «그대로 참»입니다
+실측(오늘 밤)   제가 그 대상에 import 를 «하나» 더했더니 그 하니스가 ReferenceError 로 죽었습니다.
+                사유가 «가정»이 아니라 그 파일에서 «일어난» 일입니다
+전환 비용       🔵 `redo_banner.js` 는 그 하니스가 vm 으로 집는 «세 이름을 전부 export 합니다».
+                새 export 가 «필요 없습니다» — 이미 재 뒀습니다
+```
+
+### ㉡ 리비전 «둘»을 비교하는 오라클은 예외인가 (`valid_die_head_parity_oracle`)
+
+```
+CLAUDE.md 의 예외   「두 리비전의 «텍스트가 달라졌나»를 재는 드리프트 오라클」
+이 파일이 하는 것    두 리비전을 «잘라서 돌리고» «동작이 같나»를 잽니다 — 텍스트가 아니라 동작입니다
+=> 예외의 «주어»가 다릅니다. 그런데 과거 리비전은 import 가 «안 됩니다»
+🔴 제가 정할 자리가 아닙니다. 그리고 바닥이 17,498 이라 잘못 건드리면 큰 자리입니다
+```
+⚠️ CLAUDE.md 는 「과거 리비전은 import 될 수 없다는 것은 «부수적»」이라 적었지만, 그 문장은
+«텍스트» 드리프트 오라클에 대한 말입니다. 동작 패리티에도 같은 말인지가 제가 못 정하는 것입니다.
+
+### ㉢ `seam_7b_oracle.py` 는 «누구의 것»인가
+
+```
+파이썬 파일인데 안에 JS 슬라이서가 삽니다. JS 게이트(`check_harnesses.mjs`)에 «없습니다»
+=> 클라 시험인지 이음매 계약인지, 그리고 이 점호의 대상인지 판정이 필요합니다
+```
+
+---
+
+## 📋 제안 — 짓지 «않았습니다»
+
+| # | 항목 | 왜 | 크기 |
+|---|---|---|---|
+| ㉮ | **DEAD-SCAFFOLD 12 를 «한 커밋»으로 걷어낸다** | 전환이 끝난 파일에 도구만 남았습니다. 지금은 공짜(호출자 0)이고, 누가 하나 부르는 날부터는 라운드가 됩니다. 게이트가 «바닥»을 들고 있어 지우다 뭘 죽이면 그 자리에서 빨개집니다 | 삭제만, 1라운드 |
+| ㉯ | **SLICE 10 을 «한 번에» 말고 «부류»로** | 넷(`valid_die_*`)이 같은 대상(`map_editor.js`)을 같은 기제로 자릅니다. 하나를 전환하면 나머지가 «선언 교체»로 따라옵니다 — 「근원 템플릿 먼저」 그대로 | 대상 1 + 따라오는 3 |
+| ㉰ | **WHOLE-COPY 3 을 `loadWithProbe` 로** | 금지 부류는 아닌데 프로브가 «이미 하는 일»을 손으로 다시 합니다 — 그리고 «바이트 동일성 단언»이 없습니다. `board_modules` 는 outward 재작성을 «일반적으로» 풀어 둬서 가장 성숙합니다 | 중 |
+| ㉱ | **`sliceFunction` 을 새로 «못 적게» 하는 게이트** | 이 점호가 오늘 잡은 것을 내일 다시 세지 않으려면, 새 파일이 그 모양을 들고 들어올 때 빨개져야 합니다. 🔴 다만 이 게이트는 «자기 모집단 안»에 있게 됩니다 — 어젯밤 제가 그 함정을 밟았습니다 | 소, 함정 하나 |
+
+---
+
+## 이 점호가 «못» 센 것 — 정직하게
+
+```
+🔴 기계 목록이 «한 파일을 놓쳤습니다»   `overlay_provenance_harness` 는 실행 원시어가 «없어서»
+   후보에 안 들어왔습니다. 제가 술어를 적을 때 「①에서 안 잡히는 것이 있습니다」라고 쓴
+   바로 그 구멍이고, 이름으로 다시 훑어서(「자르는 이름 아무거나」) 잡았습니다
+   => 즉 이 점호의 후보 목록은 «두 번» 만들어졌습니다. 한 번이었으면 31 이 아니라 30 이었습니다
+⚠️ 못 세는 것 하나  대상을 문자열로 고쳐 «파일로 쓰고» import 하는 모양은 원시어로 안 잡힙니다.
+   `tests/lib/` 전부를 무조건 읽어서 덮었지만, `tests/` 최상위에 그런 게 있으면 «못 봅니다»
+```
+
+📌 다음: 위 ㉠㉡㉢ 판정을 기다립니다. 판정 없이 «고치지 않겠습니다» — 술어가 갈리는 자리라서입니다.
+
+---
+
 ## 🔵 [09-17 01:3x] **슬라이서 점호 — 술어를 «먼저» 적습니다. 아직 «아무것도 안 셌습니다»**
 
 승인하신 대로 자기 라운드로 엽니다. 이 글에는 **수가 하나도 없습니다** — 일부러입니다.
