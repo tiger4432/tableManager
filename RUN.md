@@ -203,7 +203,7 @@ python scripts/outbox_triage.py --count
 ⚠️ **§6(PG 시험)은 코드를 고친 뒤에만** 돌리시면 됩니다 — 운영에서 정기로 돌릴 것이 아닙니다.
 ---
 
-## 1. 조인이 왜 안 서는지 «한 줄로» 가른다 — 조인이 왜 안 서는지 «한 줄로» 가른다
+## 1. 조인이 왜 안 서는지 «한 줄로» 가른다
 
 ```bash
 python scripts/check_one_row_one_fact.py --db
