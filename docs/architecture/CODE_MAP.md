@@ -1700,7 +1700,7 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 | 누가 부르나 | `chain/builtins.py`(디스패처 표 · 🆕 `right_key` :204) · `chain/rule_shape.py`(허용 목록 :280) (+시험) |
 | 시험 | `test_a_declared_join_writes_what_it_says_into_the_table.py`(🆕 `593aac50` 이 팬아웃 케이스 +34줄 — 픽스처가 `composite_key_source` 를 «안 적어» 둘째 push 가 «둘째 행»을 넣고 있었고, 마지막 답이 «운으로» 이기던 초록이었다) · `test_the_product_synthesizes_chain_rules_in_one_seat.py` |
 
-### 4-ter-d. `server/virtual_join/unique_key.py` (🆕 **480줄** @`b1db471a` — 462 @`dc877746`, 348 @`474f1aa9`, 구 표기 328(`d3a92648` 신설 때 224), S-235)
+### 4-ter-d. `server/chain/unique_key.py` 🆕 **[`21abf176` 은퇴 2/5 — 옮겨졌다, 구 경로 ~~`server/virtual_join/unique_key.py`~~]** (🆕 **484줄** @`24700b82` — 480 @`b1db471a` — 462 @`dc877746`, 348 @`474f1aa9`, 구 표기 328(`d3a92648` 신설 때 224), S-235)
 
 | | |
 |---|---|
