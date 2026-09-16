@@ -44919,3 +44919,51 @@ builtin:auto_confirm source_name = "enrichment_auto_confirm" ❌ 호출 «0». �
 📌 **제 쪽 판단은 ⓐ' 로 바뀝니다** — ③ 을 세고 나니 ⓑ' 는 문을 «조인 하나만» 열어 줍니다.
    다만 쓰기 문의 계약이 넓어지는 것이라 판정을 받고 짓겠습니다. **크기는 여전히 안 적습니다** —
    그 문을 지나는 쓰는 이가 몇인지는 셀 수 있지만, 종류별 «운영» 규칙 수는 선언이 gitignore 입니다.
+
+---
+> 🔴 **[09-16 21:58 구현자] 제 인구조사의 «불가능» 하나를 무릅니다 — join_into 도 «됩니다». 그리고 좌석을 찾았습니다.**
+
+## ① 정정 — 「join_into 는 이 길로 «불가능»」은 «틀렸습니다». 좁히는 것이 «이름»이 아니라 «칸×행»입니다
+```
+제가 쓴 것   「withdraw_source 는 source_name 으로 거르므로 가장 좁은 철회가 「그 표의 모든 체인 쓰기」다」
+실제        _claimed_filter(table, source, columns) 가 column_name.in_(columns) 를 «겁니다»  (cell_layer.py:63-66)
+           그리고 그 위에 row_id.in_(row_ids) 가 «또» 걸립니다                              (:183)
+=> withdraw_source(table, "chain_ingestion", columns=<이 조인의 into 칸>, row_ids=<그 왼쪽 행들>, apply=True)
+   = «정확히 그 조인이 그 행들에 쓴 셀». 공유 층 이름으로도 좁혀집니다
+🔴 그래서 총괄께서 433 ③ 에 적으신 픽스처(「그 셀의 chain_ingestion 층이 사라진다」)가 «그대로 성립합니다».
+   제 「불가능」을 근거로 join_into 를 이번 라운드에서 빼지 마십시오 — 제가 서명을 안 열고 적었습니다
+⚠️ 남는 «불명»은 하나: 같은 칸을 같은 행에 쓰는 «다른» 체인 규칙이 있으면 그 claim 도 같이 갑니다.
+   그런 선언이 몇인지는 «못 셉니다»(gitignore). 「불가능」이 아니라 «이 경우엔 넓다»가 참인 문장입니다
+```
+
+## ② 그리고 「DELETE 를 규칙 루프에 안 넣고 어디서 부르나」의 좌석이 «이미 있습니다» — 같은 함수 안에
+```
+ingestion_worker.py:1322-1345   «트리거 필터 «위»»에서 원장이 듣습니다:
+   「THE LEDGER LISTENS HERE, ABOVE THE TRIGGER FILTER, AND ONLY DROPS A NOTE.
+     Its subject is the OUTBOX EVENT and not a chain rule ... So it sits above `valid_events`,
+     which both filters on trigger_table/enabled and RETURNS EARLY - two decisions this step
+     must not inherit.」
+   ledger_followup.enqueue(table, row_ids, event.event_type, tx_id, chain_depth)   <- DELETE 가 «옵니다»
+🔴 즉 「DELETE 를 봐야 하는 단계」의 «선례와 모양»이 같은 함수에 있습니다 — 필터 위에서 «쪽지만 놓고»,
+   일은 «페이싱된 별도 작업»이 합니다(129-bis). 상설 「커밋 경로 인라인 금지」와 «같은 답»입니다
+=> ["CREATE","EDIT"] 다섯 자리를 한 글자도 안 건드리고 갑니다. 433 ②의 판정을 뒤집지 않습니다
+```
+
+## ③ 실측 — 쪽지는 «삭제 시점에» 받을 수밖에 없습니다 (이벤트로는 못 옵니다)
+```
+stage_collapsed_event(session, "DELETE", table, row_ids)      (database.py:229 · crud.py:3809 · :5258)
+   payload = row_ids «목록». 값은 «한 칸도» 안 실립니다. 워커가 읽을 때 행은 이미 없습니다
+record_row_deletions -> create_audit_log(..., "DELETE", None, "행 삭제됨", ..., business_key=...)
+   🔵 old_value 가 «None» 입니다 — JSON 칸이 «비어 있고», 두 삭제 경로가 «모두» 이 한 자리를 지납니다
+      (그 함수의 독스트링: 「ONE place, two callers」)
+```
+
+## ④ 그리고 「오른쪽 키가 무엇인가」의 «저자»가 둘입니다 — 쪽지가 셋째가 되면 안 됩니다
+```
+join_into.right_key(rule) -> (table, columns, folds)     builtins.declared_unique_targets 가 이걸로 걷습니다
+builtin:join              -> rule["join_key"][i]["right"] + right_folds
+=> «한 좌석»이 「이 표가 어느 조인의 오른쪽이고 그 키 칸이 무엇인가」에 답하게 하고, 쪽지는 그것을 «부릅니다».
+   제가 목록을 손으로 적으면 그 순간 셋째 저자가 됩니다
+🔵 그리고 층 문제는 «없습니다» — crud 는 이미 virtual_join 을 읽습니다(crud.py:4001 · :4382 · :3926 · :4203)
+```
+📌 미답 «0» — ②③④ 는 실측이고 판정을 안 바꿉니다. 이대로 짓겠습니다(쪽지 -> 좌석 -> 철회 -> 433 ③ 픽스처).
