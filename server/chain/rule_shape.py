@@ -12,6 +12,7 @@
 """
 from __future__ import annotations
 
+import chain_bindings
 from chain import join_into
 
 #: 체인 문법에서 «모양으로 접히는» 칸. 나머지는 전부 `extra` 로 간다.
@@ -243,6 +244,24 @@ def from_declaration(raw: dict, origin: str = "declared") -> dict:
 #: writes it and the census reads it.
 REFERENCE_SUFFIX = ":reference"
 
+#: The cell a companion rule carries to say WHAT IT IS (S-270). The loader is the only
+#: thing that can know 「I made this as the second half of one declaration」, and until this
+#: cell existed `replay` re-derived the answer from the shape of three other cells —
+#: `trigger == right_table != target`. That shape is ALSO true of a declaration whose
+#: `on.table` IS the reference table, which is a legal and sole rule, so the only join in
+#: this box's grid was read as a half and hidden from the replay list.
+#:
+#: 🔴 THE SUFFIX IS A LABEL, THIS IS THE FACT. Parsing `name.endswith(REFERENCE_SUFFIX)`
+#: would be the same mistake one layer over: a name an operator may write, carrying a
+#: meaning only the loader may assign.
+#:
+#: ⚠️ THE NAME IS `chain_bindings`'S, NOT SPELLED AGAIN HERE. The grammar has to KNOW this
+#: cell or `flat_param_cells` reads it as a mapper argument and the loader says 「move it
+#: under params」 for every join, on every boot — measured 2026-09-16, one line per join.
+#: A permanent warning is how a real one stops being read, and two spellings of the name is
+#: how only one of them gets fixed.
+COMPANION_CELL = chain_bindings.COMPANION_CELL_NAME
+
 
 def companion_rules(internal: dict) -> list:
     """The EXTRA chain rules one unified declaration implies. Today: a join's reference side.
@@ -274,6 +293,10 @@ def companion_rules(internal: dict) -> list:
     companion = dict(primary)
     companion["name"] = str(name) + REFERENCE_SUFFIX
     companion["trigger_table"] = right_table
+    # 🔴 [S-270] IT SAYS WHAT IT IS, HERE, WHERE THAT IS KNOWN. Everything downstream that
+    # needs 「is this a half the loader made」 reads this cell; deriving it from the trigger
+    # and the right table is a guess that a sole declaration also satisfies.
+    companion[COMPANION_CELL] = str(name)
     return [companion]
 
 

@@ -69,7 +69,7 @@ def test_a_unified_join_appears_for_the_table_it_writes(loaded):
     assert (found[0]["trigger_table"], found[0]["target_table"]) == (LEFT, LEFT)
 
 
-def test_the_reference_half_is_not_offered_for_the_table_it_reads(loaded):
+def test_the_reference_half_is_not_offered_for_a_replay_of_the_whole_table(loaded):
     """⛔ THE SAME DISCRIMINATOR THE BACKFILL REFUSES WITH (S-242). Replaying the follow-up
     half redoes, once per reference row, what the target half does for every row - so a
     list that offered it would be a screen inviting a refusal."""
@@ -78,6 +78,21 @@ def test_the_reference_half_is_not_offered_for_the_table_it_reads(loaded):
     loaded(stood)
 
     assert replay.replayable_rules_for(RIGHT) == []
+
+
+def test_the_reference_half_IS_offered_when_the_caller_will_pick_rows(loaded):
+    """🔴 [S-270] ONE FIXTURE, BOTH ANSWERS — the axis is the SCOPE and nothing else.
+    S-242's cost argument is about replaying a whole table; the grid's banner always sends
+    `row_ids`, and with rows picked this is the only rule that can do what was asked (the
+    target-side rule triggers on a table that grid cannot select). The same predicate
+    decides here and in `find_rule`, so the list cannot offer a name the backfill refuses."""
+    loaded(_stood(JOIN))
+
+    scoped = replay.replayable_rules_for(RIGHT, row_scoped=True)
+
+    assert [entry["name"] for entry in scoped] == ["s250_join:reference"]
+    assert scoped[0]["kind"] == "join"
+    assert replay.replayable_rules_for(RIGHT) == [], "the whole-table answer must not move"
 
 
 def test_another_tables_rules_are_not_on_this_tables_list(loaded):
@@ -158,6 +173,23 @@ def test_the_route_answers_with_the_filtered_set(client, monkeypatch):
     body = answer.json()
     assert body["status"] == "success"
     assert [entry["name"] for entry in body["data"]] == ["s250_join"]
+
+
+def test_the_route_carries_the_scope_the_caller_asked_for(client, monkeypatch):
+    """🔴 [S-270] THROUGH THE DOOR, BOTH WAYS. The banner asks with `row_scoped=true`; a
+    caller that does not gets the whole-table answer. A parameter the route accepted and
+    ignored would be 「폼이 그리는데 읽는 쪽이 없다」 with a query string instead of a form."""
+    import main
+
+    monkeypatch.setitem(main.crud.TABLE_CONFIG, RIGHT, {"column_types": {}})
+    monkeypatch.setattr(replay, "load_rules", lambda: _stood(JOIN))
+
+    whole = client.get("/admin/chain/rules/replayable?table=%s" % RIGHT)
+    scoped = client.get("/admin/chain/rules/replayable?table=%s&row_scoped=true" % RIGHT)
+
+    assert whole.status_code == scoped.status_code == 200, (whole.text, scoped.text)
+    assert whole.json()["data"] == []
+    assert [e["name"] for e in scoped.json()["data"]] == ["s250_join:reference"]
 
 
 def test_a_table_nobody_declared_is_refused_by_name_rather_than_answered_empty(client):

@@ -240,7 +240,8 @@ def test_the_pre_count_reports_rows_for_a_kind_that_writes_its_own_cells(db,
     from admin import retroactive
 
     _seed(db)
-    monkeypatch.setattr(replay, "find_rule", lambda name, rules=None: _rules()[0])
+    monkeypatch.setattr(replay, "find_rule",
+                        lambda name, rules=None, row_scoped=False: _rules()[0])
 
     answer = retroactive._count_chain_replay(db, {"rule": "s242_join"}, 1000)
 

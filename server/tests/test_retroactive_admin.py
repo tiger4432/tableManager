@@ -1223,7 +1223,8 @@ def test_every_operation_that_CLAIMS_it_can_be_cancelled_actually_passes_the_hoo
     log = lambda *a, **k: None
 
     with pytest.MonkeyPatch.context() as mp:
-        mp.setattr(replay, "find_rule", lambda name: {"name": name})
+        mp.setattr(replay, "find_rule",
+                   lambda name, rules=None, row_scoped=False: {"name": name})
         mp.setattr(replay, "replay_rule", recorder("chain_replay"))
         mp.setattr(replay, "withdraw_source", recorder("withdraw"))
         mp.setattr(enrichment.backfill, "load_rule", lambda *a, **k: {"name": "r"})

@@ -5616,7 +5616,7 @@ def get_chain_rules():
 
 
 @app.get("/admin/chain/rules/replayable", dependencies=[Depends(require_admin_token)])
-def get_replayable_chain_rules(table: str):
+def get_replayable_chain_rules(table: str, row_scoped: bool = False):
     """이 표를 «트리거»로 하는, «다시 돌릴 수 있는» 체인 규칙만 (S-250).
 
     🔴 그리드 배너가 쓰던 것은 위의 `/admin/chain/rules` — «파일 원문»입니다. 그래서
@@ -5624,10 +5624,14 @@ def get_replayable_chain_rules(table: str):
     «아예 없었고»(enrichment·가상 조인은 로더가 세웁니다), 어느 표의 규칙인지 «거를 수»도
     없었습니다. 소유자: 「같은 체인문이면 보여야지」.
 
-    ⛔ 목록과 실행이 «갈릴 수 없습니다» — `replay.replayable_rules_for` 는 소급이
-    실제로 도는 집합(`load_rules`)을 «그 함수»로 거르고, 참조 쪽 거절도 `find_rule` 이
-    쓰는 «그 판별식»(`is_reference_side`)을 지납니다. 두 번째 철자였다면 화면이 내미는
-    이름을 소급이 거절할 수 있습니다.
+    ⛔ 목록과 실행이 «갈릴 수 없습니다» — 둘 다 `replay.replay_is_refused` 를
+    지납니다(S-270). 두 번째 철자였다면 화면이 내미는 이름을 소급이 거절하거나,
+    소급이 받을 이름을 화면이 숨길 수 있습니다.
+
+    🔴 `row_scoped` 는 「부르는 쪽이 행을 고를 것」이라는 뜻입니다 (S-270). 그리드
+    배너는 항상 `row_ids` 를 보내므로 «켜서» 묻고, 그때만 조인의 참조 쪽이
+    목록에 서게 됩니다 — 범위 없이 통째로 돌릴 때는 S-242 의 비용 논증이
+    그대로 참입니다.
 
     ⚠️ 모르는 표는 «빈 목록»이 아니라 «거절»입니다. 「이 표엔 규칙이 없다」와 「그런 표가
     없다」는 다른 사실이고, 빈 목록으로 합치면 오타 친 운영자가 「규칙이 없구나」로 읽습니다.
@@ -5644,7 +5648,8 @@ def get_replayable_chain_rules(table: str):
             detail=("표 '%s' 가 카탈로그에 없습니다 — 「규칙이 없다」가 아니라 「그런 표가 "
                     "없다」입니다. table_config.json 에 등록된 이름인지 확인하십시오"
                     % wanted))
-    return {"status": "success", "data": replay.replayable_rules_for(wanted)}
+    return {"status": "success",
+            "data": replay.replayable_rules_for(wanted, row_scoped=row_scoped)}
 
 
 @app.get("/admin/mappers/list", dependencies=[Depends(require_admin_token)])

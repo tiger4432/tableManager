@@ -161,7 +161,11 @@ def _pace_param():
 def _count_chain_replay(db, params, scan_limit):
     from chain import replay
 
-    rule = replay.find_rule(params["rule"])
+    # 🔴 [S-270] THE SCOPE AND THE PERMISSION COME FROM ONE VALUE. `row_ids` is what
+    # narrows the scan, and it is also what makes the reference side a legal subject - the
+    # operator has picked the rows, so re-deriving their targets is what the live chain does
+    # when they move. Reading it twice from one dict is what keeps them from disagreeing.
+    rule = replay.find_rule(params["rule"], row_scoped=bool(params.get("row_ids")))
     s = replay.replay_rule(db, rule, apply=False, limit=scan_limit,
                                  log=lambda m: logger.debug(m),
                                  business_keys=params.get("business_keys"),
@@ -564,7 +568,11 @@ def _run_ledger_rescope(db, params, log, control=None):
 def _run_chain_replay(db, params, log, control=None):
     from chain import replay
 
-    rule = replay.find_rule(params["rule"])
+    # 🔴 [S-270] THE SCOPE AND THE PERMISSION COME FROM ONE VALUE. `row_ids` is what
+    # narrows the scan, and it is also what makes the reference side a legal subject - the
+    # operator has picked the rows, so re-deriving their targets is what the live chain does
+    # when they move. Reading it twice from one dict is what keeps them from disagreeing.
+    rule = replay.find_rule(params["rule"], row_scoped=bool(params.get("row_ids")))
     s = replay.replay_rule(db, rule, apply=True, log=log,
                                  checkpoint=_checkpoint(control),
                                  business_keys=params.get("business_keys"),

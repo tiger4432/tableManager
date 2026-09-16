@@ -126,8 +126,14 @@ async function loaderSuite(mod) {
   s.say('A1 the request names THIS table, encoded',
     one.asked.length === 1
     && one.asked[0].url.includes('/admin/chain/rules/replayable?table=')
-    && one.asked[0].url.endsWith(`table=${encodeURIComponent('dt lot&x')}`),
+    && one.asked[0].url.includes(`table=${encodeURIComponent('dt lot&x')}`),
     one.asked.map((a) => a.url));
+  // 🔴 [S-270] 그리고 «행 범위»라고 말합니다. 배너의 payload 에는 `row_ids` 뿐이라 이 화면의
+  //    소급은 전부 행 범위이고, 그때 조인의 참조 쪽은 「유일하게 맞는」 규칙입니다. 이 인자가
+  //    빠지면 서버가 그것을 목록에서 빼고, 운영자는 «조인만 없는» 목록을 봅니다 —
+  //    소유자가 오늘 아침 신고한 그 모양입니다.
+  s.say('A1-bis ... and says the replay will be row-scoped',
+    one.asked[0].url.includes('row_scoped=true'), one.asked[0].url);
   // ⚠️ 토큰은 «헤더»입니다. 질의 문자열은 서버 접근 로그에 남습니다(`admin_token.js` 의 사유).
   s.say('A2 the token rides in the header, never in the query',
     one.asked[0].init && one.asked[0].init.headers

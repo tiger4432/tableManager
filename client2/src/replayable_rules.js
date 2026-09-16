@@ -18,6 +18,14 @@ import { ADMIN_TOKEN_HEADER, readAdminToken } from './admin_token.js';
 /**
  * 이 표를 트리거로 하는 규칙들. 거르는 것은 «서버»입니다(S-250) — 화면은 묻기만 합니다.
  *
+ * 🔴 `row_scoped=true` 를 «항상» 실어 묻습니다 (S-270). 배너가 보내는 payload 에는
+ *    `row_ids` «뿐»이고, 그래서 이 화면에서 고를 수 있는 소급은 «전부 행 범위»입니다.
+ *    조인의 참조 쪽이 통째 소급에서 거절되는 사유(S-242: 대상 쪽을 한 번 돌리면 덮인다)는
+ *    «범위 전체»의 논증이라 여기서는 참이 아닙니다 — 행을 고른 순간 그 규칙이 «유일하게
+ *    맞는» 규칙이고, 대상 쪽은 이 그리드에서 고를 수 없는 표를 트리거로 합니다.
+ * ⚠️ 이 인자를 빼면 화면은 다시 그 규칙을 «안 보여 주고», 운영자는 조인 체인만 없는
+ *    목록을 보게 됩니다 — 소유자가 오늘 아침 신고한 그 모양입니다.
+ *
  * @param {string} table
  * @returns {Promise<Array<object>|null>} 읽은 목록, 또는 `null`(못 읽음)
  */
@@ -28,7 +36,8 @@ export async function loadReplayableRules(table) {
   if (!token) return null;
   try {
     const res = await fetch(
-      `${API_BASE}/admin/chain/rules/replayable?table=${encodeURIComponent(table)}`,
+      `${API_BASE}/admin/chain/rules/replayable?table=${encodeURIComponent(table)}`
+      + '&row_scoped=true',
       { headers: { [ADMIN_TOKEN_HEADER]: token } });
     if (!res.ok) return null;
     const body = await res.json();

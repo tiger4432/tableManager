@@ -147,45 +147,68 @@ def load_rules() -> list:
     return [r for r in load_chain_rules() if r.get("enabled", True)]
 
 
-def find_rule(rule_name: str, rules: list = None) -> dict:
+def find_rule(rule_name: str, rules: list = None, row_scoped: bool = False) -> dict:
     rules = rules if rules is not None else load_rules()
     rule = next((r for r in rules if r.get("name") == rule_name), None)
     if rule is None:
         available = ", ".join(sorted(r.get("name", "?") for r in rules)) or "<none>"
         raise ReplayRefused(f"chain rule '{rule_name}' not found or disabled; available: {available}")
-    # ⛔ [S-242] THE REFERENCE SIDE IS NOT A BACKFILL SUBJECT. A unified join stands two
-    # rules: one triggered on the table it writes, one on the table it reads. Replaying the
-    # SECOND walks every reference row and re-finds its targets - the same work the first
-    # already does for every target row, done once per reference instead. Replaying the first
-    # covers everything. An operator who ran both would pay twice for one answer, so the name
-    # is refused rather than quietly accepted.
-    if is_reference_side(rule):
+    # ⛔ [S-242, narrowed by S-270] THE REFERENCE SIDE IS NOT A BACKFILL SUBJECT - WHEN THE
+    # WHOLE TABLE IS THE SUBJECT. Replaying the companion walks every reference row and
+    # re-finds its targets, which replaying the target side already does for every row, so
+    # an operator running both pays twice for one answer. That is an argument about SCOPE:
+    # with `row_ids` the operator has picked the reference rows, `replay_rule` narrows its
+    # scan to them, and re-deriving those rows' targets is precisely what the live chain
+    # does when they move. The decision is `replay_is_refused`, shared with the list.
+    if replay_is_refused(rule, row_scoped):
         raise ReplayRefused(
             f"chain rule '{rule_name}' is the follow-up half of a declaration; replaying it "
-            f"would redo, once per reference row, what replaying the target-side rule "
-            f"already does for every row. Replay that one instead.")
+            f"whole would redo, once per reference row, what replaying the target-side rule "
+            f"already does for every row. Replay that one instead, or pick the rows to "
+            f"replay this one for.")
     return rule
 
 
 def is_reference_side(rule: dict) -> bool:
-    """Is this the half of a declaration that watches the table it READS?
+    """Is this a half the LOADER made - the companion that watches the table it READS?
 
-    🔴 THE PROPERTY, NOT THE CELL. The first cut asked 「is it `follow_up`」 - and BOTH
-    halves of a unified join are paced, so it refused the very rule an operator should
-    replay. My own discriminator caught it, which is the whole reason that test exists.
-    What tells the two apart is where the trigger sits: the reference side is triggered on
-    the join's RIGHT table, which is not the table it writes.
+    🔴 THE CELL, BECAUSE THE SHAPE WAS A GUESS (S-270). This asked
+    `trigger == right_table != target`, and that is true of a companion AND of a sole
+    declaration whose `on.table` IS the reference table - which is legal, is what the
+    owner had written, and was therefore hidden from the replay list and refused by name
+    with a pointer at a rule that does not exist. 「Did the loader make this as a second
+    half」 is a fact the loader HAS; re-deriving it from three other cells is the
+    「대리를 성질로 읽는다」 shape. `companion_rules` stamps it now.
+
+    ⚰️ The first cut before that asked 「is it `follow_up`」 and both halves are paced, so
+    it refused the very rule an operator should replay. Three readings of one question is
+    what a cell ends.
     """
-    from chain import builtins
+    from chain import rule_shape
 
-    if (rule or {}).get("mapper") not in builtins.BUILTIN_KINDS:
-        return False
-    right = ((rule.get("params") or {}).get("right_table")) or ""
-    trigger = rule.get("trigger_table") or ""
-    return bool(right) and trigger == right and trigger != (rule.get("target_table") or "")
+    return bool((rule or {}).get(rule_shape.COMPANION_CELL))
 
 
-def replayable_rules_for(table: str) -> list:
+def replay_is_refused(rule: dict, row_scoped: bool = False) -> bool:
+    """May this rule NOT be replayed? The ONE predicate the refusal, the list and the
+    route all pass through (S-270).
+
+    🔴 THE REFERENCE SIDE IS REFUSED ONLY WHERE S-242'S ARGUMENT HOLDS, AND THAT ARGUMENT
+    IS ABOUT SCOPE. It said: replaying the companion re-finds every reference row's
+    targets, which replaying the target side already covers - true when the whole table
+    is replayed, and FALSE when the operator picked rows. The grid's banner always sends
+    `row_ids` and `replay_rule` narrows its scan to them, so replaying a chosen reference
+    row is exactly what the live chain does when that row moves; the target-side rule
+    triggers on a table that grid cannot select, so there is no 「run that one instead」
+    available to the operator there.
+
+    ⛔ ONE SPELLING, BECAUSE A LIST AND AN EXECUTION THAT DISAGREE IS THE S-250 DEFECT -
+    a screen offering a name the backfill refuses, or hiding one it would accept.
+    """
+    return is_reference_side(rule) and not row_scoped
+
+
+def replayable_rules_for(table: str, row_scoped: bool = False) -> list:
     """The rules an operator may replay FOR THIS TABLE - the loaded set, filtered (S-250).
 
     🔴 THE SAME SET THE BACKFILL ACTUALLY RUNS. The grid's list came from
@@ -195,10 +218,12 @@ def replayable_rules_for(table: str) -> list:
     and nothing could be filtered by table at all. A list that is not the set that runs is
     a list that offers names the backfill will refuse.
 
-    ⛔ AND THE REFERENCE SIDE IS NOT ON IT, through the function that already decides
-    that (S-242). Replaying the follow-up half redoes, once per reference row, what the
-    target half does for every row - so `find_rule` refuses it by name, and a list that
-    offered it would be a screen inviting a refusal.
+    ⛔ AND THE REFERENCE SIDE IS ON IT ONLY WHEN THE CALLER SAYS IT WILL PICK ROWS
+    (S-270), through `replay_is_refused` - the SAME predicate `find_rule` uses, so the
+    list cannot offer a name the backfill refuses nor hide one it would accept. The grid's
+    banner always sends `row_ids`, so it asks with `row_scoped=True`; a caller replaying a
+    whole table asks without, and the companion stays off the list for the reason S-242
+    gave.
 
     ⚠️ 「ENABLED」 IS ALREADY DECIDED UPSTREAM: `load_rules` keeps only enabled rules, so
     a switched-off declaration cannot appear here and this function does not re-ask.
@@ -210,7 +235,7 @@ def replayable_rules_for(table: str) -> list:
     for rule in load_rules():
         if str(rule.get("trigger_table") or "") != wanted:
             continue
-        if is_reference_side(rule):
+        if replay_is_refused(rule, row_scoped):
             continue
         out.append({"name": rule.get("name"),
                     "trigger_table": rule.get("trigger_table"),

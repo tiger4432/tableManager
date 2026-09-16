@@ -198,11 +198,14 @@ def main(argv=None):
             return 0
 
         if args.cmd == "replay":
-            rule = replay.find_rule(args.rule_name)
             selected = ([k.strip() for k in args.business_keys.split(",") if k.strip()]
                         if args.business_keys is not None else None)
             rows = ([r.strip() for r in args.row_ids.split(",") if r.strip()]
                     if args.row_ids is not None else None)
+            # ⚠️ [S-270] PARSED BEFORE THE LOOKUP, because `--row-ids` is what makes a
+            # reference-side rule a legal subject. Asking first and narrowing after is how
+            # a CLI comes to refuse what the button accepts (S-254 was that shape).
+            rule = replay.find_rule(args.rule_name, row_scoped=bool(rows))
             print(_report_replay(replay.replay_rule(
                 db, rule, apply=args.apply, limit=args.limit,
                 chunk_size=args.chunk_size, business_keys=selected, row_ids=rows,
