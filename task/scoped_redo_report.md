@@ -45570,3 +45570,74 @@ from a.b import c   -> c 를 바인딩          -> «c 가 무엇인가»에 달
         — 그 자리에서 물어야 했던 것은 「이 빨강이 참인가」였고 저는 「내 변경이 과했나」만 물었습니다
 ```
 📌 **Ⓐ·Ⓑ·Ⓒ(4) 의 쪼개기) 답을 계속 기다립니다.** 460 이 「4) 보다 먼저」라 하셔서 이것을 먼저 닫았습니다.
+
+---
+
+> 🔵 **[09-17 01:45 구현자] 판정 462 착지 — `44ae4fd7`. 상대 형태 다섯이 전부 금지로 나옵니다.**
+
+## ① 빨강 먼저 — «462 가 지우는 것»을 도로 넣어서 쟀습니다
+```
+변이     elif ... and node.module:  +  base = node.module      (462 이전 그대로)
+결과     6 failed, 48 passed
+         from .store import Store          FAILED
+         from .gate import Gate            FAILED
+         from . import store               FAILED
+         from . import cursor              FAILED
+         from .. import database           FAILED
+         test_a_bare_relative_import_binds_the_module_itself   FAILED
+초록     54 passed   (HEAD 기준선 36 -> 54, +18)
+```
+🔵 총괄 ①의 다섯 중 `from ..database import crud` 는 변이 아래서도 «통과»합니다 — 총괄이
+「우연입니다」라고 적으신 그대로입니다. 풀지 않은 글자가 마침 `database` 여서 맞았습니다.
+그래서 표에 그 행을 «양쪽 다 True»로 두었습니다.
+
+## ② 수리 — 새 규칙을 «안 만들었습니다». 풀어서 «있는 규칙»에 먹입니다
+```
+_resolve_relative(module, level, package)  ->  절대 경로 하나
+   level 1, module='store'                ->  'ledger.store'
+   level 1, module=None, names=['store']  ->  'ledger.store' 를 «모듈로» 바인딩
+   level 2, module='database'             ->  'database'
+그다음   오늘 쓰던 바인딩 규칙 그대로. `and node.module` 가드는 «지웠습니다»
+⚠️ bare 형태(`from . import store`)에는 «허용표가 말할 수 없습니다» — 표는 (모듈, 이름) 쌍인데
+   그 형태에서는 이름이 «곧 모듈»입니다. 그래서 그 가지는 허용표를 안 지납니다
+```
+
+## ③ 형태 표를 «문법 격자»에서 뽑았습니다 — 총괄 ④ 그대로
+```
+ast.Import      × {점 있음 · 점 없음} × {as · no as}       = 4 칸
+ast.ImportFrom  × {level 0 · 1 · 2}   × {module · bare}    = 6 칸
+빈 칸           level 0 + bare 는 «파이썬이 파싱하지 않습니다» — 행을 빼지 않고
+                `pytest.raises(SyntaxError)` 로 «단언»했습니다. 빠진 행은 통과로 읽힙니다
+게이트          test_every_grammar_cell_carries_a_form — 칸 집합이 격자와 «같은지» 단언
+행 수           22 (이전 7)
+```
+
+## ④ 무르지 않았다는 증거
+```
+허용 둘(clean_str_value · INDEX_PREFIX)이 «그대로» 통과합니다.
+그리고 `test_the_allowances_are_named_rather_than_invisible` 이 그 둘을 각각 «빼고» 돌려
+   빨개지는지까지 봅니다 — 허용이 «장식»이 아니라 «지지»임을 재는 자리입니다
+```
+
+## ⑤ 🔴 잰 자리를 밝힙니다 — 「메인 트리에서 못 돌렸습니다」
+```
+왜     4)가 «미커밋»으로 트리에 있어 이 모듈이 «수집 자체»가 안 됩니다
+       (test_ledger_setup_registry 가 `import virtual_join.config` 를 듭니다)
+어떻게 HEAD 로 «워크트리»를 떼서 거기서 돌렸습니다. 곧 커밋할 파일 하나만 복사해서
+수집   `pytest tests --collect-only -q` -> 6,861 collected, 6 errors
+       🔴 그 여섯은 «제 커밋과 무관»합니다 — 새 워크트리에는 gitignore 된 소유자 파일
+       (`server/mappers/*.py` · `server/config/**`)이 «없어서» 나는 FileNotFoundError 입니다
+       (core_alignment · core_usage · dt_alignment_metadata · dt_inventory_metadata ·
+        dt_standard_map · void_schema). 메인 트리의 수집 수는 4) 착지 때 같이 적겠습니다
+```
+
+## ⑥ RUN.md — 이번엔 «고칠 것이 없습니다», 그리고 그게 판단입니다
+```
+이 커밋은 «시험 게이트»만 바꿉니다. 운영자가 돌릴 명령도, 볼 로그 줄도 안 생깁니다
+RUN.md 에 roleframe·capability 를 «가리키는 줄이 0» 이라 오늘 main 기준으로 여전히 참입니다
+=> 없는 명령을 지어 넣지 않았습니다. 4) 는 운영자에게 보이는 것을 지우므로 그때 갱신합니다
+```
+
+📌 **이제 4) 로 돌아갑니다.** `chain/builtins.py` 의 마지막 세 자리까지 옮겼고
+(`_install()` 의 등록 자리 포함 — 패키지가 사라져도 `import chain.builtins` 가 삽니다),
+남은 것은 «읽기 쪽 호출 자리 지우기»와 446, 그리고 시험 모듈 ~36 입니다.
