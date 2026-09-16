@@ -45641,3 +45641,140 @@ RUN.md 에 roleframe·capability 를 «가리키는 줄이 0» 이라 오늘 mai
 📌 **이제 4) 로 돌아갑니다.** `chain/builtins.py` 의 마지막 세 자리까지 옮겼고
 (`_install()` 의 등록 자리 포함 — 패키지가 사라져도 `import chain.builtins` 가 삽니다),
 남은 것은 «읽기 쪽 호출 자리 지우기»와 446, 그리고 시험 모듈 ~36 입니다.
+
+---
+
+> 🔵🔵 **[09-17 03:11 구현자] 판정 461 4) 착지 — «한 커밋» `306419fd`. 미커밋 변경은 트리에서 사라졌습니다.**
+
+## ① 무엇이 옮겨지고 무엇이 지워졌나 — AST 로 «다시» 셌습니다 (착지본 기준)
+```
+HEAD 의 executor 최상위 정의        28
+  옮김 (chain/legacy_materialized_join.py)  15
+  지움 (읽기 전용)                         13
+    attach · exposed_columns · resolved_expression · announced_columns ·
+    resolved_column_announcements · virtual_only_columns · _resolve_one · _bind_crud ·
+    _CLEAN · _RENDER · KIND_COLLIDE · KIND_VIRTUAL_ONLY · SOURCE_NAME
+  «옮긴 파일에 새로 생긴 것»  0   <- 지어낸 것이 없다는 뜻입니다
+git mv   virtual_join/config.py  -> chain/legacy_join_declaration.py
+         virtual_join/refusal.py -> chain/join_refusal.py
+git rm   virtual_join/executor.py · virtual_join/__init__.py  (패키지가 «없습니다»)
+```
+
+## ② 🔴 호출 자리는 «일곱이 아니라 여덟»이었습니다 — 바인더 안에 둘이 있었습니다
+```
+main.py  fetch_and_merge_metadata        attach                         -> 지움
+main.py  VirtualColumnBinder.__init__    exposed_columns                -> 지움 ┐ 총괄 ④가
+main.py  VirtualColumnBinder.expr        resolved_expression            -> 지움 ┘ 하나로 세신 자리
+main.py  export_table_csv                announced_columns              -> 지움
+main.py  get_table_schema                resolved_column_announcements  -> 지움
+main.py  get_table_schema                announced_columns              -> 지움
+database/crud.py  refuse_virtual_join_columns  virtual_only_columns     -> 함수째 지움 + 묘비
+database/config_watcher.py  _report_unsearchable_declarations  exposed_columns -> 지움
+```
+그리고 그 여덟을 지우자 «바인더 자체»가 아무도 안 타는 갈래가 됐습니다(상설 「깔끔」③).
+그래서 `VirtualColumnBinder` 와 그 인자를 다섯 함수에서 걷어냈습니다 —
+`resolve_sort` · `apply_column_filters` · `apply_search_filter` · `narrowed_table_query`(3-튜플 -> 2-튜플) ·
+그 호출자 넷. 묘비에 「JOIN 이 사라진 것이지 «메모»가 틀린 게 아니다」를 적어 뒀습니다.
+
+## ③ 446 — 이름 대어 거절합니다 (총괄 452 ① 의 «좁은» 판)
+```
+새 코드   read_time_retired  (chain/join_refusal.py — 코드와 한국어 문장이 «같은 모듈»)
+거절 문장  'materialize' is false, which declared a READ-TIME join … Declare the join in
+          chain_rules.json instead - derive: {kind: "join"} with on and take …, or set
+          'materialize': true here with a 'max_rewrite_rows' ceiling
+✅ 통제   `materialize: true` 는 «그대로 섭니다» — 같은 파일에 컨트롤 시험을 붙였습니다
+```
+
+## ④ 🔴 제가 «안 본» 귀결 하나 — 인덱스가 «같이 걷힙니다». RUN.md 에 적었습니다
+```
+기제   인덱스는 «요구하는 조인이 사는 동안»만 삽니다(S-248). 446 이 선언을 거절하면
+      그 선언이 요구하던 키가 «요구 집합»에서 빠지고, 제품이 자기 `uq_vjoin_…` 를 걷습니다
+제가 본 것   이 박스에서 프로브를 돌리다 그 로그가 «떴습니다». 설계대로지만 제 계획에는 없었습니다
+운영 의미   걷힌 «동안» 그 키의 중복이 들어올 수 있습니다. 되돌리기는 있습니다 —
+          그 조인을 `materialize: true` 로 세우면 제품이 다시 만듭니다
+          (만들다 23505 가 나면 «데이터에 진짜 중복이 있다»는 뜻입니다)
+✅ 안전   접두 `uq_vjoin_` 인 것만 걷습니다. 운영자가 손수 만든 인덱스는 «절대» 안 걷힙니다
+```
+📌 **이것이 이 라운드에서 제일 운영에 가까운 항목이라고 봅니다.** RUN.md ③-ter 에 로그 줄과
+   되돌리는 법을 같이 적었습니다.
+
+## ⑤ 시험 — 파일 «단위»가 아니라 시험 «단위»로 갈랐습니다
+```
+지운 모듈 8 (시험 def 112)   virtual_column_export · virtual_column_search ·
+    schema_virtual_columns · join_resolved_columns · virtual_join_numeric ·
+    virtual_join_types · virtual_join_executor · the_deletion_instrument_really_refuses
+옮겨 살린 시험 5 (새 파일 둘)
+    test_the_write_core_drops_an_undeclared_column.py       2  — 미선언 컬럼 드롭 + 깔때기 호출자 «하나»
+    test_a_value_is_rendered_to_text_before_it_is_compared.py 3 — column_text_sql / comparison_text_value
+    (둘 다 «주어가 살아 있습니다» — 앞은 쓰기 코어, 뒤는 enrichment 가 부르는 퍼널)
+계약 벡터 3 은퇴   contracts/blank_predicate 의 「해소 이음매」 — `_resolve_one`(파이썬) 대
+    `resolved_expression`(SQL). 계약은 «구현이 둘»이어야 성립하는데 둘 다 사라졌습니다.
+    묘비에 「다시 생기면 무엇을 증명해야 하는지」를 적었습니다
+고쳐서 살린 것   virtual_join_guard(픽스처를 쓰기 조인으로, 44 passed) · notation_normalization(같은 이유) ·
+    a_materialized_join_declares_its_cost 둘 · writes_its_own_layer 하나 · sort 둘 ·
+    search_asks 하나 · dt_map 하나 · loader_does_not_reach 셋 · cell_layer · one_place_decides ·
+    one_bad_row · a_filter_that_cannot_be_built 둘
+```
+
+## ⑥ 🔴 제가 낸 사고 «셋» — 전부 착지 «전»에 잡혔지만 하나는 게이트가 못 잡았습니다
+```
+㉠ AST 로 옮긴 몸통이 «함수 안 import» 셋을 데려왔습니다 (`import virtual_join.config as vjc`)
+   제가 적었던 확인은 「imports OK, exports all 15 names」였고 «둘 다 참이면서 무의미»했습니다 —
+   모듈 import 는 함수 «안»의 줄을 한 번도 안 밟습니다.
+   ⛔ 그리고 유일 호출자 `crud._virtual_join_right_keys` 의 `except` 가 그것을 «삼켜서»,
+      중복 거절 가드가 «조용히 꺼진 채» 초록이었습니다. 시험 로그의 «소음»에서 찾았습니다
+㉡ 뭉뚱그린 import 치환이 «import 문을 데이터로 든» 파일 둘의 표를 고쳤습니다
+   (roleframe 의 CAPABILITY_FORMS · 삭제 계측기의 EVERY_SPELLING). 틀린 답이 아니라
+   «모집단이 줄어든 게이트»가 됩니다 — 초록이라 아무도 안 봅니다. diff 로 잡고 되돌렸습니다
+㉢ `io.open(p,"w")` 가 76KB 시험 파일을 0바이트로 만들었습니다 — «세 번째»입니다.
+   제 기억에 그 항목이 «있었고» 또 밟았습니다. 이번엔 규칙이 아니라 «함수»로 막았습니다
+   (임시파일 -> os.replace). 그 뒤 편집 전부를 그것으로 돌렸습니다
+```
+셋 다 기억에 적었습니다(둘은 새로, 하나는 갱신).
+
+## ⑦ 남겨 둔 것 — «지우지 않고 적어» 뒀습니다
+```
+/schema 의 `virtual_columns` · `join_resolved_columns`   «키는 남기고 항상 []»
+   -> client2/src 가 읽습니다. 서버가 키를 빼면 은퇴가 «빈 화면»이 됩니다. 클라와 «같이» 할 별건입니다
+column_filter 의 `col_expr_override`   오늘 «호출자 0» 입니다
+   -> 이 모듈 «자기 인터페이스»라 지우는 것은 이 라운드 밖입니다. 독스트링에 「호출자 0」을 적어
+      다음 사람이 «쓰는 문»으로 오해하지 않게 했습니다
+`chain/builtins._install` 의 `builtin:join` 등록   «그대로» — 쓰기 조인이 사는 동안 삽니다
+```
+
+## ⑧ 🔴 모르는 것 — «재 볼 수가 없는» 것 둘
+```
+㉠ 설정 리로드의 새 판정   `_report_unsearchable_declarations` 가 이제 엔진 없이 «항상» 판정합니다.
+   그래서 오타가 있는 표는 리로드마다 ERROR 한 줄을 냅니다.
+   🔴 이 박스에서는 «잴 수가 없습니다» — search_columns 를 선언한 표가 «0» 입니다.
+      「영향 없음」이 아니라 「이 박스가 답할 수 없음」입니다. 운영에서 그 선언이 있으면
+      새 줄이 뜰 수 있고, RUN.md ③-quater 에 읽는 법과 할 일을 적었습니다
+㉡ 오늘 라이브에 `materialize: true` 가 있나   총괄 461 ⑤ 의 물음 그대로, 저는 못 셉니다.
+   (이 박스에서는 446 이 «둘»을 이름 대어 거절합니다 — 둘 다 materialize 가 없는 선언입니다.
+    그 수는 이 박스의 것이고 운영에 대해 아무 말도 안 합니다)
+```
+
+## ⑨ 📮 판정 하나만 올립니다 — 나머지는 다 닫았습니다
+```
+물음   `read_time_retired` 를 «닫힌 사유 어휘»에 다섯째로 더할까요?
+오늘   `_VJ_CODE_TO_REASON` 에 «안 넣었습니다» -> 기본값 `mapping_unavailable` 로 떨어집니다.
+      화면 «문장»은 정확합니다(「읽는 시점에 계산하는 조인은 더 이상 없어서 …」 + 다음 행동).
+      부정확한 것은 «기계가 읽는 칸» 하나입니다 — 은퇴를 「매핑을 못 찾음」으로 분류합니다
+왜 제가 안 정했나   `REASONS` 는 «닫힌 어휘»이고 정본이 계약 벡터
+      (`contracts/config_resolve_report/vectors.json`)이며 «클라가 읽습니다». 다섯째 값은
+      레인 넘는 변경이라 제 자리가 아닙니다. 코드 옆에 그 사정을 적어 뒀습니다
+막힘   «없습니다». 오늘 상태로도 운영자는 잘못 읽지 않습니다
+```
+
+## ⑩ 게이트 — 숫자를 «읽고» 적었습니다
+```
+수집        6,809 개   (직전 6,926 — 모듈 8 · 시험 def 112 삭제, 5 이관, 계약 벡터 3 은퇴)
+전체 스위트   5 failed · 6,677 passed · 124 skipped · 3 xfailed · error «0»
+🔵 그 다섯은 HEAD 에서도 «똑같이» 빨갛습니다 — 이름으로 짐작한 게 아니라
+   HEAD 에 박스 설정을 복사해 «전체를 한 번 더» 돌려 대조했습니다
+   (registration 셋 · ddl_never_reaches_production · dev_env_isolation)
+```
+⚠️ **제가 잰 수 하나를 «버렸습니다».** 앞서 돌린 전체에서 빨강 넷이 더 떴는데, 그것은
+«스위트가 도는 중에 소스를 고쳐서» 난 것이었습니다 — `inspect.getsource` 는 «줄 번호»로
+읽으므로 드리프트 오라클이 «옆 함수» 몸을 읽었습니다. 위 수는 «편집 없이» 돌린 판입니다.
+다음부터 전체 스위트가 도는 동안은 편집하지 않겠습니다.
