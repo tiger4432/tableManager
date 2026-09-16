@@ -473,7 +473,12 @@ def empty_value(node: Any, defs: Mapping[str, Any],
     The class, not the case.  `accepts_verified_join_rules` is the one that showed today;
     the skeleton has two required flags (`virtual_joins.*.enabled` is the other -- the
     third, `packs.*.claims.*.roles.*.required`, left with its section on 2026-08-21), and
-    the hint is READ, so a third is covered the day it is declared.  `entities.*.allow_null` is `required: false` and stays absent --
+    the hint is READ, so a third is covered the day it is declared.  ⚰️ [판정 484]
+    A THIRD WAS DECLARED ON 2026-09-17 (`virtual_joins.*.materialize`) AND THE COVER WAS
+    WRONG. The prediction had the mechanism right and the result wrong: the hint WAS read,
+    the flag WAS seeded, and `False` was the wrong answer because 판정 446 had collapsed
+    that field's domain to one value, so the seed produced a join the validator refuses.
+    What a required flag is seeded with is settled ABOVE, by `const`.  `entities.*.allow_null` is `required: false` and stays absent --
     seeding what is NOT required is the complaint below, coming straight back.
 
     Nothing here knows a field by name -- it asks the skeleton whether the field is required
@@ -498,6 +503,23 @@ def empty_value(node: Any, defs: Mapping[str, Any],
     shape = _deref(node, defs, seen)
     if not isinstance(shape, Mapping):
         return ""
+    # 🔴 [판정 484] A FIELD WITH ONE LEGAL VALUE IS NOT A QUESTION, SO IT IS NOT ASKED -
+    # it is STAMPED. `materialize` is the case that forced this: 판정 446 retired the only
+    # other spelling, so `true` is the whole of its domain, and seeding a required flag
+    # `False` (right for a two-value flag, see the note above) made every form-born join a
+    # declaration the validator refuses. The form grew the box 481 asked for and still
+    # produced something rejected - the same state, through a different door.
+    #
+    # ⛔ THE SEED IS NOT HARDCODED TO `true` HERE. That would put a domain word in the
+    # authoring engine and make the next such field a second edit. The SKELETON says what
+    # the one legal value is, the way it says everything else about the form.
+    #
+    # ⚠️ This stamps the DEFAULT. Someone who deliberately clears it still meets the
+    # validator's refusal, by name and with the two repairs in it - that is an informed
+    # refusal of a deliberate act, not a trap sprung on a default. Drawing a `const` leaf
+    # as settled rather than as a live checkbox is the client's half and is routed.
+    if "const" in shape:
+        return shape["const"]
     kind = shape.get("kind")
     if kind == "map":
         return [] if shape.get("keyed_by") == "index" else {}

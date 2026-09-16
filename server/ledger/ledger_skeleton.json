@@ -913,7 +913,8 @@
                 "required": true,
                 "node": {
                   "kind": "leaf",
-                  "hint": "flag"
+                  "hint": "flag",
+                  "const": true
                 }
               },
               {

@@ -284,3 +284,55 @@ def test_all_four_seats_answer_the_same_way(materialize, accepted):
         verified_join_contract.VerifiedJoinDescriptor({"name": "x"})
     assert "materialize" not in verified_join_contract.VerifiedJoinDescriptor \
         ._validated_data.__doc__.split("required = ")[0] or True
+
+
+# ---------------------------------------------------------------------------
+# 판정 484 — ㉤ THE SEAT THAT WRITES, not the one that offers.
+#
+# 481 gave the form the field, and the state it meant to end did not end: the form SEEDED
+# that required flag `False`, so a join born in the form was still refused - the same
+# 「폼이 만들 수 있는 것이 거절된다」, through a different door. A field whose domain is one
+# value is not a question; it is stamped, and the skeleton says with what.
+# ---------------------------------------------------------------------------
+from ledger import config_authoring                                    # noqa: E402
+
+
+def test_a_join_born_in_the_form_is_not_refused_for_what_the_form_wrote():
+    """ALARM FOR: the authoring form producing a declaration the validator rejects.
+
+    🔴 THE FORM'S ANSWER IS CARRIED, NOT RETYPED. The seed alone cannot reach this check -
+    it has no `left_table`, so `problems.exact` refuses the shape and `continue`s past the
+    `materialize` line, and an assertion written over that would be green while measuring
+    nothing. So the one field under test is lifted from the seed onto a rule that is
+    otherwise good: whatever the FORM decided is what the validator now judges.
+    """
+    seeded = config_authoring.empty_declaration("virtual_joins")
+    assert "materialize" in seeded, (
+        "the form no longer seeds `materialize` at all - a required field the operator "
+        f"must then know to add by hand. Seeded today: {sorted(seeded)}")
+
+    from test_ledger_setup_bundle import logical_bundle, validate_bundle_errors
+
+    bundle = logical_bundle()
+    bundle["virtual_joins"]["input_to_reference"]["materialize"] = seeded["materialize"]
+
+    errors = validate_bundle_errors(bundle)
+    complaints = [e for e in errors if "materialize" in str(e)]
+    assert not complaints, (
+        "a join created through the authoring form is refused by the bundle validator on "
+        f"the value the FORM wrote ({seeded['materialize']!r}): {complaints!r}")
+
+
+def test_a_flag_with_a_choice_left_in_it_is_still_seeded_unanswered():
+    """⚠️ THE CONTROL, and it is what keeps 484 from meaning 「flags are true now」.
+
+    `enabled` is the other required flag of this same record and it has no `const`, because
+    both its values are legal - turning a join off is a decision an operator makes. It must
+    still seed `False`, which is 「what the checkbox was already showing them」 (see
+    `empty_value`). If this went green with its neighbour, the fix would have stamped every
+    flag rather than the one whose domain collapsed.
+    """
+    seeded = config_authoring.empty_declaration("virtual_joins")
+
+    assert seeded.get("enabled") is False, (
+        "a flag the operator still decides was stamped with a value: %r" % seeded)
