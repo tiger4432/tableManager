@@ -20618,3 +20618,96 @@ if prefetch <= threshold: return      그 청크의 선인출이 «느릴 때만
 
 > 🔴 「판정 대기」 **1** — ⓐ-1 이 원인이라면 수리는 「ANALYZE 좌석도 «전용 연결»로」(같은 파일 :355 가 이미 그 모양)입니다. 다만 **수리는 구현자 몫**이라 제안만 적습니다
 > · 🔁 이월: 0 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
+
+---
+
+## D-41 — 「빌린 세션에 rollback 하는 자리」를 **(좌석, 호출자) 쌍**으로 가르기 (census, 코드 0)
+
+> **잰 것:** 저장소의 «코드 성질»만. 박스 수치 «0» · 라이브 설정·DB 무접촉 · 시작 전 트리 확인(남의 미커밋 «없음»)
+> **방법:** AST. 이름 grep 이 아니라 ① 좌석 = 「세션을 «인자로 받고» 그 인자에 rollback/commit 하는 함수」
+> ② 쌍 = 「그 좌석에 «세션처럼 생긴 이름»을 실제로 건네는 호출」 ③ 위험 = 「그 호출 «뒤»에 호출자가 같은 이름을 다시 씀」
+
+### ⓐ 부류 셋 — 세는 단위를 «쌍»으로 바꾸니 답이 나옵니다
+
+```
+빌린 세션 좌석            66   (그중 rollback 34 · commit 44)
+세션을 «건네는» 쌍         71
+  ✅ 안전   호출 뒤 그 세션을 «안 씀»                    25
+  ⚠️ 알려진 위험   좌석이 이름·docstring 으로 «말함»      30
+  🔴 **조용한 위험   좌석이 말하지 «않음»                 16**   ← 라운드 크기는 이 수입니다
+```
+⚠️ **제 모집단이 구현자와 다릅니다**(제 66/34/44 vs S-271 의 43/37/32). 술어가 달라서입니다 —
+제 좌석은 `connection`·`conn` 도 세션 이름으로 보고, «자기 세션을 만드는» 함수는 «빌린 것이 아니므로» 뺐습니다.
+🔴 **어느 수가 옳으냐가 아니라 «무엇을 세는 술어냐»가 먼저입니다**(D-37 에서 같은 자리를 만났습니다).
+
+### 🔴 조용한 위험 16 쌍 — 전건
+
+| 좌석 | 호출자 | 자리 |
+|---|---|---|
+| `run_auto_confirm_sweep` | `_count_enrichment_confirm` | `admin/retroactive.py:321` |
+| `run_auto_confirm_sweep` | `_run_enrichment_confirm` | `admin/retroactive.py:622` |
+| `run_auto_confirm_sweep` | `get_enrichment_auto_confirm_dry_run` | `main.py:6118` |
+| `run_auto_confirm_sweep` | `main` | `scripts/enrichment_insights.py:285` |
+| `drop_orphan_indexes` ×2 · `drop_backup_indexes` | `migrate_database` · `migrate_single_table` | `migrations/normalize_schema.py:339·355·240` |
+| `_plan_digest` | `_maybe_explain_slow_prefetch` | `parsers/directory_watcher.py:538` |
+| `_log_reduced_ingestion_record` | `_log_ingestion_record` | `parsers/directory_watcher.py:2507` |
+| `load_verified_rules` | `join_rule` | `dt_map_derivation.py:247` |
+| `ensure_once` | `load_verified_rules` | `virtual_join/config.py:947` |
+| `withdraw_source` | `main` | `scripts/chain_replay_cli.py:227` |
+| `_get_recorrection_stat` | `get_dashboard_summary` | `main.py:1624` |
+| `suggest_values` | `get_column_unique_values` | `main.py:3116` |
+| `_index_state` | `_index_advice` | `value_suggest.py:922` |
+| `handle_retroactive_trigger` | `run` | `run_auto_update.py:1028` |
+
+### ⓒ 최악 사례 — 사슬로
+
+**① 「건식이라 아무것도 안 썼다」가 «남의 트랜잭션»을 끝냅니다** (조용한 위험 4 쌍의 뿌리)
+```
+enrichment/analysis.py:714    if not apply:
+              :715                db.rollback()   # belt and braces: a dry-run holds no writes
+좌석의 docstring              「Dry-run is the default and **performs reads only**」
+                              -> 「당신의 트랜잭션을 끝냅니다」는 «어디에도 없습니다»
+사슬
+  운영자가 어드민에서 「켜면 무슨 일이 일어나나」를 누른다
+   → admin/retroactive.py:321 `_count_enrichment_confirm` 이 «러너의» db 를 그대로 건넨다 (apply=False)
+   → 좌석이 db.rollback()  — **좌석 기준으로는 옳습니다**(자기는 쓴 게 없으니)
+   → 그러나 그 시점까지 러너가 «같은 세션»에 쌓아 둔 미커밋 작업이 있으면 «사라집니다»
+🔴 이것이 이 부류의 원형입니다: **롤백이 좌석 안에서는 정당하고, 밖에서는 파괴적입니다.**
+   그리고 그 차이를 아는 유일한 방법이 «호출자를 세는 것»이라, 좌석만 읽어서는 영원히 안 보입니다
+📎 이 사고가 «이미 났던» 기록이 저장소에 있습니다 — `enrichment/config.py:1393` 의 docstring:
+   오염된 세션이 `process_pending_groups` 로 새어 그 `db.commit()`(processed_chain=True)이 «롤백»됐고,
+   그룹이 처리됨으로 안 찍혀 배치 루프가 «영원히» 재실행했다
+```
+
+**② 오늘 «새로 생긴» 조용한 위험** — `_plan_digest` ← `_maybe_explain_slow_prefetch`
+```
+D-39 이 짚은 바로 그 좌석입니다. 오늘 그 진단기를 안전하게 만들려고 rollback 이 들어갔는데,
+그 rollback 은 «빌린» 세션의 것이고 좌석 이름·docstring 은 그것을 말하지 않습니다
+=> 수리가 «조용한 위험 쌍을 하나 더 만든» 모양입니다. 오늘 나온 것이라 부류에 갓 들어왔습니다
+```
+
+**③ 「지우는 것」이 이름에 있는데도 조용한 자리** — `withdraw_source` ← `chain_replay_cli.main`
+```
+좌석 이름은 «철회»를 말하지만 「당신 트랜잭션을 끝낸다」는 다른 문장입니다.
+CLI 가 그 뒤 같은 세션으로 계속 가면, 철회와 «무관한» 그 작업이 같이 사라집니다
+```
+
+### 🔴 ⓓ 모르는 것 — 특히 «셀 수 없는» 것
+
+```
+① 판별식 ②는 «대리»입니다: 「호출 뒤 같은 이름이 다시 나온다」는 정적 근사입니다
+   -> 과다: 다른 갈래(except/else)의 참조도 셉니다   -> 과소: 헬퍼가 db 를 «가둬» 쓰면 못 봅니다
+   즉 16 은 «자릿수»이지 «명단의 최종»이 아닙니다. 명단은 위 표이고, 각 쌍은 열어서 확정해야 합니다
+② 롤백 팔이 «닿는지»는 런타임입니다 — `run_auto_confirm_sweep` 은 `apply=False` 일 때만 롤백합니다.
+   `_run_enrichment_confirm`(apply=True)은 그래서 «정적으로만» 위험이고, 실제로는 안 닿을 수 있습니다
+   (apply=False 로 부르는 셋은 닿습니다: retroactive:321 · main:6118 · scripts:285)
+③ 라이브 맵퍼는 gitignore 입니다 — 운영자가 복사한 맵퍼가 빌린 세션에 rollback 하면 제 census 밖입니다
+   (오늘 D-40 에서 같은 벽을 만났고, 그때는 소유자가 한 줄로 닫아 주셨습니다)
+④ 커밋 쪽 44 좌석은 «안 셌습니다» — 지시가 rollback 먼저라 했고, 그 말이 맞습니다.
+   다만 그래서 이 보고의 수는 «절반»입니다
+⑤ 데코레이터·간접 호출: AST 로 이름을 맞췄으므로 `getattr(mod, name)()` 류는 못 봅니다
+```
+
+> 🔴 「판정 대기」 **0** — 수리 모양은 총괄이 판정합니다(지시대로 «짓지» 않았습니다)
+> · 🔁 이월: commit 쪽 44 좌석의 같은 census (지시가 오면)
+> · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
