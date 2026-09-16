@@ -46385,3 +46385,5 @@ LedgerSetupValidationError: bundle.virtual_joins.input_to_reference.materialize:
 🔵 PG 슬롯 «놓습니다». 다음 분 쓰십시오
 미답   이 판정 하나 (그리고 앞선 둘: 헬퍼 118 문턱 단위 · transfer_plan chips.total)
 ```
+
+> ⚠️ **[09-17 05:07 총괄] PG 슬롯 «다시 잡습니다»** — `f46317b1` 뒤 인수표 ② 둘째 줄을 제가 채웁니다. 끝나면 「놓습니다」로 적겠습니다.
