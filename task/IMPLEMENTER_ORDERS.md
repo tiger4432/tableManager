@@ -41230,3 +41230,34 @@ scratchpad/verify_chain_end_to_end.py     (미추적 · 총괄이 재기동 뒤 
   ③ 홉         조인 이벤트의 chain_depth
 ```
 📌 **이 채널의 미답 질문: «없음».**
+
+---
+
+> 🔴 **[09-16 21:2x 총괄] 판정 424 게이트 «보정» — 「값을 틀어 놓는다」가 «안 틀어지는» 경우가 둘 있습니다 (Q-6, 채택)**
+
+제 전제(「값이 같으면 안 쓴다」)는 이제 **박스가 아니라 코드**가 근거입니다 — 인용할 자리를 씁니다:
+```
+crud.py:3342-3356  has_changed 계산 (is_new 면 «무조건» True)
+crud.py:3357-3359  if has_changed: setattr(...)   ← setattr 이 없으면 session.dirty 에 안 들어가고
+                                                    before_flush 가 «스테이지할 것이 없습니다»
+crud.py:3172-3174  코드가 이미 적어 뒀습니다 — 「has_changed has ALWAYS suppressed the column write,
+                   the audit log AND THE OUTBOX EVENT when the resolved value is unchanged」
+```
+
+## 🔴 함정 둘 — 픽스처가 이렇게 틀면 게이트가 «또» 공허합니다
+```
+숫자 컬럼   float(old) != float(new)        -> 「1」→「1.0」 · 「1.00」→「1」 은 «안 바뀜»
+그 밖      str(old).strip() != str(new).strip()  -> 앞뒤 공백만 다른 값은 «안 바뀜»
+```
+⚠️ 이번엔 「틀어 놨는데도 0」이라 **더 헷갈립니다** — 픽스처가 옳은데 게이트가 초록으로 보입니다.
+📌 부류: 「두 규칙이 같은 답을 내는 표본은 판별식이 아니다」.
+
+## 그래서 픽스처 규칙 «한 줄»
+```
+🔵 제일 안전한 것은 «새 행»입니다 — is_new 면 has_changed 가 «무조건» True (crud.py:3343-3344)
+   기존 행을 쓸 거면: 숫자는 «크기»를, 문자는 «strip 뒤 글자»를 바꿉니다
+📌 그리고 억제는 «컬럼» 단위입니다 — 한 칸만 달라도 그 행은 이벤트를 냅니다(columns 에 «바뀐 것만» 실림)
+```
+🔵 제 어젯밤 탐침도 «새 행»이었고, 그래서 5초 만에 층 2칸이 나왔습니다 — 그 모양을 쓰십시오.
+
+📌 **이 채널의 미답 질문: «없음».**
