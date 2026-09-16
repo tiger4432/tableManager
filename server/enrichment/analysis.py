@@ -706,12 +706,30 @@ def run_auto_confirm_sweep(db, rule: dict, apply: bool = False, limit: int = Non
     log(f"[confirm] rule '{rule['name']}': {len(keyed)} queue entr"
         f"{'y' if len(keyed) == 1 else 'ies'} to examine")
 
-    stats = enrichment.candidates.confirm_keys(
-        db, rule, keyed, apply=apply, tx_prefix="enrichment_sweep", caps=caps)
+    # 🔴 [S-274, 판정 415] A BORROWED SESSION IS NEVER ROLLED BACK - IT IS ROLLED BACK TO A
+    # SAVEPOINT OF ITS OWN. This read `db.rollback()  # belt and braces`, and inside this
+    # seat that is right: a dry run must leave nothing behind. Outside it is destructive -
+    # the session belongs to the CALLER, who may be holding uncommitted work of their own,
+    # and `_count_chain_replay` / `_run_chain_replay` / the dry-run route all reach this
+    # arm. The repository had already paid for the same shape once: `config._isolated_execute`
+    # documents a poisoned session escaping into `process_pending_groups`, whose
+    # `processed_chain=True` commit was turned into a rollback, so the group was never
+    # marked and the batch loop re-ran it forever.
+    #
+    # ⚠️ THE SCOPE IS THE FIX, NOT THE ABSENCE OF ONE. `discarding` still undoes everything
+    # this call wrote - it undoes exactly that and nothing above it.
+    if apply:
+        stats = enrichment.candidates.confirm_keys(
+            db, rule, keyed, apply=True, tx_prefix="enrichment_sweep", caps=caps)
+    else:
+        import session_contract
+
+        stats = session_contract.discarding(
+            db, "enrichment_sweep",
+            lambda: enrichment.candidates.confirm_keys(
+                db, rule, keyed, apply=False, tx_prefix="enrichment_sweep", caps=caps))
     stats["mode"] = "apply" if apply else "dry-run"
     stats["rule"] = rule["name"]
     stats["queue_size"] = len(keyed)
-    if not apply:
-        db.rollback()  # belt and braces: a dry-run holds no writes, make it structural
     enrichment.candidates.log_stats(rule["name"], stats, apply=apply)
     return stats

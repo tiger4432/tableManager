@@ -13,9 +13,14 @@
 
 🪦 실측이 이 파일의 «범위»를 정했다 (S-271 ①, 2026-09-16). 세션을 «빌리고» 트랜잭션 상태를
    건드리는 좌석 43 중, SAVEPOINT 를 여는 «추적 코드» 좌석은 «하나»였고 그 하나는 이미 묻고
-   있었다. 가드가 없는 것은 «저장소가 배포하는 본보기» 쪽이었다. 그래서 이 파일은 SAVEPOINT
-   부류«만» 닫는다 — 빌린 세션에 `commit` 하는 37, `rollback` 하는 32 는 결함 수가 아니고,
-   그것을 계약으로 묶는 것은 이 표가 근거를 주지 않은 별개의 라운드다(큐 S-274).
+   있었다. 가드가 없는 것은 «저장소가 배포하는 본보기» 쪽이었다.
+
+🔴 그리고 «쌍»으로 다시 세니 둘째 부류가 나왔다 (D-41 · 판정 415). 「좌석 32 가 롤백한다」는
+   틀린 질문이었다 — 물음은 «(좌석, 호출자) 쌍»이고, 그렇게 세니 빌린 세션을 통째로 되돌리는
+   쌍이 이름 붙은 «16» 이다. 그중 원형은 건식 스윕이고, 그 좌석 안에서 `db.rollback()` 은
+   옳으며 밖에서는 호출자의 미커밋 작업을 지운다. 답은 롤백을 지우는 것이 아니라 «되돌릴
+   범위»를 자기 것으로 만드는 것이라, 이 파일이 형제 둘을 낸다: `in_savepoint`(살린다) ·
+   `discarding`(버린다). commit 쪽은 아직 «안 셌다» — 1·2 단계가 끝나고 다시 센다.
 """
 import logging
 
@@ -66,6 +71,25 @@ def in_savepoint(db, where: str, work):
     S-272 가 그것을 만드는 자리를 닫았다. 여기서는 «남은 경우»를 드라이버 문장이 아니라 한 줄로
     바꾼다: 어느 좌석이 · 무엇을 못 했나 · 다음에 무엇을 하나.
     """
+    return _in_savepoint(db, where, work, keep=True)
+
+
+def discarding(db, where: str, work):
+    """`work()` 을 SAVEPOINT 안에서 돌리고, 성공하면 그 SAVEPOINT 를 «되돌린다» (S-274, 판정 415).
+
+    🔴 「빌린 세션은 롤백하지 않는다 — 자기 SAVEPOINT 로 되돌린다」. 건식(dry-run)은 아무것도
+    남기지 «않아야» 하고, 그래서 여러 좌석이 `db.rollback()` 을 썼다. 그것은 «좌석 안에서는»
+    옳고 «밖에서는» 파괴적이다 — 호출자가 같은 세션에 쌓아 둔 미커밋 작업을 같이 지우기 때문이다.
+    답은 「롤백을 지우는 것」이 아니라 「되돌릴 «범위»를 자기 것으로 만드는 것」이다.
+
+    ⚠️ `in_savepoint` 와 «같은 몸»을 쓴다. 다른 것은 마지막 한 몸짓뿐이고, 25P01 갈래도
+    «같은 한 줄»로 거절한다 — 두 철자가 생기면 그것이 새 결함이다(판정 415 게이트 ③).
+    """
+    return _in_savepoint(db, where, work, keep=False)
+
+
+def _in_savepoint(db, where: str, work, keep: bool):
+    """두 형제의 «한 몸». `keep` 만이 다르다 — 살리나, 버리나."""
     if not db.in_transaction():
         db.begin()
     try:
@@ -92,7 +116,11 @@ def in_savepoint(db, where: str, work):
         nested.rollback()
         raise
     try:
-        nested.commit()
+        # 🔴 [S-274] THE ONE LINE THE TWO SIBLINGS DIFFER BY. `commit` here RELEASEs the
+        # savepoint (the work stands); `rollback` undoes it and leaves the CALLER's
+        # transaction exactly as it was - which is what a dry run owes the caller and what
+        # a bare `db.rollback()` took from it.
+        (nested.commit if keep else nested.rollback)()
     except Exception as exc:                                           # noqa: BLE001
         if _is_no_active_transaction(exc):
             raise _refused(where, exc)
