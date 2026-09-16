@@ -45028,3 +45028,71 @@ PG (판정 424 ⑤, 하나만)                                  91 passed / 0 fa
   «스태시한 트리»에서도 빨갛고(거기선 «둘», 다른 둘), ledger_events 건이라 이 변경이 안 닿습니다
 박스                                                     마이그레이션 적용, invalid 인덱스 0
 ```
+
+---
+
+> 🛑 **[09-16 22:46 구현자] 판정 438 — 437 «정지·되돌림» 완료. 그리고 ④의 셋을 셌습니다. 🔴 ②의 답이 「부른다」입니다.**
+> (QA 파일 `task/MARKING_CONTRACT.md` 는 **아직 안 열었습니다** — 438 ① 대로 제 계수를 «먼저» 못 박습니다)
+
+## ⓞ 437 은 짓다 말고 «되돌렸습니다»
+```
+되돌린 것   chain/join_into.py(좌석 추출) · virtual_join/executor.py(그물·거절문·독스트링) ·
+          tests/test_one_seat_decides_whether_a_key_fans_out.py(신규 6개, 초록이었고 변이로 빨강 확인함) ·
+          tests/test_notation_normalization.py(픽스처 수리)
+남긴 것    RUN.md — 그건 «착지한» S-280 의 운영 문장입니다(마이그레이션이 재기동 «전»이라는 순서)
+🔴 제 잘못 하나, 같은 자리에서 고쳤습니다: RUN.md 에 «되돌린 코드»의 로그 줄을 적어 푸시했습니다(`4f52bbfd`).
+   오늘 밤 내내 닫던 바로 그 부류를, 확인할 수 없는 «운영자»를 향해 냈습니다. `18a4613e` 로 뺐습니다
+```
+🔵 되돌리며 «남은 발견» 하나: `test_notation_normalization` 의 픽스처가 참조 표에 «같은 키 두 행»을
+   쌓고 있었습니다(실측: `CL-2601-001` ×2 — `db_session` 이 테스트를 넘어 살고 그 표엔 업무 키가 없습니다).
+   지금은 마지막 행이 이겨 «초록»입니다. 가상 조인이 사라지면 그 시험도 같이 가므로 «고치지 않았습니다».
+
+## ① `into.read` 를 «오늘 제품 코드»가 무엇이 소비하나 — 엔진 자신뿐입니다
+```
+virtual_join/config.py:681        통합 선언 중 «읽기 시점» 것만 고른다   <- 🔴 «제거 대상 안»에 있습니다
+scripts/preview_unified_declarations.py:88   라벨 한 줄 ("read" / "table")
+(총괄이 뺀 rule_shape.py:179·454 제외)
+⚠️ ledger/ 의  히트 «여섯»은 «다른 read»입니다(원장 소스의 read 드라이버). 안 셌습니다
+=> 문법은 통합 선언에 «있고», 그것을 «실행»하는 것은 virtual_join «하나»입니다
+```
+
+## ② 총괄이 수상하다 하신 셋 — 실측 분류. **셋 다 읽기 경로가 아닙니다. 그런데 읽기 경로는 «다른 데» 있습니다**
+```
+column_filter.py       ❌ 소비자가 «아닙니다» — import 0 · 호출 0. 주석 두 줄뿐(:49 · :122)
+database/crud.py       ⚠️ «쓰기 게이트»입니다 — refuse_virtual_join_duplicates(:4051)
+                          -> _virtual_join_right_keys(:3929) -> apply_batch_updates(:4737)
+dt_map_derivation.py   ⚠️ «선언 독자»입니다(:243-247 load_verified_rules). 엔진의 읽기 경로 아님
+
+🔴 main.py:1082   executor.attach(db, table_name, data_list)
+   그 자리 주석이 스스로 적어 뒀습니다 —
+   「**row payload 의 «단일» 직렬화 지점**: 그리드 페이지 · 단일 행 조회 · 배치 업데이트 응답 · WS 항목」
+🔴 main.py:1686   resolved_expression(...)   검색·필터 식
+```
+**그러므로 438 ②의 답은 「읽기 경로에서 «부른다»」이고, 조건대로 이 제거는 «읽기 동작»을 바꿉니다.**
+
+## ③ 🛑 그래서 «여기서 멈춥니다» — 438 ④ 의 정지 조건에 걸립니다
+```
+rule_shape.INTO_KINDS = ("table", "read")   <- into.read 는 통합 문법 «안»에 있습니다
+그런데 그것을 «실행»하는 것은 지우려는 엔진입니다
+=> 엔진을 지우면 「문법은 받고 아무도 실행 안 하는 칸」이 남습니다.
+   상설 「축과 값을 «같이» 죽이지 않는다」가 정확히 이 모양이고, 2026-09-06 에 collect 으로 한 번 겪었습니다
+```
+🔴 **올립니다:** 소유자 말씀 「운영 가상 조인 다 통합 맵퍼로 이관했으니 가상 조인 없애」의 주어가
+   ㉠ «엔진»인지(그러면 into.read 문법도 같이 은퇴) ㉡ «운영의 그 선언들»인지(그러면 읽기 시점 조인은
+   능력으로 남고 엔진도 남습니다)를 갈라 주셔야 합니다. 제가 박스에서 반증할 수 있는 것이 «아닙니다».
+
+## ④ 크기 — 🔴 총괄 수와 «어긋납니다». 세 수가 «다른 것»을 세고 있습니다
+```
+내 계수   virtual_join/ 추적 «5 파일 · 2,585줄»   (git ls-files virtual_join/ | xargs wc -l)
+          config 1,115 · executor 915 · unique_key 480 · refusal 75 · __init__ 0
+총괄      「2,649줄」                              <- 64줄 차이. 무엇을 더 세셨는지 못 맞췄습니다
+내 계수   virtual_join 을 «import» 하는 추적 파일(시험 제외) «11»
+          builtins · graph · rule_shape · config_resolve_report · config_watcher · crud ·
+          dt_map_derivation · main · migrations/add_vjoin_null_safe_indexes ·
+          runtime/system_reload · scripts/check_one_row_one_fact
+내 계수   문자열로 «언급»하는 추적 파일(시험 제외) «37»
+총괄      「스물」                                  <- 제 11 과 37 «사이»입니다
+```
+**못 세는 것:** 운영이 읽기 시점 조인을 실제로 «선언»하고 있는지 — 선언이 gitignore 입니다.
+그래서 「읽기 동작이 바뀐다」는 «구조»로 참이고, 「몇 표가·몇 컬럼이 영향받나」는 «사건»이라 못 셉니다.
+📌 제 계수는 여기서 «못 박습니다». 이제 `task/MARKING_CONTRACT.md` 를 열어 대조하고, 어긋난 자리를 따로 올립니다.
