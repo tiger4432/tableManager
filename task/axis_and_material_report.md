@@ -1,3 +1,172 @@
+## 🔵 [09-17 04:37] **`valid_die_authoring` 준비 — 재 봤고, 전환이 «기계적»입니다. 다음 틱에 짓습니다**
+
+### ① 실현 가능성 — 둘 다 실리고, 이름이 «하나도» 안 빕니다
+
+```
+map_key.js     expose 7 (canonIntString · canonicalKeyValue · composeMapId · decomposeMapKey ·
+                         canonicalMapKey · CANON_INT_RE · CANON_FLOAT_RE)      -> 전부 해결
+map_editor.js  expose 25 (함수 24 + VALID_DIE_TABLE)
+               state  5 (currentRotation · currentSide · validDie · boundingBoxCache ·
+                         renderValidDieKeyControl)                              -> 전부 해결
+=> 로드 후 undefined «0». 상수 셋을 정규식으로 긁던 자리(`reSrc` · `validDieTableSrc`)가 사라집니다
+🔵 `renderValidDieKeyControl` 이 `state` 로 «덮입니다» — 샌드박스가 스텁하던 그 함수를
+   소스 변경 없이 그대로 스텁할 수 있다는 뜻입니다
+```
+
+### ② 변이 라우팅 — 19 «전부» `map_editor.js` 이고, 앵커가 «전부 유일»합니다
+
+```
+왜 중요한가   샌드박스에선 변이가 «29개를 이어 붙인 작은 텍스트»를 쳤습니다.
+             import 뒤에는 «6,939줄 파일»을 칩니다 — count 없는 replace 는 «첫 매치»를 칩니다
+실측         19 중 19 가 map_editor.js · 각 앵커의 출현 «1회»
+=> redo_banner 처럼 «파일을 이름 대는» 필드가 «필요 없습니다». `mutate` 를 map_editor 프로브에
+   그대로 걸면 됩니다. 그리고 프로브 자신이 「변이가 아무것도 안 바꿨다」를 거절합니다
+```
+
+### 🔴 그리고 제 라우터가 «셋»을 못 봤습니다 — 선언 수와 대조해서 잡았습니다
+
+```
+선언된 변이   19
+라우터가 회수  16
+차이          M3 · M4 · M16 — 이 셋은 첫 인자가 «문자열»이 아니라 «정규식 리터럴»입니다
+             제 라우터는 문자열만 읽습니다
+잡은 법       「선언 19 vs 회수 16」을 «대조»했습니다. 안 했으면 「19 전부 라우팅됨」으로 적었을 겁니다
+확인          셋 다 읽어서 map_editor.js 로 확인하고, 앵커 유일성도 각각 «1회»로 쟀습니다
+```
+⚠️ 계기의 «회수율»을 선언된 모집단에 대조하는 것 — 이게 오늘 밤 네 번째로 저를 구했습니다.
+
+📌 다음 틱: 위 설계로 `buildSandbox` 를 프로브 둘로 바꿉니다. 게이트는 바닥 «103» 무변 ·
+변이 19 «전부 자기 이름의 검사에» · vm 0.
+
+---
+
+## 🔴 [09-17 04:21] **점호 보정 셋째 — `contracts/` 에 «셋» 더 있습니다. 그리고 그게 ㉯ 를 막습니다**
+
+부류 A 의 «다섯» 중 `m4_symbol_extractability_probe` 를 열었다가 나왔습니다.
+
+### ① 그 파일은 «일부러» 다른 파일의 슬라이서를 씁니다
+
+```
+그 파일 머리글 원문:
+   「Symbols are sliced with the HARNESS'S OWN slicer, lifted from its source rather than
+     reimplemented, so a change to how the contract extracts symbols reaches this file too.」
+=> `contracts/map_seam/client_harness.mjs` 의 `sliceFunction` 을 정규식으로 «떠서» vm 에 돌립니다
+   결합이 «의도»입니다 — 계약 하니스가 추출 방식을 바꾸면 이 파일도 따라가라는 뜻입니다
+🔴 그래서 m4 «혼자» 전환하면 그 의도된 결합이 끊깁니다. m4 는 그 계약 하니스의 «하류»입니다
+```
+
+### ② 🔴 그래서 열어 봤고 — 제 점호의 «모집단 밖»에 셋이 더 있습니다
+
+제 점호는 범위를 「`client2/tests` 만」이라고 «적어 뒀습니다». 정직했지만, «부류»는 그 선을 넘습니다 —
+이것들은 클라 코드이고 **클라 빌드 게이트가 돌립니다**(`prebuild` -> `check:contracts`, 계약 12/12).
+
+| 파일 | 읽어서 본 것 |
+|---|---|
+| `contracts/band_arithmetic/client_harness.mjs` (294줄) | 🔴 **SLICE** — `pieces.join` -> `vm.runInContext` |
+| `contracts/doe_band_rules/client_harness.mjs` (597줄) | 🔴 **SLICE** — 같은 모양 + 샌드박스에서 상수를 다시 꺼냅니다(`vm.runInContext('ZONES', …)`) |
+| `contracts/map_seam/client_harness.mjs` (1,678줄) | ⚠️ **부분** — `loadWithProbe` 를 «쓰면서»(:277) `sliceFunction` 도 «부릅니다»(:87, :695). 그리고 `sliceConst` 는 «정의만 하고 안 부릅니다» — 제가 C-124 에서 걷어낸 그 죽은 도구와 «같은 모양» |
+
+```
+🔴 즉 클라 레인의 금지 부류는 «열»이 아니라 «열셋»입니다 — 다만 «누구의 것인지»가 먼저입니다
+```
+
+### ③ 판정 청합니다 — `contracts/*/client_harness.mjs` 는 «누구의 것»인가
+
+```
+같은 부류의 선례  판정 464 ㉢ 에서 `seam_7b_oracle.py` 를 「이음매 계약 — 클라 레인 밖」으로 판정하셨습니다
+이쪽이 다른 점    ㉠ 파일이 «클라 소스»를 대상으로 합니다 (client2/src/*)
+                 ㉡ «클라 빌드»가 돌립니다 (prebuild 안, 12/12)
+                 ㉢ 그리고 «제 점호 구성원 하나»(m4)가 이 중 하나에 «의존»합니다
+그래서 셋 중 하나  ⓚ 제 것 — ㉯ 에 넣어 같이 전환합니다
+                 ⓛ contract-keeper 의 것 — 저는 m4 를 «그쪽이 끝난 뒤»로 미룹니다
+                 ⓜ 반반 — 클라 절반만 제 것
+⛔ 제가 정하지 않습니다. 계약은 «양쪽을 같은 기댓값에 채점»하는 자리라 한쪽만 바꾸면
+   CLAUDE.md 가 경고한 「두 쪽이 다른 질문에 답하기 시작한다」가 그대로 납니다
+```
+
+### ④ 그동안 막히지 않은 것부터 합니다
+
+```
+✅ `valid_die_authoring_harness` — 자기 안에서 `map_editor.js`·`map_key.js` 를 자릅니다.
+   contracts 의존 «없습니다». 다음 전환은 이것입니다
+⏸ `m4_symbol_extractability_probe` — 위 판정 뒤로
+⏸ `valid_die_frame_adoption`(known-red) · `head_parity`(㉡) · `reposition_regime`(ⓘ/ⓙ 대기)
+```
+
+⚠️ 그리고 이게 오늘 밤 제 점호의 «셋째» 보정입니다(게이트 아님 ×1 · 세 목록 ×1 · 모집단 ×1).
+셋 다 같은 모양입니다 — **제가 그은 선은 정직했는데, «부류»가 그 선을 넘었습니다.**
+📎 다음 점호부터는 술어에 「범위」와 함께 「이 부류가 그 범위를 넘나」를 «같이» 적겠습니다.
+
+---
+
+## 🔵 [09-17 04:06] **C-126 착지 — 부류 B «완료». 그리고 부류 A 의 비용을 «재서» 나눕니다. `b46df3c6` · `40afd424`**
+
+### ① 부류 B 둘 다 착지 — 수는 «전과 같습니다**
+
+```
+ws_connect_watchdog   39 passed · 0 failed · 변이 12/12 «잡음» · 대조군 4/4 «안 잡음»
+ws_reconnect_backoff  42 passed · 0 failed · 변이 13/13 «잡음» · 대조군 3/3 «안 잡음»
+스위트                하니스 132 · 게이트 130 · 전부 초록 · 어느 하니스의 단언 수도 «안 움직임»
+```
+
+### ② 전환의 «한 생각» — 샌드박스는 «받는 방식»으로 갈립니다
+
+```
+`websocket.js` 는 협력자를 «import» 로 받습니다. 샌드박스 속성은 import 가 «아닙니다» —
+옛 기제가 함수를 «잘라내서» 그 이름들이 우연히 존재하는 곳에서 돌려야 했던 이유가 그것입니다
+=> import 로 오는 것(state · elements · api 셋 · 튜너블 여덟)은 «스텁»
+   진짜 전역(WebSocket · document · window · setTimeout · Date · Math)만 «패치»
+🔵 `config.js` 변이가 그 스텁을 «타고» 들어갑니다 — 대상을 안 건드리고 채점됩니다. 넷 다 잡힙니다
+```
+🔵 **덤: 튜너블을 정규식으로 긁던 자리 «24개»(13 + 11)가 사라졌습니다.** 이제 «import 한 값»입니다.
+판정 470 이 「파일 9/9 가 아니라 «잘라쓰는 단언 0» 으로 세라」 하신 이유가 이 자리입니다.
+
+### ③ 🔴 게이트가 «제 전환의 결함»을 잡았고, 손으로 돌린 저는 못 잡았습니다
+
+```
+한 것    옛 샌드박스가 넘기던 «침묵한 console» 을 «장식으로 보고» 뺐습니다
+실제     그건 하중을 받는 것이었습니다 — 대상이 «연결 시도마다 한 줄»을 찍습니다
+손으로   ASSERTIONS 39 0   ✅ 초록
+게이트   「no ASSERTIONS line … it used to assert and now measures nothing」  ❌ 빨강
+```
+**원인을 «추측 안 하고 재현했습니다»** — 러너와 «같은 방식»(spawnSync)으로 돌려서:
+```
+침묵 없이   4,964줄 · 260,363 바이트
+spawnSync   200,801 바이트 잡고 «ENOBUFS» · status null · ASSERTIONS «없음»
+침묵 있으면 3,418 바이트
+```
+🔴 **「손으로 초록」과 「게이트에서 초록」은 «다른 시험»입니다.** 처음엔 「버퍼 넘침」으로 적으려다
+1MB 기본값보다 작아서 멈추고 재현했고, 그래서 «ENOBUFS»라는 이름까지 얻었습니다.
+🔵 그리고 그 교훈이 «템플릿을 타고» 둘째 파일로 갔습니다 — 침묵이 처음부터 들어 있고,
+   왜 필요한지의 실측이 그 주석에 같이 있습니다. 그게 사본과 템플릿의 차이입니다.
+
+### ④ 🔵 부류 A 의 비용 — 약속대로 «첫 전환을 끝내고» 쟀습니다
+
+| | 구성원 | 전환 비용 |
+|---|---|---|
+| ✅ **다섯** | `m4_symbol_extractability_probe` · `valid_die_authoring` · `valid_die_frame_adoption`(known-red) · `valid_die_head_parity_oracle`(→㉡) · `reposition_regime_probe`(게이트 밖) | 자르는 것이 «이름 있는 함수/상수»뿐 -> **템플릿 그대로. 소스 변경 0** |
+| 🔴 **둘** | `copy_header_count`(게이트 본문을 `runPushGate` 로 지어냄) · `valid_die_dirty_guard`(배선 블록 둘을 `__wireValidDieControls` 로 지어냄) | «문장 블록»이라 노출할 «이름»이 없습니다 -> `map_editor.js` 에서 «이름 있는 함수»로 빼는 **소스 변경**이 필요합니다 |
+
+```
+🔴 그 둘의 소스 변경은 CLAUDE.md 가 적어 둔 도착지 그대로입니다 —
+   「재려는 로직을 «import 되는 모듈»로 뺀다」. 다만 «제품 소스»를 건드리므로
+   짓기 전에 그 한 줄만 올리겠습니다(무엇을 어느 이름으로 빼는지).
+🔵 다섯은 판정 없이 진행합니다 — 판정 470 이 승인한 그대로입니다
+```
+
+### ⑤ 받았습니다 — 판정 472 (운영자가 «초록 0» 을 잘못 읽는 자리)
+
+```
+순서    판정대로 «부류 A 다음, ㉡ 앞»에 놓습니다
+미리 본 것  서버가 `raws_dir: null` 로 «이미 말하고 있고» 화면이 그 칸을 안 읽습니다.
+           새 라우트도 새 칸도 필요 없다는 그 지적, 받습니다
+⛔ 아직 «안 쟀습니다» — `admin_rows.js` 를 열기 전이라 수도 자리도 적지 않습니다
+```
+
+📌 다음: 부류 A 의 «다섯»을 템플릿으로. 그다음 둘의 소스 추출을 올리고, 그다음 472.
+
+---
+
 ## 🔵 [09-17 03:23] **㉯ 착수 — 「첫 하나의 비용」을 «재서» 올립니다. 그리고 첫 대상이 바뀌었습니다**
 
 판정 470 이 「부류 A 첫 하나를 전환하면 나머지 여섯의 비용이 «측정»으로 나온다」고 하셨습니다.
