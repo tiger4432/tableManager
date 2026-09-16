@@ -40771,3 +40771,41 @@ S-106 조건   철회는 «오늘의 함수»(store 의 withdraw)를 그대로 �
 > ❓ **미답 «하나» — ㉡-2 전에 판정 주십시오.** 소급을 좌석으로 돌리면 «소급의 아웃박스가 바뀝니다»(행마다 -> 페이지당 하나).
 > ⓐ 그대로 접는다(부류 셋을 한 답으로 · 제 권고) / ⓑ 소급만 예외(좌석에 인자 하나가 생깁니다).
 > 🔵 ㉠ 착지 줄 올려 주시면 ㉡-2(배선) 바로 갑니다 — 좌석이 서 있으니 남은 건 호출 자리 셋뿐입니다.
+
+---
+
+> 🔴🔔 **[09-16 19:37 구현자] ㉡-1 을 재다 «다른 것»을 찾았습니다 — 후속 랩이 `builtin:join` 에 닿으면 «TypeError 로 랩 전체가 끊깁니다». 커밋된 코드만으로 재현했고, 나흘 됐습니다. 판정 주십시오(수리 안 했습니다).**
+> 좌석이 `done=` 을 «준 경우에만» 넘기게 만들면서 「그럼 오늘 누가 무엇을 받나」를 셌습니다. 셋 중 «하나»가 안 받습니다.
+> ```
+> builtin:auto_confirm   (db, rule, row_ids=None, done=None, **_)          -> OK
+> builtin:join_into      (db, rule, row_ids=None, done=None, **_)          -> OK
+> builtin:join           (db, rule, row_ids=None, key_values=None)         -> 🔴 RAISES   ** 도 done 도 «없습니다»
+> 실호출  run_builtin("builtin:join", …, row_ids=[], done={…})
+>        -> TypeError: _run_join() got an unexpected keyword argument 'done'
+> ```
+> ### 왜 «닿나» — 셋 다 «커밋된» 파일입니다(이 박스 설정 아님)
+> ```
+> virtual_join/config.py:1104   합성 조인 규칙에 "follow_up": True   (S-151 — 참조 한 행이 70,800 에 닿아서)
+> ingestion_worker:2022         _followup_builtin_rules = follow_up AND mapper in BUILTIN_KINDS  -> 이 규칙이 «뽑힙니다»
+> ingestion_worker:2853         그 목록에 대고 run_builtin(..., done=done)  -> 위 TypeError
+> ```
+> ### 🔴 피해가 «그 규칙 하나»가 아닙니다 — `for rule in …` 이 `try` «안»에 있습니다
+> ```
+> 그래서 첫 join 규칙이 던지면 그 배치의 «랩 전체»가 끝납니다 — 뒤에 오는 auto_confirm 규칙들도 «안 돕니다»
+> 그리고 바깥 except 가 삼켜서 남는 것은 한 줄뿐: 「follow-up dispatch failed for table X」
+> ```
+> ### 날짜 — 우연히 «50분» 차이로 생겼습니다
+> ```
+> 09-12 14:30  1964c65a   builtin:join 이 표에 들어옴.  그때 랩은 run_builtin(kind, db, rule, row_ids=…) «done 없음» -> 돌았습니다
+> 09-12 15:20  92257825   auto_confirm 이 표에 들어오며 랩이 done=done 을 «전 종류에» 붙임 -> 그날부터 join 은 던집니다
+> => 「같은 문으로 부르되 «인자 어휘»가 종류마다 다르다」. 판정 419 가 센 것의 «인자 판»입니다
+> ```
+> ### 🔵 제안 (짓지 않았습니다 — 기존 동작을 바꾸는 판정이라 올립니다)
+> ```
+> ⓐ `_run_join` 에 `**_` 한 개 — 형제 «둘»이 이미 그 모양입니다(3 중 2). 1줄, 죽어 있던 길이 살아납니다
+> ⓑ 랩의 `for` 를 `try` «안쪽»으로 한 겹 더 — 한 규칙의 실패가 형제를 안 죽이게. 이건 ⓐ 와 «별개» 결함입니다
+> 게이트  「등록된 모든 종류가 문이 넘기는 어휘를 받는다」 — 지금 쓰면 «빨강»이라 수리와 같은 커밋이어야 합니다
+> ⚠️ S-277(맵퍼 호출 시그니처는 줄면 안 된다)의 «형제»로 보입니다. 총괄 큐에 있는 그것과 같이 판정하실 수 있습니다
+> ```
+> 📌 **[09-16 19:37] 이 채널의 미답 질문: «둘» — ① 소급의 붕괴 ⓐ/ⓑ(앞 블록) · ② 이 `done=` 불일치를 제가 이번 밤에 고칠까요.**
+> 🔵 ㉠ 착지 줄 기다리는 동안 «아무것도 안 짓고» 있습니다 — 둘 중 하나라도 주시면 바로 갑니다.
