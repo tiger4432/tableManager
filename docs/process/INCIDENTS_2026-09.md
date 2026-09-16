@@ -24,13 +24,17 @@
 
 인제션 청크 루프의 모양(`directory_watcher.py`):
 
+🔴 **아래 줄 번호는 `d00ac580^` 의 blob 을 다시 재서 적은 것입니다.** 처음 적을 때 저는 수리 «뒤» 파일의 번호와 «전» 파일의 번호를 섞어 `finally` 가 호출 «아래»에 오게 써 놨고, 그러면 사슬이 거꾸로 읽힙니다. 그리고 그 커밋의 메시지도 「세 줄 위」라고 말하는데 실제는 «스무 줄» 위입니다 — 기제는 맞고 «수»가 틀렸습니다(히스토리 레인이 잡았고 제가 다시 쟀습니다).
+
 ```
-L3134  db = SessionLocal()            청크(1,000행) 세션
-L3167  results = crud.apply_batch_updates(...)   내부에서 commit -> 반환 객체가 «전부 만료»
-L3170  db.commit()
-L3197  finally: db.close()            -> 그 객체들이 «분리»됨
-L3190+ _maybe_explain_slow_prefetch(db, …, results, …)      ← 만료+분리된 객체를 «읽는다»
-:452     rid = getattr(row, "row_id", None)
+L3109  db = SessionLocal()                       청크(1,000행) 세션
+L3142  results, … = crud.apply_batch_updates(…)  내부에서 commit -> 반환 객체가 «전부 만료»
+L3145  db.commit()
+L3169  finally:
+L3170      db.close()                            -> 그 객체들이 «분리»됨
+L3190  _explained = _maybe_explain_slow_prefetch(db, …, results, …)
+                                                 ← 만료+분리된 객체를 «읽는다» (close 에서 20줄 아래)
+:452       rid = getattr(row, "row_id", None)
 ```
 
 `expire_on_commit` 은 SQLAlchemy 기본값이고 이 저장소는 그것을 «끈 적이 없다»(`database.py`). 커밋은 만진 객체를 «만료»시키고, 만료된 속성은 세션이 있어야 다시 읽을 수 있는데 그 세션은 세 줄 위에서 «닫혔다». 그래서 그 한 줄이 던진다 — **`DetachedInstanceError: Instance <…> is not bound to a Session`**. 소유자가 사흘 동안 본 그 문장이다.
