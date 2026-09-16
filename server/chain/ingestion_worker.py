@@ -921,9 +921,28 @@ def _refuse_names_claimed_twice(rules, written_in):
 
     `written_in[i]` is the file `rules[i]` came from, by basename. Returns
     `(kept, [(name, [file, file, ...]), ...])` — the second list is empty for a clean set.
+
+    🔴 ONLY A RULE THAT CAN FIRE CLAIMS THE NAME (판정 413, production 2026-09-16).
+    Refusing BOTH copies rests on 「the product cannot know which one was meant」 — and a
+    copy declaring `enabled: false` is the operator having ALREADY said: they meant the
+    other one. Without this, a switched-off twin took the live rule down with it, the
+    declaration and the data both looked right, and the symptom was
+    「체인을 끄니 안 됨 · 백필하니 돈다」: only the live chain path dropped it.
+
+    ⚠️ SAME SENTENCE AS `rule_order`'s 「AN EDGE THAT CANNOT FIRE CANNOT ORDER ANYTHING」
+    (`ea8f91d2`), asked with the same predicate. A disabled rule is not on the trigger
+    path at all — `_rule_accepts_event` / SKIPPED_DISABLED — so it neither orders its
+    neighbours nor spends a name. Both seats ask `enabled`; if one day they disagree
+    about what off means, they disagree in one place.
+
+    ⛔ IT IS NOT DROPPED HERE. The off rule stays in `kept`, where the loader reports it
+    OFF exactly as today — 「이 이름은 꺼져 있다」 and 「이 이름은 없다」 are different
+    answers, and the census is where an operator reads which.
     """
     files_by_name = {}
     for rule, where in zip(rules, written_in):
+        if not (rule or {}).get("enabled", True):
+            continue
         files_by_name.setdefault((rule or {}).get("name"), []).append(where)
     twice = sorted(((name, files) for name, files in files_by_name.items()
                     if len(files) > 1), key=lambda pair: str(pair[0]))

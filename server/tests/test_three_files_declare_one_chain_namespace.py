@@ -158,6 +158,73 @@ def test_a_name_written_twice_in_one_file_is_refused_rather_than_halved(load, ca
 
 
 # ---------------------------------------------------------------------------
+# 🔴 판정 413 (S-268) - only a rule that CAN FIRE claims the name
+# ---------------------------------------------------------------------------
+
+def test_a_switched_off_twin_does_not_take_the_live_rule_down_with_it(load, caplog):
+    """🔴 THE PRODUCTION REGRESSION, 2026-09-16. Refusing BOTH copies rests on 「the product
+    cannot know which one was meant」 - and a copy declaring `enabled: false` is the operator
+    having ALREADY said it. The owner met the other reading: the declaration was right, the
+    data was right, and only the live chain path dropped the rule
+    (「체인을 끄니 안 됨 · 백필하니 돈다」).
+
+    ⚠️ AND IT IS NOT A SILENT WIN: the off copy is still in the loaded set, reported OFF,
+    because 「이 이름은 꺼져 있다」 and 「이 이름은 없다」 are different answers."""
+    off_twin = dict(FLAT, name="enrichment_dedup:s234_enrich", enabled=False)
+    names, lines = load([off_twin, UNIFIED], {"s234_enrich": ENRICH}, {}, caplog)
+
+    assert "enrichment_dedup:s234_enrich" in names, (
+        "the live rule was dropped by a twin that cannot fire")
+    assert not [line for line in lines if line.startswith("[ChainRules] refused(")], lines
+    assert not [line for line in lines
+                if line.startswith("[ChainRules:enrichment_dedup:s234_enrich]")], lines
+    set_lines = [line for line in lines if line.startswith("[ChainRules] set(")]
+    assert len(set_lines) == 1, lines
+    assert "enrichment_dedup:s234_enrich[" in set_lines[0]
+
+
+def test_two_switched_off_copies_refuse_nothing_and_run_nothing(load, caplog):
+    """⛔ THE OTHER ARM. Two names nobody can fire are not a collision to report - there is
+    no question about which was meant, because neither was. Refusing them would put a line in
+    front of an operator who has nothing to fix."""
+    off = dict(FLAT, enabled=False)
+    names, lines = load([off, dict(UNIFIED, name="s234_flat", enabled=False)], {}, {}, caplog)
+
+    assert not [line for line in lines if line.startswith("[ChainRules] refused(")], lines
+    assert not [line for line in lines if line.startswith("[ChainRules:s234_flat]")], lines
+    # ⚠️ MEASURED, NOT ASSUMED, AND IT IS ONE NAME RATHER THAN TWO. Past this judge the set
+    # still reaches `rule_order`, which keys its walk by name and keeps the first copy - the
+    # silent halving S-234 named for ENABLED rules. Neither copy can fire, so nothing runs
+    # either way and no answer changes; what is lost is the OFF twin's row in the census.
+    # Reported rather than papered over: making the census show both is a separate question
+    # from this ruling, and this line is where it would be caught if it is ever answered.
+    assert names == ["s234_flat"], names
+
+
+def test_the_two_seats_ask_the_same_question_of_a_rule_that_cannot_fire():
+    """⚠️ ONE SENTENCE, TWO SEATS, ASKED BY BEHAVIOUR. `rule_order` skips a producer that
+    cannot fire (`ea8f91d2`, 「AN EDGE THAT CANNOT FIRE CANNOT ORDER ANYTHING」) and this
+    judge skips a claimant that cannot fire. The regression arrived precisely because one
+    seat had learned it and the other had not, so the pair is asserted together - and on
+    what they DO, because a check on their source text would pass on a seat that spells
+    `enabled` in a comment."""
+    from chain import rule_order
+
+    live = {"name": "s268_live", "trigger_table": SRC, "target_table": DST}
+    off_back_edge = {"name": "s268_off", "trigger_table": DST, "target_table": SRC,
+                     "enabled": False}
+
+    cycles = []
+    rule_order.order_rules([live, off_back_edge], on_cycle=cycles.append)
+    assert cycles == [], "a rule that cannot fire ordered its neighbours"
+
+    kept, twice = worker._refuse_names_claimed_twice(
+        [dict(off_back_edge, name="s268_live"), live], ["a.json", "b.json"])
+    assert twice == [], "a rule that cannot fire claimed a name"
+    assert "s268_live" in [(r or {}).get("name") for r in kept]
+
+
+# ---------------------------------------------------------------------------
 # ② one off switch - the retired name appears nowhere under server/
 # ---------------------------------------------------------------------------
 
