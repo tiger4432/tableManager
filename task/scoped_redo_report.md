@@ -44760,3 +44760,111 @@ import    stdlib 뿐. 네 자리가 세 패키지에 흩어져 있고 어느 쪽
 > ```
 > 🔴 **정정 하나:** 「후속 랩이 나흘째 터지고 있다」는 제가 «할 수 없는» 주장이었습니다(총괄 Q-12). 구조(서명 불일치)는 참이고 사건은 «못 셉니다» — 선언이 gitignore 입니다. 시험 독스트링은 고쳤고, `2046bdb4` 커밋 메시지는 푸시돼 있어 채널에 정정을 남겼습니다.
 > **미답 «하나»:** `:6582` 재절단 · `run_watcher` 의 절단 사본도 한 규칙으로 접을지.
+
+---
+
+> 🔵 **[09-16 21:50 구현자] 판정 433 의 질문에 답합니다 — «세고» 나서 적습니다. 크기는 «안» 적습니다.**
+
+## ① 433 의 질문: 조인은 「이 셀이 «어느 참조 행»에서 왔나」를 적나 — **안 적습니다**
+```
+① 층 표의 «칸»        cell_sources = table_name · row_id · column_name · source_name · value
+                     · ingested_at · updated_by · confirmation_uid      (models.py:502-530)
+                     -> 「어느 참조 행」을 담는 칸이 «없습니다»
+② 조인이 «쓰는» 것     GeneralUpdateItem(source_name=rule["name"], updated_by=rule["name"])
+                                                                        (executor.py:812)
+                     -> 적는 것은 «규칙»이지 «행»이 아닙니다
+③ 원장은 «적습니다»    schema.ROW_REF_TABLE -> row_refs_for(relation, row_ids)
+                     = (source_who, source_raw_ref), 「행이 아직 말할 때 받아 둔 쪽지」
+                                                                        (store.py:720-745)
+```
+
+## ② 🔴 그런데 조인의 «단위»가 행이 아닙니다 — «키 값»입니다. 그래서 필요한 쪽지가 다릅니다
+```
+참조 팔의 서명   on_reference_rows_changed(db, rule, key_values)          (executor.py:831)
+겨누는 법       _left_row_ids_for_key(db, rule, key_values) — 왼쪽 표에서 «접힌 키»로 SELECT
+=> 「어느 참조 «행»」은 조인이 쓰지도 않는 낱말입니다. 조인이 물어야 하는 것은 «어느 키 값»이고,
+   그 값은 «왼쪽 행이 이미 들고 있습니다» (join_key 의 left 컬럼들).
+=> 즉 조인은 원장식 쪽지가 «필요 없을 수» 있습니다. 없는 것은 「사라진 오른쪽 행의 «키 값»」 하나입니다
+```
+
+## ③ 삭제 시점에 «실제로 적히는» 것은 «업무 키 하나»입니다
+```
+record_row_deletions -> create_audit_log(..., "DELETE", None, "행 삭제됨", "system",
+                                         user_name, business_key=row.business_key_val)
+                                                                        (crud.py:5190-5197)
+=> 쪽지는 «있습니다». 다만 그 쪽지가 조인을 겨눌 수 있는 것은
+   「그 규칙의 오른쪽 조인 키가 «업무 키»일 때」뿐입니다 — 선언에 달린 «우연»이지 보장이 아닙니다
+```
+
+## ④ ⚠️ 그리고 참조 팔은 «오늘 도달 불가»입니다 — 생산자 «0»
+```
+_run_join 의 참조 가지는 key_values is not None 일 때만 탑니다            (builtins.py:87-88)
+key_values= 를 «넘기는» 자리: 저장소 전체(추적 파일, tests 제외) «0»
+  (alignment_view_service · enrichment · chain_bindings 의 동명 지역 변수는 다른 것입니다)
+그리고 합성 규칙은 왼쪽에만 겁니다: trigger_table = target_table = left_table  (config.py:1101)
+   그 칸의 주석이 사유까지 적어 뒀습니다 — 「참조 쪽은 «후속 랩»으로 닿는다」. 그 랩이 S-278 로 갔습니다
+=> 판정 302 의 천장이 지키는 팔에 «오늘 아무도 안 들어갑니다». 철회를 그 길로 겨누면 «첫 호출자»가 됩니다
+```
+
+## ⑤ 432 가 시킨 «전수» — 모집단은 «넷»(등록 빌트인 셋 + 파일 맵퍼 문 하나)
+```
+종류                 무슨 층으로 쓰나                     철회 대응
+builtin:join         source_name = «규칙 이름»            ✅ retract_rows -> withdraw_source
+                     (executor.py:812)                      단, 433 ③ 대로 «반쪽»(row_ids·apply 안 넘김)
+builtin:join_into    source_name = "chain_ingestion"      ❌ 없음. 그리고 «이 길로는 불가능»:
+                     updated_by = 규칙 이름                  withdraw_source 는 source_name 으로 거르므로
+                     (join_into.py:249-250)                 가장 좁은 철회가 「그 표의 모든 체인 쓰기」다
+builtin:auto_confirm source_name = "enrichment_auto_confirm" ❌ 호출 «0». 층 이름은 자기 것이라 기제는 닿는다
+                     (candidates.py:133)
+파일 맵퍼 문          맵퍼의 source_name, 기본 "chain_ingestion" ⚠️ plan_retraction/apply_retraction 이
+                     (mapper_sdk.py:339)                      «배선돼 있음»(worker:1752 · replay:785),
+                                                             allow_retraction 옵트인 — 다만 «다른 질문»
+```
+🔴 **「대응이 있는 종류」= 넷 중 «하나»**(builtin:join), 그리고 그 하나가 433 ③ 대로 반쪽입니다.
+🔴 **join_into 의 «없음»은 고를 수 있는 것이 아닙니다.** 그 층 이름은 소유자 판정입니다(2026-09-15
+   「핑퐁은 제대로 고쳐」, join_into.py:243-250) — 깨우기 필터가 `source_name` 을 읽으므로 규칙별 층 이름은
+   자기를 먹이는 인리치를 다시 깨웠습니다. **깨우기는 이름 «하나»를 원하고 철회는 «규칙별 손잡이»를 원합니다.**
+   같은 칸에 두 요구가 걸려 있고, 이건 제가 고를 자리가 아닙니다.
+⚠️ **그리고 오늘 «거짓인» 주석이 하나 더 있습니다**: candidates.py:100 「there is no retraction path yet
+   (Chain Replay R2 stale-source withdrawal is not built)」 — R2 는 지어져 있습니다(cell_layer.py:126).
+   없는 것은 «기제»가 아니라 «호출»입니다. 433 ⑤㉠ 과 같은 부류라 같이 처리하겠습니다.
+
+## ⑥ 🔴 그리고 철회가 «한 연산이 아니라 둘»입니다 — 좌석이 「되돌려라」에 답하려면 어느 쪽인지 말해야 합니다
+```
+㉠ 층 철회  cell_layer.withdraw_source    이 소스의 «셀 claim» 을 지우고 «밑을 드러낸다». 행은 남는다
+                                         묻는 사건: 「이 값의 «근거»가 사라졌다」
+㉡ 행 삭제  dt_map_derivation.apply_retraction  이 소스가 더는 «유도하지 않는» 행을 지운다
+                                         (source_column, source_value) 로 겨누고, 사람이 만진 행을 빼고,
+                                         비율 상한에서 거절한다
+                                         묻는 사건: 「이 소스가 이 행을 더는 «만들지» 않는다」
+오늘 배선된 것은 ㉡ «하나»이고, DELETE 가 묻는 것은 ㉠ 입니다. 둘을 한 낱말로 부르면 문이 또 갈립니다
+```
+
+## ⑦ 못 세는 것 — «그래서 크기를 안 적습니다»
+```
+운영에서 각 종류가 몇 규칙인지 · allow_retraction 을 «몇이» 선언했는지
+  -> 선언이 gitignore 입니다. 추적되는 것은 config/sample/chain_rules.json.sample «하나»(allow_retraction 1건)
+  -> 「업무 키가 곧 조인 키인 규칙이 몇인가」(위 ③의 우연이 몇 번 참인가)도 «같은 이유로» 못 셉니다
+```
+
+## ⑧ 🔴 그래서 판정이 필요한 것이 «하나»입니다 — ③ 의 틈을 어느 쪽으로 메우나
+```
+ⓐ 삭제 «기록»을 넓힌다   지워지는 행의 «선언된 키 컬럼 값»을 쪽지에 같이 적는다
+                       -> 원장의 ROW_REF_TABLE 과 «같은 부류». 조인은 그 값으로 기존
+                          _left_row_ids_for_key 를 그대로 타면 되고, 새 문이 «0»입니다
+                       -> 대신 「무엇을 적나」가 선언(조인 키)에 달리므로 기록자가 선언을 읽어야 합니다
+ⓑ 요구를 좁힌다         조인의 오른쪽 키가 «업무 키»가 아니면 「되돌릴 수 없다」를 «이름 대어» 거절한다
+                       -> 새 칸 0. 대신 오늘 도는 선언 일부가 «철회 불가»로 이름 붙습니다(몇인지 못 셉니다)
+```
+제 쪽 판단: **ⓐ 가 «문을 안 가릅니다»** — 「행이 말할 때 적어 둔다」는 원장이 이미 낸 답이고, 나머지 셋
+(join_into · auto_confirm · 파일 맵퍼)도 «같은 쪽지»로 겨눌 수 있습니다. ⓑ 는 조인 «하나»만 답합니다.
+다만 ⓐ 는 삭제 경로가 «선언을 읽게» 만들므로 판정을 받고 짓겠습니다.
+
+## ⑨ 433 ⑤ 의 셋은 착지 때 «같은 커밋»에서 처리합니다
+```
+㉠ ingestion_worker.py:2830-2831 의 오늘 거짓인 주석 (+ candidates.py:100 도 같은 부류)
+㉡ retract_rows 의 «이름과 몸» — rows 를 겨누거나, 이름이 사실을 말하거나
+㉢ ["CREATE","EDIT"] 다섯 자리는 «안 접습니다» — 접으면 그 시험이 텍스트를 읽어 빨개지고,
+   상설대로 같은 커밋에 시험까지 가야 하는데 그 시험의 «사유»(무한 캐스케이드)는 이번 일과 무관합니다
+```
+📌 **미답 «하나»: ⑧ 의 ⓐ/ⓑ.** (429 의 ⓐ/ⓑ 도 아직 열려 있습니다 — 그쪽은 커서입니다.)
