@@ -1,4 +1,15 @@
-# `virtual_join_rules.json` 세팅 — 저장하지 않는 조인(virtual join) 선언
+# ⚰ `virtual_join_rules.json` 세팅 — **읽기 시점 조인은 «은퇴했습니다»**(2026-09-17 `306419fd`)
+
+> 🔴 **이 파일이 설명하던 「저장하지 않는 조인」은 오늘 «없습니다».** 엔진(`virtual_join/executor.py`)과
+> 패키지가 삭제됐고, `materialize: false` 인 선언은 로더가 «이름 대고» 거절합니다
+> (`chain/join_refusal.py` :32 `CODE_READ_TIME_RETIRED` · 문장을 내는 자리는
+> `chain/legacy_join_declaration.py` :629). 거절문이 «나갈 길 둘»을 같이 말합니다 —
+> `chain_rules.json` 으로 옮기거나, `materialize: true` 로 선언하고 `max_rewrite_rows` 상한을 적으십시오.
+>
+> ✅ **살아 있는 것:** `materialize: true` — «표에 쓰는» 조인입니다. 그 경로는 이 라운드가 «안 건드렸습니다».
+> 아래 본문에서 「저장하지 않는다 · 읽을 때 채운다 · 가상 컬럼」을 말하는 절은 «전부 과거»로 읽으십시오.
+> 🔴 그리고 거절은 «요구 집합»을 줄이므로 제품이 그 선언의 `uq_vjoin_*` 인덱스를 «회수»합니다 —
+> 운영자에게 보이는 결과이고, 되돌리는 법은 `RUN.md` 에 있습니다(손으로 만든 인덱스는 접두어가 달라 안 건드립니다).
 
 > 🔴🔴 **[2026-09-17, S-283 · 판정 461] 이 문서가 설명하는 「저장하지 않는 조인」은 «은퇴했습니다».**
 > ```

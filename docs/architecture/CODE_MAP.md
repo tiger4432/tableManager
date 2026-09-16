@@ -119,14 +119,14 @@
 | `server/ledger/trace.py` | 1,937 | **2,039** | +102 |
 | `server/dt_map_derivation.py` | 849 | **940** | +91 |
 | `server/config_backup.py` | 379 | **440** | +61 |
-| `server/virtual_join/executor.py` | 584 | **631** | +47 |
+| ⚰ ~~`server/virtual_join/executor.py`~~ (`306419fd` 삭제 — 15 정의는 `chain/legacy_materialized_join.py` 372줄로, 13 은 사라짐) | 584 | ~~631~~ | — |
 | `server/enrichment/backfill.py` | 411 | **458** | +47 |
 | `server/database/schemas.py`(§6) | 315 | **346** | +31 |
 | `server/admin/audit_history.py`(§6) | 242 | **271** | +29 |
 | `server/paths.py` | 165 | **188** | +23 |
 | `server/map_overlay.py` | 2,712 | **2,744** | +32 |
 | `server/map_meta_registrar.py` | 379 | **102** | −277 (S-38 은퇴) |
-| `server/virtual_join/config.py` | 687 | **697** | +10 |
+| ⚰ ~~`server/virtual_join/config.py`~~ → `chain/legacy_join_declaration.py` (`306419fd` 이동, 905줄) | 687 | ~~697~~ | — |
 | `server/database/database.py`(§6) | 333 | **341** | +8 |
 | ⚰️ `server/ledger_api/ledger_walk_contrast.py` — 🆕⑬ **[2026-08-29] 삭제됨**(아카이브 사본도 없다) | 1,327 | ~~1,337~~ | — |
 | `server/ledger_api/mechanism_gate.py` ⚰️ **[2026-08-28] `server/_archive/ledger_api/` 로 이동** — 운영 소비자 «0» | 368 | **370** | +2 |
@@ -2645,7 +2645,7 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 
 **소비처 — 전건 grep(`831ab68`), 7파일**: `server/migrations/add_business_key_unique_index.py` · `server/migrations/drop_redundant_layering_indexes.py` · `server/scripts/audit_schema_canon.py`(**유일한 `PER_TRANSACTION` 소비자** — 빌린 엔진) · `server/scripts/check_missing_business_key.py` · `server/scripts/dedupe_business_key_rows.py` · `server/scripts/rebuild_blank_business_keys.py` · `server/scripts/dev_env/snapshot_db.py`. **회귀 테스트**: `server/tests/test_readonly_guard.py`(779줄, `grep -c "def test_" = 22` @`831ab68`).
 
-### `server/virtual_join/config.py` (🆕 **1,115줄** @`2c93ae9f` — 1,124 @`eea69cbc`, 1,054 @`b1db471a`, 1,021 @`dc877746`, 999 @`474f1aa9`, 🆕⑨ 697 @`5359fdd`, 구 표기 687 · `4e06eec` 신설 540줄 → `b6942ec`로 **475**) — 가상 조인 선언 로더/검증
+### ⚰ `server/chain/legacy_join_declaration.py` 🆕 **[`306419fd` 은퇴 4/5 — 패키지가 «사라졌다», 구 경로 ~~`server/virtual_join/config.py`~~]** (🆕 **905줄** @`306419fd` — ~~1,115 @`2c93ae9f`~~ — 1,124 @`eea69cbc`, 1,054 @`b1db471a`, 1,021 @`dc877746`, 999 @`474f1aa9`, 🆕⑨ 697 @`5359fdd`, 구 표기 687 · `4e06eec` 신설 540줄 → `b6942ec`로 **475**) — 가상 조인 선언 로더/검증
 
 > ⚰️ **[`5c845e67` S-234 ①, 판정 409] `join_name_collisions(chain_rule_names, path=None, known_tables=None)` 는 «없다»** — :1112 의 묘비 주석만 남았다(§0 ㉚), `synthesized_join_chain_rules` :1076 옆. 이름 충돌은 §4 `_refuse_names_claimed_twice` «한 좌석»이 심판하고, 조인 반쪽을 가르는 칸은 §5-C `builtins.written_in`(`mapper == JOIN_MAPPER` :1066). `JOIN_MAPPER`/`JOIN_PREFIX` :1066/:1067 · `load_verified_rules` :891 · `verification_report` :1007 · `declared_unique_index_names` 호출 :998 은 @`eea69cbc` 와 «같다»(이 커밋은 :1112 뒤만 건드렸다).
 
@@ -2775,7 +2775,7 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 
 > 🔎 **이번 라운드의 서버 신설은 두 갈래다** — ① 가상 조인이 **선언**(`virtual_join_config`)과 **실행**(`virtual_join_executor`)으로 갈렸다 ② 「이미 지나간 데이터에 지금 규칙을 먹인다」는 조작이 산발적 CLI에서 **하나의 레지스트리**(`retroactive`)로 모였다.
 
-### `server/virtual_join/executor.py` (🆕 **891줄** @`b1db471a` — 889 @`474f1aa9`, 🆕⑨ 631 @`5359fdd`, 구 표기 584 · `ed9cfdb` 535에서 **+19**) — 가상 조인의 **실행** 절반
+### ⚰ ~~`server/virtual_join/executor.py`~~ 🆕 **[`306419fd` 은퇴 4/5] 이 파일은 «갈라졌다» — 최상위 정의 28 중 «15» 가 `server/chain/legacy_materialized_join.py`(372줄, 쓰기 닫힘)로 가고 «13» 은 사라졌다(`attach` · `exposed_columns` · `resolved_expression` · `announced_columns` · `resolved_column_announcements` · `virtual_only_columns` · `_resolve_one` · `_bind_crud` · `_CLEAN` · `_RENDER` · `KIND_COLLIDE` · `KIND_VIRTUAL_ONLY` · `SOURCE_NAME`). 🔴 읽기 시점 조인은 «없다» — 아래 절의 「읽을 때 답한다」는 전부 «과거»다. 거절은 `chain/join_refusal.py`(79줄)의 `CODE_READ_TIME_RETIRED` :32 이고 그 문장을 내는 자리는 `legacy_join_declaration.py` :629 다** (구 표기 ~~891줄 @`b1db471a`~~ — 889 @`474f1aa9`, 🆕⑨ 631 @`5359fdd`, 구 표기 584 · `ed9cfdb` 535에서 **+19**) — 가상 조인의 **실행** 절반
 
 > 🆕㉘ **[S-189 ⓑ `5833c7f8`] 실체화 = 「자기 층으로 쓰고, 되가져간다」.** `materialize_rows(db, rule, row_ids)` :772 · 트리거 «둘» `on_target_rows_changed` :821 · `on_reference_rows_changed` :831 · 철회 `retract_rows` :878(전부 @`b1db471a` — 구 표기 :754/:795/:805/:852). 🔴 **새 SELECT 를 «안 짓는다»** — `execute_rule` :505 → `join_onclause` :181(구 표기 :487/:165) 을 그대로 지난다. 그 함수 자기 주석이 ON 절의 «둘째 철자»가 한 번 치른 값을 적어 둔다(그리드가 한 행 집합을 보이고 필터가 다른 것을 셌다). 🆕 **[`ddd5b3ba` S-245] 그 ON 절의 양변이 `notation_norm.key_expression_sql(left_col, fold) == notation_norm.key_expression_sql(right_col, fold)` :219 가 됐다** — 접기 «와 캐스트»가 `notation_norm` 의 한 쌍에서 나온다(§5-E). 종전엔 이 자리가 `func.coalesce(fold(col), '')` 를 «자기 손으로» 적어 숫자 키에서 「invalid input syntax for type double precision: ""」 — §4-ter-c `_folded` 가 «먼저 배운» 캐스트를 여기는 «안 배웠다». `_left_row_ids_for_key` :855 도 `vjc.index_key_expression(col, fold, rule["left_table"])` :865 로 «표»를 넘긴다. 실체화가 자기 조인을 조립하면 «같은 선언의 세 번째 독자»가 되고, 시험이 그렇지 않음을 채점한다. 🔴 **`source_name` 이 «규칙 이름»이고 그것이 레이어링 이야기의 전부다** — `user` 덮어쓰기가 이미 이름 붙은 소스를 이기므로 «사람의 편집이 아무 방어 없이 이긴다». 🔴 그리고 여기서 «방어하면 안 된다» — 둘째 우선순위 규칙은 「누가 이기나」에 대한 «둘째 답»이다. ⚠️ **안 맞은 행은 «건너뛴다», 빈 값으로 «쓰지» 않는다** — `None` 을 쓰면 «부재»가 값으로 착지한다
 
