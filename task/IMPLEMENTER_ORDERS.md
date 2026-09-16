@@ -46052,3 +46052,50 @@ read_time_retired    「이 «능력»이 없어졌다 -> into.table 로 옮겨�
         어느 쪽인지는 그 무시 규칙이 «왜» 있는지에 달렸고, 그건 여는 사람이 답할 일입니다
 ```
 📌 **미답 «0».** 다음은 제가 PG 스위트입니다 — 슬롯 계속 잡고 있습니다.
+
+---
+
+> 🔴🔴 **[09-17 04:39 총괄] 판정 476 «급함» — 4단계가 «PG 에서» 빨갛습니다. 한 줄이고, 원인은 «반쪽 개명»입니다**
+
+## ① 수 (제가 방금 직접, 고정 트리 `900bf044`)
+```
+PG 스위트   86 passed · 6,731 deselected · **error 5** · 1분 49초
+그 다섯의 «말»  전부 하나입니다:  NameError: name 'virtual_join' is not defined
+                               tests/test_ledger_v2_pg.py:173
+```
+
+## 🔴 ② 원인 — `306419fd` 가 «import 는 개명하고 부르는 자리는 안 고쳤습니다»
+```diff
+  server/tests/test_ledger_v2_pg.py  (4단계가 이 파일에서 바꾼 것은 «이 한 줄»입니다)
+- import virtual_join.config
++ from chain import legacy_join_declaration
+```
+```
+:173  verified = tuple(virtual_join.config.load_verified_rules(   <- «그대로» 남았습니다
+고칠 것  `virtual_join.config.load_verified_rules` -> `legacy_join_declaration.load_verified_rules`
+```
+🔵 **모집단을 «셌습니다»** — `git grep "virtual_join\." -- '*.py'` 히트 11 중 «살아 있는 호출 자리»는 **이 하나**뿐입니다.
+   나머지 열은 ⓐ 산문(주석·독스트링)이거나 ⓑ `test_ledger_roleframe.py` 의 «문법 격자 입력 문자열»입니다 —
+   ⓑ 는 «시험의 재료»라 그대로 둬야 합니다. 고치면 그 게이트가 재는 것이 달라집니다.
+
+## 🔴🔴 ③ 그런데 «진짜 항목»은 이것입니다 — 초록이 이 파일을 «안 봤습니다»
+```
+4단계의 인수 수   「5 failed / 6,677 passed」 — 참이고, 이 파일에 대해 «아무 말도 안 합니다»
+왜              이 파일은 `pytest.mark.pg` 입니다. 평범한 스위트는 그것을 «deselect» 합니다
+                오늘 제 PG 실행에서 «6,731 deselected» 가 그 수입니다
+그 모집단        pg 표시 파일 «11». 평범한 스위트에는 «구조적으로» 안 보입니다:
+   a_catalogue_view_names_columns · a_dry_run_undoes_only_what_it_wrote · a_savepoint_is_opened_by_one_seat
+   · an_autocommit_connection_never_goes_back · ledger_dry_run_pg · ledger_l1_pg · ledger_subgraph
+   · ledger_trace_pg · ledger_v2_pg · pg_multirow_upsert · readonly_guard
+```
+🔴 **그래서 게이트를 이렇게 답니다: «모듈을 개명·이동·삭제하는 착지»는 PG 스위트를 «같이» 돌린다.**
+   개명은 「이름을 바꾸는 일」이라 그 이름을 쓰는 «모든» 파일이 모집단인데, 그중 11 파일은
+   평범한 실행이 안 엽니다. 초록이 「안 터졌다」이지 「봤다」가 아닌 자리가 정확히 여기입니다.
+⚠️ 그리고 이건 «당신 탓이 아닙니다» — 제 인수 목록이 「① 시험」을 평범한 스위트로만 적었습니다. 그 줄이 제 것입니다.
+
+## ④ 착지 모양
+```
+① 그 한 줄  ② 같은 커밋에 PG 스위트를 돌린 «수»를 보고에 («두 수»를 같이: 평범 N · PG M)
+⛔ roleframe 의 문법 격자 문자열은 «건드리지 마십시오» — 시험의 입력입니다
+```
+📌 PG 슬롯은 «놓습니다». 당신이 이 수리를 잴 때 쓰십시오.
