@@ -267,3 +267,54 @@ def test_the_two_causes_do_not_share_a_sentence(monkeypatch):
 # ⚠️ 그리고 세면서 «안 재지고 있는 성질» 하나를 봤습니다 — `heartbeat.record_lap` 의
 #    「`depth=None` 은 키째 빠지고 `0` 은 남는다」는 오늘 «독스트링에만» 있고 시험이 없습니다.
 #    이 라운드의 지시 밖이라 짓지 않고 올립니다.
+
+# ---------------------------------------------------------------------------
+# main.get_ingestion_workspaces — 🔎 서버는 «이미» 가른다. 화면이 안 읽는다
+# ---------------------------------------------------------------------------
+# 🔴 A 축(142 중 라우트 안 24)을 자리마다 물었습니다. 판별식은 「낱말이 있나」가 아니라
+#    «이 0 이 두 뜻일 수 있나, 그리고 서버가 가를 수 있나»입니다. 스물넷 «전부» 가릅니다 —
+#    형제 칸(`truncated` · `capped` · `declarations` · `oldest_failed_at` · `raws_dir`)이거나,
+#    못 읽으면 404/503 으로 «거절»하거나, 그 0 이 「이 동작이 아무것도 안 했다」 한 뜻뿐입니다.
+#
+# ⚰️ 저는 이 자리를 «서버 결함으로 읽고 고치려 했습니다». 열어 보니 바로 옆 줄이
+#    `raws_dir: raws_dir if os.path.exists(raws_dir) else None` 이었습니다 — 서버는 말하고
+#    있었고, 제가 그 칸을 «안 보고» 수리를 설계했습니다. 계측기가 `absence`/`unread` 라는
+#    «제가 아는 두 낱말»만 형제로 인정한 탓이고, 이 저장소의 부재 어휘는 자리마다 다릅니다.
+#
+# 🔴 그래서 이 자리의 병은 «클라 레인»입니다 — `admin_rows.js` 가 `raw_files_count > 0` 이
+#    아니면 «초록 0» 배지를 그립니다(「받은 파일 없음, 이상 없음」). raws 디렉터리가 «없을 때»도
+#    같은 초록 0 입니다. 운영자는 파일을 거기 떨어뜨리고 초록을 보며 「한가하다」고 읽는데,
+#    사실 그 파일은 «아무도 안 보는 자리»에 있습니다. `raws_dir` 이 null 이면 그렇게 그리면 안 됩니다.
+#
+# 아래 둘은 «그 클라 수리가 기댈 서버의 사실»을 못 박습니다. 서버 쪽 변경은 «없습니다».
+
+def test_the_payload_already_tells_an_empty_inbox_from_a_missing_one(tmp_path, monkeypatch):
+    """서버가 가른다 — 있으면 경로, 없으면 null. 이 줄이 클라 수리의 «재료»다."""
+    import main
+    (tmp_path / "wsA" / "raws").mkdir(parents=True)
+    (tmp_path / "wsB").mkdir()
+    monkeypatch.setattr(main.paths, "WORKSPACE_DIR", str(tmp_path))
+
+    rows = {r["name"]: r for r in main.get_ingestion_workspaces()["data"]}
+
+    assert rows["wsA"]["raws_dir"] is not None, "받을 자리가 있는데 null 입니다"
+    assert rows["wsB"]["raws_dir"] is None, (
+        "받을 자리가 없는데 경로가 나갔습니다 — 그러면 클라가 가를 재료를 잃습니다")
+
+
+def test_the_count_alone_cannot_tell_them_apart(tmp_path, monkeypatch):
+    """🔴 그리고 «수만 보면» 둘이 같다 — 화면이 오늘 그 수만 봅니다.
+
+    이 단언이 이 파일에 있는 이유는 「서버는 이미 옳다」를 못 박으려는 것이 아니라, 클라가
+    수 «하나»로 판단하는 한 그 화면은 «구조적으로» 두 사실을 못 가른다는 것을 값으로 남기려는
+    것입니다. 클라가 `raws_dir` 을 읽는 날 이 줄은 그대로 참이고, 그때 그림만 달라집니다.
+    """
+    import main
+    (tmp_path / "wsA" / "raws").mkdir(parents=True)
+    (tmp_path / "wsB").mkdir()
+    monkeypatch.setattr(main.paths, "WORKSPACE_DIR", str(tmp_path))
+
+    rows = {r["name"]: r for r in main.get_ingestion_workspaces()["data"]}
+
+    assert rows["wsA"]["raw_files_count"] == rows["wsB"]["raw_files_count"] == 0, (
+        "수가 갈렸다면 이 관찰이 낡은 것입니다 — 그러면 클라 항목을 다시 재십시오")
