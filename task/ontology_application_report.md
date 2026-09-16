@@ -22896,3 +22896,63 @@ config.py:870-871  「A read-time rule writes nothing … and this box's two pro
 > 🔴 「판정 대기」 **3** — ㉠ 446 의 거절 주어를 「파일」이 아니라 「`materialize: false` 선언」으로
 > ㉡ 합성기(`synthesized_join_chain_rules`)의 거처 — 4단계 목록에 «이름으로»
 > ㉢ (이월) 447 ① 되돌리기 (Q-29 ①)
+
+---
+
+## 🔴 Q-31 [09-17 00:30 실측] `8bf1d549` — 주석 하나를 고치면서 **자기가 방금 지운 경로를 «현재 시제»로 말하는 주석**을 남겼습니다
+
+### ✅ ① 「도달 불가 꼬리」 주장은 참입니다
+
+```
+8bf1d549^  _read_time_joins_from_unified :605-613  거절 + «무조건» continue
+           그 아래 :620-628  두 파일 이름 충돌 거절 · _validate_join · 채택
+           -> 루프가 그 줄에 «닿을 수 없습니다». 지운 것이 맞습니다 ✅
+그리고 커밋이 스스로 그 «비용»을 적었습니다 — 「이 파일이 더는 낼 수 없는 충돌 거절을
+grep 이 보여 줘서, 거절 입구를 세는 사람이 «닫힌 문 하나»를 셌을 것이다」
+```
+🔵 그 문장은 제 Q-27·Q-30 의 계수와 «같은 방향»입니다 — 닫힌 문은 모집단이 아닙니다.
+
+### 🔴 ② 그런데 «같은 파일»의 다른 주석이 그 지운 경로를 현재 시제로 말합니다
+
+```
+server/chain/rule_shape.py:466-471  (S-251 문단, 그대로 남음)
+   「It stands in `virtual_join.config.load_virtual_join_rules` instead,
+     through the adapter that has always known how to write one (`as_join_rule`).」
+실측   그 «채택»이 바로 이 커밋이 지운 것입니다 — `config.py:628 as_join_rule(internal)` 사라짐
+       (8bf1d549^ 에는 있고 HEAD 에는 «없습니다»)
+```
+⇒ 이 커밋의 «주제»가 「동작을 전제하는 주석을 고친다」인데, `graph.py` 쪽은 고치고
+**자기가 방금 지운 경로를 말하는 이 문단은 남겼습니다.** 아랫 문단이 「위 문단은 «왜 조용한
+누락이 아닌지»의 설명」이라고 감싸 주지만, 그 문장 자체는 «지금도 그렇다»로 읽힙니다.
+🔴 부류: 「주석은 의도의 증거이지 동작의 증거가 아니다」 — 오늘 밤 이 부류가 여섯 번째입니다.
+
+### ⚠️ ③ 게이트의 수 — pg 표시 파일이 그 111 안에 있습니다
+
+```
+커밋   「2,150 passed / 0 failed over the 111 test files naming virtual_join, read-time or graph」
+실측   `server/tests/test_ledger_v2_pg.py` 는 virtual_join 을 «이름으로» 듭니다(:164 · :486)
+       그 파일은 :20 `pytestmark = pytest.mark.pg` -> conftest :639/:643 이 «건너뜁니다»
+⇒ 그 「0 failed」는 그 파일의 단언에 대해 «아무 말도 안 합니다». 상설: 두 수를 «같이» 적습니다
+   (평범한 런 N · `scripts/run_pg_tests.py` M)
+```
+⚠️ 이 라운드는 동작 변경이 «0» 이라 위험은 낮습니다. 다만 수의 «주어»가 넓습니다.
+
+### ⚠️ ④ 기록해 둘 것 — `as_join_rule` 의 제품 경로 소비자가 «둘 → 하나»
+
+```
+8bf1d549^  비시험 호출자 «둘»:  scripts/preview_unified_declarations.py:81 · virtual_join/config.py:628
+HEAD       «하나»:             scripts/preview_unified_declarations.py:81  (명령줄이 이름을 드는 갈래)
+```
+🔴 죽은 것이 «아닙니다» — 상설의 네 갈래 중 「명령줄이 이름을 드는 것」입니다. 다만 다음에
+「소비자 0」을 세는 사람이 이것을 «0 으로 읽을» 자리이므로, 4단계 이름 목록에 «상태»로 적어 두는 것이 낫습니다.
+
+### 확신도 · 못 잰 것
+
+```
+실행  ①②④ 전부 blob 대조(`8bf1d549^` vs HEAD). ③ 은 마커·conftest 실측
+🔴 못 잼  · 그 111 파일 목록을 제가 «재현하지 않았습니다» — pg 표시 파일이 «몇 개» 들어갔는지는 못 셉니다.
+          제가 잰 것은 「적어도 하나는 들어간다」입니다
+```
+
+> 🔴 「판정 대기」 **1** — ㉠ `rule_shape.py:466-471` 의 S-251 문단(지운 경로를 현재 시제로)
+> · 🔁 이월: Q-29 ①(447 ① 되돌리기) · Q-30 ㉠㉡ · ✅ Q-30 → 452
