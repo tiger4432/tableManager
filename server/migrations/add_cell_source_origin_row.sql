@@ -1,0 +1,73 @@
+-- [S-280 · 판정 434] Give a cell somewhere to record WHICH INPUT ROW its value came
+-- from, so that row's deletion can withdraw it.
+--
+-- WHY THE COLUMN EXISTS. A chain rule writes a cell by reading some other row. When that
+-- other row is deleted the cell keeps standing, because nothing anywhere says the two are
+-- connected: the deleted row cannot be re-read, and the product's delete doors
+-- (`crud.delete_rows_batch`, `crud.purge_map_rows`) stage a COLLAPSED outbox event that
+-- carries row ids and no values. So there is no way to work the connection out afterwards,
+-- and the only remaining place to record it is while the input row is still there - at the
+-- moment the cell is written. That is this column.
+--
+-- ⛔ NOT A SPELLING OF `source_name`, and the reason is already proven on this table by
+-- `confirmation_uid`: `crud.get_source_priority` is an exact-name dict returning 99 on a
+-- miss, so a source name that varies per input row can never be pre-registered and every
+-- stamped cell would sink below `chain_ingestion`. The stamp would demote the value it
+-- stamps. An origin supplies no value; it names the row the value was read FROM.
+--
+-- 🔴 THIS IS A PREREQUISITE FOR THE CODE, not an optimisation. `Base.metadata.create_all`
+-- returns early on an existing table and NEVER adds a column to one, so every database
+-- that already has `cell_sources` - production included - needs this file once. Until it
+-- runs, every write through `crud.apply_batch_updates` fails:
+--
+--   (psycopg2.errors.UndefinedColumn) column cell_sources.origin_row_id does not exist
+--
+-- A NEW database gets both the column and the index from `create_all` and needs nothing.
+-- Run this BEFORE deploying the code.
+--
+--   psql "$DATABASE_URL" -f server/migrations/add_cell_source_origin_row.sql
+--
+-- COST, and it is a property of PostgreSQL rather than a measurement of any one box:
+-- `ADD COLUMN ... NULL` with NO DEFAULT is metadata-only on PostgreSQL 11+, so it rewrites
+-- nothing and takes the same time on a table of 34 million rows as on an empty one. There
+-- is NO BACKFILL and there will not be one: NULL means 「this writer did not say」, which is
+-- the honest state of every row written before this file ran. A backfill could only invent
+-- an origin, and an invented origin retracts a cell on the strength of a row that never
+-- fed it.
+--
+-- THE INDEX IS PARTIAL, for the reason the sibling `idx_sources_by_confirmation` records
+-- with numbers: a FULL index on this table measured 5,164 MB against a 5,133 MB heap at 34M
+-- rows - 38 % of all index bytes - and was scanned once. Only a chain rule that stamps
+-- writes a non-NULL here, so the partial index carries a fraction of the rows and an
+-- ingest's writes do not touch it at all.
+--
+-- IT LEADS ON `origin_row_id` AND NOT ON `table_name`, unlike the other two indexes on this
+-- table, because the reader has nothing else: a retraction starts from a DELETE naming row
+-- ids, and the table those rows lived in is NOT the table being withdrawn from. An index
+-- led by `table_name` would serve a predicate nobody writes.
+--
+-- CONCURRENTLY, so this can run against the live stack without taking a write lock - a lock
+-- here stalls every ingestion lane. It cannot run inside a transaction block; `psql -f`
+-- runs each top-level statement in its own transaction, and a wrapping BEGIN does not.
+--
+-- If a CREATE INDEX CONCURRENTLY is interrupted it leaves an INVALID index behind that
+-- costs writes and serves no reads. Check afterwards:
+--
+--   SELECT c.relname FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid
+--   WHERE NOT i.indisvalid AND c.relname = 'idx_sources_by_origin';
+--
+-- and DROP + re-run any row it returns.
+--
+-- REVERSE. Dropping the index is free. Dropping the COLUMN discards every origin recorded
+-- since this ran, and those cannot be recomputed - the rows they name may be gone. Drop the
+-- index first and leave the column unless it is genuinely unwanted:
+--
+--   DROP INDEX CONCURRENTLY IF EXISTS idx_sources_by_origin;
+--   -- ALTER TABLE cell_sources DROP COLUMN IF EXISTS origin_row_id;   -- destroys notes
+
+ALTER TABLE cell_sources
+    ADD COLUMN IF NOT EXISTS origin_row_id varchar;
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sources_by_origin
+    ON cell_sources (origin_row_id)
+    WHERE origin_row_id IS NOT NULL;

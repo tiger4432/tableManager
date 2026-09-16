@@ -567,6 +567,12 @@ def execute_rule(db, rule: dict, row_ids: list, chunk_size: int = CHUNK_SIZE) ->
             left_row_id, right_row_id = row[0], row[1]
             out[left_row_id] = {
                 "matched": right_row_id is not None,
+                # 🔴 [S-280 · 판정 434] THE ROW THAT ANSWERED, KEPT RATHER THAN THROWN AWAY.
+                # This SELECT has always fetched `right.row_id` - it is what `matched` is
+                # computed from, one line up - and then dropped it. It is exactly the note
+                # a retraction needs once that row is deleted, so it costs nothing to keep
+                # and nothing new to fetch.
+                "origin_row_id": right_row_id,
                 "values": {c: v for c, v in zip(expose, row[2:])},
             }
     return out
@@ -809,7 +815,12 @@ def materialize_rows(db, rule: dict, row_ids: list) -> dict:
             continue
         items.append(schemas.GeneralUpdateItem(
             row_id=row_id, updates=cells,
-            source_name=rule["name"], updated_by=rule["name"]))
+            source_name=rule["name"], updated_by=rule["name"],
+            # 🔴 [S-280 · 판정 434] WHICH REFERENCE ROW THIS ANSWER CAME FROM. Only ever
+            # set on a MATCHED row - the `continue` above already left the unmatched ones
+            # unwritten, so there is no path here that stamps a cell with the absence of
+            # a row.
+            origin_row_id=answer.get("origin_row_id")))
     if not items:
         return {"rule": rule["name"], "written": 0, "refusal": None}
 
@@ -875,17 +886,30 @@ def _left_row_ids_for_key(db, rule: dict, key_values: list) -> list:
     return [row[0] for row in db.connection().execute(text(sql), params).fetchall()]
 
 
-def retract_rows(db, rule: dict, columns=None) -> dict:
-    """The reference row is GONE, so the join's layer goes with it.
+def retract_rows(db, rule: dict, row_ids, apply, columns=None) -> dict:
+    """The named target rows lost their reference row, so this rule's layer on them goes.
 
-    🔴 THE MECHANISM ALREADY EXISTED — `withdraw_source` retracts a named source's layer,
-    and the join layer is named for the rule. Nothing is written in its place:
-    「투영은 지워도 기록은 안 된다」, and inventing a `0` or a blank where a value used to be is
-    how a screen stops being able to tell absence from measurement.
+    🔴 [S-280 · 판정 433 ③] `row_ids` AND `apply` ARE REQUIRED, AND THAT IS THE REPAIR.
+    This function passed neither, and `withdraw_source` defaults both: `row_ids=None` means
+    the WHOLE table and `apply=False` means a dry run that rolls back. So a function named
+    `retract_rows` would have written nothing, and on the day somebody passed `apply` it
+    would have taken every row instead of the ones that lost their source. Defaults are
+    invisible at the call site — the same reason 판정 431 took the author default off the
+    deletion doors — so there are none here and an omission is a TypeError at the boundary.
+
+    ⚠️ THIS IS NOT THE ROUTE A DELETION TAKES. A deleted row is withdrawn by its own stamp
+    (`cell_layer.withdraw_by_origin`, S-280), which needs no rule at all and serves the
+    kinds a join key cannot reach. This one stays for a caller that already knows both the
+    rule and the target rows.
+
+    Nothing is written in the withdrawn cells' place: 「투영은 지워도 기록은 안 된다」, and
+    inventing a `0` or a blank where a value used to be is how a screen stops being able to
+    tell absence from measurement.
 
     🪦 It lived in `chain_replay` and was imported HERE, inside this function - the last seam
     of a four-module ring (S-211 ①, 판정 358). Retraction is not replay's behaviour; it is an
     operation both of us use, so it moved below both.
     """
     return cell_layer.withdraw_source(db, rule["left_table"], rule["name"],
-                           columns=list(columns or rule.get("expose") or ()))
+                                      columns=list(columns or rule.get("expose") or ()),
+                                      row_ids=list(row_ids), apply=apply)

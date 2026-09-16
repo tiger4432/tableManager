@@ -187,7 +187,8 @@ SYSTEM_TABLE_COLUMNS = {
     "audit_logs": ('business_key', 'column_name', 'id', 'new_value', 'old_value', 'row_id', 'source_name', 'table_name', 'timestamp', 'transaction_id', 'updated_by'),
     "cell_overwrites": ('column_name', 'id', 'is_overwrite', 'manual_priority_source', 'row_id', 'table_name', 'updated_at', 'updated_by'),
     # confirmation_uid: migrations/add_frame_confirmation.py
-    "cell_sources": ('column_name', 'confirmation_uid', 'id', 'ingested_at', 'row_id', 'source_name', 'table_name', 'updated_by', 'value'),
+    # origin_row_id:    migrations/add_cell_source_origin_row.sql  (S-280 · 판정 434)
+    "cell_sources": ('column_name', 'confirmation_uid', 'id', 'ingested_at', 'origin_row_id', 'row_id', 'source_name', 'table_name', 'updated_by', 'value'),
     # NEW TABLE, not a new column: `fefe2905` declared `RetroactiveRun` so every
     # request-type operation gets one run row and one way to stop it. A whole table IS
     # created by `create_all` on an existing database, which is why this entry needs no

@@ -2803,6 +2803,41 @@ def forget_followup_lines():
     _FOLLOWUP_SAID.clear()
 
 
+def _retract_what_those_rows_fed(db, table, row_ids):
+    """Withdraw the cells these deleted rows were the source of, and NAME what cannot be.
+
+    🔴 [S-280 · 판정 435 ④] THREE THINGS THAT ALREADY EXISTED. The listener is
+    `ledger_followup.enqueue`, which sits ABOVE the trigger filter and takes DELETE
+    (ruling 129 ㉤); the pacing is this drain, which already runs off the request path; the
+    withdrawal is `cell_layer.withdraw_source`, reached with the arguments that make it act.
+    So the CREATE/EDIT gate five places assert on is not touched — the ruling behind it
+    (endless cascade) stays intact and DELETE never enters the rule loop.
+
+    🔴 [판정 434 ④] AND THE KINDS THAT CANNOT BE REVERTED ARE NAMED. A rule whose kind does
+    not stamp its origin leaves cells this cannot find, and answering that with a quiet zero
+    is the picture this round exists to end. The seat says which, and it says it per rule.
+
+    ⚠️ CONTAINED, like its neighbour: a failure here must not cost the ledger follow-up that
+    already succeeded, nor propagate into the drain loop.
+    """
+    from chain import cell_layer
+
+    try:
+        stats = cell_layer.withdraw_by_origin(db, row_ids, apply=True)
+        logger.info("[ChainRetract] table=%s deleted_rows=%d groups=%d cells_withdrawn=%d "
+                    "protected_skipped=%d", table, len(row_ids), stats.get("groups", 0),
+                    stats.get("cells_withdrawn", 0), stats.get("protected_skipped", 0))
+        for rule in _followup_builtin_rules():
+            if rule.get("trigger_table") != table:
+                continue
+            refusal = rule_run.retraction_refusal(rule)
+            if refusal:
+                logger.warning("[ChainRetract] %s", refusal)
+    except Exception as err:                                       # noqa: BLE001
+        logger.error("[ChainRetract] retraction failed for table %s "
+                     "(the ledger follow-up itself is unaffected): %s", table, err)
+
+
 def _run_builtin_followups(db, done):
     """Route this follow-up batch to every `builtin:` kind whose rule watches its table.
 
@@ -2827,9 +2862,15 @@ def _run_builtin_followups(db, done):
     table, row_ids = done.get("table"), done.get("row_ids")
     if not table or not row_ids:
         return
-    # ⚠️ A DELETE FOLLOWS NO VALUES. The rows are gone; a join's answer for them is
-    # retracted by `retract_rows`, not recomputed from a row that no longer resolves.
+    # ⚠️ A DELETE FOLLOWS NO VALUES — the rows are gone, so nothing here recomputes.
+    #
+    # 🪦 [S-280 · 판정 433 ⑤㉠] THIS COMMENT USED TO SAY the answer 「is retracted by
+    # `retract_rows`」, and that was false on the day it was written: `retract_rows` had no
+    # caller, passed neither `row_ids` nor `apply`, and so would have written nothing and
+    # aimed at the whole table if it had. A sentence naming a mechanism that does not run
+    # is worse than silence — it is what a diagnosis quotes.
     if done.get("event_type") == "DELETE":
+        _retract_what_those_rows_fed(db, table, row_ids)
         return
     try:
         # 🔴 [S-249 ⓒ] THE LAP IS A HOP. `request_chain_depth` is set in exactly one place -

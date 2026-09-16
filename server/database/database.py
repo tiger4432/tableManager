@@ -193,11 +193,21 @@ def auto_stage_database_outbox(session, flush_context, instances):
 
     for obj in session.deleted:
         if isinstance(obj, dynamic_classes):
-            # 🔴 DELETE NEVER COLLAPSES, in either mode. A collapsed event is a
-            # POINTER and a deleted row cannot be re-read, so a collapsed DELETE
-            # would name rows nobody can ever resolve. The volume this round
-            # exists for is CREATE/EDIT (an ingested file is upserts); DELETEs are
-            # shell-row cleanups, orders of magnitude fewer.
+            # 🔴 A DELETE THROUGH *THIS HOOK* NEVER COLLAPSES. A collapsed event is a
+            # POINTER and a deleted row cannot be re-read, so a collapsed DELETE would
+            # name rows nobody can ever resolve. The volume this round exists for is
+            # CREATE/EDIT (an ingested file is upserts); DELETEs reaching the ORM hook
+            # are shell-row cleanups, orders of magnitude fewer.
+            #
+            # ⛔ [S-280 · 판정 436 ③] AND THIS SENTENCE USED TO READ 「in either mode」,
+            # WHICH IS FALSE OF THE PRODUCT. The doors a person actually deletes through
+            # do not pass here at all - `crud.delete_rows_batch` and `crud.purge_map_rows`
+            # both call `stage_collapsed_event(db, "DELETE", ...)` directly, and the
+            # single-row route folds into the batch one. So the deleted row's VALUES do
+            # not travel on the event, and 「the row can be re-read later」 is not available
+            # to anything downstream: that is why a cell records its origin while the row
+            # is still there (`cell_sources.origin_row_id`) instead of being reconstructed
+            # afterwards. The claim was true of this hook and read as true of the system.
             stage_event(session, "DELETE", obj.__table__.name, obj)
 
     for (table_name, event_type), row_ids in pending_chunks.items():

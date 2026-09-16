@@ -7709,3 +7709,255 @@ audit_logs | dt_log | <탐침행> | ROW_UPDATE
 📌 **이 채널의 미답 질문: «없음».**
 
 > ⚠️ **[총괄 정정] 바로 위 ⑤ 의 산출물 파일 이름이 한 번 «비어» 있었습니다** — 제가 백틱이 든 본문을 따옴표 없는 heredoc 으로 써서 셸이 그 안을 «실행»했습니다. 파일은 `task/ontology_application_report.md` 입니다.
+
+---
+
+> 🔴🔴 **[09-16 22:5x QA] 판정 438 — 독립 둘째 계수. `server/virtual_join/**` 제거 모집단.**
+> 판정: **NO-GO (오늘 삭제 불가)** — 갈래 ㉠(읽기 경로)가 «0 이 아니라 여섯»이고, `into.read` 는 «축»입니다.
+> ⚠️ 이 계수는 구현자 보고를 «읽기 전»에 냈습니다. 대조는 §7.
+
+## ① 무엇이 사라지나 — 덩치와 «내보내는 이름»
+
+```
+추적 파일   5     __init__.py(0줄) · config.py(1,115) · executor.py(979) · refusal.py(75) · unique_key.py(480)
+줄 합계     2,649  (HEAD 기준. 🔴 executor.py 는 «지금 미커밋» +75/-11 — 작업 트리가 더럽습니다)
+최상위 이름 (AST, 밑줄 제외 = 밖에서 부를 수 있는 것)
+  config.py     함수 22 · 상수 7   (INDEX_PREFIX · JOIN_MAPPER · JOIN_PREFIX · VIRTUAL_JOIN_RULES_PATH ·
+                                   MAX_EXPOSE_COLUMNS · DEFAULT_UNRESOLVED_LABEL · logger)
+  executor.py   함수 17 · 상수 5   (SOURCE_NAME="virtual_join" · CHUNK_SIZE · RULES_CACHE_TTL ·
+                                   KIND_COLLIDE · KIND_VIRTUAL_ONLY)
+  refusal.py    함수 1  · 상수 6   (CODE_NO_UNIQUE_INDEX · CODE_FANOUT_DECLARED · CODE_SHAPE ·
+                                   CODE_NO_REWRITE_CAP · CODE_NO_LEFT_INDEX · CODE_LEAD)
+  unique_key.py 함수 12 · 상수 3   (MAX_REPORTED_DUPLICATES · MAX_PLANNED_KEYS)
+```
+🔴 **`SOURCE_NAME = "virtual_join"` 은 «셀 소스 어휘»입니다**(executor.py:86, 자기 주석: 「`cell_sources.source_name`이 쓰는 것과 같은 문자열 공간」). 클라가 이 문자열을 읽습니다(`grid.js:1068`). **표에 이미 써진 층은 삭제 대상이 아닙니다**(총괄 ⑤ 그대로) — 다만 `materialize_rows` 는 층 이름을 `SOURCE_NAME` 이 아니라 **규칙 이름**으로 씁니다(`executor.py:874 source_name=rule["name"]`). 즉 **남는 데이터의 층 이름이 «둘»입니다**: 읽기 시점 합성은 `virtual_join`, 물질화된 쓰기는 `<규칙 이름>`. 계획서에 이 둘을 갈라 적으십시오.
+
+## ② 🔴 누가 부르나 — 네 갈래 분류 (합계 아님)
+
+**술어:** `git ls-files '*.py'` 전수 → **AST** 로 `import virtual_join*` / `from virtual_join* import` 만 셌습니다(문자열 grep 아님).
+**결과:** import 문 **98** / 파일 **44**. 그중 시험·계약 **33**, 제품 **11**.
+
+### ㉠ 읽기 경로에서 부른다 — **여섯 자리** (🔴 0 이 아닙니다)
+```
+server/main.py:1081     fetch_and_merge_metadata   executor.attach(db, table, rows)
+                        <- 그리드 데이터 라우트 «본체». 부르는 자리 main.py:2438 · :3146
+server/main.py:1669     (검색/필터 메모 클래스 __init__)  executor.exposed_columns + resolved_expression
+                        <- `?filters=` · `?q=` 가 가상 컬럼을 이름 댈 때 이 자리가 답합니다
+server/main.py:2789     export_table_csv           executor.announced_columns
+                        <- CSV 추출의 가상 컬럼 «머리글 순서»
+server/main.py:3041     get_table_schema           executor.resolved_column_announcements + announced_columns
+                        <- 🔴 «경계 계약». `/schema` 의 `virtual_columns` · `join_resolved_columns`
+server/main.py:6005     /admin/config/virtual-join/verify  config.verification_report
+server/dt_map_derivation.py:247  join_rule        config.load_verified_rules
+                        <- 🔴 «맵퍼가 지나는 자리». 아래 ㉠-bis
+```
+🔴 **㉠-bis — 이것이 이 계수에서 제일 큰 발견입니다.** `server/mapper_sdk.py:418-455` 의 `MAPPER_SURFACE` 는 **「소유자의 라이브 맵퍼가 «오늘 실제로 import 하는 것»을 «재서» 적은 계약」**이라고 자기 주석이 적어 두었습니다. 그 표에 **`join_rule` · `join_pairs` · `derive_cells` · `CONFIRMED_JOIN_RULE` · `FRAME_JOIN_RULE`** 이 있고, 전부 `dt_map_derivation` 으로 갑니다. 그리고 `dt_map_derivation.join_rule` → `virtual_join.config.load_verified_rules` 입니다.
+**추적되는 증거:** `server/mappers/dt_map_mapper.py.sample`(git 추적) :142 `derivation.join_rule(db, rule_name)` · :165 `derivation.join_pairs(vj)` · :192.
+⇒ **소유자가 「이관했다」고 하신 «통합 맵퍼»가 바로 그 자리에서 `virtual_join.config` 를 지납니다.** 제거하면 그 맵퍼가 호출 시점에 ImportError 로 죽습니다. 라이브 `server/mappers/*.py` 는 gitignore 라 **저는 못 잽니다**(§6) — 그러나 «.sample 이 추적 파일»이므로 이 모양은 박스 측정이 아니라 저장소 증거입니다.
+
+### ㉡ 체인이 «쓰기»로 부른다 — 네 자리. 🔴 그런데 «통합 join 이 여기에 의존합니다»
+```
+server/chain/builtins.py:84   _run_join           executor.on_target_rows_changed / on_reference_rows_changed
+server/chain/builtins.py:331  _install (모듈 수준!) register_builtin(vjc.JOIN_MAPPER, _run_join, ...)
+server/chain/builtins.py:37   synthesize_chain_rules  virtual_join.config.synthesized_join_chain_rules
+server/chain/builtins.py:60   written_in          vjc.JOIN_MAPPER · VIRTUAL_JOIN_RULES_PATH
+```
+🔴 **`_install()` 은 «모듈 최상단에서 실행»됩니다(builtins.py:349).** `import virtual_join.config` 가 거기 있으므로, 패키지를 지우면 **`chain.builtins` 의 import 자체가 죽고 `builtin:join_into` 와 `builtin:auto_confirm` 의 «등록도 같이 죽습니다»**. 지우는 순서가 이 한 줄에 걸립니다.
+
+🔴🔴 **그리고 ㉡ 에 «통합 조인 전용» 의존이 둘 있습니다 — 이것이 「배관이니 같이 지운다」를 깨뜨립니다:**
+```
+server/chain/builtins.py:161-179  ensure_declared_unique_keys(db, rules)
+    호출자: chain/ingestion_worker.py:2097 (체인 규칙 «로드 시점»)
+    자기 독스트링: 「⚠️ THE SHELL CALLS IT, NOT `join_into`. 그 모듈은 virtual_join 을 import 하면
+      안 되므로(자기 경계 시험) 오른쪽 표·컬럼·folds 를 «넘겨 주고», 이 좌석이 짓는다」
+    => 🔴 «통합 선언(`into.table`)의 `key.unique` 인덱스를 세우는 자리»가
+       `virtual_join.unique_key.ensure_once` + `virtual_join.config.required_index_name` 입니다
+server/virtual_join/config.py:987-1001  load_verified_rules 안의 «회수» 좌석
+    unique_key.retract_unrequired_once(db, required)
+    required = 읽기 시점 조인 ∪ chain_builtins.declared_unique_index_names(...)  <- 통합 조인 «포함»
+    => 🔴 `uq_vjoin_*` 를 «걷어내는 유일한 자리»입니다. S-248 이 그것 때문에 생겼습니다:
+       「조인이 거절·이관·꺼지면 아무도 안 걷어냈다 -> 23505 on every insert,
+        the group failed permanently on every retry」(config.py:975-979)
+```
+⇒ **제거가 그 회수 좌석을 같이 지우면, 이미 서 있는 `uq_vjoin_*` 인덱스를 «영원히 아무도 안 걷어냅니다».** S-248 이 고친 장애가 «되돌아오는» 모양이고, 「이관했다」는 소유자 문장이 정확히 그 좌석이 겨냥한 상황입니다.
+⚠️ `unique_key.retract_unrequired_once` 의 제품 호출자는 **그 한 자리뿐**입니다(나머지는 시험). 「호출자 0」이 아니라 **「호출자 하나, 그리고 그게 지워질 파일 안에 있다」**입니다.
+
+### ㉢ 설정·로더·작성 폼만 쓴다 — 실행이 아니라 «문법»
+```
+server/chain/rule_shape.py:88     declared_kind        vjc.JOIN_MAPPER 로 「join」이라 답함
+server/chain/graph.py:246·329     _vjoin_edges·chain_graph  어드민 체인 그래프 그림
+server/config_resolve_report.py:62-63  🔴 «모듈 최상단» import (vjc + refusal.virtual_join_detail)
+                                  -> /admin/config/resolve 가 이 모듈을 부르면 import 에서 터집니다
+server/database/config_watcher.py:222  search_columns 판정 때 가상 컬럼을 «아는 것»에 더함
+server/runtime/system_reload.py:53     executor.reset_cache() — 핫리로드 훅
+server/migrations/add_vjoin_null_safe_indexes.py:41·55·89   CLI (명령줄이 이름을 듭니다 — 「호출자 0」 아님)
+server/scripts/check_one_row_one_fact.py:38-39               CLI
+server/ledger/**  (import «없음», 문법만):  setup_bundle.py:72 OPTIONAL_SECTIONS=("virtual_joins",) ·
+   :815·:1149 _validate_virtual_joins · config_explorer.py:125 ISOLATION_ROOTS · :886·:907-912 ·
+   config_authoring.py:474·1144·1173 inherit_virtual_join_rules · ledger_skeleton.json:597·827
+   => 🔴 «선언 문법이 세 번째 집에도 있습니다»: virtual_join_rules.json · chain_rules.json(into.read) ·
+      «원장 setup bundle 의 virtual_joins 절». 제거는 이 셋을 다 닫아야 합니다
+server/verified_join_contract.py  (import «없음» — 반대 방향입니다)
+   virtual_join/config.py:102 와 executor.py:80 이 «이것을» import 합니다. 그런데
+   server/ledger/{setup,setup_registry,source_preparation}.py 가 `VerifiedJoinDescriptor` 를 씁니다
+   그 디스크립터는 :211-222 의 능력 게이트 때문에 «`load_verified_rules` 의 프레임 안에서만» 발행됩니다
+   => 패키지를 지우면 그 타입은 «영원히 발행 불가»가 되고, 원장 쪽은 「항상 빈 레지스트리」가 됩니다
+   ⚠️ 다만 제품에서 `verified_joins=` 에 값을 «넣는» 자리는 오늘 «없습니다»(setup_registry.py:819 내부 배선뿐)
+```
+
+### ㉣ 시험만 쓴다 — 코드와 «같은 커밋»에 죽는다
+```
+파일 33 (시험 31 + contracts/blank_predicate 1 + tests/support/ontology_explorer_sample.py 1)
+그 31개 시험 파일의 «수집된 시험» = 556  (pytest --collect-only, conda assy_manager)
+  그중 이름이 가상 조인인 핵심 일곱 파일 = 132
+🔴 556 은 «파일 단위 모집단»입니다. 그중 몇이 가상 조인을 «단언»하는지는 «안 셌습니다» —
+   부분집합을 전체로 적지 않기 위해 여기 그렇게 적습니다
+```
+
+## ③ 🔴 답: `into.read` 는 **«축»입니다. 배관이 아닙니다.**
+
+**한 문장:** 통합 선언(`chain_rules.json`)이 `into: {read: true}` 로 읽기 시점 조인을 «선언할 수 있고», 그것을 **실행하는 코드는 `server/virtual_join/**` «하나»뿐**이며, 통합 맵퍼 쪽(`builtin:join_into`)에는 **대응이 없습니다**(그것은 `into.table` 에 «씁니다»).
+
+**소비자 사슬(총괄이 요구한 «실소비자» — rule_shape 선언 자리 말고):**
+```
+chain_rules.json 의 into.read
+  -> chain/rule_shape.py:447-457  「a READ-TIME join ... 체인 규칙이 아니다」로 «빠져나감» ([] 반환)
+  -> virtual_join/config.py:661 _read_time_joins_from_unified   <- 🔴 실소비자
+     (`ingestion_worker.read_rules_document()` 를 직접 읽어 into.read 만 골라냄)
+  -> virtual_join/config.py:656 load_virtual_join_rules 가 «같은 목록»에 합침
+  -> load_verified_rules -> executor.attach / exposed_columns / announced_columns
+  -> main.py:1081 · 1669 · 2789 · 3041   (= ㉠ 읽기 경로)
+```
+**증거의 나이:** 이 능력은 **어제**(`e175d3f8`, 2026-09-15, 「a read-time join can be declared in the unified file」) 착지했고, 전용 시험 `server/tests/test_a_read_time_join_can_be_declared_in_the_unified_file.py` 가 있습니다. 판정 438 ④ 가 걱정한 「축과 값을 같이 죽인다」의 **정확한 모양**입니다 — 통합 문법에 «칸이 있고», 그 칸의 실행기만 지워집니다. 그러면 `rule_shape.py:454` 의 가지는 남아서 **그 선언을 «거절도 실행도 안 하고 조용히 통과»시킵니다**(빈 목록 + 안내문). 운영자가 적은 선언이 오류 없이 아무것도 안 하는 상태 — 이 저장소가 「없는 것/0인 것」이라 부르는 바로 그 병입니다.
+
+🔴 **총괄에게 올립니다:** 소유자 문장은 「운영 가상 조인을 **이관했다**」이지 「읽기 시점 조인이라는 **능력을 버린다**」가 아닙니다. 둘은 다른 말이고, 오늘 코드는 후자를 «어제 새로 지었습니다».
+
+## ④ 다리 — `synthesized_join_chain_rules` 를 끊으면 같이 끊기는 것
+
+```
+config.py:1076 synthesized_join_chain_rules(path, known_tables)
+   -> :1092 load_virtual_join_rules(...)          <- 총괄이 짚은 :1093-1094, «맞습니다»
+   -> `materialize: true` 인 것만 체인 규칙으로 발행
+      {name: "virtual_join:"+이름, trigger_table/target_table = left_table,
+       mapper: "builtin:join", follow_up: True, params: 정규화된 규칙 «전체»}
+호출자 하나: chain/builtins.py:37 synthesize_chain_rules  (enrichment 절반과 «같은 목록»에 합침)
+```
+**끊으면 같이 끊기는 것 (전수):**
+```
+① `builtin:join` 종류의 «생산»이 0 이 됩니다 — 그 이름을 쓰는 규칙이 더는 «안 만들어집니다»
+② builtins.py:331 의 register_builtin(vjc.JOIN_MAPPER, ...) 도 같이 나갑니다
+   🔴 그러면 «이름 `builtin:join` 이 빈 자리»가 됩니다 — join_into 가 그 id 를 못 쓴 사유가 사라집니다
+      (join_into.py:4-9 머리글이 통째로 낡습니다. 같은 커밋에 고치지 않으면 내일 부류 ㉣)
+③ builtins.py:60 written_in 의 «조인 절반»이 죽습니다 — 세 파일 한 네임스페이스 거절문(S-234)이
+   「이 이름이 어느 파일에서 왔나」에 답하던 칸입니다. enrichment 만 남으면 join 이름은 «오답»을 받습니다
+④ 🔴 builtins.py:145-179 ensure_declared_unique_keys «자체»가 못 섭니다
+   (vjc.required_index_name + unique_key.ensure_once 를 지웁니다)
+   -> ingestion_worker.py:2097 의 로드 시점 인덱스 보증이 «통합 조인에 대해서도» 사라집니다
+⑤ 🔴 config.py:987-1001 의 회수(retract_unrequired_once)가 사라집니다 — ②㉡ 참조. S-248 회귀
+⑥ builtins.py:225-254 declared_unique_index_names 는 «남지만» 부르는 쪽이 0 이 됩니다(㉣ 잔해)
+⑦ rule_shape.py:88 declared_kind 의 `vjc.JOIN_MAPPER` 가지 -> 「join」의 «두 철자» 중 하나가 사라집니다
+   (join_into.JOIN_INTO_MAPPER 만 남음. 이건 오히려 「문 가르기」가 «닫히는» 쪽입니다)
+```
+
+## ⑤ 경계 계약 — 클라가 «이미» 읽고 있습니다
+```
+/schema 의 virtual_columns          <- executor.announced_columns
+/schema 의 join_resolved_columns    <- executor.resolved_column_announcements
+읽는 쪽 (추적):
+  client2/src/api.js:241·247-248   state.currentVirtualColumns · currentJoinResolvedColumns
+  client2/src/state.js:12·27·182·210
+  client2/src/grid.js:711·727·742·952·962·983·1068
+  client2/src/join_verification.js:10  <- /admin/config/virtual-join/verify 의 화면
+셀 모양 {value, sources, priority_source} 의 `priority_source: "virtual_join"` 도 클라가 읽습니다
+```
+⇒ 제거하면 이 둘이 «영구히 빈 배열»이 됩니다. 클라 코드는 «오류 없이» 계속 돌고 **아무 컬럼도 안 그립니다** — 조용한 기능 소멸입니다. 클라 쪽도 같은 라운드에 닫아야 합니다.
+
+## ⑥ 🔴 제가 «못 잰» 것 — 이게 없으면 보고가 반쪽입니다
+
+```
+㉠ 라이브 선언        server/config/virtual_join_rules.json · chain_rules.json · table_config.json
+                     `git check-ignore` = BOX 전부. 🔴 «몇 개 선언이 살아 있나»를 못 잽니다.
+                     파일이 «있다»는 것만 말할 수 있고, 그 안의 수는 운영에 대해 아무 말도 안 합니다
+㉡ 라이브 맵퍼        server/mappers/*.py = BOX. `join_rule`/`join_pairs`/`derive_cells` 를
+                     «실제로 부르는» 맵퍼가 몇인지 «못 셉니다». 제가 댄 것은 추적되는 `.sample` 과
+                     `mapper_sdk.MAPPER_SURFACE`(스스로 「측정해서 적은 계약」이라 선언) «둘»입니다
+㉢ 운영 DB 의 잔존물   이미 서 있는 `uq_vjoin_*` 인덱스가 몇 개인가 · `SOURCE_NAME="virtual_join"` 층과
+                     `source_name=<규칙 이름>` 층이 몇 행에 남아 있는가 — «운영은 못 재는» 것입니다
+㉣ 시험의 «단언» 단위  556 은 «파일 단위». 가상 조인을 실제로 단언하는 시험 수는 안 셌습니다
+㉤ 전체 스위트        🔴 «안 돌렸습니다». 작업 트리가 더럽습니다 —
+                     `server/virtual_join/executor.py`(+75/-11) · `server/chain/join_into.py` 미커밋 ·
+                     `server/tests/test_one_seat_decides_whether_a_key_fans_out.py` 미추적.
+                     지금 스위트를 돌리면 «남의 진행 중 상태»를 이 라운드의 수로 적게 됩니다
+㉥ 동적 참조          `importlib`/`getattr` 로 문자열 모듈명을 푸는 자리는 AST 로 «안 셌습니다».
+                     `git grep importlib` 를 이 주제로 안 돌렸습니다 — 계획 전에 한 번 필요합니다
+㉦ CODE_MAP 앵커      🔴 `docs/architecture/CODE_MAP.md` 가 스스로 적어 두었습니다:
+                     「`server/chain/**` · `server/database/**` · `server/virtual_join/**` 절은
+                      «구현자 진행 중이라 미동기화»」. 이 영역의 코드맵 앵커는 «믿을 수 없습니다».
+                     그래서 저는 코드맵을 지도로 쓰지 않고 AST 전수로 갔습니다
+```
+
+## ⑦ 구현자 보고와의 대조 — «아직 없습니다»
+```
+task/scoped_redo_report.md 최종 수정  09-16 22:22   (판정 434·435·436 착지 보고, 원장 도장 건)
+판정 438 게시                         09-16 22:33
+=> 구현자의 «이번 계수»는 그 파일에 아직 안 올라왔습니다. 대조할 상대 수가 없습니다
+```
+**대신 «총괄이 스스로 적은 하한»과 어긋난 자리를 적습니다 (판정 438 ③):**
+```
+총괄        「제품 import «스물» 파일 (시험 제외)」
+제 계수      «열하나». AST 로 실제 import 하는 비시험 파일:
+             chain/builtins · chain/graph · chain/rule_shape · config_resolve_report ·
+             database/config_watcher · database/crud · dt_map_derivation · main ·
+             migrations/add_vjoin_null_safe_indexes · runtime/system_reload ·
+             scripts/check_one_row_one_fact
+             🔴 「스물」은 제가 시도한 어느 술어로도 안 나옵니다.
+                문자열로 «이름만 대는» 비시험 .py 까지 세면 «서른»입니다(주석·독스트링 포함).
+                시험 포함 전체 importer 는 «마흔넷». 20 은 그 사이 어디에도 안 맞습니다
+             ⇒ 어긋난 자리이므로 적습니다. 총괄의 수가 「하한」이라 하셨으니 방향은 다르지 않지만,
+               «11 대 30» 의 차이가 갈래 분류를 통째로 바꿉니다 — 19 개는 «주석»입니다
+총괄 수상 셋의 판정:
+  server/column_filter.py        🔵 «주석뿐». :49 · :122 «두 줄 다 독스트링/주석»이고 import 0.
+                                 이 모듈은 표현식을 «받는» 쪽이라 제거해도 «안 터집니다»
+  server/database/crud.py        🟡 «쓰기 경로». 네 자리 전부 쓰기입니다 —
+                                 _virtual_join_right_keys(:3948, 중복 거절) ·
+                                 _stored_join_key_owners(:4023, 키 식) ·
+                                 refuse_virtual_join_columns(:4225, 쓰기 거절) ·
+                                 _say_the_constraint_refused_this_batch(:4404, 거절 문장)
+                                 => ㉠ 이 «아닙니다». 다만 지우면 «가상 컬럼 쓰기 거절이 사라져»
+                                    운영자가 조인 컬럼에 값을 쓸 수 «있게» 됩니다(동작 변경)
+  server/dt_map_derivation.py    🔴 «㉠ 이고, 셋 중 제일 심각합니다». :247 load_verified_rules →
+                                 mapper_sdk.MAPPER_SURFACE 를 통해 «소유자 라이브 맵퍼»가 지납니다
+```
+
+## ⑧ 판정과 권고
+
+```
+🔴 NO-GO (오늘 삭제 불가). 근거 «셋», 각각 총괄의 멈춤 조건에 정확히 걸립니다:
+  ① 갈래 ㉠ 이 «0 이 아닙니다» — 여섯 (main 넷 + 어드민 라우트 하나 + dt_map_derivation 하나).
+     판정 438 보강 ③: 「0 이 아니면 그건 읽기 동작 변경이라 총괄이 소유자께 올립니다」
+  ② `into.read` 는 «축»입니다 — 통합 선언에 «대응이 없습니다».
+     판정 438 ④: 「없으면 그것이 축이고, 지우기 전에 총괄에게 올리십시오」
+  ③ «통합 조인 자신»이 이 패키지에 의존합니다 — key.unique 인덱스를 «세우는» 자리와
+     «걷어내는» 자리가 둘 다 여기 있습니다(builtins:161-179 · config:987-1001).
+     즉 「가상 조인은 배관이고 통합 맵퍼가 대체한다」는 전제가 «오늘 코드에서 거짓»입니다
+```
+**소유자께 올릴 물음 «한 줄»(무엇을 알려주시면 판정되는지):**
+> 「운영에서 조인 컬럼을 «표에 써서» 쓰십니까(통합 join = into.table), 아니면 «읽을 때만 보이면» 됩니까(into.read)? 후자가 하나라도 있으면 읽기 시점 조인은 남아야 합니다.」
+
+**만약 그래도 진행한다면 — 순서 (지우면 터지는 자리부터 «역순»)**
+```
+0. 🔴 먼저 «작업 트리를 비웁니다». 미커밋 executor.py/join_into.py 위에서 지우면 무엇이 누구 것인지 못 가립니다
+1. `into.read` 능력의 «거처»를 먼저 정합니다 — 남기면 그 코드가 삭제 «밖»입니다
+2. key.unique 의 «건설/회수» 좌석을 virtual_join 밖으로 옮깁니다 (unique_key.py + config 의 인덱스 넷)
+   -> 이걸 안 옮기면 S-248 장애가 되돌아옵니다
+3. 읽기 경로 여섯을 닫습니다 (main 넷 + 어드민 라우트 + dt_map_derivation)
+   -> /schema 의 두 칸을 «비우는» 것이 아니라 «없애는» 것인지 결정 필요 (클라 계약)
+4. 체인 다리(builtins 넷) · 모듈 최상단 `_install()` 의 import
+5. ㉢ 문법 셋(virtual_join_rules.json 로더 · chain_rules.json into.read · 원장 setup bundle 의 virtual_joins 절)
+6. 시험 31 · contracts 1 · 문서 «같은 커밋»
+🔴 되돌리는 법 한 줄: 착지 «전» 해시를 계획서에 적고 `git revert -m` 가 아니라
+   «한 커밋»으로 지웁니다 — 2,649줄이 여러 커밋에 흩어지면 되돌릴 때 그 사이가 거짓입니다
+```
+⚠️ **이미 표에 써진 칸은 지우지 않습니다** — 「투영은 지워도 «기록»은 안 된다」. 남는 층은 «두 이름»입니다(§1).
+
+📌 **이 계수의 미답 질문: «둘»** — ⓐ `into.read` 를 능력으로 남기나(소유자 판정 필요) ⓑ key.unique 건설/회수 좌석을 어디로 옮기나(총괄 판정).

@@ -184,7 +184,11 @@ def _answer(db, spec, left_model, right_model, where, left_table=""):
                       == _folded(getattr(right_model, right_col), fold)
                       for left_col, right_col, fold in _pairs(spec, left_table)])
     columns = [left_model.row_id.label("row_id"),
-               (right_model.row_id.isnot(None)).label("matched")]
+               (right_model.row_id.isnot(None)).label("matched"),
+               # 🔴 [S-280 · 판정 434] THE ROW THAT ANSWERED. `matched` above is already
+               # computed FROM this column, so the join reads it either way; naming it
+               # keeps the note a retraction aims with instead of collapsing it to a bool.
+               right_model.row_id.label("origin_row_id")]
     columns.extend(getattr(right_model, right_col).label("take_%d" % index)
                    for index, (right_col, _into) in enumerate(_takes(spec)))
     stmt = select(*columns).select_from(
@@ -236,6 +240,9 @@ def _write(db, left_table: str, rows, spec, source_name: str) -> int:
             row_id=mapping["row_id"],
             updates={into_col: mapping["take_%d" % index]
                      for index, (_right, into_col) in enumerate(takes)},
+            # 🔴 [S-280 · 판정 434] Only matched rows reach here (the `continue` above), so
+            # this is never the id of a row that did not answer.
+            origin_row_id=mapping["origin_row_id"],
             # 🔴 THE LAYER IS THE CHAIN'S, THE AUTHOR IS THE RULE'S (owner 2026-09-15, 「핑퐁은
             # 제대로 고쳐」). The first cut put the rule name in the LAYER so an operator could
             # see who wrote the cell - and that name was also what the worker's wake filter

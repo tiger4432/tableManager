@@ -7,6 +7,41 @@
 
 ## 0. 지금 순서 «셋» (2026-09-16 10:5x 기준 — 이 순서대로 하시면 됩니다)
 
+---
+
+### 🔴🔴 ⓞ 재기동 «전»에 «먼저» — 마이그레이션 하나 (2026-09-16 22:2x 추가)
+
+**pull 하신 코드는 `cell_sources` 에 컬럼 하나를 «씁니다». 그 컬럼이 없는 데이터베이스에서는
+모든 쓰기가 죽습니다** — `create_all` 은 «이미 있는 표»에 컬럼을 절대 안 더합니다.
+
+```bash
+psql "$DATABASE_URL" -f server/migrations/add_cell_source_origin_row.sql
+```
+
+```
+안 돌리고 재기동하면   (psycopg2.errors.UndefinedColumn) column cell_sources.origin_row_id does not exist
+                    -> 인제션·체인·그리드 편집이 «전부» 멈춥니다
+비용                ADD COLUMN ... NULL 은 PostgreSQL 11+ 에서 «메타데이터만» 바꿉니다 — 표를 다시 안 씁니다.
+                    행이 3천만이든 0이든 같습니다. 백필 «없습니다»
+인덱스              CONCURRENTLY 라 «잠그지 않습니다». 중간에 끊기면 무효 인덱스가 남으니 그때만 확인:
+                    SELECT c.relname FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid
+                    WHERE NOT i.indisvalid AND c.relname='idx_sources_by_origin';
+새 DB               아무것도 안 하셔도 됩니다
+```
+**무엇이 좋아지나:** 체인이 «다른 표의 행을 읽어» 채운 칸이, 그 «읽힌 행이 지워지면» 같이 사라집니다.
+지금까지는 남아 있었고, 남은 값은 «측정한 값»과 화면에서 구별되지 않았습니다.
+
+### 🔵 재기동 뒤 로그에서 볼 줄 (이번 라운드)
+
+```
+[ChainRetract] table=<표> deleted_rows=N groups=G cells_withdrawn=C protected_skipped=P
+```
+지워진 행이 «먹이던» 칸 C 개를 거뒀다는 뜻입니다. `cells_withdrawn=0` 은 정상입니다 —
+그 행이 아무 칸도 안 먹였거나, 도장이 생기기 «전»에 쓰인 칸이라는 뜻입니다(소급 없음).
+
+
+---
+
 ### ① pull + 재기동 — 🔴 **사흘 끌던 인제션 멈춤이 여기서 풀립니다**
 
 그 산출물이 안 들어간 이유는 **선인출 진단기**였습니다. 청크가 느릴 때(기본 1.0 초 초과) 실행 계획을 한 번 찍어 주는 자리인데, 그것이 **이미 닫힌 세션의 객체를 다시 읽으려다** 던졌고 그 예외가 **파일을 통째로** 데려갔습니다. 그래서 ⓐ 그 산출물 하나만, ⓑ 매번 같은 자리에서, ⓒ `__force__` 로도 안 됐습니다 — 방아쇠가 파일이 아니라 «걸린 시간»이었기 때문입니다.

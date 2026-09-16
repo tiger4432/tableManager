@@ -44967,3 +44967,188 @@ builtin:join              -> rule["join_key"][i]["right"] + right_folds
 🔵 그리고 층 문제는 «없습니다» — crud 는 이미 virtual_join 을 읽습니다(crud.py:4001 · :4382 · :3926 · :4203)
 ```
 📌 미답 «0» — ②③④ 는 실측이고 판정을 안 바꿉니다. 이대로 짓겠습니다(쪽지 -> 좌석 -> 철회 -> 433 ③ 픽스처).
+
+---
+
+> 🔴 **[09-16 22:22 구현자] 판정 434·435·436 착지 `e1318d28`. 그리고 총괄이 시킨 인구조사 — **«있습니다»**. 크기는 안 적습니다.**
+
+## ① 인구조사: 「ORIGIN_STAMPING_KINDS 중 «여러 입력 행»에서 칸 하나를 만드는 종류」 — 둘 중 **하나**
+```
+builtin:join_into   ❌ 없음. `_write` 의 행 단위 그물이 왼쪽 행별 답을 «세고», 둘 이상이면
+                      그 행을 «이름 대어» 건너뜁니다(fanned). 그래서 쓰인 칸의 출처는 «정확히 하나»
+builtin:join        ✅ **있습니다 — 실측했습니다.** 오른쪽 두 행이 한 키에 맞으면:
+                      execute_rule -> {left: {matched:True, origin_row_id: R2, values:{grade:'B'}}}
+                      materialize_rows -> written=1, refusal=None
+                      cell_sources -> ('grade', 'B', R2)      <- «둘 중 뒤엣것». 조용히
+```
+**왜 그렇게 되나 — 둘이 겹칩니다:**
+```
+① 체인의 규칙은 «모양만» 보는 로더에서 옵니다
+   synthesized_join_chain_rules -> load_virtual_join_rules   (config.py:1093)
+   실행기 자기 docstring 은 「이 파일은 load_verified_rules 만 부른다」고 적고, 그것이
+   «조회 경로»에서는 참입니다. 체인 경로에는 «승인 단계가 없습니다» — git grep: chain/ 안에 호출 0
+   => 「오른쪽이 조인 키로 유일하다」는 그 docstring 의 전제가 «이 경로에서 안 증명됩니다»
+② execute_rule 이 루프 안에서 out[left_row_id] = {...} 로 «덮어씁니다» (DISTINCT 없음)
+   => 두 오른쪽 행이면 «뒤엣것»이 값도 출처도 가져갑니다
+```
+
+## ② 그래서 NULL 은 «한 뜻이 안 됩니다». 다만 둘째 뜻이 NULL 이 아닙니다 — «반만 참인 도장»입니다
+```
+총괄이 걱정하신 ㉡   「입력 행이 여럿이라 하나를 못 고름 -> NULL」
+실제                 못 고르는 게 아니라 «골라 버립니다». 그리고 그 도장이 R2 를 가리킵니다
+=> R2 를 지우면 철회되고, R1 을 지우면 «안 됩니다». 둘 다 그 칸을 먹였는데도
+=> models.py 에 제가 적은 「반만 참인 출처는 그 행이 답의 «일부»일 뿐인데 철회를 부른다」가
+   «바로 이 경우»이고, 저는 그것을 「그러니 NULL 로 둔다」로 적었는데 이 종류는 «NULL 로 안 둡니다»
+```
+⚠️ **다만 «값»은 이번 라운드 전에도 임의였습니다** — 두 행이면 뒤엣것의 grade 가 이미 쓰이고 있었습니다.
+   제 변경이 만든 것이 아니라 «물려받은» 것이고, 새로 생긴 것은 「그 임의성 위에서 철회가 «작동한다»」입니다.
+🔴 **그리고 두 문이 같은 상황에 «다르게» 답합니다** — join_into 는 이름 대어 거절하고, join 은 뒤엣것을 씁니다.
+   행 단위 그물이 «한 문에만» 있습니다.
+
+## ③ 제가 «안 잰» 것
+```
+운영에서 유일 인덱스가 실제로 있는 조인이 몇인가 — 선언도 인덱스 점검도 이 박스 것입니다(gitignore)
+그러므로 「오늘 이 가지를 몇 번 타나」는 «사건»이라 못 셉니다. 위는 전부 «구조»이고 재현했습니다
+```
+📌 **판정 부탁드립니다** — 총괄 말씀대로 「있다」면 좌석의 답이 칸 단위로 내려와야 하는 자리입니다.
+   제 쪽에서 보이는 길은 둘이고 **크기는 안 적습니다**: ⓐ execute_rule 에 join_into 와 «같은» 행 단위
+   그물을 준다(두 문이 한 답을 하게 됨) · ⓑ 체인 경로가 load_verified_rules 를 지나게 한다(승인된 것만 돈다).
+   ⚠️ ⓐ 는 «지금 있는 동작을 바꿉니다»(오늘은 임의 값이 써지고, 바뀌면 안 써집니다) — 상설대로
+   그 동작 뒤의 판정을 먼저 찾아야 하고, 제가 찾은 것은 「가드가 보장한다」는 실행기 docstring 하나인데
+   그 문장이 이 경로에서 «안 참»입니다. 뒤집는 판정이 아니라 «전제가 빠진» 자리로 보입니다.
+
+## ④ 이번 라운드의 게이트
+```
+새 파일 test_a_deleted_row_takes_back_the_cells_it_fed.py  7 passed
+  빨강 먼저: 도장을 origin_row_id=None 으로 «되돌리자» 3 failed (끝까지 도는 셋이 전부 빨개짐)
+영향 모집단(grep 으로 만든 것, 떠올린 것 아님)            89 passed · 351 passed · 189 passed
+전체 스위트                                              583 passed · collect 6,873
+PG (판정 424 ⑤, 하나만)                                  91 passed / 0 failed
+기존 빨강 하나 test_a_registration_may_carry_its_attributes_into_the_table.py —
+  «스태시한 트리»에서도 빨갛고(거기선 «둘», 다른 둘), ledger_events 건이라 이 변경이 안 닿습니다
+박스                                                     마이그레이션 적용, invalid 인덱스 0
+```
+
+---
+
+> 🛑 **[09-16 22:46 구현자] 판정 438 — 437 «정지·되돌림» 완료. 그리고 ④의 셋을 셌습니다. 🔴 ②의 답이 「부른다」입니다.**
+> (QA 파일 `task/MARKING_CONTRACT.md` 는 **아직 안 열었습니다** — 438 ① 대로 제 계수를 «먼저» 못 박습니다)
+
+## ⓞ 437 은 짓다 말고 «되돌렸습니다»
+```
+되돌린 것   chain/join_into.py(좌석 추출) · virtual_join/executor.py(그물·거절문·독스트링) ·
+          tests/test_one_seat_decides_whether_a_key_fans_out.py(신규 6개, 초록이었고 변이로 빨강 확인함) ·
+          tests/test_notation_normalization.py(픽스처 수리)
+남긴 것    RUN.md — 그건 «착지한» S-280 의 운영 문장입니다(마이그레이션이 재기동 «전»이라는 순서)
+🔴 제 잘못 하나, 같은 자리에서 고쳤습니다: RUN.md 에 «되돌린 코드»의 로그 줄을 적어 푸시했습니다(`4f52bbfd`).
+   오늘 밤 내내 닫던 바로 그 부류를, 확인할 수 없는 «운영자»를 향해 냈습니다. `18a4613e` 로 뺐습니다
+```
+🔵 되돌리며 «남은 발견» 하나: `test_notation_normalization` 의 픽스처가 참조 표에 «같은 키 두 행»을
+   쌓고 있었습니다(실측: `CL-2601-001` ×2 — `db_session` 이 테스트를 넘어 살고 그 표엔 업무 키가 없습니다).
+   지금은 마지막 행이 이겨 «초록»입니다. 가상 조인이 사라지면 그 시험도 같이 가므로 «고치지 않았습니다».
+
+## ① `into.read` 를 «오늘 제품 코드»가 무엇이 소비하나 — 엔진 자신뿐입니다
+```
+virtual_join/config.py:681        통합 선언 중 «읽기 시점» 것만 고른다   <- 🔴 «제거 대상 안»에 있습니다
+scripts/preview_unified_declarations.py:88   라벨 한 줄 ("read" / "table")
+(총괄이 뺀 rule_shape.py:179·454 제외)
+⚠️ ledger/ 의 source.get('read') 히트 «여섯»은 «다른 read»입니다(원장 소스의 read 드라이버). 안 셌습니다
+=> 문법은 통합 선언에 «있고», 그것을 «실행»하는 것은 virtual_join «하나»입니다
+```
+
+## ② 총괄이 수상하다 하신 셋 — 실측 분류. **셋 다 읽기 경로가 아닙니다. 그런데 읽기 경로는 «다른 데» 있습니다**
+```
+column_filter.py       ❌ 소비자가 «아닙니다» — import 0 · 호출 0. 주석 두 줄뿐(:49 · :122)
+database/crud.py       ⚠️ «쓰기 게이트»입니다 — refuse_virtual_join_duplicates(:4051)
+                          -> _virtual_join_right_keys(:3929) -> apply_batch_updates(:4737)
+dt_map_derivation.py   ⚠️ «선언 독자»입니다(:243-247 load_verified_rules). 엔진의 읽기 경로 아님
+
+🔴 main.py:1082   executor.attach(db, table_name, data_list)
+   그 자리 주석이 스스로 적어 뒀습니다 —
+   「**row payload 의 «단일» 직렬화 지점**: 그리드 페이지 · 단일 행 조회 · 배치 업데이트 응답 · WS 항목」
+🔴 main.py:1686   resolved_expression(...)   검색·필터 식
+```
+**그러므로 438 ②의 답은 「읽기 경로에서 «부른다»」이고, 조건대로 이 제거는 «읽기 동작»을 바꿉니다.**
+
+## ③ 🛑 그래서 «여기서 멈춥니다» — 438 ④ 의 정지 조건에 걸립니다
+```
+rule_shape.INTO_KINDS = ("table", "read")   <- into.read 는 통합 문법 «안»에 있습니다
+그런데 그것을 «실행»하는 것은 지우려는 엔진입니다
+=> 엔진을 지우면 「문법은 받고 아무도 실행 안 하는 칸」이 남습니다.
+   상설 「축과 값을 «같이» 죽이지 않는다」가 정확히 이 모양이고, 2026-09-06 에 collect 으로 한 번 겪었습니다
+```
+🔴 **올립니다:** 소유자 말씀 「운영 가상 조인 다 통합 맵퍼로 이관했으니 가상 조인 없애」의 주어가
+   ㉠ «엔진»인지(그러면 into.read 문법도 같이 은퇴) ㉡ «운영의 그 선언들»인지(그러면 읽기 시점 조인은
+   능력으로 남고 엔진도 남습니다)를 갈라 주셔야 합니다. 제가 박스에서 반증할 수 있는 것이 «아닙니다».
+
+## ④ 크기 — 🔴 총괄 수와 «어긋납니다». 세 수가 «다른 것»을 세고 있습니다
+```
+내 계수   virtual_join/ 추적 «5 파일 · 2,585줄»   (git ls-files virtual_join/ | xargs wc -l)
+          config 1,115 · executor 915 · unique_key 480 · refusal 75 · __init__ 0
+총괄      「2,649줄」                              <- 64줄 차이. 무엇을 더 세셨는지 못 맞췄습니다
+내 계수   virtual_join 을 «import» 하는 추적 파일(시험 제외) «11»
+          builtins · graph · rule_shape · config_resolve_report · config_watcher · crud ·
+          dt_map_derivation · main · migrations/add_vjoin_null_safe_indexes ·
+          runtime/system_reload · scripts/check_one_row_one_fact
+내 계수   문자열로 «언급»하는 추적 파일(시험 제외) «37»
+총괄      「스물」                                  <- 제 11 과 37 «사이»입니다
+```
+**못 세는 것:** 운영이 읽기 시점 조인을 실제로 «선언»하고 있는지 — 선언이 gitignore 입니다.
+그래서 「읽기 동작이 바뀐다」는 «구조»로 참이고, 「몇 표가·몇 컬럼이 영향받나」는 «사건»이라 못 셉니다.
+📌 제 계수는 여기서 «못 박습니다». 이제 `task/MARKING_CONTRACT.md` 를 열어 대조하고, 어긋난 자리를 따로 올립니다.
+
+---
+> 🔵 **[09-16 22:48 구현자] 판정 439 — 세기 «끝까지». 열한 소비자를 «갈래»로 전수 분류했습니다. 한 줄도 안 지웠습니다.**
+> (QA 보고는 여전히 «안 열었습니다». 총괄이 전해 주신 「import 열하나」는 제 계수 `5f03bec5` 와 «같습니다» — 그건 못 박은 뒤에 들었습니다)
+
+## ① 전수 분류 — 파일 «열하나», 쓰임 «열둘»(builtins 가 둘)
+```
+갈래 ㉠ 읽기 경로 — «0 이 아닙니다. 셋입니다»
+  main.py:1082                executor.attach(db, table, data_list)
+                              그 자리 주석: 「row payload 의 «단일» 직렬화 지점 —
+                              그리드 페이지 · 단일 행 조회 · 배치 업데이트 응답 · WS 항목」
+  main.py:1686                resolved_expression(...)          검색·필터 식
+  database/config_watcher.py:222  executor.exposed_columns(session, table)
+                              표의 «알려진 컬럼 집합»에 조인 컬럼을 더한다
+  runtime/system_reload.py:53     executor.reset_cache()        읽기 캐시 수명
+
+갈래 ㉡ 쓰기 게이트 — «하나»
+  database/crud.py:3929·4051·4074·4737   refuse_virtual_join_duplicates
+  database/crud.py:4023                  vjc.index_key_expression (키 식 한 철자)
+
+🔴 갈래 ㉢ «통합 조인이 엔진에 의존하는 자리» — «하나». 제거의 급소입니다
+  chain/builtins.py:161-179   ensure_declared_unique_keys 가
+                              declared_unique_targets(= join_into «통합» 선언만 고름) 를 돌며
+                              vjc.required_index_name + unique_key.ensure_once 로 인덱스를 «세운다»
+  => 통합 조인의 key.unique 를 «가상 조인 코드»가 세웁니다. 제가 직접 열어 확인했습니다
+
+갈래 ㉣ 다리 — «하나»
+  chain/builtins.py:37-40     synthesized_join_chain_rules -> 체인의 builtin:join 규칙이 여기서 «난다»
+
+갈래 ㉤ 선언·보고·화면 — «넷»
+  chain/rule_shape.py:88 · chain/graph.py:246·329 · config_resolve_report.py:62-63 ·
+  dt_map_derivation.py:243-247(load_verified_rules)
+
+갈래 ㉥ 도구 — «둘»
+  migrations/add_vjoin_null_safe_indexes.py · scripts/check_one_row_one_fact.py
+```
+
+## ② 그래서 제 쪽 결론 «둘» — 둘 다 «구조»입니다
+```
+① 갈래 ㉠ 이 «0 이 아닙니다». 438 ③ 의 정지 조건 그대로 — 이 제거는 읽기 동작을 바꿉니다
+② 갈래 ㉢ 때문에 「이름째 지우기」가 «통합 조인을 같이 죽입니다».
+   총괄 ②의 「한 이름이 두 뜻」이 맞고, 코드 쪽 뜻은 «엔진»입니다
+```
+
+## ③ 못 세는 것 — 그대로입니다
+```
+운영이 into.read 를 «선언»하나 · 몇 표·몇 컬럼이 걸리나   -> 선언이 gitignore. «사건»이라 못 셉니다
+그래서 소유자 답(439 ④)이 «범위»를 정합니다. 제가 박스에서 대신 못 정합니다
+```
+
+## ④ 지금 상태
+```
+지운 것 «0» · 계획 «안 씀»(439 ③②) · 437 되돌림 완료 · QA 보고 «안 열었음»
+S-280(판정 434·435·436)은 착지해 있습니다 — `e1318d28`, 마이그레이션은 박스에 걸었고 RUN.md 에 순서가 있습니다
+```
+📌 **미답 둘:** ① 소유자 답(into.table 뿐인가 / into.read 도 쓰나) · ② 429 의 커서 ⓐ/ⓑ.
