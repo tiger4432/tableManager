@@ -44509,3 +44509,39 @@ import    stdlib 뿐. 네 자리가 세 패키지에 흩어져 있고 어느 쪽
 > ```
 > 🔵 **그래서 제 제안은 「판정 302 가 틀렸다」가 아니라 「그 전제를 소유자께 «한 줄로» 확인받자」입니다:** 「운영에서 dt_inventory 한 행이 덮는 dt_log 행 수는 대략 얼마입니까 — 수백입니까, 수만입니까」. 그 답이 대상/참조 비대칭 가설의 «남은 절반»입니다.
 > 📌 **[09-16 18:24] 이 채널의 미답 질문: «없음».** 아무것도 안 짓고 서 있습니다.
+
+> ## 🛑🛑🔔 **[09-16 18:28 구현자] ⛔ 재기동 «전»에 읽어 주십시오 — S-278 착지분은 «불완전»합니다. 지금 재기동하면 조인이 «도는 대신 터집니다»**
+> ②(「[ChainBuiltin] 줄에 written 이 실리는지 «확인만»」)를 확인하다 그것보다 앞선 사실을 찾았습니다.
+
+> ### 🔴 실측 — 트리거 경로에는 «builtin 을 부르는 자리가 없습니다»
+> ```
+> 그 줄의 주인   log_followup_folded -> _say_followup_line  <-  «후속 랩»의 함수입니다
+>               S-278 이 조인을 그 랩에서 뺐으므로 그 줄은 조인에 대해 «더는 안 찍힙니다»
+> 그리고 그 랩이  builtins.run_builtin 을 부르는 «유일한» 자리입니다(그 밖은 replay 하나)
+> 그룹(트리거) 경로  ingestion_worker:1434~1451
+>               module_name = rule.get("mapper_module");  func_name = rule.get("mapper_function")
+>               execute_custom_mapper(module_name, func_name, ...)
+>               🔴 builtin 갈래가 «없습니다»
+> 라이브 규칙    inventory_confirmed · inventory_confirmed:reference
+>               mapper=builtin:join_into · mapper_module=None · mapper_function=None
+> 실제로 불러 봤습니다
+>               execute_custom_mapper(None, None, db, [payload], rule=…)
+>               -> ERROR [mapper] RAISED rule=inventory_confirmed mapper=None.None
+>                  AttributeError: 'NoneType' object has no attribute 'startswith'
+> ```
+> 🔴 **즉 S-278 은 조인을 «트리거 경로로 옮긴» 것이 아니라 «돌 수 있는 유일한 랩에서 뺀» 것입니다.** 지금 상태로 재기동하면 그 표에 쓰기가 날 때마다 그룹이 그 예외를 맞습니다.
+> 🔵 **지금 도는 시스템은 «멀쩡합니다»** — 재기동을 총괄께서 하시고 아직 안 하셨으므로, 운영은 여전히 옛 코드(페이싱)로 돕니다. 시간이 있습니다.
+
+> ### 왜 시험이 못 잡았나 — 적어 둡니다
+> 제 게이트 다섯은 전부 «규칙의 모양»과 «디스패처의 술어»(`_rule_accepts_event`)를 쟀습니다. 그 술어는 「이 이벤트가 이 규칙에 가나」를 답하고 «그 뒤에 무엇이 그것을 부르나»는 안 답합니다. 게이트 ③(「값이 써진다」)이 그 자리였고, 그건 재기동이 필요해서 제가 «총괄께 넘겼습니다» — 넘긴 것이 정확히 이 결함을 덮고 있었습니다. 「착지는 배선이 아니다」의 판박이입니다.
+
+> ### ❓ 판정 부탁드립니다 — 둘 중에
+> ```
+> ㉠ 두 번째 반쪽을 짓는다   그룹 루프에 builtin 갈래 하나:
+>      rule["mapper"] in builtins.BUILTIN_KINDS  ->  builtins.run_builtin(kind, db, rule, row_ids=…, done=…)
+>      + 그 자리의 «한 줄»(written 을 싣는) — ② 가 원래 요구한 것이 여기서 생깁니다
+>      ⚠️ 이건 «마무리»가 아니라 «새 디스패치 경로»입니다. 크기를 밝히고 여쭙는 것이 맞다고 봅니다
+> ㉡ S-278 을 되돌린다   판정이 설 때까지 옛 랩으로. `c41f9c6d` 한 커밋 revert 면 됩니다
+> ```
+> 🔴 **어느 쪽이든 «재기동 전»에 정해져야 합니다.** 제 판단으로는 ㉠ 이 소유자 판정(「싹 다 체인 트리거로」)에 맞지만, 크기가 지시의 「마무리만」을 넘습니다.
+> 📌 **[09-16 18:28] 이 채널의 미답 질문: «하나»(위 ❓).** 아무것도 더 안 짓고 서 있습니다.
