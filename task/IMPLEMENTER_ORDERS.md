@@ -47016,3 +47016,65 @@ const node = skeleton && section ? declarationShape(skeleton, section) : null;
 ⚠️ 그리고 이게 ㉡ 이면 481 을 다시 쓰셔야 한다고 하셨는데 — 「다시 쓰기」보다 「값을 바꿔 적기」입니다.
    481 은 옳은 일을 했고, 그 일의 «이름»이 틀렸습니다
 ```
+
+---
+
+> 🔵 **[09-17 06:22 구현자] 06:13 지시 답 — 「복붙 예제 중 오늘 거절되는 것」 «2 / 7». 고친 것 «0**
+
+## ① 단위 — 제가 정한 것과, 그 단위가 «못 보는 것»
+```
+샌 것    `git ls-files 'docs/**.md'` 의 «펜스 블록» 중 «내용이 JSON 으로 파싱되는» 것
+        (펜스 라벨로 안 셌습니다 — 이 저장소는 맨 ``` 을 산문 상자로도 씁니다. 라벨은 대리입니다)
+제외    docs/history/ «7» (지난 라운드의 «기록»이지 베낄 것이 아님)
+        docs/_archive/ «29» (같은 이유)
+🔴 이 단위가 «못 보는 것»   «키 표»와 «산문 속 인라인». 그런데 총괄이 드신 넷 중 «둘»이 그것입니다
+   (② 가이드 §5 키 사전 · ④ :481 키 표 행). 제 계기는 그 절반을 «구조적으로» 못 셉니다
+```
+
+## ② 수 — 층층이
+```
+docs/*.md 추적 파일            1,317
+  펜스 블록                     4,728
+    내용이 JSON                     91
+      history·_archive 뺀 것          55
+        살아 있는 판정기로 «보낼 수 있는» 모양   9
+          ㉠ 오라우팅 2   enrichment_rules:207(다른 설정 파일) ·
+                        LEDGER_TECHNICAL_SPEC:635(은퇴한 profile 문법 — 🔴 판정기가 «같이 은퇴»해서 먹일 데가 없음)
+          ㉡ 실제로 먹인 것 «7»
+            거절 «2»   ← 답
+            통과 «5»
+```
+
+## 🔴 ③ 거절된 «둘» — 이름과 사유 (제품의 진짜 판정기가 낸 문장)
+```
+① docs/guide/CONFIG_ROLLOUT_GUIDE.md:269   `dt_log_confirmed_attribution`
+   판정기  chain.legacy_join_declaration.validate_virtual_join_rules
+   사유    `read_time_retired` — 「'materialize' is false, which declared a READ-TIME join …」
+   => 총괄이 드신 부류의 «다섯째»입니다. 낱말이 아니라 로더가 거절했습니다
+② docs/guide/config/ledger_declaration_by_example.md:32
+   판정기  ledger.setup_bundle.validate_bundle_errors
+   사유    `unsupported_setup_version` — 예제가 `setup_version: 1`, 제품은 5 를 요구
+   ⚠️ 파일 이름이 「by_example」입니다. 베끼라고 있는 문서가 «통째로» 거절됩니다
+```
+
+## ✅ ④ 통과한 다섯 — «안 센 것»이 아니라 «재서 통과»입니다
+```
+ONTOLOGY_LEDGER_SETUP:296  빈 번들 골격        0 errors
+ONTOLOGY_LEDGER_SETUP:440  조인 예제           stood 1/1  ← 482 가 고친 그 자리. 계기가 «확인»합니다
+event_driven_backend:180 · CONFIG_ROLLOUT_GUIDE:175 · chain_ingestion_guide:706
+   셋 다 «옛 문법»(`trigger_table`·`mapper_module`)인데 `expand_declaration` 이 «세웁니다»
+   🔵 제가 「옛 문법이니 거절되겠지」로 셋을 셀 뻔했습니다 — 먹여 보니 «아니었습니다».
+      낱말로 쟀으면 3 을 «거짓 양성»으로 올렸을 것입니다
+```
+
+## 📌 ⑤ 그래서 ③(게이트) 판정에 드리는 것 — «수는 작고, 계기는 반쪽입니다»
+```
+n = 2 / 7     게이트 하나로 «둘 다» 잡혔을 것입니다. 둘 다 제품 판정기가 낸 «구조화된 거절»입니다
+⚠️ 다만 그 게이트는 «JSON 블록만» 덮습니다. 총괄이 드신 넷 중 둘(키 표)은 «못 덮습니다»
+   -> 「n 이 작으니 안 짓는다」도, 「n 이 크니 짓는다」도 이 수로는 못 정합니다. 수가 «다른 물음»의 답입니다
+🔴 제가 «모르는» 것: 키 표·인라인 예제의 모집단. 그것을 세려면 「표의 어느 행이 «필드 선언»인가」를
+   가려야 하고, 그 판단은 기계가 못 합니다 — 총괄이 ④ 에서 「애매하면 그 애매함이 보고」라 하신 자리입니다
+🔵 그리고 은퇴한 문법의 예제는 «먹일 판정기가 없습니다»(위 ㉠ 의 LEDGER_TECHNICAL_SPEC).
+   게이트를 짓더라도 그 부류는 여전히 조용합니다 — 판정기가 문법과 «같이» 은퇴하기 때문입니다
+코드·문서 변경   «0». 지시대로 고치지 않았습니다
+```
