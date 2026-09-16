@@ -1,3 +1,5 @@
+import { isGateRejection } from './admin_token.js';
+
 // CONFIG RESOLVE REPORT — the view model for `GET /admin/config/resolve`.
 //
 // WHY THIS IS A SEPARATE, DOM-FREE MODULE.
@@ -136,6 +138,38 @@ export function fetchFailureLine(failure, fallback = CHROME.FETCH_FAILED) {
   const text = fetchFailureText(failure, fallback);
   const evidence = fetchFailureEvidence(failure);
   return evidence ? `${text} (${evidence})` : text;
+}
+
+// 🔴 C-122. 아래 둘은 `admin.js` 에 살았고, 그래서 그리드 페이지가 «자기 문장»을 손으로
+//    지었습니다 (`why = ${res.status}` 에 detail 을 붙이는 세 줄). 같은 판단에 철자가 둘이면
+//    오늘 같은 답을 내도 «갈라질 수 있습니다» — 판별식 ④. 몸통은 그대로 옮겼습니다.
+//    이 파일이 집인 이유는 «분류기가 이미 여기»(`fetchFailureText`) 있기 때문입니다.
+
+/** 응답 «하나»에서 분류에 필요한 사실만. `isGateRejection` 은 다시 유도하지 않고 부릅니다 —
+ *  401 이 게이트의 것인지는 상태만으로 못 가르고, 그 규칙은 토큰 파일이 소유합니다. */
+export function failureFactOf(res) {
+  return {
+    status: res.status,
+    gate: isGateRejection(res),
+    server: (res.headers && res.headers.get ? res.headers.get('Server') : '') || '',
+  };
+}
+
+/** 실패 응답의 문장은 **서버 것을 먼저 쓴다.**
+ *
+ * 400 거절(알 수 없는 연산·파라미터 누락·보호된 소스 회수 시도·계산 불가)에는 서버가 이유를
+ * 문장으로 담아 보낸다. 그것을 버리고 「조회 실패」로 뭉개면 운영자를 로그로 돌려보내는 것이다.
+ * 반대로 404·401/403·무응답은 서버가 자기에 대해 말할 수 없는 상태라 클라의 다섯 상수가 답이다
+ * — 그 가름은 `fetchFailureText`가 이미 소유하고 있으므로, 서버 문장을 **fallback으로 넘기는
+ * 것만으로** 두 규칙이 하나의 분류기 안에서 만난다. 새 분기를 만들지 않는다.
+ */
+export async function retroFailureLine(res, failure, fallback) {
+  let detail = '';
+  try {
+    const body = await res.json();
+    if (body && typeof body.detail === 'string') detail = body.detail;
+  } catch (e) { /* 본문 없는 실패 응답 — 클라 상수로 답한다 */ }
+  return fetchFailureLine(failure, detail || fallback);
 }
 
 /** PRESENTATION ONLY — which colour a bucket is drawn in.
