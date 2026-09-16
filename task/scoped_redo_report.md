@@ -46275,3 +46275,57 @@ total       같은 처리가 «없습니다». 그리고 그것을 아는 깃발
 제품 변경 «0» — 이 라운드는 «읽기»였습니다. 그래서 새로 돌린 시험이 없습니다
 (같은 푸시의 앞 커밋 b0dbdffc 가 39 + 19 passed · 수집 6,822 을 들고 있습니다)
 ```
+
+---
+
+> 🔵 **[09-17 04:29 구현자] 판정 474 답 `a0ffb6eb` — 수는 «0» 입니다. 그런데 «수가 이걸 안 정합니다» — 계약이 정하고, 계약은 «아니오»에 가깝습니다.**
+
+## ① 시키신 수 (③ 의 물음 그대로)
+```
+제품 코드      «0»   config_resolve_view.js 가 `reason` 을 «데이터로» 그립니다. 그 파일이 자기 규칙으로
+                    「사유 낱말은 이 파일에 리터럴로 «한 번도» 안 나온다」를 적어 두고 지킵니다
+                    서버는 이 코드를 «쓰기»만 합니다 — 되읽어 묶는 자리가 없습니다
+계약·시험      «5»   닫힌집합 동치 둘 · 런타임 쌍둥이 규칙 · 케이스별 벡터 조회 · 클라 하니스의
+                    「응답에서 어휘를 읽어라」 단언
+=> ③ 의 규칙대로 «0» 이므로 «다음 교차 레인 라운드에 통째로». 이 dict 에 줄을 «안 넣었습니다»
+```
+⚠️ 그리고 세면서 «다른 축»을 걸러 냈습니다 — `client2/src/map2/excel_io.js` 가 `not_declared` ·
+`mapping_unavailable` 을 «같은 철자»로 쓰는데 그건 «엑셀 붙여넣기 거절» 어휘입니다(그 파일이
+「borrowed, not invented」라 적어 뒀습니다). 안 걸렀으면 제품 좌석을 «0 이 아니라 여럿»으로 셀 뻔했습니다.
+
+## ② 🔴 그런데 이 물음의 답은 «수»에 없습니다 — 계약이 먼저 막습니다
+```
+계약의 규칙   「config 시점 강등은 «런타임의» 강등 어휘를 «빌린다»」
+그 런타임 어휘  `_runtime_vocabulary()` = `bonding_plan.BINDING_*` — «문자 그대로» 그것입니다
+              = {not_declared · mapping_unavailable · candidate_column_missing · not_reached}
+🔴 `read_time_retired` 는 거기 «없고», «있어서도 안 됩니다» — bonding_plan 은 «역할 바인딩»
+   어휘이고, 은퇴한 조인은 역할 바인딩이 아닙니다
+=> 그냥 다섯째를 넣으면 `test_the_vocabulary_is_borrowed_from_the_runtime_not_invented` 가
+   «빨개집니다». 그리고 그 게이트는 「지어낸 낱말을 «지어내는 순간»에 잡는다」가 존재 이유라
+   제가 끄면 안 되는 종류입니다
+```
+**그래서 다섯째는 `scope_unresolved` «가 온 방식»으로만 옵니다** — 그 계약의 `_AWAITING_RUNTIME`
+에 «두 번째 이름»으로 들어가고, 「어느 낱말이 미결이며 왜인지」를 기록하는 xfail 을 답니다.
+그 파일이 그 자리에 대해 이미 적어 뒀습니다: 「a new word needs the Lead PM, `vectors.json`,
+and the client harness updated together」.
+```
+📮 그래서 교차 레인 라운드의 «모양»이 셋이 아니라 넷입니다:
+   ① dict 한 줄  ② vectors.json  ③ 클라 하니스  ④ 🆕 `_AWAITING_RUNTIME` + xfail 사유문
+   ④ 를 빠뜨리면 그 라운드가 «빨간 채로» 착지합니다
+```
+
+## ③ 시키신 주석은 «이번에» 고쳤습니다
+```
+뺀 것    「The right answer is probably a fifth reason」 — 474 ③ 이 이름 댄 그 「probably」
+         (그 낱말이 세션마다 재유도를 «수확»하고 있었습니다. 저도 오늘 그걸로 물었습니다)
+넣은 것  판정 474 의 결론 · 위 수 둘(0 / 5) · 그리고 «왜 그냥은 못 넣는지»(런타임 어휘 규칙)
+```
+
+## ④ 게이트
+```
+계약        37 passed · 1 xfailed(`scope_unresolved` 의 «이름 붙은 빨강», 설계대로) · 1 skipped
+           🔴 그 skip 은 «기존»입니다 — 이 박스 라이브 config 가 F9 의 전제를 바꿔서 나는 것이고
+              제 변경과 무관합니다. 초록으로 세지 «않습니다»
+이 모듈 이름을 든 다른 파일  16 passed
+수집        6,822 · 델타 0 (주석만 바뀌었습니다)
+```
