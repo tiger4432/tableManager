@@ -60,10 +60,11 @@ def _chain_rules():
     """
     from chain import ingestion_worker as worker
 
-    try:
-        return worker.load_chain_rules() or []
-    except Exception:
-        return []
+    # ⚰️ [S-284] IT USED TO SWALLOW ITS OWN EXCEPTION AND RETURN []. That made 「the file
+    # declares nothing」 and 「the file could not be read」 the same answer, one layer below the
+    # place that publishes the number. The catch is now at `_quarter`, which is the seat that
+    # can tell the picture WHICH of the two happened.
+    return worker.load_chain_rules() or []
 
 
 def _mapper_edges(rules):
@@ -338,6 +339,38 @@ def _wakes(worker, rules, table):
     return {"user": _ask("user"), "chain": _ask("chain_ingestion")}
 
 
+#: 🔴 [S-284] ONE SEAT ASKS 「WHICH KIND OF ANSWER WAS THAT」, FOR EVERY QUARTER.
+#: Three states reach this picture and they used to arrive as the same pixel:
+#:     read it, nothing declared   -> the number IS 0, and that 0 is an answer
+#:     could not read it           -> there is NO number. Publishing 0 says 「none declared」
+#:     read it, product refused it -> the opposite of 「none declared」: the file has one
+#: The operator's action differs in all three - do nothing / fix a breakage / fix a
+#: declaration - so folding them reads two of the three as the first.
+#:
+#: ⚠️ 「말 안 함」 IS AN ABSENT KEY, NOT A ZERO (판정 445 ④). `countLine` on the screen draws
+#: whatever keys the response carries, in the order it carries them, so dropping the key is
+#: literally how the number stops being drawn - and the client needs no change to obey it.
+#: The refused count is omitted when it is zero for the same reason `contested` is: a line
+#: that is always on says nothing and only makes the head longer.
+def _quarter(name, load, counts, unread, catalogue):
+    """Load one declaration and record WHICH of the three answers came back.
+
+    `load` takes the rejections list, because a loader that can refuse must be ASKED to
+    report it - `chain_graph` passed none, so 「declared but refused」 arrived here as 「none
+    declared」 with nothing to distinguish them (S-284, the 450 ① shape).
+    """
+    rejections = []
+    try:
+        rules = load(rejections) or []
+    except Exception as exc:                                        # noqa: BLE001
+        unread[name] = "%s: %s" % (type(exc).__name__, exc)
+        return []
+    counts[name] = len(rules)
+    if rejections:
+        counts["%s_refused" % name] = len(rejections)
+    return rules
+
+
 def chain_graph(db):
     """The four declarations on one picture. Reads only; decides nothing."""
     from chain import ingestion_worker as worker
@@ -346,23 +379,29 @@ def chain_graph(db):
     from database import crud
 
     catalogue = crud.TABLE_CONFIG or {}
-    chain_rules = _chain_rules()
-    try:
-        enrichment_rules = enrichment.config.load_enrichment_rules(
-            known_tables=catalogue) or []
-    except Exception:
-        enrichment_rules = []
-    try:
-        vjoin_rules = vjc.load_virtual_join_rules(known_tables=catalogue) or []
-    except Exception:
-        vjoin_rules = []
+    counts, unread = {}, {}
 
-    setup, ledger_error = None, None
-    try:
+    chain_rules = _quarter(
+        "chain_rules", lambda rej: _chain_rules(), counts, unread, catalogue)
+    enrichment_rules = _quarter(
+        "enrichment_rules",
+        lambda rej: enrichment.config.load_enrichment_rules(
+            known_tables=catalogue, rejections=rej),
+        counts, unread, catalogue)
+    vjoin_rules = _quarter(
+        "virtual_joins",
+        lambda rej: vjc.load_virtual_join_rules(known_tables=catalogue, rejections=rej),
+        counts, unread, catalogue)
+
+    setup = None
+
+    def _load_ledger(_rej):
+        nonlocal setup
         from ledger.setup import load_setup
         setup = load_setup()
-    except Exception as exc:                                    # noqa: BLE001
-        ledger_error = f"{type(exc).__name__}: {exc}"
+        return list(setup.snapshot.source_plans)
+
+    _quarter("ledger_sources", _load_ledger, counts, unread, catalogue)
 
     edges = (_mapper_edges(chain_rules)
              + _enrich_edges(enrichment_rules)
@@ -404,20 +443,25 @@ def chain_graph(db):
         "contested_tables": _contested_tables(chain_rules, enrichment_rules),
         # The gate's number: what each file declared, so the picture can be checked
         # against the files rather than believed.
-        "counts": {
-            "chain_rules": len(chain_rules),
-            "enrichment_rules": len(enrichment_rules),
-            "virtual_joins": len(vjoin_rules),
-            "ledger_sources": (0 if setup is None
-                               else len(setup.snapshot.source_plans)),
-            "edges": len(edges),
-            "nodes": len(nodes),
-        },
+        #
+        # 🔴 [S-284] THE FOUR DECLARATION COUNTS ARE PUT THERE BY `_quarter`, NOT HERE, and a
+        # quarter that could not be read has NO KEY. These two are computed rather than
+        # loaded, so they are always answerable and always present.
+        "counts": dict(counts, edges=len(edges), nodes=len(nodes)),
     }
     out["counts"]["contested"] = len(out["contested"])
     out["counts"]["contested_tables"] = len(out["contested_tables"])
-    if ledger_error:
-        # Omitted when the ledger loaded: an absent key means 「nothing to say」, and a
-        # present one means 「this quarter of the picture is missing, and here is why」.
-        out["ledger_error"] = ledger_error
+    if unread:
+        # 🔴 [S-284] WHICH QUARTER COULD NOT BE READ, AND WHY. Absent when everything loaded:
+        # an absent key means 「nothing to say」, a present one means 「this part of the
+        # picture is missing, and here is the reason」 - and its count is absent beside it,
+        # so the screen draws no number rather than a zero.
+        out["unread"] = dict(unread)
+    if "ledger_sources" in unread:
+        # ⚠️ [S-284] THE SAME FACT, UNDER THE NAME THE CLIENT ALREADY READS. `chain_graph.js`
+        # renders `ledger_error` and knows nothing about `unread` yet, so dropping this key
+        # would turn a repair into a blank line. It is DERIVED from the one seat rather than
+        # computed a second time - two authors of one sentence is how they come to disagree -
+        # and it retires the day the client reads `unread`. That is a joint round.
+        out["ledger_error"] = unread["ledger_sources"]
     return out

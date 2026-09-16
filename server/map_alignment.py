@@ -5429,6 +5429,14 @@ def _no_cell_refusal(db, cfg: dict, table: str, map_id: str, known_count: int = 
     그래서 문장에 **무엇에 바인딩해 조회했는지**를 적는다. 조작자가 'product=A, type=B_C'를
     보는 순간 ⓒ는 자명해지고, 그 사실은 개수나 코드만으로는 절대 전달되지 않는다.
     """
+    # ⚰️ [S-284] IT USED TO SWALLOW THIS INTO `key_cols = []`, and that made a FOURTH cause
+    # walk out wearing the FIRST one's sentence. With no binding there is also no `bound`,
+    # so 「조회 조건」 vanishes from the text - and this function's own docstring calls that
+    # clause 「ⓒ를 자명하게 만드는 것」. The one case where the diagnosis was most needed was
+    # the one case it was silently dropped from.
+    #
+    # ⚠️ NO NEW WORD. `REF_REFUSAL_BINDING` already means 「좌표/값 컬럼 바인딩을 유도 못 함」; this
+    # seat simply never used it. Inventing a name here would be the defect S-284 ② names.
     bound, key_cols, tokens = None, [], 1
     try:
         b = _binding_of(cfg, table)
@@ -5436,8 +5444,10 @@ def _no_cell_refusal(db, cfg: dict, table: str, map_id: str, known_count: int = 
         parts = map_overlay.map_key_parts(b, map_id)
         bound = ", ".join("%s='%s'" % (n, v) for n, v in parts)
         tokens = len(str(map_id).split(_MAP_KEY_SEPARATOR))
-    except ValueError:
-        key_cols = []
+    except ValueError as exc:
+        return (REF_REFUSAL_BINDING,
+                "기준 맵 '%s · %s'의 키 바인딩을 읽지 못해 무엇을 조회할지 정하지 "
+                "못했습니다 — %s" % (table, map_id, exc))
     where = (" (조회 조건: %s)" % bound) if bound else ""
     n_rows = known_count if known_count is not None else _count_cells(db, cfg, table, map_id)
     if n_rows:
