@@ -21712,3 +21712,46 @@ builtin:auto_confirm                                            → _run_auto_co
 
 > 🔴 「판정 대기」 **1** — 커밋 메시지의 그 문장을 «조건부»로 정정합니까(장애 기록에 들어가기 «전»에)
 > ⛔ 수리 자체는 옳으므로 코드는 건드릴 것이 없습니다 · 🔁 이월: 0 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
+
+---
+
+## 🔵 Q-13 [09-16 21:1x] 판정 429 전제 검증 — **참입니다.** 다만 수리는 「한 칸」이 아니라 「한 칸 + «어느 저장소»가 그 페이지를 답하나」
+
+```
+확인 ✅  main.py:1239  get_recent_audit_logs(response, limit_groups=100, db)   ← cursor 인자 «없음»
+        main.py:1275-1276  X-Audit-Next-Cursor 를 «내보냄»
+        main.py:3213 · :3229  row/cell 이력은 cursor: Optional[str] 을 «받음»
+        client2/src/timeline.js:23  `?limit_groups=100` — 넘길 칸이 «없음»
+```
+
+### 🔴 덧붙일 한 줄 — 토큰의 «문법»은 같은데 «저장소»가 다릅니다
+
+```
+/audit_logs/recent   main.py:1267-1272  audit_cache.load_initial / refresh_if_stale
+                     -> «프로세스 로컬 인메모리 캐시»에서 답합니다
+row/cell 이력         main.py:3157 _history_page -> server/audit_history.py (커서 형태·상한이 그 파일)
+                     -> «DB»에서 답합니다
+문법                  audit_cache.py:49-51 이 스스로 「the same two words `audit_history.fetch_page`
+                     returns」라고 적습니다 -> 토큰 모양은 «같습니다» ✅
+```
+🔵 그래서 「자기가 낸 토큰을 받게 한다」는 방향이 맞습니다. 다만 **두 번째 페이지를 «누가» 답하나**가
+남습니다 — 캐시는 최신 `limit_groups` 만 들고 있으므로, 커서가 오면 그 경로는 «DB 로 내려가야» 합니다.
+```
+그래서 수리의 모양이 하나 더 정해져야 합니다
+   커서 «없음» -> 오늘처럼 캐시 (빠름 · 최신)
+   커서 «있음» -> audit_history.fetch_page (DB · 끝까지)
+⚠️ 그리고 그때 두 답의 «정렬 키»가 같아야 합니다 — 캐시는 그룹 단위, 이력은 행 단위입니다.
+   같은 커서 문법이라도 «묶는 단위»가 다르면 이어붙인 페이지가 겹치거나 빕니다
+```
+
+### 확신도 · 못 잰 것
+
+```
+구조   ✅ 네 자리 + 캐시의 자기 문장 — 오늘 HEAD
+못 잼  · 캐시가 «프로세스 로컬»이라 uvicorn 워커가 둘 이상이면 2페이지를 «다른 캐시»가 답할 수 있습니다.
+        이 설치의 워커 수는 안 쟀습니다(런처가 `--workers` 를 주는지 확인 안 함)
+      · 두 저장소의 «묶는 단위»(그룹 vs 행)가 실제로 어긋나는지는 audit_history.py 를 안 열었습니다 —
+        그래서 위 ⚠️ 는 「확인할 것」이지 「어긋난다」가 아닙니다
+```
+
+> · 🔁 이월: 0 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
