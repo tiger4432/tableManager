@@ -1,9 +1,8 @@
 /**
- * F8 + F5c harness — executes the valid-die designation path of map_editor.js in a vm sandbox.
+ * F8 + F5c harness — executes the valid-die designation path of map_editor.js.
  *
- * Read-only against client2/. Functions are sliced out of the source text (same technique as
- * contracts/map_seam/client_harness.mjs) and evaluated with DOM/network stubs, so the branch
- * that ships is the branch that is scored.
+ * Read-only against client2/. The subject is IMPORTED through `lib/probe.mjs`; DOM, network and
+ * the module's own display helpers are stubbed, so the branch that ships is the branch scored.
  *
  * Run:  node client2/tests/valid_die_frame_adoption_harness.mjs [--mutate]
  *
@@ -27,14 +26,12 @@
  * contracts/ (contract-keeper's). Same standing as its siblings here
  * (valid_die_authoring_harness.mjs, push_gate_harness.mjs): run by hand, per round.
  */
-import { readFileSync } from 'node:fs';
 // 🔴 정규화는 «한 자리»입니다 (`readSourceText`). 사본을 각자 들면 갈립니다 — 이름이 같아서
 //    «같은 것으로 보이고», 갈려도 오류가 «안 납니다». 그리고 그 한 자리는 «섞인 줄바꿈»을
 //    만나면 추측하지 않고 «거절»합니다 — 사본은 그 거절을 안 들고 태어납니다.
-import { readSourceText } from './lib/probe.mjs';
+import { readSourceText, loadWithProbe } from './lib/probe.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import vm from 'node:vm';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC_PATH = join(HERE, '..', 'src', 'map_editor.js');
@@ -48,40 +45,13 @@ const SRC0 = readSourceText(SRC_PATH).text;
 
 const die = (m) => { console.error(`HARNESS FAILURE: ${m}\n(Nothing was compared.)`); process.exit(2); };
 
-// [1-a 2026-08-04] The FIXED valid-die storage table. `parseValidDieRef` reads this module
-// const since the load path was pinned, so a sandbox without it throws ReferenceError and the
-// whole slice dies before comparing anything. EXTRACTED from the source, never re-typed:
-// a copy that drifted would score the wrong table green. Same shape as the extraction in
-// valid_die_authoring_harness.mjs — one spelling, three harnesses.
-const VALID_DIE_TABLE = (() => {
-  const m = /const\s+VALID_DIE_TABLE\s*=\s*'([^']*)'\s*;/.exec(SRC0);
-  if (!m) die('const VALID_DIE_TABLE not found in map_editor.js — the fixed storage table is gone or renamed.');
-  return m[1];
-})();
-
-function sliceFunction(source, name) {
-  // 🔴 C-35 ③: TOLERATES `export`, AND THAT TOLERANCE IS ON ITS WAY OUT. This file slices its
-  //    subject, so a purely semantic-free change to the subject — putting `export` in front of
-  //    a module-level declaration — stopped this regex matching and the harness said "nothing
-  //    compared". That is the standing ban's symptom in its declaration-prefix form.
-  //    The fix is this file importing instead; until that round, this keeps it alive.
-  //    `probe_mechanism_harness` holds the ceiling that forces the count down.
-  //    ⤷ and the slice must DROP that keyword: `export` is a syntax error off a module.
-  const decl = new RegExp(`(^|\\n)\\s*(?:export\\s+)?(?:async\\s+)?function\\s+${name}\\s*\\(`);
-  const m = decl.exec(source);
-  if (!m) return null;
-  const start = m.index + (m[1] ? m[1].length : 0);
-  let i = source.indexOf('{', m.index + m[0].length - 1);
-  if (i < 0) return null;
-  let depth = 0;
-  for (; i < source.length; i++) {
-    if (source[i] === '{') depth++;
-    else if (source[i] === '}') { depth--; if (depth === 0) return source.slice(start, i + 1).replace(/^\s*export\s+/, ''); }
-  }
-  die(`unbalanced braces extracting '${name}'`);
-}
-
-// Every symbol the new branches actually run. A missing one is a rename -> exit 2, never green.
+// Every symbol the designation path runs. A missing one is a rename -> the probe throws a
+// ReferenceError NAMING it at load, so a rename can never come out as a quiet green.
+// `VALID_DIE_TABLE` and `OVERLAY_CELL_LIMIT` join them below instead of being scraped and
+// hand-typed: this harness asserts the exact table a designation carries, and the sandbox
+// typed `2000` beside a comment saying 「메인 로드와 같은 상한」 -- a hand-typed copy of a limit
+// is a SECOND AUTHOR of that limit. (Measured: the module's value is 2000 today, so that
+// changes no number -- it changes who owns it.)
 const SYMBOLS = [
   'physNum', 'gridDimNum', 'getDieIndex', 'getCanvasCellFromDieIndex', 'getCanvasCellFromDb',
   // [2b] `physDeclaration` no longer spells "did this control say anything" inline: that
@@ -96,8 +66,9 @@ const SYMBOLS = [
   'applyPresetObject', 'applyPhysicalGeometry',
   // The ONE reaction to "the origin box moved under the cells", and the record it
   // compares against. A geometry-preset edit and a valid-die designation reach the SAME
-  // function, so a slice that omits it turns applyPhysicalGeometry into a ReferenceError
-  // that loadExistingMap's catch reports as a 0-cell load.
+  // function, so a name missing from this list turns applyPhysicalGeometry into a
+  // ReferenceError that loadExistingMap's catch reports as a 0-cell load. The list is what
+  // the probe EXPOSES now rather than what it cuts out, and the failure mode is the same.
   'seatingSnapshot', 'reseatCellsToStoredCoords',
   'applyRoutedPreset',                    // F5c — the routing consumer
   'parseValidDieRef', 'validDieBasis', 'isValidDieAt', 'validDieChainError', 'validDieRefDisplay',
@@ -113,7 +84,7 @@ const SYMBOLS = [
   // internal error, i.e. RED, never a silent green.
   'fitGridToMask', 'summariseReseat', 'resolveReferenceSpec',
   'deriveMaskKeys', 'diagnoseDesignationAlignment',
-  // The Push-gate classifier. `renderGridCanvas` is sliced too, NOT modelled:
+  // The Push-gate classifier. `renderGridCanvas` is RUN too, NOT modelled:
   // `classifyUnsavableCells`'s domain is whatever the real renderer put in `gridCells2D`, and
   // that domain is wider than the visual grid (it draws to -1x..2x). A harness that re-derived
   // "off the grid" by hand measured 190 where the shipped classifier measures 27.
@@ -161,16 +132,68 @@ const REF_C = {
   phys_edge_margin: PANEL_BEFORE.margin,
 };
 
-// ── Sandbox ─────────────────────────────────────────────────────────────────────────────
+// ── The imported subject ─────────────────────────────────────────────────────────────────────────────
 function makeInput(v) { return { value: String(v), checked: false, querySelector: () => null, appendChild() {} }; }
 
-function buildEnv(src, opts = {}) {
-  const pieces = [];
-  for (const name of SYMBOLS) {
-    const code = sliceFunction(src, name);
-    if (!code) die(`'${name}' is gone from map_editor.js — renamed or reshaped. Nothing compared.`);
-    pieces.push(code);
+// 🔴 THE SUBJECT IS IMPORTED. This file used to cut 46 functions out of map_editor.js as
+//    TEXT and evaluate the concatenation in `vm`. Inside a vm sandbox four different things are
+//    one object property each; imported, they are four different mechanisms, and every name the
+//    sandbox declared was classified against the source before this was written:
+//
+//      module function the path RUNS     -> `expose`  (46 — the SYMBOLS list above)
+//      module const the path READS       -> `expose`  (VALID_DIE_TABLE, OVERLAY_CELL_LIMIT, el)
+//      module `let` the cases WRITE      -> `state`   (20 — a setter onto the live binding)
+//      module function this file STUBS   -> `state`   (14 — a function binding is assignable)
+//      an IMPORTED binding               -> `stubs`   (3: API_BASE, showToast, canonicalMapKey)
+//      a host global                     -> installed on globalThis, restored in a `finally`
+//
+//    ⚠️ `paintLockValues` was in the sandbox and IS NOT IN THE SUBJECT — zero occurrences in
+//    map_editor.js. Under slicing an unread sandbox key is inert and invisible; under the probe
+//    an undeclared name throws AT LOAD naming itself, which is how it was found. Dropped.
+const MAP_STATE = [
+  // module `let`s the cases read and write
+  'boundingBoxCache', 'cellsSeatedUnder', 'currentRotation', 'currentSide', 'gridData',
+  'validDie', 'validDieResolveSeq', 'selectedTable', 'loadedIdentity', 'tableSchema',
+  'gridCells2D', 'legend', 'overlayLayers', 'loadedFCells', 'serverCellKeys',
+  'currentHoverCell', 'lastSelectionBox', 'activeOverlayLayers', 'isBoxDragging', 'dragType',
+  // 🔴 MODULE FUNCTIONS THIS FILE DELIBERATELY STUBS, AND THE STUBBING IS THE MEASUREMENT.
+  //    The sandbox replaced these with no-ops and counters. Letting the real ones run would
+  //    change WHAT IS SCORED (paint, toasts, network), and then the two instruments would no
+  //    longer be answering the same question — which is the whole point of this round. They go
+  //    in `state` because a function declaration is a writable binding: no source change needed.
+  'syncOverlayGeometry', 'getThemeColors', 'updateOrientationUI', 'updateSideIndicator',
+  'scheduleRenderGridCanvas', 'updateLegendCounts', 'drawOverlayMarkers', 'updateNotchPosition',
+  'renderValidDieChip', 'syncValidDieRefControls',
+  'fetchMapKeySpec', 'fetchServedBinding', 'fetchGridMetaFor', 'buildKeyFilters',
+];
+const MAP_EXPOSE = [...SYMBOLS, 'VALID_DIE_TABLE', 'OVERLAY_CELL_LIMIT', 'el'];
+
+// 🔴 GLOBALS ARE SHARED BETWEEN COPIES — the one thing the vm gave away for free. Each
+//    sandbox had its own `fetch`; imported copies all read the SAME global scope. So an env
+//    installs its set and the run puts the real ones back in a `finally`.
+//    MEASURED, not hoped: the case blocks are sequential and no env is driven after a later one
+//    is built. The only site where two are alive at once is `F6/stale/...`, where the outer env
+//    is READ (`el`, `log`) and never driven again. If that stops being true the symptom is a
+//    request landing in another case's `log.requests`.
+const REAL_GLOBALS = new Map();
+const GLOBAL_NAMES = ['fetch', 'performance', 'window', 'getComputedStyle',
+                      'requestAnimationFrame'];
+function installGlobals(g) {
+  for (const n of GLOBAL_NAMES) {
+    if (!REAL_GLOBALS.has(n)) {
+      REAL_GLOBALS.set(n, Object.getOwnPropertyDescriptor(globalThis, n) || null);
+    }
+    globalThis[n] = g[n];
   }
+}
+function restoreGlobals() {
+  for (const [n, d] of REAL_GLOBALS) {
+    if (d) Object.defineProperty(globalThis, n, d);
+    else delete globalThis[n];
+  }
+}
+
+async function buildEnv(src, opts = {}) {
   const log = { toasts: [], requests: [], renders: 0, legendCounts: 0 };
   // `opts.panel` lets a case declare its own target frame (fixture E needs the real
   // 4MAIN_TRIM shape: 33x25 with a negative origin). Default is PANEL_BEFORE.
@@ -191,69 +214,93 @@ function buildEnv(src, opts = {}) {
     showAnnotations: { checked: false },
     validDieRefKey: makeInput(''), validDieRefTable: makeInput(''), validDieRefList: null,
   };
+
+  // The mutation reaches here as already-mutated TEXT (the caller applies it), so it is handed
+  // back to the probe as a `mutate` returning that text. The baseline must NOT take that path:
+  // the probe refuses a `mutate` that changed nothing, and it is the no-mutate load that proves
+  // the copy starts with the subject's own bytes.
+  const S = (await loadWithProbe(SRC_PATH, {
+    expose: MAP_EXPOSE, state: MAP_STATE, tag: 'fa',
+    mutate: src === SRC0 ? undefined : () => src,
+    stubs: {
+      './config.js': { API_BASE: '' },
+      './map_key.js': { canonicalMapKey: (kc, k) => String(k) },
+      // 🔴 THE THIRD ARGUMENT IS KEPT. Selecting a notice by GREPPING ITS TEXT pins wording,
+      //    and wording is the thing a UI round is allowed to change — this file went red on
+      //    sixteen assertions the day the sentence was rewritten, none of which was about the
+      //    sentence. `dedupeKey` is the notice's IDENTITY and it survives a copy edit.
+      './utils.js': { showToast: (msg, kind, o) => log.toasts.push({ msg: String(msg), kind,
+                                                                     key: o && o.dedupeKey }) },
+    },
+  })).probe;
+
   // 🔴 THE DOM FRAME CONTROLS ARE THE ASSERTION SURFACE, so they are ordinary writable
   //    objects. F8's contract is that nothing writes to them on this path; a stub that
   //    swallowed writes would make that contract untestable by construction.
-  const sandbox = {
-    // `debug` was MISSING, and that is not a cosmetic gap: the [1e] zero-stranded path
-    // calls console.debug, so the PRIMARY case (an empty target adopts silently) threw
-    // `console.debug is not a function`, got classified as an internal error, and the three
-    // F6/empty-target assertions have been RED — i.e. unscored — since that path landed.
-    console: { warn() {}, info() {}, error() {}, log() {}, debug() {} },
-    el,
-    boundingBoxCache: {},
-    // Where the cells on screen are currently seated. Module-level in the source; declared
-    // here so a read of it is a value, not a ReferenceError.
-    cellsSeatedUnder: null,
-    currentRotation: P.rotation,
-    currentSide: P.side,
-    gridData: {},
-    validDie: { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined },
-    validDieResolveSeq: 0,
-    selectedTable: 'dt_map',
-    loadedIdentity: null,
-    tableSchema: { column_types: {} },
-    API_BASE: '',
-    OVERLAY_CELL_LIMIT: 2000,
-    VALID_DIE_TABLE,
-    // --- the REAL renderer runs; only the pixels are stubbed ------------------------
-    // gridCells2D is the domain classifyUnsavableCells reads, so it must be built by the
-    // shipped loop, not by the harness. Everything below is paint, not decision.
-    gridCells2D: {},
-    legend: [{ value: 'A', color: '#0a0' }],
-    overlayLayers: [], loadedFCells: new Set(), serverCellKeys: null,
-    paintLockValues: null, currentHoverCell: null, lastSelectionBox: null,
-    syncOverlayGeometry() {}, getThemeColors: () => ({ outBg: '#eee', line: '#ccc', text: '#000',
-      inBg: '#fff', origin: '#f00', notch: '#00f', gridText: '#333', dim: '#999' }),
+  //    `el` is `const el = {}` in the subject, so it is FILLED, not replaced — the cases then
+  //    read the subject's own object rather than a copy of it.
+  Object.assign(S.el, el);
+
+  S.boundingBoxCache = {};
+  // Where the cells on screen are currently seated. Module-level in the subject.
+  S.cellsSeatedUnder = null;
+  S.currentRotation = P.rotation;
+  S.currentSide = P.side;
+  S.gridData = {};
+  S.validDie = { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined };
+  S.validDieResolveSeq = 0;
+  S.selectedTable = 'dt_map';
+  S.loadedIdentity = null;
+  S.tableSchema = { column_types: {} };
+  // --- the REAL renderer runs; only the pixels are stubbed ------------------------
+  // gridCells2D is the domain classifyUnsavableCells reads, so it must be built by the
+  // shipped loop, not by the harness. Everything below is paint, not decision.
+  S.gridCells2D = {};
+  S.legend = [{ value: 'A', color: '#0a0' }];
+  S.overlayLayers = [];
+  S.loadedFCells = new Set();
+  S.serverCellKeys = null;
+  S.currentHoverCell = null;
+  S.lastSelectionBox = null;
+  S.isBoxDragging = false;
+  S.dragType = null;
+  S.activeOverlayLayers = () => [];
+  S.syncOverlayGeometry = () => {};
+  S.getThemeColors = () => ({ outBg: '#eee', line: '#ccc', text: '#000',
+    inBg: '#fff', origin: '#f00', notch: '#00f', gridText: '#333', dim: '#999' });
+  S.updateOrientationUI = () => {};
+  S.updateSideIndicator = () => {};
+  S.scheduleRenderGridCanvas = () => { log.renders++; };
+  S.updateLegendCounts = () => { log.legendCounts++; };
+  S.drawOverlayMarkers = () => {};
+  S.updateNotchPosition = () => {};
+  S.renderValidDieChip = () => {};
+  S.syncValidDieRefControls = () => {};
+
+  // --- network (all stubbed; every call is counted) ---
+  S.fetchMapKeySpec = async (t) => { log.requests.push(`spec:${t}`); return { ok: true, keyColumns: ['map_id'], columnTypes: {} }; };
+  S.fetchServedBinding = async (t) => { log.requests.push(`binding:${t}`); return { x: 'x', y: 'y', keyColumns: ['map_id'], source: 'declared' }; };
+  S.fetchGridMetaFor = async (t, k) => {
+    log.requests.push(`meta:${t}/${k}`);
+    // A PROGRAMMER error, not a data/network one — the class the catch must name as internal.
+    if (opts.injectInternalError) { const err = new ReferenceError('someHelper is not defined'); throw err; }
+    // An expected, authored failure — its message must still pass through verbatim.
+    if (opts.injectDataError) { throw new Error('메타 조회가 서버에서 거부됐습니다 (HTTP 503)'); }
+    return opts.refMeta || null;
+  };
+  S.buildKeyFilters = () => ({});
+
+  installGlobals({
+    // ⚠️ `console` IS NOT PATCHED, and the sandbox's stub was not a decision either. A vm
+    //    context has NO console unless one is supplied, so that stub existed to stop a
+    //    ReferenceError — and it once silently lacked `debug`, which made the three
+    //    F6/empty-target assertions red for a reason that had nothing to do with the contract.
+    //    Node has a real console. Silencing it here would be this harness deciding what the
+    //    subject may say.
     performance: { now: () => 0 },
     window: { devicePixelRatio: 1 },
-    updateOrientationUI() {}, updateSideIndicator() {},
-    scheduleRenderGridCanvas() { log.renders++; },
-    updateLegendCounts() { log.legendCounts++; },
-    activeOverlayLayers: () => [], drawOverlayMarkers() {}, updateNotchPosition() {},
-    isBoxDragging: false, dragType: null,
     getComputedStyle: () => ({ getPropertyValue: () => '#000' }),
-    renderValidDieChip() {}, syncValidDieRefControls() {},
-    // 🔴 THE THIRD ARGUMENT IS KEPT. Selecting a notice by GREPPING ITS TEXT pins wording,
-    //    and wording is the thing a UI round is allowed to change -- this file went red on
-    //    sixteen assertions the day the sentence was rewritten, none of which was about the
-    //    sentence. `dedupeKey` is the notice's IDENTITY and it survives a copy edit.
-    showToast: (msg, kind, opts) => log.toasts.push({ msg: String(msg), kind,
-                                                      key: opts && opts.dedupeKey }),
     requestAnimationFrame(fn) { fn(); },
-    // --- network (all stubbed; every call is counted) ---
-    fetchMapKeySpec: async (t) => { log.requests.push(`spec:${t}`); return { ok: true, keyColumns: ['map_id'], columnTypes: {} }; },
-    canonicalMapKey: (kc, k) => String(k),
-    fetchServedBinding: async (t) => { log.requests.push(`binding:${t}`); return { x: 'x', y: 'y', keyColumns: ['map_id'], source: 'declared' }; },
-    fetchGridMetaFor: async (t, k) => {
-      log.requests.push(`meta:${t}/${k}`);
-      // A PROGRAMMER error, not a data/network one — the class the catch must name as internal.
-      if (opts.injectInternalError) { const err = new ReferenceError('someHelper is not defined'); throw err; }
-      // An expected, authored failure — its message must still pass through verbatim.
-      if (opts.injectDataError) { throw new Error('메타 조회가 서버에서 거부됐습니다 (HTTP 503)'); }
-      return opts.refMeta || null;
-    },
-    buildKeyFilters: () => ({}),
     fetch: async (url) => {
       log.requests.push(`fetch:${String(url).split('?')[0]}`);
       if (String(url).includes('preset-routing')) {
@@ -265,16 +312,13 @@ function buildEnv(src, opts = {}) {
       // sends when the real row count exceeds the limit the client asked for.
       const rowsOut = (opts.refCells || []).map(c => ({ data: { x: { value: c.x }, y: { value: c.y } } }));
       if (opts.truncate) {
-        while (rowsOut.length <= sandbox.OVERLAY_CELL_LIMIT) rowsOut.push(rowsOut[0]);
+        while (rowsOut.length <= S.OVERLAY_CELL_LIMIT) rowsOut.push(rowsOut[0]);
       }
       return { ok: true, status: 200, json: async () => ({ data: rowsOut }) };
     },
-  };
-  sandbox.globalThis = sandbox;
-  vm.createContext(sandbox);
-  try { vm.runInContext(pieces.join('\n'), sandbox); }
-  catch (e) { die(`extracted sources did not evaluate: ${e && e.message}`); }
-  return { sandbox, el, log };
+  });
+
+  return { mod: S, el: S.el, log };
 }
 
 // ── Scoring ─────────────────────────────────────────────────────────────────────────────
@@ -327,8 +371,8 @@ function coordMapOracle(S, frame) {
 //
 // F6 adopted the reference's dimensions AND physical spec while leaving the placement axes
 // (rotation / side / origin / y-invert) alone. `adoptedFrameOf` was the source's statement of
-// that set; it is deleted, so the harness states it here. This frame is NEVER applied to a
-// sandbox — it is only ever handed to the oracle to answer "how far would the coordinates
+// that set; it is deleted, so the harness states it here. This frame is NEVER applied to the
+// subject — it is only ever handed to the oracle to answer "how far would the coordinates
 // have moved if we had adopted?". A fixture whose answer is 0 proves nothing.
 function hypotheticalAdoptedFrame(S, refFrame) {
   const rf = S.resolveFrame(refFrame);
@@ -507,7 +551,7 @@ async function scoreAll(src, { verbose = false } = {}) {
   let wouldHaveMovedSomewhere = 0;
   for (const [label, REF] of [['A(stored==derived)', REF_A], ['B(stored!=derived)', REF_B]]) {
     const cells = refCellsFor(REF);
-    const { sandbox: S, el, log } = buildEnv(src, { refMeta: REF, refCells: cells });
+    const { mod: S, el, log } = await buildEnv(src, { refMeta: REF, refCells: cells });
 
     // What the mask would be if the reference were read with the PANEL's frame instead of its
     // own. If this equals the correct mask, the fixture scores nothing.
@@ -691,7 +735,7 @@ async function scoreAll(src, { verbose = false } = {}) {
   //    count, the one-number rule) scored a sentence that no longer exists and were deleted.
   {
     const cells = refCellsFor(REF_C);
-    const { sandbox: S, el, log } = buildEnv(src, { refMeta: REF_C, refCells: cells });
+    const { mod: S, el, log } = await buildEnv(src, { refMeta: REF_C, refCells: cells });
     const reach = targetReachableKeys(S);
     [...reach.keys()].forEach(k => { S.gridData[k] = 'A'; });
     // Declare a served set and an F-lock so the "all three caches migrate together" axis is
@@ -852,7 +896,7 @@ async function scoreAll(src, { verbose = false } = {}) {
                     grid_y_invert: false, rotation: 0, side: 'back',
                     phys_wafer_dia: 300, phys_chip_x: 11, phys_chip_y: 13,
                     phys_offset_x: 0, phys_offset_y: 0, phys_edge_margin: 3 };
-    const { sandbox: S, el, log } = buildEnv(src, { refMeta: REF_E, refCells: refCellsFor(REF_E),
+    const { mod: S, el, log } = await buildEnv(src, { refMeta: REF_E, refCells: refCellsFor(REF_E),
                                                     panel: TGT });
     const reach = [...targetReachableKeys(S).keys()];
     // A MIXED population on purpose. All blank (old G2) makes every payload assertion vacuous;
@@ -975,7 +1019,7 @@ async function scoreAll(src, { verbose = false } = {}) {
   //    declared — a mask built in an index space nobody chose, which is this domain's whole
   //    failure mode. Both halves are scored below.
   {
-    const { sandbox: S } = buildEnv(src, {});
+    const { mod: S } = await buildEnv(src, {});
     const f = (c, r) => ({ cols: c, rows: r });
     eq('H5/bound-is-the-editors-own-declared-domain', [1, 100],
        [S.frameDimBounds().min, S.frameDimBounds().max],
@@ -995,7 +1039,7 @@ async function scoreAll(src, { verbose = false } = {}) {
   // ...and end to end: it refuses BEFORE a single reference cell is fetched.
   {
     const BIG = { ...REF_C, grid_cols: 1024, grid_rows: 1024 };
-    const { sandbox: S, el, log } = buildEnv(src, { refMeta: BIG, refCells: refCellsFor(REF_C) });
+    const { mod: S, el, log } = await buildEnv(src, { refMeta: BIG, refCells: refCellsFor(REF_C) });
     [...targetReachableKeys(S).keys()].forEach(k => { S.gridData[k] = 'A'; });
     const before = [el.gridCols.value, el.gridRows.value];
     const gridBefore = Object.keys(S.gridData).length;
@@ -1031,7 +1075,7 @@ async function scoreAll(src, { verbose = false } = {}) {
   let emptyGridFromSharedSpec = null;
   for (const [label, REF] of [['A', REF_A], ['B', REF_B]]) {
     const cells = refCellsFor(REF);
-    const { sandbox: S, el, log } = buildEnv(src, { refMeta: REF, refCells: cells });
+    const { mod: S, el, log } = await buildEnv(src, { refMeta: REF, refCells: cells });
     const orientBefore = { rot: S.currentRotation, side: S.currentSide,
                            sx: el.gridStartX.value, sy: el.gridStartY.value, inv: el.gridYInvert.checked };
     const wrongFrame = S.currentFrame();
@@ -1183,7 +1227,7 @@ async function scoreAll(src, { verbose = false } = {}) {
   //    a served set, so cells outside the circle that the server never sent classify as stray
   //    and the two sums genuinely differ — without it M7b would fold stray in unnoticed.
   {
-    const { sandbox: S, log } = buildEnv(src, { refMeta: REF_B, refCells: refCellsFor(REF_B) });
+    const { mod: S, log } = await buildEnv(src, { refMeta: REF_B, refCells: refCellsFor(REF_B) });
     S.renderGridCanvas();
     const inside = [], outside = [];
     Object.keys(S.gridCells2D).forEach(r => Object.keys(S.gridCells2D[r]).forEach(c => {
@@ -1236,7 +1280,7 @@ async function scoreAll(src, { verbose = false } = {}) {
 
   // INV-F6-3 — a map with NO valid_die_ref behaves exactly as before: nothing is adopted.
   {
-    const { sandbox: S, el, log } = buildEnv(src, { refMeta: REF_B, refCells: refCellsFor(REF_B) });
+    const { mod: S, el, log } = await buildEnv(src, { refMeta: REF_B, refCells: refCellsFor(REF_B) });
     const before = [el.gridCols.value, el.gridRows.value, el.physChipX.value, el.physChipY.value];
     const res = await S.resolveValidDie({}, 'dt_map', 'HOME_1');
     eq('F6/no-ref/basis', 'circle', S.validDieBasis(res));
@@ -1249,7 +1293,7 @@ async function scoreAll(src, { verbose = false } = {}) {
   // INV-F6-4 — a genuinely unresolvable reference still refuses WITH ITS REASON, and does
   // not fall back to the circle or adopt anything.
   {
-    const { sandbox: S, el } = buildEnv(src, { refMeta: null });   // reference has no spec
+    const { mod: S, el } = await buildEnv(src, { refMeta: null });   // reference has no spec
     const before = [el.gridCols.value, el.gridRows.value];
     const res = await S.resolveValidDie({ valid_die_ref: 'TPL_1' }, 'dt_map', 'HOME_1');
     eq('F6/unresolvable/basis', 'refused', S.validDieBasis(res));
@@ -1260,7 +1304,7 @@ async function scoreAll(src, { verbose = false } = {}) {
   // Chain guard still fires BEFORE any adoption (a 2-hop reference must not resize the grid).
   {
     const REF = { ...REF_B, valid_die_ref: 'OTHER' };
-    const { sandbox: S, el } = buildEnv(src, { refMeta: REF, refCells: refCellsFor(REF_B) });
+    const { mod: S, el } = await buildEnv(src, { refMeta: REF, refCells: refCellsFor(REF_B) });
     const before = [el.gridCols.value, el.gridRows.value];
     const res = await S.resolveValidDie({ valid_die_ref: 'TPL_1' }, 'dt_map', 'HOME_1');
     eq('F6/chain/refused', 'refused', S.validDieBasis(res));
@@ -1282,7 +1326,7 @@ async function scoreAll(src, { verbose = false } = {}) {
   //    appear on screen — the dies simply are not marked, and the operator reads the map as
   //    having fewer valid dies than it has. Same class as the offset mask, except silent.
   {
-    const { sandbox: S, el } = buildEnv(src, { refMeta: REF_B, refCells: refCellsFor(REF_B),
+    const { mod: S, el } = await buildEnv(src, { refMeta: REF_B, refCells: refCellsFor(REF_B),
                                                truncate: true });
     const before = [el.gridCols.value, el.gridRows.value];
     const res = await S.resolveValidDie({ valid_die_ref: 'TPL_1' }, 'dt_map', 'HOME_1');
@@ -1302,7 +1346,7 @@ async function scoreAll(src, { verbose = false } = {}) {
   // a symbol left out of the extraction list made the chip's reason literally
   // `announceFrameAdoption is not defined` — formally "a non-empty reason", and useless.
   {
-    const { sandbox: S } = buildEnv(src, { injectInternalError: true });
+    const { mod: S } = await buildEnv(src, { injectInternalError: true });
     const res = await S.resolveValidDie({ valid_die_ref: 'TPL_1' }, 'dt_map', 'HOME_1');
     eq('F6/internal-error/refused', 'refused', S.validDieBasis(res));
     eq('F6/internal-error/named-as-internal', true, /내부 오류/.test(res.reason), res.reason);
@@ -1314,7 +1358,7 @@ async function scoreAll(src, { verbose = false } = {}) {
   // ...and an EXPECTED failure must still pass its authored message through unchanged, so the
   // classification cannot quietly relabel real data failures as program defects.
   {
-    const { sandbox: S } = buildEnv(src, { injectDataError: true });
+    const { mod: S } = await buildEnv(src, { injectDataError: true });
     const res = await S.resolveValidDie({ valid_die_ref: 'TPL_1' }, 'dt_map', 'HOME_1');
     eq('F6/data-error/refused', 'refused', S.validDieBasis(res));
     eq('F6/data-error/not-relabelled-internal', false, /내부 오류/.test(res.reason), res.reason);
@@ -1331,7 +1375,7 @@ async function scoreAll(src, { verbose = false } = {}) {
   //    navigated away from, about a grid difference that no longer exists on screen. That is the
   //    observable the guard now protects, and mutation M5 puts it under load.
   {
-    const { sandbox: S, el, log } = buildEnv(src, { refMeta: REF_B, refCells: refCellsFor(REF_B) });
+    const { mod: S, el, log } = await buildEnv(src, { refMeta: REF_B, refCells: refCellsFor(REF_B) });
     const before = [el.gridCols.value, el.gridRows.value];
     const p = S.resolveValidDie({ valid_die_ref: 'TPL_1' }, 'dt_map', 'HOME_1');
     S.validDieResolveSeq++;                 // a newer resolution starts while this one awaits
@@ -1343,7 +1387,7 @@ async function scoreAll(src, { verbose = false } = {}) {
     // ...and the same designation on a LIVE generation does speak, or the assertion above
     // would pass for a resolution that simply never got that far.
     {
-      const { sandbox: L, log: liveLog } = buildEnv(src, { refMeta: REF_B, refCells: refCellsFor(REF_B) });
+      const { mod: L, log: liveLog } = await buildEnv(src, { refMeta: REF_B, refCells: refCellsFor(REF_B) });
       await L.resolveValidDie({ valid_die_ref: 'TPL_1' }, 'dt_map', 'HOME_1');
       eq('F6/stale/the-live-generation-does-speak', 1, liveLog.toasts.length,
          JSON.stringify(liveLog.toasts.map(x => x.msg.slice(0, 44))));
@@ -1374,7 +1418,7 @@ async function scoreAll(src, { verbose = false } = {}) {
   // -- O1: the specimen. Equal dimensions, different origin -> the alarm MUST fire ---------
   {
     const REF = { ...ALIGN_META, grid_start_x: 1, grid_start_y: 1 };
-    const { sandbox: S, el, log } = buildEnv(src, { refMeta: REF, refCells: refCellsFor(REF),
+    const { mod: S, el, log } = await buildEnv(src, { refMeta: REF, refCells: refCellsFor(REF),
                                                     panel: ALIGN_PANEL });
     [...targetReachableKeys(S).keys()].forEach(k => { S.gridData[k] = 'A'; });
     const payloadBefore = pushPayload(S);
@@ -1452,7 +1496,7 @@ async function scoreAll(src, { verbose = false } = {}) {
   // -- O2: an ALIGNED reference must stay SILENT (a false alarm is its own defect) ---------
   {
     const REF = { ...ALIGN_META, grid_start_x: ALIGN_PANEL.startX, grid_start_y: ALIGN_PANEL.startY };
-    const { sandbox: S, log } = buildEnv(src, { refMeta: REF, refCells: refCellsFor(REF),
+    const { mod: S, log } = await buildEnv(src, { refMeta: REF, refCells: refCellsFor(REF),
                                                 panel: ALIGN_PANEL });
     const res = await S.resolveValidDie({ valid_die_ref: { table: 'ref_tbl', map_id: 'TPL_1' } },
                                         'dt_map', 'HOME_1');
@@ -1498,7 +1542,7 @@ async function scoreAll(src, { verbose = false } = {}) {
   {
     const REF = { ...ALIGN_META, grid_start_x: ALIGN_PANEL.startX, grid_start_y: ALIGN_PANEL.startY,
                   rotation: 90 };
-    const { sandbox: S, log } = buildEnv(src, { refMeta: REF, refCells: refCellsFor(REF),
+    const { mod: S, log } = await buildEnv(src, { refMeta: REF, refCells: refCellsFor(REF),
                                                 panel: ALIGN_PANEL });
     eq('O/rot-only/axis-is-live', true, REF.rotation !== ALIGN_PANEL.rotation);
     const cells = refCellsFor(REF);
@@ -1546,7 +1590,7 @@ async function scoreAll(src, { verbose = false } = {}) {
                        rotation: 90, side: 'back',
                        dia: PRESET_4A.phys_wafer_dia, chipX: PRESET_4A.phys_chip_x,
                        chipY: PRESET_4A.phys_chip_y, offX: 0, offY: 0, margin: 3 };
-    const { sandbox: S, el, log } = buildEnv(src, { panel: PANEL_4A });
+    const { mod: S, el, log } = await buildEnv(src, { panel: PANEL_4A });
     [...targetReachableKeys(S).keys()].forEach(k => { S.gridData[k] = 'A'; });
 
     const payloadBefore = pushPayload(S);
@@ -1614,7 +1658,7 @@ async function scoreAll(src, { verbose = false } = {}) {
   // a declaration being ignored, and nothing is ignored when the two already agree. Without
   // this, the toast would fire on the ordinary rot-0 case, which is most of them.
   {
-    const { sandbox: S, log } = buildEnv(src);          // PANEL_BEFORE is rot 0 / front
+    const { mod: S, log } = await buildEnv(src);          // PANEL_BEFORE is rot 0 / front
     S.applyPresetObject({ name: 'CORE', phys_chip_x: 7, phys_chip_y: 7, rotation: 0, side: 'front' });
     eq('P/agreeing-orientation-is-silent', [],
        log.toasts.filter(t => /\ubc29\ud5a5\(.*\)\uc740 \uc801\uc6a9\ud558\uc9c0 \uc54a\uc558\uc2b5\ub2c8\ub2e4/.test(t.msg)).map(t => t.msg));
@@ -1623,7 +1667,7 @@ async function scoreAll(src, { verbose = false } = {}) {
   // A preset that declares NO orientation at all (the standard branch's no-mask spec is one)
   // is silent too - there is nothing to report.
   {
-    const { sandbox: S, log } = buildEnv(src, { panel: { ...PANEL_BEFORE, rotation: 270, side: 'back' } });
+    const { mod: S, log } = await buildEnv(src, { panel: { ...PANEL_BEFORE, rotation: 270, side: 'back' } });
     S.applyPresetObject({ phys_wafer_dia: 300, phys_chip_x: 1, phys_chip_y: 1,
                           phys_offset_x: 0, phys_offset_y: 0, phys_edge_margin: 3 });
     eq('P/undeclared-orientation-is-silent', [],
@@ -1641,7 +1685,7 @@ async function scoreAll(src, { verbose = false } = {}) {
     lookup: { declared: false, status: 'not_declared', product_code: null }, detail: '',
   };
   {
-    const { sandbox: S, el, log } = buildEnv(src, { routingBody: OK_BODY });
+    const { mod: S, el, log } = await buildEnv(src, { routingBody: OK_BODY });
     const r = await S.applyRoutedPreset('dt_map', 'L1');
     eq('F5c/ok/applied', 'ok', r && r.status);
     eq('F5c/ok/phys-written', [300, 11, 13, 1, 2, 3],
@@ -1667,7 +1711,7 @@ async function scoreAll(src, { verbose = false } = {}) {
   // INV-F5c-1 — nothing is applied for any non-ok status, and a miss is not shouted.
   for (const st of ['not_declared', 'no_match', 'meta_present', 'unresolvable', 'preset_missing']) {
     const body = { ...OK_BODY, status: st, preset_key: null, preset: null };
-    const { sandbox: S, el, log } = buildEnv(src, { routingBody: body });
+    const { mod: S, el, log } = await buildEnv(src, { routingBody: body });
     const before = [el.physChipX.value, el.physChipY.value, el.gridCols.value, S.currentRotation, S.currentSide];
     const r = await S.applyRoutedPreset('dt_map', 'L1');
     eq(`F5c/${st}/not-applied`, null, r);
@@ -1680,7 +1724,7 @@ async function scoreAll(src, { verbose = false } = {}) {
   // apply nothing. Status is the gate; the presence of a body is not permission.
   for (const st of ['meta_present', 'no_match', 'preset_missing']) {
     const body = { ...OK_BODY, status: st, preset_key: 'core_std' };   // preset body left in place
-    const { sandbox: S, el, log } = buildEnv(src, { routingBody: body });
+    const { mod: S, el, log } = await buildEnv(src, { routingBody: body });
     const before = [el.physChipX.value, el.physChipY.value, S.currentRotation, S.currentSide];
     eq(`F5c/${st}-with-body/not-applied`, null, await S.applyRoutedPreset('dt_map', 'L1'));
     eq(`F5c/${st}-with-body/panel-untouched`, before,
@@ -1691,7 +1735,7 @@ async function scoreAll(src, { verbose = false } = {}) {
   // A malformed 'ok' with no preset body must also apply nothing (server contract says it
   // cannot happen — the client must not depend on that).
   {
-    const { sandbox: S, el, log } = buildEnv(src, { routingBody: { ...OK_BODY, preset: null } });
+    const { mod: S, el, log } = await buildEnv(src, { routingBody: { ...OK_BODY, preset: null } });
     const before = el.physChipX.value;
     eq('F5c/ok-without-preset/not-applied', null, await S.applyRoutedPreset('dt_map', 'L1'));
     eq('F5c/ok-without-preset/panel-untouched', before, el.physChipX.value);
@@ -1699,7 +1743,7 @@ async function scoreAll(src, { verbose = false } = {}) {
   }
   // HTTP failure = "could not check", and the fallback is today's behaviour, silently.
   {
-    const { sandbox: S, el, log } = buildEnv(src, { routingHttpOk: false });
+    const { mod: S, el, log } = await buildEnv(src, { routingHttpOk: false });
     const before = el.physChipX.value;
     eq('F5c/http-fail/not-applied', null, await S.applyRoutedPreset('dt_map', 'L1'));
     eq('F5c/http-fail/panel-untouched', before, el.physChipX.value);
@@ -1707,7 +1751,7 @@ async function scoreAll(src, { verbose = false } = {}) {
   }
   // No identity = no request at all.
   {
-    const { sandbox: S, log } = buildEnv(src, { routingBody: OK_BODY });
+    const { mod: S, log } = await buildEnv(src, { routingBody: OK_BODY });
     eq('F5c/no-key/no-request', null, await S.applyRoutedPreset('dt_map', ''));
     eq('F5c/no-key/zero-requests', 0, log.requests.length);
     eq('F5c/no-table/zero-requests', null, await S.applyRoutedPreset('', 'L1'));
@@ -1870,12 +1914,54 @@ const MUTATIONS = [
                   "  if (resp && resp.preset) applyPresetObject(resp.preset);\n  const status = resp && resp.status ? String(resp.status) : '';")],
 ];
 
-const base = await scoreAll(SRC0, { verbose: true });
+const base = await scoreAll(SRC0, { verbose: true }).finally(restoreGlobals);
+
+// 🔴 THE RETIRED MECHANISM'S OWN SYMPTOM, KEPT AS A CONTROL THAT MUST ESCAPE.
+//    The probe proves this copy STARTS WITH the subject's bytes. What byte-identity cannot
+//    say is that this file never goes back to concatenating slices. `sliceFunction` found
+//    its 46 subjects BY NAME, so a scored function that started touching a helper OUTSIDE
+//    that list threw where the shipped code was fine -- CLAUDE.md names this as one of
+//    the three symptoms of slicing. Imported, `escapeHtml` is simply in scope and this
+//    edit does nothing at all. Put the concatenation back and it stops escaping.
+//    MEASURED BOTH WAYS 2026-09-17, which is the only thing that makes it a control:
+//      sliced   -> the whole run dies, `escapeHtml is not defined`
+//      imported -> 241/13, unchanged to the byte
+//
+//    ⚠️ THE FIRST CONTROL WAS REJECTED BY MEASUREMENT, NOT BY ARGUMENT. Rephrasing the
+//    declaration (`function` -> `const`) came back CAUGHT at 14, because the F5c
+//    call-site assertion COUNTS occurrences of `applyRoutedPreset(` in the source and
+//    the declaration is one of them. That assertion is text-as-subject and correct; the
+//    control was wrong. A control has to be invisible to what the file legitimately reads.
+//
+//    ⚠️ IT REPORTS THROUGH `die()`, NOT THE COUNTERS. This harness is KNOWN_RED and already
+//    exits 1, so a control folded into the exit code says nothing; and scoring it as an
+//    assertion would move `ran` off its pinned 241. `die()` suppresses the ASSERTIONS line,
+//    and the gate blocks a known-red entry that stops printing one.
+const CONTROLS = [
+  ['a scored function starts touching a module helper (bind and discard, no behaviour)',
+   s => s.replace('async function applyRoutedPreset(table, mapKey) {',
+                  'async function applyRoutedPreset(table, mapKey) {\n  const __ctl = escapeHtml; void __ctl;')],
+];
+for (const [name, mut] of CONTROLS) {
+  const text = mut(SRC0);
+  if (text === SRC0) die(`control '${name}' did not apply — it scores nothing as written.`);
+  let r;
+  try { r = await scoreAll(text).finally(restoreGlobals); }
+  catch (e) { die(`control '${name}' THREW (${e && e.message}). An edit that changes no` + 
+                  ` behaviour must change no result — this file is reading shape again.`); }
+  if (r.failures.length !== base.failures.length) {
+    die(`control '${name}' was CAUGHT: ${r.failures.length} failure(s) against the ` +
+        `baseline's ${base.failures.length}. Same behaviour, different verdict.`);
+  }
+}
+
 console.log(`\n${base.failures.length === 0 ? '✓' : '✗'} baseline: ${base.compared} assertions, `
   + `${base.failures.length} failure(s)`);
 // H1 protocol: the runner reads this line to tell "red with N assertions" from a crash.
 console.log(`ASSERTIONS ${base.compared} ${base.failures.length}`);
 base.failures.forEach(f => console.log('   ✗ ' + f));
+console.log(`controls: ${CONTROLS.length}/${CONTROLS.length} escaped (all must, or `
+  + `this run would have died above)`);
 
 if (process.argv.includes('--mutate')) {
   console.log('\n── MUTATIONS (each must turn the harness RED) ──');
@@ -1895,7 +1981,7 @@ if (process.argv.includes('--mutate')) {
     }
     applied++;
     let r;
-    try { r = await scoreAll(mutated); }
+    try { r = await scoreAll(mutated).finally(restoreGlobals); }
     catch (e) {
       console.log(`  ~ ${name} -> harness THREW (${e && e.message}) — red, but unnamed`);
       byCrash++; crashed.push(name); continue;
