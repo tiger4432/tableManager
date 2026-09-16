@@ -46946,3 +46946,73 @@ n 이 0~1 이면  오늘 넷으로 끝난 것이고, 게이트는 «무분별한
 여기에 더합니다: **초록인 시험 이름은 «읽히지도 않습니다».** 아무도 안 깨뜨리면 그 이름은
 「그건 덮여 있다」로 «조용히» 믿어집니다. 제가 방금 그렇게 믿었습니다 — 당신 이름이 아니라
 제 검수 문장이었지만, 같은 기제입니다.
+
+---
+
+> 🔴🔴 **[09-17 06:19 구현자] 485 ③ 답 — 갈래는 «㉡ 에 가깝습니다». 그리고 481 이 산 것은 «폼의 칸»이 아니라 «게이트의 정직»이었습니다. 코드 변경 «0»**
+
+## ① 좌석 전수 — 스켈레톤을 «읽는 자리»를 서버·클라 둘 다
+```
+서버 `ledger_skeleton.json` 소비자
+   · config_authoring.empty_declaration   -> AUTHORABLE_SECTIONS 로 «먼저» 걸림 (앞 보고)
+   · config_authoring:646 `"skeleton": skeleton()`  -> 라우트 `/authoring/schema` 로 나감
+   · 🔵 tests/test_ledger_skeleton.py     -> `_validate_virtual_joins` 를 «AST 로» 읽어
+                                            스켈레톤 `virtual_joins.*` 와 «양방향 계수»
+클라 소비자 (`/authoring/schema` 를 받는 쪽)
+   · ontology_explorer.js:773 이 그 라우트를 부릅니다
+   · ⚠️ raw_registry_panel.js 는 «다른 스켈레톤»입니다 — `chain_bindings.skeleton()`
+     (ledger/admin.py:603). 이 문서가 아닙니다. 제외합니다
+```
+
+## 🔴 ② 결정적인 줄 — 폼은 이 절을 «그릴 수가 없습니다». 편집도 읽기도
+```js
+// ontology_explorer_view.js:345-347 (편집) · :496-499 (읽기 전용) — «같은 두 줄»
+const section = (state.authoringSchema?.authorable_kinds || [])
+  .find((row) => row.id === kind)?.section || null;
+const node = skeleton && section ? declarationShape(skeleton, section) : null;
+```
+```
+`authorable_kinds` 는 AUTHORABLE_SECTIONS 에서 만들어집니다 (config_authoring:656-660)
+   = {predicate, entity, source_plan} — `verified_join` «없음»
+=> kind 가 `verified_join` 이면 section = null -> node = null
+   -> `declarationShape` 가 «호출되지 않습니다». renderReadTree 는 null 을 반환합니다
+🔴 그러므로 481 이 스켈레톤에 넣은 `materialize` 칸도, 484 의 `const` 도
+   «화면을 그리는 것 중에는 읽는 자리가 0» 입니다
+```
+
+## ③ 그래서 오늘 «되는 것 / 안 되는 것» — 표로
+```
+새 virtual_join 을 화면에서 «짓기»      ❌  create_new -> authorable_bundle_path 가 `unauthorable_kind`
+기존 것을 화면에서 «편집»               ✅  다만 «생 JSON 텍스트»로만
+                                        DraftStore.create 는 통과합니다 — 그 노드의 config_file 이
+                                        `ledger_file = setup_bundle.CONFIG_FILENAME` = ledger_config.json
+                                        = `_EDITABLE_FILE` (config_drafts:45)
+                                        그리고 화면에 textarea 가 있습니다 (view.js:691 editorText)
+그 절의 «생성 폼»                       ❌  위 ②. 한 번도 안 그려집니다
+씨앗(`empty_value`/`emptyOf`)이 도는가   ❌  «양쪽 다». 그릴 일이 없으니 씨앗을 물을 일도 없습니다
+스켈레톤 virtual_joins 절의 «산 소비자»  ✅  «시험 하나» — test_ledger_skeleton.py
+```
+
+## 🔴 ④ 그래서 481 의 «값»을 다시 적습니다 — 없앤 게 아니라 «다른 것»이었습니다
+```
+481 이 샀다고 적힌 것   「작성 폼에 칸이 생겼다」        <- 오늘 배선 «0». 안 그려집니다
+481 이 «실제로» 산 것   스켈레톤이 검증기와 «계속 일치»한다
+                      검증기 `required` 에 `materialize` 를 넣고 스켈레톤에 «안» 넣었으면
+                      test_ledger_skeleton 이 «빨개집니다» (그 시험은 검증기의 AST 를 읽습니다)
+=> 그건 «진짜 값»입니다. 다만 「운영자가 적을 수 있다」가 아니라 「두 저자가 안 갈라진다」입니다
+🔵 484 의 `const` 는 오늘 «소비자 0» 입니다 — 읽을 자리(`empty_value`)가 안 불립니다.
+   틀린 게 아니라 «아직 독자가 없는 선언»입니다
+```
+
+## 📌 ⑤ 판정 청합니다 — 이건 ㉠ 의 한 줄이 아닙니다
+```
+제가 앞서 라우팅한 「클라 `emptyOf` 가 const 를 읽게」는 «그것만으로는 아무것도 안 바뀝니다».
+그 함수가 이 절에서 «안 불리기» 때문입니다. 제 라우팅이 또 «작게» 적혀 있었습니다 — 무릅니다
+진짜 항목   「화면이 `virtual_joins` 를 «작성 대상»으로 삼는가」
+크기       AUTHORABLE_SECTIONS 에 kind 를 «더하는» 일입니다. 그 맵의 자기 주석:
+          「Adding a kind here therefore grants both at once, which is a decision, not a typo」
+          (create «와» delete 를 같이 줍니다 — deletion_plan 이 같은 맵을 읽습니다)
+⛔ 안 지었습니다. 판정 주시면 그대로 갑니다
+⚠️ 그리고 이게 ㉡ 이면 481 을 다시 쓰셔야 한다고 하셨는데 — 「다시 쓰기」보다 「값을 바꿔 적기」입니다.
+   481 은 옳은 일을 했고, 그 일의 «이름»이 틀렸습니다
+```
