@@ -23612,3 +23612,63 @@ main.py:1854 · :1861   (운영자에게 가는 422 본문 둘)
 > 🔴 「판정 대기」 **2** — ㉠ 산문 축을 «패키지 밖»까지(적어도 판정이 이미 난 셋: builtins:390 · main:1854 · :1861)
 > ㉡ ⑥ 에 거절의 주어(`materialize:false`)와 합성 실패 분리를 «판별 픽스처»로
 > · 🔁 이월: Q-39 ㉠(계기 독스트링 한 줄) — 계기를 ④ 로 «은퇴»시키면 자연히 사라집니다
+
+---
+
+## 🔴 Q-41 [09-17 03:15 실측] 4단계 `306419fd` 검수 — **판정 468 이 «이름으로» 올린 문장 하나가 안 고쳐졌습니다**
+
+### ✅ ① 구조는 제가 때린 자리에서 깨끗합니다
+
+```
+패키지         `git ls-files server/virtual_join/` -> «0». 사라졌습니다 ✅
+남은 importer  비시험 `^(import|from) virtual_join` -> «0» (Q-33 의 23 자리가 전부 정리됨) ✅
+계기           `measure_without_virtual_join` 추적 «0» — 같은 커밋에서 은퇴(Q-39 ②·목록 ④) ✅
+main.py 둘     :1854 「Check virtual_join_rules.json …」 · :1861 「the columns a virtual join
+               exposes …」 -> «히트 0». 운영자 422 본문 «고쳐졌습니다»(Q-33·판정 456) ✅
+재바인딩       config_resolve_report:62 `from chain import legacy_join_declaration as vjc`
+               :63 `from chain.join_refusal import virtual_join_detail`
+               -> 보고서의 virtual_join 도메인(:1325)이 «죽은 이름을 안 부릅니다» ✅
+SOURCE_NAME    지워진 다섯 자리가 «전부 executor 안»(생산자)이었습니다 — 판정 447 ②의
+               「생산자는 가고 읽는 쪽은 남긴다」에 어긋나지 않습니다. 서버에 그 상수의
+               «독자»가 없었습니다 ✅
+```
+
+### 🔴 ② 그런데 판정 468 이 «이름 대어» 올린 문장이 HEAD 에 그대로입니다
+
+```
+server/chain/builtins.py:390
+   # PURPOSE. `builtin:join` is the READ-TIME join and production runs on it; this one
+   # WRITES what the declaration says into a column.
+오늘   `builtin:join` 은 «없습니다» — 이 커밋이 읽기 시점 엔진을 지웠습니다
+       그리고 「production runs on it」은 446·소유자 판정으로 «이미» 거짓이었습니다
+경위   Q-34 ③ 가 올림 -> 판정 453(문장 자체를 고칠 것) -> Q-40 ② 가 「목록 밖」이라 지적
+       -> 판정 468 이 «이름으로» 인수 목록에 올림 -> 4) 착지에 «안 들어왔습니다»
+```
+🔴 **그리고 이 줄은 «이 커밋이 손댄 파일 안»에 있습니다** — 등록표 바로 위입니다.
+   「어차피 여는 파일」이었고, 그래서 이건 「못 찾았다」가 아니라 «목록에서 떨어진» 것입니다.
+⚠️ 부류: 판정 468 자신이 적은 것 — 「목록이 곧 게이트고, 안 실리면 초록으로 닫힙니다」.
+   이번엔 실렸는데도 닫혔습니다. 그러면 남는 물음은 「목록을 «누가 대조하나»」입니다.
+
+### ⚠️ ③ 같은 부류 하나 더 — 이 커밋이 옮긴 파일의 주석입니다
+
+```
+server/config_resolve_report.py:600
+   「왜 옮겼나: 로더(`virtual_join_config`)도 같은 문장이 필요했고 …」
+   -> `virtual_join_config` 는 «두 세대 전» 철자입니다(그다음이 `virtual_join.config`,
+      오늘은 `chain.legacy_join_declaration`). Q-32 ③ 이 「개명 갈래는 셀 수 있다」고
+      적은 그 20 자리 중 하나이고, 이 커밋이 «그 파일의 import 를 바꾸면서» 지나갔습니다
+```
+
+### 확신도 · 못 잰 것
+
+```
+실행  ①②③ 전부 HEAD blob 실측(`git ls-files` · `git grep` · 파일 열기)
+🔴 못 잼  · 시험 두 수(평범 스위트 · PG)를 «제가 안 돌렸습니다» — 구현자 보고의 수이고,
+          제 검수는 「무엇이 남아 있나」입니다
+        · 목록 ⑥ 의 나머지(옮긴 모듈 독스트링 첫 줄 · 키 접기 한 함수)는 이 보고에서 «안 봤습니다»
+        · `materialize: true` 가 정말 «안 건드려졌는지»도 이번엔 안 쟀습니다(커밋이 「control test」로 적습니다)
+```
+
+> 🔴 「판정 대기」 **2** — ㉠ `builtins.py:390` (468 의 목록에 있었는데 안 고쳐짐)
+> ㉡ `config_resolve_report.py:600` 의 두 세대 전 철자
+> · 🔁 이월: Q-40 ㉡(판별 픽스처) · ✅ Q-39 ㉠ 은 계기 은퇴로 «사라짐»
