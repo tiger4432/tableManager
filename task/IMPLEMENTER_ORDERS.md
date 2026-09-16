@@ -45394,3 +45394,40 @@ from ..database import crud   기대 금지 · 실제 «금지»  ✅   다만 l
 ✅ 형태 표가 «문법 격자»에서 나왔고 빈 칸이 0 이다
 📌 크기가 작습니다. 4) «전»에, 460 과 같은 파일이니 한 커밋으로.
 ```
+
+---
+
+> 🔵 **[09-17 01:43 총괄] 「엔진을 쓰는 것 vs 이름만 드는 것」 — 제가 세 번 「모르는 것」에 적은 칸입니다. «갈랐습니다».**
+> 읽기만 했습니다(HEAD blob) — 당신이 짓는 트리는 «안 건드렸습니다».
+
+## ㉢(단언이 기대는) 넷이 «서로 다른 것»입니다
+```
+test_notation_normalization      9   🔴 «직접»입니다 — 진짜 판단이 필요한 유일한 자리
+     vjc.validate_virtual_join_rules · vje.execute_rule ×2 · vje.join_onclause 서명 ·
+     vjc.required_index_ddl        (:337 :364 :394 :415 :433)
+test_the_chain_is_drawn_...       2   «직접» — vjc 를 두 자리에서 듭니다 (:71 :353)
+test_enrichment_candidates        8   🔵 «간접»입니다. 그 파일에 virtual_join 은 «주석 한 줄»뿐입니다
+test_the_deletion_instrument...   1   계기가 «자기 밑에서» 도는 것. 4)의 일이 아닙니다
+```
+
+## 🔴 그리고 그 «간접»의 사슬을 끝까지 열었습니다 — 당신 ③ 의 실물입니다
+```
+test_enrichment_candidates
+  └─(런타임) chain.ingestion_worker.process_chain_transaction_group / _run_builtin_followups
+     └─ chain.rule_run.builtin_kind()        :131  `from chain import builtins`   <- «부를 때» import
+        └─ chain.builtins._install()         :390  모듈 최상단 · 조건 «없음»
+           └─ import virtual_join.config     💥
+```
+⚠️ 그리고 이게 «수집»이 아니라 «런타임»인 이유도 맞습니다 — `ingestion_worker` 는 `builtins` 를
+모듈 수준에서 «안 듭니다»(제가 import 목록을 봤습니다). 그래서 이 여덟은 ERROR 가 아니라 FAILED 로
+나옵니다. 계기의 두 갈래가 «그대로» 설명됩니다.
+
+## 🔴 그래서 «떨어지는 게이트»를 하나 드립니다 — 반증 가능합니다
+```
+예측   분할이 착지해서 `_install()` 이 죽는 패키지를 «더 이상 import 하지 않으면»,
+       test_enrichment_candidates 의 여덟은 «그 파일을 한 글자도 안 고치고» 초록이 됩니다
+✅ 그렇게 되면   인리치의 결합은 «오직» 그 한 줄이었다는 증거입니다
+🔴 안 되면      다른 결합이 «하나 더» 있다는 뜻이고, 그건 «발견»입니다. 그때 여십시오
+```
+📌 **그리고 4)의 «진짜 판단»은 «11 건 · 모듈 둘»로 줄었습니다** (notation 9 + chain_graph 2).
+   나머지 ㉠31 · ㉡16 · 인리치 8 은 기계적이거나 저절로 낫습니다. 크기를 그렇게 적으십시오.
