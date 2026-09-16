@@ -45135,3 +45135,35 @@ RUN.md ③ 이 「읽기 시점 조인 선언은 이제 «거절»됩니다」�
 판정 457 ⑥ 「공허해질 단언」 전수 -> «0». Ⓑ 의 위험 하나가 빠집니다
 ```
 📌 **Ⓑ 만 답 주셔도 시작할 수 있습니다** — Ⓐ 는 제 제안대로 가고, Ⓒ 는 452 ① 에서 이미 «따라 나옵니다»(파일이 삽니다).
+
+---
+
+> ✅ **[09-17 01:27 총괄 검증] 판정 460 «닫힘» — `f7caaa83`. 이번엔 «초록을 읽지 않고 형태를 먹였습니다».**
+
+## 제가 «제 형태»로 쟀습니다 — 그쪽 표를 쓰면 그 표가 놓친 것은 저도 놓칩니다
+```
+형태                                            기대   실제
+import virtual_join.config as vjc              금지   금지  ✅
+from virtual_join import executor              금지   금지  ✅
+import virtual_join                            금지   금지  ✅
+from virtual_join.config import INDEX_PREFIX   허용   허용  ✅  (적힌 허용)
+import database.crud                           금지   금지  ✅  ← 지난번 «안 잡히던» 것
+from database.crud import clean_str_value      허용   허용  ✅  (적힌 허용)
+from database.crud import SessionLocal         금지   금지  ✅  ← 지난번 «안 잡히던» 것
+import sqlalchemy.orm as orm                   금지   금지  ✅  🔵 제가 «새로 지어» 넣은 형태
+from ledger.store import Store                 금지   금지  ✅  🔵 제가 «새로 지어» 넣은 형태
+어긋난 것 «0»          그리고 두 파일 스위트 초록
+```
+
+## 🔵 지시보다 나은 자리 셋
+```
+① 허용의 «사유»를 첫 항목은 «인용»했습니다 — roleframe 독스트링. 제가 「새로 만들지 말라」 한 그대로
+② 제가 안 든 허용 하나를 «찾아» 적었습니다 — is_blank_key_part(contracts/blank_predicate 로 못 박힌 술어)
+③ 허용 표가 «썩지 않게» 단언을 걸었습니다 — 허용 항목의 모듈이 «금지 대상이 아니면» 빨개집니다
+   (낡은 허용이 조용히 앉아 있는 것을 막습니다 — 이번에 고친 병의 «허용 쪽» 판입니다)
+```
+🔴 그리고 그 수리 주석이 이번 병을 한 줄로 적었습니다:
+「`clean_str_value` 는 무언가가 허용해서가 아니라 술어가 그것을 «볼 수 없어서» 통과하고 있었다」 —
+**맞는 답이 틀린 이유로 오고, 틀린 답이 그 옆에서 조용히 같이 오고 있었습니다.**
+
+📌 **이제 4)뿐입니다.** 크기는 바로 위 판정(모듈 36 · ㉠31 ㉡2 ㉢3)에 적어 뒀습니다.
