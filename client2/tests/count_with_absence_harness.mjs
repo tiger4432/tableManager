@@ -32,8 +32,10 @@ console.log('\n[1] a zero says what kind of zero it is');
     countWithAbsence({ value: 0, absence: 'truly_none' }).text, '0 · 정말 없음');
   eq('...and the word is the operator\'s, from the closed list',
     countWithAbsence({ value: 0, absence: 'not_yet' }).word, '아직');
-  // ⚠️ all six, so a token added to the map is not silently half-wired
-  eq('the closed list is six', Object.keys(ABSENCE_WORDS).length, 6);
+  // ⚠️ all seven, so a token added to the map is not silently half-wired. The seventh
+  //    (`not_counted_here`) joined the SERVER's list for S-143 and sat unmapped here until
+  //    2026-09-17, which is why an English token was reaching the screen through redo_cost.
+  eq('the closed list is seven', Object.keys(ABSENCE_WORDS).length, 7);
   for (const token of Object.keys(ABSENCE_WORDS)) {
     ok(`${token} has a word`, countWithAbsence({ value: 0, absence: token }).word === ABSENCE_WORDS[token]);
   }

@@ -5,7 +5,7 @@
 //    (상설: 「근원 템플릿 요소 개발 후 데이터 갈아끼우기」).
 //    그래서 이 파일에는 도메인 낱말이 «하나도» 없습니다 — 부르는 쪽이 선언합니다.
 //
-// 🔴 그리고 «만드는» 것이 아니라 «잇는» 것입니다: 서버가 부재 어휘를 «닫힌 목록 여섯»으로
+// 🔴 그리고 «만드는» 것이 아니라 «잇는» 것입니다: 서버가 부재 어휘를 «닫힌 목록 일곱»으로
 //    이미 값으로 냅니다 (`retroactive.ABSENCE_WORDS`). 읽는 화면이 0 이었습니다.
 //
 // ⛔ 문장을 늘리지 않습니다. 「0」 옆의 «한 낱말»입니다.
@@ -14,9 +14,9 @@
 import { ABSENT, isCount } from './absent.js';
 
 /**
- * 서버의 닫힌 목록 여섯. 🔴 «토큰 -> 운영자가 읽는 낱말» 이고, 그 대응은
+ * 서버의 닫힌 목록 일곱. 🔴 «토큰 -> 운영자가 읽는 낱말» 이고, 그 대응은
  * `task/APPLICATION_RUN_WORDS.md` 가 정본입니다 — 여기서 지어낸 것이 «하나도» 없습니다.
- * ⚠️ 모르는 토큰은 «그대로» 내보냅니다. 아는 여섯으로 접으면 새 낱말이 조용히 사라집니다.
+ * ⚠️ 모르는 토큰은 «그대로» 내보냅니다. 아는 일곱으로 접으면 새 낱말이 조용히 사라집니다.
  */
 export const ABSENCE_WORDS = Object.freeze({
   not_yet: '아직',
@@ -25,6 +25,15 @@ export const ABSENCE_WORDS = Object.freeze({
   truly_none: '정말 없음',
   already_missing: '이미 빠져 있음',
   not_applicable: '해당 없음',
+  // 🔴 서버의 «일곱째» (S-143 · 판정 322). 「셀 수 있으나 이 자리에서 안 셈」이고,
+  //    서버가 «어디서 세는지»를 스스로 적습니다 — `config_drafts.py`: 「the count is still
+  //    available on the retroactive route, and that sentence is what makes the refusal
+  //    actionable」. 그래서 이 낱말은 「0 이 아니다」에서 멈추지 않고 «갈 자리»를 대답합니다:
+  //    그 화면의 이름이 「소급 적용」입니다(`admin.html`).
+  //    ⚠️ 정본 `task/APPLICATION_RUN_WORDS.md` 는 «여섯까지»만 들고 있습니다 — 일곱째는
+  //       그 문서(2026-08-31) 뒤에 생겼습니다. 그 한 줄은 그 문서를 쓴 레인의 몫이라 총괄에
+  //       올렸고, 여기는 «그때까지 화면이 영어 토큰을 내는 것»을 멈춥니다.
+  not_counted_here: '소급에서 셈',
 });
 
 /**
