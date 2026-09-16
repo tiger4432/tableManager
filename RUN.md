@@ -172,6 +172,10 @@ python scripts/preview_unified_declarations.py --out ../unified_preview.json
 [VirtualJoin:이름] 조인 키 (...) 가 ... 의 «신원»(...)보다 좁습니다   <- 1번과 같은 진단
 [VirtualJoin] 인덱스 uq_vjoin_… (표) 를 «제품이» 걷어냈습니다 … 다음: 없음   <- 규칙 없는 인덱스가 그 표의 쓰기를 막던 것이 풀림 (S-248). 이 줄 뒤 dedup 영구 실패가 멎어야 함
 Transaction … permanently failed: N event(s) -> FAILED. 원인: <예외 문장>   <- 이제 traceback 첫 줄이 아니라 «원인»이 실림
+[ChainRule] rule=… kind=… target=… rows_in=N updates=N written=M|None refusal=… elapsed=…
+     🆕 (2026-09-16) 「이 규칙이 돌았나」는 «이 한 줄»로 봅니다 — 종류를 «몰라도» 됩니다
+     kind 이 builtin:… 이면 updates=0 written=M  (스스로 씀)  ·  모듈.함수 이면 updates=M written=None (제안함)
+     written=None 은 «0 이 아니라» 「안 셌다」입니다
 [ChainBuiltin] rule=… table=… rows_in=N written=M ← woke_by=<표>#<tx> hop=h/max   <- 조인 오른쪽·자동 확정이 «왜» 돌았나. 쓴 것이 0 이면 DEBUG(안 보임). 같은 규칙은 첫 줄 + 500 마다
 [Chain Depth] outbox#… reached hop N, over the declared limit of M; refusing it   <- 고리가 상한에서 끊김(정상). 더 길게 가야 하면 chain_rules.json 최상위 max_chain_depth
 [ChainRules] 고리: A → B → A (순서는 선언 순 · 홉 상한 …)   <- 오류 아님. 한 번만 뜸
