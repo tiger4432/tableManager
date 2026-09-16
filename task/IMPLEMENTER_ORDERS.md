@@ -43245,3 +43245,71 @@ VERDICT: PASS
    오늘 그 한 줄 때문에 「무엇이 언제 깨졌나」를 제가 «시각으로» 재야 했습니다
 ```
 📌 순서: ② 재실행 -> ③㉠ 기록 -> 3) 진행. ④ 는 지금부터 «항상».
+
+---
+
+> 🔵 **[09-16 23:38 구현자] 3) 착수 «전» 범위 보고 — 조인이 닿는 자리는 «함수 하나 / 칸 넷»입니다.**
+
+## ① 전수로 셌습니다 (앵커를 세고 «식»까지 열었습니다)
+```
+join_rule() 이 돌려준 dict 에서 이 모듈이 «읽는» 칸  —  넷
+  join_key    -> join_pairs()               :263        (left/right 쌍)
+  expose      -> resolve_identity_sources() :278        (오른쪽 표의 «컬럼 이름»들)
+  right_table -> load_attribution()         :599 · :602
+  _name       -> 거절문의 규칙 이름           :295
+읽지 «않는» 것   right_columns · required_index · required_index_ddl · unique_index
+                (독스트링 :240 이 「로더가 이것들을 싣는다」고 적지만 «이 모듈은 안 씁니다»)
+호출 자리        derive_cells 안 «한 곳» (:562 · :563). 그 밖엔 없습니다
+frame_trigger_scope  조인 «안 닿습니다» (집계 둘뿐)
+```
+🔴 **제 앞 보고를 정정합니다 — 「칸 둘」이라 적었는데 «넷»입니다.** `right_table` 과 `_name` 을 빠뜨렸습니다. 다시 세서 잡았습니다.
+
+## ② 대응표 — 새 낱말이 «하나도» 안 필요합니다
+```
+                 읽기 시점 조인(로더 정규화)        통합 선언(join_into params)
+join_key         [{left, right}]                on           [{left, right}]   «모양 동일»
+expose           오른쪽 표의 컬럼 이름들            take 의 «from» 쪽            (아래 ③)
+right_table      right_table                    right_table                  동일
+_name            _name                          rule["name"]                 동일
+```
+
+## ③ 🔴 `expose` -> `take` 는 «from» 입니다. 「into」가 아닙니다 — 근거를 적습니다
+```
+expose 는 «오른쪽 표에서 SELECT 할 컬럼»입니다:
+  로더        missing = [c for c in expose if c not in right_cols]          (config.py:449)
+  소비        load_attribution(db, right_table, ..., ident_sources.values())  <- 오른쪽에서 읽습니다
+take 는 (from = 오른쪽 컬럼, into = 왼쪽에 앉을 이름)                          (join_into._takes:100)
+=> 「오른쪽 컬럼」인 쪽은 «from» 입니다. into 로 읽으면 없는 컬럼을 SELECT 하게 됩니다
+⚠️ 그래서 {from:"confirmed_lot", into:"lot"} 처럼 «관례 밖으로» 개명한 선언은
+   오늘과 «똑같이» REFUSE_IDENTITY_UNDECLARED 로 거절됩니다. 동작이 안 바뀝니다
+```
+
+## ④ 「verified」도 «같은 세기»로 갑니다 — 문을 안 가릅니다
+```
+오늘   load_verified_rules -> verify_uniqueness -> unique_index_covering(db, 표, 컬럼, folds)
+       (팬아웃하면 load_attribution 이 «한 키에 마지막 행»만 남겨 임의의 lot 이 이깁니다)
+내일   같은 함수를 «그대로» 부릅니다 — 2) 에서 chain.join_key_index 로 옮겨 온 그 정의입니다
+       오른쪽 컬럼·폴드는 join_into 가 이미 계산합니다 (right_key / _pairs -> notation_norm)
+=> 약해지지 않고, 두 번째 철자도 안 생깁니다
+```
+
+## ⑤ 선언을 «읽는» 자리도 기존 좌석입니다
+```
+ingestion_worker.read_rules_document() -> rule_shape.expand_declaration(raw, TABLE_CONFIG)
+= chain/builtins.declared_unique_index_names 가 쓰는 «그 판관»(S-244). 두 번째 독법 안 만듭니다
+```
+
+## ⑥ 🔴 제가 «못 세는» 것 — 그리고 이 변경이 바꾸는 것
+```
+이 이름 둘은 «읽기 시점 조인»의 이름입니다. 재배선 뒤엔 «체인 규칙»에서 찾습니다
+저장소 증거   config/sample/virtual_join_rules.json.sample 이 「소유자가 2026-08-14 에 둘 다 내렸다」고
+             적어 두었고, 그 주석이 「파생은 «그 전부터» 죽어 있었다」고 말합니다
+             (두 right_table 이 table_config.json 에 «미등록»이었습니다)
+❌ 못 셉니다   운영 선언은 gitignore 입니다. 「운영이 이 이름을 아직 읽기 조인으로 들고 있나」는
+             제가 «셀 수 없는 사건»입니다
+⚠️ 다만 이건 «선택»이 아닙니다 — 4) 가 virtual_join 을 지우면 읽기 조인 자체가 없어집니다
+   그래서 3) 은 그 결과를 «앞당겨» 만들 뿐이고, 없는 이름은 오늘과 같이
+   REFUSE_JOIN_RULE_MISSING 으로 «이름을 대고» 멈춥니다
+```
+📌 **MAPPER_SURFACE 의 열(join_rule · join_pairs · derive_cells · CONFIRMED_JOIN_RULE · FRAME_JOIN_RULE · DerivationRefused · REFUSE_SCOPE_TOO_LARGE · SCOPE_ROW_CAP · identity_columns · frame_trigger_scope)은 «한 글자도» 안 움직입니다. 돌려주는 dict 의 «키»도 그대로입니다 — 안쪽 출처만 바뀝니다.**
+📌 이대로 짓겠습니다. ⑥ 이 다르게 판정돼야 하면 말씀 주십시오 — 되돌리기 쉬운 자리입니다.
