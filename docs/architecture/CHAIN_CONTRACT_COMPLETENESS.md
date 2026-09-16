@@ -179,12 +179,13 @@
 |  | 파이썬 맵퍼 | `builtin:` 종류 (조인 · 확정) |
 |---|---|---|
 | 선언 | `derive.kind: mapper` → `mapper_module`/`mapper_function` | `derive.kind: join`/`decide` → `mapper: builtin:…` |
-| 그룹(트리거) 경로 | `execute_custom_mapper` `ingestion_worker` :1503(배치) :1544(행별) | 🆕 `run_builtin` :1485 — [09-16 18:45 `75ef33fe`] 이 갈래가 «생겼다»(`c41f9c6d` 18:20 은 `follow_up` 칸을 뗀 커밋이고 이 파일을 «안 건드렸다»). A-bis `486eb92e` 로 `outbox_mode(COLLAPSED)` «안»에서 부른다 |
-| 후속 랩 | — | `run_builtin` `ingestion_worker` :2853 |
-| 소급(replay) | `execute_custom_mapper` `replay` :518 :520 | `run_builtin` `replay` :492 |
+| 그룹(트리거) 경로 | `rule_run.run_rule` `ingestion_worker` :1513(배치) :1557(행별) | `rule_run.run_rule` :1504 |
+| 후속 랩 | — | `rule_run.run_rule` `ingestion_worker` :2867 |
+| 소급(replay) | `rule_run.run_rule` `replay` :535 | `rule_run.run_rule` `replay` :504 |
 
 ```
-🔴 규칙을 «실행»하는 자리가 «셋»이고, 그중 둘을 «같이» 아는 것은 소급뿐이다
+⚰️ **[09-16 20:28 `027168c2`] 이 표의 «두 열»은 이제 «같은 좌석»을 가리킨다** — `chain/rule_run.py`. 자리 여섯 전부가 `run_rule` 을 부르고, 그 오라클의 «면제 목록이 빈 목록»이라 좌석 밖에서 규칙을 돌리는 자리가 «생기는 날» 빨개진다. 아래 세 줄은 그 전의 기록이다.
+🪦 규칙을 «실행»하는 자리가 «셋»이고, 그중 둘을 «같이» 아는 것은 소급뿐이었다
    -> 그래서 조인은 소급으로는 돌고(소유자 「백필하니 돈다」) 라이브로는 후속 랩에서만 돌았다
    -> 그리고 2026-09-16 에 조인을 그 랩에서 떼자 «갈 곳이 없어졌다» — 그룹 경로엔 builtin 갈래가 없었다
    ⚰️ **[09-16] 그 칸은 «3분» 참이었다** — 이 절은 `9b3af739`(18:42)이고 갈래는 `75ef33fe`(18:45)다. 🔴 제가 먼저 «40분 · `c41f9c6d`»라고 적었는데 «둘 다 틀렸다» — 커밋 시각을 재지 않고 라운드 이름으로 짚었다(응용 Q-7).
@@ -192,6 +193,7 @@
       조인의 쓰기는 `source_name` 은 얻고(항목이 나른다) `chain_depth` 는 «못 얻는다»(응용 Q-1 ①, 판정 대기)
 📌 부류: 기준 ④ 「같은 기능에 두 경로」. 그리고 최악의 판이다 — 두 경로가 갈라져 있는데
    «오류를 안 낸다». 한쪽이 조용히 아무것도 안 할 뿐이다
+🔴 **아직 «한 칸»이 갈라져 있다 — 봉투의 `source`.** 좌석이 `chain_ingestion` 을 세워도 `crud:4564-4566` 이 «항목의 층 이름»으로 다시 세워, `auto_confirm` 의 쓰기는 «체인이 쓴 것»으로 안 읽힌다(옵트인 통과). 판정 425 = 「참이지만 쉬운 고침이 «층의 정체성»을 지불한다」 → S-280 (응용 Q-8)
 ```
 
 ## 판별식 — 체인에 무엇을 더할 때
