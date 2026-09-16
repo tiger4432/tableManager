@@ -121,7 +121,7 @@ def test_the_index_report_says_the_product_will_build_it_after_a_restart():
     """⚠️ 「없습니다」 IS NOT AN ERROR THE OPERATOR FIXES. The product builds it (S-235) -
     so the action is a restart, and saying nothing here is what sends somebody to write
     `CREATE UNIQUE INDEX` by hand."""
-    from virtual_join import unique_key
+    from chain import unique_key
 
     rendered = unique_key.describe("dt_inventory", ["dt_job"], {"state": "missing"})
 
@@ -131,7 +131,7 @@ def test_the_index_report_says_the_product_will_build_it_after_a_restart():
 
 def test_the_blank_key_report_says_absence_and_points_at_the_catalogue():
     """🔴 A BLANK KEY IS NOT A DUPLICATE, AND THE REPAIR IS NEITHER OF THE OTHER TWO."""
-    from virtual_join import unique_key
+    from chain import unique_key
 
     rendered = unique_key.describe(
         "dt_inventory", ["dt_job"],
@@ -145,7 +145,7 @@ def test_the_blank_key_report_says_absence_and_points_at_the_catalogue():
 def test_the_duplicate_list_still_ends_with_one_action():
     """⚠️ THIS ONE IS A LIST - the values ARE the diagnosis - and the last line still has
     to be the sentence the operator acts on."""
-    from virtual_join import unique_key
+    from chain import unique_key
 
     rendered = unique_key.describe(
         "dt_inventory", ["dt_job"],
@@ -217,7 +217,7 @@ def test_the_nothing_action_says_only_what_is_true_of_every_caller():
     ("chain.join_into", "_write"),
     ("database.crud", "refuse_virtual_join_duplicates"),
     ("database.crud", "apply_batch_updates"),
-    ("virtual_join.unique_key", "describe"),
+    ("chain.unique_key", "describe"),
     ("chain.rule_order", "cycle_note"),
 ])
 def test_every_seat_goes_through_the_one_renderer(module_name, function_name):

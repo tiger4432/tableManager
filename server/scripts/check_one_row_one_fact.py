@@ -36,7 +36,7 @@ def main(argv=None):
 
     from database import crud
     import virtual_join.config as vjc
-    from virtual_join import unique_key
+    from chain import unique_key
 
     known = crud.TABLE_CONFIG
     rules = vjc.load_virtual_join_rules(known_tables=known)

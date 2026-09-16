@@ -11,7 +11,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from virtual_join import unique_key  # noqa: E402
+from chain import unique_key  # noqa: E402
 
 
 def setup_function(_):

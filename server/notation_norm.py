@@ -400,7 +400,8 @@ def fold_notation_sql(text_expr, rules: dict):
 # built on and what a duplicate probe groups by is not the fold - it is
 # `coalesce(fold(col), '')`, and after 2026-09-15 it is `coalesce(fold(col::text), '')`
 # when the column is not text. Those three pieces were spelled in FOUR places:
-# `virtual_join.config.index_key_expression` (the DDL and every probe built on it),
+# `chain.join_key_index.index_key_expression` (the DDL and every probe built on it;
+# S-283 moved it out of `virtual_join`, which is being removed),
 # `virtual_join.executor.join_onclause` (the read-time ON clause), `chain.join_into._folded`
 # (the write-time join), and each of them decided the type question on its own - which is
 # how a `number` key answered an operator with 「invalid input syntax for type double

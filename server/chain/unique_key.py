@@ -21,6 +21,10 @@ from __future__ import annotations
 import logging
 import os
 
+# ⚠️ [S-283] THE LOGGER NAME STAYS, for `INDEX_PREFIX`'s reason. An operator greps their
+# logs for what they saw yesterday, and a log channel that renames itself mid-retirement
+# makes the old lines unfindable and the new ones unexpected. Renaming it is a separate
+# round with a note in RUN.md, not a side effect of moving a file.
 logger = logging.getLogger("VirtualJoin.UniqueKey")
 
 #: 보고에 싣는 중복 키의 최대 건수. 수만 건이면 목록이 진단이 아니라 소음이 된다.
@@ -33,7 +37,7 @@ def _expressions(table, columns, folds):
     It used not to be handed the table, so it could not ask whether a column is text - and
     `GROUP BY coalesce(number_col, '')` is the statement that aborted the READ path's own
     transaction on 2026-09-15."""
-    from virtual_join import config as vjc
+    from chain import join_key_index as vjc
     return [vjc.index_key_expression(column, (folds or [None] * len(columns))[index]
                                      if index < len(folds or []) else None, table)
             for index, column in enumerate(columns)]
@@ -89,7 +93,7 @@ def _is_blank(value) -> bool:
 
 def inspect(db, table: str, columns: list, folds=None) -> dict:
     """지금 상태 한 장 — 고치지 «않는다». 판정과 조치를 가르는 자리다."""
-    from virtual_join import config as vjc
+    from chain import join_key_index as vjc
     existing = vjc.unique_index_covering(db, table, columns,
                                          **({"folds": folds} if folds and any(folds) else {}))
     if existing:
@@ -168,7 +172,7 @@ def ensure(db, table: str, columns: list, folds=None, apply: bool = True) -> dic
     if not apply:
         return report
 
-    from virtual_join import config as vjc
+    from chain import join_key_index as vjc
     from sqlalchemy import text as sa_text
 
     engine = db.get_bind()
@@ -273,7 +277,7 @@ def product_indexes(db) -> list:
 
     # ⚠️ THE PREFIX IS NOT RE-SPELLED HERE. `config.INDEX_PREFIX` is what NAMES these
     # indexes; a second copy of the string would be a second answer to 「which are ours」.
-    from virtual_join.config import INDEX_PREFIX
+    from chain.join_key_index import INDEX_PREFIX
 
     rows = db.execute(text(
         "SELECT t.relname AS table_name, i.relname AS index_name "

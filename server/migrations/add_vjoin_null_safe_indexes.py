@@ -103,7 +103,8 @@ def main(argv=None) -> int:
             folds = vjc._folds_list(columns, rule.get("right_folds") or [])
             if not (table and columns):
                 continue
-            name = vjc.required_index_name(table, columns, rule.get("right_folds"))
+            from chain import join_key_index as jki
+            name = jki.required_index_name(table, columns, rule.get("right_folds"))
             ddl = vjc.required_index_ddl(table, columns, rule.get("right_folds"))
             print(f"\n== {rule.get('name')} == {table}({', '.join(columns)})")
             if _existing(db, name):

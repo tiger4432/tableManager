@@ -158,8 +158,8 @@ def ensure_declared_unique_keys(db, rules) -> dict:
     (판정 399 ③′): a switch that still probes is the defect that took the read path down
     on 2026-09-14.
     """
-    from virtual_join import config as vjc
-    from virtual_join import unique_key
+    from chain import join_key_index as vjc
+    from chain import unique_key
 
     report = {"ensured": [], "skipped": []}
     seen = set()
@@ -237,7 +237,7 @@ def declared_unique_index_names(known_tables: dict = None) -> set:
     """
     from chain import ingestion_worker, rule_shape
     from database import crud
-    from virtual_join import config as vjc
+    from chain import join_key_index as vjc
 
     catalogue = known_tables if known_tables is not None else crud.TABLE_CONFIG
     names = set()
