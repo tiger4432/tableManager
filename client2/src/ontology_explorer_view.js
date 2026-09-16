@@ -10,6 +10,8 @@ import { closedListChoice, renderClosedList } from './closed_list.js';
 // 🔴 C-121. 이 화면이 보내는 수 옆에 «그 0 이 무엇인지»를 붙이는 정본. 새 어휘가 아니라서
 //    호출자가 여섯째입니다(admin 넷 · chain_queue_panel 둘).
 import { countWithAbsence } from './count_with_absence.js';
+// 🔴 C-120. 「꺼짐 + 왜」의 좌석. 이 화면의 「Draft preview」가 «말 없이» 꺼져 있었습니다.
+import { setDisabledReason } from './disabled_reason.js';
 import { orderingVerdicts, UNIQUENESS_UNREAD } from './uniqueness.js';
 import { demandState } from './form_demand.js';
 import { refusalSummary, excludedNote, refusalSamples, testRunRows } from './refusal_cell.js';
@@ -47,6 +49,14 @@ const button = (text, action, value, cls = '') => {
 //    여섯째가 생기는 날 그 자리만 다른 답을 냅니다. 종류를 묻는 좌석은 하나입니다.
 // ⚠️ 「불러오는 중」도 이 문을 지납니다. 못 읽은 화면은 «아무것도 주장하지 않습니다» —
 //    거절 문구는 이미 `.oe-error` 가 «한 번» 이름 대고 있습니다.
+/** 아직 검증되지 않은 초안의 «한 문장». 이 파일이 원문 탭에서 이미 쓰던 말입니다.
+ *
+ * 🔴 C-120. 새로 짓지 않는 이유가 여기서 특히 분명합니다 — 그 문장은 «원문 탭»에 있고
+ *    「Draft preview」 버튼은 «머리»에 있습니다. 탭을 안 열면 사유가 안 보이는 것이 바로
+ *    「사유가 다른 패널에 있다」이고, 그것이 이번 부류의 셋째 모양이었습니다. 한 상수로
+ *    묶어 두 자리가 «같은 말»을 하게 합니다. */
+const DRAFT_UNVERIFIED = '저장하면 검증합니다.';
+
 const appendEmptyLine = (parent, count, unread, text, cls = 'oe-empty') => {
   const cell = countWithAbsence({ value: count, unread: unread || '' });
   if (!cell.read || Number(count) !== 0) return;
@@ -688,7 +698,7 @@ function renderRaw(state) {
     const errors = state.draft.validation_errors || [];
     validation.textContent = errors.length
       ? errors.map((e) => `[${e.reference_status || e.code}] ${e.json_pointer || e.path}: ${e.message}`).join('\n')
-      : (state.draft.preview_valid ? '✓ 동일 compiler로 검증된 초안입니다.' : '저장하면 검증합니다.');
+      : (state.draft.preview_valid ? '✓ 동일 compiler로 검증된 초안입니다.' : DRAFT_UNVERIFIED);
     // 🔴 ONE SAVE, AND THE LIFECYCLE BRANCH IS GONE -- IT WAS THE FLICKER.
     //
     //     초안 편집 버튼이 나오다 말다하고 저장검증은 뭐고 검토 요청은 뭔지 모르겠음
@@ -966,7 +976,9 @@ function renderInspector(state) {
     activeButton.setAttribute('aria-pressed', String(mode !== 'draft_preview'));
     const draftButton = button('Draft preview', 'view-draft', '', `oe-mode-action ${mode === 'draft_preview' ? 'is-current' : ''}`);
     draftButton.setAttribute('aria-pressed', String(mode === 'draft_preview'));
-    draftButton.disabled = !state.draft.preview_valid;
+    // 🔴 C-120. 사유가 «원문 탭»에 있었습니다 — 그 탭을 안 열면 이 버튼은 말 없이 꺼진
+    //    버튼입니다. 「고장인가 · 아직인가 · 권한이 없나」가 그때 구별되지 않습니다.
+    setDisabledReason(draftButton, state.draft.preview_valid ? '' : DRAFT_UNVERIFIED);
     actions.append(activeButton, draftButton);
   }
   if (!state.draft && state.selection.config_file === 'ledger_config.json') {

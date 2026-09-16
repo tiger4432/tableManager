@@ -1484,7 +1484,12 @@ const FLOORS = new Map([
   // sentences would leave the fifth control out the day it appears -- and "no reason at all"
   // is the easiest option to pick, because it is written by doing nothing. Half of it is the
   // control direction: a live button must NOT keep the reason, or the fix only moved it.
-  ['disabled_reason_harness.mjs', 19],
+  // Raised 2026-09-16 with C-120's follow-up: the Lead asked for the population to be
+  // re-counted across EVERY screen, so the file now carries a roll call of all 45 sites
+  // that turn a control off, each one saying WHICH side of 「has a reason ∨ is not
+  // misread」 it is on. A new site is unclassified and reddens it -- silence is no
+  // longer a way to join.
+  ['disabled_reason_harness.mjs', 25],
   // New 2026-09-16 with C-117 ㈰. 🔴 THE SUBJECT IS TEXT AND TEXT IS THE SUBJECT: a CSS
   // custom property either has a declaration somewhere or it does not, and an undefined one
   // fails SILENTLY and DIFFERENTLY per property -- `fill` falls to its initial value (black),
