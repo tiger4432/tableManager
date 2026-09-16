@@ -20546,3 +20546,75 @@ if prefetch <= threshold: return      그 청크의 선인출이 «느릴 때만
 
 > 🔴 「판정 대기」 **1** — ③ 을 위해 **인제션을 제가 돌려도 됩니까**(구현자가 그 파일 편집 중이라 안 돌렸습니다)
 > · 🔁 이월: 0 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
+
+---
+
+## D-40 — 「SAVEPOINT 는 트랜잭션 블록에서만」(25P01)이 «어디서» 나는가 (조사, 코드 0)
+
+> **잰 상자:** 이 워크스테이션. **운영이 아니다.** · 재현 «안 함»(사유는 ③) · 구현자 편집 중 파일은 «읽기만»
+
+### 🔴 0. 지시가 죽였다고 한 가설이 **살아 있습니다 — 다른 문으로**
+
+```
+지시      「raw_connection() 운영 호출자 «0» (git grep, tests 제외)」
+제 실측   운영 호출자 «스물 남짓» — ledger/backfill 7 · followup 4 · gaps · store · trace_router ·
+          parsers/directory_watcher · migrations/scripts
+🔴 그중 «풀 연결을 autocommit 으로 바꾸고 풀에 돌려주는» 자리가 **인제션 경로에 하나** 있습니다
+```
+⚠️ 두 수가 다른 이유는 술어가 아니라 **모집단**입니다 — 어느 쪽이든 `git grep raw_connection() -- server` 로 다시 셀 수 있습니다.
+
+### ① 후보 표 — 성질로 세고, 열어서 소거
+
+| 후보 | 이 예외가 나려면 참이어야 하는 것 | 열어 본 결과 | 남나 |
+|---|---|---|---|
+| **ⓐ** `in_transaction()` 이 참인데 서버엔 BEGIN 이 없다 | **연결이 autocommit**이면 그 상태가 성립한다 — `in_transaction()` 은 «세션»의 사실이고 autocommit 은 «연결»의 사실이라 서로 모른다 | 🔴 오늘도 가능 | 🔴 **남음** |
+| **ⓐ-1** 그 상태를 «만드는» 자리 | 풀 연결을 autocommit 으로 바꾸고 **풀에 돌려준다** | `parsers/directory_watcher.py:125~131` — `db.connection().engine.raw_connection()` → `set_isolation_level(0)` → ANALYZE → `connection.close()` | 🔴 **남음 (유일)** |
+| ⓐ-2 같은 모양의 다른 둘 | 같음 | `chain/ingestion_worker.py:139` · `parsers/directory_watcher.py:355` — 둘 다 **`psycopg2.connect(...)` 전용 연결**(풀이 본 적 없음) | ✖ 소거 |
+| ⓑ 가드와 `begin_nested` 사이의 rollback | rollback 이 SessionTransaction 을 끝냄 | 끝나면 `in_transaction()` 이 **False** 가 되어 가드가 `db.begin()` 을 한다 — 가드가 덮는 갈래 | ✖ 소거 |
+| ⓒ 다른 SAVEPOINT 발행자 | `begin_nested` / `begin(nested=True)` | 운영 자리 **하나**(`enrichment/config.py:1444`). ⚠️ 그리고 **`mappers/cross_table_lookup_mapper.py.sample:306` 에도 있습니다** — 운영자가 «복사해 쓰는 틀»이고 라이브 맵퍼는 gitignore | ⚠️ **저장소 안은 하나, 운영은 못 셈** |
+| ⓓ 사용자 문장이 자기 SAVEPOINT 를 쓴다 | 참조 뷰 SQL 안에 SAVEPOINT | 라이브 선언을 제가 못 봅니다 | ⚠️ **못 잼** |
+
+### ② 남는 자리 — 그리고 **저장소가 이미 이 함정에 이름을 붙여 뒀습니다**
+
+`chain/ingestion_worker.py:120~135`(S-167)이 «그 자리를 피하는 이유»로 이렇게 적습니다:
+```
+「`engine.raw_connection()` 은 «풀의» 연결을 내준다. `set_isolation_level(0)` 이 그것을 바꾸고,
+ 프록시를 닫으면 **autocommit 인 채 풀로 돌아간다** … 그 뒤 그것을 받은 세션은 트랜잭션을 연 적이 없다.
+ ⚠️ **`in_transaction()` 가드는 그것을 막지 못한다**」
+```
+🔴 **그런데 `directory_watcher._reanalyse_after_load` 가 정확히 그 모양입니다.** 사슬:
+```
+① 한 파일이 `analyze_after_rows`(출하 기본 «10,000») 이상을 적재
+② ANALYZE 좌석이 «풀» 연결을 받아 autocommit 으로 바꾸고 → `close()` → **autocommit 인 채 풀 복귀**
+③ 뒤에 그 연결을 받은 세션: `in_transaction()` «참»(세션 사실) · 서버엔 BEGIN «없음»(연결 사실)
+④ `_isolated_execute` 의 가드가 통과 → `begin_nested()` → SAVEPOINT → **25P01**
+```
+📌 왜 «가끔·특정 표»인가: ②가 «큰 적재» 뒤에만 돌고, 오염은 «그 연결 하나»에만 붙어 풀에서 밀려날 때까지만 삽니다.
+
+### ② 운영자가 «찾을 수 있는 낱말» (로그를 못 붙이시므로)
+
+```
+그 예외 자체     SAVEPOINT  ·  25P01  ·  no_active_sql_transaction
+                (한국어 서버 메시지: 「savepoint 명령은 트랜잭션 블럭에서만 사용할 수 있음」)
+어느 줄에 실리나  "reference query execution failed"    (enrichment/config.py:1270)
+                "candidate probe execution failed"     (:1271)
+🔴 «순서»가 증거입니다 — 같은 표에 대해 아래 줄이 «먼저» 나오고 그 뒤에 위 둘이 나오면 이 사슬입니다:
+                "statistics re-analysed after N row(s)"   (성공, directory_watcher:132)
+                "could not re-analyse after N row(s)"     (실패해도 연결은 이미 오염됨)
+```
+⚠️ **「could not re-analyse」 쪽이 더 조용합니다** — 그 좌석은 «절대 안 던지게» 돼 있어서(의도된 설계),
+실패해도 파일은 성공으로 보고되고 오염만 남습니다.
+
+### 🔴 ③ 모르는 것
+
+```
+① 재현 «안 했습니다» — 라이브 설정을 못 고치고(상설), 구현자가 S-270 으로 그 계열 파일을 편집 중입니다
+② 풀이 그 연결을 «언제 버리는지»(pool_recycle·pre_ping)는 설정이라, 운영에서 오염이 얼마나 오래 사는지 모릅니다
+③ 라이브 맵퍼·참조 뷰가 «자기 SAVEPOINT»를 쓰는지 못 봅니다(gitignore) — ⓒⓓ 가 열린 채인 이유
+④ 「SQLAlchemy 가 checkin 때 isolation_level 을 복원하지 않는다」는 **저장소의 S-167 실측 문장**과
+   코드 모양에 기댄 것이고, 제가 다시 돌려 본 것이 아닙니다
+⑤ 그래서 이 census 는 «하한»입니다 — ⓒⓓ 가 닫히려면 «그 설치의» 맵퍼와 참조 뷰를 봐야 합니다
+```
+
+> 🔴 「판정 대기」 **1** — ⓐ-1 이 원인이라면 수리는 「ANALYZE 좌석도 «전용 연결»로」(같은 파일 :355 가 이미 그 모양)입니다. 다만 **수리는 구현자 몫**이라 제안만 적습니다
+> · 🔁 이월: 0 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
