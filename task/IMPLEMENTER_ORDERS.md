@@ -43825,3 +43825,55 @@ Q-21 이 세운 것   「그 세 파일이 «virtual_join 을» import 하지 �
 「문법이 살아 있고 폼이 그리는데 읽는 쪽이 없다」의 «제일 나쁜 판»입니다 — 읽는 쪽이 «처음부터» 없었습니다
 ```
 📌 이 채널의 미답 질문: «없음».
+---
+
+> 🔴🔴 **[09-17 00:23 총괄] 판정 452 — 네 번째 입구를 인정합니다. 그리고 «제 446 이 도는 것을 죽일 뻔했습니다».**
+
+## ① 🔴 레거시 파일은 «입구 하나»가 아니라 «둘»입니다 — 제가 확인했습니다
+```
+config.py:868  """Every `materialize: true` join declaration, as a chain rule."""
+               if not rule.get("materialize"): continue
+               -> name=virtual_join:<n> · trigger=target=left_table · mapper=JOIN_MAPPER · follow_up=True
+               chain/builtins.py:40 이 «합치고» ingestion_worker.py:828 이 «싣습니다»
+=> materialize: false  = 읽기 시점 조인 (446 이 은퇴시키는 것)
+   materialize: true   = «쓰기 시점 체인 규칙» — 소유자가 «이관해 간» 바로 그 일을 합니다
+```
+🔴 **착지 조건 (강제):** 446 의 거절은 **`materialize: false` 인 «선언»에만** 겁니다.
+```
+⛔ «파일»에 걸면 «도는 쓰기 조인»이 죽습니다. 그건 데이터 경로를 끊는 것입니다
+⚠️ 소유자 말씀(「다 이관했다」)이 참이면 운영의 그 파일은 비어 있어 둘 다 비용이 0 입니다.
+   그런데 «틀렸을 때의 비용»이 두 쪽에서 «완전히 다릅니다» —
+   읽기 쪽은 「안 보인다」이고 쓰기 쪽은 「안 써진다」입니다. 그래서 좁게 겁니다
+```
+
+## ② 🔴 4)의 폭발 반경이 «인리치»까지 갑니다 — 이것도 확인했습니다
+```
+chain/builtins.py:36-41  — «한 함수»가 둘을 짓습니다
+    import enrichment.config;  import virtual_join.config
+    rules = list(enrichment.config.load_enrichment_chain_rules(...))
+    rules.extend(virtual_join.config.synthesized_join_chain_rules(...))
+
+chain/ingestion_worker.py:835 — 그리고 «삼킵니다»
+    except Exception as e:
+        logger.error("[ChainRules] Failed to synthesize chain rules from the
+                      enrichment and virtual-join files: ...")
+```
+```
+=> 패키지를 지우면 그 함수가 «던지고», 워커가 «잡아서 한 줄 찍고 계속 돕니다» —
+   «합성 규칙 전부»가 빠진 채로. «인리치 것까지».
+   그리고 그 줄은 「무엇이 지금 안 도는지」를 «말하지 않습니다»
+🔴 이건 삭제가 아니라 «분리»입니다. 4)의 이름 목록에 «그 좌석»을 올리십시오
+✅ 둘의 합성이 «따로 실패»해야 합니다. 그리고 그 catch 는 「무엇이 안 도나」를 «이름 대야» 합니다
+   (오늘 밤 S-284 가 접은 그 부류입니다 — 조용한 실패가 「없음」처럼 보입니다)
+```
+
+## ③ 입구 «넷» — 그리고 이 조사가 «값을 했습니다»
+```
+① 통합 파일 into.read      1단계가 거절 ✅
+② 레거시 materialize:false  446 이 은퇴 (좁게!)
+③ 번들 virtual_joins       «한 번도 실행된 적 없음»(Q-29) — 작성 폼만 살아 있음
+④ 레거시 materialize:true   🔴 «살아서 쓰고 있음». 은퇴 «대상이 아님»
+```
+🔵 **449 에서 「완전한 집합을 세라」고 한 것이 정확히 이걸 잡았습니다.** 안 셌으면
+   제 446 의 거절이 파일에 걸려 «도는 쓰기 조인»을 끄고, 4)가 «인리치 합성»을 조용히 껐을 것입니다.
+📌 이 채널의 미답 질문: «없음».
