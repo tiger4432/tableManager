@@ -1,6 +1,6 @@
 # Canonical Ledger 개발·운영 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-09-05 (준비기가 자기 산출을 밝힐 수 있고 구현 이름은 고르개가 됐다 · 완성 조건에 «두 줄» 조임쇠) · 직전 2026-09-02 (🔴 **§4.6 이 은퇴한 라우트 «셋»(`/structure`·`/kinds`·`/trends`)의 읽는 법을 현재형으로 가르치고 있었다** — §1.2 는 같은 파일에서 그것들을 은퇴 목록에 올려 두고 있었고 §4.6 만 안 고쳐졌다. 묘비 + «생존자 줄»로 교체. `/subgraph` 의 «둘째» 422(`follow` 키를 못 드는 씨앗) 추가) · 직전 2026-08-31 (§1.2 라우트가 «둘»에서 «셋»으로 — `gaps` 신설 · `declaration` 에 `sources` 절 · **§4.1-bis 페이싱 · §4.1-ter 범위 재번역 신설**) · 직전 2026-08-29 밤 (§1.2 `/subgraph` 에 대조 쌍 `reach`/`reachable`) | **Owner:** Server / Ledger
+> **Status:** 🟢 Living | **Last-verified:** 2026-09-16 (§1.2 읽기 라우트 «셋»→**«넷»** — `GET /api/ledger/key-values` 가 빠져 있었다. 🔴 등재하면서 **그 응답 칸의 이름을 코드에서 다시 쟀고 라우트 자기 설명이 낡아 있었다**: `seedable` 은 **`covers_declared_keys`** 로 바뀌었는데 파라미터 설명이 옛 이름을 말한다 — 코드 소관으로 올림) · 직전 2026-09-05 (준비기가 자기 산출을 밝힐 수 있고 구현 이름은 고르개가 됐다 · 완성 조건에 «두 줄» 조임쇠) · 직전 2026-09-02 (🔴 **§4.6 이 은퇴한 라우트 «셋»(`/structure`·`/kinds`·`/trends`)의 읽는 법을 현재형으로 가르치고 있었다** — §1.2 는 같은 파일에서 그것들을 은퇴 목록에 올려 두고 있었고 §4.6 만 안 고쳐졌다. 묘비 + «생존자 줄»로 교체. `/subgraph` 의 «둘째» 422(`follow` 키를 못 드는 씨앗) 추가) · 직전 2026-08-31 (§1.2 라우트가 «둘»에서 «셋»으로 — `gaps` 신설 · `declaration` 에 `sources` 절 · **§4.1-bis 페이싱 · §4.1-ter 범위 재번역 신설**) · 직전 2026-08-29 밤 (§1.2 `/subgraph` 에 대조 쌍 `reach`/`reachable`) | **Owner:** Server / Ledger
 > **Source-of-truth:** `server/config/ontology/ledger_config.json`(선언) · `server/ledger/`
 
 이 문서는 **새 소스를 붙이고 백필 결과를 확인하는 방법**만 설명한다.
@@ -68,13 +68,14 @@
 
 ### 1.2 읽기 쪽
 
-**라우트는 «셋»이다** (실측 2026-08-31 — `server/ledger/trace_router.py` 의 `@router.get` 전수).
-🔴 **[2026-08-31] 종전 이 자리는 「둘」이었고 그것이 거짓이 됐다** — `gaps` 가 붙었다.
-⚠️ **그래도 «데이터»에 답하는 것은 `subgraph` 하나다** — 나머지 둘은 «선언에 대해» 답한다.
+**라우트는 «넷»이다** (실측 2026-09-16 — `git grep -c '^@router\.' -- server/ledger/trace_router.py` = 4).
+🔴 **[2026-09-16] 종전 이 자리는 「셋」이었고 그것이 거짓이 됐다** — `key-values` 가 붙었다. (그 앞: 「둘」 → `gaps` 가 붙어 「셋」, 2026-08-31.)
+⚠️ **그래도 «원장의 사실»에 답하는 것은 `subgraph` 하나다** — `declaration` 과 `gaps` 는 «선언에 대해» 답하고, `key-values` 는 씨앗을 고르라고 «오늘 있는 값»을 답한다.
 
 | 질문 | API |
 |---|---|
 | 마킹에서 걸어 서브그래프 | `GET /api/ledger/subgraph` |
+| **씨앗에 무슨 값을 적나** | 🆕 `GET /api/ledger/key-values?type=&key=&limit=` — 「이 타입의 이 키에 오늘 원장에 있는 값」. 🔴 **그룹이 아니라 «읽는 행 수»를 자르고 절단을 «둘»로 나눠 답한다**: `scan_truncated`「행을 다 못 봤다」 ≠ `values_truncated`「값이 더 있는데 안 실었다」 — 한 표지로 접으면 「이 키엔 값이 이만큼뿐」과 「이만큼까지만 봤다」가 같은 답이 된다. 복합 키에서 축 하나만 물으면 그것이 선언된 키 집합을 **다 덮지 못할 수** 있고, 응답의 **`covers_declared_keys`**(불리언)가 그것을 말한다. ⚠️ **`seedable` 이 «아니다»** — 옛 이름은 「이 조합이 walk 을 띄운다」를 주장했는데 이 라우트는 그것을 재지 않는다(재는 것은 «키 덮개»뿐이고, walk 이 답하는지는 묻는 쪽의 질문이다). 🔴 **라우트의 `key` 파라미터 설명이 아직 옛 이름을 말한다**(`trace_router.py` 의 `Query(..., description=…)` — OpenAPI 로 나간다). **코드 소관**. 나머지 응답 칸: `subjects[]`·`keys`·`scanned`·`limits`·`order`. 선언에 없는 타입은 422(`node_type_not_declared`). 부르는 쪽은 걷기 상자 `client2/src/walk/main.js` |
 | 선언 자체 (원장을 안 읽는다) | `GET /api/ledger/declaration` — 🆕 **`sources[]` 절이 붙었다**: `{source, relation, emits[], scope_columns[]}`. `scope_columns` 가 곧 범위 재번역(§4.1-ter)이 허용하는 그 목록이다. 🔴 **못 읽으면 키를 «비우지 않고 뺀다»**(부재 = 「모른다」, 빈 배열 = 「없다」) |
 | **무엇이 아직 «없나»** | 🆕 `GET /api/ledger/gaps` — 인자 없으면 질문 «이름»만(DB 접근 0), `?name=` 이면 그 하나를 «잰다»(읽기 전용). 찾는 것은 코드가 **어휘를 순회**해서 하고, 부르는 이름은 `server/ledger/gap_names.json` 이 준다 — **코드에 도메인 낱말이 없다**. 「0」이 세 갈래(정말 없음 · 표본이 다 못 봄 · 해당 없음)로 갈려 나오고 `count_kind` 가 함께 온다 |
 

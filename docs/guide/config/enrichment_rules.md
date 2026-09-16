@@ -1,6 +1,6 @@
 # `enrichment_rules.json` 세팅 — 결손 보정 워크리스트 규칙
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-09-16 (§4 반영 확인 — 파생 확인 줄은 `[ChainRules] set(N)` 하나, S-234) · 직전 2026-08-06 (§7.3-bis의 `curl` 포트를 **8000 → 8080**으로 정정 — `:8000`은 `uvicorn`을 직접 쳤을 때의 기본값이라 복사해 붙인 운영자가 「연결 거부」를 자기 선언 문제로 읽습니다. 모집단 목록 옆의 **수를 지웠습니다**. 🔴 **`alignment` 키를 어느 규칙에 붙이는가의 체크리스트는 [CONFIG_GUIDE §3 S9](../CONFIG_GUIDE.md)에 생겼습니다** — 이 저장소의 현재 선언이 어긋나 있다는 실측도 그쪽에 있습니다) | **Owner:** 총괄
+> **Status:** 🟢 Living | **Last-verified:** 2026-09-16 «후속» (⚰️ **§6-bis `claim_contract` 에 은퇴 표지 + 후계 표** — 이 문서가 그것을 「선택 계약」으로 «현재형»으로 가르치고 있었고, 그 칸은 S-184·판정 295 로 은퇴해 오늘 «삼켜진다». §6 키 표의 그 행도 같이 고쳤다. §7 `candidate_for`·`auto_confirm` 은 **살아 있고 안 건드렸다**) · 직전 2026-09-16 (§4 반영 확인 — 파생 확인 줄은 `[ChainRules] set(N)` 하나, S-234) · 직전 2026-08-06 (§7.3-bis의 `curl` 포트를 **8000 → 8080**으로 정정 — `:8000`은 `uvicorn`을 직접 쳤을 때의 기본값이라 복사해 붙인 운영자가 「연결 거부」를 자기 선언 문제로 읽습니다. 모집단 목록 옆의 **수를 지웠습니다**. 🔴 **`alignment` 키를 어느 규칙에 붙이는가의 체크리스트는 [CONFIG_GUIDE §3 S9](../CONFIG_GUIDE.md)에 생겼습니다** — 이 저장소의 현재 선언이 어긋나 있다는 실측도 그쪽에 있습니다) | **Owner:** 총괄
 > 
 > ### 이번 라운드 (2026-07-31)
 > - **§7.3-bis의 ⏳ 해제** (`93610cb`) — 사유(`not_declared`/`not_reached`/`scope_unresolved`/`mapping_unavailable`)가 **어드민 Overview 탭의 세 번째 계기 줄에 그대로 나옵니다.** `detail`은 **서버가 만들고 화면은 그대로 렌더**하므로, 화면 문장과 `curl` 응답이 다르면 그 자체가 결함입니다.
@@ -182,14 +182,27 @@ conda run -n assy_manager python server/scripts/backup_config.py restore enrichm
 | `enabled` | | 기본 `true` |
 | `auto_confirm` | | **기본 `false`** — 후보가 1개일 때 사람 없이 자동 확정(§7) |
 | `alignment` | | **맵 정렬 화면(Map Editor 2)이 다룰 수 있는 규칙**임을 선언합니다. `true`(JSON 불리언)만 인정하며 `"true"`·`1` 같은 오타는 선언이 아닙니다(`map_push_ok`와 같은 규율). `GET /enrichment/rules`가 이 값을 그대로 실어 보내고, 화면은 이 표시가 있는 규칙만 고를 수 있게 합니다.<br>🔴 **미선언 = 정렬 대상 아님**이고, 이것은 기본값이 아니라 **사실**입니다 - 아무도 그 규칙이 정렬 가능하다고 주장한 적이 없다는 뜻입니다.<br>🔴 서버는 이 값을 **유도하지 않습니다.** `target_fields` 이름에 `frame`이 들어 있다는 것은 근거가 아닙니다 - 그 추론이야말로 이 화면이 다른 모든 자리에서 거부하는 것입니다(그럴듯한 기본값이 선언을 사칭). 정렬 화면을 쓰려면 **현장이 직접 켜야 합니다.** |
-| `claim_contract` | | 기존 column 결손을 원장 Claim 요구와 `Enrich Action`으로 읽는 선택 계약. 아래 §6-bis. 미선언이면 legacy 동작 그대로 |
+| ⚰️ `claim_contract` | | **은퇴했다(S-184 · 판정 295). 적지 마십시오** — 적어도 로드는 계속되지만 «읽는 쪽이 없고», 경고 한 줄과 거절 목록 한 행만 남는다. 후계는 §6-bis |
 | `reference_views[]` | | `{label, query, limit}` 또는 `{label, query_ref}` — `query`·`limit`은 **서버에만 존재**하고 `GET /enrichment/rules`가 클라에 내보내는 것은 **`label`과 아래 `candidate_for` 둘뿐**입니다(2026-07-30 [F9]에서 `candidate_for`가 가산 노출됐습니다 — 종전 이 칸은 「클라엔 `label`만」이었고 바로 다음 줄과 어긋났습니다). `limit` 기본 200 · 최대 1000 |
 | `reference_views[].candidate_for` | | `{target_field: 뷰 결과 컬럼}` — 이 뷰의 어느 컬럼이 어느 target의 **후보값**인지 선언(§7). 없으면 그 뷰는 **표시 전용** |
 
 - 거부는 규칙 단위 + 조용함 — 워크리스트가 조용히 비면 로그의 검증 에러부터.
 - `RESOLVED_AS`를 온톨로지에 중복 선언하지 마십시오(자동 승격).
 
-## 6-bis. `claim_contract` — Enrich Action 선언
+## ⚰️ 6-bis. `claim_contract` — Enrich Action 선언 (**은퇴 · 2026-09-16 표시**)
+
+> 🗄️ **믿지 말 것** — 아래 JSON·키 표·「중요한 경계」 전부. `claim_contract` 는 **S-184 · 판정 295**로 은퇴했고, `enrichment/config.py` 가 그 칸을 «삼키고»(로드는 계속) 경고 + 거절 목록 한 행만 남긴다(`RETIRED_CLAIM_CONTRACT_NOTE`). 마지막 줄의 `?enrich_actions=true` 는 오늘 **파라미터가 아니다** — `/api/ledger/subgraph` 가 안 받고, 되돌아오지 못하게 `server/tests/test_ledger_subgraph.py` 가 박아 두었다. 적으면 «오류 없이 아무 일도 안 일어난다».
+>
+> ✅ **살아남는 생각과 그 후계**
+>
+> | 이 절이 하려던 것 | 오늘 그 일을 하는 자리 |
+> |---|---|
+> | 인리치 결과를 «원장 사실»로 만든다 | 상설 「표에 원천 데이터를 넣고 그걸로 원장」 — 결과를 **표**에 쓰고 그 표를 `ontology/ledger_config.json` 의 **소스**로 선언한다 |
+> | 「이 결손을 채워야 한다」를 찾는다 | **`GET /api/ledger/gaps`** — 선언된 술어 × 엔터티를 «순회해» 답한다. 노드를 세우지 않는다 |
+> | 후보를 골라 «확정»한다 | **`server/enrichment/candidates.py`** (`resolve_target_candidate` · `confirm_keys`) — 부르는 쪽은 `builtin:auto_confirm`(체인) · 소급 `enrichment_confirm` · dry-run 라우트 |
+> | 사람이 그것을 본다 | **`client2/src/enrichment_queue.js`** + `enrichment_reference_view.js`. 아래 §7 `candidate_for`·`auto_confirm` 은 **살아 있다** |
+>
+> 🔴 **후계 없음이 하나 있다** — walk 의 «노드»로서의 `Enrich Action`. 2026-08-28 「엔티티·어휘·walk 이게 끝」이 노드 종류를 하나로 접었고, **그 능력은 지금 없다**. 결손은 노드가 아니라 위 `gaps` 가 답한다.
 
 ```json
 {
