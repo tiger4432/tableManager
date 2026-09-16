@@ -84,8 +84,8 @@
 | ✅ | `transfer_plan` | 218,352 | 2026-08-14 | Universal Transfer Plan (M2) — 전사(轉寫) 프레임워크: stage 선언 로더 + 가용 엔진 + 계획 검증. |
 | ✅ | `value_suggest` | 56,927 | 2026-08-18 | Unique-value lookup (F3) — the primitive every input suggestion sits on. |
 | ✅ | `verified_join_contract` | 8,548 | 2026-08-17 | Immutable hand-off produced only after virtual-join physical verification. |
-| ✅ | `virtual_join_config` · 🆕㈟ «`virtual_join/config`» | 41,453 | 2026-08-17 | Virtual join 선언 로더/검증기 ― **UNIQUE 인덱스가 없으면 거부한다.** 🆕 [2026-09-15 S-248 `90d971ba`] and at the end of `load_verified_rules` (default file only, `path is None`) it calls `unique_key.retract_unrequired_once` — a product-built `uq_vjoin_*` lives exactly as long as an enabled+verified join requires it; `ASSY_VJOIN_AUTO_INDEX=0` neither builds nor drops; PostgreSQL only; can never break loading. |
-| ✅ | `virtual_join_executor` · 🆕㈟ «`virtual_join/executor`» | 38,108 | 2026-08-12 | Virtual join 실행기 ― 선언을 **LEFT 조인 한 방**으로 바꾸고 행 페이로드에 붙인다. |
+| ⚰️ | ~~`virtual_join/config`~~ → **`chain/legacy_join_declaration.py`** | — | 2026-09-17 | **옮겨졌습니다**(`306419fd`, 판정 461). 선언 로더/검증기는 «삽니다» — 다만 `materialize: true` 에 대해서만이고, `materialize: false`(읽기 시점)는 이제 «이름 대어 거절»됩니다. ⚠️ 이것은 `chain/join_into.py` 의 «동급이 아닙니다» — 정본 문은 `into.table` 이고 이 문은 «둘째 문이자 부채»입니다. |
+| ⚰️ | ~~`virtual_join/executor`~~ — **후계 없음** | — | 2026-09-17 | **삭제됐습니다**(`306419fd`, 915줄, 판정 461). 「저장하지 않고 LEFT 조인 한 방으로 행 페이로드에 붙이는」 읽기 시점 조인은 **오늘 없습니다**. 조인 컬럼은 «표에 써서» 씁니다(소유자 판정: `into.table` 뿐). 쓰기 절반만 `chain/legacy_materialized_join.py` 로 살아남았습니다 — 그것은 «실행기의 후계»가 아니라 위 선언이 살아 있는 동안의 부채입니다. |
 
 ## database/
 
