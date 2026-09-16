@@ -421,6 +421,33 @@ def _plan_digest(db, sql, params, cap):
     return (" | ".join(keep) or " ".join(" ".join(lines).split()))[:cap]
 
 
+def _row_id_without_a_refresh(row):
+    """The row id an object ALREADY carries. Never a database round trip.
+
+    🔴 `getattr(row, "row_id")` LOOKS FREE AND IS NOT (production 2026-09-16, three days).
+    `apply_batch_updates` commits, and a commit EXPIRES every object it touched
+    (`expire_on_commit` is SQLAlchemy's default and this project never turns it off), so
+    that attribute read issues a REFRESH SELECT per object — fifty of them, on the path
+    this diagnostic exists for precisely because it is already slow — and raises
+    `Instance <...> is not bound to a Session` the moment the object is detached instead.
+    The owner saw that sentence and an ingestion that stopped, with no name on it.
+
+    `row_id` is the dynamic tables' PRIMARY KEY (`models.py` :988), so the identity key on
+    the InstanceState holds it — and that key survives both expiry and detachment because
+    it is what the session used to file the object in the first place.
+    """
+    from sqlalchemy import inspect as sa_inspect
+    try:
+        state = sa_inspect(row)
+    except Exception:                                    # not an ORM object at all
+        return None
+    identity = getattr(state, "identity", None)
+    if identity:
+        return identity[0]
+    #: Not persisted yet — whatever is still loaded, without asking the database for more.
+    return (getattr(state, "dict", None) or {}).get("row_id")
+
+
 def _maybe_explain_slow_prefetch(db, table_name, summary, results, already):
     """When a chunk's prefetch is slow, make the PRODUCT print the plan (S-169 ④).
 
@@ -449,7 +476,7 @@ def _maybe_explain_slow_prefetch(db, table_name, summary, results, already):
     row_ids = []
     for item in (results or [])[:50]:
         row = item[0] if isinstance(item, tuple) else item
-        rid = getattr(row, "row_id", None)
+        rid = _row_id_without_a_refresh(row)
         if rid:
             row_ids.append(str(rid))
     if not row_ids:
@@ -3187,8 +3214,21 @@ class IngestionHandler(FileSystemEventHandler):
                     if _sampler is not None:
                         _sampler.stop()
                     _summary = chunk_counts()
-                    _explained = _maybe_explain_slow_prefetch(
-                        db, t_name, _summary, results, _explained)
+                    # 🔴 A DIAGNOSTIC MAY NOT KILL WHAT IT DIAGNOSES (production
+                    # 2026-09-16). This one reads objects a commit has expired and
+                    # runs two EXPLAINs on the chunk session; either can raise, and
+                    # for three days one did — taking the file with it, under a
+                    # sentence about sessions that named neither the file nor this
+                    # seat. The plan is worth having and never worth a lost file.
+                    try:
+                        _explained = _maybe_explain_slow_prefetch(
+                            db, t_name, _summary, results, _explained)
+                    except Exception as _plan_err:                  # noqa: BLE001
+                        logger.warning(
+                            "[Ingest] %s slow-prefetch PLAN skipped (%s: %s) - the "
+                            "chunk is unaffected", t_name,
+                            type(_plan_err).__name__, _plan_err)
+                        _explained = True
                     _stages = _summary.get("stages") or {}
                     _steps = _summary.get("write_steps") or {}
                     _wall = time.monotonic() - chunk_started
