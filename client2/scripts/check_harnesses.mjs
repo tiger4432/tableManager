@@ -1472,6 +1472,13 @@ const FLOORS = new Map([
   ['reference_view_head_harness.mjs', 69],
   ['replay_rules_harness.mjs', 47],
   ['toast_stack_harness.mjs', 23],
+  // New 2026-09-16 with C-121. 🔴 THE SUBJECTS ARE TWO SCREENS AND THE PROPERTY IS ONE:
+  // on a refusal nothing draws a number and nothing says 「없습니다」. Half of the assertions
+  // are the CONTROL -- a genuine 0 must still print its count and its own empty sentence --
+  // because a harness that only measured the suppression would give full marks to a screen
+  // that hid everything. Measured on VISIBLE nodes, never `textContent`: that proxy is what
+  // put a retracted headline into an audit the day before.
+  ['absence_on_refusal_harness.mjs', 39],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

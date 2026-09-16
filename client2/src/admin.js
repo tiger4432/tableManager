@@ -468,7 +468,31 @@ function setSectionCount(id, value, tone) {
 //    나머지 아홉은 «0» 으로 적혀 있었다 — 안 읽은 것을 「없다」로 말하는 것이라, 절 머리가
 //    바로 이 라우트가 없애려던 오독을 하고 있었다. 새 문구를 만들지 않는다. 있는 것을 쓴다.
 const UNREAD = '—';
-function markSectionUnread(id) { setSectionCount(id, UNREAD, null); }
+// 🔴 C-121. 「못 읽었다」는 «수»만의 일이 아닙니다 — 그 옆의 「… 없습니다」 블록도
+//    «같이» 거둡니다. 안 그러면 한 번 읽혀서 「없습니다」가 뜬 뒤 다음 갱신이 401 일 때
+//    거절 문구와 「없습니다」가 «나란히» 서게 됩니다 — 그것이 온톨로지 탐색기가
+//    오늘 하고 있는 일입니다(같은 병, 다른 화면). 거절은 「없다」가 아니고, 둘을 같이
+//    보이면 화면이 «자기모순»입니다.
+// ⛔ 새 어휘를 만들지 않습니다: 수는 `UNREAD`(「—」) 그대로고, 빈 상태는 «숨깁니다».
+// 🔴 목록이 여기 «한 자리»에 있는 이유: 짝을 호출자 여덟이 각자 적으면 여덟째가 빠집니다.
+const SECTION_EMPTY_STATE = {
+  'file-log-count': 'file-empty',
+  'workspace-count': 'workspace-empty',
+  'chain-fail-count': 'outbox-empty',
+  'chain-rule-count': 'chain-empty',
+  'mapper-count': 'mapper-empty',
+  'autoupdate-count': 'autoupdate-empty',
+  'autoupdate-linked-count': 'autoupdate-linked-empty',
+  // 🔴 여덟째입니다. 이 라우트는 토큰 게이트가 «아니지만»(오늘 200), 「토큰이 필요 없다」는
+  //    「못 읽을 일이 없다」가 아닙니다 — 네트워크·5xx·프로세스 부재가 그대로 남습니다.
+  'enrichment-rule-count': 'enrichment-empty',
+};
+function markSectionUnread(id) {
+  setSectionCount(id, UNREAD, null);
+  const emptyId = SECTION_EMPTY_STATE[id];
+  const el = emptyId ? byId(emptyId) : null;
+  if (el) el.style.display = 'none';
+}
 
 // 🔴 「0개」가 «거짓»인 자리. 원천 경로가 없으면 세어서 0 이 나온 것이
 //    아니라 «셀 것이 없는» 것입니다. 경로를 `title` 로 달아 운영자가
@@ -1024,9 +1048,19 @@ async function fetchData(options = {}) {
         renderLinkedFailTable();
       } else { markSectionUnread('autoupdate-linked-count'); allRead = false; }
     } else if (tab === 'enrichment') {
-      const status = await fetchEnrichmentStatus();
+      // 🔴 C-121. 이 탭만 «다른 문»으로 실패하고 있었습니다 — `fetchEnrichmentStatus` 가
+      //    던지면 아래 catch 로 빠져서, 나머지 일곱이 지나는 `markSectionUnread` 를
+      //    «안 지납니다». 그래서 거절 문구 옆에 «지난번 수»가 그대로 남고, 운영자는
+      //    그 수를 「지금」으로 읽습니다. 같은 판단이면 같은 좌석을 지납니다.
+      let status = null;
+      try {
+        status = await fetchEnrichmentStatus();
+      } catch (err) {
+        markSectionUnread('enrichment-rule-count');
+        allRead = false;
+      }
       if (isStale()) return false;
-      renderEnrichmentTable(status);
+      if (status) renderEnrichmentTable(status);
     } else if (tab === 'tables') {
       // 🔴 `switchTab` 이 이 탭에 «이미» 이 함수를 부릅니다 (:588). 여기 없었을 뿐입니다 —
       //    그래서 「이 탭의 데이터를 읽는다」에 경로가 «둘» 있었고 둘이 «서로 다른 탭 목록»을

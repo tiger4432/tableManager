@@ -84,6 +84,15 @@ export function makeNode(doc, tag) {
     //    `utils.js` 의 `removeToast` 가 400ms 뒤 «비동기로» 던집니다 — 단언 하나도
     //    안 빨개지고, 리모브를 재는 하니스는 «사라지지 않는 노드»를 정상으로 읽습니다.
     remove() { if (this.parentNode) this.parentNode.removeChild(this); },
+    // 🔴 ADDED 2026-09-16 (C-121). `dom_patch.commitTree` 가 «첫 커밋»에 이것을 부릅니다 —
+    //    자식이 하나가 아니면 patch 를 안 하고 통째로 갈아 끼웁니다. 이 철자가 없으면
+    //    온톨로지 탐색기가 이 문서에 «한 번도» 못 앉고, 그러면 그 화면에 대한 단언은
+    //    전부 「아무도 채점하지 않은 주장」이 됩니다 (같은 부류를 지난 라운드에 둘 잡았습니다:
+    //    `id` 접근자 · `remove()`).
+    replaceChildren(...cs) {
+      for (const c of [...this.children]) this.removeChild(c);
+      for (const c of cs) this.appendChild(c);
+    },
     setAttribute(k, v) {
       this.attrs[String(k)] = String(v);
       if (String(k) === 'class') this.className = String(v);
