@@ -42,7 +42,6 @@ import { loadWithProbe } from './lib/probe.mjs';
 import { scoreMutants } from './lib/mutation_scorer.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import vm from 'node:vm';
 // One binding of this harness is IMPORTED rather than sliced. `PUSH_SYSTEM_COLUMNS` left
 // `map_editor.js` for `client2/src/push_columns.js`, which has no module state, so there is
 // nothing to rebuild around it and no reason to re-parse its text. The rest of what this file

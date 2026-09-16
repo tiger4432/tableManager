@@ -10,10 +10,11 @@
 // injected function. That is what lets this harness score the whole feature with a fake, and
 // it is why gate ⑥ could ask for no real token in here.
 //
-// 🔴 SOURCE IS THE PART PLUS `dropdown.js`, because that is what actually runs. The dismiss
-// behaviour moved there when the filter strip became the second thing needing it, and a harness
-// that kept reading one file would have gone quiet on the two mutants that live in the other —
-// which is the same as not having them.
+// 🔴 THE PART AND `dropdown.js` ARE BOTH SUBJECTS, because that is what actually runs.
+// The dismiss behaviour moved there when the filter strip became the second thing needing it,
+// and a harness that scored one file would have gone quiet on the two mutants living in the
+// other -- the same as not having them. Each mutant NAMES the module it mutates, and the probe
+// refuses a mutation that changed nothing, so a mis-named one fails loudly instead of scoring.
 //
 // The second is that the two buttons group in DIFFERENT PLACES. The ledger's groups come from
 // the declaration this page already has, so they are assembled here. The chain's groups are one
@@ -24,7 +25,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import vm from 'node:vm';
+import { loadWithProbe } from './lib/probe.mjs';
 import { scoreMutants } from './lib/mutation_scorer.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -34,17 +35,18 @@ const DROPDOWN_PATH = join(HERE, '..', 'src', 'dropdown.js');
 // measure it with. What can be scored here is that the tag was not left to decide it.
 const STYLE_PATH = join(HERE, '..', 'src', 'style.css');
 const read = (p) => readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
-// The dependency is INLINED, not stubbed: `load()` evaluates a plain script, so an import
-// statement would not survive it -- and a stub would score a dismiss that is not the one
-// shipping. Two of the mutants live in that file now.
-// ⚰️ C-120 에서 이 자리가 «비싸다»는 것이 드러났습니다. `redo_banner.js` 에 import 를 «하나»
-//    더하니 이 하니스가 `ReferenceError` 로 죽었습니다 — CLAUDE.md 가 잘라쓰기 금지의 사유로
-//    적어 둔 바로 그 문장입니다(「import 를 하나 더하면 … 던집니다」). 오늘은 목록에 한 줄을
-//    더해 초록을 지키고, 이 파일은 C-117 ㉱(하니스 잘라쓰기 제거)의 «이름 있는 구성원»입니다.
-//    같은 라운드에서 안 고치는 이유는 순서입니다 — 총괄이 ② C-120 -> ③ ㉱ 로 세웠습니다.
-const DISABLED_REASON_PATH = join(HERE, '..', 'src', 'disabled_reason.js');
-const SOURCE = read(DROPDOWN_PATH) + '\n' + read(DISABLED_REASON_PATH) + '\n'
-  + read(SRC_PATH).replace(/^import .*$/gm, '');
+const PART_TEXT = read(SRC_PATH);
+// 🔵 C-125 (ruling 464). This file used to CONCATENATE the modules and strip their
+// `import`/`export` lines before running the text in `node:vm`. That is slicing: the amount cut
+// looks like nothing, but the import statements come off -- and C-120 measured the cost, when
+// adding ONE import to `redo_banner.js` killed this harness with a ReferenceError. That is the
+// exact symptom CLAUDE.md gives as the REASON for the ban, observed on this file.
+// The subjects are imported byte for byte now, and `disabled_reason.js` is not named here at
+// all: the real import resolves, so there was never anything to inline once the text stopped
+// being evaluated as a plain script.
+// 🔵 Section A stays text-as-subject and reads the PART ALONE. Reading the old
+//    concatenation made its sentences wider than they claimed -- 「the part never names an
+//    admin route」 was being asserted of `dropdown.js` as well.
 
 let passed = 0;
 let failed = 0;
@@ -118,17 +120,22 @@ const walk = (node) => (node.children || [])
 const byClass = (root, cls) => walk(root)
   .filter((n) => String(n.className || '').split(/\s+/).includes(cls));
 
-function load(src) {
-  const sandbox = { Array, String, Object, Number, Boolean, JSON, Promise };
-  vm.createContext(sandbox);
-  const body = src.replace(/^export /gm, '');
-  vm.runInContext(`${body}\nglobalThis.__x = { RedoBanner, ledgerGroups, scopeValuesFor };`,
-    sandbox);
-  return sandbox.__x;
+/** The part, byte-identical unless a mutant is named. `where` says WHICH module is mutated:
+ *  a `dropdown` mutant mutates that file's own copy and reaches the part as a stub, so the
+ *  part itself is still the untouched file. Nothing is cut from either. */
+async function loadMutated(where, mutate) {
+  if (where === 'dropdown') {
+    const drop = (await loadWithProbe(DROPDOWN_PATH, { mutate, tag: 'drop' })).module;
+    return (await loadWithProbe(SRC_PATH, {
+      stubs: { './dropdown.js': { watchForDismiss: drop.watchForDismiss } },
+      tag: 'redostub',
+    })).module;
+  }
+  return (await loadWithProbe(SRC_PATH, { mutate, tag: 'redo' })).module;
 }
 
-const X = load(SOURCE);
-if (!X || !X.RedoBanner) die('redo_banner.js did not evaluate — its exports moved or renamed.');
+const X = await loadMutated('part');
+if (!X || !X.RedoBanner) die('redo_banner.js did not import — its exports moved or renamed.');
 
 const SOURCES = [{ relation: 'dt_log', source: 'dt_log_src',
                    scope_columns: ['lot_id', 'wafer_id'] }];
@@ -169,7 +176,7 @@ const press = (host, which) => buttons(host).find((b) => b.dataset.redo === whic
 console.log('\n── A. THE BOUNDARY ─────────────────────────────────────────────────');
 {
   // 🔴 The ruling is a property of the FILE, and no rendered output can show it.
-  const stripped = SOURCE.split('\n')
+  const stripped = PART_TEXT.split('\n')
     .filter((l) => !l.trim().startsWith('//') && !l.trim().startsWith('*')
       && !l.trim().startsWith('/*'))
     .join('\n');
@@ -558,12 +565,12 @@ const DEFECTS = [
       + "groups: values.map((v) => ({ label: v })) };")],
   ['M9 closing leaves the document listeners attached',
     swap('    if (this.dismiss) this.dismiss();', '    if (false) this.dismiss();')],
-  // M10 and M11 live in `dropdown.js` now. They are still scored because SOURCE is what runs.
+  // M10 and M11 live in `dropdown.js`. They say so, and are scored against that file's own copy.
   ['M10 a click INSIDE the part closes it too',
     swap('    while (node) { if (node === host) return; node = node.parentNode; }',
-      '    while (node) { node = node.parentNode; }')],
+      '    while (node) { node = node.parentNode; }'), 'dropdown'],
   ['M11 any key closes it, not just Escape',
-    swap("if (event && event.key === 'Escape') close();", 'close();')],
+    swap("if (event && event.key === 'Escape') close();", 'close();'), 'dropdown'],
   ['M12 the line is drawn as a button but never wired to run',
     swap("        line.addEventListener('click', () => this.fire(index, assembled.op, entry.params));",
       '        line.type = \'button\';')],
@@ -591,6 +598,13 @@ const DEFECTS = [
 ];
 
 const CONTROLS = [
+  // 🔴 THE RETIRED MECHANISM'S OWN SYMPTOM, KEPT AS A CONTROL. Adding one import to the
+  //    part is what killed this harness in C-120, and it is the sentence CLAUDE.md gives as the
+  //    reason slicing is banned. It must now ESCAPE. If anyone puts the concatenation back, this
+  //    line stops escaping and the gate says so -- which a byte-identity assertion cannot.
+  ['an import is added to the part',
+    (src) => src.replace("import { setDisabledReason } from './disabled_reason.js';",
+      "import { setDisabledReason } from './disabled_reason.js';\nimport { ABSENT } from './absent.js';")],
   ['a local rename', (src) => src.replace(/\bseen\b/g, 'found')],
   ['comments stripped', (src) => src.split('\n')
     .filter((l) => !l.trim().startsWith('//') && !l.trim().startsWith('*')
@@ -617,19 +631,19 @@ const CATCHES = {
   M1b: 'R25',
 };
 /** `['M1 …', fn]` -> the shape `lib/mutation_scorer.mjs` scores. */
-const named = (list) => list.map(([name, mutate]) => ({
-  name, mutate, catches: CATCHES[String(name).split(' ')[0]],
+const named = (list) => list.map(([name, mutate, where]) => ({
+  name, mutate, where: where || 'part', catches: CATCHES[String(name).split(' ')[0]],
 }));
 /** Filled on the first mutant run; the source of the 「unexercised」 line at the end. */
 let CHECK_IDS = null;
 let CHECK_NAMES = null;   // the full names, for the scorer's ambiguity check
 
-async function runMutant({ name, mutate }) {
+async function runMutant({ name, mutate, where }) {
   {
     let bad = false;
     const woke = [];   // the NAMED checks that did not hold -- ⓐ of C-66
     {
-      const M = load(mutate(SOURCE));
+      const M = await loadMutated(where, mutate);
       const rows = [envelope({ lot_id: 'L1', wafer_id: 'W1' }),
                     envelope({ lot_id: 'L1', wafer_id: 'W2' }),
                     envelope({ lot_id: 'L2', wafer_id: 'W3' })];

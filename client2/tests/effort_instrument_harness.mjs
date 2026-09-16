@@ -14,7 +14,6 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import vm from 'node:vm';
 import { loadWithProbe } from './lib/probe.mjs';
 // The REAL key composer, not a re-typed one. Group K compares two spellings of the same
 // business key and a second implementation here would compare this file against itself.
@@ -26,20 +25,6 @@ const SRC_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'map
 // multi-line strings. Without this every multi-line mutation silently fails to apply and
 // the mutation suite reports "ok" for defects it never actually injected.
 const SRC = readFileSync(SRC_PATH, 'utf8').replace(/\r\n/g, '\n');
-
-function extractFunction(src, name) {
-  const re = new RegExp(`(?:async\\s+)?function\\s+${name}\\s*\\(`);
-  const m = re.exec(src);
-  if (!m) throw new Error(`function ${name} not found`);
-  const i = src.indexOf('{', m.index);
-  let depth = 0;
-  for (let j = i; j < src.length; j++) {
-    const ch = src[j];
-    if (ch === '{') depth++;
-    else if (ch === '}') { depth--; if (depth === 0) return src.slice(m.index, j + 1); }
-  }
-  throw new Error(`unbalanced braces for ${name}`);
-}
 
 let pass = 0, fail = 0;
 function check(name, actual, expected) {
@@ -196,7 +181,6 @@ async function makeCtx(src, opts = {}) {
     //    `validDieRefFromControls`. A plain grep reads that comment as "it exists".
     //    Under `vm` a bare identifier is whatever the sandbox says it is, so this file went
     //    on staging a flag nobody reads. The probe asks the module, and the module says no.
-
 
 
     // ── collaborators kept deliberately inert ──

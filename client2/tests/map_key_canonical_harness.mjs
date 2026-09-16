@@ -1,14 +1,14 @@
 // Mock harness - 7b canonical map keys / 7c upper-bound display / M4 phase 1 valid_die_ref.
 // Run: node client2/tests/map_key_canonical_harness.mjs [--json] [--emit-7b]
-//      (no node_modules - vm sandbox over the source TEXT, same technique as
-//       push_gate_harness.mjs and contracts/*/client_harness.mjs)
+//      (no node_modules - the three subjects are loaded through `lib/probe.mjs`)
 //
-// WHY TEXT EXTRACTION: map_editor.js imports ./config.js, which reads window.location at
-// module scope, so the module cannot be imported in node. The functions under test are
-// module-private and MUST STAY module-private, so their named declarations are sliced out
-// and evaluated in a sandbox with stubs for the module state they touch.
+// WHY A PROBE: the functions under test are module-private and MUST STAY module-private,
+// and an ESM namespace is sealed, so `export` cannot reach them. `loadWithProbe` imports a
+// BYTE-IDENTICAL copy of the file with an accessor block appended -- nothing is cut out.
+// (`window.location` read at module scope is why the globals below are still stubbed.)
 //
-// FAILS LOUDLY (exit 2) when a function cannot be extracted. A harness that goes green
+// FAILS LOUDLY when a name cannot be exposed - measured: the load throws a ReferenceError
+// naming the missing name, it does not go quietly. A harness that goes green
 // because it could no longer find the code is worse than no harness - its result gets cited.
 //
 // --emit-7b prints the 7b canonicalisation matrix as JSON on stdout so the SERVER's
@@ -20,9 +20,9 @@ import { loadWithProbe } from './lib/probe.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC_MAP = join(HERE, '..', 'src', 'map_editor.js');
-// 7b lives in its own module since the map-key extraction round; the slices below are
-// unchanged, only the file they are cut from moved. Slicing map_editor.js for them now
-// dies loudly (`function ... not found`) rather than going quietly uncovered.
+// 7b lives in its own module since the map-key extraction round: the subjects are unchanged,
+// only the file they are read from moved. Asking `map_editor.js` for them now dies loudly
+// rather than going quietly uncovered.
 const SRC_KEY = join(HERE, '..', 'src', 'map_key.js');
 const SRC_PLAN = join(HERE, '..', 'src', 'transfer_plan.js');
 const JSON_OUT = process.argv.includes('--json');
@@ -325,7 +325,7 @@ check('7c-3', 'client reads the served bound verbatim (no arithmetic of its own)
 // declaration - user ruling "불러오기는 무조건 valid_die_ref 를 이용하게". What the declaration
 // USED to mean is not thrown away: it comes back as `declaredTable`, because the refusal
 // message has to tell "the key is wrong" apart from "the key is fine but not in this table".
-// The fixed value is read from the sandbox const sliced out of the source, never re-typed.
+// The fixed value is read from the module's own const through the probe, never re-typed.
 const VDT = H.VALID_DIE_TABLE;
 const REF_CASES = [
   ['absent -> null', {}, 'bonding_map', null],

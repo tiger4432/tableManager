@@ -42,7 +42,6 @@ import { readSourceText } from './lib/probe.mjs';
 import { loadWithProbe } from './lib/probe.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import vm from 'node:vm';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC_PATH = join(HERE, '..', 'src', 'map_editor.js');
@@ -52,31 +51,6 @@ const SRC_PATH = join(HERE, '..', 'src', 'map_editor.js');
 const SRC0 = readSourceText(SRC_PATH).text;
 
 const die = (m) => { console.error(`HARNESS FAILURE: ${m}\n(Nothing was compared.)`); process.exit(2); };
-
-// 🔴 THE PARAMETER LIST IS WALKED BEFORE THE BODY IS LOOKED FOR. The older harness family
-//    finds the body with `indexOf('{')` after the `(`, which on `loadExistingMap(opts = {})`
-//    lands on the DEFAULT VALUE's braces and returns a slice ending inside the signature —
-//    it then fails as `Unexpected end of input` naming nothing. Close the parens first.
-function sliceFunction(source, name) {
-  const decl = new RegExp(`(^|\\n)\\s*(?:async\\s+)?function\\s+${name}\\s*\\(`);
-  const m = decl.exec(source);
-  if (!m) return null;
-  const start = m.index + (m[1] ? m[1].length : 0);
-  let i = m.index + m[0].length - 1;   // at the '(' of the parameter list
-  let paren = 0;
-  for (; i < source.length; i++) {
-    if (source[i] === '(') paren++;
-    else if (source[i] === ')') { paren--; if (paren === 0) { i++; break; } }
-  }
-  i = source.indexOf('{', i);
-  if (i < 0) return null;
-  let depth = 0;
-  for (; i < source.length; i++) {
-    if (source[i] === '{') depth++;
-    else if (source[i] === '}') { depth--; if (depth === 0) return source.slice(start, i + 1); }
-  }
-  die(`unbalanced braces extracting '${name}'`);
-}
 
 // The coordinate path and everything it passes through. A rename here is exit 2, never green.
 const SYMBOLS = [

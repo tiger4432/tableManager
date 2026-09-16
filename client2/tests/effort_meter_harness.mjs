@@ -19,7 +19,6 @@ import { readFileSync } from 'node:fs';
 import { loadWithProbe } from './lib/probe.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import vm from 'node:vm';
 
 const SRC_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'effort_meter.js');
 // Normalized to LF. The mutation patches at the bottom match on multi-line strings, and the
