@@ -40,8 +40,8 @@ if server_dir not in sys.path:
 
 from chain import ingestion_worker as worker                            # noqa: E402
 from chain import mapper_call                                 # noqa: E402
-import virtual_join.config as vjc                                  # noqa: E402
-from virtual_join import executor as vje                                # noqa: E402
+from chain import legacy_join_declaration as vjc                                  # noqa: E402
+from chain import legacy_materialized_join as vje                                # noqa: E402
 from database.database import Base                                 # noqa: E402
 from database import crud, models, schemas                         # noqa: E402
 from database.models import DatabaseOutbox                         # noqa: E402
@@ -335,13 +335,13 @@ def test_without_the_refusal_the_same_group_fails(db, monkeypatch):
 
 def test_the_right_side_index_is_built_from_the_same_single_load(monkeypatch):
     """⛔ NOT A SECOND READ OF THE DECLARATION FILE. This runs on the write path once per
-    batch; re-loading and re-validating `virtual_join_rules.json` there is the inline work
+    batch; re-loading and re-validating the declaration file there is the inline work
     the standing performance rule forbids. Both directions come out of ONE pass, and this
     counts the passes rather than trusting the arrangement."""
     # The autouse fixture above substitutes `rules_for_right` for every other test here;
     # this one is about the real body, so its substitution is lifted first.
     monkeypatch.undo()
-    assert vje.rules_for_right.__module__ == "virtual_join.executor"
+    assert vje.rules_for_right.__module__ == "chain.legacy_materialized_join"
 
     calls = []
     rule = {"name": "vjuq_shared", "left_table": TRIGGER, "right_table": DERIVED,

@@ -2023,8 +2023,8 @@ def _builtins_table():
     """The `builtin:` kind table, imported at CALL time (S-278 후반).
 
     ⚠️ NOT AT MODULE LEVEL. `chain.builtins` imports `enrichment.config` and
-    `virtual_join.config`, which import back into this module's neighbourhood; every other
-    seat here reaches it the same way, inside the function that needs it.
+    `chain.legacy_join_declaration`, which import back into this module's neighbourhood;
+    every other seat here reaches it the same way, inside the function that needs it.
     """
     from chain import builtins
 
@@ -3016,6 +3016,12 @@ async def run_ledger_row_census(db_session_factory):
                              if not plan.runs)
         except Exception as exc:
             logger.warning("[LedgerCensus] the declaration could not be read: %s", exc)
+            # ✓ [S-284] NOTHING TO REPAIR HERE, AND THE REASON IS WORTH KEEPING. A census
+            # instrument flagged `len(sources)` on the lap line below as 「a swallowed
+            # failure that becomes a number」 - it is not: the whole block is guarded by
+            # `if sources:`, so when the declaration could not be read this loop publishes
+            # NO lap at all, which is 「말 안 함」 spelled as the absence of the whole entry.
+            # The WARNING above is the only thing said, and that is correct.
             sources = []
             retired = []
         measured_now = 0

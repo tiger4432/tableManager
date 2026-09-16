@@ -34,9 +34,9 @@ if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
 import notation_norm                                              # noqa: E402
-import virtual_join.config as vjc                                 # noqa: E402
+from chain import legacy_join_declaration as vjc                                 # noqa: E402
 from chain import join_into                                       # noqa: E402
-from virtual_join import executor as vje                          # noqa: E402
+from chain import legacy_materialized_join as vje                          # noqa: E402
 
 FOLD = {"separator": True, "case": True}
 

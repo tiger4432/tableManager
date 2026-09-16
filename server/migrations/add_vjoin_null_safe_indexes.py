@@ -38,7 +38,7 @@ for _stream in (sys.stdout, sys.stderr):
 
 
 def _rules(db):
-    import virtual_join.config as vjc
+    from chain import legacy_join_declaration as vjc
     from database import crud
 
     return vjc.load_virtual_join_rules(known_tables=crud.TABLE_CONFIG) or []
@@ -52,7 +52,7 @@ def _duplicate_census(db, table, columns, folds):
     preceded by this count is a `CREATE` that fails on live data for a reason nobody was
     shown.
     """
-    import virtual_join.config as vjc
+    from chain import legacy_join_declaration as vjc
 
     keys = ", ".join(vjc.index_key_expression(c, f, table)
                      for c, f in zip(columns, folds))
@@ -86,7 +86,7 @@ def main(argv=None) -> int:
                         help="이 규칙만 (여러 번 지정 가능)")
     args = parser.parse_args(list(argv) if argv is not None else None)
 
-    import virtual_join.config as vjc
+    from chain import legacy_join_declaration as vjc
     from database.database import SessionLocal
 
     db = SessionLocal()

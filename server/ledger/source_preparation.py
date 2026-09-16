@@ -268,7 +268,7 @@ class SQLAlchemyVerifiedJoinBatchReader(VerifiedJoinBatchReader):
             )
         # 🔴 THE SAME CHECK THE READ PATH USES, FROM THE SAME FUNCTION. This is the third
         # place that composes SQL from an `expose` list; the other two are
-        # `virtual_join_executor.execute_rule` (the row payload) and `resolved_expression`
+        # `legacy_materialized_join.execute_rule` (the row payload) and the retired `resolved_expression`
         # (filter, search, export). A name the right model does not carry raises here
         # while the SELECT is being built, and the whole preparation dies for one column.
         # ⚠️ `usable` is used for the unpacking below TOO. Selecting a filtered list and

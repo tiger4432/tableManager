@@ -55,7 +55,7 @@ def load(tmp_path, monkeypatch):
     import mapper_sdk
     from database import crud
     import enrichment.config as ec
-    import virtual_join.config as vjc
+    from chain import legacy_join_declaration as vjc
 
     monkeypatch.setitem(crud.TABLE_CONFIG, SRC, dict(TABLE))
     monkeypatch.setitem(crud.TABLE_CONFIG, DST, dict(TABLE))

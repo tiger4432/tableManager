@@ -1,11 +1,11 @@
 # 🗄️ Data Model & Layering
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-09-16 (§1.1-ter 원장 표의 「컬럼 추가의 순서 위험」 — 읽기 쪽 정본 `ledger_trace.coverage` 가 «없어졌고», 오늘 그 자리를 지키는 둘은 «부재의 모양»이 서로 다르다, S-261) · 직전 2026-09-15 (§2.1-quater 신설 — 빈 칸은 층이 아니다, 판정 405 · `drop_report` 사유에 `absent_not_written`) · 직전 2026-09-05 (§1.1 · §1.1-quater 에 **`RetroactiveRun.runner`** — 「지금 누가 돌리나」. 🔴 **표에는 마이그레이션이 없지만 이 «컬럼»에는 있다**(`create_all` 은 있는 표에 컬럼을 안 더한다 — 기존 DB 는 `add_retroactive_runs_runner.sql` 을 한 번). ⛔ 자동 회수는 «의도적으로» 없다) · 직전 2026-08-31 (§1.1 에 `RetroactiveRun` · **§1.1-quater 신설**(소급 실행 등록부·협조적 취소) · §1.2 그래프 부기 컬럼 셋의 «현재 상태» 명시 — 「없어졌다」가 아니라 「안 그린다」) · 직전 2026-08-27 (v1 어휘 은퇴 완료)
+> **Status:** 🟢 Living | **Last-verified:** 2026-09-17 (§1 `CellSource` 컬럼 목록에 **`origin_row_id`**+`confirmation_uid` · §2.2-bis 철회의 **방아쇠가 둘**이 됐다(입력 행 DELETE) · §2.2 「거두는 것은 …」 목록 · 머리의 Source-of-truth 에 **좌석 `chain/cell_layer.py`** — S-280 `e1318d28`) · 직전 2026-09-16 (§1.1-ter 원장 표의 「컬럼 추가의 순서 위험」 — 읽기 쪽 정본 `ledger_trace.coverage` 가 «없어졌고», 오늘 그 자리를 지키는 둘은 «부재의 모양»이 서로 다르다, S-261) · 직전 2026-09-15 (§2.1-quater 신설 — 빈 칸은 층이 아니다, 판정 405 · `drop_report` 사유에 `absent_not_written`) · 직전 2026-09-05 (§1.1 · §1.1-quater 에 **`RetroactiveRun.runner`** — 「지금 누가 돌리나」. 🔴 **표에는 마이그레이션이 없지만 이 «컬럼»에는 있다**(`create_all` 은 있는 표에 컬럼을 안 더한다 — 기존 DB 는 `add_retroactive_runs_runner.sql` 을 한 번). ⛔ 자동 회수는 «의도적으로» 없다) · 직전 2026-08-31 (§1.1 에 `RetroactiveRun` · **§1.1-quater 신설**(소급 실행 등록부·협조적 취소) · §1.2 그래프 부기 컬럼 셋의 «현재 상태» 명시 — 「없어졌다」가 아니라 「안 그린다」) · 직전 2026-08-27 (v1 어휘 은퇴 완료)
 >
 > 이 문서는 **지금의 데이터 모델**만 적는다. 라운드별 변경 이력은 `docs/history/`가 정본이고 여기에 쌓지 않는다.
 >
 > **두 기둥** — ① 원장(`ledger_events`)이 무엇을 말할 수 있는지는 **선언**(`server/config/ontology/ledger_config.json`)이 정한다. 저장 계층은 술어를 문자열로 받고 CHECK 둘로만 지킨다. ② 화면의 질문은 **walk** 하나이고, 차트는 그 서브그래프를 보는 창이다.
-> **Source-of-truth:** `server/database/models.py`, `server/database/crud.py`, `server/chain/replay.py`(레이어 철회), `server/config/table_config.json`, `server/product_tables.py`
+> **Source-of-truth:** `server/database/models.py`, `server/database/crud.py`, `server/chain/replay.py`(소급 · `withdraw_source` 재수출) · 🆕 `server/chain/cell_layer.py`(**레이어 철회의 좌석** — `cells_stamped_by` · `withdraw_by_origin` 은 `replay` 가 «재수출하지 않는다»), `server/config/table_config.json`, `server/product_tables.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 ---
@@ -22,7 +22,7 @@
 | `FileIngestionLog` | `file_ingestion_logs` | `filename`, `filepath`, `table_name`, `status`, `error_message`, `retry_count` | FAILED/SUCCESS/PENDING/PENDING_RETRY. **시도마다 append**되는 이력 |
 | `FileIngestionCheckpoint` | `file_ingestion_checkpoints` | `table_name`, `file_signature`, `filepath`, **`file_mtime`**, **`file_size`**, `processed_rows`, `chunk_index`, `status`, `note` | **(테이블, 파일내용)당 단일 최신 상태** — 위 로그와 수명이 다릅니다. 상세 아래 §1.1-bis |
 | `CellOverwrite` | `cell_overwrites` | `table_name`, `row_id`, `column_name`, `is_overwrite`, `updated_by`, `manual_priority_source` | 셀 오버라이트/핀. (table,row,col) unique |
-| `CellSource` | `cell_sources` | `table_name`, `row_id`, `column_name`, `source_name`, `value`, `ingested_at`, `updated_by` | **다중 소스 레이어링 저장소**. (table,row,col,source) unique |
+| `CellSource` | `cell_sources` | `table_name`, `row_id`, `column_name`, `source_name`, `value`, `ingested_at`, `updated_by`, `confirmation_uid`, 🆕 **`origin_row_id`** | **다중 소스 레이어링 저장소**. (table,row,col,source) unique.<br>🆕 **`origin_row_id`**(S-280 `e1318d28`) = 「이 값을 «어느 행에서» 읽었나」 — 그 행이 DELETE 될 때 제품이 이 칸으로 겨냥해 그 셀만 철회한다(`chain/cell_layer.py::withdraw_by_origin` → `withdraw_source`). 🔴 **NULL 은 「도장이 생기기 전에 쓰였다」 한 뜻뿐**이고 「못 찍는 종류」는 `chain/rule_run.py::retraction_refusal` 이 **이름으로** 답한다. 부분 인덱스 `idx_sources_by_origin` 은 이 컬럼을 «앞»에 둔다(철회는 row id 만 들고 시작한다). 개념·함정은 [PRIMITIVES §1](./PRIMITIVES.md) |
 | ~~`GraphNode`~~ | ~~`graph_nodes`~~ | — | ⚰️ **[2026-08-14 `2ec78b9`] 물리 테이블 DROP**(590,885행 · 324 MB) |
 | ~~`GraphEdge`~~ | ~~`graph_edges`~~ | — | ⚰️ **DROP**(1,034,472행 · 517 MB) |
 | ~~`GraphSyncState`~~ | ~~`graph_sync_state`~~ | — | ⚰️ **DROP** — materializer의 outbox 커서였고, 그 소비자가 스택에서 빠졌습니다 |
@@ -241,7 +241,7 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 
 - **경계는 «쓰기» 하나입니다** — `apply_row_update_internal`(모든 쓰기의 깔때기). 빈 값(`is_blank_value` — 키 자리가 접는 그 술어)이 「내가 비웠다」를 «뜻할 수 없는» 저자에게서 오면 **층을 안 만들고** `drop_report` 에 `absent_not_written` 으로 «셉니다»(실패가 아닙니다 — 그래서 경고가 아니라 계수입니다. 이름이 없으면 컬럼이 비어 온 파일과 컬럼을 아예 안 댄 파일이 같아 보입니다). 뜻할 수 있는 저자는 `crud.can_mean_emptied(source_name)` **하나**가 답합니다: 사람(`user`, 0)과 체인(`chain_ingestion` — 맞은 오른쪽 행이 «비어 있다»는 주장, 판정 `f3c04dee`). 🔴 **양성 선택입니다** — 파서는 인제션 파일명을 소스명으로 쓰므로(실측 10,750종) 자동 소스 집합은 열려 있고 블랙리스트는 원리적으로 불가능합니다.
 - **읽기는 한 줄도 안 바뀌었습니다.** `compute_priority_value` 는 최상위 층이 NULL 이어도 그것을 답합니다 — 고의로 비운 것은 «이겨야» 하기 때문입니다.
-- ⚠️ **있던 층은 «그대로 둡니다», 지우지 않습니다** — 그것이 판정의 값이고 대가입니다. 어제 값을 준 파일이 오늘 빈칸이면 **어제 값이 남습니다.** 「아직 입력하지 않음」은 「전에 말한 것을 거둠」이 아닙니다. 거두는 것은 사람 · `withdraw_source`(R2, §2.2-bis) · `replace_map` 의 일입니다.
+- ⚠️ **있던 층은 «그대로 둡니다», 지우지 않습니다** — 그것이 판정의 값이고 대가입니다. 어제 값을 준 파일이 오늘 빈칸이면 **어제 값이 남습니다.** 「아직 입력하지 않음」은 「전에 말한 것을 거둠」이 아닙니다. 거두는 것은 사람 · `withdraw_source`(R2, §2.2-bis) · `replace_map` · 🆕 **입력 행의 DELETE**(`cell_sources.origin_row_id` 를 찍은 셀에 한해 — `chain/cell_layer.py::withdraw_by_origin`, §1.1) 의 일입니다.
 - 🔴 **이미 저장된 NULL 층은 이 판정이 «못 고칩니다»** — 앞으로의 쓰기만 바뀝니다. 그 수를 내는 것은 `scripts/count_absent_null_layers.py`(S-243-b, **읽기만 · `--apply` 가 없습니다** — 정책이 아니라 «부재»로) 이고, 「NULL 층의 수」와 「그중 실제로 아래 값을 가리는 수」를 «따로» 냅니다(밑에 값이 없는 NULL 층은 지워도 화면이 안 바뀝니다). ⚠️ `cell_sources.value` 는 JSON 컬럼이라 진짜 문으로 들어온 빈 값은 네 글자 `null` 로 저장됩니다 — `value IS NULL` 로 세면 «영원히 0»이고 그 0 은 「치울 것 없다」로 읽힙니다. 세는 쪽은 같은 술어 `can_mean_emptied` 를 **import** 합니다(세는 철자와 쓰는 철자가 둘이면 세는 것이 쓰는 것과 달라집니다). 지우기는 별 지시(S-243-c, 내보내기 먼저)이고, 명령과 답의 뜻은 `RUN.md` §1-bis 입니다.
 
 - ⚠️ **`CellOverwrite` 쪽 스킵 조건에는 소스 쪽 판정(`source_unchanged`)이 **포함**됩니다.** 오버라이트 행은 플래그·작성자·핀만 담고 **값을 담지 않으므로**, 값이 진짜 바뀐 셀에서도 그 셋은 동일합니다. 그것만 보고 스킵하면 **진짜 사용자 편집에서 `updated_at` 갱신이 멈춰**, 다른 코드가 화면에 보여 주는 컬럼의 뜻이 조용히 바뀝니다. 없앨 부담은 어차피 「안 바뀐 셀」에만 있으므로 바뀐 셀은 종전 동작 그대로입니다.
@@ -269,6 +269,8 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 ### 2.2-bis 레이어 철회 (`chain_replay.withdraw_source`) — 2026-07-30 · R2
 
 지금까지 레이어 스택은 **추가만** 가능했다. R2가 **한 소스의 기여를 되돌리는** 유일한 경로를 추가한다 — 행이 아니라 **셀 레이어** 단위다.
+
+🆕 🔴 **[2026-09-17] `withdraw_source` 는 여전히 «유일한 경로»이지만 «유일한 방아쇠»는 아니다** (S-280 `e1318d28`). 운영자/CLI 말고 **두 번째 호출자**가 생겼다 — 입력 행이 DELETE 되면 `chain/cell_layer.py::withdraw_by_origin` 이 `origin_row_id` 로 그 셀들을 찾아 **같은 `withdraw_source`** 를 `columns`+`row_ids`+`apply` 를 다 채워 부른다(옵트인 없음 · 자동 · `apply=True`). `user` 층은 **건너뛰고 센다**(`protected_skipped`) — 던지면 같은 삭제의 다른 그룹까지 못 거둔다.
 
 - `cell_sources` 행 **하나**를 삭제하고, 남은 소스로 `compute_priority_value`를 재계산해 표시값을 되쓴다. 소스가 둘이었다면 **아래 레이어가 드러나고 구멍이 남지 않는다.** (행 삭제·컬럼 NULL 처리는 다른 소스의 기여까지 파괴하므로 하지 않는다.)
 - H2-b(그래프의 `_retarget_stale_edges`: 소스가 과거에 주장했으나 더는 주장하지 않는 것은 남겨두지 않고 적극 제거)를 **셀 버전 단위로 옮긴 것**이다.

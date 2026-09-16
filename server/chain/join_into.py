@@ -1,25 +1,29 @@
 # -*- coding: utf-8 -*-
 """`builtin:join_into` — 통합 선언의 `join` 종류가 «쓰는» 조인 (S-237, 소유자 판정 셋).
 
-🔴 WHY THE NAME IS `join_into` AND NOT `builtin:join`. That id is taken: `virtual_join.config`
-registers it for the READ-TIME join, and `register_builtin` refuses a second claimant by name
-(measured — the gate scores that collision). The two are told apart by the cell the internal
-rule already uses to tell them apart: the read-time one answers at `into.read`, this one writes
-`into.table`. So `join_into` names the axis rather than the round it arrived in — 「unified」
-stops distinguishing anything the day enrich and mapper move over too.
+🔴 WHY THE NAME IS `join_into` AND NOT `builtin:join`. That id was taken: the READ-TIME join's
+loader registered it, and `register_builtin` refuses a second claimant by name (measured — the
+gate scores that collision). The two were told apart by the cell the internal rule already
+used: the read-time one answered at `into.read`, this one writes `into.table`. So `join_into`
+names the axis rather than the round it arrived in — 「unified」 stops distinguishing anything
+the day enrich and mapper move over too.
 
-🔴 THE VIRTUAL JOIN IS NOT TOUCHED, BY INSTRUCTION AND BY IMPORT. Production runs on it, so
-this module borrows FUNCTIONS (`notation_norm`'s folding, which is what makes a key expression
-match the unique index) and never the executor, its caches or its config loader. A join that
-writes and a join that answers at read time are two subjects; what they must NOT disagree
+⚰️ THE COLLISION IS NOW HISTORY, AND THE NAME STAYS ANYWAY (S-283). The read-time join was
+retired, so nothing else claims `builtin:join` today; renaming this would change a live
+declaration's `derive.kind` spelling, which is an operator-visible migration and not a tidy-up.
+
+🔴 THE WRITE-JOIN HALF THAT SURVIVED IS STILL NOT IMPORTED HERE. `materialize: true`
+declarations keep running in `chain.legacy_materialized_join` — the second write door, written
+down as a debt in that module's own docstring — and this module borrows FUNCTIONS
+(`notation_norm`'s folding, which is what makes a key expression match the unique index) and
+never that engine, its caches or its declaration loader. What the two doors must NOT disagree
 about is the KEY, and that is why the fold comes from the shared function rather than from a
 second spelling here.
 
-⚠️ AND THAT LEAVES ONE HONEST COST, WRITTEN DOWN. `virtual_join.executor.join_onclause` calls
-itself 「ON 절의 유일한 철자」, and this module now builds an ON clause too. Two spellings that
-must agree is the 「같은 기능에 두 경로」 shape - so the fold and the `coalesce` are taken from
-the same place the index is built from, and the round's gate ② compares this path's values
-against the read-time path's, value by value, rather than trusting that they agree.
+⚠️ AND THAT LEAVES ONE HONEST COST, WRITTEN DOWN. `legacy_materialized_join.join_onclause`
+calls itself 「ON 절의 유일한 철자」, and this module builds an ON clause too. Two spellings that
+must agree is the 「같은 기능에 두 경로」 shape — so the fold and the `coalesce` are taken from
+the same place the index is built from. That cost lives exactly as long as the second door does.
 """
 from __future__ import annotations
 
@@ -85,7 +89,7 @@ def right_key(rule: dict) -> tuple:
     this module already computes the fold from the two tables' notation declarations. A
     second computation in the shell would be the second author 판정 397 removed.
 
-    ⚠️ AND THIS MODULE STILL DOES NOT KNOW `virtual_join` EXISTS. It hands back the three
+    ⚠️ AND THIS MODULE STILL DOES NOT KNOW THE OTHER JOIN DOOR EXISTS. It hands back the three
     values; whoever builds an index is the shell's business.
     """
     spec = join_spec(rule)

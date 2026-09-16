@@ -68,7 +68,7 @@ def node(graph, name):
 def fixture_graph(monkeypatch):
     """The four loaders, each answering with one declaration, through the real assembler."""
     import enrichment.config
-    import virtual_join.config as vjc
+    from chain import legacy_join_declaration as vjc
     from database import crud
 
     rules = [chain_rule()]
@@ -350,7 +350,7 @@ def test_a_refused_cycle_is_shown_rather_than_hidden(monkeypatch):
                        allow_chain_trigger=True)]
     monkeypatch.setattr(worker, "load_chain_rules", lambda: loop)
     import enrichment.config
-    import virtual_join.config as vjc
+    from chain import legacy_join_declaration as vjc
     monkeypatch.setattr(enrichment.config, "load_enrichment_rules", lambda **kw: [])
     monkeypatch.setattr(vjc, "load_virtual_join_rules", lambda **kw: [])
     monkeypatch.setattr("ledger.setup.load_setup",

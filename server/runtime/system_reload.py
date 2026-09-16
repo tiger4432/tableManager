@@ -50,7 +50,7 @@ def reload_local_process_cache():
     # processes that never reach this hook, but the web server must not wait it out:
     # a declaration edited in the admin UI has to take effect on the next read.
     try:
-        from virtual_join import executor
+        from chain import legacy_materialized_join as executor
         executor.reset_cache()
     except Exception:
         pass

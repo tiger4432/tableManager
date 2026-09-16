@@ -26,8 +26,8 @@ server_dir = os.path.abspath(os.path.join(script_dir, ".."))
 if server_dir not in sys.path:
     sys.path.insert(0, server_dir)
 
-import virtual_join.config as vjc                                     # noqa: E402
-from virtual_join import executor as vje                                   # noqa: E402
+from chain import legacy_join_declaration as vjc                                     # noqa: E402
+from chain import legacy_materialized_join as vje                                   # noqa: E402
 
 KNOWN = {
     "left_t": {"column_types": {"k": "string", "frame": "string"}},
@@ -119,11 +119,23 @@ def test_nothing_is_written_when_nothing_matched(captured, monkeypatch):
     assert out["written"] == 0 and captured == []
 
 
-def test_a_rule_that_does_not_materialize_writes_nothing(captured, monkeypatch):
-    """⛔ THE SAFETY LINE for the two read-time rules this box runs today."""
+def test_a_rule_reaching_the_writer_without_materialize_writes_nothing(captured, monkeypatch):
+    """⚠️ [S-283] THE SUBJECT CHANGED HANDS, SO THE FIXTURE DID TOO. This used to read
+    「⛔ THE SAFETY LINE for the two read-time rules this box runs today」 and it built its
+    rule through the loader. The loader can no longer produce one: `materialize: false` is
+    refused by name (판정 446), so nothing validated reaches this writer without it.
+
+    🔴 THE GUARD STAYS AND SO DOES THE TEST, because what it now defends against is a
+    CALLER, not a declaration - a dict handed in directly, which is exactly how this engine
+    is reached from `crud` and the worker. The rule is built by hand here to say that
+    plainly: the only way to reach this branch is to construct it.
+    """
     monkeypatch.setattr(vje, "execute_rule", _joined({
         "r1": {"matched": True, "values": {"frame": "F"}}}))
-    out = vje.materialize_rows(None, _rule(), ["r1"])
+    by_hand = dict(_rule(materialize=True, max_rewrite_rows=10), materialize=False)
+
+    out = vje.materialize_rows(None, by_hand, ["r1"])
+
     assert out["written"] == 0 and captured == []
     assert "does not declare materialize" in out["refusal"]
 

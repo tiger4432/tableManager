@@ -120,6 +120,6 @@
 
 ## 이 스냅샷의 내용에 대해
 
-이 환경은 **코어 자재 추적 픽스처**를 위해 구성돼 있다. 선언의 *의도*는 [`docs/spec/TRACE_FIXTURE_SPEC.md`](../../spec/TRACE_FIXTURE_SPEC.md)에 있고, 구축 중 무엇이 실패했는지는 [`agent_workspace/reports/Server_trace_fixture_environment.md`](../../../agent_workspace/reports/Server_trace_fixture_environment.md)에 있다.
+이 환경은 **코어 자재 추적 픽스처**를 위해 구성돼 있다. 선언의 *의도*는 [`docs/spec/TRACE_FIXTURE_SPEC.md`](../../spec/TRACE_FIXTURE_SPEC.md)에 있고, 구축 중 무엇이 실패했는지는 [`agent_workspace/reports/Server_trace_fixture_environment.md`](../../_archive/agent_workspace_20260823/reports/Server_trace_fixture_environment.md)에 있다.
 
 📌 **`chain_rules.json`의 `dt_log_to_dt_map`은 `enabled: false`다.** 실수가 아니다 ― 체인은 맵 셀을 **upsert할 수 있어도 purge할 수 없어서**, 갱신된 작업의 옛 셀이 영원히 남는다. 켜기 전에 그 파일의 주석을 읽을 것.

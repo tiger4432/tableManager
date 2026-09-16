@@ -481,7 +481,7 @@ def test_a_join_cell_nobody_reads_is_named_and_the_rule_still_runs(load, caplog)
 def test_the_read_time_join_keeps_its_own_id():
     """⛔ `builtin:join` IS TAKEN, and production runs on it. `register_builtin` refuses a
     second claimant by name, so this is enforced rather than remembered."""
-    import virtual_join.config as vjc
+    from chain import legacy_join_declaration as vjc
 
     assert join_into.JOIN_INTO_MAPPER != vjc.JOIN_MAPPER
     assert builtins.BUILTIN_KINDS[vjc.JOIN_MAPPER] is not join_into.run

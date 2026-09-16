@@ -28,7 +28,7 @@ if SERVER_DIR not in sys.path:
 #: The four that were the ring, plus anything that would put us back inside it.
 #: 🪦 [S-211 packaging] inside `chain/` these are bare module names; the virtual-join pair
 #: is reached through its package. The property asserted is unchanged.
-FORBIDDEN = ("builtins", "ingestion_worker", "replay", "virtual_join", "chain_bindings")
+FORBIDDEN = ("builtins", "ingestion_worker", "replay", "chain_bindings")
 
 
 def _imports(module_name):
@@ -62,7 +62,7 @@ def test_the_cell_layer_names_none_of_the_ring(forbidden):
 def test_the_executor_reaches_the_operation_without_reaching_replay():
     """🔴 THE EDGE THAT WAS CUT. The executor still retracts; what it no longer does is reach
     through `chain_replay` to do it."""
-    names = _imports("virtual_join/executor")
+    names = _imports("chain/legacy_materialized_join")
 
     assert "chain.cell_layer" in names
     assert "replay" not in names

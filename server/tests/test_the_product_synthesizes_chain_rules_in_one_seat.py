@@ -27,7 +27,7 @@ if server_dir not in sys.path:
 
 from chain import builtins                                                 # noqa: E402
 import enrichment.config                                              # noqa: E402
-import virtual_join.config as vjc                                     # noqa: E402
+from chain import legacy_join_declaration as vjc                                     # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -281,7 +281,7 @@ def test_the_join_kind_is_in_the_table():
 def test_the_table_routes_a_target_change_and_a_reference_change_differently(monkeypatch):
     """⚠️ ONE KIND, TWO TRIGGERS. The caller says which by which argument it passes, and they
     cost differently — a reference change counts first and can be refused."""
-    from virtual_join import executor as vje
+    from chain import legacy_materialized_join as vje
 
     seen = []
     monkeypatch.setattr(vje, "on_target_rows_changed",

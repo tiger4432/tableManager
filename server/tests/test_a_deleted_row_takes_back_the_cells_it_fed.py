@@ -194,7 +194,7 @@ def test_a_kind_that_cannot_be_reverted_says_so_by_name():
 def test_a_kind_that_stamps_its_origin_refuses_nothing():
     """The control: a sentence that is printed for every kind says nothing about any of
     them."""
-    import virtual_join.config as vjc
+    from chain import legacy_join_declaration as vjc
 
     assert rule_run.retraction_refusal({"name": "j", "mapper": vjc.JOIN_MAPPER}) is None
     assert rule_run.retraction_refusal(

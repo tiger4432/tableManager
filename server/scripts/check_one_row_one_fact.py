@@ -35,7 +35,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     from database import crud
-    import virtual_join.config as vjc
+    from chain import legacy_join_declaration as vjc
     from chain import unique_key
 
     known = crud.TABLE_CONFIG

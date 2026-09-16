@@ -104,7 +104,7 @@ def test_a_folded_join_key_requires_a_DIFFERENT_index_and_says_so(monkeypatch):
     declared the fold is `None`, so a `right_key` that returned `None` for every column was
     indistinguishable from one that computed it - the legend was feeding the assertion."""
     import notation_norm
-    import virtual_join.config as vjc
+    from chain import legacy_join_declaration as vjc
 
     monkeypatch.setattr(notation_norm, "normalized_by_table",
                         lambda: {"s240_right": {"job": {"rules": {"separator": True,
@@ -159,7 +159,7 @@ def test_a_rule_that_is_not_this_kind_is_not_this_seats_business(calls):
     cut handed this seat rules with no `params` at all, so dropping the kind check changed
     nothing - they fell out one line later for having no right key, and a fixture that
     cannot hold the defect scores 「no problem」 rather than 「no defect」."""
-    import virtual_join.config as vjc
+    from chain import legacy_join_declaration as vjc
 
     builtins.ensure_declared_unique_keys(None, [
         _rule(mapper=vjc.JOIN_MAPPER, name="old_one"),
@@ -259,7 +259,7 @@ def test_the_name_this_seat_requires_is_the_name_the_builder_would_build():
     one character from the name `ensure` creates, the product builds an index at warmup and
     retracts it on the next read, forever - so the required name is asked of the same
     function that NAMES the index, off the same three values `ensure` is handed."""
-    import virtual_join.config as vjc
+    from chain import legacy_join_declaration as vjc
 
     table, columns, folds = join_into.right_key(_rule())
 
@@ -273,7 +273,7 @@ def test_the_required_set_the_retraction_is_handed_names_the_unified_joins_index
     `uq_vjoin_` prefix. The retraction could only see the read-time declarations, so the
     index built here would be dropped by the next load: built at warmup, retracted on the
     next read, built again at the next restart."""
-    import virtual_join.config as vjc
+    from chain import legacy_join_declaration as vjc
     from chain import ingestion_worker
 
     seen = {}
@@ -294,7 +294,7 @@ def test_a_required_set_that_cannot_see_both_producers_retracts_nothing(monkeypa
     """⛔ HALF A REQUIRED SET DOES NOT RETRACT A LITTLE LESS - IT RETRACTS THE WRONG THING.
     `retract_unrequired_once`'s own contract already refuses to run off a partial list when
     a caller passes `path`; a producer this seat cannot read is the same partiality."""
-    import virtual_join.config as vjc
+    from chain import legacy_join_declaration as vjc
     from chain import builtins as chain_builtins
 
     called = []
@@ -312,7 +312,7 @@ def test_a_required_set_that_cannot_see_both_producers_retracts_nothing(monkeypa
 def test_a_declaration_that_is_switched_off_requires_no_index(monkeypatch):
     """⚠️ AND THAT IS THE RETRACTION DOING ITS JOB, not a hole. A join nobody runs cannot be
     the reason a write is refused with 23505 - which is the outage S-248 closes."""
-    import virtual_join.config as vjc
+    from chain import legacy_join_declaration as vjc
     from chain import ingestion_worker
 
     off = dict(DECLARATION, enabled=False)

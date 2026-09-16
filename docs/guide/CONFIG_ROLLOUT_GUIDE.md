@@ -1,6 +1,6 @@
 # 🧾 CONFIG 전개 런북 (Config Rollout Runbook)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-09-16 (§4.1 확인 명령 — `Synthesized` 줄은 `[ChainRules] set(N)` 에 접혔다, S-234) · 직전 2026-08-16 | **Owner:** Lead / Backend | **Source-of-truth:** `server/config/sample/*.json.sample` · 각 로더 소스
+> **Status:** 🟢 Living | **Last-verified:** 2026-09-17 (🔴 §3④·§4.1 의 확인 명령이 **거절을 한 줄도 못 잡고 있었다** — 실제 철자는 `[ChainRules] <이름> refused (N)` 이라 `refused(` 가 안 걸린다. 접두 `[ChainRules]` 로 넓히고 갈래를 열거 · §3④ 의 `Synthesized` 는 §4.1 이 이미 「접혔다」고 적어 둔 줄이었다) · 직전 2026-09-16 (§4.1 확인 명령 — `Synthesized` 줄은 `[ChainRules] set(N)` 에 접혔다, S-234) · 직전 2026-08-16 | **Owner:** Lead / Backend | **Source-of-truth:** `server/config/sample/*.json.sample` · 각 로더 소스
 >
 > **이 문서의 자리** ― [CONFIG_GUIDE](./CONFIG_GUIDE.md)가 「**무엇을** 설정해야 하는가」의 지도이고 [config/](./config/README.md)가 「파일 **하나**의 키 사전」이라면, 이 문서는 **「빈 환경에 선언 한 벌을 어떤 순서로 올리고, 각 단계가 실제로 먹었음을 어떻게 증명하는가」** 하나에만 답합니다.
 > 리로드 매트릭스·watcher 발화 조건·물리 반영 검증의 **정본은 [CONFIG_GUIDE §4](./CONFIG_GUIDE.md)**이고 여기서는 링크만 합니다. 키 하나하나의 뜻은 [config/](./config/README.md)입니다.
@@ -253,7 +253,7 @@ curl -s -H "$AUTH" "$API/admin/mappers/list"
 ```bash
 curl -s -H "$AUTH" "$API/admin/config/resolve?domain=enrichment"   # effective / ineffective / rejected
 curl -s "$API/enrichment/rules"                                    # 공개 메타
-grep "Synthesized\|rule skipped" server/chain_worker.log | tail    # 워커가 실제로 받았는가
+grep "\[ChainRules\]\|rule skipped" server/chain_worker.log | tail  # 워커가 실제로 받았는가
 ```
 
 🔴 **마지막 줄이 이 단계의 핵심입니다.** 웹 서버가 규칙을 받아들이는 것과 **체인 워커가** 받아들이는 것은 별개입니다 → §4.1.
@@ -336,9 +336,10 @@ curl -s -H "$AUTH" "$API/admin/config/virtual-join/verify"
 2. **한 번의 리로드로 됐다고 가정하지 마십시오.** 규칙 재합성은 리로드마다 다시 일어나므로 **두 번째 `/admin/reload-configs`도 회복 경로**입니다 ― 다만 재기동이 확실합니다(부팅 경로가 `TABLE_CONFIG`부터 다시 읽습니다). **어느 쪽이든 로그를 읽고 확인하기 전까지는 반영된 것이 아닙니다.**
 3. **확인은 응답이 아니라 로그로 하십시오.**
    ```bash
-   grep "\[ChainRules\] set(\|\[ChainRules\] refused(\|rule skipped" server/chain_worker.log | tail
+   grep "\[ChainRules\]\|rule skipped" server/chain_worker.log | tail
    ```
-   `[ChainRules] set(N): …` 줄에 여러분이 선언한 규칙 «이름»이 있어야 합니다(S-234 `5c845e67` — 종전의 `Synthesized N dedup chain rule(s)` 별도 줄은 이 줄에 접혔습니다). `[ChainRules] refused(N)` 이나 `rule skipped:`에 보이면 그 규칙은 **없는 것과 같습니다.**
+   `[ChainRules] set(N): …` 줄에 여러분이 선언한 규칙 «이름»이 있어야 합니다(S-234 `5c845e67` — 종전의 `Synthesized N dedup chain rule(s)` 별도 줄은 이 줄에 접혔습니다). 아래 넷 중 하나에 보이면 그 규칙은 **없는 것과 같습니다** — `[ChainRules] <이름> refused (N): …` · `[ChainRules] N of M rule(s) refused and skipped` · `[ChainRules] <반쪽> half of synthesis failed, so …` · `rule skipped:`.
+   > 🔴 **[2026-09-17 정정] 종전 명령의 `\[ChainRules\] refused(` 는 «한 줄도 안 잡습니다»** — 실제 철자가 `[ChainRules] %s refused (%d)` 라 이름과 «공백»이 사이에 있습니다(`chain/ingestion_worker.py:782`). 거절을 찾는 명령이 거절을 못 찾고 «조용히» 빈 결과를 내고 있었습니다. 그래서 위 명령은 접두 `[ChainRules]` 만 잡고 갈래는 «눈으로» 가릅니다 — 철자를 명령에 박으면 다음에 또 낡습니다.
 
 > 웹 서버가 `/admin/config/resolve`에서 `effective`라고 답하는 것은 **웹 서버 프로세스의 판정**입니다. 워커는 별개의 프로세스이고 별개의 캐시를 갖습니다.
 

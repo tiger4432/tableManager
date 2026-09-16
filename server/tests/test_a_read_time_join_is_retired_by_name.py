@@ -29,7 +29,7 @@ SERVER_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
-import virtual_join.config as vjc                                   # noqa: E402
+from chain import legacy_join_declaration as vjc                                   # noqa: E402
 from chain import ingestion_worker, rule_shape                      # noqa: E402
 
 KNOWN = {
@@ -124,14 +124,44 @@ def test_a_writing_join_still_stands_two_chain_rules(declared):
     assert refusal is None and len(stood) == 2
 
 
-def test_the_old_file_is_still_read(declared):
-    """⚠️ THE ENGINE IS NOT TOUCHED IN THIS STEP (판정 440 ④, step 1 of 5). A declaration in
-    `virtual_join_rules.json` still loads; what stopped is the unified file's `into.read`."""
+def test_the_old_files_read_time_declaration_is_now_refused_by_name(declared):
+    """🪦 [S-283, 판정 446·461] THIS TEST USED TO ASSERT THE OPPOSITE, and the old sentence
+    is kept here rather than deleted: 「THE ENGINE IS NOT TOUCHED IN THIS STEP (판정 440 ④,
+    step 1 of 5). A declaration in `virtual_join_rules.json` still loads」.
+
+    That was true of step 1 and is false now. Step 4 removed the read-time engine, so a
+    `materialize: false` declaration in the legacy file no longer computes anything - and a
+    declaration that stands nothing must SAY so, by name, or it is 「선언은 있는데 컬럼이
+    없다」, which has the same shape as 「없다」.
+    """
+    declared()
+    rejections = []
+
+    rules = vjc.validate_virtual_join_rules({"o_read": OLD_SHAPE}, known_tables=KNOWN,
+                                            rejections=rejections)
+
+    assert rules == [], "a read-time declaration still stood as a live rule"
+    said = [r for r in rejections if r.get("subject") == "o_read"]
+    assert len(said) == 1, rejections
+    assert said[0]["code"] == "read_time_retired", said[0]
+    # 🔴 사유 + 다음 행동. The operator has two ways out and the sentence names both.
+    assert "chain_rules.json" in said[0]["detail"], said[0]["detail"]
+    assert "materialize" in said[0]["detail"], said[0]["detail"]
+
+
+def test_a_materializing_declaration_in_the_old_file_still_stands(declared):
+    """⚠️ THE CONTROL FOR THE LINE ABOVE. `materialize: true` is a WRITE join - it puts the
+    value in the table - and ruling 461 kept it alive precisely because production may be
+    running one. If this went red with its neighbour, the refusal would be catching the
+    wrong half.
+    """
     declared()
 
-    rules = vjc.validate_virtual_join_rules({"o_read": OLD_SHAPE}, known_tables=KNOWN)
+    rules = vjc.validate_virtual_join_rules(
+        {"o_write": dict(OLD_SHAPE, materialize=True, max_rewrite_rows=1000)},
+        known_tables=KNOWN)
 
-    assert [r["name"] for r in rules] == ["o_read"]
+    assert [r["name"] for r in rules] == ["o_write"]
 
 
 def test_a_switched_off_read_declaration_is_still_not_complained_about(declared):

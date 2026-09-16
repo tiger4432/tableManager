@@ -29,7 +29,7 @@ if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
 from chain import join_key_index as jki                             # noqa: E402
-import virtual_join.config as vjc                                   # noqa: E402
+from chain import legacy_join_declaration as vjc                                   # noqa: E402
 
 #: 🔴 PINNED LITERALS, NOT `jki.required_index_name(...)` ON BOTH SIDES. A test that
 #: compares the function with itself moves whenever the function does, which is the one

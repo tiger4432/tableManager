@@ -1,13 +1,14 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **929개** 이력. (거버넌스 규칙 #4)
+> 총 **930개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-09 (September 2026)
 
+- **2026-09-17 03:10** — [The Read Time Join Is Retired Engine And Declaration Both](./20260917_031000_the_read_time_join_is_retired_engine_and_declaration_both.md)
 - **2026-09-17 00:50** — [The Enumeration Before Step Four Found Two More Doorways And Took Three Of My Own Counts Back](./20260917_005022_the_enumeration_before_step_four_found_two_more_doorways_and_took_three_of_my_own_counts_back.md)
 - **2026-09-17 00:44** — [Two More Gates Read The Index Prefix From The Seat That Owns It And The Count That Led Here Was A Proxy](./20260917_004449_two_more_gates_read_the_index_prefix_from_the_seat_that_owns_it_and_the_count_that_led_here_was_a_proxy.md)
 - **2026-09-17 00:40** — [Run Md Had Drifted Two Pushes Behind And Both Drifts Were Operator Visible](./20260917_004044_run_md_had_drifted_two_pushes_behind_and_both_drifts_were_operator_visible.md)

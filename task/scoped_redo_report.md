@@ -45641,3 +45641,318 @@ RUN.md 에 roleframe·capability 를 «가리키는 줄이 0» 이라 오늘 mai
 📌 **이제 4) 로 돌아갑니다.** `chain/builtins.py` 의 마지막 세 자리까지 옮겼고
 (`_install()` 의 등록 자리 포함 — 패키지가 사라져도 `import chain.builtins` 가 삽니다),
 남은 것은 «읽기 쪽 호출 자리 지우기»와 446, 그리고 시험 모듈 ~36 입니다.
+
+---
+
+> 🔵🔵 **[09-17 03:11 구현자] 판정 461 4) 착지 — «한 커밋» `306419fd`. 미커밋 변경은 트리에서 사라졌습니다.**
+
+## ① 무엇이 옮겨지고 무엇이 지워졌나 — AST 로 «다시» 셌습니다 (착지본 기준)
+```
+HEAD 의 executor 최상위 정의        28
+  옮김 (chain/legacy_materialized_join.py)  15
+  지움 (읽기 전용)                         13
+    attach · exposed_columns · resolved_expression · announced_columns ·
+    resolved_column_announcements · virtual_only_columns · _resolve_one · _bind_crud ·
+    _CLEAN · _RENDER · KIND_COLLIDE · KIND_VIRTUAL_ONLY · SOURCE_NAME
+  «옮긴 파일에 새로 생긴 것»  0   <- 지어낸 것이 없다는 뜻입니다
+git mv   virtual_join/config.py  -> chain/legacy_join_declaration.py
+         virtual_join/refusal.py -> chain/join_refusal.py
+git rm   virtual_join/executor.py · virtual_join/__init__.py  (패키지가 «없습니다»)
+```
+
+## ② 🔴 호출 자리는 «일곱이 아니라 여덟»이었습니다 — 바인더 안에 둘이 있었습니다
+```
+main.py  fetch_and_merge_metadata        attach                         -> 지움
+main.py  VirtualColumnBinder.__init__    exposed_columns                -> 지움 ┐ 총괄 ④가
+main.py  VirtualColumnBinder.expr        resolved_expression            -> 지움 ┘ 하나로 세신 자리
+main.py  export_table_csv                announced_columns              -> 지움
+main.py  get_table_schema                resolved_column_announcements  -> 지움
+main.py  get_table_schema                announced_columns              -> 지움
+database/crud.py  refuse_virtual_join_columns  virtual_only_columns     -> 함수째 지움 + 묘비
+database/config_watcher.py  _report_unsearchable_declarations  exposed_columns -> 지움
+```
+그리고 그 여덟을 지우자 «바인더 자체»가 아무도 안 타는 갈래가 됐습니다(상설 「깔끔」③).
+그래서 `VirtualColumnBinder` 와 그 인자를 다섯 함수에서 걷어냈습니다 —
+`resolve_sort` · `apply_column_filters` · `apply_search_filter` · `narrowed_table_query`(3-튜플 -> 2-튜플) ·
+그 호출자 넷. 묘비에 「JOIN 이 사라진 것이지 «메모»가 틀린 게 아니다」를 적어 뒀습니다.
+
+## ③ 446 — 이름 대어 거절합니다 (총괄 452 ① 의 «좁은» 판)
+```
+새 코드   read_time_retired  (chain/join_refusal.py — 코드와 한국어 문장이 «같은 모듈»)
+거절 문장  'materialize' is false, which declared a READ-TIME join … Declare the join in
+          chain_rules.json instead - derive: {kind: "join"} with on and take …, or set
+          'materialize': true here with a 'max_rewrite_rows' ceiling
+✅ 통제   `materialize: true` 는 «그대로 섭니다» — 같은 파일에 컨트롤 시험을 붙였습니다
+```
+
+## ④ 🔴 제가 «안 본» 귀결 하나 — 인덱스가 «같이 걷힙니다». RUN.md 에 적었습니다
+```
+기제   인덱스는 «요구하는 조인이 사는 동안»만 삽니다(S-248). 446 이 선언을 거절하면
+      그 선언이 요구하던 키가 «요구 집합»에서 빠지고, 제품이 자기 `uq_vjoin_…` 를 걷습니다
+제가 본 것   이 박스에서 프로브를 돌리다 그 로그가 «떴습니다». 설계대로지만 제 계획에는 없었습니다
+운영 의미   걷힌 «동안» 그 키의 중복이 들어올 수 있습니다. 되돌리기는 있습니다 —
+          그 조인을 `materialize: true` 로 세우면 제품이 다시 만듭니다
+          (만들다 23505 가 나면 «데이터에 진짜 중복이 있다»는 뜻입니다)
+✅ 안전   접두 `uq_vjoin_` 인 것만 걷습니다. 운영자가 손수 만든 인덱스는 «절대» 안 걷힙니다
+```
+📌 **이것이 이 라운드에서 제일 운영에 가까운 항목이라고 봅니다.** RUN.md ③-ter 에 로그 줄과
+   되돌리는 법을 같이 적었습니다.
+
+## ⑤ 시험 — 파일 «단위»가 아니라 시험 «단위»로 갈랐습니다
+```
+지운 모듈 8 (시험 def 112)   virtual_column_export · virtual_column_search ·
+    schema_virtual_columns · join_resolved_columns · virtual_join_numeric ·
+    virtual_join_types · virtual_join_executor · the_deletion_instrument_really_refuses
+옮겨 살린 시험 5 (새 파일 둘)
+    test_the_write_core_drops_an_undeclared_column.py       2  — 미선언 컬럼 드롭 + 깔때기 호출자 «하나»
+    test_a_value_is_rendered_to_text_before_it_is_compared.py 3 — column_text_sql / comparison_text_value
+    (둘 다 «주어가 살아 있습니다» — 앞은 쓰기 코어, 뒤는 enrichment 가 부르는 퍼널)
+계약 벡터 3 은퇴   contracts/blank_predicate 의 「해소 이음매」 — `_resolve_one`(파이썬) 대
+    `resolved_expression`(SQL). 계약은 «구현이 둘»이어야 성립하는데 둘 다 사라졌습니다.
+    묘비에 「다시 생기면 무엇을 증명해야 하는지」를 적었습니다
+고쳐서 살린 것   virtual_join_guard(픽스처를 쓰기 조인으로, 44 passed) · notation_normalization(같은 이유) ·
+    a_materialized_join_declares_its_cost 둘 · writes_its_own_layer 하나 · sort 둘 ·
+    search_asks 하나 · dt_map 하나 · loader_does_not_reach 셋 · cell_layer · one_place_decides ·
+    one_bad_row · a_filter_that_cannot_be_built 둘
+```
+
+## ⑥ 🔴 제가 낸 사고 «셋» — 전부 착지 «전»에 잡혔지만 하나는 게이트가 못 잡았습니다
+```
+㉠ AST 로 옮긴 몸통이 «함수 안 import» 셋을 데려왔습니다 (`import virtual_join.config as vjc`)
+   제가 적었던 확인은 「imports OK, exports all 15 names」였고 «둘 다 참이면서 무의미»했습니다 —
+   모듈 import 는 함수 «안»의 줄을 한 번도 안 밟습니다.
+   ⛔ 그리고 유일 호출자 `crud._virtual_join_right_keys` 의 `except` 가 그것을 «삼켜서»,
+      중복 거절 가드가 «조용히 꺼진 채» 초록이었습니다. 시험 로그의 «소음»에서 찾았습니다
+㉡ 뭉뚱그린 import 치환이 «import 문을 데이터로 든» 파일 둘의 표를 고쳤습니다
+   (roleframe 의 CAPABILITY_FORMS · 삭제 계측기의 EVERY_SPELLING). 틀린 답이 아니라
+   «모집단이 줄어든 게이트»가 됩니다 — 초록이라 아무도 안 봅니다. diff 로 잡고 되돌렸습니다
+㉢ `io.open(p,"w")` 가 76KB 시험 파일을 0바이트로 만들었습니다 — «세 번째»입니다.
+   제 기억에 그 항목이 «있었고» 또 밟았습니다. 이번엔 규칙이 아니라 «함수»로 막았습니다
+   (임시파일 -> os.replace). 그 뒤 편집 전부를 그것으로 돌렸습니다
+```
+셋 다 기억에 적었습니다(둘은 새로, 하나는 갱신).
+
+## ⑦ 남겨 둔 것 — «지우지 않고 적어» 뒀습니다
+```
+/schema 의 `virtual_columns` · `join_resolved_columns`   «키는 남기고 항상 []»
+   -> client2/src 가 읽습니다. 서버가 키를 빼면 은퇴가 «빈 화면»이 됩니다. 클라와 «같이» 할 별건입니다
+column_filter 의 `col_expr_override`   오늘 «호출자 0» 입니다
+   -> 이 모듈 «자기 인터페이스»라 지우는 것은 이 라운드 밖입니다. 독스트링에 「호출자 0」을 적어
+      다음 사람이 «쓰는 문»으로 오해하지 않게 했습니다
+`chain/builtins._install` 의 `builtin:join` 등록   «그대로» — 쓰기 조인이 사는 동안 삽니다
+```
+
+## ⑧ 🔴 모르는 것 — «재 볼 수가 없는» 것 둘
+```
+㉠ 설정 리로드의 새 판정   `_report_unsearchable_declarations` 가 이제 엔진 없이 «항상» 판정합니다.
+   그래서 오타가 있는 표는 리로드마다 ERROR 한 줄을 냅니다.
+   🔴 이 박스에서는 «잴 수가 없습니다» — search_columns 를 선언한 표가 «0» 입니다.
+      「영향 없음」이 아니라 「이 박스가 답할 수 없음」입니다. 운영에서 그 선언이 있으면
+      새 줄이 뜰 수 있고, RUN.md ③-quater 에 읽는 법과 할 일을 적었습니다
+㉡ 오늘 라이브에 `materialize: true` 가 있나   총괄 461 ⑤ 의 물음 그대로, 저는 못 셉니다.
+   (이 박스에서는 446 이 «둘»을 이름 대어 거절합니다 — 둘 다 materialize 가 없는 선언입니다.
+    그 수는 이 박스의 것이고 운영에 대해 아무 말도 안 합니다)
+```
+
+## ⑨ 📮 판정 하나만 올립니다 — 나머지는 다 닫았습니다
+```
+물음   `read_time_retired` 를 «닫힌 사유 어휘»에 다섯째로 더할까요?
+오늘   `_VJ_CODE_TO_REASON` 에 «안 넣었습니다» -> 기본값 `mapping_unavailable` 로 떨어집니다.
+      화면 «문장»은 정확합니다(「읽는 시점에 계산하는 조인은 더 이상 없어서 …」 + 다음 행동).
+      부정확한 것은 «기계가 읽는 칸» 하나입니다 — 은퇴를 「매핑을 못 찾음」으로 분류합니다
+왜 제가 안 정했나   `REASONS` 는 «닫힌 어휘»이고 정본이 계약 벡터
+      (`contracts/config_resolve_report/vectors.json`)이며 «클라가 읽습니다». 다섯째 값은
+      레인 넘는 변경이라 제 자리가 아닙니다. 코드 옆에 그 사정을 적어 뒀습니다
+막힘   «없습니다». 오늘 상태로도 운영자는 잘못 읽지 않습니다
+```
+
+## ⑩ 게이트 — 숫자를 «읽고» 적었습니다
+```
+수집        6,809 개   (직전 6,926 — 모듈 8 · 시험 def 112 삭제, 5 이관, 계약 벡터 3 은퇴)
+전체 스위트   5 failed · 6,677 passed · 124 skipped · 3 xfailed · error «0»
+🔵 그 다섯은 HEAD 에서도 «똑같이» 빨갛습니다 — 이름으로 짐작한 게 아니라
+   HEAD 에 박스 설정을 복사해 «전체를 한 번 더» 돌려 대조했습니다
+   (registration 셋 · ddl_never_reaches_production · dev_env_isolation)
+```
+⚠️ **제가 잰 수 하나를 «버렸습니다».** 앞서 돌린 전체에서 빨강 넷이 더 떴는데, 그것은
+«스위트가 도는 중에 소스를 고쳐서» 난 것이었습니다 — `inspect.getsource` 는 «줄 번호»로
+읽으므로 드리프트 오라클이 «옆 함수» 몸을 읽었습니다. 위 수는 «편집 없이» 돌린 판입니다.
+다음부터 전체 스위트가 도는 동안은 편집하지 않겠습니다.
+
+---
+
+> 🔵 **[09-17 03:19 구현자] S-284 «세고» 시작했습니다 — 모집단을 냅니다. 아직 한 줄도 안 지었습니다.**
+
+## ① 두 축을 «따로» 셌습니다 (총괄 ③ 그대로). 계측기는 추적 파일만 봅니다
+```
+A. 「0 일 수 있는데 어떤 0 인지 안 말하는」 칸        142
+   그중 «라우트 안»에 쓰인 것                          24
+   나머지 118 은 «헬퍼»에 있습니다 — 그중 몇이 응답에 닿는지는 «안 갈랐습니다».
+   콜그래프를 걸어야 하고, 짐작하면 이 계측기가 «세 번째로» 틀립니다
+B. 「삼킨 실패가 «수가 되는»」 자리                     9   <- 작고 날카롭습니다
+```
+🔴 **A 의 142 를 «고칠 목록»으로 읽지 마십시오.** 그건 「수가 들어 있는 dict」의 수이고,
+운영자에게 «닿는» 것의 수가 아닙니다. 단위를 같이 적습니다 — «칸» 142 · «라우트 안» 24 · «자리» 9.
+
+## ② ⚰️ 이 계측기는 «두 번» 틀렸고 둘 다 «작게» 틀렸습니다
+```
+㉠ dict 리터럴 «안»의 len() 만 셈        -> 18. 진짜 A 의 «3분의 1»
+㉡ «라우트 함수»만 걸음                  -> B 가 «0» 이 나왔습니다.
+   그런데 총괄이 이름 댄 chain/graph.py 가 «헬퍼»입니다 — 계측기가 그 판정을 «반증»한 셈인데,
+   반증된 건 판정이 아니라 제 술어였습니다
+=> 두 번 다 「작은 답」이 완성처럼 보였습니다. 그래서 수마다 «무엇을 뺐는지»를 같이 찍게 했습니다
+```
+🔴 그리고 첫 판은 `server/mappers/*.py`(소유자 gitignore 파일)까지 훑었습니다. `git ls-files` 로
+   구조적으로 막았습니다 — 그 셋이 빠져 145 -> 142 입니다.
+
+## ③ B 아홉을 «전부 열었습니다». 같은 병이 아닙니다
+```
+chain/graph.py:409,410        except -> [] -> len() 이 «그래프 응답»에 실립니다
+                              🔴 총괄이 이름 댄 그 자리. 「선언 0」과 「못 읽음」이 같은 0
+chain_bindings.py:133,135,137 except DerivationRefused -> cols=[] -> len(cols) 이 «갈래»를 텁니다
+                              거절당한 것과 「map_key_columns 가 없다」가 같은 길로 떨어집니다 (450 ① 부류)
+map_alignment.py:5447,5454    except ValueError -> key_cols=[] -> len() 이 «거절 문장»을 고릅니다
+                              바인딩을 못 읽으면 「키가 안 쪼개진다」 문장이 «건너뛰어집니다»
+chain/ingestion_worker.py:3047,3054
+                              except -> sources=[] -> len(sources) 이 «로그 줄»과 «heartbeat depth» 로
+                              ⚠️ 로그는 바로 위에 WARNING 이 따로 있어 «안 속입니다».
+                                 속이는 건 heartbeat 의 depth=0 입니다 — 「할 일 없음」으로 읽힙니다
+```
+
+## ④ 🔴 세는 중에 «따로» 나온 것 — 일곱째 낱말이 «화면에 한 글자도 안 닿습니다»
+```
+서버 ABSENCE_WORDS       7   (not_counted_here 가 S-143·판정 322 에서 더해졌습니다)
+클라 ABSENCE_WORDS 맵    6   (그 일곱째가 «없습니다»)
+정본 문서 APPLICATION_RUN_WORDS.md   6 (다섯 + 밖 하나). 영문 토큰은 «한 줄도 없습니다»
+발신 자리                ledger/config_drafts.py:200 이 그 일곱째를 «이미 냅니다»
+```
+🔴 그런데 «영문으로 뜨는» 것도 아닙니다 — «아무것도 안 뜹니다**:
+```
+서버가 보내는 것   {"count": {"absence": "not_counted_here"}}   <- value 가 «없습니다»
+                  (그 자리 주석: 「ONE KEY, NOT A HOLLOWED-OUT COUNT」 — 일부러 뺐습니다)
+클라가 그리는 규칙  const wants = has && Number(value) === 0 && absence != null
+                  -> value 가 없으면 has=false -> wants=false -> 낱말 «안 그립니다». 화면엔 「—」
+=> 각자 «옳아 보이는» 두 결정이 서로를 지웠습니다. 상설 ④(「둘이 갈라질 수 있나」)의 실물입니다
+```
+⚠️ **이건 제 레인 밖입니다** — 고치는 자리가 `client2/src/count_with_absence.js`(그리는 규칙)이거나,
+서버가 클라가 이미 그리는 모양으로 내보내는 것입니다. 후자는 `unread` 밖에 없는데 그건 «거짓말»입니다
+(「못 읽었다」가 아니라 「여기서 안 셌다」니까요). 라우팅 부탁드립니다.
+
+## ⑤ 제 계획 — 판정 없어도 갑니다. 다르면 말씀만 주십시오
+```
+1) B 아홉부터. 작고, 성질이 분명하고, 총괄이 이름 댄 자리를 포함합니다
+   게이트는 총괄 ④ 그대로: 같은 픽스처(진짜 0 · 못 읽음 · 꺼짐)를 «모든» 자리에 먹여 «셋이 다르게»
+   그리고 「말 안 함」 자리는 «칸이 아예 없어야» 합니다 (판정 445 ④)
+2) 그다음 A 의 «라우트 안 24» 를 자리마다 「서버가 구별할 수 있나」로 묻습니다.
+   못 하는 자리가 나오면 «낱말을 안 지어내고» 「구별 못 함」을 발견으로 올립니다
+3) 헬퍼 118 은 «콜그래프 뒤»입니다 — 그 전에 손대면 모집단 없이 고치는 것입니다
+```
+📌 이 채널의 미답: «둘» — 판정 429 ⓐ/ⓑ(독촉 올렸습니다) · REASONS 다섯째. 위 ④ 는 «라우팅»이지 막힘이 아닙니다.
+
+---
+
+> 🔵 **[09-17 03:48 구현자] S-284 «B 축» 착지 — `d7bd07bd`. B 아홉 중 «일곱을 고쳤고 둘은 제 계측기가 틀린 것»입니다.**
+
+## ① 무엇이 달라졌나 — 세 자리
+```
+chain/graph.py       네 분면이 «한 좌석»을 지납니다. 읽었으면 수, 못 읽었으면 «칸을 빼고» unread 에 사유,
+                     로더가 거절을 보고했으면 <이름>_refused 를 더합니다
+                     🔵 그러면서 계측기가 «안 찍은» 둘도 같이 닫혔습니다 —
+                        _chain_rules 가 «한 층 아래»에서 자기 예외를 삼키고 있었고,
+                        ledger_sources 는 `0 if setup is None` 이었습니다.
+                        한 좌석으로 모으지 않았으면 그 둘은 그대로 남았을 것입니다
+chain_bindings.py    거절당한 유도가 「선언이 없다」와 «같은 문장»으로 나가고 있었습니다 —
+                     운영자에게 «이미 적어 둔» map_key_columns 를 적으라고 말합니다.
+                     거절 사유를 문장에 싣고, 「둘째 전략은 그대로 답한다」를 통제로 걸었습니다
+map_alignment.py     넷째 원인이 첫째의 문장을 입고 있었습니다. 그리고 바인딩을 못 읽으면
+                     「조회 조건」 절이 «사라지는데», 그 함수 독스트링이 바로 그 절을
+                     「ⓒ를 자명하게 만드는 것」이라 적어 뒀습니다 — 제일 필요한 경우에만 빠졌습니다
+                     ⚠️ 낱말은 «안 지었습니다» — REF_REFUSAL_BINDING 이 이미 그 뜻이었습니다
+```
+
+## ② 🔴 제가 «고쳤다가 무른» 것 하나 — 그리고 그것이 계측기의 사각입니다
+```
+계측기   run_ledger_row_census 의 len(sources) 두 줄을 B 로 찍었습니다
+제가 한 것   depth=None if unread else len(sources) 로 «고쳤습니다»
+그다음 연 것  그 블록 «전체»가 `if sources:` 안입니다 — 못 읽어서 비면 «랩 자체가 발행 안 됩니다».
+            그게 「말 안 함」의 더 센 철자입니다(칸이 아니라 «항목»이 없습니다)
+=> 제 가지는 «도달 불가»였습니다. 뺐고, 그 자리에 «왜 옳은지»를 적어 뒀습니다
+🔴 남은 B 둘은 «그 둘»입니다 — 고칠 것이 아니라 계측기의 오탐입니다.
+   계측기는 「except 가 비운 이름이 세어지나」를 재지 «그 줄에 도달하나»를 안 잽니다.
+   튜닝해서 지우지 «않았습니다» — 다음 번 가드된 블록도 똑같이 찍을 테니, 그 사실이 보여야 합니다
+```
+⚠️ 목록을 «열어 보지» 않았으면 죽은 가지를 착지시킬 뻔했습니다. 실제로 한 번 넣었다가 뺐습니다.
+
+## ③ 게이트
+```
+수집   6,820  (직전 6,809 — 새 시험 11)
+전체   5 failed · 6,688 passed · 124 skipped · 3 xfailed · error «0»
+      그 다섯은 오늘 밤 HEAD 에서 «전수로» 확인한 그 다섯입니다. 새로 생긴 빨강 «0»
+빨강 먼저   그래프 다섯 · 바인딩 하나 · 맵 둘 — 전부 «먼저 빨갛고» 그다음 고쳤습니다
+계측   A 142 -> 137 · B 9 -> 2(둘 다 오탐)
+```
+
+## ④ 세면서 본 것, «안 지었습니다» (지시 밖)
+```
+heartbeat.record_lap 의 「depth=None 은 키째 빠지고 0 은 남는다」가 «독스트링에만» 있고
+시험이 «없습니다». 이 라운드가 그 성질에 기대는데 아무도 안 잽니다 — 큐에 올립니다
+```
+
+## ⑤ 다음
+```
+A 의 «라우트 안 24» 를 자리마다 「서버가 구별할 수 있나」로 묻습니다.
+헬퍼 118 은 콜그래프 뒤입니다 — 그 전에 손대면 모집단 없이 고치는 것입니다
+```
+
+---
+
+> 🔵 **[09-17 03:55 구현자] S-284 «A 축» 자리마다 물었습니다 — `4e7210e3`. 결론: «서버 변경 0».**
+
+## ① 스물넷을 전부 열었고, 스물넷이 «전부» 가릅니다
+```
+판별식(총괄 ④ 그대로)   「낱말이 있나」가 아니라 «이 0 이 두 뜻일 수 있나, 서버가 가를 수 있나»
+가르는 방식 셋
+  ㉠ 형제 칸이 말한다   truncated(감사 목록·replace_map) · capped(큐 깊이) ·
+                       declarations(접기 미리보기) · oldest_failed_at(아웃박스) · raws_dir(워크스페이스)
+  ㉡ 거절한다          못 읽으면 수를 내지 않고 404/503 + 이름 붙은 사유 (갭 카탈로그 · 트랜잭션 상세)
+  ㉢ 뜻이 하나다       change_count · inserted · count — 「이 동작이 무엇을 했나」이고 0 은 「아무것도」 하나뿐
+=> 그래서 이 라운드에 «제품 코드 변경이 없습니다». 그게 결과입니다
+```
+
+## ② ⚰️ 하나는 «고칠 뻔했습니다» — 그리고 그게 A 축에서 제일 중요한 발견입니다
+```
+자리   main.get_ingestion_workspaces 의 raw_files_count
+제가 본 것   raws 디렉터리가 «없어도» 0. 「받은 것 없음」과 「받을 자리가 없음」이 같은 0
+제가 한 것   수리를 «설계하고 시험까지 빨갛게 만들었습니다»
+그다음 연 것  바로 옆 줄: "raws_dir": raws_dir if os.path.exists(raws_dir) else None
+            🔴 서버는 «이미 말하고 있었습니다». 제가 그 칸을 안 보고 수리를 지었습니다
+```
+🔴 **진짜 병은 «화면»입니다.** `client2/src/admin_rows.js` 가 `raw_files_count > 0` 이 아니면
+«초록 0» 배지를 그립니다 — 「받은 파일 없음, 이상 없음」. raws 가 «없을 때»도 같은 초록입니다.
+운영자는 파일을 거기 떨어뜨리고 초록을 보며 「한가하다」고 읽는데, 그 파일은 «아무도 안 보는 자리»에 있습니다.
+📮 **클라 레인 라우팅 «둘째»입니다** (첫째는 not_counted_here). 서버가 줄 재료는 «이미 있고»,
+   그 사실을 시험으로 못 박아 뒀습니다 — 클라 수리가 그 줄에 기대면 됩니다.
+
+## ③ 계측기의 사각 — 튜닝하지 «않았습니다»
+```
+계측기가 형제로 인정하는 낱말   absence · unread   <- «제가 아는 둘»
+이 저장소의 실제 부재 어휘      자리마다 다릅니다 (truncated · capped · oldest_failed_at · raws_dir · null 경로)
+=> 그래서 A=142 는 «후보»의 수이지 «결함»의 수가 아닙니다. 단위를 그렇게 읽어 주십시오
+왜 안 고쳤나   좁히면 다음에 «진짜»를 놓칩니다. 넓은 채로 두고 사각을 «보이게» 적었습니다
+```
+
+## ④ 🔴 A 축에서 «서버가 가를 수 없는» 자리 하나 — 발견으로 올립니다
+```
+자리   GET /admin/file-ingestion/active 의 total (= 진행 중 파일 수)
+0 의 두 뜻   ⓐ 진행 중인 것이 정말 없다   ⓑ watcher 프로세스가 «안 밀어주고 있다»
+            (이 레지스트리는 watcher 가 push 하는 인메모리이고, 라우트 독스트링이 스스로 그렇게 적습니다)
+오늘   둘이 같은 0 입니다. 그리고 이 라우트는 «재기동 경고용»이라 하필 ⓑ 가 중요한 화면입니다
+낱말을 지어내지 않았습니다   가르려면 «watcher 의 생존»을 물어야 하고(heartbeat 가 압니다),
+            그건 이 라운드의 「0 이 무엇의 0 인가」보다 큰 배선입니다 — 판정 주시면 짓겠습니다
+```
+
+## ⑤ 남은 것
+```
+헬퍼 118   콜그래프 뒤입니다. 그 전에 손대면 모집단 없이 고치는 것입니다
+큐 하나    heartbeat.record_lap 의 「depth=None 은 키째 빠진다」에 시험이 없습니다
+```

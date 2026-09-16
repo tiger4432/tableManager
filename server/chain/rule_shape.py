@@ -73,9 +73,9 @@ INTO_KINDS = ("table", "read")
 #: engine is not touched in this one.
 #:
 #: 🔴 ONE SENTENCE, TWO SEATS. `expand_declaration` below and
-#: `virtual_join.config._read_time_joins_from_unified` both meet this declaration. Said
-#: differently they would refuse one file in two voices; said by only one of them, the
-#: loader would refuse what the collector still RUNS.
+#: `chain.legacy_join_declaration._read_time_joins_from_unified` both meet this
+#: declaration. Said differently they would refuse one file in two voices; said by only
+#: one of them, the loader would refuse what the collector still RUNS.
 #:
 #: ⚠️ IT NAMES THE NEXT ACTION (소유자 2026-09-16: 운영은 `into.table` 로만 씁니다), so the
 #: replacement is not a workaround - it is what every live declaration already does.
@@ -104,7 +104,7 @@ def declared_kind(rule: dict) -> str:
     """
     from chain import join_into
     from enrichment import config as enrichment_config
-    import virtual_join.config as vjc
+    from chain import legacy_join_declaration as vjc
 
     rule = rule if isinstance(rule, dict) else {}
     mapper = rule.get("mapper")

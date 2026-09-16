@@ -38,8 +38,8 @@ import paths                                                      # noqa: E402
 #: never touches, which is a gate that gets muted rather than obeyed.
 MOVING = frozenset("""
 chain_activity chain_bindings chain_builtins chain_graph chain_ingestion_worker
-chain_key_gate chain_replay cell_layer virtual_join_config virtual_join_executor
-virtual_join_refusal ledger_admin ledger_explorer ledger_trace ledger_trace_router
+chain_key_gate chain_replay cell_layer legacy_join_declaration
+legacy_materialized_join join_refusal join_key_index ledger_admin ledger_explorer ledger_trace ledger_trace_router
 map_alignment map_meta_registrar map_overlay map_preset_routing alignment_batch_counts
 alignment_view_service dt_frame_transform frame_confirmation enrichment_analysis
 enrichment_backfill enrichment_candidates enrichment_config

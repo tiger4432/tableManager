@@ -58,9 +58,9 @@ def synthesize_chain_rules(known_tables: dict = None, failures: list = None) -> 
     🔴 THE TWO HALVES FAIL SEPARATELY (판정 452 ②). They used to be one expression, so
     ANYTHING raising in the virtual-join half took the enrichment half down with it - and
     the caller's `except` logged one line and carried on with NO synthesised rules at all,
-    dedup and auto-confirm included. That matters this round in particular: step 4 removes
-    the `virtual_join` package, which makes that import raise, and the failure would have
-    read as 「this box declares no enrichment」 rather than 「the join half is gone」.
+    dedup and auto-confirm included. That mattered when step 4 removed the `virtual_join`
+    package: the import raised, and a single `except` would have made the failure read as
+    「this box declares no enrichment」 rather than 「the join half is gone」.
 
     ⚠️ A FAILING HALF IS REPORTED, NEVER GUESSED AT. `failures` collects
     `(half, what stops running, the error)` the way `rejections` does elsewhere in this
@@ -76,8 +76,8 @@ def synthesize_chain_rules(known_tables: dict = None, failures: list = None) -> 
         return enrichment.config.load_enrichment_chain_rules(known_tables=known_tables)
 
     def _joins():
-        import virtual_join.config
-        return virtual_join.config.synthesized_join_chain_rules(known_tables=known_tables)
+        from chain import legacy_join_declaration
+        return legacy_join_declaration.synthesized_join_chain_rules(known_tables=known_tables)
 
     rules = []
     for (half, stops, says), produce in zip(_SYNTHESIS_HALVES, (_enrichment, _joins)):
@@ -108,10 +108,10 @@ def written_in(rule) -> str:
     with its origin and kind, so a count of kinds had no reader left.
     """
     import enrichment.config
-    import virtual_join.config
+    from chain import legacy_join_declaration
 
-    if (rule or {}).get("mapper") == virtual_join.config.JOIN_MAPPER:
-        return os.path.basename(virtual_join.config.VIRTUAL_JOIN_RULES_PATH)
+    if (rule or {}).get("mapper") == legacy_join_declaration.JOIN_MAPPER:
+        return os.path.basename(legacy_join_declaration.VIRTUAL_JOIN_RULES_PATH)
     return os.path.basename(enrichment.config.ENRICHMENT_RULES_PATH)
 
 
@@ -132,7 +132,7 @@ def _run_join(db, rule, row_ids=None, key_values=None, done=None, **_):
     (counts first, refuses over the rule's declared ceiling). The caller says which by which
     argument it passes; both land in the same declaration.
     """
-    from virtual_join import executor as vje
+    from chain import legacy_materialized_join as vje
 
     joined = (rule or {}).get("params") or {}
     if key_values is not None:
@@ -198,10 +198,10 @@ def ensure_declared_unique_keys(db, rules) -> dict:
 
     🔴 THE CELL WAS WRITTEN AND READ BY NOBODY. `key.unique: true` never survived the
     translation (`rule_shape` dropped it), and the only place that builds a `uq_vjoin_*` is
-    the OLD read-time shell - so the plan's 「선언이 key.unique 라고 말하면 제품이
+    the RETIRED read-time loader - so the plan's 「선언이 key.unique 라고 말하면 제품이
     성립시킨다」 and RUN.md's 「제품이 인덱스를 세웁니다」 were both false for a unified join.
 
-    ⚠️ THE SHELL CALLS IT, NOT `join_into`. That module must not import `virtual_join` -
+    ⚠️ THIS SEAT CALLS IT, NOT `join_into`. That module must not import the join ENGINE -
     a boundary its own test asserts - so it hands back the right table, its columns and the
     folds, and this seat, which already knows both halves, does the building.
 
@@ -379,13 +379,13 @@ def run_builtin(kind: str, db, rule, **kwargs):
 
 def _install():
     import enrichment.config
-    import virtual_join.config
+    from chain import legacy_join_declaration
     from chain import join_into
 
     # `stamps_origin`: `materialize_rows` carries the right row that answered into
     # `GeneralUpdateItem.origin_row_id` (S-280), so what it wrote can be withdrawn when
     # that row is deleted.
-    register_builtin(virtual_join.config.JOIN_MAPPER, _run_join, stamps_origin=True)
+    register_builtin(legacy_join_declaration.JOIN_MAPPER, _run_join, stamps_origin=True)
     # 🔴 [S-237] THE UNIFIED DECLARATION'S `join` KIND, AND IT IS A DIFFERENT ENTRY ON
     # PURPOSE. `builtin:join` is the READ-TIME join and production runs on it; this one
     # WRITES what the declaration says into a column. `register_builtin` refuses two

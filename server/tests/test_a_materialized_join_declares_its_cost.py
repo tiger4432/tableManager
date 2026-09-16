@@ -27,7 +27,7 @@ server_dir = os.path.abspath(os.path.join(script_dir, ".."))
 if server_dir not in sys.path:
     sys.path.insert(0, server_dir)
 
-import virtual_join.config as vjc                                     # noqa: E402
+from chain import legacy_join_declaration as vjc                                     # noqa: E402
 
 KNOWN = {
     "left_t": {"column_types": {"k": "string", "frame": "string"}},
@@ -67,13 +67,21 @@ def test_a_declared_ceiling_is_carried_with_the_left_index_it_needs():
     assert rule["required_left_index"] == vjc.required_left_index_name("left_t", ["k"])
 
 
-def test_a_rule_that_does_not_materialize_is_untouched():
-    """⚠️ THE REGRESSION LINE. Both production rules on this box are read-time today, and
-    this piece must not change a single thing about them."""
-    rule, _m, code, _ = _rule()
-    assert code is None
-    assert rule["materialize"] is False
-    assert rule["max_rewrite_rows"] is None and rule["required_left_index"] is None
+def test_a_rule_that_does_not_materialize_is_refused_by_name_now(monkeypatch):
+    """🪦 [S-283, 판정 446] THIS TEST ASSERTED THE OPPOSITE, and the old line is kept here
+    because its premise was a BOX reading that has since been withdrawn: 「⚠️ THE REGRESSION
+    LINE. Both production rules on this box are read-time today, and this piece must not
+    change a single thing about them.」
+
+    Read-time rules are gone (ruling 461), so `materialize: false` no longer describes a
+    rule this loader can stand - it describes the retired half - and it is refused by name
+    rather than standing and doing nothing.
+    """
+    rule, message, code, _ = _rule()
+
+    assert rule is None
+    assert code == "read_time_retired", code
+    assert "chain_rules.json" in message, message
 
 
 def test_materialize_must_be_a_boolean():
@@ -148,8 +156,15 @@ def test_under_the_ceiling_is_not_refused(counted):
     assert vjc.rewrite_refusal(rule, 4) is None
 
 
-def test_a_read_time_rule_is_never_refused_for_cost():
-    """⚠️ A rule that does not materialise writes nothing, so a ceiling cannot apply to it —
-    and applying one would refuse today's two production rules."""
-    rule, _m, _c, _f = _rule()
-    assert vjc.rewrite_refusal(rule, 10 ** 9) is None
+def test_the_cost_gate_only_ever_sees_a_materializing_rule():
+    """⚠️ THIS USED TO READ 「a read-time rule is never refused for cost」, and that sentence
+    had a subject the loader can no longer produce: a validated rule with
+    `materialize: False`. Rather than assert a ceiling against a rule shape that cannot
+    exist, the property is stated where it is still true - every rule reaching
+    `rewrite_refusal` materialises, and the ceiling is the one its declaration wrote.
+    """
+    rule, _m, code, _f = _rule(materialize=True, max_rewrite_rows=1000)
+    assert code is None and rule["materialize"] is True
+
+    assert vjc.rewrite_refusal(rule, 999) is None
+    assert vjc.rewrite_refusal(rule, 1001) is not None

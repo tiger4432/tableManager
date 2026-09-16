@@ -126,10 +126,16 @@ def identity_column(table: str):
          for an identity column.
       3. Nothing.  Not a guess.
     """
+    # ⚰️ [S-284] IT USED TO SWALLOW THE REFUSAL INTO AN EMPTY LIST. `cols = []` then made
+    # 「the product refused this declaration」 walk out through the same sentence as 「this
+    # table declares nothing」 - and those two send an operator in OPPOSITE directions: one
+    # goes and writes a `map_key_columns` they have already written, the other needs the
+    # refusal's own reason, which appeared nowhere.
+    refusal = None
     try:
         cols = dt_map_derivation.identity_columns(table)
-    except dt_map_derivation.DerivationRefused:
-        cols = []
+    except dt_map_derivation.DerivationRefused as exc:
+        cols, refusal = [], str(exc)
     if len(cols) == 1:
         return cols[0], _FROM_MAP_KEY_COLUMNS
     if len(cols) > 1:
@@ -143,6 +149,12 @@ def identity_column(table: str):
             and not cfg.get("composite_key_source")
             and known is not None and business_key in known):
         return business_key, _FROM_BUSINESS_KEY
+    if refusal:
+        # ⚠️ ONLY THE FINAL SENTENCE CHANGES. A refused map key does not stop the business
+        # key from answering above - the order in this docstring is 1, then 2, then nothing,
+        # and a refusal at 1 is not a refusal of 2.
+        return None, ("'%s' declares 'map_key_columns' and the product refused it (%s), "
+                      "and its 'business_key' cannot stand in" % (table, refusal))
     return None, ("'%s' declares neither a single-column 'map_key_columns' nor a "
                   "single-column 'business_key'" % table)
 

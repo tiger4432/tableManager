@@ -44,11 +44,17 @@ def get_column_filter_condition(table_model, col_name: str, f_info: dict, col_ex
     """AG-Grid filter spec -> SQLAlchemy condition.
 
     `col_expr_override`: evaluate the filter against THIS expression instead of looking
-    `col_name` up on the model. A virtual-join column has no stored column to look up -
-    its displayed value is a COALESCE over the left column and the joined right columns
-    (`virtual_join_executor.resolved_expression`). Passing the expression in reuses this
-    entire operator vocabulary (contains / equals / startsWith / inRange / ...) rather
-    than growing a second, thinner filter translator beside it.
+    `col_name` up on the model. It existed for the read-time join, whose column had no
+    stored column to look up - its displayed value was a COALESCE over the left column and
+    the joined right columns. Passing the expression in reused this entire operator
+    vocabulary (contains / equals / startsWith / inRange / ...) rather than growing a
+    second, thinner filter translator beside it.
+
+    ⚰️ [S-283] THAT CALLER IS GONE AND THE PARAMETER HAS ZERO CALLERS TODAY. It is kept
+    rather than removed because removing it is a change to THIS module's interface, not to
+    the retired join, and because the vocabulary above is the reason it was cheap: a future
+    computed column would otherwise grow its own translator. Written down so the next
+    reader does not mistake an unused door for a used one.
 
     An override is always treated as text: the resolved value's domain includes
     `unresolved_label` ("미상"), so it is a string expression even when the underlying
@@ -119,7 +125,7 @@ def get_column_filter_condition(table_model, col_name: str, f_info: dict, col_ex
     # Condition mapping based on type
     #
     # NOTE on an override (virtual-join column): the resolved expression COALESCEs to
-    # `unresolved_label`, which `virtual_join_config` guarantees is a non-empty string.
+    # `unresolved_label`, which `chain.legacy_join_declaration` guarantees is a non-empty string.
     # So `blank` matches nothing and `notBlank` matches everything - and that is the
     # honest answer, because no cell in that column ever DISPLAYS as blank. "Show me the
     # rows the join could not resolve" is `equals <unresolved_label>`, not `blank`.

@@ -30,7 +30,7 @@ if _SERVER not in sys.path:
     sys.path.insert(0, _SERVER)
 
 import config_resolve_report as crr          # noqa: E402
-import virtual_join.config as vjc            # noqa: E402
+from chain import legacy_join_declaration as vjc            # noqa: E402
 from verified_join_contract import VerifiedJoinDescriptor  # noqa: E402
 
 
@@ -81,9 +81,24 @@ TABLES = {
 
 
 def _decl(left, right, pairs, expose, **extra):
+    """A declaration this file can still ask shape questions of.
+
+    🔴 `materialize: true` IS NOW PART OF THE FIXTURE, NOT AN OPTION (S-283, 판정 446). The
+    legacy file refuses `materialize: false` by name - that declaration described a
+    READ-TIME join and the read-time engine is gone. Every assertion in this file is about
+    the SHAPE of a declaration (tables exist, columns exist, the key is not empty, the
+    expose does not collide), and those questions are the same for a write join; leaving
+    the fixture on the retired half would have turned all of them into one repeated
+    assertion that the retirement works.
+
+    ⚠️ `max_rewrite_rows` rides along because 판정 302 refuses a materializing declaration
+    with no ceiling, and a fixture that could not get past that gate would measure nothing
+    beyond it. The retirement itself is asserted in
+    `test_a_read_time_join_is_retired_by_name.py`, at one seat, once.
+    """
     d = {"left_table": left, "right_table": right,
          "join_key": [{"left": a, "right": b} for a, b in pairs],
-         "expose": list(expose)}
+         "expose": list(expose), "materialize": True, "max_rewrite_rows": 100000}
     d.update(extra)
     return d
 

@@ -275,8 +275,8 @@ def product_indexes(db) -> list:
     """
     from sqlalchemy import text
 
-    # ⚠️ THE PREFIX IS NOT RE-SPELLED HERE. `config.INDEX_PREFIX` is what NAMES these
-    # indexes; a second copy of the string would be a second answer to 「which are ours」.
+    # ⚠️ THE PREFIX IS NOT RE-SPELLED HERE. `join_key_index.INDEX_PREFIX` is what NAMES
+    # these indexes; a second copy of the string would be a second answer to 「which are ours」.
     from chain.join_key_index import INDEX_PREFIX
 
     rows = db.execute(text(
