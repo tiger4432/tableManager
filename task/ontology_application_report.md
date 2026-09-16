@@ -23317,3 +23317,68 @@ MISSED   from virtual_join.config import INDEX_PREFIX    -> imports = ['virtual_
 > 🔴 「판정 대기」 **2** — ㉠ 술어를 «바인딩»으로(세 형태 판별 픽스처와 함께)
 > ㉡ 커밋이 적은 「injected 를 잡는다」의 주입 형태 한 줄
 > · 🔁 이월: 0 · ✅ Q-35 → 459 ㉠ 착지(`2959baae`) · Q-34 → 458 (그리고 참값 «315» 가 제 상한 371 안)
+
+---
+
+## 🔴 Q-37 [09-17 01:27 실측] `f7caaa83` — 술어는 옳아졌는데 **«상대 import» 셋이 밖입니다.** 그게 형제에 닿는 자연스러운 철자입니다
+
+### ✅ ① 술어가 「바인딩」을 묻게 된 것 — 옳습니다. 그리고 수확이 큽니다
+
+```
+import a.b          -> a 를 바인딩          잡음 ✅
+import a.b as x     -> a.b 를 바인딩         잡음 ✅
+from a.b import c   -> c 를 바인딩           허용표에 «적힌» 이름만 통과 ✅
+🔵 그리고 `from database.crud import SessionLocal` 이 «조용히 지나고 있었습니다» —
+   세션 팩토리 그 자체입니다. 이게 이번 라운드의 제일 큰 실물입니다
+🔵 허용을 «문장으로 적어 둔» 것도 옳습니다 — 종전엔 「통과했다」와 「허용됐다」가 같은 그림이었습니다
+```
+
+### 🔴 ② 그런데 «상대 import» 세 형태가 술어 밖입니다
+
+```
+from .store import Store     ast: module='store'  level=1
+   -> _forbidden_root('store', …) 는 `ledger.store` 와 «안 맞습니다»          🔴 MISSED
+      (그런데 이 줄은 금지 패키지에서 `Store` 를 «바인딩합니다»)
+from . import store          ast: module=None
+   -> `elif isinstance(node, ImportFrom) and node.module:` 가 «노드째 건너뜁니다»  🔴 MISSED
+      (그리고 이 줄은 «모듈 ledger.store 자체»를 바인딩합니다 — 제일 넓은 형태입니다)
+from ..database import crud  ast: module='database' level=2
+   -> `database` 와 «맞습니다». 다만 술어가 `level` 을 «안 봅니다» —
+      오늘은 답이 맞지만 «우연»입니다(더 깊은 패키지에서는 다른 `database` 일 수 있습니다)
+```
+🔴 **그리고 이게 «이 파일이 형제에 닿는» 철자입니다** — 금지 목록의 `ledger.store` · `ledger.gate` ·
+`ledger.cursor` 는 `ledger/roleframe.py` 와 **같은 패키지**입니다. 형제를 부르는 파이썬의 자연스러운
+철자가 `from .store import …` 입니다.
+```
+실측   server/ledger/ 에서 `^from \.` 를 쓰는 «파일 18»  -> 이 패키지의 «관용»입니다
+⚠️ roleframe.py 자신은 오늘 상대 import 가 «0» 입니다(표준 라이브러리만 듭니다) —
+   그래서 이건 「오늘 위반이 있다」가 아니라 «게이트가 그 형태를 못 본다»입니다
+```
+
+### 🔴 ③ 그 게이트의 «형태 표»가 모집단을 그렇게 정했습니다
+
+```
+CAPABILITY_FORMS (일곱) — 전부 «절대» import 입니다. 상대형 «0»
+=> 표가 곧 모집단이고, 표에 없는 형태는 「통과」로 읽힙니다
+   (상설: 「빈 칸은 빼지 말고 단언한다 — 빠진 칸은 통과로 읽힌다」)
+```
+
+### 참이어야 하는 것 (짓지 않았습니다)
+
+```
+성질   「이 모듈이 금지 패키지에서 무언가를 «바인딩»하나」 — 철자도, «절대/상대»도 아닙니다
+사실   상대 import 는 `level` 과 «그 모듈의 패키지»로만 절대 경로가 됩니다
+       (`ledger/roleframe.py` 에서 level=1, module='store'  ->  `ledger.store`)
+판별 픽스처   `from .store import Store` 와 `from . import store` 를 표에 «넣고» 둘 다 «거절»
+```
+
+### 확신도 · 못 잰 것
+
+```
+실행  ①②③ — HEAD 의 술어·표와 ast 실측. ② 의 세 줄은 «돌려서» 나온 값입니다
+🔴 못 잼  · 같은 술어를 쓰는 «다른 게이트»가 있는지 — 안 셌습니다(있으면 같은 구멍입니다)
+        · `ledger/` 밖에서 이 패턴(상대 import 로 금지 패키지 형제 부르기)이 가능한 파일 수
+```
+
+> 🔴 「판정 대기」 **1** — ㉠ 술어에 `level` 을 넣고 형태 표에 상대형 둘을 «칸으로»
+> · 🔁 이월: 0 · ✅ Q-36 → 460(+`f7caaa83`) · Q-35 → 459 ㉠ · Q-34 → 458(참값 315, 제 상한 371 안)
