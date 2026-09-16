@@ -20768,3 +20768,113 @@ commit  쪽  조용한 «한가운데 커밋»  13 쌍 → 제품만 «3»
 
 > · 판정 대기 0 · 🔁 이월: **0** (D-41 의 양쪽 절반 끝)
 > · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
+
+---
+
+## D-42 — 체인 «전부»의 「문 가르기」 검수 (소유자 지시, 코드 0)
+
+> **잰 것:** 저장소의 코드 성질만 · 박스 수치 0 · 라이브 설정·DB 무접촉 · `ingestion_worker` 읽기만
+> **세는 단위:** 자리가 아니라 **「이 규칙이 어떤 «종류»인가」를 묻는 물음**. AST(if/IfExp) + 디스패치·로그는 따로.
+
+### 🔴 0. 머리 문장 — 「종류」의 **어휘가 넷**입니다
+
+```
+① chain/rule_census.derive_kind      «세 문법을 한 낱말로» 읽으라고 지어진 좌석
+② chain/builtins.BUILTIN_KINDS       등록된 builtin 이름의 표 (`builtin:join_into` …)
+③ rule_shape 의 derive.kind          새 문법의 칸 (mapper | join | decide)
+④ chain/graph.py 의 kind             그리기 어휘 (mapper | enrich | vjoin | ledger)
+=> 한 규칙을 네 자리가 «서로 다른 말»로 부릅니다. 그중 ①이 「하나로 접으라고」 지어진 것입니다
+```
+
+### 🔴🔴 1. 그런데 그 ①을 **아무도 안 부릅니다**
+
+```
+git grep derive_kind -- server (시험 제외)
+  chain/rule_census.py:42   def derive_kind(rule)     ← 정의
+  chain/rule_census.py:77   "derive": derive_kind(rule)  ← 자기 모듈, 유일한 호출
+=> 소비자 «0». 워커도 재생도 각자 자기 물음을 다시 씁니다
+```
+📌 이 저장소가 이미 이름 붙인 부류입니다 — **「폼이 그리는데 읽는 쪽이 없다」의 «좌석» 판**.
+계획안 §8.2 가 「그것이 이 표현의 씨앗이다」라 적어 둔 바로 그 함수입니다.
+
+### ⓐ 물음을 «묻는» 자리 표
+
+| 자리 | 철자 | 무엇이 갈라지나 | 접힐 수 있나 | 오늘 실제로 갈라졌나 |
+|---|---|---|---|---|
+| `rule_census.py:42` `derive_kind` | 세 문법 → 한 낱말 | census | — (정본 좌석) | 🔴 **소비자 0** |
+| `ingestion_worker.py:658` | `MAPPER_REGISTRY.get or BUILTIN_KINDS.get` | 실행(어느 함수) | ✅ | 잠복 |
+| `ingestion_worker.py:1467` | `in BUILTIN_KINDS` | 실행 경로 **+ 로그** | ✅ | 🔴 **로그가 갈림** |
+| `ingestion_worker.py:1498` | `is_batch` | 배치/행별 | ✅ | 잠복 |
+| `ingestion_worker.py:982` | `follow_up` | 사건 수락 | ✅ | 잠복 |
+| `ingestion_worker.py:2022` | `follow_up` **and** `in BUILTIN_KINDS` | **후속 랩의 모집단** | ✅ | ⚠️ 잠복 — 출하 규칙 10 중 follow_up «0» |
+| `replay.py:371·477·517` | 같은 물음을 «다시 씀» | 소급 실행 | ✅ | 잠복(같은 표라 답은 같음) |
+| `rule_order.py:131` | `follow_up` | 순서(생산자 제외) | ✅ | 잠복 |
+| `rule_shape.py` ×8 | `derive.kind` | 새 문법의 확장·거절 | — (새 문법 정본) | 아니오 |
+| `graph.py` | `kind: mapper/enrich/vjoin/ledger` | 그래프 | ⚠️ 다른 물음일 수 있음 | 🔴 **넷째 어휘** |
+| ~~`main.py:909`~~ | `catalog_kind == "view"` | — | — | ✖ **표의 kind — 다른 물음, 소거** |
+
+### ⓑ 🔴 「오늘 실제로 갈라져 있는」 것 = **둘** (나머지는 잠복)
+
+```
+① 로그 문   같은 사건(「규칙이 돌아 몇 행을 썼다」)을 종류마다 다른 낱말로 적는다
+② 좌석 문   갈라짐을 접으라고 지은 derive_kind 의 소비자가 «0» — 그래서 ①이 유지된다
+⚠️ 나머지는 «있을 수 있으나 오늘 같은 답»입니다(같은 BUILTIN_KINDS 표를 보므로).
+   섞지 않았습니다 — 잠복은 잠복으로 셌습니다
+```
+
+### ⓒ 최악 사례 — 사슬로
+
+**① 로그 문: 「어느 규칙이 몇 행 썼나」에 답이 «종류마다» 다릅니다**
+```
+builtin  ingestion_worker.py:1492
+         "[ChainBuiltin] rule=%s kind=%s table=%s rows_in=%s written=%s side=%s ← group tx=%s"
+         -> 규칙 이름 ✓  종류 ✓  들어간 행 ✓  «쓴» 행 ✓
+맵퍼     ingestion_worker.py:1648
+         "Executing chained batch updates to '<표>' under tx '<tx>' (size: …, replace_map=…, …)"
+         -> 규칙 이름 ✗  종류 ✗  «쓴» 행 ✗ (size 는 «제출한» 수)
+🔵 그리고 코드가 그 이유를 자기 주석에 적어 두었습니다(:1488):
+   「a write nobody can size is a write nobody can question when a group runs long」
+   -> 그 문장이 builtin 쪽에만 적용됐습니다. 맵퍼 쪽은 오늘도 «셀 수 없는 쓰기»입니다
+맥락    체인의 로그 호출 115 중 규칙 이름을 드는 것 «9».
+        ⚠️ 115 전부가 규칙 로그는 아니므로 이 수는 «맥락»이고 문의 크기가 아닙니다
+        🔵 `mapper_call.py` 는 3/3 전부 규칙 이름을 듭니다 — 문은 «실행기»가 아니라 «배치 쓰기 줄»에 있습니다
+```
+
+**② 후속 랩의 모집단이 «종류»로 걸러집니다** (잠복이지만 오늘 조인이 겪은 모양과 같음)
+```
+ingestion_worker.py:2020~2023
+   _FOLLOWUP_BUILTIN_RULES = [r for r in load_chain_rules()
+                              if r.get("follow_up") and r.get("mapper") in builtins.BUILTIN_KINDS]
+=> follow_up 이면서 «맵퍼가 custom» 인 규칙은 랩의 모집단에 «조용히» 안 들어옵니다
+   거절도 로그도 없습니다 — 「돌 필요가 없었다」와 「들어오지 못했다」가 같은 모양입니다
+⚠️ 출하 선언에 follow_up 규칙이 «0» 이라 오늘은 잠복입니다. 라이브는 gitignore 라 못 셉니다
+📌 이것이 지시가 든 실물과 같은 부류입니다 — 「조인은 소급으로만 돌았고, 랩에서 떼자 갈 곳이 없어졌다」
+```
+
+**③ 어휘 넷이 «같은 규칙»을 네 이름으로 부릅니다**
+```
+운영자가 한 규칙을 네 화면에서 봅니다:  census 의 낱말 · 실행 로그의 낱말 · 새 문법의 칸 · 그래프의 종류
+그 넷이 같다는 것을 «보장하는 자리»가 없습니다 — ①의 소비자가 0 이기 때문입니다
+🔵 graph.py:88 이 스스로 적습니다: 「`mapper` is the only kind where the question is ambiguous」
+   — 모호함을 «아는데» 그것을 푸는 좌석을 안 부릅니다
+```
+
+### 🔴 ⓓ 모르는 것
+
+```
+① 라이브 `chain_rules.json`·`mappers/*.py` 는 gitignore — follow_up 규칙이 실제로 있는지,
+   custom 맵퍼가 몇인지 «못 셉니다». ⓒ② 가 잠복인지 실제인지는 그 설치에서만 갈립니다
+   (오늘 총괄이 같은 벽에서 판정 하나를 철회했습니다 — `8598fb61`)
+② 제 AST 는 `if`/`IfExp` 만 잡습니다. 디스패치 표·`.get()` 폴백·컴프리헨션 가드는
+   grep 으로 «보탰고», 그래서 이 표는 «하한»입니다
+③ 토큰 `kind` 가 넓어 `main.py:909`(표의 kind) 같은 다른 물음이 섞였습니다 — 열어서 뺐지만,
+   반대로 «제가 못 떠올린 철자»의 자리는 아예 안 잡혔을 수 있습니다
+④ 로그 115/9 는 «맥락»입니다. 「규칙 실행을 보고하는 줄」만 센 수가 아니라,
+   그 부분집합을 확정하려면 줄마다 열어야 합니다 — 이번엔 문이 확인된 둘만 열었습니다
+⑤ `graph.py` 의 kind 가 «같은 물음»인지 «다른 물음»인지는 판정이 필요합니다.
+   제가 그리기 어휘를 실행 어휘와 같은 축으로 놓는 것은 «가정»입니다
+```
+
+> 🔴 「판정 대기」 **1** — ⓓ⑤: `graph.py` 의 종류 어휘를 이 축에 «넣습니까»
+> ⛔ 수리 모양은 짓지 않았습니다(지시대로)
+> · 🔁 이월: 0 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
