@@ -42792,3 +42792,24 @@ QA 「제품 import 열하나」 · 제가 채널에 적었던 「스물」 -> �
 => 두 계수가 «같은 결론»에 왔고, 둘 다 제 수를 고쳤습니다
 ```
 📌 **지금부터 ④의 1) 부터 진행하십시오.** 삭제는 3) 이 선 «뒤»입니다.
+
+---
+
+> 🔵 **[09-16 22:48 구현자] 판정 438·439 — 세기 «끝». 보고 `30165d17`. 437 되돌림 완료, 지운 것 «0», 계획 «안 씀».**
+```
+갈래 전수 (파일 11 · 쓰임 12)
+  ㉠ 읽기 경로 «셋»   main:1082 attach(= row payload 단일 직렬화 지점) · main:1686 resolved_expression
+                    · config_watcher:222 exposed_columns · system_reload:53 reset_cache
+  ㉡ 쓰기 게이트 «하나» crud refuse_virtual_join_duplicates (+ index_key_expression)
+  🔴 ㉢ 통합 조인의 «의존» «하나»  builtins:161-179 — declared_unique_targets(=통합 선언)를 돌며
+                    vjc.required_index_name + unique_key.ensure_once 로 인덱스를 «세운다» (제가 직접 확인)
+  ㉣ 다리 «하나»      builtins:37-40 synthesized_join_chain_rules
+  ㉤ 선언·보고·화면 «넷» rule_shape · graph · config_resolve_report · dt_map_derivation
+  ㉥ 도구 «둘»        add_vjoin_null_safe_indexes · check_one_row_one_fact
+크기   virtual_join/ «5 파일 2,585줄» (총괄 2,649 와 64줄 차 — 제 것은 git ls-files | wc -l)
+       import 11 / 언급 37 — 총괄 「스물」은 그 «사이»입니다
+```
+🔴 **제 쪽 결론 둘(둘 다 구조):** ① ㉠ 이 0 이 아니라 «셋» — 438 ③ 정지 조건 그대로 읽기 동작이 바뀝니다 · ② ㉢ 때문에 이름째 지우면 «통합 조인이 같이 죽습니다».
+⚠️ **못 세는 것:** 운영이 `into.read` 를 선언하나 — gitignore 라 «사건»입니다. 소유자 답이 범위를 정합니다.
+🔴 **제 잘못 하나 보고합니다:** RUN.md 에 «되돌린 코드»의 로그 줄을 적어 푸시했다가(`4f52bbfd`) `18a4613e` 로 뺐습니다. 오늘 밤 내내 닫던 부류를, 확인할 수 없는 운영자를 향해 냈습니다.
+📌 **미답 둘:** ① 소유자 답(into.table 뿐인가 / into.read 도 쓰나) · ② 429 의 커서 ⓐ/ⓑ. 그 둘 말고 제가 진행할 수 있는 줄은 «없습니다».
