@@ -940,7 +940,12 @@ const FLOORS = new Map([
   // absence before turning `data` into a count, so 「the collector list is empty」 stops looking
   // like 「the source is not installed」 or 「the request failed」. Verified load-bearing: cutting
   // the card's own absence read (`absentPath` -> null) drops it to 6/1.
-  ['health_card_absence_harness.mjs', 9],
+  // Raised 2026-09-17 with C-117 ㈱: this file used to CUT `refreshFileAndAutoHealth`
+  // out of `admin.js` with indexOf and run regexes over the fragment. It imports the module
+  // whole now and reads what the CARD says, so the assertions moved from letter-shape to
+  // behaviour. Measured while converting: the old predicates all pass on a mutant that calls
+  // `errorText` and then throws the answer away -- the exact defect the file exists to stop.
+  ['health_card_absence_harness.mjs', 15],
   //
   // Scores the DONE-stats reader against a probe-loaded copy of the subject, and it drives its
   // OWN mutants through `loadWithProbe` — so the floor is already known to be load-bearing

@@ -1,3 +1,111 @@
+## 🔵 [09-17 00:3x] **C-117 ㉱ 착지 — 잘라쓰기 하니스가 «import» 로. 그리고 열린 둘에 답합니다**
+
+**착지 `d11723b1`(하니스 전환) · `fcc61f9c`(빈 드롭다운 재분류)** ·
+하니스 **132 · 게이트 130 · 전부 초록** · 계약 12/12.
+
+### ① 지시하신 그 파일 — `health_card_absence_harness.mjs`
+
+```
+전   admin.js 를 텍스트로 읽고 `indexOf` 로 refreshFileAndAutoHealth 의 «본문을 잘라» 내어
+    그 조각에 정규식 (`/errorText\(/` 가 «있나»)
+후   프로브로 그 파일을 «통째로» import · 라우트 셋에 답을 먹이고 «카드가 적은 것»을 읽음
+    잘라낸 양 «0» · 재는 것이 글자가 아니라 화면
+```
+
+### 🔴 그리고 그 선택을 «정당화하던 문장»이 거짓이었습니다
+
+```
+옛 머리글   「admin.js 는 import 할 수 없다 — CSS 를 끌고 모듈 최상단에서 document 를 만진다」
+오늘        `probe_hooks.mjs` 가 `.css` 를 빈 모듈로 푼 뒤(C-95) `chain_rule_user_path_harness` 가
+           그 파일을 «통째로» import 하고 있었고, 제가 C-121 에서 또 그렇게 했습니다
+=> 낡은 문장 하나가 «금지된 기법»을 살려 두고 있었습니다. 어젯밤 총괄이 짚으신
+   「산문으로 적힌 규칙을 보면 «그게 참인지»부터 재라」의 또 한 사례입니다
+```
+
+### 🔴 비용을 «재서» 보였습니다 — 주장이 아니라 측정입니다
+
+옛 판의 술어 넷을 «그대로 재현»해, 이런 변이에 먹였습니다:
+
+```js
+const autoFailure = errorText(r);
+if (autoFailure && false) {        // 부르기는 «부르고» 답을 버립니다
+```
+```
+옛 A1  /errorText\(/        -> true      (글자가 남아 있습니다)
+옛 A2  /absentPath\(/       -> true
+옛 B1  /failedTotal !== null/ -> true
+옛 B3  /else if \(!linkedRead\) status = 'warn'/ -> true
+=> 🔴 옛 하니스는 이 변이를 «전부 초록»으로 통과시킵니다.
+   그런데 그것이 바로 이 파일이 막으라고 있는 결함입니다 — 200 + 오류 봉투를 「수집기 없음」으로 그리는 것
+=> 새 판에서는 M2 이고, «잡힙니다»
+```
+
+**단언 15(전 9) · 변이 6/6 «자기가 이름 댄 검사»에 잡힘 · 대조 2/2 빠져나감.**
+판별식은 C2 입니다 — 「못 읽음」·「상태 파일 없음」·「진짜 0」이 **서로 다른 그림**이어야 합니다.
+그리고 E1~E3 이 대조군입니다: 전부 「미확인」이라 말하는 화면이 만점을 받지 못하게.
+
+### ⚠️ 나머지 잘라쓰기의 «전수»는 «안 냈습니다» — 셀 수가 없었습니다
+
+```
+기계 선별 두 번이 «서로 다른 답»을 냈습니다: 하나는 31 파일, 하나는 3.
+그리고 둘째 것이 `redo_makers_harness` 격인 `redo_banner_harness` 를 «놓쳤습니다» —
+제가 «읽어서 아는» 잘라쓰기인데도요(제 import 하나가 그 파일을 죽였습니다)
+🔴 그래서 수를 안 냅니다. 못 서는 수는 «없는 것보다 나쁩니다»
+```
+**읽어서 «확인한» 구성원 셋:**
+```
+redo_banner_harness.mjs         정규식으로 `^import` 를 지우고 concat 을 vm 에 넣습니다
+tests/lib/board_modules.mjs     소스를 data: URL 로 재작성합니다 (보드 하니스 여럿의 공용 로더)
+valid_die_frame_adoption_harness.mjs   자기 known-red 주석이 「this file still slices its subject」
+```
+📌 **제안: 「잘라쓰기 전수」를 자기 라운드로.** 술어를 먼저 적고(「대상의 «일부»를 만들어 돌리나」)
+«읽어서» 세겠습니다. 오늘처럼 기계로 세면 다음 판정이 틀린 모집단 위에 섭니다.
+
+---
+
+## ② 열린 둘에 답합니다
+
+### ㉮ 빈 드롭다운 — **쟀습니다. `STATED` 입니다** (분류 고침, `fcc61f9c`)
+
+```
+그 한 자리가 드롭다운 «여섯»을 덮습니다 (규칙 · 표 · X · Y · 값 · 참조)
+비는 경우마다 그 줄의 `notice` 가 «먼저» 섭니다 — 그 파일 주석이 그렇게 적어 뒀고 호출도 그렇습니다:
+   표 0            -> 「맵 테이블 없음」            map_editor2.js:310
+   규칙을 못 고름   -> 그 사유를 «그대로»           map_editor2.js:211 · 245
+   셋업 실패        -> 그 문장                     map_editor2.js:255 · 316
+   컬럼 미진술      -> WORDS.columnsUnstated 가 같은 줄에
+=> 사유가 «옆에» 있습니다. UNRULED 0 이 됐고, 그 «열쇠는 남겨 뒀습니다» —
+   0 이라도 키가 있어야 다음에 하나 생길 때 게이트가 빨개집니다
+```
+
+### ㉯ 내보내기 버튼 — **인용입니다. 판정 청합니다**
+
+`client2/src/map2/main.js:2113`
+```js
+el.exportBtn.disabled = !artifactImplemented();
+// The reason is an explanation, so it goes to the console. The disabled control is what
+// the screen says; a sentence hanging off a tooltip is neither one line nor a decision.
+if (!artifactImplemented() && doc.defaultView && doc.defaultView.console) {
+  doc.defaultView.console.log('[map2] excel artifact export is not wired to a control yet.');
+}
+```
+```
+그 코드의 주장   「사유는 «설명»이다 -> 콘솔. 화면이 하는 말은 «꺼진 컨트롤» 그 자체다」
+제 판별식으로는  «틀리게 읽힙니다» — 「고장인가 · 아직 안 만들었나 · 권한이 없나」가 한 그림이고,
+               운영자는 콘솔을 못 봅니다(그리고 운영 로그는 못 붙인다는 상설이 여기 겹칩니다)
+🔴 그러나 이건 «적힌 결정을 뒤집는» 일이라 제가 혼자 안 합니다
+청하는 판정      「아직 안 만든 기능」이 이 규칙 «안»인가 밖인가
+               안이면 한 줄(다음 행동)이고, 밖이면 그 주석이 정본이 되고 제 점호 표에 그렇게 적습니다
+```
+
+---
+
+**남은 것: 위 판정 하나 · 「잘라쓰기 전수」 라운드 제안 · 그리고 지난 라운드들의 제안 표.**
+🔵 C-120·C-122 화면 검증 감사합니다. 「산문으로 적힌 규칙은 참인지부터 잰다」를 이번 ㉱ 에도
+그대로 썼고, 이번엔 «하니스 자기 머리글»이 그 거짓 문장이었습니다.
+
+---
+
 ## 🔵 [09-17 00:1x] **C-122 착지 — `/admin` 전송 «하나» · 거절 읽기 «하나». 그리고 산문이던 규칙을 게이트로**
 
 **착지 `c66a7332`** · 하니스 **132 · 게이트 130 · 전부 초록** · 계약 **12/12** · `dist` 재빌드.
