@@ -21259,3 +21259,48 @@ task/IMPLEMENTER_ORDERS.md 에 `retract_rows` 히트 «0» (Q-1 ①→423 · Q-2
 ```
 
 > · 🔁 이월: 0 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
+
+---
+
+## 🔵 Q-6 [09-16 21:1x] 검증 — 「값이 같으면 안 쓴다」는 **구조로 참**입니다. 그리고 게이트를 «또» 공허하게 만들 함정 둘
+
+> 총괄이 박스 한 번으로 얻은 전제(45cd830e)가 게이트 설계를 정했습니다. 박스 관측은 «시연»이라
+> 코드에서 확인했습니다 — **참이고, 이제 어느 설치에서나 참입니다.**
+
+### ① 전제는 구조입니다 — 인용할 자리 둘
+
+```
+crud.py:3342-3356   has_changed  계산 (is_new 면 무조건 True)
+crud.py:3357-3359   if has_changed:  setattr(row, col_name, new_val)
+                    🔴 setattr 이 «안 일어나면» 그 행은 session.dirty 에 안 들어가고,
+                       before_flush 의 auto_stage_database_outbox 가 «스테이지할 것이 없습니다»
+crud.py:3172-3174   그 사실을 코드가 이미 적어 뒀습니다:
+                    「`has_changed` below has ALWAYS suppressed the column write, the audit log
+                      AND THE OUTBOX EVENT when the resolved value is unchanged」
+```
+🔵 그러므로 「바뀌지 않는 데이터 위의 이벤트 수 단언은 공허하다」는 **판정 근거가 박스가 아니라 코드**입니다.
+📌 그리고 이 억제는 **«컬럼» 단위**입니다 — 한 컬럼만 바뀌어도 그 행은 EDIT 이벤트를 냅니다
+   (`columns` 키에는 «바뀐 컬럼만» 실립니다). 게이트 조건은 「한 칸이라도 값이 달라야 한다」입니다.
+
+### 🔴 ② 그런데 「값을 틀어 놓는다」가 «안 틀어지는» 두 경우가 같은 자리에 있습니다
+
+```
+crud.py:3350-3352   col_type == "number"  ->  float(old) != float(new)
+                    「1」 → 「1.0」 · 「1.00」 → 「1」 은 «바뀐 것이 아닙니다»
+crud.py:3354-3356   그 밖              ->  str(old).strip() != str(new).strip()
+                    앞뒤 공백만 다른 값 · 「 A」 → 「A」 는 «바뀐 것이 아닙니다»
+```
+⚠️ **픽스처가 이 둘 중 하나로 값을 틀면 게이트가 «또» 공허합니다** — 그리고 이번엔 「틀어 놨는데도
+0」이라 더 헷갈립니다. 여섯 칸 게이트의 픽스처는 **숫자면 크기를, 문자면 strip 뒤 글자를** 바꿔야 합니다.
+🔵 제일 안전한 픽스처는 «새 행»입니다 — `is_new` 면 `has_changed` 가 «무조건» True 입니다(:3343-3344).
+
+### ③ 확신도
+
+```
+구조   ✅ 오늘 HEAD 에서 읽음. 억제의 기제는 「setattr 을 안 한다」이고 그래서 아웃박스까지 «자동으로» 조용해집니다
+실행   ❌ 안 돌렸습니다 — 총괄이 박스에서 본 것(이벤트 1 = `__retroactive__` 기록 이벤트)과 «같은 방향»입니다
+못 잼  총괄이 고른 그 5행이 「범위 안」이었는지는 제가 확인 못 했습니다(라이브 데이터) —
+      다만 위 구조가 그 관측을 «설명»하므로 다른 사유를 찾을 필요는 없습니다
+```
+
+> · 🔁 이월: 0 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
