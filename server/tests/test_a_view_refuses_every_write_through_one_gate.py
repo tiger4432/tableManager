@@ -60,8 +60,11 @@ WRITE_PATHS = {
     "cells": lambda t: crud.apply_batch_updates(
         None, t, schemas.GeneralUpdateBatch(updates=[], transaction_id="t", silent=True)),
     "create_rows": lambda t: crud.create_empty_rows_batch(None, t, 1),
-    "delete_rows": lambda t: crud.delete_rows_batch(None, t, ["r1"]),
-    "delete_row": lambda t: crud.delete_row(None, t, "r1"),
+    # 🔴 [판정 431] THE AUTHOR IS NAMED because it no longer has a default to fall back on -
+    #    the default spelled `"system"`, a false author rather than an absence. These
+    #    fixtures care about the VIEW refusal, not about who asked.
+    "delete_rows": lambda t: crud.delete_rows_batch(None, t, ["r1"], "s431_probe"),
+    "delete_row": lambda t: crud.delete_row(None, t, "r1", "s431_probe"),
     "delete_cell_source": lambda t: crud.delete_cell_source(None, t, "r1", "id", "src"),
     "delete_cell_source_batch": lambda t: crud.delete_cell_source_batch(
         None, t, [{"row_id": "r1", "column_name": "id"}], "src"),
@@ -104,7 +107,7 @@ def test_the_gate_answers_before_the_payload_is_looked_at():
     Three of these doors return early on an empty payload, so a gate placed after that
     shortcut would refuse a paste of 500 cells and accept a paste of none."""
     with pytest.raises(crud.ReadOnlyRelation):
-        crud.delete_rows_batch(None, VIEW, [])
+        crud.delete_rows_batch(None, VIEW, [], "s431_probe")
     with pytest.raises(crud.ReadOnlyRelation):
         crud.delete_cell_source_batch(None, VIEW, [], "src")
     with pytest.raises(crud.ReadOnlyRelation):

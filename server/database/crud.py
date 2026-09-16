@@ -5159,8 +5159,15 @@ def create_empty_rows_batch(db: Session, table_name: str, count: int, user_name:
 
         return new_rows
 
-def delete_row(db: Session, table_name: str, row_id: str, user_name: str = "system"):
-    """단일 행을 삭제합니다 (배치 로직으로 통합)."""
+def delete_row(db: Session, table_name: str, row_id: str, user_name: str):
+    """단일 행을 삭제합니다 (배치 로직으로 통합).
+
+    🔴 [판정 431] `user_name` HAS NO DEFAULT, AND THAT IS THE FIX. It defaulted to `"system"`,
+    and the only caller that relied on it was a public route with no author parameter - so a
+    person's deletion was recorded as the system's. A default cannot say 「모른다」; it can only
+    say a name, and any name it says is wrong when nobody gave one. The caller that does not
+    know now has to write that down (`event_constants.AUTHOR_NOT_STATED`).
+    """
     return delete_rows_batch(db, table_name, [row_id], user_name) > 0
 
 def record_row_deletions(db: Session, table_name: str, rows, user_name: str,
@@ -5193,7 +5200,7 @@ def record_row_deletions(db: Session, table_name: str, rows, user_name: str,
     return logs
 
 
-def delete_rows_batch(db: Session, table_name: str, row_ids: list[str], user_name: str = "system"):
+def delete_rows_batch(db: Session, table_name: str, row_ids: list[str], user_name: str):
     """여러 행을 일괄 삭제하고 개별 히스토리를 남기며 메타데이터도 연쇄 삭제합니다."""
     # ⛔ A VIEW FIRST — and BEFORE the empty-list shortcut, so the answer does not depend
     # on what the caller sent. This path deletes the row's cell layers before it touches the

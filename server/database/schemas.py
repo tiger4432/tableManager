@@ -1,3 +1,4 @@
+import event_constants
 from pydantic import BaseModel, ConfigDict, PrivateAttr, field_validator
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
@@ -263,7 +264,11 @@ class GeneralUpdateBatch(BaseModel):
 
 class RowDeleteBatch(BaseModel):
     row_ids: list[str]
-    user_name: str = "system"
+    # 🔴 [판정 431] THE SAME FALSE AUTHOR, ONE LAYER UP. A body that omits the name is a caller
+    #    that did not say who, and the history must read that way rather than blaming the
+    #    system. This box's client always sends it (`client2/src/api.js`), so this default is
+    #    the path a script or an older client takes.
+    user_name: str = event_constants.AUTHOR_NOT_STATED
 
 class DataRowBase(BaseModel):
     row_id: str

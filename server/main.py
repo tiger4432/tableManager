@@ -2526,24 +2526,32 @@ import json
 from fastapi import HTTPException
 
 @app.delete("/tables/{table_name}/rows/{row_id}")
-async def delete_row(table_name: str, row_id: str, db: Session = Depends(get_db)):
-    """
-    행 삭제 엔드포인트
+async def delete_row(table_name: str, row_id: str, user_name: str = None,
+                     db: Session = Depends(get_db)):
+    """행 삭제 엔드포인트.
+
+    🔴 [판정 431] `user_name` IS THE AUTHOR OF THE DELETION and this route did not take one, so
+    `crud.delete_row`'s default wrote 「system」 into the history - not an absence, a FALSE
+    author. The batch route beside it has always carried the caller's name; this one is the
+    same action through a different door, and 「같은 기능에 두 경로」 is about what the two
+    doors LEAVE BEHIND as much as about what they do.
+
+    ⚠️ OPTIONAL, NOT REQUIRED, and that is deliberate: this route is public and making the
+    parameter mandatory would refuse callers that work today. An unnamed caller is written down
+    as unnamed (`AUTHOR_NOT_STATED`) instead of being attributed to the system.
     """
     # [C-1 Fix] async 핸들러 내 동기 DB 호출 → threadpool 격리(이벤트 루프 동결 방지)
     from fastapi.concurrency import run_in_threadpool
-    success = await run_in_threadpool(crud.delete_row, db, table_name, row_id)
+    author = user_name or event_constants.AUTHOR_NOT_STATED
+    success = await run_in_threadpool(crud.delete_row, db, table_name, row_id, author)
     if not success:
         raise HTTPException(status_code=404, detail="Row not found")
         
     invalidate_table_cache(table_name)
 
     # Broadcast (Unified to batch_row_delete)
-    msg = {
-        "event": "batch_row_delete",
-        "table_name": table_name,
-        "row_ids": [row_id]
-    }
+    msg = event_constants.row_delete_message(table_name, [row_id],
+                                             updated_by=author)
     await manager.broadcast(json.dumps(msg))
     
     return {"status": "success", "row_id": row_id}
@@ -2592,13 +2600,8 @@ async def delete_rows_batch_endpoint(table_name: str, batch: schemas.RowDeleteBa
             chunk = batch.row_ids[i:i + CHUNK_SIZE]
             chunk_row_ids = set(chunk)
             chunk_logs = [log for log in created_logs if log["row_id"] in chunk_row_ids]
-            msg = {
-                "event": "batch_row_delete",
-                "table_name": table_name,
-                "row_ids": chunk,
-                "updated_by": batch.user_name,
-                "created_logs": chunk_logs
-            }
+            msg = event_constants.row_delete_message(
+                table_name, chunk, updated_by=batch.user_name, created_logs=chunk_logs)
             await manager.broadcast(json.dumps(msg))
         
     return {"status": "success", "deleted_count": deleted_count, "created_logs": created_logs}
@@ -3582,11 +3585,7 @@ async def apply_batch_updates_endpoint(
                             table_name, delete_ids_omitted,
                             deleted_row_ids_omitted=delete_ids_omitted)))
                 else:
-                    delete_msg = {
-                        "event": "batch_row_delete",
-                        "table_name": table_name,
-                        "row_ids": deleted_row_ids
-                    }
+                    delete_msg = event_constants.row_delete_message(table_name, deleted_row_ids)
                     await manager.broadcast(json.dumps(delete_msg))
 
             if not broadcast_needs_items:
@@ -3933,11 +3932,8 @@ async def set_cell_priority(
 
     # 껍데기 행 실시간 제거 브로드캐스트 전송
     if deleted_row_ids:
-        await manager.broadcast(json.dumps({
-            "event": "batch_row_delete",
-            "table_name": table_name,
-            "row_ids": deleted_row_ids
-        }))
+        await manager.broadcast(json.dumps(
+            event_constants.row_delete_message(table_name, deleted_row_ids)))
 
     # WebSocket 브로드캐스트 (통합 규격: batch_row_upsert 사용)
     await manager.broadcast(json.dumps({
@@ -4006,11 +4002,8 @@ async def set_cell_priority_batch_endpoint(
 
         # 껍데기 행 실시간 제거 브로드캐스트 전송
         if deleted_row_ids:
-            await manager.broadcast(json.dumps({
-                "event": "batch_row_delete",
-                "table_name": table_name,
-                "row_ids": deleted_row_ids
-            }))
+            await manager.broadcast(json.dumps(
+                event_constants.row_delete_message(table_name, deleted_row_ids)))
 
         # WebSocket 브로드캐스트 (통합 규격: batch_row_upsert 사용)
         msg_items = [{
