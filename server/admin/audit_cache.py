@@ -225,6 +225,37 @@ class AuditLogCache:
             return None, False
         return (rows[0][0], rows[0][1]), len(rows) > 1
 
+    def _groups_seen_at_or_above(self, db: Session, floor, keys):
+        """Of `keys`, which transactions ALREADY have a row at or above `floor`?
+
+        🔴 [판정 473] THIS IS WHAT MAKES A SECOND PAGE POSSIBLE WITHOUT A SECOND
+        AUTHOR. Groups are ordered by their NEWEST row, so a page boundary is a
+        position in that order - but a group's OLDER rows lie scattered below it,
+        and a resumed walk meets them again. Without this they would be named as
+        fresh groups and page 2 would repeat what page 1 already returned.
+
+        One query, not one per group: the `transaction_id` btree answers all the
+        keys of a window together, and the window holds at most `limit_groups`
+        of them. The cost is therefore bounded by the PAGE, not by history.
+
+        ⚠️ A NULL `transaction_id` cannot be asked this way - `IN` never matches
+        NULL, and `a.transaction_id = b.transaction_id` is NULL rather than true.
+        The walk folds every such row into one pseudo-group (`no_tid`), so it is
+        asked as the one question it actually is: does ANY unattributed row sit
+        at or above the floor.
+        """
+        m = models.AuditLog
+        real = [k for k in keys if k != "no_tid"]
+        seen = set()
+        if real:
+            q = self._ordered_rows(db.query(m.transaction_id).distinct(), floor)
+            seen = {r[0] for r in q.filter(m.transaction_id.in_(real)).all()}
+        if "no_tid" in keys:
+            q = self._ordered_rows(db.query(m.id), floor)
+            if q.filter(m.transaction_id.is_(None)).first() is not None:
+                seen.add("no_tid")
+        return seen
+
     def _count_by_transaction(self, db: Session, cursor: Optional[str], edge):
         """One row per transaction inside `(cursor, edge]`, counted BY POSTGRES.
 
@@ -252,10 +283,16 @@ class AuditLogCache:
         rows.sort(key=lambda r: (r[2] is not None, r[2] or _EPOCH, r[3]), reverse=True)
         return rows
 
-    def _discover_groups(self, db: Session, limit_groups: int, settings: dict):
+    def _discover_groups(self, db: Session, limit_groups: int, settings: dict,
+                         start: Optional[str] = None):
         """Walk newest-first over `(timestamp, id)` and name the groups.
 
         Returns `(order, counts, tops, bottom, truncated, next_cursor, scanned)`.
+
+        `start` RESUMES the same walk for a later page (판정 473). There is one
+        author of "which groups come next" and this is it; the row-paging route
+        answers a different question (one row's history) and is not a second
+        spelling of this one.
 
         No ORM entity and no pydantic here at all: this pass answers only "which
         transactions are the newest ones and how big are they". Everything
@@ -273,10 +310,12 @@ class AuditLogCache:
         order: List[str] = []
         counts: Dict[str, int] = {}
         tops: Dict[str, Tuple] = {}
-        cursor = None
+        cursor = start
+        floor = audit_history.decode_cursor(start) if start else None
         bottom = None
         scanned = 0
         more_below = False
+        stop_at = None
 
         while len(order) < limit_groups and scanned < max_scan:
             want = min(chunk_rows, max_scan - scanned)
@@ -284,24 +323,58 @@ class AuditLogCache:
             rows = self._count_by_transaction(db, cursor, edge)
             if not rows:
                 break
+            # 🔴 [판정 473] ON A RESUMED WALK, DROP THE GROUPS AN EARLIER PAGE
+            # ALREADY NAMED. A group is placed by its NEWEST row, so everything
+            # a previous page returned has its newest row at or above `floor` -
+            # and the older rows it left scattered below are exactly what this
+            # window meets. Asked once per chunk, for the chunk's own keys only.
+            if floor is not None:
+                fresh = {tid if tid is not None else "no_tid" for tid, *_ in rows}
+                already = self._groups_seen_at_or_above(db, floor, fresh - set(counts))
+            else:
+                already = ()
             for tid, n, newest_ts, newest_id in rows:
                 scanned += n
                 key = tid if tid is not None else "no_tid"
+                if key in already:
+                    continue
                 if key in counts:
                     counts[key] += n
                 elif len(order) < limit_groups:
                     order.append(key)
                     counts[key] = n
                     tops[key] = (newest_ts, newest_id)
-                # Beyond limit_groups the rows were still read, so they are
-                # still counted as scanned - but the projection does not hold
-                # them and `truncated` will say the list stops short of history.
+                elif stop_at is None:
+                    # 🔴 [판정 473] THE FIRST GROUP THIS PAGE DID NOT TAKE. The
+                    # walk keeps going to the end of the chunk so the counts of
+                    # the groups it DID take stay as complete as they were, but
+                    # the page is full and the chunk's remaining rows are the
+                    # next page's business.
+                    stop_at = (newest_ts, newest_id)
             bottom = edge if edge is not None else bottom
+            if stop_at is not None:
+                break
             if edge is None:
                 break
-            # The cursor is carried as the SAME opaque token the response
-            # publishes, so the position the walk resumes from and the position
-            # a caller is handed can never be two different things.
+            # ⚰️ [판정 473] THIS PARAGRAPH USED TO CLAIM THE TWO POSITIONS COULD
+            # NEVER DIFFER: 「carried as the SAME opaque token the response
+            # publishes, so the position the walk resumes from and the position a
+            # caller is handed can never be two different things」. They are two
+            # different things, and sharing one token did not merge them - it let
+            # the SCAN position speak with a PAGE position's authority.
+            #
+            #   scan position   where the next chunk of ROWS begins (this line)
+            #   page position   where the next GROUP begins - and a group is not
+            #                   at one position at all: its rows are scattered
+            #                   down the whole table, and it is PLACED by its
+            #                   newest one
+            #
+            # Publishing the scan position as `next_cursor` lost every group
+            # between "the page filled" and "the chunk ended" - up to one chunk
+            # (`recent_scan_chunk_rows`) of groups, silently, with no error on
+            # either page. The two are now computed separately below: this stays
+            # the scan position, and the published cursor is the last EMITTED
+            # GROUP's newest row (판정 473 ②, the Lead PM withdrawing 429 ②).
             #
             # The `is None` branch below is BELT AND BRACES and is expected to
             # be unreachable: `_ordered_rows` already keeps null-stamped rows
@@ -318,9 +391,21 @@ class AuditLogCache:
                 more_below = True
                 break
 
-        truncated = bool(more_below)
+        # 🔴 [판정 473] `stop_at` IS PART OF "THERE IS MORE", NOT JUST `more_below`.
+        # A page that fills on the LAST chunk has no rows below its edge, so
+        # `more_below` is false - and a group it declined to take is still
+        # waiting. Reporting that as complete is the same silence in a shorter
+        # table.
+        truncated = bool(more_below or stop_at is not None)
+        # 🔴 THE PUBLISHED CURSOR IS A GROUP POSITION: the newest row of the last
+        # group this page EMITTED. Resuming there and dropping the groups already
+        # seen at or above it (`_groups_seen_at_or_above`) is what makes the two
+        # pages a partition - no group in both, none in neither. `bottom` is the
+        # fallback only when the page named no group at all, where there is no
+        # group position to publish and the scan position is all there is.
+        resume = tops.get(order[-1]) if order else bottom
         return (order, counts, tops, bottom, truncated,
-                _cursor_token(bottom) if truncated else None, scanned)
+                _cursor_token(resume) if truncated else None, scanned)
 
     def _hydrate(self, db: Session, order, counts, tops, bottom,
                  watermark: int, per_group: int) -> List[Dict]:
@@ -364,6 +449,33 @@ class AuditLogCache:
             groups.append({"transaction_id": tid, "logs": logs,
                            "total_count": counts[tid]})
         return groups
+
+    def page_from_cursor(self, db: Session, cursor: str, limit_groups: int = 100):
+        """The groups AFTER `cursor`, as `(groups, truncated, next_cursor, scanned)`.
+
+        🔴 [판정 473] THE SECOND PAGE IS THE SAME WALK, NOT A SECOND AUTHOR.
+        429 ② had said a cursor should be answered by `audit_history.fetch_page`
+        and the Lead PM withdrew that line: page 1 counts GROUPS and `fetch_page`
+        counts ROWS, so one question ("the next N transactions") would have had
+        two implementations and they would disagree without erroring. Both pages
+        are groups and `_discover_groups` is the one place that names them.
+
+        ⚠️ THIS DOES NOT TOUCH THE CACHE. The projection is page 1 - it is what
+        the panel re-renders, what live writes merge into, and what other
+        requests read. A later page is a one-shot answer to one request; writing
+        it into `self.groups` would make the newest transactions disappear from
+        the panel for everyone the moment anybody scrolled.
+
+        No lock for the same reason: it reads the database and shares no mutable
+        state with the projection.
+        """
+        settings = resolve_recent_settings()
+        watermark = db.query(func.max(models.AuditLog.id)).scalar() or 0
+        order, counts, tops, bottom, truncated, nxt, scanned = \
+            self._discover_groups(db, limit_groups, settings, start=cursor)
+        groups = self._hydrate(db, order, counts, tops, bottom, watermark,
+                               settings["recent_logs_per_group"])
+        return groups, truncated, nxt, scanned
 
     def load_initial(self, db: Session, limit_groups: int = 100,
                      force: bool = False, refresh_above: int = None):

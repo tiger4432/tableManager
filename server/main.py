@@ -1227,8 +1227,18 @@ from ingestion.activity import registry as ingestion_activity_registry
 
 @app.get("/audit_logs/recent", response_model=schemas.AuditLogGroupPage)
 def get_recent_audit_logs(response: Response, limit_groups: int = 100,
-                          db: Session = Depends(get_db)):
+                          cursor: str = None, db: Session = Depends(get_db)):
     """The newest `limit_groups` transaction groups, as an envelope.
+
+    🔴 [판정 473] `cursor` IS TAKEN BY THE ROUTE THAT PUBLISHES IT. It was
+    published and accepted nowhere: a client following `next_cursor` had only
+    `/history` to hand it to, which answers about ONE ROW's history and would
+    have silently answered a different question. A route that emits a cursor
+    receives it, and that pairing is the gate on this change.
+
+    A cursor page is a one-shot read that does NOT touch the projection - see
+    `AuditLogCache.page_from_cursor`. A bad cursor is a 400, never a silent
+    restart at page 1, for the reason `audit_history.CursorError` gives.
 
     TRUNCATION IS SPOKEN, IN THE BODY AND IN THE HEADERS.
 
@@ -1254,31 +1264,55 @@ def get_recent_audit_logs(response: Response, limit_groups: int = 100,
     caller that reads them keeps working. Removing them is a separate decision
     from flipping the body, and this is not it.
     """
-    # 1. 인메모리 캐시 로드 (최초 1회만 DB 조회)
-    audit_cache.load_initial(db, limit_groups)
-    # Chain replay is written by a separate worker process. Its committed audit
-    # rows cannot mutate this process-local cache, so reconcile before Admin
-    # renders the recent transaction list.
-    audit_cache.refresh_if_stale(db, limit_groups)
+    if cursor:
+        try:
+            cache_groups, truncated, next_cursor, _scanned = \
+                audit_cache.page_from_cursor(db, cursor, limit_groups)
+        except audit_history.CursorError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid recent cursor: {e}")
+    else:
+        # 1. 인메모리 캐시 로드 (최초 1회만 DB 조회)
+        audit_cache.load_initial(db, limit_groups)
+        # Chain replay is written by a separate worker process. Its committed audit
+        # rows cannot mutate this process-local cache, so reconcile before Admin
+        # renders the recent transaction list.
+        audit_cache.refresh_if_stale(db, limit_groups)
+        cache_groups = audit_cache.groups
+        truncated = audit_cache.truncated
+        next_cursor = audit_cache.next_cursor
 
-    response.headers["X-Audit-Truncated"] = "true" if audit_cache.truncated else "false"
-    if audit_cache.next_cursor:
-        response.headers["X-Audit-Next-Cursor"] = audit_cache.next_cursor
+    response.headers["X-Audit-Truncated"] = "true" if truncated else "false"
+    if next_cursor:
+        response.headers["X-Audit-Next-Cursor"] = next_cursor
 
     # 2. 캐시된 그룹을 경량화하여 반환
+    return _shape_recent_groups(db, cache_groups, truncated, next_cursor, limit_groups)
+
+
+def _shape_recent_groups(db: Session, cache_groups, truncated, next_cursor,
+                         limit_groups: int):
+    """The `{groups, truncated, next_cursor, limit_groups, returned}` envelope.
+
+    🔴 [판정 473] ONE AUTHOR FOR THE SHAPE, because there are now TWO pages. This
+    loop was inline in the route and reached into `audit_cache.groups` directly;
+    a cursor page would have had to copy it, and a copied loop is how the two
+    pages of one list start describing rows differently (the deleted-row flag and
+    the business-key backfill are exactly the kind of thing that gets copied once
+    and then fixed once).
+    """
     groups = []
     # Collect keys to check existence
     keys_to_check = []
-    for g in audit_cache.groups:
+    for g in cache_groups:
         logs = g.get("logs", [])
         if not logs: continue
         repr_log = logs[0]
         if repr_log.row_id != "_BATCH_":
             keys_to_check.append((repr_log.table_name, repr_log.row_id))
-            
+
     existing_keys = check_rows_exist(db, keys_to_check)
-    
-    for g in audit_cache.groups:
+
+    for g in cache_groups:
         logs = g.get("logs", [])
         if not logs: continue
         
@@ -1305,8 +1339,8 @@ def get_recent_audit_logs(response: Response, limit_groups: int = 100,
         })
     return {
         "groups": groups,
-        "truncated": audit_cache.truncated,
-        "next_cursor": audit_cache.next_cursor,
+        "truncated": truncated,
+        "next_cursor": next_cursor,
         "limit_groups": limit_groups,
         "returned": len(groups),
     }

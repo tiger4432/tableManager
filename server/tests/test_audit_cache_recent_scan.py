@@ -282,3 +282,140 @@ def test_f_a_malformed_knob_falls_back_instead_of_taking_the_scan_down(knobs, ca
         audit_cache.RECENT_DEFAULTS["recent_scan_chunk_rows"]
     assert resolved["recent_logs_per_group"] == 250
     assert "must be a positive integer" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# 판정 473 — the second page. A cursor was PUBLISHED by a route that did not
+# ACCEPT one, and the position it published was the scan's, not the page's.
+# ---------------------------------------------------------------------------
+
+
+def seed_scattered(db, tx_id, stamps, per_stamp=2):
+    """One transaction whose rows sit at SEVERAL positions down the table.
+
+    `seed` gives every row of a transaction one timestamp, which is what the
+    server produces for a single batch - but a transaction id is reused across
+    laps (replay, a resumed ingestion), and then its rows really are scattered.
+    That is the whole difficulty 판정 473 names: a group is not AT a position,
+    it is PLACED by its newest row while its older rows lie further down.
+    """
+    for minute in stamps:
+        stamp = BASE + timedelta(minutes=minute)
+        for row in range(per_stamp):
+            db.add(models.AuditLog(
+                table_name=TABLE, row_id=f"{tx_id}-{minute}-{row}", column_name="value",
+                old_value=None, new_value=f"v{row}", source_name="pipeline_parser",
+                updated_by="system", transaction_id=tx_id, timestamp=stamp,
+                business_key=f"BK-{tx_id}"))
+    db.commit()
+
+
+def test_h_the_route_that_publishes_a_cursor_accepts_one(client, db_session, knobs):
+    """ALARM FOR: the cursor going out with nowhere to come back to (판정 473 ④ 짝).
+
+    This is the pairing gate. `/audit_logs/recent` published `next_cursor` from
+    2026-08-11 and took no `cursor` parameter, so the only endpoint a client
+    could hand it to was `/history` - which answers about ONE ROW's history and
+    would have answered a DIFFERENT QUESTION without erroring. A published
+    cursor that nothing accepts is not a small gap; it is an invitation to the
+    wrong route.
+
+    The 400 is asserted in the same test on purpose: a route that accepts a
+    cursor and silently restarts at page 1 when it cannot read one is worse than
+    one that never accepted it, because the caller believes it advanced.
+    """
+    seed(db_session, [(f"pair-{i:02d}", 4) for i in range(6)])
+    knobs(recent_max_scan_rows=10_000, recent_scan_chunk_rows=24)
+    audit_cache.audit_cache.__init__()
+
+    first = client.get("/audit_logs/recent?limit_groups=2").json()
+    assert first["truncated"] is True
+    assert first["next_cursor"], "a truncated page must say where to resume"
+
+    second = client.get(f"/audit_logs/recent?limit_groups=2&cursor={first['next_cursor']}")
+    assert second.status_code == 200, \
+        "the route that publishes the cursor is the route that takes it"
+    assert second.json()["groups"], "resuming at a published cursor must yield groups"
+
+    refused = client.get("/audit_logs/recent?limit_groups=2&cursor=not-a-cursor")
+    assert refused.status_code == 400, \
+        "an unreadable cursor is refused by name, never served as page 1 again"
+
+
+def test_i_two_pages_are_a_partition_no_group_in_both_or_neither(client, db_session, knobs):
+    """ALARM FOR: the SCAN position being published as the PAGE position.
+
+    🔴 THIS IS THE DEFECT 판정 473 ① NAMED, AND THE FIXTURE IS BUILT TO EXPOSE IT.
+    Five transactions fit inside ONE chunk, and the page is allowed two of them.
+    The walk therefore fills in the MIDDLE of a chunk and keeps reading to the
+    chunk's end, so:
+
+        cursor = chunk bottom   (what shipped)   groups 3, 4 and 5 are above it
+                                                 and below the page - lost, on
+                                                 both pages, with no error
+        cursor = last EMITTED group's newest     page 2 starts exactly where the
+                (판정 473)                       page stopped naming groups
+
+    Scored as a partition rather than as "page 2 is non-empty", because the two
+    ways to be wrong are opposite - a scan cursor DROPS groups, and a cursor at
+    the first unadopted group REPEATS the adopted ones' older rows - and only
+    asking for both at once catches both.
+    """
+    txs = [f"part-{i:02d}" for i in range(5)]          # oldest first
+    seed(db_session, [(t, 4) for t in txs])
+    knobs(recent_max_scan_rows=10_000, recent_scan_chunk_rows=20)
+    audit_cache.audit_cache.__init__()
+
+    pages, cursor, seen = [], None, []
+    for _ in range(4):                                  # bounded: never a live loop
+        url = "/audit_logs/recent?limit_groups=2"
+        if cursor:
+            url += f"&cursor={cursor}"
+        body = client.get(url).json()
+        ids = [g["transaction_id"] for g in body["groups"]]
+        pages.append(ids)
+        seen.extend(ids)
+        cursor = body["next_cursor"]
+        if not cursor:
+            break
+
+    newest_first = list(reversed(txs))
+    assert seen == newest_first, (
+        "the pages together are the whole list, in order, once each. "
+        f"Got {pages!r}; a scan-position cursor loses the groups between "
+        "'the page filled' and 'the chunk ended'.")
+    assert len(set(seen)) == len(seen), f"a group appears on two pages: {pages!r}"
+
+
+def test_j_a_group_straddling_the_boundary_is_named_once(client, db_session, knobs):
+    """ALARM FOR: page 2 re-naming a group page 1 already returned (판정 473 ④).
+
+    The deliberately-built boundary case the ruling asked for. `straddler` has
+    rows at the newest position AND rows below where page 1 stops, so page 2's
+    window genuinely contains rows belonging to a group page 1 already named.
+    Nothing about the row data says "you have seen this" - the walk has to ask,
+    and `_groups_seen_at_or_above` is that question.
+
+    Without the ask this does not raise or log: page 2 simply reports
+    `straddler` a second time, with a SMALLER count (only the rows in its own
+    window), so the same transaction shows two different sizes on two pages.
+    """
+    seed(db_session, [("older-a", 3), ("older-b", 3)])
+    seed_scattered(db_session, "straddler", stamps=[1, 30], per_stamp=3)
+    knobs(recent_max_scan_rows=10_000, recent_scan_chunk_rows=50)
+    audit_cache.audit_cache.__init__()
+
+    first = client.get("/audit_logs/recent?limit_groups=1").json()
+    assert [g["transaction_id"] for g in first["groups"]] == ["straddler"], \
+        "the newest group is the one with the newest ROW, wherever its others are"
+    assert first["truncated"] is True
+
+    second = client.get(
+        f"/audit_logs/recent?limit_groups=5&cursor={first['next_cursor']}").json()
+    later = [g["transaction_id"] for g in second["groups"]]
+
+    assert "straddler" not in later, (
+        "page 1 already named this group; its older rows are not a second group. "
+        f"Got {later!r}")
+    assert later == ["older-b", "older-a"], \
+        f"and the groups below it are all still reachable. Got {later!r}"
