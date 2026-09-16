@@ -1471,8 +1471,19 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                                     if p.get("row_id")]
                     if not builtin_rows:
                         continue
-                    outcome = _builtins_table().run_builtin(
-                        builtin_kind, db, rule, row_ids=builtin_rows) or {}
+                    # 🔴 COLLAPSED, LIKE THE PACED LAP AND LIKE THE MAPPER BRANCH'S WRITE.
+                    # A builtin writes for ITSELF, so it never passes through the
+                    # `outbox_mode(COLLAPSED)` scope this function puts around
+                    # `apply_batch_updates` for `table_updates`. Measured with five rows
+                    # (one row cannot tell the two apart): the join wrote 5 and produced
+                    # FIVE outbox events - the shape S-249 ⓔ-1 removed from the follow-up
+                    # lap, where 1,000 writes became 「1,000 outbox events, 1,000 queue
+                    # items, 1,000 laps and 1,000 lines」, the owner's 「한 행당 로그 하나」.
+                    from database.context import outbox_mode as _outbox_mode
+
+                    with _outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED):
+                        outcome = _builtins_table().run_builtin(
+                            builtin_kind, db, rule, row_ids=builtin_rows) or {}
                     # 🔴 THE COUNT SURVIVES THE MOVE. The paced lap said how many rows a
                     # builtin wrote (`[ChainBuiltin] ... written=`); off that lap the join
                     # would have written silently, and a write nobody can size is a write

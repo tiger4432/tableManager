@@ -228,6 +228,39 @@ def test_the_group_path_actually_calls_the_join(db, caplog):
         "the count the paced lap used to publish must not vanish with the lap")
 
 
+def test_the_group_paths_join_write_makes_ONE_event_not_one_per_row(db):
+    """🔴 [S-278 A] THE DISCRIMINANT NEEDS MORE THAN ONE ROW, which is why it is its own
+    test. With a single row 「collapsed」 and 「one per row」 produce the same count, and a
+    fixture both rules agree on decides nothing.
+
+    ⛔ THE DEFECT THIS STANDS IN FRONT OF IS RECORDED IN THIS REPOSITORY (S-249 ⓔ-1): a
+    builtin writing per-row events turned 1,000 follow-up writes into 「1,000 outbox
+    events, 1,000 queue items, 1,000 laps and 1,000 lines」 - the owner's 「한 행당 로그
+    하나」. The follow-up lap wraps its builtin call in `outbox_mode(COLLAPSED)` for
+    exactly that reason, and the group path's own collapse scope wraps the MAPPER branch's
+    `apply_batch_updates`, not a builtin that writes for itself.
+    """
+    from database.context import outbox_mode          # noqa: F401  (documents the scope)
+
+    _push(db, RIGHT, [{"job": "J-MANY", "lot": "LOT-MANY"}])
+    _push(db, LEFT, [{"log_key": "L-M%d" % n, "job": "J-MANY"} for n in range(5)])
+    db.commit()
+    before = db.query(models.DatabaseOutbox).filter(
+        models.DatabaseOutbox.table_name == LEFT).count()
+
+    events = db.query(models.DatabaseOutbox).filter(
+        models.DatabaseOutbox.table_name == LEFT).all()
+    stood = rule_shape.expand_declaration(DECLARATION, crud.TABLE_CONFIG)[0]
+    worker._process_chain_transaction_group_sync("tx-s278-many", events, db, stood)
+
+    assert [r.lot_confirmed for r in _rows(db, LEFT)] == ["LOT-MANY"] * 5
+    made = db.query(models.DatabaseOutbox).filter(
+        models.DatabaseOutbox.table_name == LEFT).count() - before
+    assert made == 1, (
+        "the join wrote 5 rows and produced %d outbox events - one per row is the shape "
+        "S-249 removed from the follow-up lap" % made)
+
+
 def test_a_matched_row_gets_the_right_tables_value(db):
     _push(db, RIGHT, [{"job": "J1", "lot": "LOT-1"}])
     _push(db, LEFT, [{"log_key": "L1", "job": "J1"}])
