@@ -48429,3 +48429,107 @@ db          rule_run:509  bound.call(db, one, rule=rule)      맵퍼가 «첫 �
 ```
 📌 「랩」 안 씁니다. 「뒤에 따로 도는 한 바퀴」로 적겠습니다.
 📌 새 설계 물음은 총괄께 쌓아 두고, 승인된 지시가 올 때까지 «짓지 않습니다».
+
+> 🛡️ **[09-17 15:32 구현자] 판정 562 의 「울 수 없는 가드」 고쳤습니다 — 그리고 그게 «시험 셋의 공허»를 드러냈습니다**
+
+## 가드
+```
+전   convert_chain_rule_grammar 가 file_fingerprint(path) 를 «자기가» 계산해
+     그것을 «그 값과 견주는» 가드에 넘겼습니다 -> 매번 통과. 남의 저장을 «말없이» 덮습니다
+후   base 를 «호출자»가 보냅니다. 여는 쪽(chain_rule_raw_view)이 이미 돌려주는 값입니다
+     저장인데 base 가 없으면 «거절»합니다 — 칸을 빼서 끌 수 있는 가드는 죽은 가드입니다
+     dry_run 은 «필요 없습니다» (아무것도 안 씁니다)
+```
+📮 **클라 레인에 옮겨 주십시오:** 「통합으로 저장」·「되돌리기」의 body 에 **`base` 를 실어야 합니다**
+   (규칙을 열 때 받은 그 값 그대로). `dry_run: true` 는 안 실어도 됩니다.
+   안 실으면 400 · `path: "base"` 로 이름 대어 거절합니다.
+
+## 🔴 그리고 이게 «더 큰» 것을 드러냈습니다 — 제 시험 셋이 «공허»했습니다
+```
+가드를 켜니 둘만 빨개졌습니다. 나머지가 초록인 «이유»를 열어 봤더니:
+  되돌리기 시험   첫 변환이 거절되면 규칙이 «아직 평면»입니다 -> 「평면으로」가
+                「이미 평면입니다」를 200 으로 답합니다 -> 「그대로 돌아왔다」가 «참»이 됩니다
+  이웃 시험      거절된 저장도 이웃을 «안 건드립니다» -> 단언이 만족됩니다
+=> 둘 다 «누른 것의 상태를 안 읽고» 있었습니다
+```
+```
+수리   누름을 «한 헬퍼»로 모으고 그 헬퍼가 200 을 단언합니다
+      되돌리기 시험은 «중간에 통합이었는지»를 단언합니다 (안 그러면 안 간 여행을 재는 것입니다)
+```
+
+## 🔴 왜 제 변이 채점이 이걸 «못 잡았나** — 적어 둡니다
+```
+제가 만든 변이 다섯은 전부 «저장 «안»에서» 동작을 바꿨습니다.
+「라우트가 «거절한다»」는 변이를 «하나도» 안 만들었습니다 — 그런데 그 상태가 바로
+그 단언들이 성공과 «구별 못 하는» 유일한 상태였습니다
+채점(지금)   「저장이 아예 안 일어난다」 변이 -> 지금은 «다섯»이 빨개집니다.
+            이 커밋 «전»이었으면 «둘»이었습니다
+👉 일반형: 변이 집합에 「이 경로가 «거절된다»」를 «항상» 하나 넣습니다.
+   성공/실패를 구별 못 하는 단언은 그 변이에서만 드러납니다
+```
+```
+14 passed · 변이 2/2 CAUGHT · 파일 md5 복원 확인
+```
+
+> 📋 **[09-17 15:35 구현자] 판정 562 ④ · 563 ① 의 «삭제 목록» — AST 로 셌습니다. 그리고 563 ② 에 «막는 것»이 하나 있습니다**
+⛔ 아무것도 안 지웠습니다. 목록만입니다 (판정 563 의 「목록은 지금, 착지는 새 길과 «같은 커밋»」 그대로).
+
+## 삭제 목록 — 추적 파일만, «코드 노드» 기준
+```
+심볼                    정의  읽기  쓰기 | 시험읽기  제품 파일
+BUILTIN_KINDS             0    7     1  |    29     dev_bench · builtins · rule_run
+register_builtin          1    3     0  |     2     builtins
+BUILTIN_HANDS             0    2     1  |     8     builtins · rule_run
+SELF_WRITING_KINDS        0    4     1  |     6     builtins · rule_run
+BUILTIN_LABELS            0    2     1  |     3     builtins · rule_run
+HANDS_ROW_IDS             0   10     1  |    11     builtins · ingestion_worker · replay · rule_run
+HANDS_PAYLOADS            0    4     1  |     0     dev_bench · builtins · rule_run
+writes_itself             2    6     0  |     2     builtins · ingestion_worker · rule_run
+stamps_origin             1    3     0  |     0     builtins
+self_writing_name         1    1     0  |     0     replay · rule_run
+builtin_kind              1    6     0  |     4     rule_run
+hands                     2   11     0  |     1     dev_bench · builtins · ingestion_worker · replay · rule_run
+--- 미루기 칸 (문자열 상수라 «식별자로는 0» 으로 나옵니다) ---
+follow_up                 -    7     -  |    25     ingestion_worker · legacy_join_declaration · rule_order
+                                                    · chain_bindings · enrichment/config
+is_batch                  -    5     -  |    30     ingestion_worker · rule_run · chain_bindings · enrichment/config
+allow_chain_trigger       -    6     -  |    17     graph · ingestion_worker · chain_bindings
+```
+
+## ⚠️ 총괄 수와 «다릅니다». 어느 쪽도 안 틀렸습니다 — «다른 물음»에 답합니다
+```
+총괄 writes_itself 18   `git grep -c` = 「그 낱말이 든 «줄»」          (제가 재현했습니다: 1+6+3+8 = 18)
+제  writes_itself  8   AST = 「그것을 «읽거나 정의하는» 코드 노드」
+그 18 줄 중 «다섯»이 주석·독스트링 줄입니다 — 오늘 라운드가 그 이름을 설명하는 문장을 많이 붙였습니다
+👉 지울 때 필요한 수는 «코드 노드»이고, 「몇 줄이 바뀌나」는 «줄»입니다. 둘 다 적습니다
+```
+🔴 그리고 `is_batch` 는 «지울 후보가 아닙니다** — 소유자 설계에서도 「그룹 전체를 한 번에」가
+   남습니다(판정 559 ③). 위 표에 있는 이유는 「미루기 칸과 같이 세라」였기 때문이고, «분리해서» 봐야 합니다.
+
+## 🔴 563 ② — `chain_bindings.py` 를 옮기면 **소유자 맵퍼가 깨집니다**
+```
+실측  추적되는 맵퍼 샘플 «일곱» 중 «여섯»이 최상위에서 `import chain_bindings` 합니다
+     (core_alignment · core_usage · dt_alignment_metadata · dt_inventory_metadata ·
+      dt_job_rollup · dt_map)
+=> 샘플이 그렇다는 것은 «운영의 진짜 맵퍼도 그렇다»는 뜻입니다. 그 파일들은 gitignore 이고
+   ⛔ 판정 498 이 「한 글자도」 금지했습니다 — 제가 고칠 수 «없습니다»
+```
+📮 **판정 청합니다:** 옮기려면 셋 중 하나여야 합니다 —
+```
+㉠ 안 옮긴다 (체인 «문법»은 맵퍼가 부르는 «공개 표면»이라 chain/ 안이 아니라 밖이 맞다)
+㉡ 옮기고 «옛 이름을 남긴다» (server/chain_bindings.py 가 새 자리를 re-export) — 이름 둘이 됩니다
+㉢ 옮기고 소유자께 「맵퍼 import 줄을 바꿔 주십시오」를 요청한다 — 운영 파일을 사람이 고칩니다
+```
+```
+체인인데 chain/ 밖 (추적):  chain_bindings.py · chain_skeleton.json · run_chain_worker.py
+                         · scripts/chain_replay_cli.py · enrichment/{config,candidates}.py
+run_chain_worker.py      «명령줄이 이름을 드는» 파일입니다. 런처가 이름으로 띄우면 옮기는 순간 안 뜹니다
+                         — run_app.bat 에서는 «못 찾았습니다»(0 히트). 어떻게 뜨는지 제가 «모릅니다»
+```
+
+## 🔴 제가 «안 센» 것
+```
+① 미루기 «경로» 전체 — 위는 «칸 이름» 셋만입니다. 속도조절·두 번째 선택 경로는 별도 술어가 필요합니다
+② legacy_join_declaration · legacy_materialized_join 은 표에 «안 넣었습니다» (이름만 들었습니다)
+③ 시험 쪽 수는 «읽기»만입니다 — 그 시험들이 «지워질지 고쳐질지»는 안 갈랐습니다
+```

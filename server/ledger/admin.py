@@ -897,7 +897,8 @@ def _rerun_report(before, after):
     return {"why": "이 변환이 규칙의 실행 모양을 바꿉니다"}
 
 
-def convert_chain_rule_grammar(name: str, to: str, dry_run: bool = True) -> dict:
+def convert_chain_rule_grammar(name: str, to: str, dry_run: bool = True,
+                               base: str = None) -> dict:
     """규칙 «하나»의 문법을 바꾼다 — 통합으로, 또는 평면으로 «되돌려».
 
     🔴 [판정 548] THE SERVER CONVERTS AND THE SCREEN ASKS. A screen that did its own
@@ -968,7 +969,25 @@ def convert_chain_rule_grammar(name: str, to: str, dry_run: bool = True) -> dict
         answer["saved"] = False
         return answer
 
-    saved = save_chain_rule_raw(name, converted, file_fingerprint(path))
+    # 🔴 [판정 562] THE GUARD MUST BE ABLE TO FIRE. This called
+    #   `save_chain_rule_raw(name, converted, file_fingerprint(path))` - computing the
+    #   fingerprint here and handing it to the guard that compares it against the
+    #   fingerprint. It matched every time, so 「이 파일이 열어 본 뒤에 바뀌었습니다」 could
+    #   not be said on this path: another session's save, or the owner editing the file,
+    #   would be overwritten in silence. Found by the application lane.
+    #
+    # 🔴 AND A MISSING BASE IS REFUSED RATHER THAN SKIPPED. A guard you can switch off by
+    #   leaving a field out is the same dead guard with one more step. The screen already
+    #   holds this value - `chain_rule_raw_view` returns it with the rule it opened - so
+    #   requiring it costs the caller nothing it does not have.
+    # ⚠️ ONLY FOR A REAL SAVE. A dry run writes nothing, so it has nothing to be stale about.
+    if not isinstance(base, str) or not base.strip():
+        raise _table_config_refusal(
+            "base_required", "base",
+            "저장하려면 이 규칙을 열 때 받은 base 를 같이 보내야 합니다 — 그 사이에 파일이 "
+            "바뀌었는지 제품이 가릴 수 없습니다")
+
+    saved = save_chain_rule_raw(name, converted, base)
     answer["saved"] = True
     answer["base"] = saved.get("base")
     answer["backup"] = saved.get("backup")

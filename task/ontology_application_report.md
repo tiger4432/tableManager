@@ -27454,3 +27454,105 @@ follow_up   여섯 중 하나가 `chain_bindings.py` — «선언 문법의 칸�
 ```
 📮 이 목록은 «1차»입니다. 아직 안 센 것: 「두 선택 경로」의 실체(이름을 아직 못 잡았습니다) ·
    은퇴 표시된 파일들(파일 단위 훑기 필요). 지시 주시면 이어서 셉니다.
+
+---
+
+> 🔴🔴 **[09-17 15:33 응용] Q-111 — 판정 564 ① 「체인 것을 안으로」에 «구조적 제약»이 있습니다: `chain_bindings` 를 «소유자 맵퍼가 import 합니다». 옮기면 그 파일들이 깨지고 제품은 못 고칩니다**
+> **받는 이: 구현자 (옮기기 «전») · 총괄 — 564 가 「재서 올리라」고 한 그 자리입니다**
+
+## 먼저 «제 판별식이 반증됐습니다»
+```
+제가 세운 것   「chain «말고» 아무도 안 쓰면 주어가 체인이다 -> 안으로」
+쟀더니        «그런 모듈이 없습니다». 밖에 있는 체인 것들이 전부 다른 소비자를 가집니다
+   chain_bindings   chain 4 · 그 밖 «10»   (config_resolve_report · ledger/admin · main · mappers/…)
+   enrichment       chain 5 · 그 밖 «8»    (admin/retroactive · alignment_view_service · database/models …)
+   pacing           chain 2 · 그 밖 «3»    (admin/retroactive · ledger/backfill · parsers/directory_watcher)
+   outbox_expand    chain 2 · 그 밖 «1»    (admin/dev_bench)
+=> 「안으로 옮긴다」는 «import 경로를 바꾸는 일»이고, 그 경로를 쓰는 곳이 전부 남습니다
+```
+
+## 🔴 그리고 그중 하나가 «제품이 못 고치는 파일»입니다
+```
+`server/mappers/` 의 파일이 `chain_bindings` 를 import 합니다 — `git check-ignore` 로 확인:
+   server/mappers/core_alignment_mapper.py      -> BOX/소유자 (gitignored)
+   server/mappers/dt_map_mapper.py              -> BOX/소유자
+   (이 박스에서 `chain_bindings` 를 부르는 소유자 맵퍼 «여섯»)
+   server/chain_bindings.py                      -> REPO/제품
+🔴 구조: **제품 모듈을 옮기면 «소유자 파일의 import 문»이 틀려집니다. 그리고 제품은 소유자 파일에 0 줄입니다**
+   -> 운영에서 그 설치의 맵퍼가 `chain_bindings` 를 부르고 있으면, 재기동 때 «ImportError» 입니다
+```
+```
+⚠️ 「여섯」은 «이 박스»의 수입니다 — 운영의 맵퍼는 다른 파일이라 제가 셀 수 «없습니다».
+   그래서 이 보고의 주장은 «수»가 아니라 «구조»입니다: 소유자 맵퍼가 이 모듈을 «부를 수 있고»,
+   부르면 제품이 그 import 를 못 고칩니다. 하나만 있어도 같은 일이 납니다
+```
+
+## 무엇이 참이어야 이 일이 안 나나 (수리를 짓지 않습니다)
+```
+① 옮기되 «옛 이름»이 계속 import 되게 둔다 (얇은 재export) -> 그러면 「이 안에 모든 게」가 «반만» 참
+② 안 옮긴다 — `chain_bindings` 는 «맵퍼가 부르는 공개 표면»이라 chain 안쪽이 아니다
+③ 옮기고 소유자께 「맵퍼의 import 를 고쳐 주십시오」를 «알린다» -> 운영 부담이 소유자에게 갑니다
+🔴 셋 다 «판정»이고 제가 고르지 않습니다. 다만 ①②③ 중 무엇이든 «모르고 지나갈 수는 없는» 자리입니다
+```
+
+## 확신도
+```
+실행   import 전수 — AST 로 `import X` · `from X.Y import Z` · `import X as Y` 셋 다.
+       (오늘 이 계기를 «두 번» 고쳤고 그 이력은 Q-110 에 적었습니다)
+실행   `git check-ignore -q` 로 소유자/제품 갈랐습니다 — 상설이 정한 그 도구입니다
+⛔ 못 잼  운영 설치의 맵퍼가 무엇을 import 하나. 보안상 못 봅니다 — 그래서 «구조»로만 말합니다
+📮 아직 안 센 것: `chain_skeleton.json` — 제 계기가 «.py 만» 봅니다. json·설정 참조는 따로 세야 합니다
+```
+
+---
+
+> 🔴🔴 **[09-17 15:35 응용] Q-112 — Q-108 수리(`a19d141d`)가 «반쪽»으로 섰습니다. 서버는 base 를 «요구»하고 화면은 «안 보냅니다» — 지금 「통합으로」 버튼은 저장이 «항상 거절»됩니다**
+> **받는 이: 구현자 · 클라 · 총괄 — 18:00 검증 전에, 그리고 브라우저로 걸으시기 «전»에**
+
+## 쟀습니다 — 양쪽 트리 다
+```
+서버(main, a19d141d)
+   ledger/admin.py:900  convert_chain_rule_grammar(name, to, dry_run=True, base=None)
+   :984  if not isinstance(base, str) or not base.strip():
+            raise _table_config_refusal("base_required", "base",
+               "저장하려면 이 규칙을 열 때 받은 base 를 같이 보내야 합니다 …")
+   :990  save_chain_rule_raw(name, converted, base)      <- 이제 «호출자의» base 입니다 ✅
+   main.py 라우트 문서: 「base: … dry_run 이 false 면 «필수»」
+화면(main «과» design 워크트리 «둘 다»)
+   client2/src/admin.js:1214~1218
+      body: JSON.stringify({ name, to, dry_run: dryRun })     <- `base` «없습니다»
+```
+🔴 **그래서 오늘 운영자 경로가 이렇게 끝납니다:**
+```
+「통합으로」 누름 -> dry_run:true 는 «통과»(base 안 봄) -> 「다시 도는 행 N」을 보여 주고 «확인»
+ -> dry_run:false 로 보냄 -> 서버가 `base_required` 로 «거절» -> 변환이 «안 됩니다»
+```
+```
+🔵 거절 자체는 «옳습니다» — 이름 대고 다음 행동을 말합니다. 화면도 그 거절을 그릴 줄 압니다
+🔴 그런데 546 ③ 의 도착지가 「운영자가 열어서 통합으로 저장할 수 있다」이고, 지금은 «못 합니다»
+```
+
+## 🔵 재료는 «이미 화면에 있습니다» — 없어서 못 보내는 게 아닙니다
+```
+raw_registry_panel.js:145  base: String(payload.base == null ? '' : payload.base)
+                    :687  this.onSave({ …, base: view.base, raw: area.value })   <- 저장은 «보냅니다»
+                    :698  this.root.setAttribute('data-base', view.base)
+=> 원문 «저장» 경로는 base 를 이미 나릅니다. «변환» 경로만 그 칸을 안 싣습니다
+```
+
+## 왜 이 모양이 났나 — 제 보고가 만든 자리입니다
+```
+Q-108 이 「가드가 울 수 없다」를 짚었고, 수리가 «서버 쪽»을 같은 분에 조였습니다.
+그런데 그 가드를 만족시키는 값은 «화면»에서 옵니다 — 한쪽만 조이면 그 사이가 거짓입니다
+🔴 상설 「한번에 개발 — 칸 하나 + 함수 하나 + 그것을 지나는 자리 «전부»가 한 커밋」의 그 자리입니다.
+   제가 Q-108 에 「라우트 body 에 base 가 없다」를 적어 놓고 «화면도 같이»라고 안 적었습니다 — 제 몫입니다
+```
+📮 급합니다: 18:00 에 이 경로를 브라우저로 걸으시면 «거절»을 보시게 됩니다.
+   그때 「이관이 안 된다」로 읽히면 원인이 «가드»가 아니라 «반쪽 착지»라는 것이 안 보입니다.
+
+## 확신도
+```
+실행   양쪽 트리의 `admin.js:1214~1218` 을 «열어서» — body 세 칸, base 없음
+구조   서버의 `base_required` 갈래와 라우트 문서를 열어서. 브라우저는 «안 열었습니다» —
+       그래서 「거절이 화면에 어떻게 보이나」는 클라 레인이 더 정확합니다
+```
