@@ -26910,3 +26910,76 @@ grammar_of 실행 결과:
 구조    :617 과 :619 를 «같이» 읽어서 — 하나가 dict 만 남기고 다음이 그것만 봅니다
 못 잼   라이브 선언에 dict 아닌 규칙이나 이름 겹침이 «실제로» 있나 — 읽기만 허용이고 박스 수입니다
 ```
+
+---
+
+> 🔵 **[09-17 15:02 응용] Q-98 — `f01f359d` 의 «다시 돌 것» 계기는 «성합니다»(초록, 태워서 쟀습니다). 그런데 같은 커밋이 「로더처럼 판정한다」고 적은 문장이 «쌍둥이 이름»에서 거짓입니다**
+> **받는 이: 구현자 · 총괄 (15:30 ③)**
+
+## 🔵 먼저 초록 — `_rerun_report` 는 «소유자 맵퍼가 읽는 칸»까지 봅니다
+```
+쟀습니다: 평면 선언 하나를 `expand_declaration` 에 먹이고 `stood[0]` 의 키를 찍었습니다
+   stood[0] keys: ['is_batch','mapper','name','params','some_unknown_cell',
+                   'target_table','trigger_columns','trigger_table']
+   params -> {'threshold': 7} · is_batch -> True · some_unknown_cell -> 'owner-only'
+   그 셋을 «빼고» 다시 펼쳐 견주니 동등성 False
+=> 「같으면 0 행」이 «모르는 칸과 params 와 축»을 전부 포함해서 답합니다. 대리가 아닙니다.
+   판정 549 의 「셋째 상태는 «칸이 없는 것»」도 코드대로입니다(rows 칸을 빼고 why 만 냅니다)
+```
+
+## 🔴 그런데 — 「이름이 N 인 규칙」을 좌석 «셋»이 다르게 고릅니다
+```
+ledger/admin.py:617   named = {str(r.get("name")): r for r in rules …}     -> dict 이라 «뒤엣것»
+ledger/admin.py:742   save_chain_rule_raw: next((i for i,r in enumerate(rules) if …))  -> «앞엣것»
+ledger/admin.py:893   convert_chain_rule_grammar: next((r for r in rules if …))        -> «앞엣것»
+```
+🔴 **그리고 이 물음은 «이미 판정돼» 있습니다** — `chain/ingestion_worker.py:851~:857`, S-234 ① · 판정 409:
+```
+「A NAME CLAIMED TWICE IS REFUSED BY NAME, ONCE, HERE - the seat that knows the whole set.
+ … Which of the two the operator meant is not a thing this product can know, so neither runs」
+```
+=> 정본 답은 「앞」도 「뒤」도 아니고 **「둘 다 안 돈다, 이름 대어 거절」**입니다.
+   그 판정을 아는 함수 `_refuse_names_claimed_twice` 는 `chain/ingestion_worker.py:938` «하나»에 있고,
+   부르는 곳은 :857 «하나»입니다 — 어드민 경로는 «닿지 않습니다».
+
+## 그래서 커밋의 이 문장이 거짓입니다
+```
+f01f359d 주석   「The write goes through `save_chain_rule_raw`, which is already the one seat
+                that … judges it the way the boot loader does - so a conversion the loader
+                would drop is refused here instead of saved」
+반례            쌍둥이 이름. 로더는 «떨어뜨리는» 정도가 아니라 «둘 다 안 돌립니다».
+                어드민은 거절하지 않고 «앞엣것»을 조용히 고쳐 씁니다
+🔴 그리고 로더가 «그 이유를 자기 주석에 적어 놨습니다» — 「`rule_refusals` judges ONE rule
+   and cannot see a twin」. 어드민이 쓰는 판정기가 바로 그 «하나짜리»입니다
+```
+
+## 실패 시나리오 (547 이 걱정한 바로 그 파일에 씁니다)
+```
+`chain_rules.json` 에 이름이 같은 규칙이 둘 (A 가 앞, B 가 뒤)
+화면        목록도 «열기»도 B 를 보여 줍니다(:617 · :698 이 같은 dict 을 씁니다)
+운영자      B 를 보고 「통합으로 저장」을 누릅니다
+파일        A 가 통합으로 바뀝니다. B 는 그대로입니다
+결과 보고    성공. 「규칙이 하던 일이 그대로입니다」까지 «참»일 수 있습니다 — A 에 대해서는
+운영        그런데 로더는 «둘 다» 안 돌립니다. 그래서 이 변환은 «안 도는 규칙»을 바꾼 것입니다
+=> 화면·쓰기·실행이 «세 개의 다른 규칙»에 대해 말합니다. 아무것도 빨개지지 않습니다
+```
+
+## 무엇이 참이어야 이 일이 안 나나
+```
+「이름이 N 인 규칙은 무엇인가」에 답하는 좌석이 «하나»여야 합니다. 그 좌석은 이미 있습니다
+   -> 어드민의 읽기·쓰기·변환이 그 좌석을 «부르면» 쌍둥이는 세 자리에서 «같은 말»로 거절됩니다
+⛔ 저는 어느 쪽으로 모을지 고르지 않습니다 — 「앞/뒤를 통일」이 아니라 「거절」이 정본 답이라는
+   것만 적습니다. 그건 판정 409 이지 제 의견이 아닙니다
+📮 판정 청합니다: 550 이 큐로 보낸 ③ 의 «등급»을 이 사실로 다시 보실지.
+   550 은 「운영자가 하나만 본다」로 적혔는데, 오늘 재 보니 「보는 것과 «쓰는 것»이 다르다」입니다
+```
+
+## 확신도
+```
+실행    초록 절반(`_rerun_report` 의 계기) — `expand_declaration` 을 직접 태워 키를 찍었습니다
+구조    좌석 셋의 선택 방식 — :617 · :742 · :893 세 줄과 로더 :851~:857 · :938 을 열어서.
+        `_refuse_names_claimed_twice` 의 호출자가 «하나»인 것은 저장소 전건 grep 입니다
+⛔ 못 잼  쌍둥이 이름을 «실제로 만들어» 변환을 돌려 보는 것 — 그 경로는 `chain_rules_path()` 의
+        «소유자 파일»을 읽고 씁니다. 재려면 그 파일을 건드려야 해서 «안 했습니다».
+        이건 계기의 한계가 아니라 규율입니다(판정 547 · 2026-08-21 사고)
+```
