@@ -67,7 +67,7 @@ def node(graph, name):
 @pytest.fixture(name="graph")
 def fixture_graph(monkeypatch):
     """The four loaders, each answering with one declaration, through the real assembler."""
-    import enrichment.config
+    from chain import enrichment
     from chain import legacy_join_declaration as vjc
     from database import crud
 
@@ -255,7 +255,7 @@ def test_an_undeclared_reads_is_counted_on_the_rule_that_replaced_the_self_loop(
 def test_an_unknown_table_in_reads_drops_the_view_by_name():
     """A typo would otherwise draw an edge from a table that does not exist, and a graph is
     read as fact. Refused at the DECLARATION, per view, with the name in the message."""
-    import enrichment.config
+    from chain import enrichment
 
     rejections = []
     views = enrichment.config._normalize_reference_views(
@@ -267,7 +267,7 @@ def test_an_unknown_table_in_reads_drops_the_view_by_name():
 
 
 def test_a_declared_reads_survives_the_loader():
-    import enrichment.config
+    from chain import enrichment
 
     views = enrichment.config._normalize_reference_views(
         "cg_enrich",
@@ -349,7 +349,7 @@ def test_a_refused_cycle_is_shown_rather_than_hidden(monkeypatch):
             chain_rule(name="b", trigger_table="t2", target_table="t1",
                        allow_chain_trigger=True)]
     monkeypatch.setattr(worker, "load_chain_rules", lambda: loop)
-    import enrichment.config
+    from chain import enrichment
     from chain import legacy_join_declaration as vjc
     monkeypatch.setattr(enrichment.config, "load_enrichment_rules", lambda **kw: [])
     monkeypatch.setattr(vjc, "load_virtual_join_rules", lambda **kw: [])

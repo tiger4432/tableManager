@@ -27,7 +27,7 @@
 import logging
 import uuid
 
-import keyset_scan
+from chain import keyset_scan
 
 logger = logging.getLogger(__name__)
 

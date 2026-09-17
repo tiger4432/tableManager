@@ -76,7 +76,7 @@ from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
-import keyset_scan
+from chain import keyset_scan
 import outbox_expand
 import event_constants
 # [ChainKeyGate] The same gate the live chain worker runs. Replay re-runs the same
@@ -1002,7 +1002,7 @@ def recompute_display_values(db, table_name: str, columns: list = None,
     """
     from database import crud, models
 
-    import keyset_scan
+    from chain import keyset_scan
 
     model = models.DYNAMIC_TABLES.get(table_name)
     if model is None:

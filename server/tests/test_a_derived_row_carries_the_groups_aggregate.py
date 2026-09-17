@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 import anyio                                                          # noqa: E402
 import pytest                                                         # noqa: E402
 
-import enrichment.config                                              # noqa: E402
+from chain import enrichment                                              # noqa: E402
 from database import crud, models, schemas                            # noqa: E402
 
 TABLES = {

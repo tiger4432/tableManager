@@ -37,8 +37,8 @@ import uuid
 import anyio
 import pytest
 
-import enrichment.backfill as bf
-import enrichment.config
+from chain.enrichment import backfill as bf
+from chain import enrichment
 from database import crud, models, schemas
 
 BKFL_TABLES = {
@@ -531,7 +531,7 @@ def test_one_predicate_gates_both_row_creation_and_candidate_resolution(bkfl_env
     assert stats["created_rows"] == 0 and _derived_rows(db) == [], (
         "row creation did not go through the shared predicate")
 
-    from enrichment import candidates as _candidates
+    from chain.enrichment import candidates as _candidates
     # A rule with a DECLARING view, so resolution gets past `not_declared` and
     # reaches the gate under test. The patched predicate short-circuits before
     # any view executes, so the query body is never read.
@@ -802,7 +802,7 @@ def _spy_iter_pages(monkeypatch):
     Watching `iter_pages` rather than a returned label on purpose: the label is
     what the code CLAIMS, the walk is the unbounded read itself.
     """
-    import keyset_scan
+    from chain import keyset_scan
 
     real = keyset_scan.iter_pages
     seen = []

@@ -147,7 +147,7 @@ def test_the_one_column_unit_key_is_the_string_the_derived_table_actually_writes
     """The unit key is not a new spelling - it must equal the `business_key_val` the real
     dedup mapper composes, or the worklist counts rows the confirmation store cannot find.
     This runs the mapper, it does not restate its formula."""
-    from enrichment import mapper
+    from chain.enrichment import mapper
     payloads = [{"table_name": SRC, "data": {"job_id": {"value": "J1"},
                                              "cell_key": {"value": "c1"}}}]
     for rule, derived in ((RULE, DERIVED), (RULE_BK, DERIVED_BK)):
@@ -210,7 +210,7 @@ def test_search_and_sort_hold_on_a_single_key_column(env):
 
 
 def test_the_route_validates_params_against_a_single_column_key(client, env, monkeypatch):
-    import enrichment.config
+    from chain import enrichment
     monkeypatch.setattr(enrichment.config, "load_enrichment_rules",
                         lambda *a, **k: [dict(RULE)])
     _seed_unit(env, "J1", ["M1"])
@@ -227,7 +227,7 @@ def test_the_route_validates_params_against_a_single_column_key(client, env, mon
 
 
 def test_the_view_route_accepts_a_single_key_param(client, env, monkeypatch):
-    import enrichment.config
+    from chain import enrichment
     monkeypatch.setattr(enrichment.config, "load_enrichment_rules",
                         lambda *a, **k: [dict(RULE)])
     _seed_unit(env, "J1", ["M1"])
@@ -247,7 +247,7 @@ def test_the_view_route_accepts_a_single_key_param(client, env, monkeypatch):
 
 def test_the_rule_loader_accepts_a_single_key_and_a_non_frame_target(env):
     """Nothing in validation may require two key columns or a frame-shaped target name."""
-    import enrichment.config
+    from chain import enrichment
     norm, err = enrichment.config._validate_rule(
         RULE["name"],
         {"source_table": SRC, "derived_table": DERIVED,
@@ -339,7 +339,7 @@ def test_the_confirm_route_records_the_subject_the_screen_sends(
     comment the thing that "identifies the confirmation's subject" - and the route read
     NONE of the three. With `frames: {}` the row that came back said who, when, which
     sources, which floor and what ruling, but not WHAT WAS CONFIRMED."""
-    import enrichment.config
+    from chain import enrichment
     monkeypatch.setattr(enrichment.config, "load_enrichment_rules",
                         lambda *a, **k: [dict(RULE)])
     _seed_unit(env, "J1", ["M1"])
@@ -368,7 +368,7 @@ def test_the_confirm_route_records_the_subject_the_screen_sends(
 
 
 def test_the_confirm_route_refuses_a_field_the_rule_did_not_declare(client, env, monkeypatch):
-    import enrichment.config
+    from chain import enrichment
     monkeypatch.setattr(enrichment.config, "load_enrichment_rules",
                         lambda *a, **k: [dict(RULE)])
     _seed_unit(env, "J1", ["M1"])
@@ -383,7 +383,7 @@ def test_the_confirm_route_refuses_a_field_the_rule_did_not_declare(client, env,
 
 def test_the_confirm_route_refuses_a_second_key_column_this_rule_does_not_have(
         client, env, monkeypatch):
-    import enrichment.config
+    from chain import enrichment
     monkeypatch.setattr(enrichment.config, "load_enrichment_rules",
                         lambda *a, **k: [dict(RULE)])
     _seed_unit(env, "J1", ["M1"])

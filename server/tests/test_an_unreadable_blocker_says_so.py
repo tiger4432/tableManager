@@ -64,7 +64,7 @@ def test_the_words_were_borrowed_rather_than_coined():
     from ledger import trace
 
     assert event_constants.RETROACTIVE_READ_READY in trace.COVERAGE_STATES
-    import enrichment.candidates
+    from chain import enrichment
 
     assert enrichment.candidates.EXPECT_UNKNOWN == event_constants.RETROACTIVE_READ_UNKNOWN
 

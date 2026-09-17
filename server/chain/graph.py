@@ -374,7 +374,7 @@ def _quarter(name, load, counts, unread, catalogue):
 def chain_graph(db):
     """The four declarations on one picture. Reads only; decides nothing."""
     from chain import ingestion_worker as worker
-    import enrichment.config
+    from chain import enrichment
     from chain import legacy_join_declaration as vjc
     from database import crud
 

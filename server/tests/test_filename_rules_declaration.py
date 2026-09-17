@@ -194,7 +194,7 @@ def test_two_distinct_values_are_refused_as_ambiguous_reference(tmp_path):
     assert issues[0]["reason"] == REASON_AMBIGUOUS
     assert issues[0]["values"] == ["LOT-A1", "LOT-B2"]
     # One vocabulary for one state, shared with the enrichment classification.
-    from enrichment.analysis import CLS_AMBIGUOUS
+    from chain.enrichment.analysis import CLS_AMBIGUOUS
     assert REASON_AMBIGUOUS == CLS_AMBIGUOUS
 
 

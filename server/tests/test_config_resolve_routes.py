@@ -14,8 +14,8 @@ import json
 import pytest
 
 import config_resolve_report as crr
-import enrichment.candidates
-import enrichment.config
+from chain import enrichment
+from chain import enrichment
 from database import crud, models, schemas
 
 RT_TABLES = {

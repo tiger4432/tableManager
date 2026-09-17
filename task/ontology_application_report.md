@@ -30543,3 +30543,44 @@ _quarter(...)   counts[name] = len(rules)
 2순위    조용히 «빠진다»      (참조뷰 목록이 비는 모양)
 ```
 확신도 «구조» — 그림을 «안 열었습니다». 셋 다 커밋된 코드 경로에서만 읽었습니다.
+
+---
+
+> # 🔴🔴🔴 **[09-17 19:48 응용] 긴급 — 제 보고 커밋 `b2eb05dd` 가 «구현자의 스테이지된 이름 바꾸기»를 같이 싣고 푸시했습니다. main 이 지금 «깨져 있을» 것입니다**
+> **제 잘못입니다. `git add` 에는 경로를 붙였고 `git commit` 에는 «안 붙였습니다».**
+
+**무엇이 실렸나** (`b2eb05dd`, 파일 9 — 그중 제 것은 «보고서 하나»입니다)
+```
+server/{ => chain}/enrichment/__init__.py · analysis.py · backfill.py · candidates.py · config.py · mapper.py
+server/{ => chain}/keyset_scan.py · session_contract.py
+task/ontology_application_report.md                      <- 제가 «의도한» 유일한 파일
+=> 내용 변경은 «0 줄»입니다. 순수 이름 바꾸기(rename)이고 «잃은 것은 없습니다»
+```
+
+**지금 main 의 상태 — 제가 잰 것**
+```
+새 자리    server/chain/enrichment/{__init__,analysis,backfill,candidates,config,mapper}.py  «있습니다»
+옛 이름을 아직 «부르는» 파일 (server/chain 밖, origin/main)
+   enrichment.config     40      enrichment.candidates  25      enrichment.backfill  8
+   enrichment.mapper      6      keyset_scan             2      session_contract     3
+=> 임포트를 고치는 «나머지 절반»이 이 커밋에 «없습니다». 즉 지금 main 은 그 경로에서 ImportError 입니다
+⚠️ 제가 «서버를 띄워 확인하지는 않았습니다» — 기동은 총괄 자리입니다. 위는 «경로»로만 잰 것입니다
+```
+
+**제가 하지 «않은» 것, 그리고 안 하는 이유**
+```
+⛔ 되돌리지 않았습니다   구현자 트리에 `M server/chain/enrichment/__init__.py` 가 «떠 있습니다» —
+                      지금 revert 하면 그분이 작업 중인 배치와 «싸웁니다».
+                      상설 「남의 미커밋 작업 위에서 stash/rebase 금지」와 같은 자리로 봅니다
+⛔ 임포트를 제가 고치지 않았습니다   그건 그 라운드의 «나머지 절반»이고 제 레인이 아닙니다
+```
+📮 **구현자께**: 이름 바꾸기는 «이미 공개»됐습니다(`b2eb05dd`). 다시 `git mv` 하지 마시고,
+   임포트 고침을 그 위에 얹어 주십시오. 커밋 메시지가 제 보고서 제목으로 붙어 있는 것은 제 잘못입니다.
+📮 **총괄께**: main 이 red 인 동안 재기동을 미루실지 판정해 주십시오.
+
+**왜 났나 — 제 기억에 «그대로» 있는 실패입니다**
+```
+`git add task/…` (경로 있음)  +  `git commit -F-` (경로 «없음»)
+=> 남이 스테이지한 것이 «전부» 들어갑니다. 기억 파일: 「경로 없는 commit 이 add 규율을 무력화한다」
+고침   앞으로 «모든» 커밋에 경로를 붙입니다: `git commit <경로> -F-`
+```

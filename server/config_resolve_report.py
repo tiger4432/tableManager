@@ -409,7 +409,7 @@ def _view_report(rule: dict, view: dict) -> dict:
 
 
 def _rule_fields(rule: dict, views: list, knob_on: bool, raw_knob, max_keys: int) -> dict:
-    import enrichment.candidates as ec
+    from chain.enrichment import candidates as ec
 
     return {
         "auto_confirm": knob_on,
@@ -435,8 +435,8 @@ def _resolve_enrichment() -> dict:
     드라이런 숫자(「몇 건이 사람 없이 확정 가능한가」)는 큐 전체를 걷는 분석 질의라
     여기 있지 않다 — `GET /admin/enrichment/auto-confirm/dry-run`이 별도로 답한다.
     """
-    import enrichment.candidates as ec
-    import enrichment.config
+    from chain.enrichment import candidates as ec
+    from chain import enrichment
     from database import crud
 
     rules_path = enrichment.config.ENRICHMENT_RULES_PATH

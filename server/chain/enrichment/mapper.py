@@ -222,7 +222,7 @@ def map_enrichment_dedup(db, payloads, rule=None):
     # 병합**된다(`enrichment_config.partial_key_identity_supported` 참조 — 실측). 담지
     # 못하는 계약에서는 부분 키 행을 만들지 않고 **이름 붙여 센다**. 조용한 덮어쓰기
     # 대신 고칠 수 있는 config 한 줄을 가리키는 쪽을 고른다.
-    import enrichment.config
+    from chain import enrichment
 
     partial_ok = enrichment.config.partial_key_identity_supported(decision_key, derived_cfg)
 

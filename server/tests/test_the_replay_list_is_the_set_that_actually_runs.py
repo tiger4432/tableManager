@@ -24,7 +24,7 @@ if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
 from chain import replay, rule_shape                                # noqa: E402
-from enrichment import config as enrichment_config                 # noqa: E402
+from chain.enrichment import config as enrichment_config                 # noqa: E402
 
 LEFT = "s250_left"
 RIGHT = "s250_right"

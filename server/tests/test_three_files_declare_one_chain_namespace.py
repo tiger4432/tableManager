@@ -54,7 +54,7 @@ def load(tmp_path, monkeypatch):
     every `[ChainRules]` line it printed."""
     import mapper_sdk
     from database import crud
-    import enrichment.config as ec
+    from chain.enrichment import config as ec
     from chain import legacy_join_declaration as vjc
 
     monkeypatch.setitem(crud.TABLE_CONFIG, SRC, dict(TABLE))

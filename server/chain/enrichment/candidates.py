@@ -347,7 +347,7 @@ def _truncation_error(label, reason, cap_key, cap_value, cap_declared, read, dis
     `limit` clipped it, raised the one they could reach (the CLI key budget,
     which touches no read), and nothing changed.
     """
-    from enrichment import config as _enrichment_config
+    from chain.enrichment import config as _enrichment_config
 
     return {
         "label": label,
@@ -379,7 +379,7 @@ def _diagnose_probe_failure(db, view: dict, column: str, key_values: dict) -> st
     view's own row limit) and ask whether the column is there. The happy path
     still costs exactly one query.
     """
-    from enrichment import config as _enrichment_config
+    from chain.enrichment import config as _enrichment_config
     try:
         # `follow_up=True`: the caller has ALREADY reported the probe's driver
         # error. If this read fails too it fails for the same root cause reached
@@ -435,7 +435,7 @@ def resolve_target_candidate(db, rule: dict, key_values: dict, target_field: str
     from the work-unit boundary so every key in one sweep is measured against the
     same ceilings; loaded here only when a caller has none.
     """
-    from enrichment import config as _enrichment_config
+    from chain.enrichment import config as _enrichment_config
     from database import crud
 
     caps = caps if caps is not None else _enrichment_config.load_read_caps()
@@ -647,7 +647,7 @@ def confirm_keys(db, rule: dict, keyed_rows: list, apply: bool = False,
                 so that work reported as a thousand rows still queued.
     """
     from database import crud, schemas
-    from enrichment import config as _enrichment_config
+    from chain.enrichment import config as _enrichment_config
 
     caps = caps if caps is not None else _enrichment_config.load_read_caps()
     st = stats if stats is not None else {}
@@ -846,7 +846,7 @@ class AutoConfirmCollector:
         if not global_auto_confirm_enabled(settings):
             return
         if rules is None:
-            from enrichment import config as _enrichment_config
+            from chain.enrichment import config as _enrichment_config
             from database import crud
             rules = _enrichment_config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
         for r in rules or []:
@@ -862,7 +862,7 @@ class AutoConfirmCollector:
                     "DECLARED candidate column - it never guesses one.",
                     r.get("name"), RULE_KNOB)
                 continue
-            from enrichment import config as _enrichment_config
+            from chain.enrichment import config as _enrichment_config
             self.rule = r
             self._max_keys = max_keys_per_unit(settings)
             self._caps = _enrichment_config.load_read_caps(settings)
@@ -878,7 +878,7 @@ class AutoConfirmCollector:
         """
         if not self.active:
             return
-        from enrichment import config as _enrichment_config
+        from chain.enrichment import config as _enrichment_config
         from database import crud
 
         decision_key = self.rule["decision_key"]
@@ -930,7 +930,7 @@ class AutoConfirmCollector:
         """
         if not self.active or not row_ids:
             return
-        from enrichment import config as _enrichment_config
+        from chain.enrichment import config as _enrichment_config
         from database import crud, models
 
         model = models.DYNAMIC_TABLES.get(self.derived_table)
@@ -1010,6 +1010,6 @@ class AutoConfirmCollector:
         # traceback again. Without the clear, a view that broke this morning
         # would log once and stay silent all day - suppression that hides how
         # often something happened is how a broken view looks like a one-off.
-        from enrichment import config as _enrichment_config
+        from chain.enrichment import config as _enrichment_config
         _enrichment_config.drain_driver_error_incidents()
         return stats

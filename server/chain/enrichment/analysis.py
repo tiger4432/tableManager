@@ -74,7 +74,7 @@ THE QUEUE PREDICATE IS NOT REDEFINED HERE
 import logging
 
 import event_constants
-import keyset_scan
+from chain import keyset_scan
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +176,7 @@ def _queue_condition(table_model, rule: dict, resolved: bool = False,
     per-target `blank` specs, so a partly filled row was outside the queue on
     every surface at once. `resolved=True` is meaningful for SCOPE_KEYED only.
     """
-    import enrichment.config
+    from chain import enrichment
 
     if resolved and scope == SCOPE_KEYED:
         named = enrichment.config.QUEUE_SCOPE_RESOLVED
@@ -396,7 +396,7 @@ def classify_queue(db, rule: dict, max_keys: int = 200, limit: int = None,
     # specs; the answer wanted here is the same one it always gave. Calling the same
     # function with a count spec keeps the blank-key partitioning in ONE place - the
     # comment above already says why a second copy of it goes wrong.
-    from enrichment.mapper import _aggregate_affected_keys
+    from chain.enrichment.mapper import _aggregate_affected_keys
 
     _ROW_TOTAL = "__rows__"
     totals = _aggregate_affected_keys(
@@ -406,8 +406,8 @@ def classify_queue(db, rule: dict, max_keys: int = 200, limit: int = None,
     presence = {t: _source_target_presence(db, rule, t, key_raw) for t in same_name_targets}
 
     # 2) Per row: cheap classes first, reference probe only for what survives.
-    import enrichment.candidates
-    import enrichment.config
+    from chain import enrichment
+    from chain import enrichment
     caps = caps if caps is not None else enrichment.config.load_read_caps()
     # Same shape `confirm_keys` produces, so `classify` and `confirm` report a
     # clipped read with the same words and the same repair.
@@ -569,7 +569,7 @@ def analyze_promotions(db, rule: dict, min_support: int = 3, limit: int = None,
     """
     from itertools import combinations
     from database import crud
-    import enrichment.config
+    from chain import enrichment
 
     decision_key = list(rule["decision_key"])
     target_fields = list(rule["target_fields"])
@@ -710,8 +710,8 @@ def run_auto_confirm_sweep(db, rule: dict, apply: bool = False, limit: int = Non
     WRITE with another and never be told the two surfaces disagreed. Whatever the
     caller declares here is what both the probe and the refusal report.
     """
-    import enrichment.candidates
-    import enrichment.config
+    from chain import enrichment
+    from chain import enrichment
     from database import crud
 
     caps = caps if caps is not None else enrichment.config.load_read_caps()
@@ -757,7 +757,7 @@ def run_auto_confirm_sweep(db, rule: dict, apply: bool = False, limit: int = Non
         stats = enrichment.candidates.confirm_keys(
             db, rule, keyed, apply=True, tx_prefix="enrichment_sweep", caps=caps)
     else:
-        import session_contract
+        from chain import session_contract
 
         stats = session_contract.discarding(
             db, "enrichment_sweep",

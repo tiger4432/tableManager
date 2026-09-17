@@ -30,7 +30,7 @@ if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
 import operator_line                                                  # noqa: E402
-import session_contract                                               # noqa: E402
+from chain import session_contract                                               # noqa: E402
 
 #: The one seat allowed to say it, plus the file that defines the word.
 AUTHOR = "session_contract.py"

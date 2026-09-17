@@ -458,7 +458,7 @@ def retro_enrich_env(db_session, tmp_path, monkeypatch):
     `test_backfill_enrichment.py`'s `bkfl_test_*` so the two files cannot share
     state through the module-level `DYNAMIC_TABLES` registry.
     """
-    import enrichment.config
+    from chain import enrichment
 
     models.init_dynamic_models(ENRICH_TABLES)
     saved = dict(crud.TABLE_CONFIG)
@@ -505,7 +505,7 @@ def _backfill_layer_rows(db):
     the file's closing note generalises it: the displayed value is not a witness
     for a write, only the layer is.
     """
-    import enrichment.backfill
+    from chain import enrichment
 
     return db.query(models.CellSource).filter(
         models.CellSource.table_name == "retro_enrich_derived",
@@ -612,7 +612,7 @@ class TestTheEnrichmentBackfillRouteIsReachable:
         stayed unbounded - which is the same request-path cost the sample was
         introduced to avoid.
         """
-        import enrichment.backfill
+        from chain import enrichment
 
         def _refuse(*a, **k):
             raise AssertionError(
@@ -710,7 +710,7 @@ class TestTheEnrichmentBackfillRouteIsReachable:
         admin button must not change that - the button is a new caller, not a new
         privilege.
         """
-        import enrichment.backfill
+        from chain import enrichment
 
         db = retro_enrich_env
         _seed_enrich_source(db, [{"equipment": "EQP1", "event_time": "T1",
@@ -1214,8 +1214,8 @@ def test_every_operation_that_CLAIMS_it_can_be_cancelled_actually_passes_the_hoo
         return fake
 
     from chain import replay
-    from enrichment import analysis
-    import enrichment.backfill
+    from chain.enrichment import analysis
+    from chain import enrichment
     from ledger import backfill as ledger_backfill
 
     control = retroactive.RunControl(

@@ -28,7 +28,7 @@ SERVER_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
-import session_contract                                               # noqa: E402
+from chain import session_contract                                               # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -141,8 +141,8 @@ def test_the_sweep_no_longer_rolls_back_the_session_it_was_handed(monkeypatch):
     happens to the caller's work」 and the real one needs a populated catalogue. The write
     it makes is undone by `discarding`, which the second assertion pins.
     """
-    from enrichment import analysis
-    import enrichment.candidates
+    from chain.enrichment import analysis
+    from chain import enrichment
 
     class Session:
         def __init__(self):

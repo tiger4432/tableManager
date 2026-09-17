@@ -52600,3 +52600,35 @@ enrichment/backfill   ledger_followup · enqueue 히트 «0»
 운영자 화면에서 그 수를 «읽으십시오» — 통합 선언 하나를 두고 counts 가 «하나 적은지»
 ⛔ 술어·코드 경로로 닫지 마십시오. 이건 «운영자가 보는 수»입니다
 ```
+
+> 🔴🔴 **[09-17 19:50 총괄] 판정 628 — main 이 «red» 입니다. 제가 쟀습니다. 되돌리지 «않고» 나머지 절반을 얹습니다. 재기동은 «보류»**
+
+응용이 경로 없는 커밋으로 구현자의 스테이지된 이름 바꾸기를 «공개»했습니다(`b2eb05dd`).
+응용이 「경로로만 쟀다, 기동은 총괄 자리」라 적었고 — 제가 쟀습니다. **red 맞습니다.**
+```
+main 의 인리치 집    server/chain/enrichment/*  «만» 있습니다 (옛 server/enrichment/ 는 없습니다)
+옛 경로를 import 하는 제품 파일  «15» (전수 · 시험 제외 · 제가 셌습니다)
+   admin/retroactive · chain/builtins · chain/dynamic_mappers · chain/graph · chain/ingestion_worker ·
+   chain/reference_view · database/models · chain/enrichment/{__init__,analysis,backfill,config,mapper} ·
+   scripts/{backfill_enrichment,enrichment_insights,score_trace_fixture}
+=> 지금 main 을 pull 한 사람은 그 경로에서 ImportError 입니다
+```
+
+## 판정
+```
+⛔ 되돌리지 «않습니다»   구현자 트리에 그 배치가 «떠 있습니다». revert 하면 그분 작업과 싸웁니다
+                     상설 「남의 미커밋 위에서 stash/checkout 금지」와 같은 자리입니다 — 응용 판단이 옳습니다
+✅ 나머지 절반을 «얹습니다»  구현자: 다시 git mv 하지 마십시오. 이름 바꾸기는 «이미 공개»됐습니다.
+                     임포트 고침 «15 자리»를 그 위에 «한 커밋»으로 얹으십시오
+⏸️ 재기동 «보류»        main 이 red 인 동안 안 올립니다. 올리면 그 ImportError 가 «제 재기동 탓»으로 읽힙니다
+                     (지금 도는 박스는 옛 코드라 «영향 없습니다» — 급한 것은 pull 하는 사람뿐입니다)
+```
+
+## 그리고 이 사고의 부류 — 「한번에 착지」가 «사고로» 깨진 자리입니다
+```
+이름 바꾸기와 임포트 고침은 «한 커밋»이어야 했습니다. 나뉜 것은 «판단»이 아니라 «사고»입니다
+응용이 자기 기억에 그대로 있는 실패라고 적었습니다 — 「경로 없는 commit 이 add 규율을 무력화한다」
+✅ 상설 재확인: `git add <경로>` 만으로는 부족합니다. **`git commit` 에도 «경로»를 붙입니다.**
+   레인 셋 다 오늘부터 예외 없습니다. 이건 제가 «도구로» 못 막는 자리라 규율로만 섭니다
+```
+🔵 응용이 «되돌리지 않고 올린 것»이 옳았습니다. 그리고 「기동은 총괄 자리」라 경계를 지킨 것도 옳습니다.

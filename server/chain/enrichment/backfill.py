@@ -85,7 +85,7 @@ def load_rule(rule_name: str, known_tables: dict, force_disabled: bool = False) 
     `validate_enrichment_rules` swallows rejection reasons into log warnings,
     while this path must fail loudly WITH the loader's reason.
     """
-    import enrichment.config
+    from chain import enrichment
 
     path = enrichment.config.ENRICHMENT_RULES_PATH
     if not os.path.exists(path):
@@ -130,7 +130,7 @@ def _load_existing_business_keys(db, derived_model) -> set:
     deduplicated side, so its cardinality is the number of decision-key
     identities, not the source row count.
     """
-    import keyset_scan
+    from chain import keyset_scan
 
     existing = set()
     for page in keyset_scan.iter_pages(db, derived_model,
@@ -261,8 +261,8 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
       new meaning.
     """
     from database import crud, models, schemas
-    from enrichment.mapper import map_enrichment_dedup
-    import enrichment.config
+    from chain.enrichment.mapper import map_enrichment_dedup
+    from chain import enrichment
 
     if limit is not None and limit <= 0:
         raise BackfillRefused(f"--limit must be a positive integer (got {limit})")
@@ -353,7 +353,7 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
         "existing_lookup": existing_keys.kind,
     }
 
-    import keyset_scan
+    from chain import keyset_scan
 
     combos_seen = set()
     partial_key_bks = set()  # identities whose decision key is only partly present

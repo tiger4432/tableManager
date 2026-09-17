@@ -116,7 +116,7 @@ sys.path.insert(0, os.environ["PROBE_SERVER_DIR"])
 import paths
 from database import crud
 import map_overlay, bonding_plan, transfer_plan
-import enrichment.config
+from chain import enrichment
 from chain import ingestion_worker
 from utils import auto_update_control as auc
 print("@@" + json.dumps({

@@ -46,7 +46,7 @@ def _graph(monkeypatch, loader):
     🔴 ONE AXIS AT A TIME. Every other quarter answers the same way in all three cases, so a
     difference in the output can only have come from the loader that was varied.
     """
-    import enrichment.config
+    from chain import enrichment
     from chain import legacy_join_declaration as vjc
     from database import crud
 

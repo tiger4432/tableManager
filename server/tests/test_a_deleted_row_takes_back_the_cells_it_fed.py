@@ -180,7 +180,7 @@ def test_a_kind_that_cannot_be_reverted_says_so_by_name():
     the note's NULL cannot carry 「이 종류는 못 한다」 because NULL already means 「stamped
     before this column existed」. Two facts under one spelling is the defect this whole round
     is about, so the seat says the second one out loud."""
-    import enrichment.config
+    from chain import enrichment
 
     said = rule_run.retraction_refusal(
         {"name": "sweep", "mapper": enrichment.config.AUTO_CONFIRM_MAPPER})

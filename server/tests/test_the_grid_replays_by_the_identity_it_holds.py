@@ -61,7 +61,7 @@ def fixture_selection(monkeypatch):
         seen["condition"] = kwargs.get("condition")
         raise _Stop()
 
-    import keyset_scan
+    from chain import keyset_scan
 
     monkeypatch.setattr(keyset_scan, "iter_pages", fake_iter_pages)
     monkeypatch.setattr(keyset_scan, "current_max_row_id", lambda *a, **k: 1)

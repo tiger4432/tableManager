@@ -446,7 +446,7 @@ def decide_rules(internal: dict, known_tables: dict = None) -> tuple:
     here. What moves is where the declaration may be written, and the proof that the two
     writings agree is that they reach one expander, not two.
     """
-    from enrichment import config as enrichment_config
+    from chain.enrichment import config as enrichment_config
 
     derive = internal.get("derive") or {}
     if derive.get("kind") != "decide":

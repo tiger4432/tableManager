@@ -418,7 +418,7 @@ def declared_rule(monkeypatch):
     `crud.TABLE_CONFIG` with a SQLite-shaped fixture, so the real rule is not loadable here.
     Serving the declaration from the fixture keeps these tests about the ROUTE - its
     validation, its refusals, its response - rather than about one site's config file."""
-    import enrichment.config
+    from chain import enrichment
     monkeypatch.setattr(enrichment.config, "load_enrichment_rules",
                         lambda **kw: [RULE])
     return RULE
@@ -476,7 +476,7 @@ def test_a_second_confirmation_through_the_route_is_version_two(client, declared
 def other_declared_rule(monkeypatch):
     """The rule whose target fields are not the two storage columns - the defect axis, served
     through the route rather than only the module."""
-    import enrichment.config
+    from chain import enrichment
     monkeypatch.setattr(enrichment.config, "load_enrichment_rules",
                         lambda **kw: [RULE, OTHER_RULE])
     return OTHER_RULE
