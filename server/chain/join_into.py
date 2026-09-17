@@ -2,8 +2,12 @@
 """`builtin:join_into` — 통합 선언의 `join` 종류가 «쓰는» 조인 (S-237, 소유자 판정 셋).
 
 🔴 WHY THE NAME IS `join_into` AND NOT `builtin:join`. That id was taken: the READ-TIME join's
-loader registered it, and `register_builtin` refuses a second claimant by name (measured — the
-gate scores that collision). The two were told apart by the cell the internal rule already
+loader registered it, and the registry refused a second claimant by name (measured — the gate
+scores that collision). ⚠️ [판정 591] THAT SENTENCE NAMED `register_builtin` IN THE PRESENT
+TENSE and the function was deleted on 2026-09-17; the PROPERTY moved rather than died, and
+`mapper_sdk.register` raises `MapperNameClaimedTwice` today (판정 409, confirmed in 584). The
+class of mistake is 「a ruling indexed by its mechanism dies with it」 - the mechanism was
+renamed and the sentence went with it. The two were told apart by the cell the internal rule already
 used: the read-time one answered at `into.read`, this one writes `into.table`. So `join_into`
 names the axis rather than the round it arrived in — 「unified」 stops distinguishing anything
 the day enrich and mapper move over too.

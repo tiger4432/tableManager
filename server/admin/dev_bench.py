@@ -46,7 +46,11 @@ def read_sample(path):
 
 
 def as_payloads(rows):
-    """Sample rows in the shape the worker hands a mapper.
+    """Sample rows in the payload shape the worker BUILDS.
+
+    ⚠️ [판정 591] THE SHAPE IS PRODUCTION'S; THE HANDING IS NOT. This said 「the shape the
+    worker hands a mapper」 and the three ways the bench's handing differs are listed on
+    `input_for_mapper`, which is the seat that promises fidelity.
 
     🔴 THE ENVELOPE IS `{"row_id": …, "data": {col: {"value": x}}}` — THE CELLS SIT UNDER
     `data`, not at the top level. `payloads_to_df`'s docstring says 「the cell shape is
@@ -286,6 +290,11 @@ def try_mapper(name, sample, *, rule=None, target_table="bench_target"):
     restore_target = _declare_bench_target(effective_rule["target_table"])
     try:
         try:
+            # ⚠️ [판정 591] THIS IS WHERE THE BENCH AND THE SEAT PART. `rule_run` fans out
+            #   on `is_batch` and folds both the payload and the answer through
+            #   `without_missing`; this line does neither. `input_for_mapper` lists all
+            #   three. Do not "fix" it here - a copy of the seat's behaviour is the thing
+            #   being removed, not added.
             out = fn(session, payloads, rule=effective_rule)
         except TypeError as exc:
             # ⚠️ A mapper that never declared `rule` is called the old way by the worker too,
@@ -397,14 +406,35 @@ def _ensure_dynamic_models():
 
 
 def input_for_mapper(table_or_sample, *, rows=None, row_ids=None, where=None):
-    """A DataFrame in EXACTLY the shape the worker hands a mapper. Reads only.
+    """A DataFrame built the way the worker BUILDS a mapper's payloads. Reads only.
 
-    🔴 IT IS THE PRODUCTION CONSTRUCTION, NOT A LOOKALIKE. A table name goes through
+    🔴 [판정 591] THE CONSTRUCTION IS PRODUCTION'S AND THE HANDING IS NOT, AND THIS
+    DOCSTRING USED TO PROMISE BOTH - 「EXACTLY the shape the worker hands a mapper」. Measured
+    2026-09-17 by the application lane and confirmed at both seats: the bench calls
+    `fn(session, payloads, rule=...)` while `chain.rule_run` wraps the same call three ways.
+    So the author gets production's FRAME and not production's CALL, and the three
+    differences are:
+        ① fan-out    the seat hands ONE payload per call unless the rule declares
+                      `is_batch`; the bench always hands the whole list
+                      (`rule_run.py` 467-469)
+        ② input     the seat passes it through `mapper_call.without_missing`, which folds
+                      missing markers (NaN, inf, the parser's sentinels) to None; the bench
+                      does not, so a sample can carry a marker production never delivers
+        ③ answer    the seat folds the mapper's RESULT the same way; the bench reports the
+                      result raw (`rule_run.py` 473-476)
+    ⚠️ NOT REPAIRED HERE ON PURPOSE. Calling `without_missing` from the bench would be the
+    seat's behaviour written down a SECOND time, which is the defect 562 spent a day
+    removing. The repair is the bench going THROUGH the seat, and whether it wants the seat's
+    logging, activity registration and refusals with it is the question that has to be
+    answered first.
+
+    🔴 THE CONSTRUCTION, THOUGH, IS NOT A LOOKALIKE. A table name goes through
     `outbox_expand._data_columns` and `_synthesize_payload` — the same two functions the
     worker uses when it reads a collapsed event's rows back into payloads — and then through
     `mapper_sdk.payloads_to_df`. A bench that assembled its own envelope would hand the
     author a frame production never produces, and the mapper written against it would fail on
-    the first real batch. (`_synthesize_payload` is underscored and called anyway; that is
+    the first real batch. That reasoning is why the construction is shared, and it is also
+    why ①②③ above are worth writing down rather than leaving to be rediscovered. (`_synthesize_payload` is underscored and called anyway; that is
     the point. Spelling it again here is the defect this argument exists to avoid.)
 
     ⚠️ A FILE PATH IS ACCEPTED TOO and goes through `read_sample` + `as_payloads`, so the
