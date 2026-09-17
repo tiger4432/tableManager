@@ -632,6 +632,13 @@ def chain_rule_raw_view(name: str = None) -> dict:
     #   `''`, which `is not None` reads as A NAME - so the route looked for a rule called
     #   `''`, found nothing, and answered as if one had been asked for. The standing rule
     #   names the ONE spelling (`is_blank_value`) and forbids a second predicate here.
+    #
+    # ⚠️ [판정 522] AND IT IS NOT WHY 「추가」 OPENED THE OLD FORM. That was an old bundle
+    #   in the reviewer's browser; `admin.js` sends no query at all for a blank name
+    #   (`name ? '?name=' + … : ''`), so nothing reaches this line with `''` today. What
+    #   is repaired here is the standing rule being broken at four seats - a door that
+    #   was wrong whether or not anyone walked through it. Do not read this as 「that
+    #   symptom is already fixed」 if it comes back: this line was never on its path.
     from database import crud
 
     if not crud.is_blank_value(name):
