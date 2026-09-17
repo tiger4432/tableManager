@@ -4063,7 +4063,9 @@ def retry_failed_outbox_events(event_id: int = None, transaction_id: str = None,
     
     if event_id is not None:
         failed_events = [e for e in failed_events if e.id == event_id]
-    elif transaction_id is not None:
+    # 🔴 [판정 524] 「길이 0 인 문자열은 NULL 이다」 — 인자 «없음»과 «빈 값»이 같은 답을 냅니다.
+    #   빈 값이면 «전부»가 되어야 하는데, 종전엔 `''` 와 같은 건만 골라 «0 건 재시도»였습니다.
+    elif not crud.is_blank_value(transaction_id):
         failed_events = [
             e for e in failed_events 
             if (get_payload_dict(e).get("transaction_id") == transaction_id) or
@@ -4760,7 +4762,9 @@ def get_bonding_plan_core_summary(
     """
     config = bonding_plan_module.load_bonding_plan_config()
     rects = None
-    if region is not None:
+    # 🔴 [판정 524] 「길이 0 인 문자열은 NULL 이다」 — 인자 «없음»과 «빈 값»이 같은 답을 냅니다.
+    #   빈 값은 «지역 없음»입니다. 종전엔 `parse_region('')` 이 터져 400 을 돌려줌습니다.
+    if not crud.is_blank_value(region):
         try:
             rects = bonding_plan_module.parse_region(region)
         except ValueError as e:
@@ -5144,11 +5148,14 @@ def get_map_alignment_references(
     `not_offered`에 `map_id` · `reason_code` · 사람이 읽는 `reason` · `cell_count`를 달고
     나간다. 이유 없는 「없음」이 제품 소유자를 수리가 아니라 사람에게 보냈다.
     """
-    if table is not None:
+    # ⚠️ [판정 524] THE FOLD WAS ALREADY RIGHT HERE, AND SPELLED BY HAND — `strip()` then
+    #   `if not table`. Behaviour is unchanged; what changes is that it is the SAME function
+    #   as every other seat, which is what 「한 자리마다 따로 판단하지 않고 «한 함수»가 접는다」 asks.
+    if crud.is_blank_value(table):
+        table = None
+    else:
         table = table.strip()
-        if not table:
-            table = None
-        elif table not in (crud.TABLE_CONFIG or {}):
+        if table not in (crud.TABLE_CONFIG or {}):
             raise HTTPException(status_code=404, detail=f"Table '{table}' not found")
     try:
         cap = max(1, min(int(cap), map_alignment.MAX_REFERENCE_CANDIDATES))
@@ -5317,7 +5324,9 @@ def get_transfer_plan_source_summary(
                     status_code=400,
                     detail="scope=lot with a slot is ambiguous — omit slot for the whole lot")
             return transfer_plan_module.get_lot_bin_summary(db, config, stage, lot, bins=bins)
-        if slot is None:
+        # 🔴 [판정 524] 빈 값은 «안 준 것»입니다. 종전엔 `?slot=` 이 이 관문을 지나
+        #   «빈 슬롯»을 조회했고, 그러면 거절이 아니라 「없다」가 나옵니다.
+        if crud.is_blank_value(slot):
             raise HTTPException(status_code=400, detail="slot is required when scope=slot")
         return transfer_plan_module.get_stage_source_summary(
             db, config, stage, lot, slot, ref_table=ref_table, map_key=map_key, bins=bins)
