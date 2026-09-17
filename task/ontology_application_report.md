@@ -28126,3 +28126,76 @@ docs/guide/config/virtual_join_rules.md               materialize 언급 22
    구현자 말대로 ① 을 «안 닫습니다» — 소비자가 사라지는 게 아니라 이사합니다.
 ⚠️ 제가 «안 잰» 것: (가)의 「42 줄 + 맵 메타 검증 넷」 크기는 구현자 수이고 제가 다시 세지 «않았습니다».
    제 확인은 위 두 주장에 «한정»됩니다.
+
+> 🔴 **[09-17 16:33 응용] Q-129 — 587 이 다음 라운드 «첫 항목»으로 잡은 그 369 줄 안에, «지난 반복이 남긴 규칙»을 읽는 자리가 있습니다**
+> **받는 이: 총괄 — 그 덩어리를 «함수로 빼기 전»에. ⛔ 제가 고치지 않습니다**
+
+## ⓪ 587 의 수는 제가 «따로» 재서 같습니다
+```
+chain/ingestion_worker.py:1698  `if table_updates or map_metadata_updates or scoped_batches:`
+                         :2066  그 if 의 마지막 줄 (finally 끝)      -> 2066-1698+1 = «369»
+                         :2067  `return True, None, broadcast_messages` (함수 끝, 다음 def 는 :2070)
+```
+
+## ① 그런데 「지역 상태 «다섯»」이 «여덟»입니다 — 그리고 빠진 셋 중 하나가 오늘 «틀린 값»입니다
+계기: AST 로 그 함수(`_process_chain_transaction_group_sync` :1425~:2067)의 Name 노드를 세고,
+1698~2066 에서 «읽히는데» 1698 «전»에 묶인 이름만 남겼습니다.
+```
+넘겨야 하는 것 (블록 안에서 다시 안 묶임)
+  table_updates · map_metadata_updates · scoped_batches · table_contributors
+  broadcast_messages · rules_by_target · incoming_depth · rule          <- 여덟
+  (db · tx_id 는 함수 «인자»라 따로)
+뺀 것  r(:1847) · updates(:1732)      <- 컴프리헨션 «타깃». 제 계기의 오탐이라 뺐습니다
+      target_table(:1739 재바인드) · error_msg(:2053 재바인드)  <- 블록의 «자기» 이름
+```
+🔴 구현자 목록에 없던 셋은 `rules_by_target` · `incoming_depth` · **`rule`** 입니다.
+
+## ② 결함 — `rule` 은 그 덩어리에서 «루프가 끝나고 남은 값»입니다
+```
+자리    chain/ingestion_worker.py:1877  `(rule or {}).get("slow_warn_ms")`
+                                 :1878  `(rule or {}).get("name") or "<unnamed rule>"`
+유일한 바인딩   :1594 `for rule in matched_rules:`  — 그 루프는 «:1695 에서 끝납니다»
+쓰기 덩어리     :1698 부터    -> 루프 «밖». 그 위 :1585 `for table_name in trigger_tables_in_order(...)`
+                              까지 끝난 뒤라, 남은 값은 「마지막 트리거 표의 마지막 규칙」입니다
+:1875 주석      「선언을 읽는 것은 «규칙을 쥔 여기»다」   <- 쥐고 있는 것은 «마지막 규칙»입니다
+```
+### 무엇이 참이어야 이 일이 나나
+한 트랜잭션 그룹에서 규칙이 «둘 이상» 매치되고(`matched_rules` :1586 · 트리거 표도 여럿일 수 있음),
+그중 «마지막이 아닌» 규칙이 retract 봉투를 냈을 때. 규칙이 하나면 남은 값이 «맞는 값»이라 안 보입니다.
+### 실패 시나리오
+```
+규칙 A (allow_retraction · slow_warn_ms 선언)  -> :1670 에서 scoped_batches 에 실림
+루프가 규칙 B 로 «끝남»
+:1877 이 B 의 slow_warn_ms 를 읽음
+   B 가 안 적었으면  -> None -> event_constants.slow_warn_ms 가 「이 경로는 «안 잰다»」
+                      = 세 상태의 «첫째»(응답에 그 칸이 «없음»). A 의 선언이 «안 닿습니다»
+   B 가 0·문자열이면 -> 경고 한 줄이 «B 의 이름»을 댑니다. 고칠 자리는 A 인데 운영자는 B 로 갑니다
+```
+### 그리고 이건 «문 가르기»입니다 — 형제는 옳습니다
+```
+docs/guide/config/chain_rules.md:92   「**이 규칙의** 맵퍼 실행·철회가 «느리다»고 경고할 문턱」
+chain/replay.py:815~817               같은 두 줄. 그 자리의 `rule` 은 `_apply_replay_batch` 의
+                                      «인자»입니다(def :765) -> 배치마다 «자기» 규칙
+chain/ingestion_worker.py:1877        루프 잔여
+=> 같은 선언, 두 경로, 다른 답
+```
+### 재료는 «있었는데 버려집니다»
+```
+:1670  `normalize_scoped_batch(requested, rule, target_table)`   <- «맞는 규칙»을 받습니다
+dt_map_derivation.py:1002  그런데 돌려주는 것은 4-튜플 `(target_table, updates, scope, retract)`
+                           -> 규칙이 «안 남습니다». :1738 의 언팩도 넷입니다
+```
+
+## ③ 그래서 587 의 일에 붙는 것 «한 줄»
+```
+그 덩어리를 함수로 뺄 때 `rule` 을 «인자 하나»로 넘기면 오늘의 잘못된 값이 «계약»이 됩니다.
+넘길 것은 «배치마다의 규칙»이고, 그것을 만들 자리는 이미 :1670 입니다
+⛔ 제가 고르지 않습니다 — 크기가 바뀌므로 총괄이 받으실 자리입니다
+```
+
+## ④ 확신도
+```
+구조     읽고 AST 로 스코프를 쟀습니다. 규칙 «둘»짜리 그룹을 «돌려 보지는 않았습니다»
+못 잼    운영에서 한 그룹에 규칙이 몇이나 매치되는지 — 못 셉니다
+안 쟀음  `dt_map_mapper.py.sample:252` 의 같은 두 줄은 «안 열었습니다»
+```
