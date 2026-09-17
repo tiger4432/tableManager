@@ -1591,6 +1591,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 | 시그니처 | 역할 | 라인 |
 |---|---|---|
+| 🆕 **`apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target, table_updates, map_metadata_updates, scoped_batches, table_contributors, broadcast_messages)`** | **[`2699fc38` 18:24, 판정 603·604 ㉠] 체인의 «쓰기»가 문이 됐다.** 368 줄이 `_process_chain_transaction_group_sync` 안에 지역 «열»에 물려 있어 «그룹 걸음만» 쓸 수 있었다. 🔴 `rule` 은 판정 588 의 «샌 루프 변수»이고, 인자가 되면서 «선언»은 됐지만 「이 쓰기의 주인이 누구인가」는 다음 홉이 답한다. ⚠️ `broadcast_messages` 는 «제자리 변경»(append)이라 안 돌려준다 | :1425 |
 | **`import enrichment_candidates`** | **[① 신설]** 모듈 최상단 import — 자동확정 컬렉터([§5-A](#5-a-2026-07-30-신설-서버-모듈-8종)) | ~37 |
 | `class OutboxListener` — `_ensure_connection/_reset_connection/_wait_blocking/wait(timeout)/close` | psycopg2 LISTEN 전용 커넥션 + async 대기. 🆕㉓ **[S-167] `_ensure_connection` 은 `psycopg2.connect` 로 «풀이 본 적 없는» 커넥션을 만든다** — `engine.raw_connection()` 은 «풀» 커넥션을 주고, LISTEN 이 요구하는 `set_isolation_level(0)` 이 그것을 바꾼 뒤 «autocommit 인 채로» 반납된다(실측: 다음 대여가 같은 커넥션). 그 커넥션을 쥔 세션은 BEGIN 을 안 내므로 `begin_nested()` 가 25P01. ⛔ 되돌리지 말 것 | ~100–130 |
 | **`import internal_event_client`** / `API_BASE_URL = internal_event_client.api_base_url()` | **[`23a346d`]** 세션·주소의 단일 소유자 import / **모듈 속성은 존치**(값만 위임 — 종전 리터럴 사본 3개 중 하나였다). 구 `_get_http_session`의 묘비 주석이 바로 아래 ~131–136에 있다([§0 ⑧](#0-묘비-목록--소스에-존재하지-않는-이름)) | ~127/129 |
@@ -2777,6 +2778,25 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 **테스트**: `server/tests/test_virtual_join_guard.py`(596줄). **선언 샘플**: `server/config/sample/virtual_join_rules.json.sample`(40줄, tracked — 실값 `virtual_join_rules.json`은 gitignored이므로 **구조만** 여기 적는다).
 
 ---
+
+### 🆕㉙ `server/chain/dynamic_mappers.py` — **선언이 맵퍼가 되는 자리** (2026-09-17 신설 · 286줄)
+
+> 🔴 **[`f8b4f8fe` 15:45 신설 · 판정 562~600] 종류표가 하던 일을 «제품이 짓는 맵퍼»가 한다.**
+> 소유자 정본: 「조인, 인리치 선언을 «동적으로 맵퍼 함수로» 하는 게 기술이고」.
+
+| 심볼 | 무엇인가 | 라인 |
+|---|---|---|
+| `TEMPLATES: dict` | 「맵퍼 이름 -> 그 이름으로 돌 함수」. 키는 «저장된 규칙이 이미 적고 있는 값»이라 선언에 새 낱말이 필요 없다 | :198 |
+| `_install_templates()` · `install()` | 세 이름을 묶고 `mapper_sdk.register(name, fn, params=…)` 로 등록한다. `params` 는 로더가 선언을 채점하는 «인자 목록»이라 «필수»다(판정 562) | :203~ |
+| `TEMPLATE_FACTS: dict` | 등록 줄이 «네 사실»을 같이 말하던 것을 옮겨 받은 표 — `label` · `stamps_origin` · `writes_itself` | :226~ |
+| `label(name)` · `stamps_origin(name)` · `writes_itself(name)` | 그 표를 읽는 얇은 접근자 셋 | :159 · :169 · :176 |
+| 몸통 셋 `_join` · `_auto_confirm` · `_legacy_materialized_join` | `declared:join` · `declared:decide` · `declared:virtual_join` (판정 600, `a96d4a68` — 옛 `builtin:…` 셋) | :52~ · :230~ |
+
+```
+오늘 참인 것   세 템플릿이 «전부» writes_itself: True — 즉 자기가 쓰고 페이로드를 안 돌려준다
+🔴 판정 605   그 축을 «지운다»가 판정됐다(맵퍼는 updates 만 돌려주고 좌석이 업서트 한 문으로 쓴다).
+              이 표의 `writes_itself` 와 접근자는 그 착지와 «같이» 사라질 자리다 — 아직 서 있다
+```
 
 ### 🆕㉘ `server/chain/builtins.py` (🆕 **446줄** @`6c71084f` — ~~413 @`c4b010c8`~~ — ~~334 @`2c93ae9f`~~, 332 @`b1db471a`, 177 @`dc877746`, 구 표기 171, S-189 ⓒ `1964c65a` 신설 · S-195 에서 120→171) — 합성 «한 자리» + `builtin:` 종류 표 + 🆕 «선언한 유일 키»를 세우는 껍데기(S-240)
 
