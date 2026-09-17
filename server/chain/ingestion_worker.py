@@ -1422,279 +1422,32 @@ def _group_target_tables(events_in_tx, rules):
                 targets.add(tgt)
     return targets
 
-def _process_chain_transaction_group_sync(tx_id, events, db, rules):
-    """The whole of one transaction group's work, and every line of it is BLOCKING.
+def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
+                       table_updates, map_metadata_updates, scoped_batches,
+                       table_contributors, broadcast_messages):
+    """The chain's WRITE, as a door. -> `(True, None)` or `(False, error_msg)`.
 
-    🔴 판정 193 / S-93 — THIS BODY DID NOT MOVE; ITS THREAD DID. It was written as an
-    `async def` and contained no `await` at any point, so every mapper call, every query
-    that mapper makes and the target write that follows ran ON THE EVENT LOOP. While it
-    ran, no other request could resume - including the response owed to the very user
-    whose write woke the chain.
+    🔴 [판정 603 · 604 ㉠] 소유자 v2: 「… 맵퍼 실행 -> «쓰기 문» -> 쓰기 -> 아웃박스 -> 반복」.
+    This block WAS 368 lines inside `_process_chain_transaction_group_sync`, wired to ten of
+    its locals, so the only caller that could write was the group step. The deferred step and
+    retroactive had no batch writer and dropped whatever a rule PROPOSED - measured 2026-09-17
+    as `rows_in=4 rows_out=4 written=None`, four rows proposed and four dropped. A door is what
+    lets the next hop use the same write.
 
-    Measured live 2026-09-09 by the lead (PID 38168, dt_job source, 1,000 fresh rows
-    through the real route): the PUT answered in 22.8-33.5 s, while the same code with
-    the same PostgreSQL and no chain worker answered in 1.36 s. The decisive experiment
-    was a GET issued every 3 s during the PUT: a route that normally costs 0.07 s took
-    22.76 s at t+3 and 5.94 s at t+9. So the wait was not in the writer's thread; the
-    LOOP was blocked, and the PUT's own answer was queued behind it. py-spy put 58% of
-    its samples under `execute_custom_mapper` on the loop thread.
+    ⚠️ THIS MOVE CHANGES NOTHING ELSE. Same body, same order, one caller still. The second
+    caller arrives with ㉡, and landing them apart is deliberate: this point is not a lie,
+    and a half-moved write would be one.
 
-    ⚠️ THE GRANULARITY IS ONE GROUP, AND THAT IS NOT AN ARBITRARY CHOICE. `db` is a
-    single SQLAlchemy Session, which one thread may use at a time. Groups are awaited one
-    after another in `process_pending_groups` (no gather), so exactly one worker thread
-    ever holds this session. Splitting finer would put two threads on it.
+    ⚠️ `broadcast_messages` IS MUTATED IN PLACE (`.append`), which is why it is not returned.
+    `error_msg` · `target_table` · `r` · `updates` are block-local and stay inside.
 
-    ⚠️ AND THE CONTEXTVARS STILL WORK. `asyncio.to_thread` runs this inside a COPY of the
-    caller's context, so the four tokens set below are visible to everything this calls -
-    and, better than before, the copy is discarded afterwards, so they cannot leak into
-    the loop's own context even if a `reset` were missed.
-
-    Pacing, ordering and error handling are untouched: the wrapper returns exactly what
-    this returns, including the failure tuple.
+    🔴 `rule` IS 판정 588'S LEAKED LOOP VARIABLE, AND MAKING IT AN ARGUMENT IS HOW IT STOPS
+    BEING ONE. Inside, it is read once (the retraction's `slow_warn_ms` threshold and the name
+    that goes in the warning) and it is whatever the rule loop above left standing - so a slow
+    warning could name a declaration that wrote nothing here. As a parameter the value is at
+    least DECLARED; what it SHOULD be is 「whose write is this」, and that question is answered
+    when the hop arrives (㉡), not by this move.
     """
-    # [Latency Fix #2] 커밋 이후 fire-and-forget으로 발사할 브로드캐스트 메시지 큐.
-    # 여기에는 이벤트명/페이로드 형식이 그대로(batch_row_*, batch_refresh_required) 담긴다.
-    broadcast_messages = []
-
-    # Chain-created events remain blocked by default.  Only a downstream rule that
-    # declares allow_chain_trigger may consume them; config-load cycle validation
-    # makes this opt-in graph acyclic.
-    # 🔴 여섯 원인이 «한 조용한 반환»으로 나가던 자리. 입구에서 «돌기 전»에 정해지는 둘을
-    #    이름 대어 남기면, 아래 어느 출구로 나가든 규칙마다 결과가 있다. 돌 자격이 있는
-    #    규칙은 여기서 아무것도 안 남기고 `_run_mapper` 가 자기 결과를 남긴다.
-    _record_pre_run_outcomes(rules, events)
-
-    # 🔴 THE LEDGER LISTENS HERE, ABOVE THE TRIGGER FILTER, AND ONLY DROPS A NOTE.
-    #    Its subject is the OUTBOX EVENT and not a chain rule: a person editing a cell in
-    #    the grid produces the same event, and the source that reads that table has to be
-    #    followed the same way (ruling 129 ㉤). So it sits above `valid_events`, which
-    #    both filters on `trigger_table`/`enabled` and RETURNS EARLY when nothing matches
-    #    - two decisions this step must not inherit.
-    # ⛔ AND IT TRANSLATES NOTHING. `enqueue` appends to a memory deque and returns, so
-    #    a chain transaction costs what it cost before this line existed; the paced task
-    #    beside this loop does the work (ruling 129-bis).
-    with alignment_batch_counts.stage("ledger enqueue"):
-        for event in events:
-            # `tx_id` and not `chain_tx_id`: the receipt this batch will write has to group
-            # with the table change that CAUSED it, and that change carries the original
-            # writer's transaction. `chain_tx_id` is what the chain's OWN writes take, one
-            # step further down (S-117, 판정 248).
-            ledger_followup.enqueue(
-                event.table_name,
-                ledger_followup.row_ids_of(get_payload_dict(event)),
-                event.event_type,
-                tx_id,
-                # [S-249 ⓒ] The hop this event arrived at, so the follow-up lap is a STEP of
-                # the same cascade rather than a place where the ceiling stops applying.
-                event_constants.chain_depth_of(get_payload_dict(event)))
-
-    # Named for the same reason as `mark processed`: it walks every event against every
-    # rule, so it is O(events x rules) on a thousand-row group and nothing on the line
-    # said whether that mattered.
-    with alignment_batch_counts.stage("trigger filter"):
-        valid_events = [e for e in events if e.event_type in ["CREATE", "EDIT"] and any(
-            r.get("trigger_table") == e.table_name and r.get("enabled", True)
-            and _rule_accepts_event(r, e) for r in rules)]
-    if not valid_events:
-        return True, None, broadcast_messages
-
-    # [OUTBOX-4] One materialization for the whole group, before any rule runs.
-    # A collapsed event NAMES rows; the mappers - including every user-owned one in
-    # the gitignored `server/mappers/` tree - take the nested payload shape. This is
-    # where the row is read back into that shape, the way `chain_replay._to_payloads`
-    # already does it. Per-row events pass through untouched, so a batch with no
-    # collapsed event in it issues no query here at all.
-    with alignment_batch_counts.stage("outbox read"):
-        expanded = outbox_expand.expand_events(db, valid_events)
-
-    # 🔴 ZERO LOADED IS NOT "NOTHING TO DO" - IT IS A READ THAT FAILED (S-158).
-    # A collapsed event NAMES its rows. If not one of them can be read back, the mapper
-    # is handed an empty payload, does nothing, and the group ends SUCCESS - so the event
-    # is stamped processed and those rows derive NOTHING, with no error, no retry and no
-    # quarantine anywhere. Measured 2026-09-11: four events of 1,000 rows each went that
-    # way and 3,000 rows silently failed to reach their derived table.
-    #
-    # ⚠️ AND THE OLD EXPLANATION WAS WRONG, WHICH IS WHY THIS CANNOT BE LEFT TO A LOG
-    # LINE. `expand_events` says the rows were "deleted between the write and the chain
-    # run"; measured, every one of those 3,000 rows was present in the table the whole
-    # time. Whatever the cause, the honest answer here is "could not read them", and the
-    # honest outcome is a REFUSAL that retries - not a success that loses them.
-    #
-    # ⚠️ PARTIAL IS DELIBERATELY NOT REFUSED. Some rows missing is the documented
-    # delete-between case and the warning above names it; ALL of them missing, for an
-    # event that named some, is the shape that cannot be a legitimate answer.
-    unreadable = [e for e in valid_events
-                  if event_constants.is_collapsed_payload(get_payload_dict(e))
-                  and (get_payload_dict(e).get("row_ids") or ())
-                  and not expanded.get(outbox_expand.event_key(e))]
-    if unreadable:
-        named = ", ".join(
-            "%s(%d rows)" % (getattr(e, "event_uuid", "?"),
-                             len(get_payload_dict(e).get("row_ids") or ()))
-            for e in unreadable[:3])
-        return False, (
-            ROWS_NOT_VISIBLE + ": %d collapsed event(s) named rows that could not be read "
-            "back in this pass (%s). The rows were NOT derived; the group is refused so "
-            "it retries rather than being stamped SUCCESS with an empty payload (S-158)."
-            % (len(unreadable), named)), broadcast_messages
-
-    # 2. Map of updates grouped by target table
-    # target_table -> list of GeneralUpdateItem dicts
-    table_updates = defaultdict(list)
-    # 🔴 WHO PUT THESE ROWS HERE (2026-09-14 outage). Updates from EVERY rule targeting a
-    # table are merged into one batch, so when the write fails the batch names the TABLE
-    # and the rules vanish - an operator with five rules on `dt_log` is told a table is
-    # broken and given no way to tell which declaration to switch off.
-    table_contributors = defaultdict(list)
-    # A mapper may request one or more isolated scoped replacements.  They are
-    # deliberately separate from the normal per-target aggregation: one batch
-    # has one replace scope, and merging two DT jobs would make a purge broader
-    # than either mapper decision.
-    scoped_batches = []
-    # A map projection may need to register/update its own map metadata before
-    # writing cells. This is deliberately an ancillary write of the same rule,
-    # not a third chain hop: the mapper remains read-only and the worker owns
-    # all persistence and outbox semantics.
-    map_metadata_updates = []
-    # [ChainKeyGate] target_table -> the rule names that contributed to it. Collected
-    # here, at the ONE place a rule is bound to its target, so the gate below can name
-    # the rule an operator has to fix without any emission site having to remember to
-    # tag its items. `table_updates` aggregates several rules onto one target, so this
-    # cannot be recovered after the fact.
-    rules_by_target = defaultdict(set)
-
-    # 3. Evaluate rules for this transaction
-    # To support batch rules, we group rules by trigger table to execute them efficiently.
-    # First, gather trigger tables present in valid_events
-    
-    # 🔴 [DEPTH, 판정 423] COMPUTED BEFORE THE FIRST RULE RUNS, because a `builtin:` kind
-    # WRITES inside the loop below. This sat further down, beside the mapper-proposal write,
-    # and a group whose only rule is a builtin never reached it - so the join's write left
-    # with no hop and `max_chain_depth` could not count a cycle that went through one.
-    # 판정 402 removed the load-time cycle refusal on the stated ground that the ceiling is
-    # what stops a loop, so a hop the ceiling cannot see is that ruling's premise failing.
-    #
-    # The depth of what we are ABOUT to write is one more than the deepest thing that woke
-    # us; the `+ 1` is `rule_run.chain_envelope`'s, so this stays the INCOMING number.
-    # Events from outside the chain carry no depth, so `chain_depth_of` answers `None` for
-    # them and `max(..., default)` starts the count at 1.
-    incoming_depth = max(
-        [d for d in (event_constants.chain_depth_of(get_payload_dict(e))
-                     for e in events) if d is not None] or [0])
-
-    for table_name in trigger_tables_in_order(valid_events):
-        matched_rules = [
-            r for r in rules
-            if r.get("trigger_table") == table_name and r.get("enabled", True)
-            and any(_rule_accepts_event(r, e) for e in valid_events if e.table_name == table_name)
-        ]
-        if not matched_rules:
-            continue
-            
-        for rule in matched_rules:
-            target_table = rule.get("target_table")
-            # 🪦 `module_name` / `func_name` were read here and carried to the door. The seat
-            #    reads them off the rule, so a rule naming its mapper in the ONE cell (the
-            #    decorator registry) no longer arrives as a pair of Nones.
-            is_batch = rule.get("is_batch", False)
-            _rule_name = rule.get("name") or "<unnamed rule>"
-            rules_by_target[target_table].add(_rule_name)
-            if rule.get("allow_map_metadata_upsert"):
-                rules_by_target[map_meta_registrar.META_TABLE].add(_rule_name)
-
-            try:
-                trigger_events = [e for e in valid_events
-                                  if e.table_name == table_name
-                                  and _rule_accepts_event(rule, e)]
-                # 🪦 [판정 495] A BRANCH ON KIND STOOD HERE AND IT HAD NOTHING IN IT.
-                # `rule_run._uniform` was built (판정 428) so that 「a caller can extend all
-                # three lists unconditionally and get a no-op - that is what lets the branch
-                # disappear from the callers」. The envelope landed and this caller did not
-                # change, so the branch it existed to delete outlived its own reason.
-                #
-                # All four of its legs were already answered by the seat: `run_rule` picks
-                # `row_ids` or `payloads` by kind itself, returns early on an empty hand
-                # (「it is stated here so the next one does not have to remember to」), hands
-                # back empty proposal lists for a kind that writes for itself, and
-                # `rules_by_target` was filled for EVERY rule above. Deleting it makes the
-                # same calls in the same order.
-                #
-                # 🔴 THE HOP STILL RIDES. `chain_envelope(depth)` is inside `run_rule`, so
-                # 판정 423's `chain_depth` is stamped for a self-writing kind exactly as it
-                # was when this branch passed `depth=` by hand.
-                #
-                # Indexed, not `.get(..., ())`: a missing key means the expander and this
-                # loop disagree about the batch, and deriving nothing silently is the
-                # failure mode to avoid.
-                payloads = [p for e in trigger_events
-                            for p in expanded[outbox_expand.event_key(e)]]
-                # A `builtin:` kind resolves rows for itself and the seat reads THIS list; a
-                # file mapper never looks at it. Projected rather than branched on, so this
-                # caller stops knowing which door the rule takes.
-                row_ids = [p.get("row_id") for p in payloads if p.get("row_id")]
-                if is_batch:
-                    # The whole group in one call; the seat fans out per row when the rule
-                    # is not a batch rule, and picks `row_ids` when the rule is a builtin.
-                    target_payload = rule_run.run_rule(db, rule, payloads=payloads,
-                                                      row_ids=row_ids,
-                                                      depth=incoming_depth)
-                    if target_payload["updates"]:
-                        table_updates[target_table].extend(target_payload.get("updates"))
-                        if rule.get("name") not in table_contributors[target_table]:
-                            table_contributors[target_table].append(rule.get("name"))
-                    if target_payload["map_metadata_updates"]:
-                        if not rule.get("allow_map_metadata_upsert", False):
-                            raise ValueError(
-                                f"rule '{rule.get('name')}' returned map metadata without allow_map_metadata_upsert")
-                        for requested in target_payload.get("map_metadata_updates") or []:
-                            updates = requested.get("updates") if isinstance(requested, dict) else None
-                            if not isinstance(updates, dict):
-                                raise ValueError("chain map metadata update requires an updates object")
-                            if updates.get("target_table") != target_table:
-                                raise ValueError(
-                                    f"rule '{rule.get('name')}' cannot register metadata for '{updates.get('target_table')}'")
-                            if not isinstance(updates.get("map_id"), str) or not updates["map_id"]:
-                                raise ValueError("chain map metadata update requires a non-empty map_id")
-                            map_metadata_updates.append(requested)
-                    if target_payload["batches"]:
-                        # Either permission opens the envelope; the per-batch checks below
-                        # then require the one that matches the strategy the batch actually
-                        # asked for. A retract-only rule must not have to grant itself
-                        # `allow_replace_map` to be heard - that would leave a purge
-                        # permission standing for a rule that never purges.
-                        # 🔴 [C-15] 봉투 검증은 «한 독자»가 한다. 이 여섯 규칙이 여기와
-                        #    `chain_replay` 에 «두 사본»으로 있었고, 그 옆 주석이 「손으로
-                        #    맞춘다」고 적어 두었다 — 형제(retract 봉투)는 이미 한 독자였다.
-                        dt_map_derivation.require_scoped_batches_allowed(rule)
-                        for requested in target_payload.get("batches") or []:
-                            scoped_batches.append(
-                                dt_map_derivation.normalize_scoped_batch(
-                                    requested, rule, target_table))
-                else:
-                    # Single event execution - one call per ROW. The fan-out moved INTO the
-                    # seat with the door it belongs to, so this hands over the whole
-                    # expansion and the seat makes the same N calls.
-                    target_payload = rule_run.run_rule(db, rule, payloads=payloads,
-                                                      row_ids=row_ids,
-                                                      depth=incoming_depth)
-                    if target_payload.get("updates"):
-                        table_updates[target_table].extend(target_payload["updates"])
-                        if rule.get("name") not in table_contributors[target_table]:
-                            table_contributors[target_table].append(rule.get("name"))
-            except Exception as e:
-                import traceback
-                error_msg = traceback.format_exc()
-                # 🔴 THE RULE NAME GOES IN THE REASON, NOT ONLY IN THIS LINE (2026-09-14).
-                # This string becomes the quarantine `reason` and every downstream FAILED
-                # log, and those said only a transaction id - so an operator staring at
-                # thousands of failures could not tell WHICH declaration to switch off.
-                error_msg = "[rule=%s target=%s] %s" % (
-                    rule.get("name"), rule.get("target_table"), error_msg)
-                log_failure_folded(logger, rule.get("name"), rule.get("target_table"),
-                                   error_msg)
-                return False, error_msg, []
-
-    # 4. Perform chained batch updates by target table
     if table_updates or map_metadata_updates or scoped_batches:
         from database import schemas, crud
         from database.context import (request_user, request_transaction_id, request_source,
@@ -2055,7 +1808,7 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
             _tbls = ", ".join(sorted(table_contributors)) or "(unknown)"
             error_msg = "[rules=%s target=%s] %s" % (_who, _tbls, error_msg)
             log_failure_folded(logger, _who, _tbls, error_msg)
-            return False, error_msg, []
+            return False, error_msg
         finally:
             request_user.reset(token_user)
             request_transaction_id.reset(token_tx)
@@ -2063,6 +1816,290 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
             # Reset with the others: a depth left set would stamp the NEXT write, and the
             # next write may not be the chain's at all.
             request_chain_depth.reset(token_depth)
+    return True, None
+
+
+def _process_chain_transaction_group_sync(tx_id, events, db, rules):
+    """The whole of one transaction group's work, and every line of it is BLOCKING.
+
+    🔴 판정 193 / S-93 — THIS BODY DID NOT MOVE; ITS THREAD DID. It was written as an
+    `async def` and contained no `await` at any point, so every mapper call, every query
+    that mapper makes and the target write that follows ran ON THE EVENT LOOP. While it
+    ran, no other request could resume - including the response owed to the very user
+    whose write woke the chain.
+
+    Measured live 2026-09-09 by the lead (PID 38168, dt_job source, 1,000 fresh rows
+    through the real route): the PUT answered in 22.8-33.5 s, while the same code with
+    the same PostgreSQL and no chain worker answered in 1.36 s. The decisive experiment
+    was a GET issued every 3 s during the PUT: a route that normally costs 0.07 s took
+    22.76 s at t+3 and 5.94 s at t+9. So the wait was not in the writer's thread; the
+    LOOP was blocked, and the PUT's own answer was queued behind it. py-spy put 58% of
+    its samples under `execute_custom_mapper` on the loop thread.
+
+    ⚠️ THE GRANULARITY IS ONE GROUP, AND THAT IS NOT AN ARBITRARY CHOICE. `db` is a
+    single SQLAlchemy Session, which one thread may use at a time. Groups are awaited one
+    after another in `process_pending_groups` (no gather), so exactly one worker thread
+    ever holds this session. Splitting finer would put two threads on it.
+
+    ⚠️ AND THE CONTEXTVARS STILL WORK. `asyncio.to_thread` runs this inside a COPY of the
+    caller's context, so the four tokens set below are visible to everything this calls -
+    and, better than before, the copy is discarded afterwards, so they cannot leak into
+    the loop's own context even if a `reset` were missed.
+
+    Pacing, ordering and error handling are untouched: the wrapper returns exactly what
+    this returns, including the failure tuple.
+    """
+    # [Latency Fix #2] 커밋 이후 fire-and-forget으로 발사할 브로드캐스트 메시지 큐.
+    # 여기에는 이벤트명/페이로드 형식이 그대로(batch_row_*, batch_refresh_required) 담긴다.
+    broadcast_messages = []
+
+    # Chain-created events remain blocked by default.  Only a downstream rule that
+    # declares allow_chain_trigger may consume them; config-load cycle validation
+    # makes this opt-in graph acyclic.
+    # 🔴 여섯 원인이 «한 조용한 반환»으로 나가던 자리. 입구에서 «돌기 전»에 정해지는 둘을
+    #    이름 대어 남기면, 아래 어느 출구로 나가든 규칙마다 결과가 있다. 돌 자격이 있는
+    #    규칙은 여기서 아무것도 안 남기고 `_run_mapper` 가 자기 결과를 남긴다.
+    _record_pre_run_outcomes(rules, events)
+
+    # 🔴 THE LEDGER LISTENS HERE, ABOVE THE TRIGGER FILTER, AND ONLY DROPS A NOTE.
+    #    Its subject is the OUTBOX EVENT and not a chain rule: a person editing a cell in
+    #    the grid produces the same event, and the source that reads that table has to be
+    #    followed the same way (ruling 129 ㉤). So it sits above `valid_events`, which
+    #    both filters on `trigger_table`/`enabled` and RETURNS EARLY when nothing matches
+    #    - two decisions this step must not inherit.
+    # ⛔ AND IT TRANSLATES NOTHING. `enqueue` appends to a memory deque and returns, so
+    #    a chain transaction costs what it cost before this line existed; the paced task
+    #    beside this loop does the work (ruling 129-bis).
+    with alignment_batch_counts.stage("ledger enqueue"):
+        for event in events:
+            # `tx_id` and not `chain_tx_id`: the receipt this batch will write has to group
+            # with the table change that CAUSED it, and that change carries the original
+            # writer's transaction. `chain_tx_id` is what the chain's OWN writes take, one
+            # step further down (S-117, 판정 248).
+            ledger_followup.enqueue(
+                event.table_name,
+                ledger_followup.row_ids_of(get_payload_dict(event)),
+                event.event_type,
+                tx_id,
+                # [S-249 ⓒ] The hop this event arrived at, so the follow-up lap is a STEP of
+                # the same cascade rather than a place where the ceiling stops applying.
+                event_constants.chain_depth_of(get_payload_dict(event)))
+
+    # Named for the same reason as `mark processed`: it walks every event against every
+    # rule, so it is O(events x rules) on a thousand-row group and nothing on the line
+    # said whether that mattered.
+    with alignment_batch_counts.stage("trigger filter"):
+        valid_events = [e for e in events if e.event_type in ["CREATE", "EDIT"] and any(
+            r.get("trigger_table") == e.table_name and r.get("enabled", True)
+            and _rule_accepts_event(r, e) for r in rules)]
+    if not valid_events:
+        return True, None, broadcast_messages
+
+    # [OUTBOX-4] One materialization for the whole group, before any rule runs.
+    # A collapsed event NAMES rows; the mappers - including every user-owned one in
+    # the gitignored `server/mappers/` tree - take the nested payload shape. This is
+    # where the row is read back into that shape, the way `chain_replay._to_payloads`
+    # already does it. Per-row events pass through untouched, so a batch with no
+    # collapsed event in it issues no query here at all.
+    with alignment_batch_counts.stage("outbox read"):
+        expanded = outbox_expand.expand_events(db, valid_events)
+
+    # 🔴 ZERO LOADED IS NOT "NOTHING TO DO" - IT IS A READ THAT FAILED (S-158).
+    # A collapsed event NAMES its rows. If not one of them can be read back, the mapper
+    # is handed an empty payload, does nothing, and the group ends SUCCESS - so the event
+    # is stamped processed and those rows derive NOTHING, with no error, no retry and no
+    # quarantine anywhere. Measured 2026-09-11: four events of 1,000 rows each went that
+    # way and 3,000 rows silently failed to reach their derived table.
+    #
+    # ⚠️ AND THE OLD EXPLANATION WAS WRONG, WHICH IS WHY THIS CANNOT BE LEFT TO A LOG
+    # LINE. `expand_events` says the rows were "deleted between the write and the chain
+    # run"; measured, every one of those 3,000 rows was present in the table the whole
+    # time. Whatever the cause, the honest answer here is "could not read them", and the
+    # honest outcome is a REFUSAL that retries - not a success that loses them.
+    #
+    # ⚠️ PARTIAL IS DELIBERATELY NOT REFUSED. Some rows missing is the documented
+    # delete-between case and the warning above names it; ALL of them missing, for an
+    # event that named some, is the shape that cannot be a legitimate answer.
+    unreadable = [e for e in valid_events
+                  if event_constants.is_collapsed_payload(get_payload_dict(e))
+                  and (get_payload_dict(e).get("row_ids") or ())
+                  and not expanded.get(outbox_expand.event_key(e))]
+    if unreadable:
+        named = ", ".join(
+            "%s(%d rows)" % (getattr(e, "event_uuid", "?"),
+                             len(get_payload_dict(e).get("row_ids") or ()))
+            for e in unreadable[:3])
+        return False, (
+            ROWS_NOT_VISIBLE + ": %d collapsed event(s) named rows that could not be read "
+            "back in this pass (%s). The rows were NOT derived; the group is refused so "
+            "it retries rather than being stamped SUCCESS with an empty payload (S-158)."
+            % (len(unreadable), named)), broadcast_messages
+
+    # 2. Map of updates grouped by target table
+    # target_table -> list of GeneralUpdateItem dicts
+    table_updates = defaultdict(list)
+    # 🔴 WHO PUT THESE ROWS HERE (2026-09-14 outage). Updates from EVERY rule targeting a
+    # table are merged into one batch, so when the write fails the batch names the TABLE
+    # and the rules vanish - an operator with five rules on `dt_log` is told a table is
+    # broken and given no way to tell which declaration to switch off.
+    table_contributors = defaultdict(list)
+    # A mapper may request one or more isolated scoped replacements.  They are
+    # deliberately separate from the normal per-target aggregation: one batch
+    # has one replace scope, and merging two DT jobs would make a purge broader
+    # than either mapper decision.
+    scoped_batches = []
+    # A map projection may need to register/update its own map metadata before
+    # writing cells. This is deliberately an ancillary write of the same rule,
+    # not a third chain hop: the mapper remains read-only and the worker owns
+    # all persistence and outbox semantics.
+    map_metadata_updates = []
+    # [ChainKeyGate] target_table -> the rule names that contributed to it. Collected
+    # here, at the ONE place a rule is bound to its target, so the gate below can name
+    # the rule an operator has to fix without any emission site having to remember to
+    # tag its items. `table_updates` aggregates several rules onto one target, so this
+    # cannot be recovered after the fact.
+    rules_by_target = defaultdict(set)
+
+    # 3. Evaluate rules for this transaction
+    # To support batch rules, we group rules by trigger table to execute them efficiently.
+    # First, gather trigger tables present in valid_events
+    
+    # 🔴 [DEPTH, 판정 423] COMPUTED BEFORE THE FIRST RULE RUNS, because a `builtin:` kind
+    # WRITES inside the loop below. This sat further down, beside the mapper-proposal write,
+    # and a group whose only rule is a builtin never reached it - so the join's write left
+    # with no hop and `max_chain_depth` could not count a cycle that went through one.
+    # 판정 402 removed the load-time cycle refusal on the stated ground that the ceiling is
+    # what stops a loop, so a hop the ceiling cannot see is that ruling's premise failing.
+    #
+    # The depth of what we are ABOUT to write is one more than the deepest thing that woke
+    # us; the `+ 1` is `rule_run.chain_envelope`'s, so this stays the INCOMING number.
+    # Events from outside the chain carry no depth, so `chain_depth_of` answers `None` for
+    # them and `max(..., default)` starts the count at 1.
+    incoming_depth = max(
+        [d for d in (event_constants.chain_depth_of(get_payload_dict(e))
+                     for e in events) if d is not None] or [0])
+
+    for table_name in trigger_tables_in_order(valid_events):
+        matched_rules = [
+            r for r in rules
+            if r.get("trigger_table") == table_name and r.get("enabled", True)
+            and any(_rule_accepts_event(r, e) for e in valid_events if e.table_name == table_name)
+        ]
+        if not matched_rules:
+            continue
+            
+        for rule in matched_rules:
+            target_table = rule.get("target_table")
+            # 🪦 `module_name` / `func_name` were read here and carried to the door. The seat
+            #    reads them off the rule, so a rule naming its mapper in the ONE cell (the
+            #    decorator registry) no longer arrives as a pair of Nones.
+            is_batch = rule.get("is_batch", False)
+            _rule_name = rule.get("name") or "<unnamed rule>"
+            rules_by_target[target_table].add(_rule_name)
+            if rule.get("allow_map_metadata_upsert"):
+                rules_by_target[map_meta_registrar.META_TABLE].add(_rule_name)
+
+            try:
+                trigger_events = [e for e in valid_events
+                                  if e.table_name == table_name
+                                  and _rule_accepts_event(rule, e)]
+                # 🪦 [판정 495] A BRANCH ON KIND STOOD HERE AND IT HAD NOTHING IN IT.
+                # `rule_run._uniform` was built (판정 428) so that 「a caller can extend all
+                # three lists unconditionally and get a no-op - that is what lets the branch
+                # disappear from the callers」. The envelope landed and this caller did not
+                # change, so the branch it existed to delete outlived its own reason.
+                #
+                # All four of its legs were already answered by the seat: `run_rule` picks
+                # `row_ids` or `payloads` by kind itself, returns early on an empty hand
+                # (「it is stated here so the next one does not have to remember to」), hands
+                # back empty proposal lists for a kind that writes for itself, and
+                # `rules_by_target` was filled for EVERY rule above. Deleting it makes the
+                # same calls in the same order.
+                #
+                # 🔴 THE HOP STILL RIDES. `chain_envelope(depth)` is inside `run_rule`, so
+                # 판정 423's `chain_depth` is stamped for a self-writing kind exactly as it
+                # was when this branch passed `depth=` by hand.
+                #
+                # Indexed, not `.get(..., ())`: a missing key means the expander and this
+                # loop disagree about the batch, and deriving nothing silently is the
+                # failure mode to avoid.
+                payloads = [p for e in trigger_events
+                            for p in expanded[outbox_expand.event_key(e)]]
+                # A `builtin:` kind resolves rows for itself and the seat reads THIS list; a
+                # file mapper never looks at it. Projected rather than branched on, so this
+                # caller stops knowing which door the rule takes.
+                row_ids = [p.get("row_id") for p in payloads if p.get("row_id")]
+                if is_batch:
+                    # The whole group in one call; the seat fans out per row when the rule
+                    # is not a batch rule, and picks `row_ids` when the rule is a builtin.
+                    target_payload = rule_run.run_rule(db, rule, payloads=payloads,
+                                                      row_ids=row_ids,
+                                                      depth=incoming_depth)
+                    if target_payload["updates"]:
+                        table_updates[target_table].extend(target_payload.get("updates"))
+                        if rule.get("name") not in table_contributors[target_table]:
+                            table_contributors[target_table].append(rule.get("name"))
+                    if target_payload["map_metadata_updates"]:
+                        if not rule.get("allow_map_metadata_upsert", False):
+                            raise ValueError(
+                                f"rule '{rule.get('name')}' returned map metadata without allow_map_metadata_upsert")
+                        for requested in target_payload.get("map_metadata_updates") or []:
+                            updates = requested.get("updates") if isinstance(requested, dict) else None
+                            if not isinstance(updates, dict):
+                                raise ValueError("chain map metadata update requires an updates object")
+                            if updates.get("target_table") != target_table:
+                                raise ValueError(
+                                    f"rule '{rule.get('name')}' cannot register metadata for '{updates.get('target_table')}'")
+                            if not isinstance(updates.get("map_id"), str) or not updates["map_id"]:
+                                raise ValueError("chain map metadata update requires a non-empty map_id")
+                            map_metadata_updates.append(requested)
+                    if target_payload["batches"]:
+                        # Either permission opens the envelope; the per-batch checks below
+                        # then require the one that matches the strategy the batch actually
+                        # asked for. A retract-only rule must not have to grant itself
+                        # `allow_replace_map` to be heard - that would leave a purge
+                        # permission standing for a rule that never purges.
+                        # 🔴 [C-15] 봉투 검증은 «한 독자»가 한다. 이 여섯 규칙이 여기와
+                        #    `chain_replay` 에 «두 사본»으로 있었고, 그 옆 주석이 「손으로
+                        #    맞춘다」고 적어 두었다 — 형제(retract 봉투)는 이미 한 독자였다.
+                        dt_map_derivation.require_scoped_batches_allowed(rule)
+                        for requested in target_payload.get("batches") or []:
+                            scoped_batches.append(
+                                dt_map_derivation.normalize_scoped_batch(
+                                    requested, rule, target_table))
+                else:
+                    # Single event execution - one call per ROW. The fan-out moved INTO the
+                    # seat with the door it belongs to, so this hands over the whole
+                    # expansion and the seat makes the same N calls.
+                    target_payload = rule_run.run_rule(db, rule, payloads=payloads,
+                                                      row_ids=row_ids,
+                                                      depth=incoming_depth)
+                    if target_payload.get("updates"):
+                        table_updates[target_table].extend(target_payload["updates"])
+                        if rule.get("name") not in table_contributors[target_table]:
+                            table_contributors[target_table].append(rule.get("name"))
+            except Exception as e:
+                import traceback
+                error_msg = traceback.format_exc()
+                # 🔴 THE RULE NAME GOES IN THE REASON, NOT ONLY IN THIS LINE (2026-09-14).
+                # This string becomes the quarantine `reason` and every downstream FAILED
+                # log, and those said only a transaction id - so an operator staring at
+                # thousands of failures could not tell WHICH declaration to switch off.
+                error_msg = "[rule=%s target=%s] %s" % (
+                    rule.get("name"), rule.get("target_table"), error_msg)
+                log_failure_folded(logger, rule.get("name"), rule.get("target_table"),
+                                   error_msg)
+                return False, error_msg, []
+
+    # 4. Perform chained batch updates by target table
+    # 🔴 [판정 604 ㅠ] THE WRITE IS A DOOR NOW. Same body, same order; what changed is
+    #   that a second caller can reach it. `broadcast_messages` is filled in place.
+    written_ok, write_error = apply_chain_writes(
+        db, tx_id, rule, incoming_depth, rules_by_target, table_updates,
+        map_metadata_updates, scoped_batches, table_contributors,
+        broadcast_messages)
+    if not written_ok:
+        return False, write_error, []
 
     return True, None, broadcast_messages
 

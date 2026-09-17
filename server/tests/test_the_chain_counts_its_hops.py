@@ -108,9 +108,17 @@ def test_the_worker_sets_it_once_and_resets_it():
     # 판정 193 moved this body behind an `asyncio.to_thread` wrapper that carries the
     # public name, so the source to read is the sync function that still holds the work.
     # Named rather than made tolerant: if the body moves again this must fail loudly.
-    body = inspect.getsource(worker._process_chain_transaction_group_sync)
+    # ⚰️ [판정 604 ㉠] THE BODY MOVED AGAIN AND THIS FAILED LOUDLY, which is what the comment
+    #   above promised it would do. The write is a door now - `apply_chain_writes` - so the
+    #   door is where the depth is set and reset, and the group step hands it in.
+    # 🔴 AND THE CALLER IS ASSERTED TOO: a second seat setting the hop is the defect
+    #   「one ceiling, two answers」, so it must turn this red rather than pass unnoticed.
+    body = inspect.getsource(worker.apply_chain_writes)
     assert body.count("request_chain_depth.set(") == 1
     assert "request_chain_depth.reset(" in body
+    caller = inspect.getsource(worker._process_chain_transaction_group_sync)
+    assert "request_chain_depth.set(" not in caller, (
+        "two seats set the hop; the door owns it")
 
 
 def test_the_depth_is_one_more_than_what_woke_it():
@@ -129,7 +137,9 @@ def test_the_depth_is_one_more_than_what_woke_it():
     assert rule_run.outgoing_depth(0) == 1
     assert rule_run.outgoing_depth(3) == 4
 
-    body = inspect.getsource(worker._process_chain_transaction_group_sync)
+    # ⚰️ [판정 604 ㉠] SAME MOVE: the door carries the `+ 1`, and the group step passes
+    #   `incoming_depth` in RAW so the hop is computed exactly once.
+    body = inspect.getsource(worker.apply_chain_writes)
     assert "rule_run.outgoing_depth(incoming_depth)" in body
 
 
