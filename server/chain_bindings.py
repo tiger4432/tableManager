@@ -237,7 +237,7 @@ COMPANION_CELL_NAME = "companion_of"
 RULE_ROUTING_OPTIONAL = tuple(
     key for key in RULE_TABLE_KEYS if key not in RULE_ROUTING_REQUIRED) + (
     "target_field", "trigger_columns", "enabled", "is_batch",
-    "follow_up", "allow_chain_trigger", "allow_map_metadata_upsert",
+    "allow_chain_trigger", "allow_map_metadata_upsert",
     "max_group_attempts", "max_group_rows", "group_by", "idempotent", "origin",
     # S-270: 로더가 «짝으로 세운» 규칙이 자기가 어느 선언의 둘째 반쪽인지 적는 칸.
     # `origin` 과 «같은 부류»다 — 문법이 받기는 하지만 쓰는 것은 로더다. 여기 없으면
@@ -477,7 +477,6 @@ SKELETON_VERSION = 1
 _SKELETON_HINTS = {
     "enabled": "flag",
     "is_batch": "flag",
-    "follow_up": "flag",
     "allow_chain_trigger": "flag",
     "allow_map_metadata_upsert": "flag",
     "max_group_attempts": "number",

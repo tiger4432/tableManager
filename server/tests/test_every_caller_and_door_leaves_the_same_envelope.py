@@ -208,40 +208,31 @@ def test_the_group_step_through_the_mapper_door(db, file_mapper):
 
 
 # ---------------------------------------------------------------------------
-# the paced follow-up lap - one door exists, and the other is asserted absent
+# ⚰️ [소유자 정본, 2026-09-17] THE PACED LAP WAS A ROW OF THIS MATRIX AND IT IS GONE
+#   소유자: 「체인은 … 트랜잭션 - 아웃박스 - 트리거 - 맵퍼 실행 - 페이로드 및 업서트
+#   이거만 하면됨」. Two cells lived here - `lap/builtin` and the asserted-empty
+#   `lap/mapper` - and both measured a second execution path. What replaces them is not a
+#   third cell but the CONTROL BELOW: the lap's own names must stay absent.
 # ---------------------------------------------------------------------------
 
-def test_the_paced_lap_through_the_builtin_door(db, monkeypatch):
-    _seed(db)
-    rules = [dict(r, follow_up=True) for r in _join_rules()]
-    monkeypatch.setattr(worker, "_FOLLOWUP_BUILTIN_RULES", rules)
-    monkeypatch.setattr(worker, "followup_already_served",
-                        lambda tx, table, name, row_ids: list(row_ids))
+def test_the_chain_has_no_second_execution_path():
+    """⛔ THE RETIRED MECHANISM'S OWN SYMPTOM, KEPT AS A CONTROL GROUP.
 
-    row_ids = [r.row_id for r in db.query(models.DYNAMIC_TABLES[LEFT]).all()]
-    before = set(e.id for e in _events(db))
-    worker._run_the_follow_up_pass(db, {"table": LEFT, "row_ids": row_ids,
-                                       "transaction_id": "tx-424-lb",
-                                       "event_type": "INSERT", "chain_depth": None})
-    _score(db, before, "lap/builtin", _written(db, "lot_confirmed"))
+    🔴 A matrix loses a row silently. This does not: if any of these names comes back, a
+    rule can once again be taken by something other than its trigger, and the shape 소유자
+    removed - 「고장인지 느린 건지 판단 불가」, because 「안 돌았다」 and 「아직 안 돌았다」
+    look the same - comes back with it.
 
-
-def test_the_paced_lap_has_no_mapper_door_at_all(db, file_mapper, monkeypatch):
-    """⛔ THE EMPTY CELL, ASSERTED RATHER THAN INVENTED. `_rules_for_the_follow_up_pass` selects
-    `follow_up AND mapper in BUILTIN_KINDS`, so a file mapper declaring `follow_up` is dropped
-    by the second half and never rides. A matrix that quietly had five cells would leave the
-    reader guessing which one was missing and why."""
-    # [판정 589] ASKED OF THE PATH'S OWN PREDICATE, which is what 500 said a roll call
-    #   must do: this used to re-spell the selection as `follow_up AND mapper in
-    #   BUILTIN_KINDS`, and a copy of a predicate measures the copy. The table is gone and
-    #   the predicate is not, so the cell is asked of `picked_up_by_the_follow_up_pass`
-    #   itself - which narrows with the lap instead of after it.
-    riding = [r for r in [_mapper_rule(follow_up=True)]
-              if worker.picked_up_by_the_follow_up_pass(r)]
-    assert riding == [], (
-        "a file mapper reached the paced lap; the lap can only run a rule that writes "
-        "its own rows, and a file mapper proposes")
-
+    ⚠️ SUBJECTS MATTER HERE (판정 608): this asserts the CHAIN has one path. The ledger's
+    own follow-up queue (`ledger/followup.py`) is a different subsystem and is untouched.
+    """
+    gone = ("_run_the_follow_up_pass", "_rules_for_the_follow_up_pass",
+            "picked_up_by_the_follow_up_pass", "picked_up_by_the_group_step",
+            "PICKUP_PATHS", "refuse_rules_no_path_picks_up", "rules_by_pickup_count",
+            "followup_already_served", "log_followup_folded")
+    back = [name for name in gone if hasattr(worker, name)]
+    assert back == [], (
+        "a second execution path is back: %s" % ", ".join(back))
 
 # ---------------------------------------------------------------------------
 # retroactive - both doors
@@ -306,3 +297,23 @@ def test_both_callers_hand_a_mapper_the_same_payload_keys(db, tmp_path, monkeypa
     assert from_group[0] == from_retroactive[0], (
         "the same mapper is handed different keys depending on which caller ran it:\n"
         "  group       %s\n  retroactive %s" % (from_group[0], from_retroactive[0]))
+
+
+def test_the_table_question_has_one_author_and_obeys_the_switch():
+    """⚠️ MOVED HERE when `test_every_declared_rule_is_picked_up_by_exactly_one_path` went
+    with the roll call (소유자 정본). Two of that file's assertions measure something that
+    SURVIVES the lap, so they travel rather than die with their neighbours.
+
+    🔴 `watches_table` IS THE ONE AUTHOR of 「does this rule watch that table」, and it carries
+    `enabled` WITH the table. Measured 2026-09-17: the retired paced pass asked the table and
+    NOT the switch, so a rule an operator had turned off went on running there once per
+    batch - 「DB 를 여전히 만지는 스위치는 반쪽 스위치다」 in its scheduling form. One author is
+    what makes that impossible to reintroduce in a second spelling.
+    """
+    watched = {"name": "w", "trigger_table": "t", "mapper": "m"}
+    assert worker.watches_table(watched, "t") is True
+    assert worker.watches_table(watched, "other") is False
+    assert worker.watches_table(None, "t") is False
+    assert worker.watches_table({}, "t") is False
+    assert worker.watches_table(dict(watched, enabled=False), "t") is False, (
+        "a rule declaring enabled: false is still watched by this path")

@@ -35,7 +35,7 @@ if SERVER_DIR not in sys.path:
 
 import event_constants                                             # noqa: E402
 import mapper_sdk                                                  # noqa: E402
-from chain import activity, builtins, rule_run                     # noqa: E402
+from chain import activity, dynamic_mappers, rule_run           # noqa: E402
 
 KIND = "builtin:s246_probe"
 RULE = {"name": "s246_rule", "target_table": "s246_target", "mapper": KIND}
@@ -69,10 +69,19 @@ def _clean_registry():
 
 @pytest.fixture(name="kind")
 def fixture_kind(monkeypatch):
-    """A `builtin:` kind whose body reports what it saw, so 「during」 can be asserted."""
+    """A registered mapper whose body reports what it saw, so 「during」 can be asserted.
+
+    ⚰️ [판정 562 · 509] THIS FAKED A KIND IN THREE TABLES - `BUILTIN_KINDS`, `BUILTIN_HANDS`
+    and `BUILTIN_LABELS` - because the registration wrote them together and the seat refused
+    a name that was missing from any of them. There is one registry and one calling
+    convention, so faking a mapper is putting a callable under a name; the LABEL, which is
+    the only one of the three that answers a question about the WORK, lives beside the
+    templates (판정 508) and is set there.
+    """
     seen = {"snapshot": None}
 
-    def _run(db, rule, **kwargs):
+    def _run(db, payload, rule=None):
+        rule = rule or {}
         seen["snapshot"] = activity.registry.snapshot()
         if rule.get(BOOM):
             raise RuntimeError("the kind threw")
@@ -80,14 +89,11 @@ def fixture_kind(monkeypatch):
             return {"written": rule[WRITTEN], "refusal": rule.get(REFUSAL)}
         return None
 
-    monkeypatch.setitem(builtins.BUILTIN_KINDS, KIND, _run)
-    # ⚠️ [판정 509] BOTH TABLES. `register_builtin` writes them together; faking a kind
-    #    by hand has to say how it is called, or the seat refuses it by name.
-    monkeypatch.setitem(builtins.BUILTIN_HANDS, KIND, builtins.HANDS_ROW_IDS)
-    monkeypatch.setitem(builtins.BUILTIN_LABELS, KIND, "decide")
-    builtins.SELF_WRITING_KINDS.add(KIND)
+    monkeypatch.setitem(mapper_sdk.MAPPER_REGISTRY, KIND, _run)
+    monkeypatch.setitem(dynamic_mappers.TEMPLATE_FACTS, KIND,
+                        {"label": "decide", "stamps_origin": False,
+                         "writes_itself": True, "params": None})
     yield seen
-    builtins.SELF_WRITING_KINDS.discard(KIND)
 
 
 # ---------------------------------------------------------------------------
@@ -166,15 +172,29 @@ def test_a_builtin_that_wrote_nothing_says_so_in_its_own_words(kind):
         "the kind's own sentence did not reach the queue cell an operator reads")
 
 
-def test_a_kind_that_gives_no_reason_leaves_the_cell_empty(kind):
-    """⚠️ THE CONTROL FOR THE ABOVE. Without it the test above would also pass while the
-    seat invented a sentence for every kind - which is the state 525 removed."""
-    rule_run.run_rule(None, _rule(**{WRITTEN: 0}), row_ids=[1])
+def test_the_seat_never_replaces_a_reason_the_mapper_gave(kind):
+    """⚠️ THE CONTROL FOR THE ABOVE, RE-AIMED AT WHAT 525 ② ACTUALLY SETTLED.
 
-    entry = activity.registry.outcomes()["s246_rule"]
-    assert entry["outcome"] == event_constants.RULE_OUTCOME_RAN_UNCHANGED
-    assert entry["reason"] is None, (
-        "a reason nobody gave was written down as if somebody had: %r" % entry["reason"])
+    ⚰️ It asserted the cell stays EMPTY when the mapper gives no reason. That was the reading
+    before 525 ②, which put a sentence back deliberately - not the old restatement 「the rule
+    wrote no rows」, but the pair of counts that tells two zeros apart: 「아무것도 안 넘어왔다」
+    and 「넘겼는데 안 나왔다」 are different facts and an operator acts on them differently.
+
+    🔴 WHAT MUST NOT HAPPEN IS A REPLACEMENT, and that is what is asserted: a mapper that
+    explained itself keeps its own words, and one that said nothing gets the counts - never
+    the other way round.
+    """
+    rule_run.run_rule(None, _rule(**{WRITTEN: 0, REFUSAL: "제가 말한 사유"}), row_ids=[1])
+    assert activity.registry.outcomes()["s246_rule"]["reason"] == "제가 말한 사유", (
+        "the seat replaced the mapper's own sentence with its own")
+
+    activity.registry.clear()
+    rule_run.run_rule(None, _rule(**{WRITTEN: 0}), row_ids=[1])
+    silent = activity.registry.outcomes()["s246_rule"]["reason"]
+    assert silent and "제가 말한 사유" not in silent, (
+        "a mapper that said nothing got somebody else's sentence: %r" % silent)
+    assert "1" in silent, (
+        "the seat's own sentence must carry the counts, which is the only thing it knows")
 
 
 def test_a_kind_that_threw_is_recorded_as_failed_with_the_reason(kind):
@@ -186,16 +206,25 @@ def test_a_kind_that_threw_is_recorded_as_failed_with_the_reason(kind):
     assert "the kind threw" in entry["reason"]
 
 
-def test_a_kind_that_reports_no_count_leaves_the_outcome_alone(kind):
-    """🔴 「안 셌다」 AND 「0 이었다」 ARE DIFFERENT FACTS. A kind that returns no `written`
-    has not said it changed nothing - and recording `ran:unchanged` for it would be this
-    registry inventing the very answer it exists to stop inventing."""
+def test_a_mapper_that_reports_no_count_is_recorded_as_having_run(kind):
+    """🔴 「안 셌다」 AND 「0 이었다」 ARE DIFFERENT FACTS, and this now says where each lives.
+
+    ⚰️ THIS ASSERTED `never_evaluated` for a mapper that returned nothing. That was true while
+    a registered kind reached the seat through an arm that left `rows_out` unset - and it is
+    FALSE now: the mapper was resolved, called, and answered. Recording 「never evaluated」 for
+    a rule that demonstrably ran is the invented answer, in the opposite direction.
+
+    🔴 509'S PROPERTY IS ASSERTED WHERE IT ACTUALLY LIVES - the `written` cell. A mapper that
+    reports no count must not have one fabricated for it, and that stays None.
+    """
     activity.registry.seed_rules(["s246_rule"])
 
-    rule_run.run_rule(None, _rule(), row_ids=[1])
+    answer = rule_run.run_rule(None, _rule(), row_ids=[1])
 
+    assert answer["written"] is None, "nobody counted, so the cell is not 0"
     assert (activity.registry.outcomes()["s246_rule"]["outcome"]
-            == event_constants.RULE_OUTCOME_NEVER_EVALUATED)
+            == event_constants.RULE_OUTCOME_RAN_UNCHANGED), (
+        "the rule ran; saying it was never evaluated is the false sentence here")
 
 
 # ---------------------------------------------------------------------------
@@ -273,8 +302,12 @@ def test_auto_confirm_reports_its_row_count_under_the_name_the_others_use(monkey
 
     monkeypatch.setattr(enrichment.candidates, "AutoConfirmCollector", _Collector)
 
-    result = builtins._run_auto_confirm(None, {"name": "ac"}, row_ids=[1, 2, 3, 4],
-                                        done={"table": "t"})
+    # ⚰️ [판정 563 · 소유자 정본] `builtins._run_auto_confirm(..., row_ids=, done=)`.
+    #   The body moved to the template built from the declaration, the note is gone, and the
+    #   target comes off the rule - so the call is the one convention every mapper takes.
+    result = dynamic_mappers._auto_confirm(
+        None, [{"row_id": n} for n in (1, 2, 3, 4)],
+        rule={"name": "ac", "target_table": "t"})
 
     assert result["written"] == result["confirmed"] == 4
     assert result["refused"] == 1

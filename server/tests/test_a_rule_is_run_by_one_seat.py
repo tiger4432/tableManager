@@ -291,25 +291,23 @@ def test_one_vocabulary_says_that_a_rule_ran():
         % (sorted(unknown.items()),))
 
 
-def test_the_seat_answers_the_kind_question_it_took_over():
-    """The question itself, not only the call. `builtin_kind` is where 「is this a builtin」 is
-    answered, so nobody has to spell the comparison a second time, and `runnable` is where a
-    NAME is answered for - the two halves the report and the dev bench used to do by hand.
+def test_the_seat_answers_the_name_question_it_took_over():
+    """The question itself, not only the call. `runnable` is where a NAME is answered for -
+    the half the report and the dev bench used to do by hand.
 
-    ⚰️ [판정 495] THIS USED TO END 「so a caller that needs the answer WITHOUT running has
-    somewhere to ask」, AND THAT SENTENCE WAS A PERMISSION SLIP. Having one place to ask is
-    not a licence to ask from anywhere: `ingestion_worker` asked and then branched. Who may
-    ask is asserted above; what stays here is that the answer exists and is honest.
+    ⚰️ [판정 495 · 562] THIS ALSO ASKED `builtin_kind` — 「is this a builtin」. That question
+    was an ADDRESS question and the table behind it is deleted; what is left is 「does this
+    name resolve」, which is one question with one answer.
     """
-    assert rule_run.builtin_kind({"mapper": "definitely_not_a_registered_kind"}) is None
-    assert rule_run.builtin_kind({}) is None
-    assert rule_run.builtin_kind(None) is None
     assert rule_run.runnable("definitely_not_a_registered_kind") is None
     assert rule_run.runnable(None) is None
-    for kind in builtins.BUILTIN_KINDS:
-        assert rule_run.runnable(kind) is not None, (
+    from chain import dynamic_mappers
+
+    assert dynamic_mappers.TEMPLATES, "nothing is registered, so this asserts nothing"
+    for name in dynamic_mappers.TEMPLATES:
+        assert rule_run.runnable(name) is not None, (
             "%r is registered but the seat cannot resolve it by name, so the two halves of "
-            "「can this run」 disagree" % kind)
+            "「can this run」 disagree" % name)
 
 
 def test_the_two_facts_the_seat_reads_come_off_the_registration():
@@ -326,32 +324,40 @@ def test_the_two_facts_the_seat_reads_come_off_the_registration():
     proposing arm and was called `(db, row_id)`. `hands` says how it is called; `writes_itself`
     says only whether its result can be seen without being applied.
     """
-    assert builtins.BUILTIN_KINDS, "no kinds registered - the table is the subject here"
-    for kind in builtins.BUILTIN_KINDS:
-        assert kind in builtins.BUILTIN_LABELS, (
-            "%r registered an implementation but no screen label, so `rule_label` calls it "
-            "「mapper」 in silence" % kind)
+    # ⚰️ [판정 562 · 508] THE LABEL TABLE WENT AND THE FACT DID NOT. Every mapper the product
+    #   builds from a declaration must carry a screen label, or `rule_label` calls it 「mapper」
+    #   in silence - so the population is the templates and the fact lives beside them.
+    from chain import dynamic_mappers
 
-    probe = "builtin:s498_probe"
+    assert dynamic_mappers.TEMPLATES, "nothing is registered - the registry is the subject"
+    for name in dynamic_mappers.TEMPLATES:
+        assert dynamic_mappers.label_for(name), (
+            "%r registered an implementation but no screen label, so `rule_label` calls it "
+            "「mapper」 in silence" % name)
+
+    probe = "declared:s498_probe"
     seen = {}
 
-    def _probe(db, rule, **kw):
-        seen["kw"] = sorted(kw)
+    def _probe(db, payload, rule=None):
+        seen["payload"] = payload
         return {}
 
-    # ⚠️ [판정 509] `hands` IS REQUIRED NOW, so this probe says it like any kind would.
-    builtins.register_builtin(probe, _probe, builtins.HANDS_ROW_IDS,
-                              writes_itself=False, label="decide")
+    # ⚠️ [판정 509 · 562] `hands` IS GONE - there is one calling convention, so a probe does
+    #   not declare how it is called. What it still declares is the fact about its WORK:
+    #   whether the caller has to write what it produced.
+    import mapper_sdk
+
+    mapper_sdk.register(probe, _probe)
+    dynamic_mappers.TEMPLATE_FACTS[probe] = {"label": "decide", "stamps_origin": False,
+                                             "writes_itself": False, "params": None}
     try:
         bound = rule_run.resolve({"name": "p", "mapper": probe})
-        assert bound.writes_itself is False, (
-            "a kind that registered itself as PROPOSING was still treated as self-writing, so "
-            "the seat is inferring from 「builtin」 again")
-        assert bound.hands == rule_run.HANDS_ROW_IDS, (
-            "how a kind is CALLED came off `writes_itself` - those are two different facts "
-            "and this probe is the case that separates them")
+        assert bound.call is _probe
+        assert rule_run.writes_itself({"mapper": probe}) is False, (
+            "a mapper that registered itself as PROPOSING was still treated as self-writing, "
+            "so the seat is inferring from its name again")
         assert rule_run.rule_label({"mapper": probe}) == "decide"
     finally:
-        builtins.BUILTIN_KINDS.pop(probe, None)
-        builtins.BUILTIN_LABELS.pop(probe, None)
-        builtins.SELF_WRITING_KINDS.discard(probe)
+        mapper_sdk.MAPPER_REGISTRY.pop(probe, None)
+        mapper_sdk.MAPPER_PARAMS.pop(probe, None)
+        dynamic_mappers.TEMPLATE_FACTS.pop(probe, None)

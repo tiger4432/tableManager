@@ -105,7 +105,21 @@ def test_each_bucket_holds_the_one_module_that_belongs_in_it(four_boxes):
     registered = [c for c in out["candidates"] if c["kind"] == "registered"]
     functions = [c for c in out["candidates"] if c["kind"] == "function"]
 
-    assert [(c["name"], c["params"]) for c in registered] == [("fixture_registered", ["alpha"])]
+    # ⚰️ [판정 562 · 600] THE PRODUCT'S OWN MAPPERS SHARE THIS REGISTRY NOW. They used to sit
+    #   in a kind table of their own, so 「registered」 meant 「an author's `@mapper`」 and the
+    #   bucket held exactly the fixture. One registry means this bucket legitimately holds
+    #   both, so the assertion splits them rather than counting.
+    # 🔴 AND BOTH HALVES ARE PINNED: a stray registration still turns this red, and a product
+    #   template that failed to install turns it red too.
+    from chain import dynamic_mappers
+
+    product = set(dynamic_mappers.TEMPLATES)
+    names = {c["name"] for c in registered}
+    assert product <= names, (
+        "a mapper the product builds from declarations is not registered: %s"
+        % sorted(product - names))
+    assert [(c["name"], c["params"]) for c in registered if c["name"] not in product] == [
+        ("fixture_registered", ["alpha"])]
     assert [(c["module"], c["name"]) for c in functions] == [
         (f"{four_boxes}.plain_function", "build_fixture_rows")]
     assert [o["module"] for o in out["other"]] == [f"{four_boxes}.roleframe_only"]

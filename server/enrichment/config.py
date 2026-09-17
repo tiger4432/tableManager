@@ -999,11 +999,16 @@ def chain_rules_for(rule: dict) -> list:
         #   S-249 removed. The product owns this mapper, so the product declares how it is
         #   called; an operator should not have to know.
         "is_batch": True,
-        # ⚠️ THE WORK RUNS ON THE FOLLOW-UP LAP, NOT IN THE GROUP. It already did
-        # (S-151, 판정 264) — inlining it cost 0.875 s per group and that measurement
-        # is why the seat moved. This cell is what says so in the declaration instead
-        # of only in the code.
-        "follow_up": True,
+        # 🔴 [소유자 정본] IT IS WOKEN BY THE ENRICH WRITE, AND THAT WRITE IS THE CHAIN'S.
+        #   This carried `follow_up: True` so the paced lap ran it. On the trigger path its
+        #   waking event is the dedup rule's write to the derived table, whose `source_name`
+        #   IS `chain_ingestion` - so `_rule_accepts_event` would drop it unless it opts in.
+        #   Without this cell removing `follow_up` would leave auto-confirm enabled, looking
+        #   live, and never running: the exact 「갈 곳이 없어진」 shape of 2026-09-16.
+        # ⚠️ AND THE PING-PONG IS BOUNDED BY THE WORK, NOT BY THE CELL. A second pass finds
+        #   nothing left to confirm and writes nothing, so the loop ends on its own; the hop
+        #   ceiling is the backstop. 소유자 2026-09-17: 「홉수 무시하고 일단 체인 만들라」.
+        "allow_chain_trigger": True,
         "enabled": enabled,
         "params": params,
         "origin": origin,

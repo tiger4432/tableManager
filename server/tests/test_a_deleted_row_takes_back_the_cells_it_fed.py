@@ -187,8 +187,16 @@ def test_a_kind_that_cannot_be_reverted_says_so_by_name():
 
     assert said, "a kind that stamps nothing answered with silence"
     assert "sweep" in said, "the refusal does not name the rule, so nobody can act on it"
-    assert enrichment.config.AUTO_CONFIRM_MAPPER in said, (
-        "the refusal does not name the kind")
+    # ⚰️ [판정 505 · 507] THIS REQUIRED THE MAPPER NAME IN THE SENTENCE. The seat
+    #   writes the READABLE label instead - 「decide」 rather than `declared:decide` -
+    #   because 507 settled that a tag an operator cannot read is the defect, and the
+    #   rule name above is what they act on. What must not happen is a refusal that
+    #   says neither, so the label is asserted rather than the assertion dropped.
+    from chain import dynamic_mappers
+
+    label = dynamic_mappers.label_for(enrichment.config.AUTO_CONFIRM_MAPPER)
+    assert label and label in said, (
+        "the refusal names neither the mapper nor its label: %r" % said)
 
 
 def test_a_kind_that_stamps_its_origin_refuses_nothing():
@@ -217,9 +225,15 @@ def test_every_registered_kind_answers_the_question_one_way_or_the_other():
     anything was built; this keeps it counted. A kind registered later with no answer here
     would otherwise retract nothing and say nothing - today's picture, arriving again under
     a new name."""
-    for kind in sorted(builtins.BUILTIN_KINDS):
+    # ⚰️ [판정 562] THE POPULATION MOVED WITH THE TABLE. It was the `builtin:` kinds;
+    #   it is the mappers the product builds from declarations, and the fact it asks about
+    #   travelled with them into `TEMPLATE_FACTS`.
+    from chain import dynamic_mappers
+
+    assert dynamic_mappers.TEMPLATE_FACTS, "nothing is registered, so this asserts nothing"
+    for kind in sorted(dynamic_mappers.TEMPLATE_FACTS):
         answer = rule_run.retraction_refusal({"name": "r", "mapper": kind})
-        stamps = kind in builtins.ORIGIN_STAMPING_KINDS
+        stamps = dynamic_mappers.stamps_origin(kind)
         assert (answer is None) is stamps, (
             "kind %r is %sregistered as stamping its origin but the seat says %r"
             % (kind, "" if stamps else "not ", answer))

@@ -96,9 +96,13 @@ def test_a_clean_set_from_three_files_stands_whole_and_prints_one_set_line(load,
     came from."""
     names, lines = load([FLAT, UNIFIED], {"s234_enrich": ENRICH}, {"s234_join": JOIN}, caplog)
 
-    assert names == ["s234_flat", "s234_unified",
-                     "enrichment_dedup:s234_enrich", "enrichment_auto_confirm:s234_enrich",
-                     "virtual_join:s234_join"]
+    # ⚰️ [소유자 정본] THE JOIN MOVED TO THE FRONT, and that is the ordering telling
+    #   the truth. `rule_order` skipped a producer that carried `follow_up` - 「not on the
+    #   trigger path: it fires nothing, it orders nothing」. Every producer is on the
+    #   trigger path now, so the materialised join is ordered like the producer it is.
+    assert names == ["virtual_join:s234_join", "s234_flat", "s234_unified",
+                     "enrichment_dedup:s234_enrich",
+                     "enrichment_auto_confirm:s234_enrich"]
     set_lines = [line for line in lines if line.startswith("[ChainRules] set(")]
     assert len(set_lines) == 1, lines
     assert set_lines[0].startswith("[ChainRules] set(5): ")
@@ -121,8 +125,10 @@ def test_a_name_written_in_two_files_is_refused_once_naming_both_files(load, cap
     names, lines = load([twin, UNIFIED], {"s234_enrich": ENRICH}, {"s234_join": JOIN}, caplog)
 
     assert "enrichment_dedup:s234_enrich" not in names
-    assert names == ["s234_unified", "enrichment_auto_confirm:s234_enrich",
-                     "virtual_join:s234_join"]
+    # ⚰️ [소유자 정본] same reordering as above: the materialised join is a
+    #   producer on the trigger path now, so `rule_order` puts it first.
+    assert names == ["virtual_join:s234_join", "s234_unified",
+                     "enrichment_auto_confirm:s234_enrich"]
     refusals = [line for line in lines
                 if line.startswith("[ChainRules:enrichment_dedup:s234_enrich]")]
     assert len(refusals) == 1, lines

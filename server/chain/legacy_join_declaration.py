@@ -874,10 +874,12 @@ def synthesized_join_chain_rules(path: str = None, known_tables: dict = None) ->
     rule would put a rule on the loader that can never do anything — and this box's two
     production rules are read-time today. They must come out of here byte-identically absent.
 
-    🔴 `follow_up: True`, FOR THE REASON S-151 MEASURED. One reference row can reach 70,800
-    target rows here (≈92 s at the owner's IO spec), and 「요청/커밋 경로 인라인 금지,
-    뒤따르는 일은 페이싱된 별도 작업」 is the standing rule. The cell says so in the
-    declaration rather than only in the code.
+    ⚰️ [소유자 정본, 2026-09-17] THIS PARAGRAPH SAID `follow_up: True` AND WHY. The number it
+    rested on stands — one reference row can reach 70,800 target rows (S-151, 판정 264) — and
+    the cell does not: 소유자 「체인은 … 트랜잭션 - 아웃박스 - 트리거 - 맵퍼 실행 - 페이로드 및
+    업서트 이거만 하면됨」. There is no paced lap to defer to, so this rule runs when its
+    trigger table's rows move, like every other rule. If that cost shows up it is reported and
+    fixed then — 소유자 「그냥 원칙대로 만들고 비용 문제 있으면 사후 보고하고 그때 개선해」.
 
     ⚠️ `params` IS THE WHOLE NORMALIZED RULE, exactly as the enrichment half does it — a
     hand-listed subset is a list that goes stale silently, and the cell it drops is invisible
@@ -890,8 +892,13 @@ def synthesized_join_chain_rules(path: str = None, known_tables: dict = None) ->
         rules.append({
             "name": synthesized_join_rule_name(rule["name"]),
             # The TARGET table is what a join writes, and it is also what wakes this rule
-            # when one of its own rows moves (trigger ⓐ). The reference side reaches it
-            # through the follow-up lap, which is why this is not a second trigger cell.
+            # when one of its own rows moves (trigger ⓐ).
+            # ⚰️ [소유자 정본] THIS SAID 「the reference side reaches it through the follow-up
+            #   lap, which is why this is not a second trigger cell」. The lap is gone, and the
+            #   reference side does NOT get a second trigger cell here either - 판정 584
+            #   measured `on_reference_rows_changed` at ZERO callers, so that arm was already
+            #   unreachable before the lap went. A companion rule would route events into a
+            #   path that does not exist; naming the absence is the honest move.
             "trigger_table": rule["left_table"],
             "target_table": rule["left_table"],
             "mapper": JOIN_MAPPER,
@@ -903,7 +910,6 @@ def synthesized_join_chain_rules(path: str = None, known_tables: dict = None) ->
             #   S-249 removed. The product owns this mapper, so the product declares how it is
             #   called; an operator should not have to know.
             "is_batch": True,
-            "follow_up": True,
             "enabled": True,
             "params": dict(rule),
             "origin": "synthesized:" + rule["name"],

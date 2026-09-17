@@ -141,7 +141,9 @@ def order_rules(rules: list, on_cycle=None) -> list:
             # property itself, not a stand-in for 「is it a builtin」.
             # The owner met exactly that: 「enable false 여도 고리 인식하나?」
             # Yes, it did. Now the walk asks what the trigger path asks.
-            if not producer.get("enabled", True) or producer.get("follow_up"):
+            # ⚰️ [소유자 정본] THIS ASKED `producer.get("follow_up")` — 「is this producer on
+            #   the trigger path」. Every producer is, so the question is gone with the cell.
+            if not producer.get("enabled", True):
                 continue  # not on the trigger path: it fires nothing, it orders nothing
             if (producer.get("trigger_table") == trigger
                     and rule.get("target_table") == trigger):

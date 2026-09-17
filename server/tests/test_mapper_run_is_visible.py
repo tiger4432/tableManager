@@ -93,27 +93,28 @@ def test_the_line_names_the_code_it_ran_whichever_way_the_rule_named_it(monkeypa
     mapper and `builtin:<kind>` for a registered kind - the same cell either way, so 「which of
     my rules is this」 is readable off one column instead of inferred from which words the line
     happens to use."""
-    from chain import builtins
+    import mapper_sdk
 
     mod, fn = install(monkeypatch, lambda db, p: {"updates": []})
-    monkeypatch.setitem(builtins.BUILTIN_KINDS, "builtin:s498_log_probe",
-                        lambda db, rule, **kw: {"written": 2})
-    # ⚠️ [판정 509] BOTH TABLES. `register_builtin` writes them together; faking a kind
-    #    by hand has to say how it is called, or the seat refuses it by name.
-    monkeypatch.setitem(builtins.BUILTIN_HANDS, "builtin:s498_log_probe", builtins.HANDS_ROW_IDS)
-    builtins.SELF_WRITING_KINDS.add("builtin:s498_log_probe")
-    try:
-        with caplog.at_level(logging.INFO):
-            rule_run.run_rule(None, _rule(mod, fn, is_batch=True), payloads=payloads(1))
-            rule_run.run_rule(None, dict(RULE, mapper="builtin:s498_log_probe"),
-                              row_ids=["r1", "r2"])
-    finally:
-        builtins.SELF_WRITING_KINDS.discard("builtin:s498_log_probe")
+    # ⚰️ [판정 562 · 509] FAKING A KIND USED TO MEAN THREE TABLES - the body, how it is
+    #   called, and whether it writes for itself. There is one registry and one convention,
+    #   so it means putting a callable under a name; 「writes for itself」 is no longer asked
+    #   in advance - the mapper says it in `written`, which this stub does.
+    monkeypatch.setitem(mapper_sdk.MAPPER_REGISTRY, "declared:s498_log_probe",
+                        lambda db, payload, rule=None: {"written": 2})
+    with caplog.at_level(logging.INFO):
+        rule_run.run_rule(None, _rule(mod, fn, is_batch=True), payloads=payloads(1))
+        # ⚠️ `is_batch` IS DECLARED, because the retired kind table used to hand every
+        #   builtin the whole row list and the rule now has to say so itself (판정 506).
+        #   Without it the seat fans out per row and one stub answer is counted twice.
+        rule_run.run_rule(None, dict(RULE, mapper="declared:s498_log_probe",
+                                     is_batch=True),
+                          row_ids=["r1", "r2"])
 
     said = lines(caplog)
     assert len(said) == 2
     assert "kind=fake_mapper_module.run" in said[0]
-    assert "kind=builtin:s498_log_probe" in said[1]
+    assert "kind=declared:s498_log_probe" in said[1]
     # 🔴 AND THE TWO ARMS ARE TOLD APART BY A VALUE, NOT BY A VOCABULARY. A proposing rule
     # never fills `written`; a self-writing one reports it, and both report `rows_out`.
     assert "written=None" in said[0]

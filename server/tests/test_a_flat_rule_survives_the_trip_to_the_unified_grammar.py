@@ -184,6 +184,7 @@ def test_the_axis_set_is_the_difference_between_the_two_lists():
     # ⚠️ A NUMBER, NOT A LIST OF BLESSED NAMES. Pinning the members would go red on every
     #    legitimate addition; the number going up means 「a cell was added and nobody decided
     #    where it lives」, which is the thing worth a red.
-    assert len(known - folded) == 14, (
+    # ⚰️ 14 -> 13 (소유자 정본): `follow_up` left the chain grammar with the lap.
+    assert len(known - folded) == 13, (
         "the axis set moved to %d - a cell was added to one list and not the other: %s"
         % (len(known - folded), sorted(known - folded)))

@@ -289,7 +289,9 @@ def test_loader_synthesized_chain_rule_shape(tmp_path):
     assert cr["enrichment"]["name"] == "bonding_wafer_attribution"
     confirm = next(r for r in chain_rules
                    if r["name"].startswith("enrichment_auto_confirm:"))
-    assert confirm["follow_up"] is True
+    # ⚰️ [소유자 정본] the paced lap is gone.
+    assert "follow_up" not in confirm
+    assert confirm["allow_chain_trigger"] is True
     assert confirm["trigger_table"] == confirm["target_table"] == "enrich_test_derived"
 
 

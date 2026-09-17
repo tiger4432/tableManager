@@ -924,7 +924,9 @@ def load_chain_rules():
     #    set - what the operator wrote plus what the product synthesised - because a
     #    synthesised rule can lose its path the same way, and it runs LAST so the rules it
     #    counts are the ones that would actually be handed to the passes.
-    rules = refuse_rules_no_path_picks_up(rules)
+    # ⚰️ [소유자 정본] `refuse_rules_no_path_picks_up(rules)` STOOD HERE. With one
+    #   execution path the count it refused on is always 1, so it refused nothing and
+    #   said nothing - see its tombstone above `watches_table`.
     _validate_chain_cascade_graph(rules)
     _report_unwatchable_trigger_columns(rules)
     # 🔴 선언된 규칙을 «값»으로 세운다 — 처리 루프가 결과를 덮어쓰고, 한 번도 안 걸린 규칙은
@@ -1016,106 +1018,25 @@ def watches_table(rule, table_name) -> bool:
     return bool(rule.get("enabled", True)) and rule.get("trigger_table") == table_name
 
 
-def picked_up_by_the_group_step(rule) -> bool:
-    """Does the group step take this rule? Everything that is not deferred.
-
-    🔴 A FOLLOW-UP RULE IS NOT ON THE TRIGGER PATH (S-179 ①, 판정 292). Its work runs on the
-    paced pass - where it already ran before it was declared (S-151, 판정 264: inlining it
-    cost 0.875 s per group) - so it must never be matched to an event here.
-    """
-    return not (rule or {}).get("follow_up")
-
-
-def picked_up_by_the_follow_up_pass(rule) -> bool:
-    """Does the paced pass take this rule? The deferred ones it can actually run.
-
-    🔴 THE SECOND CLAUSE IS A CAPABILITY, NOT A SECOND SELECTION - and it is stated HERE so
-    the roll call can turn it into a refusal by name. This pass hands a rule `row_ids` and
-    reads back what the rule WROTE; it has no payloads to hand a proposing rule and no batch
-    write to put its `updates` through. A file mapper arriving here would be called with an
-    empty batch and have its rows dropped on the floor, which is worse than not running.
-    ⚠️ So a rule that declares `follow_up` and proposes is picked up by NOBODY - and 판정 500
-    ② is that such a rule must be REFUSED BY NAME at the loader rather than left silent.
-    That is what `refuse_rules_no_path_picks_up` does with this answer.
-
-    🔴 [판정 503] AND THE CAPABILITY IS TWO FACTS, NOT ONE. 503 found the bench splitting on
-    「자기가 쓰나」 where the binding fact was the CALLING SHAPE; here BOTH bind, and only one
-    of them was written down. This pass hands `row_ids` - so it can only call a rule whose
-    shape takes them - AND it drops whatever a rule returns in `updates`, because there is no
-    batch writer on this lap - so the rule must write for itself. They select the same rules
-    today; they are still two facts, and the guard now looks at the set the action needs
-    rather than at a fact that happens to agree with it.
-    """
-    if not (rule or {}).get("follow_up"):
-        return False
-    # 🔴 [판정 562] THE CALLING SHAPE IS NOT A QUESTION ANY MORE, so the pair became one.
-    #   503 separated these two deliberately - 「the arm is the calling shape, not 「does it
-    #   write its own rows」」 - and that separation was right while there were two doors to
-    #   choose between. There is one, so the first half is true of everything and says
-    #   nothing; what this pass actually selects on is the second.
-    return rule_run.writes_itself(rule)
-
-
-#: (what to call it in the refusal, does it pick this rule up). 🔴 MEMBERS, and each member
-#: is the path's OWN function - the one the path itself calls.
-PICKUP_PATHS = (
-    ("the group step", picked_up_by_the_group_step),
-    ("the follow-up pass", picked_up_by_the_follow_up_pass),
-)
-
-
-def rules_by_pickup_count(rules):
-    """`{rule name: [path names that would pick it up]}` — the roll call's raw answer."""
-    out = {}
-    for rule in (rules or ()):
-        name = (rule or {}).get("name") or "<unnamed rule>"
-        out[name] = [label for label, picks in PICKUP_PATHS if picks(rule)]
-    return out
-
-
-def refuse_rules_no_path_picks_up(rules):
-    """🔴 [판정 500 추가] THE BOOT-TIME ROLL CALL. Every declared rule, and how many paths
-    would take it: exactly one is normal and says nothing.
-
-    소유자 2026-09-17: 「왜 이런일이 벌어져?」. The answer is not the one rule that was
-    missing a path - it is that NOTHING COMPARED the two sides. The grammar says 「you may
-    write this cell」 in one place (`RULE_ROUTING_OPTIONAL`); the execution paths say 「I take
-    rules like this」 each in their own. Nobody held the two up against each other, and
-    because opt-in is the default, 「nobody picked it up」 and 「there was nothing to do」 have
-    the SAME SHAPE - silence. Silence is indistinguishable from healthy.
-
-    ⚠️ AND THAT DIAGNOSIS WAS ALREADY WRITTEN (CLAUDE.md, 2026-09-06: 「옵트인이 기본이라
-    「안 돌았다」와 「돌 필요가 없었다」가 같은 모양이다」). It was prose, so nothing went red,
-    and it happened again. This is that paragraph as a gate.
-
-    🔴 TWO IS REFUSED AS WELL AS ZERO. A rule two passes both take would run twice for one
-    change, which is the same class of defect wearing the opposite sign.
-
-    ⚠️ REFUSED MEANS DROPPED AND NAMED, never fatal to the file - 「거절된 분자는 세고
-    건너뛴다」. The returned list is what still stands.
-    """
-    kept, refused = [], []
-    for rule in (rules or ()):
-        taken = [label for label, picks in PICKUP_PATHS if picks(rule)]
-        if len(taken) == 1:
-            kept.append(rule)
-            continue
-        name = (rule or {}).get("name") or "<unnamed rule>"
-        if not taken:
-            why = ("no execution path picks it up, so it would sit enabled and never run. "
-                   "`follow_up: true` defers a rule to the paced pass, and that pass can "
-                   "only run a rule that writes its own rows - a mapper that PROPOSES rows "
-                   "has nowhere there to put them. Drop `follow_up`, or name a kind that "
-                   "writes for itself")
-        else:
-            why = ("%d execution paths pick it up (%s), so one change would run it more "
-                   "than once" % (len(taken), ", ".join(taken)))
-        logger.error("[ChainRules] %s refused: %s", name, why)
-        refused.append(name)
-    if refused:
-        logger.error("[ChainRules] %d rule(s) no single path claims: %s",
-                     len(refused), ", ".join(refused))
-    return kept
+# ⚰️ [소유자 정본, 2026-09-17 18:2x] THE ROLL CALL WENT WITH THE SECOND PATH.
+#   소유자: 「체인은 어떤 형태의 선언이든 맵퍼로 이어지고 트랜잭션 - 아웃박스 - 트리거 -
+#   맵퍼 실행 - 페이로드 및 업서트 «이거만» 하면됨」. There is no paced lap in that list, so
+#   there is one execution path, and these all existed to tell two apart:
+#       picked_up_by_the_group_step      -> every rule is on the trigger path now
+#       picked_up_by_the_follow_up_pass  -> there is no follow-up pass
+#       PICKUP_PATHS · rules_by_pickup_count
+#       refuse_rules_no_path_picks_up    -> 판정 500's boot-time roll call
+#
+# 🔴 THE ROLL CALL IS NOT 「STILL USEFUL WITH ONE MEMBER」. It refused a rule that 0 or 2
+#   paths claimed; with one path that takes everything, the count is ALWAYS 1 and the gate
+#   says nothing about anything. A gate that cannot go red is not a weaker gate, it is a
+#   green light - which is the shape 판정 500 was written to end, one level up.
+#
+# ⚠️ WHAT 500 ACTUALLY FOUND SURVIVES, AND IT IS NOT THIS FUNCTION. It found that 「nobody
+#   picked it up」 and 「there was nothing to do」 have the same shape - silence. With one
+#   path that shape is gone: a rule either matches an event's table or it does not, and
+#   `_report_unwatchable_trigger_columns` already names a rule whose trigger columns no
+#   table declares.
 
 
 def _rule_accepts_event(rule, event) -> bool:
@@ -1126,8 +1047,9 @@ def _rule_accepts_event(rule, event) -> bool:
     # read the SAME function, so narrowing one cannot leave the other behind.
     # This is also what makes the ping-pong guard free: the kind is a SELF-LOOP
     # (trigger_table == target_table), and the only thing that could re-enter it is this seat.
-    if not picked_up_by_the_group_step(rule):
-        return False
+    # ⚰️ [소유자 정본] THE FIRST LINE HERE ASKED `picked_up_by_the_group_step(rule)`, which
+    #   answered 「is this rule NOT deferred」. There is no deferred path, so it answered 「yes」
+    #   to everything and the question is gone with it.
     if get_payload_dict(event).get("source_name") != "chain_ingestion":
         return True
     return bool(rule.get("allow_chain_trigger"))
@@ -2166,7 +2088,10 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
 #:
 #: ⚠️ INVALIDATED WHERE EVERY OTHER WORKER CACHE IS. A cache with no reset is the reason a
 #: reload stops meaning anything, and this process already has one seat for that.
-_FOLLOWUP_BUILTIN_RULES = None
+# ⚰️ [소유자 정본] `_FOLLOWUP_BUILTIN_RULES` AND `_rules_for_the_follow_up_pass` STOOD HERE.
+#   The cache existed because the drain called the selector in a `while` loop and
+#   `load_chain_rules()` costs 3.4 ms; there is no drain-side rule loop any more, so there is
+#   nothing to cache and nothing to invalidate on reload.
 
 
 def _builtins_table():
@@ -2181,26 +2106,6 @@ def _builtins_table():
     return builtins
 
 
-def _rules_for_the_follow_up_pass():
-    """The rules the paced pass takes, loaded once per reload.
-
-    ⚰️ [판정 500 ③] THE NAME SAID `builtin`, WHICH IS AN ADDRESS. What this pass takes is
-    decided by `picked_up_by_the_follow_up_pass`, and 496 settled that 「builtin」 is one of
-    three ways a rule NAMES its code rather than a kind of rule.
-    """
-    global _FOLLOWUP_BUILTIN_RULES
-    if _FOLLOWUP_BUILTIN_RULES is None:
-        # 🪦 [판정 498 ④] THIS READ `builtins.BUILTIN_KINDS` DIRECTLY, then asked the
-        # kind and compared it to None - the same question in two more spellings. What the lap
-        # actually selects for is 「writes its own rows」, which is the fact the registration
-        # carries; `builtin:` was an address standing in for a behaviour. The three rules
-        # selected are the same either way today, and stop being the same the day a kind
-        # registers `writes_itself=False`.
-        # (Found by the AST sweep rather than named in the ruling: the census that listed
-        # `rule_shape` and `dt_map_derivation` counted comparisons and missed a membership.)
-        _FOLLOWUP_BUILTIN_RULES = [
-            r for r in load_chain_rules() if picked_up_by_the_follow_up_pass(r)]
-    return _FOLLOWUP_BUILTIN_RULES
 
 
 def reload_worker_process_cache():
@@ -2217,8 +2122,6 @@ def reload_worker_process_cache():
     for k in plugin_keys:
         sys.modules.pop(k, None)
 
-    global _FOLLOWUP_BUILTIN_RULES
-    _FOLLOWUP_BUILTIN_RULES = None
     logger.info("[Reload] Chain worker modules cache cleared.")
 
 def warmup_worker(rules, db_session_factory=None):
@@ -2892,103 +2795,21 @@ def another_chain_loop_is_running(now=None):
 FOLLOWUP_IDLE_SECONDS = 1.0
 
 
-#: (origin tx) -> {(table, rule name): frozenset(row ids already served)}. Bounded: a cause
-#: is finished when its cascade stops, and the oldest are evicted rather than kept forever.
-_FOLLOWUP_SERVED = OrderedDict()
-MAX_REMEMBERED_CAUSES = 512
-
-
-def followup_already_served(transaction_id, table, rule_name, row_ids) -> list:
-    """The rows of this cause this rule has NOT been handed yet, remembering these.
-
-    🔴 [S-249 ⓒ] ONE CAUSE, ONE HELPING. The principle the group step already has - 「체인이
-    쓴 행은 체인을 다시 깨우지 않는다, 선언으로 켠 것만 예외」 - had no counterpart on the
-    follow-up lap: a rule could be handed the same row for the same original transaction
-    again and again, because each pass through the lap looked like a fresh batch.
-
-    ⚠️ AND THE EXCEPTION STAYS AN EXCEPTION. This does not stop a rule from seeing a row
-    again under a DIFFERENT cause; that is the ordinary case and the reason the key is the
-    transaction rather than the row.
-
-    ⚠️ NO TRANSACTION, NO MEMORY. A backfill or a retroactive filler queues rows with no
-    transaction id, and remembering those under one shared key would make the second
-    backfill of a row look like a repeat of the first.
-    """
-    rows = [str(r) for r in (row_ids or ()) if r]
-    if not transaction_id or not rows:
-        return rows
-
-    served = _FOLLOWUP_SERVED.setdefault(transaction_id, {})
-    _FOLLOWUP_SERVED.move_to_end(transaction_id)
-    key = (table, rule_name)
-    already = served.get(key) or frozenset()
-    fresh = [r for r in rows if r not in already]
-    served[key] = already | frozenset(rows)
-    while len(_FOLLOWUP_SERVED) > MAX_REMEMBERED_CAUSES:
-        _FOLLOWUP_SERVED.popitem(last=False)
-    return fresh
-
-
-def forget_followups():
-    """선언이 바뀌거나 시험이 끝나면 다시 센다 — 기억은 «이 실행에 대한» 것이다."""
-    _FOLLOWUP_SERVED.clear()
-
-
-#: (rule, table) -> how many times the lap has said this line. Same hand as
-#: `log_failure_folded`: the first is the diagnosis, and after that one line per 500.
-_FOLLOWUP_SAID = {}
-FOLLOWUP_LOG_EVERY = 500
-
-
-def log_followup_folded(logger_, rule_name, table, written, woke_by, hop,
-                        max_hop, refusal=None):
-    """One line that says WHY this ran, folded so a thousand rows are not a thousand lines.
-
-    🔴 [S-249 ⓔ-2] 「WHY DID THIS RUN」 WAS NOT IN THE LINE. The lap printed rule, kind,
-    table and counts - everything except the change that woke it - so an operator watching a
-    cascade could not tell which edit was still echoing. `woke_by` and the hop are what turn
-    a count into a trail.
-
-    🔴 [판정 499] AND IT SAID ALL THAT UNDER `[ChainBuiltin]`, WHICH IS A KIND'S NAME.
-    판정 498 folded the two execution vocabularies into one and reached only `run_rule`'s line,
-    so an operator grepping 「did this rule run」 still got half of the laps. Worse, the SAME
-    round made the name false: this lap selects rules by `rule_run.writes_itself` now - a
-    REGISTERED property, not an address - so the day a file mapper registers it, the lap
-    would log that mapper as a builtin. 「가드는 도달 가능해지는 날 틀린다」, in its log form.
-
-    🔴 [판정 500 ⓓ] AND `table` LEFT THE MESSAGE, because `woke_by` CONTAINS IT - the line
-    read `table=t woke_by=t#tx-1`, one fact with two authors on a single line. It stays a
-    PARAMETER: the fold is counted per (rule, table), so this line still needs to know which.
-
-    🔴 `rows_in` AND `written` LEFT THE MESSAGE, NOT THE LINE. `run_rule` says both for
-    this very run and now under the SAME tag, so repeating them here was one fact with two
-    authors. `written` stays a PARAMETER because it picks the level - a lap with nothing to
-    do is the ordinary case and belongs at DEBUG. What is left is what only this lap knows:
-    what woke it, which hop it is on, and how many lines were folded into this one.
-
-    ⚠️ NOTHING WRITTEN IS DEBUG. A follow-up that had nothing to do is the ordinary case on
-    every lap, and at INFO it is the noise that hides the laps that DID something.
-    """
-    import logging
-
-    key = (rule_name, table)
-    seen = _FOLLOWUP_SAID.get(key, 0) + 1
-    if key not in _FOLLOWUP_SAID and len(_FOLLOWUP_SAID) >= 2000:
-        _FOLLOWUP_SAID.clear()   # bounded beats a leak; the count restarts, the log does not
-    _FOLLOWUP_SAID[key] = seen
-    level = logging.INFO if (written or refusal) else logging.DEBUG
-    if level == logging.INFO and seen != 1 and seen % FOLLOWUP_LOG_EVERY != 0:
-        return seen
-    logger_.log(level,
-                "[%s] rule=%s \u2190 woke_by=%s hop=%s/%s%s%s",
-                rule_run.RULE_LOG_TAG, rule_name, woke_by, hop, max_hop,
-                (" REFUSED: " + refusal) if refusal else "",
-                (" (x%d)" % seen) if seen > 1 else "")
-    return seen
-
-
-def forget_followup_lines():
-    _FOLLOWUP_SAID.clear()
+# ⚰️ [소유자 정본] THE LAP'S THREE HELPERS WENT WITH IT — they had no other caller:
+#       followup_already_served  (29 lines) + `_FOLLOWUP_SERVED` · `MAX_REMEMBERED_CAUSES`
+#       log_followup_folded      (45 lines) + `_FOLLOWUP_SAID` · `FOLLOWUP_LOG_EVERY`
+#       forget_followup_lines    (2 lines)
+#
+# 🔴 THE PRINCIPLE THEY CARRIED IS NOT DELETED, IT WAS ALREADY ELSEWHERE. 「체인이 쓴 행은
+#   체인을 다시 깨우지 않는다, 선언으로 켠 것만 예외」 lives on the trigger path as
+#   `_rule_accepts_event` + `allow_chain_trigger`, and `followup_already_served`'s own
+#   docstring said so: 「the principle the group step ALREADY HAS ... had no counterpart on
+#   the follow-up lap」. The counterpart is what went; the principle is where it always was.
+#
+# ⚠️ AND THE FOLDED LOG LINE GOES WITH THE LAP THAT NEEDED IT. `[ChainRule] rule=… ←
+#   woke_by=… hop=…` existed because a lap could run the same rule for one cause many times
+#   and flood the log. A rule woken by its trigger writes the seat's one line
+#   (`rule_run.RULE_LOG_TAG`), which is the vocabulary 판정 498 ③ made single.
 
 
 def _retract_what_those_rows_fed(db, table, row_ids):
@@ -3015,7 +2836,10 @@ def _retract_what_those_rows_fed(db, table, row_ids):
         logger.info("[ChainRetract] table=%s deleted_rows=%d groups=%d cells_withdrawn=%d "
                     "protected_skipped=%d", table, len(row_ids), stats.get("groups", 0),
                     stats.get("cells_withdrawn", 0), stats.get("protected_skipped", 0))
-        for rule in _rules_for_the_follow_up_pass():
+        # ⚰️ [소유자 정본] THIS WALKED `_rules_for_the_follow_up_pass()`, the deferred set.
+        #   There is one set now, so it walks the loader's - and that is WIDER, which is
+        #   right: a rule that cannot be reverted is worth naming whichever path runs it.
+        for rule in load_chain_rules():
             if not watches_table(rule, table):
                 continue
             refusal = rule_run.retraction_refusal(rule)
@@ -3026,91 +2850,6 @@ def _retract_what_those_rows_fed(db, table, row_ids):
                      "(the ledger follow-up itself is unaffected): %s", table, err)
 
 
-def _run_the_follow_up_pass(db, done):
-    """Route this follow-up batch to every `builtin:` kind whose rule watches its table.
-
-    🔴 THIS IS THE FIRST DISPATCHER THE `builtin:` VOCABULARY HAS EVER HAD (판정 305).
-    Measured before building: `builtin:auto_confirm` appeared twice, both in
-    `enrichment_config`, and nothing read it — S-179 declared the kind for the loader and the
-    graph and left execution in the sweep above. A rule naming a kind nothing implements
-    would otherwise sit enabled, look live, and never run.
-
-    ⚠️ THE SWEEP ABOVE HAS NOT MOVED HERE YET, and that is a NAMED temporary (S-195, queued):
-    moving it touches the paced path S-151 measured at 0.875 s per group, which deserves its
-    own gate rather than riding on this one. Two paths that are written down and queued are
-    not the drift the prohibition is about — the drift is the silent kind.
-
-    ⚠️ CONTAINED, like its neighbour. A failure here must not cost the ledger follow-up that
-    already succeeded, and must not propagate into the drain loop.
-    """
-    from database.context import request_chain_depth
-
-    if not done:
-        return
-    table, row_ids = done.get("table"), done.get("row_ids")
-    if not table or not row_ids:
-        return
-    # ⚠️ A DELETE FOLLOWS NO VALUES — the rows are gone, so nothing here recomputes.
-    #
-    # 🪦 [S-280 · 판정 433 ⑤㉠] THIS COMMENT USED TO SAY the answer 「is retracted by
-    # `retract_rows`」, and that was false on the day it was written: `retract_rows` had no
-    # caller, passed neither `row_ids` nor `apply`, and so would have written nothing and
-    # aimed at the whole table if it had. A sentence naming a mechanism that does not run
-    # is worse than silence — it is what a diagnosis quotes.
-    if done.get("event_type") == "DELETE":
-        _retract_what_those_rows_fed(db, table, row_ids)
-        return
-    try:
-        # 🔴 [S-249 ⓒ] THE LAP IS A HOP. `request_chain_depth` is set in exactly one place -
-        # the chain group step - and this drain runs in its own thread outside that scope, so
-        # everything written here carried NO hop and could never meet `max_chain_depth`. A
-        # loop through this lap was unbounded while the same loop inside the group step was
-        # bounded: one ceiling, two answers. Setting it here makes this lap a STEP.
-        incoming_depth = done.get("chain_depth")
-        token_depth = request_chain_depth.set(rule_run.outgoing_depth(incoming_depth))
-        try:
-            for rule in _rules_for_the_follow_up_pass():
-                if not watches_table(rule, table):
-                    continue
-                kind = rule.get("mapper")
-                # ⛔ ONE CAUSE, ONE HELPING. Rows this rule has already been handed for this
-                # original transaction are named and skipped - the follow-up half of 「체인이
-                # 쓴 행은 체인을 다시 깨우지 않는다」.
-                fresh = followup_already_served(
-                    done.get("transaction_id"), table, rule.get("name"), row_ids)
-                if not fresh:
-                    logger.info(
-                        "[%s] rule=%s kind=%s table=%s — 이 원인(tx %s)의 행은 "
-                        "이미 한 번 받았습니다. 건너뜁니다.",
-                        rule_run.RULE_LOG_TAG, rule.get("name"), kind, table,
-                        done.get("transaction_id"))
-                    continue
-                # 🔴 [S-249 ⓔ-1] THE LAP COLLAPSES ITS EVENTS, like the group path already
-                # does. Per-row events made 1,000 follow-up writes into 1,000 outbox
-                # events, 1,000 queue items, 1,000 laps and 1,000 lines - the owner's
-                # 「한 행당 로그 하나」. Same context manager, same reason.
-                # 🔴 [S-279] THE SEAT, like the group step and retroactive. The collapse
-                # scope this line used to open is the envelope's now, and so is the hop -
-                # which is why `incoming_depth` goes in RAW and the `+ 1` happens once.
-                result = rule_run.run_rule(db, rule, row_ids=list(fresh), done=done,
-                                           depth=incoming_depth)
-            # 🔴 THE GROUP LINE CARRIES THE RULE NAME. A count with no name is a line nobody
-            # can act on — and with several join rules watching one table it cannot even be
-            # attributed.
-                log_followup_folded(
-                    logger, rule.get("name"), table,
-                    (result or {}).get("written"),
-                    "%s#%s" % (table, done.get("transaction_id") or "?"),
-                    rule_run.outgoing_depth(incoming_depth),
-                    event_constants.max_chain_depth(_RULES_DOCUMENT),
-                    (result or {}).get("refusal"))
-        finally:
-            request_chain_depth.reset(token_depth)
-    except Exception as err:                                       # noqa: BLE001
-        logger.error("[%s] follow-up dispatch failed for table %s "
-                     "(the ledger follow-up itself is unaffected): %s",
-                     rule_run.RULE_LOG_TAG, table, err)
-
 
 def _drain_ledger_followup_sync(db_session_factory):
     """One follow-up batch, in a thread. The session is this call's and closes with it."""
@@ -3119,10 +2858,19 @@ def _drain_ledger_followup_sync(db_session_factory):
     db = db_session_factory()
     try:
         done = ledger_followup.drain_once(db.get_bind(), load_setup())
-        # 🔴 ONE ROUTE (S-195). Auto-confirm used to be called here by name, beside the
-        # dispatcher; it is a `builtin:` kind in the table now, so both kinds arrive the same
-        # way and there is no second path to keep in step.
-        _run_the_follow_up_pass(db, done)
+        # ⚰️ [소유자 정본] `_run_the_follow_up_pass(db, done)` STOOD HERE and ran the deferred
+        #   rules on the drained rows. That lap is not in 「트랜잭션 - 아웃박스 - 트리거 -
+        #   맵퍼 실행 - 페이로드 및 업서트」, so those rules run on the trigger path like every
+        #   other rule: the write that produced these rows already emitted the outbox event
+        #   that wakes them.
+        # 🔴 WHAT IS NOT THE LAP STAYS. A DELETE has no rows to recompute FROM, so no trigger
+        #   event can carry it - the withdrawal is this drain's own work and always was
+        #   (S-280, 판정 435 ④). It was nested inside the lap, which is why it reads as if
+        #   it left with it.
+        if done and done.get("event_type") == "DELETE":
+            table, row_ids = done.get("table"), done.get("row_ids")
+            if table and row_ids:
+                _retract_what_those_rows_fed(db, table, row_ids)
         return done
     finally:
         db.close()

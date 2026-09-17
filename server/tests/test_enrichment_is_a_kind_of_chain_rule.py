@@ -67,30 +67,53 @@ def test_every_normalized_cell_rides_on_both_kinds(one_rule):
         assert set(rule["params"]) == set(RULE), set(RULE) - set(rule["params"])
 
 
-def test_the_auto_confirm_kind_is_a_paced_follow_up_on_a_self_loop(one_rule):
+def test_the_auto_confirm_rule_is_a_self_loop_that_opts_into_chain_triggers(one_rule):
     confirm = ec.load_enrichment_chain_rules()[1]
     assert confirm["mapper"] == ec.AUTO_CONFIRM_MAPPER
-    assert confirm["follow_up"] is True
     assert confirm["trigger_table"] == confirm["target_table"] == "s179_derived"
+    # ⚰️ [소유자 정본] THIS ASSERTED `follow_up is True` — 「the paced lap runs it」. There is
+    #   no paced lap: 소유자 「트랜잭션 - 아웃박스 - 트리거 - 맵퍼 실행 - 페이로드 및 업서트
+    #   이거만」. The cell is gone and its absence is asserted here.
+    assert "follow_up" not in confirm
+    # 🔴 AND WITHOUT THE NEXT CELL THE REMOVAL WOULD BE SILENT. What wakes this rule is the
+    #   dedup half's write to the derived table, and that write's `source_name` IS
+    #   `chain_ingestion` — so `_rule_accepts_event` would drop it and the rule would sit
+    #   enabled, look live, and never run.
+    assert confirm["allow_chain_trigger"] is True
 
 
 # ---------------------------------------------------------------------------
 # Gate ⓔ — the ping-pong guard, which this kind gets for free
 # ---------------------------------------------------------------------------
 
-def test_no_synthesized_rule_declares_allow_chain_trigger(one_rule):
-    """🔴 THIS IS THE PING-PONG GUARD. The auto-confirm kind is a SELF-LOOP, so the one
-    thing that could make its own writes wake it is `allow_chain_trigger` — and the
-    load-time cycle validator only walks rules that declare it. Not declaring it makes the
-    loop structurally unreachable instead of merely unlikely."""
-    for rule in ec.load_enrichment_chain_rules():
-        assert not rule.get("allow_chain_trigger")
+def test_only_the_self_loop_opts_into_chain_triggers(one_rule):
+    """⚰️ [소유자 정본] THIS SAID 「NO synthesized rule declares `allow_chain_trigger`」 and
+    called that the ping-pong guard: the auto-confirm half is a self-loop, so not declaring
+    the cell made its own writes structurally unable to wake it.
+
+    🔴 THE GUARD IS NOT FREE ANY MORE, AND THAT IS SAID OUT LOUD RATHER THAN QUIETLY DROPPED.
+    With the paced lap gone the only way this rule is reached is a chain-produced event, so it
+    must declare the cell. What bounds the loop now is the WORK, not the grammar: a second
+    pass finds nothing left to confirm and writes nothing, so no further event is produced.
+    That termination is measured — `test_enrichment_candidates` runs the same rows a second
+    time and asserts the confirmed count does not move — and the hop ceiling is the backstop.
+    소유자 2026-09-17: 「홉수 무시하고 일단 체인 만들라」.
+
+    ⚠️ AND IT IS STILL ONLY THE SELF-LOOP. The dedup half writes to a table it does not watch,
+    so it has no reason to opt in and this goes red if it ever does.
+    """
+    dedup, confirm = ec.load_enrichment_chain_rules()
+    assert not dedup.get("allow_chain_trigger"), (
+        "the dedup half opted into chain triggers; it is not a self-loop and has no reason to")
+    assert confirm["allow_chain_trigger"] is True
 
 
-def test_a_follow_up_rule_is_never_matched_to_a_trigger_event(one_rule):
-    """The second half of the same guard: even a hand-written event for its own table
-    must not reach it, because its work belongs to the follow-up lap (S-151, 판정 264 —
-    inlining cost 0.875 s per group)."""
+def test_the_self_loop_is_reached_by_the_write_that_feeds_it(one_rule):
+    """⚰️ [소유자 정본] THIS ASSERTED THE OPPOSITE — 「a follow_up rule is never matched to a
+    trigger event ... because its work belongs to the follow-up lap」. The lap is gone, so the
+    trigger event is the ONLY way this rule is ever reached, and the event that reaches it is
+    the dedup half's write: chain-produced, which is exactly what the old assertion refused.
+    """
     import types
 
     from chain import ingestion_worker as worker
@@ -99,10 +122,15 @@ def test_a_follow_up_rule_is_never_matched_to_a_trigger_event(one_rule):
     for source in ("user", "chain_ingestion"):
         event = types.SimpleNamespace(table_name="s179_derived",
                                       payload={"source_name": source})
-        assert worker._rule_accepts_event(confirm, event) is False
-    # THE SENSITIVITY CONTROL: an ordinary rule still accepts what it should.
-    plain = types.SimpleNamespace(table_name="s179_src", payload={"source_name": "user"})
-    assert worker._rule_accepts_event({"name": "plain"}, plain) is True
+        assert worker._rule_accepts_event(confirm, event) is True, (
+            "the confirm half no longer hears %s, so nothing wakes it" % source)
+    # THE SENSITIVITY CONTROL: a rule that did NOT opt in still refuses the chain's own write.
+    plain = {"name": "plain"}
+    chain_written = types.SimpleNamespace(table_name="s179_derived",
+                                          payload={"source_name": "chain_ingestion"})
+    assert worker._rule_accepts_event(plain, chain_written) is False
+    by_a_person = types.SimpleNamespace(table_name="s179_src", payload={"source_name": "user"})
+    assert worker._rule_accepts_event(plain, by_a_person) is True
 
 
 # ---------------------------------------------------------------------------

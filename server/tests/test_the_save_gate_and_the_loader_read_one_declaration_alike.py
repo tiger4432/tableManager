@@ -202,11 +202,14 @@ def test_a_declaration_both_doors_refuse_gives_the_same_sentence(client, rules_f
 def test_a_builtin_kind_is_runnable_at_the_save_gate_too():
     """🔴 THE RESOLVER WAS HALF. `MAPPER_REGISTRY.get` alone answers 「not registered」 for
     every `builtin:` kind, which refused at the save button what runs at boot."""
-    from chain import builtins, join_into
+    import mapper_sdk
+    from chain import join_into
 
     assert worker._resolvable_mapper(join_into.JOIN_INTO_MAPPER) is not None
     assert worker._resolvable_mapper("builtin:nothing_claims_this") is None
-    assert join_into.JOIN_INTO_MAPPER in builtins.BUILTIN_KINDS
+    # ⚰️ [판정 562] THE KIND TABLE IS GONE; the save gate and the loader read the one
+    #   registry, so that is what 「runnable」 is asked of.
+    assert join_into.JOIN_INTO_MAPPER in mapper_sdk.MAPPER_REGISTRY
 
 
 # ---------------------------------------------------------------------------

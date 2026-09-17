@@ -228,16 +228,22 @@ def test_only_a_materializing_rule_becomes_a_chain_rule(tmp_path):
     assert vjc.synthesized_join_chain_rules(path=read_time, known_tables=KNOWN) == []
 
 
-def test_a_materializing_rule_arrives_as_a_paced_builtin(tmp_path):
+def test_a_materializing_rule_arrives_as_a_trigger_path_rule(tmp_path):
     path = _declared(tmp_path, materialize=True, max_rewrite_rows=1000)
     rules = vjc.synthesized_join_chain_rules(path=path, known_tables=KNOWN)
     assert len(rules) == 1
     rule = rules[0]
     assert rule["name"] == vjc.synthesized_join_rule_name("j1")
     assert rule["mapper"] == vjc.JOIN_MAPPER
-    # 🔴 PACED, for the reason S-151 measured: one reference row can reach 70,800 target
-    # rows here, and the standing rule is 「요청/커밋 경로 인라인 금지」.
-    assert rule["follow_up"] is True
+    # ⚰️ [소유자 정본] THIS ASSERTED `rule["follow_up"] is True`, 「paced, for the reason S-151
+    #   measured」. 소유자: 「체인은 … 트랜잭션 - 아웃박스 - 트리거 - 맵퍼 실행 - 페이로드 및
+    #   업서트 이거만 하면됨」 — there is no paced lap to be deferred to, so the cell is gone
+    #   and its ABSENCE is what this asserts. The 70,800-row measurement still stands; what
+    #   changed is that a cost is reported after it happens, not designed around first.
+    assert "follow_up" not in rule
+    # 🔴 AND THE GROUP-NESS IS DECLARED (판정 506): the retired kind table called every
+    #   builtin with the whole row-id list, so this must say so itself now.
+    assert rule["is_batch"] is True
     assert rule["origin"] == "synthesized:j1"
     # ⚠️ The whole normalized rule rides, as the enrichment half does it — a hand-listed
     # subset goes stale silently.
@@ -284,35 +290,45 @@ def test_an_unknown_kind_is_refused_by_name_not_ignored():
     assert "declared:virtual_join" in str(caught.value), "it must say what IS known"
 
 
-def test_the_join_kind_is_in_the_table():
-    assert vjc.JOIN_MAPPER in builtins.BUILTIN_KINDS
+def test_the_join_mapper_is_registered():
+    """⚰️ [판정 562 · 600] THIS ASKED `builtins.BUILTIN_KINDS`. The kind table is deleted; the
+    name resolves through the one registry every mapper uses, under the value 600 gave it."""
+    import mapper_sdk
+
+    assert vjc.JOIN_MAPPER == "declared:virtual_join"
+    assert vjc.JOIN_MAPPER in mapper_sdk.MAPPER_REGISTRY
 
 
-def test_the_kind_routes_a_target_change_and_a_reference_change_differently(monkeypatch):
-    """⚠️ ONE KIND, TWO TRIGGERS. The caller says which by which argument it passes, and they
-    cost differently — a reference change counts first and can be refused.
+def test_the_materialized_join_routes_a_target_change_and_has_no_reference_caller():
+    """⚰️ [판정 584 · 소유자 정본] THIS ASSERTED TWO-WAY ROUTING through the kind table:
+    `run_join(row_ids=...)` -> target, `run_join(key_values=...)` -> reference.
 
-    ⚰️ [판정 498] CALLED DIRECTLY, BECAUSE THE SUBJECT IS THE KIND'S OWN ROUTING. It used to
-    go through `run_builtin`, which is deleted; the seat that replaced it hands a self-writing
-    kind `row_ids` and nothing else.
-    🔴 MEASURED WHILE RETARGETING THIS: no caller in the product passes `key_values` to a rule
-    run - not at HEAD either, so 498 did not break it. The reference arm below is reachable
-    only by calling `_run_join` the way this test does. Reported rather than repaired: deleting
-    a reachable-looking arm, or giving it a caller, is its own round.
+    🔴 BOTH HALVES OF THAT SUBJECT ARE GONE. The table is deleted, and the reference arm was
+    measured at ZERO callers in the product (판정 584) - so the template built from the
+    declaration carries the target arm only, and a reference change reaches nothing. That is
+    reported here rather than repaired: giving the arm a caller is its own round, and an
+    assertion that pretends it is reachable is the kind of green this file exists to refuse.
     """
+    import inspect
+
+    from chain import dynamic_mappers
     from chain import legacy_materialized_join as vje
 
     seen = []
-    monkeypatch.setattr(vje, "on_target_rows_changed",
-                        lambda db, rule, rows: seen.append(("target", rows)) or {"written": 1})
-    monkeypatch.setattr(vje, "on_reference_rows_changed",
-                        lambda db, rule, keys: seen.append(("reference", keys)) or {"written": 2})
+    original = vje.on_target_rows_changed
+    try:
+        vje.on_target_rows_changed = (
+            lambda db, rule, rows: seen.append(("target", list(rows))) or {"written": 1})
+        answer = dynamic_mappers.TEMPLATES[vjc.JOIN_MAPPER](
+            None, [{"row_id": "r1"}], rule={"params": {"name": "j1"}})
+    finally:
+        vje.on_target_rows_changed = original
 
-    rule = {"params": {"name": "j1"}}
-    run_join = builtins.BUILTIN_KINDS[vjc.JOIN_MAPPER]
-    run_join(None, rule, row_ids=["r1"])
-    run_join(None, rule, key_values=["k1"])
-    assert seen == [("target", ["r1"]), ("reference", ["k1"])]
+    assert seen == [("target", ["r1"])]
+    assert answer["written"] == 1
+    assert "on_reference_rows_changed" not in inspect.getsource(
+        dynamic_mappers._legacy_materialized_join), (
+        "the reference arm got a caller; 584 measured it at zero and this says so")
 
 
 # ---------------------------------------------------------------------------
@@ -331,113 +347,38 @@ def test_a_materialized_rule_is_not_drawn_twice():
     assert 'rule.get("materialize")' in body and "continue" in body
 
 
-def test_the_dispatcher_rides_the_paced_lap_beside_its_neighbour():
-    """⛔ SCORED ON THE SOURCE: the work must be on the FOLLOW-UP drain, not the commit path.
-    S-151 measured the inline version at 0.875 s per group, and that measurement is why the
-    seat is here at all."""
-    import inspect
-
-    from chain import ingestion_worker as worker
-
-    body = inspect.getsource(worker._drain_ledger_followup_sync)
-    assert "_run_the_follow_up_pass(db, done)" in body
-    hook = inspect.getsource(worker._run_the_follow_up_pass)
-    # 🔴 [S-279] THROUGH THE SEAT. This read `run_builtin(` - the door - and the lap calls
-    #    `run_rule` now, which asks which door for it. The property is unchanged: the work is
-    #    HERE, on the drain, and not on the commit path.
-    assert "rule_run.run_rule(" in hook
-    # 🔴 the group line names the rule — a count nobody can attribute is a count nobody acts on
-    assert "rule=%s" in hook
-    # ⚠️ a delete follows no values
-    assert 'done.get("event_type") == "DELETE"' in hook
-
-
 # ---------------------------------------------------------------------------
 # 🔴 the dispatcher does not re-read the rule file on every drain batch
 # ---------------------------------------------------------------------------
-
-def test_the_followup_dispatcher_does_not_load_rules_per_batch():
-    """🔴 MEASURED: `load_chain_rules()` COSTS 3.4 ms, and the drain calls its batch function
-    in a `while` loop — so reading the file, validating every rule and re-running the
-    synthesis on every batch is waste that grows with the rule count.
-
-    ⛔ IT WAS INVISIBLE WHEN S-189 ⓒ LANDED, because no join rule matched and the loop did
-    nothing. S-195 puts auto-confirm on this path, where it would have fired on every batch
-    forever — the cost would have arrived attributed to S-195 rather than to the commit that
-    caused it.
-    """
-    import inspect
-
-    from chain import ingestion_worker as worker
-
-    body = inspect.getsource(worker._run_the_follow_up_pass)
-    assert "_rules_for_the_follow_up_pass()" in body
-    assert "load_chain_rules()" not in body, "the file is read per batch again"
-
-
-def test_the_cached_rules_are_cleared_where_every_other_worker_cache_is():
-    """⚠️ A CACHE WITH NO RESET IS WHY A RELOAD STOPS MEANING ANYTHING, and this process
-    already has one seat for that."""
-    import inspect
-
-    from chain import ingestion_worker as worker
-
-    worker._rules_for_the_follow_up_pass()
-    assert worker._FOLLOWUP_BUILTIN_RULES is not None
-    worker.reload_worker_process_cache()
-    assert worker._FOLLOWUP_BUILTIN_RULES is None
-
-    body = inspect.getsource(worker.reload_worker_process_cache)
-    assert "_FOLLOWUP_BUILTIN_RULES" in body
-
-
-def test_the_cache_holds_only_what_the_dispatcher_could_run():
-    """⚠️ NARROWED AT THE SOURCE. Holding every rule would make the per-batch loop walk the
-    whole list to find the handful that are `follow_up` AND implemented."""
-    from chain import ingestion_worker as worker
-    from chain import builtins
-
-    worker.reload_worker_process_cache()
-    for rule in worker._rules_for_the_follow_up_pass():
-        assert rule.get("follow_up")
-        assert rule.get("mapper") in builtins.BUILTIN_KINDS
-
 
 # ---------------------------------------------------------------------------
 # S-195 — auto-confirm joins the table, and the named temporary ends
 # ---------------------------------------------------------------------------
 
-def test_every_builtin_kind_is_in_the_table():
-    """🔵 THE TEMPORARY IS OVER. It carried one kind while auto-confirm still ran from its own
-    sweep, so a `follow_up` kind had two ways to run.
+def test_the_drain_has_no_rule_loop_left():
+    """⛔ THE ASSERTION THAT CLOSES 「두 경로 금지」, NOW ONE STEP FURTHER.
 
-    ⚠️ THE SET GREW BY ONE (S-237), and the assertion is a SET on purpose: a third kind has
-    to be added here deliberately, so a kind that appears in the table without anybody
-    deciding it should cannot arrive quietly. `builtin:join_into` is the unified declaration's
-    `join` - it WRITES what the declaration says, where `builtin:join` answers at read time,
-    and `register_builtin` refuses two claimants of one id by name."""
-    import enrichment.config
-    from chain import join_into
+    ⚰️ It used to require `_run_the_follow_up_pass(db, done)` to appear EXACTLY ONCE in the
+    drain - one route rather than two. 소유자 정본 removed the route itself: the drain follows
+    the ledger and nothing else, and chain rules are woken by their trigger.
 
-    assert set(builtins.BUILTIN_KINDS) == {
-        vjc.JOIN_MAPPER, enrichment.config.AUTO_CONFIRM_MAPPER,
-        join_into.JOIN_INTO_MAPPER}
-    assert join_into.JOIN_INTO_MAPPER != vjc.JOIN_MAPPER, "the read-time id is taken"
-
-
-def test_the_drain_has_no_second_route_left():
-    """⛔ THE ASSERTION THAT CLOSES 「두 경로 금지」. Auto-confirm was called on the drain BY NAME,
-    beside the dispatcher; if that call comes back the two can diverge again with nothing red.
+    🔴 WHAT IS ASSERTED IS THE ABSENCE OF A RULE LOOP, not the absence of a name. A second
+    route wearing a different spelling is the defect; a drain that runs no rules cannot have
+    one. The DELETE withdrawal stays and is named, because it is not the lap (판정 608).
+    ⚠️ SUBJECT (608): this is about the CHAIN. `ledger/followup.py`'s own queue is a different
+    subsystem and still stands.
     """
     import inspect
 
     from chain import ingestion_worker as worker
 
-    assert not hasattr(worker, "_auto_confirm_followed_rows"), (
-        "the second route is back")
+    assert not hasattr(worker, "_auto_confirm_followed_rows"), "the second route is back"
+    assert not hasattr(worker, "_run_the_follow_up_pass"), "the lap is back"
     body = inspect.getsource(worker._drain_ledger_followup_sync)
-    assert body.count("_run_the_follow_up_pass(db, done)") == 1
     assert "auto_confirm" not in body, "the drain names a kind again"
+    assert "for rule in" not in body, "the drain is running rules again"
+    assert "_retract_what_those_rows_fed" in body, (
+        "the DELETE withdrawal left with the lap; it is not the lap")
 
 
 def test_the_collector_is_handed_its_rule_rather_than_finding_it(monkeypatch):
@@ -457,47 +398,21 @@ def test_the_collector_is_handed_its_rule_rather_than_finding_it(monkeypatch):
             seen["rules"] = rules
 
     monkeypatch.setattr(enrichment.candidates, "AutoConfirmCollector", _Collector)
-    rule = {"name": "enrichment_auto_confirm:x", "params": {"name": "x", "auto_confirm": True}}
-    # ⚰️ [판정 498] THE KIND, NOT THE DELETED DOOR. What is under test is which rules the
+    rule = {"name": "enrichment_auto_confirm:x", "target_table": "derived_t",
+            "params": {"name": "x", "auto_confirm": True}}
+    # ⚰️ [판정 498] THE MAPPER, NOT THE DELETED DOOR. What is under test is which rules the
     #    collector is handed, and routing that through the seat would add a resolution step
     #    this assertion says nothing about.
-    builtins.BUILTIN_KINDS["declared:decide"](None, rule, row_ids=["r1"],
-                                                   done={"table": "derived_t"})
+    # ⚰️ [판정 562 · 소유자 정본] THIS CALLED `builtins.BUILTIN_KINDS["declared:decide"]` with
+    #   `row_ids=` and a `done={"table": ...}` note. The table is gone and so is the note —
+    #   the template reads the target off `rule["target_table"]`, which is the cell the
+    #   declaration already carries, so the rule above gained it and the note went.
+    from chain import dynamic_mappers
+    from enrichment import config as enrichment_config
+
+    dynamic_mappers.TEMPLATES[enrichment_config.AUTO_CONFIRM_MAPPER](
+        None, [{"row_id": "r1"}], rule=rule)
     assert seen["table"] == "derived_t"
     assert seen["rules"] == [rule["params"]], (
         "the collector was left to load the rules itself")
 
-
-def test_the_note_still_carries_both_counts(monkeypatch):
-    """⚠️ VALUES, NOT A VERDICT. A follow-up that confirms nothing and one that never ran are
-    different facts, and the drain loop reads these two keys by name to total them."""
-    import enrichment.candidates
-
-    class _Collector:
-        active = True
-
-        def __init__(self, table, rules=None, settings=None):
-            pass
-
-        def collect_rows(self, db, rows):
-            pass
-
-        def flush(self, db):
-            return {"confirmed": 3, "refused": {"a": 1, "b": 2}}
-
-    monkeypatch.setattr(enrichment.candidates, "AutoConfirmCollector", _Collector)
-    done = {"table": "derived_t", "row_ids": ["r1"], "event_type": "EDIT"}
-    builtins.BUILTIN_KINDS["declared:decide"](None, {"params": {}},
-                                                   row_ids=["r1"], done=done)
-    assert done["auto_confirmed"] == 3 and done["auto_refused"] == 3
-
-
-def test_the_dispatcher_hands_the_note_to_the_kind():
-    """⚠️ `done` IS HOW A KIND REPORTS BACK. Without it the counts would die one frame above
-    where they are computed — which S-176 already had to repair once."""
-    import inspect
-
-    from chain import ingestion_worker as worker
-
-    body = inspect.getsource(worker._run_the_follow_up_pass)
-    assert "done=done" in body

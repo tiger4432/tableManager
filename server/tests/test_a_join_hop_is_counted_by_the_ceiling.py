@@ -141,7 +141,10 @@ def test_the_hop_is_stamped_even_though_no_rule_in_the_group_proposed_anything(d
     내는 표본은 판별식이 아니다」."""
     _seed(db)
     rules = _join_only()
-    assert all(rule_run.builtin_kind(r) is not None for r in rules), (
+    # ⚰️ [판정 562] `builtin_kind` WAS AN ADDRESS QUESTION and is deleted. What this
+    #   fixture needs is the PROPERTY it stood in for: every rule here writes its own rows,
+    #   so `table_updates` stays empty and the stamp cannot arrive by the other path.
+    assert all(rule_run.writes_itself(r) for r in rules), (
         "this fixture only decides anything while every rule in it writes for itself")
 
     before = set(e.id for e in _events(db, LEFT))

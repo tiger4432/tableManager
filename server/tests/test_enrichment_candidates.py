@@ -206,17 +206,24 @@ def _run_chain_for_tx(db, tx_id, trigger_table="encand_test_src"):
 
 
 def run_followup_auto_confirm(db, derived_table="encand_test_derived"):
-    """Follow the derived table's rows the way the paced drain does. Returns the note."""
-    # S-195: the drain reaches auto-confirm through the `builtin:` table now, and this
-    # helper's whole promise is 「the way the paced drain does」 — so it calls what the drain
-    # calls. The assertions above it are unchanged, which is what makes them the gate on the
-    # confirmed count not moving.
-    from chain.ingestion_worker import _run_the_follow_up_pass, reload_worker_process_cache
+    """Run auto-confirm the way the TRIGGER PATH does. Returns the seat's answer.
 
-    # ⚠️ THE DISPATCHER HOLDS ITS RULE LIST ACROSS BATCHES (the drain calls it in a loop), and
-    # these tests rewrite the declaration in-process between cases. Production reaches a
-    # changed declaration through a reload, so the faithful thing here is to reload too —
-    # without it a case would be judged against the PREVIOUS case's rules.
+    ⚰️ [소유자 정본, 2026-09-17] THIS CALLED `_run_the_follow_up_pass`, the paced drain's
+    dispatcher, and its promise was 「the way the paced drain does」. There is no paced drain
+    for chain rules: 소유자 「트랜잭션 - 아웃박스 - 트리거 - 맵퍼 실행 - 페이로드 및 업서트
+    이거만」. Auto-confirm is woken by the write to the derived table like any other rule, so
+    this hands the seat exactly the rows that write's outbox events name.
+
+    ⚠️ THE ROWS ARE STILL READ OFF THE OUTBOX, not invented - that is what keeps this helper
+    honest about WHICH rows production would hand over.
+    """
+    from chain import rule_run
+    from chain.ingestion_worker import (load_chain_rules, watches_table,
+                                        reload_worker_process_cache)
+    from enrichment import config as enrichment_config
+
+    # ⚠️ These tests rewrite the declaration in-process between cases; production reaches a
+    # changed declaration through a reload, so the faithful thing here is to reload too.
     reload_worker_process_cache()
     from database.models import DatabaseOutbox
     from ledger import followup as ledger_followup
@@ -230,10 +237,15 @@ def run_followup_auto_confirm(db, derived_table="encand_test_derived"):
                 row_ids.append(row_id)
     if not row_ids:
         return {}
-    done = {"table": derived_table, "event_type": "EDIT", "row_ids": row_ids}
-    _run_the_follow_up_pass(db, done)
+    answer = {}
+    for rule in load_chain_rules():
+        if rule.get("mapper") != enrichment_config.AUTO_CONFIRM_MAPPER:
+            continue
+        if not watches_table(rule, derived_table):
+            continue
+        answer = rule_run.run_rule(db, rule, row_ids=row_ids) or {}
     db.commit()
-    return done
+    return answer
 
 
 # ---------------------------------------------------------------------------

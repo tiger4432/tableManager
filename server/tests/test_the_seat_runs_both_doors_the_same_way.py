@@ -208,56 +208,78 @@ def test_every_registered_builtin_accepts_the_vocabulary_the_seat_passes():
     """
     import inspect
 
-    from chain import builtins
+    from chain import dynamic_mappers
 
-    assert builtins.BUILTIN_KINDS, "the table is empty, so this asserts nothing"
+    assert dynamic_mappers.TEMPLATES, "nothing is registered, so this asserts nothing"
 
+    # ⚰️ [판정 498 · 562] THE CELLS CHANGED AND THE PROPERTY DID NOT. This required every
+    #   registered kind to accept `row_ids` and `done` - the cells the two doors passed. There
+    #   is one calling convention, `(db, payload[, rule=])`, and it is frozen; what this
+    #   refuses is a mapper the seat cannot call without knowing which one it is.
     refuses = []
-    for kind, fn in sorted(builtins.BUILTIN_KINDS.items()):
-        parameters = inspect.signature(fn).parameters
-        takes_anything = any(p.kind is inspect.Parameter.VAR_KEYWORD
-                             for p in parameters.values())
-        for cell in ("row_ids", "done"):
-            if cell not in parameters and not takes_anything:
-                refuses.append("%s (no %s, no **kwargs): %s"
-                               % (kind, cell, inspect.signature(fn)))
+    for name, fn in sorted(dynamic_mappers.TEMPLATES.items()):
+        parameters = list(inspect.signature(fn).parameters.values())
+        positional = [p for p in parameters
+                      if p.kind in (inspect.Parameter.POSITIONAL_ONLY,
+                                    inspect.Parameter.POSITIONAL_OR_KEYWORD)]
+        takes_anything = any(p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters)
+        if len(positional) < 2:
+            refuses.append("%s takes %d positional args, not (db, payload): %s"
+                           % (name, len(positional), inspect.signature(fn)))
+        named = {p.name for p in parameters}
+        if "rule" not in named and not takes_anything:
+            refuses.append("%s cannot be handed its rule: %s" % (name, inspect.signature(fn)))
 
     assert refuses == [], (
-        "these kinds refuse a cell the doors pass to every kind, so a caller would have to "
-        "know which kind it was calling: %s" % refuses)
+        "these mappers refuse the one convention the seat calls with, so a caller would have "
+        "to know which one it was calling: %s" % refuses)
 
 
-def test_the_seat_hands_the_laps_batch_to_the_kind(db, monkeypatch):
-    """The runtime half of the above: `done` reaches the kind, and reaches it unconditionally
-    rather than through a test of what the caller supplied."""
-    from chain import builtins
+def test_the_seat_hands_the_rule_to_the_mapper(db, monkeypatch):
+    """The runtime half of the above: the rule reaches the mapper, unconditionally.
+
+    ⚰️ [소유자 정본] THIS WAS `test_the_seat_hands_the_laps_batch_to_the_kind` and it asserted
+    that `done` - the paced lap's batch note - reached the kind. There is no lap and there is
+    no note: what a mapper is handed is its payload and its rule, and everything it wants to
+    say comes back in its RETURN value.
+    """
+    import mapper_sdk
 
     seen = []
 
-    def probe(db_, rule_, row_ids=None, done=None, **_):
-        seen.append(done)
-        return {"written": len(row_ids or ())}
+    def probe(db_, payload, rule=None):
+        seen.append((payload, (rule or {}).get("name")))
+        return {"written": len(payload if isinstance(payload, list) else [payload])}
 
-    rule = {"name": "s279_kwarg", "mapper": "builtin:s279_probe", "target_table": LEFT}
-    monkeypatch.setitem(builtins.BUILTIN_KINDS, "builtin:s279_probe", probe)
-    # ⚠️ [판정 509] BOTH TABLES. `register_builtin` writes them together; faking a kind
-    #    by hand has to say how it is called, or the seat refuses it by name.
-    monkeypatch.setitem(builtins.BUILTIN_HANDS, "builtin:s279_probe", builtins.HANDS_ROW_IDS)
+    rule = {"name": "s279_kwarg", "mapper": "declared:s279_probe", "target_table": LEFT,
+            "is_batch": True}
+    monkeypatch.setitem(mapper_sdk.MAPPER_REGISTRY, "declared:s279_probe", probe)
 
-    rule_run.run_rule(db, rule, row_ids=["r-1"], done={"table": LEFT})
     rule_run.run_rule(db, rule, row_ids=["r-1"])
 
-    assert seen == [{"table": LEFT}, None], (
-        "the lap's batch did not arrive, or the group path's absence of one did not")
+    assert seen == [([{"row_id": "r-1"}], "s279_kwarg")], (
+        "the mapper was not handed its payload and its rule: %r" % (seen,))
 
 
-def test_a_builtin_handed_no_rows_neither_runs_nor_claims_to(db, caplog):
+def test_a_batch_mapper_handed_no_rows_is_told_so_and_says_why(db, caplog):
+    """⚰️ [판정 506 · 소유자 정본] THIS ASSERTED `written is None` — 「nobody counted, so the
+    cell is not 0」 — and no log line at all, because the retired kind table skipped the call
+    when the row list was empty.
+
+    🔴 THE JOIN DECLARES `is_batch` NOW, and the seat's rule for that is written down: 「an
+    empty batch still calls, because a batch mapper is entitled to be told its group was
+    empty」. So the mapper runs, counts, and reports 0 WITH a sentence saying why - which is
+    more than `None` ever said. 판정 509's distinction is intact and is being honoured in the
+    other direction: 0 here means 「I counted」, and it is true.
+    """
     caplog.clear()
     with caplog.at_level(logging.INFO):
         answer = rule_run.run_rule(db, _join_rule(), row_ids=[])
 
-    assert answer["written"] is None, "nobody counted, so the cell is not 0"
-    assert _said(caplog) == [], "a line about a run that did not happen is a false sentence"
+    assert answer["written"] == 0, "the mapper was called, so the count is a count"
+    assert answer["refusal"], "a zero with no reason is the silent zero 525 forbids"
+    said = _said(caplog)
+    assert len(said) == 1, "the run happened, so exactly one line says so: %r" % (said,)
 
 
 # ---------------------------------------------------------------------------
