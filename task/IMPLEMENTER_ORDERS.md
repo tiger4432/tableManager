@@ -51220,3 +51220,54 @@ dynamic_mappers.py:176   「CALLED FROM `discover()` AND ONLY FROM THERE」
 => 낙진(제품 결함 / 이름 낙진)을 가르고 나면, «행이 써진» 증거 하나를 남기십시오.
    소유자가 18:00 에 보는 것은 술어가 아니라 «돈 것»입니다
 ```
+
+---
+
+> 🔴🔴 **[09-17 16:07 총괄] 판정 579 — Q-123 의 셋째 이름은 «바로 그 두 번째 문»입니다. ⓐ(템플릿 하나 더)는 «금지»합니다 — 그게 문을 새 기제로 «보존»하는 길입니다**
+> **받는 이: 구현자 (응용이 잡음 — Q-123)**
+
+## 제가 표를 열었습니다. 답이 «그 표 자기 주석»에 적혀 있었습니다
+```
+chain/builtins.py:416~432  (S-237 · 판정 461 ③)
+   🔴 「TWO ENTRIES, AND BOTH OF THEM WRITE. THAT IS THE DEBT.」
+   「the axis these two entries split on is NOT read-vs-write —
+     it is WHICH DECLARATION FILE BIRTHED THE RULE」
+        builtin:join       virtual_join_rules.json 의 materialize: true
+        builtin:join_into  chain_rules.json 의 derive:{kind:"join"} + into.table
+   🔴 「Two write doors for one job is a debt, not a design」
+   🔵 「The debt closes when the last `materialize: true` declaration moves to `into.table`」
+```
+🔴 **즉 «같은 일, 이름 둘»이고, 가르는 축이 「어느 선언 파일에서 태어났나」입니다.**
+   이 라운드가 없애려는 것의 «교과서 사례»이고, 그 부채가 «닫히는 조건»까지 이미 적혀 있습니다.
+
+## 그래서 응용이 낸 셋 중
+```
+⛔ ⓐ `builtin:join` 에도 템플릿을 준다
+   = 문 둘을 «동적 맵퍼라는 새 기제로 옮겨 담는 것»입니다. 종류표를 지우고 그 갈라짐을
+     템플릿 표에 «다시 짓는» 것 — 판정 562 가 없애라고 한 바로 그것입니다. 금지합니다
+✅ ⓑ 생산자가 «한 이름»을 짓게 한다  (legacy_join_declaration.py:893 의 mapper 칸)
+   = 부채의 정본 답이고, 문이 «하나»가 됩니다
+🟡 ⓒ 「materialize: true 는 이제 이름 대어 거절」
+   = ⓑ 가 오늘 안 되면 «쉬는 자리»입니다. 지금보다 «나쁘지 않습니다» —
+     지금도 안 풀려서 런타임에 거절되는데, 그걸 «말하는» 것으로 바꾸는 것뿐입니다
+```
+
+## 🔴 ⓑ 가 오늘 되는지는 «재야» 압니다 — 제가 판정 안 합니다. 재서 답하십시오
+```
+물음   `materialize: true` 에서 «합성된» 규칙이 `join_into` 가 읽는 칸을 «들고 있나»
+      (into.table 모양 · 키 표현 · 팬아웃 그물)
+🔵 유리한 실측이 하나 있습니다 — 그 주석이 「둘이 키에 대해 안 갈라지게 «둘 다»
+   notation_norm.key_expression_sql 을 지난다」고 적어 뒀습니다. 키는 이미 «한 철자»입니다
+답이 예   ⓑ. 생산자의 상수 «하나»를 바꾸고, 그 합성 규칙이 도는 것을 «한 번» 보입니다
+답이 아니오 ⓒ. 그리고 «무엇이 모자라서» 안 되는지 한 줄 — 그게 이 부채의 다음 라운드 첫 줄입니다
+```
+
+## 순위 — 이건 ㉣ 보다 «위»입니다
+```
+왜   ② 의 술어가 「조인·확정이 동적 맵퍼로 돈다」인데, 조인의 «한 갈래»가 안 돕니다.
+     그리고 그 갈래를 «저장소가 출하하는 예제와 가이드»가 가르칩니다(sample 2 · guide 22)
+     -> 이 박스 얘기가 «아닙니다». 그 선언을 쓰는 설치는 깨집니다
+순위  ㉠㉡㉢ 본체 -> 🔴 «이것» -> ㉣ 제품 삭제 -> ㉣ 시험 -> ㉤ 이동
+⚠️ 그리고 ⓒ 로 가더라도 «가이드와 샘플»이 같이 가야 합니다 — 제품이 가르치는 것과
+   제품이 받는 것이 다르면 그게 또 하나의 거짓입니다
+```
