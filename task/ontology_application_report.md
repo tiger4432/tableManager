@@ -26212,3 +26212,40 @@ client2/src/admin.js:1721   const outcomeBits = [outcome.reason, outcome.age ===
         POST «바디»로 들어오는 빈 문자열은 여전히 «안 봤습니다» (그 술어를 안 지었습니다)
         `str` 이 «안 붙은» 인자도 여전히 못 봅니다
 ```
+
+> 🔴 **[09-17 13:52 응용] Q-84 — 526 ③ 의 «채점 자리»는 ㉠ 입니다. ㉡ 은 «다른 서브시스템»이라 그 사유가 갈 수 없습니다**
+> **받는 이: 총괄 — 클라가 「어느 쪽을 잴지 정해 주십시오」라고 올린 그 물음에, 재서 답합니다**
+
+클라가 그리는 자리 «둘»을 찾아 준 것은 맞습니다. 다만 둘이 «같은 종류의 자리»가 아닙니다 — 따라가 봤습니다:
+```
+㉠ admin.js:1721   outcomeBits = [outcome.reason, 나이]
+   ← rule_outcome.js:57  last_reason
+   ← main.py:4427-4429   rule_outcomes = {name: {last_outcome, last_reason, last_age_seconds}}
+   ← activity.registry.outcomes()  ←  record_outcome(rule, outcome, reason)
+   🔵 **526 ③ 이 고치라는 그 함수가 «이 줄»의 저자입니다**
+
+㉡ admin.js:2886   if (cfgText(row.reason)) … <span class="running-reason">
+   ← retroactive_view.js:457   reason: text(run.error)
+   ← GET /admin/retroactive/runs        <- «소급 실행» 목록입니다
+   🔴 체인 규칙의 결과가 아니라 «소급 런의 error» 입니다. record_outcome 이 여기로 갈 «길이 없습니다»
+```
+🔴 **그래서 ㉡ 로 채점하면 «수리가 안 닿는 화면»을 재게 됩니다.** 그 칸은 오늘도 내일도
+   소급 런의 오류를 말하고, 「이 규칙이 왜 0 행인가」는 거기 «실린 적이 없습니다».
+🔵 그리고 `activity.registry.snapshot()`(도는 행)은 `{rule, mapper, target_table, rows_in,
+   running_seconds}` 뿐 — «reason 칸 자체가 없습니다». 즉 「그 실행 행에 사유를」은 오늘 «칸이 없는» 요구입니다.
+
+## 그래서 정리
+```
+✅ 채점   ㉠ — 「규칙이 사유를 내고 0 행이면, 규칙 목록의 그 상태 줄에 사유가 «글자로»」
+⚠️ 클라 읽기(「㉡ 이 맞다」)는 «주어»가 다릅니다. 그쪽이 「그 실행의 사실」인 것은 맞지만,
+   그 실행 행은 «소급»의 것이고 체인 규칙 런의 것이 아닙니다
+🔴 만약 「도는 행에도 사유가 보여야 한다」가 요구라면 그건 «새 칸»이고 이 라운드 밖입니다
+   (snapshot 의 다섯 칸에 하나 더 다는 일 — 판정하실 자리)
+```
+### 확신도
+```
+실행    다섯 층을 «차례로 열어» 따라갔습니다 — admin.js:1721 · rule_outcome.js:57 · main.py:4427 ·
+        activity.py:105·119·145 / 그리고 ㉡ 쪽은 admin.js:2886 · retroactive_view.js:457 · 그 라우트
+못 잼    화면 «안 열었습니다»(토큰) — 코드 경로까지입니다
+        ㉡ 에 체인 규칙이 «섞여 들어올» 다른 길이 있는지는 그 라우트 응답을 «안 봤습니다»
+```
