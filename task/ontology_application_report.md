@@ -29903,3 +29903,112 @@ events (cycle-checked at config load).」 줄을 답니다. 합성 confirm 규�
 아니면 그대로 두고 화면이 «양성»이라 말할 것인가」. 어느 쪽이든 «한 자리»에서 답해야 문이 안 갈립니다.
 
 확신도: ① «구조»(같은 파일의 두 인용) · ② «구조»(검증기 세 줄 + 그 규칙의 두 칸) · ④ «못 잼».
+
+---
+
+> **[09-17 19:15 응용] Q-165 — 지시 이행: 체인 «v1 전수». 파일 · 줄 수 · 갈래 · 왜 v1 · v2 가 무엇으로 대신하나**
+> **받는 이: 총괄(→소유자). ⛔ 한 글자도 안 고쳤습니다. 비용·크기 추정 «없습니다».**
+
+## 0. 먼저 — 판별식을 «하나 더» 달았습니다 (총괄 ③ 을 글자 그대로 쓰면 계측기가 걸립니다)
+```
+총괄의 셋   ① 가상조인(선언 표면이 둘)  ② 인리치(맵퍼를 문자열로 박음)  ③ 다섯 걸음 어느 것도 아닌 자리
+🔴 ③ 의 문제   `activity` · `rule_census` · `graph` · `cell_layer` · `mapper_call` 은 «걸음»이 아닙니다.
+              그런데 v1 도 아닙니다 — 관찰·안전망입니다. 글자대로 세면 그것들이 목록에 듭니다
+✅ 그래서 한 줄   「이 코드가 «존재하는 이유»가 «옛 선언 표면» 또는 «옛 실행 경로»인가」
+                 예 -> v1 · 아니오인데 걸음도 아님 -> «계측/안전망»(§5 로 따로 뺍니다)
+⛔ 안 세는 것   참조뷰 · 인리치 «선언 형식» — 소유자가 「보존」이라 하셨고 총괄이 라우팅했습니다
+```
+
+## 1. 모집단 (계기: `git ls-tree`/`git grep` on `origin/main`, 트리 «안 잼»)
+```
+server/chain/*.py        21 파일
+server/enrichment/*.py    6 파일
+server/virtual_join/      0 파일  <- 🔴 패키지가 «없습니다». 표면(json)은 살아 있고 «코드 집»만 사라졌습니다
+그 밖 — v1 표면의 이름을 드는 non-test 서버 파일  35 (그중 .py 27)
+```
+
+## 2. 갈래 ① 가상조인 — 「조인 선언이 «둘째 파일»에 산다」
+```
+파일                                     줄     왜 v1 인가                                   v2 가 무엇으로 대신하나
+chain/legacy_join_declaration.py        923   `virtual_join_rules.json` 의 로더·검증기·      `chain_rules.json` 의
+                                              `as_join_rule` 변환기. 그 파일이 있는 한 존재  `derive.kind: join` -> `join_into.py`
+                                              🔴 non-test import 파일 «9»(줄 15) — v1 중 최대
+chain/legacy_materialized_join.py       372   `materialize: true` 선언의 «지금 도는 구현»     오늘 이미 감싸였습니다 —
+                                                                                            `dynamic_mappers` 가 템플릿으로 등록
+migrations/add_vjoin_null_safe_indexes.py  —  그 표면을 «읽어» 인덱스를 만듭니다              표면이 하나가 되면 대상이 바뀝니다
+scripts/check_one_row_one_fact.py          —  같은 표면을 읽는 점검 도구                      〃
+scripts/preview_unified_declarations.py    —  v1 -> 통합 «미리보기» 도구 (이행 도구)          이행이 끝나면 «할 일이 없어집니다»
+```
+🔴 **그 표면을 «오늘 읽는» 자리 일곱**: `chain/graph.py` · `config_resolve_report.py` ·
+   `migrations/add_vjoin_null_safe_indexes.py` · `scripts/check_one_row_one_fact.py` ·
+   그리고 `legacy_join_declaration.py` 자기 «셋». (계기: `load_virtual_join_rules(` 호출 자리 전수)
+🔴 **그리고 원장 선언 언어로 새어 있습니다** — `inherit_virtual_join_rules` 칸이
+   `ledger/ledger_skeleton.json` · `ledger/config_authoring.py` · `ledger/config_explorer.py` ·
+   `ledger/setup_bundle.py` · `ledger/setup_registry.py` 에 있습니다. 즉 «원장 선언»이 v1 조인 파일의 «이름»을 듭니다.
+   ⚠️ 이건 원장 «선언 형식»이라 별도 판정 자리입니다 — 제가 갈래를 «따로» 둡니다.
+⚠️ v1 로 «안» 셉니다: `chain/join_key_index.py`(281) · `join_refusal.py`(90) · `unique_key.py`(484) —
+   조인 «일반»의 부품이고 `join_into`(v2)도 씁니다. 다만 최대 소비자가 v1 로더입니다.
+🔵 이름 한 줄: 오늘 그 맵퍼 id 는 `declared:virtual_join` 입니다 — 접두는 v2 문법인데 낱말은 «옛 표면»입니다.
+
+## 3. 갈래 ② 인리치 — 총괄 문장을 «열어» 확인했고, 자리는 «합성기»입니다
+같은 파일이 규칙을 적어 놓고 80 줄 아래에서 그 규칙을 어깁니다:
+```
+`AUTO_CONFIRM_MAPPER` 옆 주석:
+   「A name rather than a module/function pair because the work is the product's own, not an
+     operator's mapper — `mapper_module`/`mapper_function` name code an operator could swap,
+     and this one they cannot.」                       -> confirm 半은 `"mapper": "declared:decide"`
+그 아래 dedup 半:
+   "mapper_module": "enrichment.mapper"
+   "mapper_function": "map_enrichment_dedup"           -> «운영자가 바꿀 수 있는 칸»으로 제품의 일을 선언
+```
+🔴 **한 선언 → 규칙 둘 → 맵퍼를 «대는 칸»이 둘.** 「문 가르기」가 «한 함수 안»에 있습니다.
+```
+파일                        줄     갈래   왜 v1 / v2
+enrichment/config.py      1,953   ②     로더 + 합성기. 위 두 칸이 여기 있습니다
+                                        v2: dedup 도 `declared:` 이름 하나 -> `dynamic_mappers` 등록
+                                        (615: 「지운다가 아니라 «대체하는 등록이 하던 것을 한다»」)
+enrichment/mapper.py        363   ②     `map_enrichment_dedup` — 그 문자열이 가리키는 코드
+enrichment/backfill.py      462   ②③    `run_backfill` 이 맵퍼 좌석을 «안 지납니다»
+                                        (Q-155 실측: 이 파일에 `rule_run`·`run_rule` 참조 «0»)
+enrichment/candidates.py  1,015   —      ⛔ v1 «아님». 후보 판단 술어 — 소유자 「오토컨펌 다 보존」
+enrichment/analysis.py      774   —      ⛔ v1 «아님». 읽기 전용 분석(세 프로세스에서 불림)
+```
+⚠️ ② 의 «v1» 은 「그 기능이 있나」가 아니라 「그 일이 «어디서 지어지나»」입니다 — 총괄 문장 그대로 지켰습니다.
+
+## 4. 갈래 ③ — 다섯 걸음 어느 것도 «아닌» 실행 자리
+```
+enrichment/backfill.run_backfill    맵퍼 좌석 밖에서 씁니다 (위 실측)
+replay._apply_replay_batch          재생의 «자기 쓰기 문»
+ledger/followup.py 의 메모리 큐      608 이 「다른 subsystem」으로 «남겼습니다» — v1 여부는 그 판정 자리
+```
+⚠️ 그룹 스텝의 non-batch arm(Q-159)은 609·`62577a67` 뒤에 «다시 안 쟀습니다». §7 에 적습니다.
+
+## 5. v1 이 «아닌데» ③ 의 글자에 걸리는 것 — 계측·안전망 (세지 마십시오)
+```
+chain/graph.py        467   🔵 「네 선언 파일」이 있는 동안만 필요한 그림입니다 — v1 의 «증거»이지 v1 이 아닙니다
+                             표면이 하나가 되면 이 그림의 절반이 «저절로» 없어집니다
+chain/activity.py     272   지금 무엇이 도는가 (프로세스 안의 사실)
+chain/rule_census.py  150   선언 집합의 «사진과 차이» — 제품 경로를 한 줄도 안 지납니다(자기 문서)
+chain/cell_layer.py   383   층 claim/철회 — 고리를 끊으려고 «둘보다 아래»로 내린 자리
+chain/mapper_call.py  130   🔵 이것이 걸음 ④ «그 자체»입니다 (워커·재생이 같이 읽는 한 자리)
+```
+
+## 6. 「이 목록 밖에 같은 이유로 v1 인 것이 있나」 — 세었습니다
+```
+v1 표면(가상조인)의 이름을 드는 non-test 서버 파일   35 (.py 27)
+그 표면을 «실제로 읽는»(load_virtual_join_rules 호출) 자리   7
+원장 선언 언어가 그 이름을 드는 자리                  5 (§2)
+=> 목록 «밖»에서 같은 이유로 걸리는 것은 위 §2 의 셋(migrations 하나 · scripts 둘)과
+   원장 다섯입니다. 그 밖은 «이름만 언급»이라 v1 로 세지 않았습니다
+```
+
+## 7. 🔴 제가 «안 연 것»과 «못 잰 것» — 경계로 읽지 마십시오
+```
+· 파일을 «통째로» 읽은 것은 «없습니다». 연 것은 모듈 도크스트링과 지목한 자리입니다
+· 총괄이 「안 열었다」고 한 일곱은 다 열었습니다: candidates · analysis · graph · cell_layer ·
+  activity · rule_census · mapper_call (전부 도크스트링 + 인용 자리)
+· `legacy_join_declaration.py` 923 줄의 «안»은 안 봤습니다 — 로더·검증기·`as_join_rule` 세 이름만 확인
+· 그룹 스텝 non-batch arm 의 오늘 상태 — 안 쟀습니다
+· 라이브 선언 파일(`server/config/*.json`)에 무엇이 켜져 있는지 — «안 봅니다»(박스)
+· `client2` 쪽 v1 잔재 — 이 전수에 «안 넣었습니다». 지시가 체인이라 서버로 한정했습니다
+```
