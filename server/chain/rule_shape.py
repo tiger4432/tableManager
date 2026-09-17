@@ -29,6 +29,26 @@ JOIN_MODELLED = ("left_table", "right_table", "left_columns", "right_columns",
 _LIMIT_KEYS = ("group_by", "max_group_rows", "max_group_attempts", "idempotent")
 
 
+def axis_keys():
+    """체인 문법이 «아는데» 통합이 안 접던 칸 — 열넷. 🔴 [판정 536 ①] 계산합니다, 안 적습니다.
+
+    `chain_bindings.routing_keys()` is what the grammar KNOWS and `CHAIN_MODELLED` is what the
+    unified shape FOLDS; the difference is the set that had no home and fell into `extra`.
+    Writing the members out here would make a third list that goes stale the day either of
+    the two moves - and the two are already the authors.
+
+    ⚠️ MEASURED 2026-09-17, and the measurement is why this exists: nine of the ten rules in
+    this box put cells here, and FIVE members (`reads`, `follow_up`, `origin`, `companion_of`,
+    `derivation_source_table`) appear in no rule here at all. A list taken from this
+    installation would have carried none of those five.
+
+    ⛔ AND THE NAMES DO NOT CHANGE. `chain_bindings` says it at `RULE_TABLE_KEYS`:
+    「개명하지 않는다 — 운영자가 적는 키이고, 이름을 바꾸는 것은 조작자 표면이다」.
+    """
+    return tuple(key for key in chain_bindings.routing_keys()
+                 if key not in CHAIN_MODELLED)
+
+
 def _present(raw: dict, keys) -> dict:
     """선언에 «있는» 칸만. 없는 칸을 None 으로 채우면 왕복이 원본에 없던 키를 만든다."""
     return {key: raw[key] for key in keys if key in raw}
@@ -49,10 +69,17 @@ def from_chain_rule(raw: dict, origin: str = "declared") -> dict:
         "derive": {"kind": "mapper", "mapper": mapper},
         "into": ({"table": raw["target_table"]} if "target_table" in raw else {}),
         "limits": _present(raw, _LIMIT_KEYS),
+        # 🔴 [판정 536 ①] THE AXIS CELLS STOP FALLING INTO `extra`. They are cells the chain
+        #   grammar KNOWS - `is_batch` decides how a rule is called (판정 506), the table
+        #   roles decide what it may read - and `extra` is for what the product cannot name.
+        #   Keeping them there made the form unable to draw declared behaviour.
+        "axis": _present(raw, axis_keys()),
         "origin": origin,
         "grammar": "chain",
+        # ⚠️ STILL EVERYTHING ELSE, and that is the half that must not shrink: what reads
+        #   those lives in the owner's `server/mappers/*.py` (판정 536 ②).
         "extra": {key: value for key, value in raw.items()
-                  if key not in CHAIN_MODELLED},
+                  if key not in CHAIN_MODELLED and key not in axis_keys()},
     }
 
 
@@ -113,6 +140,9 @@ def declared_kind(rule: dict) -> str:
 def as_chain_rule(internal: dict) -> dict:
     """내부 규칙 -> 오늘의 체인 규칙 dict. `from_chain_rule` 의 역이다."""
     out = {}
+    # 🔴 [판정 536 ①] FIRST, so a cell the grammar knows cannot be overwritten by a stray
+    #   `extra` of the same name further down - and so the round trip stays an identity.
+    out.update(internal.get("axis") or {})
     if internal.get("name") is not None or "name" in internal:
         out["name"] = internal.get("name")
     on = internal.get("on") or {}
@@ -227,6 +257,11 @@ def to_declaration(internal: dict) -> dict:
         value = internal.get(key)
         if value:
             out[key] = value
+    # 🔴 [판정 536 ①] THE AXIS CELLS ARE WRITTEN AT THE TOP LEVEL, under their own names.
+    #   Not nested and not renamed: an operator already writes `is_batch` and
+    #   `source_table`, and moving the spelling would move the operator's surface.
+    for key, value in (internal.get("axis") or {}).items():
+        out[key] = value
     if internal.get("extra"):
         # 🔴 제품이 뜻을 모르는 칸은 «한 자리»에 모아 둔다 — 흩어 두면 새 문법의 칸과
         #    구별이 안 되고, 그러면 다음 사람이 그것을 문법이라 읽는다.
@@ -257,6 +292,9 @@ def from_declaration(raw: dict, origin: str = "declared") -> dict:
         # nothing carried it, so nothing could read it.
         "key": dict(raw.get("key") or {}),
         "limits": dict(raw.get("limits") or {}),
+        # 🔴 [판정 536 ①] READ BACK BY THE SAME COMPUTED LIST, so a cell added to the chain
+        #   grammar tomorrow is carried without this function being edited.
+        "axis": {key: raw[key] for key in axis_keys() if key in raw},
         "origin": origin,
         "grammar": "unified",
         "extra": dict(raw.get("extra") or {}),

@@ -92,7 +92,16 @@ def test_the_key_and_limit_cells_come_from_their_own_lists():
 DECLARED_AT_BRANCH = {
     ("derive", "join"): {"right_table": "r", "on": [], "take": []},
     ("derive", "decide"): {"key": ["a"], "fields": ["b"]},
-    ("derive", "mapper"): "mappers.x.y",
+    # 🔴 [판정 536 ⑥] THIS ENTRY SAID `"mappers.x.y"` AND THE LOADER CANNOT READ THAT.
+    #   Measured 2026-09-17: `as_chain_rule` does `out.update(derive.get("mapper") or {})`,
+    #   so a string raises `ValueError: dictionary update sequence element #0 has length 1`.
+    #   The entry is described as 「the shapes this repository actually commits」 - and what
+    #   the repository commits is a dict (`to_declaration` produces one, and the loader and
+    #   namespace fixtures both write one). So this gate was pinning the skeleton to a
+    #   declaration the product REFUSES: 「a screen that cannot produce a declaration the
+    #   loader accepts」, which is the very defect it exists to catch, pointing the other way.
+    ("derive", "mapper"): {"mapper_module": "mappers.x", "mapper_function": "y",
+                           "params": {"an_argument": 1}},
     ("into", "table"): "dt_x",
     ("into", "read"): True,
 }

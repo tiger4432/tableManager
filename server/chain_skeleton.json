@@ -368,8 +368,45 @@
               ]
             },
             "mapper": {
-              "kind": "leaf",
-              "hint": "choice"
+              "kind": "record",
+              "fields": [
+                {
+                  "key": "mapper",
+                  "required": false,
+                  "node": {
+                    "kind": "leaf",
+                    "hint": "choice"
+                  }
+                },
+                {
+                  "key": "mapper_module",
+                  "required": false,
+                  "node": {
+                    "kind": "leaf",
+                    "hint": "free"
+                  }
+                },
+                {
+                  "key": "mapper_function",
+                  "required": false,
+                  "node": {
+                    "kind": "leaf",
+                    "hint": "free"
+                  }
+                },
+                {
+                  "key": "params",
+                  "required": false,
+                  "node": {
+                    "kind": "map",
+                    "keyed_by": "param",
+                    "node": {
+                      "kind": "leaf",
+                      "hint": "free"
+                    }
+                  }
+                }
+              ]
             }
           }
         }
@@ -456,6 +493,118 @@
               }
             }
           ]
+        }
+      },
+      {
+        "key": "source_table",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "ref"
+        }
+      },
+      {
+        "key": "map_table",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "ref"
+        }
+      },
+      {
+        "key": "inventory_table",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "ref"
+        }
+      },
+      {
+        "key": "metadata_target_table",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "ref"
+        }
+      },
+      {
+        "key": "derivation_source_table",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "ref"
+        }
+      },
+      {
+        "key": "target_field",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "free"
+        }
+      },
+      {
+        "key": "is_batch",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "flag"
+        }
+      },
+      {
+        "key": "follow_up",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "flag"
+        }
+      },
+      {
+        "key": "allow_chain_trigger",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "flag"
+        }
+      },
+      {
+        "key": "allow_map_metadata_upsert",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "flag"
+        }
+      },
+      {
+        "key": "origin",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "free"
+        }
+      },
+      {
+        "key": "companion_of",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "free"
+        }
+      },
+      {
+        "key": "reads",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "free"
+        }
+      },
+      {
+        "key": "reference",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "free"
         }
       }
     ]
