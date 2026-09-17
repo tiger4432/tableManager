@@ -984,8 +984,8 @@ def convert_chain_rule_grammar(name: str, to: str, dry_run: bool = True,
     if not isinstance(base, str) or not base.strip():
         raise _table_config_refusal(
             "base_required", "base",
-            "저장하려면 이 규칙을 열 때 받은 base 를 같이 보내야 합니다 — 그 사이에 파일이 "
-            "바뀌었는지 제품이 가릴 수 없습니다")
+            "이 규칙을 «다시 열고» 저장하십시오 — 연 뒤에 파일이 바뀌었는지 가릴 수 없는 "
+            "상태라 저장하지 않았습니다")
 
     saved = save_chain_rule_raw(name, converted, base)
     answer["saved"] = True

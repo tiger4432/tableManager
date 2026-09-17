@@ -515,16 +515,31 @@ def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None):
                         continue
                     for cell in ("updates", "map_metadata_updates", "batches"):
                         answer[cell].extend(result.get(cell) or ())
+                    # 🔴 [판정 562 · 563] A MAPPER MAY NOW SAY WHY. This arm read three cells
+                    #   and `refusal` was filled only in the row_ids arm, so 「왜 0 인가」 was
+                    #   something only a registered kind could answer - and the kinds are
+                    #   going away. A mapper built from a declaration has to be able to say
+                    #   what `join_into` says today, or the move loses 판정 525's sentences.
+                    # ⚠️ FIRST ONE WINS. A batch rule makes exactly one call, so this only
+                    #   matters for a per-row rule: the first row that explains itself is the
+                    #   explanation, and a later silent row does not erase it.
+                    if answer["refusal"] is None and result.get("refusal"):
+                        answer["refusal"] = result["refusal"]
                 rows_out = sum(rows_counted(r) for r in results)
                 # 🔴 [판정 525 ②] WHAT THE PRODUCT KNOWS, AND ONLY THAT. `server/mappers/*.py`
                 #   are the owner's files and this round keeps them at 0 lines, so the seat
                 #   cannot ask a file mapper why. What it CAN say is the pair of counts, and
                 #   that pair separates the two zeros 523 ③ asked about: 「아무것도 안 넘어왔다」
                 #   and 「넘겼는데 안 나왔다」 are different sentences, not one restatement.
+                # ⚠️ THE MAPPER'S OWN WORDS FIRST. The pair of counts below is what the
+                #    product can say when the mapper said nothing. A mapper that DID explain
+                #    itself must not have that sentence replaced by a restatement of 0 -
+                #    which is the whole of 판정 525, now reachable from the mapper door too.
                 run.produced(rows_out, reason=None if rows_out else (
-                    "이 규칙이 볼 행이 넘어오지 않았습니다"
-                    if not handed else
-                    "%d 행을 넘겼고 맵퍼가 낸 행이 없습니다" % len(handed)))
+                    answer["refusal"] or (
+                        "이 규칙이 볼 행이 넘어오지 않았습니다"
+                        if not handed else
+                        "%d 행을 넘겼고 맵퍼가 낸 행이 없습니다" % len(handed))))
 
     except Exception as exc:                                          # noqa: BLE001
         error = "%s: %s" % (type(exc).__name__, exc)
