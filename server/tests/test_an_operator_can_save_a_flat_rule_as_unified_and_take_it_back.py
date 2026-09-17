@@ -280,8 +280,17 @@ def test_an_entry_the_product_cannot_read_survives_a_save(client, tmp_path, monk
     assert answer.status_code == 200, answer.text
 
     after = json.loads(path.read_text(encoding="utf-8"))["rules"]
-    assert stranger in after, (
-        "the save deleted an entry it could not read, from the owner's file: %r" % (after,))
+    # 🔴 [판정 558 ①] 「NOT DELETED」 IS NOT 「NOT TOUCHED」. The application lane measured the
+    #    index and the value by hand; a gate that only asks 「is it still there」 is green for
+    #    a save that moved it to the end or rewrote it. 사람이 재서 초록인 것은 다음 사람에게
+    #    초록이 아닙니다.
+    assert len(after) == 3, "an entry was added or lost: %r" % (after,)
+    assert after[1] == stranger, (
+        "the entry the product cannot read moved or changed: was index 1 = %r, now %r"
+        % (stranger, after[1]))
+    # ⚠️ AND ITS NEIGHBOUR TOO - the rule that was after it must still be after it.
+    assert after[2]["name"] == OTHERS[0]["name"], (
+        "carrying the unreadable entry reordered the rules around it: %r" % (after,))
     # ⚠️ AND THE COUNT STILL COUNTS RULES. Carrying the entry must not quietly change a
     #    number the screen already draws.
     assert answer.json()["rules"] == 2, answer.json()

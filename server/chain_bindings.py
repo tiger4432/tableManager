@@ -557,8 +557,25 @@ def _params_node():
     ⚠️ ONE AUTHOR, TWO SKELETONS. The flat root and the unified `derive.mapper` branch are
     the same cell in two grammars; spelling the node twice is how the form comes to offer one
     shape where the loader takes another.
+
+    🔴 [판정 557] `of` · `member` · `keyed_by: "name"` — THE SPELLING THE READER KNOWS.
+    This said `node:` and `keyed_by: "param"`, and the shared descent
+    (`client2/src/ontology_skeleton.js`, whose own note says 「DESCENT HAS ONE AUTHOR」)
+    reads `node.of`. Measured by the application lane: `shapeAt(['derive','mapper','params',
+    <any name>])` came back NULL, so the form had a place for a mapper argument and no shape
+    to draw in it. 「자리는 있는데 그릴 수는 없다」.
+
+    ⚠️ ONE KIND, TWO SPELLINGS - today's defect at another seat. The ledger's 32 map nodes
+    all say `of`, the chain's 2 said `node`, and the fix goes to the 2: the reader is the
+    authority, and teaching it a second spelling would make the split permanent.
+
+    ⚠️ `keyed_by` IS FIXED HERE TOO, though the ruling named only the other two. The
+    reader's vocabulary is `'name' | 'index'` (its line 16) and it only tests for `index`,
+    so `"param"` worked by falling through - a third spelling that happens to land right.
+    That is the same defect as `node`, at the same node, and it is cheaper to say now.
     """
-    return {"kind": "map", "keyed_by": "param", "node": {"kind": "leaf", "hint": "free"}}
+    return {"kind": "map", "keyed_by": "name", "member": "인자",
+            "of": {"kind": "leaf", "hint": "free"}}
 
 
 def _unified_root():
