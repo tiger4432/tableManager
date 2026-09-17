@@ -29577,3 +29577,71 @@ d4b1361a  SYSTEM_OVERVIEW §6-bis 신설 — 09-16 22:10 이후 «오늘 체인�
    Q-147 의 「살아 있는 문서 35 히트」가 그 자리들입니다
 ```
 📌 이제부터는 «착지마다» 붙입니다(610). 모아서 하지 않습니다.
+
+---
+
+> **[09-17 18:55 응용] Q-160 — 착지 `5d90f890` 적대 QA ①: 「유일」이 아니었습니다. 배지의 «모양»을 적는 저자가 «둘»입니다**
+
+착지 `5d90f890`(client2/admin.html + dist · 선택자 한 줄 + 주석). 표제 주장은
+「the grammar badge was **the only one** with no CSS」입니다. 수리 «자체»는 옳습니다. 반려하는 것은 «범위»입니다.
+
+```
+① 기제는 참입니다   `_line` 은 `el.className = cls` 한 줄입니다 — 클래스 «하나»
+                  raw_registry_panel.js:353 · chain_queue_panel.js:409 · ledger_sources_panel.js:225
+                  셋 다 «같은 세 줄». 규칙이 없으면 body 를 물려받는다 — 맞습니다
+                  `.chain-rule-grammar` 는 오늘 규칙이 있습니다 ✅
+```
+
+**② 「유일」은 «그 배지 줄» 안에서만 참입니다 — 같은 페이지에 일곱이 더 있습니다.**
+모집단: `client2/src/*.js` 의 `_line(` «리터럴» 인자 전부(40) × client2 의 «작성» CSS/HTML 전부
+(admin.html · index.html · map_editor.html · map_editor2.html · rnd-board.html · walk.html ·
+journey.css · ledger_console.css · map_editor2.css · ontology_explorer.css · style.css · tokens.css ·
+transfer_plan.css). dist 는 뺐습니다. 두 패널 다 이 페이지가 띄웁니다(`admin.js:33` · `:80`).
+
+```
+무조건 그려짐   .chain-queue-headline-agg          chain_queue_panel.js:495
+조건부         .chain-queue-headline-generated    :503
+              .chain-queue-headline-restart      :469
+              .chain-queue-headline-running-old  :464
+              .chain-queue-stale                 :479
+              .ledger-sources-census             ledger_sources_panel.js:262
+              .ledger-sources-census-refused     :255
+```
+
+**③ 그중 하나는 «같은 자리·같은 기제»의 쌍둥이입니다.**
+`-agg`(:495) 와 `-sub`(:496) 는 «연달아» 붙습니다. 부모 `.chain-queue-headline`(admin.html:344~350)은
+배치만 정합니다 — display · align-items · flex-wrap · gap · padding. 글꼴·크기·색이 «없습니다»(자손 선택자도 0).
+`-sub` 는 규칙이 둘(:356 · :1770 「④ 본문」 13px), `-agg` 는 «0».
+pickaxe: `-agg` 는 만들어진 커밋(`f62165f4`) 이래 규칙을 «가진 적이 없습니다».
+⚠️ 확신도 «구조»입니다 — 저는 패널을 «열지 않았습니다». 16px·검정이라는 값은 이 커밋이 «같은 페이지»에서
+   잰 것을 빌린 것이고 제가 잰 것이 아닙니다. 계기는 구현자 손에 이미 있습니다(getComputedStyle + 대조군).
+
+**④ 🔴 부류가 더 큽니다 — 배지를 «누가 선언하나»가 둘입니다(두 저자).**
+```
+JS    배지는 «템플릿»이 그립니다 — raw_registry_panel.js 가 `${spec.cls}-<접미사>` 로 합성
+      접미사 아홉: -state · -grammar · -mark · -unsaved · -saved · -refusal-code/-path/-why · -list-note
+CSS   모양은 «인스턴스»로 적습니다 — admin.html 의 선택자 목록이 이름을 «하나씩» 셉니다
+      `.chain-rule-state, .chain-rule-grammar, .table-config-state`
+```
+그래서 이 수리는 그 목록에 «셋째 이름»을 더한 것입니다. 갈라짐이 얇아지지 않았습니다.
+실측: 등록부는 오늘 둘 — `chain-rule`(chain_rule_panel.js:173) · `table-config`(table_config_panel.js:34).
+접미사 9 × 등록부 2 = 18 칸 중 «규칙 없음»이 둘: `.table-config-grammar` · `.table-config-mark`.
+🔵 **오늘은 결함이 아닙니다** — TABLE_REGISTRY 에 `grammarOf`·`marks` 가 «없어서» 안 그려집니다
+   (raw_registry_panel.js:605 · :616 이 `typeof … === 'function'` 으로 가릅니다).
+🔴 **그런데 그것을 켜는 것이 «선언 한 줄»입니다** — 이 템플릿의 «약속»이 정확히 그것입니다
+   (상설 「근원 템플릿 요소 개발 후 데이터 갈아끼우기」). 그러니 이 결함은 고쳐진 것이 아니라
+   «다음 한 줄까지 미뤄진» 것입니다. 「가드는 도달 가능해지는 날 틀린다」의 CSS 판입니다.
+
+**⑤ 무엇이 참이어야 이 일이 나나**
+배지의 «모양»이 배지의 «이름»으로 색인돼 있고, 그 이름은 JS 가 «합성»합니다. 접미사가 하나 늘거나
+등록부가 하나 늘면 CSS 는 아무 말도 안 하고 body 를 물려줍니다 — 컴파일도 게이트도 안 웁니다.
+📮 판정 청합니다(부류 수리라 제 손으로 짓지 않습니다): 「한 낱말 배지에 «역할 클래스»를 같이 달고
+   CSS 가 그것을 키로 삼는다」가 이 부류를 닫는 문입니다. 그러면 위 18 칸과 앞으로의 접미사가
+   «한 규칙»을 지납니다. ⛔ 저는 짓지 않고, 클라 레인 파일이라 커밋도 스테이지도 하지 않습니다.
+
+**실패 시나리오**
+(ㄱ) 오늘: 대기 머리글에서 「대기 N개 · 그중 재시도 …」가 옆의 `-main`(weight 600)보다 크고 검게 섭니다 —
+     운영자가 «강조된 수»로 읽습니다. (ㄴ) TABLE_REGISTRY 에 `marks:` 한 줄이 서는 날(536·538 이 체인 쪽에
+     이미 세운 그 수들), 표 설정 화면의 수 배지만 body 로 떠서 «같은 사실이 두 화면에서 다른 모양»이 됩니다.
+
+📌 이 착지의 ②문서 · ③지도 반영은 «다음 호출»에 같은 착지에 붙여 올립니다(610).
