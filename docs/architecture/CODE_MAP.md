@@ -648,6 +648,8 @@
 > # ㊵-e 그 자리를 물려받은 것 — **살아 있어야** 한다(0 이면 또 갈렸다는 뜻). 실측 `c4b010c8`:
 > #    rule_run.py `RULE_LOG_TAG` **2** · ingestion_worker.py **3** · builtins.py 등록 셋 **6** · rule_run.py 등록 셋 **5**
 > git grep -c "RULE_LOG_TAG" -- server/chain/rule_run.py server/chain/ingestion_worker.py
+> ⚰️ **[판정 562·585] 이 줄의 판정이 «뒤집혔다» — 세 이름은 은퇴했다. 오늘 이 명령은 «주석만» 세고,
+>    「0 이면 또 갈렸다」는 «오늘 거짓»이다. 같은 성질을 재려면 `dynamic_mappers.TEMPLATE_FACTS` 를 물어야 한다
 > git grep -c "SELF_WRITING_KINDS\|BUILTIN_LABELS\|ORIGIN_STAMPING_KINDS" -- server/chain/builtins.py server/chain/rule_run.py
 > # ㊵-f `activity.running(` 의 «비시험» 호출 자리는 정확히 **1** 이어야 한다 — `chain/rule_run.py:413`.
 > #    2 가 되면 등록이 다시 «문마다» 생긴 것이고, 그것이 S-246 이 «둘째 사본»으로 고쳤던 바로 그 결함이다
@@ -1605,7 +1607,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `process_chain_transaction_group(tx_id, events, db, rules) -> (ok, err, broadcast_messages)` | **핵심** — 순환 차단(source=chain_ingestion 제외), 맵퍼 실행, 업서트, 브로드캐스트 큐 반환. broadcast 구성부(**~539**)는 created_logs를 **직렬화 전** `MAX_NOTIFY_CREATED_LOGS`(500)로 절단 + `total_log_count` 동봉(인시던트 `cc57b64`). ⚰️ **[M3 은퇴 · S-38] upsert 직후의 `MapMetaCollector` 훅은 사라졌다.** **[① `~486–497`] 그 옆에 `enrichment_candidates.AutoConfirmCollector(target_table)`(**~487**)** — `ac.active`일 때만 `collect(batch_data.updates)` → `flush(db)`. **전체가 `try/except`이고 실패는 "chain write unaffected"를 명시해 로그**(**~496–497**). **루프가 아닌 근거가 주석에 있다**(**~483–485**) — 쓰기는 **파생** 테이블에 앉고 인리치먼트 룰은 **소스** 테이블에서 발화하며, 부재 전용 관문이 2차 통과를 무조건 no-op으로 만든다.<br>🔴 **[`f9289f6`] 그 두 `except`의 뜻이 정정됐다(**~454–466**).** 체인 쓰기는 **정말로 이미 커밋돼 있다**(`server/database/crud.py`의 `apply_batch_updates` 말미 `db.commit()`) — 그러나 예외를 **잡는 것**은 실패를 **봉쇄하는 것과 다르다**: PG에서 실패한 문장은 트랜잭션을 abort시키고, 그 뒤 이 세션의 모든 것(→ `process_pending_groups`의 `processed_chain=True` 커밋)이 실패하거나 롤백돼 **그룹이 영원히 재생**된다. 봉쇄는 문장이 도는 자리(SAVEPOINT)에서 일어난다 | ~373 |
 | `reload_worker_process_cache()` | SYSTEM_RELOAD 수신 시 config 캐시 리로드 | ~599 (🆕 :1947 @`dc877746`) |
 | 🆕 **`failure_cause(error_reason) -> str`** | **[`90d971ba` S-248] 기록된 실패에서 운영자가 읽을 «한 문장» — «마지막» 비어 있지 않은 줄.** 트레이스백의 첫 줄은 「Traceback (most recent call last):」라 종전 `permanently failed` 로그 한 줄이 «아무것도» 말하지 않았다(박스 실측 09-15: 하루 종일 「매번 다른 행에서 permanently failed」, 원인은 보이지 않는 인덱스). 한 줄짜리 사유는 «그대로». 소비자 `process_pending_groups` :2341(@`b1db471a` — 구 표기 :2319)(`… -> FAILED. 원인: %s`) | :625 |
-| 🆕 **`_resolvable_mapper(name)`** | 「이 프로세스가 «실제로» 돌릴 수 있는 맵퍼」 = 등록된 것 **또는** `builtin:` 종류. 🔴 **[`00da7e91`] 저장 관문 `ledger/admin.save_chain_rule_raw` :702 가 `MAPPER_REGISTRY.get` 대신 «이것»을 `rule_refusals(mapper_resolvable=…)` 에 넘긴다** — 종전엔 `builtin:join_into` 를 적은 번역 규칙이 «여기서 거절되고 저기서 돌았다»(한 제품의 「돌 수 있나」에 답이 둘).<br>🆕 **[`3216493e` S-279, 판정 498 ①] 이제 «껍데기»다 — 본문이 `return rule_run.runnable(name)` 한 줄이다**(:661). 🔴 두 표(`mapper_sdk.MAPPER_REGISTRY` · `builtins.BUILTIN_KINDS`)를 «읽는 자»가 종전엔 셋이었다: 이 로더 · 좌석 · 벤치. 오늘은 **`rule_run.runnable(name)` :159 «하나»**이고 나머지 셋은 그것을 부른다 — `ingestion_worker._resolvable_mapper` :646 · `config_resolve_report._runnable_name` :69 · `admin/dev_bench.py` :196. 「이 이름이 돌 수 있나」가 «적재 시점»과 «실행 시점»에 다른 답을 낼 수 없다 | :646(구 :641) |
+| 🆕 **`_resolvable_mapper(name)`** | 「이 프로세스가 «실제로» 돌릴 수 있는 맵퍼」 = 등록된 것 «하나» (⚰️ 판정 562·585 로 «또는 `builtin:` 종류» 절반이 없어졌다 — 몸은 `rule_run.runnable(name)` 한 줄). 🔴 **[`00da7e91`] 저장 관문 `ledger/admin.save_chain_rule_raw` :702 가 `MAPPER_REGISTRY.get` 대신 «이것»을 `rule_refusals(mapper_resolvable=…)` 에 넘긴다** — 종전엔 `builtin:join_into` 를 적은 번역 규칙이 «여기서 거절되고 저기서 돌았다»(한 제품의 「돌 수 있나」에 답이 둘).<br>🆕 **[`3216493e` S-279, 판정 498 ①] 이제 «껍데기»다 — 본문이 `return rule_run.runnable(name)` 한 줄이다**(:661). 🔴 두 표(`mapper_sdk.MAPPER_REGISTRY` · `builtins.BUILTIN_KINDS`)를 «읽는 자»가 종전엔 셋이었다: 이 로더 · 좌석 · 벤치. 오늘은 **`rule_run.runnable(name)` :159 «하나»**이고 나머지 셋은 그것을 부른다 — `ingestion_worker._resolvable_mapper` :646 · `config_resolve_report._runnable_name` :69 · `admin/dev_bench.py` :196. 「이 이름이 돌 수 있나」가 «적재 시점»과 «실행 시점»에 다른 답을 낼 수 없다 | :646(구 :641) |
 | 🆕 `_process_chain_transaction_group_sync` 안 **`ledger_followup.enqueue(table, row_ids, event_type, tx_id, event_constants.chain_depth_of(payload))`** | **[`b1e89e36` S-249 ⓒ] 이벤트가 «도착한 홉»을 후속 큐에 «같이» 싣는다** — 후속 랩이 «같은 연쇄의 한 걸음»이 되게. §5-H `followup.enqueue(..., chain_depth=None)` | :1320~:1327 |
 | 🆕 **후속 랩 «한 원인 한 번»** — `_FOLLOWUP_SERVED = OrderedDict()` 🆕 :2720 · `MAX_REMEMBERED_CAUSES = 512` 🆕 :2721 · **`followup_already_served(transaction_id, table, rule_name, row_ids) -> list`** 🆕 :2724 · `forget_followups()` 🆕 :2755(전부 @`c4b010c8` — ~~:2634/:2635/:2638/:2669 @`b1db471a`~~, 구 표기 :2612/:2613/:2616/:2647). 🆕 그 위에 `FOLLOWUP_IDLE_SECONDS = 1.0` :2715 | **[`b1e89e36` S-249 ⓒ]** 이 규칙이 이 «원인(origin tx)»에 대해 «아직 못 받은» 행만 돌려주고 나머지를 기억한다 — 키는 `(tx) -> {(table, rule): frozenset(row_ids)}`, 상한 512 원인(가장 오랜 것부터 «퇴거»). ⚠️ **tx 가 없으면 기억 «안 한다»** — 소급·백필은 tx 없이 줄을 서고, 그것을 한 키에 묶으면 둘째 백필이 첫째의 «반복»으로 보인다. ⚠️ «다른 원인»으로 같은 행을 다시 보는 것은 막지 않는다(그것이 정상이고 키가 «행이 아니라 tx»인 이유). `forget_followups` 호출자: 시험뿐 | :2634~ (@`b1db471a` — 구 표기 :2612~:2650) |
 | 🆕 **`log_followup_folded(logger_, rule_name, table, written, woke_by, hop, max_hop, refusal=None)`** 🆕 :2766 · `_FOLLOWUP_SAID` 🆕 :2762 · `FOLLOWUP_LOG_EVERY = 500` 🆕 :2763 · `forget_followup_lines()` 🆕 :2809(전부 @`c4b010c8` — ~~:2676/:2677/:2711 @`b1db471a`~~, 구 표기 :2654/:2655/:2689). 🔴 **[`ae4181a8` 판정 499] 시그니처에서 `rows_in` 이 «빠졌다»** — 인자가 아홉에서 여덟이다. 이 줄의 «저자가 둘»이었기 때문이다: 좌석이 같은 실행에 대해 `rows_in`·`rows_out`·`written` 을 «이미» 말하고, 이제 «같은 태그»로 말한다. `written` 은 **인자로 남는다** — 그것이 «레벨»을 고르기 때문이다(할 일 없는 랩은 DEBUG). 남은 것은 이 랩«만» 아는 것 셋: 무엇이 깨웠나 · 몇 홉인가 · 몇 줄이 접혔나 | **[`6edf4db4` S-249 ⓔ-2] 후속 랩의 «한 줄»에 «무엇이 깨웠나»(`woke_by=<table>#<tx>`)와 홉(`hop=n/max`)이 실린다.** 🔴 **쓴 것이 «0»이고 거절도 없으면 DEBUG** — 할 일 없는 후속은 매 랩의 «보통»이라 INFO 면 일한 랩을 가린다. INFO 는 «첫 줄 + 500 마다 한 줄»(`(xN)` 접미), `(rule, table)` 키 2,000 을 넘으면 «비운다»(누수보다 재계수). `log_failure_folded` 와 «같은 손» | :2680 (@`b1db471a` — 구 표기 :2658) |
@@ -1799,14 +1801,14 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 | --- | --- | --- |
 | `RULE_LOG_TAG = "ChainRule"` | 🔴 **어휘가 «하나»다.** 종류마다 다른 태그를 쓰던 것(맵퍼 `MAPPER_LOG_TAG` · builtin 자기 문장)이 이 한 낱말로 접혔다 — grep 이 «종류를 먼저 묻지» 않게 | :46 |
 | `outgoing_depth(incoming)` · `chain_envelope(depth=None)` | 홉을 «세는» 자리와 접기 스코프를 «여는» 자리. 판정 423 이 `+1` 을 호출자에서 여기로 옮겼다 | :55 · :67 |
-| `builtin_kind(rule)` | 🔴 **현행이다 — 은퇴 아님.** 이 규칙이 «어느 빌트인 종류를 이름으로 대나»(표 멤버십). 이 좌석 «안»에서 여섯 번 불린다(:155 · :198 · :231 · :251 · :281 · :357). ⚠️ 판정 528 의 은퇴 목록에 «잘못» 올랐다가 **판정 530 으로 내려왔다**(응용 Q-85) | :124 |
+| `builtin_kind(rule)` | ⚰️ **[판정 562] 은퇴했다 — 종류표가 없어져 이 물음 자체가 사라졌다.** 이 규칙이 «어느 빌트인 종류를 이름으로 대나»(표 멤버십). 이 좌석 «안»에서 여섯 번 불린다(:155 · :198 · :231 · :251 · :281 · :357). ⚠️ 판정 528 의 은퇴 목록에 «잘못» 올랐다가 **판정 530 으로 내려왔다**(응용 Q-85) | :124 |
 | `writes_itself(rule)` | 「자기 행을 «자기가» 쓰나」 — 봉투(envelope)를 여는 쪽인지 호출자의 배치 쓰기로 나가는지. `hands` 와 «다른 사실»이다 | :139 |
 | `runnable(name)` | 「이 이름이 이 프로세스에서 돌 수 있나」의 **유일한 답**. 부르는 곳 셋: `ingestion_worker._resolvable_mapper` · `config_resolve_report._runnable_name` · `admin/dev_bench` | :159 |
-| 🆕 `hands(rule) -> HANDS_ROW_IDS \| HANDS_PAYLOADS` | **어떻게 «불리나»** — `(db, rule, row_ids=)` 인가 `(db, payload)` 인가. 🔴 **등록에서 읽는다**(`builtins.BUILTIN_HANDS`), 이름에서 «유도하지 않는다». 판정 503 이 처음 `HANDS_ROW_IDS if builtin_kind(rule) is not None` 로 썼다가 «대리를 한 층 내린 것»이라 판정 508 이 고쳤다(응용 발견). `BUILTIN_KINDS` 에 직접 쓴 이름이 `BUILTIN_HANDS` 에 없으면 «조용히 payloads» 가 아니라 `UnresolvableRule` 로 «이름을 댄다» :205~:211 (판정 509) | :179 |
+| ⚰️ [판정 562 — 없어짐. 손이 «하나»다] `hands(rule) -> HANDS_ROW_IDS \| HANDS_PAYLOADS` | **어떻게 «불리나»** — `(db, rule, row_ids=)` 인가 `(db, payload)` 인가. 🔴 **등록에서 읽는다**(`builtins.BUILTIN_HANDS`), 이름에서 «유도하지 않는다». 판정 503 이 처음 `HANDS_ROW_IDS if builtin_kind(rule) is not None` 로 썼다가 «대리를 한 층 내린 것»이라 판정 508 이 고쳤다(응용 발견). `BUILTIN_KINDS` 에 직접 쓴 이름이 `BUILTIN_HANDS` 에 없으면 «조용히 payloads» 가 아니라 `UnresolvableRule` 로 «이름을 댄다» :205~:211 (판정 509) | :179 |
 | 🆕 `self_writing_name(rule)` | 「«자기 행을 쓰는» 규칙이면 그 종류 이름, 아니면 None」. ⚠️ `builtin_kind` 의 «대체가 아니다» — 판정 505 가 바꾼 것은 통계 payload 의 «칸 이름»(`stats["builtin_kind"]` → `stats["self_writing_kind"]`, `chain/replay.py` :481)이고 이 함수는 «새로 생긴» 것이다 | :216 |
-| `rule_label(rule)` | 운영자가 읽는 «낱말»(join · decide · mapper). 등록이 저자다(`builtins.BUILTIN_LABELS`) | :235 |
+| `rule_label(rule)` | 운영자가 읽는 «낱말»(join · decide · mapper). 등록이 저자다(`dynamic_mappers.TEMPLATE_FACTS[…]['label']` — 옛 `builtins.BUILTIN_LABELS`) | :235 |
 | `retraction_refusal(rule)` · `rows_counted(value)` | 철회 거절 문장 · 「몇 줄을 냈나」를 «한 번» 세는 자리(화면과 로그가 같은 수를 읽는다, 판정 498) | :264 · :396 |
-| `Resolved = namedtuple("Resolved", "call who hands writes_itself accepts_rule")` · `class UnresolvableRule(ValueError)` | 푼 결과 다섯 칸 · 못 푼 것의 «한 예외». 🔴 그 예외가 오늘 «두 뜻»이다(「제품이 모르는 이름」 :376·:386 / 「아는 종류인데 오등록」 :205) — 잡는 자리는 `admin/dev_bench.py` «하나»이고 둘을 «같이» 받는다(응용 Q-62) | :316 · :320 |
+| `Resolved = namedtuple("Resolved", "call who accepts_rule"  ← [판정 562] `hands`·`writes_itself` 두 칸이 빠졌다)` · `class UnresolvableRule(ValueError)` | 푼 결과 다섯 칸 · 못 푼 것의 «한 예외». 🔴 그 예외가 오늘 «두 뜻»이다(「제품이 모르는 이름」 :376·:386 / 「아는 종류인데 오등록」 :205) — 잡는 자리는 `admin/dev_bench.py` «하나»이고 둘을 «같이» 받는다(응용 Q-62) | :316 · :320 |
 | `resolve(rule) -> Resolved` | 이름을 «한 번» 푼다. ⚠️ **운영자 모듈을 «import 한다»** — 그래서 「묘사만 하는」 물음은 이것을 쓰면 안 된다(판정 501 a) | :324 |
 | `run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None)` | 돌린다. 줄은 `finally` 안이라 «던진 규칙도 말한다»(판정 498 ③). 🔴 `bound.hands == HANDS_ROW_IDS` 인데 넘길 것이 없으면 «돌지 않고» 돌아간다 :446 — 그 경우 줄이 «아예 없다» | :413 · 줄 :545 |
 
@@ -2778,6 +2780,19 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 
 ### 🆕㉘ `server/chain/builtins.py` (🆕 **446줄** @`6c71084f` — ~~413 @`c4b010c8`~~ — ~~334 @`2c93ae9f`~~, 332 @`b1db471a`, 177 @`dc877746`, 구 표기 171, S-189 ⓒ `1964c65a` 신설 · S-195 에서 120→171) — 합성 «한 자리» + `builtin:` 종류 표 + 🆕 «선언한 유일 키»를 세우는 껍데기(S-240)
 
+> ⚰️⚰️ **[2026-09-17 판정 562·585] 아래는 «기록»이다 — 이 파일은 더는 «등록부»가 아니다.**
+> ```
+> 오늘 실측   268 줄 (위 표제의 446 은 `6c71084f` 시점)
+> 정의하는 것  synthesis_half_says · synthesize_chain_rules · written_in ·
+>            ensure_declared_unique_keys · declared_unique_targets · declared_unique_index_names
+>            => 합성과 «선언된 유일 키»의 자리다. 종류표도 문도 아니다
+> 없어진 것   BUILTIN_KINDS · ORIGIN_STAMPING_KINDS · SELF_WRITING_KINDS · BUILTIN_LABELS ·
+>            register_builtin · UnknownBuiltinKind — «코드 노드 0»(AST, 추적 .py 293 파일)
+> 오늘의 답   그 네 사실은 `chain/dynamic_mappers.py` 의 `TEMPLATE_FACTS` 에 산다
+>            (label · stamps_origin · writes_itself) · 이름은 `declared:` 셋(판정 600)
+> 🔴 아래 줄 번호(:309 · :318 · :327 · :333 · :359 · :122)는 «그때의» 앵커다. 지금 열면 다른 것이 있다
+> ```
+
 > 🔴🔴 **[2026-09-17 `3216493e` S-279, 판정 497·498] 이 파일은 더는 «문»이 아니다 — «등록부»다.** `run_builtin` 과 `_rows_handed` 가 «삭제»됐고(§0 ㊵), 그 자리에 묘비 문단이 :352~:371 에 있다. 실행은 `chain/rule_run.py` 의 좌석이 하고, 이 파일은 «무엇이 등록됐나»만 든다.
 > ```
 > 표 넷 — 한 등록 줄이 «네 사실»을 같이 말한다 (전부 @`c4b010c8` 실측)
@@ -2896,7 +2911,7 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 
 🔴 🆕 **소비자(전건 `git grep` @`add01a71` = `3419e569`, 그 사이 이 파일들 무변경) — 구 목록 여섯은 «하나도 안 남았다».** 전부 읽기 경로였고 `306419fd` 가 같이 걷어냈다(`main.VirtualColumnBinder` 는 `main.py` :1642 묘비, `crud.refuse_virtual_join_columns` 는 `crud.py` :4198 묘비).
 
-🆕 **오늘 `chain/legacy_materialized_join` 을 읽는 자리 «넷»(시험 제외)**: `chain/builtins.py` :128(`_run_join` — `builtin:join` 의 구현; import 는 함수 안 :135) · `database/crud.py` :3949(TTL 캐시를 «같이» 읽는다, :3944 가 그렇게 적는다) · `runtime/system_reload.py` :53(`reset_cache`) · `notation_norm.py` :405(주석 — 접기의 소비자 «둘» 중 하나로 이름 댄다). ⚠️ `chain/join_into.py` 는 **읽지 않는다, 일부러** — :16·:23 이 그 경계를 적고 `test_a_declared_join_writes_what_it_says_into_the_table.py` :503~:514 가 그것을 채점한다.
+🆕 **오늘 `chain/legacy_materialized_join` 을 읽는 자리 «넷»(시험 제외)**: ⚰️ ~~`chain/builtins.py` :128(`_run_join`~~ (그 자리는 없어졌다 — `dynamic_mappers._legacy_materialized_join`)  ← 옛 기록: `_run_join` — `builtin:join` 의 구현; import 는 함수 안 :135) · `database/crud.py` :3949(TTL 캐시를 «같이» 읽는다, :3944 가 그렇게 적는다) · `runtime/system_reload.py` :53(`reset_cache`) · `notation_norm.py` :405(주석 — 접기의 소비자 «둘» 중 하나로 이름 댄다). ⚠️ `chain/join_into.py` 는 **읽지 않는다, 일부러** — :16·:23 이 그 경계를 적고 `test_a_declared_join_writes_what_it_says_into_the_table.py` :503~:514 가 그것을 채점한다.
 
 **테스트**: ⚰️ ~~`server/tests/test_virtual_join_types.py`~~ 는 «없다»(expose 타입 우주를 열거하던 파일 — 노출 자체가 은퇴했다). 🆕 오늘 이 엔진을 import 하는 시험 여덟: `test_a_materialized_join_writes_its_own_layer.py` · `test_notation_normalization.py` · `test_one_bad_row_does_not_stop_a_tables_chain.py` · `test_one_declarations_failure_does_not_block_another_tables_read.py` · `test_one_key_expression_at_every_seat_that_compares_a_key.py` · `test_one_null_answer_at_every_key_seat.py` · `test_the_product_synthesizes_chain_rules_in_one_seat.py` · `test_the_sort_column_is_named_or_refused.py`. 🆕 선언 쪽 시험은 `test_virtual_join_guard.py` (§5-C).
 

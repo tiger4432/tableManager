@@ -878,7 +878,7 @@ def load_enrichment_rules(path: str = None, known_tables: dict = None,
 #: module/function pair because the work is the product's own, not an operator's mapper —
 #: `mapper_module`/`mapper_function` name code an operator could swap, and this one they
 #: cannot.
-AUTO_CONFIRM_MAPPER = "builtin:auto_confirm"
+AUTO_CONFIRM_MAPPER = "declared:decide"
 
 #: The two names a synthesized rule can carry. Used by the collision check, so the
 #: refusal and the synthesis cannot drift into disagreeing about what a synthesized name

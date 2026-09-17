@@ -45,7 +45,7 @@ UNRUNNABLE = {"name": "operator_wrote_follow_up_on_a_mapper", "trigger_table": "
 ON_THE_GROUP_STEP = {"name": "plain_mapper", "trigger_table": "t",
                      "mapper_module": "some.module", "mapper_function": "build"}
 ON_THE_PACED_PASS = {"name": "auto_confirm_like", "trigger_table": "t",
-                     "mapper": "builtin:auto_confirm", "follow_up": True}
+                     "mapper": "declared:decide", "follow_up": True}
 
 
 def _paths(rule):

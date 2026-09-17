@@ -850,10 +850,14 @@ def verification_report(db, path: str = None, known_tables: dict = None) -> dict
 # ---------------------------------------------------------------------------
 # S-189 ⓒ — a materialised join IS a chain rule
 # ---------------------------------------------------------------------------
-#: The kind a synthesised join rule names. 🔴 ONE TABLE OF `builtin:` KINDS DISPATCHES THESE
-#: (판정 305), the same posture the mapper registry takes: a name, a callable, and an unknown
-#: name refused rather than resolved.
-JOIN_MAPPER = "builtin:join"
+#: The mapper a synthesised join rule names. ⚰️ THIS SAID 「ONE TABLE OF `builtin:` KINDS
+#: DISPATCHES THESE (판정 305)」 - the table was deleted 2026-09-17 and the posture it was
+#: compared to is now the only one: a name, a callable, and an unknown name refused rather
+#: than resolved, in `mapper_sdk.MAPPER_REGISTRY`. The VALUE moved with it (판정 600): this
+#: family is not declared through `derive:`, it is born from `virtual_join_rules.json` with
+#: `materialize: true`, so it is named for the declaration that births it rather than for a
+#: grammar it does not have.
+JOIN_MAPPER = "declared:virtual_join"
 JOIN_PREFIX = "virtual_join:"
 
 

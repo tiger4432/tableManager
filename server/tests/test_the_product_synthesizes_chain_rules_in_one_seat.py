@@ -281,7 +281,7 @@ def test_an_unknown_kind_is_refused_by_name_not_ignored():
     with pytest.raises(rule_run.UnresolvableRule) as caught:
         rule_run.resolve({"name": "r", "mapper": "builtin:no_such_kind"})
     assert "builtin:no_such_kind" in str(caught.value)
-    assert "builtin:join" in str(caught.value), "it must say what IS known"
+    assert "declared:virtual_join" in str(caught.value), "it must say what IS known"
 
 
 def test_the_join_kind_is_in_the_table():
@@ -461,7 +461,7 @@ def test_the_collector_is_handed_its_rule_rather_than_finding_it(monkeypatch):
     # ⚰️ [판정 498] THE KIND, NOT THE DELETED DOOR. What is under test is which rules the
     #    collector is handed, and routing that through the seat would add a resolution step
     #    this assertion says nothing about.
-    builtins.BUILTIN_KINDS["builtin:auto_confirm"](None, rule, row_ids=["r1"],
+    builtins.BUILTIN_KINDS["declared:decide"](None, rule, row_ids=["r1"],
                                                    done={"table": "derived_t"})
     assert seen["table"] == "derived_t"
     assert seen["rules"] == [rule["params"]], (
@@ -487,7 +487,7 @@ def test_the_note_still_carries_both_counts(monkeypatch):
 
     monkeypatch.setattr(enrichment.candidates, "AutoConfirmCollector", _Collector)
     done = {"table": "derived_t", "row_ids": ["r1"], "event_type": "EDIT"}
-    builtins.BUILTIN_KINDS["builtin:auto_confirm"](None, {"params": {}},
+    builtins.BUILTIN_KINDS["declared:decide"](None, {"params": {}},
                                                    row_ids=["r1"], done=done)
     assert done["auto_confirmed"] == 3 and done["auto_refused"] == 3
 

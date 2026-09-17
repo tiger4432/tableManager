@@ -1,6 +1,6 @@
 # 지금 돌리면 되는 것
 
-> 🔵 **16:39 갱신.** 아래 ⓞ 가 «제일 먼저»입니다. 나머지는 그다음입니다.
+> 🔵 **17:48 갱신.** 아래 ⓞ 가 «제일 먼저»입니다. 나머지는 그다음입니다.
 > 🆕 이번 pull 의 체인 로그 변화는 «부팅 로그에서 볼 것» 절의 `[ChainRule]` 줄에 있습니다.
 
 ## ⏱️ 바쁘시면 «이 셋»만 — 나머지는 «보고 나서» 찾아 읽는 자리입니다
@@ -334,7 +334,7 @@ curl -s "http://localhost:8000/audit_logs/recent?limit_groups=5" | python -c "im
    서버 절반만 선 것이고, 버튼은 클라 레인의 «별건»입니다. 지금은 위 curl 로만 보입니다
 ```
 
-### ⑪ 🆕 개발 벤치가 이제 `builtin:…` 도 «돌립니다» (09-17 — 어제 적은 것의 «정정»)
+### ⑪ 🆕 개발 벤치가 이제 제품이 만드는 맵퍼(`declared:…`)도 «돌립니다» (09-17 — 어제 적은 것의 «정정»)
 
 ```
 전   벤치가 builtin:… 을 «이름 대어 거절»했습니다 (「등록된 종류이지 파일 맵퍼가 아니다」)
@@ -584,7 +584,7 @@ python scripts/preview_unified_declarations.py --out ../unified_preview.json
      🆕 (09-17) «선언은 받는데 아무도 안 돌리는» 규칙을 이제 이름 대어 거절합니다 (판정 500).
         제일 흔한 모양: 파일 맵퍼에 `follow_up: true` — 본 단계는 «미룸»이라 안 집고,
         뒤따르는 단계는 «자기가 쓰는» 규칙만 돌릴 수 있어 양쪽 다 빠졌습니다
-        → `follow_up` 을 빼시거나, 스스로 쓰는 종류(`builtin:…`)를 적으십시오. 거절 줄이 둘 다 말합니다
+        → `follow_up` 을 빼시거나, 스스로 쓰는 종류를 적으십시오 (통합 선언의 `derive.kind`). 거절 줄이 둘 다 말합니다
         ⚠️ `enabled: false` 로 끈 규칙은 거절되지 «않습니다» — 꺼진 것이지 못 도는 것이 아닙니다
         🔴 그리고 뒤따르는 단계가 이제 `enabled: false` 를 «지킵니다» — 지금까지는 끈 규칙도 그 단계에서 돌았습니다
 [ChainRules] refused(N): 이름(사유)                          <- 무엇이 «안» 도는가
@@ -597,6 +597,12 @@ Transaction … permanently failed: N event(s) -> FAILED. 원인: <예외 문장
      그리고 이제 «모든» 규칙이 이 줄 하나를 씁니다 — `[mapper@<로그파일>] … START/END/RAISED`
      세 줄은 «없어졌습니다»(판정 498). 파일 맵퍼를 그 태그로 찾고 계셨다면 이 줄로 오십시오
      kind   그 규칙이 넣은 «맵퍼 이름» 그대로입니다
+     🆕 (09-17 저녁) 이 칸의 «낱말이 바뀌었습니다». 로그에서 `builtin:…` 을 찾고 계셨다면:
+            builtin:join_into    ->  declared:join            통합 선언의 derive:{kind:"join"}
+            builtin:auto_confirm ->  declared:decide          derive:{kind:"decide"}
+            builtin:join         ->  declared:virtual_join    virtual_join_rules.json 의 materialize:true
+            `declared:` 는 「제품이 «선언에서» 지은 맵퍼」라는 뜻입니다. 옛 이름은 «안 풉니다» —
+            저장된 규칙에 옛 값이 있으면 거절되고 그 이름이 거절문에 찍힙니다
      ⚠️ (09-17) 이 자리는 「builtin:… 이면 스스로 씀」이라 적혀 있었고 «이제 거짓»입니다 —
             종류표가 없어졌습니다. 「스스로 쓰나」는 이름이 아니라 아래 written 칸이 답합니다
      rows_out  그 규칙이 «낸 행 수». 종류가 달라도 «같은 함수»가 셉니다 — 화면의 수와 같은 수입니다
