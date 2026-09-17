@@ -525,7 +525,21 @@ def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None):
                     #   explanation, and a later silent row does not erase it.
                     if answer["refusal"] is None and result.get("refusal"):
                         answer["refusal"] = result["refusal"]
-                rows_out = sum(rows_counted(r) for r in results)
+                    # 🔴 [판정 562 · 567] A MAPPER MAY WRITE FOR ITSELF AND SAY SO. This was
+                    #   `writes_itself`, a REGISTERED fact the seat had to look up before
+                    #   calling - and a fact about the rule's ADDRESS rather than about what
+                    #   it did. Read off the result, nobody is asked in advance and a mapper
+                    #   that writes some rows and proposes others is describable.
+                    # ⚠️ ABSENT IS NOT ZERO (판정 509 의 부류). A mapper that reports no count
+                    #   has not said it wrote nothing, so the cell stays None until one does.
+                    if result.get("written") is not None:
+                        answer["written"] = ((answer["written"] or 0)
+                                             + int(result["written"]))
+                # ⚠️ PROPOSED PLUS WRITTEN. A rule does one or the other, so this equals whichever
+                #    it did - and a rule that did both is counted once for each, which is what
+                #    「이 규칙이 낸 행」 means to the operator reading the queue.
+                rows_out = (sum(rows_counted(r) for r in results)
+                            + (answer["written"] or 0))
                 # 🔴 [판정 525 ②] WHAT THE PRODUCT KNOWS, AND ONLY THAT. `server/mappers/*.py`
                 #   are the owner's files and this round keeps them at 0 lines, so the seat
                 #   cannot ask a file mapper why. What it CAN say is the pair of counts, and

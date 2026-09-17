@@ -27751,3 +27751,67 @@ event_constants.outbox_owner(event_type)  ->  scheduler | chain | unknown
 실행/구조   반환 칸 열셋은 AST 로, 저자 갈래는 그 줄들을 «열어서». 브라우저는 «안 열었습니다»
 ⛔ 못 잼   운영에서 이 화면을 «누가 보나» — 그 수가 이 라우트의 값을 정하는데 저는 못 봅니다
 ```
+
+---
+
+> ✅ **[09-17 15:47 응용] Q-118 — `f8b4f8fe`(동적 조인 맵퍼) 검토. 초록이고, 제가 쌓아 둔 Q-107 이 «이 모양에서» 닫힙니다**
+```
+🔵 Q-107 이 걱정한 것   동적 생성 맵퍼 둘이 «한 출처»라 같은 이름에 등록하면 «조용히 덮인다»
+이 착지의 모양          chain/dynamic_mappers.py  TEMPLATES = {종류 이름 -> 함수}  ->  install() 이
+                     `for name, fn in TEMPLATES.items(): mapper_sdk.register(name, fn)`
+=> 키가 dict 이라 이름이 «구조적으로 유일»합니다. 한 번의 install 안에서 충돌이 «생길 수 없습니다»
+=> 재적재 때 같은 이름에 새 함수 객체가 오는 것은 가드가 «일부러 허용»하는 경우입니다(출처 같음) ✅
+=> 소유자 파일 맵퍼가 같은 이름을 claim 하면 «출처가 달라» 거절됩니다 ✅ (가드가 사는 쪽)
+🔴 남는 조건 하나만 적어 둡니다: 「TEMPLATES 의 키가 «선언이 이미 쓰는 이름»이어야 한다」 —
+   착지 메시지가 그렇게 말하고(「under the name its rule already says」) 그게 참인 동안
+   Q-107 은 «해당 없음»입니다. 키를 «규칙마다» 만들기 시작하면 그때 다시 살아납니다
+```
+
+## ⚠️ 제가 의심한 것 하나 — «틀렸습니다**. 적습니다
+```
+제 의심   `main.py:404  _registered, _refused = mapper_sdk.discover()` — `_` 접두라 «버리는» 줄 알았습니다
+          (그러면 API 프로세스에서 install 실패가 «조용»해지고, 그건 이 커밋이 막겠다는 바로 그 증상입니다)
+실측      :405~:407 이 «둘 다 로그합니다»
+             logger.info("[Startup] Mapper registry: %d registered", …)
+             for _module_name, _message in sorted(_refused.items()):
+                 logger.error("[Startup] Mapper module refused: %s — %s", …)
+          워커 쪽도 같은 모양입니다 (`[Warmup]`, ingestion_worker.py:2204~2208)
+=> `_` 는 «이름 규칙»이었지 버림이 아니었습니다. 실패는 두 프로세스에서 «이름 대어» 나갑니다
+```
+🔵 그리고 설치 자리가 `discover()` «안»인 것이 맞습니다 — 그 함수가 레지스트리를 «먼저 비우므로»,
+   밖에서 꽂으면 다음 재적재에 조용히 사라집니다. 그 사유가 코드 주석에 적혀 있습니다.
+
+---
+
+> 🔬 **[09-17 15:50 응용] Q-119 — 571 ③ 을 «독립으로» 확인했습니다. 일치합니다. 그리고 다음 걸음의 «대조군»을 지금 값으로 박아 둡니다**
+> **받는 이: 총괄 · 구현자 — 종류표 팔을 뗄 때 이 줄이 «뒤집혀야» 합니다**
+
+## 지금 (`10dcaf30` 위에서, 제 프로세스)
+```
+dynamic_mappers.install()  ->  ('builtin:auto_confirm', 'builtin:join_into')
+   builtin:auto_confirm     36줄  ->  chain.dynamic_mappers._auto_confirm
+   builtin:join_into         8줄  ->  chain.dynamic_mappers._join
+규칙 {"mapper": "builtin:join_into", …} 를 먹이면
+   chain_bindings.mapper_cells(rule)  ->  ('builtin:join_into', None, None)
+   🔴 rule_run.resolve(rule).call     ->  «chain.join_into.run»          (= 빌트인 종류표)
+=> 571 ③ 그대로입니다. 새 문은 서 있고 규칙은 «옛 문»으로 갑니다. 저도 같은 답을 얻었습니다
+```
+
+## 📌 대조군 — 「떼었다」의 증거는 이 한 줄입니다
+```
+지금   resolve(...).call  ==  chain.join_into.run            <- 빌트인
+뒤     resolve(...).call  ==  chain.dynamic_mappers._join    <- 동적 맵퍼
+⚠️ 「BUILTIN_KINDS 가 비었다」로 재지 마십시오 — 표가 비어도 «다른 팔»이 남아 있으면
+   같은 규칙이 여전히 옛 함수로 갈 수 있습니다. 재야 하는 것은 «규칙이 실제로 푸는 함수»입니다
+📎 이건 오늘 이 레인이 계속 쓴 판별식입니다: 「기제가 있다 ≠ 이 키에 닿는다」
+```
+
+## ⚠️ 제 탐침이 «두 번» 틀렸고 둘 다 고쳤습니다
+```
+① `dynamic_mappers.TEMPLATES` 를 «import 직후» 읽어 «비었다»고 봤습니다 — install() 이 채웁니다
+② 규칙 dict 을 손으로 지어 resolve 에 먹였는데 셀 이름이 달라 UnresolvableRule 이 났습니다
+   -> `chain_bindings.mapper_cells(rule)` 로 «제품이 읽는 대로» 확인하고 나서 다시 먹였습니다
+🔵 그리고 «세 번째»는 안 났습니다: 오토컨펌 템플릿이 있길래 「총괄 목록에 이미 된 것이 있다」로
+   올릴 뻔했는데, `10dcaf30` 이 «그 순간» 착지한 것이었습니다. 올리기 전에 트리를 다시 당겨 본 것이
+   그걸 막았습니다 — 「측정이 시스템과 어긋나면 측정을 먼저 의심한다」
+```
