@@ -47785,3 +47785,47 @@ chain/rule_shape.py:38  from_chain_rule(raw)   — 오늘의 평면 규칙 dict 
 ㈁ «열»          (13:57 표) — `source_table`·`job_column` 둘은 여전히 «열어 봐야» 갈립니다
 ㈀/㈂ 구분       여전히 저장소로 «못 합니다» (판정 527 의 경계). `@mapper(params=…)` 가 그 답을 아는 자리입니다
 ```
+
+---
+
+> 🔍 **[09-17 14:08 구현자] 판정 535 ① «기존 문 체크» — 길이 «있습니다». 그리고 그 길의 주석이 «이 문제»를 이름 대고 있습니다**
+> ⛔ 아직 안 짓습니다 (535 ②대로 올립니다). 그리고 이건 이관 «대기 중»에 한 읽기입니다
+
+## 있는 길: `utils/heartbeat` — 워커가 쓰고 API 가 읽습니다
+```
+쓰는 쪽   utils/heartbeat.py:177  record_lap(name, loop, *, seconds, depth, at, **extra)
+          체인 워커가 «이미» 여섯 번 부릅니다 (ingestion_worker :149 · :158 · :3200 · :3272 · :4154 · :4164)
+읽는 쪽   runtime/loops.py:58     ((entry or {}).get("laps") or {}).get(loop)
+          그리고 `/runtime` 이 그것을 그립니다
+```
+🔵 **그 파일의 주석이 오늘 우리가 만난 문장을 «그대로» 적어 뒀습니다:**
+> 「The loops run in the chain-worker, watcher and scheduler PROCESSES, so a route in the API
+>  server cannot read those locals; the code said so itself, about the follow-up queue:
+>  **the queue depth lives in this process's memory where no query reaches it**」
+
+즉 **535 가 발견한 부류는 이미 «판정되고 기제까지 있는» 부류**입니다. 새 채널을 지으면 두 번째 문입니다.
+
+## 그리고 이 길은 «공짜»입니다 — 그게 이 캐리어의 설계입니다
+```
+캐리어 주석   「record_lap only STORES; the lap rides the beat the loop was already going to make …
+             keeps the cost of this carrier at ZERO extra writes rather than one per lap」
+             (그리고 「beat 을 위조하면 안 된다」도 같이 적혀 있습니다 — 이건 저장만 합니다)
+=> 사유를 이 길에 실으면 «쓰기 0 회 추가». 성능 마진 상설에 걸리지 않습니다
+```
+
+## 📮 그래서 «판정 청하는 것»은 길이 아니라 «모양»입니다
+```
+길      있습니다. 새 기제 «0». 535 ② 의 「정말 없으면」에 해당하지 «않습니다»
+모양    ⚠️ 규칙 결과는 «랩»이 아닙니다. `_laps` 는 name -> {loop: {at, seconds, depth, …}} 이고
+        규칙 결과는 «규칙 19 개 × {outcome, reason, age}» 입니다. `**extra` 가 받긴 합니다만
+        그건 「받아 준다」이지 「그 자리가 맞다」가 아닙니다
+🔴 제 추정 «둘» — 고르지 않고 올립니다:
+   ㉮ 랩 하나에 실어 보낸다     record_lap("chain", "chain", rule_outcomes={…})
+      장점: 코드 «한 줄». 단점: 「랩」이라는 낱말이 규칙 19 개를 싣게 됩니다 (낱말이 늘어남)
+   ㉯ 캐리어에 «자리»를 하나     heartbeat 가 「이 프로세스가 마지막에 본 규칙 결과」를 따로 든다
+      장점: 낱말이 맞습니다. 단점: 캐리어에 축이 하나 늘고, 그건 상설상 «판정 사항»입니다
+⛔ 제가 안 고릅니다 — 캐리어는 고리 아홉이 공유하는 자리이고, 축을 더하는 것은 판정입니다
+```
+⚠️ 그리고 화면은 «이미 정직합니다**(`loop_in_this_process` 로 「내가 못 본다」를 말합니다).
+   그러므로 이건 «거짓을 고치는» 일이 아니라 «침묵을 채우는» 일입니다 — 급하지 않습니다.
+📌 순서는 535 가 정한 대로 «이관 다음»입니다. 이관(533·534) 판정 기다리는 동안 «읽기만» 했습니다.
