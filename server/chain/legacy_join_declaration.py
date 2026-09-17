@@ -891,6 +891,14 @@ def synthesized_join_chain_rules(path: str = None, known_tables: dict = None) ->
             "trigger_table": rule["left_table"],
             "target_table": rule["left_table"],
             "mapper": JOIN_MAPPER,
+            # 🔴 [판정 506] THE WHOLE GROUP IN ONE CALL, SAID IN THE CELL THAT DECIDES IT.
+            #   The retiring kind table called every builtin with the group's WHOLE row-id list,
+            #   so its group-ness lived in the table rather than in the rule. With the table gone
+            #   the seat asks `is_batch`, and an unset cell fanned this out to one call per row:
+            #   measured 2026-09-17, four written rows made FOUR outbox events - the per-row shape
+            #   S-249 removed. The product owns this mapper, so the product declares how it is
+            #   called; an operator should not have to know.
+            "is_batch": True,
             "follow_up": True,
             "enabled": True,
             "params": dict(rule),

@@ -991,6 +991,14 @@ def chain_rules_for(rule: dict) -> list:
         "trigger_table": rule["derived_table"],
         "target_table": rule["derived_table"],
         "mapper": AUTO_CONFIRM_MAPPER,
+        # 🔴 [판정 506] THE WHOLE GROUP IN ONE CALL, SAID IN THE CELL THAT DECIDES IT.
+        #   The retiring kind table called every builtin with the group's WHOLE row-id list,
+        #   so its group-ness lived in the table rather than in the rule. With the table gone
+        #   the seat asks `is_batch`, and an unset cell fanned this out to one call per row:
+        #   measured 2026-09-17, four written rows made FOUR outbox events - the per-row shape
+        #   S-249 removed. The product owns this mapper, so the product declares how it is
+        #   called; an operator should not have to know.
+        "is_batch": True,
         # ⚠️ THE WORK RUNS ON THE FOLLOW-UP LAP, NOT IN THE GROUP. It already did
         # (S-151, 판정 264) — inlining it cost 0.875 s per group and that measurement
         # is why the seat moved. This cell is what says so in the declaration instead

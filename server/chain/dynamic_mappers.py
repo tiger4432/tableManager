@@ -49,15 +49,32 @@ def _row_ids(payload) -> list:
 
 
 def _join(db, payload, rule=None):
-    """`derive: {kind: "join"}` as an ordinary mapper: propose, never write.
+    """`derive: {kind: "join"}` as an ordinary mapper. The body is `join_into.run`.
 
-    The body is `join_into.propose` — the same computation the retiring builtin runs, with
-    the writing left to the caller's batch. That batch is what carries the chain envelope
-    (판정 423), so the join's writes are dressed exactly like every other mapper's.
+    🔴 [판정 567 「새 것이 먼저 서고, 서고 나서 예것이 나간다」] THE TEMPLATE DOES WHAT THE
+    REGISTRATION IT REPLACES DID. That registration was
+    `register_builtin(JOIN_INTO_MAPPER, join_into.run, ..., writes_itself=True)`, and my
+    first version of this template called `propose` instead - the same computation with the
+    WRITE taken out.
+
+    ⚰️ MEASURED, 2026-09-17: that silently unwired the two doors that have no batch writer.
+    `test_every_caller_and_door_leaves_the_same_envelope` was 17/17 at the round's base and
+    red at HEAD; the log line says it all - `rows_in=4 rows_out=4 written=None`, four rows
+    PROPOSED and four rows dropped, on the paced lap and on retroactive. The group step and
+    replay's proposing branch were fine, which is why the join gates stayed green: a caller
+    that applies proposals cannot tell the two bodies apart, and a caller that does not sees
+    nothing at all.
+
+    🔴 SO THE CONTRACT CHANGE IS NOT THIS ROUND'S. Making a join propose and every door
+    apply is the SAME work as giving the deferred step the group step's batch write
+    (판정 585's ③), and it lands there, whole. Splitting it - new body now, missing
+    appliers later - is what 「나눠 착지시키면 그 사이가 거짓이다」 names.
+    `join_into.propose` and `_apply` stay split, because that split is what the appliers
+    will call.
     """
     from chain import join_into
 
-    return join_into.propose(db, rule, _row_ids(payload))
+    return join_into.run(db, rule, _row_ids(payload))
 
 
 def _auto_confirm(db, payload, rule=None):
@@ -203,7 +220,10 @@ def _install_templates():
     #   different statement from 「it takes none」 - auto-confirm is handed an enrichment
     #   rule whose cells that file owns. An empty tuple would refuse all of them.
     TEMPLATE_FACTS[join_into.JOIN_INTO_MAPPER] = {
-        "label": "join", "stamps_origin": True, "writes_itself": False,
+        # ⚠️ `writes_itself` IS WHAT THE OLD REGISTRATION DECLARED, and it has to stay
+        #   True while the body applies its own proposals - the two are one fact said
+        #   twice, and the doors with no batch writer read THIS one to decide.
+        "label": "join", "stamps_origin": True, "writes_itself": True,
         # ⚰️ `join_into.JOIN_CELLS` WAS PUT HERE AND TAKEN BACK OUT. Declaring the list
         #    makes the loader REFUSE a cell outside it - and 판정 397 settled the
         #    opposite: an unknown join cell is NAMED and the rule still runs,

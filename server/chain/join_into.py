@@ -341,11 +341,13 @@ def propose(db, rule: dict, row_ids=None):
 
 
 def run(db, rule: dict, row_ids=None, done=None, **_):
-    """The self-writing entry the retiring kind table calls: propose, then apply.
+    """The self-writing entry: propose, then apply.
 
-    ⚰️ THIS WHOLE FUNCTION GOES when the kind table does (판정 563). It is here only so the
-    old door and the new one run the SAME body while both exist - 「새 것이 먼저 서고,
-    서고 나서 예것이 나간다」 (판정 567).
+    ⚰️ THIS DOCSTRING SAID 「this whole function goes when the kind table does」. The kind
+    table went on 2026-09-17 and this did NOT: it is the body `chain.dynamic_mappers._join`
+    registers, because the registration it replaced named it. What retires it is the round
+    that gives every door a batch writer, and until then the doors with none reach the write
+    through here.
     """
     outcome = propose(db, rule, row_ids)
     updates = outcome.get("updates") or []
