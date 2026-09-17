@@ -47300,3 +47300,52 @@ client2/src/chain_rule_panel.js:186  formRoot: payload.grammar === 'unified' ? u
 📌 클라 레인에 옮겨 주십시오: **폼이 그릴 재료는 오늘 «이미 도착»합니다**(`skeleton.unified_root`).
    `payload.grammar` 가 `'unified'` 로 오기 시작하면 `formRoot` 가 그것을 고르고,
    `renderSkeletonOneOf` 가 `derive` 의 세 가지를 «있는 컨트롤»로 그립니다. 새로 지을 것 없습니다.
+
+---
+
+> 🛠 **[09-17 13:09 구현자] 판정 513 그 한 칸 착지 — 푸시됨 (13:20 전)**
+> 🔴 **그리고 513 ⓑ 의 「감출 것이 없어집니다」는 «반만» 참입니다. 아래 ⓑ 를 표에 넣기 전에 읽어 주십시오**
+
+## ⓐ 물으신 한 줄 — 「기존 규칙이 평면으로 적혀 있으면?」
+**🔴 기존 것은 «통합으로 열면 안 됩니다». 그대로 뒀습니다.**
+```
+실측 (같은 스켈레톤을 두 칸으로 뽑음)
+   root         칸 27  name · trigger_table · source_table · … · mapper_module · mapper_function · is_batch …
+   unified_root 칸  7  name · enabled · on · derive · into · key · limits
+=> «다른 어휘»입니다. 겹치는 것은 name·enabled 뿐입니다
+```
+그러므로 평면으로 저장된 규칙에 「unified」라고 말하면, 폼이 «있는 칸 위에» 빈 가지 칸을 그리고
+저장이 그 규칙을 «아닌 문법으로» 다시 씁니다. 그래서 `if name is not None:` 의 «유도»는 한 글자도 안 건드렸습니다.
+```
+새 규칙   grammar "unified"  -> formRoot 가 unified_root 를 고릅니다     ✅ 실측
+기존 규칙 선언에서 유도 그대로 (derive 있으면 unified, 없으면 flat)      ✅ 실측(이 박스의 기존 것들은 flat)
+🔵 「덮는다」는 «새 규칙»에 대해 참입니다 — derive 의 가지에 mapper 가 있어 평면으로 적던 것을 통합으로 적을 수 있습니다.
+   «이미 평면으로 적힌 것»을 옮기는 것은 «이전»이고, 그건 별건입니다
+```
+
+## 🔴 ⓑ 512 의 «감추기» — 철회하시면 «평면 폼에 그대로 남습니다». 그래서 이번 커밋에 «넣었습니다»
+513 ⓑ 의 근거는 「폼이 가지 폼이 되니 평면 드롭다운을 안 쓴다」인데, 그건 «새 규칙»만입니다.
+**기존 평면 규칙은 위 ⓐ 때문에 계속 평면 폼으로 열리고, 그 폼의 `mapper` 드롭다운이 바로 그 자리입니다.**
+```
+제가 연 코드  client2/src/chain_rule_panel.js:80-82
+   if (item.kind === 'registered') push(name, …)
+   else if (module && name) push(tokenOf(module, name), name, module)    <- 내 builtin 행이 «여기»로 떨어집니다
+실측 값       builtin:join  ->  "chain.builtins:builtin:join"
+              «아무 규칙도 못 돌리는 이름»이고 저장 관문이 «안 받습니다»
+=> 응용 Q-63 이 정확합니다. 그리고 그건 «제 1e2abdb2 가 낸» 결함이고 main 에 살아 있었습니다
+```
+🔵 되돌리지 «않았습니다»(512 지시). `_registered_kinds()` 와 그 사실은 그대로 있고, 목록에 «넣는 한 줄»만 뺐습니다 —
+   주석이 「그 폼이 서는 날 이 한 줄을 도로 앞에 붙인다」를 이름 대어 적어 뒀습니다.
+
+## 📮 그리고 511 이 «좌석 층에서도» 조금 빗나가 있었습니다 (판정 청합니다)
+```
+실측  unified_root 의 derive.mapper = {"kind":"leaf", "hint":"choice"}
+      -> 통합 문법에서 «파일 맵퍼»는 derive 의 «한 가지»이고 그 안에서 이름 하나를 고릅니다
+      -> `builtin:join` 은 «mapper 값»이 아니라 «다른 가지»(derive.kind = join)입니다
+🔴 그러므로 내장 종류는 `/admin/mappers/list` 의 «맵퍼 목록»에 들어갈 것이 아니라
+   derive 의 «가지 이름»으로 이미 표현됩니다 — 그 가지 목록은 스켈레톤이 «이미» 싣고 있습니다
+=> 511 의 「목록에 내장을 넣어라」는 이 문법에서 «불필요»해 보입니다. 제 판단이 맞는지 판정해 주십시오.
+   맞으면 `_registered_kinds()` 는 «지울 것»이고, 아니면 그 한 줄을 도로 붙이면 됩니다
+```
+⛔ 이번 커밋에서 «지우지 않았습니다» — 판정 없이 지우면 되돌리기가 비쌉니다.
+수: 772 passed / 14 skipped (`chain_rule_raw_view`·`grammar` 를 이름 대는 시험 전부).
