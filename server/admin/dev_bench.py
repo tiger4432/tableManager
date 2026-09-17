@@ -200,23 +200,40 @@ def try_mapper(name, sample, *, rule=None, target_table="bench_target"):
     #   `{'rows': 0, 'refusal': None}` - a success shape - and the join kinds threw
     #   AttributeError. `try_core.py`'s own note says a refusal printed as rows is
     #   indistinguishable from 「no rows」, and that is exactly what it became.
-    #   A kind resolves its own rows out of the database; a sample CSV is not an input it
-    #   has. So the bench says so, by name, rather than pretending to have run it.
-    #   ⚠️ ASKED AS 「does it write its own rows」, NOT AS 「which kind is it」. The second
-    #   is the seat's question and spelling it here is 「종류를 묻는 자리」 outside the
-    #   seat (판정 498 ④) - the gate says so. What the bench needs is the registered
-    #   PROPERTY: a rule that resolves its own rows has no use for a sample file.
-    kind = rule_run.self_writing_name({"mapper": name})
-    if kind is not None:
+    #
+    # 🔴 [판정 503] AND THE PREDICATE IS THE CALLING SHAPE, NOT 「does it write its own rows」.
+    #   ⚰️ My first repair asked `self_writing_name`, and the ontology lane caught that it is a
+    #   CORRELATION rather than the property: 「writes its own rows」 decides what happens AFTER
+    #   a call, and what the bench needs to know is whether this thing takes a sample file as
+    #   its INPUT. The two agree today only because all three registered kinds happen to write
+    #   for themselves - 「가드와 행동이 다른 집합을 본다」, and the day a kind registers
+    #   `writes_itself=False` they part.
+    #   `Resolved.hands` IS that fact: it is what the seat itself uses to decide between
+    #   `(db, rule, row_ids=)` and `(db, payload)`.
+    #   ⚰ THIS PARAGRAPH SAID 「registered this round」 WHEN IT WAS NOT. 503 landed `hands` as
+    #   `HANDS_ROW_IDS if builtin_kind(rule) is not None` - the address question one level
+    #   down - so this file and `rule_run.hands`'s own docstring said different things inside
+    #   ONE landing, and the docstring was the honest one. The ontology lane read both and
+    #   named the class: 「수리가 대리를 «없앤» 것이 아니라 «한 층 내린» 것」 (판정 508).
+    #   `register_builtin(..., hands=)` states it now, so the sentence above is true.
+    #
+    # ⚠️ AND THE NAME IS RESOLVED ONCE. It used to be resolved here and AGAIN below, which is
+    #   two answers to 「what does this name run as」 waiting to disagree.
+    try:
+        bound = rule_run.resolve({"name": "bench", "mapper": name})
+    except rule_run.UnresolvableRule:
+        # Not a name the product can run. The bench accepts `module:function` spellings no
+        # rule ever declared, so its own fallback below gets its turn before it refuses.
+        bound = None
+
+    if bound is not None and bound.hands != rule_run.HANDS_PAYLOADS:
         return {"who": name, "rows": [],
                 "refusal": "%r is a registered kind, not a file mapper: it resolves its own "
                            "rows from the database, so a sample file is not an input it "
                            "takes. Try it with the retroactive screen instead." % name}
 
-    # The kind is refused above, so this can only answer with a file mapper now - and it
-    # stays the SEAT's lookup, because 「is this name runnable」 has one author (판정 498 ①).
-    fn = rule_run.runnable(name)
-    who = name
+    fn = bound.call if bound is not None else None
+    who = bound.who if bound is not None else name
     if fn is None and (":" in name or "." in name):
         import importlib
 

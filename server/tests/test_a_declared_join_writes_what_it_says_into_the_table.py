@@ -490,7 +490,7 @@ def test_the_two_write_join_doors_keep_separate_ids():
     assert join_into.JOIN_INTO_MAPPER != vjc.JOIN_MAPPER
     assert builtins.BUILTIN_KINDS[vjc.JOIN_MAPPER] is not join_into.run
     with pytest.raises(builtins.UnknownBuiltinKind):
-        builtins.register_builtin(vjc.JOIN_MAPPER, join_into.run)
+        builtins.register_builtin(vjc.JOIN_MAPPER, join_into.run, builtins.HANDS_ROW_IDS)
 
 
 def test_this_module_does_not_borrow_the_other_doors_engine():

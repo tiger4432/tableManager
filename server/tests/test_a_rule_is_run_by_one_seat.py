@@ -213,7 +213,10 @@ CHAIN_LOG_TAGS = {
     "ChainKeyGate": "the business-key gate",
     "ChainRetract": "withdrawal when a trigger row is deleted",
     "ChainRules": "the loader and the synthesis halves",
-    "HOL Guard": "a blocked group making later groups wait",
+    # ⚠️ [판정 507] WAS `HOL Guard` UNTIL 09-17, and the description below was always the
+    #: plain sentence - the tag was the only part an operator could not read. Re-adding the
+    #: old spelling turns this gate red, because it would not be a member here.
+    "ChainWaiting": "a blocked group making later groups wait",
     "LayerHealth": "the layering check",
     "Ledger": "the ledger follow-up",
     "LedgerCensus": "the retroactive census",
@@ -331,7 +334,9 @@ def test_the_two_facts_the_seat_reads_come_off_the_registration():
         seen["kw"] = sorted(kw)
         return {}
 
-    builtins.register_builtin(probe, _probe, writes_itself=False, label="decide")
+    # ⚠️ [판정 509] `hands` IS REQUIRED NOW, so this probe says it like any kind would.
+    builtins.register_builtin(probe, _probe, builtins.HANDS_ROW_IDS,
+                              writes_itself=False, label="decide")
     try:
         bound = rule_run.resolve({"name": "p", "mapper": probe})
         assert bound.writes_itself is False, (

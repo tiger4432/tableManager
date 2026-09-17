@@ -23,7 +23,19 @@ PY="C:/Users/kk980/anaconda3/envs/assy_manager/python.exe"
 
 say() { printf '%s %s\n' "$(date '+%m-%d %H:%M:%S')" "$*" >> "$LOG"; }
 
-blob() { git rev-parse "origin/main:$1" 2>/dev/null || echo none; }
+# 🔴 [클라 레인 발견 2026-09-17 12:30] 보고서를 «origin/main 에서만» 읽으면 클라 레인의 보고가
+# 안 보인다 — 그 레인은 «design 브랜치»에 커밋하고, main 에 병합될 때까지 origin/main 에 없다.
+# 그래서 그 레인 보고는 「병합될 때」 한 번 뜨고, 그 전까지는 «조용»했다. 브랜치를 같이 본다.
+blob() {
+  local b
+  b=$(git rev-parse "origin/main:$1" 2>/dev/null) || b=""
+  if [ -z "$b" ] || [ "$1" = "task/axis_and_material_report.md" ]; then
+    local d
+    d=$(git rev-parse "design:$1" 2>/dev/null || git rev-parse "origin/design:$1" 2>/dev/null || echo "")
+    [ -n "$d" ] && { echo "$d"; return; }
+  fi
+  echo "${b:-none}"
+}
 WATCHED="task/IMPLEMENTER_ORDERS.md task/DESIGN_ORDERS.md task/scoped_redo_report.md task/ontology_application_report.md task/axis_and_material_report.md"
 CFG="server/config/ontology/ledger_config.json"
 

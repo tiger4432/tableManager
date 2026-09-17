@@ -176,6 +176,43 @@ def runnable(name):
     return mapper_sdk.MAPPER_REGISTRY.get(name) or builtins.BUILTIN_KINDS.get(name)
 
 
+def hands(rule):
+    """HANDS_ROW_IDS or HANDS_PAYLOADS - how this rule is CALLED. Answered without resolving.
+
+    [503] THE CALLING SHAPE IS ITS OWN FACT, and it is not 「does it write its own rows」.
+    That one decides what happens AFTER a call; this one decides the call.
+
+    🔴 [판정 508] AND IT IS READ OFF THE REGISTRATION, NOT DERIVED FROM THE NAME. This
+    function first answered `HANDS_ROW_IDS if builtin_kind(rule) is not None` - which is the
+    address question 503 existed to remove, one level down. The ontology lane caught it:
+    503 MOVED the proxy rather than removing it, and it read true only because all three
+    registered kinds happen to take row ids. `register_builtin(..., hands=)` now states it,
+    so a kind that takes payloads is called correctly the day it is added, with no seat edited.
+
+    `resolve` returns this in `Resolved.hands` and reads it from HERE, so the seat and a
+    caller that only needs the shape cannot answer differently - and the caller pays no
+    import for it (501 a: resolving imports the operator's module).
+    """
+    from chain import builtins
+
+    kind = builtin_kind(rule)
+    if kind is None:
+        # ⚠️ NOT A DEFAULT. A rule that names no registered kind is a file mapper, and
+        #    `(db, payload[, rule=])` is that door's convention - the owner's files define it.
+        return HANDS_PAYLOADS
+    try:
+        return builtins.BUILTIN_HANDS[kind]
+    except KeyError:
+        # 🔴 [판정 509] A KIND THAT CAN RUN BUT NEVER SAID HOW IT IS CALLED IS NAMED, not
+        #   quietly called as a file mapper. `register_builtin` requires `hands`, so the only
+        #   way here is someone writing into `BUILTIN_KINDS` directly and leaving the two
+        #   tables disagreeing - which is the 「부재가 뜻을 가진다」 shape one table over.
+        raise UnresolvableRule(
+            "kind %r is registered to run but never declared how it is called; register it "
+            "through register_builtin(..., hands=) rather than by writing to BUILTIN_KINDS"
+            % kind)
+
+
 def self_writing_name(rule):
     """The registered kind a SELF-WRITING rule runs as, or None - answered WITHOUT resolving.
 
@@ -270,8 +307,10 @@ def _uniform():
 #: How a resolved rule takes its input. The seat hands one or the other and nothing else
 #: branches on it - the difference between a fact about what a rule DOES and a fact about
 #: where its code happens to live.
-HANDS_ROW_IDS = "row_ids"
-HANDS_PAYLOADS = "payloads"
+#: 🔴 [판정 508] DEFINED WITH THE REGISTRAR, because that is where a kind DECLARES which
+#: one it takes. Re-exported here so every existing read of `rule_run.HANDS_*` is unchanged
+#: and there is still one spelling.
+from chain.builtins import HANDS_PAYLOADS, HANDS_ROW_IDS  # noqa: E402  (after the docstring)
 
 #: What the seat knows about a rule BEFORE it runs anything.
 Resolved = collections.namedtuple(
@@ -318,7 +357,7 @@ def resolve(rule):
     kind = builtin_kind(rule)
     if kind is not None:
         # `builtin_kind` answers by membership in this same table, so the lookup cannot miss.
-        return Resolved(builtins.BUILTIN_KINDS[kind], kind, HANDS_ROW_IDS,
+        return Resolved(builtins.BUILTIN_KINDS[kind], kind, hands(rule),
                         kind in builtins.SELF_WRITING_KINDS, False)
 
     import chain_bindings
@@ -351,7 +390,7 @@ def resolve(rule):
                ", ".join(sorted(builtins.BUILTIN_KINDS)) or "none registered"))
     # A file mapper PROPOSES: its rows come back as `updates` for the caller to write, which
     # is exactly what lets a dry run count them without writing anything.
-    return Resolved(call, who, HANDS_PAYLOADS, False, mapper_accepts_rule(call))
+    return Resolved(call, who, hands(rule), False, mapper_accepts_rule(call))
 
 
 def rows_counted(value):

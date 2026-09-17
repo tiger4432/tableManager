@@ -98,6 +98,9 @@ def test_the_line_names_the_code_it_ran_whichever_way_the_rule_named_it(monkeypa
     mod, fn = install(monkeypatch, lambda db, p: {"updates": []})
     monkeypatch.setitem(builtins.BUILTIN_KINDS, "builtin:s498_log_probe",
                         lambda db, rule, **kw: {"written": 2})
+    # ⚠️ [판정 509] BOTH TABLES. `register_builtin` writes them together; faking a kind
+    #    by hand has to say how it is called, or the seat refuses it by name.
+    monkeypatch.setitem(builtins.BUILTIN_HANDS, "builtin:s498_log_probe", builtins.HANDS_ROW_IDS)
     builtins.SELF_WRITING_KINDS.add("builtin:s498_log_probe")
     try:
         with caplog.at_level(logging.INFO):

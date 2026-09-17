@@ -77,6 +77,9 @@ def fixture_kind(monkeypatch):
         return None
 
     monkeypatch.setitem(builtins.BUILTIN_KINDS, KIND, _run)
+    # ⚠️ [판정 509] BOTH TABLES. `register_builtin` writes them together; faking a kind
+    #    by hand has to say how it is called, or the seat refuses it by name.
+    monkeypatch.setitem(builtins.BUILTIN_HANDS, KIND, builtins.HANDS_ROW_IDS)
     monkeypatch.setitem(builtins.BUILTIN_LABELS, KIND, "decide")
     builtins.SELF_WRITING_KINDS.add(KIND)
     yield seen

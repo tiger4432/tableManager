@@ -1037,8 +1037,19 @@ def picked_up_by_the_follow_up_pass(rule) -> bool:
     ⚠️ So a rule that declares `follow_up` and proposes is picked up by NOBODY - and 판정 500
     ② is that such a rule must be REFUSED BY NAME at the loader rather than left silent.
     That is what `refuse_rules_no_path_picks_up` does with this answer.
+
+    🔴 [판정 503] AND THE CAPABILITY IS TWO FACTS, NOT ONE. 503 found the bench splitting on
+    「자기가 쓰나」 where the binding fact was the CALLING SHAPE; here BOTH bind, and only one
+    of them was written down. This pass hands `row_ids` - so it can only call a rule whose
+    shape takes them - AND it drops whatever a rule returns in `updates`, because there is no
+    batch writer on this lap - so the rule must write for itself. They select the same rules
+    today; they are still two facts, and the guard now looks at the set the action needs
+    rather than at a fact that happens to agree with it.
     """
-    return bool((rule or {}).get("follow_up")) and rule_run.writes_itself(rule)
+    if not (rule or {}).get("follow_up"):
+        return False
+    return (rule_run.hands(rule) == rule_run.HANDS_ROW_IDS
+            and rule_run.writes_itself(rule))
 
 
 #: (what to call it in the refusal, does it pick this rule up). 🔴 MEMBERS, and each member
@@ -2586,7 +2597,11 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                 str(r.get("name")) for r in (rules or [])
                 if r.get("trigger_table") == _t)) or "(no rule triggers on this table)"
             logger.info(
-                "[HOL Guard] %s: %d group(s) deferred behind %s (sweep #%d) | rules: %s | head: %s",
+            # 🔴 [판정 507] THE TAG SAYS WHAT HAPPENS, NOT A THREE-LETTER NAME FOR IT.
+            #   소유자 2026-09-15: 「hol 가드란 용어 쓰지마 뭔말인지 모르겠음」. The line was
+            #   still printing `[HOL Guard]` two days later, and an operator reading it has
+            #   to know the acronym before they can know a group is waiting.
+                "[ChainWaiting] %s: %d group(s) deferred behind %s (sweep #%d) | rules: %s | head: %s",
                 _t, _hol_deferred[_t], str(_tx)[:12], _HOL_SWEEP, _blocking,
                 (_why or "reason not recorded")[:80])
     return failed_any
