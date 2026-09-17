@@ -1118,7 +1118,7 @@ async function refreshChainRule(name, extra = {}) {
   if (!mount) return;
   if (!chainRulePanel) {
     chainRulePanel = new ChainRulePanel(mount, {
-      onOpen: (rule) => refreshChainRule(rule),
+      onOpen: (rule, extra) => refreshChainRule(rule, extra || {}),
       onSave: (payload) => saveChainRule(payload),
     });
   }

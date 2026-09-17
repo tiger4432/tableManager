@@ -285,6 +285,8 @@ export class RawRegistryPanel {
     //    그대로 그리면 편집기가 사라집니다(소유자 2026-09-13 「지혼자 새로고침되서 초기화」).
     //    ⚠️ 상태를 페이지에 두면 등록부마다 한 벌씩 생기고, 늦게 배우는 쪽만 초기화됩니다.
     this.open = '';      // 열려 있는 문서의 이름 (새 이름이면 NEW_NAME). 아무것도 없으면 ''
+    // 「추가」로 갈 때 «보고 있던 문서»를 여기 둡니다. [취소] 가 그것으로 돌아갑니다(응용 Q-71).
+    this._backTo = null;
     this.draft = null;   // 저장 안 된 «글자». `null`(고친 적 없음)과 ''(다 지웠음)이 다릅니다
     this.draftOf = '';   // 그 초안이 «어느 문서»의 것인가 — 남의 문서에 입히면 남의 값이 됩니다
     // 닫힌 목록(예: 맵퍼 등록부). 스켈레톤의 `list` 이름을 키로 하는 «값»이고, 이 파일은
@@ -432,7 +434,15 @@ export class RawRegistryPanel {
     //    ⚠️ 못 읽은 배경 읽기도 아무것도 안 바꿉니다 — 이름 없는 읽기는 문서를 «안 실어서»
     //       그 자리에 놓을 것이 없고, 상태를 보이려고 편집 중인 글자를 지우는 것은 값을 잃는
     //       것입니다. 목록이 «그대로»면 고르개도 다시 안 짓습니다(열린 목록을 닫는 일뿐입니다).
-    if (opts.background && this.open) {
+    // 🔴 [판정 516 · 응용 Q-73] 「추가」가 시킨 읽기는 «이름이 없어서» 배경으로 표시돼 옵니다.
+    //    그래서 그 «한 번»은 지나야 하는데, 지나도 되는 표시는 «그 응답 자신»이 들고 와야 합니다.
+    // ⛔ 부품에 깃발을 세워 「다음 렌더」에 소진하면 안 됩니다 — 이름 없는 읽기가 «둘»이고
+    //    (버튼 · 30초 자동 갱신) 둘이 같은 모양이라, 타이머 쪽이 먼저 오면 그 깃발을 «먹고»
+    //    편집 중인 폼을 갈아 끼웁니다. 그게 이 가드가 막으려던 바로 그 증상입니다
+    //    (소유자 2026-09-13 「지혼자 새로고침되서 초기화되는데?」).
+    // ✅ 그래서 표시는 `opts.forNew` — 버튼이 «자기 요청에» 실어 보낸 것이고, 타이머의 응답에는
+    //    «없습니다». 가드는 그대로이고 예외는 그 요청 하나에만 붙습니다.
+    if (opts.background && this.open && !opts.forNew) {
       const names = view.available ? view.names.join('\u0000') : null;
       if (names !== null && names !== this._names) this._options(this._picker, view, this.open);
       return view;
@@ -512,6 +522,8 @@ export class RawRegistryPanel {
           return;
         }
         this.newMode = false;
+        // 고르개로 «다른 문서»를 열면 취소의 복귀 지점은 뜻을 잃습니다 — 그 자리에 둘 수 없습니다.
+        this._backTo = null;
         this.onOpen(value);
       });
     }
@@ -531,7 +543,24 @@ export class RawRegistryPanel {
           //    운영자는 버렸는데 화면이 되살립니다.
           if (this.newMode) this._forget();
           this.newMode = !this.newMode;
-          this._again();
+          // 🔴 [판정 516] 새 규칙으로 «갈 때»는 이름 없이 «다시 받습니다». 종전에는 저장된
+          //    payload 를 다시 그렸고(`_again`), 그래서 새 규칙이 «직전에 연 규칙»의 문법으로
+          //    열렸습니다 — 서버는 이름 없는 읽기에 「새 규칙의 문법」을 이미 답하는데
+          //    화면이 그걸 «안 물으러» 갔습니다.
+          // ⛔ 화면이 문법을 «정하지» 않습니다. 저자는 서버 하나입니다(판정 411·516).
+          // ⚠️ 취소는 그대로 `_again()` — 「보고 있던 것으로 돌아간다」이지 새로 묻는 것이 아닙니다.
+          //    그리고 `onOpen` 이 없는 등록부는 물을 곳이 없으므로 종전대로 다시 그립니다.
+          // 🔴 [응용 Q-71] 취소의 복귀 지점을 «곁에» 듭니다. 이름 없는 응답에는 문서가 «없어서»
+          //    `_payload` 를 그것으로 갈아끼우면 [취소] 가 «빈 폼»으로 돌아옵니다 — 위 :528 의
+          //    「보고 있던 것으로 돌아갑니다」가 그날부터 거짓이 됩니다.
+          if (this.newMode && this.onOpen) {
+            this._backTo = { payload: this._payload, opts: this._opts };
+            this.onOpen('', { forNew: true });
+          } else {
+            if (this._backTo) { this._payload = this._backTo.payload; this._opts = this._backTo.opts; }
+            this._backTo = null;
+            this._again();
+          }
         });
       }
       head.appendChild(addBtn);

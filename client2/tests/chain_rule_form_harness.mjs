@@ -150,6 +150,62 @@ function suite(M) {
   ok(!decoyPaths.has('trigger_table') && !decoyPaths.has('mapper'),
     'B2 ... and no real routing key appears -- the client authors no field name');
 
+  // ── B3 [516 + Q-71]: going to add ASKS, and cancel still returns what was open ────────
+  // 🔴 The screen must not decide the grammar of a new rule. The server answers that on a
+  //    NAMELESS read, so the add button has to ask; re-drawing the stored payload gave the new
+  //    rule whatever grammar the LAST opened rule had (ruling 515, reproduced on screen).
+  // 🔴 AND the second half is what makes the first half safe. A nameless response carries no
+  //    declaration, so if the add path REPLACED the stored payload, cancel would come back to an
+  //    empty form -- the shape of the owner's 2026-09-13 report. Scored on the same fixture,
+  //    because either assertion alone passes the version that breaks the other.
+  {
+    const asked = [];
+    const b2 = makePanel(M, SPEC, { onOpen: (n2, x2) => asked.push([n2, (x2 || {}).forNew === true]) });
+    b2.panel.render(payloadFor(SKELETON, { name: 'alpha', trigger_table: 't', mapper: 'm' }));
+    const add2 = byCls(b2.host, 'chain-rule-add')[0];
+    if (add2) add2.dispatch('click', {});
+    ok(asked.length === 1 && asked[0][0] === '' && asked[0][1] === true,
+      `B3a going to add asks the server with NO name, and marks THAT request -- a flag kept on`
+      + ` the part would be eaten by the 30s refresh, which is the read this guard exists for`
+      + ` [${JSON.stringify(asked)}]`);
+    const back = byCls(b2.host, 'chain-rule-add')[0];
+    if (back) back.dispatch('click', {});
+    const reopened = walk(b2.host).find(
+      (n2) => n2.attrs && n2.attrs['data-value'] === 'name' && n2.tagName === 'INPUT');
+    ok(Boolean(reopened) && reopened.value === 'alpha',
+      `B3b ... and cancel comes back to the document that was open, not to an empty form`
+      + ` [${reopened ? reopened.value : 'no box'}]`);
+    ok(asked.length === 1,
+      `B3c ... without asking again on the way back [${asked.length}]`);
+  }
+  // 🔴 [520] AND THE SAME THING WITH TWO ANSWERS IN FLIGHT. The screen makes TWO nameless
+  //    reads -- this button and the 30s refresh -- and they are the same shape on arrival. A flag
+  //    kept on the part points at 「the next render」, so whichever lands first consumes it: the
+  //    timer redraws over the document being edited and the button's own render is then refused.
+  //    Scored with the timer's answer arriving FIRST, because with one answer every design passes.
+  {
+    const asked2 = [];
+    const LIST = { ...payloadFor(SKELETON, null), name: null, raw: '', enabled: null };
+    const r = makePanel(M, SPEC, { onOpen: (n2, x2) => asked2.push([n2, x2]) });
+    r.panel.render(payloadFor(SKELETON, { name: 'alpha', trigger_table: 't', mapper: 'm' }));
+    const add3 = byCls(r.host, 'chain-rule-add')[0];
+    if (add3) add3.dispatch('click', {});
+    // the 30-second refresh answers first, and it is NOT the read the button asked for
+    r.panel.render(LIST, { background: true });
+    const midName = walk(r.host).find(
+      (n2) => n2.attrs && n2.attrs['data-value'] === 'name' && n2.tagName === 'INPUT');
+    ok(Boolean(midName) && midName.value === 'alpha',
+      `B3d a background answer that the button did NOT ask for leaves the open document alone`
+      + ` [${midName ? midName.value : 'no box'}]`);
+    // then the button's own answer arrives, carrying the mark the button put on ITS request
+    r.panel.render(LIST, { ...(asked2[0] || [])[1], background: true });
+    const newName = walk(r.host).find(
+      (n2) => n2.attrs && n2.attrs['data-value'] === 'name' && n2.tagName === 'INPUT');
+    ok(Boolean(newName) && newName.value === '',
+      `B3e ... and the button's own answer still gets through afterwards`
+      + ` [${newName ? JSON.stringify(newName.value) : 'no box'}]`);
+  }
+
   // ── C: add a rule that did not exist ──────────────────────────────────────────────
   const saves = [];
   const c = makePanel(M, SPEC, { onSave: (p) => saves.push(p) });
@@ -795,7 +851,7 @@ const DEFECTS = [
     s => s.replace("    this.lists = deps.lists || {};", "    this.lists = deps.lists || { mappers: [] };")],
   // 🔴 C-101 ①. Four ways this screen reset itself while somebody was typing.
   ['a background read is drawn over the document being edited',
-    s => s.replace('if (opts.background && this.open) {', 'if (false) {')],
+    s => s.replace('if (opts.background && this.open && !opts.forNew) {', 'if (false) {')],
   ['the unsaved document is dropped, so any redraw rebuilds from the response',
     s => s.replace('let drafted = this.draft !== null && this.draftOf === key ? this.draft : null;',
                    'let drafted = null;')],
