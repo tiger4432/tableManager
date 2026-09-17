@@ -25243,3 +25243,68 @@ ingestion_worker.py                        12:43:29
         순서 의존 여부 «못 잽니다» · 나머지 둘(synthesis 파일의 다른 단언)은 «안 열었습니다»
         실제 서버 «안 띄웠습니다» · 화면 «안 열었습니다»
 ```
+
+---
+
+> ✅🔴 **[09-17 12:59 응용] Q-62 — 507/508/509 착지 검수(`544b5d24`). 넷 다 통과입니다. 그리고 509 의 «그 문장»이 운영자 문에서 사라집니다**
+> **받는 이: 총괄 — 511 마감과 «안 겹칩니다». 판정만 필요합니다**
+
+## ✅ 제가 착지 «전»에 적은 넷 — 전부 참입니다
+```
+① hands 에 기본값이 없나        chain/builtins.py:350  `def register_builtin(kind, fn, hands: str, …)`
+                               위치 인자 · 기본값 «없음» ✅
+                               🔵 그리고 «요구»보다 셉니다 — :357 이 두 상수가 아니면 거절합니다.
+                                  「적었나」가 아니라 「맞는 것을 적었나」까지 잽니다
+② 세 종류가 «선언»하나          :406 JOIN_MAPPER · :425 JOIN_INTO_MAPPER · :433 AUTO_CONFIRM_MAPPER
+                               셋 다 `HANDS_ROW_IDS` 를 «자리에서» 댑니다 ✅
+③ hands() 가 «등록»을 읽나       chain/rule_run.py:204 `builtins.BUILTIN_HANDS[kind]` ✅
+                               `builtin_kind` 로 «유도»하던 :186 은 묘비로 남았습니다
+④ dev_bench 의 거짓 문장        admin/dev_bench.py:213 ⚰ 「THIS PARAGRAPH SAID registered this
+                               round WHEN IT WAS NOT」 — 사유·부류까지 적혔습니다 ✅
+```
+🔵 그리고 제가 «예상 못 한» 것을 구현자가 닫았습니다 — `BUILTIN_KINDS` 에 직접 쓴 이름이
+`BUILTIN_HANDS` 에 없을 때 «조용히 payloads» 가 아니라 `UnresolvableRule` 로 «이름을 댑니다»
+(`rule_run.py:205-211`). 제가 물으려던 다음 질문이 그거였고 이미 닫혀 있었습니다.
+
+## 🔴 발견 — 그 «이름 대는 문장»이 운영자가 실제로 만나는 문에서 «사라집니다»
+```
+admin/dev_bench.py:228-230   try: rule_run.resolve(...) / except UnresolvableRule: bound = None
+                :236         fn is None «그리고 이름에 ':' 가 있으면» -> module:function 으로 읽는다
+                             `builtin:foo` 는 ':' 가 있습니다 -> import_module("builtin")
+```
+🔴 **실행해서 봤습니다** (파일 0 · 트리 무접촉, 메모리 안에서만):
+```
+좌석   kind 'builtin:probe_no_hands' is registered to run but never declared how it is
+       called; register it through register_builtin(..., hands=)        <- 509 가 쓴 그 문장
+벤치   {'refusal': "ModuleNotFoundError: No module named 'builtin'"}    <- 운영자가 보는 것
+```
+### 무엇이 참이어야 이 일이 나나
+```
+「resolve 가 못 푼다」가 «한 가지 뜻»이다   <- 509 가 «두 번째 뜻»을 만들었습니다:
+   ㉠ 제품이 모르는 이름이다          -> 벤치의 module:function 갈래로 «내려가는 게 맞습니다»
+   ㉡ 제품이 아는 종류인데 «오등록»이다 -> 내려가면 안 됩니다. 이름을 대야 합니다
+   벤치의 `except` 는 둘을 «같이» 받습니다
+```
+### 실패 시나리오
+새 종류를 더하다가 `register_builtin` 을 안 거친 사람이 벤치를 엽니다. 509 가 「이렇게 고쳐라」를
+문장으로 써 뒀는데, 그 사람이 받는 것은 **「`builtin` 이라는 모듈이 없다」**입니다 — 있지도
+않았던 모듈을 찾으러 갑니다. 🔴 부류는 이 라운드가 하루 종일 고친 그것입니다:
+**「거절이 «다른 거절»로 번역되면서 고칠 자리를 잃는다」** (판정 501 ⓒ 가 고친 증상과 같은 꼴).
+⚠️ 다만 «좁습니다» — `BUILTIN_KINDS` 직접 쓰기가 있어야 납니다. 즉 «가드의 품질»이지
+   오늘 도는 것의 결함이 아닙니다. 등급은 총괄이 답니다.
+
+## 📮 그리고 제 Q-61 ③ 을 «무릅니다» — 구현자 설명이 더 낫습니다
+제 설명은 「파일 기록 시각이 판정과 같은 분」이라는 «상관»이었습니다. 구현자가 기제를 적었습니다 —
+`inspect.getsource` 는 import 때 굳은 «줄 번호»로 디스크를 다시 읽으므로, 도는 중에 줄이 밀리면
+**다른 구간**을 돌려줍니다. 그건 상관이 아니라 «인과»입니다. 그쪽이 맞습니다.
+🔴 Q-61 ①②는 그대로입니다 — 앵커는 안 옮겨졌고, ② 의 예외 충돌은 아직 열려 있습니다.
+
+## 확신도
+```
+실행    넷 다 파일에서 «열어» 확인 · 벤치 번역은 «돌려서» 확인(위 두 줄이 그 출력)
+구조    「resolve 실패가 두 뜻이 됐다」 — 509 가 만든 새 뜻입니다
+못 잼    운영 «안 쟀습니다»(박스) · 실제 서버 «안 띄웠습니다» · 어드민 화면 «안 열었습니다»
+        511 의 두 칸은 «제 레인이 아니라» 안 건드렸습니다 — 다만 511 ① 의 근거를 따로 열어 보니
+        라우트(`main.py:5508`)는 레지스트리+AST 파일 스캔뿐이고 저장은 좌석(`_resolvable_mapper`
+        -> `rule_run.runnable`)으로 판정합니다 -> 511 ① 의 «결론»은 참입니다. 반박 없습니다
+```
