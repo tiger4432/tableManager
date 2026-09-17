@@ -449,6 +449,13 @@ function suite(M) {
   const hidden = advanced ? (advanced.children || []).map((c) => (c.attrs || {})['data-path']) : [];
   ok(hidden.indexOf('mapper') === -1,
     `J6 ... and that dropdown is not folded away [${hidden.filter(Boolean).slice(0, 6).join(',')}]`);
+  // 🔴 RULING 511 (owner: the chain-rule form is still the old shape). The dropdown being
+  //    on the first screen is only half of it -- the two cells the rule is WRITTEN in were
+  //    there too, because `value !== undefined` was tested without the `hidden` guard. Three
+  //    cells for one fact, and the operator has to ask which of them to fill.
+  ok(hidden.indexOf('mapper_module') !== -1 && hidden.indexOf('mapper_function') !== -1,
+    `J6-b ... and the two cells it is WRITTEN in are folded, so one fact keeps one cell`
+    + ` [${hidden.filter(Boolean).slice(0, 8).join(',')}]`);
   // ── lines OUTSIDE the list: 「here but not choosable」 ────────────────────────────
   const noted = makePanel(M, TWO_SPELLINGS, { lists: { mappers: MEMBERS },
     notes: [{ kind: 'other', text: 'mappers.rf · not a chain mapper' },

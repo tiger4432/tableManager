@@ -355,8 +355,13 @@ export class RawRegistryPanel {
    *    되고, 로더가 셋째를 요구하는 날 이 화면만 모릅니다.
    * 🔴 그 위에 등록부가 «자기 첫 화면»을 선언할 수 있습니다(`firstScreen`). 그건 다른 물음입니다
    *    — 「없으면 거절되나」가 아니라 「이것 없이 규칙을 읽을 수 있나」.
-   * ⚠️ 값이 «있는» 칸은 언제나 첫 화면입니다. 접힌 뒤에 값이 숨으면 화면이 그 값을 지운 것처럼
-   *    읽힙니다 — 그리고 그것이 접기의 유일한 위험입니다.
+   * ⚠️ 값이 «있는» 칸은 첫 화면입니다 — 접힌 뒤에 값이 숨으면 화면이 그 값을 지운 것처럼
+   *    읽히기 때문입니다. 🔴 판정 511 의 «예외 하나»: `oneOf` 에서 «진» 철자는 값이 있어도
+   *    첫 화면에 안 섭니다. 그 사실이 사라지는 것이 아니라 «이긴 철자가 같은 사실을 그립니다»
+   *    (`join` 이 두 칸을 읽어 고르개에 세웁니다) — 그래서 여기서만 위 위험이 «없습니다».
+   *    ⛔ 그 가드가 없으면 한 사실에 칸이 «셋»입니다: 고르개 + module + function.
+   *       소유자 실측 2026-09-17 「어드민 체인 규칙 등록은 왜 옛날 모양이냐」가 그 화면입니다.
+   *    진 철자는 «사라지지 않습니다» — 「고급」에 있고, 거기서 고쳐 쓸 수 있습니다.
    */
   _split(root, held) {
     const spec = this.spec;
@@ -396,9 +401,8 @@ export class RawRegistryPanel {
       const key = field && field.key;
       if (!key) continue;
       const value = held[key];
-      const onFirst = value !== undefined
-        || (field.required === true && !hidden.has(key))
-        || (declared.has(key) && !hidden.has(key));
+      const onFirst = !hidden.has(key)
+        && (value !== undefined || field.required === true || declared.has(key));
       (onFirst ? first : rest).push(key);
     }
     return { first, rest };
