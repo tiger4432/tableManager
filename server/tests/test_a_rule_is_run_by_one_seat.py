@@ -222,6 +222,13 @@ CHAIN_LOG_TAGS = {
     #: importable, so the failure is a LOG rather than an exception - and a log nobody can
     #: grep is the half-measure this gate exists to refuse.
     "DynamicMappers": "installing the mappers built from the declaration",
+    # 🔴 [소유자 「모든 체인은 server/chain 안에서만 코드 존재」, 2026-09-17] THESE CAME INTO
+    #: SCOPE BY MOVING, NOT BY BEING WRITTEN. `enrichment/` is a chain declaration KIND and
+    #: now lives at `chain/enrichment/`, so this walk reads its lines for the first time.
+    #: They are subsystem tags and not a second execution vocabulary - the seat's own
+    #: 「a rule ran」 line is still the only one built from `RULE_LOG_TAG`.
+    "Enrichment": "the enrich declaration - the declaration reader and its two halves",
+    "Enrichment:%s": "the same, naming which declaration",
     "LayerHealth": "the layering check",
     "Ledger": "the ledger follow-up",
     "LedgerCensus": "the retroactive census",

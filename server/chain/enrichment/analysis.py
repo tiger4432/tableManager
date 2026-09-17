@@ -757,7 +757,7 @@ def run_auto_confirm_sweep(db, rule: dict, apply: bool = False, limit: int = Non
         stats = enrichment.candidates.confirm_keys(
             db, rule, keyed, apply=True, tx_prefix="enrichment_sweep", caps=caps)
     else:
-        from chain import session_contract
+        import session_contract
 
         stats = session_contract.discarding(
             db, "enrichment_sweep",

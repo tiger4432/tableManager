@@ -26,7 +26,7 @@ SERVER = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 FOLDED = ("chain/key_gate.py", "database/crud.py", "parsers/void_sat_format.py",
           "chain/replay.py", "main.py", "event_constants.py",
           # [S-34 첫 커밋] 독자가 «0» 이라 두 걸음 없이 접힌 둘.
-          "bonding_plan.py", "enrichment/candidates.py")
+          "bonding_plan.py", "chain/enrichment/candidates.py")
 
 
 # ============================================ 1. 정본이 «하나»다

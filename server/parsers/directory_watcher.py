@@ -1064,6 +1064,17 @@ OPERATOR_IMPORT_NAMES = (
     # count used a line-anchored grep and never saw an import inside a function.
     # `event_constants` was in the moving set: without the gate the same failure lands twice.
     "chain_bindings",
+    # 🔴 [2026-09-17] ADDED BY THE FAILURE IT WOULD HAVE PREVENTED. `session_contract` was
+    #    moved into `chain/` on the strength of a census that read `*.py` and therefore never
+    #    saw `mappers/cross_table_lookup_mapper.py.sample:318`, which imports it INSIDE a
+    #    function. main could not import, measured. The gate below now reads the mapper
+    #    samples too, so the next such name is refused instead of promised after the fact.
+    "session_contract",
+    # 🔴 [2026-09-17] FOUND BY WIDENING THE GATE, not by anyone remembering:
+    #    `cross_table_lookup_mapper.py.sample` has been shipping this import to operators
+    #    while nothing scored it. Recorded rather than removed - it IS a name their copies
+    #    say today, and 「stop shipping it」 would edit files this repo cannot reach.
+    "config_resolve_report",
     "map_overlay",
     "map_meta_registrar",
     "map_alignment",

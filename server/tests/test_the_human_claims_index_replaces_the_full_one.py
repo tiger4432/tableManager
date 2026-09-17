@@ -71,7 +71,9 @@ def test_both_readers_name_the_constant_rather_than_quoting_the_value():
     """
     for module_name, function_name in (
             ("chain.replay", "_count_user_protected"),
-            ("enrichment.analysis", "_human_resolved_cells"),
+            # ⚰️ `enrichment.analysis` — enrich is a chain declaration kind, so it
+            #    moved into `chain/` with the rest (소유자, 2026-09-17).
+            ("chain.enrichment.analysis", "_human_resolved_cells"),
     ):
         body = _source_of(module_name, function_name)
         assert "HUMAN_SOURCE_NAME" in body, (module_name, function_name, body[:400])

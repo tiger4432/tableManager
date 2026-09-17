@@ -34,7 +34,25 @@ from parsers.directory_watcher import OPERATOR_IMPORT_NAMES        # noqa: E402
 #: The files whose own headers say 「HAND-COPY THIS FILE to …ingestion_workspace/…」. They are
 #: the only operator-side imports this repo can actually read, which makes them the lower
 #: bound on the promise - never the whole of it.
-HAND_COPIED = ("void_obs_parser.py.sample", "inspection_run_parser.py.sample")
+#:
+#: 🔴 [2026-09-17] THE MAPPER SAMPLES WERE MISSING AND THAT COST A RED MAIN. This tuple held
+#: the two PARSER samples only, so seven mapper samples importing `chain_bindings` and one
+#: importing `session_contract` were shipped to operators and scored by nothing. A census
+#: that read `*.py` then moved `session_contract` into `chain/` and every hand-copied mapper
+#: broke - measured, `ModuleNotFoundError: No module named 'session_contract'`.
+#: ⚠️ AND THE ONE THAT BIT IS INSIDE A FUNCTION (`cross_table_lookup_mapper.py.sample:318`),
+#: which a line-anchored grep does not see. `_imported_names` walks the AST, so it does.
+HAND_COPIED = (
+    os.path.join("parsers", "void_obs_parser.py.sample"),
+    os.path.join("parsers", "inspection_run_parser.py.sample"),
+    os.path.join("mappers", "core_alignment_mapper.py.sample"),
+    os.path.join("mappers", "core_usage_mapper.py.sample"),
+    os.path.join("mappers", "cross_table_lookup_mapper.py.sample"),
+    os.path.join("mappers", "dt_alignment_metadata_mapper.py.sample"),
+    os.path.join("mappers", "dt_inventory_metadata_mapper.py.sample"),
+    os.path.join("mappers", "dt_job_rollup_mapper.py.sample"),
+    os.path.join("mappers", "dt_map_mapper.py.sample"),
+)
 
 
 def _homes_of(module):
@@ -50,7 +68,7 @@ def _imported_names(relative):
     """Top-level module names a `.sample` imports. It is DATA here, not a module: the
     extension makes it unimportable, and what is being asked is 「which names does this file
     name」 - the text IS the subject."""
-    path = os.path.join(SERVER_DIR, "parsers", relative)
+    path = os.path.join(SERVER_DIR, relative)
     tree = ast.parse(io.open(path, encoding="utf-8").read())
     found = set()
     for node in ast.walk(tree):
@@ -132,7 +150,12 @@ def test_the_shims_actually_name_something(request):
     for shim in HAND_COPIED:
         ours = {n for n in _imported_names(shim) if not _is_stdlib_or_third_party(n)}
         assert ours, shim
-        assert "void_sat_format" in ours
+        # ⚰️ THIS PINNED `void_sat_format`, which only the two PARSER samples import. The
+        #    property it was after is 「this file is actually covered by the promise」, and
+        #    that generalises to the mapper samples the tuple now carries; the literal did
+        #    not. A shim naming none of the promised modules makes the subset case above
+        #    vacuous for it, which is the thing worth refusing.
+        assert ours & set(OPERATOR_IMPORT_NAMES), (shim, sorted(ours))
 
 
 # ---------------------------------------------------------------------------

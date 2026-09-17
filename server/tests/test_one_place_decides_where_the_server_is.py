@@ -52,7 +52,7 @@ dev_bench retroactive schema_drift audit_cache audit_history
 #: ⛔ Named one by one. A pattern would widen silently, which is how an allow-list becomes
 #: a permission.
 ALLOWED = {
-    "enrichment/candidates.py":
+    "chain/enrichment/candidates.py":
         "`except ImportError` fallback that is FINDING `paths` - it cannot route through "
         "the module it is in the act of importing",
     "ledger/trace.py":
@@ -90,10 +90,18 @@ def _module_path(name):
     flat = os.path.join(SERVER_DIR, name + ".py")
     if os.path.exists(flat):
         return flat
-    for package in ("chain", "virtual_join", "ledger", "maps", "enrichment", "ingestion",
-                    "runtime", "admin"):
-        for stem in (name, name[len(package) + 1:] if name.startswith(package + "_") else name,
-                     name[4:] if package == "maps" and name.startswith("map_") else name):
+    # ⚠️ THE DIRECTORY AND THE NAME'S PREFIX ARE TWO FACTS, and they stopped being the same
+    #    one when `enrichment/` became `chain/enrichment/` (소유자: 「모든 체인은 server/chain
+    #    안에서만 코드 존재」). This read the prefix OFF the directory, so a nested package
+    #    could not be found at all and three names in MOVING stopped resolving - which this
+    #    gate refuses loudly, exactly as 판정 459 ㆜ asked it to.
+    for package, prefix in (("chain", "chain"),
+                            (os.path.join("chain", "enrichment"), "enrichment"),
+                            ("virtual_join", "virtual_join"), ("ledger", "ledger"),
+                            ("maps", "maps"), ("ingestion", "ingestion"),
+                            ("runtime", "runtime"), ("admin", "admin")):
+        for stem in (name, name[len(prefix) + 1:] if name.startswith(prefix + "_") else name,
+                     name[4:] if prefix == "maps" and name.startswith("map_") else name):
             candidate = os.path.join(SERVER_DIR, package, stem + ".py")
             if os.path.exists(candidate):
                 return candidate
