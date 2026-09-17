@@ -47659,3 +47659,73 @@ dt_log_to_primary_core_frame                22  16   <- 최악
 ⚠️ 「줄」이지 「판단 자리」가 아닙니다 — 문자열 세기라 같은 판단이 다른 낱말인 자리는 «못 셉니다».
    그 수가 필요하면 AST 로 다시 재겠습니다. 오늘은 «상한»으로 읽어 주십시오
 ```
+
+---
+
+> 📋 **[09-17 14:05 구현자] 판정 533 «분류 표» — ㈁ 은 «열»입니다. 그리고 ㈀/㈂ 는 «저장소로 못 가릅니다»**
+> ⛔ 아직 안 짓습니다. 표 먼저 내라고 하셨으므로 표만입니다
+
+## 재는 법 — 「누가 이 칸을 «규칙으로서» 읽나」
+```
+계기   추적 파일만(`git grep`), `mappers/` «제외»(소유자 파일), 시험·문서·클라 제외
+가름   체인이 읽으면(`chain/**` · `chain_bindings.py` · `chain_skeleton.json`) -> 그 칸은 «규칙의 축»
+      체인 밖만 읽으면 -> 맵퍼 쪽일 수 있음
+      아무도 안 읽으면 -> 저장소 안에서는 «0»
+⚠️ 문자열 계수입니다 — 키를 «변수로» 읽는 자리는 못 셉니다. 상한으로 읽어 주십시오
+```
+
+## ㈁ «축» — 체인이 규칙으로 읽는 칸 «열». 이 수가 라운드 크기입니다
+```
+칸                          체인파일/줄     비고
+allow_map_metadata_upsert      5 / 9
+is_batch                       4 / 6      🔵 판정 506 과 «일치». 재서도 ㈁ 입니다
+allow_chain_trigger            4 / 6
+reference                      3 / 4
+target_field                   3 / 4
+source_table                   2 / 3      ⚠️ 그 «밖»에서도 12파일 34줄 — 이름이 겹칠 수 있습니다. 열어 봐야 합니다
+map_table                      2 / 3
+metadata_target_table          2 / 3
+inventory_table                2 / 3
+job_column                     1 / 1      ⚠️ 한 줄뿐 — ㈂ 일 수 있습니다. 열어야 갈립니다
+```
+🔴 **열 중 여덟은 확실하고, `source_table`·`job_column` 둘은 «열어 봐야» 합니다.**
+   판정 주시면 그 둘만 AST 로 다시 재겠습니다 (지금은 «상한»입니다).
+
+## 🔴 ㈀ vs ㈂ — «저장소로는 못 가릅니다». 그리고 그게 구조의 답을 가리킵니다
+```
+체인 밖만 읽음  8   lot_column · value_col · x_col · y_col · allow_retraction ·
+                   assume_reference_geometry · allow_replace_map · reference_job_column
+저장소 안 0    16   accepted_metrics · alignment_rule · alignment_thresholds · index_col ·
+                   primary_selector · event_type_column · list_delimiter · slot_list_column ·
+                   wafer_list_column · time_column · source_job_column · target_job_column ·
+                   trigger_job_column · geometry_bootstrap · reference_by_job_pattern ·
+                   allow_assumed_geometry
+```
+⛔ **이 16 을 「잔해」라고 «부르지 않습니다».** 이 칸들을 읽을 가장 유력한 자리가
+   `server/mappers/*.py` 인데 그건 소유자 파일이고 gitignore 입니다 — 판정 527 이 정한 그 경계입니다.
+   세면 박스 수이고, 「0 이니 잔해」는 제가 «안 넣은 것»을 «없는 것»으로 읽는 그 병입니다.
+
+## 🔵 그런데 가를 «계기»가 제품 안에 이미 있습니다 — 그리고 그것이 ㈀ 의 «집»입니다
+```
+mapper_sdk.py:293  register(name, fn, params=())  ->  MAPPER_PARAMS[name] = tuple(params)
+                   즉 «맵퍼가 자기 인자 이름을 «선언»하는 자리»가 이미 있습니다
+읽는 곳 셋 (이미) chain/ingestion_worker.py:768 · config_resolve_report.py:263 · ledger/admin.py:749
+                   전부 `mapper_params=mapper_sdk.MAPPER_PARAMS.get` 로 «같은 좌석»을 지납니다
+```
+🔴 **그러므로 ㈀ 는 「제품이 34 를 분류해서 넣는 것」이 아니라 「맵퍼가 선언한 이름의 «값»을 적는 자리」입니다.**
+```
+derive.mapper : leaf  ->  record {name, params}
+   params 의 «이름»은 제품이 열거하지 «않습니다» — `@mapper(params=…)` 가 저자입니다
+   그러면 운영의 맵퍼가 서른다섯 번째 인자를 쓰는 날에도 «적을 자리»가 있습니다
+=> 역할 상설 그대로: 「적을 자리를 만들고 값은 비워 둔다」. 그리고 ㈀/㈂ 의 구분은
+   «설치마다 다릅니다» — 제품이 박아 두면 안 되는 종류의 사실입니다
+```
+
+## 📮 판정 청하는 것 «셋»
+```
+① ㈁ 을 «열»로 확정하시겠습니까 — 아니면 `source_table`·`job_column` 둘을 제가 AST 로 다시 잴까요
+② ㈂ 는 «이 라운드에서 판정 불가»로 적고 넘어가도 되겠습니까 (근거: 527 의 경계)
+③ `derive.mapper` 를 record{name, params} 로 넓히는 것 — 위 모양이 맞습니까
+   맞으면 그다음이 ㈁ 열의 «제 칸»을 어디에 다느냐이고, 그건 스켈레톤 축 설계입니다
+```
+⏱ 판정 오면 짓습니다. 그때까지 한 줄도 안 건드립니다.
