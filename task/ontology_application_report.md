@@ -28199,3 +28199,63 @@ dt_map_derivation.py:1002  그런데 돌려주는 것은 4-튜플 `(target_table
 못 잼    운영에서 한 그룹에 규칙이 몇이나 매치되는지 — 못 셉니다
 안 쟀음  `dt_map_mapper.py.sample:252` 의 같은 두 줄은 «안 열었습니다»
 ```
+
+> 🔴 **[09-17 16:38 응용] Q-130 — 585 ① 이 「잔여 0」의 근거로 든 그 성질이, 「미리보기는 «안 돌린다»」를 «한쪽 팔에서만» 지킵니다**
+> **받는 이: 총괄 — 585 ① 을 닫힌 것으로 두시기 «전»에. ⛔ 제가 고치지 않습니다**
+
+## ① 585 ① 의 근거를 «열었습니다» — 소비자는 둘이고, 성질이 다릅니다
+```
+585 ①   「소급 «미리보기»가 수의 «단위»를 고른다」 · 「dry-run 은 «안 돌리고» 답해야 한다」
+제품 소비자(정의 rule_run.py:193 제외) «둘», 둘 다 replay.py:
+  :491  stats["self_writing_kind"] = rule_run.self_writing_name(rule)    <- 585 말대로 «일의 사실»
+  :485  hands_row_ids = bool(rule_run.self_writing_name(rule))           <- «갈림길»입니다
+```
+
+## ② :485 가 고르는 것은 「무엇을 하나」가 아니라 «어느 팔로 가나»입니다
+```
+replay.py:527  if hands_row_ids:
+  참    :536 `if not apply:` -> 돌리지 «않고» 「건네받을 것」을 세어 답하고 continue   <- 585 의 그 자세
+        :550 run_rule(db, rule, row_ids=page_ids) · 페이지 격리(403) · :570 commit
+  거짓  :581 `results = [rule_run.run_rule(db, rule, payloads=payloads)]`  <- `apply` 를 «안 봅니다»
+        막혀 있는 것은 «호출자 쪽 쓰기»뿐입니다 — :650 `if apply and (items or ...)`
+```
+=> 「dry-run 은 안 돌린다」는 «경로의 성질»이 아니라 «한 팔의 성질»이고, 그 팔을 고르는 계기가
+   `self_writing_name` 입니다. 585 는 그 성질을 «지키는 이유»로 들었는데, 그 성질이 «가르는 자리»입니다.
+
+## ③ 그 팔을 옳게 고르던 «전제»를 판정 562 가 명시적으로 물렸습니다
+```
+rule_run.py:426~427  「THE ENVELOPE IS ALWAYS OPEN NOW ... It used to open only for a rule
+                     REGISTERED as self-writing, because only a `builtin:` kind could write
+                     during its own call. Any mapper receives `db` and may write」
+```
+「자기 호출 중에 쓸 수 있는 것 = 자기 행을 쓰는 규칙」이 그 전제였고, 562 가 그것을 «넓혔습니다».
+:536 의 가드는 여전히 «물린 전제»로 팔을 고릅니다 — 가드는 안 옮겨졌습니다.
+
+## ④ 실패 시나리오
+```
+562 가 «정당화한» 맵퍼(제안도 하고 «자기 호출 중에» 쓰기도 하는 것)는 TEMPLATE_FACTS 에 없으므로
+  self_writing_name -> None -> 거짓 팔(:581) -> dry-run 에서 «실제로 돕니다»
+남은 그물은 :710 `if not apply: db.rollback()  # belt and braces` «하나»인데,
+그 맵퍼가 제품의 쓰기 헬퍼를 지나면 그 «안»에서 커밋이 납니다:
+   database/crud.py:4389 apply_batch_updates -> :4531 _apply_batch_updates_once -> :5020 db.commit()
+=> 미리보기가 «착지»합니다. 되돌릴 것이 안 남습니다
+```
+
+## ⑤ 그리고 이 모양은 562 가 «자기 문장»으로 금한 것이기도 합니다
+```
+rule_run.py:289~290  「The seat hands one or the other and «nothing else branches on it»」
+                     :425 `handed = list(payloads or ()) or [{"row_id": rid} for ...]`  = 한 손
+그런데             replay.py:485 이 «좌석 밖»에서 그 갈림길을 한 번 더 냅니다
+워커 쪽            chain/ingestion_worker.py:1638 은 payloads 와 row_ids 를 «둘 다» 넘기고 좌석이 고릅니다
+=> 같은 물음에 저자가 «둘». 그리고 replay.py:522 주석이 「Live and retroactive were two doors to
+   one rule」로 이 자리가 «이미 한 번» 갈라졌다고 적어 두었습니다
+```
+
+## ⑥ 확신도
+```
+구조     읽었고 호출 사슬을 AST 로 따라갔습니다. dry-run 을 «돌려 보지는 않았습니다»
+못 잼    이 설치의 맵퍼가 «자기 호출 중에» 쓰는지 — `server/mappers/*.py` 는 박스라 «안 셌습니다»
+🔵 안 틀림  TEMPLATE_FACTS 의 셋(:226 · :235 · :242)은 오늘 전부 `writes_itself: True` 라
+         «오늘의 답»은 안 바뀝니다. 제가 적은 것은 「오늘 틀렸다」가 아니라
+         「가드가 «물린 전제» 위에 서 있다」입니다 — 585 가 그 위에 「잔여 0」을 얹었습니다
+```
