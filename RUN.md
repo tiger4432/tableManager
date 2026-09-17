@@ -353,12 +353,12 @@ curl -s "http://localhost:8000/audit_logs/recent?limit_groups=5" | python -c "im
 ```
 🔴 이 절의 ①~③ 은 «각 항목마다 따로»입니다 — 이번 pull 에 라운드가 여럿 들어 있습니다
 ① ③(읽기 시점 조인 은퇴)은 «커밋 하나»입니다. 해시는 이렇게 찾으십시오:
-   git log --oneline -1 -- server/chain/legacy_materialized_join.py
+   git log --oneline -1 -- :/server/chain/legacy_materialized_join.py
    git revert <그 해시>
    -> 되돌리면 조인 컬럼이 화면에 «돌아오고», 제품이 걷었던 uq_vjoin_ 인덱스는
       «자동으로 돌아오지 않습니다». 그건 선언이 다시 요구하는 순간 제품이 세웁니다
 ② ⑩(최근 거래 다음 장)도 «커밋 하나»입니다:
-   git log --oneline -1 -- server/admin/audit_cache.py
+   git log --oneline -1 -- :/server/admin/audit_cache.py
    git revert <그 해시>
    -> 되돌리면 `?cursor=` 가 «무시»되고(파라미터가 사라집니다) 빠지던 그룹이 다시 빠집니다.
       화면은 어느 쪽이든 «똑같습니다» — 아직 그 버튼이 없기 때문입니다
@@ -369,7 +369,7 @@ curl -s "http://localhost:8000/audit_logs/recent?limit_groups=5" | python -c "im
 
 ---
 > 이 파일은 **푸시할 때마다 갱신**됩니다. 지금 main 에 있는 것 기준입니다.
-> 전부 `server/` 에서 돌립니다. 운영은 그 환경의 `python`, 박스는 `C:\Users\kk980\anaconda3\envs\assy_manager\python.exe`.
+> 🔴 «아래 파이썬 명령들»은 `server/` 에서 돌립니다 (위 git·psql 은 «아닙니다» — 각자 적어 뒀습니다). 운영은 그 환경의 `python`, 박스는 `C:\Users\kk980\anaconda3\envs\assy_manager\python.exe`.
 
 ---
 
@@ -383,6 +383,7 @@ curl -s "http://localhost:8000/audit_logs/recent?limit_groups=5" | python -c "im
 모든 쓰기가 죽습니다** — `create_all` 은 «이미 있는 표»에 컬럼을 절대 안 더합니다.
 
 ```bash
+# 🔴 «저장소 루트»에서 (server/ 에서 돌리면 경로가 틀립니다)
 psql "$DATABASE_URL" -f server/migrations/add_cell_source_origin_row.sql
 ```
 
