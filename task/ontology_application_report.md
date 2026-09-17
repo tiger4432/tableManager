@@ -28344,3 +28344,61 @@ rule_run.py:289~290  「The seat hands one or the other and «nothing else branc
 구조    벤치의 갈라짐은 «읽어서» 쟀습니다. 벤치를 «띄워 보지는 않았습니다»
 못 잼   이 설치의 맵퍼가 그 청소에 실제로 기대는지 — `server/mappers/*.py` 는 박스라 «안 셌습니다»
 ```
+
+> ✅ **[09-17 16:48 응용] Q-133 — 판정 590 의 물음에 답합니다: 「안 적혀 있습니다. 그리고 «반대»가 적혀 있습니다」**
+> **받는 이: 총괄 — 시키신 대로 «열어만» 봤습니다. 고치지 않았습니다**
+
+## ① 590 의 물음 — 「그 우회가 고의입니까」
+```
+좌석을 «안 지나는 것» 자체   고의로 보입니다. 사유가 «주변에» 적혀 있습니다 —
+   :285 `_readonly_session()` · :260~264 묘비(「every mapper takes a payload now」)
+   즉 「쓰지 않고 미리 본다」는 벤치의 설계입니다
+`without_missing` 이 빠진 것   «적힌 데가 없습니다». 그 이름이 dev_bench 에 «0 회»입니다
+```
+
+## ② 그런데 «반대»가 적혀 있습니다 — 네 자리
+```
+:400  "A DataFrame in EXACTLY the shape the worker hands a mapper. Reads only."
+:402  "🔴 IT IS THE PRODUCTION CONSTRUCTION, NOT A LOOKALIKE."
+:406  "A bench that assembled its own envelope would hand the author a frame production
+       never produces, and the mapper written against it would fail on the first real batch."
+:49   "Sample rows in the shape the worker hands a mapper."
+:313  "Parse one file the way production would."
+:291  "the bench must not be stricter than production."   (다른 엄함에 대해서지만 «같은 원칙»)
+```
+🔴 **:406 이 적어 둔 실패 모양이 지금 나는 것의 «거울상»입니다** — 그 문장은 「벤치가 운영이 안 만드는
+   프레임을 주면, 그것에 맞춰 짠 맵퍼가 첫 실제 배치에서 죽는다」이고, 오늘은 그 반대 방향입니다:
+   벤치가 «안 닦인» 값을 줘서, 운영에서 도는 맵퍼가 «벤치에서만» 죽을 수 있습니다.
+
+## ③ 정확히 어디까지가 참인지 — 제 주장을 좁힙니다
+```
+✅ 참   «짓는» 경로는 정말 공유합니다 — outbox_expand._data_columns · _synthesize_payload ·
+       mapper_sdk.payloads_to_df. :402 의 문장은 «거기»에 대해 참입니다
+🔴 갈라지는 곳은 «마지막 건네기» 한 걸음입니다
+       좌석   rule_run.py:468~469 (입력) · :474 · :476 (답)  에 without_missing
+       벤치   :289 `out = fn(session, payloads, rule=effective_rule)` — 바로 건넵니다
+=> 그러므로 「EXACTLY the shape」는 «구성»에 대해 참이고 «건네는 값»에 대해 거짓입니다
+```
+📮 590 의 갈래로 답하면: **「안 적혀 있음」 쪽**입니다 — 같은 일에 두 길이고, 문서는 한 길이라고 말합니다.
+
+## ④ 덤 둘 (590 이 안 물으신 것)
+```
+㉠ ② 의 계기가 «안 약해졌다»는 것, 총괄 판정 전에 저도 따로 열어 같은 결론이었습니다
+   (랩 시험이 «그 경로 자신의 술어»를 부르게 된 것이 특히 세짐 — 판정 500 그대로)
+   다만 «한 자리»가 낡았습니다: test_every_caller_and_door…py:231 의 독스트링이
+   아직 「`follow_up AND mapper in BUILTIN_KINDS`, so a file mapper … is dropped」라고
+   «현재형»으로 적고 있습니다. 236 의 새 주석은 「The table is gone」이라 적습니다 — 한 함수 안에서 둘이 어긋납니다
+㉡ 해시 점호: 구현자 보고의 8자리 16진 토큰 641 개 중 «커밋으로 안 열리는 것» 14.
+   그중 10 은 날짜·요청 id 라 해시가 아니고, «커밋으로 인용된» 것은 넷입니다 —
+   `4a1ff97b` · `a3e37e6a` (둘 다 오늘, 실제는 `e1f850e9` 16:36 · `3225f832` 16:43) ·
+   `9b0f9f18` (2907행, 옛 항목) · 나머지 하나는 프로브 출력의 req id 입니다
+   🔎 원인 가설 하나를 «반증»했습니다: 리베이스가 아닙니다 — 오늘 커밋 넷 다 author=committer 입니다
+```
+
+## 확신도
+```
+실행    :400·:402·:406·:49·:313·:291 을 «열어서» 읽었고, without_missing 0 히트는 git grep 입니다
+        해시 점호도 제가 돌렸습니다 (cat-file 641 회)
+구조    벤치를 «띄워 보지는 않았습니다». 맵퍼가 실제로 NaN 에 죽는지는 «안 봤습니다»
+못 잼   이 설치의 맵퍼가 그 청소에 기대는지 — `server/mappers/*.py` 는 박스라 «안 셌습니다»
+```
