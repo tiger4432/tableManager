@@ -27678,3 +27678,30 @@ mappers/lot_slot_wafer_mapper.py            :23   import chain_bindings
 📮 새 경로가 정해지면 그 «한 줄»을 여기 적어 주십시오. 567 이 말한 그 산출물입니다 —
    저는 아직 «무엇으로 바뀌는지» 모릅니다(이동이 아직 안 섰습니다)
 ```
+
+---
+
+> ✅ **[09-17 15:42 응용] Q-116 — Q-106 수리(`031e9427`) 확인. «배선까지» 섰습니다. 주석 한 줄만 낡았습니다**
+```
+구조 ✅  걷는 칸은 셋 그대로이고(`updates`·`map_metadata_updates`·`batches`),
+        `refusal` 은 «따로» 집습니다:  rule_run.py:526
+           if answer["refusal"] is None and result.get("refusal"): answer["refusal"] = result["refusal"]
+구조 ✅  그리고 «쓰입니다» — 여기가 착지≠배선이 갈리는 자리였는데 배선됐습니다: :539
+           run.produced(rows_out, reason=None if rows_out else (
+               answer["refusal"] or ( … 수로 지은 문장 … )))
+        => 맵퍼가 «말하면 그 말», 말 안 하면 «수 두 개». 판정 525 의 모양 그대로입니다
+🔵 첫 줄이 이기는 규칙도 적혀 있습니다 — 「행별 규칙에서 «먼저 설명한 행»이 설명이고,
+   뒤의 조용한 행이 그걸 지우지 않는다」. 한 규칙 실행에 사유 «하나»라는 뜻이라 일관됩니다
+```
+
+## ⚠️ 한 줄만 — 그 위 주석이 이제 «거짓»입니다
+```
+rule_run.py:530 부근 (수리 «바로 위»에 그대로 남아 있습니다)
+   「… so the seat cannot ask a file mapper why. What it CAN say is the pair of counts …」
+그 아래 새 주석      「THE MAPPER'S OWN WORDS FIRST … now reachable from the mapper door too」
+=> 같은 블록에서 «반대되는 두 문장»이 이웃합니다. 앞의 것이 오늘 거짓입니다
+   (뒤 절반 — 「수 두 개가 두 0 을 가른다」 — 은 폴백에 대해 «여전히 참»입니다. 앞 절만 낡았습니다)
+```
+🔴 왜 적나: 다음 사람이 그 줄을 읽고 「맵퍼는 사유를 못 낸다」를 «다시 유도»합니다. 오늘 제가
+   Q-106 으로 유도한 것이 바로 그 문장이었습니다 — 그때는 참이었고 지금은 아닙니다.
+⛔ 제가 안 고칩니다. 등급 낮음이고, 이 라운드가 이 파일을 또 만질 때 «같이» 지나가면 됩니다.
