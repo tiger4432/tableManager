@@ -59,6 +59,7 @@ import chain_bindings
 from chain import synthesis
 from chain import ingestion_worker as worker
 import mapper_sdk
+from chain import rule_shape
 from chain import legacy_join_declaration as vjc
 from chain.join_refusal import virtual_join_detail             # noqa: F401
 
@@ -253,35 +254,53 @@ def _resolve_chain() -> dict:
                             effective, ineffective, rejected)
 
     triggered = set()
-    for index, rule in enumerate(read["rules"] or ()):
+    from database import crud as _catalogue
+    for index, declared in enumerate(read["rules"] or ()):
         path = "rules[%d]" % index
         # 🪦 [판정 498 ①] `MAPPER_REGISTRY.get` STOOD HERE AND IT KNOWS ONE TABLE OF TWO.
         # A `builtin:` name was reported unresolvable while the loader ran it happily.
-        name = str((rule or {}).get("name") or path) if isinstance(rule, dict) else path
-        issues = chain_bindings.rule_refusals(
-            rule, path, mapper_resolvable=_runnable_name,
-            mapper_params=mapper_sdk.MAPPER_PARAMS.get)
-        if issues:
-            first = issues[0]
+        # 🔴 [판정 619 ③] AND THE INPUT WAS RAW WHERE THE LOADER'S IS EXPANDED.
+        # A unified declaration is not a runnable rule until `expand_declaration` stands it,
+        # so this seat reported one as 「돌 수 없습니다」 - and the RETROACTIVE path is
+        # gated on this report - while the loader ran the same file happily.
+        # `ledger/admin.save_chain_rule_raw` already does the two steps (expand, then judge
+        # each candidate); this seat did only the second, on the wrong input.
+        name = str((declared or {}).get("name") or path) if isinstance(declared, dict) else path
+        stood, expand_refusal, _notes = rule_shape.expand_declaration(
+            declared, _catalogue.TABLE_CONFIG)
+        if expand_refusal:
             rejected.append(entry(
                 SCOPE_RULE, name,
-                "`%s` 규칙은 «돌 수 없습니다» — %s: %s%s"
-                % (name, first.path, first.message,
-                   " (외 %d건)" % (len(issues) - 1) if len(issues) > 1 else ""),
+                "`%s` 선언을 폼 수 없습니다 — %s" % (name, expand_refusal),
                 reason=REASON_MAPPING_UNAVAILABLE,
-                fields={"issues": [i.to_mapping() for i in issues],
-                        "origin": ORIGIN_DECLARED}))
+                fields={"origin": ORIGIN_DECLARED}))
             continue
+        for rule in stood:
+            name = str((rule or {}).get("name") or path) if isinstance(rule, dict) else path
+            issues = chain_bindings.rule_refusals(
+                rule, path, mapper_resolvable=_runnable_name,
+                mapper_params=mapper_sdk.MAPPER_PARAMS.get)
+            if issues:
+                first = issues[0]
+                rejected.append(entry(
+                    SCOPE_RULE, name,
+                    "`%s` 규칙은 «돌 수 없습니다» — %s: %s%s"
+                    % (name, first.path, first.message,
+                       " (외 %d건)" % (len(issues) - 1) if len(issues) > 1 else ""),
+                    reason=REASON_MAPPING_UNAVAILABLE,
+                    fields={"issues": [i.to_mapping() for i in issues],
+                            "origin": ORIGIN_DECLARED}))
+                continue
 
-        trigger = str((rule or {}).get("trigger_table") or "")
-        if trigger:
-            triggered.add(trigger)
-        warnings = chain_bindings.rule_warnings(rule, path)
-        effective.append(entry(
-            SCOPE_RULE, name,
-            "`%s` 가 `%s` 의 변화에 붙었습니다." % (name, trigger),
-            fields={"origin": ORIGIN_DECLARED, "trigger_table": trigger,
-                    "warnings": [w.to_mapping() for w in warnings]}))
+            trigger = str((rule or {}).get("trigger_table") or "")
+            if trigger:
+                triggered.add(trigger)
+            warnings = chain_bindings.rule_warnings(rule, path)
+            effective.append(entry(
+                SCOPE_RULE, name,
+                "`%s` 가 `%s` 의 변화에 붙었습니다." % (name, trigger),
+                fields={"origin": ORIGIN_DECLARED, "trigger_table": trigger,
+                        "warnings": [w.to_mapping() for w in warnings]}))
 
     # 🔴 합성 규칙은 «같은 목록에» 서되 이름이 붙습니다 — 운영자가 고칠 수 없는 줄이라,
     # 안 붙이면 「내가 안 적었는데」가 되고 붙이면 「제품이 넣어 준 것」이 됩니다.
