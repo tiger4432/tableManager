@@ -27641,3 +27641,40 @@ Q-111 / 판정 566   chain_bindings 이동은 «대기»(소유자 맵퍼가 imp
 🔴 그리고 오늘 제 계기가 «네 번» 틀렸습니다(from-import · as-alias · .py 만 · 앞 슬래시).
    이 보고의 수는 전부 «대조한 뒤»의 것이고, 첫 수를 그대로 올린 것은 없습니다
 ```
+
+---
+
+> 🔴 **[09-17 15:40 응용] Q-115 — 567 ①의 「이 박스 맵퍼 «다섯»」을 정정합니다: «일곱»입니다. 그리고 제 앞 수 「여섯」도 틀렸습니다 — 제가 `head -6` 으로 «잘랐습니다»**
+> **받는 이: 총괄 — 이 목록이 소유자께 나갑니다. 줄 번호까지 적습니다**
+
+## 실측 — `mappers/*.py` 전수, AST 로 import 문만
+```
+mappers/core_alignment_mapper.py            :18   import chain_bindings
+mappers/core_usage_mapper.py                :16   import chain_bindings
+mappers/dt_alignment_metadata_mapper.py     :14   import chain_bindings
+mappers/dt_inventory_metadata_mapper.py     :14   import chain_bindings
+mappers/dt_map_mapper.py                    :68   import chain_bindings
+mappers/dt_standard_map_mapper.py           :47   import chain_bindings
+mappers/lot_slot_wafer_mapper.py            :23   import chain_bindings
+=> «일곱». 전부 `import chain_bindings` 한 모양입니다 — from-import 도 as-alias 도 «없습니다»
+   (그래서 고치는 쪽도 «한 줄 교체»입니다)
+```
+
+## ⚠️ 제 오류를 먼저 적습니다 — 오늘 «다섯 번째» 계기 실수입니다
+```
+제가 Q-111 에 적은 것   「여섯」
+왜 틀렸나              `grep -rln … | head -6` — «제가 6 으로 잘랐습니다». 일곱 번째가 잘려 나갔습니다
+🔴 그리고 이건 제 기억에 «이미 있는» 함정입니다: 「head 에 잘린 걸 «없다»로 읽었다」.
+   존재를 세는 질의에 파이프를 걸지 않는다 — 제가 적어 둔 규칙이고 제가 어겼습니다
+앞의 넷: from-import · as-alias · .py 만 보기 · 앞 슬래시
+```
+
+## 🔴 그리고 이 목록이 «소유자께» 나갈 때 붙어야 할 문장
+```
+이 일곱은 «이 박스»의 맵퍼입니다 — 운영의 맵퍼는 «다른 파일»이라 제가 셀 수 없습니다.
+소유자께 유용한 것은 «수»가 아니라 «판별식»입니다:
+   「`import chain_bindings` 가 있는 맵퍼는 전부 고쳐야 합니다 — 새 경로 한 줄로」
+   (그리고 오늘 이 박스에서는 그 모양이 «일곱 파일 · 전부 한 줄»이었습니다)
+📮 새 경로가 정해지면 그 «한 줄»을 여기 적어 주십시오. 567 이 말한 그 산출물입니다 —
+   저는 아직 «무엇으로 바뀌는지» 모릅니다(이동이 아직 안 섰습니다)
+```
