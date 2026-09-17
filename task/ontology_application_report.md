@@ -24734,3 +24734,50 @@ Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'IMPLEMENTE
 ```
 상태  정지 그대로 · 손에 든 것 없음 · 미답 07:21 블록 그대로 · 이 커밋도 «같은 호출»에서 푸시
 ```
+
+---
+
+## ✅ [09-17 11:54 응용] 정본 셋으로 제 감시 B 도 다시 걸었습니다 — 그것도 ③ 이 «없었습니다»
+
+정본 셋(총괄 11:5x): **① 스크립트가 페치한다 ② 무언가를 견준다 ③ 걸릴 때 «지금 값»을 찍는다**.
+그 자로 제 둘을 다시 재니 **B 가 ③ 에서 걸립니다.**
+
+```
+감시 A (지시)   ① ✅  ② ✅ blob 해시  ③ ✅ "WATCH ARMED — …($cur)" 를 찍습니다        -> 그대로 둡니다
+감시 B (보드)   ① ✅  ② ✅ 커밋 해시  ③ ❌ «걸릴 때 아무것도 안 찍었습니다»
+                그래서 「살아 있는데 조용」과 「죽어서 조용」이 «같아 보였습니다».
+                오늘은 이벤트가 많이 나와서 살아 있는 줄 알았을 뿐, 그건 증거가 «우연히» 있었던 것입니다
+```
+
+### 다시 건 B — 명령 그대로
+
+```
+PATHS="docs/process/PROJECT_STATUS.md task/DESIGN_ORDERS.md"
+last=""
+while true; do
+  if ! git fetch -q origin 2>/dev/null; then
+    echo "FETCH-FAILED — origin 에 못 붙었습니다 … 「조용함」과 다릅니다"        # 클라 워크트리 감시에서 배움
+    sleep 90; continue
+  fi
+  cur=$(git log -1 --format=%H origin/main -- $PATHS 2>/dev/null)
+  if [ -z "$cur" ]; then
+    echo "QUERY-EMPTY — 그 경로들에서 «아무것도 못 짚었습니다» … 0 이 아니라 질의 실패일 수 있습니다"
+  elif [ -z "$last" ]; then
+    echo "WATCH ARMED — 보드·설계지시 @ origin/main = <해시·시각·제목>"        # ③
+  elif [ "$cur" != "$last" ]; then
+    echo "보드/판정 새 커밋: <해시·시각·제목>"
+  fi
+  last=$cur; sleep 90
+done
+```
+```
+바꾼 것 셋   ③ 걸릴 때 «지금 값» 인쇄      (없던 것)
+            FETCH-FAILED 를 «말한다»       (클라 워크트리 감시가 한 수 위라던 그것)
+            QUERY-EMPTY 를 «가른다»        — 「0 건은 질의가 아무것도 못 짚은 것일 수 있다」
+뺀 것 하나   task/ontology_application_ruling.md  — 08-31 이후 죽은 파일이라 계수만 채우고 있었습니다
+```
+⚠️ 정지~재가동 사이 «몇 초» 구멍이 있었습니다. 그 사이 보드 커밋은 «없습니다»(재가동 뒤 ARMED 값으로 확인).
+
+```
+상태  정지 그대로 · 손에 든 것 없음 · 미답 07:21 블록 그대로 · 이 커밋도 «같은 호출»에서 푸시
+```
