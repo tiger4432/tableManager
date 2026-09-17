@@ -70,6 +70,26 @@ def client():
     return TestClient(app)
 
 
+def _convert(client, path, name, to, **extra):
+    """One press, carrying the `base` the screen got when it opened the rule.
+
+    🔴 [판정 562] THE BASE IS THE CALLER'S. The route used to compute it itself and hand it
+    to the guard that checks it, so 「이 파일이 열어 본 뒤에 바뀌었습니다」 could never be
+    said - a save from another session would be overwritten in silence.
+    """
+    body = {"name": name, "to": to, "base": admin.file_fingerprint(str(path))}
+    body.update(extra)
+    return client.post(ROUTE, json=body)
+
+
+def _converted(client, path, name, to, **extra):
+    """…and it MUST have gone through. 🔴 Every vacuous pass in this file came from a press
+    whose status nobody read: a refused conversion leaves the file untouched, which is what
+    「the neighbours did not move」 and 「the undo came back」 both look like."""
+    answer = _convert(client, path, name, to, **extra)
+    assert answer.status_code == 200, answer.text
+    return answer
+
 def _stored(path, name):
     for rule in json.loads(path.read_text(encoding="utf-8"))["rules"]:
         if rule.get("name") == name:
@@ -89,10 +109,8 @@ def _bystanders(path):
 # ---------------------------------------------------------------------------
 
 def test_a_stored_flat_rule_can_be_saved_as_unified(client, rules_file):
-    answer = client.post(ROUTE, json={"name": FLAT["name"], "to": "unified",
-                                      "dry_run": False})
-    assert answer.status_code == 200, answer.text
-    body = answer.json()
+    body = _converted(client, rules_file, FLAT["name"], "unified",
+                      dry_run=False).json()
     assert (body["from"], body["to"], body["saved"]) == ("flat", "unified", True)
 
     saved = _stored(rules_file, FLAT["name"])
@@ -108,10 +126,13 @@ def test_the_operator_can_take_it_back(client, rules_file):
     identity. Cell for cell - 「대략 같은 모양」 is what a lossy converter also produces."""
     before = _stored(rules_file, FLAT["name"])
 
-    client.post(ROUTE, json={"name": FLAT["name"], "to": "unified", "dry_run": False})
-    answer = client.post(ROUTE, json={"name": FLAT["name"], "to": "flat",
-                                      "dry_run": False})
-    assert answer.status_code == 200, answer.text
+    _converted(client, rules_file, FLAT["name"], "unified", dry_run=False)
+    # 🔴 THE MIDDLE OF THE TRIP, ASSERTED. Without this the test passes when the first
+    #    press was REFUSED: the rule is still flat, so 「to flat」 answers 「already flat」
+    #    with 200 and 「it came back unchanged」 is true of a trip never taken.
+    assert admin.grammar_of(_stored(rules_file, FLAT["name"])) == "unified", (
+        "the rule was never converted, so the undo below would prove nothing")
+    _converted(client, rules_file, FLAT["name"], "flat", dry_run=False)
 
     after = _stored(rules_file, FLAT["name"])
     assert after == before, (
@@ -130,7 +151,10 @@ def test_converting_one_rule_leaves_the_others_byte_for_byte(client, rules_file)
     before = _bystanders(rules_file)
     assert len(before) == len(OTHERS), "the fixture lost a bystander before we started"
 
-    client.post(ROUTE, json={"name": FLAT["name"], "to": "unified", "dry_run": False})
+    _converted(client, rules_file, FLAT["name"], "unified", dry_run=False)
+    # 🔴 A REFUSED SAVE ALSO LEAVES THE NEIGHBOURS ALONE. Without this the assertion below
+    #    is satisfied by 「nothing happened」.
+    assert admin.grammar_of(_stored(rules_file, FLAT["name"])) == "unified"
 
     assert _bystanders(rules_file) == before, "a rule nobody asked about was rewritten"
 
@@ -192,10 +216,8 @@ def test_when_the_count_is_unknown_the_cell_is_absent_not_zero(
 def test_a_rule_already_in_that_grammar_is_told_so_not_refused(client, rules_file):
     """판정 548 규율 ③: a statement of fact. An error here would teach the operator to fear
     a button that is idempotent."""
-    answer = client.post(ROUTE, json={"name": "untouched_unified", "to": "unified",
-                                      "dry_run": False})
-    assert answer.status_code == 200, answer.text
-    body = answer.json()
+    body = _converted(client, rules_file, "untouched_unified", "unified",
+                      dry_run=False).json()
     assert (body["changed"], body["saved"]) == (False, False)
     assert "declaration" not in body, "nothing was converted, so nothing is on offer"
 
@@ -212,8 +234,7 @@ def test_a_rule_whose_grammar_cannot_be_read_is_refused_by_name(
     """
     monkeypatch.setattr(admin, "grammar_of", lambda rule: None)
 
-    answer = client.post(ROUTE, json={"name": FLAT["name"], "to": "unified",
-                                      "dry_run": False})
+    answer = _convert(client, rules_file, FLAT["name"], "unified", dry_run=False)
     assert answer.status_code == 400, answer.text
     assert FLAT["name"] in answer.json()["detail"]["message"]
 
@@ -245,8 +266,7 @@ def test_a_name_claimed_twice_is_refused_rather_than_picked(client, tmp_path, mo
                         lambda p: str(tmp_path / "backup"))
     before = path.read_bytes()
 
-    answer = client.post(ROUTE, json={"name": FLAT["name"], "to": "unified",
-                                      "dry_run": False})
+    answer = _convert(client, path, FLAT["name"], "unified", dry_run=False)
 
     assert answer.status_code == 400, answer.text
     assert answer.json()["detail"]["code"] == "name_claimed_twice"
@@ -275,9 +295,7 @@ def test_an_entry_the_product_cannot_read_survives_a_save(client, tmp_path, monk
     monkeypatch.setattr(admin.config_backup, "backup_dir_for",
                         lambda p: str(tmp_path / "backup"))
 
-    answer = client.post(ROUTE, json={"name": FLAT["name"], "to": "unified",
-                                      "dry_run": False})
-    assert answer.status_code == 200, answer.text
+    answer = _converted(client, path, FLAT["name"], "unified", dry_run=False)
 
     after = json.loads(path.read_text(encoding="utf-8"))["rules"]
     # 🔴 [판정 558 ①] 「NOT DELETED」 IS NOT 「NOT TOUCHED」. The application lane measured the
@@ -294,3 +312,56 @@ def test_an_entry_the_product_cannot_read_survives_a_save(client, tmp_path, monk
     # ⚠️ AND THE COUNT STILL COUNTS RULES. Carrying the entry must not quietly change a
     #    number the screen already draws.
     assert answer.json()["rules"] == 2, answer.json()
+
+
+# ---------------------------------------------------------------------------
+# 🔴 ⓔ — the guard that could not fire (판정 562)
+# ---------------------------------------------------------------------------
+
+def test_a_conversion_refuses_when_the_file_moved_under_it(client, rules_file):
+    """🔴 [판정 562] 「이 파일이 열어 본 뒤에 바뀌었습니다」 must be sayable HERE.
+
+    The route computed the fingerprint itself and handed it to the guard that compares it
+    against the fingerprint - so it matched on every call and another session's save, or the
+    owner editing the file, was overwritten in silence. The config files have no git history
+    by design; that write is not recoverable.
+    """
+    stale = admin.file_fingerprint(str(rules_file))
+    # Somebody else saves while the operator is looking at the form.
+    rules_file.write_text(
+        json.dumps({"rules": [dict(FLAT), dict(OTHERS[0]),
+                              {"name": "added_by_someone_else",
+                               "trigger_table": "a", "target_table": "b",
+                               "mapper_module": "m", "mapper_function": "f"}]}),
+        encoding="utf-8")
+    before = rules_file.read_bytes()
+
+    answer = client.post(ROUTE, json={"name": FLAT["name"], "to": "unified",
+                                      "dry_run": False, "base": stale})
+
+    assert answer.status_code == 400, answer.text
+    assert answer.json()["detail"]["code"] == "stale_base", answer.json()
+    assert rules_file.read_bytes() == before, "the stale save went through anyway"
+
+
+def test_a_save_without_a_base_is_refused_rather_than_unguarded(client, rules_file):
+    """⚠️ A guard you can switch off by leaving a field out is the same dead guard with one
+    more step. The screen already holds this value - it comes back with the opened rule."""
+    before = rules_file.read_bytes()
+
+    answer = client.post(ROUTE, json={"name": FLAT["name"], "to": "unified",
+                                      "dry_run": False})
+
+    assert answer.status_code == 400, answer.text
+    assert answer.json()["detail"]["path"] == "base", answer.json()
+    assert rules_file.read_bytes() == before
+
+
+def test_a_dry_run_needs_no_base(client, rules_file):
+    """⚠️ IT WRITES NOTHING, so it has nothing to be stale about. Requiring it here would
+    make 「보여만 주세요」 harder than 「저장하세요」."""
+    answer = client.post(ROUTE, json={"name": FLAT["name"], "to": "unified",
+                                      "dry_run": True})
+
+    assert answer.status_code == 200, answer.text
+    assert answer.json()["saved"] is False

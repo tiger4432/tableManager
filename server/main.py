@@ -5829,13 +5829,15 @@ def post_chain_rule_grammar(payload: dict = Body(...)):
     판정 539 의 왕복 게이트가 «운영자가 지나지 않는 변환기»를 재게 됩니다.
     🔵 되돌리기는 같은 문을 반대로 걷는 것입니다. 왕복이 항등이라 스냅샷이 필요 없습니다.
 
-    body  {"name": <규칙 이름>, "to": "unified"|"flat", "dry_run": true|false}
+    body  {"name": <규칙 이름>, "to": "unified"|"flat", "dry_run": true|false,
+           "base": <규칙을 열 때 받은 base — dry_run 이 false 면 필수>}
     """
     from ledger import admin
     return admin.convert_chain_rule_grammar(
         str(payload.get("name") or ""),
         payload.get("to"),
-        bool(payload.get("dry_run", True)))
+        bool(payload.get("dry_run", True)),
+        payload.get("base"))
 
 
 @app.get("/admin/ledger/relations", dependencies=[Depends(require_admin_token)])
