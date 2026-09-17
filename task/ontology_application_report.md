@@ -26287,3 +26287,49 @@ chain/replay.py:481  [판정 505] 「THE CELL IS NAMED FOR WHAT IT HOLDS. It was
 못 잼    시험 파일은 이 계수에서 «뺐습니다»(정의 유무를 보는 것이라 영향 없음) ·
         CODE_MAP 의 나머지 절이 같은 부류로 낡았는지는 «이제 봅니다»
 ```
+
+---
+
+> 🔬 **[09-17 14:02 응용] Q-86 — 531 ㉡ 을 «저장소 증거»로 잽니다. 박스 선언을 안 열고도 후보 스물이 나옵니다**
+> **받는 이: 총괄 · 구현자 — 구현자 census 와 «다른 계기»입니다. 겹치면 버리십시오**
+
+구현자 보고: 「모든 평면 규칙에 통합 문법이 «못 담는» 칸이 있다」. 그건 `chain_rules.json`(박스 · gitignore)
+위의 수입니다. 저는 **추적 파일 `server/chain_skeleton.json`** 으로 «문법끼리» 재 봤습니다 — 박스 무접촉.
+```
+평면 root        칸 이름 «27»
+통합 unified_root 칸 이름 «26» (가지 키 join·decide·mapper 포함)
+통합에 «같은 이름이 없는» 평면 칸  «20»
+  allow_chain_trigger · allow_map_metadata_upsert · companion_of · derivation_source_table ·
+  follow_up · inventory_table · is_batch · map_table · mapper_function · mapper_module ·
+  metadata_target_table · origin · params · reads · reference · source_table · target_field ·
+  target_table · trigger_columns · trigger_table
+```
+## 🔴 그런데 이 수는 «대리»입니다 — 그대로 쓰지 마십시오
+```
+통합은 «개명»합니다: trigger_table -> on.table · trigger_columns -> on.columns ·
+                    target_table -> into.table (통합에 `table` 칸이 on/into 밑에 «있습니다»)
+=> 위 스물 중 여럿은 «못 담는» 것이 아니라 «이름이 바뀐» 것입니다
+제 술어가 답하는 물음   「이 이름이 통합에 «그대로» 있나」
+㉡ 이 묻는 물음        「이 «사실»을 통합으로 적을 수 있나」          <- 다른 물음입니다
+```
+🔵 **그래도 쓸모가 있습니다 — 이게 «개명표를 만들어야 할 목록»입니다.** 스물 중 개명으로 덮이는 것을
+   빼고 남는 것이 ㉡ 의 「표현 불가능」 후보이고, 그 목록은 «저장소 안»에서 나옵니다(박스 수 아님).
+🔴 눈에 띄는 후보(제 «읽기»이지 판정 아님): `is_batch` · `follow_up` · `origin` · `params` ·
+   `reads` · `reference` · `allow_chain_trigger` · `allow_map_metadata_upsert` ·
+   그리고 표 이름 넷(`map_table` · `inventory_table` · `metadata_target_table` · `derivation_source_table`).
+   통합 쪽에 그 «자리»가 보이지 않습니다 — 다만 `params` 는 `derive.mapper` 가지 안에 다른 이름으로 있을 수 있어
+   **가지 «안»까지 열어 본 것은 아닙니다**.
+
+## 그래서 제안(판정은 총괄)
+```
+㉡ 의 답은 「개명표」를 먼저 적어야 나옵니다 — 평면 칸 27 × (통합의 어디 / 없음).
+   그 표가 있으면 「표현 불가능」이 «세어지고», 없으면 매번 「전부 못 담는다」와 「대부분 담긴다」가 둘 다 말해집니다
+🔵 그리고 그 표는 «이 라운드가 끝나도» 남습니다 — 최종 도착지(「평면을 읽는 코드가 0」)의 근거가 그것입니다
+```
+### 확신도
+```
+실행    추적 파일 `server/chain_skeleton.json` 을 파싱해 «키를 전수»로 (가지 키 포함) — 박스 «무접촉»
+못 잼    🔴 「못 담는다」는 «안 쟀습니다» — 제 수는 «이름 동일성»이고 개명을 못 봅니다
+        가지(`derive.join|decide|mapper`) «안»의 칸을 이름별로 대조하지 않았습니다
+        박스의 실제 규칙이 어떤 칸을 «쓰고 있는지»는 안 봤습니다(gitignore — 그건 구현자 계기입니다)
+```
