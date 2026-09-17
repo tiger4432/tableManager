@@ -102,6 +102,57 @@
 > 🔴 그리고 「모르면 물어보든가」 — 앞으로 «지시 전에 소유자께 계획 보고». 560 이 그 순서를 어겨 철회됨(561)
 > ```
 >
+> ## 🟢 16:0x — ② 가 «닫혔습니다». 조인이 «맵퍼 문으로 돌았습니다» (판정 577~580)
+> ```
+> 증거 (구현자 b624cc8d, 총괄이 요구한 그것)
+>   [ChainRule] rule=s237_lot_from_attribution kind=builtin:join_into target=s237_left_log
+>               rows_in=1 rows_out=1 written=None refusal=None error=None
+>   Executing chained batch updates to 's237_left_log' ... (size: 1)
+>   -> 맵퍼 문으로 «불렸고» · 한 행을 «제안»했고 · 호출자 배치가 «썼다»
+>   🔵 written=None 이 «맞다» — 맵퍼는 제안하고 호출자가 쓴다. 운영자가 읽는 수는 rows_out
+> 총괄 재음  15:50 resolve -> <function run>  |  16:04 resolve -> <function _join>   ✅
+> ```
+> 🔴 **구현자가 «빨강을 열어» 잡은 결함 셋 — 셋 다 운영에서 났을 것들**
+> ```
+> ① 꽂는 자리를 discover() «하나»로 -> 옛 표는 «import 때» 있었다
+>    워밍업 안 한 프로세스가 조인을 «전부» 이름 대어 거절. 수리: 두 자리 다
+> ② params 없이 등록 -> 로더가 「인자를 «하나도» 안 받는다」로 읽음
+>    -> on · right_table · take 가 전부 undeclared_param 거절 -> 선언이 «통째로» 안 실림
+> ③ ②를 JOIN_CELLS 로 고쳤더니 «판정 397 이 뒤집혔다»
+>    「모르는 조인 칸은 이름만 대고 규칙은 돈다」 -> 「거절」
+>    수리: params: None = 「제품이 인자를 «제약하지 않는다»」 ≠ 「인자가 «없다»」
+>    📌 판정 509 부류(부재 ≠ 빈 것)가 오늘 «또» 나왔다
+> 🔵 ②③ 은 «초록만 봤으면» 못 봤다 — 빨강을 열어서 찾았다
+> ```
+> ⚠️ 그 수리가 남긴 거짓 주석: dynamic_mappers.py:176 「ONLY FROM discover()」 — 호출자 «둘»
+>    🔴 보통 거짓 주석보다 나쁘다 — 그 줄을 «지키려고» import 자리를 지우면 회귀가 돌아온다
+>
+> 🔴🔴 **판정 579 — 종류가 «셋»이었다. 그리고 셋째가 «바로 그 두 번째 문»이다**
+> ```
+> 템플릿 둘   builtin:join_into · builtin:auto_confirm
+> 표에 셋     + builtin:join  -> 생산자는 «아직 짓고»(legacy_join_declaration:893) 푸는 쪽은 «없다»
+> 🔴 이 박스 얘기가 아니다: sample 에 materialize:true «둘» · guide 에 «22»
+>    -> 저장소가 가르치는 대로 만든 설치는 그 조인이 «안 돈다»
+> 🔵 답이 그 표 «자기 주석»에 있었다 (builtins.py:416, S-237 · 판정 461 ③):
+>    「TWO ENTRIES, AND BOTH OF THEM WRITE. THAT IS THE DEBT」
+>    「the axis … is WHICH DECLARATION FILE BIRTHED THE RULE」
+>    「The debt closes when the last materialize:true moves to into.table」
+> ⛔ 그래서 「템플릿을 하나 더 준다」를 «금지»했다 — 문 둘을 «새 기제로 옮겨 담는» 것이다
+> ```
+> 🛑 **판정 580 — 삭제 경계: `legacy_materialized_join` 을 지우지 마라**
+> ```
+> 그 모듈은 «둘»   실행 절반은 오늘 죽음(도달 불가)  |  판독 절반은 «쓰기 경로»에 서 있다
+>                crud.py:3949 rules_for_right = 가상 조인 «유일성 가드»
+> 🔴 지우면 가드가 «조용히 열린다» — 그 자리 주석: 「no row is refused」
+> 판별식  지우기 전: 「이 이름을 «쓰기 경로»가 부르나」 — 체인 문 «밖»에도 호출자가 있다
+> ```
+> 📬 **18:00 에 소유자께 «올릴» 것 (판정 578)** — ④ 의 남은 전부는 «378 줄» 하나다
+> ```
+> ledger/admin.py 의 378/1,550 (24%)가 체인 규칙을 다룬다. 주어는 chain_rules.json = 체인 것
+> 그런데 그 파일은 주제 «셋»을 같은 기계로 섬긴다(체인·표·원장) -> 떼면 「설정 저장」의 문이 둘
+> 내 판정: 오늘 «안 옮긴다». 내 읽기: 「이안에 모든게」는 «체인이 도는 길»까지다
+> 🔴 틀리면 소유자 한 마디로 뒤집히고, 그러면 다음 라운드 첫 항목이다
+> ```
 > ## ✅ 16:0x — 「통합으로」는 «살았다» (총괄이 브라우저로 눌러 확인) · 판정 573~576
 > ```
 > 번들     admin-B4tC5zc0.js 로드됨 (말하기 «전»에 찍음)
