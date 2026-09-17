@@ -183,14 +183,67 @@ export const CHAIN_RULE_REGISTRY = Object.freeze({
   //    같은 파일을 두고 다른 문법이라 말하게 되는 날이 그러면 오류 없이 옵니다.
   formRoot: (payload) => {
     const skeleton = (payload && payload.skeleton) || {};
-    return (payload && payload.grammar === 'unified'
-      ? skeleton.unified_root : skeleton.root) || null;
+    const grammar = payload && typeof payload.grammar === 'string' ? payload.grammar : '';
+    // 🔴 [판정 542] 「모른다」는 «평면»이 «아닙니다». 서버가 한 규칙의 문법을 못 읽으면 그 칸이
+    //    «없고», 종전에는 그 없음이 falsy 라 조용히 «평면 폼»이 떴습니다 — 화면이 모르는 것을
+    //    «안다고» 말한 자리입니다. 그리고 두 문법은 칸이 «27 대 7»이라, 틀리게 고르면 빈 칸이
+    //    진짜 값 위에 그려집니다(판정 514).
+    // ⛔ 여기서 `derive` 를 보고 «다시 유도»하지 않습니다 — 그 순간 저자가 둘이 됩니다(C-111).
+    //    모르면 폼을 «안 그립니다». 원문 편집기가 그대로 서고(이 칸의 계약), 옆의 「문법 모름」
+    //    표지가 «왜» 폼이 없는지 말합니다.
+    if (grammar !== 'unified' && grammar !== 'flat') return null;
+    return (grammar === 'unified' ? skeleton.unified_root : skeleton.root) || null;
   },
   // 🔴 계획 §9.3 ③. 화면은 «어느 문법인지»를 말합니다 — 이행 중에는 둘 다 열려
   //    있고, 그러면 같은 화면이 규칙마다 다른 칸을 내미는데 이유가 화면에 없습니다.
   //    ⚠️ 서버가 안 말했으면 «안 그립니다» — 「모름」을 「평면」으로 적으면 그것이 거짓입니다.
   grammarOf: (payload) => (payload && typeof payload.grammar === 'string'
     ? payload.grammar : ''),
+
+  // 🔴 [판정 536 ④] 이 화면이 «세어서» 말해야 하는 둘 — ㈎ 「제품이 뜻을 모르는 칸」과
+  //    ㈏ 「아직 평면으로 적힌 규칙 수」. 안 말하면 이관 뒤의 «침묵»을 운영자가 「끝났다」로
+  //    읽습니다. 값이지 문장이 아닙니다 — 배지 하나에 수 하나.
+  marks: (payload) => {
+    const out = [];
+    // ㈏ — 목록 응답이 실어 주는 «이름 -> 문법» 지도(판정 540). 한 번의 요청이 «전부»에
+    //    답하므로 화면이 규칙마다 묻지 않습니다.
+    // 🔴 「0」도 «그립니다». 이관이 끝났는지는 운영자가 «지금» 묻는 물음이고 답이 있습니다 —
+    //    배지가 사라지는 것으로 답하면 「다 됐다」와 「안 세어 봤다」가 같은 그림이 됩니다.
+    const map = payload && payload.rule_grammars;
+    if (map && typeof map === 'object') {
+      let flat = 0;
+      for (const key of Object.keys(map)) if (map[key] === 'flat') flat += 1;
+      out.push({ text: `평면 ${flat}`, kind: 'flat' });
+      // ⚠️ 지도에 «없는» 이름은 「모르는 것」입니다 — 서버가 「모른다」를 「평면」으로 채우지
+      //    않고 «빼기» 때문입니다(판정 540·542). 그것을 평면에 더하면 그 규율이 화면에서
+      //    무너지고, 운영자는 이관해야 할 수를 «틀리게» 봅니다.
+      const names = Array.isArray(payload.rules) ? payload.rules.map(String) : [];
+      const unknown = names.filter((n) => map[n] !== 'flat' && map[n] !== 'unified').length;
+      if (unknown) out.push({ text: `문법 모름 ${unknown}`, kind: 'unknown' });
+    }
+    // 🔴 [판정 543] 열린 규칙의 문법을 «못 읽으면» 그 사실을 «이름 대어» 말합니다.
+    //    폼이 안 그려지는 것(위 `formRoot`)만으로는 «말없이 사라진 폼»이고, 그러면 운영자는
+    //    화면이 고장 났다고 읽습니다. 상설 ⑥: 「거절은 «이름»으로 — 고칠 자리를 알 수 있게」.
+    // ⛔ 여기서 문법을 «추측»하지 않습니다. 못 읽은 것은 못 읽은 것입니다(판정 509).
+    if (payload && payload.name
+        && payload.grammar !== 'flat' && payload.grammar !== 'unified') {
+      out.push({ text: `문법 못 읽음 · ${payload.name}`, kind: 'unknown' });
+    }
+    // ㈎ — 통합 문서가 «한 자리»에 모아 든 모르는 칸입니다(`rule_shape.to_declaration` 의
+    //    `extra`: 「제품이 뜻을 모르는 칸은 한 자리에 모아 둔다」).
+    // ⚠️ 평면 문서에는 그 자리가 «없습니다» — 모르는 칸이 최상위에 흩어져 있어, 화면이 세려면
+    //    스켈레톤과 견줘야 하고 그 순간 이 수의 저자가 «둘»이 됩니다(서버의 `extra` 와 화면).
+    //    그래서 통합일 때만 셉니다. 저자는 그 칸을 «쓴» 변환기 하나입니다.
+    // 🔴 0 이면 안 그립니다 — 옆의 문법 배지가 이미 「unified」라 말하고, 그러면 배지 없음이
+    //    「나른 것이 없음」으로 «유일하게» 읽힙니다. ㈏ 와 달리 이건 «진행 중인 수»가 아닙니다.
+    if (payload && payload.grammar === 'unified') {
+      const doc = payload.declaration;
+      const held = doc && typeof doc.extra === 'object' && doc.extra ? doc.extra : null;
+      const n = held ? Object.keys(held).length : 0;
+      if (n) out.push({ text: `모르는 칸 ${n} · 보존`, kind: 'carried' });
+    }
+    return out;
+  },
   // C-86 ③. 맵퍼 칸의 목록 이름. 값은 화면이 `GET /admin/mappers/list` 에서 받아 넣습니다 —
   // 이 파일은 «이름»만 대고 «목록»은 서버의 등록부입니다.
   choiceList: 'mappers',

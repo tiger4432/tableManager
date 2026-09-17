@@ -99,6 +99,11 @@ export const LEAVE_UNSAVED = '미저장 변경이 있습니다. 이동할까요?
  *   🔴 칸 이름·종류는 «전부» 이 노드에서 나옵니다. 이 파일도, 등록부 선언도 칸 이름을
  *      한 글자도 적지 않습니다 — 적는 순간 서버가 키를 하나 더해도 화면이 모릅니다.
  *      응답에 스켈레톤이 없으면 `null` 이고, 그때 화면은 «오늘 그대로»(원문 편집기)입니다.
+ * @property {(payload:object)=>{text:string,kind?:string}[]} [marks]  머리에 설 «수»들.
+ *   🔴 무엇을 세나는 «등록부»가 압니다 — 여기서 세면 이 부품이 한 문법을 알게 되고, 그
+ *      순간 다른 등록부와 갈라집니다. 이 부품은 자리만 내줍니다.
+ *   ⛔ 빈 배열이면 아무것도 «안 그립니다». 안 센 자리에 0 을 세우지 않습니다 —
+ *      「0 이다」와 「안 세어 봤다」는 다른 사실입니다.
  */
 
 /**
@@ -599,6 +604,19 @@ export class RawRegistryPanel {
     if (grammar) {
       const line = this._line(`${spec.cls}-grammar`, grammar);
       line.setAttribute('data-grammar', grammar);
+      head.appendChild(line);
+    }
+
+    // 🔴 [판정 536 ④ · 538 ②] 이 화면이 «세어서» 말해야 하는 수들. 등록부가 답하고 폼은
+    //    자리만 내줍니다 — 위 `grammarOf` 와 «같은 모양»입니다(한 낱말, 값 하나, 문장 없음).
+    //    ⚠️ 무엇을 세나는 «등록부»가 압니다. 여기서 세면 이 부품이 체인 문법을 알게 되고,
+    //       그 순간 표 설정 등록부와 갈라집니다.
+    //    ⛔ 빈 배열이면 아무것도 안 그립니다 — 안 센 자리에 0 을 세우지 않습니다.
+    const marks = typeof spec.marks === 'function' ? spec.marks(payload) : null;
+    for (const mark of Array.isArray(marks) ? marks : []) {
+      if (!mark || !mark.text) continue;
+      const line = this._line(`${spec.cls}-mark`, String(mark.text));
+      if (mark.kind) line.setAttribute('data-mark', String(mark.kind));
       head.appendChild(line);
     }
 

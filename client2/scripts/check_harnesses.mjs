@@ -1301,7 +1301,7 @@ const FLOORS = new Map([
   //    real routing key beside them is the failure.
   ['chain_rule_form_harness.mjs', 86],
   ['clipboard_type_modal_harness.mjs', 21],
-  ['chain_rule_user_path_harness.mjs', 44],
+  ['chain_rule_user_path_harness.mjs', 50],
   // a value carrying markup does not come back out as markup, and the backlog has a ceiling
   ['escaping_harness.mjs', 56],
   // clicking a derived route fills follow, and a later-hop predicate stays visible

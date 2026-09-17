@@ -556,6 +556,18 @@
       color: var(--text-dim);
     }
     .chain-rule-state[data-state="false"] { color: var(--warning); font-weight: 600; }
+    /* 🔴 [판정 536 ④] 머리에 서는 «수»들 — 「평면 N」·「문법 모름 N」·「모르는 칸 N · 보존」.
+       상태 배지와 «같은 모양»입니다(등폭 · 라벨 크기 · 값 하나 · 문장 없음). 한 사실에 한 모양.
+       ⚠️ 아직 옮길 것이 남았다(평면 > 0)는 «주의»이지 «고장»이 아니라 경고색을 안 씁니다 —
+          색을 쓰면 이관이 안 끝난 화면이 전부 빨개 보이고, 그러면 진짜 거절이 안 보입니다. */
+    .chain-rule-mark {
+      margin: 0;
+      font-family: var(--font-mono);
+      font-size: var(--fs-label);
+      color: var(--text-dim);
+    }
+    /* 「모른다」는 «값»이 아니라 «빈 자리»입니다 — 눈에 띄어야 운영자가 그 규칙을 엽니다. */
+    .chain-rule-mark[data-mark="unknown"] { color: var(--warning); font-weight: 600; }
     .chain-rule-state[data-state="refused"],
     .table-config-state[data-state="refused"] { color: var(--danger); font-weight: 600; }
     /* 🔴 C-106 ①. 「저장 안 됨」은 «값»입니다 — 배지 하나, 문장 없음. C-101 이 세운 가드는
