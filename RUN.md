@@ -34,7 +34,7 @@ python -c "import mapper_sdk;mapper_sdk.discover();from chain import dynamic_map
 ⚠️ 넷보다 «많으면»               -> 운영자 맵퍼가 같은 이름을 썼다는 뜻입니다 — 이름을 바꾸십시오
 ```
 **부팅 로그에서 볼 줄**: `[ChainRules] set(N): <이름>[<출처>,<방식>] trigger=… target=…`
-  -> dedup 반쪽이 이제 그 «방식» 칸에 `decide` 로 뜼니다. 찾을 낱말은 **`decide`** 입니다
+  -> dedup 반쪽이 이제 그 «방식» 칸에 `decide` 로 뜹니다. 찾을 낱말은 **`decide`** 입니다
   ⚠️ 부팅 줄에는 `mapper=` 칸이 **없습니다**. 맵퍼 이름은 위 한 줄 명령으로 확인하십시오
   🔵 규칙이 **돈 다음**에 볼 줄은 다릅니다(단수): `[ChainRule] rule=<이름> kind=… rows_in=… rows_out=…`
 **급하면 끄는 스위치**: 해당 enrichment 규칙의 `"enabled": false` — 종전과 같습니다
