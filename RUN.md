@@ -85,6 +85,24 @@ python -m pytest -q tests/test_every_declared_kind_runs_and_leaves_rows.py
 🔴 이 시험은 「이름이 풀리나」가 아니라 「«행이 남나»」를 잽니다 — 판정 562 가 딱 이 자리에서 났습니다
 ```
 
+## 🆕 20:09 — 인리치 코드가 `server/chain/` 안으로 들어갔습니다
+
+```
+옮긴 것   server/enrichment/  ->  server/chain/enrichment/     (인리치는 «체인 선언의 한 종류»입니다)
+         server/keyset_scan.py -> server/chain/keyset_scan.py
+⛔ 안 옮긴 것  chain_bindings · mapper_sdk · session_contract
+         운영자 맵퍼 파일이 그 «최상위 이름»으로 import 합니다. 옮기면 그 파일들이 깨집니다
+```
+🔴 **운영자가 할 일은 «없습니다»** — 손으로 복사해 쓰시는 맵퍼/파서 파일이 부르는 이름은 하나도 안 바뀌었습니다.
+```
+혹시 직접 만든 스크립트에 `import enrichment.…` 가 있다면 -> `from chain import enrichment` 로 바꾸십시오
+확인: python -c "from chain import enrichment; print(enrichment.config.__name__)"
+      -> chain.enrichment.config 가 나오면 맞습니다
+```
+⚠️ 그리고 이 라운드에 **운영자 샘플 파일이 «약속 밖» 이름을 나르고 있던 것**이 발견됐습니다
+(`cross_table_lookup_mapper.py.sample` 의 `config_resolve_report`). 지금은 약속에 넣어 기록했고,
+샘플 아홉 개 전부가 게이트에 채점됩니다 — 종전에는 «둘»만 채점됐습니다.
+
 ---
 
 ## 🧪 «직접 걸어서» 확인하는 법 — 규칙 하나를 선언하고 끝까지 따라가기

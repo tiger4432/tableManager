@@ -96,13 +96,22 @@
 판별식  「보냈다」고 적기 전에: 이 턴에 push 가 돌았나 · 워크트리면 merge 까지 돌았나
 ```
 
-## ③ 서버 재기동 — 총괄 몫
+## ③ 서버 재기동 — 총괄 몫. «자식 하나만» 내리면 감독자가 올린다 (2026-09-17 실측)
 ```
-uvicorn «하나»로 끝낸다. main.py 가 체인 워커를 그 안에서 띄운다
-   -> run_chain_worker.py 를 «따로» 띄우면 체인 루프가 «둘»이 된다
-Start-Process <env>\python.exe -ArgumentList '-m','uvicorn','main:app','--host','0.0.0.0','--port','8080'
-              -WorkingDirectory server -WindowStyle Hidden
-확인은 포트가 아니라 «프로세스 시작 시각»을 고친 파일의 mtime 과 견준다
+이 박스는 «런처» 로 돌아간다 — run_decoupled_app.py 가 자식 다섯을 감독한다
+   Backend FastAPI · File Ingestion Watcher · Chained Ingestion Worker · Auto Update · Desktop UI
+토오는 것   런처가 DECOUPLED=True 를 걸고, 그 모드에서 main.py 는 인라인 워커를 «안 띄운다»
+             (main.py:500 이에 return · 판정 406 의 ASSY_CHAIN_WORKER=0 은 API 자식에 붙는다)
+⛔ 맨 uvicorn 을 띄우지 마라 — 그러면 인라인 워커가 살아나 체인 루프가 «둘»이 된다
+```
+```
+✅ 제일 작은 재기동   바뀜 코드를 든 «자식만» 내린다. 감독자가 새 코드로 다시 띄운다
+   Stop-Process -Id <그 자식의 PID> -Force      -> 몇 초 뒤 새 PID 로 섬
+   데스크톱 창은 restartable=False 이다 — 그것을 내리면 «전부 멈추라»는 뜻이다. 건들지 말 것
+확인        코드가 바뀜 것을 든 프로세스의 «시작 시각»을 그 파일 mtime 과 견준다
+   Get-CimInstance Win32_Process -Filter "Name like 'python%'" | Select ProcessId,CreationDate,CommandLine
+로그        server/chain_worker.log · server/server.log (런처가 자식 stdout 을 파일로도 텐다)
+부팅 줄     [ChainRules] set(N): <이름>[<출처>,<방식>] — 이 줄이 «오늘 코드인지»를 말한다
 🔴 소유자께 «먼저 말하고» 내린다
 ```
 
