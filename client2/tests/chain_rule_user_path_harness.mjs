@@ -525,6 +525,75 @@ async function suite(probe) {
   const unread = marksOf();
   ok(unread.includes('문법 못 읽음 · dt_log_to_dt_map'),
      `L ... and the screen NAMES the rule it could not classify [${unread.join(' | ')}]`);
+  // 🔴 판정 548 ④. A rule whose grammar cannot be read offers NO conversion - converting it would
+  //    mean GUESSING which grammar it is, which is the same line 543 drew for the form.
+  ok(!byAttr('data-action', 'convert-chain-rule'),
+     'L ... and offers no conversion, because converting it would mean guessing its grammar');
+
+  // ── M. 판정 548 — the conversion asks before it writes, and revert is the same door ─────────
+  const convertBtn = () => byAttr('data-action', 'convert-chain-rule');
+  // 🔴 A MUTANT MUST FAIL THE WALK, NOT THROW IT (this file's own rule, up at `held`).
+  //    Under a mutant that removes the control, a bare `convertBtn().dispatch` ends the run and
+  //    every later assertion goes unasked - which scores the mutant caught for the wrong reason.
+  const clickConvert = () => { const b = convertBtn(); if (b) b.dispatch('click', {}); return Boolean(b); };
+  serve((call) => rawView(askedName(call)));
+  // 🔴 THE PICKER, NOT A DIRECT CALL. An earlier section pressed 「+ 규칙 추가」, and while the
+  //    panel is drafting a NEW rule there is nothing stored to convert - so the control is
+  //    correctly absent. Opening a rule the way an operator does is what leaves that mode.
+  const pick = byAttr('data-picker');
+  pick.value = RULE.name;
+  pick.dispatch('change', { target: { value: RULE.name } });
+  await flush();
+  await flush();
+  ok(Boolean(convertBtn()) && convertBtn().getAttribute('data-to') === 'unified',
+     'M a rule stored flat offers ONE control, pointing at unified');
+  ok(Boolean(convertBtn()) && convertBtn().textContent === '통합으로',
+     `M ... and it says where it goes (${convertBtn() ? convertBtn().textContent : 'none'})`);
+
+  // 🔴 THE DRY RUN COMES FIRST AND THE WRITE NEEDS A YES. 547: an unrevertable save must not land,
+  //    and the operator is told what re-runs BEFORE it happens.
+  let asked = null;
+  globalThis.window.confirm = (text) => { asked = text; return false; };
+  serve((call) => (call.url.includes('/chain/rules/grammar')
+    ? { ok: true, name: RULE.name, to: 'unified', changed: true,
+        reruns: { rows: 0, why: '규칙이 하던 일이 그대로입니다' } }
+    : rawView(askedName(call))));
+  calls.length = 0;
+  clickConvert();
+  await flush();
+  await flush();
+  const grammarPosts = calls.filter((c) => c.url.includes('/chain/rules/grammar'));
+  ok(grammarPosts.length === 1 && grammarPosts[0].body && grammarPosts[0].body.dry_run === true,
+     `M pressing it asks the server what WOULD happen, before anything is written (${grammarPosts.length})`);
+  ok(grammarPosts.every((c) => c.body.dry_run === true),
+     'M ... and saying no writes NOTHING - the refusal leaves the file alone');
+  // 🔴 판정 549. 「세었고 0」 is not 「안 셌음」. Zero must read as 「없음」, never as a missing count.
+  ok(typeof asked === 'string' && asked.includes('다시 돌 것 없음'),
+     `M a counted zero is told as 「없음」, not as a number and not as silence (${JSON.stringify(asked)})`);
+
+  // 🔴 판정 549 의 셋째 상태. The cell ABSENT means 「not counted」 - never drawn as 0.
+  asked = null;
+  serve((call) => (call.url.includes('/chain/rules/grammar')
+    ? { ok: true, name: RULE.name, to: 'unified', changed: true,
+        reruns: { why: '이 변환이 규칙의 실행 모양을 바꿉니다' } }
+    : rawView(askedName(call))));
+  clickConvert();
+  await flush();
+  await flush();
+  ok(typeof asked === 'string' && asked.includes('안 셌음'),
+     `M an ABSENT count says so, rather than being drawn as 0 (${JSON.stringify(asked)})`);
+  // 🔴 WHY IT WAS NOT COUNTED IS THE SERVER'S SENTENCE. 「could not expand it」 and 「the shape
+  //    moves」 are different facts, and a screen writing its own line would fold them into one.
+  ok(typeof asked === 'string' && asked.includes('실행 모양을 바꿉니다'),
+     `M ... and carries the server's reason verbatim, so the two 「not counted」 cases stay apart`);
+
+  // 되돌리기는 «같은 문»입니다 - 판정 548: 왕복이 항등이라 반대 방향 변환이 곧 되돌리기입니다.
+  globalThis.window.confirm = () => true;
+  serve(() => ({ ...rawView(RULE.name), grammar: 'unified' }));
+  await refreshChainRule(RULE.name);
+  await flush();
+  ok(Boolean(convertBtn()) && convertBtn().getAttribute('data-to') === 'flat',
+     'M a rule now unified offers the way BACK through the same control, not a second button');
   return { pass: pass - before.pass, fail: fail - before.fail };
 }
 

@@ -200,6 +200,17 @@ export const CHAIN_RULE_REGISTRY = Object.freeze({
   grammarOf: (payload) => (payload && typeof payload.grammar === 'string'
     ? payload.grammar : ''),
 
+  // 🔴 [판정 548] 이 문서가 «갈 수 있는» 문법과 그 컨트롤의 말. 한 라우트가 양방향이라
+  //    (`to: unified|flat`) 되돌리기가 «반대 방향»일 뿐이고, 그래서 버튼이 하나입니다.
+  // ⚠️ 문법을 «못 읽는» 규칙에는 «없습니다» — 추측해서 변환하지 않습니다(판정 543·548 ④).
+  //    「이미 그 문법이면 아무것도 안 한다」도 여기서 갈립니다: 갈 곳이 «자기»면 컨트롤이 없습니다.
+  convert: (payload) => {
+    const grammar = payload && payload.grammar;
+    if (grammar === 'flat') return { to: 'unified', label: '통합으로' };
+    if (grammar === 'unified') return { to: 'flat', label: '평면으로' };
+    return null;
+  },
+
   // 🔴 [판정 536 ④] 이 화면이 «세어서» 말해야 하는 둘 — ㈎ 「제품이 뜻을 모르는 칸」과
   //    ㈏ 「아직 평면으로 적힌 규칙 수」. 안 말하면 이관 뒤의 «침묵»을 운영자가 「끝났다」로
   //    읽습니다. 값이지 문장이 아닙니다 — 배지 하나에 수 하나.
