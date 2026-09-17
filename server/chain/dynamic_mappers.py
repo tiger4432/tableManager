@@ -60,6 +60,53 @@ def _join(db, payload, rule=None):
     return join_into.propose(db, rule, _row_ids(payload))
 
 
+def _auto_confirm(db, payload, rule=None):
+    """`derive: {kind: "decide"}` as an ordinary mapper.
+
+    🔴 THE BODY MOVED HERE FROM THE KIND TABLE (판정 563: 「auto_confirm 의 «확정하는 로직»
+    -> 동적 맵퍼의 «몸»이 됩니다」). What it does is unchanged: the collector's own gates
+    decide (the global switch, the per-rule knob, and whether any reference view declares a
+    candidate), and `confirm_keys` does the probing and the writing with its own caps.
+
+    ⚠️ IT WRITES FOR ITSELF, AND SAYS SO. `written` is how a rule reports rows it applied
+    rather than proposed; the seat reads that cell now, so nothing has to be REGISTERED in
+    advance as self-writing (that was `writes_itself`, a fact about an address).
+
+    ⚰️ WHAT IS NOT CARRIED: the `done["auto_confirmed"]` note. That existed because this kind
+    was only ever reached from the deferred pass, which passed a dict for it to write into -
+    and that pass is going. The counts travel back as the RETURN VALUE, which is where the
+    caller reads everything else about a run.
+    """
+    import enrichment.candidates
+
+    rows = _row_ids(payload)
+    # 🔴 [판정 525 ②] EVERY ZERO EXIT SAYS WHY — and these are different repairs: nothing
+    #   arrived / nothing is switched on / nothing was waiting. Two of the three are not
+    #   even a problem, and 「0」 alone cannot tell them apart.
+    table = str((rule or {}).get("target_table") or "")
+    if not table or not rows:
+        return {"written": 0, "confirmed": 0, "refused": 0,
+                "refusal": "확정을 시도할 행이 넘어오지 않았습니다"}
+
+    declared = (rule or {}).get("params") or None
+    collector = enrichment.candidates.AutoConfirmCollector(
+        table, rules=[declared] if isinstance(declared, dict) else None)
+    if not collector.active:
+        return {"written": 0, "confirmed": 0, "refused": 0,
+                "refusal": "이 표에 켜진 자동확정 규칙이 없습니다"}
+
+    collector.collect_rows(db, rows)
+    stats = collector.flush(db) or {}
+    confirmed = stats.get("confirmed") or 0
+    refused = sum((stats.get("refused") or {}).values())
+    refusal = None
+    if not confirmed:
+        refusal = ("%d 행이 확정 조건에 맞지 않았습니다" % refused if refused else
+                   "확정을 기다리는 행이 없습니다")
+    return {"written": confirmed, "confirmed": confirmed, "refused": refused,
+            "refusal": refusal, "source_name": enrichment.candidates.SOURCE_NAME}
+
+
 #: kind name -> the function built for it. The key is the `mapper` cell a translated rule
 #: carries, so the declaration needs no new word.
 TEMPLATES = {}
@@ -67,9 +114,11 @@ TEMPLATES = {}
 
 def _install_templates():
     """Bind the templates to the names stored rules already use."""
+    import enrichment.config
     from chain import join_into
 
     TEMPLATES[join_into.JOIN_INTO_MAPPER] = _join
+    TEMPLATES[enrichment.config.AUTO_CONFIRM_MAPPER] = _auto_confirm
 
 
 def install() -> tuple:
