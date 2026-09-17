@@ -47942,3 +47942,53 @@ mapper_call.py:46  if registered is not None: ... else: import_module(...)
 ⛔ server/mappers/*.py — 한 글자도
 ⛔ replay 수리 · is_batch 갈래 · 다른 큐 항목
 ```
+
+---
+
+> 🟢 **[09-17 09:13 구현자] 495 ① + 496 착지 `cdb396f9` — `builtin_kind` 이 `ingestion_worker` 에서 «사라졌습니다». 검증 표 · ③ ④ 답**
+
+## ① 한 것
+```
+ingestion_worker  가지 «통째로» 삭제. payloads 를 «한 번» 짓고 row_ids 를 그 목록에서 투영해 «둘 다» 넘김
+                  is_batch 두 팔은 «안 건드렸습니다» (랩의 축)
+게이트            술어를 「문을 부른다」 -> 「문을 부르거나 «어느 문인지 묻는다»」로 넓힘
+                  허가성 독스트링 한 문장 제거 (「a caller that needs the answer WITHOUT running
+                  has somewhere to ask」 — 이 문장이 그 가지를 «허가»하고 있었습니다)
+```
+🔴 **496 반영:** 제 첫 판은 `ASKS_THE_KIND` 라는 «허용 목록»이었습니다. 무르신 것이 맞습니다 —
+   축복받은 예외 목록은 코드가 「이 갈라짐은 정당하다」고 선언하게 만듭니다.
+   새 이름을 버리고 기존 `NOT_YET_MOVED` 에 `chain/replay.py::replay_rule` 을 «빚»으로 넣었습니다.
+   그 목록의 원래 문장(「아직 안 일어난 재배선이지 남아도 되는 자리가 아니다」)이 그대로 적용됩니다.
+
+## ② 검증 표 — 빈 칸 «없이», 근거 줄과 함께
+| 축 | 단언 | 결과 | 근거 |
+|---|---|---|---|
+| 종류 | 넷이 같은 호출 한 벌을 지난다 | ✅ | AST: `run_rule` 호출 «2»(`:1502` batch · `:1541` per-row) · 둘 다 `payloads=·row_ids=·depth=` 같은 인자. 그 파일의 `builtin_kind` «0» |
+| 결과 | 자기 쓰기 종류의 `updates` | ✅ `[]` | `_uniform()` 이 세 칸을 빈 리스트로 냄 → 기존 수집 가드가 no-op. `test_both_kinds_answer_in_the_same_shape_and_are_logged_in_the_same_words` 가 이미 단언 |
+| 결과 | 제안 종류의 `updates` | ✅ 같음 | 수집 코드 «한 줄도 안 바꿨습니다». 모집단 1382 초록(파일 맵퍼 시험 포함) |
+| 대기열 | 넷 다 `activity.running` 이 뜬다 | ✅ **이미 참** | `builtins.py:366` · `mapper_call.py:130`. 이번 라운드가 «안 건드립니다» — 다만 496 ⓑ 대로 «두 벌»인 것은 그대로입니다 |
+| 홉 | 자기 쓰기 종류의 `chain_depth` | ✅ **변이로 확인** | M4: 새 호출에서 `depth=` 제거 → `test_a_hop_already_in_flight_is_carried_forward_rather_than_restarted` «빨강» |
+| 중복 | `rules_by_target` 한 번 | ✅ | 이제 `:1465` «하나»뿐 (`:1467` 은 META_TABLE — 다른 키). 옛 `:1514` 중복 삭제됨 |
+| 게이트 | 묻는 파일 집합 | ✅ `{rule_run, replay}` | AST 전수(비시험 283 파일). `ingestion_worker` «없음» |
+```
+변이 넷 전부 빨강   ① 호출자가 다시 묻는다 ② 핀에서 replay 를 뺀다 ③ 핀에 안 묻는 이름을 넣는다 ④ depth 제거
+초록   모집단 1382 passed / 1 skipped · 수집 6,835 (증감 0 — 새 파일 없음)
+```
+
+## ③ replay 가 «종류를 물어 얻는 것» — 총괄 읽기 «맞습니다». 한 겹만 더 답니다
+```
+총괄  「이 규칙이 «돌려보지 않고도» 자기가 쓸 것이라고 «선언»돼 있나」   -> ✅ 질문의 성질은 그대로입니다
+제가 더 적는 것: 그 답을 «무엇에 쓰나»가 둘입니다 —
+  ㉠ 드라이런 관측 가능성   자기 쓰기 종류는 «써야» 자기가 뭘 할지 말할 수 있습니다.
+     그래서 :510 이 「하려던 것」 대신 「받았을 것」(len(page_ids))을 셉니다 — 정직한 대체입니다
+  ㉡ 페이지 격리(판정 403)   그 가지만 던진 페이지를 «그 페이지 값»으로 막고 세션을 롤백합니다
+=> 한 문장으로: **「이 종류의 결과를 «적용하지 않고» 볼 수 있나」**. ㉮ 와 달리 «내용이 있습니다**
+```
+
+## ④ 덤 한 줄 — **참입니다**
+```
+`:1545` per-row 팔은 `updates` «만» 줍습니다. `map_metadata_updates` 와 `batches` 는 batch 팔에서만 줍습니다
+=> 그래서 per-row 규칙이 맵 메타나 스코프드 배치를 제안하면 «조용히 버려집니다»(거절도 없음)
+⚠️ 「랩의 축」이 맞습니다 — 종류와 무관합니다. 이번 라운드에서 «안 건드렸습니다». 큐에 넣으시면 됩니다
+```
+📌 재기동이 필요합니다 (라이브 랩 코드) — 총괄 몫입니다.
