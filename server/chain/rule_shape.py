@@ -140,9 +140,6 @@ def declared_kind(rule: dict) -> str:
 def as_chain_rule(internal: dict) -> dict:
     """내부 규칙 -> 오늘의 체인 규칙 dict. `from_chain_rule` 의 역이다."""
     out = {}
-    # 🔴 [판정 536 ①] FIRST, so a cell the grammar knows cannot be overwritten by a stray
-    #   `extra` of the same name further down - and so the round trip stays an identity.
-    out.update(internal.get("axis") or {})
     if internal.get("name") is not None or "name" in internal:
         out["name"] = internal.get("name")
     on = internal.get("on") or {}
@@ -200,6 +197,19 @@ def as_chain_rule(internal: dict) -> dict:
     out.update(derive.get("mapper") or {})
     out.update(internal.get("limits") or {})
     out.update(internal.get("extra") or {})
+    # 🔴 [판정 551] LAST, SO THE CELL THE GRAMMAR KNOWS WINS. This stood FIRST and its own
+    #   comment claimed the opposite of what it did: `extra` updated forty lines below and
+    #   overwrote it. MEASURED by the application lane - `is_batch` axis=False · extra=True
+    #   came out True, so a rule the operator declared 「one row at a time」 would have been
+    #   CALLED in batches, which is 판정 506's cell.
+    # ⚠️ AND THE ROUND-TRIP GATE WAS GREEN THROUGH ALL OF IT: the conflict is symmetric, so
+    #   flat->unified->flat stayed the identity. 「초록은 「안 터졌다」이지 「본다」가 아니다」
+    #   in its sharpest form, on a gate written this morning to prove exactly that.
+    # ⚠️ A CONFLICT ONLY EXISTS IN A HAND-EDITED FILE. The converters put a cell in ONE
+    #   place, so nothing this product writes can produce it - which is why nobody saw it.
+    #   Whether the conflict should be REFUSED by name rather than resolved here is a bigger
+    #   question (판정 543 의 선) and it is queued, not answered.
+    out.update(internal.get("axis") or {})
     # `enabled` 는 «생략된 것»과 «적힌 것»이 다른 문장이므로 «적혀 있었을 때만» 되돌린다
     if internal.get("enabled_written"):
         out["enabled"] = internal.get("enabled")
