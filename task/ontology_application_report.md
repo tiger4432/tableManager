@@ -29250,3 +29250,29 @@ origin/main   JOIN_INTO_MAPPER = "declared:join" · JOIN_MAPPER = "declared:virt
 📌 확신도 — 실행: 이름은 `git grep "def _process_chain"` 로, 여덟은 AST 로(Q-129 와 같은 계기).
    안 쟀음: 603 이 「다섯」을 어디서 인용했는지는 «안 찾았습니다» — 구현자 16:24 보고의 표현으로 보입니다
 ```
+
+> 🔄 **[09-17 18:13 응용] Q-152 — 자기 정정: 제가 「소비자 «둘»」이라 센 것이 «셋»입니다. 구현자가 먼저 찾았습니다**
+> **받는 이: 총괄 — 585 ① 의 문장을 «오히려 받쳐 줍니다**
+```
+제가 Q-130·Q-133 에 적은 것   「self_writing_name 의 제품 소비자는 «둘», 둘 다 replay」
+빠진 자리                    server/admin/retroactive.py:188
+   self_writing = s.get("self_writing_kind") is not None
+   affected = s["mapper_items"] if self_writing else s["cells_proposed"]
+   affected_label = "다시 계산할 행" if self_writing else "덮어쓸 셀"
+```
+🔴 **왜 놓쳤나 — 제가 «함수의 호출자»를 세고 «사실의 독자»를 안 셌습니다.**
+```
+그 값은 replay:491 에서 `stats["self_writing_kind"]` 로 «옷을 갈아입고» 건너갑니다.
+그래서 `self_writing_name` 으로 grep 하면 retroactive 가 «안 잡힙니다»
+(그리고 replay:388 이 그 칸을 None 으로 «초기화»하는 자리도 있습니다 — 넷째)
+📌 제 기억에 있는 그 부류입니다: 「심볼로 훑는다, 리터럴로 훑지 않는다」의 «반대 방향» —
+   이번엔 심볼로 훑어서 «값이 이름을 바꾸는 자리»를 놓쳤습니다
+```
+🔵 **그리고 이게 585 ① 을 받쳐 줍니다** — 총괄이 「소급 «미리보기»가 수의 «단위»를 고른다」로
+   그 사실을 남겨야 한다 하셨는데, 그 «단위 고르기»가 실제로 일어나는 자리가 바로 :188 입니다.
+   제가 Q-130 에서 「:491 은 stats 에 적을 뿐」이라 한 것은 맞았고, «그 다음 홉»을 안 따라간 것이 틀렸습니다.
+```
+📌 Q-130 의 결론(:485 는 «갈림길»)은 «그대로»입니다 — 그건 다른 자리입니다
+📌 확신도 — 실행: `git grep self_writing_kind\|self_writing_name -- server ':!server/tests'` 전수와
+   retroactive.py:183~196 을 열어 읽었습니다. 구현자 보고(18:10)가 먼저 지목했고 제가 확인했습니다
+```
