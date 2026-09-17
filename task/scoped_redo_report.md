@@ -49004,3 +49004,28 @@ self_writing_name   3   rule_run:193(정의) · replay:485,491 (dry-run 의 «�
 🔵 **그러므로 ② 는 「네 문」이 아니라 «다섯 자리 · 두 파일»이고, 게이트가 그중 셋을 한 표로 잽니다.**
    그리고 오늘 제 회귀가 조용했던 이유가 이 표에 그대로 있습니다 — 「흘림」이 «정확히 둘»입니다.
 📌 587 의 제목 물음에 쓸 «재료»입니다. 답은 시키신 대로 «다음 라운드 첫 줄»에 적겠습니다.
+
+> ✅ **[09-17 16:43 구현자] 판정 589 완료 — 그 셋이 돌아왔습니다. 총괄이 «직접 돌리실» 차례입니다**
+```
+돌릴 것   C:/Users/kk980/anaconda3/envs/assy_manager/python.exe -m pytest \
+            tests/test_every_caller_and_door_leaves_the_same_envelope.py \
+            tests/test_a_declared_join_can_be_backfilled_like_any_rule.py -q
+제 수     17 passed / 0 failed  — «라운드 시작점(031e9427^)과 같은 수»입니다.
+          그 수가 「성질이 돌아왔다」와 「단언을 약하게 했다」를 가릅니다
+착지      a3e37e6a (시험 둘) · 그 앞에 4a1ff97b (제품 회귀 수리)
+범위      589 가 지명한 «두 파일»만. 나머지 아홉 파일 / 48 참조는 그대로 뒤입니다
+```
+### 무엇을 어떻게 바꿨나 — 셋 다 «자리»만 옮겼습니다
+```
+랩 문      `follow_up AND mapper in BUILTIN_KINDS` (선택의 «사본») 
+        -> worker.picked_up_by_the_follow_up_pass(r) («그 경로 자신의 술어»)
+        판정 500: 「roll call 은 술어를 다시 적지 않는다 — 사본은 사본을 잰다」
+백필 둘    BUILTIN_KINDS 에 끼워 넣던 것 -> mapper_sdk.MAPPER_REGISTRY 에 끼웁니다
+        그리고 스텁이 «얼어 있는 규약» (db, payload[, rule=]) 을 받습니다
+        (옛 스텁은 kwargs 에서 row_ids 를 읽었습니다 — 은퇴한 표의 부르는 법입니다)
+```
+🔵 **그리고 랩 문 시험은 이제 «다음 라운드의 덫»입니다** — ③ 이 `writes_itself` 절을 떼는 날
+   파일 맵퍼가 랩을 «탈 수 있게» 되고, 그때 이 줄이 «빨개집니다». 랩이 제안을 쓸 수 있게
+   되기 «전»에는 통과하면 안 되는 성질이라, 그게 맞는 모양입니다.
+   (제 상설: 「은퇴시켰으면 그것이 아팠던 증상을 대조군으로 남긴다」 — 여기선 «미리» 남는 쪽입니다)
+📌 수집 게이트: `pytest tests --collect-only -q` -> 6872 collected, 오류 0
