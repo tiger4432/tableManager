@@ -27705,3 +27705,49 @@ rule_run.py:530 부근 (수리 «바로 위»에 그대로 남아 있습니다)
 🔴 왜 적나: 다음 사람이 그 줄을 읽고 「맵퍼는 사유를 못 낸다」를 «다시 유도»합니다. 오늘 제가
    Q-106 으로 유도한 것이 바로 그 문장이었습니다 — 그때는 참이었고 지금은 아닙니다.
 ⛔ 제가 안 고칩니다. 등급 낮음이고, 이 라운드가 이 파일을 또 만질 때 «같이» 지나가면 됩니다.
+
+---
+
+> 📐 **[09-17 15:44 응용] Q-117 — 567 이 따로 물은 것: 「그 262 줄이 «어디로» 가나」. 절반은 «집이 있고», 절반은 «체인 것이 아닙니다»**
+> **받는 이: 총괄 — ④ 의 «실제 크기»입니다. ⛔ 제가 고르지 않습니다**
+
+## 그 라우트가 «말하는 사실» 열셋을 저자로 갈랐습니다
+```
+🏠 집이 «있는» 것 — `chain/activity.py` 의 레지스트리가 답합니다 (호출 4)
+   running                main.py:4419  activity.registry.snapshot()
+   rule_outcomes          :4428         activity.registry.outcomes()
+   loop_in_this_process   :4452         activity.registry.attached
+   loop_uptime · mapper_reload_age · outbox_purge_*   :4458  **activity.registry.ages()
+   => 이 절반은 «옮길 것이 없습니다». 이미 chain/ 안에 저자가 있고 라우트는 «읽기만» 합니다
+
+🔴 집이 «없는» 것 — 라우트가 SQL 을 «직접» 씁니다 (질의 4)
+   waiting                 :4249   db.query(count).filter(waiting_only).scalar()
+   retried_among_waiting   :4250   … outbox.retry_count > 0
+   waiting_by_owner        :4262   group_by(event_type) + min(created_at)
+   waiting_transactions ·  :4273   head 행 (limit _QUEUE_LIST_CAP)
+   listed · oldest_waiting_seconds · oldest_waiting_at   ← 위 둘에서 «유도»
+```
+
+## 🔴 그런데 그 절반이 «체인의 표가 아닙니다» — 여기가 판정의 갈림입니다
+```
+event_constants.outbox_owner(event_type)  ->  scheduler | chain | unknown
+   그 함수 주석: 「`unknown` IS A REAL ANSWER AND MUST NOT BE FOLDED INTO `chain`」
+라우트가 그것을 «두 번» 씁니다 (:4361 owners 집합 · :4371 버킷) — `waiting_by_owner` 가
+그 갈래의 «산출물»입니다. 즉 이 라우트는 «세 주인의 대기열»을 갈라 보여 줍니다
+=> 이 절반을 `server/chain/` 안으로 넣으면 **체인이 «스케줄러의 수»의 저자가 됩니다.**
+   「이 안에 모든 게 있어야 함」이 이 절반에는 «반대로» 걸립니다 — 체인 것이 아니니까요
+```
+
+## 그래서 ④ 의 크기 (제 측정으로는)
+```
+옮길 것   «없음»에 가깝습니다 — 관측 절반은 이미 chain/ 안이고, 라우트는 얇은 독자입니다
+새 좌석   필요하다면 「아웃박스 대기열을 «주인별»로 세는 자리」이고, 그 자리의 주어는
+         체인이 아니라 «아웃박스»입니다 (chain/ 도, main.py 도 아닌 셋째 자리일 수 있습니다)
+🔴 판정 필요: ④ 를 「체인 라우트를 옮긴다」로 읽으면 이 262 줄이 «따라 들어가» 체인이
+   남의 수를 말하게 됩니다. 「체인 코드가 안에 있다」와 「체인 라우트가 안에 있다」는 다른 문장입니다
+```
+## 확신도
+```
+실행/구조   반환 칸 열셋은 AST 로, 저자 갈래는 그 줄들을 «열어서». 브라우저는 «안 열었습니다»
+⛔ 못 잼   운영에서 이 화면을 «누가 보나» — 그 수가 이 라우트의 값을 정하는데 저는 못 봅니다
+```
