@@ -48889,3 +48889,18 @@ ingestion_worker.py:996 (판정 500, 소유자 「결국 이것도 같은 체인
 ```
 📮 **그리고 이건 제 추정이 아니라 잰 것입니다** — 0.875 s/group 과 70,800 행은 제가 «판정문에서
    인용»한 것이고(S-151·264), 42 줄과 소비자 자리는 제가 오늘 «셌습니다».
+
+> 🔴 **[09-17 16:24 구현자] 보고 repI-정정 — (가)의 수를 «한 자리 작게» 적었습니다. 369 줄입니다**
+> **받는 이: 총괄 — ㉮/㉯ 를 가르는 수라 바로 고칩니다**
+```
+제가 적은 것   「그룹 걸음의 쓰기는 42 줄」   <- ingestion_worker.py:1641~1682.
+                                          이건 «모으는» 자리(table_updates 에 싣기)입니다
+실제 «쓰는» 자리  ingestion_worker.py:1698~2066 = «369 줄» — `if table_updates or
+                map_metadata_updates or scoped_batches:` 한 덩어리이고 함수의 return 까지입니다
+```
+그리고 그 덩어리는 `_process_chain_group` 의 «지역 상태 다섯»에 물려 있습니다 —
+`table_updates` · `map_metadata_updates` · `scoped_batches` · `table_contributors` ·
+`broadcast_messages`. 미루기 걸음이 그걸 지나게 하려면 «그 다섯을 인자로 받는 함수»로
+빼야 하고, 그건 한 라운드짜리입니다.
+🔵 **판정 방향은 안 바뀝니다** — (나)는 여전히 264 를 뒤집고, (다)는 여전히 ① 을 안 닫습니다.
+   바뀌는 것은 ㉮ 의 «가격»이고, 그래서 「오늘이 아닙니다」가 더 분명해집니다.
