@@ -51822,3 +51822,49 @@ f1d63b98 (DESIGN_ORDERS:8475~8495)
        ③ 🔴 소급·리플레이가 «저장된» 규칙을 읽습니다. 이 박스 선언에 옛 값이 있으면
           그건 «소유자 파일»이라 제가 못 고칩니다 — 세어서 «수만» 보고하십시오
 ```
+
+---
+
+> 🔵🔵 **[09-17 17:45 총괄] 판정 601 — 소유자가 ④ 의 «진짜 답»을 냈습니다. 「410 줄을 옮길까」는 «틀린 질문»이었습니다**
+> **받는 이: 구현자 · 응용 — 578 의 프레임을 «철회»합니다**
+
+## 소유자 말씀
+> 「저 admin 스켈레톤으로 폼 만드는 로직 아니야? 이거는 «공용 모듈»로 두고
+>  체인, 원장 «각각으로 스켈레톤 라우팅» 하면 되지 않아?」
+
+## 재서 확인했습니다 — 같은 모양이 «셋»입니다
+```
+table_config_path()  · table_config_raw_view(table) · save_table_config_raw(table, decl, base)
+chain_rules_path()   · chain_rule_raw_view(name)    · save_chain_rule_raw(name, decl, base)
+sources_path()       · source_raw_view(source)      · …
+```
+```
+그리고 스켈레톤 «제공자»가 이미 «둘»이고 서로 대등합니다:
+   chain_bindings.skeleton()            (chain_bindings.py:497)
+   ledger/config_authoring.skeleton()   (config_authoring.py:421)
+그리고 파일도 «둘»: server/chain_skeleton.json · server/ledger/ledger_skeleton.json
+   (시험도 각각 있습니다: test_chain_skeleton.py · test_ledger_skeleton.py)
+그리고 ledger/admin.py:643 이 이미 `"skeleton": chain_bindings.skeleton()` 을 «태워 보냅니다»
+```
+🔴 **즉 그 410 줄은 «체인 코드가 남의 집에 있는 것»이 아니라,
+   «하나의 일반 기제가 세 번 철자된 것»입니다.** 다른 것은 셋뿐입니다 — «어느 경로 · 어느 스켈레톤 · 어느 이름칸».
+
+## 그래서 ④ 의 답이 바뀝니다
+```
+❌ 578 의 질문   「410 줄을 chain/ 으로 옮길까」            <- 틀린 질문이었습니다
+❌ 제 헬퍼 프레임  「공용 헬퍼 넷은 어디 사나」              <- 한 층 아래를 보고 있었습니다
+✅ 소유자 답     «공용 모듈» 하나 — 「스켈레톤을 든 선언 파일」을 읽고·지문 찍고·쓰고·거절을 짓는다
+                체인·원장·표가 각자 {경로 · 스켈레톤 · 이름칸}을 «선언»해 라우팅한다
+=> 그러면 chain/ 으로 «옮길 것이 없습니다». 체인은 자기 스켈레톤과 경로를 «내놓을» 뿐이고,
+   그건 이미 chain_bindings 가 합니다(그리고 그건 ㉤ 로 chain/ 안에 들어갑니다)
+🔵 헬퍼 넷(_read_json · file_fingerprint · _atomic_write · _table_config_refusal)은
+   «그 공용 모듈의 속»입니다. 거처를 물을 게 아니라 «그게 모듈»이었습니다
+```
+📌 그리고 이건 상설 그대로입니다 — 「근원 템플릿 요소 개발 후 데이터 갈아끼우기」.
+   그 상설은 「지금 이미 둘」일 때 만들라고 하는데, 여기는 «이미 셋»입니다.
+```
+⛔ 오늘 시작하지 마십시오. 다음 라운드 «첫 항목»이고 제목은:
+   「선언 파일 작성 문을 «하나»로 — 스켈레톤 라우팅」
+📮 구현자: 착수 전에 «셋의 차이»를 표로 내십시오 (경로 · 스켈레톤 · 이름칸 · 그 밖에 «진짜» 다른 것).
+   그 표의 마지막 칸이 비면 템플릿 하나로 접힙니다. 안 비면 그 칸이 «설계의 빚»입니다
+```
