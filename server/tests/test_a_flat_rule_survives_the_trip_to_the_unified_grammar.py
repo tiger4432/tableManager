@@ -143,6 +143,30 @@ def test_removing_the_carrier_makes_the_property_fail():
             "carrier and would stay green after the carrier is broken" % cell)
 
 
+def test_when_one_name_sits_in_both_bags_the_grammar_wins():
+    """🔴 [판정 551] THE CASE THIS GATE WAS GREEN ABOUT FOR THE WRONG REASON.
+
+    The control above asks 「does `extra` carry anything」. It cannot ask 「what happens when
+    `extra` and the axis hold the SAME name」, and the answer used to be 「extra wins」 while
+    the code's own comment claimed the opposite. The round trip stayed the identity through
+    all of it, because the conflict is symmetric - so this file was green about a rule that
+    would have been CALLED the wrong way (`is_batch`, 판정 506).
+
+    ⚠️ THE FIXTURE CANNOT COME FROM A CONVERTER. `from_chain_rule` files each cell in exactly
+    one bag, so only a hand-edited declaration produces this - which is precisely why no
+    measurement of this box's ten rules would ever have found it.
+
+    ⚠️ AND IT PINS THE ORDER, NOT THE COMMENT. Put `axis` back above `extra` in
+    `as_chain_rule` and this assertion goes red; that is the whole point of writing it.
+    """
+    conflicted = {"name": "hand_edited", "axis": {"is_batch": False},
+                  "extra": {"is_batch": True}}
+
+    assert rule_shape.as_chain_rule(conflicted)["is_batch"] is False, (
+        "the unknown-cell bag overwrote a cell the grammar knows - a rule declared 「one row "
+        "at a time」 would be called in batches")
+
+
 # ---------------------------------------------------------------------------
 # ⚠️ ⓒ — and the two lists the classification rests on, so a rename is not silent
 # ---------------------------------------------------------------------------
