@@ -28,7 +28,7 @@ if SERVER_DIR not in sys.path:
 #: The four that were the ring, plus anything that would put us back inside it.
 #: 🪦 [S-211 packaging] inside `chain/` these are bare module names; the virtual-join pair
 #: is reached through its package. The property asserted is unchanged.
-FORBIDDEN = ("builtins", "ingestion_worker", "replay", "chain_bindings")
+FORBIDDEN = ("synthesis", "ingestion_worker", "replay", "chain_bindings")
 
 
 def _imports(module_name):

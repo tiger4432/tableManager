@@ -88,9 +88,9 @@ def fixture_client():
 
 @pytest.fixture(name="no_synthesis", autouse=True)
 def fixture_no_synthesis(monkeypatch):
-    from chain import builtins as chain_builtins
+    from chain import synthesis
 
-    monkeypatch.setattr(chain_builtins, "synthesize_chain_rules", lambda **kwargs: [])
+    monkeypatch.setattr(synthesis, "synthesize_chain_rules", lambda **kwargs: [])
 
 
 def _save(client, path, name, declaration):

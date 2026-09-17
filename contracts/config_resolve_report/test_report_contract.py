@@ -37,8 +37,7 @@ if str(_SERVER) not in sys.path:
     sys.path.insert(0, str(_SERVER))
 
 import config_resolve_report as crr          # noqa: E402
-import enrichment.candidates                 # noqa: E402
-import enrichment.config                     # noqa: E402
+from chain import enrichment                 # noqa: E402
 from database import crud                    # noqa: E402
 
 VECTORS = json.loads((_HERE / "vectors.json").read_text(encoding="utf-8"))

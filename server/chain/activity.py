@@ -235,7 +235,7 @@ def running(rule, mapper, target_table, rows_in):
 
     🔴 THE REGISTRATION LIVED INSIDE THE CUSTOM-MAPPER DOOR, AND THERE ARE TWO DOORS.
     `execute_custom_mapper` started an entry, recorded an outcome and finished the entry;
-    `builtins.run_builtin` did none of the three. So `join_into`, `builtin:join` and
+    `synthesis.run_builtin` did none of the three. So `join_into`, `builtin:join` and
     `auto_confirm` ran with no entry in the queue view and no outcome ever recorded - and
     because the loader SEEDS every declared rule as `never_evaluated`, a builtin that ran a
     thousand times still said 「아직 평가 안 됨」 forever. 소유자 2026-09-15: 「체인 대기열에서

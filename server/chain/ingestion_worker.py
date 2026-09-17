@@ -821,20 +821,20 @@ def load_chain_rules():
     #    process switch for 「the derived rules」 lived here. Two checkers were the evidence of
     #    two namespaces; the switch's subject - rules the operator could not see - is gone,
     #    because the set line below names every rule whichever file wrote it (판정 408).
-    #    Synthesis stays ONE seat (판정 304): `builtins.synthesize_chain_rules`, nothing else.
+    #    Synthesis stays ONE seat (판정 304): `synthesis.synthesize_chain_rules`, nothing else.
     #    SYSTEM_RELOAD re-runs this function, so the other two files reload without a restart.
     written_in = [os.path.basename(RULES_PATH)] * len(rules)
     _synthesized_names = set()
     try:
         from database import crud
-        from chain import builtins
+        from chain import synthesis
 
         synthesized = [r for r in
-                       builtins.synthesize_chain_rules(known_tables=crud.TABLE_CONFIG)
+                       synthesis.synthesize_chain_rules(known_tables=crud.TABLE_CONFIG)
                        if r.get("enabled", True)]
         if synthesized:
             rules = rules + synthesized
-            written_in += [builtins.written_in(r) for r in synthesized]
+            written_in += [synthesis.written_in(r) for r in synthesized]
             _synthesized_names = {r.get("name") for r in synthesized}
     except Exception as e:
         # ⚰️ THIS USED TO BE WHERE A WHOLE HALF DIED QUIETLY (판정 452 ②). The two
@@ -2094,16 +2094,22 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
 #   nothing to cache and nothing to invalidate on reload.
 
 
-def _builtins_table():
-    """The `builtin:` kind table, imported at CALL time (S-278 후반).
+def _synthesis_seat():
+    """The seat that SYNTHESIZES chain rules from the declaration files, imported at
+    CALL time (S-278 후반).
 
-    ⚠️ NOT AT MODULE LEVEL. `chain.builtins` imports `enrichment.config` and
+    ⚰️ [소유자 정본 「v1 체인 싹 지워」] THIS WAS `_builtins_table` AND ITS DOCSTRING SAID IT
+    returned 「the `builtin:` kind table」. That table was deleted in 판정 562 and the name
+    outlived it - a module called `synthesis` holding synthesis told every reader the retired
+    mechanism was still there.
+
+    ⚠️ NOT AT MODULE LEVEL. `chain.synthesis` imports `enrichment.config` and
     `chain.legacy_join_declaration`, which import back into this module's neighbourhood;
     every other seat here reaches it the same way, inside the function that needs it.
     """
-    from chain import builtins
+    from chain import synthesis
 
-    return builtins
+    return synthesis
 
 
 
@@ -2161,11 +2167,11 @@ def warmup_worker(rules, db_session_factory=None):
     #    will not start: the join still refuses a fanned-out left row by itself.
     if db_session_factory is not None:
         try:
-            from chain import builtins as _chain_builtins
+            from chain import synthesis
 
             _index_db = db_session_factory()
             try:
-                _report = _chain_builtins.ensure_declared_unique_keys(_index_db, rules)
+                _report = synthesis.ensure_declared_unique_keys(_index_db, rules)
             finally:
                 _index_db.close()
             for _name, _why in _report.get("skipped") or ():

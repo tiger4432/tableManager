@@ -4,7 +4,7 @@
 🔴 [S-279, 판정 420 ㉡] 소유자 2026-09-16: 「맵퍼 한 문인데 왜 이름이 달라」 · 「문 가르기
 금지」. One chain grammar declares enrich, join and decide; the DISPATCHERS were two - a file
 mapper went through `mapper_call.execute_custom_mapper(module, function, ...)` and a
-`builtin:` kind through `builtins.run_builtin(kind, ...)` - and every caller that could run a
+`builtin:` kind through `synthesis.run_builtin(kind, ...)` - and every caller that could run a
 rule had to ask which, in its own words. The census (판정 419 ①) counted 20 sites asking that
 one question in SEVEN spellings, and the cost was not theoretical: taking the join off the
 paced follow-up lap took it off the only lap that dispatched it, because the live group path
@@ -38,7 +38,7 @@ import time
 logger = logging.getLogger(__name__)
 
 # 🔴 [판정 562] IMPORTED FOR ITS EFFECT, AND THIS IS THE SEAT THE OLD ARRANGEMENT USED.
-#   `chain.builtins` was imported here too, and importing it FILLED the kind table - which
+#   `chain.synthesis` was imported here too, and importing it FILLED the kind table - which
 #   is why a rule naming `builtin:join_into` resolved in any process that had imported this
 #   module. Measured after removing it: the loader refused every join by name because the
 #   built mappers were only installed by `discover()`, which a process loading rules need
@@ -203,7 +203,7 @@ def self_writing_name(rule):
     ⚠️ NOT `builtin_kind` AT THE CALLER. That is the same question and the seat owns it;
     a caller spelling it is 「종류를 묻는 자리」 outside the seat again (판정 498 ④).
     """
-    from chain import builtins
+    from chain import synthesis
 
     from chain import dynamic_mappers
 
@@ -252,7 +252,7 @@ def retraction_refusal(rule):
     ones do is not countable from here (`server/mappers/` is the owner's and gitignored).
     Naming them as unable would be a claim about rows I cannot see.
     """
-    from chain import builtins
+    from chain import synthesis
 
     from chain import dynamic_mappers
 
@@ -277,7 +277,7 @@ def _uniform():
     and get a no-op - that is what lets the branch disappear from the callers.
 
     ⚠️ `written` IS None, NOT 0, WHEN NOBODY COUNTED. 「안 셌다」 and 「0 이었다」 are different
-    facts, and `chain.builtins` already keeps them apart for the same reason.
+    facts, and `chain.synthesis` already keeps them apart for the same reason.
     """
     return {"updates": [], "map_metadata_updates": [], "batches": [],
             "written": None, "refusal": None}
@@ -316,7 +316,7 @@ def resolve(rule):
     builtin」, which is a fact about an address rather than about behaviour, and a caller
     wanting 「can I see this without applying it」 had to ask the kind and decide for itself -
     which is how a dry run and a live lap grew separate branches from one inference. It comes
-    off the registration now (`builtins.SELF_WRITING_KINDS`), so a builtin that PROPOSED its
+    off the registration now (`synthesis.SELF_WRITING_KINDS`), so a builtin that PROPOSED its
     rows would be handled by every seat without one of them being edited.
 
     🔴 AN UNFINDABLE NAME IS REFUSED BY NAME. The builtin arm always did; the mapper arm let

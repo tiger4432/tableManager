@@ -155,10 +155,10 @@ def test_a_declaration_that_cannot_be_normalized_is_refused_by_name():
 
 @pytest.fixture(name="load")
 def fixture_load(tmp_path, monkeypatch):
-    from chain import builtins as chain_builtins
+    from chain import synthesis
     from database import crud
 
-    monkeypatch.setattr(chain_builtins, "synthesize_chain_rules", lambda **kwargs: [])
+    monkeypatch.setattr(synthesis, "synthesize_chain_rules", lambda **kwargs: [])
     # ⚠️ THE TABLES ARE REGISTERED, or the normalizer refuses the declaration for a reason
     # that has nothing to do with what these cases are about - and the two OFF cases would
     # then pass for the wrong reason, which is worse than failing.

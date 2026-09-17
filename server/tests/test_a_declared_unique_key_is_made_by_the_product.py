@@ -23,7 +23,7 @@ SERVER_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
-from chain import builtins, join_into, rule_shape                    # noqa: E402
+from chain import join_into, rule_shape, synthesis# noqa: E402
 from chain import unique_key                                  # noqa: E402
 
 DECLARATION = {
@@ -121,7 +121,7 @@ def test_a_folded_join_key_requires_a_DIFFERENT_index_and_says_so(monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_a_declared_unique_key_is_ensured_on_the_right_table(calls):
-    report = builtins.ensure_declared_unique_keys(None, [_rule()])
+    report = synthesis.ensure_declared_unique_keys(None, [_rule()])
 
     # ⚠️ ONE FOLD PER COLUMN, `None` WHERE NEITHER SIDE DECLARES A NOTATION. The list is
     # positional - a short list would silently fold the wrong column - which is why
@@ -133,7 +133,7 @@ def test_a_declared_unique_key_is_ensured_on_the_right_table(calls):
 def test_a_disabled_declaration_touches_the_database_zero_times(calls):
     """⛔ 판정 399 ③′. A switch that still probes is not a switch - and the skip says WHICH
     rule and why, because a skip nobody can see is the silence every refusal exists to break."""
-    report = builtins.ensure_declared_unique_keys(None, [_rule(enabled=False)])
+    report = synthesis.ensure_declared_unique_keys(None, [_rule(enabled=False)])
 
     assert calls == []
     assert report["skipped"] == [("s240_join", "enabled=false")]
@@ -146,7 +146,7 @@ def test_a_declaration_that_says_nothing_about_uniqueness_gets_nothing(calls):
     rule = _rule()
     rule.pop("key")
 
-    report = builtins.ensure_declared_unique_keys(None, [rule])
+    report = synthesis.ensure_declared_unique_keys(None, [rule])
 
     assert calls == [] and report["ensured"] == [] and report["skipped"] == []
 
@@ -163,7 +163,7 @@ def test_a_rule_that_is_not_this_kind_is_not_this_seats_business(calls):
     cannot hold the defect scores 「no problem」 rather than 「no defect」."""
     from chain import legacy_join_declaration as vjc
 
-    builtins.ensure_declared_unique_keys(None, [
+    synthesis.ensure_declared_unique_keys(None, [
         _rule(mapper=vjc.JOIN_MAPPER, name="old_one"),
         _rule(mapper=None, mapper_module="m", mapper_function="f", name="file_one")])
 
@@ -177,7 +177,7 @@ def test_the_columns_cell_is_read_and_agreeing_with_the_join_changes_nothing(cal
     rule = _rule()
     rule["key"] = {"unique": True, "columns": ["job"]}
 
-    builtins.ensure_declared_unique_keys(None, [rule])
+    synthesis.ensure_declared_unique_keys(None, [rule])
 
     assert calls == [("s240_join", "s240_right", ["job"], [None])]
 
@@ -189,7 +189,7 @@ def test_columns_that_are_not_the_joins_right_key_are_refused_by_name(calls):
     rule = _rule()
     rule["key"] = {"unique": True, "columns": ["lot"]}
 
-    report = builtins.ensure_declared_unique_keys(None, [rule])
+    report = synthesis.ensure_declared_unique_keys(None, [rule])
 
     assert calls == []
     assert len(report["skipped"]) == 1
@@ -201,7 +201,7 @@ def test_a_join_with_no_right_key_is_skipped_by_name(calls):
     rule = _rule()
     rule["params"] = dict(rule["params"], on=[])
 
-    report = builtins.ensure_declared_unique_keys(None, [rule])
+    report = synthesis.ensure_declared_unique_keys(None, [rule])
 
     assert calls == []
     assert report["skipped"] == [("s240_join", "no right key to cover")]
@@ -252,7 +252,7 @@ def test_one_declaration_stands_two_rules_and_asks_for_one_index(calls):
     stood, refusal, _notes = rule_shape.expand_declaration(DECLARATION, {})
 
     assert refusal is None and len(stood) == 2
-    report = builtins.ensure_declared_unique_keys(None, stood)
+    report = synthesis.ensure_declared_unique_keys(None, stood)
     assert len(calls) == 1 and len(report["ensured"]) == 1
 
 
@@ -297,11 +297,11 @@ def test_a_required_set_that_cannot_see_both_producers_retracts_nothing(monkeypa
     `retract_unrequired_once`'s own contract already refuses to run off a partial list when
     a caller passes `path`; a producer this seat cannot read is the same partiality."""
     from chain import legacy_join_declaration as vjc
-    from chain import builtins as chain_builtins
+    from chain import synthesis
 
     called = []
     monkeypatch.setattr(vjc, "load_virtual_join_rules", lambda **_k: [])
-    monkeypatch.setattr(chain_builtins, "declared_unique_index_names",
+    monkeypatch.setattr(synthesis, "declared_unique_index_names",
                         lambda **_k: (_ for _ in ()).throw(RuntimeError("no catalogue")))
     monkeypatch.setattr(unique_key, "retract_unrequired_once",
                         lambda db, required: called.append(required))
@@ -322,7 +322,7 @@ def test_a_declaration_that_is_switched_off_requires_no_index(monkeypatch):
                         lambda path=None: {"rules": [off], "document": {}, "path": "x",
                                            "exists": True, "error": None})
 
-    assert builtins.declared_unique_index_names(known_tables={}) == set()
+    assert synthesis.declared_unique_index_names(known_tables={}) == set()
 
 
 class _FakeSession:

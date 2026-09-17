@@ -316,7 +316,7 @@ def install() -> tuple:
     return tuple(sorted(TEMPLATES))
 
 # 🔴 [판정 562] INSTALLED AT IMPORT TOO, AND THAT IS NOT BELT-AND-BRACES. The kind table
-#   this replaces was a module constant filled by `builtins._install()` at IMPORT, so it
+#   this replaces was a module constant filled by `synthesis._install()` at IMPORT, so it
 #   existed in any process that had imported the module - including one that never calls
 #   `discover()`. Measured: with the install only in `discover`, a worker built without it
 #   refused every join as 「'builtin:join_into' is not registered」. That is a robustness

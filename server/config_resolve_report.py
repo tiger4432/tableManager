@@ -56,7 +56,7 @@ import os
 #    ⚠️ 이 모듈을 «모듈 수준»에서 읽는 제품 코드는 없다(실측: `main.py` 셋 다 함수 안). 그래서
 #    이 import 들의 비용은 보고서를 «처음 부르는» 요청에 붙고, 기동 경로에는 붙지 않는다.
 import chain_bindings
-from chain import builtins
+from chain import synthesis
 from chain import ingestion_worker as worker
 import mapper_sdk
 from chain import legacy_join_declaration as vjc
@@ -297,7 +297,7 @@ def _resolve_chain() -> dict:
     # half and a report that reads as healthy.
     synthesis_failures = []
     try:
-        synthesized = builtins.synthesize_chain_rules(
+        synthesized = synthesis.synthesize_chain_rules(
             failures=synthesis_failures) or ()
     except Exception as exc:
         synthesized = ()
@@ -306,7 +306,7 @@ def _resolve_chain() -> dict:
             "제품이 파생 규칙을 합성하지 못했습니다 (%s: %s)." % (exc.__class__.__name__, exc),
             reason=REASON_MAPPING_UNAVAILABLE))
 
-    # ⛔ THE SENTENCE IS NOT WRITTEN HERE. `builtins.synthesis_half_says` is the one author
+    # ⛔ THE SENTENCE IS NOT WRITTEN HERE. `synthesis.synthesis_half_says` is the one author
     # of 「what stops when this half stops」; the log takes its English out of the same table.
     # A screen composing its own Korean would be a second author of one fact.
     for failure in synthesis_failures:
@@ -314,7 +314,7 @@ def _resolve_chain() -> dict:
             SCOPE_FILE, "synthesized:%s" % failure.get("half"),
             "제품의 합성 중 «%s» 반쪽이 실패했습니다 — %s. (%s)"
             % (failure.get("half"),
-               builtins.synthesis_half_says(failure.get("half")),
+               synthesis.synthesis_half_says(failure.get("half")),
                failure.get("error")),
             reason=REASON_MAPPING_UNAVAILABLE))
 

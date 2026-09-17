@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.join(HERE, "..", "server"))
 os.chdir(os.path.join(HERE, "..", "server"))
 
 from chain import dynamic_mappers, rule_run, join_into, legacy_join_declaration  # noqa: E402
-import enrichment.config  # noqa: E402
+from chain import enrichment  # noqa: E402
 import mapper_sdk  # noqa: E402
 
 mapper_sdk.discover()

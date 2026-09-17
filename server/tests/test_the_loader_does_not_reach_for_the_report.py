@@ -117,7 +117,7 @@ def _deferred_pairs(module_name):
 
 
 #: The ring as the IMPORT GRAPH names it today - package-qualified where they moved.
-RING = ("chain_bindings", "builtins", "ingestion_worker", "replay",
+RING = ("chain_bindings", "synthesis", "ingestion_worker", "replay",
         "config_resolve_report", "dt_map_derivation",
         "legacy_join_declaration", "legacy_materialized_join")
 

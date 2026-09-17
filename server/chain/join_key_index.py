@@ -3,7 +3,7 @@
 
 🔴 [S-283 · 판정 440 ③㉠ · 442 ③] WHY IT MOVED. This cluster lived in
 `virtual_join/config.py`, and the virtual join has since been removed — but the thing that
-needs it did not go anywhere: `chain.builtins.ensure_declared_unique_keys` builds the
+needs it did not go anywhere: `chain.synthesis.ensure_declared_unique_keys` builds the
 UNIFIED join's `key.unique` index through these names. Deleting the package by name would
 have taken the uniqueness of the join the owner migrated TO (S-248: a leftover `uq_vjoin_*`
 refuses every insert on that table with 23505, and the group fails permanently on retry).

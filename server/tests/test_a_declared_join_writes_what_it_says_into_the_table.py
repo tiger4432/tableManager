@@ -26,7 +26,7 @@ SERVER_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
-from chain import builtins, join_into, rule_shape                  # noqa: E402
+from chain import join_into, rule_shape, synthesis# noqa: E402
 from chain import ingestion_worker as worker                       # noqa: E402
 from database.database import Base                                 # noqa: E402
 from database import crud, models, schemas                         # noqa: E402
@@ -105,9 +105,9 @@ def _rule(**over):
 def fixture_load(tmp_path, monkeypatch):
     """⛔ SYNTHESIZED RULES ARE HELD OUT so the subject is the LOADER and not this box's live
     enrichment and virtual-join declarations."""
-    from chain import builtins as chain_builtins
+    from chain import synthesis
 
-    monkeypatch.setattr(chain_builtins, "synthesize_chain_rules", lambda **kwargs: [])
+    monkeypatch.setattr(synthesis, "synthesize_chain_rules", lambda **kwargs: [])
 
     def run(declarations):
         path = tmp_path / "chain_rules.json"

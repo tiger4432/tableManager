@@ -7,8 +7,8 @@
 🔴 무엇을 고쳤나: `virtual_join_executor.retract_rows` 가 레이어를 철회하려고
    `chain_replay.withdraw_source` 를 «함수 안에서» import 했고, 그 한 줄이 네 모듈짜리
    고리의 마지막 이음매였습니다 —
-       chain_builtins -> virtual_join_executor -> chain_replay -> chain_ingestion_worker
-       -> chain_builtins
+       chain.synthesis -> virtual_join_executor -> chain_replay -> chain_ingestion_worker
+       -> chain.synthesis
    «단순 4-고리»라 어떤 엣지 하나를 끊어도 통째로 사라지고, 이 엣지가 «호출 하나»로 제일
    쌀습니다.
 

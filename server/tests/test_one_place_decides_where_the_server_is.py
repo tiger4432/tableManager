@@ -37,7 +37,7 @@ import paths                                                      # noqa: E402
 #: own `__main__` bootstrap. Scoring them here would be ~150 findings about files this round
 #: never touches, which is a gate that gets muted rather than obeyed.
 MOVING = frozenset("""
-chain_activity chain_bindings chain_builtins chain_graph chain_ingestion_worker
+chain_activity chain_bindings chain_synthesis chain_graph chain_ingestion_worker
 chain_key_gate chain_replay cell_layer legacy_join_declaration
 legacy_materialized_join join_refusal join_key_index ledger_admin ledger_explorer ledger_trace ledger_trace_router
 map_alignment map_meta_registrar map_overlay map_preset_routing alignment_batch_counts

@@ -5,7 +5,7 @@
 
 🔴 THE REGISTRATION LIVED INSIDE ONE OF TWO DOORS. `activity.registry.start` /
 `record_outcome` / `finish` were spelled inside `mapper_call.execute_custom_mapper` - the
-door a FILE mapper came through - and `builtins.run_builtin` did none of the three. So
+door a FILE mapper came through - and `synthesis.run_builtin` did none of the three. So
 `builtin:join_into`, `builtin:join` and `builtin:auto_confirm` ran with no entry in
 `GET /admin/chain/queue`'s running list at all.
 
@@ -302,7 +302,7 @@ def test_auto_confirm_reports_its_row_count_under_the_name_the_others_use(monkey
 
     monkeypatch.setattr(enrichment.candidates, "AutoConfirmCollector", _Collector)
 
-    # ⚰️ [판정 563 · 소유자 정본] `builtins._run_auto_confirm(..., row_ids=, done=)`.
+    # ⚰️ [판정 563 · 소유자 정본] `synthesis._run_auto_confirm(..., row_ids=, done=)`.
     #   The body moved to the template built from the declaration, the note is gone, and the
     #   target comes off the rule - so the call is the one convention every mapper takes.
     result = dynamic_mappers._auto_confirm(
@@ -317,7 +317,7 @@ def test_the_rows_in_count_is_what_the_seat_was_handed_either_way(kind, monkeypa
     """⚠️ THE QUEUE VIEW PUTS THESE NUMBERS SIDE BY SIDE, so they have to be counted the same
     way or the column means two things.
 
-    ⚰️ THIS USED TO SCORE `builtins._rows_handed`, which read `row_ids` OR `key_values` off
+    ⚰️ THIS USED TO SCORE `synthesis._rows_handed`, which read `row_ids` OR `key_values` off
     the door's kwargs. 🔴 MEASURED WHILE RETARGETING IT: nothing in the product passes
     `key_values` to a rule run - at HEAD either, so this is not something 498 broke. The
     `key_values` arm of `_run_join` (and the cell `_rows_handed` read for it) answered a call

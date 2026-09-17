@@ -191,13 +191,13 @@ def _unknown_name(name, detail=None):
 
     ⛔ AND IT DOES NOT BRANCH ON `"builtin:"`. Spelling the prefix here would put a domain
     word in code and give the rosters a second author; `rule_run` already reads both tables
-    and `builtins` owns the kind list.
+    and `chain.synthesis` owns what the product builds.
 
     ⚠️ `detail` RIDES AT THE END, never as the message. What went wrong technically can
     matter to whoever is debugging a real module, but it is not what the sentence is for.
     """
     import mapper_sdk
-    from chain import builtins as chain_builtins
+    from chain import synthesis
 
     # 🔴 [판정 562] ONE REGISTRY. The refusal listed the kind table, which no longer
     #   exists - and the names it used to hold are in this one, under the same spelling.
