@@ -681,7 +681,19 @@ def chain_rule_raw_view(name: str = None) -> dict:
         # something the form re-derives. The two shapes ride together in `skeleton`, and a
         # screen guessing which to draw would be guessing at a fact the file states: one
         # cell, `derive`, is what tells them apart everywhere else in this product.
-        out["grammar"] = grammar_of(named.get(name))
+        # 🔴 [판정 542] AND WHEN IT CANNOT BE READ, THE CELL IS NOT THERE. This line put
+        #   `None` in it, and `chain_rule_panel.js:184` reads a falsy grammar as 「flat」 -
+        #   so 「모른다」 arrived at the screen as 「평면이다」 and drew the old form over a
+        #   rule nobody could classify. 🚫 The docstring of `grammar_of` says exactly this
+        #   (「LEAVES IT OUT rather than defaulting to flat」) and this line, four below it,
+        #   did the opposite: 판정 509's shape for the third time today.
+        # ⚠️ POPPED, NOT LEFT AT THE NEW-RULE DEFAULT ABOVE. Saying 「unified」 about a name
+        #   this file does not have would be a second wrong answer wearing a right shape.
+        grammar = grammar_of(named.get(name))
+        if grammar:
+            out["grammar"] = grammar
+        else:
+            out.pop("grammar", None)
     return out
 
 

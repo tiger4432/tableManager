@@ -110,6 +110,46 @@ def test_no_name_answers_with_the_list_and_no_declaration(rules_file, client):
     assert "declaration" not in body and "name" not in body
 
 
+def test_a_name_the_file_does_not_have_reports_no_grammar_at_all(rules_file, client):
+    """🔴 [판정 542] 「모른다」 MUST NOT ARRIVE AS 「평면이다」.
+
+    `chain_rule_panel.js:184` picks the form with `payload.grammar === 'unified' ? … : root`,
+    so a falsy grammar draws the OLD form. The view used to seat `None` in that cell for a
+    name the file does not have, and null is falsy - the screen would have drawn a flat form
+    over a rule nobody could classify, silently.
+
+    ⚠️ THE CELL IS ABSENT, not null, and not the new-rule default either: saying 「unified」
+    about a name this file does not have is a second wrong answer wearing a right shape.
+    The client's own `grammarOf` says 「서버가 안 말했으면 «안 그립니다»」 - absence is
+    the one reading it handles correctly.
+
+    ⚠️ WRITTEN AS A FIXTURE BECAUSE THIS BOX CANNOT SHOW IT. Every rule here classifies,
+    so a suite that only read this installation would be as silent as the measurement that
+    missed it (판정 542's own note).
+    """
+    answer = client.get(ROUTE, params={CLIENT_QUERY_KEY: "no_such_rule"})
+
+    assert answer.status_code == 200, answer.text
+    body = answer.json()
+    assert "grammar" not in body, (
+        "an unclassifiable rule reported grammar=%r, which the form reads as 「flat」"
+        % body.get("grammar"))
+    # ⚠️ AND THE MAP IS THE SAME ANSWER. A name missing from it is how the list says the
+    #    same 「모른다」 - the two cells must not disagree about one rule.
+    assert "no_such_rule" not in body.get("rule_grammars", {})
+
+
+def test_the_list_and_the_opened_rule_agree_about_every_grammar(rules_file, client):
+    """⚠️ ONE QUESTION, ONE ANSWER, ACROSS TWO CELLS OF ONE RESPONSE. The map exists so the
+    screen stops asking per rule; if it could disagree with the opened rule, it would have
+    bought the round trip back with a contradiction."""
+    listing = client.get(ROUTE).json()
+
+    assert set(listing["rule_grammars"]) == set(listing["rules"])
+    for name, grammar in listing["rule_grammars"].items():
+        assert client.get(ROUTE, params={CLIENT_QUERY_KEY: name}).json()["grammar"] == grammar
+
+
 def test_the_old_spelling_is_gone_rather_than_joined_by_a_second_one(rules_file, client):
     """⛔ ONE WORD, ONE SPELLING. Accepting `?rule=` as well would leave two ways to ask the
     same question, and two ways is where the two drift apart - the route would keep
