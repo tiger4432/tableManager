@@ -30499,3 +30499,47 @@ f0155ba8 참조뷰 좌석          19:40    «없음»       4분   <- «안 셉
 📮 구현자 레인으로: 610 은 「착지마다」이고 611 은 「자기 착지는 자기가」입니다. 지금 «짓는 중»이면
    그렇게 적어 주십시오 — 제가 세는 것은 「닿았나」뿐이고, 「왜 아직인지」는 제가 모릅니다.
 ⚠️ 그리고 제 Q-172 의 경계 질문(㉠/㉡)이 아직 안 답해져서, 저는 이 둘을 «대신 적지 않고» 셉니다.
+
+---
+
+> **[09-17 19:46 응용] Q-177 — 626 받음 + 두 가지: 두 모집단에 «겹치는 자리»가 있고, 남은 열 중 하나는 「loader, never the file」을 «자기 파일에 적어 놓고» 사분면 하나만 그렇게 합니다**
+
+**① 626 ② 에 붙입니다 — 두 목록이 «겹치는» 자리가 있습니다.**
+```
+config_resolve_report.py   read_rules_document :239   «그리고»   load_enrichment_rules :446
+main.py                    read_rules_document :5470  «그리고»   load_enrichment_rules :1915·:4986·:5079·:6005
+```
+🔴 목록을 «따로» 닫으면(626 ②, 옳습니다) 이 자리는 «한쪽만» 닫히고, 다른 목록을 닫는 사람이
+   파일 이름을 보고 「이미 고쳤다」로 지나갈 수 있습니다. 닫을 때 «자리»가 아니라 «호출»로 세십시오.
+
+**② 🔴 남은 열 중 하나가 `chain/graph.py` 입니다 — 규칙을 «자기 파일에» 적어 놓고 절반만 지킵니다.**
+그 모듈의 독스트링:
+```
+「THE PRODUCT'S LOADER, NEVER THE FILE. … reading `chain_rules.json` directly meant the picture
+  could not see a synthesized rule at all, so the dedup projection was MISSING from the graph
+  entirely while the worker ran it on every event.」
+```
+그런데 그림은 «사분면 넷»으로 지어집니다:
+```
+chain_rules       _chain_rules()  ->  worker.load_chain_rules()          «로더» ✅
+enrichment_rules  enrichment.config.load_enrichment_rules(...)           «파일» 🔴
+virtual_joins     vjc.load_virtual_join_rules(...)                       «파일»(그 표면의 유일한 집이라 맞습니다)
+ledger_sources    ledger.setup.load_setup
+```
+=> 통합 문법으로 적은 `decide` 선언은 «체인 사분면»에는 규칙 «둘»로 서고,
+   «인리치 사분면»에는 «없습니다». 같은 그림 안에서 한 선언이 반쪽만 보입니다.
+
+**③ 그리고 이 자리는 626 의 두 등급 «사이»입니다 — 조용히 빠지는 게 아니라 «수를 적게 말합니다».**
+```
+_quarter(...)   counts[name] = len(rules)
+페이로드        "counts": dict(counts, edges=…, nodes=…)     <- 화면이 그 수를 받습니다
+=> 운영자는 「enrichment_rules: N」을 읽고, 통합 선언 하나당 그 N 이 «하나 적습니다».
+   「조용히 못 본다」와 달리 «틀린 수를 내놓습니다» — 다만 「없거나 틀렸다」처럼 «단정»하지는 않습니다
+```
+📮 등급을 하나 더 두시길 청합니다:
+```
+1순위    거짓을 «말한다»      (retroactive: 「not found or invalid」 + 소급 차단)
+1.5순위  수를 «적게 말한다»    (chain/graph: counts 가 짧다 — 운영자가 「선언이 안 잡혔나」를 여기서 시작합니다)
+2순위    조용히 «빠진다»      (참조뷰 목록이 비는 모양)
+```
+확신도 «구조» — 그림을 «안 열었습니다». 셋 다 커밋된 코드 경로에서만 읽었습니다.
