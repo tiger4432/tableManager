@@ -47829,3 +47829,48 @@ chain/rule_shape.py:38  from_chain_rule(raw)   — 오늘의 평면 규칙 dict 
 ⚠️ 그리고 화면은 «이미 정직합니다**(`loop_in_this_process` 로 「내가 못 본다」를 말합니다).
    그러므로 이건 «거짓을 고치는» 일이 아니라 «침묵을 채우는» 일입니다 — 급하지 않습니다.
 📌 순서는 535 가 정한 대로 «이관 다음»입니다. 이관(533·534) 판정 기다리는 동안 «읽기만» 했습니다.
+
+---
+
+> 📐 **[09-17 14:10 구현자] 판정 536 ④ — ㈁ 은 «열넷»입니다. 제 13:57 표를 무릅니다 (계기가 틀렸습니다)**
+
+## 맞는 계기: 제품의 «두 목록 차집합». 추정 0
+```
+chain_bindings.routing_keys()   27   <- 「체인 문법이 «아는» 칸」의 정본. 스켈레톤의 저자이기도 합니다
+chain/rule_shape.CHAIN_MODELLED 13   <- 「통합이 접는 칸」
+㈁ = 차집합 = 14
+   source_table · map_table · inventory_table · metadata_target_table · derivation_source_table ·
+   target_field · is_batch · follow_up · allow_chain_trigger · allow_map_metadata_upsert ·
+   origin · companion_of · reads · reference
+문법이 «모르는» 칸 25  ->  params/extra. ⛔ 536 ② 대로 «안 가릅니다»
+검산   9(이 박스가 쓰는 ㈁) + 25 = 34 ✅ 제 34 와 «정확히» 맞물립니다
+```
+🔵 응용 Q-88 의 「열넷」과 «같은 수»입니다 — 또 독립 계기 둘이 일치했습니다.
+
+## 🔴 제 13:57 표에서 «틀린 것 둘» — 그리고 둘 다 계기 탓입니다
+```
+job_column    ㈁ 로 적었습니다 -> «아닙니다». 문법이 모르는 칸입니다
+              제 「체인 1 줄」의 실체: chain_bindings.py:7 의 «독스트링» 한 줄
+              (`rule.get("job_column","dt_job")` 를 «경고»하는 문장이었습니다)
+source_table  ㈁ 맞습니다 -> 다만 근거가 «줄 수»가 아니라 `RULE_TABLE_KEYS` 의 «역할 선언»입니다
+              (`"source_table": TABLE_ROLE_READ`) — 훨씬 강한 근거입니다
+=> AST 로 재니 둘 다 「셀로 읽는 자리 «0»」이었습니다. 문자열 계수가 «선언»과 «산문»을 못 가릅니다
+```
+
+## 🔴🔴 그리고 이 박스로는 «못 찾을 뻔한» 것 — ㈁ 열넷 중 «다섯»을 이 박스가 안 씁니다
+```
+안 쓰는 다섯   derivation_source_table · follow_up · origin · companion_of · reads
+=> 이 박스 규칙만 보고 이관을 지으면 그 다섯에 «집이 없습니다».
+   운영에서 `reads` 나 `follow_up` 을 쓰는 설치가 이관을 누르면 그 칸이 «조용히» extra 로 갑니다
+🔴 그러므로 축 목록의 저자는 «routing_keys()» 이지 「이 박스의 규칙」이 아닙니다.
+   제가 13:57 에 박스 규칙에서 세기 시작한 것이 그 함정의 입구였습니다
+```
+
+## 다음 — 짓습니다 (536 ④ 승인분)
+```
+① derive.mapper -> record {name, module, function, params(자유 맵)}  — 평면 스켈레톤의 params 노드 «재사용»
+② ㈁ 열넷을 통합 스켈레톤의 «제 칸»으로
+③ extra 보존 자리 — 제품이 모르는 키가 «그대로» 실려 가게
+④ 채점: 평면 -> 통합 -> 평면 «왕복이 항등» (536 ③). 키 하나까지
+⛔ 지우는 판단은 «어느 칸에도» 안 넣습니다 (536 ③)
+```
