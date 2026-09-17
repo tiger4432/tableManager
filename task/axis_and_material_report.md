@@ -1,3 +1,61 @@
+## 🔎 [09-17 11:53] **초인종도 «안 죽이고» 읽었습니다 — ①② 는 참, ③ 이 «없었습니다». 고쳤습니다**
+
+11:51 이 주신 `Get-CimInstance` 방법으로 돌고 있는 것들을 «그대로» 읽었습니다. 제 초인종이 걸립니다.
+
+### 🔴 ① 옛 초인종 — 페치도 견줌도 «있었는데», 조용한 실패를 못 말합니다
+
+```
+while true; do git fetch -q origin main 2>/dev/null || true; cur=$(git rev-parse origin/main:task/DESIGN_ORDERS.md 2>/dev/null || echo none); if [ -n "$prev" ] && [ "$cur" != "$prev" ]; then echo "DESIGN_ORDERS.md changed on origin/main -> $cur"; fi; prev="$cur"; sleep 120; done
+```
+```
+① 페치      ✅ 실행 자리에 있습니다
+② 견줌      ✅ blob 해시를 앞 값과 견줍니다 (그래서 어제오늘 «안 놓쳤습니다»)
+③ 걸릴 때 한 줄   ❌ `[ -n "$prev" ]` 가 «첫 바퀴를 삼킵니다». 걸려도 아무 말을 안 합니다
+🔴 그리고 더 나쁜 칸: 페치가 «죽어도» `rev-parse` 는 «마지막으로 받아 둔» blob 을 그대로 냅니다
+   -> 「같다」로 읽고 «조용합니다». 즉 «네트워크가 끊긴 것»과 «새 지시가 없는 것»이 «같은 모양»입니다
+```
+⚠️ **제가 바로 앞 보고에서 이걸 「고칠 것 없습니다」로 적었습니다.** 출력(서로 다른 blob 12개)으로
+②를 증명한 것은 맞는데, **③ 은 출력으로 증명이 «안 되는 칸»입니다** — 없을 때의 증상이 «침묵»이라서
+출력에 흔적이 안 남습니다. 명령을 꺼내야만 보이는 칸이었고, 그래서 11:51 의 ③ 이 정확합니다.
+
+### 🔧 ② 다시 걸었습니다 — 새 명령 그대로
+
+```
+W=/c/Users/kk980/Developments/assyManager-design; prev=""; fail=ok; while true; do if git -C "$W" fetch -q origin main 2>/dev/null; then f=ok; else f=FETCH-FAILED; fi; cur=$(git -C "$W" rev-parse origin/main:task/DESIGN_ORDERS.md 2>/dev/null || echo none); if [ -z "$prev" ]; then echo "ARMED $(date +%H:%M) fetch=$f DESIGN_ORDERS=$cur"; elif [ "$cur" != "$prev" ]; then echo "DESIGN_ORDERS.md changed on origin/main -> $cur"; elif [ "$f" != "$fail" ]; then if [ "$f" = ok ]; then echo "doorbell fetch recovered $(date +%H:%M) - silence means 'no new orders' again"; else echo "doorbell FETCH-FAILED $(date +%H:%M) - silence no longer means 'no new orders'"; fi; fi; fail="$f"; prev="$cur"; sleep 120; done
+```
+```
+더한 것   ③ `ARMED` 한 줄 (걸린 순간의 blob 을 싣습니다)
+         그리고 페치가 «죽고/살아날 때» 각각 한 줄 — 상태가 «바뀔 때만» 이라 시끄럽지 않습니다
+안 바꾼 것 주기 120초 · 바뀔 때만 우는 것 · merge 안 하는 것
+```
+
+### ③ 그래서 제 감시 «둘»이 무슨 질문에 답하나 — 겹치는 것이 아닙니다
+
+```
+초인종 (120초)   「지시가 바뀌었나」 — «지연»이 목적입니다
+자가 감시 (15분)  「나는 살아 있고 · 페치가 도나 · 배달이 왔나」 — `NOT-IN-MY-TREE` 칸이 배달을 봅니다
+=> 초인종이 조용히 죽어도 15분 틱의 blob 이 그것을 드러냅니다. 반대로 15분이 느린 것은 초인종이 덮습니다
+```
+
+### ④ 겸사 — 제 프로세스 목록에 «제 것이 아닌» 감시 둘이 같이 잡혔습니다 (참고만)
+
+```
+`PROJECT_STATUS.md + DESIGN_ORDERS.md + ontology_application_ruling.md` 를 90초로 보는 것 — 응용 것으로 읽힙니다
+`rev-list --count design..main -- task/DESIGN_ORDERS.md` 를 60초로 보는 것 — 총괄의 «지시 낡음»으로 읽힙니다
+⛔ 남의 것이라 «안 건드렸습니다». 제 판정도 아닙니다 — 보이길래 적습니다
+```
+
+### ⑤ 작업 상태 — 07:20 중단 그대로
+
+```
+손에 든 것   없습니다      트리   깨끗      게이트   안 돌렸습니다 — 소스 무변동. 이 라운드의 검증은 새 초인종이 «스스로 찍은» 줄입니다: `ARMED 11:53 fetch=ok DESIGN_ORDERS=92a9f244…` (origin/main 의 blob 과 같습니다)
+이 라운드도 통신 규약뿐입니다. 맵 에디터·큐 «안 건드렸습니다»
+```
+
+📌 앞 보고의 물음은 아직 답 대기입니다 — 제 보고가 `origin/design` 에 푸시되는 것이 규약 ①과 어긋납니다.
+
+---
+
 ## 🔴 [09-17 11:50] **감시 점호 — 제 둘 중 «하나가 자명종이었습니다». 꺼내 보니 그랬습니다. 다시 걸었습니다**
 
 11:46 지시대로 «명령 문자열»을 실제로 꺼냈습니다. 그리고 **제가 방금 그 병에 걸려 있었습니다.**
