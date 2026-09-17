@@ -25308,3 +25308,67 @@ admin/dev_bench.py:228-230   try: rule_run.resolve(...) / except UnresolvableRul
         라우트(`main.py:5508`)는 레지스트리+AST 파일 스캔뿐이고 저장은 좌석(`_resolvable_mapper`
         -> `rule_run.runnable`)으로 판정합니다 -> 511 ① 의 «결론»은 참입니다. 반박 없습니다
 ```
+
+---
+
+> 🔴🔴 **[09-17 13:02 응용] Q-63 — 511 서버 반쪽(`1e2abdb2`)이 낸 행을 화면이 «모르는 갈래»로 떨어뜨립니다. 고르면 저장이 «거절»됩니다**
+> **받는 이: 총괄 · 클라 — 클라가 «지금 짓고 있습니다»(13:20). 그 반쪽에 같이 들어가야 합니다**
+
+## 무엇이 났나 — 서버가 `kind: "builtin"` 을 보내는데 화면에 그 갈래가 «없습니다»
+```
+서버 (mapper_sdk.py:512-514)   {"module":"chain.builtins", "name":"builtin:join",
+                                "kind":"builtin", "label":"join", "params":None}
+화면 (chain_rule_panel.js:81)   if (item.kind === 'registered')  -> 이름 그대로
+     (:83)                      else if (module && name)         -> tokenOf(module, name)  ⚠️ 여기로 갑니다
+```
+🔴 **돌려서 봤습니다** (`node` · 착지한 그 모양을 그대로 먹임 · 파일 0):
+```
+{"value":"chain.builtins:builtin:join",         "label":"builtin:join", "group":"chain.builtins"}
+{"value":"chain.builtins:builtin:auto_confirm", "label":"builtin:auto_confirm","group":"chain.builtins"}
+{"value":"my_mapper",                           "label":"my_mapper",    "group":"등록 이름"}
+splitMapper("chain.builtins:builtin:join")
+  -> {"mapper":null, "mapper_module":"chain.builtins:builtin", "mapper_function":"join"}
+```
+`splitMapper` 가 `lastIndexOf(':')` 로 가르므로 `chain.builtins:builtin` 이 «모듈»이 됩니다.
+
+### 무엇이 참이어야 이 일이 나나
+```
+「화면이 `kind` 의 «모든» 값을 안다」   <- 참이 아닙니다. 아는 값은 'registered' «하나»이고
+                                      나머지는 전부 else(파일 함수)로 갑니다.
+                                      새 값을 «서버만» 늘리면 조용히 그리로 떨어집니다
+```
+### 실패 시나리오 — 「없다」에서 「있는데 안 된다」로 바뀝니다
+운영자가 드롭다운에서 `builtin:join` 을 고릅니다. 화면은 «정상으로 보입니다» — 이름이 그대로
+찍히니까요. 저장하면 규칙에 `mapper_module: "chain.builtins:builtin"` 이 적히고, 저장 관문이
+그 이름을 못 풀어 **`unresolvable_mapper` 로 거절**합니다(`ledger/admin.py:709` ->
+`_resolvable_mapper` -> `rule_run.runnable`).
+🔴 **소유자 지적은 「조인을 화면에서 선언 못 한다」였습니다. 지금 상태는 「선언할 수 있어
+보이는데 저장이 거절한다」입니다** — 판정 511 이 인용한 그 병(S-207)의 «거울상»입니다:
+   그때는 「저장이 받아 줄 이름을 숨겼다」, 지금은 「저장이 거절할 이름을 내민다」.
+
+## 🔴 그리고 `label` 은 «아무도 안 읽습니다»
+```
+git grep 소비자   client2/src 에서 서버의 candidate `label` 을 읽는 자리 «0»
+                 (`closed_list.js:39` 의 `item.label` 은 «화면이 만든» 선택지의 것입니다 —
+                  `mapperChoices` 가 label = name 으로 채운 그 값이지 서버의 낱말이 아닙니다)
+화면에 뜨는 것    항목 = `builtin:join` · 묶음 머리 = `chain.builtins`  <- 파이썬 모듈 경로입니다
+```
+착지 메시지의 「the screen groups them the way it groups the other two」와
+「Name and **label** are read off `register_builtin`」 — 뒤 절은 «서버까지»만 참입니다.
+📌 부류: 「착지 ≠ 배선」. 값이 전선에 실렸고 «읽는 쪽이 없습니다».
+
+## ⚠️ 제가 «안» 재는 것
+```
+어느 쪽을 고칠지는 «판정»입니다 — 화면에 `kind:'builtin'` 갈래를 내거나, 서버가 이 행만
+`kind:'registered'` 모양으로 내거나(값이 이름 그대로여야 하므로). ⛔ 저는 짓지 않습니다
+그리고 클라 반쪽이 「이름 칸 하나」로 바뀌면 `splitMapper` 자체가 안 불릴 수도 있습니다 —
+그러면 이 증상의 «절반»은 그 착지가 같이 가져갑니다. 다만 `group`/`label` 은 남습니다
+```
+
+## 확신도
+```
+실행    위 네 줄이 실제 출력입니다 (`node --input-type=module`, 착지한 서버 모양을 그대로)
+구조    `mapperChoices` 의 갈래가 둘뿐 · `MAPPER_GROUPS` 에 'builtin' 없음 — 파일에서 «열어» 확인
+못 잼    실제 화면 «안 열었습니다»(토큰) · 실제 저장 «안 눌렀습니다» — 거절은 저장 관문 «코드»로만 읽었습니다
+        `dist` 빌드 «안 했습니다» · 클라 레인이 지금 무엇을 바꾸는지 «모릅니다»
+```
