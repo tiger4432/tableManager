@@ -220,23 +220,20 @@ def rule_label(rule):
     it is silently labelled 「mapper」 with nothing red anywhere. The label now travels with
     the registration, so whoever adds a kind says what it is called in the same line.
 
-    ⚠️ THE ENRICHMENT PAIR IS NOT A BUILTIN PAIR. One `decide` declaration becomes two
-    chain rules and only the auto-confirm half is a builtin; the dedup half is a file mapper.
-    Both answer 「decide」 because an operator reading a list of rules for one table should see
-    what the DECLARATION says, not which half of it they happened to get.
+    ⚰️ AND THE ENRICHMENT PAIR IS ANSWERED BY ITS REGISTRATIONS NOW. A branch here read the
+    rule's NAME (`startswith(DEDUP_PREFIX)`) to return 「decide」, because one `decide`
+    declaration makes two chain rules and only one of them was a registered mapper. That
+    branch was the dedup half's label, declared in a second place and keyed on an ADDRESS -
+    rename the synthesized prefix and the label silently became 「mapper」. Both halves now
+    register with `label: "decide"`, which is still the DECLARATION's word rather than the
+    half's: an operator reading a list of rules for one table should not have to know which
+    half they got.
     """
     from chain import dynamic_mappers
 
     label = dynamic_mappers.label_for((rule or {}).get("mapper"))
     if label is not None:
         return label
-
-    from enrichment import config as enrichment_config
-
-    name = str((rule or {}).get("name") or "")
-    if (name.startswith(enrichment_config.DEDUP_PREFIX)
-            or name.startswith(enrichment_config.AUTO_CONFIRM_PREFIX)):
-        return "decide"
     return "mapper"
 
 

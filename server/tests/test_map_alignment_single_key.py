@@ -152,7 +152,7 @@ def test_the_one_column_unit_key_is_the_string_the_derived_table_actually_writes
                                              "cell_key": {"value": "c1"}}}]
     for rule, derived in ((RULE, DERIVED), (RULE_BK, DERIVED_BK)):
         out = mapper.map_enrichment_dedup(
-            env, payloads, rule={"enrichment": dict(rule, aggregations={})})
+            env, payloads, rule={"params": dict(rule, aggregations={})})
         assert len(out["updates"]) == 1, rule["name"]
         assert out["updates"][0]["business_key_val"] == fc.compose_unit_key(
             rule, {"job_id": "J1"}), rule["name"]

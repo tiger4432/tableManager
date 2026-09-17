@@ -880,6 +880,12 @@ def load_enrichment_rules(path: str = None, known_tables: dict = None,
 #: cannot.
 AUTO_CONFIRM_MAPPER = "declared:decide"
 
+#: The dedup half — the SAME declaration's OTHER mapper (판정 292: one declaration, two
+#: chain rules). A second registry name because it is a second mapper, and the LABEL is
+#: still `decide` because that is the word the DECLARATION uses: an operator reading a
+#: list of rules for one table should not have to know which half they got.
+DEDUP_MAPPER = "declared:enrich"
+
 #: The two names a synthesized rule can carry. Used by the collision check, so the
 #: refusal and the synthesis cannot drift into disagreeing about what a synthesized name
 #: looks like.
@@ -968,17 +974,21 @@ def chain_rules_for(rule: dict) -> list:
         "name": dedup_name,
         "trigger_table": rule["source_table"],
         "target_table": rule["derived_table"],
-        # 🪦 [S-211, 판정 364] The module moved into `enrichment/`. This is a STRING,
-        # so no import rewriter could see it - the chain worker resolves it at run time.
-        "mapper_module": "enrichment.mapper",
-        "mapper_function": "map_enrichment_dedup",
+        # 🔴 [소유자 정본 2026-09-17 「체인 프로세스에 다 «같은 맵퍼 메소드»로 인식되어서
+        #   움직이면 됨. 같은 io 를 가지고」] THIS HALF ARRIVED BY A DIFFERENT ARM. It named an
+        #   import path, which is `resolve`'s THIRD arm, while the auto-confirm half of the
+        #   SAME declaration went through the registry - one declaration reaching the seat two
+        #   ways. ⚠️ THE BODY DID NOT MOVE: `declared:enrich` IS
+        #   `enrichment.mapper.map_enrichment_dedup`, built in process by `chain.dynamic_mappers`.
+        "mapper": DEDUP_MAPPER,
         "is_batch": True,
         "enabled": enabled,
         "params": params,
-        # ⚠️ KEPT BESIDE `params`, NOT INSTEAD OF IT. `map_enrichment_dedup` reads
-        # `rule["enrichment"]` today; removing it here would be a second change riding
-        # on this one, and the mapper's own round is where that key retires.
-        "enrichment": rule,
+        # ⚰️ `"enrichment": rule` STOOD HERE, AND IT WAS A SECOND COPY OF `params` - both are
+        #    the whole normalized rule and this one function wrote both, so a cell could not
+        #    even drift between them. What it cost was the 「같은 io」 the owner asked for: the
+        #    other two templates read `params` and this mapper read a key only it had. The note
+        #    here said 「the mapper's own round is where that key retires」. This is that round.
         "origin": origin,
     })
     chain_rules.append({

@@ -502,7 +502,7 @@ def test_the_single_cell_recompute_spells_it_the_same_way(pipe_db):
 
 def test_the_enrichment_mapper_spells_it_the_same_way(pipe_db):
     """④ the derived-table key — material: the decision-key map."""
-    rule = {"enrichment": {
+    rule = {"params": {
         "name": "s1_probe", "source_table": PIPE_TABLE, "derived_table": PIPE_TABLE,
         "decision_key": PIPE_SRC, "target_fields": ["note"], "list_columns": [],
         "aggregations": {},
@@ -541,7 +541,7 @@ def test_the_four_blank_policies_are_still_four(pipe_db):
     assert _the_row(pipe_db).business_key_val == "CALLER-SUPPLIED"
 
     # ④ composes the PARTIAL key rather than refusing it - the owner ruling
-    rule = {"enrichment": {
+    rule = {"params": {
         "name": "s1_probe", "source_table": PIPE_TABLE, "derived_table": PIPE_TABLE,
         "decision_key": PIPE_SRC, "target_fields": ["note"], "list_columns": [],
         "aggregations": {},

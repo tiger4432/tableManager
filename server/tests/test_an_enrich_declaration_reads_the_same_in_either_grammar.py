@@ -91,7 +91,7 @@ def test_one_declaration_still_makes_the_dedup_rule_and_the_confirm_rule():
     dedup, confirm = rules
 
     assert dedup["trigger_table"] == SOURCE and dedup["target_table"] == DERIVED
-    assert dedup["mapper_function"] == "map_enrichment_dedup"
+    assert dedup["mapper"] == enrichment_config.DEDUP_MAPPER
     assert confirm["trigger_table"] == DERIVED and confirm["target_table"] == DERIVED
     assert confirm["mapper"] == enrichment_config.AUTO_CONFIRM_MAPPER
     # ⚰️ [소유자 정본] the paced lap is gone; the confirm half is woken by the

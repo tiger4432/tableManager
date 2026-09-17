@@ -179,15 +179,15 @@ def map_enrichment_dedup(db, payloads, rule=None):
     """배치 payload → derived_table 키당 1행 upsert 목록(GeneralUpdateBatch 형태) 생성.
 
     :param payloads: outbox payload dict 리스트 (is_batch=True 경로)
-    :param rule: 체인 룰 dict — `rule["enrichment"]`에 전체 enrichment 규칙이 내장됨
-                 (chain_ingestion_worker.execute_custom_mapper가 rule 인자를 지원하는
-                 맵퍼에게만 선택적으로 전달)
+    :param rule: 체인 룰 dict — `rule["params"]`에 전체 enrichment 규칙이 내장됨.
+                 ⚰️ 종전에는 `rule["enrichment"]`였다. 같은 함수가 두 칸에 «같은 것»을
+                 적고 있었고, 다른 기본틀은 전부 `params`를 읽는다 (소유자: 「같은 io」)
     """
     if not payloads:
         return _result([], 0, 0, 0)
-    enrich = (rule or {}).get("enrichment")
+    enrich = (rule or {}).get("params")
     if not enrich:
-        logger.error("[Enrichment] chain rule is missing embedded 'enrichment' config; skipping batch")
+        logger.error("[Enrichment] chain rule carries no declaration in 'params'; skipping batch")
         return _result([], 0, 0, 0)
 
     from database import crud

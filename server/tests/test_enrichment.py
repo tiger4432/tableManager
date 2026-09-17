@@ -283,10 +283,14 @@ def test_loader_synthesized_chain_rule_shape(tmp_path):
     cr = next(r for r in chain_rules if r["name"].startswith("enrichment_dedup:"))
     assert cr["trigger_table"] == "enrich_test_src"
     assert cr["target_table"] == "enrich_test_derived"
-    assert cr["mapper_module"] == "enrichment.mapper"
-    assert cr["mapper_function"] == "map_enrichment_dedup"
+    # ⚰️ [소유자 정본] IT NAMES A MAPPER, like the other half of the same declaration. This
+    #   half used to name an import path (`resolve`'s third arm) and carry the declaration
+    #   under a key only it had; both are gone and `params` is the one cell.
+    assert cr["mapper"] == enrichment.config.DEDUP_MAPPER
+    assert "mapper_module" not in cr and "mapper_function" not in cr
     assert cr["is_batch"] is True and cr["enabled"] is True
-    assert cr["enrichment"]["name"] == "bonding_wafer_attribution"
+    assert cr["params"]["name"] == "bonding_wafer_attribution"
+    assert "enrichment" not in cr
     confirm = next(r for r in chain_rules
                    if r["name"].startswith("enrichment_auto_confirm:"))
     # ⚰️ [소유자 정본] the paced lap is gone.

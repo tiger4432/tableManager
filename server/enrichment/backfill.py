@@ -310,7 +310,10 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
     # In dry-run the count aggregations are irrelevant to identity diffing, so
     # strip them to skip the mapper's recount queries. Apply keeps them: counts
     # on the created rows come from the mapper's own idempotent recount.
-    mapper_rule = {"enrichment": rule if apply else {**rule, "aggregations": {}}}
+    # The cell the mapper reads its declaration from. ⚰️ This said `"enrichment"` until the
+    # dedup half became a registered mapper: that key was a second copy of `params`, and this
+    # was its other author.
+    mapper_rule = {"params": rule if apply else {**rule, "aggregations": {}}}
 
     stats = {
         "mode": "apply" if apply else "dry-run",

@@ -145,10 +145,12 @@ def test_the_reference_view_may_bind_the_aggregate_and_runs_with_its_value(env):
     _run_chain(env, "tx-view")
 
     rules = enrichment.config.load_enrichment_chain_rules(known_tables=crud.TABLE_CONFIG)
-    # S-179 (1): only the dedup kind embeds `enrichment`; the auto-confirm kind carries
-    # the same cells under `params`. Filtered rather than indexed.
-    rule = [r["enrichment"] for r in rules
-            if r.get("enrichment", {}).get("name") == "s129_lot_group"][0]
+    # ⚰️ BOTH HALVES CARRY IT UNDER `params` NOW. The dedup half used to embed the
+    # declaration under a key of its own (`enrichment`), which was a second copy of
+    # `params` written by the same function; it retired when that half became a
+    # registered mapper. Either half answers this. Filtered rather than indexed.
+    rule = [r["params"] for r in rules
+            if r.get("params", {}).get("name") == "s129_lot_group"][0]
     view = rule["reference_views"][0]
 
     assert "bonding_time_min" in view["required_binds"], view["required_binds"]

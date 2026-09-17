@@ -24,6 +24,7 @@ if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
 from chain import replay, rule_shape                                # noqa: E402
+from enrichment import config as enrichment_config                 # noqa: E402
 
 LEFT = "s250_left"
 RIGHT = "s250_right"
@@ -117,8 +118,7 @@ def test_a_synthesized_enrichment_rule_is_on_its_trigger_tables_list(loaded):
     file the banner was reading has never contained them."""
     loaded([{"name": "enrichment_dedup:x", "trigger_table": LEFT,
              "target_table": "dt_inventory",
-             "mapper_module": "enrichment.mapper",
-             "mapper_function": "map_enrichment_dedup"}])
+             "mapper": enrichment_config.DEDUP_MAPPER}])
 
     found = replay.replayable_rules_for(LEFT)
 
@@ -133,9 +133,16 @@ def test_a_synthesized_enrichment_rule_is_on_its_trigger_tables_list(loaded):
 @pytest.mark.parametrize("rule,expected", [
     ({"name": "a", "mapper": "declared:join"}, "join"),
     ({"name": "b", "mapper": "declared:virtual_join"}, "join"),
-    ({"name": "enrichment_dedup:c"}, "decide"),
+    ({"name": "enrichment_dedup:c", "mapper": "declared:enrich"}, "decide"),
     ({"name": "enrichment_auto_confirm:c", "mapper": "declared:decide"}, "decide"),
     ({"name": "d", "mapper_module": "mappers.x", "mapper_function": "y"}, "mapper"),
+    # 🔴 THE CONTROL GROUP FOR A RETIRED MECHANISM. This label used to be reached by a
+    #   branch that read the rule's NAME (`startswith("enrichment_dedup:")`), so a rule
+    #   called this while naming a file mapper was labelled 「decide」 on the strength of
+    #   its spelling. It must read 「mapper」 now - if this row ever says 「decide」 again,
+    #   the label is being derived from an ADDRESS and the branch is back.
+    ({"name": "enrichment_dedup:not_synthesized",
+      "mapper_module": "mappers.x", "mapper_function": "y"}, "mapper"),
 ])
 def test_the_kind_is_the_declarations_word_not_the_plumbings(rule, expected):
     """🔴 A SCREEN THAT SAYS `builtin:join_into` ASKS THE READER TO KNOW OUR INTERNALS.
@@ -148,7 +155,8 @@ def test_the_kind_is_the_declarations_word_not_the_plumbings(rule, expected):
 def test_both_halves_of_one_decide_declaration_read_as_decide():
     """⚠️ ONE DECLARATION, AND THE OPERATOR DID NOT CHOOSE WHICH HALF THEY GOT."""
     kinds = {rule_shape.declared_kind(rule)
-             for rule in ({"name": "enrichment_dedup:z"},
+             for rule in ({"name": "enrichment_dedup:z",
+                           "mapper": "declared:enrich"},
                           {"name": "enrichment_auto_confirm:z",
                            "mapper": "declared:decide"})}
 

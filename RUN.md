@@ -14,6 +14,30 @@
 
 ---
 
+## 🆕 19:29 — 인리치의 «파생행» 반쪽도 이제 다른 것들과 «같은 맵퍼»로 돕니다
+
+```
+무엇이 바뀌었나  합성된 규칙 `enrichment_dedup:<이름>` 이 `mapper_module`/`mapper_function`(import 경로)
+                대신 `mapper: "declared:enrich"` 를 답니다. «돌리는 몸통은 그대로»입니다
+🔴 선언은 «한 칸도» 안 바뀝니다   enrichment_rules.json · 통합 `derive.decide` 둘 다 그대로 쓰십시오
+                                 (파생행·오토컨펌·참조뷰 셋 다, SQL 칸 포함)
+```
+**확인 명령 — 붙여 넣으면 됩니다** (저장소 루트에서):
+```
+server\..\  <- 아래 한 줄을 server 폴더에서
+python -c "import mapper_sdk;mapper_sdk.discover();from chain import dynamic_mappers as d;print(sorted(d.TEMPLATES))"
+```
+```
+이 답이 나오면 맞습니다
+  ['declared:decide', 'declared:enrich', 'declared:join', 'declared:virtual_join']
+🔴 'declared:enrich' 가 «없으면»  -> 그 프로세스는 옛 코드입니다. 재기동하십시오
+⚠️ 넷보다 «많으면»               -> 운영자 맵퍼가 같은 이름을 썼다는 뜻입니다 — 이름을 바꾸십시오
+```
+**부팅 로그에서 볼 줄**: `[ChainRule] enrichment_dedup:<이름> … mapper=declared:enrich`
+**급하면 끄는 스위치**: 해당 enrichment 규칙의 `"enabled": false` — 종전과 같습니다
+
+---
+
 ## 🧪 «직접 걸어서» 확인하는 법 — 규칙 하나를 선언하고 끝까지 따라가기
 
 > 이번 라운드는 「규칙이 어떤 종류든 «한 길»로 돈다」입니다. 그것을 «직접» 재는 걸음입니다.

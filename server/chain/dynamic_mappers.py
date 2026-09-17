@@ -158,6 +158,38 @@ def _legacy_materialized_join(db, payload, rule=None):
                                          _row_ids(payload))
 
 
+def _enrich(db, payload, rule=None):
+    """`enrichment_rules.json` 의 «파생행» 반쪽 — the body is `map_enrichment_dedup`.
+
+    🔴 [소유자 2026-09-17 「@mapper 를 굳이 할 필요는 없고 체인 프로세스에서 «똑같은 인자»로
+    들어가서 돌면 됨」] THE ARGUMENTS WERE ALREADY THE SAME, AND THE CELL WAS NOT. This
+    mapper's signature has been `(db, payloads, rule=None)` all along, so it entered the seat
+    the way every mapper does; what it read once inside was `rule["enrichment"]`, a key no
+    other template has. `enrichment.config` wrote that key AND `params` from the same dict,
+    so this is one fact with two spellings - and the other two templates read `params`.
+
+    🔴 [판정 581 · 600] THE TEMPLATE DOES WHAT THE REGISTRATION IT REPLACES DID, and here
+    that registration was an IMPORT PATH (`mapper_module`/`mapper_function`), `resolve`'s
+    third arm. Measured before the swap, all four of its answers:
+        call          enrichment.mapper.map_enrichment_dedup   (unchanged - same body)
+        accepts_rule  True                                     (unchanged - same signature)
+        is_batch      True                                     (the DECLARATION's cell, untouched)
+        writes_itself False -> the mapper returns `updates` and the seat writes them
+    ⚠️ AND TWO ANSWERS DO CHANGE, deliberately, because they were answered by ADDRESS before:
+        label          None -> 「decide」. `rule_shape` used to fall through to a NAME-PREFIX
+                       branch (`name.startswith(DEDUP_PREFIX)`) to reach the same word. That
+                       branch was this half's label declaration written somewhere else, which
+                       is 「문 가르기」 with the label instead of the call.
+        retraction     the hedge 「파일 맵퍼가 도장을 찍는지 제품이 모릅니다」 becomes the
+                       definite 「이 종류는 안 찍습니다」. TRUE and countable: `origin_row_id`
+                       appears 0 times in `enrichment/mapper.py`, which - unlike
+                       `server/mappers/` - is this repository's own file.
+    """
+    from enrichment import mapper
+
+    return mapper.map_enrichment_dedup(db, payload, rule)
+
+
 #: 🔴 [판정 562] THE FACTS THAT ARE REAL, DECLARED WHERE THE TEMPLATE IS.
 #:
 #: The kind table held four facts about each kind. Two were about its ADDRESS and go away
@@ -243,6 +275,18 @@ def _install_templates():
     # ⚠️ ITS FACTS ARE THE ONES THE OLD REGISTRATION DECLARED, carried unchanged:
     #    `materialize_rows` puts the answering row in `origin_row_id`, and it writes
     #    for itself rather than proposing.
+    TEMPLATES[enrichment.config.DEDUP_MAPPER] = _enrich
+    # ⚠️ `writes_itself` IS False HERE AND THAT IS THE UNCHANGED FACT, not an omission: this
+    #    mapper RETURNS `updates` for the seat to write, which is why it is the one template
+    #    whose answer the caller cannot skip applying. ⚠️ `stamps_origin` False is measured
+    #    (`origin_row_id` × 0 in `enrichment/mapper.py`), not assumed.
+    # ⚠️ THE LABEL IS THE DECLARATION'S WORD, NOT THE HALF'S. One `decide` declaration makes
+    #    two chain rules; an operator listing the rules for one table should see what they
+    #    DECLARED, not which half they happened to get. The registry NAME is what tells the
+    #    two halves apart.
+    TEMPLATE_FACTS[enrichment.config.DEDUP_MAPPER] = {
+        "label": "decide", "stamps_origin": False, "writes_itself": False,
+        "params": None}
     TEMPLATES[legacy_join_declaration.JOIN_MAPPER] = _legacy_materialized_join
     TEMPLATE_FACTS[legacy_join_declaration.JOIN_MAPPER] = {
         "label": "join", "stamps_origin": True, "writes_itself": True,

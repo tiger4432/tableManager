@@ -258,7 +258,10 @@ def test_the_seat_says_which_file_a_synthesised_rule_was_written_in(tmp_path):
     path = _declared(tmp_path, materialize=True, max_rewrite_rows=10)
     join = vjc.synthesized_join_chain_rules(path=path, known_tables=KNOWN)[0]
     assert builtins.written_in(join) == "virtual_join_rules.json"
-    assert builtins.written_in({"mapper_module": "enrichment.mapper"}) == "enrichment_rules.json"
+    # ⚰️ THE FIXTURE IS WHAT THE SEAT NOW EMITS. It spelled `mapper_module`, a cell
+    #    the dedup half stopped carrying when it became a registered mapper.
+    assert builtins.written_in(
+        {"mapper": enrichment.config.DEDUP_MAPPER}) == "enrichment_rules.json"
 
 
 # 🪦 `test_a_name_claimed_by_both_files_is_refused_by_name` died with `join_name_collisions`
