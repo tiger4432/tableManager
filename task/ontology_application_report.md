@@ -24665,3 +24665,72 @@ Q-42  ㉠ 운영자 화면의 `unread` 자유 문자열
 미답   07:21 블록 그대로 (Q-56 · Q-54 · Q-47 · Q-46 · Q-42 · `_quarter` · config_resolve_report:600)
 푸시   이 커밋도 «같은 호출»에서 푸시합니다 (판별식 ④)
 ```
+
+---
+
+## 📋 [09-17 11:48 응용] 감시 명령 «문자열 그대로» 붙입니다 — 그리고 «끄지 않고 꺼내는 법»
+
+### 🔧 먼저 — 감시를 «죽이지 않고» 명령을 꺼낼 수 있습니다
+
+제가 옛 감시는 «끄면서» 봤는데, 끄지 않고 보는 길이 있습니다(방금 셋 다 이걸로 읽었습니다):
+```powershell
+Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'IMPLEMENTER_ORDERS' } |
+  Select-Object ProcessId, @{n='CL';e={$_.CommandLine}} | Format-List
+```
+⇒ 돌고 있는 감시의 «진짜 명령»이 그대로 나옵니다. 세 레인이 ①을 할 때 이걸 쓰면 감시를 안 잃습니다.
+
+### 제 감시 «둘» — 명령 그대로와 판정
+
+```
+감시 A (새로 건 것 · PID 57552)
+  prev=""
+  while true; do
+    git fetch -q origin 2>/dev/null || true
+    cur=$(git rev-parse origin/main:task/IMPLEMENTER_ORDERS.md 2>/dev/null || echo unknown)
+    ... [ "$cur" != "$prev" ] 이면 ORDERS CHANGED + 커밋 한 줄 ...
+    prev=$cur; sleep 900
+  done
+  ② fetch 가 «실행 자리»에 있나  ✅ 있습니다 (따옴표 밖, 스크립트가 직접)
+  ③ 무엇을 견주나              ✅ origin/main 의 그 파일 «blob 해시»
+```
+```
+감시 B (보드·판정 · PID 9668 — 전부터 돌던 것)
+  last=$(git log -1 --format=%H origin/main -- docs/process/PROJECT_STATUS.md task/DESIGN_ORDERS.md task/ontology_application_ruling.md)
+  while true; do
+    git fetch -q origin 2>/dev/null || true
+    cur=$(git log -1 --format=%H origin/main -- <같은 셋>)
+    [ "$cur" != "$last" ] 이면  echo "보드/판정 새 커밋: $(git log -1 --format='%h %s' "$cur")"; last=$cur
+    sleep 90
+  done
+  ② fetch «실행 자리» ✅   ③ 견줌 ✅ (그 셋을 건드린 «마지막 커밋 해시»)
+```
+🔵 **B 는 진짜 감시였습니다** — 오늘 판정을 제가 제때 읽은 것은 이쪽 덕입니다.
+
+### 🔴 다만 B 에도 구멍이 «둘» 있었습니다 (오늘 자리가 정해지며 드러남)
+
+```
+㉠ B 가 «안 보는» 것   task/IMPLEMENTER_ORDERS.md — 오늘 박힌 «제 지시 자리»입니다
+                     -> 오늘 제게 온 판정 대부분이 그 파일이었고, B 가 그것들을 잡은 것은
+                        총괄이 «같은 커밋»에 보드나 DESIGN_ORDERS 도 건드렸기 «때문»입니다. 우연입니다
+                     ✅ 지금은 감시 A 가 그 파일을 직접 봅니다
+㉡ B 가 보는 셋 중 하나  task/ontology_application_ruling.md — 본문 마지막이 «08-31» 입니다
+                     -> 죽은 파일이라 해롭진 않지만, 「감시 셋」의 «하나»가 계수만 채우고 있었습니다
+```
+
+### 📌 다른 레인 것도 «눈에 들어와서» 적습니다 — 제 판단이 아니라 «실측»입니다
+
+같은 질의에 다른 세션의 감시도 나왔습니다. **그 레인의 보고를 대신하는 것이 아니라**, 잘못 읽고
+「내 것도 자명종이었다」로 닫힐까 봐 적습니다:
+```
+한 세션(스냅샷 …kpksdv)에 감시 «셋»이 붙어 있고, 그중 하나가 «자명종»입니다:
+   while true; do sleep 900; echo "WAKE  git fetch origin && git merge --ff-only …"; done
+🔵 그런데 «같은 세션의 다른 감시»가 그 파일을 진짜로 봅니다 —
+   git fetch -q origin main + git rev-parse origin/main:task/IMPLEMENTER_ORDERS.md 비교
+⇒ 그러니 그 레인은 «어둡지 않습니다». 자명종이 «여벌»로 하나 더 있는 모양이고,
+   제 경우와 다릅니다 — 제 쪽은 «그 자명종이 유일한 자가 기상»이었습니다
+```
+⚠️ 이건 프로세스 목록에서 읽은 것이고 그 레인의 «보고»가 아닙니다. 확인은 그 레인이 합니다.
+
+```
+상태  정지 그대로 · 손에 든 것 없음 · 미답 07:21 블록 그대로 · 이 커밋도 «같은 호출»에서 푸시
+```
