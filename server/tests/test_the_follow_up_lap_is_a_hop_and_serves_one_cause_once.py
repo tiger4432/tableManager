@@ -117,12 +117,12 @@ def test_the_dispatcher_runs_the_lap_inside_the_next_hop(monkeypatch):
     seen = []
     rule = {"name": "s249_rule", "trigger_table": "t", "mapper": "builtin:s249",
             "follow_up": True}
-    monkeypatch.setattr(worker, "_followup_builtin_rules", lambda: [rule])
+    monkeypatch.setattr(worker, "_rules_for_the_follow_up_pass", lambda: [rule])
     monkeypatch.setitem(builtins.BUILTIN_KINDS, "builtin:s249",
                         lambda db, r, **kw: seen.append(request_chain_depth.get()) or
                         {"written": 0})
 
-    worker._run_builtin_followups(None, {"table": "t", "row_ids": ["r1"],
+    worker._run_the_follow_up_pass(None, {"table": "t", "row_ids": ["r1"],
                                          "transaction_id": "tx-1", "chain_depth": 4})
 
     assert seen == [5], "the lap did not run one hop past its cause"
@@ -138,12 +138,12 @@ def test_a_lap_with_no_incoming_hop_still_counts_as_the_first(monkeypatch):
     seen = []
     rule = {"name": "s249_rule", "trigger_table": "t", "mapper": "builtin:s249",
             "follow_up": True}
-    monkeypatch.setattr(worker, "_followup_builtin_rules", lambda: [rule])
+    monkeypatch.setattr(worker, "_rules_for_the_follow_up_pass", lambda: [rule])
     monkeypatch.setitem(builtins.BUILTIN_KINDS, "builtin:s249",
                         lambda db, r, **kw: seen.append(request_chain_depth.get()) or
                         {"written": 0})
 
-    worker._run_builtin_followups(None, {"table": "t", "row_ids": ["r1"],
+    worker._run_the_follow_up_pass(None, {"table": "t", "row_ids": ["r1"],
                                          "transaction_id": "tx-1"})
 
     assert seen == [1]
@@ -159,15 +159,15 @@ def test_the_dispatcher_skips_a_cause_it_already_served(monkeypatch, caplog):
     calls = []
     rule = {"name": "s249_rule", "trigger_table": "t", "mapper": "builtin:s249",
             "follow_up": True}
-    monkeypatch.setattr(worker, "_followup_builtin_rules", lambda: [rule])
+    monkeypatch.setattr(worker, "_rules_for_the_follow_up_pass", lambda: [rule])
     monkeypatch.setitem(builtins.BUILTIN_KINDS, "builtin:s249",
                         lambda db, r, **kw: calls.append(kw.get("row_ids")) or
                         {"written": 0})
     done = {"table": "t", "row_ids": ["r1"], "transaction_id": "tx-1", "chain_depth": 1}
 
     with caplog.at_level(logging.INFO):
-        worker._run_builtin_followups(None, dict(done))
-        worker._run_builtin_followups(None, dict(done))
+        worker._run_the_follow_up_pass(None, dict(done))
+        worker._run_the_follow_up_pass(None, dict(done))
 
     assert calls == [["r1"]], "the second pass ran the rule again"
     assert "이미 한 번 받았습니다" in " ".join(r.getMessage() for r in caplog.records)
@@ -181,14 +181,14 @@ def test_a_different_cause_still_reaches_the_rule(monkeypatch):
     calls = []
     rule = {"name": "s249_rule", "trigger_table": "t", "mapper": "builtin:s249",
             "follow_up": True}
-    monkeypatch.setattr(worker, "_followup_builtin_rules", lambda: [rule])
+    monkeypatch.setattr(worker, "_rules_for_the_follow_up_pass", lambda: [rule])
     monkeypatch.setitem(builtins.BUILTIN_KINDS, "builtin:s249",
                         lambda db, r, **kw: calls.append(kw.get("row_ids")) or
                         {"written": 0})
 
-    worker._run_builtin_followups(None, {"table": "t", "row_ids": ["r1"],
+    worker._run_the_follow_up_pass(None, {"table": "t", "row_ids": ["r1"],
                                          "transaction_id": "tx-1"})
-    worker._run_builtin_followups(None, {"table": "t", "row_ids": ["r1"],
+    worker._run_the_follow_up_pass(None, {"table": "t", "row_ids": ["r1"],
                                          "transaction_id": "tx-2"})
 
     assert calls == [["r1"], ["r1"]]
@@ -210,7 +210,7 @@ def test_the_lap_writes_inside_the_collapsed_outbox_mode(monkeypatch):
     seen = []
     rule = {"name": "s249_rule", "trigger_table": "t", "mapper": "builtin:s249",
             "follow_up": True}
-    monkeypatch.setattr(worker, "_followup_builtin_rules", lambda: [rule])
+    monkeypatch.setattr(worker, "_rules_for_the_follow_up_pass", lambda: [rule])
     monkeypatch.setitem(builtins.BUILTIN_KINDS, "builtin:s249",
                         lambda db, r, **kw: seen.append(request_outbox_mode.get()) or
                         {"written": len(kw.get("row_ids") or ())})
@@ -222,7 +222,7 @@ def test_the_lap_writes_inside_the_collapsed_outbox_mode(monkeypatch):
     monkeypatch.setattr(builtins, "SELF_WRITING_KINDS",
                         builtins.SELF_WRITING_KINDS | {"builtin:s249"})
 
-    worker._run_builtin_followups(None, {"table": "t", "row_ids": ["r%d" % n
+    worker._run_the_follow_up_pass(None, {"table": "t", "row_ids": ["r%d" % n
                                                                   for n in range(1000)],
                                          "transaction_id": "tx-1", "chain_depth": 1})
 
@@ -245,7 +245,9 @@ def test_the_line_says_what_woke_it_and_at_which_hop(caplog):
 
     said = " ".join(r.getMessage() for r in caplog.records)
     assert "woke_by=t#tx-1" in said and "hop=2/8" in said
-    assert "rule=rule_a" in said and "table=t" in said
+    # [500 ⓓ] `table` left the message: `woke_by` carries it, so the line said it twice.
+    assert "rule=rule_a" in said and "woke_by=t#tx-1" in said
+    assert "table=" not in said
     # [499] ONE VOCABULARY. This line used to be tagged `[ChainBuiltin]` - a KIND's name -
     #   and the round that landed the seat made that name FALSE as well as split: the lap
     #   selects on `writes_itself` now, so a file mapper that registered it would have been

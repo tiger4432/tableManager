@@ -176,6 +176,25 @@ def runnable(name):
     return mapper_sdk.MAPPER_REGISTRY.get(name) or builtins.BUILTIN_KINDS.get(name)
 
 
+def self_writing_name(rule):
+    """The registered kind a SELF-WRITING rule runs as, or None - answered WITHOUT resolving.
+
+    🔴 [판정 501 ⓐ] `resolve` HAS A SIDE EFFECT AND THIS QUESTION MUST NOT PAY FOR IT.
+    Resolving imports the operator's module, which is right when something is about to be
+    RUN and wrong when a caller only wants to describe the rule. Replay asked `resolve` for
+    exactly two facts - this name and `writes_itself` - and paid an `importlib` for them
+    BEFORE its first page, so a dry run of a rule whose module is absent stopped being a
+    report and became an exception. Both facts are registrations: a dict lookup answers them.
+
+    ⚠️ NOT `builtin_kind` AT THE CALLER. That is the same question and the seat owns it;
+    a caller spelling it is 「종류를 묻는 자리」 outside the seat again (판정 498 ④).
+    """
+    from chain import builtins
+
+    kind = builtin_kind(rule)
+    return kind if kind in builtins.SELF_WRITING_KINDS else None
+
+
 def rule_label(rule):
     """What this rule IS on a screen - join / decide / mapper. The seat answers, from what
     the kinds REGISTERED rather than from a list kept by hand.

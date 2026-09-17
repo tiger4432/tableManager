@@ -193,6 +193,28 @@ def try_mapper(name, sample, *, rule=None, target_table="bench_target"):
     # mapper」 is the same question the chain asks, and it had two answers.
     from chain import rule_run
 
+    # [501 b] REFUSED BY NAME, NOT RUN. `runnable` answers for BOTH tables, so widening this
+    #   line to the seat's question quietly widened what the bench would CALL - and a
+    #   registered kind takes `(db, rule, row_ids=)` while the line below calls
+    #   `(db, payloads, rule=)`. Measured: `builtin:auto_confirm` came back
+    #   `{'rows': 0, 'refusal': None}` - a success shape - and the join kinds threw
+    #   AttributeError. `try_core.py`'s own note says a refusal printed as rows is
+    #   indistinguishable from 「no rows」, and that is exactly what it became.
+    #   A kind resolves its own rows out of the database; a sample CSV is not an input it
+    #   has. So the bench says so, by name, rather than pretending to have run it.
+    #   ⚠️ ASKED AS 「does it write its own rows」, NOT AS 「which kind is it」. The second
+    #   is the seat's question and spelling it here is 「종류를 묻는 자리」 outside the
+    #   seat (판정 498 ④) - the gate says so. What the bench needs is the registered
+    #   PROPERTY: a rule that resolves its own rows has no use for a sample file.
+    kind = rule_run.self_writing_name({"mapper": name})
+    if kind is not None:
+        return {"who": name, "rows": [],
+                "refusal": "%r is a registered kind, not a file mapper: it resolves its own "
+                           "rows from the database, so a sample file is not an input it "
+                           "takes. Try it with the retroactive screen instead." % name}
+
+    # The kind is refused above, so this can only answer with a file mapper now - and it
+    # stays the SEAT's lookup, because 「is this name runnable」 has one author (판정 498 ①).
     fn = rule_run.runnable(name)
     who = name
     if fn is None and (":" in name or "." in name):

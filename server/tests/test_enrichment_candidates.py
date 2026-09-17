@@ -211,7 +211,7 @@ def run_followup_auto_confirm(db, derived_table="encand_test_derived"):
     # helper's whole promise is 「the way the paced drain does」 — so it calls what the drain
     # calls. The assertions above it are unchanged, which is what makes them the gate on the
     # confirmed count not moving.
-    from chain.ingestion_worker import _run_builtin_followups, reload_worker_process_cache
+    from chain.ingestion_worker import _run_the_follow_up_pass, reload_worker_process_cache
 
     # ⚠️ THE DISPATCHER HOLDS ITS RULE LIST ACROSS BATCHES (the drain calls it in a loop), and
     # these tests rewrite the declaration in-process between cases. Production reaches a
@@ -231,7 +231,7 @@ def run_followup_auto_confirm(db, derived_table="encand_test_derived"):
     if not row_ids:
         return {}
     done = {"table": derived_table, "event_type": "EDIT", "row_ids": row_ids}
-    _run_builtin_followups(db, done)
+    _run_the_follow_up_pass(db, done)
     db.commit()
     return done
 
