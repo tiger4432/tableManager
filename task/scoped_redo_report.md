@@ -48470,3 +48470,66 @@ db          rule_run:509  bound.call(db, one, rule=rule)      맵퍼가 «첫 �
 ```
 14 passed · 변이 2/2 CAUGHT · 파일 md5 복원 확인
 ```
+
+> 📋 **[09-17 15:35 구현자] 판정 562 ④ · 563 ① 의 «삭제 목록» — AST 로 셌습니다. 그리고 563 ② 에 «막는 것»이 하나 있습니다**
+⛔ 아무것도 안 지웠습니다. 목록만입니다 (판정 563 의 「목록은 지금, 착지는 새 길과 «같은 커밋»」 그대로).
+
+## 삭제 목록 — 추적 파일만, «코드 노드» 기준
+```
+심볼                    정의  읽기  쓰기 | 시험읽기  제품 파일
+BUILTIN_KINDS             0    7     1  |    29     dev_bench · builtins · rule_run
+register_builtin          1    3     0  |     2     builtins
+BUILTIN_HANDS             0    2     1  |     8     builtins · rule_run
+SELF_WRITING_KINDS        0    4     1  |     6     builtins · rule_run
+BUILTIN_LABELS            0    2     1  |     3     builtins · rule_run
+HANDS_ROW_IDS             0   10     1  |    11     builtins · ingestion_worker · replay · rule_run
+HANDS_PAYLOADS            0    4     1  |     0     dev_bench · builtins · rule_run
+writes_itself             2    6     0  |     2     builtins · ingestion_worker · rule_run
+stamps_origin             1    3     0  |     0     builtins
+self_writing_name         1    1     0  |     0     replay · rule_run
+builtin_kind              1    6     0  |     4     rule_run
+hands                     2   11     0  |     1     dev_bench · builtins · ingestion_worker · replay · rule_run
+--- 미루기 칸 (문자열 상수라 «식별자로는 0» 으로 나옵니다) ---
+follow_up                 -    7     -  |    25     ingestion_worker · legacy_join_declaration · rule_order
+                                                    · chain_bindings · enrichment/config
+is_batch                  -    5     -  |    30     ingestion_worker · rule_run · chain_bindings · enrichment/config
+allow_chain_trigger       -    6     -  |    17     graph · ingestion_worker · chain_bindings
+```
+
+## ⚠️ 총괄 수와 «다릅니다». 어느 쪽도 안 틀렸습니다 — «다른 물음»에 답합니다
+```
+총괄 writes_itself 18   `git grep -c` = 「그 낱말이 든 «줄»」          (제가 재현했습니다: 1+6+3+8 = 18)
+제  writes_itself  8   AST = 「그것을 «읽거나 정의하는» 코드 노드」
+그 18 줄 중 «다섯»이 주석·독스트링 줄입니다 — 오늘 라운드가 그 이름을 설명하는 문장을 많이 붙였습니다
+👉 지울 때 필요한 수는 «코드 노드»이고, 「몇 줄이 바뀌나」는 «줄»입니다. 둘 다 적습니다
+```
+🔴 그리고 `is_batch` 는 «지울 후보가 아닙니다** — 소유자 설계에서도 「그룹 전체를 한 번에」가
+   남습니다(판정 559 ③). 위 표에 있는 이유는 「미루기 칸과 같이 세라」였기 때문이고, «분리해서» 봐야 합니다.
+
+## 🔴 563 ② — `chain_bindings.py` 를 옮기면 **소유자 맵퍼가 깨집니다**
+```
+실측  추적되는 맵퍼 샘플 «일곱» 중 «여섯»이 최상위에서 `import chain_bindings` 합니다
+     (core_alignment · core_usage · dt_alignment_metadata · dt_inventory_metadata ·
+      dt_job_rollup · dt_map)
+=> 샘플이 그렇다는 것은 «운영의 진짜 맵퍼도 그렇다»는 뜻입니다. 그 파일들은 gitignore 이고
+   ⛔ 판정 498 이 「한 글자도」 금지했습니다 — 제가 고칠 수 «없습니다»
+```
+📮 **판정 청합니다:** 옮기려면 셋 중 하나여야 합니다 —
+```
+㉠ 안 옮긴다 (체인 «문법»은 맵퍼가 부르는 «공개 표면»이라 chain/ 안이 아니라 밖이 맞다)
+㉡ 옮기고 «옛 이름을 남긴다» (server/chain_bindings.py 가 새 자리를 re-export) — 이름 둘이 됩니다
+㉢ 옮기고 소유자께 「맵퍼 import 줄을 바꿔 주십시오」를 요청한다 — 운영 파일을 사람이 고칩니다
+```
+```
+체인인데 chain/ 밖 (추적):  chain_bindings.py · chain_skeleton.json · run_chain_worker.py
+                         · scripts/chain_replay_cli.py · enrichment/{config,candidates}.py
+run_chain_worker.py      «명령줄이 이름을 드는» 파일입니다. 런처가 이름으로 띄우면 옮기는 순간 안 뜹니다
+                         — run_app.bat 에서는 «못 찾았습니다»(0 히트). 어떻게 뜨는지 제가 «모릅니다»
+```
+
+## 🔴 제가 «안 센» 것
+```
+① 미루기 «경로» 전체 — 위는 «칸 이름» 셋만입니다. 속도조절·두 번째 선택 경로는 별도 술어가 필요합니다
+② legacy_join_declaration · legacy_materialized_join 은 표에 «안 넣었습니다» (이름만 들었습니다)
+③ 시험 쪽 수는 «읽기»만입니다 — 그 시험들이 «지워질지 고쳐질지»는 안 갈랐습니다
+```
