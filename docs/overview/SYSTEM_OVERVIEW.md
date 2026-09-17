@@ -243,7 +243,7 @@ graph TD
 |---|---|
 | 규칙을 «돌리는 자리»가 좌석 하나 | `chain/rule_run.py` `run_rule` — 제품 호출 «다섯»(worker 3 · replay 2) |
 | 종류표가 «없다» — `builtin:` 네 표와 `register_builtin` 은퇴 | 사실은 `chain/dynamic_mappers.py` `TEMPLATE_FACTS`(label · stamps_origin · writes_itself) |
-| 제품이 짓는 맵퍼 «셋»이 «이름으로» 등록된다 | `declared:join` · `declared:decide` · `declared:virtual_join` (판정 600, `a96d4a68`) |
+| 제품이 짓는 맵퍼 «넷»이 «이름으로» 등록된다 | `declared:join` · `declared:decide` · 🆕 `declared:enrich`(`4352ad47`) · `declared:virtual_join` (판정 600, `a96d4a68`) — 🔴 세는 법: `chain/dynamic_mappers.TEMPLATES` 의 키. RUN.md 의 한 줄 명령이 그것을 찍는다 |
 | 쓰기가 «문»이다 | `chain/ingestion_worker.py` `apply_chain_writes` (`2699fc38`) — 호출자 하나, 둘째는 다음 홉이 온다 |
 | ⚰️ 부팅 점호 — `62577a67` 에서 «묘비»가 됐다 | ~~`refuse_rules_no_path_picks_up` (판정 500)~~ — 경로가 «하나»면 집는 수가 «항상 1» 이라 빨개질 수 없는 게이트였다(그 모양이 판정 500 이 끝내려던 것이다) |
 | 랩(미루기)이 «없다» — 규칙은 «자기 트리거가 울릴 때»만 돌다 | `62577a67` — `follow_up` 칸이 문법에서 빠지고 `_run_the_follow_up_pass` · PICKUP_PATHS · 헬퍼 셋이 묘비로. 인리치 확정은 `allow_chain_trigger` 로 트리거 경로에 선다 |
