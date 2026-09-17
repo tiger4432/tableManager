@@ -268,8 +268,12 @@ def test_the_first_caller_in_a_process_keeps_the_log_file(tmp_path):
 
 def test_the_process_publishes_which_file_it_actually_writes(tmp_path):
     """A component that names its log file in its own output has to name the real one.
-    `chain_ingestion_worker.MAPPER_LOG_TAG` reads this; without it the tag printed
-    `mapper@chain_worker.log` on lines sitting in `server.log`."""
+
+    ⚰️ [판정 498 ③] THE READER NAMED HERE USED TO BE `MAPPER_LOG_TAG`, which printed
+    `mapper@chain_worker.log` on lines sitting in `server.log` until it was built out of THIS
+    function. That tag was the second execution-log vocabulary and left with it; the reader
+    today is `GET /admin/chain/queue`, which publishes `log_filename` off the same call - the
+    surface that can actually tell an operator which file to open."""
     meta, _, _ = _run_probe(tmp_path, source=SECOND_CALLER)
     assert meta["active"] == "_b3probe.log", \
         "active_log_filename() reports a file this process is not writing to"

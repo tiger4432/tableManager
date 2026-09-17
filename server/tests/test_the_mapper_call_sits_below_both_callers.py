@@ -1,11 +1,18 @@
 # -*- coding: utf-8 -*-
 """S-214. The place a mapper is called from belongs to neither caller.
 
-🔴 THERE WAS NEVER A SECOND EXECUTOR. `execute_custom_mapper` has one definition in this
-repository, and its own docstring says it is 「the only place every custom mapper is called
-through」. What was wrong was its ADDRESS: it lived inside the worker, so replay had to import
-the worker to run a mapper. That is a shared primitive in one caller's house - letter for
-letter the shape S-211 ① fixed for `withdraw_source`, pointing the other way.
+🔴 THERE WAS NEVER A SECOND EXECUTOR. `execute_custom_mapper` had one definition in
+this repository, and its own docstring said it was 「the only place every custom mapper is
+called through」. What was wrong was its ADDRESS: it lived inside the worker, so replay had to
+import the worker to run a mapper. That is a shared primitive in one caller's house - letter
+for letter the shape S-211 ① fixed for `withdraw_source`, pointing the other way.
+
+⚰️ [판정 498] THE EXECUTOR ITSELF IS GONE, AND THE PROPERTY OUTLIVED IT. It was one of TWO
+places that turned a rule's name into something to call, so it folded into `rule_run.run_rule`
+along with the builtin door. The subject below is therefore the SEAT: whoever runs a rule must
+reach it in its own house and never through another caller's. That is the same sentence with a
+new address, which is why this file was retargeted rather than deleted - the edge S-214 removed
+is the edge that would come back.
 
 ⚠️ THE TRANSACTION SHAPES DID NOT MOVE AND MUST NOT. Replay commits per chunk, the worker
 runs a group in one transaction, and both of those live OUTSIDE the executor. What moved is
@@ -54,7 +61,8 @@ def _modules_calling(symbol):
     the property, and the proxy went red the day replay stopped calling the executor directly
     and started asking `chain.rule_run` to run the rule. The property was not weakened by
     that; it was strengthened. A hand-typed list cannot tell those two apart, so the
-    population is measured instead.
+    population is measured instead - and it survived the executor being deleted under it,
+    which a list would not have.
     """
     out = []
     for base, dirs, files in os.walk(SERVER_DIR):
@@ -77,18 +85,28 @@ def _modules_calling(symbol):
     return out
 
 
-def test_whoever_calls_the_executor_imports_it_from_its_own_home():
+def test_whoever_runs_a_rule_imports_the_seat_from_its_own_home():
     """⛔ THE PROPERTY, FOR WHOEVER THE CALLERS TURN OUT TO BE. What must never come back is a
-    module reaching the executor through another CALLER's house; which modules call it is
-    allowed to change, and did."""
-    callers = _modules_calling("execute_custom_mapper")
-    assert callers, "nobody calls the executor - either it died or this query resolved nothing"
+    module reaching the place that runs a rule through another CALLER's house; which modules
+    call it is allowed to change, and did - twice now.
+
+    ⚰️ [판정 498] THE SYMBOL MOVED FROM `execute_custom_mapper` TO `run_rule`. The executor was
+    deleted, so a gate still naming it would have measured an empty population and read that
+    as 「nobody reaches through a caller's house」 - a green that means the query resolved
+    nothing. The assertion below refuses an empty population for exactly that reason."""
+    callers = _modules_calling("run_rule")
+    assert callers, "nobody runs a rule - either the seat died or this query resolved nothing"
 
     for caller in callers:
         named = _imports(caller)
-        assert any("mapper_call" in n for n in named), (caller, sorted(named))
-        assert not any("ingestion_worker" in n for n in named), (
-            "%s reaches the executor through a caller's house" % caller)
+        assert any("rule_run" in n for n in named), (caller, sorted(named))
+        # ⚠️ NAMED PRECISELY, BECAUSE ONE CALLER IMPORTS THE WORKER ON PURPOSE. Replay reads
+        #    `load_chain_rules` from it (판정 358: moving the loader was withdrawn, since the rule
+        #    set it returns is produced by `chain.builtins`). 「imports the worker at all」 would
+        #    therefore forbid a decision already taken; what must never come back is reaching
+        #    the SEAT'S NAME through that house.
+        assert "chain.ingestion_worker.run_rule" not in named, (
+            "%s reaches the seat through a caller's house" % caller)
 
 
 def test_replay_no_longer_imports_the_worker_for_the_executor():
@@ -106,15 +124,17 @@ def test_replay_no_longer_imports_the_worker_for_the_executor():
     replay = io.open(os.path.join(SERVER_DIR, "chain", "replay.py"), encoding="utf-8").read()
 
     assert "from chain.ingestion_worker import execute_custom_mapper" not in replay
-    assert "chain/replay.py" not in _modules_calling("execute_custom_mapper")
     assert any("rule_run" in n for n in _imports("chain/replay.py"))
+    # 🔴 THE SEAT STILL LIVES IN ITS OWN HOUSE. `mapper_call` kept the two pieces that are
+    #    genuinely about calling a FILE mapper - the signature convention and the stage clock -
+    #    so the seat importing it is the neutral-house shape, not a leftover edge.
     assert any("mapper_call" in n for n in _imports("chain/rule_run.py"))
 
 
-def test_one_definition_of_the_executor_in_the_whole_repository():
+def test_one_definition_of_the_seat_in_the_whole_repository():
     """🔴 WHAT THE RULING'S PREMISE GOT WRONG, pinned so it cannot quietly become true. If a
-    second `def execute_custom_mapper` ever appears, the two will answer 「which function is
-    this rule's mapper」 differently, which is the defect the single seat exists to prevent."""
+    second `def run_rule` ever appears, the two will answer 「which function is this rule's
+    code」 differently, which is the defect the single seat exists to prevent."""
     # ⛔ THE FILESYSTEM, NOT `git grep`. A tracked-file sweep answers differently before and
     # after a commit - measured here: this very module was untracked when the gate first ran,
     # so the search found ZERO definitions and called that a failure of the product.
@@ -125,8 +145,8 @@ def test_one_definition_of_the_executor_in_the_whole_repository():
             if not name.endswith(".py"):
                 continue
             path = os.path.join(base, name)
-            if any(line.startswith("def execute_custom_mapper")
+            if any(line.startswith("def run_rule")
                    for line in io.open(path, encoding="utf-8", errors="replace")):
                 defining.append(os.path.relpath(path, SERVER_DIR).replace(os.sep, "/"))
 
-    assert defining == ["chain/mapper_call.py"], defining
+    assert defining == ["chain/rule_run.py"], defining

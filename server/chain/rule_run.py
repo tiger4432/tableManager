@@ -29,7 +29,9 @@ caller. The choice lives here now; the doors are unchanged.
     itself; that is the door's sentence about the mapper. This seat's line is the sentence
     about the RULE, and it is the one spelled identically for both kinds.
 """
+import collections
 import contextlib
+import importlib
 import logging
 import time
 
@@ -134,6 +136,75 @@ def builtin_kind(rule):
     return kind if kind in builtins.BUILTIN_KINDS else None
 
 
+def writes_itself(rule):
+    """Does this rule write its own rows, or propose them for somebody else to write?
+
+    🔴 [판정 497 ⓒ · 498 ④] THE FOLLOW-UP LAP ASKED 「is this a builtin」 AND MEANT THIS.
+    The lap exists to hand a batch to rules that perform their own writes, and `builtin:` was
+    standing in for that - an address standing in for a behaviour. They select the same three
+    rules today, so nothing moves; they stop being the same the day a kind registers
+    `writes_itself=False`, and on that day the address question would have handed the lap
+    batch to a rule that cannot use it.
+
+    ⚠️ ANSWERED WITHOUT RESOLVING. `resolve` is the fuller question but it IMPORTS an
+    operator's module to answer, and this one is asked over every loaded rule while a cache is
+    being built. Only a registered kind writes for itself, so the registration answers alone.
+    """
+    from chain import builtins
+
+    kind = builtin_kind(rule)
+    return kind is not None and kind in builtins.SELF_WRITING_KINDS
+
+
+def runnable(name):
+    """The callable a rule NAME can run as, or None - BOTH tables, one reader.
+
+    🔴 [판정 498 ①] TWO TABLES, AND EVERY READER OF THEM IS HERE. A name may live in
+    the decorator registry or in the builtin table, and three places used to look: this seat,
+    the loader grammar check (「can this run」) and the dev bench. Three readers of two tables
+    is how a name comes to be runnable in one place and unknown in another.
+
+    ⚠️ THIS ANSWERS ABOUT A NAME, NOT ABOUT A RULE. `resolve` is the richer question and
+    needs the whole rule (it also has to know how to hand it its rows); this is what a
+    load-time check can ask when all it has is the spelling in the file.
+    """
+    from chain import builtins
+    import mapper_sdk
+
+    if not name:
+        return None
+    return mapper_sdk.MAPPER_REGISTRY.get(name) or builtins.BUILTIN_KINDS.get(name)
+
+
+def rule_label(rule):
+    """What this rule IS on a screen - join / decide / mapper. The seat answers, from what
+    the kinds REGISTERED rather than from a list kept by hand.
+
+    🔴 [판정 498 ④] `rule_shape` compared the rule against two imported constants,
+    which reads like a reference and behaves like a hand-kept list: register a fourth kind and
+    it is silently labelled 「mapper」 with nothing red anywhere. The label now travels with
+    the registration, so whoever adds a kind says what it is called in the same line.
+
+    ⚠️ THE ENRICHMENT PAIR IS NOT A BUILTIN PAIR. One `decide` declaration becomes two
+    chain rules and only the auto-confirm half is a builtin; the dedup half is a file mapper.
+    Both answer 「decide」 because an operator reading a list of rules for one table should see
+    what the DECLARATION says, not which half of it they happened to get.
+    """
+    from chain import builtins
+
+    kind = builtin_kind(rule)
+    if kind is not None:
+        return builtins.BUILTIN_LABELS.get(kind, "mapper")
+
+    from enrichment import config as enrichment_config
+
+    name = str((rule or {}).get("name") or "")
+    if (name.startswith(enrichment_config.DEDUP_PREFIX)
+            or name.startswith(enrichment_config.AUTO_CONFIRM_PREFIX)):
+        return "decide"
+    return "mapper"
+
+
 def retraction_refusal(rule):
     """None if this rule's answer can be withdrawn when its input row is deleted, or the
     operator sentence saying it cannot — 「이 종류는 되돌릴 수 없다」.
@@ -177,82 +248,228 @@ def _uniform():
             "written": None, "refusal": None}
 
 
-def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None):
-    """Run ONE chain rule over the input it was handed, whichever door it goes through.
+#: How a resolved rule takes its input. The seat hands one or the other and nothing else
+#: branches on it - the difference between a fact about what a rule DOES and a fact about
+#: where its code happens to live.
+HANDS_ROW_IDS = "row_ids"
+HANDS_PAYLOADS = "payloads"
 
-    `payloads` are expanded trigger rows a file mapper is handed; `row_ids` are the rows a
-    `builtin:` kind resolves for itself. `done` is the follow-up lap's batch and is passed on
-    only when given, because the group path does not have one and a kind that does not accept
-    it would refuse the call.
+#: What the seat knows about a rule BEFORE it runs anything.
+Resolved = collections.namedtuple(
+    "Resolved", "call who hands writes_itself accepts_rule")
+
+
+class UnresolvableRule(ValueError):
+    """A rule names code that cannot be found - said with the name, not with a stack."""
+
+
+def resolve(rule):
+    """A rule -> what to CALL, how to HAND it its rows, and whether its result can be SEEN
+    without being applied. The one place in the product where a name becomes a callable.
+
+    🔴 [판정 497·498] THREE WAYS TO NAME CODE, ONE PLACE THAT UNDERSTANDS THEM. A rule names
+    its implementation as a `builtin:` key, as a `@mapper` registry name, or as an import
+    path. Two of those three were already folded together inside the mapper door; the third
+    sat outside as 「the builtin door」, and that is the whole of what the split was - not two
+    kinds of rule, but two places that turned a name into something to call.
+
+    🔴 `writes_itself` IS READ, NOT INFERRED. It used to be derived from 「is this a
+    builtin」, which is a fact about an address rather than about behaviour, and a caller
+    wanting 「can I see this without applying it」 had to ask the kind and decide for itself -
+    which is how a dry run and a live lap grew separate branches from one inference. It comes
+    off the registration now (`builtins.SELF_WRITING_KINDS`), so a builtin that PROPOSED its
+    rows would be handled by every seat without one of them being edited.
+
+    🔴 AN UNFINDABLE NAME IS REFUSED BY NAME. The builtin arm always did; the mapper arm let
+    `importlib` throw, so an operator who mistyped a module got an ImportError stack instead
+    of a sentence naming their rule and the spelling it used.
+
+    ⚠️ RESIDUE, STATED RATHER THAN HIDDEN: `accepts_rule` is still read off the function by
+    inspection instead of off a registration line. It exists only because a mapper may be
+    written `(db, payload)` or `(db, payload, rule=)`, and 판정 498 puts that CONVENTION out
+    of this round's scope - so the inspection cannot leave with it. What did change is that
+    it happens once, here, rather than inside the door on every call.
+
+    ⚠️ IMPORTING IS RESOLUTION, NOT RUNNING. The import-path arm imports the operator module
+    exactly where the mapper door used to; nothing is executed, so a dry run can ask this
+    function everything it needs without touching a row.
+    """
+    from chain import builtins
+
+    kind = builtin_kind(rule)
+    if kind is not None:
+        # `builtin_kind` answers by membership in this same table, so the lookup cannot miss.
+        return Resolved(builtins.BUILTIN_KINDS[kind], kind, HANDS_ROW_IDS,
+                        kind in builtins.SELF_WRITING_KINDS, False)
+
+    import chain_bindings
+    import mapper_sdk
+    from chain.mapper_call import mapper_accepts_rule
+
+    name = (rule or {}).get("name") or "<unnamed rule>"
+    one_cell, module_name, function_name = chain_bindings.mapper_cells(rule)
+    registered = runnable(one_cell)
+    if registered is not None:
+        call, who = registered, one_cell
+    elif module_name and function_name:
+        try:
+            call = getattr(importlib.import_module(module_name), function_name)
+        except (ImportError, AttributeError) as exc:
+            raise UnresolvableRule(
+                "rule %r names %s.%s and it could not be loaded (%s: %s)"
+                % (name, module_name, function_name, type(exc).__name__, exc)) from exc
+        who = "%s.%s" % (module_name, function_name)
+    else:
+        # 🔴 IT SAYS WHAT *IS* KNOWN, and that half is older than this seat. ⚰️ The deleted
+        #    `run_builtin` listed the registered kinds when it refused, and an operator who
+        #    mistypes `builtin:join_to` needs the list far more than they need the spelling
+        #    they already typed. Only the kinds - the `@mapper` registry is an operator's own
+        #    file and can be any length, so naming it here would bury the useful half.
+        raise UnresolvableRule(
+            "rule %r names no implementation this product can find: mapper=%r "
+            "mapper_module=%r mapper_function=%r (known builtin kinds: %s)"
+            % (name, one_cell, module_name, function_name,
+               ", ".join(sorted(builtins.BUILTIN_KINDS)) or "none registered"))
+    # A file mapper PROPOSES: its rows come back as `updates` for the caller to write, which
+    # is exactly what lets a dry run count them without writing anything.
+    return Resolved(call, who, HANDS_PAYLOADS, False, mapper_accepts_rule(call))
+
+
+def rows_counted(value):
+    """How many rows this is - handed in or proposed out, counted by ONE function.
+
+    🔴 [판정 498] THE QUEUE VIEW COMPARES THESE NUMBERS ACROSS RULES, so they have to be
+    counted the same way. They were not: the builtin door measured what it was HANDED off its
+    kwargs while the mapper door measured what came BACK, across three result shapes, and the
+    screen put the two side by side as though they meant one thing.
+    """
+    from chain.mapper_call import result_row_count
+
+    if isinstance(value, dict):
+        return result_row_count(value)
+    if isinstance(value, (list, tuple, set)):
+        return len(value)
+    return 1 if value else 0
+
+
+def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None):
+    """Run ONE chain rule over the input it was handed, whichever way it names its code.
+
+    `payloads` are expanded trigger rows a proposing rule is handed; `row_ids` are the rows a
+    self-writing rule resolves for itself. `done` is the follow-up lap batch, passed on only
+    when given, because the group path has none and an implementation that does not accept it
+    would refuse the call.
+
+    🔴 [판정 497·498] FOUR STEPS, ONE PLACE: resolve the name, register the run, call it,
+    answer in one shape - and say ONE line about it. Each of those used to happen twice, once
+    per door. The queue registration was the clearest case: S-246 fixed 「a builtin does not
+    appear in the queue」 by writing the registration a SECOND time rather than by having one.
+
+    🔴 THE MISSING-VALUE CLEANUP CAME UP HERE RATHER THAN AWAY. A mapper is entitled to
+    assume it (owner report 2026-09-04, `cannot convert float NaN to integer`), so it is
+    applied to what goes IN and what comes OUT for every rule, instead of only for the rules
+    that happened to enter through the mapper door.
     """
     started = time.monotonic()
     name = (rule or {}).get("name") or "<unnamed rule>"
     target = (rule or {}).get("target_table") or "<none>"
-    kind = builtin_kind(rule)
     answer = _uniform()
 
-    if kind is not None:
-        handed = list(row_ids or ())
-        if not handed:
-            # Nothing was handed, so nothing ran - and a line claiming a run would be a false
-            # sentence. Every caller already skips this case; it is stated here so the next
-            # one does not have to remember to.
-            return answer
-        from chain import builtins
+    from chain import activity
+    from chain.mapper_call import stage_timing, without_missing
 
-        # 🔴 IN THE ENVELOPE, BECAUSE A BUILTIN WRITES FOR ITSELF. A file mapper's rows go out
-        # through the CALLER's `apply_batch_updates`, which enters the same envelope; a builtin
-        # never passes through it. Without the collapsed cell, 1,000 written rows became
-        # 「1,000 outbox events, 1,000 queue items, 1,000 laps and 1,000 lines」 - the owner's
-        # 「한 행당 로그 하나」; without the depth cell, the hop is invisible to the ceiling that
-        # 판정 402 made the ONLY thing standing between a declared cycle and an endless one.
-        # 🔴 [판정 428] EVERY KIND TAKES THE SAME SIGNATURE, so this hands the lap's batch over
-        # WITHOUT asking. The conditional that used to sit here passed `done` only when a
-        # caller gave one - which worked, but only because `_run_join` would have refused it:
-        # it declared neither `done` nor `**kwargs`, so the follow-up lap, which always passes
-        # one, had been raising `TypeError` on `builtin:join` since 92257825 (2026-09-12
-        # 15:20, fifty minutes after that kind joined the table) and its outer `except` ended
-        # the WHOLE batch's lap. 「구분되지 않는다」 applied to the signature: a kind that does
-        # not use a cell receives it and ignores it, and the AST gate keeps that true for the
-        # next kind somebody registers.
-        with chain_envelope(depth):
-            outcome = builtins.run_builtin(kind, db, rule, row_ids=handed, done=done) or {}
-        answer["written"] = outcome.get("written")
-        answer["refusal"] = outcome.get("refusal")
-        who, rows_in = kind, len(handed)
-    else:
-        from chain.mapper_call import execute_custom_mapper
+    bound = resolve(rule)
+    handed = list(row_ids or ()) if bound.hands == HANDS_ROW_IDS else list(payloads or ())
+    # 🔴 TWO FACTS, TWO USES, AND THEY ARE NOT THE SAME FACT. `hands` decides the CALL
+    # SHAPE; `writes_itself` decides the ENVELOPE and which answer cells get filled. The first
+    # draft of this seat keyed the call on `writes_itself` and a probe kind registered without
+    # that flag went down the proposing arm and was called `(db, row_id)` - the same
+    # conflation, one layer in, caught by `test_the_seat_hands_the_laps_batch_to_the_kind`.
+    if bound.hands == HANDS_ROW_IDS and not handed:
+        # Nothing was handed, so nothing ran - and a line claiming a run would be a false
+        # sentence. Every caller already skips this case; it is stated here so the next one
+        # does not have to remember to.
+        return answer
 
-        module_name = (rule or {}).get("mapper_module")
-        func_name = (rule or {}).get("mapper_function")
-        handed = list(payloads or ())
-        # A batch rule is handed the WHOLE group in one call and a per-row rule one call per
-        # row - the same fan-out both live callers already do. An empty batch still calls,
-        # because a batch mapper is entitled to be told its group was empty; an empty per-row
-        # list is zero calls, because there is no row to speak about.
-        if (rule or {}).get("is_batch", False):
-            results = [execute_custom_mapper(module_name, func_name, db, handed, rule=rule)]
-        else:
-            results = [execute_custom_mapper(module_name, func_name, db, one, rule=rule)
-                       for one in handed]
-        for result in results:
-            if not isinstance(result, dict):
-                continue
-            for cell in ("updates", "map_metadata_updates", "batches"):
-                answer[cell].extend(result.get(cell) or ())
-        # ⚠️ THE ONE CELL FIRST, BECAUSE `None.None` WOULD BE A FALSE LINE. A rule may name
-        # its mapper in `mapper` (the decorator registry, S-188 ⓓ) and carry no module or
-        # function at all; the door already resolves that, and the line has to say the same
-        # name the door used rather than two literal Nones.
-        who = (rule or {}).get("mapper") or "%s.%s" % (module_name, func_name)
-        rows_in = len(handed)
+    # The envelope belongs to writing, not to a kind (판정 423·498): a proposing rule's rows
+    # enter it through the caller's batch write, so opening a second one here would nest.
+    envelope = chain_envelope(depth) if bound.writes_itself else contextlib.nullcontext()
+    # 🔴 THE LINE IS IN `finally`, SO A RULE THAT THREW STILL SAYS SO (판정 498 ③).
+    # ⚰️ LEVELLING THE TWO VOCABULARIES DOWN WOULD HAVE LOST A SENTENCE THE OWNER ASKED FOR.
+    #    The mapper door wrote START/END/RAISED; the builtin door wrote one line and NOTHING on
+    #    a throw. Folding them by keeping the survivor would have made a raising rule log
+    #    nothing at all - and 「I grepped and found no line」 reading as 「it did not run」 is the
+    #    exact day (2026-09-04) this logging exists because of. One vocabulary, one line, and
+    #    `error=` is the cell that tells a throw from `updates=0`.
+    error = None
+    # 🔴 [판정 498] THE ROW COUNT THE SCREEN AND THE LOG BOTH READ, COUNTED ONCE. The line used
+    # to print `len(updates)`, which is a lie for the shape that answers in `batches`:
+    # `dt_standard_map_mapper` returns a whole map's worth of cells there, and a whole map
+    # would have been logged as 「0」 - the exact number an operator is trying to tell apart
+    # from 「did not run」. It is whatever `run.produced` was told, so the queue view and the
+    # log cannot disagree about one run.
+    rows_out = None
+    try:
+        with activity.running(name, bound.who, target, len(handed),
+                              no_rows_reason="the rule wrote no rows") as run, envelope:
+            if bound.hands == HANDS_ROW_IDS:
+                # 🔴 IN THE ENVELOPE, BECAUSE A SELF-WRITING RULE WRITES FOR ITSELF. A proposing
+                # rule sends its rows out through the caller's batch write, which enters the same
+                # envelope; this one never passes through it. Without the collapsed cell, 1,000
+                # written rows became 「1,000 outbox events, 1,000 queue items, 1,000 laps and
+                # 1,000 lines」 - 소유자 「한 행당 로그 하나」; without the depth cell the hop is
+                # invisible to the ceiling 판정 402 made the only thing standing between a
+                # declared cycle and an endless one.
+                # 🔴 [판정 428] EVERY IMPLEMENTATION TAKES THE SAME SIGNATURE, so the lap batch
+                # goes over WITHOUT being asked for.
+                outcome = bound.call(db, rule, row_ids=handed, done=done) or {}
+                answer["written"] = outcome.get("written")
+                answer["refusal"] = outcome.get("refusal")
+                if answer["written"] is not None:
+                    # ⚠️ ONLY WHEN THE RULE SAID SO. One that reports no count leaves the
+                    # outcome alone rather than being recorded as 「ran, changed nothing」 -
+                    # 「안 셌다」 and 「0 이었다」 are different facts.
+                    rows_out = int(answer["written"])
+                    run.produced(rows_out)
+            else:
+                # A batch rule is handed the WHOLE group in one call and a per-row rule one call
+                # per row - the same fan-out both live callers already do. An empty batch still
+                # calls, because a batch mapper is entitled to be told its group was empty; an
+                # empty per-row list is zero calls, because there is no row to speak about.
+                batched = (rule or {}).get("is_batch", False)
+                handed_out = [without_missing(handed)] if batched else [
+                    without_missing(one) for one in handed]
+                results = []
+                with stage_timing():
+                    for one in handed_out:
+                        if bound.accepts_rule:
+                            results.append(without_missing(bound.call(db, one, rule=rule)))
+                        else:
+                            results.append(without_missing(bound.call(db, one)))
+                for result in results:
+                    if not isinstance(result, dict):
+                        continue
+                    for cell in ("updates", "map_metadata_updates", "batches"):
+                        answer[cell].extend(result.get(cell) or ())
+                rows_out = sum(rows_counted(r) for r in results)
+                run.produced(rows_out)
 
-    # 🔴 ONE LINE, ONE VOCABULARY. `rows_in` is what the rule was handed, `updates` what it
-    # proposed, `written` what it wrote itself - the same three names whichever door ran, so
-    # an operator reads the two kinds with one query and can see at a glance which of the two
-    # a rule is (`updates=0 written=5` writes for itself; `updates=5 written=None` proposes).
-    logger.info("[%s] rule=%s kind=%s target=%s rows_in=%d updates=%d written=%s refusal=%s "
-                "elapsed=%.3fs",
-                RULE_LOG_TAG, name, who, target, rows_in, len(answer["updates"]),
-                answer["written"], answer["refusal"], time.monotonic() - started)
+    except Exception as exc:                                          # noqa: BLE001
+        error = "%s: %s" % (type(exc).__name__, exc)
+        raise
+    finally:
+        # 🔴 ONE LINE, ONE VOCABULARY (판정 498 ③). `rows_in` is what the rule was handed,
+        # `rows_out` what it produced, `written` what it wrote for itself, `error` what it
+        # threw - the same names whichever way the rule named its code, so an operator reads
+        # every rule with one query and sees at a glance which a rule is (`rows_out=5
+        # written=5` writes for itself; `rows_out=5 written=None` proposes for the caller to
+        # write). The mapper door said START/END/RAISED under a second tag; an operator
+        # grepping 「did this rule run」 had to know the kind before they could ask.
+        # ⚠️ AND `rows_out=None` IS NOT `rows_out=0`. A rule that reported no count has not
+        # said it produced nothing, which is the same distinction the outcome keeps.
+        logger.info(
+            "[%s] rule=%s kind=%s target=%s rows_in=%d rows_out=%s written=%s refusal=%s "
+            "error=%s elapsed=%.3fs",
+            RULE_LOG_TAG, name, bound.who, target, len(handed), rows_out,
+            answer["written"], answer["refusal"], error, time.monotonic() - started)
     return answer

@@ -90,11 +90,18 @@ def test_a_flat_cell_is_read_as_a_param_and_the_block_wins():
     assert chain_bindings.params_of(rule) == {"x_col": "block", "y_col": "Y"}
 
 
-def test_the_worker_prefers_a_registered_mapper_over_the_two_cells(monkeypatch):
+def test_the_seat_prefers_a_registered_mapper_over_the_two_cells(monkeypatch):
     """The one cell wins when it resolves; otherwise the module/function path runs, which is
-    what every rule in a box with no decorated mappers still does."""
-    from chain import ingestion_worker as worker
-    from chain import mapper_call
+    what every rule in a box with no decorated mappers still does.
+
+    ⚰️ [판정 498] ASKED OF THE SEAT. The `if registered else import` lived inside
+    `execute_custom_mapper`; that function folded into `rule_run.resolve` along with the
+    builtin table, so the precedence is the seat's to answer now.
+    🔴 AND THE TWO CELLS NAME SOMETHING UNIMPORTABLE ON PURPOSE. They used to be `None`,
+    which passes whether the one cell won or the other arm merely did nothing; a module that
+    cannot be found makes 「the one cell won」 the only way this can be green.
+    """
+    from chain import rule_run
 
     calls = []
 
@@ -103,9 +110,11 @@ def test_the_worker_prefers_a_registered_mapper_over_the_two_cells(monkeypatch):
         return {"updates": []}
 
     monkeypatch.setitem(mapper_sdk.MAPPER_REGISTRY, "build_rows", fake)
-    out = mapper_call.execute_custom_mapper(None, None, None, [],
-                                      rule={"name": "r", "mapper": "build_rows"})
-    assert calls == ["registered"] and out == {"updates": []}
+    out = rule_run.run_rule(None, {"name": "r", "mapper": "build_rows", "is_batch": True,
+                                   "mapper_module": "no_such_module_anywhere",
+                                   "mapper_function": "emit"},
+                            payloads=[])
+    assert calls == ["registered"] and out["updates"] == []
 
 
 # ---------------------------------------------------------------------------

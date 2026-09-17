@@ -102,23 +102,12 @@ def declared_kind(rule: dict) -> str:
     the PRODUCT made; this reads back what the DECLARATION behind a loaded rule says it is.
     Folding the two would make one answer serve two questions.
     """
-    from chain import join_into
-    from enrichment import config as enrichment_config
-    from chain import legacy_join_declaration as vjc
+    # 🪦 [판정 498 ④] THIS COMPARED AGAINST TWO IMPORTED CONSTANTS AND ONE PREFIX PAIR.
+    # It read like a reference and behaved like a hand-kept list - a kind registered tomorrow
+    # was labelled 「mapper」 in silence. The seat answers now, off the registration.
+    from chain import rule_run
 
-    rule = rule if isinstance(rule, dict) else {}
-    mapper = rule.get("mapper")
-    if mapper in (join_into.JOIN_INTO_MAPPER, vjc.JOIN_MAPPER):
-        return "join"
-    # ⚠️ BOTH HALVES OF A `decide` DECLARATION ANSWER 「decide」. The dedup half and its
-    # auto-confirm companion come from ONE declaration, and an operator reading a list of
-    # rules for one table should see what the declaration says, not which half they got.
-    name = str(rule.get("name") or "")
-    if (mapper == enrichment_config.AUTO_CONFIRM_MAPPER
-            or name.startswith(enrichment_config.DEDUP_PREFIX)
-            or name.startswith(enrichment_config.AUTO_CONFIRM_PREFIX)):
-        return "decide"
-    return "mapper"
+    return rule_run.rule_label(rule if isinstance(rule, dict) else {})
 
 
 def as_chain_rule(internal: dict) -> dict:

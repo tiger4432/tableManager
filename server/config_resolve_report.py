@@ -65,6 +65,18 @@ from chain.join_refusal import virtual_join_detail             # noqa: F401
 logger = logging.getLogger(__name__)
 
 
+def _runnable_name(name):
+    """「Can this name run」, asked where it is answered (판정 498 ①).
+
+    Imported inside the call rather than at module scope: this module is read by the loader
+    it reports on, and the seat pulls in the builtin table, so a module-level import would
+    close a ring that has been deliberately kept open.
+    """
+    from chain import rule_run
+
+    return rule_run.runnable(name)
+
+
 def _names(seq, sep: str = ", ") -> str:
     """이름 목록을 **문장에 넣을 수 있는** 형태로.
 
@@ -243,9 +255,11 @@ def _resolve_chain() -> dict:
     triggered = set()
     for index, rule in enumerate(read["rules"] or ()):
         path = "rules[%d]" % index
+        # 🪦 [판정 498 ①] `MAPPER_REGISTRY.get` STOOD HERE AND IT KNOWS ONE TABLE OF TWO.
+        # A `builtin:` name was reported unresolvable while the loader ran it happily.
         name = str((rule or {}).get("name") or path) if isinstance(rule, dict) else path
         issues = chain_bindings.rule_refusals(
-            rule, path, mapper_resolvable=mapper_sdk.MAPPER_REGISTRY.get,
+            rule, path, mapper_resolvable=_runnable_name,
             mapper_params=mapper_sdk.MAPPER_PARAMS.get)
         if issues:
             first = issues[0]

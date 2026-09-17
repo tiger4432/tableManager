@@ -4,9 +4,10 @@ from unittest.mock import MagicMock
 from database.models import DatabaseOutbox
 from utils.payload_helper import get_payload_dict
 from chain.ingestion_worker import process_chain_transaction_group
-# 🏠 [S-279] FROM ITS OWN HOME. The worker re-exported it while the worker still
-#    called it; it calls the seat now, so this import names where the executor lives.
-from chain.mapper_call import execute_custom_mapper
+# ⚰️ [판정 498] `from chain.mapper_call import execute_custom_mapper` STOOD HERE and
+#    nothing in this file used it - S-279 added it to name where the executor lived. The
+#    executor is gone (folded into `chain.rule_run.run_rule`), and an import kept for its
+#    prose is an import that fails collection for a sentence nobody reads.
 
 def test_get_payload_dict_various_inputs():
     # 1. Plain dictionary

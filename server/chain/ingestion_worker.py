@@ -60,9 +60,11 @@ from chain import activity
 # 🔴 [S-214, 판정 370] 맵퍼를 «부르는 자리»는 이 모듈의 것이 아니라 «재생과 같이 쓰는 것»이다.
 #    재생이 맵퍼를 돌리려고 이 모듈을 import 하고 있었고, 그것은 「공용 프리미티브가 한 호출자의
 #    집에 산다」는 뜻이었다. S-211 ① 의 `withdraw_source` 와 같은 기제, 반대 방향.
-#    ⚠️ 여기서 읽는 이름들은 «재수출»이 아니라 이 모듈이 그것들을 «쓰기» 때문이다.
-from chain.mapper_call import (                                      # noqa: F401
-    MAPPER_LOG_TAG, without_missing)
+#    ⚠️ 여기서 읽는 이름은 «재수출»이 아니라 이 모듈이 그것을 «쓰기» 때문이다.
+#    🪦 [판정 498 ③] `MAPPER_LOG_TAG` 도 여기서 읽혔고, 그것은 위 문장의 예외였다 —
+#    이 모듈은 그 이름을 한 번도 안 쓰고 있었고, 시험만 `worker.MAPPER_LOG_TAG` 로 읽었다.
+#    그 «둘째 실행 어휘»가 은퇴하면서 같이 간다.
+from chain.mapper_call import without_missing                        # noqa: F401
 import chain_bindings
 from chain import rule_order
 # 🔴 [S-279, 판정 420 ㉡] The seat that runs a rule. This module no longer names either
@@ -654,11 +656,9 @@ def _resolvable_mapper(name):
     table is refused exactly as before; what changed is that the table is now one of the two
     places a runnable name may live.
     """
-    from chain import builtins
-
-    if not name:
-        return None
-    return mapper_sdk.MAPPER_REGISTRY.get(name) or builtins.BUILTIN_KINDS.get(name)
+    # 🪦 [판정 498 ①] THIS READ BOTH TABLES ITSELF. The seat reads them now, so
+    # 「what can run」 has one answer whether it is asked at load time or at run time.
+    return rule_run.runnable(name)
 
 
 def read_rules_document(path=None):
@@ -767,7 +767,11 @@ def load_chain_rules():
             rule, path, mapper_resolvable=_resolvable_mapper,
             mapper_params=mapper_sdk.MAPPER_PARAMS.get)
         one_cell, _module_name, _function_name = chain_bindings.mapper_cells(rule)
-        resolvable = bool(mapper_sdk.MAPPER_REGISTRY.get(one_cell)) if one_cell else False
+        # 🪦 [판정 498 ①] THIS PASSED `MAPPER_REGISTRY.get`, WHICH ANSWERS FOR ONE
+        # TABLE OF TWO. A `builtin:` name is runnable and was reported unresolvable here,
+        # while the loader accepted it - one question with two answers. The seat reads
+        # both tables, so the report and the loader agree by construction.
+        resolvable = bool(rule_run.runnable(one_cell)) if one_cell else False
 
         # 🔴 AN UNKNOWN CELL DOES NOT DELETE A RULE THAT WAS RUNNING (2026-09-14, outage).
         # S-152 turned "a cell nobody declared" from a WARNING into a refusal, and this
@@ -1470,55 +1474,37 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                 trigger_events = [e for e in valid_events
                                   if e.table_name == table_name
                                   and _rule_accepts_event(rule, e)]
-                # 🔴 [S-278 후반] A `builtin:` KIND IS CALLED BY NAME, NOT BY MODULE. Every
-                # other rule here names a file mapper and is dispatched through
-                # `execute_custom_mapper(module, function, ...)`; a builtin rule carries no
-                # `mapper_module` and no `mapper_function`, so that call reached it as
-                # `(None, None)` and raised `'NoneType' object has no attribute
-                # 'startswith'`. Measured before building: until S-278 no builtin had ever
-                # been on this path - `_run_builtin_followups` was the only dispatcher the
-                # vocabulary had - so taking the join off the paced lap took it off the only
-                # lap that could run it.
+                # 🪦 [판정 495] A BRANCH ON KIND STOOD HERE AND IT HAD NOTHING IN IT.
+                # `rule_run._uniform` was built (판정 428) so that 「a caller can extend all
+                # three lists unconditionally and get a no-op - that is what lets the branch
+                # disappear from the callers」. The envelope landed and this caller did not
+                # change, so the branch it existed to delete outlived its own reason.
                 #
-                # ⚠️ IT WRITES ITSELF AND PROPOSES NOTHING. `join_into.run` returns
-                # `{"written", "rows_in", "side"}` and has already written; it does not
-                # return `updates`, so this branch must NOT feed `table_updates` the way the
-                # mapper branch does. That is why it is a branch and not a call swap.
+                # All four of its legs were already answered by the seat: `run_rule` picks
+                # `row_ids` or `payloads` by kind itself, returns early on an empty hand
+                # (「it is stated here so the next one does not have to remember to」), hands
+                # back empty proposal lists for a kind that writes for itself, and
+                # `rules_by_target` was filled for EVERY rule above. Deleting it makes the
+                # same calls in the same order.
                 #
-                # ⚠️ `done=` IS THE FOLLOW-UP LAP'S ARGUMENT AND IS NOT PASSED HERE.
-                # Measured: `join_into.run` accepts it and never reads it (the name appears
-                # in its signature and nowhere else in that module), so nothing is lost.
-                # `_run_auto_confirm` does read it - and auto-confirm stays on the paced lap,
-                # which this branch does not touch.
-                builtin_kind = rule_run.builtin_kind(rule)
-                if builtin_kind is not None:
-                    builtin_rows = [p.get("row_id")
-                                    for e in trigger_events
-                                    for p in expanded[outbox_expand.event_key(e)]
-                                    if p.get("row_id")]
-                    if not builtin_rows:
-                        continue
-                    # 🔴 THE ENVELOPE IS THE SEAT'S (판정 423). This branch used to wrap the
-                    # call in `outbox_mode(COLLAPSED)` and nothing else, so the join's write
-                    # left with NO `chain_depth` - and it happens HERE, before the
-                    # `if table_updates ...` block below that stamps one. A group whose only
-                    # rule is a builtin never enters that block at all, so the hop was
-                    # invisible to `max_chain_depth`, which 판정 402 made the only thing
-                    # standing between a declared cycle and an endless one.
-                    #
-                    # ⚠️ AND THE LINE MOVED WITH IT. The count the paced lap published
-                    # (`written=`) is said by `run_rule` now, in the same words it uses for a
-                    # file mapper - 「로그도 «문»이다」.
-                    rule_run.run_rule(db, rule, row_ids=builtin_rows,
-                                      depth=incoming_depth)
-                    rules_by_target[target_table].add(_rule_name)
-                    continue
+                # 🔴 THE HOP STILL RIDES. `chain_envelope(depth)` is inside `run_rule`, so
+                # 판정 423's `chain_depth` is stamped for a self-writing kind exactly as it
+                # was when this branch passed `depth=` by hand.
+                #
+                # Indexed, not `.get(..., ())`: a missing key means the expander and this
+                # loop disagree about the batch, and deriving nothing silently is the
+                # failure mode to avoid.
+                payloads = [p for e in trigger_events
+                            for p in expanded[outbox_expand.event_key(e)]]
+                # A `builtin:` kind resolves rows for itself and the seat reads THIS list; a
+                # file mapper never looks at it. Projected rather than branched on, so this
+                # caller stops knowing which door the rule takes.
+                row_ids = [p.get("row_id") for p in payloads if p.get("row_id")]
                 if is_batch:
-                    # Collect all payloads for this trigger table in the current transaction group
-                    payloads = [p for e in trigger_events
-                                for p in expanded[outbox_expand.event_key(e)]]
-                    # Pass the whole list to custom mapper
+                    # The whole group in one call; the seat fans out per row when the rule
+                    # is not a batch rule, and picks `row_ids` when the rule is a builtin.
                     target_payload = rule_run.run_rule(db, rule, payloads=payloads,
+                                                      row_ids=row_ids,
                                                       depth=incoming_depth)
                     if target_payload["updates"]:
                         table_updates[target_table].extend(target_payload.get("updates"))
@@ -1556,13 +1542,8 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                     # Single event execution - one call per ROW. The fan-out moved INTO the
                     # seat with the door it belongs to, so this hands over the whole
                     # expansion and the seat makes the same N calls.
-                    #
-                    # Indexed, not `.get(..., ())`: a missing key means the expander and this
-                    # loop disagree about the batch, and deriving nothing silently is the
-                    # failure mode to avoid.
-                    row_payloads = [p for event in trigger_events
-                                    for p in expanded[outbox_expand.event_key(event)]]
-                    target_payload = rule_run.run_rule(db, rule, payloads=row_payloads,
+                    target_payload = rule_run.run_rule(db, rule, payloads=payloads,
+                                                      row_ids=row_ids,
                                                       depth=incoming_depth)
                     if target_payload.get("updates"):
                         table_updates[target_table].extend(target_payload["updates"])
@@ -2035,11 +2016,17 @@ def _followup_builtin_rules():
     """The follow-up rules a `builtin:` kind could run, loaded once per reload."""
     global _FOLLOWUP_BUILTIN_RULES
     if _FOLLOWUP_BUILTIN_RULES is None:
-        from chain import builtins
-
+        # 🪦 [판정 498 ④] THIS READ `builtins.BUILTIN_KINDS` DIRECTLY, then asked the
+        # kind and compared it to None - the same question in two more spellings. What the lap
+        # actually selects for is 「writes its own rows」, which is the fact the registration
+        # carries; `builtin:` was an address standing in for a behaviour. The three rules
+        # selected are the same either way today, and stop being the same the day a kind
+        # registers `writes_itself=False`.
+        # (Found by the AST sweep rather than named in the ruling: the census that listed
+        # `rule_shape` and `dt_map_derivation` counted comparisons and missed a membership.)
         _FOLLOWUP_BUILTIN_RULES = [
             r for r in load_chain_rules()
-            if r.get("follow_up") and r.get("mapper") in builtins.BUILTIN_KINDS]
+            if r.get("follow_up") and rule_run.writes_itself(r)]
     return _FOLLOWUP_BUILTIN_RULES
 
 
@@ -2776,7 +2763,7 @@ _FOLLOWUP_SAID = {}
 FOLLOWUP_LOG_EVERY = 500
 
 
-def log_followup_folded(logger_, rule_name, table, rows_in, written, woke_by, hop,
+def log_followup_folded(logger_, rule_name, table, written, woke_by, hop,
                         max_hop, refusal=None):
     """One line that says WHY this ran, folded so a thousand rows are not a thousand lines.
 
@@ -2784,6 +2771,19 @@ def log_followup_folded(logger_, rule_name, table, rows_in, written, woke_by, ho
     table and counts - everything except the change that woke it - so an operator watching a
     cascade could not tell which edit was still echoing. `woke_by` and the hop are what turn
     a count into a trail.
+
+    🔴 [판정 499] AND IT SAID ALL THAT UNDER `[ChainBuiltin]`, WHICH IS A KIND'S NAME.
+    판정 498 folded the two execution vocabularies into one and reached only `run_rule`'s line,
+    so an operator grepping 「did this rule run」 still got half of the laps. Worse, the SAME
+    round made the name false: this lap selects rules by `rule_run.writes_itself` now - a
+    REGISTERED property, not an address - so the day a file mapper registers it, the lap
+    would log that mapper as a builtin. 「가드는 도달 가능해지는 날 틀린다」, in its log form.
+
+    🔴 `rows_in` AND `written` LEFT THE MESSAGE, NOT THE LINE. `run_rule` says both for
+    this very run and now under the SAME tag, so repeating them here was one fact with two
+    authors. `written` stays a PARAMETER because it picks the level - a lap with nothing to
+    do is the ordinary case and belongs at DEBUG. What is left is what only this lap knows:
+    what woke it, which hop it is on, and how many lines were folded into this one.
 
     ⚠️ NOTHING WRITTEN IS DEBUG. A follow-up that had nothing to do is the ordinary case on
     every lap, and at INFO it is the noise that hides the laps that DID something.
@@ -2799,9 +2799,8 @@ def log_followup_folded(logger_, rule_name, table, rows_in, written, woke_by, ho
     if level == logging.INFO and seen != 1 and seen % FOLLOWUP_LOG_EVERY != 0:
         return seen
     logger_.log(level,
-                "[ChainBuiltin] rule=%s table=%s rows_in=%s written=%s \u2190 woke_by=%s "
-                "hop=%s/%s%s%s",
-                rule_name, table, rows_in, written, woke_by, hop, max_hop,
+                "[%s] rule=%s table=%s \u2190 woke_by=%s hop=%s/%s%s%s",
+                rule_run.RULE_LOG_TAG, rule_name, table, woke_by, hop, max_hop,
                 (" REFUSED: " + refusal) if refusal else "",
                 (" (x%d)" % seen) if seen > 1 else "")
     return seen
@@ -2900,9 +2899,10 @@ def _run_builtin_followups(db, done):
                     done.get("transaction_id"), table, rule.get("name"), row_ids)
                 if not fresh:
                     logger.info(
-                        "[ChainBuiltin] rule=%s kind=%s table=%s — 이 원인(tx %s)의 행은 "
+                        "[%s] rule=%s kind=%s table=%s — 이 원인(tx %s)의 행은 "
                         "이미 한 번 받았습니다. 건너뜁니다.",
-                        rule.get("name"), kind, table, done.get("transaction_id"))
+                        rule_run.RULE_LOG_TAG, rule.get("name"), kind, table,
+                        done.get("transaction_id"))
                     continue
                 # 🔴 [S-249 ⓔ-1] THE LAP COLLAPSES ITS EVENTS, like the group path already
                 # does. Per-row events made 1,000 follow-up writes into 1,000 outbox
@@ -2917,7 +2917,7 @@ def _run_builtin_followups(db, done):
             # can act on — and with several join rules watching one table it cannot even be
             # attributed.
                 log_followup_folded(
-                    logger, rule.get("name"), table, len(fresh),
+                    logger, rule.get("name"), table,
                     (result or {}).get("written"),
                     "%s#%s" % (table, done.get("transaction_id") or "?"),
                     rule_run.outgoing_depth(incoming_depth),
@@ -2926,8 +2926,9 @@ def _run_builtin_followups(db, done):
         finally:
             request_chain_depth.reset(token_depth)
     except Exception as err:                                       # noqa: BLE001
-        logger.error("[ChainBuiltin] follow-up dispatch failed for table %s "
-                     "(the ledger follow-up itself is unaffected): %s", table, err)
+        logger.error("[%s] follow-up dispatch failed for table %s "
+                     "(the ledger follow-up itself is unaffected): %s",
+                     rule_run.RULE_LOG_TAG, table, err)
 
 
 def _drain_ledger_followup_sync(db_session_factory):

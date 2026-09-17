@@ -4,7 +4,8 @@
 🔴 THE OWNER ASKED 「이거 켜려면 어케해 소급」 AND THERE WAS NO ANSWER. `replay_rule` knew only
 `mapper_module`/`mapper_function`, which a `builtin:` rule leaves empty - so
 `importlib.import_module(None)` threw and a migrated join had NO backfill at all. The worker
-ran the same rule through `builtins.run_builtin`. Live and retroactive were two doors to one
+ran the same rule through `builtins.run_builtin` (⚰️ 판정 498: both doors are now one seat,
+`chain.rule_run.run_rule`). Live and retroactive were two doors to one
 rule, which is the 「같은 기능에 두 경로」 defect at its most expensive: one door simply did
 not open.
 
@@ -164,13 +165,16 @@ def test_a_page_that_throws_costs_that_page_and_the_session_survives(db, monkeyp
     _seed(db)
     calls = {"n": 0}
 
-    def flaky(kind, session, rule, **kwargs):
+    def flaky(session, rule, **kwargs):
         calls["n"] += 1
         if calls["n"] == 1:
             raise RuntimeError("psycopg2.errors.UniqueViolation: duplicate key")
         return {"written": len(kwargs.get("row_ids") or ())}
 
-    monkeypatch.setattr(builtins, "run_builtin", flaky)
+    # ⚰️ [판정 498] THE KIND, NOT THE DOOR. `builtins.run_builtin` is deleted; the seat looks
+    #    the implementation up in this table, so replacing the entry is how the page failure
+    #    is staged now - and it exercises one more real step than patching the door did.
+    monkeypatch.setitem(builtins.BUILTIN_KINDS, join_into.JOIN_INTO_MAPPER, flaky)
     rolled = []
     real_rollback = db.rollback
     monkeypatch.setattr(db, "rollback",
@@ -195,7 +199,7 @@ def test_a_refusal_from_the_kind_is_counted_and_named_rather_than_thrown(db,
     """⛔ A REFUSAL IS AN ANSWER, and it belongs in the report beside the failures rather than
     as an exception the caller has to translate."""
     _seed(db)
-    monkeypatch.setattr(builtins, "run_builtin",
+    monkeypatch.setitem(builtins.BUILTIN_KINDS, join_into.JOIN_INTO_MAPPER,
                         lambda *a, **k: {"written": 0, "refusal": "right table is gone"})
 
     stats = replay.replay_rule(db, _rules()[0], apply=True, log=lambda m: None)

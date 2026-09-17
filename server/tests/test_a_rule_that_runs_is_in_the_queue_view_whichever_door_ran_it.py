@@ -1,13 +1,19 @@
 # -*- coding: utf-8 -*-
-"""S-246. 도는 규칙은 «어느 문으로 돌든» 대기열 화면에 있다.
+"""S-246 · 판정 497·498. 도는 규칙은 «어떻게 자기 코드를 이름 짓든» 대기열 화면에 있다.
 
 > 소유자 2026-09-15: 「**체인 대기열에서 안 뜨고 돌고 있었네**」
 
 🔴 THE REGISTRATION LIVED INSIDE ONE OF TWO DOORS. `activity.registry.start` /
 `record_outcome` / `finish` were spelled inside `mapper_call.execute_custom_mapper` - the
-door a FILE mapper comes through - and `builtins.run_builtin` did none of the three. So
+door a FILE mapper came through - and `builtins.run_builtin` did none of the three. So
 `builtin:join_into`, `builtin:join` and `builtin:auto_confirm` ran with no entry in
 `GET /admin/chain/queue`'s running list at all.
+
+⚰️ AND S-246 FIXED IT BY WRITING THE REGISTRATION A SECOND TIME. That repair was correct and
+it made the split one layer thicker - 판정 497 counted it as the clearest case of a ruling
+satisfiable by a copy. 판정 498 deleted BOTH doors into one seat, so this file no longer has
+two functions to score; what it scores now is that a rule is registered the same way whichever
+of the three ways it names its code (`builtin:` kind · `@mapper` registry name · import path).
 
 ⛔ AND THE SECOND HALF IS WORSE THAN AN EMPTY LIST. The loader SEEDS every declared rule
 as `never_evaluated` so that absence means 「old server」 and nothing else - so a builtin
@@ -28,10 +34,24 @@ if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
 import event_constants                                             # noqa: E402
-from chain import activity, builtins                               # noqa: E402
+import mapper_sdk                                                  # noqa: E402
+from chain import activity, builtins, rule_run                     # noqa: E402
 
 KIND = "builtin:s246_probe"
 RULE = {"name": "s246_rule", "target_table": "s246_target", "mapper": KIND}
+
+#: ⚠️ THE KNOBS TRAVEL ON THE RULE, NOT ON THE CALL. The seat hands a self-writing kind
+#: `(db, rule, row_ids=, done=)` and nothing else - 판정 498 put that convention out of
+#: scope - so a probe that needed extra kwargs would be asking this file to test a signature
+#: the product does not use.
+WRITTEN = "s246_written"
+BOOM = "s246_boom"
+
+
+def _rule(**knobs):
+    out = dict(RULE)
+    out.update(knobs)
+    return out
 
 
 @pytest.fixture(autouse=True)
@@ -50,12 +70,17 @@ def fixture_kind(monkeypatch):
 
     def _run(db, rule, **kwargs):
         seen["snapshot"] = activity.registry.snapshot()
-        if kwargs.get("boom"):
+        if rule.get(BOOM):
             raise RuntimeError("the kind threw")
-        return {"written": kwargs.get("written", 0)}
+        if WRITTEN in rule:
+            return {"written": rule[WRITTEN]}
+        return None
 
     monkeypatch.setitem(builtins.BUILTIN_KINDS, KIND, _run)
-    return seen
+    monkeypatch.setitem(builtins.BUILTIN_LABELS, KIND, "decide")
+    builtins.SELF_WRITING_KINDS.add(KIND)
+    yield seen
+    builtins.SELF_WRITING_KINDS.discard(KIND)
 
 
 # ---------------------------------------------------------------------------
@@ -66,7 +91,7 @@ def test_a_builtin_rule_that_is_running_is_in_the_running_list(kind):
     """🔴 THE GATE OF THIS ROUND. Asserted from INSIDE the kind, because 「it was in the
     list afterwards」 is a different and useless claim - the view answers 「what is in one
     right now」 and an entry that only exists after the run is an entry nobody can see."""
-    builtins.run_builtin(KIND, None, RULE, row_ids=[1, 2, 3], written=3)
+    rule_run.run_rule(None, _rule(**{WRITTEN: 3}), row_ids=[1, 2, 3])
 
     assert len(kind["snapshot"]) == 1
     entry = dict(kind["snapshot"][0])
@@ -77,17 +102,20 @@ def test_a_builtin_rule_that_is_running_is_in_the_running_list(kind):
                      "target_table": "s246_target", "rows_in": 3}
 
 
-def test_the_entry_names_the_kind_so_a_reader_can_tell_the_doors_apart(kind):
+def test_the_entry_names_the_kind_so_a_reader_can_tell_them_apart(kind):
     """⚠️ THE `mapper` CELL CARRIES `builtin:`, which is what the operator needs: a file
-    mapper's entry says a module and a function, and 「which of my two kinds of rule is
-    this」 has to be readable off the same cell rather than inferred from the name."""
-    builtins.run_builtin(KIND, None, RULE, row_ids=[1], written=1)
+    mapper's entry says a module and a function, and 「which of these is this」 has to be
+    readable off the same cell rather than inferred from the name.
+
+    🔴 [판정 498] AND THE SEAT IS WHERE THAT CELL IS FILLED IN. It is `Resolved.who` - the
+    one name the seat resolved - so the two spellings cannot drift into different columns."""
+    rule_run.run_rule(None, _rule(**{WRITTEN: 1}), row_ids=[1])
 
     assert kind["snapshot"][0]["mapper"].startswith("builtin:")
 
 
 def test_the_entry_is_gone_when_the_run_ends(kind):
-    builtins.run_builtin(KIND, None, RULE, row_ids=[1], written=1)
+    rule_run.run_rule(None, _rule(**{WRITTEN: 1}), row_ids=[1])
 
     assert activity.registry.snapshot() == []
 
@@ -97,7 +125,7 @@ def test_a_kind_that_throws_leaves_no_entry_behind(kind):
     still running, and a stuck-looking chain is the symptom this registry exists to stop
     inventing."""
     with pytest.raises(RuntimeError):
-        builtins.run_builtin(KIND, None, RULE, row_ids=[1], boom=True)
+        rule_run.run_rule(None, _rule(**{BOOM: True}), row_ids=[1])
 
     assert activity.registry.snapshot() == []
 
@@ -109,7 +137,7 @@ def test_a_kind_that_throws_leaves_no_entry_behind(kind):
 def test_a_builtin_that_wrote_rows_is_recorded_as_having_changed_something(kind):
     activity.registry.seed_rules(["s246_rule"])
 
-    builtins.run_builtin(KIND, None, RULE, row_ids=[1, 2], written=2)
+    rule_run.run_rule(None, _rule(**{WRITTEN: 2}), row_ids=[1, 2])
 
     assert (activity.registry.outcomes()["s246_rule"]["outcome"]
             == event_constants.RULE_OUTCOME_RAN_CHANGED)
@@ -118,7 +146,7 @@ def test_a_builtin_that_wrote_rows_is_recorded_as_having_changed_something(kind)
 def test_a_builtin_that_wrote_nothing_says_so_in_its_own_words(kind):
     """⚠️ NOT 「the mapper produced no rows」. A `builtin:` kind is not a mapper, and the
     reason is the sentence an operator reads next to the outcome."""
-    builtins.run_builtin(KIND, None, RULE, row_ids=[1], written=0)
+    rule_run.run_rule(None, _rule(**{WRITTEN: 0}), row_ids=[1])
 
     entry = activity.registry.outcomes()["s246_rule"]
     assert entry["outcome"] == event_constants.RULE_OUTCOME_RAN_UNCHANGED
@@ -127,54 +155,76 @@ def test_a_builtin_that_wrote_nothing_says_so_in_its_own_words(kind):
 
 def test_a_kind_that_threw_is_recorded_as_failed_with_the_reason(kind):
     with pytest.raises(RuntimeError):
-        builtins.run_builtin(KIND, None, RULE, row_ids=[1], boom=True)
+        rule_run.run_rule(None, _rule(**{BOOM: True}), row_ids=[1])
 
     entry = activity.registry.outcomes()["s246_rule"]
     assert entry["outcome"] == event_constants.RULE_OUTCOME_FAILED
     assert "the kind threw" in entry["reason"]
 
 
-def test_a_kind_that_reports_no_count_leaves_the_outcome_alone(monkeypatch):
+def test_a_kind_that_reports_no_count_leaves_the_outcome_alone(kind):
     """🔴 「안 셌다」 AND 「0 이었다」 ARE DIFFERENT FACTS. A kind that returns no `written`
     has not said it changed nothing - and recording `ran:unchanged` for it would be this
     registry inventing the very answer it exists to stop inventing."""
-    monkeypatch.setitem(builtins.BUILTIN_KINDS, KIND, lambda db, rule, **kw: None)
     activity.registry.seed_rules(["s246_rule"])
 
-    builtins.run_builtin(KIND, None, RULE, row_ids=[1])
+    rule_run.run_rule(None, _rule(), row_ids=[1])
 
     assert (activity.registry.outcomes()["s246_rule"]["outcome"]
             == event_constants.RULE_OUTCOME_NEVER_EVALUATED)
 
 
 # ---------------------------------------------------------------------------
-# ⚠️ ⓒ — the two doors, and the one that is not a run
+# ⚠️ ⓒ — the ways a rule names its code, and the one that is not a run
 # ---------------------------------------------------------------------------
 
-def test_the_unknown_kind_is_refused_without_ever_being_registered(kind):
-    """⚠️ AN UNKNOWN KIND NEVER RAN. An entry for it - even for the length of one raise -
-    would be a false sentence about a rule this function is in the middle of refusing, and
-    `failed` is an outcome for a rule that RAN and threw."""
-    with pytest.raises(builtins.UnknownBuiltinKind):
-        builtins.run_builtin("builtin:nothing_implements_this", None, RULE, row_ids=[1])
+def test_a_name_nothing_implements_is_refused_without_ever_being_registered(kind):
+    """⚠️ A NAME NOTHING IMPLEMENTS NEVER RAN. An entry for it - even for the length of one
+    raise - would be a false sentence about a rule the seat is in the middle of refusing, and
+    `failed` is an outcome for a rule that RAN and threw.
 
+    🔴 [판정 498] AND IT IS REFUSED BY NAME FOR BOTH SPELLINGS NOW. The builtin arm always
+    said which kind; the file-mapper arm let `importlib` throw, so an operator who mistyped a
+    module got an ImportError stack instead of a sentence naming their rule."""
+    unknown = _rule(mapper="builtin:nothing_implements_this")
+
+    with pytest.raises(rule_run.UnresolvableRule) as raised:
+        rule_run.run_rule(None, unknown, row_ids=[1])
+
+    assert "s246_rule" in str(raised.value)
+    assert "builtin:nothing_implements_this" in str(raised.value)
     assert activity.registry.snapshot() == []
     assert activity.registry.outcomes() == {}
 
 
-def test_both_doors_go_through_the_one_registration():
+def test_both_ways_of_naming_code_go_through_the_one_registration(kind, monkeypatch):
     """🔴 ONE AUTHOR, AND THAT IS THE POINT OF THE ROUND. Two spellings of 「register this
     run」 is 「같은 기능에 두 경로」, and the way it failed here is the quiet way: the door
-    that had it kept working and the door that did not was invisible."""
-    import inspect
+    that had it kept working and the door that did not was invisible.
 
-    from chain import mapper_call
+    ⚰️ THIS USED TO READ THE TWO DOORS' SOURCE with `inspect.getsource` and assert the string
+    `activity.running(` appeared in each. That scored 「the words are in both bodies」, which
+    is a text claim about a property that is now structural - there is one body. It scores
+    the BEHAVIOUR instead: two rules that name their code in different ways, one registration
+    each, read off the same registry.
+    """
+    seen = {}
 
-    for door in (mapper_call.execute_custom_mapper, builtins.run_builtin):
-        body = inspect.getsource(door)
-        assert "activity.running(" in body, door.__name__
-        assert "registry.start(" not in body, door.__name__
-        assert "registry.finish(" not in body, door.__name__
+    def _file_mapper(db, payload):
+        seen["snapshot"] = activity.registry.snapshot()
+        return {"updates": []}
+
+    monkeypatch.setitem(mapper_sdk.MAPPER_REGISTRY, "s246_registered", _file_mapper)
+    named_rule = {"name": "s246_mapper_rule", "target_table": "s246_target",
+                  "mapper": "s246_registered"}
+
+    rule_run.run_rule(None, _rule(**{WRITTEN: 1}), row_ids=[1])
+    rule_run.run_rule(None, named_rule, payloads=[{"row_id": 1}])
+
+    for entry, who in ((kind["snapshot"], KIND), (seen["snapshot"], "s246_registered")):
+        assert len(entry) == 1, who
+        assert entry[0]["rule"] and entry[0]["mapper"] == who
+    assert activity.registry.snapshot() == []
 
 
 def test_auto_confirm_reports_its_row_count_under_the_name_the_others_use(monkeypatch):
@@ -206,10 +256,30 @@ def test_auto_confirm_reports_its_row_count_under_the_name_the_others_use(monkey
     assert result["refused"] == 1
 
 
-def test_the_rows_handed_count_reads_either_trigger_arm():
-    """⚠️ TWO ARMS, TWO CELL NAMES. `builtin:join` is woken either by its target rows
-    (`row_ids`) or by a reference row (`key_values`), and a count that read only the first
-    would report 0 for exactly the expensive call an operator is looking for."""
-    assert builtins._rows_handed({"row_ids": [1, 2, 3]}) == 3
-    assert builtins._rows_handed({"key_values": ["a", "b"]}) == 2
-    assert builtins._rows_handed({"done": {"table": "t"}}) == 0
+def test_the_rows_in_count_is_what_the_seat_was_handed_either_way(kind, monkeypatch):
+    """⚠️ THE QUEUE VIEW PUTS THESE NUMBERS SIDE BY SIDE, so they have to be counted the same
+    way or the column means two things.
+
+    ⚰️ THIS USED TO SCORE `builtins._rows_handed`, which read `row_ids` OR `key_values` off
+    the door's kwargs. 🔴 MEASURED WHILE RETARGETING IT: nothing in the product passes
+    `key_values` to a rule run - at HEAD either, so this is not something 498 broke. The
+    `key_values` arm of `_run_join` (and the cell `_rows_handed` read for it) answered a call
+    shape no caller makes. Reported rather than repaired: deleting a reachable-looking arm is
+    its own round.
+    """
+    seen = {}
+
+    def _file_mapper(db, payload):
+        seen["snapshot"] = activity.registry.snapshot()
+        return {"updates": []}
+
+    monkeypatch.setitem(mapper_sdk.MAPPER_REGISTRY, "s246_registered", _file_mapper)
+
+    rule_run.run_rule(None, _rule(**{WRITTEN: 0}), row_ids=[1, 2, 3])
+    rule_run.run_rule(None,
+                      {"name": "s246_mapper_rule", "target_table": "s246_target",
+                       "mapper": "s246_registered", "is_batch": True},
+                      payloads=[{"row_id": 1}, {"row_id": 2}])
+
+    assert kind["snapshot"][0]["rows_in"] == 3
+    assert seen["snapshot"][0]["rows_in"] == 2

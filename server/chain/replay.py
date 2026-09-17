@@ -375,18 +375,17 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
         log(f"[replay] '{rule['name']}' is self-triggering ({trigger_table} -> {target_table}); "
             f"scan bounded at row_id <= {max_row_id!r}")
 
-    # [S-242] Which door this rule goes through, decided ONCE before the first page and
-    # REPORTED rather than inferred: a reader guessing from 「items but no cells」 would be
-    # wrong about the first file mapper that legitimately proposes nothing.
-    # 🔴 AND THE QUESTION IS ASKED WHERE IT IS ANSWERED (S-279). This was a comparison against
-    # `BUILTIN_KINDS` spelled here; the census (판정 419 ①) found that one judgement written in
-    # SEVEN spellings across 20 sites, so the comparison itself belongs to the seat that runs
-    # the answer, not to each caller that needs to know.
-    builtin_kind = rule_run.builtin_kind(rule)
-
     stats = {
         "mode": "apply" if apply else "dry-run",
-        "builtin_kind": builtin_kind,
+        # 🔴 [판정 498] READ OFF THE RESOLVER, NOT ASKED AS 「is this a builtin」. The
+        # published cell keeps its name because operators and `admin/retroactive` read it;
+        # what changed is where the answer comes from. A self-writing rule is named by the
+        # key it registered under, which for every kind today is exactly what this said.
+        # ⚠️ FILLED BELOW, because resolving can now REFUSE (a rule naming code nothing
+        # implements is refused by name rather than left to throw an ImportError), and a
+        # refusal about the RULE must not overtake the refusals about the operator's own
+        # SELECTION - 「business_keys was given but empty」 is what they need to hear first.
+        "builtin_kind": None,
         "rule": rule.get("name"), "trigger_table": trigger_table,
         "target_table": target_table, "self_triggering": is_self_triggering(rule),
         "rows_scanned": 0, "pages": 0, "mapper_items": 0,
@@ -463,6 +462,19 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
                 "whole rule instead of nothing. Omit it to replay everything, on purpose.")
         selection = trg_model.business_key_val.in_(keys)
         log(f"[replay] selection: {len(keys)} business key(s)")
+    # [S-242] Which door this rule goes through, decided ONCE before the first page and
+    # REPORTED rather than inferred: a reader guessing from 「items but no cells」 would be
+    # wrong about the first file mapper that legitimately proposes nothing.
+    # 🔴 AND THE QUESTION IS ASKED WHERE IT IS ANSWERED (S-279). This was a comparison against
+    # `BUILTIN_KINDS` spelled here; the census (판정 419 ①) found that one judgement written in
+    # SEVEN spellings across 20 sites, so the comparison itself belongs to the seat that runs
+    # the answer, not to each caller that needs to know.
+    bound = rule_run.resolve(rule)
+    # ⚠️ AND IT SITS AFTER THE SELECTION CHECKS ON PURPOSE (판정 498), for the reason in the
+    # stats cell above.
+    bound = rule_run.resolve(rule)
+    stats["builtin_kind"] = bound.who if bound.writes_itself else None
+
     # 🪦 `module_name` / `func_name` / `is_batch` were read here and carried to the call. The
     # seat reads them off the rule itself now, so a rule that names its mapper in the ONE cell
     # (the decorator registry) no longer arrives at the door as a pair of Nones.
@@ -497,7 +509,7 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
         # `importlib.import_module(None)` threw and a migrated join had NO backfill at all.
         # Live and retroactive were two doors to one rule; this is the second door learning
         # the first one's move.
-        if builtin_kind is not None:
+        if bound.writes_itself:
             # ⛔ ISOLATED ON THIS BRANCH ONLY (판정 403). One page that throws costs THAT
             # page - counted, named, and the run goes on - and the session is rolled back so
             # the next page's SELECT is not talking to an aborted transaction. The file

@@ -40,6 +40,7 @@ if server_dir not in sys.path:
 
 from chain import ingestion_worker as worker                            # noqa: E402
 from chain import mapper_call                                 # noqa: E402
+import mapper_sdk                                                  # noqa: E402
 from chain import legacy_join_declaration as vjc                                  # noqa: E402
 from chain import legacy_materialized_join as vje                                # noqa: E402
 from database.database import Base                                 # noqa: E402
@@ -152,18 +153,26 @@ def _push(db, items, report=None):
 # Driving the REAL worker funnel
 # ---------------------------------------------------------------------------
 
+#: The name this file's rules give their mapper. Registered per test, so the seat
+#: resolves it the way it resolves any `@mapper` a file declares.
+FAKE_MAPPER = "vjuq_fake_mapper"
+
 def _run_chain(db, monkeypatch, mapper_result, tx="vjuq-tx"):
     event = DatabaseOutbox(event_uuid="vjuq-event", event_type="CREATE",
                            table_name=TRIGGER,
                            payload={"source_name": "user", "data": {}})
     rules = [{"name": RULE_NAME, "trigger_table": TRIGGER, "target_table": DERIVED,
-              "mapper_module": "unused", "mapper_function": "unused",
-              "is_batch": True, "enabled": True}]
+              "mapper": FAKE_MAPPER, "is_batch": True, "enabled": True}]
     monkeypatch.setattr(worker.outbox_expand, "expand_events",
                         lambda _db, events: {worker.outbox_expand.event_key(e): [{"data": {}}]
                                              for e in events})
-    monkeypatch.setattr(mapper_call, "execute_custom_mapper",
-                        lambda _m, _f, _db, _payload, rule=None: mapper_result)
+    # ⚰️ [판정 498] REGISTERED AS A MAPPER, NOT PATCHED OVER THE EXECUTOR. There is no
+    #    `execute_custom_mapper` to replace any more - the seat resolves a rule's name itself -
+    #    so the fake is put where the product LOOKS for a mapper. That is closer to the
+    #    subject than the old patch was: the funnel now resolves this rule the same way it
+    #    resolves a shipped one.
+    monkeypatch.setitem(mapper_sdk.MAPPER_REGISTRY, FAKE_MAPPER,
+                        lambda _db, _payload, rule=None: mapper_result)
     return asyncio.run(worker.process_chain_transaction_group(tx, [event], db, rules))
 
 
