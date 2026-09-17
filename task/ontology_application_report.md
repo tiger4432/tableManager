@@ -26730,3 +26730,67 @@ server/ledger/admin.py:660            "rules": sorted(named) · "rule_grammars":
 ⛔ 안 잼  라이브 `server/config/chain_rules.json` 의 규칙 수 — 읽기만 허용이고,
        그 수는 어차피 이 박스의 것이라 기준에 대해 아무 말도 안 합니다
 ```
+
+---
+
+> 🔴 **[09-17 14:55 응용] Q-95 — `f9279eee` 의 주석이 «자기 코드와 반대»를 말합니다. 같은 이름이면 `extra` 가 이기고, 539 왕복 게이트는 그것을 «못 봅니다»**
+> **받는 이: 구현자 (546 ① 착지) · 총괄**
+
+## 주석이 «사유»로 든 것이 거짓입니다
+```
+server/chain/rule_shape.py:143~145
+  # 🔴 [판정 536 ①] FIRST, so a cell the grammar knows cannot be overwritten by a stray
+  #   `extra` of the same name further down - and so the round trip stays an identity.
+  out.update(internal.get("axis") or {})        <- :145
+  …
+  out.update(internal.get("extra") or {})       <- :202
+=> «먼저» 두면 나중 것이 «덮습니다». 순서가 주석이 말하는 보호를 «정반대»로 합니다
+```
+
+## 돌려서 쟀습니다
+```
+선언        { …, "is_batch": False,  "extra": {"is_batch": True} }
+from_declaration ->  axis={'is_batch': False}   extra={'is_batch': True}
+as_chain_rule    ->  is_batch=True        <- «extra 가 이겼습니다»
+to_declaration   ->  top=False · extra={'is_batch': True}
+539 왕복 항등     ->  True                 <- «초록입니다»
+```
+🔴 **그 칸이 하필 `is_batch` 입니다** — 이 커밋의 자기 메시지가 「`is_batch` alone decides how a
+   rule is CALLED (ruling 506)」라고 적은 그 칸입니다. 충돌이 «규칙이 어떻게 불리는지»를 정합니다.
+
+## 왜 게이트가 못 잡나 — 구조입니다, 픽스처를 늘려도 안 잡힙니다
+```
+게이트가 재는 축   선언 -> 내부 -> 선언   (`to_declaration` 방향)
+그 방향에서는     axis 는 최상위에, extra 는 `extra` 밑에 — «따로» 보관됩니다 -> 항등입니다
+합쳐지는 자리     `as_chain_rule` — «워커가 규칙을 싣는» 방향. 게이트가 안 도는 축입니다
+=> 「왕복이 항등이다」가 참이면서 「실린 규칙이 화면과 다르다」가 «같이» 참일 수 있습니다
+```
+
+## 실패 시나리오 (15:30 ③ 의 바로 그 동선)
+```
+운영자가 규칙을 열고 -> 폼의 `is_batch` 칸에 false 를 적고 -> 저장
+그 규칙의 `extra` 에 «예전부터» is_batch 가 들어 있었다면
+   화면       axis 칸 = false 로 보입니다
+   워커       is_batch = true 로 «불립니다»
+   게이트     초록
+=> 조용합니다. 「깔끔 ④ — 둘이 «갈라질 수» 있나」가 갈라진 자리입니다
+```
+
+## 무엇이 참이어야 이 일이 안 나나 (수리를 짓지 않습니다)
+```
+① `extra` 가 axis 이름을 «담을 수 없다»   -> 담기려 하면 그 자리에서 이름 대어 거절
+② 또는 합치는 순서가 주석대로다           -> axis 가 «나중»이거나, extra 를 axis 이름에서 뺀다
+🔴 어느 쪽이든 게이트는 «as_chain_rule 방향»에 하나 서야 합니다 — 왕복만으로는 영원히 초록입니다
+📮 판정 청합니다: ①(거절)인지 ②(우선순위)인지. 둘은 운영자에게 «다른 말»을 합니다 —
+   ① 은 「고치십시오」이고 ② 는 「제가 골랐습니다」입니다
+```
+
+## 확신도
+```
+실행    위 네 줄 전부 — `rule_shape` 를 import 해서 선언 하나를 먹이고 찍었습니다.
+        `axis_keys()` 는 «열넷»이고 `is_batch` 가 그 안에 있습니다(같은 실행에서 확인)
+구조    :145 와 :202 의 순서 — 파일을 열어서
+못 잼   오늘 저장된 선언 중 `extra` 에 axis 이름을 «실제로» 든 것이 있나 —
+        라이브 선언은 읽기만 허용이고 그 수는 이 박스의 것이라 운영에 대해 말하지 않습니다.
+        이건 「그 결함이 있다」가 아니라 「이 모양이면 조용히 난다」입니다
+```
