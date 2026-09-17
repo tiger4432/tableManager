@@ -5821,6 +5821,23 @@ def post_chain_rule_raw(payload: dict = Body(...)):
         str(payload.get("base") or ""))
 
 
+@app.post("/admin/chain/rules/grammar", dependencies=[Depends(require_admin_token)])
+def post_chain_rule_grammar(payload: dict = Body(...)):
+    """규칙 «하나»를 통합 문법으로 «저장»하거나, 평면으로 «되돌린다».
+
+    🔴 [판정 548] 변환의 저자는 «서버 하나»입니다. 화면은 시킬 뿐입니다 — 화면이 변환하면
+    판정 539 의 왕복 게이트가 «운영자가 지나지 않는 변환기»를 재게 됩니다.
+    🔵 되돌리기는 같은 문을 반대로 걷는 것입니다. 왕복이 항등이라 스냅샷이 필요 없습니다.
+
+    body  {"name": <규칙 이름>, "to": "unified"|"flat", "dry_run": true|false}
+    """
+    from ledger import admin
+    return admin.convert_chain_rule_grammar(
+        str(payload.get("name") or ""),
+        payload.get("to"),
+        bool(payload.get("dry_run", True)))
+
+
 @app.get("/admin/ledger/relations", dependencies=[Depends(require_admin_token)])
 def get_ledger_relations(q: str = None, limit: int = 200, db: Session = Depends(get_db)):
     """실재하는 관계와 컬럼. **카탈로그만 읽는다** — 비용이 테이블 행 수와 무관하다."""

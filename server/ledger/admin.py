@@ -823,6 +823,114 @@ def save_chain_rule_raw(name: str, declaration, base: str) -> dict:
             "created": existing is None}
 
 
+def _rerun_report(before, after):
+    """이 변환이 «무엇을 다시 돌게 하나» — 상태 «셋» 중 하나로 답한다.
+
+    🔴 [판정 549] THREE STATES, NOT TWO. 「N 행」 · 「0 행」 · 「세지 않았다」. The third one
+    is a MISSING CELL, never a zero: 「0 rows re-run」 tells an operator it is safe and
+    「I did not look」 tells them to look, and writing the second as the first is the
+    shape 판정 509 settled three times today.
+
+    ⚠️ WHAT THE PRODUCT ACTUALLY KNOWS HERE. It cannot count rows - that needs the tables -
+    but it CAN decide the question those rows would answer: does the rule the loader stands
+    up change at all? Two declarations that expand to the same rules run the same way, so
+    nothing re-runs, and that zero is MEASURED rather than assumed. When the expansion does
+    move, or either side refuses to expand, the count is genuinely unknown and the cell goes.
+    """
+    from chain import rule_shape
+    from database import crud as catalogue
+
+    stood_before, refused_before, _ = rule_shape.expand_declaration(
+        before, catalogue.TABLE_CONFIG)
+    stood_after, refused_after, _ = rule_shape.expand_declaration(
+        after, catalogue.TABLE_CONFIG)
+
+    if refused_before or refused_after:
+        return {"why": "이 규칙을 펼치지 못해 다시 돌 것을 세지 못했습니다"}
+    if stood_before == stood_after:
+        return {"rows": 0, "why": "규칙이 하던 일이 그대로입니다"}
+    return {"why": "이 변환이 규칙의 실행 모양을 바꿉니다"}
+
+
+def convert_chain_rule_grammar(name: str, to: str, dry_run: bool = True) -> dict:
+    """규칙 «하나»의 문법을 바꾼다 — 통합으로, 또는 평면으로 «되돌려».
+
+    🔴 [판정 548] THE SERVER CONVERTS AND THE SCREEN ASKS. A screen that did its own
+    conversion would be a second author of it, and 판정 539's round-trip gate measures the
+    SERVER's converters - so the operator's path would run through a converter no gate reads.
+
+    🔵 UNDO COSTS NOTHING, AND THAT IS WHY IT IS A ROUTE RATHER THAN A SNAPSHOT. The round
+    trip is the identity (measured 10/10), so 「되돌리기」 is the same door walked the other
+    way. No stored history, no backup file, no second mechanism to keep in step.
+
+    🔴 IT WRITES ONE RULE. The write goes through `save_chain_rule_raw`, which is already the
+    one seat that merges a single rule into the document and judges it the way the boot
+    loader does - so a conversion the loader would drop is refused here instead of saved.
+    ⛔ AND THERE IS NO 「convert everything」. `chain_rules.json` is the owner's file (판정
+    547, and 2026-08-21's accident is why): one rule per deliberate press.
+
+    ⚠️ A RULE WHOSE GRAMMAR CANNOT BE READ IS REFUSED BY NAME. Guessing 「probably flat」
+    would convert something we did not read - the same line 판정 543 drew.
+    """
+    if not isinstance(name, str) or not name.strip():
+        raise _table_config_refusal("rule_name_required", "name",
+                                    "변환할 규칙 이름이 없습니다")
+    if to not in ("unified", "flat"):
+        raise _table_config_refusal(
+            "grammar_unknown", "to",
+            "문법은 unified 또는 flat 입니다 (받은 값: %r)" % (to,))
+
+    from chain import rule_shape
+
+    path = chain_rules_path()
+    document = _read_json(path, {})
+    rules = (document or {}).get("rules")
+    if not isinstance(rules, list):
+        raise _table_config_refusal(
+            "config_not_object", "chain_rules.json",
+            "chain_rules.json 이 rules 배열을 가진 객체가 아닙니다")
+
+    stored = next((r for r in rules
+                   if isinstance(r, dict) and r.get("name") == name), None)
+    if stored is None:
+        raise _table_config_refusal("rule_not_found", "rules.%s" % name,
+                                    "그 이름의 규칙이 파일에 없습니다: %s" % name)
+
+    grammar = grammar_of(stored)
+    if grammar is None:
+        raise _table_config_refusal(
+            "grammar_unreadable", "rules.%s" % name,
+            "이 규칙의 문법을 읽지 못했습니다: %s. 추측해서 바꾸지 않습니다" % name)
+
+    if grammar == to:
+        # ⚠️ A FACT, NOT A REFUSAL (판정 548 규율 ③). Nothing was wrong with the request;
+        #    there is simply nothing to do, and an error here would teach the operator to
+        #    fear a button that is idempotent.
+        return {"ok": True, "name": name, "from": grammar, "to": to,
+                "changed": False, "saved": False,
+                "why": "이 규칙은 이미 %s 문법입니다" % to}
+
+    if to == "unified":
+        converted = rule_shape.to_declaration(rule_shape.from_chain_rule(stored))
+    else:
+        converted = rule_shape.as_chain_rule(rule_shape.from_declaration(stored))
+
+    answer = {"ok": True, "name": name, "from": grammar, "to": to,
+              "changed": True, "declaration": converted,
+              "reruns": _rerun_report(stored, converted)}
+
+    if dry_run:
+        answer["saved"] = False
+        return answer
+
+    saved = save_chain_rule_raw(name, converted, file_fingerprint(path))
+    answer["saved"] = True
+    answer["base"] = saved.get("base")
+    answer["backup"] = saved.get("backup")
+    answer["rules"] = saved.get("rules")
+    return answer
+
+
 def parse_raw_declaration(raw: str):
     """Operator JSON -> a declaration, or a `declaration_rejected` violation naming the line.
 
