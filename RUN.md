@@ -334,7 +334,7 @@ curl -s "http://localhost:8000/audit_logs/recent?limit_groups=5" | python -c "im
    서버 절반만 선 것이고, 버튼은 클라 레인의 «별건»입니다. 지금은 위 curl 로만 보입니다
 ```
 
-### ⑪ 🆕 개발 벤치가 이제 `builtin:…` 도 «돌립니다» (09-17 — 어제 적은 것의 «정정»)
+### ⑪ 🆕 개발 벤치가 이제 제품이 만드는 맵퍼(`declared:…`)도 «돌립니다» (09-17 — 어제 적은 것의 «정정»)
 
 ```
 전   벤치가 builtin:… 을 «이름 대어 거절»했습니다 (「등록된 종류이지 파일 맵퍼가 아니다」)
@@ -584,7 +584,7 @@ python scripts/preview_unified_declarations.py --out ../unified_preview.json
      🆕 (09-17) «선언은 받는데 아무도 안 돌리는» 규칙을 이제 이름 대어 거절합니다 (판정 500).
         제일 흔한 모양: 파일 맵퍼에 `follow_up: true` — 본 단계는 «미룸»이라 안 집고,
         뒤따르는 단계는 «자기가 쓰는» 규칙만 돌릴 수 있어 양쪽 다 빠졌습니다
-        → `follow_up` 을 빼시거나, 스스로 쓰는 종류(`builtin:…`)를 적으십시오. 거절 줄이 둘 다 말합니다
+        → `follow_up` 을 빼시거나, 스스로 쓰는 종류를 적으십시오 (통합 선언의 `derive.kind`). 거절 줄이 둘 다 말합니다
         ⚠️ `enabled: false` 로 끈 규칙은 거절되지 «않습니다» — 꺼진 것이지 못 도는 것이 아닙니다
         🔴 그리고 뒤따르는 단계가 이제 `enabled: false` 를 «지킵니다» — 지금까지는 끈 규칙도 그 단계에서 돌았습니다
 [ChainRules] refused(N): 이름(사유)                          <- 무엇이 «안» 도는가
