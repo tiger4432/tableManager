@@ -231,7 +231,14 @@ def test_the_group_path_actually_calls_the_join(db, caplog):
 
     said = [r.getMessage() for r in caplog.records
             if ("[%s]" % rule_run.RULE_LOG_TAG) in r.getMessage()]
-    assert said and "written=1" in said[0], (
+    # 🔴 [판정 562] THE CELL MOVED AND THE COUNT DID NOT. This asked for `written=1`,
+    #   which is 「rows the rule wrote FOR ITSELF」 - and the join no longer does: it is a
+    #   mapper now, so it PROPOSES and the caller's batch writes. The row is still
+    #   written (the batch line says size: 1) and the count an operator reads is
+    #   `rows_out`, which is what this now pins.
+    # ⚠️ IF BOTH WERE ACCEPTED HERE the assertion would pass for a join that wrote
+    #   nothing at all, so it names ONE cell.
+    assert said and "rows_out=1" in said[0], (
         "the count the paced lap used to publish must not vanish with the lap")
 
 

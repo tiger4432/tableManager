@@ -37,6 +37,16 @@ import time
 
 logger = logging.getLogger(__name__)
 
+# 🔴 [판정 562] IMPORTED FOR ITS EFFECT, AND THIS IS THE SEAT THE OLD ARRANGEMENT USED.
+#   `chain.builtins` was imported here too, and importing it FILLED the kind table - which
+#   is why a rule naming `builtin:join_into` resolved in any process that had imported this
+#   module. Measured after removing it: the loader refused every join by name because the
+#   built mappers were only installed by `discover()`, which a process loading rules need
+#   never have called.
+# ⚠️ SO THE IMPORT IS NOT DECORATION. Taking it out moves 「the joins resolve」 from
+#   「anything that can run a rule」 to 「anything that warmed up first」, silently.
+from chain import dynamic_mappers  # noqa: F401  (installs the built mappers)
+
 #: 🔴 ONE PREFIX FOR BOTH KINDS. Measured before choosing it (2026-09-16): a builtin run was
 #: logged as `[ChainBuiltin] ... written=` and a mapper run as `[mapper@<logfile>] ...
 #: rows_out=`, so an operator grepping for 「this rule ran」 had to know the kind BEFORE
@@ -121,19 +131,15 @@ def chain_envelope(depth=None):
         request_source.reset(token_source)
 
 
-def builtin_kind(rule):
-    """The `builtin:` kind this rule names, or None when a file mapper owns it.
-
-    🔴 THIS IS THE QUESTION, AND IT IS ASKED HERE. Callers that must know the kind WITHOUT
-    running it (replay reports it in its stats and gates its dry run on it) ask through this
-    function rather than comparing against `BUILTIN_KINDS` themselves - otherwise the seat is
-    the only place that RUNS the answer while the answer itself is still derived in six
-    places, which is how the spellings multiplied in the first place.
-    """
-    from chain import builtins
-
-    kind = (rule or {}).get("mapper")
-    return kind if kind in builtins.BUILTIN_KINDS else None
+# ⚰️ [판정 562] `builtin_kind(rule)` STOOD HERE - 「which `builtin:` kind is this, or None
+#   for a file mapper」. Every caller of it was choosing a door or reading a fact off the
+#   table behind that door, and there is one door now. The facts that were REAL (what an
+#   operator's list calls this rule, and whether what it writes can be withdrawn) moved to
+#   the template registration in `chain.dynamic_mappers`; the facts about the ADDRESS
+#   (`hands`, `writes_itself`) had nothing to answer once the address stopped mattering.
+# 🔴 SAID PLAINLY BECAUSE THE OPPOSITE IS THE FAILURE MODE: a repair that MOVES a proxy
+#   one level down and calls it removed is how the same defect returns under a new name
+#   (판정 508 caught exactly that in 503's first cut).
 
 
 def writes_itself(rule):
@@ -150,10 +156,9 @@ def writes_itself(rule):
     operator's module to answer, and this one is asked over every loaded rule while a cache is
     being built. Only a registered kind writes for itself, so the registration answers alone.
     """
-    from chain import builtins
+    from chain import dynamic_mappers
 
-    kind = builtin_kind(rule)
-    return kind is not None and kind in builtins.SELF_WRITING_KINDS
+    return dynamic_mappers.writes_itself((rule or {}).get("mapper"))
 
 
 def runnable(name):
@@ -168,49 +173,21 @@ def runnable(name):
     needs the whole rule (it also has to know how to hand it its rows); this is what a
     load-time check can ask when all it has is the spelling in the file.
     """
-    from chain import builtins
     import mapper_sdk
 
     if not name:
         return None
-    return mapper_sdk.MAPPER_REGISTRY.get(name) or builtins.BUILTIN_KINDS.get(name)
+    # 🔴 [판정 562] ONE TABLE. The second one was the kind table, and the mappers built
+    #   from a declaration are registered in THIS one - so a name that used to be found
+    #   over there is found here, under the same spelling.
+    return mapper_sdk.MAPPER_REGISTRY.get(name)
 
 
-def hands(rule):
-    """HANDS_ROW_IDS or HANDS_PAYLOADS - how this rule is CALLED. Answered without resolving.
-
-    [503] THE CALLING SHAPE IS ITS OWN FACT, and it is not 「does it write its own rows」.
-    That one decides what happens AFTER a call; this one decides the call.
-
-    🔴 [판정 508] AND IT IS READ OFF THE REGISTRATION, NOT DERIVED FROM THE NAME. This
-    function first answered `HANDS_ROW_IDS if builtin_kind(rule) is not None` - which is the
-    address question 503 existed to remove, one level down. The ontology lane caught it:
-    503 MOVED the proxy rather than removing it, and it read true only because all three
-    registered kinds happen to take row ids. `register_builtin(..., hands=)` now states it,
-    so a kind that takes payloads is called correctly the day it is added, with no seat edited.
-
-    `resolve` returns this in `Resolved.hands` and reads it from HERE, so the seat and a
-    caller that only needs the shape cannot answer differently - and the caller pays no
-    import for it (501 a: resolving imports the operator's module).
-    """
-    from chain import builtins
-
-    kind = builtin_kind(rule)
-    if kind is None:
-        # ⚠️ NOT A DEFAULT. A rule that names no registered kind is a file mapper, and
-        #    `(db, payload[, rule=])` is that door's convention - the owner's files define it.
-        return HANDS_PAYLOADS
-    try:
-        return builtins.BUILTIN_HANDS[kind]
-    except KeyError:
-        # 🔴 [판정 509] A KIND THAT CAN RUN BUT NEVER SAID HOW IT IS CALLED IS NAMED, not
-        #   quietly called as a file mapper. `register_builtin` requires `hands`, so the only
-        #   way here is someone writing into `BUILTIN_KINDS` directly and leaving the two
-        #   tables disagreeing - which is the 「부재가 뜻을 가진다」 shape one table over.
-        raise UnresolvableRule(
-            "kind %r is registered to run but never declared how it is called; register it "
-            "through register_builtin(..., hands=) rather than by writing to BUILTIN_KINDS"
-            % kind)
+# ⚰️ [판정 562] `hands(rule)` STOOD HERE. It answered 「is this rule called with row ids or
+#   with payloads」, which only had two answers because there were two doors. 판정 503 made
+#   it a REGISTERED fact rather than one derived from the address, and 508 caught that the
+#   first cut had only moved the proxy down a level. Both were right about the level and
+#   the question itself is now gone: one door, `(db, payload[, rule=])`, every rule.
 
 
 def self_writing_name(rule):
@@ -228,8 +205,10 @@ def self_writing_name(rule):
     """
     from chain import builtins
 
-    kind = builtin_kind(rule)
-    return kind if kind in builtins.SELF_WRITING_KINDS else None
+    from chain import dynamic_mappers
+
+    name = (rule or {}).get("mapper")
+    return name if dynamic_mappers.writes_itself(name) else None
 
 
 def rule_label(rule):
@@ -246,11 +225,11 @@ def rule_label(rule):
     Both answer 「decide」 because an operator reading a list of rules for one table should see
     what the DECLARATION says, not which half of it they happened to get.
     """
-    from chain import builtins
+    from chain import dynamic_mappers
 
-    kind = builtin_kind(rule)
-    if kind is not None:
-        return builtins.BUILTIN_LABELS.get(kind, "mapper")
+    label = dynamic_mappers.label_for((rule or {}).get("mapper"))
+    if label is not None:
+        return label
 
     from enrichment import config as enrichment_config
 
@@ -278,15 +257,18 @@ def retraction_refusal(rule):
     """
     from chain import builtins
 
-    kind = builtin_kind(rule)
+    from chain import dynamic_mappers
+
+    mapper_name = (rule or {}).get("mapper")
+    label = dynamic_mappers.label_for(mapper_name)
     name = (rule or {}).get("name") or "<이름 없는 규칙>"
-    if kind is None:
+    if label is None:
         return ("%s: 파일 맵퍼는 자기가 읽은 행을 «적을 수 있지만», 이 맵퍼가 적는지는 "
                 "제품이 모릅니다 — 도장이 없으면 이 규칙이 쓴 칸은 철회되지 않습니다" % name)
-    if kind in builtins.ORIGIN_STAMPING_KINDS:
+    if dynamic_mappers.stamps_origin(mapper_name):
         return None
     return ("%s: 「%s」 종류는 자기 답이 «어느 행에서 왔는지»를 안 적습니다 — 그래서 그 행이 "
-            "지워져도 이 규칙이 쓴 칸은 «그대로 남습니다»" % (name, kind))
+            "지워져도 이 규칙이 쓴 칸은 «그대로 남습니다»" % (name, label))
 
 
 def _uniform():
@@ -310,11 +292,13 @@ def _uniform():
 #: 🔴 [판정 508] DEFINED WITH THE REGISTRAR, because that is where a kind DECLARES which
 #: one it takes. Re-exported here so every existing read of `rule_run.HANDS_*` is unchanged
 #: and there is still one spelling.
-from chain.builtins import HANDS_PAYLOADS, HANDS_ROW_IDS  # noqa: E402  (after the docstring)
 
 #: What the seat knows about a rule BEFORE it runs anything.
-Resolved = collections.namedtuple(
-    "Resolved", "call who hands writes_itself accepts_rule")
+#: 🔴 [판정 562] `hands` AND `writes_itself` ARE GONE FROM HERE. Both were answered before
+#: the call so the seat could pick a door: one door takes row ids and writes for itself,
+#: the other takes payloads and proposes. There is one door, so 「how is it called」 has one
+#: answer, and 「did it write」 is read off the result instead of being registered.
+Resolved = collections.namedtuple("Resolved", "call who accepts_rule")
 
 
 class UnresolvableRule(ValueError):
@@ -352,14 +336,11 @@ def resolve(rule):
     exactly where the mapper door used to; nothing is executed, so a dry run can ask this
     function everything it needs without touching a row.
     """
-    from chain import builtins
-
-    kind = builtin_kind(rule)
-    if kind is not None:
-        # `builtin_kind` answers by membership in this same table, so the lookup cannot miss.
-        return Resolved(builtins.BUILTIN_KINDS[kind], kind, hands(rule),
-                        kind in builtins.SELF_WRITING_KINDS, False)
-
+    # ⚰️ THE KIND ARM STOOD HERE (판정 562 · 571). A rule naming a `builtin:` kind was
+    #   looked up in a table this repository kept, and that table was the second door -
+    #   the whole of what 「문 가르기」 named. Those names are registered mappers now
+    #   (`chain.dynamic_mappers`, built in process from the declaration), so the arm below
+    #   finds them without knowing they were ever special.
     import chain_bindings
     import mapper_sdk
     from chain.mapper_call import mapper_accepts_rule
@@ -387,10 +368,10 @@ def resolve(rule):
             "rule %r names no implementation this product can find: mapper=%r "
             "mapper_module=%r mapper_function=%r (known builtin kinds: %s)"
             % (name, one_cell, module_name, function_name,
-               ", ".join(sorted(builtins.BUILTIN_KINDS)) or "none registered"))
+               ", ".join(sorted(mapper_sdk.MAPPER_REGISTRY)) or "none registered"))
     # A file mapper PROPOSES: its rows come back as `updates` for the caller to write, which
     # is exactly what lets a dry run count them without writing anything.
-    return Resolved(call, who, hands(rule), False, mapper_accepts_rule(call))
+    return Resolved(call, who, mapper_accepts_rule(call))
 
 
 def rows_counted(value):
@@ -437,21 +418,21 @@ def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None):
     from chain.mapper_call import stage_timing, without_missing
 
     bound = resolve(rule)
-    handed = list(row_ids or ()) if bound.hands == HANDS_ROW_IDS else list(payloads or ())
-    # 🔴 TWO FACTS, TWO USES, AND THEY ARE NOT THE SAME FACT. `hands` decides the CALL
-    # SHAPE; `writes_itself` decides the ENVELOPE and which answer cells get filled. The first
-    # draft of this seat keyed the call on `writes_itself` and a probe kind registered without
-    # that flag went down the proposing arm and was called `(db, row_id)` - the same
-    # conflation, one layer in, caught by `test_the_seat_hands_the_laps_batch_to_the_kind`.
-    if bound.hands == HANDS_ROW_IDS and not handed:
-        # Nothing was handed, so nothing ran - and a line claiming a run would be a false
-        # sentence. Every caller already skips this case; it is stated here so the next one
-        # does not have to remember to.
-        return answer
-
-    # The envelope belongs to writing, not to a kind (판정 423·498): a proposing rule's rows
-    # enter it through the caller's batch write, so opening a second one here would nest.
-    envelope = chain_envelope(depth) if bound.writes_itself else contextlib.nullcontext()
+    # 🔴 [판정 562] ONE HAND. A caller that has only row ids hands them AS payloads -
+    #   the mapper reads `row_id` off each either way, and the group path already builds
+    #   its `row_ids` from exactly that cell. Two shapes of hand was the calling half of
+    #   the two doors.
+    handed = list(payloads or ()) or [{"row_id": rid} for rid in (row_ids or ())]
+    # 🔴 [판정 562] THE ENVELOPE IS ALWAYS OPEN NOW, and that is a deliberate widening.
+    #   It used to open only for a rule REGISTERED as self-writing, because only a
+    #   `builtin:` kind could write during its own call. Any mapper receives `db` and may
+    #   write, and a write made inside a rule's call IS a chain write - so dressing it as
+    #   one (source, hop, collapsed events) is what the envelope was always for. Leaving
+    #   it shut for file mappers keeps the hop uncountable for exactly the writes
+    #   판정 402's ceiling exists to bound.
+    # ⚠️ IT DOES NOT NEST. A proposing rule's rows are written by the CALLER, after this
+    #   returns, in the caller's own envelope - nothing enters two.
+    envelope = chain_envelope(depth)
     # 🔴 THE LINE IS IN `finally`, SO A RULE THAT THREW STILL SAYS SO (판정 498 ③).
     # ⚰️ LEVELLING THE TWO VOCABULARIES DOWN WOULD HAVE LOST A SENTENCE THE OWNER ASKED FOR.
     #    The mapper door wrote START/END/RAISED; the builtin door wrote one line and NOTHING on
@@ -472,88 +453,71 @@ def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None):
         #   of `rows_out=0`, and it displaced the sentence the operator needed. Each arm
         #   below says what it actually knows, and says nothing when it knows nothing.
         with activity.running(name, bound.who, target, len(handed)) as run, envelope:
-            if bound.hands == HANDS_ROW_IDS:
-                # 🔴 IN THE ENVELOPE, BECAUSE A SELF-WRITING RULE WRITES FOR ITSELF. A proposing
-                # rule sends its rows out through the caller's batch write, which enters the same
-                # envelope; this one never passes through it. Without the collapsed cell, 1,000
-                # written rows became 「1,000 outbox events, 1,000 queue items, 1,000 laps and
-                # 1,000 lines」 - 소유자 「한 행당 로그 하나」; without the depth cell the hop is
-                # invisible to the ceiling 판정 402 made the only thing standing between a
-                # declared cycle and an endless one.
-                # 🔴 [판정 428] EVERY IMPLEMENTATION TAKES THE SAME SIGNATURE, so the lap batch
-                # goes over WITHOUT being asked for.
-                outcome = bound.call(db, rule, row_ids=handed, done=done) or {}
-                answer["written"] = outcome.get("written")
-                answer["refusal"] = outcome.get("refusal")
-                if answer["written"] is not None:
-                    # ⚠️ ONLY WHEN THE RULE SAID SO. One that reports no count leaves the
-                    # outcome alone rather than being recorded as 「ran, changed nothing」 -
-                    # 「안 셌다」 and 「0 이었다」 are different facts.
-                    rows_out = int(answer["written"])
-                    # 🔴 [판정 525 ②] THE KIND'S OWN WORDS. A registered kind is product code
-                    #   and knows why it wrote nothing; it says so in `refusal` and that is
-                    #   what the operator reads. If it said nothing, nothing is recorded -
-                    #   a missing sentence must look missing (판정 509 의 부류).
-                    run.produced(rows_out, reason=answer["refusal"])
-            else:
-                # A batch rule is handed the WHOLE group in one call and a per-row rule one call
-                # per row - the same fan-out both live callers already do. An empty batch still
-                # calls, because a batch mapper is entitled to be told its group was empty; an
-                # empty per-row list is zero calls, because there is no row to speak about.
-                batched = (rule or {}).get("is_batch", False)
-                handed_out = [without_missing(handed)] if batched else [
-                    without_missing(one) for one in handed]
-                results = []
-                with stage_timing():
-                    for one in handed_out:
-                        if bound.accepts_rule:
-                            results.append(without_missing(bound.call(db, one, rule=rule)))
-                        else:
-                            results.append(without_missing(bound.call(db, one)))
-                for result in results:
-                    if not isinstance(result, dict):
-                        continue
-                    for cell in ("updates", "map_metadata_updates", "batches"):
-                        answer[cell].extend(result.get(cell) or ())
-                    # 🔴 [판정 562 · 563] A MAPPER MAY NOW SAY WHY. This arm read three cells
-                    #   and `refusal` was filled only in the row_ids arm, so 「왜 0 인가」 was
-                    #   something only a registered kind could answer - and the kinds are
-                    #   going away. A mapper built from a declaration has to be able to say
-                    #   what `join_into` says today, or the move loses 판정 525's sentences.
-                    # ⚠️ FIRST ONE WINS. A batch rule makes exactly one call, so this only
-                    #   matters for a per-row rule: the first row that explains itself is the
-                    #   explanation, and a later silent row does not erase it.
-                    if answer["refusal"] is None and result.get("refusal"):
-                        answer["refusal"] = result["refusal"]
-                    # 🔴 [판정 562 · 567] A MAPPER MAY WRITE FOR ITSELF AND SAY SO. This was
-                    #   `writes_itself`, a REGISTERED fact the seat had to look up before
-                    #   calling - and a fact about the rule's ADDRESS rather than about what
-                    #   it did. Read off the result, nobody is asked in advance and a mapper
-                    #   that writes some rows and proposes others is describable.
-                    # ⚠️ ABSENT IS NOT ZERO (판정 509 의 부류). A mapper that reports no count
-                    #   has not said it wrote nothing, so the cell stays None until one does.
-                    if result.get("written") is not None:
-                        answer["written"] = ((answer["written"] or 0)
-                                             + int(result["written"]))
-                # ⚠️ PROPOSED PLUS WRITTEN. A rule does one or the other, so this equals whichever
-                #    it did - and a rule that did both is counted once for each, which is what
-                #    「이 규칙이 낸 행」 means to the operator reading the queue.
-                rows_out = (sum(rows_counted(r) for r in results)
-                            + (answer["written"] or 0))
-                # 🔴 [판정 525 ②] WHAT THE PRODUCT KNOWS, AND ONLY THAT. `server/mappers/*.py`
-                #   are the owner's files and this round keeps them at 0 lines, so the seat
-                #   cannot ask a file mapper why. What it CAN say is the pair of counts, and
-                #   that pair separates the two zeros 523 ③ asked about: 「아무것도 안 넘어왔다」
-                #   and 「넘겼는데 안 나왔다」 are different sentences, not one restatement.
-                # ⚠️ THE MAPPER'S OWN WORDS FIRST. The pair of counts below is what the
-                #    product can say when the mapper said nothing. A mapper that DID explain
-                #    itself must not have that sentence replaced by a restatement of 0 -
-                #    which is the whole of 판정 525, now reachable from the mapper door too.
-                run.produced(rows_out, reason=None if rows_out else (
-                    answer["refusal"] or (
-                        "이 규칙이 볼 행이 넘어오지 않았습니다"
-                        if not handed else
-                        "%d 행을 넘겼고 맵퍼가 낸 행이 없습니다" % len(handed))))
+            # ⚰️ THE ROW-IDS ARM STOOD HERE (판정 562 · 571). It called a registered kind
+            #   as `(db, rule, row_ids=, done=)` and read `written`/`refusal` back. Both
+            #   CELLS survive - the body below reads them off any mapper's result - and
+            #   the SIGNATURE does not: `(db, payload[, rule=])` is the one convention,
+            #   which 판정 498 froze and this change does not touch.
+            # ⚠️ AND THE SURVIVOR IS NOT AN ARM. It is what running a rule means, so it is
+            #   not left behind an `if` with nothing on the other side.
+            # A batch rule is handed the WHOLE group in one call and a per-row rule one call
+            # per row - the same fan-out both live callers already do. An empty batch still
+            # calls, because a batch mapper is entitled to be told its group was empty; an
+            # empty per-row list is zero calls, because there is no row to speak about.
+            batched = (rule or {}).get("is_batch", False)
+            handed_out = [without_missing(handed)] if batched else [
+                without_missing(one) for one in handed]
+            results = []
+            with stage_timing():
+                for one in handed_out:
+                    if bound.accepts_rule:
+                        results.append(without_missing(bound.call(db, one, rule=rule)))
+                    else:
+                        results.append(without_missing(bound.call(db, one)))
+            for result in results:
+                if not isinstance(result, dict):
+                    continue
+                for cell in ("updates", "map_metadata_updates", "batches"):
+                    answer[cell].extend(result.get(cell) or ())
+                # 🔴 [판정 562 · 563] A MAPPER MAY NOW SAY WHY. This arm read three cells
+                #   and `refusal` was filled only in the row_ids arm, so 「왜 0 인가」 was
+                #   something only a registered kind could answer - and the kinds are
+                #   going away. A mapper built from a declaration has to be able to say
+                #   what `join_into` says today, or the move loses 판정 525's sentences.
+                # ⚠️ FIRST ONE WINS. A batch rule makes exactly one call, so this only
+                #   matters for a per-row rule: the first row that explains itself is the
+                #   explanation, and a later silent row does not erase it.
+                if answer["refusal"] is None and result.get("refusal"):
+                    answer["refusal"] = result["refusal"]
+                # 🔴 [판정 562 · 567] A MAPPER MAY WRITE FOR ITSELF AND SAY SO. This was
+                #   `writes_itself`, a REGISTERED fact the seat had to look up before
+                #   calling - and a fact about the rule's ADDRESS rather than about what
+                #   it did. Read off the result, nobody is asked in advance and a mapper
+                #   that writes some rows and proposes others is describable.
+                # ⚠️ ABSENT IS NOT ZERO (판정 509 의 부류). A mapper that reports no count
+                #   has not said it wrote nothing, so the cell stays None until one does.
+                if result.get("written") is not None:
+                    answer["written"] = ((answer["written"] or 0)
+                                         + int(result["written"]))
+            # ⚠️ PROPOSED PLUS WRITTEN. A rule does one or the other, so this equals whichever
+            #    it did - and a rule that did both is counted once for each, which is what
+            #    「이 규칙이 낸 행」 means to the operator reading the queue.
+            rows_out = (sum(rows_counted(r) for r in results)
+                        + (answer["written"] or 0))
+            # 🔴 [판정 525 ②] WHAT THE PRODUCT KNOWS, AND ONLY THAT. `server/mappers/*.py`
+            #   are the owner's files and this round keeps them at 0 lines, so the seat
+            #   cannot ask a file mapper why. What it CAN say is the pair of counts, and
+            #   that pair separates the two zeros 523 ③ asked about: 「아무것도 안 넘어왔다」
+            #   and 「넘겼는데 안 나왔다」 are different sentences, not one restatement.
+            # ⚠️ THE MAPPER'S OWN WORDS FIRST. The pair of counts below is what the
+            #    product can say when the mapper said nothing. A mapper that DID explain
+            #    itself must not have that sentence replaced by a restatement of 0 -
+            #    which is the whole of 판정 525, now reachable from the mapper door too.
+            run.produced(rows_out, reason=None if rows_out else (
+                answer["refusal"] or (
+                    "이 규칙이 볼 행이 넘어오지 않았습니다"
+                    if not handed else
+                    "%d 행을 넘겼고 맵퍼가 낸 행이 없습니다" % len(handed))))
 
     except Exception as exc:                                          # noqa: BLE001
         error = "%s: %s" % (type(exc).__name__, exc)

@@ -107,6 +107,48 @@ def _auto_confirm(db, payload, rule=None):
             "refusal": refusal, "source_name": enrichment.candidates.SOURCE_NAME}
 
 
+#: 🔴 [판정 562] THE FACTS THAT ARE REAL, DECLARED WHERE THE TEMPLATE IS.
+#:
+#: The kind table held four facts about each kind. Two were about its ADDRESS and go away
+#: with it - `hands` (「is it called with row ids or payloads」: there is one calling
+#: convention now) and `writes_itself` (「will the caller have to write this」: a mapper
+#: reports what it wrote, so nobody is asked in advance).
+#:
+#: ⚠️ THE OTHER TWO ARE ABOUT THE WORK, so they move rather than disappear - and saying that
+#: plainly matters: a repair that moves a proxy down a level and calls it removed is how the
+#: same defect comes back under a new name.
+#:   label          what an operator's list calls this rule (`rule_census`, the form)
+#:   stamps_origin  whether what it writes can be WITHDRAWN when its input row is deleted
+#:                  (판정 434 ④: a retraction aims with `cell_sources.origin_row_id`)
+TEMPLATE_FACTS = {}
+
+
+def label_for(name):
+    """What a rule naming this mapper is called in a list, or None when nothing built it."""
+    return (TEMPLATE_FACTS.get(name) or {}).get("label")
+
+
+def writes_itself(name) -> bool:
+    """Does this mapper apply its own rows, instead of proposing them?
+
+    ⚠️ THIS IS THE ONE FACT THAT IS STILL ASKED IN ADVANCE, and only by the deferred
+    pass, which selects the rules it hands a batch to. Every other reader takes it off the
+    RESULT (`written`), which is where it belongs - and this function goes with that pass.
+    """
+    return bool((TEMPLATE_FACTS.get(name) or {}).get("writes_itself"))
+
+
+def stamps_origin(name) -> bool:
+    """Does what this mapper writes carry the row it came from? Unknown names: False.
+
+    ⚠️ False MEANS 「this product cannot say it does」, which for a mapper written by the
+    owner is the honest answer - `GeneralUpdateItem.origin_row_id` is on the schema every
+    mapper builds, so a file mapper CAN stamp, and whether the live ones do is not countable
+    from here (`server/mappers/` is gitignored).
+    """
+    return bool((TEMPLATE_FACTS.get(name) or {}).get("stamps_origin"))
+
+
 #: kind name -> the function built for it. The key is the `mapper` cell a translated rule
 #: carries, so the declaration needs no new word.
 TEMPLATES = {}
@@ -119,6 +161,31 @@ def _install_templates():
 
     TEMPLATES[join_into.JOIN_INTO_MAPPER] = _join
     TEMPLATES[enrichment.config.AUTO_CONFIRM_MAPPER] = _auto_confirm
+    # ⚠️ THE JOIN STAMPS AND AUTO-CONFIRM DOES NOT — unchanged facts, moved here from
+    #    the kind table. `join_into._update_items` fills `origin_row_id`;
+    #    `confirm_keys` does not, so its cells cannot be withdrawn (판정 434 ④).
+    # 🔴 [판정 562] `params` IS THE ARGUMENT LIST THE LOADER CHECKS A DECLARATION
+    #   AGAINST, and it is NOT optional: registering a template without one told the
+    #   loader 「this mapper declares no arguments」, so every real join was refused as
+    #   `undeclared_param` on `on`, `right_table` and `take`. Measured - the whole
+    #   declaration was dropped at load, which is why the rule list came back empty.
+    # ⚠️ THE LIST IS NOT WRITTEN HERE. `join_into.JOIN_CELLS` already owns it and the
+    #   refusal it feeds is the same one that names an unknown join cell.
+    # ⚠️ None MEANS 「this product does not constrain the arguments」, which is a
+    #   different statement from 「it takes none」 - auto-confirm is handed an enrichment
+    #   rule whose cells that file owns. An empty tuple would refuse all of them.
+    TEMPLATE_FACTS[join_into.JOIN_INTO_MAPPER] = {
+        "label": "join", "stamps_origin": True, "writes_itself": False,
+        # ⚰️ `join_into.JOIN_CELLS` WAS PUT HERE AND TAKEN BACK OUT. Declaring the list
+        #    makes the loader REFUSE a cell outside it - and 판정 397 settled the
+        #    opposite: an unknown join cell is NAMED and the rule still runs,
+        #    because a cell this product does not know may be a live argument it
+        #    has not learned. `join_into.unknown_cells` is where that naming
+        #    lives; declaring params here quietly converted it into a refusal.
+        "params": None}
+    TEMPLATE_FACTS[enrichment.config.AUTO_CONFIRM_MAPPER] = {
+        "label": "decide", "stamps_origin": False, "writes_itself": True,
+        "params": None}
 
 
 def install() -> tuple:
@@ -134,5 +201,31 @@ def install() -> tuple:
 
     _install_templates()
     for name, fn in TEMPLATES.items():
-        mapper_sdk.register(name, fn)
+        params = (TEMPLATE_FACTS.get(name) or {}).get("params")
+        mapper_sdk.register(name, fn, params or ())
+        if params is None:
+            # ⚠️ ABSENT, NOT EMPTY. `chain_bindings` checks a declaration's arguments
+            #    only when `MAPPER_PARAMS` HAS an entry; an empty tuple is a
+            #    statement that none are legal. 판정 509 의 부류, one table over.
+            mapper_sdk.MAPPER_PARAMS.pop(name, None)
     return tuple(sorted(TEMPLATES))
+
+# 🔴 [판정 562] INSTALLED AT IMPORT TOO, AND THAT IS NOT BELT-AND-BRACES. The kind table
+#   this replaces was a module constant filled by `builtins._install()` at IMPORT, so it
+#   existed in any process that had imported the module - including one that never calls
+#   `discover()`. Measured: with the install only in `discover`, a worker built without it
+#   refused every join as 「'builtin:join_into' is not registered」. That is a robustness
+#   REGRESSION dressed as a test failure, and production would meet it in any process that
+#   loads rules before warming up.
+# ⚠️ BOTH SEATS ARE NEEDED, not one: `discover()` CLEARS the registry, so an import-time
+#   install alone is emptied by the first reload. This one covers 「never discovered」 and
+#   the one in `discover` covers 「discovered again」.
+# ⚠️ GUARDED, because an import that dies takes the importer with it and this module is
+#   imported from the seat that runs every rule. A failure here must make JOINS refuse by
+#   name, not make the chain unimportable.
+try:
+    install()
+except Exception as _exc:                                          # noqa: BLE001
+    logger.error("[DynamicMappers] 기본틀을 꽂지 못했습니다 — 조인·확정 규칙이 "
+                 "「이름을 못 찾음」으로 거절됩니다: %s: %s",
+                 type(_exc).__name__, _exc)
