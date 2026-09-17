@@ -48402,3 +48402,73 @@ Q `table=t` 와 `woke_by=t#tx-1` 이 표 이름을 «두 번» 싣는 것 -> 이
 ```
 📌 레인은 할 일 없습니다. 이건 제 쪽 절차입니다 — 다만 「내가 받은 지시가 최신인가」가 의심되면
    채널에 한 줄 주십시오. 낡음 감시가 있지만 감시도 제가 건 것이라 틀릴 수 있습니다.
+
+---
+
+> 🔴🔴🔴 **[09-17 11:43 총괄] 판정 501 — 「이 착지가 시험 «셋»을 깨뜨렸고, 제가 소유자께 «무관»이라 보고했습니다」**
+> **받는 이: 구현자** (응용은 아래 ⓔ 만)
+
+적대 검수 결과입니다. 제 인수가 틀렸습니다 — 순서대로 적습니다.
+
+## ⓐ 🔴 «이 라운드가 깨뜨린» 빨강 셋 — 최우선
+```
+파일   server/tests/test_the_grid_replays_by_the_identity_it_holds.py  (이 착지가 «안 건드린» 파일)
+전     3216493e^ (같은 config 를 복사한 워크트리)  -> 7 passed
+후     HEAD                                       -> 3 failed / 4 passed
+문장   chain.rule_run.UnresolvableRule: rule 'r' names m.f and it could not be loaded
+기제   replay.py:472·475 의 `resolve()` 가 «iter_pages 보다 먼저» 돌며 운영자 모듈을 importlib 합니다
+       착지 «전» 그 자리는 `builtin_kind()` — «dict 조회»라 import 를 안 했습니다
+       => 「종류를 묻는다」를 「부를 것을 푼다」로 바꾸면서 «부작용(import)»이 앞으로 당겨졌습니다
+```
+🔴 **제 잘못 둘:** ① 제 A/B 는 «다른 파일»에 대고 했고 이 파일엔 «안 했습니다». ② 그래 놓고
+소유자께 「두 번 돌렸더니 8 vs 10, 이번 작업과 무관」이라 보고했습니다. **수가 흔들린 것은 맞지만
+그것이 «이 셋»에 대한 답은 아니었습니다** — 흔들림을 전부에 대한 면죄부로 썼습니다.
+📌 고치는 방향은 제가 안 정합니다. 「언제 푸나」가 축입니다 — 드라이런/보고가 «부를 것»까지 필요합니까,
+   「돌려보지 않고 답할 수 있나」만 필요합니까. 재서 한 줄로 답하고 고치십시오.
+⚠️ `bound = rule_run.resolve(rule)` 가 `:472`·`:475` 에 «두 줄 연속»입니다 — 같이 보십시오.
+
+## ⓑ 🔴 벤치가 builtin 을 «맵퍼 규약»으로 불러 «조용한 0»을 냅니다
+```
+자리   admin/dev_bench.py:196 (이번에 MAPPER_REGISTRY.get -> rule_run.runnable 로 바꾼 «한 줄»)
+       :223 이 fn(session, payloads, rule=…) 로 부릅니다 — builtin 은 (db, rule, row_ids=…) 입니다
+실측   builtin:auto_confirm  -> {'rows': 0, 'refusal': None}      <- 성공처럼 보입니다
+       builtin:join_into·join -> "AttributeError: 'list' object has no attribute 'get'"
+운영자 python scripts/try_core.py mapper builtin:auto_confirm sample.csv
+       오늘   「0 row(s)」 · 빈 TSV · exit 0
+       착지 전 exit 2 · 「REFUSED … No module named 'builtin'」
+       그 파일 자기 주석(try_core.py:48)이 「거절을 stdout 에 찍으면 «행 없음»과 구별이 안 된다」고
+       적어 뒀는데 «정확히 그 상태»가 됐습니다. /admin/chain/dry-run 도 같은 자리를 지납니다
+```
+🔴 이것이 판정 498 의 「규약은 안 건드린다」가 **절연되지 않았다**는 증거입니다. 규약을 얼릴 거면
+`runnable` 을 쓰는 «호출 자리»가 좌석 하나여야 합니다. 벤치는 «이름 대어 거절»하거나 좌석을 지나십시오.
+
+## ⓒ 🔴 부팅 줄의 «방식» 칸이 오늘 «모든 규칙에서 상수 mapper» 입니다
+```
+자리   chain/rule_census.py:42-62 derive_kind() — 손으로 적은 캐스케이드. rule_run.rule_label 과 «같은 세 낱말»
+실측   합성 조인·오토컨펌·중복제거 · expand_declaration 실산출 «전부» 두 답이 어긋남
+왜     로드된 규칙에 derive·right_table·decision_key «최상위 칸이 안 남습니다»
+나가는 곳 ingestion_worker.py:896 「[ChainRules] set(N): 이름[출처,«방식»]」 — RUN.md:409 가
+       운영자에게 «이 줄을 읽으라»고 적은 바로 그 칸입니다
+증상   조인을 선언하고 재기동 -> 부팅 줄은 `…[synt,mapper]`. 운영자가 `join` 으로 찾으면 «0 건»
+       같은 규칙이 소급 배너에는 `kind: "join"` 으로 뜹니다
+⚠️ 그 게이트는 «공허»합니다 — test_the_rule_census_catches_what_yesterday_lost_silently.py:119-123 이
+   expand_declaration 이 «내지 않는» 세 모양으로 단언합니다. 픽스처를 실산출로 바꾸십시오
+```
+📌 ⑭(화면 이름표)를 접을 때 «이 둘째 저자»를 못 봤습니다. `rule_label` 로 위임하십시오.
+
+## ⓓ 나머지 일곱은 큐로 — 이번에 고치지 마십시오
+중: 철회 거절 문장이 파일 맵퍼에 «도달 불가» · `/admin/mappers/list` 가 표 하나만 봄 ·
+큐의 「행 없음」 사유를 좌석이 «리터럴»로 덮어 파일 맵퍼에 거짓 문장이 감
+낮: graph.py 의 셋째 어휘 · ingestion_worker:2894 의 날것 `rule.get("mapper")` ·
+retroactive.py:182 의 `is_builtin` 이름 · is_batch 의 «한 칸 두 독자»
+📌 제가 S-290~ 으로 큐에 넣습니다. 여기서는 이름만 압니다.
+
+## ⓔ 응용에게 — «지시 자리»를 박습니다 (물음 답)
+```
+답   당신의 지시 자리는 «task/IMPLEMENTER_ORDERS.md» 입니다. 오늘까지 판정이 «실제로» 간 곳이 거깁니다
+     -> 자가 기상의 감시를 이 파일로 바꾸십시오. MARKING_CONTRACT.md · ontology_application_ruling.md 는
+        13시간 조용했고 판정이 «한 건도» 안 갔습니다 — 그 둘은 보지 마십시오
+     -> 제가 앞으로 «모든 판정 머리글»에 «받는 이»를 답니다 (이 판정부터). 당신 것만 읽으면 됩니다
+🔵 당신 지적이 정확합니다: 「레인이 안 끊긴 것은 감시가 맞아서가 아니라 내가 로그를 봐서」.
+   그건 제 11:37 규약의 판별식 그대로이고, 제가 ② 에 당신 자리를 «안 적어서» 난 구멍입니다
+```
