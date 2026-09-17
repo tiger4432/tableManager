@@ -47260,3 +47260,43 @@ label="mapper"       ⚠️ «반쪽»입니다. 실행은 안 갈리고 «운�
 ⚠️ `params: null` 입니다 — 함수 행과 같습니다. 채울 인자를 «안 적었다»는 뜻이지 「없다」가 아닙니다
 ```
 ⛔ 안 한 것: 새 축 0 · 새 화면 0 · 새 검증 절차 0 · 이름 칸 합치기는 «클라 몫»이라 안 건드렸습니다.
+
+---
+
+> 🛠 **[09-17 13:04 구현자] 판정 512 «한 줄» 답 — 서버가 줘야 할 것은 «칸 하나»입니다. 나머지는 이미 갑니다**
+
+## 한 줄
+**스켈레톤도 가지 목록도 «이미» 갑니다. 빠진 것은 「새 규칙일 때 어느 문법인가」 «한 칸»입니다.**
+
+## 실측 (`chain_rule_raw_view()` 를 «이름 없이» 부른 것 = 「규칙 추가」가 하는 그 호출)
+```
+받는 칸        base · config_path · editable_unit · error · rules · skeleton
+skeleton 안    root(평면) · unified_root(통합) — «둘 다» 실려 옵니다
+unified_root 의 derive
+   kind "oneOf" · hint "choice" · branches ['decide', 'join', 'mapper']
+   -> 클라의 `renderSkeletonOneOf` 가 먹는 «바로 그» 모양입니다. 서버가 더 만들 것이 없습니다
+   🔵 그리고 `mapper` 가 «가지 중 하나»입니다 — 통합 폼이 평면 폼을 «덮습니다». 잃는 칸 없습니다
+🔴 grammar        «없습니다». `ledger/admin.py:610` 의 그 칸은 `if name is not None:` «안»에 있습니다
+```
+## 그래서 화면이 옛 모양인 이유 (유도 아님, 코드 두 줄)
+```
+server/ledger/admin.py:610      grammar 를 «이름이 있을 때만» 싣습니다 -> 새 규칙엔 «없음»
+client2/src/chain_rule_panel.js:186  formRoot: payload.grammar === 'unified' ? unified_root : root
+                                     -> «없음»을 «평면»으로 읽습니다
+=> 새 규칙은 «항상» 평면 폼입니다. 소유자가 보신 「옛날 모양」이 이 두 줄입니다
+⚠️ 같은 파일 `grammarOf` 는 「서버가 안 말했으면 «안 그립니다» — 「모름」을 「평면」으로 적으면
+   그것이 거짓입니다」라고 «적어 뒀습니다». 옆 함수가 정확히 그 거짓을 적고 있습니다 —
+   판정 505·508 과 «같은 부류»입니다(한 파일 안에서 두 문장이 다른 말을 함)
+```
+## 📮 서버 한 줄 — «안 landed 했습니다». 판정 주시면 3분입니다
+```
+자리    server/ledger/admin.py:610 의 grammar 를 `if name is not None:` «밖»으로
+값      새 규칙의 기본 문법을 «무엇으로» 할지가 제품 판정이라 제가 안 정합니다:
+        ㉮ "unified"  — 새 규칙은 통합으로 적는다 (가지에 mapper 가 있어 평면을 덮습니다)
+        ㉯ 그대로 두고 클라가 「없음 = 통합」으로 읽는다 — ⛔ 그러면 저자가 «둘»이 됩니다
+🔴 제 권고는 ㉮ 입니다 — 문법을 말하는 저자가 «서버 하나»로 남습니다
+⛔ 512 가 「그 밖의 서버 작업은 멈추십시오」라 해서 멈췄습니다. 한 줄 주시면 바로 올립니다
+```
+📌 클라 레인에 옮겨 주십시오: **폼이 그릴 재료는 오늘 «이미 도착»합니다**(`skeleton.unified_root`).
+   `payload.grammar` 가 `'unified'` 로 오기 시작하면 `formRoot` 가 그것을 고르고,
+   `renderSkeletonOneOf` 가 `derive` 의 세 가지를 «있는 컨트롤»로 그립니다. 새로 지을 것 없습니다.
