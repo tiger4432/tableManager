@@ -285,12 +285,6 @@ export class RawRegistryPanel {
     //    그대로 그리면 편집기가 사라집니다(소유자 2026-09-13 「지혼자 새로고침되서 초기화」).
     //    ⚠️ 상태를 페이지에 두면 등록부마다 한 벌씩 생기고, 늦게 배우는 쪽만 초기화됩니다.
     this.open = '';      // 열려 있는 문서의 이름 (새 이름이면 NEW_NAME). 아무것도 없으면 ''
-    // 🔴 [판정 516] 「추가」로 «갈 때» 이름 없이 다시 받습니다. 그 응답은 «배경 읽기»로 표시돼
-    //    오는데(이름 없는 읽기가 그렇습니다), 아래 C-101 가드는 배경 읽기가 «열린 문서»를
-    //    못 갈아 끼우게 막습니다. 그 가드의 사유는 「운영자가 안 시켰는데 바뀐다」이고,
-    //    여기서는 «운영자가 버튼을 눌렀습니다» — 그래서 이 «한 번»만 가드를 지납니다.
-    // ⛔ 가드를 «풀지» 않습니다. 30초 갱신은 그대로 막힙니다(소유자 2026-09-13 「지혼자 새로고침」).
-    this._wantNew = false;
     // 「추가」로 갈 때 «보고 있던 문서»를 여기 둡니다. [취소] 가 그것으로 돌아갑니다(응용 Q-71).
     this._backTo = null;
     this.draft = null;   // 저장 안 된 «글자». `null`(고친 적 없음)과 ''(다 지웠음)이 다릅니다
@@ -440,14 +434,20 @@ export class RawRegistryPanel {
     //    ⚠️ 못 읽은 배경 읽기도 아무것도 안 바꿉니다 — 이름 없는 읽기는 문서를 «안 실어서»
     //       그 자리에 놓을 것이 없고, 상태를 보이려고 편집 중인 글자를 지우는 것은 값을 잃는
     //       것입니다. 목록이 «그대로»면 고르개도 다시 안 짓습니다(열린 목록을 닫는 일뿐입니다).
-    if (opts.background && this.open && !this._wantNew) {
+    // 🔴 [판정 516 · 응용 Q-73] 「추가」가 시킨 읽기는 «이름이 없어서» 배경으로 표시돼 옵니다.
+    //    그래서 그 «한 번»은 지나야 하는데, 지나도 되는 표시는 «그 응답 자신»이 들고 와야 합니다.
+    // ⛔ 부품에 깃발을 세워 「다음 렌더」에 소진하면 안 됩니다 — 이름 없는 읽기가 «둘»이고
+    //    (버튼 · 30초 자동 갱신) 둘이 같은 모양이라, 타이머 쪽이 먼저 오면 그 깃발을 «먹고»
+    //    편집 중인 폼을 갈아 끼웁니다. 그게 이 가드가 막으려던 바로 그 증상입니다
+    //    (소유자 2026-09-13 「지혼자 새로고침되서 초기화되는데?」).
+    // ✅ 그래서 표시는 `opts.forNew` — 버튼이 «자기 요청에» 실어 보낸 것이고, 타이머의 응답에는
+    //    «없습니다». 가드는 그대로이고 예외는 그 요청 하나에만 붙습니다.
+    if (opts.background && this.open && !opts.forNew) {
       const names = view.available ? view.names.join('\u0000') : null;
       if (names !== null && names !== this._names) this._options(this._picker, view, this.open);
       return view;
     }
     // 「+ 추가」는 서버에 다시 묻지 않습니다 — 목록도 지문도 방금 받은 그대로입니다.
-    // 🔴 [판정 516] 「추가」가 부른 «이 한 번»을 여기서 씁니다. 다음 배경 읽기는 다시 막힙니다.
-    this._wantNew = false;
     this._payload = payload;
     this._opts = opts;
     this.open = '';
@@ -555,8 +555,7 @@ export class RawRegistryPanel {
           //    「보고 있던 것으로 돌아갑니다」가 그날부터 거짓이 됩니다.
           if (this.newMode && this.onOpen) {
             this._backTo = { payload: this._payload, opts: this._opts };
-            this._wantNew = true;
-            this.onOpen('');
+            this.onOpen('', { forNew: true });
           } else {
             if (this._backTo) { this._payload = this._backTo.payload; this._opts = this._backTo.opts; }
             this._backTo = null;
