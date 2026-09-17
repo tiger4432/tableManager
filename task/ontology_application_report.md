@@ -25075,3 +25075,51 @@ client2/src/admin.js:1669   `${rule.is_batch ? 'BATCH' : 'ROW'}` 배지
           하는 자리는 이 술어로도 못 잡습니다 — AST 로 «값의 흐름»을 좇은 것이 아닙니다
         · 정지 중이라 «착수는 안 했습니다». 이건 502 가 연 따지기의 «닫는 문장 검증»입니다
 ```
+
+---
+
+## 🟡 Q-60 [09-17 12:41 `5afb8990` 검수] 결함은 «고쳐졌습니다». 다만 같은 착지 안에서 «두 문장이 서로 다릅니다»
+
+### ✅ ① 제가 올린 결함은 닫혔습니다 — 가드와 행동이 «같은 집합»입니다
+
+```
+전   가드 self_writing_name(…)   ·  행동 runnable(name)      -> 서로 다른 집합
+후   bound = rule_run.resolve({...})  한 번
+     가드 bound.hands != HANDS_PAYLOADS  ·  행동 fn = bound.call   -> «같은 resolve 의 같은 답»
+⇒ 「가드와 행동이 다른 집합을 본다」가 구조적으로 «불가능»해졌습니다. 이름을 두 번 푸는 것도 접혔습니다
+```
+🔵 그리고 retroactive 쪽(505)은 판단이 맞습니다 — 거기서 필요한 성질은 «정말로» 「자기 행을 쓰나」이고
+   (`cells_proposed` 가 0 이 아닐 수 있나), 칸 이름이 `builtin_kind` -> `self_writing_kind` 로 «뜻»을 갖게 됐습니다.
+
+### 🔴 ② 그런데 같은 착지의 «두 주석»이 서로 다른 말을 합니다
+
+```
+rule_run.py:180-191   (새 함수 `hands`)  — «정직합니다»
+   본문:  return HANDS_ROW_IDS if builtin_kind(rule) is not None else HANDS_PAYLOADS
+   독스트링: 「They agree only while every registered kind happens to write for itself」
+dev_bench.py (같은 커밋)  — 🔴 «거짓입니다»
+   「`Resolved.hands` IS that fact, **registered this round**」
+실측:  register_builtin(kind, fn, stamps_origin, writes_itself, label)  -> `hands` 인자 «없습니다»
+       `hands()` 는 «주소»에서 유도합니다(= BUILTIN_KINDS 멤버십)
+```
+⇒ 이번 라운드가 «등록»한 것은 없습니다. 바뀐 것은 **「유도를 «한 저자»가 한다」**이고, 그건 실제로 개선입니다.
+   다만 그 낱말이 판정 503 · 505 를 거쳐 «코드 주석»까지 왔습니다 — 제 Q-58 정정이 코드엔 안 닿았습니다.
+🔴 왜 한 낱말이 문제인가: 다음 사람이 「등록된 성질이니 종류마다 다를 수 있다」로 읽습니다.
+   payloads 를 받고 싶은 등록 종류가 생기는 날 그 사람은 «등록 플래그»를 찾을 것이고, 없습니다.
+   그때 고칠 자리는 `hands()` «본문»입니다. 오늘 그 문장이 그 자리를 가립니다.
+📌 부류는 오늘 하루의 그것입니다 — 주석은 «의도»의 증거이지 «동작»의 증거가 아니다.
+   이번엔 그 주석이 «그 규칙을 세운 커밋»에 실렸습니다.
+
+### 청구 — 한 낱말입니다
+
+```
+📮 dev_bench 의 그 문장을 「registered this round」 -> 「이번 라운드에 «한 저자»를 얻었다(아직 «유도»다)」로.
+   ⛔ 코드 동작은 «한 줄도» 안 바뀝니다. 13:05 착지 뒤라도 됩니다 — 다만 13:30 표에
+      「hands = 등록된 성질」로 올라가면 그 표가 «오늘 거짓»을 실어 나릅니다
+```
+
+```
+🔴 못 잼  · 스위트 «0» · 벤치 화면 «안 열었습니다» — 전부 HEAD blob 읽기입니다
+        · `bound.hands != HANDS_PAYLOADS` 가 «module:function» 폴백 경로를 막지 않는지는
+          `UnresolvableRule` 처리까지만 읽었고 «돌려 보지 않았습니다»
+```
