@@ -25152,3 +25152,94 @@ dev_bench.py (같은 커밋)  — 🔴 «거짓입니다»
 ```
 착수 0 · 손에 든 것 없음 · 미푸시 0 · 정지 그대로
 ```
+
+---
+
+> 🔴 **[09-17 12:56 응용] Q-61 — 판정 510 의 「앵커가 옮겨졌다」를 못 봤습니다. 셋은 «시험이 읽는 그 함수 안»에 있습니다**
+> **받는 이: 총괄 — 지시 ①②가 아직 «안 착지»했습니다(544b5d24 는 그 다섯 파일을 안 건드렸습니다). 그래서 지금 올립니다**
+
+## 잰 것 — HEAD `544b5d24` · 12:55 · 그 세 파일 «전부»
+```
+tests/test_the_product_synthesizes_chain_rules_in_one_seat.py
+tests/test_the_human_claims_index_replaces_the_full_one.py      -> 38 passed · 0 failed
+tests/test_undelivered_marker_seam.py
+```
+
+## ① 510 의 근거는 «파일»을 재고, 그 시험들은 «함수»를 읽습니다 — 다른 물음입니다
+
+판정문의 실측은 「`done=done` -> ingestion_worker «와» rule_run 둘 다 있습니다」 ·
+「`UNDELIVERED_MARKER_PROCESSED_CHAIN` -> 셋 다 있습니다」입니다. 그건 **「이 낱말이 저장소에
+있나」**의 답입니다. 그 단언들이 묻는 것은 **「이 «함수»가 오늘도 그 일을 하나」**입니다.
+
+🔴 **그래서 열었습니다. 셋 다 «시험이 읽는 바로 그 함수 안»에 있습니다:**
+```
+_ensure_human_claims_index_sync   호출 chain/ingestion_worker.py:3778
+                                  감싸는 def :3740 start_chain_ingestion_worker
+                                  시험이 읽는 함수 = start_chain_ingestion_worker   ✅ 같습니다
+done=done                         chain/ingestion_worker.py:3054
+                                  감싸는 def :2988 _run_the_follow_up_pass
+                                  시험이 읽는 함수 = _run_the_follow_up_pass        ✅ 같습니다
+UNDELIVERED_MARKER_* 둘            sweep_undelivered_broadcasts(:2609) 안에 «둘 다»
+                                  record_undelivered_notification(:121) 안에 STATUS ✅ 같습니다
+                                  (getsource 로 직접 읽어 확인 — grep 아닙니다)
+```
+📌 **「옮겨간 자리」가 없습니다.** 지시 ①「옮겨간 자리를 읽게 다시 겨누십시오」는 이 셋에 «겨눌
+곳이 없습니다». 그대로 시키면 구현자는 «맞는 자리»에서 시험을 떼게 됩니다.
+
+### 무엇이 참이어야 이 일이 나나
+```
+「낱말이 이 파일에 있다」 == 「그 함수가 그 일을 한다」   <- 참이 아닙니다. 이것이 «대리»입니다
+```
+### 실패 시나리오
+`test_the_boot_sequence_calls_the_ensure` 의 독스트링은 「**착지는 배선이 아니다** — an ensure
+wired only into config reload leaves a restarted deployment without the index」입니다. 그 시험을
+「낱말이 남아 있는 아무 파일」로 다시 겨누면 **부팅 좌석에서 그 ensure 가 빠지는 날 초록입니다.**
+그 갭은 이 제품에서 «이미 한 번» 났고(S-88 · 판정 239 · 245-b 가 같은 좌석에 줄줄이 붙어
+있습니다), 그래서 그 단언이 거기 있습니다.
+
+## ② 지시 ②(「글자 말고 동작으로」)가 이 저장소의 «명시된 예외»와 부딪힙니다
+
+CLAUDE.md 하니스 절의 예외가 그대로 걸립니다 — 「텍스트가 «주어»인가, «대리»인가. 주어면 밖이다」.
+🔴 그리고 **그 파일이 자기 독스트링에 그 논증을 «이미» 적어 두었습니다** (인용, 원문 영어):
+```
+test_both_readers_name_the_constant_rather_than_quoting_the_value
+  "A behavioural assertion cannot see the difference - a reader carrying its own `"user"`
+   returns exactly the same rows, just slowly - so what is asserted is the thing that
+   actually differs: which spelling each file uses."
+```
+같은 부류가 `test_undelivered_marker_seam` 입니다 — 표제 자체가 「**the writer and the sweeper
+read the same NAMES**」입니다. 손으로 철자를 베낀 사본과 상수를 «같이» 지나는 것은 **동작이
+구별할 수 없습니다**(둘 다 같은 행을 냅니다). 그 시험의 주어가 «글자»인 이유가 그것이고,
+그게 이 저장소가 「두 저자」를 잡는 유일한 계기입니다.
+### 실패 시나리오
+동작으로 바꾸면 그 단언은 «공허»해집니다 — 스위퍼가 내일 `"processed_chain"` 을 손으로 적어도
+초록입니다. 판정 510 이 「제품 결함이 아닙니다」라고 옳게 적었는데, ② 를 넓게 적용하면
+**제품 결함을 «새로» 못 보게 됩니다.**
+
+## 🔴 그러면 총괄의 5 failed 는 무엇이었나 — «못 잽니다». 다만 계기가 흔들릴 창이 있었습니다
+```
+rule_run.py · builtins.py 의 파일 기록 시각   12:48:39   <- 판정 510 이 올라간 «같은 분»
+ingestion_worker.py                        12:43:29
+=> 총괄의 스위트가 도는 동안 구현자가 그 파일들을 «쓰고 있었습니다». 움직이는 표적입니다
+```
+⚠️ 이건 «추정»입니다. 저는 총괄의 선택(「고친 경로 전수」)을 모르고 그 다섯을 «재현 못 했습니다».
+순서 의존일 수도 있습니다 — 그러면 제 세 파일 단독 실행은 그것을 못 봅니다.
+🔴 다만 ①은 그 답과 «무관»합니다: 순서 의존이든 움직이는 표적이든, **앵커는 안 옮겨졌습니다.**
+
+## 제안 (판정은 총괄)
+```
+① 지시 ① 앞에 한 줄 관문: 「이 시험이 읽는 «그 함수»를 열었나」 — 열어서 낱말이 «있으면»
+   겨눌 곳이 없습니다. 그러면 그 빨강은 «앵커»가 아니라 «실행 조건»의 문제입니다
+② 지시 ② 는 「텍스트가 주어인 단언」을 «빼고» 적으십시오. 위 둘이 그 부류입니다
+③ 총괄의 그 실행을 «다시 한 번» — 지금 트리는 정지해 있습니다(미커밋 0). 같은 선택으로
+   다시 빨가면 그건 순서 의존이고, 그때 «그 순서»가 발견입니다
+```
+
+## 확신도
+```
+실행    세 파일 38 passed @ 544b5d24 12:55 (env python 직접) · 세 앵커의 감싸는 def 는 파일에서 «열어» 확인
+구조    「파일에 있다 ≠ 그 함수가 한다」 · 「텍스트가 주어인 하니스」 예외 — 둘 다 상설
+못 잼    총괄의 5 failed «재현 못 했습니다» — 선택을 모릅니다 · 전수 스위트 «안 돌렸습니다»
+        순서 의존 여부 «못 잽니다» · 나머지 둘(synthesis 파일의 다른 단언)은 «안 열었습니다»
+        실제 서버 «안 띄웠습니다» · 화면 «안 열었습니다»
+```
