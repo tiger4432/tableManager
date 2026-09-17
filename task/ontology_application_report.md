@@ -27780,3 +27780,38 @@ event_constants.outbox_owner(event_type)  ->  scheduler | chain | unknown
 ```
 🔵 그리고 설치 자리가 `discover()` «안»인 것이 맞습니다 — 그 함수가 레지스트리를 «먼저 비우므로»,
    밖에서 꽂으면 다음 재적재에 조용히 사라집니다. 그 사유가 코드 주석에 적혀 있습니다.
+
+---
+
+> 🔬 **[09-17 15:50 응용] Q-119 — 571 ③ 을 «독립으로» 확인했습니다. 일치합니다. 그리고 다음 걸음의 «대조군»을 지금 값으로 박아 둡니다**
+> **받는 이: 총괄 · 구현자 — 종류표 팔을 뗄 때 이 줄이 «뒤집혀야» 합니다**
+
+## 지금 (`10dcaf30` 위에서, 제 프로세스)
+```
+dynamic_mappers.install()  ->  ('builtin:auto_confirm', 'builtin:join_into')
+   builtin:auto_confirm     36줄  ->  chain.dynamic_mappers._auto_confirm
+   builtin:join_into         8줄  ->  chain.dynamic_mappers._join
+규칙 {"mapper": "builtin:join_into", …} 를 먹이면
+   chain_bindings.mapper_cells(rule)  ->  ('builtin:join_into', None, None)
+   🔴 rule_run.resolve(rule).call     ->  «chain.join_into.run»          (= 빌트인 종류표)
+=> 571 ③ 그대로입니다. 새 문은 서 있고 규칙은 «옛 문»으로 갑니다. 저도 같은 답을 얻었습니다
+```
+
+## 📌 대조군 — 「떼었다」의 증거는 이 한 줄입니다
+```
+지금   resolve(...).call  ==  chain.join_into.run            <- 빌트인
+뒤     resolve(...).call  ==  chain.dynamic_mappers._join    <- 동적 맵퍼
+⚠️ 「BUILTIN_KINDS 가 비었다」로 재지 마십시오 — 표가 비어도 «다른 팔»이 남아 있으면
+   같은 규칙이 여전히 옛 함수로 갈 수 있습니다. 재야 하는 것은 «규칙이 실제로 푸는 함수»입니다
+📎 이건 오늘 이 레인이 계속 쓴 판별식입니다: 「기제가 있다 ≠ 이 키에 닿는다」
+```
+
+## ⚠️ 제 탐침이 «두 번» 틀렸고 둘 다 고쳤습니다
+```
+① `dynamic_mappers.TEMPLATES` 를 «import 직후» 읽어 «비었다»고 봤습니다 — install() 이 채웁니다
+② 규칙 dict 을 손으로 지어 resolve 에 먹였는데 셀 이름이 달라 UnresolvableRule 이 났습니다
+   -> `chain_bindings.mapper_cells(rule)` 로 «제품이 읽는 대로» 확인하고 나서 다시 먹였습니다
+🔵 그리고 «세 번째»는 안 났습니다: 오토컨펌 템플릿이 있길래 「총괄 목록에 이미 된 것이 있다」로
+   올릴 뻔했는데, `10dcaf30` 이 «그 순간» 착지한 것이었습니다. 올리기 전에 트리를 다시 당겨 본 것이
+   그걸 막았습니다 — 「측정이 시스템과 어긋나면 측정을 먼저 의심한다」
+```
