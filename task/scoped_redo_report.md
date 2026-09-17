@@ -48904,3 +48904,88 @@ ingestion_worker.py:996 (판정 500, 소유자 「결국 이것도 같은 체인
 빼야 하고, 그건 한 라운드짜리입니다.
 🔵 **판정 방향은 안 바뀝니다** — (나)는 여전히 264 를 뒤집고, (다)는 여전히 ① 을 안 닫습니다.
    바뀌는 것은 ㉮ 의 «가격»이고, 그래서 「오늘이 아닙니다」가 더 분명해집니다.
+
+---
+
+> ⏰ **[09-17 16:37 구현자] 17:30 중간 보고 + ⑤ 쓰레기 목록 — «제 회귀 하나를 찾아서 닫았습니다». 그게 오늘 제일 중요한 줄입니다**
+> **받는 이: 총괄 — ③ 은 585 대로 «안 건드렸습니다»**
+
+## 🔴 ① 먼저 — 제가 562 에서 «동작»을 같이 지웠고, 그것이 «두 문»에서 조용했습니다
+585 의 「①②⑤ 가 무너지지 않았는지 보라」를 그대로 했더니 «무너져 있었습니다».
+```
+잰 법    라운드 시작점(031e9427^)에 워크트리를 만들어 «같은 두 파일»을 돌렸습니다
+시작점   17 passed / 0 failed
+HEAD    10 passed / 7 failed        <- 전부 «제 것»입니다. 3위 낙진이 아닙니다
+```
+### 무엇을 지웠나 — 한 실수의 «두 반쪽»입니다
+```
+㉠ «몸»    옛 등록 = register_builtin(JOIN_INTO_MAPPER, join_into.run, …, writes_itself=True)
+          제가 꽂은 것 = join_into.propose  <- «같은 계산에서 쓰기를 뺀 것»
+          그리고 사실도 writes_itself: False 로 바꿨습니다
+   왜 조용했나   제안을 «적용하는» 호출자(그룹 걸음 · replay 의 제안 분기)는 «둘을 구별 못 합니다».
+                배치 쓰기가 «없는» 호출자(미루기 걸음 · 소급)는 «아무것도 못 봅니다»
+   로그가 그대로 말합니다   rows_in=4 rows_out=4 «written=None» — 네 행 제안, 네 행 유실
+㉡ «묶음»   종류표는 빌트인을 «그룹의 행 id 목록 통째로» 불렀습니다. 그 사실이 «표»에 살았습니다
+          표가 없어지자 좌석은 `is_batch` 를 묻는데, 규칙을 «짓는 세 자리»가 그걸 안 적습니다
+          -> 네 행 쓰기가 «아웃박스 이벤트 넷». S-249 가 없앤 «행당 하나» 모양입니다
+```
+### 수리 (`4a1ff97b` 푸시됨)
+```
+㉠ 기본틀이 join_into.run 을 부릅니다 — «대체한 등록이 하던 그대로».
+   판정 581 에서 레거시 조인에 쓴 원칙과 «같은 원칙»입니다
+   ⚠️ 「조인은 제안하고 모든 문이 적용한다」는 «이 라운드 것이 아닙니다» — 587 의 다음 항목과
+      «같은 일»이고, 거기서 통째로 갑니다. 나눠 착지시키면 그 사이가 거짓입니다
+㉡ 규칙을 «짓는» 세 자리가 is_batch: True 를 적습니다
+   (legacy_join_declaration · rule_shape.as_join_rule · enrichment/config 의 confirm)
+   제품이 그 맵퍼를 소유하므로 «제품이» 부르는 법을 선언합니다. 운영자가 알 일이 아닙니다
+게이트   두 파일 14 passed / 3 failed — 셋 «전부» BUILTIN_KINDS (3위 낙진)
+        여덟 파일 132 passed / 11 failed — 10 이 그 낙진, 1 은 철회 거절문의 «옛 문구»
+```
+🔴 **배운 것 한 줄 (제 원칙에 없던 것):** 「기본틀은 «대체하는 등록»이 하던 것을 한다」를
+   레거시 조인에는 적용하고 join_into 에는 «안 했습니다». 같은 라운드, 같은 손, 다른 답 —
+   그리고 갈라진 쪽이 «조용한 쪽»이었습니다.
+
+## ⑤ 쓰레기 목록 — AST 로 셌습니다. 추적 파일, `server/*.py` 빼기 `tests`
+```
+지운 것 — «코드 노드 0», 남은 것은 묘비뿐                                 14 개
+  BUILTIN_KINDS · BUILTIN_HANDS · BUILTIN_LABELS · ORIGIN_STAMPING_KINDS
+  SELF_WRITING_KINDS · HANDS_ROW_IDS · HANDS_PAYLOADS · UnknownBuiltinKind
+  register_builtin · builtin_kind · hands · _install · _run_join · _run_auto_confirm
+지운 «파일»    0 개    (「원자 지우지마」에 걸리는 것 없음)
+```
+### 그리고 「옮긴 것」 — 지운 것이 아니므로 «따로» 적습니다 (판정 508)
+```
+_run_auto_confirm  -> dynamic_mappers._auto_confirm   (몸 그대로)
+_run_join          -> dynamic_mappers._legacy_materialized_join (판정 581)
+join_into.run      -> dynamic_mappers._join 의 «몸». 안 지웠습니다 — 위 ㉠ 이 그 이유입니다
+BUILTIN_LABELS     -> TEMPLATE_FACTS[...]['label']
+ORIGIN_STAMPING    -> TEMPLATE_FACTS[...]['stamps_origin']
+SELF_WRITING_KINDS -> TEMPLATE_FACTS[...]['writes_itself']
+BUILTIN_HANDS/HANDS-> 아무 데도. 부르는 규약이 «하나»면 적을 것이 없습니다
+```
+### ① ↔ ⑤ 대조 — 남은 셋의 «코드 노드»를 전부 엽니다 (텍스트 아님)
+```
+writes_itself       5   dynamic_mappers:159(접근자) · rule_run:145,161,211(얇은 독자)
+                        · ingestion_worker:1056 (미루기 고르개 — ③ 이 데려감)
+stamps_origin       2   dynamic_mappers:169(접근자) · rule_run:268 (철회 거절)
+self_writing_name   3   rule_run:193(정의) · replay:485,491 (dry-run 의 «단위» — 남습니다)
+```
+⚠️ **583 의 15·6·3 과 다른 이유**: 그건 «텍스트»고 이건 «AST»입니다. 15 중 10 은 주석입니다.
+   18:00 에 「아직 열다섯 군데가 쓴다」로 읽히면 사실이 아니라, «다섯 노드, 그중 셋이 정의와 얇은 독자»입니다.
+
+## 상태 — 585 의 다섯
+```
+① 문 합치려고 만든 것이 없다     ✅ AST 0 × 14. 남은 셋은 «일의 사실»
+② 조인·확정이 동적 맵퍼로 돈다    ✅ «오늘 17:0x 에 다시 섰습니다» — 위 회귀를 닫고
+③ 랩(미루기) 경로가 없다        🟡 585 대로 «다음 라운드». 오늘 한 글자도 안 댔습니다
+④ 체인 코드가 server/chain 안    🔴 소유자께 올림 (판정 578, 378 줄)
+⑤ 쓰레기 목록                   ✅ 위. ① 과 대조됩니다
+```
+## 못 잰 것 · 목록에 넣을 것
+```
+📌 판정 588 의 샌 루프 변수 — 목록에 «그 항목의 근거»로 넣었습니다. 안 건드렸습니다
+📌 587 의 제목 확인 — 「다음 라운드 첫 줄로」 하라 하셨으니 오늘 답 안 합니다. 블록은 열어 뒀습니다
+❓ 못 잰 것: 그룹 걸음 «밖»의 다른 호출자가 또 조용히 제안을 흘리고 있는지는 «두 파일»로만
+   쟀습니다. 「네 문 전부」를 한 표로 세운 게이트는 test_every_caller_and_door 이고 그건 초록입니다 —
+   그 표에 «없는» 다섯째 문이 있는지는 «안 쟀습니다»
+```
