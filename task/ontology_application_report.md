@@ -26794,3 +26794,58 @@ to_declaration   ->  top=False · extra={'is_batch': True}
         라이브 선언은 읽기만 허용이고 그 수는 이 박스의 것이라 운영에 대해 말하지 않습니다.
         이건 「그 결함이 있다」가 아니라 「이 모양이면 조용히 난다」입니다
 ```
+
+---
+
+> 🔴 **[09-17 14:57 응용] Q-96 — 546 ② 가 «자리»는 만들었는데 «그릴 수»는 없습니다. `map` 한 종류에 철자가 «둘»입니다 — 체인은 `node`, 원장은 `of`, 공용 해석기는 `of` 만 압니다**
+> **받는 이: 구현자 · 클라 · 총괄 (15:30 ② 의 합격 여부)**
+> ⚠️ **`f9279eee` 가 만든 결함이 «아닙니다»** — 그 커밋이 인용한 증상의 «원인»이고, 그 커밋의 수리가 여기까지 «안 닿습니다»
+
+## 공용 해석기를 «태워서» 잰 것
+```
+node --input-type=module  (client2/src/ontology_skeleton.js 를 import, 출하 스켈레톤 JSON 을 먹임)
+  shapeAt(["derive","mapper"])                      -> {"kind":"record", fields:[…]}      ✅
+  shapeAt(["derive","mapper","params"])             -> {"kind":"map","keyed_by":"param","node":{…}}  ✅
+  shapeAt(["derive","mapper","params","<아무 이름>"]) -> null        <- 🔴 «멤버의 모양이 없습니다»
+```
+```
+원장 스켈레톤의 map 노드 키   ['kind','keyed_by','member','of']   (32 개 «전부»)
+체인 스켈레톤의 map 노드 키   ['kind','keyed_by','node']          (2 개 «전부»)
+공용 해석기 client2/src/ontology_skeleton.js:55   if (node.kind === 'map') return deref(node.of, defs);
+공용 렌더러  client2/src/ontology_explorer_view.js:405 · :1948     shape.of / node.of
+=> 같은 «종류»(map)를 두 산출자가 «다른 이름»으로 답니다. 읽는 쪽은 «하나»만 압니다
+```
+
+## 무엇이 참이어야 이 일이 나나
+```
+① 체인 스켈레톤과 원장 스켈레톤이 «다른 손»으로 지어진다
+   체인: `chain_bindings._params_node()` :561   원장: `ledger/ledger_skeleton.json`
+② 그런데 «읽는 쪽»은 공용이다 — `raw_registry_panel.js:28` 이 `ontology_skeleton.js` 를 import
+   그 파일의 `childOf` 는 자기 주석에 「DESCENT HAS ONE AUTHOR (C-115)」라고 «적어 두었습니다».
+   저자는 하나인데, 그 하나가 아는 철자가 «하나»입니다
+③ 그리고 조용합니다 — `shapeAt` 이 «던지지 않고» null 을 냅니다. 빨개지는 것이 없습니다
+```
+
+## 546 ② 에 대해 이것이 뜻하는 것
+```
+커밋이 적은 증상   「the form could NAME a mapper and not CONFIGURE one - an operator had to
+                  hand-edit JSON to set a single argument」
+커밋이 고친 것     스켈레톤에 `params` «칸»이 생겼다 (record 의 넷째 필드)            ✅ 섰습니다
+안 고쳐진 것       그 칸의 «멤버»를 그릴 모양이 여전히 «없습니다» — 위 null
+=> 「맵퍼를 설정할 수 있다」가 «착지»는 했는데 «배선»이 한 칸 모자랍니다
+⚠️ 그리고 이건 통합만의 일이 아닙니다 — 평면 뿌리의 params(/root/fields/22)도 «같은 철자»라
+   두 문법 «둘 다»에서 같은 자리가 빕니다. 그래서 커밋의 증상 서술이 정확했던 것입니다
+```
+
+## 확신도
+```
+실행    위 `shapeAt` 세 줄 — node 로 «출하 스켈레톤»(server/chain_skeleton.json)을 먹여 찍었습니다.
+        `chain_bindings.skeleton()` 이 내는 것도 같은 키(['keyed_by','kind','node'])임을
+        파이썬으로 따로 확인했습니다 — 파일과 함수가 «같은 말»을 합니다
+구조    렌더러가 `.of` 를 읽는다 — :405 · :1948 을 열어서. 화면을 «안 열었습니다»
+못 잼   실제 페이지에서 params 행이 «어떻게 보이나»(빈 행인지, 안 그려지는지, 값이 안 저장되는지)
+        — 클라 레인이 지금 렌더된 페이지로 546-4 를 걷고 있으니 그 눈이 더 정확합니다
+```
+📮 판정 청합니다: 철자를 «어느 쪽»으로 모을지. 원장이 32 이고 체인이 2 라 «체인을 고치는 것»이 작지만,
+   그건 수의 이야기이고 이름의 이야기가 아닙니다 — `of` 와 `node` 중 무엇이 이 종류의 이름인지는
+   해석기의 저자가 정할 일입니다. 제가 고르지 않습니다.
