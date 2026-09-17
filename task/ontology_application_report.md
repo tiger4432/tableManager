@@ -30257,3 +30257,61 @@ _validate_chain_cascade_graph 의 호출 자리 «셋» (non-test, origin/main)
 ```
 📌 그러니 어느 쪽을 고르든 **618 ②(문장도 좌석이 짓는다)가 «전제»입니다.** ㉠ 은 그것을 «면제하지 않습니다».
 ⛔ 저는 짓지 않고 고르지도 않습니다 — 모집단만 댑니다.
+
+---
+
+> **[09-17 19:34 응용] Q-171 — 착지 `4352ad47`(인리치 파생행 = 맵퍼) 적대 QA: 코드에서는 «결함을 못 찾았습니다». `RUN.md` 에서 둘 찾았습니다 — 그중 하나는 이 저장소가 «이미 한 번 당한» 모양입니다**
+
+**① 제가 «연» 일곱 자리 — 전부 통과입니다(각각 계기를 답니다).**
+```
+㉠ 네 사실이 실려 왔나        TEMPLATE_FACTS[declared:enrich] = label "decide" · stamps_origin False ·
+                            writes_itself False — «옛 등록이 답하던 것 그대로»입니다 ✅
+   🔵 writes_itself False 가 특히 중요합니다: 이 값이 뒤집혔으면 소급 화면의 «단위»가 바뀝니다
+      (`admin/retroactive` 가 self_writing 여부로 「다시 계산할 행」과 「덮어쓸 셀」을 가릅니다 — Q-152)
+㉡ 은퇴한 `enrichment` 칸의 «다른 독자»   전수: 오늘 히트 둘, 둘 다 «묘비 주석». 살아 있는 독자 0 ✅
+   🔵 그리고 그 칸의 «둘째 저자»였던 `enrichment/backfill.py` 를 «같은 착지»에서 고쳤습니다
+      (`{"enrichment": …}` -> `{"params": …}`) — 상설 ⑤(통째로 착지) 그대로입니다
+㉢ 이름으로 갈래를 트는 자리가 남았나   `DEDUP_PREFIX`/`AUTO_CONFIRM_PREFIX` 의 살아 있는 용례는
+                            «이름을 짓는» `synthesized_rule_names` 뿐. 판단하는 자리 0 ✅
+㉣ `declared_kind` 가 좌석을 부르나   오늘 `return rule_run.rule_label(...)` — 손으로 짠 갈래 0 ✅
+㉤ 운영자의 팔(`mapper_module`/`mapper_function`)이 살아 있나   `resolve` 에 그 가지 «그대로» 있습니다
+                            (`elif module_name and function_name: importlib.import_module(...)`) ✅
+                            — 제품이 그 팔을 «안 쓰게» 됐을 뿐, 운영자 맵퍼는 그대로 돕니다
+㉥ 「`origin_row_id` 가 0」 주장   `enrichment/mapper.py` 히트 «0» — 참입니다 ✅
+㉦ 선언 형식 무변경(소유자 제약 ②)   합성된 «체인 규칙»의 칸만 바뀌었고 `enrichment_rules.json` 쪽 문법은
+                            안 건드렸습니다. 착지가 census_diff 동일로 재 놓았습니다(제가 «다시 돌리진» 않았습니다)
+```
+
+**② 🔴 `RUN.md` — 붙여 넣으면 «첫 줄이 깨집니다».**
+```
+```(코드 울타리 «안»)
+server\..\  <- 아래 한 줄을 server 폴더에서      <- 명령이 아닙니다. 붙이면 여기서 에러가 납니다
+python -c "import mapper_sdk; …"
+```
+상설(푸시) ① 은 「복사해 붙이면 «도는» 형태」입니다. cwd 안내는 울타리 «밖»의 산문이어야 합니다
+(이 파일은 :396 에 이미 그 안내를 «문장»으로 들고 있습니다).
+🔵 명령 «자체»는 옳습니다 — 제가 확인했습니다: `dynamic_mappers` 는 import 시점에 `install()` 을 부르므로
+   (판정 562 의 「양쪽 좌석」) `TEMPLATES` 가 «비어 있지 않습니다». 그래서 이 명령은 넷을 찍습니다.
+
+**③ 🔴 「부팅 로그에서 볼 줄」이 «없는 줄»입니다 — 그리고 이 저장소는 이 모양에 한 번 당했습니다.**
+```
+RUN.md 가 약속   `[ChainRule] enrichment_dedup:<이름> … mapper=declared:enrich`
+실측             `[ChainRule]`(단수) 접두는 서버 «어디에도 없습니다» — 로더 줄은 전부 `[ChainRules]`
+                 그리고 «부팅 줄에 mapper= 라는 칸이 없습니다». `mapper=%r` 은 rule_run 의 «실패 문장» 하나뿐
+진짜 줄           `[ChainRules] set(N): <이름>[<출처4>,<방식>] trigger=… target=…`
+                 이번 착지 뒤 그 <방식> 칸이 dedup 半에서 「decide」로 읽힙니다(양쪽이 label "decide" 로 등록)
+```
+🔴 **그리고 `rule_census.derive_kind` 의 docstring 이 «바로 이 사고»를 적어 두고 있습니다** —
+   「That word goes straight into the boot line `[ChainRules] set(N): 이름[출처,방식]`, **which RUN.md
+   tells the operator to read**: they declared a join, restarted, searched the boot log for `join`,
+   and found none」. 판정 501 ⓒ 가 그 사고입니다. 오늘 RUN.md 가 «다른 줄»을 가리키면서 같은 자리로 돌아갑니다.
+📮 고치는 방향은 «한 줄»입니다: 약속하는 줄을 `[ChainRules] set(...)` 의 그 «방식» 칸으로 바꾸고,
+   운영자가 찾을 낱말을 `decide` 로 적습니다. ⛔ 저는 안 고칩니다.
+
+**④ 📌 616 ① 은 여전히 열려 있습니다 — 616 이 «그렇게 시켰습니다».**
+`enrichment/config.py` 의 「which this kind DOES NOT DECLARE … cannot wake it … does not see this loop」
+세 문장이 그대로입니다. 616 이 「인리치 짓는 중에 끼워 넣지 말고 «후속 한 커밋»으로」라 했고,
+그 «후속»이 이제 왔습니다. 이 착지가 같은 파일을 만졌지만 그 자리는 «안 건드렸습니다»(규율대로입니다).
+
+**⚠️ 못 잰 것**: 게이트 수(2,741 passed / 빨강 셋)는 «제가 다시 안 돌렸습니다» — 세 세션이 한 DB 입니다.
+그리고 화면(어드민 규칙 표·소급 배너)은 «안 열었습니다».
