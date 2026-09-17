@@ -278,6 +278,9 @@ export class RawRegistryPanel {
     if (!this.doc) throw new Error('RawRegistryPanel needs a document (deps.doc or mount.ownerDocument)');
     this.onOpen = deps.onOpen || null;
     this.onSave = deps.onSave || null;
+    // 🔴 [판정 548] 문법을 «바꾸라고 시키는» 자리. 변환은 «서버»가 합니다 — 화면이 변환하면
+    //    저자가 둘이 되고, 539 의 왕복 게이트가 «운영자가 안 지나는 길»을 재게 됩니다.
+    this.onConvert = deps.onConvert || null;
     // 🔴 «새 이름»을 짓는 중인가. 패널의 상태이지 서버의 상태가 아니라서 여기 삽니다 —
     //    서버는 「이 이름이 파일에 있었나」만 알고, 그 답은 저장할 때 나옵니다.
     this.newMode = false;
@@ -637,6 +640,31 @@ export class RawRegistryPanel {
         undo.addEventListener('click', () => { this._forget(); this._again(); });
       }
       head.appendChild(undo);
+    }
+
+    // 🔴 [판정 548] 문법을 바꾸는 컨트롤 «하나». 방향은 등록부가 말합니다 — 한 문서가 갈 수
+    //    있는 쪽은 «하나»뿐이고, 갈 곳이 없으면(문법을 못 읽으면) 컨트롤이 «없습니다».
+    // ⚠️ 「되돌리기」를 따로 두지 않습니다: 되돌리기가 «반대 방향 변환»이라 같은 문입니다
+    //    (판정 548 — 왕복이 항등이라 스냅샷도 이력도 필요 없습니다). 버튼을 둘 두면 한 일에
+    //    문이 둘이 되고, 그중 하나만 고쳐지는 날이 옵니다.
+    // ⛔ 「전부 변환」은 만들지 않습니다 (판정 548: 소유자 파일을 한 번에 바꾸는 길은 없습니다).
+    const convert = picked && !this.newMode && typeof spec.convert === 'function'
+      ? spec.convert(payload) : null;
+    if (convert && convert.to && this.onConvert) {
+      const btn = doc.createElement('button');
+      btn.className = `admin-btn ${spec.cls}-convert`;
+      btn.setAttribute('data-action', `convert-${spec.cls}`);
+      btn.setAttribute('data-to', String(convert.to));
+      btn.textContent = String(convert.label || convert.to);
+      if (btn.addEventListener) {
+        btn.addEventListener('click', () => {
+          // 서버는 «저장된» 문서를 바꿉니다 — 화면에 저장 안 된 글자가 있으면 그것이
+          // 사라지는 것처럼 보입니다. 그래서 «먼저» 묻습니다.
+          if (drafted !== null && !this.ask(LEAVE_UNSAVED)) return;
+          this.onConvert({ [spec.nameKey]: view.name, to: convert.to });
+        });
+      }
+      head.appendChild(btn);
     }
 
     const save = doc.createElement('button');

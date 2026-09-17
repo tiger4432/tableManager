@@ -1120,6 +1120,7 @@ async function refreshChainRule(name, extra = {}) {
     chainRulePanel = new ChainRulePanel(mount, {
       onOpen: (rule, extra) => refreshChainRule(rule, extra || {}),
       onSave: (payload) => saveChainRule(payload),
+      onConvert: (payload) => convertChainRuleGrammar(payload),
     });
   }
   // C-86 ③. 목록은 «패널이 그리기 전»에 넣습니다. 한 번 읽고 기억합니다 — 규칙을 열 때마다
@@ -1191,6 +1192,66 @@ async function saveChainRule({ name, base, raw }) {
   } catch (e) {                                              // noqa
     await refreshChainRule(name, { refusal: {
       code: '', path: '', message: '저장 요청이 서버에 닿지 못했습니다 (네트워크).' } });
+  }
+}
+
+/**
+ * 🔴 [판정 548·549] 문법을 바꿉니다 — «묻고 나서» 시킵니다.
+ *
+ * 한 라우트가 양방향(`to: unified|flat`)이라 「되돌리기」가 반대 방향 변환입니다.
+ * ⛔ 화면은 «변환하지 않습니다». 문서를 만들어 보내면 변환기가 둘이 되고, 판정 539 의
+ *    왕복 게이트는 «서버 변환기»를 재므로 운영자의 길이 안 재어집니다.
+ *
+ * 🔴 [판정 549] 「다시 도는 수」는 «상태 셋»입니다:
+ *      수가 왔다      -> 「다시 도는 행 N」
+ *      0 이 왔다      -> 「다시 돌 것 없음」   (세었고 0)
+ *      «칸이 없다»    -> 「다시 돌 수 «안 셌음»」  ⛔ 0 으로 그리지 않습니다 —
+ *                      운영자가 「안전하다」로 읽습니다
+ *    ⚠️ 그래서 서버가 다른 이름으로 실어 보내면 화면은 «안 셌음»이라 말합니다. 틀린 쪽으로
+ *       조용히 기울지 않습니다 — 이 칸의 «안전한 실패»가 그 방향입니다.
+ */
+async function convertChainRuleGrammar({ name, to }) {
+  const post = (dryRun) => adminFetch(`${API_BASE}/admin/chain/rules/grammar`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, to, dry_run: dryRun }),
+  });
+  const refuse = (message) => refreshChainRule(name, {
+    refusal: { code: '', path: `rules.${name}`, message } });
+  let dry;
+  try {
+    const res = await post(true);
+    dry = await res.json().catch(() => null);
+    if (!res.ok) { await refreshChainRule(name, { refusal: (dry && dry.detail) || dry || {} }); return; }
+  } catch (e) {                                              // noqa
+    await refuse('변환 확인 요청이 서버에 닿지 못했습니다 (네트워크).');
+    return;
+  }
+  // 🔴 [판정 549] 「다시 돌 것」은 «상태 셋»이고, 셋째는 «칸이 없는 것»입니다(`rows` 없음).
+  //    서버가 그 모양으로 답합니다: {rows: 0, why} · {why} — 「안 셌다」에는 `rows` 가 «없습니다».
+  //    ⚠️ 「수인가」를 «먼저» 묻고 그다음 「0 인가」를 묻습니다. 뒤집으면 0 이 「행 0」으로 그려져
+  //       「세었고 0」과 「안 셌다」가 다시 한 그림이 됩니다.
+  const reruns = (dry && dry.reruns) || null;
+  const counted = reruns && typeof reruns.rows === 'number' && Number.isFinite(reruns.rows);
+  const rerun = !counted ? '다시 돌 수 안 셌음'
+    : reruns.rows === 0 ? '다시 돌 것 없음' : `다시 도는 행 ${reruns.rows}`;
+  // 🔴 «사유»는 서버의 낱말 그대로입니다 — 「안 셌음」이 «왜»인지(못 펼쳤나 · 모양이 바뀌나)를
+  //    화면이 지어내면 두 경우가 한 문장이 됩니다. 없으면 «안 붙입니다».
+  const why = reruns && typeof reruns.why === 'string' && reruns.why ? `\n${reruns.why}` : '';
+  // 이미 그 문법이면 서버가 «아무것도 안 하고» 그렇게 말합니다 (판정 548 ③ — 거절이 아니라 사실).
+  if (dry && dry.changed === false) {
+    await refuse(String((dry && dry.why) || '이 규칙은 이미 그 문법입니다.'));
+    return;
+  }
+  const word = to === 'unified' ? '통합' : '평면';
+  if (!window.confirm(`${name} · ${word}으로\n${rerun}${why}`)) return;
+  try {
+    const res = await post(false);
+    const answer = await res.json().catch(() => null);
+    if (!res.ok) { await refreshChainRule(name, { refusal: (answer && answer.detail) || answer || {} }); return; }
+    await refreshChainRule(name, { saved: answer || {} });
+  } catch (e) {                                              // noqa
+    await refuse('변환 요청이 서버에 닿지 못했습니다 (네트워크).');
   }
 }
 
