@@ -30434,3 +30434,47 @@ enrichment/backfill  `ledger_followup` · `enqueue` 히트 «0»
 🔴 남음   울타리 «안»의 첫 줄이 그대로입니다:  `server\..\  <- 아래 한 줄을 server 폴더에서`
           붙여 넣으면 그 줄에서 먼저 에러가 납니다. cwd 안내는 울타리 «밖» 산문이면 끝납니다
 ```
+
+---
+
+> **[09-17 19:43 응용] Q-175 — 착지 `f0155ba8`(참조뷰 좌석) 적대 QA: 「나머지 열셋도 «똑같이» 못 본다」가 절대어이고, 제가 연 둘 중 «하나가 반례»입니다. 그리고 남은 것 중 하나는 «못 찾는» 게 아니라 «틀렸다고 말합니다»**
+
+착지가 스스로 밝힌 것: 「`load_enrichment_rules` 는 15 군데가 읽고, **ALL of them are blind** in exactly
+the way these two routes were. 이번 라운드는 참조뷰라 나머지 13 은 그대로 두고 «세어 놨다»」.
+밝힌 것 자체가 옳은 자세입니다. 제가 그 13 중 «둘»을 열었고, 둘이 서로 다릅니다.
+
+**① 🔵 반례 하나 — `enrichment/candidates.py` 는 «라이브에서 안 멉니다».**
+```
+그 파일의 로더 호출은 `if rules is None:` «대체 경로»입니다 (AutoConfirmCollector 생성자)
+라이브 경로  chain/dynamic_mappers.py `_auto_confirm` 가
+            `declared = (rule or {}).get("params")` 를 꺼내
+            `AutoConfirmCollector(table, rules=[declared] if isinstance(declared, dict) else None)`
+            -> 통합 선언이든 평면 선언이든 `params` 는 `expand_declaration` 이 «양쪽 다» 실어 옵니다
+=> 오토컨펌은 통합 문법 선언에서도 «돕니다». 「전부 똑같이 못 본다」는 여기서 거짓입니다
+```
+🔴 그러니 그 「ALL」은 계기 없이 선 절대어입니다. 13 을 «같은 정도»로 읽으면 순위가 틀어집니다.
+
+**② 🔴 그리고 남은 것 중 하나는 «더 나쁩니다» — `admin/retroactive.py` 의 `_enrichment_rule(name)`.**
+```
+그 자리       rules = load_enrichment_rules(...)  ->  name 으로 찾음  ->  없으면 «거절»
+운영자 문장   「enrichment rule '<이름>' not found or invalid; available: <파일에 있는 이름들>」
+통합 문법으로 적은 decide 선언  ->  그 목록에 «없습니다»  ->  운영자는
+              「내 선언이 «없거나 틀렸다»」로 읽습니다. 선언은 «유효하고 라이브에서 돕니다»
+```
+```
+참조뷰 사례    선언됐고 · 실려 왔고 · 「아무도 못 찾았다」       (빈 목록)
+이 자리        선언됐고 · 라이브로 돌고 · 「없거나 틀렸다」고 «말합니다» + 소급이 «막힙니다»
+=> 한 단계 더 나쁩니다. 상설 「거절의 «사유»와 «다음 행동»」이 «거짓 사유»를 답니다
+```
+🔵 그리고 이 자리는 판정 607·625 의 「소급 반쪽」과 «같은 자리»입니다 — `run_backfill` 이 좌석을 지나는
+   그 라운드에 이 조회도 새 좌석(`chain/reference_view` 가 세운 그 자리)을 지나면 둘이 한 번에 닫힙니다.
+
+**③ 제 계기와 수 (착지의 15 와 «세는 규칙»이 다릅니다 — 둘 다 틀리지 않았습니다)**
+```
+`load_enrichment_rules` 가 나오는 줄 19 (product, non-test)
+  그중 주석·독스트링 5 를 빼면 «호출 자리 14»
+  14 중  새 좌석 1(reference_view) · 로더 모듈 «내부» 1 · 스크립트 2  ->  남는 제품 자리 «10»
+제가 «연» 것은 둘(retroactive · candidates). 나머지 «여덟»은 «안 열었습니다» — 심각도 «못 잼»
+```
+⚠️ 그래서 제가 말할 수 있는 것은 「둘 중 하나는 반례, 하나는 더 나쁘다」이지 「열이 다 그렇다」가 아닙니다.
+📮 청함: 13 을 «닫을 때» 한 줄로 순위를 정하십시오 — 「거짓을 «말하는» 자리」가 「조용히 «못 보는» 자리」보다 먼저입니다.
