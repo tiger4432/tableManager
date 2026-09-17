@@ -2780,23 +2780,30 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 
 ---
 
-### 🆕㉙ `server/chain/dynamic_mappers.py` — **선언이 맵퍼가 되는 자리** (2026-09-17 신설 · 286줄)
+### 🆕㉙ `server/chain/dynamic_mappers.py` — **선언이 맵퍼가 되는 자리** (2026-09-17 신설 · 🆕 **336줄** @`14dfaf65` — ~~286 @`f8b4f8fe`~~)
 
 > 🔴 **[`f8b4f8fe` 15:45 신설 · 판정 562~600] 종류표가 하던 일을 «제품이 짓는 맵퍼»가 한다.**
 > 소유자 정본: 「조인, 인리치 선언을 «동적으로 맵퍼 함수로» 하는 게 기술이고」.
 
 | 심볼 | 무엇인가 | 라인 |
 |---|---|---|
-| `TEMPLATES: dict` | 「맵퍼 이름 -> 그 이름으로 돌 함수」. 키는 «저장된 규칙이 이미 적고 있는 값»이라 선언에 새 낱말이 필요 없다 | :198 |
-| `_install_templates()` · `install()` | 세 이름을 묶고 `mapper_sdk.register(name, fn, params=…)` 로 등록한다. `params` 는 로더가 선언을 채점하는 «인자 목록»이라 «필수»다(판정 562) | :203~ |
-| `TEMPLATE_FACTS: dict` | 등록 줄이 «네 사실»을 같이 말하던 것을 옮겨 받은 표 — `label` · `stamps_origin` · `writes_itself` | :226~ |
-| `label(name)` · `stamps_origin(name)` · `writes_itself(name)` | 그 표를 읽는 얇은 접근자 셋 | :159 · :169 · :176 |
-| 몸통 셋 `_join` · `_auto_confirm` · `_legacy_materialized_join` | `declared:join` · `declared:decide` · `declared:virtual_join` (판정 600, `a96d4a68` — 옛 `builtin:…` 셋) | :52~ · :230~ |
+| `TEMPLATES: dict` | 「맵퍼 이름 -> 그 이름으로 돌 함수」. 키는 «저장된 규칙이 이미 적고 있는 값»이라 선언에 새 낱말이 필요 없다 | 🆕 :237 |
+| `_install_templates()` · `install()` | 🆕 «네» 이름을 묶고 `mapper_sdk.register(name, fn, params=…)` 로 등록한다. `params` 는 로더가 선언을 채점하는 «인자 목록»이라 «필수»다(판정 562) | 🆕 :240 · :296 |
+| `TEMPLATE_FACTS: dict` | 등록 줄이 «네 사실»을 같이 말하던 것을 옮겨 받은 표 — `label` · `stamps_origin` · `writes_itself` | 🆕 :206 |
+| 🆕 `label_for(name)` · `writes_itself(name)` · `stamps_origin(name)` | 그 표를 읽는 얇은 접근자 셋 (⚰️ 종전 표기 `label(name)`) | 🆕 :209 · :214 · :224 |
+| 🆕 몸통 «넷» `_join` :57 · `_auto_confirm` :86 · `_legacy_materialized_join` :133 · `_enrich` :161 | `declared:join` · `declared:decide` · `declared:virtual_join` (판정 600, `a96d4a68` — 옛 `builtin:…` 셋) · 🆕 `declared:enrich`(`4352ad47`, 인리치 파생행 半 — 몸통은 `chain/enrichment/mapper.map_enrichment_dedup` 그대로) | 🆕 @`14dfaf65` |
 
 ```
-오늘 참인 것   세 템플릿이 «전부» writes_itself: True — 즉 자기가 쓰고 페이로드를 안 돌려준다
+🆕 오늘의 네 줄 — «등록이 말하는 그대로»다 (계기: `TEMPLATE_FACTS` 의 값. @`14dfaf65` 실측)
+   declared:join          label join    · stamps_origin True  · writes_itself True
+   declared:decide        label decide  · stamps_origin False · writes_itself True
+   declared:enrich        label decide  · stamps_origin False · writes_itself «False»   <- `4352ad47`
+   declared:virtual_join  label join    · stamps_origin True  · writes_itself True
+⚰️ 종전 이 자리: 「세 템플릿이 «전부» writes_itself: True」 — `4352ad47` 이 «거짓»으로 만들었다.
+   (응용 레인이 쓴 절대어였고, 계기 없이 서 있다가 착지 하나에 넘어갔다. 그래서 위 줄에 계기를 붙인다)
 🔴 판정 605   그 축을 «지운다»가 판정됐다(맵퍼는 updates 만 돌려주고 좌석이 업서트 한 문으로 쓴다).
-              이 표의 `writes_itself` 와 접근자는 그 착지와 «같이» 사라질 자리다 — 아직 서 있다
+              이 표의 `writes_itself` 와 접근자는 그 착지와 «같이» 사라질 자리다 — 아직 서 있다.
+              🔵 새로 선 `declared:enrich` 는 «이미» False 다 — 605 가 가려는 쪽이 새 맵퍼에선 기본이다
 ```
 
 ### 🆕㉘ `server/chain/builtins.py` (🆕 **446줄** @`6c71084f` — ~~413 @`c4b010c8`~~ — ~~334 @`2c93ae9f`~~, 332 @`b1db471a`, 177 @`dc877746`, 구 표기 171, S-189 ⓒ `1964c65a` 신설 · S-195 에서 120→171) — 합성 «한 자리» + `builtin:` 종류 표 + 🆕 «선언한 유일 키»를 세우는 껍데기(S-240)

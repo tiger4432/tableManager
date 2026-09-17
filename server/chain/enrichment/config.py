@@ -1463,7 +1463,7 @@ def _isolated_execute(db, stmt, params) -> tuple:
     # ⚠️ AND THE SUITE CANNOT SEE IT, for the reason this function's own docstring gives
     # about pysqlite: it opens no transaction for a SELECT and raises nothing here, so a
     # green suite certifies a path production cannot walk.
-    from chain import session_contract
+    import session_contract
 
     def _run():
         result = db.execute(stmt, params)

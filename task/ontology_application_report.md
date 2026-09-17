@@ -30789,3 +30789,69 @@ server/mappers/cross_table_lookup_mapper.py.sample:318    `import session_contra
    그래서 이제부터 수를 적기 전에 한 줄을 씁니다: 「이 술어가 «참인 자리»를 세나, «내 물음의 자리»를 세나」.
 
 **③ 남은 미답** — Q-168(훅 · 35분) · Q-172(지도 경계 · 22분). 둘 다 제 손 밖입니다.
+
+---
+
+> **[09-17 20:06 응용] Q-183 — 631 ② 대로 제 두 줄 고쳤습니다(지도 반영). 그리고 `43b1e64c` 검수: 제가 연 자리에서 «결함 못 찾음» — 다만 제 계기가 «오늘 다섯 번째»로 틀렸고 이번엔 보고 «전»에 잡았습니다**
+
+**① 지도 반영: `d6dda1fa`** (631 ②: 「그 줄을 «쓴 사람»이 고친다」)
+```
+SYSTEM_OVERVIEW §6-bis   「제품이 짓는 맵퍼 «셋»」 -> «넷»(+`declared:enrich`) + 🔴 계기 한 줄
+                         (세는 법: `chain/dynamic_mappers.TEMPLATES` 의 키 · RUN.md 의 한 줄 명령이 찍는다)
+CODE_MAP §㉙             286줄 -> 336 @`14dfaf65` · 「세 이름」 -> 넷 · `label(name)` -> `label_for(name)` ·
+                         앵커 일곱 갱신 · 그리고 「세 템플릿이 «전부» writes_itself: True」를
+                         «등록이 말하는 네 줄»로 교체(declared:enrich = False) + ⚰️ 묘비 한 줄
+```
+🔴 묘비를 남긴 이유: 그 절대어는 «제가» 썼고 계기가 없었습니다. 착지 하나에 넘어갔다는 사실 자체가 기록입니다.
+
+**② `43b1e64c` 검수 — 제가 연 자리 넷, 전부 통과입니다.**
+```
+㉠ 되돌림이 옳은가        `session_contract` 는 오늘 `server/session_contract.py` 입니다 ✅
+                       그리고 사유 진술이 제 실측과 «같습니다» — `.py` 글롭이 `.py.sample` 을 안 보고,
+                       그 import 가 «함수 안»이라 등록은 성공한다(Q-178 ② · Q-181)
+㉡ 약속이 넓어졌나        OPERATOR_IMPORT_NAMES 16 이름 · `session_contract` 와
+                       «새로 찾은» `config_resolve_report` 둘 다 들었습니다 ✅
+㉢ 게이트가 샘플을 읽나    `HAND_COPIED` 가 아홉 샘플을 «경로로» 들고, `_imported_names` 가 AST 를 걷습니다
+                       -> 들여쓴 import 가 «세어집니다». 제가 「.py 만 보는 게이트는 영원히 못 잡는다」고
+                          적은 그 구멍이 닫혔습니다 ✅
+㉣ `keyset_scan` 은 모순 아닌가   약속에 «없고» `server/chain/keyset_scan.py` 에 삽니다.
+                       RUN.md 가 그 이름만 「바꾸라」고 적은 것과 «일치»합니다 ✅
+```
+
+**③ ⚠️ 그리고 제 계기가 또 틀렸습니다 — 이번엔 «보고 전»에 잡았습니다(오늘 다섯 번째).**
+```
+제가 돌린 것   「약속된 16 이름이 `server/<이름>.py` 로 있나」  -> 「넷이 없다」
+왜 틀렸나     약속은 «평면 규칙»이 아니라 «이름 -> 모듈 경로» 표(`SURFACE`)입니다.
+             게이트가 그 표로 resolve 하고 「그 객체가 원본 모듈의 것인가」까지 봅니다.
+             파서 샘플과 맵퍼 샘플은 «import 뿌리»가 다르고, 제 술어는 그걸 모릅니다
+=> 「넷이 깨졌다」로 올렸으면 «없는 결함 넷»을 만든 것입니다. 그 전에 게이트를 «열어서» 갈렸습니다
+```
+📌 오늘 이 부류 다섯: 부분 문자열 25·30 · 임포트문 1 · RUN.md 21 «둘» · 그리고 이 16 중 4.
+   앞의 넷은 «적고 나서» 또는 «적기 직전»에 잡았고, 이번엔 «열어 보는 것»이 먼저였습니다.
+
+---
+
+> **[09-17 20:07 응용] Q-184 — Q-165(v1 전수)의 «경로»가 낡았습니다. 오늘 기준으로 갱신합니다(그 사이 닫힌 것도 같이)**
+
+Q-165 는 19:15 에 썼고 `b2eb05dd`·`14dfaf65` 가 그 파일들을 옮겼습니다. 그대로 grep 하면 «없는 경로»입니다.
+```
+Q-165 의 표기            오늘 (`d8772560` 기준, 줄 수 재측정)
+server/enrichment/config.py      -> server/chain/enrichment/config.py       1,963  (그때 1,953)
+server/enrichment/mapper.py      -> server/chain/enrichment/mapper.py         363
+server/enrichment/backfill.py    -> server/chain/enrichment/backfill.py       465  (그때 462)
+server/enrichment/candidates.py  -> server/chain/enrichment/candidates.py   1,015
+server/enrichment/analysis.py    -> server/chain/enrichment/analysis.py       774
+(가상조인 갈래의 파일들은 `server/chain/` 그대로입니다 — 이동 없음)
+```
+
+**그 사이 «닫힌» 것과 «열린» 것 — 제 전수의 갈래로 다시 적습니다**
+```
+② 인리치 「제품의 일을 «운영자의 칸»으로 선언한다」
+   ✅ 닫힘(라이브)   dedup 半이 `mapper_module`/`mapper_function` 대신 `mapper: "declared:enrich"` (`4352ad47`)
+                   -> 한 선언의 두 규칙이 «같은 칸»으로 맵퍼를 댑니다. Q-165 ② 의 머리 결함이 사라졌습니다
+   🔴 열림(소급)     `run_backfill` 은 여전히 좌석을 «안 지납니다`(625 가 ①의 닫힘 조건으로 확인)
+① 가상조인  «그대로»입니다 — 표면이 둘이라는 뿌리도, 읽는 자리 일곱도 오늘 안 건드렸습니다
+③ 다섯 걸음 밖   `replay._apply_replay_batch` · `ledger/followup` 메모리 큐 «그대로»
+```
+📌 이 항목은 «새 발견이 아닙니다» — 제가 낸 전수가 «오늘 안에» 낡았다는 사실의 정정입니다.
+   (경로를 적은 목록은 이동 한 번에 통째로 낡습니다 — 다음부터 전수에는 «이름»과 «경로»를 같이 적겠습니다)
