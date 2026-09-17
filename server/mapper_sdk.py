@@ -548,7 +548,19 @@ def mapper_candidates(package="mappers"):
     import sys as _sys
 
     registered_names, refusals = discover(package)
-    candidates = _registered_kinds() + [
+    # 🔴 [판정 512] HELD BACK UNTIL THE FORM CAN DRAW THE CHOICE. 511 put these on the
+    #   screen and the screen had no branch for them: `mapperChoices` falls through to
+    #   `tokenOf(module, name)`, so `builtin:join` was offered as `chain.builtins:builtin:join`
+    #   - a value no rule can run and the save gate will not take. And even spelled right, the
+    #   Chain tab's form is FLAT: an operator could pick a join and have nowhere to write the
+    #   join's arguments. 「고를 수는 있고 쓸 수는 없는」 is this round's own defect
+    #   wearing a screen.
+    #   ⚠️ THE FUNCTION STAYS, and so does the fact it reads: the list asking the registration
+    #   is right, and 512 said not to revert it. What is wrong is the ORDER - this arrives
+    #   when the form grows the `derive` chooser it already has the material for
+    #   (`skeleton.unified_root`). Put `_registered_kinds() +` back in front of the list on
+    #   the day that form lands; nothing else here changes.
+    candidates = [
         {"module": _origin(MAPPER_REGISTRY[name]), "name": name,
          "kind": "registered", "params": list(MAPPER_PARAMS.get(name, ()))}
         for name in registered_names if name in MAPPER_REGISTRY]

@@ -601,6 +601,20 @@ def chain_rule_raw_view(name: str = None) -> dict:
         # when it is about to create one. A skeleton that only arrived beside an EXISTING
         # rule would be absent at the only moment it is needed.
         "skeleton": chain_bindings.skeleton(),
+        # 🔴 [판정 513] A NEW RULE IS WRITTEN IN THE UNIFIED GRAMMAR, AND THE SERVER SAYS SO.
+        # This cell used to be set only inside `if name is not None`, so the one call a screen
+        # makes when it is about to CREATE a rule carried no grammar - and `chain_rule_panel`
+        # reads the absence as 「flat」 (`payload.grammar === 'unified' ? unified_root : root`).
+        # So every new rule got the old flat form, which is what 소유자 saw: 「어드민 체인
+        # 규칙 등록은 왜 옛날 모양이냐」. Nothing else was missing - `unified_root` already
+        # carries `derive` as a `oneOf` whose branches are decide/join/mapper, and the form's
+        # chooser already eats that shape.
+        # ⚠️ OVERWRITTEN BELOW FOR AN EXISTING RULE, deliberately. The grammar of a rule that
+        #    EXISTS is a fact about the file, not a preference: the two shapes are different
+        #    vocabularies (27 flat cells vs 7 unified ones), so telling the form 「unified」
+        #    about a rule stored flat would draw empty branch fields over real cells and a
+        #    save would rewrite it into a grammar it is not.
+        "grammar": "unified",
     }
     if name is not None:
         out["name"] = name
