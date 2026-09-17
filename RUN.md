@@ -23,8 +23,9 @@
                                  (파생행·오토컨펌·참조뷰 셋 다, SQL 칸 포함)
 ```
 **확인 명령 — 붙여 넣으면 됩니다** (저장소 루트에서):
+⚠️ 아래 한 줄은 **`server` 폴더에서** 돌립니다.
+
 ```
-server\..\  <- 아래 한 줄을 server 폴더에서
 python -c "import mapper_sdk;mapper_sdk.discover();from chain import dynamic_mappers as d;print(sorted(d.TEMPLATES))"
 ```
 ```
