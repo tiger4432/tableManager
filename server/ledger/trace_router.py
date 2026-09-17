@@ -600,7 +600,12 @@ def ledger_key_values(
             "message": "선언에 없는 노드 타입입니다: " + wanted_type})
 
     declared_keys = _declared_keys(wanted_type)
-    if key is not None and key not in declared_keys:
+    # 🔴 [판정 524] SIBLING OF THE SEAT 521 FOLDED, IN THIS SAME FILE. Folding one seat and
+    #   not the other is what makes a file read as 「already fixed」. `?key=` used to answer
+    #   422 「'' 가 선언하지 않은 키입니다」 instead of 「every key」.
+    from database import crud as _crud
+
+    if not _crud.is_blank_value(key) and key not in declared_keys:
         raise HTTPException(status_code=422, detail={
             "reason": "key_not_declared", "unknown": [key],
             "declared": sorted(declared_keys), "type": wanted_type,
