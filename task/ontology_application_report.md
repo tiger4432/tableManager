@@ -29508,3 +29508,45 @@ ingestion_worker.py:1795  with alignment_batch_counts.stage("ledger enqueue"):
 ```
 📌 확신도 — 실행: enqueue 호출을 AST 로 전수(제품 셋: worker 1 · ledger/backfill 2)하고,
    모듈 독스트링과 그 호출 자리를 열어 읽었습니다. 큐 «깊이»는 재지 않았습니다(604 · 그리고 메모리라 박스 수입니다)
+
+> 🔴🔴 **[09-17 18:38 응용] Q-159 — 그룹 걸음의 «비배치 팔»이 봉투의 절반을 «조용히 버립니다». 606 의 물음에 넷째 자리**
+> **받는 이: 총괄 · 구현자 — ①·② 를 짓는 «그 파일»입니다. ⛔ 제가 안 고칩니다**
+
+## ① 두 팔이 «같은 호출»을 하는데 «다른 것을 읽습니다»
+```
+ingestion_worker.py:1918  is_batch = rule.get("is_batch", False)          <- 기본값 «False»
+                   :1954  if is_batch:
+                            run_rule(db, rule, payloads=payloads, row_ids=row_ids, depth=…)
+                            -> updates · map_metadata_updates · batches  «셋 다» 읽습니다
+                          else:
+                            # 「Single event execution … The fan-out moved INTO the seat …
+                            #   this hands over the whole expansion and the seat makes the same N calls」
+                            run_rule(db, rule, payloads=payloads, row_ids=row_ids, depth=…)   <- «같은 줄»
+                            -> `if target_payload.get("updates"):` «그것뿐»입니다
+```
+🔴 **그래서 비배치 규칙이 `map_metadata_updates` 나 `batches` 를 내면 «아무 데도 안 갑니다».**
+   좌석은 그 둘을 모읍니다(답에 담깁니다). 읽는 쪽이 «한 팔에만» 있습니다.
+
+## ② 무엇이 참이어야 이 일이 나나
+```
+· 규칙에 `is_batch` 가 «없거나 false» — 기본값이 False 입니다
+· 그 규칙이 맵 메타데이터나 범위 배치(replace_map · retract)를 냅니다
+=> 제품이 짓는 규칙은 오늘 «전부» is_batch: true 입니다
+   (rule_shape.py:174 · enrichment/config.py:975 · :1001 · 샘플 열 개 전부)
+   그러니 오늘 이 팔을 타는 것은 «운영자가 적은» 파일 맵퍼입니다 — 그 칸을 «안 적으면» 여기로 옵니다
+```
+🔵 **그리고 이 갈래는 «이미 뜻을 잃었습니다»** — 두 팔의 호출이 «글자 그대로 같습니다».
+   갈래가 남아 있는 이유는 「팬아웃을 좌석으로 옮기면서 «답 읽는 쪽»을 안 합쳤기」 때문으로 보입니다.
+   606 의 물음으로 답하면: 이 갈래는 걸음 ④ 를 «두 번 나눠» 묻고, ⑤ 로 가는 길이 «한 쪽만» 열려 있습니다.
+
+## ③ 오늘의 라운드와 «같은 부류»입니다
+```
+Q-128     미루기 걸음이 answer 에서 written·refusal «만» 읽어 updates 를 흘린다   (판정 585 가 받음)
+605       맵퍼가 «자기가 써서» 페이로드를 안 돌려준다
+Q-159     그룹 걸음의 비배치 팔이 updates «만» 읽어 map_metadata_updates·batches 를 흘린다
+=> 셋 다 「좌석이 낸 답을 «호출자가 부분만» 읽는다」입니다. ① 이 「맵퍼가 페이로드를 돌려준다」로
+   가는 라운드라, 돌려준 것을 «누가 전부 읽나»가 같이 답해져야 합니다
+```
+📌 확신도 — 구조: 두 팔과 좌석의 답 조립(rule_run 이 세 목록을 모으는 것)을 읽었습니다.
+   ⛔ 비배치 규칙을 «만들어 돌려 보지는 않았습니다». 그리고 운영 선언에 그런 규칙이 있는지는
+   추적 안 되는 파일이라 «안 셌습니다»
