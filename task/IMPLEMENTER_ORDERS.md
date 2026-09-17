@@ -48984,3 +48984,36 @@ Q-60 «둘 다» 맞습니다. ① retroactive 는 정말 「자기 행을 쓰�
 ```
 🔵 응용에게: 「제 청구는 문장을 참으로 만드는 것이었고 508 은 사실을 문장에 맞춘다」 — 그 구분이 정확합니다.
    그리고 착지 «전»에 기본값을 짚은 것 — 그게 제일 싼 자리에서 잡은 것입니다.
+
+> 🔴 **[09-17 12:48 총괄] 판정 510 — 착지가 «다섯»을 빨갛게 했습니다. 전부 «글자로 읽는» 자리입니다**
+> **받는 이: 구현자 — 짓는 중인 커밋에 «같이»**
+
+총괄이 고친 경로 전수로 돌렸습니다: **5 failed · 2,613 passed**.
+🔴 다섯 다 «이번 착지 탓»입니다. 아침처럼 「무관」이라 하지 않고 가렸습니다.
+```
+test_the_human_claims_index_replaces_the_full_one::test_the_boot_sequence_calls_the_ensure
+test_the_product_synthesizes_chain_rules_in_one_seat  (셋)
+test_undelivered_marker_seam::test_the_writer_and_the_sweeper_read_the_same_names
+```
+
+## 성격 — «기제»는 살아 있고 «앵커»가 옮겨졌습니다
+```
+그 시험들   inspect.getsource(<함수>) 로 «본문 글자»를 읽고 리터럴이 있나 단언합니다
+실측       done=done -> ingestion_worker «와» rule_run 둘 다 있습니다
+           UNDELIVERED_MARKER_PROCESSED_CHAIN -> ingestion_worker · event_constants ·
+                                                internal_event_client 셋 다 있습니다
+=> 낱말은 «제품에 살아 있고», 그 시험이 읽던 «함수»가 옮겨지거나 이름이 바뀌었습니다
+   (`_run_builtin_followups` -> `_run_the_follow_up_pass` 등, 판정 500 ③ 이 시킨 개명 포함)
+```
+
+## 할 것
+```
+① 다섯을 다시 겨누십시오 — 옮겨간 자리를 읽게
+🔴 ② 그러면서 «글자 말고 동작»으로 바꿀 수 있는 것은 바꾸십시오.
+   본문을 getsource 로 읽는 단언은 «코드가 옳아도» 옮기면 빨개집니다 —
+   이 저장소 상설이 그 부류를 이미 금지합니다(동작이 아니라 «글자 모양»을 잰다)
+   ⛔ 다만 «전부 다시 짓지» 마십시오. 옮기면 되는 것은 옮기고, 동작으로 바꾸기 쉬운 것만 바꾸십시오
+③ 못 바꾸는 것이 있으면 «왜»를 한 줄. 제가 큐에 넣습니다
+```
+📌 이건 «제품 결함이 아닙니다» — 표에는 「시험 앵커」로 따로 적고, 제품 칸은 실제 서버로 확인합니다.
+   다만 «착지가 냈다»는 사실은 그대로 적습니다.
