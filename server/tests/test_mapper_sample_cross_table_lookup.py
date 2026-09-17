@@ -3,8 +3,11 @@
 `server/mappers/cross_table_lookup_mapper.py.sample` is a reference implementation
 somebody will copy. A sample that is only read is a sample that drifts from the worker
 it claims to describe, so this file loads that exact `.sample` text and drives it
-through `chain_ingestion_mapper_call.execute_custom_mapper` - the real entry point, with the
-real payloads taken out of the real outbox rows that `database.stage_event` wrote.
+through `chain.rule_run.run_rule` - the real entry point, with the real payloads taken out of
+the real outbox rows that `database.stage_event` wrote.
+⚰️ [판정 498] that entry point was `mapper_call.execute_custom_mapper` until the two doors
+folded into one seat; the sample and the assertions below did not change with it, which is the
+point of driving the real entry point rather than the function.
 
 WHAT IS ASSERTED, AND WHY EACH ONE HAS TO BE HERE
   * the sample is importable and the worker's signature probe passes it the rule
@@ -34,10 +37,9 @@ from database import crud, models, schemas
 SAMPLE_PATH = os.path.abspath(os.path.join(
     os.path.dirname(__file__), "..", "mappers", "cross_table_lookup_mapper.py.sample"))
 
-# The name the chain rule declares. `execute_custom_mapper` calls
-# `importlib.import_module` on it, which returns a pre-registered `sys.modules` entry
-# without touching the filesystem - so the tracked `.sample` can be exercised without
-# creating a live mapper beside it.
+# The name the chain rule declares. The seat calls `importlib.import_module` on it, which
+# returns a pre-registered `sys.modules` entry without touching the filesystem - so the
+# tracked `.sample` can be exercised without creating a live mapper beside it.
 MODULE_NAME = "mappers.xlk_sample_under_test"
 
 TABLES = {
@@ -171,12 +173,10 @@ def _trigger_payloads(db, rows):
 
 
 def _run(db, payloads, rule=None):
-    """Through the worker's own dispatcher, not by calling the function directly."""
-    from chain import ingestion_worker as worker
-    from chain import mapper_call
+    """Through the product's own seat, not by calling the function directly."""
+    from chain import rule_run
 
-    return mapper_call.execute_custom_mapper(
-        MODULE_NAME, RULE["mapper_function"], db, payloads, rule=rule or RULE)
+    return rule_run.run_rule(db, rule or RULE, payloads=payloads)
 
 
 def _by_key(result):
@@ -187,21 +187,23 @@ def _by_key(result):
 # The contract
 # ---------------------------------------------------------------------------
 
-def test_the_worker_passes_the_rule_to_this_mapper(env):
-    """`execute_custom_mapper` only forwards `rule` when the function declares it.
+def test_the_seat_passes_the_rule_to_this_mapper(env):
+    """The seat only forwards `rule` when the function declares it.
 
     A sample whose signature failed this probe would be called `f(db, payload)`, every
     declaration would fall back to its default, and the failure would look like a
-    config that is being ignored."""
-    from chain import ingestion_worker as worker
-    from chain import mapper_call
+    config that is being ignored.
 
+    🪦 [S-214, 판정 370, 판정 498] the probe has moved house twice - worker, then
+    `chain/mapper_call.py`, and it is public there now because the seat asks it once per
+    resolution instead of the door asking it on every call. ⚠️ IT IS STILL `inspect.signature`,
+    and that is a stated residue: 498 put the mapper CONVENTION `(db, payload[, rule=])` out of
+    scope, so the inspection could not leave with the door."""
     _db, module = env
-    # 🪦 [S-214, 판정 370] the executor and its helpers live in `chain/mapper_call.py`
-    #    now; the assertion follows the call rather than the old house.
-    from chain import mapper_call
+    from chain import mapper_call, rule_run
 
-    assert mapper_call._mapper_accepts_rule(module.build_pack_weight_batch) is True
+    assert mapper_call.mapper_accepts_rule(module.build_pack_weight_batch) is True
+    assert rule_run.resolve(RULE).accepts_rule is True
 
 
 def test_a_reference_value_is_computed_and_frozen_next_to_what_it_produced(env):
@@ -258,7 +260,11 @@ def test_a_status_column_the_target_cannot_store_is_refused_not_dropped(env):
     payloads = _trigger_payloads(db, [{"log_id": "L1", "part_no": "P-MISSING"}])
 
     rule = dict(RULE, status_column="not_a_declared_column")
-    assert _run(db, payloads, rule) == {"updates": []}
+    # ⚰️ [판정 498] `== {"updates": []}` STOOD HERE and the seat answers in the uniform
+    #    envelope, so the cell is read rather than the whole dict compared. The claim is the
+    #    same one: the mapper proposed NOTHING, rather than proposing a row with the bad
+    #    column dropped out of it.
+    assert _run(db, payloads, rule)["updates"] == []
 
 
 def test_a_frozen_column_list_that_does_not_pair_up_is_refused(env):
@@ -268,7 +274,11 @@ def test_a_frozen_column_list_that_does_not_pair_up_is_refused(env):
     payloads = _trigger_payloads(db, [{"log_id": "L1", "part_no": "P-COMPLETE"}])
 
     rule = dict(RULE, frozen_columns=["unit_weight_used"])
-    assert _run(db, payloads, rule) == {"updates": []}
+    # ⚰️ [판정 498] `== {"updates": []}` STOOD HERE and the seat answers in the uniform
+    #    envelope, so the cell is read rather than the whole dict compared. The claim is the
+    #    same one: the mapper proposed NOTHING, rather than proposing a row with the bad
+    #    column dropped out of it.
+    assert _run(db, payloads, rule)["updates"] == []
 
 
 def test_a_single_payload_is_accepted_and_warned_about(env, caplog):
@@ -277,8 +287,12 @@ def test_a_single_payload_is_accepted_and_warned_about(env, caplog):
     db, _module = env
     payloads = _trigger_payloads(db, [{"log_id": "L1", "part_no": "P-COMPLETE"}])
 
+    # ⚰️ [판정 498] `_run(db, payloads[0])` STOOD HERE - the old door took EITHER a dict or a
+    #    list and decided per call. The seat decides from the rule (`is_batch`) and always
+    #    takes a list, fanning out one call per row, so the single-dict shape is expressed the
+    #    way the product produces it: a non-batch rule, handed a group of one.
     with caplog.at_level("WARNING"):
-        result = _run(db, payloads[0])
+        result = _run(db, [payloads[0]], dict(RULE, is_batch=False))
 
     assert _by_key(result)["P-COMPLETE"]["pack_weight"] == pytest.approx(10.0)
     assert any("is_batch" in r.getMessage() for r in caplog.records)

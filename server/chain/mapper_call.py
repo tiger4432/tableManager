@@ -13,38 +13,29 @@
 ⚠️ 트랜잭션은 여기 없습니다. 재생의 «청크 커밋»과 워커의 «그룹 트랜잭션»은 이 실행기 «밖»의
    성질이고, 이동이 그것을 건드리지 않습니다 — 옮긴 것은 「맵퍼를 어떻게 부르나」뿐입니다.
 """
-import importlib
+import contextlib
 import inspect
 import math
-import time
 
 import numpy as np
 import pandas as pd
 
-from chain import activity
 from maps import alignment_batch_counts
-from utils import logger as process_logging
-from utils.logger import get_process_logger
 
-#: 🔴 THE SAME LOG FILE AS THE WORKER, and deliberately so: this is the worker's own mapper
-#: call, moved out of its module but not out of its log. A second filename here would split
-#: one run's lines across two files, which is the opposite of what `MAPPER_LOG_TAG` exists
-#: for (it says WHICH file a line is in, at the place the question gets asked).
-LOG_FILENAME = "chain_worker.log"
+#: 🔴 [판정 498 ③] THE STAGE STAYS, THE TAG DOES NOT. `alignment_batch_counts` wants to
+#: know how much of a group's wall clock the mapper took, and that is a fact about the call
+#: rather than about the door - so the seat opens it. `LOG_FILENAME`, `MAPPER_LOG_TAG` and
+#: this module's logger left with `execute_custom_mapper`: they were the SECOND execution
+#: vocabulary, and an operator grepping 「did this rule run」 had to know the kind before they
+#: could pick the words.
+@contextlib.contextmanager
+def stage_timing():
+    """Time the mapper call the way the group line reports it."""
+    with alignment_batch_counts.stage("mapper"):
+        yield
 
-logger = get_process_logger("Chain", LOG_FILENAME)
 
-#: Prefix on every mapper-execution line: what ran it, and where to read it.
-#
-# 🔴 READ FROM THE LOGGER, NOT FROM `LOG_FILENAME`. In the integrated server the chain
-# loop runs inside the web server's process, whose log file was opened first, so these
-# lines land in `server.log` - and a constant tag would print `mapper@chain_worker.log`
-# on top of them. The rule this tag exists to serve is "say which file you are in", and
-# a tag that names the file this module WANTED rather than the one it GOT breaks that
-# rule while looking like it follows it.
-MAPPER_LOG_TAG = "mapper@%s" % (process_logging.active_log_filename() or LOG_FILENAME)
-
-def _mapper_accepts_rule(mapper_func) -> bool:
+def mapper_accepts_rule(mapper_func) -> bool:
     """맵퍼 함수가 선택적 `rule` 키워드 인자를 받는지 판정한다(기존 맵퍼 하위호환 유지)."""
     try:
         sig = inspect.signature(mapper_func)
@@ -59,13 +50,7 @@ def without_missing(value):
     """`_missing_as_none` without the flag - the shape the call sites want."""
     return _missing_as_none(value)[0]
 
-def _payload_row_count(payload):
-    """How many trigger rows this call carries. A batch mapper is handed a list."""
-    if isinstance(payload, (list, tuple)):
-        return len(payload)
-    return 1 if payload else 0
-
-def _result_row_count(result):
+def result_row_count(result):
     """How many rows the mapper produced, counted across the shapes a mapper returns.
 
     Counted rather than assumed. A mapper returns `{"updates": [...]}`, or
@@ -83,109 +68,6 @@ def _result_row_count(result):
             total += len(batch.get("updates") or ())
     total += len(result.get("map_metadata_updates") or ())
     return total
-
-def execute_custom_mapper(module_name: str, function_name: str, db, payload, rule=None):
-    """
-    Dynamically imports a python mapper module and executes the mapping function.
-
-    rule: 현재 실행 중인 체인 룰 dict. 맵퍼가 `rule` 인자를 선언한 경우에만 전달한다
-    (generic 맵퍼가 룰 설정을 참조하는 용도 — 예: enrichment_mapper.map_enrichment_dedup).
-    기존 (db, payload) 시그니처 맵퍼는 종전과 완전히 동일하게 호출된다.
-
-    🔴 IT ALSO SAYS, ONCE PER GROUP, THAT THE MAPPER RAN. This is the only place every
-    custom mapper is called through, so one pair of lines here covers all of them and
-    no mapper author has to remember to log. What goes on the line is the identity
-    (rule, mapper, target table), the size (rows in, rows out) and the time - never the
-    payload body, which is operator data, and never one line per row: a mapper handed a
-    thousand-row group must not turn into a thousand log lines.
-
-    ⚠️ INFO, NOT DEBUG. A line that only exists when somebody remembered to raise the
-    level does not exist on the deployment where the question is being asked.
-    """
-    started = time.monotonic()
-    rule_name = (rule or {}).get("name") or "<unnamed rule>"
-    target_table = (rule or {}).get("target_table") or "<none>"
-    # 🔴 S-188 ⓓ: ONE CELL FIRST, TWO CELLS STILL READ. `rule["mapper"]` names an entry of
-    # the decorator's registry; `mapper_module` + `mapper_function` are what a file may still
-    # say, and they remain the working path wherever no mapper uses the decorator yet
-    # (measured ZERO on this box). Resolution happens HERE because this is the one place
-    # every custom mapper is called through — two resolvers would be two answers to 「which
-    # function is this rule's mapper」.
-    import chain_bindings
-    import mapper_sdk
-
-    one_cell, _rule_module, _rule_function = chain_bindings.mapper_cells(rule)
-    registered = mapper_sdk.MAPPER_REGISTRY.get(one_cell) if one_cell else None
-    who = one_cell if registered is not None else "%s.%s" % (module_name, function_name)
-    rows_in = _payload_row_count(payload)
-    logger.info("[%s] START rule=%s mapper=%s target=%s rows_in=%d",
-                MAPPER_LOG_TAG, rule_name, who, target_table, rows_in)
-    # The log says what RAN; this says what is running. A line in a file cannot answer
-    # "is it in one right now" without somebody tailing it.
-    #
-    # 🔴 [S-246] AND IT IS THE SAME REGISTRATION THE `builtin:` DOOR USES. Start, outcome
-    # and finish were spelled HERE, inside the door only a FILE mapper comes through - so
-    # every `builtin:` kind ran with no entry in the queue view and no outcome ever
-    # recorded. 소유자 2026-09-15: 「체인 대기열에서 안 뜨고 돌고 있었네」.
-    with activity.running(rule_name, who, target_table, rows_in) as run:
-        try:
-            if registered is not None:
-                mapper_func = registered
-            else:
-                module = importlib.import_module(module_name)
-                mapper_func = getattr(module, function_name)
-            # 🔴 NaN IS NOT A VALUE AND A MAPPER AUTHOR SHOULD NOT HAVE TO KNOW THAT. Owner
-            # report 2026-09-04: `cannot convert float NaN to integer` from the chain. This is
-            # the one place every custom mapper is called through, so the rule is applied here
-            # rather than remembered in each mapper - a rule that has to be remembered is a
-            # trap, and it fires in production the first time somebody forgets.
-            #
-            # ⚠️ WHAT THIS DOES NOT FIX, stated so nobody reads more into it: it stops a NaN
-            # arriving IN the payload. A mapper that builds its own frame with pandas can
-            # still create a NaN inside itself and raise before returning, and no boundary can
-            # see that.
-            #
-            # Missing becomes None, never 0: a zero is a VALUE, and the two being confused is
-            # the defect this repository spent the day removing elsewhere.
-            payload = without_missing(payload)
-            # 🔴 ONE SEAT FOR BOTH ARMS (S-94, 판정 241). The group line has to be able to say
-            # how much of its wall clock the MAPPER took, as opposed to the writes and the
-            # outbox read around it; timing the two arms separately would be two spellings of
-            # one number, free to disagree the day a third arm appears.
-            with alignment_batch_counts.stage("mapper"):
-                if rule is not None and _mapper_accepts_rule(mapper_func):
-                    result = mapper_func(db, payload, rule=rule)
-                else:
-                    result = mapper_func(db, payload)
-            # The way out as well: whatever the mapper returns goes on to the write path,
-            # which has its own integer columns and would hit the same conversion.
-            cleaned = without_missing(result)
-            rows_out = _result_row_count(cleaned)
-            logger.info("[%s] END   rule=%s mapper=%s target=%s rows_in=%d rows_out=%d "
-                        "elapsed=%.3fs",
-                        MAPPER_LOG_TAG, rule_name, who, target_table, rows_in,
-                        rows_out, time.monotonic() - started)
-            # ⚠️ 이 층이 아는 것은 「매퍼가 «행을 냈나»」다. 「쓰기가 «바꿨나»」를 아는 층은
-            #    `crud.apply_batch_updates` 이고 그 수는 규칙별로 여기까지 안 온다. 그래서
-            #    `ran:unchanged` 는 «확실»하고(행이 0이면 바뀐 것이 없다), `ran:changed` 는
-            #    「행을 냈다」까지가 참이다. 그 마지막 한 걸음은 별도 줄이다 — 대리를 성질처럼
-            #    적지 않으려고 여기 적는다.
-            run.produced(rows_out)
-            return cleaned
-        except Exception as e:
-            # The throw gets its OWN line rather than being folded into the end line: a
-            # mapper that raised produced no rows, and "rows_out=0" would be the same
-            # text a mapper that legitimately had nothing to do writes.
-            #
-            # 🔴 [S-246] THE OUTCOME AND THE FINISH ARE THE CONTEXT MANAGER'S NOW. What
-            # stays here is the LINE, because it is this door's sentence - a `builtin:`
-            # kind is not a mapper and says its own.
-            logger.error("[%s] RAISED rule=%s mapper=%s target=%s rows_in=%d elapsed=%.3fs "
-                         "-> %s: %s",
-                         MAPPER_LOG_TAG, rule_name, who, target_table, rows_in,
-                         time.monotonic() - started, type(e).__name__, e)
-            raise e
-
 
 def _is_missing_scalar(value) -> bool:
     """Is this ONE value a missing marker? Same rule as `parsers/pipeline_base.py:73-75`.

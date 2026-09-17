@@ -21,9 +21,19 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from chain import activity                                            # noqa: E402
 from chain import ingestion_worker as worker                          # noqa: E402
-from chain import mapper_call                                 # noqa: E402
+from chain import rule_run                                    # noqa: E402
 
 RULE = {"name": "some_rule", "target_table": "some_target"}
+
+
+def _rule(module_name, function_name):
+    """The rule the seat resolves - it names its mapper the way a declaration does.
+
+    ⚰️ [판정 498] THE MODULE AND FUNCTION USED TO BE HANDED TO `execute_custom_mapper` AS
+    ARGUMENTS. That door is gone: the seat reads them off the rule, so the test rule has to
+    carry them - which is also what every rule in the product does.
+    """
+    return dict(RULE, mapper_module=module_name, mapper_function=function_name)
 
 
 @pytest.fixture(autouse=True)
@@ -55,7 +65,7 @@ def test_a_running_mapper_is_visible_while_it_runs(monkeypatch):
         return {"updates": []}
 
     mod, fn = install(monkeypatch, slow)
-    mapper_call.execute_custom_mapper(mod, fn, None, payloads(3), rule=RULE)
+    rule_run.run_rule(None, _rule(mod, fn), payloads=payloads(3))
 
     assert len(seen["snapshot"]) == 1
     entry = seen["snapshot"][0]
@@ -68,7 +78,7 @@ def test_a_running_mapper_is_visible_while_it_runs(monkeypatch):
 
 def test_the_entry_is_gone_once_the_mapper_returns(monkeypatch):
     mod, fn = install(monkeypatch, lambda db, p: {"updates": []})
-    mapper_call.execute_custom_mapper(mod, fn, None, payloads(1), rule=RULE)
+    rule_run.run_rule(None, _rule(mod, fn), payloads=payloads(1))
     assert activity.registry.snapshot() == []
 
 
@@ -81,7 +91,7 @@ def test_a_mapper_that_throws_does_not_leave_itself_running(monkeypatch):
 
     mod, fn = install(monkeypatch, boom)
     with pytest.raises(ValueError):
-        mapper_call.execute_custom_mapper(mod, fn, None, payloads(2), rule=RULE)
+        rule_run.run_rule(None, _rule(mod, fn), payloads=payloads(2))
     assert activity.registry.snapshot() == [], "the throw left an entry in flight"
 
 

@@ -1,6 +1,7 @@
 # 지금 돌리면 되는 것
 
-> 🔵 **05:41 갱신.** 아래 ⓞ 가 «제일 먼저»입니다. 나머지는 그다음입니다.
+> 🔵 **10:32 갱신.** 아래 ⓞ 가 «제일 먼저»입니다. 나머지는 그다음입니다.
+> 🆕 이번 pull 의 체인 로그 변화는 «부팅 로그에서 볼 것» 절의 `[ChainRule]` 줄에 있습니다.
 
 ## ⏱️ 바쁘시면 «이 셋»만 — 나머지는 «보고 나서» 찾아 읽는 자리입니다
 ```
@@ -414,10 +415,16 @@ python scripts/preview_unified_declarations.py --out ../unified_preview.json
 [VirtualJoin:이름] 조인 키 (...) 가 ... 의 «신원»(...)보다 좁습니다   <- 1번과 같은 진단
 [VirtualJoin] 인덱스 uq_vjoin_… (표) 를 «제품이» 걷어냈습니다 … 다음: 없음   <- 규칙 없는 인덱스가 그 표의 쓰기를 막던 것이 풀림 (S-248). 이 줄 뒤 dedup 영구 실패가 멎어야 함
 Transaction … permanently failed: N event(s) -> FAILED. 원인: <예외 문장>   <- 이제 traceback 첫 줄이 아니라 «원인»이 실림
-[ChainRule] rule=… kind=… target=… rows_in=N updates=N written=M|None refusal=… elapsed=…
-     🆕 (2026-09-16) 「이 규칙이 돌았나」는 «이 한 줄»로 봅니다 — 종류를 «몰라도» 됩니다
-     kind 이 builtin:… 이면 updates=0 written=M  (스스로 씀)  ·  모듈.함수 이면 updates=M written=None (제안함)
-     written=None 은 «0 이 아니라» 「안 셌다」입니다
+[ChainRule] rule=… kind=… target=… rows_in=N rows_out=M|None written=M|None refusal=… error=…|None elapsed=…
+     🆕 (09-17) 「이 규칙이 돌았나」는 «이 한 줄»로 봅니다 — 종류를 «몰라도» 됩니다.
+     그리고 이제 «모든» 규칙이 이 줄 하나를 씁니다 — `[mapper@<로그파일>] … START/END/RAISED`
+     세 줄은 «없어졌습니다»(판정 498). 파일 맵퍼를 그 태그로 찾고 계셨다면 이 줄로 오십시오
+     kind   builtin:…  이면 «스스로 씀»   ·  모듈.함수 이면 «제안함»(호출자가 씀)
+     rows_out  그 규칙이 «낸 행 수». 종류가 달라도 «같은 함수»가 셉니다 — 화면의 수와 같은 수입니다
+     written   스스로 쓴 행 수. 제안하는 규칙은 «항상 None»
+     🔴 None 은 «0 이 아니라» 「안 셌다」입니다 (rows_out·written 둘 다)
+     🆕 error=…  그 규칙이 «던졌다»는 뜻입니다. 던져도 이 줄은 «찍힙니다» — 줄이 없으면 「안 돌았다」가 맞습니다
+     어느 로그 파일인지는 어드민 chain 큐 응답의 `log_filename` 이 말합니다
 [ChainBuiltin] rule=… table=… rows_in=N written=M ← woke_by=<표>#<tx> hop=h/max   <- 조인 오른쪽·자동 확정이 «왜» 돌았나. 쓴 것이 0 이면 DEBUG(안 보임). 같은 규칙은 첫 줄 + 500 마다
 [Chain Depth] outbox#… reached hop N, over the declared limit of M; refusing it   <- 고리가 상한에서 끊김(정상). 더 길게 가야 하면 chain_rules.json 최상위 max_chain_depth
 [ChainRules] 고리: A → B → A (순서는 선언 순 · 홉 상한 …)   <- 오류 아님. 한 번만 뜸

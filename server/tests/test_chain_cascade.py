@@ -3,9 +3,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
+import mapper_sdk
 from chain import ingestion_worker as worker
-from chain import mapper_call
 from database.models import DatabaseOutbox
+
+#: The name this file's rules give their mapper, registered per test.
+FAKE_MAPPER = "cascade_fake_mapper"
 
 
 def _event(source_name="chain_ingestion"):
@@ -56,7 +59,7 @@ def test_processor_only_invokes_the_opted_in_rule(monkeypatch):
     event = _event()
     blocked = {
         "name": "blocked", "trigger_table": "wafer_map_metadata", "target_table": "blocked",
-        "mapper_module": "unused", "mapper_function": "unused", "is_batch": True, "enabled": True,
+        "mapper": FAKE_MAPPER, "is_batch": True, "enabled": True,
     }
     allowed = {
         **blocked, "name": "allowed", "target_table": "dt_inventory", "allow_chain_trigger": True,
@@ -65,10 +68,13 @@ def test_processor_only_invokes_the_opted_in_rule(monkeypatch):
     monkeypatch.setattr(worker.outbox_expand, "expand_events", lambda _db, events: {
         worker.outbox_expand.event_key(event): [{"data": {}}] for event in events
     })
-    monkeypatch.setattr(
-        mapper_call,
-        "execute_custom_mapper",
-        lambda _module, _function, _db, _payload, rule=None: calls.append(rule["name"]) or {"updates": []},
+    # ⚰️ [판정 498] REGISTERED, NOT PATCHED OVER THE EXECUTOR. There is no
+    #    `execute_custom_mapper` to replace - the seat resolves the rule's own name - so the
+    #    fake goes where the product looks for a mapper.
+    monkeypatch.setitem(
+        mapper_sdk.MAPPER_REGISTRY,
+        FAKE_MAPPER,
+        lambda _db, _payload, rule=None: calls.append(rule["name"]) or {"updates": []},
     )
 
     ok, error, _messages = asyncio.run(

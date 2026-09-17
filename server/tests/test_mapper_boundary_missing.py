@@ -27,6 +27,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from chain import ingestion_worker as worker                            # noqa: E402
 from chain import mapper_call                                 # noqa: E402
+from chain import rule_run                                    # noqa: E402
 
 
 def cell(value):
@@ -73,7 +74,13 @@ def test_a_nan_in_the_mappers_RETURN_value_is_cleaned_too(monkeypatch):
         {"updates": {"qty": float("nan"), "part_no": "P1"}}]}
     monkeypatch.setitem(sys.modules, "fake_mapper_module", module)
 
-    got = mapper_call.execute_custom_mapper("fake_mapper_module", "emit", None, [])
+    # ⚰️ [판정 498] THROUGH THE SEAT. The missing-value cleanup came UP here rather than
+    #    away - a mapper is entitled to assume it - so the claim is unchanged and its address
+    #    is `rule_run.run_rule`, which applies it to what goes in AND what comes out for every
+    #    rule instead of only for the ones that entered through the mapper door.
+    got = rule_run.run_rule(None, {"name": "r", "mapper_module": "fake_mapper_module",
+                                   "mapper_function": "emit", "is_batch": True},
+                            payloads=[])
     assert got["updates"][0]["updates"]["qty"] is None
     assert got["updates"][0]["updates"]["part_no"] == "P1"
 
@@ -90,9 +97,9 @@ def test_the_mapper_receives_the_cleaned_payload(monkeypatch):
     module.emit = emit
     monkeypatch.setitem(sys.modules, "fake_mapper_module2", module)
 
-    mapper_call.execute_custom_mapper(
-        "fake_mapper_module2", "emit", None,
-        [{"row_id": "r1", "data": {"qty": cell(float("nan"))}}])
+    rule_run.run_rule(None, {"name": "r", "mapper_module": "fake_mapper_module2",
+                             "mapper_function": "emit", "is_batch": True},
+                      payloads=[{"row_id": "r1", "data": {"qty": cell(float("nan"))}}])
     assert seen["payload"][0]["data"]["qty"]["value"] is None
 
 

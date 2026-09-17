@@ -214,6 +214,13 @@ def test_the_lap_writes_inside_the_collapsed_outbox_mode(monkeypatch):
     monkeypatch.setitem(builtins.BUILTIN_KINDS, "builtin:s249",
                         lambda db, r, **kw: seen.append(request_outbox_mode.get()) or
                         {"written": len(kw.get("row_ids") or ())})
+    # 🔴 [판정 497 ⓒ] THE ENVELOPE FOLLOWS THE REGISTERED FACT, NOT THE `builtin:` PREFIX.
+    #    A kind is self-writing because it SAID SO at registration, so a probe that reaches
+    #    the table without saying it gets no envelope - correctly. Declared here rather than
+    #    inferred, which is the property that lets a PROPOSING kind be added tomorrow without
+    #    every seat being edited.
+    monkeypatch.setattr(builtins, "SELF_WRITING_KINDS",
+                        builtins.SELF_WRITING_KINDS | {"builtin:s249"})
 
     worker._run_builtin_followups(None, {"table": "t", "row_ids": ["r%d" % n
                                                                   for n in range(1000)],

@@ -60,9 +60,11 @@ from chain import activity
 # 🔴 [S-214, 판정 370] 맵퍼를 «부르는 자리»는 이 모듈의 것이 아니라 «재생과 같이 쓰는 것»이다.
 #    재생이 맵퍼를 돌리려고 이 모듈을 import 하고 있었고, 그것은 「공용 프리미티브가 한 호출자의
 #    집에 산다」는 뜻이었다. S-211 ① 의 `withdraw_source` 와 같은 기제, 반대 방향.
-#    ⚠️ 여기서 읽는 이름들은 «재수출»이 아니라 이 모듈이 그것들을 «쓰기» 때문이다.
-from chain.mapper_call import (                                      # noqa: F401
-    MAPPER_LOG_TAG, without_missing)
+#    ⚠️ 여기서 읽는 이름은 «재수출»이 아니라 이 모듈이 그것을 «쓰기» 때문이다.
+#    🪦 [판정 498 ③] `MAPPER_LOG_TAG` 도 여기서 읽혔고, 그것은 위 문장의 예외였다 —
+#    이 모듈은 그 이름을 한 번도 안 쓰고 있었고, 시험만 `worker.MAPPER_LOG_TAG` 로 읽었다.
+#    그 «둘째 실행 어휘»가 은퇴하면서 같이 간다.
+from chain.mapper_call import without_missing                        # noqa: F401
 import chain_bindings
 from chain import rule_order
 # 🔴 [S-279, 판정 420 ㉡] The seat that runs a rule. This module no longer names either
@@ -654,11 +656,9 @@ def _resolvable_mapper(name):
     table is refused exactly as before; what changed is that the table is now one of the two
     places a runnable name may live.
     """
-    from chain import builtins
-
-    if not name:
-        return None
-    return mapper_sdk.MAPPER_REGISTRY.get(name) or builtins.BUILTIN_KINDS.get(name)
+    # 🪦 [판정 498 ①] THIS READ BOTH TABLES ITSELF. The seat reads them now, so
+    # 「what can run」 has one answer whether it is asked at load time or at run time.
+    return rule_run.runnable(name)
 
 
 def read_rules_document(path=None):
@@ -767,7 +767,11 @@ def load_chain_rules():
             rule, path, mapper_resolvable=_resolvable_mapper,
             mapper_params=mapper_sdk.MAPPER_PARAMS.get)
         one_cell, _module_name, _function_name = chain_bindings.mapper_cells(rule)
-        resolvable = bool(mapper_sdk.MAPPER_REGISTRY.get(one_cell)) if one_cell else False
+        # 🪦 [판정 498 ①] THIS PASSED `MAPPER_REGISTRY.get`, WHICH ANSWERS FOR ONE
+        # TABLE OF TWO. A `builtin:` name is runnable and was reported unresolvable here,
+        # while the loader accepted it - one question with two answers. The seat reads
+        # both tables, so the report and the loader agree by construction.
+        resolvable = bool(rule_run.runnable(one_cell)) if one_cell else False
 
         # 🔴 AN UNKNOWN CELL DOES NOT DELETE A RULE THAT WAS RUNNING (2026-09-14, outage).
         # S-152 turned "a cell nobody declared" from a WARNING into a refusal, and this
@@ -2012,11 +2016,17 @@ def _followup_builtin_rules():
     """The follow-up rules a `builtin:` kind could run, loaded once per reload."""
     global _FOLLOWUP_BUILTIN_RULES
     if _FOLLOWUP_BUILTIN_RULES is None:
-        from chain import builtins
-
+        # 🪦 [판정 498 ④] THIS READ `builtins.BUILTIN_KINDS` DIRECTLY, then asked the
+        # kind and compared it to None - the same question in two more spellings. What the lap
+        # actually selects for is 「writes its own rows」, which is the fact the registration
+        # carries; `builtin:` was an address standing in for a behaviour. The three rules
+        # selected are the same either way today, and stop being the same the day a kind
+        # registers `writes_itself=False`.
+        # (Found by the AST sweep rather than named in the ruling: the census that listed
+        # `rule_shape` and `dt_map_derivation` counted comparisons and missed a membership.)
         _FOLLOWUP_BUILTIN_RULES = [
             r for r in load_chain_rules()
-            if r.get("follow_up") and r.get("mapper") in builtins.BUILTIN_KINDS]
+            if r.get("follow_up") and rule_run.writes_itself(r)]
     return _FOLLOWUP_BUILTIN_RULES
 
 

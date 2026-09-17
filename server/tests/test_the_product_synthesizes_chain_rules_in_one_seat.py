@@ -267,9 +267,19 @@ def test_the_seat_says_which_file_a_synthesised_rule_was_written_in(tmp_path):
 def test_an_unknown_kind_is_refused_by_name_not_ignored():
     """⛔ SILENCE IS THE DEFECT. A rule naming a kind nothing implements would sit enabled,
     look live, and never run — the same silence `_report_unwatchable_trigger_columns` breaks
-    for a mistyped trigger column."""
-    with pytest.raises(builtins.UnknownBuiltinKind) as caught:
-        builtins.run_builtin("builtin:no_such_kind", None, {})
+    for a mistyped trigger column.
+
+    ⚰️ [판정 498] THE REFUSER MOVED FROM `builtins.run_builtin` TO THE SEAT, and the SENTENCE
+    is what this scores rather than the class. An unregistered `builtin:` name is no longer
+    recognised as a builtin at all - it falls through to the arm that resolves a file mapper -
+    so the exception type had to change. What must not change is that the operator is told the
+    spelling they typed AND the kinds that exist; a refusal naming only the bad spelling leaves
+    them guessing at the good one.
+    """
+    from chain import rule_run
+
+    with pytest.raises(rule_run.UnresolvableRule) as caught:
+        rule_run.resolve({"name": "r", "mapper": "builtin:no_such_kind"})
     assert "builtin:no_such_kind" in str(caught.value)
     assert "builtin:join" in str(caught.value), "it must say what IS known"
 
@@ -278,9 +288,18 @@ def test_the_join_kind_is_in_the_table():
     assert vjc.JOIN_MAPPER in builtins.BUILTIN_KINDS
 
 
-def test_the_table_routes_a_target_change_and_a_reference_change_differently(monkeypatch):
+def test_the_kind_routes_a_target_change_and_a_reference_change_differently(monkeypatch):
     """⚠️ ONE KIND, TWO TRIGGERS. The caller says which by which argument it passes, and they
-    cost differently — a reference change counts first and can be refused."""
+    cost differently — a reference change counts first and can be refused.
+
+    ⚰️ [판정 498] CALLED DIRECTLY, BECAUSE THE SUBJECT IS THE KIND'S OWN ROUTING. It used to
+    go through `run_builtin`, which is deleted; the seat that replaced it hands a self-writing
+    kind `row_ids` and nothing else.
+    🔴 MEASURED WHILE RETARGETING THIS: no caller in the product passes `key_values` to a rule
+    run - not at HEAD either, so 498 did not break it. The reference arm below is reachable
+    only by calling `_run_join` the way this test does. Reported rather than repaired: deleting
+    a reachable-looking arm, or giving it a caller, is its own round.
+    """
     from chain import legacy_materialized_join as vje
 
     seen = []
@@ -290,8 +309,9 @@ def test_the_table_routes_a_target_change_and_a_reference_change_differently(mon
                         lambda db, rule, keys: seen.append(("reference", keys)) or {"written": 2})
 
     rule = {"params": {"name": "j1"}}
-    builtins.run_builtin(vjc.JOIN_MAPPER, None, rule, row_ids=["r1"])
-    builtins.run_builtin(vjc.JOIN_MAPPER, None, rule, key_values=["k1"])
+    run_join = builtins.BUILTIN_KINDS[vjc.JOIN_MAPPER]
+    run_join(None, rule, row_ids=["r1"])
+    run_join(None, rule, key_values=["k1"])
     assert seen == [("target", ["r1"]), ("reference", ["k1"])]
 
 
@@ -438,8 +458,11 @@ def test_the_collector_is_handed_its_rule_rather_than_finding_it(monkeypatch):
 
     monkeypatch.setattr(enrichment.candidates, "AutoConfirmCollector", _Collector)
     rule = {"name": "enrichment_auto_confirm:x", "params": {"name": "x", "auto_confirm": True}}
-    builtins.run_builtin("builtin:auto_confirm", None, rule,
-                               row_ids=["r1"], done={"table": "derived_t"})
+    # ⚰️ [판정 498] THE KIND, NOT THE DELETED DOOR. What is under test is which rules the
+    #    collector is handed, and routing that through the seat would add a resolution step
+    #    this assertion says nothing about.
+    builtins.BUILTIN_KINDS["builtin:auto_confirm"](None, rule, row_ids=["r1"],
+                                                   done={"table": "derived_t"})
     assert seen["table"] == "derived_t"
     assert seen["rules"] == [rule["params"]], (
         "the collector was left to load the rules itself")
@@ -464,8 +487,8 @@ def test_the_note_still_carries_both_counts(monkeypatch):
 
     monkeypatch.setattr(enrichment.candidates, "AutoConfirmCollector", _Collector)
     done = {"table": "derived_t", "row_ids": ["r1"], "event_type": "EDIT"}
-    builtins.run_builtin("builtin:auto_confirm", None, {"params": {}},
-                               row_ids=["r1"], done=done)
+    builtins.BUILTIN_KINDS["builtin:auto_confirm"](None, {"params": {}},
+                                                   row_ids=["r1"], done=done)
     assert done["auto_confirmed"] == 3 and done["auto_refused"] == 3
 
 

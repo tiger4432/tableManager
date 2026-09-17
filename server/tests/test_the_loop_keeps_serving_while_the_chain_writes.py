@@ -19,6 +19,7 @@ structurally true, and all that is claimed here, is that the loop REGAINS CONTRO
 so it says "the loop came back" rather than "it came back fast enough".
 """
 import asyncio
+import importlib
 import json
 import threading
 from unittest.mock import MagicMock
@@ -42,12 +43,16 @@ def _event():
     )
 
 
+#: The module the rule below names. Spelled once so the patch and the rule cannot disagree.
+MAPPER_MODULE = "tests.test_the_loop_keeps_serving_while_the_chain_writes"
+
+
 def _rules():
     return [{
         "name": "s93_rule",
         "trigger_table": "trigger_table",
         "target_table": "target_table",
-        "mapper_module": "tests.test_the_loop_keeps_serving_while_the_chain_writes",
+        "mapper_module": MAPPER_MODULE,
         "mapper_function": "unused_mapper",
         "enabled": True,
         "is_batch": False,
@@ -70,14 +75,23 @@ async def test_another_coroutine_completes_while_a_group_is_being_processed(monk
     entered = threading.Event()
     release = threading.Event()
 
-    def blocking_mapper(module_name, function_name, db, payload, rule=None):
+    def blocking_mapper(db, payload):
         entered.set()
         # Bounded so a regression FAILS rather than hanging the suite. The return value
         # matters less than the fact that this thread is not the loop's.
         release.wait(WAIT)
         return {"updates": []}
 
-    monkeypatch.setattr(mapper_call, "execute_custom_mapper", blocking_mapper)
+    # ⚰️ [판정 498] THE MAPPER ITSELF, NOT THE EXECUTOR OVER IT. `execute_custom_mapper` is
+    #    gone - the seat resolves `mapper_module`/`mapper_function` and calls what it finds -
+    #    so the block goes where the rule already points, and the signature is the one the
+    #    product actually hands a file mapper.
+    # ⚠️ PATCHED ON THE MODULE OBJECT THE SEAT WILL IMPORT, not on `sys.modules[__name__]`.
+    #    pytest may have this file under a different module name than the rule spells, and
+    #    patching the wrong object leaves the real `unused_mapper` running - which shows up as
+    #    「the mapper never started」 rather than as an error.
+    monkeypatch.setattr(importlib.import_module(MAPPER_MODULE), "unused_mapper",
+                        blocking_mapper)
 
     task = asyncio.create_task(
         worker.process_chain_transaction_group("s93-tx", [_event()], MagicMock(), _rules()))

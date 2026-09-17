@@ -317,8 +317,24 @@ BUILTIN_KINDS = {}
 #: below states both facts about a kind on one line, so they cannot drift apart.
 ORIGIN_STAMPING_KINDS = set()
 
+#: 🔴 [판정 497] KINDS THAT WRITE FOR THEMSELVES, SAID AT REGISTRATION.
+#: The seat needs two facts before it runs anything: how to hand a rule its input, and
+#: whether the result can be SEEN without being applied. Both used to be inferred from
+#: 「is it a builtin」, which is a fact about where the code lives rather than about what it
+#: does - and that inference is what let a dry run and a live lap grow separate branches.
+#: A kind that PROPOSES its rows would go in as `writes_itself=False` and every seat would
+#: follow without being edited.
+SELF_WRITING_KINDS = set()
 
-def register_builtin(kind: str, fn, stamps_origin: bool = False):
+#: 🔴 [판정 498 ④] WHAT A KIND IS CALLED ON A SCREEN, SAID AT REGISTRATION.
+#: `rule_shape` labelled rules join/decide/mapper by comparing against imported constants,
+#: which is a hand-kept list wearing an import: register a fourth kind and it is silently
+#: labelled 「mapper」 with nothing red. The label belongs to whoever adds the kind.
+BUILTIN_LABELS = {}
+
+
+def register_builtin(kind: str, fn, stamps_origin: bool = False,
+                     writes_itself: bool = True, label: str = "mapper"):
     existing = BUILTIN_KINDS.get(kind)
     if existing is not None and existing is not fn:
         raise UnknownBuiltinKind(
@@ -327,54 +343,32 @@ def register_builtin(kind: str, fn, stamps_origin: bool = False):
     BUILTIN_KINDS[kind] = fn
     if stamps_origin:
         ORIGIN_STAMPING_KINDS.add(kind)
+    if writes_itself:
+        SELF_WRITING_KINDS.add(kind)
+    BUILTIN_LABELS[kind] = label
     return fn
 
 
-def _rows_handed(kwargs) -> int:
-    """How many rows this call was handed. The two trigger arms name them differently."""
-    for cell in ("row_ids", "key_values"):
-        handed = kwargs.get(cell)
-        if isinstance(handed, (list, tuple, set)):
-            return len(handed)
-    return 0
-
-
-def run_builtin(kind: str, db, rule, **kwargs):
-    """Route one synthesised rule to its implementation, or refuse by name.
-
-    🔴 [S-246] AND REGISTER IT, THE SAME WAY THE OTHER DOOR DOES. 소유자
-    2026-09-15: 「체인 대기열에서 안 뜨고 돌고 있었네」. `activity.registry` was started,
-    recorded and finished inside `mapper_call.execute_custom_mapper` - the door a FILE
-    mapper comes through - and this door did none of the three. So `join_into`,
-    `builtin:join` and `auto_confirm` ran with no entry in the queue view, and because the
-    loader SEEDS every declared rule as `never_evaluated`, a builtin that had run a
-    thousand times still reported 「아직 평가 안 됨」 for the life of the process. 「같은
-    기능에 두 경로」, and the half nobody could see was the half that was running.
-
-    ⚠️ THE REFUSAL IS OUTSIDE THE REGISTRATION, deliberately. An unknown kind never ran,
-    so an entry saying it did - even for the length of one raise - would be a false
-    sentence about a rule this function is in the middle of refusing.
-    """
-    fn = BUILTIN_KINDS.get(kind)
-    if fn is None:
-        raise UnknownBuiltinKind(
-            "no implementation for %r; known kinds: %s"
-            % (kind, ", ".join(sorted(BUILTIN_KINDS)) or "none"))
-    from chain import activity
-
-    name = (rule or {}).get("name") or "<unnamed rule>"
-    with activity.running(name, kind, (rule or {}).get("target_table") or "<none>",
-                          _rows_handed(kwargs),
-                          no_rows_reason="the rule wrote no rows") as run:
-        result = fn(db, rule, **kwargs)
-        # ⚠️ ONLY WHEN THE KIND SAID SO. A kind that reports no count leaves the outcome
-        # alone rather than being recorded as 「ran, changed nothing」 - 「안 셌다」 and
-        # 「0 이었다」 are different facts and this registry exists because they were being
-        # confused.
-        written = (result or {}).get("written") if isinstance(result, dict) else None
-        if written is not None:
-            run.produced(int(written))
-        return result
+# 🪦 [판정 497] `run_builtin` AND `_rows_handed` LIVED HERE AND THE SEAT HAS THEM NOW.
+# This function looked a name up in `BUILTIN_KINDS` and opened an `activity.running` entry -
+# and `mapper_call.execute_custom_mapper` did the same two things for the other door. Two
+# resolvers and two registrations for one question is what 소유자 called 「문 가르기」, and
+# S-246 had made the second registration rather than removing the first.
+#
+# ⚠️ WHAT THE DELETED REFUSAL ACTUALLY COVERED, said accurately rather than carried over.
+# `run_builtin` raised `UnknownBuiltinKind` when a kind was missing from the table, and that
+# arm was ALREADY unreachable from the seat: `rule_run.builtin_kind` answers by membership in
+# this same table, so a kind that reaches the call is a kind that is in it. The class stays
+# live at its other raiser above - two implementations claiming one id.
+#
+# 🔴 WHERE THAT REFUSAL WENT, AND WHAT IS STILL MISSING FROM IT. A rule naming
+# `builtin:<something not registered>` falls through to the seat's mapper arm, which refuses it
+# by name AND lists the registered kinds - so the operator sentence survived the move. What did
+# NOT survive is the seat knowing the operator MEANT a builtin: the refusal reads as 「names no
+# implementation」 rather than 「that is not one of the kinds」. Telling those apart needs a
+# spelling of the `builtin:` prefix, and there is no constant for one - only the two literals in
+# `join_into` and `legacy_join_declaration` - so writing a third here would be the third author
+# of that spelling. Reported, not built.
 
 
 def _install():
@@ -385,7 +379,8 @@ def _install():
     # `stamps_origin`: `materialize_rows` carries the right row that answered into
     # `GeneralUpdateItem.origin_row_id` (S-280), so what it wrote can be withdrawn when
     # that row is deleted.
-    register_builtin(legacy_join_declaration.JOIN_MAPPER, _run_join, stamps_origin=True)
+    register_builtin(legacy_join_declaration.JOIN_MAPPER, _run_join, stamps_origin=True,
+                     writes_itself=True, label="join")
     # 🔴 [S-237 · 판정 461 ③] TWO ENTRIES, AND BOTH OF THEM WRITE. THAT IS THE DEBT.
     # ⚰️ This paragraph used to read 「`builtin:join` is the READ-TIME join and production
     # runs on it」. Both halves were false: ruling 461 deleted the read-time executor, and
@@ -403,14 +398,16 @@ def _install():
     # rather than by either trusting the other. The debt closes when the last
     # `materialize: true` declaration moves to `into.table`. `register_builtin` refuses two
     # claimants of one id by name, so the separation is enforced here rather than trusted.
-    register_builtin(join_into.JOIN_INTO_MAPPER, join_into.run, stamps_origin=True)
+    register_builtin(join_into.JOIN_INTO_MAPPER, join_into.run, stamps_origin=True,
+                     writes_itself=True, label="join")
     # S-195: the kind S-179 declared finally has an implementation, so the table carries the
     # whole `builtin:` vocabulary and the named temporary two-path condition is over.
     # ⛔ NOT `stamps_origin`. The sweep's answer comes from a candidate PROBE over a
     # reference view, not from one reference row, so there is no single row to write down —
     # and 판정 434 forbids answering that with a NULL that already means 「기존 행」. The
     # seat names this kind instead (`rule_run.retraction_refusal`).
-    register_builtin(enrichment.config.AUTO_CONFIRM_MAPPER, _run_auto_confirm)
+    register_builtin(enrichment.config.AUTO_CONFIRM_MAPPER, _run_auto_confirm,
+                     writes_itself=True, label="decide")
 
 
 _install()

@@ -188,7 +188,12 @@ def try_mapper(name, sample, *, rule=None, target_table="bench_target"):
     rows = sample if isinstance(sample, list) else read_sample(sample)
     payloads = as_payloads(rows)
 
-    fn = mapper_sdk.MAPPER_REGISTRY.get(name)
+    # 🪦 [판정 498 ①] THE REGISTRY LOOKUP IS THE SEAT'S. The import fallback below is
+    # this bench's own - it accepts a name a rule never declared - but 「is this a registered
+    # mapper」 is the same question the chain asks, and it had two answers.
+    from chain import rule_run
+
+    fn = rule_run.runnable(name)
     who = name
     if fn is None and (":" in name or "." in name):
         import importlib

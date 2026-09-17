@@ -312,7 +312,7 @@ def join_rule(db, name: str) -> dict:
     `right_columns`, `required_index` and the DDL that would create it - the cells the
     previous return carried, under the same names.
     """
-    from chain import ingestion_worker, join_into, rule_shape
+    from chain import ingestion_worker, rule_run, rule_shape
     from database import crud
 
     withheld = None
@@ -333,7 +333,13 @@ def join_rule(db, name: str) -> dict:
         for rule in stood or ():
             if rule.get("name") != name:
                 continue
-            if rule.get("mapper") != join_into.JOIN_INTO_MAPPER:
+            # 🪦 [판정 498 ④] THIS COMPARED `rule["mapper"]` TO AN IMPORTED CONSTANT.
+            # The seat answers now. Measured equivalent rather than assumed: the rules walked
+            # here come from `rule_shape.expand_declaration`, and the only join mapper it ever
+            # stamps is `JOIN_INTO_MAPPER` (`rule_shape.py:139`) - it never emits the legacy
+            # kind - so 「label is join」 and 「mapper is JOIN_INTO_MAPPER」 select the same rules
+            # over this population, and the refusal below still means what it says.
+            if rule_run.rule_label(rule) != "join":
                 raise DerivationRefused(
                     REFUSE_JOIN_RULE_MISSING,
                     "rule %r exists but is not a join (`derive: {kind: \"join\"}`); the "
