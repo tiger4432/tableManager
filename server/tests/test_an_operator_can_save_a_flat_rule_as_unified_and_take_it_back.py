@@ -163,6 +163,28 @@ def test_the_rerun_count_is_a_measured_zero_not_a_silence(client, rules_file):
     assert body["reruns"]["why"], "a zero with no sentence reads as the absence of a look"
 
 
+def test_when_the_count_is_unknown_the_cell_is_absent_not_zero(
+        client, rules_file, monkeypatch):
+    """🔴 판정 549 의 «셋째» 상태, and the one an assertion is easiest to forget.
+
+    A 0 that means 「I did not look」 is worse than no answer: the operator reads it as
+    safe. The cell must be GONE. Reached by making the expansion refuse - the honest way to
+    say that today's converters never move an expansion, so the file cannot produce this.
+    """
+    from chain import rule_shape
+
+    monkeypatch.setattr(rule_shape, "expand_declaration",
+                        lambda declaration, table_config=None: ([], "펼치지 못했습니다", []))
+
+    body = client.post(ROUTE, json={"name": FLAT["name"], "to": "unified",
+                                    "dry_run": True}).json()
+
+    assert "rows" not in body["reruns"], (
+        "an uncounted re-run was reported as a number, which reads as 「safe」: %r"
+        % (body["reruns"],))
+    assert body["reruns"]["why"], "the cell was dropped without saying why it is unknown"
+
+
 # ---------------------------------------------------------------------------
 # ⚠️ ⓓ — the two answers that are not saves
 # ---------------------------------------------------------------------------
