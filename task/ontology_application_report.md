@@ -26431,3 +26431,57 @@ to_declaration :230~:233   if internal.get("extra"): out["extra"] = internal["ex
         박스 규칙이 그 열넷 중 «무엇을» 실제로 쓰는지는 안 봤습니다(gitignore — 구현자 계기)
         `key` 칸(스켈레톤 통합에만 있음)은 이 비교에서 «뺐습니다» — 평면에 대응이 없습니다
 ```
+
+---
+
+> 🔴🔴 **[09-17 14:09 응용] Q-89 — 535 는 «부류»이고 구성원이 둘입니다. 그리고 그 설계의 «사유»가 오늘 쓰는 배포를 안 가리킵니다**
+> **받는 이: 총괄 · 구현자 — 수리를 «새로 짓기 전»에. 형제 모듈이 이미 이 문제를 풀었습니다**
+
+## ① 그 파일이 자기 설계의 «전제»를 적어 뒀고, 그 전제가 «런처에서 거짓»입니다
+```
+chain/activity.py:10~14 (원문)
+  「IT IS UPDATED BY A DIRECT CALL, NOT OVER HTTP, and that is a deliberate difference from
+   `ingestion_activity`. … the chain loop is started inside the web server's own startup
+   (`main.py`, `start_chain_ingestion_worker`), so in that deployment the mapper and the
+   route share a process」
+```
+🔴 **그 「that deployment」이 런처가 아닙니다 — 재서 확인했습니다:**
+```
+runtime/launcher_specs.py:69  ChildSpec("Chained Ingestion Worker", [python, "run_chain_worker.py"], …)
+                        :54  API 자식 env = {"DECOUPLED": "True", "ASSY_CHAIN_WORKER": "0"}
+main.py:500                   if os.getenv("DECOUPLED") == "True":  -> 체인 시작 «전에» 돌아섭니다
+=> `run_app.bat` 로 띄우면 체인 루프는 «자식 프로세스»이고 API 는 «안 켭니다».
+   설계가 예외로 적어 둔 「Run run_chain_worker.py separately」가 «운영자의 기본»입니다
+```
+📌 부류: 「가드는 도달 가능해지는 날 틀린다」의 «전제» 판 — 사유가 참이던 배포가 더는 기본이 아닙니다.
+   그리고 그 파일은 «정직합니다»(`attached` 로 「못 본다」를 말합니다). 낡은 것은 «사유»입니다.
+
+## 🔵 ② 형제가 이미 풀었습니다 — 새 기제를 만들 일이 아닙니다
+```
+ingestion/activity.py:149  registry = IngestionActivityRegistry()   <- 같은 «모양»
+그런데 그쪽은 «건너옵니다»:
+  main.py:1226  from ingestion.activity import registry as ingestion_activity_registry
+        :552    ingestion_activity_registry.apply_state({**state, "filename": clean})
+        :535    …remove(table_name, clean_filename)
+        :4625   data = ingestion_activity_registry.snapshot()      <- 라우트는 «자기 프로세스» 것을 읽습니다
+=> 워처(별도 프로세스)가 «publish» 하고 API 프로세스가 `apply_state` 로 «자기 레지스트리에 적습니다»
+chain/activity.py 에 그 «받는 입구»가 «없습니다» — `def apply_*` 계수 0, 있는 것은 `seed_rules` :125 뿐
+```
+🔴 **즉 `chain/activity` 는 형제에게서 «레지스트리»는 베끼고 «건너오는 길»은 안 베꼈습니다.**
+   그 파일 자기 주석이 「Same shape as `ingestion_activity`」라 적는데, 같은 것은 «반쪽»입니다.
+
+## 그래서 제안 (판정은 총괄)
+```
+㈀ 새 전달 기제를 «만들지 마십시오» — `ingestion_activity` 의 publish/apply 경로가 이미 이 저장소에 있습니다
+㈁ 그리고 «사유 주석»을 같이 고치십시오 — 안 고치면 다음 사람이 그 문장을 읽고
+   「같은 프로세스니까 직접 호출이 맞다」로 또 짓습니다 (오늘 하루 그 부류를 셋 봤습니다)
+⚠️ 다만 «비용»은 제가 안 쟀습니다 — 한 행마다 건너오면 그게 소유자가 금지한 「한 행당 로그 하나」의
+   전달 판이 될 수 있습니다. 접는 단위는 판정입니다
+```
+### 확신도
+```
+실행    `launcher_specs.py` :54·:69 · `main.py` :500·:552·:1226·:4625 · `chain/activity.py` 주석과
+        `def apply_*` 계수 «0» — 전부 «열어» 확인
+못 잼    런처를 «안 띄웠습니다»(총괄이 띄워 재신 것이 535 의 수입니다) · 전달 비용 «안 쟀습니다»
+        `ingestion_activity` 의 publish 쪽이 «어떤 이벤트»로 오는지 그 경로 전체는 «안 따라갔습니다»
+```
