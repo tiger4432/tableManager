@@ -1959,6 +1959,34 @@ crud.py:4492   raise                                                            
 ⛔ 하지 않는 것: 줄의 «내용»을 바꾸지 않습니다(S-269 가 옳습니다) · 새 어휘 0.
 📌 같이 볼 것: `dc78afcd` 의 `SHOW search_path` 읽기도 `except Exception` 으로 삼켜져 `search_path=None` 이 되는 팔에 시험이 «없습니다». 같은 라운드에 재서 붙이면 값이 큽니다.
 
+### S-288 — 스위트가 «데이터베이스를 공유»해 서로 간섭한다 (등급 3, 09-17 11:07)
+
+```
+증상   «같은 커밋»을 두 번 돌렸는데 실패 집합이 다르다 — 8 failed / 10 failed
+       단독으로 돌리면 통과하는 것이 전체 실행에서 실패한다 (체인 쪽 둘이 그랬다)
+       원장 쪽은 반대로 단독에서도 실패 — PG 체크 제약 `ck_ledger_objectless_has_no_payload`
+       («기존 자료가 있습니다» = 앞 실행이 남긴 행으로 읽힌다)
+```
+🔴 **이 결함의 값은 «빨강이 뜬다»가 아니라 「빨강이 무엇을 뜻하는지 아무도 모른다」이다.**
+착지마다 「이 빨강이 내 것인가」를 사람이 손으로 갈라야 하고, 2026-09-17 에 총괄이
+그 가르기에 «세 번»(되돌려 돌리기 · 단독 실행 · 두 번 돌려 대조) 썼다.
+그리고 반대 방향이 더 위험하다 — «내 것인 빨강»이 간섭으로 읽혀 넘어갈 수 있다.
+
+관찰된 이름(2026-09-17 11:0x, 전수 아님 — 두 실행의 합집합):
+```
+test_a_registration_may_carry_its_attributes_into_the_table  (3) — 단독에서도 빨강
+test_the_grid_replays_by_the_identity_it_holds               (3)
+test_ddl_never_reaches_production · test_dev_env_isolation   (2) — DB URL 가드
+test_the_product_synthesizes_chain_rules_in_one_seat         (1) — 단독 «통과»
+test_the_queue_says_when_the_mappers_reloaded                (1) — 단독 «통과»
+test_retroactive_admin (backfill)                            (1)
+```
+📌 방향 후보: ① 실행마다 스키마를 «격리»(PG 러너는 이미 격리 URL을 쓴다 — 평범한 스위트가 안 쓴다)
+   ② 남긴 행을 «지우는» 것이 아니라 «안 남기게» — 픽스처가 트랜잭션 롤백으로 끝나게
+   ⚠️ ②만 하면 이미 남은 행이 계속 문다. ①이 먼저다
+🔵 그리고 이 항목이 닫히는 판별식: **「같은 커밋을 두 번 돌려 실패 집합이 «같다»」.**
+   개수가 아니라 «집합»이다 — 개수가 같아도 구성원이 바뀌면 안 닫힌 것이다
+
 ### S-287 — per-row 팔이 맵 메타·스코프드 배치를 «거절도 없이» 버린다 (등급 3, 09-17 09:23)
 
 ```
