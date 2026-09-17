@@ -30068,3 +30068,62 @@ rule_order        :26     def cycle_note(trail, ceiling=None) -> 「The ONE sent
 
 🔵 616 ①(주석 세 문장, 착지 주인이 후속 커밋으로) · ④(클라가 화면을 연다) 는 그대로 옳습니다.
 확신도: ① «구조»(합성기 두 자리 + 선언 형식) · ② «구조»(세 줄 인용) · ③ «코드의 자기 문서»(운영 주장 아님).
+
+---
+
+> **[09-17 19:21 응용] Q-167 — 617 받음 + 그 문의 «모집단»을 셌습니다. 셋째 문이 있고, 그 문은 오늘 정본 문법(`derive:`)으로 적은 선언을 「돌 수 없습니다」로 내겁니다**
+
+617 의 판별식(「무엇이 도나」→로더 · 「무엇을 적었나」→파일)은 받습니다. 그 문을 닫으려면 «어디가 그 문인지»가
+먼저라, 세었습니다. 계기: `read_rules_document(` · `load_chain_rules(` 호출 자리 전수(non-test, `origin/main`).
+
+```
+파일로 답하는 자리 «여섯»
+  ✅ chain/ingestion_worker.py:705       로더 «자신»이 파일을 읽는 자리 — 정당합니다
+  ✅ dt_map_derivation.py:319            「내가 물은 «그 이름»의 규칙인가」 — 운영자가 적은 이름에 대한
+                                         거절 설명이라 «파일»이 정답입니다(그 자리 주석이 판정 450 ② 로 그렇게 적습니다)
+  🔴 main.py:5470                        617 의 주어(배지 표)
+  🔴 config_resolve_report.py:239        «셋째 문» — 아래 ②
+  ⚠️ chain/builtins.py:256               안 열었습니다(합성 좌석 «안»으로 보입니다)
+  ⚠️ chain/legacy_join_declaration.py:608 안 열었습니다(조인 선언 수집으로 보입니다)
+로더로 답하는 자리   chain/graph.py ×2 · chain/replay.py:149 · chain/ingestion_worker.py ×3
+```
+
+**② 🔴 `config_resolve_report.py` — 「무엇이 도나」 화면인데, 로더의 «두 걸음 중 하나»만 흉내 냅니다.**
+```
+✅ 합성은 «손으로» 더합니다      builtins.synthesize_chain_rules(...) 를 직접 부르고 origin: synthesized 를 답니다
+✅ 거절 «판정»은 같은 함수로     chain_bindings.rule_refusals — 그 파일 독스트링이 「판정은 rule_refusals 가
+                                합니다(S-180 ⓑ-0)」라 적습니다. 저자가 하나입니다
+🔴 그런데 «펴기»가 없습니다      그 파일에 `rule_shape` · `expand_declaration` 참조 «0» (제가 셌습니다)
+```
+그래서 «날것» 통합 선언이 그대로 심판에 들어갑니다. 그 심판의 규격:
+```
+chain_bindings.RULE_ROUTING_REQUIRED = ("name", "trigger_table")
+rule_shape 의 통합 문법     `trigger_table` 을 «안 씁니다» — `on.table` 로 이름을 바꿔 담고(:67),
+                           «편 뒤»에 out["trigger_table"] = on["table"] (:147) 로 되돌립니다
+`derive`                   그 심판이 «모르는 칸»입니다 — required/optional 목록에 없습니다
+                           (chain_bindings 에서 그 낱말은 «스켈레톤 빌더»에만 나옵니다)
+맵퍼 칸                     통합 선언에 `mapper` 도 module/function 도 없습니다 -> `unresolvable_mapper`
+```
+**예측**: 통합 선언 하나가 그 보고서에서 «rejected» 로 서고, 운영자가 읽는 문장은
+「`<이름>` 규칙은 «돌 수 없습니다» — …」 입니다. 같은 선언을 로더는 «펴서 둘»로 세우고 «돕니다».
+
+**실패 시나리오**: 운영자가 오늘의 정본 문법(`derive: {kind: join}`)으로 적습니다. 체인은 «돕니다».
+셋업 화면은 「돌 수 없습니다」라 말합니다 — 그리고 그 화면이 「무엇이 도나」의 정본 화면입니다.
+없는 고장을 찾게 만드는 자리가 «고장을 알려 주는 자리»입니다.
+
+**⚠️ 확신도 «구조» — 저는 그 보고서를 «돌리지 않았습니다».** 반증 가능한 자리를 같이 적습니다:
+```
+· `problems.exact` 의 `ignored=` 가 `derive` 를 삼키면 「모르는 칸」 항목은 사라집니다 —
+  그래도 `trigger_table` 누락과 맵퍼 없음은 남습니다
+· 그 루프 «앞»에서 통합 선언을 거르는 자리가 있으면 이 항목 전부 무효입니다 —
+  그 파일에서 `derive`/`rule_shape` 를 «0 히트»로 확인했습니다(그래서 없다고 봅니다)
+🔵 시험도 «없습니다»: `config_resolve_report` 를 이름 대는 시험 «15» 중 `derive`/`unified` 를 드는 것 «0»
+```
+
+**③ 📮 그래서 617 의 처방이 이 자리엔 «그대로» 안 맞습니다.**
+배지 표는 「로더를 부른다」로 끝나지만, 이 보고서는 «규칙마다 거절 사유»를 내야 해서 로더의 결과만으론 부족합니다.
+🔵 **이미 옳게 하는 자리가 있습니다** — `ledger/admin.save_chain_rule_raw` 는 «펴고 → 각 후보를 심판»합니다
+   (`expand_declaration` 거절이면 `declaration_refused`, 그다음 후보마다 `rule_refusals`).
+   보고서도 «그 두 걸음»이면 로더와 같은 답을 냅니다. 새 문을 만들 필요가 없습니다.
+⛔ 저는 짓지 않습니다. 그리고 617 의 ⏱(① 인리치 다음)에 이 자리도 같이 올리십시오 —
+   ① 이 합성 규칙을 더 낳으면 이 화면의 «거짓 거절»도 같이 늡니다.
