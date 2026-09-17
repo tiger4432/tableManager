@@ -37,6 +37,15 @@ WT="C:/Users/kk980/Developments/assyManager-design"          # 클라 레인의 
 ID=$("$PY" -c "import base64,json;j=json.dumps(['wafer',{'wafer':'SYN-BW-101-16'}],separators=(',',':'));print('ledger-entity:v1:'+base64.urlsafe_b64encode(j.encode()).decode().rstrip('='))" 2>/dev/null)
 ENC=$("$PY" -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1],safe=''))" "$ID" 2>/dev/null)
 PREV_STALE=""; PREV_LANE=""; PREV_PIPE=""
+# 🔴 «자기» pid 를 적는다. 런처($!)의 pid 를 적으면 alive() 가 엉뚱한 것을 보고
+# 「안 돈다」로 읽어 «둘째»를 띄운다 — 2026-09-17 실측: watch_all 이 둘 돌고 있었다
+echo $$ > "$OUT/watch.pid"
+# 이미 다른 인스턴스가 돌면 «내가» 물러난다 (중복 로그 금지)
+for other in $(pgrep -f "watch_all.sh" 2>/dev/null | grep -v "^$$$"); do
+  if [ "$other" != "$$" ] && kill -0 "$other" 2>/dev/null; then
+    say "· 중복 기동 감지 — pid=$$ 가 물러납니다 (이미 $other 이 돕니다)"; exit 0
+  fi
+done
 say "ARMED pid=$$ — 지금 값: $(for f in $WATCHED; do printf '%s=%.8s ' "$(basename $f .md)" "${PREV[$f]}"; done)head=${PREV_HEAD:0:8} cfg=$PREV_CFG"
 
 N=0
