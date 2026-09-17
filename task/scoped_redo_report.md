@@ -49271,3 +49271,76 @@ join_into 가 «declared:virtual_join_into» 가 되고 «아무도 안 터집�
 ① 587 의 제목 확인 — 「쓰기를 «문»으로 세운다」 (재료: ingestion_worker.py:1698~2066)
 ② 602 판 «UI 단» 표 — 폼을 그리는 자리 × {스켈레톤 · 이름칸 · 진짜 다른 것}
 ```
+
+---
+
+> 📐 **[09-17 18:10 구현자] 판정 603 — «크기 표». 열어서 잰 것만 적었습니다. 그리고 ㉡ 하나는 «수를 못 냅니다»**
+> **받는 이: 총괄 — 짓기 전입니다. 코드 한 줄 안 건드렸습니다**
+
+## ㉠ 쓰기 문 세우기 — «368 줄 · 경계를 넘는 이름 14»
+```
+블록        ingestion_worker.py:1698~2065 = «368 줄». if 하나, 감싸는 def 의 끝까지
+감싸는 def   _process_chain_transaction_group_sync  1425~2067 («643 줄»)
+경계        블록이 «바깥에서 읽는» 이름 14 (AST):
+            broadcast_messages · db · error_msg · incoming_depth · map_metadata_updates · r ·
+            rule · rules_by_target · scoped_batches · table_contributors · table_updates ·
+            target_table · tx_id · updates
+            그중 «넷»(error_msg · r · target_table · updates)은 블록 «안»에서도 대입됩니다
+            -> 진짜 인자는 «열». 반환은 그 넷
+호출자      지금 «1»(그룹 단계). 문이 서면 «3»(+ 미루기 + 소급)
+```
+🔵 **그리고 588 이 여기서 «자동으로» 닫힙니다.** 588 이 지목한 샌 루프 변수 `rule` 이
+   위 14 «안»에 있고 블록 안에서 «대입되지 않습니다» — 바깥 루프의 잔재라는 뜻입니다.
+   문이 되면 `rule` 이 «인자»가 되고, 인자는 잔재가 될 수 없습니다. 588 의 예측 그대로입니다.
+
+## 🔴 ㉡ 아웃박스 홉으로 잇기 — «수를 못 냅니다». 추정 안 하겠습니다
+```
+연 것 ①   ledger/followup.py:523 drain_once 는 원장 «원자»를 다시 번역하고 `done` 을 돌려줄 뿐,
+          제품 «행»을 안 씁니다. 그러니 「그 행이 바뀌었다」 아웃박스는 «원래 쓰기»가 «이미» 냈고,
+          그룹 단계가 picked_up_by_the_group_step 으로 그 규칙을 «일부러 건너뜁니다»
+연 것 ②   DatabaseOutbox 를 짓는 자리 «10» (제품). 그중 admin/retroactive.py:1419 는
+          «행 변경»이 아니라 «명령»을 이벤트로 넣습니다(RUN_EVENT_TABLE · RUN_EVENT_TYPE · payload)
+=> 그러므로 ㉡ 은 「이벤트를 하나 더 낸다」가 «아니라» 「건너뛴 규칙을 «어떤 이벤트»로 깨우나」의
+   «설계 결정»입니다. 그 결정 전에는 줄 수가 «없습니다» — 모양이 안 정해졌으니까요
+🔴 제가 청하는 판정 «한 줄»:  그 깨우는 이벤트가 «행 변경»입니까, «명령»입니까?
+   행 변경이면   원래 이벤트에 「이 규칙은 다음 홉」이라는 칸이 붙는 모양입니다
+   명령이면     retroactive 의 자리가 «이미 있는 문»이고, 그걸 부르면 됩니다 (기존 문 체크)
+   ⚠️ 저는 retroactive 의 그 경로를 «안 열어 봤습니다». 정해 주시면 열어서 재겠습니다
+```
+
+## ㉢ follow_up 경로 제거 — «함수 132 줄 + 실행 자리 여덟»
+```
+지울 함수   picked_up_by_the_follow_up_pass 28 · _rules_for_the_follow_up_pass 20
+           · _run_the_follow_up_pass 84            = «132 줄»
+접히는 것   picked_up_by_the_group_step 8 · rules_by_pickup_count 7  (PICKUP_PATHS 가 한 멤버가 됨)
+남되 고침   _retract_what_those_rows_fed «33 줄» — 안에서 _rules_for_the_follow_up_pass() 를 돕니다
+칸의 «실행» 자리 «8»   ingestion_worker 1026 · 1049 · legacy_join_declaration 906 ·
+           enrichment/config 1006 · rule_order 144 · chain_bindings 240 · 480 · rule_shape 41
+⚠️ 뺀 것: enrichment/config 1329·1353·1364·1589·1622 와 candidates 384·391 의 `follow_up` 은
+   «다른 것»입니다 — 참조 뷰 거절 경로의 «키워드 인자»이고 규칙의 칸이 아닙니다
+```
+
+## ㉣ 통 삭제 — 그리고 🔴 게이트 ①이 «그대로는 못 섭니다»
+```
+PICKUP_PATHS 3 · 세 함수 이름 8      -> ㉢ 과 «같이» 갑니다
+writes_itself «5 노드»               정의 1 · 얇은 독자 2 · 접근자 1 · «고르개 1»
+                                    고르개(ingestion_worker:1056)가 ㉢ 과 죽고, 나머지 넷은 남습니다
+🔴 self_writing_name «3» — «안 죽습니다»
+   replay:485 · 491 -> admin/retroactive:188 이 소급 «미리보기»의 «단위»를 고릅니다
+   (판정 505 가 그 자리에 적어 뒀고, 584·598 에서 확인하셨습니다)
+시험 낙진   아홉 파일 / «48 참조» (BUILTIN_KINDS 부류). 「v1 이 없다」를 말하려면 이것도 같이입니다
+```
+🔴 **그래서 게이트 ①의 문장을 «한 줄» 고쳐야 합니다** — 「그 통의 이름들 -> 코드 참조 0」이
+   `writes_itself`·`self_writing_name` 까지 포함하면 «못 섭니다». 그 둘은 «일의 사실»과
+   «드라이런의 갈림길»이라 남는 것이 옳고, 그 판정을 이미 두 번 내리셨습니다(583 · 598).
+   제안: 「**미루기 경로의 이름들**(follow_up 칸 · PICKUP_PATHS · 세 함수 · writes_itself 고르개)
+   -> 코드 참조 0」. 이러면 ①이 «잴 수 있는 문장»이 됩니다.
+
+## 못 잰 것 · 안 연 것 (명시)
+```
+① ㉡ 의 줄 수 — 위 이유로 «모양 미정». 판정 한 줄이 오면 잽니다
+② retroactive 의 명령-이벤트 경로 — «안 열었습니다»
+③ ㉠ 의 「진짜 인자 열」이 «그대로 열인지» — 넷을 뺀 산술이고, 문 시그니처로 «써 보지는» 않았습니다
+④ 아웃박스 홉이 늘면 큐 깊이가 얼마나 느나 — «안 쟀습니다». 운영 규격(수천 행/트랜잭션)에서
+   이게 ㉡ 의 «진짜 비용»일 수 있습니다
+```
