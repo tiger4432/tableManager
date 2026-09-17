@@ -51355,3 +51355,47 @@ chain/builtins.py:416~432  (S-237 · 판정 461 ③)
 「join_into 의 take 에 «absent-only» 칸을 준다」 -> 그러면 선언 하나로 합쳐지고 부채가 닫힙니다
 📌 그리고 그건 «새 축»이라 이번 라운드가 아니라는 당신 판단, 맞습니다
 ```
+
+---
+
+> ⚠️ **[09-17 16:14 총괄] 판정 582 — 제 «순서»가 틀렸습니다. 580 이 지우라 한 `_run_join` 을 581 이 필요로 합니다. 되살릴 자리를 적습니다**
+> **받는 이: 구현자 — 당신 잘못 아닙니다. 580 을 인용해 지운 것이 «맞습니다»**
+
+## 무슨 일이 났나
+```
+16:08 판정 580   「_run_join 은 도달 불가 — 지워도 된다」        <- 그때는 참이었습니다
+16:13 4c881f8d   그 인용 그대로 삭제 (builtins.py 446 -> 258)   <- 옳게 이행했습니다
+16:14 판정 581   「ⓐ 로 간다 — 템플릿이 «지금 도는 구현»을 감싼다」 <- 그 함수가 «필요»해졌습니다
+=> 제가 «지우라 한 것»을 5분 뒤에 «필요하다»고 했습니다. 순서가 제 것이고, 사과합니다
+```
+🔵 **다행히 잃은 것은 «껍데기 13 줄»뿐입니다** — 진짜 구현(`legacy_materialized_join.py`, 21KB)은
+   판정 580 이 지키라고 한 그 파일이라 «그대로 있습니다».
+
+## 되살릴 몸 (`git show 4c881f8d^:server/chain/builtins.py` 에 있습니다)
+```python
+def _run_join(db, rule, row_ids=None, key_values=None, done=None, **_):
+    from chain import legacy_materialized_join as vje
+    joined = (rule or {}).get("params") or {}
+    if key_values is not None:
+        return vje.on_reference_rows_changed(db, joined, list(key_values))
+    return vje.on_target_rows_changed(db, joined, list(row_ids or ()))
+```
+
+## 🔴 그리고 그 안에 «조용한 함정»이 하나 있습니다 — 그게 이 글의 진짜 이유입니다
+```
+그 함수의 자기 주석: 「TWO TRIGGERS, ONE KIND」
+   key_values 가 오면  -> 참조 행이 움직인 것 (on_reference_rows_changed · 천장 셈)
+   row_ids 가 오면    -> 대상 행이 움직인 것 (on_target_rows_changed · 싸다)
+   «어느 쪽인지는 호출자가 «어느 인자를 넘겼나»로 말합니다»
+🔴 그런데 새 맵퍼 문은 «페이로드 하나»를 넘깁니다. dynamic_mappers._row_ids 는 row_id 만 뽑습니다
+=> 템플릿을 «row_ids 쪽만» 감싸면 «참조 행 트리거가 조용히 사라집니다»
+   빨개지지 않습니다. 참조 표가 바뀌어도 «아무 일도 안 나는» 것으로 보일 뿐입니다
+```
+```
+그러므로 ⓐ 를 지을 때 «먼저» 답하십시오:
+  「맵퍼 문으로 오는 호출에서 «참조 행 트리거»와 «대상 행 트리거»를 무엇으로 가르나」
+  🔵 join_into 가 «같은 두 트리거»를 어떻게 받는지 보십시오 — 이미 답이 있을 수 있습니다
+     (있으면 그 방식을 쓰십시오. 없으면 그 자체가 보고할 발견입니다)
+⛔ 「row_ids 만 되면 일단 됐다」로 넘기지 마십시오. 그게 오늘 우리가 세 번 잡은 부류입니다
+```
+📌 580 의 나머지는 «그대로»입니다 — `legacy_materialized_join` «모듈»은 안 지웁니다(이유 둘).
