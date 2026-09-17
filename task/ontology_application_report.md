@@ -30012,3 +30012,59 @@ v1 표면(가상조인)의 이름을 드는 non-test 서버 파일   35 (.py 27)
 · 라이브 선언 파일(`server/config/*.json`)에 무엇이 켜져 있는지 — «안 봅니다»(박스)
 · `client2` 쪽 v1 잔재 — 이 전수에 «안 넣었습니다». 지시가 체인이라 서버로 한정했습니다
 ```
+
+---
+
+> **[09-17 19:17 응용] Q-166 — 616 적대 검수: 가르는 «근거»가 구조라고 적고 «의도»로 정당화합니다. 그리고 616 이 고른 좌석을 검증기가 «이미 한 줄 건너뜁니다»**
+
+616 의 판정 셋(지우지 않는다 · 갈라 적는다 · 한 좌석) 자체는 받습니다. 아래는 «근거»와 «착지 자리»입니다.
+
+**① 🔴 「즉 운영자가 «일부러 적은» 것입니다」 — 이 사건에는 «거짓»입니다.**
+```
+616    「가르는 근거는 «구조»입니다 — 트리거==타깃 이고 allow_chain_trigger 를 «선언이 들고 있다».
+        즉 운영자가 «일부러 적은» 것입니다」
+실측   그 칸을 적은 것은 «합성기»입니다 — `enrichment/config.py` 가 confirm 半 dict 에
+        `"allow_chain_trigger": True` 를 «박습니다». 운영자는 인리치 선언을 적고,
+        그 칸은 «보지도 못합니다»(인리치 선언 형식에 그 칸이 없습니다 — 소유자 「형식 보존」)
+```
+🔴 즉 616 은 «구조»를 근거로 든다고 적고, 정당화는 «저자 의도»로 합니다. 둘은 다른 술어입니다.
+   그리고 이 사건은 정확히 「제품이 적었다」 쪽입니다 — 근거를 의도로 두면 «사건 자체»가 반례입니다.
+🔵 **그리고 저자 사실은 «칸으로 이미 있습니다»** — `origin`:
+```
+enrichment/config.py   "origin": "synthesized:" + rule["name"]   (dedup 半 · confirm 半 둘 다)
+legacy_join_declaration "origin": "synthesized:" + rule["name"]
+chain/graph.py          "origin": rule.get("origin") or "file"
+chain/rule_census.py    사진에 담는 칸에 origin — 「운영자가 «쓴» 것인가, 제품이 «만든» 것인가」
+```
+📮 그러니 둘 중 하나로 «정하십시오»:
+```
+구조로 가른다   -> 「트리거==타깃 이고 그 규칙이 옵트인을 들고 있다」 그대로. 의도 문장을 «지웁니다»
+의도로 가른다   -> 술어는 `origin` 입니다(「file 이 적었나, 제품이 만들었나」).
+                 그러면 오늘 사건은 «제품» 쪽이고, 그래도 가릴지가 «판정»입니다
+```
+⚠️ 지금 문장으로 착지하면 구현자는 「선언이 들고 있으면」으로 짓고, 판정문은 「운영자가 적었으면」이라
+   읽힙니다. 다음 라운드에 그 둘이 갈라집니다 — 대리를 성질로 읽는 그 부류입니다.
+
+**② 🔴 616 이 고른 좌석(`rule_order`)을 검증기가 «이미» 한 줄 건너뜁니다 — 문장의 저자가 오늘 둘입니다.**
+```
+ingestion_worker  :1141   rule_order.say_cycle_once(logger, found, max_chain_depth(...))   <- 로그
+                  :1143   cycles.append("allow_chain_trigger cycle: " + " -> ".join(found)) <- 화면이 받는 «목록»
+rule_order        :26     def cycle_note(trail, ceiling=None) -> 「The ONE sentence about a cycle」
+```
+🔴 같은 문장을 «두 줄이 각자» 짓습니다. 로그는 좌석을 지나고, 화면 목록은 «손으로 철자»합니다.
+🔴 그리고 그 좌석의 docstring 이 «이 병을 이미 한 번 앓았다»고 적어 둡니다 —
+   「AND IT GOES THROUGH THE ONE AUTHOR NOW. This line's own docstring claimed it was
+     「in the shape S-247 gave every operator line」 while SPELLING that shape by hand —
+     which is how one author quietly becomes two.」(S-247-b)
+   그때 고친 것은 «그 함수 안»이었고, 부르는 쪽의 :1143 은 그대로 남았습니다.
+📮 그래서 616 의 「한 좌석」이 «실제로» 한 좌석이 되려면 수리가 :1141 과 :1143 을 «같이» 지나야 합니다.
+   `say_cycle_once` 만 갈래를 배우면 «로그만» 갈라지고 화면 목록은 옛 낱말을 그대로 씁니다
+   (그리고 616 ⛔ 의 「'양성'이라는 낱말을 화면에 쓰지 말라」는 :1143 이 짓는 그 문자열의 이야기입니다).
+
+**③ ⚠️ 갈래의 «모집단»을 인리치로만 잡지 마십시오.**
+`rule_order.order_rules` 의 docstring 이 「트리거 == 타깃」 자기 엣지를 «이미» 예로 듭니다
+(`inventory_master -> inventory_master`). ⛔ 그 줄은 라이브 선언 이야기라 제가 «운영 주장»으로 쓰지 않습니다 —
+다만 「자기 고리는 합성 규칙만의 것」이라는 «전제»를 세우지 말아야 한다는 근거로는 충분합니다.
+
+🔵 616 ①(주석 세 문장, 착지 주인이 후속 커밋으로) · ④(클라가 화면을 연다) 는 그대로 옳습니다.
+확신도: ① «구조»(합성기 두 자리 + 선언 형식) · ② «구조»(세 줄 인용) · ③ «코드의 자기 문서»(운영 주장 아님).
