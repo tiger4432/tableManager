@@ -2013,7 +2013,12 @@ crud.py:4492   raise                                                            
 ```
 1회차   1 failed · 1128 passed          실패한 것: test_the_save_asks_the_one_judge_rather_than_re_typing_the_grammar
 2회차   0 failed · 1131 passed          그 시험은 «단독으로도» 통과합니다 (파일 단독 16 passed)
-🔴 collected 수가 «다릅니다» — 1129 vs 1131. 즉 흔들리는 것이 «결과»만이 아니라 «모집단»입니다
+🔴 collected 수가 «다릅니다» — 1129 vs 1131
+⚠️ **[정정 — 구현자 독립 측정]** 제가 이걸 「모집단이 흔든다」로 «넓게» 적었는데 틀렸습니다:
+   `pytest tests --collect-only` 세 번 연속 = 6856 · 6856 · 6856 — «전수 수집은 결정적»입니다
+   그러므로 흔들리는 것은 «제 선택자(-k)가 고른 부분»입니다. 차이가 «정확히 2» 인 것도 그 방향입니다
+   🔍 볼 자리(구현자 추정, 안 재섬): `parametrize` 의 집합이 «import 시점»에 만들어지고
+      시험이 «바꿀 수 있는» 것(BUILTIN_KINDS · MAPPER_REGISTRY 류). import 순서가 바뀌면 파라미터 수가 바뀝니다
 ```
 그래서 이 항목의 닫는 시험은 「실패 집합이 같다」보다 «앞»에 하나가 더 있습니다:
 **「두 번 돌려 «수집된 시험 집합»이 같다」.** 그게 안 서면 실패 집합 비교도 뜻이 없습니다.
