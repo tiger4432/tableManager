@@ -176,6 +176,35 @@ def _declare_bench_target(table_name):
 # the mapper
 # ---------------------------------------------------------------------------
 
+def _unknown_name(name, detail=None):
+    """「이 이름으로는 아무것도 못 돌립니다」 — 양쪽 점호를 달아서. 판정 541.
+
+    🔴 THE OPERATOR USED TO GET A PYTHON IMPORT ERROR. A mistyped `builtin:jion` fell
+    into the `module:function` arm, where `rpartition(":")` made the module 「builtin」 and the
+    bench handed back `ModuleNotFoundError: No module named 'builtin'`. That names a Python
+    fact, not a place to fix: the operator's next move is to correct a NAME, and nothing in
+    that sentence tells them what names exist. 「거절은 «이름»으로 온다」 is this round's ⑥.
+
+    ⛔ AND IT DOES NOT BRANCH ON `"builtin:"`. Spelling the prefix here would put a domain
+    word in code and give the rosters a second author; `rule_run` already reads both tables
+    and `builtins` owns the kind list.
+
+    ⚠️ `detail` RIDES AT THE END, never as the message. What went wrong technically can
+    matter to whoever is debugging a real module, but it is not what the sentence is for.
+    """
+    import mapper_sdk
+    from chain import builtins as chain_builtins
+
+    kinds = ", ".join(sorted(chain_builtins.BUILTIN_KINDS)) or "none registered"
+    registered = ", ".join(sorted(mapper_sdk.MAPPER_REGISTRY)) or "none"
+    said = ("%r is neither a registered kind nor a mapper this product can find. "
+            "Registered kinds: %s. Mapper names: %s. A file mapper may also be given as "
+            "module:function." % (name, kinds, registered))
+    if detail:
+        said += " (%s)" % detail
+    return {"who": name, "rows": [], "refusal": said}
+
+
 def try_mapper(name, sample, *, rule=None, target_table="bench_target"):
     """Run one mapper over `sample`. Returns `{who, rows, refusal}`; never writes.
 
@@ -243,13 +272,9 @@ def try_mapper(name, sample, *, rule=None, target_table="bench_target"):
             fn = getattr(importlib.import_module(module_name), function_name)
             who = "%s.%s" % (module_name, function_name)
         except Exception as exc:
-            return {"who": name, "rows": [],
-                    "refusal": "%s: %s" % (type(exc).__name__, exc)}
+            return _unknown_name(name, detail="%s: %s" % (type(exc).__name__, exc))
     if fn is None:
-        registered = ", ".join(sorted(mapper_sdk.MAPPER_REGISTRY)) or "none"
-        return {"who": name, "rows": [],
-                "refusal": "no mapper named %r; registered: %s "
-                           "(or give module:function)" % (name, registered)}
+        return _unknown_name(name)
 
     effective_rule = dict(rule or {})
     effective_rule.setdefault("name", "bench")
