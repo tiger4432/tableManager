@@ -251,3 +251,37 @@ def test_a_name_claimed_twice_is_refused_rather_than_picked(client, tmp_path, mo
     assert answer.status_code == 400, answer.text
     assert answer.json()["detail"]["code"] == "name_claimed_twice"
     assert path.read_bytes() == before, "a rule was converted despite the ambiguity"
+
+
+def test_an_entry_the_product_cannot_read_survives_a_save(client, tmp_path, monkeypatch):
+    """🔴 [판정 556] 저장은 «자기가 안 건드린 것»을 그대로 둡니다.
+
+    The save used to read the file as 「the objects in it」, so any other entry disappeared
+    the next time ANY rule was saved - silently, from the owner's file. Found by the
+    application lane.
+
+    ⚠️ SAME RULE AS 판정 536, ONE LEVEL UP. That one says the product carries CELLS it
+    cannot name, because 「읽는 자를 못 본다」 and 「아무도 안 읽는다」 are different facts.
+    The same holds for ENTRIES, and deleting is the single answer that cannot be undone.
+
+    ⚠️ THE FIXTURE HAS TO BE BUILT. No rule in this box is anything but an object, so this
+    case could not be walked - which is exactly why nothing had noticed.
+    """
+    stranger = ["something this product has never seen", 42]
+    path = tmp_path / "chain_rules.json"
+    path.write_text(json.dumps({"rules": [dict(FLAT), stranger, dict(OTHERS[0])]}),
+                    encoding="utf-8")
+    monkeypatch.setattr(admin, "chain_rules_path", lambda: str(path))
+    monkeypatch.setattr(admin.config_backup, "backup_dir_for",
+                        lambda p: str(tmp_path / "backup"))
+
+    answer = client.post(ROUTE, json={"name": FLAT["name"], "to": "unified",
+                                      "dry_run": False})
+    assert answer.status_code == 200, answer.text
+
+    after = json.loads(path.read_text(encoding="utf-8"))["rules"]
+    assert stranger in after, (
+        "the save deleted an entry it could not read, from the owner's file: %r" % (after,))
+    # ⚠️ AND THE COUNT STILL COUNTS RULES. Carrying the entry must not quietly change a
+    #    number the screen already draws.
+    assert answer.json()["rules"] == 2, answer.json()

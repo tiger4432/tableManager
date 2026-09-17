@@ -766,7 +766,16 @@ def save_chain_rule_raw(name: str, declaration, base: str) -> dict:
             "config_not_object", "chain_rules.json",
             "chain_rules.json 이 rules 배열을 가진 객체가 아닙니다")
 
-    rules = [dict(r) for r in document["rules"] if isinstance(r, dict)]
+    # 🔴 [판정 556] WHAT THIS SAVE DOES NOT RECOGNISE, IT CARRIES - it does not drop it.
+    #   This read `[dict(r) for r in ... if isinstance(r, dict)]`, so any entry in the
+    #   operator's file that is not an object VANISHED the next time ANY rule was saved,
+    #   without a word. Found by the application lane.
+    # ⚠️ AND IT IS THE SAME RULE 판정 536 SET FOR CELLS, one level up: 「제품이 모르는 것을
+    #   그대로 실어 나른다 — 읽는 자를 못 본다 ≠ 아무도 안 읽는다」. Whether a non-object
+    #   entry SHOULD be there is not a judgement this box can make, and deleting is the one
+    #   answer that cannot be taken back.
+    rules = [dict(rule) if isinstance(rule, dict) else rule
+             for rule in document["rules"]]
     existing = rule_index_named(rules, name)
     entry = dict(declaration)
     entry["name"] = name
@@ -838,6 +847,11 @@ def save_chain_rule_raw(name: str, declaration, base: str) -> dict:
     # has. The validator says its line and the save goes through.
     expanded_set = []
     for saved in rules:
+        # ⚠️ [판정 556] CARRIED, NOT JUDGED. An entry this file cannot read is not a
+        #    rule the loader will stand up either, so the cycle check has nothing to say
+        #    about it - and asking anyway would raise here and refuse an unrelated save.
+        if not isinstance(saved, dict):
+            continue
         more, _why, _notes2 = rule_shape.expand_declaration(
             saved, _catalogue.TABLE_CONFIG)
         expanded_set.extend(more)
@@ -845,7 +859,10 @@ def save_chain_rule_raw(name: str, declaration, base: str) -> dict:
 
     backup = _atomic_write(path, merged)
     return {"ok": True, "name": name, "base": file_fingerprint(path),
-            "backup": backup, "rules": len(rules),
+            # ⚠️ STILL THE NUMBER OF RULES, not of entries: carrying an unreadable entry
+            #    must not change a number the screen already draws (판정 556).
+            "backup": backup,
+            "rules": sum(1 for rule in rules if isinstance(rule, dict)),
             # The value an operator needs next, never a sentence: a new rule is saved off.
             "enabled": bool(entry.get("enabled", True)),
             "created": existing is None}
