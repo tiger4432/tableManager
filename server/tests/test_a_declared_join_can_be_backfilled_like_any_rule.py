@@ -26,7 +26,8 @@ SERVER_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
-from chain import builtins, join_into, replay, rule_shape            # noqa: E402
+import mapper_sdk                                                   # noqa: E402
+from chain import join_into, replay, rule_shape                     # noqa: E402
 from database.database import Base                                   # noqa: E402
 from database import crud, models, schemas                           # noqa: E402
 
@@ -165,16 +166,20 @@ def test_a_page_that_throws_costs_that_page_and_the_session_survives(db, monkeyp
     _seed(db)
     calls = {"n": 0}
 
-    def flaky(session, rule, **kwargs):
+    # [판정 589] THE ONE CALLING CONVENTION, `(db, payload[, rule=])`. The stub used
+    #   to read `row_ids` off kwargs, which is the shape the retired kind table called with.
+    def flaky(session, payload, rule=None):
         calls["n"] += 1
         if calls["n"] == 1:
             raise RuntimeError("psycopg2.errors.UniqueViolation: duplicate key")
-        return {"written": len(kwargs.get("row_ids") or ())}
+        rows = payload if isinstance(payload, list) else [payload]
+        return {"written": len(rows)}
 
-    # ⚰️ [판정 498] THE KIND, NOT THE DOOR. `builtins.run_builtin` is deleted; the seat looks
-    #    the implementation up in this table, so replacing the entry is how the page failure
-    #    is staged now - and it exercises one more real step than patching the door did.
-    monkeypatch.setitem(builtins.BUILTIN_KINDS, join_into.JOIN_INTO_MAPPER, flaky)
+    # ⚰️ [판정 498, then 562] THE REGISTRATION, NOT THE DOOR. `builtins.run_builtin`
+    #    went first and the kind table went second; the seat looks the implementation up in
+    #    `mapper_sdk.MAPPER_REGISTRY` now, so replacing THAT entry is how the page failure is
+    #    staged - one more real step than patching the door, and the same step a rule takes.
+    monkeypatch.setitem(mapper_sdk.MAPPER_REGISTRY, join_into.JOIN_INTO_MAPPER, flaky)
     rolled = []
     real_rollback = db.rollback
     monkeypatch.setattr(db, "rollback",
@@ -199,7 +204,7 @@ def test_a_refusal_from_the_kind_is_counted_and_named_rather_than_thrown(db,
     """⛔ A REFUSAL IS AN ANSWER, and it belongs in the report beside the failures rather than
     as an exception the caller has to translate."""
     _seed(db)
-    monkeypatch.setitem(builtins.BUILTIN_KINDS, join_into.JOIN_INTO_MAPPER,
+    monkeypatch.setitem(mapper_sdk.MAPPER_REGISTRY, join_into.JOIN_INTO_MAPPER,
                         lambda *a, **k: {"written": 0, "refusal": "right table is gone"})
 
     stats = replay.replay_rule(db, _rules()[0], apply=True, log=lambda m: None)

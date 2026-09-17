@@ -19,7 +19,8 @@ a whitespace-only edit looks like a change and produces nothing. `is_new` makes 
 unconditionally true, which is the one shape that cannot be vacuous.
 
 ⚠️ ONE OF THE SIX IS STRUCTURALLY EMPTY and is asserted to be, rather than invented: the paced
-lap selects `follow_up AND mapper in BUILTIN_KINDS`, so no file mapper can ever ride it.
+lap selects `follow_up AND writes_itself`, so no file mapper can ever ride it - a file mapper
+proposes, and this lap has no batch writer to put a proposal through.
 """
 import json
 import os
@@ -35,7 +36,6 @@ if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
 import event_constants                                                # noqa: E402
-from chain import builtins                                            # noqa: E402
 from chain import ingestion_worker as worker                          # noqa: E402
 from chain import replay, rule_run, rule_shape                        # noqa: E402
 from database.database import Base                                    # noqa: E402
@@ -231,10 +231,16 @@ def test_the_paced_lap_has_no_mapper_door_at_all(db, file_mapper, monkeypatch):
     `follow_up AND mapper in BUILTIN_KINDS`, so a file mapper declaring `follow_up` is dropped
     by the second half and never rides. A matrix that quietly had five cells would leave the
     reader guessing which one was missing and why."""
+    # [판정 589] ASKED OF THE PATH'S OWN PREDICATE, which is what 500 said a roll call
+    #   must do: this used to re-spell the selection as `follow_up AND mapper in
+    #   BUILTIN_KINDS`, and a copy of a predicate measures the copy. The table is gone and
+    #   the predicate is not, so the cell is asked of `picked_up_by_the_follow_up_pass`
+    #   itself - which narrows with the lap instead of after it.
     riding = [r for r in [_mapper_rule(follow_up=True)]
-              if r.get("follow_up") and r.get("mapper") in builtins.BUILTIN_KINDS]
+              if worker.picked_up_by_the_follow_up_pass(r)]
     assert riding == [], (
-        "a file mapper reached the paced lap; the lap's dispatcher calls builtins by kind")
+        "a file mapper reached the paced lap; the lap can only run a rule that writes "
+        "its own rows, and a file mapper proposes")
 
 
 # ---------------------------------------------------------------------------
