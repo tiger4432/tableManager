@@ -1,3 +1,82 @@
+## 🔴 [09-17 14:02] **판정 531 «전수» — ㉡ 의 답은 «예»입니다. 「저장하면 통합이 된다」는 아홉 중 «일곱»에 거짓입니다. 그래서 «안 지었습니다»**
+
+531 이 「짓기 «전»에 세라」 하셨습니다. 셌고, 그 수가 ②의 도착지 문장을 바꿉니다.
+⚠️ 구현자도 14:00 에 같은 결론에 도달했습니다(「every flat rule has cells the unified grammar cannot hold」).
+**그건 안 되풀이하고 «수»만 냅니다** — 제가 센 것이 그 문장의 크기를 정합니다.
+
+### 🔴 ㉠·㉡ — 이 박스의 선언을 «전수»로 (gitignore 파일이라 «이 박스에서»입니다)
+
+```
+이 박스에서   규칙 10 = 평면 «9» · 통합 «1»
+             평면 아홉이 쓰는 «구별되는 키» 40 (`__comment` 류 제외)
+🔴 그중 «출하 평면 스켈레톤이 선언조차 안 하는» 키 = «25»
+🔴 그 25 중 통합 문법에 «같은 이름의 자리»가 있는 것 = «0»
+```
+**규칙별 — 그 규칙이 든 「어느 스켈레톤에도 없는」 키 수:**
+```
+dt_log_to_dt_map                           0
+production_to_inventory_reservation_batch  0
+dt_metadata_to_dt_inventory                1   target_job_column
+dt_inventory_to_core_usage_map             1   allow_replace_map
+dt_log_to_core_usage_map                   1   allow_replace_map
+dt_log_to_dt_alignment_metadata            4   alignment_rule · geometry_bootstrap · reference_by_job_pattern …
+dt_inventory_to_standard_dt_map            4   allow_retraction · source_job_column · target_job_column …
+lot_event_to_lot_slot_wafer                6   event_type_column · list_delimiter · lot_column · slot_list_column …
+dt_log_to_primary_core_frame              11   accepted_metrics · alignment_rule · alignment_thresholds …
+=> «둘»만 선언된 문법 안에 온전히 들어 있습니다. «일곱»은 아닙니다
+```
+
+### 🔴 그리고 그 키들은 «죽은 것이 아닙니다» — 추적 코드가 읽습니다
+
+```
+git grep 로 세었습니다(추적 파일 · 시험 제외) — 그 키를 «읽는 파일» 수:
+   x_col 13 · alignment_rule 4 · target_job_column 4 · allow_replace_map 3 · slot_list_column 1
+=> 「스켈레톤에 없다」가 「아무도 안 쓴다」가 «아닙니다». 이관이 이것들을 옮기지 못하면 «기능이 꺼집니다»
+⚠️ 제가 «안» 잰 것: 그 읽기가 «어느 경로»에서 도는지(맵퍼 내부인지 로더인지). 그건 서버 레인의 자리입니다
+```
+
+### 🔴 ㉢ — 그리고 «번역기가 아예 없습니다»
+
+```
+server/chain/rule_shape.py:449   expand_declaration
+   if not isinstance(declaration.get("derive"), dict):  ->  return ([declaration], None, [])
+   그 함수 자기 주석: 「AN OLD FLAT RULE COMES BACK UNTOUCHED」
+=> 평면은 «번역 없이 그대로» 내려갑니다. 즉 오늘 평면->통합을 «하는 코드가 0 자리»입니다
+   문법을 가르는 유일한 칸은 `declaration.derive` 가 dict 인가 하나입니다(ledger/admin.py:653 · rule_shape.py:261)
+```
+🔵 그래서 531 ①(「화면이 평면 규칙을 통합으로 «열 수» 있다」)은 **화면만의 일이 아닙니다** —
+   열려면 «통합 문서»가 있어야 하고, 그걸 만드는 함수가 «없습니다». 그 함수의 자리는 서버입니다.
+
+### 📌 그래서 청합니다 — 이 라운드의 «모양»을 먼저 정해 주십시오
+
+```
+㉮ 25 키의 «자리»를 정한다 (예: derive.mapper.params 밑) -> 서버 문법 결정 -> 그다음 화면
+   ⚠️ 그 결정 «전»에 제가 폼을 만들면, 폼이 「옮길 수 없는 것」을 «옮긴 것처럼» 그립니다
+㉯ 이관을 «둘만»(온전한 두 규칙)으로 좁혀 길을 먼저 놓는다 -> 나머지 일곱은 다음 라운드
+   ⚠️ 그러면 ④(「남은 평면이 몇 개」)가 «7 에서 안 줄어듭니다» — 운영자 눈에 「안 되는 기능」입니다
+🔴 제 추천은 ㉮ 입니다. ②의 「저장하면 된다」가 참이 되는 것이 도착지의 «두 줄»이기 때문입니다
+```
+
+### ⏸ 제안 표 — UI 상설대로. «안 지었습니다**
+
+| 항목 | 왜 (5분 쓰면 무엇이 짜증나나) | 크기 |
+|---|---|---|
+| 「하나씩 누르기」를 «시키지 않는다» | 531 이 물으신 그것입니다. 아홉을 아홉 번 누르게 하면 반복을 사람에게 시키는 것입니다. 다만 «일괄 자동»은 금지이므로 — 「목록에서 골라 한 번에, 다만 «누가 눌러서»」가 그 사이의 모양입니다 | 중간 |
+| 바뀌는 것을 «옆에» 보여 준다 | 531 ③. 저장 «전» 좌/우 비교(평면 문서 · 통합 문서)와 「다시 도는 행 N」. 🔴 0 이면 «0이라고» 적습니다 | 중간 |
+| 「옮길 수 없는 칸」을 «이름으로» 말한다 | 위 25 가 있는 한, 거절은 「안 됩니다」가 아니라 「`alignment_rule` 이 통합에 자리가 없습니다」여야 고칠 데를 압니다 | 작음 |
+| 되돌리기는 «같은 버튼 자리»에 | ②의 「되돌릴 수 있다」. 되돌리기를 다른 화면에 두면 운영자가 못 찾습니다 | 작음 |
+
+### ⑤ 안 한 것 · 못 잰 것
+
+```
+⛔ «한 줄도» 안 지었습니다 — 531 이 「세고 나서」라 했고, 세 보니 ②가 오늘 거짓이라 더욱 그렇습니다
+못 잼   위 25 키를 «맵퍼가» 읽는지 «로더가» 읽는지 — 서버 경로라 제 자리가 아닙니다
+못 잼   운영에 평면 규칙이 몇인지 — 위 수는 «이 박스»입니다. 운영 주장으로 안 씁니다
+게이트   코드를 «한 줄도» 안 지었습니다 — 531 이 「세고 나서」이고, 세 보니 ②가 오늘 거짓이라 더욱 그렇습니다. 계기는 셋: 출하 스켈레톤(추적 파일) · 이 박스 선언(gitignore, 그래서 「이 박스에서」) · rule_shape.expand_declaration 을 «연» 것
+```
+
+---
+
 ## ⚠️ [09-17 13:56] **판정 528 의 정비 목록에 «없는 이름»이 하나 있습니다 — `_wantNew` 는 은퇴했습니다 (제가 은퇴시켰습니다)**
 
 528 은 응용 몫이고 제게 시킨 줄은 없습니다. 다만 그 목록의 «클라 줄»이 제 파일이고
