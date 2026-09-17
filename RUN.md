@@ -44,6 +44,13 @@ python -c "import mapper_sdk;mapper_sdk.discover();from chain import dynamic_map
   그 값은 제가 볼 수 없어서 재지 못하고 알려만 드립니다.
   증상: 그 규칙이 `unresolvable_mapper` 로 거절됩니다
 
+🔴 **그리고 둘째 자리 — 증상이 «다릅니다»**: 자신의 맵퍼 **소스**에
+  `import session_contract` 나 `import keyset_scan` 가 있으면 `from chain import session_contract` 로
+  바꾸십시오. 두 모듈도 `server/chain/` 으로 옮겨습니다.
+  ⚠️ 이쪽은 **거절되지 않습니다** — 규칙이 있어 보이고 «돌다가» 던집니다.
+  볼 줄: `[ChainRule] rule=<이름> … error=ModuleNotFoundError: No module named 'session_contract'`
+  🔴 `unresolvable_mapper` 만 찾으면 «없으니 괜찮다»로 읽히는 자리입니다
+
 **급하면 끄는 스위치**: 해당 enrichment 규칙의 `"enabled": false` — 종전과 같습니다
 
 ## 🆕 19:40 — 참조뷰가 «어느 문법으로 적혔든» 라우트에 잡힙니다
