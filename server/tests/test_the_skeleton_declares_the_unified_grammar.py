@@ -181,3 +181,49 @@ def test_a_rule_says_which_grammar_it_is_written_in():
             assert admin.chain_rule_raw_view("unified_one")["grammar"] == "unified"
         finally:
             admin.chain_rules_path = original
+
+
+def _map_nodes(node, trail=()):
+    """Every `kind: map` in the skeleton, with the path it sits at."""
+    if isinstance(node, dict):
+        if node.get("kind") == "map":
+            yield trail, node
+        for key, value in node.items():
+            for found in _map_nodes(value, trail + (str(key),)):
+                yield found
+    elif isinstance(node, list):
+        for index, value in enumerate(node):
+            for found in _map_nodes(value, trail + (str(index),)):
+                yield found
+
+
+def test_every_map_node_is_spelled_the_way_the_reader_reads_it():
+    """🔴 [판정 557] 한 종류, 두 철자 — 그리고 읽는 쪽은 «하나»만 압니다.
+
+    `client2/src/ontology_skeleton.js` descends a map through `node.of` and documents its
+    vocabulary at its own line 16: `{ keyed_by: 'name' | 'index', member, of }`. Its note
+    says 「DESCENT HAS ONE AUTHOR」 - and it was true of the AUTHOR while being false of the
+    SPELLINGS: the ledger's map nodes say `of`, the chain's said `node`, and
+    `shapeAt(['derive','mapper','params', <any>])` therefore came back NULL. The form had a
+    place for a mapper argument and no shape to draw in it.
+
+    ⚠️ MEASURED THROUGH THE READER ITSELF (imported, never sliced) before this was written;
+    this assertion is how the next person gets that measurement without running node -
+    「사람이 재서 초록인 것은 다음 사람에게 초록이 아닙니다」 (판정 558 ①).
+
+    ⛔ THE FIX BELONGS ON THIS SIDE. Teaching the reader a second spelling would make the
+    split permanent and would put the ledger's thirty-two map nodes at risk for the chain's
+    two.
+    """
+    skeleton = chain_bindings.skeleton()
+    found = list(_map_nodes(skeleton))
+
+    assert found, "no map node in the skeleton, so this gate asserts nothing"
+    for trail, node in found:
+        where = ".".join(trail) or "<root>"
+        assert "of" in node, (
+            "the map at %s does not say `of`, so the reader cannot descend into a member "
+            "of it - and a form drawing that cell has no shape to draw" % where)
+        assert node.get("keyed_by") in ("name", "index"), (
+            "the map at %s is keyed by %r, which is outside the reader's vocabulary "
+            "('name' | 'index') - it works only by falling through" % (where, node.get("keyed_by")))

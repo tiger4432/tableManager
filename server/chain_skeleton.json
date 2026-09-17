@@ -185,8 +185,9 @@
         "required": false,
         "node": {
           "kind": "map",
-          "keyed_by": "param",
-          "node": {
+          "keyed_by": "name",
+          "member": "인자",
+          "of": {
             "kind": "leaf",
             "hint": "free"
           }
@@ -399,8 +400,9 @@
                   "required": false,
                   "node": {
                     "kind": "map",
-                    "keyed_by": "param",
-                    "node": {
+                    "keyed_by": "name",
+                    "member": "인자",
+                    "of": {
                       "kind": "leaf",
                       "hint": "free"
                     }
