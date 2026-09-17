@@ -240,6 +240,9 @@ def test_the_seat_hands_the_laps_batch_to_the_kind(db, monkeypatch):
 
     rule = {"name": "s279_kwarg", "mapper": "builtin:s279_probe", "target_table": LEFT}
     monkeypatch.setitem(builtins.BUILTIN_KINDS, "builtin:s279_probe", probe)
+    # ⚠️ [판정 509] BOTH TABLES. `register_builtin` writes them together; faking a kind
+    #    by hand has to say how it is called, or the seat refuses it by name.
+    monkeypatch.setitem(builtins.BUILTIN_HANDS, "builtin:s279_probe", builtins.HANDS_ROW_IDS)
 
     rule_run.run_rule(db, rule, row_ids=["r-1"], done={"table": LEFT})
     rule_run.run_rule(db, rule, row_ids=["r-1"])

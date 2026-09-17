@@ -1,6 +1,6 @@
 # 지금 돌리면 되는 것
 
-> 🔵 **12:38 갱신.** 아래 ⓞ 가 «제일 먼저»입니다. 나머지는 그다음입니다.
+> 🔵 **12:53 갱신.** 아래 ⓞ 가 «제일 먼저»입니다. 나머지는 그다음입니다.
 > 🆕 이번 pull 의 체인 로그 변화는 «부팅 로그에서 볼 것» 절의 `[ChainRule]` 줄에 있습니다.
 
 ## ⏱️ 바쁘시면 «이 셋»만 — 나머지는 «보고 나서» 찾아 읽는 자리입니다
@@ -507,6 +507,10 @@ Transaction … permanently failed: N event(s) -> FAILED. 원인: <예외 문장
      🔴 None 은 «0 이 아니라» 「안 셌다」입니다 (rows_out·written 둘 다)
      🆕 error=…  그 규칙이 «던졌다»는 뜻입니다. 던져도 이 줄은 «찍힙니다» — 줄이 없으면 「안 돌았다」가 맞습니다
      어느 로그 파일인지는 어드민 chain 큐 응답의 `log_filename` 이 말합니다
+[ChainWaiting] <표>: N group(s) deferred behind <tx> (sweep #k) | rules: … | head: <사유>
+     🆕 (09-17) 이 줄의 태그가 `[HOL Guard]` 였습니다 — 소유자 09-15 「hol 가드란 용어 쓰지마」.
+     뜻은 그대로입니다: «앞 그룹이 막혀서 뒤 그룹이 기다린다». `rules:` 가 «끄면 되는 규칙 이름»이고,
+     `head:` 가 «머리가 왜 막혔나»입니다. 이 줄이 쌏하면 첫 줄 «위»의 `Failed to execute mapper` 를 보십시오
 [ChainRule] rule=… table=… ← woke_by=<표>#<tx> hop=h/max (xN)
      🆕 (09-17) 후속 랩도 «같은 태그»를 씁니다 — 이전에는 `[ChainBuiltin]` 이었고, 그 이름으로 찾으시던 분은 이제 이 줄로 오십시오
      ← woke_by  «무엇이» 이 랩을 깨웠나 (표#트랜잭션)  ·  hop  몇 번째 홉인가

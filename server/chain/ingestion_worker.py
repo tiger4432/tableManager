@@ -2597,7 +2597,11 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                 str(r.get("name")) for r in (rules or [])
                 if r.get("trigger_table") == _t)) or "(no rule triggers on this table)"
             logger.info(
-                "[HOL Guard] %s: %d group(s) deferred behind %s (sweep #%d) | rules: %s | head: %s",
+            # 🔴 [판정 507] THE TAG SAYS WHAT HAPPENS, NOT A THREE-LETTER NAME FOR IT.
+            #   소유자 2026-09-15: 「hol 가드란 용어 쓰지마 뭔말인지 모르겠음」. The line was
+            #   still printing `[HOL Guard]` two days later, and an operator reading it has
+            #   to know the acronym before they can know a group is waiting.
+                "[ChainWaiting] %s: %d group(s) deferred behind %s (sweep #%d) | rules: %s | head: %s",
                 _t, _hol_deferred[_t], str(_tx)[:12], _HOL_SWEEP, _blocking,
                 (_why or "reason not recorded")[:80])
     return failed_any

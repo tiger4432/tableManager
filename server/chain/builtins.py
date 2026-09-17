@@ -332,9 +332,32 @@ SELF_WRITING_KINDS = set()
 #: labelled 「mapper」 with nothing red. The label belongs to whoever adds the kind.
 BUILTIN_LABELS = {}
 
+#: 🔴 [판정 508] HOW A KIND IS CALLED, SAID AT REGISTRATION - the fact 503 claimed was
+#: already registered and was not. `rule_run.hands` DERIVED it from 「is this a builtin」, which
+#: is the address question 503 existed to remove: it moved the proxy down a level instead of
+#: taking it out. It read true only because all three registered kinds happen to take row ids,
+#: and the day one registers `hands=HANDS_PAYLOADS` the derivation would have been silently
+#: wrong - 「가드와 행동이 다른 집합을 본다」 one layer down.
+#:
+#: ⚠️ A KIND NOT IN THIS TABLE HANDS PAYLOADS, and that default is not a proxy: it is the
+#: file-mapper calling convention `(db, payload[, rule=])`, which the owner's files define and
+#: this round does not touch.
+HANDS_ROW_IDS = "row_ids"
+HANDS_PAYLOADS = "payloads"
+BUILTIN_HANDS = {}
 
-def register_builtin(kind: str, fn, stamps_origin: bool = False,
+
+def register_builtin(kind: str, fn, hands: str, stamps_origin: bool = False,
                      writes_itself: bool = True, label: str = "mapper"):
+    # 🔴 [판정 509] `hands` HAS NO DEFAULT, and that is the whole point of it. A default
+    #   is an absence that means something: a kind that takes payloads and does not say so
+    #   would be called wrongly WITHOUT ANYBODY WRITING A WRONG LINE - which is the defect
+    #   this round spent the day removing, wearing its 「부재」 face. Required, every new
+    #   kind answers the question on its way past.
+    if hands not in (HANDS_ROW_IDS, HANDS_PAYLOADS):
+        raise UnknownBuiltinKind(
+            "%r registered with hands=%r; it must say how it is CALLED, %r or %r"
+            % (kind, hands, HANDS_ROW_IDS, HANDS_PAYLOADS))
     existing = BUILTIN_KINDS.get(kind)
     if existing is not None and existing is not fn:
         raise UnknownBuiltinKind(
@@ -346,6 +369,7 @@ def register_builtin(kind: str, fn, stamps_origin: bool = False,
     if writes_itself:
         SELF_WRITING_KINDS.add(kind)
     BUILTIN_LABELS[kind] = label
+    BUILTIN_HANDS[kind] = hands
     return fn
 
 
@@ -379,8 +403,8 @@ def _install():
     # `stamps_origin`: `materialize_rows` carries the right row that answered into
     # `GeneralUpdateItem.origin_row_id` (S-280), so what it wrote can be withdrawn when
     # that row is deleted.
-    register_builtin(legacy_join_declaration.JOIN_MAPPER, _run_join, stamps_origin=True,
-                     writes_itself=True, label="join")
+    register_builtin(legacy_join_declaration.JOIN_MAPPER, _run_join, HANDS_ROW_IDS,
+                     stamps_origin=True, writes_itself=True, label="join")
     # 🔴 [S-237 · 판정 461 ③] TWO ENTRIES, AND BOTH OF THEM WRITE. THAT IS THE DEBT.
     # ⚰️ This paragraph used to read 「`builtin:join` is the READ-TIME join and production
     # runs on it」. Both halves were false: ruling 461 deleted the read-time executor, and
@@ -398,15 +422,15 @@ def _install():
     # rather than by either trusting the other. The debt closes when the last
     # `materialize: true` declaration moves to `into.table`. `register_builtin` refuses two
     # claimants of one id by name, so the separation is enforced here rather than trusted.
-    register_builtin(join_into.JOIN_INTO_MAPPER, join_into.run, stamps_origin=True,
-                     writes_itself=True, label="join")
+    register_builtin(join_into.JOIN_INTO_MAPPER, join_into.run, HANDS_ROW_IDS,
+                     stamps_origin=True, writes_itself=True, label="join")
     # S-195: the kind S-179 declared finally has an implementation, so the table carries the
     # whole `builtin:` vocabulary and the named temporary two-path condition is over.
     # ⛔ NOT `stamps_origin`. The sweep's answer comes from a candidate PROBE over a
     # reference view, not from one reference row, so there is no single row to write down —
     # and 판정 434 forbids answering that with a NULL that already means 「기존 행」. The
     # seat names this kind instead (`rule_run.retraction_refusal`).
-    register_builtin(enrichment.config.AUTO_CONFIRM_MAPPER, _run_auto_confirm,
+    register_builtin(enrichment.config.AUTO_CONFIRM_MAPPER, _run_auto_confirm, HANDS_ROW_IDS,
                      writes_itself=True, label="decide")
 
 

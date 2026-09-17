@@ -121,6 +121,7 @@ def test_the_dispatcher_runs_the_lap_inside_the_next_hop(monkeypatch):
     monkeypatch.setitem(builtins.BUILTIN_KINDS, "builtin:s249",
                         lambda db, r, **kw: seen.append(request_chain_depth.get()) or
                         {"written": 0})
+    monkeypatch.setitem(builtins.BUILTIN_HANDS, "builtin:s249", builtins.HANDS_ROW_IDS)
 
     worker._run_the_follow_up_pass(None, {"table": "t", "row_ids": ["r1"],
                                          "transaction_id": "tx-1", "chain_depth": 4})
@@ -142,6 +143,7 @@ def test_a_lap_with_no_incoming_hop_still_counts_as_the_first(monkeypatch):
     monkeypatch.setitem(builtins.BUILTIN_KINDS, "builtin:s249",
                         lambda db, r, **kw: seen.append(request_chain_depth.get()) or
                         {"written": 0})
+    monkeypatch.setitem(builtins.BUILTIN_HANDS, "builtin:s249", builtins.HANDS_ROW_IDS)
 
     worker._run_the_follow_up_pass(None, {"table": "t", "row_ids": ["r1"],
                                          "transaction_id": "tx-1"})
@@ -163,6 +165,7 @@ def test_the_dispatcher_skips_a_cause_it_already_served(monkeypatch, caplog):
     monkeypatch.setitem(builtins.BUILTIN_KINDS, "builtin:s249",
                         lambda db, r, **kw: calls.append(kw.get("row_ids")) or
                         {"written": 0})
+    monkeypatch.setitem(builtins.BUILTIN_HANDS, "builtin:s249", builtins.HANDS_ROW_IDS)
     done = {"table": "t", "row_ids": ["r1"], "transaction_id": "tx-1", "chain_depth": 1}
 
     with caplog.at_level(logging.INFO):
@@ -185,6 +188,7 @@ def test_a_different_cause_still_reaches_the_rule(monkeypatch):
     monkeypatch.setitem(builtins.BUILTIN_KINDS, "builtin:s249",
                         lambda db, r, **kw: calls.append(kw.get("row_ids")) or
                         {"written": 0})
+    monkeypatch.setitem(builtins.BUILTIN_HANDS, "builtin:s249", builtins.HANDS_ROW_IDS)
 
     worker._run_the_follow_up_pass(None, {"table": "t", "row_ids": ["r1"],
                                          "transaction_id": "tx-1"})
@@ -214,6 +218,7 @@ def test_the_lap_writes_inside_the_collapsed_outbox_mode(monkeypatch):
     monkeypatch.setitem(builtins.BUILTIN_KINDS, "builtin:s249",
                         lambda db, r, **kw: seen.append(request_outbox_mode.get()) or
                         {"written": len(kw.get("row_ids") or ())})
+    monkeypatch.setitem(builtins.BUILTIN_HANDS, "builtin:s249", builtins.HANDS_ROW_IDS)
     # 🔴 [판정 497 ⓒ] THE ENVELOPE FOLLOWS THE REGISTERED FACT, NOT THE `builtin:` PREFIX.
     #    A kind is self-writing because it SAID SO at registration, so a probe that reaches
     #    the table without saying it gets no envelope - correctly. Declared here rather than

@@ -208,8 +208,14 @@ def try_mapper(name, sample, *, rule=None, target_table="bench_target"):
     #   its INPUT. The two agree today only because all three registered kinds happen to write
     #   for themselves - 「가드와 행동이 다른 집합을 본다」, and the day a kind registers
     #   `writes_itself=False` they part.
-    #   `Resolved.hands` IS that fact, registered this round: it is what the seat itself uses
-    #   to decide between `(db, rule, row_ids=)` and `(db, payload)`.
+    #   `Resolved.hands` IS that fact: it is what the seat itself uses to decide between
+    #   `(db, rule, row_ids=)` and `(db, payload)`.
+    #   ⚰ THIS PARAGRAPH SAID 「registered this round」 WHEN IT WAS NOT. 503 landed `hands` as
+    #   `HANDS_ROW_IDS if builtin_kind(rule) is not None` - the address question one level
+    #   down - so this file and `rule_run.hands`'s own docstring said different things inside
+    #   ONE landing, and the docstring was the honest one. The ontology lane read both and
+    #   named the class: 「수리가 대리를 «없앤» 것이 아니라 «한 층 내린» 것」 (판정 508).
+    #   `register_builtin(..., hands=)` states it now, so the sentence above is true.
     #
     # ⚠️ AND THE NAME IS RESOLVED ONCE. It used to be resolved here and AGAIN below, which is
     #   two answers to 「what does this name run as」 waiting to disagree.

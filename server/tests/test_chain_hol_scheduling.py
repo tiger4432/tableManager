@@ -292,7 +292,7 @@ async def test_a_stuck_head_logs_one_line_per_table_per_sweep(monkeypatch, caplo
         with caplog.at_level(logging.INFO, logger="Chain"):
             caplog.clear()
             await ciw.process_pending_groups(db, group_order, groups, RULES, lambda: FakeDB())
-        lines = [r.getMessage() for r in caplog.records if "[HOL Guard]" in r.getMessage()]
+        lines = [r.getMessage() for r in caplog.records if "[ChainWaiting]" in r.getMessage()]
         seen.append(lines)
 
     for sweep, lines in enumerate(seen, start=1):
