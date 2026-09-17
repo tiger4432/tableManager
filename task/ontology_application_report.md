@@ -29836,3 +29836,70 @@ docs/architecture/CODE_MAP.md:1740         🔴 아래 참조
 이번에 그 갈래를 냈습니다(연 여덟).
 
 지도 반영: **없음** — 611 아래 남의 착지 행은 제가 적지 않습니다.
+
+---
+
+> **[09-17 19:10 응용] Q-164 — 착지 `62577a67`(랩 제거) 적대 QA: 새 칸을 «같은 dict 안의 주석»이 부정합니다. 그리고 그 주석의 셋째 문장이 «틀리면서» 고리 보고가 인리치 선언마다 하나씩 섭니다**
+
+랩 제거 자체는 정본 다섯 걸음과 어긋나지 않습니다. 아래는 그 착지가 «같이 들고 온» 칸 하나에 대한 것입니다.
+
+**① 🔴 `server/enrichment/config.py` — 합성 confirm 규칙의 dict 리터럴 «안»에서 주석과 칸이 반대입니다.**
+같은 dict 의 위쪽(규칙 이름 바로 아래)에 이렇게 적혀 있습니다:
+```
+🔴 A SELF-LOOP, AND THAT IS WHAT MAKES THE PING-PONG GUARD FREE. The derived
+table both triggers and receives, so the only thing that could make this
+re-enter itself is `allow_chain_trigger` — which this kind DOES NOT DECLARE.
+Its own writes therefore cannot wake it, and the load-time cycle validator
+does not see this loop as an edge at all.
+```
+그리고 그 아래 «같은 dict» 에 이번 착지가 `"allow_chain_trigger": True,` 를 넣었습니다.
+```
+문장 ①  「which this kind DOES NOT DECLARE」              -> 오늘 «거짓»
+문장 ②  「Its own writes therefore cannot wake it」        -> 오늘 «거짓»
+문장 ③  「the load-time cycle validator does not see
+         this loop as an edge at all」                    -> 오늘 «거짓»
+```
+🔵 ② 는 착지가 «알고» 있습니다 — 같은 dict 의 새 주석이 「PING-PONG IS BOUNDED BY THE WORK」로 답합니다.
+🔴 그런데 ①③ 은 «안 고쳐졌습니다». 같은 리터럴 안에서 두 주석이 서로를 부정합니다.
+상설 ①(「이 줄이 «참»인가 — 참이 아니면 불친절이 아니라 «거짓»이다」)의 실물입니다.
+
+**② 🔴 그리고 문장 ③ 이 틀리면서 «운영자가 보는 것»이 바뀝니다 — 착지 본문이 그 말을 안 합니다.**
+코드 경로(전부 `origin/main`):
+```
+_validate_chain_cascade_graph   옵트인이 «아닌» 규칙은 건너뜁니다
+                                (`if not rule.get("enabled", True) or not rule.get("allow_chain_trigger"): continue`)
+그래프                           graph[trigger_table].add(target_table)
+합성 confirm 규칙                trigger_table == target_table == derived_table  (그 dict 가 그렇게 적습니다)
+=> 자기 엣지 하나. visit() 가 방문 중인 노드를 다시 만나 «고리»로 보고합니다
+   문장: "allow_chain_trigger cycle: <derived_table> -> <derived_table>"
+```
+🔵 **거절은 없습니다**(판정 402 — 보고하고 안 막습니다). `save_chain_rule_raw` 도 이 결과로 거절하지 않습니다.
+   그래서 «막히는 사람»은 없습니다. 바뀌는 것은 오직 «보이는 것»입니다:
+```
+어드민 그래프 화면   고리 목록 — 그 화면의 존재 이유가 「운영자가 다른 데선 못 보는 것」입니다
+                   (검증기 독스트링이 그렇게 적습니다)
+로그               `rule_order.say_cycle_once` — 선언 «한 벌»에 한 번, 선언이 바뀌면 다시
+```
+🔴 **왜 결함으로 올리나:** 이 목록이 09-04 에 «진짜» 고리를 잡은 그 목록입니다
+   (메타 → dt_inventory → 메타 — 검증기 주석이 그 사건을 적어 두고 있습니다).
+   이제 그 목록에 «양성»이 «켜진 인리치 선언 수»만큼 상주합니다. 늘 켜져 있는 경고는 안 읽힙니다 —
+   그러면 다음 «진짜» 고리는 그 사이에 섞여 들어옵니다.
+   상설 ③㉢: 「로그·화면의 «문장»이 달라지나 — 달라지면 그 문장도 이 라운드」.
+⛔ 수를 안 적습니다 — 이 박스의 선언 수는 운영의 수가 아닙니다. 구조로만 적습니다: «켜진 인리치 선언당 하나».
+
+**③ 🔵 안 깨진 것도 적습니다.**
+자기 고리 자체는 «새것이 아닙니다» — `rule_order` 가 라이브 선언의 `inventory_master -> inventory_master`
+(트리거 == 타깃)를 이미 자기 독스트링에 적어 두고 있습니다. 오늘 새로운 것은 「인리치«도» 그 목록에 든다」입니다.
+그리고 착지가 「auto-confirm 이 이 칸 없이는 «조용히» 안 돈다」고 적은 것은 «맞습니다» — 그 칸을 빼면
+2026-09-16 의 「갈 곳이 없어진」 모양 그대로입니다. 이 보고는 «칸을 빼라»가 아닙니다.
+
+**④ ⚠️ 못 잰 것**
+`client2/src/admin.js` 는 `allow_chain_trigger` 인 규칙에 `CASCADE` 배지와 「Consumes chain-created
+events (cycle-checked at config load).」 줄을 답니다. 합성 confirm 규칙이 그 목록에 «뜨는지»를
+저는 «안 열어 봤습니다» — 뜬다면 그 배지도 선언마다 하나씩 섭니다. 이건 «못 잼»으로 둡니다.
+
+**📮 청하는 것**: ①의 주석 세 문장. 한 줄짜리 수리이고 «제가 짓지 않습니다»(⛔).
+②는 판정이 필요합니다 — 「양성 고리를 목록에서 가릴 것인가(자기 엣지는 고리로 안 셀 것인가),
+아니면 그대로 두고 화면이 «양성»이라 말할 것인가」. 어느 쪽이든 «한 자리»에서 답해야 문이 안 갈립니다.
+
+확신도: ① «구조»(같은 파일의 두 인용) · ② «구조»(검증기 세 줄 + 그 규칙의 두 칸) · ④ «못 잼».
