@@ -36,6 +36,18 @@ blob() {
   fi
   echo "${b:-none}"
 }
+# 🔴 [클라 레인 2026-09-17 15:2x] 위 수리가 «반쪽»이었다. `blob()` 은 design 을 보게 고쳤는데
+# 아래 줄이 «찍는 문장»은 여전히 origin/main 에서 왔다. 그래서 증상이 «침묵»에서 «틀린 표제»로
+# 바뀌었을 뿐이다 — 클라 보고 넷이 올라가는 동안 표제가 «39분 전 것»에 얼어 있었고, 그건
+# 읽는 사람에게 「새 것이 없다」로 읽힌다. 침묵보다 나쁘다.
+# 🔴 그래서 찍는 자리도 «고른 ref 를 그대로» 쓴다 — 고르는 곳이 둘이면 또 갈라진다.
+logref() {
+  if [ "$1" = "task/axis_and_material_report.md" ]; then
+    git rev-parse --verify -q design >/dev/null 2>&1 && { echo design; return; }
+    git rev-parse --verify -q origin/design >/dev/null 2>&1 && { echo origin/design; return; }
+  fi
+  echo origin/main
+}
 WATCHED="task/IMPLEMENTER_ORDERS.md task/DESIGN_ORDERS.md task/scoped_redo_report.md task/ontology_application_report.md task/axis_and_material_report.md"
 CFG="server/config/ontology/ledger_config.json"
 
@@ -69,7 +81,7 @@ while true; do
   for f in $WATCHED; do
     cur=$(blob "$f")
     if [ "$cur" != "${PREV[$f]}" ]; then
-      line=$(git log -1 --format='%h %ad %s' --date=format:'%H:%M' origin/main -- "$f" 2>/dev/null | cut -c1-110)
+      line=$(git log -1 --format='%h %ad %s' --date=format:'%H:%M' "$(logref "$f")" -- "$f" 2>/dev/null | cut -c1-110)
       case "$f" in
         task/*ORDERS*) say "📥 ORDERS $f — $line" ;;
         *)             say "📮 REPORT $f — $line" ;;
