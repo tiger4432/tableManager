@@ -27834,3 +27834,36 @@ dynamic_mappers.install()  ->  ('builtin:auto_confirm', 'builtin:join_into')
 🔵 그리고 서버가 새 지문을 «돌려주는» 것이 그 자체로 옳습니다 — 안 돌려주면 화면이 다시 읽을
    때까지 «자기가 방금 만든 상태»를 모르고, 그 사이에 누르면 거절됩니다.
 ⛔ 브라우저는 «안 열었습니다». 저는 「값이 그 길로 흐른다」까지만 말합니다 — 실제 클릭은 클라·총괄의 눈입니다.
+
+---
+
+> ✅📋 **[09-17 15:54 응용] Q-121 — 573 수리 «출하까지» 확인 + 562 ④ 의 남은 전수(모듈 단위) 결과**
+
+## ① 573 수리 — 소스·병합·«번들» 셋 다
+```
+client2/src/raw_registry_panel.js:667   onConvert({ …, to: convert.to, base: view.base })     ✅
+client2/src/admin.js:1213               convertChainRuleGrammar({ name, to, base })           ✅
+client2/src/admin.js:1219               body: JSON.stringify({ name, to, base, dry_run })     ✅
+🔵 그리고 «출하 번들»을 열어서 확인했습니다 (제 기억: 「소스에 있고 dist 에 없으면 사용자에겐 없는 것」):
+   client2/dist/assets/admin-B4tC5zc0.js
+   … rules/grammar`,{method:`POST`, … body:JSON.stringify({name:e,to:t,base:n,dry_run:r})
+   => 축약된 번들에도 `base` 키가 «그 자리»에 있습니다. 운영자 브라우저까지 갑니다
+⛔ 여전히 브라우저는 «안 열었습니다» — 「눌러서 저장된다」는 클라·총괄의 눈이 정본입니다.
+   제가 말하는 것은 「값이 그 길로 흘러 번들에 실렸다」까지입니다
+```
+
+## ② 562 ④ 모듈 전수 — 🔵 `server/chain/` 에 «죽은 모듈은 없습니다»
+```
+chain/ 의 모듈 «열아홉»을 제품에서 부르는 곳 수 (오늘 고친 계기: from-import · alias 포함)
+   제품 호출 0 인 것 «하나»: chain/__main__.py
+   -> 그런데 이건 «명령줄이 이름을 드는» 것입니다(python -m). 상설이 정한 네 갈래 제외 중 하나라
+      「참조 0」으로 지울 것이 «아닙니다». 실제 죽은 모듈은 «0» 입니다
+나머지 열여덟은 전부 제품 호출 «1 이상»:
+   가장 많이 불리는 것   ingestion_worker 9 · legacy_join_declaration 8 · rule_shape 8 · rule_run 7
+   가장 적은 것         graph 1 · rule_census 1 · dynamic_mappers 2 · join_refusal 2 · key_gate 2 · mapper_call 2
+```
+🔴 **그래서 ④ 의 쓰레기는 «모듈»이 아니라 «심볼»입니다** — Q-110 의 표가 그 층입니다
+   (`BUILTIN_KINDS`·`hands`·`writes_itself` 등은 살아 있는 파일 «안»에 삽니다).
+   「파일을 지운다」로 ⑤ 를 채우려 하면 지울 파일이 «없어» 보이고, 실제 쓰레기는 남습니다.
+⚠️ 그리고 `legacy_join_declaration`(8) · `legacy_materialized_join`(3) 은 «많이 불립니다» —
+   은퇴시키려면 그 여덟·셋을 먼저 옮겨야 합니다. 「legacy 라는 이름」이 곧 「안 쓴다」가 아닙니다
