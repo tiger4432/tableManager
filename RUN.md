@@ -47,7 +47,6 @@ python -c "import mapper_sdk;mapper_sdk.discover();from chain import dynamic_map
 🔴 **그리고 둘째 자리 — 증상이 «다릅니다»**: 자신의 맵퍼 **소스**에
   `import keyset_scan` 가 있으면 `from chain import keyset_scan` 으로 바꾸십시오.
   ✅ `import session_contract` 는 «그대로» 둡니다 — 최상위에 남아 있습니다. 고치지 마십시오
-  바꾸십시오. 두 모듈도 `server/chain/` 으로 옮겨습니다.
   ⚠️ 이쪽은 **거절되지 않습니다** — 규칙이 있어 보이고 «돌다가» 던집니다.
   볼 줄: `[ChainRule] rule=<이름> … error=ModuleNotFoundError: No module named 'keyset_scan'`
   🔴 `unresolvable_mapper` 만 찾으면 «없으니 괜찮다»로 읽히는 자리입니다
