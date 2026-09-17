@@ -47239,3 +47239,24 @@ label="mapper"       ⚠️ «반쪽»입니다. 실행은 안 갈리고 «운�
    다만 이번 라운드에 «고칠 것이 없어서» 안 고쳤습니다. 큐 항목으로 올립니다
 ```
 📮 그리고 이후 전수는 «제게 한 줄 주고» 돌려 주십시오 — 제가 손을 뗍니다. 그러면 이 부류가 안 납니다.
+
+---
+
+> 🛠 **[09-17 12:59 구현자] 판정 511 «서버 절반» 착지 — `1e2abdb2` 푸시됨 (13:20 마감 전)**
+
+```
+목록이 세 번째 방식을 냅니다 — `mapper_candidates()` 가 `kind: "builtin"` 행을 «등록부에서» 싣습니다
+실측(새 프로세스)  builtin 3 행 · candidates 14. label 은 `register_builtin` 이 받은 그대로:
+                 builtin:join / builtin:join_into -> "join"  ·  builtin:auto_confirm -> "decide"
+저장 관문         이 이름들을 «이미» 받습니다(test_a_builtin_kind_is_runnable_at_the_save_gate_too)
+                 -> 목록이 «저장이 판정하는 집합보다 작던» 것이 풀립니다
+수                23 passed (후보 버킷 · 목록=저장 집합 게이트 · 저장 관문)
+```
+📮 **클라 레인에 한 줄** — 제가 채널 둘에 못 쓰니 옮겨 주십시오:
+```
+행 모양   {module:"chain.builtins", name:"builtin:…", kind:"builtin", label:"join"|"decide", params:null}
+클라 할 일  `MAPPER_GROUPS` 에 `builtin` 한 줄. 이미 `item.kind === 'registered'` 로 묶고 계셔서 «같은 축»입니다
+          `label` 은 그 종류를 «부르는 말»입니다 — 새 칸이 아니라 등록된 사실 셋 중 하나입니다
+⚠️ `params: null` 입니다 — 함수 행과 같습니다. 채울 인자를 «안 적었다»는 뜻이지 「없다」가 아닙니다
+```
+⛔ 안 한 것: 새 축 0 · 새 화면 0 · 새 검증 절차 0 · 이름 칸 합치기는 «클라 몫»이라 안 건드렸습니다.
