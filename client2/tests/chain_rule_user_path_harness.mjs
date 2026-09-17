@@ -567,6 +567,12 @@ async function suite(probe) {
      `M pressing it asks the server what WOULD happen, before anything is written (${grammarPosts.length})`);
   ok(grammarPosts.every((c) => c.body.dry_run === true),
      'M ... and saying no writes NOTHING - the refusal leaves the file alone');
+  // 🔴 THE FINGERPRINT RIDES ALONG. The route refuses a write that carries no `base` (it is how
+  //    「the file changed since you opened it」 is caught), so a conversion without it would show the
+  //    operator the dry run, take their yes, and then refuse - 「I pressed yes and nothing happened」.
+  ok(grammarPosts.length === 1 && grammarPosts[0].body.base === 'fp-1',
+     `M ... and it carries the base it opened with, which the write requires `
+     + `(${grammarPosts.length ? JSON.stringify(grammarPosts[0].body.base) : 'no call'})`);
   // 🔴 판정 549. 「세었고 0」 is not 「안 셌음」. Zero must read as 「없음」, never as a missing count.
   ok(typeof asked === 'string' && asked.includes('다시 돌 것 없음'),
      `M a counted zero is told as 「없음」, not as a number and not as silence (${JSON.stringify(asked)})`);
@@ -586,6 +592,20 @@ async function suite(probe) {
   //    moves」 are different facts, and a screen writing its own line would fold them into one.
   ok(typeof asked === 'string' && asked.includes('실행 모양을 바꿉니다'),
      `M ... and carries the server's reason verbatim, so the two 「not counted」 cases stay apart`);
+
+  // 🔴 판정 565. NO FINGERPRINT, NO REQUEST. Sending an empty one gets a refusal from the server
+  //    and the operator sees 「I pressed yes and nothing happened」; the screen says it instead,
+  //    by name, with the next action.
+  asked = null;
+  calls.length = 0;
+  serve((call) => (call.url.includes('/chain/rules/raw')
+    ? { ...rawView(RULE.name), base: '' } : { ok: true }));
+  await refreshChainRule(RULE.name);
+  await flush();
+  if (convertBtn()) { clickConvert(); await flush(); await flush(); }
+  ok(calls.filter((c) => c.url.includes('/chain/rules/grammar')).length === 0,
+     'M with no fingerprint the screen sends NOTHING rather than an empty one');
+  ok(asked === null, 'M ... and does not ask the operator to confirm a request it will not make');
 
   // 되돌리기는 «같은 문»입니다 - 판정 548: 왕복이 항등이라 반대 방향 변환이 곧 되돌리기입니다.
   globalThis.window.confirm = () => true;

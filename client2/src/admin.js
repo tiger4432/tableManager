@@ -1210,14 +1210,23 @@ async function saveChainRule({ name, base, raw }) {
  *    ⚠️ 그래서 서버가 다른 이름으로 실어 보내면 화면은 «안 셌음»이라 말합니다. 틀린 쪽으로
  *       조용히 기울지 않습니다 — 이 칸의 «안전한 실패»가 그 방향입니다.
  */
-async function convertChainRuleGrammar({ name, to }) {
+async function convertChainRuleGrammar({ name, to, base }) {
+  // 🔴 `base` 는 «쓰기»에서 서버가 요구합니다(연 뒤에 파일이 바뀌었으면 거절). 드라이런에도 같이
+  //    보냅니다 — 두 요청이 «같은 몸»이라야 「확인한 것」과 「쓴 것」이 같은 전제 위에 섭니다.
   const post = (dryRun) => adminFetch(`${API_BASE}/admin/chain/rules/grammar`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, to, dry_run: dryRun }),
+    body: JSON.stringify({ name, to, base, dry_run: dryRun }),
   });
   const refuse = (message) => refreshChainRule(name, {
     refusal: { code: '', path: `rules.${name}`, message } });
+  // 🔴 [판정 565] 지문이 «없으면» 보내지 않습니다 — 빈 값을 보내면 서버가 거절하고, 운영자에게는
+  //    「예를 눌렀는데 아무 일도 안 났다」로 보입니다. 안 보내고 «이름 대어» 다음 행동을 말합니다.
+  //    ⛔ 지문을 «지어내지» 않습니다. 그 가드가 우는 조건이 바로 이 값입니다.
+  if (!base) {
+    await refuse(`${name} · 지문 없음 — 규칙을 다시 열고 눌러 주십시오`);
+    return;
+  }
   let dry;
   try {
     const res = await post(true);

@@ -661,7 +661,10 @@ export class RawRegistryPanel {
           // 서버는 «저장된» 문서를 바꿉니다 — 화면에 저장 안 된 글자가 있으면 그것이
           // 사라지는 것처럼 보입니다. 그래서 «먼저» 묻습니다.
           if (drafted !== null && !this.ask(LEAVE_UNSAVED)) return;
-          this.onConvert({ [spec.nameKey]: view.name, to: convert.to });
+          // 🔴 저장이 드는 «그 지문»을 같이 듭니다 — 서버가 쓰기에서 「연 뒤에 파일이 바뀌었나」를
+          //    이것으로 봅니다(저장 경로와 «같은 값», 같은 자리에서 옵니다). 안 실으면 확인창까지는
+          //    돌고 «쓰기만» 거절돼, 운영자에게는 「예를 눌렀는데 아무 일도 안 났다」로 보입니다.
+          this.onConvert({ [spec.nameKey]: view.name, to: convert.to, base: view.base });
         });
       }
       head.appendChild(btn);
