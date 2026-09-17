@@ -1,6 +1,6 @@
 # 🌐 AssyManager System Overview (Single Source of Truth)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-09-16 «후속» (부류 ㉣ 「문서가 오늘 거짓」 — 네 자리를 **코드에 대고 다시 재서** 고쳤다: §8 원장 라우트 «셋»→**«넷»**(`key-values` 가 빠져 있었다) · §8 어드민 게이트를 세는 **술어**(접두를 세다 «둘»을 흘렸다 — 술어를 «의존»으로 바꿨다) · §5 `claim_contract` **은퇴** 반영 · §6 Enrichment Queue 행이 들던 파일 둘이 «삭제»됐음을 후계와 함께 등재. 근거는 전건 `git grep` 실측이고 이 패스는 코드를 한 줄도 안 고쳤다) · 직전 2026-09-16 (§5 `chain_rules.json` 행 — 세 규칙 파일이 «한 이름공간», `ASSY_CHAIN_SYNTHESIZE` 은퇴, S-234 · §3 프로세스 표 문단 — 자식 명부의 정본이 `server/runtime/launcher_specs.child_specs()`, S-255 — 사실 동기화만, 결정 무변경 · ⚠️ 총괄 검수 대상) · 직전 2026-09-15 «후속 2» (우선순위 결정 문단 — 빈 칸은 층이 아니다, 판정 405 — 사실 동기화만, 결정 무변경) · 직전 2026-09-15 «후속» (§5 `chain_rules.json` 행 — 순환은 «보고»이지 거절이 아니다(판정 402) · 로더와 저장 관문이 확장기 하나(S-244) — 사실 동기화만, 결정 무변경) · 직전 2026-09-15 (§5 두 행 — 통합 선언 종류 둘이 `chain_rules.json` 에 산다 · enrich 확장기는 하나) · 직전 2026-09-05 «후속» 동기화 — §5 두 행: **`chain_rules.json` 의 「규칙 하나 = 엣지 하나」가 거짓이 됐다**(`allow_map_metadata_upsert` 는 «둘째 엣지»이고, 그걸 못 보던 검사가 살아 있는 순환을 통과시켰다) · **원장 선언의 `prepare.output_columns` 가 «파생»이 될 수 있다**(구현이 자기 산출을 밝힐 때. 기본값은 침묵) + 「임의의 스키마에서 «두 줄»」이 말해진다. **사실 동기화만 받았고 아키텍처 «결정»은 하나도 건드리지 않았습니다**(⚠️ 총괄 검수 대상). 직전 2026-09-05 정비 사이클(741 커밋) — §4 `RetroactiveRun` 에 **`runner`**(「지금 이걸 누가 돌리나」 — 행이 자기 프로세스보다 오래 살아 「죽었다」와 「느리다」가 같은 행이었다. ⛔ **자동 회수는 «의도적으로» 없다** · ⚠️ 기존 DB 는 마이그레이션 1회). **사실 동기화만 받았고 아키텍처 «결정»은 하나도 건드리지 않았습니다**(⚠️ 총괄 검수 대상). 직전 2026-09-02 정비 사이클(173 커밋) — §8 에 **`GET /tables/{t}/data/count` 신설**(`?defer_total=true` 가 미룬 수, 좁히기는 «한 조립») · §2 walk 의 `follow` 가 **키를 받는다**(`follow=inspected:x,y`)와 그 «둘째» 422 · §5 페이싱 소비자 **둘 → 셋**. 직전 2026-08-31 정비 사이클(229 커밋) — §2 그래프 은퇴 블록에 **「은퇴 ≠ 없어짐」 생존자 줄** · §4 에 `RetroactiveRun` · §5 에 **`server/config/` 밖에 사는 선언 둘**(`pacing.json`·`gap_names.json`) · §8 의 「원장 읽기 라우트는 «둘»」이 **거짓이 되어 «셋»으로 정정**(`gaps` 신설) + `/admin/retroactive/*` 행 신설. **사실 동기화만 받았고 아키텍처 «결정»은 하나도 건드리지 않았습니다**(⚠️ 총괄 검수 대상). 직전 2026-08-29 개정 6(엔티티 · 어휘 · walk). 직전 2026-08-23 원장 셋업 완주 · 은퇴 울타리
+> **Status:** 🟢 Living | **Last-verified:** 2026-09-17 «문 통일» (§6-bis 신설 — 좌석 하나 · 종류표 은퇴 · declared: 이름 · 쓰기 문, 그리고 «아직 아닌» 다섯) · 직전 2026-09-16 «후속» (부류 ㉣ 「문서가 오늘 거짓」 — 네 자리를 **코드에 대고 다시 재서** 고쳤다: §8 원장 라우트 «셋»→**«넷»**(`key-values` 가 빠져 있었다) · §8 어드민 게이트를 세는 **술어**(접두를 세다 «둘»을 흘렸다 — 술어를 «의존»으로 바꿨다) · §5 `claim_contract` **은퇴** 반영 · §6 Enrichment Queue 행이 들던 파일 둘이 «삭제»됐음을 후계와 함께 등재. 근거는 전건 `git grep` 실측이고 이 패스는 코드를 한 줄도 안 고쳤다) · 직전 2026-09-16 (§5 `chain_rules.json` 행 — 세 규칙 파일이 «한 이름공간», `ASSY_CHAIN_SYNTHESIZE` 은퇴, S-234 · §3 프로세스 표 문단 — 자식 명부의 정본이 `server/runtime/launcher_specs.child_specs()`, S-255 — 사실 동기화만, 결정 무변경 · ⚠️ 총괄 검수 대상) · 직전 2026-09-15 «후속 2» (우선순위 결정 문단 — 빈 칸은 층이 아니다, 판정 405 — 사실 동기화만, 결정 무변경) · 직전 2026-09-15 «후속» (§5 `chain_rules.json` 행 — 순환은 «보고»이지 거절이 아니다(판정 402) · 로더와 저장 관문이 확장기 하나(S-244) — 사실 동기화만, 결정 무변경) · 직전 2026-09-15 (§5 두 행 — 통합 선언 종류 둘이 `chain_rules.json` 에 산다 · enrich 확장기는 하나) · 직전 2026-09-05 «후속» 동기화 — §5 두 행: **`chain_rules.json` 의 「규칙 하나 = 엣지 하나」가 거짓이 됐다**(`allow_map_metadata_upsert` 는 «둘째 엣지»이고, 그걸 못 보던 검사가 살아 있는 순환을 통과시켰다) · **원장 선언의 `prepare.output_columns` 가 «파생»이 될 수 있다**(구현이 자기 산출을 밝힐 때. 기본값은 침묵) + 「임의의 스키마에서 «두 줄»」이 말해진다. **사실 동기화만 받았고 아키텍처 «결정»은 하나도 건드리지 않았습니다**(⚠️ 총괄 검수 대상). 직전 2026-09-05 정비 사이클(741 커밋) — §4 `RetroactiveRun` 에 **`runner`**(「지금 이걸 누가 돌리나」 — 행이 자기 프로세스보다 오래 살아 「죽었다」와 「느리다」가 같은 행이었다. ⛔ **자동 회수는 «의도적으로» 없다** · ⚠️ 기존 DB 는 마이그레이션 1회). **사실 동기화만 받았고 아키텍처 «결정»은 하나도 건드리지 않았습니다**(⚠️ 총괄 검수 대상). 직전 2026-09-02 정비 사이클(173 커밋) — §8 에 **`GET /tables/{t}/data/count` 신설**(`?defer_total=true` 가 미룬 수, 좁히기는 «한 조립») · §2 walk 의 `follow` 가 **키를 받는다**(`follow=inspected:x,y`)와 그 «둘째» 422 · §5 페이싱 소비자 **둘 → 셋**. 직전 2026-08-31 정비 사이클(229 커밋) — §2 그래프 은퇴 블록에 **「은퇴 ≠ 없어짐」 생존자 줄** · §4 에 `RetroactiveRun` · §5 에 **`server/config/` 밖에 사는 선언 둘**(`pacing.json`·`gap_names.json`) · §8 의 「원장 읽기 라우트는 «둘»」이 **거짓이 되어 «셋»으로 정정**(`gaps` 신설) + `/admin/retroactive/*` 행 신설. **사실 동기화만 받았고 아키텍처 «결정»은 하나도 건드리지 않았습니다**(⚠️ 총괄 검수 대상). 직전 2026-08-29 개정 6(엔티티 · 어휘 · walk). 직전 2026-08-23 원장 셋업 완주 · 은퇴 울타리
 > 
 > ⚰️ **[`2ec78b9` · 판정 R-2026-08-14-H] 구 그래프 갈래가 은퇴해 §2·§3·§5·§6·§8이 갱신됐습니다** — 백엔드 자식이 다섯에서 **넷**, 라우트 일곱이 **은퇴**(⚠️ 2026-09-05: 그 410 묘비마저 삭제됐습니다 — §2 참조), 저장소 셋이 **DROP**(약 841 MB). 후계는 정준 원장입니다. 토폴로지 변경이라 SSOT가 반드시 말해야 하는 종류의 사실입니다. **⚠️ 총괄 검수 대상** — 이 문서는 사실 동기화만 받았고 아키텍처 «결정»은 하나도 건드리지 않았습니다.
 > 
@@ -232,6 +232,29 @@ graph TD
 | **Enrichment Queue(결손 보정 워크리스트)** | [spec/ENRICHMENT_QUEUE_SPEC.md](../spec/ENRICHMENT_QUEUE_SPEC.md) · ⚠️ [Claim Requirement & Worklist](../spec/CLAIM_REQUIREMENT_WORKLIST_SPEC.md)(**그 문서의 전제 `claim_contract` 가 은퇴했다** — §5 참조. 읽기 전에 그것을 알고 열 것) | 서버 `enrichment/config.py` · `enrichment/mapper.py` · `enrichment/candidates.py`(**오늘의 「액션」** — `confirm_keys`·`resolve_target_candidate`) · `enrichment/analysis.py` · `enrichment/backfill.py` · 클라 `client2/src/enrichment_queue.js` · `client2/src/enrichment_reference_view.js` · 선언 `config/enrichment_rules.json`.<br>⚰️ **[2026-09-16 정정] 종전 이 자리가 들던 `enrichment_actions.py` 와 `client2/src/enrichment.js` 는 «없다 — 보관된 것이 아니라 삭제됐다».** `client2/src/enrichment.js` 삭제 `42580305`(2026-09-06, src 안 import 0 · 번들 리터럴 22 중 0). `server/enrichment_actions.py` 는 `8fc0a996`(2026-08-28)에서 `server/_archive/` 로 «옮겨졌다가» `f74bbd98`(2026-09-13)에서 «지워졌다» — 그래서 「`_archive/` 로 이동」이라 적은 옛 문장은 **16일간 참이었고 지금은 거짓이다**(오늘 그 디렉터리엔 `tests/` 뿐). ✅ **후계는 위 목록** — 「채워야 할 것을 고른다」는 `enrichment/candidates.py`, 화면은 `enrichment_queue.js` |
 | 어드민(파이프라인 5탭 + 원장 선언/Explorer + 코드 에디터) | [architecture/frontend §5](../architecture/frontend.md) | `client2/src/admin.js`, `client2/src/ontology_explorer*`, `main.py /admin/*` |
 | HTML 토폴로지 파서 | [HTML_TOPOLOGY_PARSER_GUIDE](../guide/HTML_TOPOLOGY_PARSER_GUIDE.md) | `parsers/html_topology_parser.py` |
+
+### 6-bis. 체인 실행 — 2026-09-17 «문 통일» 라운드 뒤의 모양
+
+```
+소유자 정본(2026-09-17)   트랜잭션 -> 아웃박스 -> 트리거 -> 맵퍼 실행 -> 페이로드·업서트
+                        「어떤 형태의 선언이든 맵퍼로 이어지고」 — 조인·인리치·확정도 맵퍼다
+```
+| 오늘 참인 것 | 어디 |
+|---|---|
+| 규칙을 «돌리는 자리»가 좌석 하나 | `chain/rule_run.py` `run_rule` — 제품 호출 «다섯»(worker 3 · replay 2) |
+| 종류표가 «없다» — `builtin:` 네 표와 `register_builtin` 은퇴 | 사실은 `chain/dynamic_mappers.py` `TEMPLATE_FACTS`(label · stamps_origin · writes_itself) |
+| 제품이 짓는 맵퍼 «셋»이 «이름으로» 등록된다 | `declared:join` · `declared:decide` · `declared:virtual_join` (판정 600, `a96d4a68`) |
+| 쓰기가 «문»이다 | `chain/ingestion_worker.py` `apply_chain_writes` (`2699fc38`) — 호출자 하나, 둘째는 다음 홉이 온다 |
+| 부팅에서 «아무도 안 집는 규칙»을 이름 대어 거절 | `refuse_rules_no_path_picks_up` (판정 500) — 0 도 2 도 거절 |
+
+🔴 **아직 «아니라고» 적어 두는 것** (정본 다섯 걸음에 아직 안 맞는 자리 — 응용 레인 실측 2026-09-17)
+```
+맵퍼가 «스스로 씁니다»        템플릿 셋이 writes_itself: True — 페이로드를 안 돌려줍니다 (판정 605)
+랩(미루기)이 «남아 있습니다»   follow_up 칸 · PICKUP_PATHS · 세 함수 (이번 라운드 ②)
+소급이 «자기 쓰기 문»을 씁니다  `chain/replay.py` `_apply_replay_batch` (다음 라운드)
+인리치 소급이 «좌석을 안 지납니다»  `enrichment/backfill.py` `run_backfill` (판정 607 — ① 의 닫힘 조건)
+원장 미루기 큐가 «남습니다»    `ledger/followup.py` — 메모리 큐, 소비자는 원장 (판정 608, 주어를 답니다)
+```
 
 > **정정:** 맵 에디터는 WebSocket이 아니라 REST(`loadExistingMap`/`pushMapData`) + `localStorage`(레전드)로 동기화합니다. 실시간 WS는 메인 그리드 페이지에만 있습니다.
 
