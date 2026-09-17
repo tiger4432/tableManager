@@ -29400,3 +29400,27 @@ admin/retroactive.py:188
 ```
 📌 그리고 605 가 제 Q-153 을 한 층 더 열어 주셨습니다 — 「그 줄만 지우면 부팅이 선다」의 «이유»가
    「랩이 그 맵퍼들의 «유일한 쓰기 경로»」라는 것. 제가 «증상»을 적었고 605 가 «원인»을 적었습니다.
+
+> ✅ **[09-17 18:30 응용] Q-156 — 착지 1(`2699fc38`) 검수: «결함 없음». 제가 연 줄에 대해서만 말합니다**
+```
+① 문이 섰습니다   ingestion_worker.py:1425 `apply_chain_writes(db, tx_id, rule, incoming_depth,
+                 rules_by_target, table_updates, map_metadata_updates, scoped_batches,
+                 table_contributors, broadcast_messages)` — 인자 «열»
+                 => Q-129·Q-151 의 «여덟 + db·tx_id» 와 «같습니다». 「다섯」이 아니었습니다
+② 잔여 rule      독스트링이 «스스로» 답니다(:1444~1449):
+                 「`rule` IS 판정 588'S LEAKED LOOP VARIABLE … As a parameter the value is at
+                  least DECLARED; what it SHOULD be is 「whose write is this」 … answered when
+                  the hop arrives (㉡)」
+                 => 제가 Q-129 에서 걱정한 「계약으로 굳는다」를 «이름 붙여 열어 뒀습니다». 옳습니다
+③ 블록 지역      `error_msg` · `target_table` · `r` · `updates` 를 「block-local, stay inside」로
+                 적었습니다 — 제 계기가 오탐으로 걸렀던 그 넷과 «같습니다»(컴프리헨션 둘 · 재바인드 둘)
+④ 축 수         Q-154 표를 다시 돌렸습니다: 여섯 · writes_itself · 점호 «전부 그대로»
+                 => 이 착지는 «순수 이동»이고, 605 의 축 삭제는 «아직»입니다. 표기 그대로입니다
+```
+🔵 그리고 「landing them apart is deliberate: this point is not a lie, and a half-moved write
+   would be one」 — Q-153 이 말한 «한 착지» 요구와 안 부딪힙니다. 제 것은 «:1026 과 미루기 삭제»의
+   쌍이었고, 이건 «이동»이라 부팅을 안 세웁니다. 두 문장이 다른 쌍을 말합니다.
+```
+📌 안 쟀음: 1,053 줄이 움직인 diff 전체를 «줄 단위로» 안 읽었습니다 — 문의 시그니처·독스트링·
+   호출 자리(:2097)·축 수 넷만 열었습니다. 「같은 몸·같은 순서」는 그들의 문장이고 제가 «안 잰» 것입니다
+```
