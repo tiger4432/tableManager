@@ -2810,14 +2810,19 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 
 > ⚰️⚰️ **[2026-09-17 판정 562·585] 아래는 «기록»이다 — 이 파일은 더는 «등록부»가 아니다.**
 > ```
-> 오늘 실측   268 줄 (위 표제의 446 은 `6c71084f` 시점)
+> 🆕 이름     `3c9da31f` 에서 **`chain/synthesis.py`** 가 됐다 — 「합성 자리가 «지워진 기제»의 이름을 쓰고 있었다」.
+>            ⚠️ 위 «표제»는 아직 `chain/builtins.py` 다. 표제는 그 절의 저자 몫이라 여기서 안 고친다(631 ②) —
+>            그래서 이 줄이 «표제와 본문이 어긋나 있다»는 사실을 대신 적는다
+> 오늘 실측   268 줄 (위 표제의 446 은 `6c71084f` 시점) — 이름이 바뀌었을 뿐 «정의는 그대로»다
 > 정의하는 것  synthesis_half_says · synthesize_chain_rules · written_in ·
 >            ensure_declared_unique_keys · declared_unique_targets · declared_unique_index_names
 >            => 합성과 «선언된 유일 키»의 자리다. 종류표도 문도 아니다
 > 없어진 것   BUILTIN_KINDS · ORIGIN_STAMPING_KINDS · SELF_WRITING_KINDS · BUILTIN_LABELS ·
 >            register_builtin · UnknownBuiltinKind — «코드 노드 0»(AST, 추적 .py 293 파일)
 > 오늘의 답   그 네 사실은 `chain/dynamic_mappers.py` 의 `TEMPLATE_FACTS` 에 산다
->            (label · stamps_origin · writes_itself) · 이름은 `declared:` 셋(판정 600)
+>            (label · stamps_origin · writes_itself) · 🆕 이름은 `declared:` **넷** — join · decide ·
+>            virtual_join · enrich(`4352ad47`). ⚰️ 종전 이 줄은 「셋」이었고 착지 하나에 넘어갔다.
+>            🔴 세는 법: `chain/dynamic_mappers.TEMPLATES` 의 키 (계기를 같은 칸에 둔다)
 > 🔴 아래 줄 번호(:309 · :318 · :327 · :333 · :359 · :122)는 «그때의» 앵커다. 지금 열면 다른 것이 있다
 > ```
 
