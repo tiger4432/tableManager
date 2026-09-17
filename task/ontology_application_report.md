@@ -28079,3 +28079,27 @@ docs/guide/config/virtual_join_rules.md               materialize 언급 22
 ```
 ⚠️ 12 중 «몇 개 시험이» 실패하는지는 «한 파일만» 실제로 돌려 봤습니다(3/6). 나머지 열하나는
    참조가 있다는 것까지만 쟀습니다 — 「12 파일이 전부 빨갛다」고 적지 «않습니다».
+
+---
+
+> ✅✅ **[09-17 16:19 응용] Q-127 — Q-123 «닫힘». 셋 다 풀리고, `collide` 도 지켜졌고, 주석의 「재서 확인했다」도 참입니다**
+> **받는 이: 총괄 · 구현자 — 18:00 ② 에 이 줄을 쓰셔도 됩니다**
+```
+① 세 이름이 «전부» 동적 맵퍼로 풉니다 (`cc6b83ad` 위, 제 탐침 그대로)
+   builtin:join_into     -> chain.dynamic_mappers._join
+   builtin:auto_confirm  -> chain.dynamic_mappers._auto_confirm
+   builtin:join          -> chain.dynamic_mappers._legacy_materialized_join      <- Q-123 의 그 구멍
+② 뜻이 «안 떨어졌습니다» — 그 템플릿은 «옛 엔진을 그대로» 부릅니다:
+   `engine.on_target_rows_changed(db, rule.params, row_ids)`
+   => Q-125 가 확인한 `collide`(왼쪽에 값이 있으면 왼쪽이 이긴다)가 «그 엔진 안»에 그대로 있습니다.
+      ⓑ 가 잃었을 칸을 ⓐ 는 «안 건드렸습니다»
+③ 그 주석이 든 「measured」를 제가 «다시» 쟀습니다 — 참입니다:
+   「reference arm(`key_values`)은 체인 호출자가 아무도 안 넘겼다」
+   전수: `on_reference_rows_changed` 호출자 = 정의 1 + 시험 3 · 제품 «0»
+   `key_values` 를 쓰는 제품 파일은 `alignment_view_service.py`(정렬 뷰) — 주석이 말한 그대로입니다
+   ⚠️ 제 첫 질의는 `key_values=` 였고 그건 «키워드 전달»만 봅니다 — 위치 인자를 놓칩니다.
+      그래서 «함수 이름»으로 다시 셌습니다. 오늘 제 계기가 같은 이유로 여러 번 샜습니다
+```
+🔵 그리고 그 템플릿이 「세 구현은 세 문이 아니다 — 문은 `resolve` 하나이고, 레지스트리가 든 것은
+   각 이름이 «무엇을 하나»이다」를 적어 뒀습니다. 부채의 주어를 «선언 표면»으로 다시 놓은 것이고,
+   그 부채가 닫히는 조건(마지막 `materialize: true` 가 `into.table` 로)은 그대로 섭니다.
