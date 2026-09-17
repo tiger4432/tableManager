@@ -48795,3 +48795,97 @@ facts 는 옛 등록 그대로   stamps_origin: True · writes_itself: True · l
 ```
 🔴 **갱신된 추정: ③ 까지는 갑니다. 3위 51 건과 4위 이동은 18:00 안에 «못 봅니다».**
    16:30 에 드린 추정과 같습니다 — 바뀐 것 없습니다.
+
+---
+
+> 🔴 **[09-17 16:23 구현자] 보고 repI — 583 이 물은 것을 열었고, ③ 이 «판정 264 를 뒤집습니다». 착수 전에 판정을 청합니다**
+> **받는 이: 총괄 — ③ 에 손대기 전입니다. 코드 한 줄도 안 바꿨습니다**
+
+## ① 583 이 「당신이 확인하십시오」라 한 것 — `self_writing_name` 3 개를 열었습니다
+```
+정체   def 1 + chain/replay.py «둘» (485 · 491)
+491    stats["self_writing_kind"] -> admin/retroactive.py:188 이 읽습니다
+188    self_writing = s.get("self_writing_kind") is not None
+189    affected = s["mapper_items"] if self_writing else s["cells_proposed"]
+191    affected_label = "다시 계산할 행" if self_writing else "덮어쓸 셀"
+485    dry-run 분기: 자기가 쓰는 규칙은 «안 돌리고» 「받을 행 수」를 셉니다
+```
+🔵 **결론: ③ 이 «안 데려갑니다». 그리고 ㉣ 의 잔여도 «아닙니다».**
+   이건 소급 «미리보기»가 수의 «단위»를 고르는 자리입니다 — 행이냐 셀이냐. 판정 505 가
+   여기에 대해 「the property here really is 「does it write its own rows」」라고 이미
+   적어 두었습니다(`admin/retroactive.py:184`).
+🔴 그리고 562·567 이 이 성질을 «답에서 읽게» 옮긴 것과 «안 부딪힙니다» — 다른 시제입니다:
+```
+run 경로     돌린 «뒤» answer["written"] 에서 읽는다     -> 미리 물을 이유가 없다  (567)
+dry-run 경로  «안 돌리고» 답해야 한다                    -> 읽을 결과가 «없다»
+```
+   그래서 이건 「주소를 묻는 잔해」가 아니라 **stamps_origin 과 «같은 부류»**입니다 —
+   「이 일이 무엇을 하나」이고, TEMPLATE_FACTS 옆에 «있어야 할» 것입니다.
+   판정 508 대로 «없앴다고 말하지 않습니다».
+
+## ② 🔴 그런데 ③ 을 글자 그대로 하면 — 미루기 «칸»이 사라지고 «커밋 경로 인라인»이 됩니다
+「미루기 경로 제거」의 실행은 `follow_up` 칸을 없애는 것이고, 그 칸을 «쓰는 규칙 둘»이
+전부 「비싸서 뒤로 뺐다」는 측정을 달고 있습니다. 제가 판정을 «찾아» 인용합니다:
+```
+enrichment/config.py:993~997   오토컨펌
+   「S-151, 판정 264 — inlining it cost «0.875 s per group» and that measurement is why
+     the seat moved. This cell is what says so in the declaration instead of only in the code」
+chain/legacy_join_declaration.py:873   레거시 조인
+   「One reference row can reach «70,800 target rows» here (≈92 s at the owner's IO spec),
+     and 「요청/커밋 경로 인라인 금지, 뒤따르는 일은 페이싱된 별도 작업」 is the standing rule」
+```
+🔴 그리고 그 상설은 소유자 것입니다(2026-09-08 「그냥 성능 마진 넉넉하게 개발해」 —
+   「커밋 경로에 인라인 금지 · 뒤따르는 일은 페이싱된 별도 작업」).
+🔴 CLAUDE.md 「소유자가 승인한 판정이면 «내가 뒤집지 않는다» — 수와 함께 올린다」. 그래서 올립니다.
+
+## ③ 그리고 판정 500 이 이 칸의 «신분»을 이미 정해 뒀습니다 — 「문」이 아니라 「때」입니다
+```
+ingestion_worker.py:996 (판정 500, 소유자 「결국 이것도 같은 체인이니 같은 문 알지?」)
+   「The two passes are one chain with two MOMENTS, and `follow_up` is the cell that says
+     which moment — «it is not a second way of choosing rules»」
+```
+그리고 오늘 제가 잰 바로는 «문»은 이미 하나입니다:
+```
+표 묻기   watches_table «한 함수»          (판정 500 ①)
+좌석      rule_run.run_rule «한 좌석»       (두 경로 다 이것을 부릅니다)
+종류표    «없음»                            (판정 562 착지)
+```
+
+## ④ 🔴 그러면 «진짜 남은 갈라짐»이 무엇인가 — 칸이 아니라 «능력»입니다
+```
+그룹 걸음   answer["updates"] 를 «받아서» table_updates 에 싣고 crud 로 씁니다
+           (ingestion_worker.py:1641~1682 — 배치 쓰기 + 맵 메타 + scoped batch)
+미루기 걸음  answer 에서 «written · refusal 만» 읽습니다 (ingestion_worker.py:3054~3067)
+           -> updates 를 돌려주는 규칙이 이 랩에 오면 «바닥에 떨어집니다»
+그래서      picked_up_by_the_follow_up_pass 가 writes_itself 를 «능력 가드»로 답니다
+           = ① 의 마지막 제품 소비자가 «바로 이 가드»입니다
+```
+🔴 **그러므로 ① 은 이 능력 격차가 닫혀야 닫힙니다.** 제가 셋을 다 따져봤습니다:
+```
+(가) 미루기 걸음에 «같은 배치 쓰기»를 준다   -> 가드가 «불필요»해짐 -> ① 닫힘 · 페이싱 «살아남음»
+(나) 칸을 없앤다(글자 그대로의 ③)            -> ① 닫힘 · 판정 264 «뒤집힘» · 커밋 경로 인라인
+(다) 가드를 로더로 옮긴다                     -> 로더가 PICKUP_PATHS 를 «읽어서» 답을 냅니다.
+                                             옮기면 소비자가 로더로 «이사»할 뿐 ① 은 «안 닫힙니다»
+```
+⚠️ (가)의 크기를 재서 적습니다 — 작지 않습니다: 그룹 걸음의 쓰기는 «42 줄»이고 그 안에
+   맵 메타 검증 넷과 scoped batch 정규화가 같이 있습니다. 사본을 하나 더 두면
+   「빠진 반쪽을 사본 하나로 고치면 갈라짐이 두꺼워진다」 그대로라, «한 함수로 빼서 둘 다
+   지나게» 해야 합니다. 그건 «오늘 17:30 안에 못 섭니다» — 정직하게 적습니다.
+
+## 🔴 청하는 판정 — 하나만 고르시면 바로 갑니다
+```
+㉮ (가)로 간다      ① 과 ③ 이 «같이» 닫히고 264 가 산다. 다만 «오늘이 아닙니다»
+㉯ 오늘은 여기까지   ① 은 「마지막 하나가 남았고 그 이유는 «페이싱»이다」로 18:00 에 보고.
+                  거짓이 아니고, 583 의 문장을 한 줄만 고치면 됩니다 (아래 초안)
+㉰ (나)로 간다      264 를 뒤집는 것이라 «제가 못 합니다». 소유자 판정이 필요합니다
+```
+### 18:00 문장 초안 — ㉯ 일 때 583 에서 «한 줄만» 바뀝니다
+```
+「문을 가르려고 만든 표와 그 접근자는 «없습니다» — 코드 참조 0, 남은 것은 지웠다는 기록입니다.
+  «일»에 대한 사실 셋(stamps_origin · writes_itself · self_writing_name)은 템플릿 옆으로
+  옮겼고, 없앴다고 말하지 않습니다.
+  그중 writes_itself 하나가 아직 «미루기 걸음»을 고르는 데 쓰입니다 — 그 걸음이 아직
+  제안(updates)을 쓸 줄 모르기 때문이고, 그것이 다음 라운드의 «한 줄»입니다」
+```
+📮 **그리고 이건 제 추정이 아니라 잰 것입니다** — 0.875 s/group 과 70,800 행은 제가 «판정문에서
+   인용»한 것이고(S-151·264), 42 줄과 소비자 자리는 제가 오늘 «셌습니다».
