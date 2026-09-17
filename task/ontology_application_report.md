@@ -30584,3 +30584,41 @@ task/ontology_application_report.md                      <- 제가 «의도한»
 => 남이 스테이지한 것이 «전부» 들어갑니다. 기억 파일: 「경로 없는 commit 이 add 규율을 무력화한다」
 고침   앞으로 «모든» 커밋에 경로를 붙입니다: `git commit <경로> -F-`
 ```
+
+---
+
+> **[09-17 19:51 응용] Q-178 — 착지 `14dfaf65`(임포트 121 줄) 검수: main 은 «다시 임포트 가능»합니다. 남은 옛 임포트 «하나»가 하필 «운영자가 복사하는 템플릿»이고, «말»이 살아 있는 문서 여덟에 남았습니다**
+
+**① 🔵 해결 여부 — 제가 «직접 잰» 것만 적습니다.**
+```
+계기   옛 최상위 경로를 «임포트문»으로 부르는 자리 (server/chain 밖, origin/main)
+       `^\s*(from|import)\s+(enrichment|keyset_scan|session_contract)\b`  ->  «한 줄»
+       그 한 줄이 `.sample` 입니다(아래 ②). 제품 .py 는 «0»
+왜 38 히트는 남아도 되나   그것들은 `enrichment.config.load_enrichment_rules(...)` 같은 «속성 접근»입니다.
+       수리가 임포트문만 `from chain import enrichment` 로 바꾸면 호출 자리는 «한 글자도» 안 바꿔도 돕니다
+       — 121 줄 수리의 모양이 그것입니다. 좋은 최소 수정입니다
+⚠️ 서버를 «띄워» 확인하진 않았습니다(기동은 총괄 자리). 경로로만 잰 것입니다
+```
+
+**② 🔴 남은 옛 임포트 하나가 «샘플»입니다 — 제품보다 덜 중요한 자리가 아닙니다.**
+```
+server/mappers/cross_table_lookup_mapper.py.sample:318    `import session_contract`
+오늘 그 모듈은 `server/chain/session_contract.py` 입니다
+=> 이 템플릿을 복사해 자기 맵퍼를 만든 운영자는 `ModuleNotFoundError: session_contract` 를 맞습니다
+```
+🔴 이 제품의 역할 문장이 「사용자가 «자기 지식을 적을 자리»」이고, `.sample` 이 정확히 그 자리입니다.
+   게이트가 `.py` 만 보면 이 파일은 영원히 안 걸립니다 — 샘플은 «import 되지 않으니까».
+
+**③ 🔴 그리고 «말»이 남았습니다 — 상설 「기제는 지워지고 말은 남는다」의 전수입니다.**
+`server/enrichment/` 를 아직 «이름 대는» 자리(`origin/main`):
+```
+살아 있는 문서  25 히트 / 8 파일
+   CODE_MAP 10 · BACKFILL_GUIDE 3 · ENRICHMENT_QUEUE_SPEC 3 · chain_ingestion_guide 2 ·
+   guide/config/enrichment_rules 2 · DOC_OWNERSHIP 2 · CLAIM_REQUIREMENT_WORKLIST_SPEC 2 · PRIMITIVES 1
+⛔ history 4 히트 / 3 파일   «그대로 둡니다» — 그날 참이던 말입니다 (Q-163 의 버킷 규칙 그대로)
+```
+📮 611 아래 이 행들은 «이 이동의 주인»이 적는 자리입니다. 저는 세어서 올립니다.
+
+**④ 제 사고와의 관계 — 분명히 적습니다.**
+이 이동은 원래 이 라운드의 일이었고, 수리는 121 줄을 «한 번에» 갔습니다. 제 잘못은 그 절반을
+«제 보고 커밋으로 먼저 공개»해 main 을 몇 분간 red 로 둔 것입니다. 수리의 크기·방향은 제 탓이 아닙니다.
