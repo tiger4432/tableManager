@@ -25243,3 +25243,132 @@ ingestion_worker.py                        12:43:29
         순서 의존 여부 «못 잽니다» · 나머지 둘(synthesis 파일의 다른 단언)은 «안 열었습니다»
         실제 서버 «안 띄웠습니다» · 화면 «안 열었습니다»
 ```
+
+---
+
+> ✅🔴 **[09-17 12:59 응용] Q-62 — 507/508/509 착지 검수(`544b5d24`). 넷 다 통과입니다. 그리고 509 의 «그 문장»이 운영자 문에서 사라집니다**
+> **받는 이: 총괄 — 511 마감과 «안 겹칩니다». 판정만 필요합니다**
+
+## ✅ 제가 착지 «전»에 적은 넷 — 전부 참입니다
+```
+① hands 에 기본값이 없나        chain/builtins.py:350  `def register_builtin(kind, fn, hands: str, …)`
+                               위치 인자 · 기본값 «없음» ✅
+                               🔵 그리고 «요구»보다 셉니다 — :357 이 두 상수가 아니면 거절합니다.
+                                  「적었나」가 아니라 「맞는 것을 적었나」까지 잽니다
+② 세 종류가 «선언»하나          :406 JOIN_MAPPER · :425 JOIN_INTO_MAPPER · :433 AUTO_CONFIRM_MAPPER
+                               셋 다 `HANDS_ROW_IDS` 를 «자리에서» 댑니다 ✅
+③ hands() 가 «등록»을 읽나       chain/rule_run.py:204 `builtins.BUILTIN_HANDS[kind]` ✅
+                               `builtin_kind` 로 «유도»하던 :186 은 묘비로 남았습니다
+④ dev_bench 의 거짓 문장        admin/dev_bench.py:213 ⚰ 「THIS PARAGRAPH SAID registered this
+                               round WHEN IT WAS NOT」 — 사유·부류까지 적혔습니다 ✅
+```
+🔵 그리고 제가 «예상 못 한» 것을 구현자가 닫았습니다 — `BUILTIN_KINDS` 에 직접 쓴 이름이
+`BUILTIN_HANDS` 에 없을 때 «조용히 payloads» 가 아니라 `UnresolvableRule` 로 «이름을 댑니다»
+(`rule_run.py:205-211`). 제가 물으려던 다음 질문이 그거였고 이미 닫혀 있었습니다.
+
+## 🔴 발견 — 그 «이름 대는 문장»이 운영자가 실제로 만나는 문에서 «사라집니다»
+```
+admin/dev_bench.py:228-230   try: rule_run.resolve(...) / except UnresolvableRule: bound = None
+                :236         fn is None «그리고 이름에 ':' 가 있으면» -> module:function 으로 읽는다
+                             `builtin:foo` 는 ':' 가 있습니다 -> import_module("builtin")
+```
+🔴 **실행해서 봤습니다** (파일 0 · 트리 무접촉, 메모리 안에서만):
+```
+좌석   kind 'builtin:probe_no_hands' is registered to run but never declared how it is
+       called; register it through register_builtin(..., hands=)        <- 509 가 쓴 그 문장
+벤치   {'refusal': "ModuleNotFoundError: No module named 'builtin'"}    <- 운영자가 보는 것
+```
+### 무엇이 참이어야 이 일이 나나
+```
+「resolve 가 못 푼다」가 «한 가지 뜻»이다   <- 509 가 «두 번째 뜻»을 만들었습니다:
+   ㉠ 제품이 모르는 이름이다          -> 벤치의 module:function 갈래로 «내려가는 게 맞습니다»
+   ㉡ 제품이 아는 종류인데 «오등록»이다 -> 내려가면 안 됩니다. 이름을 대야 합니다
+   벤치의 `except` 는 둘을 «같이» 받습니다
+```
+### 실패 시나리오
+새 종류를 더하다가 `register_builtin` 을 안 거친 사람이 벤치를 엽니다. 509 가 「이렇게 고쳐라」를
+문장으로 써 뒀는데, 그 사람이 받는 것은 **「`builtin` 이라는 모듈이 없다」**입니다 — 있지도
+않았던 모듈을 찾으러 갑니다. 🔴 부류는 이 라운드가 하루 종일 고친 그것입니다:
+**「거절이 «다른 거절»로 번역되면서 고칠 자리를 잃는다」** (판정 501 ⓒ 가 고친 증상과 같은 꼴).
+⚠️ 다만 «좁습니다» — `BUILTIN_KINDS` 직접 쓰기가 있어야 납니다. 즉 «가드의 품질»이지
+   오늘 도는 것의 결함이 아닙니다. 등급은 총괄이 답니다.
+
+## 📮 그리고 제 Q-61 ③ 을 «무릅니다» — 구현자 설명이 더 낫습니다
+제 설명은 「파일 기록 시각이 판정과 같은 분」이라는 «상관»이었습니다. 구현자가 기제를 적었습니다 —
+`inspect.getsource` 는 import 때 굳은 «줄 번호»로 디스크를 다시 읽으므로, 도는 중에 줄이 밀리면
+**다른 구간**을 돌려줍니다. 그건 상관이 아니라 «인과»입니다. 그쪽이 맞습니다.
+🔴 Q-61 ①②는 그대로입니다 — 앵커는 안 옮겨졌고, ② 의 예외 충돌은 아직 열려 있습니다.
+
+## 확신도
+```
+실행    넷 다 파일에서 «열어» 확인 · 벤치 번역은 «돌려서» 확인(위 두 줄이 그 출력)
+구조    「resolve 실패가 두 뜻이 됐다」 — 509 가 만든 새 뜻입니다
+못 잼    운영 «안 쟀습니다»(박스) · 실제 서버 «안 띄웠습니다» · 어드민 화면 «안 열었습니다»
+        511 의 두 칸은 «제 레인이 아니라» 안 건드렸습니다 — 다만 511 ① 의 근거를 따로 열어 보니
+        라우트(`main.py:5508`)는 레지스트리+AST 파일 스캔뿐이고 저장은 좌석(`_resolvable_mapper`
+        -> `rule_run.runnable`)으로 판정합니다 -> 511 ① 의 «결론»은 참입니다. 반박 없습니다
+```
+
+---
+
+> 🔴🔴 **[09-17 13:02 응용] Q-63 — 511 서버 반쪽(`1e2abdb2`)이 낸 행을 화면이 «모르는 갈래»로 떨어뜨립니다. 고르면 저장이 «거절»됩니다**
+> **받는 이: 총괄 · 클라 — 클라가 «지금 짓고 있습니다»(13:20). 그 반쪽에 같이 들어가야 합니다**
+
+## 무엇이 났나 — 서버가 `kind: "builtin"` 을 보내는데 화면에 그 갈래가 «없습니다»
+```
+서버 (mapper_sdk.py:512-514)   {"module":"chain.builtins", "name":"builtin:join",
+                                "kind":"builtin", "label":"join", "params":None}
+화면 (chain_rule_panel.js:81)   if (item.kind === 'registered')  -> 이름 그대로
+     (:83)                      else if (module && name)         -> tokenOf(module, name)  ⚠️ 여기로 갑니다
+```
+🔴 **돌려서 봤습니다** (`node` · 착지한 그 모양을 그대로 먹임 · 파일 0):
+```
+{"value":"chain.builtins:builtin:join",         "label":"builtin:join", "group":"chain.builtins"}
+{"value":"chain.builtins:builtin:auto_confirm", "label":"builtin:auto_confirm","group":"chain.builtins"}
+{"value":"my_mapper",                           "label":"my_mapper",    "group":"등록 이름"}
+splitMapper("chain.builtins:builtin:join")
+  -> {"mapper":null, "mapper_module":"chain.builtins:builtin", "mapper_function":"join"}
+```
+`splitMapper` 가 `lastIndexOf(':')` 로 가르므로 `chain.builtins:builtin` 이 «모듈»이 됩니다.
+
+### 무엇이 참이어야 이 일이 나나
+```
+「화면이 `kind` 의 «모든» 값을 안다」   <- 참이 아닙니다. 아는 값은 'registered' «하나»이고
+                                      나머지는 전부 else(파일 함수)로 갑니다.
+                                      새 값을 «서버만» 늘리면 조용히 그리로 떨어집니다
+```
+### 실패 시나리오 — 「없다」에서 「있는데 안 된다」로 바뀝니다
+운영자가 드롭다운에서 `builtin:join` 을 고릅니다. 화면은 «정상으로 보입니다» — 이름이 그대로
+찍히니까요. 저장하면 규칙에 `mapper_module: "chain.builtins:builtin"` 이 적히고, 저장 관문이
+그 이름을 못 풀어 **`unresolvable_mapper` 로 거절**합니다(`ledger/admin.py:709` ->
+`_resolvable_mapper` -> `rule_run.runnable`).
+🔴 **소유자 지적은 「조인을 화면에서 선언 못 한다」였습니다. 지금 상태는 「선언할 수 있어
+보이는데 저장이 거절한다」입니다** — 판정 511 이 인용한 그 병(S-207)의 «거울상»입니다:
+   그때는 「저장이 받아 줄 이름을 숨겼다」, 지금은 「저장이 거절할 이름을 내민다」.
+
+## 🔴 그리고 `label` 은 «아무도 안 읽습니다»
+```
+git grep 소비자   client2/src 에서 서버의 candidate `label` 을 읽는 자리 «0»
+                 (`closed_list.js:39` 의 `item.label` 은 «화면이 만든» 선택지의 것입니다 —
+                  `mapperChoices` 가 label = name 으로 채운 그 값이지 서버의 낱말이 아닙니다)
+화면에 뜨는 것    항목 = `builtin:join` · 묶음 머리 = `chain.builtins`  <- 파이썬 모듈 경로입니다
+```
+착지 메시지의 「the screen groups them the way it groups the other two」와
+「Name and **label** are read off `register_builtin`」 — 뒤 절은 «서버까지»만 참입니다.
+📌 부류: 「착지 ≠ 배선」. 값이 전선에 실렸고 «읽는 쪽이 없습니다».
+
+## ⚠️ 제가 «안» 재는 것
+```
+어느 쪽을 고칠지는 «판정»입니다 — 화면에 `kind:'builtin'` 갈래를 내거나, 서버가 이 행만
+`kind:'registered'` 모양으로 내거나(값이 이름 그대로여야 하므로). ⛔ 저는 짓지 않습니다
+그리고 클라 반쪽이 「이름 칸 하나」로 바뀌면 `splitMapper` 자체가 안 불릴 수도 있습니다 —
+그러면 이 증상의 «절반»은 그 착지가 같이 가져갑니다. 다만 `group`/`label` 은 남습니다
+```
+
+## 확신도
+```
+실행    위 네 줄이 실제 출력입니다 (`node --input-type=module`, 착지한 서버 모양을 그대로)
+구조    `mapperChoices` 의 갈래가 둘뿐 · `MAPPER_GROUPS` 에 'builtin' 없음 — 파일에서 «열어» 확인
+못 잼    실제 화면 «안 열었습니다»(토큰) · 실제 저장 «안 눌렀습니다» — 거절은 저장 관문 «코드»로만 읽었습니다
+        `dist` 빌드 «안 했습니다» · 클라 레인이 지금 무엇을 바꾸는지 «모릅니다»
+```

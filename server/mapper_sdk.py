@@ -488,6 +488,32 @@ def __getattr__(name):
 # 🔴 WHAT A RULE MAY NAME — the candidates a screen offers (S-223, 판정 379)
 # ---------------------------------------------------------------------------
 
+def _registered_kinds():
+    """The `builtin:…` kinds, as things a rule can NAME - 판정 511.
+
+    🔴 THE SCREEN COULD NOT DECLARE A JOIN. 소유자 2026-09-17: 「어드민 체인 규칙
+    등록은 왜 옛날 모양이냐」. This list offered `MAPPER_REGISTRY` names and module-level
+    functions - two of the three ways a rule names its code (판정 496) - and left the third
+    out, so the operator had to hand-edit JSON to declare a join or an auto-confirm. A round
+    that made one seat run every kind has not arrived while the place an operator WRITES the
+    declaration still knows two kinds out of three.
+
+    ⚠️ READ OFF THE REGISTRATION, NOT A LIST HERE. The name, and the word the product calls
+    it, are both what `register_builtin` was given - so a fourth kind appears in the dropdown
+    the day it is registered, with nobody editing this function.
+
+    ⚠️ AND IT IS WRAPPED. This is the mapper listing; if the chain package cannot be
+    imported in this process the other two families must still reach the screen.
+    """
+    try:
+        from chain import builtins as chain_builtins
+    except Exception:                          # pragma: no cover - chain absent
+        return []
+    return [{"module": "chain.builtins", "name": kind, "kind": "builtin",
+             "label": chain_builtins.BUILTIN_LABELS.get(kind), "params": None}
+            for kind in sorted(chain_builtins.BUILTIN_KINDS)]
+
+
 def mapper_candidates(package="mappers"):
     """-> `{"candidates": [...], "other": [...], "refused": [...]}` from IMPORTED modules.
 
@@ -522,9 +548,10 @@ def mapper_candidates(package="mappers"):
     import sys as _sys
 
     registered_names, refusals = discover(package)
-    candidates = [{"module": _origin(MAPPER_REGISTRY[name]), "name": name,
-                   "kind": "registered", "params": list(MAPPER_PARAMS.get(name, ()))}
-                  for name in registered_names if name in MAPPER_REGISTRY]
+    candidates = _registered_kinds() + [
+        {"module": _origin(MAPPER_REGISTRY[name]), "name": name,
+         "kind": "registered", "params": list(MAPPER_PARAMS.get(name, ()))}
+        for name in registered_names if name in MAPPER_REGISTRY]
 
     # 🔴 A REGISTERED MAPPER IS NOT ALSO A PLAIN FUNCTION. `@mapper` leaves its wrapper
     # bound to the module-level name too, so the sweep below would list the SAME OBJECT a
