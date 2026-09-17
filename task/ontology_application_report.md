@@ -29424,3 +29424,129 @@ admin/retroactive.py:188
 📌 안 쟀음: 1,053 줄이 움직인 diff 전체를 «줄 단위로» 안 읽었습니다 — 문의 시그니처·독스트링·
    호출 자리(:2097)·축 수 넷만 열었습니다. 「같은 몸·같은 순서」는 그들의 문장이고 제가 «안 잰» 것입니다
 ```
+
+> 🔴 **[09-17 18:32 응용] Q-157 — 606 의 물음에 답합니다: 「다섯 걸음 중 어느 걸음인가」에 «답 못 하는» 자리 둘. 하나는 아직 아무도 안 봤습니다**
+> **받는 이: 총괄 · 구현자 — 정본(트랜잭션 → 아웃박스 → 트리거 → 맵퍼 실행 → 페이로드·업서트)에 대고 잰 것입니다. ⛔ 제가 안 고칩니다**
+
+## ① 계기 — «쓰는 자리»를 전수로 세고, 체인 도메인만 남겼습니다
+```
+AST · 추적 server/*.py · 시험 제외 · crud.py 자신 제외
+술어: apply_batch_updates · apply_retraction · materialize_rows · write_batch · delete_rows_batch
+뺀 것(정본 «밖»이 아니라 «다른 걸음»이라 뺐습니다):
+   scripts/seed_* 22 자리 · parsers/directory_watcher:3223  -> 걸음 ①(트랜잭션에 행이 들어옴)
+   maps/frame_confirmation:351 · main.py:2524               -> 체인 도메인이 «아닙니다»(맵·삭제 라우트)
+```
+
+## ② 답 못 하는 자리 «둘»
+```
+㉠ replay.py:795 `_apply_replay_batch` (+ :823 apply_retraction)
+   무엇   소급이 자기 «쓰기 문»을 따로 갖고 있습니다. 좌석의 문(ingestion_worker:1570)과 «둘»입니다
+   걸음   ⑤ 인데 «두 번째 구현»입니다 — 605 가 「쓰기 문이 둘」이라 한 것의 «세 번째 짝»
+   🔵 605 가 잡은 셋은 «맵퍼 몸»이고, 이건 «문»입니다. 템플릿 셋이 페이로드를 돌려주게 되면
+      그룹 걸음은 좌석 문으로 쓰는데 소급은 «자기 문»으로 씁니다. 그때 갈라집니다
+
+㉡ 🔴 enrichment/backfill.py:220 `run_backfill` — «아직 아무도 안 봤습니다»
+   무엇   선언을 «실행하는 세 번째 자리»입니다. 좌석을 «안 지납니다»:
+            `rule_run` · `run_rule` 이 이 파일에 «0 회»
+            :264 `from enrichment.mapper import map_enrichment_dedup` 로 맵퍼를 «직접» 부르고
+            :435 `apply_batch_updates` 로 «직접» 씁니다
+   부르는 곳  admin/retroactive.py:266(세기) · :609(발행) — 운영자 화면입니다
+   걸음   ④+⑤ 를 «아웃박스·트리거 없이» 자기 안에서 합니다 -> 다섯 걸음에 «자리가 없습니다»
+   ⚠️ 그리고 그 파일이 스스로 이렇게 적습니다: 「NEW combinations through the REAL mapper
+      and the REAL write path」 — 오늘 «REAL» 은 좌석과 그 문입니다. 그 문장이 곧 낡습니다
+   🔴 606 의 ①(인리치 선언 -> 동적 맵퍼)이 서면 «이 자리가 남습니다» — 인리치가 맵퍼가 돼도
+      소급은 여전히 자기 맵퍼·자기 쓰기로 돕니다
+```
+
+## ③ 제가 «안» 말하는 것
+```
+⛔ 「지워라 / 합쳐라」 — 안 고릅니다. 606 은 「이름 대어 달라」였습니다
+⛔ 비용·홉 수 — 604 대로 «없습니다»
+✅ 말하는 것: 위 둘은 「어느 걸음인가」에 답이 «안 나옵니다». ㉠ 은 ⑤ 의 사본, ㉡ 은 ④+⑤ 를
+   트리거 없이 자기 안에서 합니다
+```
+📌 확신도 — 실행: AST 전수 한 번, 그리고 두 자리의 «호출자»와 «무엇을 부르는지»를 열어 읽었습니다.
+   안 쟀음: `outbox_expand.py:14` 가 「run_backfill 이 같은 모양을 같은 방법으로 짓는다」고 적는데,
+   그 «같은 모양»이 오늘도 같은지는 «안 쟀습니다»
+
+> 🔴 **[09-17 18:34 응용] Q-158 — 606 의 물음, 셋째 자리: 체인의 «쓰기 문» 안에서 «두 번째 미루기 큐»에 넣습니다. 그것도 «메모리»입니다**
+> **받는 이: 총괄 — 이건 «판정»이 필요한 자리라 측정만 냅니다. ⛔ 제가 안 고칩니다**
+
+## ① 자리
+```
+ingestion_worker.py:1795  with alignment_batch_counts.stage("ledger enqueue"):
+                   :1801      ledger_followup.enqueue(table, row_ids, event_type, tx_id, depth)
+   -> 이 줄은 «쓰기 문»(apply_chain_writes :1425~) «안»에 있습니다
+모듈   server/ledger/followup.py — 자기 독스트링이 스스로 이렇게 적습니다:
+   「The ledger follows the tables it reads, «one paced batch behind the chain»」
+   「🔴 NOT ON THE COMMIT PATH. The chain worker drops (table, row_ids, event_type) in here
+     and goes straight on; «a separate paced task drains it»」
+   「That is the whole reason this module exists as a queue rather than as a call inside
+     `process_chain_transaction_group`」
+   「🔴 THE QUEUE IS «MEMORY», AND LOSING IT IS NOT LOSING THE FACT」
+다른 투입자   ledger/backfill.py:344 · :1211
+```
+
+## ② 왜 606 의 물음에 «답이 없나»
+```
+다섯 걸음   트랜잭션 → 아웃박스 → 트리거 → 맵퍼 실행 → 페이로드·업서트
+이 큐      아웃박스가 «아니고»(메모리) · 트리거도 «아니고»(별도 페이싱 태스크가 뽑음)
+           ⑤ 에 «매달린 옆 큐»입니다
+🔴 그리고 모양이 이 라운드가 «지우고 있는 그것»과 같습니다 — 「뒤따르는 일을 페이싱된 큐로」.
+   소유자가 랩을 뺀 이유(「고장인지 느린 건지 판단 불가」)가 여기엔 «한 겹 더» 셉니다:
+   큐가 «메모리»라 깊이·나이가 값으로 뜨지도 않고, 워커가 죽으면 그 항목이 «사라집니다»
+   (그 문서는 「소급 패스가 canonical filler 라 괜찮다」고 답해 둡니다 — 그 답이 오늘도 참인지는 «안 쟀습니다»)
+```
+
+## ③ 제가 «주장하지 않는» 것 — 여기가 측정과 판정의 경계입니다
+```
+⛔ 「정본 위반이다」 — 말하지 «않습니다». 정본은 «체인»에 대한 말이고, 이 큐의 소비자는 «원장»입니다
+⛔ 「지워라」 — 안 고릅니다. 이 큐는 «비용» 때문에 그 모양이고, 비용 이야기는 604 가 막았습니다
+✅ 말하는 것 둘
+   ㉠ 체인의 쓰기 문 «안»에서 다른 미루기 큐에 넣는다 — 그 갈래는 다섯 걸음에 자리가 «없다»
+   ㉡ 랩을 지우는 이 라운드가 «같은 모양의 둘째»를 남깁니다. 그게 의도인지 아닌지는 «판정»입니다
+```
+📌 확신도 — 실행: enqueue 호출을 AST 로 전수(제품 셋: worker 1 · ledger/backfill 2)하고,
+   모듈 독스트링과 그 호출 자리를 열어 읽었습니다. 큐 «깊이»는 재지 않았습니다(604 · 그리고 메모리라 박스 수입니다)
+
+> 🔴🔴 **[09-17 18:38 응용] Q-159 — 그룹 걸음의 «비배치 팔»이 봉투의 절반을 «조용히 버립니다». 606 의 물음에 넷째 자리**
+> **받는 이: 총괄 · 구현자 — ①·② 를 짓는 «그 파일»입니다. ⛔ 제가 안 고칩니다**
+
+## ① 두 팔이 «같은 호출»을 하는데 «다른 것을 읽습니다»
+```
+ingestion_worker.py:1918  is_batch = rule.get("is_batch", False)          <- 기본값 «False»
+                   :1954  if is_batch:
+                            run_rule(db, rule, payloads=payloads, row_ids=row_ids, depth=…)
+                            -> updates · map_metadata_updates · batches  «셋 다» 읽습니다
+                          else:
+                            # 「Single event execution … The fan-out moved INTO the seat …
+                            #   this hands over the whole expansion and the seat makes the same N calls」
+                            run_rule(db, rule, payloads=payloads, row_ids=row_ids, depth=…)   <- «같은 줄»
+                            -> `if target_payload.get("updates"):` «그것뿐»입니다
+```
+🔴 **그래서 비배치 규칙이 `map_metadata_updates` 나 `batches` 를 내면 «아무 데도 안 갑니다».**
+   좌석은 그 둘을 모읍니다(답에 담깁니다). 읽는 쪽이 «한 팔에만» 있습니다.
+
+## ② 무엇이 참이어야 이 일이 나나
+```
+· 규칙에 `is_batch` 가 «없거나 false» — 기본값이 False 입니다
+· 그 규칙이 맵 메타데이터나 범위 배치(replace_map · retract)를 냅니다
+=> 제품이 짓는 규칙은 오늘 «전부» is_batch: true 입니다
+   (rule_shape.py:174 · enrichment/config.py:975 · :1001 · 샘플 열 개 전부)
+   그러니 오늘 이 팔을 타는 것은 «운영자가 적은» 파일 맵퍼입니다 — 그 칸을 «안 적으면» 여기로 옵니다
+```
+🔵 **그리고 이 갈래는 «이미 뜻을 잃었습니다»** — 두 팔의 호출이 «글자 그대로 같습니다».
+   갈래가 남아 있는 이유는 「팬아웃을 좌석으로 옮기면서 «답 읽는 쪽»을 안 합쳤기」 때문으로 보입니다.
+   606 의 물음으로 답하면: 이 갈래는 걸음 ④ 를 «두 번 나눠» 묻고, ⑤ 로 가는 길이 «한 쪽만» 열려 있습니다.
+
+## ③ 오늘의 라운드와 «같은 부류»입니다
+```
+Q-128     미루기 걸음이 answer 에서 written·refusal «만» 읽어 updates 를 흘린다   (판정 585 가 받음)
+605       맵퍼가 «자기가 써서» 페이로드를 안 돌려준다
+Q-159     그룹 걸음의 비배치 팔이 updates «만» 읽어 map_metadata_updates·batches 를 흘린다
+=> 셋 다 「좌석이 낸 답을 «호출자가 부분만» 읽는다」입니다. ① 이 「맵퍼가 페이로드를 돌려준다」로
+   가는 라운드라, 돌려준 것을 «누가 전부 읽나»가 같이 답해져야 합니다
+```
+📌 확신도 — 구조: 두 팔과 좌석의 답 조립(rule_run 이 세 목록을 모으는 것)을 읽었습니다.
+   ⛔ 비배치 규칙을 «만들어 돌려 보지는 않았습니다». 그리고 운영 선언에 그런 규칙이 있는지는
+   추적 안 되는 파일이라 «안 셌습니다»
