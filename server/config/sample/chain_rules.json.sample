@@ -182,6 +182,128 @@
       "is_batch": true,
       "enabled": true,
       "__why_enabled": "SHIPS ENABLED because the shipped ledger declaration READS dt_job_rollup (measured 2026-09-10). The ledger is local and calculation-free so it cannot count a group; S-100 (a) moved that count here. Off, the ledger source has nothing to read."
+    },
+    {
+      "__comment": "통합 선언 ① 조인 — 오른쪽 표의 칸을 가져와 on.table 의 행에 씁니다. 규칙 «하나»가 섭니다. 오른쪽이 키마다 유일해야 하며 key.unique 가 그것을 선언합니다.",
+      "name": "sample_unified_join",
+      "enabled": false,
+      "on": {
+        "table": "dt_inventory"
+      },
+      "derive": {
+        "kind": "join",
+        "join": {
+          "right_table": "dt_job_attribution",
+          "on": [
+            {
+              "left": "dt_job",
+              "right": "dt_job"
+            }
+          ],
+          "take": [
+            "dt_lot_confirmed",
+            "dt_slot_confirmed"
+          ]
+        }
+      },
+      "into": {
+        "table": "dt_inventory"
+      },
+      "key": {
+        "unique": true
+      }
+    },
+    {
+      "__comment": "통합 선언 ③ 파생 — 사람이 «고르는» 자리를 만듭니다. reference_views 의 SQL 이 후보를 만들고 candidate_for 가 «어느 칸의» 후보인지 말합니다. auto_confirm=false 이므로 확정은 사람이 합니다. ⚠️ 이 선언 하나가 규칙 «둘»(파생 + 자동확정 자리)을 세웁니다 — 자동확정이 꺼져 있어도 그 자리는 섭니다.",
+      "name": "sample_unified_decide",
+      "enabled": false,
+      "on": {
+        "table": "dt_log"
+      },
+      "into": {
+        "table": "dt_inventory"
+      },
+      "derive": {
+        "kind": "decide",
+        "decide": {
+          "key": [
+            "dt_job"
+          ],
+          "fields": [
+            "dt_lot",
+            "dt_slot"
+          ],
+          "auto_confirm": false,
+          "alignment": true,
+          "reference_views": [
+            {
+              "label": "관측된 dt_lot / dt_slot — 이 job 이 말하는 것",
+              "query": "SELECT COALESCE(dt_lot,'') AS dt_lot, COALESCE(dt_slot,'') AS dt_slot, COUNT(*) AS cells FROM dt_log WHERE dt_job = :dt_job GROUP BY 1, 2 ORDER BY cells DESC",
+              "limit": 50,
+              "candidate_for": {
+                "dt_lot": "dt_lot",
+                "dt_slot": "dt_slot"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "__comment": "통합 선언 ③ 맵퍼 — 운영자가 server/mappers/ 에 직접 쓴 맵퍼를 답니다. mapper 는 그 파일이 @mapper 로 등록한 «이름»이고, params 는 그 맵퍼가 읽습니다.",
+      "name": "sample_unified_mapper",
+      "enabled": false,
+      "on": {
+        "table": "dt_log"
+      },
+      "into": {
+        "table": "dt_log"
+      },
+      "derive": {
+        "kind": "mapper",
+        "mapper": {
+          "mapper": "my_operator_mapper",
+          "params": {
+            "note": "맵퍼가 읽는 값"
+          }
+        }
+      }
+    },
+    {
+      "__comment": "통합 선언 ④ 자동확정 — ③ 과 «같은 문법»이고 auto_confirm 만 true 입니다. 후보가 «하나»일 때 사람 없이 확정합니다. 후보가 둘 이상이면 사람에게 남깁니다. ⚠️ 그래서 자동확정은 «따로 적는 선언»이 아니라 파생 선언의 «칸 하나»입니다.",
+      "name": "sample_unified_auto_confirm",
+      "enabled": false,
+      "on": {
+        "table": "dt_log"
+      },
+      "into": {
+        "table": "dt_inventory"
+      },
+      "derive": {
+        "kind": "decide",
+        "decide": {
+          "key": [
+            "dt_job"
+          ],
+          "fields": [
+            "dt_lot",
+            "dt_slot"
+          ],
+          "auto_confirm": true,
+          "alignment": true,
+          "reference_views": [
+            {
+              "label": "관측된 dt_lot / dt_slot — 이 job 이 말하는 것",
+              "query": "SELECT COALESCE(dt_lot,'') AS dt_lot, COALESCE(dt_slot,'') AS dt_slot, COUNT(*) AS cells FROM dt_log WHERE dt_job = :dt_job GROUP BY 1, 2 ORDER BY cells DESC",
+              "limit": 50,
+              "candidate_for": {
+                "dt_lot": "dt_lot",
+                "dt_slot": "dt_slot"
+              }
+            }
+          ]
+        }
+      }
     }
   ]
 }
