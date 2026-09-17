@@ -27751,3 +27751,32 @@ event_constants.outbox_owner(event_type)  ->  scheduler | chain | unknown
 실행/구조   반환 칸 열셋은 AST 로, 저자 갈래는 그 줄들을 «열어서». 브라우저는 «안 열었습니다»
 ⛔ 못 잼   운영에서 이 화면을 «누가 보나» — 그 수가 이 라우트의 값을 정하는데 저는 못 봅니다
 ```
+
+---
+
+> ✅ **[09-17 15:47 응용] Q-118 — `f8b4f8fe`(동적 조인 맵퍼) 검토. 초록이고, 제가 쌓아 둔 Q-107 이 «이 모양에서» 닫힙니다**
+```
+🔵 Q-107 이 걱정한 것   동적 생성 맵퍼 둘이 «한 출처»라 같은 이름에 등록하면 «조용히 덮인다»
+이 착지의 모양          chain/dynamic_mappers.py  TEMPLATES = {종류 이름 -> 함수}  ->  install() 이
+                     `for name, fn in TEMPLATES.items(): mapper_sdk.register(name, fn)`
+=> 키가 dict 이라 이름이 «구조적으로 유일»합니다. 한 번의 install 안에서 충돌이 «생길 수 없습니다»
+=> 재적재 때 같은 이름에 새 함수 객체가 오는 것은 가드가 «일부러 허용»하는 경우입니다(출처 같음) ✅
+=> 소유자 파일 맵퍼가 같은 이름을 claim 하면 «출처가 달라» 거절됩니다 ✅ (가드가 사는 쪽)
+🔴 남는 조건 하나만 적어 둡니다: 「TEMPLATES 의 키가 «선언이 이미 쓰는 이름»이어야 한다」 —
+   착지 메시지가 그렇게 말하고(「under the name its rule already says」) 그게 참인 동안
+   Q-107 은 «해당 없음»입니다. 키를 «규칙마다» 만들기 시작하면 그때 다시 살아납니다
+```
+
+## ⚠️ 제가 의심한 것 하나 — «틀렸습니다**. 적습니다
+```
+제 의심   `main.py:404  _registered, _refused = mapper_sdk.discover()` — `_` 접두라 «버리는» 줄 알았습니다
+          (그러면 API 프로세스에서 install 실패가 «조용»해지고, 그건 이 커밋이 막겠다는 바로 그 증상입니다)
+실측      :405~:407 이 «둘 다 로그합니다»
+             logger.info("[Startup] Mapper registry: %d registered", …)
+             for _module_name, _message in sorted(_refused.items()):
+                 logger.error("[Startup] Mapper module refused: %s — %s", …)
+          워커 쪽도 같은 모양입니다 (`[Warmup]`, ingestion_worker.py:2204~2208)
+=> `_` 는 «이름 규칙»이었지 버림이 아니었습니다. 실패는 두 프로세스에서 «이름 대어» 나갑니다
+```
+🔵 그리고 설치 자리가 `discover()` «안»인 것이 맞습니다 — 그 함수가 레지스트리를 «먼저 비우므로»,
+   밖에서 꽂으면 다음 재적재에 조용히 사라집니다. 그 사유가 코드 주석에 적혀 있습니다.
