@@ -1,3 +1,68 @@
+## 🔵 [09-17 13:04] **판정 512 — 클라가 «지을 것이 없습니다». 그 컨트롤은 이 폼에 «이미 붙어 있고 채점되고 있습니다». 문을 여는 것은 서버 한 칸입니다**
+
+512: 「Chain 탭 폼이 온톨로지 선언과 «같은 방식»을 쓰게 — `derive.kind` 고르개 + 고른 가지만 펼치기.
+그 컨트롤은 이미 있습니다(`renderSkeletonOneOf`). ⛔ 새로 짓지 말고 «있는 것을 이 폼에 쓰십시오»」.
+**재 보니 이미 쓰고 있습니다.** 안 짓고 재서 보고합니다 — 13:20 안입니다.
+
+### 🔴 ① 실물 — 이 폼이 그 컨트롤을 «이미» 부릅니다
+
+```
+client2/src/raw_registry_panel.js:27   import { renderSkeletonForm } from './ontology_explorer_view.js'
+                                :648   const form = renderSkeletonForm(…)      <- 폼을 그리는 유일한 자리
+ontology_explorer_view.js:1727         oneOf 노드면 -> renderSkeletonOneOf(…)   <- 512 가 말한 그 컨트롤
+raw_registry_panel.js:679-692          action === 'edit-shape-branch' 를 «받아» 가지를 갈아 끼웁니다
+=> 탐색기와 «같은 함수»입니다. 사본도 두 번째 경로도 «없습니다»
+```
+
+### 🔴 ② 그리고 «채점되고 있습니다» — 오늘 제가 만든 것이 아니라 이미 있던 U 절입니다
+
+`client2/tests/chain_rule_form_harness.mjs` U1–U5, 픽스처는 «서버가 낸 `chain_skeleton.json`» 그대로:
+```
+U1  통합 규칙은 derive · into · on 을 그린다 (평면 뿌리가 아니라)
+U2  … 그리고 평면 칸(trigger_table · mapper_module)은 «같이 안 온다»
+U3  «고른 가지만» 펼친다        U4  … 가지 «키 밑»에 (derive.join.right_table)
+U5  「하나 고르기」마다 고르개 «하나», 더도 덜도 아님 — `edit-shape-branch` «2개»
+지금 상태  81 passed / 0 failed
+```
+
+### 🔴 ③ 그러면 왜 소유자 화면에는 «옛 모양»이 보이나 — 갈림길은 «한 칸»입니다
+
+```
+client2/src/chain_rule_panel.js:186   formRoot: payload.grammar === 'unified' ? skeleton.unified_root : skeleton.root
+server/chain_skeleton.json  root         … mapper · mapper_module · mapper_function …   (derive «없음»)
+                            unified_root … derive(oneOf) · into(oneOf) · on …           (여기 있습니다)
+=> 규칙이 «평면»으로 오면 폼은 평면 뿌리를 그립니다. 그게 「옛 모양」입니다.
+   화면은 «서버가 말한 문법»을 그릴 뿐이고, 그건 판정 411 이 정한 것입니다
+   (「서버가 안 말했으면 안 그립니다 — 모름을 평면으로 적으면 그것이 거짓입니다」)
+```
+
+### ✅ ④ 그래서 «서버가 답할 한 줄» — 512 가 구현자께 물으신 것, 제가 대신 적습니다
+
+```
+필요한 것 «하나»: `/admin/chain/rules/raw` 가 이 규칙들에 «grammar: "unified"» 와
+                 그에 맞는 문서 모양을 실어 주는 것. 스켈레톤은 «이미» 싣고 있습니다(unified_root)
+그러면 폼은 «그날 바로» derive.kind 고르개를 그립니다 — 클라 변경 «0 줄»
+```
+🔴 **그리고 512 의 「내장 이름만 들어가면 조인 인자를 적을 칸이 없다」는 위험이 «그대로 맞습니다»** —
+   평면 문법에는 `derive.join` 을 적을 자리가 «아예 없습니다». 통합으로 오면 U3/U4 가 그 자리를 그립니다.
+   즉 그 위험의 해소와 512 의 요구가 «같은 한 칸»입니다.
+
+### ⑤ 안 한 것 · 못 잰 것
+
+```
+안 함   «한 줄도» 안 지었습니다. 512 가 ⛔ 새로 짓지 말라 하셨고, 지을 것이 없었습니다
+못 잼   「오늘 이 박스의 규칙이 어느 문법으로 오나」 — 그건 라이브 응답이라 제 수가 아닙니다.
+        구조는 위 ③ 이고, 어느 설치에서나 참입니다
+⚠️ 구분해 적습니다: U 절이 증명한 것은 «패널 클래스»가 그 spec 아래서 그렇게 그린다는 것이고,
+   출하되는 `CHAIN_RULE_REGISTRY.formRoot` 가 «글자 그대로 같은 식»이라는 것은 ③ 의 인용입니다
+게이트   이 라운드는 «코드를 한 줄도 안 바꿨습니다» — 그래서 새로 돌릴 것이 없습니다. 인용한 U1~U5 는 chain_rule_form_harness 의 «있던» 단언이고, 13:00 착지 때 잰 값 그대로입니다: 81 passed / 0 failed
+```
+
+📌 511 착지(`9ed75c57`)는 «그대로 유효»합니다 — 그건 평면 폼의 「한 사실에 칸 셋」을 줄인 것이고,
+   통합으로 넘어가도 그 폼은 남습니다(옛 규칙이 평면으로 남아 있는 동안).
+
+---
+
 ## ✅ [09-17 13:01] **판정 511 클라 착지 — `9ed75c57`. 한 줄: «한 사실에 칸 하나»가 첫 화면에 섰습니다**
 
 마감 13:20, 착지 13:00. 확인 실행은 총괄 몫이라 «안 돌렸습니다» — 아래는 제가 잰 것뿐입니다.
