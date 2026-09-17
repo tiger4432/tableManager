@@ -29781,3 +29781,58 @@ pickaxe 실측: `grammarOf`(chain_rule_panel.js) · ``${spec.cls}-grammar``(raw_
 📮 큐/보드에 «한 줄»과, ①이 말한 «코드 옆 한 줄» 둘 다 필요합니다. 채널은 읽는 사람만 읽습니다.
 
 확신도: ①②③④⑤ 전부 «구조·실측»(origin/main 블롭과 커밋 이력). 화면 값은 «못 잼» — 안 열었습니다.
+
+---
+
+> **[09-17 19:06 응용] Q-163 — 611 감사 ②: 600 의 이름 바꾸기가 «살아 있는 문서»에 잔재를 39 남겼고, 그중 제가 «연» 여덟은 전부 «현행 서술»입니다 (Q-147 을 이걸로 닫습니다)**
+
+계기: `git grep … origin/main`(트리 «안 잼»). 낱말 셋을 «겹치지 않게» 셌습니다 —
+`builtin:join_into` · `builtin:auto_confirm` · `builtin:join`(뒤에 `_into` 가 «안 오는» 것만).
+
+```
+살아 있는 문서   39 히트 / 9 파일
+  CODE_MAP 20 · PROJECT_STATUS 6 · SERVER_DEFECT_QUEUE 4 · BASIS 3 · PRIMITIVES 2
+  SERVER_FILE_MAP 1 · guide/config/chain_rules 1 · guide/config/enrichment_rules 1 · SYSTEM_OVERVIEW 1
+⛔ 안 고치는 것   docs/history(16) · task/*(219) — 그날 참이던 말입니다. 지우면 «왜 바뀌었는지»가 사라집니다
+```
+
+**🔴 제가 «열어서» 확인한 여덟 — 전부 오늘을 «현행»으로 말합니다(묘비 아님)**
+```
+docs/guide/config/chain_rules.md:106       derive.kind 표: 「join = `builtin:join_into` 가 오른쪽 값을 표에 쓴다」
+docs/guide/config/enrichment_rules.md:202  「부르는 쪽은 `builtin:auto_confirm`(체인)」
+docs/overview/SYSTEM_OVERVIEW.md:180       「S-237 join `builtin:join_into` · S-239 decide」   <- SSOT
+docs/architecture/BASIS.md:51              「join  `builtin:join_into`(chain/join_into.py)」
+docs/architecture/BASIS.md:72              「대체  새 join 종류(…, `builtin:join_into`)가 «쓰는» 쪽을 맡는다」
+docs/architecture/SERVER_FILE_MAP.md:35    「`builtin:join_into` — the unified join kind that WRITES …」
+docs/architecture/CODE_MAP.md:1739         「무엇 | `builtin:join_into`(`JOIN_INTO_MAPPER` :32)」
+docs/architecture/CODE_MAP.md:1740         🔴 아래 참조
+```
+
+**🔴 제일 큰 것은 `CODE_MAP.md:1740` 입니다 — 지도가 «코드가 취소한 사유»를 현행으로 들고 있습니다.**
+그 행의 표제는 「이름이 `builtin:join` 이 «아닌» 이유」이고 본문은 이렇게 말합니다:
+```
+「이름을 그대로 두는 이유는 … 바꾸면 살아 있는 선언의 derive.kind 철자가 바뀌고
+  그건 «운영자에게 보이는 이주»다(`join_into.py` :11-13 이 그렇게 적는다)」
+```
+그런데 **판정 600 이 «바로 그 논거»를 거뒀습니다** — 소유자 답이 「없다」였고(손으로 `mapper` 칸을 적는
+운영 선언이 없음), 그래서 이주 비용이 0 이라 이름이 옮겨졌습니다. 그리고 `a96d4a68` 이 그 근거로 인용된
+`join_into.py` 의 그 문단을 «이미 고쳤습니다»(「THE NAME MOVED ANYWAY (판정 600)」).
+🔴 즉 지도가 «자기가 인용한 파일»보다 낡았고, 인용된 파일은 자기 문장을 «스스로 정정했습니다».
+   「본문을 고치고 표제를 안 고치면 정정이 안 간다」의 실물 — 여기선 «본문이 남의 파일»이었습니다.
+
+**🔵 그리고 «안 깨진 것»도 적습니다 — 600 의 전제는 문서에서도 성립합니다.**
+`docs/guide` 전체에서 `mapper` 칸에 옛 id 를 «값으로 적는» 예시: **0**
+(계기: `git grep -E '"mapper"|mapper:' origin/main -- docs/guide` 중 builtin 을 든 줄).
+즉 운영자가 «적는» 값(`derive.kind: join`)은 안 바뀌었고, 낡은 것은 «내부 id 를 알려 주는 설명»입니다.
+⚠️ 그래서 위 여덟을 「운영자가 틀린 값을 적게 된다」로 읽지 «마십시오». 이건 «읽는 사람이 틀리게 아는» 결함입니다.
+
+**📮 611 아래 routing** — 이 잔재는 `a96d4a68`(이름 바꾸기) 의 «영향»이므로 그 착지의 주인이 적는 자리입니다.
+저는 «안 고칩니다». ⛔ PROJECT_STATUS(6 히트)는 총괄 전담이라 손대지 않습니다.
+**안 연 것**: CODE_MAP 의 나머지 16 히트 · SERVER_DEFECT_QUEUE 4 · PRIMITIVES 2 · BASIS 395 —
+안에 묘비(⚰️)가 섞여 있는 것을 «봤지만» 한 줄씩 열지는 «않았습니다». 고치는 사람이 엽니다.
+
+**Q-147 닫습니다.** 그때 「docs(살아있는) 46 히트 / 9 파일」이라 적었고 오늘 같은 자리가 39 입니다.
+그 사이 무엇이 줄었는지는 «안 쟀습니다». 그때 제가 못 한 것이 «버킷은 갈랐는데 묘비/현행을 안 가른 것»이고,
+이번에 그 갈래를 냈습니다(연 여덟).
+
+지도 반영: **없음** — 611 아래 남의 착지 행은 제가 적지 않습니다.
