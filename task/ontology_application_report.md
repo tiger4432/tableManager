@@ -29550,3 +29550,30 @@ Q-159     그룹 걸음의 비배치 팔이 updates «만» 읽어 map_metadata_
 📌 확신도 — 구조: 두 팔과 좌석의 답 조립(rule_run 이 세 목록을 모으는 것)을 읽었습니다.
    ⛔ 비배치 규칙을 «만들어 돌려 보지는 않았습니다». 그리고 운영 선언에 그런 규칙이 있는지는
    추적 안 되는 파일이라 «안 셌습니다»
+
+> 📕 **[09-17 18:46 응용] 지도 반영 — 610 ③ 의 한 줄. 그리고 «아직 안 된 것»을 같이 적습니다**
+```
+지도 반영: d4b1361a · 7d16a1bf   (오늘 앞서: 0bc26fd8 · e366dede · 5fa2e975)
+```
+```
+d4b1361a  SYSTEM_OVERVIEW §6-bis 신설 — 09-16 22:10 이후 «오늘 체인이 통째로» 없었습니다
+          소유자 정본 다섯 걸음 · 오늘 참인 것 다섯(좌석 하나 · 종류표 없음 · declared: 셋 ·
+          쓰기 문 · 부팅 점호) · 🔴 «아직 아닌 것» 다섯(605 · ② · replay · run_backfill · 원장 큐)
+7d16a1bf  CODE_MAP §4 에 `apply_chain_writes` 행(:1425) — 샌 `rule` 과 제자리 변경 목록까지
+          CODE_MAP §㉙ 신설 `chain/dynamic_mappers.py` — TEMPLATES · install · TEMPLATE_FACTS ·
+          접근자 셋 · 몸통 셋(declared: 이름) · 「writes_itself 는 605 가 지울 자리」 한 줄
+앞서(같은 날)  0bc26fd8 좌석 표 네 행(현행이라 적힌 은퇴 둘 · BUILTIN_LABELS · Resolved 서명 5→3)
+              e366dede §㉘ builtins.py 를 «기록»으로 표시(268줄 · 정의 여섯 · 없어진 여섯)
+              5fa2e975 판정이 «뒤집힌» 점호 명령 · _resolvable_mapper 서술 · 죽은 앵커
+덮은 제품 착지   2699fc38 · a96d4a68 · f8b4f8fe · 그리고 562~600 의 은퇴 묶음
+```
+## 🔴 아직 안 된 것 — 제가 «못 했다»고 적습니다
+```
+① `server/ledger/admin.py` 에 CODE_MAP «절이 없습니다» — 그래서 오늘 착지한
+   `rule_index_named`(ed8b6762) · `convert_chain_rule_grammar`(f01f359d) 가 «들어갈 자리»가 없습니다
+   (셋 다 CODE_MAP 히트 0 으로 확인). 절을 새로 만드는 일이라 다음 묶음으로 가져갑니다
+② 오늘 제품 착지 «79» 중 제가 연 것은 체인 쪽입니다. 어드민 화면·클라 쪽은 «안 봤습니다»
+③ guide 문서(chain_ingestion_guide · config/chain_rules.md)는 «안 열었습니다» —
+   Q-147 의 「살아 있는 문서 35 히트」가 그 자리들입니다
+```
+📌 이제부터는 «착지마다» 붙입니다(610). 모아서 하지 않습니다.
