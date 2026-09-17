@@ -2014,6 +2014,13 @@ test_retroactive_admin (backfill)                            (1)
 
 ```
 자리   server/chain/ingestion_worker.py  is_batch 두 팔
+🔴 [09-17 12:49 판정 506 으로 «넓힘» — 응용 Q-59] 이 항목은 «화면 낱말»까지 덮는다:
+   client2/src/admin.js:1669  `BATCH` / `ROW` 배지
+                      :1679  「Batch **mapper**」 / 「Row **mapper**」
+   -> 운영자에게 «맵퍼가 두 종류 있다»고 말한다. 없다. 같은 맵퍼가 «몇 행씩 받나»가 다를 뿐이고,
+      그건 규칙의 «종류»가 아니라 «처리 단위»다. 화면이 축을 종류로 승격시켰다
+   ⛔ 고칠 때 「Batch mapper」류의 «맵퍼의 종류»로 읽히는 말을 쓰지 않는다 — 「묶음 처리 / 행 단위」
+   📌 칸(`is_batch`) 자체는 정당하다. 지우는 것이 아니라 «읽는 자리를 하나»로 + «낱말을 고치는» 것이다
 batch 팔    updates · map_metadata_updates · batches  «셋 다» 줍는다
 per-row 팔  updates «만» 줍는다  -> 나머지 둘은 조용히 사라진다. 거절도 로그도 없다
 ```
