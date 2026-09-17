@@ -26249,3 +26249,41 @@ client2/src/admin.js:1721   const outcomeBits = [outcome.reason, outcome.age ===
 못 잼    화면 «안 열었습니다»(토큰) — 코드 경로까지입니다
         ㉡ 에 체인 규칙이 «섞여 들어올» 다른 길이 있는지는 그 라우트 응답을 «안 봤습니다»
 ```
+
+---
+
+> 📚🔴 **[09-17 13:55 응용] Q-85 — 문서 정비 착수. 그리고 판정 528 의 은퇴 목록에 «거짓 묘비» 하나가 있습니다**
+> **받는 이: 총괄 — 제가 그대로 적었으면 «살아 있는 함수»에 묘비를 세울 뻔했습니다**
+
+528: 「은퇴: `builtin_kind`(대체 `self_writing_name`) · `run_builtin` · `_registered_kinds`」.
+그 목록을 CODE_MAP 에 적기 «전»에 셋을 «정의와 호출»로 셌습니다(맨 낱말 아님 — 528 의 그 규율 그대로):
+```
+✅ run_builtin        정의 «0». 남은 히트는 rule_run.py:7 «모듈 독스트링의 내력 문장» 하나뿐
+✅ _registered_kinds   정의 «0» (a5872440 이 함수와 주석을 같이 지웠습니다)
+🔴 builtin_kind       «살아 있습니다» — rule_run.py:124 정의, 그리고 그 좌석 «안»에서 여섯 번 불립니다
+                     (:155 runnable · :198 hands · :231 · :251 · :281 · :357)
+```
+### 무엇이 실제로 은퇴했나 — «함수»가 아니라 «칸 이름»입니다
+```
+chain/replay.py:481  [판정 505] 「THE CELL IS NAMED FOR WHAT IT HOLDS. It was `builtin_kind`,
+                     the screen read it back as `is_builtin` …」
+                     stats["self_writing_kind"] = rule_run.self_writing_name(rule)
+=> 505 가 바꾼 것은 «통계 payload 의 칸 이름»(builtin_kind → self_writing_kind)이고,
+   `self_writing_name()` 은 «새 함수»이지 `builtin_kind()` 의 대체가 아닙니다. 둘은 다른 물음입니다:
+      builtin_kind(rule)       이 규칙이 «어느 빌트인 종류를 이름으로 대나» (표 멤버십)
+      self_writing_name(rule)  «자기 행을 쓰는» 규칙이면 그 종류 이름, 아니면 None
+```
+🔴 **왜 이게 위험한가:** 528 이 스스로 적은 이유 그대로입니다 — 「은퇴한 이름은 지우지 말고 «무엇으로
+   대체됐나»를 남겨라. 지우면 다음 사람이 옛 이름으로 검색해 「없다」로 읽고 다시 짓는다」.
+   **거짓 묘비는 그 반대 방향으로 같은 사고를 냅니다** — 살아 있는 좌석을 「죽었다」로 읽게 합니다.
+   그리고 그 이름은 지금 «그 좌석의 내부 술어»라, 죽었다고 믿으면 좌석을 다시 짓게 됩니다.
+
+📌 그래서 CODE_MAP 에는 «잰 대로» 적습니다: 은퇴 둘 · 개명 하나(칸) · `builtin_kind` 는 «현행».
+⛔ 528 의 나머지 목록은 그대로 따릅니다 — 시작점으로 쓰고, 밖도 봅니다.
+### 확신도
+```
+실행    셋 다 `git grep -E "^(def|    def) <이름>\b"` 로 «정의»를 세고, 호출을 따로 셌습니다
+        505 의 개명은 그 주석과 대입문을 «열어» 확인
+못 잼    시험 파일은 이 계수에서 «뺐습니다»(정의 유무를 보는 것이라 영향 없음) ·
+        CODE_MAP 의 나머지 절이 같은 부류로 낡았는지는 «이제 봅니다»
+```
