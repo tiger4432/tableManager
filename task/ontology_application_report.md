@@ -27393,3 +27393,64 @@ mapper_sdk.register(name, fn, params=()) :293
 📮 판정 청합니다(마감 뒤): 이 이음매에 계약 벡터를 세울지. 이 저장소가 그런 자리에 쓰는 기제가
    «이미 있고»(contracts/ 15), 이 칸은 「운영자가 승인 전에 보는 수」라 조용히 사라지면 안 되는 쪽입니다.
 ⛔ 제가 짓지 않습니다 — 계약은 이음매 담당의 자리입니다.
+
+---
+
+> 📋 **[09-17 15:30 응용] Q-110 — 판정 562 ④ 「쓰레기 전수 목록」 1차. AST 로 셌고, 세는 «도중에 계기를 두 번» 고쳤습니다**
+> **받는 이: 구현자(지울 때 대조용) · 총괄 — ⛔ 저는 «안 지웁니다». 목록만입니다**
+
+## 단위 먼저 — 「파일 수」입니다, 줄 수가 아닙니다
+```
+센 것    그 이름을 «읽는 제품 파일»의 수. «자기 파일은 뺐습니다»
+제외     tests/ 는 따로 칸 · mappers/ 따로 칸(소유자 파일)
+⚠️ 총괄의 「30 줄 / 파일 9」와 «다른 단위»입니다 — 그쪽은 미루기 칸의 «줄», 이건 이름별 «파일».
+   서로 반박하지 않습니다
+```
+
+| 이름 | 밖의 제품 파일 | 시험 | 맵퍼 | 어디서 |
+|---|---|---|---|---|
+| `BUILTIN_KINDS` | **3** | 12 | 0 | dev_bench · builtins · rule_run |
+| `BUILTIN_HANDS` | **2** | 4 | 0 | builtins · rule_run |
+| `BUILTIN_LABELS` | **2** | 2 | 0 | builtins · rule_run |
+| `HANDS_ROW_IDS` | **4** | 6 | 0 | builtins · ingestion_worker · replay · rule_run |
+| `HANDS_PAYLOADS` | **3** | 0 | 0 | dev_bench · builtins · rule_run |
+| `writes_itself` | **2** | 1 | 0 | builtins · ingestion_worker |
+| `register_builtin` | **0** | 2 | 0 | 자기 파일(builtins) «안»에서만 |
+| `builtin_kind` | **0** | 2 | 0 | 자기 파일(rule_run) «안»에서만 — 좌석의 사유 헬퍼 |
+| `legacy_join_declaration` | **8** | 23 | 0 | builtins · graph · legacy_materialized_join · config_resolve_report … |
+| `legacy_materialized_join` | **3** | 10 | 0 | 🔴 builtins · **database/crud.py** · **runtime/system_reload.py** |
+| `follow_up` | **6** | 14 | 0 | ingestion_worker · legacy_join_declaration · rule_order · **chain_bindings** … |
+| `run_builtin` | **0** | 0 | 0 | 🪦 코드에 «없습니다» |
+| `is_follow_up` | **0** | 0 | 0 | 🪦 코드에 «없습니다» |
+
+## 🪦 후보 목록에 «이미 죽은 것»이 둘 있습니다
+```
+run_builtin    텍스트 히트 셋이 «전부 주석»입니다 — builtins.py:385 「[판정 497] `run_builtin` AND
+               `_rows_handed` LIVED HERE AND THE SEAT HAS THEM NOW」 · activity.py:238 도 서술
+is_follow_up   추적 제품 파일 «0». 낱말 자체가 없습니다
+=> 지울 것이 아니라 «목록에서 뺄» 것입니다. 안 빼면 「지웠다」가 한 번 거짓으로 적힙니다
+```
+
+## 🔴 값이 큰 둘 — 「체인 안에서 끝나지 않습니다」
+```
+legacy_materialized_join   밖의 셋 중 «둘»이 체인 밖입니다:
+      database/crud.py        <- 레이어링 코어
+      runtime/system_reload.py <- 재적재 경로
+   => 이건 「체인 쓰레기」가 아니라 «두 subsystem 에 걸친» 은퇴입니다. 등급이 다릅니다
+follow_up   여섯 중 하나가 `chain_bindings.py` — «선언 문법의 칸»입니다
+   => 562 ① 의 「미루기 칸 제거」가 «문법 표면»을 건드립니다. 「없음의 뜻을 바꾸면 그 선언을
+      읽는 곳 전부가 모집단」(제 기억의 부류)에 걸립니다 — 작성 폼·번들 검증기까지 봐야 합니다
+```
+
+## ⚠️ 제 계기를 «두 번» 고쳤습니다 — 고치기 전 수를 그대로 적습니다
+```
+① `from X.Y import Z`  가 모듈 이름을 안 남김
+   고치기 전  legacy_materialized_join = 0 · legacy_join_declaration = 2
+② `import X as Y` 가 «원래 이름»을 버리고 별칭만 남김   (builtins.py:135 `… as vje`)
+   고친 뒤    legacy_materialized_join = 3 · legacy_join_declaration = 8
+🔴 ①만 고치고 멈췄으면 「legacy_materialized_join 은 «아무도 안 지난다»」를 올릴 뻔했습니다.
+   그 자리는 crud 와 system_reload 가 지납니다. 잡은 것은 «문자열 교차 확인»입니다 — AST 가 아니라
+=> 그래서 이 표의 수는 「AST 로 세고 문자열로 «대조»한 것」입니다. 둘 중 하나만으론 이 표가 틀립니다
+```
+📮 이 목록은 «1차»입니다. 아직 안 센 것: 「두 선택 경로」의 실체(이름을 아직 못 잡았습니다) ·
+   은퇴 표시된 파일들(파일 단위 훑기 필요). 지시 주시면 이어서 셉니다.
