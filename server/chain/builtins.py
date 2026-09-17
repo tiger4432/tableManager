@@ -134,8 +134,18 @@ def written_in(rule) -> str:
 #     _run_auto_confirm   -> `dynamic_mappers._auto_confirm` (the body, unchanged)
 #     BUILTIN_LABELS      -> `TEMPLATE_FACTS[...]['label']`
 #     ORIGIN_STAMPING     -> `TEMPLATE_FACTS[...]['stamps_origin']`
-#     SELF_WRITING_KINDS  -> `TEMPLATE_FACTS[...]['writes_itself']`, read only by the
-#                            deferred pass, which goes with it
+#     SELF_WRITING_KINDS  -> `TEMPLATE_FACTS[...]['writes_itself']`
+#        ⚰️ THIS LINE SAID 「read only by the deferred pass, which goes with it」
+#        AND THAT WAS A PREDICTION WEARING A MEASUREMENT'S CLOTHES. Counted
+#        2026-09-17, there are TWO product readers and they ask in different tenses:
+#          `ingestion_worker.picked_up_by_the_follow_up_pass` - asked BEFORE the run,
+#             to select. This one does go when the deferred step can write proposals.
+#          `replay` -> `admin.retroactive` - asked when the rule is NOT run at all, to
+#             pick the pre-count's UNIT (「다시 계산할 행」 vs 「덮어쓸 셀」, 판정 505).
+#             A dry run has no answer to read a count off, so 567's move to reading it
+#             off the result does not reach this seat and this reader STAYS.
+#        So the fact is the same class as `stamps_origin`: about the WORK, not the
+#        address, and it belongs beside the template rather than being on its way out.
 #     BUILTIN_HANDS/HANDS -> nowhere. One calling convention has nothing to record.
 #     _run_join           -> nowhere. 판정 580: its execution half was already unreachable;
 #                            the READING half (`legacy_materialized_join.rules_for_right`)

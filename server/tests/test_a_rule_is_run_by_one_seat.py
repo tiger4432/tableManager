@@ -217,6 +217,11 @@ CHAIN_LOG_TAGS = {
     #: plain sentence - the tag was the only part an operator could not read. Re-adding the
     #: old spelling turns this gate red, because it would not be a member here.
     "ChainWaiting": "a blocked group making later groups wait",
+    # 🔴 [판정 562] THE STAGE IS NEW AND SO IS THE MEMBER. Templates are built from the
+    #: declaration and registered at import; if that install dies the chain must still be
+    #: importable, so the failure is a LOG rather than an exception - and a log nobody can
+    #: grep is the half-measure this gate exists to refuse.
+    "DynamicMappers": "installing the mappers built from the declaration",
     "LayerHealth": "the layering check",
     "Ledger": "the ledger follow-up",
     "LedgerCensus": "the retroactive census",
