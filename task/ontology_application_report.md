@@ -27273,3 +27273,43 @@ db 질의     `bound.call(db, one, rule=rule)` :510          맵퍼가 «받습�
             제 생각은 안 적습니다. 재고 나서 적겠습니다
 ```
 📮 지금까지의 답을 한 줄로: **「막히는 것은 «값»이 아니라 «말»입니다 — 거절을 실을 칸이 셋 중에 없습니다」**
+
+---
+
+> 📥 **[09-17 15:22 응용] Q-107 — «쌓아 둡니다»(판정 561 대로). 560 이 되살아난다면 «먼저» 읽을 한 가지: 이름 가드가 동적 생성에서 «안 웁니다»**
+> ⛔ **판정 청하지 않습니다. 착수도 안 합니다.** 계획이 승인될 때 쓰시라고 적어 두는 것입니다
+> 🔵 그리고 560 ㉡(「꽂는 자리가 이미 있나」)의 답도 여기 있습니다 — 있습니다
+
+## ㉡ 꽂는 자리 — «있습니다». 그리고 «일부러» 분리돼 있습니다
+```
+mapper_sdk.register(name, fn, params=()) :293
+   자기 docstring: 「Separate from the decorator so `discover` and a test share it」
+   :306 MAPPER_REGISTRY[name] = fn · :307 MAPPER_PARAMS[name] = tuple(params)
+   데코레이터도 이 자리를 지납니다 (:394 `return register(name or fn.__name__, run, params)`)
+=> 셋째 호출자(동적 생성)를 위해 «새 문을 만들 필요가 없습니다». 이미 그러라고 갈라 둔 자리입니다
+```
+
+## 🔴 그런데 그 자리의 «중복 가드»가 동적 생성에서 성질을 잃습니다 — 태워서 쟀습니다
+```
+가드   :301  if existing is not None and _origin(existing) != _origin(fn): raise MapperNameClaimedTwice
+출처   :290  _origin(fn) = fn.__module__            <- «모듈»입니다
+실행 결과 (합성 함수 둘을 한 builder 모듈 이름으로 만들어 같은 이름에 등록):
+   origins same?              True  (chain.generated_mappers)
+   두 번째 register           ACCEPTED    <- «가드가 안 웁니다»
+   레지스트리가 든 것          declaration_2  <- 먼저 것이 «조용히» 덮였습니다
+   대조군: 파일 맵퍼가 같은 이름 -> REFUSED (MapperNameClaimedTwice)   <- 출처가 다르면 «여전히 웁니다»
+```
+🔴 **그리고 가드가 자기 사유에 그 전제를 적어 뒀습니다:**
+   「A module cannot hold two top-level functions of one name anyway — Python decides that」
+   -> 동적 생성 함수는 «모듈의 최상위 함수가 아닙니다». 파이썬이 더는 안 정합니다.
+      가드가 틀린 것이 아니라 «가드가 기대던 사람»이 사라지는 것입니다
+
+## 무엇이 참이어야 이 일이 안 나나 (수리를 짓지 않습니다)
+```
+선언 둘이 «같은 이름»의 맵퍼를 낳을 수 있나 — 그 답이 이 항목의 등급입니다
+  · 이름이 «규칙 이름»에서 나온다면 둘이 될 수 없습니다(이름 겹침은 오늘 거절됩니다 — 판정 554)
+  · 이름이 «종류»에서 나온다면(예: 조인 전부가 한 이름) 둘째 선언이 첫째를 조용히 덮습니다
+=> 이건 «설계가 정할 것»이지 제가 정할 것이 아닙니다. 다만 그 갈림이 «여기»에 있다는 것만 적습니다
+```
+📌 그리고 560 ㉠(「맵퍼 출력으로 말할 수 없는 것」)의 답은 «이미 올려 뒀습니다» — Q-106, 15:20.
+   한 줄: 「막히는 것은 «값»이 아니라 «말»입니다 — 거절을 실을 칸이 셋 중에 없습니다」
