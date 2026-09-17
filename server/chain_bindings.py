@@ -513,10 +513,7 @@ def skeleton():
     fields = []
     for key in routing_keys():
         if key == PARAMS_KEY:
-            # The mapper's own arguments. `keyed_by` is the argument NAME, and what names are
-            # legal is the mapper's to declare (`@mapper(params=…)`) — not this file's.
-            node = {"kind": "map", "keyed_by": "param",
-                    "node": {"kind": "leaf", "hint": "free"}}
+            node = _params_node()
         else:
             node = {"kind": "leaf", "hint": _SKELETON_HINTS.get(key, "free")}
         fields.append({"key": key, "required": key in required, "node": node})
@@ -545,6 +542,23 @@ def _record(*fields):
 
 def _leaf(key):
     return {"kind": "leaf", "hint": _SKELETON_HINTS.get(key, "free")}
+
+
+def _params_node():
+    """The mapper's own arguments: a free map, keyed by the argument NAME.
+
+    🔴 [판정 536] WHAT NAMES ARE LEGAL IS THE MAPPER'S TO DECLARE (`@mapper(params=…)`),
+    never this file's. Measured 2026-09-17: the flat rules here carry 25 cells the chain
+    grammar does not know, and what reads them lives in `server/mappers/*.py` - the owner's
+    files, gitignored. Enumerating them here would put domain words in code AND would be
+    wrong for the thirty-fifth argument an installation adds tomorrow.
+    「적을 자리를 만들고 값은 «비워 둔다»」.
+
+    ⚠️ ONE AUTHOR, TWO SKELETONS. The flat root and the unified `derive.mapper` branch are
+    the same cell in two grammars; spelling the node twice is how the form comes to offer one
+    shape where the loader takes another.
+    """
+    return {"kind": "map", "keyed_by": "param", "node": {"kind": "leaf", "hint": "free"}}
 
 
 def _unified_root():
@@ -578,9 +592,17 @@ def _unified_root():
         "join": _record(*[_field(cell, _leaf(cell)) for cell in join_into.JOIN_CELLS]),
         "decide": _record(*[_field(cell, _leaf(cell))
                             for cell in rule_shape.DECIDE_CELLS]),
-        # ⚠️ The mapper kind's argument is the mapper's own name, the same cell the flat
-        # shape already carries - so it is a leaf here rather than a second vocabulary.
-        "mapper": _leaf("mapper"),
+        # 🔴 [판정 536 ⑥] A NAME AND ITS ARGUMENTS, because that is what the internal model
+        #   already holds: `from_chain_rule` builds `derive.mapper` as
+        #   `{mapper, mapper_module, mapper_function, params}`. This node said `leaf`, so the
+        #   form could NAME a mapper and not CONFIGURE one - an operator had to hand-edit
+        #   JSON to set a single argument. ⚰ The old comment called it 「a leaf rather than a
+        #   second vocabulary」; the second vocabulary was never the risk, the missing room was.
+        "mapper": _record(
+            _field("mapper", _leaf("mapper")),
+            _field("mapper_module", _leaf("mapper_module")),
+            _field("mapper_function", _leaf("mapper_function")),
+            _field(PARAMS_KEY, _params_node())),
     }
     into_branches = {
         "table": _leaf("target_table"),
@@ -603,6 +625,17 @@ def _unified_root():
                                 for cell in rule_shape.KEY_CELLS])),
         _field("limits", _record(*[_field(cell, _leaf(cell))
                                    for cell in rule_shape._LIMIT_KEYS])),
+        # 🔴 [판정 536 ① · 546 ①] THE FOURTEEN THE UNIFIED SHAPE HAD NO ROOM FOR. Measured
+        #   2026-09-17: nine of the ten rules in this box carry cells the form could not
+        #   draw, because they fell into `extra` - and `is_batch` alone decides how a rule
+        #   is CALLED (판정 506). A grammar that cannot hold nine of ten declarations is the
+        #   one with the missing axis, not the declarations.
+        # ⚠️ THE LIST IS COMPUTED (`routing_keys()` minus what the unified shape folds), so a
+        #   cell added to the chain grammar tomorrow appears here without this file changing.
+        #   Spelling fourteen names here would be the third author of one list.
+        # ⛔ AND THE NAMES ARE THE OPERATOR'S. `RULE_TABLE_KEYS` says it: 「개명하지 않는다 —
+        #   운영자가 적는 키이고, 이름을 바꾸는 것은 조작자 표면이다」.
+        *[_field(cell, _leaf(cell)) for cell in rule_shape.axis_keys()],
     )
 
 
