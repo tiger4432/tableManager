@@ -51399,3 +51399,44 @@ def _run_join(db, rule, row_ids=None, key_values=None, done=None, **_):
 ⛔ 「row_ids 만 되면 일단 됐다」로 넘기지 마십시오. 그게 오늘 우리가 세 번 잡은 부류입니다
 ```
 📌 580 의 나머지는 «그대로»입니다 — `legacy_materialized_join` «모듈»은 안 지웁니다(이유 둘).
+
+---
+
+> 📊 **[09-17 16:16 총괄] 판정 583 — ① 을 «제가» 셌습니다. 10/13 이 코드에서 0 입니다. 그리고 남은 셋은 «③ 과 같은 일»입니다**
+> **받는 이: 구현자 — 새 지시 없습니다. «끝선이 어디인지»를 못 박습니다**
+
+## 총괄 실측 (16:1x, 제품 = `server/*.py` 빼기 `server/tests`)
+```
+코드 참조 «0» — 남은 것은 묘비·독스트링뿐            10 개
+   BUILTIN_KINDS · BUILTIN_HANDS · BUILTIN_LABELS · HANDS_ROW_IDS · HANDS_PAYLOADS
+   ORIGIN_STAMPING_KINDS · UnknownBuiltinKind · register_builtin(독스트링 1)
+   SELF_WRITING_KINDS(독스트링 1) · builtin_kind(독스트링 1)
+아직 «코드»                                          3 개
+   writes_itself 15 · stamps_origin 6 · self_writing_name 3
+파일     builtins.py 446 -> «258» · rule_run.py 547 -> «540» · dynamic_mappers.py «231»
+```
+
+## 🔴 그 셋이 «어디» 사는지가 답입니다 — 둘은 «옮겨온 것»이고 하나만 «남은 것»입니다
+```
+dynamic_mappers.py  11  = TEMPLATE_FACTS. 「일의 사실」이 템플릿 «옆»으로 내려온 자리
+                         -> stamps_origin 은 «조인이 무엇을 하나»입니다(원본 행을 찍어야 철회가 된다).
+                            종류표 부품이 «아닙니다». 지울 것이 아니라 «있어야 할» 것입니다
+rule_run.py         11  = 여기에 «진짜 남은 것»이 있습니다
+ingestion_worker    3   = 미루기 경로의 «고르개»
+```
+🔵 그러므로 18:00 에 제가 소유자께 드릴 문장은 이렇게 됩니다:
+```
+「문을 가르려고 만든 표와 그 접근자는 «없습니다» — 코드 참조 0, 남은 것은 지웠다는 기록입니다.
+  «일»에 대한 사실 둘은 템플릿 옆으로 옮겼고, 없앴다고 말하지 않습니다.
+  하나(writes_itself)가 아직 «미루기 경로»를 고르는 데 쓰이고, 그건 ③ 과 같이 죽습니다」
+```
+
+## 🔴 그래서 끝선이 «하나»입니다 — ① 과 ③ 은 «같은 커밋»에서 닫힙니다
+```
+㉡ 미루기 경로 제거  ->  writes_itself 의 «마지막 소비자»가 사라짐  ->  ① 이 닫힘
+                  ->  랩 경로가 «없음»                      ->  ③ 이 닫힘
+=> 572 의 「㉣-제품」이 «따로 할 일이 거의 없습니다». 10 개는 이미 0 이고,
+   남은 것은 ㉡ 이 데려갑니다. ㉣ 에 시간을 쓰지 말고 «㉡ 에 쓰십시오»
+⚠️ 다만 self_writing_name(3)은 제가 «어디 쓰이는지 안 열어 봤습니다». ㉡ 이 데려가는지
+   당신이 확인하십시오 — 아니면 그건 ㉣ 의 진짜 잔여입니다
+```
