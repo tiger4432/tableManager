@@ -48713,3 +48713,53 @@ join_into  `_answer` 는 오른쪽 컬럼을 그냥 골라 오고 `_update_items
 🔴 **제가 안 잰 것:** ⓒ 를 달면 «지금 돌던 것이 멈추나». 위에서 「도달 불가」라고 적었지만
    그건 제가 resolve 를 고친 «뒤»의 상태입니다 — 고치기 «전»에 그게 돌고 있었는지는 안 쟀습니다.
    총괄이 그 전제를 쓰시려면 그것부터 재 주십시오.
+
+> 🗑️ **[09-17 16:13 구현자] 18:00 의 ① 이 «제품 쪽에서» 닫혔습니다 (`4c881f8d`) — 목록과 «대조 가능»합니다**
+
+## 지운 것 — 지우면서 적은 그대로
+```
+chain/builtins.py                446 -> 258 줄
+   BUILTIN_KINDS · ORIGIN_STAMPING_KINDS · SELF_WRITING_KINDS · BUILTIN_LABELS ·
+   HANDS_ROW_IDS · HANDS_PAYLOADS · BUILTIN_HANDS · register_builtin · _install ·
+   _run_join · _run_auto_confirm · UnknownBuiltinKind
+chain/rule_run.py (앞 커밋)       hands() · builtin_kind() · Resolved.hands · Resolved.writes_itself
+                                 resolve 의 종류 팔 · run 의 행번호 팔
+chain/ingestion_worker.py        미루기 선택자의 «앞 절반»
+chain/replay.py                  드라이런 관문이 «모양» 대신 «성질»을 묻습니다
+admin/dev_bench.py               거절이 레지스트리를 답니다 · 「종류라서 샘플 못 먹임」 거절 «삭제»
+```
+```
+제품(시험 제외) 전수 확인   위 이름들 남은 «호출» 0. 남은 것은 «묘비 주석»뿐입니다
+게이트                    55 passed (소급 · 리플레이 · 조인 문 · 인리치)
+```
+
+## ⛔ 판정 580 의 경계 지켰습니다
+```
+안 지웠습니다   legacy_materialized_join «모듈» · rules_for_right
+왜            쓰기 경로의 유일성 가드가 «거기서» 선언을 읽습니다. 못 읽으면 «아무 행도 안 거절»합니다
+              — 빨개지지도, 로그도 안 남고, 중복이 들어옵니다
+```
+
+## 🔴 옮긴 것은 «옮겼다»고 적었습니다 (없앴다고 안 합니다)
+```
+_run_auto_confirm   -> dynamic_mappers._auto_confirm (몸 그대로)
+BUILTIN_LABELS      -> TEMPLATE_FACTS[...]["label"]
+ORIGIN_STAMPING     -> TEMPLATE_FACTS[...]["stamps_origin"]
+SELF_WRITING_KINDS  -> TEMPLATE_FACTS[...]["writes_itself"]  (미루기 경로만 읽습니다 — 같이 나갑니다)
+BUILTIN_HANDS/HANDS -> «아무 데도». 부르는 법이 하나면 적을 것이 없습니다
+```
+
+## ⚠️ 제가 «넓힌» 것 하나 더 — 벤치
+```
+지운 거절   「이건 등록된 종류라 파일 맵퍼가 아닙니다 — 샘플 파일은 이게 받는 입력이 아닙니다」
+왜 지웠나   그 문장은 «종류가 행 번호를 받던 때»에만 도달했습니다. 이제 전부 페이로드를 받으므로
+           남겨 두면 «되는 것을 거절»합니다
+```
+
+## 남은 것 (총괄 우선순위대로)
+```
+2위 남음   없음 — 제품 삭제는 끝났습니다
+3위       시험: `rule_run.hands` · `builtins.BUILTIN_KINDS` 를 부르는 것들 (18:00 넘겨도 된다 하셨습니다)
+본체 남음  미루기 경로 제거(㉡) — 아직입니다. 그게 ③ 입니다
+4위       이동(chain_bindings · chain_skeleton)
+```
