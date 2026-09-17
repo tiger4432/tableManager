@@ -1799,14 +1799,14 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 | --- | --- | --- |
 | `RULE_LOG_TAG = "ChainRule"` | 🔴 **어휘가 «하나»다.** 종류마다 다른 태그를 쓰던 것(맵퍼 `MAPPER_LOG_TAG` · builtin 자기 문장)이 이 한 낱말로 접혔다 — grep 이 «종류를 먼저 묻지» 않게 | :46 |
 | `outgoing_depth(incoming)` · `chain_envelope(depth=None)` | 홉을 «세는» 자리와 접기 스코프를 «여는» 자리. 판정 423 이 `+1` 을 호출자에서 여기로 옮겼다 | :55 · :67 |
-| `builtin_kind(rule)` | 🔴 **현행이다 — 은퇴 아님.** 이 규칙이 «어느 빌트인 종류를 이름으로 대나»(표 멤버십). 이 좌석 «안»에서 여섯 번 불린다(:155 · :198 · :231 · :251 · :281 · :357). ⚠️ 판정 528 의 은퇴 목록에 «잘못» 올랐다가 **판정 530 으로 내려왔다**(응용 Q-85) | :124 |
+| `builtin_kind(rule)` | ⚰️ **[판정 562] 은퇴했다 — 종류표가 없어져 이 물음 자체가 사라졌다.** 이 규칙이 «어느 빌트인 종류를 이름으로 대나»(표 멤버십). 이 좌석 «안»에서 여섯 번 불린다(:155 · :198 · :231 · :251 · :281 · :357). ⚠️ 판정 528 의 은퇴 목록에 «잘못» 올랐다가 **판정 530 으로 내려왔다**(응용 Q-85) | :124 |
 | `writes_itself(rule)` | 「자기 행을 «자기가» 쓰나」 — 봉투(envelope)를 여는 쪽인지 호출자의 배치 쓰기로 나가는지. `hands` 와 «다른 사실»이다 | :139 |
 | `runnable(name)` | 「이 이름이 이 프로세스에서 돌 수 있나」의 **유일한 답**. 부르는 곳 셋: `ingestion_worker._resolvable_mapper` · `config_resolve_report._runnable_name` · `admin/dev_bench` | :159 |
-| 🆕 `hands(rule) -> HANDS_ROW_IDS \| HANDS_PAYLOADS` | **어떻게 «불리나»** — `(db, rule, row_ids=)` 인가 `(db, payload)` 인가. 🔴 **등록에서 읽는다**(`builtins.BUILTIN_HANDS`), 이름에서 «유도하지 않는다». 판정 503 이 처음 `HANDS_ROW_IDS if builtin_kind(rule) is not None` 로 썼다가 «대리를 한 층 내린 것»이라 판정 508 이 고쳤다(응용 발견). `BUILTIN_KINDS` 에 직접 쓴 이름이 `BUILTIN_HANDS` 에 없으면 «조용히 payloads» 가 아니라 `UnresolvableRule` 로 «이름을 댄다» :205~:211 (판정 509) | :179 |
+| ⚰️ [판정 562 — 없어짐. 손이 «하나»다] `hands(rule) -> HANDS_ROW_IDS \| HANDS_PAYLOADS` | **어떻게 «불리나»** — `(db, rule, row_ids=)` 인가 `(db, payload)` 인가. 🔴 **등록에서 읽는다**(`builtins.BUILTIN_HANDS`), 이름에서 «유도하지 않는다». 판정 503 이 처음 `HANDS_ROW_IDS if builtin_kind(rule) is not None` 로 썼다가 «대리를 한 층 내린 것»이라 판정 508 이 고쳤다(응용 발견). `BUILTIN_KINDS` 에 직접 쓴 이름이 `BUILTIN_HANDS` 에 없으면 «조용히 payloads» 가 아니라 `UnresolvableRule` 로 «이름을 댄다» :205~:211 (판정 509) | :179 |
 | 🆕 `self_writing_name(rule)` | 「«자기 행을 쓰는» 규칙이면 그 종류 이름, 아니면 None」. ⚠️ `builtin_kind` 의 «대체가 아니다» — 판정 505 가 바꾼 것은 통계 payload 의 «칸 이름»(`stats["builtin_kind"]` → `stats["self_writing_kind"]`, `chain/replay.py` :481)이고 이 함수는 «새로 생긴» 것이다 | :216 |
-| `rule_label(rule)` | 운영자가 읽는 «낱말»(join · decide · mapper). 등록이 저자다(`builtins.BUILTIN_LABELS`) | :235 |
+| `rule_label(rule)` | 운영자가 읽는 «낱말»(join · decide · mapper). 등록이 저자다(`dynamic_mappers.TEMPLATE_FACTS[…]['label']` — 옛 `builtins.BUILTIN_LABELS`) | :235 |
 | `retraction_refusal(rule)` · `rows_counted(value)` | 철회 거절 문장 · 「몇 줄을 냈나」를 «한 번» 세는 자리(화면과 로그가 같은 수를 읽는다, 판정 498) | :264 · :396 |
-| `Resolved = namedtuple("Resolved", "call who hands writes_itself accepts_rule")` · `class UnresolvableRule(ValueError)` | 푼 결과 다섯 칸 · 못 푼 것의 «한 예외». 🔴 그 예외가 오늘 «두 뜻»이다(「제품이 모르는 이름」 :376·:386 / 「아는 종류인데 오등록」 :205) — 잡는 자리는 `admin/dev_bench.py` «하나»이고 둘을 «같이» 받는다(응용 Q-62) | :316 · :320 |
+| `Resolved = namedtuple("Resolved", "call who accepts_rule"  ← [판정 562] `hands`·`writes_itself` 두 칸이 빠졌다)` · `class UnresolvableRule(ValueError)` | 푼 결과 다섯 칸 · 못 푼 것의 «한 예외». 🔴 그 예외가 오늘 «두 뜻»이다(「제품이 모르는 이름」 :376·:386 / 「아는 종류인데 오등록」 :205) — 잡는 자리는 `admin/dev_bench.py` «하나»이고 둘을 «같이» 받는다(응용 Q-62) | :316 · :320 |
 | `resolve(rule) -> Resolved` | 이름을 «한 번» 푼다. ⚠️ **운영자 모듈을 «import 한다»** — 그래서 「묘사만 하는」 물음은 이것을 쓰면 안 된다(판정 501 a) | :324 |
 | `run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None)` | 돌린다. 줄은 `finally` 안이라 «던진 규칙도 말한다»(판정 498 ③). 🔴 `bound.hands == HANDS_ROW_IDS` 인데 넘길 것이 없으면 «돌지 않고» 돌아간다 :446 — 그 경우 줄이 «아예 없다» | :413 · 줄 :545 |
 
