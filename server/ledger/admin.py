@@ -577,6 +577,26 @@ def chain_rules_path() -> str:
     return ingestion_worker.RULES_PATH
 
 
+def grammar_of(rule):
+    """Which grammar ONE stored rule is written in, or None when that cannot be read.
+
+    🔴 [판정 540] ONE AUTHOR. The list's map, the opened rule's cell and anything that
+    asks later all come through here: a screen that read 「flat」 off the list and 「unified」
+    off the rule it opened would be two answers to one question, arriving in ONE response.
+
+    ⚠️ `derive` IS THE CELL THAT TELLS THEM APART, and that is a fact about the file rather
+    than a preference - 판정 514 pinned it when 513 was about to open stored-flat rules in the
+    unified form. The two are different vocabularies (27 flat cells against 7 unified), so
+    getting this wrong draws empty branch fields over real values.
+
+    ⚠️ None MEANS 「모른다」. A rule that is not a dict has no grammar to report, and the
+    caller LEAVES IT OUT rather than defaulting it to 「flat」 - 판정 509's shape.
+    """
+    if not isinstance(rule, dict):
+        return None
+    return "unified" if isinstance(rule.get("derive"), dict) else "flat"
+
+
 def chain_rule_raw_view(name: str = None) -> dict:
     """One chain RULE's raw JSON plus the base fingerprint a save will check.
 
@@ -595,6 +615,14 @@ def chain_rule_raw_view(name: str = None) -> dict:
         error = f"{exc.__class__.__name__}: {exc}"
     rules = (document.get("rules") or []) if isinstance(document, dict) else []
     named = {str(r.get("name")): r for r in rules if isinstance(r, dict) and r.get("name")}
+    # 🔴 [판정 540] THE NAME LIST AND THE GRAMMAR MAP COME OFF `named`, WHICH IS ONE
+    #   EXPRESSION. Two loops could disagree about which names exist, and a response that
+    #   contradicts itself is the same defect as two seats that do - only harder to see,
+    #   because it arrives as one object.
+    # ⚠️ A RULE WHOSE GRAMMAR IS UNREADABLE IS LEFT OUT rather than called 「flat」.
+    #   「모른다」 and 「평면이다」 are different facts, and filling the second in for the
+    #   first is the shape 판정 509 removed from `hands` this morning.
+    grammars = {name: grammar_of(rule) for name, rule in named.items()}
     import chain_bindings
 
     out = {
@@ -627,6 +655,9 @@ def chain_rule_raw_view(name: str = None) -> dict:
         #    about a rule stored flat would draw empty branch fields over real cells and a
         #    save would rewrite it into a grammar it is not.
         "grammar": "unified",
+        # ⚠️ [판정 540] SAME FUNCTION AS THE MAP BELOW - the screen must not be able to
+        #   read one grammar from the list and another from the opened rule.
+        "rule_grammars": {n: g for n, g in grammars.items() if g},
     }
     # 🔴 [판정 521] 「길이 0 인 문자열은 NULL 이다」 (소유자 2026-09-11). `?name=` arrives as
     #   `''`, which `is not None` reads as A NAME - so the route looked for a rule called
@@ -650,9 +681,7 @@ def chain_rule_raw_view(name: str = None) -> dict:
         # something the form re-derives. The two shapes ride together in `skeleton`, and a
         # screen guessing which to draw would be guessing at a fact the file states: one
         # cell, `derive`, is what tells them apart everywhere else in this product.
-        out["grammar"] = ("unified"
-                          if isinstance((named.get(name) or {}).get("derive"), dict)
-                          else "flat")
+        out["grammar"] = grammar_of(named.get(name))
     return out
 
 
