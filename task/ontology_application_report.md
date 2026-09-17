@@ -28703,3 +28703,53 @@ dev_bench 를 만지는 시험 파일 «8».  그중 시험은 여섯(샘플 맵
       «하는 일»로 골랐습니다(체인 규칙 이름 중복을 거절합니다)
 못 잼   옮긴 뒤의 import 방향은 «설계»이지 측정이 아닙니다. 그래서 안 고릅니다
 ```
+
+> 🔴 **[09-17 17:08 응용] Q-140 — `RUN.md` 가 소유자께 «오늘 지워진 거절»을 약속합니다. 591 이 고친 약속의 «바깥 사본»입니다**
+> **받는 이: 총괄 — RUN.md 는 «운영에 pull 되는» 파일이라 18:00 전에 올립니다. ⛔ 제가 안 고칩니다**
+
+## ① 무엇이 적혀 있나
+```
+RUN.md:334  「### ⑧ 🆕 개발 벤치에 `builtin:…` 을 넣으면 이제 «이름을 대어 거절»합니다 (09-17)」
+      :338  「후  builtin:auto_confirm → refusal: "…는 등록된 종류이지 파일 맵퍼가 아닙니다 …"」
+      :340  「`builtin:…` 은 스스로 데이터베이스에서 행을 찾으므로 벤치가 «줄 것이 없습니다»」
+```
+
+## ② 제품에는 그 문장이 «묘비로만» 있습니다
+```
+git grep "등록된 종류이지|registered kind, not a file mapper" -- server
+   -> 히트 «하나», 그리고 그건 주석입니다:
+   dev_bench.py:264  「⚰️ A REFUSAL STOOD HERE … Every mapper takes a payload now, so the
+                      bench can feed a sample to any of them and the sentence would be
+                      refusing something that works (판정 562)」
+```
+🔴 즉 **562 가 그 거절을 «없앴고», RUN.md 는 그것을 «🆕 오늘 생긴 것»으로 적고 있습니다.**
+
+## ③ 그리고 그 이름은 오늘 «해석됩니다»
+```
+enrichment/config.py:881        AUTO_CONFIRM_MAPPER = "builtin:auto_confirm"
+chain/dynamic_mappers.py:206~7  TEMPLATES[...JOIN_INTO_MAPPER] = _join
+                                TEMPLATES[...AUTO_CONFIRM_MAPPER] = _auto_confirm
+                                (install() 이 mapper_sdk 에 등록 -> rule_run.resolve 가 찾습니다)
+=> `builtin:auto_confirm` 은 벤치에서 «이름으로 거절되지 않습니다». 해석되고, 불립니다
+```
+⚠️ **그래서 화면에 무엇이 나오는지는 제가 «안 돌려 봤습니다»** — 읽기 전용 세션이라 DB 를
+   건드리는 순간 다른 거절(예외를 감싼 :298 의 `refusal`)이 날 «수»는 있습니다.
+   제가 아는 것은 하나입니다: **RUN.md 가 인용한 그 문장은 제품에 없습니다.**
+🔴 그리고 §⑧ 이 소유자께 드린 «이유»(「스스로 DB 에서 행을 찾으므로 줄 것이 없다」)가
+   562 가 «명시적으로 물린» 그 전제입니다 — 다시 거절을 세우더라도 그 이유로는 못 세웁니다.
+
+## ④ 부류 — 591 이 고친 것의 «바깥 사본»입니다
+```
+591  벤치의 «독스트링 넷»이 지키지 못할 충실도를 약속 -> 문장을 사실로 고침 (93840f8e)
+Q-140  같은 약속이 «RUN.md 에 한 벌 더» 있고, 그건 운영으로 pull 되는 파일입니다
+=> 「약속을 고칠 때 그 약속의 «사본»을 전수로 센다」 — 제 기억의 「본문을 고치고 표제를
+   안 고치면 정정이 안 간다」와 같은 자리이고, 이번엔 사본이 «저장소 밖»을 향합니다
+```
+📌 그리고 RUN.md 에서 오늘 은퇴한 «이름 열넷»은 «0 회»입니다 — 그쪽은 깨끗합니다.
+
+## 확신도
+```
+실행   git grep · 세 상수의 정의 · install 의 등록 줄을 제가 열었습니다
+못 잼   벤치에 그 이름을 넣었을 때 «오늘 화면에 무엇이 뜨는지» — 안 돌려 봤습니다
+안 쟀음  RUN.md 의 나머지 절(①~⑨)이 오늘 판정으로 낡았는지는 «이 한 절만» 봤습니다
+```
