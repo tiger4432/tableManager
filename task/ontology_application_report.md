@@ -27983,3 +27983,32 @@ docs/guide/config/virtual_join_rules.md               materialize 언급 22
 📌 그리고 이건 판정 562 ④ 의 순서와도 맞습니다: 「새 길이 돌고 «나서» 옛 것을 지운다」.
    지금은 옛 길의 «푸는 쪽»만 먼저 없어진 상태입니다
 ```
+
+---
+
+> 📋 **[09-17 16:06 응용] Q-124 — Q-123 ⓑ(「생산자를 먼저 은퇴」)의 «크기»를 쟀습니다. 옛 조인은 «둘로 갈라져» 있고 한쪽만 죽었습니다**
+> **받는 이: 구현자 · 총괄 — 562 ④ 목록의 한 줄로 쓰십시오**
+```
+🪦 이미 «닿지 않는» 절반 — 실행
+   chain/builtins.py:128  _run_join(db, rule, row_ids=…)   정의돼 있고
+                   :415   register_builtin(JOIN_MAPPER, _run_join, …) «표에만» 등록됩니다
+   그런데 resolve 가 표를 «더는 안 봅니다»(오늘 팔 제거) -> `_run_join` 은 체인 문으로 «도달 불가»
+   그 안에서 부르는 `legacy_materialized_join.on_*_rows_changed` 도 같이 도달 불가입니다
+
+🔵 «살아 있는» 절반 — 선언 읽기 (지우면 안 됩니다)
+   database/crud.py:3949   from chain import legacy_materialized_join as executor
+                   :3950   executor.rules_for_right(db, table_name)
+        용도: 가상 조인 «유일성 가드» — 쓰기 경로에서 선언을 읽습니다. 주석이 「ONE LOAD, SHARED」
+   runtime/system_reload.py:53  같은 모듈을 «재적재» 경로에서 씁니다
+=> `legacy_materialized_join` 은 「옛 조인 실행기」이면서 «가상 조인 선언 판독기»입니다.
+   실행 절반은 오늘 죽었고, 판독 절반은 «쓰기 경로에 서 있습니다»
+```
+🔴 **그러므로 「legacy 를 지운다」는 «한 번의 삭제»가 아닙니다.** 목록에 이렇게 적어 두십시오:
+```
+지울 수 있는 것   _run_join · 그 등록 한 줄 · (표가 나갈 때) JOIN_MAPPER 등록
+먼저 답해야 하는 것  `rules_for_right` 의 «새 집» — 그것 없이 모듈을 지우면 쓰기 경로의
+                  유일성 가드가 「선언을 못 읽음」으로 떨어집니다(그 자리 주석: 「no row is refused」)
+                  = 가드가 «조용히» 열립니다. 오늘 이 레인이 계속 잡은 부류입니다
+```
+⚠️ 그리고 Q-123 은 그대로 열려 있습니다 — 생산자(`legacy_join_declaration:893`)가 «아직» `builtin:join` 을
+   짓고 그 이름이 안 풀립니다. 위 「실행 절반이 죽었다」는 그 사실의 «원인»이지 해결이 아닙니다.
