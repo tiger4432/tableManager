@@ -547,8 +547,12 @@
     }
     /* 🔴 「도는가」는 «값»입니다. 서버의 낱말 그대로 두고, 꺼진 것만 눈에 띄게 합니다 —
        저장이 «장전»까지라는 사실을 운영자가 놓치면 없는 고장을 찾게 됩니다.
-       ⛔ 문장은 없습니다. `enabled true` / `enabled false` / 거절 코드가 전부입니다. */
+       ⛔ 문장은 없습니다. `enabled true` / `enabled false` / 거절 코드가 전부입니다.
+       🔵 문법(`flat` / `unified`)도 «한 낱말 값»이라 같은 모양으로 섭니다 — 한 사실에 한 모양.
+          [실측 09-17 17:4x] 이 선택자가 없는 동안 그 배지만 16px Barlow 검정으로 떴습니다
+          (옆의 표지·상태는 12px 등폭 흐림). `_line` 은 클래스 하나짜리 div 라 CSS 가 없으면 body 를 물려받습니다. */
     .chain-rule-state,
+    .chain-rule-grammar,
     .table-config-state {
       margin: 0;
       font-family: var(--font-mono);
