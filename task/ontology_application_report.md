@@ -30315,3 +30315,49 @@ RUN.md 가 약속   `[ChainRule] enrichment_dedup:<이름> … mapper=declared:e
 
 **⚠️ 못 잰 것**: 게이트 수(2,741 passed / 빨강 셋)는 «제가 다시 안 돌렸습니다» — 세 세션이 한 DB 입니다.
 그리고 화면(어드민 규칙 표·소급 배너)은 «안 열었습니다».
+
+---
+
+> **[09-17 19:36 응용] Q-172 — `4352ad47` 의 ②감사: 제가 만든 지도 절이 «다섯 군데» 오늘 거짓입니다(그중 하나는 「전부」). 그리고 제 «경계»를 하나 자진 신고합니다**
+
+**① 🔴 `CODE_MAP` §㉙ `chain/dynamic_mappers.py` — 제가 `7d16a1bf` 로 만든 절입니다. 오늘 이렇게 틀렸습니다.**
+실측은 `origin/main` 블롭(`4352ad47` 뒤)입니다.
+```
+적힌 것                                    오늘
+「2026-09-17 신설 · 286줄」                 336 줄
+「세 이름을 묶고」 · 「몸통 셋」              넷입니다 — `_enrich` 가 늘었습니다
+`label(name)` 접근자                       이름이 `label_for(name)` 입니다
+앵커 :198 · :203 · :226 · :159/:169/:176   TEMPLATES :237 · _install_templates :240 · TEMPLATE_FACTS :206 ·
+                                           label_for :209 · writes_itself :214 · stamps_origin :224 · install :296
+                                           (몸통: _join :57 · _auto_confirm :86 ·
+                                            _legacy_materialized_join :133 · _enrich :161)
+🔴🔴 「오늘 참인 것 — 세 템플릿이 «전부» writes_itself: True」   ⛔ «오늘 거짓»입니다
+```
+오늘의 네 줄(등록이 말하는 그대로):
+```
+declared:join           label join    · stamps_origin True  · writes_itself True
+declared:decide         label decide  · stamps_origin False · writes_itself True
+declared:enrich         label decide  · stamps_origin False · writes_itself «False»   <- 새로 선 줄
+declared:virtual_join   label join    · stamps_origin True  · writes_itself True
+```
+🔴 제가 쓴 「전부」가 «절대어»였고, 계기 없이 서 있다가 «착지 하나»에 거짓이 됐습니다.
+   상설 ⓪ 이 막으려던 바로 그 모양이고, 이번엔 제가 쓴 문장입니다.
+
+**② 🔴 `SYSTEM_OVERVIEW` §6-bis — 「제품이 짓는 맵퍼 «셋»이 «이름으로» 등록된다」**
+오늘 «넷»입니다(`declared:enrich` 추가, `4352ad47`). 이것도 제가 `d4b1361a` 로 쓴 줄입니다.
+
+**③ 📮 경계를 하나 묻습니다 — 그리고 제 손이 나간 것을 먼저 밝힙니다.**
+```
+자진 신고   방금 `4f96acf4` 에서 §6-bis 를 «제가» 고쳤습니다(랩·부팅 점호를 묘비로).
+           611 은 「응용은 감사 · 지도를 «대신 써 주는» 것만 그린다」입니다.
+           §6-bis 의 「아직 아니라고 적어 두는 것」은 제 «감사 장부»라 제 손이 맞다고 봤는데,
+           같은 절의 «표»(무엇이 도나)는 남의 착지를 «서술»하는 자리입니다. 그 둘이 한 절에 있습니다
+```
+그래서 이번 ①②는 «안 고치고» 올립니다. 판정 한 줄을 청합니다:
+```
+㉠ 내 감사 장부(「아직 아닌 것」)는 내가 고친다 · 착지 «서술»(표·절)은 착지 주인이 고친다   <- 제 짐작
+㉡ 지도는 전부 착지 주인 — 응용은 «전부» 보고만 한다
+```
+어느 쪽이든 따르겠습니다. ㉡ 이면 `4f96acf4` 도 제가 넘겨야 할 것이었습니다.
+
+**지도 반영**: 이번엔 «없습니다»(제가 안 적었습니다). 앞서 오늘 제가 적은 것: `4f96acf4`(§6-bis 랩·점호).
