@@ -462,18 +462,19 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
                 "whole rule instead of nothing. Omit it to replay everything, on purpose.")
         selection = trg_model.business_key_val.in_(keys)
         log(f"[replay] selection: {len(keys)} business key(s)")
-    # [S-242] Which door this rule goes through, decided ONCE before the first page and
-    # REPORTED rather than inferred: a reader guessing from 「items but no cells」 would be
-    # wrong about the first file mapper that legitimately proposes nothing.
-    # 🔴 AND THE QUESTION IS ASKED WHERE IT IS ANSWERED (S-279). This was a comparison against
-    # `BUILTIN_KINDS` spelled here; the census (판정 419 ①) found that one judgement written in
-    # SEVEN spellings across 20 sites, so the comparison itself belongs to the seat that runs
-    # the answer, not to each caller that needs to know.
-    bound = rule_run.resolve(rule)
-    # ⚠️ AND IT SITS AFTER THE SELECTION CHECKS ON PURPOSE (판정 498), for the reason in the
-    # stats cell above.
-    bound = rule_run.resolve(rule)
-    stats["builtin_kind"] = bound.who if bound.writes_itself else None
+    # [S-242] Which pass this rule goes through, decided ONCE before the first page and
+    # REPORTED rather than inferred: a reader guessing from the counts would be wrong about
+    # the first file mapper that legitimately proposes nothing.
+    # [501 a] ASKED WITHOUT RESOLVING, AND THAT IS THE WHOLE REPAIR. `resolve` imports the
+    #   operator's module - right when something is about to RUN, wrong for a caller that
+    #   only DESCRIBES the rule. 498 put it here, before the first page, so a dry run of a
+    #   rule whose module is absent stopped reporting and started raising. Both facts below
+    #   are registrations and a dict lookup answers them; the callable is resolved by
+    #   `run_rule` when a page is actually run.
+    # (It also stood here TWICE - the reorder that moved it past the selection checks left
+    #  the old line standing. One call, one answer.)
+    self_writing = rule_run.writes_itself(rule)
+    stats["builtin_kind"] = rule_run.self_writing_name(rule)
 
     # 🪦 `module_name` / `func_name` / `is_batch` were read here and carried to the call. The
     # seat reads them off the rule itself now, so a rule that names its mapper in the ONE cell
@@ -509,7 +510,7 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
         # `importlib.import_module(None)` threw and a migrated join had NO backfill at all.
         # Live and retroactive were two doors to one rule; this is the second door learning
         # the first one's move.
-        if bound.writes_itself:
+        if self_writing:
             # ⛔ ISOLATED ON THIS BRANCH ONLY (판정 403). One page that throws costs THAT
             # page - counted, named, and the run goes on - and the session is rolled back so
             # the next page's SELECT is not talking to an aborted transaction. The file

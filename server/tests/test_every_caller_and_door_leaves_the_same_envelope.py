@@ -220,14 +220,14 @@ def test_the_paced_lap_through_the_builtin_door(db, monkeypatch):
 
     row_ids = [r.row_id for r in db.query(models.DYNAMIC_TABLES[LEFT]).all()]
     before = set(e.id for e in _events(db))
-    worker._run_builtin_followups(db, {"table": LEFT, "row_ids": row_ids,
+    worker._run_the_follow_up_pass(db, {"table": LEFT, "row_ids": row_ids,
                                        "transaction_id": "tx-424-lb",
                                        "event_type": "INSERT", "chain_depth": None})
     _score(db, before, "lap/builtin", _written(db, "lot_confirmed"))
 
 
 def test_the_paced_lap_has_no_mapper_door_at_all(db, file_mapper, monkeypatch):
-    """⛔ THE EMPTY CELL, ASSERTED RATHER THAN INVENTED. `_followup_builtin_rules` selects
+    """⛔ THE EMPTY CELL, ASSERTED RATHER THAN INVENTED. `_rules_for_the_follow_up_pass` selects
     `follow_up AND mapper in BUILTIN_KINDS`, so a file mapper declaring `follow_up` is dropped
     by the second half and never rides. A matrix that quietly had five cells would leave the
     reader guessing which one was missing and why."""

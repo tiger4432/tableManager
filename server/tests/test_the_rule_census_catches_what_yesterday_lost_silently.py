@@ -113,12 +113,42 @@ def test_a_synthesized_rule_says_it_was_not_written_by_the_operator():
     assert by_name["enrichment_dedup:x"]["origin"] == "synthesized"
 
 
-def test_the_derive_axis_reads_all_three_of_todays_grammars():
-    """🔴 통합이 접으려는 축. 세 문법이 오늘은 각자 다른 칸으로 말하므로, 사진이 그것을
-    «한 낱말»로 읽어야 통합 전후를 견줄 수 있다."""
-    assert rule_census.derive_kind({"mapper": "m"}) == "mapper"
-    assert rule_census.derive_kind({"right_table": "dt_inventory"}) == "join"
-    assert rule_census.derive_kind({"decision_key": ["a"]}) == "decide"
-    # 새 문법도 같은 낱말을 낸다 — 그것이 이행 전후를 견줄 수 있게 하는 조건이다
-    assert rule_census.derive_kind({"derive": {"join": {}}}) == "join"
+def test_the_derive_axis_is_read_off_a_rule_the_loader_actually_produces():
+    """🔴 [판정 501 ⓒ] THIS TEST WAS VACUOUS, AND THAT IS WHY THE BOOT LINE LIED.
+
+    It fed `derive_kind` shapes with `right_table` / `decision_key` / `derive` at the TOP
+    LEVEL - cells `expand_declaration` does not leave on a loaded rule - so every assertion
+    passed against inputs the product never makes, while every REAL loaded rule came back
+    「mapper」. An operator who declared a join, restarted and searched the boot line
+    `[ChainRules] set(N): 이름[출처,방식]` for `join` found nothing, while the retroactive
+    banner called the same rule `kind: "join"`.
+    ⚠️ 「범례가 단언을 공허하게 만든다」 exactly: the fixture fed the assertion.
+
+    🔴 SO THE FIXTURE IS THE PRODUCT'S OWN OUTPUT NOW. `expand_declaration` stands the
+    declaration an operator writes, and the label is read off what it produced.
+    """
+    from chain import rule_shape
+    from database import crud
+
+    stood, refusal, _notes = rule_shape.expand_declaration(
+        {"name": "inv", "on": {"table": "dt_inventory"},
+         "derive": {"kind": "join",
+                    "join": {"right_table": "dt_job_attribution",
+                             "on": [{"left": "dt_job", "right": "dt_job"}],
+                             "take": ["dt_lot_confirmed"]}},
+         "into": {"table": "dt_inventory"}},
+        crud.TABLE_CONFIG)
+
+    assert refusal is None, refusal
+    assert stood, "the declaration stood no rules, so this asserts nothing"
+    for rule in stood:
+        assert rule_census.derive_kind(rule) == "join", (
+            "a rule the loader produced from a JOIN declaration is labelled %r - and that is "
+            "the word the boot line puts in front of the operator"
+            % rule_census.derive_kind(rule))
+
+    # ⚠️ THE OTHER WORDS, AND THE GAP. A plain file mapper is 「mapper」; a rule naming no code
+    #    at all is 「unknown」, which is a different fact from 「a mapper we do not know」.
+    assert rule_census.derive_kind({"mapper_module": "m", "mapper_function": "f"}) == "mapper"
     assert rule_census.derive_kind({}) == "unknown"
+    assert rule_census.derive_kind(None) == "unknown"

@@ -40,27 +40,32 @@ def table_keys():
 
 
 def derive_kind(rule: dict) -> str:
-    """이 규칙이 값을 «어떻게» 얻는가 — 통합이 한 칸으로 접으려는 바로 그 축.
+    """이 규칙이 값을 «어떻게» 얻는가 — join / decide / mapper.
 
-    오늘은 세 문법이 각자 다른 칸으로 말하므로 여기서 읽어 «한 낱말»로 만든다. 통합 뒤에는
-    선언이 그 낱말을 직접 들고, 이 함수는 그 칸을 그대로 읽는다 — 그때가 이 함수가
-    «사라지는» 때가 아니라 «짧아지는» 때다.
+    ⚰️ [판정 501 ⓒ] THIS WAS A HAND-WRITTEN CASCADE AND IT HAD GONE WRONG WHERE NOBODY
+    LOOKS. It read `derive` / `right_table` / `decision_key` off the rule - TOP-LEVEL cells
+    that `expand_declaration` does NOT leave on a loaded rule - so every loaded rule answered
+    「mapper」, including every synthesised join and auto-confirm. That word goes straight into
+    the boot line `[ChainRules] set(N): 이름[출처,방식]`, which RUN.md tells the operator to
+    read: they declared a join, restarted, searched the boot log for `join`, and found none -
+    while the retroactive banner called the same rule `kind: "join"`.
+
+    🔴 ONE AUTHOR NOW. `rule_run.rule_label` answers from what the kinds REGISTERED, which
+    is where 판정 498 ④ put this judgement; a second cascade here is the same defect that
+    ruling closed, wearing the census's clothes.
     """
     if not isinstance(rule, dict):
         return "unknown"
-    new_shape = rule.get("derive")
-    if isinstance(new_shape, dict):
-        for name in ("mapper", "join", "decide"):
-            if name in new_shape:
-                return name
-    if rule.get("join") or rule.get("right_table"):
-        return "join"
-    if rule.get("decision_key") or rule.get("claim_contract"):
-        return "decide"
-    if (rule.get("mapper") or rule.get("mapper_module")
+    if not (rule.get("mapper") or rule.get("mapper_module")
             or rule.get("mapper_function")):
-        return "mapper"
-    return "unknown"
+        # ⚠️ 「NAMES NO CODE」 IS NOT A LABEL, IT IS A GAP. The seat answers 「mapper」 for any
+        #    name it does not know, which is right when a rule HAS a name; a rule with no name
+        #    at all is a different fact and the census is the one place that says so.
+        return "unknown"
+
+    from chain import rule_run
+
+    return rule_run.rule_label(rule)
 
 
 def rule_row(rule: dict, position: int, origin: str = "declared") -> dict:

@@ -62,7 +62,7 @@ KIND_NAMES = ("JOIN_MAPPER", "JOIN_INTO_MAPPER", "AUTO_CONFIRM_MAPPER",
 #:    `chain/replay.py::replay_rule` (판정 421, and again at 498 — it asked the kind to learn
 #:    whether a result can be SEEN without being applied, which is now a registered fact it
 #:    reads off `resolve`), `chain/ingestion_worker.py::_process_chain_transaction_group_sync`
-#:    and `::_run_builtin_followups` (판정 423, then 495).
+#:    and `::_run_the_follow_up_pass` (판정 423, then 495).
 NOT_YET_MOVED = set()
 
 

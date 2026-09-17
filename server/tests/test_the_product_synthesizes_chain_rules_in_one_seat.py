@@ -340,8 +340,8 @@ def test_the_dispatcher_rides_the_paced_lap_beside_its_neighbour():
     from chain import ingestion_worker as worker
 
     body = inspect.getsource(worker._drain_ledger_followup_sync)
-    assert "_run_builtin_followups(db, done)" in body
-    hook = inspect.getsource(worker._run_builtin_followups)
+    assert "_run_the_follow_up_pass(db, done)" in body
+    hook = inspect.getsource(worker._run_the_follow_up_pass)
     # 🔴 [S-279] THROUGH THE SEAT. This read `run_builtin(` - the door - and the lap calls
     #    `run_rule` now, which asks which door for it. The property is unchanged: the work is
     #    HERE, on the drain, and not on the commit path.
@@ -370,8 +370,8 @@ def test_the_followup_dispatcher_does_not_load_rules_per_batch():
 
     from chain import ingestion_worker as worker
 
-    body = inspect.getsource(worker._run_builtin_followups)
-    assert "_followup_builtin_rules()" in body
+    body = inspect.getsource(worker._run_the_follow_up_pass)
+    assert "_rules_for_the_follow_up_pass()" in body
     assert "load_chain_rules()" not in body, "the file is read per batch again"
 
 
@@ -382,7 +382,7 @@ def test_the_cached_rules_are_cleared_where_every_other_worker_cache_is():
 
     from chain import ingestion_worker as worker
 
-    worker._followup_builtin_rules()
+    worker._rules_for_the_follow_up_pass()
     assert worker._FOLLOWUP_BUILTIN_RULES is not None
     worker.reload_worker_process_cache()
     assert worker._FOLLOWUP_BUILTIN_RULES is None
@@ -398,7 +398,7 @@ def test_the_cache_holds_only_what_the_dispatcher_could_run():
     from chain import builtins
 
     worker.reload_worker_process_cache()
-    for rule in worker._followup_builtin_rules():
+    for rule in worker._rules_for_the_follow_up_pass():
         assert rule.get("follow_up")
         assert rule.get("mapper") in builtins.BUILTIN_KINDS
 
@@ -436,7 +436,7 @@ def test_the_drain_has_no_second_route_left():
     assert not hasattr(worker, "_auto_confirm_followed_rows"), (
         "the second route is back")
     body = inspect.getsource(worker._drain_ledger_followup_sync)
-    assert body.count("_run_builtin_followups(db, done)") == 1
+    assert body.count("_run_the_follow_up_pass(db, done)") == 1
     assert "auto_confirm" not in body, "the drain names a kind again"
 
 
@@ -499,5 +499,5 @@ def test_the_dispatcher_hands_the_note_to_the_kind():
 
     from chain import ingestion_worker as worker
 
-    body = inspect.getsource(worker._run_builtin_followups)
+    body = inspect.getsource(worker._run_the_follow_up_pass)
     assert "done=done" in body

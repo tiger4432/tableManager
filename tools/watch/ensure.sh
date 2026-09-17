@@ -18,7 +18,7 @@ alive() { [ -f "$PIDF" ] && kill -0 "$(cat "$PIDF" 2>/dev/null)" 2>/dev/null; }
 start() {
   rm -f "$PIDF"
   nohup bash "$HERE/watch_all.sh" >/dev/null 2>&1 &
-  echo $! > "$PIDF"
+  # ⛔ 런처 pid($!)를 적지 «않는다» — watch_all 이 자기 pid 를 직접 적는다 (2026-09-17)
   sleep 3
   if alive; then echo "띄웠습니다 pid=$(cat "$PIDF")"; tail -1 "$LOG" 2>/dev/null
   else echo "🔴 띄우기 «실패» — 바로 죽었습니다. 로그: $LOG"; tail -3 "$LOG" 2>/dev/null; return 1; fi

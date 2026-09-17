@@ -137,7 +137,7 @@ def test_a_stood_join_is_ordered_before_the_rule_that_reads_what_it_writes():
 
 
 def test_a_stood_join_is_not_on_the_paced_followup_list():
-    """⛔ THE OTHER HALF OF THE SAME CELL. `_followup_builtin_rules` selects
+    """⛔ THE OTHER HALF OF THE SAME CELL. `_rules_for_the_follow_up_pass` selects
     `follow_up AND mapper in BUILTIN_KINDS`; a join IS a builtin and is NOT a follow-up, so
     reading either half alone puts it on the wrong lap. It ran on the paced lap until S-278
     and it must not be back there now that the trigger path dispatches it - a rule on both
