@@ -27503,3 +27503,56 @@ follow_up   여섯 중 하나가 `chain_bindings.py` — «선언 문법의 칸�
 ⛔ 못 잼  운영 설치의 맵퍼가 무엇을 import 하나. 보안상 못 봅니다 — 그래서 «구조»로만 말합니다
 📮 아직 안 센 것: `chain_skeleton.json` — 제 계기가 «.py 만» 봅니다. json·설정 참조는 따로 세야 합니다
 ```
+
+---
+
+> 🔴🔴 **[09-17 15:35 응용] Q-112 — Q-108 수리(`a19d141d`)가 «반쪽»으로 섰습니다. 서버는 base 를 «요구»하고 화면은 «안 보냅니다» — 지금 「통합으로」 버튼은 저장이 «항상 거절»됩니다**
+> **받는 이: 구현자 · 클라 · 총괄 — 18:00 검증 전에, 그리고 브라우저로 걸으시기 «전»에**
+
+## 쟀습니다 — 양쪽 트리 다
+```
+서버(main, a19d141d)
+   ledger/admin.py:900  convert_chain_rule_grammar(name, to, dry_run=True, base=None)
+   :984  if not isinstance(base, str) or not base.strip():
+            raise _table_config_refusal("base_required", "base",
+               "저장하려면 이 규칙을 열 때 받은 base 를 같이 보내야 합니다 …")
+   :990  save_chain_rule_raw(name, converted, base)      <- 이제 «호출자의» base 입니다 ✅
+   main.py 라우트 문서: 「base: … dry_run 이 false 면 «필수»」
+화면(main «과» design 워크트리 «둘 다»)
+   client2/src/admin.js:1214~1218
+      body: JSON.stringify({ name, to, dry_run: dryRun })     <- `base` «없습니다»
+```
+🔴 **그래서 오늘 운영자 경로가 이렇게 끝납니다:**
+```
+「통합으로」 누름 -> dry_run:true 는 «통과»(base 안 봄) -> 「다시 도는 행 N」을 보여 주고 «확인»
+ -> dry_run:false 로 보냄 -> 서버가 `base_required` 로 «거절» -> 변환이 «안 됩니다»
+```
+```
+🔵 거절 자체는 «옳습니다» — 이름 대고 다음 행동을 말합니다. 화면도 그 거절을 그릴 줄 압니다
+🔴 그런데 546 ③ 의 도착지가 「운영자가 열어서 통합으로 저장할 수 있다」이고, 지금은 «못 합니다»
+```
+
+## 🔵 재료는 «이미 화면에 있습니다» — 없어서 못 보내는 게 아닙니다
+```
+raw_registry_panel.js:145  base: String(payload.base == null ? '' : payload.base)
+                    :687  this.onSave({ …, base: view.base, raw: area.value })   <- 저장은 «보냅니다»
+                    :698  this.root.setAttribute('data-base', view.base)
+=> 원문 «저장» 경로는 base 를 이미 나릅니다. «변환» 경로만 그 칸을 안 싣습니다
+```
+
+## 왜 이 모양이 났나 — 제 보고가 만든 자리입니다
+```
+Q-108 이 「가드가 울 수 없다」를 짚었고, 수리가 «서버 쪽»을 같은 분에 조였습니다.
+그런데 그 가드를 만족시키는 값은 «화면»에서 옵니다 — 한쪽만 조이면 그 사이가 거짓입니다
+🔴 상설 「한번에 개발 — 칸 하나 + 함수 하나 + 그것을 지나는 자리 «전부»가 한 커밋」의 그 자리입니다.
+   제가 Q-108 에 「라우트 body 에 base 가 없다」를 적어 놓고 «화면도 같이»라고 안 적었습니다 — 제 몫입니다
+```
+📮 급합니다: 18:00 에 이 경로를 브라우저로 걸으시면 «거절»을 보시게 됩니다.
+   그때 「이관이 안 된다」로 읽히면 원인이 «가드»가 아니라 «반쪽 착지»라는 것이 안 보입니다.
+
+## 확신도
+```
+실행   양쪽 트리의 `admin.js:1214~1218` 을 «열어서» — body 세 칸, base 없음
+구조   서버의 `base_required` 갈래와 라우트 문서를 열어서. 브라우저는 «안 열었습니다» —
+       그래서 「거절이 화면에 어떻게 보이나」는 클라 레인이 더 정확합니다
+```
