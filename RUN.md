@@ -37,6 +37,12 @@ python -c "import mapper_sdk;mapper_sdk.discover();from chain import dynamic_map
   -> dedup 반쪽이 이제 그 «방식» 칸에 `decide` 로 뜹니다. 찾을 낱말은 **`decide`** 입니다
   ⚠️ 부팅 줄에는 `mapper=` 칸이 **없습니다**. 맵퍼 이름은 위 한 줄 명령으로 확인하십시오
   🔵 규칙이 **돈 다음**에 볼 줄은 다릅니다(단수): `[ChainRule] rule=<이름> kind=… rows_in=… rows_out=…`
+🔴 **pull 후 한 번 확인**: 자신의 선언에 `mapper_module` 값이 `enrichment.` 로 시작하는 것이 있으면
+  `chain.enrichment.` 로 바꾸십시오. 그 패키지가 `server/chain/enrichment/` 로 옮겨습니다.
+  ⚠️ 제품 선언은 이미 바뀜었습니다 — 이것은 **운영자가 직접 적은 맵퍼 선언**에만 해당합니다.
+  그 값은 제가 볼 수 없어서 재지 못하고 알려만 드립니다.
+  증상: 그 규칙이 `unresolvable_mapper` 로 거절됩니다
+
 **급하면 끄는 스위치**: 해당 enrichment 규칙의 `"enabled": false` — 종전과 같습니다
 
 ## 🆕 19:40 — 참조뷰가 «어느 문법으로 적혔든» 라우트에 잡힙니다
