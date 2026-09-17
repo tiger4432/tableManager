@@ -30828,3 +30828,30 @@ CODE_MAP §㉙             286줄 -> 336 @`14dfaf65` · 「세 이름」 -> 넷 
 ```
 📌 오늘 이 부류 다섯: 부분 문자열 25·30 · 임포트문 1 · RUN.md 21 «둘» · 그리고 이 16 중 4.
    앞의 넷은 «적고 나서» 또는 «적기 직전»에 잡았고, 이번엔 «열어 보는 것»이 먼저였습니다.
+
+---
+
+> **[09-17 20:07 응용] Q-184 — Q-165(v1 전수)의 «경로»가 낡았습니다. 오늘 기준으로 갱신합니다(그 사이 닫힌 것도 같이)**
+
+Q-165 는 19:15 에 썼고 `b2eb05dd`·`14dfaf65` 가 그 파일들을 옮겼습니다. 그대로 grep 하면 «없는 경로»입니다.
+```
+Q-165 의 표기            오늘 (`d8772560` 기준, 줄 수 재측정)
+server/enrichment/config.py      -> server/chain/enrichment/config.py       1,963  (그때 1,953)
+server/enrichment/mapper.py      -> server/chain/enrichment/mapper.py         363
+server/enrichment/backfill.py    -> server/chain/enrichment/backfill.py       465  (그때 462)
+server/enrichment/candidates.py  -> server/chain/enrichment/candidates.py   1,015
+server/enrichment/analysis.py    -> server/chain/enrichment/analysis.py       774
+(가상조인 갈래의 파일들은 `server/chain/` 그대로입니다 — 이동 없음)
+```
+
+**그 사이 «닫힌» 것과 «열린» 것 — 제 전수의 갈래로 다시 적습니다**
+```
+② 인리치 「제품의 일을 «운영자의 칸»으로 선언한다」
+   ✅ 닫힘(라이브)   dedup 半이 `mapper_module`/`mapper_function` 대신 `mapper: "declared:enrich"` (`4352ad47`)
+                   -> 한 선언의 두 규칙이 «같은 칸»으로 맵퍼를 댑니다. Q-165 ② 의 머리 결함이 사라졌습니다
+   🔴 열림(소급)     `run_backfill` 은 여전히 좌석을 «안 지납니다`(625 가 ①의 닫힘 조건으로 확인)
+① 가상조인  «그대로»입니다 — 표면이 둘이라는 뿌리도, 읽는 자리 일곱도 오늘 안 건드렸습니다
+③ 다섯 걸음 밖   `replay._apply_replay_batch` · `ledger/followup` 메모리 큐 «그대로»
+```
+📌 이 항목은 «새 발견이 아닙니다» — 제가 낸 전수가 «오늘 안에» 낡았다는 사실의 정정입니다.
+   (경로를 적은 목록은 이동 한 번에 통째로 낡습니다 — 다음부터 전수에는 «이름»과 «경로»를 같이 적겠습니다)
