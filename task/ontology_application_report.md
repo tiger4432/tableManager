@@ -27223,3 +27223,53 @@ client2/src/ontology_explorer_view.js:1946~1951
 ⛔ 안 봤음  브라우저. 「그려진다」는 제 말이 아닙니다 — 해석기가 «모양을 낸다»까지가 제 측정입니다.
         화면에서 실제로 값이 적히는지는 클라 레인의 눈이 정본입니다(557 도 그렇게 적었습니다)
 ```
+
+---
+
+> 🔬 **[09-17 15:20 응용] Q-106 — 판정 559 ㉢ 중간 보고. 「철회가 안 된다」는 «제 가설이었고 반증됐습니다». 오늘 막히는 자리는 «거절» 하나입니다**
+> **받는 이: 총괄 — ⛔ 코드 0 줄. 「됩니다 / 이것 때문에 안 됩니다」의 «중간»입니다**
+
+## ⚰️ 먼저 제 가설을 무릅니다 — 한 시간도 안 됐습니다
+```
+제가 15:20 에 적은 것   「값은 맵퍼로 표현되는데 «철회»가 표현이 안 된다」
+근거로 삼은 것          빌트인만 `stamps_origin=True` 를 «선언»한다(builtins.py:415·434)
+반증                   `schemas.GeneralUpdateItem.origin_row_id` 는 «공개 필드»입니다(:183)
+                      그리고 체인 경로가 항목을 «다시 짓지 않습니다»:
+                        ingestion_worker.py:1637·1677  table_updates[...].extend(target_payload["updates"])
+                        :1736  batch_data = GeneralUpdateBatch(updates=updates_list, …)
+                        :1813  crud.apply_batch_updates(db, target_table, batch_data)
+=> 맵퍼가 `updates` 항목에 `origin_row_id` 를 «넣으면 그대로 갑니다». 철회의 조준은 표현됩니다
+🔴 제 실수의 부류: 「선언 플래그가 빌트인에만 있다」를 「그 능력이 빌트인에만 있다」로 읽었습니다 —
+   «기제가 있다 ≠ 이 키에 닿는다»의 반대 방향입니다
+```
+
+## 🔴 오늘 «진짜로» 못 하는 것 — 거절
+```
+rule_run.py:516   for cell in ("updates", "map_metadata_updates", "batches"):
+                      answer[cell].extend(result.get(cell) or ())
+=> 맵퍼의 답에서 좌석이 «걷어 가는 칸은 셋»입니다. `refusal` 이 «그 안에 없습니다»
+빌트인 쪽          answer["refusal"] 을 그대로 `run.produced(rows_out, reason=…)` 에 싣습니다(:497)
+맵퍼 쪽            사유를 «수에서 지어냅니다» — 「넘어온 행이 없다」 / 「N 행 넘겼는데 0 행」(:526~:529)
+                  그 자리 주석이 스스로 적습니다: 「the seat cannot ask a file mapper why」
+=> 「왜 0 행인가」를 소유자 맵퍼가 «말할 통로»가 없습니다. 오늘 종류를 하나로 접으면
+   auto_confirm 의 사유가 «수로 대체»됩니다 — 오늘 라운드 내내 지운 그 모양입니다
+```
+
+## 🔵 잃지 «않는» 것들 (재서 목록에서 뺍니다)
+```
+db 질의     `bound.call(db, one, rule=rule)` :510          맵퍼가 «받습니다»           (소유자 정정대로)
+그룹 한 번   `batched = rule.get("is_batch")` :503          배치면 «그룹 전체»가 한 번에
+층 이름     `GeneralUpdateItem.source_name` 공개 필드        맵퍼가 «적을 수» 있습니다
+행 삭제     builtins·join_into·legacy·auto_confirm 에 삭제 낱말 «0 히트»
+           -> 빌트인도 «안 지웁니다». 잃을 것이 없습니다
+```
+
+## 아직 «안 잰» 것 — 여기서 멈춥니다
+```
+㉠ 의 본체   join_into 의 SQL(상대 표를 조인하며 right row_id 를 label) 을 «소유자 맵퍼»가
+            db 로 같은 모양으로 쓸 수 있나 — 그 쿼리를 아직 안 열었습니다
+㉡          auto_confirm 이 「칸 하나」인지 — `_run_auto_confirm` 의 collector 를 안 열었습니다
+㉣          누가 그 맵퍼를 소유하나(제품 파일 vs 소유자 파일) — 559 가 「설계를 가른다」고 한 그것.
+            제 생각은 안 적습니다. 재고 나서 적겠습니다
+```
+📮 지금까지의 답을 한 줄로: **「막히는 것은 «값»이 아니라 «말»입니다 — 거절을 실을 칸이 셋 중에 없습니다」**
