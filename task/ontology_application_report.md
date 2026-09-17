@@ -24821,3 +24821,60 @@ done
 ```
 상태  레인 정지 그대로 · 손에 든 것 없음 · 미답 07:21 블록 그대로 · 이 커밋도 «같은 호출»에서 푸시
 ```
+
+---
+
+## 🔴 Q-57 [09-17 12:21 판정 502] 목록은 «불완전»합니다 — 빠진 좌석 «하나». 그리고 ⓒ 부류로 셋을 열어 «둘은 무죄»였습니다
+
+### 1) 판정 — **불완전**. 다만 «하나»이고, 그 하나는 «오늘 도달 불가»입니다
+
+### 🔴 2) 빠진 자리 — 가드와 행동이 «다른 집합»을 봅니다
+
+```
+자리   server/admin/dev_bench.py:209   가드 : rule_run.self_writing_name(...)  -> SELF_WRITING_KINDS
+      server/admin/dev_bench.py:218   행동 : rule_run.runnable(name)          -> BUILTIN_KINDS ∪ MAPPER_REGISTRY
+종류에 따라 무엇이 달라지나
+      등록 종류는 `(db, rule, row_ids=)` 를 받고, 이 벤치의 다음 줄은 `(db, payloads, rule=)` 로 부릅니다
+      -> 가드가 «걸러야» 하는 모집단은 «BUILTIN_KINDS»(서명이 다른 것)인데, 가드는 «SELF_WRITING_KINDS»를 봅니다
+오늘 왜 안 터지나
+      등록 셋이 전부 writes_itself=True 입니다 (builtins.py:382·401·409) -> 두 집합이 «같습니다»
+      ⇒ 가드가 맞는 것이 «설계»가 아니라 «우연»입니다
+언제 틀리나
+      어느 종류든 `writes_itself=False` 로 등록되는 날. 🔴 그리고 그 인자는 «바로 그 경우를 위해»
+      이번 라운드에 생겼습니다 — `rule_run.writes_itself` 독스트링이 그렇게 적습니다
+      (「they stop being the same the day a kind registers writes_itself=False」)
+🔴 운영자가 무엇을 «잘못 보나»
+      판정 501 ⓑ 가 방금 고친 바로 그 화면입니다: `{'rows': 0, 'refusal': None}` — «성공 모양» —
+      또는 날것 AttributeError. 즉 「돌았는데 행이 0」과 구별이 안 됩니다.
+      그 커밋의 주석이 자기 입으로 그렇게 적어 뒀습니다(:196-204)
+📌 부류: 「대리」. `writes_itself` 는 «행동»이고, 이 자리가 필요로 하는 것은 «서명»입니다.
+   그리고 상설 「가드는 도달 가능해지는 날 틀린다」 그대로입니다
+⛔ 고치지 않았습니다 (지시대로). 고치는 쪽이 둘로 갈리므로 판정거리입니다 —
+   ㉠ 가드를 `builtin_kind` 로(=서명 집합) ㉡ 아니면 `runnable` 이 벤치에 «파일 맵퍼만» 주게
+```
+
+### ✅ 3) ⓒ 로 «열어 본» 교체 셋 — 둘은 무죄입니다 (같은 것을 다시 안 내도록 적습니다)
+
+```
+㉠ dt_map_derivation.py:342   rule["mapper"] != JOIN_INTO_MAPPER  ->  rule_label(rule) != "join"
+   일반으로는 «넓습니다» — `rule_label` 은 «두 조인 종류»에 다 "join" 을 줍니다(BUILTIN_LABELS)
+   그런데 이 자리의 모집단은 `read_rules_document` + `expand_declaration` «뿐»이고(:319-333),
+   레거시 종류는 `legacy_join_declaration.py:893` 이 «다른 파일에서» 합성해 그 길을 안 지납니다
+   ⇒ 그들의 「같은 답」 주장이 «참»입니다. 제가 모집단을 열어 확인했습니다. 무죄
+㉡ rule_label 의 «둘째 저자» 있나              -> 없습니다. 소비자 셋 전부 `rule_run.rule_label` 을 지납니다
+   클라도 그 낱말을 «손으로 짓지» 않습니다(히트 0)
+㉢ replay.py:536 이 «페이지 루프 안»에서 run_rule -> resolve 를 지납니다(501 의 기하와 같음)
+   다만 import 는 `sys.modules` 가 받으므로 «반복 비용»이 아니라고 봅니다 — 🔴 «안 쟀습니다»(아래)
+```
+
+### 🔴 4) 못 잰 것 — 이 사각을 «경계»로 읽지 마십시오
+
+```
+· A/B 를 «안 했습니다». 워크트리도, server/config 복사도 안 했고, 스위트도 «한 번도» 안 돌렸습니다
+  -> 위는 전부 HEAD blob «읽기»입니다. 「돈다」가 아니라 「이렇게 지어져 있다」입니다
+· `rule_run.run_rule` 의 «몸통»(+378줄)을 종류별로 안 갈랐습니다 — 저는 좌석의 «묻는 함수들»만 열었습니다
+  좌석 «안»에서 종류에 따라 갈리는 것이 더 있는지 «모릅니다»
+· 큐·activity 기록이 종류마다 다른지 «안 셌습니다» (이번 착지가 그 자리를 크게 바꿨는데도)
+· 클라 화면은 «낱말 하나»만 봤습니다(join/decide). 그 밖의 표시 분기는 «안 봤습니다»
+· ㉢ 의 import 반복 비용을 «안 쟀습니다» — 위 문장은 «추론»이고 측정이 아닙니다
+```
