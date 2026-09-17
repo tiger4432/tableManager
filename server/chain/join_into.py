@@ -200,8 +200,12 @@ def _answer(db, spec, left_model, right_model, where, left_table=""):
     return db.execute(stmt).fetchall()
 
 
-def _write(db, left_table: str, rows, spec, source_name: str) -> int:
-    """Write what matched, through the one write door. Returns rows written.
+def _update_items(db, left_table: str, rows, spec, source_name: str):
+    """What this join says should change - as update items, written by somebody else.
+
+    🔴 [판정 567] THIS IS THE BODY THE DYNAMIC MAPPER CARRIES. It was inside `_write`,
+    which meant 「compute the answer」 and 「apply it」 were one act and a mapper could not
+    borrow the first without the second.
 
     🔴 A MATCHED NULL IS WRITTEN AS NULL, AN UNMATCHED ROW IS NOT WRITTEN (판정 f3c04dee).
     The first is an answer - the right row exists and says the value is empty - and skipping
@@ -257,6 +261,24 @@ def _write(db, left_table: str, rows, spec, source_name: str) -> int:
             # rule so an unchanged value stays a no-op write.
             source_name=CHAIN_LAYER,
             updated_by=source_name))
+    return updates
+
+
+def _apply(db, left_table: str, updates) -> int:
+    """Apply what `propose` built. Returns rows written.
+
+    🔴 [판정 567] THE WRITING IS ITS OWN STEP, because a mapper does not write - it
+    PROPOSES, and the caller's batch writes inside the chain envelope. The items are built
+    once, by `_update_items`, whichever door this join is reached through; only whether this
+    function runs differs between them. Copying the item-building into the mapper would put
+    the layer label, the origin row and the fan-out net in two places, and those are exactly
+    the cells that go wrong silently.
+
+    ⚰️ THIS GOES WITH `run`. Once nothing writes for itself, the caller's batch is the only
+    writer and this function has no caller.
+    """
+    from database import crud, schemas
+
     if not updates:
         return 0
     crud.apply_batch_updates(db, left_table,
@@ -264,15 +286,19 @@ def _write(db, left_table: str, rows, spec, source_name: str) -> int:
     return len(updates)
 
 
-def run(db, rule: dict, row_ids=None, done=None, **_):
-    """Materialise this join for the rows that just moved.
+def propose(db, rule: dict, row_ids=None):
+    """What this join would change, as update items — and why, when it is nothing.
 
-    ⚠️ ONE KIND, TWO SIDES, AND THE RULE SAYS WHICH. A rule triggered on the LEFT table
-    recomputes the rows that moved; a rule triggered on the RIGHT table recomputes the left
-    rows whose key now resolves differently. The side is read from the declaration
-    (`trigger_table` against `right_table`) rather than from which argument the caller passed,
-    so a caller cannot put a rule on the wrong side by accident.
+    🔴 [판정 567] THE BODY THE DYNAMIC MAPPER RUNS. A mapper proposes and the caller
+    writes, so the answer has to be separable from the act. Nothing here decides anything a
+    different way; the last step is simply not taken.
     """
+
+    # ⚠️ ONE KIND, TWO SIDES, AND THE RULE SAYS WHICH. A rule triggered on the LEFT table
+    # recomputes the rows that moved; a rule triggered on the RIGHT table recomputes the left
+    # rows whose key now resolves differently. The side is read from the declaration
+    # (`trigger_table` against `right_table`) rather than from which argument the caller
+    # passed, so a caller cannot put a rule on the wrong side by accident.
     spec = join_spec(rule)
     left_table = str((rule or {}).get("target_table") or "")
     rows_in = list(row_ids or ())
@@ -280,12 +306,12 @@ def run(db, rule: dict, row_ids=None, done=None, **_):
     #   a question it can answer - and until it did, the operator's queue cell said only
     #   that no rows came out, which they could already see.
     if not rows_in:
-        return {"written": 0, "refusal": "이 규칙이 볼 행이 넘어오지 않았습니다"}
+        return {"updates": [], "refusal": "이 규칙이 볼 행이 넘어오지 않았습니다"}
 
     left_model, right_model = _models(spec, left_table)
     refusal = _missing(spec, left_table, left_model, right_model)
     if refusal:
-        return {"written": 0, "refusal": refusal}
+        return {"updates": [], "refusal": refusal}
 
     reference_side = str((rule or {}).get("trigger_table") or "") == str(
         spec.get("right_table") or "")
@@ -295,11 +321,13 @@ def run(db, rule: dict, row_ids=None, done=None, **_):
     else:
         where = left_model.row_id.in_(rows_in)
     if where is None:
-        return {"written": 0,
+        return {"updates": [],
                 "refusal": "기준 표의 이번 변경이 이 규칙의 왼쪽 행을 하나도 가리키지 않습니다"}
 
     rows = _answer(db, spec, left_model, right_model, where, left_table)
-    written = _write(db, left_table, rows, spec, str((rule or {}).get("name") or ""))
+    updates = _update_items(db, left_table, rows, spec,
+                            str((rule or {}).get("name") or ""))
+    written = len(updates)
     # ⚠️ TWO DIFFERENT ZEROS, AND THE OPERATOR FIXES THEM DIFFERENTLY: no match means the
     #    join key or the right table's data; a match that wrote nothing means the value was
     #    already there. Collapsing them sends half the readers to the wrong repair.
@@ -308,8 +336,23 @@ def run(db, rule: dict, row_ids=None, done=None, **_):
         refusal = ("오른쪽 표에서 짝을 찾은 행이 없습니다 (넘어온 %d 행)" % len(rows_in)
                    if not rows else
                    "짝은 찾았고 채울 값이 이미 같습니다 (%d 행)" % len(rows))
-    return {"written": written, "rows_in": len(rows_in), "refusal": refusal, "side":
+    return {"updates": updates, "rows_in": len(rows_in), "refusal": refusal, "side":
             "reference" if reference_side else "target"}
+
+
+def run(db, rule: dict, row_ids=None, done=None, **_):
+    """The self-writing entry the retiring kind table calls: propose, then apply.
+
+    ⚰️ THIS WHOLE FUNCTION GOES when the kind table does (판정 563). It is here only so the
+    old door and the new one run the SAME body while both exist - 「새 것이 먼저 서고,
+    서고 나서 예것이 나간다」 (판정 567).
+    """
+    outcome = propose(db, rule, row_ids)
+    updates = outcome.get("updates") or []
+    written = _apply(db, str((rule or {}).get("target_table") or ""), updates)
+    answer = {key: value for key, value in outcome.items() if key != "updates"}
+    answer["written"] = written
+    return answer
 
 
 def _left_rows_for_reference(db, spec, left_model, right_model, right_row_ids,

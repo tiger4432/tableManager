@@ -333,6 +333,18 @@ def discover(package="mappers"):
             importlib.import_module(name)
         except Exception as exc:
             refusals[name] = f"{type(exc).__name__}: {exc}"
+    # 🔴 [판정 567] THE BUILT MAPPERS GO IN HERE, AND ONLY HERE. This function CLEARS the
+    #   registry before re-importing, so anything installed elsewhere is silently emptied by
+    #   the next reload - the rules would survive and their mapper would not, and every join
+    #   would be refused as 「that name resolves to nothing」 AFTER a reload.
+    # ⚠️ IMPORTED HERE, not at module top: `chain.dynamic_mappers` imports this module back,
+    #   and a cycle at import time would take the registry down with it.
+    try:
+        from chain import dynamic_mappers
+
+        dynamic_mappers.install()
+    except Exception as exc:                                       # noqa: BLE001
+        refusals["chain.dynamic_mappers"] = "%s: %s" % (type(exc).__name__, exc)
     return tuple(sorted(MAPPER_REGISTRY)), refusals
 
 

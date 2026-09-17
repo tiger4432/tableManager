@@ -524,16 +524,15 @@ def test_this_module_does_not_borrow_the_other_doors_engine():
 # net below is what protects the write; it needs no catalogue and no second author.
 # ---------------------------------------------------------------------------
 
-def test_a_left_row_with_two_right_answers_is_skipped_by_name_and_the_rest_are_written(
-        monkeypatch):
+def test_a_left_row_with_two_right_answers_is_skipped_by_name_and_the_rest_are_written():
     """The row-level net (principle 2). Two answers for one left row means neither is the
-    answer; that row is skipped by name and every other row is still written."""
-    from database import crud
-    captured = {}
+    answer; that row is skipped by name and every other row is still written.
 
-    def fake_apply(db, table, batch):
-        captured["items"] = list(batch.updates)
-    monkeypatch.setattr(crud, "apply_batch_updates", fake_apply)
+    🔴 [판정 567] ASKED OF THE SEAT THAT BUILDS THE ITEMS, not of the one that writes
+    them. The net lives in `_update_items` now, which is also the body the dynamic mapper
+    carries - so this scores the net on BOTH doors instead of only the writing one. The
+    stand-in for `apply_batch_updates` is gone with the write: nothing to intercept.
+    """
 
     class Row:
         # ⚠️ [S-280] `origin_row_id` IS PART OF THE SHAPE `_answer` RETURNS, so this stand-in
@@ -547,10 +546,11 @@ def test_a_left_row_with_two_right_answers_is_skipped_by_name_and_the_rest_are_w
             Row("miss", False, None)]
     spec = {"right_table": "right_t", "on": [{"left": "k", "right": "k"}], "take": ["v"]}
 
-    written = join_into._write(None, "left_t", rows, spec, "rule_x")
-    assert written == 1
-    assert [i.row_id for i in captured["items"]] == ["ok"]
-    assert captured["items"][0].updates == {"v": "C"}
+    items = join_into._update_items(None, "left_t", rows, spec, "rule_x")
+
+    assert len(items) == 1
+    assert [i.row_id for i in items] == ["ok"]
+    assert items[0].updates == {"v": "C"}
 # ---------------------------------------------------------------------------
 # 2026-09-15 - a numeric join key is folded by the machine, not refused by the database
 # ---------------------------------------------------------------------------

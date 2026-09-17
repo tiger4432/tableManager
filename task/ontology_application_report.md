@@ -27601,3 +27601,153 @@ chain_skeleton.json      텍스트 참조가 `chain_bindings.py` 와 자기 자�
 ```
 📮 못 잰 것: `/admin/chain/queue` 262 줄이 «무엇을 조립하나»(활동·아웃박스·소급 중 무엇이 몇 줄인지)
    — 열면 셀 수 있습니다. 지시 주시면 셉니다. 그 수가 「좌석이 필요한가」를 가릅니다.
+
+---
+
+> ⏰ **[09-17 15:39 응용] Q-114 — 564 ① 전수 마무리 + «16:30 중간 보고»를 겸합니다**
+> **받는 이: 총괄**
+
+## 마지막 조각 — `/admin/chain/queue` 262 줄은 «조립»이 아니라 «질의»입니다
+```
+server/main.py  get_chain_queue_depth  :4215~:4477  (262 줄)
+   DB 를 «직접» 치는 호출 «8»  — db.query ×4 · scalar ×2 · all ×2
+   그 밖: event_constants.outbox_owner ×2 · 자체 헬퍼(_age · _rp · _f)
+=> 「라우트를 어디 두나」가 아닙니다. **체인 관측의 «질의»가 API 파일 안에 삽니다.**
+   이 262 줄은 옮길 «좌석»이 chain/ 에 «없습니다» — 만들지 않으면 라우트를 옮겨도 로직이 따라갈 뿐입니다
+🔵 대조: 형제인 인제션 관측은 `ingestion/activity.py` 라는 «자기 모듈»이 있고 라우트는 그것을 «읽습니다»
+   (main.py:4625 `ingestion_activity_registry.snapshot()`). 체인 쪽은 `chain/activity.py` 가 있는데
+   이 라우트는 그것만으로 답을 못 만들어 «직접 씁니다» — 아웃박스 깊이는 그 모듈에 없습니다
+```
+
+## ✅ 섰나 — 제가 «직접 잰» 것만
+```
+판정 557   초록 (채점식 그대로, `c7b6691b`) — params 멤버가 leaf, member 이름표 '인자', 평면 뿌리도 같이
+판정 551   초록 (`a37a189e`) — 축 칸이 이기고, 게이트가 as_chain_rule 방향에 섬
+판정 554   초록 (`ed8b6762`) — 쌍둥이 이름 거절, 비-dict 에 안 헷갈림, 저장·변환이 한 좌석
+판정 556   초록 (`c8173585`) — 못 읽는 항목을 «자리까지» 지켜 나름 (게이트는 「있음」만 재는 것 보고함)
+```
+## 🔴 막혔나
+```
+Q-112 / 판정 565   「통합으로」 버튼의 «저장»이 항상 거절 — 서버가 지문을 요구하고 화면이 안 보냄.
+                 한 착지로 다시 하기로 판정됨. ⏳ 제 확인 대기
+Q-111 / 판정 566   chain_bindings 이동은 «대기»(소유자 맵퍼가 import). 나머지는 진행
+```
+## ⛔ 못 잰 것 (반드시 적습니다)
+```
+· 운영 설치의 맵퍼가 무엇을 import 하나 — 보안상 못 봅니다. Q-111 은 «구조»로만 말합니다
+· 화면에서 실제로 눌렀을 때 무엇이 보이나 — 브라우저를 «0번» 열었습니다. 클라 레인의 눈이 정본입니다
+· 「두 선택 경로」의 실체 — 이름을 아직 못 잡았습니다. 562 ① 의 그 칸을 구현자가 지우면 그때 확인 가능
+· `chain_skeleton.json` 이 «설정·비-파이썬»에서 참조되나 — 제 계기가 .py 만 봅니다(텍스트로는 0)
+🔴 그리고 오늘 제 계기가 «네 번» 틀렸습니다(from-import · as-alias · .py 만 · 앞 슬래시).
+   이 보고의 수는 전부 «대조한 뒤»의 것이고, 첫 수를 그대로 올린 것은 없습니다
+```
+
+---
+
+> 🔴 **[09-17 15:40 응용] Q-115 — 567 ①의 「이 박스 맵퍼 «다섯»」을 정정합니다: «일곱»입니다. 그리고 제 앞 수 「여섯」도 틀렸습니다 — 제가 `head -6` 으로 «잘랐습니다»**
+> **받는 이: 총괄 — 이 목록이 소유자께 나갑니다. 줄 번호까지 적습니다**
+
+## 실측 — `mappers/*.py` 전수, AST 로 import 문만
+```
+mappers/core_alignment_mapper.py            :18   import chain_bindings
+mappers/core_usage_mapper.py                :16   import chain_bindings
+mappers/dt_alignment_metadata_mapper.py     :14   import chain_bindings
+mappers/dt_inventory_metadata_mapper.py     :14   import chain_bindings
+mappers/dt_map_mapper.py                    :68   import chain_bindings
+mappers/dt_standard_map_mapper.py           :47   import chain_bindings
+mappers/lot_slot_wafer_mapper.py            :23   import chain_bindings
+=> «일곱». 전부 `import chain_bindings` 한 모양입니다 — from-import 도 as-alias 도 «없습니다»
+   (그래서 고치는 쪽도 «한 줄 교체»입니다)
+```
+
+## ⚠️ 제 오류를 먼저 적습니다 — 오늘 «다섯 번째» 계기 실수입니다
+```
+제가 Q-111 에 적은 것   「여섯」
+왜 틀렸나              `grep -rln … | head -6` — «제가 6 으로 잘랐습니다». 일곱 번째가 잘려 나갔습니다
+🔴 그리고 이건 제 기억에 «이미 있는» 함정입니다: 「head 에 잘린 걸 «없다»로 읽었다」.
+   존재를 세는 질의에 파이프를 걸지 않는다 — 제가 적어 둔 규칙이고 제가 어겼습니다
+앞의 넷: from-import · as-alias · .py 만 보기 · 앞 슬래시
+```
+
+## 🔴 그리고 이 목록이 «소유자께» 나갈 때 붙어야 할 문장
+```
+이 일곱은 «이 박스»의 맵퍼입니다 — 운영의 맵퍼는 «다른 파일»이라 제가 셀 수 없습니다.
+소유자께 유용한 것은 «수»가 아니라 «판별식»입니다:
+   「`import chain_bindings` 가 있는 맵퍼는 전부 고쳐야 합니다 — 새 경로 한 줄로」
+   (그리고 오늘 이 박스에서는 그 모양이 «일곱 파일 · 전부 한 줄»이었습니다)
+📮 새 경로가 정해지면 그 «한 줄»을 여기 적어 주십시오. 567 이 말한 그 산출물입니다 —
+   저는 아직 «무엇으로 바뀌는지» 모릅니다(이동이 아직 안 섰습니다)
+```
+
+---
+
+> ✅ **[09-17 15:42 응용] Q-116 — Q-106 수리(`031e9427`) 확인. «배선까지» 섰습니다. 주석 한 줄만 낡았습니다**
+```
+구조 ✅  걷는 칸은 셋 그대로이고(`updates`·`map_metadata_updates`·`batches`),
+        `refusal` 은 «따로» 집습니다:  rule_run.py:526
+           if answer["refusal"] is None and result.get("refusal"): answer["refusal"] = result["refusal"]
+구조 ✅  그리고 «쓰입니다» — 여기가 착지≠배선이 갈리는 자리였는데 배선됐습니다: :539
+           run.produced(rows_out, reason=None if rows_out else (
+               answer["refusal"] or ( … 수로 지은 문장 … )))
+        => 맵퍼가 «말하면 그 말», 말 안 하면 «수 두 개». 판정 525 의 모양 그대로입니다
+🔵 첫 줄이 이기는 규칙도 적혀 있습니다 — 「행별 규칙에서 «먼저 설명한 행»이 설명이고,
+   뒤의 조용한 행이 그걸 지우지 않는다」. 한 규칙 실행에 사유 «하나»라는 뜻이라 일관됩니다
+```
+
+## ⚠️ 한 줄만 — 그 위 주석이 이제 «거짓»입니다
+```
+rule_run.py:530 부근 (수리 «바로 위»에 그대로 남아 있습니다)
+   「… so the seat cannot ask a file mapper why. What it CAN say is the pair of counts …」
+그 아래 새 주석      「THE MAPPER'S OWN WORDS FIRST … now reachable from the mapper door too」
+=> 같은 블록에서 «반대되는 두 문장»이 이웃합니다. 앞의 것이 오늘 거짓입니다
+   (뒤 절반 — 「수 두 개가 두 0 을 가른다」 — 은 폴백에 대해 «여전히 참»입니다. 앞 절만 낡았습니다)
+```
+🔴 왜 적나: 다음 사람이 그 줄을 읽고 「맵퍼는 사유를 못 낸다」를 «다시 유도»합니다. 오늘 제가
+   Q-106 으로 유도한 것이 바로 그 문장이었습니다 — 그때는 참이었고 지금은 아닙니다.
+⛔ 제가 안 고칩니다. 등급 낮음이고, 이 라운드가 이 파일을 또 만질 때 «같이» 지나가면 됩니다.
+
+---
+
+> 📐 **[09-17 15:44 응용] Q-117 — 567 이 따로 물은 것: 「그 262 줄이 «어디로» 가나」. 절반은 «집이 있고», 절반은 «체인 것이 아닙니다»**
+> **받는 이: 총괄 — ④ 의 «실제 크기»입니다. ⛔ 제가 고르지 않습니다**
+
+## 그 라우트가 «말하는 사실» 열셋을 저자로 갈랐습니다
+```
+🏠 집이 «있는» 것 — `chain/activity.py` 의 레지스트리가 답합니다 (호출 4)
+   running                main.py:4419  activity.registry.snapshot()
+   rule_outcomes          :4428         activity.registry.outcomes()
+   loop_in_this_process   :4452         activity.registry.attached
+   loop_uptime · mapper_reload_age · outbox_purge_*   :4458  **activity.registry.ages()
+   => 이 절반은 «옮길 것이 없습니다». 이미 chain/ 안에 저자가 있고 라우트는 «읽기만» 합니다
+
+🔴 집이 «없는» 것 — 라우트가 SQL 을 «직접» 씁니다 (질의 4)
+   waiting                 :4249   db.query(count).filter(waiting_only).scalar()
+   retried_among_waiting   :4250   … outbox.retry_count > 0
+   waiting_by_owner        :4262   group_by(event_type) + min(created_at)
+   waiting_transactions ·  :4273   head 행 (limit _QUEUE_LIST_CAP)
+   listed · oldest_waiting_seconds · oldest_waiting_at   ← 위 둘에서 «유도»
+```
+
+## 🔴 그런데 그 절반이 «체인의 표가 아닙니다» — 여기가 판정의 갈림입니다
+```
+event_constants.outbox_owner(event_type)  ->  scheduler | chain | unknown
+   그 함수 주석: 「`unknown` IS A REAL ANSWER AND MUST NOT BE FOLDED INTO `chain`」
+라우트가 그것을 «두 번» 씁니다 (:4361 owners 집합 · :4371 버킷) — `waiting_by_owner` 가
+그 갈래의 «산출물»입니다. 즉 이 라우트는 «세 주인의 대기열»을 갈라 보여 줍니다
+=> 이 절반을 `server/chain/` 안으로 넣으면 **체인이 «스케줄러의 수»의 저자가 됩니다.**
+   「이 안에 모든 게 있어야 함」이 이 절반에는 «반대로» 걸립니다 — 체인 것이 아니니까요
+```
+
+## 그래서 ④ 의 크기 (제 측정으로는)
+```
+옮길 것   «없음»에 가깝습니다 — 관측 절반은 이미 chain/ 안이고, 라우트는 얇은 독자입니다
+새 좌석   필요하다면 「아웃박스 대기열을 «주인별»로 세는 자리」이고, 그 자리의 주어는
+         체인이 아니라 «아웃박스»입니다 (chain/ 도, main.py 도 아닌 셋째 자리일 수 있습니다)
+🔴 판정 필요: ④ 를 「체인 라우트를 옮긴다」로 읽으면 이 262 줄이 «따라 들어가» 체인이
+   남의 수를 말하게 됩니다. 「체인 코드가 안에 있다」와 「체인 라우트가 안에 있다」는 다른 문장입니다
+```
+## 확신도
+```
+실행/구조   반환 칸 열셋은 AST 로, 저자 갈래는 그 줄들을 «열어서». 브라우저는 «안 열었습니다»
+⛔ 못 잼   운영에서 이 화면을 «누가 보나» — 그 수가 이 라우트의 값을 정하는데 저는 못 봅니다
+```
