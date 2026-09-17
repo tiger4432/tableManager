@@ -222,3 +222,32 @@ def test_an_unknown_grammar_name_is_refused(client, rules_file):
     answer = client.post(ROUTE, json={"name": FLAT["name"], "to": "compact"})
     assert answer.status_code == 400, answer.text
     assert answer.json()["detail"]["path"] == "to"
+
+
+def test_a_name_claimed_twice_is_refused_rather_than_picked(client, tmp_path, monkeypatch):
+    """🔴 [판정 554 · 409] 겹친 이름은 «어느 쪽도» 고르지 않습니다.
+
+    MEASURED BY THE APPLICATION LANE: three seats answered 「which rule is called X」
+    differently - the list keyed a dict (LAST wins) while the save and the conversion each
+    wrote their own `next(...)` (FIRST wins). So an operator read one rule and converted
+    another, silently.
+
+    ⚠️ AND THE ANSWER NEEDED NO NEW JUDGEMENT. `ingestion_worker` already refuses a
+    twice-claimed name and runs NEITHER copy, because which one was meant is not something
+    this product can know. Picking either here would have this file quietly deciding what
+    the loader deliberately refuses to decide.
+    """
+    path = tmp_path / "chain_rules.json"
+    twin = dict(FLAT)
+    path.write_text(json.dumps({"rules": [dict(FLAT), twin]}), encoding="utf-8")
+    monkeypatch.setattr(admin, "chain_rules_path", lambda: str(path))
+    monkeypatch.setattr(admin.config_backup, "backup_dir_for",
+                        lambda p: str(tmp_path / "backup"))
+    before = path.read_bytes()
+
+    answer = client.post(ROUTE, json={"name": FLAT["name"], "to": "unified",
+                                      "dry_run": False})
+
+    assert answer.status_code == 400, answer.text
+    assert answer.json()["detail"]["code"] == "name_claimed_twice"
+    assert path.read_bytes() == before, "a rule was converted despite the ambiguity"

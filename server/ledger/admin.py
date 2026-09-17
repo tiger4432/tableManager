@@ -703,6 +703,34 @@ def chain_rule_raw_view(name: str = None) -> dict:
     return out
 
 
+def rule_index_named(rules, name):
+    """이 이름의 규칙이 «어디»인가 — 그리고 겹치면 «어느 쪽도» 고르지 않는다.
+
+    🔴 [판정 554 · 409 · S-234 ①] THE ANSWER WAS ALREADY RULED ON, and it is neither 「the
+    first」 nor 「the last」: a name claimed twice is REFUSED BY NAME and NEITHER copy runs.
+    `ingestion_worker` says why at the seat that does it - 「어느 쪽을 뜻했는지 이 제품이
+    알 수 없다」 - so picking one here would be this file deciding a question the loader
+    deliberately refuses to decide.
+
+    ⚠️ AND THE THREE SEATS DISAGREED. Measured by the application lane: the list keyed a
+    dict by name (LAST wins), while the save and the conversion each wrote their own
+    `next(...)` (FIRST wins). An operator therefore read one rule and converted another -
+    the purest form of the thing today was spent deleting, and it needed no new judgement,
+    only this one.
+
+    ⚠️ THE LIST SEAT IS NOT FOLDED IN HERE YET. Making it refuse changes what the screen
+    draws, which is the client's half and is queued (판정 550 ③). This is the write side.
+    """
+    found = [index for index, rule in enumerate(rules)
+             if isinstance(rule, dict) and rule.get("name") == name]
+    if len(found) > 1:
+        raise _table_config_refusal(
+            "name_claimed_twice", "rules.%s" % name,
+            "같은 규칙 이름이 %d 번 적혀 있습니다 — 어느 쪽도 돌지 않고, 어느 쪽을 뜻하셨는지 "
+            "제품이 알 수 없습니다. 한쪽의 이름을 바꾸십시오" % len(found))
+    return found[0] if found else None
+
+
 def save_chain_rule_raw(name: str, declaration, base: str) -> dict:
     """Write ONE chain rule. 🔴 A NEW RULE IS SAVED ARMED BUT NOT FIRING.
 
@@ -739,7 +767,7 @@ def save_chain_rule_raw(name: str, declaration, base: str) -> dict:
             "chain_rules.json 이 rules 배열을 가진 객체가 아닙니다")
 
     rules = [dict(r) for r in document["rules"] if isinstance(r, dict)]
-    existing = next((i for i, r in enumerate(rules) if r.get("name") == name), None)
+    existing = rule_index_named(rules, name)
     entry = dict(declaration)
     entry["name"] = name
     if existing is None:
@@ -890,8 +918,8 @@ def convert_chain_rule_grammar(name: str, to: str, dry_run: bool = True) -> dict
             "config_not_object", "chain_rules.json",
             "chain_rules.json 이 rules 배열을 가진 객체가 아닙니다")
 
-    stored = next((r for r in rules
-                   if isinstance(r, dict) and r.get("name") == name), None)
+    index = rule_index_named(rules, name)
+    stored = rules[index] if index is not None else None
     if stored is None:
         raise _table_config_refusal("rule_not_found", "rules.%s" % name,
                                     "그 이름의 규칙이 파일에 없습니다: %s" % name)
