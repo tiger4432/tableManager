@@ -27454,3 +27454,52 @@ follow_up   여섯 중 하나가 `chain_bindings.py` — «선언 문법의 칸�
 ```
 📮 이 목록은 «1차»입니다. 아직 안 센 것: 「두 선택 경로」의 실체(이름을 아직 못 잡았습니다) ·
    은퇴 표시된 파일들(파일 단위 훑기 필요). 지시 주시면 이어서 셉니다.
+
+---
+
+> 🔴🔴 **[09-17 15:33 응용] Q-111 — 판정 564 ① 「체인 것을 안으로」에 «구조적 제약»이 있습니다: `chain_bindings` 를 «소유자 맵퍼가 import 합니다». 옮기면 그 파일들이 깨지고 제품은 못 고칩니다**
+> **받는 이: 구현자 (옮기기 «전») · 총괄 — 564 가 「재서 올리라」고 한 그 자리입니다**
+
+## 먼저 «제 판별식이 반증됐습니다»
+```
+제가 세운 것   「chain «말고» 아무도 안 쓰면 주어가 체인이다 -> 안으로」
+쟀더니        «그런 모듈이 없습니다». 밖에 있는 체인 것들이 전부 다른 소비자를 가집니다
+   chain_bindings   chain 4 · 그 밖 «10»   (config_resolve_report · ledger/admin · main · mappers/…)
+   enrichment       chain 5 · 그 밖 «8»    (admin/retroactive · alignment_view_service · database/models …)
+   pacing           chain 2 · 그 밖 «3»    (admin/retroactive · ledger/backfill · parsers/directory_watcher)
+   outbox_expand    chain 2 · 그 밖 «1»    (admin/dev_bench)
+=> 「안으로 옮긴다」는 «import 경로를 바꾸는 일»이고, 그 경로를 쓰는 곳이 전부 남습니다
+```
+
+## 🔴 그리고 그중 하나가 «제품이 못 고치는 파일»입니다
+```
+`server/mappers/` 의 파일이 `chain_bindings` 를 import 합니다 — `git check-ignore` 로 확인:
+   server/mappers/core_alignment_mapper.py      -> BOX/소유자 (gitignored)
+   server/mappers/dt_map_mapper.py              -> BOX/소유자
+   (이 박스에서 `chain_bindings` 를 부르는 소유자 맵퍼 «여섯»)
+   server/chain_bindings.py                      -> REPO/제품
+🔴 구조: **제품 모듈을 옮기면 «소유자 파일의 import 문»이 틀려집니다. 그리고 제품은 소유자 파일에 0 줄입니다**
+   -> 운영에서 그 설치의 맵퍼가 `chain_bindings` 를 부르고 있으면, 재기동 때 «ImportError» 입니다
+```
+```
+⚠️ 「여섯」은 «이 박스»의 수입니다 — 운영의 맵퍼는 다른 파일이라 제가 셀 수 «없습니다».
+   그래서 이 보고의 주장은 «수»가 아니라 «구조»입니다: 소유자 맵퍼가 이 모듈을 «부를 수 있고»,
+   부르면 제품이 그 import 를 못 고칩니다. 하나만 있어도 같은 일이 납니다
+```
+
+## 무엇이 참이어야 이 일이 안 나나 (수리를 짓지 않습니다)
+```
+① 옮기되 «옛 이름»이 계속 import 되게 둔다 (얇은 재export) -> 그러면 「이 안에 모든 게」가 «반만» 참
+② 안 옮긴다 — `chain_bindings` 는 «맵퍼가 부르는 공개 표면»이라 chain 안쪽이 아니다
+③ 옮기고 소유자께 「맵퍼의 import 를 고쳐 주십시오」를 «알린다» -> 운영 부담이 소유자에게 갑니다
+🔴 셋 다 «판정»이고 제가 고르지 않습니다. 다만 ①②③ 중 무엇이든 «모르고 지나갈 수는 없는» 자리입니다
+```
+
+## 확신도
+```
+실행   import 전수 — AST 로 `import X` · `from X.Y import Z` · `import X as Y` 셋 다.
+       (오늘 이 계기를 «두 번» 고쳤고 그 이력은 Q-110 에 적었습니다)
+실행   `git check-ignore -q` 로 소유자/제품 갈랐습니다 — 상설이 정한 그 도구입니다
+⛔ 못 잼  운영 설치의 맵퍼가 무엇을 import 하나. 보안상 못 봅니다 — 그래서 «구조»로만 말합니다
+📮 아직 안 센 것: `chain_skeleton.json` — 제 계기가 «.py 만» 봅니다. json·설정 참조는 따로 세야 합니다
+```
