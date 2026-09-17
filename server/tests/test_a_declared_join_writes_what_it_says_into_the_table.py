@@ -176,8 +176,13 @@ def test_both_rules_run_on_the_trigger_path(load):
     assert [r.get("follow_up") for r in mine] == [None, None]
     assert not any("allow_chain_trigger" in r for r in mine), (
         "a join that opted into chain-produced events would feed itself")
-    assert all(r["mapper"] in builtins.BUILTIN_KINDS for r in mine), (
-        "the dispatcher only reaches rules whose mapper is in the table")
+    # 🔴 [판정 562] ONE TABLE. The kind table is gone and these names are registered
+    #   mappers, built in process - so 「the dispatcher reaches it」 is the same property
+    #   asked of the registry `resolve` actually reads.
+    import mapper_sdk
+
+    assert all(r["mapper"] in mapper_sdk.MAPPER_REGISTRY for r in mine), (
+        "the seat only reaches rules whose mapper resolves")
 
 
 # ---------------------------------------------------------------------------
@@ -494,10 +499,20 @@ def test_the_two_write_join_doors_keep_separate_ids():
     `register_builtin` refuses a second claimant by name, so this is enforced not remembered."""
     from chain import legacy_join_declaration as vjc
 
+    # 🔴 [판정 581] THE TWO NAMES STAY APART, AND THIS IS THE GATE THAT SAYS SO. The lead
+    #   withdrew the prohibition on giving the legacy name its own template BECAUSE the two
+    #   are not the same job: a virtual join treats an exposed column that also exists on
+    #   the left as absent-only, and `join_into` writes the right side unconditionally.
+    #   Folding them would overwrite a hand-edited value silently.
+    # ⚠️ THE COLLISION GUARD MOVED WITH THE TABLE: `mapper_sdk.register` refuses two
+    #   MODULES claiming one name, which is the same protection under another roof.
+    import mapper_sdk
+
     assert join_into.JOIN_INTO_MAPPER != vjc.JOIN_MAPPER
-    assert builtins.BUILTIN_KINDS[vjc.JOIN_MAPPER] is not join_into.run
-    with pytest.raises(builtins.UnknownBuiltinKind):
-        builtins.register_builtin(vjc.JOIN_MAPPER, join_into.run, builtins.HANDS_ROW_IDS)
+    assert (mapper_sdk.MAPPER_REGISTRY[vjc.JOIN_MAPPER]
+            is not mapper_sdk.MAPPER_REGISTRY[join_into.JOIN_INTO_MAPPER])
+    with pytest.raises(mapper_sdk.MapperNameClaimedTwice):
+        mapper_sdk.register(vjc.JOIN_MAPPER, join_into.propose)
 
 
 def test_this_module_does_not_borrow_the_other_doors_engine():
