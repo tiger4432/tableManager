@@ -27,7 +27,19 @@ from chain import rule_run                                            # noqa: E4
 
 #: The two doors. A rule is EXECUTED by calling one of these; everything else about a rule
 #: (loading it, ordering it, naming its kind) is a different question with its own seats.
+#:
+#: 🔴 [판정 495·496] `builtin_kind` JOINS THEM, BECAUSE ASKING IS HOW THE BRANCH CAME
+#: BACK. The call was gated from S-279 and the QUESTION was not, so `ingestion_worker` asked
+#: and then branched — a second door wearing the seat's clothes, standing under a green gate
+#: for two rounds. A caller that asks in order to act has made the distinction whether or not
+#: it called a door, so the two belong in one predicate.
+#:
+#: ⚠️ AND 「builtin」 IS NOT A KIND OF RULE (판정 496). It is one of THREE ways a rule names
+#: its code — `MAPPER_REGISTRY`, `import_module`, `BUILTIN_KINDS` — and the first two are
+#: already one seat with one `if` inside it (`mapper_call.py:32-46`). Only the third was let
+#: outside, which is the whole of what 「the builtin door」 means.
 DOORS = ("run_builtin", "execute_custom_mapper")
+ASKING = ("builtin_kind",)
 
 #: The one seat allowed to call them, plus the modules that DEFINE them.
 SEAT = "chain/rule_run.py"
@@ -47,7 +59,22 @@ SUFFIXES = (".py", ".py.sample")
 #:    `chain/ingestion_worker.py::_process_chain_transaction_group_sync` and
 #:    `::_run_builtin_followups` (ⓑ, 판정 423). An empty set is the gate's real shape - from
 #:    here on, ANY site that runs a rule outside the seat is red the day it appears.
-NOT_YET_MOVED = set()
+#:
+#: 🔴 [판정 495·496] `replay_rule` IS BACK, AND IT IS A DEBT RATHER THAN A PERMISSION.
+#: It left this list at 판정 421 when it stopped calling a door; it returns because the
+#: predicate widened to the QUESTION, which it still asks. My first draft of this gate put it
+#: in a separate 「allowed, and here is the good reason」 list, and the lead withdrew that
+#: shape: a list of blessed exceptions makes the code DECLARE the split legitimate, which is
+#: the opposite of closing it. The line above holds for this entry too — 「a rewiring that has
+#: not happened yet, NOT a site that is allowed to stay」.
+#:
+#: What it still GETS by asking, so whoever moves it knows what has to survive the move: a
+#: retroactive run must know BEFORE applying anything whether this rule's result can be seen
+#: without being performed. A proposing kind returns `updates` a dry run can count; a
+#: self-writing kind has no output until it writes, so the dry run reports what it would be
+#: HANDED instead, and it isolates a throwing page (판정 403). That is content, unlike the
+#: live-lap branch 495 deleted — which is why this one is owed rather than simply removed.
+NOT_YET_MOVED = {"chain/replay.py::replay_rule"}
 
 
 def _files():
@@ -59,11 +86,15 @@ def _files():
 
 
 def _door_callers(path):
-    """Functions in `path` that call a door, read off the AST.
+    """Functions in `path` that call a door OR ask which door, read off the AST.
 
     Both `builtins.run_builtin(...)` and a bare `run_builtin(...)` after a from-import are the
     same call and both are counted - the second spelling is the one `ingestion_worker` uses
     for one door and not the other.
+
+    🔴 ASKING COUNTS AS MAKING THE DISTINCTION (판정 495). `rule_run.builtin_kind(rule)`
+    followed by a branch is the same defect as calling a door directly, and it is the cheaper
+    one to write - so a gate watching only calls was watching the more expensive half.
     """
     with open(path, encoding="utf-8") as handle:
         try:
@@ -78,7 +109,7 @@ def _door_callers(path):
             if not isinstance(call, ast.Call):
                 continue
             named = getattr(call.func, "attr", None) or getattr(call.func, "id", None)
-            if named in DOORS:
+            if named in DOORS or named in ASKING:
                 out.append(node.name)
                 break
     return out
@@ -107,8 +138,9 @@ def test_no_new_seat_starts_running_rules_behind_the_one_that_does():
 
     appeared = sorted(found - NOT_YET_MOVED)
     assert appeared == [], (
-        "these run a chain rule without going through %s, and the seat exists so that "
-        "nothing has to ask which door a rule takes: %s" % (SEAT, appeared))
+        "these run a chain rule outside %s, or ask which door it takes in order to act on "
+        "the answer - the seat exists so nothing else has to make that distinction: %s"
+        % (SEAT, appeared))
 
     vanished = sorted(NOT_YET_MOVED - found)
     assert vanished == [], (
@@ -118,8 +150,12 @@ def test_no_new_seat_starts_running_rules_behind_the_one_that_does():
 
 def test_the_seat_is_the_one_that_asks_which_door():
     """The question itself, not only the call. `builtin_kind` is where 「is this a builtin」 is
-    answered, so a caller that needs the answer WITHOUT running (replay reports it in its
-    stats) has somewhere to ask that is not a second copy of the comparison."""
+    answered, so nobody has to spell the comparison a second time.
+
+    ⚰️ [판정 495] THIS USED TO END 「so a caller that needs the answer WITHOUT running has
+    somewhere to ask」, AND THAT SENTENCE WAS A PERMISSION SLIP. Having one place to ask is
+    not a licence to ask from anywhere: `ingestion_worker` asked and then BRANCHED. Who still
+    asks is pinned in `NOT_YET_MOVED` above, as debt."""
     assert callable(rule_run.builtin_kind)
     assert rule_run.builtin_kind({"mapper": "definitely_not_a_registered_kind"}) is None
     assert rule_run.builtin_kind({}) is None

@@ -1470,55 +1470,37 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                 trigger_events = [e for e in valid_events
                                   if e.table_name == table_name
                                   and _rule_accepts_event(rule, e)]
-                # 🔴 [S-278 후반] A `builtin:` KIND IS CALLED BY NAME, NOT BY MODULE. Every
-                # other rule here names a file mapper and is dispatched through
-                # `execute_custom_mapper(module, function, ...)`; a builtin rule carries no
-                # `mapper_module` and no `mapper_function`, so that call reached it as
-                # `(None, None)` and raised `'NoneType' object has no attribute
-                # 'startswith'`. Measured before building: until S-278 no builtin had ever
-                # been on this path - `_run_builtin_followups` was the only dispatcher the
-                # vocabulary had - so taking the join off the paced lap took it off the only
-                # lap that could run it.
+                # 🪦 [판정 495] A BRANCH ON KIND STOOD HERE AND IT HAD NOTHING IN IT.
+                # `rule_run._uniform` was built (판정 428) so that 「a caller can extend all
+                # three lists unconditionally and get a no-op - that is what lets the branch
+                # disappear from the callers」. The envelope landed and this caller did not
+                # change, so the branch it existed to delete outlived its own reason.
                 #
-                # ⚠️ IT WRITES ITSELF AND PROPOSES NOTHING. `join_into.run` returns
-                # `{"written", "rows_in", "side"}` and has already written; it does not
-                # return `updates`, so this branch must NOT feed `table_updates` the way the
-                # mapper branch does. That is why it is a branch and not a call swap.
+                # All four of its legs were already answered by the seat: `run_rule` picks
+                # `row_ids` or `payloads` by kind itself, returns early on an empty hand
+                # (「it is stated here so the next one does not have to remember to」), hands
+                # back empty proposal lists for a kind that writes for itself, and
+                # `rules_by_target` was filled for EVERY rule above. Deleting it makes the
+                # same calls in the same order.
                 #
-                # ⚠️ `done=` IS THE FOLLOW-UP LAP'S ARGUMENT AND IS NOT PASSED HERE.
-                # Measured: `join_into.run` accepts it and never reads it (the name appears
-                # in its signature and nowhere else in that module), so nothing is lost.
-                # `_run_auto_confirm` does read it - and auto-confirm stays on the paced lap,
-                # which this branch does not touch.
-                builtin_kind = rule_run.builtin_kind(rule)
-                if builtin_kind is not None:
-                    builtin_rows = [p.get("row_id")
-                                    for e in trigger_events
-                                    for p in expanded[outbox_expand.event_key(e)]
-                                    if p.get("row_id")]
-                    if not builtin_rows:
-                        continue
-                    # 🔴 THE ENVELOPE IS THE SEAT'S (판정 423). This branch used to wrap the
-                    # call in `outbox_mode(COLLAPSED)` and nothing else, so the join's write
-                    # left with NO `chain_depth` - and it happens HERE, before the
-                    # `if table_updates ...` block below that stamps one. A group whose only
-                    # rule is a builtin never enters that block at all, so the hop was
-                    # invisible to `max_chain_depth`, which 판정 402 made the only thing
-                    # standing between a declared cycle and an endless one.
-                    #
-                    # ⚠️ AND THE LINE MOVED WITH IT. The count the paced lap published
-                    # (`written=`) is said by `run_rule` now, in the same words it uses for a
-                    # file mapper - 「로그도 «문»이다」.
-                    rule_run.run_rule(db, rule, row_ids=builtin_rows,
-                                      depth=incoming_depth)
-                    rules_by_target[target_table].add(_rule_name)
-                    continue
+                # 🔴 THE HOP STILL RIDES. `chain_envelope(depth)` is inside `run_rule`, so
+                # 판정 423's `chain_depth` is stamped for a self-writing kind exactly as it
+                # was when this branch passed `depth=` by hand.
+                #
+                # Indexed, not `.get(..., ())`: a missing key means the expander and this
+                # loop disagree about the batch, and deriving nothing silently is the
+                # failure mode to avoid.
+                payloads = [p for e in trigger_events
+                            for p in expanded[outbox_expand.event_key(e)]]
+                # A `builtin:` kind resolves rows for itself and the seat reads THIS list; a
+                # file mapper never looks at it. Projected rather than branched on, so this
+                # caller stops knowing which door the rule takes.
+                row_ids = [p.get("row_id") for p in payloads if p.get("row_id")]
                 if is_batch:
-                    # Collect all payloads for this trigger table in the current transaction group
-                    payloads = [p for e in trigger_events
-                                for p in expanded[outbox_expand.event_key(e)]]
-                    # Pass the whole list to custom mapper
+                    # The whole group in one call; the seat fans out per row when the rule
+                    # is not a batch rule, and picks `row_ids` when the rule is a builtin.
                     target_payload = rule_run.run_rule(db, rule, payloads=payloads,
+                                                      row_ids=row_ids,
                                                       depth=incoming_depth)
                     if target_payload["updates"]:
                         table_updates[target_table].extend(target_payload.get("updates"))
@@ -1556,13 +1538,8 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                     # Single event execution - one call per ROW. The fan-out moved INTO the
                     # seat with the door it belongs to, so this hands over the whole
                     # expansion and the seat makes the same N calls.
-                    #
-                    # Indexed, not `.get(..., ())`: a missing key means the expander and this
-                    # loop disagree about the batch, and deriving nothing silently is the
-                    # failure mode to avoid.
-                    row_payloads = [p for event in trigger_events
-                                    for p in expanded[outbox_expand.event_key(event)]]
-                    target_payload = rule_run.run_rule(db, rule, payloads=row_payloads,
+                    target_payload = rule_run.run_rule(db, rule, payloads=payloads,
+                                                      row_ids=row_ids,
                                                       depth=incoming_depth)
                     if target_payload.get("updates"):
                         table_updates[target_table].extend(target_payload["updates"])
