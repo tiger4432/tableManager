@@ -102,6 +102,17 @@
 > 🔴 그리고 「모르면 물어보든가」 — 앞으로 «지시 전에 소유자께 계획 보고». 560 이 그 순서를 어겨 철회됨(561)
 > ```
 >
+> ## ✅ 16:2x — ② 의 «18:00 문장»이 나왔습니다 (총괄이 직접 잼, `scratchpad/probe_three_kinds.py`)
+> ```
+> templates: ('builtin:auto_confirm', 'builtin:join', 'builtin:join_into')
+>   builtin:join         -> chain.dynamic_mappers._legacy_materialized_join
+>   builtin:join_into    -> chain.dynamic_mappers._join
+>   builtin:auto_confirm -> chain.dynamic_mappers._auto_confirm
+> ```
+> 🔵 **소유자께 드릴 문장:** 「선언이 대는 이름 «셋 전부»가 동적 맵퍼로 풉니다.
+>    문은 «하나»(resolve)이고 구현이 셋입니다 — 종류표는 없습니다」
+> 🔵 그리고 584: 참조 쪽 팔(`on_reference_rows_changed`)은 저장소에 «자기 def 한 줄»뿐 —
+>    호출자 «0». 이 라운드 «전»에 이미 죽어 있었으므로 템플릿에 안 싣는 것이 옳다 (총괄 실측)
 > ## 🔄 16:1x — 제가 «뒤집었습니다». 579 → 581. 그리고 ① 을 직접 셌습니다 (판정 581~583)
 > ```
 > 🔴 581 — 579 의 「ⓐ(템플릿 하나 더) 금지」를 «철회»
