@@ -488,32 +488,6 @@ def __getattr__(name):
 # 🔴 WHAT A RULE MAY NAME — the candidates a screen offers (S-223, 판정 379)
 # ---------------------------------------------------------------------------
 
-def _registered_kinds():
-    """The `builtin:…` kinds, as things a rule can NAME - 판정 511.
-
-    🔴 THE SCREEN COULD NOT DECLARE A JOIN. 소유자 2026-09-17: 「어드민 체인 규칙
-    등록은 왜 옛날 모양이냐」. This list offered `MAPPER_REGISTRY` names and module-level
-    functions - two of the three ways a rule names its code (판정 496) - and left the third
-    out, so the operator had to hand-edit JSON to declare a join or an auto-confirm. A round
-    that made one seat run every kind has not arrived while the place an operator WRITES the
-    declaration still knows two kinds out of three.
-
-    ⚠️ READ OFF THE REGISTRATION, NOT A LIST HERE. The name, and the word the product calls
-    it, are both what `register_builtin` was given - so a fourth kind appears in the dropdown
-    the day it is registered, with nobody editing this function.
-
-    ⚠️ AND IT IS WRAPPED. This is the mapper listing; if the chain package cannot be
-    imported in this process the other two families must still reach the screen.
-    """
-    try:
-        from chain import builtins as chain_builtins
-    except Exception:                          # pragma: no cover - chain absent
-        return []
-    return [{"module": "chain.builtins", "name": kind, "kind": "builtin",
-             "label": chain_builtins.BUILTIN_LABELS.get(kind), "params": None}
-            for kind in sorted(chain_builtins.BUILTIN_KINDS)]
-
-
 def mapper_candidates(package="mappers"):
     """-> `{"candidates": [...], "other": [...], "refused": [...]}` from IMPORTED modules.
 
@@ -548,18 +522,14 @@ def mapper_candidates(package="mappers"):
     import sys as _sys
 
     registered_names, refusals = discover(package)
-    # 🔴 [판정 512] HELD BACK UNTIL THE FORM CAN DRAW THE CHOICE. 511 put these on the
-    #   screen and the screen had no branch for them: `mapperChoices` falls through to
-    #   `tokenOf(module, name)`, so `builtin:join` was offered as `chain.builtins:builtin:join`
-    #   - a value no rule can run and the save gate will not take. And even spelled right, the
-    #   Chain tab's form is FLAT: an operator could pick a join and have nowhere to write the
-    #   join's arguments. 「고를 수는 있고 쓸 수는 없는」 is this round's own defect
-    #   wearing a screen.
-    #   ⚠️ THE FUNCTION STAYS, and so does the fact it reads: the list asking the registration
-    #   is right, and 512 said not to revert it. What is wrong is the ORDER - this arrives
-    #   when the form grows the `derive` chooser it already has the material for
-    #   (`skeleton.unified_root`). Put `_registered_kinds() +` back in front of the list on
-    #   the day that form lands; nothing else here changes.
+    # ⚠️ [판정 517] A REGISTERED `builtin:` KIND IS NOT A CANDIDATE HERE, and that is
+    #   settled rather than pending. 511 added them and 512 measured what it did:
+    #   `mapperChoices` has no branch for them, so `builtin:join` reached the operator as
+    #   `chain.builtins:builtin:join` - a value no rule can run and the save gate refuses.
+    #   517 then settled WHY, which is the part worth keeping: in the unified grammar a
+    #   kind is a BRANCH of `derive` (`derive.kind`), while `derive.mapper` is a leaf whose
+    #   choices are this list. They are different questions, and the skeleton already
+    #   carries the branch names. So this is not an ordering problem waiting on a form.
     candidates = [
         {"module": _origin(MAPPER_REGISTRY[name]), "name": name,
          "kind": "registered", "params": list(MAPPER_PARAMS.get(name, ()))}
