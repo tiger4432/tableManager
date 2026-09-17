@@ -2778,6 +2778,19 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 
 ### 🆕㉘ `server/chain/builtins.py` (🆕 **446줄** @`6c71084f` — ~~413 @`c4b010c8`~~ — ~~334 @`2c93ae9f`~~, 332 @`b1db471a`, 177 @`dc877746`, 구 표기 171, S-189 ⓒ `1964c65a` 신설 · S-195 에서 120→171) — 합성 «한 자리» + `builtin:` 종류 표 + 🆕 «선언한 유일 키»를 세우는 껍데기(S-240)
 
+> ⚰️⚰️ **[2026-09-17 판정 562·585] 아래는 «기록»이다 — 이 파일은 더는 «등록부»가 아니다.**
+> ```
+> 오늘 실측   268 줄 (위 표제의 446 은 `6c71084f` 시점)
+> 정의하는 것  synthesis_half_says · synthesize_chain_rules · written_in ·
+>            ensure_declared_unique_keys · declared_unique_targets · declared_unique_index_names
+>            => 합성과 «선언된 유일 키»의 자리다. 종류표도 문도 아니다
+> 없어진 것   BUILTIN_KINDS · ORIGIN_STAMPING_KINDS · SELF_WRITING_KINDS · BUILTIN_LABELS ·
+>            register_builtin · UnknownBuiltinKind — «코드 노드 0»(AST, 추적 .py 293 파일)
+> 오늘의 답   그 네 사실은 `chain/dynamic_mappers.py` 의 `TEMPLATE_FACTS` 에 산다
+>            (label · stamps_origin · writes_itself) · 이름은 `declared:` 셋(판정 600)
+> 🔴 아래 줄 번호(:309 · :318 · :327 · :333 · :359 · :122)는 «그때의» 앵커다. 지금 열면 다른 것이 있다
+> ```
+
 > 🔴🔴 **[2026-09-17 `3216493e` S-279, 판정 497·498] 이 파일은 더는 «문»이 아니다 — «등록부»다.** `run_builtin` 과 `_rows_handed` 가 «삭제»됐고(§0 ㊵), 그 자리에 묘비 문단이 :352~:371 에 있다. 실행은 `chain/rule_run.py` 의 좌석이 하고, 이 파일은 «무엇이 등록됐나»만 든다.
 > ```
 > 표 넷 — 한 등록 줄이 «네 사실»을 같이 말한다 (전부 @`c4b010c8` 실측)
