@@ -38,7 +38,9 @@ ASSY_CHAIN_WORKER=0   uvicorn 을 손으로 띄웠는데 체인만 «안» 돌�
 ```
 종전   인리치 스윕이 `_auto_confirm_followed_rows` 에서 «디스패처 옆»에서 «직접» 불렸다
        -> `follow_up` 한 종류가 «도는 길이 둘» — 그 금지가 이름 붙은 임시방편을 이고 있었다
-오늘   `chain_builtins.BUILTIN_KINDS` «표 하나»를 지난다. 표 하나, 길 하나
+오늘   좌석 «하나»를 지난다 — `rule_run.resolve(rule)` 가 이름을 풀고 `run_rule` 이 돌린다.
+       ⚰️ 이 줄은 `chain_builtins.BUILTIN_KINDS` «표 하나»라고 적고 있었다. 그 표는 판정 562 에서
+       지워졌고(종류가 아니라 «맵퍼»다), 그 파일은 `3c9da31f` 에서 `chain/synthesis.py` 가 됐다
 ```
 🔴 **일은 «안 바뀌었다» — 바뀐 것은 「어떻게 찾히나」다.** 그리고 규칙이 «선언»에서 온다:
 `AutoConfirmCollector` 는 이미 `rules` 를 받는데, 안 주면 `load_enrichment_rules` 로 «다시 찾았다»

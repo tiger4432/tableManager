@@ -1744,7 +1744,7 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 | 🆕 **`right_key(rule) -> (right table, right columns, folds)`** :80 (`8cab58da` S-240) — ⚰️ 종전 줄 「오늘 `key.unique` 를 읽는 자가 «없다» … S-240 은 **아직 착지 전**」은 «착지로 거짓이 됐다» | 「오른쪽에 유일 인덱스를 세우려면 무엇이 필요한가」의 «셋». 🔴 **여기서 묻는 이유는 접기가 «여기서» 정해지기 때문이다** — 인덱스와 조인이 «같은 식»에서 나와야 PostgreSQL 이 인덱스를 쓴다(S-181). 껍데기가 둘째로 계산하면 판정 397 이 걷어낸 «둘째 저자»다. ⚠️ 그래도 이 모듈은 🆕 레거시 조인 모듈 «둘»(`chain.legacy_materialized_join` · `chain.legacy_join_declaration`)을 «모른다»(⚰ 구 표기 「`virtual_join` 을 모른다」 — 그 패키지는 `306419fd` 가 지웠다; 경계 시험은 `test_a_declared_join_writes_what_it_says_into_the_table.py` :503~:514) — 셋을 돌려줄 뿐이고 세우는 자는 §5-C `builtins.declared_unique_targets` :181(:204 가 이것을 부른다) → `ensure_declared_unique_keys` :143(적재 시점 `warmup_worker` 0-bis, §4)이다. 그래서 종전 줄의 「`ensure_once` 호출자 «하나»」도 낡았다 — 이제 «둘»(🆕 `chain/legacy_join_declaration.py` :737 · `chain/builtins.py` 🆕 :230 — 앞의 구 표기는 `virtual_join/config.py` :877). `key` 칸이 여기까지 «오는» 길은 §4-ter-b(`from_declaration` :188 → `as_chain_rule` :99). 시험 `test_a_declared_unique_key_is_made_by_the_product.py`(334줄 / `def test_` 18) |
 | 🆕 **`CHAIN_LAYER = "chain_ingestion"`** :34 — 쓰기의 «층» (`1aa50d3d`) | 🔴 **층은 «체인의 것», 저자는 «규칙의 것».** `_write(db, left_table, rows, spec, source_name)` :195 이 `crud.apply_batch_updates` 에 `source_name=CHAIN_LAYER` :247 · `updated_by=<규칙 이름>` 으로 넘긴다(@`b1db471a` — 구 표기 :178). 첫 판은 운영자가 「누가 이 셀을 썼나」를 보게 하려고 «규칙 이름을 층에» 넣었는데, 그 이름이 워커의 «깨움 필터»가 읽는 것이었다 — `chain_ingestion` 이 아닌 층의 쓰기는 그 표의 «모든» 규칙을 깨우므로 이 조인의 쓰기가 «자기를 먹이는 enrich 를 다시 깨웠다»(핑퐁, 소유자 「핑퐁은 제대로 고쳐」). 체인 쓰기의 층이 «하나»여야 `allow_chain_trigger` 옵트인이 체인 쓰기가 규칙을 깨우는 «유일한» 길로 남는다. `updated_by` 는 규칙당 «상수»라 값이 안 바뀐 쓰기는 여전히 no-op |
 | 🆕 **`_folded(column, fold)`** :110(@`b1db471a` — 구 표기 :91) — 🔴 **[`ddd5b3ba` S-245] 한 줄이 됐다: `return notation_norm.key_expression_sql(column, fold)`** :130 | ⚰️ 종전(`fd53b87b`)엔 «이 자리»가 타입 접기를 «먼저 배웠다» — `isinstance(column.type, String)` 이 아니면 `cast(column, Text)`, 그리고 `coalesce(col, '')`(`number` 컬럼에서 PostgreSQL 이 「invalid input syntax for type double precision: ""」 — 운영자가 «고르지 않은» 컬럼 타입 때문에 선언한 조인이 죽었다, 소유자 「알아서 접어서 하라고」). 그런데 읽기 시점 ON 절(`executor.join_onclause`)과 인덱스 DDL(`config.index_key_expression`)은 «안 배웠고», 한 키가 «어느 문이 묻느냐»에 따라 두 모양이었다. 이제 셋 다 `notation_norm` 의 «한 쌍»(`key_expression_sql` / `key_expression_text`, §5-E)을 지난다. ⚠️ **옮기면서 «순서»가 바뀌었다** — 캐스트가 «접기 앞»에, «컬럼»에 붙는다(접기 구성물은 String 타입을 «선언»하므로 뒤에 물으면 늘 「이미 텍스트」였고, 그것이 옳았던 것은 선언 검증기가 비문자열 컬럼의 접기를 거절하는 «오늘만»이다). 텍스트 키는 «바이트 그대로»(어제 맞던 인덱스가 오늘도 맞도록). 어긋나면 «실패가 아니라» 순차 스캔이고 시험은 초록이다 — 그 성질은 그대로다. 시험 `test_one_key_expression_at_every_seat_that_compares_a_key.py`(225줄 / `def test_` 11) |
-| 누가 부르나 | `chain/builtins.py`(디스패처 표 · 🆕 `right_key` :204) · `chain/rule_shape.py`(허용 목록 :280) (+시험) |
+| 누가 부르나 | `chain/synthesis.py`(합성 자리 — 🆕 `right_key` :218) · `chain/rule_shape.py`(허용 목록 :280) (+시험) |
 | 시험 | `test_a_declared_join_writes_what_it_says_into_the_table.py`(🆕 `593aac50` 이 팬아웃 케이스 +34줄 — 픽스처가 `composite_key_source` 를 «안 적어» 둘째 push 가 «둘째 행»을 넣고 있었고, 마지막 답이 «운으로» 이기던 초록이었다) · `test_the_product_synthesizes_chain_rules_in_one_seat.py` |
 
 ### 4-ter-d. `server/chain/unique_key.py` 🆕 **[`21abf176` 은퇴 2/5 — 옮겨졌다, 구 경로 ~~`server/virtual_join/unique_key.py`~~]** (🆕 **484줄** @`24700b82` — 480 @`b1db471a` — 462 @`dc877746`, 348 @`474f1aa9`, 구 표기 328(`d3a92648` 신설 때 224), S-235)
@@ -2806,14 +2806,14 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
               🔵 새로 선 `declared:enrich` 는 «이미» False 다 — 605 가 가려는 쪽이 새 맵퍼에선 기본이다
 ```
 
-### 🆕㉘ `server/chain/builtins.py` (🆕 **446줄** @`6c71084f` — ~~413 @`c4b010c8`~~ — ~~334 @`2c93ae9f`~~, 332 @`b1db471a`, 177 @`dc877746`, 구 표기 171, S-189 ⓒ `1964c65a` 신설 · S-195 에서 120→171) — 합성 «한 자리» + `builtin:` 종류 표 + 🆕 «선언한 유일 키»를 세우는 껍데기(S-240)
+### 🆕㉘ `server/chain/synthesis.py` (🆕 **268줄** @`3c9da31f` — ⚰️ `chain/builtins.py` 로 살던 때: ~~446 @`6c71084f`~~ · ~~413 @`c4b010c8`~~ · ~~334 @`2c93ae9f`~~, 332 @`b1db471a`, 177 @`dc877746`, 구 표기 171, S-189 ⓒ `1964c65a` 신설 · S-195 에서 120→171) — 합성 «한 자리» + «선언한 유일 키»를 세우는 껍데기. ⚰️ `builtin:` 종류 표는 판정 562 에서 지워졌고, 이름은 `3c9da31f` 에서 따라왔다
 
 > ⚰️⚰️ **[2026-09-17 판정 562·585] 아래는 «기록»이다 — 이 파일은 더는 «등록부»가 아니다.**
 > ```
 > 🆕 이름     `3c9da31f` 에서 **`chain/synthesis.py`** 가 됐다 — 「합성 자리가 «지워진 기제»의 이름을 쓰고 있었다」.
->            ⚠️ 위 «표제»는 아직 `chain/builtins.py` 다. 표제는 그 절의 저자 몫이라 여기서 안 고친다(631 ②) —
->            그래서 이 줄이 «표제와 본문이 어긋나 있다»는 사실을 대신 적는다
-> 오늘 실측   268 줄 (위 표제의 446 은 `6c71084f` 시점) — 이름이 바뀌었을 뿐 «정의는 그대로»다
+>            ✅ 표제도 같은 날 따라왔다(그 절의 저자 몫 — 631 ②). 응용이 어긋남을 «드러내» 두었고, 그 선택이 옳았다:
+>            표제를 남이 고쳤으면 「본문을 고치고 표제를 안 고치면 정정이 안 간다」의 반대편으로 갈릴 자리였다
+> 오늘 실측   **268** 줄 — 이름이 바뀌었을 뿐 «정의는 그대로»다 (표제의 이력 줄이 그 전 수들을 든다)
 > 정의하는 것  synthesis_half_says · synthesize_chain_rules · written_in ·
 >            ensure_declared_unique_keys · declared_unique_targets · declared_unique_index_names
 >            => 합성과 «선언된 유일 키»의 자리다. 종류표도 문도 아니다
