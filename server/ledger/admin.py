@@ -420,7 +420,13 @@ def source_raw_view(source: str = None) -> dict:
                    "선언한 소스가 말없이 사라지기 때문입니다. 저장은 폼과 똑같이 3단"
                    "(문법 검증 → 드라이런 → 저장)을 거칩니다.",
     }
-    if source is not None:
+    # 🔴 [판정 521] 「길이 0 인 문자열은 NULL 이다」 (소유자 2026-09-11). `?source=` arrives as
+    #   `''`, which `is not None` reads as A NAME - so the route looked for a source called
+    #   `''`, found nothing, and answered as if one had been asked for. The standing rule
+    #   names the ONE spelling (`is_blank_value`) and forbids a second predicate here.
+    from database import crud
+
+    if not crud.is_blank_value(source):
         out["source"] = source
         out["declaration"] = sources.get(source)
         out["raw"] = json.dumps(sources.get(source), ensure_ascii=False, indent=2)
@@ -461,7 +467,13 @@ def table_config_raw_view(table: str = None) -> dict:
         "error": error,
         "editable_unit": "table",
     }
-    if table is not None:
+    # 🔴 [판정 521] 「길이 0 인 문자열은 NULL 이다」 (소유자 2026-09-11). `?table=` arrives as
+    #   `''`, which `is not None` reads as A NAME - so the route looked for a table called
+    #   `''`, found nothing, and answered as if one had been asked for. The standing rule
+    #   names the ONE spelling (`is_blank_value`) and forbids a second predicate here.
+    from database import crud
+
+    if not crud.is_blank_value(table):
         out["table"] = table
         out["declaration"] = document.get(table)
         out["raw"] = json.dumps(document.get(table), ensure_ascii=False, indent=2)
@@ -616,7 +628,13 @@ def chain_rule_raw_view(name: str = None) -> dict:
         #    save would rewrite it into a grammar it is not.
         "grammar": "unified",
     }
-    if name is not None:
+    # 🔴 [판정 521] 「길이 0 인 문자열은 NULL 이다」 (소유자 2026-09-11). `?name=` arrives as
+    #   `''`, which `is not None` reads as A NAME - so the route looked for a rule called
+    #   `''`, found nothing, and answered as if one had been asked for. The standing rule
+    #   names the ONE spelling (`is_blank_value`) and forbids a second predicate here.
+    from database import crud
+
+    if not crud.is_blank_value(name):
         out["name"] = name
         out["declaration"] = named.get(name)
         out["raw"] = json.dumps(named.get(name), ensure_ascii=False, indent=2)

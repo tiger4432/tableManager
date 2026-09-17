@@ -798,7 +798,12 @@ def ledger_gap_catalogue(name: str = Query(None)):
             "message": f"선언을 읽지 못했습니다: {exc}"})
 
     try:
-        if name is None:
+        # 🔴 [판정 521] SAME SEAT SHAPE, SAME FOLD. `?name=` is `''` here too, and this
+        #   route would fall through to the measured branch and count a question nobody
+        #   asked. One spelling for emptiness, per the standing rule.
+        from database import crud
+
+        if crud.is_blank_value(name):
             asked = _gaps.questions(declared)
             return {"mode": "names", "count": len(asked), "gaps": asked}
         from database.database import engine
