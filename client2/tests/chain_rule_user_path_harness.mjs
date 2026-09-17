@@ -70,6 +70,12 @@ const RULE = {
   lot_column: 'lot_id',
 };
 const NAMES = ['dt_log_to_dt_map', 'lot_event_to_lot_slot_wafer'];
+// 🔴 [판정 542] THE BRANCH THIS BOX DOES NOT HAVE, MADE ON PURPOSE. Every rule in the box
+//    reads as flat or unified, so 「the grammar cannot be read」 was never once walked -- the
+//    lead said their own green was silent about it for exactly that reason. `dt_log_to_dt_map`
+//    is LEFT OUT of this map, which is how the route says 「모른다」 (it omits rather than
+//    defaulting to flat), and that name is never opened by any section below.
+const GRAMMARS = { lot_event_to_lot_slot_wafer: 'flat' };
 
 let pass = 0, fail = 0, quiet = false;
 const failedNames = [];
@@ -126,16 +132,25 @@ globalThis.fetch = async (url, init) => {
 // Rebuilt by `freshPage()` before each run -- see there for why one page cannot serve two.
 let mount = null;
 
+// 🔴 [판정 540·542] THE ROUTE ALWAYS SENDS `grammar`, AND THE LIST SENDS A MAP BESIDE IT.
+//    A fixture that left `grammar` out was simulating 「the grammar cannot be read」 while
+//    asserting that the FLAT form is drawn -- the two cannot both be right, and after 542
+//    the screen answers the first. `rule_grammars` leaves a name OUT when it is unknown
+//    (`{n: g for ... if g}`), so the map here is not keyed by every name on purpose.
 const rawView = (name) => {
   const out = {
     config_path: '/box/chain_rules.json', base: 'fp-1', rules: NAMES,
     error: null, editable_unit: 'rule', skeleton: SKELETON,
+    grammar: 'unified',
+    rule_grammars: GRAMMARS,
   };
   if (name) {
     out.name = name;
     out.declaration = name === RULE.name ? RULE : { name };
     out.raw = JSON.stringify(out.declaration, null, 2);
     out.enabled = true;
+    out.grammar = GRAMMARS[name] || undefined;
+    if (out.grammar === undefined) delete out.grammar;
   }
   return out;
 };
@@ -453,6 +468,63 @@ async function suite(probe) {
   //    rule opened is the shape S-72 already paid for once (44 requests, 76% thrown away).
   ok(catalogueReads === 1,
      `I the catalogue is read once for the page, not once per rule opened (${catalogueReads})`);
+
+  // ── K. 판정 536 ④ — the screen SAYS what it counted ─────────────────────────────────────
+  // 🔴 THE SILENCE IS THE DEFECT. After a migration a screen that says nothing reads as
+  //    「끝났다」, and nothing on it tells 「0 left」 apart from 「never counted」.
+  const marksOf = () => all(panelRoot())
+    .filter((el) => String(el.className || '').split(/\s+/).includes('chain-rule-mark'))
+    .map((el) => String(el.textContent || ''));
+  const serve = (body) => { answer = (call) => (call.url.includes('/admin/mappers/list')
+    ? { status: 200, body: MAPPERS }
+    : isCatalogue(call) ? { status: 200, body: { tables: TABLES } }
+      : { status: 200, body: body(call) }); };
+
+  serve((call) => rawView(askedName(call)));
+  await refreshChainRule(RULE.name);
+  await flush();
+  const shown = marksOf();
+  ok(shown.includes('평면 1'),
+     `K the screen counts the rules still written flat, off ONE response [${shown.join(' | ')}]`);
+  // 🔴 판정 540·542. The route OMITS a name whose grammar it cannot read. Counting those as flat
+  //    would put 「모른다」 back into 「평면」 inside the very screen that reports the migration.
+  ok(shown.includes('문법 모름 1'),
+     `K ... and an unreadable grammar is counted SEPARATELY, never folded into flat [${shown.join(' | ')}]`);
+
+  // ㈎ 「제품이 모르는 칸 N 개 — 그대로 보존됩니다」. The cell exists because
+  //    `rule_shape.to_declaration` gathers what the grammar does not model into ONE place
+  //    (「흩어 두면 새 문법의 칸과 구별이 안 되고, 그러면 다음 사람이 그것을 문법이라 읽는다」).
+  const UNIFIED = {
+    name: RULE.name,
+    on: { table: 'lot_event' },
+    derive: { kind: 'mapper', mapper: 'lot_event_to_lot_slot_wafer' },
+    into: { table: 'lot_slot_wafer' },
+    extra: { lot_column: 'lot_id', slot_list_column: 'slots', list_delimiter: ',' },
+  };
+  serve(() => ({ ...rawView(RULE.name), grammar: 'unified',
+                 declaration: UNIFIED, raw: JSON.stringify(UNIFIED, null, 2) }));
+  await refreshChainRule(RULE.name);
+  await flush();
+  const carried = marksOf();
+  ok(carried.includes('모르는 칸 3 · 보존'),
+     `K a migrated rule says HOW MANY cells the product cannot model, and that they are kept `
+     + `[${carried.join(' | ')}]`);
+
+  // ── L. 판정 542 — 「모른다」 does not quietly become the flat form ────────────────────────
+  // 🔴 THE TWO GRAMMARS ARE 27 CELLS AGAINST 7. Drawing the wrong one does not error: it puts
+  //    empty boxes over real values, and a save then rewrites the rule into a grammar it is not.
+  serve((call) => rawView(askedName(call)));
+  await refreshChainRule('dt_log_to_dt_map');
+  await flush();
+  ok(!byCls('chain-rule-form'),
+     'L a rule whose grammar cannot be read draws NO form, rather than falling to flat in silence');
+  ok(Boolean(byCls('chain-rule-raw')),
+     'L ... and the document itself still stands, so the operator can read and fix it');
+  // 🔴 판정 543 ㉡. A form that just VANISHES reads as a broken screen. The reason is named,
+  //    and it carries the rule's name because that is the place the operator has to go fix.
+  const unread = marksOf();
+  ok(unread.includes('문법 못 읽음 · dt_log_to_dt_map'),
+     `L ... and the screen NAMES the rule it could not classify [${unread.join(' | ')}]`);
   return { pass: pass - before.pass, fail: fail - before.fail };
 }
 
