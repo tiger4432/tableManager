@@ -5614,7 +5614,14 @@ def get_enrichment_rules():
     (어느 뷰가 어느 target_field의 후보 원천인지 — 클라가 유도하지 않게 하는 유일한 길).
     형태 근거는 `enrichment_config.to_public_rule` 참조. 기존 필드는 그대로입니다.
     """
-    rules = enrichment.config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
+    # 🔴 [소유자 「참조뷰 라우트만 추가하고」] WHICHEVER GRAMMAR DECLARED IT. This read
+    #   `load_enrichment_rules`, which opens ONE file, so a `decide` declaration written in
+    #   the unified grammar carried its reference views and reached nobody. `chain.
+    #   reference_view` is the one place that knows a declaration has two homes, and the
+    #   route below walks the SAME list - the index in `/references/{index}` points into it.
+    from chain import reference_view
+
+    rules = reference_view.declarations(known_tables=crud.TABLE_CONFIG)
     return {"rules": [enrichment.config.to_public_rule(r) for r in rules]}
 
 @app.get("/enrichment/rules/{rule_name}/references/{index}")
@@ -5627,8 +5634,12 @@ def get_enrichment_reference(rule_name: str, index: int, params: str = None, db:
     - LIMIT은 서버가 강제합니다(뷰별 설정, 기본 200 / 최대 1000).
     - 규칙/인덱스 미존재 404.
     """
-    rules = enrichment.config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
-    rule = next((r for r in rules if r["name"] == rule_name), None)
+    # 🔴 THE SAME SEAT THE LIST ROUTE WALKS, which is what keeps `index` meaning the same
+    #   thing at both ends (the index-alignment guarantee `_normalize_reference_views`
+    #   states). A rule written in the unified `derive.decide` grammar is found here now.
+    from chain import reference_view
+
+    rule = reference_view.find(rule_name, known_tables=crud.TABLE_CONFIG)
     if rule is None:
         raise HTTPException(status_code=404, detail=f"Enrichment rule '{rule_name}' not found")
     views = rule.get("reference_views", [])
