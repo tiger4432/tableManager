@@ -196,31 +196,91 @@ def test_the_kind_question_is_asked_in_one_place_however_it_is_spelled():
         "file keeps a false sentence about what is left to do: %s" % (vanished,))
 
 
+#: Every log tag the chain package writes, and what each one NAMES. 🔴 [판정 499] MEMBERS,
+#: NOT A COUNT, and a literal is a member: the first version of this gate watched the
+#: `mapper@` CONSTANT only, so three `[ChainBuiltin]` lines spelled straight into their
+#: format strings survived 498 untouched - and that tag names a KIND, which is the one thing
+#: a tag may not do here.
+#:
+#: ⚠️ A TAG THAT NAMES A SUBSYSTEM OR A STAGE IS FINE; that is what all of these do. What is
+#: forbidden is a tag that says what KIND of rule ran, because then an operator has to know
+#: the kind before they can pick the words - 판정 498 ③ in one sentence.
+CHAIN_LOG_TAGS = {
+    "%s": "the seat's own line, composed from RULE_LOG_TAG",
+    "Chain": "the group step",
+    "Chain Depth": "the hop ceiling",
+    "Chain Worker": "the process",
+    "ChainKeyGate": "the business-key gate",
+    "ChainRetract": "withdrawal when a trigger row is deleted",
+    "ChainRules": "the loader and the synthesis halves",
+    "HOL Guard": "a blocked group making later groups wait",
+    "LayerHealth": "the layering check",
+    "Ledger": "the ledger follow-up",
+    "LedgerCensus": "the retroactive census",
+    "LedgerFollowUp": "the ledger's own lap",
+    "Reload": "the config reload",
+    "VirtualJoin": "the legacy join declaration",
+    "VirtualJoin:%s": "the legacy join declaration, named",
+    "Warmup": "process start",
+}
+
+#: Log methods a tag can ride on.
+LOG_CALLS = ("info", "warning", "error", "debug", "log", "exception")
+
+
 def test_one_vocabulary_says_that_a_rule_ran():
     """CLOSING NUMBER ③ — one execution-log tag, not two.
 
     An operator grepping 「did this rule run」 had to know the kind before they could pick the
     words: a self-writing run was `[ChainRule] ... written=` and a file-mapper run
-    `[mapper@<logfile>] ... rows_out=`, START/END/RAISED under a second tag. The second
-    vocabulary left with the door that spoke it.
+    `[mapper@<logfile>] ... rows_out=`, START/END/RAISED under a second tag. A third,
+    `[ChainBuiltin]`, said the follow-up lap's half.
 
-    ⚠️ ASSERTED ON WHAT IS BUILT, NOT ON THE CHARACTERS. The old tag still appears in prose -
-    in this repository the note explaining a retired mechanism is kept on purpose - so a test
-    that forbade the letters would be asking for that note to be deleted, which is the
-    cheapest way to turn a gate green and lose the reason.
+    🔴 [판정 499] AND THE LAP'S TAG WAS MADE FALSE BY THIS VERY ROUND. The lap used to select
+    `rule.get("mapper") in BUILTIN_KINDS`, so 「builtin」 was true of everything it logged;
+    it selects `rule_run.writes_itself` now - a registered property - so a FILE mapper that
+    registers it would be logged as a builtin. Today no kind does, which is exactly why this
+    had to be a gate rather than a reading: 「가드는 도달 가능해지는 날 틀린다」.
+
+    ⚠️ ASSERTED ON WHAT IS BUILT, NOT ON THE CHARACTERS. The retired tags still appear in
+    prose - in this repository the note explaining a retired mechanism is kept on purpose -
+    so a test that forbade the letters would be asking for those notes to be deleted, which
+    is the cheapest way to turn a gate green and lose the reason.
     """
     built = {}
+    unknown = {}
     for path in _files():
         tree = _parsed(path)
         if tree is None:
             continue
+        rel = _rel(path)
         for node in ast.walk(tree):
             if isinstance(node, ast.Constant) and isinstance(node.value, str):
                 if node.value.startswith("mapper@"):
-                    built.setdefault(_rel(path), node.lineno)
+                    built.setdefault("%s:%d" % (rel, node.lineno), node.value)
+            # A tag spelled into a log call's format string - the spelling that survived 498.
+            if not (isinstance(node, ast.Call) and rel.startswith("chain/")):
+                continue
+            if (getattr(node.func, "attr", None) or "") not in LOG_CALLS:
+                continue
+            for arg in node.args:
+                if not (isinstance(arg, ast.Constant) and isinstance(arg.value, str)):
+                    continue
+                if arg.value.startswith("[") and "]" in arg.value:
+                    tag = arg.value[1:arg.value.index("]")]
+                    if tag not in CHAIN_LOG_TAGS:
+                        unknown["%s:%d" % (rel, node.lineno)] = tag
+                break
 
     assert built == {}, (
         "a second execution-log vocabulary is being constructed here: %s" % (sorted(built),))
+
+    assert unknown == {}, (
+        "these chain log lines carry a tag this file does not know: %s\n"
+        "If the line reports a RULE RUNNING, use `rule_run.RULE_LOG_TAG` - there is one "
+        "vocabulary for that and a second one is what 판정 498 ③ closed. If it names a "
+        "subsystem or a stage, add it to CHAIN_LOG_TAGS above with what it names."
+        % (sorted(unknown.items()),))
 
 
 def test_the_seat_answers_the_kind_question_it_took_over():

@@ -2763,7 +2763,7 @@ _FOLLOWUP_SAID = {}
 FOLLOWUP_LOG_EVERY = 500
 
 
-def log_followup_folded(logger_, rule_name, table, rows_in, written, woke_by, hop,
+def log_followup_folded(logger_, rule_name, table, written, woke_by, hop,
                         max_hop, refusal=None):
     """One line that says WHY this ran, folded so a thousand rows are not a thousand lines.
 
@@ -2771,6 +2771,19 @@ def log_followup_folded(logger_, rule_name, table, rows_in, written, woke_by, ho
     table and counts - everything except the change that woke it - so an operator watching a
     cascade could not tell which edit was still echoing. `woke_by` and the hop are what turn
     a count into a trail.
+
+    🔴 [판정 499] AND IT SAID ALL THAT UNDER `[ChainBuiltin]`, WHICH IS A KIND'S NAME.
+    판정 498 folded the two execution vocabularies into one and reached only `run_rule`'s line,
+    so an operator grepping 「did this rule run」 still got half of the laps. Worse, the SAME
+    round made the name false: this lap selects rules by `rule_run.writes_itself` now - a
+    REGISTERED property, not an address - so the day a file mapper registers it, the lap
+    would log that mapper as a builtin. 「가드는 도달 가능해지는 날 틀린다」, in its log form.
+
+    🔴 `rows_in` AND `written` LEFT THE MESSAGE, NOT THE LINE. `run_rule` says both for
+    this very run and now under the SAME tag, so repeating them here was one fact with two
+    authors. `written` stays a PARAMETER because it picks the level - a lap with nothing to
+    do is the ordinary case and belongs at DEBUG. What is left is what only this lap knows:
+    what woke it, which hop it is on, and how many lines were folded into this one.
 
     ⚠️ NOTHING WRITTEN IS DEBUG. A follow-up that had nothing to do is the ordinary case on
     every lap, and at INFO it is the noise that hides the laps that DID something.
@@ -2786,9 +2799,8 @@ def log_followup_folded(logger_, rule_name, table, rows_in, written, woke_by, ho
     if level == logging.INFO and seen != 1 and seen % FOLLOWUP_LOG_EVERY != 0:
         return seen
     logger_.log(level,
-                "[ChainBuiltin] rule=%s table=%s rows_in=%s written=%s \u2190 woke_by=%s "
-                "hop=%s/%s%s%s",
-                rule_name, table, rows_in, written, woke_by, hop, max_hop,
+                "[%s] rule=%s table=%s \u2190 woke_by=%s hop=%s/%s%s%s",
+                rule_run.RULE_LOG_TAG, rule_name, table, woke_by, hop, max_hop,
                 (" REFUSED: " + refusal) if refusal else "",
                 (" (x%d)" % seen) if seen > 1 else "")
     return seen
@@ -2887,9 +2899,10 @@ def _run_builtin_followups(db, done):
                     done.get("transaction_id"), table, rule.get("name"), row_ids)
                 if not fresh:
                     logger.info(
-                        "[ChainBuiltin] rule=%s kind=%s table=%s — 이 원인(tx %s)의 행은 "
+                        "[%s] rule=%s kind=%s table=%s — 이 원인(tx %s)의 행은 "
                         "이미 한 번 받았습니다. 건너뜁니다.",
-                        rule.get("name"), kind, table, done.get("transaction_id"))
+                        rule_run.RULE_LOG_TAG, rule.get("name"), kind, table,
+                        done.get("transaction_id"))
                     continue
                 # 🔴 [S-249 ⓔ-1] THE LAP COLLAPSES ITS EVENTS, like the group path already
                 # does. Per-row events made 1,000 follow-up writes into 1,000 outbox
@@ -2904,7 +2917,7 @@ def _run_builtin_followups(db, done):
             # can act on — and with several join rules watching one table it cannot even be
             # attributed.
                 log_followup_folded(
-                    logger, rule.get("name"), table, len(fresh),
+                    logger, rule.get("name"), table,
                     (result or {}).get("written"),
                     "%s#%s" % (table, done.get("transaction_id") or "?"),
                     rule_run.outgoing_depth(incoming_depth),
@@ -2913,8 +2926,9 @@ def _run_builtin_followups(db, done):
         finally:
             request_chain_depth.reset(token_depth)
     except Exception as err:                                       # noqa: BLE001
-        logger.error("[ChainBuiltin] follow-up dispatch failed for table %s "
-                     "(the ledger follow-up itself is unaffected): %s", table, err)
+        logger.error("[%s] follow-up dispatch failed for table %s "
+                     "(the ledger follow-up itself is unaffected): %s",
+                     rule_run.RULE_LOG_TAG, table, err)
 
 
 def _drain_ledger_followup_sync(db_session_factory):

@@ -237,13 +237,22 @@ def test_the_line_says_what_woke_it_and_at_which_hop(caplog):
     could not tell which edit was still echoing."""
     import logging
 
+    from chain import rule_run
+
     worker.forget_followup_lines()
     with caplog.at_level(logging.INFO):
-        worker.log_followup_folded(worker.logger, "rule_a", "t", 3, 2, "t#tx-1", 2, 8)
+        worker.log_followup_folded(worker.logger, "rule_a", "t", 2, "t#tx-1", 2, 8)
 
     said = " ".join(r.getMessage() for r in caplog.records)
     assert "woke_by=t#tx-1" in said and "hop=2/8" in said
-    assert "rows_in=3" in said and "written=2" in said
+    assert "rule=rule_a" in said and "table=t" in said
+    # [499] ONE VOCABULARY. This line used to be tagged `[ChainBuiltin]` - a KIND's name -
+    #   and the round that landed the seat made that name FALSE as well as split: the lap
+    #   selects on `writes_itself` now, so a file mapper that registered it would have been
+    #   logged as a builtin. The counts left too: `run_rule` says `rows_in`/`written` for
+    #   this very run, under the same tag, so this line saying them was two authors.
+    assert "[%s]" % rule_run.RULE_LOG_TAG in said
+    assert "ChainBuiltin" not in said
 
 
 def test_a_lap_that_wrote_nothing_is_debug_rather_than_noise(caplog):
@@ -253,7 +262,7 @@ def test_a_lap_that_wrote_nothing_is_debug_rather_than_noise(caplog):
 
     worker.forget_followup_lines()
     with caplog.at_level(logging.INFO):
-        worker.log_followup_folded(worker.logger, "rule_a", "t", 3, 0, "t#tx-1", 1, 8)
+        worker.log_followup_folded(worker.logger, "rule_a", "t", 0, "t#tx-1", 1, 8)
 
     assert not caplog.records, "a lap that wrote nothing spoke at INFO"
 
@@ -264,7 +273,7 @@ def test_a_refusal_is_said_even_when_nothing_was_written(caplog):
 
     worker.forget_followup_lines()
     with caplog.at_level(logging.INFO):
-        worker.log_followup_folded(worker.logger, "rule_a", "t", 3, 0, "t#tx-1", 1, 8,
+        worker.log_followup_folded(worker.logger, "rule_a", "t", 0, "t#tx-1", 1, 8,
                                    "right table is not declared")
 
     assert "REFUSED: right table is not declared" in " ".join(
@@ -280,7 +289,7 @@ def test_the_same_pair_folds_after_the_first_line(caplog):
     worker.forget_followup_lines()
     with caplog.at_level(logging.INFO):
         for _ in range(worker.FOLLOWUP_LOG_EVERY + 1):
-            worker.log_followup_folded(worker.logger, "rule_a", "t", 1, 1, "t#tx", 1, 8)
+            worker.log_followup_folded(worker.logger, "rule_a", "t", 1, "t#tx", 1, 8)
 
     lines = [r.getMessage() for r in caplog.records]
     assert len(lines) == 2, lines

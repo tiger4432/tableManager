@@ -1,6 +1,6 @@
 # 지금 돌리면 되는 것
 
-> 🔵 **10:32 갱신.** 아래 ⓞ 가 «제일 먼저»입니다. 나머지는 그다음입니다.
+> 🔵 **11:05 갱신.** 아래 ⓞ 가 «제일 먼저»입니다. 나머지는 그다음입니다.
 > 🆕 이번 pull 의 체인 로그 변화는 «부팅 로그에서 볼 것» 절의 `[ChainRule]` 줄에 있습니다.
 
 ## ⏱️ 바쁘시면 «이 셋»만 — 나머지는 «보고 나서» 찾아 읽는 자리입니다
@@ -425,7 +425,12 @@ Transaction … permanently failed: N event(s) -> FAILED. 원인: <예외 문장
      🔴 None 은 «0 이 아니라» 「안 셌다」입니다 (rows_out·written 둘 다)
      🆕 error=…  그 규칙이 «던졌다»는 뜻입니다. 던져도 이 줄은 «찍힙니다» — 줄이 없으면 「안 돌았다」가 맞습니다
      어느 로그 파일인지는 어드민 chain 큐 응답의 `log_filename` 이 말합니다
-[ChainBuiltin] rule=… table=… rows_in=N written=M ← woke_by=<표>#<tx> hop=h/max   <- 조인 오른쪽·자동 확정이 «왜» 돌았나. 쓴 것이 0 이면 DEBUG(안 보임). 같은 규칙은 첫 줄 + 500 마다
+[ChainRule] rule=… table=… ← woke_by=<표>#<tx> hop=h/max (xN)
+     🆕 (09-17) 후속 랩도 «같은 태그»를 씁니다 — 이전에는 `[ChainBuiltin]` 이었고, 그 이름으로 찾으시던 분은 이제 이 줄로 오십시오
+     ← woke_by  «무엇이» 이 랩을 깨웠나 (표#트랜잭션)  ·  hop  몇 번째 홉인가
+     (xN)      같은 규칙·표의 같은 줄이 N 번 접혔다는 뜻 (첫 줄 + 500 마다)
+     🔴 rows_in·written 은 이 줄에 «없습니다» — 같은 실행의 바로 위 `[ChainRule]` 줄이 이미 말합니다
+     쓴 것이 0 이면 DEBUG(안 보임). 거절이면 ` REFUSED: <사유>` 가 같은 줄에 붙습니다
 [Chain Depth] outbox#… reached hop N, over the declared limit of M; refusing it   <- 고리가 상한에서 끊김(정상). 더 길게 가야 하면 chain_rules.json 최상위 max_chain_depth
 [ChainRules] 고리: A → B → A (순서는 선언 순 · 홉 상한 …)   <- 오류 아님. 한 번만 뜸
 ```
