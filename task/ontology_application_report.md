@@ -28047,3 +28047,35 @@ docs/guide/config/virtual_join_rules.md               materialize 언급 22
 ```
 📮 ⓒ(「materialize: true 를 이름 대어 거절」)에 대한 제 관측: 지금도 그 규칙은 «조용히» 안 돕니다
    (Q-123 실측: UnresolvableRule). ⓒ 는 «나빠지지 않고» 침묵을 문장으로 바꿉니다 — 오늘 자리로 맞습니다.
+
+---
+
+> 📊 **[09-17 16:16 응용] Q-126 — 항목 ⑤ 대조: 「지운 것이 목록과 맞나」. 맞습니다. 그리고 지금 빨간 것의 «정체»를 수로 적습니다**
+> **받는 이: 총괄 (⑤ 판정용) · 구현자 (중복 아닙니다 — 당신의 3위 항목에 «수»만 붙입니다)**
+
+## Q-110 의 표를 «같은 계기»로 다시 돌렸습니다 (`4c881f8d` 뒤)
+| 이름 | 전 | 후 | |
+|---|---|---|---|
+| `BUILTIN_KINDS` · `BUILTIN_HANDS` · `BUILTIN_LABELS` · `HANDS_ROW_IDS` · `HANDS_PAYLOADS` | 3·2·2·4·3 | **0·0·0·0·0** | 🪦 모듈에서도 «사라짐»(hasattr 로 확인) |
+| `writes_itself` | 2 | 1 | 🔻 `chain/ingestion_worker.py` 하나 — 미루기 경로용(구현자가 「내려왔다」로 적은 것) |
+| `legacy_materialized_join` | 3 | 2 | 🔻 실행 절반 나감 · **판독 절반은 그대로**(crud · system_reload) — Q-124 예측과 일치 |
+| `follow_up` | 6 | 2 | 🔻 남은 둘이 «인리치»(candidates · config) — 562 ① 이 적어 둔 그 둘 |
+| `legacy_join_declaration` | 8 | 8 | ➡️ 그대로 — 생산자는 아직 섭니다(Q-123·판정 581 진행 중) |
+```
+=> ⑤ 의 답: 지운 다섯은 «전부» 나갔고, 줄어든 셋은 «남아야 할 것만» 남았습니다.
+   제 목록(Q-110)과 지운 것이 «어긋나지 않습니다»
+```
+
+## 🔴 지금 스위트가 빨갛습니다 — 그런데 «회귀가 아닙니다». 오해를 막으려고 수를 적습니다
+```
+원인 실측   tests/test_a_rule_is_run_by_one_seat.py 를 돌렸습니다 -> 6 중 «3 실패»
+            AttributeError: module 'chain.builtins' has no attribute 'BUILTIN_KINDS'
+            (:324  assert builtins.BUILTIN_KINDS, "no kinds registered - the table is the subject here")
+모집단      그 이름들을 «코드로» 쓰는 시험 파일 «12» (AST 전수 — 주석만 남은 것은 0)
+정체        구현자의 «3위» 항목이고 총괄이 「18:00 넘겨도 된다」 하신 그것입니다
+🔴 그래서 적는 이유: 18:00 에 «다른 것»을 증명하려고 스위트를 돌리면 이 빨강이 먼저 보입니다.
+   그때 「이번 라운드가 깨뜨렸다」로 읽히면 안 됩니다 — 「표를 지웠고 그 표를 재던 시험이 아직 산다」입니다
+   («테스트는 자기가 재던 코드와 같은 커밋에서 죽는다» — 그 규율이 «미뤄진» 상태입니다)
+```
+⚠️ 12 중 «몇 개 시험이» 실패하는지는 «한 파일만» 실제로 돌려 봤습니다(3/6). 나머지 열하나는
+   참조가 있다는 것까지만 쟀습니다 — 「12 파일이 전부 빨갛다」고 적지 «않습니다».
