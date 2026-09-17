@@ -1048,8 +1048,12 @@ def picked_up_by_the_follow_up_pass(rule) -> bool:
     """
     if not (rule or {}).get("follow_up"):
         return False
-    return (rule_run.hands(rule) == rule_run.HANDS_ROW_IDS
-            and rule_run.writes_itself(rule))
+    # 🔴 [판정 562] THE CALLING SHAPE IS NOT A QUESTION ANY MORE, so the pair became one.
+    #   503 separated these two deliberately - 「the arm is the calling shape, not 「does it
+    #   write its own rows」」 - and that separation was right while there were two doors to
+    #   choose between. There is one, so the first half is true of everything and says
+    #   nothing; what this pass actually selects on is the second.
+    return rule_run.writes_itself(rule)
 
 
 #: (what to call it in the refusal, does it pick this rule up). 🔴 MEMBERS, and each member

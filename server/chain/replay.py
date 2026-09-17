@@ -477,7 +477,12 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
     #   decides whether to hand `row_ids` or `payloads`, and those two facts agree only
     #   while every registered kind writes for itself. `hands` answers it without
     #   resolving, so 501 a's repair stands.
-    hands_row_ids = rule_run.hands(rule) == rule_run.HANDS_ROW_IDS
+    # 🔴 [판정 562] THE SHAPE QUESTION IS GONE AND THE PROPERTY IS NOT. This asked 「is it
+    #   handed row ids」 to decide whether the rule writes for itself - two facts that
+    #   「agree only while every registered kind writes for itself」, as the note below said.
+    #   The kinds are gone, so the agreement cannot be leaned on; the property is asked
+    #   directly.
+    hands_row_ids = bool(rule_run.self_writing_name(rule))
     # [판정 505] THE CELL IS NAMED FOR WHAT IT HOLDS. It was `builtin_kind`, the screen
     #   read it back as `is_builtin`, and it carries neither: it is the kind name WHEN the
     #   rule writes its own rows, and `None` otherwise. Three names for one fact, and all

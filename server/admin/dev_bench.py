@@ -195,7 +195,9 @@ def _unknown_name(name, detail=None):
     import mapper_sdk
     from chain import builtins as chain_builtins
 
-    kinds = ", ".join(sorted(chain_builtins.BUILTIN_KINDS)) or "none registered"
+    # 🔴 [판정 562] ONE REGISTRY. The refusal listed the kind table, which no longer
+    #   exists - and the names it used to hold are in this one, under the same spelling.
+    kinds = ", ".join(sorted(mapper_sdk.MAPPER_REGISTRY)) or "none registered"
     registered = ", ".join(sorted(mapper_sdk.MAPPER_REGISTRY)) or "none"
     said = ("%r is neither a registered kind nor a mapper this product can find. "
             "Registered kinds: %s. Mapper names: %s. A file mapper may also be given as "
@@ -255,11 +257,11 @@ def try_mapper(name, sample, *, rule=None, target_table="bench_target"):
         # rule ever declared, so its own fallback below gets its turn before it refuses.
         bound = None
 
-    if bound is not None and bound.hands != rule_run.HANDS_PAYLOADS:
-        return {"who": name, "rows": [],
-                "refusal": "%r is a registered kind, not a file mapper: it resolves its own "
-                           "rows from the database, so a sample file is not an input it "
-                           "takes. Try it with the retroactive screen instead." % name}
+    # ⚰️ A REFUSAL STOOD HERE: 「this is a registered kind, not a file mapper - it resolves
+    #   its own rows, so a sample file is not an input it takes」. It was reachable only
+    #   because a kind was called with row ids instead of a payload. Every mapper takes a
+    #   payload now, so the bench can feed a sample to any of them and the sentence would
+    #   be refusing something that works (판정 562).
 
     fn = bound.call if bound is not None else None
     who = bound.who if bound is not None else name
