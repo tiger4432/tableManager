@@ -142,11 +142,14 @@ def test_a_stood_join_is_not_on_the_paced_followup_list():
     reading either half alone puts it on the wrong lap. It ran on the paced lap until S-278
     and it must not be back there now that the trigger path dispatches it - a rule on both
     laps runs twice per cause."""
-    from chain import builtins
+    # 🔴 [판정 562] ASKED OF THE REGISTRY, which is what the seat reads. The legend half
+    #   is kept: an assertion about 「풀리는 규칙」 decides nothing if the halves do not resolve.
+    import mapper_sdk
 
     primary, companion = _stood(SELF_LOOP)
     for half in (primary, companion):
-        assert half.get("mapper") in builtins.BUILTIN_KINDS, (
-            "this assertion only decides anything while the halves ARE builtins")
-        assert not (half.get("follow_up") and half.get("mapper") in builtins.BUILTIN_KINDS), (
-            "%s would be picked up by the paced lap as well as the trigger path" % half["name"])
+        assert half.get("mapper") in mapper_sdk.MAPPER_REGISTRY, (
+            "this assertion only decides anything while the halves RESOLVE")
+        assert not half.get("follow_up"), (
+            "%s would be picked up by the paced lap as well as the trigger path"
+            % half["name"])

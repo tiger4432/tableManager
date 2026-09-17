@@ -107,6 +107,34 @@ def _auto_confirm(db, payload, rule=None):
             "refusal": refusal, "source_name": enrichment.candidates.SOURCE_NAME}
 
 
+def _legacy_materialized_join(db, payload, rule=None):
+    """`virtual_join_rules.json` 의 `materialize: true` — «지금 도는 구현을 그대로» 감쌉니다.
+
+    🔴 [판정 581] AND IT IS NOT THE SAME JOB AS `_join`, WHICH IS WHY IT KEEPS ITS OWN
+    implementation. Measured: a virtual join splits an `expose` column that ALSO exists on
+    the left into `collide` and treats it absent-only - the operator's own edit wins.
+    `join_into` has no such notion and writes the right side unconditionally. Folding the
+    two would overwrite a hand-edited value silently, on every trigger.
+
+    ⚠️ THREE IMPLEMENTATIONS IS NOT THREE DOORS. The door is `resolve`, and it is one; what
+    the registry holds is what each name DOES. The debt the old table's note recorded is a
+    debt of DECLARATION SURFACES (`virtual_join_rules.json` against `chain_rules.json`) and
+    it closes when the last `materialize: true` moves to `into.table` - not here.
+
+    ⚰️ THE REFERENCE ARM IS NOT CARRIED, and that is not a decision: `_run_join` also took
+    `key_values` for 「a reference row moved」, and MEASURED - no chain caller ever passed it
+    (`key_values` outside this module belongs to the alignment view). It was unreachable
+    before this round and carrying it would be carrying a path nothing walks.
+
+    ⛔ THE MODULE IT CALLS IS NOT DELETED (판정 580 · 581): its reading half is the write
+    path's uniqueness guard, and a guard that cannot read its declaration refuses no row.
+    """
+    from chain import legacy_materialized_join as engine
+
+    return engine.on_target_rows_changed(db, (rule or {}).get("params") or {},
+                                         _row_ids(payload))
+
+
 #: 🔴 [판정 562] THE FACTS THAT ARE REAL, DECLARED WHERE THE TEMPLATE IS.
 #:
 #: The kind table held four facts about each kind. Two were about its ADDRESS and go away
@@ -157,7 +185,7 @@ TEMPLATES = {}
 def _install_templates():
     """Bind the templates to the names stored rules already use."""
     import enrichment.config
-    from chain import join_into
+    from chain import join_into, legacy_join_declaration
 
     TEMPLATES[join_into.JOIN_INTO_MAPPER] = _join
     TEMPLATES[enrichment.config.AUTO_CONFIRM_MAPPER] = _auto_confirm
@@ -185,6 +213,13 @@ def _install_templates():
         "params": None}
     TEMPLATE_FACTS[enrichment.config.AUTO_CONFIRM_MAPPER] = {
         "label": "decide", "stamps_origin": False, "writes_itself": True,
+        "params": None}
+    # ⚠️ ITS FACTS ARE THE ONES THE OLD REGISTRATION DECLARED, carried unchanged:
+    #    `materialize_rows` puts the answering row in `origin_row_id`, and it writes
+    #    for itself rather than proposing.
+    TEMPLATES[legacy_join_declaration.JOIN_MAPPER] = _legacy_materialized_join
+    TEMPLATE_FACTS[legacy_join_declaration.JOIN_MAPPER] = {
+        "label": "join", "stamps_origin": True, "writes_itself": True,
         "params": None}
 
 
