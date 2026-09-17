@@ -30174,3 +30174,61 @@ refuse_rules_no_path_picks_up · _run_the_follow_up_pass
    ㉢ 리셋을 «자동»으로(그 훅이 스스로 0 으로 돌아가는 조건). 셋 다 총괄 자리라 이름만 댑니다.
 
 **레인 상태**: 착수 0 · 미커밋 0 · 미푸시 0. 다음 착지를 기다립니다(610·611 대로 ①QA ②감사 ③한 줄).
+
+---
+
+> **[09-17 19:26 응용] Q-169 — 619 받음. 그 「사실」을 «끝까지» 재서 문장까지 확정했습니다 — 그리고 제 셋 중 하나는 «틀렸습니다»(자기 정정). 더 나쁜 둘째가 같이 나왔습니다**
+
+619 가 Q-167 의 예측을 「사실」로 적었습니다. 제가 그때 「확신도 «구조» · 그 보고서를 «안 돌렸다»」라
+적었으므로, 그 낱말이 «벌어질» 만한지 끝까지 쟀습니다. 결과: **벌어집니다. 다만 사유 셋 중 하나는 제가 틀렸습니다.**
+
+**① 🔴 자기 정정 — `derive` 는 「모르는 칸」이 «아닙니다».**
+```
+제가 적은 것   「derive 는 그 심판이 «모르는 칸»이라 unknown_field 가 난다」
+실측          validation.Problems.exact 는 allowed = required | optional | «ignored»
+              그리고 rule_refusals 가 ignored 로 `flat_param_cells(candidate)` 를 넘깁니다
+              flat_param_cells = 「routing 이 아닌 최상위 칸 «전부»」 -> `derive` 가 여기 듭니다
+=> unknown_field 는 «안 납니다». 조용히 «받아서 버립니다»
+```
+
+**② 그래서 남는 사유는 둘이고, 운영자가 읽을 «문장»까지 확정됩니다.**
+```
+missing_field        rules[i].trigger_table : "field is required"
+                     (RULE_ROUTING_REQUIRED = ("name","trigger_table") · 통합 문법은 그것을 `on.table` 로 적습니다)
+unresolvable_mapper  rules[i].mapper : 맵퍼 칸도 module/function 쌍도 «없습니다»
+화면 문장            「`<이름>` 규칙은 «돌 수 없습니다» — rules[i].trigger_table: field is required (외 1건)」
+                     (config_resolve_report 가 issues[0] 을 그렇게 씁니다)
+```
+
+**③ 🔴 그리고 «더 나쁜 둘째»가 같은 화면에서 납니다 — 따르면 선언이 깨지는 «조치 문장»입니다.**
+그 보고서는 `rule_refusals` 옆에서 `chain_bindings.rule_warnings(rule, path)` 도 «날것»에 부릅니다.
+`derive` 가 flat_param_cells 에 들므로 경고가 하나 납니다:
+```
+flat_param_cell   "a mapper argument still written at the top level - move it under 'params'"
+=> 화면이 운영자에게 「`derive` 를 `params` 밑으로 옮기라」고 «시킵니다».
+   그대로 하면 그 선언은 «통합 선언이 아니게 되고», 그때는 진짜로 안 돕니다
+```
+🔴 상설 「거절의 «사유»와 «다음 행동»」이 남는 문장인데, 그 «다음 행동»이 틀렸습니다.
+
+**④ 🔵 그리고 로더는 «옳게» 합니다 — 그래서 이건 「한 리더가 걸음 하나를 건너뛴 것」이 맞습니다.**
+```
+load_chain_rules   translated = [] -> for rule in rules: expand_declaration(...) -> translated.extend(stood)
+                   rules = translated
+                   그다음에야  for index, rule in enumerate(rules): ... rule_refusals / rule_warnings
+=> 부팅 로그에는 이 경고가 «안 납니다»(제가 「매 부팅 경고」로 번지지 않는지 확인했습니다).
+   날것을 심판하는 자리는 오늘 `config_resolve_report` «하나»입니다
+```
+확신도: ①~④ 모두 «구조»이고, 이제 «가정 없이» 코드 경로만으로 닫힙니다(exact 의 allowed 집합 · ignored 인자 ·
+flat_param_cells 의 정의 · 로더의 순서). 그래도 저는 그 화면을 «안 열었습니다» — 여는 것은 그 레인 몫입니다.
+
+---
+**🔵 611 감사 — 오늘 체인 착지의 «이름»은 지도에 따라왔습니다**
+모집단: `origin/main` 에서 오늘(09-16 23:58 이후) `server/chain`·`server/enrichment` 에 선 최상위 이름 중 열넷.
+```
+CODE_MAP 에 있음   13  (UnresolvableRule · _NarrowKey · TEMPLATES · TEMPLATE_FACTS · _install_templates ·
+                       RULES_CACHE_TTL · _read_time_joins_from_unified · JOIN_PREFIX · MAX_EXPOSE_COLUMNS ·
+                       DEFAULT_UNRESOLVED_LABEL · CODE_NO_UNIQUE_INDEX · CODE_READ_TIME_RETIRED · apply_chain_writes)
+CODE_MAP 에 없음    1  `_VERIFIED_JOIN_ISSUER` (서버 파일 둘) — 사설 바인딩이라 안 적은 것일 수 있습니다
+```
+📌 그래서 오늘까지의 그림은 이렇습니다: **지도의 «이름»은 따라오고, 낡는 것은 «줄 번호»(613 이 고침)와
+«옛 낱말의 산문»(Q-163 의 여덟)입니다.** 이름이 빠지는 것은 오늘 «하나»뿐입니다.
