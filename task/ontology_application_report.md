@@ -30714,3 +30714,50 @@ server/mappers/cross_table_lookup_mapper.py.sample:318    `import session_contra
               수리는 그 한 줄을 울타리 «밖» 산문으로 옮기는 것뿐입니다
 ```
 📌 셋 다 «제 손이 안 가는» 자리(훅 = 총괄 · 경계 = 판정 · RUN.md = 총괄 파일)라 기다립니다.
+
+---
+
+> **[09-17 19:57 응용] Q-181 — 630 의 이주 줄이 «표면 하나»만 덮습니다. 둘째 표면은 «운영자의 맵퍼 소스»이고, 증상이 «다릅니다» — 그리고 그걸 가르치는 샘플이 아직 그대로입니다**
+
+630 이 넣은 RUN.md 줄(제가 19:56 에 읽음):
+```
+「자신의 선언에 `mapper_module` 값이 `enrichment.` 로 시작하는 것이 있으면 `chain.enrichment.` 로 …
+  증상: 그 규칙이 `unresolvable_mapper` 로 거절됩니다」
+```
+✅ 맞습니다. 그리고 「못 보니까 재지 않고 알린다」는 자세도 옳습니다(측정 상설 그대로).
+🔴 **그런데 운영자 쪽 표면이 «둘»입니다.**
+
+```
+표면 A (630 이 덮음)   선언의 `mapper_module` 칸           -> 로드에서 «거절». 증상 unresolvable_mapper
+표면 B (안 덮임)       운영자의 «맵퍼 소스 파일» 자체       -> «돌다가» 던집니다
+```
+**표면 B 의 근거 — 제품이 그렇게 «가르칩니다».** `server/mappers/cross_table_lookup_mapper.py.sample` 이
+오늘도 이렇게 적혀 있습니다(19:56, `origin/main`):
+```
+    import session_contract
+    return session_contract.in_savepoint(db, "cross_table_lookup", query.all)
+```
+그 줄의 «위» 독스트링은 그 줄을 지우지 말라고까지 적습니다 —
+「a copy that deletes this line deletes the read as well - a guard you can drop while the feature
+ keeps working is a guard that gets dropped」. 즉 복사본에 «반드시 남도록» 설계된 줄입니다.
+
+**증상이 왜 다른가 — 그 import 가 «함수 안»에 있습니다.**
+```
+모듈 최상단이 아니므로   `mapper_sdk.discover()` 는 그 파일을 «성공적으로» import 하고 «등록»합니다
+                      (discover 는 파일마다 예외를 가둡니다 — 「ONE BROKEN MAPPER MUST NOT COST THE OTHERS」)
+그래서 규칙은          거절되지 «않고», 켜져 보이고, «돌다가» 던집니다
+운영자가 볼 줄         `[ChainRule] rule=<이름> kind=… rows_in=N rows_out=None …
+                       error=ModuleNotFoundError: No module named 'session_contract'`
+```
+🔴 630 의 줄만 읽은 운영자는 `unresolvable_mapper` 를 찾다가 «없으니 괜찮다»고 읽습니다.
+   두 증상은 «다른 자리»에 뜹니다 — 하나는 부팅 거절, 하나는 실행 줄의 `error=`.
+
+📮 청함(둘 다 제 손 밖입니다):
+```
+① RUN.md 이주 줄에 «표면 B» 한 줄 — 「자신의 맵퍼 «소스»에 `import session_contract` ·
+   `import keyset_scan` 가 있으면 `from chain import …` 로 바꾸십시오. 증상은 거절이 아니라
+   실행 줄의 `error=ModuleNotFoundError` 입니다」
+② 샘플 자체(`cross_table_lookup_mapper.py.sample`)를 고치지 않으면 «새로 만드는» 맵퍼가 계속 이 줄을 답니다
+   — 이건 Q-178 ② 에 올린 그대로이고 아직 열려 있습니다
+```
+계기: 텍스트(「무엇이 적혀 있나」)와 코드 읽기입니다 — 「돌려 봤나」는 «아닙니다». 라이브 맵퍼는 gitignore 라 못 봅니다.
