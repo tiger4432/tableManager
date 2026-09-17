@@ -24,7 +24,7 @@ if SERVER_DIR not in sys.path:
 
 from chain import rule_census, rule_shape                            # noqa: E402
 from chain import ingestion_worker as worker                         # noqa: E402
-from enrichment import config as enrichment_config                   # noqa: E402
+from chain.enrichment import config as enrichment_config                   # noqa: E402
 
 SOURCE = "s239_source"
 DERIVED = "s239_derived"

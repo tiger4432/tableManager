@@ -20,7 +20,7 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import enrichment.config                                             # noqa: E402
+from chain import enrichment                                             # noqa: E402
 
 CATALOGUE = {
     "s136_derived": {

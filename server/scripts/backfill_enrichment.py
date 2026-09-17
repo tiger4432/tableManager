@@ -37,8 +37,8 @@ _SERVER_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _SERVER_DIR not in sys.path:
     sys.path.insert(0, _SERVER_DIR)
 
-import enrichment.backfill  # noqa: E402  (the single implementation; see its docstring)
-from enrichment.backfill import DEFAULT_CHUNK_SIZE, SAMPLE_NEW_KEYS, BackfillRefused
+from chain import enrichment  # noqa: E402  (the single implementation; see its docstring)
+from chain.enrichment.backfill import DEFAULT_CHUNK_SIZE, SAMPLE_NEW_KEYS, BackfillRefused
 
 
 def format_report(stats: dict, limit: int = None) -> str:

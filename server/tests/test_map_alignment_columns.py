@@ -488,7 +488,7 @@ def test_the_worklist_no_longer_calls_the_binding_a_pin(env):
 # ---------------------------------------------------------------------------
 
 def _patch(monkeypatch):
-    import enrichment.config
+    from chain import enrichment
     import main
     monkeypatch.setattr(enrichment.config, "load_enrichment_rules",
                         lambda *a, **k: [dict(RULE)])

@@ -44,7 +44,7 @@ import map_meta_registrar
 
 # [Enrichment ①] Absent-only automatic confirmation when the declared reference
 # views leave exactly one candidate (per-rule knob `auto_confirm`, default OFF).
-import enrichment.candidates
+from chain import enrichment
 
 # [ChainKeyGate] A chain may not emit a row whose key columns are not filled. The gate
 # sits on the write loop below - the one place every chain-emitted row passes through -

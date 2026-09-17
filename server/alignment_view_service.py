@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from maps import alignment_batch_counts
-import enrichment.config
+from chain import enrichment
 import map_alignment
 import map_overlay
 from database import crud

@@ -20,7 +20,7 @@ if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
 from chain import reference_view                                     # noqa: E402
-from enrichment import config as enrichment_config                   # noqa: E402
+from chain.enrichment import config as enrichment_config                   # noqa: E402
 
 VIEW = {"label": "이 키의 원본 행",
         "query": "SELECT a FROM t WHERE k = :k ORDER BY a",

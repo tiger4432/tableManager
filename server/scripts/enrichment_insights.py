@@ -27,7 +27,7 @@ if _SERVER_DIR not in sys.path:
 
 
 def _rules(rule_name=None):
-    import enrichment.config
+    from chain import enrichment
     from database import crud
 
     rules = enrichment.config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
@@ -48,7 +48,7 @@ def _caps_from_args(args):
     whole invocation - a run whose caps change mid-walk is a run whose numbers
     cannot be compared to each other.
     """
-    import enrichment.config as ec
+    from chain.enrichment import config as ec
 
     caps = ec.load_read_caps()
     for flag, key in ((getattr(args, "probe_scan_rows", None), ec.CAP_PROBE_SCAN_ROWS),
@@ -98,7 +98,7 @@ def _cut_lines(truncated):
 
 
 def _report_classify(res):
-    from enrichment import analysis as ea
+    from chain.enrichment import analysis as ea
 
     bug = sum(res["counts"].get(c, 0) for c in ea.BUG_CLASSES)
     work = sum(res["counts"].get(c, 0) for c in ea.REAL_WORK_CLASSES)
@@ -271,7 +271,7 @@ def main(argv=None):
 
     from database import crud, models
     from database.database import SessionLocal
-    from enrichment import analysis as ea
+    from chain.enrichment import analysis as ea
 
     if not crud.TABLE_CONFIG:
         print("REFUSED: table_config.json is empty or missing - nothing is registered")

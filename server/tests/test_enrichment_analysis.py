@@ -14,9 +14,9 @@ import json
 
 import pytest
 
-from enrichment import analysis
-import enrichment.candidates
-import enrichment.config
+from chain.enrichment import analysis
+from chain import enrichment
+from chain import enrichment
 from database import crud, models, schemas
 
 AN_TABLES = {

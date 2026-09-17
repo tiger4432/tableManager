@@ -111,7 +111,7 @@ _QUEUE_PREDICATE_PROBE = textwrap.dedent(
         eip_key = Column(String)
         eip_target = Column(String)
 
-    from enrichment import analysis
+    from chain.enrichment import analysis
 
     rule = {
         "name": "entrypointiso_probe_rule",

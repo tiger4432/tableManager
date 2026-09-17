@@ -773,7 +773,7 @@ def test_the_undeclared_target_to_column_mapping_is_reported_not_resolved(env):
 # ---------------------------------------------------------------------------
 
 def _rules_patch(monkeypatch):
-    import enrichment.config
+    from chain import enrichment
     monkeypatch.setattr(enrichment.config, "load_enrichment_rules",
                         lambda *a, **k: [dict(RULE)])
 

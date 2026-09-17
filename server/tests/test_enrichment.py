@@ -13,7 +13,7 @@ import uuid
 import anyio
 import pytest
 
-import enrichment.config
+from chain import enrichment
 from database import crud, models, schemas
 
 # ---------------------------------------------------------------------------
@@ -773,7 +773,7 @@ def test_the_marker_is_not_inferred_from_frame_shaped_target_fields():
 
 
 def test_the_marker_survives_to_the_public_shape():
-    import enrichment.config
+    from chain import enrichment
     marked = enrichment.config.to_public_rule(_one(_decl(alignment=True)))
     unmarked = enrichment.config.to_public_rule(_one(_decl()))
     assert marked["alignment"] is True
@@ -859,7 +859,7 @@ def test_a_second_load_is_the_same_answer_without_reading_the_file(tmp_path, mon
     every call and the alignment mapper calls it once per job, so a 1,000-row chain group
     read this file and re-validated every rule a thousand times - and the cost grows with
     how many rules a deployment declares, which is a number nobody here knows."""
-    import enrichment.config as ec
+    from chain.enrichment import config as ec
     from database import crud
 
     # ⚠️ THE MEMO ONLY ANSWERS FOR `crud.TABLE_CONFIG`, ON PURPOSE: what a rule is judged
@@ -889,7 +889,7 @@ def test_editing_the_file_is_visible_on_the_next_call(tmp_path, monkeypatch):
     silently lags the screen showing it."""
     import os
 
-    import enrichment.config as ec
+    from chain.enrichment import config as ec
     from database import crud
 
     monkeypatch.setattr(crud, "TABLE_CONFIG", KNOWN)
@@ -909,7 +909,7 @@ def test_a_remembered_load_still_reports_why_a_rule_was_refused(tmp_path):
     """⛔ REJECTIONS ARE REPLAYED, NOT SKIPPED. A caller collecting them is building the
     operator's report, and a memo that answered with rules and no reasons would make a
     declaration that was refused look accepted on the second call."""
-    import enrichment.config as ec
+    from chain.enrichment import config as ec
 
     rules_file = tmp_path / "enrichment_rules.json"
     rules_file.write_text(json.dumps({

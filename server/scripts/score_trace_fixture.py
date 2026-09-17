@@ -19,8 +19,8 @@ if _SERVER not in sys.path:
     sys.path.insert(0, _SERVER)
 
 import paths                                        # noqa: E402
-import enrichment.candidates as ec                   # noqa: E402
-import enrichment.config                             # noqa: E402
+from chain.enrichment import candidates as ec                   # noqa: E402
+from chain import enrichment                             # noqa: E402
 from database import crud                            # noqa: E402
 from database.database import SessionLocal           # noqa: E402
 from trace_fixture import scoring                    # noqa: E402

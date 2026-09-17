@@ -5600,7 +5600,7 @@ def get_mappers():
 #   워크리스트/결손 카운트/저장은 기존 GET /tables/{t}/data + PUT /tables/{t}/data/updates 재사용.
 #   신규는 아래 2종(규칙 메타 + 참조뷰 조회)뿐이다.
 # -----------------------------------------------------------------------------
-import enrichment.config
+from chain import enrichment
 
 @app.get("/enrichment/rules")
 def get_enrichment_rules():
@@ -5997,7 +5997,7 @@ def get_enrichment_auto_confirm_dry_run(
         일괄 실행, `--limit`, `--ignore-knob` 측정, classify/propose. 버튼이 생겼다고
         CLI가 없어진 것이 아니다.
     """
-    from enrichment import analysis
+    from chain.enrichment import analysis
     import config_resolve_report
 
     limit = max(1, min(int(limit or ENRICHMENT_DRY_RUN_DEFAULT_LIMIT),

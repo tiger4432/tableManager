@@ -78,7 +78,7 @@ def test_vocabulary_matches_its_canonical_definitions():
     true, rather than true-for-now.
     """
     import config_resolve_report
-    import enrichment.candidates
+    from chain import enrichment
 
     assert bonding_plan.BINDING_NOT_DECLARED == config_resolve_report.REASON_NOT_DECLARED
     assert (bonding_plan.BINDING_MAPPING_UNAVAILABLE

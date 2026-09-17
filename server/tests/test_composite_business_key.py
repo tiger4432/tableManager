@@ -388,7 +388,7 @@ def test_user_vs_user_conflict_merge(sqlite_db):
 
 import uuid as _uuid
 
-from enrichment import mapper
+from chain.enrichment import mapper
 
 PIPE_TABLE = "s1_pipe_key"
 PIPE_SEP = "|"

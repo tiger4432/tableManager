@@ -61,7 +61,7 @@ def declarations(known_tables: dict = None, chain_rules_path: str = None,
     keeps this list the same length as the list the loader stood.
     """
     from chain import ingestion_worker, rule_shape
-    from enrichment import config as enrichment_config
+    from chain.enrichment import config as enrichment_config
 
     seen, out = set(), []
     for rule in enrichment_config.load_enrichment_rules(

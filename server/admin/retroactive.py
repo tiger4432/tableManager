@@ -259,7 +259,7 @@ def _count_enrichment_backfill(db, params, scan_limit):
     # `enrichment_backfill`, NOT `scripts/backfill_enrichment`: the CLI is not
     # importable from a runtime process (server/scripts is on nobody's sys.path),
     # and importing it here is what made this route raise ModuleNotFoundError.
-    import enrichment.backfill
+    from chain import enrichment
     from database import crud
 
     rule = enrichment.backfill.load_rule(params["rule"], crud.TABLE_CONFIG)
@@ -315,8 +315,8 @@ def _count_enrichment_backfill(db, params, scan_limit):
 
 
 def _count_enrichment_confirm(db, params, scan_limit):
-    from enrichment import analysis
-    import enrichment.candidates
+    from chain.enrichment import analysis
+    from chain import enrichment
 
     rule = _enrichment_rule(params["rule"])
     knob_on = enrichment.candidates.rule_auto_confirm_enabled(rule)
@@ -602,7 +602,7 @@ def _run_withdraw(db, params, log, control=None):
 
 
 def _run_enrichment_backfill(db, params, log, control=None):
-    import enrichment.backfill
+    from chain import enrichment
     from database import crud
 
     rule = enrichment.backfill.load_rule(params["rule"], crud.TABLE_CONFIG)
@@ -621,7 +621,7 @@ def _run_enrichment_confirm(db, params, log, control=None):
     # only in the first instant is worse than none - an operator would press it mid-run and
     # watch it do nothing. The registry entry declares `cancellable: False` so the screen
     # does not offer the button at all.
-    from enrichment import analysis
+    from chain.enrichment import analysis
 
     # ignore_knob stays FALSE here: the knob is where a human consents to
     # automatic writes, and `run_auto_confirm_sweep` refuses apply without it.
@@ -633,7 +633,7 @@ def _run_enrichment_confirm(db, params, log, control=None):
 
 
 def _enrichment_rule(name):
-    import enrichment.config
+    from chain import enrichment
     from database import crud
 
     rules = enrichment.config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)

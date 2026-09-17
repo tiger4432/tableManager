@@ -17,8 +17,8 @@ import json
 import anyio
 import pytest
 
-import enrichment.candidates
-import enrichment.config
+from chain import enrichment
+from chain import enrichment
 from database import crud, models, schemas
 
 
@@ -220,7 +220,7 @@ def run_followup_auto_confirm(db, derived_table="encand_test_derived"):
     from chain import rule_run
     from chain.ingestion_worker import (load_chain_rules, watches_table,
                                         reload_worker_process_cache)
-    from enrichment import config as enrichment_config
+    from chain.enrichment import config as enrichment_config
 
     # ⚠️ These tests rewrite the declaration in-process between cases; production reaches a
     # changed declaration through a reload, so the faithful thing here is to reload too.
@@ -1041,7 +1041,7 @@ def test_a_reference_view_opens_a_transaction_before_its_savepoint():
     the double refuses exactly the way the driver does, and the assertion is that a
     transaction is opened FIRST.
     """
-    import enrichment.config
+    from chain import enrichment
 
     class Session:
         def __init__(self):

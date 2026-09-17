@@ -26,7 +26,7 @@ if server_dir not in sys.path:
     sys.path.insert(0, server_dir)
 
 from chain import builtins                                                 # noqa: E402
-import enrichment.config                                              # noqa: E402
+from chain import enrichment                                              # noqa: E402
 from chain import legacy_join_declaration as vjc                                     # noqa: E402
 
 
@@ -389,7 +389,7 @@ def test_the_collector_is_handed_its_rule_rather_than_finding_it(monkeypatch):
     itself it called `load_enrichment_rules` and re-found what the synthesised rule carries in
     `params`. Two readers of one fact is how they come to disagree — and this one also re-read
     a file on a paced path."""
-    import enrichment.candidates
+    from chain import enrichment
 
     seen = {}
 
@@ -411,7 +411,7 @@ def test_the_collector_is_handed_its_rule_rather_than_finding_it(monkeypatch):
     #   the template reads the target off `rule["target_table"]`, which is the cell the
     #   declaration already carries, so the rule above gained it and the note went.
     from chain import dynamic_mappers
-    from enrichment import config as enrichment_config
+    from chain.enrichment import config as enrichment_config
 
     dynamic_mappers.TEMPLATES[enrichment_config.AUTO_CONFIRM_MAPPER](
         None, [{"row_id": "r1"}], rule=rule)

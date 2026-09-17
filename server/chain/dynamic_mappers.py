@@ -100,7 +100,7 @@ def _auto_confirm(db, payload, rule=None):
     and that pass is going. The counts travel back as the RETURN VALUE, which is where the
     caller reads everything else about a run.
     """
-    import enrichment.candidates
+    from chain import enrichment
 
     rows = _row_ids(payload)
     # 🔴 [판정 525 ②] EVERY ZERO EXIT SAYS WHY — and these are different repairs: nothing
@@ -185,7 +185,7 @@ def _enrich(db, payload, rule=None):
                        appears 0 times in `enrichment/mapper.py`, which - unlike
                        `server/mappers/` - is this repository's own file.
     """
-    from enrichment import mapper
+    from chain.enrichment import mapper
 
     return mapper.map_enrichment_dedup(db, payload, rule)
 
@@ -239,7 +239,7 @@ TEMPLATES = {}
 
 def _install_templates():
     """Bind the templates to the names stored rules already use."""
-    import enrichment.config
+    from chain import enrichment
     from chain import join_into, legacy_join_declaration
 
     TEMPLATES[join_into.JOIN_INTO_MAPPER] = _join

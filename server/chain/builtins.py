@@ -72,7 +72,7 @@ def synthesize_chain_rules(known_tables: dict = None, failures: list = None) -> 
     quietly reorders or drops a rule would be invisible until a chain stopped firing.
     """
     def _enrichment():
-        import enrichment.config
+        from chain import enrichment
         return enrichment.config.load_enrichment_chain_rules(known_tables=known_tables)
 
     def _joins():
@@ -107,7 +107,7 @@ def written_in(rule) -> str:
     c join)」 boot line. That line folded into the loader's set line, which names every rule
     with its origin and kind, so a count of kinds had no reader left.
     """
-    import enrichment.config
+    from chain import enrichment
     from chain import legacy_join_declaration
 
     if (rule or {}).get("mapper") == legacy_join_declaration.JOIN_MAPPER:

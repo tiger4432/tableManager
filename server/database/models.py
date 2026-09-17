@@ -1528,7 +1528,7 @@ def ensure_alignment_decision_key_indexes(engine, config=None, rules=None):
     catalog = config if config is not None else _catalog_owner.TABLE_CONFIG
     if rules is None:
         try:
-            import enrichment.config
+            from chain import enrichment
             from database import crud as _crud
 
             rules = enrichment.config.load_enrichment_rules(

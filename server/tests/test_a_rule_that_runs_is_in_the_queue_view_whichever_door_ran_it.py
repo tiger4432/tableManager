@@ -286,7 +286,7 @@ def test_auto_confirm_reports_its_row_count_under_the_name_the_others_use(monkey
     answered `confirmed` only - so the follow-up line S-249 added printed `written=None`
     for it, and the registration here would have had nothing to read and would have left
     the outcome at 「아직 평가 안 됨」 no matter how many rows it confirmed."""
-    import enrichment.candidates
+    from chain import enrichment
 
     class _Collector:
         active = True

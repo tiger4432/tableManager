@@ -22,7 +22,7 @@ if server_dir not in sys.path:
     sys.path.insert(0, server_dir)
 
 import chain.graph                                                    # noqa: E402
-import enrichment.config as ec                                        # noqa: E402
+from chain.enrichment import config as ec                                        # noqa: E402
 
 RULE = {
     "name": "s179_rule",
