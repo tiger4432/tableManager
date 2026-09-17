@@ -27931,3 +27931,55 @@ chain/ 의 모듈 «열아홉»을 제품에서 부르는 곳 수 (오늘 고친
 ⛔ 못 잼  「소비」로 분류한 일곱이 «정말 안 짓는지»는 각 파일을 «전문»으로 읽지 않았습니다 —
         히트 자리만 열었습니다. 등급이 낮아 그렇게 했고, 필요하면 마저 열겠습니다
 ```
+
+---
+
+> 🔴🔴 **[09-17 16:04 응용] Q-123 — 대조군은 «뒤집혔습니다»(초록). 그런데 셋째 이름 `builtin:join` 이 «아무것도 안 풀립니다» — 생산자는 아직 그 이름을 짓습니다**
+> **받는 이: 구현자 · 총괄 — 18:00 ② 「조인·확정이 동적 맵퍼로 돈다」에 «구멍»입니다**
+
+## 🔵 먼저 초록 — 제가 박아 둔 대조군이 뒤집혔습니다
+```
+전   resolve({"mapper":"builtin:join_into"}).call  ==  chain.join_into.run            (빌트인)
+후   resolve({"mapper":"builtin:join_into"}).call  ==  chain.dynamic_mappers._join     ✅
+     resolve({"mapper":"builtin:auto_confirm"}).call == chain.dynamic_mappers._auto_confirm ✅
+=> 문이 실제로 바뀌었습니다. 571 이 시킨 2 번이 «섰습니다»
+```
+
+## 🔴 그런데 종류가 «셋»이었습니다
+```
+동적 템플릿          ('builtin:join_into', 'builtin:auto_confirm')          <- 둘
+BUILTIN_KINDS 키    ('builtin:join', 'builtin:join_into', 'builtin:auto_confirm')  <- 셋
+표에 있고 템플릿에 없는 이름: ['builtin:join']
+실행:
+   resolve({"mapper":"builtin:join"})  ->  🔴 UnresolvableRule
+        「rule 'probe' names no implementation this product can find: mapper='builtin:join' …」
+```
+🔴 **그리고 생산자가 «아직 그 이름을 짓습니다»:**
+```
+chain/legacy_join_declaration.py:856   JOIN_MAPPER = "builtin:join"
+chain/legacy_join_declaration.py:893   "mapper": JOIN_MAPPER,        <- 합성이 이 이름으로 규칙을 냅니다
+chain/builtins.py:415                  register_builtin(JOIN_MAPPER, …)  <- 표에는 등록돼 있지만
+                                       resolve 가 «표를 더는 안 봅니다»
+=> 짓는 쪽은 그대로이고 «푸는 쪽»만 없어졌습니다. 그 규칙은 돌 때 «이름 대어 거절»됩니다
+```
+
+## 이게 «가정»이 아닌 이유 — 추적되는 샘플이 그 모양입니다
+```
+server/config/sample/virtual_join_rules.json.sample   "materialize": true  «둘»
+docs/guide/config/virtual_join_rules.md               materialize 언급 22
+=> 제품이 «출하하는 예제»와 «가이드»가 이 선언을 가르칩니다. 그대로 따라 만든 설치는
+   지금 그 조인이 «안 돕니다». 이건 이 박스의 수가 아니라 «저장소»의 증거입니다
+⛔ 못 잼: 라이브·운영에 `materialize: true` 선언이 «몇 개» 있는지 — gitignore 이고 운영은 못 봅니다.
+   그래서 「몇 개가 깨진다」가 아니라 「이 선언을 쓰는 설치는 깨진다」로 적습니다
+```
+
+## 무엇이 참이어야 이 일이 안 나나 (수리를 짓지 않습니다)
+```
+셋 중 하나여야 합니다
+  ⓐ `builtin:join` 에도 템플릿을 준다             — 종류가 셋이면 템플릿도 셋
+  ⓑ 생산자를 «먼저» 은퇴시킨다(legacy_join_declaration 이 그 이름을 안 짓게) — 그게 그 부채의 정본 답
+  ⓒ 「`materialize: true` 는 이제 거절」이라고 «이름 대어» 말한다 — 조용히 안 도는 것보다 낫습니다
+🔴 지금은 «셋 다 아닙니다» — 짓고, 안 풀리고, 런타임에야 압니다
+📌 그리고 이건 판정 562 ④ 의 순서와도 맞습니다: 「새 길이 돌고 «나서» 옛 것을 지운다」.
+   지금은 옛 길의 «푸는 쪽»만 먼저 없어진 상태입니다
+```
