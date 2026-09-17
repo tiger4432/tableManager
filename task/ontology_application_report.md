@@ -30885,3 +30885,42 @@ server/enrichment/analysis.py    -> server/chain/enrichment/analysis.py       77
 저는 세어서 올립니다. ⛔ 고치지 않았습니다.
 ⚠️ 못 잼: 이 가이드의 «나머지 1,046 줄»은 전수로 안 봤습니다 — 위 다섯 낱말과 «절 제목»으로만 훑었습니다.
    「가이드 전체가 오늘 참이다」는 제가 «말할 수 없는» 문장입니다.
+
+---
+
+> **[09-17 20:33 응용] Q-186 — 착지 `3c9da31f`(합성 자리 개명) 검수: 코드 쪽은 «깨끗»합니다. 그런데 그 커밋이 인용한 상설 「말이 남는다」가 «지도에서» 그대로 났습니다 — 살아 있는 문서 일곱에 32**
+
+**① 🔵 코드 — 제가 연 다섯 자리 전부 통과입니다.**
+```
+㉠ 파일        `chain/builtins.py` 없음 · `chain/synthesis.py` 268줄, 정의 여섯 «그대로» ✅
+㉡ 제품 잔재    `chain.builtins` · `chain_builtins` · `from chain import builtins` — 제품 코드 «0» ✅
+㉢ 두 뜻 함정   파이썬의 `builtins.open` · `builtins.__import__` «살아 있습니다»(시험 둘) ✅
+              — 은퇴 상설의 첫 물음(「이 이름이 «두 뜻»인가」)을 실제로 돌린 자리입니다
+㉣ 사전 점검    `.py.sample` · `server/mappers/` · `OPERATOR_IMPORT_NAMES` 를 «옮기기 전에» 봤다고 적었고,
+              오늘 아침 사고(세션 계약)의 재발 방지가 그대로 돌았습니다 ✅
+㉤ 안 고친 것   `_reference_view_failure` 의 `follow_up=` — «다른 뜻»이라 그대로 뒀다고 적었습니다 ✅
+              (「축과 값을 같이 죽이지 않는다」의 반대 방향까지 본 것입니다)
+```
+
+**② 🔴 그런데 그 커밋이 인용한 상설이 «지도에서» 그대로 났습니다.**
+커밋 본문: 「기제는 지워지고 «말»은 남는다. 남은 말은 그 기제가 아직 있다고 말한다」.
+```
+`chain/builtins` 를 아직 이름 대는 «살아 있는» 문서 (history 제외, 20:33 실측)
+   CODE_MAP 17 · PRIMITIVES 4 · BASIS 3 · SERVER_DEFECT_QUEUE 3 ·
+   guide/config/virtual_join_rules 2 · PROJECT_STATUS 2 · guide/config/chain_rules 1     = 32 / 7 파일
+   그리고 `chain_builtins`(별칭) CODE_MAP 3
+🔴 그중 하나가 «§㉘ 의 표제»입니다 — `### 🆕㉘ \`server/chain/builtins.py\``
+```
+⛔ `source_profile_builtins.py`(CODE_MAP 3)는 «다른 파일»이라 안 셌습니다 — 첫 계기가 그것을 같이 집었고,
+   오늘 여섯 번째 계기 주의입니다(`builtins.py` 로 훑으면 원장 소스 프로필이 섞입니다).
+
+**③ 지도 반영: `748f6085`** — 제가 쓴 §㉘ «블록»만입니다.
+```
+· `3c9da31f` 로 이름이 `chain/synthesis.py` 가 됐다는 사실을 블록에 적었습니다
+· 그리고 그 블록의 「이름은 `declared:` «셋»」을 «넷»으로 고쳤습니다(+`declared:enrich`) — 오늘 «두 번째»로
+  제가 쓴 절대어가 착지 하나에 넘어간 자리라, 이번에도 계기를 같은 칸에 달았습니다
+· ⚠️ «표제»는 안 고쳤습니다(631 ② — 저자 몫). 대신 블록이 「표제와 본문이 어긋나 있다」를 «말합니다» —
+  제 기억의 「본문을 고치고 표제를 안 고치면 정정이 안 간다」가 이 자리에서 둘과 부딪혀서,
+  «고치지 않고 드러내는» 쪽을 골랐습니다. 이 선택이 틀렸으면 한 줄로 알려 주십시오
+```
+📮 나머지 31(그리고 별칭 3)은 `3c9da31f` 의 주인 몫입니다. PROJECT_STATUS 2 는 총괄 전담이라 손 안 댑니다.

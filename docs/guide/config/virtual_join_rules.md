@@ -41,9 +41,9 @@
   index retraction:  unique_key.retract_unrequired_once, called at the end of load_verified_rules ONLY when path is None (default file)
                      drops every uq_vjoin_* (config.INDEX_PREFIX) no enabled+verified rule requires; once per required-set per process;
                      PostgreSQL only; ASSY_VJOIN_AUTO_INDEX=0 neither builds nor drops; can never break loading (S-248 90d971ba, 2026-09-15)
-                     required set = read-time verified rules UNION chain.builtins.declared_unique_index_names() (S-240 8cab58da);
+                     required set = read-time verified rules UNION chain.synthesis.declared_unique_index_names() (S-240 8cab58da);
                      if the unified half cannot be read the retraction does not run at all
-  unified join:      chain.builtins.ensure_declared_unique_keys <- ingestion_worker.warmup_worker (boot + every reload, never the read path;
+  unified join:      chain.synthesis.ensure_declared_unique_keys <- ingestion_worker.warmup_worker (boot + every reload, never the read path;
                      same ensure_once, same uq_vjoin_ name; enabled:false = zero calls; key.columns is a check only) (S-240)
   key expression:    notation_norm.key_expression_sql / key_expression_text - ONE author for coalesce(fold(col), ''); non-text -> col::text (S-245 ddd5b3ba)
   operator lines:    unique_key.describe -> operator_line.line("VirtualJoinIndex", table, ...); crud.refuse_virtual_join_duplicates -> "VirtualJoinUnique" (S-247 3aab7173)
@@ -431,7 +431,7 @@ x1288 조인이 언제나 틀린 것은 아니다 — **행 조인으로서** �
   그 조인을 다시 켜면 제품이 다시 세운다.
 - **통합 join 이 선언한 `key: {unique: true}` 도 «같은 빌더»가 세운다**(2026-09-15 S-240 `8cab58da`·`07a568ad`) —
   다만 자리는 «체인 워커 웜업»(부팅 + 리로드마다. 읽기 경로가 아니다)이고, 같은 `ensure_once`·같은 `uq_vjoin_*` 이름이다.
-  그래서 위 철회의 «요구 집합»은 읽기 시점 선언과 통합 선언의 «합»이다(`chain/builtins.declared_unique_index_names`) —
+  그래서 위 철회의 «요구 집합»은 읽기 시점 선언과 통합 선언의 «합»이다(`chain/synthesis.declared_unique_index_names`) —
   통합 쪽을 못 읽으면 철회가 «안 돈다»(반쪽 집합은 덜 걷는 것이 아니라 틀린 것을 걷는다). 선언 쪽 절차는 `RUN.md` §5,
   키 뜻은 [config/chain_rules §5-B-bis](./chain_rules.md).
 - ⚰ **[2026-09-16 은퇴 1단계 `6580c30f`] 「읽기 시점 조인은 `chain_rules.json` 에도 산다」는 «오늘 거짓»이다**(그 문장은 직전 2026-09-16 S-251 `e175d3f8`).

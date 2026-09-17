@@ -28,7 +28,7 @@ SERVER_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
-from chain import builtins                                            # noqa: E402
+from chain import synthesis                                            # noqa: E402
 from chain import rule_run                                            # noqa: E402
 
 #: The one seat. It resolves a name, registers the run, calls it, and answers in one shape.
@@ -36,7 +36,7 @@ SEAT = "chain/rule_run.py"
 
 #: The modules that DEFINE the tables a name can be found in. They are allowed to touch their
 #: own contents; everybody else asks the seat.
-DEFINERS = ("chain/builtins.py", "mapper_sdk.py")
+DEFINERS = ("chain/synthesis.py", "mapper_sdk.py")
 
 #: 🔴 `.py.sample` IS IN THE POPULATION. It is the shape every live mapper on an operator's
 #: box was copied from, and a template that teaches 「resolve it yourself」 is how the next

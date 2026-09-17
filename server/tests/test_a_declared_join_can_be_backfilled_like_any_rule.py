@@ -4,7 +4,7 @@
 🔴 THE OWNER ASKED 「이거 켜려면 어케해 소급」 AND THERE WAS NO ANSWER. `replay_rule` knew only
 `mapper_module`/`mapper_function`, which a `builtin:` rule leaves empty - so
 `importlib.import_module(None)` threw and a migrated join had NO backfill at all. The worker
-ran the same rule through `builtins.run_builtin` (⚰️ 판정 498: both doors are now one seat,
+ran the same rule through `synthesis.run_builtin` (⚰️ 판정 498: both doors are now one seat,
 `chain.rule_run.run_rule`). Live and retroactive were two doors to one
 rule, which is the 「같은 기능에 두 경로」 defect at its most expensive: one door simply did
 not open.
@@ -175,7 +175,7 @@ def test_a_page_that_throws_costs_that_page_and_the_session_survives(db, monkeyp
         rows = payload if isinstance(payload, list) else [payload]
         return {"written": len(rows)}
 
-    # ⚰️ [판정 498, then 562] THE REGISTRATION, NOT THE DOOR. `builtins.run_builtin`
+    # ⚰️ [판정 498, then 562] THE REGISTRATION, NOT THE DOOR. `synthesis.run_builtin`
     #    went first and the kind table went second; the seat looks the implementation up in
     #    `mapper_sdk.MAPPER_REGISTRY` now, so replacing THAT entry is how the page failure is
     #    staged - one more real step than patching the door, and the same step a rule takes.

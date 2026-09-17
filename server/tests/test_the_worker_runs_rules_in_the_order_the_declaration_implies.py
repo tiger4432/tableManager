@@ -210,11 +210,11 @@ def load(tmp_path, monkeypatch):
     box's config rather than the loader. That false cycle is reported separately; it is
     older than this round and `replay_all` already meets it."""
     import mapper_sdk
-    from chain import builtins
+    from chain import synthesis
 
     monkeypatch.setitem(mapper_sdk.MAPPER_REGISTRY, "s156_mapper", lambda db, payloads,
                         rule=None: {"updates": []})
-    monkeypatch.setattr(builtins, "synthesize_chain_rules", lambda **kwargs: [])
+    monkeypatch.setattr(synthesis, "synthesize_chain_rules", lambda **kwargs: [])
 
     def run(rules):
         path = tmp_path / "chain_rules.json"

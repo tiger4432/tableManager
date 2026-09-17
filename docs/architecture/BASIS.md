@@ -37,7 +37,7 @@
 별도 생성기도 별도 수명주기도 «아니다».
 ```
 🔵 **새 발명이 아니다** — 오늘도 두 파일은 체인 규칙을 «만들어» 낸다
-(`chain/builtins.synthesize_chain_rules` → `enrichment.config.load_enrichment_chain_rules` +
+(`chain/synthesis.synthesize_chain_rules` → `enrichment.config.load_enrichment_chain_rules` +
 `virtual_join.config.synthesized_join_chain_rules`). 갈라진 것은 **생성 «이후»**다 —
 이름·끄기·거절·순서·로그가 각자 논다. 통합은 «그 이후»를 하나로 만드는 일이다.
 🔵 **[2026-09-16 S-234 `5c845e67`] 그중 이름·끄기·거절·로그가 «하나»가 됐다** — 아래 `enabled` 줄. 순서는 S-156 이 먼저 하나였다.
@@ -52,7 +52,7 @@ join     `builtin:join_into`(`chain/join_into.py`). 선언 «하나» → 규칙
          쓰기 시점 팬아웃 그물: 한 왼쪽 행에 오른쪽 답이 «둘 이상»이면 그 행만 «이름 대고» 건너뛴다(배치당 경고 한 줄 `[join_into:<규칙>] … → 다음:`). 그물은 인덱스가 «아니다» — 지금 이 배치의 중복만 막는다
          `key: {unique: true}` 면 «제품이» 오른쪽 표에 유일 인덱스를 세운다(S-240 `8cab58da`·`07a568ad`) — 자리는 워커 «웜업»(부팅 + 리로드마다. 읽기 경로가 «아니다» — 거기엔 새 SQL 금지, 09-14 장애), 빌더는 읽기 시점 조인과 «같은» `unique_key.ensure_once`, 같은 `uq_vjoin_*` 이름(`chain/builtins.ensure_declared_unique_keys`). 선언 하나(규칙 둘)에 인덱스 하나. 못 세우면 `[Warmup]` 줄 하나이고 워커는 선다
          `key.columns` 는 «선택»이고 «검사»뿐이다 — 조인의 오른쪽 키와 같으면 무변, 다르면 두 목록을 이름 대고 안 세운다(다른 컬럼 위의 인덱스는 이 조인이 안 쓴다 — S-181). `enabled: false` = 호출 «0»
-         🔴 철회(S-248)의 «요구 집합»은 읽기 시점 선언 + 통합 선언(`chain/builtins.declared_unique_index_names`, 로더와 같은 확장기)의 «합»이다 — 통합 쪽을 못 읽으면 철회가 «안 돈다»(반쪽 집합은 덜 걷는 게 아니라 «틀린 것»을 걷는다)
+         🔴 철회(S-248)의 «요구 집합»은 읽기 시점 선언 + 통합 선언(`chain/synthesis.declared_unique_index_names`, 로더와 같은 확장기)의 «합»이다 — 통합 쪽을 못 읽으면 철회가 «안 돈다»(반쪽 집합은 덜 걷는 게 아니라 «틀린 것»을 걷는다)
          키 식: `coalesce(fold(col), '')` 의 저자는 `notation_norm.key_expression_sql`(조인이 «비교»하는 것)·`key_expression_text`(인덱스가 «서는» 것) «하나»다(S-245 `ddd5b3ba`). 텍스트가 아닌 컬럼은 네 자리(읽기 조인 ON · 인덱스 DDL · 중복 탐침 · 쓰기 조인) 모두 `col::text` 로 접고, 텍스트 컬럼은 옛 식 그대로(어제의 인덱스에 오늘도 맞는다). 「invalid input syntax for type double precision」은 여기서 끝났다
          쓰기의 층은 `chain_ingestion`(모든 체인 쓰기와 같다) · `updated_by` = 규칙 이름(`1aa50d3d`). 그래서 이 쓰기가 규칙을 깨우는 문도 `allow_chain_trigger` «하나»다
          소급: 왼쪽(`into` 표를 트리거하는) 규칙에 R1 — `builtin:` 종류도 워커와 같은 `run_builtin` 을 페이지마다 돈다(S-242 `bd0a3db7`). 오른쪽 규칙 이름은 거절
@@ -397,7 +397,7 @@ declare⁻¹       세대 되돌림 — S-57 이 주는 것. 오늘은 없다
            층은 `chain_ingestion`(모든 체인 쓰기와 같다), «누가 썼나»는 `updated_by` 가 답한다.
            🔵 즉 이 줄도 위 enrichment 줄과 같이 «예언»이 아니라 «기록»이 됐다 — 같은 꼴이고,
            그래서 **새 생성자가 하나도 안 늘었다**. 그것이 §4.5 가 주장하는 바로 그것이다
-           합성 자리 `chain_builtins.synthesize_chain_rules` :28 «하나» — `load_chain_rules` 는 그것만 부른다
+           합성 자리 `chain.synthesis.synthesize_chain_rules` :28 «하나» — `load_chain_rules` 는 그것만 부른다
            종류 표   `BUILTIN_KINDS` :91(등록 :95 · 디스패치 :106) — 이 어휘가 «처음» 갖는 표이고,
                     모르는 종류는 «이름 대어» 거절된다(구현이 없는 종류를 적은 규칙은 «켜진 채로
                     살아 보이면서» 한 번도 안 돈다)

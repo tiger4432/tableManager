@@ -83,7 +83,7 @@ def from_chain_rule(raw: dict, origin: str = "declared") -> dict:
     }
 
 
-#: The cells of `key`. Named so the form and the reader cannot drift: `builtins`
+#: The cells of `key`. Named so the form and the reader cannot drift: `chain.synthesis`
 #: asks `key.unique` when it decides whether to build an index (S-240), and a form that
 #: spelled its own cell names would be a second author of this list.
 KEY_CELLS = ("columns", "unique")

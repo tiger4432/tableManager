@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """S-283 · 판정 440·442. 좌석은 옮겼고, «인덱스는 한 글자도 안 옮겼다».
 
-🔴 WHY A MOVE NEEDS A GATE AT ALL. `chain.builtins.ensure_declared_unique_keys` builds the
+🔴 WHY A MOVE NEEDS A GATE AT ALL. `chain.synthesis.ensure_declared_unique_keys` builds the
 UNIFIED join's `key.unique` index through these names, and the virtual join that used to
 own them is being removed. If the name a moved function computes were to drift by one
 character, the product would build a SECOND index beside the one already standing and stop

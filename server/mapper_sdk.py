@@ -537,7 +537,7 @@ def mapper_candidates(package="mappers"):
     # ⚠️ [판정 517] A REGISTERED `builtin:` KIND IS NOT A CANDIDATE HERE, and that is
     #   settled rather than pending. 511 added them and 512 measured what it did:
     #   `mapperChoices` has no branch for them, so `builtin:join` reached the operator as
-    #   `chain.builtins:builtin:join` - a value no rule can run and the save gate refuses.
+    #   `chain.synthesis:builtin:join` - a value no rule can run and the save gate refuses.
     #   517 then settled WHY, which is the part worth keeping: in the unified grammar a
     #   kind is a BRANCH of `derive` (`derive.kind`), while `derive.mapper` is a leaf whose
     #   choices are this list. They are different questions, and the skeleton already

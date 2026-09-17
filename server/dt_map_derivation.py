@@ -297,7 +297,7 @@ def join_rule(db, name: str) -> dict:
 
     🔴 AND IT READS THE DECLARATION THROUGH THE JUDGE THE LOADER USES (S-244).
     `read_rules_document` + `expand_declaration` is the one reading of that file;
-    `chain.builtins.declared_unique_index_names` asks the same pair the same way. A second
+    `chain.synthesis.declared_unique_index_names` asks the same pair the same way. A second
     reading here would be a second answer to 「what does this declaration stand」.
 
     ⚰️ I WROTE THAT 「없다」 AND 「꺼져 있다」 COULD NOT BE TOLD APART HERE, AND THAT WAS

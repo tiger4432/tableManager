@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """S-189 ⓒ. One synthesis seat, one table of `builtin:` kinds, and a join that is a chain rule.
 
-🔴 ONE SEAT (판정 304). `load_chain_rules` calls `chain_builtins.synthesize_chain_rules` and
+🔴 ONE SEAT (판정 304). `load_chain_rules` calls `synthesis.synthesize_chain_rules` and
 nothing else. Putting the join half inside `load_enrichment_chain_rules` would have satisfied
 判정 292's letter while making a function named `enrichment_…` read the virtual-join file, and
 a name that lies costs whoever next looks for where a declaration becomes a chain rule.
@@ -25,7 +25,7 @@ server_dir = os.path.abspath(os.path.join(script_dir, ".."))
 if server_dir not in sys.path:
     sys.path.insert(0, server_dir)
 
-from chain import builtins                                                 # noqa: E402
+from chain import synthesis                                                 # noqa: E402
 from chain import enrichment                                              # noqa: E402
 from chain import legacy_join_declaration as vjc                                     # noqa: E402
 
@@ -64,7 +64,7 @@ def test_the_report_names_the_half_that_died(monkeypatch, dead_half):
     said = " ".join(str(r.get("detail") or "") for r in domain.get("rejected") or ())
 
     assert dead_half in said, "the report does not name the half that died: %r" % said
-    assert builtins.synthesis_half_says(dead_half) in said, (
+    assert synthesis.synthesis_half_says(dead_half) in said, (
         "the screen wrote its own sentence instead of the one author's: %r" % said)
 
 
@@ -116,7 +116,7 @@ def test_one_half_failing_does_not_take_the_other_down(monkeypatch):
                         lambda **k: (_ for _ in ()).throw(RuntimeError("package removed")))
     failures = []
 
-    rules = builtins.synthesize_chain_rules(failures=failures)
+    rules = synthesis.synthesize_chain_rules(failures=failures)
 
     assert rules == expected, "the enrichment half did not survive the join half's failure"
     assert [f["half"] for f in failures] == ["virtual join"]
@@ -135,7 +135,7 @@ def test_the_other_direction_too_so_neither_half_is_privileged(monkeypatch):
                         lambda **k: (_ for _ in ()).throw(RuntimeError("enrichment gone")))
     failures = []
 
-    rules = builtins.synthesize_chain_rules(failures=failures)
+    rules = synthesis.synthesize_chain_rules(failures=failures)
 
     assert rules == expected, "the join half did not survive the enrichment half's failure"
     assert [f["half"] for f in failures] == ["enrichment"]
@@ -149,7 +149,7 @@ def test_a_healthy_synthesis_reports_no_failure_at_all(monkeypatch):
     """
     failures = []
 
-    builtins.synthesize_chain_rules(failures=failures)
+    synthesis.synthesize_chain_rules(failures=failures)
 
     assert failures == [], failures
 
@@ -159,20 +159,20 @@ def test_the_seat_still_answers_when_the_caller_passes_no_collector():
     live callers (`config_resolve_report`) passes nothing, and raising there would put the
     package's removal in front of an operator as a broken report rather than a named loss.
     """
-    assert builtins.synthesize_chain_rules() == builtins.synthesize_chain_rules(failures=[])
+    assert synthesis.synthesize_chain_rules() == synthesis.synthesize_chain_rules(failures=[])
 
 
 def test_the_enrichment_half_is_byte_identical_through_the_seat():
     """🔴 THE GATE 판정 304 ASKED FOR. Same rules, same order, same cells — the seat only
     moved the CALL."""
     direct = enrichment.config.load_enrichment_chain_rules()
-    through = [r for r in builtins.synthesize_chain_rules()
+    through = [r for r in synthesis.synthesize_chain_rules()
                if not str(r.get("name") or "").startswith(vjc.JOIN_PREFIX)]
     assert through == direct
 
 
 def test_the_seat_emits_both_halves():
-    names = {r["name"] for r in builtins.synthesize_chain_rules()}
+    names = {r["name"] for r in synthesis.synthesize_chain_rules()}
     # 🪦 [S-211 packaging] the local was called `enrichment`, which now shadows the
     #    PACKAGE on the same line. Renamed rather than aliased: the package is the
     #    thing being read here.
@@ -257,10 +257,10 @@ def test_the_seat_says_which_file_a_synthesised_rule_was_written_in(tmp_path):
     `chain_rules.json` by position."""
     path = _declared(tmp_path, materialize=True, max_rewrite_rows=10)
     join = vjc.synthesized_join_chain_rules(path=path, known_tables=KNOWN)[0]
-    assert builtins.written_in(join) == "virtual_join_rules.json"
+    assert synthesis.written_in(join) == "virtual_join_rules.json"
     # ⚰️ THE FIXTURE IS WHAT THE SEAT NOW EMITS. It spelled `mapper_module`, a cell
     #    the dedup half stopped carrying when it became a registered mapper.
-    assert builtins.written_in(
+    assert synthesis.written_in(
         {"mapper": enrichment.config.DEDUP_MAPPER}) == "enrichment_rules.json"
 
 
@@ -278,7 +278,7 @@ def test_an_unknown_kind_is_refused_by_name_not_ignored():
     look live, and never run — the same silence `_report_unwatchable_trigger_columns` breaks
     for a mistyped trigger column.
 
-    ⚰️ [판정 498] THE REFUSER MOVED FROM `builtins.run_builtin` TO THE SEAT, and the SENTENCE
+    ⚰️ [판정 498] THE REFUSER MOVED FROM `synthesis.run_builtin` TO THE SEAT, and the SENTENCE
     is what this scores rather than the class. An unregistered `builtin:` name is no longer
     recognised as a builtin at all - it falls through to the arm that resolves a file mapper -
     so the exception type had to change. What must not change is that the operator is told the
@@ -294,7 +294,7 @@ def test_an_unknown_kind_is_refused_by_name_not_ignored():
 
 
 def test_the_join_mapper_is_registered():
-    """⚰️ [판정 562 · 600] THIS ASKED `builtins.BUILTIN_KINDS`. The kind table is deleted; the
+    """⚰️ [판정 562 · 600] THIS ASKED `synthesis.BUILTIN_KINDS`. The kind table is deleted; the
     name resolves through the one registry every mapper uses, under the value 600 gave it."""
     import mapper_sdk
 
@@ -406,7 +406,7 @@ def test_the_collector_is_handed_its_rule_rather_than_finding_it(monkeypatch):
     # ⚰️ [판정 498] THE MAPPER, NOT THE DELETED DOOR. What is under test is which rules the
     #    collector is handed, and routing that through the seat would add a resolution step
     #    this assertion says nothing about.
-    # ⚰️ [판정 562 · 소유자 정본] THIS CALLED `builtins.BUILTIN_KINDS["declared:decide"]` with
+    # ⚰️ [판정 562 · 소유자 정본] THIS CALLED `synthesis.BUILTIN_KINDS["declared:decide"]` with
     #   `row_ids=` and a `done={"table": ...}` note. The table is gone and so is the note —
     #   the template reads the target off `rule["target_table"]`, which is the cell the
     #   declaration already carries, so the rule above gained it and the note went.

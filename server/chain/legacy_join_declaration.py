@@ -776,7 +776,7 @@ def load_verified_rules(db, path: str = None, known_tables: dict = None,
     # was asked for come back.
     if path is None:
         try:
-            from chain import builtins as chain_builtins
+            from chain import synthesis
             from chain import unique_key
 
             # 🔴 [S-240] BOTH PRODUCERS OR NEITHER. A unified join declares its unique key
@@ -785,7 +785,7 @@ def load_verified_rules(db, path: str = None, known_tables: dict = None,
             # function already refuses to retract from when a caller passes `path`. Half a
             # required set does not retract a little less; it retracts the wrong thing.
             required = {r["unique_index"] for r in verified if r.get("unique_index")}
-            required |= chain_builtins.declared_unique_index_names(
+            required |= synthesis.declared_unique_index_names(
                 known_tables=known_tables)
             unique_key.retract_unrequired_once(db, required)
         except Exception as retract_error:                             # noqa: BLE001

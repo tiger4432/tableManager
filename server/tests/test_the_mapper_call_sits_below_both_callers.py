@@ -102,7 +102,7 @@ def test_whoever_runs_a_rule_imports_the_seat_from_its_own_home():
         assert any("rule_run" in n for n in named), (caller, sorted(named))
         # ⚠️ NAMED PRECISELY, BECAUSE ONE CALLER IMPORTS THE WORKER ON PURPOSE. Replay reads
         #    `load_chain_rules` from it (판정 358: moving the loader was withdrawn, since the rule
-        #    set it returns is produced by `chain.builtins`). 「imports the worker at all」 would
+        #    set it returns is produced by `chain.synthesis`). 「imports the worker at all」 would
         #    therefore forbid a decision already taken; what must never come back is reaching
         #    the SEAT'S NAME through that house.
         assert "chain.ingestion_worker.run_rule" not in named, (
@@ -114,7 +114,7 @@ def test_replay_no_longer_imports_the_worker_for_the_executor():
 
     ⚠️ REPLAY STILL READS THE WORKER, for `load_chain_rules`, and that is deliberate: moving
     the rule loader was withdrawn (판정 358) because the rule set it returns is produced by
-    `chain.builtins`, so a light module would relocate the dependency rather than remove it.
+    `chain.synthesis`, so a light module would relocate the dependency rather than remove it.
     So this asserts what actually changed instead of a clean slate that is not true.
 
     🔵 [S-279, 판정 420 ㉡-2ⓐ] AND REPLAY NOW REACHES A MAPPER THROUGH NEITHER DOOR. It asks
