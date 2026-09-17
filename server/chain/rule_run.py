@@ -468,8 +468,10 @@ def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None):
     # log cannot disagree about one run.
     rows_out = None
     try:
-        with activity.running(name, bound.who, target, len(handed),
-                              no_rows_reason="the rule wrote no rows") as run, envelope:
+        # 🔴 [판정 525] NO `no_rows_reason=` HERE. 「the rule wrote no rows」 was a restatement
+        #   of `rows_out=0`, and it displaced the sentence the operator needed. Each arm
+        #   below says what it actually knows, and says nothing when it knows nothing.
+        with activity.running(name, bound.who, target, len(handed)) as run, envelope:
             if bound.hands == HANDS_ROW_IDS:
                 # 🔴 IN THE ENVELOPE, BECAUSE A SELF-WRITING RULE WRITES FOR ITSELF. A proposing
                 # rule sends its rows out through the caller's batch write, which enters the same
@@ -488,7 +490,11 @@ def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None):
                     # outcome alone rather than being recorded as 「ran, changed nothing」 -
                     # 「안 셌다」 and 「0 이었다」 are different facts.
                     rows_out = int(answer["written"])
-                    run.produced(rows_out)
+                    # 🔴 [판정 525 ②] THE KIND'S OWN WORDS. A registered kind is product code
+                    #   and knows why it wrote nothing; it says so in `refusal` and that is
+                    #   what the operator reads. If it said nothing, nothing is recorded -
+                    #   a missing sentence must look missing (판정 509 의 부류).
+                    run.produced(rows_out, reason=answer["refusal"])
             else:
                 # A batch rule is handed the WHOLE group in one call and a per-row rule one call
                 # per row - the same fan-out both live callers already do. An empty batch still
@@ -510,7 +516,15 @@ def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None):
                     for cell in ("updates", "map_metadata_updates", "batches"):
                         answer[cell].extend(result.get(cell) or ())
                 rows_out = sum(rows_counted(r) for r in results)
-                run.produced(rows_out)
+                # 🔴 [판정 525 ②] WHAT THE PRODUCT KNOWS, AND ONLY THAT. `server/mappers/*.py`
+                #   are the owner's files and this round keeps them at 0 lines, so the seat
+                #   cannot ask a file mapper why. What it CAN say is the pair of counts, and
+                #   that pair separates the two zeros 523 ③ asked about: 「아무것도 안 넘어왔다」
+                #   and 「넘겼는데 안 나왔다」 are different sentences, not one restatement.
+                run.produced(rows_out, reason=None if rows_out else (
+                    "이 규칙이 볼 행이 넘어오지 않았습니다"
+                    if not handed else
+                    "%d 행을 넘겼고 맵퍼가 낸 행이 없습니다" % len(handed)))
 
     except Exception as exc:                                          # noqa: BLE001
         error = "%s: %s" % (type(exc).__name__, exc)

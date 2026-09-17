@@ -205,24 +205,32 @@ class ChainActivityRegistry:
 registry = ChainActivityRegistry()
 
 
-#: The sentence a custom mapper's 「no rows」 outcome has always carried. It is a default
-#: rather than a constant inside `running` because a `builtin:` kind is not a mapper and
-#: saying so in its own words is the point of naming the reason at all.
-NO_ROWS_REASON = "the mapper produced no rows"
+# 🪦 [판정 525 ①] `NO_ROWS_REASON = "the mapper produced no rows"` STOOD HERE AS A DEFAULT,
+#   and 판정 509 had already settled that shape this morning: a default is an absence that
+#   looks like an answer. Nobody had given a reason, and the operator read a sentence that
+#   only restated the symptom - 「행이 없다」 written as 「행을 안 만들었다」. No default now:
+#   a run nobody explained carries `None`, and absence looks like absence.
 
 
 class _Run:
-    """The one thing a caller inside `running` can say: how many rows came out."""
+    """What a caller inside `running` can say: how many rows came out, and why none did.
+
+    🔴 [판정 525 ②] THE REASON RIDES WITH THE COUNT, deliberately. They are one fact -
+    「what happened」 - and a second call to set the reason is a second author for it, with
+    the usual consequence that one of them is forgotten on some path.
+    """
 
     def __init__(self):
         self.rows_out = None
+        self.reason = None
 
-    def produced(self, rows_out):
+    def produced(self, rows_out, reason=None):
         self.rows_out = rows_out
+        self.reason = reason
 
 
 @contextlib.contextmanager
-def running(rule, mapper, target_table, rows_in, no_rows_reason=NO_ROWS_REASON):
+def running(rule, mapper, target_table, rows_in):
     """Register ONE run of ONE rule - whichever door is running it (S-246).
 
     🔴 THE REGISTRATION LIVED INSIDE THE CUSTOM-MAPPER DOOR, AND THERE ARE TWO DOORS.
@@ -257,7 +265,7 @@ def running(rule, mapper, target_table, rows_in, no_rows_reason=NO_ROWS_REASON):
                 rule,
                 event_constants.RULE_OUTCOME_RAN_CHANGED if entry.rows_out
                 else event_constants.RULE_OUTCOME_RAN_UNCHANGED,
-                None if entry.rows_out else no_rows_reason)
+                None if entry.rows_out else entry.reason)
     finally:
         # 🔴 IN `finally`. A run that threw is exactly the case where an entry left
         # behind sits in the view forever saying something is still running.

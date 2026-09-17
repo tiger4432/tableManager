@@ -46,6 +46,10 @@ RULE = {"name": "s246_rule", "target_table": "s246_target", "mapper": KIND}
 #: the product does not use.
 WRITTEN = "s246_written"
 BOOM = "s246_boom"
+#: 🔴 [판정 525] THE SENTENCE THE KIND ITSELF GIVES. A registered kind is product code
+#: and knows why it wrote nothing; the seat no longer supplies a default, so this knob is
+#: how the probe behaves like `join_into` and `auto_confirm` now do.
+REFUSAL = "s246_refusal"
 
 
 def _rule(**knobs):
@@ -73,7 +77,7 @@ def fixture_kind(monkeypatch):
         if rule.get(BOOM):
             raise RuntimeError("the kind threw")
         if WRITTEN in rule:
-            return {"written": rule[WRITTEN]}
+            return {"written": rule[WRITTEN], "refusal": rule.get(REFUSAL)}
         return None
 
     monkeypatch.setitem(builtins.BUILTIN_KINDS, KIND, _run)
@@ -147,13 +151,30 @@ def test_a_builtin_that_wrote_rows_is_recorded_as_having_changed_something(kind)
 
 
 def test_a_builtin_that_wrote_nothing_says_so_in_its_own_words(kind):
-    """⚠️ NOT 「the mapper produced no rows」. A `builtin:` kind is not a mapper, and the
-    reason is the sentence an operator reads next to the outcome."""
+    """🔴 [판정 525] THIS TEST PINNED THE OPPOSITE OF ITS OWN NAME. It asserted
+    「the rule wrote no rows」 - a DEFAULT the seat handed to every kind, and a restatement of
+    `rows_out=0` the operator could already see. 509 had settled that shape the same morning:
+    a default is an absence that looks like an answer. So the words come from the KIND now,
+    and when the kind says nothing the cell is empty rather than filled by the seat.
+    """
+    rule_run.run_rule(
+        None, _rule(**{WRITTEN: 0, REFUSAL: "확정을 기다리는 행이 없습니다"}), row_ids=[1])
+
+    entry = activity.registry.outcomes()["s246_rule"]
+    assert entry["outcome"] == event_constants.RULE_OUTCOME_RAN_UNCHANGED
+    assert entry["reason"] == "확정을 기다리는 행이 없습니다", (
+        "the kind's own sentence did not reach the queue cell an operator reads")
+
+
+def test_a_kind_that_gives_no_reason_leaves_the_cell_empty(kind):
+    """⚠️ THE CONTROL FOR THE ABOVE. Without it the test above would also pass while the
+    seat invented a sentence for every kind - which is the state 525 removed."""
     rule_run.run_rule(None, _rule(**{WRITTEN: 0}), row_ids=[1])
 
     entry = activity.registry.outcomes()["s246_rule"]
     assert entry["outcome"] == event_constants.RULE_OUTCOME_RAN_UNCHANGED
-    assert entry["reason"] == "the rule wrote no rows"
+    assert entry["reason"] is None, (
+        "a reason nobody gave was written down as if somebody had: %r" % entry["reason"])
 
 
 def test_a_kind_that_threw_is_recorded_as_failed_with_the_reason(kind):
