@@ -1299,7 +1299,7 @@ const FLOORS = new Map([
   //    a fixture whose keys are the real ones -- a form that hardcoded them would pass. The
   //    decoy's keys exist nowhere in this product, so drawing them is the proof, and drawing a
   //    real routing key beside them is the failure.
-  ['chain_rule_form_harness.mjs', 81],
+  ['chain_rule_form_harness.mjs', 84],
   ['clipboard_type_modal_harness.mjs', 21],
   ['chain_rule_user_path_harness.mjs', 44],
   // a value carrying markup does not come back out as markup, and the backlog has a ceiling
