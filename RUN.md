@@ -1,6 +1,6 @@
 # 지금 돌리면 되는 것
 
-> 🔵 **16:39 갱신.** 아래 ⓞ 가 «제일 먼저»입니다. 나머지는 그다음입니다.
+> 🔵 **17:48 갱신.** 아래 ⓞ 가 «제일 먼저»입니다. 나머지는 그다음입니다.
 > 🆕 이번 pull 의 체인 로그 변화는 «부팅 로그에서 볼 것» 절의 `[ChainRule]` 줄에 있습니다.
 
 ## ⏱️ 바쁘시면 «이 셋»만 — 나머지는 «보고 나서» 찾아 읽는 자리입니다
@@ -597,6 +597,12 @@ Transaction … permanently failed: N event(s) -> FAILED. 원인: <예외 문장
      그리고 이제 «모든» 규칙이 이 줄 하나를 씁니다 — `[mapper@<로그파일>] … START/END/RAISED`
      세 줄은 «없어졌습니다»(판정 498). 파일 맵퍼를 그 태그로 찾고 계셨다면 이 줄로 오십시오
      kind   그 규칙이 넣은 «맵퍼 이름» 그대로입니다
+     🆕 (09-17 저녁) 이 칸의 «낱말이 바뀌었습니다». 로그에서 `builtin:…` 을 찾고 계셨다면:
+            builtin:join_into    ->  declared:join            통합 선언의 derive:{kind:"join"}
+            builtin:auto_confirm ->  declared:decide          derive:{kind:"decide"}
+            builtin:join         ->  declared:virtual_join    virtual_join_rules.json 의 materialize:true
+            `declared:` 는 「제품이 «선언에서» 지은 맵퍼」라는 뜻입니다. 옛 이름은 «안 풉니다» —
+            저장된 규칙에 옛 값이 있으면 거절되고 그 이름이 거절문에 찍힙니다
      ⚠️ (09-17) 이 자리는 「builtin:… 이면 스스로 씀」이라 적혀 있었고 «이제 거짓»입니다 —
             종류표가 없어졌습니다. 「스스로 쓰나」는 이름이 아니라 아래 written 칸이 답합니다
      rows_out  그 규칙이 «낸 행 수». 종류가 달라도 «같은 함수»가 셉니다 — 화면의 수와 같은 수입니다
