@@ -276,8 +276,11 @@ def run(db, rule: dict, row_ids=None, done=None, **_):
     spec = join_spec(rule)
     left_table = str((rule or {}).get("target_table") or "")
     rows_in = list(row_ids or ())
+    # 🔴 [판정 525 ②] EVERY ZERO EXIT SAYS WHY. This kind is product code, so 「왜 0 인가」 is
+    #   a question it can answer - and until it did, the operator's queue cell said only
+    #   that no rows came out, which they could already see.
     if not rows_in:
-        return {"written": 0}
+        return {"written": 0, "refusal": "이 규칙이 볼 행이 넘어오지 않았습니다"}
 
     left_model, right_model = _models(spec, left_table)
     refusal = _missing(spec, left_table, left_model, right_model)
@@ -292,11 +295,20 @@ def run(db, rule: dict, row_ids=None, done=None, **_):
     else:
         where = left_model.row_id.in_(rows_in)
     if where is None:
-        return {"written": 0}
+        return {"written": 0,
+                "refusal": "기준 표의 이번 변경이 이 규칙의 왼쪽 행을 하나도 가리키지 않습니다"}
 
     rows = _answer(db, spec, left_model, right_model, where, left_table)
     written = _write(db, left_table, rows, spec, str((rule or {}).get("name") or ""))
-    return {"written": written, "rows_in": len(rows_in), "side":
+    # ⚠️ TWO DIFFERENT ZEROS, AND THE OPERATOR FIXES THEM DIFFERENTLY: no match means the
+    #    join key or the right table's data; a match that wrote nothing means the value was
+    #    already there. Collapsing them sends half the readers to the wrong repair.
+    refusal = None
+    if not written:
+        refusal = ("오른쪽 표에서 짝을 찾은 행이 없습니다 (넘어온 %d 행)" % len(rows_in)
+                   if not rows else
+                   "짝은 찾았고 채울 값이 이미 같습니다 (%d 행)" % len(rows))
+    return {"written": written, "rows_in": len(rows_in), "refusal": refusal, "side":
             "reference" if reference_side else "target"}
 
 

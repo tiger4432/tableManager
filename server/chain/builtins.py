@@ -164,14 +164,19 @@ def _run_auto_confirm(db, rule, row_ids=None, done=None, **_):
 
     table = (done or {}).get("table")
     rows = list(row_ids or ())
+    # 🔴 [판정 525 ②] EVERY ZERO EXIT SAYS WHY — and these three are different repairs:
+    #   nothing arrived / nothing is switched on / nothing was waiting. The operator who
+    #   sees 「0」 alone cannot tell which, and two of the three are not even a problem.
     if not table or not rows:
-        return {"confirmed": 0, "refused": 0}
+        return {"written": 0, "confirmed": 0, "refused": 0,
+                "refusal": "확정을 시도할 행이 넘어오지 않았습니다"}
 
     declared = (rule or {}).get("params") or None
     collector = enrichment.candidates.AutoConfirmCollector(
         table, rules=[declared] if isinstance(declared, dict) else None)
     if not collector.active:
-        return {"confirmed": 0, "refused": 0}
+        return {"written": 0, "confirmed": 0, "refused": 0,
+                "refusal": "이 표에 켜진 자동확정 규칙이 없습니다"}
 
     collector.collect_rows(db, rows)
     stats = collector.flush(db) or {}
@@ -189,8 +194,12 @@ def _run_auto_confirm(db, rule, row_ids=None, done=None, **_):
     # and the registration below would have had nothing to read. `confirmed` and `refused`
     # keep their names for the readers that have them; this adds the count, it does not
     # rename the fact.
+    refusal = None
+    if not confirmed:
+        refusal = ("%d 행이 확정 조건에 맞지 않았습니다" % refused if refused else
+                   "확정을 기다리는 행이 없습니다")
     return {"written": confirmed, "confirmed": confirmed, "refused": refused,
-            "source_name": enrichment.candidates.SOURCE_NAME}
+            "refusal": refusal, "source_name": enrichment.candidates.SOURCE_NAME}
 
 
 def ensure_declared_unique_keys(db, rules) -> dict:
