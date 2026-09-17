@@ -131,10 +131,10 @@ def test_a_synthesized_enrichment_rule_is_on_its_trigger_tables_list(loaded):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("rule,expected", [
-    ({"name": "a", "mapper": "builtin:join_into"}, "join"),
-    ({"name": "b", "mapper": "builtin:join"}, "join"),
+    ({"name": "a", "mapper": "declared:join"}, "join"),
+    ({"name": "b", "mapper": "declared:virtual_join"}, "join"),
     ({"name": "enrichment_dedup:c"}, "decide"),
-    ({"name": "enrichment_auto_confirm:c", "mapper": "builtin:auto_confirm"}, "decide"),
+    ({"name": "enrichment_auto_confirm:c", "mapper": "declared:decide"}, "decide"),
     ({"name": "d", "mapper_module": "mappers.x", "mapper_function": "y"}, "mapper"),
 ])
 def test_the_kind_is_the_declarations_word_not_the_plumbings(rule, expected):
@@ -150,7 +150,7 @@ def test_both_halves_of_one_decide_declaration_read_as_decide():
     kinds = {rule_shape.declared_kind(rule)
              for rule in ({"name": "enrichment_dedup:z"},
                           {"name": "enrichment_auto_confirm:z",
-                           "mapper": "builtin:auto_confirm"})}
+                           "mapper": "declared:decide"})}
 
     assert kinds == {"decide"}
 

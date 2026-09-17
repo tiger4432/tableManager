@@ -31,7 +31,7 @@ R1 = {"name": "r1_enrich", "enabled": True,
       "mapper_module": "m", "mapper_function": "f"}
 R2 = {"name": "r2_join_reference", "enabled": True,
       "trigger_table": "dt_inventory", "target_table": "dt_log",
-      "mapper": "builtin:join_into"}
+      "mapper": "declared:join"}
 
 #: A producer and its consumer that the loop does not touch at all.
 R3 = {"name": "r3_producer", "enabled": True,

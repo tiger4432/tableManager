@@ -11,10 +11,16 @@ kind, a registry said how that kind is CALLED (`hands`), whether it WRITES FOR I
 were a second door. There is one door now - the mapper registry - so the kind table has
 nothing left to answer.
 
-🔴 THE NAME DOES NOT MOVE. A stored rule already says `mapper: "builtin:join_into"`, written
-by `rule_shape.as_chain_rule` from `derive: {kind: "join"}`. Registering the built function
-under THAT name means no declaration changes and no operator migrates anything: the same
-rule resolves through the ordinary mapper path tomorrow.
+⚰️ THE NAME DID MOVE, ON THE DAY AFTER THIS WAS WRITTEN (판정 600). This paragraph said 「THE
+NAME DOES NOT MOVE」 and gave the reason: a stored rule already says `mapper: "builtin:join_into"`,
+so registering under that name meant no declaration changed and no operator migrated anything.
+The lead then asked the owner whether any production declaration writes the `mapper` cell by
+hand, and the answer was 「없다」 — the migration cost the argument rested on is ZERO. So the
+value is `declared:join` now, and this module's three templates register under `declared:*`:
+the prefix says 「a mapper the product built FROM THE DECLARATION」, and what follows is the
+word the declaration itself uses (`DECLARED_KINDS` in `rule_shape`, and `virtual_join` for the
+family `legacy_join_declaration` loads). `builtin:` named the KIND TABLE, which no longer
+exists - a name that points at a retired mechanism tells an operator that mechanism is there.
 
 ⛔ NOT A FILE. `server/mappers/` is the owner's (gitignored, 판정 498), and writing product
 code there is forbidden; writing a generated file anywhere else would make a build artifact

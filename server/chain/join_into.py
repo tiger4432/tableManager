@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""`builtin:join_into` — 통합 선언의 `join` 종류가 «쓰는» 조인 (S-237, 소유자 판정 셋).
+"""`declared:join` — 통합 선언의 `join` 종류가 «쓰는» 조인 (S-237, 소유자 판정 셋).
 
 🔴 WHY THE NAME IS `join_into` AND NOT `builtin:join`. That id was taken: the READ-TIME join's
 loader registered it, and the registry refused a second claimant by name (measured — the gate
@@ -12,9 +12,12 @@ used: the read-time one answered at `into.read`, this one writes `into.table`. S
 names the axis rather than the round it arrived in — 「unified」 stops distinguishing anything
 the day enrich and mapper move over too.
 
-⚰️ THE COLLISION IS NOW HISTORY, AND THE NAME STAYS ANYWAY (S-283). The read-time join was
-retired, so nothing else claims `builtin:join` today; renaming this would change a live
-declaration's `derive.kind` spelling, which is an operator-visible migration and not a tidy-up.
+⚰️ THE COLLISION IS HISTORY AND THE NAME MOVED ANYWAY (판정 600, 2026-09-17). This paragraph
+said 「the name stays」 because renaming would make an operator migrate a live declaration. The
+owner was asked and the answer was 「없다」 — no production declaration writes the `mapper` cell
+by hand, so the migration cost that argument rested on is ZERO and the lead retracted 562/567's
+「이름은 안 옮긴다」. The value is `declared:join` now; `JOIN_INTO_MAPPER`, the CONSTANT, keeps
+its name because it is the code's word and not the operator's.
 
 🔴 THE WRITE-JOIN HALF THAT SURVIVED IS STILL NOT IMPORTED HERE. `materialize: true`
 declarations keep running in `chain.legacy_materialized_join` — the second write door, written
@@ -37,7 +40,7 @@ logger = logging.getLogger("Chain.JoinInto")
 
 #: The kind an operator's `derive: {kind: "join"}` becomes. One string, read by the translator
 #: that writes it and by the table that runs it, so the two cannot drift.
-JOIN_INTO_MAPPER = "builtin:join_into"
+JOIN_INTO_MAPPER = "declared:join"
 #: The one layer every chain write carries; the worker's wake filter reads exactly this.
 CHAIN_LAYER = "chain_ingestion"
 
