@@ -176,6 +176,21 @@ def runnable(name):
     return mapper_sdk.MAPPER_REGISTRY.get(name) or builtins.BUILTIN_KINDS.get(name)
 
 
+def hands(rule):
+    """HANDS_ROW_IDS or HANDS_PAYLOADS - how this rule is CALLED. Answered without resolving.
+
+    [503] THE CALLING SHAPE IS ITS OWN FACT, and it is not 「does it write its own rows」.
+    That one decides what happens AFTER a call; this one decides the call. They agree only
+    while every registered kind happens to write for itself, and the ontology lane named the
+    class they belong to: a guard and the action it guards looking at different sets.
+
+    `resolve` returns this in `Resolved.hands` and reads it from HERE, so the seat and a
+    caller that only needs the shape cannot answer differently - and the caller pays no
+    import for it (501 a: resolving imports the operator's module).
+    """
+    return HANDS_ROW_IDS if builtin_kind(rule) is not None else HANDS_PAYLOADS
+
+
 def self_writing_name(rule):
     """The registered kind a SELF-WRITING rule runs as, or None - answered WITHOUT resolving.
 
@@ -318,7 +333,7 @@ def resolve(rule):
     kind = builtin_kind(rule)
     if kind is not None:
         # `builtin_kind` answers by membership in this same table, so the lookup cannot miss.
-        return Resolved(builtins.BUILTIN_KINDS[kind], kind, HANDS_ROW_IDS,
+        return Resolved(builtins.BUILTIN_KINDS[kind], kind, hands(rule),
                         kind in builtins.SELF_WRITING_KINDS, False)
 
     import chain_bindings
@@ -351,7 +366,7 @@ def resolve(rule):
                ", ".join(sorted(builtins.BUILTIN_KINDS)) or "none registered"))
     # A file mapper PROPOSES: its rows come back as `updates` for the caller to write, which
     # is exactly what lets a dry run count them without writing anything.
-    return Resolved(call, who, HANDS_PAYLOADS, False, mapper_accepts_rule(call))
+    return Resolved(call, who, hands(rule), False, mapper_accepts_rule(call))
 
 
 def rows_counted(value):

@@ -105,7 +105,7 @@ def test_a_replay_of_a_declared_join_fills_the_rows_that_were_already_there(db):
 
     assert _left(db) == {"L1": "LOT-1", "L2": "LOT-1"}
     assert stats["rows_written"] == 2
-    assert stats["builtin_kind"] == join_into.JOIN_INTO_MAPPER
+    assert stats["self_writing_kind"] == join_into.JOIN_INTO_MAPPER
 
 
 def test_a_backfill_page_makes_ONE_event_not_one_per_row(db):

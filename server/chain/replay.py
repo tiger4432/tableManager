@@ -385,7 +385,7 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
         # implements is refused by name rather than left to throw an ImportError), and a
         # refusal about the RULE must not overtake the refusals about the operator's own
         # SELECTION - 「business_keys was given but empty」 is what they need to hear first.
-        "builtin_kind": None,
+        "self_writing_kind": None,
         "rule": rule.get("name"), "trigger_table": trigger_table,
         "target_table": target_table, "self_triggering": is_self_triggering(rule),
         "rows_scanned": 0, "pages": 0, "mapper_items": 0,
@@ -473,8 +473,17 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
     #   `run_rule` when a page is actually run.
     # (It also stood here TWICE - the reorder that moved it past the selection checks left
     #  the old line standing. One call, one answer.)
-    self_writing = rule_run.writes_itself(rule)
-    stats["builtin_kind"] = rule_run.self_writing_name(rule)
+    # [503] THE ARM IS THE CALLING SHAPE, not 「does it write its own rows」. This branch
+    #   decides whether to hand `row_ids` or `payloads`, and those two facts agree only
+    #   while every registered kind writes for itself. `hands` answers it without
+    #   resolving, so 501 a's repair stands.
+    hands_row_ids = rule_run.hands(rule) == rule_run.HANDS_ROW_IDS
+    # [판정 505] THE CELL IS NAMED FOR WHAT IT HOLDS. It was `builtin_kind`, the screen
+    #   read it back as `is_builtin`, and it carries neither: it is the kind name WHEN the
+    #   rule writes its own rows, and `None` otherwise. Three names for one fact, and all
+    #   three said 「address」 (is it a builtin) while the value said 「property」 - which is
+    #   the thing 판정 496 settled: builtin is how a rule NAMES its code, not a kind of rule.
+    stats["self_writing_kind"] = rule_run.self_writing_name(rule)
 
     # 🪦 `module_name` / `func_name` / `is_batch` were read here and carried to the call. The
     # seat reads them off the rule itself now, so a rule that names its mapper in the ONE cell
@@ -510,7 +519,7 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
         # `importlib.import_module(None)` threw and a migrated join had NO backfill at all.
         # Live and retroactive were two doors to one rule; this is the second door learning
         # the first one's move.
-        if self_writing:
+        if hands_row_ids:
             # ⛔ ISOLATED ON THIS BRANCH ONLY (판정 403). One page that throws costs THAT
             # page - counted, named, and the run goes on - and the session is rolled back so
             # the next page's SELECT is not talking to an aborted transaction. The file
