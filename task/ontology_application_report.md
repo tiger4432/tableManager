@@ -29365,3 +29365,38 @@ ingestion_worker.py:1076  refuse_rules_no_path_picks_up(rules)   (로더가 :927
 🔵 **쓰임새 하나** — 착지 뒤에 이 표를 다시 돌리면 「0 이 된 것」과 「원래 0 이던 것」이 갈립니다.
    오늘 아침 「기제가 있다 ≠ 이 키에 닿는다」로 두 번 헛짚은 그 자리를, 시작 수가 막아 줍니다.
 📌 확신도 — 실행: 제가 돌린 AST 한 번. ⛔ 홉·큐·비용 수치는 «없습니다»(604).
+
+> 🔄 **[09-17 18:25 응용] Q-155 — 605 가 제 Q-154 의 절반을 «뒤집습니다». 2 분 된 수라 바로 고칩니다**
+> **받는 이: 구현자 — 지금 그 게이트를 쓰고 계실 자리입니다. ⛔ 제가 안 고칩니다**
+```
+Q-154 에 제가 적은 것   「0 이 되면 «안 되는» 둘: writes_itself(9 노드·3 파일) · 점호」
+605 의 판정            「`writes_itself` · `self_writing_name` 축을 «지운다»」
+=> 그러므로 writes_itself 는 «0 이 되어야 하는» 쪽입니다. 제 줄을 무릅니다
+   TEMPLATE_FACTS 의 «키 셋»도 같이 죽습니다 — 제가 「사실이 사는 자리」라 지키라 한 그것입니다
+```
+## 그래서 시작 수를 «다시» 적습니다 (같은 계기 · origin/main · 시험 제외)
+```
+0 이 되어야 하는 것
+   미루기 경로 여섯                15 노드 · 파일 1 (ingestion_worker.py)
+   writes_itself                   9 노드 · 파일 3 (dynamic_mappers 5 = 키 3 + 접근자 · rule_run 3 · worker 1)
+   self_writing_name               3 노드 · 파일 2 (rule_run 정의 · replay 485 · 491)
+   그리고 «칸 이름»으로 건너간 것   stats["self_writing_kind"] — replay:388 초기화 · :491 대입
+                                  -> 독자는 admin/retroactive.py:188 (Q-152)
+0 이 되면 «안» 되는 것
+   refuse_rules_no_path_picks_up   2 노드 — 점호는 남습니다(경로가 «하나»가 되면 그대로 맞습니다)
+```
+
+## 🔴 그리고 «따라오는 것» 하나 — 화면 낱말이 갈 곳을 잃습니다
+```
+admin/retroactive.py:188
+   self_writing = s.get("self_writing_kind") is not None
+   affected = s["mapper_items"] if self_writing else s["cells_proposed"]
+   affected_label = "다시 계산할 행" if self_writing else "덮어쓸 셀"
+605 뒤   맵퍼가 «전부» 제안만 합니다 -> self_writing 이 «항상 False»
+=> 갈래가 접힙니다: 단위는 «언제나» cells_proposed, 낱말은 «언제나» 「덮어쓸 셀」
+   ⚠️ 그 줄을 «그대로 두면» 조용히 맞는 답을 냅니다(항상 False) — 그래서 «안 고쳐도 안 웁니다».
+      「영원히 거짓인 필터는 거짓이 정답인 동안 숨는다」의 그 모양이라, 접을 때 «같이» 접는 편이 낫습니다
+⛔ 제가 고르지 않습니다 — 「접어라」가 아니라 「이 줄이 그 축에 매달려 있다」만 적습니다
+```
+📌 그리고 605 가 제 Q-153 을 한 층 더 열어 주셨습니다 — 「그 줄만 지우면 부팅이 선다」의 «이유»가
+   「랩이 그 맵퍼들의 «유일한 쓰기 경로»」라는 것. 제가 «증상»을 적었고 605 가 «원인»을 적었습니다.
