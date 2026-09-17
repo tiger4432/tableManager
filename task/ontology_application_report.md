@@ -29468,3 +29468,43 @@ AST · 추적 server/*.py · 시험 제외 · crud.py 자신 제외
 📌 확신도 — 실행: AST 전수 한 번, 그리고 두 자리의 «호출자»와 «무엇을 부르는지»를 열어 읽었습니다.
    안 쟀음: `outbox_expand.py:14` 가 「run_backfill 이 같은 모양을 같은 방법으로 짓는다」고 적는데,
    그 «같은 모양»이 오늘도 같은지는 «안 쟀습니다»
+
+> 🔴 **[09-17 18:34 응용] Q-158 — 606 의 물음, 셋째 자리: 체인의 «쓰기 문» 안에서 «두 번째 미루기 큐»에 넣습니다. 그것도 «메모리»입니다**
+> **받는 이: 총괄 — 이건 «판정»이 필요한 자리라 측정만 냅니다. ⛔ 제가 안 고칩니다**
+
+## ① 자리
+```
+ingestion_worker.py:1795  with alignment_batch_counts.stage("ledger enqueue"):
+                   :1801      ledger_followup.enqueue(table, row_ids, event_type, tx_id, depth)
+   -> 이 줄은 «쓰기 문»(apply_chain_writes :1425~) «안»에 있습니다
+모듈   server/ledger/followup.py — 자기 독스트링이 스스로 이렇게 적습니다:
+   「The ledger follows the tables it reads, «one paced batch behind the chain»」
+   「🔴 NOT ON THE COMMIT PATH. The chain worker drops (table, row_ids, event_type) in here
+     and goes straight on; «a separate paced task drains it»」
+   「That is the whole reason this module exists as a queue rather than as a call inside
+     `process_chain_transaction_group`」
+   「🔴 THE QUEUE IS «MEMORY», AND LOSING IT IS NOT LOSING THE FACT」
+다른 투입자   ledger/backfill.py:344 · :1211
+```
+
+## ② 왜 606 의 물음에 «답이 없나»
+```
+다섯 걸음   트랜잭션 → 아웃박스 → 트리거 → 맵퍼 실행 → 페이로드·업서트
+이 큐      아웃박스가 «아니고»(메모리) · 트리거도 «아니고»(별도 페이싱 태스크가 뽑음)
+           ⑤ 에 «매달린 옆 큐»입니다
+🔴 그리고 모양이 이 라운드가 «지우고 있는 그것»과 같습니다 — 「뒤따르는 일을 페이싱된 큐로」.
+   소유자가 랩을 뺀 이유(「고장인지 느린 건지 판단 불가」)가 여기엔 «한 겹 더» 셉니다:
+   큐가 «메모리»라 깊이·나이가 값으로 뜨지도 않고, 워커가 죽으면 그 항목이 «사라집니다»
+   (그 문서는 「소급 패스가 canonical filler 라 괜찮다」고 답해 둡니다 — 그 답이 오늘도 참인지는 «안 쟀습니다»)
+```
+
+## ③ 제가 «주장하지 않는» 것 — 여기가 측정과 판정의 경계입니다
+```
+⛔ 「정본 위반이다」 — 말하지 «않습니다». 정본은 «체인»에 대한 말이고, 이 큐의 소비자는 «원장»입니다
+⛔ 「지워라」 — 안 고릅니다. 이 큐는 «비용» 때문에 그 모양이고, 비용 이야기는 604 가 막았습니다
+✅ 말하는 것 둘
+   ㉠ 체인의 쓰기 문 «안»에서 다른 미루기 큐에 넣는다 — 그 갈래는 다섯 걸음에 자리가 «없다»
+   ㉡ 랩을 지우는 이 라운드가 «같은 모양의 둘째»를 남깁니다. 그게 의도인지 아닌지는 «판정»입니다
+```
+📌 확신도 — 실행: enqueue 호출을 AST 로 전수(제품 셋: worker 1 · ledger/backfill 2)하고,
+   모듈 독스트링과 그 호출 자리를 열어 읽었습니다. 큐 «깊이»는 재지 않았습니다(604 · 그리고 메모리라 박스 수입니다)
