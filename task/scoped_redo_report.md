@@ -47603,3 +47603,59 @@ main.py:5147  alignment references table    ⚠️ 동작은 «이미 옳았고�
    저장소로 답할 수 있는 것: 「사유를 낼 길이 열려 있나」 = 예. 저장소 안 빌트인 «둘»이 그 길을 씁니다
    (`join_into` 는 이번에 넷으로 늘었고, `auto_confirm` 이 새로 씁니다)
 ```
+
+---
+
+> 🛑 **[09-17 14:00 구현자] 판정 531 — «짓기 전에» 셋을 셌고, ㉡ 에서 «멈춥니다». ②의 전제가 깨집니다**
+> ⛔ 아직 한 줄도 안 지었습니다. 판정 청합니다
+
+## 🔴 ㉡ — 평면 -> 통합이 «표현 불가능»한 규칙: «아홉 중 아홉»입니다
+531 이 「하나라도 있으면 ②의 「저장하면 된다」가 거짓」이라 하셨습니다. 하나가 아니라 «전부»입니다.
+```
+통합 문법의 잎 «23» 에 맵퍼 인자를 둘 자리가 «없습니다»
+   /derive/derive=mapper  [leaf:choice]      <- «이름 하나»입니다. 인자 칸이 아닙니다
+   통합 경로에 `params` «0» (스켈레톤에서 읽었습니다, 유도 아님)
+```
+```
+규칙                                        칸  집없는칸
+dt_log_to_dt_map                             7   1   is_batch
+production_to_inventory_reservation_batch    7   1   is_batch
+dt_metadata_to_dt_inventory                 10   4
+dt_log_to_core_usage_map                    11   5
+dt_inventory_to_core_usage_map              12   6
+dt_log_to_dt_alignment_metadata             13   7
+lot_event_to_lot_slot_wafer                 13   7
+dt_inventory_to_standard_dt_map             14   8
+dt_log_to_primary_core_frame                22  16   <- 최악
+집 없는 칸 «종류» 34: accepted_metrics · alignment_rule · alignment_thresholds · allow_* 넷 ·
+   event_type_column · index_col · inventory_table · is_batch · map_table · metadata_target_table ·
+   primary_selector · source_table · target_field · x_col · y_col · value_col · … (전체는 아래 ㉠)
+⚠️ 「이 박스에서」입니다 — 선언은 gitignore 입니다. 운영은 다른 수입니다
+```
+🔴 **가장 단순한 둘조차 `is_batch` 를 잃습니다.** 그리고 `is_batch` 는 «랩의 축»이지 장식이 아닙니다
+   (판정 506 이 그 칸을 「정당하다」고 확정했습니다).
+
+## 그래서 ② 는 오늘 셋 중 하나입니다 — 제가 못 고릅니다
+```
+㉮ 통합 문법을 «넓힌다»    derive.mapper 를 leaf -> record 로: {name, params, …}
+                       -> 문법 변경입니다. 소유자 선언 파일의 «모양»이 바뀝니다
+㉯ 이관을 «부분»으로      옮길 수 있는 칸만 옮기고 나머지는 «남긴다»
+                       🔴 그러면 한 규칙이 «두 문법»으로 반씩 적힙니다 — 이번 라운드가 지운 모양 그대로
+㉰ 이관 대상이 «아닌» 규칙을 화면이 말한다   「이 규칙은 아직 통합으로 못 적습니다: 칸 N 개」
+                       -> ④(남은 평면 수)는 되고 ②는 «일부만» 됩니다. 정직하지만 도착은 아닙니다
+```
+📮 **판정 청합니다.** ㉮ 면 이 라운드가 «문법 라운드»가 되고, ㉰ 면 오늘 닫히는 것이 ①③④ 입니다.
+⛔ 제 판단으로 안 고릅니다 — 소유자 선언의 «모양»이 걸린 자리입니다.
+
+## ㉠ 이 박스의 수 (밝혀서 씁니다)
+```
+통합 1 · 평면 9. 평면 아홉 전부 위 표대로입니다
+```
+## ㉢ 평면을 «읽는» 자리 — 「최종 도착지 0」의 오늘 수
+```
+평면 전용 칸 열하나를 이름 대는 «줄 147 / 파일 28»
+   상위: chain_bindings 26 · ingestion_worker 22 · rule_shape 15 · enrichment/config 11 ·
+        enrichment/analysis 9 · maps/frame_confirmation 8 · graph 6 · replay 6 · map_alignment 6
+⚠️ 「줄」이지 「판단 자리」가 아닙니다 — 문자열 세기라 같은 판단이 다른 낱말인 자리는 «못 셉니다».
+   그 수가 필요하면 AST 로 다시 재겠습니다. 오늘은 «상한»으로 읽어 주십시오
+```
