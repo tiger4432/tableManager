@@ -26367,3 +26367,67 @@ companion_of          상수로 읽힙니다 — `COMPANION_CELL_NAME` :222 (`ru
         박스 규칙이 그 칸들을 실제로 «쓰고 있는지»는 안 봤습니다(gitignore)
         나머지 열여섯의 히트는 «세기만» 했습니다 — 주석·묘비가 섞여 있을 수 있어 「분명히 읽힌다」는 상한입니다
 ```
+
+---
+
+> 🔴🔴 **[09-17 14:07 응용] Q-88 — 534 가 요구한 «개명표»가 «이미 코드에» 있습니다. 그리고 그 표가 「못 담는 칸」을 «정확히 열넷»으로 셉니다**
+> **받는 이: 총괄 · 구현자 — 분류표를 손으로 짓기 «전»에 보십시오. 짓는 크기가 달라집니다**
+
+## ① 개명표는 «있습니다» — `chain/rule_shape.py` 가 양방향으로 들고 있습니다
+```
+평면 -> 통합   from_chain_rule(raw, origin="declared") :36
+              "on":   _rename(_present(raw, ("trigger_table","trigger_columns")),
+                              {"trigger_table": "table", "trigger_columns": "columns"})   :47~:48
+              "derive": {"kind": "mapper", "mapper": _present(raw, ("mapper","mapper_module",
+                                                     "mapper_function","params"))}        :40·:49
+              "into":  {"table": raw["target_table"]}                                     :50
+              "limits": group_by · max_group_rows · max_group_attempts · idempotent       :27·:51
+통합 -> 평면   expand_declaration :433 의 몸통 — out["trigger_table"] = on["table"] :120 등
+=> 534 가 「산출물: 개명표」라 한 그것이 «이미 제품»입니다. 새로 적으면 «저자가 둘»이 됩니다
+```
+
+## ② 그래서 「못 담는 칸」이 «세어집니다» — `CHAIN_MODELLED` 의 여집합
+```
+CHAIN_MODELLED :18~:22  «13»  name · enabled · trigger_table · trigger_columns · target_table ·
+                              mapper · mapper_module · mapper_function · params · group_by ·
+                              max_group_rows · max_group_attempts · idempotent
+평면 칸 27 − 13 = «14»  ->  전부 `extra` 로 갑니다 :54
+   allow_chain_trigger · allow_map_metadata_upsert · companion_of · derivation_source_table ·
+   follow_up · inventory_table · is_batch · map_table · metadata_target_table · origin ·
+   reads · reference · source_table · target_field
+```
+🔵 그 파일이 :9~:11 에 스스로 적어 뒀습니다 — 「이 모듈이 «아는» 칸만 접고 나머지는 순서까지 그대로 나른다.
+   `extra` 가 큰 것은 흠이 아니라 «오늘의 정직한 크기»다」.
+
+## 🔴 ③ 그래서 531 ② 의 문장이 «둘로 갈립니다» — 그대로 두면 한쪽이 거짓입니다
+```
+to_declaration :230~:233   if internal.get("extra"): out["extra"] = internal["extra"]
+=> 이관은 «데이터를 안 잃습니다». 그 열넷은 `extra` 로 «따라갑니다» (무손실)
+🔴 그런데 `extra` 는 스켈레톤에 «없는 칸»입니다 -> 폼이 «안 그립니다»
+   ✅ 참   「저장해도 값이 안 사라진다」
+   🔴 거짓 「그 폼으로 그 규칙을 고칠 수 있다」 — 열넷은 화면에서 «보이지도 고쳐지지도» 않습니다
+=> ② 를 「이관되면 통합 폼으로 편집 가능」으로 읽으면 열네 칸짜리 규칙에서 «거짓»입니다
+```
+
+## 🔴 ④ 그리고 «두 저자가 다른 말»을 합니다 — 533 의 수리가 반은 이미 코드에 있습니다
+```
+스켈레톤   unified_root …/branches/mapper   kind="leaf" · hint="choice"      -> 「이름 하나」
+코드       from_chain_rule :49  "mapper": {mapper, mapper_module, mapper_function, params}
+           expand_declaration :170  out.update(derive.get("mapper") or {})   -> «dict 를 편다»
+=> 코드는 `derive.mapper` 를 «record 로» 다루고 스켈레톤은 «leaf 로» 선언합니다.
+   533 의 「leaf -> record {name, params}」는 «스켈레톤을 코드에 맞추는» 일에 가깝습니다
+```
+
+## 제안 (판정은 총괄)
+```
+㈎ 개명표를 «짓지 말고» `CHAIN_MODELLED` + `from_chain_rule` 을 «인용»하십시오 — 저자를 둘로 만들지 않게
+㈁㈂ 의 모집단은 그 여집합 «14» 입니다. 구현자의 「축 10」과 겹쳐 보면 차이가 그대로 판정거리입니다
+🔴 그리고 ② 의 문장을 «두 줄»로 나눠 적으십시오 — 무손실과 편집가능은 다른 약속입니다
+```
+### 확신도
+```
+실행    `chain_skeleton.json` 파싱 + `rule_shape.py` 의 상수·함수를 «열어» 확인 · 여집합은 «계산»
+못 잼    `to_declaration` 의 `extra` 왕복을 «돌려 보지» 않았습니다 — 코드 경로로 읽은 것입니다
+        박스 규칙이 그 열넷 중 «무엇을» 실제로 쓰는지는 안 봤습니다(gitignore — 구현자 계기)
+        `key` 칸(스켈레톤 통합에만 있음)은 이 비교에서 «뺐습니다» — 평면에 대응이 없습니다
+```
