@@ -38,6 +38,7 @@ if str(_SERVER) not in sys.path:
 
 import config_resolve_report as crr          # noqa: E402
 from chain import enrichment                 # noqa: E402
+from chain import ingestion_worker as chain_worker      # noqa: E402
 from database import crud                    # noqa: E402
 
 VECTORS = json.loads((_HERE / "vectors.json").read_text(encoding="utf-8"))
@@ -116,6 +117,14 @@ def report_env(tmp_path, monkeypatch):
                     json.dumps({n: _rule_json(s) for n, s in (rules or {}).items()}),
                     encoding="utf-8")
         monkeypatch.setattr(enrichment.config, "ENRICHMENT_RULES_PATH", str(rules_path))
+        # 🔴 [판정 636] 인리치 선언은 «두 파일»에 적힐 수 있고, 보고는 이제 둘 다
+        #    셉니다. 평면 쪽만 격리하면 «이 박스»의 chain_rules.json 이 이 계약의
+        #    둘째 입력이 되어, 여기서 잰 수가 이 상자의 설정에 달리게 됩니다
+        #    (실측: 거절 하나를 기대한 자리에서 둘이 나왔습니다).
+        #    축은 «하나»여야 하므로 통합 쪽도 빈 문서로 고정합니다.
+        chain_rules_path = tmp_path / "chain_rules.json"
+        chain_rules_path.write_text('{"rules": []}', encoding="utf-8")
+        monkeypatch.setattr(chain_worker, "RULES_PATH", str(chain_rules_path))
 
         settings_path = tmp_path / "ingestion_settings.json"
         if settings_file_exists:

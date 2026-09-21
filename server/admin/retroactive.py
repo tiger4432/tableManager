@@ -636,7 +636,11 @@ def _enrichment_rule(name):
     from chain import enrichment
     from database import crud
 
-    rules = enrichment.config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
+# 🔴 [판정 636] 「없다」와 「무엇이 있나」가 «같은 목록»에서 나와야 합니다 —
+    #    한쪽만 넓히면 거절 문구가 자기가 안 본 것을 「없다」고 말합니다.
+    from chain import enrich_declarations
+
+    rules = enrich_declarations.declarations(known_tables=crud.TABLE_CONFIG)
     rule = next((r for r in rules if r["name"] == name), None)
     if rule is None:
         available = ", ".join(sorted(r["name"] for r in rules)) or "<none>"

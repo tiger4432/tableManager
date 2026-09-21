@@ -19,7 +19,7 @@ SERVER_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
-from chain import reference_view                                     # noqa: E402
+from chain import enrich_declarations                                     # noqa: E402
 from chain.enrichment import config as enrichment_config                   # noqa: E402
 
 VIEW = {"label": "이 키의 원본 행",
@@ -51,7 +51,7 @@ def test_a_view_declared_in_either_grammar_is_reachable(tmp_path):
     back, so a declaration that arrives without them is a 404 the operator cannot explain."""
     chain_path, enrich_path = _paths(tmp_path)
 
-    found = {r["name"]: r for r in reference_view.declarations(
+    found = {r["name"]: r for r in enrich_declarations.declarations(
         chain_rules_path=chain_path, enrichment_path=enrich_path)}
 
     assert sorted(found) == ["refview_old", "refview_unified"]
@@ -82,14 +82,14 @@ def test_find_and_the_list_walk_the_same_list(tmp_path):
     chain_path, enrich_path = _paths(tmp_path)
     kwargs = {"chain_rules_path": chain_path, "enrichment_path": enrich_path}
 
-    listed = reference_view.declarations(**kwargs)
+    listed = enrich_declarations.declarations(**kwargs)
 
     for rule in listed:
-        one = reference_view.find(rule["name"], **kwargs)
+        one = enrich_declarations.find(rule["name"], **kwargs)
         assert one is not None, rule["name"]
         assert [v["label"] for v in one["reference_views"]] == [
             v["label"] for v in rule["reference_views"]], rule["name"]
-    assert reference_view.find("nothing_declares_this", **kwargs) is None
+    assert enrich_declarations.find("nothing_declares_this", **kwargs) is None
 
 
 def test_a_switched_off_declaration_offers_no_views(tmp_path):
@@ -101,7 +101,7 @@ def test_a_switched_off_declaration_offers_no_views(tmp_path):
     enrich_path = tmp_path / "empty.json"
     enrich_path.write_text(json.dumps({}), encoding="utf-8")
 
-    found = reference_view.declarations(chain_rules_path=str(chain_path),
+    found = enrich_declarations.declarations(chain_rules_path=str(chain_path),
                                         enrichment_path=str(enrich_path))
 
     assert [r["name"] for r in found] == []

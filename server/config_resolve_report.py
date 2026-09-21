@@ -462,7 +462,11 @@ def _resolve_enrichment() -> dict:
     rejections = []
     # `/enrichment/rules`와 **같은 인자로** 로드한다 — 보고서와 라우트가 다른 답을 내면
     # 보고서가 답하려던 질문 자체가 무의미해진다(같은 신호원 규율).
-    rules = enrichment.config.load_enrichment_rules(
+# 🔴 [판정 636] 보고는 «선 선언 전부»를 셉니다. 통합 문법으로 적힌 것이 빠지면
+    #    그 보고는 「선언이 없다」와 「내가 안 봤다」를 같은 모양으로 냅니다.
+    from chain import enrich_declarations
+
+    rules = enrich_declarations.declarations(
         known_tables=crud.TABLE_CONFIG, rejections=rejections)
 
     settings_path = ec.INGESTION_SETTINGS_PATH

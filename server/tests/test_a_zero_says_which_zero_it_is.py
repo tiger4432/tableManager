@@ -51,6 +51,13 @@ def _graph(monkeypatch, loader):
     from database import crud
 
     monkeypatch.setattr(worker, "load_chain_rules", lambda: [])
+    # 🔴 [판정 636] 인리치 선언은 «두 파일»에 적힐 수 있고, 그림은 이제 둘 다 겁니다.
+    #    `load_chain_rules` 를 막아도 좌석은 «다른 문»(`read_rules_document`)으로
+    #    이 박스의 chain_rules.json 을 읽습니다 — 그러면 이 파일이 내건
+    #    「한 축만 varied」가 거짓이 됩니다. 그 문도 빈 문서로 고정합니다.
+    monkeypatch.setattr(worker, "read_rules_document",
+                        lambda path=None: {"document": {}, "rules": [],
+                                           "path": path, "exists": False, "error": None})
     monkeypatch.setattr(enrichment.config, "load_enrichment_rules", loader)
     monkeypatch.setattr(vjc, "load_virtual_join_rules", lambda **kw: [])
     monkeypatch.setattr(crud, "TABLE_CONFIG", {TRIGGER: {}, TARGET: {}})

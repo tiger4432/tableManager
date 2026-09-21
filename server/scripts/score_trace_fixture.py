@@ -69,7 +69,9 @@ def main(argv=None):
 
     db = SessionLocal()
     try:
-        rules = {r["name"]: r for r in enrichment.config.load_enrichment_rules(
+        from chain import enrich_declarations
+
+        rules = {r["name"]: r for r in enrich_declarations.declarations(
             known_tables=crud.TABLE_CONFIG)}
         r1, r2 = rules[RULE1], rules[RULE2]
 
