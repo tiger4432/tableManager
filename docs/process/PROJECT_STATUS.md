@@ -207,7 +207,9 @@ API      pid 34476 · 09-17 22:42 기동 · 8080 /health 200 · 관리자 토큰
    Get-CimInstance Win32_Process -Filter "Name like 'python%'" | Select ProcessId,CreationDate,CommandLine
 로그        server/chain_worker.log · server/server.log (런처가 자식 stdout 을 파일로도 텐다)
 부팅 줄     [ChainRules] set(N): <이름>[<출처>,<방식>] — 이 줄이 «오늘 코드인지»를 말한다
-🔴 소유자께 «먼저 말하고» 내린다
+🟢 [09-22 소유자] 「박스 제어는 너 자유롭게해」 · 「박스 조작 판정 대기로 멈추지 않기」
+   -> 총괄이 «묻지 않고» 내린다. 다만 내리기 «전»에 PID 를 다시 읽고 그 PID 가
+      파이썬 자식인지, 감독자가 «살아 있는지» 확인한다 (PID 는 재사용된다)
 ```
 
 ## ④ 레인 분장 — 파일로 가른다. 겹치면 그것부터 사고
