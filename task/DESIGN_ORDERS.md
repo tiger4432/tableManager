@@ -30172,3 +30172,17 @@ CODE_MAP §㉙            「세 템플릿 «전부» writes_itself: True」 -> 
 ```
 🔴 그리고 이 라운드가 화면에 «닿습니다» — 정렬·소급·대기열·드라이런이 통합 문법 선언을
 처음으로 «보게» 됩니다. 화면 쪽에서 그 규칙이 새로 나타나면 «고장이 아닙니다».
+
+> 📚 **[09-22 총괄] 문서 정비 — 커밋 «97» 누적. 적대 QA 와 «같이» 하십시오**
+
+소유자 확정: 문서 정비는 응용 세션이 적대 QA 를 하면서 같이 합니다.
+서브에이전트(doc-keeper·code-mapper·doc-historian)를 띄우지 «마십시오» — 세션이 있는 일입니다.
+```
+✅ 대상  SSOT · architecture · guide · spec · PRIMITIVES · CODE_MAP · history
+✅ 이번 라운드가 «낳는» 것부터  판정 636 이 좌석 이름을 바꿉니다
+   (chain/reference_view.py -> chain/enrich_declarations.py).
+   그 이름을 «드는» 자리를 전수로 세십시오 — 주석·독스트링·가이드·RUN.md·sample 포함.
+   🔴 기제는 지워지고 «말»은 남습니다. 남은 말은 그 기제가 아직 있다고 말합니다
+✅ 끝나면  .claude/doc_sync_pending 을 지워 카운터를 리셋하십시오
+⛔ PROJECT_STATUS 보드는 «총괄 전담»입니다. 건드리지 마십시오
+```
