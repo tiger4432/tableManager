@@ -49819,3 +49819,51 @@ dedup 반쪽의 쓰기는 source_name 이 «chain_ingestion» 입니다 (config.
 ⏸️ **컨펌 주실 때까지 코드는 «안 건드립니다».** 제안 순서는 644 -> 645 -> 647 입니다 —
 `chain/legacy_join_declaration.py` 가 644 의 모집단에 있고 645 가 그 파일을 은퇴시켜서,
 순서가 반대면 644 의 모집단이 제 발밑에서 바뀝니다.
+
+---
+
+> 📊 **[09-22 08:43 구현자] 646 의 「그 9 를 열어 보고하라」 — 열었습니다. 은퇴는 «레이어링 코어에 안 닿습니다»**
+
+**결론.** import 9 중 문법에 매달린 것은 «넷». 다섯은 `chain/join_key_index` 의 이름을
+옛 모듈을 «거쳐» 가져올 뿐이라 import 한 줄로 빠집니다 — 동작 변화 0.
+
+| 자리 | 쓰는 이름 | 분류 |
+|---|---|---|
+| `config_resolve_report` | `load_virtual_join_rules` · `VIRTUAL_JOIN_RULES_PATH` · `DEFAULT_UNRESOLVED_LABEL` | 🔴 문법 |
+| `scripts/check_one_row_one_fact` | `load_virtual_join_rules` | 🔴 문법 |
+| `main.py` | `verification_report` | 🔴 문법 (이름 «하나») |
+| `chain/legacy_materialized_join` | `load_verified_rules` · `rewrite_refusal` · `rewrite_row_count` | 🔴 문법 |
+| `chain/graph` | `load_virtual_join_rules` + `unique_index_covering` | 🟡 섞임 |
+| `chain/synthesis` | `synthesized_join_chain_rules` · `JOIN_MAPPER` + `required_index_name` | 🟡 섞임 |
+| `migrations/add_vjoin_null_safe_indexes` | `_folds_list` · `index_key_expression` · `required_index_ddl` (+ 로더) | 🟡 섞임 |
+| `database/crud` | `index_key_expression` **뿐** | ⚪ 재수출만 |
+| `chain/dynamic_mappers` | `JOIN_MAPPER` | 🔴 문법 |
+
+**근거 한 번.** `legacy_join_declaration` 이 `from chain.join_key_index import (...)` 를
+`# noqa: F401` 로 «재수출»합니다 — `_folds_list` · `index_key_expression` ·
+`required_index_name` · `required_index_ddl` · `unique_index_covering`. 그 집은 이미 따로 있습니다.
+그리고 `crud.py` 는 `from chain import join_key_index` 를 «다른 줄에서 이미» 합니다.
+
+```
+=> 여쭐 것 ③(「crud·main 까지 갑니까」)이 작아집니다
+   crud   재수출 한 줄 돌리기. 은퇴 «모집단 밖»입니다
+   main   문법 이름 «하나»(verification_report)
+```
+🔵 제 가설 하나는 «틀렸고 접었습니다»: `JOIN_MAPPER` 가 통합 조인의 맵퍼인 줄 알았는데
+`"declared:virtual_join"` 이라 은퇴 쪽입니다. 통합은 `declared:join` — 순환 의존 «없습니다».
+
+### 🔴 대신 «진짜 물음»이 하나 남습니다 — `materialize: true` 도 은퇴합니까
+오늘 거절 문구가 이렇게 «가리킵니다» (실측, 부팅 로그):
+```
+... Declare the join in chain_rules.json instead — derive: {kind: "join"} with on and take —
+    which writes the value into the table, or set 'materialize': true here
+    with a 'max_rewrite_rows' ceiling to keep it as a write join.
+```
+문법이 죽으면 이 문장이 «은퇴한 기제»를 가리킵니다. 그리고 646 ③ 은
+`legacy_materialized_join` 을 「이름만 틀린 «도는 길»」이라 적었습니다 —
+그 길이 이 문법의 `load_verified_rules` 로 삽니다.
+```
+갈래 ㄱ  materialize:true 도 같이 은퇴 -> 거절 문구에서 그 절을 «빼야» 합니다 (같은 라운드)
+갈래 ㄴ  쓰기 조인은 «남긴다»        -> 문법의 집이 줄지언정 «안 하나»가 됩니다
+```
+⏸️ 이것까지 여쭌 뒤 시작하겠습니다. 코드 변경은 여전히 «0» 입니다.
