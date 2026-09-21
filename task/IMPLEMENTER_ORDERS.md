@@ -52753,3 +52753,133 @@ server/enrichment/ 를 아직 이름 대는 «살아 있는 문서» 25 히트 /
                   열린 것은 전부 판정 번호가 붙어 있습니다 (616~632)
 ```
 🔵 오늘 셋 다 잘했습니다. 제 판정을 여섯 번 고쳤고, 전부 근거를 열어서 고쳤습니다. 쉬십시오.
+
+> 🟢🟢 **[09-22 총괄] 판정 635 — 감시를 «다시 켜십시오». 판정 634 를 해제합니다 (소유자 지시)**
+
+소유자: 「세션들 감시 켜라 그래」
+```
+✅ 자기 세션의 «지속 감시»를 «켭니다». 지금부터입니다
+✅ 첫 걸음  보드 맨 위 절 -> 이 채널의 «끝» 순서. 열린 것은 판정 번호가 붙어 있습니다 (616~634)
+✅ 보고는 «초인종»과 같은 분에. 채널 커밋 없이 올린 보고는 아무에게도 안 닿습니다
+⛔ 634 의 「새 작업 금지」는 «해제»됩니다. 그 아래 줄들은 그대로입니다 —
+   미커밋 0 · 경로 붙인 add/commit · 푸시까지가 한 걸음
+```
+
+> 🔴🔴 **[09-22 총괄] 판정 636 — 「선언을 «묻는» 자리」를 한 좌석으로. 소유자 컨펌 완료**
+
+소유자: 「너의 목표는 기존 선언들 «없이도» 파생·자동 확정이 서게 하는 것.
+이 박스는 단순 실험체에 불과해」
+
+### 오늘의 참 — 제가 쟀습니다. 다시 유도하지 마십시오
+
+```
+① 체인 «실행» 경로는 통합 선언만으로 «행을 남깁니다»
+   tests/test_every_declared_kind_runs_and_leaves_rows.py 가 그 게이트입니다.
+   픽스처가 통합 문법으로«만» 선언하고, 단언이 «쓰인 값»입니다
+     파생행    DST 의 job 이 ["J"]      (N 행이 한 신원으로 접힘)
+     자동확정  DST 의 grade 가 ["LOT"]  (참조뷰 SQL 이 실제로 돌아 후보를 냄)
+② 자동확정 템플릿이 선언을 «내려 줍니다» — 평면 파일을 안 지납니다
+   chain/dynamic_mappers.py 의 _auto_confirm: params 에서 꺼내 rules=[declared] 로 넘깁니다
+=> 그래서 「체인 안에서는」 목표가 이미 참입니다. 거짓인 곳은 «체인 밖»입니다
+```
+
+### 🔴 안 서 있는 것 — 자리 «열둘». 단위는 «호출 자리»입니다
+
+`load_enrichment_rules` 는 파일 «하나»만 엽니다 (`chain/enrichment/config.py` 의
+`ENRICHMENT_RULES_PATH`). 부르는 자리를 전수로 셌습니다 — 계기를 그대로 드립니다:
+
+```
+git grep -n "load_enrichment_rules(" -- server | grep -v "/tests/" | grep -v "def load_enrichment_rules"
+  -> 13. 그중 하나가 «좌석 자신»(chain/reference_view.py)이므로 평면만 보는 자리 «12»
+```
+
+열둘은 동사가 «둘»뿐이고 여섯씩입니다.
+
+```
+「이 이름의 선언을 다오」 여섯   alignment_view_service · admin/retroactive · main.py ×4
+   여섯이 «글자 그대로 같은 세 줄»입니다:
+       rules = load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
+       x = next((r for r in rules if r["name"] == name), None)
+       if x is None: -> 거절 / 예외 / None
+   그 세 줄은 «이미 함수로 있습니다» — reference_view.find(name, known_tables=…)
+
+「선언 목록을 다오」 여섯       chain/enrichment/candidates(폴백) · database/models(폴백)
+                              chain/graph · config_resolve_report · scripts 둘
+   이쪽도 있습니다 — reference_view.declarations(known_tables=…)
+```
+
+🔴 **그래서 오늘 통합 문법으로 선언하면 «돕니다. 그런데 아무 화면도·소급도·정렬도 모릅니다».**
+`alignment_view_service` 는 «체인 쓰기 경로»에서 예외를 던져 이벤트를 영구 실패시킵니다.
+
+### 🔴 이 지시는 «지금 있는 동작»을 바꿉니다 — 그 판정을 인용합니다
+
+`chain/reference_view.py` 머리글이 이렇게 적어 뒀습니다:
+
+> The owner scoped this round to the reference view (「참조뷰 라우트만」), so the other
+> thirteen are UNCHANGED and counted here rather than quietly widened - and when they move,
+> they move onto this seat instead of each learning about two files.
+
+**지금이 「when they move」입니다.** 그 한정을 «넓히는 것»이고 소유자 컨펌을 받았습니다.
+그 문단은 지우지 말고 «지나간 일»로 고쳐 적으십시오 — 왜 둘로 나뉘었었는지가 근거입니다.
+
+### 하는 일 — «한 커밋»
+
+```
+① 좌석 이름을 «하는 일»로
+   chain/reference_view.py -> chain/enrich_declarations.py
+   함수 이름은 그대로 (declarations · find). 하는 일이 그 낱말입니다
+   사유: 이름이 「참조뷰 전용」이면 다음 사람이 그렇게 읽고 «옆에 또» 만듭니다 —
+         그게 이 결함이 생긴 경로였습니다. 지금 import 하는 자리가 셋이라 싸고,
+         이번 라운드 뒤엔 «열다섯»이 됩니다 (소유자 판정)
+② 자리 «열둘»이 그 좌석을 지납니다 (위 두 동사대로)
+③ 게이트가 «같은 커밋»에
+```
+
+🔴 **나눠 착지시키지 마십시오.** 그 사이가 «거짓»입니다 — 일부 화면만 선언을 보는 상태.
+
+### 바뀌지 «않는» 것 — 이 줄들을 근거로 범위를 지키십시오
+
+```
+선언 문법               한 칸도 안 바뀝니다. 운영자가 할 일 «없습니다»
+실행 경로               트리거·맵퍼·페이로드·업서트 전부 그대로.
+                       이 라운드는 «묻는 자리»만 만집니다
+load_enrichment_rules   «지우지 않습니다». 좌석이 «평면 반쪽»으로 계속 부릅니다
+거절 문구               자리마다 다른 문구를 «한 줄로 접지 마십시오».
+                       「없다」를 말하는 주체는 그대로 그 자리입니다.
+                       바뀌는 것은 «무엇을 보고 없다고 하나»뿐입니다
+대조군                  tests/test_a_reference_view_is_reachable_whichever_grammar_declared_it.py
+                       의 「옛 조회는 못 찾는다」 단언을 «살리십시오».
+                       그것이 이 좌석이 왜 있는지의 증거입니다
+```
+
+### 게이트 — 「간다」가 아니라 «돈다»를 잽니다
+
+평면 파일이 «없는» 상태에서 통합 선언 하나를 놓고 «자리마다» 단언합니다.
+빈 칸을 빼지 마십시오 — 빠진 칸은 「통과」로 읽힙니다.
+
+| 자리 | 단언 |
+|---|---|
+| `alignment_view_service` | 그 이름을 «찾는다». `AlignmentViewRequestError` 가 «안 난다» |
+| `admin/retroactive` | 소급 대상으로 «뜬다» |
+| `main.py` 넷 | 대기열 필터 · 확정 요청 · 단위 목록 · 드라이런이 각각 그 이름에 답한다 |
+| `candidates` 폴백 | `rules=None` 로 지어도 `active` 가 «참» |
+| `database/models` 폴백 | 목록에 «있다» |
+| `chain/graph` · `config_resolve_report` | 그 이름이 그림·보고에 «나온다» |
+
+```
+돌리는 법  server 폴더에서, 해석기는 conda assy_manager
+   python -m pytest -q tests/test_every_declared_kind_runs_and_leaves_rows.py
+   + 이번에 더하는 자리별 단언
+🔴 파이프로 가리지 마십시오 — `pytest | tail && commit` 은 tail 의 0 을 읽습니다
+```
+
+### 크기
+
+**안 쟀습니다.** 자리 «12»는 셌고, 각 자리가 몇 줄인지는 안 열어 봤습니다.
+거절 문구가 자리마다 달라 한 줄로 안 접히는 자리가 있을 수 있습니다 — 그러면
+«접지 말고» 그 자리를 그대로 두고 조회만 바꾸십시오.
+
+### 막히면
+
+한 줄로 올리십시오. 특히 `config ↔ rule_shape` 순환이 보이면 «멈추고» 올리십시오 —
+제가 셋째 안(`load_enrichment_rules` 자체를 넓히기)을 그 순환 때문에 접었습니다.
