@@ -21,8 +21,11 @@ class AlignmentViewRequestError(ValueError):
 
 
 def declared_alignment_rule(rule_name: str) -> dict:
-    rules = enrichment.config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
-    decl = next((r for r in rules if r["name"] == rule_name), None)
+    # 🔴 [판정 636] 평면 파일 «하나»가 아니라 «이 제품이 세운 선언 전부»를 봅니다 —
+    #    통합 `derive.decide` 로 적힌 것도 포함입니다. 거절 문구는 아래 그대로입니다.
+    from chain import enrich_declarations
+
+    decl = enrich_declarations.find(rule_name, known_tables=crud.TABLE_CONFIG)
     if decl is None:
         raise AlignmentViewRequestError("Enrichment rule '%s' not found" % rule_name)
     if not decl.get("alignment"):

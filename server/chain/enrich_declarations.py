@@ -31,24 +31,31 @@ different risk, and this module deliberately calls it rather than copying any of
 `execute_reference_view` is 「유일한 정의」 and a second spelling of a LIMIT is how a screen
 and a probe start seeing different rows.
 
-🔴 THE OTHER READERS ARE NOT WIDENED, AND THE COUNT IS THE POINT. `load_enrichment_rules`
-is read from **15 places** (measured with `git grep`, product code): this module, the two
-reference-view routes, the dashboard summary, the two alignment routes, the candidate
-prober, the graph, the resolve report, models, retroactive, the alignment view service,
-and two scripts. All of them are blind to a unified `decide` declaration in exactly the
-way these two routes were. The owner scoped this round to the reference view
-(「참조뷰 라우트만」), so the other thirteen are UNCHANGED and counted here rather than
-quietly widened - and when they move, they move onto this seat instead of each learning
-about two files.
+⚰️ AND 「WHEN THEY MOVE」 WAS 2026-09-22 (판정 636, 소유자 컨펌). This paragraph read, in the
+present tense: 「THE OTHER READERS ARE NOT WIDENED… the owner scoped this round to the
+reference view (「참조뷰 라우트만」), so the other thirteen are UNCHANGED and counted here」.
+That limit is lifted and the sentence is kept as the REASON the split existed, because a
+reader who finds two shapes in git history deserves to know it was scoped, not forgotten.
+Measured again on the day it lifted, with the instrument the ruling handed over:
+
+    git grep -n "load_enrichment_rules(" -- server | grep -v "/tests/" | grep -v "def load_"
+      -> 14 hits, one of them this module: **13 places saw only the flat file**
+
+🔴 THE NAME IS THE SECOND HALF OF THE SAME FIX. This module was `chain/reference_view.py`,
+and a name that says 「reference view」 is read as 「for reference views only」 - which is how
+the next person puts their own copy beside it. That is exactly the path the defect took the
+first time. It is `enrich_declarations` now: what it does is answer 「which enrich
+declarations does this product stand, whichever grammar wrote them」, and the reference view
+is one caller of that.
 """
 
 import logging
 
-logger = logging.getLogger("Chain.ReferenceView")
+logger = logging.getLogger("Chain.EnrichDeclarations")
 
 
 def declarations(known_tables: dict = None, chain_rules_path: str = None,
-                 enrichment_path: str = None) -> list:
+                 enrichment_path: str = None, rejections: list = None) -> list:
     """Every enrich declaration this product stands, whichever grammar wrote it.
 
     Returns the NORMALIZED declarations (the shape `load_enrichment_rules` returns), so a
@@ -65,7 +72,7 @@ def declarations(known_tables: dict = None, chain_rules_path: str = None,
 
     seen, out = set(), []
     for rule in enrichment_config.load_enrichment_rules(
-            path=enrichment_path, known_tables=known_tables):
+            path=enrichment_path, known_tables=known_tables, rejections=rejections):
         name = rule.get("name")
         if name and name not in seen:
             seen.add(name)
@@ -85,7 +92,16 @@ def declarations(known_tables: dict = None, chain_rules_path: str = None,
         # ⚠️ A REFUSED OR SWITCHED-OFF DECLARATION STANDS NO RULE, so it has no views to
         #    offer - and the loader has already said why, in its own words. Saying it
         #    again here would give one fact two authors.
+        # 🔴 [판정 636] BUT A CALLER COLLECTING REFUSALS MUST SEE BOTH HALVES. The report
+        #    and the graph hand a `rejections` list and render 「what did not stand and
+        #    why」; before this seat existed that list could only ever carry the FLAT
+        #    file's refusals, so a unified declaration that was refused looked to a
+        #    reader exactly like one that was never written. The sentence is the
+        #    expander's own - this only carries it to the list the caller brought.
         if refusal or not stood:
+            if refusal and rejections is not None:
+                rejections.append({"scope": "rule", "subject": name,
+                                   "detail": str(refusal)})
             continue
         declared = (stood[0].get("params") or {})
         if declared.get("name"):
@@ -95,11 +111,18 @@ def declarations(known_tables: dict = None, chain_rules_path: str = None,
 
 
 def find(rule_name: str, known_tables: dict = None, chain_rules_path: str = None,
-         enrichment_path: str = None):
-    """The declaration a route was asked about, or None — 「없다」 is a value, not an error."""
+         enrichment_path: str = None, rejections: list = None):
+    """The declaration a route was asked about, or None — 「없다」 is a value, not an error.
+
+    ⚠️ [판정 636] THE CALLER KEEPS SAYING 「없다」 IN ITS OWN WORDS. Six seats ask this and
+    each refuses differently - an HTTP 404, an `AlignmentViewRequestError`, a sentence that
+    lists what IS available. Folding those into one line here would put the product's voice
+    where the operator's context is; what this changes is only WHAT THEY LOOKED AT.
+    """
     for rule in declarations(known_tables=known_tables,
                              chain_rules_path=chain_rules_path,
-                             enrichment_path=enrichment_path):
+                             enrichment_path=enrichment_path,
+                             rejections=rejections):
         if rule.get("name") == rule_name:
             return rule
     return None

@@ -1531,7 +1531,9 @@ def ensure_alignment_decision_key_indexes(engine, config=None, rules=None):
             from chain import enrichment
             from database import crud as _crud
 
-            rules = enrichment.config.load_enrichment_rules(
+            from chain import enrich_declarations
+
+            rules = enrich_declarations.declarations(
                 known_tables=_crud.TABLE_CONFIG)
         except Exception as err:                       # noqa: BLE001
             print(f"[Schema Sync] alignment rules unreadable, no decision-key index: {err}")

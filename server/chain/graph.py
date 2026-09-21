@@ -67,6 +67,18 @@ def _chain_rules():
     return worker.load_chain_rules() or []
 
 
+def _enrich_declarations():
+    """The seat that answers 「which enrich declarations stand」, imported at CALL time.
+
+    ⚠️ A LAMBDA CANNOT CARRY AN IMPORT, and this module is reached from the loader's
+    neighbourhood - every other seat here reaches its dependency the same way, inside
+    the function that needs it (`_chain_rules` above).
+    """
+    from chain import enrich_declarations
+
+    return enrich_declarations
+
+
 def _mapper_edges(rules):
     """① `chain_rules`: the trigger table writes the target table."""
     import map_meta_registrar
@@ -385,7 +397,9 @@ def chain_graph(db):
         "chain_rules", lambda rej: _chain_rules(), counts, unread, catalogue)
     enrichment_rules = _quarter(
         "enrichment_rules",
-        lambda rej: enrichment.config.load_enrichment_rules(
+    # 🔴 [판정 636] 그림도 «선 선언 전부»를 겁니다 — 통합 문법 규칙이 빠진 그래프는
+        #    「고리가 없다」를 자기가 안 본 것에 대해 말합니다.
+        lambda rej: _enrich_declarations().declarations(
             known_tables=catalogue, rejections=rej),
         counts, unread, catalogue)
     vjoin_rules = _quarter(

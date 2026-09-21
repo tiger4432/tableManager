@@ -1912,8 +1912,11 @@ def apply_enrichment_queue_predicate(query, table_model, table_name, rule_name, 
     """
     if not rule_name:
         return query
-    rules = enrichment.config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
-    rule = next((r for r in rules if r["name"] == rule_name), None)
+    # 🔴 [판정 636] 평면 파일 «하나»가 아니라 «이 제품이 세운 선언 전부»를 봅니다 —
+    #    통합 `derive.decide` 로 적힌 것도 포함입니다. 거절 문구는 아래 그대로입니다.
+    from chain import enrich_declarations
+
+    rule = enrich_declarations.find(rule_name, known_tables=crud.TABLE_CONFIG)
     if rule is None:
         raise HTTPException(
             status_code=400,
@@ -4983,8 +4986,11 @@ def confirm_map_alignment(payload: dict = Body(...), db: Session = Depends(get_d
     if not rule_name:
         raise HTTPException(status_code=400, detail="'rule' is required")
 
-    rules = enrichment.config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
-    decl = next((r for r in rules if r["name"] == rule_name), None)
+    # 🔴 [판정 636] 평면 파일 «하나»가 아니라 «이 제품이 세운 선언 전부»를 봅니다 —
+    #    통합 `derive.decide` 로 적힌 것도 포함입니다. 거절 문구는 아래 그대로입니다.
+    from chain import enrich_declarations
+
+    decl = enrich_declarations.find(rule_name, known_tables=crud.TABLE_CONFIG)
     if decl is None:
         raise HTTPException(status_code=404, detail=f"Enrichment rule '{rule_name}' not found")
 
@@ -5076,8 +5082,11 @@ def get_map_alignment_worklist(
     어느 좌표 컬럼을 읽을지는 상세에서 고르며, 이 경로는 이름과 무관한 것만 답한다 —
     어떤 단위가 있는가 · 확정됐는가 · 채점 가능한가 · 맵 몇 장이 모이는가.
     """
-    rules = enrichment.config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
-    decl = next((r for r in rules if r["name"] == rule), None)
+    # 🔴 [판정 636] 평면 파일 «하나»가 아니라 «이 제품이 세운 선언 전부»를 봅니다 —
+    #    통합 `derive.decide` 로 적힌 것도 포함입니다. 거절 문구는 아래 그대로입니다.
+    from chain import enrich_declarations
+
+    decl = enrich_declarations.find(rule, known_tables=crud.TABLE_CONFIG)
     if decl is None:
         raise HTTPException(status_code=404, detail=f"Enrichment rule '{rule}' not found")
 
@@ -5619,9 +5628,9 @@ def get_enrichment_rules():
     #   the unified grammar carried its reference views and reached nobody. `chain.
     #   reference_view` is the one place that knows a declaration has two homes, and the
     #   route below walks the SAME list - the index in `/references/{index}` points into it.
-    from chain import reference_view
+    from chain import enrich_declarations
 
-    rules = reference_view.declarations(known_tables=crud.TABLE_CONFIG)
+    rules = enrich_declarations.declarations(known_tables=crud.TABLE_CONFIG)
     return {"rules": [enrichment.config.to_public_rule(r) for r in rules]}
 
 @app.get("/enrichment/rules/{rule_name}/references/{index}")
@@ -5637,9 +5646,9 @@ def get_enrichment_reference(rule_name: str, index: int, params: str = None, db:
     # 🔴 THE SAME SEAT THE LIST ROUTE WALKS, which is what keeps `index` meaning the same
     #   thing at both ends (the index-alignment guarantee `_normalize_reference_views`
     #   states). A rule written in the unified `derive.decide` grammar is found here now.
-    from chain import reference_view
+    from chain import enrich_declarations
 
-    rule = reference_view.find(rule_name, known_tables=crud.TABLE_CONFIG)
+    rule = enrich_declarations.find(rule_name, known_tables=crud.TABLE_CONFIG)
     if rule is None:
         raise HTTPException(status_code=404, detail=f"Enrichment rule '{rule_name}' not found")
     views = rule.get("reference_views", [])
@@ -6002,8 +6011,11 @@ def get_enrichment_auto_confirm_dry_run(
 
     limit = max(1, min(int(limit or ENRICHMENT_DRY_RUN_DEFAULT_LIMIT),
                        ENRICHMENT_DRY_RUN_MAX_LIMIT))
-    rules = enrichment.config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
-    target = next((r for r in rules if r["name"] == rule), None)
+    # 🔴 [판정 636] 평면 파일 «하나»가 아니라 «이 제품이 세운 선언 전부»를 봅니다 —
+    #    통합 `derive.decide` 로 적힌 것도 포함입니다. 거절 문구는 아래 그대로입니다.
+    from chain import enrich_declarations
+
+    target = enrich_declarations.find(rule, known_tables=crud.TABLE_CONFIG)
     if target is None:
         raise HTTPException(status_code=404, detail=f"Enrichment rule '{rule}' not found")
 

@@ -30,7 +30,9 @@ def _rules(rule_name=None):
     from chain import enrichment
     from database import crud
 
-    rules = enrichment.config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
+    from chain import enrich_declarations
+
+    rules = enrich_declarations.declarations(known_tables=crud.TABLE_CONFIG)
     if rule_name:
         rule = next((r for r in rules if r["name"] == rule_name), None)
         if rule is None:

@@ -848,7 +848,10 @@ class AutoConfirmCollector:
         if rules is None:
             from chain.enrichment import config as _enrichment_config
             from database import crud
-            rules = _enrichment_config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
+        # 🔴 [판정 636] 폴백도 «선 선언 전부»에서 찾습니다.
+            from chain import enrich_declarations
+
+            rules = enrich_declarations.declarations(known_tables=crud.TABLE_CONFIG)
         for r in rules or []:
             if r.get("derived_table") != derived_table:
                 continue
