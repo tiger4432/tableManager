@@ -30611,3 +30611,14 @@ main.py · database/crud.py · chain/synthesis.py · chain/dynamic_mappers.py
 ```
 **645 는 「옛 파일 걷기」가 아니라 «작성 폼까지 옮기는 이동»입니다.** 소유자 판정 대기로 둡니다 —
 구현자가 착수 전 안을 아티팩트로 올렸고 여쭐 것이 셋입니다.
+
+> 🔧 **[09-22 총괄] 651 · 감시가 «병합 커밋»을 LAND 로 쏟습니다 — 클라 한 줄**
+
+design -> main 병합 한 번에 `🛠 LAND … Merge branch 'main' into design` 이 «열 줄 넘게» 나왔습니다.
+```
+고칠 것   watch 스크립트의 LAND 판정에서 «부모 둘인 커밋»을 뺍니다
+         (예: git rev-list --no-merges 쪽으로, 또는 %P 의 공백 유무로)
+왜       639(감시 명령)가 모든 세션을 이 로그에 기대게 만들었습니다.
+         되울림이 진짜 착지를 덮으면 그 기댐이 무너집니다
+게이트    병합 한 번에 LAND «0». 일반 커밋 한 번에 LAND «1»
+```
