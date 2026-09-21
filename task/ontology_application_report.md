@@ -31005,3 +31005,28 @@ extra: {trigger_table: <가짜>, mapper: <가짜>}
 계기가 한 번 틀렸습니다 — `awk '/def _validate_rule/,/^def /'` 의 «시작 줄이 끝 패턴에도 맞아» 범위가 한 줄로 끝났고,
 저는 그것을 「`known_tables` 를 본문이 안 읽는다」로 읽을 뻔했습니다. 실제로는 646~650·717 에서 씁니다.
 awk 범위로 함수 본문을 뜰 때는 끝 패턴에 «자기 이름을 빼는» 조건을 붙이거나, 다음 def 의 «줄 번호»를 먼저 셉니다.
+
+#### Q-187 덧붙임 — 위 대조군은 «카탈로그를 끄고» 잰 것이었습니다. 켜고 다시 쟀습니다 [09-22 08:59]
+
+제 ⓐ 대조군은 `expand_declaration(decl, None)` 이었습니다 — ⓒ 에서 「초록의 주어가 좁다」고 적은 «그 문»을
+제 계기도 지나고 있었습니다. 카탈로그를 켜고(표 둘 · 파생 표가 `business_key` 를 판단키로 들도록) 다시:
+
+```
+extra 없음            refusal 없음 · 선 규칙 «둘» · trigger_table = [원본표, 파생표]
+extra.trigger_table   refusal 없음 · notes 빈 목록 · 둘 다 trigger_table = <가짜>
+                      그 규칙을 rule_refusals 에 먹임 -> issues NONE
+extra.mapper          rule_refusals -> unresolvable_mapper «둘 다» (mapper_resolvable=False 로 실측)
+```
+
+그래서 기제 문장이 한 칸 선명해집니다 — **카탈로그 검사는 «덮이기 전» 값을 봅니다.**
+표 확인은 `decide_rules` 안(`_validate_rule`)에서 `on.table`·`into.table` 에 대고 끝나고,
+`with_declared_cells` 는 그 «뒤»에 `trigger_table` 을 덮습니다. 「로더가 표를 검증하잖아」는 참이지만
+이 덮어쓰기에 대해서는 아무 말도 안 합니다. 그리고 앞 항목의 「`mapper` 는 잡힌다」는 «읽은 것»이었고,
+이제 «돌린 것»입니다 — 「잰 것만」 아래에 읽은 줄을 넣었던 것을 같이 정정합니다.
+
+한 칸 더: 선언 «하나»가 세우는 규칙 둘은 원래 «다른 표»에서 깨어납니다(dedup=원본, auto_confirm=파생).
+최상위 `extra.trigger_table` 하나가 그 둘을 «같은 값»으로 접습니다 — 표 하나가 틀리는 게 아니라 «축이 사라집니다».
+
+📨 라우팅: `docs/process/SERVER_DEFECT_QUEUE.md` 의 551 항목은 아직 「축이 이긴다」로 «한정 없이» 적혀 있습니다.
+`git grep 551` 이 «처음» 닿는 문장이 거기입니다. CODE_MAP 에는 한정을 넣었고(`de625bf9`), 운영자 쪽 줄은
+RUN.md 의 640 문단 밑에 넣었습니다(`eccfed0e`). 그 큐 파일은 제 레인이 아니라 «안 건드렸습니다».
