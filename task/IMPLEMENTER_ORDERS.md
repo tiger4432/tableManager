@@ -53119,3 +53119,93 @@ tail -n 0 -F "$L" | grep -v --line-buffered -E "alive \(30분\) box=200 declarat
 ---
 🔴 **오늘 레인이 제 판정을 «둘» 잡았습니다** — 637 의 이 구멍과, 앞서 12 의 계기.
 제가 「고르지 말고 재라」로 보내면 이 레인들은 잽니다. 계기를 같이 주는 것을 계속합니다.
+
+> 🔴🔴 **[09-22 총괄] 판정 640 — 통합 선언의 «메타 칸»이 decide 에서만 사라집니다. 문을 하나로 (소유자 지시)**
+
+```
+소유자  「ㄴ으로 해 문 하나 무조건, 이후 가드는 그 위에 올리기」
+소유자  「하위 레벨에서 분기를 두지마 같은 로직으로 짜고 상위 계층에서 제어해」
+```
+
+### 실측 — 같은 선언을 셋으로 펼쳐 봤습니다 (카탈로그 없이)
+
+| 최상위에 적은 것 | join | mapper | **decide** |
+|---|---|---|---|
+| `allow_chain_trigger: true` | ✅ 두 규칙 다 | ✅ | 🔴 **안 감** |
+| `is_batch: false` | ✅ false | ✅ false | 🔴 **무시 · 항상 true** |
+| `limits.{idempotent,max_group_rows,group_by}` | ✅ | ✅ | 🔴 **전부 사라짐** |
+| `extra.*` | ✅ | ✅ | 🔴 **사라짐** |
+
+🔴 **대조군으로 못 박았습니다.** decide 에 `allow_chain_trigger: false` 라고 «반대»를 적어도
+결과가 `true` 입니다. 운영자가 쓴 값이 읽히지도 않고, **notes 도 비어 있습니다** —
+`derive.decide` «안»의 모르는 칸은 이름을 대는데, 최상위 메타 칸은 한 줄도 안 남깁니다.
+
+### 왜 — 문이 둘입니다
+
+```
+join · mapper   expand_declaration -> as_chain_rule          <- 여기서 limits·extra·axis 가 합쳐짐
+decide          expand_declaration -> decide_rules -> ...    <- 그 «앞»에서 return. 합치는 자리를 안 지남
+```
+
+### 하는 일 — 합치는 자리를 «하나»로, 그리고 «상위»에서
+
+```
+① 합치는 로직을 함수 «하나»로 뺍니다
+   지금 rule_shape 안에 그 update 줄이 네 자리에 흩어져 있습니다 (206·207·220 · 253)
+   한 함수로 접습니다 — 예: with_declared_cells(rule, internal)
+   담는 것: limits · extra · axis · enabled(적혔을 때만).
+   🔴 순서는 «지금 그대로» — axis 가 마지막입니다 (판정 551: 문법이 아는 칸이 이긴다)
+
+② expand_declaration 이 «선» 규칙 «전부»에 그것을 적용합니다 — 종류를 «묻지 않고»
+   return ([with_declared_cells(r, internal) for r in stood], None, notes)
+   🔴 분기가 «필요 없는» 근거: 이 합치기는 «재적용이 무해»합니다.
+      같은 내부 규칙에서 같은 dict 들을 같은 순서로 덮으므로 두 번 해도 결과가 같습니다.
+      그래서 「join 은 이미 했으니 빼자」는 조건을 «안 답니다» — 조건을 다는 순간 문이 둘입니다
+
+③ as_chain_rule 은 그 함수를 «계속» 씁니다 — 빼지 마십시오
+   ⚠️ 이유: 그 함수는 from_declaration 의 «역»이고 왕복 항등이 걸려 있습니다.
+      제품 호출자 둘이 그렇게 씁니다 — ledger/admin.py:962 · scripts/preview_unified_declarations.py:74
+      (뒤엣것은 as_chain_rule(from_declaration(x)) != raw 를 «단언»합니다)
+      여기서 빼면 왕복이 칸을 잃습니다
+```
+
+### 바뀌지 «않는» 것
+
+```
+선언 문법        칸이 하나도 안 늘고 안 줄어듭니다. 운영자가 할 일 «없습니다»
+평면 경로        enrichment_rules.json 의 규칙은 그대로입니다 —
+                chain_rules_for 는 평면에서도 불리고(config.py:923) 그쪽엔 메타 칸을 적을 자리가 없습니다
+제품이 정하던 값  decide 가 안 적혔을 때 내던 값은 «그대로»여야 합니다
+                (dedup: allow_chain_trigger 없음 · auto_confirm: true · 둘 다 is_batch true)
+```
+
+### 🔴 가드는 «이 위에» — 이번 라운드가 «아닙니다» (소유자 지시)
+
+이 착지 뒤에는 운영자가 decide 의 dedup 반쪽에 `allow_chain_trigger: true` 를 적어
+「인벤토리→로그 조인→다시 enrich」 무한반복을 «열 수» 있게 됩니다. 소유자 지시가
+「문 하나 무조건, 이후 가드는 그 위에」이므로 **이번 커밋에 가드를 넣지 마십시오.**
+```
+큐에 이름 붙여 둡니다   「제품이 소유한 칸을 선언이 덮을 때 «이름 대어» 말한다」
+                      거절할지 경고할지는 «다음» 판정입니다. 지금 정하지 않습니다
+```
+
+### 게이트 — 표로. 빈 칸을 빼지 마십시오
+
+| | `allow_chain_trigger` | `is_batch` | `limits.*` | `extra.*` |
+|---|---|---|---|---|
+| decide/dedup — 적었을 때 | 적은 값 | 적은 값 | 적은 값 | 적은 값 |
+| decide/dedup — 안 적었을 때 | **없음**(오늘 그대로) | **true** | 없음 | 없음 |
+| decide/auto_confirm — 적었을 때 | 적은 값 | 적은 값 | 적은 값 | 적은 값 |
+| decide/auto_confirm — 안 적었을 때 | **true**(오늘 그대로) | **true** | 없음 | 없음 |
+| join · join:reference · mapper | 오늘과 «같음» — 회귀 없음 |  |  |  |
+
+```
+그리고 «왕복»도 같은 커밋에서 단언하십시오:
+   as_chain_rule(from_declaration(x)) == x  가 메타 칸을 든 선언에서도 참
+   기존 시험 test_a_flat_rule_survives_the_trip_to_the_unified_grammar 를 «살려» 두십시오
+```
+
+### 크기
+
+**안 쟀습니다.** 만지는 함수는 둘(`as_chain_rule` · `expand_declaration`)이고 뺄 함수가 하나입니다.
+`as_chain_rule` 을 부르는 시험이 여덟 파일이라, 회귀는 그쪽에서 먼저 울 것입니다.
