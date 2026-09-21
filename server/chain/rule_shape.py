@@ -203,8 +203,31 @@ def as_chain_rule(internal: dict) -> dict:
         if internal.get("key"):
             out["key"] = dict(internal["key"])
     out.update(derive.get("mapper") or {})
-    out.update(internal.get("limits") or {})
-    out.update(internal.get("extra") or {})
+    return with_declared_cells(out, internal)
+
+
+def with_declared_cells(rule: dict, internal: dict) -> dict:
+    """선언의 «메타 칸»을 규칙에 싣는다 — `limits` · `extra` · `axis` · (적혔을 때) `enabled`.
+
+    🔴 [판정 640, 소유자 「하위 레벨에서 분기를 두지마 같은 로직으로 짜고 상위 계층에서 제어해」]
+    THIS WAS FOUR `update` LINES INSIDE `as_chain_rule`, WHICH ONLY THE JOIN AND MAPPER PATHS
+    REACH. `decide` returns from `expand_declaration` before it, so a `decide` declaration's
+    top-level `allow_chain_trigger`, `is_batch`, `limits.*` and `extra.*` were read by
+    NOBODY - measured, with a control: writing `allow_chain_trigger: false` on a decide
+    declaration produced `true`, and `notes` said nothing at all. The same cells reached join
+    and mapper. That is one grammar with two doors, and this is the seat.
+
+    ⚠️ IT IS SAFE TO APPLY TWICE, and that is what lets the caller apply it to EVERY stood
+    rule without asking which kind it is. The same `internal` dicts are merged in the same
+    order, so a second pass writes the same values - and 「join already did it, skip」 would
+    be the branch this round exists to remove.
+
+    🔴 THE ORDER IS UNCHANGED, and `axis` is still LAST (판정 551): the cell the grammar
+    knows wins over a hand-written `extra`. That ordering was itself a repair - `extra`
+    used to overwrite `axis` and turn a declared 「one row at a time」 into a batch call.
+    """
+    rule.update(internal.get("limits") or {})
+    rule.update(internal.get("extra") or {})
     # 🔴 [판정 551] LAST, SO THE CELL THE GRAMMAR KNOWS WINS. This stood FIRST and its own
     #   comment claimed the opposite of what it did: `extra` updated forty lines below and
     #   overwrote it. MEASURED by the application lane - `is_batch` axis=False · extra=True
@@ -217,11 +240,11 @@ def as_chain_rule(internal: dict) -> dict:
     #   place, so nothing this product writes can produce it - which is why nobody saw it.
     #   Whether the conflict should be REFUSED by name rather than resolved here is a bigger
     #   question (판정 543 의 선) and it is queued, not answered.
-    out.update(internal.get("axis") or {})
+    rule.update(internal.get("axis") or {})
     # `enabled` 는 «생략된 것»과 «적힌 것»이 다른 문장이므로 «적혀 있었을 때만» 되돌린다
     if internal.get("enabled_written"):
-        out["enabled"] = internal.get("enabled")
-    return out
+        rule["enabled"] = internal.get("enabled")
+    return rule
 
 
 def from_join_rule(name: str, raw: dict, origin: str = "declared") -> dict:
@@ -533,22 +556,32 @@ def expand_declaration(declaration, table_config=None) -> tuple:
     if decide_refusal:
         return ([], "%s: %s" % (name, decide_refusal), [])
     if decided:
-        return (decided,
-                None,
-                ["%s: derive.decide cell this product does not read \u2014 %s. "
+        stood = decided
+        notes = ["%s: derive.decide cell this product does not read — %s. "
                  "The rule runs." % (name, cell)
-                 for cell in unknown_decide_cells(internal)])
+                 for cell in unknown_decide_cells(internal)]
+    else:
+        try:
+            refuse_join_trigger_conflict(internal)
+        except JoinTriggerConflict as conflict:
+            return ([], "join_trigger_conflict: %s" % conflict, [])
 
-    try:
-        refuse_join_trigger_conflict(internal)
-    except JoinTriggerConflict as conflict:
-        return ([], "join_trigger_conflict: %s" % conflict, [])
+        notes = []
+        unknown = unknown_join_cells(internal)
+        if unknown:
+            notes.append(
+                "%s: derive.join cell(s) this product does not read — %s. The rule "
+                "runs; check the spelling if it was meant to do something."
+                % (name, ", ".join(unknown)))
+        stood = [as_chain_rule(internal)] + companion_rules(internal)
 
-    notes = []
-    unknown = unknown_join_cells(internal)
-    if unknown:
-        notes.append(
-            "%s: derive.join cell(s) this product does not read \u2014 %s. The rule runs; "
-            "check the spelling if it was meant to do something."
-            % (name, ", ".join(unknown)))
-    return ([as_chain_rule(internal)] + companion_rules(internal), None, notes)
+    # 🔴 [판정 640] EVERY RULE THIS DECLARATION STANDS, WITHOUT ASKING WHICH KIND IT IS.
+    #   The two arms above differ in what they BUILD; they must not differ in which of the
+    #   author's cells survive. `decide` used to return above this line, so `limits`,
+    #   `extra`, `axis` and a top-level `allow_chain_trigger`/`is_batch` reached join and
+    #   mapper and vanished for decide - measured with a control: `allow_chain_trigger:
+    #   false` on a decide declaration came out `true`, and `notes` named nothing at all.
+    # ⚠️ `as_chain_rule` ALREADY APPLIED IT on the join/mapper arm. Re-applying is the point:
+    #   the merge is idempotent, so this seat needs no 「did that arm already do it」
+    #   question - and that question is the door this round removes.
+    return ([with_declared_cells(rule, internal) for rule in stood], None, notes)
