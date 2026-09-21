@@ -53314,3 +53314,88 @@ decide          expand_declaration -> decide_rules -> ...    <- 그 «앞»에�
 🔵 **이 판정은 제가 «안 지어서» 이긴 것입니다.** 640 을 쓰면서 「문을 열면 가드가 필요하다」를
 당연하게 적었는데, 소유자가 「이미 있는 상한」을 물었고 그게 맞았습니다.
 「새 것을 짓기 전에 이미 지어져 있나」 관문을 제가 이 자리에서 안 탔습니다.
+
+> 🔴 **[09-22 총괄] 판정 644 — 「무엇이 도나」를 «파일»로 답하는 자리가 «하나» 남았습니다 (소유자: 「1은 고쳐」)**
+
+617 을 오늘 «다시 셌습니다». 617 이 든 증상 셋 중 **둘이 이미 닫혀 있었습니다** —
+그래프 사분면은 636 이, 셋업 화면은 `d01603cf` 가 닫았습니다. 남은 것은 하나입니다.
+
+### 모집단 — `read_rules_document` 호출자 «7», 결함 «1»
+
+| 자리 | 펼치나 | 답하는 질문 | 판정 |
+|---|---|---|---|
+| `chain/enrich_declarations.py` | ✅ | 무엇이 도나 | ✅ 좌석 자신 |
+| `chain/ingestion_worker.py` | — | 로더 «안»의 읽기 | ✅ |
+| `chain/legacy_join_declaration.py` | ✅ | 무엇이 도나 | ✅ |
+| `chain/synthesis.py` | ✅ | 무엇이 도나 | ✅ |
+| `chain/dt_map_derivation.py` | ✅ | 무엇이 도나 | ✅ |
+| `config_resolve_report.py` | ✅ | 무엇이 도나 | ✅ `d01603cf` |
+| **`main.py` `GET /admin/chain/rules`** | ❌ | 「등록된 모든 룰 «목록»」 | 🔴 **고칠 자리** |
+
+### 하는 일
+
+```
+그 라우트가 «로더»를 지나게 합니다 — 합성 규칙이 목록에 뜹니다
+그래야 운영자가 보는 「고리 경고」와 「배지 표」가 같은 모집단을 답합니다
+```
+```
+⛔ read_rules_document 를 «전부» 로더로 바꾸지 마십시오 (617 의 ⛔ 그대로)
+   날것 편집·저장·지문은 «파일»이 맞습니다 — 운영자가 고치는 것은 파일이지 합성물이 아닙니다
+⚠️ 「없는 파일」은 그대로   absent ≠ empty. `absent_listing` 은 건드리지 마십시오
+게이트   합성 규칙(enrichment_dedup: · enrichment_auto_confirm: · :reference)이 «목록에 뜬다».
+        그리고 고리 경고에 뜨는 이름이 그 목록에 «전부» 있다 — 이게 617 의 증상입니다
+```
+
+> 🔴🔴 **[09-22 총괄] 판정 645 — 가상 조인 «은퇴» (소유자 지시). 다만 집이 «둘»입니다**
+
+소유자: 「가상조인 은퇴시켜」
+
+### 🔴 먼저 — 파일만 지우면 «문법이 안 죽습니다»
+
+```
+집 ①   server/config/virtual_join_rules.json
+집 ②   원장 setup 번들 (ledger/setup_bundle.py) — 조인에 다음을 «요구»합니다:
+        left_table · right_table · join_key · expose · join_cardinality · enabled · materialize
+```
+그러니 은퇴의 «주어»를 정합니다: **파일이 아니라 «문법»입니다.** 파일만 걷으면
+번들이 그 칸들을 계속 요구하고, 선언의 집이 둘인 채로 남습니다.
+
+### 쟀습니다 — 무엇이 «잃는 축»이고 무엇이 아닌가
+
+```
+이 박스 선언 «5»   _retired_dt_log_confirmed_attribution   (이름이 이미 은퇴)
+                  _retired_dt_log_frame_attribution       (이름이 이미 은퇴)
+                  _example_rejected_no_unique_index       (예시)
+                  dt_log_frame_from_inventory
+                  dt_inventory_confirmed_from_attribution
+materialize:true   «0» -> 다섯 «전부» 오늘 거절됩니다 (읽기 시점 조인 은퇴, 판정 440)
+```
+```
+통합 문법에 «집이 없는» 칸 둘 — 그런데 «값이 하나»뿐입니다
+   unresolved_label    다섯 전부 '미상' = «기본값». 아무도 다르게 안 적었습니다
+                       읽는 곳: column_filter (미해소 조인이 화면에 내는 «낱말»)
+   join_cardinality    다섯 전부 'one' = «유일한 유효값». 그 밖은 로더가 거절합니다
+=> 둘 다 «운영자가 고른 값»이 아닙니다. 상수로 접어도 잃는 선언이 «0» 입니다
+   🔴 다만 unresolved_label 은 «운영자가 보는 낱말»입니다. 상수로 접으면
+      「이 낱말을 바꿀 자리」가 사라집니다 — 그 사실을 적고 접으십시오. 조용히 지우지 마십시오
+join_key -> on · expose -> take   같은 뜻의 다른 철자입니다. 통합이 덮습니다
+```
+
+### 하는 일 — «한 커밋»이 아니어도 됩니다. 순서가 있습니다
+
+```
+① 독자를 걷는다        load_virtual_join_rules 호출자 «7»
+                      chain/graph · chain/legacy_join_declaration ×3 · config_resolve_report
+                      · migrations/add_vjoin_null_safe_indexes · scripts/check_one_row_one_fact
+② 번들의 조인 절을 옮긴다  setup_bundle 이 요구하는 일곱 칸 -> derive:{kind:"join"}
+                      🔴 이게 «집을 하나로» 만드는 걸음입니다. ① 만 하면 문법이 삽니다
+③ 상수 둘을 «적으며» 접는다  unresolved_label · join_cardinality
+④ 말을 걷는다          은퇴한 것의 «약속»을 든 자리를 전수로 — 주석·독스트링·가이드·RUN.md·sample
+                      🔴 기제는 지워지고 «말»은 남습니다. 남은 말은 그 기제가 아직 있다고 말합니다
+```
+```
+대조군을 남기십시오   이 은퇴가 «아팠던 증상»이 무엇이었는지 한 줄 —
+                    되돌리는 순간 그 줄이 먼저 웁니다 (CLAUDE.md 은퇴 절)
+크기               «안 쟀습니다». 자리 7 + 번들 한 절을 셌고, 각 자리의 줄 수는 안 열었습니다
+                   ① 을 열어 보고 ②③④ 의 크기를 «보고»한 뒤 진행하십시오 — 막히면 한 줄로
+```
