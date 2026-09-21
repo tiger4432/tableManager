@@ -103,9 +103,48 @@ def test_every_required_cell_is_present_in_every_shipped_rule(sample_rules):
     """⚠️ `required` IS A CONTRACT, NOT AN OBSERVATION. `target_table`, `enabled` and
     `is_batch` appear in all ten shipped rules and are still OPTIONAL, because the code
     carries a default or the decorator can supply the value -- 「all ten write it」 and
-    「refused without it」 are different sentences and only the second one is the contract."""
-    for rule in sample_rules:
-        for key in chain_bindings.RULE_ROUTING_REQUIRED:
-            assert key in rule, (rule.get("name"), key)
+    「refused without it」 are different sentences and only the second one is the contract.
+
+    🔴 THE SUBJECT IS THE RULE THE PRODUCT STANDS, NOT THE ENTRY AS TYPED. A unified
+    declaration writes its trigger as `on.table` and the product derives `trigger_table`
+    from it, so reading the raw entry asks the FLAT grammar's question of a unified rule and
+    calls a correct declaration incomplete. That is the shape `d01603cf` already fixed once
+    -- the setup report judged a declaration before it was expanded -- and it reappeared
+    here the day unified rules were shipped in the sample: four of them, all red for this
+    reason and none of them wrong.
+
+    ⚠️ AND A SWITCHED-OFF DECLARATION IS SCORED WITH THE SWITCH FLIPPED, WHICH IS THE
+    WHOLE POINT. All four unified samples ship `enabled: false`, so expanding them as
+    written stands nothing and this test would go green WITHOUT EVER LOOKING at a unified
+    rule -- green because nothing was examined, on the exact rules whose shape made it red.
+    Whether a declaration RUNS and whether it is WELL FORMED are different questions, and
+    only the second one is this test's. So `enabled` is forced on for the scoring pass.
+    """
+    from chain import rule_shape
+
+    assert sample_rules, "the shipped sample declares no rules"
+    # No catalogue on purpose: this asks the GRAMMAR's question, and a `table_config`
+    # would answer it with this box's tables (「박스 설정으로 재지 않는다」).
+    examined, switched_off = [], []
+    for raw in sample_rules:
+        stood, refusal, _notes = rule_shape.expand_declaration(raw, None)
+        assert not refusal, (raw.get("name"), refusal)
+        if not stood:
+            assert raw.get("enabled") is False, (
+                raw.get("name"), "stands no rule and is not switched off")
+            switched_off.append(raw.get("name"))
+            stood, refusal, _notes = rule_shape.expand_declaration(
+                dict(raw, enabled=True), None)
+            assert not refusal, (raw.get("name"), "refused once switched on", refusal)
+            assert stood, (raw.get("name"), "stands nothing even switched on")
+        for rule in stood:
+            for key in chain_bindings.RULE_ROUTING_REQUIRED:
+                assert key in rule, (raw.get("name"), rule.get("name"), key)
+            examined.append(rule.get("name"))
+    assert examined, "no shipped declaration stood a rule -- nothing was examined"
+    # The unified samples are the population this test exists for; a sample file that
+    # stopped shipping them would make the green above true and uninformative.
+    assert switched_off, (
+        "no shipped declaration is switched off -- the flip-the-switch pass examined nothing")
     for key in ("target_table", "enabled", "is_batch"):
         assert key in chain_bindings.RULE_ROUTING_OPTIONAL, key
