@@ -49632,3 +49632,60 @@ stash 가 담은 파일 13 개 중 server/config/sample/enrichment_rules.json.sa
         거르는 대신 「N 분 넘게 심박이 없으면 한 줄」이 되면, 침묵이 «사건»이 됩니다.
         판정 주시면 제가 짓겠습니다 — 제 쪽 필터 한 줄입니다
 ```
+
+---
+
+> ✅ **[09-22 07:48 구현자] 판정 640 닫음 — `fbbf3967` «한 커밋». 가드는 넣지 않았습니다**
+
+### 무엇이 틀려 있었나 — 문이 «둘»이었습니다
+```
+join · mapper   expand_declaration -> as_chain_rule -> limits·extra·axis·enabled 합치기
+decide          expand_declaration -> (그 줄 «앞»에서 return)
+=> 같은 문법의 «같은 최상위 칸» 넷이 두 종류에는 닿고 한 종류에서 사라졌습니다
+   그리고 notes 가 아무 말도 안 했습니다 — `derive.decide` «안»의 모르는 칸은 이름을 대면서
+```
+
+### 고친 모양 — 좌석 하나, 종류를 «묻지 않고»
+```
+with_declared_cells(rule, internal)   선 규칙 «전부»에 적용. 갈래 없음
+as_chain_rule 은 계속 그것을 부릅니다 — 왕복 동일성을 ledger/admin.py 와
+scripts/preview_unified_declarations.py 가 단언하고 있어서입니다
+판정 551 의 순서는 «안 건드렸습니다»: axis 가 마지막이라 문법의 is_batch 가 extra 를 이깁니다
+```
+
+### 게이트 — 표로. 빈 칸 없이 «단언»했습니다
+`server/tests/test_a_declarations_meta_cells_reach_every_kind.py` · 8 passed
+```
+                              allow_chain_trigger   is_batch   limits.*   extra.*
+decide/dedup        적었을 때   적은 값               적은 값     적은 값     적은 값
+decide/dedup        안 적을 때  «없음»(오늘 그대로)    true       없음       없음
+decide/auto_confirm 적었을 때   적은 값               적은 값     적은 값     적은 값
+decide/auto_confirm 안 적을 때  «true»(오늘 그대로)    true       없음       없음
+join · join:reference · mapper                      오늘과 같음 — 회귀 없음
+```
+⚠️ 「안 적었을 때」 두 줄은 «빈 칸»이 아니라 단언입니다. 무조건 도는 합치기가 제품의 답을
+`None` 으로 덮을 수 있는 자리이고, 그 회귀는 아무 소리도 안 냅니다.
+대조군 둘도 같이 두었습니다 — ① 이 결함의 «자기 증상»(`false` 를 적어도 `true` 가 나오던 것),
+② 무조건 적용을 «가능하게» 하는 성질(두 번 적용해도 한 번과 같다). ② 가 깨지면 좌석이
+「이 팔은 이미 했나」를 물어야 하고, 그 물음이 문을 다시 가릅니다.
+
+### 회귀 — 게이트 밖도 «돌려서» 쟀습니다
+```
+모집단  as_chain_rule · expand_declaration · with_declared_cells · rule_shape 를 «부르는»
+       tests/ 파일 «24» (git grep -l, 이름이 아니라 호출로)
+결과   323 passed · 2 skipped · 0 failed
+```
+📮 곁들여: 제가 `fa1524c0` 에 「제 것이 아닌 빨강」으로 적었던
+`test_a_chain_rules_top_level_cells_have_one_list` 가 이 실행에서 «초록»입니다. 누가 어떻게
+고쳤는지는 제가 안 쟀습니다 — 그 착지의 주인이 닫은 것으로 보입니다.
+
+### 🔴 가드는 «안» 넣었습니다 — 640 이 그렇게 적었으므로
+그 항목(「제품이 소유한 칸을 선언이 덮을 때 «이름 대어» 말한다」)은 큐에 그대로 있습니다.
+이번 커밋의 diff 는 제품 1 · 시험 1, 그게 전부입니다.
+
+### 📮 총괄께 — 641 이 기다리던 신호입니다
+```
+641 「640 이 곧 착지하므로 그때 «한 번»에 올리고 그 뒤 수를 읽는 것이 맞습니다」
+=> 착지했습니다: fbbf3967 (push 완료). 재기동을 막고 있던 것은 이제 없습니다
+확인  import main 초록 (재기동 «전»에 잰 것입니다 — 도는 프로세스는 아직 09-17 22:42 것입니다)
+```
