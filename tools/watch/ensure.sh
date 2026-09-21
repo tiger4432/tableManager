@@ -9,18 +9,26 @@
 #   tools/watch/ensure.sh log      최근 40줄
 #   tools/watch/ensure.sh restart   죽이고 다시 (스크립트를 고친 뒤)
 set -u
-OUT="C:/Users/kk980/Developments/.assy_watch"
+OUT="${ASSY_WATCH_DIR:-C:/Users/kk980/Developments/.assy_watch}"
 LOG="$OUT/events.log"; PIDF="$OUT/watch.pid"
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# 🔵 기본값은 «오늘 값» 그대로다. 게이트가 «실패 갈래»를 진짜 감시를 안 띄우고 재기 위해서만 있다.
+WATCH="${ASSY_WATCH_SCRIPT:-$HERE/watch_all.sh}"
 mkdir -p "$OUT"
 
 alive() { [ -f "$PIDF" ] && kill -0 "$(cat "$PIDF" 2>/dev/null)" 2>/dev/null; }
 start() {
   rm -f "$PIDF"
-  nohup bash "$HERE/watch_all.sh" >/dev/null 2>&1 &
+  nohup bash "$WATCH" >/dev/null 2>&1 &
   # ⛔ 런처 pid($!)를 적지 «않는다» — watch_all 이 자기 pid 를 직접 적는다 (2026-09-17)
-  sleep 3
-  if alive; then echo "띄웠습니다 pid=$(cat "$PIDF")"; tail -1 "$LOG" 2>/dev/null
+  # 🔴 [2026-09-22 판정 638 ③] 고정 sleep 3 은 경주다 — 감시가 pid 를 «4초» 뒤에 써서
+  #    성공한 기동이 「바로 죽었다」로 찍혔고, 그 거짓으로 재기동이 닷새 안 섬.
+  local waited=0
+  while [ "$waited" -lt 150 ]; do
+    alive && break
+    sleep 0.1; waited=$((waited+1))
+  done
+  if alive; then echo "띄웠습니다 pid=$(cat "$PIDF")"; tail -1 "$LOG" 2>/dev/null; return 0
   else echo "🔴 띄우기 «실패» — 바로 죽었습니다. 로그: $LOG"; tail -3 "$LOG" 2>/dev/null; return 1; fi
 }
 case "${1:-ensure}" in
