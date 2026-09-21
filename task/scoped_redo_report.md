@@ -49702,3 +49702,63 @@ join · join:reference · mapper                      오늘과 같음 — 회�
 자식 하나만 내려도 그 창이 남의 라운드와 겹칩니다.
 
 ✅ 642 가 640 을 닫았습니다. 제 목록은 «비었습니다». 감시만 켜 두고 있습니다.
+
+---
+
+> 📮 **[09-22 08:29 구현자] 643 을 재다가 «옆 것»을 찾았습니다 — 고리 보고가 제품 선언으로 찹니다**
+
+643 이 「상한이 이미 있다」로 닫은 것에 이견 «없습니다». 다만 상한이 **제가 방금 문을 연 그 경로**에서
+실제로 «오르는지»를 확인하다가, 같은 칸(`allow_chain_trigger`)의 «둘째 독자»를 만났습니다.
+
+### ① 643 의 전제는 섭니다 — 확인했습니다
+```
+깊이    outgoing_depth() 가 «한 산술». 봉투는 request_chain_depth 를 읽고,
+       apply_batch_updates 가 다시 세우는 것은 request_source «뿐»이라 깊이는 살아남습니다
+문     _rule_accepts_event: source_name != "chain_ingestion" -> 무조건 True
+                          같으면 -> allow_chain_trigger 를 묻는다
+dedup 반쪽의 쓰기는 source_name 이 «chain_ingestion» 입니다 (config.py 의 소유자 정본 주석이
+그렇게 적어 뒀고, 62577a67 이 그 위에 섰습니다) -> 그 문에서 opt-in 이 «실제 게이트»가 맞습니다
+수렴    「둘째 패스가 아무것도 못 찾는 고정점」도 코드 주석에 이미 있습니다. 643 과 같은 말입니다
+```
+
+### 🔴 ② 그런데 그 칸의 «둘째 독자»가 있습니다 — 순환 검증기
+```
+실측   derive.decide 선언 «하나» (운영자가 적은 고리 0) -> 고리 보고 «1»
+       allow_chain_trigger cycle: z_d -> z_d
+       선언 3 개 -> 보고 3
+왜     auto_confirm 반쪽은 trigger_table == target_table == 파생표 (자기 고리)이고,
+       62577a67 이 거기에 allow_chain_trigger: True 를 넣었습니다.
+       _validate_chain_cascade_graph 는 「allow_chain_trigger 인 규칙」만 엣지로 세므로
+       그날부터 이 반쪽이 «자기 자신으로 가는 엣지»가 됐습니다
+범위   auto_confirm 칸이 true 든 false 든 «없든» 똑같이 1 — 그 칸은 반쪽의 존재가 아니라
+       맵퍼 인자(`params.auto_confirm`)라서입니다. 자동확정을 «끈» 선언도 고리를 냅니다
+```
+⚠️ 크기는 «유계»입니다: `say_cycle_once` 가 프로세스당 궤적별 한 번이라 로그는 안 흐릅니다.
+찌는 것은 **화면 목록**입니다 — `cycles` 는 매 로드 재생성되고, 코드 자기 주석이 그 목록을
+「the one thing an operator cannot see anywhere else」라 부릅니다.
+
+### 왜 «지금» 말씀드리나 — 643 이 상한을 짐 지는 줄로 만들었기 때문입니다
+그 운영자 줄이 대는 조치가 「더 긴 고리가 필요하면 `max_chain_depth`」입니다.
+제품이 스스로 선언한, 스스로 수렴하는 자기 고리에 대해서는 **할 일이 없는데** 그렇게 읽힙니다.
+그리고 진짜 운영자 고리가 하나 생기면 그 줄이 제품 줄 N 개와 «구분이 안 됩니다».
+
+### 🪦 그리고 «말이 남았습니다» — 같은 dict 안에서 주석과 코드가 반대입니다
+`chain/enrichment/config.py`, 그 규칙 dict 바로 위:
+```
+주석  "the only thing that could make this re-enter itself is allow_chain_trigger
+       — which this kind DOES NOT DECLARE. Its own writes therefore cannot wake it,
+       and the load-time cycle validator does not see this loop as an edge at all."
+코드  ~25 줄 아래, 같은 dict 안:  "allow_chain_trigger": True
+실측  검증기는 «봅니다» (위 ②)
+```
+62577a67 의 메시지는 그 칸을 «왜 넣는지»를 `_rule_accepts_event` 로 설명하고,
+이 둘째 독자는 안 적었습니다. 칸 하나에 독자가 둘인데 한 쪽만 셌던 자리로 보입니다.
+
+### 안 쟀습니다
+```
+이 박스에 그런 선언이 «몇 개»인지  — 라이브 설정은 gitignore 라 안 셉니다
+화면에 실제로 «보이는지»          — 641 대로 어드민 토큰은 소유자 자격증명이라 제가 못 엽니다
+```
+⛔ **고치지 않았습니다.** 주석 한 줄짜리로 보이지만 ② 는 「제품 선언을 고리로 셀 것인가」라
+판정이 필요한 자리이고, 643 이 방금 보여 준 그대로 «묻고 기다리는» 것이 맞습니다.
+판정 주시면 아이디어 셋을 휴대폰에서 열리는 문서로 먼저 올리겠습니다 (상설).
