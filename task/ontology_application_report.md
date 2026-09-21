@@ -30956,3 +30956,52 @@ server/enrichment/analysis.py    -> server/chain/enrichment/analysis.py       77
 
 **미답 질문: Q-186 «하나»** (그 외 전부 답 왔거나 라우팅 끝)
 **미커밋: 0** (제 레인 파일 0 · 트리에 스테이지·수정 «0» · 미푸시 0 — 21:25 실측)
+
+---
+
+### Q-187 · 판정 648 ① 적대 QA — ⓐ 결함 하나(대조군 실측) · ⓑ 무결함 · ⓒ 부작용 없음 [09-22 08:53]
+
+**ⓐ 640 의 무조건 합치기 — 「축이 마지막」이 지키는 칸과 덮이면 아픈 칸이 «서로 배타»입니다.**
+
+대조군 (decide 선언 하나에 손으로 최상위 `extra` 를 적고 `expand_declaration` -> `rule_refusals` 까지):
+```
+extra: {trigger_table: <가짜>, mapper: <가짜>}
+  expand_declaration    refusal 없음 · notes 빈 목록
+  선 규칙 «둘» (enrichment_dedup: · enrichment_auto_confirm:)  둘 다 trigger_table = <가짜>
+  chain_bindings.rule_refusals(그 규칙)                        issues NONE
+```
+판정 551 은 `axis` 를 마지막에 두어 「문법이 아는 칸이 손으로 적은 `extra` 를 이긴다」고 적었습니다.
+그런데 `axis_keys()` 는 «routing_keys 빼기 CHAIN_MODELLED» 로 «계산»됩니다 — 이 트리에서 열셋이고
+`trigger_table`·`trigger_columns`·`mapper`·`name`·`enabled` 는 그 안에 «하나도 없습니다».
+551 의 문장은 참이지만 그 주어는 «모델링 안 된 칸 열셋»입니다. 라우팅·정체성 칸에는 방어자가 없습니다.
+
+닿는 데까지 (잰 것만):
+- `mapper` 가 덮이면 로더가 «잡습니다» — `rule_refusals` 의 `unresolvable_mapper` 로 떨어뜨리고 이름을 찍습니다.
+- `trigger_table` 이 덮이면 «아무도 안 셉니다». `rule_refusals` 는 카탈로그를 인자로 «안 받습니다» —
+  「돌 수 있나」만 묻습니다. 규칙은 살아서 로드된 집합에 남고 남의 표를 봅니다.
+- 문이 `extra` 하나가 아닙니다: `to_declaration` 은 limits 를 `_present(raw, _LIMIT_KEYS)` «넷»으로 걸러 쓰고,
+  `from_declaration` 은 `dict(raw["limits"])` 로 «전부» 읽습니다. 쓰는 쪽과 읽는 쪽의 키 집합이 다릅니다.
+- 도달 조건은 «손으로 편집한 rules 파일»입니다. 제품 변환기는 칸을 한 자리에만 적습니다(640 주석 그대로).
+  스켈레톤은 `limits` 만 레코드로 선언하고 `extra`·`axis` 는 폼에 «없습니다» — 폼으로는 못 만들고 손으로는 됩니다.
+
+못 잰 것: 운영의 rules 파일에 최상위 `extra` 가 실제로 «있나» — 그 파일은 gitignored 라 이 박스에서 못 셉니다.
+
+**ⓑ 636 이 옮긴 열둘 — 거절 문구를 한 줄로 접은 데 «없습니다».**
+`enrich_declarations` 의 동사는 둘(`declarations`·`find`)뿐이고, `find` 의 독스트링이 「여섯 자리가 각각 다르게
+거절한다 … 여기서 한 줄로 접으면 운영자의 맥락 자리에 제품의 목소리가 놓인다」로 그 «선택»을 적어 뒀습니다.
+`retroactive.py` 와 `scripts/enrichment_insights.py` 는 오늘도 자기 문장을 들고 있습니다.
+곁다리: 제 Q-175 1순위(문법 하나만 보던 소급 경로)는 636 이 «닫았습니다» — retroactive 가 `declarations()` 로 듭니다.
+
+**ⓒ c13b8529 의 「스위치를 켜서 채점」 — 프로세스에 부작용 «없습니다». 다만 초록의 주어가 좁습니다.**
+- 시험은 `dict(raw, enabled=True)` 로 «사본»을 넘깁니다. `from_declaration` 은 `on`·`derive`·`into`·`key`·`limits`·`extra` 를
+  전부 새 dict 로 뜹니다 — 대조군에서 원본 선언 dict 가 «그대로» 돌아왔습니다.
+- `rule_shape` 의 모듈 수준은 상수뿐입니다. decide 팔이 부르는 함수 내부 import(`chain.enrichment.config`)도
+  import 시점에 «경로와 로거»만 만듭니다 — 파일도 DB 도 안 엽니다. 꺼진 선언을 켜도 깨울 것이 없습니다.
+- 다만 시험은 `table_config=None` 으로 채점합니다. 카탈로그 검사는 `known_tables is not None` 으로 «문이 닫힙니다»
+  (`_validate_rule` 의 source/derived 표 확인, `_view_reads` 의 뷰 이름 확인). 그래서 `assert not refusal` 은
+  「로더가 받아들인다」가 아니라 「카탈로그를 «안 물었을 때» 안 거절한다」입니다. 샘플이 카탈로그에 없는 표를
+  이름 대면 로더는 거절하고 이 시험은 초록입니다.
+
+계기가 한 번 틀렸습니다 — `awk '/def _validate_rule/,/^def /'` 의 «시작 줄이 끝 패턴에도 맞아» 범위가 한 줄로 끝났고,
+저는 그것을 「`known_tables` 를 본문이 안 읽는다」로 읽을 뻔했습니다. 실제로는 646~650·717 에서 씁니다.
+awk 범위로 함수 본문을 뜰 때는 끝 패턴에 «자기 이름을 빼는» 조건을 붙이거나, 다음 def 의 «줄 번호»를 먼저 셉니다.
