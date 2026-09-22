@@ -128,13 +128,36 @@ def test_done_and_undelivered_are_two_fields_not_one(client, db_session):
     assert by_id[r.id]["broadcast_state"] == event_constants.BROADCAST_STATE_UNDELIVERED
 
 
-def test_a_permanent_failure_is_in_the_queue_at_all(client, db_session):
-    """🔴 이것이 ④ 정정의 «이유»다. `mark_processed` 가 실패에도 processed_chain=True 를
-    찍으므로 기본 모집단(false)만 보면 「안 돌 것」이 통째로 안 보인다."""
+def test_a_permanent_failure_is_not_in_the_queue(client, db_session):
+    """⚰️ 이 줄은 «정반대»를 재고 있었다 — 「실패가 큐에 있나」. 제가 실패가 기본 모집단에서
+    빠지는 것을 찾아 합집합에 넣었고, 소유자가 무르셨다:
+
+    > 「대기열에 failed 는 띄우지 마. «앞으로 돌 것만» 띄워」
+
+    제 발견(실패가 `processed_chain=true` 라 기본 모집단에서 빠진다)은 «맞았고», 그것이
+    이 화면의 물음이 아니라는 것이 판단이다. 실패를 보는 자리는 `/admin/outbox/failed` 다.
+
+    🔴 이 박스에 failed 가 298 건 있다(총괄 실측) — 그래서 이 단언은 «공허하지 않다».
+    """
     r = row(db_session, status="FAILED", processed_chain=True)
     _body, by_id = rows_of(client)
-    assert r.id in by_id, "영구 실패가 큐에서 사라졌다 — 모집단이 좁다"
-    assert by_id[r.id]["chain_state"] == event_constants.CHAIN_STATE_FAILED
+    assert r.id not in by_id, "실패 행이 「앞으로 돌 것」 목록에 있다"
+
+
+def test_a_retrying_row_stays_because_it_will_run_again(client, db_session):
+    """⚠️ 대조군 — 실패를 빼면서 «다시 돌 것»까지 빼면 화면의 주어가 또 틀어진다.
+    RETRYING 은 `processed_chain=false` 라 그대로 든다."""
+    r = row(db_session, status="RETRYING", processed_chain=False)
+    _body, by_id = rows_of(client)
+    assert r.id in by_id, "다시 돌 행인데 목록에서 빠졌다"
+
+
+def test_the_header_says_the_population_it_actually_read(client, db_session):
+    """🔴 그 문자열이 «화면 머리»에 그대로 나간다. 모집단을 바꾸고 이 줄을 안 고치면
+    화면이 「failed 도 본다」고 말하면서 안 본다 — 말이 기제보다 오래 산다."""
+    body = client.get(URL).json()
+    assert "failed" not in body["population"], body["population"]
+    assert "undelivered" in body["population"]
 
 
 def test_a_status_outside_the_vocabulary_does_not_break_the_screen(client, db_session):

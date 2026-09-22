@@ -4537,11 +4537,16 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
     undelivered = and_(outbox.processed_chain == True,                 # noqa: E712
                        outbox.status == event_constants.UNDELIVERED_MARKER_STATUS,
                        outbox.broadcast_at.is_(None))
-    failed = (outbox.status == "FAILED")
+    # ⚰️ [소유자 2026-09-22] 「대기열에 failed 는 띄우지 마. «앞으로 돌 것만» 띄워」
+    #    한 시간 전 이 자리에 `failed` 가 «있었다» — 실패가 기본 모집단에서 빠지는 것을
+    #    찾고 합집합에 넣었는데, 그건 「무엇이 안 돌았나」의 답이지 이 화면의 물음이 아니다.
+    #    이 화면의 주어는 「앞으로 돌 것」이고 실패는 «돌지 않는다».
+    #    실패를 보는 자리는 이미 있다 — `/admin/outbox/failed`.
+    #    ⚠️ RETRYING 은 `processed_chain=false` 라 «그대로» 든다. 다시 돌 것이므로 맞다.
 
     q = db.query(outbox.id, outbox.event_type, outbox.table_name, outbox.status,
                  outbox.processed_chain, outbox.created_at, outbox.broadcast_at,
-                 outbox.payload).filter(or_(waiting, undelivered, failed))
+                 outbox.payload).filter(or_(waiting, undelivered))
     if cursor is not None:
         q = q.filter(outbox.id > int(cursor))
     # 🔴 한 행 «더» 읽고 버린다. 그래야 「더 있다」가 «재어서 아는 사실»이 된다 —
@@ -4628,7 +4633,7 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
             "capped": asked > _QUEUE_ROWS_CAP,
             "next_cursor": rows[-1]["outbox_id"] if has_more else None,
         },
-        "population": "processed_chain=false ∪ (done & undelivered) ∪ failed",
+        "population": "processed_chain=false ∪ (done & undelivered)",
     }
 
 
