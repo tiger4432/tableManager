@@ -54321,3 +54321,40 @@ warmup(ingestion_worker)  for _name,_why in _report["skipped"]: logger.info("유
 => 머리를 중립으로. 뒤 문장은 그대로 두면 줄 전체가 참이 됩니다
 ```
 크기 한 줄입니다. 구조는 안 건드립니다 — 부류를 «칸»으로 가르는 것은 큐에 둡니다.
+
+> 🟢 **[09-22 총괄] 684 · ② 가 «박스에서» 삽니다. **③ 을 푸십시오** — 한 커밋입니다**
+
+제가 잰 것(카나리아 포함):
+```
+박스가 내보내는 admin.html  ->  admin-CtdZOEXb.js   = 트리 dist 와 «같은 해시»
+그 번들 안                   새 URL 1 · 옛 URL «0»
+클라 소스                    옛 URL «0» · 새 URL 3 (코드 1 + 산문 2, 679 에서 센 그대로)
+```
+「빌드했다고 로드된 건 아니다」를 번들 해시로 가렸습니다. 옛 라우트를 지워도 화면이 «안 웁니다».
+
+### ③ — 한 커밋. 이 라운드에서 열린 것을 «전부» 닫습니다
+
+```
+지웁니다   /admin/config/virtual-join/verify 라우트 · verification_report
+          virtual_join_rules.json 로더·검증기·합성기 · declared:virtual_join 레지스트리 칸
+          legacy_materialized_join 의 «쓰는 반쪽» · rules_for_right
+          synthesis._legacy_required_index_names · _legacy_right_keys
+            -> 둘 다 독스트링이 「자기 문법과 «같은 커밋»에 죽는다」고 적어 뒀습니다
+          RULES_CACHE_TTL · reset_cache (제품 호출자 0, 시험 5)
+          677 ①② 에서 «문장»으로 고친 다섯 자리 — 이제 그 대상이 사라지므로 문장도 같이
+🔴 먼저   「읽기 시점 조인을 선언하면 이름 대어 거절」의 좌석을 옮기십시오 (666 · 게이트 ④)
+          _read_time_joins_from_unified 가 지울 모듈 «안»에 있습니다. 순서가 반대면
+          게이트 ④ 가 «파일째» 사라지고 그건 게이트가 아니라 침묵입니다
+⚠️ 잃는 것 옛 패널이 들고 있던 «거절 둘»이 같이 갑니다 — 그 문법이 죽으므로 «맞습니다».
+          683 이 그것을 「먼저 지우면 안 되는 이유」로 적었고, 이제 «같이» 가는 것이라 닫힙니다
+⛔ 안 건드립니다  uq_vjoin_ · ASSY_VJOIN_AUTO_INDEX · VirtualJoin.UniqueKey 로거
+          notation_norm(폴드) · join_key_index · unique_key · cell_layer
+```
+```
+게이트   ① 실조인이 여전히 인덱스를 받는다(재기동 뒤 uq_vjoin_… 이 선다)
+        ② 실조인이 여전히 행을 쓴다   ③ 참조 쪽 companion 이 여전히 선다
+        ④ 읽기 시점 조인 선언이 «이름 대어» 거절된다 (옮긴 좌석에서)
+        ⑤ 원장이 조인 0 으로 뜬다     ⑥ 쓰기 경로가 배치당 세션 0 · 선언 0 이면 pg_index 0
+        ⑦ 새 패널이 승인됨/거절됨/안 물음 셋을 가른다
+```
+착수 «전» 계획을 올리십시오 — 크기가 이 라운드에서 제일 큽니다.
