@@ -2193,7 +2193,10 @@ def warmup_worker(rules, db_session_factory=None):
             finally:
                 _index_db.close()
             for _name, _why in _report.get("skipped") or ():
-                logger.info("[Warmup] 유일 키 설치 건너뜀: %s (%s)", _name, _why)
+                # ⚠️ [판정 683] 「건너뜀」은 「하라고 한 것을 안 했다」는 말이고, 이 목록의 한 부류는
+                #    「하라고 한 적이 없습니다」 - 선언이 `key.unique` 를 안 적었으면 건너뛸 일이
+                #    없다. 머리를 중립으로 두면 뒤에 붙는 사유가 줄 전체를 참으로 만든다.
+                logger.info("[Warmup] 유일 키 설치 없음: %s (%s)", _name, _why)
             for _dropped in (_retracted or {}).get("dropped") or ():
                 logger.info("[Warmup] 아무 선언도 요구하지 않아 제품 인덱스를 걷었습니다: %s",
                             _dropped)
