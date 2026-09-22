@@ -52354,3 +52354,110 @@ FastAPI 동기 라우트  anyio.to_thread   -> anyio «워커 스레드»       
 의도한 대로입니다 — 시작 조건이 `engine.dialect.name == "postgresql"` 이고, 좌석
 (`_notify_outbox_once`)이 거는 것과 «같은 술어»입니다. sqlite 에서 켜면 1 초마다 재연결만
 시도합니다. 운영은 PG 라 영향 없고, 그 사실을 기동 로그가 한 줄로 말합니다.
+
+> 🔵 **[09-22 23:0x 구현자 -> 총괄] 리플레이를 아웃박스로 — 착수 전 계획. «㉡ 이 지시대로 하면 조용히 깨집니다»**
+
+설계에 동의합니다. 리플레이가 durability 를 따로 지었다는 진단이 맞고, 아웃박스에 꽂으면
+체크포인트·restartable 이 중복으로 사라집니다. 다만 **재기 전에 하나가 걸렸습니다.**
+
+### 🔴 먼저 — 「페이로드에 『이 규칙만』을 담는다」가 «확장에서 지워집니다»
+
+```bash
+grep -n "def synthesize_payload" -A 26 server/outbox_expand.py
+```
+```
+synthesize_payload 가 짓는 페이로드는 «키 일곱»으로 «닫혀» 있습니다:
+   row_id · business_key · data · transaction_id · updated_by · source_name · timestamp
+봉투에서 «읽는 키»는 넷뿐 — 임의의 키를 «안 나릅니다»
+판정 426 이 그 자리에 있습니다: 「A MAPPER IS … CALLED WITH TWO DIFFERENT SHAPES … one author, every caller」
+```
+🔴 그래서 묶음(collapsed) 이벤트 페이로드에 `rule` 을 넣으면, `outbox_expand` 가 그것을
+행별로 «펼 때» 그 키가 사라집니다. 결과는 **제한이 없어진 행** — 그 표의 «모든» 규칙이 깨어납니다.
+지시가 막으려던 「한 홉만 돌고 조용히 끝난다」의 **정반대 실패**이고, 역시 조용합니다.
+
+```
+선례가 그 증거입니다   `chain_depth` 도 그 일곱에 «없습니다». 스테이징 좌석(database:334·386)이
+                   따로 찍고, synthesize_payload 는 안 나릅니다
+⚠️ 그래서 확장된 자식이 chain_depth 를 «잃는지»도 같은 물음입니다 — 저는 «도달 가능한지 안 쟀습니다».
+   이번 라운드 밖이라 고치지 않고 적어만 둡니다
+```
+
+### 「자식」이 «둘»입니다 — 좌석도 둘이어야 합니다
+
+```
+㉮ 확장 자식   묶음 이벤트를 행별로 «편» 것. «같은 사건»이다 -> 제한을 «가져가야» 합니다
+㉯ 체인 자식   규칙 X 가 표 B 에 «써서» 난 새 사건 -> 제한을 «버려야» 합니다 (지시대로)
+```
+지시의 「자식은 안 물려받는다」는 ㉯ 에 대해 맞습니다. ㉮ 에 그대로 적용하면 위의 조용한 실패가 납니다.
+
+### 🔴 그리고 그 술어는 `fires()` 가 «아닙니다»
+
+지시: 「묻는 곳 fires() 하나」. 자리는 하나가 맞는데 **축이 다릅니다** — 지난 라운드에 제가
+«시험으로» 못 박은 그 축입니다.
+
+```
+fires(rule, event)     (규칙, 이벤트) «쌍»의 성질
+_is_trigger_event(e)   이벤트 «혼자»의 성질
+「이 사건은 규칙 X 만 원한다」 -> 이벤트 «혼자»의 성질입니다. fires 축이 아닙니다
+```
+```
+fires 에 넣으면 깨지는 것   group_id 는 fires 를 «_is_trigger_event 없이» 부릅니다(일부러).
+                       제한 붙은 DELETE 의 그룹 키가 바뀝니다 —
+                       test_grouping_still_keys_a_delete_by_its_rules_group_key 가 잡습니다
+```
+```
+제안   `_is_trigger_event` «옆»에 이벤트-혼자 술어 하나. 같은 열한 자리가 그것도 지납니다
+      드리프트 오라클을 그 낱말로 «넓힙니다» — 열두째 철자가 생기면 빨개집니다
+      ⛔ 술어를 «두 번 적지 않는다»는 지시는 그대로 지킵니다. 자리는 하나입니다
+```
+
+### 멱등성 — 좌석이 «둘»로 보이지만 물음이 둘입니다
+
+```
+worker:513  「몇 번 «재시도»하나」    idempotent:false -> 1 회 뒤 격리   [판정 384·S-155]
+replay:313  「«다시 돌려도» 되나」     idempotent:false -> 거절 (force 없으면)
+```
+판정 384 의 문장은 「A second seat comparing `idempotent` to a cap of its own」 — «cap» 에 대한
+금지입니다. 거절은 다른 물음이라 옮겨도 384 를 안 어깁니다. 그래도 지시서에 적어 두십시오.
+
+🔴 **㉣ 에 딸린 것 하나 —** 거절을 「행 넣는 자리」로 옮기면 **dry-run 이 거절을 «안 합니다»**
+(쓰기가 없으니 그 자리를 안 지납니다). 지금은 입구라 dry-run 도 거절합니다.
+운영자가 「몇 건인가」를 먼저 보는 흐름이면, 그때 «못 돌린다»는 것을 알아야 합니다.
+
+### 전수 — 옮길 것과 «건드리면 안 되는 것»
+
+```bash
+for f in _to_payloads _apply_replay_batch _count_user_protected _map_metadata_outputs \
+         _payload_columns _scoped_batch_outputs; do git grep -c "$f" -- server ':!server/tests'; done
+```
+```
+여섯 다 «정의가 replay.py 에 하나»입니다. 다른 파일 히트는 전부 «그 이름을 적은 주석»입니다
+   (ingestion_worker:1740 · key_gate:38 · outbox_expand:12,82)
+=> withdraw(count_withdrawable:908) · ledger_backfill 과 «공유하는 헬퍼가 없습니다». 안 건드립니다
+⚠️ 다만 셋 다 «같은 파일»에 삽니다. 파일을 쪼개지 않고 replay_rule 경로만 바꿉니다
+```
+
+### ㉠~㉣ 답
+
+```
+㉠ 스캔   지금  keyset_scan.iter_pages(replay:507) · max_row_id 스냅샷(:374) · 페이지마다 checkpoint
+         제안  스캔은 «남습니다». 페이지마다 «매퍼를 도는» 대신 «이벤트를 스테이징»합니다.
+              그 스테이징 루프가 어디서 도는지가 판정입니다 — 스케줄러에 남으면 지시대로 「안 옮긴 것」
+㉡ 소급   기제는 있습니다(stage_collapsed_event · OUTBOX_GROUP_MAX_ROWS · trim_events_to_row_budget).
+         🔴 그런데 위 ① 때문에 «묶음을 그냥 쓸 수 없습니다». 일곱 키 모양을 넓히든지, 행별 + 페이싱이든지 —
+         크기: **안 쟀습니다**. 어느 쪽이 싼지 재려면 운영 규격으로 돌려야 합니다
+㉢ cancel  ✅ 됩니다. envelope 이 run 당 tx_id «하나»입니다: "chain_replay_%s" % run_id (:503)
+         => 안 집어간 행 = 그 tx_id + processed_chain=false. 찾을 수 있습니다
+㉣ dry-run 쓰기가 없어 그대로입니다. 단 «거절»이 위 이유로 사라집니다 — 그 한 줄이 이번 라운드입니다
+```
+
+### ❓ 여쭐 것 둘
+
+```
+① ㉮ 확장 자식이 제한을 «가져가게» 하려면 synthesize_payload 의 일곱 키를 넓혀야 합니다.
+   판정 426 의 「one author, every caller」 자리라 «제가 혼자 넓히지 않습니다». 넓힐까요,
+   아니면 묶음을 안 쓰고 «행별 + 페이싱»으로 갈까요 (그러면 ㉡ 의 비용이 올라갑니다)
+② dry-run 의 거절을 «남길까요». 남기면 idempotent 를 묻는 자리가 둘이 되지만 물음이 같습니다 —
+   입구에서 «경고»만 하고 거절은 삽입 자리에 두는 것도 됩니다
+```
+⚠️ 승인 전까지 제품 코드 0 줄입니다.
