@@ -31,10 +31,10 @@
 > **직전 라운드 (2026-07-31 · `fbc1053`·`1948338`·`9c6a1c9`)**
 > - **§7 재작성 — 어드민 API가 착지했습니다**(라우트 3개). 🔴 **화면(버튼)은 아직 없습니다** — 「어드민 화면에는 자리가 없다」는 종전 문장은 절반만 참이 됐습니다. 지금 쓰려면 `curl`입니다.
 > - **§7.2 신설 — 카운트는 「어떤 종류의 수인지」를 함께 답합니다**(`exact`/`sample`/`upper_bound`). 다섯 중 넷은 요청 경로에서 정확할 수 없고, **어느 것도 정확하다고 주장하지 않습니다.**
-> - **§3에 각주 — ⓒ의 구현이 `server/enrichment/backfill.py`로 옮겨졌습니다**(`9c6a1c9`). **CLI 경로·진입점·플래그는 그대로**라 이 문서가 찍는 명령은 전부 그대로 동작합니다.
+> - **§3에 각주 — ⓒ의 구현이 `server/chain/enrichment/backfill.py`로 옮겨졌습니다**(`9c6a1c9`). **CLI 경로·진입점·플래그는 그대로**라 이 문서가 찍는 명령은 전부 그대로 동작합니다.
 > - **§6.5·§6.6 신설** — ⓒ의 「이미 있는 정체성」 읽기가 **두 갈래**가 됐고(CLI는 전량 스냅샷, 미리보기는 표본 키만 되물음), **ⓑ R2의 카운트가 인덱스를 얻었습니다**(`1948338`). 새 DB에 반영하는 경로는 `ops_setup_db_performance.py` 하나입니다.
 >
-> (신설 근거: 진입점 전부의 argparse를 **소스 대조 + `--help` 실행**으로 전수 확인 — `server/scripts/chain_replay_cli.py` · `backfill_enrichment.py` · `enrichment_insights.py` · `graph_orphan_sweep.py`, 그리고 의미론은 `server/chain/replay.py` · `server/enrichment/analysis.py` · `server/enrichment/candidates.py` · `server/graph_orphans.py` · `server/keyset_scan.py` · `crud.SOURCE_PRIORITY`/`apply_batch_updates`)
+> (신설 근거: 진입점 전부의 argparse를 **소스 대조 + `--help` 실행**으로 전수 확인 — `server/scripts/chain_replay_cli.py` · `backfill_enrichment.py` · `enrichment_insights.py` · `graph_orphan_sweep.py`, 그리고 의미론은 `server/chain/replay.py` · `server/chain/enrichment/analysis.py` · `server/chain/enrichment/candidates.py` · `server/graph_orphans.py` · `server/keyset_scan.py` · `crud.SOURCE_PRIORITY`/`apply_batch_updates`)
 > **대상:** 규칙을 바꿔 놓고 **「과거 데이터는 왜 그대로지?」**를 만난 운영자.
 > **먼저 알아야 할 것:** 이 시스템의 규칙은 **증분(outbox) 구동**이다. 규칙은 **자기가 선언된 이후에 바뀐 행만** 본다. 규칙을 고쳐도 과거는 옛 규칙이 남긴 상태 그대로 있고, 그것을 움직이는 유일한 방법이 이 문서의 경로들이다. ⓕ가 그 원리의 가장 순수한 사례다 — **해결 규칙 자체를 고쳐도** 이미 확정된 표시값은 그대로 남는다.
 > **관련:** 개발자 계약은 [chain_ingestion_guide §5](./chain_ingestion_guide.md) · 인리치먼트 선언은 [config/enrichment_rules §7](./config/enrichment_rules.md). 제거된 그래프 고아 스윕의 배경은 [archive](../_archive/retired_graph_sync/README.md)에만 남깁니다.
@@ -245,7 +245,7 @@ conda run -n assy_manager python server/scripts/backfill_enrichment.py <룰> --c
 * `--limit N`은 **새로 만들 파생 정체성의 수**를 자릅니다(스캔 행 수가 아닙니다). 잘린 만큼은 `skipped by --limit`로 보고되고 **다시 돌리면 이어서** 갑니다.
 * `--force-disabled`는 `"enabled": false`인 규칙도 돌립니다. 규칙을 아직 켜지 않은 채 규모만 재 보고 싶을 때 씁니다.
 
-> ℹ️ **2026-07-31 `9c6a1c9` — 이 도구의 알맹이는 `server/enrichment/backfill.py`로 옮겨졌고, `scripts/backfill_enrichment.py`는 그 위의 CLI가 됐습니다.** **경로·진입점·플래그는 하나도 바뀌지 않았으므로 위 명령은 전부 그대로 동작합니다.** 의미론은 `server/`에, argparse와 출력은 `server/scripts/`에 두는 분리가 `chain_replay`와 enrichment 도구에 적용됩니다.
+> ℹ️ **2026-07-31 `9c6a1c9` — 이 도구의 알맹이는 `server/chain/enrichment/backfill.py`로 옮겨졌고, `scripts/backfill_enrichment.py`는 그 위의 CLI가 됐습니다.** **경로·진입점·플래그는 하나도 바뀌지 않았으므로 위 명령은 전부 그대로 동작합니다.** 의미론은 `server/`에, argparse와 출력은 `server/scripts/`에 두는 분리가 `chain_replay`와 enrichment 도구에 적용됩니다.
 
 ---
 

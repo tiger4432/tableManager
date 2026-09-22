@@ -13,7 +13,7 @@
 > ?enrich_actions=true         /api/ledger/subgraph 의 «파라미터가 아니다». 적으면 오류 없이 무시된다
 >                              (되돌아오지 못하게 server/tests/test_ledger_subgraph.py 가 박아 두었다)
 > ```
-> ✅ **살아남는 것** — **기존 column queue 는 그대로다**(이 문서 §1~§5·§7 의 대부분). 결손을 «찾는» 일은 `GET /api/ledger/gaps` 가 **어휘를 순회해서** 하고, 후보를 «고르고 확정»하는 일은 `server/enrichment/candidates.py`(`resolve_target_candidate`·`confirm_keys`)가, 화면은 `client2/src/enrichment_queue.js` + `enrichment_reference_view.js` 가 한다. 🔴 **후계가 «없는» 것 하나** — walk 의 «노드»로서의 `Enrich Action`. 통합 `/enrichment/worklist` API 도 여전히 미구현이다.
+> ✅ **살아남는 것** — **기존 column queue 는 그대로다**(이 문서 §1~§5·§7 의 대부분). 결손을 «찾는» 일은 `GET /api/ledger/gaps` 가 **어휘를 순회해서** 하고, 후보를 «고르고 확정»하는 일은 `server/chain/enrichment/candidates.py`(`resolve_target_candidate`·`confirm_keys`)가, 화면은 `client2/src/enrichment_queue.js` + `enrichment_reference_view.js` 가 한다. 🔴 **후계가 «없는» 것 하나** — walk 의 «노드»로서의 `Enrich Action`. 통합 `/enrichment/worklist` API 도 여전히 미구현이다.
 
 ---
 
@@ -58,7 +58,7 @@
 
 ## 5. Config 스키마
 
-> ✅ **서버 구현됨 (2026-07-25, Server PM)** — 로더/검증 `server/enrichment/config.py`, dedup mapper `server/enrichment/mapper.py`(체인 룰 자동 파생), API 2종(`GET /enrichment/rules`, `GET /enrichment/rules/{rule}/references/{i}`) `server/main.py`. 규칙 작성법: [chain_ingestion_guide §4](../guide/chain_ingestion_guide.md). 서버 전용 추가 필드: `aggregations`(v1 count만)·`enabled`·참조뷰 `query`(인라인)/`query_ref`(`config/enrichment_queries/*.sql`)/`limit`(기본 200, 최대 1000). Living 승격은 클라 통합 후 총괄이 수행.
+> ✅ **서버 구현됨 (2026-07-25, Server PM)** — 로더/검증 `server/chain/enrichment/config.py`, dedup mapper `server/chain/enrichment/mapper.py`(체인 룰 자동 파생), API 2종(`GET /enrichment/rules`, `GET /enrichment/rules/{rule}/references/{i}`) `server/main.py`. 규칙 작성법: [chain_ingestion_guide §4](../guide/chain_ingestion_guide.md). 서버 전용 추가 필드: `aggregations`(v1 count만)·`enabled`·참조뷰 `query`(인라인)/`query_ref`(`config/enrichment_queries/*.sql`)/`limit`(기본 200, 최대 1000). Living 승격은 클라 통합 후 총괄이 수행.
 
 기존 설정 주도 패턴(`table_config.json`, `chain_rules.json`)과 정합시킨다.
 
@@ -172,7 +172,7 @@ resolved  = 모든 target notBlank AND 모든 key notBlank
 
 **확장성**: 키 1개당 선언된 뷰 수만큼 SQL이 나가므로 작업 단위당 상한(`enrichment_auto_confirm_max_keys`, 기본 200)이 있다. 초과 키는 쓰지 않고 **큐에 남으며** 건수를 로그에 남긴다.
 
-**구현**: `server/enrichment/candidates.py`(술어·노브·`AutoConfirmCollector`) + 체인 워커 훅(M3 훅 직후) + `server/enrichment_analysis.run_auto_confirm_sweep`(소급·dry-run). 설정 절차 정본은 [config/enrichment_rules §7](../guide/config/enrichment_rules.md).
+**구현**: `server/chain/enrichment/candidates.py`(술어·노브·`AutoConfirmCollector`) + 체인 워커 훅(M3 훅 직후) + `server/chain/enrichment/analysis.run_auto_confirm_sweep`(소급·dry-run). 설정 절차 정본은 [config/enrichment_rules §7](../guide/config/enrichment_rules.md).
 
 ### 5.2-ter 모호함은 **컬럼**의 성질이지 행의 성질이 아니다 (2026-08-05 사용자 재정 · 서버 착지)
 

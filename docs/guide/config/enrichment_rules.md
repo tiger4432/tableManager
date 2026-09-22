@@ -9,7 +9,7 @@
 > 상위: [폴더 인덱스](./README.md) · 스펙 정본은 [ENRICHMENT_QUEUE_SPEC](../../spec/ENRICHMENT_QUEUE_SPEC.md) · 절차 요약은 [CONFIG_GUIDE §3-S7](../CONFIG_GUIDE.md)
 
 <!-- Loader evidence (2026-07-28):
-  load/validate: server/enrichment/config.py:250 load_enrichment_rules (missing -> []),
+  load/validate: server/chain/enrichment/config.py:250 load_enrichment_rules (missing -> []),
     :231 validate (root must be object), key schema docstring :11-32,
     table registration check :179-182, key contract (composite_key_source subset / business_key in decision_key) :30-32
   decision_key contract (re-measured 2026-07-28):
@@ -199,7 +199,7 @@ conda run -n assy_manager python server/scripts/backup_config.py restore enrichm
 > |---|---|
 > | 인리치 결과를 «원장 사실»로 만든다 | 상설 「표에 원천 데이터를 넣고 그걸로 원장」 — 결과를 **표**에 쓰고 그 표를 `ontology/ledger_config.json` 의 **소스**로 선언한다 |
 > | 「이 결손을 채워야 한다」를 찾는다 | **`GET /api/ledger/gaps`** — 선언된 술어 × 엔터티를 «순회해» 답한다. 노드를 세우지 않는다 |
-> | 후보를 골라 «확정»한다 | **`server/enrichment/candidates.py`** (`resolve_target_candidate` · `confirm_keys`) — 부르는 쪽은 `builtin:auto_confirm`(체인) · 소급 `enrichment_confirm` · dry-run 라우트 |
+> | 후보를 골라 «확정»한다 | **`server/chain/enrichment/candidates.py`** (`resolve_target_candidate` · `confirm_keys`) — 부르는 쪽은 `builtin:auto_confirm`(체인) · 소급 `enrichment_confirm` · dry-run 라우트 |
 > | 사람이 그것을 본다 | **`client2/src/enrichment_queue.js`** + `enrichment_reference_view.js`. 아래 §7 `candidate_for`·`auto_confirm` 은 **살아 있다** |
 >
 > 🔴 **후계 없음이 하나 있다** — walk 의 «노드»로서의 `Enrich Action`. 2026-08-28 「엔티티·어휘·walk 이게 끝」이 노드 종류를 하나로 접었고, **그 능력은 지금 없다**. 결손은 노드가 아니라 위 `gaps` 가 답한다.
