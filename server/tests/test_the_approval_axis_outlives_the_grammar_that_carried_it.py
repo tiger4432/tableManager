@@ -159,6 +159,74 @@ def test_a_switched_off_join_is_listed_rather_than_missing(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# 🔴 Ⓑ-2 상태 칸 — 판정 685. 화면이 «유도»하면 안 된다
+# ---------------------------------------------------------------------------
+
+def test_each_row_carries_one_of_three_states_and_nothing_else(monkeypatch):
+    """⚠️ 닫힌 어휘다. 열려 있으면 화면이 모르는 값을 만나 «조용히» 아무것도 안 그린다."""
+    import event_constants
+
+    nokey = _join("a678_nokey", unique=False)
+    off = _join("a678_off", enabled=False)
+    _document(monkeypatch, [_join("a678_ok"), nokey, off])
+
+    report = synthesis.approval_report(None, known_tables=TABLES)
+    states = {row["name"]: row["approval_state"] for row in report["declarations"]}
+
+    assert set(states.values()) <= event_constants.APPROVAL_STATES, states
+    assert states["a678_ok"] == event_constants.APPROVAL_STATE_APPROVED
+    assert states["a678_nokey"] == event_constants.APPROVAL_STATE_NOT_ASKED
+    # ⛔ [판정 399] 끈 것은 «틀린 것이 아니다». 거절로 그리면 운영자가 자기가 «고쳐야 할
+    #    것»으로 읽고, 고칠 것이 없다.
+    assert states["a678_off"] == event_constants.APPROVAL_STATE_NOT_ASKED
+
+
+def test_a_refusal_without_a_ddl_is_still_a_refusal(monkeypatch):
+    """🔴 [판정 685] 이 줄이 이 라운드의 «이유»다. 클라는 「required_index_ddl 이 있나」로
+    「안 물음」과 「거절」을 가르고 있었다 — 대리다. DDL 이 «없는» 거절이 하나라도 있으면 그
+    화면은 조용히 틀린다. 여기가 그 하나다: 오른쪽 키가 없으면 만들 DDL 이 아예 없다.
+
+    ⚠️ 그리고 이 행과 「안 물음」 행은 `accepted`·`detail`·`required_index_ddl` 이 «전부 같다».
+    가를 수 있는 칸은 `approval_state` 뿐이다.
+    """
+    import event_constants
+
+    broken = _join("a678_nokeypair")
+    broken["derive"]["join"]["on"] = []          # 키 쌍이 없다 -> 덮을 오른쪽 키가 없다
+    _document(monkeypatch, [broken, _join("a678_nokey", unique=False)])
+
+    rows = _by_name(synthesis.approval_report(None, known_tables=TABLES))
+    refused, not_asked = rows["a678_nokeypair"], rows["a678_nokey"]
+
+    assert refused["approval_state"] == event_constants.APPROVAL_STATE_REFUSED
+    assert not_asked["approval_state"] == event_constants.APPROVAL_STATE_NOT_ASKED
+    for cell in ("accepted", "required_index_ddl", "unique_index", "required_index"):
+        assert refused[cell] == not_asked[cell], (
+            "%s 로는 둘을 못 가립니다 — 그래서 상태 칸이 필요합니다" % cell)
+
+
+def test_the_state_follows_the_kind_cell_and_not_the_sentence(monkeypatch):
+    """🔴 [판정 685] 「⛔ 사유 «문장»으로 가르지 마십시오 — 그건 자리를 세는 것입니다」.
+
+    ⚠️ 이 줄이 없을 때 «문장을 보는» 변이가 초록으로 통과했습니다 — 앞 줄들은 상태가 «맞는지»만
+    재고 «어디서 왔는지»는 안 쟀기 때문입니다. 그래서 여기서는 사유를 알아볼 수 없는 문장으로
+    바꿔 두고 상태가 «칸»을 따라가는지 봅니다. 낱말이 바뀌는 날 조용히 틀리는 것이 이 부류입니다.
+    """
+    import event_constants
+
+    _document(monkeypatch, [_join("a678_x"), _join("a678_y")])
+    monkeypatch.setattr(
+        synthesis, "declared_unique_targets",
+        lambda rules: [("a678_x", None, None, None, "…", synthesis.SKIP_UNMET),
+                       ("a678_y", None, None, None, "…", synthesis.SKIP_NOT_ASKED)])
+
+    rows = _by_name(synthesis.approval_report(None, known_tables=TABLES))
+
+    assert rows["a678_x"]["approval_state"] == event_constants.APPROVAL_STATE_REFUSED
+    assert rows["a678_y"]["approval_state"] == event_constants.APPROVAL_STATE_NOT_ASKED
+
+
+# ---------------------------------------------------------------------------
 # ⓒ 거절 — 갈래를 가려서 싣는다
 # ---------------------------------------------------------------------------
 
@@ -245,7 +313,13 @@ def test_the_response_has_the_same_cells_the_retiring_route_had(tmp_path):
         new_report = synthesis.approval_report(None, known_tables=TABLES)
 
     assert set(new_report) == set(old_report)
-    assert set(new_report["declarations"][0]) == set(old_report["declarations"][0])
+    # 🔴 [판정 685] 덧셈이다 — 옛 칸을 «하나도 안 뺀다». 그래야 오늘 그리는 화면이
+    #    안 깨지고, 새 칸은 화면에게 「유도하지 말라」고 말한다.
+    old_cells = set(old_report["declarations"][0])
+    new_cells = set(new_report["declarations"][0])
+    assert old_cells <= new_cells, "옛 칸이 사라졌습니다: %r" % (old_cells - new_cells,)
+    assert new_cells - old_cells == {"approval_state"}, (
+        "덧셈이 «하나»가 아닙니다: %r" % (new_cells - old_cells,))
 
 
 def test_the_route_stands_at_its_new_name_and_the_old_one_is_still_there():

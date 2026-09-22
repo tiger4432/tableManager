@@ -114,6 +114,19 @@ RULE_STATE_DECLARED_ONLY = "declared_only"
 
 RULE_STATES = frozenset({RULE_STATE_RUNNING, RULE_STATE_DECLARED_ONLY})
 
+#: 조인 «승인»의 세 상태 — 위의 RULE_STATE 와 다른 물음이다. 저쪽은 「이 선언이 서 있나」,
+#: 이쪽은 「이 조인이 «성립»하나」(= 조인 키를 덮는 UNIQUE 인덱스가 실제로 있나).
+#: 🔴 [판정 685] 화면이 이 셋을 «유도»하면 안 된다. 클라가 「DDL 이 있나」로 가르고
+#:    있었고 그건 대리다 — DDL 없는 거절이 하나 생기는 날 조용히 틀린다.
+#: ⛔ 위 RULE_STATE 와 «같은 규율»로 사유는 값이 아니다 — `detail` 이 옆에서 말한다.
+#:    그래서 「꺼짐」은 넷째 값이 아니라 NOT_ASKED 다(판정 399: 끈 것은 «틀린 것이 아니다»).
+APPROVAL_STATE_APPROVED = "approved"
+APPROVAL_STATE_REFUSED = "refused"
+APPROVAL_STATE_NOT_ASKED = "not_asked"
+
+APPROVAL_STATES = frozenset({APPROVAL_STATE_APPROVED, APPROVAL_STATE_REFUSED,
+                             APPROVAL_STATE_NOT_ASKED})
+
 #: 「이 목록이 «잘렸다»」의 정본 모양 — 축마다 하나. 걷기 응답이 이미 그 모양이다
 #: (`ledger_subgraph` 의 `truncated: {depth, nodes, edges, …}`), 그래서 새 모양이 아니다.
 #: 🔴 「잘렸다」와 「버렸다」는 «다른 사실»이다. 앞은 운영자에게 「상한을 올려라」이고 뒤는

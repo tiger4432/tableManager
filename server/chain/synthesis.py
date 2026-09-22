@@ -175,8 +175,10 @@ def ensure_declared_unique_keys(db, rules) -> dict:
 
     report = {"ensured": [], "skipped": []}
     seen = set()
-    for name, table, columns, folds, skip in declared_unique_targets(rules):
+    for name, table, columns, folds, skip, _kind in declared_unique_targets(rules):
         if skip:
+            # ⚠️ [판정 683 ㄱ] 부류로 «거르지 않는다» — 웜업은 이 목록을 그대로 찍고, 머리를
+            #    중립으로 둔 덕에 줄 전체가 참이다. 거르면 「안 물었다」가 다시 조용해진다.
             report["skipped"].append((name, skip))
             continue
         # ⚠️ ONE DECLARATION STANDS TWO RULES AND NEEDS ONE INDEX. The target half and
@@ -192,12 +194,31 @@ def ensure_declared_unique_keys(db, rules) -> dict:
     return report
 
 
+#: The SIXTH cell of `declared_unique_targets`, so nobody has to read the fifth one's
+#: SENTENCE to tell two different facts apart (판정 682·683·685).
+#:
+#: 🔴 683 QUEUED THIS AS TIDINESS AND 685 MADE IT NECESSARY. While the only consumer
+#: was a warmup log line, a neutral word was enough. The approval panel has to place each
+#: row in a CLOSED vocabulary, and the only other ways to tell 「asked nothing」 from
+#: 「asked and cannot」 are proxies: 「is there a DDL」 (a refusal with no DDL then reads as
+#: 「not asked」) or re-deriving `key.unique` outside this walker (a second author of the
+#: one question this walker exists to answer once).
+SKIP_NOT_ASKED = "not_asked"   #: 지금 승인을 «묻지 않는다» — key.unique 없음 · 꺼짐
+SKIP_UNMET = "unmet"           #: 물었는데 «성립 못 한다» — 오른쪽 키 없음 · key.columns 불일치
+
+
 def declared_unique_targets(rules):
-    """(name, right table, columns, folds, skip reason) per unified join that DECLARED one.
+    """(name, right table, columns, folds, skip reason, skip kind) per unified join.
 
     🔴 ONE WALKER, BECAUSE THEY ARE ONE QUESTION. 「which index do we build」 and
     「which index do we require」 must never be able to disagree - the day they do, the
     product builds an index at warmup and retracts it on the next read, forever.
+
+    🔴 [판정 682·685] AND THE SKIP CELL CARRIED TWO MEANINGS. To the seat that BUILDS,
+    「the declaration asked nothing」 is not a skip - there was nothing to skip; to the seat
+    that REPORTS, it is the answer itself. The KIND rides beside the sentence and every
+    consumer asks the KIND. ⛔ Never split on the sentence: that counts a place, not a
+    property, and the spelling moves.
     """
     from chain import join_into
 
@@ -208,7 +229,9 @@ def declared_unique_targets(rules):
             continue
         name = rule.get("name")
         if not rule.get("enabled", True):
-            yield (name, None, None, None, "enabled=false")
+            # ⚠️ OFF IS NOT WRONG (판정 399). An operator who switched something off did
+            #    not make a mistake, so this is 「asks nothing right now」 and NOT a refusal.
+            yield (name, None, None, None, "enabled=false", SKIP_NOT_ASKED)
             continue
         if not (rule.get("key") or {}).get("unique"):
             # ⚠️ ABSENT IS NOT 「no」 TO A QUESTION NOBODY ASKED. A declaration that says
@@ -224,11 +247,11 @@ def declared_unique_targets(rules):
             # approval report can draw this declaration instead of dropping it.
             yield (name, None, None, None,
                    "key.unique 를 안 적었습니다 — 이 선언은 승인을 묻지 않습니다. "
-                   "인덱스가 필요하면 `key: {unique: true}` 를 적으십시오.")
+                   "인덱스가 필요하면 `key: {unique: true}` 를 적으십시오.", SKIP_NOT_ASKED)
             continue
         table, columns, folds = join_into.right_key(rule)
         if not table or not columns:
-            yield (name, None, None, None, "no right key to cover")
+            yield (name, None, None, None, "no right key to cover", SKIP_UNMET)
             continue
         # ⚠️ `key.columns` IS A CHECK, NOT A CHOICE. The index has to be built over the
         # join's OWN right key or PostgreSQL will not use it (S-181) - so a list that names
@@ -240,9 +263,9 @@ def declared_unique_targets(rules):
         if declared and declared != list(columns):
             yield (name, table, columns, folds,
                    "key.columns %s is not this join's right key %s — the index covers "
-                   "the right key" % (declared, list(columns)))
+                   "the right key" % (declared, list(columns)), SKIP_UNMET)
             continue
-        yield (name, table, columns, folds, None)
+        yield (name, table, columns, folds, None, None)
 
 
 def declared_unique_index_names(known_tables: dict = None) -> set:
@@ -270,7 +293,7 @@ def declared_unique_index_names(known_tables: dict = None) -> set:
             # ⚠️ The loader already says this out loud; saying it again here would put a
             # refusal on the read path every few seconds - the flood 2026-09-14 was.
             continue
-        for _name, table, columns, folds, skip in declared_unique_targets(stood):
+        for _name, table, columns, folds, skip, _kind in declared_unique_targets(stood):
             if skip:
                 continue
             names.add(vjc.required_index_name(table, columns, folds))
@@ -278,8 +301,13 @@ def declared_unique_index_names(known_tables: dict = None) -> set:
 
 
 def _approval_row(rule: dict, right_table, required_index, unique_index,
-                  required_index_ddl, detail) -> dict:
-    """선언 «하나»의 승인 행. 칸 이름은 옛 라우트와 «같다» — 클라는 URL 한 줄만 바꾼다."""
+                  required_index_ddl, detail, state) -> dict:
+    """선언 «하나»의 승인 행. 옛 라우트의 칸을 «전부» 들고, 상태 칸 하나가 더 있다.
+
+    🔴 [판정 685] `approval_state` 가 «덧셈»인 이유. 옛 칸을 하나도 안 뺐으므로 오늘
+    그리는 화면이 안 깨지고, 새 칸이 화면에게 「유도하지 말라」고 말한다 — 클라가
+    「required_index_ddl 이 있나」로 「안 물음」과 «거절»을 가르고 있었고, 그건 대리다.
+    """
     from chain import join_into
 
     rule = rule or {}
@@ -298,7 +326,10 @@ def _approval_row(rule: dict, right_table, required_index, unique_index,
              "rules": sorted(key for key, value in (fold or {}).items() if value)}
             for left, right, fold in on if fold],
         "expose": [source for source, _into in join_into.takes(rule)],
+        # ⚠️ `accepted` 는 «남깁니다» — 옛 화면이 읽던 칸이고, 덧셈이라야 안 깨집니다.
+        #    새 코드는 `approval_state` 를 읽습니다(그쪽이 셋을 가릅니다).
         "accepted": bool(unique_index) and detail is None,
+        "approval_state": state,
         "unique_index": unique_index,
         "required_index": required_index,
         "required_index_ddl": None if unique_index else required_index_ddl,
@@ -332,6 +363,7 @@ def approval_report(db, known_tables: dict = None) -> dict:
     ⚠️ 행을 «안 센다» — 카탈로그만 읽는다. 그래서 비용이 표 크기와 무관하고 요청 경로에
     앉을 수 있다(옛 계약 그대로).
     """
+    import event_constants
     from chain import ingestion_worker, join_key_index, join_refusal, rule_shape
     from database import crud
 
@@ -356,15 +388,17 @@ def approval_report(db, known_tables: dict = None) -> dict:
             #    그것도 「승인 안 됨」의 한 경우이고, 여기서 빠지면 운영자가 자기 선언을
             #    화면에서 «못 찾는다» — 판정 680 이 메운 구멍과 «같은 구멍»이다. 사유는
             #    로더의 것을 그대로 싣는다 (Q-194: 없는 사유가 틀린 사유보다 낫다).
-            out.append(_approval_row(rule_shape.as_chain_rule(internal), None, None, None,
-                                     None, notes[0] if notes else None))
+            out.append(_approval_row(
+                rule_shape.as_chain_rule(internal), None, None, None, None,
+                notes[0] if notes else None,
+                event_constants.APPROVAL_STATE_NOT_ASKED))
             continue
         for rule in stood:
             stood_all.append(rule)
             by_name.setdefault(rule.get("name"), rule)
 
     seen = set()
-    for name, table, columns, folds, skip in declared_unique_targets(stood_all):
+    for name, table, columns, folds, skip, kind in declared_unique_targets(stood_all):
         rule = by_name.get(name) or {}
         if skip or not table or not columns:
             # ⚠️ 동반 반쪽(`:reference`)은 같은 선언의 반쪽이라 한 행으로 접는다.
@@ -372,7 +406,14 @@ def approval_report(db, known_tables: dict = None) -> dict:
             if base in seen:
                 continue
             seen.add(base)
-            out.append(_approval_row(rule, table, None, None, None, skip))
+            # 🔴 [판정 685] 상태는 걷는 이의 «칸»에서 옵니다. 사유 «문장»으로 가르면
+            #    낱말이 바뀌는 날 조용히 틀리고, 여기서 `key.unique` 를 다시 보면 이 워커가
+            #    한 번만 답하려고 존재하는 물음에 «둘째 저자»가 생깁니다.
+            out.append(_approval_row(
+                rule, table, None, None, None, skip,
+                event_constants.APPROVAL_STATE_NOT_ASKED
+                if kind == SKIP_NOT_ASKED
+                else event_constants.APPROVAL_STATE_REFUSED))
             continue
         # ⚠️ 한 유일성, 한 행. 인덱스 «이름»으로 접으므로 패널의 수가 «인덱스의 수»와 같다 —
         #    `declared_unique_index_names` 가 요구 집합을 세는 바로 그 키다.
@@ -387,8 +428,10 @@ def approval_report(db, known_tables: dict = None) -> dict:
             join_refusal.CODE_NO_UNIQUE_INDEX,
             {"right_table": table, "join_key": list(columns),
              "required_index_ddl": required_index_ddl})
-        out.append(_approval_row(rule, table, required_index, unique_index,
-                                 required_index_ddl, detail))
+        out.append(_approval_row(
+            rule, table, required_index, unique_index, required_index_ddl, detail,
+            event_constants.APPROVAL_STATE_APPROVED if unique_index
+            else event_constants.APPROVAL_STATE_REFUSED))
 
     return {
         "declarations": out,
@@ -453,7 +496,7 @@ def right_keys_for(db, table_name: str) -> list:
         probe = SessionLocal()
         try:
             by_table, seen = {}, set()
-            for name, table, columns, folds, skip in declared_unique_targets(
+            for name, table, columns, folds, skip, _kind in declared_unique_targets(
                     ingestion_worker.load_chain_rules()):
                 if skip or not table or not columns:
                     continue

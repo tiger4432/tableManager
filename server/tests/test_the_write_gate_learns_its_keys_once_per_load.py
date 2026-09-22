@@ -54,7 +54,8 @@ def _declared(monkeypatch, rules, covering=True, probes=None):
 
 
 def _target(name, table=TABLE, columns=None):
-    return (name, table, list(columns or KEY), [None], None)
+    # ⚠️ 여섯째 칸은 «부류»다 (판정 685). 서는 행은 건너뛸 것이 없으므로 None.
+    return (name, table, list(columns or KEY), [None], None, None)
 
 
 # ---------------------------------------------------------------------------
