@@ -54287,3 +54287,88 @@ _join 독스트링 (판정 567)
 남은 것   ⑥ 답 -> 시험 셋 -> 재기동·로그 -> 한 커밋
 ⛔ 여전히 커밋 «안» 했습니다
 ```
+
+> ✅ **[09-23 02:2x 구현자 -> 총괄] 자기쓰기 통일 «착지»했습니다 — `8bd094477`. 게이트 다섯 + 변이 셋, 부수 피해 0**
+
+한 매듭 한 커밋으로 올렸습니다. 19 파일 · +486 / −422.
+
+### 게이트 — 전부 «잰» 것만
+
+```
+㉠ join_into._apply · run   불러온 모듈에서 hasattr = False, False
+㉡ 오토컨펌이 updates 를 돌려준다   시험 + 불러온 모듈에서 confirm_keys 에 propose_into 있음
+㉢ 세 이름이 «다» 죽는다
+     TEMPLATE_FACTS 키 = ['label', 'params', 'stamps_origin']   <- writes_itself «없음»
+     rule_run.writes_itself=False · self_writing_name=False · dynamic_mappers.writes_itself=False
+     (글자가 아니라 «불러온 모듈»에 물었습니다)
+㉣ 쪽 격리   변이로 — try/except 를 들어내면
+     test_a_page_that_throws_costs_that_page_and_the_session_survives  빨강  <- «동작»
+     test_the_page_loop_isolates_every_mapper_including_file_ones      빨강
+     되돌린 파일이 변이 «전»과 바이트 동일(1e1a00e65e95)
+㉤ 결과 그대로   아래 표
+```
+
+### ㉤ — 님 형식과 제 형식 «둘 다» 안 움직였습니다
+
+```
+dt_log 행          535,559  (전 535,559)
+님 형식 dt_lot     48,374   a322071e6d32  (전 a322071e6d32)  SAME
+님 형식 dt_slot    48,377   a59501ad4906  (전 a59501ad4906)  SAME
+제 형식 dt_lot     48,374   00688bd028f7  (전 00688bd028f7)  SAME
+제 형식 dt_slot    48,377   7352be049caf  (전 7352be049caf)  SAME
+층 chain_ingestion 4,328    (전 4,328)
+```
+님 명령을 그대로 옮겨 «님 해시를 제가 재현»했고, 그래서 두 형식이 같은 데이터를 봅니다.
+
+### 묶기 — ⑥ 대로 셋으로 세웠고, 변이가 «한쪽씩» 빨개집니다
+
+```
+① 좌석    제안을 돌려준다 · 표에 «안 쓴다» (옛 단언 셋은 여기서 죽었습니다)
+② 워커    다섯 행 -> 아웃박스 사건 «하나»
+③ 리플레이 «같은 픽스처»로 다섯 행 -> 사건 «하나»
+변이 A  워커의 outbox_mode 만 뺌      -> ② «만» 빨강
+변이 B  리플레이가 지나는 봉투만 뺌   -> ③ «만» 빨강
+되돌림  11 passed · 두 파일 다 바이트 동일
+=> 쓰는 이가 둘인데 «각각» 채점됩니다
+```
+
+### 재기동 — 하고 로그를 봤습니다. 줄 그대로 붙입니다
+
+체인 워커만 내렸습니다(감독이 되살립니다). API·워처·스케줄러·소유자 데스크톱 앱은 «안 건드렸습니다».
+
+```
+옛 pid 44252 -> 새 pid 20556
+[Chain] 02:21:47 INFO - [ChainRules] set(13): inventory_confirmed[decl,join] target_table=dt_log
+        trigger_table=dt_log | enrichment_auto_confirm:…[decl,decide] | … (열셋)
+[Chain] 02:21:47 INFO - [Warmup] Mapper registry: 4 registered
+[Chain] 02:21:47 INFO - [Warmup] mappers=32ms db=0ms total=32ms
+refused(...) 0 줄 · Traceback 0 줄 · ERROR 0 줄
+박스  admin.html=200 · 파이썬 프로세스 6 (재기동 전과 같음)
+```
+⚠️ 런처(`run_app.bat`)는 `pause` 로 끝나는 «대화형»이고 기존 프로세스를 «안» 죽입니다.
+   그래서 스택 전체를 내리지 «않고» 제 코드가 사는 자식 하나만 내렸습니다. 스택 전체 재기동이
+   필요하시면 그건 콘솔이 있는 자리에서 하셔야 합니다.
+
+### 부수 피해 — «0» 입니다. 기준선 둘도 같이 닫았습니다
+
+```
+넓게 (체인·리플레이·인리치·조인·맵퍼·소급·좌석·백필·아웃박스·거절·삭제)
+   1,475 passed · 18 skipped · «0 failed»
+기준선의 2   `join_into._write` 를 부르던 시험입니다 — 그 이름은 판정 567 때 `_update_items` 로
+            바뀌었고 시험만 옛 이름을 들고 있었습니다. 님 말씀대로 열어서 같이 고쳤습니다
+            («제 라운드가 만든 빨강이 아니었고, 그래서 제 것으로 안 적었습니다»)
+```
+
+### ⚠️ 착지 직전에 하나 더 잡았습니다 — 커밋이 «읽을 수 없게» 될 뻔했습니다
+
+```
+증상  conftest.py 가 «1,317줄» 바뀐 것으로 잡혔습니다. 제가 더한 건 스무 줄입니다
+원인  그 파일만 저장된 블롭이 CRLF 인데 core.autocrlf=true 가 제 add 를 LF 로 정규화 -> 전문 재작성
+잰 법  만진 19 파일을 «전수»로 앞뒤 줄끝 비교 -> 뒤집힌 것은 «하나»뿐
+고친 법  그 파일만 앞 블롭과 같은 모양으로 넣었습니다 -> diff 35 줄
+=> 안 잡았으면 님이 스무 줄을 1,317 줄 속에서 찾으셔야 했습니다
+```
+
+```
+남은 것   ⑩′ · tx 라벨 모으기 — 둘 다 님이 「통일 뒤」로 두신 것입니다
+```
