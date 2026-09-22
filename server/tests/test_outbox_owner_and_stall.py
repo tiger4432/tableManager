@@ -59,6 +59,82 @@ def test_an_untraced_event_type_is_unknown_and_is_NOT_folded_into_chain(event_ty
             == event_constants.OUTBOX_OWNER_UNKNOWN)
 
 
+# ------------------------- 한 타입이 주인 «둘»을 덮을 때 — op 가 가른다 (2026-09-23)
+
+def test_a_chain_replay_row_is_the_workers_even_though_its_type_says_scheduler():
+    """게이트 ⑳. 소유자: 「실제로 체인워커가 비우게 만들어」 — 그 결과가 «화면»까지 가야 한다.
+
+    🔴 이 단언이 이 라운드의 전부다. 타입은 `RETROACTIVE_RUN` 그대로인데 주인이 바뀐다.
+    """
+    assert (event_constants.outbox_owner(event_constants.EVENT_RETROACTIVE_RUN,
+                                         op="chain_replay")
+            == event_constants.OUTBOX_OWNER_CHAIN)
+
+
+@pytest.mark.parametrize("op", ["withdraw", "ledger_backfill"])
+def test_the_other_retroactive_ops_stay_with_the_scheduler(op):
+    """게이트 ㉑. «옮긴 것은 하나»다. 이 줄이 없으면 op 축을 연 김에 셋 다 옮겨도 초록이다."""
+    assert (event_constants.outbox_owner(event_constants.EVENT_RETROACTIVE_RUN, op=op)
+            == event_constants.OUTBOX_OWNER_SCHEDULER)
+
+
+def test_without_an_op_the_type_still_answers_and_does_not_become_unknown():
+    """🔴 호출자 둘(`/admin/chain/queue` 의 타입별 집계)은 «행이 없어» op 를 못 준다.
+    그 자리에서 답이 `unknown` 으로 바뀌면 화면의 주인 칸이 이번 라운드와 «무관하게» 비고,
+    그건 이 라운드가 «낳은» 결함이 된다. 기본값은 타입의 답 그대로여야 한다.
+    """
+    assert (event_constants.outbox_owner(event_constants.EVENT_RETROACTIVE_RUN)
+            == event_constants.OUTBOX_OWNER_SCHEDULER)
+    assert (event_constants.outbox_owner(event_constants.EVENT_RETROACTIVE_RUN, op=None)
+            == event_constants.OUTBOX_OWNER_SCHEDULER)
+
+
+def test_an_unknown_op_does_not_move_the_row():
+    """모르는 op 는 «타입의 답»이다. 「체인일 수도 있으니 chain」은 이 파일이 막는 그 오독이다."""
+    for op in ("", None, "something_added_later", "CHAIN_REPLAY"):
+        assert (event_constants.outbox_owner(event_constants.EVENT_RETROACTIVE_RUN, op=op)
+                == event_constants.OUTBOX_OWNER_SCHEDULER), op
+
+
+def test_the_queue_route_does_not_spell_the_op_itself():
+    """⛔ 「종류를 «묻는» 자리를 늘리지 마십시오」(총괄). 화면은 좌석을 «부르기»만 한다.
+
+    ⚠️ 텍스트가 «주어»인 단언이다(잘라쓰기 아님) — 「이 낱말이 저 파일에 없다」는
+       돌려서는 못 재는 주장이라 소스를 읽는 것이 맞는 계기다.
+    """
+    import inspect
+
+    import main                                                 # noqa: PLC0415
+
+    source = inspect.getsource(main.get_outbox_queue_rows)
+    assert "outbox_owner(" in source, "계기가 엉뚱한 함수를 읽고 있다"
+    assert "chain_replay" not in source, (
+        "대기열 라우트가 op 를 «직접» 철자한다 — 판정의 사본이 하나 더 생긴 것이다")
+
+
+def test_the_retired_scheduler_sentence_is_gone():
+    """게이트 ㉒. 소유자 지적 — 앞 절반은 「주인」 칸의 사본이고, 뒤 절반(「체인 규칙을
+    지나지 않습니다」)은 리플레이가 체인 워커로 옮겨온 2026-09-23 에 «거짓»이 됐다.
+
+    ⚠️ 은퇴시킨 문장은 «되돌아오기» 쉽다 — 그래서 그 문장 자체를 대조군으로 남긴다.
+
+    🔴 주석은 «빼고» 센다. 안 빼면 「왜 은퇴시켰나」를 적은 주석이 자기 게이트를 깨고,
+       실제로 처음 쓸 때 그렇게 깨졌다 — 그 단언은 「문장이 «있나»」를 세고 있었지
+       「문장을 «내보내나»」를 세고 있지 않았다.
+    """
+    import inspect
+
+    import main                                                 # noqa: PLC0415
+
+    source = inspect.getsource(main.get_outbox_queue_rows)
+    code = "\n".join(l for l in source.split("\n") if not l.strip().startswith("#"))
+    assert "note" in code, "계기가 엉뚱한 함수를 읽고 있다"
+    assert "체인 규칙을 지나지 않습니다" in source, (
+        "대조군이 사라졌다 — 주석의 은퇴 기록까지 지우면 다음 사람이 그 문장을 다시 만든다")
+    assert "체인 규칙을 지나지 않습니다" not in code, (
+        "은퇴시킨 문장이 돌아왔다 — 그 행이 깨우는 일은 이제 체인 규칙을 «돈다»")
+
+
 # ------------------------------------------------- is the closed gate still moving
 
 class _Runs:

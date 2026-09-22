@@ -81,6 +81,11 @@ SCHEDULER_OWNED_EVENT_TYPES = frozenset({EVENT_SCHEDULER_RUN_NOW, EVENT_RETROACT
 #: `valid_events`; every event in a successful group is marked, `DELETE` included).
 CHAIN_OWNED_EVENT_TYPES = frozenset({"CREATE", "EDIT", "DELETE"})
 
+#: `RETROACTIVE_RUN` «한 타입»이 주인 다른 일 셋을 덮는다 — 이 op 만 체인 워커가 비우고,
+#: 나머지(`withdraw` · `ledger_backfill`)는 스케줄러 그대로다. 그래서 주인이 타입만으로
+#: 안 나오는 «유일한» 타입이고, 이 집합이 그 예외의 정본이다.
+CHAIN_OWNED_RETROACTIVE_OPS = frozenset({"chain_replay"})
+
 #: 한 규칙이 한 트랜잭션 그룹에 «무엇을 했나» — 닫힌 어휘.
 #: 🔴 운영자가 가르는 것은 다섯이다: 꺼짐 · 안 걸림 · 돌았는데 0 · 바뀜 · 실패.
 #:    원인은 «여섯»이지만 값으로 만들지 않는다 — 원인은 «사유 문자열»이 옆에서 말하고,
@@ -270,7 +275,7 @@ OUTBOX_OWNER_CHAIN = "chain"
 OUTBOX_OWNER_UNKNOWN = "unknown"
 
 
-def outbox_owner(event_type):
+def outbox_owner(event_type, op=None):
     """Which daemon empties a waiting row of this type - or that nobody has established it.
 
     🔴 `unknown` IS A REAL ANSWER AND MUST NOT BE FOLDED INTO `chain`. An unlisted type is
@@ -278,7 +283,16 @@ def outbox_owner(event_type):
     misreading this split exists to end. `SYSTEM_RELOAD` is deliberately unlisted: the
     chain worker marks the LATEST one on a throttled branch of its own, so its fate
     depends on which row it is rather than on its type, and that is not a per-type answer.
+
+    🔴 `op` 는 «한 타입이 주인 둘을 덮을 때»만 쓴다 — 지금은 `RETROACTIVE_RUN` 하나다.
+       ⚠️ 바로 위 `SYSTEM_RELOAD` 와 «다른 경우»다. 저쪽은 운명이 「여럿 중 어느 행이냐」에
+          달려 있어 «행을 봐도» 타입이 답을 못 준다(그래서 안 실렸다). 이쪽은 행이 «선언된
+          칸»(op)을 들고 다녀서 행마다 답이 난다 — 못 세는 것이 아니라 «묻는 자리가 있다».
+       op 를 «안 주면» 타입의 답이 그대로 나온다. 행을 못 가진 호출자
+       (`/admin/chain/queue` 의 타입별 집계 둘)가 답을 «바꾸지» 않게 하기 위해서다.
     """
+    if event_type == EVENT_RETROACTIVE_RUN and op in CHAIN_OWNED_RETROACTIVE_OPS:
+        return OUTBOX_OWNER_CHAIN
     if event_type in SCHEDULER_OWNED_EVENT_TYPES:
         return OUTBOX_OWNER_SCHEDULER
     if event_type in CHAIN_OWNED_EVENT_TYPES:

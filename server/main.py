@@ -4658,13 +4658,21 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
 
     rows = []
     for r in head:
-        owner = event_constants.outbox_owner(r.event_type)
+        # ⚠️ op 까지 주는 이유 — `RETROACTIVE_RUN` 한 타입이 주인 둘을 덮는다. 여기는
+        #    행이 있으므로 물을 수 있고, 그래서 리플레이 행이 화면에서 `chain` 으로 뜬다.
+        #    페이로드는 «기존 좌석»으로 읽는다(새 파서를 만들지 않는다).
+        owner = event_constants.outbox_owner(
+            r.event_type, op=(get_payload_dict(r) or {}).get("op"))
         state, detail = event_constants.chain_state_of(r.processed_chain, r.status)
 
         # 🔴 빈 `rules[]` 는 「규칙이 없다」와 「안 봤다」가 같은 모양이다. 비면 «문장»을 단다.
         note, matched = None, []
-        if owner == event_constants.OUTBOX_OWNER_SCHEDULER:
-            note = "스케줄러가 비우는 행입니다 — 체인 규칙을 지나지 않습니다."
+        if r.event_type in event_constants.CONTROL_EVENT_TYPES:
+            # ⛔ 문장을 «안 단다». 「주인」 칸이 이미 말하고 있고, 제어 행은 어차피 체인
+            #    규칙 목록의 주어가 아니다. 예전엔 여기서 「스케줄러가 비우는 행입니다 —
+            #    체인 규칙을 지나지 않습니다」를 달았는데, 앞 절반은 「주인」의 사본이고
+            #    뒤 절반은 리플레이가 체인 워커로 옮겨온 2026-09-23 에 «거짓»이 됐다.
+            pass
         elif not worker._is_trigger_event(r):
             note = "%s 는 규칙을 깨우지 않습니다 — 트리거는 CREATE·EDIT 뿐입니다." % (
                 r.event_type,)
