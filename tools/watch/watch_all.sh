@@ -92,10 +92,12 @@ while true; do
 
   cur_head=$(git rev-parse main 2>/dev/null || echo none)
   if [ "$cur_head" != "$PREV_HEAD" ] && [ "$PREV_HEAD" != "none" ]; then
-    for h in $(git rev-list --reverse "$PREV_HEAD..$cur_head" 2>/dev/null); do
-      n=$(git diff-tree -r --name-only "$h^1" "$h" 2>/dev/null | grep -cE '^(server|client2)/' || true)
-      [ "${n:-0}" -gt 0 ] && say "🛠 LAND ${h:0:8} [제품 $n] $(git log -1 --format=%s $h | cut -c1-90)"
-    done
+    # 🔴 [2026-09-22 판정 651] LAND 판정은 land_lines.sh «한 좌석»이 낸다. 여기서 다시 적지
+    #    않는다 — 게이트(land_lines_gate.sh)가 «감시가 도는 그 바이트»를 돌려야 하고,
+    #    베껴 적으면 그 게이트가 판정의 둘째 저자가 된다.
+    while IFS= read -r ln; do
+      [ -n "$ln" ] && say "🛠 LAND $ln"
+    done < <(bash "$REPO/tools/watch/land_lines.sh" "$PREV_HEAD" "$cur_head" 2>/dev/null)
     PREV_HEAD=$cur_head
   fi
 
