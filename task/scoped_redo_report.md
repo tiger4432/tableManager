@@ -50708,3 +50708,107 @@ _takes    for item in spec.get("take") or ()   -> 문자열을 «순회»합니�
 ```
 
 **다음**: ③(652 3걸음) 착수합니다. 686 이 풀었고, 계획의 ①(시험 27 분류표, 코드 0)부터입니다.
+
+---
+
+> 📋 **[09-22 11:30 구현자] 3걸음 ①(코드 0) — 시험 «26» 분류표. 그리고 제 계기가 «세 번» 샜습니다**
+
+688 받습니다. 판정 청하지 않고 짓겠습니다 — 이 표는 «막히면 올린다» 쪽이 아니라
+계획 ①의 산출이라 그대로 올립니다.
+
+### 🔴 먼저 — 세는 계기가 세 형태를 못 봤습니다. 카나리아가 울려서 알았습니다
+
+```
+샌 형태 ①  from chain import dynamic_mappers, legacy_join_declaration   <- «쉼표 목록»
+샌 형태 ②  LOADER = "chain/legacy_join_declaration"                     <- 이름이 «문자열»
+샌 형태 ③  monkeypatch.setattr(vjc, "load_virtual_join_rules", …)       <- 모듈은 «객체», 이름은 «문자열»
+```
+셋 다 「이 파일은 그 모듈을 안 쓴다」로 렌더됐습니다. 처음 표에서 «8 파일»이 그렇게 빈칸이었습니다.
+카나리아(「코드 줄에 이름이 나오나」)가 0 이 아니어서 세 번 다 잡았습니다 — 안 달았으면
+분류표가 8 칸 틀린 채로 나갔습니다.
+
+```
+파일 수   26 (앞서 27 이라 적은 것을 정정합니다 — 하나는 tests/support/ 의 «시험이 아닌» 샘플)
+센 명령   tests/*.py 를 읽어 (쉼표 목록 · from chain.X import · setattr 문자열) 셋으로 이름을 뽑음
+```
+
+---
+
+### 살린다 — «대조군» 둘
+
+| 파일 | 왜 살리나 |
+|---|---|
+| `test_a_read_time_join_is_retired_by_name.py` | 이 시험의 «주어»가 은퇴 그 자체입니다. 다만 본문이 `_read_time_joins_from_unified`·`load_virtual_join_rules` 를 부르므로 **좌석을 옮겨 다시 겨눕니다** — 오늘 그 거절을 «짓는» 자리는 `rule_shape.expand_declaration` 이고 «찍는» 자리는 `ingestion_worker` 입니다 |
+| `test_the_loader_does_not_reach_for_the_report.py` | 이름을 «문자열»로만 듭니다(`_imports` 로 고리를 잽니다). 은퇴한 모듈을 목록에서 빼면 그대로 삽니다 |
+
+### 죽는다 — 죽는 기제를 «재던» 것 넷
+
+```
+test_a_materialized_join_declares_its_cost.py      _validate_join · CODE_NO_REWRITE_CAP  (max_rewrite_rows 문법)
+test_a_materialized_join_writes_its_own_layer.py   materialize_rows · on_target_rows_changed  (쓰는 반쪽)
+test_virtual_join_guard.py                         단언 19 — 로더·검증기·verification_report
+test_the_approval_axis_… 의 «한 줄»                 verification_report 로 칸 동일성을 견주는 줄.
+                                                  독스트링이 「옛 라우트가 걷히는 커밋에서 같이 죽는다」고 적어 뒀습니다
+```
+⚠️ `test_virtual_join_guard.py` 의 `FakeDB` 를 제 시험이 «빌려 씁니다». 그 파일이 죽으면
+빌린 자리도 같이 갑니다 — 위 「한 줄」과 «같은 커밋»이라 사이가 거짓이 되지 않습니다.
+
+### 재배선 한 줄 — 이름이 «살아남는» 자리로 옮기면 끝 일곱
+
+`required_index_name` · `required_index_ddl` · `index_key_expression` ·
+`normalize_index_expression` · `INDEX_PREFIX` · `unique_index_covering` ·
+`_casefold_outside_literals` 는 전부 **`chain.join_key_index`** 가 정본이고, 죽는 모듈은
+«재수출»만 합니다. `CODE_*` 는 **`chain.join_refusal`** 입니다.
+
+```
+test_a_declared_unique_key_is_made_by_the_product.py   test_one_key_expression_at_every_seat_that_compares_a_key.py
+test_one_null_answer_at_every_key_seat.py              test_the_index_seat_moved_without_moving_the_index.py
+test_notation_normalization.py (일부)                   test_a_declared_join_writes_what_it_says_into_the_table.py
+test_a_deleted_row_takes_back_the_cells_it_fed.py
+```
+동작 변화 «0» 입니다 — 같은 함수를 «자기 집»에서 부르는 것뿐입니다.
+
+### 픽스처 수정 — 죽는 모듈을 «세우려고» 패치하던 것 여섯
+
+```
+test_a_zero_says_which_zero_it_is.py                 setattr(vjc, "load_virtual_join_rules", …) 한 줄
+test_the_chain_is_drawn_from_its_four_declarations.py  같은 형태 둘
+test_three_files_declare_one_chain_namespace.py       setattr(vjc, "VIRTUAL_JOIN_RULES_PATH", …)
+test_dt_map_derivation.py                             도어 목록에서 죽는 문을 뺀다
+test_one_declarations_failure_does_not_block_another_tables_read.py · test_the_sort_column_is_named_or_refused.py
+                                                     reset_cache / rules_for — 죽는 캐시
+```
+🔴 `test_one_bad_row_does_not_stop_a_tables_chain.py` 는 «둘 다»입니다 — 재수출 이름 하나와
+죽는 이름 셋(`reset_cache`·`rules_for`·`rules_for_right`). 열어서 단언 단위로 가릅니다.
+
+### 남은 셋 — 여는 것이 판정보다 싸서 ② 커밋에서 열겠습니다
+
+`test_every_declared_kind_runs_and_leaves_rows.py`(합성 규칙이 가리키는 «문») ·
+`test_the_product_synthesizes_chain_rules_in_one_seat.py`(`JOIN_MAPPER`·`JOIN_PREFIX`) ·
+`test_ledger_setup_registry.py`·`test_ledger_v2_pg.py`(`load_verified_rules` — 원장 번들 쪽).
+`test_the_cell_layer_stays_below_its_readers.py`·`test_one_place_decides_where_the_server_is.py` 는
+이름이 «목록의 한 칸»이라 그 칸만 뺍니다.
+
+---
+
+### Q-198 에 답합니다 — 제 판단은 「선례가 이미 그 쪽으로 판정했다」입니다
+
+응용이 「`SKIP_NOT_ASKED` 가 «key.unique 없음»과 «꺼짐»을 접는다」고 짚었습니다. 맞습니다.
+다만 제가 따른 것은 `event_constants` 의 `RULE_STATES` 주석입니다:
+
+> 「⛔ 「안 섬」의 사유는 값으로 만들지 않는다 — `detail` 이 옆에서 말한다.
+>  꺼짐과 미완성을 «값»으로 가르면 화면이 둘을 다시 하나로 접어야 한다」
+
+규칙 목록도 «같은 자리»에서 같은 선택을 했습니다 — 꺼진 규칙과 미완성 규칙이 둘 다
+`declared_only` 이고 사유는 `rule_state_detail` 입니다. 656 이 산 값은 「목록에서 «사라짐»」 vs
+「꺼짐」을 가른 것이지, 「꺼짐」 vs 「미완성」을 «값»으로 가른 것이 아닙니다.
+
+```
+그래서 지금은 «안 늘립니다». 늘리면 이 축만 규칙 목록과 다른 모양이 됩니다
+값을 치르는 자리   응용이 짚은 그대로 — 화면이 「꺼진 선언을 켜라」를 말할 때
+그때의 수리        그때는 «두 축이 같이» 늘어야 합니다(규칙 목록도 같은 물음을 집니다).
+                 한쪽만 늘리는 것이 「옆에 만들기」입니다
+```
+⚠️ 제가 못 재는 것: 클라가 「켜라」를 말하려는 계획이 «있는지». 있으면 그게 이 판단을 뒤집습니다.
+
+**다음**: ② 커밋(삭제 + 재배선 + 말 걷기 8 파일)을 짓습니다.
