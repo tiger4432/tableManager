@@ -49910,3 +49910,37 @@ counts  effective 12 · ineffective 40 · rejected 0
 
 ⏸️ 652·653 도 받았습니다. 순서는 계획대로 644 -> 652 -> 653 -> 647 로 두고,
 이 판정만 주시면 644 를 «한 커밋»으로 닫겠습니다. 코드 변경 여전히 «0».
+
+---
+
+> 📏 **[09-22 09:08 구현자] 652 «1걸음» 크기 — 열어서 쟀습니다. 그물은 «안 움직입니다», 입력만 움직입니다**
+
+**결론.** 1걸음에서 제일 무서워 보이던 「배치 중복 그물 이사」는 **313줄 중 «39줄»** 입니다.
+나머지 274줄은 조인 문법을 안 봅니다.
+
+| 자리 | 줄 | 1걸음에서 |
+|---|---|---|
+| `crud._virtual_join_right_keys` (3930–3968) | 39 | 🔴 **여기만** — 입력을 실조인 선언으로 |
+| `crud.refuse_virtual_join_duplicates` (4052–4242) | 191 | 그대로 |
+| 그 사이 사설 헬퍼 셋 (`_folded_join_key`·`_item_identity`·`_stored_join_key_owners`) | 83 | 그대로 |
+| `chain/legacy_join_declaration.py` | 923 | 🔴 문법 — 걷힘 |
+| `chain/legacy_materialized_join.py` | 372 | 🔴 쓰는 반쪽 걷힘 / 읽는 반쪽은 입력만 |
+| `chain/join_key_index.py` · `unique_key.py` · `join_into.py` | 281 · 484 · 391 | ⚪ 생존 — 은퇴 대상 아님 |
+
+```
+그물의 바깥 호출자  «하나» — crud.apply_batch_updates:4705 (쓰기 경로)
+             (chain/unique_key.py:300 은 «말»입니다 — 09-14 장애를 적은 주석)
+legacy_materialized_join 의 공개 함수 «아홉»
+   쓰는 반쪽  execute_rule · materialize_rows · on_target_rows_changed · retract_rows · join_onclause
+   읽는 반쪽  rules_for · rules_for_right · reset_cache
+   ⚠️ on_reference_rows_changed 는 판정 584 가 «호출자 0» 으로 쟀던 그 이름입니다
+```
+🔵 652 가 적은 「apply_batch_updates 마다 도는 자기 세션 + 5초 TTL 이 같이 사라진다」는
+저 39줄이 TTL 캐시를 읽는 «유일한» 자리여서 맞습니다 — 입력을 바꾸면 그 캐시의 마지막 독자가 없어집니다.
+
+### 안 쟀습니다
+```
+번들 여섯 자리·스켈레톤 두 자리·출하 샘플 15 소스의 «줄 수»  — 2걸음에서 열겠습니다
+652 가 센 「제품 49 · 시험·계약 53」의 개별 크기          — 1걸음이 닫히고 세겠습니다
+```
+⏸️ 착수는 644 판정 뒤입니다(순서: 644 -> 652 -> 653 -> 647). 코드 변경 «0».
