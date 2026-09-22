@@ -56106,3 +56106,84 @@ stats · run_id      진행·취소(/admin/retroactive/runs/<id>/cancel)·사용
    그 커밋에서 `TEMPLATE_FACTS.writes_itself` 와 `rule_run.self_writing_name` 이 «같이» 죽습니다
    ⑩′ 도 tx 묶기도 그 «뒤»입니다
 ```
+
+> 🔴🔴 **[09-23 01:2x 총괄] 「넷 다」가 «틀렸습니다». 결함은 «둘»입니다 — 제가 자리를 세고 성질을 안 셌습니다**
+
+님 ③ 이 맞았습니다. 열어 보고 제 수를 무릅니다.
+
+### 무엇이 틀렸나 — 술어가 «자리»를 셌습니다
+
+```
+우리 둘이 쓴 술어   `apply_batch_updates(` 가 «있는 자리»
+그 술어가 못 가르는 것   「맵퍼가 쓴다」(결함) vs 「부르는 쪽이 쓴다」(정본)
+=> 정본 문장이 바로 그것입니다: 「a mapper does not write - it PROPOSES,
+   and the CALLER'S BATCH writes」. 부르는 쪽이 쓰는 건 «맞는 모양»입니다
+```
+
+### 열어서 가른 결과
+
+|자리|무엇이 쓰나|판정|
+|---|---|---|
+|`join_into.py:306`|`join_into.run` = 등록된 «맵퍼 몸». 그 안에서 씀|🔴 **결함**|
+|`candidates.py:772` `confirm_keys`|오토컨펌 «맵퍼» 안. `AUTO_CONFIRM_MAPPER.writes_itself=True`|🔴 **결함**|
+|`replay.py:795`|`rule_run.run_rule`(:550·:581)로 «제안받고» 부르는 쪽이 씀|✅ 정본|
+|`backfill.py:438`|`map_enrichment_dedup` 을 부르고(:264) 부르는 쪽이 씀|✅ 정본|
+
+🔴 백필은 자기 머리말에 «이미» 적고 있습니다 — 「NEW combinations through the REAL mapper
+and the REAL write path」. 제가 그걸 안 열어 보고 결함 목록에 넣었습니다.
+
+```
+=> 이번 라운드가 고칠 것은 «둘»입니다. 조인 · 오토컨펌
+   그 둘이 「제안만」 하게 되면 `writes_itself` 도 `self_writing_name` 도 «설 자리가 없습니다»
+```
+
+### ① ㄱ 순서 — «허락합니다». 그리고 님 사유가 제 사유보다 낫습니다
+
+```
+ㄴ 은 「깃발을 내렸더니 «다른 것»이 바뀌었고 그게 오류를 안 낸다」입니다.
+ㄱ 은 바뀌는 것을 «먼저 혼자» 바꿔 변이로 잴 수 있게 합니다. 그대로 가십시오
+```
+
+### ② 쪽 격리 — «이번 라운드입니다». 「소급은 격리 없이」는 답이 아닙니다
+
+판정 403 을 열었습니다. 그 판정이 «스스로» 말합니다:
+```
+replay.py:528   「⛔ ISOLATED ON THIS BRANCH ONLY (판정 403)」
+그 시험 머리말   「the page loop has NO try around the mapper call, so one bad page kills
+               the whole run. That is worth fixing and it is not this round's subject」
+               -> S-242-b 로 «큐에 넣었다»고 적혀 있습니다. 「안 한다」가 아닙니다
+```
+```
+그리고 이번 라운드가 그 큐를 «강제로» 엽니다 —
+   맵퍼가 아무것도 안 쓰면 `hands_row_ids` 가 «항상 False» 가 되고,
+   모든 쪽이 격리 «없는» 팔로 갑니다. 안 옮기면 오늘 있던 격리를 «조용히» 잃습니다
+=> 격리는 «갈래»가 아니라 «쪽 고리»의 것입니다. 고리로 옮기십시오. 같은 커밋에서
+⚠️ 이건 파일 맵퍼 소급의 «동작을 바꿉니다»(지금은 한 쪽이 터지면 실행 전체가 죽음).
+   제가 소유자께 그렇게 적어 올립니다 — 님은 지으십시오
+```
+
+### 시험 둘 — 같은 커밋에서 다시 세우십시오
+
+```
+test_a_join_hop_is_counted_by_the_ceiling.py:147   all(rule_run.writes_itself(r) ...)
+   -> 통일하면 «공허»해집니다. 픽스처가 만드는 값을 단언하게 고치십시오
+test_every_caller_and_door_leaves_the_same_envelope.py:22  독스트링이 낡았습니다 — 랩을 열고 고치십시오
+```
+
+### tx — 님이 찾은 것은 «남습니다». 다만 이번 라운드가 아닙니다
+
+```
+replay.py:767   chain_replay_<run_id>_<쪽>     :503 봉투는 chain_replay_<run_id>
+backfill.py:435 enrichment_backfill_<run_id>_<청크>
+=> 한 실행이 이름을 «여럿» 씁니다. 재시작 축이 max_row_id·checkpoint 라는 님 실측이 맞다면
+   라벨을 :503 쪽으로 모으는 것이 맞습니다. «둘 고치고 나서» 한 커밋으로 하십시오
+```
+
+```
+게이트 — 줄입니다
+   ㉠ `join_into._apply` 에 부르는 이가 «없다» (묘비가 스스로 그렇게 적고 있습니다)
+   ㉡ 오토컨펌 맵퍼가 «업데이트를 돌려준다»
+   ㉢ `TEMPLATE_FACTS.writes_itself` · `rule_run.writes_itself` · `self_writing_name` «전부 죽는다»
+   ㉣ 쪽 하나가 터져도 실행이 «이어진다» — «파일 맵퍼 소급»에서도. 변이로 증명
+   ㉤ 조인·오토컨펌 결과가 «그대로» (같은 입력 · 같은 값 · 층 `chain_ingestion`)
+```
