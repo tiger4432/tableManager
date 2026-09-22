@@ -5474,6 +5474,8 @@ def get_chain_rules():
     answer for a file that is not there.
     """
     from chain import ingestion_worker as worker
+    from chain import rule_shape
+    from database import crud
 
     rules_path = paths.config_path("chain_rules.json")
     read = worker.read_rules_document(rules_path)
@@ -5483,7 +5485,31 @@ def get_chain_rules():
     if read["error"]:
         print(f"Error reading chain rules: {read['error']}")
         return {"status": "error", "message": read["error"], "data": []}
-    return {"status": "success", "data": read["rules"]}
+
+    standing = worker.load_chain_rules()
+    listed = [dict(rule, rule_state=event_constants.RULE_STATE_RUNNING)
+              for rule in standing]
+    standing_names = {rule.get("name") for rule in standing}
+    for raw in (read["rules"] or ()):
+        if not isinstance(raw, dict):
+            continue
+        # ⛔ 「DID THIS DECLARATION STAND?」 IS ASKED OF THE LOADER, AND THE NAMES IT WOULD
+        # STAND UNDER ARE ASKED OF THE GRAMMAR. Neither alone answers it. A declaration
+        # does not have to stand a rule called after itself - `derive.decide` stands two
+        # halves spelled `enrichment_dedup:<name>` - so the grammar has to supply the
+        # mapping; and the grammar STANDS a flat rule that the loader then refuses
+        # (`unresolvable_mapper`), so only the loader knows whether it really runs.
+        # Measured: asking the grammar alone dropped a refused rule off the list entirely.
+        expanded, refusal, notes = rule_shape.expand_declaration(raw, crud.TABLE_CONFIG)
+        if any(rule.get("name") in standing_names for rule in expanded):
+            continue
+        # ⚠️ THE REASON IS BEST EFFORT AND THAT IS STATED RATHER THAN HIDDEN. The grammar
+        # hands back its own refusal or note; the loader logs its refusal codes into a
+        # local list and returns them to nobody, so a rule it dropped arrives here with a
+        # state and no reason.
+        listed.append(dict(raw, rule_state=event_constants.RULE_STATE_DECLARED_ONLY,
+                           rule_state_detail=refusal or (notes[0] if notes else None)))
+    return {"status": "success", "data": listed}
 
 
 @app.get("/admin/chain/rules/replayable", dependencies=[Depends(require_admin_token)])

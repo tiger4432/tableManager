@@ -24,6 +24,7 @@ server_dir = os.path.abspath(os.path.join(script_dir, ".."))
 if server_dir not in sys.path:
     sys.path.insert(0, server_dir)
 
+import event_constants                                                # noqa: E402
 import main                                                           # noqa: E402
 
 # 🔴 IMPORTED HERE, BEFORE ANY TEST PATCHES `paths.config_path` (S-201). The worker computes
@@ -50,6 +51,13 @@ def rules_file(monkeypatch, tmp_path):
 
     monkeypatch.setattr(paths_module, "config_path", fake)
     monkeypatch.setattr(main.paths, "config_path", fake)
+    # 🔴 [판정 644] THE ROUTE NOW HAS TWO READERS OF ONE FILE AND THEY RESOLVE IT
+    # DIFFERENTLY: it reads the document through `paths.config_path` AT CALL TIME and the
+    # loader reads it through `RULES_PATH`, frozen AT IMPORT TIME (the hazard this file's
+    # own header describes). Production resolves both to the same string; a test that
+    # patched only the first would quietly list THIS BOX's live rules next to the temp
+    # document's, which is two documents in one answer.
+    monkeypatch.setattr(ingestion_worker, "RULES_PATH", str(target))
     return target
 
 
@@ -62,12 +70,27 @@ def _call():
 # ---------------------------------------------------------------------------
 
 def test_a_normal_document_answers_exactly_as_before(rules_file):
-    """⚠️ THE BYTE-IDENTITY GATE (판정 316). The ordinary case is the one an operator sees
-    every day, and moving the read must not move it."""
-    rules = [{"name": "r1", "trigger_table": "t"}, {"name": "r2", "trigger_table": "u"}]
+    """⚠️ THE CELL-IDENTITY GATE (판정 316, narrowed by 644). The ordinary case is the one an
+    operator sees every day, and moving the read must not move WHAT THE DECLARATION SAYS.
+
+    🔴 WHAT 644 DELIBERATELY ADDED IS THE LABEL, AND NOTHING ELSE. The answer used to be the
+    file's list byte for byte; it is now the set that STANDS, each row carrying `rule_state`.
+    Asserting byte identity here would forbid the change the ruling asked for - so the
+    promise is restated as 「every cell the operator wrote still travels, unchanged」, which
+    is the half 316 was actually protecting."""
+    rules = [{"name": "r1", "trigger_table": "t", "target_table": "t",
+              "mapper_module": "m", "mapper_function": "f"},
+             {"name": "r2", "trigger_table": "u", "target_table": "u",
+              "mapper_module": "m", "mapper_function": "f"}]
     rules_file.write_text(json.dumps({"rules": rules}), encoding="utf-8")
 
-    assert _call() == {"status": "success", "data": rules}
+    answer = _call()
+
+    assert answer["status"] == "success"
+    assert [row["name"] for row in answer["data"]] == ["r1", "r2"]
+    for row, declared in zip(answer["data"], rules):
+        assert {key: row[key] for key in declared} == declared
+        assert row["rule_state"] == event_constants.RULE_STATE_RUNNING
 
 
 def test_a_missing_file_is_still_ABSENT_and_not_empty(rules_file):
