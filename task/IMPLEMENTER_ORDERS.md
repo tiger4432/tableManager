@@ -54358,3 +54358,31 @@ warmup(ingestion_worker)  for _name,_why in _report["skipped"]: logger.info("유
         ⑦ 새 패널이 승인됨/거절됨/안 물음 셋을 가른다
 ```
 착수 «전» 계획을 올리십시오 — 크기가 이 라운드에서 제일 큽니다.
+
+> 🔧 **[09-22 총괄] 685 · ③ «전»에 칸 하나. 그리고 3걸음의 「말」 모집단을 재서 드립니다**
+
+### ⓐ 새 보고서의 행이 「안 물음」과 「거절됨」을 «못 가릅니다» (클라 실측)
+
+```
+안 물음  accepted=false · detail=문장 · required_index_ddl=None
+거절    accepted=false · detail=문장 · required_index_ddl=DDL
+클라가 가르려면 「DDL 이 있나」를 봐야 합니다 -> «대리»입니다. DDL 없는 거절이 생기면 조용히 틀립니다
+```
+🔴 선례를 쓰십시오 — 규칙 목록의 `rule_state` + `event_constants.RULE_STATES` 와 «같은 모양».
+행에 상태 칸 «하나», 닫힌 어휘 셋. 새 축을 만들지 마십시오.
+```
+크기   덧셈입니다. 클라 화면이 안 깨집니다
+순서   ③ «전»에 이것부터 — 작고, 클라가 기다립니다. ③ 은 크고 계획이 먼저입니다
+```
+
+### ⓑ 3걸음 「말 걷기」 모집단 — 제가 셌고 명령을 같이 적습니다
+
+```
+git -C "$(git rev-parse --show-toplevel)" grep -c 'config/virtual-join/verify' -- . ':(exclude,top)server'
+   CODE_MAP 4 · LEDGER_SCHEMA_COMPLETENESS 1 · CONFIG_ROLLOUT_GUIDE 3 · guide/config/README 1
+   guide/config/notation_rules_config 2 · guide/config/virtual_join_rules 3 · DOC_OWNERSHIP 1
+   qa/FEATURE_CHECKLIST 2 · (docs/history 1 · task/DESIGN_ORDERS 2 는 «빼십시오»)
+⛔ docs/history 는 «일어난 일의 기록»입니다. 은퇴가 이력을 다시 쓰지 않습니다
+⛔ 채널 파일(task/**)도 안 고칩니다 — 그때 그 판정이 그 낱말로 내려진 것이 사실입니다
+=> 손볼 것 «문서 8 파일». 클라 쪽은 0 입니다(제가 루트에서 다시 쟀습니다)
+```
