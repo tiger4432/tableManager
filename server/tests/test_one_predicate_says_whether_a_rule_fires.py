@@ -99,3 +99,68 @@ def test_the_trigger_kind_is_spelled_in_exactly_one_place():
         "하나여야 한다: %r" % (len(spellings), spellings))
     assert "CREATE" not in inspect.getsource(worker.fires), \
         "`fires` 가 event_type 축을 삼켰다 — 축이 둘인 이유가 사라진다"
+
+
+# ---------------------------------------------------------------------------
+# 「이 규칙만」 — 사건이 들고 온 제한
+# ---------------------------------------------------------------------------
+
+RULE_Y = {"name": "rule_y", "enabled": True, "trigger_table": "t", "target_table": "u"}
+RULE_X = dict(RULE, name="rule_x")
+
+
+def test_an_event_with_no_restriction_wakes_every_matching_rule():
+    """⚠️ 대조군. 이 줄이 참이어야 아래의 False 가 «제한 때문»이라는 뜻이 된다."""
+    import event_constants as ec
+
+    plain = ev()
+    assert ec.only_rule_of(plain.payload) is None
+    assert worker.fires(RULE_X, plain) is True
+    assert worker.fires(RULE_Y, plain) is True
+
+
+def test_a_restricted_event_wakes_only_the_rule_it_names():
+    import event_constants as ec
+
+    only_x = ev(payload={ec.ONLY_RULE_KEY: "rule_x"})
+    assert worker.fires(RULE_X, only_x) is True
+    assert worker.fires(RULE_Y, only_x) is False
+
+
+def test_the_restriction_is_read_through_a_stored_json_payload():
+    """🔴 운영의 페이로드는 «문자열»로 저장돼 있다. dict 로만 재면 그 초록이 거짓이다 —
+    파싱을 안 거치는 자리를 통과시켜 버린다."""
+    import json
+
+    import event_constants as ec
+
+    stored = ev(payload=json.dumps({ec.ONLY_RULE_KEY: "rule_x"}))
+    assert worker.fires(RULE_X, stored) is True
+    assert worker.fires(RULE_Y, stored) is False
+
+
+def test_an_empty_restriction_is_not_a_restriction():
+    """빈 문자열은 «이름이 아니다». 제한으로 읽으면 아무 규칙도 못 도는 행이 된다 —
+    조용히 아무 일도 안 일어나고, 그것이 제일 진단하기 어려운 상태다."""
+    import event_constants as ec
+
+    for empty in ("", "   ", None):
+        e = ev(payload={ec.ONLY_RULE_KEY: empty})
+        assert worker.fires(RULE_X, e) is True, "빈 값 %r 이 제한으로 읽혔다" % (empty,)
+
+
+def test_the_restriction_is_asked_in_exactly_one_place():
+    """🔴 [Q-202 와 같은 모양] 이 비교를 열한 호출 자리에 «따로» 적으면 열두째가 빠지고,
+    빠진 자리는 「제한 없음」으로 읽혀 그 표의 모든 규칙이 깨어난다.
+
+    ⚠️ 텍스트가 «주어»인 단언이다(잘라쓰기 아님).
+    """
+    import inspect
+    import re
+
+    source = inspect.getsource(worker)
+    asked = re.findall(r"only_rule_of\(", source)
+    assert len(asked) == 1, (
+        "제한을 묻는 자리가 %d 곳이다 — `fires` 하나여야 한다: %d" % (len(asked), len(asked)))
+    assert "only_rule_of(" in inspect.getsource(worker.fires), \
+        "`fires` 가 제한을 안 묻는다 — 좌석이 옮겨갔다"

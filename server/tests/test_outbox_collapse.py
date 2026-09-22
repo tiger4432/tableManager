@@ -654,3 +654,84 @@ def test_row_count_survives_a_missing_count_field():
 
 
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# 사건이 «들고 다니는» 키 — 확장을 넘어서 사나
+# ---------------------------------------------------------------------------
+
+def test_an_expanded_child_keeps_the_hop_count_it_was_born_with():
+    """🔴 실측된 구멍이다(2026-09-22). `synthesize_payload` 는 키 일곱으로 «닫혀» 있었고
+    `chain_depth` 가 그 안에 없어서, 재확장된 행이 깊이를 «잃었다».
+
+    잃으면 `chain_depth_of` 가 `None` 을 돌려주고, 그 독스트링이 `None` 을 「체인 밖」이라
+    정의한다 — 즉 **재확장된 행에 홉 상한이 안 걸린다.** 도달 가능한 이유는
+    `database.py` 가 묶음 이벤트에 깊이를 «일부러 찍기» 때문이다: 체인이 낳은 묶음이
+    있다는 뜻이고, 확장이 그것을 도로 지우고 있었다.
+
+    ⚠️ 「루프가 실제로 났다」는 «안 쟀다». 이 줄이 고정하는 것은 「상한이 걸린다」까지다.
+    """
+    from outbox_expand import synthesize_payload
+    import event_constants as ec
+
+    env = {"transaction_id": "tx", "updated_by": "u", "source_name": "s",
+           "timestamp": "t", ec.CHAIN_DEPTH_KEY: 3}
+    out = synthesize_payload("r1", "bk1", {"c": "v"}, env)
+
+    assert ec.chain_depth_of(out) == 3, (
+        "확장된 자식이 깊이를 잃었다 — 이 행에는 홉 상한이 «안 걸린다»")
+
+
+def test_an_expanded_child_keeps_the_one_rule_it_was_restricted_to():
+    """확장은 «같은 사건이 모양만 바뀌는» 것이라 제한이 따라가야 한다.
+
+    잃으면 그 표의 «모든» 규칙이 깨어난다 — 리플레이가 막으려던 것의 정반대이고
+    역시 아무 오류도 안 난다.
+    """
+    from outbox_expand import synthesize_payload
+    import event_constants as ec
+
+    env = {"transaction_id": "tx", ec.ONLY_RULE_KEY: "rule_x"}
+    out = synthesize_payload("r1", "bk1", {"c": "v"}, env)
+
+    assert ec.only_rule_of(out) == "rule_x"
+
+
+def test_a_key_that_was_not_there_does_not_appear_as_none():
+    """⛔ 「키 없음」과 「값이 None」은 «다른 상태»다. 둘을 접으면 부재가 «선언»이 된다.
+
+    `chain_depth_of` 의 독스트링이 그 이유를 든다 — 「No key -> None (outside the chain)」.
+    `None` 을 «써 넣으면» 읽는 쪽 답은 같아 보여도, 그 행은 이제 「체인이 깊이를 안 셌다」가
+    아니라 「깊이가 없다고 «적힌»」 행이 된다.
+    """
+    from outbox_expand import synthesize_payload
+    import event_constants as ec
+
+    out = synthesize_payload("r1", "bk1", {"c": "v"}, {"transaction_id": "tx"})
+
+    assert ec.CHAIN_DEPTH_KEY not in out
+    assert ec.ONLY_RULE_KEY not in out
+    assert ec.chain_depth_of(out) is None
+    assert ec.only_rule_of(out) is None
+
+
+def test_the_chain_does_not_hand_its_restriction_to_the_rows_it_writes():
+    """🔴 자식이 «둘»이고 답이 반대다.
+
+    확장 자식(위 둘)은 «가져가고», 체인이 낳은 자식은 «버려야» 한다 — 규칙 X 가 표 B 에
+    써서 난 행에까지 「X 만」이 붙으면, X 는 B 를 안 보므로 리플레이가 한 홉만 돌고
+    «조용히» 끝난다.
+
+    구조로 그렇게 된다: 체인의 쓰기는 `stage_event` 를 지나고 그 봉투(`_outbox_envelope`)는
+    ContextVar 넷만 읽는다 — 제한은 거기 «없다». 이 줄은 그 부재를 «고정»한다.
+    ⚠️ 그래서 제한을 ContextVar 로 만들면 이 줄이 빨개진다. 그것이 이 시험의 일이다.
+    """
+    import inspect
+
+    from database import database as db_mod
+    import event_constants as ec
+
+    envelope_src = inspect.getsource(db_mod._outbox_envelope)
+    assert ec.ONLY_RULE_KEY not in envelope_src, (
+        "봉투가 제한을 나르기 시작했다 — 체인이 낳은 행이 그것을 «물려받으면» "
+        "리플레이가 한 홉만 돌고 멈춘다")

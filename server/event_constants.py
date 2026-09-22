@@ -315,6 +315,31 @@ CHAIN_DEPTH_KEY = "chain_depth"
 DEFAULT_MAX_CHAIN_DEPTH = 8
 
 
+#: 「이 사건은 규칙 X «만» 원한다」 — 리플레이가 넣은 행이 드는 키. 없으면 «제한 없음»이고
+#: 그것이 보통 사건이다. `CHAIN_DEPTH_KEY` 와 «같은 부류»다: 사건이 들고 다니는 값이고,
+#: 부재가 0 이나 빈 문자열이 아니라 «다른 상태»다.
+#:
+#: 🔴 따라가는 범위가 둘로 갈린다 — 이 구분이 이 키의 전부다.
+#:    확장 자식(`outbox_expand`)  같은 사건이 «모양만» 바뀐 것 -> «가져간다»
+#:    체인이 낳은 자식            규칙 X 가 표 B 에 써서 난 «새» 사건 -> «버린다»
+#:    버리지 않으면 X 가 B 를 안 보므로 리플레이가 한 홉만 돌고 «조용히» 끝난다.
+ONLY_RULE_KEY = "only_rule"
+
+
+def only_rule_of(payload):
+    """이 사건이 «한 규칙만» 원하나 — 규칙 이름, 아니면 `None`.
+
+    ⚠️ `chain_depth_of` 와 같은 모양으로 읽는다: 키가 없으면 `None`(제한 없음),
+       있으면 그 값. 빈 문자열은 «제한이 아니다» — 이름이 아니니까.
+    """
+    if not isinstance(payload, dict):
+        return None
+    value = payload.get(ONLY_RULE_KEY)
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return value
+
+
 def chain_depth_of(payload):
     """How deep this event is, or `None` when it did not come from the chain.
 

@@ -971,7 +971,19 @@ def fires(rule, event) -> bool:
     ⚠️ `event_type` 은 여기 «없다». 그것은 이벤트 혼자의 성질이고(`_is_trigger_event`),
        `group_id` 는 모든 종류를 묶으므로 이 술어를 그 축 «없이» 쓴다. 둘을 한 술어로 접으면
        DELETE 행의 그룹 키가 바뀐다 — 축이 둘인 이유가 그것이다.
+
+    🔴 「이 규칙만」(`only_rule`)은 여기서 «묻는다». 읽는 좌석은 `event_constants.only_rule_of`
+       «하나»이고 — 그것이 사건 혼자의 성질이다 — 이 함수는 그 답을 규칙 이름과 «견줄» 뿐이다.
+       리플레이가 넣은 행이 그 키를 들고, 들지 않은 보통 사건은 `None` 이라 아무것도 안 바뀐다.
+    ⛔ 이 비교를 열한 호출 자리에 «따로» 적지 않는다. 그러면 열두째 자리가 빠지고,
+       빠진 자리는 「제한 없음」으로 읽혀 그 표의 «모든» 규칙이 깨어난다 — 조용하게.
     """
+    # ⚠️ `event` 를 넘긴다(`event.payload` 아님) — 이 헬퍼는 둘 다 받지만, 사건을 넘겨야
+    #    `_parsed_payload`/`safe_payload` 캐시를 탄다. `fires` 는 규칙마다 불리므로
+    #    페이로드를 규칙 수만큼 다시 파싱하게 된다. :454 도 같은 모양으로 부른다.
+    only = event_constants.only_rule_of(get_payload_dict(event))
+    if only is not None and rule.get("name") != only:
+        return False
     return (rule.get("enabled", True)
             and rule.get("trigger_table") == event.table_name
             and _rule_accepts_event(rule, event))

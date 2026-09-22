@@ -55,6 +55,8 @@ from sqlalchemy import bindparam as _bindparam, text as _sqltext
 logger = logging.getLogger("Server")
 
 from event_constants import (
+    CHAIN_DEPTH_KEY,
+    ONLY_RULE_KEY,
     OUTBOX_COLLAPSE_CHUNK_ROWS,
     OUTBOX_PAYLOAD_EXCLUDED_COLUMNS,
     is_collapsed_payload,
@@ -90,7 +92,7 @@ def synthesize_payload(row_id, business_key, values: dict, envelope: dict) -> di
     looks like」 and 「how to read a row」 would have to grow a branch per caller, which is the
     shape being removed. Reading the row belongs to the caller; the shape belongs here.
     """
-    return {
+    payload = {
         "row_id": row_id,
         "business_key": business_key,
         "data": {
@@ -102,6 +104,23 @@ def synthesize_payload(row_id, business_key, values: dict, envelope: dict) -> di
         "source_name": envelope.get("source_name"),
         "timestamp": envelope.get("timestamp"),
     }
+    # 🔴 [2026-09-22] 사건이 «들고 다니는» 키들. 위 일곱은 이 함수가 «짓는» 모양이고,
+    #    이 둘은 이 함수가 «나르는» 값이라 성질이 다르다 — 그래서 아래에 따로 선다.
+    #
+    #    확장(`expand_events`)은 «같은 사건이 모양만 바뀌는» 것이므로 둘 다 따라가야 한다.
+    #    따라가지 않으면 실측(2026-09-22)대로 이렇게 된다:
+    #      chain_depth    봉투에 3 을 넣고 돌려도 반환에 «없어서» chain_depth_of 가 None 을
+    #                     읽고, 그 독스트링이 None 을 「체인 밖」이라 정의한다
+    #                     -> 재확장된 행에 «홉 상한이 안 걸린다»
+    #      only_rule      「규칙 X 만」이 사라져 그 표의 «모든» 규칙이 깨어난다
+    #                     -> 리플레이가 막으려던 것의 «정반대»이고 똑같이 조용하다
+    #
+    # ⛔ 없으면 «키를 안 쓴다». `None` 을 쓰면 안 된다 — 두 읽는 쪽 모두 「키 없음」과
+    #    「값이 None」을 다른 상태로 읽지 않게 되어, 부재가 «선언»으로 굳는다.
+    for key in (CHAIN_DEPTH_KEY, ONLY_RULE_KEY):
+        if key in envelope:
+            payload[key] = envelope[key]
+    return payload
 
 
 def _synthesize_payload(row, columns, envelope) -> dict:
