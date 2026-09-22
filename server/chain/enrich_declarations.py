@@ -88,7 +88,13 @@ def declarations(known_tables: dict = None, chain_rules_path: str = None,
         name = raw.get("name")
         if not name or name in seen:
             continue
-        stood, refusal, _notes = rule_shape.expand_declaration(raw, known_tables)
+        # 🔴 [지시 0cae5199] `rejections` 가 «내려갑니다». 이 좌석이 수집기를 가진 유일한
+        #    자리이고, 아래 :refusal 블록은 «규칙 하나가 통째로 안 선» 사실만 실었습니다.
+        #    선언이 «서면서» 참조뷰 하나를 떨어뜨리는 것 같은 자리별 사실은 `_validate_rule`
+        #    안의 `_record` 가 남기는데, 그 인자가 안 내려가 통합 문법에서는 사라졌습니다.
+        #    둘은 겹치지 않습니다 — 거절 경로는 `_record` 를 안 부르고 사유만 돌려줍니다.
+        stood, refusal, _notes = rule_shape.expand_declaration(
+            raw, known_tables, rejections=rejections)
         # ⚠️ A REFUSED OR SWITCHED-OFF DECLARATION STANDS NO RULE, so it has no views to
         #    offer - and the loader has already said why, in its own words. Saying it
         #    again here would give one fact two authors.

@@ -462,7 +462,8 @@ DECIDE_CELLS = ("key", "fields", "list_columns", "aggregations", "reference_view
 _DECIDE_TO_ENRICHMENT = {"key": "decision_key", "fields": "target_fields"}
 
 
-def decide_rules(internal: dict, known_tables: dict = None) -> tuple:
+def decide_rules(internal: dict, known_tables: dict = None,
+                 rejections: list = None, caps: dict = None) -> tuple:
     """A unified `decide` declaration -> (its chain rules, refusal).
 
     🔴 [S-239] THE SHELL IS THE WHOLE ROUND. `enrich` is ALREADY a chain mapper - dedup on
@@ -483,7 +484,7 @@ def decide_rules(internal: dict, known_tables: dict = None) -> tuple:
         bool(internal.get("enabled", True)),
         (internal.get("on") or {}).get("table"),
         (internal.get("into") or {}).get("table"),
-        cells, known_tables)
+        cells, known_tables, rejections=rejections, caps=caps)
 
 
 def unknown_decide_cells(internal: dict) -> list:
@@ -510,7 +511,8 @@ def is_switched_off(internal: dict) -> bool:
     return internal.get("enabled_written") and internal.get("enabled") is False
 
 
-def expand_declaration(declaration, table_config=None) -> tuple:
+def expand_declaration(declaration, table_config=None,
+                       rejections: list = None, caps: dict = None) -> tuple:
     """A rules-file entry -> (the chain rules it stands, refusal, notes).
 
     🔴 [S-244] ONE AUTHOR, TWO CALLERS. The loader translated a unified declaration before
@@ -553,7 +555,11 @@ def expand_declaration(declaration, table_config=None) -> tuple:
             and (internal.get("into") or {}).get("read")):
         return ([], "%s: %s" % (name, READ_TIME_RETIRED), [])
 
-    decided, decide_refusal = decide_rules(internal, table_config)
+    # ⚠️ [지시 0cae5199] `rejections`/`caps` 는 «선택»이고 기본은 None 이다 — 이 좌석의
+    #    제품 호출자 열은 안 주므로 오늘 동작이 그대로다. 주는 쪽은 수집기를 «가진» 자리,
+    #    즉 `enrich_declarations.declarations()` 하나다.
+    decided, decide_refusal = decide_rules(internal, table_config,
+                                           rejections=rejections, caps=caps)
     if decide_refusal:
         return ([], "%s: %s" % (name, decide_refusal), [])
     if decided:
