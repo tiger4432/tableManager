@@ -968,7 +968,7 @@ label 「keys 앞 둘」  ② 로 적힌 «표면 규칙» — 판정 169 로 �
 |---|---|---|
 | 지문이 «무엇을» 닫나 | ⚠️ **서술자의 «모양»** | `source_cursor_fingerprint` 는 `_semantic_plain(...)` 의 «정규 JSON»을 해시합니다(`setup_registry.py:838~`). `_semantic_plain` 은 «빈 필드도 남깁니다** — 그래서 **키를 하나 더하거나 빼면 값이 안 바뀐 소스의 해시도 움직입니다** |
 | 실물 | | 그 파일이 스스로 적어 뒀습니다(:812~816): 「REMOVING THESE MOVED EVERY FINGERPRINT ONCE … dropping the key changed the hash even where the value had not」. 2026-09-09 문법 삭제에서 «15 소스» 전부 움직였습니다 |
-| 비용의 «크기» | 🔵 커서 «정지» 한 번 | 해소는 `scripts/ledger_restamp_cursor.py` — **저장된 문자열만 옮기고 커서 «위치»는 안 옮깁니다** → 원자를 «다시 읽지도 다시 쓰지도» 않습니다 |
+| 비용의 «크기» | 🔵 커서 «정지» 한 번 | 해소는 `server/scripts/ledger_restamp_cursor.py` — **저장된 문자열만 옮기고 커서 «위치»는 안 옮깁니다** → 원자를 «다시 읽지도 다시 쓰지도» 않습니다 |
 | 고칠 것 | **S-87** | 지문이 «서술자 모양»이 아니라 «선언된 내용»을 닫게 |
 
 ### 🔴 정정 — §F-0 에서 제가 쓴 문장

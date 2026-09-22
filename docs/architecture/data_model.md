@@ -242,7 +242,7 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 - **경계는 «쓰기» 하나입니다** — `apply_row_update_internal`(모든 쓰기의 깔때기). 빈 값(`is_blank_value` — 키 자리가 접는 그 술어)이 「내가 비웠다」를 «뜻할 수 없는» 저자에게서 오면 **층을 안 만들고** `drop_report` 에 `absent_not_written` 으로 «셉니다»(실패가 아닙니다 — 그래서 경고가 아니라 계수입니다. 이름이 없으면 컬럼이 비어 온 파일과 컬럼을 아예 안 댄 파일이 같아 보입니다). 뜻할 수 있는 저자는 `crud.can_mean_emptied(source_name)` **하나**가 답합니다: 사람(`user`, 0)과 체인(`chain_ingestion` — 맞은 오른쪽 행이 «비어 있다»는 주장, 판정 `f3c04dee`). 🔴 **양성 선택입니다** — 파서는 인제션 파일명을 소스명으로 쓰므로(실측 10,750종) 자동 소스 집합은 열려 있고 블랙리스트는 원리적으로 불가능합니다.
 - **읽기는 한 줄도 안 바뀌었습니다.** `compute_priority_value` 는 최상위 층이 NULL 이어도 그것을 답합니다 — 고의로 비운 것은 «이겨야» 하기 때문입니다.
 - ⚠️ **있던 층은 «그대로 둡니다», 지우지 않습니다** — 그것이 판정의 값이고 대가입니다. 어제 값을 준 파일이 오늘 빈칸이면 **어제 값이 남습니다.** 「아직 입력하지 않음」은 「전에 말한 것을 거둠」이 아닙니다. 거두는 것은 사람 · `withdraw_source`(R2, §2.2-bis) · `replace_map` · 🆕 **입력 행의 DELETE**(`cell_sources.origin_row_id` 를 찍은 셀에 한해 — `chain/cell_layer.py::withdraw_by_origin`, §1.1) 의 일입니다.
-- 🔴 **이미 저장된 NULL 층은 이 판정이 «못 고칩니다»** — 앞으로의 쓰기만 바뀝니다. 그 수를 내는 것은 `scripts/count_absent_null_layers.py`(S-243-b, **읽기만 · `--apply` 가 없습니다** — 정책이 아니라 «부재»로) 이고, 「NULL 층의 수」와 「그중 실제로 아래 값을 가리는 수」를 «따로» 냅니다(밑에 값이 없는 NULL 층은 지워도 화면이 안 바뀝니다). ⚠️ `cell_sources.value` 는 JSON 컬럼이라 진짜 문으로 들어온 빈 값은 네 글자 `null` 로 저장됩니다 — `value IS NULL` 로 세면 «영원히 0»이고 그 0 은 「치울 것 없다」로 읽힙니다. 세는 쪽은 같은 술어 `can_mean_emptied` 를 **import** 합니다(세는 철자와 쓰는 철자가 둘이면 세는 것이 쓰는 것과 달라집니다). 지우기는 별 지시(S-243-c, 내보내기 먼저)이고, 명령과 답의 뜻은 `RUN.md` §1-bis 입니다.
+- 🔴 **이미 저장된 NULL 층은 이 판정이 «못 고칩니다»** — 앞으로의 쓰기만 바뀝니다. 그 수를 내는 것은 `server/scripts/count_absent_null_layers.py`(S-243-b, **읽기만 · `--apply` 가 없습니다** — 정책이 아니라 «부재»로) 이고, 「NULL 층의 수」와 「그중 실제로 아래 값을 가리는 수」를 «따로» 냅니다(밑에 값이 없는 NULL 층은 지워도 화면이 안 바뀝니다). ⚠️ `cell_sources.value` 는 JSON 컬럼이라 진짜 문으로 들어온 빈 값은 네 글자 `null` 로 저장됩니다 — `value IS NULL` 로 세면 «영원히 0»이고 그 0 은 「치울 것 없다」로 읽힙니다. 세는 쪽은 같은 술어 `can_mean_emptied` 를 **import** 합니다(세는 철자와 쓰는 철자가 둘이면 세는 것이 쓰는 것과 달라집니다). 지우기는 별 지시(S-243-c, 내보내기 먼저)이고, 명령과 답의 뜻은 `RUN.md` §1-bis 입니다.
 
 - ⚠️ **`CellOverwrite` 쪽 스킵 조건에는 소스 쪽 판정(`source_unchanged`)이 **포함**됩니다.** 오버라이트 행은 플래그·작성자·핀만 담고 **값을 담지 않으므로**, 값이 진짜 바뀐 셀에서도 그 셋은 동일합니다. 그것만 보고 스킵하면 **진짜 사용자 편집에서 `updated_at` 갱신이 멈춰**, 다른 코드가 화면에 보여 주는 컬럼의 뜻이 조용히 바뀝니다. 없앨 부담은 어차피 「안 바뀐 셀」에만 있으므로 바뀐 셀은 종전 동작 그대로입니다.
 - **`ingested_at`의 뜻이 정확해졌습니다** — 「누가 마지막으로 저장을 눌렀나」가 아니라 **「이 소스가 이 값을 마지막으로 세운 때」**. 움직이지 않는 timestamp가 아니라, **아무것도 안 바뀌었는데 움직이던 timestamp가 거짓말이었습니다.**
@@ -320,7 +320,7 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 
 **분모(`measured_cells`)는 항상 함께 반환·표시한다.** 표본 8개짜리 "12%"와 5만개짜리 "12%"를 구분할 수 없으면 지표가 아니다.
 
-**스케일**: 전용 부분 커버링 인덱스 `idx_audit_user_recorrection`(`models.AuditLog.__table_args__` + `scripts/ops_setup_db_performance.py` **양쪽에 정의 — 함께 고칠 것**)이 없으면 병렬 Seq Scan으로 떨어진다(2026-07-27 실측 2,628,453행/1.6GB에서 512ms·128,523블록). 부분 술어(`WHERE source_name='user'`)가 planner에 매칭되는 근거는 드라이버가 psycopg2(클라이언트측 파라미터 보간)라 리터럴이 서버에 도달하기 때문이다.
+**스케일**: 전용 부분 커버링 인덱스 `idx_audit_user_recorrection`(`models.AuditLog.__table_args__` + `server/scripts/ops_setup_db_performance.py` **양쪽에 정의 — 함께 고칠 것**)이 없으면 병렬 Seq Scan으로 떨어진다(2026-07-27 실측 2,628,453행/1.6GB에서 512ms·128,523블록). 부분 술어(`WHERE source_name='user'`)가 planner에 매칭되는 근거는 드라이버가 psycopg2(클라이언트측 파라미터 보간)라 리터럴이 서버에 도달하기 때문이다.
 
 ### 2.4 완료까지의 상호작용 점수 (`crud.get_effort_stats`) — 핵심가치 #1의 **정본 계기**
 
@@ -355,7 +355,7 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
   - 🚨 **그러나 그 공수를 버려서는 안 된다 (2026-07-29 F1, QA 실측).** 서버가 200을 주면 클라가 카운터를 리셋해 **no-op에 쓴 공수가 소멸**했다. 그 결과 "값이 이미 같아 보이는 셀을 20키+5클릭으로 고치려다 실패하고, 3키+1클릭으로 다시 성공"하는 **제품 최고 마찰 사건이 데이터셋 최저 점수(6, 실제 ~40)로** 기록됐다 — 계기가 잡아내야 할 대상과 역상관. 수리는 **기록 조건이 아니라 응답의 정직성**이다: `PUT`이 `effort_recorded: false`를 돌려주고 클라가 그때 리셋하지 않으면, 그 공수는 **다음(성공) tx에 합산**되어 2회 시도 교정 전체가 하나의 완료 단위로 계측된다([backend 수집 계약](./backend.md#상호작용-점수-dashboardsummary--effort)).
 - **재도달 처리**: `transaction_id`는 UNIQUE이며 **첫 기록이 이긴다**. 클라 재시도는 사람이 새로 쓴 공수가 아니다(카운트 필드를 SET 의미론으로 두었다가 마지막 메시지가 총계를 덮어쓴 QA D-1의 재발 방지).
 
-**스케일**: 전용 인덱스 2종 `uq_effort_transaction`(tx당 1행 불변식) + `idx_effort_window`(창 집계 커버링)이 `models.InteractionEffortLog.__table_args__` + `scripts/ops_setup_db_performance.py` **양쪽에 정의 — 함께 고칠 것**. `measured_ratio`의 분모는 **§2.3의 `idx_audit_user_recorrection`을 그대로 재사용**한다(`timestamp` + `INCLUDE transaction_id WHERE source_name='user'`) — 새 감사 인덱스는 필요 없다.
+**스케일**: 전용 인덱스 2종 `uq_effort_transaction`(tx당 1행 불변식) + `idx_effort_window`(창 집계 커버링)이 `models.InteractionEffortLog.__table_args__` + `server/scripts/ops_setup_db_performance.py` **양쪽에 정의 — 함께 고칠 것**. `measured_ratio`의 분모는 **§2.3의 `idx_audit_user_recorrection`을 그대로 재사용**한다(`timestamp` + `INCLUDE transaction_id WHERE source_name='user'`) — 새 감사 인덱스는 필요 없다.
 
 ### 2.5 감사 이력(Audit History) 인덱스 — 최근 패널 discovery + 행/셀 페이징 · 2026-08-11 `dab9152`+`2630790`
 
