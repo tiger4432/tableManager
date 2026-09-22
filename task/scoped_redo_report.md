@@ -49993,3 +49993,48 @@ legacy_materialized_join 의 공개 함수 «아홉»
 덮고, 399 의 사고를 안 되살립니다. 「off 선언의 오류를 보여 줄 것인가」는 별건으로 남습니다.
 
 ⏸️ 코드 변경 «0» (해 보고 원복). 판정 주시면 그쪽으로 한 커밋에 닫겠습니다.
+
+---
+
+> 📋 **[09-22 09:15 구현자] 654 가 요구한 «소비자 여섯 × enabled» 표 — 쟀습니다. 399 의 DB 약속은 «이미» 안전합니다**
+
+**결론.** 꺼 둔 규칙을 목록에 «실어도» DB 를 안 만지고 돌지도 않습니다. 둘 다 이미 하류에서 막힙니다.
+깨지는 것은 **로그 문장 하나**이고, 그 문장은 «오늘 이미» 거짓입니다.
+
+| # | 소비자 | enabled 거름? | 어디서 |
+|---|---|---|---|
+| 1 | `chain/graph.py:67` `_chain_rules` | ✗ «일부러» | 그래프가 `enabled` 를 «칸»으로 그립니다 (`graph.py:94·172·296`) |
+| 2 | `chain/graph.py:431` `chain_graph` | ✗ «일부러» | 같음 |
+| 3 | `ingestion_worker:2848` `_retract_what_those_rows_fed` | ✅ | `watches_table` (`:1018` = `enabled and trigger_table==table`) |
+| 4 | `ingestion_worker:3623` 기동 | ✗ | 쓰는 데가 «로그 한 줄»뿐 |
+| 5 | `ingestion_worker:3746` 리로드 | ✅ | 아래 둘 다 |
+| 6 | `chain/replay.py:149` | ✅ | 자기 줄 |
+
+```
+5 의 두 갈래를 열어서 확인했습니다 (독스트링 말고 «코드»로)
+  맵퍼 웜업        for rule in rules: if not rule.get("enabled", True): continue
+  인덱스 만들기     ensure_declared_unique_keys -> declared_unique_targets:210
+                  if not rule.get("enabled", True): yield (..., "enabled=false"); continue
+                  => 꺼 둔 규칙은 skipped 로 «보고»되고 DB 호출 «0»
+실행 경로         :1234 RULE_OUTCOME_SKIPPED_DISABLED — «이름 대어» 거절
+```
+🔵 그래서 399 의 「OFF 면 DB 를 안 만진다」는 목록에 실어도 «지켜집니다». 세 자리가 각자 막습니다.
+
+### 🔴 깨지는 것 «하나» — 그리고 오늘 이미 깨져 있습니다
+```
+ingestion_worker:3623 · 3747   logger.info(f"Loaded {len(rules)} active chain ingestion rules.")
+오늘   그 12 에 비활성 «평면» 규칙 다섯이 «이미» 들어 있습니다 -> 「active」가 이미 거짓
+뒤    통합 off 가 들어오면 더 거짓이 됩니다
+```
+⚠️ CLAUDE.md 「말 — 로그의 문장이 달라지나. 달라지면 그 문장도 이 라운드다」.
+이 줄은 제가 «같은 커밋»에 고치겠습니다 — 「active」를 빼고 «선 규칙 수»로.
+
+### 그래서 654 의 좁히기 — 제 앞 보고의 ㄴ 이 더 분명해집니다
+제가 잰 에러 세 줄은 «싣기» 때문이 아니라 «검증» 때문이었습니다(미완성 선언 `aaa`).
+```
+싣기    안전 — 위 표가 증명합니다
+검증    위험 — 끄기가 오늘 «검증 면제»를 겸하고 있어, 검증을 붙이면 399 의 사고가 됩니다
+=> off 선언은 «검증 전»에 목록용 한 행으로 세운다 (평면이 오늘 받는 대우와 «같은 모양»)
+```
+⏸️ 이 줄로 가도 되겠습니까. 판정 주시면 644 를 «한 커밋»(좌석 + 로그 문장 + 게이트 넷)으로 닫습니다.
+코드 변경 여전히 «0».
