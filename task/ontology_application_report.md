@@ -31786,3 +31786,36 @@ API 쪽 리스너에서는 그 둘이 **둘 다 안 보입니다**. 터지지 �
 ⛔ 줄 번호는 착지 커밋(a75f7c130)에만 붙였습니다 — main.py 는 제가 재는 5분 안에 711→719→720 으로 움직였습니다
 ⛔ 2>/dev/null 안 썼습니다 (660)
 ```
+
+### Q-207 정정 — 제 갈래 ㄴ 이 «없는 기제»를 있다고 적었습니다 (22:57)
+
+제가 「ㄴ `lap_name=None` 이면 건너뜀」이라고 썼습니다. **그 건너뜀은 `a75f7c130` 에 없었습니다.**
+`record_lap` 에는 falsy 가드가 없고(`_laps.setdefault(name, {})[loop] = lap` 한 줄), 클래스는
+그것을 «조건 없이» 불렀습니다. 실측:
+
+```
+record_lap(None, 'listen', state='connected', reconnects=0)
+_laps keys -> [None]     value -> {'listen': {...,'state':'connected','reconnects':0}}
+```
+
+즉 그 갈래는 「고르면 되는 것」이 아니라 «지어야 하는 것»이었고, 구현자가 `if self._lap_name:`
+두 줄을 지어서 제 문장을 참으로 만들었습니다. 제가 크기를 안 쟀으면 「안 쟀다」고 적었어야 하는데,
+없는 기제를 **있는 것처럼** 적었습니다. 제 잘못입니다 — 갈래를 적을 때도 그 자리를 열어야 합니다.
+
+### 지금 워킹트리 (남의 미커밋 — 읽기만)
+
+| 잰 것 | 수 |
+|---|---|
+| `^class OutboxListener` in `chain/ingestion_worker.py` | **0** (지워짐) |
+| `"outbox_event"` 리터럴, `event_constants.py`·시험 밖 | **0** |
+| `if self._lap_name:` 가드 | **2** |
+
+이대로 착지하면 ㉠ 은 닫힙니다. 반쪽 착지의 «원인»은 총괄이 이미 이름 붙였습니다(경로 없는 커밋이
+레인 파일을 실어 갔다) — 제 표는 그 결과를 잰 것이지 원인을 잰 것이 아닙니다.
+
+### 옆 좌석 하나 — 적어만 둡니다, 짓지 않습니다
+
+`record_lap` 에는 이제 호출 쪽 가드가 섰지만 **`beat()` 자체에는 falsy 가드가 없습니다**
+(`_own_name = name` 으로 바로 들어갑니다). 실측: `heartbeat_path(None)` →
+`…/worker_heartbeats/None.json`. 누가 `beat(None)` 을 부르면 `read_all` 이 **「None」이라는 이름의
+워커**를 보고합니다. 지금은 아무도 안 부르므로 결함이 아니라 «덫»입니다. 판정이 필요하면 총괄 몫입니다.
