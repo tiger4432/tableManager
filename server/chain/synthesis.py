@@ -266,3 +266,32 @@ def declared_unique_index_names(known_tables: dict = None) -> set:
     return names
 
 
+def retract_unrequired_indexes_once(db, known_tables: dict = None) -> dict:
+    """제품이 만든 `uq_vjoin_*` 중 «지금 아무 선언도 요구하지 않는» 것을 걷는다.
+
+    🔴 [S-248, 판정 652 로 이사] AN INDEX LIVES EXACTLY AS LONG AS THE JOIN THAT REQUIRES IT.
+    When the join that asked for one is refused, migrated or switched off, nothing took the
+    index back - and the write gate cannot see it, because that gate knows the keys of
+    declared rules only. So it bit from OUTSIDE the gate: 23505 on every insert of a
+    colliding row, and the group failed permanently on every retry.
+
+    🔴 IT MOVED HERE BECAUSE ITS OLD SEAT IS BEING RETIRED, AND THE MOVE IS THE POINT. The
+    only production caller sat inside the read-time join loader, and the set it retracted
+    from was 「read-time declarations PLUS the unified ones」. Retiring that loader without
+    moving this would leave the REAL join's index with nobody to take it back - S-248
+    reproduced, on the half that stays.
+
+    ⛔ 「부분 목록으로 회수하지 않는다」 IS NOW STRUCTURAL, NOT A FLAG. The old seat had to
+    refuse when a caller handed it a partial list; this one takes no list at all -
+    `declared_unique_index_names` reads the live declarations through the loader's own judge,
+    so a complete set is the only thing it can compute. Half a required set does not retract
+    a little less, it retracts the wrong thing.
+
+    ⚠️ AND IT CAN NEVER BREAK THE CALLER. Warmup continues whatever happens in here.
+    """
+    from chain import unique_key
+
+    return unique_key.retract_unrequired_once(
+        db, declared_unique_index_names(known_tables=known_tables))
+
+

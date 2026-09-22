@@ -2172,10 +2172,19 @@ def warmup_worker(rules, db_session_factory=None):
             _index_db = db_session_factory()
             try:
                 _report = synthesis.ensure_declared_unique_keys(_index_db, rules)
+                # 🔴 [S-248, 판정 652] MADE AND TAKEN BACK BY THE SAME SEAT. The retraction
+                # used to sit inside the read-time join loader, which is being retired; left
+                # there, the REAL join's index would have nobody to take it back when its
+                # declaration goes. 「지을 때」 와 「걷을 때」 가 한 자리여야 그 둘이 갈라지지
+                # 않는다 - and this is the only place that has both the rules and a session.
+                _retracted = synthesis.retract_unrequired_indexes_once(_index_db)
             finally:
                 _index_db.close()
             for _name, _why in _report.get("skipped") or ():
                 logger.info("[Warmup] 유일 키 설치 건너뜀: %s (%s)", _name, _why)
+            for _dropped in (_retracted or {}).get("dropped") or ():
+                logger.info("[Warmup] 아무 선언도 요구하지 않아 제품 인덱스를 걷었습니다: %s",
+                            _dropped)
         except Exception as _key_error:                                # noqa: BLE001
             logger.error("[Warmup] 선언된 유일 키를 세우지 못했습니다"
                          "(체인은 계속): %s", _key_error)
