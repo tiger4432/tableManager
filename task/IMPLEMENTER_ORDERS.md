@@ -54447,3 +54447,21 @@ git -C "$(git rev-parse --show-toplevel)" grep -c 'config/virtual-join/verify' -
 판정 필요 없습니다   닫힌 어휘를 넓히는 것은 «그 좌석의 일»입니다. 값이 넷이면 넷입니다
 제가 볼 것만        클라가 그 칸 하나로 그리는가 (유도 금지) — 그건 그대로입니다
 ```
+
+> 🔴 **[09-22 총괄] Q-200 의 «운영자 파일» — 이것부터 닫으십시오. 큐 앞으로 올립니다**
+
+```
+mappers/cross_table_lookup_mapper.py.sample :15 ·:161
+   「STOP. That is a VIRTUAL JOIN (config/virtual_join_rules.json, executed by
+    virtual_join_executor) … better than this file at that job in every respect」
+=> 운영자를 «없는 파일 + 없는 엔진»으로 보냅니다. 그리고 「이 파일 말고 그걸 쓰라」고 «권합니다»
+   낡은 주석이 조용히 틀린 것과 다릅니다 — 이건 «틀린 길을 가리킵니다». 674 의 「틀린 처방」과 같은 부류입니다
+같이   config/sample/virtual_join_rules.json.sample (6,129 B · 읽는 코드 0)
+```
+그 자리가 가리켜야 할 곳은 통합 선언(`derive.kind: "join"`)입니다 — 그 문장을 «다시 지으십시오».
+지우기만 하면 운영자는 「그럼 뭘 쓰나」에서 멈춥니다.
+
+```
+⚪ crud :1054·1140·1194 · main :4134 — 지나는 김에. 별도 라운드 열지 마십시오 (분량 상설)
+⛔ 보호 값 셋(uq_vjoin_ · ASSY_VJOIN_AUTO_INDEX · VirtualJoin.UniqueKey)은 그대로 — 응용 실측으로 전부 생존 확인
+```
