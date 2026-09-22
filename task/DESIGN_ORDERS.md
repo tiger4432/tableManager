@@ -31893,3 +31893,63 @@ outbox_queue_panel_harness.mjs:37   DELETED 픽스처의 note 를 영어 문장�
 변이로 확인    픽스처 문장만 'zzz mutant' 로 바꾸니 G4b 가 «빨개졌고», 되돌리니 초록
              (단언이 픽스처가 아니라 «그려진 칸»을 읽는다는 뜻입니다)
 ```
+
+> 🔴🔴 **[09-23 08:4x 총괄 -> «응용»] 소유자 지시 — 「응용 문서 정비 진행해」. 레인을 다시 엽니다**
+
+```
+소유자   「구현자 2,3 / 응용 문서 정비 진행해」
+범위    «문서 정비»입니다. 적대 QA 는 이번에 «안 부르셨습니다» — 다시 켜지 마십시오
+        (09-22 에 소유자가 세우신 것이고, 이번 지시가 그것을 되살리지 않습니다)
+```
+
+### 왜 지금인가 — 마지막 정비 뒤 커밋 «126»
+
+그리고 오늘 새벽 라운드가 «기제를 여럿 은퇴시켰습니다». 상설이 여기 걸립니다:
+**「은퇴시켰으면 그 «약속»을 든 자리를 «전수»로 센다 — 기제는 지워지고 말은 남는다」.**
+
+### 🔴 오늘 은퇴한 것 — 이 목록으로 «약속을 든 자리»를 세십시오
+
+```
+`writes_itself` · `rule_run.self_writing_name`      정의가 «0» 입니다
+`join_into._apply` · `join_into.run`                은퇴. 부르는 이 0
+replay 의 «자기 쓰기»                                server/chain/ 에서 쓰는 자리는 워커 하나
+                                                   (+ backfill 은 소유자 예외 · candidates 는 스윕)
+replay 의 `SKIP_BLANK` 와 그것이 만들던 «R2 후보 목록»  둘 다 없습니다
+chain_replay 의 «미리보기/드라이런»                   소유자 판정 「ㄷ」로 제거
+chain_replay 의 `RETROACTIVE_RUN` 아웃박스 행         더 이상 발행 안 함
+`_apply_replay_batch` 의 `page` 인자 · 쪽별 tx 라벨    한 실행 = 한 라벨로
+로그 줄 `[Outbox Queue] birth-broadcast …`           -> `change-broadcast` 로 «이름이 바뀜»
+```
+```
+판별식  「이 문장이 오늘도 참인가」 — 인용이 근거가 아닙니다
+세는 자리  CODE_MAP 해당 절 · PRIMITIVES · guide · spec · 독스트링 · 주석 · RUN.md · sample
+⚠️ 특히 «주석»입니다. 오늘 총괄이 잡은 것: run_auto_update.py:879~886 의 주석이
+   기제가 옮겨간 «뒤»에도 옛 세상을 적고 있었습니다. 구현자에게 고치라 보냈습니다
+```
+
+### 순서 — 「읽는 트리거가 있는」 문서부터
+
+```
+1 CODE_MAP 의 해당 절   server/chain/replay.py(599 줄 바뀜) · join_into · rule_run ·
+                     dynamic_mappers · admin/retroactive · database/database
+                     심볼·시그니처·앵커를 «소스와 대조»해서. 없어진 이름은 지웁니다
+2 PRIMITIVES         「이 기능은 어디 있나」가 틀리면 다음 사람이 두 번째 문을 냅니다
+3 guide · spec        위 은퇴 목록의 낱말로 grep -> 살아 있는 약속을 찾습니다
+4 히스토리            오늘 커밋들(8bd094477 · 3131f38b4 · 7e037e64a · d62f40730 · 1e0a27cb)
+⛔ 보드(PROJECT_STATUS)는 «건들지 마십시오» — 총괄 전담입니다
+⛔ doc-keeper·code-mapper·doc-historian 서브에이전트를 «띄우지 마십시오» — 세션이 있는 일입니다
+```
+
+### 보고
+
+```
+자리   task/ontology_application_report.md  (커밋하고 «푸시»해야 닿습니다)
+적을 것  고친 «수»와 그 수를 «센 명령» · 「살아 있던 거짓 약속」의 자리와 문장
+       ⚠️ 고친 개수를 안 셌으면 «적지 마십시오»
+끝나면  `.claude/doc_sync_pending` 을 지워 카운터를 리셋하십시오
+```
+```
+🔴 그리고 발견이 있으면 그것이 «제일 중요한 산출»입니다 —
+   「문서가 이렇게 적혀 있는데 코드는 이렇다」가 나오면 그 자리에서 멈추고 올리십시오.
+   고치는 것은 그다음이고, 코드 쪽이 틀린 경우가 «있습니다»
+```
