@@ -54611,3 +54611,68 @@ reference_views 는 «선언의 칸»입니다 (대응표 ⓑ). 뷰는 선언 «
 게이트  그대로. 변이 증명(인자를 도로 빼면 둘 다 빨강)까지 하신다는 것도 그대로
 ```
 지으십시오.
+
+> 🆕 **[09-22 총괄] 새 라운드 — 메인 그리드 「체인 대기열」 탭. 서버 반쪽 (소유자 승인)**
+
+소유자: 「테이블에서 일어난 변경으로 **앞으로 무엇이 돌 예정이고 돌건지 상태**를 보고 싶어」
+결정: 접근 **비인증**(그리드 쓰는 사람 누구나) · 깊이 **한 걸음만**(직접 걸리는 규칙) · 새로고침 **브로드캐스트**
+
+### 🔴 먼저 아셔야 할 것 — 조사에서 나온 «설계를 가르는» 다섯
+
+```
+① 「아무도 안 듣는」 행은 대기에 «안 남습니다» — CREATE/EDIT 가 아무 규칙도 안 깨우면
+   그 그룹은 그냥 성공하고 SUCCESS 로 빠집니다 (ingestion_worker:1814-1818)
+   => 소유자 기본 질의(processed_chain=false)가 «맞습니다»
+② status 를 «대기»로 읽지 마십시오 — 스케줄러가 뺀 행은 processed_chain=True 인데
+   status 는 'PENDING' 그대로입니다 (run_auto_update:852·982). 대기의 정본은 processed_chain «하나»
+③ 전파는 «다른 축»입니다 — SUCCESS + broadcast_at IS NULL = 「데이터는 됐고 알림만 실패」
+   (event_constants:611, idx_outbox_undelivered). 한 칸에 섞으면 거짓입니다
+④ 제어 이벤트(SCHEDULER_RUN_NOW·RETROACTIVE_RUN·BROADCAST_RECOVERY)는 체인 워커가 «안 봅니다».
+   스케줄러가 멎으면 나이와 무관하게 남습니다(2026-09-04 사고). outbox_owner() 가 이미 가릅니다
+⑤ DELETE 는 체인을 «안 깨웁니다» — 세 갈래 전부 CREATE/EDIT 만 봅니다
+```
+
+### 걸음 ① — 발화 술어를 «한 좌석»으로. 라우트보다 «먼저»
+
+```
+지금 여섯 철자, 그리고 「전부 같지는 않습니다」
+  글자까지 «동일한 셋»   :1814-1816 · :1904-1909 · :1925-1927
+     trigger_table == e.table_name  and  enabled  and  _rule_accepts_event(r,e)
+     and e.event_type in ("CREATE","EDIT")
+  ⛔ 다른 물음을 답하는 셋은 «안 건드립니다»  watches_table:1018 · _group_triggered_rules:1275
+     · _rule_outcome_before_running:1240
+접습니다  동일한 셋 -> 함수 하나. 세 자리가 그것을 부르고, ② 의 라우트도 그것을 부릅니다
+⛔ 라우트에서 술어를 «다시 적지 마십시오» — 그게 일곱째 철자입니다
+⚠️ _rule_outcome_before_running 을 쓰고 싶어지는데 «다른 물음»입니다 — trigger_columns 를 보는데
+   그 칸은 «실행을 안 가릅니다». 그걸로 「안 선다」를 말하면 실제로는 도는 규칙을 안 돈다고 적습니다
+```
+
+### 걸음 ② — 비인증 라우트 하나
+
+```
+GET /chain/queue/rows?limit=&cursor=        게이트 «없음» (소유자 결정)
+기본 모집단   processed_chain = false        (idx_outbox_unprocessed 가 «이미» 있습니다)
+행마다  outbox_id · table_name · event_type · created_at · waiting_seconds
+       owner            outbox_owner()  -> chain · scheduler · unknown
+       chain_state      대기·재시도·실패·완료   ← processed_chain + status «둘로» 유도
+       broadcast_state  감·안 감               ← broadcast_at
+       rules[]          {name, target_table, will_fire, why_not}   ← ① 의 좌석이 답합니다
+```
+```
+🔴 payload 를 «절대 안 싣습니다» — 행 값이 들어 있고, 비인증이라 더욱
+🔴 아웃박스 상태 어휘가 «오늘 없습니다»("SUCCESS"/"FAILED" 가 리터럴로 흩어져 있음).
+   RULE_STATES · APPROVAL_STATES 와 «같은 모양»으로 event_constants 에 닫힌 어휘를 답니다
+🔴 DELETE 행·제어 행은 rules[] 를 «비우지 말고» 이름 대어 적습니다 —
+   「DELETE 는 체인을 깨우지 않습니다」 · 「이 이벤트는 스케줄러가 뺍니다」
+   비우면 「없다」와 「안 본다」가 같은 픽셀입니다
+비용   행을 «안 셉니다». 규칙 대조는 메모리(적재된 규칙 집합)
+```
+
+### 게이트 — 「돈다」로
+```
+② 규칙 칸이 «오늘 도는 규칙 이름»을 댄다 (부팅 줄 set(N) 과 대조)
+③ 꺼진 규칙은 will_fire/why_not 이 갈린다      ④ DELETE 행이 «빈 칸이 아니라 문장»
+⑤ 완료+전파안감 인 행이 «두 칸으로» 갈린다      ⑥ 제어 이벤트가 «스케줄러 것»으로
+⑧ 술어 철자가 «여섯 -> 넷»                    ⛔ payload 가 응답에 «0»
+```
+착수 «전» 계획 올리십시오. ② 가 서면 제가 클라를 풉니다.
