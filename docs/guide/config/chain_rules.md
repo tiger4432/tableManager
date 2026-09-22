@@ -6,7 +6,9 @@
 <!-- Loader evidence (2026-07-28):
   worker load: server/chain/ingestion_worker.py:278 load_chain_rules (RULES_PATH :111; missing file -> warning + empty)
     called at startup :787 and re-called on SYSTEM_RELOAD :862; enrichment-derived rules merged :296
-  web view reads file per request: server/main.py:3367 (GET /admin/chain/rules :3361, admin-gated)
+  web view: GET /admin/chain/rules (admin-gated) answers BOTH states since 644 - the loader's
+    standing rules with rule_state=running, plus the file's declarations that stood nothing
+    with rule_state=declared_only. It is no longer 「the file, handed back」.
   mapper cache purge on reload: main.py reload-configs (mappers.* module cache)
 -->
 
@@ -47,7 +49,7 @@
 
 ## 3. 반영 확인
 
-1. `GET /admin/chain/rules` (`X-Admin-Token` 필요) — 룰이 보이는지. ⚠️ 이 뷰는 **파일을 요청마다 직접 읽으므로** 리로드 전에도 보입니다 — 워커 반영의 증거가 아닙니다.
+1. `GET /admin/chain/rules` (`X-Admin-Token` 필요) — 룰이 보이는지. ⚠️ 이 뷰는 **「도는 규칙」과 「적혀 있지만 안 선 선언」을 «둘 다»** 답합니다(판정 644·656) — 칸은 `rule_state`(`running` / `declared_only`)입니다. 「없다」와 「꺼짐」이 같은 픽셀이 아닌 것이 이 라운드의 핵심입니다. 워커가 «실제로 실은 것»은 여전히 체인 워커 로그로 확인하십시오.
 2. **워커 반영의 증거는 체인 워커 로그**: 리로드 후 룰 재로드/enrichment 병합 로그(`[Enrichment] Synthesized ...` 등)가 새로 찍히는지.
 3. `GET /admin/mappers/list` — 맵퍼 모듈·함수가 열거되는지.
 4. 왕복 검증: trigger 테이블에 행을 넣어 target 테이블이 갱신되는지 + `GET /admin/outbox/failed`에 실패가 쌓이지 않는지.

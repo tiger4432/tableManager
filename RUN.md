@@ -79,7 +79,7 @@ python -c "import mapper_sdk;mapper_sdk.discover();from chain import dynamic_map
 무엇이 안 됐었나  참조뷰는 두 문법으로 적을 수 있는데(enrichment_rules.json · 통합 derive.decide)
                  라우트는 «앞의 파일 하나»만 읽었습니다. 통합 문법으로 적은 참조뷰는
                  선언돼 있고, 규칙에 실려 있고, «아무도 못 여는» 상태였습니다 (실측)
-무엇이 생겼나     `server/chain/reference_view.py` — 참조뷰의 «자기 자리». 라우트 «둘»
+무엇이 생겼나     `server/chain/enrich_declarations.py`(⚰️ 판정 636 개명 — 옛 이름 `reference_view.py`) — 참조뷰의 «자기 자리». 라우트 «둘»
                  (`/enrichment/rules` 목록 · `/enrichment/rules/{이름}/references/{n}` 실행)이
                  «같은» 목록을 걷습니다. 새 엔드포인트는 «없습니다»
 ```

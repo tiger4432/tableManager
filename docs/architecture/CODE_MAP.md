@@ -2792,7 +2792,7 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 | `_install_templates()` · `install()` | 🆕 «네» 이름을 묶고 `mapper_sdk.register(name, fn, params=…)` 로 등록한다. `params` 는 로더가 선언을 채점하는 «인자 목록»이라 «필수»다(판정 562) | 🆕 :240 · :296 |
 | `TEMPLATE_FACTS: dict` | 등록 줄이 «네 사실»을 같이 말하던 것을 옮겨 받은 표 — `label` · `stamps_origin` · `writes_itself` | 🆕 :206 |
 | 🆕 `label_for(name)` · `writes_itself(name)` · `stamps_origin(name)` | 그 표를 읽는 얇은 접근자 셋 (⚰️ 종전 표기 `label(name)`) | 🆕 :209 · :214 · :224 |
-| 🆕 몸통 «넷» `_join` :57 · `_auto_confirm` :86 · `_legacy_materialized_join` :133 · `_enrich` :161 | `declared:join` · `declared:decide` · `declared:virtual_join` (판정 600, `a96d4a68` — 옛 `builtin:…` 셋) · 🆕 `declared:enrich`(`4352ad47`, 인리치 파생행 半 — 몸통은 `chain/enrichment/mapper.map_enrichment_dedup` 그대로) | 🆕 @`14dfaf65` |
+| 🆕 몸통 «넷» `_join` :57 · `_auto_confirm` :86 · `_legacy_materialized_join` :133 · `_enrich` :161 | `declared:join` · `declared:decide` · `declared:virtual_join` (판정 600, `a96d4a68` — 옛 `builtin:…` 셋) · 🆕 `declared:enrich`(`4352ad47`, 인리치 파생행 半 — 몸통은 `chain/enrichment/mapper.map_enrichment_dedup` 그대로) | 🆕 @`14dfaf65` | ⏳ **`declared:virtual_join` 은 «은퇴 진행 중»입니다**(판정 652 — 가상 조인 개념 제거). 기제는 아직 살아 있어 오늘은 «넷»이 맞고, 1걸음이 착지하면 «셋»이 됩니다.
 
 ```
 🆕 오늘의 네 줄 — «등록이 말하는 그대로»다 (계기: `TEMPLATE_FACTS` 의 값. @`14dfaf65` 실측)
