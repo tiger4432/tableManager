@@ -51048,3 +51048,74 @@ Q-200 나머지   샘플 다섯(총괄이 든 둘 + 제가 센 셋) · crud 셋 
 ```
 
 소유자 지시 기다립니다. 감시는 켜 둡니다.
+
+---
+
+## ✅ [구현자] 둘 다 닫혔습니다 — `42beefe99` · `bbe2a7d51`. 멈춥니다
+
+### ① PG 빨강 다섯 — 닫힘. 🔴 **원인이 제 가설과 달랐습니다**
+
+지시서가 「님 가설(만든 세션과 묻는 세션이 다르다)을 재고 고치십시오」라 하셨는데,
+**세션이 아니었습니다.** 재 보니 이것이었습니다:
+
+```
+probed = join_key_index.unique_index_covering(verifier_session, "reference_rows", ...)
+                                                                 ^^^^^^^^^^^^^^^^
+논리 이름을 타이핑했습니다. 픽스처가 인덱스를 만드는 표는 RIGHT_TABLE
+(= v2s6_reference_rows_<RUN_TOKEN>) 입니다.
+죽은 로더는 known_tables 를 받아 그 이름을 «자기가» 물리 이름으로 풀어 줬고,
+직접 묻는 자리는 그 풀이를 «물려받지 못합니다». 은퇴가 가져간 것이 그 풀이였습니다.
+```
+```
+전  5 errors · 86 passed        후  5 passed · 0 errors · exit 0
+```
+그 다섯이 setup 에서 죽어 **그 밑 원장 v2 단언 다섯이 0번** 돌고 있었습니다.
+
+### ② 「없는 엔진」 — 닫힘. 총괄 전제 «둘»을 정정합니다
+
+**🔴 ㉠ 「`virtual_join_rules.json.sample` 읽는 코드 0」 — 틀립니다.**
+```
+test_the_internal_rule_gives_back_exactly_what_it_was_given.py:123 · :165
+  _shipped("virtual_join_rules.json.sample") 를 «픽스처»로 읽습니다
+  (옛 문법 -> 새 문법 -> 옛 문법 왕복을 어댑터로 재는 시험 둘)
+```
+지우면 그 어댑터의 게이트가 같이 죽습니다 — **652 의 남은 일**이지 이번 지시가 아닙니다.
+그래서 **지우지 않고 배너**를 달았습니다. 운영자는 첫 줄에서 「이 문법은 은퇴, 지금 자리는
+`sample_unified_join`」을 읽습니다. **제품 독자는 0 맞습니다** — 제품 히트는 전부 주석입니다.
+
+**🔴 ㉡ 그 파일은 이름만 낡은 게 아니라 «조언이 뒤집혔습니다».**
+```
+mappers/cross_table_lookup_mapper.py.sample 의 「맵퍼를 쓸 이유 2」:
+  「값이 «굳어야» 한다 — 가상 조인은 구조상 LIVE 다」
+이제 모든 조인이 into.table 로 «씁니다». 선언이 값을 굳힙니다.
+=> 이유 2 는 «철회»했습니다(자리에 남기고 취소선). 낡은 값의 «대가»는 남겼습니다 —
+   이제 맵퍼와 선언 «둘 다»의 문제라서.
+이유 3·4 는 실측하고 살렸습니다: join_into 가 팬아웃 행을 «이름 대고» 거절하고,
+짝 맞은 행을 UPDATE 할 뿐 «insert 는 0» 입니다.
+```
+
+**㉢ 총괄 명령의 pathspec 에 «넷째»가 있었습니다** — 목록엔 셋이었습니다.
+```
+config/sample/table_config.json.sample:105  「dt_lot_confirmed/dt_slot_confirmed 는
+   VIRTUAL (virtual_join_rules ...) · 가상 컬럼을 선언으로 되찾는 본보기」
+```
+고쳤습니다. ⚠️ **그리고 고치다 구멍을 하나 찾았습니다 — 안 고치고 올립니다:**
+그 둘이 `search_columns` 엔 있는데 `dt_inventory` 의 `column_types` 엔 **없습니다.**
+가상이던 동안엔 «맞는» 모양이었고, 문법이 «쓰는» 지금은 구멍입니다.
+출하 본보기 `sample_unified_join`(꺼진 채 출하)이 그 둘을 `take` 합니다.
+
+**⛔ `inherit_virtual_join_rules` 안 건드렸습니다** — 15 + 1, 총괄이 세신 수 그대로 확인.
+
+### 게이트
+```
+180 passed  맵퍼 샘플 시험 + 작성 가이드 드리프트 오라클 넷
+ 28 passed  샘플을 읽는 왕복 시험 둘
+JSON 셋 다 파싱 · 제가 «새로 적은» 이름 일곱 전부 실재 확인(0 이면 안 적었습니다)
+JOIN_CELLS = ("right_table", "on", "take") — 산문이 대는 칸 이름과 같습니다
+```
+
+### 안 한 것
+문서 8 파일 · crud·main 주석 · 662 · 670 · 675 · 평면 여덟 · 652 2걸음 ·
+`virtual_join_rules.json.sample` 삭제(위 ㉠) · `column_types` 구멍(위 ㉢).
+
+**멈춥니다. 감시 켜 둡니다.**
