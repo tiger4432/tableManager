@@ -31521,3 +31521,66 @@ main.py :4134                 「chain_rules · enrichment_rules · virtual_join
 ```
 ⚠️ 다만 이 라운드의 순서가 622·638 ①(「클라가 먼저 착지한다」)의 «반대»입니다 — 서버가 먼저 칸을 뺐습니다.
 이번엔 화면이 «조용해질 뿐»이라 안 깨졌지만, 남은 읽기와 설명 문장이 「그 칸이 아직 있다」고 말합니다.
+
+## Q-206 · 「단일 문 체크」 QA (소유자 지시 · f13e3ae4) — 1차 [09-22 22:17]
+
+**결론 먼저**: 총괄이 준 둘은 «둘 다 성립»하고, 둘의 «모양이 같습니다» — 구현이 둘인 것이 아니라
+**한 칸·한 이름이 «두 사실»을 나릅니다.** 새로 찾은 축 하나도 같은 부류의 «예비군»입니다.
+
+### 씨앗 검산 (남의 수를 그대로 안 씁니다)
+```bash
+git -C "$(git rev-parse --show-toplevel)" log --since="2026-09-22 00:00" --name-only --format= \
+  -- server client2/src ':!server/tests' ':!client2/src/**/*harness*' | sort -u | grep -c .
+```
+제 답도 **46** (카나리아: 커밋 33, 0 아님).
+
+### ㉠ 「일이 끝났다」 — 성립합니다. 그리고 «일부러»입니다
+```
+정본   ingestion_worker.mark_processed :1225 — 독스트링이 「The ONE place …」 라 적고
+      :1245~:1247 에서 status · processed_chain · processed_at 을 «셋 다» 찍습니다
+둘째   run_auto_update.py :852 :889 :982 :1017 — processed_chain «만»
+새로 연 것(총괄이 안 본 자리): 네 자리 다 «고의»입니다. :845~:850 이 이유를 적습니다 —
+      「돌기 «전»에 찍는다. 다른 스레드라 기다리면 매 틱 같은 행을 다시 집는다. at-most-once 가 맞다」
+```
+🔴 그래서 이것은 「스케줄러가 두 칸을 빠뜨렸다」가 «아닙니다». `processed_chain` 이
+**「끝났다」와 「집어갔다」 둘을 나릅니다.** 「집어갔다」에 칸이 «없어서» 이 칸을 빌린 것입니다.
+갈라지면 무엇이 틀리나: 빌린 행은 `status=PENDING · processed_at=NULL` 이라 대기열(앞으로 돌 것)에도,
+실패 라우트에도 «안 듭니다» — 총괄이 실물 5 행으로 짚은 그대로입니다.
+⚠️ 수리가 「:852 에서 `mark_processed` 를 부른다」이면 «거짓말»이 됩니다 — 그때 일은 안 끝났습니다.
+
+### ㉡ `.audit-table` — 성립합니다. 저자는 «하나»인데 뜻이 «둘»입니다
+```bash
+grep -c "not(\.audit-table)\|has(\.audit-table)" client2/src/style.css      # 6
+git grep -n "audit-table" -- 'client2/src/*.js'                            # 1 줄
+```
+붙이는 자리는 `timeline.js:19` «하나»이고 `state.activeHistoryTab === 'global'` 로 토글합니다.
+즉 그 클래스가 «겉모양»이자 「Global 탭이 켜졌다」는 «신호»입니다(style.css:547 이 그렇게 적어 뒀습니다).
+갈라지면: 다른 패널이 겉모양만 쓰려고 붙이는 순간 «신호»가 따라와 6 개 규칙이 같이 걸립니다.
+
+### 🆕 제가 찾은 축 — 「이 규칙이 켜져 있나」에 «좌석이 없습니다»
+```bash
+git grep -c 'get("enabled"' -- server/ ':!server/tests' | awk -F: '{s+=$2} END {print s}'   # 40
+git grep -c 'get("enabled"' -- server/chain ':!server/tests' | awk -F: '{s+=$2} END {print s}' # 23 (그중 rule_shape 7 은 «짓는» 자리)
+```
+좌석은 «선언» 쪽에만 있습니다(`rule_shape.is_switched_off`). «적재된 규칙» 쪽은 자리마다 손으로 묻습니다.
+오늘 «깨지지 않는» 이유는 하나뿐입니다 — 기본값 리터럴이 전부 `True` 로 같습니다.
+그 사실은 이미 두 곳이 적어 뒀습니다(`ledger/admin.py:739` · `main.py:6034` 「여섯 자리 전부 기본 켜짐」).
+🔴 그래서 이것은 «오늘의 결함이 아니라 예비군»입니다: 「켜짐」에 조건이 «하나라도 더» 붙는 날
+(654·656 이 이미 「꺼짐의 저자가 둘」이라 판정한 그 방향) 스물셋을 «같이» 고쳐야 하고, 고칠 «한 자리»가 없습니다.
+
+### 봤고 «하나»였던 축 — 빈 칸을 남기지 않습니다
+| 축 | 센 명령 | 답 |
+|---|---|---|
+| 「덮는 유일 인덱스가 있나」 | `git grep -c "unique_index_covering(" -- server/ ':!server/tests'` | 구현 «하나»(`join_key_index`) · 호출 셋 |
+| 「이 표가 지는 유일성」 | `git grep -c "right_keys_for(" …` | 좌석 «하나»(`synthesis`) · 호출 하나(`crud`) |
+| 「행 수를 센다」 | `git grep -c "rows_counted(" …` | `rule_run` «하나» |
+| 「이름 → 코드」 | `git grep -n "import_module(" -- server/chain …` | 해소는 `rule_run.resolve` «하나». 워밍업 :2239 는 «import 만»(해소 아님) |
+| 「이 규칙이 깨어나나」 | Q-202 계기 재실행 | 좌석 «하나»(`_is_trigger_event`·`fires`) — 오늘 3b241ef9 로 닫힘 |
+
+### 🔴 못 센 것 (제 판정은 이 줄 위에 섭니다)
+```
+AST 로 «안» 셌습니다 — 심볼·술어 grep 입니다. 「같은 판단이 다른 낱말로」 쓰인 자리는 이 계기가 못 셉니다
+씨앗 46 파일 안의 「하나라는 주장」 127 줄 중 제가 «연» 것은 mark_processed 하나입니다. 나머지 126 은 안 봤습니다
+클라는 ㉡ 말고 «안 봤습니다» — 화면 쪽 축(상태·빈 상태·새로고침)은 이번 회차에 안 들어왔습니다
+원장·맵·파서 쪽 축은 «전혀» 안 봤습니다. 이번 회차는 체인·대기열 씨앗만입니다
+```
