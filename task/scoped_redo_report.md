@@ -53054,3 +53054,84 @@ test_config_reload_integrity::test_h3_cross_directory_replace_applies_physical_a
 리플레이 이사가 먼저라 하셨습니다. 남은 것은 ⑨⑩⑮ 를 «돌려서» 재는 것이고,
 그건 박스를 운영 규격으로 재기동해야 합니다 — 공유 박스라 제가 혼자 안 내립니다.
 재기동하실 때 말씀해 주시면 그 셋을 재서 올리겠습니다.
+
+> ✅ **[09-23 00:2x 구현자 -> 총괄] 훑기 고쳤습니다 `9bec72a98` — «재기동해서 로그로» 쟀습니다. 그리고 어드민 폼 건의 전제가 틀렸습니다**
+
+### 재기동 전 — 님 말씀대로 «박스에» 있었습니다
+
+```
+tail -800 server/chain_worker.log | grep -c "replay sweep failed"   -> 179
+마지막 줄  00:21:07 ERROR - [Chain] replay sweep failed: name 'models' is not defined
+```
+
+### 게이트 ⓕ·ⓖ — 재기동 «뒤», 새로 난 238 줄만 보고
+
+```
+체인 워커만 내림(21120) -> 런처가 되살림(41412, 00:22:38)
+ⓕ replay sweep failed   0 ✅
+ⓖ 훑기 «성공»이 보이나   chain.json laps.replay_sweep = {'found': 'none'} ✅ (방금 쓰임)
+```
+⚠️ 재기동 뒤 ERROR 가 «셋» 남았는데 제 것이 아닙니다 — 아래 건입니다.
+
+### 왜 시험 29 가 초록이었나 — 답을 «보여 드립니다»
+
+```
+제 훑기 시험 다섯이 전부 next_queued 를 «통째로» monkeypatch 했습니다.
+=> 몸통이 «한 번도 안 돌았습니다». 잰 것은 「루프가 훑기를 어떻게 쓰나」이고
+   「훑기가 돌기는 하나」는 아무도 안 쟀습니다
+```
+아무것도 패치 안 하는 시험 셋을 넣었습니다(진짜 표·진짜 행·진짜 함수). **증명은 변이입니다:**
+
+```
+import 를 다시 빼면   새 시험 셋 -> 빨강 · 기존 다섯 -> «전부 초록»
+                   그 간극이 이게 착지한 이유 그 자체입니다
+```
+🔵 한 가지는 설계대로 돌았습니다 — 루프의 try/except 덕에 이게 «드레인을 한 번도 안 멈췄습니다».
+   깨진 내내 아웃박스는 계속 집혔습니다.
+
+---
+
+### 🔴 어드민 폼 건 — **「거절 없음 · 경고 없음」이 틀렸습니다. 로그에 «있습니다»**
+
+방금 재기동 로그에 그 선언이 그대로 떠 있습니다:
+
+```
+[ChainRules] dt_transform_update refused (1): unresolvable_mapper rules[12].mapper: ...
+[ChainRules] 1 of 13 rule(s) refused and skipped
+[ChainRules] refused(1): dt_transform_update(unresolvable_mapper)
+```
+**이름 + 사유 + 「건너뛰었다」까지 이미 나옵니다. 게이트 ⓔ 는 오늘 이미 섭니다.**
+
+제가 그 경로를 열어 봤습니다 — 거절은 `expand_declaration` 이 아니라 «그다음 좌석»에 있습니다:
+
+```
+expand_declaration(enabled=true)   규칙 1 «섬» · refusal None · notes []      <- 여기만 보면 조용합니다
+chain_bindings.rule_refusals(그 규칙)  -> ['rules[0].trigger_table: field is required']  <- 여기가 답합니다
+ingestion_worker:680  fatal 이면 이름·사유로 ERROR 찍고 `continue`
+```
+```
+⚠️ 그리고 `enabled=false`(소유자가 실제로 저장한 모양)는 규칙이 «0» 개 섭니다 —
+   「enabled=false — no rule stands for it」 라는 노트까지 남습니다. 이쪽도 조용하지 않습니다
+```
+
+### 그래서 남는 «진짜» 자리는 저장 관문입니다
+
+```bash
+git grep -n "rule_refusals(" -- server ':!server/tests'
+```
+```
+ingestion_worker:662 · config_resolve_report:279 · ledger/admin:830   -> «main.py 저장 관문에 없습니다»
+저장 관문(main.py:5752)은 expand_declaration «만» 부릅니다 — 위에서 본 조용한 쪽입니다
+=> 「로더와 저장 관문이 같은 판정자」(S-244)가 이 축에서는 «아직 아닙니다»
+```
+❓ 그러면 제 일은 「로더가 말하게」가 아니라 **「저장 관문이 로더와 같은 판정자를 부르게」** 입니다.
+   그쪽으로 지시를 다시 주시겠습니까 — 제가 잰 것이 맞다면요.
+
+### ⚠️ 이번 라운드에 제 계기가 «셋» 틀렸습니다
+
+```
+find … | head -1   dev_env 사본을 읽고 ⓖ 를 «실패»로 볼 뻔했습니다 (살아 있는 것은 server/ 쪽)
+변이 앵커 불일치     assert 가 잡아서 «변이 안 된 초록»을 결과로 안 읽었습니다
+PPID 읽기          bash 예약 변수라 대입 실패 — 앞 명령이 이미 답을 줘서 안 샜습니다
+```
+셋 다 «단언이 있어서» 안 샜습니다. 없었으면 셋 다 그럴듯한 답이 됐을 자리입니다.
