@@ -183,6 +183,17 @@ def reload_watcher_cache():
     for k in mapper_keys:
         sys.modules.pop(k, None)
         
+    # 🔴 [판정 667] 이 프로세스도 «쓰는 쪽»이다 — `directory_watcher` 가
+    #    `apply_batch_updates` 를 부르고, 그 안의 중복 그물이 오른쪽 키 답을 씁니다. 그 답의
+    #    만료가 시간이 아니라 «적재»라서, 이 프로세스가 다시 싣는 자리가 여기입니다.
+    #    안 걸면 이 프로세스만 낡은 답으로 남습니다 — 조용히.
+    try:
+        from chain import synthesis
+
+        synthesis.reset_right_key_cache()
+    except Exception as reset_error:                                   # noqa: BLE001
+        logger.warning("오른쪽 키 캐시를 못 비웠습니다(계속): %s", reset_error)
+
     logger.info("Watcher worker modules cache cleared.")
 
 # Database polling for PENDING_RETRY logs

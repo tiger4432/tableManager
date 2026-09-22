@@ -2144,6 +2144,18 @@ def warmup_worker(rules, db_session_factory=None):
     실제 커넥션 수립은 시도하지 않음 — 첫 통지에서 수립 후 keep-alive로 재사용).
     """
     t0 = time.monotonic()
+    # 0-ante) 🔴 [판정 667] THIS PROCESS IS (RE)LOADING RULES, SO ITS RIGHT-KEY ANSWER EXPIRES.
+    #    That answer used to expire on a 5-second clock because the web server's reload hook
+    #    is the only one that existed and workers never reach it. Keyed to loading instead,
+    #    every process invalidates where it actually re-reads - and this is that seat for the
+    #    chain worker, which runs on boot AND on SYSTEM_RELOAD.
+    try:
+        from chain import synthesis as _synthesis_for_keys
+
+        _synthesis_for_keys.reset_right_key_cache()
+    except Exception as _reset_error:                                  # noqa: BLE001
+        logger.warning("[Warmup] 오른쪽 키 캐시를 못 비웠습니다(계속): %s", _reset_error)
+
     # 0) 🔴 맵퍼 패키지 «전체»를 import 해 데코레이터가 등록되게 한다 (S-188 ⓒ, 판정 300).
     #    아래 ①은 «규칙이 이름 댄» 모듈만 덥히므로 「어떤 맵퍼가 있나」에 답하지 못한다 —
     #    빌더와 ⓓ 의 한 칸 이름 해석이 그 답을 필요로 한다.

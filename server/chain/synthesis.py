@@ -266,6 +266,126 @@ def declared_unique_index_names(known_tables: dict = None) -> set:
     return names
 
 
+#: 이 프로세스가 «규칙을 다시 실을 때까지» 유효한 오른쪽 키 답. 시간 기준이 아니다.
+_RIGHT_KEYS = {"loaded": False, "by_table": {}}
+
+
+def reset_right_key_cache():
+    """이 프로세스가 규칙을 다시 싣는다 — 다음 물음에서 새로 계산한다.
+
+    🔴 [판정 667] 만료가 «시간»이 아니라 «적재»다. The seat this replaced carried a 5-second
+    TTL, and the comment on it said why: the reload hook is the WEB server's, and worker
+    processes never reach it, so the TTL was standing in for an invalidation those processes
+    do not get. Keyed to loading instead, every process gets the same rule - the answer is
+    good until that process reads the declarations again - and no process pays a clock.
+
+    ⚠️ 창이 «길어집니다», 모양은 안 바뀝니다. 인덱스가 걷혔는데 맵이 「있다」로 낡으면 그물이
+    파이썬에서 거절하고 그 거절은 `operator_line` 으로 표·컬럼·키·다음 행동을 «이름 대어»
+    말합니다. 반대로 낡으면 그물을 건너뛰고 DB 제약이 23505 로 웁니다. 둘 다 시끄럽습니다 —
+    바뀌는 것은 그 시끄러움이 5초 안에 끝나느냐, 이 프로세스가 다시 실을 때까지 가느냐입니다.
+    """
+    _RIGHT_KEYS["loaded"] = False
+    _RIGHT_KEYS["by_table"] = {}
+
+
+def right_keys_for(db, table_name: str) -> list:
+    """이 표가 «지고 있는 유일성» — `(규칙 이름, 컬럼, 폴드)` 들. 승인된 것만.
+
+    🔴 승인된 것만이고, 그것이 이 방향의 핵심이다 (S-174 에서 옮겨 옴). 승인은 「조인 키를
+    덮는 UNIQUE 인덱스가 «실제로» 있다」는 뜻이고, 인덱스가 없으면 깨질 제약도 없다. 모양만
+    통과한 선언으로 행을 거절하면 데이터베이스가 받아 줬을 행을 «가드가» 버린다.
+
+    🔴 [판정 652] 입력이 «실조인 선언»이다. 읽기 시점 조인 문법이 은퇴하면서, 이 답을 주던
+    `legacy_materialized_join.rules_for_right` 도 같이 간다. 값은 같은 세 개이고, 나오는 곳이
+    `join_into` 가 이미 계산하는 폴드로 바뀐다 — 인덱스와 조인이 «같은 식»에서 나와야 하고,
+    두 번째 계산은 판정 397 이 없앤 두 번째 저자다.
+
+    ⚠️ 한 프로세스당 «첫 배치» 한 번만 판다: 파일 1 + pg_index N. 선언이 0 이면 N 도 0 이라
+    호출이 «아예» 없다. 그 뒤 모든 배치는 I/O 0 이다.
+    """
+    if not _RIGHT_KEYS["loaded"]:
+        from chain import ingestion_worker, join_key_index
+        from database.database import SessionLocal
+
+        # ⛔ [판정 667 ⓒ, 2026-09-15 장애 다섯째] ITS OWN SESSION, AND THE `db` ARGUMENT IS
+        # NOT USED FOR THIS. The probe used to run in whoever's session missed the cache,
+        # so a declaration that blew up while checking table B killed the transaction that
+        # was reading table A. 「호출자의 db 를 쓰면 세션이 안 는다」 is the simplification
+        # that caused it - the caller's transaction is not this question's to spend.
+        probe = SessionLocal()
+        try:
+            by_table, seen = {}, set()
+            for name, table, columns, folds, skip in declared_unique_targets(
+                    ingestion_worker.load_chain_rules()):
+                if skip or not table or not columns:
+                    continue
+                # ⚠️ ONE UNIQUENESS, ONE ENTRY. A join and its `:reference` companion declare
+                #    the SAME key on the same table, so both arrive here. Kept as two, the
+                #    write gate checks one key twice and an operator sees the SAME duplicate
+                #    reported under two rule names - 「한 사실, 두 문장」. The index seat
+                #    already folds this way for the same reason (asking twice probes
+                #    `pg_index` twice and reports one index as two).
+                shape = (table, tuple(columns), tuple(folds or ()))
+                if shape in seen:
+                    continue
+                if not join_key_index.unique_index_covering(
+                        probe, table, columns, folds=folds):
+                    continue
+                seen.add(shape)
+                by_table.setdefault(table, []).append(
+                    (name, list(columns), list(folds or [])))
+        finally:
+            probe.close()
+        _RIGHT_KEYS["by_table"] = by_table
+        _RIGHT_KEYS["loaded"] = True
+    answer = list(_RIGHT_KEYS["by_table"].get(table_name) or [])
+    # 🔴 [Q-192 의 교훈] 아직 살아 있는 읽기 시점 조인의 유일성도 «같이» 듭니다. 그 좌석은
+    #    자기 캐시와 자기 세션을 들고 있어 여기서 재지 않습니다 - 그리고 그 문법이 죽는
+    #    커밋에서 이 두 줄이 같이 죽습니다.
+    from database.database import SessionLocal
+
+    legacy_probe = SessionLocal()
+    try:
+        answer.extend(_legacy_right_keys(
+            legacy_probe, table_name,
+            {(table_name, tuple(cols), tuple(folds)) for _n, cols, folds in answer}))
+    finally:
+        legacy_probe.close()
+    return answer
+
+
+def _legacy_right_keys(probe, table_name: str, seen: set) -> list:
+    """아직 살아 있는 «읽기 시점» 조인이 지고 있는 유일성도 같이 든다.
+
+    🔴 [Q-192 의 교훈을 같은 라운드에 두 번 쓰지 않기 위해] BOTH PRODUCERS OR NEITHER. The
+    duplicate net protects a uniqueness a table CARRIES, and until 판정 652 finishes there
+    are two grammars that can make a table carry one. Moving the net to the real join alone
+    would leave a live read-time join's uniqueness unprotected - which is the same half-set
+    mistake the retraction made earlier today, pointed at writes instead of indexes.
+
+    ⚰️ AND IT DIES WITH ITS GRAMMAR, IN THAT COMMIT. 652 step one deletes the read-time
+    loader; this goes with it. Removing it sooner is the half state, removing it later
+    leaves a second author of the same answer.
+
+    ⚠️ 이 박스에서는 그 문법의 선언 다섯이 전부 거절돼 «0» 을 냅니다. 그 0 은 설치 하나를
+    돌리는 곳에 대해 아무 말도 하지 않습니다 - 그래서 수가 아니라 구조로 답합니다.
+    """
+    from chain import legacy_materialized_join
+
+    out = []
+    for rule in legacy_materialized_join.rules_for_right(probe, table_name) or ():
+        columns = list((rule or {}).get("right_columns") or ())
+        folds = list((rule or {}).get("right_folds") or ())
+        if not columns:
+            continue
+        shape = (table_name, tuple(columns), tuple(folds))
+        if shape in seen:
+            continue
+        seen.add(shape)
+        out.append((rule.get("name") or "<unnamed>", columns, folds))
+    return out
+
+
 def retract_unrequired_indexes_once(db, known_tables: dict = None) -> dict:
     """제품이 만든 `uq_vjoin_*` 중 «지금 아무 선언도 요구하지 않는» 것을 걷는다.
 

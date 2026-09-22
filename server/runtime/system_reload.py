@@ -46,12 +46,14 @@ def reload_local_process_cache():
     except Exception as e:
         print(f"[Reload] Failed to reload table_config.json: {e}")
         
-    # [Virtual join] Verified-declaration cache. It carries a TTL of its own for worker
-    # processes that never reach this hook, but the web server must not wait it out:
-    # a declaration edited in the admin UI has to take effect on the next read.
+    # [Join unique keys] 🔴 [판정 667] THE TTL THAT USED TO BE HERE IS GONE, AND THIS LINE IS
+    # WHAT REPLACED IT. The old comment said the cache carried a TTL "for worker processes
+    # that never reach this hook" - a clock standing in for an invalidation those processes
+    # do not get. Expiry is keyed to LOADING now, so every process invalidates at its own
+    # reload seat and none of them waits out a clock; this is the web server's.
     try:
-        from chain import legacy_materialized_join as executor
-        executor.reset_cache()
+        from chain import synthesis
+        synthesis.reset_right_key_cache()
     except Exception:
         pass
 

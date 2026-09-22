@@ -3941,13 +3941,16 @@ def _virtual_join_right_keys(db: Session, table_name: str):
     (`index_key_expression`); comparing raw values would miss exactly the duplicates the
     index catches, which is the under-approximation that is not safe here.
 
-    ⚠️ ONE LOAD, SHARED. This reads `chain.legacy_materialized_join`'s TTL cache - the same one the
-    sibling guard below already warms on this path - rather than re-reading and
-    re-validating the declaration file once per batch on the write path.
+    ⚠️ ONE LOAD PER PROCESS, KEYED TO LOADING RATHER THAN TO A CLOCK (판정 652 · 667). The
+    answer used to come from the read-time join engine's 5-second TTL cache; that engine is
+    retired and the declarations are the REAL join's now. The seat is
+    `chain.synthesis.right_keys_for`, which pays file-once plus one index probe per declared
+    key on this process's FIRST batch and nothing on every batch after, until the process
+    reads the declarations again. With no declarations it probes nothing at all.
     """
     try:
-        from chain import legacy_materialized_join as executor
-        rules = executor.rules_for_right(db, table_name)
+        from chain import synthesis
+        return synthesis.right_keys_for(db, table_name)
     except Exception as e:
         # Same posture as the sibling guard below: an unreadable declaration means NO join
         # is in effect, so there is no uniqueness to protect. Failing the write here would
@@ -3955,15 +3958,6 @@ def _virtual_join_right_keys(db: Session, table_name: str):
         logger.error(f"[VirtualJoinUnique] could not load declarations for "
                      f"'{table_name}', no row is refused: {e}")
         return []
-    out = []
-    for rule in rules or []:
-        if not isinstance(rule, dict):
-            continue
-        columns = list(rule.get("right_columns") or [])
-        if columns:
-            out.append((rule.get("name") or "<unnamed>", columns,
-                        list(rule.get("right_folds") or [])))
-    return out
 
 
 def _folded_join_key(updates: dict, columns: list, folds: list):
