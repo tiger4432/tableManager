@@ -433,8 +433,11 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
         if apply and batch_items:
             batch = schemas.GeneralUpdateBatch(
                 updates=batch_items,
-                transaction_id=f"{SOURCE_NAME}_{run_id}_{stats['chunks']:06d}",
+                # 🔴 ONE RUN, ONE LABEL (총괄 2026-09-23). ⚰️ The chunk number stood here, so
+                #   a backfill of N chunks left N groups in the audit log for one run.
+                transaction_id=f"{SOURCE_NAME}_{run_id}",
             )
+
             results, _changed, _logs, _deleted = crud.apply_batch_updates(
                 db, derived_table, batch
             )

@@ -621,16 +621,16 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
                 with rule_run.chain_envelope():
                     if metadata_items:
                         _apply_replay_batch(db, schemas, crud, map_meta_registrar.META_TABLE,
-                                            metadata_items, run_id, stats, stats["pages"],
+                                            metadata_items, run_id, stats,
                                             rule_name=rule.get("name"))
                     for i in range(0, len(items), WRITE_CHUNK):
                         _apply_replay_batch(db, schemas, crud, target_table,
                                             items[i:i + WRITE_CHUNK],
-                                            run_id, stats, stats["pages"],
+                                            run_id, stats,
                                             rule_name=rule.get("name"))
                     for scope, retract, batch_items in scoped_batches:
                         _apply_replay_batch(db, schemas, crud, target_table, batch_items,
-                                            run_id, stats, stats["pages"],
+                                            run_id, stats,
                                             replace_map=scope is not None, scope=scope,
                                             retract=retract, rule_name=rule.get("name"))
                         if scope is not None:
@@ -750,11 +750,20 @@ def _scoped_batch_outputs(result: dict, rule: dict, target_table: str):
         yield scope, retract, updates
 
 
-def _apply_replay_batch(db, schemas, crud, table_name, items, run_id, stats, page,
+def _apply_replay_batch(db, schemas, crud, table_name, items, run_id, stats,
                         replace_map=False, scope=None, retract=None, rule_name=None):
+    # 🔴 ONE RUN, ONE LABEL (총괄 2026-09-23). ⚰️ This read
+    #   `chain_replay_{run_id}_{page:06d}`, so one backfill arrived in the audit log as one
+    #   GROUP PER PAGE, and the envelope opened at the top of the run said a different name
+    #   than the write did. `page` was that label's only reader, so it goes with it instead
+    #   of staying for the next person to search for.
+    # ⚠️ THE OPERATOR SEES THIS. Narrowing the grid to a transaction now returns the whole
+    #   run rather than one page - which is the point, and is the shape `admin/audit_cache`
+    #   already handles for a bulk ingestion (one label per FILE, a hundred thousand rows).
     batch = schemas.GeneralUpdateBatch(
-        updates=items, transaction_id=f"chain_replay_{run_id}_{page:06d}", silent=False,
+        updates=items, transaction_id="chain_replay_%s" % run_id, silent=False,
         replace_map=replace_map, scope=scope)
+
 
     # [ChainKeyGate] Replay is the same mapper contract as live chain ingestion, so it is
     # the SAME gate - this is the replay side of the one funnel, not a second copy of the

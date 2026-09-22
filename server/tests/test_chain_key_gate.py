@@ -520,7 +520,7 @@ def test_replay_cannot_recreate_in_bulk_what_the_live_worker_refuses(db):
         db, schemas, crud, CELLS,
         [_item(updates={"job": "J1", "x": 1, "y": 1, "grade": "A"}),
          _item(updates={"x": 2, "y": 2, "grade": "B"})],
-        "run1", stats, 1, rule_name="ckgate_rule")
+        "run1", stats, rule_name="ckgate_rule")
 
     assert stats["unkeyed_rows_refused"] == 1
     assert stats["unkeyed_key_columns"] == {"job": 1}
@@ -535,14 +535,14 @@ def test_replay_does_not_purge_a_map_it_refused_whole(db):
     replay._apply_replay_batch(
         db, schemas, crud, CELLS,
         [_item(updates={"job": "J1", "x": x, "y": 0, "grade": "A"}) for x in range(3)],
-        "run1", seed, 1, rule_name="ckgate_rule")
+        "run1", seed, rule_name="ckgate_rule")
     assert len(_rows(db, CELLS)) == 3
 
     stats = dict(seed, unkeyed_rows_refused=0, unkeyed_key_columns={})
     replay._apply_replay_batch(
         db, schemas, crud, CELLS,
         [_item(updates={"job": "", "x": x, "y": 0}) for x in range(3)],
-        "run2", stats, 2, replace_map=True, scope={"job": "J1"}, rule_name="ckgate_rule")
+        "run2", stats, replace_map=True, scope={"job": "J1"}, rule_name="ckgate_rule")
 
     assert stats["unkeyed_rows_refused"] == 3
     assert len(_rows(db, CELLS)) == 3, "a whole-batch refusal must not become a purge"

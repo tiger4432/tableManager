@@ -149,6 +149,43 @@ def test_a_backfill_page_makes_ONE_event_not_one_per_row(db):
         "from the follow-up lap and S-278 from the group path" % made)
 
 
+
+def test_one_run_writes_one_transaction_label_however_many_pages(db):
+    """⚠️ GATE ㉡ (총괄 2026-09-23). 🔴 MORE THAN ONE PAGE, BECAUSE ONE PAGE CANNOT TELL
+    「one label per run」 FROM 「one per page」 - they give the same count.
+
+    ⚰️ MEASURED BEFORE THE CHANGE, on this box: 21 replay runs carried 30 labels in
+    `audit_logs`, and the ones with several were exactly the multi-page ones. The envelope
+    opened at the top of a run said `chain_replay_<run>` while its writes said
+    `chain_replay_<run>_<page>`, so one backfill was one group per page and the two halves
+    of the same run did not agree on their own name.
+
+    ⚠️ THE PAGE NUMBER ITSELF DID NOT DIE - `stats["pages"]` still counts, and a failed page
+    still reports which one it was. What died is the page being part of the NAME."""
+    import re
+
+    _seed(db)
+    # The seed's own write carries a generated id, so the subject is the DELTA. Counting
+    # the total made this read two labels for a run that wrote one.
+    def _labels():
+        return {a.transaction_id for a in db.query(models.AuditLog).filter(
+            models.AuditLog.table_name == LEFT).all()}
+
+    before = _labels()
+
+    stats = replay.replay_rule(db, _rules()[0], apply=True, chunk_size=1,
+                               log=lambda m: None)
+
+    assert stats["pages"] > 1, (
+        "one page cannot decide this - the fixture stopped being a discriminant")
+    labels = _labels() - before
+    assert len(labels) == 1, (
+        "%d pages left %d labels: %s" % (stats["pages"], len(labels), sorted(labels)))
+    only = labels.pop()
+    assert re.fullmatch(r"chain_replay_[0-9a-zA-Z]+", only), (
+        "the write's label still carries a page, so it cannot be the envelope's: %r" % only)
+
+
 def test_a_dry_run_writes_nothing_and_says_what_it_would_be_handed(db):
     """⚠️ A DRY RUN OF A SELF-WRITING KIND CANNOT SAY WHICH CELLS IT WOULD CHANGE without
     writing to find out. It says how many ROWS it would recompute, which is the honest answer
