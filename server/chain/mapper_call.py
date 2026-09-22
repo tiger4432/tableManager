@@ -38,7 +38,16 @@ def stage_timing():
 def mapper_accepts_rule(mapper_func) -> bool:
     """맵퍼 함수가 선택적 `rule` 키워드 인자를 받는지 판정한다(기존 맵퍼 하위호환 유지)."""
     try:
-        sig = inspect.signature(mapper_func)
+        # 🔴 `follow_wrapped=False` IS THE WHOLE FIX (measured 2026-09-23). `@mapper`
+        #    returns a wrapper whose real signature is `(db, payloads, rule=None)`, and
+        #    `functools.wraps` leaves `__wrapped__` on it. `inspect.signature` FOLLOWS that by
+        #    default, so this seat read the author's inner `(df, db)`, answered "takes no rule",
+        #    and the caller then invoked the mapper WITHOUT one. The SDK reads `target_table`
+        #    off that rule, so every decorated mapper died with
+        #    「has no target table」 - a contract error whose cause was two frames away.
+        #    The question here is "what does THIS callable accept", never "what does the
+        #    function it wraps accept".
+        sig = inspect.signature(mapper_func, follow_wrapped=False)
     except (TypeError, ValueError):
         return False
     params = sig.parameters
