@@ -199,8 +199,6 @@ def test_the_cursor_pages_without_repeating_or_dropping_a_row(client, db_session
 
     # 🔴 「잘렸다」는 «서버 상한»에 대한 말이다. 5행짜리 큐를 2씩 넘기는 동안 한 번도
     #    참이면 안 된다 — 참이면 화면이 «없는 누락»을 그린다.
-    assert first["listed"]["capped"] is False
-    assert second["listed"]["capped"] is False
 
 
 def test_the_head_of_the_list_is_the_oldest_waiting_row(client, db_session):
@@ -272,7 +270,6 @@ def test_a_population_that_is_exactly_the_page_says_there_is_no_more(client, db_
     assert [r["outbox_id"] for r in exact["rows"]] == made
     assert exact["listed"]["next_cursor"] is None, (
         "인구가 딱 한 쪽인데 «더 있다»고 말한다")
-    assert exact["listed"]["capped"] is False
 
     row(db_session, table_name="t")
     more = client.get(URL, params={"limit": 3, "cursor": start}).json()
@@ -280,8 +277,21 @@ def test_a_population_that_is_exactly_the_page_says_there_is_no_more(client, db_
         "넷째 행이 있는데 «더 없다»고 말한다 — 대조군이 무너졌다")
 
 
-def test_capped_is_about_the_request_not_the_list(client, db_session):
-    """⚠️ `capped` 는 「네가 물은 수를 서버가 깎았나」다. 한 칸이 두 물음에 답하지 않는다."""
     row(db_session, table_name="t")
-    assert client.get(URL, params={"limit": 5}).json()["listed"]["capped"] is False
-    assert client.get(URL, params={"limit": 9999}).json()["listed"]["capped"] is True
+
+
+def test_the_response_does_not_reuse_a_name_the_sibling_route_spends_differently(client,
+                                                                                 db_session):
+    """🔴 [Q-203 QA] `capped` 가 여기 «있었다». 옆 라우트(`/admin/chain/queue`)의 같은
+    이름은 「이 쪽이 상한까지 찼나」이고, 이쪽 마지막 뜻은 「물은 수가 깎였나」였다 —
+    한 화면에 같은 이름 «두 사실»이다.
+
+    옆 라우트는 지시가 「안 건드린다」이므로 이쪽 이름을 없앴다. 잃는 것은 0 이다:
+    「내가 물은 수가 깎였나」는 부른 쪽이 `cap` 과 자기 limit 을 견주면 «이미 안다».
+    «아무도 모르는 사실»만 응답에 싣는다.
+    """
+    row(db_session, table_name="t")
+    listed = client.get(URL, params={"limit": 9999}).json()["listed"]
+
+    assert "capped" not in listed, "이름이 돌아왔다 — 옆 라우트와 뜻이 갈린다"
+    assert listed["cap"] == 200, "상한 «값»은 남는다 — 그건 부른 쪽이 모르는 사실이다"
