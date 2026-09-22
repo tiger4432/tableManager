@@ -331,12 +331,9 @@ function fanOutBroadcast(msg) {
 }
 
 export function handleWebSocketMessage(msg) {
-  // 🔴 «맨 처음»이다. 아래 갈래들은 그리드의 것이고 조기 반환으로 끝난다 — 그 뒤에 두면
-  //    「지금 보는 표」가 아닌 변경이 관찰에 «안 닿는다». 체인은 대개 «다른 표»에 쓰므로
-  //    행이 큐에서 빠지는 바로 그 통지가 거기서 버려졌다 (소유자 신고 2026-09-22:
-  //    「대기열 떴는데 안 사라짐」). 관찰은 남의 가드 뒤에 앉지 않는다.
-  // ⚠️ 그래서 이 훅은 «모든» 메시지에 불린다 — 인제션 진행 틱을 포함해서. 소비자가
-  //    필요하면 스스로 거른다. 여기서 거르면 이 자리가 다시 「누군가의 가드」가 된다.
+  // 🔴 «맨 처음»이다. 아래 갈래는 그리드의 것이고 조기 반환으로 끝나서, 뒤에 두면 「지금 보는
+  //    표」가 아닌 변경이 관찰에 안 닿는다 — 체인은 대개 «다른 표»에 쓴다. 그래서 모든 메시지에
+  //    불린다(인제션 틱 포함). 거르는 것은 소비자의 일이다.
   fanOutBroadcast(msg);
   if (msg.event === 'file_ingestion_progress') {
     // 🔴 S-37. ONE EVENT NAME, TWO SUBJECTS. The server deliberately says "progress" with one

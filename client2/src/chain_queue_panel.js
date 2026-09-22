@@ -64,6 +64,14 @@ export const MINUTE_SECONDS = 60;
  * The unit pair stops at two on purpose ("1시간 5분", not "1시간 5분 3초"): the third unit is
  * never the reason anyone looks at this panel, and it makes the number wider than the label.
  */
+/** 클래스 하나 붙인 div. 두 대기열 판이 «같은» 것을 쓴다 — 사본이 둘이면 둘이 갈라진다. */
+export function line(doc, cls, text) {
+  const el = doc.createElement('div');
+  el.className = cls;
+  el.textContent = text;
+  return el;
+}
+
 export function formatAge(seconds) {
   // 🔴 `Number(null) === 0`, and so is `Number('')`. Without this line an ABSENCE formats
   //    as 「0초」 — the same collapse rule ① exists to prevent, one layer down. `queueView`
@@ -406,12 +414,7 @@ export class ChainQueuePanel {
   }
 
   /** @param {string} cls @param {string} text */
-  _line(cls, text) {
-    const el = this.doc.createElement('div');
-    el.className = cls;
-    el.textContent = text;
-    return el;
-  }
+  _line(cls, text) { return line(this.doc, cls, text); }
 
   /** @param {string} text @param {string} [align] */
   _td(text, align) {
