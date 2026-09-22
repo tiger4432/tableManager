@@ -4537,11 +4537,16 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
     undelivered = and_(outbox.processed_chain == True,                 # noqa: E712
                        outbox.status == event_constants.UNDELIVERED_MARKER_STATUS,
                        outbox.broadcast_at.is_(None))
-    failed = (outbox.status == "FAILED")
+    # ⚰️ [소유자 2026-09-22] 「대기열에 failed 는 띄우지 마. «앞으로 돌 것만» 띄워」
+    #    한 시간 전 이 자리에 `failed` 가 «있었다» — 실패가 기본 모집단에서 빠지는 것을
+    #    찾고 합집합에 넣었는데, 그건 「무엇이 안 돌았나」의 답이지 이 화면의 물음이 아니다.
+    #    이 화면의 주어는 「앞으로 돌 것」이고 실패는 «돌지 않는다».
+    #    실패를 보는 자리는 이미 있다 — `/admin/outbox/failed`.
+    #    ⚠️ RETRYING 은 `processed_chain=false` 라 «그대로» 든다. 다시 돌 것이므로 맞다.
 
     q = db.query(outbox.id, outbox.event_type, outbox.table_name, outbox.status,
                  outbox.processed_chain, outbox.created_at, outbox.broadcast_at,
-                 outbox.payload).filter(or_(waiting, undelivered, failed))
+                 outbox.payload).filter(or_(waiting, undelivered))
     if cursor is not None:
         q = q.filter(outbox.id > int(cursor))
     # 🔴 한 행 «더» 읽고 버린다. 그래야 「더 있다」가 «재어서 아는 사실»이 된다 —
@@ -4618,17 +4623,20 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
         #    「체인이 밀렸다」로 읽힌다 — 2026-09-04 에 실제로 그렇게 읽혔다. 소유자는
         #    «행마다» 붙어 있고, 세는 것은 세는 쪽이 자기 축을 골라서 한다.
         "listed": {
-            "cap": _QUEUE_ROWS_CAP,
             # 🔴 「더 있나」는 «재어서» 안다 — 한 행 더 읽고 버린다(위). 「쪽이 꽉 찼나」로
             #    가늠하면 인구가 «딱 상한»일 때 빠진 것이 없는데도 「잘렸다」가 된다.
             #    (Q-201 QA: 첫 수리는 거짓 양성의 «경계»만 옮겼고 부류는 같았다)
-            # ⚠️ 그래서 `capped` 는 「목록이 잘렸나」가 «아니라» 「네가 물은 수를 서버가
-            #    깎았나」다. 그건 요청만 보고 «정확히» 아는 사실이고, 「더 있나」는
-            #    `next_cursor` 가 «따로» 말한다. 한 칸이 두 물음에 답하지 않는다.
-            "capped": asked > _QUEUE_ROWS_CAP,
+            "cap": _QUEUE_ROWS_CAP,
             "next_cursor": rows[-1]["outbox_id"] if has_more else None,
+            # ⚰️ [Q-203 QA] 여기 `capped` 가 «있었다». 두 판을 거치며 뜻이 두 번 바뀌었고,
+            #    마지막 뜻(「네가 물은 수를 서버가 깎았나」)은 옆 라우트의 같은 이름이 쓰는
+            #    뜻(「이 쪽이 상한까지 찼나」)과 «달랐다» — 한 화면에 같은 이름 두 사실이다.
+            #    ⛔ 옆 라우트는 안 건드린다(지시). 그래서 «이쪽 이름을 없앤다».
+            #    잃는 것이 0 인 이유: 「내가 물은 수가 깎였나」는 «부른 쪽이 이미 안다»
+            #    (자기가 보낸 limit 과 여기 `cap` 을 견주면 끝이다). 아무도 모르는 사실만
+            #    응답에 싣는다.
         },
-        "population": "processed_chain=false ∪ (done & undelivered) ∪ failed",
+        "population": "processed_chain=false ∪ (done & undelivered)",
     }
 
 
