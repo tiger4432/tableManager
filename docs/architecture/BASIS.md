@@ -48,14 +48,14 @@
 
 🆕 **[2026-09-15] 오늘 살아 있는 통합 선언 — `derive: {kind: join | decide}` + `on` + `into`** (모양·절차는 `RUN.md` §5, 키는 [config/chain_rules §5-B-bis](../guide/config/chain_rules.md))
 ```
-join     `builtin:join_into`(`chain/join_into.py`). 선언 «하나» → 규칙 «둘»(왼쪽 트리거 + 오른쪽 트리거 — ⚰️ **[09-16 S-278 `c41f9c6d`] 오른쪽도 «트리거 경로»다.** 종전엔 `follow_up`·페이싱이었고, 그 칸이 S-151 의 70,800 행을 인용하고 있었다 — 소유자 판정: 그 수는 «어느 랩인가»를 안 정한다)
+join     `declared:join`(`chain/join_into.py`). 선언 «하나» → 규칙 «둘»(왼쪽 트리거 + 오른쪽 트리거 — ⚰️ **[09-16 S-278 `c41f9c6d`] 오른쪽도 «트리거 경로»다.** 종전엔 `follow_up`·페이싱이었고, 그 칸이 S-151 의 70,800 행을 인용하고 있었다 — 소유자 판정: 그 수는 «어느 랩인가»를 안 정한다)
          쓰기 시점 팬아웃 그물: 한 왼쪽 행에 오른쪽 답이 «둘 이상»이면 그 행만 «이름 대고» 건너뛴다(배치당 경고 한 줄 `[join_into:<규칙>] … → 다음:`). 그물은 인덱스가 «아니다» — 지금 이 배치의 중복만 막는다
          `key: {unique: true}` 면 «제품이» 오른쪽 표에 유일 인덱스를 세운다(S-240 `8cab58da`·`07a568ad`) — 자리는 워커 «웜업»(부팅 + 리로드마다. 읽기 경로가 «아니다» — 거기엔 새 SQL 금지, 09-14 장애), 빌더는 읽기 시점 조인과 «같은» `unique_key.ensure_once`, 같은 `uq_vjoin_*` 이름(`chain/synthesis.ensure_declared_unique_keys`). 선언 하나(규칙 둘)에 인덱스 하나. 못 세우면 `[Warmup]` 줄 하나이고 워커는 선다
          `key.columns` 는 «선택»이고 «검사»뿐이다 — 조인의 오른쪽 키와 같으면 무변, 다르면 두 목록을 이름 대고 안 세운다(다른 컬럼 위의 인덱스는 이 조인이 안 쓴다 — S-181). `enabled: false` = 호출 «0»
          🔴 철회(S-248)의 «요구 집합»은 읽기 시점 선언 + 통합 선언(`chain/synthesis.declared_unique_index_names`, 로더와 같은 확장기)의 «합»이다 — 통합 쪽을 못 읽으면 철회가 «안 돈다»(반쪽 집합은 덜 걷는 게 아니라 «틀린 것»을 걷는다)
          키 식: `coalesce(fold(col), '')` 의 저자는 `notation_norm.key_expression_sql`(조인이 «비교»하는 것)·`key_expression_text`(인덱스가 «서는» 것) «하나»다(S-245 `ddd5b3ba`). 텍스트가 아닌 컬럼은 네 자리(읽기 조인 ON · 인덱스 DDL · 중복 탐침 · 쓰기 조인) 모두 `col::text` 로 접고, 텍스트 컬럼은 옛 식 그대로(어제의 인덱스에 오늘도 맞는다). 「invalid input syntax for type double precision」은 여기서 끝났다
          쓰기의 층은 `chain_ingestion`(모든 체인 쓰기와 같다) · `updated_by` = 규칙 이름(`1aa50d3d`). 그래서 이 쓰기가 규칙을 깨우는 문도 `allow_chain_trigger` «하나»다
-         소급: 왼쪽(`into` 표를 트리거하는) 규칙에 R1 — `builtin:` 종류도 워커와 같은 `run_builtin` 을 페이지마다 돈다(S-242 `bd0a3db7`). 오른쪽 규칙 이름은 거절
+         소급: 왼쪽(`into` 표를 트리거하는) 규칙에 R1 — `declared:join` 종류도 워커와 같은 `rule_run.run_rule` 을 페이지마다 돈다(S-242 `bd0a3db7`). 오른쪽 규칙 이름은 거절
 decide   enrich. 확장기는 «하나» — `enrichment.config.chain_rules_for`. 옛 `enrichment_rules.json` 과 새 문법이 «같은 함수»를 지나 셀 단위로 같은 규칙 둘을 낸다
 enabled  `enabled: false` 면 로더가 «규칙을 안 세우고 DB 를 안 만진다»(판정 399 · ③′). 거르는 것이 아니라 «안 서는» 것이다 — 강제 자리: `rule_shape.is_switched_off` + 로더 시험
          ⚰️ `ASSY_CHAIN_SYNTHESIZE` 은퇴(S-234 `5c845e67`, 판정 408) — 그 주어(«운영자가 못 보는» 파생 규칙)가 없어졌다: 부팅 줄 `[ChainRules] set(N)` 이 어느 파일이 썼든 규칙을 «전부» 댄다. 남은 손잡이는 «적은 파일»의 `enabled: false` 와 `ASSY_CHAIN_WORKER=0` 둘뿐
@@ -69,7 +69,7 @@ enabled  `enabled: false` 면 로더가 «규칙을 안 세우고 DB 를 안 만
           검증은 «자기 세션»에서 돌고 닫힌다(독자의 트랜잭션에 못 닿는다) · 선언 «하나»의 검증 실패는 «그 규칙만» 이름 대고 거절 ·
           `ASSY_VJOIN_AUTO_INDEX=0` 은 DB 를 «한 번도» 안 만진다(점검 SQL 이 던지면 롤백하고 그 규칙은 이번 실행에 자동 수리 없음)
           제품이 세운 `uq_vjoin_*` 는 «켜지고 검증된» 조인이 요구하는 동안만 산다(`90d971ba` S-248 — `retract_unrequired_once`, 기본 선언 파일일 때만 · PG 만 · 스위치 0 이면 세우지도 걷지도 않는다)
-대체      새 `join` 종류(`chain/join_into.py`, `builtin:join_into`)가 «쓰는» 쪽을 맡는다
+대체      새 `join` 종류(`chain/join_into.py`, `declared:join`)가 «쓰는» 쪽을 맡는다
 은퇴      enrich·mapper 가 통합 선언으로 옮겨진 «뒤». 그 전에는 지우지 않는다
 ```
 ⚠️ 두 조인은 «두 주어»다 — 읽기 시점에 답하는 것과 표에 쓰는 것. 어긋나면 안 되는 것은

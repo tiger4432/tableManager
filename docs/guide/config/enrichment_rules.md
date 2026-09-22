@@ -199,7 +199,7 @@ conda run -n assy_manager python server/scripts/backup_config.py restore enrichm
 > |---|---|
 > | 인리치 결과를 «원장 사실»로 만든다 | 상설 「표에 원천 데이터를 넣고 그걸로 원장」 — 결과를 **표**에 쓰고 그 표를 `ontology/ledger_config.json` 의 **소스**로 선언한다 |
 > | 「이 결손을 채워야 한다」를 찾는다 | **`GET /api/ledger/gaps`** — 선언된 술어 × 엔터티를 «순회해» 답한다. 노드를 세우지 않는다 |
-> | 후보를 골라 «확정»한다 | **`server/chain/enrichment/candidates.py`** (`resolve_target_candidate` · `confirm_keys`) — 부르는 쪽은 `builtin:auto_confirm`(체인) · 소급 `enrichment_confirm` · dry-run 라우트 |
+> | 후보를 골라 «확정»한다 | **`server/chain/enrichment/candidates.py`** (`resolve_target_candidate` · `confirm_keys`) — 부르는 쪽은 `declared:decide`(체인) · 소급 `enrichment_confirm` · dry-run 라우트 | ⚰️ **[판정 600] 이름이 바뀌었습니다** — 옛 `builtin:join_into`·`builtin:auto_confirm`·`builtin:join` 은 오늘 `declared:join`·`declared:decide`·`declared:virtual_join` 입니다. 접두 `declared:` 는 「선언에서 «제품이 만든» 맵퍼」를 뜻하고, 뒤는 선언이 쓰는 낱말입니다. 옛 접두로 로그를 찾으면 «안 나옵니다»(RUN.md 의 환산표).
 > | 사람이 그것을 본다 | **`client2/src/enrichment_queue.js`** + `enrichment_reference_view.js`. 아래 §7 `candidate_for`·`auto_confirm` 은 **살아 있다** |
 >
 > 🔴 **후계 없음이 하나 있다** — walk 의 «노드»로서의 `Enrich Action`. 2026-08-28 「엔티티·어휘·walk 이게 끝」이 노드 종류를 하나로 접었고, **그 능력은 지금 없다**. 결손은 노드가 아니라 위 `gaps` 가 답한다.

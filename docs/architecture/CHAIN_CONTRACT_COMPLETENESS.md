@@ -176,9 +176,9 @@
 
 ## 🔴 실행 — 이 표가 이 절의 요점입니다 (2026-09-16 전수 실측)
 
-|  | 파이썬 맵퍼 | `builtin:` 종류 (조인 · 확정) |
+|  | 파이썬 맵퍼 | `declared:*` 종류 (조인 · 확정) |
 |---|---|---|
-| 선언 | `derive.kind: mapper` → `mapper_module`/`mapper_function` | `derive.kind: join`/`decide` → `mapper: builtin:…` |
+| 선언 | `derive.kind: mapper` → `mapper_module`/`mapper_function` | `derive.kind: join`/`decide` → `mapper: declared:…` |
 | 그룹(트리거) 경로 | `rule_run.run_rule` `ingestion_worker` :1513(배치) :1557(행별) | `rule_run.run_rule` :1504 |
 | 후속 랩 | — | `rule_run.run_rule` `ingestion_worker` :2867 |
 | 소급(replay) | `rule_run.run_rule` `replay` :535 | `rule_run.run_rule` `replay` :504 |
