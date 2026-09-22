@@ -3,29 +3,41 @@
 > 아래는 **지금 참인 것**만 적는다. 정정을 덧붙이지 않는다 — 틀리면 그 줄을 «고친다».
 > 지난 라운드의 판정 실타래는 이 절에 쌓지 않는다. 채널(`task/*_ORDERS.md`)과 git 이 그 자리다.
 
-# 🔴🔴 【09-23 새벽 · 체인 안에서 «자기가 쓰는» 자리가 «넷»이다 — 문 통일이 반만 됐다】
+# 🔴🔴 【09-23 새벽 · «맵퍼가 쓰는» 자리 둘 — 문 통일이 반만 됐다】
 
 소유자: 「인리치 빌트인 맵퍼로 해서 문 통일한거 아니었어? 왜 한것처럼 자꾸 가려?」 · 「모두 같은 맵퍼로 통하게」
 
 ```
 통일된 것   «선언». 조인·인리치가 보통 맵퍼로 규칙 집합에 든다
 안 된 것    «쓰기». 갈라짐이 선언으로 박혀 있다 — TEMPLATE_FACTS 의 `writes_itself`
+정본 문장   「a mapper does not write - it PROPOSES, and the CALLER'S BATCH writes」
+           (`join_into._apply` 독스트링. 도착지가 이미 적혀 있다)
 ```
-센 명령 `git grep -n "apply_batch_updates(" -- server/` (tests·scripts 제외) ·
-카나리아 `def apply_batch_updates` -> `crud.py:4386` 있음
+⚠️ 총괄이 처음 「넷」이라 적었고 «틀렸다». 센 술어가 `apply_batch_updates(` 가 «있는 자리»라
+   「맵퍼가 쓴다」(결함)와 「부르는 쪽이 쓴다」(정본)를 못 갈랐다. 열어서 가른 결과:
 
-|자리|`writes_itself`|
-|---|---|
-|`ingestion_worker.py:1422`|🎯 도착지 좌석 (tx = `chain_<원본tx>`, `:1308`)|
-|`join_into.py:306` 조인|**True** (`dynamic_mappers.py:247`)|
-|`candidates.py:772` 오토컨펌|**True** (`:256`) · tx 난수 (`:768`)|
-|`backfill.py:438` 백필|True 쪽|
-|`replay.py:795` 리플레이|맵퍼는 좌석 공유(`:550`·`:581`), 쓰기만 자기 것. `:485` 에서 갈린다|
-|인리치 dedup|**False** — 유일하게 도착해 있음 (`:271`)|
+|자리|누가 쓰나|판정|
+|---|---|---|
+|`join_into.py:306`|등록된 «맵퍼 몸»(`join_into.run`) 안|🔴 결함|
+|`candidates.py:772` `confirm_keys`|오토컨펌 «맵퍼» 안 (`writes_itself=True`)|🔴 결함|
+|`replay.py:795`|`rule_run.run_rule`(`:550`·`:581`)로 제안받고 부르는 쪽이|✅ 정본|
+|`backfill.py:438`|`map_enrichment_dedup`(`:264`)을 부르고 부르는 쪽이|✅ 정본|
+|`ingestion_worker.py:1422`|라이브 체인의 부르는 쪽 (tx = `chain_<원본tx>`, `:1308`)|✅ 정본|
 
 ⭐ `CLAUDE.md` 가 이미 진단해 둔 것이다 — 체인을 「종류」로 읽어서 나온 다섯 중 `writes_itself`.
-   넷은 닫혔고 이것만 안 닫혔다. `join_into._apply` 독스트링이 도착지를 이미 적고 있다:
-   「a mapper does not write - it PROPOSES」 + 「아무것도 자기가 안 쓰면 이 함수는 부르는 이가 없다」
+   넷은 닫혔고 이것만 안 닫혔다. 둘을 「제안만」으로 고치면 `writes_itself` 도
+   `rule_run.self_writing_name` 도 설 자리가 없다.
+
+## 🔴 그 깃발이 «다른 뜻의 대리»였다 — 구현자 발견
+
+```
+replay.py:528   쪽 격리(한 쪽이 터져도 실행이 이어짐)가 «자기쓰기 팔에만» 있다 (판정 403)
+=> 맵퍼가 아무것도 안 쓰면 그 팔이 죽고, 모든 쪽이 격리 «없는» 팔로 간다
+   깃발만 내리면 오늘 있던 격리를 «조용히» 잃는다 — 오류가 안 난다
+판정 403 자신이 「that is worth fixing, not this round's subject」로 S-242-b 에 큐잉했고,
+이번 통일이 그 큐를 «강제로» 연다 -> 격리를 «쪽 고리»로 옮긴다. 같은 커밋에서
+⚠️ 파일 맵퍼 소급의 «동작이 바뀐다» — 지금은 한 쪽이 터지면 실행 전체가 죽는다 (소유자께 보고함)
+```
 
 ## 🔴 대기열이 갈라지는 원천 «둘» — 그리고 tx 는 «지을 축이 아니다»
 
@@ -63,9 +75,11 @@
 ## 📋 지금 도는 것 — «하나»다
 
 ```
-구현자  자기쓰기 «넷»을 좌석 하나로 (조인 · 오토컨펌 · 백필 · 리플레이)
-       그 커밋에서 TEMPLATE_FACTS.writes_itself 와 rule_run.self_writing_name 이 같이 죽는다
-       그 «뒤»에   tx 묶기(화면 접기) · ⑩′ 다시 재기 · 대기열이 빠질 때 알림 · 맵퍼 문 넷
+구현자  맵퍼가 쓰는 «둘»을 제안만 하게 (조인 · 오토컨펌) + 쪽 격리를 고리로 옮기기
+       같은 커밋에서 TEMPLATE_FACTS.writes_itself · rule_run.writes_itself ·
+       rule_run.self_writing_name 이 «전부» 죽고, 시험 둘을 다시 세운다
+       그 «뒤»에   tx 라벨 모으기 · 대기열 화면 접기 · ⑩′ 다시 재기 ·
+                 대기열이 빠질 때 알림 · 맵퍼 문 넷
 클라    rnd_board direction 선언 (⓪ -> ③ -> ①)
 ```
 
