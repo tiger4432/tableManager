@@ -12,6 +12,24 @@
 계기   scratchpad/probe_gate_one_v1_absent.py (①) · scratchpad/verify_chain_end_to_end.py (②)
 ```
 
+## ✅ 652 «끝» — 읽기 시점 조인 문법 삭제 (fd546ccb · 제품 56 · -3,860/+683)
+
+```
+총괄이 «직접» 잰 게이트 (12:4x, 박스 재기동 뒤)
+  ① 인덱스   uq_vjoin_dt_inventory_dt_job_ns  valid=True unique=True   (카나리아 pg_index 828 행)
+  ③ companion  inventory_confirmed + :reference 둘 다 섬 · set(12)
+  ④ 거절     문법 좌석에 into.read 를 먹임 -> «이름 + 사유 + 다음 행동». 대조군 정상 선언은 섬
+  ⑤ 원장     load_setup() 안 터짐
+  ⑦ 새 기동 ERROR 0 · admin.html 200 · 새 라우트 401 · 옛 라우트 «404»
+안 잼   ② 실조인이 행을 쓰나 · ⑥ 배치당 세션 0 — 시험이 답한다(내 초록 아님).
+       ⑥ 의 시험이 이 삭제에서 «살아남은» 것만 확인했다
+지운 것   legacy_join_declaration · legacy_materialized_join · verified_join 시험 694줄 · 옛 라우트
+남긴 것   uq_vjoin_ · ASSY_VJOIN_AUTO_INDEX · VirtualJoin.UniqueKey (응용 실측 전부 생존)
+        소유자 라이브 virtual_join_rules.json «안 건드림» — 제품이 더 이상 안 읽을 뿐
+```
+🔴 **남은 말이 운영자를 «없는 엔진»으로 보낸다** — `mappers/cross_table_lookup_mapper.py.sample`
+   이 「그건 VIRTUAL JOIN 으로 하라」고 권한다. 지우지 말고 «통합 선언을 가리키게» 다시 쓴다. 큐 맨 앞.
+
 ## 🎯 완성 상태 — 「두 줄로 선언법을 말할 수 있나」 (09-22 11:2x, 총괄이 직접 쟀다)
 
 ```
