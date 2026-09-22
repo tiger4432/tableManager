@@ -119,7 +119,10 @@
 ```
 무엇을 짓기 «전»에 아이디어 «셋»을 낸다 — 무조건
 소유자의 «컨펌과 조언»을 받아 고친 뒤에 진행한다. 받기 전에 짓지 않는다
-보고 형식  «정규 한국어» · «휴대폰으로 열리는 문서»(아티팩트 링크)
+Reports, orders and rulings are written in ENGLISH (owner, 2026-09-23:
+「병신같은 한국어 표현금지. 영어로 작성」). No «» guillemets, no
+invented compounds. Plain sentences. The owner's own replies may stay Korean; the
+artefacts do not
           거친 축약·기호 남발 대신 온전한 문장으로. 표는 좁게, 가로 스크롤 없이
 ```
 ```
