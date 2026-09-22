@@ -5932,9 +5932,34 @@ def get_ledger_relations(q: str = None, limit: int = 200, db: Session = Depends(
 # existed. Today's step 2 is the draft lifecycle (`compile_draft_preview`, S-194).
 
 
+@app.get("/admin/chain/join/verify", dependencies=[Depends(require_admin_token)])
+def verify_join_approval(db: Session = Depends(get_db)):
+    """조인 선언이 **승인됐는가**, 아니면 무엇을 만들어야 하는가 — 실조인 문법 위에서.
+
+    🔴 [판정 678] 축은 「승인 = 조인 키를 덮는 UNIQUE 인덱스가 «실제로» 있다」이고, 그것은
+    은퇴하는 읽기 시점 문법과 «상관없이» 산다. 죽는 것은 `virtual-join` 이라는 배관
+    낱말뿐이라, 라우트의 이름만 그 문법과 같이 가고 물음은 `/admin/chain/` 가족으로 온다
+    (`rules` · `rules/raw` · `rules/replayable` · `queue` 옆으로. 새 가족을 만들지 않는다).
+
+    ⚠️ 아래 `/admin/config/virtual-join/verify` 는 «아직 산다». 클라가 이 자리를 부를
+    준비가 될 때까지 둘 다 답한다 — 먼저 지우면 그 사이 화면이 404 를 받고 「모름」을
+    영원히 그린다(터지지 않으므로 들키지도 않는다, 판정 672).
+
+    응답 «모양»은 옛 라우트와 같다. 그래서 클라 변경이 URL 한 줄이다.
+    """
+    from chain import synthesis
+    from database import crud
+    return synthesis.approval_report(db, known_tables=crud.TABLE_CONFIG)
+
+
 @app.get("/admin/config/virtual-join/verify", dependencies=[Depends(require_admin_token)])
 def verify_virtual_join_declarations(db: Session = Depends(get_db)):
     """virtual join 선언이 **승인됐는가**, 아니면 무엇을 만들어야 하는가.
+
+    ⚰️ [판정 678] 이 자리는 «옮겨졌다» — `GET /admin/chain/join/verify` 가 같은 물음에
+    같은 모양으로 답한다. 여기가 아직 서 있는 이유는 하나뿐이다: 클라가 그쪽을 부르기
+    «전»에 지우면 그 사이가 거짓이 된다. 클라가 옮기면 이 라우트는 문법과 «같이» 걷힌다
+    (652 3걸음).
 
     `/admin/config/resolve`가 답하지 못하는 절반이다. 그 라우트는 「DB 질의 0건」이
     계약이라 설정 파일만 읽는데, 승인 조건인 「조인 키를 덮는 UNIQUE 인덱스」는

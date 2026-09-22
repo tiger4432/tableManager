@@ -214,6 +214,17 @@ def declared_unique_targets(rules):
             # ⚠️ ABSENT IS NOT 「no」 TO A QUESTION NOBODY ASKED. A declaration that says
             # nothing about uniqueness gets no index and no complaint; `join_into`'s own
             # row-level net still refuses a left row with two right answers.
+            #
+            # 🔴 [판정 680] IT STILL HAS TO COME OUT SAYING SO. This cell used to `continue`,
+            # and the cell above it yields a REASON for a disabled join - so on one axis one
+            # non-answer spoke and the other was silent, and the silent one is
+            # indistinguishable from 「the product never read my declaration」. Both seats that consume this
+            # walker skip on a reason (`declared_unique_index_names`, `right_keys_for`), so
+            # no index is built or required that was not before; what changes is that the
+            # approval report can draw this declaration instead of dropping it.
+            yield (name, None, None, None,
+                   "key.unique 를 안 적었습니다 — 이 선언은 승인을 묻지 않습니다. "
+                   "인덱스가 필요하면 `key: {unique: true}` 를 적으십시오.")
             continue
         table, columns, folds = join_into.right_key(rule)
         if not table or not columns:
@@ -264,6 +275,122 @@ def declared_unique_index_names(known_tables: dict = None) -> set:
                 continue
             names.add(vjc.required_index_name(table, columns, folds))
     return names
+
+
+def _approval_row(rule: dict, right_table, required_index, unique_index,
+                  required_index_ddl, detail) -> dict:
+    """선언 «하나»의 승인 행. 칸 이름은 옛 라우트와 «같다» — 클라는 URL 한 줄만 바꾼다."""
+    from chain import join_into
+
+    rule = rule or {}
+    on = join_into.pairs(rule)
+    return {
+        "name": rule.get("name"),
+        "left_table": str(rule.get("target_table") or ""),
+        "right_table": str(right_table
+                           or join_into.join_spec(rule).get("right_table") or ""),
+        "join_key": ["%s = %s" % (left, right) for left, right, _fold in on],
+        # 접기는 «비교의 성질»이라 선언마다 다르고, 어느 쪽 컬럼이 선언됐는지와 상관없이
+        # 양쪽에 걸린다. 그 사실을 말하지 않으면 운영자는 왜 이 조인만 «다른» 인덱스를
+        # 요구하는지 알 방법이 없다.
+        "folded_join_key": [
+            {"left": left, "right": right,
+             "rules": sorted(key for key, value in (fold or {}).items() if value)}
+            for left, right, fold in on if fold],
+        "expose": [source for source, _into in join_into.takes(rule)],
+        "accepted": bool(unique_index) and detail is None,
+        "unique_index": unique_index,
+        "required_index": required_index,
+        "required_index_ddl": None if unique_index else required_index_ddl,
+        "detail": detail,
+    }
+
+
+def approval_report(db, known_tables: dict = None) -> dict:
+    """선언마다 「승인됐는가 · 아니면 무엇을 만들어야 하는가」. `GET /admin/chain/join/verify`.
+
+    🔴 [판정 678] 「승인」은 «축»이고 「virtual-join」은 «배관»이다. 이 답을 주던 자리는 은퇴하는
+    읽기 시점 문법 위에 있었고, 그것이 묻던 것 — 「조인 키를 덮는 UNIQUE 인덱스가 «실제로»
+    있나」 — 는 실조인이 그대로 지고 있다. 그래서 라우트의 «이름»만 문법과 같이 가고
+    «물음»은 여기로 온다.
+
+    🔴 저자가 «셋»이 되지 않는다. 「어느 인덱스를 «짓나»」와 「어느 것을 «요구하나»」가 갈릴 수
+    없어야 해서 `declared_unique_targets` 가 한 워커인 것과 «같은 이유»로, 「어느 것을
+    «보고하나»」도 그 워커에서 나온다. 접기·키 쌍은 `join_into` 가 이미 계산한 것을 받고,
+    문장은 `/admin/config/resolve` 와 «같은 조립기»가 짓는다.
+
+    ⚠️ 캐시를 «읽지도 채우지도» 않는다. `_RIGHT_KEYS` 는 쓰기 경로가 적재당 한 번 배우는
+    답이고, 여기는 운영자가 인덱스를 «방금 만들고» 새로고침하는 자리라 그 답이 «지금»
+    이어야 한다. 같은 워커와 같은 탐침을 쓰므로 **두 좌석은 「어느 것」에서 못 갈라지고
+    「언제」에서만 갈라진다**.
+
+    ⚠️ 행을 «안 센다» — 카탈로그만 읽는다. 그래서 비용이 표 크기와 무관하고 요청 경로에
+    앉을 수 있다(옛 계약 그대로).
+    """
+    from chain import ingestion_worker, join_key_index, join_refusal, rule_shape
+    from database import crud
+
+    catalogue = known_tables if known_tables is not None else crud.TABLE_CONFIG
+    read = ingestion_worker.read_rules_document()
+    stood_all, by_name, invalid, out = [], {}, [], []
+
+    for raw in (read["rules"] or ()):
+        if not isinstance(raw, dict):
+            continue
+        internal = rule_shape.from_declaration(raw)
+        is_join = (internal.get("derive") or {}).get("kind") == "join"
+        stood, refusal, notes = rule_shape.expand_declaration(raw, catalogue)
+        if refusal:
+            # ⚠️ 조인 갈래만. 거절된 `decide` 를 「조인 승인」 패널에 실으면 운영자가
+            #    이 화면에서 «못 고치는» 것을 이 화면에서 읽는다.
+            if is_join:
+                invalid.append({"subject": raw.get("name"), "detail": refusal})
+            continue
+        if is_join and not stood:
+            # 🔴 꺼 둔 조인은 서는 규칙이 «0» 이라 걷는 이에 닿지 않는다 (판정 399). 그런데
+            #    그것도 「승인 안 됨」의 한 경우이고, 여기서 빠지면 운영자가 자기 선언을
+            #    화면에서 «못 찾는다» — 판정 680 이 메운 구멍과 «같은 구멍»이다. 사유는
+            #    로더의 것을 그대로 싣는다 (Q-194: 없는 사유가 틀린 사유보다 낫다).
+            out.append(_approval_row(rule_shape.as_chain_rule(internal), None, None, None,
+                                     None, notes[0] if notes else None))
+            continue
+        for rule in stood:
+            stood_all.append(rule)
+            by_name.setdefault(rule.get("name"), rule)
+
+    seen = set()
+    for name, table, columns, folds, skip in declared_unique_targets(stood_all):
+        rule = by_name.get(name) or {}
+        if skip or not table or not columns:
+            # ⚠️ 동반 반쪽(`:reference`)은 같은 선언의 반쪽이라 한 행으로 접는다.
+            base = (name or "").split(rule_shape.REFERENCE_SUFFIX)[0]
+            if base in seen:
+                continue
+            seen.add(base)
+            out.append(_approval_row(rule, table, None, None, None, skip))
+            continue
+        # ⚠️ 한 유일성, 한 행. 인덱스 «이름»으로 접으므로 패널의 수가 «인덱스의 수»와 같다 —
+        #    `declared_unique_index_names` 가 요구 집합을 세는 바로 그 키다.
+        required_index = join_key_index.required_index_name(table, columns, folds)
+        if required_index in seen:
+            continue
+        seen.add(required_index)
+        required_index_ddl = join_key_index.required_index_ddl(table, columns, folds)
+        unique_index = join_key_index.unique_index_covering(
+            db, table, columns, folds=folds)
+        detail = None if unique_index else join_refusal.virtual_join_detail(
+            join_refusal.CODE_NO_UNIQUE_INDEX,
+            {"right_table": table, "join_key": list(columns),
+             "required_index_ddl": required_index_ddl})
+        out.append(_approval_row(rule, table, required_index, unique_index,
+                                 required_index_ddl, detail))
+
+    return {
+        "declarations": out,
+        "accepted": sum(1 for row in out if row["accepted"]),
+        "refused": sum(1 for row in out if not row["accepted"]),
+        "invalid": invalid,
+    }
 
 
 #: 이 프로세스가 «규칙을 다시 실을 때까지» 유효한 오른쪽 키 답. 시간 기준이 아니다.

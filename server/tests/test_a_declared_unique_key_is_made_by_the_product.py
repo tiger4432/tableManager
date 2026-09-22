@@ -139,16 +139,29 @@ def test_a_disabled_declaration_touches_the_database_zero_times(calls):
     assert report["skipped"] == [("s240_join", "enabled=false")]
 
 
-def test_a_declaration_that_says_nothing_about_uniqueness_gets_nothing(calls):
+def test_a_declaration_that_says_nothing_about_uniqueness_gets_no_index(calls):
     """⚠️ ABSENT IS NOT 「no」 TO A QUESTION NOBODY ASKED. A join that never claimed a unique
-    key gets no index and no complaint - and `join_into`'s own row-level net still refuses a
-    left row with two right answers (`593aac50`)."""
+    key gets NO INDEX - and `join_into`'s own row-level net still refuses a left row with two
+    right answers (`593aac50`).
+
+    🔴 [판정 680] 「그리고 아무 말도 안 한다」가 이 줄의 «둘째 절»이었고, 그것이 바뀌었습니다.
+    걷는 이는 꺼진 조인에 «사유»를 내면서 유일성을 안 적은 조인에는 아무것도 안 냈습니다 —
+    한 축에서 한 비답은 말하고 다른 비답은 조용했던 것입니다. 이제 둘 다 말합니다.
+
+    ⚠️ 그래서 «워밍업 로그에 줄이 하나 생깁니다»(`[Warmup] 유일 키 설치 건너뜀`). 그것이
+    이 변경의 값이자 비용이고, 여기서 단언하는 이유는 그 줄이 «조용히» 생기거나 «조용히»
+    사라지지 않게 하기 위해서입니다. 인덱스는 그대로 «0» 입니다 — 말이 늘었지 일이 는 게
+    아닙니다.
+    """
     rule = _rule()
     rule.pop("key")
 
     report = synthesis.ensure_declared_unique_keys(None, [rule])
 
-    assert calls == [] and report["ensured"] == [] and report["skipped"] == []
+    assert calls == [], "승인을 안 물은 선언에 DDL 이 돌았습니다"
+    assert report["ensured"] == []
+    assert [name for name, _why in report["skipped"]] == ["s240_join"]
+    assert "key.unique" in report["skipped"][0][1]
 
 
 def test_a_rule_that_is_not_this_kind_is_not_this_seats_business(calls):

@@ -88,6 +88,24 @@ def unknown_cells(spec: dict) -> list:
     return sorted(str(key) for key in (spec or {}) if key not in JOIN_CELLS)
 
 
+def pairs(rule: dict) -> list:
+    """이 규칙의 `on` — `(왼쪽 컬럼, 오른쪽 컬럼, 폴드)` 들.
+
+    🔴 [판정 678] THE SAME BODY `right_key` USES, GIVEN A NAME SO NOBODY COMPUTES IT TWICE.
+    The approval report needs the LEFT column to say 「left = right」 and the fold to say why
+    an index has that shape, and the walker that decides which index to build hands back the
+    right side only. Reaching into `_pairs` from outside, or recomputing the fold there,
+    would make a second author of a fact 판정 397 gave exactly one - and the fold is the
+    cell where that bites silently (a mismatch does not fail, it stops using the index).
+    """
+    return _pairs(join_spec(rule), str((rule or {}).get("target_table") or ""))
+
+
+def takes(rule: dict) -> list:
+    """이 규칙의 `take` — `(오른쪽 컬럼, 왼쪽에 적히는 이름)` 들. `pairs` 와 같은 이유로 공개다."""
+    return _takes(join_spec(rule))
+
+
 def right_key(rule: dict) -> tuple:
     """(the right table, its join columns, the folds) - what a unique index on it would need.
 
@@ -99,12 +117,10 @@ def right_key(rule: dict) -> tuple:
     ⚠️ AND THIS MODULE STILL DOES NOT KNOW THE OTHER JOIN DOOR EXISTS. It hands back the three
     values; whoever builds an index is the shell's business.
     """
-    spec = join_spec(rule)
-    left_table = str((rule or {}).get("target_table") or "")
-    pairs = _pairs(spec, left_table)
-    return (str(spec.get("right_table") or ""),
-            [right for _left, right, _fold in pairs],
-            [fold for _left, _right, fold in pairs])
+    on = pairs(rule)
+    return (str(join_spec(rule).get("right_table") or ""),
+            [right for _left, right, _fold in on],
+            [fold for _left, _right, fold in on])
 
 
 def _takes(spec: dict) -> list:
