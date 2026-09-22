@@ -31630,3 +31630,36 @@ build_count_cache_key (main:753) 「Count 캐시 키의 «유일한» 철자」
 ```
 다음 회차에 볼 축: 이 라운드가 말한 「로그·화면 «문장»도 문이다」 — 같은 사건을 두 낱말로 적는 자리.
 제 Q-189(그래프 페이로드 vs `say_cycle_once`)가 그 부류의 «실례»였고, 그 축을 아직 전수로 안 셌습니다.
+
+### Q-206 · 3차 — 「하나다」가 오늘 «거짓»인 것은 몇인가 (부분 답, 전수 아님) [09-22 22:26]
+
+```bash
+git grep -n "ONE place\|한 좌석\|유일한" -- $(씨앗 46 파일)      # 주장 줄 42 (제 1차의 41 을 재서 42 로 정정)
+```
+**답(제가 연 범위): 거짓 «2» · 참 «13» · 판정불가 «3» · 범위밖 «3» · 미개봉 «21».**
+🔴 전수를 «못 했습니다». 21 줄은 «안 열었습니다» — 「애매해서」가 아니라 «안 봐서»입니다. 비율을 물으셨는데
+제가 드리는 것은 «연 21 줄 위의 비율»(거짓 2/18 ≒ 11%)이고, 나머지 21 줄이 그 비율을 바꿀 수 있습니다.
+
+**거짓 둘** (둘 다 1·2차에서 이미 올린 것 — 3차에서 «새 거짓은 0»)
+```
+ingestion_worker:1226  「The ONE place an outbox event stops being work」
+                       -> run_auto_update 네 자리. 칸이 「끝났다」와 「집어갔다」 둘을 나름
+ingestion_worker:668   「The chain rules FILE, read in ONE place」
+                       -> main.py:5640 이 손으로 풂. 갈라지는 것은 «푸는 시점»(import 상수 vs 호출)
+```
+**참 열셋** (자리만): `event_constants` 347·388·647 · `crud` 5163 · `enrich_declarations` 31 ·
+`main` 5884 · `join_verification.js` 22 · `main.js` 1062·1215·27 · `retroactive` 1299 ·
+`ingestion_worker` 3693 · `config_resolve_report` 1089.
+그중 둘은 «묘비»라 참입니다 — `main.js:27` 은 과거형(오늘 맨 fetch «0» 으로 확인), `config_resolve_report:1089` 도 과거형.
+
+**판정불가 셋**: `main:753`(키를 «되가르는» 쪽을 안 읽음) · `ingestion_worker:311`(호출자 수 주장, 싼 심볼 없음) ·
+`ingestion_worker:1903`(루프 «안»의 지역 주장 — 방출 자리 전부를 읽어야 함).
+**범위밖 셋**: `ledger/admin:1056` · `main:5101`(맵) · `main:5389`(원장) — 이번 회차 ⛔ 그대로 «안 열었습니다».
+
+⚠️ 계기 실패 둘을 이번에도 스스로 적습니다.
+```
+① `git grep "fetch(" | grep "/admin"` 가 «파일 경로»(client2/src/admin.js)에 걸려 가짜 히트 열을 냈습니다
+   — 이 라운드가 경고한 「자리를 세면 조용히 샌다」 그대로입니다. URL 조각으로 다시 셌습니다
+② `narrowingParams` 가 «정의 둘»로 보였는데, api.js 쪽은 `buildNarrowing` 을 부르는 «감싸개»였습니다
+   — 같은 이름의 감싸개는 둘째 저자가 아닙니다. 열어서만 갈립니다
+```
