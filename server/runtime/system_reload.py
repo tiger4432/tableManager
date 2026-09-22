@@ -52,11 +52,12 @@ def reload_local_process_cache():
     # do not get. Expiry is keyed to LOADING now, so every process invalidates at its own
     # reload seat rather than waiting out a clock; this is the web server's.
     #
-    # ⚠️ [판정 677 ②] THAT IS TRUE OF THIS CACHE, NOT OF THE WHOLE ANSWER. The sentence
-    # here said 「none of them waits out a clock」, and the read-time half of the same
-    # question still does: `chain.legacy_materialized_join` holds a 5-second TTL. It was
-    # 5 seconds before this line existed, so nothing regressed - the absolute did. 그
-    # 시계는 그 문법과 «같이» 죽습니다.
+    # ⚰️ [판정 677 ② -> 652 3걸음] THE ABSOLUTE IS TRUE AGAIN, AND THIS IS WHY IT READS AS
+    # ONE LINE NOW. 677 ② had to narrow 「none of them waits out a clock」 because the
+    # read-time half of the same question held a 5-second TTL in
+    # `chain.legacy_materialized_join`. That module was deleted, so the clock it predicted
+    # would 「die with its grammar」 did. There is one invalidation seat left and it is
+    # keyed to LOADING, not to a clock.
     try:
         from chain import synthesis
         synthesis.reset_right_key_cache()

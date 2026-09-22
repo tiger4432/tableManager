@@ -202,9 +202,12 @@ def test_a_kind_that_cannot_be_reverted_says_so_by_name():
 def test_a_kind_that_stamps_its_origin_refuses_nothing():
     """The control: a sentence that is printed for every kind says nothing about any of
     them."""
-    from chain import legacy_join_declaration as vjc
+    from chain import join_into
 
-    assert rule_run.retraction_refusal({"name": "j", "mapper": vjc.JOIN_MAPPER}) is None
+    # ⚰️ [652 3걸음] `vjc.JOIN_MAPPER`(`declared:virtual_join`) 였다. 그 종류가 걷혀
+    #    실조인 이름으로 같은 성질을 잰다 — 스탬프를 찍는 종류는 회수를 거절하지 않는다.
+    assert rule_run.retraction_refusal(
+        {"name": "j", "mapper": join_into.JOIN_INTO_MAPPER}) is None
     assert rule_run.retraction_refusal(
         {"name": "j2", "mapper": join_into.JOIN_INTO_MAPPER}) is None
 

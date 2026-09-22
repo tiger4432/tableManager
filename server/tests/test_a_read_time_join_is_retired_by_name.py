@@ -19,6 +19,12 @@ the hole its arrival closed.
 the loader changed, it would refuse a rule the collector still RAN; were they changed
 separately, one file would be refused in two voices. Both read
 `rule_shape.READ_TIME_RETIRED`.
+
+⚰️ [판정 652 3걸음] 네 시험이 여기서 걷혔습니다 — 옛 파일(`virtual_join_rules.json`)의 로더가
+같은 거절을 «자기 낱말»로 한 번 더 하던 자리였습니다. 그 문법이 갔고, 거절을 «짓는» 자리는
+`rule_shape.expand_declaration` 하나입니다(이 파일의 첫 시험이 그것을 잽니다). 로그는
+`ingestion_worker` 가, 화면은 `/admin/chain/join/verify` 의 `invalid` 이 답합니다 — 셋 다
+살아 있는 자리이고, 지운 것은 «둘째 낱말»뿐입니다.
 """
 import os
 import sys
@@ -29,7 +35,6 @@ SERVER_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
-from chain import legacy_join_declaration as vjc                                   # noqa: E402
 from chain import ingestion_worker, rule_shape                      # noqa: E402
 
 KNOWN = {
@@ -75,21 +80,6 @@ def test_the_loader_refuses_a_read_declaration_by_name(declared):
     assert "u_read" in refusal, "the refusal does not name the declaration: %s" % refusal
 
 
-def test_the_collector_refuses_it_in_the_loaders_own_words(declared):
-    """🔴 THE SECOND SEAT, AND THE SAME STRING. This is the half that would otherwise keep
-    RUNNING what the loader refuses — the two-doors shape this repository keeps finding,
-    arriving here as 「refused in one place, live in the other」."""
-    declared(dict(UNIFIED, name="u_read"))
-    rejections = []
-
-    picked = vjc._read_time_joins_from_unified(set(), KNOWN, rejections)
-
-    assert picked == [], "a retired read-time join was still adopted as a live join"
-    said = [r for r in rejections if r.get("subject") == "u_read"]
-    assert len(said) == 1, rejections
-    assert said[0]["detail"] == rule_shape.READ_TIME_RETIRED, (
-        "the collector refuses in its own words, so the same file is refused twice over "
-        "in two voices: %s" % said[0]["detail"])
 
 
 def test_the_refusal_says_what_to_write_instead():
@@ -124,57 +114,10 @@ def test_a_writing_join_still_stands_two_chain_rules(declared):
     assert refusal is None and len(stood) == 2
 
 
-def test_the_old_files_read_time_declaration_is_now_refused_by_name(declared):
-    """🪦 [S-283, 판정 446·461] THIS TEST USED TO ASSERT THE OPPOSITE, and the old sentence
-    is kept here rather than deleted: 「THE ENGINE IS NOT TOUCHED IN THIS STEP (판정 440 ④,
-    step 1 of 5). A declaration in `virtual_join_rules.json` still loads」.
-
-    That was true of step 1 and is false now. Step 4 removed the read-time engine, so a
-    `materialize: false` declaration in the legacy file no longer computes anything - and a
-    declaration that stands nothing must SAY so, by name, or it is 「선언은 있는데 컬럼이
-    없다」, which has the same shape as 「없다」.
-    """
-    declared()
-    rejections = []
-
-    rules = vjc.validate_virtual_join_rules({"o_read": OLD_SHAPE}, known_tables=KNOWN,
-                                            rejections=rejections)
-
-    assert rules == [], "a read-time declaration still stood as a live rule"
-    said = [r for r in rejections if r.get("subject") == "o_read"]
-    assert len(said) == 1, rejections
-    assert said[0]["code"] == "read_time_retired", said[0]
-    # 🔴 사유 + 다음 행동. The operator has two ways out and the sentence names both.
-    assert "chain_rules.json" in said[0]["detail"], said[0]["detail"]
-    assert "materialize" in said[0]["detail"], said[0]["detail"]
 
 
-def test_a_materializing_declaration_in_the_old_file_still_stands(declared):
-    """⚠️ THE CONTROL FOR THE LINE ABOVE. `materialize: true` is a WRITE join - it puts the
-    value in the table - and ruling 461 kept it alive precisely because production may be
-    running one. If this went red with its neighbour, the refusal would be catching the
-    wrong half.
-    """
-    declared()
-
-    rules = vjc.validate_virtual_join_rules(
-        {"o_write": dict(OLD_SHAPE, materialize=True, max_rewrite_rows=1000)},
-        known_tables=KNOWN)
-
-    assert [r["name"] for r in rules] == ["o_write"]
 
 
-def test_a_switched_off_read_declaration_is_still_not_complained_about(declared):
-    """⛔ 판정 399 ③′ SURVIVES THE RETIREMENT. Off is off: not validated, not counted, not
-    complained about — an operator who already disabled a declaration does not need to be
-    told its capability retired."""
-    declared(dict(UNIFIED, name="u_off", enabled=False))
-    rejections = []
-
-    rules = vjc.load_virtual_join_rules(known_tables=KNOWN, rejections=rejections)
-
-    assert all(r["name"] != "u_off" for r in rules)
-    assert all(r.get("subject") != "u_off" for r in rejections), rejections
 
 
 # ---------------------------------------------------------------------------
@@ -243,9 +186,9 @@ def test_all_four_seats_answer_the_same_way(materialize, accepted):
 
     ㉠ join loader        refuses an absent/false `materialize`               (판정 446)
     ㉡ bundle validator   MIRRORS ㉠ - it used to refuse the FIELD ITSELF     (판정 481)
-    ㉢ descriptor contract SILENT, and correct: only `load_verified_rules` can issue one,
-                          so ㉠ has already run. Asserted rather than skipped, because a
-                          cell left out of a table reads as 「passes」.
+    ㉢ descriptor contract SILENT, and correct: nothing can issue one any more — 652
+                          step three retired the seat that did. Asserted rather than
+                          skipped, because a cell left out of a table reads as 「passes」.
     ㉣ authoring form     offers the field - see the test above
     """
     # 🔴 THE CATALOG IS NOT OPTIONAL AND ITS ABSENCE IS NOT AN ERROR ABOUT JOINS.

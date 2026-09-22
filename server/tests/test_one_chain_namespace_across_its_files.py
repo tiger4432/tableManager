@@ -17,6 +17,12 @@ on its own docstring the moment the file was tracked.
 
 ⚠️ EVERY CASE RUNS THE REAL LOADER OVER FILES THIS TEST WROTE. 「임시로 박스에 설정한 케이스로
 재서 대답 금지」 - the live files are the owner's and are never read here.
+
+⚰️ [판정 652 3걸음] 이 파일은 `test_three_files_declare_one_chain_namespace.py` 였다.
+`virtual_join_rules.json` 이 그 문법과 같이 걷혀 「three files」가 «둘»이 됐고, 이름을 드는
+문서 셋과 «같은 커밋»에 고쳤다. 🔴 이름에서 «수를 뺐다» — 선언 파일이 하나 늘 때마다 다시
+낡을 수였다. 지키는 성질은 수와 무관하다: 이름공간은 «하나»이고, 그것이 몇 파일에 걸쳐
+있든 같은 이름이 둘이면 «둘 다» 떨어진다.
 """
 import json
 import logging
@@ -50,12 +56,11 @@ JOIN = {"left_table": SRC, "right_table": DST, "join_key": [{"left": "k", "right
 
 @pytest.fixture()
 def load(tmp_path, monkeypatch):
-    """The real `load_chain_rules` over three files we wrote, returning the loaded names and
+    """The real `load_chain_rules` over the files we wrote, returning the loaded names and
     every `[ChainRules]` line it printed."""
     import mapper_sdk
     from database import crud
     from chain.enrichment import config as ec
-    from chain import legacy_join_declaration as vjc
 
     monkeypatch.setitem(crud.TABLE_CONFIG, SRC, dict(TABLE))
     monkeypatch.setitem(crud.TABLE_CONFIG, DST, dict(TABLE))
@@ -65,16 +70,16 @@ def load(tmp_path, monkeypatch):
     #    next case print 「지난 적재와 다름」 for a set it never loaded.
     monkeypatch.setattr(worker, "_LAST_CENSUS", None)
 
-    def run(chain_rules, enrichment_rules, virtual_join_rules, caplog):
+    # ⚰️ [판정 652 3걸음] 셋째 인자 `virtual_join_rules` 와 그 파일이 여기 있었다. 그 문법이
+    #    걷혀 이름을 «주장할 수 있는» 파일이 둘이다 — 심판(`_refuse_names_claimed_twice`)은
+    #    한 자리 그대로이고, 모집단만 줄었다.
+    def run(chain_rules, enrichment_rules, caplog):
         for name, body in (("chain_rules.json", {"rules": chain_rules}),
-                           ("enrichment_rules.json", enrichment_rules),
-                           ("virtual_join_rules.json", virtual_join_rules)):
+                           ("enrichment_rules.json", enrichment_rules)):
             (tmp_path / name).write_text(json.dumps(body), encoding="utf-8")
         monkeypatch.setattr(worker, "RULES_PATH", str(tmp_path / "chain_rules.json"))
         monkeypatch.setattr(ec, "ENRICHMENT_RULES_PATH",
                             str(tmp_path / "enrichment_rules.json"))
-        monkeypatch.setattr(vjc, "VIRTUAL_JOIN_RULES_PATH",
-                            str(tmp_path / "virtual_join_rules.json"))
         caplog.clear()
         with caplog.at_level(logging.DEBUG):
             rules = worker.load_chain_rules()
@@ -86,26 +91,28 @@ def load(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# ③ one boot line, and a clean three-file set stands whole
+# ③ one boot line, and a clean set stands whole
 # ---------------------------------------------------------------------------
 
-def test_a_clean_set_from_three_files_stands_whole_and_prints_one_set_line(load, caplog):
+def test_a_clean_set_stands_whole_and_prints_one_set_line(load, caplog):
     """The sensitivity control for the refusal below: a judge that refused everything would
     pass that test and refuse every deployment. And the boot line is ONE line - the old
     「Synthesized N」 tally is folded into the set line, which names every rule with where it
     came from."""
-    names, lines = load([FLAT, UNIFIED], {"s234_enrich": ENRICH}, {"s234_join": JOIN}, caplog)
+    names, lines = load([FLAT, UNIFIED], {"s234_enrich": ENRICH}, caplog)
 
     # ⚰️ [소유자 정본] THE JOIN MOVED TO THE FRONT, and that is the ordering telling
     #   the truth. `rule_order` skipped a producer that carried `follow_up` - 「not on the
     #   trigger path: it fires nothing, it orders nothing」. Every producer is on the
     #   trigger path now, so the materialised join is ordered like the producer it is.
-    assert names == ["virtual_join:s234_join", "s234_flat", "s234_unified",
+    # ⚰️ [652 3걸음] 첫 칸이 `virtual_join:s234_join` 이었다 — 합성되던 조인 규칙이다.
+    #    그 문법이 걷혀 합성되는 것이 인리치 반쪽뿐이고, 남은 순서는 그대로다.
+    assert names == ["s234_flat", "s234_unified",
                      "enrichment_dedup:s234_enrich",
                      "enrichment_auto_confirm:s234_enrich"]
     set_lines = [line for line in lines if line.startswith("[ChainRules] set(")]
     assert len(set_lines) == 1, lines
-    assert set_lines[0].startswith("[ChainRules] set(5): ")
+    assert set_lines[0].startswith("[ChainRules] set(4): ")
     for name in names:
         assert name + "[" in set_lines[0], "a loaded rule is missing from the set line"
     assert not [line for line in lines if "Synthesized" in line], "the second boot line is back"
@@ -122,12 +129,12 @@ def test_a_name_written_in_two_files_is_refused_once_naming_both_files(load, cap
     half」 was exactly that. The line is `operator_line`-shaped: what happened, both files,
     and the next action."""
     twin = dict(FLAT, name="enrichment_dedup:s234_enrich")
-    names, lines = load([twin, UNIFIED], {"s234_enrich": ENRICH}, {"s234_join": JOIN}, caplog)
+    names, lines = load([twin, UNIFIED], {"s234_enrich": ENRICH}, caplog)
 
     assert "enrichment_dedup:s234_enrich" not in names
     # ⚰️ [소유자 정본] same reordering as above: the materialised join is a
     #   producer on the trigger path now, so `rule_order` puts it first.
-    assert names == ["virtual_join:s234_join", "s234_unified",
+    assert names == ["s234_unified",
                      "enrichment_auto_confirm:s234_enrich"]
     refusals = [line for line in lines
                 if line.startswith("[ChainRules:enrichment_dedup:s234_enrich]")]
@@ -139,22 +146,17 @@ def test_a_name_written_in_two_files_is_refused_once_naming_both_files(load, cap
     assert refused == ["[ChainRules] refused(1): enrichment_dedup:s234_enrich(name_claimed_twice)"]
 
 
-def test_a_join_name_written_in_chain_rules_is_refused_the_same_way(load, caplog):
-    """The join half is in the same namespace, under the same judge - not a second checker."""
-    twin = dict(FLAT, name="virtual_join:s234_join")
-    names, lines = load([twin], {}, {"s234_join": JOIN}, caplog)
-
-    assert "virtual_join:s234_join" not in names
-    refusals = [line for line in lines if line.startswith("[ChainRules:virtual_join:s234_join]")]
-    assert len(refusals) == 1
-    assert "chain_rules.json" in refusals[0] and "virtual_join_rules.json" in refusals[0]
+# ⚰️ [판정 652 3걸음] `test_a_join_name_written_in_chain_rules_is_refused_the_same_way` 가
+#    여기 있었습니다 — 「합성된 조인 이름과 `chain_rules.json` 에 적은 이름이 부딪치면 같은
+#    길로 거절된다」. 조인을 «합성하는» 파일이 사라져 그 충돌을 만들 수 있는 두 자리가
+#    하나가 됐습니다. 「한 파일 안에서 두 번」은 바로 아래 시험이 그대로 잽니다.
 
 
 def test_a_name_written_twice_in_one_file_is_refused_rather_than_halved(load, caplog):
     """⚠️ THE SILENT CASE. `rule_order` keys its walk by name, so before this seat a second
     copy in `chain_rules.json` was kept-and-dropped without a word - one of the five zeros
     that render identically. Now it is named, and the line points at the one file."""
-    names, lines = load([FLAT, dict(UNIFIED, name="s234_flat")], {}, {}, caplog)
+    names, lines = load([FLAT, dict(UNIFIED, name="s234_flat")], {}, caplog)
 
     assert names == []
     refusals = [line for line in lines if line.startswith("[ChainRules:s234_flat]")]
@@ -177,7 +179,7 @@ def test_a_switched_off_twin_does_not_take_the_live_rule_down_with_it(load, capl
     ⚠️ AND IT IS NOT A SILENT WIN: the off copy is still in the loaded set, reported OFF,
     because 「이 이름은 꺼져 있다」 and 「이 이름은 없다」 are different answers."""
     off_twin = dict(FLAT, name="enrichment_dedup:s234_enrich", enabled=False)
-    names, lines = load([off_twin, UNIFIED], {"s234_enrich": ENRICH}, {}, caplog)
+    names, lines = load([off_twin, UNIFIED], {"s234_enrich": ENRICH}, caplog)
 
     assert "enrichment_dedup:s234_enrich" in names, (
         "the live rule was dropped by a twin that cannot fire")
@@ -194,7 +196,7 @@ def test_two_switched_off_copies_refuse_nothing_and_run_nothing(load, caplog):
     no question about which was meant, because neither was. Refusing them would put a line in
     front of an operator who has nothing to fix."""
     off = dict(FLAT, enabled=False)
-    names, lines = load([off, dict(UNIFIED, name="s234_flat", enabled=False)], {}, {}, caplog)
+    names, lines = load([off, dict(UNIFIED, name="s234_flat", enabled=False)], {}, caplog)
 
     assert not [line for line in lines if line.startswith("[ChainRules] refused(")], lines
     assert not [line for line in lines if line.startswith("[ChainRules:s234_flat]")], lines

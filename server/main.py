@@ -5945,52 +5945,21 @@ def verify_join_approval(db: Session = Depends(get_db)):
     실조인으로 선언된 조인이 그 패널에 «아예 안 뜬다» — 운영자가 실제로 도는 조인의 승인
     상태를 거기서 볼 방법이 없었다. 축이 옛 좌석에서 «닿지 않고» 있었던 것이다.
 
-    ⚠️ 아래 `/admin/config/virtual-join/verify` 는 «아직 산다». 클라가 이 자리를 부를
-    준비가 될 때까지 둘 다 답한다 — 먼저 지우면 그 사이 화면이 404 를 받고 「모름」을
-    영원히 그린다(터지지 않으므로 들키지도 않는다, 판정 672).
+    ⚰️ [652 3걸음] 옛 자리는 이제 «없다». 이 독스트링은 「둘 다 답한다」고 적고 있었고,
+    그것은 클라가 이 주소로 옮겨 오기를 기다리는 «동안»의 문장이었다(판정 672 — 먼저
+    지우면 화면이 404 를 받고 「모름」을 영원히 그린다, 터지지 않으므로 들키지도 않는다).
+    클라가 옮겨 왔고, 그래서 옛 자리가 이 커밋에서 지워졌다.
 
-    응답 «모양»은 옛 라우트와 같다. 그래서 클라 변경이 URL 한 줄이다.
+    응답 «모양»은 옛 라우트와 같았다. 그래서 클라 변경이 URL 한 줄이었다.
     """
     from chain import synthesis
     from database import crud
     return synthesis.approval_report(db, known_tables=crud.TABLE_CONFIG)
 
 
-@app.get("/admin/config/virtual-join/verify", dependencies=[Depends(require_admin_token)])
-def verify_virtual_join_declarations(db: Session = Depends(get_db)):
-    """virtual join 선언이 **승인됐는가**, 아니면 무엇을 만들어야 하는가.
-
-    ⚰️ [판정 678 · 683] 이 자리는 «옮겨졌다» — `GET /admin/chain/join/verify` 가 같은
-    물음에 같은 모양으로 답한다. 여기가 아직 서 있는 이유는 «둘»이다.
-
-    ① 클라가 새 자리를 부르기 «전»에 지우면 그 사이가 거짓이다 — 404 는 던져지지 않고
-      화면이 「모름」을 영원히 그린다 (판정 672).
-    ② 🔴 그리고 이 패널이 «오늘 유일하게 들고 있는 것»이 레거시 선언의 «거절»이다.
-      새 좌석은 통합 선언만 읽으므로 그 둘은 승인으로도 거절로도 안 뜬다. 그래서 이 라우트를
-      문법보다 «먼저» 지우면 「레거시 선언이 왜 거절됐나」가 갈 곳이 없다. 둘은 «한 커밋»에서
-      같이 죽는다 (678 ③). 「비어 있었으니 잃을 게 없다」가 아니다 — 빈 것은 «승인 목록»이었다.
-
-    `/admin/config/resolve`가 답하지 못하는 절반이다. 그 라우트는 「DB 질의 0건」이
-    계약이라 설정 파일만 읽는데, 승인 조건인 「조인 키를 덮는 UNIQUE 인덱스」는
-    `pg_index`가 아는 사실이라 세션이 필요하다.
-
-    비싸지 않다 ― **행을 세지 않고 카탈로그만 읽는다.** 비용이 테이블 크기와 무관하므로
-    1,000만 행 테이블에서도 요청 경로에 앉을 수 있다(직전 판의 중복 프로브는 전수
-    스캔이라 그럴 수 없었고, 그래서 게이트에서 내려왔다).
-
-    거부된 선언에는 `required_index_ddl`과 **사람이 읽을 `detail` 문장**이 실린다 ―
-    문장은 `/admin/config/resolve`와 **같은 조립기**(`config_resolve_report.
-    virtual_join_detail`)가 만든다. 갈라 두면 같은 거부가 두 화면에서 다른 문장으로
-    나오고, 그 순간 「서버가 문장의 정본」이라는 계약이 깨진다.
-
-    중복이 있으면 PostgreSQL이 그 중복 키 값을 지목하며 인덱스 생성에 실패하므로,
-    데이터 정리가 필요하다는 사실도 같은 자리에서 드러난다.
-    """
-    from chain import legacy_join_declaration
-    from database import crud
-    return legacy_join_declaration.verification_report(
-        db, known_tables=crud.TABLE_CONFIG)
-
+# ⚰️ [판정 652 3걸음] `GET /admin/config/virtual-join/verify` STOOD HERE. Its question
+#    — 「이 조인이 승인됐나」 — moved to `/admin/chain/join/verify` above, which answers it off the
+#    unified declarations; what went with the grammar is only the word `virtual-join`.
 
 @app.get("/admin/config/notation/preview", dependencies=[Depends(require_admin_token)])
 def preview_notation_fold(table: str = None, column: str = None,

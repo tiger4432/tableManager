@@ -16,11 +16,12 @@ NAME DOES NOT MOVE」 and gave the reason: a stored rule already says `mapper: "
 so registering under that name meant no declaration changed and no operator migrated anything.
 The lead then asked the owner whether any production declaration writes the `mapper` cell by
 hand, and the answer was 「없다」 — the migration cost the argument rested on is ZERO. So the
-value is `declared:join` now, and this module's three templates register under `declared:*`:
-the prefix says 「a mapper the product built FROM THE DECLARATION」, and what follows is the
-word the declaration itself uses (`DECLARED_KINDS` in `rule_shape`, and `virtual_join` for the
-family `legacy_join_declaration` loads). `builtin:` named the KIND TABLE, which no longer
-exists - a name that points at a retired mechanism tells an operator that mechanism is there.
+value is `declared:join` now, and this module's templates register under `declared:*`: the
+prefix says 「a mapper the product built FROM THE DECLARATION」, and what follows is the word
+the declaration itself uses (`DECLARED_KINDS` in `rule_shape`). `builtin:` named the KIND
+TABLE, which no longer exists - a name that points at a retired mechanism tells an operator
+that mechanism is there. ⚰️ 652 3걸음: `declared:virtual_join` went the same way, and for
+the same reason - the family that name spoke for has no declaration file any more.
 
 ⛔ NOT A FILE. `server/mappers/` is the owner's (gitignored, 판정 498), and writing product
 code there is forbidden; writing a generated file anywhere else would make a build artifact
@@ -130,32 +131,14 @@ def _auto_confirm(db, payload, rule=None):
             "refusal": refusal, "source_name": enrichment.candidates.SOURCE_NAME}
 
 
-def _legacy_materialized_join(db, payload, rule=None):
-    """`virtual_join_rules.json` 의 `materialize: true` — «지금 도는 구현을 그대로» 감쌉니다.
-
-    🔴 [판정 581] AND IT IS NOT THE SAME JOB AS `_join`, WHICH IS WHY IT KEEPS ITS OWN
-    implementation. Measured: a virtual join splits an `expose` column that ALSO exists on
-    the left into `collide` and treats it absent-only - the operator's own edit wins.
-    `join_into` has no such notion and writes the right side unconditionally. Folding the
-    two would overwrite a hand-edited value silently, on every trigger.
-
-    ⚠️ THREE IMPLEMENTATIONS IS NOT THREE DOORS. The door is `resolve`, and it is one; what
-    the registry holds is what each name DOES. The debt the old table's note recorded is a
-    debt of DECLARATION SURFACES (`virtual_join_rules.json` against `chain_rules.json`) and
-    it closes when the last `materialize: true` moves to `into.table` - not here.
-
-    ⚰️ THE REFERENCE ARM IS NOT CARRIED, and that is not a decision: `_run_join` also took
-    `key_values` for 「a reference row moved」, and MEASURED - no chain caller ever passed it
-    (`key_values` outside this module belongs to the alignment view). It was unreachable
-    before this round and carrying it would be carrying a path nothing walks.
-
-    ⛔ THE MODULE IT CALLS IS NOT DELETED (판정 580 · 581): its reading half is the write
-    path's uniqueness guard, and a guard that cannot read its declaration refuses no row.
-    """
-    from chain import legacy_materialized_join as engine
-
-    return engine.on_target_rows_changed(db, (rule or {}).get("params") or {},
-                                         _row_ids(payload))
+# ⚰️ [판정 652 3걸음] `_legacy_materialized_join` STOOD HERE, and with it the registry name
+#    `declared:virtual_join`. It wrapped `virtual_join_rules.json`'s `materialize: true`
+#    half, and 판정 581 kept it separate from `_join` for a REAL reason: a virtual join
+#    split an `expose` column that also existed on the left into `collide` and wrote it
+#    absent-only, so the operator's own edit won. 🔴 THAT FACT DID NOT DIE WITH THE CODE —
+#    it is the behaviour difference an operator migrating a declaration meets, and
+#    `join_into` writes the right side unconditionally. It is stated here because the
+#    grammar that carried it is gone and nobody can read it off the source any more.
 
 
 def _enrich(db, payload, rule=None):
@@ -240,7 +223,7 @@ TEMPLATES = {}
 def _install_templates():
     """Bind the templates to the names stored rules already use."""
     from chain import enrichment
-    from chain import join_into, legacy_join_declaration
+    from chain import join_into
 
     TEMPLATES[join_into.JOIN_INTO_MAPPER] = _join
     TEMPLATES[enrichment.config.AUTO_CONFIRM_MAPPER] = _auto_confirm
@@ -286,10 +269,6 @@ def _install_templates():
     #    two halves apart.
     TEMPLATE_FACTS[enrichment.config.DEDUP_MAPPER] = {
         "label": "decide", "stamps_origin": False, "writes_itself": False,
-        "params": None}
-    TEMPLATES[legacy_join_declaration.JOIN_MAPPER] = _legacy_materialized_join
-    TEMPLATE_FACTS[legacy_join_declaration.JOIN_MAPPER] = {
-        "label": "join", "stamps_origin": True, "writes_itself": True,
         "params": None}
 
 

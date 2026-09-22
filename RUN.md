@@ -1,24 +1,52 @@
 # 지금 돌리면 되는 것
 
-> 🔴 **[09-22 07:48 갱신] 이 pull 에는 «제품 코드»가 있습니다 — 재기동해야 반영됩니다.**
-> 바뀐 것 한 줄: **통합 선언(`derive.decide`)의 최상위 칸이 이제 «실립니다».**
-> `allow_chain_trigger` · `is_batch` · `limits.*` · `extra.*` 를 선언 최상위에 적으면
-> 파생행·오토컨펌 «양쪽»에 그대로 갑니다. 전에는 `join`/`mapper` 에만 닿고 `decide` 에서
-> 조용히 사라졌습니다 — `allow_chain_trigger: false` 라 «반대»를 적어도 `true` 로 돌았습니다.
+> 🔴🔴 **[09-22 갱신] 이 pull 은 «가상 조인 문법»을 걷었습니다 — 재기동 필요, 그리고 확인할 것이 있습니다.**
+>
 > ```
-> 🔴 자기 선언을 «한 번» 보십시오
->    통합 `derive.decide` 선언 최상위에 위 네 칸을 적어 두신 것이 있으면,
->    재기동 뒤부터 «그 값이 실제로 듭니다». 그동안 무시되던 값이라 동작이 달라집니다
->    특히 `allow_chain_trigger: false` — 적어 두셨다면 그 규칙은 이제 체인을 «안» 깨웁니다
->    ⚠️ 그리고 `extra.*` 에 «칸 이름»을 적어 두신 것이 있으면 «한 번 더» 보십시오 — 그 값은
->       규칙의 같은 이름 칸을 «덮습니다». `mapper` 를 덮으면 로더가 거절로 «잡지만»,
->       `trigger_table` 을 덮으면 «아무도 안 셉니다» — 규칙은 살아서 «다른 표»를 봅니다.
->       `extra` 는 「제품이 모르는 칸」을 담는 자리입니다. 칸 이름이 겹치면 그 키를 «지우십시오»
-> ⚪ 안 적으셨으면 바뀌는 것 없습니다  dedup 은 체인 트리거 «선언 안 함», auto_confirm 은 `true`,
->    둘 다 `is_batch: true` — 오늘과 같습니다
+> 걷힌 것   config/virtual_join_rules.json 을 «아무도 안 읽습니다». 그 파일의 선언은 이제
+>          돌지도, 거절되지도, 화면에 뜨지도 않습니다 — «조용히 없는 것»이 됩니다
+> 살아 있는 것  조인은 chain_rules.json 의  derive: {kind: "join"} + into: {table: …}  하나입니다
+>          「승인 = 조인 키를 덮는 UNIQUE 인덱스가 실재한다」도 그대로입니다
 > ```
-> 선언 «문법»은 한 칸도 안 바뀝니다. 아래 ⓞ~⑪ 은 09-17 pull 기준 그대로이고,
-> 아직 재기동·마이그레이션을 안 하셨으면 ⓞ 부터가 여전히 «제일 먼저»입니다.
+>
+> ## ⛳ 재기동 «전»에 한 번 — 옮길 선언이 남았는지
+>
+> ⚠️ 아래 한 줄은 **`server` 폴더에서** 돌립니다.
+>
+> ```
+> python -c "import json,os;p='config/virtual_join_rules.json';d=json.load(open(p,encoding='utf-8')) if os.path.exists(p) else {};print('선언',len([k for k in d if not k.startswith('_')]),'건:',[k for k in d if not k.startswith('_')])"
+> ```
+> ```
+> 「선언 0 건」        -> 할 일 없습니다. 그 파일은 지우셔도 되고 두셔도 됩니다(아무도 안 읽습니다)
+> 🔴 「선언 N 건」      -> 그 N 개는 «이 pull 부터 안 돕니다». chain_rules.json 으로 옮기십시오
+>                       옮기는 모양은 아래 ④ 절과 guide/config/chain_rules.md 에 있습니다
+> ⚠️ 이 명령은 파일만 봅니다 — 「돌고 있었나」가 아니라 「적혀 있나」를 셉니다
+> ```
+>
+> ## 🖥️ 화면에서 달라지는 것 셋
+>
+> ```
+> ① 「조인 승인」 패널   같은 화면, 같은 칸. 뒤에서 부르는 주소만 바뀌었습니다
+>                      (`/admin/config/virtual-join/verify` -> `/admin/chain/join/verify`)
+>    🔵 그리고 «보이는 것이 늘었습니다» — 전에는 실조인이 이 패널에 아예 안 떴습니다.
+>       지금은 승인됨 / 거절됨 / 「유일성을 안 물음」 셋으로 갈려 뜹니다
+> ② 설정 해석 화면      「가상 조인」 도메인이 «없습니다». 셋업 걸음이 6 -> 5 로 다시 매겨졌습니다
+>                      (표 · 파생 · 확정 · 원장 · 걷기 좌석)
+> ③ 원장               조인 증서가 «0» 입니다 — 발급하던 자리가 그 문법과 같이 갔습니다
+> ```
+>
+> ## 📋 부팅 로그에서 볼 줄
+>
+> ```
+> [ChainRules] set(N): …        조인이 «합성»으로 안 뜹니다. chain_rules.json 에 적은 이름 그대로 뜹니다
+> [Warmup] 유일 키 설치 없음: …   ⚠️ «오류가 아닙니다». key.unique 를 안 적은 조인이 있으면 적재마다
+>                                한 줄. 인덱스가 필요하면 그 선언에 `key: {unique: true}` 를 적으십시오
+> ```
+> **급할 때 끄는 스위치**: 이 라운드는 «지우기»라 끌 스위치가 없습니다. 되돌리려면 pull 을 되돌리십시오.
+> 인덱스(`uq_vjoin_*`)는 «안 건드렸습니다» — 실조인이 요구하는 것은 그대로 서 있고, 아무 선언도
+> 요구하지 않게 된 것은 제품이 회수합니다(그 회수는 전부터 돌던 것이고 이 pull 이 바꾸지 않았습니다).
+
+---
 
 > 🔵 **17:48 갱신.** 아래 ⓞ 가 «제일 먼저»입니다. 나머지는 그다음입니다.
 > 🆕 이번 pull 의 체인 로그 변화는 부팅 줄 `[ChainRules] set(N)` 의 «방식» 칸에 있습니다(`decide`).
@@ -50,9 +78,9 @@ python -c "import mapper_sdk;mapper_sdk.discover();from chain import dynamic_map
 ```
 ```
 이 답이 나오면 맞습니다
-  ['declared:decide', 'declared:enrich', 'declared:join', 'declared:virtual_join']
+  ['declared:decide', 'declared:enrich', 'declared:join']
 🔴 'declared:enrich' 가 «없으면»  -> 그 프로세스는 옛 코드입니다. 재기동하십시오
-⚠️ 넷보다 «많으면»               -> 운영자 맵퍼가 같은 이름을 썼다는 뜻입니다 — 이름을 바꾸십시오
+⚠️ 셋보다 «많으면»               -> 운영자 맵퍼가 같은 이름을 썼다는 뜻입니다 — 이름을 바꾸십시오
 ```
 **부팅 로그에서 볼 줄**: `[ChainRules] set(N): <이름>[<출처>,<방식>] trigger=… target=…`
   -> dedup 반쪽이 이제 그 «방식» 칸에 `decide` 로 뜹니다. 찾을 낱말은 **`decide`** 입니다
@@ -296,6 +324,10 @@ C:/Users/kk980/Developments/.assy_watch/chain_rules.before_574_press.json
 거절 ㉠  chain_rules.json 의 `into: { read: true }`
         -> 「읽기 시점 조인(into.read)은 은퇴했습니다 — …」
         할 일: `into: { table: … }` 로 바꾸십시오
+⚰️ **[09-22 갱신] 아래 이 절은 «지나간 일»입니다.** `virtual_join_rules.json` 은 이제 «아무도
+안 읽습니다» — 거절도 안 납니다. 그 파일에 적힌 선언이 있으면 이 문서 맨 위의 한 줄 명령으로
+세고 `chain_rules.json` 으로 옮기십시오. 아래는 그때 무슨 일이 있었는지의 기록입니다.
+
 거절 ㉡  🆕 virtual_join_rules.json 의 `materialize` 가 «false 이거나 없는» 선언 «전부»
         -> 「'materialize' is false, which declared a READ-TIME join … Declare the join in
            chain_rules.json instead - derive: {kind: "join"} with on and take …」
@@ -463,14 +495,15 @@ curl -s "http://localhost:8000/audit_logs/recent?limit_groups=5" | python -c "im
 ### ⏪ 되돌려야 할 때
 ```
 🔴 이 절의 ①~③ 은 «각 항목마다 따로»입니다 — 이번 pull 에 라운드가 여럿 들어 있습니다
-① ③(읽기 시점 조인 은퇴)은 «커밋 하나»입니다. 해시는 이렇게 찾으십시오:
-   git log --oneline -1 -- :/server/chain/legacy_materialized_join.py
-   git revert <그 해시>
+① ③(읽기 시점 조인 은퇴)은 «커밋 하나»입니다:
+   git revert 306419fd5
+   ⚠️ 전에 여기 적혀 있던 「그 파일의 마지막 커밋을 찾아라」는 «틀린 답»을 줍니다 —
+      그 파일이 그 뒤로 두 번 더 바뀌었고(고치기 한 번 · 삭제 한 번) 경로로 찾으면
+      «마지막» 커밋이 잡힙니다. 해시는 «박아» 둡니다
    -> 되돌리면 조인 컬럼이 화면에 «돌아오고», 제품이 걷었던 uq_vjoin_ 인덱스는
       «자동으로 돌아오지 않습니다». 그건 선언이 다시 요구하는 순간 제품이 세웁니다
 ② ⑩(최근 거래 다음 장)도 «커밋 하나»입니다:
-   git log --oneline -1 -- :/server/admin/audit_cache.py
-   git revert <그 해시>
+   git revert 61d4abb50
    -> 되돌리면 `?cursor=` 가 «무시»되고(파라미터가 사라집니다) 빠지던 그룹이 다시 빠집니다.
       화면은 어느 쪽이든 «똑같습니다» — 아직 그 버튼이 없기 때문입니다
 
@@ -671,7 +704,7 @@ python -c "import sys;sys.path.insert(0,'.');sys.stdout.reconfigure(encoding='ut
 
 ```bash
 ASSY_CHAIN_WORKER=0        # 체인 루프 자체를 안 띄움 (API·읽기는 그대로)
-# 규칙 «하나»만 끄려면: 그 규칙이 적힌 파일(chain_rules · enrichment_rules · virtual_join_rules)에서 `enabled: false` — 부팅 줄 set(N) 이 이름을 전부 보여 줍니다
+# 규칙 «하나»만 끄려면: 그 규칙이 적힌 파일(chain_rules · enrichment_rules)에서 `enabled: false` — 부팅 줄 set(N) 이 이름을 전부 보여 줍니다
 ASSY_VJOIN_AUTO_INDEX=0    # 제품이 유일 인덱스를 자동으로 세우지 않음 — 🔴 1497ea3e 부터 OFF 는 «DB 를 한 번도 안 만짐»(그 전엔 점검 SQL 이 여전히 돌아 안 멎었음)
 ```
 
@@ -711,7 +744,7 @@ Transaction … permanently failed: N event(s) -> FAILED. 원인: <예외 문장
      🆕 (09-17 저녁) 이 칸의 «낱말이 바뀌었습니다». 로그에서 `builtin:…` 을 찾고 계셨다면:
             builtin:join_into    ->  declared:join            통합 선언의 derive:{kind:"join"}
             builtin:auto_confirm ->  declared:decide          derive:{kind:"decide"}
-            builtin:join         ->  declared:virtual_join    virtual_join_rules.json 의 materialize:true
+            builtin:join         ->  ⚰️ 그 이름(`declared:virtual_join`)은 그 문법과 «같이» 걷혔습니다
             `declared:` 는 「제품이 «선언에서» 지은 맵퍼」라는 뜻입니다. 옛 이름은 «안 풉니다» —
             저장된 규칙에 옛 값이 있으면 거절되고 그 이름이 거절문에 찍힙니다
      ⚠️ (09-17) 이 자리는 「builtin:… 이면 스스로 씀」이라 적혀 있었고 «이제 거짓»입니다 —

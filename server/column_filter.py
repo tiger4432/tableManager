@@ -125,7 +125,8 @@ def get_column_filter_condition(table_model, col_name: str, f_info: dict, col_ex
     # Condition mapping based on type
     #
     # NOTE on an override (virtual-join column): the resolved expression COALESCEs to
-    # `unresolved_label`, which `chain.legacy_join_declaration` guarantees is a non-empty string.
+    # `unresolved_label`. ⚰️ 그 보증을 하던 로더(652 3걸음에 걷힘)가 「빈 문자열이 아니다」를
+    #    강제했다. 이 칸을 쓰는 선언 문법이 없으므로 오늘 이 자리는 기본값만 본다.
     # So `blank` matches nothing and `notBlank` matches everything - and that is the
     # honest answer, because no cell in that column ever DISPLAYS as blank. "Show me the
     # rows the join could not resolve" is `equals <unresolved_label>`, not `blank`.

@@ -34,9 +34,9 @@ if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
 import notation_norm                                              # noqa: E402
-from chain import legacy_join_declaration as vjc                                 # noqa: E402
+from chain import join_key_index as vjc                                 # noqa: E402
 from chain import join_into                                       # noqa: E402
-from chain import legacy_materialized_join as vje                          # noqa: E402
+from chain import join_into as vje                          # noqa: E402
 
 FOLD = {"separator": True, "case": True}
 
@@ -141,24 +141,11 @@ def test_the_cast_asks_the_column_not_whatever_the_fold_returned(tables):
 # 🔴 ⓑ — the four seats, one fixture
 # ---------------------------------------------------------------------------
 
-def test_the_read_time_on_clause_casts_a_numeric_key(tables):
-    """🔴 THIS IS THE SEAT THE OWNER MET. `coalesce(col, '')` against a `number` column is
-    the statement PostgreSQL refused, and it refused it on the READ path."""
-    left, right = tables
-    rule = {"join_key": [{"left": "num", "right": "num", "fold": None}]}
-
-    clause = _pg(vje.join_onclause(left.c, right.c, rule))
-
-    assert clause == "coalesce(s245_left.num::text, '') = coalesce(s245_right.num::text, '')"
-
-
-def test_the_read_time_on_clause_leaves_a_text_key_alone(tables):
-    left, right = tables
-    rule = {"join_key": [{"left": "txt", "right": "txt", "fold": None}]}
-
-    clause = _pg(vje.join_onclause(left.c, right.c, rule))
-
-    assert clause == "coalesce(s245_left.txt, '') = coalesce(s245_right.txt, '')"
+# ⚰️ [판정 652 3걸음] TWO SEATS STOOD HERE — `test_the_read_time_on_clause_casts_a_numeric_key`
+#    and `..._leaves_a_text_key_alone`. They scored `legacy_materialized_join.join_onclause`,
+#    the READ-time comparison, and that seat went with its grammar. 🔴 그 둘이 잡던 사실은
+#    안 죽었습니다: 「같은 키를 견주는 자리가 «한 식»을 쓴다」는 이 파일의 주어이고, 남은
+#    좌석들(쓰기 시점 폴드 · 인덱스 식)이 그대로 잽니다. 사라진 것은 «좌석 하나»입니다.
 
 
 def test_the_write_time_join_folds_the_same_key_the_same_way(tables):

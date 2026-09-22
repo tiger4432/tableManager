@@ -195,7 +195,7 @@ def relation_columns(db, relation: str) -> set:
     """`information_schema`에서 컬럼 이름 집합. 관계가 없으면 `None`.
 
     **카탈로그만 읽는다** — 행을 세지 않으므로 비용이 테이블 크기와 무관하다. 1,000만 행
-    테이블에서도 요청 경로에 앉아도 되는 이유이고, `/admin/config/virtual-join/verify`가
+    테이블에서도 요청 경로에 앉아도 되는 이유이고, `/admin/chain/join/verify`가
     같은 자세로 서 있는 근거와 같다.
     """
     from sqlalchemy import text

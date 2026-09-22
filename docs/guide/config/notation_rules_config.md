@@ -227,7 +227,7 @@ folds '01' and '1' into one value
 |---|---|---|
 | 「내 선언이 먹었나 / 안 먹었으면 왜」 | `GET /admin/config/resolve?domain=notation` | **안 봅니다**(config만) |
 | 「내 규칙이 무엇을 합치는가」 | `GET /admin/config/notation/preview` (§3) | **봅니다**(전수 스캔) |
-| 「이 조인이 승인됐나」 | `GET /admin/config/virtual-join/verify` (§6) | 봅니다(`pg_index`) |
+| 「이 조인이 승인됐나」 | `GET /admin/chain/join/verify` (§6) | 봅니다(`pg_index`) |
 
 ### 5.1 `?domain=notation`이 답하는 것
 
@@ -261,7 +261,7 @@ GET /admin/config/notation/preview?table=dt_log&column=core_lot 가 병합군으
 
 > 원본으로 서로 다른 두 행(`'CL-1'`과 `'CL_1'`)이 접히면 **한 값**입니다. 컬럼에 UNIQUE가 있어도 **접힌 키로는 중복**이고, 그 중복이 곧 조인 팬아웃입니다. 즉 평범한 UNIQUE 인덱스는 **게이트가 묻는 유일성을 애초에 증명하지 못합니다.**
 
-거부 코드는 `no_unique_index`이고, `GET /admin/config/virtual-join/verify`가 **만들어야 할 DDL을 그대로** 줍니다(정규화가 걸린 키에서는 함수 인덱스 형태이고, 인덱스 이름에 `_nf` 접미가 붙습니다):
+거부 코드는 `no_unique_index`이고, `GET /admin/chain/join/verify`가 **만들어야 할 DDL을 그대로** 줍니다(정규화가 걸린 키에서는 함수 인덱스 형태이고, 인덱스 이름에 `_nf` 접미가 붙습니다):
 
 ```sql
 CREATE UNIQUE INDEX CONCURRENTLY uq_vjoin_..._nf ON "core_wafer_map" (

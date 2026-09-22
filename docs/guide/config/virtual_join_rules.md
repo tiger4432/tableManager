@@ -1,3 +1,17 @@
+# ⚰⚰ `virtual_join_rules.json` — **이 파일은 이제 «아무도 안 읽습니다»** (2026-09-22, 판정 652 3걸음)
+
+> 🔴🔴 **아래 전체가 «지나간 일»입니다.** 2026-09-17 에는 읽기 시점 절반만 은퇴했고 `materialize: true` 는 돌았습니다. 오늘은 그 로더가 «삭제»돼 이 파일의 선언이 «돌지도, 거절되지도, 화면에 뜨지도» 않습니다 — 조용히 없는 것이 됩니다.
+>
+> ```
+> 오늘 조인을 적는 곳   chain_rules.json 의  derive: {kind: "join"} + into: {table: …}
+> 승인을 묻는 곳       GET /admin/chain/join/verify   (승인 = 조인 키를 덮는 UNIQUE 인덱스)
+> 절차의 정본          guide/config/chain_rules.md
+> ```
+>
+> ⛳ **이 파일에 선언이 남아 있으면 «옮겨야 합니다».** 세는 한 줄과 옮기는 모양은 저장소 루트 `RUN.md` 머리에 있습니다. ⚠️ 아래 본문의 라우트 이름은 오늘 주소로 고쳐 두었지만, **절차·예시·거절 문장은 그 문법의 것**이라 오늘 그대로 따라 하실 수 없습니다. 남겨 둔 이유는 그 문법으로 선언한 운영자가 «무엇을 옮겨야 하는지» 읽을 자리가 필요해서입니다.
+
+---
+
 # ⚰ `virtual_join_rules.json` 세팅 — **읽기 시점 조인은 «은퇴했습니다»**(2026-09-17 `306419fd`)
 
 > 🔴 **이 파일이 설명하던 「저장하지 않는 조인」은 오늘 «없습니다».** 엔진(`virtual_join/executor.py`)과
@@ -66,7 +80,7 @@
                      Still live and NOT the same thing: crud.refuse_virtual_join_duplicates (write gate, S-247)
   cache invalidation: main.reload_local_process_cache -> chain.legacy_materialized_join.reset_cache
   routes:            GET /admin/config/resolve?domain=virtual_join  (config only, zero DB queries)
-                     GET /admin/config/virtual-join/verify          (catalog read, names the missing index)
+                     GET /admin/chain/join/verify          (catalog read, names the missing index)
   report:            config_resolve_report._resolve_virtual_join (DOMAIN_VIRTUAL_JOIN)
   tests:             server/tests/test_virtual_join_guard.py
                      + server/tests/test_a_read_time_join_is_retired_by_name.py   (refused BY NAME; control: materialize:true untouched)
@@ -140,7 +154,7 @@
 
 - 요구되는 DDL은 `required_index_ddl`이 **함수 인덱스 형태**로 내놓고, 인덱스 이름에 `_nf` 접미가 붙는다. 식이 길어 보이지만 `\uXXXX` 이스케이프라 **전부 ASCII**이고 psql에 그대로 붙여 넣을 수 있다.
 - 🔴 **조회 식과 인덱스 식은 반드시 같은 함수(`notation_norm.fold_sql_text`)에서 나온다.** PostgreSQL은 두 식이 **일치할 때만** 함수 인덱스를 쓰므로, 철자를 둘 두면 이론적 불일치가 아니라 **순차 스캔**이 되고 테스트는 전부 통과한다.
-- 어느 키가 접히고 **어떤 규칙으로** 접히는지는 `GET /admin/config/virtual-join/verify`의 `folded_join_key`가 답한다.
+- 어느 키가 접히고 **어떤 규칙으로** 접히는지는 `GET /admin/chain/join/verify`의 `folded_join_key`가 답한다.
 
 ### 왼쪽의 중복은 팬아웃이 아니다
 
@@ -384,7 +398,7 @@ INNER 조인은 ①을 조용히 지우므로 쓰지 않는다.
 curl -H "X-Admin-Token: <토큰>" "http://localhost:8080/admin/config/resolve?domain=virtual_join"
 
 # ② 실제로 승인됐는가 (pg_index 카탈로그 조회)
-curl -H "X-Admin-Token: <토큰>" "http://localhost:8080/admin/config/virtual-join/verify"
+curl -H "X-Admin-Token: <토큰>" "http://localhost:8080/admin/chain/join/verify"
 ```
 
 ①은 「DB 질의 0건」이 계약이라 인덱스의 존재를 알지 못한다. 그래서 **어떤 선언도 ①에서

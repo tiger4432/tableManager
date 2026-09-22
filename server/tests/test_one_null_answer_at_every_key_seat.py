@@ -32,7 +32,7 @@ if server_dir not in sys.path:
     sys.path.insert(0, server_dir)
 
 import map_overlay                                                   # noqa: E402
-from chain import legacy_join_declaration as vjc                                    # noqa: E402
+from chain import join_key_index as vjc                                    # noqa: E402
 from database import crud                                            # noqa: E402
 
 TABLE = "s181_test_table"
@@ -171,13 +171,15 @@ def test_the_join_compares_the_same_expression_the_index_is_built_on():
     from sqlalchemy import Column, MetaData, String, Table
     from sqlalchemy.dialects import postgresql
 
-    from chain import legacy_materialized_join as vje
+    from chain import join_into as vje
 
     metadata = MetaData()
     left = Table("s181_left", metadata, Column("a", String))
     right = Table("s181_right", metadata, Column("b", String))
-    clause = vje.join_onclause(
-        left.c, right.c, {"join_key": [{"left": "a", "right": "b", "fold": None}]})
+    # ⚰️ [판정 652 3걸음] 이 줄은 `legacy_materialized_join.join_onclause` 를 불렀다 — 읽기
+    #    시점 비교다. 그 좌석이 문법과 같이 갔고, «성질»은 그대로라 실조인이 키를 접는
+    #    자리에서 잰다: 조인이 쓰는 식과 인덱스가 서 있는 식은 «한 글자도» 달라선 안 된다.
+    clause = vje._folded(left.c.a, None) == vje._folded(right.c.b, None)
     rendered = str(clause.compile(dialect=postgresql.dialect(),
                                   compile_kwargs={"literal_binds": True})).lower()
     assert rendered.count("coalesce") == 2, rendered

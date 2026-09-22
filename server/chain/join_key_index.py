@@ -24,7 +24,8 @@ guarantee structural rather than a thing to remember.
 
 ⚰️ THE BACK-ALIAS IS GONE (step 4). `virtual_join.config` used to import these names back so
 the old spellings kept working while the package was dismantled; the surviving half of that
-module is `chain.legacy_join_declaration` and it imports them from here directly.
+module was `chain.legacy_join_declaration`; it went in 652 step three and every caller
+now imports these from here directly.
 """
 import hashlib
 import re
@@ -258,8 +259,11 @@ def unique_index_covering(db, table: str, columns: list, folds=None):
     #
     # ⚠️ A DEPLOYMENT THAT HAS NOT MIGRATED LOSES ITS JOINS UNTIL IT DOES, and that is the
     # intended direction: a join running on an index that does not enforce its uniqueness
-    # is a join returning answers nobody has checked. `migrations/add_vjoin_null_safe_indexes.py`
-    # is the pair, and it counts the existing duplicate keys BEFORE it offers to build.
+    # is a join returning answers nobody has checked. ⚰️ [판정 652 3걸음] THE PAIR NAMED HERE
+    # WAS `migrations/add_vjoin_null_safe_indexes.py`, a hand-run migration for the retired
+    # grammar; it went with it. The PROPERTY it carried — 「count the duplicate keys BEFORE
+    # building」 — did not: the product installs the index itself at warmup, and the operator
+    # counts first with `scripts/check_one_row_one_fact.py --db`, which reads only.
     # 접히는 키 ― **식 인덱스만** 후보다.
     rows = db.execute(text("""
         SELECT i.relname AS idx, x.indexrelid AS oid, x.indnkeyatts AS nkeys

@@ -38,7 +38,7 @@ from ledger.store import LedgerStore
 from ledger.trace import relation_exists
 from test_ledger_setup_bundle import logical_bundle, logical_catalog
 from test_ledger_setup_registry import trusted_implementations
-from chain import legacy_join_declaration
+from verified_join_contract import _bind_physical_verifier_issuer
 from chain import join_key_index
 
 
@@ -98,6 +98,14 @@ def _catalog():
 
 
 CATALOG = _catalog()
+
+
+_ISSUER = _bind_physical_verifier_issuer()
+
+
+def load_verified_rules(rules):
+    """⚠️ 이 «이름»이어야 증서가 발급된다 — 계약은 도는 프레임을 본다 (판정 364)."""
+    return [_ISSUER.issue(rule) for rule in rules]
 
 
 def _known_tables(catalog):
@@ -170,24 +178,24 @@ def pg_v2(tmp_path_factory):
                 f'({join_key_index.index_key_expression("join_id")})'))
 
         raw = _bundle()
-        config_path = tmp_path_factory.mktemp("ledger_v2_s6") / "virtual_joins.json"
-        config_path.write_text(json.dumps(raw["virtual_joins"]), encoding="utf-8")
         Maker = sessionmaker(bind=admin, autoflush=False)
         verifier_session = Maker()
         try:
-            # 🔴 `rejections` IS COLLECTED SO THE FAILURE CAN SAY WHY. Without it this
-            # fixture failed as `assert 0 == 1  where 0 = len(())` - true, and silent about
-            # which of the loader's several refusals fired. The loader already offers the
-            # list; not passing it was the whole distance between a number and a sentence.
-            rejections = []
-            verified = tuple(legacy_join_declaration.load_verified_rules(
-                verifier_session, path=str(config_path),
-                known_tables=_known_tables(CATALOG), rejections=rejections))
+            # ⚰️ [판정 652 3걸음] 이 자리가 읽기 시점 로더의 `load_verified_rules` 를 불렀다.
+            #    🔴 «물리 검증»은 안 죽었다 — 인덱스가 실재하나를 묻는 것은
+            #    `join_key_index.unique_index_covering` 이고 그 좌석은 그대로다. 죽은 것은
+            #    그것을 감싸던 로더뿐이라, 여기서 «같은 탐침»을 직접 물어 증서를 낸다.
+            probed = join_key_index.unique_index_covering(
+                verifier_session, "reference_rows", ["join_id"])
         finally:
             verifier_session.close()
-        assert len(verified) == 1, (
-            "the join declaration did not verify, so nothing below measures anything. "
-            "Refusals: %r" % (rejections,))
+        assert probed == UNIQUE_INDEX, (
+            "the unique index this fixture built was not found, so nothing below "
+            "measures anything: %r" % (probed,))
+        verified = tuple(load_verified_rules(
+            [dict(rule, name=name, unique_index=probed)
+             for name, rule in raw["virtual_joins"].items()]))
+        assert len(verified) == 1, verified
         assert verified[0].unique_index == UNIQUE_INDEX
         compiled = compile_setup_snapshot(
             validate_bundle(raw, catalog=CATALOG), trusted_implementations(),

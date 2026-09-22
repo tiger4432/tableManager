@@ -41,8 +41,8 @@ if server_dir not in sys.path:
 from chain import ingestion_worker as worker                            # noqa: E402
 from chain import mapper_call                                 # noqa: E402
 import mapper_sdk                                                  # noqa: E402
-from chain import legacy_join_declaration as vjc                                  # noqa: E402
-from chain import legacy_materialized_join as vje                                # noqa: E402
+from chain import join_key_index as vjc                                          # noqa: E402
+from chain import synthesis                                                      # noqa: E402
 from database.database import Base                                 # noqa: E402
 from database import crud, models, schemas                         # noqa: E402
 from database.models import DatabaseOutbox                         # noqa: E402
@@ -125,11 +125,14 @@ def fixture_declared_join(monkeypatch):
         "join_cardinality": "one",
         "enabled": True,
     }
-    monkeypatch.setattr(vjc, "load_virtual_join_rules", lambda *a, **kw: [rule])
-    monkeypatch.setattr(vje, "rules_for_right",
-                        lambda _db, right_table: [rule] if right_table == DERIVED else [])
-    assert vje.rules_for_right(None, DERIVED) == [rule]
-    assert vje.rules_for_right(None, TRIGGER) == []
+    # ⚰️ [판정 652 3걸음] 이 자리가 읽기 시점 좌석(`rules_for_right`)을 세웠다. 쓰기 게이트가
+    #    읽는 자리는 이제 `synthesis.right_keys_for` 하나이고, 값은 같은 셋(이름·컬럼·폴드)이다.
+    monkeypatch.setattr(
+        synthesis, "right_keys_for",
+        lambda _db, table: ([(rule["name"], list(rule["right_columns"]),
+                              list(rule["right_folds"]))] if table == DERIVED else []))
+    assert synthesis.right_keys_for(None, DERIVED), "픽스처가 게이트에 안 닿습니다"
+    assert synthesis.right_keys_for(None, TRIGGER) == []
     return rule
 
 
@@ -342,44 +345,18 @@ def test_without_the_refusal_the_same_group_fails(db, monkeypatch):
 # 5. The source of the keys: approved rules, indexed both ways, loaded once
 # ---------------------------------------------------------------------------
 
-def test_the_right_side_index_is_built_from_the_same_single_load(monkeypatch):
-    """⛔ NOT A SECOND READ OF THE DECLARATION FILE. This runs on the write path once per
-    batch; re-loading and re-validating the declaration file there is the inline work
-    the standing performance rule forbids. Both directions come out of ONE pass, and this
-    counts the passes rather than trusting the arrangement."""
-    # The autouse fixture above substitutes `rules_for_right` for every other test here;
-    # this one is about the real body, so its substitution is lifted first.
-    monkeypatch.undo()
-    assert vje.rules_for_right.__module__ == "chain.legacy_materialized_join"
-
-    calls = []
-    rule = {"name": "vjuq_shared", "left_table": TRIGGER, "right_table": DERIVED,
-            "join_key": [{"left": "job", "right": JOIN_COLUMN, "fold": None}],
-            "left_columns": ["job"], "right_columns": [JOIN_COLUMN],
-            "right_folds": [None], "expose": ["grade"], "enabled": True}
-
-    def _one_load(_db, known_tables=None):
-        calls.append(1)
-        return [rule]
-
-    monkeypatch.setattr(vjc, "load_verified_rules", _one_load)
-    vje.reset_cache()
-    try:
-        assert vje.rules_for(None, TRIGGER) == [rule]
-        assert vje.rules_for_right(None, DERIVED) == [rule]
-        assert len(calls) == 1, calls
-        # And a table that is nobody's right side gets an empty answer rather than the
-        # whole list - the filter is real, not a pass-through.
-        assert vje.rules_for_right(None, TRIGGER) == []
-    finally:
-        vje.reset_cache()
+# ⚰️ [판정 652 3걸음] `test_the_right_side_index_is_built_from_the_same_single_load` 가 여기
+#    있었습니다 — 「쓰기 경로가 배치마다 선언 파일을 다시 읽지 않는다」를 읽기 시점 캐시에
+#    대고 재던 줄입니다. 그 성질은 좌석과 함께 옮겨 갔고, 더 세게 재집니다:
+#    `test_the_write_gate_learns_its_keys_once_per_load` 가 적재당 «pg_index 호출 수»와
+#    «세션 수»를 세고 변이로 증명돼 있습니다.
 
 
 def test_a_declaration_that_is_not_approved_refuses_nothing(db, monkeypatch):
     """🔴 THE DIRECTION THAT MATTERS. Approval means the UNIQUE index EXISTS; where it does
     not, a duplicate breaks nothing and refusing would be the guard throwing away rows the
     database would have written."""
-    monkeypatch.setattr(vje, "rules_for_right", lambda _db, _t: [])
+    monkeypatch.setattr(synthesis, "right_keys_for", lambda _db, _t: [])
     report = {}
     # The index is still installed by the fixture, so this asks the narrow question -
     # does the REFUSAL follow the approval - rather than whether sqlite complains.

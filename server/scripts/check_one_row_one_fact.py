@@ -12,7 +12,11 @@
 명제의 위반 넷을 그대로 묻는다:
     ② 한 행이 두 사실   조인 키가 그 표의 «신원보다 좁다»     -> 선언만으로 확정
     ①③ 두 행이 한 사실 / 어느 사실도 아닌 행                 -> DB 가 있어야 갈린다
-    ④ 행이 없는 사실   읽기 시점 조인(실물화 아님)            -> 선언만으로 셀 수 있다
+
+⚰️ [판정 652 3걸음] 위반 ④(「행이 없는 사실」 = 읽기 시점 조인)는 «셀 것이 없어졌습니다» —
+그 문법이 은퇴해 조인이 자기 값을 표에 «씁니다». 명제가 줄어든 것이 아니라 그 위반을 만들 수
+있던 문법이 사라진 것입니다. 읽는 곳도 실조인 선언으로 옮겼습니다 — 이 명제는 소유자의
+«도메인 문장»이고, 배관 낱말로만 서 있던 축은 배관과 «같이» 죽습니다. 이것은 그 경우가 아닙니다.
 """
 from __future__ import annotations
 
@@ -35,21 +39,26 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     from database import crud
-    from chain import legacy_join_declaration as vjc
-    from chain import unique_key
+    from chain import ingestion_worker, synthesis, unique_key
 
     known = crud.TABLE_CONFIG
-    rules = vjc.load_virtual_join_rules(known_tables=known)
-    print("조인 선언 %d 건" % len(rules))
+    # ⚠️ 선언을 «제품이 읽는 길»로 읽는다 — 로더가 세우는 규칙에서 걷는 이가 오른쪽 키를
+    #    낸다. 파일을 직접 파싱하면 로더가 거절한 선언까지 세어 «다른 답»이 나온다.
+    rules = [{"name": name, "right_table": table, "right_columns": columns,
+              "right_folds": folds, "skip": skip}
+             for name, table, columns, folds, skip, _kind
+             in synthesis.declared_unique_targets(ingestion_worker.load_chain_rules())]
+    print("유일성을 «물은» 조인 선언 %d 건" % sum(1 for r in rules if not r["skip"]))
 
-    narrow, read_time, fine = [], [], []
+    narrow, not_asked, fine = [], [], []
     for rule in rules:
+        if rule["skip"]:
+            not_asked.append(rule)
+            continue
         identity = unique_key.narrower_than_identity(
             rule["right_table"], rule["right_columns"], known)
         if identity:
             narrow.append((rule, identity))
-        elif not rule.get("materialize"):
-            read_time.append(rule)
         else:
             fine.append(rule)
 
@@ -63,14 +72,13 @@ def main(argv=None):
                      rule["right_table"], ", ".join(identity)))
             print("       -> 이 조인의 키를 신원까지 넓히십시오")
 
-    if read_time:
-        print("\n읽기 시점 조인 %d - 값이 «행에 없습니다»(명제 위반 4)." % len(read_time))
-        print("    원장이 그 값을 못 보므로 walk 의 주어도 마킹도 이력도 없습니다.")
-        for rule in read_time:
-            print("    %s: %s <- %s" % (rule["name"], rule["left_table"], rule["right_table"]))
+    if not_asked:
+        print("\n유일성을 «안 물은» 선언 %d - 이 명제가 답할 것이 없습니다." % len(not_asked))
+        for rule in not_asked:
+            print("    %s: %s" % (rule["name"], rule["skip"]))
 
     if fine:
-        print("\n실물화된 조인 %d - 값이 행의 칸이고 출처가 층으로 붙습니다." % len(fine))
+        print("\n조인 %d - 값이 행의 칸이고 출처가 층으로 붙습니다." % len(fine))
 
     if not args.db:
         print("\n(--db 를 주면 유일 인덱스·중복·빈 키까지 봅니다. 읽기만 합니다)")
@@ -80,9 +88,8 @@ def main(argv=None):
     session = SessionLocal()
     try:
         print("\n--- DB 확인 (읽기만) ---")
-        for rule in rules:
-            if any(rule is entry[0] for entry in narrow):
-                continue  # 선언이 이미 답했다. 데이터를 볼 이유가 없다
+        # ⚠️ 선언이 이미 답한 것(`narrow`)과 묻지 않은 것은 데이터를 볼 이유가 없다.
+        for rule in fine:
             report = unique_key.inspect(session, rule["right_table"],
                                         rule["right_columns"], rule.get("right_folds"))
             print("%s: %s" % (rule["name"],

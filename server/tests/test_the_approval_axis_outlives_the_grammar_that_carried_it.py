@@ -290,47 +290,20 @@ def test_the_report_answers_now_and_not_out_of_the_write_gates_cache(monkeypatch
         "보고서가 쓰기 경로의 캐시를 «채웠습니다» — 그러면 다음 배치가 이 요청의 답을 씁니다")
 
 
-def test_the_response_has_the_same_cells_the_retiring_route_had(tmp_path):
-    """🔴 [판정 678] 응답 «모양»이 같아야 클라 변경이 URL 한 줄입니다. 옛 라우트를 «실제로»
-    돌려 그 행의 칸을 받아 견줍니다 — 제가 타이핑한 목록과 견주면 그 목록이 답을 정합니다.
-
-    ⚰️ 이 줄은 옛 라우트가 걷히는 커밋에서 «같이» 죽습니다 (652 3걸음). 그때는 비교할
-    반쪽이 없고, 그 시점에는 클라가 이미 새 자리를 부르고 있습니다.
-    """
-    from tests.test_virtual_join_guard import FakeDB, TABLES as OLD_TABLES, _decl
-    from chain import legacy_join_declaration as old
-
-    path = tmp_path / "vj.json"
-    path.write_text(json.dumps({
-        "ok": _decl("vjoin_log", "vjoin_wafer_map",
-                    [("lot", "lot"), ("slot", "slot")], ["wafer_id"]),
-    }), encoding="utf-8")
-    old_report = old.verification_report(
-        FakeDB({"vjoin_wafer_map":
-                {"uq_vjoin_vjoin_wafer_map_lot_slot_ns": ["lot", "slot"]}}),
-        path=str(path), known_tables=OLD_TABLES)
-    assert old_report["declarations"], "옛 보고서가 행을 안 냈습니다 — 비교가 공허합니다"
-
-    import pytest as _pytest
-    with _pytest.MonkeyPatch.context() as patch:
-        _document(patch, [_join("a678_ok")])
-        new_report = synthesis.approval_report(None, known_tables=TABLES)
-
-    assert set(new_report) == set(old_report)
-    # 🔴 [판정 685] 덧셈이다 — 옛 칸을 «하나도 안 뺀다». 그래야 오늘 그리는 화면이
-    #    안 깨지고, 새 칸은 화면에게 「유도하지 말라」고 말한다.
-    old_cells = set(old_report["declarations"][0])
-    new_cells = set(new_report["declarations"][0])
-    assert old_cells <= new_cells, "옛 칸이 사라졌습니다: %r" % (old_cells - new_cells,)
-    assert new_cells - old_cells == {"approval_state"}, (
-        "덧셈이 «하나»가 아닙니다: %r" % (new_cells - old_cells,))
+# ⚰️ [판정 652 3걸음, 예고대로] `test_the_response_has_the_same_cells_the_retiring_route_had`
+#    가 여기 있었습니다. 그 줄의 독스트링이 수명을 스스로 적어 뒀습니다 — 「옛 라우트가
+#    걷히는 커밋에서 «같이» 죽는다. 그때는 비교할 반쪽이 없고, 그 시점에는 클라가 이미 새
+#    자리를 부르고 있다」. 둘 다 참이 됐습니다(클라는 `31a62dcb`·`4f9c8779`).
 
 
 def test_the_route_stands_at_its_new_name_and_the_old_one_is_still_there():
-    """⚠️ 「돈다」로 잽니다 — 앱이 실제로 두 경로를 들고 있는지. 옛 것이 «아직 사는» 것이
-    이 걸음의 계약입니다 (판정 672·678: 먼저 지우면 그 사이가 거짓)."""
+    """⚠️ 「돈다」로 잽니다 — 앱이 실제로 그 경로를 들고 있는지. 그리고 옛 자리가 «없다»는
+    것도 같이 잽니다: 678 ③ 은 라우트와 문법이 «한 커밋»에 가는 것이고, 라우트만 남으면
+    그것이 지울 로더 위에서 도는 반쪽 상태입니다."""
     import main
 
     paths = {route.path for route in main.app.routes if hasattr(route, "path")}
     assert "/admin/chain/join/verify" in paths
-    assert "/admin/config/virtual-join/verify" in paths
+    # ⚰️ [652 3걸음] 옛 라우트가 «아직 산다»를 여기서 단언했습니다. 클라가 옮겼고(678 ②)
+    #    이 커밋이 라우트와 문법을 «같이» 걷었습니다 — 이제 없는 것이 계약입니다.
+    assert "/admin/config/virtual-join/verify" not in paths

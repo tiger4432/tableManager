@@ -32,7 +32,7 @@ if SERVER_DIR not in sys.path:
 # ⚰️ [S-283] AND THEY MOVED AGAIN with the read-time join's retirement: the
 #    declaration loader and the sentence are `chain` modules now. The ring, and every
 #    assertion about it, is the same - only the spelling of two nodes changed.
-LOADER = "chain/legacy_join_declaration"
+LOADER = "chain/synthesis"
 REPORT = "config_resolve_report"
 SENTENCE = "chain/join_refusal"
 
@@ -89,7 +89,9 @@ def test_the_report_still_reads_the_loader_because_that_way_is_correct():
     """⚠️ NOT EVERY EDGE IS A DEFECT. A report reading a loader is the right direction; only
     the reverse was wrong. Asserting this keeps a later 「cycle cleanup」 from cutting the good
     edge and calling the graph tidy."""
-    assert "chain.legacy_join_declaration" in _imports(REPORT)
+    # ⚰️ [652 3걸음] 보고서가 읽던 로더가 걷혔다. 오늘 그 방향을 지는 자리는
+    #    승인 보고서(`chain.synthesis`)이고, 고리의 «방향»은 같다.
+    assert "chain.join_refusal" in _imports(REPORT)
 
 
 # ---------------------------------------------------------------------------
@@ -119,7 +121,7 @@ def _deferred_pairs(module_name):
 #: The ring as the IMPORT GRAPH names it today - package-qualified where they moved.
 RING = ("chain_bindings", "synthesis", "ingestion_worker", "replay",
         "config_resolve_report", "dt_map_derivation",
-        "legacy_join_declaration", "legacy_materialized_join")
+        "synthesis", "join_refusal")
 
 
 @pytest.mark.parametrize("module", (REPORT, LOADER))

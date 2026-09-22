@@ -490,29 +490,11 @@ def test_a_join_cell_nobody_reads_is_named_and_the_rule_still_runs(load, caplog)
     assert "wobble" in " ".join(r.getMessage() for r in caplog.records)
 
 
-def test_the_two_write_join_doors_keep_separate_ids():
-    """⛔ `builtin:join` IS TAKEN - by the LEGACY DECLARATION's join, which WRITES too.
-    ⚰️ This test was called `..._the_read_time_join_keeps_its_own_id` and said production
-    ran on it; ruling 461 deleted the read-time executor and the owner ruled that production
-    writes into the table. What the two ids actually separate is which declaration file
-    birthed the rule (판정 461 ③ - two write doors, and that is the debt).
-    `register_builtin` refuses a second claimant by name, so this is enforced not remembered."""
-    from chain import legacy_join_declaration as vjc
-
-    # 🔴 [판정 581] THE TWO NAMES STAY APART, AND THIS IS THE GATE THAT SAYS SO. The lead
-    #   withdrew the prohibition on giving the legacy name its own template BECAUSE the two
-    #   are not the same job: a virtual join treats an exposed column that also exists on
-    #   the left as absent-only, and `join_into` writes the right side unconditionally.
-    #   Folding them would overwrite a hand-edited value silently.
-    # ⚠️ THE COLLISION GUARD MOVED WITH THE TABLE: `mapper_sdk.register` refuses two
-    #   MODULES claiming one name, which is the same protection under another roof.
-    import mapper_sdk
-
-    assert join_into.JOIN_INTO_MAPPER != vjc.JOIN_MAPPER
-    assert (mapper_sdk.MAPPER_REGISTRY[vjc.JOIN_MAPPER]
-            is not mapper_sdk.MAPPER_REGISTRY[join_into.JOIN_INTO_MAPPER])
-    with pytest.raises(mapper_sdk.MapperNameClaimedTwice):
-        mapper_sdk.register(vjc.JOIN_MAPPER, join_into.propose)
+# ⚰️ [판정 652 3걸음] `test_the_two_write_join_doors_keep_separate_ids` 가 여기 있었습니다 —
+#    「쓰는 문이 «둘»이고 그 둘의 이름은 갈라져 있어야 한다」. 판정 581 이 둘을 갈라 둔 이유는
+#    실재했습니다: 가상조인은 왼쪽에도 있는 `expose` 컬럼을 «없을 때만» 쓰고 `join_into` 는
+#    «무조건» 씁니다. 🔴 그 차이는 선언을 옮긴 운영자가 «만나는» 사실이고, 그래서
+#    `dynamic_mappers` 의 묘비에 적혀 있습니다. 문이 하나가 되어 가를 이름이 없습니다.
 
 
 def test_this_module_does_not_borrow_the_other_doors_engine():
@@ -520,10 +502,12 @@ def test_this_module_does_not_borrow_the_other_doors_engine():
     or the two write doors would disagree about the key; the other door's engine, its caches
     and its declaration loader are deliberately not in this path.
 
-    ⚰️ THIS GUARD NAMED A PACKAGE THAT NO LONGER EXISTS. It forbade importing `virtual_join`,
-    which ruling 461 deleted - so from that commit it could not go red for anything, while the
-    engine that actually survived (`chain.legacy_materialized_join`, the second write door)
-    was unguarded. A guard whose subject was deleted scores 「no problem」, not 「no defect」."""
+    ⚰️ THIS GUARD NAMED A PACKAGE THAT NO LONGER EXISTS — twice. It first forbade importing
+    `virtual_join` (deleted by 461), was re-aimed at `chain.legacy_materialized_join`, and 652
+    step three deleted that too. 🔴 「A guard whose subject was deleted scores 「no problem」,
+    not 「no defect」」 is this test's own sentence, so the borrow-check half is gone. What
+    stays is the half whose subject is ALIVE: the shared fold. If `join_into` stopped importing
+    `notation_norm` the two key spellings could drift again, and that is still a live risk."""
     import inspect
 
     body = inspect.getsource(join_into)
@@ -532,9 +516,6 @@ def test_this_module_does_not_borrow_the_other_doors_engine():
     # and would go red for explaining itself.
     imports = [line.strip() for line in body.splitlines()
                if line.strip().startswith(("import ", "from "))]
-    borrowed = [line for line in imports
-                if "legacy_materialized_join" in line or "legacy_join_declaration" in line]
-    assert not borrowed, borrowed
     assert [line for line in imports if "notation_norm" in line], (
         "the shared fold is what keeps the two joins' keys from drifting")
 

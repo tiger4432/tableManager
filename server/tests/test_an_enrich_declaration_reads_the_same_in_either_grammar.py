@@ -232,4 +232,4 @@ def test_a_disabled_join_declaration_also_stands_no_rule(load):
 # 🪦 `test_the_synthesis_switch_does_not_reach_a_unified_declaration` (판정 399 ㉡) died with
 #    the switch it scored (S-234 ②, 판정 408). `enabled: false` in the file a rule was written
 #    in is the one off switch for one rule; the absence of the old name is asserted in
-#    `test_three_files_declare_one_chain_namespace.py`.
+#    `test_one_chain_namespace_across_its_files.py`.

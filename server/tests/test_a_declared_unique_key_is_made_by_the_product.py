@@ -104,7 +104,7 @@ def test_a_folded_join_key_requires_a_DIFFERENT_index_and_says_so(monkeypatch):
     declared the fold is `None`, so a `right_key` that returned `None` for every column was
     indistinguishable from one that computed it - the legend was feeding the assertion."""
     import notation_norm
-    from chain import legacy_join_declaration as vjc
+    from chain import join_key_index as vjc
 
     monkeypatch.setattr(notation_norm, "normalized_by_table",
                         lambda: {"s240_right": {"job": {"rules": {"separator": True,
@@ -174,10 +174,10 @@ def test_a_rule_that_is_not_this_kind_is_not_this_seats_business(calls):
     cut handed this seat rules with no `params` at all, so dropping the kind check changed
     nothing - they fell out one line later for having no right key, and a fixture that
     cannot hold the defect scores 「no problem」 rather than 「no defect」."""
-    from chain import legacy_join_declaration as vjc
+    from chain import join_key_index as vjc
 
     synthesis.ensure_declared_unique_keys(None, [
-        _rule(mapper=vjc.JOIN_MAPPER, name="old_one"),
+        _rule(mapper="declared:some_other_kind", name="old_one"),
         _rule(mapper=None, mapper_module="m", mapper_function="f", name="file_one")])
 
     assert calls == []
@@ -274,7 +274,7 @@ def test_the_name_this_seat_requires_is_the_name_the_builder_would_build():
     one character from the name `ensure` creates, the product builds an index at warmup and
     retracts it on the next read, forever - so the required name is asked of the same
     function that NAMES the index, off the same three values `ensure` is handed."""
-    from chain import legacy_join_declaration as vjc
+    from chain import join_key_index as vjc
 
     table, columns, folds = join_into.right_key(_rule())
 
@@ -307,32 +307,12 @@ def test_the_required_set_the_retraction_is_handed_names_the_unified_joins_index
     assert join_key_index.required_index_name("s240_right", ["job"], [None]) in seen["required"]
 
 
-def test_the_required_set_holds_both_producers_while_both_grammars_live(monkeypatch):
-    """⚰️ [Q-192] 제가 좌석을 옮기며 «반쪽»만 옮긴 자리입니다. 두 문법이 각각 인덱스를
-    요구하고 둘 다 `uq_vjoin_` 접두를 씁니다 — 회수기는 그 접두로 «통째로» 훑으므로,
-    한쪽만 든 요구 집합은 조금 덜 걷는 게 아니라 «다른 쪽의 살아 있는 인덱스»를 걷습니다.
-    그것이 S-248 의 장애(23505, 그룹 영구 실패)를 아직 도는 문법에 겨눈 것입니다.
-
-    ⚠️ 이 박스에서는 레거시 선언이 전부 거절돼 «영향이 0» 이었습니다. 그래서 이 줄이
-    있습니다 — 박스의 0 은 운영에 대해 아무 말도 안 합니다."""
-    from chain import join_key_index, legacy_join_declaration, synthesis
-
-    legacy_name = join_key_index.required_index_name("q192_right", ["job"], [None])
-    monkeypatch.setattr(legacy_join_declaration, "load_virtual_join_rules",
-                        lambda **_k: [{"right_table": "q192_right",
-                                       "right_columns": ["job"],
-                                       "right_folds": [None]}])
-    monkeypatch.setattr(synthesis, "declared_unique_index_names",
-                        lambda **_k: {"uq_vjoin_unified_side"})
-
-    seen = {}
-    monkeypatch.setattr(unique_key, "retract_unrequired_once",
-                        lambda db, required: seen.setdefault("required", set(required)))
-
-    synthesis.retract_unrequired_indexes_once(None, known_tables={})
-
-    assert seen["required"] == {"uq_vjoin_unified_side", legacy_name}, (
-        "요구 집합이 «한 문법»만 담으면 나머지 문법의 살아 있는 인덱스가 걷힙니다")
+# ⚰️ [판정 652 3걸음] `test_the_required_set_holds_both_producers_while_both_grammars_live`
+#    가 여기 있었습니다 — Q-192 의 게이트입니다. 회수의 «요구 집합»이 한쪽 문법만 들면 다른
+#    쪽의 살아 있는 인덱스를 걷는다(S-248 의 장애)를 쟀고, 이름이 그 수명을 «스스로» 적어
+#    뒀습니다: 「while both grammars live」. 하나가 됐으므로 요구 집합에 반쪽이 없습니다.
+#    🔴 남는 교훈은 시험이 아니라 «기억»에 있습니다 — 좌석을 옮길 때 호출은 따라가고 입력의
+#    반쪽은 남는다.
 
 
 def test_a_required_set_that_cannot_see_both_producers_retracts_nothing(monkeypatch):
@@ -363,7 +343,7 @@ def test_a_required_set_that_cannot_see_both_producers_retracts_nothing(monkeypa
 def test_a_declaration_that_is_switched_off_requires_no_index(monkeypatch):
     """⚠️ AND THAT IS THE RETRACTION DOING ITS JOB, not a hole. A join nobody runs cannot be
     the reason a write is refused with 23505 - which is the outage S-248 closes."""
-    from chain import legacy_join_declaration as vjc
+    from chain import join_key_index as vjc
     from chain import ingestion_worker
 
     off = dict(DECLARATION, enabled=False)

@@ -47,7 +47,6 @@ def _graph(monkeypatch, loader):
     difference in the output can only have come from the loader that was varied.
     """
     from chain import enrichment
-    from chain import legacy_join_declaration as vjc
     from database import crud
 
     monkeypatch.setattr(worker, "load_chain_rules", lambda: [])
@@ -59,7 +58,8 @@ def _graph(monkeypatch, loader):
                         lambda path=None: {"document": {}, "rules": [],
                                            "path": path, "exists": False, "error": None})
     monkeypatch.setattr(enrichment.config, "load_enrichment_rules", loader)
-    monkeypatch.setattr(vjc, "load_virtual_join_rules", lambda **kw: [])
+    # ⚰️ [652 3걸음] 여기서 가상조인 분면의 로더도 «빈 것»으로 고정했다. 그 분면이
+    #    그림에서 걷혀 고정할 것이 없다 — 축은 여전히 «하나»만 varied 다.
     monkeypatch.setattr(crud, "TABLE_CONFIG", {TRIGGER: {}, TARGET: {}})
     monkeypatch.setattr("ledger.setup.load_setup",
                         lambda *a, **kw: type("Setup", (), {

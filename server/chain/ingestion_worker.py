@@ -812,7 +812,7 @@ def load_chain_rules():
 
     # 🔴 [S-234 ①②, 판정 408·409] THREE FILES, ONE NAMESPACE, ONE OFF SWITCH.
     #    `chain_rules.json` (flat and unified), `enrichment_rules.json` and
-    #    `virtual_join_rules.json` are three ways of WRITING a chain rule, so their names are
+    #    (⚰️ 652 3걸음 전에는 `virtual_join_rules.json` 도) are ways of WRITING a chain rule, so their names are
     #    one set: a name that appears twice is refused by name below, at the one seat that
     #    sees the whole set, and the off switch for any of them is `enabled: false` in the
     #    file it was written in. Stopping the chain altogether is `ASSY_CHAIN_WORKER=0`.
@@ -2104,7 +2104,7 @@ def _synthesis_seat():
     mechanism was still there.
 
     ⚠️ NOT AT MODULE LEVEL. `chain.synthesis` imports `enrichment.config` and
-    `chain.legacy_join_declaration`, which import back into this module's neighbourhood;
+    the chain package's own modules, which import back into this module's neighbourhood;
     every other seat here reaches it the same way, inside the function that needs it.
     """
     from chain import synthesis

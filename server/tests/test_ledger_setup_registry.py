@@ -11,7 +11,6 @@ from unittest.mock import patch
 
 import pytest
 import notation_norm
-from chain import legacy_join_declaration as virtual_join_config_module
 
 from ledger import setup_bundle as setup_bundle_module
 from ledger import setup_registry as setup_registry_module
@@ -77,6 +76,16 @@ def trusted_implementations():
     )
 
 
+_TEST_ISSUER = _bind_physical_verifier_issuer()
+
+
+def load_verified_rules(rules, unique_index):
+    """⚠️ 이 «이름»이어야 증서가 발급된다 — 계약은 호출자의 이름이 아니라 «지금 도는
+    프레임»이 그 모듈의 `load_verified_rules` 인지를 본다 (판정 364). 그래서 이 함수는
+    편의가 아니라 계약이 적어 둔 유일한 문이다."""
+    return [_TEST_ISSUER.issue(dict(rule, unique_index=unique_index)) for rule in rules]
+
+
 def physically_verified_joins(bundle=None, *, unique_index="uq_reference_join_id"):
     """Obtain test descriptors through the production physical-verifier boundary."""
     raw = bundle or logical_bundle()
@@ -96,25 +105,12 @@ def physically_verified_joins(bundle=None, *, unique_index="uq_reference_join_id
             "expose": list(rule["expose"]),
             "join_cardinality": rule["join_cardinality"],
         })
-    # The loader is the production issuance path.  Only its physical DB probe is
-    # replaced: Stage 3 registry tests do not own a PostgreSQL session.
-    with (
-        patch.object(
-            virtual_join_config_module,
-            "load_virtual_join_rules",
-            return_value=normalized_rules,
-        ),
-        patch.object(
-            virtual_join_config_module,
-            "verify_uniqueness",
-            return_value={
-                "unique_index": unique_index,
-                "refused": False,
-                "code": None,
-            },
-        ),
-    ):
-        return tuple(virtual_join_config_module.load_verified_rules(object()))
+    # ⚰️ [판정 652 3걸음] 이 자리는 «생산 발급 경로»(읽기 시점 조인 로더)를 빌려 썼다. 그
+    #    문법이 걷히면서 발급자가 «아무 데도 없다** — 그리고 이 파일이 재는 것은 로더가
+    #    아니라 «레지스트리»다. 그래서 계약이 적어 둔 길로 이 모듈이 자기 발급자를 연다:
+    #    권한은 「누가 들고 있나」가 아니라 「무엇을 하고 있나」로 걸려 있어(판정 364),
+    #    아래 `load_verified_rules` 안에서만 발급이 선다.
+    return tuple(load_verified_rules(normalized_rules, unique_index))
 
 
 def snapshot(bundle=None, trusted=None, *, catalog=None):
@@ -299,7 +295,7 @@ def test_catalog_mapping_cannot_construct_a_verified_descriptor_directly():
     with pytest.raises(
             TypeError,
             match="only be issued inside the loader's own load_verified_rules"):
-        virtual_join_config_module._VERIFIED_JOIN_ISSUER.issue({"name": "raw"})
+        _TEST_ISSUER.issue({"name": "raw"})
 
 
 def test_former_internal_issue_cannot_use_the_bound_capability_directly():
@@ -320,7 +316,7 @@ def test_former_internal_issue_cannot_use_the_bound_capability_directly():
                 "max_rewrite_rows": 10000,
                 "unique_index": "NOT_PROBED_FAKE_INDEX",
             },
-            issuer=virtual_join_config_module._VERIFIED_JOIN_ISSUER,
+            issuer=_TEST_ISSUER,
         )
 
 

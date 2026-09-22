@@ -60,7 +60,6 @@ from chain import synthesis
 from chain import ingestion_worker as worker
 import mapper_sdk
 from chain import rule_shape
-from chain import legacy_join_declaration as vjc
 from chain.join_refusal import virtual_join_detail             # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -602,142 +601,15 @@ def _resolve_enrichment() -> dict:
                         sources, settings, effective, ineffective, rejected)
 
 
-# ---------------------------------------------------------------------------
-# virtual_join — 두 번째 슬라이스
-# ---------------------------------------------------------------------------
+# ⚰️ [판정 652 3걸음] THE `virtual_join` SLICE STOOD HERE — its domain constant, its
+# refusal-code map, and `_resolve_virtual_join`. It reported on `virtual_join_rules.json`,
+# which is gone. 🔴 그 슬라이스가 답하던 물음은 «안 죽었습니다»: 「이 조인이 승인됐나 =
+# 조인 키를 덮는 UNIQUE 인덱스가 실재하나」는 `GET /admin/chain/join/verify` 가 답하고,
+# 거기는 세션이 있어 「모양은 유효한데 확인은 못 한다」는 반쪽 답을 낼 필요가 없습니다 —
+# 이 보고서의 「DB 질의 0건」 계약이 바로 그 반쪽을 강제하던 것이었습니다.
+# ⚠️ `virtual_join_detail` 은 «삽니다»(`chain.join_refusal`). 조인 거절의 한국어 문장은
+#    그 조립기 하나가 짓고, 새 라우트가 그것을 씁니다.
 
-DOMAIN_VIRTUAL_JOIN = "virtual_join"
-
-# 로더의 내부 거부 코드 -> 닫힌 사유 어휘.
-#
-# `no_unique_index`가 `scope_unresolved`인 것은 편의가 아니라 그 단어의 뜻 그대로다:
-# 런타임 어휘에서 이 단어는 「0개 또는 2개 이상이 주장 ― 고르지 않음」이고,
-# 조인 키가 오른쪽 행 하나를 지목한다는 것이 보장되지 않은 상태가 정확히 그것이다.
-# 나머지(문법 오류·미구현 형태)는 「선언이 파싱/검증에 실패해 반영되지 않음」이라
-# `mapping_unavailable`이다. **새 단어를 만들지 않는다** ― 어휘 추가는 계약 변경이다.
-_VJ_CODE_TO_REASON = {
-    "no_unique_index": REASON_SCOPE_UNRESOLVED,
-    "fanout_declared": REASON_MAPPING_UNAVAILABLE,
-    "shape": REASON_MAPPING_UNAVAILABLE,
-    # ⚠️ [S-283, 판정 446] `read_time_retired` IS DELIBERATELY NOT LISTED. It falls to the
-    # default below, so the screen calls a RETIREMENT 「매핑을 못 찾았습니다」 — which reads as
-    # 「무언가 빠졌다」 when the truth is 「이 능력이 없어졌다」. The two send an operator to
-    # OPPOSITE repairs: fix the declaration, versus move the join to `into.table`.
-    #
-    # 🔵 판정 474 SETTLED IT: yes, a fifth reason. This is no longer an open question, and
-    # the word 「probably」 that stood here was collecting a re-derivation every session.
-    # What is left is WHEN and HOW, and both were measured on 2026-09-17:
-    #
-    #   WHEN — how many seats bucket/filter/count on this machine-readable code TODAY?
-    #     product code           0   the client renders `reason` as DATA and never branches
-    #                                on it (`config_resolve_view.js` states that as its own
-    #                                rule); the server only ever WRITES the code
-    #     contract + tests       5   the closed-set equalities, the runtime-twin rule, and
-    #                                the per-case vector lookups
-    #   -> 0 product seats, so by 판정 474 ③ this lands WHOLE in a cross-lane round
-    #      (dict + vectors.json + client harness, one commit), not as a line here.
-    #
-    #   HOW — 🔴 AND THE CONTRACT WILL NOT SIMPLY ACCEPT A FIFTH WORD. Its rule is that
-    #   config-time degradation BORROWS the runtime's degradation vocabulary, and that
-    #   vocabulary is literally `bonding_plan.BINDING_*` = {not_declared,
-    #   mapping_unavailable, candidate_column_missing, not_reached}. `read_time_retired`
-    #   is not one of them and does not belong in a ROLE-BINDING vocabulary, so adding it
-    #   here goes red at `test_the_vocabulary_is_borrowed_from_the_runtime_not_invented`.
-    #   The fifth value therefore arrives the way `scope_unresolved` did — as a second
-    #   named entry in that contract's `_AWAITING_RUNTIME`, with the xfail that records
-    #   which word is outstanding and why. That is a Lead PM decision, not a local one.
-    #
-    # Until then the refusal's own SENTENCE is correct and names the next action, so an
-    # operator who reads the row is not misled — only the machine-readable bucket is.
-}
-
-# 🪦 [S-211 ①, 판정 355] `_VJ_CODE_LEAD` 와 `virtual_join_detail` 의 «본체»가
-#    `virtual_join_refusal` 로 내려갔다. 이 이름이 여기서 계속 해석되는 것은 «재수출»이
-#    아니라 이 모듈이 그 문장을 «쓰기» 때문이다 — 짓는 자리는 거기 하나다.
-#    왜 옮겼나: 로더(`virtual_join_config`)도 같은 문장이 필요했고, 그것을 얻으려고 이
-#    모듈을 «함수 안에서» import 하고 있었다. 보고서가 로더를 읽는 것은 맞는 방향이고,
-#    로더가 보고서를 읽는 것이 거꾸로였다.
-
-
-def _resolve_virtual_join() -> dict:
-    """virtual join 선언의 해석 보고서. **DB를 건드리지 않는다**(config만 읽는다).
-
-    그래서 이 보고서가 답하는 것은 **모양이 유효한가**까지다. 승인은 조인 키를 덮는
-    UNIQUE 인덱스의 존재에 달려 있고 그것은 `pg_index`가 아는 사실이라 세션이 필요한데,
-    이 라우트는 「DB 질의 0건」이 계약이다(`test_the_report_issues_no_database_queries`).
-    그래서 어떤 선언도 여기서 `effective`가 되지 않는다.
-
-    다만 **무엇을 만들어야 하는지는 세션 없이도 말할 수 있다** ― 필요한 인덱스는 선언
-    자체(오른쪽 테이블 + 조인 키)로 계산되기 때문이다. 「UNIQUE 인덱스가 없다」만 말하고
-    어느 컬럼인지 말하지 않는 거부는 운영자가 행동할 수 없는 거부다.
-    실제 존재 여부는 `GET /admin/config/virtual-join/verify`가 답한다.
-    """
-    from database import crud
-
-    rules_path = vjc.VIRTUAL_JOIN_RULES_PATH
-    rejections = []
-    rules = vjc.load_virtual_join_rules(
-        known_tables=crud.TABLE_CONFIG, rejections=rejections)
-
-    effective, ineffective, rejected = [], [], []
-
-    for r in rejections:
-        code = r.get("code", "shape")
-        rejected.append(entry(
-            r["scope"] if r["scope"] in SCOPES else SCOPE_RULE,
-            r.get("subject"),
-            virtual_join_detail(code, r.get("facts"), r["detail"]),
-            reason=_VJ_CODE_TO_REASON.get(code, REASON_MAPPING_UNAVAILABLE)))
-
-    for rule in rules:
-        fields = {
-            "left_table": rule["left_table"],
-            "right_table": rule["right_table"],
-            "join_key": [f"{p['left']} = {p['right']}" for p in rule["join_key"]],
-            "expose": list(rule["expose"]),
-            "unresolved_label": rule["unresolved_label"],
-            "required_index": rule["required_index"],
-            "required_index_ddl": rule["required_index_ddl"],
-        }
-        ineffective.append(entry(
-            SCOPE_RULE, rule["name"],
-            f"선언의 모양은 유효합니다. 다만 승인되려면 {rule['right_table']} 테이블의 "
-            f"{_names(rule['right_columns'], ', ')}을(를) 덮는 UNIQUE 인덱스가 있어야 "
-            f"하는데, 이 화면은 설정 파일만 읽으므로 그 존재 여부를 알지 못합니다. "
-            f"확인은 GET /admin/config/virtual-join/verify 로 하세요. 없다면 다음을 "
-            f"실행해 만드십시오: {rule['required_index_ddl']} "
-            f"그리고 조인을 실행하는 코드가 아직 없어, 승인되더라도 지금은 이 선언이 "
-            f"어디에서도 사용되지 않습니다.",
-            reason=REASON_NOT_REACHED, fields=fields))
-
-    rules_exists = os.path.exists(rules_path)
-    file_rejected = any(r["scope"] == SCOPE_FILE for r in rejections)
-    sources = [
-        source("rules", rules_path,
-               ("선언 파일이 없습니다 ― virtual join 선언이 하나도 없습니다."
-                if not rules_exists else
-                ("선언 파일을 읽지 못했습니다 ― 어떤 선언도 반영되지 않았습니다."
-                 if file_rejected else
-                 f"선언 {len(rules)}건이 모양 검사를 통과했습니다.")),
-               exists=rules_exists, degraded=file_rejected),
-    ]
-    settings = [
-        setting("uniqueness_gate", "unique_index", ORIGIN_DEFAULT,
-                rules_path, declared=None,
-                detail=("승인 조건은 하나입니다 ― 조인 키를 덮는 유효한 UNIQUE 인덱스. "
-                        "인덱스는 config가 아니라 데이터베이스에 살기 때문에 이후의 어떤 "
-                        "쓰기도 그 성질을 깨지 못합니다. 취소된 CREATE INDEX "
-                        "CONCURRENTLY가 남긴 무효 인덱스, 부분 인덱스, 표현식 인덱스는 "
-                        "유일성을 강제하지 않으므로 인정하지 않습니다.")),
-        setting("unresolved_label", vjc.DEFAULT_UNRESOLVED_LABEL, ORIGIN_DEFAULT,
-                rules_path, declared=None,
-                detail=(f"해소되지 않은 값의 표시 = {vjc.DEFAULT_UNRESOLVED_LABEL}. "
-                        f"오른쪽에 맞는 행이 없는 경우와, 행은 있는데 값이 비어 있는 "
-                        f"경우를 모두 덮습니다. 둘째를 빼면 분석가는 값이 있다고 "
-                        f"읽습니다.")),
-    ]
-    return build_domain(DOMAIN_VIRTUAL_JOIN, "Virtual Join 선언",
-                        sources, settings, effective, ineffective, rejected)
 
 
 # ---------------------------------------------------------------------------
@@ -822,7 +694,7 @@ def _resolve_notation() -> dict:
     저장되는 것은 없다 ― 소비자가 **조회 시점에 비교의 양쪽을** 접는다. 그래서 이 보고서가
     답하지 못하는 절반이 두 개 있고, 둘 다 세션이 필요해 각자 라우트가 있다:
       · 「내 규칙이 무엇을 합치는가」 → `/admin/config/notation/preview` (병합군)
-      · 「이 조인이 승인됐는가」     → `/admin/config/virtual-join/verify` (함수 인덱스)
+      · 「이 조인이 승인됐는가」     → `/admin/chain/join/verify` (함수 인덱스)
     """
     import notation_norm as nn
     from database import crud
@@ -1379,7 +1251,6 @@ _RESOLVERS = {
     DOMAIN_CATALOG: _resolve_catalog,
     DOMAIN_CHAIN: _resolve_chain,
     DOMAIN_ENRICHMENT: _resolve_enrichment,
-    DOMAIN_VIRTUAL_JOIN: _resolve_virtual_join,
     DOMAIN_NOTATION: _resolve_notation,
     DOMAIN_BINDING: _resolve_binding,
     DOMAIN_LEDGER: _resolve_ledger,
@@ -1415,9 +1286,11 @@ SETUP_STEPS = (
     {"step": 1, "name": "표", "domain": DOMAIN_CATALOG, "after": None},
     {"step": 2, "name": "파생", "domain": DOMAIN_CHAIN, "after": 1},
     {"step": 3, "name": "확정", "domain": DOMAIN_ENRICHMENT, "after": 1},
-    {"step": 4, "name": "가상 조인", "domain": DOMAIN_VIRTUAL_JOIN, "after": 1},
-    {"step": 5, "name": "원장", "domain": DOMAIN_LEDGER, "after": 1},
-    {"step": 6, "name": "걷기 좌석", "domain": DOMAIN_WALK, "after": 5},
+    # ⚰️ [판정 652 3걸음] 「4 · 가상 조인」이 여기 있었습니다. 그 문법이 은퇴해 걸음이
+    #    아니라 «없는 것»이 됐고, 뒤 둘을 «다시 번호 매깁니다» — 구멍 난 번호는 운영자가
+    #    없는 걸음을 찾게 만듭니다. `after` 는 이 리스트가 정본이라 같이 옮겼습니다.
+    {"step": 4, "name": "원장", "domain": DOMAIN_LEDGER, "after": 1},
+    {"step": 5, "name": "걷기 좌석", "domain": DOMAIN_WALK, "after": 4},
 )
 
 #: domain -> 그 걸음. 순서를 «두 번» 적지 않으려고 위에서 만듭니다.

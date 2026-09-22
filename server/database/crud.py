@@ -4015,10 +4015,10 @@ def _stored_join_key_owners(db: Session, table_name: str, columns: list, folds: 
     model = models.DYNAMIC_TABLES.get(table_name)
     if model is None:
         return {}
-    from chain import legacy_join_declaration as vjc
+    from chain import join_key_index
     from sqlalchemy import text as sa_text
 
-    exprs = [vjc.index_key_expression(column, folds[i] if i < len(folds) else None,
+    exprs = [join_key_index.index_key_expression(column, folds[i] if i < len(folds) else None,
                                       table_name)
              for i, column in enumerate(columns)]
     params, wheres = {}, []

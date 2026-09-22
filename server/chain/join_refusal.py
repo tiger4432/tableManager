@@ -15,7 +15,7 @@
    문장을 «둘 다보다 아래»로 내렸습니다. 보고서가 로더를 읽는 것은 «맞는 방향»이라 그대로입니다.
 
 ⚠️ 「서버가 문장의 정본」이 이 모듈이 지키는 계약입니다 — 보고서와
-   `GET /admin/config/virtual-join/verify` 가 «같은 거부»에 다른 문장을 내면 그 계약이 깨집니다.
+   `GET /admin/chain/join/verify` 가 «같은 거부»에 다른 문장을 내면 그 계약이 깨집니다.
    그래서 한국어를 짓는 자리는 여기 «하나»입니다.
 """
 
@@ -71,7 +71,7 @@ def _names(seq, sep: str = ", ") -> str:
 def virtual_join_detail(code: str, facts: dict = None, loader_detail: str = "") -> str:
     """virtual join 거부 1건의 **운영자가 읽는 최종 문장**. 서버가 짓는다.
 
-    보고서와 `GET /admin/config/virtual-join/verify` 가 **같은 함수**를 쓴다. 갈라 두면
+    보고서와 `GET /admin/chain/join/verify` 가 **같은 함수**를 쓴다. 갈라 두면
     같은 거부가 두 화면에서 다른 문장으로 나오고, 그 순간 「서버가 문장의 정본」이라는
     계약이 깨진다. `no_unique_index` 는 세션이 있어야 나오는 코드라 보고서 경로에서는
     발화하지 않는다 ― 그래서 이 함수가 라우트에서도 불려야 그 분기가 살아 있다.

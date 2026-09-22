@@ -19,18 +19,17 @@ by hand, so the migration cost that argument rested on is ZERO and the lead retr
 「이름은 안 옮긴다」. The value is `declared:join` now; `JOIN_INTO_MAPPER`, the CONSTANT, keeps
 its name because it is the code's word and not the operator's.
 
-🔴 THE WRITE-JOIN HALF THAT SURVIVED IS STILL NOT IMPORTED HERE. `materialize: true`
-declarations keep running in `chain.legacy_materialized_join` — the second write door, written
-down as a debt in that module's own docstring — and this module borrows FUNCTIONS
-(`notation_norm`'s folding, which is what makes a key expression match the unique index) and
-never that engine, its caches or its declaration loader. What the two doors must NOT disagree
-about is the KEY, and that is why the fold comes from the shared function rather than from a
-second spelling here.
+⚰️ [판정 652 3걸음] THE SECOND WRITE DOOR IS GONE, AND WITH IT THE DEBT. These two paragraphs
+said `materialize: true` declarations keep running in `chain.legacy_materialized_join` and
+that its `join_onclause` was a second spelling of the ON clause this module also builds —
+「같은 기능에 두 경로」, written down as a cost that 「lives exactly as long as the second door
+does」. That door was deleted, so this is now the only door and the only spelling.
 
-⚠️ AND THAT LEAVES ONE HONEST COST, WRITTEN DOWN. `legacy_materialized_join.join_onclause`
-calls itself 「ON 절의 유일한 철자」, and this module builds an ON clause too. Two spellings that
-must agree is the 「같은 기능에 두 경로」 shape — so the fold and the `coalesce` are taken from
-the same place the index is built from. That cost lives exactly as long as the second door does.
+🔴 WHAT SURVIVED THE DELETION IS THE REASON THE COST WAS SURVIVABLE. The fold and the
+`coalesce` are still taken from the place the index is built from (`notation_norm`'s folding,
+`join_key_index`'s expression) rather than spelled here — not because a second door might
+disagree, but because the INDEX is the other party and it always was. A key this module folds
+one way and the index folds another does not fail; it stops matching the index.
 """
 from __future__ import annotations
 

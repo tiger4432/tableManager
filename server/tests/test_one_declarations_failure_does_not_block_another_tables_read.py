@@ -4,54 +4,59 @@
 막았던 거야?」 · 「그냥 모든 선언 무조건 다 돌면서 다 막아버렸네」.
 둘 다 맞았다. 읽기 미스마다 «읽는 사람의 세션»으로 «모든» 선언을 검사했고, 검사 SQL 이 try 밖이라
 표 B 의 선언 하나가 던지면 표 A 를 읽던 트랜잭션이 abort 된 채 남았다.
+
+⚰️ [판정 652 3걸음] 그 좌석(`legacy_materialized_join` 의 TTL 캐시 + 읽기 시점 검증)은
+문법과 같이 걷혔다. **증상을 재는 이 파일은 «걷히지 않는다»** — 은퇴 상설이 「아팠던 증상을
+대조군으로 남긴다」이고, 같은 실수를 다시 할 수 있는 자리가 «지금도» 있기 때문이다:
+`chain.synthesis.right_keys_for` 가 선언을 읽고 `pg_index` 를 판다. 그래서 좌석만 옮겨 단다.
+
+⚠️ 옛 파일이 재던 것 «둘» 중 하나는 모양이 바뀌었고, 그것을 여기 적는다.
+   ① 「B 하나만 거절되고 A 는 남는다」 — 그 자리는 읽기 경로의 «검증 목록»이었다. 오늘
+      쓰기 게이트는 선언을 못 읽으면 「조인이 없다」로 기울어 «아무 행도 거절하지 않는다»
+      (`test_the_write_gate_learns_its_keys_once_per_load` 의 마지막 줄이 그것을 잰다).
+      설정 문제를 장애로 바꾸지 않는다는 자세는 같고, 단위가 규칙에서 «게이트 전체»로 바뀌었다.
+   ② 「읽는 사람의 세션은 한 문장도 안 실린다」 — 소유자가 실제로 맞은 증상이고, 아래가 그것이다.
 """
 import os
 import sys
 
-import pytest
-from sqlalchemy import text
-
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from chain import legacy_join_declaration as vjc  # noqa: E402
-from chain import legacy_materialized_join as vje  # noqa: E402
-
-
-def _rule(name, left, right):
-    return {"name": name, "left_table": left, "right_table": right,
-            "left_columns": ["k"], "right_columns": ["k"], "join_key": [{"left": "k", "right": "k"}],
-            "expose": ["v"], "right_folds": [], "unresolved_label": "미상",
-            "required_index_ddl": "CREATE UNIQUE INDEX ...", "join_cardinality": "one"}
-
-
-def test_one_rule_that_cannot_be_verified_refuses_only_itself(db_session, monkeypatch):
-    """🔴 「모든 선언 다 돌면서 다 막아버렸네」의 부정. B 의 검사가 던져도 A 는 «검증된 목록»에
-    남고, B 만 이름 대어 거절되며, 그 세션은 다음 문장에 «답한다»(abort 아님)."""
-    good, bad = _rule("a_join", "table_a", "right_a"), _rule("b_join", "table_b", "right_b")
-    monkeypatch.setattr(vjc, "load_virtual_join_rules", lambda **k: [good, bad])
-
-    def verify(session, rule):
-        if rule["name"] == "b_join":
-            raise RuntimeError('invalid input syntax for type double precision: "미상"')
-        return {"unique_index": "uq_ok", "refused": False, "code": None}
-    monkeypatch.setattr(vjc, "verify_uniqueness", verify)
-
-    rejections = []
-    verified = vjc.load_verified_rules(db_session, known_tables={}, rejections=rejections)
-
-    assert [r["name"] for r in verified] == ["a_join"], "무관한 A 가 같이 죽었다"
-    assert [r["subject"] for r in rejections] == ["b_join"], rejections
-    assert db_session.execute(text("SELECT 1")).scalar() == 1, "세션이 abort 된 채 남았다"
+from chain import synthesis  # noqa: E402
+from database import crud    # noqa: E402
 
 
 def test_the_readers_session_is_never_touched_by_verification(db_session, monkeypatch):
-    """🔴 「내가 건드리던 테이블과 완전 다른 건데 왜 막았던 거야」의 부정. 검증 «전체»가 던져도
-    읽는 사람의 세션은 한 문장도 안 실렸으므로 그대로 산다 — 검증은 자기 세션이다."""
-    def explode(session, **k):
-        session.execute(text("SELECT 1/0"))  # 그 세션을 «일부러» abort 시킨다
-        raise RuntimeError("declaration verification exploded")
-    monkeypatch.setattr(vjc, "load_verified_rules", explode)
-    vje.reset_cache()
+    """🔴 「내가 건드리던 테이블과 완전 다른 건데 왜 막았던 거야」의 부정. 승인 검사는 «자기
+    세션»에서 돌므로, 그것이 던지든 말든 읽는 사람의 트랜잭션에는 한 문장도 안 실린다.
 
-    assert vje.rules_for(db_session, "table_a") == []          # 조인 없음으로 안전하게 기운다
-    assert db_session.execute(text("SELECT 1")).scalar() == 1, "읽는 사람의 세션이 죽었다 — 검증이 그 세션을 썼다"
+    🔴 그리고 이 줄은 «세션 동일성»을 직접 잰다 — 옛 판이 `SELECT 1/0` 으로 그 세션을
+    abort 시켜 「그래도 살아 있나」를 물었는데, 이 픽스처는 **SQLite** 이고 거기서 `1/0` 은
+    예외가 아니라 NULL 이다. 그래서 그 줄은 이 박스에서 «아무것도 단언하지 않았다** —
+    PostgreSQL 전용 고장 모양을 PostgreSQL 아닌 데서 채점한 것이다. 성질(「누구의 세션인가」)을
+    바로 물으면 방언과 무관하고, 좌석이 호출자 세션을 쓰는 순간 빨개진다.
+
+    ⚠️ 던지는 자리를 `unique_index_covering` 으로 잡은 것은 그것이 세션을 «실제로 받는»
+    호출이기 때문이다. 그 위를 패치하면 세션이 전달되지도 않아 이 줄이 공허해진다.
+    """
+    synthesis.reset_right_key_cache()
+    seen = []
+
+    def explode(session, table, columns, folds=None):
+        seen.append(session)
+        raise RuntimeError("index probe exploded")
+
+    from chain import ingestion_worker, join_key_index
+    monkeypatch.setattr(join_key_index, "unique_index_covering", explode)
+    monkeypatch.setattr(synthesis, "declared_unique_targets",
+                        lambda rules: [("b_join", "right_b", ["k"], [None], None, None)])
+    monkeypatch.setattr(ingestion_worker, "load_chain_rules", lambda: [{"name": "b_join"}])
+
+    # 🔴 「조인 없음」으로 안전하게 기운다 — 거절이 아니라 무동작이다.
+    assert crud._virtual_join_right_keys(db_session, "table_a") == []
+    assert seen, "승인 검사에 닿지도 않았습니다 — 이 시험이 아무것도 안 잽니다"
+    assert seen[0] is not db_session, (
+        "승인 검사가 «읽는 사람의 세션»을 썼습니다 — 2026-09-15 장애 다섯째의 모양입니다")
+    assert db_session.is_active, "읽는 사람의 트랜잭션이 이 호출로 망가졌습니다"
+
+    synthesis.reset_right_key_cache()

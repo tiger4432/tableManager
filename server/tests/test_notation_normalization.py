@@ -299,20 +299,8 @@ def test_either_side_declared_means_both_sides_folded(norm_env):
         "notnorm_test_ref", "wafer_id", "notnorm_test_ref", "wafer_id") is None
 
 
-def test_differing_rule_sets_on_the_two_sides_take_the_union(norm_env, tmp_path,
-                                                             monkeypatch):
-    """The fold is a property of the COMPARISON, so both declarations are satisfied."""
-    _write_decl(tmp_path, monkeypatch, {
-        "columns": {
-            "notnorm_test_log": {"core_lot": {"rules": {"separator": True,
-                                                        "case": False}}},
-            "notnorm_test_ref": {"core_lot": {"rules": {"separator": False,
-                                                        "case": True}}},
-        }})
-    merged = notation_norm.join_pair_rules(
-        "notnorm_test_log", "core_lot", "notnorm_test_ref", "core_lot")
-    assert merged[notation_norm.RULE_SEPARATOR] is True
-    assert merged[notation_norm.RULE_CASE] is True
+# ⚰️ [판정 652 3걸음] `test_differing_rule_sets_on_the_two_sides_take_the_union` 가 여기 있었습니다 — 읽기 시점 조인 «검증기»로 합집합을 쟀다. 그 검증기가 걷혔고, 합집합을 «짓는» 자리는
+#    `notation_norm.join_pair_rules` 하나다 — 이 파일의 다른 줄들이 그것을 직접 잰다.
 
 
 def _seed_asymmetric(db):
@@ -334,7 +322,7 @@ def _seed_asymmetric(db):
 
 
 def _rule(folded_expected):
-    from chain import legacy_join_declaration as vjc
+    from chain import join_key_index as vjc
     rules = vjc.validate_virtual_join_rules({
         "notnorm_join": {
             "left_table": "notnorm_test_log", "right_table": "notnorm_test_ref",
@@ -355,83 +343,18 @@ def _rule(folded_expected):
     return rules[0]
 
 
-def test_both_sides_fold_when_only_the_dirty_side_is_declared(norm_env):
-    """🔴 THE assertion the withdrawn design could not make.
-
-    Left column dirty, right column clean, declaration on the LEFT ONLY. All three
-    left rows whose lot is the same physical lot must find the one right row.
-
-    A fold applied to the left only would produce 'CL-2601-001' on the left and leave
-    'CL-2601-001' on the right - which happens to match here - so the fixture also
-    carries row C, already clean on BOTH sides. A fold applied to the RIGHT only would
-    break row C. Only folding both sides matches all three.
-    """
-    db = norm_env
-    _seed_asymmetric(db)
-    from chain import legacy_materialized_join as vje
-
-    rule = _rule(True)
-    left = models.DYNAMIC_TABLES["notnorm_test_log"]
-    row_ids = [r[0] for r in db.query(left.row_id).all()]
-    out = vje.execute_rule(db, rule, row_ids)
-
-    by_key = {}
-    for rid, hit in out.items():
-        key = db.query(left.business_key_val).filter(left.row_id == rid).scalar()
-        by_key[key] = hit
-    assert by_key["A_1"]["values"]["wafer_id"] == "W-1", "the dirty '_' row lost its match"
-    assert by_key["B_1"]["values"]["wafer_id"] == "W-1", "the dirty '.' row lost its match"
-    assert by_key["C_1"]["values"]["wafer_id"] == "W-1", (
-        "the ALREADY-CLEAN row lost its match - that is what a one-sided fold does")
-    assert by_key["D_1"]["matched"] is False, (
-        "a lot with no right row must stay unmatched; if this matched, the fold is "
-        "merging things that are not the same")
+# ⚰️ [판정 652 3걸음] `test_both_sides_fold_when_only_the_dirty_side_is_declared` 가 여기 있었습니다 — 읽기 시점 «엔진»(`execute_rule`)으로 행이 실제로 만나는지를 쟀다. 그 엔진이 걷혔고,
+#    「한쪽만 선언돼도 양쪽이 접힌다」는 `notation_norm.join_pair_rules` 가 지는 성질이라
+#    그 함수를 직접 재는 줄들이 이 파일에 남아 있다.
 
 
-def test_without_the_declaration_the_dirty_rows_do_not_match(norm_env, tmp_path,
-                                                             monkeypatch):
-    """The fixture's axis is live - proven by removing the declaration, not assumed.
-
-    (server-pm lesson: a test that would pass against an implementation which folds
-    nothing certifies nothing.)
-    """
-    db = norm_env
-    _seed_asymmetric(db)
-    _write_decl(tmp_path, monkeypatch, {"columns": {}})
-    from chain import legacy_materialized_join as vje
-
-    rule = _rule(False)
-    left = models.DYNAMIC_TABLES["notnorm_test_log"]
-    row_ids = [r[0] for r in db.query(left.row_id).all()]
-    out = vje.execute_rule(db, rule, row_ids)
-    matched = {db.query(left.business_key_val).filter(left.row_id == rid).scalar()
-               for rid, hit in out.items() if hit["matched"]}
-    assert matched == {"C_1"}, (
-        "unfolded, only the already-clean row matches. If more than that matched, the "
-        "previous test proves nothing.")
+# ⚰️ [판정 652 3걸음] `test_without_the_declaration_the_dirty_rows_do_not_match` 가 여기 있었습니다 — 위와 같은 엔진의 «대조군»이다. 엔진과 같이 간다.
 
 
-def test_there_is_no_call_shape_that_folds_one_side(norm_env):
-    """Structural: the ON clause builder takes no per-side fold argument.
-
-    Asserted rather than reviewed, because "both sides" is the whole redesign and a
-    future refactor that adds a `fold_left=` parameter would reintroduce the defect
-    while every behavioural test still passed.
-    """
-    import inspect
-    from chain import legacy_materialized_join as vje
-
-    params = list(inspect.signature(vje.join_onclause).parameters)
-    assert params == ["left_model", "right_model", "rule"], (
-        f"join_onclause grew parameters {params}. If one of them can select which side "
-        f"folds, the silent-match-drop defect is back.")
-    # ⚰️ IT USED TO BE THREE, because `resolved_expression` built an ON clause too -
-    # the read-time half, retired in S-283. The property is unchanged and the number
-    # is not: every consumer that still exists goes through this one builder, so they
-    # cannot disagree about the row set.
-    src = inspect.getsource(vje)
-    assert src.count("join_onclause(") >= 2, (
-        "execute_rule must build its ON clause here, and so must its definition")
+# ⚰️ [판정 652 3걸음] `test_there_is_no_call_shape_that_folds_one_side` 가 여기 있었습니다 — `join_onclause` 의 «시그니처»를 재서 「한쪽만 접는 인자가 생기지 않는다」를 지켰다.
+#    그 좌석이 걷혔다. 🔴 성질은 그대로이고 자리가 바뀌었다 — `join_into._pairs` 가 폴드를
+#    «두 표의 선언에서» 계산하고 그 독스트링이 「either side declared means both sides
+#    folded」를 적고 있다. 인자로 고를 수 있는 축이 애초에 없다.
 
 
 # ---------------------------------------------------------------------------
@@ -440,7 +363,7 @@ def test_there_is_no_call_shape_that_folds_one_side(norm_env):
 
 def test_the_required_ddl_becomes_a_functional_index(norm_env):
     """A folded key needs a functional UNIQUE index, and the DDL says the fold."""
-    from chain import legacy_join_declaration as vjc
+    from chain import join_key_index as vjc
 
     fold = notation_norm.join_pair_rules(
         "notnorm_test_log", "core_lot", "notnorm_test_ref", "core_lot")
@@ -470,8 +393,8 @@ def test_the_ddl_and_the_query_expression_come_from_one_spelling():
     `coalesce` added to the index but not to the join. Both halves are therefore taken from
     the functions that actually produce them.
     """
-    from chain import legacy_join_declaration as vjc
-    from chain import legacy_materialized_join as vje
+    from chain import join_into as vje
+    from chain import join_key_index as vjc
     from sqlalchemy import Column, MetaData, String, Table
     from sqlalchemy.dialects import postgresql
 
@@ -479,8 +402,9 @@ def test_the_ddl_and_the_query_expression_come_from_one_spelling():
     metadata = MetaData()
     left = Table("notnorm_left", metadata, Column("core_lot", String))
     right = Table("notnorm_right", metadata, Column("core_lot", String))
-    clause = vje.join_onclause(left.c, right.c, {"join_key": [
-        {"left": "core_lot", "right": "core_lot", "fold": rules}]})
+    # ⚰️ [652 3걸음] 질의 쪽 반쪽은 `join_onclause` 였다 — 읽기 시점 비교다. 그 좌석이
+    #    문법과 같이 갔고, 실조인이 키를 접는 자리에서 «같은 두 반쪽»을 견준다.
+    clause = vje._folded(left.c.core_lot, rules) == vje._folded(right.c.core_lot, rules)
     compiled = str(clause.compile(dialect=postgresql.dialect(),
                                   compile_kwargs={"literal_binds": True}))
     ddl_expr = vjc.index_key_expression("core_lot", rules)
@@ -502,7 +426,7 @@ def test_normalize_index_expression_folds_what_postgres_adds():
     `idx_suggest_graph_nodes_identity_key` on the live database (measured 2026-08-04) -
     so the cast-and-paren noise this has to absorb is measured, not imagined.
     """
-    from chain import legacy_join_declaration as vjc
+    from chain import join_key_index as vjc
     assert vjc.normalize_index_expression("lower((identity_key)::text)") == \
         vjc.normalize_index_expression('lower("identity_key")')
     assert vjc.normalize_index_expression("(core_lot)") == "core_lot"
@@ -514,13 +438,14 @@ def test_normalize_index_expression_folds_what_postgres_adds():
 
 def test_the_gate_says_nothing_on_a_dialect_it_cannot_read(norm_env):
     """Not PostgreSQL -> None -> refused. Safe-direction ignorance, unchanged."""
-    from chain import legacy_join_declaration as vjc
+    from chain import join_key_index as vjc
     fold = notation_norm.join_pair_rules(
         "notnorm_test_log", "core_lot", "notnorm_test_ref", "core_lot")
     assert vjc.unique_index_covering(norm_env, "notnorm_test_ref", ["core_lot"],
                                      [fold]) is None
-    rule = _rule(True)
-    assert vjc.verify_uniqueness(norm_env, rule)["code"] == vjc.CODE_NO_UNIQUE_INDEX
+    # ⚰️ [652 3걸음] 둘째 줄은 읽기 시점 «검증기»(`verify_uniqueness`)의 코드를 봤다. 그
+    #    좌석이 걷혔고, 「모르면 거절」은 위 한 줄이 그대로 진다 — 탐침이 None 을 내면
+    #    승인이 서지 않는다는 것이 이 성질의 전부다.
 
 
 # ---------------------------------------------------------------------------

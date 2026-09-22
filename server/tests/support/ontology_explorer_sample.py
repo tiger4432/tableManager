@@ -3,14 +3,23 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
 
-from chain import legacy_join_declaration as virtual_join_config_module
+from verified_join_contract import _bind_physical_verifier_issuer
 
 from ledger.implementations import trusted_implementations
 from ledger.setup_bundle import (
     load_physical_catalog, load_setup_bundle, require_ready_bundle)
 from ledger.setup_registry import compile_setup_snapshot
+
+
+_ISSUER = _bind_physical_verifier_issuer()
+
+
+def load_verified_rules(rules):
+    """⚠️ 이 «이름»이어야 증서가 발급된다 — 계약은 지금 도는 프레임이 이 모듈의
+    `load_verified_rules` 인지를 본다 (판정 364)."""
+    return [_ISSUER.issue(dict(rule, unique_index="uq_dt_inventory_job"))
+            for rule in rules]
 
 
 SAMPLE_ROOT = (
@@ -46,19 +55,10 @@ def load_transfer_sample_setup(_root: str | Path = SAMPLE_ROOT):
         "expose": list(rule["expose"]),
         "join_cardinality": rule["join_cardinality"],
     }]
-    with (
-        patch.object(
-            virtual_join_config_module, "load_virtual_join_rules",
-            return_value=normalized),
-        patch.object(
-            virtual_join_config_module, "verify_uniqueness",
-            return_value={
-                "unique_index": "uq_dt_inventory_job",
-                "refused": False,
-                "code": None,
-            }),
-    ):
-        verified = tuple(virtual_join_config_module.load_verified_rules(object()))
+    # ⚰️ [판정 652 3걸음] 여기가 «생산 발급 경로»(읽기 시점 조인 로더)를 빌려 썼다. 그
+    #    문법이 걷혀 발급자가 없고, 이 샘플이 재는 것은 로더가 아니라 «원장 스냅샷»이다.
+    #    권한은 이름이 아니라 «도는 프레임»에 걸려 있으므로(판정 364) 아래 문을 쓴다.
+    verified = tuple(load_verified_rules(normalized))
     # The sample names the GENERIC implementations the repository ships; the trusted set
     # is discovered from those classes rather than restated here.  This support module
     # used to carry a fourth hand-kept trust list, which is how the sample came to name

@@ -10,7 +10,7 @@ to backfill.
 
 Consumers apply the SAME fold to BOTH sides of the comparison, in SQL, at query
 time. Today the consumer is virtual-join key resolution
-(`chain.legacy_materialized_join`); the fold expression itself is consumer-agnostic.
+(⚰️ 그 소비자는 652 3걸음에 걷혔다); the fold expression itself is consumer-agnostic.
 
 [Why the stored derived column was withdrawn - user ruling 2026-08-04]
 The first shipped shape (92b8d6f) put the folded value in a physical `<col>_norm`
@@ -212,7 +212,7 @@ _check_pattern_shape()
 _SEPARATOR_RUN_RE = re.compile(SEPARATOR_PATTERN)
 _CASE_TABLE = str.maketrans(CASE_SOURCE_ALPHABET, CASE_TARGET_ALPHABET)
 
-# --- Rejection codes (mirrors chain.legacy_join_declaration's {scope,subject,detail,code})
+# --- Rejection codes ({scope,subject,detail,code} — 체인 쪽 거절과 같은 모양)
 
 CODE_SHAPE = "shape"
 CODE_ZERO_PAD_UNIMPLEMENTED = "zero_pad_unimplemented"
@@ -407,7 +407,7 @@ def fold_notation_sql(text_expr, rules: dict):
 # when the column is not text. Those three pieces were spelled in FOUR places:
 # `chain.join_key_index.index_key_expression` (the DDL and every probe built on it;
 # S-283 moved it out of `virtual_join` before that package was deleted),
-# `chain.legacy_materialized_join.join_onclause` (the write join's ON clause), `chain.join_into._folded`
+# ⚰️ 읽기 시점 ON 절(652 3걸음에 걷힘), `chain.join_into._folded`
 # (the write-time join), and each of them decided the type question on its own - which is
 # how a `number` key answered an operator with 「invalid input syntax for type double
 # precision: ""」 at one seat while another seat had already learned to cast.
@@ -789,7 +789,7 @@ def join_pair_rules(left_table: str, left_column: str,
     must be folded when this column is compared, and the union is the smallest
     set satisfying both declarations. Union is also the only monotone choice -
     it can only merge more, never drop a match - and the effective set is
-    reported per declaration by `/admin/config/virtual-join/verify`, so it is
+    reported per declaration by `/admin/chain/join/verify`, so it is
     visible rather than inferred.
     """
     left = rules_for_column(left_table, left_column)

@@ -39,9 +39,12 @@ logger = logging.getLogger("Chain.Builtins")
 _SYNTHESIS_HALVES = (
     ("enrichment", "dedup and auto-confirm rules are NOT running",
      "중복 제거·자동 확정 규칙이 돌지 않습니다"),
-    ("virtual join", "materialised join rules are NOT running",
-     "표에 쓰는 조인 규칙이 돌지 않습니다"),
 )
+# ⚰️ [판정 652 3걸음] THE SECOND ROW WAS 「virtual join」. 그 문법이 은퇴하면서 그 반쪽이
+#    짓던 규칙이 «0» 이 됐다 — 실조인은 `chain_rules.json` 에 선언되어 로더가 그대로
+#    실으므로 합성될 것이 없다. 표가 둘이었던 이유는 「반쪽이 가끔 다른 낱말로 보고되는 것」을
+#    막기 위해서였고, 반쪽이 하나면 그 위험이 없다. 모양은 남긴다 — 둘째가 생기면
+#    그때 다시 그 자리로 들어오면 된다.
 
 
 def synthesis_half_says(half: str) -> str:
@@ -75,12 +78,8 @@ def synthesize_chain_rules(known_tables: dict = None, failures: list = None) -> 
         from chain import enrichment
         return enrichment.config.load_enrichment_chain_rules(known_tables=known_tables)
 
-    def _joins():
-        from chain import legacy_join_declaration
-        return legacy_join_declaration.synthesized_join_chain_rules(known_tables=known_tables)
-
     rules = []
-    for (half, stops, says), produce in zip(_SYNTHESIS_HALVES, (_enrichment, _joins)):
+    for (half, stops, says), produce in zip(_SYNTHESIS_HALVES, (_enrichment,)):
         try:
             rules.extend(produce() or ())
         except Exception as exc:                                   # noqa: BLE001
@@ -108,10 +107,11 @@ def written_in(rule) -> str:
     with its origin and kind, so a count of kinds had no reader left.
     """
     from chain import enrichment
-    from chain import legacy_join_declaration
 
-    if (rule or {}).get("mapper") == legacy_join_declaration.JOIN_MAPPER:
-        return os.path.basename(legacy_join_declaration.VIRTUAL_JOIN_RULES_PATH)
+    # ⚰️ [판정 652 3걸음] 이 질문은 반쪽이 «둘»일 때 갈렸다 — `JOIN_MAPPER` 를 달면
+    #    `virtual_join_rules.json`, 아니면 인리치 파일. 그 문법이 은퇴해 합성되는 것이
+    #    한 반쪽뿐이라 답도 하나다. 자리는 남긴다 — 이름 중복 거절이 「어느 파일을
+    #    열어라」를 말하려면 여전히 이 답이 필요하고, 반쪽이 둘로 다시 늘면 여기에 심는다.
     return os.path.basename(enrichment.config.ENRICHMENT_RULES_PATH)
 
 
@@ -147,11 +147,11 @@ def written_in(rule) -> str:
 #        So the fact is the same class as `stamps_origin`: about the WORK, not the
 #        address, and it belongs beside the template rather than being on its way out.
 #     BUILTIN_HANDS/HANDS -> nowhere. One calling convention has nothing to record.
-#     _run_join           -> nowhere. 판정 580: its execution half was already unreachable;
-#                            the READING half (`legacy_materialized_join.rules_for_right`)
-#                            is alive in the write path's uniqueness guard and is NOT
-#                            touched - a guard that cannot read its declaration refuses no
-#                            row, silently.
+#     _run_join           -> nowhere. 판정 580: its execution half was already unreachable,
+#                            and the READING half it named (`rules_for_right`) went with
+#                            its grammar in 652 step three. The write path's uniqueness
+#                            guard now reads `right_keys_for`, which walks the unified
+#                            declarations - one producer, because there is one grammar.
 
 
 def ensure_declared_unique_keys(db, rules) -> dict:
@@ -454,11 +454,9 @@ def reset_right_key_cache():
     do not get. Keyed to loading instead, every process gets the same rule - the answer is
     good until that process reads the declarations again.
 
-    ⚠️ [판정 677 ②] AND THE OTHER HALF STILL CARRIES ITS CLOCK. 「no process pays a clock」
-    stood here and was false the day it was written: `legacy_materialized_join` answers the
-    read-time half of this same question behind a 5-second TTL, and that TTL is untouched.
-    This is not a regression - it was 5 seconds before too - the false thing was the claim.
-    그 시계는 이 문법과 «같이» 죽습니다 (652 3걸음).
+    ⚰️ [판정 677 ② · 652 3걸음] 「no process pays a clock」 stood here, was false when
+    written, was corrected to name the OTHER half's 5-second TTL, and is now simply true:
+    that half went with its grammar. 예고한 대로 «같은 커밋»에서 갔습니다.
 
     ⚠️ 창이 «길어집니다», 모양은 안 바뀝니다. 인덱스가 걷혔는데 맵이 「있다」로 낡으면 그물이
     파이썬에서 거절하고 그 거절은 `operator_line` 으로 표·컬럼·키·다음 행동을 «이름 대어»
@@ -476,10 +474,9 @@ def right_keys_for(db, table_name: str) -> list:
     덮는 UNIQUE 인덱스가 «실제로» 있다」는 뜻이고, 인덱스가 없으면 깨질 제약도 없다. 모양만
     통과한 선언으로 행을 거절하면 데이터베이스가 받아 줬을 행을 «가드가» 버린다.
 
-    🔴 [판정 652] 입력이 «실조인 선언»이다. 읽기 시점 조인 문법이 은퇴하면서, 이 답을 주던
-    `legacy_materialized_join.rules_for_right` 도 같이 간다. 값은 같은 세 개이고, 나오는 곳이
-    `join_into` 가 이미 계산하는 폴드로 바뀐다 — 인덱스와 조인이 «같은 식»에서 나와야 하고,
-    두 번째 계산은 판정 397 이 없앤 두 번째 저자다.
+    🔴 [판정 652] 입력이 «실조인 선언»뿐이다. 이 답을 주던 둘째 생산자(`rules_for_right`)가
+    자기 문법과 같이 갔고, 폴드는 `join_into` 가 이미 계산한 것에서 온다 — 인덱스와 조인이
+    «같은 식»에서 나와야 하고, 두 번째 계산은 판정 397 이 없앤 두 번째 저자다.
 
     ⚠️ 한 프로세스당 «첫 배치» 한 번만 판다: 파일 1 + pg_index N. 선언이 0 이면 N 도 0 이라
     호출이 «아예» 없다. 그 뒤 모든 배치는 I/O 0 이다.
@@ -519,58 +516,12 @@ def right_keys_for(db, table_name: str) -> list:
             probe.close()
         _RIGHT_KEYS["by_table"] = by_table
         _RIGHT_KEYS["loaded"] = True
-    answer = list(_RIGHT_KEYS["by_table"].get(table_name) or [])
-    # 🔴 [Q-192 의 교훈] 아직 살아 있는 읽기 시점 조인의 유일성도 «같이» 듭니다. 그 좌석은
-    #    자기 캐시와 «자기 세션»을 들고 있어 여기서 아무것도 열지 않습니다 - 그리고 그
-    #    문법이 죽는 커밋에서 이 한 줄이 같이 죽습니다.
-    return answer + _legacy_right_keys(
-        table_name,
-        {(table_name, tuple(cols), tuple(folds)) for _n, cols, folds in answer})
+    # ⚰️ [Q-192 · 판정 652 3걸음] 여기서 «둘째 생산자»(읽기 시점 조인이 지고 있던 유일성)를
+    #    같이 들었다. 그 문법이 은퇴해 한 표가 유일성을 지는 길이 하나뿐이라, 그 줄과
+    #    `_legacy_right_keys` 가 예고한 대로 «같은 커밋»에서 갔다.
+    return list(_RIGHT_KEYS["by_table"].get(table_name) or [])
 
 
-def _legacy_right_keys(table_name: str, seen: set) -> list:
-    """아직 살아 있는 «읽기 시점» 조인이 지고 있는 유일성도 같이 든다.
-
-    🔴 [판정 677 ③] AND IT TAKES NO SESSION, BECAUSE THE SEAT BELOW OPENS ITS OWN. A
-    `SessionLocal()` used to be opened here by the caller and handed down - on the write
-    path, once per BATCH, not once per load - and `rules_for_right` never touched it:
-    `_verified_by_left_table` ignores its `db` argument and opens its own connection,
-    because the 2026-09-15 outage was caused by verifying declarations in whoever's
-    session happened to miss the cache. So the argument was paying for a connection that
-    answered nothing. It is gone by NAME as well as by value: an unused `probe` parameter
-    reads as 「a session goes in here」 to the next person, which is how it came back once
-    already.
-
-    🔴 [Q-192 의 교훈을 같은 라운드에 두 번 쓰지 않기 위해] BOTH PRODUCERS OR NEITHER. The
-    duplicate net protects a uniqueness a table CARRIES, and until 판정 652 finishes there
-    are two grammars that can make a table carry one. Moving the net to the real join alone
-    would leave a live read-time join's uniqueness unprotected - which is the same half-set
-    mistake the retraction made earlier today, pointed at writes instead of indexes.
-
-    ⚰️ AND IT DIES WITH ITS GRAMMAR, IN THAT COMMIT. 652 step one deletes the read-time
-    loader; this goes with it. Removing it sooner is the half state, removing it later
-    leaves a second author of the same answer.
-
-    ⚠️ 이 박스에서는 그 문법의 선언 다섯이 전부 거절돼 «0» 을 냅니다. 그 0 은 설치 하나를
-    돌리는 곳에 대해 아무 말도 하지 않습니다 - 그래서 수가 아니라 구조로 답합니다.
-    """
-    from chain import legacy_materialized_join
-
-    out = []
-    # ⚠️ `None` 은 게으름이 아니라 «사실»입니다 — 이 인자는 읽히지 않습니다(위 참조).
-    #    죽을 모듈의 시그니처를 오늘 고치는 것은 3걸음에 지울 코드에 손대는 것이라
-    #    판정 677 이 금지했습니다.
-    for rule in legacy_materialized_join.rules_for_right(None, table_name) or ():
-        columns = list((rule or {}).get("right_columns") or ())
-        folds = list((rule or {}).get("right_folds") or ())
-        if not columns:
-            continue
-        shape = (table_name, tuple(columns), tuple(folds))
-        if shape in seen:
-            continue
-        seen.add(shape)
-        out.append((rule.get("name") or "<unnamed>", columns, folds))
-    return out
 
 
 def retract_unrequired_indexes_once(db, known_tables: dict = None) -> dict:
@@ -598,40 +549,13 @@ def retract_unrequired_indexes_once(db, known_tables: dict = None) -> dict:
     """
     from chain import unique_key
 
+    # ⚰️ [판정 652 3걸음] 여기에 `| _legacy_required_index_names(...)` 가 있었다. 문법이
+    #    «둘»일 때 한쪽만 든 요구 집합은 「조금 덜 회수」가 아니라 «다른 쪽의 살아 있는
+    #    인덱스»를 걷는다(S-248 의 장애). 이제 `uq_vjoin_` 을 요구하는 문법이 하나라
+    #    이 한 줄이 전수다.
     return unique_key.retract_unrequired_once(
-        db, declared_unique_index_names(known_tables=known_tables)
-        | _legacy_required_index_names(known_tables=known_tables))
+        db, declared_unique_index_names(known_tables=known_tables))
 
 
-def _legacy_required_index_names(known_tables: dict = None) -> set:
-    """아직 살아 있는 «읽기 시점» 조인 선언이 요구하는 `uq_vjoin_*` 이름.
-
-    🔴 [Q-192] BOTH PRODUCERS OR NEITHER, AND THIS HALF IS NOT GONE YET. Two grammars write
-    declarations that require an index and BOTH indexes wear the `uq_vjoin_` prefix, so the
-    retraction sweeps them together. A required set holding only one half does not retract a
-    little less - it retracts the OTHER half's live indexes, which is S-248's outage (23505
-    on every insert, the group failing permanently) pointed at the grammar that still runs.
-    Measured by adversarial QA on the commit that moved the seat: the move carried the
-    retraction across and left this half behind.
-
-    ⚰️ AND IT DIES WITH ITS GRAMMAR, NOT BEFORE. 판정 652 retires the read-time join; when
-    that declaration file and its loader go, this function goes IN THE SAME COMMIT. Removing
-    it earlier is precisely the half-set this docstring is about.
-
-    ⚠️ NAMES ONLY, NO DATABASE. `load_virtual_join_rules` validates SHAPE and approves
-    nothing, so this costs a file read and no session - the retraction's caller already holds
-    the only session in play.
-    """
-    from chain import join_key_index, legacy_join_declaration
-
-    names = set()
-    for rule in legacy_join_declaration.load_virtual_join_rules(
-            known_tables=known_tables) or ():
-        table = (rule or {}).get("right_table")
-        columns = (rule or {}).get("right_columns")
-        if table and columns:
-            names.add(join_key_index.required_index_name(
-                table, columns, rule.get("right_folds")))
-    return names
 
 

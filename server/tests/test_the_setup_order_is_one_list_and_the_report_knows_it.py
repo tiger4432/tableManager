@@ -36,13 +36,21 @@ def test_the_prerequisites_are_a_ROOTED_TREE_and_not_a_line():
     so an installation with no virtual joins - which is legitimate - would show the ledger
     permanently blocked. The document's own 「앞」 lines are the canon and they branch from ①.
 
-    ⚠️ ④'s prerequisite is NOT A STEP. It is the right-hand table's UNIQUE index, a DB state,
-    and its absence makes that step refuse itself with `no_unique_index`. Writing it as a
-    step would invent a dependency that does not exist.
+    ⚰️ [판정 652 3걸음] SIX BECAME FIVE, AND THE TREE IS THE SAME TREE. The step that went
+    was ④ 가상 조인; the join is now a DECLARATION inside ② 파생 (`derive: {kind: "join"}`),
+    which is where it always belonged — 「같은 개념의 다른 선언」, not a kind of its own.
+    🔴 THE NUMBERS ARE RE-STRUCK RATHER THAN LEFT WITH A HOLE, because a gap sends an
+    operator looking for a step that does not exist. Every surviving `after` still points at
+    the same PARENT it did (원장 <- ①, 걷기 좌석 <- 원장); only the labels moved.
+
+    ⚠️ AND THE PREREQUISITE THAT WAS NOT A STEP IS STILL NOT ONE. It was the right-hand
+    table's UNIQUE index — a DB state, whose absence makes that declaration refuse ITSELF
+    rather than block a later step. That survives the renumber because it was never in this
+    list; writing it here would invent a dependency that does not exist.
     """
     assert {s["step"]: s["after"] for s in crr.SETUP_STEPS} == {
-        1: None, 2: 1, 3: 1, 4: 1, 5: 1, 6: 5}
-    assert [s["step"] for s in crr.SETUP_STEPS] == [1, 2, 3, 4, 5, 6]
+        1: None, 2: 1, 3: 1, 4: 1, 5: 4}
+    assert [s["step"] for s in crr.SETUP_STEPS] == [1, 2, 3, 4, 5]
 
 
 def test_every_step_names_a_domain_and_no_domain_takes_two_steps():
@@ -56,7 +64,7 @@ def test_the_order_travels_with_the_report_as_vocabulary():
     would drift from this list, and the drift would not error — it would just label a step
     wrongly, which is the failure this whole report exists to avoid."""
     vocabulary = crr.resolve_report([crr.DOMAIN_CATALOG])["vocabulary"]
-    assert [s["step"] for s in vocabulary["setup_steps"]] == [1, 2, 3, 4, 5, 6]
+    assert [s["step"] for s in vocabulary["setup_steps"]] == [1, 2, 3, 4, 5]
     assert all(s["name"] for s in vocabulary["setup_steps"])
 
 
@@ -89,11 +97,16 @@ def test_a_step_whose_predecessor_stands_is_not_blocked(monkeypatch):
     assert _domain(report, crr.DOMAIN_CHAIN)["blocked_by"] is None
 
 
-def test_the_ledger_is_not_blocked_by_a_virtual_join_it_does_not_need():
-    """🔴 THE FALSE BLOCK THIS LIST FIRST PRODUCED (판정 317). Virtual join is not the
-    ledger's prerequisite - the catalogue is - so a box that declares no materialised join
-    must not show the ledger as blocked. Its OWN refusals stay in its own populations, which
-    is where an operator should read them."""
+def test_the_ledger_is_not_blocked_by_a_step_it_does_not_need():
+    """🔴 THE FALSE BLOCK THIS LIST FIRST PRODUCED (판정 317). The ledger's prerequisite is
+    the CATALOGUE, not whatever step happens to sit above it in the numbering, so a box that
+    declares none of the middle steps must not show the ledger as blocked. Its OWN refusals
+    stay in its own populations, which is where an operator should read them.
+
+    ⚰️ [652 3걸음] 이 이름은 「...by_a_virtual_join_it_does_not_need」였습니다. 317 의 반례를
+    낸 것이 그 걸음이었기 때문인데, 그 걸음이 은퇴하면서 «이름이 없는 것을 가리키게» 됐습니다.
+    🔴 죽은 것은 사례이고 축은 그대로라 이름을 «부류»로 올렸습니다 — 걸음 하나를 다시
+    번호 매길 때마다 이 줄이 다시 낡으면 그것이 결함입니다."""
     report = crr.resolve_report()
     ledger = _domain(report, crr.DOMAIN_LEDGER)
     assert ledger is not None

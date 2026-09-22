@@ -3,7 +3,7 @@
 
 Owner: 「chain 이 너무 거미줄 같아」. The web is not in the code; it is in the fact that ONE
 flow is written across FOUR files — `chain_rules.json`, `enrichment_rules.json`,
-`virtual_join_rules.json` and `ledger_config.json` — and no screen has ever put them on one
+`ledger_config.json` — and no screen has ever put them on one
 picture. An operator asking 「what happens when this table is written?」 has to hold four
 files in their head and join them by hand.
 
@@ -98,7 +98,7 @@ def _mapper_edges(rules):
             # SECOND reader — the raw file — so it could tell a written rule from a
             # synthesized one; that reader is the 「같은 기능 두 경로」 this round removes, and
             # per-file counts come from here instead. `mapper` is the only kind where the
-            # question is ambiguous: `vjoin` and `ledger` name their own file by kind.
+            # question is ambiguous: `ledger` names its own file by kind.
             "origin": rule.get("origin") or "file",
         }
         if rule.get("trigger_columns"):
@@ -179,7 +179,7 @@ def _enrich_edges(rules):
     return edges
 
 
-def _contested(chain_rules, enrichment_rules, vjoin_rules):
+def _contested(chain_rules, enrichment_rules):
     """Cells more than one declaration writes — a VALUE, not an error (소유자 「이 둘이
     충돌 안 나?」).
 
@@ -189,11 +189,11 @@ def _contested(chain_rules, enrichment_rules, vjoin_rules):
     operator debugging a value has to know that a second declaration also writes there,
     and today that fact is spread across three files.
 
-    ⚠️ THE THREE WRITERS ARE THE THREE THAT REALLY WRITE, and a virtual join is included
-    deliberately even though it writes nothing to disk: it PRESENTS a column on the left
-    table, so a reader of that cell sees the join's value where a mapper's value may also
-    be. For a `collide` column those are the same cell with two sources, which is exactly
-    the question being asked.
+    ⚰️ [판정 652 3걸음] A THIRD WRITER STOOD HERE — the read-time virtual join, included
+    deliberately because it PRESENTED a column on the left table without writing it, so a
+    reader of that cell saw the join's value where a mapper's value might also be. A join
+    WRITES its columns now, so it arrives through `chain_rules` above like any other rule
+    and the special case has nothing left to say.
     """
     writers = {}
 
@@ -213,10 +213,6 @@ def _contested(chain_rules, enrichment_rules, vjoin_rules):
     for rule in enrichment_rules:
         for column in rule.get("target_fields") or ():
             _claim(rule.get("derived_table"), column, rule.get("name"))
-    for rule in vjoin_rules:
-        for column in rule.get("expose") or ():
-            _claim(rule.get("left_table"), column, rule.get("name"))
-
     return [
         {"table": table, "column": column, "writers": sorted(who)}
         for (table, column), who in sorted(writers.items())
@@ -243,61 +239,11 @@ def _contested_tables(chain_rules, enrichment_rules):
             for table, who in sorted(writers.items()) if len(who) > 1]
 
 
-def _vjoin_edges(db, rules):
-    """③ `virtual_join_rules`: the right table feeds the left one, at read time.
-
-    🔴 A MATERIALISED RULE IS NOT DRAWN HERE (S-189 ⓒ). It is a chain rule now — synthesised
-    as `builtin:join` — so `_mapper_edges` above already draws it from the loader, carrying
-    its `origin: synthesized:<name>`. Drawing it in both places would put TWO arrows between
-    the same pair of tables for one declaration, and a reader counting arrows would see a
-    flow that does not exist.
-
-⚰️ THIS SAID 「THE READ-TIME RULES STAY, and on this box that is both of them」 AND
-    BOTH HALVES OF THAT ARE NOW WRONG. It was not an aside - it was the PREMISE of the
-    arrows drawn below, so a reader took them for a flow that still runs everywhere.
-
-    🔴 THEY DO NOT ALL STAY. A read-time join written in the UNIFIED file is refused by
-    name (`rule_shape.READ_TIME_RETIRED`, 판정 440 ①), so those never reach this loop. What
-    still reaches it is a declaration in the legacy `virtual_join_rules.json`; 판정 446
-    retires that doorway too, and when it lands this loop is handed an empty list.
-
-    ⛔ AND THE SECOND HALF WAS A COUNT OF THIS BOX, IN A COMMENT. 「both of them」 described
-    a gitignored file, so it said nothing about any other installation and went stale the
-    moment that file changed - which is the thing this repository forbids in answers and had
-    written into a docstring.
-
-    🔴 THE LOOP IS KEPT, AND THE ARROW IT DRAWS IS WHY. A read-time arrow means the right
-    table feeds the left WITHOUT writing - the distinction a materialised rule stops making -
-    so while any rule still reaches here the picture tells the operator which kind it is.
-    What it must never do is draw an arrow for a declaration the product refused, and it
-    cannot: every refusal happens in the loader, above this.
-    """
-    from chain import legacy_join_declaration as vjc
-
-    edges = []
-    for rule in rules:
-        if rule.get("materialize"):
-            continue
-        left, right = rule.get("left_table"), rule.get("right_table")
-        if not (left and right):
-            continue
-        # ⛔ THE INDEX IS ASKED OF THE DATABASE, NOT ASSUMED FROM THE DECLARATION. A join
-        # is only in effect when a UNIQUE index really covers its right key, so a picture
-        # that drew every declared rule as live would show joins that are not happening.
-        try:
-            index = vjc.unique_index_covering(
-                db, right, rule.get("right_columns") or [],
-                rule.get("right_folds") or [])
-        except Exception:
-            index = None
-        edges.append({
-            "kind": "vjoin", "from": right, "to": left,
-            "rule": rule.get("name"),
-            "enabled": bool(rule.get("enabled", True)),
-            "unique_index": index,
-            "expose": list(rule.get("expose") or ()),
-        })
-    return edges
+# ⚰️ [판정 652 3걸음] `_vjoin_edges` STOOD HERE and drew the third quarter: 「the right table
+#    feeds the left AT READ TIME」 - an arrow that meant 「no write happens」. That distinction
+#    went with the grammar, because a join writes into the table now (`into.table`), and
+#    `_mapper_edges` above already draws it from the loader with its own origin. The picture
+#    lost a FILE, not a concept.
 
 
 def _ledger_edges(db, setup):
@@ -387,7 +333,6 @@ def chain_graph(db):
     """The four declarations on one picture. Reads only; decides nothing."""
     from chain import ingestion_worker as worker
     from chain import enrichment
-    from chain import legacy_join_declaration as vjc
     from database import crud
 
     catalogue = crud.TABLE_CONFIG or {}
@@ -402,11 +347,6 @@ def chain_graph(db):
         lambda rej: _enrich_declarations().declarations(
             known_tables=catalogue, rejections=rej),
         counts, unread, catalogue)
-    vjoin_rules = _quarter(
-        "virtual_joins",
-        lambda rej: vjc.load_virtual_join_rules(known_tables=catalogue, rejections=rej),
-        counts, unread, catalogue)
-
     setup = None
 
     def _load_ledger(_rej):
@@ -419,7 +359,7 @@ def chain_graph(db):
 
     edges = (_mapper_edges(chain_rules)
              + _enrich_edges(enrichment_rules)
-             + _vjoin_edges(db, vjoin_rules))
+)
     if setup is not None:
         edges += _ledger_edges(db, setup)
 
@@ -453,7 +393,7 @@ def chain_graph(db):
         "nodes": nodes,
         "edges": edges,
         "cycles": cycles,
-        "contested": _contested(chain_rules, enrichment_rules, vjoin_rules),
+        "contested": _contested(chain_rules, enrichment_rules),
         "contested_tables": _contested_tables(chain_rules, enrichment_rules),
         # The gate's number: what each file declared, so the picture can be checked
         # against the files rather than believed.

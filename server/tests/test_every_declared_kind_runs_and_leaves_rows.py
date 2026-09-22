@@ -34,7 +34,7 @@ if SERVER_DIR not in sys.path:
 
 import mapper_sdk                                                     # noqa: E402
 from chain import ingestion_worker as worker                          # noqa: E402
-from chain import dynamic_mappers, legacy_join_declaration            # noqa: E402
+from chain import dynamic_mappers                                     # noqa: E402
 from chain import rule_run, rule_shape                                # noqa: E402
 from database.database import Base                                    # noqa: E402
 from database import crud, models, schemas                            # noqa: E402
@@ -201,34 +201,18 @@ def test_a_file_mapper_declaration_writes_what_it_returned(db, tmp_path, monkeyp
         sys.modules.pop("kinds_probe_mapper", None)
 
 
-def test_a_materialized_virtual_join_writes_the_exposed_column(db, tmp_path):
-    """virtual_join_rules.json 의 `materialize: true` — 판정 581 keeps its own body because a
-    virtual join treats a colliding column absent-only, so folding it into `declared:join`
-    would overwrite a hand-edited value. Three implementations, one door."""
-    path = tmp_path / "virtual_join_rules.json"
-    path.write_text(json.dumps({"kinds_vjoin": {
-        "left_table": SRC, "right_table": DST,
-        "join_key": [{"left": "job", "right": "job"}], "expose": ["lot"],
-        "materialize": True, "max_rewrite_rows": 100, "enabled": True}}), encoding="utf-8")
-
-    rules = legacy_join_declaration.synthesized_join_chain_rules(
-        path=str(path), known_tables=crud.TABLE_CONFIG)
-
-    assert [r["name"] for r in rules] == ["virtual_join:kinds_vjoin"]
-    assert rules[0]["mapper"] == "declared:virtual_join"
-    assert _door(rules[0]) == "chain.dynamic_mappers._legacy_materialized_join"
-
-    _run(db, "vjoin", rules, SRC)
-
-    assert _values(db, SRC, "lot") == ["LOT"] * ROWS
+# ⚰️ [판정 652 3걸음] `test_a_materialized_virtual_join_writes_the_exposed_column` 이 여기
+#    있었습니다. 그 종류(`declared:virtual_join`)는 «선언 파일»이 사라져 더는 지어지지
+#    않습니다 — 조인은 `chain_rules.json` 의 `derive: {kind: "join"}` 하나로 선언되고 위의
+#    `test_a_join_declaration_writes_the_taken_column` 이 그것을 잽니다.
 
 
 def test_the_five_kinds_are_the_whole_of_what_the_product_builds():
-    """⚠️ THE CONTROL ON THIS FILE ITSELF. Four of the five names above are built by
+    """⚠️ THE CONTROL ON THIS FILE ITSELF. The names above are built by
     `dynamic_mappers`; if a fifth template appears, the tests above still pass and this file
     has quietly stopped being 「종류별로」. The remaining kind is an operator's own module,
     which has no name here to count."""
     mapper_sdk.discover()
 
     assert sorted(dynamic_mappers.TEMPLATES) == [
-        "declared:decide", "declared:enrich", "declared:join", "declared:virtual_join"]
+        "declared:decide", "declared:enrich", "declared:join"]

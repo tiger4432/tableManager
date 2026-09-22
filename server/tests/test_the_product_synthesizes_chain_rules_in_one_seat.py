@@ -27,7 +27,6 @@ if server_dir not in sys.path:
 
 from chain import synthesis                                                 # noqa: E402
 from chain import enrichment                                              # noqa: E402
-from chain import legacy_join_declaration as vjc                                     # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -48,14 +47,15 @@ def _chain_report_with(monkeypatch, dead_half):
     def boom(**k):
         raise RuntimeError("forced: %s" % dead_half)
 
-    if dead_half == "virtual join":
-        monkeypatch.setattr(vjc, "synthesized_join_chain_rules", boom)
-    else:
-        monkeypatch.setattr(enrichment.config, "load_enrichment_chain_rules", boom)
+    # ⚰️ [판정 652 3걸음] 여기 `if dead_half == "virtual join"` 갈래가 있었다. 합성되는
+    #    반쪽이 하나라 갈래가 «필요 없다** — 이름은 매개변수가 그대로 나른다.
+    monkeypatch.setattr(enrichment.config, "load_enrichment_chain_rules", boom)
     return rep._resolve_chain()
 
 
-@pytest.mark.parametrize("dead_half", ["virtual join", "enrichment"])
+# ⚰️ [판정 652 3걸음] 이 매개변수에 「virtual join」이 있었다. 합성되는 반쪽이 하나라
+#    남은 값도 하나이고, 표의 «모양»은 그대로여서 둘째가 생기면 그 자리로 들어온다.
+@pytest.mark.parametrize("dead_half", ["enrichment"])
 def test_the_report_names_the_half_that_died(monkeypatch, dead_half):
     """⚠️ BOTH HALVES, BECAUSE AN EMPTY CELL READS AS 「PASSED」. Testing one would leave
     the other's silence covered, and the two are symmetric only if both are wired.
@@ -74,7 +74,7 @@ def test_the_report_stops_calling_it_normal_while_a_half_is_dead(monkeypatch):
     표라면 이것이 정상입니다」 while the join half was gone. A file-level rejection above
     them does not repair that - 판정 453 ruled on exactly that shape.
     """
-    domain = _chain_report_with(monkeypatch, "virtual join")
+    domain = _chain_report_with(monkeypatch, "enrichment")
     normal = [e for e in domain.get("ineffective") or ()
               if "정상입니다" in str(e.get("detail") or "")]
 
@@ -100,28 +100,11 @@ def test_a_healthy_report_still_says_normal_and_names_no_half(monkeypatch):
                 if "불완전" in str(e.get("detail") or "")]
 
 
-def test_one_half_failing_does_not_take_the_other_down(monkeypatch):
-    """🔴 [판정 452 ②] THE TWO HALVES WERE ONE EXPRESSION. Anything raising in the
-    virtual-join half took the enrichment half with it, the caller logged a single line
-    about 「the enrichment and virtual-join files」 and carried on with NO synthesised rule
-    at all - dedup and auto-confirm included.
-
-    ⚠️ AND STEP 4 IS EXACTLY THAT FAILURE. Removing the `virtual_join` package makes that
-    import raise, so without this the removal would have read as 「this box declares no
-    enrichment」 - a silent loss wearing the shape of an empty declaration, which is the
-    class this repository keeps closing.
-    """
-    expected = list(enrichment.config.load_enrichment_chain_rules())
-    monkeypatch.setattr(vjc, "synthesized_join_chain_rules",
-                        lambda **k: (_ for _ in ()).throw(RuntimeError("package removed")))
-    failures = []
-
-    rules = synthesis.synthesize_chain_rules(failures=failures)
-
-    assert rules == expected, "the enrichment half did not survive the join half's failure"
-    assert [f["half"] for f in failures] == ["virtual join"]
-    assert "NOT running" in failures[0]["stops"], failures
-    assert "package removed" in failures[0]["error"]
+# ⚰️ [판정 652 3걸음] `test_one_half_failing_does_not_take_the_other_down` 이 여기 있었다 —
+#    판정 452 ②의 대조군으로, 조인 반쪽이 던져도 인리치 반쪽이 산다는 것을 쟀다. 합성되는
+#    반쪽이 하나가 되어 「다른 하나」가 없다. 🔴 감싸는 «모양»은 안 지웠다(`_SYNTHESIS_HALVES`
+#    를 도는 try/except 그대로): 둘째 반쪽이 생기는 날 그 대조군이 다시 설 자리가 있다.
+#    그리고 그 하나가 던져도 좌석이 안 터진다는 것은 바로 위 시험이 잰다.
 
 
 def test_the_other_direction_too_so_neither_half_is_privileged(monkeypatch):
@@ -130,14 +113,17 @@ def test_the_other_direction_too_so_neither_half_is_privileged(monkeypatch):
     actually wrapped - one `try` around the pair looks identical from the outside until the
     untested half is the one that raises.
     """
-    expected = list(vjc.synthesized_join_chain_rules())
+    # ⚰️ [판정 652 3걸음] 반쪽이 «둘»일 때 이 줄은 「조인 반쪽이 살아남나」를 쟀다. 반쪽이
+    #    하나가 된 지금 재는 것은 「그 하나가 던져도 좌석이 «안 터지고» 보고한다」이고,
+    #    감싸는 모양은 그대로라 표의 빈 칸이 생기지 않는다.
     monkeypatch.setattr(enrichment.config, "load_enrichment_chain_rules",
                         lambda **k: (_ for _ in ()).throw(RuntimeError("enrichment gone")))
     failures = []
 
     rules = synthesis.synthesize_chain_rules(failures=failures)
 
-    assert rules == expected, "the join half did not survive the enrichment half's failure"
+    assert rules == [], "a half that raised must not take the seat down with it"
+    assert [f["half"] for f in failures] == ["enrichment"], failures
     assert [f["half"] for f in failures] == ["enrichment"]
     assert "dedup" in failures[0]["stops"],         "the sentence does not name what stopped running: %r" % failures[0]["stops"]
 
@@ -166,20 +152,21 @@ def test_the_enrichment_half_is_byte_identical_through_the_seat():
     """🔴 THE GATE 판정 304 ASKED FOR. Same rules, same order, same cells — the seat only
     moved the CALL."""
     direct = enrichment.config.load_enrichment_chain_rules()
-    through = [r for r in synthesis.synthesize_chain_rules()
-               if not str(r.get("name") or "").startswith(vjc.JOIN_PREFIX)]
+    # ⚰️ 652 3걸음 전에는 여기서 조인 반쪽의 이름을 걸러 냈다. 합성되는 반쪽이 하나다.
+    through = list(synthesis.synthesize_chain_rules())
     assert through == direct
 
 
-def test_the_seat_emits_both_halves():
+def test_the_seat_emits_its_half_whole():
     names = {r["name"] for r in synthesis.synthesize_chain_rules()}
     # 🪦 [S-211 packaging] the local was called `enrichment`, which now shadows the
     #    PACKAGE on the same line. Renamed rather than aliased: the package is the
     #    thing being read here.
     from_enrichment = {r["name"]
                        for r in enrichment.config.load_enrichment_chain_rules()}
-    joins = {r["name"] for r in vjc.synthesized_join_chain_rules()}
-    assert from_enrichment <= names and joins <= names
+    # ⚰️ 652 3걸음: 여기서 조인 반쪽의 이름도 «같이» 셌다. 반쪽이 하나라 그 절이 갔고,
+    #    남은 단언은 그 하나가 «통째로» 나온다는 것이다.
+    assert from_enrichment == names
 
 
 def test_the_loader_calls_the_seat_and_not_a_half():
@@ -197,7 +184,7 @@ def test_the_loader_calls_the_seat_and_not_a_half():
 # 🪦 `test_the_boot_line_counts_the_three_kinds_apart` died with `synthesized_kind_counts`
 #    (S-234 ③): the 「Synthesized N (a · b · c)」 line folded into the loader's set line, which
 #    names every rule with its origin and kind. That line is scored in
-#    `test_three_files_declare_one_chain_namespace.py`.
+#    `test_one_chain_namespace_across_its_files.py`.
 
 
 # ---------------------------------------------------------------------------
@@ -221,52 +208,15 @@ def _declared(tmp_path, **cells):
     return str(path)
 
 
-def test_only_a_materializing_rule_becomes_a_chain_rule(tmp_path):
-    """🔴 A READ-TIME RULE WRITES NOTHING, so a chain rule for it could never do anything —
-    and both of this box's production rules are read-time."""
-    read_time = _declared(tmp_path)
-    assert vjc.synthesized_join_chain_rules(path=read_time, known_tables=KNOWN) == []
 
 
-def test_a_materializing_rule_arrives_as_a_trigger_path_rule(tmp_path):
-    path = _declared(tmp_path, materialize=True, max_rewrite_rows=1000)
-    rules = vjc.synthesized_join_chain_rules(path=path, known_tables=KNOWN)
-    assert len(rules) == 1
-    rule = rules[0]
-    assert rule["name"] == vjc.synthesized_join_rule_name("j1")
-    assert rule["mapper"] == vjc.JOIN_MAPPER
-    # ⚰️ [소유자 정본] THIS ASSERTED `rule["follow_up"] is True`, 「paced, for the reason S-151
-    #   measured」. 소유자: 「체인은 … 트랜잭션 - 아웃박스 - 트리거 - 맵퍼 실행 - 페이로드 및
-    #   업서트 이거만 하면됨」 — there is no paced lap to be deferred to, so the cell is gone
-    #   and its ABSENCE is what this asserts. The 70,800-row measurement still stands; what
-    #   changed is that a cost is reported after it happens, not designed around first.
-    assert "follow_up" not in rule
-    # 🔴 AND THE GROUP-NESS IS DECLARED (판정 506): the retired kind table called every
-    #   builtin with the whole row-id list, so this must say so itself now.
-    assert rule["is_batch"] is True
-    assert rule["origin"] == "synthesized:j1"
-    # ⚠️ The whole normalized rule rides, as the enrichment half does it — a hand-listed
-    # subset goes stale silently.
-    assert rule["params"]["max_rewrite_rows"] == 1000
-    assert rule["params"]["materialize"] is True
 
 
-def test_the_seat_says_which_file_a_synthesised_rule_was_written_in(tmp_path):
-    """S-234 ①: the one-namespace refusal names the files to look in, and this is the cell
-    that tells the two halves apart. ⚠️ Only for rules out of THIS seat - the loader tags
-    `chain_rules.json` by position."""
-    path = _declared(tmp_path, materialize=True, max_rewrite_rows=10)
-    join = vjc.synthesized_join_chain_rules(path=path, known_tables=KNOWN)[0]
-    assert synthesis.written_in(join) == "virtual_join_rules.json"
-    # ⚰️ THE FIXTURE IS WHAT THE SEAT NOW EMITS. It spelled `mapper_module`, a cell
-    #    the dedup half stopped carrying when it became a registered mapper.
-    assert synthesis.written_in(
-        {"mapper": enrichment.config.DEDUP_MAPPER}) == "enrichment_rules.json"
 
 
 # 🪦 `test_a_name_claimed_by_both_files_is_refused_by_name` died with `join_name_collisions`
 #    (S-234 ①, 판정 409): the three files are one namespace, judged once at the loader. That
-#    refusal is scored in `test_three_files_declare_one_chain_namespace.py`.
+#    refusal is scored in `test_one_chain_namespace_across_its_files.py`.
 
 
 # ---------------------------------------------------------------------------
@@ -290,73 +240,21 @@ def test_an_unknown_kind_is_refused_by_name_not_ignored():
     with pytest.raises(rule_run.UnresolvableRule) as caught:
         rule_run.resolve({"name": "r", "mapper": "builtin:no_such_kind"})
     assert "builtin:no_such_kind" in str(caught.value)
-    assert "declared:virtual_join" in str(caught.value), "it must say what IS known"
+    assert "declared:join" in str(caught.value), "it must say what IS known"
 
 
-def test_the_join_mapper_is_registered():
-    """⚰️ [판정 562 · 600] THIS ASKED `synthesis.BUILTIN_KINDS`. The kind table is deleted; the
-    name resolves through the one registry every mapper uses, under the value 600 gave it."""
-    import mapper_sdk
-
-    assert vjc.JOIN_MAPPER == "declared:virtual_join"
-    assert vjc.JOIN_MAPPER in mapper_sdk.MAPPER_REGISTRY
 
 
-def test_the_materialized_join_routes_a_target_change_and_has_no_reference_caller():
-    """⚰️ [판정 584 · 소유자 정본] THIS ASSERTED TWO-WAY ROUTING through the kind table:
-    `run_join(row_ids=...)` -> target, `run_join(key_values=...)` -> reference.
-
-    🔴 BOTH HALVES OF THAT SUBJECT ARE GONE. The table is deleted, and the reference arm was
-    measured at ZERO callers in the product (판정 584) - so the template built from the
-    declaration carries the target arm only, and a reference change reaches nothing. That is
-    reported here rather than repaired: giving the arm a caller is its own round, and an
-    assertion that pretends it is reachable is the kind of green this file exists to refuse.
-    """
-    import inspect
-
-    from chain import dynamic_mappers
-    from chain import legacy_materialized_join as vje
-
-    seen = []
-    original = vje.on_target_rows_changed
-    try:
-        vje.on_target_rows_changed = (
-            lambda db, rule, rows: seen.append(("target", list(rows))) or {"written": 1})
-        answer = dynamic_mappers.TEMPLATES[vjc.JOIN_MAPPER](
-            None, [{"row_id": "r1"}], rule={"params": {"name": "j1"}})
-    finally:
-        vje.on_target_rows_changed = original
-
-    assert seen == [("target", ["r1"])]
-    assert answer["written"] == 1
-    assert "on_reference_rows_changed" not in inspect.getsource(
-        dynamic_mappers._legacy_materialized_join), (
-        "the reference arm got a caller; 584 measured it at zero and this says so")
 
 
 # ---------------------------------------------------------------------------
 # the graph
 # ---------------------------------------------------------------------------
 
-def test_a_materialized_rule_is_not_drawn_twice():
-    """🔴 IT IS A CHAIN RULE NOW, so `_mapper_edges` draws it from the loader. Drawing it in
-    `_vjoin_edges` too would put TWO arrows between one pair of tables for one declaration,
-    and a reader counting arrows would see a flow that does not exist."""
-    import inspect
+# ⚰️ [판정 652 3걸음] 그래프의 «두 화살표» 대조군이 여기 있었다 — 실물화된 규칙을
+#    `_mapper_edges` 와 `_vjoin_edges` 양쪽이 그리면 한 선언에 화살표가 둘이 된다는 것.
+#    `_vjoin_edges` 가 그 문법과 같이 걷혀 그릴 수 있는 자리가 하나다.
 
-    import chain.graph
-
-    body = inspect.getsource(chain.graph._vjoin_edges)
-    assert 'rule.get("materialize")' in body and "continue" in body
-
-
-# ---------------------------------------------------------------------------
-# 🔴 the dispatcher does not re-read the rule file on every drain batch
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
-# S-195 — auto-confirm joins the table, and the named temporary ends
-# ---------------------------------------------------------------------------
 
 def test_the_drain_has_no_rule_loop_left():
     """⛔ THE ASSERTION THAT CLOSES 「두 경로 금지」, NOW ONE STEP FURTHER.

@@ -33,7 +33,8 @@ except Exception:  # 아주 오래된 파이썬이나 리다이렉트된 스트�
 DEFAULT_CONFIG = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                               "config", "sample")
 CHAIN_FILE = "chain_rules.json"
-JOIN_FILE = "virtual_join_rules.json"
+# ⚰️ [판정 652 3걸음] `JOIN_FILE` 이 여기 있었다. 이 도구는 «두 파일 -> 한 문법»의
+#    왕복을 미리 보여 주는 것이었고, 옮길 둘째 파일이 사라져 미리 볼 것도 하나다.
 
 
 def _read(directory: str, filename: str):
@@ -55,17 +56,11 @@ def _chain_rules(document):
     return [rule for rule in (rules or []) if isinstance(rule, dict)]
 
 
-def _joins(document):
-    if not isinstance(document, dict):
-        return {}
-    return {name: raw for name, raw in document.items()
-            if isinstance(raw, dict) and not name.startswith("_")}
 
 
 def build(config_dir: str):
     """(새 문법 문서, 보고) - 왕복이 깨진 선언이 하나라도 있으면 보고가 그것을 «이름»으로 든다."""
     chain_path, chain_doc = _read(config_dir, CHAIN_FILE)
-    join_path, join_doc = _read(config_dir, JOIN_FILE)
 
     declarations, broken = [], []
     for raw in _chain_rules(chain_doc):
@@ -75,13 +70,6 @@ def build(config_dir: str):
             broken.append(("chain", raw.get("name")))
         declarations.append(written)
 
-    for name, raw in _joins(join_doc).items():
-        internal = rule_shape.from_join_rule(name, raw)
-        written = rule_shape.to_declaration(internal)
-        if rule_shape.as_join_rule(rule_shape.from_declaration(written)) != raw:
-            broken.append(("join", name))
-        declarations.append(written)
-
     kinds = {}
     for declaration in declarations:
         kind = (declaration.get("derive") or {}).get("kind", "unknown")
@@ -89,7 +77,7 @@ def build(config_dir: str):
         kinds["%s→%s" % (kind, lands)] = kinds.get("%s→%s" % (kind, lands), 0) + 1
 
     return ({"rules": declarations},
-            {"sources": [p for p in (chain_path, join_path) if p],
+            {"sources": [p for p in (chain_path,) if p],
              "count": len(declarations), "kinds": kinds, "broken": broken})
 
 

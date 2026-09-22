@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""판정 652 · 667 — 쓰기 경로의 중복 그물이 «적재당 한 번» 배우고, 두 생산자를 다 든다.
+"""판정 652 · 667 — 쓰기 경로의 중복 그물이 «적재당 한 번» 배운다.
 
 🔴 THE GATE SIX PROPERTY, WRITTEN AS A PROPERTY. The ruling's letter said
 `apply_batch_updates` reads neither the file nor `pg_index`; taken literally that is false on
@@ -12,6 +12,13 @@ session per batch.
 and the comment on that TTL said why - the reload hook belongs to the WEB server and worker
 processes never reach it, so the clock was standing in for an invalidation those processes
 do not get. Keyed to loading instead, each process invalidates where it re-reads.
+
+⚰️ [판정 652 3걸음] 이 파일의 머리글은 「두 생산자를 다 든다」였습니다. 생산자가 «하나»가
+됐습니다 — 읽기 시점 문법이 삭제돼 `_legacy_right_keys` 가 없어졌고, 그것을 중립화하려고
+모든 시험이 달고 있던 `monkeypatch.setattr(synthesis, "_legacy_right_keys", …)` 여섯 줄도
+같이 갔습니다. 🔴 **그 여섯 줄이 이 삭제에서 제일 조용했던 자리입니다** — `setattr` 는 없는
+이름에 AttributeError 를 내므로 «전부» 빨개졌고, 그래서 들켰습니다. 제 전수 조사가 import
+와 문자열만 보고 `setattr` 를 못 봐서 목록에 이 파일이 아예 없었습니다.
 
 ⚠️ 창이 길어지고 모양은 안 바뀝니다: 낡은 「있다」는 `operator_line` 경고로, 낡은 「없다」는
 DB 의 23505 로 나옵니다. 둘 다 시끄럽습니다.
@@ -66,8 +73,6 @@ def test_the_second_batch_asks_nothing(monkeypatch):
     probes = []
     monkeypatch.setattr(synthesis, "declared_unique_targets",
                         lambda rules: [_target("w652_join")])
-    monkeypatch.setattr(synthesis, "_legacy_right_keys",
-                        lambda table, seen: [])
     _declared(monkeypatch, [{"name": "w652_join"}], probes=probes)
 
     first = synthesis.right_keys_for(None, TABLE)
@@ -83,8 +88,6 @@ def test_a_box_with_no_declared_key_never_probes(monkeypatch):
     """🔴 게이트 ⑥ 의 성질이 «문자 그대로» 서는 자리. 선언이 0 이면 물을 것이 없습니다."""
     probes = []
     monkeypatch.setattr(synthesis, "declared_unique_targets", lambda rules: [])
-    monkeypatch.setattr(synthesis, "_legacy_right_keys",
-                        lambda table, seen: [])
     _declared(monkeypatch, [], probes=probes)
 
     assert synthesis.right_keys_for(None, TABLE) == []
@@ -96,8 +99,6 @@ def test_loading_again_expires_the_answer(monkeypatch):
     probes = []
     monkeypatch.setattr(synthesis, "declared_unique_targets",
                         lambda rules: [_target("w652_join")])
-    monkeypatch.setattr(synthesis, "_legacy_right_keys",
-                        lambda table, seen: [])
     _declared(monkeypatch, [{"name": "w652_join"}], probes=probes)
 
     synthesis.right_keys_for(None, TABLE)
@@ -114,9 +115,10 @@ def test_the_write_path_does_not_open_a_session_per_batch(monkeypatch):
     블록 «밖»에 있어 배치마다 하나씩 열었고, 그 세션은 `rules_for_right` 에 넘겨졌다가
     한 번도 쓰이지 않았습니다(`_verified_by_left_table` 이 자기 것을 엽니다).
 
-    ⚠️ 이 줄이 재는 것은 «이 좌석»이 여는 수입니다. 레거시 좌석이 자기 세션을 자기
-    시계로 여는 것은 여기서 안 셉니다 — 그 문법과 같이 죽을 것이고, 그것을 여기서
-    재려 하면 죽는 모듈의 수명이 이 시험의 전제가 됩니다.
+    ⚰️ [652 3걸음] 여기 있던 ⚠️ 는 「레거시 좌석이 «자기» 세션을 자기 시계로 여는 것은
+    여기서 안 센다 — 그 문법과 같이 죽을 것이고, 그것을 여기서 재려 하면 죽는 모듈의
+    수명이 이 시험의 전제가 된다」였습니다. 그 문법이 죽었으므로 세는 좌석이 «하나»이고,
+    이 줄은 이제 전제 없이 참입니다.
     """
     opened = []
 
@@ -130,7 +132,6 @@ def test_the_write_path_does_not_open_a_session_per_batch(monkeypatch):
     monkeypatch.setattr(dbmod, "SessionLocal", counted)
     monkeypatch.setattr(synthesis, "declared_unique_targets",
                         lambda rules: [_target("w652_join")])
-    monkeypatch.setattr(synthesis, "_legacy_right_keys", lambda table, seen: [])
     _declared(monkeypatch, [{"name": "w652_join"}])
 
     synthesis.right_keys_for(None, TABLE)
@@ -142,23 +143,16 @@ def test_the_write_path_does_not_open_a_session_per_batch(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# 🔴 ⓑ 두 생산자 — Q-192 를 같은 라운드에 두 번 하지 않기 위해
+# ⓑ 한 유일성은 한 항목
+#
+# ⚰️ [판정 652 3걸음] 이 절의 이름은 「두 생산자 — Q-192 를 같은 라운드에 두 번 하지 않기
+#    위해」였고, 그 아래 `test_a_live_read_time_join_still_has_its_uniqueness_protected`
+#    가 있었습니다. 그 줄은 자기 독스트링에 「그 문법이 죽는 커밋에서 이 줄과 그 반쪽이
+#    «같이» 죽습니다」라고 적어 두었고, 이 커밋이 그 커밋입니다. 재던 것은 「아직 살아
+#    있는 읽기 시점 조인의 유일성」이었는데 «살아 있는 것이 없습니다».
+#    🔴 Q-192 의 부류(그물을 옮기다 한쪽 생산자를 놓치는 것)는 이제 생산자가 하나라서
+#    «생길 수가» 없습니다 — 가드가 아니라 모집단이 답을 바꿨습니다.
 # ---------------------------------------------------------------------------
-
-def test_a_live_read_time_join_still_has_its_uniqueness_protected(monkeypatch):
-    """⚰️ [Q-192 의 부류] 그물을 실조인으로 옮기면서 «아직 살아 있는» 읽기 시점 조인의
-    유일성을 놓치면, 그 표의 중복이 아무에게도 안 걸립니다. 그 문법이 죽는 커밋에서
-    이 줄과 그 반쪽이 «같이» 죽습니다."""
-    monkeypatch.setattr(synthesis, "declared_unique_targets", lambda rules: [])
-    monkeypatch.setattr(
-        synthesis, "_legacy_right_keys",
-        lambda table, seen: [("w652_legacy", list(KEY), [None])])
-    _declared(monkeypatch, [])
-
-    answer = synthesis.right_keys_for(None, TABLE)
-
-    assert [name for name, _c, _f in answer] == ["w652_legacy"]
-
 
 def test_one_uniqueness_is_one_entry_even_when_two_rules_declare_it(monkeypatch):
     """⚠️ 조인과 그 `:reference` 짝이 «같은 키»를 선언합니다. 둘로 두면 한 중복이 두 이름으로
@@ -166,8 +160,6 @@ def test_one_uniqueness_is_one_entry_even_when_two_rules_declare_it(monkeypatch)
     monkeypatch.setattr(
         synthesis, "declared_unique_targets",
         lambda rules: [_target("w652_join"), _target("w652_join:reference")])
-    monkeypatch.setattr(synthesis, "_legacy_right_keys",
-                        lambda table, seen: [])
     _declared(monkeypatch, [{"name": "w652_join"}])
 
     answer = synthesis.right_keys_for(None, TABLE)
@@ -180,8 +172,6 @@ def test_a_declaration_without_a_real_index_is_not_approved(monkeypatch):
     데이터베이스가 받아 줬을 행을 가드가 버립니다."""
     monkeypatch.setattr(synthesis, "declared_unique_targets",
                         lambda rules: [_target("w652_join")])
-    monkeypatch.setattr(synthesis, "_legacy_right_keys",
-                        lambda table, seen: [])
     _declared(monkeypatch, [{"name": "w652_join"}], covering=False)
 
     assert synthesis.right_keys_for(None, TABLE) == []

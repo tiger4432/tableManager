@@ -155,7 +155,7 @@ def test_a_disabled_rule_does_not_become_an_enabled_chain_rule(monkeypatch):
 # ---------------------------------------------------------------------------
 # `enrichment_name_collisions` is gone: the three rule files are ONE namespace, judged once
 # at the loader's set-aware seat. The refusal and its sensitivity control are scored in
-# `test_three_files_declare_one_chain_namespace.py`.
+# `test_one_chain_namespace_across_its_files.py`.
 
 
 # ---------------------------------------------------------------------------

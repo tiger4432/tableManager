@@ -100,7 +100,8 @@ INTO_KINDS = ("table", "read")
 #: engine is not touched in this one.
 #:
 #: 🔴 ONE SENTENCE, TWO SEATS. `expand_declaration` below and
-#: `chain.legacy_join_declaration._read_time_joins_from_unified` both meet this
+#: ⚰️ 652 3걸음 전에는 `_read_time_joins_from_unified` 가 «둘째 낱말»로 같은 거절을 한 번
+#: 더 했다. 이제 이 상수를 드는 자리는 한 곳이고, 그 자리가 meets this
 #: declaration. Said differently they would refuse one file in two voices; said by only
 #: one of them, the loader would refuse what the collector still RUNS.
 #:

@@ -132,7 +132,13 @@ def test_a_synthesized_enrichment_rule_is_on_its_trigger_tables_list(loaded):
 
 @pytest.mark.parametrize("rule,expected", [
     ({"name": "a", "mapper": "declared:join"}, "join"),
-    ({"name": "b", "mapper": "declared:virtual_join"}, "join"),
+    # ⚰️ [판정 652 3걸음] THIS ROW EXPECTED 「join」 AND NOW EXPECTS 「mapper」, WITHOUT THE
+    #   SEAT CHANGING A LINE. 판정 498 ④ made this label read off the REGISTRATION instead
+    #   of a hand-kept list, precisely so a kind registered tomorrow would not be labelled
+    #   「mapper」 in silence. The converse is this row: the registration that claimed
+    #   `declared:virtual_join` was deleted with its grammar, so the name stops being known.
+    #   🔴 IT IS A CONTROL NOW — if this ever says 「join」 again, a hand-kept list is back.
+    ({"name": "b", "mapper": "declared:virtual_join"}, "mapper"),
     ({"name": "enrichment_dedup:c", "mapper": "declared:enrich"}, "decide"),
     ({"name": "enrichment_auto_confirm:c", "mapper": "declared:decide"}, "decide"),
     ({"name": "d", "mapper_module": "mappers.x", "mapper_function": "y"}, "mapper"),

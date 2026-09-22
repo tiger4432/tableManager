@@ -23,6 +23,12 @@ a table that does not exist is worse than no arrow.
 `contested` is cells with two NAMED writers; `contested_tables` is the weaker claim, tables
 two writers share where neither declared a column. They stay apart because folding them
 would let a reader take a question for a fact.
+
+⚰️ [판정 652 3걸음] 이 파일은 `..._from_its_four_declarations.py` 였다. 가상조인 분면이
+그 문법과 같이 걷혀 「four」가 «셋»이 됐고, 이름을 드는 문서 넷과 «같은 커밋»에 고쳤다.
+🔴 그리고 «수를 도로 넣지 않았다» — 이름에 박힌 수는 선언이 하나 늘거나 줄 때마다 다시
+낡고, 그때 아무것도 울지 않는다. 이름이 드는 것은 이제 «성질»이다: 체인은 자기 선언들에서
+그려진다. 몇 개인지는 이 파일이 «세어서» 단언한다.
 """
 import os
 import sys
@@ -68,7 +74,6 @@ def node(graph, name):
 def fixture_graph(monkeypatch):
     """The four loaders, each answering with one declaration, through the real assembler."""
     from chain import enrichment
-    from chain import legacy_join_declaration as vjc
     from database import crud
 
     rules = [chain_rule()]
@@ -81,13 +86,7 @@ def fixture_graph(monkeypatch):
                         lambda **kw: [{"name": "cg_enrich", "derived_table": DERIVED,
                                        "enabled": True,
                                        "decision_key": ["job", "slot"]}])
-    monkeypatch.setattr(vjc, "load_virtual_join_rules",
-                        lambda **kw: [{"name": "cg_vjoin", "left_table": TARGET,
-                                       "right_table": RIGHT, "enabled": True,
-                                       "right_columns": ["ref_id"], "right_folds": [None],
-                                       "expose": ["grade"]}])
-    monkeypatch.setattr(vjc, "unique_index_covering",
-                        lambda *a, **kw: "uq_vjoin_cg_test_reference_ref_id")
+    # ⚰️ [652 3걸음] 가상조인 분면의 로더·인덱스 탐침이 여기 있었다. 그 분면이 걷혔다.
     monkeypatch.setattr(crud, "TABLE_CONFIG",
                         {TRIGGER: {}, TARGET: {}, DERIVED: {}, RIGHT: {}})
 
@@ -113,7 +112,9 @@ def test_each_declaration_contributes_its_own_kind(graph):
 
     🔴 The kind did not become unreachable: `test_an_undeclared_reads_is_counted_on_the_
     rule_that_replaced_the_self_loop` and its sibling below still score it."""
-    assert {e["kind"] for e in graph["edges"]} == {"mapper", "vjoin", "ledger"}
+    # ⚰️ [652 3걸음] `vjoin` 이 여기 있었다 — 읽기 시점 조인의 화살표다. 조인이 표에
+    #    «쓰는» 지금 그 선언은 `mapper` 갈래로 그려진다(로더가 세우는 규칙이므로).
+    assert {e["kind"] for e in graph["edges"]} == {"mapper", "ledger"}
 
 
 def test_the_counts_say_what_each_file_declared(graph):
@@ -121,7 +122,7 @@ def test_the_counts_say_what_each_file_declared(graph):
     believed: an edge that appears without a rule behind it moves one of these."""
     assert graph["counts"]["chain_rules"] == 1
     assert graph["counts"]["enrichment_rules"] == 1
-    assert graph["counts"]["virtual_joins"] == 1
+    # ⚰️ [652 3걸음] `virtual_joins` 분면이 걷혔다 — 그림이 읽는 «파일»이 하나 줄었다.
     assert graph["counts"]["ledger_sources"] == 1
     assert graph["counts"]["edges"] == len(graph["edges"])
     assert graph["counts"]["nodes"] == len(graph["nodes"])
@@ -134,13 +135,9 @@ def test_the_mapper_edge_carries_what_decides_whether_it_fires(graph):
     assert edge["allow_chain_trigger"] is False
 
 
-def test_the_vjoin_edge_points_from_the_right_table_and_names_its_index(graph):
-    """The join feeds the LEFT table at read time, so the arrow runs right -> left. The
-    index is asked of the database because a declared rule with no index is not in
-    effect, and a picture showing it live would be showing a join that is not happening."""
-    edge = by_kind(graph, "vjoin")[0]
-    assert (edge["from"], edge["to"]) == (RIGHT, TARGET)
-    assert edge["unique_index"] == "uq_vjoin_cg_test_reference_ref_id"
+# ⚰️ [판정 652 3걸음] `test_the_vjoin_edge_points_from_the_right_table_and_names_its_index`
+#    가 여기 있었습니다. 「오른쪽이 왼쪽을 «읽을 때» 먹인다」는 화살표는 그 문법과 같이
+#    갔습니다 — 조인이 값을 표에 쓰므로 그림에 그 구분이 남아 있을 자리가 없습니다.
 
 
 def test_the_ledger_is_one_node(graph):
@@ -288,25 +285,20 @@ def test_two_declarations_writing_one_cell_are_listed():
         [chain_rule(name="mapper_rule", target_table=DERIVED,
                     target_field="grade")],
         [{"name": "enrich_rule", "derived_table": DERIVED,
-          "target_fields": ["grade", "other"]}],
-        [])
+          "target_fields": ["grade", "other"]}])
     assert contested == [{"table": DERIVED, "column": "grade",
                           "writers": ["enrich_rule", "mapper_rule"]}]
 
 
 def test_one_writer_is_not_contested():
     assert chain.graph._contested(
-        [chain_rule(target_table=DERIVED, target_field="grade")], [], []) == []
+        [chain_rule(target_table=DERIVED, target_field="grade")], []) == []
 
 
-def test_a_virtual_join_counts_as_a_writer_of_the_cell_it_presents():
-    """It writes nothing to disk and a reader of that cell still sees its value where a
-    mapper's may also be — which is exactly the question being asked."""
-    contested = chain.graph._contested(
-        [chain_rule(name="mapper_rule", target_table=TARGET, target_field="grade")],
-        [],
-        [{"name": "cg_vjoin", "left_table": TARGET, "expose": ["grade"]}])
-    assert contested[0]["writers"] == ["cg_vjoin", "mapper_rule"]
+# ⚰️ [판정 652 3걸음] `test_a_virtual_join_counts_as_a_writer_of_the_cell_it_presents` 가
+#    여기 있었습니다 — 읽기 시점 조인은 디스크에 «안 쓰면서» 그 셀의 값으로 보였기 때문에
+#    셋째 저자로 셌습니다. 조인이 자기 컬럼을 «쓰는» 지금 그 조인은 위의 `chain_rules`
+#    저자로 들어오고, 특별 취급할 것이 남지 않았습니다.
 
 
 def test_a_shared_table_with_no_declared_column_is_the_weaker_list():
@@ -350,9 +342,7 @@ def test_a_refused_cycle_is_shown_rather_than_hidden(monkeypatch):
                        allow_chain_trigger=True)]
     monkeypatch.setattr(worker, "load_chain_rules", lambda: loop)
     from chain import enrichment
-    from chain import legacy_join_declaration as vjc
     monkeypatch.setattr(enrichment.config, "load_enrichment_rules", lambda **kw: [])
-    monkeypatch.setattr(vjc, "load_virtual_join_rules", lambda **kw: [])
     monkeypatch.setattr("ledger.setup.load_setup",
                         lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("no ledger")))
 

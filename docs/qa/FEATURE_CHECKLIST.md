@@ -363,7 +363,7 @@ dirty 3선택, ACTIVE/DRAFT, review→revise와 reviewed JSON read-only를 확�
 ### 2.2-bis 가상 조인 컬럼 🎯 (2026-07-31 `d70a33d` → 화면 착지 `9200f20`+`4b50135`)
 
 > **준비**: `virtual_join_rules.json`에 선언 1건 + 오른쪽 테이블에 조인 키 UNIQUE 인덱스.
-> `GET /admin/config/virtual-join/verify`가 `accepted`여야 아래가 성립한다(거부면 아무것도 붙지 않는 것이 정상).
+> `GET /admin/chain/join/verify`가 `accepted`여야 아래가 성립한다(거부면 아무것도 붙지 않는 것이 정상).
 > **선언 하나에 `collide` 컬럼과 `virtual_only` 컬럼을 둘 다 노출해 두면** A(값 병합)와 B(화면·쓰기 노출)를 한 번에 본다.
 
 **A. 값 병합 — 서버 계약**
@@ -590,7 +590,7 @@ dirty 3선택, ACTIVE/DRAFT, review→revise와 reviewed JSON read-only를 확�
 - [ ] **미리보기는 조인이 쓰는 그 식으로 계산된다**: 파이썬에서 접은 값을 보여 주면, 운영자가 신뢰하는 화면이 조인이 쓰지 않는 답을 보여 주게 된다(그 자체가 이 기능이 없애려는 문제다).
 - [ ] **`number` 컬럼은 거절된다**: `"number"`로 선언된 컬럼을 지목 → `rejected` + `not_text`. `zero_pad: true`는 `zero_pad_unimplemented`로 거절되되 **나머지 선언은 살아 있어야** 한다.
 - [ ] **옛 문법은 이름 붙여 거절된다**: `{"core_lot": "core_lot_norm"}`(문자열 = 파생 컬럼) → `rejected` + `'derived' is no longer a thing …`. 조용히 무시되면 회귀다.
-- [ ] 🎯 **한쪽만 선언해도 조인은 양쪽이 접힌다**: `dt_log.core_lot`만 선언하고 `core_wafer_map.core_lot`은 선언하지 않은 채 두 테이블 가상 조인 → `GET /admin/config/virtual-join/verify`의 `folded_join_key`가 **그 키를 접는 것으로** 보고한다. 🔴 **한쪽만 접히면 이미 맞고 있던 매치를 조용히 잃는다** — 그래서 한쪽만 접을 수 있는 경로가 있으면 그 자체가 회귀다.
+- [ ] 🎯 **한쪽만 선언해도 조인은 양쪽이 접힌다**: `dt_log.core_lot`만 선언하고 `core_wafer_map.core_lot`은 선언하지 않은 채 두 테이블 가상 조인 → `GET /admin/chain/join/verify`의 `folded_join_key`가 **그 키를 접는 것으로** 보고한다. 🔴 **한쪽만 접히면 이미 맞고 있던 매치를 조용히 잃는다** — 그래서 한쪽만 접을 수 있는 경로가 있으면 그 자체가 회귀다.
 - [ ] 🎯 **접힌 키는 함수 인덱스를 요구한다**: 위 상태에서 오른쪽에 **평범한 컬럼 UNIQUE만** 있으면 선언이 `no_unique_index`로 **거부**되고, 응답이 주는 DDL이 **함수 인덱스**(이름에 `_nf`)여야 한다. 🔴 **평범한 UNIQUE로 통과하면 회귀다** — 성능이 아니라 정확성 문제다(원본으로 다른 두 행이 접히면 한 값이라 팬아웃이 열린다).
 - [ ] **파일이 없거나 깨져도 조회가 죽지 않는다**: 파일 삭제 → `선언 파일이 없습니다 …`, JSON 문법 오류 → `선언 파일을 읽지 못했습니다 …`. 두 경우 모두 조회는 **원본 비교로** 정상 동작한다(이 기능이 생기기 전과 같은 동작).
 

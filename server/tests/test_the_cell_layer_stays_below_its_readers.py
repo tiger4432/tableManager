@@ -59,13 +59,20 @@ def test_the_cell_layer_names_none_of_the_ring(forbidden):
     assert forbidden not in _imports("chain/cell_layer")
 
 
-def test_the_executor_reaches_the_operation_without_reaching_replay():
-    """🔴 THE EDGE THAT WAS CUT. The executor still retracts; what it no longer does is reach
-    through `chain_replay` to do it."""
-    names = _imports("chain/legacy_materialized_join")
-
-    assert "chain.cell_layer" in names
-    assert "replay" not in names
+# ⚰️ [판정 652 3걸음] `test_the_executor_reaches_the_operation_without_reaching_replay` STOOD
+# HERE. It scored `chain/legacy_materialized_join` — the vertex that CLOSED the four-cycle by
+# importing `chain_replay.withdraw_source` inside `retract_rows` — and asserted it reached
+# `chain.cell_layer` instead. That module was deleted with its grammar, and `retract_rows` no
+# longer exists anywhere (`git grep -n "def retract" -- '*.py'` names four functions and none
+# is it), so the row had no subject left to score.
+#
+# 🔴 THE AXIS DID NOT GO WITH IT — the three rows below are what hold it, and they were always
+# the general statement of it: `cell_layer` names none of the ring, replay READS the one body
+# rather than carrying a second, and the refusal survived the move. What died is one vertex,
+# not the property. ⚠️ The successor write door (`chain/join_into`) does not retract at all —
+# measured, it names neither `cell_layer` nor `replay` — so there is no module to re-aim this
+# at. The day something there needs retraction, the import that is correct is `cell_layer`
+# and the one that rebuilds the ring is `replay`.
 
 
 def test_replay_reads_the_operation_rather_than_carrying_a_second_one():

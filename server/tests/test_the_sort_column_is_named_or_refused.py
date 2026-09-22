@@ -20,8 +20,6 @@ import json
 
 import pytest
 
-from chain import legacy_join_declaration as vjc
-from chain import legacy_materialized_join as vjx
 from database import crud, models, schemas
 
 ROWS = 25
@@ -70,13 +68,10 @@ def env(db_session, client, tmp_path, monkeypatch):
     from database.database import Base
     Base.metadata.create_all(bind=db_session.get_bind())
 
-    p = tmp_path / "virtual_join_rules.json"
-    p.write_text(json.dumps(DECL), encoding="utf-8")
-    monkeypatch.setattr(vjc, "VIRTUAL_JOIN_RULES_PATH", str(p))
-    monkeypatch.setattr(vjc, "unique_index_covering",
-                        lambda db, table, columns: "uq_fake"
-                        if table == "a6_test_ref" else None)
-    vjx.reset_cache()
+    # ⚰️ [판정 652 3걸음] 이 자리가 `virtual_join_rules.json` 을 세워 `fab_site` 를
+    #    «노출 컬럼»으로 만들었다. 그 문법이 갔으니 그 이름은 그냥 «선언 안 된 이름»이고,
+    #    아래 시험이 재는 것(그런 이름은 이름 대어 거절된다)은 그대로다 — 이름이
+    #    「join 이 노출하던 것」이었다는 사실이 그 거절을 «다르게» 만들지 않는다.
 
     import main
     main.TABLE_COUNT_CACHE.clear()
@@ -90,7 +85,6 @@ def env(db_session, client, tmp_path, monkeypatch):
             "core_lot": "LOT-A", "core_slot": "%02d" % i} for i in range(ROWS)])
     db_session.commit()
     yield client
-    vjx.reset_cache()
     main.TABLE_COUNT_CACHE.clear()
 
 

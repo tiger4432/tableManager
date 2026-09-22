@@ -1,8 +1,17 @@
-"""Immutable hand-off produced only after virtual-join physical verification.
+"""Immutable hand-off produced only after a join's physical verification.
 
-The shape-only declaration remains owned by ``chain.legacy_join_declaration``.  This module owns
-the neutral value passed from that verifier to every consumer, including the UI join
-executor and Ledger v2 setup compiler.  It has no database imports or execution methods.
+⚰️ [판정 652 3걸음 · 666] THE ISSUER NAMED HERE WAS ``chain.legacy_join_declaration`` and it
+went with its grammar.  This module still owns the neutral value and the Ledger v2 setup
+compiler still takes it as a type.  No database imports, no execution.
+
+🔴 AND NOBODY ISSUES ONE.  Measured on tracked files at 652 step three —
+``git grep -n "_bind_physical_verifier_issuer" -- '*.py'`` — every binder is a TEST; product
+code issues zero, so the ledger's ``verified_join_registry`` is empty wherever this repo is
+the whole story.  That is a door with no one walking through it, not a guarantee: 「approval」
+as an OPERATOR-FACING axis moved to ``chain.synthesis.approval_report``, which is a screen and
+does not issue this.  ⚠️ The command above sees tracked files only; ``server/mappers/*.py`` is
+gitignored and an operator module defining ``load_verified_rules`` would still be handed the
+capability, because it was never bound to a module NAME — only to the running frame (판정 364).
 """
 from __future__ import annotations
 
@@ -93,14 +102,14 @@ class VerifiedJoinDescriptor(Mapping[str, Any]):
     def __new__(cls, *args: Any, **kwargs: Any) -> "VerifiedJoinDescriptor":
         raise TypeError(
             "VerifiedJoinDescriptor cannot be constructed directly; "
-            "use chain.legacy_join_declaration.load_verified_rules")
+            "the seat that issued it (physical verification of a read-time join) was retired in 652 step three, and this certificate goes with it in step two")
 
     @classmethod
     def _issue(cls, *args: Any, **kwargs: Any) -> "VerifiedJoinDescriptor":
         """Reject the former raw issuance API, including callers holding the issuer."""
         raise TypeError(
             "direct VerifiedJoinDescriptor issuance is not allowed; "
-            "use chain.legacy_join_declaration.load_verified_rules")
+            "the seat that issued it (physical verification of a read-time join) was retired in 652 step three, and this certificate goes with it in step two")
 
     @staticmethod
     def _validated_data(rule: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -204,7 +213,11 @@ def _build_verification_boundary():
     issuer_token = object()
 
     class _PhysicalVerifierIssuer:
-        """Capability bound to ``chain.legacy_join_declaration`` production code."""
+        """Capability bound to whoever defines a module-level ``load_verified_rules``.
+
+        ⚰️ [652 3걸음] 이 줄은 그 모듈 «이름»을 적고 있었고 그 모듈이 걷혔다. 권한은
+        처음부터 이름이 아니라 «도는 프레임»에 걸려 있었다(판정 364) — 그래서 기제는
+        하나도 안 바뀌고, 거짓이 된 것은 이 문장뿐이다."""
 
         __slots__ = ("_token",)
 

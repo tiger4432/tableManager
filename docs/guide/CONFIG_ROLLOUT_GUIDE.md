@@ -298,7 +298,7 @@ CREATE UNIQUE INDEX CONCURRENTLY uq_vjoin_dt_job_attribution_dt_job
 **먹었는지 확인**
 
 ```bash
-curl -s -H "$AUTH" "$API/admin/config/virtual-join/verify"
+curl -s -H "$AUTH" "$API/admin/chain/join/verify"
 ```
 
 선언마다 `accepted` · `unique_index`(잡힌 인덱스 이름) · `required_index_ddl`(거부일 때 만들어야 할 DDL) · `detail`(사람이 읽을 한국어 문장)이 돌아옵니다.
@@ -371,7 +371,7 @@ SELECT column_name FROM information_schema.columns WHERE table_name = '<t>';
 | 훑을 곳 | 남아 있으면 |
 |---|---|
 | `map_overlay_config.json` | 해당 맵이 「해석할 수 없음」으로 명시 실패 |
-| `virtual_join_rules.json` | 선언이 거부됩니다 ― `/admin/config/virtual-join/verify`에 뜹니다 |
+| ⚰️ `virtual_join_rules.json` | 🔴 **[652 3걸음] 아무 데도 안 뜹니다 — 이 파일을 «아무도 안 읽습니다».** 전에는 거부라도 났지만 지금은 «조용히 없는 것»이 됩니다. 그래서 이 줄은 위의 `bonding_plan_config.json` 과 «같은 부류»로 내려왔습니다: 사람이 열어 보는 것 말고 방법이 없습니다. 세는 한 줄은 `RUN.md` 머리에 있습니다 |
 | `enrichment_rules.json` · `chain_rules.json` | 규칙이 빠집니다(§4.1의 모양) |
 | 🔴 `bonding_plan_config.json` · `transfer_plan_config.json` | **아무 데도 안 뜹니다.** 이 둘의 테이블 참조를 **검증하는 코드가 없습니다** ― `load_config`가 실패 시 빈 dict를 돌려주고 그것이 「부분 가동, 에러 아님」으로 문서화돼 있습니다. 매달린 참조는 **에러가 아니라 반쯤 작동하는 화면**을 만듭니다 |
 
@@ -398,7 +398,7 @@ grep -n "<지울테이블>" server/config/*.json
 3. **서버에게 물어보십시오.** 세 라우트가 각자 다른 절반에 답합니다.
    ```bash
    curl -s -H "$AUTH" "$API/admin/config/resolve"                  # 선언의 해석 (DB 질의 0건)
-   curl -s -H "$AUTH" "$API/admin/config/virtual-join/verify"      # 인덱스 승인 여부 + 필요한 DDL
+   curl -s -H "$AUTH" "$API/admin/chain/join/verify"      # 인덱스 승인 여부 + 필요한 DDL
    curl -s          "$API/graph/mapping-summary"                   # 온톨로지 성공 + 거부
    ```
    ⚠️ **읽기에 실패했다면 그것은 「설정이 멀쩡하다」가 아닙니다.** 특히 「관리자 게이트가 아닌 응답」이 보이면 토큰 문제가 아니라 **그 포트 앞에 무엇이 답하고 있는가**의 문제입니다(사내 프록시 전례 → [DEPLOY_SETUP §1-5](./DEPLOY_SETUP.md)).
