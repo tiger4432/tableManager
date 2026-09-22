@@ -1480,7 +1480,19 @@ def execute(payload: dict, log=logger.info) -> dict:
     models.init_dynamic_models(crud.TABLE_CONFIG)
 
     control = RunControl(run_id if run_id != "?" else None, op=op)
-    _mark_run(run_id, state=RUN_RUNNING, started=True)
+    # 🔴 «집기»다. queued 일 때만 running 으로 옮기고, 옮겼는지를 읽는다.
+    #    `run_id == "?"` 는 작업 행이 없는 손 호출(CLI)이라 집을 것이 없다 — 그때는 그냥 돈다.
+    if run_id and run_id != "?":
+        if not _mark_run(run_id, state=RUN_RUNNING, started=True,
+                         expect_state=RUN_QUEUED):
+            # 진 쪽이 «그 사실을 안다». 조용히 계속 돌면 둘이 같은 일을 하고,
+            # 매퍼가 멱등이라 결과가 맞아 보여 아무도 못 알아챈다.
+            out.update(status="skipped",
+                       error="run_id=%s was already claimed by another runner" % run_id)
+            log("[Retroactive] run_id=%s op=%s SKIPPED: already claimed" % (run_id, op))
+            return out
+    else:
+        _mark_run(run_id, state=RUN_RUNNING, started=True)
     db = SessionLocal()
     try:
         log(f"[Retroactive] run_id={run_id} op={op} params={params} START")
@@ -1581,14 +1593,27 @@ def run_result_sentence(stored) -> str | None:
     return " · ".join("%s %s" % (k, v) for k, v in values.items())
 
 
-def _mark_run(run_id, *, state, started=False, finished=False, result=None, error=None):
+def _mark_run(run_id, *, state, started=False, finished=False, result=None, error=None,
+              expect_state=None):
     """Move the run row. On its OWN session, and never fatal.
 
     Same reason `RunControl` holds its own: this has to survive the operation's rollback,
     because "the run failed" is exactly the moment the row must not roll back with it.
+
+    🔴 `expect_state` 가 「집기」를 «집기로» 만든다. 없이 부르면 `run_id` «하나»로 필터하는
+       무조건 갱신이고, 그것이 오늘까지 안전했던 이유는 기제가 아니라 «집는 놈이 하나»라서다
+       (2026-09-22 실측: started=True 호출 «1»). 체인 워커가 같은 표에서 집는 순간 그 전제가
+       거짓이 되고, 둘이 같은 queued 행을 읽으면 «둘 다» 이긴다 — 리플레이가 두 번 돌고,
+       매퍼가 멱등이라 결과는 맞아 보이며 아무것도 안 터진다.
+       `expect_state` 를 주면 그 상태일 때만 옮기고, «옮겼는지»를 돌려준다.
+
+    ⚠️ 끝내는 전이(done · failed · cancelled)는 «조건 없이» 옮긴다. 이미 집어서 돌던 일이
+       자기 결과를 못 적는 것이 더 나쁘다 — 그 행은 영원히 running 으로 남는다.
+
+    :return: `expect_state` 를 줬으면 「내가 옮겼나」. 안 줬으면 `None` (앞과 같다).
     """
     if not run_id or run_id == "?":
-        return
+        return None
     from datetime import datetime, timezone
 
     from database import models
@@ -1608,9 +1633,30 @@ def _mark_run(run_id, *, state, started=False, finished=False, result=None, erro
             values["result"] = json.dumps(result, ensure_ascii=False, default=str)
         if error is not None:
             values["error"] = str(error)[:2000]
-        (session.query(models.RetroactiveRun)
-         .filter(models.RetroactiveRun.run_id == run_id).update(values))
+        q = session.query(models.RetroactiveRun).filter(
+            models.RetroactiveRun.run_id == run_id)
+        if expect_state is not None:
+            q = q.filter(models.RetroactiveRun.state == expect_state)
+        changed = q.update(values, synchronize_session=False)
         session.commit()
+        if expect_state is not None:
+            if changed:
+                return True
+            # 🔴 0 은 «두 뜻»이다 — 조건부 UPDATE 는 「남이 가져갔다」와 「행이 아예 없다」를
+            #    같은 0 으로 준다. 둘을 접으면 작업 행 «없이» 직접 부르는 길(CLI·시험·
+            #    publish 를 안 거친 호출)이 전부 「졌다」가 되어 조용히 안 돈다.
+            #    실측 2026-09-22: 접었더니 test_retroactive_admin.py 에서 일곱이 빨개졌고,
+            #    전부 「집을 행이 없는데 졌다고 답한」 것이었다.
+            # ⚠️ 그래서 «열어» 본다. 행이 없으면 경쟁할 상대가 없으므로 그냥 적고 이긴다.
+            exists = (session.query(models.RetroactiveRun)
+                      .filter(models.RetroactiveRun.run_id == run_id).first())
+            if exists is None:
+                (session.query(models.RetroactiveRun)
+                 .filter(models.RetroactiveRun.run_id == run_id)
+                 .update(values, synchronize_session=False))
+                session.commit()
+                return True
+            return False
     except Exception as exc:                       # noqa: BLE001
         session.rollback()
         # 🔴 NOT `debug`. This failing means the run row no longer describes the run: the
@@ -1630,5 +1676,10 @@ def _mark_run(run_id, *, state, started=False, finished=False, result=None, erro
             "unaffected, but its row no longer tracks it - a screen will read this as "
             "waiting while it runs. If this is a fresh deployment, check that the "
             "migrations in server/migrations/ have been applied.", run_id, exc)
+        if expect_state is not None:
+            # 🔴 집기가 «터지면» 「못 집었다」로 답한다. 「모르겠다」의 안전한 쪽이 그것이다 —
+            #    이겼다고 답하면 둘이 도는 쪽으로 틀리고, 못 집었다고 답하면 «아무도 안 도는»
+            #    쪽으로 틀린다. 뒤쪽은 큐에 남아 다음 틱이 다시 집지만, 앞쪽은 조용히 두 번 돈다.
+            return False
     finally:
         session.close()
