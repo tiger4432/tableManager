@@ -31136,3 +31136,24 @@ Q-190 의 「무결함」은 이제 «세 줄»에 대한 것입니다 — `--no
 
 곁: 라우트가 부르는 import 경로에서 `declared:join`·`decide`·`enrich`·`virtual_join` 이 «넷 다» resolvable 입니다
 (`dynamic_mappers` 가 import 시점에 꽂습니다). 「API 프로세스는 레지스트리가 0」 걱정은 이 자리에선 해당 없습니다.
+
+### Q-192 · ce53f796(652 ① 인덱스 회수 이사) 적대 QA — 회수는 살렸는데 «필수 집합의 반쪽»이 빠졌습니다 [09-22 09:33]
+
+```
+구 좌석  required = {r["unique_index"] for r in verified}        <- 레거시(materialize:true) 반쪽
+                  |= synthesis.declared_unique_index_names(…)   <- 통합 반쪽
+새 좌석  retract_unrequired_once(db, declared_unique_index_names(known_tables))   <- 통합 반쪽 «만»
+         declared_unique_index_names 는 chain_rules.json «하나»만 읽습니다(그 함수 본문)
+회수기   product_indexes(db) 의 uq_vjoin_* «전부»를 훑어 required 에 «없는» 것을 떨어뜨립니다
+```
+🔴 그래서 레거시 `materialize: true` 선언이 «하나라도» 살아 있으면, 그 인덱스는 «살아 있는 조인의 것»인데
+회수됩니다 — S-248 의 장애(23505, 그룹 영구 실패) 그대로이고, 652 가 이름 붙인 함정의 «반대 방향»입니다.
+이 커밋은 「회수가 은퇴에 고아가 되는 것」을 막았고, 「필수 집합이 반쪽이 되는 것」은 같이 안 막았습니다.
+제거된 주석 줄이 그 위험을 «스스로» 적고 있었습니다 — 「같은 `uq_vjoin_` 접두라 반쪽은 틀린 것을 걷는다」.
+
+모집단(못 센 것): 라이브 `virtual_join_rules.json` 은 gitignored 라 «운영»을 못 셉니다. 잰 것 둘 —
+출하 샘플이 그 모양을 선언하고(`materialize`/`unique` 히트 5), 이 박스에 그 파일이 «있습니다»(내용은 안 열었습니다).
+
+겹치는 위험 하나: 레거시 로더가 `unique_key.ensure_once` 로 다시 세우면 «깜빡이는 스위치»가 됩니다 —
+이 함수의 독스트링이 «반대 방향»으로 그 증상을 이미 적어 뒀습니다(웜업이 세우고 읽기 경로가 걷는 것).
+끄는 길은 하나뿐입니다: `ASSY_VJOIN_AUTO_INDEX=0` — 다만 그것은 «세우기»도 같이 끕니다.
