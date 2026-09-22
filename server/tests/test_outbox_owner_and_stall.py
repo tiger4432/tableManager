@@ -253,7 +253,7 @@ def test_the_two_windows_describe_one_row_with_the_same_names():
 
 # ---------------------------------------------------------------- 게이트 ⑯: 거절의 출구
 
-def test_a_refusal_names_the_run_and_the_way_out(caplog):
+def test_a_refusal_names_the_run_and_the_way_out(caplog, monkeypatch):
     """🔴 게이트가 «프로세스를 건너» 닫히므로, 막은 실행이 이 프로세스에 «없을 수» 있다.
     그러면 운영자가 여기서 「뭐가 도나」를 찾아도 아무것도 안 나온다 — 식별자와 푸는 법이
     «같은 줄»에 있어야 한다. 사유만 적힌 거절은 운영자를 «막힌 채로» 둔다.
@@ -264,11 +264,16 @@ def test_a_refusal_names_the_run_and_the_way_out(caplog):
 
     from run_auto_update import MultiDiscoveryScheduler
 
-    blocking = {"run_id": "held-by-worker", "op": "chain_replay",
-                "moving": "moving", "no_progress_seconds": 12, "runner": "worker/7"}
+    # ⚠️ 문장을 «짓는 곳»을 세운다 — 스케줄러 메서드가 아니라 `retroactive.gate_refusal` 이다.
+    #    저자가 하나라서 워커가 내는 거절도 «같은 문장»이고, 이 시험은 그 저자를 잰다.
+    monkeypatch.setattr(
+        retroactive, "gate_refusal",
+        lambda db: ("run_id=held-by-worker op=chain_replay moving for 12s "
+                    "(runner=worker/7) — clear it with "
+                    "POST /admin/retroactive/runs/held-by-worker/cancel"))
     scheduler = types.SimpleNamespace(
         _retroactive_thread=types.SimpleNamespace(is_alive=lambda: False),
-        retroactive_moving_state=lambda: blocking,
+        retroactive_moving_state=lambda: {"run_id": "held-by-worker"},
         retroactive_busy=lambda: True,
         _retroactive_last=None)
 

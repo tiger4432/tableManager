@@ -801,23 +801,23 @@ class MultiDiscoveryScheduler:
         from admin import retroactive
 
         if self.retroactive_busy():
-            # 🔴 거절은 «사유»와 «다음 행동»을 둘 다 들어야 한다. 종전엔 무엇이 막는지까지만
-            #    말하고 «푸는 법»이 없었다 — 운영자에게 남는 것은 나이만 자라는 아웃박스 행
-            #    하나였다. 그리고 이 게이트는 이제 «프로세스를 건너» 닫히므로, 막은 실행이
-            #    이 프로세스에 «없을» 수도 있다: 그때 「여기서 뭐가 도나」를 찾으면 아무것도
-            #    안 나온다. 그래서 식별자와 푸는 법이 «같은 줄»에 있어야 한다.
-            in_flight = self.retroactive_moving_state()
-            if not in_flight:
-                # 표가 아무것도 안 주는데 손잡이가 살아 있다 — 행을 못 쓴 실행이다(2026-09-05).
+            # 🔴 거절 문장의 «저자는 하나»다 — `retroactive.gate_refusal`. 이 판단을 이제
+            #    데몬이 둘 묻고(스케줄러·체인 워커), 사본을 두면 한쪽이 문장을 고쳐도
+            #    다른 쪽은 옛 문장을 계속 낸다. 운영자는 어느 쪽을 읽었는지 모른다.
+            from database.database import SessionLocal as _S
+            session = _S()
+            try:
+                blocking = retroactive.gate_refusal(session)
+            except Exception as e:                                     # noqa: BLE001
+                # 진단이 스케줄러를 멈출 수는 없다 — 게이트는 이미 닫혔고 이건 «말»이다.
+                logger.debug("[Retroactive] could not describe the gate: %s", e)
+                blocking = None
+            finally:
+                session.close()
+            if not blocking:
+                # 표는 아무 말이 없는데 손잡이가 살아 있다 — 행을 못 쓴 실행이다(2026-09-05).
                 blocking = ("a run whose row could not be written (this process); "
                             "it clears when that thread ends")
-            else:
-                blocking = (
-                    "run_id=%s op=%s %s for %ss (runner=%s) — clear it with "
-                    "POST /admin/retroactive/runs/%s/cancel"
-                    % (in_flight["run_id"], in_flight["op"], in_flight["moving"],
-                       in_flight.get("no_progress_seconds"), in_flight.get("runner"),
-                       in_flight["run_id"]))
             logger.warning(
                 "[Retroactive] gate closed: %s. Leaving run_id=%s queued for a later tick.",
                 blocking, (payload or {}).get("run_id"))
@@ -876,7 +876,22 @@ class MultiDiscoveryScheduler:
                     # the job again. At-most-once is the right guarantee here
                     # - a retroactive run that silently repeats is worse than
                     # one an operator has to press twice.
-                    if self.start_retroactive_run(retro_payload):
+                    # 🔴 체인 리플레이는 «이 데몬의 일이 아니다»(2026-09-23). 체인 워커가
+                    #    작업 표에서 직접 집는다 — 이 줄은 그것을 «스케줄러 코드를 지나지
+                    #    않게» 만드는 자리다(게이트 ⑩).
+                    # ⛔ 그래도 초인종은 «찍는다». 안 찍으면 `order_by(id.asc())` 가 이 행을
+                    #    영원히 맨 앞에 두어 «뒤의 모든 요청»이 안 닿는다 — 2026-09-04 에
+                    #    운영이 멈춘 그 모양이고, 바로 위 주석이 그 사고를 적어 두고 있다.
+                    # ⚠️ 초인종을 찍어도 일은 «안 사라진다». 일은 작업 표에 살고, 워커는
+                    #    깨어날 때마다 그 표를 훑는다 — 초인종을 놓친 경우까지 거기서 산다.
+                    if (retro_payload or {}).get("op") == "chain_replay":
+                        logger.info(
+                            "[Retroactive] run_id=%s op=chain_replay is the chain "
+                            "worker's; marking the wake-up row and leaving the run "
+                            "queued for it.", (retro_payload or {}).get("run_id"))
+                        retro_trigger.processed_chain = True
+                        db.commit()
+                    elif self.start_retroactive_run(retro_payload):
                         retro_trigger.processed_chain = True
                         db.commit()
                 except Exception as retro_err:

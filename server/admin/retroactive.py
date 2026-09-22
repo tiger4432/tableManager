@@ -1448,8 +1448,57 @@ def publish(db, op: str, params: dict, requested_by: str = None) -> dict:
 # The worker side
 # ---------------------------------------------------------------------------
 
+
+def gate_refusal(db):
+    """게이트가 닫혀 있으면 «운영자가 읽고 풀 수 있는» 한 줄, 열려 있으면 `None`.
+
+    🔴 저자가 «하나»여야 하는 이유. 이 판단(「지금 소급을 하나 더 시작해도 되나」)을 데몬이
+       둘 묻게 됐다 — 스케줄러(회수·원장)와 체인 워커(리플레이). 사본을 두면 한쪽이 게이트를
+       넓혀도 다른 쪽은 모르고, 그때 둘이 같은 표의 같은 셀을 «두 세션»에서 쓴다.
+       그것이 이 게이트가 애초에 막으라고 쓰인 경우다.
+
+    ⚠️ «판단»은 여기 하나이고, 「루프에서 어떻게 빠져나가나」는 데몬마다 다르다 —
+       스케줄러는 `threading.Thread`, 워커는 asyncio 태스크다. 그건 사본이 아니라
+       프로세스가 가진 «도구가 다른» 것이라 각자 자리에 남는다.
+
+    ⚠️ 거절은 «사유»와 «다음 행동»을 둘 다 든다. 게이트가 프로세스를 건너므로 막은 실행이
+       읽는 쪽 프로세스에 «없을 수» 있고, 그러면 「여기서 뭐가 도나」로는 아무것도 안 나온다.
+    """
+    blocking = in_flight(db)
+    if not blocking:
+        return None
+    return ("run_id=%s op=%s %s for %ss (runner=%s) — clear it with "
+            "POST /admin/retroactive/runs/%s/cancel"
+            % (blocking["run_id"], blocking["op"], blocking["moving"],
+               blocking.get("no_progress_seconds"), blocking.get("runner"),
+               blocking["run_id"]))
+
+
+def next_queued(db, op):
+    """그 op 의 «가장 오래 기다린» queued 실행의 payload, 없으면 `None`. 집지는 «않는다».
+
+    ⛔ 여기서 집지 않는 것이 의도다. 집는 자리는 `execute` «하나»이고(거기 조건부 전이와
+       게이트 ⑭ 가 붙어 있다), 여기서 한 번 더 집으면 집는 자리가 둘이 되어 `execute` 는
+       「이미 running」을 보고 «자기 일을 건너뛴다». 찾기와 집기를 나눠 두면 둘이 같은 행을
+       찾아도 이기는 쪽은 여전히 하나다.
+    """
+    row = (db.query(models.RetroactiveRun)
+           .filter(models.RetroactiveRun.state == RUN_QUEUED,
+                   models.RetroactiveRun.op == op)
+           .order_by(models.RetroactiveRun.queued_at.asc())
+           .first())
+    if row is None:
+        return None
+    return {"run_id": row.run_id, "op": row.op,
+            "params": json.loads(row.params) if row.params else {}}
+
+
 def execute(payload: dict, log=logger.info) -> dict:
-    """Run one queued operation to completion. Called ONLY from the scheduler.
+    """Run one queued operation to completion.
+
+    ⚠️ 「스케줄러에서만 불린다」고 적혀 있었고 2026-09-23 에 거짓이 됐다 — 체인 리플레이가
+       체인 워커에서 이 문을 지난다. 여는 쪽이 둘이므로 «집기»가 이 함수 안에 있는 것이
+       중요하다: 둘이 같은 행을 찾아도 이기는 쪽은 하나다(게이트 ⑭).
 
     Opens its own session and bootstraps the dynamic models the same way every CLI
     in `server/scripts/` does, because the scheduler process does not otherwise

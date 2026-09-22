@@ -3449,6 +3449,42 @@ def _ensure_business_key_unique_indexes_sync(db_session_factory):
         db.close()
 
 
+
+def _execute_retroactive(payload):
+    """스레드에서 소급 실행 하나를 끝까지 돌린다. `execute` 는 «집기»를 자기 안에서 한다 —
+    그래서 둘이 같은 행을 찾아 여기까지 와도 이기는 쪽은 하나다(게이트 ⑭)."""
+    from admin import retroactive
+
+    return retroactive.execute(payload, log=logger.info)
+
+
+def start_replay_if_queued(db):
+    """queued 인 체인 리플레이가 있으면 «그 payload», 없거나 못 시작하면 `None`.
+
+    🔴 왜 워커가 «표를 훑나» — 초인종에만 기대면 놓친 초인종이 일을 «죽인다». publish 는
+       작업 행과 아웃박스 행을 같은 커밋에 쓰고, 아웃박스 행은 «깨우는 것»뿐이다. 워커가
+       꺼져 있는 동안 울린 초인종은 아무도 못 듣고, 그때 일이 사라지면 안 된다.
+       깨어날 때마다 훑으면 「놓친 초인종」이 «다음 깨어남»에 저절로 회복된다.
+
+    ⛔ 그리고 여기서 «집지 않는다». 집는 자리는 `retroactive.execute` 하나다 — 조건부 전이와
+       게이트 ⑭ 가 거기 붙어 있어서, 둘이 같은 행을 찾아도 이기는 쪽은 하나다.
+
+    ⚠️ 질의 순서가 «싼 쪽 먼저»다. 대기 중인 리플레이가 없으면(평소) 질의 하나로 끝나고,
+       있을 때만 게이트를 묻는다. 워커 틱은 2 초라 이 순서가 분당 30 과 60 을 가른다.
+    """
+    from admin import retroactive
+
+    nxt = retroactive.next_queued(db, "chain_replay")
+    if not nxt:
+        return None
+    blocked = retroactive.gate_refusal(db)
+    if blocked:
+        # 사유 + 푸는 법. 저자는 `gate_refusal` 하나라 스케줄러가 내는 문장과 «같다».
+        logger.info("[Chain] a queued replay is waiting for the gate: %s", blocked)
+        return None
+    return nxt
+
+
 def pending_chain_events(db, limit: int = 200) -> list:
     """The waiting rows THIS loop can consume, oldest first (S-252).
 
@@ -3593,6 +3629,8 @@ async def start_chain_ingestion_worker(db_session_factory):
 
     # [Latency Fix #4] LISTEN 전용 커넥션을 워커 수명 동안 상시 유지(대기마다 재등록하던 레이스 제거).
     listener = OutboxListener(db_session_factory, event_constants.OUTBOX_NOTIFY_CHANNEL)
+    #: 지금 이 프로세스에서 도는 리플레이 태스크. 게이트가 아니라 «앞문»이다.
+    replay_task = None
 
     async def idle_wait():
         """The ONE place this loop yields when a tick did no work (S-252).
@@ -3719,6 +3757,35 @@ async def start_chain_ingestion_worker(db_session_factory):
                 # below tests membership in this same set; this is not a new judgement about
                 # which rows matter, it is the existing judgement asked in SQL instead of in
                 # Python. `event_type` is NOT NULL, so `NOT IN` cannot swallow a row.
+                # [소급 리플레이] 깨어날 때마다 작업 표를 «훑는다». 초인종(아웃박스 행)은
+                # 깨우기일 뿐이고, 워커가 꺼져 있던 동안 울린 초인종은 아무도 못 듣는다 —
+                # 훑기가 그 경우를 다음 깨어남에 회복시킨다.
+                #
+                # 🔴 `create_task` 이고 «await 하지 않는다». 여기서 await 하면 리플레이가
+                #    도는 «내내» 이 루프가 아웃박스를 안 집는다 — 운영자가 셀을 고쳐도
+                #    수천 행 스캔이 끝날 때까지 안 돈다. 스레드로 내보내는 것만으로는
+                #    부족하고, «기다리지 않는» 것이 게이트 ⑨ 다.
+                # ⚠️ 한 번에 하나는 게이트가 지킨다(프로세스를 건너서). 이 핸들은 그보다
+                #    싼 앞문일 뿐이라 게이트를 «대신하지» 않는다.
+                if replay_task is not None and replay_task.done():
+                    exc = replay_task.exception() if not replay_task.cancelled() else None
+                    if exc is not None:
+                        # 태스크 안의 예외는 GC 때까지 조용하다 — 여기서 꺼낸다.
+                        logger.error("[Chain] replay task raised: %s", exc, exc_info=exc)
+                    replay_task = None
+                if replay_task is None:
+                    try:
+                        queued_replay = start_replay_if_queued(db)
+                    except Exception as sweep_err:                     # noqa: BLE001
+                        # 훑기가 드레인을 멈출 수는 없다.
+                        logger.error("[Chain] replay sweep failed: %s", sweep_err)
+                        queued_replay = None
+                    if queued_replay:
+                        logger.info("[Chain] starting replay run_id=%s off this loop",
+                                    queued_replay.get("run_id"))
+                        replay_task = asyncio.create_task(
+                            asyncio.to_thread(_execute_retroactive, queued_replay))
+
                 pending_events = pending_chain_events(db)
 
                 # The head of this ordered fetch is the oldest waiting row. If it is still
