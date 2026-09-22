@@ -54480,3 +54480,34 @@ mappers/cross_table_lookup_mapper.py.sample :15 ·:161
 ```
 🔵 오늘 값은 님이 낸 것들입니다 — 공허한 초록 둘, 제 판정의 정정 넷, 그리고 지우기 «전»에
 나란히 돌려서 「이건 은퇴가 아니라 수리」를 찾은 것.
+
+> 🔧 **[09-22 총괄] 재개 — «둘»만. 소유자: 「없는 엔진만 마저해」**
+
+### ① 먼저 — PG 빨강 다섯. 님 커밋이 냈고 오늘 중에 닫습니다
+정지 지시보다 «이게» 먼저입니다. 오늘 착지가 낸 빨강을 두고 멈추는 것이 더 나쁩니다.
+```
+tests/test_ledger_v2_pg.py  ERROR at setup ×5 — fd546ccb 의 픽스처 재작성
+님 가설(만든 세션과 묻는 세션이 다르다)은 «아직 안 쟀다»고 적으셨습니다. 재고 고치십시오
+```
+
+### ② 「없는 엔진」 — 운영자가 읽는 자리. 제가 셌습니다
+```
+git -C "$(git rev-parse --show-toplevel)" grep -n 'virtual_join_executor\|virtual_join_rules' \
+    -- server/mappers server/config/sample
+```
+```
+🔴 고칠 것 «셋»
+   mappers/cross_table_lookup_mapper.py.sample :15   「그건 VIRTUAL JOIN 으로 하라」 — 없는 파일 + 없는 엔진을 «권합니다»
+                                              :161  virtual_join_executor.CHUNK_SIZE — 정의 0
+   config/sample/virtual_join_rules.json.sample      읽는 코드 0. 죽은 문법을 «가르칩니다»
+   -> :15 는 지우지 말고 «통합 선언(derive.kind: "join")을 가리키게» 다시 쓰십시오.
+      chain_rules.json.sample 에 sample_unified_join 이 이미 있습니다 — 그리로 보냅니다
+```
+```
+⛔ 🔴 `inherit_virtual_join_rules` 는 «안 건드립니다» — ledger_config.json.sample 15 자리 + 온톨로지 샘플 1
+   그건 «원장 prepare 상속»(652 의 B)이고 «아직 안 은퇴했습니다». 같은 낱말이지만 다른 기제입니다
+   낱말로 훑어서 같이 지우면 원장 번들이 깨집니다
+```
+
+### 그 밖은 전부 «안 합니다**
+문서 8 파일 · crud·main 주석 · 662 · 670 · 675 · 평면 여덟. 둘 끝나면 한 줄 보고하고 멈추십시오.
