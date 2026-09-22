@@ -447,3 +447,89 @@ def test_base_mapper_keeps_exactly_one_method():
 
     public = [n for n in vars(BaseMapper) if not n.startswith("_")]
     assert public == ["payloads_to_df"], f"BaseMapper grew: {public}"
+
+
+# ---------------------------------------------------------------------------
+# ⓓ — the shortest rule an operator can write. 「is_batch 가 없으면 터진다」 (총괄 2026-09-23)
+# ---------------------------------------------------------------------------
+#
+# 🔴 MEASURED THROUGH `rule_run`, NOT BY HANDING THE SDK A DICT. The defect is not that
+# `payloads_to_df` dislikes a dict - it is that the SEAT hands one when the rule omits a
+# cell, and the two halves live in different files. A test that fed the SDK a dict by hand
+# would stay green if the seat's fan-out changed, and the fan-out is the half that decides
+# the shape.
+
+@pytest.fixture
+def echo_rows():
+    """A decorated mapper, registered for one test.
+
+    ⚠️ POPPED ON THE WAY OUT. The registry is process-wide and `reset_registry()` runs in
+    other files, so a module-level registration here would be a test that passes or fails
+    on file order."""
+    @mapper_sdk.mapper(PLAIN)
+    def echo_rows(df, db):
+        """The three lines an operator writes. It declares nothing about batching."""
+        return df[["part_no", "qty"]]
+
+    try:
+        yield {"name": "shortest", "mapper": "echo_rows", "target_table": PLAIN}
+    finally:
+        mapper_sdk.MAPPER_REGISTRY.pop("echo_rows", None)
+        mapper_sdk.MAPPER_PARAMS.pop("echo_rows", None)
+
+
+def _two_payloads():
+    return [{"row_id": "r1", "data": {"part_no": {"value": "P1"}, "qty": {"value": 1}}},
+            {"row_id": "r2", "data": {"part_no": {"value": "P2"}, "qty": {"value": 2}}}]
+
+
+def test_a_rule_that_never_says_is_batch_runs(echo_rows):
+    """게이트 ⓓ-1. 「돈다」 - the rows come out the other side, not just 「안 터진다」.
+
+    🔴 THE SYMPTOM THIS REPLACES. With the rule as written, the seat calls the mapper ONCE
+    PER ROW with a bare payload; `payloads_to_df` walked that dict's KEYS and the operator's
+    screen said `AttributeError: 'str' object has no attribute 'get'`, pointing INSIDE the
+    SDK. Nothing in that sentence names a cell they could add, which is why this door was
+    the urgent one - the other three say 「못 한다」 and this one said nothing at all.
+
+    ⚠️ `db` IS `None` ON PURPOSE: the seat reaches the mapper without touching a session, so
+    a test that needed one would be measuring the fixture.
+    되돌리면(`payloads_to_df` 의 낱개 접기를 빼면) 이 줄이 AttributeError 로 빨개진다.
+    """
+    from chain import rule_run
+
+    out = rule_run.run_rule(None, dict(echo_rows), payloads=_two_payloads())
+
+    assert [u["updates"]["part_no"] for u in out["updates"]] == ["P1", "P2"], out
+
+
+def test_declaring_is_batch_gives_the_same_answer(echo_rows):
+    """게이트 ⓓ-2 · 대조군. The cell is a fan-out choice, not a licence to run.
+
+    Both shapes reach one implementation, so they must not be able to answer differently.
+    ⚠️ THE CONTROL IS THE BATCHED HALF, not this test: declaring `is_batch` worked before
+       this round and has to keep working, so the fix is not allowed to buy the single by
+       changing what the list does. Comparing them says that in one line."""
+    from chain import rule_run
+
+    singly = rule_run.run_rule(None, dict(echo_rows), payloads=_two_payloads())
+    batched = rule_run.run_rule(None, dict(echo_rows, is_batch=True),
+                                payloads=_two_payloads())
+
+    assert singly["updates"] == batched["updates"], (
+        "the same two rows came back differently depending on one cell: %r vs %r"
+        % (singly["updates"], batched["updates"]))
+
+
+def test_something_that_is_not_a_payload_is_refused_in_the_declarations_words():
+    """게이트 ⓓ-3. 「거절 문장이 선언의 낱말로 말해야 한다」 (총괄).
+
+    Folding the single does not make every shape readable. A list of ROW IDS is the adjacent
+    mistake - it is what the seat itself held before 판정 562 - and handing one raised that
+    same AttributeError from inside the SDK. The sentence now names what arrived and the
+    cell that decides the shape, so it can be acted on without reading this file."""
+    with pytest.raises(mapper_sdk.MapperContractError) as raised:
+        mapper_sdk.payloads_to_df(["r1", "r2"])
+
+    said = str(raised.value)
+    assert "str" in said and "is_batch" in said, said

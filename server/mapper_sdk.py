@@ -50,7 +50,7 @@ class MapperContractError(ValueError):
     upsert can never find again."""
 
 
-def payloads_to_df(payloads: List[Dict[str, Any]]) -> pd.DataFrame:
+def payloads_to_df(payloads: "Dict[str, Any] | List[Dict[str, Any]]") -> pd.DataFrame:
     """Outbox payloads -> one flat row each. Step ①.
 
     The cell shape is `{col: {"value": x, ...}}`; this keeps the value and drops the
@@ -59,12 +59,29 @@ def payloads_to_df(payloads: List[Dict[str, Any]]) -> pd.DataFrame:
     This is the SAME implementation `mappers/utils.payloads_to_df` holds, so that
     `BaseMapper` - which the owner keeps for the production mappers that inherit it -
     and this SDK cannot answer differently. Two doors, one judgement.
+
+    🔴 ONE PAYLOAD IS THE BATCH OF ONE [총괄 2026-09-23 · 문 ④]. The seat hands the whole
+    list when the rule declares `is_batch` and ONE payload per call when it does not
+    (`rule_run`: `[handed] if batched else [one for one in handed]`), so a rule that omits
+    the cell - which is what the shortest mapper looks like - arrived here as a dict. This
+    loop then walked its KEYS and the operator read `AttributeError: 'str' object has no
+    attribute 'get'` FROM INSIDE THE SDK: nothing in that sentence says which cell their
+    declaration is missing, so it could not be acted on.
+    The plural in the name is the size, not a requirement. Folding the size-one case HERE
+    rather than at each caller is what keeps one implementation behind both doors.
     """
     if not payloads:
         return pd.DataFrame()
+    if isinstance(payloads, dict):
+        payloads = [payloads]
 
     flat_rows = []
     for p in payloads:
+        if not isinstance(p, dict):
+            raise MapperContractError(
+                f"payload {len(flat_rows)} is a {type(p).__name__}, not a row. A mapper is "
+                f"handed one payload per row, or the whole list when the rule declares "
+                f"'is_batch: true' - a list of row ids instead of payloads reads like this.")
         flat_row = {"row_id": p.get("row_id")}
         for col_name, cell in (p.get("data") or {}).items():
             flat_row[col_name] = (cell["value"]
@@ -92,7 +109,7 @@ class BaseMapper:
     """
 
     @staticmethod
-    def payloads_to_df(payloads: List[Dict[str, Any]]) -> pd.DataFrame:
+    def payloads_to_df(payloads: "Dict[str, Any] | List[Dict[str, Any]]") -> pd.DataFrame:
         """Nested outbox payloads -> a flat DataFrame. Delegated, never re-implemented."""
         return payloads_to_df(payloads)
 
