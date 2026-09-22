@@ -51490,3 +51490,64 @@ CHAIN_STATE_WAITING / DONE / FAILED  +  state_detail (retrying · 모순 · unkn
 ```
 
 **④ 가 막힙니다 — 모집단이 갈리면 ② 의 게이트 표가 갈립니다. 감시 켜 두고 기다립니다.**
+
+---
+
+## 09-22 19:52 구현자 -> 총괄 · 정정 (앞 계획의 상태표가 틀렸습니다 · ④ 가 더 큽니다)
+
+계획을 올린 직후 「안 쟀다」고 적은 census 를 마저 셌습니다. **제 상태표 한 줄이 도달
+불가였고, ④ 가 「미전달」만의 문제가 아니었습니다.**
+
+### 계기가 왜 못 봤나 — 값이 «변수»로 옵니다
+
+```
+좌석  ingestion_worker.py:1196  `def mark_processed(event, status: str)`
+      :1216  event.status = status        <- 리터럴이 아니라 «인자»
+```
+제 계기 넷(속성 대입·update-dict·생 SQL·`DatabaseOutbox.status`)이 전부 «리터럴»을
+세고 있었습니다. 쓰는 자리는 값을 «변수»로 받습니다 — 또 모집단이 주장과 안 맞았습니다.
+호출자로 세야 했고, 세니 나왔습니다:
+
+```bash
+git grep -nE "mark_processed\(" -- server/ | grep -v "def mark_processed"
+```
+
+### 🔴 실패는 «큐에서 나갑니다» — 그래서 기본 모집단이 실패를 «못 보여줍니다»
+
+`mark_processed` 는 status 와 `processed_chain=True` 를 «같이» 찍고, 독스트링이
+이유까지 적어 뒀습니다: 「FAILURE IS STAMPED TOO … a permanently failed event has stopped」.
+스케줄러 쪽도 같습니다(`run_auto_update.py:888·1016` 둘 다 `processed_chain = True` 동반).
+
+```
+=> `processed_chain=false AND status=FAILED` 는 «도달 불가»입니다.
+   앞 계획 상태표의 그 줄을 무릅니다. 지어낸 칸이었습니다.
+```
+
+도달 가능한 다섯 상태 중 기본 모집단이 «둘»만 보여줍니다:
+
+| 상태 | processed_chain | status | 기본 모집단에 뜨나 |
+|---|---|---|---|
+| 대기 | false | PENDING | ✅ |
+| 재시도 대기 | false | RETRYING | ✅ (`:2515`, 영구실패의 else — 표시를 안 민다) |
+| 완료 | true | SUCCESS | ❌ |
+| 완료·미전달 | true | SUCCESS + `broadcast_at IS NULL` | ❌ |
+| **실패(영구)** | true | FAILED | ❌ |
+
+소유자의 물음은 「앞으로 무엇이 돌 예정이고 «돌건지»」입니다. **실패한 행은 「안 돌 것」이고,
+그게 운영자가 제일 보고 싶은 줄인데 기본 모집단에서 통째로 빠집니다.**
+
+### ④ 를 고쳐 다시 올립니다 — 부분 인덱스 «셋»의 합집합
+
+```
+idx_outbox_unprocessed   processed_chain = false                      대기 · 재시도
+idx_outbox_undelivered   processed_chain=true AND SUCCESS AND NULL    완료·미전달
+idx_outbox_failed        status = 'FAILED'                            실패
+=> 새 인덱스 «0». 색인 읽기 셋. 전부 부분 인덱스라 정상 상태에선 작습니다
+```
+실패는 상한(최근 N) 이 필요합니다 — 다른 둘과 달리 «스스로 비지 않습니다».
+그 수는 «안 쟀습니다»(보관 정책이 7일이라 그 안의 실패 수를 박스에서 셀 수 없습니다).
+
+### 안 바뀌는 것
+걸음 ① (술어 접기)는 이 정정과 «무관»합니다 — ①②③ 판정은 그대로 유효합니다.
+
+**④ 만 다시 여쭙니다. 감시 켜 두고 기다립니다.**
