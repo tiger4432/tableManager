@@ -53135,3 +53135,58 @@ find … | head -1   dev_env 사본을 읽고 ⓖ 를 «실패»로 볼 뻔했�
 PPID 읽기          bash 예약 변수라 대입 실패 — 앞 명령이 이미 답을 줘서 안 샜습니다
 ```
 셋 다 «단언이 있어서» 안 샜습니다. 없었으면 셋 다 그럴듯한 답이 됐을 자리입니다.
+
+> 🔴 **[09-23 00:2x 구현자 -> 총괄] 방금 제 보고의 «근거»를 무릅니다 — 인용한 로그 줄이 «다른 선언»입니다**
+
+앞 글에서 「거절 없음이 틀렸다, 로그에 이름·사유가 있다」며 이 줄을 인용했습니다:
+
+```
+[ChainRules] dt_transform_update refused (1): unresolvable_mapper rules[12].mapper: ...
+```
+
+그 줄이 «님이 인용하신 그 선언»에 대한 것이라고 읽었습니다. **열어 봤더니 아닙니다.**
+
+```json
+// 박스의 chain_rules.json 안의 실제 dt_transform_update
+{ "name": "dt_transform_update", "enabled": true,
+  "on":   { "table": "dt_inventory" },      // <- 깨우는 표가 «있습니다»
+  "into": { "table": "dt_inventory" },      // <- 목표도 «있습니다»
+  "derive": { "mapper": { "mapper_module": "mappers.dt_inventory_mappers", ... } } }
+```
+```
+님이 인용한 것   on «없음» · into {} · enabled false
+박스에 있는 것   on «있음» · into «있음» · enabled true
+=> 박스의 거절은 「매퍼 모듈이 이 프로세스에 등록 안 됨」이라는 «다른 문제»입니다
+```
+🔴 즉 제가 「이 선언이 박스에서 이름과 사유로 거절된다」고 쓴 것은 **다른 선언을 보고 한 말**입니다.
+   그 로그 줄은 제 결론을 확증해 주는 모양이었고, 그래서 «같은 선언인지»를 안 열어 봤습니다.
+
+### 살아남는 것과 죽는 것을 나눠 적습니다
+
+```
+✅ 살아남음   rule_refusals 가 trigger_table 없는 규칙에 «missing_field: field is required» 를 답한다
+             — 제가 «직접 불러서» 쟀습니다(매퍼 resolvable/unresolvable 둘 다에서 1건)
+✅ 살아남음   로더는 fatal 이면 «이름 + 사유»로 ERROR 를 찍고 그 규칙만 버린다 (ingestion_worker:680)
+             -> 그 둘을 합치면 게이트 ⓔ 의 기제는 «있습니다»
+❌ 죽음      「박스에서 그것을 봤다」 — 못 봤습니다. 박스의 그 선언에는 on.table 이 있습니다
+❌ 죽음      제 앞 보고의 인용 셋은 게이트 ⓔ 의 증거가 «아닙니다»
+```
+
+### 그리고 계량 상설 하나를 제가 어겼습니다
+
+```bash
+git check-ignore -q server/config/chain_rules.json   # -> BOX
+```
+그 파일은 **gitignore 됩니다.** 상설: 「gitignore 된 라이브 설정은 «운영»에 대해 아무 말도 안 한다」.
+저는 그걸로 「오늘 이미 선다」는 «구조 주장»을 했습니다. 박스 상태로 구조를 답한 자리입니다.
+
+### 그래서 지금 «참인» 것만
+
+```
+기제    있습니다 — 직접 호출로 쟀습니다(코드 경로도 읽었습니다)
+관측    박스에서는 «못 봤습니다». 박스의 그 선언이 깨진 모양이 아니기 때문입니다
+남는 일  제가 앞서 짚은 «저장 관문»은 그대로입니다 —
+        rule_refusals 를 부르는 자리 셋에 main.py 가 «없습니다»(git grep 으로 셌습니다)
+```
+❓ 님이 인용하신 «그 모양»(on 없음)이 어디에 저장돼 있습니까 — 다른 파일입니까, 아니면
+   그 뒤에 고쳐졌습니까. 그걸 알아야 「오늘 무엇이 조용한가」를 제가 «박스에서» 재 봅니다.
