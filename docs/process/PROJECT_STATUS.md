@@ -12,6 +12,25 @@
 계기   scratchpad/probe_gate_one_v1_absent.py (①) · scratchpad/verify_chain_end_to_end.py (②)
 ```
 
+## 🔴 새 발견 (09-22 21:5x, 총괄이 직접 재서) — 「일이 끝났다」를 짓는 저자가 «둘»이다
+
+`mark_processed` 독스트링: 「The ONE place an outbox event stops being work」 — **거짓입니다.**
+```
+종일자   ingestion_worker.py:1246      status · processed_chain · processed_at 을 «셋 다» 찍는다
+둘째   run_auto_update.py :852 :889 :982 :1017   processed_chain «만» 찍는다
+```
+그 결과로 이 박스에 남은 행 (제가 SQL 로 재음):
+```
+5 행  RETROACTIVE_RUN · __retroactive__ · 9/15~9/17 · processed_chain=true · status=PENDING · processed_at=NULL
+       chain_state_of(True,'PENDING') -> ('done', 'unexpected_status:PENDING')   <- 어휘는 이름을 가지고 있다
+→ 대기열에 «안 들어감» (undelivered 는 status='SUCCESS' 를 요구)
+→ 실패 라우트에도 «안 들어감» (status≠FAILED)
+→ **어느 화면에도 안 뜽니다.** 그리고 그 event_type 이 2026-09-04 장애의 그 타입입니다
+```
+⚠️ 박스 수입니다 — 운영 주장이 아닙니다. 주장은 «저자가 둘»이고 그건 코드입니다.
+⚪ 안 봤습니다: 스케줄러가 그렇게 찍는 것이 «일부러»인가. 그 네 자리를 안 열었습니다
+⏸️ 소유자 판정 전까지 **지시 안 합니다** (「구현자 너무 오래하는데」 — 큐를 더 먹이지 않습니다)
+
 ## 🟢 「대기열」 탭 — 섰다 (09-22 20:2x. 총괄이 «화면을 열어» 확인)
 
 소유자: 「테이블 변경으로 앞으로 무엇이 돌 예정이고 돌건지」 · 「브로드캐스트도」 · 이름은 «대기열»
