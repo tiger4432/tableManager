@@ -54159,3 +54159,48 @@ legacy_materialized_join 이 SessionLocal() 을 «일부러» 엽니다.
 ```
 🔵 셋 다 데이터를 안 잃는데도 올리신 것이 맞습니다 — 「이 줄이 «참»인가」는 구성 기준의
 «첫째»이고, 거짓 문장은 다음 사람이 «전제»로 쓸 때 값을 치릅니다.
+
+> 📐 **[09-22 총괄] 678 · 「조인 승인」의 새 자리 — 양쪽 반쪽의 이름입니다 (672 에서 약속한 것)**
+
+```
+라우트   GET /admin/chain/join/verify      (require_admin_token)
+좌석     chain.synthesis.approval_report(db, known_tables=…)
+```
+왜 이 이름인가 — 축은 「승인 = 키를 덮는 UNIQUE 인덱스가 실재한다」이고, 죽는 것은
+「virtual-join」이라는 «배관 낱말»뿐입니다. `/admin/chain/` 가족은 이미 넷 있습니다
+(`rules` · `rules/raw` · `rules/replayable` · `queue`) — 새 가족을 안 만듭니다.
+
+### 🔴 좌석이 `synthesis` 인 이유 — 저자가 셋이 되면 안 됩니다
+
+`declared_unique_targets` 의 독스트링이 이미 적어 뒀습니다:
+「「어느 인덱스를 «짓나»」와 「어느 것을 «요구하나»」는 절대 갈릴 수 없어야 한다 — 한 워커」.
+**「어느 것을 «보고하나»」가 셋째입니다.** 같은 워커에서 나와야 합니다.
+```
+재료는 다 있습니다   join_key_index.required_index_name · required_index_ddl  (문법 중립)
+                  join_key_index.unique_index_covering                     (승인 여부)
+                  join_refusal.virtual_join_detail                         (운영자 «문장»)
+⚠️ 문장은 «다시 짓지 마십시오». 오늘 그 조립기가 정본이고 `/admin/config/resolve` 와 «같은 것»을 씁니다.
+   철자에 배관 낱말이 있으면 «철자만» 바꾸고 저자는 그대로 둡니다 (축과 값을 같이 죽이지 않는다)
+```
+
+### 응답 모양 — **오늘 것과 «같게»**. 그래야 클라 변경이 URL 한 줄입니다
+```
+{ declarations: [ {name, left_table, right_table, join_key[], folded_join_key[],
+                   expose[], accepted, unique_index, required_index,
+                   required_index_ddl, detail} ],
+  accepted: N, refused: N, invalid: [{subject, detail}] }
+```
+```
+통합에서 오는 값   left_table <- into · expose <- take · join_key <- 선언의 키 쌍 · folds <- join_into 가
+                이미 계산한 것(둘째 계산 금지) · invalid <- expand_declaration 의 거절
+동반 반쪽        인덱스 좌석과 «같은 이유»로 한 항목으로 접습니다 — 「한 사실, 두 문장」 금지
+비용            행을 «안» 셉니다. 카탈로그만. 그래야 요청 경로에 앉습니다 (오늘 계약 그대로)
+```
+
+### 🔴 순서 — 셋. 뒤집으면 운영자가 «재시작을 돕니다** (674)
+```
+① 서버   새 라우트를 «세웁니다». 옛 라우트는 «그대로 둡니다» — 이 시점에 둘 다 답합니다
+② 클라   URL 을 바꿉니다. 화면 낱말·모양은 그대로 (같은 응답이므로)
+③ 서버   옛 라우트 + 문법을 «같이» 걷습니다 (652 2·3걸음)
+⛔ ①③ 을 한 커밋에 넣지 마십시오. 그 사이 ② 가 못 들어갑니다
+```
