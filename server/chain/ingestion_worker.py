@@ -3475,6 +3475,13 @@ def start_replay_if_queued(db):
     from admin import retroactive
 
     nxt = retroactive.next_queued(db, "chain_replay")
+    # 🔴 [게이트 ⓖ] «성공한 훑기»가 보여야 한다. 안 그러면 「돌았는데 할 일이 없다」와
+    #    「한 번도 안 돌았다」가 «같은 픽셀»이다 — 실제로 2 초마다 NameError 로 죽는 동안
+    #    시험 29 는 초록이었고, 박스를 열기 전까지 아무도 몰랐다.
+    # ⚠️ 로그로 찍지 않는다(2 초마다면 소음이다). 심박의 lap 이 이 목적의 기존 기제이고,
+    #    워커는 `beat("chain")` 을 부르므로 이 값은 «파일로 나간다».
+    heartbeat.record_lap("chain", "replay_sweep",
+                         found=(nxt or {}).get("run_id") or "none")
     if not nxt:
         return None
     blocked = retroactive.gate_refusal(db)

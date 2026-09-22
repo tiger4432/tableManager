@@ -13,6 +13,8 @@ import os
 import sys
 import types
 
+import pytest
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from admin import retroactive                                            # noqa: E402
@@ -97,3 +99,82 @@ def test_the_loop_starts_the_replay_without_awaiting_it():
         "루프가 리플레이를 «기다린다» — 도는 동안 아웃박스가 안 집힌다"
     assert not re.search(r"await\s+asyncio\.to_thread\(_execute_retroactive", source), \
         "리플레이를 인라인으로 기다린다 — 스레드여도 드레인은 멈춘다"
+
+
+# ---------------------------------------------------------------------------
+# 🔴 진짜 몸통 — 위의 넷은 `next_queued` 를 통째로 갈아끼운다
+# ---------------------------------------------------------------------------
+# 그래서 그 넷은 「루프가 훑기를 «어떻게 쓰나»」를 재고, 훑기 «자체»는 한 번도 안 돌았다.
+# 실제로 그 몸통은 `from database import models` 가 빠져 박스에서 2 초마다 NameError 로
+# 죽고 있었고, 시험 29 는 초록이었다. 픽스처가 만들어 주는 값을 단언하면 초록은 뜻이 없다.
+#
+# ⛔ 그러니 이 아래는 «아무것도 monkeypatch 하지 않는다». 진짜 표에 진짜 행을 넣고
+#    진짜 함수를 부른다.
+
+@pytest.fixture
+def real_runs_table(tmp_path, monkeypatch):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from database import models
+    from database.database import Base                                  # noqa: F401
+
+    engine = create_engine("sqlite:///%s" % (tmp_path / "runs.db").as_posix(),
+                           connect_args={"check_same_thread": False})
+    models.RetroactiveRun.__table__.create(bind=engine, checkfirst=True)
+    Session = sessionmaker(bind=engine)
+    monkeypatch.setattr("database.database.SessionLocal", Session)
+    yield Session
+    engine.dispose()
+
+
+def test_the_real_sweep_body_runs_and_finds_a_queued_replay(real_runs_table):
+    """게이트 ⓕ 의 단위 쪽 — «진짜» next_queued 가 돈다.
+
+    이 줄이 없었기에 import 하나가 빠진 채로 착지했다. 이건 「루프가 훑기를 부르나」가
+    아니라 「훑기가 «돌기는 하나»」를 재는 유일한 자리다.
+    """
+    import json
+
+    from database import models
+
+    s = real_runs_table()
+    s.add(models.RetroactiveRun(run_id="rq-1", op="chain_replay",
+                                params=json.dumps({"rule": "r"}),
+                                state=retroactive.RUN_QUEUED))
+    s.add(models.RetroactiveRun(run_id="other", op="withdraw", params="{}",
+                                state=retroactive.RUN_QUEUED))
+    s.commit()
+
+    got = retroactive.next_queued(s, "chain_replay")
+
+    assert got is not None, "진짜 몸통이 못 찾았다"
+    assert got["run_id"] == "rq-1"
+    assert got["params"] == {"rule": "r"}, "params 가 dict 로 안 풀렸다"
+    s.close()
+
+
+def test_the_real_sweep_ignores_ops_that_are_not_its_own(real_runs_table):
+    """다른 데몬의 일을 집으면 그게 2026-09-15 의 모양이다."""
+    from database import models
+
+    s = real_runs_table()
+    s.add(models.RetroactiveRun(run_id="w-1", op="withdraw", params="{}",
+                                state=retroactive.RUN_QUEUED))
+    s.commit()
+
+    assert retroactive.next_queued(s, "chain_replay") is None
+    s.close()
+
+
+def test_the_real_sweep_passes_over_a_run_someone_already_took(real_runs_table):
+    """queued 가 아닌 행은 «대기 중»이 아니다 — 집을 대상이 아니다."""
+    from database import models
+
+    s = real_runs_table()
+    s.add(models.RetroactiveRun(run_id="taken", op="chain_replay", params="{}",
+                                state=retroactive.RUN_RUNNING))
+    s.commit()
+
+    assert retroactive.next_queued(s, "chain_replay") is None
+    s.close()

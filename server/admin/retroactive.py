@@ -1482,6 +1482,11 @@ def next_queued(db, op):
        「이미 running」을 보고 «자기 일을 건너뛴다». 찾기와 집기를 나눠 두면 둘이 같은 행을
        찾아도 이기는 쪽은 여전히 하나다.
     """
+    # ⚠️ 이 파일은 `models` 를 «함수 안»에서 든다(8 자리). 이 줄이 빠져서 훑기가 박스에서
+    #    2 초마다 NameError 로 죽었고, 시험 29 는 초록이었다 — 시험이 이 함수를 «통째로»
+    #    monkeypatch 해서 진짜 몸통이 «한 번도 안 돌았기» 때문이다.
+    from database import models
+
     row = (db.query(models.RetroactiveRun)
            .filter(models.RetroactiveRun.state == RUN_QUEUED,
                    models.RetroactiveRun.op == op)
