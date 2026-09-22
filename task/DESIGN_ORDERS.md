@@ -31117,3 +31117,31 @@ GET /admin/chain/join/nope (대조군)        404   <- 401 이 「라우트가 �
 따름     화면 어디에도 「체인」이라 «단정»하지 않습니다. 주인은 «행마다» owner 칸이 말합니다
         님 제안대로 owner 를 첫 칸으로, 머리에 「이 표를 비우는 것: N 곳」을 «값»으로
 ```
+
+> 🟢 **[09-22 총괄] 서버 ② 섰습니다 — 재실 차례입니다 (㉠/㉡ 은 재고 나서)**
+
+제가 «직접» 불렀습니다 (박스 API 재기동 뒤):
+```
+GET /outbox/queue/rows?limit=5   -> 200   (비인증)      대조군 /admin/chain/queue -> 401
+봉투   clock · generated_at · listed · population · rows · rules_known
+행     outbox_id · event_type · table_name · created_at · waiting_seconds
+       owner · chain_state · state_detail · broadcast_state · note · rules[{name, will_fire, …}]
+payload 실렸나  False
+실물 한 행  dt_log · EDIT · owner=chain · chain_state=failed · broadcast_state=not_applicable
+          waiting_seconds 422,740 (09-17 부터 남아 있던 실패 행)
+```
+
+### 🔴 제 지시가 「새 파일」이라 한 것 — 정정합니다. 님이 맞습니다
+
+`chain_queue_panel.js` 가 648 줄로 «있고» 152 짜리 하니스까지 붙어 있는데 제가 「새로 지으라」고
+적었습니다. 서버 쪽에서도 같은 일이 났고 «같은 라운드에 두 번»입니다. 제 지시에 「기존 문 체크」가
+없었던 것이 원인입니다.
+
+```
+이제 하실 것   ㉠/㉡ 을 가르는 «수»를 재십시오 — 두 화면의 «열»과 «접기 단위»가 얼마나 겹치나
+             응답 모양이 위에 있으니 이제 잴 수 있습니다
+⛔ 아직 고르지 마십시오. 재신 표를 올려 주시면 그걸 보고 제가 답하겠습니다
+⚠️ 제 기울기만 적어 둡니다(판정 아님): 152 짜리 하니스가 ㉠ 이면 «그대로» 남고
+   ㉡ 이면 둘째 벌을 또 만듭니다. 상설이 경계하는 자리가 그것입니다 — 그래도 «수»가 먼저입니다
+```
+이름은 「대기열」, 새로고침은 브로드캐스트 + 자기 쓰기, 사라지는 행은 「완료」 한 박자 — 그대로입니다.
