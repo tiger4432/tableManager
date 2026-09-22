@@ -1805,10 +1805,10 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 | `RULE_LOG_TAG = "ChainRule"` | 🔴 **어휘가 «하나»다.** 종류마다 다른 태그를 쓰던 것(맵퍼 `MAPPER_LOG_TAG` · builtin 자기 문장)이 이 한 낱말로 접혔다 — grep 이 «종류를 먼저 묻지» 않게 | :46 |
 | `outgoing_depth(incoming)` · `chain_envelope(depth=None)` | 홉을 «세는» 자리와 접기 스코프를 «여는» 자리. 판정 423 이 `+1` 을 호출자에서 여기로 옮겼다 | :55 · :67 |
 | `builtin_kind(rule)` | ⚰️ **[판정 562] 은퇴했다 — 종류표가 없어져 이 물음 자체가 사라졌다.** 이 규칙이 «어느 빌트인 종류를 이름으로 대나»(표 멤버십). 이 좌석 «안»에서 여섯 번 불린다(:155 · :198 · :231 · :251 · :281 · :357). ⚠️ 판정 528 의 은퇴 목록에 «잘못» 올랐다가 **판정 530 으로 내려왔다**(응용 Q-85) | :124 |
-| `writes_itself(rule)` | 「자기 행을 «자기가» 쓰나」 — 봉투(envelope)를 여는 쪽인지 호출자의 배치 쓰기로 나가는지. `hands` 와 «다른 사실»이다 | :139 |
+| ⚰️ **[총괄 2026-09-23 — 없어짐]** `writes_itself(rule)` | 「자기 행을 «자기가» 쓰나」를 물었다. 답이 «등록된 사실»로 옮겨가면서 물음 자체가 사라졌다(판정 562 의 다음 걸음). 🔴 되돌림 방지 대조군: `server/tests/test_a_rule_is_run_by_one_seat.py` 의 `assert not hasattr(rule_run, "writes_itself")` — 되살리면 그 줄이 먼저 운다 | — |
 | `runnable(name)` | 「이 이름이 이 프로세스에서 돌 수 있나」의 **유일한 답**. 부르는 곳 셋: `ingestion_worker._resolvable_mapper` · `config_resolve_report._runnable_name` · `admin/dev_bench` | :159 |
 | ⚰️ [판정 562 — 없어짐. 손이 «하나»다] `hands(rule) -> HANDS_ROW_IDS \| HANDS_PAYLOADS` | **어떻게 «불리나»** — `(db, rule, row_ids=)` 인가 `(db, payload)` 인가. 🔴 **등록에서 읽는다**(`builtins.BUILTIN_HANDS`), 이름에서 «유도하지 않는다». 판정 503 이 처음 `HANDS_ROW_IDS if builtin_kind(rule) is not None` 로 썼다가 «대리를 한 층 내린 것»이라 판정 508 이 고쳤다(응용 발견). `BUILTIN_KINDS` 에 직접 쓴 이름이 `BUILTIN_HANDS` 에 없으면 «조용히 payloads» 가 아니라 `UnresolvableRule` 로 «이름을 댄다» :205~:211 (판정 509) | :179 |
-| 🆕 `self_writing_name(rule)` | 「«자기 행을 쓰는» 규칙이면 그 종류 이름, 아니면 None」. ⚠️ `builtin_kind` 의 «대체가 아니다» — 판정 505 가 바꾼 것은 통계 payload 의 «칸 이름»(`stats["builtin_kind"]` → `stats["self_writing_kind"]`, `chain/replay.py` :481)이고 이 함수는 «새로 생긴» 것이다 | :216 |
+| ⚰️ **[총괄 2026-09-23 — 없어짐]** `self_writing_name(rule)` | 「«자기 행을 쓰는» 규칙이면 그 종류 이름, 아니면 None」을 답했다. 묘비는 `chain/rule_run.py` :174. ⚠️ 같이 죽은 것 둘 — `stats["self_writing_kind"]` 와 `hands_row_ids`(`chain/replay.py` :447 묘비). 셋을 «따로» 되살리면 갈라진다 | — |
 | `rule_label(rule)` | 운영자가 읽는 «낱말»(join · decide · mapper). 등록이 저자다(`dynamic_mappers.TEMPLATE_FACTS[…]['label']` — 옛 `builtins.BUILTIN_LABELS`) | :235 |
 | `retraction_refusal(rule)` · `rows_counted(value)` | 철회 거절 문장 · 「몇 줄을 냈나」를 «한 번» 세는 자리(화면과 로그가 같은 수를 읽는다, 판정 498) | :264 · :396 |
 | `Resolved = namedtuple("Resolved", "call who accepts_rule"  ← [판정 562] `hands`·`writes_itself` 두 칸이 빠졌다)` · `class UnresolvableRule(ValueError)` | 푼 결과 다섯 칸 · 못 푼 것의 «한 예외». 🔴 그 예외가 오늘 «두 뜻»이다(「제품이 모르는 이름」 :376·:386 / 「아는 종류인데 오등록」 :205) — 잡는 자리는 `admin/dev_bench.py` «하나»이고 둘을 «같이» 받는다(응용 Q-62) | :316 · :320 |
@@ -2788,23 +2788,24 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 
 | 심볼 | 무엇인가 | 라인 |
 |---|---|---|
-| `TEMPLATES: dict` | 「맵퍼 이름 -> 그 이름으로 돌 함수」. 키는 «저장된 규칙이 이미 적고 있는 값»이라 선언에 새 낱말이 필요 없다 | 🆕 :237 |
-| `_install_templates()` · `install()` | 🆕 «네» 이름을 묶고 `mapper_sdk.register(name, fn, params=…)` 로 등록한다. `params` 는 로더가 선언을 채점하는 «인자 목록»이라 «필수»다(판정 562) | 🆕 :240 · :296 |
-| `TEMPLATE_FACTS: dict` | 등록 줄이 «네 사실»을 같이 말하던 것을 옮겨 받은 표 — `label` · `stamps_origin` · `writes_itself` | 🆕 :206 |
-| 🆕 `label_for(name)` · `writes_itself(name)` · `stamps_origin(name)` | 그 표를 읽는 얇은 접근자 셋 (⚰️ 종전 표기 `label(name)`) | 🆕 :209 · :214 · :224 |
-| 🆕 몸통 «넷» `_join` :57 · `_auto_confirm` :86 · `_legacy_materialized_join` :133 · `_enrich` :161 | `declared:join` · `declared:decide` · `declared:virtual_join` (판정 600, `a96d4a68` — 옛 `builtin:…` 셋) · 🆕 `declared:enrich`(`4352ad47`, 인리치 파생행 半 — 몸통은 `chain/enrichment/mapper.map_enrichment_dedup` 그대로) | 🆕 @`14dfaf65` | ⏳ **`declared:virtual_join` 은 «은퇴 진행 중»입니다**(판정 652 — 가상 조인 개념 제거). 기제는 아직 살아 있어 오늘은 «넷»이 맞고, 1걸음이 착지하면 «셋»이 됩니다.
+| `TEMPLATES: dict` | 「맵퍼 이름 -> 그 이름으로 돌 함수」. 키는 «저장된 규칙이 이미 적고 있는 값»이라 선언에 새 낱말이 필요 없다 | 🆕 :197 |
+| `_install_templates()` · `install()` | 🆕 «세» 이름을 묶고 `mapper_sdk.register(name, fn, params=…)` 로 등록한다. `params` 는 로더가 선언을 채점하는 «인자 목록»이라 «필수»다(판정 562) | 🆕 :200 · :245 |
+| `TEMPLATE_FACTS: dict` | 등록 줄이 «세 사실»을 같이 말하던 것을 옮겨 받은 표 — `label` · `stamps_origin` · `params` | 🆕 :175 |
+| 🆕 `label_for(name)` · `stamps_origin(name)` | 그 표를 읽는 얇은 접근자 «둘» (⚰️ 종전 표기 `label(name)` · ⚰️ **[2026-09-23] `writes_itself(name)` 이 여기 있었다** — 판정 605 가 그 축을 지웠다) | 🆕 :178 · :184 |
+| 🆕 몸통 «셋» `_join` :58 · `_auto_confirm` :71 · `_enrich` :130 | `declared:join`(`join_into.py` :42) · `declared:decide`(`enrichment/config.py` :881) · `declared:enrich`(:887, 인리치 파생행 半 — 몸통은 `chain/enrichment/mapper.map_enrichment_dedup` 그대로) | 🆕 @`8bd094477` | ⚰️ **[판정 652 3걸음, 2026-09-23] `declared:virtual_join` 과 `_legacy_materialized_join` 이 여기 있었다** — 둘 다 없어졌고 :120 에 묘비가 있다. 종전 이 칸의 ⏳ 「오늘은 넷이 맞고 1걸음이 착지하면 셋이 된다」는 그 착지로 «닫혔다».
 
 ```
-🆕 오늘의 네 줄 — «등록이 말하는 그대로»다 (계기: `TEMPLATE_FACTS` 의 값. @`14dfaf65` 실측)
-   declared:join          label join    · stamps_origin True  · writes_itself True
-   declared:decide        label decide  · stamps_origin False · writes_itself True
-   declared:enrich        label decide  · stamps_origin False · writes_itself «False»   <- `4352ad47`
-   declared:virtual_join  label join    · stamps_origin True  · writes_itself True
-⚰️ 종전 이 자리: 「세 템플릿이 «전부» writes_itself: True」 — `4352ad47` 이 «거짓»으로 만들었다.
-   (응용 레인이 쓴 절대어였고, 계기 없이 서 있다가 착지 하나에 넘어갔다. 그래서 위 줄에 계기를 붙인다)
-🔴 판정 605   그 축을 «지운다»가 판정됐다(맵퍼는 updates 만 돌려주고 좌석이 업서트 한 문으로 쓴다).
-              이 표의 `writes_itself` 와 접근자는 그 착지와 «같이» 사라질 자리다 — 아직 서 있다.
-              🔵 새로 선 `declared:enrich` 는 «이미» False 다 — 605 가 가려는 쪽이 새 맵퍼에선 기본이다
+🆕 오늘의 «세» 줄 — «등록이 말하는 그대로»다 (계기: `TEMPLATE_FACTS` 의 값. @`8bd094477` 실측)
+   declared:join    label join    · stamps_origin True   · params None
+   declared:decide  label decide  · stamps_origin False  · params None
+   declared:enrich  label decide  · stamps_origin False  · params None   <- 라벨은 «선언의 낱말»이다
+⚰️ 종전 이 자리: `writes_itself` 칸을 든 «네» 줄. 판정 605(그 축을 지운다)가 2026-09-23 에 착지했고,
+   같은 날 `declared:virtual_join` 줄도 같이 없어졌다. 접근자 `writes_itself(name)` 도 없다.
+🔴 `params` 가 «빠진 칸»이었다 — 이 표가 오래 `writes_itself` 를 적는 동안 정작 필수인 이것이 없었다.
+   없이 등록하면 로더가 「이 맵퍼는 인자를 선언하지 않는다」로 읽어 진짜 조인을 «전부»
+   `undeclared_param` 으로 거절한다(판정 562. 실측은 `_install_templates` 주석에 있다 — 선언이
+   로드에서 통째로 떨어져 규칙 목록이 비었다). ⚠️ `None` 은 「제품이 인자를 «제약하지 않는다»」이고
+   빈 튜플은 「하나도 legal 하지 않다」다 — 다른 문장이다.
 ```
 
 ### 🆕㉘ `server/chain/synthesis.py` (🆕 **268줄** @`3c9da31f` — ⚰️ `chain/builtins.py` 로 살던 때: ~~446 @`6c71084f`~~ · ~~413 @`c4b010c8`~~ · ~~334 @`2c93ae9f`~~, 332 @`b1db471a`, 177 @`dc877746`, 구 표기 171, S-189 ⓒ `1964c65a` 신설 · S-195 에서 120→171) — 합성 «한 자리» + «선언한 유일 키»를 세우는 껍데기. ⚰️ `builtin:` 종류 표는 판정 562 에서 지워졌고, 이름은 `3c9da31f` 에서 따라왔다
@@ -2820,9 +2821,9 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 >            => 합성과 «선언된 유일 키»의 자리다. 종류표도 문도 아니다
 > 없어진 것   BUILTIN_KINDS · ORIGIN_STAMPING_KINDS · SELF_WRITING_KINDS · BUILTIN_LABELS ·
 >            register_builtin · UnknownBuiltinKind — «코드 노드 0»(AST, 추적 .py 293 파일)
-> 오늘의 답   그 네 사실은 `chain/dynamic_mappers.py` 의 `TEMPLATE_FACTS` 에 산다
->            (label · stamps_origin · writes_itself) · 🆕 이름은 `declared:` **넷** — join · decide ·
->            virtual_join · enrich(`4352ad47`). ⚰️ 종전 이 줄은 「셋」이었고 착지 하나에 넘어갔다.
+> 오늘의 답   그 «세» 사실은 `chain/dynamic_mappers.py` 의 `TEMPLATE_FACTS` 에 산다
+>            (label · stamps_origin · params) · 이름은 `declared:` **셋** — join · decide · enrich
+>            ⚰️ 종전 이 줄은 「넷(+virtual_join)」이었고 사실로 `writes_itself` 를 들었다. 2026-09-23 에 둘 다 없어졌다
 >            🔴 세는 법: `chain/dynamic_mappers.TEMPLATES` 의 키 (계기를 같은 칸에 둔다)
 > 🔴 아래 줄 번호(:309 · :318 · :327 · :333 · :359 · :122)는 «그때의» 앵커다. 지금 열면 다른 것이 있다
 > ```
@@ -2838,13 +2839,13 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 > ```
 > 🔴 **왜 «등록 줄»에 같이 적나** — 뒤 둘은 종전에 «유도»됐다. `writes_itself` 는 「이게 builtin 인가」(주소)에서, `label` 은 `rule_shape` 가 «import 한 상수와 비교»해서. 둘 다 «손으로 기른 목록»이라, 네 번째 종류를 등록하면 조용히 「mapper」로 불리고 아무것도 빨개지지 않았다. 이제 종류를 더하는 사람이 «같은 줄»에서 그 둘을 말한다.
 > ⚰️ **`register_builtin(kind, fn)` 2-인자 서술은 오늘 거짓이다** — 인자가 다섯이다. 그리고 `_run_join` :128 · `_run_auto_confirm` :143 의 시그니처에 **`done=None, **_`** 가 붙었다(판정 428: 좌석이 랩 배치를 «묻지 않고» 넘기므로 모든 구현이 같은 시그니처를 받는다).
-> ⚠️ **`class UnknownBuiltinKind` :122 는 «살아 있다»** — 다만 raise 하는 자리가 «하나»로 줄었다: `register_builtin` :339~:342 의 「한 id 를 둘이 주장한다」. 모르는 종류의 거절은 좌석의 `UnresolvableRule` 로 갔고 «등록된 종류 목록»을 같이 인쇄한다. 🔴 소스가 스스로 적는 남은 빚 :364~:371 — 그 거절은 「구현을 못 찾겠다」로 읽히지 「그건 아는 종류가 아니다」로는 못 읽는다(`builtin:` 접두의 «상수»가 없어서. 여기 짓는 것이 그 철자의 «셋째 저자»가 되므로 «보고만» 했다).
+> ⚰️ **[2026-09-23] `class UnknownBuiltinKind` «도» 없어졌다** — 위 「없어진 것」 줄과 같은 답이다. 종전 이 자리는 「:122 는 «살아 있다» — 다만 raise 하는 자리가 «하나»로 줄었다」였고, 그 «하나»가 `register_builtin` 이었다. 마지막 raise 가 사라지면 예외도 같이 죽는다 — 이 줄이 그 자리를 하루 넘게 「살아 있다」로 적고 있었다
 
 | 심볼 | 무엇인가 |
 |---|---|
 | `synthesize_chain_rules(known_tables=None, failures=None)` 🆕 :55(@`c4b010c8` — ~~:29 @`2c93ae9f`~~, :28) · 🆕 `synthesis_half_says(half)` :47 | 🔴 **합성의 «한 자리»** — 인리치 반쪽과 조인 반쪽을 각각 부르고, `load_chain_rules` 는 «이것만» 부른다. ⚠️ 조인 반쪽을 `load_enrichment_chain_rules` «안»에 넣었으면 판정 292 의 «글자»는 지켰겠지만 `enrichment_…` 라는 이름의 함수가 «가상 조인 파일»을 읽게 된다 — 반쪽은 각자 정직한 이름을 갖고, «자리»가 하나다 |
 | ⚰️ ~~`synthesized_kind_counts(rules)` :43~~ → 🆕 **`written_in(rule) -> str`** 🆕 :95(@`c4b010c8` — ~~:44 @`2c93ae9f`~~, `5c845e67` S-234 ①③) | **이 좌석이 만든 규칙이 «어느 파일에 적혀 있었나», basename 으로** — 🆕 `mapper == legacy_join_declaration.JOIN_MAPPER` :113 면 `basename(VIRTUAL_JOIN_RULES_PATH)` :114, 아니면 `basename(ENRICHMENT_RULES_PATH)` :115(@`c4b010c8` 무변동 — 이 셋은 밀리지 «않았다»)(⚰ 구 표기 `virtual_join.config…` :63/:64 — `306419fd` 이동)(조인 반쪽만 `JOIN_MAPPER` 를 내므로 그 칸 하나가 두 파일을 가른다). 🔴 **로더의 «한 이름공간» 거절이 쓴다** — 두 번 적힌 이름은 «볼 파일»과 함께 이름 대어진다(§4 `_refuse_names_claimed_twice`). ⚠️ **`synthesize_chain_rules` 에서 나온 규칙에만** — 로더는 `chain_rules.json` 에서 읽은 것을 «자리로» 태그하지 여기를 지나지 않는다(그 파일에 적힌 통합 `decide` 도 `origin: synthesized:` 를 들어 여기로 오면 «잘못 분류»된다). ⚰️ `synthesized_kind_counts` 는 「Synthesized N (a dedup · b auto-confirm · c join)」 부팅 줄을 위해 여기 있었고 그 줄이 로더의 «집합 줄»(모든 규칙을 origin·kind 와 함께 이름 대는)로 접혀 «읽는 자가 없어» 죽었다(🆕 :106 묘비, §0 ㉚). 호출자: `ingestion_worker.load_chain_rules` 🆕 :833(@`c4b010c8` — ~~:830~~) · 시험 `test_the_product_synthesizes_chain_rules_in_one_seat.py::test_the_seat_says_which_file_a_synthesised_rule_was_written_in` 🆕 :248(@`c4b010c8` — ~~:120~~; 🆕 **503줄 / `def test_` 26** — ~~349 / 19~~ — 그 파일의 죽은 시험 둘은 :69 · :130 묘비) |
-| 🆕 `class UnknownBuiltinKind(ValueError)` :122 · `BUILTIN_KINDS` :309 · `register_builtin(kind: str, fn, hands: str, stamps_origin=False, writes_itself=True, label="mapper")` :359 🔴 **[판정 509] `hands` 에 «기본값이 없다»** — 「기본값은 뜻을 가진 부재」이고, 안 적은 종류는 «등록이 거절»된다(:366~:369 이 두 상수가 아니면 `UnknownBuiltinKind`). 표 셋: `BUILTIN_KINDS` :318 · `BUILTIN_LABELS` :342 · 🆕 `BUILTIN_HANDS` :356, 그리고 `HANDS_ROW_IDS` :354 / `HANDS_PAYLOADS` :355 가 그 두 값이다. 등록 셋(`JOIN_MAPPER` · `JOIN_INTO_MAPPER` · `AUTO_CONFIRM_MAPPER`)이 «전부 `HANDS_ROW_IDS` 를 자리에서 댄다» · ⚰️ ~~`run_builtin(kind, db, rule, **kwargs)` :280~~(**삭제** — §0 ㊵) · `_install()` :374 · `_install()` 호출 :413(전부 @`c4b010c8` — ~~:71/:258/:261/:280/:318 @`2c93ae9f`~~; @`b1db471a` :69/:256/:259/:278/:316 · 구 표기 :138/:141/:151/:161) | **이 어휘가 «처음» 갖는 표다.** 🔴 **모르는 종류는 «이름 대어» 거절된다**(아는 목록을 같이 인쇄) — 구현이 «없는» 종류를 적은 규칙은 «켜진 채로 살아 보이면서» 한 번도 안 돌기 때문이다. 🔵 실측이 그것을 부른 자리: `builtin:auto_confirm` 은 그때까지 «정확히 두 번» 나왔고(둘 다 `enrichment_config`) **아무도 안 읽었다** — S-179 가 로더·그래프 층에는 그 종류를 선언해 두고 실행은 스윕에 남겨 뒀다.<br>⚰️ **[`3216493e` S-279] 아래 S-246 서술은 «자리»가 낡았다 — 일은 그대로이고 «누가 하나»가 바뀌었다.** 그 `with` 는 이제 **`rule_run.run_rule` :413** 한 자리에 있고 **문 둘 다** 그것을 지난다(§0 ㊵-f: `activity.running(` 의 비시험 호출 자리 «정확히 1»). 🔴 그리고 S-246 의 결함 서술이 바로 이 라운드의 원인이다 — **S-246 은 「builtin 이 큐에 안 뜬다」를 «둘째 등록을 써서» 고쳤지 «하나로 만들어» 고치지 않았다**(소스가 :353~:356 에 그렇게 적는다). ~~[`38b5d8e1` S-246] `run_builtin` 이 «등록»한다 — `with activity.running(name, kind, target_table, _rows_handed(kwargs), no_rows_reason="the rule wrote no rows") as run:` :304(@`2c93ae9f` — :302) 안에서 `fn` 을 부르고, 결과 dict 의 `written` 이 «있을 때만» `run.produced(int(written))`~~(「안 셌다」와 「0 이었다」는 다른 사실). 🔴 종전엔 시작·결과·종료가 `mapper_call.execute_custom_mapper`(«파일 맵퍼»의 문) «안에만» 있어 `join_into`·`builtin:join`·`auto_confirm` 은 큐 화면에 «안 뜨고» 돌았고, 로더가 모든 규칙을 `never_evaluated` 로 «씨앗»하므로 천 번 돈 builtin 이 「아직 평가 안 됨」이었다(소유자 2026-09-15 「체인 대기열에서 안 뜨고 돌고 있었네」 — 「같은 기능에 두 경로」, 안 보이던 반쪽이 «돌던» 반쪽). ⚠️ 모르는 종류의 거절은 등록 «밖»이다 — 안 돈 것에 「돌았다」는 항목을 한 raise 만큼도 안 만든다. ⚰️ ~~`_rows_handed(kwargs)` :271(구 :269) — 두 트리거 팔이 행을 `row_ids` / `key_values` 로 «다르게» 부른다.~~ 🆕 **[`3216493e`] 삭제됐다.** 「몇 행을 받았나」는 좌석이 `len(handed)` :412 로 «한 번» 세고, 「몇 행이 나왔나」는 `rule_run.rows_counted(value)` :338 이 «한 함수»로 센다 — 종전엔 builtin 문이 «받은 것»을, 맵퍼 문이 «돌아온 것»을 각자 세고 **큐 화면이 그 둘을 나란히 놓았다**(판정 498). 🆕 `_run_auto_confirm` :143(~~:92~~, 구 :90) 이 `written: confirmed` 를 «덧붙여» 답한다(`join_into.run`·`materialize_rows` 가 이미 그 이름으로 답하고 있었고, S-249 의 후속 줄이 auto-confirm 에서 `written=None` 을 찍던 것). 시험 `test_a_rule_that_runs_is_in_the_queue_view_whichever_door_ran_it.py`(🆕 **285줄 / `def test_` 12** @`c4b010c8` — ~~215줄~~; 오늘 이 파일은 종류를 **`@pytest.mark.parametrize`** 로 돌려 «두 문을 같은 단언으로» 채점한다). §5-I `activity.running` |
+| ⚰️ **[2026-09-23 — 없어짐]** `class UnknownBuiltinKind(ValueError)` · `BUILTIN_KINDS` · `register_builtin(…)` | 종류표와 그 등록 줄. 오늘 이 물음에 답하는 것은 `chain/dynamic_mappers.py` 의 `TEMPLATE_FACTS`(label · stamps_origin · params)와 `mapper_sdk.register` 다. ⛔ 줄번호는 «지웠다» — 없는 것에 앵커를 달면 다음 사람이 그 줄을 연다 |
 | 🆕 `_run_join(db, rule, row_ids=None, key_values=None, done=None, **_)` :128(@`c4b010c8` — ~~:77 @`2c93ae9f`~~, :75) — 🔴 **`done=None, **_` 가 붙었다**(판정 428: 좌석이 랩 배치를 «묻지 않고» 넘기므로 «모든» 구현이 같은 시그니처를 받는다) | `builtin:join` 의 실행 — 아래 `virtual_join_executor` 로 내려간다 |
 | 🆕 **`ensure_declared_unique_keys(db, rules) -> {ensured, skipped}`** 🆕 :196 · **`declared_unique_targets(rules)`** 🆕 :234 · **`declared_unique_index_names(known_tables=None) -> set`** 🆕 :276(@`c4b010c8` — ~~:145/:183/:225 @`2c93ae9f`~~, :143/:181/:223 @`b1db471a`) | **[`8cab58da`·`07a568ad` S-240] 통합 join 이 «선언한» 유일 키를 «제품이» 적재 시점에 세운다.** 걷는 자는 `declared_unique_targets` «하나»: `mapper == join_into.JOIN_INTO_MAPPER` 인 규칙 중 `enabled` 가 아니면 `"enabled=false"` 로 건너뜀(⛔ OFF 는 «호출 0» — 판정 399 ③′, 09-14 를 내린 「찔러 보는 스위치」 금지) · `key.unique` 가 없으면 «조용히» 없음(묻지 않은 질문에 「아니오」가 아니다 — 행 단위 그물은 그대로) · `join_into.right_key(rule)` 🆕 :257(@`c4b010c8` — ~~:206~~, 구 :204) 로 (표, 컬럼, 접기) · 🆕 **[`07a568ad`] `key.columns` 는 «선택»이 아니라 «검사»다** — 적혀 있는데 그 조인의 오른쪽 키와 «다르면» 이름 대어 건너뜀(인덱스는 조인의 «자기» 키 위에만 서야 PostgreSQL 이 쓴다(S-181) — 오타가 「아무도 안 보는 칸」이 아니라 «문장»이 되게, 그것이 이 라운드의 결함 «전부»였다). `ensure_declared_unique_keys` 는 대상마다 `vjc.required_index_name(table, columns, folds)` 으로 «한 선언 = 규칙 둘(`:reference` 동반자) = 인덱스 하나»를 접고(`seen`) `unique_key.ensure_once(db, name, table, columns, folds)` 🆕 :230(@`c4b010c8` — ~~:179~~, 구 :177) 을 «한 번» 부른다(두 번 물으면 리로드마다 `pg_index` 를 두 번 찌르고 인덱스 하나를 둘로 센다). `declared_unique_index_names` 는 `ingestion_worker.read_rules_document()` 를 `rule_shape.expand_declaration(raw, catalogue)` 🆕 :296(@`c4b010c8` — ~~:245~~, 구 :243) — **로더와 «같은 판정자»**(S-244) — 로 펴서 «요구되는» `uq_vjoin_*` 이름 집합을 낸다(거절은 «다시 말하지 않는다» — 로더가 이미 말했고 여기서 또 말하면 읽기 경로에 몇 초마다 거절이 뜬다, 09-14 의 홍수). 🔴 **왜 걷는 자가 하나인가** — 「무엇을 세우나」와 「무엇을 요구하나」가 갈라지는 날 제품은 웜업에 세우고 다음 읽기에 회수한다, 영원히. 호출자: 🆕 `ingestion_worker.warmup_worker` 0-bis **:2105**(~~:2002 @`2c93ae9f`~~, §4) · 🆕 `chain/legacy_join_declaration.load_verified_rules` **:788**(⚰ 구 `virtual_join/config` :998). ⚠️ `join_into` 가 «아니라» 이 껍데기가 세우는 이유 — 🆕 그 모듈은 **레거시 조인 모듈 둘**(`chain.legacy_materialized_join` · `chain.legacy_join_declaration`)을 import 못 한다(자기 경계 시험 `test_a_declared_join_writes_what_it_says_into_the_table.py` :503~:514; ⚰ 구 표기 「`virtual_join` 을 import 못 한다」 — 그 패키지는 `306419fd` 가 지웠다), 그래서 오른쪽 표·컬럼·접기를 «돌려주고» 두 반쪽을 «이미 아는» 이 자리가 세운다. 시험 `test_a_declared_unique_key_is_made_by_the_product.py`(334줄 / `def test_` 18) |
 

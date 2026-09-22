@@ -242,7 +242,7 @@ graph TD
 | 오늘 참인 것 | 어디 |
 |---|---|
 | 규칙을 «돌리는 자리»가 좌석 하나 | `chain/rule_run.py` `run_rule` — 제품 호출 «다섯»(worker 3 · replay 2) |
-| 종류표가 «없다» — `builtin:` 네 표와 `register_builtin` 은퇴 | 사실은 `chain/dynamic_mappers.py` `TEMPLATE_FACTS`(label · stamps_origin · writes_itself) |
+| 종류표가 «없다» — `builtin:` 네 표와 `register_builtin` 은퇴 | 사실은 `chain/dynamic_mappers.py` `TEMPLATE_FACTS`(label · stamps_origin · params) |
 | 제품이 짓는 맵퍼 «넷»이 «이름으로» 등록된다 | `declared:join` · `declared:decide` · 🆕 `declared:enrich`(`4352ad47`) · `declared:virtual_join` (판정 600, `a96d4a68`) — 🔴 세는 법: `chain/dynamic_mappers.TEMPLATES` 의 키. RUN.md 의 한 줄 명령이 그것을 찍는다 | ⏳ **`declared:virtual_join` 은 «은퇴 진행 중»입니다**(판정 652 — 가상 조인 개념 제거). 기제는 아직 살아 있어 오늘은 «넷»이 맞고, 1걸음이 착지하면 «셋»이 됩니다.
 | 쓰기가 «문»이다 | `chain/ingestion_worker.py` `apply_chain_writes` (`2699fc38`) — 호출자 하나, 둘째는 다음 홉이 온다 |
 | ⚰️ 부팅 점호 — `62577a67` 에서 «묘비»가 됐다 | ~~`refuse_rules_no_path_picks_up` (판정 500)~~ — 경로가 «하나»면 집는 수가 «항상 1» 이라 빨개질 수 없는 게이트였다(그 모양이 판정 500 이 끝내려던 것이다) |
@@ -250,7 +250,9 @@ graph TD
 
 🔴 **아직 «아니라고» 적어 두는 것** (정본 다섯 걸음에 아직 안 맞는 자리 — 응용 레인 실측 2026-09-17)
 ```
-맵퍼가 «스스로 씁니다»        템플릿 셋이 writes_itself: True — 페이로드를 안 돌려줍니다 (판정 605)
+⚰️ 맵퍼가 «스스로 씁니다»     이 줄이 들던 계기가 «없어졌습니다» — `TEMPLATE_FACTS` 에 `writes_itself` 칸이 없습니다
+                          (2026-09-23, 판정 605 착지). ⚠️ 잰 것은 «축이 사라졌다»뿐입니다 —
+                          「맵퍼가 이제 updates 만 돌려주나」는 «안 쟀습니다»
 ⚰️ 랩 — 이 줄은 `62577a67` 로 «닫혔습니다» (위 표로 올라갔습니다). 기록으로만 남깁니다
 소급이 «자기 쓰기 문»을 씁니다  `chain/replay.py` `_apply_replay_batch` (다음 라운드)
 인리치 소급이 «좌석을 안 지납니다»  `enrichment/backfill.py` `run_backfill` (판정 607 — ① 의 닫힘 조건)
