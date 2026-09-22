@@ -72,3 +72,30 @@ def test_grouping_still_keys_a_delete_by_its_rules_group_key(monkeypatch):
     monkeypatch.setattr(worker, "group_key", lambda rule, payload: "k")
     keyed = dict(RULE, group_by=["col"])
     assert worker.group_id(ev("DELETE"), [keyed]) == "group_by:k"
+
+
+# ---------------------------------------------------------------------------
+# 좌석이 «하나»인가 — 텍스트가 주어인 드리프트 오라클
+# ---------------------------------------------------------------------------
+
+def test_the_trigger_kind_is_spelled_in_exactly_one_place():
+    """🔴 [Q-202 QA] 접기를 하면서 제가 «만진 자리»만 좌석으로 보냈습니다. 같은 물음을
+    손으로 철자한 자리가 둘 더 있었고(`_rule_outcome_before_running`·`trigger_tables_in_order`),
+    QA 가 짚기 전까지 제 커밋 문장은 「접었다」고 말하고 있었습니다.
+
+    제일 아픈 지적은 그 둘이 «빠뜨린 것과 같은 모양»이었다는 것입니다 — `group_id` 의 예외는
+    독스트링에 적혀 있어 「일부러」임이 보이는데, 그 둘은 아무 말이 없었습니다.
+
+    ⚠️ 텍스트가 «주어»인 단언이다(잘라쓰기 아님) — 「이 낱말이 한 자리에만 있다」는
+       돌려서는 못 재는 주장이라 소스를 읽는 것이 맞는 계기다.
+    """
+    import inspect
+    import re
+
+    source = inspect.getsource(worker)
+    spellings = re.findall(r'event_type (?:not )?in [\(\[]"CREATE", ?"EDIT"[\)\]]', source)
+    assert len(spellings) == 1, (
+        "「깨우는 종류인가」를 손으로 철자한 자리가 %d 곳이다 — 좌석은 _is_trigger_event "
+        "하나여야 한다: %r" % (len(spellings), spellings))
+    assert "CREATE" not in inspect.getsource(worker.fires), \
+        "`fires` 가 event_type 축을 삼켰다 — 축이 둘인 이유가 사라진다"

@@ -1264,7 +1264,7 @@ def _rule_outcome_before_running(rule, events):
         return event_constants.RULE_OUTCOME_SKIPPED_DISABLED, "rule declares enabled: false"
     refused_chain = False
     for e in events:
-        if e.event_type not in ("CREATE", "EDIT"):
+        if not _is_trigger_event(e):
             continue
         if rule.get("trigger_table") != e.table_name:
             continue
@@ -1330,7 +1330,7 @@ def trigger_tables_in_order(events):
     order (S-156) has something to stand on.
     """
     return sorted({event.table_name for event in events
-                   if event.event_type in ("CREATE", "EDIT")})
+                   if _is_trigger_event(event)})
 
 
 def _group_read_tables(events_in_tx, rules):
