@@ -1,3 +1,53 @@
+## 📊 [09-22 20:10] **㉠/㉡ 을 가르는 «수» — 쟀습니다. 겹치는 것은 «뜻»이고 갈리는 것은 «단위»입니다**
+
+### 행 — 기존 8 칸 · 새것 11 칸
+
+| 이 칸이 답하는 것 | 기존(트랜잭션 접기) | 새것(행) | 겹침 |
+|---|---|---|---|
+| 식별자 | `txShort`/`txId` | `outbox_id` | 자리는 같고 «단위»가 다름 |
+| 표 | `tables` (여럿, 쉼표) | `table_name` (하나) | 단위 |
+| 사건 | `eventTypes` (배열) | `event_type` (하나) | 단위 |
+| 주인 | `owners` (배열) | `owner` (하나) | 단위 |
+| 나이 | `age` = `formatAge(...)` | `waiting_seconds` | **같음** |
+| 시각 | `at` | `created_at` | **같음** |
+| 재시도 | `maxRetry` | — | 기존만 |
+| 접힌 행 수 | `rows` | — | 기존만 (접기의 산물) |
+| 상태 | — | `chain_state` · `broadcast_state` · `state_detail` | 새것만 |
+| 규칙 | — | `rules[]` · `will_fire` · `note` | 새것만 |
+
+```
+같은 뜻 6 · 그중 «단위가 달라» 그대로 못 쓰는 것 4 (배열 vs 스칼라)
+새것만 4 · 기존만 2
+```
+
+### 봉투 — 겹치는 이름 «0»
+
+```
+기존   available · reason · headline · failed · depth · byOwner · splitByOwner · truncated · notMeasured
+새것   clock · generated_at · listed · population · cap · capped · next_cursor · rules_known
+```
+접기 단위가 달라서 봉투가 답하는 것도 다릅니다 — 저쪽은 「얼마나 밀렸나」(depth·byOwner),
+이쪽은 「무엇이 이 목록에 들어왔나」(population·listed·cap).
+
+### 🔵 다만 «조각»은 이미 공유 가능합니다 — ㉠/㉡ 과 무관하게
+
+```
+export 넷   STATUS · MINUTE_SECONDS · formatAge · queueView · ChainQueuePanel
+formatAge   「읽을 수 없는 나이는 «—», 절대 「0초」가 아니다」 — 새 화면도 같은 규칙이어야 합니다
+           이건 어느 안을 고르든 «한 좌석»으로 남길 수 있습니다
+```
+
+### 🔴 제가 «안 잰» 것
+
+```
+그리는 모양(열 너비·접힘·빈 상태 문구)은 안 쟀습니다 — 위는 «칸»의 표이지 «화면»의 표가 아닙니다
+그리고 152 짜리 하니스가 «무엇을» 단언하는지도 안 셌습니다. ㉡ 이면 그 단언들이
+새 부품에 안 걸리는지 세어야 하고, 그건 고르고 나서 할 일입니다
+```
+⛔ 고르지 않았습니다. 판정 주시면 그대로 짓겠습니다.
+
+---
+
 ## 🔴 [09-22 20:04] **기존 문 체크 — `chain_queue_panel.js` 는 «새 파일이 아닙니다». 이미 있습니다**
 
 구현자가 서버에서 한 것을 제 쪽에도 했습니다. 지시가 「새 파일 `client2/src/chain_queue_panel.js`」라
