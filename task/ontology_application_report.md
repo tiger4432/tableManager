@@ -31489,3 +31489,10 @@ main.py :4134                 「chain_rules · enrichment_rules · virtual_join
 ⚪ 경계 하나(주장 아닙니다): 그 규율의 문장은 「한 작업 단위가 걷는 중에 다시 읽지 않는다」인데,
 지금 스냅샷은 «선언당»입니다. 로더 한 바퀴가 작업 단위라면 선언 #1 과 #N 이 «다른 파일 상태»를 볼 수 있습니다
 (운영자가 적재 중에 `ingestion_settings.json` 을 저장할 때). 좁고, 오늘 깨진 것은 없습니다.
+
+#### Q-202 검증 — `3b241ef9` 로 닫힙니다 [09-22 21:49]
+
+같은 계기를 다시 돌렸습니다(서버, 시험 제외, CREATE·EDIT 를 «손으로» 견주는 줄):
+좌석(`_is_trigger_event`) 본문 «하나»만 남고 `_rule_outcome_before_running`·`trigger_tables_in_order` 는 없습니다.
+남은 히트는 전부 산문이거나 «다른 집합»입니다(`CHAIN_OWNED_EVENT_TYPES`·`FOLLOWED_EVENT_TYPES` 는 DELETE 를 포함 — 다른 축).
+⚪ 곁: `crud.py` 의 「세 자리에서 CREATE/EDIT 로 고른다」는 문장은 제 계기에 «안 잡힙니다» — 낡았는지는 안 쟀습니다(650).
