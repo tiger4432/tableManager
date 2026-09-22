@@ -303,6 +303,189 @@ def test_the_channel_is_the_one_the_chain_worker_listens_on(notify_db):
     assert notifies == [f"NOTIFY {channel};"]
 
 
+
+# ---------------------------------------------------------------------------
+# 탄생 — 「누가 만들었나」를 안 묻는다 (지시 「대기열 생성시 무조건 브로드캐스트」)
+# ---------------------------------------------------------------------------
+# 🔴 2026-09-22 실측: `DatabaseOutbox(` 아홉 자리 중 «둘»만 알리고 있었다. 손으로 적은
+#    NOTIFY 넷이 메웠고, 셋(`internal_event_client` · `outbox_expand` ×2)은 아무것도 안
+#    알렸다. 워커에 2 초 폴링이 있어서 «아무도 안 울었다» — 「기제가 있다」가 참인 채로
+#    「아홉이 알린다」가 거짓이었다.
+#
+# ⛔ 그래서 아래는 «자리 아홉»을 하나씩 부르지 않는다. 자리를 세는 시험은 열째 자리가
+#    생기면 같이 눈이 먼다. 재는 것은 «성질»이다: 행이 태어났으면 알린다.
+
+def _born(db, i=1, **kw):
+    """아홉 자리가 «공통으로» 하는 것 — 생성자로 짓고 세션에 넣는다.
+
+    `stage_event` 를 «일부러» 안 쓴다. 저쪽은 알리던 둘 중 하나라, 그걸로 재면
+    나머지 일곱이 통과한 것처럼 보인다.
+    """
+    import uuid as _uuid
+    row = models.DatabaseOutbox(
+        event_uuid=str(_uuid.uuid4()),
+        event_type="CREATE",
+        table_name=f"born_{i}",
+        payload={},
+        status="PENDING",
+    )
+    for key, value in kw.items():
+        setattr(row, key, value)
+    db.add(row)
+    return row
+
+
+def test_a_row_made_by_a_constructor_notifies_like_any_other_birth(notify_db):
+    """게이트 ①. `stage_event` 를 «안» 지나는 출생도 알린다.
+
+    이 줄이 이번 라운드 «전»에는 빨갰다 — 좌석이 `stage_event` 안에 앉아 있어서
+    생성자로 만든 행은 통지를 하나도 안 냈다. 되돌리면(좌석을 다시 스테이징 함수로)
+    `notifies` 가 0 이 된다.
+    """
+    db, sent = notify_db
+
+    with counting(sent) as notifies:
+        _born(db)
+        db.commit()
+
+    assert _outbox_count(db) == 1, "전제: 행이 실제로 태어났다"
+    assert len(notifies) == 1, (
+        "생성자로 태어난 행이 통지를 %d 개 냈다 — 좌석이 «탄생»이 아니라 특정 «자리»에 "
+        "앉아 있으면 이 수가 0 이다" % len(notifies))
+
+
+def test_a_row_the_chain_worker_expands_also_notifies(notify_db):
+    """`outbox_expand` 의 모양 — 침묵 셋 중 둘이다.
+
+    자식을 여럿 만들어 «한 번에» add 한다. 실패한 청크가 쪼개질 때 나는 행이라
+    운영자가 제일 보고 싶어 하는 줄인데, 이 라운드 전에는 통지가 «0» 이었다.
+    """
+    db, sent = notify_db
+
+    with counting(sent) as notifies:
+        children = [_born(db, i) for i in range(3)]
+        db.commit()
+
+    assert len(children) == 3
+    assert _outbox_count(db) == 3
+    assert len(notifies) == 1, (
+        "자식 셋이 통지 %d 개 — 하나여야 한다" % len(notifies))
+
+
+@pytest.mark.parametrize("rows", [1, 2000])
+def test_a_transaction_of_born_rows_costs_one_notification_however_many(notify_db, rows):
+    """게이트 ③·④′. 운영 규격은 「한 트랜잭션 수천 행」이다.
+
+    ④′ 가 묻는 «프레임 수»가 이 수다 — 통지 하나가 깨움 하나이고 방송 하나다.
+    래치가 풀려 행마다 나가면 여기서 2000 이 찍힌다.
+    """
+    db, sent = notify_db
+
+    with counting(sent) as notifies:
+        for i in range(rows):
+            _born(db, i)
+        db.commit()
+
+    assert _outbox_count(db) == rows
+    assert len(notifies) == 1, (
+        "%d 행이 통지 %d 개를 냈다 — 트랜잭션당 하나여야 한다" % (rows, len(notifies)))
+
+
+def test_a_rolled_back_birth_leaves_no_row_to_announce(notify_db):
+    """게이트 ②. 롤백된 트랜잭션은 «없는 행»을 알리지 않는다.
+
+    ⚠️ 통지문 자체는 트랜잭션 «안»에서 나가고, 그것을 버리는 것은 PostgreSQL 의 규칙이다
+       (커밋된 트랜잭션의 NOTIFY 만 배달된다). 그 규칙은 이 스위트의 SQLite 에서 «못
+       잰다» — 여기서 고정하는 것은 「통지가 트랜잭션 «안»에서 난다」와 「롤백이 다음
+       트랜잭션을 침묵시키지 않는다」 둘이다. 배달 규칙 자체는 DB 몫이라 적어 둔다.
+    """
+    db, sent = notify_db
+
+    with counting(sent) as during:
+        _born(db)
+        db.flush()
+        db.rollback()
+
+    assert _outbox_count(db) == 0, "롤백했으니 알릴 행이 «없다»"
+    assert len(during) == 1, (
+        "전제: 통지는 트랜잭션 «안»에서 났다 — 그래야 PostgreSQL 이 롤백과 «같이» 버린다")
+
+    with counting(sent) as after:
+        _born(db, 2)
+        db.commit()
+    assert len(after) == 1, "롤백된 트랜잭션이 다음 것을 침묵시키면 안 된다"
+
+
+def main_module():
+    import main
+    return main
+
+
+def test_the_api_and_the_worker_listen_on_the_same_one_constant(notify_db):
+    """게이트 ⑤·⑥. 이름이 «상수 하나»이고, 듣는 쪽이 둘인데 기제는 하나다.
+
+    ⑥ 이 사는 자리: 운영은 `run_decoupled_app.py` 라 API 프로세스에 체인 워커가 «없다»
+    (`ASSY_CHAIN_WORKER=0`). 그래도 화면이 갱신돼야 하고, 그 근거는 API 가 «직접» 같은
+    채널을 듣는다는 것이다. 두 쪽이 같은 상수를 지나는지를 여기서 못 박는다.
+    """
+    import event_constants
+    import outbox_listener
+    from chain import ingestion_worker
+
+    db, sent = notify_db
+    with counting(sent) as notifies:
+        _born(db)
+        db.commit()
+
+    channel = event_constants.OUTBOX_NOTIFY_CHANNEL
+    assert notifies == [f"NOTIFY {channel};"], "내는 쪽이 그 상수를 쓰나"
+
+    # 듣는 쪽 둘이 «같은 클래스»인가 — 사본이면 갈라진다
+    assert ingestion_worker.OutboxListener is outbox_listener.OutboxListener, \
+        "워커가 자기 사본을 들고 있다 — 옮긴 것이 아니라 복사된 것이다"
+    assert outbox_listener.OutboxListener(lambda: None)._channel == channel
+
+    # [Q-207] 그리고 API 쪽은 lap 을 «안 찍는다». main 이 `heartbeat.beat(` 를 안 불러
+    # api.json 이 안 써지므로, 적으면 터지지도 않고 관찰만 안 되는 값이 된다.
+    # ⚠️ 재는 것은 «이 라운드가 실제로 넘기는 값»이다 — 시험이 고른 값이 아니라.
+    import inspect
+    built = inspect.getsource(main_module()._outbox_queue_broadcast_loop)
+    assert "lap_name=None" in built, (
+        "API 리스너가 lap 이름을 들고 간다 — 그 이름의 파일은 안 써진다(beat 호출 0)")
+
+    silent = outbox_listener.OutboxListener(lambda: None, lap_name=None)
+    laps = []
+    original = outbox_listener.heartbeat.record_lap
+    outbox_listener.heartbeat.record_lap = lambda *a, **k: laps.append(a)
+    try:
+        silent._reset_connection()          # 재접속 경로 — 여기서 lap 을 찍던 자리
+        assert laps == [], "lap_name=None 인데 심박에 적었다"
+    finally:
+        outbox_listener.heartbeat.record_lap = original
+
+
+def test_the_api_broadcast_is_not_gated_on_the_chain_worker_switch():
+    """게이트 ⑥ 의 «드리프트 오라클». 텍스트가 주어인 단언이다(잘라쓰기 아님).
+
+    🔴 제일 그럴듯한 「정리」가 이 줄을 죽인다 — 방송 시작을 체인 워커의 `else:` 가지로
+       옮기는 것. 그러면 단일 프로세스 개발 박스에서는 멀쩡히 돌고 «운영에서만» 화면이
+       조용해진다. 그 배포가 정확히 `ASSY_CHAIN_WORKER=0` 이기 때문이다.
+    """
+    import inspect
+    import re
+
+    import main
+
+    source = inspect.getsource(main.startup_event)
+    start = source.index("_outbox_queue_broadcast_loop")
+    # 방송을 켜는 줄이 체인 스위치 «뒤»에 있고, 그 가지 «안»이 아니어야 한다
+    head = source[:start]
+    assert "_chain_switch" in head, "전제: 체인 스위치가 이 함수 안에 있다"
+    tail_of_branch = head.rsplit("_chain_switch", 1)[1]
+    assert re.search(r"\n    try:", tail_of_branch), (
+        "방송 시작이 체인 스위치의 «가지 안»으로 들어갔다 — 워커가 딴 프로세스인 "
+        "배포에서 화면이 조용해진다")
+
 # ---------------------------------------------------------------------------
 # GET /admin/chain/queue — the chain-queue instrument
 # ---------------------------------------------------------------------------

@@ -149,6 +149,19 @@ BROADCAST_STATES = frozenset({BROADCAST_STATE_DELIVERED, BROADCAST_STATE_UNDELIV
                               BROADCAST_STATE_NOT_APPLICABLE})
 
 
+#: 아웃박스 행이 «태어났다»를 나르는 두 이름. 한 사건의 두 구간이라 «같이» 산다.
+#:
+#: 🔴 채널 이름은 상수가 «0» 이었고 리터럴이 일곱 곳이었다(2026-09-22 실측:
+#:    database:392 · retroactive:1441 · main:6603 · main:6965 · system_reload:189 ·
+#:    ingestion_worker:104 · :3690). `batch_refresh_message` 가 손으로 아홉 번 적히던
+#:    바로 그 모양이고, 그쪽과 같은 이유로 여기 접는다.
+#:
+#: ⚠️ 둘은 «다른 전선»이다 — 채널은 PostgreSQL LISTEN/NOTIFY(서버끼리),
+#:    사건 이름은 WebSocket(브라우저에게). 한쪽 이름을 다른 쪽에 쓰지 않는다.
+OUTBOX_NOTIFY_CHANNEL = "outbox_event"
+EVENT_OUTBOX_QUEUE_CHANGED = "outbox_queue_changed"
+
+
 def chain_state_of(processed_chain, status):
     """(`processed_chain`, `status`) -> (상태, 사유). 「빈 칸」이 없다 — 모든 조합이 답을 받는다.
 

@@ -4,6 +4,7 @@ from typing import Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from database.database import SessionLocal, engine, get_db, SQLALCHEMY_DATABASE_URL, DB_URL_SOURCE, DEFAULT_PG_URL
+from outbox_listener import OutboxListener
 from database import models, schemas, crud
 from runtime import system_reload
 from listing_absence import absent_listing
@@ -616,9 +617,25 @@ async def startup_event():
         #    만드는 문장이었습니다.
         logger.error(f"Startup step failed (watcher/chain worker): {e}")
 
+    # [대기열 탄생 방송] 아웃박스 행이 태어나면 화면에 알린다.
+    # ⛔ `ASSY_CHAIN_WORKER` 와 «무관하게» 켠다 — 워커가 딴 프로세스인 배포가 바로
+    #    이게 필요한 배포다(그쪽 ORM 훅은 이 프로세스에 안 닿는다).
+    # ⚠️ PostgreSQL 에서만. LISTEN/NOTIFY 가 없는 sqlite 에서 켜면 1 초마다 재연결을
+    #    시도하며 로그만 더럽힌다 — 좌석(`_notify_outbox_once`)이 거는 것과 «같은 술어».
+    try:
+        if engine.dialect.name == "postgresql":
+            main_loop.create_task(_outbox_queue_broadcast_loop())
+            logger.info("[Outbox Queue] birth-broadcast listener started (channel=%s).",
+                        event_constants.OUTBOX_NOTIFY_CHANNEL)
+        else:
+            logger.info("[Outbox Queue] birth-broadcast listener NOT started: dialect=%s "
+                        "has no LISTEN/NOTIFY.", engine.dialect.name)
+    except Exception as e:
+        logger.error(f"[Outbox Queue] birth-broadcast listener failed to start: {e}")
+
 @app.on_event("shutdown")
 async def shutdown_event():
-    global global_watcher, global_config_watcher
+    global global_watcher, global_config_watcher, _outbox_listener
     if global_config_watcher:
         logger.info("Stopping Config Watcher...")
         # The reload debounce runs on its own timer thread; observer.stop() does
@@ -635,6 +652,12 @@ async def shutdown_event():
         global_watcher.observer.stop()
         global_watcher.observer.join()
         logger.info("Directory Watcher stopped.")
+
+    # 전용 LISTEN 커넥션은 풀의 것이 아니라 «진짜 닫아야» 한다(S-167: 풀에 돌려주면
+    # autocommit 인 채로 다음 세션이 집어 간다). 재기동마다 하나씩 남는 것도 막는다.
+    if _outbox_listener is not None:
+        logger.info("Closing outbox birth-broadcast listener...")
+        _outbox_listener.close()
 # --------------------------------------
 
 class ConnectionManager:
@@ -664,6 +687,49 @@ class ConnectionManager:
             self.disconnect(conn)
 
 manager = ConnectionManager()
+
+
+#: 아웃박스 탄생을 «듣고» 브라우저에 흘리는 태스크. 체인 워커와 «같은 채널»을 듣는다.
+_outbox_listener = None
+
+
+async def _outbox_queue_broadcast_loop():
+    """행이 태어났다는 통지를 듣고 대기열 화면에 한 줄 흘린다.
+
+    🔴 왜 API 가 «직접» 듣나 — 운영은 `run_decoupled_app.py` 라 이 프로세스에 체인 워커가
+       없다(`ASSY_CHAIN_WORKER=0`). 그리고 `outbox_expand` 는 «워커 쪽»에서 행을 낳는다:
+       실패한 청크가 쪼개질 때다. 그러니 이 프로세스의 ORM 훅으로만 알면 운영자가 제일
+       보고 싶어 하는 그 행들이 화면에 «영영» 안 뜬다. NOTIFY 는 DB 수준이라 출생이 어느
+       프로세스였든 여기로 온다.
+    ⛔ 그래서 `ASSY_CHAIN_WORKER` 로 «가르지 않는다». 워커가 이 프로세스에 없는 배포가
+       바로 이 루프가 필요한 배포다.
+
+    ⚠️ 커밋 경로에 «인라인이 아니다». 방송은 이 루프에서 나간다 — 쓰기를 한 요청은
+       NOTIFY 한 문장만 내고 돌아간다(성능 상설: 「뒤따르는 일은 페이싱된 별도 작업」).
+
+    한 트랜잭션이 프레임 «몇 개»를 내나 — 하나다. 래치가 트랜잭션당 NOTIFY 를 하나로
+    접고, `wait()` 는 소켓에 쌓인 통지를 «전부 비우고» 한 번 깨어난다. 그래서 쓰기가
+    몰릴수록 방송은 «줄어든다», 늘지 않는다.
+    """
+    global _outbox_listener
+    # ⚠️ 이 파일의 모듈 수준에는 «맨» `asyncio` 가 없다 — :222 가 `as _health_asyncio` 다.
+    #    아래 `CancelledError` 가 종료 «시점»에 NameError 를 냈을 자리라 여기서 든다.
+    import asyncio
+    message = json.dumps({"event": event_constants.EVENT_OUTBOX_QUEUE_CHANGED})
+    _outbox_listener = OutboxListener(SessionLocal,
+                                      event_constants.OUTBOX_NOTIFY_CHANNEL,
+                                      # [Q-207] lap 은 «안 찍는다» — main 은
+                                      # `heartbeat.beat(` 를 부르지 않아 api.json 이
+                                      # 안 써진다. 안 보이는 값을 적지 않는다.
+                                      lap_name=None)
+    try:
+        while True:
+            if await _outbox_listener.wait(30.0):
+                await manager.broadcast(message)
+    except asyncio.CancelledError:
+        raise
+    finally:
+        _outbox_listener.close()
 
 
 @app.get("/")
@@ -6597,14 +6663,7 @@ def trigger_auto_update_run_now(
         )
         db.add(new_event)
         db.commit()
-        
-        try:
-            from sqlalchemy import text
-            db.execute(text("NOTIFY outbox_event;"))
-            db.commit()
-        except Exception as notify_err:
-            logger.debug(f"PostgreSQL NOTIFY skip or failed: {notify_err}")
-            
+
         logger.info(f"[On-Demand] Published SCHEDULER_RUN_NOW outbox event for table='{table_name}', script='{script_name}'")
         return {"status": "success", "message": f"Successfully published trigger to run '{script_name}' for table '{table_name}'."}
     except Exception as e:
@@ -6960,12 +7019,7 @@ async def save_admin_script_code(
         )
         db.add(reload_event)
         db.commit()
-        
-        try:
-            db.execute(text("NOTIFY outbox_event;"))
-        except:
-            pass
-            
+
         return {
             "status": "success",
             # The copy that can undo this save. A value, so a screen can offer the

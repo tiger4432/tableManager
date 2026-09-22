@@ -151,7 +151,6 @@ def reload_system_configs(db: Session):
     """시스템 전역의 설정 및 파이썬 모듈 캐시를 리로드하는 이벤트를 Outbox에 적재하여 모든 워커에 전파합니다."""
     import uuid
     from datetime import datetime
-    from sqlalchemy import text
     
     # 1. 웹 서버 자체 메모리 캐시 갱신
     reload_local_process_cache()
@@ -184,10 +183,5 @@ def reload_system_configs(db: Session):
     )
     db.add(reload_event)
     db.commit()
-    
-    try:
-        db.execute(text("NOTIFY outbox_event;"))
-    except:
-        pass
-        
+
     return {"status": "success", "message": "System configurations and custom scripts modules successfully reloaded."}

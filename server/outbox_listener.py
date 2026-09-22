@@ -45,6 +45,16 @@ class OutboxListener:
         self._factory = db_session_factory
         #: 하트비트에 «누가» 듣고 있는지. 프로세스마다 다르므로 값이다 —
         #: API 인스턴스가 자기를 「chain」 이라 적으면 그 줄이 거짓이 된다.
+        #:
+        #: 🔴 `None` 이면 lap 을 «안 찍는다», 그리고 그것이 API 인스턴스의 값이다.
+        #:    [Q-207 QA] `record_lap` 은 프로세스 안 dict 에 적고, 그 dict 를 파일로
+        #:    내보내는 것은 `beat(<name>)` 뿐이다. 실측(2026-09-22): `beat(` 를 부르는
+        #:    이름은 chain · ledger · scheduler · watcher «넷»이고 `main.py` 의 호출은
+        #:    «0» 이다. 그래서 "api" 로 적으면 `api.json` 이 안 써지고 `read_all` 이 못
+        #:    걷는다 — 터지지도 않고 관찰만 안 되는 값이 된다.
+        #: ⛔ 그래서 「안 보이는 값을 적는」 대신 «안 적는다». 대가는 적어 둔다:
+        #:    **API 리스너의 재접속 횟수는 오늘 셀 수 없다** (S-176 이 워커용으로 세운 값).
+        #:    보이게 하려면 /health 에 레인이 하나 늘고, 그건 «낳은 항목»이라 총괄 판정이다.
         self._lap_name = lap_name
         self._channel = channel
         self._connection = None  # 상시 유지되는 raw DBAPI 커넥션(psycopg2)
@@ -89,8 +99,9 @@ class OutboxListener:
         cursor.execute(f"LISTEN {self._channel};")
         cursor.close()
         self._connection = connection
-        heartbeat.record_lap(self._lap_name, "listen", state="connected",
-                             reconnects=self._reconnects)
+        if self._lap_name:
+            heartbeat.record_lap(self._lap_name, "listen", state="connected",
+                                 reconnects=self._reconnects)
 
     def _reset_connection(self):
         """끊긴/오류 커넥션을 안전하게 폐기한다(리소스 누수 금지)."""
@@ -98,8 +109,9 @@ class OutboxListener:
         self._connection = None
         if conn is not None:
             self._reconnects += 1
-            heartbeat.record_lap(self._lap_name, "listen", state="reconnecting",
-                                 reconnects=self._reconnects)
+            if self._lap_name:
+                heartbeat.record_lap(self._lap_name, "listen", state="reconnecting",
+                                     reconnects=self._reconnects)
         if conn is not None:
             try:
                 conn.close()
