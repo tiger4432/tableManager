@@ -807,7 +807,7 @@ publish_parser(name, read_body, process_body, file=…, …)      «같은 프�
 
 체인 인제션은 **증분(outbox) 구동**입니다. 룰을 바꿔도 과거 데이터는 옛 룰이 남긴 상태 그대로입니다. R1은 트리거 테이블의 **현재 내용**을 키셋 페이지로 훑어 **실제 맵퍼·실제 쓰기 경로**로 다시 흘려보냅니다. `backfill_enrichment.py`(규칙 1개 전용)를 **모든 체인 룰로 일반화**한 것이고, 기본값도 같습니다 — `--apply` 없이는 아무것도 쓰지 않습니다.
 
-🆕 **[2026-09-15 S-242 `bd0a3db7`, 판정 403] `builtin:` 규칙(선언된 join `derive: {kind: join}`)도 R1 이 돌립니다.** 종전엔 `mapper_module` 이 비어 `import_module(None)` 로 죽었고 — 이행한 조인에 «소급이 없었습니다». 이제 워커와 같은 `builtins.run_builtin` 을 «페이지마다» 돌립니다(라이브와 소급이 «같은 함수»).
+🆕 **[2026-09-15 S-242 `bd0a3db7`, 판정 403] `builtin:` 규칙(선언된 join `derive: {kind: join}`)도 R1 이 돌립니다.** 종전엔 `mapper_module` 이 비어 `import_module(None)` 로 죽었고 — 이행한 조인에 «소급이 없었습니다». 이제 워커와 같은 `rule_run.run_rule` 을 «페이지마다» 돌립니다(라이브와 소급이 «같은 함수»). ⚰️ **[2026-09-22] 이 줄은 `builtins.run_builtin` 이라 적혀 있었다** — 판정 562·563·580 으로 `builtin:` 종류 표가 은퇴하면서 그 함수도 «사라졌습니다»(`git grep "def run_builtin"` → 0건). 오늘 `builtin:` 이름은 선언에서 만들어지는 등록 맵퍼(`chain/dynamic_mappers.py`)이고 «운영자 맵퍼와 같은 문»(`rule_run.resolve`)을 지납니다. 옛 이름으로 grep 하면 아무것도 안 나오므로, 이 줄이 가리키는 자리는 `rule_run.run_rule` 입니다 — 워커(`chain/ingestion_worker.py`)와 소급(`chain/replay.py`)이 «둘 다» 이 함수를 부릅니다.
 - 보고는 **`rows_written`** — 자기가 쓰는 종류는 셀을 «제안하지 않으므로» `cells_proposed` «옆»에 따로 섭니다. 어드민 사전 계수도 그 종류에는 「다시 계산할 행」으로 «행»을 말합니다(종전엔 「0 셀」). 드라이런은 «넘겨받을 행 수»를 말합니다.
 - **던진 페이지는 그 페이지만** 잃습니다 — `pages_failed`·`page_failures`(처음 10 개), 세션 롤백 뒤 계속. ⚠️ 이 격리는 «이 가지만»이고 파일 맵퍼 호출은 그대로입니다(S-242-b).
 - 🔴 **오른쪽(참조 쪽) 규칙 이름은 거절됩니다** — 「읽는 표를 트리거로 갖고 그 표가 쓰는 표가 아닌」 규칙(`is_reference_side`, «칸»이 아니라 «성질» — ⚰️ [09-16 S-278 `c41f9c6d`] 종전 사유는 「양쪽 다 `follow_up` 이라」였고, 오늘은 «둘 다 아니라서» 같은 답입니다 — 그래서 성질로 묻는 것이 맞았습니다). 왼쪽 규칙을 돌리면 모든 대상 행을 덮습니다. 운영자 결정표는 [BACKFILL_GUIDE §0](./BACKFILL_GUIDE.md).

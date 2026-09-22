@@ -50,7 +50,7 @@
 ```
 join     `builtin:join_into`(`chain/join_into.py`). 선언 «하나» → 규칙 «둘»(왼쪽 트리거 + 오른쪽 트리거 — ⚰️ **[09-16 S-278 `c41f9c6d`] 오른쪽도 «트리거 경로»다.** 종전엔 `follow_up`·페이싱이었고, 그 칸이 S-151 의 70,800 행을 인용하고 있었다 — 소유자 판정: 그 수는 «어느 랩인가»를 안 정한다)
          쓰기 시점 팬아웃 그물: 한 왼쪽 행에 오른쪽 답이 «둘 이상»이면 그 행만 «이름 대고» 건너뛴다(배치당 경고 한 줄 `[join_into:<규칙>] … → 다음:`). 그물은 인덱스가 «아니다» — 지금 이 배치의 중복만 막는다
-         `key: {unique: true}` 면 «제품이» 오른쪽 표에 유일 인덱스를 세운다(S-240 `8cab58da`·`07a568ad`) — 자리는 워커 «웜업»(부팅 + 리로드마다. 읽기 경로가 «아니다» — 거기엔 새 SQL 금지, 09-14 장애), 빌더는 읽기 시점 조인과 «같은» `unique_key.ensure_once`, 같은 `uq_vjoin_*` 이름(`chain/builtins.ensure_declared_unique_keys`). 선언 하나(규칙 둘)에 인덱스 하나. 못 세우면 `[Warmup]` 줄 하나이고 워커는 선다
+         `key: {unique: true}` 면 «제품이» 오른쪽 표에 유일 인덱스를 세운다(S-240 `8cab58da`·`07a568ad`) — 자리는 워커 «웜업»(부팅 + 리로드마다. 읽기 경로가 «아니다» — 거기엔 새 SQL 금지, 09-14 장애), 빌더는 읽기 시점 조인과 «같은» `unique_key.ensure_once`, 같은 `uq_vjoin_*` 이름(`chain/synthesis.ensure_declared_unique_keys`). 선언 하나(규칙 둘)에 인덱스 하나. 못 세우면 `[Warmup]` 줄 하나이고 워커는 선다
          `key.columns` 는 «선택»이고 «검사»뿐이다 — 조인의 오른쪽 키와 같으면 무변, 다르면 두 목록을 이름 대고 안 세운다(다른 컬럼 위의 인덱스는 이 조인이 안 쓴다 — S-181). `enabled: false` = 호출 «0»
          🔴 철회(S-248)의 «요구 집합»은 읽기 시점 선언 + 통합 선언(`chain/synthesis.declared_unique_index_names`, 로더와 같은 확장기)의 «합»이다 — 통합 쪽을 못 읽으면 철회가 «안 돈다»(반쪽 집합은 덜 걷는 게 아니라 «틀린 것»을 걷는다)
          키 식: `coalesce(fold(col), '')` 의 저자는 `notation_norm.key_expression_sql`(조인이 «비교»하는 것)·`key_expression_text`(인덱스가 «서는» 것) «하나»다(S-245 `ddd5b3ba`). 텍스트가 아닌 컬럼은 네 자리(읽기 조인 ON · 인덱스 DDL · 중복 탐침 · 쓰기 조인) 모두 `col::text` 로 접고, 텍스트 컬럼은 옛 식 그대로(어제의 인덱스에 오늘도 맞는다). 「invalid input syntax for type double precision」은 여기서 끝났다
