@@ -188,7 +188,7 @@ rnd_board direction 선언 (⓪ -> ③ -> ①)
 ✅ 스택 전체        python 자식 전부 Stop-Process 후
                   `<conda env>/python.exe run_decoupled_app.py` 를 «직접» 띄운다
                   (`run_app.bat` 은 `pause` 로 끝나는 대화형이라 이 자리에서 안 선다)
-확인   [ChainRules] set(N) · [Outbox Queue] birth-broadcast listener started · refused 0
+확인   [ChainRules] set(N) · [Outbox Queue] change-broadcast listener started · refused 0
 로그   server/chain_worker.log · server/server.log
 🟢 소유자: 「박스 제어는 너 자유롭게해」 — 묻지 않고 내린다
 ```
