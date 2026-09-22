@@ -31030,3 +31030,32 @@ extra.mapper          rule_refusals -> unresolvable_mapper «둘 다» (mapper_r
 📨 라우팅: `docs/process/SERVER_DEFECT_QUEUE.md` 의 551 항목은 아직 「축이 이긴다」로 «한정 없이» 적혀 있습니다.
 `git grep 551` 이 «처음» 닿는 문장이 거기입니다. CODE_MAP 에는 한정을 넣었고(`de625bf9`), 운영자 쪽 줄은
 RUN.md 의 640 문단 밑에 넣었습니다(`eccfed0e`). 그 큐 파일은 제 레인이 아니라 «안 건드렸습니다».
+
+### Q-188 · 648 ② 문서 정비 — 「이름이 바뀐 자리」 세 벌을 살아 있는 문서에서 걷었습니다 [09-22 09:10]
+
+낱말이 아니라 «자리»로 셌고, 고치기 «전»에 심볼마다 오늘 집을 먼저 쟀습니다(`def <이름>` 으로).
+개명 훑기에서 이 순서를 건너뛰면 독자를 «두 번째로 틀린 자리»에 보냅니다.
+
+```
+① chain/builtins.py -> chain/synthesis.py   (3c9da31f)
+   고침  BASIS · PRIMITIVES 넷 · SYSTEM_FLOWS · CODE_MAP 열한 줄
+   둠    CODE_MAP §0 라운드 행 둘(그 커밋이 «그때» 만진 자리) · RUNTIME_MAP·PRIMITIVES 의 묘비
+② server/enrichment/ -> server/chain/enrichment/   (14dfaf65)
+   고침  가이드 셋 · 스펙 둘 · PRIMITIVES — 토큰 스물하나
+   둠    «지워진» server/enrichment_actions.py 묘비 셋 (빗금 형태가 달라 슬래시형만 바꿨습니다)
+③ builtin:* -> declared:*   (판정 600)
+   실측  declared:join · declared:decide · declared:enrich · declared:virtual_join
+         제품 코드에 `startswith("builtin:")` «0» — 하나 있는 히트는 시험이 자기 픽스처 이름을 보는 자리
+   고침  운영자 가이드 둘 · SYSTEM_OVERVIEW · BASIS 셋 · SERVER_FILE_MAP · PRIMITIVES 둘 · 계약표 둘 · 백필 가이드
+   둠    RUN.md 의 «환산표» · 날짜 박힌 S-242/S-246 기록 · 「종류표가 없다」 묘비
+```
+
+가이드 하나는 개명이 아니라 «사라진 함수»였습니다 — `builtins.run_builtin` 은 오늘 «정의 0»입니다.
+문장의 주장(「라이브와 소급이 같은 함수」)은 참이라 이름만 `rule_run.run_rule` 로 고치고 계기를 붙였습니다:
+워커(`chain/ingestion_worker.py`)와 소급(`chain/replay.py`)이 «둘 다» 그 함수를 부릅니다.
+
+🔴 다음 사람이 다시 안 하도록, «일부러 남긴 것»:
+- CODE_MAP 의 `### server/enrichment/*.py` 절 표제 — 631 ② 에 따라 표제는 안 건드렸습니다. 본문 포인터만 고쳤습니다.
+- CODE_MAP 의 `builtin:` 스물넷 — 대부분 날짜·커밋이 박힌 기록 행이라 «한 줄씩» 봐야 합니다. 이번 라운드에 안 했습니다.
+- 가상 조인 낱말 전부 — 652 의 «3걸음(말을 걷는다)»이 가져갔습니다. 겹쳐 고치지 않았습니다.
+- 코드 주석·독스트링(`rule_run.py` 머리글이 아직 `synthesis.run_builtin` 을 듭니다) — 판정 650 으로 제 몫이 아닙니다.
