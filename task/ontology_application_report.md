@@ -31819,3 +31819,48 @@ _laps keys -> [None]     value -> {'listen': {...,'state':'connected','reconnect
 (`_own_name = name` 으로 바로 들어갑니다). 실측: `heartbeat_path(None)` →
 `…/worker_heartbeats/None.json`. 누가 `beat(None)` 을 부르면 `read_all` 이 **「None」이라는 이름의
 워커**를 보고합니다. 지금은 아무도 안 부르므로 결함이 아니라 «덫»입니다. 판정이 필요하면 총괄 몫입니다.
+
+---
+
+## Q-208 · `496fb2f8c` 적대 QA — 결함 없음. 연 줄과 «안 선» 가설을 적습니다 (23:02)
+
+### 게이트 (제가 Q-207 때 미리 세운 것, `origin/main` 에서)
+
+| 잰 것 | 수 | 판정 |
+|---|---|---|
+| `^class OutboxListener` 정의 | **1** (`outbox_listener.py:27`) | ✅ ㉠ 닫힘 |
+| 리터럴 `"outbox_event"`, `event_constants`·시험 밖 | **0** | ✅ |
+| «실행되는» LISTEN | **1** (`outbox_listener.py:99`) — 나머지 둘은 주석 | ✅ 「하나뿐」 참 |
+| `DatabaseOutbox(` 생성 자리 | **9** (히트 11 − 독스트링 1 − 클래스 정의 1) | ✅ 「아홉」 참 |
+| 새 모듈 import | 제품 2 + 시험 1 | ✅ |
+
+### 세운 가설 둘 — 둘 다 «안 섰습니다»
+
+**㉠ 「좌석의 정확성이 파일 안 «정의 순서»에 걸려 있는데 아무도 안 잰다」**
+섰다면 조용한 결함이었습니다. `before_flush` 는 등록 순서로 돌고, 등록 순서 = 정의 순서입니다.
+`auto_stage_database_outbox` :128 → `notify_on_outbox_birth` :218. 아래쪽이라 auto_stage 가 «먼저»
+`session.add(DatabaseOutbox)` 하고, 그래서 새 좌석이 그것을 본다 — 순서가 뒤집히면 **운영의 주 경로**
+(운영자가 셀을 고침 → auto_stage → stage_event)가 조용히 안 알립니다. `stage_event` 안의
+`_notify_outbox_once` 가 이번에 «지워졌»으므로 대체 경로도 없습니다.
+
+안 선 이유: 새 시험 여섯은 `stage_event` 를 일부러 피하지만, **기존** 시험 셋이 `_add()` 로
+«동적 표 행»을 넣습니다(`models.DYNAMIC_TABLES[TABLE]`) — 즉 auto_stage 경로를 탑니다. 뒤집으면
+`len(notifies) == 1` 이 0 을 받아 **빨개집니다**. 이름으로는 안 박혀 있지만 «단언»으로 박혀 있습니다.
+
+**㉡ 「래치가 트랜잭션을 넘어 남아 둘째 판을 조용히 넘긴다」**
+`_OUTBOX_NOTIFY_SENT` 전수 4 자리. 커밋·롤백·**세이브포인트 끝**(`origin=BEGIN_NESTED`) 셋 다 풀고
+`SUBTRANSACTION` 만 건너뜁니다. 그 비대칭의 «이유»까지 그 자리에 적혀 있습니다
+(빠진 통지 = 2 초 대기, 남는 통지 = 왕복 한 번). 이번 라운드가 아니라 그전 것입니다.
+
+### 잰 것 하나, «안 잰» 것 하나
+
+```
+잰 것    실행 LISTEN 1 · 클래스 1 · 리터럴 0 · 생성 자리 9 — 착지 메시지의 수 넷 전부 재현됨
+안 잰 것  API 루프가 `asyncio.to_thread` 로 «기본 executor» 스레드를 상시 하나 물고 있습니다
+         (`wait(30.0)` 이 돌아오면 바로 다시 듭니다). 통합 모드면 워커 것까지 둘입니다.
+         구조로는 그렇고, 그 점유가 «무엇을 늦추는지»는 제가 안 쟀습니다. 운영은 DECOUPLED 라
+         API 프로세스의 그 풀은 대체로 한가합니다 — 그래서 올리지 않고 적어만 둡니다
+```
+
+「무결함」의 범위: 제가 «연 줄»에 대한 것입니다 — 좌석·래치·채널 상수·리스너 수명·시험의 경로.
+운영 규격으로 «돌려» 본 것은 아닙니다(게이트 ④′ 의 프레임 수는 구현자 몫으로 남아 있습니다).
