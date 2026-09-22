@@ -1402,7 +1402,7 @@ def publish(db, op: str, params: dict, requested_by: str = None) -> dict:
 
     Same mechanism as `POST /admin/auto-update/run-now`: one `DatabaseOutbox` row.
     The NOTIFY that wakes the consumer is NOT issued here any more - staging the row
-    is what announces it (`database.notify_on_outbox_birth`, 2026-09-22). This used
+    is what announces it (`database.notify_on_outbox_change`, 2026-09-22). This used
     to spell the NOTIFY by hand, and three other sites that did not spell it were
     silent for exactly that reason. A retroactive
     run walks a whole table, so a synchronous handler would hold the request until

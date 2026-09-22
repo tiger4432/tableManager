@@ -426,13 +426,13 @@ async def startup_event():
     try:
         if engine.dialect.name == "postgresql":
             main_loop.create_task(_outbox_queue_broadcast_loop())
-            logger.info("[Outbox Queue] birth-broadcast listener started (channel=%s).",
+            logger.info("[Outbox Queue] change-broadcast listener started (channel=%s).",
                         event_constants.OUTBOX_NOTIFY_CHANNEL)
         else:
-            logger.info("[Outbox Queue] birth-broadcast listener NOT started: dialect=%s "
+            logger.info("[Outbox Queue] change-broadcast listener NOT started: dialect=%s "
                         "has no LISTEN/NOTIFY.", engine.dialect.name)
     except Exception as e:
-        logger.error(f"[Outbox Queue] birth-broadcast listener failed to start: {e}")
+        logger.error(f"[Outbox Queue] change-broadcast listener failed to start: {e}")
 
     try:
         # [2026-07-25 정리] 레거시 data_rows NULL updated_at 보정 마이그레이션 제거
@@ -665,7 +665,7 @@ async def shutdown_event():
     # 전용 LISTEN 커넥션은 풀의 것이 아니라 «진짜 닫아야» 한다(S-167: 풀에 돌려주면
     # autocommit 인 채로 다음 세션이 집어 간다). 재기동마다 하나씩 남는 것도 막는다.
     if _outbox_listener is not None:
-        logger.info("Closing outbox birth-broadcast listener...")
+        logger.info("Closing outbox change-broadcast listener...")
         _outbox_listener.close()
 # --------------------------------------
 

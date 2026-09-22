@@ -354,6 +354,44 @@ def test_a_row_made_by_a_constructor_notifies_like_any_other_birth(notify_db):
         "앉아 있으면 이 수가 0 이다" % len(notifies))
 
 
+def test_a_transaction_that_only_marks_a_row_announces_it_too(notify_db):
+    """게이트 ②. 행이 큐에서 «빠지는» 것도 깨운다 (총괄 2026-09-23).
+
+    큐 화면의 모집단은 이 행의 «칸»이 정한다(`processed_chain` · `status` ·
+    `broadcast_at`). 그래서 행이 빠지는 사건은 «전부 UPDATE» 이고, 좌석이 `session.new`
+    만 볼 때 그 트랜잭션은 아무도 안 깨웠다 — 드레인된 행이 화면에 그대로 남았다.
+    68ms 만에 처리되는 행은 이것을 가렸고, 밀려 있던 행은 안 가렸다.
+
+    ⚠️ 출생은 «블록 밖»에서 끝낸다. 안에서 하면 출생이 낸 알림을 세고 「갱신도 알린다」로
+       읽는다 — 그건 이 게이트가 재려는 것이 아니다.
+    되돌리면(좌석을 `session.new` 만 보게) `notifies` 가 0 이 된다."""
+    db, sent = notify_db
+    row = _born(db, 1)
+    db.commit()
+
+    with counting(sent) as notifies:
+        row.processed_chain = True
+        db.commit()
+
+    assert len(notifies) == 1, (
+        "a transaction that drained a row woke nobody, so the queue keeps its line: %r"
+        % (notifies,))
+
+
+def test_a_transaction_that_deletes_a_row_announces_it_too(notify_db):
+    """게이트 ②-b. 지워지는 것도 큐에서 빠지는 것이다. 같은 좌석, 같은 이유."""
+    db, sent = notify_db
+    row = _born(db, 2)
+    db.commit()
+
+    with counting(sent) as notifies:
+        db.delete(row)
+        db.commit()
+
+    assert len(notifies) == 1, notifies
+
+
+
 def test_a_row_the_chain_worker_expands_also_notifies(notify_db):
     """`outbox_expand` 의 모양 — 침묵 셋 중 둘이다.
 

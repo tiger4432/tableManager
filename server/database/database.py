@@ -216,13 +216,26 @@ def auto_stage_database_outbox(session, flush_context, instances):
 
 
 @event.listens_for(Session, "before_flush")
-def notify_on_outbox_birth(session, flush_context, instances):
-    """아웃박스 «행이 태어나면» 알린다 — 누가 만들었든.
+def notify_on_outbox_change(session, flush_context, instances):
+    """아웃박스 행이 «생기거나 바뀌면» 알린다 — 누가 만들었든.
 
     🔴 이것이 «자리 목록»이 아니라 «성질»인 이유. 행은 플러시돼야 존재하고, 이 좌석은
        sqlalchemy 의 «기반» `Session` 에 걸려 있다(파일 머리의 import). 그래서 어느
        세션메이커가 만든 세션이든, 생성자를 직접 쓰든, 이 문을 지난다. 공장 함수였다면
        「열째 호출자가 생성자를 쓰면 끝」이었다.
+
+    🔴 [총괄 2026-09-23] 「태어남」만 보던 좌석이다. 큐 화면의 «모집단»은 이 행의 «칸»이
+       정한다(`processed_chain` · `status` · `broadcast_at`), 그래서 행이 큐에서 «빠지는»
+       사건은 전부 UPDATE 다 — `session.new` 에 안 들어온다. 결과: 드레인된 행이 화면에
+       «그대로» 남았다. 68ms 만에 처리되는 행은 이것을 가리고, 밀려 있던 행은 안 가린다.
+       소유자께서 「대기열 안 사라짐」이라 하신 증상의 절반이 여기였다.
+
+    ⚠️ 더 알리는 것은 값이 아니다. 알림은 «내용이 없고»(듣는 쪽은 어떤 깨움이든 「다시
+       훑어라」로 읽는다) `_notify_outbox_once` 가 트랜잭션당 하나로 래치한다. 그래서
+       깨울 «사유»를 넓혀도 전선의 양은 그대로다.
+
+    ⚠️ `session.dirty` 는 「바뀌었을 수 있는」 것까지 담는다. 그것을 걸러내지 않는 것은
+       의도다 — 한 번 더 깨우는 값은 래치가 흡수하고, 덜 깨우는 값은 이 결함 자체다.
 
     실측 2026-09-22 — 이 좌석 «전»에는 `DatabaseOutbox(` 아홉 자리 중 둘만 알렸다:
     손으로 적은 NOTIFY 넷이 메웠고, 셋(`internal_event_client` · `outbox_expand` ×2)은
@@ -236,10 +249,12 @@ def notify_on_outbox_birth(session, flush_context, instances):
        그것이 「아홉 전부」의 «범위»다 — 시험이 그 조건을 같이 적는다.
     """
     from .models import DatabaseOutbox
-    for obj in session.new:
-        if isinstance(obj, DatabaseOutbox):
-            _notify_outbox_once(session)
-            return
+
+    for bucket in (session.new, session.dirty, session.deleted):
+        for obj in bucket:
+            if isinstance(obj, DatabaseOutbox):
+                _notify_outbox_once(session)
+                return
 
 
 def _outbox_envelope():
