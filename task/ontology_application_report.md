@@ -31397,3 +31397,30 @@ legacy_materialized_join.reset_cache() 호출  제품 «0» (이건 그대로 �
 ```
 제 클리어런스의 주어는 그 넷이고 이 파일 전부가 아닙니다. 못 연 것: 실제 화면을 «열어» 보지 않았습니다
 (어드민 화면은 토큰 뒤라 제가 안 엽니다 — 열기는 화면 레인·총괄 몫입니다).
+
+### Q-200 · fd546ccb(652 3걸음 · 읽기 시점 조인 문법 삭제) 적대 QA — 지운 것은 깨끗합니다. «운영자 파일»의 말이 남았습니다 [09-22 12:48]
+
+```
+보호 값 셋   uq_vjoin_ (7 파일) · ASSY_VJOIN_AUTO_INDEX (1) · VirtualJoin.UniqueKey (1) — «전부 생존»
+엔진        virtual_join_executor.py 파일 «없음» · resolved_expression·_resolve_one·retract_rows 호출 «0 파일»
+```
+🔴 남은 말 — «운영자가 읽는» 자리 (여기가 제일 아픕니다)
+```
+mappers/cross_table_lookup_mapper.py.sample :15  「STOP. That is a VIRTUAL JOIN
+   (config/virtual_join_rules.json, executed by virtual_join_executor) … better than this
+   file at that job in every respect」            <- 운영자를 «없는 파일과 없는 엔진»으로 보냅니다
+   같은 파일 :161 도 그 이름을 듭니다
+config/sample/virtual_join_rules.json.sample     6,129 바이트 · `materialize` 3 회 — «읽는 코드 0»
+config/sample/{table_config,ledger_config}.json.sample  그 낱말 포함 (내용은 «안 셌습니다»)
+```
+⚪ 코드 주석 — 판정 650 으로 제 몫이 아니라 «보고만» 합니다
+```
+crud.py :1054 ·:1140 ·:1194   「Exists for virtual_join_executor.resolved_expression」
+                              그 이름은 오늘 «정의도 0» 입니다
+main.py :4134                 「chain_rules · enrichment_rules · virtual_join_rules · ledger_config 넷」 -> 오늘 셋
+```
+⛔ 삭제 제안이 아닙니다 — crud 의 그 헬퍼가 오늘 «누구의» 것인지는 제가 모릅니다. 호출 0 만 적습니다.
+
+📨 **갈래 하나만 여쭙니다(688 이 남긴 「레인 사이」)**: 위 `.sample` 넷의 펜은 누가 듭니까 —
+㉠ 3걸음의 후속(같은 라운드의 「말」) · ㉡ 제 문서 정비. 제 쪽은 트리가 «깨끗»한 것만 확인했고(미커밋 0),
+650 이 「코드 주석 쓸기」를 뺐기 때문에 `.py.sample` 이 어느 쪽인지 «제가 정하지 않았습니다».
