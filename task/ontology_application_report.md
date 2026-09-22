@@ -31112,3 +31112,27 @@ server/ 의 declared_self_updates  0 건 — 이 칸을 «내는 자»가 아직
 
 Q-190 의 「무결함」은 이제 «세 줄»에 대한 것입니다 — `--no-merges` 의 손실 0 · 좌석 하나 ·
 마지막 문장 함정. 호출부의 «침묵»은 결함이고, 제가 안 봤습니다.
+
+### Q-191 · 2582a820(644 ㄱ · 목록이 「돈다/적혀만 있다」를 답한다) 적대 QA — 화면 새로고침이 «부팅 줄»을 찍습니다 [09-22 09:28]
+
+라우트가 `worker.load_chain_rules()` 를 «요청마다» 부릅니다. 로더는 부를 때마다 «말»을 합니다.
+
+```
+실측(이 박스의 선언 위)  1 회차 로그 28 줄 · 2 회차 «+20 줄» · 0.007s / 0.004s (DB 안 탐)
+그 20 줄에 들어 있는 것   [ChainRules] set(12) …            <- 워커 «부팅 점호» 줄
+                        aaa: enabled=false — no rule stands  <- 656 이 화면에 세우기로 한 그 선언
+                        평면 칸 이전 경고 여덟
+1 회차에만  [ChainRules:dt_inventory -> dt_inventory] 고리 줄 (say_cycle_once)
+```
+🔴 **`set(N)` 은 「워커가 방금 무엇을 실었나」의 문장입니다.** 이제 «어드민 화면을 연 사람»도 그 문장을
+찍습니다 — 같은 줄에 저자가 둘이고 뜻이 다릅니다. 운영 로그를 읽는 사람은 적재가 «일어난 줄»로 읽습니다.
+줄 수는 이 박스 선언 위의 수입니다(라이브 규칙 파일은 gitignored). 「매 호출마다 다시 말한다」가 구조입니다.
+비용은 문제가 아닙니다 — 밀리초이고 DB 를 안 탑니다.
+
+안 잰 것 하나: `if any(rule.get("name") in standing_names for rule in expanded): continue` — 선언이 세우는
+«반쪽 중 하나만» 서면 그 선언은 「돈다」로 접힙니다. 한쪽만 떨어지는 경우를 «만들어 보지 못했습니다»
+(`rule_refusals` 는 카탈로그를 안 받고, 네 템플릿이 이 경로에서 전부 resolvable — 실측). 이름 충돌
+(`_refuse_names_claimed_twice`)이 한쪽만 치면 성립할 «모양»이라 적어 둡니다. 수는 안 적습니다.
+
+곁: 라우트가 부르는 import 경로에서 `declared:join`·`decide`·`enrich`·`virtual_join` 이 «넷 다» resolvable 입니다
+(`dynamic_mappers` 가 import 시점에 꽂습니다). 「API 프로세스는 레지스트리가 0」 걱정은 이 자리에선 해당 없습니다.
