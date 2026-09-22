@@ -1466,6 +1466,9 @@
     .join-verify-row[data-state="refused"] .join-verify-verdict,
     .join-verify-row[data-state="invalid"] .join-verify-verdict { color: var(--warning); }
     .join-verify-row[data-state="undiagnosed"] .join-verify-verdict { color: var(--text-muted); }
+    /* 🔴 [687] 「안 물음」은 고장이 아니라 «묻지 않은 것»이라 경고색을 안 씁니다. 가르는 것은
+       낱말이고(안 물음 / 진단 못 냄), 색은 「손댈 것 없음」을 같이 말합니다. */
+    .join-verify-row[data-state="not_asked"] .join-verify-verdict { color: var(--text-dim); }
     .retro-input {
       font-family: var(--font-mono);
       font-size: 0.9rem;
@@ -1969,7 +1972,7 @@
     .retro-group.is-chosen { border-color: var(--accent); color: var(--accent); }
 
   </style>
-  <script type="module" crossorigin src="/assets/admin-CtdZOEXb.js"></script>
+  <script type="module" crossorigin src="/assets/admin-CxsHHNmh.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/tokens-C3JbmQ-D.js">
   <link rel="modulepreload" crossorigin href="/assets/absent-Ae952B9C.js">
   <link rel="modulepreload" crossorigin href="/assets/config_resolve_view-CgwLdtaH.js">
