@@ -92,12 +92,19 @@ while true; do
 
   cur_head=$(git rev-parse main 2>/dev/null || echo none)
   if [ "$cur_head" != "$PREV_HEAD" ] && [ "$PREV_HEAD" != "none" ]; then
-    # 🔴 [2026-09-22 판정 651] LAND 판정은 land_lines.sh «한 좌석»이 낸다. 여기서 다시 적지
-    #    않는다 — 게이트(land_lines_gate.sh)가 «감시가 도는 그 바이트»를 돌려야 하고,
-    #    베껴 적으면 그 게이트가 판정의 둘째 저자가 된다.
-    while IFS= read -r ln; do
-      [ -n "$ln" ] && say "🛠 LAND $ln"
-    done < <(bash "$REPO/tools/watch/land_lines.sh" "$PREV_HEAD" "$cur_head" 2>/dev/null)
+    # 🔴 [판정 651] LAND 판정은 land_lines.sh «한 좌석»이 낸다. 여기서 다시 적지 않는다 —
+    #    게이트가 «감시가 도는 그 바이트»를 돌려야 하고, 베껴 적으면 둘째 저자가 된다.
+    # 🔴 [판정 659·660] stderr 를 «죽이지 않는다». 좌석이 죽은 것과 「착지 없음」이 둘 다
+    #    «줄 0» 이면 감시가 죽어도 평화처럼 보인다 — 639 가 심박 침묵에 경보를 단 이유와 같다.
+    #    종료코드를 읽고, 실패면 «무엇이 조용해졌는지»를 말한다.
+    land_out=$(bash "$REPO/tools/watch/land_lines.sh" "$PREV_HEAD" "$cur_head" 2>&1); land_rc=$?
+    if [ "$land_rc" = 0 ]; then
+      while IFS= read -r ln; do
+        [ -n "$ln" ] && say "🛠 LAND $ln"
+      done <<< "$land_out"
+    else
+      say "🔴 LAND 판정이 죽었습니다 (exit=$land_rc) — $(printf '%s' "$land_out" | tail -1)"
+    fi
     PREV_HEAD=$cur_head
   fi
 
