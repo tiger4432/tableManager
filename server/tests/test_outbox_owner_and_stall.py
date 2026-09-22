@@ -163,16 +163,40 @@ def test_no_run_in_flight_is_None_rather_than_an_invented_row():
 # ------------------------------------------------------------------ the gate itself
 
 @pytest.mark.parametrize("alive", [True, False])
-def test_the_gate_answers_only_alive_and_that_is_deliberate(alive):
-    """🔴 THE ROUND FAILS IF THIS CHANGES. Opening the gate after a timeout would trade a
-    stuck run for two concurrent replays writing the same cells from two sessions - the
-    one ordering `start_retroactive_run` says nobody could reason about afterwards. The
-    diagnosis above changes what is SAID, never what is allowed."""
+def test_the_gate_never_opens_and_now_also_sees_other_processes(alive):
+    """🔴 불변식은 그대로다 — 이 게이트는 «절대 더 열리지 않는다». 시간이 지났다고 여는 것은
+    멎은 실행을 「같은 셀을 두 세션이 쓰는」 순서와 바꾸는 일이고, 그건 `start_retroactive_run`
+    이 「나중에 아무도 설명 못 한다」고 적어 둔 바로 그것이다.
+
+    🔴 바뀐 것은 «범위»다(2026-09-22). 종전엔 `_retroactive_thread` «하나»만 봤다 — 이 프로세스
+       안의 손잡이다. 체인 리플레이가 워커로 가고 회수는 여기 남으므로, 게이트가 지키라고
+       쓰인 그 쌍이 «프로세스 둘»에 놓인다. 손잡이만 보면 그 경우에 계속 「열림」이라 답한다.
+    ⚠️ 그래서 «더 닫히는» 쪽으로만 바뀌었다. 이 시험이 지키는 불변식과 같은 방향이다.
+
+    증인이 «둘»이고 서로를 못 덮는다:
+       손잡이  행을 «못 쓴» 실행을 잡는다 (2026-09-05: `runner` 컬럼 이전 배포로 UPDATE 가
+              전부 터져 행은 queued 인데 일은 돌고 있었다)
+       표     «다른 프로세스»의 실행을 잡는다 — 손잡이로는 아예 안 보인다
+    """
     from run_auto_update import MultiDiscoveryScheduler
 
     thread = types.SimpleNamespace(is_alive=lambda: alive)
-    scheduler = types.SimpleNamespace(_retroactive_thread=thread)
+    scheduler = types.SimpleNamespace(_retroactive_thread=thread,
+                                      retroactive_moving_state=lambda: None)
     assert MultiDiscoveryScheduler.retroactive_busy(scheduler) is alive
+
+
+def test_a_run_in_another_process_closes_the_gate_here():
+    """🔴 이것이 이 라운드가 연 «구멍»이다. 손잡이는 죽어 있고 표가 「돌고 있다」고 말한다 —
+    리플레이가 워커에서 돌고 회수가 여기서 시작되려는 정확히 그 순간이다.
+    종전 코드는 여기서 「열림」이라 답했고, 두 작업이 같은 표의 같은 셀을 썼을 것이다.
+    """
+    from run_auto_update import MultiDiscoveryScheduler
+
+    scheduler = types.SimpleNamespace(
+        _retroactive_thread=types.SimpleNamespace(is_alive=lambda: False),
+        retroactive_moving_state=lambda: {"run_id": "other-proc-1", "op": "chain_replay"})
+    assert MultiDiscoveryScheduler.retroactive_busy(scheduler) is True
 
 
 def test_the_gate_is_closed_for_a_stalled_run_exactly_as_for_a_moving_one():
@@ -180,7 +204,8 @@ def test_the_gate_is_closed_for_a_stalled_run_exactly_as_for_a_moving_one():
     from run_auto_update import MultiDiscoveryScheduler
 
     scheduler = types.SimpleNamespace(
-        _retroactive_thread=types.SimpleNamespace(is_alive=lambda: True))
+        _retroactive_thread=types.SimpleNamespace(is_alive=lambda: True),
+        retroactive_moving_state=lambda: None)
     assert MultiDiscoveryScheduler.retroactive_busy(scheduler) is True
 
 
@@ -224,3 +249,41 @@ def test_the_two_windows_describe_one_row_with_the_same_names():
     got = retroactive.in_flight(_Runs(run_row(progressed_ago=5.0)))
     for field in ("run_id", "op", "params", "requested_by", "queued_at", "state"):
         assert field in got, field
+
+
+# ---------------------------------------------------------------- 게이트 ⑯: 거절의 출구
+
+def test_a_refusal_names_the_run_and_the_way_out(caplog):
+    """🔴 게이트가 «프로세스를 건너» 닫히므로, 막은 실행이 이 프로세스에 «없을 수» 있다.
+    그러면 운영자가 여기서 「뭐가 도나」를 찾아도 아무것도 안 나온다 — 식별자와 푸는 법이
+    «같은 줄»에 있어야 한다. 사유만 적힌 거절은 운영자를 «막힌 채로» 둔다.
+
+    ⚠️ 억지로 만든 상황이다: 이 프로세스엔 도는 것이 «없고»(손잡이 죽음) 표만 말한다.
+    """
+    import logging
+
+    from run_auto_update import MultiDiscoveryScheduler
+
+    blocking = {"run_id": "held-by-worker", "op": "chain_replay",
+                "moving": "moving", "no_progress_seconds": 12, "runner": "worker/7"}
+    scheduler = types.SimpleNamespace(
+        _retroactive_thread=types.SimpleNamespace(is_alive=lambda: False),
+        retroactive_moving_state=lambda: blocking,
+        retroactive_busy=lambda: True,
+        _retroactive_last=None)
+
+    with caplog.at_level(logging.WARNING):
+        started = MultiDiscoveryScheduler.start_retroactive_run(
+            scheduler, {"run_id": "mine-2", "op": "withdraw"})
+
+    assert started is False
+    line = "\n".join(r.getMessage() for r in caplog.records)
+
+    # 무엇이 막나 — «식별자»로. 「소급이 돈다」만으로는 못 찾는다
+    assert "held-by-worker" in line
+    # 언제부터 — 수로
+    assert "12" in line
+    # 🔴 다음 행동 — 이것이 없으면 운영자는 막힌 채로 끝난다
+    assert "/cancel" in line and "held-by-worker" in line.split("/cancel")[0]
+    # 그리고 «내» 요청이 사라지지 않았다는 것도 말해야 한다
+    assert "mine-2" in line

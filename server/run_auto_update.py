@@ -722,16 +722,37 @@ class MultiDiscoveryScheduler:
             return None
 
     def retroactive_busy(self) -> bool:
-        """Is the gate closed. 🔴 THIS ANSWER IS UNCHANGED AND MUST STAY UNCHANGED.
+        """Is the gate closed. 🔴 THE ANSWER IS UNCHANGED; ITS *SCOPE* IS NOW EVERY PROCESS.
 
         A long run and a wedged one both close it, and both SHOULD: the reason the gate
         exists is that two concurrent replays of one rule write the same cells from two
         sessions. Opening it after a timeout would trade a stuck run for the one ordering
-        nobody could reason about afterwards. What was missing was never permission - it
-        was that nothing SAID which of the two states the closed gate was in.
+        nobody could reason about afterwards. That judgement is untouched.
+
+        🔴 WHAT CHANGED, AND WHY IT HAD TO (2026-09-22). This read `self._retroactive_thread`
+        alone - a handle in THIS process. The gate's own stated reason includes 「a replay
+        racing a withdrawal on the same table」, and chain replay is moving to the chain
+        worker while withdraw stays here. That puts the exact pair this gate was written for
+        into two processes with two handles, so the gate would have gone on answering 「open」
+        while the case it guards was happening. No error, two sessions, same cells.
+
+        ⚠️ THE TWO READS ARE NOT TWO ANSWERS - NEITHER COVERS THE OTHER'S CASE.
+           the thread   catches a run whose ROW could not be written (2026-09-05:
+                        `runner` deployed before its migration made every UPDATE raise,
+                        so the row says `queued` while the work runs)
+           the table    catches a run in ANOTHER process, which a handle cannot see at all
+           So it is one question asked where each source is the only witness.
+
+        ⚠️ COST, because the previous note here deliberately avoided it: this adds ONE query
+           per tick while nothing is in flight. Measured - tick is 5 s (`check_interval`) and
+           `in_flight` is a single `LIMIT 1` on `state IN (...)`, so 12 reads a minute. That
+           is the price of the gate spanning processes, and it is paid on a scheduler loop
+           rather than a request path.
         """
         t = self._retroactive_thread
-        return bool(t and t.is_alive())
+        if t and t.is_alive():
+            return True
+        return self.retroactive_moving_state() is not None
 
     def retroactive_moving_state(self):
         """WHICH of the two the closed gate is in, as a value, or None if unknowable.
@@ -780,19 +801,26 @@ class MultiDiscoveryScheduler:
         from admin import retroactive
 
         if self.retroactive_busy():
-            # The gate is closed either way; this log line is where the two states become
-            # distinguishable. Without it the operator's only evidence was an outbox row
-            # whose age grew with no reason attached to it anywhere.
+            # 🔴 거절은 «사유»와 «다음 행동»을 둘 다 들어야 한다. 종전엔 무엇이 막는지까지만
+            #    말하고 «푸는 법»이 없었다 — 운영자에게 남는 것은 나이만 자라는 아웃박스 행
+            #    하나였다. 그리고 이 게이트는 이제 «프로세스를 건너» 닫히므로, 막은 실행이
+            #    이 프로세스에 «없을» 수도 있다: 그때 「여기서 뭐가 도나」를 찾으면 아무것도
+            #    안 나온다. 그래서 식별자와 푸는 법이 «같은 줄»에 있어야 한다.
             in_flight = self.retroactive_moving_state()
+            if not in_flight:
+                # 표가 아무것도 안 주는데 손잡이가 살아 있다 — 행을 못 쓴 실행이다(2026-09-05).
+                blocking = ("a run whose row could not be written (this process); "
+                            "it clears when that thread ends")
+            else:
+                blocking = (
+                    "run_id=%s op=%s %s for %ss (runner=%s) — clear it with "
+                    "POST /admin/retroactive/runs/%s/cancel"
+                    % (in_flight["run_id"], in_flight["op"], in_flight["moving"],
+                       in_flight.get("no_progress_seconds"), in_flight.get("runner"),
+                       in_flight["run_id"]))
             logger.warning(
-                "[Retroactive] a run is already in flight (%s, %s); leaving run_id=%s "
-                "queued for a later tick",
-                self._retroactive_last,
-                "no run row" if not in_flight else
-                "run_id=%s op=%s %s for %ss" % (
-                    in_flight["run_id"], in_flight["op"], in_flight["moving"],
-                    in_flight["no_progress_seconds"]),
-                (payload or {}).get("run_id"))
+                "[Retroactive] gate closed: %s. Leaving run_id=%s queued for a later tick.",
+                blocking, (payload or {}).get("run_id"))
             return False
 
         def _worker():
