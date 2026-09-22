@@ -50143,3 +50143,43 @@ S-248 의 장애를 «아직 도는 문법»에 겨눈 것입니다.
 옮길 때 눈은 «호출»에 가는데, 좌석이 지키던 것은 «입력의 완전성»이었습니다.
 
 ⏭️ 663 대로 2걸음으로 갑니다. 크기 보고를 이어서 올립니다.
+
+---
+
+> 📏 **[09-22 09:38 구현자] 652 «2걸음» 크기 — 열었습니다. 자취가 번들 «밖»으로 나가고, 「남긴다」 한 줄이 안 섭니다**
+
+**결론.** 번들 여섯 자리는 맞습니다. 그런데 B 의 배관이 «세 모듈 더»를 지나고,
+652 가 「남긴다」에 넣은 `verified_join_contract` 는 2걸음이 끝나면 «소비자 0» 이 됩니다.
+
+| 자리 | 크기 | 내용 |
+|---|---|---|
+| `ledger/setup_bundle.py` | 2,874 중 «여섯» | 섹션 선언(`OPTIONAL_SECTIONS`) · 디스패치 · `_validate_virtual_joins`(60줄) · `_validate_join_fold`(24줄) · 준비자 두 칸 · `verified_joins` 파라미터 |
+| `ledger/setup_registry.py` | 1,419 중 join 40줄 | `VerifiedJoinRegistry` · `_verified_join_errors` · `verified_join_descriptors` · `unverified_join` 거절 |
+| `ledger/source_preparation.py` | 1,290 중 join 51줄 | `_read_verified_joins`(706–801, 96줄) · `read_chunk` 안의 사용 · `unverified_join` 거절 둘 |
+| `ledger/setup.py` | 637 | `verified_joins` 파라미터 «둘»의 타입 주석뿐 |
+| `verified_join_contract.py` | 262 | 아래 참조 |
+| 스켈레톤 | 각 칸 1 | `inherit_virtual_join_rules` · `accepts_verified_join_rules` |
+| 출하 샘플 | 각 칸 **15** | 652 가 적은 「15 소스」와 «일치» |
+
+### 🔴 「남긴다: verified_join_contract.usable_expose — 원장이 씁니다」가 2걸음을 못 넘깁니다
+```
+usable_expose 의 소비자 «둘»
+   chain/legacy_materialized_join   <- 1걸음에서 죽습니다
+   ledger/source_preparation.read_chunk  <- «이것이 그 원장 사용처»이고 2걸음에서 죽습니다
+=> 1+2 걸음 뒤 usable_expose 소비자 «0»
+VerifiedJoinDescriptor 의 남는 소비자   ledger/setup.py — 그런데 «파라미터 타입 주석»뿐이고
+                                    그 파라미터가 바로 652 머리글이 「호출자 20여 곳이 전부 안 넘긴다」고
+                                    적은 그 인자입니다. 인자가 가면 주석도 갑니다
+```
+⇒ 262줄 모듈이 «통째로» 2걸음의 대상입니다. 652 는 그것을 「남긴다」에 뒀습니다 —
+사유(「원장이 씁니다」)가 참이었지만, 그 원장 사용처가 2걸음이 걷는 바로 그 코드입니다.
+
+### 여쭙니다
+```
+ㄱ  2걸음에 verified_join_contract 도 «같이» 건는다   (소비자 0 이 되므로)
+ㄴ  남긴다 — 3걸음의 「말 걷기」로 미룬다              (그 사이 262줄이 소비자 0 으로 서 있음)
+```
+🔵 제 추천은 **ㄱ** 입니다 — 「기제는 지워지고 말은 남는다」의 반대, «말만 남는 모듈»이 됩니다.
+다만 652 가 명시적으로 「남긴다」에 넣은 것이라 제가 뒤집지 않고 여쭙니다.
+
+⏸️ 답 주시면 2걸음을 그 경계로 짓겠습니다. 트리 미커밋 «0».
