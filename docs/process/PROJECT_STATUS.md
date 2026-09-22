@@ -12,6 +12,27 @@
 계기   scratchpad/probe_gate_one_v1_absent.py (①) · scratchpad/verify_chain_end_to_end.py (②)
 ```
 
+## 🎯 완성 상태 — 「두 줄로 선언법을 말할 수 있나」 (09-22 11:2x, 총괄이 직접 쟀다)
+
+```
+✅ 소유자 목표  「기존 선언들 없이도 파생·자동확정이 선다」  — 섰다
+   실측  server/config/enrichment_rules.json 이 «없다». 그런데 부팅 줄에
+        enrichment_dedup:… · enrichment_auto_confirm:… [decl,decide] 가 둘 다 선다
+✅ 두 줄   최소 칸 = name · on · into · derive  (join 은 + key)
+        「chain_rules.json 에 {name,on,into,derive} 를 적는다 / derive.kind 가
+         decide·join·mapper 셋 중 하나다」 — 스키마 이름이 «빈칸»인 채로 두 줄
+```
+```
+⚠️ 완성이 «아닌» 것 셋
+   ① 집이 둘   virtual_join_rules.json 이 살아 있고 그 문법도 로드된다 -> 652 3걸음이 걷는 중
+   ② 한 파일에 문법 둘  chain_rules.json 선언 11 중 derive 로 적힌 것 «셋», 나머지 «여덟»이 평면
+                    집은 하나가 됐는데 «모양»이 둘이다. 운영자가 파일을 열면 여덟 개의 다른 모양을 본다
+   ③ 그 여덟이 부팅마다 운다  「칸 N 개를 params 밑으로」 경고 아홉 줄.
+                          기제는 맞고 «선언이 안 옮겨졌다» — 운영자 몫이고 제품이 대신 못 한다
+순서   ③걸음(문법 삭제 + 문서 8 파일) -> 집 하나 -> «평면 여덟의 모양 옮기기» -> 그래야 「한 문법」
+```
+🔵 이 라운드는 «은퇴»가 아니라 «수리»였다 — 위 「이 라운드의 뜻」 절 참조.
+
 ## 🟢 오늘 착지 (09-22)
 
 ```
