@@ -95,6 +95,82 @@ console.log('\n[못 읽었을 때]');
   eq('U3 ...and draws no rows', byClass(mountPanel(null, { failed: 'x' }), 'queue-row').length, 0);
 }
 
+// ── 판정 2026-09-22 ㉰㉯ — 같은 행 50 개와 9,407px 은 «한 원인»이었다 ──────────────
+const mountWith = (payload, opts) => {
+  const mount = doc.createElement('div');
+  const panel = new OutboxQueuePanel(mount, { doc });
+  panel.render(payload, opts);
+  return { mount, panel };
+};
+// 붙인 «그» 리스너를 부른다 — 메서드를 부르면 버튼이 안 걸려 있어도 초록이다.
+const click = (el) => el.listeners.click[0]();
+const pageText = (mount) => (byClass(mount, 'queue-page')[0] || {}).textContent || '';
+
+const OFF = 'declaration is switched off (`enabled: false`)';
+const CHAIN_ONLY = 'chain-produced event; this rule does not declare `allow_chain_trigger`';
+const MANY = { ...WAITING, outbox_id: 21, rules: [
+  { name: 'a', will_fire: true }, { name: 'b', will_fire: true },
+  { name: 'c', will_fire: false, why_not: OFF },
+  { name: 'd', will_fire: false, why_not: OFF },
+  { name: 'e', will_fire: false, why_not: OFF }] };
+const TWO_REASONS = { ...WAITING, outbox_id: 22, rules: [
+  { name: 'c', will_fire: false, why_not: OFF },
+  { name: 'f', will_fire: false, why_not: CHAIN_ONLY }] };
+
+console.log('\n[㉰ 머리글이 «이 쪽»을 말한다 — 수는 이 쪽의 수다]');
+{
+  const mount = mountPanel({ ...REPLY([WAITING, { ...WAITING, outbox_id: 99 }]),
+    listed: { cap: 200, capped: false, next_cursor: 11 } });
+  const text = pageText(mount);
+  ok('F1 the page says its own count', text.includes('이 쪽 2 행'), text);
+  ok('F1b ...and the values every row on it shares', text.includes('dt_log') && text.includes('EDIT'), text);
+  // 🔴 수와 「다음 쪽」이 떼어지면 「2」가 «전부»로 읽힌다. 한 «마디»여야 한다.
+  ok('F2 ...in the SAME node as 「다음 쪽 있음」', text.includes('다음 쪽 있음'), text);
+  eq('F2b ...and there is only one such node', byClass(mount, 'queue-page').length, 1);
+  // 🔴 대조군 — 섞인 쪽에서는 그 칸에 대해 «아무 말도 안 한다» (절대어 상설).
+  const mixed = pageText(mountPanel(REPLY([WAITING, { ...WAITING, outbox_id: 98, table_name: 'dt_map' }])));
+  ok('F3 CONTROL: a mixed column is not named at all',
+    !mixed.includes('dt_log') && !mixed.includes('dt_map'), mixed);
+  ok('F3b ...while the column that IS shared still is', mixed.includes('EDIT'), mixed);
+}
+
+console.log('\n[㉯ 규칙 줄을 접되 «사유별 수»를 들고 접는다]');
+{
+  const { mount, panel } = mountWith(REPLY([MANY]));
+  eq('R1 a row with rules draws no rule line while folded', byClass(mount, 'queue-rule').length, 0);
+  const toggles = byClass(mount, 'queue-rules-toggle');
+  eq('R1b ...and one toggle instead', toggles.length, 1);
+  // 🔴 「규칙 5」였으면 이 화면의 존재 이유가 클릭 뒤로 숨는다.
+  ok('R2 the folded line counts what runs', toggles[0].textContent.includes('2 돎'), toggles[0].textContent);
+  ok('R2b ...and what does not, BY REASON, in the server\'s words',
+    toggles[0].textContent.includes(`3 ${OFF}`), toggles[0].textContent);
+  const two = byClass(mountPanel(REPLY([TWO_REASONS])), 'queue-rules-toggle')[0].textContent;
+  ok('R3 two reasons stay two — no word folds them together',
+    two.includes(`1 ${OFF}`) && two.includes(`1 ${CHAIN_ONLY}`), two);
+  // 펼치면 «이름»을 보러 간다
+  click(toggles[0]);
+  const names = byClass(mount, 'queue-rule').map((n) => n.textContent);
+  eq('R4 unfolding draws every rule name', names.length, 5);
+  ok('R4b ...and the toggle says it is open',
+    byClass(mount, 'queue-rules-toggle')[0].getAttribute('aria-expanded') === 'true',
+    byClass(mount, 'queue-rules-toggle')[0].getAttribute('aria-expanded'));
+  click(byClass(mount, 'queue-rules-toggle')[0]);
+  eq('R4c ...and folding puts them away', byClass(mount, 'queue-rule').length, 0);
+  // 사유 없는 거절은 사유를 «지어내지» 않는다
+  const bare = byClass(mountPanel(REPLY([{ ...WAITING, outbox_id: 23,
+    rules: [{ name: 'g', will_fire: false }] }])), 'queue-rules-toggle')[0].textContent;
+  ok('R5 a refusal with no reason says the count and invents nothing',
+    bare.includes('1 안 돎') && !bare.includes('switched off'), bare);
+  // 조립식의 정의: 같은 화면에 둘을 앉혀도 서로를 안 건드린다
+  const a = mountWith(REPLY([MANY]));
+  const b = mountWith(REPLY([MANY]));
+  click(byClass(a.mount, 'queue-rules-toggle')[0]);
+  eq('R6 two panels on one page do not share fold state',
+    byClass(b.mount, 'queue-rule').length, 0);
+  eq('R6b ...and the one that was clicked did open', byClass(a.mount, 'queue-rule').length, 5);
+  void panel;
+}
+
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
 console.log(`ASSERTIONS ${pass + failures.length} ${failures.length}`);
 process.exit(failures.length === 0 ? 0 : 1);

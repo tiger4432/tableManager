@@ -554,7 +554,9 @@ body.resizing-active .history-sidebar {
 /* 기준 시각·모집단은 «값»이다. 설명 문구가 아니라서 짧고 붙어 있다. */
 .queue-at { font-family: var(--font-mono); }
 .queue-population { font-family: var(--font-mono); }
-.queue-capped, .queue-more { color: var(--warning); }
+.queue-capped { color: var(--warning); }
+/* 수와 「다음 쪽 있음」이 «한 마디»다 — 떼면 이 쪽의 수가 «전부»로 읽힌다. */
+.queue-page { font-family: var(--font-mono); }
 .queue-reason { color: var(--warning); }
 /* 주인이 «첫 칸»이다 — 이 표를 비우는 것은 둘이고, 행마다 그것을 말한다. */
 .queue-row { display: grid; grid-template-columns: 7em 10em 5em 5em 7em 1fr;
@@ -565,6 +567,14 @@ body.resizing-active .history-sidebar {
 .queue-state { font-family: var(--font-mono); }
 /* 「기다리는 중」과 「재시도 중」을 가르는 것은 이 줄이다 — 상태 낱말은 둘 다 waiting 이다. */
 .queue-state-detail { grid-column: 1 / -1; color: var(--warning); font-size: 11px; }
+/* 접힌 줄. «사유별 수»를 들고 접으므로 이 한 줄이 「왜 안 도나」를 이미 답한다 —
+   펼치기는 «이름»을 보러 가는 것이다. 버튼 장식은 0(캐논: 라운드 0, 색은 역할 토큰). */
+.queue-rules-toggle { grid-column: 1 / -1; justify-self: start; display: block;
+                      margin: 0; padding: 0; border: 0; border-radius: 0; background: none;
+                      text-align: left; cursor: pointer; font: inherit;
+                      font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+.queue-rules-toggle:hover { color: var(--text); }
+.queue-rules-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .queue-rule { grid-column: 1 / -1; font-family: var(--font-mono); font-size: 11px; }
 .queue-rule[data-fires="false"] { color: var(--text-dim); }
 /* 빈 칸이 아니라 «문장»이다 — 빈 칸은 「규칙이 없다」로 읽힌다. */
