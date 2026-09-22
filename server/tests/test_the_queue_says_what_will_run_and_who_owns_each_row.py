@@ -166,8 +166,40 @@ def test_the_cursor_pages_without_repeating_or_dropping_a_row(client, db_session
     seen += [r["outbox_id"] for r in second["rows"]]
 
     assert len(seen) == len(set(seen)), "페이지 사이에 행이 «겹쳤다»"
-    assert set(seen) <= set(made) or True   # 다른 시험의 행이 섞일 수 있다
+    assert set(made) & set(seen), "내가 넣은 행이 한 개도 안 보인다 — 픽스처가 헛돌았다"
     assert all(a > b for a, b in zip(seen, seen[1:])), "id 내림차순이 아니다"
+
+    # 🔴 「잘렸다」는 «서버 상한»에 대한 말이다. 5행짜리 큐를 2씩 넘기는 동안 한 번도
+    #    참이면 안 된다 — 참이면 화면이 «없는 누락»을 그린다.
+    assert first["listed"]["capped"] is False
+    assert second["listed"]["capped"] is False
+
+
+def test_a_switched_off_rule_survives_the_real_loader(client, db_session, monkeypatch,
+                                                      tmp_path):
+    """🔴 앞 시험은 로더를 «대신»해서 꺼진 규칙을 건네준다 — 그건 「라우트가 그린다」이지
+    「로더가 건넨다」가 아니다. 한 시간 전에 이 게이트의 «바닥»이 비어 있는 걸 찾았으니
+    같은 모양을 또 두지 않는다. 실제 `load_chain_rules()` 로 잰다.
+
+    ⚠️ 파일에 적힌 선언은 `enabled: false` 여도 로더가 «들고 온다»(`kept` 루프에 enabled
+       검사가 없다). 그래서 운영자가 꺼 둔 규칙이 화면에서 «사라지지» 않는다.
+    """
+    import json as _json
+
+    from chain import ingestion_worker as w
+
+    path = tmp_path / "chain_rules.json"
+    path.write_text(_json.dumps({"rules": [
+        {"name": "off_on_disk", "trigger_table": "t", "enabled": False,
+         "mapper_module": "mappers.x", "mapper_function": "build"},
+    ]}), encoding="utf-8")
+    monkeypatch.setattr(w, "RULES_PATH", str(path))
+
+    assert "off_on_disk" in {r.get("name") for r in w.load_chain_rules()}, \
+        "로더가 꺼진 선언을 «버렸다» — 그러면 화면의 why_not 은 영원히 안 나온다"
+
+    body = client.get(URL).json()
+    assert "off_on_disk" in body["rules_known"]
 
 
 # ---------------------------------------------------------------------------

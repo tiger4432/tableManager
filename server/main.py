@@ -4604,7 +4604,10 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
         #    «행마다» 붙어 있고, 세는 것은 세는 쪽이 자기 축을 골라서 한다.
         "listed": {
             "cap": _QUEUE_ROWS_CAP,
-            "capped": len(rows) >= limit,
+            # 🔴 「잘렸다」는 «서버 상한에 닿았다»이지 「이 쪽이 꽉 찼다」가 아니다. 뒤의 것은
+            #    `next_cursor` 가 이미 말하고, 그 뜻으로 쓰면 5행짜리 큐도 매 쪽 「잘렸다」고
+            #    말한다 — 화면이 «없는 누락»을 그린다.
+            "capped": len(rows) >= _QUEUE_ROWS_CAP,
             "next_cursor": rows[-1]["outbox_id"] if len(rows) >= limit else None,
         },
         "population": "processed_chain=false ∪ (done & undelivered) ∪ failed",
