@@ -52500,3 +52500,78 @@ for f in _to_payloads _apply_replay_batch _count_user_protected _map_metadata_ou
 ```
 셋 다 제 기억 파일에 «이미 적혀 있는» 것들입니다. ①③ 은 터져서 알았고, ② 도 터졌습니다 —
 이번엔 운이 좋았습니다. 조용히 틀렸으면 ③ 은 「이미 있으니 안 넣는다」로 import 를 «안 되돌렸을» 자리입니다.
+
+> 🔵 **[09-22 23:1x 구현자 -> 총괄] ㉠ 답 + `chain_depth` 실측 — 「구멍이 이미 있다」가 «참»입니다**
+
+### 먼저 시키신 실측 — 깊이는 확장을 «못 넘습니다»
+
+```python
+env = {'transaction_id':'tx1', ..., 'chain_depth': 3}
+synthesize_payload('r1','bk1',{'col':'v'}, env)
+```
+```
+봉투에 넣은 깊이   3
+나온 키           business_key · data · row_id · source_name · timestamp · transaction_id · updated_by
+chain_depth       «없음»   -> chain_depth_of(...) = None
+```
+읽는 쪽의 독스트링이 그 뜻을 못박아 뒀습니다(`event_constants:318`):
+
+> 「No key -> `None` (**outside the chain**). … a caller deciding whether the limit applies
+>  must ask whether it is `None` FIRST」
+
+```
+🔴 그래서 «재확장된 행은 「체인 밖」으로 읽힙니다» — 홉 상한이 그 행에 «안 걸립니다»
+도달 가능한가   예. database:334 가 묶음 이벤트에 깊이를 «일부러 찍습니다» —
+               체인이 낳은 묶음이 «있다»는 뜻이고, 확장이 그걸 도로 지웁니다
+⚠️ 「실제로 루프가 났다」는 «안 쟀습니다». 잰 것은 「상한이 안 걸린다」까지입니다
+```
+=> 님 판단대로 **넓히기가 둘을 같이 닫습니다.** 제한 키와 깊이가 «같은 구멍»을 지납니다.
+
+### ㉠ 스테이징 루프는 «어디서 도나» — 스케줄러입니다. 그리고 그것이 「안 옮긴 것」이 아닙니다
+
+```
+왜 워커가 아닌가   판정이 이미 있습니다 (ingestion_worker:3440·3583, 2026-09-15 장애)
+   「A loop with no `await` on the event-loop thread starves everything sharing it:
+    every uvicorn request, static HTML included, stopped answering」
+   통합 모드에서 워커는 «API 이벤트 루프 위»에서 돕니다(main.py:588 주석이 같은 말을 합니다).
+   거기에 «수천 행 스캔»을 넣으면 그 장애를 제가 «다시 짓는» 것입니다
+소유권도 반대입니다   SCHEDULER_OWNED_EVENT_TYPES = {SCHEDULER_RUN_NOW, RETROACTIVE_RUN}
+                  (event_constants:77) — 워커는 이 행을 «일부러 건너뜁니다».
+                  주인을 바꾸는 것은 장애 뒤에 선 판정을 뒤집는 일이라 «제가 안 합니다»
+스케줄러는 «자기 프로세스»입니다   launcher_specs:72 ChildSpec("Auto Update Scheduler", run_auto_update.py)
+```
+
+**「스캔이 스케줄러에 남으면 안 옮긴 것」에 대한 제 답:** 옮겨야 하는 것은 «스캔»이 아니라
+«처리»였습니다.
+
+```
+스캔 = «고르기»    어느 행을 다시 돌릴 것인가. 아웃박스가 원래 «안 주던» 것입니다
+처리 = «돌리기»    매퍼 실행 · 재시도 · 실패 격리 · 오래된 것부터 — 이게 리플레이가 «두 번째로 지은» 것이고,
+                아웃박스가 이미 줍니다. 이것이 넘어갑니다
+=> 넘어간 뒤 스케줄러에 남는 것은 「페이지를 읽어 이벤트를 넣는 루프」뿐입니다.
+   체크포인트·restartable 은 «사라집니다» — 중간에 죽어도 넣은 행은 아웃박스에 있으니까요
+```
+
+### 그래서 지을 모양
+
+```
+① synthesize_payload 의 일곱 키를 «넓힙니다» — 저자 하나(판정 426). chain_depth 와 제한을 같이
+② 스케줄러의 루프: keyset_scan 페이지마다 «묶음 이벤트 하나» 스테이징 (pace 그대로)
+③ 제한 술어: _is_trigger_event 옆 «사건-혼자» 술어 하나. 드리프트 오라클을 그 낱말로 넓힘
+④ 체인이 낳는 자식에서는 제한을 «버립니다» — 좌석은 _outbox_envelope/스테이징 쪽
+⑤ 멱등성: 거절은 «삽입 자리» 하나. dry-run 은 같은 술어를 «불러서» 경고 + force 주는 법을 적음
+⑥ cancel: 안 집어간 행 삭제 (tx_id = "chain_replay_<run_id>", processed_chain=false)
+```
+```
+게이트  ① 옮기기 전후 같은 입력 -> 같은 결과   ② 리플레이가 낳은 행이 «다음 규칙을 깨운다»
+       ③ 「이 규칙만」이 지켜진다            ④ idempotent:false 가 «거절»된다(force 없이)
+       ⑤ dry-run 이 «경고»한다 (거절 아님)   ⑥ 확장된 자식이 깊이·제한을 «가져간다»  <- 새로 닫는 구멍
+       ⑦ 종류를 묻는 자리가 안 늘었다 — 센 명령을 보고에
+🔴 그리고 이번엔 «도는지»를 재는 게이트를 먼저 적습니다 — 오늘 제가 틀린 것이 정확히 그 칸입니다
+```
+
+```
+크기   ①③④ 쟀음: 술어 한 자리 + 열한 호출 + 오라클 한 줄 · 페이로드 키 둘
+      ②⑥ «안 쟀습니다» — 운영 규격(수천 행)으로 돌려야 나오고, 박스 재기동이 필요합니다
+```
+⚠️ 승인 전까지 제품 코드 0 줄입니다.
