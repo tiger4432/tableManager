@@ -170,6 +170,35 @@ def test_a_rule_the_loader_refused_is_on_the_list_too(declared, tmp_path, monkey
     assert rows["r644_no_mapper"]["rule_state"] == event_constants.RULE_STATE_DECLARED_ONLY
 
 
+def test_one_half_falling_does_not_hide_behind_the_other(declared, tmp_path, monkeypatch):
+    """⚰️ [Q-191] 한 선언이 «이름이 다른» 규칙 둘을 세우고, 로더는 «이름으로» 떨어뜨립니다
+    (`name_claimed_twice`). 그래서 반쪽 하나만 떨어질 수 있습니다 — 제 첫 판별식은
+    「이 선언에서 «무엇이든» 섰나」를 물어 그것을 「돈다」로 접었고, 떨어진 반쪽은 화면
+    어디에도 안 떴습니다. 644 가 닫으려던 결함이 한 줄 아래에서 되살아난 모양입니다."""
+    clash = {"name": "enrichment_auto_confirm:r644_half", "trigger_table": DST,
+             "target_table": DST, "mapper_module": "m", "mapper_function": "f"}
+    half = {"name": "r644_half", "on": {"table": SRC}, "into": {"table": DST},
+            "derive": {"kind": "decide", "decide": {"key": ["job"], "fields": ["grade"]}}}
+    chain_file = tmp_path / "half.json"
+    chain_file.write_text(json.dumps({"rules": [half, clash]}), encoding="utf-8")
+    monkeypatch.setattr(worker, "RULES_PATH", str(chain_file))
+
+    import paths
+    monkeypatch.setattr(paths, "config_path", lambda name: str(chain_file))
+
+    rows = {}
+    for row in __import__("main").get_chain_rules()["data"]:
+        rows.setdefault(row["name"], row)
+
+    assert rows["enrichment_dedup:r644_half"]["rule_state"] == \
+        event_constants.RULE_STATE_RUNNING, "선 반쪽은 돌아야 합니다"
+    # ⚠️ 「목록에 있다」만 단언하면 공허합니다 — 안 떨어졌어도 running 으로 «있기» 때문입니다.
+    #    떨어졌다는 사실 자체를 단언해야 이 줄이 결함을 잽니다.
+    assert rows["enrichment_auto_confirm:r644_half"]["rule_state"] == \
+        event_constants.RULE_STATE_DECLARED_ONLY, (
+            "떨어진 반쪽이 «형제 뒤에 숨었습니다» — 목록이 규칙 전부를 못 보여 줍니다")
+
+
 def test_a_switched_off_flat_rule_is_unchanged(declared):
     """⚠️ 회귀 칸. 평면은 로더가 오늘도 «들고 나옵니다» — 이쪽을 건드리지 않았습니다."""
     row = _listing()["r644_flat_off"]

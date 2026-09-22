@@ -5501,7 +5501,17 @@ def get_chain_rules():
         # (`unresolvable_mapper`), so only the loader knows whether it really runs.
         # Measured: asking the grammar alone dropped a refused rule off the list entirely.
         expanded, refusal, notes = rule_shape.expand_declaration(raw, crud.TABLE_CONFIG)
-        if any(rule.get("name") in standing_names for rule in expanded):
+        # 🔴 [Q-191] PER STANDING RULE, NOT PER DECLARATION. One declaration can stand TWO
+        # rules under DIFFERENT names, and the loader drops BY NAME
+        # (`name_claimed_twice`), so exactly one half can fall. Asking 「did anything from
+        # this declaration stand」 folded that to 「running」 and the fallen half appeared
+        # nowhere - 644's own defect, reopened one line lower. Each name answers for itself.
+        for rule in expanded:
+            if rule.get("name") in standing_names:
+                continue
+            listed.append(dict(rule, rule_state=event_constants.RULE_STATE_DECLARED_ONLY,
+                               rule_state_detail=refusal or (notes[0] if notes else None)))
+        if expanded:
             continue
         # ⚠️ THE REASON IS BEST EFFORT AND THAT IS STATED RATHER THAN HIDDEN. The grammar
         # hands back its own refusal or note; the loader logs its refusal codes into a
