@@ -277,7 +277,13 @@ def reset_right_key_cache():
     TTL, and the comment on it said why: the reload hook is the WEB server's, and worker
     processes never reach it, so the TTL was standing in for an invalidation those processes
     do not get. Keyed to loading instead, every process gets the same rule - the answer is
-    good until that process reads the declarations again - and no process pays a clock.
+    good until that process reads the declarations again.
+
+    ⚠️ [판정 677 ②] AND THE OTHER HALF STILL CARRIES ITS CLOCK. 「no process pays a clock」
+    stood here and was false the day it was written: `legacy_materialized_join` answers the
+    read-time half of this same question behind a 5-second TTL, and that TTL is untouched.
+    This is not a regression - it was 5 seconds before too - the false thing was the claim.
+    그 시계는 이 문법과 «같이» 죽습니다 (652 3걸음).
 
     ⚠️ 창이 «길어집니다», 모양은 안 바뀝니다. 인덱스가 걷혔는데 맵이 「있다」로 낡으면 그물이
     파이썬에서 거절하고 그 거절은 `operator_line` 으로 표·컬럼·키·다음 행동을 «이름 대어»
@@ -340,22 +346,25 @@ def right_keys_for(db, table_name: str) -> list:
         _RIGHT_KEYS["loaded"] = True
     answer = list(_RIGHT_KEYS["by_table"].get(table_name) or [])
     # 🔴 [Q-192 의 교훈] 아직 살아 있는 읽기 시점 조인의 유일성도 «같이» 듭니다. 그 좌석은
-    #    자기 캐시와 자기 세션을 들고 있어 여기서 재지 않습니다 - 그리고 그 문법이 죽는
-    #    커밋에서 이 두 줄이 같이 죽습니다.
-    from database.database import SessionLocal
-
-    legacy_probe = SessionLocal()
-    try:
-        answer.extend(_legacy_right_keys(
-            legacy_probe, table_name,
-            {(table_name, tuple(cols), tuple(folds)) for _n, cols, folds in answer}))
-    finally:
-        legacy_probe.close()
-    return answer
+    #    자기 캐시와 «자기 세션»을 들고 있어 여기서 아무것도 열지 않습니다 - 그리고 그
+    #    문법이 죽는 커밋에서 이 한 줄이 같이 죽습니다.
+    return answer + _legacy_right_keys(
+        table_name,
+        {(table_name, tuple(cols), tuple(folds)) for _n, cols, folds in answer})
 
 
-def _legacy_right_keys(probe, table_name: str, seen: set) -> list:
+def _legacy_right_keys(table_name: str, seen: set) -> list:
     """아직 살아 있는 «읽기 시점» 조인이 지고 있는 유일성도 같이 든다.
+
+    🔴 [판정 677 ③] AND IT TAKES NO SESSION, BECAUSE THE SEAT BELOW OPENS ITS OWN. A
+    `SessionLocal()` used to be opened here by the caller and handed down - on the write
+    path, once per BATCH, not once per load - and `rules_for_right` never touched it:
+    `_verified_by_left_table` ignores its `db` argument and opens its own connection,
+    because the 2026-09-15 outage was caused by verifying declarations in whoever's
+    session happened to miss the cache. So the argument was paying for a connection that
+    answered nothing. It is gone by NAME as well as by value: an unused `probe` parameter
+    reads as 「a session goes in here」 to the next person, which is how it came back once
+    already.
 
     🔴 [Q-192 의 교훈을 같은 라운드에 두 번 쓰지 않기 위해] BOTH PRODUCERS OR NEITHER. The
     duplicate net protects a uniqueness a table CARRIES, and until 판정 652 finishes there
@@ -373,7 +382,10 @@ def _legacy_right_keys(probe, table_name: str, seen: set) -> list:
     from chain import legacy_materialized_join
 
     out = []
-    for rule in legacy_materialized_join.rules_for_right(probe, table_name) or ():
+    # ⚠️ `None` 은 게으름이 아니라 «사실»입니다 — 이 인자는 읽히지 않습니다(위 참조).
+    #    죽을 모듈의 시그니처를 오늘 고치는 것은 3걸음에 지울 코드에 손대는 것이라
+    #    판정 677 이 금지했습니다.
+    for rule in legacy_materialized_join.rules_for_right(None, table_name) or ():
         columns = list((rule or {}).get("right_columns") or ())
         folds = list((rule or {}).get("right_folds") or ())
         if not columns:

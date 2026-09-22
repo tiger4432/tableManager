@@ -50,7 +50,13 @@ def reload_local_process_cache():
     # WHAT REPLACED IT. The old comment said the cache carried a TTL "for worker processes
     # that never reach this hook" - a clock standing in for an invalidation those processes
     # do not get. Expiry is keyed to LOADING now, so every process invalidates at its own
-    # reload seat and none of them waits out a clock; this is the web server's.
+    # reload seat rather than waiting out a clock; this is the web server's.
+    #
+    # ⚠️ [판정 677 ②] THAT IS TRUE OF THIS CACHE, NOT OF THE WHOLE ANSWER. The sentence
+    # here said 「none of them waits out a clock」, and the read-time half of the same
+    # question still does: `chain.legacy_materialized_join` holds a 5-second TTL. It was
+    # 5 seconds before this line existed, so nothing regressed - the absolute did. 그
+    # 시계는 그 문법과 «같이» 죽습니다.
     try:
         from chain import synthesis
         synthesis.reset_right_key_cache()

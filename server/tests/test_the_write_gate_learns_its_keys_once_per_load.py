@@ -66,7 +66,7 @@ def test_the_second_batch_asks_nothing(monkeypatch):
     monkeypatch.setattr(synthesis, "declared_unique_targets",
                         lambda rules: [_target("w652_join")])
     monkeypatch.setattr(synthesis, "_legacy_right_keys",
-                        lambda probe, table, seen: [])
+                        lambda table, seen: [])
     _declared(monkeypatch, [{"name": "w652_join"}], probes=probes)
 
     first = synthesis.right_keys_for(None, TABLE)
@@ -83,7 +83,7 @@ def test_a_box_with_no_declared_key_never_probes(monkeypatch):
     probes = []
     monkeypatch.setattr(synthesis, "declared_unique_targets", lambda rules: [])
     monkeypatch.setattr(synthesis, "_legacy_right_keys",
-                        lambda probe, table, seen: [])
+                        lambda table, seen: [])
     _declared(monkeypatch, [], probes=probes)
 
     assert synthesis.right_keys_for(None, TABLE) == []
@@ -96,7 +96,7 @@ def test_loading_again_expires_the_answer(monkeypatch):
     monkeypatch.setattr(synthesis, "declared_unique_targets",
                         lambda rules: [_target("w652_join")])
     monkeypatch.setattr(synthesis, "_legacy_right_keys",
-                        lambda probe, table, seen: [])
+                        lambda table, seen: [])
     _declared(monkeypatch, [{"name": "w652_join"}], probes=probes)
 
     synthesis.right_keys_for(None, TABLE)
@@ -105,6 +105,39 @@ def test_loading_again_expires_the_answer(monkeypatch):
     synthesis.right_keys_for(None, TABLE)
 
     assert len(probes) > before, "다시 실었는데 옛 답을 그대로 냈습니다"
+
+
+def test_the_write_path_does_not_open_a_session_per_batch(monkeypatch):
+    """🔴 [판정 677 ③] 이 파일의 독스트링이 «처음부터» 단언하던 문장인데, 그것을 재는 줄이
+    없었습니다 — 그리고 그동안 거짓이었습니다. `legacy_probe = SessionLocal()` 이 적재
+    블록 «밖»에 있어 배치마다 하나씩 열었고, 그 세션은 `rules_for_right` 에 넘겨졌다가
+    한 번도 쓰이지 않았습니다(`_verified_by_left_table` 이 자기 것을 엽니다).
+
+    ⚠️ 이 줄이 재는 것은 «이 좌석»이 여는 수입니다. 레거시 좌석이 자기 세션을 자기
+    시계로 여는 것은 여기서 안 셉니다 — 그 문법과 같이 죽을 것이고, 그것을 여기서
+    재려 하면 죽는 모듈의 수명이 이 시험의 전제가 됩니다.
+    """
+    opened = []
+
+    import database.database as dbmod
+    real = dbmod.SessionLocal
+
+    def counted(*a, **kw):
+        opened.append(1)
+        return real(*a, **kw)
+
+    monkeypatch.setattr(dbmod, "SessionLocal", counted)
+    monkeypatch.setattr(synthesis, "declared_unique_targets",
+                        lambda rules: [_target("w652_join")])
+    monkeypatch.setattr(synthesis, "_legacy_right_keys", lambda table, seen: [])
+    _declared(monkeypatch, [{"name": "w652_join"}])
+
+    synthesis.right_keys_for(None, TABLE)
+    synthesis.right_keys_for(None, TABLE)
+
+    assert len(opened) == 1, (
+        "적재당 한 번이어야 합니다. 연 수: %d — 배치마다 열면 쓰기 경로가 "
+        "배치마다 연결을 냅니다" % len(opened))
 
 
 # ---------------------------------------------------------------------------
@@ -118,7 +151,7 @@ def test_a_live_read_time_join_still_has_its_uniqueness_protected(monkeypatch):
     monkeypatch.setattr(synthesis, "declared_unique_targets", lambda rules: [])
     monkeypatch.setattr(
         synthesis, "_legacy_right_keys",
-        lambda probe, table, seen: [("w652_legacy", list(KEY), [None])])
+        lambda table, seen: [("w652_legacy", list(KEY), [None])])
     _declared(monkeypatch, [])
 
     answer = synthesis.right_keys_for(None, TABLE)
@@ -133,7 +166,7 @@ def test_one_uniqueness_is_one_entry_even_when_two_rules_declare_it(monkeypatch)
         synthesis, "declared_unique_targets",
         lambda rules: [_target("w652_join"), _target("w652_join:reference")])
     monkeypatch.setattr(synthesis, "_legacy_right_keys",
-                        lambda probe, table, seen: [])
+                        lambda table, seen: [])
     _declared(monkeypatch, [{"name": "w652_join"}])
 
     answer = synthesis.right_keys_for(None, TABLE)
@@ -147,7 +180,7 @@ def test_a_declaration_without_a_real_index_is_not_approved(monkeypatch):
     monkeypatch.setattr(synthesis, "declared_unique_targets",
                         lambda rules: [_target("w652_join")])
     monkeypatch.setattr(synthesis, "_legacy_right_keys",
-                        lambda probe, table, seen: [])
+                        lambda table, seen: [])
     _declared(monkeypatch, [{"name": "w652_join"}], covering=False)
 
     assert synthesis.right_keys_for(None, TABLE) == []

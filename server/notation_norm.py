@@ -224,9 +224,14 @@ SCOPE_FILE = "file"
 SCOPE_TABLE = "table"
 SCOPE_COLUMN = "column"
 
-# TTL cache, same discipline as `chain.legacy_materialized_join.RULES_CACHE_TTL`: the
-# explicit invalidation (`reset_cache`) is wired into the web server's reload
-# hook, and the TTL is what covers the worker processes that never reach it.
+# TTL cache: the explicit invalidation (`reset_cache`) is wired into the web server's
+# reload hook (`runtime/system_reload.py`), and the TTL is what covers the worker
+# processes that never reach it.
+#
+# ⚠️ [판정 677 ①] THIS USED TO CITE `chain.legacy_materialized_join.RULES_CACHE_TTL` AS
+# 「the same discipline」. The sentence above is still true of THIS cache; it stopped being
+# true of that one, whose reload-hook call was removed and whose TTL is now the only thing
+# dropping it. A comparison expires when its other half changes, and it does so silently.
 RULES_CACHE_TTL = 5.0
 _RULES_CACHE = {"at": 0.0, "by_table": None}
 
