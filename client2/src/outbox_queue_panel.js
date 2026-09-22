@@ -42,9 +42,9 @@ function ruleSummary(rules) {
 /** 「2 돎 · 3 <서버 사유>」. 사유가 없으면 «수만» — 없는 사유를 짓지 않는다. */
 export function summaryText(summary) {
   const parts = [];
-  if (summary.firing) parts.push(`${summary.firing} 돎`);
+  if (summary.firing) parts.push(`${summary.firing} firing`);
   for (const g of summary.notFiring) {
-    parts.push(g.whyNot ? `${g.count} ${g.whyNot}` : `${g.count} 안 돎`);
+    parts.push(g.whyNot ? `${g.count} ${g.whyNot}` : `${g.count} not firing`);
   }
   return parts.join(' · ');
 }
@@ -129,12 +129,12 @@ export function outboxQueueView(payload, opts = {}) {
 
 /** 머리줄 낱말. 열 «순서»가 여기 한 곳에 산다 — 행과 머리가 갈릴 자리가 없다. */
 const COLUMNS = Object.freeze([
-  Object.freeze({ key: 'owner', label: '주인' }),
-  Object.freeze({ key: 'table', label: '표' }),
-  Object.freeze({ key: 'event', label: '사건' }),
-  Object.freeze({ key: 'age', label: '나이' }),
-  Object.freeze({ key: 'state', label: '상태' }),
-  Object.freeze({ key: 'rules', label: '규칙' }),
+  Object.freeze({ key: 'owner', label: 'Owner' }),
+  Object.freeze({ key: 'table', label: 'Table' }),
+  Object.freeze({ key: 'event', label: 'Event' }),
+  Object.freeze({ key: 'age', label: 'Age' }),
+  Object.freeze({ key: 'state', label: 'State' }),
+  Object.freeze({ key: 'rules', label: 'Rules' }),
 ]);
 
 /** 조립식 부품: 자기 div 하나, mount·deps 를 생성자로, 모듈 상태 «없음». */
@@ -182,9 +182,9 @@ export class OutboxQueuePanel {
       // 🔴 수와 「다음 쪽」이 «한 마디»다 (판정 조건). 떼어 놓으면 「50」이 «전부»로 읽힌다.
       if (!view.empty) {
         meta.appendChild(this._line('queue-page', [
-          `이 쪽 ${view.page.count} 행`,
+          `${view.page.count} on this page`,
           ...view.page.shared,
-          view.hasMore ? '다음 쪽 있음' : '',
+          view.hasMore ? 'more pages' : '',
         ].filter(Boolean).join(' · ')));
       }
     } else if (view.reason) {
@@ -194,7 +194,7 @@ export class OutboxQueuePanel {
     if (!view.read) return view;
 
     if (view.empty) {
-      this.root.appendChild(this._line('queue-empty', '지금 돌 것이 없습니다'));
+      this.root.appendChild(this._line('queue-empty', 'Nothing to run right now'));
       return view;
     }
 

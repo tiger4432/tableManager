@@ -550,8 +550,6 @@ body.resizing-active .history-sidebar {
               font-size: 11px; color: var(--text-dim); }
 .queue-at, .queue-population, .queue-page { font-family: var(--font-mono); }
 .queue-reason { color: var(--warning); }
-/* `.audit-head` 가 3px 왼쪽 테두리와 스크롤바 자리를 든다 — 그대로 입으면 머리와 행이 20px 어긋난다. */
-.queue-head { border-left: 0; }
 .queue-rows { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; }
 /* 10.5px 모노로 재서 잡은 폭: scheduler 50 · DELETE 38 · 「13시간 12분」 63 · 배지 55, + 셀 여백 16. */
 .queue-head, .queue-row { grid-template-columns: 66px 84px 54px 80px 96px 1fr; }
@@ -3042,8 +3040,14 @@ body.resizing-active .history-sidebar {
    The header takes the same 3px as a transparent border instead, so both grids begin on the
    same pixel. And the header reserves the same scrollbar gutter the list spends, which is
    what makes the last column line up without hard-coding a platform's scrollbar width. */
-.audit-head {
+/* 🔴 3px 은 «감사 행»의 왼쪽 띠와 맞추려고 머리줄이 드는 자리다. 대기열 행에는 그 띠가
+   없으므로 대기열 머리줄이 이것을 입으면 머리와 몸통이 «3px» 어긋난다 (실측 2026-09-23:
+   머리 client 396 · 행 399). 열 규칙이 이미 쓰는 그 가둠으로 감사 안에만 둔다.
+   ⚠️ 스크롤바 자리는 «둘 다» 잡는다 — 머리는 여기서, 행 목록은 `.queue-rows` 에서. */
+.timeline-container > .audit-head {
   border-left: 3px solid transparent;
+}
+.audit-head {
   overflow-y: scroll;
   scrollbar-gutter: stable;
 }

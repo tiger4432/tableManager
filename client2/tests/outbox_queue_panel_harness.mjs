@@ -108,7 +108,7 @@ console.log('\n[게이트 ① 빈 것은 «왜» 비었는지 말한다]');
   const mount = mountPanel(REPLY([]));
   const empty = byClass(mount, 'queue-empty');
   eq('E1 an empty read says so in a sentence', empty.length, 1);
-  ok('E1b ...that names what is not there', empty[0].textContent.includes('지금 돌 것이 없습니다'),
+  ok('E1b ...that names what is not there', empty[0].textContent.includes('Nothing to run right now'),
     empty[0].textContent);
   // 🔴 「비었다」만으로는 «무엇이» 비었는지 모른다. 모집단과 기준 시각이 같은 화면에 있어야 한다.
   const shown = textOf(mount);
@@ -161,8 +161,8 @@ console.log('\n[게이트 ③ 한 행 = 한 줄. 칸 여섯, 가로지르는 노
     rows[0].children.map((c) => c.className).join(' | '));
   eq('C4 there is a header row', byClass(mount, 'audit-head').length, 1);
   eq('C4b ...with one label per column', byClass(mount, 'audit-head')[0].children.length, 6);
-  ok('C4c ...and 주인 is the first of them',
-    byClass(mount, 'audit-head')[0].children[0].textContent === '주인',
+  ok('C4c ...and Owner is the first of them',
+    byClass(mount, 'audit-head')[0].children[0].textContent === 'Owner',
     byClass(mount, 'audit-head')[0].children.map((c) => c.textContent).join(','));
   eq('C5 the state cell wears the audit pill', byClass(mount, 'audit-pill').length, 3);
   // 🔴 표가 «자기 상자 안»에서 구른다 — 안 그러면 행 수가 판의 높이가 된다
@@ -174,7 +174,7 @@ console.log('\n[㉯ 규칙은 «칸»이 됐다 — 사유별 수를 «잃지 �
   const mount = mountPanel(REPLY([MANY]));
   const cell = byClass(mount, 'queue-rules')[0];
   // 🔴 「규칙 5」였으면 이 화면의 존재 이유인 「왜 안 도나」가 사라진다.
-  ok('R1 the rules cell counts what runs', cell.textContent.includes('2 돎'), cell.textContent);
+  ok('R1 the rules cell counts what runs', cell.textContent.includes('2 firing'), cell.textContent);
   ok('R1b ...and what does not, BY REASON, in the server\'s words',
     cell.textContent.includes(`3 ${OFF}`), cell.textContent);
   const two = byClass(mountPanel(REPLY([TWO_REASONS])), 'queue-rules')[0].textContent;
@@ -189,7 +189,7 @@ console.log('\n[㉯ 규칙은 «칸»이 됐다 — 사유별 수를 «잃지 �
   const bare = byClass(mountPanel(REPLY([{ ...WAITING, outbox_id: 23,
     rules: [{ name: 'g', will_fire: false }] }])), 'queue-rules')[0].textContent;
   ok('R4 a refusal with no reason says the count and invents nothing',
-    bare.includes('1 안 돎') && !bare.includes('switched off'), bare);
+    bare.includes('1 not firing') && !bare.includes('switched off'), bare);
   // 조립식의 정의: 같은 화면에 둘을 앉혀도 서로를 안 건드린다
   const a = mountPanel(REPLY([MANY]));
   const b = mountPanel(REPLY([TWO_REASONS]));
@@ -206,10 +206,10 @@ console.log('\n[㉰ 머리글이 «이 쪽»을 말한다 — 수는 이 쪽의 
   const mount = mountPanel({ ...REPLY([WAITING, { ...WAITING, outbox_id: 99 }]),
     listed: { cap: 200, next_cursor: 11 } });
   const text = (byClass(mount, 'queue-page')[0] || {}).textContent || '';
-  ok('F1 the page says its own count', text.includes('이 쪽 2 행'), text);
+  ok('F1 the page says its own count', text.includes('2 on this page'), text);
   ok('F1b ...and the values every row on it shares', text.includes('dt_log') && text.includes('EDIT'), text);
   // 🔴 수와 「다음 쪽」이 떼어지면 「2」가 «전부»로 읽힌다. 한 «마디»여야 한다.
-  ok('F2 ...in the SAME node as 「다음 쪽 있음」', text.includes('다음 쪽 있음'), text);
+  ok('F2 ...in the SAME node as 「more pages」', text.includes('more pages'), text);
   eq('F2b ...and there is only one such node', byClass(mount, 'queue-page').length, 1);
   // 🔴 대조군 — 섞인 쪽에서는 그 칸에 대해 «아무 말도 안 한다» (절대어 상설).
   const mixed = (byClass(mountPanel(REPLY([WAITING,

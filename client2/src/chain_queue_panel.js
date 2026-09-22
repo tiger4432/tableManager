@@ -81,13 +81,13 @@ export function formatAge(seconds) {
   const n = Number(seconds);
   if (!Number.isFinite(n) || n < 0) return null;
   const s = Math.floor(n);
-  if (s < MINUTE_SECONDS) return `${s}초`;
+  if (s < MINUTE_SECONDS) return `${s}s`;
   const m = Math.floor(s / 60);
-  if (m < 60) return s % 60 ? `${m}분 ${s % 60}초` : `${m}분`;
+  if (m < 60) return s % 60 ? `${m}m ${s % 60}s` : `${m}m`;
   const h = Math.floor(m / 60);
-  if (h < 24) return m % 60 ? `${h}시간 ${m % 60}분` : `${h}시간`;
+  if (h < 24) return m % 60 ? `${h}h ${m % 60}m` : `${h}h`;
   const d = Math.floor(h / 24);
-  return h % 24 ? `${d}일 ${h % 24}시간` : `${d}일`;
+  return h % 24 ? `${d}d ${h % 24}h` : `${d}d`;
 }
 
 // 🔴 `countOf` LIVED HERE UNTIL 2026-09-04 and it had this bug: `Number('') === 0` and

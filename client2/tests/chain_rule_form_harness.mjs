@@ -234,6 +234,19 @@ function suite(M) {
   try { sentDoc = JSON.parse(sent.raw || 'null'); } catch (e) { sentDoc = null; }
   ok(sentDoc && typeof sentDoc === 'object' && !sentDoc.trigger_table,
     'C5 ... and an EMPTY document, not the rule that happened to be open');
+  // 🔴 그 빈 문서가 «무엇을 안 채웠는지»를 화면이 말한다 (소유자 2026-09-23:
+  //    깨우는 표도 쓰는 표도 없는 선언이 «조용히» 저장됐고, 그런 규칙은 목록에 서서
+  //    영원히 아무것도 안 한다). 막지는 않는다 — 새 규칙은 빈 채로 태어나는 설계다(C5).
+  // 🔴 두 번 누른다. 한 번만 누르는 시험은 «걷는 줄»을 안 재워서,
+  //    표가 쌓이는 결함이 초록 속에 숨는다 (변이 하나가 그렇게 탈출했다).
+  if (saveBtn) saveBtn.dispatch('click', {});
+  const shortAt = byCls(c.host, 'chain-rule-field-refusal')
+    .map((t) => (t.attrs || {})['data-refused']).filter(Boolean);
+  ok(shortAt.length > 0, `C5b the save SAYS which required cell is still empty -- got ${JSON.stringify(shortAt)}`);
+  ok(shortAt.indexOf('trigger_table') !== -1,
+    `C5c ... and it is the cell that wakes the rule -- got ${JSON.stringify(shortAt)}`);
+  ok(shortAt.length === new Set(shortAt).size,
+    `C5d ... once per cell, not once per press -- got ${JSON.stringify(shortAt)}`);
   // 🔴 C-95. The picker says WHICH rule is on the screen. It used to keep showing the rule that
   //    was open while a new one was being written, so the one control that answers 「what am I
   //    looking at」 answered wrong -- and it is the control a person checks before saving.
@@ -902,8 +915,8 @@ const DEFECTS = [
   ['a saved document leaves its draft in the browser',
     s => s.replace('    try { this.store.removeItem(this._slot(was)); } catch (e) { /* noqa */ }', '')],
   ['choosing a mapper overwrites parameters the document already holds',
-    s => s.replace('        if (getAtPath(held, splitBundlePath(at)) === undefined) extra.push([at, fill[at]]);',
-                   '        extra.push([at, fill[at]]);')],
+    s => s.replace('        if (getAtPath(held, splitBundlePath(here)) === undefined) extra.push([here, fill[at]]);',
+                   '        extra.push([here, fill[at]]);')],
   ['the lines drift back to the end of the form',
     s => s.replace("    const host = (at && box.querySelector(`[data-path=\"${at}\"]`)) || box;",
                    '    const host = box;')],
@@ -911,6 +924,10 @@ const DEFECTS = [
     s => s.replace('          if (this.newMode) this._forget();\n', '')],
   ['the add control is drawn for a registry that declared no word for it',
     s => s.replace('    if (spec.addLabel) {', '    if (true) {')],
+  ['a declaration that cannot run is saved in silence again',
+    (s) => s.replace('        if (short.length) this._markShort(this._formBox, view, short);', '')],
+  ['the save presses stack their marks, so a second press doubles every cell',
+    (s) => s.replace('      if (tag.parentNode) tag.parentNode.removeChild(tag);', '')],
 ];
 const CONTROLS = [
   ['a local rename', s => s.replace(/\bconst held2\b/g, 'const parsedDoc')

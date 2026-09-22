@@ -129,7 +129,7 @@ console.log('\n[1] an empty queue and a queue that just received something are D
   const unreadable = queueView({ ...JUST_ARRIVED, waiting_transactions: [
     { ...JUST_ARRIVED.waiting_transactions[0], waiting_seconds: null }] });
   eq('a row with no readable age is a dash', unreadable.rows[0].age, '—');
-  eq('and a row that really waited 0 says 0초', queueView(JUST_ARRIVED).rows[0].age, '0초');
+  eq('and a row that really waited 0 says 0s', queueView(JUST_ARRIVED).rows[0].age, '0s');
 }
 
 // ═══ ② a number that was NOT measured is named, with its reason ═══════════════════
@@ -260,7 +260,7 @@ console.log('\n[5] the list is drawn in the order it arrived, oldest first');
         event_types: [], max_retry: 0, waiting_seconds: 5 }] }).rows[0].tables,
     'wafer_process, lot_master');
   eq('the row count is carried', v.rows[0].rows, '40');
-  eq('the age is formatted, not raw seconds', v.rows[0].age, '1시간 2분');
+  eq('the age is formatted, not raw seconds', v.rows[0].age, '1h 2m');
 
   const doc = makeDoc();
   const host = doc.createElement('div');
@@ -286,14 +286,14 @@ console.log('\n[5] the list is drawn in the order it arrived, oldest first');
 // ═══ ⑥ formatAge — total, and the boundaries ═══════════════════════════════════════
 console.log('\n[6] formatAge');
 {
-  eq('0', formatAge(0), '0초');
-  eq('59', formatAge(59), '59초');
-  eq('60', formatAge(60), '1분');
-  eq('90', formatAge(90), '1분 30초');
-  eq('3600', formatAge(3600), '1시간');
-  eq('3725.4 truncates, never rounds up past the real wait', formatAge(3725.4), '1시간 2분');
-  eq('86400', formatAge(86400), '1일');
-  eq('90000', formatAge(90000), '1일 1시간');
+  eq('0', formatAge(0), '0s');
+  eq('59', formatAge(59), '59s');
+  eq('60', formatAge(60), '1m');
+  eq('90', formatAge(90), '1m 30s');
+  eq('3600', formatAge(3600), '1h');
+  eq('3725.4 truncates, never rounds up past the real wait', formatAge(3725.4), '1h 2m');
+  eq('86400', formatAge(86400), '1d');
+  eq('90000', formatAge(90000), '1d 1h');
   // total: garbage in is null, not `NaN초`
   eq('null', formatAge(null), null);
   eq('undefined', formatAge(undefined), null);
@@ -359,7 +359,7 @@ console.log('\n[8] the owner split, and unknown is not chain');
   ok('and not the sum of chain + unknown', v.byOwner[0].waiting !== '6', v.byOwner[0].waiting);
   ok('nor the whole queue', v.byOwner[0].waiting !== '8', v.byOwner[0].waiting);
   eq('unknown is its own bucket with its own number', v.byOwner[2].waiting, '1');
-  eq('each bucket keeps its own age', v.byOwner[1].age, '1시간 2분');
+  eq('each bucket keeps its own age', v.byOwner[1].age, '1h 2m');
 
   // one owner is not a split
   const ONE = { ...OWNED, waiting_by_owner: [OWNED.waiting_by_owner[0]] };
@@ -387,7 +387,7 @@ console.log('\n[8] the owner split, and unknown is not chain');
     '이 실행은 취소로 멈출 수 없습니다.');
   // rule ① one layer down: a run that never reported is not a run at 0 seconds
   eq('an unreported run\'s no-progress is a dash', blockedOf(v, { no_progress_seconds: null }), '—');
-  eq('...and a real zero is a zero', blockedOf(v, { no_progress_seconds: 0 }), '0초');
+  eq('...and a real zero is a zero', blockedOf(v, { no_progress_seconds: 0 }), '0s');
 
   // 🔴 NEGATIVE CONTROL. A bucket with no blocker draws NOTHING — an 「없음」 here is the
   //    same invented zero the whole file exists to prevent, and the server says so itself.
@@ -503,7 +503,7 @@ console.log('\n[8] the owner split, and unknown is not chain');
   // 세 상태 — `logName` 과 같은 규율. 키가 «없으면» 안 그린다(옛 서버).
   eq('R1 an older server that sends neither key draws nothing', restartOf({}), '');
   ok('R2 the loop age is named once the keys arrive',
-    restartOf({ loop_uptime_seconds: 90, mapper_reload_age_seconds: null }).includes('1분 30초'));
+    restartOf({ loop_uptime_seconds: 90, mapper_reload_age_seconds: null }).includes('1m 30s'));
 
   // 🔴 R3/R4 ARE THE POINT, AND THEY ARE COMPARED TO EACH OTHER, NOT TO A FIXED STRING —
   //    so a copy edit cannot redden them and cannot silently collapse them either.
@@ -513,7 +513,7 @@ console.log('\n[8] the owner split, and unknown is not chain');
   ok('R4 ...and neither is empty, so they differ by content rather than by absence',
     never.length > 0 && justNow.length > 0);
   // 모름: 값이 못 읽히는 것은 「0」이 아니다.
-  ok('R5 an unreadable loop age reads 모름, never 0초',
+  ok('R5 an unreadable loop age reads 모름, never 0s',
     restartOf({ loop_uptime_seconds: 'x', mapper_reload_age_seconds: 0 }).includes('모름'));
   ok('R6 CONTROL: a real loop age is NOT 모름 — else R5 passes for the wrong reason',
     !restartOf({ loop_uptime_seconds: 90, mapper_reload_age_seconds: 0 }).includes('루프 모름'));
@@ -621,7 +621,7 @@ console.log('\n[8] the owner split, and unknown is not chain');
   // ── the count keeps its meaning, and gains the one fact it could not carry ──
   const three = viewOf({ running: RUNNING_THREE });
   ok('C1 the count is still there', three.running.includes('3'), three.running);
-  ok('C2 ...and now says how old the oldest is', three.running.includes('41분'), three.running);
+  ok('C2 ...and now says how old the oldest is', three.running.includes('41m'), three.running);
   // 🔴 C3 IS THE DISCRIMINANT. `[0]` and `max` agree on the server's order, so a fixture in
   //    server order cannot tell "took the maximum" from "took the first". Reversed, it can.
   eq('C3 「최장」 is the MAXIMUM, not whichever came first',
@@ -638,7 +638,7 @@ console.log('\n[8] the owner split, and unknown is not chain');
   eq('C7 only the ones past a minute get a line', 1, three.runningOld.length);
   eq('C8 ...and the line names the rule, which is what an operator searches by',
     'stuck_since_lunch', three.runningOld[0].rule);
-  eq('C9 ...beside its age', '41분', three.runningOld[0].age);
+  eq('C9 ...beside its age', '41m', three.runningOld[0].age);
   // 🔴 C10: the boundary is ONE constant shared with `formatAge`, so 「분 단위를 넘는다」 and
   //    「초로 안 끝난다」 cannot drift apart. Measured AT the boundary, both sides.
   eq('C10 exactly at the boundary counts as past it', 1,
@@ -655,7 +655,7 @@ console.log('\n[8] the owner split, and unknown is not chain');
   eq('C13 the line is painted', 1, lines.length);
   ok('C14 ...carrying both the rule and the age',
     !!lines[0] && lines[0].textContent.includes('stuck_since_lunch')
-      && lines[0].textContent.includes('41분'), lines[0] && lines[0].textContent);
+      && lines[0].textContent.includes('41m'), lines[0] && lines[0].textContent);
   eq('C15 NEGATIVE CONTROL: three fresh chains paint no such line at all', 0,
     byClass(drawn({ running: RUNNING_THREE.slice(0, 2) }), 'chain-queue-headline-running-old').length);
   // ⚠️ 이름 충돌 — G10 과 같은 이유. 「도는 체인」 줄 자체를 이 클래스로 잡으면 스타일이
@@ -668,9 +668,9 @@ console.log('\n[8] the owner split, and unknown is not chain');
   //    mutation that moves the constant moves BOTH sides together and stays green — which is
   //    exactly why the assertion is written against the constant rather than against 60: what
   //    must be caught is the day someone writes the literal back into one of the two.
-  eq('C17 the constant IS the one formatAge switches on', '1분', formatAge(MINUTE_SECONDS));
+  eq('C17 the constant IS the one formatAge switches on', '1m', formatAge(MINUTE_SECONDS));
   eq('C18 ...and one second under it is still seconds',
-    `${MINUTE_SECONDS - 1}초`, formatAge(MINUTE_SECONDS - 1));
+    `${MINUTE_SECONDS - 1}s`, formatAge(MINUTE_SECONDS - 1));
 }
 
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);

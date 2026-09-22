@@ -97,6 +97,53 @@ export function fieldApplies(field, siblings, held) {
   return actual === field.when.is;
 }
 
+/** 「비었다」 — undefined · null · 빈 글자 · 빈 레코드 · 빈 목록. `false` 와 `0` 은 «값»이다. */
+function isBlank(value) {
+  if (value === undefined || value === null) return true;
+  if (typeof value === 'string') return value.trim() === '';
+  if (Array.isArray(value)) return value.length === 0;
+  if (typeof value === 'object') return Object.keys(value).length === 0;
+  return false;
+}
+
+/** 문서가 «안 채운» 필수 칸의 주소들. 뼈대가 답하고 창은 그 답을 쓴다.
+ *
+ *  🔴 서버가 주는 모양이 «이미» required 를 말한다. 창이 그것을 안 지켜서, 깨우는 표도
+ *     쓰는 표도 없는 선언이 저장됐다 — 그 규칙은 목록에 서고 영원히 아무것도 안 한다
+ *     (소유자 2026-09-23 · 총괄 실측). 그래서 목록을 여기서 «다시 적지» 않는다.
+ *  🔴 고른 가지만 본다 — 안 고른 가지의 필수는 이 선언의 필수가 아니다.
+ */
+export function missingRequired(node, held, defs, at = '') {
+  const shape = deref(node, defs);
+  const out = [];
+  if (!shape) return out;
+  if (shape.kind === 'record') {
+    const siblings = held && typeof held === 'object' ? held : {};
+    for (const field of shape.fields || []) {
+      const key = String(field && field.key == null ? '' : field.key);
+      if (!key) continue;
+      const value = siblings[key];
+      if (!fieldApplies(field, siblings, value)) continue;
+      const path = at ? `${at}.${key}` : key;
+      if (field.required === true && isBlank(value)) { out.push(path); continue; }
+      for (const deeper of missingRequired(field.node, value, defs, path)) out.push(deeper);
+    }
+    return out;
+  }
+  if (shape.kind === 'oneOf') {
+    const branches = shape.branches && typeof shape.branches === 'object' ? shape.branches : {};
+    const picked = held && typeof held === 'object'
+      ? Object.keys(branches).find((key) => held[key] !== undefined) : '';
+    if (picked) {
+      for (const deeper of missingRequired(branches[picked], held[picked], defs, `${at}.${picked}`)) {
+        out.push(deeper);
+      }
+    }
+    return out;
+  }
+  return out;
+}
+
 /** The emptiest value of this node's kind -- what a newly named member starts as. */
 export function emptyOf(node, defs, depth = 0) {
   const shape = deref(node, defs);

@@ -125,6 +125,55 @@ function suite(M) {
     'E6 the chosen branch\'s empty is the branch node\'s own — what the picker writes under the key',
     show(chosen));
 
+
+  // ══ ④ 필수 — 창이 «받은 뼈대»가 말하는 것을 지키나 ═══════════════════════════════════════
+  // 🔴 소유자 2026-09-23: 「어드민 선언 창으로 만들었는데 요따구임」. 창이 만든 선언에는
+  //    깨우는 표(`on.table`)도 쓰는 표(`into`)도 없었고, 그 규칙은 목록에 서서 영원히
+  //    아무것도 안 한다. 뼈대는 그 둘을 «필수라고 이미 말하고 있었다».
+  {
+    const OWNER = {
+      name: 'dt_transform_update', enabled: false, into: {},
+      derive: { mapper: { mapper: 'update_dt_transform',
+                          mapper_module: 'dt_inventory_mappers',
+                          mapper_function: 'update_dt_transform' } },
+    };
+    ok(show(M.missingRequired(CHAIN.unified_root, {}, CHAIN.defs))
+       === show(['name', 'on.table', 'derive', 'into']),
+      'an empty unified declaration names the four cells the shape calls required',
+      show(M.missingRequired(CHAIN.unified_root, {}, CHAIN.defs)));
+    // 🔴 이 줄이 소유자 신고의 실물이다 — 그 선언이 «무엇을 안 채웠나».
+    ok(show(M.missingRequired(CHAIN.unified_root, OWNER, CHAIN.defs)) === show(['on.table', 'into']),
+      'the declaration the window actually wrote is short exactly two',
+      show(M.missingRequired(CHAIN.unified_root, OWNER, CHAIN.defs)));
+    ok(show(M.missingRequired(CHAIN.root, {}, CHAIN.defs)) === show(['name', 'trigger_table']),
+      'the flat shape asks for its own two, not the unified four',
+      show(M.missingRequired(CHAIN.root, {}, CHAIN.defs)));
+    // 채워진 것은 «안» 부른다 — 이게 없으면 저장이 영원히 막힌다.
+    const WHOLE = { name: 'r', on: { table: 'dt_log' }, derive: { mapper: { mapper: 'build' } },
+                    into: { table: 'dt_map' } };
+    ok(show(M.missingRequired(CHAIN.unified_root, WHOLE, CHAIN.defs)) === show([]),
+      'CONTROL a declaration that fills them all names nothing',
+      show(M.missingRequired(CHAIN.unified_root, WHOLE, CHAIN.defs)));
+    // 🔴 `false` 와 `0` 은 «값»이다. 빈 것으로 접으면 끌 수 있는 칸이 필수를 못 만족한다.
+    ok(M.missingRequired(NESTED, { pick: { outer_b: 'x' }, name: 'n', flag: false }, DEFS)
+       .indexOf('flag') === -1,
+      'a required flag set to false is a value, not a blank');
+    ok(M.missingRequired(NESTED, { pick: { outer_b: 'x' }, name: '', flag: true }, DEFS)
+       .indexOf('name') !== -1,
+      '...while an empty string is a blank');
+    // 🔴 «안 고른» 가지의 필수는 이 선언의 필수가 아니다.
+    ok(show(M.missingRequired(NESTED, { pick: { outer_a: { inner_y: { inside: {} } } },
+                                        name: 'n', flag: true }, DEFS))
+       === show(['pick.outer_a.inner_y.inside']),
+      'a required cell inside the PICKED branch is named, by its full address',
+      show(M.missingRequired(NESTED, { pick: { outer_a: { inner_y: { inside: {} } } },
+                                       name: 'n', flag: true }, DEFS)));
+    ok(show(M.missingRequired(NESTED, { pick: { outer_b: 'x' }, name: 'n', flag: true }, DEFS))
+       === show([]),
+      'CONTROL the other branch\'s required cell is not this declaration\'s',
+      show(M.missingRequired(NESTED, { pick: { outer_b: 'x' }, name: 'n', flag: true }, DEFS)));
+  }
+
   return { fail: failures.length - before };
 }
 
@@ -142,6 +191,17 @@ const DEFECTS = [
                      '    return deref(Object.values(branches)[0] || null, defs);')],
   ['a oneOf empties to the leaf tail again, so a required oneOf is seeded as a string',
     (s) => s.replace("  if (shape.kind === 'oneOf') return {};", '')],
+  ['a blank is never blank, so the window saves a declaration that cannot run',
+    (s) => s.replace('function isBlank(value) {', 'function isBlank(value) {\n  return false;')],
+  ['an empty record counts as filled, so `into: {}` passes the gate that exists for it',
+    (s) => s.replace("  if (typeof value === 'object') return Object.keys(value).length === 0;",
+                     '')],
+  ['a required cell is only looked for at the top, so `on.table` is never asked for',
+    (s) => s.replace('      for (const deeper of missingRequired(field.node, value, defs, path)) out.push(deeper);',
+                     '')],
+  ['every branch is walked, so the branch nobody picked makes the save impossible',
+    (s) => s.replace('      ? Object.keys(branches).find((key) => held[key] !== undefined) : \'\';',
+                     '      ? Object.keys(branches)[0] : \'\';')],
 ];
 const CONTROLS = [
   ['comments stripped', (s) => s.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n')],
