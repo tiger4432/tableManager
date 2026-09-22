@@ -11,19 +11,27 @@ copied too, and the copy would carry all the defects.
 
 WHEN THIS IS THE WRONG TOOL - READ THIS BEFORE THE CODE
 =======================================================
-If what you want is "show a column that lives on another table", STOP. That is a
-VIRTUAL JOIN (`config/virtual_join_rules.json`, executed by `virtual_join_executor`),
-and it is better than this file at that job in every respect:
+If what you want is "put a column that lives on another table onto these rows", STOP.
+That is a JOIN DECLARATION - `derive: {kind: "join"}` in `config/chain_rules.json`.
+The worked example ships beside this file: `config/sample/chain_rules.json.sample`,
+declaration `sample_unified_join`. It is better than this file at that job:
 
   * It is a DECLARATION, not code. An operator can add one without a deploy.
-  * It copies nothing, so the announced value follows the right table. Correct the
-    right table and every row that shows the column is correct on the next read.
-  * It is one LEFT JOIN per rule per page, and the loader REFUSES a declaration whose
-    right side lacks a UNIQUE index covering the join key, so it cannot fan out.
-  * Its values are already announced in `GET /tables/{t}/schema`, already filterable
-    and searchable, and already come out of the CSV extract. A virtual column is NOT
-    display-only, so "I need to filter/export it" is not a reason to write a mapper.
-    (Sorting is the one thing it does not do - user ruling, deliberately out of scope.)
+  * It names `on.table` (the rows it walks), `join.right_table` / `join.on` /
+    `join.take` (what it fetches), and `into.table` (where it writes).
+  * `key.unique` declares that the right side is one row per join key, and a join
+    that finds two rows for one left row REFUSES rather than picking one.
+  * Once written the column is an ordinary column - announced in
+    `GET /tables/{t}/schema`, filterable, searchable, sortable, and in the CSV
+    extract. "I need to filter/export it" is not a reason to write a mapper.
+
+⚰️ [판정 652] READ-TIME JOINS ARE RETIRED, AND THAT CHANGES THE ADVICE BELOW.
+This section used to say a join "copies nothing, so the announced value follows the
+right table" - a join that answered when somebody READ. `into: {read: true}` is now
+refused BY NAME (`rule_shape.READ_TIME_RETIRED`), because 운영은 `into.table` 로만
+씁니다 (소유자 2026-09-16). A join WRITES its columns, so it freezes them at write
+time exactly as a mapper does. Freezing is therefore no longer a reason to prefer
+this file - see the struck reason 2 below.
 
 A mapper lookup earns its place only when at least one of these is true:
 
@@ -33,31 +41,32 @@ A mapper lookup earns its place only when at least one of these is true:
      a coordinate transform, a chosen-among-several: none of that is expressible in a
      declaration, so it has to be code.
 
-  2. THE VALUE MUST BE FROZEN AT DERIVATION TIME. This is the sharper of the two and
-     it is the reason most such mappers exist. A virtual join is LIVE by construction:
-     it re-reads the right table every time anybody looks. That is usually what you
-     want, and it is exactly what you must not have when the derived row is a RECORD
-     of what was true when it was made. If a later correction on the reference table
-     may not retroactively rewrite a finished record, the value has to be stored, and
-     storing it means writing it, and writing it means a mapper.
-     Note the consequence you are accepting: a frozen value goes stale on purpose, so
-     the derived row must also record WHICH reference value it froze, or nobody can
-     later tell a stale-by-design cell from a wrong one.
+  2. ⚰️ WITHDRAWN - "THE VALUE MUST BE FROZEN AT DERIVATION TIME" USED TO BE HERE, and
+     it was called the sharper of the two. It rested on 「a virtual join is LIVE by
+     construction」. Every join now writes `into.table`, so the declaration freezes the
+     value too, and freezing no longer tells the two apart.
+     🔴 THE CONSEQUENCE DID NOT GO AWAY, it just belongs to both: a written value goes
+     stale on purpose, so the row must also record WHICH reference value it froze, or
+     nobody can later tell a stale-by-design cell from a wrong one. That is now a
+     question to answer about your JOIN DECLARATION as much as about a mapper.
 
-  3. THE RIGHT SIDE IS NOT UNIQUE BY THE JOIN KEY AND CANNOT BE MADE SO. The virtual
-     join refuses such a declaration outright rather than fanning out. If the
-     duplicates are real (a history table keyed by time, say) then choosing among them
-     is a decision, and a decision is code.
+  3. THE RIGHT SIDE IS NOT UNIQUE BY THE JOIN KEY AND CANNOT BE MADE SO. A join that
+     finds more than one right row for one left row refuses that row by name rather
+     than picking one (`join_into`: 「제품이 고를 수 없습니다」). If the duplicates are
+     real (a history table keyed by time, say) then choosing among them is a decision,
+     and a decision is code.
 
-  4. THE OUTPUT IS ROWS THAT DO NOT EXIST YET. A virtual join can only decorate rows
-     the left table already has. A chain writes into a target table, so it can create
-     rows with no left-hand counterpart at all.
+  4. THE OUTPUT IS ROWS THAT DO NOT EXIST YET. A join UPDATES rows that `on.table`
+     already has - it writes taken columns onto matched rows and inserts none. A
+     mapper builds its own payload, so it can create rows with no left-hand
+     counterpart at all.
 
 If none of those apply, delete this file and write a declaration.
 
-A correction to a plausible-sounding version of the rule: it is NOT "computed or frozen
-versus merely displayed". Virtual columns are not merely displayed - they filter,
-search and export. The line is verbatim-and-live versus computed-or-frozen.
+A correction to a plausible-sounding version of the rule: it is NOT "computed versus
+merely displayed". Joined columns are not merely displayed - they filter, search and
+export. The line is VERBATIM versus COMPUTED (and, at 3, whether a choice has to be
+made). It is no longer live-versus-frozen: nothing is live any more.
 
 
 THE CONTRACT, AS THE WORKER ACTUALLY IMPLEMENTS IT
@@ -158,8 +167,9 @@ REFUSE_LOOKUP_KEY_UNDECLARED = "lookup_key_undeclared"
 REFUSE_TARGET_COLUMN_UNDECLARED = "target_column_undeclared"
 
 # Keys per statement. The same value the rest of the system uses for `IN (...)`
-# chunking (`dt_map_derivation.CHUNK`, `virtual_join_executor.CHUNK_SIZE`,
-# `enrichment_candidates.CHUNK_SIZE`). Same operation, same constant.
+# chunking (`dt_map_derivation.CHUNK`, `enrichment_candidates.CHUNK_SIZE`). Same
+# operation, same constant. (⚰️ 652: `virtual_join_executor.CHUNK_SIZE` was cited here
+# as a third; that module is gone - 정의 0.)
 LOOKUP_CHUNK = 1000
 
 
