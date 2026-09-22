@@ -34,7 +34,7 @@ const RETRYING = { ...WAITING, outbox_id: 12, chain_state: 'waiting',
 const DELETED = { outbox_id: 13, event_type: 'DELETE', table_name: 'dt_log',
                   created_at: '2026-09-22 20:01:00', waiting_seconds: 30, owner: 'scheduler',
                   chain_state: 'waiting', state_detail: '', broadcast_state: 'not_applicable',
-                  rules: [], note: 'DELETE 는 규칙을 깨우지 않습니다 — 트리거는 CREATE·EDIT 뿐입니다.' };
+                  rules: [], note: 'DELETE does not wake any rule; only CREATE and EDIT are triggers' };
 // 🔴 실패가 빠진 «오늘의» 모집단 문장 (서버 2eb1d38d).
 const POP = 'processed_chain=false ∪ (done & undelivered)';
 const REPLY = (rows) => ({ generated_at: '2026-09-22 20:02:00', clock: 'server', rows,
@@ -60,7 +60,7 @@ console.log('\n[게이트 ④] DELETE 행은 빈 칸이 아니라 문장을 낸�
   const mount = mountPanel(REPLY([DELETED]));
   const notes = byClass(mount, 'queue-note').map((n) => n.textContent);
   eq('G4 a row nothing looked at says so', notes.length, 1);
-  ok('G4b ...in the server\'s words', notes[0].includes('트리거는'), notes[0] || '(none)');
+  ok('G4b ...in the server\'s words', notes[0].includes('CREATE and EDIT'), notes[0] || '(none)');
   // 대조군: 규칙이 «있는» 행은 note 칸을 안 만든다
   eq('G4c CONTROL: a row with rules draws no note',
     byClass(mountPanel(REPLY([WAITING])), 'queue-note').length, 0);

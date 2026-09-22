@@ -4674,7 +4674,7 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
             #    뒤 절반은 리플레이가 체인 워커로 옮겨온 2026-09-23 에 «거짓»이 됐다.
             pass
         elif not worker._is_trigger_event(r):
-            note = "%s 는 규칙을 깨우지 않습니다 — 트리거는 CREATE·EDIT 뿐입니다." % (
+            note = "%s does not wake any rule; only CREATE and EDIT are triggers" % (
                 r.event_type,)
         else:
             for rule in rules:
@@ -4691,7 +4691,7 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
                                         "`allow_chain_trigger`")
                 matched.append(entry)
             if not matched:
-                note = "이 표를 보는 규칙이 없습니다."
+                note = "no rule watches this table"
 
         rows.append({
             "outbox_id": r.id,
