@@ -4486,6 +4486,131 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
     }
 
 
+_QUEUE_ROWS_CAP = 200
+
+
+@app.get("/outbox/queue/rows")
+def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
+                          db: Session = Depends(get_db)):
+    """「이 표의 변경으로 앞으로 무엇이 돌 예정이고 돌건지」 — 행 하나씩, 규칙까지.
+
+    🔴 이름이 «아웃박스»이지 「체인」이 아니다. 이 표를 비우는 것은 둘이고(`outbox_owner`),
+       2026-09-04 에 「체인 대기열」이라는 이름이 읽는 사람을 체인으로 보냈다
+       (`event_constants.py` 의 「WHO DRAINS A WAITING ROW」). 경로에 `chain` 을 넣으면
+       그 판정을 경로가 다시 어긴다.
+
+    ⚠️ `/admin/chain/queue` 와 «다른 물음»이다. 저쪽은 「얼마나 밀렸나」(깊이·나이)이고
+       이쪽은 「무엇이 돌 예정인가」(행과 규칙)다. 두 물음이 «같은 판단»을 공유한다 —
+       `outbox_owner` · `PLACEHOLDER_TABLE_NAMES` · `fires` · 상태 어휘 넷 다 좌석이 하나다.
+
+    ⛔ `payload` 는 «응답에 안 나간다». 질의는 싣는다 — `_rule_accepts_event` 가
+       `source_name` 을 읽어야 「이 규칙이 도나」를 답할 수 있기 때문이고, 읽고 버린다.
+
+    ⚠️ 모집단은 부분 인덱스 «셋»의 합집합이다. `processed_chain=false` 하나로는 «실패»가
+       통째로 안 보인다 — `mark_processed` 가 실패에도 `processed_chain=True` 를 찍으므로
+       「안 돌 것」이 큐에서 나간다. 새 인덱스는 0.
+
+    ⚠️ 정렬이 «최신순»인 이유: 영구 실패는 스스로 안 빠지므로 오래된 순으로 세우면
+       며칠 뒤 목록 앞을 옛 실패가 영구 점유하고 «지금 밀린 것»이 안 보인다.
+       「다음에 돌 행」은 `waiting_seconds` 와 `/admin/chain/queue` 의 나이가 답한다.
+    """
+    from sqlalchemy import and_, or_
+
+    from chain import ingestion_worker as worker
+
+    outbox = models.DatabaseOutbox
+    limit = max(1, min(int(limit or 50), _QUEUE_ROWS_CAP))
+
+    # 부분 인덱스 셋의 술어를 «그대로» 쓴다 — 화면이 말하는 집합과 스윕·워커가 집는
+    # 집합이 갈리면 운영자가 「왜 안 없어지나」를 묻게 된다.
+    waiting = (outbox.processed_chain == False)                        # noqa: E712
+    undelivered = and_(outbox.processed_chain == True,                 # noqa: E712
+                       outbox.status == event_constants.UNDELIVERED_MARKER_STATUS,
+                       outbox.broadcast_at.is_(None))
+    failed = (outbox.status == "FAILED")
+
+    q = db.query(outbox.id, outbox.event_type, outbox.table_name, outbox.status,
+                 outbox.processed_chain, outbox.created_at, outbox.broadcast_at,
+                 outbox.payload).filter(or_(waiting, undelivered, failed))
+    if cursor is not None:
+        q = q.filter(outbox.id < int(cursor))
+    head = q.order_by(outbox.id.desc()).limit(limit).all()
+
+    # 🔴 응답의 「지금」은 «하나»다 (옆 라우트와 같은 규율). 나이마다 now() 를 부르면
+    #    응답이 「지금」을 여러 번 말하고, 그 차이는 캐시가 생기는 날 조용히 틀린다.
+    now_utc = datetime.now(timezone.utc)
+    rules = worker.load_chain_rules()
+
+    def _age(dt):
+        if dt is None:
+            return None
+        stamped = dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+        return max(0.0, (now_utc - stamped).total_seconds())
+
+    rows = []
+    for r in head:
+        owner = event_constants.outbox_owner(r.event_type)
+        state, detail = event_constants.chain_state_of(r.processed_chain, r.status)
+
+        # 🔴 빈 `rules[]` 는 「규칙이 없다」와 「안 봤다」가 같은 모양이다. 비면 «문장»을 단다.
+        note, matched = None, []
+        if owner == event_constants.OUTBOX_OWNER_SCHEDULER:
+            note = "스케줄러가 비우는 행입니다 — 체인 규칙을 지나지 않습니다."
+        elif not worker._is_trigger_event(r):
+            note = "%s 는 규칙을 깨우지 않습니다 — 트리거는 CREATE·EDIT 뿐입니다." % (
+                r.event_type,)
+        else:
+            for rule in rules:
+                if rule.get("trigger_table") != r.table_name:
+                    continue
+                # ⛔ 술어를 여기서 «다시 적지 않는다». 판정은 그 좌석의 것이고,
+                #    아래 사유는 그 False 를 «설명»할 뿐이다.
+                will_fire = bool(worker.fires(rule, r))
+                entry = {"name": rule.get("name"), "will_fire": will_fire}
+                if not will_fire:
+                    entry["why_not"] = ("declaration is switched off (`enabled: false`)"
+                                        if not rule.get("enabled", True) else
+                                        "chain-produced event; this rule does not declare "
+                                        "`allow_chain_trigger`")
+                matched.append(entry)
+            if not matched:
+                note = "이 표를 보는 규칙이 없습니다."
+
+        rows.append({
+            "outbox_id": r.id,
+            "event_type": r.event_type,
+            # 🔴 없는 표 이름을 «표처럼» 내지 않는다 — 운영자가 그 표를 찾으러 간다.
+            "table_name": (None if r.table_name in event_constants.PLACEHOLDER_TABLE_NAMES
+                           else r.table_name),
+            "created_at": to_local_str(r.created_at) if r.created_at else None,
+            "waiting_seconds": _age(r.created_at),
+            "owner": owner,
+            "chain_state": state,
+            "state_detail": detail,
+            "broadcast_state": event_constants.broadcast_state_of(
+                r.processed_chain, r.status, r.broadcast_at),
+            "rules": matched,
+            "note": note,
+        })
+
+    return {
+        "generated_at": to_local_str(now_utc),
+        "clock": "server",
+        "rows": rows,
+        # 게이트 ①이 «집합»으로 대조하는 자리 — 수가 아니라 이름이다.
+        "rules_known": sorted(str(x.get("name") or "") for x in rules),
+        # ⛔ [게이트 ⑪] 행 «수»를 안 싣는다. 이 표를 비우는 것은 둘이라 합친 수는
+        #    「체인이 밀렸다」로 읽힌다 — 2026-09-04 에 실제로 그렇게 읽혔다. 소유자는
+        #    «행마다» 붙어 있고, 세는 것은 세는 쪽이 자기 축을 골라서 한다.
+        "listed": {
+            "cap": _QUEUE_ROWS_CAP,
+            "capped": len(rows) >= limit,
+            "next_cursor": rows[-1]["outbox_id"] if len(rows) >= limit else None,
+        },
+        "population": "processed_chain=false ∪ (done & undelivered) ∪ failed",
+    }
+
+
 @app.get("/admin/outbox/failed", dependencies=[Depends(require_admin_token)])
 def get_failed_outbox_events(page: int = 1, limit: int = 10, db: Session = Depends(get_db)):
     """실패(FAILED) 상태로 격리된 Outbox 체인 이벤트 목록을 transaction_id 단위로 묶고 페이지네이션하여 반환합니다."""

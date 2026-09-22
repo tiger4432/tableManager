@@ -127,6 +127,58 @@ APPROVAL_STATE_NOT_ASKED = "not_asked"
 APPROVAL_STATES = frozenset({APPROVAL_STATE_APPROVED, APPROVAL_STATE_REFUSED,
                              APPROVAL_STATE_NOT_ASKED})
 
+#: 아웃박스 «행 하나»가 체인에 대해 서 있는 자리 — 위 둘과 «같은 규율»로 사유는 값이
+#: 아니다. `state_detail` 이 옆에서 말한다(RETRYING · 모순 조합 · 어휘 밖 원값).
+#: 🔴 값을 넷째로 늘리고 싶어지면 그것은 대개 «사유»다. `status` 리터럴을 그대로 상태로
+#:    쓰면 화면이 어휘 밖 값 하나에 「모름」을 그린다 — 실제로 RETRYING 이 그 자리였다.
+#: ⚠️ 이 셋은 `status` 와 `processed_chain` «둘»에서 나온다. 한 칸만 읽으면
+#:    「돌았다」와 「돌다 실패했다」가 같은 값이 된다.
+CHAIN_STATE_WAITING = "waiting"
+CHAIN_STATE_DONE = "done"
+CHAIN_STATE_FAILED = "failed"
+
+CHAIN_STATES = frozenset({CHAIN_STATE_WAITING, CHAIN_STATE_DONE, CHAIN_STATE_FAILED})
+
+#: 통지가 «확정»됐나 — 체인 상태와 «다른 축»이다. 둘을 한 값으로 접으면
+#: 「돌았는데 아직 안 알려졌다」가 「돌았다」에 묻힌다. 그 행은 스윕이 다시 쏜다.
+BROADCAST_STATE_DELIVERED = "delivered"
+BROADCAST_STATE_UNDELIVERED = "undelivered"
+BROADCAST_STATE_NOT_APPLICABLE = "not_applicable"
+
+BROADCAST_STATES = frozenset({BROADCAST_STATE_DELIVERED, BROADCAST_STATE_UNDELIVERED,
+                              BROADCAST_STATE_NOT_APPLICABLE})
+
+
+def chain_state_of(processed_chain, status):
+    """(`processed_chain`, `status`) -> (상태, 사유). 「빈 칸」이 없다 — 모든 조합이 답을 받는다.
+
+    🔴 `mark_processed` 가 status 와 `processed_chain=True` 를 «같이» 찍으므로 영구 실패는
+       `processed_chain=true` 다. 그래서 「안 돌린 실패」는 도달 불가이고, 그 조합이 실제로
+       오면 그것은 «모순»이라 숨기지 않고 사유로 말한다.
+    """
+    if not processed_chain:
+        if status == "RETRYING":
+            return CHAIN_STATE_WAITING, "retrying"
+        if status in ("PENDING", None):
+            return CHAIN_STATE_WAITING, None
+        return CHAIN_STATE_WAITING, "unexpected_status:%s" % (status,)
+    if status == "SUCCESS":
+        return CHAIN_STATE_DONE, None
+    if status == "FAILED":
+        return CHAIN_STATE_FAILED, None
+    return CHAIN_STATE_DONE, "unexpected_status:%s" % (status,)
+
+
+def broadcast_state_of(processed_chain, status, broadcast_at):
+    """통지 축. 「미전달」의 술어는 `idx_outbox_undelivered` «그대로»다 — 스윕이 집는 집합과
+    화면이 말하는 집합이 갈리면 운영자가 「왜 안 없어지나」를 묻게 된다.
+    """
+    if broadcast_at is not None:
+        return BROADCAST_STATE_DELIVERED
+    if processed_chain and status == UNDELIVERED_MARKER_STATUS:
+        return BROADCAST_STATE_UNDELIVERED
+    return BROADCAST_STATE_NOT_APPLICABLE
+
 #: 「이 목록이 «잘렸다»」의 정본 모양 — 축마다 하나. 걷기 응답이 이미 그 모양이다
 #: (`ledger_subgraph` 의 `truncated: {depth, nodes, edges, …}`), 그래서 새 모양이 아니다.
 #: 🔴 「잘렸다」와 「버렸다」는 «다른 사실»이다. 앞은 운영자에게 「상한을 올려라」이고 뒤는
