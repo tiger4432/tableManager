@@ -3,94 +3,69 @@
 > 아래는 **지금 참인 것**만 적는다. 정정을 덧붙이지 않는다 — 틀리면 그 줄을 «고친다».
 > 지난 라운드의 판정 실타래는 이 절에 쌓지 않는다. 채널(`task/*_ORDERS.md`)과 git 이 그 자리다.
 
-# 🔴🔴 【09-23 새벽 · «맵퍼가 쓰는» 자리 둘 — 문 통일이 반만 됐다】
+# 🟢🟢 【09-23 02:2x · 문 통일 «닫혔다» — 맵퍼는 제안하고, 부르는 쪽이 쓴다】
 
-소유자: 「인리치 빌트인 맵퍼로 해서 문 통일한거 아니었어? 왜 한것처럼 자꾸 가려?」 · 「모두 같은 맵퍼로 통하게」
+소유자: 「모두 같은 맵퍼로 통하게」 · 「그냥 맵퍼로 만들면 알아서 트랜잭션 단위 생기잖아」
 
-```
-통일된 것   «선언». 조인·인리치가 보통 맵퍼로 규칙 집합에 든다
-안 된 것    «쓰기». 갈라짐이 선언으로 박혀 있다 — TEMPLATE_FACTS 의 `writes_itself`
-정본 문장   「a mapper does not write - it PROPOSES, and the CALLER'S BATCH writes」
-           (`join_into._apply` 독스트링. 도착지가 이미 적혀 있다)
-```
-⚠️ 총괄이 처음 「넷」이라 적었고 «틀렸다». 센 술어가 `apply_batch_updates(` 가 «있는 자리»라
-   「맵퍼가 쓴다」(결함)와 「부르는 쪽이 쓴다」(정본)를 못 갈랐다. 열어서 가른 결과:
-
-|자리|누가 쓰나|판정|
-|---|---|---|
-|`join_into.py:306`|등록된 «맵퍼 몸»(`join_into.run`) 안|🔴 결함|
-|`candidates.py:772` `confirm_keys`|오토컨펌 «맵퍼» 안 (`writes_itself=True`)|🔴 결함|
-|`replay.py:795`|`rule_run.run_rule`(`:550`·`:581`)로 제안받고 부르는 쪽이|✅ 정본|
-|`backfill.py:438`|`map_enrichment_dedup`(`:264`)을 부르고 부르는 쪽이|✅ 정본|
-|`ingestion_worker.py:1422`|라이브 체인의 부르는 쪽 (tx = `chain_<원본tx>`, `:1308`)|✅ 정본|
-
-⭐ `CLAUDE.md` 가 이미 진단해 둔 것이다 — 체인을 「종류」로 읽어서 나온 다섯 중 `writes_itself`.
-   넷은 닫혔고 이것만 안 닫혔다. 둘을 「제안만」으로 고치면 `writes_itself` 도
-   `rule_run.self_writing_name` 도 설 자리가 없다.
-
-## 🔴 그 깃발이 «다른 뜻의 대리»였다 — 구현자 발견
+착지 `8bd094477`. **총괄이 스택 전체를 재기동하고 직접 쟀다.**
 
 ```
-replay.py:528   쪽 격리(한 쪽이 터져도 실행이 이어짐)가 «자기쓰기 팔에만» 있다 (판정 403)
-=> 맵퍼가 아무것도 안 쓰면 그 팔이 죽고, 모든 쪽이 격리 «없는» 팔로 간다
-   깃발만 내리면 오늘 있던 격리를 «조용히» 잃는다 — 오류가 안 난다
-판정 403 자신이 「that is worth fixing, not this round's subject」로 S-242-b 에 큐잉했고,
-이번 통일이 그 큐를 «강제로» 연다 -> 격리를 «쪽 고리»로 옮긴다. 같은 커밋에서
-⚠️ 파일 맵퍼 소급의 «동작이 바뀐다» — 지금은 한 쪽이 터지면 실행 전체가 죽는다 (소유자께 보고함)
+🔴 소유자 문장이 그대로 실측됐다 — 한 수정이 «트랜잭션 하나»
+   02:27:26  Executing chained batch updates to 'dt_inventory' under tx 'chain_01a0ca28-…'
+   02:27:26  Executing chained batch updates to 'dt_log'       under tx 'chain_01a0ca28-…'
+   -> 표 «둘»에 쓰는데 tx 는 «하나». 아웃박스도 1 행 · tx 1 개
 ```
 
-## 🔴 대기열이 갈라지는 원천 «둘» — 그리고 tx 는 «지을 축이 아니다»
-
-소유자: 「그냥 맵퍼로 만들면 알아서 트랜잭션 단위 생기잖아. 체인 배치 도는 단위」
+## 총괄이 «직접» 잰 다섯
 
 ```
-✅ 단위는 이미 있다   ingestion_worker.py:1308  chain_tx_id = f"chain_{tx_id}"
-                   한 체인 배치의 쓰기가 전부 이 tx. 「배치 한 번」 = 「트랜잭션 하나」
-🔴 갈리는 자리 ①    candidates.py:768   난수 tx      실측: 인리치 산 18 행이 tx 18 개
-🔴 갈리는 자리 ②    replay.py:767       `chain_replay_{run_id}_{page:06d}` — 쪽마다 tx
+① 맵퍼가 «안 쓴다»   [ChainRule] rule=inventory_confirmed:reference kind=declared:join
+                   rows_in=1 rows_out=1 written=None error=None
+                   auto-confirm 도 written=None. 둘 다 «제안»만 한다
+② 부르는 쪽이 쓴다   위 tx 두 줄. 워커의 좌석 하나가 `chain_<원본tx>` 로 찍는다
+③ 값이 «그대로»     dt_lot  48,374  a322071e6d32   (전 = 후)
+                   dt_slot 48,377  a59501ad4906   (전 = 후)
+                   층 chain_ingestion 4,328 셀 (전 = 후)
+                   🔴 조인이 «그 사이에 실제로 돌았다»(rows_out=1). 정지 비교가 아니다
+④ 깃발이 «죽었다»   `def writes_itself` · `def self_writing_name` -> 0
+                   `join_into._apply` · `run` 은퇴, 부르는 이 0
+⑤ 박스가 «산다»     02:25 스택 전체 재기동 · ChainRules set(13) · refused 0 · Traceback 0
+                   [Latency] wake=16ms mapper=281ms commit=0ms notify=31ms total=328ms ok=True
 ```
-⚠️ 총괄이 「대기열 tx 묶기」를 «별도 라운드»로 잘랐던 것을 «무른다». 둘이 아니라 하나다 —
-   좌석을 지나면 tx 는 저절로 하나고, 화면은 그 칸으로 접기만 한다. 커서·페이징 게이트는 뺐다.
-
-## ⏸️ 게이트 ⑩′ — «열어 둔다». 총괄이 고른 것을 거뒀다
-
 ```
-구현자   「스케줄러는 안 봅니다」에 좌석이 없다. ㄱ(전용 타입)·ㄴ(미리 표시)·ㄷ(JSON 질의)
-총괄이 한 것   ㄱ 으로 가겠다고 적었다 -> «거뒀다»
-소유자 문장   「맵퍼로 통일 제대로 하면 이런일이 절대 안생기니」
-             = 「골라라」가 아니라 «그 물음이 증상이다». 셋 다 초인종 행이 있다를 전제한다
-=> 넷 통일 «뒤»에 코드를 놓고 다시 잰다
-```
-
-## ✅ 닫힌 것
-
-```
-맵퍼가 «아예 안 돌던» 결함   mapper_call.py  inspect.signature(fn, follow_wrapped=False)  `5dd1eb554`
-   박스 00:39:43 MapperContractError -> 00:40:30 rows_in=19 rows_out=19 error=None
-   dt_x_base='X' 69 -> 88.  🔵 회귀 아님 — 운영자 규칙 아홉이 전부 옛 방식이라 20일 안 밟혔다
-대기열 UI 영어              머리줄·빈 상태·수·규칙 칸 `427b1b77a` · 서버 note 둘 `f3437ac7`
-박스 재기동 01:13           자식 넷 · ChainRules set(13) 거절 0 · birth-broadcast listener 떴음
+센 명령  git grep -n "apply_batch_updates(" -- server/chain/
+결과    worker:1422 · replay:783 · backfill:438 · candidates:792
+       앞 셋은 «부르는 쪽»이고, candidates 는 체인 «밖» 스윕 전용 팔이다
+       (체인 컬렉터는 `propose_into` 로 제안만 한다 — 총괄이 승인한 모양)
 ```
 
-## 📋 지금 도는 것 — «하나»다
+## 이 라운드가 «잡은» 것 둘 — 둘 다 조용했을 결함
 
 ```
-구현자  맵퍼가 쓰는 «둘»을 제안만 하게 (조인 · 오토컨펌) + 쪽 격리를 고리로 옮기기
-       같은 커밋에서 TEMPLATE_FACTS.writes_itself · rule_run.writes_itself ·
-       rule_run.self_writing_name 이 «전부» 죽고, 시험 둘을 다시 세운다
-       그 «뒤»에   tx 라벨 모으기 · 대기열 화면 접기 · ⑩′ 다시 재기 ·
-                 대기열이 빠질 때 알림 · 맵퍼 문 넷
+① 자기쓰는 팔이 row_id · origin_row_id 를 «버리고» 있었다
+   origin_row_id 는 회수 도장(판정 434). 안 옮겼으면 «소급된 조인의 셀만» 회수 불가
+② 시험 하니스가 「트리거 경로와 같은 방식」이라 적어 놓고 그 경로를 «다시 구현»했고,
+   사본에 쓰기가 빠져 있었다 -> 0 행을 조용히 확정
+   상설 「잘라쓰기 금지」가 막으려던 모양. 사본은 원본과 갈라진다
+③ 깃발이 «쪽 격리»의 대리였다 — 깃발만 내렸으면 파일 맵퍼 소급이 한 쪽 실패에 통째로 죽는
+   상태로 돌아갔다. 격리를 «쪽 고리»로 옮겨 닫았고, 변이로 증명됐다
+```
+
+## ⚠️ 이번 것이 «아닌» 경고 하나 — 헷갈리지 않게 적는다
+
+```
+⚠️ [Chain Write Discard] … {'system_column': 1}, columns ['row_id']
+전에도 났다  00:53:07 (변경 «전») 같은 모양. 이번 라운드가 낸 것이 «아니다»
+뜻          맵퍼가 row_id 를 셀로 실어 보내고 제품이 시스템 칸이라 버린다. 별건
+```
+
+## 📋 다음 — 소유자가 「통일 뒤」로 두신 둘
+
+```
+⑩′  리플레이 초인종 행을 스케줄러가 아직 집는다. «통일 뒤에 다시 잰다»고 열어 뒀다
+tx 라벨  replay.py 쪽마다 · backfill.py 청크마다 · analysis.py 스윕 접두 — 셋을 모은다
+그 밖   대기열이 «빠질 때» 알림 (database.py:219 이 session.new 만 본다) · 맵퍼 문 넷
 클라    rnd_board direction 선언 (⓪ -> ③ -> ①)
-```
-
-## ⚠️ 총괄이 오늘 받은 지적 (CLAUDE.md 에 판별식과 함께)
-
-```
-임의판단     「소유자가 쓴 그 문장이 지금 지어지는 것을 아직 설명하나」 — 이 축에서 «세 번»
-별명 금지    내가 지은 말을 공유된 것처럼 쓰지 않는다
-판별식 없는 규칙  39 절 중 26 이 판별식이 없었고, 내가 어긴 것들이 그쪽이었다
-heredoc     백틱·역슬래시·한글이 든 본문은 «파일»로
-UI 언어      화면은 영어, 소유자께 드리는 말은 한국어
 ```
 
 ---
