@@ -55897,3 +55897,65 @@ main.py:4667   note = "스케줄러가 비우는 행입니다 — 체인 규칙�
 🔴 착지 전에 «열어서» 보십시오 — 저처럼 실제로 여러 행을 고쳐서
 ```
 ⏸️ 순서: 소급 합치기(게이트 ⑩′·⑳) 먼저. 이건 그다음입니다.
+
+> 🔴🔴 **[09-23 01:0x 총괄] ① 답합니다 — «넷 다»입니다. 소유자 낱말이 「모두」입니다**
+
+```
+소유자   「모두 같은 맵퍼로 통하게」
+=> 「인리치 둘만」은 그 문장이 설명하지 않습니다. 조인·리플레이도 «같은 맵퍼 자리»를 지납니다
+```
+
+### 님 전수를 제가 다시 셌습니다 — 같은 수가 나왔습니다
+
+```
+센 명령  git grep -n "apply_batch_updates(" -- server/   (tests·scripts 제외)
+카나리아 def apply_batch_updates -> crud.py:4386 «있음» (0 이면 계기 고장)
+```
+
+|자리|템플릿|`writes_itself`|
+|---|---|---|
+|`ingestion_worker.py:1422`|—|🎯 도착지 좌석|
+|`join_into.py:306`|`builtin:join_into`|**True** (`dynamic_mappers.py:247`)|
+|`candidates.py:772`|auto-confirm `decide`|**True** (`:256`)|
+|`backfill.py:438`|같은 인리치 축|True 쪽|
+|`replay.py:795`|(템플릿 아님)|—|
+|`enrichment/mapper.py` 경유|dedup `decide`|**False** — 넷 중 «유일하게 도착해 있음» (`:271`)|
+
+🔴 갈라짐이 «선언»으로 박혀 있습니다. `TEMPLATE_FACTS` 의 `writes_itself` 가 그 축이고
+값이 아직 «둘»입니다. 도착지는 그 칸이 셋 다 False 가 되고
+`dynamic_mappers.writes_itself` 와 `rule_run.py:211` 이 «지워지는» 것입니다.
+
+### 님이 인용하신 문장이 정본입니다
+
+```
+join_into._apply  「a mapper does not write - it PROPOSES, and the caller's batch writes」
+                  「⚰️ Once nothing writes for itself, ... this function has no caller」
+=> 새 개념이 아닙니다. 이미 적힌 도착지에 «닿는» 라운드입니다
+```
+
+### ② 리플레이 — «쓰기 통일»에 같이 넣으십시오
+
+```
+replay.py:795 는 ⑩′ 와 «축이 다릅니다». ⑩′ 는 「누가 집나」, 이건 「누가 쓰나」입니다
+=> ⑩′ 답을 기다리지 마십시오
+⛔ ⑩′ 선택(ㄱ·ㄴ·ㄷ)은 제가 소유자께 올렸습니다. 답 오면 따로 갑니다
+```
+
+### 순서 — 하나 바꿉니다
+
+```
+전  소급 합치기 -> 인리치 통일 -> tx 묶기
+후  소급 합치기(⑩′ 답 대기로 «멈춰 있음») -> 자기쓰기 «넷» 통일 -> tx 묶기
+=> ⑩′ 로 막혀 있는 동안 넷 통일을 «지금» 여십시오
+```
+
+```
+게이트 (앞서 드린 ㉠~㉣ 에 더해)
+   ㉤ `TEMPLATE_FACTS` 의 `writes_itself` 가 «전부 False» — 아니면 어느 칸이 왜 남는지 적는다
+   ㉥ `git grep apply_batch_updates -- server/chain/` 가 «좌석 하나»만 — 센 명령을 보고에
+   ㉦ 조인이 낳은 행의 tx 가 `chain_<원본tx>` — 실제로 돌려서
+   ㉧ 조인 결과가 «그대로» (같은 입력 · 같은 값 · 같은 층 `chain_ingestion`)
+   변이 한 자리를 되돌리면 ㉥ 가 «빨개져야» 합니다
+```
+⚠️ 큽니다. 한 커밋이 안 되면 «자리 하나 + 그 자리를 지나는 전부»를 한 커밋으로 자리별로.
+   「제안만 하게 바꾸고 좌석은 다음에」는 «안 됩니다» — 그 사이가 거짓입니다
