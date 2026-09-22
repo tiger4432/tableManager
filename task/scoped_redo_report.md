@@ -51177,3 +51177,105 @@ operator_line.retract_the_declaration 이 「... 그 조인 선언 «를» 끄�
 ```
 
 **멈춥니다. 감시 켜 둡니다.**
+
+---
+
+## 📐 [구현자] 지시 `2fa6a521` — 대응표. **「없음」 = 0**
+
+코드는 안 지었습니다. 표만 올리고 멈춥니다.
+
+### 🔴 먼저 — 이 표의 «권위»는 제 눈이 아닙니다
+
+```
+chain_rules_from_cells:942-946
+    raw = {"source_table": source_table, "derived_table": derived_table}
+    raw.update(cells or {})
+    if enabled_written: raw["enabled"] = enabled
+    normalized, why = _validate_rule(name, raw, known_tables)
+```
+**통합 경로가 평면 dict 를 «조립해서 평면 검증기에 넣습니다».**
+대응표는 제가 맞춰 본 것이 아니라 «코드에 적혀» 있습니다. 문이 둘, 정규화기는 하나입니다.
+
+### 모집단 — `_validate_rule` 이 `raw` 에서 읽는 칸 «11»
+
+셈: **3(선언 최상위) + 7(`derive.decide`) + 1(은퇴) = 11.** 남는 칸 0.
+
+**ⓐ 선언 최상위 — `derive.decide` 가 아니라 «선언»에 대응합니다**
+
+| 평면 칸 | 통합의 대응 칸 | 상태 |
+|---|---|---|
+| `source_table` | `on.table` | 대응됨 (인자로 건네짐) |
+| `derived_table` | `into.table` | 대응됨 (인자) |
+| `enabled` | 선언 최상위 `enabled` | 대응됨 — `enabled_written` 이 「적었나」까지 보존 |
+
+**ⓑ `derive.decide` 의 칸 — `DECIDE_CELLS` 일곱과 «정확히» 짝**
+
+| 평면 칸 | 통합의 대응 칸 | 상태 |
+|---|---|---|
+| `decision_key` | `decide.key` | 대응됨 — `_DECIDE_TO_ENRICHMENT` 가 개명 |
+| `target_fields` | `decide.fields` | 대응됨 — 동 |
+| `list_columns` | `decide.list_columns` | 대응됨 (이름 같음) |
+| `aggregations` | `decide.aggregations` | 대응됨 — 통째로. 하위 `fn`·`column` 포함 |
+| `reference_views` | `decide.reference_views` | 대응됨 — 통째로 |
+| `auto_confirm` | `decide.auto_confirm` | 대응됨 |
+| `alignment` | `decide.alignment` | 대응됨 |
+
+**ⓒ 은퇴 — 「없음」이 아닙니다**
+
+| `claim_contract` | — | **은퇴. «두 문 다» 삼키고 경고합니다**(`RETIRED_CLAIM_CONTRACT_NOTE`) |
+|---|---|---|
+
+```
+각주  auto_confirm_declared 는 «칸이 아닙니다» — 키가 있나에서 «유도»합니다(판정 401).
+      옮기면서 이것을 칸으로 만들면 「적었다고 적는 자리」가 생깁니다
+파일  평면 파일은 봉투가 «없습니다» — {규칙이름: 규칙} 뿐이고 그 이름이 통합의 `name` 입니다
+```
+
+### ✅ 총괄 판별식에 대한 답
+
+> 「0 이면 옮기기는 «선언 작업»이고, 1 이상이면 그 축을 세우는 것이 다음 라운드」
+
+**0 입니다 — 옮기기는 «선언 작업»입니다.** 축을 세울 것이 없습니다.
+
+### ⚠️ 그런데 — 「대응은 됐고 «하는 일»이 다른 자리」 둘
+
+총괄이 안 물으신 칸입니다. 대응표에는 「대응됨」인데 **두 문이 같은 답을 안 냅니다.**
+「이 교체가 답만 바꾸나, 하는 일도 바꾸나」의 자리입니다.
+
+```
+평면  _validate_rule(name, raw, known_tables, rejections=..., caps=...)   :777
+통합  _validate_rule(name, raw, known_tables)                             :946
+      => 인자 «둘»이 빠집니다
+```
+
+**㉠ `rejections` 가 빠집니다 — 운영자가 받는 문장이 «거칠어집니다»**
+```
+평면  _record 가 자리별로 남깁니다 — list_column 하나가 떨어진 것 · 참조뷰 제외 ·
+      claim_contract 경고. config_resolve_report 가 그걸 운영자에게 냅니다
+통합  그 기록이 «안 남습니다». 대신 expand_declaration 의 거절이
+      config_resolve_report:268-273 으로 나가 「`X` 선언을 폼 수 없습니다 — <사유>」 한 줄이 됩니다
+=> 「조용하다」가 «아닙니다» — «거칠다»입니다. 규칙 이름과 사유는 가고, «어느 뷰·어느 칸»이 안 갑니다
+```
+
+**㉡ `caps` 가 빠집니다 — 이 모듈이 «자기 주석에» 금지해 둔 모양이 됩니다**
+```
+실측  cap_value(caps=None, ...) -> load_read_caps() -> _load_ingestion_settings()
+      그 함수는 «매번 파일을 엽니다» (캐시 없음 — os.path.exists + open + json.load)
+      그리고 cap_value 는 «참조 뷰마다» 불립니다
+config.py:762-765 이 그걸 «먼저» 금지해 뒀습니다:
+  「a work unit that re-reads config mid-walk can normalize two views against two
+   different ceilings and neither of them is what the file says」
+=> 통합 선언 하나가 참조 뷰 N 개면 «파일을 N 번» 엽니다. 평면은 파일당 «한 스냅샷» 입니다
+🔴 제 첫 가설은 「통합이 출하 기본값을 쓴다」였고 «틀렸습니다» — 재 보니 값은 같고
+   «읽는 횟수»가 다릅니다. 파일이 walk 중에 안 바뀌면 답도 같습니다
+```
+
+```
+⚠️ 둘 다 「없음」 행이 «아닙니다». 축은 다 있습니다 — 이건 «옮기는 비용»입니다
+   그리고 둘 다 «인자 두 개»라 고치는 모양은 작아 보입니다. 제가 판단할 자리가 아니라 올립니다
+```
+
+### 안 한 것
+로더 삭제 · 라우트 추가 · 선언 변환기 · 문서 — 지시대로 하나도 안 했습니다.
+
+**멈춥니다. 감시 켜 둡니다.**
