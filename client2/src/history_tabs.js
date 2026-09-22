@@ -1,3 +1,5 @@
+import { elements } from './dom.js';
+
 // 사이드바 탭 «한 줄»에서 활성 표시를 정하는 좌석. 이것 하나뿐이다.
 //
 // 🔴 왜 좌석인가 (2026-09-22 판정, main.js 의 주석이 사고를 적어 뒀다): 갈아타기마다
@@ -18,5 +20,23 @@ export function activateHistoryTab(button) {
   const siblings = bar && bar.children ? bar.children : [button];
   for (const sibling of siblings) {
     if (sibling && sibling.classList) sibling.classList.toggle('active', sibling === button);
+  }
+}
+
+
+// 🔴 창 «전환»도 같은 사고를 한 층 아래서 되풀이한다 — `hideReferenceView` 는 창을 «둘»만
+//    알고 있었고, 셋째가 생기면 그 둘만 아는 자리가 조용히 틀린다(앞 창이 안 닫힌다).
+//    그래서 창 목록도 «여기 하나»에 적는다. 넷째가 생기면 고칠 자리는 이 줄뿐이다.
+const PANES = [
+  () => elements.timelineContainer,
+  () => elements.referenceView,
+  () => elements.queueView,
+];
+
+/** 이 창을 보이고 나머지 형제를 «전부» 감춘다. @param {object|null} pane */
+export function showHistoryPane(pane) {
+  for (const get of PANES) {
+    const el = get();
+    if (el && el.style) el.style.display = (el === pane) ? '' : 'none';
   }
 }

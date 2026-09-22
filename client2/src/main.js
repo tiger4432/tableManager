@@ -29,7 +29,7 @@ import { setMatchCount } from './match_count.js';
 //    그래서 토큰 부착·503 본문·게이트 재시도 넷을 «전부» 안 받고 있었습니다.
 import { readAdminToken, adminFetch } from './admin_token.js';
 // 그리고 «거절을 읽는» 규칙도 하나입니다 — 여기서 상태 코드로 문자열을 짓지 않습니다.
-import { failureFactOf, retroFailureLine, CHROME } from './config_resolve_view.js';
+import { CHROME, failureFactOf, fetchFailureLine, retroFailureLine } from './config_resolve_view.js';
 // C-109. 다시 돌릴 수 있는 규칙의 목록은 «표마다» 다릅니다. 그 물음이 자기 모듈에 사는
 // 사유는 그 파일 머리글에 있습니다(이 파일은 node 가 import 못 합니다).
 import { loadReplayableRules } from './replayable_rules.js';
@@ -82,7 +82,9 @@ import {
 // WebSocket down with it.
 const copyHeaderToggles = () =>
   [elements.copyHeaderToggle, elements.copyHeaderMenuToggle].filter(Boolean);
-import { activateHistoryTab } from './history_tabs.js';
+import { activateHistoryTab, showHistoryPane } from './history_tabs.js';
+import { OutboxQueuePanel } from './outbox_queue_panel.js';
+import { onBroadcast } from './websocket.js';
 import { hideReferenceView, installReferenceKeyboardIsolation, showReferenceView } from './enrichment_reference_view.js';
 import {
   startSession,
@@ -573,6 +575,37 @@ function setupEventListeners() {
   if (elements.tabReferenceBtn) {
     elements.tabReferenceBtn.addEventListener('click', () => showReferenceView());
   }
+
+  // 「대기열」 — 이 표의 변경으로 앞으로 무엇이 돌 예정인가. 비인증 라우트다.
+  // 🔴 부품은 웹소켓을 «안 부른다». 화면이 구독해서 부품의 메서드를 부른다(조립식).
+  //    그리고 폴링은 «없다» — 방아쇠는 탭을 열 때와 브로드캐스트가 올 때다.
+  let queuePanel = null;
+  const refreshQueue = async () => {
+    const mount = elements.queueView;
+    if (!mount) return;
+    if (!queuePanel) queuePanel = new OutboxQueuePanel(mount);
+    try {
+      const res = await fetch(`${API_BASE}/outbox/queue/rows?limit=50`);
+      // 사유 없는 「모름」은 고칠 자리가 없다 — 실패 문장은 그 좌석이 짓는다.
+      queuePanel.render(res.ok ? await res.json() : null,
+        res.ok ? {} : { failed: fetchFailureLine(failureFactOf(res), CHROME.FETCH_FAILED) });
+    } catch (e) {
+      queuePanel.render(null, { failed: String((e && e.message) || e) });
+    }
+  };
+  if (elements.tabQueueBtn) {
+    elements.tabQueueBtn.addEventListener('click', () => {
+      activateHistoryTab(elements.tabQueueBtn);
+      showHistoryPane(elements.queueView);
+      state.activeHistoryTab = 'queue';
+      refreshQueue();
+    });
+  }
+  // 🔴 알림은 체인이 «돈 뒤에» 나간다. 그래서 이 방아쇠만으로는 대기 구간을 놓칠 수 있고,
+  //    그 한계는 화면의 «기준 시각»이 말한다 (자기 쓰기 방아쇠는 아직 없다 — 보고 참조).
+  onBroadcast(() => {
+    if (state.activeHistoryTab === 'queue') refreshQueue();
+  });
 
   // Transaction Mode listeners
   if (elements.txModeToggle) {

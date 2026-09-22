@@ -24,6 +24,8 @@ export const elements = {
   get tabCellBtn() { return document.getElementById('tab-cell'); },
   get tabRowBtn() { return document.getElementById('tab-row'); },
   get tabReferenceBtn() { return document.getElementById('tab-reference'); },
+  get tabQueueBtn() { return document.getElementById('tab-queue'); },
+  get queueView() { return document.getElementById('queue-view'); },
   get selectedCellInfo() { return document.getElementById('selected-cell-info'); },
   get timeline() { return document.getElementById('timeline'); },
   get timelineContainer() { return document.getElementById('timeline-container'); },

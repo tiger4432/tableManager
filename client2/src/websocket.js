@@ -311,6 +311,25 @@ export function initWebSocket() {
 }
 
 // Feature 2: WebSocket message processing for Real-time delta sync
+
+// 🔵 브로드캐스트가 «페이지»에 닿는 자리. 부품은 이 모듈을 안 부른다 — 부품은 메서드를
+//    내놓고 화면이 이어 준다(조립식). 그래서 구독은 «여기 하나»이고 호출자는 화면이다.
+// 🔴 훅은 «관찰»이다 — 터져도 자기만 조용해야 한다. 여기서 던지면 델타 동기화가 통째로 멎는다.
+const broadcastHooks = new Set();
+
+/** 브로드캐스트가 올 때마다 부른다. 돌려주는 함수를 부르면 끊는다. */
+export function onBroadcast(fn) {
+  if (typeof fn !== 'function') return () => {};
+  broadcastHooks.add(fn);
+  return () => broadcastHooks.delete(fn);
+}
+
+function fanOutBroadcast(msg) {
+  for (const fn of broadcastHooks) {
+    try { fn(msg); } catch (e) { console.warn('[broadcast hook] 조용히 실패:', e && e.message); }
+  }
+}
+
 export function handleWebSocketMessage(msg) {
   if (msg.event === 'file_ingestion_progress') {
     // 🔴 S-37. ONE EVENT NAME, TWO SUBJECTS. The server deliberately says "progress" with one
@@ -555,4 +574,5 @@ export function handleWebSocketMessage(msg) {
     showToast(`실시간 갱신 누락 · 알 수 없는 이벤트 «${event}»`, 'warning',
       { dedupeKey: 'ws-unhandled' });
   }
+  fanOutBroadcast(msg);
 }

@@ -542,6 +542,34 @@ body.resizing-active .history-sidebar {
   flex: 1;
 }
 
+
+/* 「대기열」 — 판정 2026-09-22.
+   🔴 `.audit-table` 을 «붙이지 않는다»: 그 클래스는 겉모양이자 「Global 탭이 켜졌다」는 신호를
+      겸하고 부정 게이트 넷이 걸려 있다. 여기는 자기 컨테이너에 자기 격자를 쓴다.
+   🔵 셀 «낱말»은 그대로 재사용한다 — 같은 화면에서 두 표가 다른 글꼴을 쓰면 그게 결함이다. */
+.queue-view { flex: 1; min-width: 0; }
+.queue-panel { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); }
+.queue-head { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: baseline;
+              color: var(--text-dim); font-size: 11px; }
+/* 기준 시각·모집단은 «값»이다. 설명 문구가 아니라서 짧고 붙어 있다. */
+.queue-at { font-family: var(--font-mono); }
+.queue-population { font-family: var(--font-mono); }
+.queue-capped, .queue-more { color: var(--warning); }
+.queue-reason { color: var(--warning); }
+/* 주인이 «첫 칸»이다 — 이 표를 비우는 것은 둘이고, 행마다 그것을 말한다. */
+.queue-row { display: grid; grid-template-columns: 7em 10em 5em 5em 7em 1fr;
+             gap: var(--space-2); padding: var(--space-2) 0;
+             border-bottom: 1px solid var(--border); align-items: baseline; }
+.queue-owner { font-weight: 600; }
+.queue-table, .queue-event, .queue-age { font-family: var(--font-mono); color: var(--text-dim); }
+.queue-state { font-family: var(--font-mono); }
+/* 「기다리는 중」과 「재시도 중」을 가르는 것은 이 줄이다 — 상태 낱말은 둘 다 waiting 이다. */
+.queue-state-detail { grid-column: 1 / -1; color: var(--warning); font-size: 11px; }
+.queue-rule { grid-column: 1 / -1; font-family: var(--font-mono); font-size: 11px; }
+.queue-rule[data-fires="false"] { color: var(--text-dim); }
+/* 빈 칸이 아니라 «문장»이다 — 빈 칸은 「규칙이 없다」로 읽힌다. */
+.queue-note { grid-column: 1 / -1; color: var(--text-dim); font-size: 11px; }
+
 .reference-view { flex: 1; min-width: 0; }
 .reference-view-tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 10px; }
 /* C-108. 이름과 행 수 «두 칸»이라 탭이 flex 입니다. 줄임표는 이름 쪽으로 내려갔습니다 —

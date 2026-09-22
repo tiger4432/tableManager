@@ -1,7 +1,7 @@
 import { API_BASE } from './config.js';
 import { state, isVirtualColumn, visibleRangeColIds } from './state.js';
 import { elements } from './dom.js';
-import { activateHistoryTab } from './history_tabs.js';
+import { activateHistoryTab, showHistoryPane } from './history_tabs.js';
 // The ONE TSV implementation in this codebase. Pure: no DOM, no module state, no
 // clipboard API — which is exactly why importing it does not drag the app graph in
 // behind it the way importing `clipboard.js` would.
@@ -28,8 +28,7 @@ function selectedRow() {
 function activateReferenceTab() {
   activateHistoryTab(elements.tabReferenceBtn);
   state.activeHistoryTab = 'reference';
-  elements.timelineContainer.style.display = 'none';
-  elements.referenceView.style.display = '';
+  showHistoryPane(elements.referenceView);
 }
 
 export function refreshReferenceForSelection() {
@@ -84,8 +83,7 @@ export async function syncReferenceViewRule() {
 }
 
 export function hideReferenceView() {
-  if (elements.referenceView) elements.referenceView.style.display = 'none';
-  if (elements.timelineContainer) elements.timelineContainer.style.display = '';
+  showHistoryPane(elements.timelineContainer);
 }
 
 // The reference panel is a read/copy surface, not an alternate grid editor.
