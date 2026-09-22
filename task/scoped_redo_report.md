@@ -50812,3 +50812,110 @@ test_one_declarations_failure_does_not_block_another_tables_read.py · test_the_
 ⚠️ 제가 못 재는 것: 클라가 「켜라」를 말하려는 계획이 «있는지». 있으면 그게 이 판단을 뒤집습니다.
 
 **다음**: ② 커밋(삭제 + 재배선 + 말 걷기 8 파일)을 짓습니다.
+
+
+---
+
+## [12:46] ② 착지 — 읽기 시점 조인 문법 삭제 (`fd546ccb1`, 푸시됨)
+
+```
+70 파일 · +683 / -3860 · 스위트 7 실패 / 6688 통과 / 125 건너뜀 (624.83 s)
+그 7 은 «전부» 기존 빨강입니다 — 이름으로 대조했습니다(아래 표)
+```
+라우트 삭제는 판정 672 때문에 «클라가 옮겨 온 뒤»에만 안전해서, 지우기 전에 쟀습니다:
+`client2/src/admin.js:2228` 이 새 주소를 부르고, **옛 주소는 `client2/dist` 의 어느 파일에도
+없으며** 새 주소는 번들에 있습니다. 소스만이 아니라 «빌드된 것»을 봤습니다.
+
+### 🔴 먼저 — 제 앞 문장 셋이 틀렸습니다
+
+| 어디 | 제가 적은 것 | 실제 | 왜 틀렸나 |
+|---|---|---|---|
+| 계획 `58d5f1a8` | 「제품 소비자 **7**」 | **17** | `head -30` 이 잘랐습니다. 파이프를 빼고 다시 셌습니다 |
+| 제 앞 보고 | 말 걷기 「비아카이브 **~47**」 | «사는» 문서 **35** | 그 47 도 «안 센» 수였습니다 |
+| 전수 조사 | `test_the_write_gate_...` 가 목록에 **없음** | 그 파일이 죽는 이름을 **7번** 집습니다 | 제 추출기가 import 와 문자열만 보고 `monkeypatch.setattr(mod, "name", …)` 를 «못 봤습니다» |
+
+셋째가 제일 큽니다. **이 라운드에 같은 사각으로 두 번 샜습니다** — 앞서 한 번 잡고 기록까지
+해 놓고, 같은 추출기를 다시 썼습니다. 이번엔 `setattr` 가 없는 이름에 `AttributeError` 를
+내 줘서 «일곱이 다 빨개져» 들켰습니다. 🔴 **조용히 초록일 수도 있었습니다** —
+`raising=False` 였다면 그 시험들은 통과하면서 아무것도 안 쟀을 겁니다.
+
+### 제가 «낸» 결함 하나 — 시험이 잡았습니다
+
+`preview_unified_declarations.py` 에서 `join_path` 를 지우고 **쓰는 자리에 남겨** `NameError`.
+같은 부류가 더 있나 보려고 「diff 가 지운 이름 ∩ 지금도 읽는 이름」을 53 파일에 돌렸고
+**0** 이었습니다(`ast.parse` 는 이걸 못 잡습니다 — 구문은 멀쩡합니다).
+
+### 동작이 «하나» 바뀝니다 — 판정 498 ④ 가 설계한 대로
+
+```
+rule_shape.declared_kind({"mapper": "declared:virtual_join"})   「join」 -> 「mapper」
+```
+이 좌석은 «등록»에서 낱말을 읽습니다(498 ④ 가 손으로 관리하는 목록을 없앤 자리). 그 이름을
+등록하던 모듈이 사라졌으니 «안 알려진» 이름이 됩니다. 그 시험 행을 **대조군**으로 남겼습니다 —
+다시 「join」이 되면 목록이 돌아온 것입니다.
+
+### ❓ 총괄께 — 셋
+
+```
+Q-199  등록 안 된 `declared:*` 이름이 「mapper」로 읽히는 게 운영자에게 맞는 낱말입니까
+       「mapper」는 «파일 맵퍼»를 찾으러 가게 만듭니다. 제 판단 밖이라 안 건드렸습니다
+Q-200  셋업 걸음 수를 «잇는» 게이트가 «없습니다» — 문서가 「여섯」이고 코드가 다섯이어도
+       아무것도 안 웁니다. 손으로 찾았습니다. 가드는 «안 지었습니다»(지시 밖)
+Q-201  기존 빨강 하나가 «없는 좌석»을 겨눕니다 — `test_every_seat_goes_through_the_one_renderer`
+       의 `("chain.join_into", "_write")`. `_write` 는 `f8b4f8fe` 에 사라졌고 HEAD 에도
+       없습니다(대조했습니다). 제 것이 아니라 안 고쳤습니다
+```
+
+### 기존 빨강 7 — 이름으로 대조했습니다
+
+```
+test_a_registration_may_carry_its_attributes_into_the_table   3   걷힌 문법 히트 0 · 무접촉
+test_ddl_never_reaches_production                             1   환경(DB URL)
+test_dev_env_isolation                                        1   환경(DB URL)
+test_every_refusal_line_says_what_to_do_next                  2   하나는 Q-201, 하나는 팬아웃
+```
+
+### 말 걷기 — 685 ⓑ 의 여덟 + 제가 «세어서» 더한 일곱
+
+685 ⓑ 의 8 파일은 그대로 맞았습니다(라우트 이름 16 자리). 세면서 **지시 밖이지만 같은
+라운드인 것** 둘을 찾았습니다:
+
+```
+제품 «코드» 6 자리가 지워진 라우트로 운영자를 보내고 있었습니다
+   join_refusal ×2 · config_resolve_report · ledger/admin · notation_norm · main
+걸음 수를 «타이핑한» 4 자리 (6 -> 5)  docs/README · CODE_MAP ×2 · FORK_SESSION_BRIEF
+   + SETUP_ORDER 의 ④ 절을 묘비로, ⑤⑥ 을 ④⑤ 로
+```
+🔴 조인은 «없어진» 게 아니라 **② 파생의 한 선언**이 됐습니다(`derive:{kind:"join"}`).
+구멍 난 번호를 안 남긴 이유는 운영자가 «없는 걸음»을 찾게 되기 때문입니다.
+
+**남은 모집단 15** — 세어서 붙입니다(보드·이력·CLAUDE.md 6 은 제외, 다시 안 씁니다):
+`BASIS · DUPLICATION_LEDGER · SCHEMA_CANON · SERVER_FILE_MAP · SYSTEM_FLOWS · CONFIG_GUIDE ·
+ONTOLOGY_LEDGER_SETUP · chain_ingestion_guide · config/chain_rules · ledger_declaration_by_example ·
+config_reference/README · SERVER_DEFECT_QUEUE · proposal/SCHEMA_AND_ONTOLOGY_TRANSPORT_RESEARCH ·
+TRACE_FIXTURE_SPEC · batch_update_technical_specification`
+
+### 이름에 박힌 수 둘 — 그 파일들이 «스스로» 이 라운드를 지목해 뒀습니다
+
+```
+..._from_its_four_declarations.py        -> ..._from_its_declarations.py
+test_three_files_declare_one_chain_...py -> test_one_chain_namespace_across_its_files.py
+```
+🔴 **수를 도로 넣지 않았습니다.** 「셋」·「둘」로 고치면 선언이 하나 늘 때마다 다시 낡고,
+그때 아무것도 안 웁니다(Q-200 과 같은 구멍). 이름이 드는 것을 «성질»로 올렸습니다.
+드는 자리 8(문서 4 · 시험 주석 4)을 같이 고쳤습니다.
+⚠️ CODE_MAP 이 그 파일을 「174줄 / `def test_` 5」로 적고 있었습니다 — 오늘 **246 / 7** 입니다.
+
+### 운영자가 «보는» 것 — 열어서 확인했습니다
+
+```
+scripts/check_one_row_one_fact.py   「유일성을 «물은» 조인 선언 2 건」  (전에는 「조인 선언 0 건」)
+scripts/preview_unified_declarations.py  「선언 14 건 - mapper→table 14 · ✅ 왕복 전건 통과」
+부팅 줄  [ChainRules] set(12) — 조인이 «합성»이 아니라 inventory_confirmed[decl,join] 로 뜹니다
+RUN.md   머리를 이번 라운드로. 되돌리기 절의 «경로로 해시 찾기» 둘을 박힌 해시로 바꿨습니다 —
+         그 명령은 «이미» 틀린 답(07e9f6cb7)을 주고 있었고 이 삭제가 세 번째로 틀리게 만듭니다
+```
+
+**다음**: `scripts/run_pg_tests.py`(PG 표시 시험은 평범한 스위트에서 건너뜁니다) →
+652 2걸음(원장 prepare 상속, 경계는 666) → 657/647 → 662.
+⚠️ Q-196(`take: "lot_event"` 문자열이 «성공»으로 아홉 컬럼을 노출)은 제 것이 아니라 그대로 열려 있습니다.
