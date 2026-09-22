@@ -3166,10 +3166,15 @@ body.resizing-active .history-sidebar {
    폰트를 썬서, 같은 글자가 31px 와 36px 로 다르게 섬니다 (실측 2026-09-02).
    줄의 모양이 토큰 유무로 갈리면 그것이 이 라운드가 고치는 바로 그 부류입니다. */
 .redo-panel__group { text-align: left; font-family: inherit; line-height: 1.5; }
+/* 🔴 글자가 «줄어들 수» 있어야 한다 — 플렉스 항목의 기본 `min-width: auto` 가 그것을 막고,
+   `dt_inventory_to_standard_dt_map` 처럼 끊길 데 없는 이름이 판 밖으로 나갔다.
+   폭을 늘려 푸는 길은 «막혀 있다» — `.redo-panel` 300px 은 판정이다. */
+.redo-panel__text { min-width: 0; overflow-wrap: anywhere; }
 /* C-109. 종류 배지(join · decide · mapper)는 줄의 «끝»에 섭니다 — `.dropdown-item` 이
    flex 이라 `margin-left: auto` 한 줄이면 이름이 길어도 배지 자리가 안 밀립니다. */
 .redo-panel__kind {
-  margin-left: auto; flex: 0 0 auto; align-self: center;
+  /* 이름이 두 줄이 되면 배지는 «첫 줄»에 — 가운데면 두 줄 사이에 떠서 어느 줄의 것인지 흐려진다. */
+  margin-left: auto; flex: 0 0 auto; align-self: flex-start;
   font-size: var(--fs-meta); letter-spacing: 0.04em; text-transform: uppercase;
   color: var(--text-dim); border: 1px solid var(--border); border-radius: 2px;
   padding: 0 var(--space-1);

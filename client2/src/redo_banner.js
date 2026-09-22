@@ -300,7 +300,14 @@ export class RedoBanner {
         line.addEventListener('click', () => this.reveal(entry.reveal));
       }
       const said = this.said[index];
-      line.textContent = said ? `${entry.text} — ${said}` : entry.text;
+      // 🔴 글자를 «자기 span» 에 담는다. 줄에 바로 넣으면 «익명 플렉스 항목»이 되고,
+      //    그것은 `min-width: auto` 라 «안 줄어든다» — 끊기는 곳 없는 규칙 이름이
+      //    300px 판 밖으로 나갔다 (소유자 2026-09-22: 「밖으로 글씨 안 삐져 나오게해」).
+      //    판 폭은 «안 건든다» — 그 고정은 토큰 유무로 줄이 갈리던 결함의 수리다.
+      const text = doc.createElement('span');
+      text.className = 'redo-panel__text';
+      text.textContent = said ? `${entry.text} — ${said}` : entry.text;
+      line.appendChild(text);
       // 🔴 C-109. 종류는 «한 낱말»입니다(join · decide · mapper). 글자로 잇지 않고 칸으로
       //    달아서, 누른 뒤의 답(`said`)과 한 문장이 되지 않게 합니다.
       // ⚠️ 서버가 종류를 안 말했으면 배지도 없습니다 — 지어내지 않습니다.
