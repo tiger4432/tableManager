@@ -154,10 +154,16 @@ def test_retrying_is_waiting_with_a_reason_not_a_fourth_value(client, db_session
 
 
 def test_the_cursor_pages_without_repeating_or_dropping_a_row(client, db_session):
-    """게이트 ⑨."""
-    made = [row(db_session, table_name="t").id for _ in range(5)]
+    """게이트 ⑨.
 
-    first = client.get(URL, params={"limit": 2}).json()
+    ⚠️ 커서를 «내 행 바로 앞»에서 시작한다. 오름차순이라 목록의 머리는 «제일 오래된» 행이고,
+       그건 다른 시험이 넣은 행이다. 앞 판(내림차순)에서는 방금 넣은 행이 머리라 이 시험이
+       그냥 통과했는데, 그건 정렬 덕분이지 이 시험이 자기 모집단을 잡아서가 아니었다.
+    """
+    made = [row(db_session, table_name="t").id for _ in range(5)]
+    start = made[0] - 1
+
+    first = client.get(URL, params={"limit": 2, "cursor": start}).json()
     seen = [r["outbox_id"] for r in first["rows"]]
     cursor = first["listed"]["next_cursor"]
     assert cursor is not None, "잘렸는데 커서를 «안» 줬다"
@@ -165,14 +171,29 @@ def test_the_cursor_pages_without_repeating_or_dropping_a_row(client, db_session
     second = client.get(URL, params={"limit": 2, "cursor": cursor}).json()
     seen += [r["outbox_id"] for r in second["rows"]]
 
+    assert seen == made[:4], "두 쪽이 내 다섯 행의 앞 넷과 «순서까지» 같아야 한다: %r" % (seen,)
     assert len(seen) == len(set(seen)), "페이지 사이에 행이 «겹쳤다»"
-    assert set(made) & set(seen), "내가 넣은 행이 한 개도 안 보인다 — 픽스처가 헛돌았다"
-    assert all(a > b for a, b in zip(seen, seen[1:])), "id 내림차순이 아니다"
 
     # 🔴 「잘렸다」는 «서버 상한»에 대한 말이다. 5행짜리 큐를 2씩 넘기는 동안 한 번도
     #    참이면 안 된다 — 참이면 화면이 «없는 누락»을 그린다.
     assert first["listed"]["capped"] is False
     assert second["listed"]["capped"] is False
+
+
+def test_the_head_of_the_list_is_the_oldest_waiting_row(client, db_session):
+    """🔴 [총괄 판정] 이 화면을 여는 이유가 「무엇이 막혔나」라 가장 오래 기다린 행이
+    «머리»에 와야 한다. 그리고 목록의 머리가 곧 그 행이므로 「가장 오래된 행」을 «별도
+    질의»로 둘 이유가 없다 — 두 수가 다른 순간에서 나오는 틈이 구조적으로 없다.
+
+    ⚠️ 대조군이 «먼저 넣은 행»이다. 뒤에 넣은 행이 머리에 오면 이 줄이 운다."""
+    oldest = row(db_session, table_name="t")
+    newer = row(db_session, table_name="t")
+
+    body = client.get(URL, params={"limit": 200, "cursor": oldest.id - 1}).json()
+    ids = [r["outbox_id"] for r in body["rows"]]
+    assert oldest.id in ids and newer.id in ids, "픽스처 두 행이 다 안 보인다"
+    assert ids.index(oldest.id) < ids.index(newer.id), (
+        "나중에 들어온 행이 «머리»에 있다 — 막힌 것을 찾으려면 스크롤해야 한다")
 
 
 def test_a_switched_off_rule_survives_the_real_loader(client, db_session, monkeypatch,
@@ -212,3 +233,32 @@ def test_every_combination_of_the_two_columns_gets_an_answer():
         for status in ("PENDING", "RETRYING", "SUCCESS", "FAILED", "WAT", None):
             state, _detail = event_constants.chain_state_of(processed, status)
             assert state in event_constants.CHAIN_STATES, (processed, status)
+
+
+def test_a_population_that_is_exactly_the_page_says_there_is_no_more(client, db_session):
+    """🔴 [Q-201 QA] 「더 있나」를 «쪽이 꽉 찼나»로 가늠하면 인구가 정확히 그만큼일 때
+    빠진 것이 «없는데도» 「더 있다/잘렸다」가 된다. 첫 수리는 그 거짓 양성의 «경계»만
+    옮겼고 부류는 같았다 — 한 행 더 읽어야 재는 것이 된다.
+
+    ⚠️ 대조군이 두 줄이다: 인구 «딱 3» 이면 커서가 없고, 하나 더 있으면 커서가 나온다.
+       아래 줄이 없으면 「커서는 늘 None」으로도 이 시험이 통과한다."""
+    made = [row(db_session, table_name="t").id for _ in range(3)]
+    start = made[0] - 1
+
+    exact = client.get(URL, params={"limit": 3, "cursor": start}).json()
+    assert [r["outbox_id"] for r in exact["rows"]] == made
+    assert exact["listed"]["next_cursor"] is None, (
+        "인구가 딱 한 쪽인데 «더 있다»고 말한다")
+    assert exact["listed"]["capped"] is False
+
+    row(db_session, table_name="t")
+    more = client.get(URL, params={"limit": 3, "cursor": start}).json()
+    assert more["listed"]["next_cursor"] is not None, (
+        "넷째 행이 있는데 «더 없다»고 말한다 — 대조군이 무너졌다")
+
+
+def test_capped_is_about_the_request_not_the_list(client, db_session):
+    """⚠️ `capped` 는 「네가 물은 수를 서버가 깎았나」다. 한 칸이 두 물음에 답하지 않는다."""
+    row(db_session, table_name="t")
+    assert client.get(URL, params={"limit": 5}).json()["listed"]["capped"] is False
+    assert client.get(URL, params={"limit": 9999}).json()["listed"]["capped"] is True

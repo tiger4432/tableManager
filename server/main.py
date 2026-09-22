@@ -4510,16 +4510,26 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
        통째로 안 보인다 — `mark_processed` 가 실패에도 `processed_chain=True` 를 찍으므로
        「안 돌 것」이 큐에서 나간다. 새 인덱스는 0.
 
-    ⚠️ 정렬이 «최신순»인 이유: 영구 실패는 스스로 안 빠지므로 오래된 순으로 세우면
-       며칠 뒤 목록 앞을 옛 실패가 영구 점유하고 «지금 밀린 것»이 안 보인다.
-       「다음에 돌 행」은 `waiting_seconds` 와 `/admin/chain/queue` 의 나이가 답한다.
+    🔴 정렬은 `id` «오름차순»이다 — 이 화면을 여는 이유가 「무엇이 막혔나」라, 가장 오래
+       기다린 행이 «머리»에 와야 열자마자 보인다. 부분 인덱스가 `(processed_chain, id)` 라
+       정렬 비용은 0 이다.
+
+    ⛔ 「가장 오래된 행」을 «별도 질의»로 두지 않는다. 두 수가 다른 순간에서 나오면 화면이
+       가리킨 그 행이 같은 화면의 목록에 «이미 없을» 수 있다. 오름차순이면 목록의 머리가
+       곧 그 행이라 그 틈이 «구조적으로» 없다.
+
+    ⚰️ 여기에 「실패 슬라이스 상한」을 두려 했고, 근거는 「영구 실패는 스스로 안 빠진다」
+       였는데 «틀렸다». `purge_expired_outbox_sync`(:263) 가 `processed_chain = true` 를
+       status 와 «무관하게» 지우므로 실패 행도 보관 7일(`OUTBOX_RETENTION_DAYS`) 안에
+       빠진다. 그래서 상한을 안 둔다.
     """
     from sqlalchemy import and_, or_
 
     from chain import ingestion_worker as worker
 
     outbox = models.DatabaseOutbox
-    limit = max(1, min(int(limit or 50), _QUEUE_ROWS_CAP))
+    asked = int(limit or 50)
+    limit = max(1, min(asked, _QUEUE_ROWS_CAP))
 
     # 부분 인덱스 셋의 술어를 «그대로» 쓴다 — 화면이 말하는 집합과 스윕·워커가 집는
     # 집합이 갈리면 운영자가 「왜 안 없어지나」를 묻게 된다.
@@ -4533,8 +4543,13 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
                  outbox.processed_chain, outbox.created_at, outbox.broadcast_at,
                  outbox.payload).filter(or_(waiting, undelivered, failed))
     if cursor is not None:
-        q = q.filter(outbox.id < int(cursor))
-    head = q.order_by(outbox.id.desc()).limit(limit).all()
+        q = q.filter(outbox.id > int(cursor))
+    # 🔴 한 행 «더» 읽고 버린다. 그래야 「더 있다」가 «재어서 아는 사실»이 된다 —
+    #    `limit` 만 읽으면 쌍 차는 것과 정확히 그만큼 있는 것을 구별할 수 없어
+    #    인구가 «딱 상한»일 때 빠진 것이 없는데도 「잘렸다」고 말한다.
+    fetched = q.order_by(outbox.id.asc()).limit(limit + 1).all()
+    has_more = len(fetched) > limit
+    head = fetched[:limit]
 
     # 🔴 응답의 「지금」은 «하나»다 (옆 라우트와 같은 규율). 나이마다 now() 를 부르면
     #    응답이 「지금」을 여러 번 말하고, 그 차이는 캐시가 생기는 날 조용히 틀린다.
@@ -4604,11 +4619,14 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
         #    «행마다» 붙어 있고, 세는 것은 세는 쪽이 자기 축을 골라서 한다.
         "listed": {
             "cap": _QUEUE_ROWS_CAP,
-            # 🔴 「잘렸다」는 «서버 상한에 닿았다»이지 「이 쪽이 꽉 찼다」가 아니다. 뒤의 것은
-            #    `next_cursor` 가 이미 말하고, 그 뜻으로 쓰면 5행짜리 큐도 매 쪽 「잘렸다」고
-            #    말한다 — 화면이 «없는 누락»을 그린다.
-            "capped": len(rows) >= _QUEUE_ROWS_CAP,
-            "next_cursor": rows[-1]["outbox_id"] if len(rows) >= limit else None,
+            # 🔴 「더 있나」는 «재어서» 안다 — 한 행 더 읽고 버린다(위). 「쪽이 꽉 찼나」로
+            #    가늠하면 인구가 «딱 상한»일 때 빠진 것이 없는데도 「잘렸다」가 된다.
+            #    (Q-201 QA: 첫 수리는 거짓 양성의 «경계»만 옮겼고 부류는 같았다)
+            # ⚠️ 그래서 `capped` 는 「목록이 잘렸나」가 «아니라» 「네가 물은 수를 서버가
+            #    깎았나」다. 그건 요청만 보고 «정확히» 아는 사실이고, 「더 있나」는
+            #    `next_cursor` 가 «따로» 말한다. 한 칸이 두 물음에 답하지 않는다.
+            "capped": asked > _QUEUE_ROWS_CAP,
+            "next_cursor": rows[-1]["outbox_id"] if has_more else None,
         },
         "population": "processed_chain=false ∪ (done & undelivered) ∪ failed",
     }
