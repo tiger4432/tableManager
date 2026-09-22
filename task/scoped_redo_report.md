@@ -54641,3 +54641,78 @@ stats["pages"] += 1                살아 있음
 ```
 ⛔ 코드 «안» 고쳤습니다. 이건 앞 표의 빈칸 하나를 채운 것입니다
 ```
+
+> 📋 **[09-23 07:1x 구현자 -> 총괄] 일 1(대기열이 빠질 때) — 짓기 «전» 실측. 원인은 「태어남만 본다」가 맞고, 한 줄 더 있습니다**
+
+아직 «한 줄도» 안 고쳤습니다.
+
+### 원인 — 화면의 모집단은 «칸»으로 정해지는데, 알림은 «행의 탄생»으로만 납니다
+
+```
+큐 모집단 (main.py)   waiting(processed_chain=false)
+                     ∪ undelivered(pc=true AND status=SUCCESS AND broadcast_at IS NULL)
+=> 행이 모집단에서 «빠지는» 사건은 전부 그 행의 «칸이 바뀌는 것»(UPDATE)입니다
+알림 좌석 (database.py:218)
+   @event.listens_for(Session, "before_flush")
+   for obj in session.new:            <- «태어남»만
+       if isinstance(obj, DatabaseOutbox): _notify_outbox_once(session); return
+=> UPDATE 는 session.new 에 «안 들어옵니다». 그래서 빠질 때 아무도 안 깨웁니다
+```
+🔴 **그리고 바로 옆 주석이 이미 넓은 약속을 하고 있습니다** — 그게 한 줄 더입니다:
+```
+_notify_outbox_once 의 주석   「This is called from `before_flush` for every
+                             created/«dirty»/deleted dynamic row」
+실제로 dirty/deleted 를 보는 것은 :128 `auto_stage_database_outbox` 이고,
+그쪽은 «데이터 표» 행을 보고 아웃박스 행을 «낳는» 좌석입니다.
+=> 아웃박스 «자신»의 dirty 를 보는 자리는 «없습니다». 말이 기제보다 넓습니다
+```
+
+### 왜 이것이 싼가 — 알림은 «내용 없는 깨우기»입니다
+
+```
+그 좌석 주석   「the listener … treats any wake as "repoll the outbox"」
+              「ONCE PER TRANSACTION, not once per staged row」 (session.info 래치)
+=> 갱신에도 알리게 해도 «트랜잭션당 하나»는 그대로입니다. 새 축이 아니라 «모집단을 넓히는» 것입니다
+```
+
+### 안 셋
+
+| 안 | 무엇 | 위험 | 크기 |
+|---|---|---|---|
+| **ㄱ (추천)** | 그 좌석이 `session.dirty`·`session.deleted` 의 `DatabaseOutbox` 도 본다 | 안 바뀐 행도 dirty 에 들 수 있어 «더» 알릴 수 있음 → 래치가 흡수 | 좌석 한 곳 + 시험 |
+| ㄴ | 워커가 표시하는 «자리마다» 직접 NOTIFY | 🔴 저자가 여럿 — 새 표시 자리가 생기면 또 빠짐. 지금 병의 모양 그대로 | 중간 |
+| ㄷ | 화면이 주기적으로 다시 읽는다 | 🔴 실시간 전파를 폴링으로 되돌림. 핵심 가치에 어긋남 | 작음 |
+
+```
+ㄱ 을 추천하는 이유  「이 값을 «누가» 짓나」가 하나로 유지됩니다.
+                  모집단이 칸으로 정해지니 «그 칸을 건드리는 모든 것»이 한 좌석을 지나야 합니다
+정밀도            `session.is_modified(obj)` 로 «진짜 바뀐 것»만 볼지, dirty 를 그대로 쓸지 —
+                  래치가 있어 결과는 같습니다. 단순한 쪽(dirty 그대로)으로 가겠습니다
+```
+
+### 이름 — 「birth」가 거짓이 됩니다
+
+```
+지금  notify_on_outbox_birth
+뒤    태어남 «과» 바뀜을 알립니다 -> 이름이 기제보다 좁아집니다
+=> 같은 커밋에서 «이름도» 옮깁니다. 은퇴 규칙: 말이 기제보다 오래 살면 안 됩니다
+⚠️ 부팅 로그의 「[Outbox Queue] birth-broadcast listener started」도 같은 라운드입니다
+   (RUN.md 가 그 줄을 «보라»고 적고 있어서, 문장이 바뀌면 그 문서도 같이 바뀝니다)
+```
+
+### 게이트
+
+```
+㉠ «표시만» 하는 트랜잭션이 알린다    NOTIFY 문장 수 == 1 (기존 notify_probe 로)
+㉡ 대조군 그대로                   아무것도 안 쌓는 트랜잭션은 «여전히 0»
+                                 (기존 test_a_transaction_that_stages_nothing_sends_nothing)
+㉢ 예산 그대로                     여러 행을 쌓아도 «하나» — 기존 시험이 이미 잽니다
+㉣ 변이                           좌석을 session.new 만 보게 되돌리면 ㉠ 가 «빨개져야» 합니다
+⚠️ 제가 이름을 대야 할 것 — 워커가 표시할 때마다 자기 자신도 깨웁니다.
+   깨우면 «다시 훑고 할 일 없으면 잡니다». 드레인 트랜잭션당 알림 하나가 늘어납니다.
+   이걸 수로 재서 보고에 적겠습니다 (지금은 «안 쟀습니다»)
+```
+
+```
+반대 없으시면 짓겠습니다. ⑩′ 는 닫아 둔 채입니다
+```
