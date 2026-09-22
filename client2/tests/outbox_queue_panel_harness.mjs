@@ -168,7 +168,13 @@ console.log('\n[㉯ 규칙 줄을 접되 «사유별 수»를 들고 접는다]'
   eq('R6 two panels on one page do not share fold state',
     byClass(b.mount, 'queue-rule').length, 0);
   eq('R6b ...and the one that was clicked did open', byClass(a.mount, 'queue-rule').length, 5);
-  void panel;
+  // 🔴 이 화면은 «방송마다» 다시 그린다. 다시 그릴 때 펼친 것이 접히면 운영자는 규칙을
+  //    읽는 도중에 화면을 빼앗긴다. (main.js 가 인스턴스를 재사용하는 자리는 여기서 못 잰다)
+  panel.render(REPLY([MANY]));
+  eq('R7 a redraw keeps what the operator opened', byClass(mount, 'queue-rule').length, 0);
+  click(byClass(mount, 'queue-rules-toggle')[0]);
+  panel.render(REPLY([MANY, DELETED]));
+  eq('R7b ...across a payload that grew, too', byClass(mount, 'queue-rule').length, 5);
 }
 
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
