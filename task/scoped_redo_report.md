@@ -53633,3 +53633,64 @@ main.py 의 타입별 집계 «둘»(/admin/chain/queue)은 «행이 없어» op
 b45780981  대기열이 안 비워짐(session.dirty)        ⏸️ 같은 이유
 대기열 tx 묶기                                    ⏸️ 인리치 뒤
 ```
+
+> 📊 **[09-23 01:0x 구현자 -> 총괄] 시키신 «전수»를 셌습니다 — 인리치는 둘이 맞고, 체인 안에 «둘이 더» 있습니다**
+
+⏸️ 순서는 지킵니다. 이건 «세기»라 코드는 안 건드렸습니다 — 님이 「님이 세십시오」 하신 것입니다.
+
+```
+센 명령   git grep -n "apply_batch_updates(" -- server/     (추적 파일만)
+모집단   제품 코드만. scripts/ 와 tests/ 는 «뺐습니다» — 씨앗과 하니스입니다
+카나리아  def apply_batch_updates 가 crud.py:4386 에 «있음» (0 이면 계기 고장이었습니다)
+```
+
+### 제품에서 «자기가 쓰는» 자리
+
+|자리|무엇|
+|---|---|
+|`chain/ingestion_worker.py:1422`|🎯 워커의 «그 좌석 하나» — 도착지|
+|`chain/enrichment/candidates.py:772`|인리치 — 님이 보신 것|
+|`chain/enrichment/backfill.py:438`|인리치 — 님이 보신 것|
+|`chain/join_into.py:306`|🔴 **조인이 자기가 씁니다** — 안 세신 것|
+|`chain/replay.py:795`|🔴 **리플레이가 자기가 씁니다** — 안 세신 것|
+|`maps/frame_confirmation.py:351`|체인 «밖»|
+|`parsers/directory_watcher.py:3234`|인제션 문 — 체인 «밖»|
+
+```
+=> server/chain/ 안에서 «자기가 쓰는» 곳은 넷입니다 (좌석 하나 제외). 님이 둘을 보셨습니다
+```
+🔴 `join_into.py:306` 은 «살아 있습니다» — `:376` 이 부릅니다. 묘비가 붙어 있지만 아직 안 죽었습니다.
+
+### ⚠️ 제 계기가 하나 틀렸고, «열어서» 잡았습니다
+
+```
+grep 은 ingestion/checkpoint.py:596 도 셌습니다 -> 열어 보니 «독스트링»이었습니다
+   「호출 위치 계약: crud.apply_batch_updates(...) 직전, 같은 세션」
+=> 호출이 아닙니다. 위 표에서 뺐습니다
+```
+
+### 🔴 그리고 이미 «적혀» 있습니다 — 소유자 말씀과 같은 문장이
+
+`join_into.py` 의 `_apply` 독스트링입니다:
+
+> 「THE WRITING IS ITS OWN STEP, because a mapper does not write - it PROPOSES,
+>  and the caller's batch writes inside the chain envelope」
+> 「⚰️ Once nothing writes for itself, the caller's batch is the only writer
+>  and this function has no caller」
+
+즉 「맵퍼는 쓰지 않는다. 제안한다」가 이미 설계 문장으로 있고, `_apply` 에는 «언제 죽는지»까지
+묘비로 적혀 있습니다. 이번 일은 새 개념이 아니라 그 문장을 인리치에 «적용»하는 것입니다.
+
+```
+⚠️ 다만 그 독스트링이 드는 번호(「판정 567」)는 제가 «확인 못 했습니다» —
+   채널의 567(09-17 15:39)은 다른 주제입니다. 문장은 인용하되 «번호는 안 믿고» 적습니다
+```
+
+### 여쭐 것
+
+```
+① 인리치 둘만 고칠까요, 아니면 조인·리플레이까지 «넷 다» 한 라운드로 갈까요
+   소유자 말씀이 「모두 같은 맵퍼로 통하게」라 넷 다로 읽힙니다만, 크기가 커집니다
+② 리플레이(`replay.py:795`)는 «제 축»입니다 — ⑩′ 와 같은 라운드로 묶을까요
+⛔ 분부 전까지 코드는 안 건드립니다. 지금은 센 것만 올립니다
+```
