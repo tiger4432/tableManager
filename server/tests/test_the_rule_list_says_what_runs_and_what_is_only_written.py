@@ -177,8 +177,12 @@ def test_one_half_falling_does_not_hide_behind_the_other(declared, tmp_path, mon
     어디에도 안 떴습니다. 644 가 닫으려던 결함이 한 줄 아래에서 되살아난 모양입니다."""
     clash = {"name": "enrichment_auto_confirm:r644_half", "trigger_table": DST,
              "target_table": DST, "mapper_module": "m", "mapper_function": "f"}
+    # ⚠️ `typo_cell` 은 장식이 아니라 이 시험을 «공허하지 않게» 만드는 것입니다. 이것이 없으면
+    #    notes 가 비어서 「사유가 안 붙었다」가 거저 참이 됩니다. 이 칸이 만드는 노트는
+    #    「…이 제품이 안 읽는 칸입니다. The rule runs.」 — 안 도는 이유로 붙이면 «자기모순»입니다.
     half = {"name": "r644_half", "on": {"table": SRC}, "into": {"table": DST},
-            "derive": {"kind": "decide", "decide": {"key": ["job"], "fields": ["grade"]}}}
+            "derive": {"kind": "decide", "decide": {"key": ["job"], "fields": ["grade"],
+                                                    "typo_cell": 1}}}
     chain_file = tmp_path / "half.json"
     chain_file.write_text(json.dumps({"rules": [half, clash]}), encoding="utf-8")
     monkeypatch.setattr(worker, "RULES_PATH", str(chain_file))
@@ -197,6 +201,11 @@ def test_one_half_falling_does_not_hide_behind_the_other(declared, tmp_path, mon
     assert rows["enrichment_auto_confirm:r644_half"]["rule_state"] == \
         event_constants.RULE_STATE_DECLARED_ONLY, (
             "떨어진 반쪽이 «형제 뒤에 숨었습니다» — 목록이 규칙 전부를 못 보여 줍니다")
+    # ⛔ [Q-194] 사유는 «없어야» 합니다. 문법은 이 규칙을 «세웠고», 떨어뜨린 것은 로더입니다.
+    #    여기서 문법의 notes 를 빌려 오면 「모르는 칸 때문에 없다」로 읽혀, 운영자를 상관없는
+    #    줄로 보냅니다 — 틀린 사유는 없는 사유보다 나쁩니다.
+    assert rows["enrichment_auto_confirm:r644_half"].get("rule_state_detail") is None, (
+        "떨어진 반쪽에 «다른 말»이 사유로 붙었습니다")
 
 
 def test_a_switched_off_flat_rule_is_unchanged(declared):

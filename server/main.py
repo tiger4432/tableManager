@@ -5509,8 +5509,13 @@ def get_chain_rules():
         for rule in expanded:
             if rule.get("name") in standing_names:
                 continue
-            listed.append(dict(rule, rule_state=event_constants.RULE_STATE_DECLARED_ONLY,
-                               rule_state_detail=refusal or (notes[0] if notes else None)))
+            # ⛔ [Q-194] NO REASON RATHER THAN THE WRONG ONE. The grammar STOOD this rule;
+            # what dropped it is the loader, which keeps its refusal codes in a local list
+            # and returns them to nobody. `notes` here is about something else entirely -
+            # an unknown cell inside `derive.decide`, say - so borrowing notes[0] would tell
+            # an operator their half is missing because of a typo it has nothing to do with.
+            # A wrong reason is worse than none: it sends them to fix the wrong line.
+            listed.append(dict(rule, rule_state=event_constants.RULE_STATE_DECLARED_ONLY))
         if expanded:
             continue
         # ⚠️ THE REASON IS BEST EFFORT AND THAT IS STATED RATHER THAN HIDDEN. The grammar
