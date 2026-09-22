@@ -3,6 +3,7 @@ import { narrowingParams as buildNarrowing } from './narrowing.js';
 import { state } from './state.js';
 import { refuseWrite, applyWriteGuards } from './write_guard.js';
 import { elements } from './dom.js';
+import { activateHistoryTab } from './history_tabs.js';
 import { clearRangeSelection } from './clipboard.js';
 import { updateSelectedCellUI, updateTxModeUI } from './ui.js';
 import { renderGrid, updateGridSortState, updateLoadedCount, updatePaginationUI, ensureCellObject, markCellOverwritten, applyFillTargetHeaders, sortQueryTail } from './grid.js';
@@ -190,13 +191,10 @@ export async function switchTable(tableName) {
 
   // Reset active history tab to global when switching tables to avoid empty screen
   state.activeHistoryTab = 'global';
-  elements.tabGlobalBtn.classList.add('active');
-  elements.tabCellBtn?.classList.remove('active');
-  elements.tabRowBtn.classList.remove('active');
-  // Cleared here too: a table WITHOUT a rule must not inherit the previous table's
-  // reference highlight, and `syncReferenceViewRule` re-selects it a moment later on
-  // the tables that do have one.
-  elements.tabReferenceBtn?.classList.remove('active');
+  // 🔵 참조 탭의 강조도 여기서 같이 꺼집니다 — 규칙 «없는» 표가 앞 표의 강조를 물려받으면
+  //    안 되고, 규칙 있는 표는 `syncReferenceViewRule` 이 잠시 뒤 다시 켭니다.
+  //    좌석이 «줄 전체»를 끄므로 형제를 여기서 나열하지 않습니다 (2026-09-22).
+  activateHistoryTab(elements.tabGlobalBtn);
   await loadHistory();
 
   // Enrichment 결손 배지: fire-and-forget (테이블 전환을 블로킹하지 않음, 실패 무음)

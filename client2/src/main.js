@@ -82,6 +82,7 @@ import {
 // WebSocket down with it.
 const copyHeaderToggles = () =>
   [elements.copyHeaderToggle, elements.copyHeaderMenuToggle].filter(Boolean);
+import { activateHistoryTab } from './history_tabs.js';
 import { hideReferenceView, installReferenceKeyboardIsolation, showReferenceView } from './enrichment_reference_view.js';
 import {
   startSession,
@@ -546,10 +547,7 @@ function setupEventListeners() {
     // by one, and the fourth tab was added to the row without being added to the
     // lists — harmless while it was hidden by default, two highlighted tabs now that
     // a rule-bearing table selects it.
-    elements.tabGlobalBtn.classList.add('active');
-    elements.tabCellBtn?.classList.remove('active');
-    elements.tabRowBtn.classList.remove('active');
-    elements.tabReferenceBtn?.classList.remove('active');
+    activateHistoryTab(elements.tabGlobalBtn);
     state.activeHistoryTab = 'global';
     loadHistory();
   });
@@ -560,20 +558,14 @@ function setupEventListeners() {
   // tab off the screen, and doing both at once would make the second one hard to undo.
   elements.tabCellBtn?.addEventListener('click', () => {
     hideReferenceView();
-    elements.tabCellBtn.classList.add('active');
-    elements.tabGlobalBtn.classList.remove('active');
-    elements.tabRowBtn.classList.remove('active');
-    elements.tabReferenceBtn?.classList.remove('active');
+    activateHistoryTab(elements.tabCellBtn);
     state.activeHistoryTab = 'cell';
     loadHistory();
   });
 
   elements.tabRowBtn.addEventListener('click', () => {
     hideReferenceView();
-    elements.tabRowBtn.classList.add('active');
-    elements.tabGlobalBtn.classList.remove('active');
-    elements.tabCellBtn?.classList.remove('active');
-    elements.tabReferenceBtn?.classList.remove('active');
+    activateHistoryTab(elements.tabRowBtn);
     state.activeHistoryTab = 'row';
     loadHistory();
   });
