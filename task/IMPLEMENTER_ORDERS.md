@@ -55603,3 +55603,73 @@ admin/retroactive.py:1485   next_queued() 안
            (조용한 성공과 안 도는 것이 같은 픽셀입니다)
 ```
 ⚠️ 착지 전에 «재기동해서 로그를 보십시오». 오늘 이걸로 두 번 샜습니다.
+
+> 🔴🔴 **[09-23 00:2x 총괄] 소유자가 맵퍼 «세 줄»을 못 돌렸습니다. 문이 넷입니다 — 넷 다 지시합니다**
+
+소유자가 오늘 밤 이걸 쓰려고 했습니다:
+```python
+@mapper(target_table='dt_inventory', updated_by='dt_transform_update')
+def update_dt_transform(db, payloads, rule=None):
+    payloads['dt_x_base'] = 'X'
+    return payloads
+```
+그리고 **네 자리에서 막혔습니다.** 소유자 말: 「이렇게 단순한게 왜이렇게 안되냐?」
+이게 「임의의 스키마에서 «두 줄»로 선언법을 말할 수 있어야 한다」에 미달하는 실물입니다.
+
+---
+
+### ① 저장 관문이 로더와 «다른 판정»을 합니다 — 제 앞 지시를 님 말대로 «다시 겨눕니다»
+
+```
+제가 쓴 것   「아무도 안 웁니다」 -> «틀렸습니다». 님 실측대로 로더는 이름과 사유로 «거절합니다»
+진짜 자리    rule_refusals 를 로더·config_resolve_report·ledger/admin 이 부르고
+           «저장 관문(main.py)은 안 부릅니다» — expand_declaration 하나만 봅니다
+결과        창이 저장할 때는 통과, 부팅 때 거절. 운영자는 «나중에» 압니다
+일          저장 관문이 로더와 «같은 판정자»를 지나게. S-244 의 그 문장을 이 축에서도 참으로
+게이트      ⓐ 창으로 만든 선언이 저장될 때 «로더가 거절할 것이면 그 자리에서» 말한다
+```
+
+### ② `mapper:` 하나로는 «해소가 안 됩니다» — 등록부가 그때 비어 있습니다
+
+```
+제 실측   규칙 적재가 discover() «앞»입니다 (warmup_worker(rules,…) 가 이미 적재된 것을 받음)
+        -> 선언이 mapper: 만 적으면 「등록 안 됨」으로 거절됩니다
+        실제 로그: 'update_dt_transform' is not registered and mapper_module/mapper_function
+                 are not both set
+🔴 그래서 @mapper 로 등록하는 길이 «선언에서 못 쓰입니다». 등록 기제가 있는데 못 지납니다
+일      순서를 고치든, 거절 전에 한 번 채우든 — 님 판단. 다만 «둘 중 하나는» 돼야 합니다
+게이트   ⓑ mapper: 하나만 적은 선언이 «첫 부팅»에 선다
+```
+
+### ③ 데코레이터 «안쪽 인자»가 (df, db) 인데 바깥 꼴을 써도 안 막습니다
+
+```
+제 실측   데코레이터 뒤 모듈 이름의 시그니처: (db, payloads, rule=None)   <- 바깥 꼴
+        안쪽 호출: fn(payloads_to_df(payloads), db)                  <- (df, db)
+소유자가 바깥 꼴을 안쪽에 썼고, «아무것도 그걸 막지 않았습니다». df 가 db 자리에 들어갔습니다
+일      데코레이터가 붙을 때 안쪽 시그니처를 «보고 거절»하십시오.
+        사람 이름으로: 「@mapper 를 붙인 함수는 (df, db) 를 받습니다. 지금 (db, payloads, rule) 입니다」
+게이트   ⓒ 바깥 꼴을 @mapper 로 감싸면 «그 자리에서» 거절된다 — 돌다가가 아니라
+```
+
+### ④ `is_batch` 가 없으면 터지고, 오류가 «SDK 안»을 가리킵니다
+
+```
+제 실측 (합성 페이로드로 직접 돌림, 소유자 데이터 안 건드림)
+   (df, db) + 묶음 리스트  -> OK.  updates 에 dt_x_base='X' 실림
+   (df, db) + 낱개 dict    -> AttributeError: 'str' object has no attribute 'get'
+   (db, payloads) + 리스트 -> TypeError
+원인   payloads_to_df 는 «목록»을 훑는데, is_batch 가 아니면 rule_run 이 «하나씩» 넘깁니다
+🔴 그리고 운영자가 보는 문장이 `payloads_to_df` 안의 AttributeError 입니다 —
+   자기 선언에 칸 하나가 빠졌다는 것을 «알 길이 없습니다»
+일      ㉮ SDK 가 낱개도 받게 하든, ㉯ is_batch 를 요구한다고 «말하든». 님 판단
+       어느 쪽이든 거절 문장이 «선언의 낱말»로 말해야 합니다 — 「is_batch: true 가 필요합니다」
+게이트   ⓓ is_batch 없이 @mapper 규칙을 돌리면, 운영자가 «고칠 수 있는» 문장이 나온다
+```
+
+---
+```
+순서   지금 도는 리플레이 이사를 «먼저 통째로» 닫으십시오 — main 이 반쪽이면 안 됩니다
+      그다음 ④ -> ③ -> ② -> ① (운영자가 «막히는» 순서대로)
+⚠️ ④ 가 제일 급합니다. 나머지 셋은 「못 한다」인데 ④ 는 「왜 안 되는지 알 수가 없다」입니다
+```
