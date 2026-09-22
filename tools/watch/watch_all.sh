@@ -23,6 +23,11 @@ PY="C:/Users/kk980/anaconda3/envs/assy_manager/python.exe"
 
 say() { printf '%s %s\n' "$(date '+%m-%d %H:%M:%S')" "$*" >> "$LOG"; }
 
+# 🔵 git 의 오류는 «여러 줄»이고 마지막 줄은 대개 사용법 힌트다 — 뜻이 든 줄은 fatal: 쪽이다.
+#    실측: 'main..design' 이 없을 때 tail -1 은 "'git <command> [<revision>...]'" 을 집었다.
+#    세 자리(LAND·ORDERS·LANE)가 «같은 답»을 내도록 고르는 자리를 하나로 둔다.
+why() { printf '%s\n' "$1" | grep -m1 "^fatal:" || printf '%s\n' "$1" | head -1; }
+
 # 🔴 [클라 레인 발견 2026-09-17 12:30] 보고서를 «origin/main 에서만» 읽으면 클라 레인의 보고가
 # 안 보인다 — 그 레인은 «design 브랜치»에 커밋하고, main 에 병합될 때까지 origin/main 에 없다.
 # 그래서 그 레인 보고는 「병합될 때」 한 번 뜨고, 그 전까지는 «조용»했다. 브랜치를 같이 본다.
@@ -103,7 +108,7 @@ while true; do
         [ -n "$ln" ] && say "🛠 LAND $ln"
       done <<< "$land_out"
     else
-      say "🔴 LAND 판정이 죽었습니다 (exit=$land_rc) — $(printf '%s' "$land_out" | tail -1)"
+      say "🔴 LAND 판정이 죽었습니다 (exit=$land_rc) — $(why "$land_out")"
     fi
     PREV_HEAD=$cur_head
   fi
@@ -121,20 +126,34 @@ while true; do
 
   # 클라 워크트리가 지시를 «받았나» — 푸시는 워크트리에 안 닿는다
   if [ -d "$WT" ]; then
-    n=$(git rev-list --count design..main -- task/DESIGN_ORDERS.md 2>/dev/null || echo ERR)
+    # 🔴 [판정 660 · 665 ②] 판정에 쓰는 git 질의는 «조용히» 실패하지 않는다. 이 파일 안에서
+    #    한쪽은 ERR 로 «말하고» 한쪽은 0 으로 «삼키고» 있었다 — 삼킨 쪽이 실패하면
+    #    「다 병합됐다」와 «같은 픽셀»이라 레인이 통째로 안 보인다(실측: design 이 없으면 exit 128).
+    #    이제 셋(LAND·ORDERS·LANE)이 같은 모양이다 — 잡고 · 종료코드를 읽고 · «이유»를 말한다.
+    stale_out=$(git rev-list --count design..main -- task/DESIGN_ORDERS.md 2>&1); stale_rc=$?
+    n="$stale_out"; [ "$stale_rc" = 0 ] || n=ERR
     if [ "$n" != "$PREV_STALE" ]; then
       case "$n" in
-        ERR) say "⚠️ 지시 낡음 감시 오류 — git 질의 실패" ;;
+        ERR) say "⚠️ 지시 낡음 감시 오류 — $(why "$stale_out")" ;;
         0)   [ -n "$PREV_STALE" ] && say "✅ ORDERS OK — 클라가 DESIGN_ORDERS 최신" ;;
         *)   say "🔴 ORDERS STALE — 클라가 못 받은 DESIGN_ORDERS 커밋 $n 건. 고치려면: git -C \"$WT\" merge main --no-edit" ;;
       esac
       PREV_STALE=$n
     fi
-    l=$(git log --format='%h %s' --no-merges main..design 2>/dev/null | head -8)
-    if [ "$l" != "$PREV_LANE" ]; then
-      c=$(git rev-list --count --no-merges main..design 2>/dev/null || echo 0)
-      [ "${c:-0}" -gt 0 ] && say "🧩 CLIENT LANE 미병합 $c 건 — $(echo "$l" | head -1 | cut -c1-90)"
-      PREV_LANE=$l
+    # 🔵 세는 질의를 «없앴다» — 같은 출력의 줄 수가 곧 개수다(%s 는 첫 줄뿐이라 줄이 안 는다).
+    #    질의가 둘이면 실패할 자리도 둘이고, 둘이 «다른 답»을 낼 수도 있다.
+    lane_out=$(git log --format='%h %s' --no-merges main..design 2>&1); lane_rc=$?
+    if [ "$lane_rc" != 0 ]; then
+      if [ "$PREV_LANE" != "ERR" ]; then
+        say "⚠️ 레인 감시 오류 — $(why "$lane_out")"; PREV_LANE="ERR"
+      fi
+    else
+      l=$(printf '%s' "$lane_out" | head -8)
+      if [ "$l" != "$PREV_LANE" ]; then
+        c=$(printf '%s' "$lane_out" | grep -c . || true)
+        [ "${c:-0}" -gt 0 ] && say "🧩 CLIENT LANE 미병합 $c 건 — $(printf '%s' "$l" | head -1 | cut -c1-90)"
+        PREV_LANE=$l
+      fi
     fi
   fi
 
