@@ -543,57 +543,25 @@ body.resizing-active .history-sidebar {
 }
 
 
-/* 「대기열」 — 판정 2026-09-22.
-   🔴 감사 표의 «겉모양»을 입는다 (소유자: 「표 양식 감사 로그랑 정확히 똑같이해」).
-      입을 수 있는 이유는 겉모양과 «신호»를 갈랐기 때문이다 — 「Global 탭이다」는 이제
-      `.tab-global` 이 말하고, 거기 걸린 선택자는 6 이다:
-        grep -c "not(\.tab-global)\|has(\.tab-global)" client2/src/style.css
-   🔵 `min-height: 0` 이 있어야 «행 목록»이 자기 안에서 구른다 — 없으면 flex 항목이
-      내용보다 안 줄어서 행 수가 판의 높이가 된다. `.audit-table` 이 같은 줄을 든다. */
-/* 🔵 탭 전환은 인라인 display 를 «지운다»(`el.style.display = ''`), 그래서 이 줄이 이긴다. */
 .queue-view { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
-/* 🔴 표는 «자기 상자 안»에서 구른다 — 감사 표가 그 모양이고(`.audit-table .timeline`),
-   안 그러면 «행 수»가 판의 높이가 된다 (2026-09-22 실측: 50 행에 4,748px). */
 .queue-panel { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .queue-meta { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: baseline;
               padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border);
               font-size: 11px; color: var(--text-dim); }
 .queue-at, .queue-population, .queue-page { font-family: var(--font-mono); }
 .queue-reason { color: var(--warning); }
-/* 🔴 「빈 것」과 「안 읽힌 것」이 같은 픽셀이면 안 된다 — 빈 표는 둘 다에게 «빈 표»다.
-   그래서 0 행은 표를 안 그리고 «문장»을 그린다. 기준 시각·모집단은 위 meta 가 든다. */
-.queue-empty { padding: var(--space-4) var(--space-3); color: var(--text-muted); font-size: 12px; }
-/* 🔴 머리줄과 행이 «같은 폭»이어야 열이 맞는다. `.audit-head` 는 감사 목록에 맞춰
-   3px 왼쪽 테두리와 스크롤바 자리를 이미 들고 있어서, 그대로 입으면 20px 어긋났다
-   (실측 2026-09-22: 머리 423px · 판 443px, 마지막 열이 16px 대 51px).
-   그래서 테두리는 0 으로, 스크롤바 자리는 «양쪽 다» 늘 잡는다. */
+/* `.audit-head` 가 3px 왼쪽 테두리와 스크롤바 자리를 든다 — 그대로 입으면 머리와 행이 20px 어긋난다. */
 .queue-head { border-left: 0; }
 .queue-rows { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; }
-/* 열은 감사와 «개수도 폭도 다르다»(지시). 주인이 첫 칸이다 — 이 표를 비우는 것이 둘이라.
-   폭은 «재서» 잡았다 (2026-09-22, 10.5px 모노 기준 canvas measureText):
-     주인 scheduler 50 · 사건 DELETE 38 · 나이 「13시간 12분」 63 · 상태 배지 55 + retrying
-   여기에 셀 여백 16 을 더한 것이 아래 수다. 표는 «잘려도 되는» 유일한 칸이라 제일 좁다
-   (이름은 title 이 든다). 규칙은 어차피 «안 드는» 칸이라 남는 것을 받는다 — 보고서 참조. */
+/* 10.5px 모노로 재서 잡은 폭: scheduler 50 · DELETE 38 · 「13시간 12분」 63 · 배지 55, + 셀 여백 16. */
 .queue-head, .queue-row { grid-template-columns: 66px 84px 54px 80px 96px 1fr; }
 .queue-row { display: grid; align-items: center; border-bottom: 1px solid var(--border); }
 .queue-row:last-child { border-bottom: none; }
-.queue-owner { font-family: var(--font-sans); font-size: 11.5px; font-weight: 600; color: var(--accent); }
-.queue-table, .queue-event, .queue-age { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-dim); }
-/* 🔴 한 칸이 «한 줄»이다. 안 걸면 「1분 30초」가 두 줄로 접혀 감사 행과 다른 것이 된다. */
 .queue-owner, .queue-event, .queue-age, .queue-state-detail { white-space: nowrap; }
-/* 자르는 것은 «안쪽»이다 — 칸이 flex 라서. 감사의 `.audit-change .val-old` 와 같은 자리. */
-.queue-table, .queue-rules, .queue-note { max-width: 100%; overflow: hidden;
-                                          text-overflow: ellipsis; white-space: nowrap; }
 .queue-age, .queue-h-age { justify-content: flex-end; }
 .queue-age { font-variant-numeric: tabular-nums; }
-/* 상태 «색»은 선언 안 했다 — 낱말이 든다. 색 축을 지시 없이 만들지 않는다. */
 .queue-state { gap: 4px; }
-.queue-state .audit-pill { border-color: var(--border-strong); background: var(--bg-inset); color: var(--text-muted); }
-.queue-state-detail { font-family: var(--font-mono); font-size: 9.5px; color: var(--warning); }
-/* 규칙은 «칸»이다 (소유자: 「컬럼 추가해서 달면 될것 같아」). 폭이 모자라 잘리므로 온 문장은
-   title 이 든다 — `.audit-target-key` 가 쓰는 바로 그 방법. 실측은 보고서에. */
-.queue-rules, .queue-note { font-family: var(--font-mono); font-size: 10.5px; }
-.queue-rules { color: var(--text); }
+.queue-state-detail { color: var(--warning); }
 .queue-note { color: var(--text-dim); }
 .queue-cell:last-child { border-right: none; }
 
@@ -675,7 +643,7 @@ body.resizing-active .history-sidebar {
   background: var(--border);
 }
 
-.timeline-empty {
+.timeline-empty, .queue-empty {
   color: var(--text-dim);
   font-size: 0.85rem;
   text-align: center;
@@ -2819,9 +2787,10 @@ body.resizing-active .history-sidebar {
   overflow: hidden;
 }
 .audit-cell.audit-tx { border-right: none; }
-.audit-time { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted); }
-.audit-user { font-family: var(--font-sans); font-size: 11.5px; font-weight: 500; color: var(--accent); }
-.audit-tx { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); gap: 4px; }
+.audit-time, .queue-table, .queue-event, .queue-age { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted); }
+.audit-user, .queue-owner { font-family: var(--font-sans); font-size: 11.5px; font-weight: 500; color: var(--accent); }
+.audit-tx, .queue-state-detail { font-family: var(--font-mono); font-size: 10px; }
+.audit-tx { color: var(--text-dim); gap: 4px; }
 
 /* The kind pill. Six kinds, because six is what the audit rows actually distinguish. */
 .audit-pill {
@@ -2855,7 +2824,8 @@ body.resizing-active .history-sidebar {
 /* Two lines, because the key and the column answer different questions and the mockup gives
    each its own line rather than joining them with a separator nobody can scan. */
 .audit-target { flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; }
-.audit-target-key { font-family: var(--font-mono); font-size: 11px; color: var(--text); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.audit-target-key, .queue-rules, .queue-note { font-family: var(--font-mono); font-size: 11px; color: var(--text); }
+.audit-target-key, .queue-table, .queue-rules, .queue-note { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .audit-target-col { font-family: var(--font-sans); font-size: 9.5px; font-weight: 600; letter-spacing: .4px; text-transform: uppercase; color: var(--text-muted); }
 
 .audit-change { gap: 6px; font-family: var(--font-mono); font-size: 11px; white-space: nowrap; }

@@ -1,22 +1,10 @@
 // 「대기열」 — 이 표의 변경으로 «앞으로 무엇이 돌 예정인가»를 행 하나씩 그린다.
 //
 // 🔴 이름에 「체인」이 없다. 이 표를 비우는 것은 «둘»이고(`owner`), 2026-09-04 에
-//    「체인 대기열」이라는 이름이 읽는 사람을 체인으로 보냈다. 서버도 같은 이유로 경로에서
-//    뺐다(`/outbox/queue/rows`). 그래서 화면 어디에도 「체인이다」라고 «단정»하지 않는다 —
-//    주인은 «행마다» owner 칸이 말한다.
-//
-// 🔴 판단을 여기서 «다시 내리지» 않는다. 나이 표기는 chain_queue_panel 의 좌석을 부르고,
-//    상태 낱말은 서버 어휘를 «그대로» 쓰고, 못 읽은 사유는 fetch 실패 좌석이 짓는다.
-//
-// 🔴 행은 «안 접는다» (판정 2026-09-22). 그리고 규칙도 이제 접을 것이 없다 — 소유자가
-//    「거기에 triger되는 규칙들을 컬럼 추가해서 달면 될것 같아」 · 「표 양식 감사 로그랑
-//    정확히 똑같이해」라 하셔서 «한 행이 한 줄»이고 규칙은 «칸»이다.
-//    ⚠️ 폭이 모자란다 — 실측(2026-09-22, 493px 판): 규칙 칸에 쓸 수 있는 글자 폭 124px,
-//       가장 «짧은» 사유 한 줄이 302px. 그래서 칸은 자르고 온 문장은 `title` 이 든다.
-//
-// 🔴 실패 행은 이 표에 «안 온다» — 서버가 모집단에서 뺐다(`2eb1d38d`). 그 사실을 화면에
-//    적지 않는 것은 화면이 «지금 있는 것»만 말하기 때문이다. 모집단 문장이 경계를 말한다.
-import { formatAge } from './chain_queue_panel.js';
+//    「체인 대기열」이라는 이름이 읽는 사람을 체인으로 보냈다. 서버도 경로에서 뺐다.
+// 🔴 판단을 여기서 «다시 내리지» 않는다 — 나이는 chain_queue_panel 의 좌석, 상태는 서버 어휘.
+// 🔴 실패 행은 이 표에 «안 온다» — 서버가 모집단에서 뺐다(`2eb1d38d`). 경계는 모집단 문장이 말한다.
+import { formatAge, line } from './chain_queue_panel.js';
 
 const str = (v) => (v == null ? '' : String(v));
 const list = (v) => (Array.isArray(v) ? v : []);
@@ -83,7 +71,6 @@ export function outboxQueueView(payload, opts = {}) {
   if (!payload || failed) {
     return Object.freeze({
       read: false,
-      // 사유 없는 「모름」은 고칠 자리가 없다. 사유는 부르는 쪽이 준다.
       reason: failed || str(opts.unavailable),
       generatedAt: '', population: '', hasMore: false, empty: false,
       page: Object.freeze({ count: 0, shared: Object.freeze([]) }),
@@ -120,7 +107,6 @@ export function outboxQueueView(payload, opts = {}) {
     reason: '',
     // 「지금」은 «서버의 것»이다. 화면이 자기 시계로 나이를 다시 재면 두 수가 갈린다.
     generatedAt: str(payload.generated_at),
-    // 🔵 이 표가 «무엇을 담는가»를 서버 문장 그대로. 화면이 자기 경계를 스스로 말한다.
     population: str(payload.population),
     hasMore: listed.next_cursor != null,
     // 🔴 「비었다」는 «읽고 나서만» 참이다. 못 읽은 것과 같은 픽셀이면 안 된다.
@@ -162,12 +148,7 @@ export class OutboxQueuePanel {
     mount.appendChild(this.root);
   }
 
-  _line(cls, text) {
-    const el = this.doc.createElement('div');
-    el.className = cls;
-    el.textContent = text;
-    return el;
-  }
+  _line(cls, text) { return line(this.doc, cls, text); }
 
   /** 한 «칸». 칸 자체는 flex 라 그 위의 ellipsis 는 안 먹는다. */
   _cell(cls, text, title) {
@@ -196,7 +177,6 @@ export class OutboxQueuePanel {
     const meta = this.doc.createElement('div');
     meta.className = 'queue-meta';
     if (view.read) {
-      // 설명 문구가 아니라 «값»이다 — 기준 시각과, 이 표가 담는 집합.
       meta.appendChild(this._line('queue-at', view.generatedAt));
       if (view.population) meta.appendChild(this._line('queue-population', view.population));
       // 🔴 수와 「다음 쪽」이 «한 마디»다 (판정 조건). 떼어 놓으면 「50」이 «전부»로 읽힌다.
@@ -213,7 +193,6 @@ export class OutboxQueuePanel {
     this.root.appendChild(meta);
     if (!view.read) return view;
 
-    // 🔴 0 행에 «빈 표»를 그리지 않는다 — 그건 「안 읽혔다」와 같은 픽셀이다.
     if (view.empty) {
       this.root.appendChild(this._line('queue-empty', '지금 돌 것이 없습니다'));
       return view;
@@ -231,14 +210,13 @@ export class OutboxQueuePanel {
       const line = this.doc.createElement('div');
       line.className = 'queue-row';
       line.setAttribute('data-state', row.state || 'unknown');
-      // 주인이 먼저다.
       line.appendChild(this._cell('queue-owner', row.owner));
       line.appendChild(this._clipCell('queue-table', row.table));
       line.appendChild(this._cell('queue-event', row.eventType));
       line.appendChild(this._cell('queue-age', row.age, row.at));
 
       const state = this._cell('queue-state', '');
-      state.appendChild(this._line('audit-pill', row.state));
+      state.appendChild(this._line('audit-pill kind-auto', row.state));
       // 「기다리는 중」과 「재시도 중」을 가르는 것은 이 칸이다 — 상태 낱말은 둘 다 waiting 이다.
       // 좁아서 잘린다(실측: 배지 뒤 21px). 잘린 글자의 답은 이 화면에서 «하나»다 — title.
       if (row.stateDetail) {
