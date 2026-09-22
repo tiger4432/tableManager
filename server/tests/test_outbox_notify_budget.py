@@ -511,6 +511,53 @@ def _stage(db, *, processed_chain, created_at=None, retry_count=0):
     return row
 
 
+def test_the_broadcast_listener_starts_even_when_the_boot_migrations_throw(monkeypatch):
+    """게이트 ⑥-b. 「돈다」를 잰다 — 앞 시험은 «위치»만 쟀다.
+
+    🔴 [Q-210] 고친 뒤에도 길이 하나 남아 있었다: 블록이 마이그레이션 try «안»이라
+       기동 순간 `engine.connect()` 가 튀면 그 except 로 빠지면서 «건너뛴다». API 는 계속
+       뜨고, 찍히는 로그는 「Startup step failed (watcher/chain worker)」라 리스너를
+       지목조차 안 한다. DB 가 곧 돌아와도 그 프로세스에선 영영 안 켜진다.
+
+    ⚠️ 그래서 이 시험은 그 조건을 «강제로 만들어» startup 을 실제로 «돌린다».
+       상설: 「박스가 도달 못 하는 조건에서만 도는 코드는 시험이 0 이다 —
+       그 조건을 강제로 만들어 한 번 돌리는 시험이 같은 커밋에」.
+    """
+    import asyncio
+
+    monkeypatch.delenv("TESTING", raising=False)
+    monkeypatch.setattr(_main, "bootstrap_database_schema", lambda *a, **k: None)
+
+    def _no_watcher(_engine):
+        raise RuntimeError("config watcher not wanted in this test")
+    monkeypatch.setattr("database.config_watcher.start_config_watcher", _no_watcher)
+
+    class _EngineThatIsNotUpYet:
+        class dialect:
+            name = "postgresql"
+
+        def connect(self, *a, **k):
+            raise RuntimeError("the database is not accepting connections yet")
+
+    monkeypatch.setattr(_main, "engine", _EngineThatIsNotUpYet())
+
+    started = []
+
+    async def _fake_loop():
+        started.append(True)
+
+    monkeypatch.setattr(_main, "_outbox_queue_broadcast_loop", _fake_loop)
+
+    async def _drive():
+        await _main.startup_event()
+        await asyncio.sleep(0)        # 만들어진 태스크가 한 번 돌게 한다
+
+    asyncio.run(_drive())
+
+    assert started, (
+        "기동 때 DB 가 잠깐 안 열리면 리스너가 «안» 켜진다 — 블록이 마이그레이션 try "
+        "안에 있다는 뜻이다. API 는 뜨고 화면만 조용해진다")
+
 # ---------------------------------------------------------------------------
 # GET /admin/chain/queue - the chain-queue instrument
 # ---------------------------------------------------------------------------

@@ -409,7 +409,31 @@ async def startup_event():
     except Exception as exc:                                       # noqa: BLE001
         logger.error("[Startup] Mapper discovery failed entirely: %s", exc)
 
-        
+
+    # 🔴 이 블록은 «두 번» 안 도는 자리에 있었다. 둘 다 조용했다.
+    #    ① startup «끝» -> DECOUPLED return 아래. 운영이 그 모드라 한 번도 안 켜졌다
+    #       (실측: LISTEN 커넥션 1(워커 것뿐) · NOTIFY 2 -> /ws 프레임 «0»)
+    #    ② 마이그레이션 try «안» -> 기동 순간 `engine.connect()` 가 튀면 그 except 로
+    #       빠지면서 «건너뛴다». API 는 계속 뜨고, 로그는 「watcher/chain worker」라
+    #       리스너를 «지목조차 안 한다». DB 가 곧 돌아와도 이 프로세스에선 영영 안 켜진다
+    # ⛔ 그래서 «어느 try 안도 아니고», 모든 모드별 종료 «앞»이다. 여기가 그 자리다:
+    #    필요한 것이 `main_loop`(:347)와 `engine.dialect.name` 뿐이라 더 위로 못 갈 것이 없다.
+    # [대기열 탄생 방송] 아웃박스 행이 태어나면 화면에 알린다.
+    # ⛔ `ASSY_CHAIN_WORKER` 와 «무관하게» 켠다 — 워커가 딴 프로세스인 배포가 바로
+    #    이게 필요한 배포다(그쪽 ORM 훅은 이 프로세스에 안 닿는다).
+    # ⚠️ PostgreSQL 에서만. LISTEN/NOTIFY 가 없는 sqlite 에서 켜면 1 초마다 재연결을
+    #    시도하며 로그만 더럽힌다 — 좌석(`_notify_outbox_once`)이 거는 것과 «같은 술어».
+    try:
+        if engine.dialect.name == "postgresql":
+            main_loop.create_task(_outbox_queue_broadcast_loop())
+            logger.info("[Outbox Queue] birth-broadcast listener started (channel=%s).",
+                        event_constants.OUTBOX_NOTIFY_CHANNEL)
+        else:
+            logger.info("[Outbox Queue] birth-broadcast listener NOT started: dialect=%s "
+                        "has no LISTEN/NOTIFY.", engine.dialect.name)
+    except Exception as e:
+        logger.error(f"[Outbox Queue] birth-broadcast listener failed to start: {e}")
+
     try:
         # [2026-07-25 정리] 레거시 data_rows NULL updated_at 보정 마이그레이션 제거
         # (data_rows 테이블 자체가 폐기 — scripts/drop_legacy_tables_20260725.sql 참조).
@@ -498,27 +522,6 @@ async def startup_event():
                          f"Starting anyway - run "
                          f"'python server/scripts/check_schema_drift.py' by hand.")
 
-        # 🔴 [23:0x 실측 결함] 이 블록은 startup «끝»에 있었고, 그래서 DECOUPLED 에서
-        #    «한 번도 안 돌았습니다» — 운영이 정확히 그 모드입니다. 총괄이 기동해서 쟀습니다:
-        #    LISTEN 커넥션 1(워커 것뿐) · NOTIFY 두 번 -> /ws 프레임 «0».
-        #    제 게이트는 전부 «코드»를 쟀고, 「이 블록이 도는가」는 아무도 안 쟀습니다.
-        # ⛔ 여기서 더 내려가지 않습니다. :477 주석이 이 자리를 이미 이름 붙였습니다 —
-        #    「모든 마이그레이션 뒤, 모든 모드별 종료 «앞»」.
-        # [대기열 탄생 방송] 아웃박스 행이 태어나면 화면에 알린다.
-        # ⛔ `ASSY_CHAIN_WORKER` 와 «무관하게» 켠다 — 워커가 딴 프로세스인 배포가 바로
-        #    이게 필요한 배포다(그쪽 ORM 훅은 이 프로세스에 안 닿는다).
-        # ⚠️ PostgreSQL 에서만. LISTEN/NOTIFY 가 없는 sqlite 에서 켜면 1 초마다 재연결을
-        #    시도하며 로그만 더럽힌다 — 좌석(`_notify_outbox_once`)이 거는 것과 «같은 술어».
-        try:
-            if engine.dialect.name == "postgresql":
-                main_loop.create_task(_outbox_queue_broadcast_loop())
-                logger.info("[Outbox Queue] birth-broadcast listener started (channel=%s).",
-                            event_constants.OUTBOX_NOTIFY_CHANNEL)
-            else:
-                logger.info("[Outbox Queue] birth-broadcast listener NOT started: dialect=%s "
-                            "has no LISTEN/NOTIFY.", engine.dialect.name)
-        except Exception as e:
-            logger.error(f"[Outbox Queue] birth-broadcast listener failed to start: {e}")
 
         if os.getenv("DECOUPLED") == "True":
             logger.info("Decoupled mode active. Skipping inline Directory Watcher, Graph DB Sync, and Chained Ingestion workers.")
