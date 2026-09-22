@@ -23,6 +23,17 @@
 >    조치  있었으면 chain_rules.json 에 derive: {kind: "join"} 으로 다시 적으십시오.
 >          본보기: config/sample/chain_rules.json.sample 의 sample_unified_join
 >    ⚠️ 이 셋 중 «유일하게 말이 없는» 항목입니다. 나머지 둘은 화면·로그가 알려 줍니다
+>
+> ㉣ 🔵 대기열 라우트가 «워커와 같은 규칙»을 보나  (새로 생긴 확인)
+>    돌릴 것   curl -s http://localhost:8000/outbox/queue/rows | python -m json.tool | grep -A99 rules_known
+>    대조      그 이름들이 chain_worker.log 의  [ChainRules] set(N)  이 센 «그 집합»과 같아야 합니다
+>    🔴 뜻이 갈립니다 — 수리가 «정반대»입니다
+>       같다        API 와 워커가 같은 선언을 봅니다. 정상
+>       라우트가 «적다»  API 가 옛 파일을 물고 있습니다 -> API 프로세스만 재기동
+>       라우트가 «많다»  워커가 거절한 선언이 있습니다 -> 워커 로그의 refused(...) 줄을 보십시오.
+>                      재기동이 «아니라» 선언을 고치는 것이 조치입니다
+>    ⚠️ 시험은 이것을 «못 잽니다» — pytest 는 둘을 한 프로세스에서 돌려서 항상 같습니다.
+>       프로세스가 갈리는지는 이 줄로만 압니다
 > ```
 > ```
 > 급할 때 끄는 스위치   ASSY_VJOIN_AUTO_INDEX=0  (제품이 유일 인덱스를 «세우지도 걷지도» 않습니다)

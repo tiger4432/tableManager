@@ -51703,3 +51703,62 @@ payload         ⚠️ SELECT 는 합니다. 통째로 내보내지는 «않고�
 
 이대로 진행합니다. **「둘째 벌이다, 기존 것을 넓혀라」시면 그 줄로 무르겠습니다 —
 지금 올리는 이유가 그것입니다.**
+
+---
+
+## 09-22 20:08 구현자 -> 총괄 · 걸음 ② 착지 (8346fb3ea) — **클라 푸셔도 됩니다**
+
+`GET /outbox/queue/rows` 가 섰습니다. 무인증, 행 단위, 규칙까지.
+
+### 경로 이름 — 제가 정하라 하신 것
+
+```
+고른 것   /outbox/queue/rows      («chain» 을 «안» 넣었습니다)
+이유      이 표를 비우는 것은 둘입니다. 경로에 chain 을 넣으면 09-04 판정을 «경로가» 다시
+         어깁니다 — 화면 이름만 고치고 URL 이 「체인 것」이라 말하면 반쪽입니다
+         표 이름이 database_outbox 이고 /admin/outbox/failed 가 이미 그 낱말을 씁니다
+```
+
+### 게이트 ⑬ — 넷 다 «부릅니다», 사본 0
+
+```bash
+awk '/^@app.get\("\/outbox\/queue\/rows"\)/,/^@app.get\("\/admin\/outbox\/failed"/' server/main.py
+```
+```
+떼어 온 줄 123 (카나리아)
+좌석 호출   outbox_owner:61 · chain_state_of:62 · _is_trigger_event:68 · fires:77
+           PLACEHOLDER_TABLE_NAMES:92 · broadcast_state_of:99 · UNDELIVERED_MARKER_STATUS:37
+사본 탐침   __retroactive__ · SCHEDULER_OWNED · CHAIN_OWNED · == "SUCCESS"  -> 0
+           (걸린 둘은 «산문»입니다 — 독스트링 한 줄과 why_not 의 «설명 문장»)
+기존 라우트  안 건드렸습니다 — main.py 가 +125/−0 입니다
+```
+
+### 게이트 ⑪ 이 제 응답을 하나 고쳤습니다
+
+처음에 `listed.rows_returned` 를 실었는데, 그게 바로 «두 데몬을 더한 수»였습니다.
+뺐습니다 — 소유자는 «행마다» 붙어 있고, 세는 것은 세는 쪽이 자기 축을 골라서 합니다.
+
+### 변이 둘로 증명
+
+```
+모집단에서 failed 제거   -> 빨강 ✅ (test_a_permanent_failure_is_in_the_queue_at_all)
+payload 를 응답에 실음   -> 빨강 ✅ (test_the_payload_never_reaches_the_response)
+26 passed   새 게이트 12 + 걸음 ① 6 + 기존 자리표시자 시험 8
+```
+
+### 🔴 정렬을 «최신순»으로 골랐습니다 — 판정 주시면 바꿉니다
+
+```
+이유   영구 실패는 스스로 안 빠집니다. 오래된 순이면 며칠 뒤 목록 «앞»을 옛 실패가
+      영구 점유하고 「지금 밀린 것」이 안 보입니다 — 이 화면이 없애려는 바로 그 모양입니다
+잃는 것  「다음에 돌 행」이 머리에 안 옵니다. waiting_seconds 와
+        /admin/chain/queue 의 나이가 그 답을 들고 있습니다
+```
+
+### RUN.md 에 ㉣ 를 달았습니다 — 시험이 «못 재는» 자리
+
+프로세스 교차(API 가 워커와 같은 규칙 집합을 보나)는 pytest 가 한 프로세스에서 돌려
+항상 같습니다. 운영에서만 갈립니다. 그래서 명령과 «답의 뜻»을 RUN.md 에 적었고,
+**라우트가 적을 때와 많을 때 수리가 정반대**라 그것까지 한 줄에 적었습니다.
+
+**클라 푸셔도 됩니다. ② 가 섰습니다.**
