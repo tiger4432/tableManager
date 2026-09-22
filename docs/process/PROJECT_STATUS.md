@@ -27,8 +27,11 @@
 남긴 것   uq_vjoin_ · ASSY_VJOIN_AUTO_INDEX · VirtualJoin.UniqueKey (응용 실측 전부 생존)
         소유자 라이브 virtual_join_rules.json «안 건드림» — 제품이 더 이상 안 읽을 뿐
 ```
-🔴 **남은 말이 운영자를 «없는 엔진»으로 보낸다** — `mappers/cross_table_lookup_mapper.py.sample`
-   이 「그건 VIRTUAL JOIN 으로 하라」고 권한다. 지우지 말고 «통합 선언을 가리키게» 다시 쓴다. 큐 맨 앞.
+✅ **운영자 파일의 「없는 엔진」 닫힘** (`bbe2a7d5`, 소유자 「없는 엔진만 마저해」)
+   샘플이 이제 `derive: {kind: "join"}` 과 `sample_unified_join` 을 가리킨다.
+   `virtual_join_rules.json.sample` 은 «안 지웠다» — 왕복 시험 둘이 그 두 선언을 픽스처로 읽는다.
+   대신 머리에 묘비를 달았다(DO NOT COPY + 갈 곳 + 옛 약속 중 «살아남은 둘»).
+   ⛔ `inherit_virtual_join_rules`(샘플 16 자리)는 «원장 쪽»이고 안 건드렸다 — 아직 은퇴 안 했다.
 
 ## 🎯 완성 상태 — 「두 줄로 선언법을 말할 수 있나」 (09-22 11:2x, 총괄이 직접 쟀다)
 
