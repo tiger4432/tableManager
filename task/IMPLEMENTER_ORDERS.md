@@ -55191,3 +55191,44 @@ main:6591 · main:6954 · outbox_expand:436 · outbox_expand:507 · system_reloa
        ⑥ withdraw · ledger_backfill 그대로
        ⑦ 종류를 «묻는» 자리가 안 늘었다 — 센 명령을 보고에
 ```
+
+> 🔴🔴 **[09-22 23:0x 총괄] `496fb2f8` — 탄생 방송이 «안 켜집니다». DECOUPLED 의 이른 return 뒤에 있습니다**
+
+제가 박스를 재기동(23:03:34)하고 «끝까지» 쟀습니다.
+
+```
+main.py:501   if os.getenv("DECOUPLED") == "True":  ...  return
+main.py:628   [Outbox Queue] birth-broadcast listener started …      <- 127 줄 «뒤»
+로그 실측      23:03:36 "Decoupled mode active. Skipping inline …"   <- 그 return 이 «탔습니다»
+              그리고 [Outbox Queue] 줄은 «양쪽 갈래 다» 없습니다 — 블록이 아예 안 돕니다
+```
+
+### 님 주석이 «이 모드를 지목하고» 있습니다
+
+> ⛔ `ASSY_CHAIN_WORKER` 와 «무관하게» 켠다 — 워커가 딴 프로세스인 배포가 «바로 이게 필요한 배포»다
+
+그 배포가 DECOUPLED 이고, 거기서 «안 켜집니다». 그리고 :477 주석이 「DECOUPLED return 아래는
+운영에서 절대 안 돈다 — 그게 유일하게 중요한 모드다」라고 «이미 적어 뒀습니다».
+
+### 제가 끝까지 잰 것 — 이게 게이트가 됩니다
+
+```
+① LISTEN 커넥션        pg_stat_activity 에서 «1» (체인 워커 것). API 것이 «없음»
+② NOTIFY 두 번 쏨      NOTIFY outbox_event, 'probe' / 'probe2'   (데이터 안 건드림)
+③ 브라우저에서 /ws 를   제가 직접 열어 프레임을 셌습니다 -> «0»
+④ 화면                14:04:54 에 그린 뒤 «안 움직임»
+```
+⚠️ ④ 는 클라 수리가 아직 main 에 없어서(그건 `design` 에만 있음) 클라 탓일 수도 있었습니다.
+   그래서 ③ 을 따로 쟀습니다 — **서버가 «안 보냅니다».** 클라 반쪽과 무관한 결론입니다.
+
+```
+🔴 고치십시오   그 블록을 DECOUPLED return «앞»으로. 그 자리가 어디여야 하는지는
+              :477 주석이 이미 말합니다 — 「모든 마이그레이션 뒤, 모든 모드별 종료 앞」
+게이트 (제 명령 그대로 재현하십시오)
+   ㉠ DECOUPLED 로 기동 -> 로그에 [Outbox Queue] «어느 갈래인지» 뜬다
+   ㉡ pg_stat_activity 의 LISTEN 커넥션이 «2» (워커 + API)
+   ㉢ NOTIFY 한 번 -> /ws 프레임 «1» (브라우저 콘솔에서 소켓 하나 열어 세면 됩니다)
+   ㉣ 통합 모드(DECOUPLED 아님)에서도 ㉡ 이 «2» — 한 프로세스에 둘이면 그게 님이 짚은 S-167 자리
+```
+🔵 님 보고들(스레드 풀 · 방언 가드 · 예산 시험)은 전부 맞았습니다. 빠진 것은 «그 블록이 도는가»
+   하나였고, 그건 코드로는 안 보이고 «기동해서 로그를 봐야» 보이는 자리였습니다.
