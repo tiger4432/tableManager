@@ -50998,3 +50998,391 @@ RUN.md 의 「virtual_join_rules.json 을 «아무도 안 읽습니다»」
    낱말 하나로 세면 섞입니다 — ② 에서 «여는 자리»로 다시 셉니다
 guide/config/chain_rules.md   SETUP_ORDER ④ 를 묘비로 바꾸며 「옮기는 모양은 여기」로 보냈는데
    그 파일이 실제로 derive.kind:"join" + into.table 의 «사례»를 드는지 안 열어 봤습니다. ② 에서 엽니다
+
+---
+
+## 🛑 [구현자] 멈춤 받았습니다 — 반쪽이던 것 «하나» 닫고 섭니다
+
+지시 `81c7880c` 대로 짓던 것만 착지시키고 멈춥니다. 반쪽이 **하나 있었고 그건 제 것**이었습니다.
+
+### 착지시킨 것
+
+```
+4ea51bd33  PG 빨강 다섯 보고 (제 계기가 그걸 「깨끗」으로 읽을 뻔한 것 포함)
+42beefe99  그 다섯을 «고쳤습니다»
+```
+
+`fd546ccb` 가 죽은 로더를 직접 탐침으로 바꾸면서, 제가 **논리 이름**
+`"reference_rows"` 를 타이핑했습니다. 죽은 로더는 `known_tables` 를 받아 그 이름을
+**자기가** 물리 이름으로 풀었고, 직접 묻는 자리는 그 풀이를 **물려받지 못합니다.**
+픽스처가 인덱스를 만드는 표는 `RIGHT_TABLE`(`v2s6_reference_rows_<RUN_TOKEN>`) 입니다.
+
+```
+전  5 errors · 86 passed        scripts/run_pg_tests.py
+후  5 passed · 6818 deselected · 0 errors · exit 0
+    scripts/run_pg_tests.py -k test_ledger_v2_pg
+```
+
+🔴 **다섯이 setup 에서 죽어서 그 밑 원장 v2 단언 다섯이 «0번» 돌고 있었습니다.**
+평범한 스위트는 이걸 deselect 하므로 `run_pg_tests.py` «만» 볼 수 있었습니다 —
+총괄이 이 항목을 큐에 넣어 두지 않았으면 조용히 남았을 자리입니다.
+
+⚠️ 공허한 초록 아닙니다: 그 단언이 **방금 이 결함을 잡은 그 줄**이라 변이 증명이 자기 자신입니다.
+
+### 안 한 것 — 전부 큐에 그대로 둡니다
+
+```
+Q-200 나머지   샘플 다섯(총괄이 든 둘 + 제가 센 셋) · crud 셋 · main 하나
+문서            남은 15 파일
+652 2걸음 · 657/647 · 662
+안 잰 채 남긴 것  RUN.md 의 「아무도 안 읽습니다」 계기 · guide/config/chain_rules.md 의 사례 유무
+```
+
+### 이 라운드에서 제 계기가 틀린 방식 둘 — 같은 병입니다
+
+```
+① 「자리」를 타이핑했다   논리 이름을 «성질»(이 픽스처가 실제로 만든 표) 자리에 적었다
+② 앵커가 모집단을 못 맞혔다  ^(FAILED|ERROR) 가 `_ ERROR at setup of` 를 못 잡았다
+둘 다 「내 술어가 세는 것」과 「내가 주장하는 것」이 달랐던 경우입니다.
+앞으로 pytest 판정은 «요약 줄»을 먼저 읽고 제 grep 수와 대조합니다.
+```
+
+소유자 지시 기다립니다. 감시는 켜 둡니다.
+
+---
+
+## ✅ [구현자] 둘 다 닫혔습니다 — `42beefe99` · `bbe2a7d51`. 멈춥니다
+
+### ① PG 빨강 다섯 — 닫힘. 🔴 **원인이 제 가설과 달랐습니다**
+
+지시서가 「님 가설(만든 세션과 묻는 세션이 다르다)을 재고 고치십시오」라 하셨는데,
+**세션이 아니었습니다.** 재 보니 이것이었습니다:
+
+```
+probed = join_key_index.unique_index_covering(verifier_session, "reference_rows", ...)
+                                                                 ^^^^^^^^^^^^^^^^
+논리 이름을 타이핑했습니다. 픽스처가 인덱스를 만드는 표는 RIGHT_TABLE
+(= v2s6_reference_rows_<RUN_TOKEN>) 입니다.
+죽은 로더는 known_tables 를 받아 그 이름을 «자기가» 물리 이름으로 풀어 줬고,
+직접 묻는 자리는 그 풀이를 «물려받지 못합니다». 은퇴가 가져간 것이 그 풀이였습니다.
+```
+```
+전  5 errors · 86 passed        후  5 passed · 0 errors · exit 0
+```
+그 다섯이 setup 에서 죽어 **그 밑 원장 v2 단언 다섯이 0번** 돌고 있었습니다.
+
+### ② 「없는 엔진」 — 닫힘. 총괄 전제 «둘»을 정정합니다
+
+**🔴 ㉠ 「`virtual_join_rules.json.sample` 읽는 코드 0」 — 틀립니다.**
+```
+test_the_internal_rule_gives_back_exactly_what_it_was_given.py:123 · :165
+  _shipped("virtual_join_rules.json.sample") 를 «픽스처»로 읽습니다
+  (옛 문법 -> 새 문법 -> 옛 문법 왕복을 어댑터로 재는 시험 둘)
+```
+지우면 그 어댑터의 게이트가 같이 죽습니다 — **652 의 남은 일**이지 이번 지시가 아닙니다.
+그래서 **지우지 않고 배너**를 달았습니다. 운영자는 첫 줄에서 「이 문법은 은퇴, 지금 자리는
+`sample_unified_join`」을 읽습니다. **제품 독자는 0 맞습니다** — 제품 히트는 전부 주석입니다.
+
+**🔴 ㉡ 그 파일은 이름만 낡은 게 아니라 «조언이 뒤집혔습니다».**
+```
+mappers/cross_table_lookup_mapper.py.sample 의 「맵퍼를 쓸 이유 2」:
+  「값이 «굳어야» 한다 — 가상 조인은 구조상 LIVE 다」
+이제 모든 조인이 into.table 로 «씁니다». 선언이 값을 굳힙니다.
+=> 이유 2 는 «철회»했습니다(자리에 남기고 취소선). 낡은 값의 «대가»는 남겼습니다 —
+   이제 맵퍼와 선언 «둘 다»의 문제라서.
+이유 3·4 는 실측하고 살렸습니다: join_into 가 팬아웃 행을 «이름 대고» 거절하고,
+짝 맞은 행을 UPDATE 할 뿐 «insert 는 0» 입니다.
+```
+
+**㉢ 총괄 명령의 pathspec 에 «넷째»가 있었습니다** — 목록엔 셋이었습니다.
+```
+config/sample/table_config.json.sample:105  「dt_lot_confirmed/dt_slot_confirmed 는
+   VIRTUAL (virtual_join_rules ...) · 가상 컬럼을 선언으로 되찾는 본보기」
+```
+고쳤습니다. ⚠️ **그리고 고치다 구멍을 하나 찾았습니다 — 안 고치고 올립니다:**
+그 둘이 `search_columns` 엔 있는데 `dt_inventory` 의 `column_types` 엔 **없습니다.**
+가상이던 동안엔 «맞는» 모양이었고, 문법이 «쓰는» 지금은 구멍입니다.
+출하 본보기 `sample_unified_join`(꺼진 채 출하)이 그 둘을 `take` 합니다.
+
+**⛔ `inherit_virtual_join_rules` 안 건드렸습니다** — 15 + 1, 총괄이 세신 수 그대로 확인.
+
+### 게이트
+```
+180 passed  맵퍼 샘플 시험 + 작성 가이드 드리프트 오라클 넷
+ 28 passed  샘플을 읽는 왕복 시험 둘
+JSON 셋 다 파싱 · 제가 «새로 적은» 이름 일곱 전부 실재 확인(0 이면 안 적었습니다)
+JOIN_CELLS = ("right_table", "on", "take") — 산문이 대는 칸 이름과 같습니다
+```
+
+### 안 한 것
+문서 8 파일 · crud·main 주석 · 662 · 670 · 675 · 평면 여덟 · 652 2걸음 ·
+`virtual_join_rules.json.sample` 삭제(위 ㉠) · `column_types` 구멍(위 ㉢).
+
+**멈춥니다. 감시 켜 둡니다.**
+
+---
+
+## ✅ [구현자] 지시 `516c717e` 닫힘 — `ab5396236`. 멈춥니다
+
+### ① `crud.py:4372` — 깨진 순간에 나가는 줄
+
+총괄이 세신 수 그대로 확인했습니다: `def` 1(`operator_line.py:70`) · 호출자 1.
+두 파일을 대던 것을 `chain_rules.json` «하나»로 했습니다.
+
+**문 앞에서 쟀습니다** — 인자를 기억으로 적지 않고 AST 로 소스에서 뽑아 줄을 «그려» 봤습니다:
+```
+[Ingest:dt_inventory] 제약 `uq_vjoin_x` 위반으로 이 배치(120 행, tx 77)를 «거절»했습니다
+ — 세션은 되돌렸습니다 (표본: K-1, K-2) → 다음: `chain_rules.json` 의 그 조인 선언 를
+ 끄거나 지우십시오 — 그 인덱스는 제품이 «그 선언 때문에» 세운 것이라 ...
+virtual_join_rules 가 나가나: False   ·   chain_rules 를 대나: True
+```
+
+### ② `main.py:4131·4134` — 🔴 **주석이 아니라 «나가는 글»이었습니다**
+
+총괄이 「나가나 주석인가 확인하라」 하셨습니다. **나갑니다.**
+```
+라우트 «독스트링»이라 FastAPI 가 /docs 의 엔드포인트 설명으로 내보냅니다.
+main.py:134  FastAPI(title=...)  — docs_url=None 이 «없고» 막는 미들웨어도 «없습니다»
+```
+그리고 그 수도 틀렸습니다 — 「넷」이라 적고 `virtual_join_rules` 를 넷째로 댔는데,
+`chain.graph._quarter` 는 오늘 **셋**에 돕니다(chain_rules · enrichment_rules · ledger_sources).
+
+**문 앞에서 쟀습니다** — `app.openapi()` 를 되읽어 «운영자가 받는 설명»을 찍었습니다:
+```
+virtual_join_rules 가 나가나: False   ·   묘비가 나가나: False
+```
+
+🔴 **제 첫 수정이 틀렸습니다.** 묘비를 «독스트링 안»에 적었습니다 — 즉 지우려던 이름을
+운영자에게 나가는 글에 «도로» 넣은 것입니다. 같은 결함의 반대 방향이었고, 되읽어서 잡았습니다.
+묘비는 «코드 주석»으로 옮겼습니다.
+
+⚠️ 수를 「셋」으로 **도로 넣지 않았습니다** — 선언 파일이 하나 늘면 다시 낡고 그때 아무것도 안 웁니다.
+
+### ⚠️ 지나다 찾은 것 — 안 고치고 올립니다
+
+```
+operator_line.retract_the_declaration 이 「... 그 조인 선언 «를» 끄거나」로 그립니다.
+「선언」은 받침이 있어 «을» 이어야 합니다. 깨진 순간에 나가는 바로 그 문장입니다.
+기존입니다 — HEAD 의 operator_line.py:76 에서 확인했습니다(제 수정이 낸 것 아님).
+제대로 고치려면 «호출자 문자열에서 조사를 고르는» 자리가 필요하고, 그건 새 기제라
+지시 밖입니다. 판정 주시면 하겠습니다.
+```
+
+⛔ `inherit_virtual_join_rules` 안 건드렸습니다 — 아직 은퇴 전(원장 prepare 상속).
+
+### 게이트
+```
+81 passed  이 거절 경로를 덮는 시험 여섯
+/docs 설명 되읽기 · 거절 줄 렌더 — 둘 다 «나가는 글»을 직접 읽었습니다(시그니처 아님)
+```
+
+**멈춥니다. 감시 켜 둡니다.**
+
+---
+
+## 📐 [구현자] 지시 `2fa6a521` — 대응표. **「없음」 = 0**
+
+코드는 안 지었습니다. 표만 올리고 멈춥니다.
+
+### 🔴 먼저 — 이 표의 «권위»는 제 눈이 아닙니다
+
+```
+chain_rules_from_cells:942-946
+    raw = {"source_table": source_table, "derived_table": derived_table}
+    raw.update(cells or {})
+    if enabled_written: raw["enabled"] = enabled
+    normalized, why = _validate_rule(name, raw, known_tables)
+```
+**통합 경로가 평면 dict 를 «조립해서 평면 검증기에 넣습니다».**
+대응표는 제가 맞춰 본 것이 아니라 «코드에 적혀» 있습니다. 문이 둘, 정규화기는 하나입니다.
+
+### 모집단 — `_validate_rule` 이 `raw` 에서 읽는 칸 «11»
+
+셈: **3(선언 최상위) + 7(`derive.decide`) + 1(은퇴) = 11.** 남는 칸 0.
+
+**ⓐ 선언 최상위 — `derive.decide` 가 아니라 «선언»에 대응합니다**
+
+| 평면 칸 | 통합의 대응 칸 | 상태 |
+|---|---|---|
+| `source_table` | `on.table` | 대응됨 (인자로 건네짐) |
+| `derived_table` | `into.table` | 대응됨 (인자) |
+| `enabled` | 선언 최상위 `enabled` | 대응됨 — `enabled_written` 이 「적었나」까지 보존 |
+
+**ⓑ `derive.decide` 의 칸 — `DECIDE_CELLS` 일곱과 «정확히» 짝**
+
+| 평면 칸 | 통합의 대응 칸 | 상태 |
+|---|---|---|
+| `decision_key` | `decide.key` | 대응됨 — `_DECIDE_TO_ENRICHMENT` 가 개명 |
+| `target_fields` | `decide.fields` | 대응됨 — 동 |
+| `list_columns` | `decide.list_columns` | 대응됨 (이름 같음) |
+| `aggregations` | `decide.aggregations` | 대응됨 — 통째로. 하위 `fn`·`column` 포함 |
+| `reference_views` | `decide.reference_views` | 대응됨 — 통째로 |
+| `auto_confirm` | `decide.auto_confirm` | 대응됨 |
+| `alignment` | `decide.alignment` | 대응됨 |
+
+**ⓒ 은퇴 — 「없음」이 아닙니다**
+
+| `claim_contract` | — | **은퇴. «두 문 다» 삼키고 경고합니다**(`RETIRED_CLAIM_CONTRACT_NOTE`) |
+|---|---|---|
+
+```
+각주  auto_confirm_declared 는 «칸이 아닙니다» — 키가 있나에서 «유도»합니다(판정 401).
+      옮기면서 이것을 칸으로 만들면 「적었다고 적는 자리」가 생깁니다
+파일  평면 파일은 봉투가 «없습니다» — {규칙이름: 규칙} 뿐이고 그 이름이 통합의 `name` 입니다
+```
+
+### ✅ 총괄 판별식에 대한 답
+
+> 「0 이면 옮기기는 «선언 작업»이고, 1 이상이면 그 축을 세우는 것이 다음 라운드」
+
+**0 입니다 — 옮기기는 «선언 작업»입니다.** 축을 세울 것이 없습니다.
+
+### ⚠️ 그런데 — 「대응은 됐고 «하는 일»이 다른 자리」 둘
+
+총괄이 안 물으신 칸입니다. 대응표에는 「대응됨」인데 **두 문이 같은 답을 안 냅니다.**
+「이 교체가 답만 바꾸나, 하는 일도 바꾸나」의 자리입니다.
+
+```
+평면  _validate_rule(name, raw, known_tables, rejections=..., caps=...)   :777
+통합  _validate_rule(name, raw, known_tables)                             :946
+      => 인자 «둘»이 빠집니다
+```
+
+**㉠ `rejections` 가 빠집니다 — 운영자가 받는 문장이 «거칠어집니다»**
+```
+평면  _record 가 자리별로 남깁니다 — list_column 하나가 떨어진 것 · 참조뷰 제외 ·
+      claim_contract 경고. config_resolve_report 가 그걸 운영자에게 냅니다
+통합  그 기록이 «안 남습니다». 대신 expand_declaration 의 거절이
+      config_resolve_report:268-273 으로 나가 「`X` 선언을 폼 수 없습니다 — <사유>」 한 줄이 됩니다
+=> 「조용하다」가 «아닙니다» — «거칠다»입니다. 규칙 이름과 사유는 가고, «어느 뷰·어느 칸»이 안 갑니다
+```
+
+**㉡ `caps` 가 빠집니다 — 이 모듈이 «자기 주석에» 금지해 둔 모양이 됩니다**
+```
+실측  cap_value(caps=None, ...) -> load_read_caps() -> _load_ingestion_settings()
+      그 함수는 «매번 파일을 엽니다» (캐시 없음 — os.path.exists + open + json.load)
+      그리고 cap_value 는 «참조 뷰마다» 불립니다
+config.py:762-765 이 그걸 «먼저» 금지해 뒀습니다:
+  「a work unit that re-reads config mid-walk can normalize two views against two
+   different ceilings and neither of them is what the file says」
+=> 통합 선언 하나가 참조 뷰 N 개면 «파일을 N 번» 엽니다. 평면은 파일당 «한 스냅샷» 입니다
+🔴 제 첫 가설은 「통합이 출하 기본값을 쓴다」였고 «틀렸습니다» — 재 보니 값은 같고
+   «읽는 횟수»가 다릅니다. 파일이 walk 중에 안 바뀌면 답도 같습니다
+```
+
+```
+⚠️ 둘 다 「없음」 행이 «아닙니다». 축은 다 있습니다 — 이건 «옮기는 비용»입니다
+   그리고 둘 다 «인자 두 개»라 고치는 모양은 작아 보입니다. 제가 판단할 자리가 아니라 올립니다
+```
+
+### 안 한 것
+로더 삭제 · 라우트 추가 · 선언 변환기 · 문서 — 지시대로 하나도 안 했습니다.
+
+**멈춥니다. 감시 켜 둡니다.**
+
+---
+
+## 📋 [구현자] 지시 `0cae5199` 착수 «전» 계획 — ㉠㉡ 둘
+
+### 실측 — 「인자 둘을 넘긴다」가 «어디까지» 닿나
+
+```
+수집기의 주인   enrich_declarations.declarations(rejections=...)  — «이미» 받고 있습니다
+              :101-105 가 통합 거절을 그 목록에 «이미» 넣습니다. 다만 최상위 사유 «한 줄»뿐
+변환 문        config_resolve_report:477-483 이 {scope,subject,detail} -> entry() 로
+              «이미» 사상합니다. 새로 지을 문이 «없습니다»
+막힌 곳        expand_declaration(declaration, table_config)  — 인자가 «둘»뿐입니다
+              -> decide_rules(internal, known_tables)
+              -> chain_rules_from_cells(...)  -> _validate_rule(name, raw, known_tables)
+              수집기가 «내려갈 길이 없습니다»
+```
+⚠️ `expand_declaration` 제품 호출자 **11** · 시험 호출자 **19** (제가 셌습니다).
+그래서 「인자 둘」이 시그니처 «셋»을 넓힙니다 — 전부 «선택 인자, 기본 None»이라 나머지 10 은 안 바뀝니다.
+
+### 아이디어 셋
+
+| 안 | 무엇을 하나 | 좋은 점 | 위험 | 크기 |
+|---|---|---|---|---|
+| ㄱ | ㉡은 `chain_rules_from_cells` «안»에서 스냅샷 하나. ㉠만 시그니처 셋을 넓힘 | 제일 작다. caps 는 호출자 «0** 변경 | 작업 단위가 «선언마다» 한 번 읽음(파일당 한 번은 아님) | 시그니처 3 · 호출자 1 |
+| ㄴ | ㉠㉡ 둘 다 호출자에서 내려보냄 | 작업 단위 «하나»의 스냅샷 — D1 규율 그대로 | `declarations()` 가 caps 를 «지금 안 듭니다». 거기부터 지어야 함 | ㄱ + 로더 한 겹 |
+| ㄷ | `expand_declaration` 에 «수집기 객체» 하나로 묶어 넘김 | 인자가 안 늘어남 | 새 타입 = 새 개념. 「옆에 만들지 않는다」에 걸림 | 중 |
+
+```
+추천  ㄱ
+왜    ㉡의 병은 「참조 뷰마다 파일을 연다」입니다. 스냅샷을 «어디서» 뜨든 N -> 1 이면
+      총괄 게이트를 만족합니다. ㄴ 의 «파일당 한 번»은 더 옳지만 지시 밖(「그 이상 안 합니다」)이고,
+      caps 를 `declarations()` 까지 끌어올리는 것은 이번에 안 시키신 일입니다
+      ㄷ 은 CLAUDE.md 「개념을 넓힌다, 옆에 만들지 않는다」에 정면으로 걸립니다
+```
+
+### 게이트 — 총괄 지시대로 «돈다»로. 시그니처는 안 잽니다
+
+```
+㉠  참조뷰 하나가 «떨어지는» 통합 선언을 적고 -> rejections 에 «그 뷰 이름»이 나오나
+    (지금: 규칙 이름 + 최상위 사유만. 뷰 이름 «없음»)
+㉡  참조뷰 N(=3) 짜리 통합 선언 하나 -> 설정 파일 «열기 횟수»
+    빨강 N · 초록 1. `_load_ingestion_settings` 를 세어 잽니다
+변이 증명  인자를 도로 빼면 둘 다 «빨개져야» 합니다. 안 빨개지면 제 계기가 거짓입니다
+회귀      expand_declaration 제품 호출자 10 은 인자를 안 주므로 기본 None = 오늘 동작
+```
+
+```
+⛔ 안 합니다  평면 로더 삭제 · 변환 도구 · 문서 · 그 밖 큐
+크기  쟀다: 시그니처 3 · 호출자 1 · 새 시험 파일 1
+      안 쟀다: 시험 «줄 수»
+```
+
+ㄱ 으로 짓습니다. 막히면 즉시 올립니다.
+
+---
+
+## ✅ [구현자] 지시 `0cae5199` 닫힘 — `1c3144f14`. 멈춥니다
+
+㉠㉡ 둘 다 넘어갑니다. 안 ㄱ 그대로, 지시하신 독스트링 한 줄(「스냅샷은 선언 단위이지
+작업 단위가 아니다」)도 «그 이유까지» 적었습니다.
+
+```
+rejections  enrich_declarations.declarations -> expand_declaration -> decide_rules
+            -> chain_rules_from_cells -> _validate_rule
+            셋 다 «선택 인자·기본 None» — expand_declaration 의 나머지 제품 호출자 10 은
+            동작이 «그대로»입니다
+caps        chain_rules_from_cells 가 호출자가 안 주면 스냅샷 «하나»를 뜹니다
+```
+
+### 게이트 — 「돈다」로 쟀고, 변이로 «따로» 증명했습니다
+
+```
+㉠ 변이(rejections 뺌)  -> test_the_unified_door_names_the_view_that_fell «만» 빨강
+㉡ 변이(caps 뺌)        -> test_the_caps_read_does_not_grow_with_the_number_of_views «만» 빨강
+                          뷰 1 개 -> 3 번 · 5 개 -> 11 번. 정확히 2N+1 입니다
+```
+```
+188 passed  넓힌 좌석 셋을 부르는 시험 파일 «전부»(13)
+240 passed  인리치·보고 계열 9 파일
+```
+
+### 🔴 ㉡ 게이트를 처음에 «틀리게» 적었고, 빨강이 맞았습니다
+
+```
+처음   「설정 파일 열기 == 1」 로 박아 적음  -> 빨강(2 였음)
+원인   이 좌석은 두 문을 «둘 다» 걷습니다. 평면 로더가 자기 스냅샷을 하나 뜨므로
+      상수항이 1 더 있습니다. 그건 이 줄이 말하려던 것이 «아닙니다»
+고침   «기울기»를 잽니다 — 「뷰를 늘려도 안 는다」. 상수는 «자리»이고 성질이 아닙니다
+```
+제 계기가 모집단을 틀리게 잡은 것이고, 박은 수 대신 «성질»로 올려서 고쳤습니다.
+
+### ⚠️ 변이 중에 제 스크립트가 파일을 «변이 상태로 두고» 죽었습니다
+
+```
+변이 ① 을 넣은 뒤 앵커가 낡아 변이 ②·복원이 둘 다 assert 로 죽었습니다.
+그 assert 가 «있어서» 조용한 손상 대신 즉시 들켰고, 그 자리에서 복원·초록 확인했습니다.
+착지한 트리는 성합니다(위 수들이 복원 «뒤» 것입니다).
+교훈: 연속 변이는 스크립트로 돌리지 않습니다 — 앵커가 «자기 앞 변이»에 낡습니다
+```
+
+### 안 한 것
+평면 로더 삭제 · 변환 도구 · 문서 · 그 밖 큐 전부. 하나도 안 했습니다.
+남은 모양 하나는 독스트링에 적어 뒀습니다 — 선언 «둘»이 한 작업 단위에서 각자 읽는 것.
+그건 「두 뷰」가 아니라 「두 선언」이라 이 수리가 주장하지 않습니다.
+
+**멈춥니다. 소유자께서 선언을 옮기시는 것이 다음입니다. 감시 켜 둡니다.**

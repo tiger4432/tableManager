@@ -185,8 +185,13 @@ def pg_v2(tmp_path_factory):
             #    🔴 «물리 검증»은 안 죽었다 — 인덱스가 실재하나를 묻는 것은
             #    `join_key_index.unique_index_covering` 이고 그 좌석은 그대로다. 죽은 것은
             #    그것을 감싸던 로더뿐이라, 여기서 «같은 탐침»을 직접 물어 증서를 낸다.
+            #
+            # 🔴 `RIGHT_TABLE` 이지 "reference_rows" 가 아니다. 죽은 로더는 `known_tables` 를
+            #    받아 논리 이름을 «자기가» 물리 이름으로 풀었고, 직접 묻는 이 자리는 그 풀이를
+            #    물려받지 못한다. 제가 논리 이름을 그대로 타이핑해 PG 에서 다섯이 setup 에서
+            #    죽었다 — 탐침은 «이 픽스처가 실제로 만든 표»를 물어야 한다.
             probed = join_key_index.unique_index_covering(
-                verifier_session, "reference_rows", ["join_id"])
+                verifier_session, RIGHT_TABLE, ["join_id"])
         finally:
             verifier_session.close()
         assert probed == UNIQUE_INDEX, (

@@ -102,7 +102,7 @@
   },
   "dt_inventory": {
     "__comment": "[source_config.xlsx] Ontology Class: lineage.",
-    "__search_columns": "Widened past the identity on purpose: dt_lot_confirmed/dt_slot_confirmed are VIRTUAL (virtual_join_rules dt_inventory_confirmed_from_attribution), so without naming them here an unscoped `?q=` cannot reach a value the grid is showing. One join, so it is cheap - and it is the worked example of recovering a virtual column BY DECLARATION. dt_job is kept because a declaration REPLACES the default rather than adding to it.",
+    "__search_columns": "Widened past the identity on purpose: dt_lot_confirmed/dt_slot_confirmed arrive from another table, so without naming them here an unscoped `?q=` cannot reach a value the grid is showing. dt_job is kept because a declaration REPLACES the default rather than adding to it. ⚰️ [판정 652] This said the two were VIRTUAL, announced at read time by `virtual_join_rules dt_inventory_confirmed_from_attribution`. Read-time joins are retired; the declaration that WRITES these two now is `chain_rules.json.sample: sample_unified_join` (shipped disabled). ⚠️ They are NOT in this table's `column_types` - correct while they were virtual, and an open gap now that the grammar writes. Reported, not fixed here.",
     "business_key": "dt_job_id",
     "composite_key_source": [
       "dt_job"

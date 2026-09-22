@@ -4369,8 +4369,11 @@ def _say_the_constraint_refused_this_batch(table_name, batch, exc) -> None:
     samples = [item.business_key_val for item in (batch.updates or [])
                if getattr(item, "business_key_val", None) is not None]
     if constraint.startswith(join_key_index.INDEX_PREFIX):
+        # ⚰️ [판정 652] 여기가 `virtual_join_rules.json` 을 «먼저» 댔다. 그 문법은 은퇴했고,
+        #    이 줄은 «뭔가 깨진 순간»에 나가는 줄이라 없는 파일로 보내면 운영자가 열어 봐야
+        #    고칠 것이 없다. 조인 선언이 사는 곳은 이제 하나다.
         action = operator_line.retract_the_declaration(
-            "`virtual_join_rules.json` / `chain_rules.json` 의 그 조인 선언")
+            "`chain_rules.json` 의 그 조인 선언")
     else:
         action = operator_line.decide_the_repair(table_name, constraint or "(이름 없음)")
     logger.error("%s", operator_line.line(

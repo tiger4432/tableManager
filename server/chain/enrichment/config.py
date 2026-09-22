@@ -926,7 +926,8 @@ def load_enrichment_chain_rules(path: str = None, known_tables: dict = None) -> 
 
 def chain_rules_from_cells(name: str, enabled_written: bool, enabled: bool,
                            source_table, derived_table, cells: dict,
-                           known_tables: dict = None) -> tuple:
+                           known_tables: dict = None, rejections: list = None,
+                           caps: dict = None) -> tuple:
     """A unified `derive.decide` declaration -> (chain rules, refusal).
 
     🔴 [S-239] IT GOES THROUGH THE SAME NORMALIZER THE FILE GOES THROUGH. The old path is
@@ -938,12 +939,41 @@ def chain_rules_from_cells(name: str, enabled_written: bool, enabled: bool,
     「is the key present」 off the raw dict, which is exactly `"auto_confirm" in cells` - so the
     round trip keeps 「written」 and 「absent」 apart without the author ever writing that they
     wrote something.
+
+    🔴 THE CAPS SNAPSHOT IS PER DECLARATION, NOT PER WORK UNIT — say it plainly, because the
+    repair is easy to read as more than it is. `load_enrichment_rules` takes ONE snapshot for
+    a whole file; this takes one per declaration. That is enough for the ban the module wrote
+    down, and the reason is the ban's SUBJECT: 「two VIEWS normalized against two different
+    ceilings」, and views live INSIDE a declaration (`reference_views` is one of its cells).
+    Every view of one declaration therefore shares one ceiling.
+    ⚠️ WHAT REMAINS is a different shape: two DECLARATIONS in one work unit can still read
+    the settings file separately and, if it changed between them, use different ceilings.
+    That is 「두 선언」, not 「두 뷰」, and nothing has claimed otherwise. A caller holding a
+    snapshot passes `caps` and closes even that.
     """
     raw = {"source_table": source_table, "derived_table": derived_table}
     raw.update(cells or {})
     if enabled_written:
         raw["enabled"] = enabled
-    normalized, why = _validate_rule(name, raw, known_tables)
+    # 🔴 [지시 0cae5199] THESE TWO USED TO BE DROPPED, AND EACH ONE COST SOMETHING.
+    #
+    #   `rejections`  The flat door hands its collector down, so an operator reading
+    #                 `config_resolve_report` is told WHICH view or WHICH list_column fell
+    #                 out. Without it this door reported only the rule and the top-level
+    #                 sentence — coarser, not silent, which is the harder kind to notice.
+    #
+    #   `caps`        `cap_value(None, …)` re-enters `_load_ingestion_settings`, and that
+    #                 function opens the file on EVERY call with no cache. It is called
+    #                 once per reference view, so an N-view declaration read the settings
+    #                 file N times. 🔴 THE BAN IS THIS MODULE'S OWN, not a new rule —
+    #                 `load_enrichment_rules` says it above its snapshot: 「a work unit that
+    #                 re-reads config mid-walk can normalize two views against two different
+    #                 ceilings and neither of them is what the file says」. One snapshot here
+    #                 is that discipline for this door; a caller that already holds one
+    #                 passes it and the work unit shares a single read.
+    normalized, why = _validate_rule(
+        name, raw, known_tables, rejections=rejections,
+        caps=caps if caps is not None else load_read_caps())
     if normalized is None:
         return [], why or "the declaration is disabled"
     return chain_rules_for(normalized), None
