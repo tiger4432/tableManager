@@ -31496,3 +31496,15 @@ main.py :4134                 「chain_rules · enrichment_rules · virtual_join
 좌석(`_is_trigger_event`) 본문 «하나»만 남고 `_rule_outcome_before_running`·`trigger_tables_in_order` 는 없습니다.
 남은 히트는 전부 산문이거나 «다른 집합»입니다(`CHAIN_OWNED_EVENT_TYPES`·`FOLLOWED_EVENT_TYPES` 는 DELETE 를 포함 — 다른 축).
 ⚪ 곁: `crud.py` 의 「세 자리에서 CREATE/EDIT 로 고른다」는 문장은 제 계기에 «안 잡힙니다» — 낡았는지는 안 쟀습니다(650).
+
+#### Q-205 · `2eb1d38d`(대기열에서 failed 를 뺌) QA — 제가 연 세 줄에 결함 없습니다 [09-22 21:50]
+
+```
+① 말이 «같이» 움직였나   예 — `population` 문자열에서 `∪ failed` 가 «같은 커밋»에서 빠졌습니다.
+                      뒤에 남은 거짓 문장이 없습니다
+② 보낼 곳이 «있나»      예 — `/admin/outbox/failed` 가 main.py 에 «서 있고», 클라가 이미 네 자리에서 부릅니다.
+                      (오늘 샘플에서 났던 「없는 자리로 보낸다」가 아닙니다)
+③ RETRYING 은 남나      예 — `processed_chain=false` 라 그대로 듭니다. 「다시 돌 것」이므로 맞습니다
+```
+⚪ 안 판 것(화면 레인 자리): 대기열 탭만 연 운영자가 「지금 실패가 있다」를 그 탭에서 «알 수 있나».
+행 수를 안 싣는 것이 그 패널의 규율이라, 실패 신호가 다른 패널에만 있으면 «찾아갈 이유»를 모릅니다. 저는 안 열어 봤습니다.
