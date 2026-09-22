@@ -380,6 +380,16 @@ console.log('\n── G. A LINE IS PRESSED AND IT RUNS ────────�
     && calls[0].params.source === 'dt_log_src'
     && calls[0].params.scope_column === 'lot_id'
     && calls[0].params.scope_values === 'L1', calls);
+  // 🔴 [2026-09-22] 소유자: 「replay chain 밖으로 글씨 안 삐져 나오게해」.
+  //    줄 글자를 `line.textContent` 로 넣으면 «익명 플렉스 항목»이 되고, 그것은
+  //    `min-width: auto` 라 «안 줄어든다» — 끊길 데 없는 규칙 이름이 300px 판 밖으로 나갔다.
+  //    자기 span 에 담겨야 CSS 가 그 항목에 닿는다. (픽셀은 화면에서 잰다 — 보고서)
+  ok('G3-fit the line text lives in its own element, not as an anonymous flex item',
+    lines().every((l) => l.children.some((c) => String(c.className).includes('redo-panel__text'))),
+    lines().map((l) => l.children.map((c) => c.className).join('+')).join(' | '));
+  ok('G3-fit-b ...and that element is the one carrying the words',
+    lines()[0].children.find((c) => String(c.className).includes('redo-panel__text'))
+      .textContent.length > 0, '(empty)');
   ok('G4 ... and that line says so immediately, before any answer',
     lines()[0].textContent.includes('running'), lines()[0].textContent);
   lines()[0].click();
