@@ -774,23 +774,12 @@ def load_verified_rules(db, path: str = None, known_tables: dict = None,
     #
     # ⛔ AND IT CAN NEVER BREAK LOADING. Whatever happens in there, the rules this function
     # was asked for come back.
-    if path is None:
-        try:
-            from chain import synthesis
-            from chain import unique_key
-
-            # 🔴 [S-240] BOTH PRODUCERS OR NEITHER. A unified join declares its unique key
-            # too, and its index carries the same `uq_vjoin_` prefix - so a required set
-            # computed from the read-time declarations alone is the very PARTIAL list this
-            # function already refuses to retract from when a caller passes `path`. Half a
-            # required set does not retract a little less; it retracts the wrong thing.
-            required = {r["unique_index"] for r in verified if r.get("unique_index")}
-            required |= synthesis.declared_unique_index_names(
-                known_tables=known_tables)
-            unique_key.retract_unrequired_once(db, required)
-        except Exception as retract_error:                             # noqa: BLE001
-            logger.warning("[VirtualJoin] 제품 인덱스 회수를 건너뜁니다"
-                           "(로딩은 계속): %s", retract_error)
+    # 🪦 [S-248 -> 판정 652] THE RETRACTION USED TO RUN HERE, and it moved to
+    # `chain.synthesis.retract_unrequired_indexes_once` because this seat is being retired.
+    # It is NOT gone: an index still lives exactly as long as the join that requires it, and
+    # the 23505-on-every-retry it prevents is why that sentence exists. What changed is that
+    # 「짓는 자리」 and 「걷는 자리」 are now one - warmup - instead of creation sitting in the
+    # unified half and retraction in the read-time half.
     return verified
 
 

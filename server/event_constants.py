@@ -103,6 +103,17 @@ RULE_OUTCOMES = frozenset({
     RULE_OUTCOME_FAILED, RULE_OUTCOME_NEVER_EVALUATED,
 })
 
+#: 규칙 «목록»의 두 상태 — 위의 OUTCOME 과 다른 물음이다. 저쪽은 「한 그룹에 무엇을 했나」,
+#: 이쪽은 「이 선언이 아예 서 있기는 한가」.
+#: 🔴 [판정 656] 「없다」와 「꺼짐」이 같은 픽셀이면 안 된다. 운영자가 끈 선언은 목록에
+#:    «남아야» 다시 켤 수 있고, 미완성 선언은 「사라진 것」이 아니라 「안 선 것」이다.
+#: ⛔ 「안 섬」의 사유는 값으로 만들지 않는다 — `state_detail` 이 옆에서 말한다. 꺼짐과
+#:    미완성을 값으로 가르면 화면이 둘을 다시 하나로 접어야 한다 (위 OUTCOME 과 같은 이유).
+RULE_STATE_RUNNING = "running"
+RULE_STATE_DECLARED_ONLY = "declared_only"
+
+RULE_STATES = frozenset({RULE_STATE_RUNNING, RULE_STATE_DECLARED_ONLY})
+
 #: 「이 목록이 «잘렸다»」의 정본 모양 — 축마다 하나. 걷기 응답이 이미 그 모양이다
 #: (`ledger_subgraph` 의 `truncated: {depth, nodes, edges, …}`), 그래서 새 모양이 아니다.
 #: 🔴 「잘렸다」와 「버렸다」는 «다른 사실»이다. 앞은 운영자에게 「상한을 올려라」이고 뒤는

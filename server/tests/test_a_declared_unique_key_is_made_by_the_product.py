@@ -274,41 +274,49 @@ def test_the_required_set_the_retraction_is_handed_names_the_unified_joins_index
     and after this round there are TWO kinds of join that require one, both wearing the
     `uq_vjoin_` prefix. The retraction could only see the read-time declarations, so the
     index built here would be dropped by the next load: built at warmup, retracted on the
-    next read, built again at the next restart."""
-    from chain import legacy_join_declaration as vjc
-    from chain import ingestion_worker
+    next read, built again at the next restart.
+
+    🔴 [판정 652] THE SEAT MOVED AND THE PROMISE DID NOT. The retraction used to run inside
+    the read-time join loader, which is retiring; it now runs in `chain.synthesis`, beside
+    the seat that BUILDS the index. If the move had lost this, the real join's index would
+    have had nobody to take it back - S-248 on the half that stays."""
+    from chain import ingestion_worker, join_key_index, synthesis
 
     seen = {}
-    monkeypatch.setattr(vjc, "load_virtual_join_rules",
-                        lambda **_k: [])
     monkeypatch.setattr(ingestion_worker, "read_rules_document",
                         lambda path=None: {"rules": [DECLARATION], "document": {},
                                            "path": "x", "exists": True, "error": None})
     monkeypatch.setattr(unique_key, "retract_unrequired_once",
                         lambda db, required: seen.setdefault("required", set(required)))
 
-    vjc.load_verified_rules(None, path=None, known_tables={})
+    synthesis.retract_unrequired_indexes_once(None, known_tables={})
 
-    assert vjc.required_index_name("s240_right", ["job"], [None]) in seen["required"]
+    assert join_key_index.required_index_name("s240_right", ["job"], [None]) in seen["required"]
 
 
 def test_a_required_set_that_cannot_see_both_producers_retracts_nothing(monkeypatch):
     """⛔ HALF A REQUIRED SET DOES NOT RETRACT A LITTLE LESS - IT RETRACTS THE WRONG THING.
-    `retract_unrequired_once`'s own contract already refuses to run off a partial list when
-    a caller passes `path`; a producer this seat cannot read is the same partiality."""
-    from chain import legacy_join_declaration as vjc
+
+    🔴 [판정 652] AND THIS IS NOW STRUCTURAL RATHER THAN A RULE THE SEAT FOLLOWS. The old
+    seat could be HANDED a partial list and had to refuse; the new one takes no list at all,
+    so the only set it can compute is the complete one. What is left to assert is that a
+    required set which cannot be computed produces NO retraction rather than an empty one -
+    an empty required set retracts every product index there is.
+
+    ⚠️ 이 줄은 «공허하기 쉽습니다». 이사 직후 이 시험은 「회수를 아예 안 부르니 called 가
+    비었다」로 거저 초록이었습니다 - 그래서 이제 새 좌석을 «직접» 부릅니다."""
     from chain import synthesis
 
     called = []
-    monkeypatch.setattr(vjc, "load_virtual_join_rules", lambda **_k: [])
     monkeypatch.setattr(synthesis, "declared_unique_index_names",
                         lambda **_k: (_ for _ in ()).throw(RuntimeError("no catalogue")))
     monkeypatch.setattr(unique_key, "retract_unrequired_once",
                         lambda db, required: called.append(required))
 
-    vjc.load_verified_rules(None, path=None, known_tables={})
+    with pytest.raises(RuntimeError):
+        synthesis.retract_unrequired_indexes_once(None, known_tables={})
 
-    assert called == []
+    assert called == [], "요구 집합을 못 구했는데 «빈 집합»으로 회수하면 전부 걷힙니다"
 
 
 def test_a_declaration_that_is_switched_off_requires_no_index(monkeypatch):
