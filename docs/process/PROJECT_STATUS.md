@@ -12,24 +12,26 @@
 계기   scratchpad/probe_gate_one_v1_absent.py (①) · scratchpad/verify_chain_end_to_end.py (②)
 ```
 
-## 🔴 새 발견 (09-22 21:5x, 총괄이 직접 재서) — 「일이 끝났다」를 짓는 저자가 «둘»이다
+## 🔴 새 발견 — `processed_chain` 이 「끝났다」와 「집어갔다」를 «같이» 나른다
 
-`mark_processed` 독스트링: 「The ONE place an outbox event stops being work」 — **거짓입니다.**
+⚠️ 21:5x 에 제가 「저자가 둘」로 적은 것을 «뭀니다». 응용이 제가 안 열은 네 자리를 열었고,
+제가 다시 열어 확인했습니다 — `run_auto_update.py:845~850` 이 이유를 적어 둔 자리입니다.
 ```
-종일자   ingestion_worker.py:1246      status · processed_chain · processed_at 을 «셋 다» 찍는다
-둘째   run_auto_update.py :852 :889 :982 :1017   processed_chain «만» 찍는다
+그 주석   「돌기 «전»에 찍는다. 다른 스레드라 기다리면 매 틱 같은 행을 다시 집는다.
+        at-most-once 가 맞는 보증이다」   -> 네 자리 다 «고의»입니다
 ```
-그 결과로 이 박스에 남은 행 (제가 SQL 로 재음):
+ᵜ 그래서 결함은 「스케줄러가 두 칸을 빼먹었다」가 아니라 **「집어갔다」에 칸이 «없다»** 입니다.
+축이 빠졌고, 그 자리를 옆 칸이 «빌려줬습니다».
 ```
-5 행  RETROACTIVE_RUN · __retroactive__ · 9/15~9/17 · processed_chain=true · status=PENDING · processed_at=NULL
-       chain_state_of(True,'PENDING') -> ('done', 'unexpected_status:PENDING')   <- 어휘는 이름을 가지고 있다
-→ 대기열에 «안 들어감» (undelivered 는 status='SUCCESS' 를 요구)
-→ 실패 라우트에도 «안 들어감» (status≠FAILED)
-→ **어느 화면에도 안 뜽니다.** 그리고 그 event_type 이 2026-09-04 장애의 그 타입입니다
+갈라지면   빌린 행은 status=PENDING · processed_at=NULL 이라
+          대기열(앞으로 돌 것)에도, 실패 라우트에도 «안 듭니다»
+실물     RETROACTIVE_RUN 5 행 (9/15~9/17). 어느 화면에도 안 뜽니다
+          그리고 그 event_type 이 2026-09-04 장애의 그 타입입니다
+⛔ 수리를 「:852 에서 mark_processed 를 부른다」로 하면 «거짓말»입니다 — 그때 일은 안 끝났습니다
 ```
-⚠️ 박스 수입니다 — 운영 주장이 아닙니다. 주장은 «저자가 둘»이고 그건 코드입니다.
-⚪ 안 봤습니다: 스케줄러가 그렇게 찍는 것이 «일부러»인가. 그 네 자리를 안 열었습니다
-⏸️ 소유자 판정 전까지 **지시 안 합니다** (「구현자 너무 오래하는데」 — 큐를 더 먹이지 않습니다)
+⏸️ 소유자 판정 대기. 지시 안 합니다.
+⚪ 응용이 같은 회차에 찾은 «예비군» 하나: 「이 규칙이 켜져 있나」가 적재된 규칙 쪽에 좌석이 없습니다
+   (server/chain 안 23 자리가 손으로 묻고, 기본값이 전부 True 라서 오늘은 안 깨집니다)
 
 ## 🟢 「대기열」 탭 — 섰다 (09-22 20:2x. 총괄이 «화면을 열어» 확인)
 
