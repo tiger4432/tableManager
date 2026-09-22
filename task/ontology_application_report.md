@@ -32052,3 +32052,68 @@ Q-209·Q-210 은 이미 올렸습니다. 그 «뒤»에 「셌으면 센 명령�
 그 호출의 0 은 그때 「안 센 수」였습니다 — 체인 없이 다시 재서 카나리아 >0 을 확인했습니다.
 
 미커밋 0 · 미푸시 0.
+
+---
+
+## 문서 정비 ① · CODE_MAP 이 «없는 것»을 줄번호까지 붙여 살아 있다고 적고 있습니다 (08:49)
+
+지시대로 고치기 «전»에 올립니다. 소스와 대조한 결과입니다.
+
+### 센 명령 (둘 다 카나리아 통과: `declared:join` = 10, `zzz_not_real_token` = 0)
+
+```
+git grep -c -E "^def <이름>"   origin/main -- <파일>   | awk -F: '{s+=$NF} END{print s+0}'
+git grep -n -F "<낱말>"        origin/main -- 'server/**/*.py' 'server/*.py' | grep -v /tests/
+```
+
+### 발견 — CODE_MAP 의 다섯 자리
+
+| CODE_MAP | 적힌 것 | 소스 | 
+|---|---|---|
+| :1808 | `writes_itself(rule)` | `rule_run.py` 정의 **0** |
+| :1811 | `self_writing_name(rule)` | `rule_run.py` 정의 **0** |
+| :2794 | `label_for(name)` · `writes_itself(name)` · `stamps_origin(name)` | 셋 중 **`writes_itself` 만 없음** |
+| :2837 | `register_builtin(kind, fn, hands, stamps_origin=False, writes_itself=True, label="mapper")` :359 | 정의 **0** |
+| :2847 | `class UnknownBuiltinKind(ValueError)` :122 · `BUILTIN_KINDS` :309 · `register_builtin(` | 셋 다 정의 **0** |
+
+그리고 표 자체가 틀렸습니다(:2799–:2802 · :2824):
+
+```
+적힌 것   사실 넷 (label · stamps_origin · writes_itself) · 이름은 declared: «넷»
+소스      TEMPLATE_FACTS 의 칸은  label · stamps_origin · params   (writes_itself 칸 «없음»)
+         항목은 «셋» — join_into(label join) · auto_confirm(label decide) · dedup(label decide)
+         declared:virtual_join 템플릿 없음 (시험 제외 코드의 히트 2, 둘 다 ⚰️ 주석)
+```
+
+🔴 **그리고 «있는데 안 적힌» 것이 하나 — `params`.** 이게 제일 중요합니다:
+`dynamic_mappers._install_templates` 의 주석이 그 값을 이렇게 적어 뒀습니다 —
+「params 없이 등록하면 로더에게 «이 맵퍼는 인자를 선언하지 않는다»가 되어 진짜 조인이
+전부 `undeclared_param` 으로 거절됐다. 실측: 선언이 통째로 로드에서 떨어져 규칙 목록이 비었다」.
+CODE_MAP 의 「사실 셋/넷」 목록에 이 칸이 «없습니다». 다음 사람이 그 표를 보고 등록 줄을
+만들면 같은 자리로 갑니다.
+
+### 문서 둘이 서로 어긋납니다
+
+```
+SYSTEM_OVERVIEW:245  「`builtin:` 네 표와 `register_builtin` 은퇴」   <- 소스와 맞음
+CODE_MAP:2837·2847   register_builtin · BUILTIN_KINDS 를 줄번호로 적음 <- 소스와 어긋남
+```
+코드 쪽이 틀린 경우가 아닙니다 — 같은 파일 안의 ⚰️ 주석(`rule_run.py:174` 「총괄 2026-09-23」)과
+SYSTEM_OVERVIEW 가 «둘 다» 은퇴를 적고 있습니다. CODE_MAP 만 낡았습니다. 그래서 CODE_MAP 을 고칩니다.
+
+### 확인했고 «결함 아님»
+
+```
+docs/guide/config/virtual_join_rules.md      머리에 ⚰⚰ 「이제 아무도 안 읽습니다」 — 참
+server/config/sample/virtual_join_rules.json.sample  `_comment` 에 「DO NOT COPY」 — 참
+```
+이름만 보고 「죽은 파일을 가리킨다」고 셀 뻔한 자리입니다. 머리를 열어서 걸렀습니다.
+
+### 다음
+
+```
+지금  위 다섯 자리 + 표를 소스에 맞춰 고칩니다 (CODE_MAP)
+다음  2 PRIMITIVES · 3 guide·spec (은퇴 낱말로 grep) · 4 히스토리
+안 셌다  virtual_join 을 «살아 있는 것처럼» 가리키는 guide·architecture 자리 —
+        오늘 은퇴 목록 밖입니다. 3 단계에서 세겠습니다. 지금 수를 적지 않습니다
+```
