@@ -4576,7 +4576,15 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
 
     ⚠️ `/admin/chain/queue` 와 «다른 물음»이다. 저쪽은 「얼마나 밀렸나」(깊이·나이)이고
        이쪽은 「무엇이 돌 예정인가」(행과 규칙)다. 두 물음이 «같은 판단»을 공유한다 —
-       `outbox_owner` · `PLACEHOLDER_TABLE_NAMES` · `fires` · 상태 어휘 넷 다 좌석이 하나다.
+       `outbox_owner` · `PLACEHOLDER_TABLE_NAMES` · `fires` · `chain_state_of`.
+
+    ⚠️ 그 넷이 오늘 «좌석 하나»인 것은 «잰» 사실이다(2026-09-22):
+       `git grep -cE "^def <이름>|^<이름> = " -- server ':!server/tests'` 가 셋 다 1 이고,
+       부르는 자리는 각각 2 · 2 · 1 이다.
+       🔴 그런데 «그것을 지키는 시험은 `fires` 에만 있다» —
+          test_one_predicate_says_whether_a_rule_fires.py 의 드리프트 오라클 둘.
+          나머지 셋은 «둘째 철자가 생겨도 아무것도 안 운다». 그래서 이 문장은
+          「오늘 참」이지 「앞으로도 참」이 아니다 — 고칠 때 다시 세라.
 
     ⛔ `payload` 는 «응답에 안 나간다». 질의는 싣는다 — `_rule_accepts_event` 가
        `source_name` 을 읽어야 「이 규칙이 도나」를 답할 수 있기 때문이고, 읽고 버린다.
