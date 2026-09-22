@@ -294,6 +294,34 @@ def test_the_required_set_the_retraction_is_handed_names_the_unified_joins_index
     assert join_key_index.required_index_name("s240_right", ["job"], [None]) in seen["required"]
 
 
+def test_the_required_set_holds_both_producers_while_both_grammars_live(monkeypatch):
+    """⚰️ [Q-192] 제가 좌석을 옮기며 «반쪽»만 옮긴 자리입니다. 두 문법이 각각 인덱스를
+    요구하고 둘 다 `uq_vjoin_` 접두를 씁니다 — 회수기는 그 접두로 «통째로» 훑으므로,
+    한쪽만 든 요구 집합은 조금 덜 걷는 게 아니라 «다른 쪽의 살아 있는 인덱스»를 걷습니다.
+    그것이 S-248 의 장애(23505, 그룹 영구 실패)를 아직 도는 문법에 겨눈 것입니다.
+
+    ⚠️ 이 박스에서는 레거시 선언이 전부 거절돼 «영향이 0» 이었습니다. 그래서 이 줄이
+    있습니다 — 박스의 0 은 운영에 대해 아무 말도 안 합니다."""
+    from chain import join_key_index, legacy_join_declaration, synthesis
+
+    legacy_name = join_key_index.required_index_name("q192_right", ["job"], [None])
+    monkeypatch.setattr(legacy_join_declaration, "load_virtual_join_rules",
+                        lambda **_k: [{"right_table": "q192_right",
+                                       "right_columns": ["job"],
+                                       "right_folds": [None]}])
+    monkeypatch.setattr(synthesis, "declared_unique_index_names",
+                        lambda **_k: {"uq_vjoin_unified_side"})
+
+    seen = {}
+    monkeypatch.setattr(unique_key, "retract_unrequired_once",
+                        lambda db, required: seen.setdefault("required", set(required)))
+
+    synthesis.retract_unrequired_indexes_once(None, known_tables={})
+
+    assert seen["required"] == {"uq_vjoin_unified_side", legacy_name}, (
+        "요구 집합이 «한 문법»만 담으면 나머지 문법의 살아 있는 인덱스가 걷힙니다")
+
+
 def test_a_required_set_that_cannot_see_both_producers_retracts_nothing(monkeypatch):
     """⛔ HALF A REQUIRED SET DOES NOT RETRACT A LITTLE LESS - IT RETRACTS THE WRONG THING.
 

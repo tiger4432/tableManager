@@ -292,6 +292,39 @@ def retract_unrequired_indexes_once(db, known_tables: dict = None) -> dict:
     from chain import unique_key
 
     return unique_key.retract_unrequired_once(
-        db, declared_unique_index_names(known_tables=known_tables))
+        db, declared_unique_index_names(known_tables=known_tables)
+        | _legacy_required_index_names(known_tables=known_tables))
+
+
+def _legacy_required_index_names(known_tables: dict = None) -> set:
+    """아직 살아 있는 «읽기 시점» 조인 선언이 요구하는 `uq_vjoin_*` 이름.
+
+    🔴 [Q-192] BOTH PRODUCERS OR NEITHER, AND THIS HALF IS NOT GONE YET. Two grammars write
+    declarations that require an index and BOTH indexes wear the `uq_vjoin_` prefix, so the
+    retraction sweeps them together. A required set holding only one half does not retract a
+    little less - it retracts the OTHER half's live indexes, which is S-248's outage (23505
+    on every insert, the group failing permanently) pointed at the grammar that still runs.
+    Measured by adversarial QA on the commit that moved the seat: the move carried the
+    retraction across and left this half behind.
+
+    ⚰️ AND IT DIES WITH ITS GRAMMAR, NOT BEFORE. 판정 652 retires the read-time join; when
+    that declaration file and its loader go, this function goes IN THE SAME COMMIT. Removing
+    it earlier is precisely the half-set this docstring is about.
+
+    ⚠️ NAMES ONLY, NO DATABASE. `load_virtual_join_rules` validates SHAPE and approves
+    nothing, so this costs a file read and no session - the retraction's caller already holds
+    the only session in play.
+    """
+    from chain import join_key_index, legacy_join_declaration
+
+    names = set()
+    for rule in legacy_join_declaration.load_virtual_join_rules(
+            known_tables=known_tables) or ():
+        table = (rule or {}).get("right_table")
+        columns = (rule or {}).get("right_columns")
+        if table and columns:
+            names.add(join_key_index.required_index_name(
+                table, columns, rule.get("right_folds")))
+    return names
 
 
