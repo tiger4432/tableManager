@@ -210,6 +210,44 @@ function suite(mod) {
     ok('S8 ...in the server own words', cycleText.includes('would loop'), cycleText);
   }
 
+  console.log(`${LF}-- 판정 638 ①: a DECLARED self-update is not a cycle --`);
+  {
+    // 🔴 THE FIELD MAY NOT BE THERE YET. The client lands FIRST (판정 622) so that no window
+    //    shows a broken screen, and an absent field reads as an EMPTY LIST -- 「없다」 and
+    //    「0개」 are not distinguished (판정 638 ①). If absence threw, every window between
+    //    this commit and the server's would be dark.
+    const before = { nodes: [{ id: 'a' }], edges: [], cycles: [] };
+    const beforeView = chainGraphView(before);
+    eq('V1 an absent field still draws', beforeView.state, 'ready');
+    eq('V2 ...and reads as an empty list', beforeView.declaredNotes.length, 0);
+    eq('V3 ...and marks nobody', beforeView.nodes.filter((n) => n.declaredSelf).length, 0);
+
+    // The items are the CYCLE LIST's shape (판정 638 ①): table ids, or a sentence.
+    const declared = {
+      nodes: [{ id: 'a' }, { id: 'b' }], edges: [], cycles: [],
+      declared_self_updates: [['a'], 'dt_log declares a self-update: dt_log -> dt_log'],
+    };
+    const dv = chainGraphView(declared);
+    eq('V4 an array item marks its table', dv.nodes.find((n) => n.id === 'a').declaredSelf, 'true');
+    eq('V5 ...and not the others', dv.nodes.find((n) => n.id === 'b').declaredSelf, 'false');
+    // 🔴 THIS IS WHAT THE SPLIT IS FOR (판정 616·620). A declared self-update counted as a
+    //    cycle turns the table red, and the operator reads their own sanctioned declaration
+    //    as a fault. Nothing throws when this is wrong -- it just lies in red.
+    eq('V6 ...and NOBODY is in a cycle because of it', dv.nodes.filter((n) => n.inCycle).length, 0);
+    eq('V7 a sentence is carried through as a value', dv.declaredNotes.length, 1);
+    eq('V8 ...and NOT into the cycle list', dv.cycleNotes.length, 0);
+
+    const dDoc = makeDoc();
+    const dMount = dDoc.createElement('div');
+    new ChainGraphPanel(dMount, { doc: dDoc }).render(declared);
+    eq('V9 the line reaches the screen under its OWN class',
+      byClass(dMount, 'chain-graph-declared').length, 1);
+    // A box that is not there is SCORED, not thrown on -- same reason as S7/S8.
+    const dText = (byClass(dMount, 'chain-graph-declared')[0] || {}).textContent || '(none)';
+    ok('V10 ...in the server own words', dText.includes('self-update'), dText);
+    eq('V11 ...and no cycle line is drawn', byClass(dMount, 'chain-graph-cycle').length, 0);
+  }
+
   console.log(`${LF}-- C-78: a synthesized rule is not a rule anybody wrote down --`);
   {
     // 🔴 THE SHAPE MEASURED AT `server/chain_graph.py` (S-179 / 판정 293), not taken from the
@@ -474,6 +512,25 @@ const MUTANTS = [
     catches: 'X1 both shapes reach the line',
     from: "    contested: contestedLine(payload),",
     to: "    contested: []," },
+  // 🔴 판정 638 ① / 616 / 620: the two lists must not re-merge. Each of these four is silent --
+  //    nothing throws, the graph draws, and a declaration reads as a defect (or vanishes).
+  { id: 'M16', what: 'a declared self-update is counted as a cycle',
+    catches: 'V6 ...and NOBODY is in a cycle',
+    from: '    if (Array.isArray(item)) for (const id of item) declaredTables.add(id);',
+    to: '    if (Array.isArray(item)) for (const id of item) { declaredTables.add(id);'
+      + ' inCycle.add(id); }' },
+  { id: 'M17', what: 'the declared sentence is folded into the cycle list',
+    catches: 'V8 ...and NOT into the cycle list',
+    from: '    else if (item) declaredNotes.push(String(item));',
+    to: '    else if (item) cycleNotes.push(String(item));' },
+  { id: 'M18', what: 'the declared line is drawn wearing the cycle class',
+    catches: 'V11 ...and no cycle line is drawn',
+    from: "      line.className = 'chain-graph-declared';",
+    to: "      line.className = 'chain-graph-cycle';" },
+  { id: 'M19', what: 'the node stops exposing its declared self-update',
+    catches: 'V4 an array item marks its table',
+    from: '      declaredSelf: declaredTables.has(node.id),',
+    to: '      declaredSelf: false,' },
   { id: 'M7c', what: 'CONTROL: a comment line is removed', control: true,
     from: '/** 합성된 규칙의 `origin` 은 이 접두로 시작합니다 — 뒤가 «어느 인리치에서 왔나»입니다. */',
     to: '/** */' },

@@ -187,6 +187,18 @@ export function chainGraphView(payload) {
     else if (cycle) cycleNotes.push(String(cycle));
   }
 
+  // 🔴 [판정 638 ①] 「선언된 자기 갱신」은 «고리가 아니다» — 616·620 의 판정이다.
+  //    그래서 cycles 와 «다른 칸»으로 오고, 빨강(is-cycle)을 안 쓴다. 칸이 없으면 «빈 목록» —
+  //    「없다」와 「0개」를 안 가른다(638 ①). 서버가 이 칸을 내기 «전»에도 화면은 안 깨진다.
+  const declared = payload && Array.isArray(payload.declared_self_updates)
+    ? payload.declared_self_updates : [];
+  const declaredTables = new Set();
+  const declaredNotes = [];
+  for (const item of declared) {
+    if (Array.isArray(item)) for (const id of item) declaredTables.add(id);
+    else if (item) declaredNotes.push(String(item));
+  }
+
   const layer = layersOf(nodes, edges);
   const seen = new Map();
   const placed = nodes.map((node) => {
@@ -211,6 +223,7 @@ export function chainGraphView(payload) {
       undeclared: node.declared === false,
       kind: node.kind,
       inCycle: inCycle.has(node.id),
+      declaredSelf: declaredTables.has(node.id),
       wakes: Array.isArray(node.wakes) ? node.wakes : [],
     };
   });
@@ -245,6 +258,7 @@ export function chainGraphView(payload) {
     cycles,
     // 「고리가 있다」는 사실은 표를 못 칠할 때도 «말해져야» 합니다.
     cycleNotes,
+    declaredNotes,
     counts: countLine(payload && payload.counts),
     // 다투는 칸·표. «0 이면 빈 목록»이고, 빈 목록이면 아래 줄이 아예 없습니다 —
     // 「다툼 없음」이라 적는 순간 그건 문장이지 값이 아닙니다.
@@ -345,7 +359,7 @@ export class ChainGraphPanel {
 
     for (const node of view.nodes) {
       const group = this._svg('g', {
-        class: 'cg-node' + (node.dim ? ' is-dim' : '') + (node.inCycle ? ' is-cycle' : '')
+        class: 'cg-node' + (node.dim ? ' is-dim' : '') + (node.inCycle ? ' is-cycle' : '') + (node.declaredSelf ? ' is-declared-self' : '')
           + (node.undeclared ? ' is-undeclared' : '')
           + (node.kind === 'ledger' ? ' is-ledger' : ''),
         'data-node': node.id,
@@ -374,6 +388,14 @@ export class ChainGraphPanel {
     for (const note of view.cycleNotes || []) {
       const line = this.doc.createElement('div');
       line.className = 'chain-graph-cycle';
+      line.textContent = note;
+      this.root.appendChild(line);
+    }
+    // 🔴 [638 ①] 고리 줄과 «같은 목록에 넣지 않는다» — 그러면 616·620 이 가른 둘이
+    //    화면에서 다시 합쳐진다. 문장은 서버의 것이고 여기서 다시 쓰지 않는다.
+    for (const note of view.declaredNotes || []) {
+      const line = this.doc.createElement('div');
+      line.className = 'chain-graph-declared';
       line.textContent = note;
       this.root.appendChild(line);
     }

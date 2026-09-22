@@ -267,6 +267,9 @@
           되고, 그건 토큰 층의 문 가르기입니다. 이 상자가 앉은 면의 이름을 그대로 씁니다. */
     .cg-node circle { fill: var(--bg-surface); stroke: var(--text); stroke-width: 1.5; cursor: pointer; }
     .cg-node text { fill: var(--text); font-size: 11px; }
+    /* 🔴 [638 ①] 「선언된 자기 갱신」은 고리가 아니다 — 노랑(warning)이고 빨강(danger)이 아니다.
+       «고리 규칙 «앞»에 산다» — 한 표가 둘을 다 달면 고리의 빨강이 이긴다 */
+    .cg-node.is-declared-self circle { stroke: var(--warning); }
     .cg-node.is-cycle circle { stroke: var(--danger); }
     .cg-optin { fill: var(--text-dim); font-size: 11px; }
     .chain-graph-wakes { padding: var(--space-1) var(--space-2); }
@@ -278,6 +281,8 @@
     .cg-node.is-ledger circle { fill: var(--text-dim); }
     /* 표를 못 짚는 고리도 «말해집니다». 서버의 문장 그대로입니다. */
     .chain-graph-cycle { padding: var(--space-1) var(--space-2); color: var(--danger); font-family: var(--font-mono); }
+    /* 고리 줄과 «다른 낱말»이라 «다른 모양»이다. 빨강이면 616·620 이 가른 둘이 화면에서 합쳐진다 */
+    .chain-graph-declared { padding: var(--space-1) var(--space-2); color: var(--warning); font-family: var(--font-mono); }
     /* 🔴 C-79 — 원장 «절반»이 안 읽힌 날. 이 줄이 없으면 원장 엣지 «0» 이 「원장이 아무것도
        안 깨운다」로 읽힙니다. 사실은 「그 절반이 아예 안 실렸다」입니다. 문장은 서버의 것입니다. */
     .chain-graph-ledger-error {
