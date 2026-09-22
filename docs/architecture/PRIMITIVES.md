@@ -23,7 +23,7 @@
 > ### 그 직전 (2026-09-16 «후속» · doc-keeper · **세 파일 한 이름공간 · 명부는 값 · PG 증명의 자리 · 부팅 순서는 자기 모듈**) — **신규 4 · 항목 정정 3**
 > - **§7 ⭐⭐「한 뜻을 «여러 파일»에 적을 수 있으면 이름공간은 «하나»고 판정 자리도 «하나»다.」** S-234(`5c845e67`) · 판정 408·409. 파일 쌍마다 검사기 둘이 «두 이름공간의 증거»였고, 못 보는 사본은 순서 유도가 말없이 버렸다. 로더의 집합 자리 «한 곳»에서 두 사본 «다» 안 세우고 한 번 거절 · `ASSY_CHAIN_SYNTHESIZE` 은퇴 · 부팅 줄 `[ChainRules] set(N)` 하나.
 > - **§6 ⭐⭐「런처의 자식 명부는 «값»이다.」** S-255(`8c824a1e`). 오라클 다섯이 런처를 텍스트로 잘라 주석 하나에 빨개졌다. `runtime/launcher_specs.child_specs()`.
-> - **§6 ⭐⭐「PostgreSQL 만 나를 수 있는 증명은 «표지»를 달고 «한 명령»으로만 돈다.」** S-256·S-257·S-258(`baf17cfa`·`ae28b356`·`27f5d7d9`) · `69f7a130`. `@pytest.mark.pg` · `scripts/run_pg_tests.py` · 검색 경로 한 철자 `<scratch>,public`.
+> - **§6 ⭐⭐「PostgreSQL 만 나를 수 있는 증명은 «표지»를 달고 «한 명령»으로만 돈다.」** S-256·S-257·S-258(`baf17cfa`·`ae28b356`·`27f5d7d9`) · `69f7a130`. `@pytest.mark.pg` · `server/scripts/run_pg_tests.py` · 검색 경로 한 철자 `<scratch>,public`.
 > - **§6 ⭐⭐「부팅 «순서»는 자기 모듈에 산다.」** C-110(`c96527d9`). `client2/src/startup.js` — 소켓이 첫 줄, 하니스가 자르지 않고 import 한다.
 > - **정정 3** — §3 「택1」: 빈 값은 `{}`, 내려가기의 저자는 `childOf` 하나(C-115 `dd4cd689`) · §3 「화면이 내미는 목록」: `synthesized_kind_counts` 는 없다 · §7 「스위치는 안 세우기」: `ASSY_CHAIN_SYNTHESIZE` 는 주어와 함께 은퇴.
 >
@@ -272,7 +272,7 @@
 
 ### ⭐⭐ **화면은 «자기가 든 신원»으로 묻는다 — 보이는 값이 아니라 `row_id`, 그리고 두 신원이 같이 오면 «거절»한다** (2026-09-16 등록 · S-254 `fe2d0c6c` · C-112 `1295fab4` · C-113 `7156ee62` · C-114 `3bd3b829`)
 - **무엇**: 「이 행들을 다시 돌려라」를 화면이 «보이는 컬럼 값»(업무 키)으로 보냈다. `composite_key_source` 표의 저장 키(`business_key_val`)는 «조립된 문자열»이라 어느 컬럼에도 없고, 그래서 한 행도 안 맞아 `rows_scanned 0` — «오류 없이». 「없어서 0」과 「못 찾아서 0」이 화면에서 같아 보이고, 운영자의 다음 행동은 둘 다 «버튼을 다시 누르는 것»이다. 그리드가 «모든 표»에서 드는 신원은 `row_id` 하나다 — 그것으로 묻는다. 서버는 `row_ids` 를 `business_keys` «옆»에 받고(평키 표의 운영자와 CLI 는 업무 키로 생각한다 — 그 길은 그대로), 둘이 같이 오면 «거절»한다.
-- **어디**: 서버 `chain/replay.replay_rule(row_ids=)`(`trg_model.row_id.in_(ids)` — 트리거 표) · `admin/retroactive.OPERATIONS["chain_replay"]` 의 `row_ids` 파라미터(`count`·`run` 둘 다 넘긴다) + `cli` 줄 · `scripts/chain_replay_cli.py --row-ids` · 클라 `client2/src/redo_banner.js::chainPayload`(`scopeValuesFor(rows, 'row_id')` — 누르는 줄 `params.row_ids` 와 「어드민에서 열기」 `{op, params:{row_ids}}` 가 «같은 신원») · `main.js` 의 `reveal(row)`(row_id 없는 줄이 첫 행을 «보여 준다» — `forEachNode` 로 «객체 동일성» 비교, 키 조회가 «될 수 없는» 것이 그 줄의 정의다). 절차는 [BACKFILL_GUIDE §2.1](../guide/BACKFILL_GUIDE.md), 화면은 [frontend §3.1](./frontend.md).
+- **어디**: 서버 `chain/replay.replay_rule(row_ids=)`(`trg_model.row_id.in_(ids)` — 트리거 표) · `admin/retroactive.OPERATIONS["chain_replay"]` 의 `row_ids` 파라미터(`count`·`run` 둘 다 넘긴다) + `cli` 줄 · `server/scripts/chain_replay_cli.py --row-ids` · 클라 `client2/src/redo_banner.js::chainPayload`(`scopeValuesFor(rows, 'row_id')` — 누르는 줄 `params.row_ids` 와 「어드민에서 열기」 `{op, params:{row_ids}}` 가 «같은 신원») · `main.js` 의 `reveal(row)`(row_id 없는 줄이 첫 행을 «보여 준다» — `forEachNode` 로 «객체 동일성» 비교, 키 조회가 «될 수 없는» 것이 그 줄의 정의다). 절차는 [BACKFILL_GUIDE §2.1](../guide/BACKFILL_GUIDE.md), 화면은 [frontend §3.1](./frontend.md).
 - **언제 재사용**: 화면 → 서버로 「이 행들」을 넘기는 «모든» 손잡이 — 소급 · 철회 · 내보내기 · 이력 조회. 판별 질문: 「이 화면이 보내는 값이 서버가 «찾는 컬럼»에 «실제로 있나」」 — 표 «하나»에서라도 없으면 그 표에서만 나는 조용한 0 이 생긴다.
 - **함정**:
   - 🔴 **오류 없는 0 은 다섯 0 중 최악이다** — 「할 일이 없었다」로 읽힌다. 그래서 두 신원의 «교집합»도 «우선»도 아니라 «거절»이다: AND 는 아무도 안 물은 것을 돌리고, 우선은 다른 칸을 거짓으로 만든다(둘 다 «조용히 틀린 답»의 모양).

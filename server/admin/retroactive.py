@@ -1400,12 +1400,14 @@ def count(db, op: str, params: dict, scan_limit: int = DEFAULT_SCAN_LIMIT) -> di
 def publish(db, op: str, params: dict, requested_by: str = None) -> dict:
     """Queue the run and return. Does NOT execute anything.
 
-    Same mechanism as `POST /admin/auto-update/run-now`: one `DatabaseOutbox` row
-    plus `NOTIFY outbox_event`, consumed by the auto-update scheduler. A retroactive
+    Same mechanism as `POST /admin/auto-update/run-now`: one `DatabaseOutbox` row.
+    The NOTIFY that wakes the consumer is NOT issued here any more - staging the row
+    is what announces it (`database.notify_on_outbox_birth`, 2026-09-22). This used
+    to spell the NOTIFY by hand, and three other sites that did not spell it were
+    silent for exactly that reason. A retroactive
     run walks a whole table, so a synchronous handler would hold the request until
     the browser gave up - and would hold a web-server worker while doing it.
     """
-    from sqlalchemy import text
 
     from database import models
 
@@ -1437,12 +1439,6 @@ def publish(db, op: str, params: dict, requested_by: str = None) -> dict:
         state=RUN_QUEUED,
     ))
     db.commit()
-    try:
-        db.execute(text("NOTIFY outbox_event;"))
-        db.commit()
-    except Exception as notify_err:  # sqlite / non-PostgreSQL
-        logger.debug(f"PostgreSQL NOTIFY skip or failed: {notify_err}")
-
     logger.info(f"[Retroactive] queued run_id={run_id} op={op} params={params}")
     return {"status": "queued", "run_id": run_id, "op": op, "params": params,
             "label": spec["label"]}

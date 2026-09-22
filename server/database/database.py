@@ -215,6 +215,33 @@ def auto_stage_database_outbox(session, flush_context, instances):
                               pending_columns.get((table_name, event_type)))
 
 
+@event.listens_for(Session, "before_flush")
+def notify_on_outbox_birth(session, flush_context, instances):
+    """아웃박스 «행이 태어나면» 알린다 — 누가 만들었든.
+
+    🔴 이것이 «자리 목록»이 아니라 «성질»인 이유. 행은 플러시돼야 존재하고, 이 좌석은
+       sqlalchemy 의 «기반» `Session` 에 걸려 있다(파일 머리의 import). 그래서 어느
+       세션메이커가 만든 세션이든, 생성자를 직접 쓰든, 이 문을 지난다. 공장 함수였다면
+       「열째 호출자가 생성자를 쓰면 끝」이었다.
+
+    실측 2026-09-22 — 이 좌석 «전»에는 `DatabaseOutbox(` 아홉 자리 중 둘만 알렸다:
+    손으로 적은 NOTIFY 넷이 메웠고, 셋(`internal_event_client` · `outbox_expand` ×2)은
+    «아무것도 안 알렸다». 워커에 2 초 폴링이 있어서 아무도 안 울었을 뿐이다.
+
+    ⛔ `auto_stage_database_outbox` «끝»에 붙이지 않는다. 저쪽은 `DYNAMIC_TABLES` 가
+       비면 일찍 return 하므로, 동적 표가 없는 설치에서 이 알림이 조용히 사라진다.
+       거기 붙였으면 이 파일이 「전부 알린다」고 말하면서 거짓이었을 자리다.
+
+    ⚠️ 이 리스너는 `database.database` 를 «import 한 프로세스에만» 존재한다(판정 364).
+       그것이 「아홉 전부」의 «범위»다 — 시험이 그 조건을 같이 적는다.
+    """
+    from .models import DatabaseOutbox
+    for obj in session.new:
+        if isinstance(obj, DatabaseOutbox):
+            _notify_outbox_once(session)
+            return
+
+
 def _outbox_envelope():
     """The (tx_id, user, source, timestamp) every outbox payload carries.
 
@@ -307,7 +334,6 @@ def stage_collapsed_event(session, event_type, table_name, row_ids, columns=None
             chunk_event.payload[CHAIN_DEPTH_KEY] = chain_depth
         session.add(chunk_event)
 
-    _notify_outbox_once(session)
 
 
 def stage_event(session, event_type, table_name, data_row):
@@ -360,7 +386,6 @@ def stage_event(session, event_type, table_name, data_row):
         event_obj.payload[CHAIN_DEPTH_KEY] = chain_depth
     session.add(event_obj)
 
-    _notify_outbox_once(session)
 
 
 def _notify_outbox_once(session):
@@ -375,7 +400,7 @@ def _notify_outbox_once(session):
     # listeners is unchanged, and the reason is PostgreSQL's own documented rule rather
     # than a reading of our code: duplicate notifications on the same channel with the
     # same (here: empty) payload within one transaction are collapsed to a single
-    # delivered event. The listener - `chain_ingestion_worker.OutboxListener` - drains
+    # delivered event. The listener - `outbox_listener.OutboxListener` (the chain worker's and the API's) - drains
     # `connection.notifies` to empty and treats any wake as "repoll the outbox", so it
     # could not distinguish 1 from 200 even if PostgreSQL delivered them. What the
     # listener needs is AT LEAST ONE notify in any transaction that stages an outbox
@@ -389,7 +414,8 @@ def _notify_outbox_once(session):
         bind = session.bind or session.get_bind()
         if bind and bind.dialect.name == "postgresql":
             from sqlalchemy import text
-            session.execute(text("NOTIFY outbox_event;"))
+            from event_constants import OUTBOX_NOTIFY_CHANNEL
+            session.execute(text("NOTIFY %s;" % OUTBOX_NOTIFY_CHANNEL))
             session.info[_OUTBOX_NOTIFY_SENT] = True
     except Exception:
         # Fallback: DB 연결 상태 등으로 실패하더라도 메인 트랜잭션에 영향을 주지 않도록 무시

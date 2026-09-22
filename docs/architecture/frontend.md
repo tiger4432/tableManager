@@ -93,9 +93,9 @@ npm run build     # prebuild(§2.1) 통과 후 dist/ 생성
 
 | 스크립트 | 무엇을 채점하나 |
 |---|---|
-| `check:clipboard` | 클립보드 관례 (`scripts/check_clipboard_convention.mjs`) |
+| `check:clipboard` | 클립보드 관례 (`client2/scripts/check_clipboard_convention.mjs`) |
 | `check:contracts` | `contracts/*/client_harness.mjs` **발견식 스캔** — 이음새의 클라 절반을 `vectors.json` 에 채점 |
-| `check:harnesses` | `client2/tests/*.mjs` **발견식 스캔** (`scripts/check_harnesses.mjs`) |
+| `check:harnesses` | `client2/tests/*.mjs` **발견식 스캔** (`client2/scripts/check_harnesses.mjs`) |
 | `check:suggest-keys` | 값 제안 셀 에디터의 키보드 계약. `prebuild` 에는 없고 위 스캔에 «흡수»돼 있습니다 |
 
 실측 2026-08-27: 하네스 **60** · 계약 **8**.

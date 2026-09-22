@@ -38,6 +38,10 @@ from event_constants import (MAX_NOTIFY_CREATED_LOGS, BROADCAST_ITEM_LIMIT,
 # where they are read back into the payload shape the mappers take.
 import outbox_expand
 
+# [듣는 쪽이 둘] `OutboxListener` 는 2026-09-22 에 `server/outbox_listener.py` 로 «옮겼다».
+# API 프로세스도 같은 채널을 들어야 해서다 — 복사가 아니라 인스턴스가 둘이다.
+from outbox_listener import OutboxListener
+
 # `META_TABLE` — the meta-upsert rule points its edge at this name. (The M3
 # auto-registration this import once served retired 2026-09-07.)
 import map_meta_registrar
@@ -85,117 +89,6 @@ LOG_FILENAME = "chain_worker.log"
 logger = get_process_logger("Chain", LOG_FILENAME)
 
 
-class OutboxListener:
-    """[Latency Fix #4] 상시 유지되는 LISTEN 전용 raw 커넥션.
-
-    기존 `blocking_wait`은 빈 폴링 이후 대기할 때마다 **새 커넥션으로 LISTEN을 재등록**했다.
-    빈 폴링 시점과 LISTEN 등록 사이에 발행된 NOTIFY는 유실되어 최대 timeout(2초)만큼
-    tail latency가 발생했다(LISTEN-after-check 레이스).
-
-    개선: 워커 시작 시 LISTEN을 **1회만** 등록하고 커넥션을 재사용한다. LISTEN이 항상
-    폴링보다 먼저 등록되어 있으므로, 폴링 이후 발행된 NOTIFY는 커넥션 소켓에 버퍼링되어
-    다음 `wait()`에서 즉시 감지된다(재폴링 유도). 등록 전 발행분을 놓치지 않도록 대기 진입
-    직후 버퍼된 통지를 먼저 소비(drain)한다.
-
-    SYSTEM_RELOAD 통지도 같은 채널(`outbox_event`)을 쓰므로 그대로 공존한다(깨우기만 하고
-    실제 판정은 루프 상단의 SYSTEM_RELOAD 조회가 담당).
-    """
-
-    def __init__(self, db_session_factory, channel="outbox_event"):
-        self._factory = db_session_factory
-        self._channel = channel
-        self._connection = None  # 상시 유지되는 raw DBAPI 커넥션(psycopg2)
-        # S-176: how many times this listener has had to rebuild its connection. A count
-        # rather than a flag, because 「it reconnected once at boot」 and 「it is
-        # reconnecting every minute」 are the two states an operator needs told apart, and
-        # a boolean renders them alike.
-        self._reconnects = 0
-
-    def _ensure_connection(self):
-        """LISTEN 커넥션이 없으면(최초/재생성) 생성하고 LISTEN을 1회 등록한다."""
-        if self._connection is not None:
-            return
-        db = self._factory()
-        try:
-            engine = db.bind or db.get_bind()
-            url = engine.url
-        finally:
-            db.close()
-
-        # 🔴 A DEDICATED CONNECTION, NEVER THE POOL'S (S-167). LISTEN needs autocommit,
-        # and `engine.raw_connection()` hands out a POOLED one: `set_isolation_level(0)`
-        # mutates it, and closing the proxy RETURNS IT TO THE POOL still in autocommit.
-        # Measured on this box - the very next checkout was the SAME connection with
-        # `autocommit=True`. Whatever session took it next never began a transaction, so
-        # every `begin_nested()` on it raised 25P01 `no_active_sql_transaction`: the
-        # chain's shared write scope and the reference view were both answering with that.
-        #
-        # ⚠️ THE `in_transaction()` GUARDS CANNOT CLOSE IT. On an autocommit connection
-        # `session.begin()` issues no BEGIN, so the SAVEPOINT still has nothing to sit in -
-        # measured 112 times on the build that already carried those guards. They stay as
-        # correct defences one layer up; this is the seat that has to stop leaking.
-        #
-        # ⛔ SO IT IS NEVER RETURNED. `psycopg2.connect` gives a connection the pool has
-        # never seen, and `_reset_connection`'s `close()` is then a real close, not a
-        # checkin that would put this autocommit connection back into circulation.
-        import psycopg2
-        connection = psycopg2.connect(
-            url.set(drivername="postgresql").render_as_string(hide_password=False))
-        connection.set_isolation_level(0)
-        cursor = connection.cursor()
-        cursor.execute(f"LISTEN {self._channel};")
-        cursor.close()
-        self._connection = connection
-        heartbeat.record_lap("chain", "listen", state="connected",
-                             reconnects=self._reconnects)
-
-    def _reset_connection(self):
-        """끊긴/오류 커넥션을 안전하게 폐기한다(리소스 누수 금지)."""
-        conn = self._connection
-        self._connection = None
-        if conn is not None:
-            self._reconnects += 1
-            heartbeat.record_lap("chain", "listen", state="reconnecting",
-                                 reconnects=self._reconnects)
-        if conn is not None:
-            try:
-                conn.close()
-            except Exception:
-                pass
-
-    def _wait_blocking(self, timeout):
-        try:
-            self._ensure_connection()
-            connection = self._connection
-
-            # 등록 전/폴링 이후 발행되어 소켓에 이미 버퍼된 통지를 먼저 소비 → 즉시 재폴링.
-            connection.poll()
-            if connection.notifies:
-                while connection.notifies:
-                    connection.notifies.pop()
-                return True
-
-            # select로 소켓에 데이터가 들어올 때까지 대기 (CPU 부하 0%)
-            r, w, x = select.select([connection], [], [], timeout)
-            if r:
-                connection.poll()
-                while connection.notifies:
-                    connection.notifies.pop()
-                return True
-            return False
-        except Exception as e:
-            # 커넥션 끊김/예외 시 안전 재생성(다음 wait에서 새 LISTEN 커넥션 확보).
-            logger.error(f"PostgreSQL LISTEN/NOTIFY socket wait failed, resetting listener connection: {e}")
-            self._reset_connection()
-            time.sleep(1.0)
-            return False
-
-    async def wait(self, timeout=30.0):
-        """blocking select를 스레드로 오프로딩하여 asyncio 루프를 막지 않는다."""
-        return await asyncio.to_thread(self._wait_blocking, timeout)
-
-    def close(self):
-        self._reset_connection()
 
 import paths  # single override point (ASSY_DATA_ROOT)
 RULES_PATH = paths.config_path("chain_rules.json")
@@ -3687,7 +3580,7 @@ async def start_chain_ingestion_worker(db_session_factory):
     purge_task = None
 
     # [Latency Fix #4] LISTEN 전용 커넥션을 워커 수명 동안 상시 유지(대기마다 재등록하던 레이스 제거).
-    listener = OutboxListener(db_session_factory, "outbox_event")
+    listener = OutboxListener(db_session_factory, event_constants.OUTBOX_NOTIFY_CHANNEL)
 
     async def idle_wait():
         """The ONE place this loop yields when a tick did no work (S-252).
