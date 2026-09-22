@@ -51386,3 +51386,107 @@ caps        chain_rules_from_cells 가 호출자가 안 주면 스냅샷 «하�
 그건 「두 뷰」가 아니라 「두 선언」이라 이 수리가 주장하지 않습니다.
 
 **멈춥니다. 소유자께서 선언을 옮기시는 것이 다음입니다. 감시 켜 둡니다.**
+
+---
+
+## 09-22 19:50 구현자 -> 총괄 · 계획 (지시 5996b7d49 체인 대기열 탭, 서버 반쪽)
+
+착수 «전» 계획입니다. 아직 한 줄도 안 고쳤습니다.
+
+### 🔴 이 화면은 전에 «사고를 냈고» 그 판정이 코드에 있습니다
+
+`event_constants.py:65` 를 열었습니다. 지시의 기본 모집단에 정면으로 걸립니다:
+
+> 🔴 `processed_chain = false` DOES NOT MEAN "the chain worker is behind". Two daemons
+> empty this table … That happened on 2026-09-04: one RETROACTIVE_RUN row aged in place
+> while /health called the chain worker healthy, and **the queue screen - which says
+> "chain queue" - sent the reader to the chain.**
+
+「체인 대기열」이라는 «이름 자체»가 그 사고의 절반이었습니다. 두 데몬이 이 표를 비웁니다.
+그래서 지시의 `owner` 칸은 장식이 아니라 **이 판정의 수리**입니다.
+
+```
+행마다 owner 를 «묻습니다» — event_constants.outbox_owner (:208). 유도 금지
+합계를 «한 수»로 내지 않습니다 — 두 데몬 행을 더하면 그 사고가 재현됩니다
+table_name 을 내보내기 «전»에 PLACEHOLDER_TABLE_NAMES(:60) 를 묻습니다.
+   `__retroactive__` 는 표가 아닙니다 — 판정이 이유까지 적어 뒀습니다
+```
+
+### 지시의 전제 «둘»을 고쳐야 합니다
+
+**㉠ 「글자까지 «동일한 셋»」 — 동일하지 않습니다.** 원자 하나에 한정 모양이 셋입니다.
+
+| 자리 | 빠진 조건 | 왜 오늘 참인가 |
+|---|---|---|
+| `:1814` | 없음 | 완전형 |
+| `:1904` | `event_type` | `valid_events` 가 이미 걸러져 들어온다 |
+| `:1925` | `enabled` | `rule` 이 `matched_rules` 에서 온다 |
+
+빠진 조건이 그 자리에서 «항상 참»이라 완전형을 셋 다에 먹여도 답이 안 바뀝니다.
+접는 것은 「글자 셋」이 아니라 **술어 하나 + 호출 모양 셋**입니다.
+
+**㉡ 「⛔ 안 건드립니다 … `_group_triggered_rules:1275`」 — `:1275` 는 `:1814` 와
+«바이트까지 동일»합니다.** 접는 쪽입니다. 같이 드신 둘(`watches_table:1018` 이벤트를
+안 봄 · `:1240` `trigger_columns` 를 읽음)은 제외가 맞습니다.
+
+➡️ **게이트 ⑧ 이 낡습니다**: 넷이 접히므로 「여섯 -> 넷」이 아니라 **「여섯 -> 셋」**.
+
+### 걸음 ①
+
+```
+자리  ingestion_worker.py — `_rule_accepts_event` 의 «형제». 네 자리가 이것을 지난다
+프로세스 질문 닫힘  main.py 가 chain.ingestion_worker 를 이미 넷 집습니다(:587·:5482)
+⛔   라우트에서 술어 재작성 금지 · `_rule_outcome_before_running` 안 씁니다
+```
+
+### 걸음 ② — 어휘는 `RULE_STATES` 의 «규율»까지 베낍니다
+
+본으로 드신 어휘를 열어 보니 규율이 하나 더 있었습니다(`event_constants.py:110`):
+「사유는 값으로 만들지 않는다 — `state_detail` 이 옆에서 말한다」.
+제 첫 초안이 이것을 어겨서(`실패·미처리`, `재시도 대기`) 고쳤습니다:
+
+```
+CHAIN_STATE_WAITING / DONE / FAILED  +  state_detail (retrying · 모순 · unknown:<원값>)
+```
+
+### status 어휘의 «저자»는 제 grep 이 아닙니다
+
+```
+잰 값   PENDING · SUCCESS · FAILED · RETRYING
+       RETRYING 은 ingestion_worker.py:2515 «한 자리»뿐이고 제 앞 훑기(52/71/39)에는
+       «없었습니다» — 그 수는 표 여럿을 섞어 센 대리였습니다. 그대로 닫았으면
+       재시도 행이 화면에 「모름」으로 떴습니다
+       UNDELIVERED_MARKER_STATUS(:611) 는 "SUCCESS" 의 «별칭»입니다 (다섯째 값 아님)
+안 쟀다 워커가 status 에 SUCCESS/FAILED 를 쓰는 자리를 «못 찾았습니다».
+       계기 넷(속성 대입·update-dict·생 SQL·DatabaseOutbox.status)에서 읽기만 나왔습니다.
+       이것이 ② 의 첫 일이고, 끝나야 「실패가 processed_chain 을 false 로 두나」를 압니다
+```
+
+### ⚠️ 게이트 1 이 «프로세스»를 못 잽니다 — 밝히고 갑니다
+
+로더는 하나입니다(`replay.load_rules` 도 `load_chain_rules` 를 부릅니다 — 둘째 경로 없음).
+그러나 pytest 는 로더와 라우트를 «한 프로세스»에서 돌려 `TABLE_CONFIG`·`RULES_PATH` 가
+하나입니다. 증명되는 것은 「같은 로더를 부른다」까지입니다.
+프로세스 교차는 박스에서 재고 **RUN.md 한 줄**로 넘깁니다.
+
+### 측정된 비대칭 하나 (지시 밖 — 보고만)
+
+파일에 적힌 규칙은 `enabled:false` 여도 로더가 들고 옵니다(`kept` 루프에 `enabled` 검사
+없음, `:900` 이 ` OFF` 를 찍습니다). 그런데 **합성 규칙은 `:834` 에서 꺼진 것이 버려집니다.**
+꺼진 «합성» 규칙은 이 화면에 영원히 안 뜹니다. 고치지 않습니다.
+
+### 🔴 판정 주실 것
+
+```
+① 게이트 ⑧  접히는 자리가 넷이라 「여섯->셋」입니다. 맞습니까
+② :1275     「안 건드립니다」에 있지만 :1814 와 바이트 동일입니다. 접습니다 — 맞습니까
+③ 어휘      사유를 값에서 빼고 state_detail 로 옮겼습니다. 맞습니까
+④ 🔴 모집단 「기본 processed_chain=false」와 「완료+미전달을 두 칸」이 «동시에 성립하지
+            않습니다» — 미전달 술어가 processed_chain=true 라 기본 모집단에서 구조적으로
+            빠집니다. 그대로 지으면 게이트 4 가 «공허»합니다.
+            추천: 두 부분 인덱스의 합집합(새 인덱스 0). 소유자의 물음이 「앞으로 돌 것」이고
+            미전달 행은 스윕이 다시 쏠 행이라 운영자 눈에는 아직 도는 중입니다
+⑤ 보고만    위 비대칭(꺼진 합성 규칙)
+```
+
+**④ 가 막힙니다 — 모집단이 갈리면 ② 의 게이트 표가 갈립니다. 감시 켜 두고 기다립니다.**
