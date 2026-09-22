@@ -50919,3 +50919,82 @@ RUN.md   머리를 이번 라운드로. 되돌리기 절의 «경로로 해시 �
 **다음**: `scripts/run_pg_tests.py`(PG 표시 시험은 평범한 스위트에서 건너뜁니다) →
 652 2걸음(원장 prepare 상속, 경계는 666) → 657/647 → 662.
 ⚠️ Q-196(`take: "lot_event"` 문자열이 «성공»으로 아홉 컬럼을 노출)은 제 것이 아니라 그대로 열려 있습니다.
+
+---
+
+## 🔴 [구현자] PG 빨강 다섯 — **제 커밋이 냈습니다**. 그리고 제 계기가 그걸 놓칠 뻔했습니다
+
+지시받은 다음 항목 `scripts/run_pg_tests.py` 를 돌렸습니다. 끝났고 **초록이 아닙니다.**
+
+```
+86 passed · 6732 deselected · 5 errors in 101.02s
+5 전부  tests/test_ledger_v2_pg.py — 「ERROR at setup of ...」
+```
+
+**제 것입니다.** 그 파일은 `fd546ccb` 가 고친 파일입니다 — `+22 / -14`.
+죽은 로더의 `load_verified_rules` 를 부르던 픽스처를, 제가 「같은 탐침을 직접 묻는」 모양으로
+다시 썼습니다. 그 탐침이 `None` 을 돌려줍니다.
+
+```
+test_ledger_v2_pg.py:192
+  assert probed == UNIQUE_INDEX
+  E  the unique index this fixture built was not found, so nothing below measures anything: None
+  E  assert None == 'uq_v2s6_reference_22456_gw0'
+```
+
+픽스처가 **인덱스를 만들고** 바로 **다른 세션으로** 묻습니다. 그 둘 사이가 원인이라고
+**추측**하지만 **아직 안 쟀습니다** — 열어서 재고 다음 보고에 적습니다.
+
+```
+⚠️ 축은 안 죽었습니다   묻는 좌석 join_key_index.unique_index_covering 은 그대로고,
+                      평범한 스위트에서 그 좌석의 시험은 초록입니다.
+                      깨진 것은 제가 다시 쓴 «픽스처의 배선»입니다
+🔴 그래서 이 파일은 지금 «아무것도 안 재고» 있습니다 — 에러가 setup 에서 나므로
+   그 밑의 원장 v2 단언 다섯이 «한 줄도» 안 돕니다. 공허한 초록보다 낫지만 구멍은 구멍입니다
+```
+
+### 🔴 그리고 제 계기가 또 틀렸습니다 — 이번엔 카나리아가 아니라 «요약 줄»이 살렸습니다
+
+```
+grep -E "^(FAILED|ERROR)" pg.txt  ->  0 건
+```
+저는 여기서 「빨강 없음」을 읽고 **「PG 깨끗」을 채널에 적을 뻔했습니다.**
+setup 단계 오류는 `_ ERROR at setup of ...` 로 **밑줄이 앞에 붙어** 행두 앵커에 안 걸립니다.
+
+```
+줄 수 카나리아(446)는 >0 이라 «파일이 읽혔다»만 말했지 «앵커가 맞다»고는 말하지 않았습니다.
+카나리아가 답하는 물음과 제가 던진 물음이 «달랐습니다» — 계기 실패가 유효한 관측으로 렌더됐습니다.
+앞으로  pytest 판정은 «요약 줄»(passed/failed/error 가 다 있는 그 한 줄)을 «먼저» 읽고,
+       그 수와 제 grep 의 수가 «같은지» 대조합니다. 다른 수 둘이 나오면 grep 이 틀린 것입니다
+```
+
+### 지시 `a01a0ec2` 받았습니다 — 큐 순서
+
+```
+① 지금   PG 빨강 다섯 (제가 냈고, 제가 닫습니다)
+② 다음   Q-200 운영자 파일 — mappers/cross_table_lookup_mapper.py.sample :15 ·:161 을
+        «다시 짓습니다». 「없는 엔진을 쓰라」 -> 통합 선언 derive.kind: "join"
+        + config/sample/virtual_join_rules.json.sample · ⚪ crud 셋 · main 하나 지나는 김에
+③ 그다음 652 2걸음(원장 prepare 상속) -> 657/647 -> 662
+```
+
+**샘플 전수** — 제 앞 라운드의 pathspec 이 `*.py *.js *.json *.md` 라 `.sample` 이 **한 번도 안 걸렸습니다.**
+CLAUDE.md 가 은퇴 절에 `sample` 을 이름으로 적어 뒀는데 제가 안 셌습니다. 이제 셌습니다:
+
+```
+git grep -ln "virtual_join\|materialize\|legacy_join\|legacy_materialized" -- '*.sample' '*.sample.*'
+추적 .sample 33 중 5:
+  config/sample/ledger_config.json.sample · table_config.json.sample · virtual_join_rules.json.sample
+  mappers/cross_table_lookup_mapper.py.sample · dt_map_mapper.py.sample
+```
+총괄이 든 둘 «말고 셋이 더» 있습니다. ② 에서 다섯을 같이 봅니다.
+
+### 안 잰 것 — 적어 둡니다
+
+```
+RUN.md 의 「virtual_join_rules.json 을 «아무도 안 읽습니다»」
+   제가 잰 것은 «모듈이 사라졌다»이지 «그 파일을 여는 곳이 0»이 아닙니다. 절대어인데 계기가 없습니다.
+   그리고 훑다 보니 inherit_virtual_join_rules(원장 preparation 의 «다른 것») 이 살아 있어
+   낱말 하나로 세면 섞입니다 — ② 에서 «여는 자리»로 다시 셉니다
+guide/config/chain_rules.md   SETUP_ORDER ④ 를 묘비로 바꾸며 「옮기는 모양은 여기」로 보냈는데
+   그 파일이 실제로 derive.kind:"join" + into.table 의 «사례»를 드는지 안 열어 봤습니다. ② 에서 엽니다
