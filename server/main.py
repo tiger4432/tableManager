@@ -4126,13 +4126,19 @@ def retry_failed_outbox_events(event_id: int = None, transaction_id: str = None,
 # 질문은 이 화면에 없다. 잘렸다는 사실은 응답의 `listed.capped` 로 «말한다».
 _QUEUE_LIST_CAP = 200
 
+# ⚰️ [판정 652] 아래 독스트링이 「네 선언」이라 적고 `virtual_join_rules` 를 넷째로 댔다.
+#    그 문법은 은퇴했고 이 화면도 그 사분면을 더 안 그린다 — `chain.graph` 의 `_quarter` 는
+#    셋(chain_rules · enrichment_rules · ledger_sources)에 돈다.
+#    🔴 수를 «도로 넣지 않았다». 선언 파일이 하나 늘 때마다 다시 낡고 그때 아무것도 안 운다.
+#    🔴 그리고 이 문장은 «주석에» 있다 — 라우트 독스트링은 FastAPI 가 `/docs` 로 내보내는
+#       설명이라 운영자가 읽는 글이고, 내 묘비는 거기 들어갈 것이 아니다.
 @app.get("/chain/graph", dependencies=[Depends(require_admin_token)])
 def get_chain_graph(db: Session = Depends(get_db)):
-    """한 흐름을 «네 선언»이 나눠 적은 것을 «한 그림»으로 (S-178).
+    """한 흐름을 «여러 선언»이 나눠 적은 것을 «한 그림»으로 (S-178).
 
     소유자: 「chain 이 너무 거미줄 같아」. 거미줄은 «코드»에 있는 게 아니라,
-    chain_rules · enrichment_rules · virtual_join_rules · ledger_config 넷이 한 흐름을
-    나눠 적고 있는데 그 넷을 «한 화면»에 놓은 자리가 없다는 데 있습니다.
+    chain_rules · enrichment_rules · ledger_config 가 한 흐름을 나눠 적고 있는데
+    그것들을 «한 화면»에 놓은 자리가 없다는 데 있습니다.
 
     🔴 로직 0. 정하는 것이 없습니다 — 노드도 엣지도 «제품이 쓰는 로더»로 선언에서 읽습니다.
     라이브 파일은 «읽기만» 합니다.
