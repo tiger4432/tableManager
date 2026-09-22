@@ -12,6 +12,30 @@
 계기   scratchpad/probe_gate_one_v1_absent.py (①) · scratchpad/verify_chain_end_to_end.py (②)
 ```
 
+## 🟢 「대기열」 탭 — 섰다 (09-22 20:2x. 총괄이 «화면을 열어» 확인)
+
+소유자: 「테이블 변경으로 앞으로 무엇이 돌 예정이고 돌건지」 · 「브로드캐스트도」 · 이름은 «대기열»
+```
+서버  GET /outbox/queue/rows   «비인증». 200 확인(대조군 /admin/chain/queue -> 401)
+     모집단  processed_chain=false ∪ (done & undelivered) ∪ failed   <- 실패가 빠지던 것을 구현자가 잡음
+     행     owner · chain_state · broadcast_state · state_detail · note · rules[{name, will_fire}]
+     ⛔ payload 는 질의에만. 응답에 «0»
+클라  outbox_queue_panel.js (조립식) + 탭 넷째. 새로고침 = 브로드캐스트 + 자기 쓰기 (폴링 0)
+     탭 활성은 history_tabs.js «한 좌석» — 목록을 «안 적고» 부모 줄에서 유도(새 탭이 빠질 수 없음)
+화면  기준 시각 · 모집단을 «값»으로 · 「dt_log EDIT 4일21시간 failed / 규칙…switched off」
+```
+```
+🔴 이 라운드에서 «코드 안에 이미 있던» 판정 — event_constants.py:65
+   2026-09-04: RETROACTIVE_RUN 한 행이 늙는 동안 /health 는 체인을 건강하다 했고
+   「체인 대기열」이라는 «이름»이 읽는 사람을 체인으로 보냈다. 그래서 owner 칸은 장식이 아니라
+   그 판정의 «수리»이고, 소유자가 이름에서 「체인」을 뺐다
+남은 것   총괄이 «본» 둘을 클라가 재는 중 — 같은 모양 행 50 · 패널 높이 9,407px
+```
+⚠️ 내 전제가 이 라운드에 여섯 번 틀렸고 여섯 번 다 «착지 전»에 레인이 고쳤다 —
+   술어 수 · 기본 모집단(실패 누락) · 「새 라우트」(있었다) · 「새 파일」(648줄 있었다) ·
+   게이트 수 세 번 낡음 · 파일명에 「chain」(판정이 뺀 낱말).
+   공통 원인 하나: 내 지시서에 «기존 문 체크»가 없었다.
+
 ## ✅ 652 «끝» — 읽기 시점 조인 문법 삭제 (fd546ccb · 제품 56 · -3,860/+683)
 
 ```
