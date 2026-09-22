@@ -52880,3 +52880,76 @@ main.js:606 의 훅은 사건 이름을 «안 거릅니다».
         스케줄러 질의에서 그 op 빼기 · 게이트 ⑨⑩⑮
 ⚠️ ⑮(수천 행 스캔 동안 커넥션 풀 사용량)는 운영 규격 실행이라 박스가 필요합니다
 ```
+
+> 🔴 **[09-22 23:4x 구현자 -> 총괄] 옮기기 «전»에 둘 — 기제가 «이미 있고», 그 기제의 가드가 «프로세스 안»입니다**
+
+### ① 기존 문 체크 — 「스레드에서, 하나씩」은 «이미 지어져» 있습니다
+
+```
+run_auto_update.py:758  start_retroactive_run(payload)
+   「Run one queued retroactive operation OFF the tick thread」
+   · 스레드로 내보내서 틱이 계속 뜁니다 (안 그러면 /health 가 이 데몬을 WEDGED 로 찍습니다)
+   · «하나씩» 게이트가 있고, 둘째는 «거절하고 말합니다» — 조용히 큐에 쌓지 않습니다
+   · 거절되면 아웃박스 행을 «일부러 안 찍습니다» — 다음 틱이 다시 집게
+```
+제가 새로 지을 뻔한 것이 전부 저기 있습니다. 옮기기는 «짓기»가 아니라 «누가 들고 있나»입니다.
+
+### 🔴 ② 그런데 그 게이트가 «이 프로세스의 스레드 핸들»입니다
+
+```python
+def retroactive_busy(self):
+    t = self._retroactive_thread
+    return bool(t and t.is_alive())        # <- 다른 프로세스는 «안 보입니다»
+```
+그리고 그 게이트가 «왜» 있는지가 같은 파일에 적혀 있습니다:
+
+> 「Two concurrent replays of the same rule would write the same cells from two sessions,
+>  and **a replay racing a withdrawal on the same table** is the one ordering nobody could
+>  reason about afterwards」
+
+```
+지시    리플레이는 «워커로», withdraw · ledger_backfill 은 «스케줄러에 그대로»
+그러면  그 둘이 «다른 프로세스»가 되고, 게이트는 각자 자기 스레드만 봅니다
+=> 게이트가 «지키라고 만들어진 바로 그 쌍»(리플레이 × withdraw)을 «더 이상 안 지킵니다»
+```
+🔴 조용합니다. 두 작업이 같은 표의 같은 셀을 두 세션에서 쓰고, 오류는 안 납니다.
+   이건 스타일이 아니라 «데이터 순서»라 「가드는 기능 다음」의 예외 부류입니다.
+
+### ③ 건널 문도 «이미» 있습니다 — 쓰는 자리만 없습니다
+
+```
+retroactive.in_flight(db)   `retroactive_runs` «표»를 읽습니다. 독스트링이 이유까지 답니다:
+   「IT READS THE TABLE, NOT THE THREAD. The thread is in the scheduler process and the
+    reader of this is the web process, so the thread is not observable from here at all」
+호출자 «둘» — main.py:4475(화면) · run_auto_update.py:751(진단).
+=> 전부 «진단»이고, «게이트로 쓰는 자리는 0» 입니다. 문은 있는데 아무도 안 지납니다
+```
+```
+제안   게이트를 «표»로 바꿉니다(in_flight). 그러면 프로세스가 둘이어도 한 게이트입니다
+대가   그 독스트링이 이미 적어 둔 것: 「죽은 프로세스가 running 을 영원히 남깁니다」
+      -> 크래시 뒤 리플레이가 «영영 막힙니다»
+⚠️ 그런데 그 대가는 지금 설계가 «이미 받아들인» 것입니다 —
+   「A long run and a wedged one both close it, and both SHOULD … Opening it after a
+    timeout would trade a stuck run for the one ordering nobody could reason about」
+   즉 «뜻이 같고 범위만 넓어집니다». 새 절충이 아닙니다
+```
+
+### ④ 「스케줄러 질의에서 op 을 뺀다」는 «질의 변경이 아닙니다»
+
+```
+질의는 event_type «하나»로 고릅니다 (run_auto_update.py:831). op 은 «페이로드 안»에 있습니다
+=> 뺀다는 것은 「파싱한 뒤 op 이 chain_replay 면 시작하지 않는다」입니다
+🔴 그리고 그때 «아웃박스 행을 찍어야» 합니다. 안 찍으면 2026-09-04 사고 그대로입니다 —
+   「order_by(id.asc()) 가 그 행을 영원히 앞에 두어 뒤의 모든 요청이 안 닿았다」
+   (그 사고 주석이 그 자리에 있습니다)
+❓ 그러면 그 행은 «누가» 찍습니까 — 스케줄러가 「내 것 아님」으로 찍고 지나갑니까,
+   아니면 워커가 집고 찍습니까. 전자면 워커가 안 도는 배포에서 그 실행은 queued 로 남습니다
+```
+
+```
+❓ 판정 셋
+   ① 게이트를 표(in_flight)로 넓힙니까 — 제 읽기로는 옮기기의 «전제 조건»입니다(②)
+   ② start_retroactive_run 을 «옮깁니까/공유합니까» — 사본은 안 만듭니다
+   ③ 아웃박스 행을 누가 찍습니까 (④)
+```
+⚠️ 제품 코드 0 줄입니다. ①②③ 없이 지으면 「돌지만 틀린」 것을 짓게 됩니다.
