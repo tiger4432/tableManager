@@ -31265,3 +31265,19 @@ Q-192 의 반쪽 집합은 «안 반복됐습니다» — 통합과 레거시를
 ```
 세 개 다 데이터를 잃는 자리는 아닙니다. ①은 「문이 있는데 아무도 안 지나는」 것이고,
 ②③은 「이 줄이 참인가」입니다 — 다음 사람이 그 문장을 «전제»로 쓰면 값을 치릅니다.
+
+#### Q-195 ① 정정 — 「시험 포함 호출자 0」은 틀렸습니다. 시험 «다섯»이 부릅니다 [09-22 10:51]
+
+구현자 보고가 맞습니다. 제가 다시 쟀습니다(남의 수를 그대로 쓰지 않았습니다):
+```
+legacy_materialized_join.reset_cache() 호출  제품 «0» (이건 그대로 참) · 시험 «5» / 파일 «셋»
+   test_one_bad_row_does_not_stop_a_tables_chain.py ×2      (from chain import … as vje)
+   test_one_declarations_failure_does_not_block_another_tables_read.py ×1  (vje)
+   test_the_sort_column_is_named_or_refused.py ×2           (as vjx)
+```
+제 패턴은 `materialized_join.reset_cache` 였습니다 — 호출 앞에 «모듈 이름이 붙은» 형태만 셉니다.
+`as vje` 로 «별칭»을 달면 그 패턴에 안 걸립니다. 「심볼로 훑는다」의 형제 함정입니다:
+**모듈 이름을 붙인 패턴은 «별칭 호출»을 못 셉니다.** 앞으로 함수 호출자를 셀 때는 `<함수>(` 로 먼저 세고
+모듈은 «그 파일의 import 줄»에서 확인합니다.
+
+바뀌지 않는 것: 제품 호출자가 0 이라 그 캐시는 «리로드로 안 비워집니다». ①의 결론은 그대로입니다.
