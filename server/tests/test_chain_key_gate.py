@@ -514,7 +514,7 @@ def test_replay_cannot_recreate_in_bulk_what_the_live_worker_refuses(db):
     rows the incident is about. Note also that replay's own `SKIP_BLANK` strips a blank
     key column from `updates`, which is what makes such an item unkeyable here.
     """
-    stats = {"cells_written": 0, "rows_created": 0, "rows_updated": 0,
+    stats = {"cells_written": 0, "rows_written": 0, "rows_created": 0, "rows_updated": 0,
              "unkeyed_rows_refused": 0, "unkeyed_key_columns": {}}
     replay._apply_replay_batch(
         db, schemas, crud, CELLS,
@@ -530,7 +530,7 @@ def test_replay_cannot_recreate_in_bulk_what_the_live_worker_refuses(db):
 
 def test_replay_does_not_purge_a_map_it_refused_whole(db):
     """KILLS: removing the `if not kept: return` arm in `_apply_replay_batch`."""
-    seed = {"cells_written": 0, "rows_created": 0, "rows_updated": 0,
+    seed = {"cells_written": 0, "rows_written": 0, "rows_created": 0, "rows_updated": 0,
             "unkeyed_rows_refused": 0, "unkeyed_key_columns": {}}
     replay._apply_replay_batch(
         db, schemas, crud, CELLS,

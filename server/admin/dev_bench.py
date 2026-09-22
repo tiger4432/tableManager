@@ -243,6 +243,11 @@ def try_mapper(name, sample, *, rule=None, target_table="bench_target"):
     #   its INPUT. The two agree today only because all three registered kinds happen to write
     #   for themselves - 「가드와 행동이 다른 집합을 본다」, and the day a kind registers
     #   `writes_itself=False` they part.
+    #   🔴 AND THEY PARTED ON 2026-09-23, which is the day this paragraph named in advance:
+    #      no template registers as self-writing any more, so the correlation this warned
+    #      about is gone rather than merely unreliable. The bench's question never was this
+    #      one, so the bench did not change.
+
     #   `Resolved.hands` IS that fact: it is what the seat itself uses to decide between
     #   `(db, rule, row_ids=)` and `(db, payload)`.
     #   ⚰ THIS PARAGRAPH SAID 「registered this round」 WHEN IT WAS NOT. 503 landed `hands` as

@@ -142,25 +142,6 @@ def chain_envelope(depth=None):
 #   (판정 508 caught exactly that in 503's first cut).
 
 
-def writes_itself(rule):
-    """Does this rule write its own rows, or propose them for somebody else to write?
-
-    🔴 [판정 497 ⓒ · 498 ④] THE FOLLOW-UP LAP ASKED 「is this a builtin」 AND MEANT THIS.
-    The lap exists to hand a batch to rules that perform their own writes, and `builtin:` was
-    standing in for that - an address standing in for a behaviour. They select the same three
-    rules today, so nothing moves; they stop being the same the day a kind registers
-    `writes_itself=False`, and on that day the address question would have handed the lap
-    batch to a rule that cannot use it.
-
-    ⚠️ ANSWERED WITHOUT RESOLVING. `resolve` is the fuller question but it IMPORTS an
-    operator's module to answer, and this one is asked over every loaded rule while a cache is
-    being built. Only a registered kind writes for itself, so the registration answers alone.
-    """
-    from chain import dynamic_mappers
-
-    return dynamic_mappers.writes_itself((rule or {}).get("mapper"))
-
-
 def runnable(name):
     """The callable a rule NAME can run as, or None - BOTH tables, one reader.
 
@@ -190,26 +171,15 @@ def runnable(name):
 #   the question itself is now gone: one door, `(db, payload[, rule=])`, every rule.
 
 
-def self_writing_name(rule):
-    """The registered kind a SELF-WRITING rule runs as, or None - answered WITHOUT resolving.
-
-    🔴 [판정 501 ⓐ] `resolve` HAS A SIDE EFFECT AND THIS QUESTION MUST NOT PAY FOR IT.
-    Resolving imports the operator's module, which is right when something is about to be
-    RUN and wrong when a caller only wants to describe the rule. Replay asked `resolve` for
-    exactly two facts - this name and `writes_itself` - and paid an `importlib` for them
-    BEFORE its first page, so a dry run of a rule whose module is absent stopped being a
-    report and became an exception. Both facts are registrations: a dict lookup answers them.
-
-    ⚠️ NOT `builtin_kind` AT THE CALLER. That is the same question and the seat owns it;
-    a caller spelling it is 「종류를 묻는 자리」 outside the seat again (판정 498 ④).
-    """
-    from chain import synthesis
-
-    from chain import dynamic_mappers
-
-    name = (rule or {}).get("mapper")
-    return name if dynamic_mappers.writes_itself(name) else None
-
+# ⚰️ [총괄 2026-09-23] `self_writing_name(rule)` AND `writes_itself(rule)` STOOD HERE.
+#   The first had two readers, both in `replay`, and neither was a flag: one PICKED THE PAGE
+#   LOOP'S ARM - whether a failed page costs that page or the whole run - and one was the
+#   stat `admin/retroactive` reads to choose between 「다시 계산할 행」 and 「덮어쓸 셀」, the
+#   number an operator approves a backfill on. Nothing writes for itself now, so both
+#   answers are constant and both readers are gone.
+# 🔴 THE SYMPTOM, KEPT AS THE CONTROL GROUP: restore the arm while the join already
+#   proposes and the consent screen reads 「덮어쓸 셀 0」 in front of a run that rewrites
+#   every row - the accident named above `retroactive.py`'s own pre-count.
 
 def rule_label(rule):
     """What this rule IS on a screen - join / decide / mapper. The seat answers, from what
@@ -312,12 +282,11 @@ def resolve(rule):
     sat outside as 「the builtin door」, and that is the whole of what the split was - not two
     kinds of rule, but two places that turned a name into something to call.
 
-    🔴 `writes_itself` IS READ, NOT INFERRED. It used to be derived from 「is this a
-    builtin」, which is a fact about an address rather than about behaviour, and a caller
-    wanting 「can I see this without applying it」 had to ask the kind and decide for itself -
-    which is how a dry run and a live lap grew separate branches from one inference. It comes
-    off the registration now (`synthesis.SELF_WRITING_KINDS`), so a builtin that PROPOSED its
-    rows would be handled by every seat without one of them being edited.
+    ⚰️ [총괄 2026-09-23] A PARAGRAPH HERE EXPLAINED `writes_itself` - 「IS READ, NOT
+    INFERRED ... it comes off the registration now (`synthesis.SELF_WRITING_KINDS`)」. There
+    is no fact left to read: a mapper REPORTS what it wrote and the seat adds that up, which
+    is what that paragraph wanted and could not have while a registration answered first.
+
 
     🔴 AN UNFINDABLE NAME IS REFUSED BY NAME. The builtin arm always did; the mapper arm let
     `importlib` throw, so an operator who mistyped a module got an ImportError stack instead

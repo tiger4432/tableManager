@@ -297,8 +297,13 @@ def test_auto_confirm_reports_its_row_count_under_the_name_the_others_use(monkey
         def collect_rows(self, *_a):
             pass
 
-        def flush(self, *_a):
+        def flush(self, _db=None, propose_into=None):
+            # The real collector hands its items to the sink and lets the caller write.
+            if propose_into is not None:
+                propose_into.extend({"row_id": n, "updates": {"c": n}}
+                                    for n in (1, 2, 3, 4))
             return {"confirmed": 4, "refused": {"key": 1}}
+
 
     monkeypatch.setattr(enrichment.candidates, "AutoConfirmCollector", _Collector)
 
@@ -309,8 +314,14 @@ def test_auto_confirm_reports_its_row_count_under_the_name_the_others_use(monkey
         None, [{"row_id": n} for n in (1, 2, 3, 4)],
         rule={"name": "ac", "target_table": "t"})
 
-    assert result["written"] == result["confirmed"] == 4
+    # ⚰️ [총괄 2026-09-23] THIS READ `result["written"]`, the cell a rule used to report rows
+    #   it APPLIED. Auto-confirm proposes now, so the count the queue view reads arrives under
+    #   `updates` - the same name every other mapper answers in, which is what this test is
+    #   named for. The property is unchanged: a confirmed row must be countable by the seat,
+    #   or the outcome column stays at 「아직 평가 안 됨」 however many rows were confirmed.
+    assert len(result["updates"]) == result["confirmed"] == 4
     assert result["refused"] == 1
+
 
 
 def test_the_rows_in_count_is_what_the_seat_was_handed_either_way(kind, monkeypatch):

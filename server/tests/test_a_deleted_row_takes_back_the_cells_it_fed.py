@@ -32,6 +32,7 @@ if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
 from chain import cell_layer, join_into, rule_run, synthesis# noqa: E402
+from conftest import run_join_and_write                        # noqa: E402
 from database.database import Base                                        # noqa: E402
 from database import crud, models, schemas                                # noqa: E402
 
@@ -113,7 +114,7 @@ def test_the_cell_a_deleted_reference_row_fed_is_withdrawn(db):
     ref_row_id = _write(db, REF, {"ref_key": "K-1", "grade": "A"})
     target_row_id = _write(db, TARGET, {"part_no": "P-1", "ref_key": "K-1"})
 
-    join_into.run(db, RULE, row_ids=[target_row_id])
+    run_join_and_write(db, RULE, row_ids=[target_row_id])
     db.commit()
 
     assert _chain_cells(db) == {target_row_id: ref_row_id}, (
@@ -140,7 +141,7 @@ def test_a_sibling_cell_fed_by_another_row_is_left_alone(db):
     kept = _write(db, TARGET, {"part_no": "P-keep", "ref_key": "K-keep"})
     doomed = _write(db, TARGET, {"part_no": "P-gone", "ref_key": "K-gone"})
 
-    join_into.run(db, RULE, row_ids=[kept, doomed])
+    run_join_and_write(db, RULE, row_ids=[kept, doomed])
     db.commit()
     assert _chain_cells(db) == {kept: kept_ref, doomed: gone_ref}
 
@@ -160,7 +161,7 @@ def test_a_dry_run_writes_nothing(db):
     """
     ref_row_id = _write(db, REF, {"ref_key": "K-1", "grade": "A"})
     target_row_id = _write(db, TARGET, {"part_no": "P-1", "ref_key": "K-1"})
-    join_into.run(db, RULE, row_ids=[target_row_id])
+    run_join_and_write(db, RULE, row_ids=[target_row_id])
     db.commit()
 
     cell_layer.withdraw_by_origin(db, [ref_row_id])

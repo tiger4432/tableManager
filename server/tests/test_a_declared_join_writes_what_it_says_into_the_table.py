@@ -27,6 +27,7 @@ if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
 from chain import join_into, rule_shape, synthesis# noqa: E402
+from conftest import run_join_and_write                        # noqa: E402
 from chain import ingestion_worker as worker                       # noqa: E402
 from database.database import Base                                 # noqa: E402
 from database import crud, models, schemas                         # noqa: E402
@@ -285,7 +286,7 @@ def test_a_matched_row_gets_the_right_tables_value(db):
     _push(db, LEFT, [{"log_key": "L1", "job": "J1"}])
     left_ids = [r.row_id for r in _rows(db, LEFT)]
 
-    result = join_into.run(db, _rule(), row_ids=left_ids)
+    result = run_join_and_write(db, _rule(), row_ids=left_ids)
 
     assert result["written"] == 1 and result["side"] == "target"
     assert [r.lot_confirmed for r in _rows(db, LEFT)] == ["LOT-1"]
@@ -303,7 +304,7 @@ def test_a_matched_null_is_written_as_null_and_an_unmatched_row_is_left_alone(db
                       "lot_confirmed": "KEEP"}])
     left_ids = [r.row_id for r in _rows(db, LEFT)]
 
-    result = join_into.run(db, _rule(), row_ids=left_ids)
+    result = run_join_and_write(db, _rule(), row_ids=left_ids)
 
     by_key = {r.log_key: r.lot_confirmed for r in _rows(db, LEFT)}
     assert result["written"] == 1, "only the matched row was written"
@@ -317,11 +318,11 @@ def test_the_reference_side_recomputes_the_left_rows_that_point_at_it(db):
     a rule on the wrong side by handing it the wrong argument."""
     _push(db, RIGHT, [{"job": "J1", "lot": "OLD"}])
     _push(db, LEFT, [{"log_key": "L1", "job": "J1"}, {"log_key": "L2", "job": "J2"}])
-    join_into.run(db, _rule(), row_ids=[r.row_id for r in _rows(db, LEFT)])
+    run_join_and_write(db, _rule(), row_ids=[r.row_id for r in _rows(db, LEFT)])
 
     right = _rows(db, RIGHT)[0]
     _push(db, RIGHT, [{"job": "J1", "lot": "NEW"}])
-    result = join_into.run(db, _rule(trigger_table=RIGHT), row_ids=[right.row_id])
+    result = run_join_and_write(db, _rule(trigger_table=RIGHT), row_ids=[right.row_id])
 
     assert result["side"] == "reference"
     by_key = {r.log_key: r.lot_confirmed for r in _rows(db, LEFT)}
@@ -344,7 +345,7 @@ def test_the_written_layer_is_the_rules_own_name(db, monkeypatch):
     _push(db, RIGHT, [{"job": "J1", "lot": "LOT-1"}])
     _push(db, LEFT, [{"log_key": "L1", "job": "J1"}])
     seen.clear()
-    join_into.run(db, _rule(), row_ids=[r.row_id for r in _rows(db, LEFT)])
+    run_join_and_write(db, _rule(), row_ids=[r.row_id for r in _rows(db, LEFT)])
 
     # The LAYER is the chain's (so the wake filter treats this write like every other
     # chain write) and the AUTHOR is the rule's (so an operator can still see who wrote it).
@@ -360,7 +361,7 @@ def test_a_rule_that_cannot_run_says_why_rather_than_writing_nothing_quietly(db)
     broken = _rule()
     broken["params"] = dict(broken["params"], right_table="s237_no_such_table")
 
-    result = join_into.run(db, broken, row_ids=ids)
+    result = run_join_and_write(db, broken, row_ids=ids)
 
     assert result["written"] == 0
     assert "s237_no_such_table" in result["refusal"]
@@ -392,7 +393,7 @@ def test_the_fold_is_computed_from_the_two_tables_and_never_authored(db, monkeyp
     _push(db, RIGHT, [{"job": "J1", "lot": "LOT-1"}])
     _push(db, LEFT, [{"log_key": "L1", "job": "J1"}])
 
-    join_into.run(db, _rule(), row_ids=[r.row_id for r in _rows(db, LEFT)])
+    run_join_and_write(db, _rule(), row_ids=[r.row_id for r in _rows(db, LEFT)])
 
     assert (LEFT, "job", RIGHT, "job") in asked, (
         "the fold was not asked for by TABLE and column - the join is authoring it")
@@ -419,7 +420,7 @@ def test_a_key_declared_normalized_on_one_side_folds_on_both(db, monkeypatch):
     _push(db, RIGHT, [{"job": "J-1", "lot": "LOT-1"}])
     _push(db, LEFT, [{"log_key": "L1", "job": "J_1"}])
 
-    result = join_into.run(db, _rule(), row_ids=[r.row_id for r in _rows(db, LEFT)])
+    result = run_join_and_write(db, _rule(), row_ids=[r.row_id for r in _rows(db, LEFT)])
 
     assert result["written"] == 1, "the two spellings of one key did not fold onto each other"
     assert [r.lot_confirmed for r in _rows(db, LEFT)] == ["LOT-1"]

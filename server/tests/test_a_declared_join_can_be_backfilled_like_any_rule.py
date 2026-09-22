@@ -106,7 +106,14 @@ def test_a_replay_of_a_declared_join_fills_the_rows_that_were_already_there(db):
 
     assert _left(db) == {"L1": "LOT-1", "L2": "LOT-1"}
     assert stats["rows_written"] == 2
-    assert stats["self_writing_kind"] == join_into.JOIN_INTO_MAPPER
+    # ⚰️ [총괄 2026-09-23] THIS READ `stats["self_writing_kind"]`, the cell naming the kind
+    #   WHEN a rule applied its own rows. Nothing does, so the cell went with the branch it
+    #   fed. Asserting its ABSENCE is the control group: put it back and this goes red before
+    #   the consent screen quietly grows a second unit again.
+    assert "self_writing_kind" not in stats, (
+        "replay reports 「which kind writes its own rows」 again - the consent screen picks "
+        "its unit off that cell, and two units is how a pre-count comes to be read wrong")
+
 
 
 def test_a_backfill_page_makes_ONE_event_not_one_per_row(db):
@@ -255,30 +262,40 @@ def test_a_rule_that_is_not_in_the_set_is_refused_as_before():
     assert "not found or disabled" in str(raised.value)
 
 
-def test_the_file_mapper_call_is_unchanged():
-    """⚠️ GATE ④: 「파일 맵퍼 경로는 한 글자도 안 바뀐다」. The isolation this round adds is on
-    the builtin branch only - whether the file path should isolate too is a different
-    question, queued as S-242-b, and answering it here would change a path this round
-    promised not to touch."""
+def test_the_page_loop_isolates_every_mapper_including_file_ones():
+    """⚠️ GATE ㉣ (총괄 2026-09-23). ⚰️ THIS ASSERTED THE OPPOSITE - 「파일 맵퍼 경로는 한
+    글자도 안 바뀐다」 - and said why: the isolation sat on the branch for rules that wrote
+    their own rows, and whether the file path should isolate too was queued as S-242-b.
+
+    🔴 THIS ROUND COLLAPSED THAT BRANCH, so the question stopped being deferrable: left where
+    it was, the isolation would have guarded a path no rule takes, and one bad page would go
+    back to killing a whole backfill. S-242-b is not postponed here, it is forced."""
     import inspect
 
     body = inspect.getsource(replay.replay_rule)
     file_call = body[body.index("The REAL mapper invocation path"):]
 
-    assert "try:" not in file_call.split("items, metadata_items")[0], (
-        "the file mapper's call grew a try this round")
+    assert "try:" in file_call.split("items, metadata_items")[0], (
+        "the one page path lost its isolation - one bad page kills a whole file-mapper "
+        "backfill again, which is the defect S-242-b named")
+
 
 
 # ---------------------------------------------------------------------------
 # 🔴 ⓓ — the pre-count must not say 「0 cells」 about a run that rewrites everything
 # ---------------------------------------------------------------------------
 
-def test_the_pre_count_reports_rows_for_a_kind_that_writes_its_own_cells(db,
-                                                                         monkeypatch):
-    """🔴 MEASURED, AND IT WAS WRONG. The count reads `cells_proposed`, which a builtin rule
-    leaves at 0 - so the screen an operator consents on would have said 「0 셀을 다시
-    씁니다」 before a backfill that rewrites every target row. A pre-count that says
-    「nothing」 about a run that does everything is worse than no pre-count."""
+def test_the_pre_count_does_not_say_nothing_about_a_run_that_rewrites_everything(
+        db, monkeypatch):
+    """🔴 THE ACCIDENT IS UNCHANGED; THE UNIT IS NOT. The count reads `cells_proposed`, and a
+    rule that applied its own rows proposed none - so the screen an operator consents on said
+    「0 셀을 다시 씁니다」 before a backfill that rewrites every target row, which is worse
+    than no pre-count at all.
+
+    ⚰️ [총괄 2026-09-23] IT USED TO ASSERT THE ROW UNIT, because that was the branch taken for
+    a rule that wrote its own cells. Every rule proposes now, so the cell count is real and it
+    is the only unit. What this still measures is that the number is NOT zero and the sentence
+    is not silent."""
     from admin import retroactive
 
     _seed(db)
@@ -288,5 +305,6 @@ def test_the_pre_count_reports_rows_for_a_kind_that_writes_its_own_cells(db,
     answer = retroactive._count_chain_replay(db, {"rule": "s242_join"}, 1000)
 
     assert answer["affected"] == 2
-    assert answer["affected_label"] == "다시 계산할 행"
-    assert "2행을 다시 계산합니다" in answer["detail"]
+    assert answer["affected_label"] == "덮어쓸 셀"
+    assert "2개 셀을 다시 씁니다" in answer["detail"]
+

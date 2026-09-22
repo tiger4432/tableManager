@@ -134,24 +134,31 @@ def test_the_join_stamps_its_own_write_with_a_hop(db):
 # ③ and it is stamped when NOTHING in the group proposes - the quieter half
 # ---------------------------------------------------------------------------
 
-def test_the_hop_is_stamped_even_though_no_rule_in_the_group_proposed_anything(db):
-    """⛔ THE DISCRIMINANT. `_join_only()` has no file mapper, so `table_updates` stays empty
-    and the block that used to hold the stamp is never entered. A fixture with a mapper beside
-    the join would pass on a build where the stamp merely happens LATE - 「두 규칙이 같은 답을
-    내는 표본은 판별식이 아니다」."""
+def test_a_join_only_group_still_stamps_the_hop_on_the_one_write_path(db):
+    """⚰️ [총괄 2026-09-23] THIS WAS 「stamped even though NO RULE IN THE GROUP PROPOSED
+    ANYTHING」, and its discriminant was that `_join_only()` has no file mapper: the join
+    applied its own rows, `table_updates` stayed empty, and the block that used to hold the
+    stamp was never entered.
+
+    🔴 THE FIXTURE CANNOT MAKE THAT ANYMORE. Every rule proposes now, so a join-only group
+    DOES fill `table_updates` - and the premise assertion that guarded it
+    (`all(writes_itself(r) ...)`) would assert something no fixture can produce. Kept as the
+    fixture's real product instead: this group writes, and its write carries hop 1.
+
+    ⚠️ SAID PLAINLY - THE DISCRIMINANT IS WEAKER THAN IT WAS. It no longer separates 「the
+    stamp arrives through the batch block」 from 「it arrives earlier」, because after this
+    round there is only the one path for it to arrive on. Reported rather than papered over:
+    a replacement for that half, if one is wanted, is not something this round measured."""
     _seed(db)
     rules = _join_only()
-    # ⚰️ [판정 562] `builtin_kind` WAS AN ADDRESS QUESTION and is deleted. What this
-    #   fixture needs is the PROPERTY it stood in for: every rule here writes its own rows,
-    #   so `table_updates` stays empty and the stamp cannot arrive by the other path.
-    assert all(rule_run.writes_itself(r) for r in rules), (
-        "this fixture only decides anything while every rule in it writes for itself")
 
     before = set(e.id for e in _events(db, LEFT))
     worker._process_chain_transaction_group_sync("tx-s423-c", _events(db, LEFT), db, rules)
 
     made = [e for e in _events(db, LEFT) if e.id not in before]
+    assert made, "the join-only group wrote nothing, so the stamp below is vacuous"
     assert _depths(made) == [1], _depths(made)
+
 
 
 # ---------------------------------------------------------------------------

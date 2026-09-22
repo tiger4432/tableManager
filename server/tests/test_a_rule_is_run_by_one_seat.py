@@ -356,13 +356,19 @@ def test_the_two_facts_the_seat_reads_come_off_the_registration():
 
     mapper_sdk.register(probe, _probe)
     dynamic_mappers.TEMPLATE_FACTS[probe] = {"label": "decide", "stamps_origin": False,
-                                             "writes_itself": False, "params": None}
+                                             "params": None}
+
     try:
         bound = rule_run.resolve({"name": "p", "mapper": probe})
         assert bound.call is _probe
-        assert rule_run.writes_itself({"mapper": probe}) is False, (
-            "a mapper that registered itself as PROPOSING was still treated as self-writing, "
-            "so the seat is inferring from its name again")
+        # ⚰️ [총괄 2026-09-23] THIS ASKED `rule_run.writes_itself({...}) is False`, to catch a
+        #   seat that inferred self-writing from a NAME. No mapper writes its own rows now, so
+        #   the seat has no such question to answer - and that absence is what this asserts,
+        #   because a False that nothing can return is a green that measures nothing.
+        assert not hasattr(rule_run, "writes_itself"), (
+            "the seat can answer 「does this rule write its own rows」 again - that is the "
+            "question 판정 562 removed, and a caller will start branching on it")
+
         assert rule_run.rule_label({"mapper": probe}) == "decide"
     finally:
         mapper_sdk.MAPPER_REGISTRY.pop(probe, None)

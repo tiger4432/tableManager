@@ -244,6 +244,18 @@ def run_followup_auto_confirm(db, derived_table="encand_test_derived"):
         if not watches_table(rule, derived_table):
             continue
         answer = rule_run.run_rule(db, rule, row_ids=row_ids) or {}
+        # 🔴 THE TRIGGER PATH WRITES WHAT THE SEAT PROPOSES. This helper ran the seat and
+        #    committed, which worked only while the mapper applied its own rows - and when
+        #    that stopped (2026-09-23) it confirmed NOTHING and said nothing, which is the
+        #    shape 2026-09-17 already paid for once. The worker collects `updates` off the
+        #    same answer and writes them in its batch step; so does this.
+        if answer.get("updates"):
+            crud.apply_batch_updates(
+                db, rule.get("target_table"),
+                schemas.GeneralUpdateBatch(
+                    updates=answer["updates"],
+                    transaction_id="chain_%s_followup" % derived_table))
+
     db.commit()
     return answer
 

@@ -385,7 +385,6 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
         # implements is refused by name rather than left to throw an ImportError), and a
         # refusal about the RULE must not overtake the refusals about the operator's own
         # SELECTION - 「business_keys was given but empty」 is what they need to hear first.
-        "self_writing_kind": None,
         "rule": rule.get("name"), "trigger_table": trigger_table,
         "target_table": target_table, "self_triggering": is_self_triggering(rule),
         "rows_scanned": 0, "pages": 0, "mapper_items": 0,
@@ -398,11 +397,13 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
         # folded into it: a skipped CELL still writes its row, a refused ROW writes
         # nothing, and an operator reading a replay report has to be able to tell a
         # value that went missing from a row that never existed.
-        # [S-242] A `builtin:` kind WRITES ITSELF and returns what it wrote, so there are no
-        # proposed cells to count for it - `rows_written` is its answer, beside the file
-        # mapper's cells rather than folded into them. Two different facts under one name is
-        # how a report comes to be read wrong.
+        # 🔴 ROWS THE RUN ACTUALLY WROTE. ⚰️ [S-242] This was filled by a `builtin:` kind
+        # REPORTING what it applied, 「beside the file mapper's cells rather than folded into
+        # them」, because such a kind proposed no cells to count. Nothing writes its own rows
+        # now, so the one write path fills it - same fact, same unit, one source instead of
+        # two. Cells stay separate: a skipped CELL still writes its row.
         "rows_written": 0, "pages_failed": 0, "page_failures": [],
+
         "unkeyed_rows_refused": 0, "unkeyed_key_columns": {},
         "withdrawal_candidates": [], "samples": [],
     }
@@ -462,33 +463,14 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
                 "whole rule instead of nothing. Omit it to replay everything, on purpose.")
         selection = trg_model.business_key_val.in_(keys)
         log(f"[replay] selection: {len(keys)} business key(s)")
-    # [S-242] Which pass this rule goes through, decided ONCE before the first page and
-    # REPORTED rather than inferred: a reader guessing from the counts would be wrong about
-    # the first file mapper that legitimately proposes nothing.
-    # [501 a] ASKED WITHOUT RESOLVING, AND THAT IS THE WHOLE REPAIR. `resolve` imports the
-    #   operator's module - right when something is about to RUN, wrong for a caller that
-    #   only DESCRIBES the rule. 498 put it here, before the first page, so a dry run of a
-    #   rule whose module is absent stopped reporting and started raising. Both facts below
-    #   are registrations and a dict lookup answers them; the callable is resolved by
-    #   `run_rule` when a page is actually run.
-    # (It also stood here TWICE - the reorder that moved it past the selection checks left
-    #  the old line standing. One call, one answer.)
-    # [503] THE ARM IS THE CALLING SHAPE, not 「does it write its own rows」. This branch
-    #   decides whether to hand `row_ids` or `payloads`, and those two facts agree only
-    #   while every registered kind writes for itself. `hands` answers it without
-    #   resolving, so 501 a's repair stands.
-    # 🔴 [판정 562] THE SHAPE QUESTION IS GONE AND THE PROPERTY IS NOT. This asked 「is it
-    #   handed row ids」 to decide whether the rule writes for itself - two facts that
-    #   「agree only while every registered kind writes for itself」, as the note below said.
-    #   The kinds are gone, so the agreement cannot be leaned on; the property is asked
-    #   directly.
-    hands_row_ids = bool(rule_run.self_writing_name(rule))
-    # [판정 505] THE CELL IS NAMED FOR WHAT IT HOLDS. It was `builtin_kind`, the screen
-    #   read it back as `is_builtin`, and it carries neither: it is the kind name WHEN the
-    #   rule writes its own rows, and `None` otherwise. Three names for one fact, and all
-    #   three said 「address」 (is it a builtin) while the value said 「property」 - which is
-    #   the thing 판정 496 settled: builtin is how a rule NAMES its code, not a kind of rule.
-    stats["self_writing_kind"] = rule_run.self_writing_name(rule)
+    # ⚰️ [총괄 2026-09-23] `hands_row_ids` AND `stats["self_writing_kind"]` STOOD HERE, both
+    #   off `rule_run.self_writing_name`. 판정 503 named what the branch really was - 「THE ARM
+    #   IS THE CALLING SHAPE ... those two facts agree only while every registered kind writes
+    #   for itself」 - and this round ends that agreement: nothing writes for itself, so the
+    #   arm is constant. The seat had already folded the two hands into one
+    #   (`handed = payloads or [{"row_id": ...}]`, 판정 562), so no caller loses a shape.
+    # 🔴 THE HALF THAT DID NOT DIE WITH IT IS BELOW, ON THE LOOP: per-page isolation.
+
 
     # 🪦 `module_name` / `func_name` / `is_batch` were read here and carried to the call. The
     # seat reads them off the rule itself now, so a rule that names its mapper in the ONE cell
@@ -524,52 +506,6 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
         # `importlib.import_module(None)` threw and a migrated join had NO backfill at all.
         # Live and retroactive were two doors to one rule; this is the second door learning
         # the first one's move.
-        if hands_row_ids:
-            # ⛔ ISOLATED ON THIS BRANCH ONLY (판정 403). One page that throws costs THAT
-            # page - counted, named, and the run goes on - and the session is rolled back so
-            # the next page's SELECT is not talking to an aborted transaction. The file
-            # mapper's call below is byte for byte what it was: whether IT should isolate is
-            # a different question, and answering it here would change a path this round
-            # promised not to touch.
-            page_ids = [getattr(row, "row_id", None) for row in page]
-            page_ids = [row_id for row_id in page_ids if row_id]
-            if not apply:
-                # A dry run of a self-writing kind would have to WRITE to say what it would
-                # do. It says what it would be handed instead, which is the honest answer.
-                stats["mapper_items"] += len(page_ids)
-                continue
-            try:
-                # 🔴 AND THE PAGE'S EVENTS COLLAPSE NOW (판정 421, 소유자 ⓐ). Measured before
-                # wiring: `replay.py` called `outbox_mode` ZERO times, so this was the last
-                # door that did not - the group path collapses, the follow-up lap collapses,
-                # and a backfill of the SAME rule over the SAME rows made one event per row.
-                # 「같은 기능에 두 경로」 in its quiet form: whatever watches the target table
-                # saw a different shape depending on which door the write came in through,
-                # and nothing raised. The scope lives in the seat, so this line does not
-                # mention it - which is the point.
-                outcome = rule_run.run_rule(db, rule, row_ids=page_ids)
-            except Exception as page_error:                            # noqa: BLE001
-                db.rollback()
-                gist = str(page_error).strip().splitlines()
-                stats["pages_failed"] += 1
-                if len(stats["page_failures"]) < 10:
-                    stats["page_failures"].append(
-                        {"page": stats["pages"], "rows": len(page_ids),
-                         "error": gist[-1] if gist else "(no reason)"})
-                log("[replay] page %d (%d rows) failed and was skipped: %s"
-                    % (stats["pages"], len(page_ids), gist[-1] if gist else "(no reason)"))
-                continue
-            stats["mapper_items"] += len(page_ids)
-            stats["rows_written"] += int(outcome.get("written") or 0)
-            if outcome.get("refusal"):
-                stats["pages_failed"] += 1
-                if len(stats["page_failures"]) < 10:
-                    stats["page_failures"].append(
-                        {"page": stats["pages"], "rows": len(page_ids),
-                         "error": outcome["refusal"]})
-            db.commit()
-            continue
-
         # The REAL mapper invocation path. `is_batch` fan-out moved INTO the seat with the
         # door it belongs to, so both spellings of 「run this rule over this page」 - here and
         # in the worker's group step - are now one call and cannot drift apart.
@@ -578,110 +514,152 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
         # `map_metadata_updates` and `batches` off each result; the seat concatenates those
         # three lists across its calls and every reader below takes only its own key, so the
         # totals and the envelope validation are unchanged. Measured, not assumed.
-        results = [rule_run.run_rule(db, rule, payloads=payloads)]
+        try:
+            results = [rule_run.run_rule(db, rule, payloads=payloads)]
 
-        items, metadata_items, scoped_batches = [], [], []
-        for res in results:
-            if not isinstance(res, dict):
-                continue
-            for raw in res.get("updates") or ():
-                stats["mapper_items"] += 1
-                item = _normalize_mapper_item(raw)
-                updates = item.get("updates") or {}
-                kept = {}
-                for col, val in updates.items():
-                    if SKIP_BLANK and crud.is_blank_value(val):
-                        # Absence is not zero. Record it as an R2 candidate and
-                        # write nothing - a blank here would look like a value.
-                        stats["skipped_blank_cells"] += 1
-                        if len(stats["withdrawal_candidates"]) < SAMPLE_LIMIT:
-                            stats["withdrawal_candidates"].append({
-                                "business_key_val": item.get("business_key_val"),
-                                "column": col,
-                                "why": "mapper produced no value for this cell under the "
-                                       "current rule; use R2 withdraw to reveal the layer "
-                                       "underneath instead of writing a blank",
-                            })
-                        continue
-                    kept[col] = val
-                if not kept:
+            items, metadata_items, scoped_batches = [], [], []
+            for res in results:
+                if not isinstance(res, dict):
                     continue
-                stats["cells_proposed"] += len(kept)
-                if len(stats["samples"]) < SAMPLE_LIMIT:
-                    stats["samples"].append({"business_key_val": item.get("business_key_val"),
-                                             "updates": dict(list(kept.items())[:5])})
-                items.append(schemas.GeneralUpdateItem(
-                    business_key_val=item.get("business_key_val"),
-                    updates=kept,
-                    source_name=R1_SOURCE_NAME,
-                    updated_by=f"chain_replay_{run_id}",
-                ))
+                # 🔴 READ OFF EVERY RESULT, not off one arm's outcome. ⚰️ Both of these were
+                #   read only where a rule that wrote its own rows was called, so collapsing
+                #   that branch took them with it: a mapper still ALLOWED to write and say so
+                #   (판정 567) stopped being counted, and a refusal stopped being a page
+                #   failure - it became silence, which is what 판정 525 exists against.
+                if res.get("written"):
+                    stats["rows_written"] += int(res["written"])
+                if res.get("refusal"):
+                    stats["pages_failed"] += 1
+                    if len(stats["page_failures"]) < 10:
+                        stats["page_failures"].append(
+                            {"page": stats["pages"], "rows": len(page),
+                             "error": res["refusal"]})
 
-            # Replay is the same mapper contract as live chain ingestion.  S3
-            # returns these two envelopes instead of ordinary `updates`; the
-            # old replay loop silently discarded both, so an Admin replay could
-            # report success while replacing zero DT-map cells.
-            for raw in _map_metadata_outputs(res, rule, target_table):
-                stats["mapper_items"] += 1
-                item = _normalize_mapper_item(raw)
-                updates = item["updates"]
-                stats["cells_proposed"] += len(updates)
-                stats["map_metadata_items"] += 1
-                metadata_items.append(schemas.GeneralUpdateItem(
-                    business_key_val=item.get("business_key_val"), updates=updates,
-                    source_name=R1_SOURCE_NAME, updated_by=f"chain_replay_{run_id}"))
-
-            for scope, retract, raws in _scoped_batch_outputs(res, rule, target_table):
-                batch_items = []
-                for raw in raws:
+                for raw in res.get("updates") or ():
                     stats["mapper_items"] += 1
                     item = _normalize_mapper_item(raw)
-                    updates = item["updates"] or {}
-                    if not updates:
+                    updates = item.get("updates") or {}
+                    kept = {}
+                    for col, val in updates.items():
+                        if SKIP_BLANK and crud.is_blank_value(val):
+                            # Absence is not zero. Record it as an R2 candidate and
+                            # write nothing - a blank here would look like a value.
+                            stats["skipped_blank_cells"] += 1
+                            if len(stats["withdrawal_candidates"]) < SAMPLE_LIMIT:
+                                stats["withdrawal_candidates"].append({
+                                    "business_key_val": item.get("business_key_val"),
+                                    "column": col,
+                                    "why": "mapper produced no value for this cell under the "
+                                           "current rule; use R2 withdraw to reveal the layer "
+                                           "underneath instead of writing a blank",
+                                })
+                            continue
+                        kept[col] = val
+                    if not kept:
                         continue
+                    stats["cells_proposed"] += len(kept)
+                    if len(stats["samples"]) < SAMPLE_LIMIT:
+                        stats["samples"].append({"business_key_val": item.get("business_key_val"),
+                                                 "updates": dict(list(kept.items())[:5])})
+                    items.append(schemas.GeneralUpdateItem(
+                        # 🔴 A ROW-ADDRESSED PROPOSAL KEEPS ITS ADDRESS, and its stamp.
+                        #   `origin_row_id` is what makes a join's cell withdrawable
+                        #   (판정 434); dropping it here would leave a REPLAYED join's cells
+                        #   un-withdrawable while a live one's are - two doors, one rule.
+                        row_id=item.get("row_id"),
+                        origin_row_id=item.get("origin_row_id"),
+                        business_key_val=item.get("business_key_val"),
+                        updates=kept,
+                        source_name=R1_SOURCE_NAME,
+                        updated_by=f"chain_replay_{run_id}",
+                    ))
+
+
+                # Replay is the same mapper contract as live chain ingestion.  S3
+                # returns these two envelopes instead of ordinary `updates`; the
+                # old replay loop silently discarded both, so an Admin replay could
+                # report success while replacing zero DT-map cells.
+                for raw in _map_metadata_outputs(res, rule, target_table):
+                    stats["mapper_items"] += 1
+                    item = _normalize_mapper_item(raw)
+                    updates = item["updates"]
                     stats["cells_proposed"] += len(updates)
-                    batch_items.append(schemas.GeneralUpdateItem(
+                    stats["map_metadata_items"] += 1
+                    metadata_items.append(schemas.GeneralUpdateItem(
                         business_key_val=item.get("business_key_val"), updates=updates,
                         source_name=R1_SOURCE_NAME, updated_by=f"chain_replay_{run_id}"))
-                if batch_items:
-                    stats["scoped_batches"] += 1
-                    scoped_batches.append((scope, retract, batch_items))
 
-        if apply and (items or metadata_items or scoped_batches):
-            # 🔴 [판정 421, 완성] THE MAPPER HALF OF RETROACTIVE GOES OUT IN THE SAME ENVELOPE.
-            # ㉡-2ⓐ put the collapse in the seat, which covered the door a BUILTIN writes
-            # through - and a file mapper does not write through it at all: it proposes, and
-            # these lines write. So a backfill through the builtin door made one event per page
-            # and a backfill of the same rows through the mapper door made one PER ROW. The
-            # lead's own measurement for 판정 421 was 「replay.py calls outbox_mode ZERO times」,
-            # which is both halves; the six-cell gate (판정 424 ㉠) is what caught that only one
-            # of them had moved.
-            #
-            # Metadata first is the live worker's ordering too: absent-only map
-            # registration must not synthesize a frame before the explicit
-            # standard frame and valid_die_ref arrive.
-            with rule_run.chain_envelope():
-                if metadata_items:
-                    _apply_replay_batch(db, schemas, crud, map_meta_registrar.META_TABLE,
-                                        metadata_items, run_id, stats, stats["pages"],
-                                        rule_name=rule.get("name"))
-                for i in range(0, len(items), WRITE_CHUNK):
-                    _apply_replay_batch(db, schemas, crud, target_table,
-                                        items[i:i + WRITE_CHUNK],
-                                        run_id, stats, stats["pages"],
-                                        rule_name=rule.get("name"))
-                for scope, retract, batch_items in scoped_batches:
-                    _apply_replay_batch(db, schemas, crud, target_table, batch_items,
-                                        run_id, stats, stats["pages"],
-                                        replace_map=scope is not None, scope=scope,
-                                        retract=retract, rule_name=rule.get("name"))
-                    if scope is not None:
-                        stats["maps_replaced"] += 1
-        elif items:
-            # Dry-run: count the cells a human's value would keep protected. This
-            # is the number that makes "the user layer is safe" observable rather
-            # than merely argued.
-            stats["user_protected_cells"] += _count_user_protected(db, target_table, items)
+                for scope, retract, raws in _scoped_batch_outputs(res, rule, target_table):
+                    batch_items = []
+                    for raw in raws:
+                        stats["mapper_items"] += 1
+                        item = _normalize_mapper_item(raw)
+                        updates = item["updates"] or {}
+                        if not updates:
+                            continue
+                        stats["cells_proposed"] += len(updates)
+                        batch_items.append(schemas.GeneralUpdateItem(
+                            business_key_val=item.get("business_key_val"), updates=updates,
+                            source_name=R1_SOURCE_NAME, updated_by=f"chain_replay_{run_id}"))
+                    if batch_items:
+                        stats["scoped_batches"] += 1
+                        scoped_batches.append((scope, retract, batch_items))
+
+            if apply and (items or metadata_items or scoped_batches):
+                # 🔴 [판정 421, 완성] THE MAPPER HALF OF RETROACTIVE GOES OUT IN THE SAME ENVELOPE.
+                # ㉡-2ⓐ put the collapse in the seat, which covered the door a BUILTIN writes
+                # through - and a file mapper does not write through it at all: it proposes, and
+                # these lines write. So a backfill through the builtin door made one event per page
+                # and a backfill of the same rows through the mapper door made one PER ROW. The
+                # lead's own measurement for 판정 421 was 「replay.py calls outbox_mode ZERO times」,
+                # which is both halves; the six-cell gate (판정 424 ㉠) is what caught that only one
+                # of them had moved.
+                #
+                # Metadata first is the live worker's ordering too: absent-only map
+                # registration must not synthesize a frame before the explicit
+                # standard frame and valid_die_ref arrive.
+                with rule_run.chain_envelope():
+                    if metadata_items:
+                        _apply_replay_batch(db, schemas, crud, map_meta_registrar.META_TABLE,
+                                            metadata_items, run_id, stats, stats["pages"],
+                                            rule_name=rule.get("name"))
+                    for i in range(0, len(items), WRITE_CHUNK):
+                        _apply_replay_batch(db, schemas, crud, target_table,
+                                            items[i:i + WRITE_CHUNK],
+                                            run_id, stats, stats["pages"],
+                                            rule_name=rule.get("name"))
+                    for scope, retract, batch_items in scoped_batches:
+                        _apply_replay_batch(db, schemas, crud, target_table, batch_items,
+                                            run_id, stats, stats["pages"],
+                                            replace_map=scope is not None, scope=scope,
+                                            retract=retract, rule_name=rule.get("name"))
+                        if scope is not None:
+                            stats["maps_replaced"] += 1
+            elif items:
+                # Dry-run: count the cells a human's value would keep protected. This
+                # is the number that makes "the user layer is safe" observable rather
+                # than merely argued.
+                stats["user_protected_cells"] += _count_user_protected(db, target_table, items)
+        except Exception as page_error:                            # noqa: BLE001
+            # ⛔ ISOLATED PER PAGE (판정 403). One page that throws costs THAT page - counted,
+            #   named, and the run goes on - and the session is rolled back so the next page's
+            #   SELECT is not talking to an aborted transaction.
+            # 🔴 IT MOVED OFF THE BRANCH AND ONTO THE LOOP (총괄 2026-09-23). It used to guard
+            #   only the arm for rules that wrote their own rows. Nothing does now, so on the
+            #   branch it would protect NOTHING - and the file-mapper path, the one
+            #   `test_a_declared_join_can_be_backfilled_like_any_rule` called 「worth fixing and
+            #   not this round's subject」, would have gone on killing a whole run per bad page.
+            db.rollback()
+            gist = str(page_error).strip().splitlines()
+            stats["pages_failed"] += 1
+            if len(stats["page_failures"]) < 10:
+                stats["page_failures"].append(
+                    {"page": stats["pages"], "rows": len(page),
+                     "error": gist[-1] if gist else "(no reason)"})
+            log("[replay] page %d (%d rows) failed and was skipped: %s"
+                % (stats["pages"], len(page), gist[-1] if gist else "(no reason)"))
+            continue
+
 
         # 🔴 THE YIELD IS AT THE END OF THE PAGE, NOT THE TOP, AND THAT IS THE WHOLE
         # SAFETY ARGUMENT. Sleeping is only pacing if this session is holding nothing while
@@ -712,11 +690,21 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
 
 
 def _normalize_mapper_item(raw) -> dict:
-    """Mapper items may be dicts or pydantic `GeneralUpdateItem`s. One reader."""
+    """Mapper items may be dicts or pydantic `GeneralUpdateItem`s. One reader.
+
+    🔴 IDENTITY AND PROVENANCE COME ACROSS (총괄 2026-09-23). This took two cells off a
+    model and passed a dict through whole, so a mapper that addresses rows by `row_id`
+    lost its identity the moment it answered in MODELS - and the key gate then refused
+    the entire batch for a blank business key. That asymmetry was invisible while the
+    only model-returning mappers wrote their own rows and never came down this path.
+    """
     if isinstance(raw, dict):
         return raw
     return {"business_key_val": getattr(raw, "business_key_val", None),
+            "row_id": getattr(raw, "row_id", None),
+            "origin_row_id": getattr(raw, "origin_row_id", None),
             "updates": getattr(raw, "updates", None) or {}}
+
 
 
 def _map_metadata_outputs(result: dict, rule: dict, target_table: str):
@@ -794,6 +782,8 @@ def _apply_replay_batch(db, schemas, crud, table_name, items, run_id, stats, pag
 
     results_rows, changed_cells, _logs, _deleted = crud.apply_batch_updates(db, table_name, batch)
     stats["cells_written"] += len(changed_cells or [])
+    stats["rows_written"] += len(results_rows or ())
+
     for _row, is_new in results_rows:
         if is_new:
             stats["rows_created"] += 1

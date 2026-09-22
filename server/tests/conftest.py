@@ -144,6 +144,32 @@ def requires_live(shape):
 # Retiring a dynamic model  [S-191, 판정 307]
 # ===========================================================================
 
+def run_join_and_write(db, rule, row_ids):
+    """Propose the join, then write it - what a CALLER of the join does.
+
+    ⚰️ [판정 567 · 총괄 2026-09-23] `join_into.run` DID BOTH AND RETIRED. 「a mapper does not
+    write - it PROPOSES, and the caller's batch writes inside the chain envelope」. Tests that
+    measure what the join puts IN THE TABLE are callers, so they do the caller's half. This is
+    that half, once: three files need it, and three copies is how they come to disagree.
+
+    ⚠️ IT IS NOT A SECOND SEAT. Production callers (the worker's batch step, replay's page
+    loop) write these items themselves; nothing imports this but tests.
+    """
+    from chain import join_into
+    from database import crud, schemas
+
+    outcome = join_into.propose(db, rule, row_ids)
+    updates = outcome.get("updates") or []
+    if updates:
+        crud.apply_batch_updates(
+            db, str((rule or {}).get("target_table") or ""),
+            schemas.GeneralUpdateBatch(updates=updates, silent=True))
+    answer = {key: value for key, value in outcome.items() if key != "updates"}
+    answer["written"] = len(updates)
+    return answer
+
+
+
 def retire_dynamic_model(name):
     """Take one dynamic table back out of BOTH process-wide singletons.
 
@@ -622,9 +648,12 @@ def client(db_session):
 def pytest_configure(config):
     config.addinivalue_line(
         "markers",
-        "pg: a proof only PostgreSQL can carry; skips on sqlite, runs under "
-        "server/scripts/run_pg_tests.py (S-256)")
-
+        "pg: a proof only PostgreSQL can carry; skips on sqlite, runs under "
+
+        "server/scripts/run_pg_tests.py (S-256)")
+
+
+
 
 def pytest_collection_modifyitems(config, items):
     """A `pg` proof runs only when it was ASKED for (`-m pg`, which the runner passes).

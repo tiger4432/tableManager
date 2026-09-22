@@ -109,7 +109,7 @@ def test_the_fan_out_warning_sends_the_operator_to_the_data(caplog):
     spec = {"right_table": "dt_job_attribution",
             "on": [{"left": "dt_job", "right": "dt_job"}], "take": []}
     with caplog.at_level(logging.WARNING):
-        join_into._write(_NoWrite(), "dt_inventory", rows, spec, "inv_confirm")
+        join_into._update_items(_NoWrite(), "dt_inventory", rows, spec, "inv_confirm")
 
     line = [m for m in _rendered_lines(caplog) if "[join_into:inv_confirm]" in m]
     assert len(line) == 1, _rendered_lines(caplog)
@@ -214,7 +214,7 @@ def test_the_nothing_action_says_only_what_is_true_of_every_caller():
 
 
 @pytest.mark.parametrize("module_name,function_name", [
-    ("chain.join_into", "_write"),
+    ("chain.join_into", "_update_items"),
     ("database.crud", "refuse_virtual_join_duplicates"),
     ("database.crud", "apply_batch_updates"),
     ("chain.unique_key", "describe"),
@@ -234,7 +234,7 @@ def test_every_seat_goes_through_the_one_renderer(module_name, function_name):
 
 
 class _Row:
-    """A SELECT row the way `_write` reads one: `.matched` and `._mapping`."""
+    """A SELECT row the way `_update_items` reads one: `.matched` and `._mapping`."""
 
     def __init__(self, row_id):
         self.matched = True
@@ -243,7 +243,7 @@ class _Row:
 
 class _NoWrite:
     """⚠️ THE SUBJECT IS THE LINE, so the write door is not reached: every row in the
-    fixture fanned out, and `_write` returns before it builds an update."""
+    fixture fanned out, and `_update_items` returns before it builds an update."""
 
     def __getattr__(self, _name):
         raise AssertionError("the write path must not be reached by this fixture")

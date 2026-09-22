@@ -26,6 +26,8 @@ if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
 from chain import rule_run, rule_shape                                # noqa: E402
+from chain import ingestion_worker as worker                     # noqa: E402
+from chain import replay                                        # noqa: E402
 from database.database import Base                                    # noqa: E402
 from database import crud, models, schemas                            # noqa: E402
 
@@ -124,6 +126,12 @@ def _mapper_rule(**over):
     return rule
 
 
+def _cells_of(item):
+    """The cells an update item carries, whichever shape the mapper answered in."""
+    return item["updates"] if isinstance(item, dict) else item.updates
+
+
+
 def _said(caplog):
     return [r.getMessage() for r in caplog.records
             if ("[%s]" % rule_run.RULE_LOG_TAG) in r.getMessage()]
@@ -136,10 +144,18 @@ def _cells(line):
 
 
 # ---------------------------------------------------------------------------
-# the builtin door - a kind that writes for itself
+# the seat PROPOSES - and the two writers collapse
 # ---------------------------------------------------------------------------
 
-def test_the_seat_runs_a_builtin_and_the_value_arrives(db, caplog):
+def test_the_seat_runs_the_join_and_hands_back_a_proposal(db, caplog):
+    """⚰️ [총괄 2026-09-23] THIS SECTION WAS 「the builtin door - a kind that writes for
+    itself」 and asserted three things this round removes: that the value ARRIVES in the table
+    from a seat call, that `written` is 1, and that `updates` is empty 「because a kind that
+    writes for itself proposes nothing」. Nothing writes for itself now.
+
+    🔴 AND THE COLLAPSE DID NOT DIE WITH THAT DOOR - IT CHANGED OWNER. The two tests below
+    assert it at both writers, off the same fixture. Dropping it here and trusting some other
+    file to hold it is how an axis dies quietly with its mechanism."""
     _push(db, RIGHT, [{"job": "J-1", "lot": "LOT-1"}])
     _push(db, LEFT, [{"log_key": "L-1", "job": "J-1"}])
     db.commit()
@@ -149,39 +165,66 @@ def test_the_seat_runs_a_builtin_and_the_value_arrives(db, caplog):
     with caplog.at_level(logging.INFO):
         answer = rule_run.run_rule(db, _join_rule(), row_ids=handed)
 
-    assert [r.lot_confirmed for r in _rows(db, LEFT)] == ["LOT-1"], (
-        "the seat did not actually run the join")
-    assert answer["written"] == 1
+    assert len(answer["updates"]) == 1, "the seat carried no proposal, so the rest is vacuous"
+    assert _cells_of(answer["updates"][0]) == {"lot_confirmed": "LOT-1"}
+    assert answer["written"] is None, (
+        "the seat reported rows APPLIED - nothing applies its own rows this round")
+    assert [r.lot_confirmed for r in _rows(db, LEFT)] == [None], (
+        "the seat wrote to the table; the write is the caller's half")
     assert answer["refusal"] is None
-    # 🔴 A KIND THAT WRITES FOR ITSELF PROPOSES NOTHING, and the cells are still THERE - that
-    # is what lets a caller extend all three lists without asking which door ran.
-    assert answer["updates"] == []
-    assert answer["map_metadata_updates"] == []
-    assert answer["batches"] == []
     assert _said(caplog), "the seat said nothing about a rule that ran"
 
 
-def test_the_seats_builtin_write_makes_ONE_event_not_one_per_row(db):
-    """🔴 FIVE ROWS, BECAUSE ONE CANNOT TELL THE TWO APART (S-278 A-bis, re-measured here).
-    With a single row 「collapsed」 and 「one per row」 produce the same count. The collapse used
-    to be something each caller had to remember - the follow-up lap wrapped it, the group path
-    learned to, replay never did - and it lives in the seat now."""
+def _five_over_one(db):
+    """The fixture BOTH writers get. Five rows, because with one 「collapsed」 and 「one per
+    row」 give the same count; the same fixture, because 「the same way」 is not measurable
+    from two different ones."""
     _push(db, RIGHT, [{"job": "J-5", "lot": "LOT-5"}])
     _push(db, LEFT, [{"log_key": "L-%d" % n, "job": "J-5"} for n in range(5)])
     db.commit()
-    handed = [r.row_id for r in _rows(db, LEFT)]
-    before = db.query(models.DatabaseOutbox).filter(
+    return db.query(models.DatabaseOutbox).filter(
         models.DatabaseOutbox.table_name == LEFT).count()
 
-    answer = rule_run.run_rule(db, _join_rule(), row_ids=handed)
 
-    assert [r.lot_confirmed for r in _rows(db, LEFT)] == ["LOT-5"] * 5
-    assert answer["written"] == 5
-    made = db.query(models.DatabaseOutbox).filter(
+def _events_since(db, before):
+    return db.query(models.DatabaseOutbox).filter(
         models.DatabaseOutbox.table_name == LEFT).count() - before
+
+
+def test_the_worker_collapses_a_five_row_write_into_one_event(db):
+    """🔴 THE WRITER COLLAPSES, AND THERE ARE TWO WRITERS. The worker asks for it at its
+    batch step; replay asks for it at its page write (판정 421). Either can lose it without
+    the other noticing, which is why both are scored on the same rows."""
+    before = _five_over_one(db)
+    triggers = db.query(models.DatabaseOutbox).filter(
+        models.DatabaseOutbox.table_name == LEFT).all()
+
+    worker._process_chain_transaction_group_sync("tx-s279-w", triggers, db, [_join_rule()])
+
+    assert [r.lot_confirmed for r in _rows(db, LEFT)] == ["LOT-5"] * 5, (
+        "the worker did not write the proposal, so the event count proves nothing")
+    # `before` is counted AFTER the seed commits, so the five trigger events are
+    # already inside it; subtracting them again is how this first read -4.
+    made = _events_since(db, before)
     assert made == 1, (
-        "the seat wrote 5 rows and produced %d outbox events - one per row is the shape "
-        "S-249 removed from the follow-up lap" % made)
+        "the worker wrote 5 rows and produced %d outbox events - one per row is the shape "
+        "S-249 removed" % made)
+
+
+def test_replay_collapses_the_same_five_row_write_into_one_event(db):
+    """⚠️ SAME FIXTURE AS THE WORKER'S, deliberately. Two writers that agree on their own
+    fixtures can still disagree on one."""
+    before = _five_over_one(db)
+
+    stats = replay.replay_rule(db, _join_rule(), apply=True, log=lambda m: None)
+
+    assert [r.lot_confirmed for r in _rows(db, LEFT)] == ["LOT-5"] * 5, (
+        "replay did not write the proposal, so the event count proves nothing")
+    assert stats["rows_written"] == 5
+    made = _events_since(db, before)
+    assert made == 1, (
+        "replay wrote 5 rows and produced %d outbox events" % made)
+
 
 
 def test_every_registered_builtin_accepts_the_vocabulary_the_seat_passes():
@@ -276,8 +319,9 @@ def test_a_batch_mapper_handed_no_rows_is_told_so_and_says_why(db, caplog):
     with caplog.at_level(logging.INFO):
         answer = rule_run.run_rule(db, _join_rule(), row_ids=[])
 
-    assert answer["written"] == 0, "the mapper was called, so the count is a count"
+    assert answer["updates"] == [], "the mapper was called and proposed nothing"
     assert answer["refusal"], "a zero with no reason is the silent zero 525 forbids"
+
     said = _said(caplog)
     assert len(said) == 1, "the run happened, so exactly one line says so: %r" % (said,)
 

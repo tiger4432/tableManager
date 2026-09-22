@@ -610,8 +610,21 @@ def _record_cap_hit(st: dict, res: dict):
 
 
 def confirm_keys(db, rule: dict, keyed_rows: list, apply: bool = False,
-                 stats: dict = None, tx_prefix: str = None, caps: dict = None) -> dict:
+                 stats: dict = None, tx_prefix: str = None, caps: dict = None,
+                 propose_into: list = None) -> dict:
+
     """Resolve + (optionally) write single candidates for a set of derived rows.
+    `propose_into`: pass a list and the update items are APPENDED to it and NOT
+    written, so the caller's batch writes them inside its own envelope. Same out-param
+    shape `crud.apply_batch_updates` already uses for `drop_report`, and for the same
+    reason: the return value is unpacked by callers that must not change.
+
+    ⚰️ 「no list -> writes, as today」 IS NOT THE DESTINATION AND IS NOT A CONTRACT. It is
+    what keeps `run_auto_confirm_sweep` out of this round, because giving the sweep a batch
+    writer is its own change and 2026-09-17 is what happens when a body stops writing before
+    its doors can. When the sweep has one, this proposes ALWAYS and the parameter goes.
+
+
 
     `keyed_rows`: [{"row_id":..., "business_key_val":..., "keys": {col: val},
                     "blank_targets": [col, ...]}]  (blank_targets = target cells
@@ -764,13 +777,21 @@ def confirm_keys(db, rule: dict, keyed_rows: list, apply: bool = False,
             ))
 
     if apply and items:
-        import uuid
-        tx_id = f"{tx_prefix or SOURCE_NAME}_{uuid.uuid4().hex[:8]}"
-        for i in range(0, len(items), CHUNK_SIZE):
-            batch = schemas.GeneralUpdateBatch(
-                updates=items[i:i + CHUNK_SIZE], transaction_id=tx_id, silent=False)
-            crud.apply_batch_updates(db, derived_table, batch)
+        if propose_into is not None:
+            # 🔴 THE ITEMS ARE BUILT ONCE, ABOVE, whichever caller asked - only whether this
+            #   function WRITES them differs. Copying the item-building into the mapper
+            #   would put the stamp and the partial-key rank in two places, and those are
+            #   the cells that go wrong without saying so (판정 567 says it for the join).
+            propose_into.extend(items)
+        else:
+            import uuid
+            tx_id = f"{tx_prefix or SOURCE_NAME}_{uuid.uuid4().hex[:8]}"
+            for i in range(0, len(items), CHUNK_SIZE):
+                batch = schemas.GeneralUpdateBatch(
+                    updates=items[i:i + CHUNK_SIZE], transaction_id=tx_id, silent=False)
+                crud.apply_batch_updates(db, derived_table, batch)
     return st
+
 
 
 def log_stats(rule_name: str, st: dict, apply: bool):
@@ -957,8 +978,13 @@ class AutoConfirmCollector:
     def pending(self) -> bool:
         return self.active and bool(self.entries)
 
-    def flush(self, db) -> dict:
-        """Resolve + write for the collected keys. Returns the stats dict."""
+    def flush(self, db, propose_into: list = None) -> dict:
+        """Resolve for the collected keys, and write unless handed a sink.
+
+        `propose_into` goes straight through to `confirm_keys` - this class decides
+        WHICH rows, never whether they are written.
+        """
+
         if not self.pending():
             return {}
         from database import crud, models
@@ -995,7 +1021,9 @@ class AutoConfirmCollector:
         stats = {"refused": {REASON_OVER_CAP: over_cap} if over_cap else {}}
         if keyed_rows:
             confirm_keys(db, self.rule, keyed_rows, apply=True, stats=stats,
-                         tx_prefix=SOURCE_NAME, caps=self._caps)
+                         tx_prefix=SOURCE_NAME, caps=self._caps,
+                         propose_into=propose_into)
+
         if over_cap:
             logger.warning(
                 "[Enrichment:%s] %d decision KEY(s) beyond the per-unit key budget "

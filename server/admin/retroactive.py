@@ -171,38 +171,38 @@ def _count_chain_replay(db, params, scan_limit):
                                  business_keys=params.get("business_keys"),
                                  row_ids=params.get("row_ids"))
     truncated = s["rows_scanned"] >= scan_limit
-    # 🔴 [S-242] A `builtin:` KIND WRITES ITSELF, SO IT PROPOSES NO CELLS. Measured: this
-    # count reads `cells_proposed`, which a builtin rule leaves at 0 - so the screen an
-    # operator consents on would have said 「0 셀을 다시 씁니다」 before a backfill that
-    # rewrites every target row. A pre-count that says 「nothing」 about a run that does
-    # everything is worse than no pre-count.
+    # 🔴 THE PRE-COUNT IS CELLS, AND IT HAS TO BE NON-ZERO WHEN THE RUN DOES ANYTHING.
+    # Measured 2026-09-23, because this is the trap: `cells_proposed` is filled by the page
+    # loop's proposing path (`replay` counts it in three places there), and a rule that wrote
+    # its own rows reached NONE of them - so before this round the screen would have said
+    # 「0 셀을 다시 씁니다」 in front of a backfill that rewrites every target row. A pre-count
+    # that says 「nothing」 about a run that does everything is worse than no pre-count.
     #
-    # ⚠️ AND IT IS COUNTED IN ITS OWN UNIT, under its own label. Rows and cells are different
-    # things, and calling rows 「셀」 to fit one field is how a number comes to be read wrong.
-    #
-    # 🔴 [판정 505] AND THE PROPERTY HERE REALLY IS 「does it write its own rows」, unlike
-    #   the bench two seats over, which 503 moved to the calling shape. What decides the
-    #   unit is whether `cells_proposed` can be anything but 0 - and a rule that writes for
-    #   itself proposes nothing, by definition of that fact. So the word stays; what changes
-    #   is that it is now the SAME word the stats cell uses, instead of 「builtin」.
-    self_writing = s.get("self_writing_kind") is not None
-    affected = s["mapper_items"] if self_writing else s["cells_proposed"]
+    # ⚰️ [판정 505 · 총괄 2026-09-23] THE UNIT USED TO BE A BRANCH, on `self_writing_kind`:
+    #   rows for a rule that applied its own, cells for one that proposed. 505's reasoning was
+    #   「a rule that writes for itself proposes nothing, by definition of that fact」 - and
+    #   that fact is what this round removed. Every rule proposes, so every run is counted in
+    #   cells, and the branch had one live arm left.
+    # ⚠️ THE OPERATOR SEES A DIFFERENT SENTENCE FOR THE SAME RUN than before this round -
+    #   「덮어쓸 셀 N」 where a join or an auto-confirm used to say 「다시 계산할 행 N」. Same
+    #   work, counted in the unit it is actually done in.
+    affected = s["cells_proposed"]
     return {
         "affected": affected,
         "absence": (ABSENCE_NOT_EXHAUSTIVE if truncated
                     else ABSENCE_TRULY_NONE if not affected else None),
-        "affected_label": "다시 계산할 행" if self_writing else "덮어쓸 셀",
+        "affected_label": "덮어쓸 셀",
         "count_kind": COUNT_SAMPLE,
         "scanned": s["rows_scanned"],
         "scan_limit": scan_limit,
         "truncated": truncated,
         "detail": (
             f"트리거 테이블 {s['rows_scanned']}행을 표본으로 검사해 "
-            + (f"{affected}행을 다시 계산합니다. "
-               if self_writing else f"{s['cells_proposed']}개 셀을 다시 씁니다. ")
-            + f"사람이 입력한 값이 지키는 셀 {s['user_protected_cells']}개는 화면상 값이 "
+            f"{affected}개 셀을 다시 씁니다. "
+            f"사람이 입력한 값이 지키는 셀 {s['user_protected_cells']}개는 화면상 값이 "
             f"바뀌지 않습니다(레이어만 갱신)."
         ),
+
         "extra": {
             # Deliberately NOT added into `affected`: R1 never writes a blank.
             "withdrawal_candidates": s["skipped_blank_cells"],

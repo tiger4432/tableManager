@@ -56,50 +56,32 @@ def _row_ids(payload) -> list:
 
 
 def _join(db, payload, rule=None):
-    """`derive: {kind: "join"}` as an ordinary mapper. The body is `join_into.run`.
+    """`derive: {kind: "join"}` as an ordinary mapper. The body is `join_into.propose`.
 
-    🔴 [판정 567 「새 것이 먼저 서고, 서고 나서 예것이 나간다」] THE TEMPLATE DOES WHAT THE
-    REGISTRATION IT REPLACES DID. That registration was
-    `register_builtin(JOIN_INTO_MAPPER, join_into.run, ..., writes_itself=True)`, and my
-    first version of this template called `propose` instead - the same computation with the
-    WRITE taken out.
-
-    ⚰️ MEASURED, 2026-09-17: that silently unwired the two doors that have no batch writer.
-    `test_every_caller_and_door_leaves_the_same_envelope` was 17/17 at the round's base and
-    red at HEAD; the log line says it all - `rows_in=4 rows_out=4 written=None`, four rows
-    PROPOSED and four rows dropped, on the paced lap and on retroactive. The group step and
-    replay's proposing branch were fine, which is why the join gates stayed green: a caller
-    that applies proposals cannot tell the two bodies apart, and a caller that does not sees
-    nothing at all.
-
-    🔴 SO THE CONTRACT CHANGE IS NOT THIS ROUND'S. Making a join propose and every door
-    apply is the SAME work as giving the deferred step the group step's batch write
-    (판정 585's ③), and it lands there, whole. Splitting it - new body now, missing
-    appliers later - is what 「나눠 착지시키면 그 사이가 거짓이다」 names.
-    `join_into.propose` and `_apply` stay split, because that split is what the appliers
-    will call.
+    ⚰️ [판정 567 · 총괄 2026-09-23] THIS CALLED `join_into.run`, which proposed AND wrote.
+       The write is the seat's now. `join_into` carries the tombstone that says what comes
+       back if only half of this is put back - it is a measured log line, not a worry.
     """
     from chain import join_into
 
-    return join_into.run(db, rule, _row_ids(payload))
+    return join_into.propose(db, rule, _row_ids(payload))
+
 
 
 def _auto_confirm(db, payload, rule=None):
     """`derive: {kind: "decide"}` as an ordinary mapper.
 
     🔴 THE BODY MOVED HERE FROM THE KIND TABLE (판정 563: 「auto_confirm 의 «확정하는 로직»
-    -> 동적 맵퍼의 «몸»이 됩니다」). What it does is unchanged: the collector's own gates
-    decide (the global switch, the per-rule knob, and whether any reference view declares a
-    candidate), and `confirm_keys` does the probing and the writing with its own caps.
+    -> 동적 맵퍼의 «몸»이 됩니다」). The collector's own gates still decide: the global
+    switch, the per-rule knob, and whether any reference view declares a candidate.
 
-    ⚠️ IT WRITES FOR ITSELF, AND SAYS SO. `written` is how a rule reports rows it applied
-    rather than proposed; the seat reads that cell now, so nothing has to be REGISTERED in
-    advance as self-writing (that was `writes_itself`, a fact about an address).
+    ⚠️ IT PROPOSES. `confirm_keys` builds the items - stamp, partial-key rank and all - and
+    this hands them back in `updates` for the seat to write inside the chain envelope. It
+    applied its own rows until 2026-09-23; `confirm_keys` carries why the sweep still does.
 
     ⚰️ WHAT IS NOT CARRIED: the `done["auto_confirmed"]` note. That existed because this kind
     was only ever reached from the deferred pass, which passed a dict for it to write into -
-    and that pass is going. The counts travel back as the RETURN VALUE, which is where the
-    caller reads everything else about a run.
+    and that pass is gone. The counts travel back as the RETURN VALUE.
     """
     from chain import enrichment
 
@@ -109,26 +91,30 @@ def _auto_confirm(db, payload, rule=None):
     #   even a problem, and 「0」 alone cannot tell them apart.
     table = str((rule or {}).get("target_table") or "")
     if not table or not rows:
-        return {"written": 0, "confirmed": 0, "refused": 0,
+        return {"updates": [], "confirmed": 0, "refused": 0,
                 "refusal": "확정을 시도할 행이 넘어오지 않았습니다"}
 
     declared = (rule or {}).get("params") or None
     collector = enrichment.candidates.AutoConfirmCollector(
         table, rules=[declared] if isinstance(declared, dict) else None)
     if not collector.active:
-        return {"written": 0, "confirmed": 0, "refused": 0,
+        return {"updates": [], "confirmed": 0, "refused": 0,
                 "refusal": "이 표에 켜진 자동확정 규칙이 없습니다"}
 
     collector.collect_rows(db, rows)
-    stats = collector.flush(db) or {}
+    # ⚠️ NOT `written`. The seat adds that cell to its own count, so reporting it here while
+    #   the seat ALSO writes these items would count every confirmed row twice.
+    proposed = []
+    stats = collector.flush(db, propose_into=proposed) or {}
     confirmed = stats.get("confirmed") or 0
     refused = sum((stats.get("refused") or {}).values())
     refusal = None
     if not confirmed:
         refusal = ("%d 행이 확정 조건에 맞지 않았습니다" % refused if refused else
                    "확정을 기다리는 행이 없습니다")
-    return {"written": confirmed, "confirmed": confirmed, "refused": refused,
+    return {"updates": proposed, "confirmed": confirmed, "refused": refused,
             "refusal": refusal, "source_name": enrichment.candidates.SOURCE_NAME}
+
 
 
 # ⚰️ [판정 652 3걸음] `_legacy_materialized_join` STOOD HERE, and with it the registry name
@@ -194,15 +180,6 @@ def label_for(name):
     return (TEMPLATE_FACTS.get(name) or {}).get("label")
 
 
-def writes_itself(name) -> bool:
-    """Does this mapper apply its own rows, instead of proposing them?
-
-    ⚠️ THIS IS THE ONE FACT THAT IS STILL ASKED IN ADVANCE, and only by the deferred
-    pass, which selects the rules it hands a batch to. Every other reader takes it off the
-    RESULT (`written`), which is where it belongs - and this function goes with that pass.
-    """
-    return bool((TEMPLATE_FACTS.get(name) or {}).get("writes_itself"))
-
 
 def stamps_origin(name) -> bool:
     """Does what this mapper writes carry the row it came from? Unknown names: False.
@@ -241,10 +218,7 @@ def _install_templates():
     #   different statement from 「it takes none」 - auto-confirm is handed an enrichment
     #   rule whose cells that file owns. An empty tuple would refuse all of them.
     TEMPLATE_FACTS[join_into.JOIN_INTO_MAPPER] = {
-        # ⚠️ `writes_itself` IS WHAT THE OLD REGISTRATION DECLARED, and it has to stay
-        #   True while the body applies its own proposals - the two are one fact said
-        #   twice, and the doors with no batch writer read THIS one to decide.
-        "label": "join", "stamps_origin": True, "writes_itself": True,
+        "label": "join", "stamps_origin": True,
         # ⚰️ `join_into.JOIN_CELLS` WAS PUT HERE AND TAKEN BACK OUT. Declaring the list
         #    makes the loader REFUSE a cell outside it - and 판정 397 settled the
         #    opposite: an unknown join cell is NAMED and the rule still runs,
@@ -253,22 +227,18 @@ def _install_templates():
         #    lives; declaring params here quietly converted it into a refusal.
         "params": None}
     TEMPLATE_FACTS[enrichment.config.AUTO_CONFIRM_MAPPER] = {
-        "label": "decide", "stamps_origin": False, "writes_itself": True,
+        "label": "decide", "stamps_origin": False,
         "params": None}
-    # ⚠️ ITS FACTS ARE THE ONES THE OLD REGISTRATION DECLARED, carried unchanged:
-    #    `materialize_rows` puts the answering row in `origin_row_id`, and it writes
-    #    for itself rather than proposing.
     TEMPLATES[enrichment.config.DEDUP_MAPPER] = _enrich
-    # ⚠️ `writes_itself` IS False HERE AND THAT IS THE UNCHANGED FACT, not an omission: this
-    #    mapper RETURNS `updates` for the seat to write, which is why it is the one template
-    #    whose answer the caller cannot skip applying. ⚠️ `stamps_origin` False is measured
-    #    (`origin_row_id` × 0 in `enrichment/mapper.py`), not assumed.
+    # ⚠️ `stamps_origin` False is measured (`origin_row_id` × 0 in `enrichment/mapper.py`),
+    #    not assumed.
+
     # ⚠️ THE LABEL IS THE DECLARATION'S WORD, NOT THE HALF'S. One `decide` declaration makes
     #    two chain rules; an operator listing the rules for one table should see what they
     #    DECLARED, not which half they happened to get. The registry NAME is what tells the
     #    two halves apart.
     TEMPLATE_FACTS[enrichment.config.DEDUP_MAPPER] = {
-        "label": "decide", "stamps_origin": False, "writes_itself": False,
+        "label": "decide", "stamps_origin": False,
         "params": None}
 
 

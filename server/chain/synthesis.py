@@ -134,7 +134,10 @@ def written_in(rule) -> str:
 #     _run_auto_confirm   -> `dynamic_mappers._auto_confirm` (the body, unchanged)
 #     BUILTIN_LABELS      -> `TEMPLATE_FACTS[...]['label']`
 #     ORIGIN_STAMPING     -> `TEMPLATE_FACTS[...]['stamps_origin']`
-#     SELF_WRITING_KINDS  -> `TEMPLATE_FACTS[...]['writes_itself']`
+#     SELF_WRITING_KINDS  -> `TEMPLATE_FACTS[...]['writes_itself']`, and out again
+#                            2026-09-23: nothing writes for itself, so nobody is asked in
+#                            advance and the seat totals what each mapper reports
+
 #        ⚰️ THIS LINE SAID 「read only by the deferred pass, which goes with it」
 #        AND THAT WAS A PREDICTION WEARING A MEASUREMENT'S CLOTHES. Counted
 #        2026-09-17, there are TWO product readers and they ask in different tenses:

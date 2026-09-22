@@ -286,27 +286,14 @@ def _update_items(db, left_table: str, rows, spec, source_name: str):
     return updates
 
 
-def _apply(db, left_table: str, updates) -> int:
-    """Apply what `propose` built. Returns rows written.
-
-    🔴 [판정 567] THE WRITING IS ITS OWN STEP, because a mapper does not write - it
-    PROPOSES, and the caller's batch writes inside the chain envelope. The items are built
-    once, by `_update_items`, whichever door this join is reached through; only whether this
-    function runs differs between them. Copying the item-building into the mapper would put
-    the layer label, the origin row and the fan-out net in two places, and those are exactly
-    the cells that go wrong silently.
-
-    ⚰️ THIS GOES WITH `run`. Once nothing writes for itself, the caller's batch is the only
-    writer and this function has no caller.
-    """
-    from database import crud, schemas
-
-    if not updates:
-        return 0
-    crud.apply_batch_updates(db, left_table,
-                             schemas.GeneralUpdateBatch(updates=updates, silent=True))
-    return len(updates)
-
+# ⚰️ [판정 567 · 총괄 2026-09-23] `_apply` AND `run` RETIRED TOGETHER. `_apply`'s own
+#    tombstone predicted this: 「Once nothing writes for itself, the caller's batch is the only
+#    writer and this function has no caller」. `_join` calls `propose` now and the seat writes.
+# 🔴 THE SYMPTOM THEY LEFT, kept as the control group: the FIRST attempt at this, on
+#    2026-09-17, changed the body to `propose` WITHOUT giving every door a batch writer, and
+#    the doors that had none dropped the rows silently - `rows_in=4 rows_out=4 written=None`.
+#    What made it safe this time is that the last door without one (replay's row-ids arm) is
+#    collapsed in this same commit. Reinstate either half alone and that log line comes back.
 
 def propose(db, rule: dict, row_ids=None):
     """What this join would change, as update items — and why, when it is nothing.
@@ -360,23 +347,6 @@ def propose(db, rule: dict, row_ids=None):
                    "짝은 찾았고 채울 값이 이미 같습니다 (%d 행)" % len(rows))
     return {"updates": updates, "rows_in": len(rows_in), "refusal": refusal, "side":
             "reference" if reference_side else "target"}
-
-
-def run(db, rule: dict, row_ids=None, done=None, **_):
-    """The self-writing entry: propose, then apply.
-
-    ⚰️ THIS DOCSTRING SAID 「this whole function goes when the kind table does」. The kind
-    table went on 2026-09-17 and this did NOT: it is the body `chain.dynamic_mappers._join`
-    registers, because the registration it replaced named it. What retires it is the round
-    that gives every door a batch writer, and until then the doors with none reach the write
-    through here.
-    """
-    outcome = propose(db, rule, row_ids)
-    updates = outcome.get("updates") or []
-    written = _apply(db, str((rule or {}).get("target_table") or ""), updates)
-    answer = {key: value for key, value in outcome.items() if key != "updates"}
-    answer["written"] = written
-    return answer
 
 
 def _left_rows_for_reference(db, spec, left_model, right_model, right_row_ids,
