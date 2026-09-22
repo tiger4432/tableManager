@@ -59,13 +59,16 @@ CFG="server/config/ontology/ledger_config.json"
 declare -A PREV
 git fetch -q origin main 2>/dev/null || say "⚠️ ARM 중 fetch 실패 — 아래 값은 «마지막으로 받은» 것입니다"
 for f in $WATCHED; do PREV[$f]=$(blob "$f"); done
-PREV_HEAD=$(git rev-parse main 2>/dev/null || echo none)
+arm_head=$(git rev-parse main 2>&1); arm_rc=$?
+if [ "$arm_rc" = 0 ]; then PREV_HEAD="$arm_head"; else
+  PREV_HEAD=none; say "⚠️ ARM 중 착지 감시 오류 — $(why "$arm_head")"
+fi
 PREV_CFG=$( [ -f "$CFG" ] && md5sum "$CFG" | cut -c1-12 || echo missing )
 PREV_BOX=""
 WT="C:/Users/kk980/Developments/assyManager-design"          # 클라 레인의 워크트리
 ID=$("$PY" -c "import base64,json;j=json.dumps(['wafer',{'wafer':'SYN-BW-101-16'}],separators=(',',':'));print('ledger-entity:v1:'+base64.urlsafe_b64encode(j.encode()).decode().rstrip('='))" 2>/dev/null)
 ENC=$("$PY" -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1],safe=''))" "$ID" 2>/dev/null)
-PREV_STALE=""; PREV_LANE=""; PREV_PIPE=""
+PREV_STALE=""; PREV_LANE=""; PREV_PIPE=""; PREV_HEADERR=0
 # 🔴 «자기» pid 를 적는다. 런처($!)의 pid 를 적으면 alive() 가 엉뚱한 것을 보고
 # 「안 돈다」로 읽어 «둘째»를 띄운다 — 2026-09-17 실측: watch_all 이 둘 돌고 있었다
 echo $$ > "$OUT/watch.pid"
@@ -95,22 +98,35 @@ while true; do
     fi
   done
 
-  cur_head=$(git rev-parse main 2>/dev/null || echo none)
-  if [ "$cur_head" != "$PREV_HEAD" ] && [ "$PREV_HEAD" != "none" ]; then
-    # 🔴 [판정 651] LAND 판정은 land_lines.sh «한 좌석»이 낸다. 여기서 다시 적지 않는다 —
-    #    게이트가 «감시가 도는 그 바이트»를 돌려야 하고, 베껴 적으면 둘째 저자가 된다.
-    # 🔴 [판정 659·660] stderr 를 «죽이지 않는다». 좌석이 죽은 것과 「착지 없음」이 둘 다
-    #    «줄 0» 이면 감시가 죽어도 평화처럼 보인다 — 639 가 심박 침묵에 경보를 단 이유와 같다.
-    #    종료코드를 읽고, 실패면 «무엇이 조용해졌는지»를 말한다.
-    land_out=$(bash "$REPO/tools/watch/land_lines.sh" "$PREV_HEAD" "$cur_head" 2>&1); land_rc=$?
-    if [ "$land_rc" = 0 ]; then
-      while IFS= read -r ln; do
-        [ -n "$ln" ] && say "🛠 LAND $ln"
-      done <<< "$land_out"
-    else
-      say "🔴 LAND 판정이 죽었습니다 (exit=$land_rc) — $(why "$land_out")"
+  # 🔴 [판정 668] rev-parse 실패를 'none' 으로 접으면 착지 보고가 «영원히» 조용해진다.
+  #    실측(이 파일의 가드를 떼어 돌림): PREV_HEAD 가 한 번 none 이 되면 옛 가드의 둘째 조건이
+  #    계속 거짓이라 대입이 안 돌고, 그래서 none 이 «안 풀린다» — 틱 셋에 착지 보고 0.
+  #    60초 루프이므로 매 틱 찍지 «않는다». PREV_* 패턴대로 «상태가 바뀔 때만» 말한다(668 조건).
+  head_out=$(git rev-parse main 2>&1); head_rc=$?
+  if [ "$head_rc" != 0 ]; then
+    [ "$PREV_HEADERR" != 1 ] && { say "⚠️ 착지 감시 오류 — $(why "$head_out")"; PREV_HEADERR=1; }
+  else
+    [ "$PREV_HEADERR" = 1 ] && { say "✅ 착지 감시 복구 — main=$(printf '%.8s' "$head_out")"; PREV_HEADERR=0; }
+    cur_head="$head_out"
+    if [ "$PREV_HEAD" = none ]; then
+      # 기준선이 «없다» — 이번 값을 조용히 기준선으로 잡는다. 여기서 쏟으면 기동 때 옛 착지가 전부 다시 찍힌다
+      PREV_HEAD=$cur_head
+    elif [ "$cur_head" != "$PREV_HEAD" ]; then
+      # 🔴 [판정 651] LAND 판정은 land_lines.sh «한 좌석»이 낸다. 여기서 다시 적지 않는다 —
+      #    게이트가 «감시가 도는 그 바이트»를 돌려야 하고, 베껴 적으면 둘째 저자가 된다.
+      # 🔴 [판정 659·660] stderr 를 «죽이지 않는다». 좌석이 죽은 것과 「착지 없음」이 둘 다
+      #    «줄 0» 이면 감시가 죽어도 평화처럼 보인다 — 639 가 심박 침묵에 경보를 단 이유와 같다.
+      #    종료코드를 읽고, 실패면 «무엇이 조용해졌는지»를 말한다.
+      land_out=$(bash "$REPO/tools/watch/land_lines.sh" "$PREV_HEAD" "$cur_head" 2>&1); land_rc=$?
+      if [ "$land_rc" = 0 ]; then
+        while IFS= read -r ln; do
+          [ -n "$ln" ] && say "🛠 LAND $ln"
+        done <<< "$land_out"
+      else
+        say "🔴 LAND 판정이 죽었습니다 (exit=$land_rc) — $(why "$land_out")"
+      fi
+      PREV_HEAD=$cur_head
     fi
-    PREV_HEAD=$cur_head
   fi
 
   if [ -f "$CFG" ]; then
