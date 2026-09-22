@@ -54529,3 +54529,36 @@ crud.py:4372-4373
 ⛔ inherit_virtual_join_rules (원장 쪽 자리 여럿)은 그대로 — 아직 은퇴 안 했습니다
 ```
 이것만입니다. 끝나면 멈추십시오.
+
+> 📐 **[09-22 총괄] 다음 — 인리치의 «집»을 하나로. 첫 걸음은 «짓기»가 아니라 «대응표»입니다**
+
+소유자 승인. 도착지: **`enrichment_rules.json` 을 제품이 안 읽어도 되는 상태.**
+
+### 지금 상태 — 제가 잰 것
+
+```
+문   «하나»입니다. 636 이 이미 접었습니다
+     묻는 자리  chain/enrich_declarations.declarations()·find()  — 부르는 곳 13, 전부 여기로
+     세우는 자리 enrichment/config.chain_rules_from_cells  하나
+     도는 자리  declared:enrich · declared:decide  상수 하나씩
+집   «둘»입니다   enrichment_rules.json  ·  chain_rules.json 의 derive.decide
+읽는 자리 셋  config.load_enrichment_rules · backfill:90 · config_resolve_report:460
+           (+ synthesis:115 는 «이름»만 씁니다)
+```
+🔴 **옮기는 문이 «없습니다»** — 평면 인리치를 통합으로 바꾸는 함수도 라우트도 0 (제가 셌습니다).
+그래서 소유자께서 «옮기실 방법이 지금 없습니다». 이것이 이 라운드의 진짜 일입니다.
+
+### 이번 걸음 «하나» — 대응표. 코드는 «안 짓습니다**
+
+```
+만들 것   평면 인리치 선언이 드는 칸 «전부» × 통합 derive.decide 의 어느 칸인가
+모양     칸 이름 | 통합의 대응 칸 | 상태(대응됨 · 기본값이 덮음 · «없음»)
+🔴 핵심   「없음」이 몇인지가 이 표의 답입니다. 0 이면 옮기기는 «선언 작업»이고,
+         1 이상이면 «그 축을 세우는 것»이 다음 라운드입니다 (스키마 상설 그대로)
+모집단   평면 검증기가 «실제로 보는» 칸으로 세십시오 — 샘플이나 기억이 아니라
+        `enrichment/config.py` 의 `_validate_rule` 이 읽는 이름 전부
+```
+```
+⛔ 이번에 «안 하는 것»   로더 삭제 · 라우트 추가 · 선언 변환기 · 문서
+   표가 나오면 멈추고 올리십시오. 그 표를 보고 소유자께 안을 올립니다
+```
