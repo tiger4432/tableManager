@@ -552,12 +552,15 @@ def group_id(event, rules):
     「가장 엄한 상한이 이긴다」 one axis over (S-153/S-221), and it needs no new refusal.
 
     ⚠️ NO RULE DECLARING ONE = TODAY'S ANSWER, to the character.
+
+    🔴 여기의 `fires` 에는 `_is_trigger_event` 가 «일부러» 없다 — 묶기는 종류를 안 가린다.
+       이 함수는 :583 에서 «모든» 이벤트에 불리므로, 그 축을 더하면 DELETE 행의 그룹 키가
+       달라진다. 빠뜨린 것으로 읽고 채워 넣지 말 것 —
+       `test_one_predicate_says_whether_a_rule_fires` 가 그 변이를 빨갛게 잡는다.
     """
     payload = get_payload_dict(event) or {}
     keys = sorted({key for rule in (rules or ())
-                   if rule.get("enabled", True)
-                   and rule.get("trigger_table") == event.table_name
-                   and _rule_accepts_event(rule, event)
+                   if fires(rule, event)
                    for key in (group_key(rule, payload),) if key})
     if keys:
         return "group_by:" + "|".join(keys)
@@ -1055,6 +1058,32 @@ def _rule_accepts_event(rule, event) -> bool:
     return bool(rule.get("allow_chain_trigger"))
 
 
+def _is_trigger_event(event) -> bool:
+    """이 이벤트가 규칙을 «깨울 수 있는» 종류인가 — 이벤트 «혼자»의 성질이다.
+
+    ⛔ `CHAIN_OWNED_EVENT_TYPES` 가 아니다. 저쪽은 DELETE 를 포함하고 「이 행을 어느 데몬이
+       비우나」에 답한다. 이쪽은 「규칙이 깨어나나」이고 DELETE 는 깨우지 않는다 — 같은 낱말
+       두 물음이라 상수를 빌려 쓰면 DELETE 가 조용히 체인을 돌린다.
+    """
+    return event.event_type in ("CREATE", "EDIT")
+
+
+def fires(rule, event) -> bool:
+    """이 규칙이 이 이벤트에 «도나» — (규칙, 이벤트) «쌍»의 성질.
+
+    🔴 이 셋은 아홉 자리에 사본으로 있었다. `_group_triggered_rules` 의 독스트링이 그중
+       둘에 대해 불변식을 «적어 두고» 있었고(「같은 술어를 지나야 한다 — 갈리면 한쪽이 보는
+       표를 다른 쪽이 못 본다」) 계기는 없었다. 이 좌석이 그 문장을 구조로 만든다.
+
+    ⚠️ `event_type` 은 여기 «없다». 그것은 이벤트 혼자의 성질이고(`_is_trigger_event`),
+       `group_id` 는 모든 종류를 묶으므로 이 술어를 그 축 «없이» 쓴다. 둘을 한 술어로 접으면
+       DELETE 행의 그룹 키가 바뀐다 — 축이 둘인 이유가 그것이다.
+    """
+    return (rule.get("enabled", True)
+            and rule.get("trigger_table") == event.table_name
+            and _rule_accepts_event(rule, event))
+
+
 def _report_unwatchable_trigger_columns(rules):
     """Name every `trigger_columns` entry the trigger table does not declare (S-140 ④).
 
@@ -1273,16 +1302,14 @@ def _group_triggered_rules(events_in_tx, rules):
     지나야 한다 — 갈리면 한쪽이 보는 표를 다른 쪽이 못 본다.
     """
     trigger_tables = set(
-        e.table_name for e in events_in_tx if e.event_type in ("CREATE", "EDIT")
-        and any(r.get("trigger_table") == e.table_name and r.get("enabled", True)
-                and _rule_accepts_event(r, e) for r in rules)
+        e.table_name for e in events_in_tx if _is_trigger_event(e)
+        and any(fires(r, e) for r in rules)
     )
     if not trigger_tables:
         return []
     return [r for r in rules
-            if (r.get("enabled", True) and r.get("trigger_table") in trigger_tables
-                and any(e.table_name == r.get("trigger_table") and _rule_accepts_event(r, e)
-                        for e in events_in_tx))]
+            if (r.get("trigger_table") in trigger_tables
+                and any(fires(r, e) for e in events_in_tx))]
 
 
 def trigger_tables_in_order(events):
@@ -1328,17 +1355,15 @@ def _group_target_tables(events_in_tx, rules):
     allow_chain_trigger를 선언한 규칙이 있을 때만 target 영향으로 계산한다.
     """
     trigger_tables = set(
-        e.table_name for e in events_in_tx if e.event_type in ("CREATE", "EDIT")
-        and any(r.get("trigger_table") == e.table_name and r.get("enabled", True)
-                and _rule_accepts_event(r, e) for r in rules)
+        e.table_name for e in events_in_tx if _is_trigger_event(e)
+        and any(fires(r, e) for r in rules)
     )
     if not trigger_tables:
         return set()
     targets = set()
     for r in rules:
-        if (r.get("enabled", True) and r.get("trigger_table") in trigger_tables
-                and any(e.table_name == r.get("trigger_table") and _rule_accepts_event(r, e)
-                        for e in events_in_tx)):
+        if (r.get("trigger_table") in trigger_tables
+                and any(fires(r, e) for e in events_in_tx)):
             tgt = r.get("target_table")
             if tgt:
                 targets.add(tgt)
@@ -1811,9 +1836,8 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
     # rule, so it is O(events x rules) on a thousand-row group and nothing on the line
     # said whether that mattered.
     with alignment_batch_counts.stage("trigger filter"):
-        valid_events = [e for e in events if e.event_type in ["CREATE", "EDIT"] and any(
-            r.get("trigger_table") == e.table_name and r.get("enabled", True)
-            and _rule_accepts_event(r, e) for r in rules)]
+        valid_events = [e for e in events if _is_trigger_event(e)
+                        and any(fires(r, e) for r in rules)]
     if not valid_events:
         return True, None, broadcast_messages
 
@@ -1904,8 +1928,8 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
     for table_name in trigger_tables_in_order(valid_events):
         matched_rules = [
             r for r in rules
-            if r.get("trigger_table") == table_name and r.get("enabled", True)
-            and any(_rule_accepts_event(r, e) for e in valid_events if e.table_name == table_name)
+            if r.get("trigger_table") == table_name
+            and any(fires(r, e) for e in valid_events if e.table_name == table_name)
         ]
         if not matched_rules:
             continue
@@ -1924,7 +1948,7 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
             try:
                 trigger_events = [e for e in valid_events
                                   if e.table_name == table_name
-                                  and _rule_accepts_event(rule, e)]
+                                  and fires(rule, e)]
                 # 🪦 [판정 495] A BRANCH ON KIND STOOD HERE AND IT HAD NOTHING IN IT.
                 # `rule_run._uniform` was built (판정 428) so that 「a caller can extend all
                 # three lists unconditionally and get a no-op - that is what lets the branch
@@ -2243,9 +2267,7 @@ def _rules_for_group(events_in_tx, rules):
     return tuple(sorted(
         str(r.get("name") or "")
         for r in rules
-        if r.get("enabled", True)
-        and any(e.table_name == r.get("trigger_table") and _rule_accepts_event(r, e)
-                for e in events_in_tx)))
+        if any(fires(r, e) for e in events_in_tx)))
 
 
 def merge_consecutive_groups(group_order, groups, rules):

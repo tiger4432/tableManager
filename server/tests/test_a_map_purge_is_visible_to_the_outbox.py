@@ -152,17 +152,36 @@ def test_the_other_half_is_closed_too():
 
 def test_a_delete_event_cannot_wake_the_chain():
     """🔵 MEASURED BEFORE IT WAS WRITTEN, not left to the depth limit - depth bounds an
-    unbounded cascade and would not have prevented a NEW one."""
+    unbounded cascade and would not have prevented a NEW one.
+
+    ⚰️ THIS COUNTED COPIES OF THE GUARD (「>= 3」) AND THE COPIES ARE GONE. The spelling
+    `event_type in ("CREATE", "EDIT")` sat at every selection site; it is one named seat
+    now (`_is_trigger_event`) and the sites call it. Counting copies was a PROXY for 「the
+    guard is at every selection site」, and the proxy reads a fold as a regression - it
+    went red on this commit while the property got stronger. So the property is measured
+    by RUNNING the selection seats now, which is what the title claimed all along.
+    """
     import inspect
-    import re
+    import types
 
     from chain import ingestion_worker as worker
 
-    # The module, not one function: the guard appears at every place the worker SELECTS
-    # trigger events, and naming the functions would make this test go red on a rename
-    # rather than on the property it is about.
+    rule = {"name": "r", "enabled": True, "trigger_table": "t", "target_table": "u"}
+
+    def ev(kind):
+        return types.SimpleNamespace(table_name="t", event_type=kind, payload={})
+
+    # ⚠️ 대조군 먼저 — 이 줄이 없으면 아래의 «빈 목록»이 「DELETE 가 막혔다」인지
+    #    「픽스처가 아무것도 안 깨운다」인지 구별되지 않는다. 공허한 초록의 자리다.
+    assert worker._group_triggered_rules([ev("CREATE")], [rule]) == [rule]
+    assert worker._group_target_tables([ev("CREATE")], [rule]) == {"u"}
+
+    assert worker._is_trigger_event(ev("DELETE")) is False
+    assert worker._group_triggered_rules([ev("DELETE")], [rule]) == []
+    assert worker._group_target_tables([ev("DELETE")], [rule]) == set()
+
+    # 🔴 그리고 DELETE 가 «갈래»로 되살아나지 않는지는 여전히 텍스트가 주어다 —
+    #    「이 낱말이 코드에 없다」는 돌려서는 못 재는 주장이다.
     source = inspect.getsource(worker)
-    guards = re.findall(r'event_type in [\(\[]"CREATE", "EDIT"[\)\]]', source)
-    assert len(guards) >= 3, "the CREATE/EDIT trigger guard moved or shrank: %d" % len(guards)
     assert 'event_type == "DELETE"' not in source
     assert '"DELETE"' not in source.split("def _rule_accepts_event", 1)[1][:400]
