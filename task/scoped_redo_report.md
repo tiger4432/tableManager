@@ -52155,3 +52155,37 @@ SUBTRANSACTION 은 래치를 «안» 풉니다 — 그게 의도입니다(`datab
 **추천은 ㉮** 입니다. ㄷ 은 「비용 0」과 정면으로 부딪치고, 그 수를 제가 아직 못 쟀습니다.
 
 ⚠️ 승인 전까지 제품 코드 0 줄입니다.
+
+#### 덧 — 방금 올린 제 절대어에 계기를 답니다 (+ 질문이 하나 좁아집니다)
+
+계획에 「아홉 중 누구도 못 우회합니다」라고 «계기 없이» 적었습니다. 지금 쟀습니다.
+
+```bash
+grep -n "^from sqlalchemy.orm\|listens_for(Session" server/database/database.py
+```
+```
+database.py:2    from sqlalchemy.orm import (sessionmaker, declarative_base, Session, ...)
+database.py:128  @event.listens_for(Session, "before_flush")
+```
+`Session` 이 «sqlalchemy 의 기반 클래스»입니다 — 세션메이커가 무엇이든 그 프로세스의
+«모든» 세션이 이 좌석을 지납니다. 그래서 ㄱ 이 「자리 목록」이 아니라 «성질»입니다.
+
+```
+⚠️ 다만 조건이 하나 있습니다: 그 프로세스가 `database.database` 를 «import 했을 때»만
+   리스너가 존재합니다. 판정 364 와 같은 모양이라 게이트에 넣겠습니다
+```
+
+#### 그리고 침묵 셋을 «열어» 보니 ❓ 가 좁아집니다
+
+```
+internal_event_client:161   db.add(...) -> db.commit(). NOTIFY 없음 — 확인
+outbox_expand:436 · :507    children 를 db.add. status="PENDING" = «대기열에 보이는 행»
+```
+🔴 `outbox_expand` 는 **체인 워커 프로세스**에서 돕니다. 즉 「대기열에 새 행이 태어나는」 일이
+WS 허브가 «없는» 쪽에서도 일어납니다 — 재확장은 실패한 청크가 갈라질 때라 운영자가 제일
+보고 싶어 할 행입니다.
+
+```
+그래서 ❓ 의 ㉮(제 몫은 NOTIFY 까지)가 «더» 맞습니다 —
+API 프로세스만 방송하게 지으면 재확장 행은 «영원히 조용합니다»
+```
