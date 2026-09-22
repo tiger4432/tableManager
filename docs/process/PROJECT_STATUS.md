@@ -63,7 +63,11 @@
 
 ```
 ⑩′  리플레이 초인종 행을 스케줄러가 아직 집는다. «통일 뒤에 다시 잰다»고 열어 뒀다
-tx 라벨  replay.py 쪽마다 · backfill.py 청크마다 · analysis.py 스윕 접두 — 셋을 모은다
+tx 라벨  «둘»을 모은다 — replay.py:756 쪽마다 · backfill.py:436 청크마다
+       -> 「한 실행 = 한 transaction_id」. 선례가 같은 파일에 있다
+          (`recompute_display_values`: 「One tx_id for the whole run」)
+       ⚠️ 총괄이 처음 «셋»이라 적었고 틀렸다 — 스윕은 호출자 셋이 전부 규칙 «하나»를
+          넘겨서 이미 tx 하나다. `uuid4()` 자리만 보고 호출 «수»를 안 셌다
 그 밖   대기열이 «빠질 때» 알림 (database.py:219 이 session.new 만 본다) · 맵퍼 문 넷
 클라    rnd_board direction 선언 (⓪ -> ③ -> ①)
 ```
