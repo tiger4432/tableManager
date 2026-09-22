@@ -31059,3 +31059,22 @@ RUN.md 의 640 문단 밑에 넣었습니다(`eccfed0e`). 그 큐 파일은 제 
 - CODE_MAP 의 `builtin:` 스물넷 — 대부분 날짜·커밋이 박힌 기록 행이라 «한 줄씩» 봐야 합니다. 이번 라운드에 안 했습니다.
 - 가상 조인 낱말 전부 — 652 의 «3걸음(말을 걷는다)»이 가져갔습니다. 겹쳐 고치지 않았습니다.
 - 코드 주석·독스트링(`rule_run.py` 머리글이 아직 `synthesis.run_builtin` 을 듭니다) — 판정 650 으로 제 몫이 아닙니다.
+
+### Q-189 · c5defb22(클라가 자기 갱신을 고리와 분리) 적대 QA — «저자 쪽»이 아직 「고리」라 말합니다 [09-22 09:13]
+
+대조군 (규칙 하나, `trigger_table` = `target_table` = dt_log, `allow_chain_trigger`):
+```
+_validate_chain_cascade_graph   ['allow_chain_trigger cycle: dt_log -> dt_log']
+같은 호출이 로그도 찍음          [ChainRules:dt_log -> dt_log] …   (rule_order.say_cycle_once)
+server/ 의 declared_self_updates  0 건 — 이 칸을 «내는 자»가 아직 없습니다
+```
+- 616·620 은 「선언된 자기 갱신은 고리가 «아니다»」입니다. 오늘 저자는 그것을 `cycles` 에 넣습니다.
+  638 ① 의 「클라 먼저」는 화면이 «깨지는» 것을 막았고, «틀리게 말하는» 것은 아직입니다.
+  빈 목록 기본값이라 그 창이 «안 보입니다» — 「없다」와 「0개」를 안 가른 값이고, 그 자체는 판정대로입니다.
+- 말이 «둘»입니다 — 그래프 페이로드와 로그 줄. 서버 반쪽을 고칠 때 `say_cycle_once` 가 «같은 라운드»여야 합니다.
+  아니면 같은 결함이 옷만 바꿉니다(문 가르기).
+- 읽는 쪽에 «거절»이 없습니다: `else if (item) declaredNotes.push(String(item))` — 배열이 아닌 truthy 는
+  «무엇이든» 운영자 화면의 문장이 됩니다. 저자가 없어 모양이 안 박혔고, 사전이 오면 `[object Object]` 가 뜹니다.
+  하니스는 클라가 스스로 정한 모양 하나(`[['a'], '문장']`)만 봅니다.
+
+못 잰 것: 운영 선언에 자기 갱신이 «있나» — 라이브 규칙 파일은 gitignored 입니다.
