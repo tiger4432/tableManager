@@ -31969,3 +31969,72 @@ main.js:583  const refreshQueue = async () => { … await fetch(`…/outbox/queu
 안 했다  클라 하니스(ASSERTIONS 7 0 · redo_banner 55 0)를 제가 안 돌렸습니다. 구현자 보고입니다
 그대로   ② 글자 넘침 수정(min-width:0 · overflow-wrap)은 제가 열지 않았습니다
 ```
+
+---
+
+## Q-210 · `a08a5b705` 적대 QA — 고쳐졌습니다. 그런데 게이트가 «위치»를 재고, 위치가 맞아도 안 뜨는 길이 하나 남습니다 (23:16)
+
+### 먼저 — 신고된 원인은 닫혔습니다
+
+| 잰 것 (`origin/main`) | 줄 |
+|---|---|
+| `startup_event` | 344 ~ 640 |
+| 방송 리스너 `create_task` | **514** |
+| `DECOUPLED` return | **525** — 이제 «뒤» ✅ |
+| 그 앞의 다른 return | **386** 하나뿐, `TESTING == "True"` 게이트 — 정상 |
+
+운영(TESTING 없음 · DECOUPLED=True)은 :514 에 닿습니다. 고쳐졌습니다.
+
+### 🔴 남는 길 — `:514` 가 마이그레이션 try «안»입니다
+
+```
+:413  try:                          <- indent 4
+:417      with engine.connect() as conn:    <- 이 try «바로» 안. 감싸는 것 없음
+:422~     (마이그레이션 둘은 «자기» try/except 를 가짐 — :433 · :465 에서 삼킴)
+:514      main_loop.create_task(_outbox_queue_broadcast_loop())
+:525      DECOUPLED return
+:636  except Exception as e:  -> logger.error("Startup step failed (watcher/chain worker)")  «계속 돈다»
+```
+
+마이그레이션 둘은 자기 except 로 막혀 있어 안전합니다. 막히지 **않은** 것은 `:417`
+`engine.connect()` 자체입니다. 기동 순간 DB 가 잠깐 안 열리면 거기서 튀어 `:636` 으로 가고,
+**:514 를 건너뛴 채 API 는 계속 뜹니다.** DB 가 곧 돌아와도 리스너는 그 프로세스에서 영영 안 켜집니다.
+
+증상은 또 «침묵»입니다 — :515 의 `listener started` 도, :519 의 `NOT started: dialect=` 도 안 찍히고,
+찍히는 것은 「Startup step failed (watcher/chain worker)」 한 줄이라 **리스너를 지목하지 않습니다.**
+
+그리고 그 자리에 있어야 할 이유가 없습니다: `main_loop` 는 **:347** 에서 잡힙니다(그 try 밖).
+리스너 블록은 `engine.dialect.name` 과 `main_loop` 만 쓰므로 `:413` «위»로 올라갈 수 있습니다.
+
+### 새 게이트가 재는 것 — 「간다」이지 「돈다」가 아닙니다
+
+```
+test_the_api_broadcast_starts_before_every_mode_specific_exit
+   inspect.getsource(startup_event) -> source.index('os.getenv("DECOUPLED")') 와
+   방송 시작의 «문자 위치»를 견줍니다
+```
+
+이 게이트는 방금 난 회귀를 **정확히** 잡습니다 — 그건 위치 결함이었으니까요. 값어치 있습니다.
+다만 주장하는 성질은 「운영에서 켜진다」(돈다)이고 재는 것은 「소스에서 앞에 있다」(간다)입니다.
+위 `:417` 길에서는 **게이트가 초록인 채로** 안 켜집니다. 저장소의 판별식대로 적으면
+텍스트가 «주어»가 아니라 «대리»인 자리입니다.
+
+부수적으로 `source.index(...)` 는 **첫 히트**를 잡습니다. `os.getenv("DECOUPLED")` 가
+`startup_event` 안에 하나 더 생기면 그 단언의 «주어»가 조용히 바뀝니다(오늘은 하나입니다 — 셌습니다).
+
+### 갈래 (제가 고르지 않습니다)
+
+```
+ㄱ  블록을 :413 «위»로 — 의존이 없으므로 가능. 「모든 마이그레이션 뒤」라는 좌석 문구가
+    그 위치를 막고 있는데, 리스너는 마이그레이션된 스키마가 «필요 없습니다»(LISTEN 은 채널만 씀)
+ㄴ  자기 try 를 바깥 try «밖»에 둔다 — 위치는 그대로, 남의 예외에서 분리
+ㄷ  「돈다」 게이트를 하나  — 위치가 아니라 «시작됐나»를 재려면 관측할 것은
+    :515 의 로그 줄이거나 태스크 목록입니다. 크기는 «안 쟀습니다»
+```
+
+### 안 잰 것
+
+```
+못 쟀다  `engine.connect()` 가 기동에서 «실제로» 얼마나 터지는지 — 박스에서 재현 안 했습니다
+그대로   시험 파일의 나머지 변경(-49/+71 중 이 게이트 밖)은 열지 않았습니다
+```
