@@ -237,7 +237,11 @@ def test_a_refused_join_declaration_lands_in_invalid(monkeypatch):
 
     report = synthesis.approval_report(None, known_tables=TABLES)
 
+    # 🔴 [판정 686] 652 의 남긴다 항목은 「읽기 시점 조인은 «이름 대어» 거절」이다.
+    #    「invalid 에 들었다」만 재면 반쪽이고, 운영자가 화면에서 보는 것은 «문장»이다.
     assert [item["subject"] for item in report["invalid"]] == ["a678_refused"]
+    assert "a678_refused" in (report["invalid"][0]["detail"] or ""), (
+        "거절이 자기 «이름»을 안 댑니다: %r" % (report["invalid"][0]["detail"],))
     assert report["declarations"] == []
 
 
