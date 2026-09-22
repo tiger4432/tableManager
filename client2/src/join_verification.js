@@ -2,7 +2,7 @@
 //
 // 🔴 이 파일이 있는 이유: 화면이 부르던 `/admin/config/resolve` 는 「선언이 «유효한가»」까지만
 //    답합니다. 승인 조건인 「조인 키를 덮는 UNIQUE 인덱스」는 `pg_index` 가 아는 사실이라
-//    세션이 필요하고, 그래서 «다른 라우트»(`/admin/config/virtual-join/verify`)가 답합니다.
+//    세션이 필요하고, 그래서 «다른 라우트»(`/admin/chain/join/verify`)가 답합니다.
 //    그 라우트는 오늘까지 소비자가 «0» 이었습니다 — 서버는 「무엇을 만들어야 하는지」를
 //    DDL 문장으로 내고 있었는데, 화면은 한 낱말만 읽고 있었습니다.
 //
@@ -34,7 +34,7 @@ function declarationState(row) {
 }
 
 /**
- * @param {object|null|undefined} report `/admin/config/virtual-join/verify` 의 응답
+ * @param {object|null|undefined} report `/admin/chain/join/verify` 의 응답
  * @param {{read?: boolean, failed?: string}} [opts] `failed` 는 못 받은 «사유»
  */
 export function joinVerificationView(report, opts = {}) {

@@ -2225,7 +2225,7 @@ async function refreshJoinVerification() {
   if (!body) return;
   let view;
   try {
-    const res = await adminFetch(`${API_BASE}/admin/config/virtual-join/verify`);
+    const res = await adminFetch(`${API_BASE}/admin/chain/join/verify`);
     view = res.ok
       ? joinVerificationView(await res.json())
       : joinVerificationView(null,
