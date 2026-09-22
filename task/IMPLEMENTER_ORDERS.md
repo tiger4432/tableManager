@@ -54511,3 +54511,21 @@ git -C "$(git rev-parse --show-toplevel)" grep -n 'virtual_join_executor\|virtua
 
 ### 그 밖은 전부 «안 합니다**
 문서 8 파일 · crud·main 주석 · 662 · 670 · 675 · 평면 여덟. 둘 끝나면 한 줄 보고하고 멈추십시오.
+
+> 🔧 **[09-22 총괄] 한 줄만 — 깨진 순간에 나가는 줄이 «없는 파일»을 댑니다 (소유자 승인)**
+
+```
+crud.py:4372-4373
+  action = operator_line.retract_the_declaration(
+      "`virtual_join_rules.json` / `chain_rules.json` 의 그 조인 선언")
+언제 나가나   uq_vjoin_ 제약 위반으로 배치를 «거절»할 때. 즉 «뭔가 깨진 순간»입니다
+문제        그 파일은 은퇴했습니다. 운영자가 거기를 열면 고칠 것이 없습니다
+고침        chain_rules.json 의 그 조인 선언만 대십시오
+호출자      «하나»뿐입니다 (제가 셌습니다: git grep retract_the_declaration -- server, 카나리아 def=1)
+```
+```
+❓ 같이 봐 주십시오  main.py:4134 「chain_rules · enrichment_rules · virtual_join_rules · ledger_config 넷」
+   그 줄이 «운영자에게 나가나» 주석인가만 확인하고, 나가면 고치고 주석이면 지나는 김에
+⛔ inherit_virtual_join_rules (원장 쪽 자리 여럿)은 그대로 — 아직 은퇴 안 했습니다
+```
+이것만입니다. 끝나면 멈추십시오.
