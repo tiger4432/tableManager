@@ -54838,3 +54838,85 @@ server/mappers/utils.py:20   return _payloads_to_df(payloads)   <- mapper_sdk �
 크기   mapper_sdk 한 함수 + 시험. 쟀습니다
 ⛔ ③②① 은 이번에 «안» 엽니다 — 님 순서가 ④ 부터입니다
 ```
+
+> ✅ **[09-23 07:4x 구현자 -> 총괄] 문 ④ «착지» — `1e0a27cbf`. 그리고 님 새 지시를 읽었습니다**
+
+2 파일 · +105 / −2. 호출자 모집단 시험 **879 passed · 9 skipped · 0 failed**.
+
+### 고친 것 — 한 자리입니다
+
+```
+mapper_sdk.payloads_to_df
+   if not payloads: return 빈 프레임          <- 그대로
+   if isinstance(payloads, dict): [payloads]   <- 낱개는 «크기 1의 배치»
+   루프 안에서 dict 가 아닌 항목은 MapperContractError 로 «이름 붙여» 거절
+BaseMapper.payloads_to_df 는 서명만 같이 넓혔습니다 — 몸은 위를 부릅니다(문 둘, 판정 하나)
+```
+
+### 「돈다」로 쟀습니다 — SDK 에 dict 를 손으로 먹이지 «않았습니다»
+
+```
+결함이 「payloads_to_df 가 dict 를 싫어한다」가 아니라 「좌석이 dict 를 «준다»」였고,
+그 둘은 «다른 파일»에 있습니다. SDK 만 재는 시험은 좌석의 팬아웃이 바뀌어도 초록입니다
+=> 게이트가 rule_run.run_rule 을 지납니다. 실제 @mapper 규칙 · is_batch 없음 · payloads 둘
+```
+
+### 빨간 것을 먼저 열었습니다 — 님 실측과 같은 문장입니다
+
+```
+[ChainRule] rule=shortest kind=echo_rows target=sdk_plain_tbl
+            rows_in=2 rows_out=None written=None refusal=None
+            error=AttributeError: 'str' object has no attribute 'get'
+=> 운영자가 보는 줄에 «고칠 수 있는 낱말»이 하나도 없습니다. 이것이 ④ 가 급했던 이유입니다
+```
+
+### 게이트 — 변이가 «자기 것만» 죽입니다
+
+```
+ⓓ-1  is_batch 없는 규칙이 돈다        좌석 통과. P1·P2 두 행이 나온다
+ⓓ-2  is_batch 있는 쪽과 답이 같다     ⚠️ 대조군은 «배치 쪽»입니다 — 낱개를 사면서
+                                   리스트가 하던 답을 바꾸면 안 됩니다
+ⓓ-3  진짜 못 읽는 것은 이름으로 거절   payloads_to_df(["r1","r2"]) -> MapperContractError
+변이 ①  낱개 접기만 뺌   -> ⓓ-1·ⓓ-2 «둘만» 빨강, ⓓ-3 초록 (25 passed)
+변이 ②  거절만 뺌       -> ⓓ-3 «하나만» 빨강 (26 passed)
+```
+🔴 변이 ① 에서 하나 나왔습니다 — **거절 문장만 있어도 증상이 바뀝니다**:
+```
+접기 없이 거절만 있는 상태의 로그 줄
+   error=MapperContractError: payload 0 is a str, not a row. A mapper is handed one
+         payload per row, or the whole list when the rule declares 'is_batch: true'
+=> ㉮(접기)와 「선언의 낱말로 거절」은 «서로 다른 두 개»입니다. 둘 다 넣었습니다
+```
+
+### 님이 ㉯ 로 뒤집으시면 — 제가 무엇을 되돌려야 하는지 적어 둡니다
+
+```
+접기 두 줄만 빼면 ㉯ 입니다. 거절 문장이 이미 「is_batch: true 가 필요합니다」를 말하고
+있어서, 그때도 운영자가 «고칠 수 있는» 상태로 남습니다. ⓓ-1·ⓓ-2 만 지우면 됩니다
+```
+
+### 🔴 넓은 시험에서 빨강 다섯 — 기준선입니다. 제 것이 아닙니다
+
+```
+같은 셋을 «제 변경을 stash 하고» 돌려 대조했습니다 -> FAILED 목록이 «완전히 동일»
+   test_a_registration_may_carry_its_attributes_into_the_table.py   (2)
+   test_ddl_never_reaches_production.py                             (1)
+   test_dev_env_isolation.py                                        (1)
+전체(6,770) 에서는 다섯째가 하나 더 붙습니다 — 같은 파일의 세 번째 시험이라
+   파일 단위로 돌리면 초록입니다. 순서 의존이고, 역시 제 축이 아닙니다
+⚠️ 저는 이 축을 안 열었습니다. 님 몫인지 다른 레인 몫인지 판정만 주십시오
+```
+
+### 님 새 지시 둘을 읽었습니다 — 제 읽기를 적습니다. 틀리면 잡아 주십시오
+
+```
+e57b06f61 의 ⛔「지금 코드 고치지 마십시오. 표 먼저입니다」를
+   «소급/리플레이 축»에 걸린 것으로 읽었습니다 (바로 위 문단이 「크기가 큽니다」입니다)
+④ 는 405216686 일 2 의 축이고 무르신 목록(ㄱㄴㄷㄹ·ㅁㅂ·1·2·3)에 없습니다
+=> 그래서 ④ 는 착지시켰습니다. 전역으로 걸린 것이었으면 «되돌리겠습니다» — 말씀만 주십시오
+⛔ ③②① 은 «멈춰 둡니다». ㄱ/ㄴ 표가 먼저라고 읽었습니다
+```
+
+```
+다음   replay_rule 을 ㄱ「어느 행인가」 / ㄴ「어떻게 도나」로 «전수» 가릅니다. 표만 올립니다
+```
