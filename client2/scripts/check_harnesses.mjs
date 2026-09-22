@@ -261,7 +261,7 @@ const FLOORS = new Map([
   // does not show that value the operator reads "saved" as "running". Three states, because
   // the list response carries no `enabled` at all and drawing that as `false` would answer
   // a question nobody asked.
-  ['chain_rule_panel_harness.mjs', 59],
+  ['chain_rule_panel_harness.mjs', 67],
   ['absent_harness.mjs', 35],
   // THE ZERO THAT LIES. Four tabs each grew their own sentence for "0 but there is work",
   // while the server has shipped a closed list of six absence words that nothing read.
@@ -1299,7 +1299,7 @@ const FLOORS = new Map([
   //    a fixture whose keys are the real ones -- a form that hardcoded them would pass. The
   //    decoy's keys exist nowhere in this product, so drawing them is the proof, and drawing a
   //    real routing key beside them is the failure.
-  ['chain_rule_form_harness.mjs', 86],
+  ['chain_rule_form_harness.mjs', 89],
   ['clipboard_type_modal_harness.mjs', 21],
   ['chain_rule_user_path_harness.mjs', 62],
   // a value carrying markup does not come back out as markup, and the backlog has a ceiling
@@ -1320,7 +1320,7 @@ const FLOORS = new Map([
   // record/map/oneOf). Floor is the count it reports on the commit that introduces it. 🔴 IT
   // READS THE SHIPPED CHAIN SKELETON for the descent today's screens take, and a hand fixture
   // for a oneOf nested under a oneOf, which nothing shipped nests yet.
-  ['skeleton_oneof_descent_harness.mjs', 15],
+  ['skeleton_oneof_descent_harness.mjs', 23],
   // New 2026-09-08 with C-41 (the ten-user driver). Floor is the count it reports on the
   // commit that introduces it. 🔴 A LOAD DRIVER'S DEFECTS ALL LOOK LIKE GOOD NEWS -- a lane
   // sharing another's table is fast because a cache answered, ten lanes run one after another

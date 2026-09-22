@@ -25,7 +25,7 @@
 
 import { ABSENT, countText } from './absent.js';
 import { renderSkeletonForm } from './ontology_explorer_view.js';
-import { emptyOf, shapeAt } from './ontology_skeleton.js';
+import { emptyOf, missingRequired, shapeAt } from './ontology_skeleton.js';
 import { writeShapeAtPath, deleteAtPath, splitBundlePath, getAtPath } from './ontology_path.js';
 
 /**
@@ -233,6 +233,8 @@ function firstChildOf(el, cls) {
   return null;
 }
 
+const NOT_FILLED = 'not filled';
+
 function markRefusedField(box, view, spec) {
   const refusal = view.refusal;
   if (!refusal || !refusal.path || !box.querySelector) return null;
@@ -411,8 +413,14 @@ export class RawRegistryPanel {
       const key = field && field.key;
       if (!key) continue;
       const value = held[key];
+      // 🔴 필수를 «품은» 칸도 첫 화면입니다. `required` 는 한 겹 «안»에 있을 수 있고
+      //    (실측 2026-09-23: 체인 규칙의 필수는 `on.table` — `on` 자체는 아닙니다),
+      //    새 규칙의 씨앗은 `on` 을 «안 듭니다». 그래서 그 칸이 「고급」 뒤로 접혔고,
+      //    운영자는 깨우는 표를 «적을 자리를 못 봤습니다» — 소유자가 만든 선언에
+      //    `on` 이 통째로 없던 이유입니다 (소유자 2026-09-23).
       const onFirst = !hidden.has(key)
-        && (value !== undefined || field.required === true || declared.has(key));
+        && (value !== undefined || field.required === true || declared.has(key)
+          || missingRequired(field.node, held[key], this._defs).length > 0);
       (onFirst ? first : rest).push(key);
     }
     return { first, rest };
@@ -474,6 +482,7 @@ export class RawRegistryPanel {
       return view;
     }
 
+    this._defs = (payload.skeleton || {}).defs || {};
     const root = spec.formRoot ? spec.formRoot(payload) : null;
     // 🔴 «이름을 누가 갖고 있나». 폼이 그 칸을 그리면 이름 입력이 «하나»입니다 — 두 자리에 이름을
     //    받으면 저장이 어느 것을 쓰는지 화면이 말할 수 없습니다(실측 2026-09-13: [규칙 추가] 를
@@ -679,13 +688,25 @@ export class RawRegistryPanel {
     //    ⚠️ C-106 ①: 단축키도 «이 함수»를 부릅니다. 두 번째 저장 본문을 만들지 않습니다.
     const runSave = () => {
       if (!this.onSave) return;
+      let held;
+      try { held = JSON.parse(area.value || '{}'); } catch (e) { held = null; }
       let named = nameInput ? String(nameInput.value || '').trim() : view.name;
       if (formOwnsName) {
-        let held;
-        try { held = JSON.parse(area.value || '{}'); } catch (e) { held = null; }
         const fromDoc = held && typeof held === 'object' ? held[spec.nameKey] : undefined;
         if (typeof fromDoc === 'string' && fromDoc.trim()) named = fromDoc.trim();
         else if (this.newMode) named = '';
+      }
+      // 🔴 뼈대가 «필수»라 말한 칸이 비어 있으면 그 칸 옆에 «안 채움»을 답니다. 무엇이
+      //    필수인지는 서버가 준 모양이 답하고(`missingRequired`), 화면은 그 답을 «거절이 쓰는
+      //    그 자리»에 답니다 — 사유를 말하는 자리가 둘이면 어디를 볼지도 둘이 됩니다.
+      //    실측 2026-09-23: 깨우는 표도 쓰는 표도 없는 선언이 «조용히» 저장됐고, 그런 규칙은
+      //    목록에 서서 영원히 아무것도 안 합니다 — 어떤 표 이름도 없는 트리거와 안 같으므로.
+      // ⛔ 그런데 «막지는» 않습니다. 새 규칙은 «빈 채로 꺼져서» 태어나는 설계이고(그 계약은
+      //    `chain_rule_form_harness` C5 가 들고 있습니다: 저장이 «빈 문서»를 보낸다), 막으면
+      //    「규칙 추가」가 통째로 안 됩니다. 그래서 조용한 쪽만 고칩니다.
+      if (root && held && typeof held === 'object') {
+        const short = missingRequired(root, held, this._defs);
+        if (short.length) this._markShort(this._formBox, view, short);
       }
       this.onSave({ [spec.nameKey]: named, base: view.base, raw: area.value });
     };
@@ -721,6 +742,8 @@ export class RawRegistryPanel {
       // 🔴 탐색기의 «그 규칙»이 이 마운트에도 닿습니다 (C-95). 시트는 한 벌이고 문이 둘입니다 —
       //    같은 함수가 두 화면에서 다르게 보이던 것이 criterion ④ 의 실물이었습니다.
       box.className = `${spec.cls}-form oe-skeleton-form`;
+      // 저장이 «필수 빈 칸»을 그 칸 옆에 답니다. 상자는 이 블록의 것이라 손잡이를 둡니다.
+      this._formBox = box;
       const draw = (value) => {
         box.textContent = '';
         const form = renderSkeletonForm(
@@ -964,16 +987,45 @@ export class RawRegistryPanel {
    * 이 컨트롤의 한 번 고르기가 «어느 칸들»에 무엇을 적나. 기본은 그 칸 하나입니다.
    * `null` 값은 「그 칸을 지운다」이고, 무엇이 그렇게 되는지는 «등록부»가 답합니다.
    */
+  /** 필수인데 «안 채운» 칸들을 거절의 자리에 답니다.
+   *
+   *  🔴 표는 «한 벌»입니다 — 저장을 다시 눌러도 쌓이지 않게 먼저 걷고 다시 답니다.
+   *     그리고 서버가 댄 거절도 같이 다시 답니다: 걷는 것이 남의 것까지 걷기 때문입니다.
+   */
+  _markShort(box, view, short) {
+    const spec = this.spec;
+    if (!box || !box.querySelectorAll) return;
+    for (const tag of [...box.querySelectorAll(`.${spec.cls}-field-refusal`)]) {
+      if (tag.parentNode) tag.parentNode.removeChild(tag);
+    }
+    markRefusedField(box, view, spec);
+    for (const at of short) {
+      markRefusedField(box, { name: view.name, refusal: {
+        code: NOT_FILLED, path: `${spec.listKey}.${view.name}.${at}`, message: '' } }, spec);
+    }
+  }
+
   _cells(path, value, held) {
     let cells = null;
+    // 🔴 이 컨트롤이 «어느 칸»인가는 리프 이름이 답합니다 — 경로가 아니라. 등록부는 칸을
+    //    `mapper` 라 부르는데 통합 문법에서 그 칸은 `derive.mapper.mapper` 에 있고, 경로를
+    //    글자로 견주면 좌석을 «안 지납니다». 그러면 고른 토큰이 한 칸에 통째로 들어가고
+    //    로더가 그 모듈을 못 듭니다 (소유자 2026-09-23 실측 선언).
+    //    편 칸들은 «같은 부모» 밑의 형제입니다. 평면이면 부모가 없어 종전과 같습니다.
+    const cut = String(path).lastIndexOf('.');
+    const leaf = cut < 0 ? String(path) : String(path).slice(cut + 1);
+    const under = cut < 0 ? '' : String(path).slice(0, cut + 1);
+    const sibling = (cell) => under + cell;
     // 어느 목록에서 온 값인가. 그룹이 자기 목록을 대면 그것이고, 아니면 이 등록부의 «닫힌
     // 목록»입니다 — 그 이름이 곧 `deref` 가 리프에 입혀 주는 목록이기 때문입니다.
     let list = this.spec.choiceList || '';
     for (const group of this.spec.oneOf || []) {
-      if ((group.one || [])[0] !== path) continue;
+      if ((group.one || [])[0] !== leaf) continue;
       if (typeof group.split === 'function') {
         const spread = group.split(value);
-        if (spread && typeof spread === 'object') cells = Object.entries(spread);
+        if (spread && typeof spread === 'object') {
+          cells = Object.entries(spread).map(([cell, held2]) => [sibling(cell), held2]);
+        }
       }
       if (group.list) list = group.list;
       break;
@@ -985,7 +1037,8 @@ export class RawRegistryPanel {
     const fill = member && member.fill && typeof member.fill === 'object' ? member.fill : null;
     if (fill) {
       for (const at of Object.keys(fill)) {
-        if (getAtPath(held, splitBundlePath(at)) === undefined) extra.push([at, fill[at]]);
+        const here = sibling(at);
+        if (getAtPath(held, splitBundlePath(here)) === undefined) extra.push([here, fill[at]]);
       }
     }
     return (cells || [[path, value]]).concat(extra);

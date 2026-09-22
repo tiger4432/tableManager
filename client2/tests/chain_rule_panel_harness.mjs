@@ -13,6 +13,10 @@
 //      「꺼져 있다」, which is the class this repository has closed four times.
 //
 // Run: node client2/tests/chain_rule_panel_harness.mjs
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+const HERE = dirname(fileURLToPath(import.meta.url));
 import {
   chainRuleView, ChainRulePanel, CHAIN_RULE_REGISTRY,
   MAPPER_GROUPS, mapperChoices, mapperNotes, splitMapper, joinMapper,
@@ -238,6 +242,53 @@ console.log('\n[5] the mapper candidates, and the translation between the two sp
   eq('a token with nothing after the mark is not one', splitMapper('mappers.lot:'), null);
   eq('...nor one with nothing before it', splitMapper(':build_rows'), null);
   eq('nothing chosen writes nothing special', splitMapper(''), null);
+  // ── 새 규칙에서 «깨우는 표»를 적을 자리가 첫 화면에 서나 (소유자 2026-09-23) ──────────────
+  // 🔴 필수는 `on.table` 이고 `on` 자체는 아니다. 새 규칙의 씨앗은 `on` 을 «안 든다» —
+  //    그래서 그 칸이 「고급」 뒤로 접혔고, 운영자는 적을 자리를 «못 봤다». 소유자가 만든
+  //    선언에 `on` 이 통째로 없던 이유가 이것이다.
+  {
+    const doc = makeDoc();
+    const seat = new ChainRulePanel(doc.createElement('div'), { doc });
+    const SK = JSON.parse(readFileSync(join(HERE, '..', '..', 'server', 'chain_skeleton.json'), 'utf8'));
+    seat._defs = SK.defs || {};
+    const seed = { derive: {}, into: {} };            // 씨앗이 실제로 드는 것 (실측)
+    const split = seat._split(SK.unified_root, seed);
+    ok('the cell that wakes the rule is on the FIRST screen, not behind 「고급」',
+      split.first.indexOf('on') !== -1, JSON.stringify(split));
+    ok('...and so are the two the shape itself calls required',
+      split.first.indexOf('derive') !== -1 && split.first.indexOf('into') !== -1,
+      JSON.stringify(split.first));
+    // 대조군: 필수를 «안 품은» 칸은 그대로 「고급」이다. 아무거나 끌어올리면 첫 화면이 폼 전체가 된다.
+    ok('CONTROL a field that asks for nothing required stays behind 「고급」',
+      split.rest.length > 0, JSON.stringify(split.rest));
+  }
+  // ── 그 좌석을 «중첩 경로»에서도 지나나 (소유자 2026-09-23: 「선언 창으로 만들었는데 요따구임」) ──
+  // 🔴 통합 문법의 맵퍼 칸은 `derive.mapper.mapper` 다. 좌석이 평면 이름만 보면 고른 토큰이
+  //    «한 칸»에 통째로 들어가고, 로더는 그 이름을 못 든다. 실측으로 나온 바로 그 모양이다.
+  {
+    const doc = makeDoc();
+    const seat = new ChainRulePanel(doc.createElement('div'), { doc });
+    const TOKEN = 'mappers.dt_inventory_mappers:update_dt_transform';
+    eq('the flat cell spreads into three', seat._cells('mapper', TOKEN, {}),
+      [['mapper', null],
+       ['mapper_module', 'mappers.dt_inventory_mappers'],
+       ['mapper_function', 'update_dt_transform']]);
+    eq('the NESTED cell spreads into the same three, as its own siblings',
+      seat._cells('derive.mapper.mapper', TOKEN, {}),
+      [['derive.mapper.mapper', null],
+       ['derive.mapper.mapper_module', 'mappers.dt_inventory_mappers'],
+       ['derive.mapper.mapper_function', 'update_dt_transform']]);
+    // 🔴 접두는 서버가 단다. 한 칸에 통째로 들어가면 「모듈 이름」이 무엇인지 아무도 모른다.
+    ok('...keeping the prefix the server gave',
+      String(((seat._cells('derive.mapper.mapper', TOKEN, {})[1] || [])[1]) || '').startsWith('mappers.'));
+    // 대조군: 이름 하나짜리(등록부)는 중첩이어도 «그 칸 하나»다. 좌석이 아무거나 펴면 안 된다.
+    eq('CONTROL a registered name still writes its own cell only, nested too',
+      seat._cells('derive.mapper.mapper', 'build_dt_map', {}),
+      [['derive.mapper.mapper', 'build_dt_map']]);
+    // 대조군: 남의 칸은 안 건든다.
+    eq('CONTROL a cell that is not the chooser is untouched',
+      seat._cells('on.table', 'dt_log', {}), [['on.table', 'dt_log']]);
+  }
   // ── 문서가 든 것을 고르개의 값으로 ─────────────────────────────────────────────
   eq('the one cell is read as itself', joinMapper({ mapper: 'build_dt_map' }), 'build_dt_map');
   eq('the two cells are read back as the token',
