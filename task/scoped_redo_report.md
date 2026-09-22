@@ -50183,3 +50183,46 @@ VerifiedJoinDescriptor 의 남는 소비자   ledger/setup.py — 그런데 «�
 다만 652 가 명시적으로 「남긴다」에 넣은 것이라 제가 뒤집지 않고 여쭙니다.
 
 ⏸️ 답 주시면 2걸음을 그 경계로 짓겠습니다. 트리 미커밋 «0».
+
+---
+
+> 📋 **[09-22 09:41 구현자] 664 가 시킨 «프로세스별 적재 시점» 인구조사 — 셋입니다. 그리고 «둘은 오늘 규칙을 안 싣습니다»**
+
+**결론.** 쓰기 경로에 닿는 프로세스는 «셋», 적재 시점도 «셋». 그중 규칙을 싣는 것은 «하나»뿐입니다.
+
+| 프로세스 | 진입 | 적재 시점 | 오늘 규칙을 싣나 |
+|---|---|---|---|
+| 체인 워커 | `run_chain_worker.py:47` → `start_chain_ingestion_worker` | `warmup_worker` (기동 `:3691` · 리로드 `:3759`) | ✅ 싣습니다 |
+| API | `uvicorn main:app` | `@app.on_event("startup")` | ❌ 안 싣습니다 |
+| 워처 | `run_watcher.py` → `WorkspaceWatcher`/`IngestionHandler` | `reload_watcher_cache()` (`:172`) 가 있는 리로드 좌석 | ❌ 안 싣습니다 |
+
+```
+쓰기 경로 호출 «여덟» 파일 (주석 제외 — 제 첫 grep 은 crud·checkpoint 의 «문장»을 잡았습니다)
+   체인   ingestion_worker · join_into · legacy_materialized_join · enrichment/candidates · enrichment/backfill · replay
+   API    maps/frame_confirmation  (+ replay 를 API 라우트가 부릅니다)
+   워처   parsers/directory_watcher
+=> 총괄의 「9」는 카나리아 def 포함입니다. 제 실호출은 «8» 이고 수가 맞습니다
+warmup_worker 호출자 «둘» — 둘 다 start_chain_ingestion_worker 안입니다 (총괄 지적 그대로)
+```
+
+### ⚠️ 그런데 «프로세스 수»가 런처 모양에 따라 다릅니다 — 설계가 그 위에 서므로 적습니다
+```
+분리 모드   run_decoupled_app.py 가 uvicorn · run_chain_worker.py · run_watcher.py 를 «따로» 띄웁니다
+결합 모드   main.py 의 startup_event 가 WorkspaceWatcher 를 «이 프로세스에서» 세우고(`:556`),
+           체인 워커도 같은 훅에서 띄웁니다(`:572`·`:612`)
+=> 결합 모드에서는 셋이 «한 프로세스»라 도장 하나로 충분하고,
+   분리 모드에서는 «셋 다» 찍어야 합니다. 설계는 분리 모드를 기준으로 서야 합니다
+```
+
+### 그래서 도장 자리 제안
+```
+체인 워커  warmup_worker — 이미 있습니다. DDL 은 여기 «만» (664 그대로)
+API       startup_event — 오늘 규칙을 안 실으므로 «확인만 하는» 적재를 새로 답니다
+워처       reload_watcher_cache 가 이미 「설정을 다시 읽는」 좌석입니다. 그 옆
+⚠️ 셋 다 «짓지 않고 확인만» 합니다. 선언 0 이면 declared_unique_targets 가 0 을 내므로 pg_index 호출 0 —
+   게이트 ⑥ 의 성질(「쓰기 경로가 자기 I/O 를 안 낸다」)이 문자 그대로 섭니다
+```
+🔴 안 쟀습니다: 워처·API 의 그 자리에서 «세션이 이미 있나». 도장은 세션이 필요하고,
+없으면 그 자리가 세션을 여는 것 자체가 게이트 ⑥ 의 성질을 다시 건드립니다 — 짓기 전에 재겠습니다.
+
+⏸️ 이 조사만 올리고 멈춥니다. 664 ⓓ 대로 1걸음 나머지는 «한 커밋»이라, 도장 자리가 확정돼야 시작합니다.
