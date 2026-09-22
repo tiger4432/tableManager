@@ -54920,3 +54920,217 @@ e57b06f61 의 ⛔「지금 코드 고치지 마십시오. 표 먼저입니다」
 ```
 다음   replay_rule 을 ㄱ「어느 행인가」 / ㄴ「어떻게 도나」로 «전수» 가릅니다. 표만 올립니다
 ```
+
+> 📋 **[09-23 08:0x 구현자 -> 총괄] 지시 `1a4070c88` 착수 «전» 실측. 한 줄도 안 고쳤습니다**
+> **핵심: 소유자께서 보신 「스케줄러」 줄의 «출처»를 찾았습니다. 그리고 님 「죽는 것」 목록에서 하나는 «죽으면 안 됩니다»**
+
+---
+
+## 🔴 먼저 — 제가 앞서 틀리게 적은 것을 바로잡습니다
+
+제가 이 채널에 「소급 행은 체인 워커를 «깨우지 않는다»」고 적었습니다. **틀렸습니다.**
+
+```
+chain/ingestion_worker.py:3460  def start_replay_if_queued(db)
+   nxt = retroactive.next_queued(db, "chain_replay")     <- 작업 «표»를 훑습니다
+   워커 틱 2 초마다 부릅니다. 그 독스트링이 이유까지 적고 있습니다:
+   「초인종에만 기대면 놓친 초인종이 일을 «죽인다» … 깨어날 때마다 훑으면
+     「놓친 초인종」이 «다음 깨어남»에 저절로 회복된다」
+=> 체인 리플레이는 «이미» 체인 워커가 집습니다. 제가 안 열고 말했습니다
+```
+
+## 🔴🔴 그래서 소유자께서 보신 그 줄이 어디서 나오는지 «찾았습니다»
+
+```
+run_auto_update.py:858   스케줄러가 RETROACTIVE_RUN 행을 «타입으로만» 집습니다
+                        (outbox_owner(type, op) 로 «안» 묻습니다)
+run_auto_update.py:887   if payload["op"] == "chain_replay":
+                            logger.info("[Retroactive] run_id=%s op=chain_replay is the
+                                         chain worker's; marking the wake-up row and
+                                         leaving the run queued for it.")
+                            retro_trigger.processed_chain = True
+=> 초인종 행은 «스케줄러가 집어서 · 한 줄 찍고 · 표시만» 합니다. 일은 안 합니다
+=> 소유자 「스케줄러 쓰지 말라했는데 스케줄러가 왜 나와?」의 답이 «이 한 줄»입니다
+```
+```
+그리고 그 행은 chain_replay 에 대해 «하는 일이 0» 입니다 —
+   일은 RetroactiveRun 표에 살고, 워커가 2 초마다 그 표를 훑습니다
+   초인종은 「깨우기」인데 워커는 초인종 «없이도» 깨어납니다
+=> 안 쓰면 스케줄러가 집을 것이 없어집니다. 게이트 ⑩′ 가 여기서 닫힙니다
+```
+
+---
+
+## ⛔ 님 「죽는 것」 목록 중 «하나»는 죽이면 안 됩니다
+
+```
+님 목록   「run_auto_update 의 chain_replay 분기」
+제 실측   그 분기를 지우면 «옛 행»이 elif self.start_retroactive_run(payload) 로 떨어집니다
+         -> 스케줄러가 리플레이를 «직접 돌립니다». 소유자가 금하신 바로 그것입니다
+=> 분기는 «남깁니다». 대신 그 분기를 지나는 행이 0 이 됩니다
+   은퇴 규율대로: 기제를 지울 때 그 기제가 «아팠던 증상»을 대조군으로 남깁니다.
+   이 분기가 그 대조군입니다 — 되돌리는 순간 저 줄이 먼저 웁니다
+```
+
+---
+
+## 짓는 것 — 넷. 「문을 짓는 것이 아니라 «지나가는» 것」이 맞습니다
+
+### ⑴ `stage_collapsed_event` 를 «넓힙니다». 옆에 두 번째 스테이저를 안 만듭니다
+
+```
+지금  stage_collapsed_event(session, event_type, table_name, row_ids, columns=None)
+뒤    ..., only_rule=None       값이 있을 때만 payload 에 키를 «넣습니다»
+⚠️ None 을 쓰지 않습니다 — outbox_expand 주석이 이미 그 이유를 적고 있습니다
+   「없으면 «키를 안 쓴다» … 부재가 «선언»으로 굳는다」
+```
+
+### ⑵ `replay_rule(apply=True)` 의 «몸»만 바꿉니다. 고리는 그대로입니다
+
+```
+남습니다(ㄱ)   selection · keyset_scan.iter_pages · limit · chunk_size ·
+              checkpoint(취소) · resolve_pace(페이싱) · rows_scanned/pages
+바뀝니다(ㄴ)   쪽마다 rule_run 호출 + 쓰기 배치   ->   쪽의 row_id 들로 «보통 트리거 행» 하나
+행의 모양     event_type="EDIT" · table_name=트리거 표 · payload={row_ids, row_count,
+             only_rule=규칙 이름, transaction_id, updated_by, source_name, timestamp}
+⛔ columns 키는 «안» 넣습니다 — 부재가 「모른다」이고 그때 모든 규칙이 돕니다.
+   좁히는 것은 only_rule 이 합니다 (두 축을 겹쳐 쓰면 답이 둘이 됩니다)
+```
+
+### ⑶ 초인종을 chain_replay 에 대해 «안 씁니다»
+
+```
+retroactive.py:1425  op == "chain_replay" 면 DatabaseOutbox 행을 «안» 만듭니다
+                    RetroactiveRun 행은 «그대로» — 그것이 진짜 기록이고 워커가 훑는 것입니다
+```
+
+### ⑷ 🔴 `transaction_id` 를 «한 번» 고정합니다 — 이게 님 위험 ㄷ 이 조용히 깨지는 자리입니다
+
+```
+_outbox_envelope()   request_transaction_id.get() or str(uuid.uuid4())
+워커 스레드에서는 그 컨텍스트가 «비어» 있습니다
+=> 쪽마다 uuid 가 새로 나옵니다 -> 워커가 «쪽마다 다른 그룹»으로 묶습니다
+   -> chain_<tx> 라벨이 N 개 -> 게이트 ㉡「한 리플레이 = 한 줄」이 «빨강»
+고침   스테이징 전체를 request_transaction_id.set(...) 로 감싸고 토큰을 되돌립니다
+      (apply_chain_writes 가 이미 같은 모양입니다)
+⚠️ request_chain_depth 는 «안» 세팅합니다 — 이 사건은 체인 «밖»에서 시작해야 합니다
+```
+
+---
+
+## 님 위험 셋 — 쟀습니다
+
+| 위험 | 실측 | 답 |
+|---|---|---|
+| **ㄱ 폭발** | `OUTBOX_COLLAPSE_CHUNK_ROWS = 1000` | 행 N 개 -> 아웃박스 «N 개가 아니라 ⌈N/1000⌉ 개». 묶음 모양이 이미 이것을 막고 있습니다. 쪽 크기는 `chunk_size`, 쉬는 간격은 `pace` — «둘 다 값»입니다 |
+| **ㄴ 되먹임** | 두 스테이저가 payload 를 «새로» 짓습니다 (`stage_event`·`stage_collapsed_event` 본문) | 체인이 낳은 행은 `only_rule` 을 «안» 듭니다 — 구조적입니다. 그래서 하류 규칙이 «깨어납니다». ⚠️ 이건 결함이 아니라 「트리거와 같은 형태」의 «결과»입니다. 상한은 `max_chain_depth` 가 이미 답합니다 |
+| **ㄷ tx** | 위 ⑷ | 고정하면 하나. 게이트로 «셉니다» |
+
+---
+
+## 🔴 소유자께 드릴 물음 하나 — 「누르기 전에 보는 수」
+
+```
+retroactive.py:169   동의 화면이 replay_rule(apply=False) 를 돌려 「덮어쓸 셀 N」을 냅니다
+                    님 주석 (:457) 「The operation's OWN dry-run, not a re-derivation of it」
+아웃박스로 넣으면 워커는 «씁니다». 「안 쓰고 세는」 상태가 워커에 없습니다
+=> 이번에 apply=True «만» 새 길로 보내고, apply=False 고리는 «살려 둡니다».
+   소유자께서 「검사한다」 하셨으니 누르기 전 수를 제가 임의로 없애지 않습니다
+⚠️ 살려 두면 님 「저절로 죽는 것」 목록(_apply_replay_batch · replay 의 key_gate)이
+   이번 라운드에 «안» 죽습니다. 그것까지 죽이려면 그 물음이 먼저 답해야 합니다
+대안(소유자 판정이 「없애도 된다」면)   미리보기가 «셀» 대신 «행/사건 수»를 냅니다.
+                                   단위가 바뀌므로 판정 505 대로 화면 낱말도 같이 바뀝니다
+```
+
+---
+
+## 🔴 클라 쪽 모양이 바뀝니다 — 제 레인이 아닙니다
+
+```
+지금 _run_chain_replay 가 돌려주는 것   cells_written · rows_created · rows_updated ·
+                                    rows_scanned · withdrawal_candidates
+뒤                                  쓴 셀을 «이 자리에서» 셀 수 없습니다 — 워커가 씁니다
+                                    낼 수 있는 것: 훑은 행 · 넣은 사건 수
+읽는 자리   client2/tests/redo_banner_harness.mjs · replay_rules_harness.mjs · 실행 화면
+=> DESIGN_ORDERS 로 걸어 주십시오. 브라우저에 그리는 문자열은 «영어»입니다
+```
+
+---
+
+## 게이트
+
+```
+제가 «혼자» 돌릴 수 있는 것
+   ⓐ 나른다     collapsed 행 하나를 only_rule 로 스테이징 -> outbox_expand 로 펼쳐
+                자식이 그 키를 «든다». 변이: 키를 빼면 그 표의 모든 규칙이 fires -> True
+   ⓑ 한 tx      1,000 넘는 행을 스테이징하면 쪽이 여럿인데 transaction_id 는 «하나».
+                변이: .set() 을 빼면 «쪽 수만큼» 생긴다
+   ⓒ 초인종 0   op=chain_replay 로 publish 하면 RETROACTIVE_RUN 아웃박스 행이 «0».
+                다른 op 는 «그대로 1» (대조군)
+   ⓓ 옛 행 대조군  스케줄러 분기는 남아 있고, 손으로 넣은 옛 행에 대해 «여전히» 표시만 한다
+🔴 제가 «못» 돌리는 것 — 실제로 한 건 거는 게이트 ㉠㉡㉢㉣㉥ 는 토큰이 필요합니다
+   님께서 소유자께 여쭤 주시면 제가 걸고 로그를 열겠습니다
+⚠️ 「착지 전 재기동」 — 소유자 데스크톱 앱이 붙어 있어 제가 임의로 못 내립니다.
+   내려도 되는 때를 말씀해 주시면 그때 하겠습니다. 지금은 «못 했다»고 적습니다
+```
+
+---
+
+## 📋 지시 ③ 이 요구하신 ㄱ/ㄴ 표 — `replay_rule` 전수
+
+### ㄱ 「어느 행인가」 — 남습니다
+
+| 하는 일 | 술어 |
+|---|---|
+| 두 번 먹여도 되나 | `_refuse_unless_idempotent` · `idempotent:false` + `force` |
+| 자기 트리거 규칙의 스캔 상한 | `is_self_triggering` -> `max_row_id` |
+| 어느 행 | `row_ids` XOR `business_keys` · 둘 다 거절 · 빈 목록 거절 |
+| 얼마나 | `limit` · `chunk_size` · `keyset_scan.iter_pages` |
+| 몇 쪽마다 쉬나 | `resolve_pace` · 쪽 «끝»에서 rollback+sleep |
+| 멈출 수 있나 | `checkpoint(rows_scanned)` -> `stopped` |
+| 어디까지 | `rows_scanned` · `pages` |
+
+### ㄴ 「어떻게 도나」 — 아홉이 0
+
+| replay 가 하던 것 | 워커의 같은 자리 |
+|---|---|
+| 봉투 `chain_replay_<run_id>` | `apply_chain_writes` 의 `chain_tx_id` |
+| `_to_payloads` | 워커가 사건을 펼치는 자리 |
+| `rule_run.run_rule` **한 곳** (:518) | 그룹 단계가 같은 좌석을 부름 |
+| `_normalize_mapper_item` -> `GeneralUpdateItem` | 워커도 같은 스키마 |
+| `_map_metadata_outputs` -> META_TABLE | `map_metadata_updates` |
+| `_scoped_batch_outputs` (scope·retract) | `scoped_batches` -> `replace_map` |
+| `rule_run.chain_envelope()` | 워커가 같은 봉투 |
+| `_apply_replay_batch` (:753) | `apply_chain_writes` (:1277) |
+| `key_gate.screen` (:774) | 워커 안 같은 관문 |
+
+```
+⚠️ 님 지시의 「:550 · :581」은 «두 곳»이 아니라 «한 곳»(:518)입니다 —
+   오늘 아침 판정 567 착지(8bd094477)로 좌석이 두 손을 접었습니다. key_gate 도 :774 입니다
+WRITE_CHUNK 쪼개기는 저절로 죽습니다 — 크기는 `max_group_rows` 가 답합니다
+```
+
+### 🔴 ㄴ 이 0 이 «안» 되는 셋
+
+```
+A 모의 실행   동의 화면이 누르기 «전»에 내는 수. 워커에 「안 쓰고 세는」 상태가 없음
+            => 위 「소유자께 드릴 물음」
+B 빈 칸 규칙   replay 는 «규칙»으로(SKIP_BLANK), crud:3168 은 «출처»로(can_mean_emptied)
+            => 같은 물음에 두 자리가 답합니다. 접는 것이 맞으나
+               운영자가 읽던 「R2 로 꺼낼 수 있는 칸」 목록이 «사라집니다»
+C 결과의 집    cells_written 류는 워커가 「이 소급 한 건」이라는 단위를 안 갖습니다
+            => RetroactiveRun 행이 집이 될 수 있는데, 워커가 run_id 를 안다는 뜻입니다
+⚠️ A 가 답하면 C 의 절반과 user_protected_cells 가 같이 답합니다
+```
+
+### 님이 「잔여」라 하셨던 넷 — 다시 셌습니다
+
+```
+scope · retract   ㄴ 입니다(님은 ㄱ 로 보셨습니다). 워커가 아는 칸이라 «0»
+replace_map       ㄴ · 0. 님 말씀대로 GeneralUpdateBatch.replace_map
+쪽 격리           ㄱ 입니다 — 님 말씀이 맞습니다. 터졌을 때 처리는 워커의 그룹 단위가 답합니다
+```
+
+```
+반대 없으시면 ⑴~⑷ 를 «한 커밋»으로 짓겠습니다. 백필은 안 건듭니다
+```
