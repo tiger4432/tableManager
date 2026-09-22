@@ -49944,3 +49944,52 @@ legacy_materialized_join 의 공개 함수 «아홉»
 652 가 센 「제품 49 · 시험·계약 53」의 개별 크기          — 1걸음이 닫히고 세겠습니다
 ```
 ⏸️ 착수는 644 판정 뒤입니다(순서: 644 -> 652 -> 653 -> 647). 코드 변경 «0».
+
+---
+
+> 🔬 **[09-22 09:13 구현자] 654 를 «해 보고» 되돌렸습니다 — 처방만으로는 ① 이 안 되고, 399 의 사고가 재현됩니다**
+
+**결론.** `expand_declaration` 의 조기 return 을 빼 봤습니다. 꺼 둔 통합 선언은 «여전히 안 서고»,
+대신 로더가 매 적재마다 «에러 세 줄»을 찍습니다. 원복했습니다(로더 12 로 복귀, 미커밋 0).
+
+### 실측 — 고친 채로 돌린 결과
+```
+① off 통합(decide)   refusal = "g654: the declaration is disabled"   <- 안 섭니다
+②  off 평면          f654  enabled=False                             <- 오늘과 같음 (회귀 없음)
+④  on  통합(decide)  enrichment_dedup:… · enrichment_auto_confirm:…  <- 오늘과 같음
+라이브             loaded 12 -> 13, 그런데 aaa 는 «여전히 목록에 없음»
+                   [ChainRules] aaa refused (1): missing_field rules[10].trigger_table
+                   [ChainRules] 1 of 14 rule(s) refused and skipped
+                   [ChainRules] refused(1): aaa(missing_field)          <- 적재마다 3 줄
+```
+
+### 왜 안 되나 — 「꺼짐」의 저자가 «둘»입니다. 654 가 본 것보다 한 층 아래입니다
+```
+좌석 ①  rule_shape.is_switched_off        <- 654 가 지목한 자리 (제가 뺀 것)
+좌석 ②  chain/enrichment/config.py:948    <- return [], why or "the declaration is disabled"
+```
+①을 빼도 ②가 decide 선언을 «거절»합니다. 그래서 꺼 둔 decide 는 목록에 못 섭니다.
+
+### 🔴 그리고 399 의 사고가 «그대로» 났습니다
+`is_switched_off` 의 독스트링이 이렇게 적어 뒀습니다:
+```
+"not 「stands it and filters it later」, which is the shape that let an operator
+ turn everything off and watch it keep erroring."
+```
+제 실측이 그 문장입니다 — 꺼서 조용했던 `aaa` 가 적재마다 에러 세 줄을 냅니다.
+⚠️ 다만 «평면» 비활성 규칙은 오늘도 「서고 나중에 걸리는」 모양인데 조용합니다.
+차이는 «완성도»입니다: `aaa` 는 `trigger_table` 이 없는 «미완성» 선언이고, 꺼 두면
+검증을 안 받아서 조용했던 것입니다. 끄기가 «검증 면제»를 겸하고 있었습니다.
+
+### 그래서 여쭙니다 — 654 를 어느 쪽으로 좁히시겠습니까
+```
+ㄱ  좌석 ②도 같이 고친다        decide 도 off 면 «반쪽 둘»을 enabled=False 로 세운다
+    남는 문제  미완성 선언(aaa)은 여전히 refuse 됩니다 — 목록에 안 뜹니다
+ㄴ  「끄면 검증 면제」를 유지     off 선언은 검증 «전»에 목록용 행 하나로 세운다
+    (이름·enabled 만. 평면이 오늘 받는 대우와 같음)
+    -> aaa 도 뜨고, 에러도 안 납니다. 대신 off 선언의 «오류»는 계속 안 보입니다
+```
+🔵 제 추천은 **ㄴ** 입니다 — 소유자 의도(「끈 것을 같은 화면에서 다시 켠다」)를 «미완성 선언까지»
+덮고, 399 의 사고를 안 되살립니다. 「off 선언의 오류를 보여 줄 것인가」는 별건으로 남습니다.
+
+⏸️ 코드 변경 «0» (해 보고 원복). 판정 주시면 그쪽으로 한 커밋에 닫겠습니다.
