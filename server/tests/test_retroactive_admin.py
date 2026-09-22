@@ -293,19 +293,23 @@ class TestInventory:
 
 class TestCountsDoNotLieAboutWhatTheyCounted:
 
-    def test_r1_counts_writes_and_withdrawal_candidates_SEPARATELY(self, client,
-                                                                   retro_env):
-        """The dangerous conflation, refused.
+    # ⚰️ `test_r1_counts_writes_and_withdrawal_candidates_SEPARATELY` STOOD HERE. It guarded a
+    #    conflation - folding the R2 candidates into the cells-to-be-written - and BOTH
+    #    numbers are gone: [소유자 2026-09-23 「ㄷ」] the count no longer runs the rule, so it
+    #    has no cells to report and no candidates to confuse them with.
+    # 🔴 WHAT THE OPERATOR LOST WITH IT, kept in words because the mechanism is gone:
+    #    a replay no longer tells them which cells the rule STOPPED producing a value for.
+    #    The blank is still never written (`crud` refuses one from a source that cannot mean
+    #    「emptied」); what is gone is being told.
 
-        `map_mixed` emits three columns per row: `part_no` and `reserved` carry
-        values, `note` comes back blank. R1 writes the first two and REFUSES the
-        third (absence is not zero - only R2 can say "this rule no longer produces
-        a value here").
+    def test_the_count_speaks_in_the_unit_this_run_works_in(self, client, retro_env):
+        """게이트 ㉦ - the consent screen must not leave a removed number as an empty slot.
 
-        So across 2 trigger rows the honest answer is 4 cells written (2 columns x
-        2 rows) and 2 withdrawal candidates (1 column x 2 rows). `affected` must be
-        4. An implementation that folded the candidates in would report 6, and one
-        that reported only the candidates would report 2 - both are excluded here.
+        🔴 [판정 505] THE UNIT FOLLOWS WHAT THE RUN DOES. A small retroactive hands ROWS to the
+           chain worker, so rows is what it can count. A screen still saying 「셀」 would be
+           naming work this side no longer does.
+        ⚠️ AND THE SLOTS ARE GONE, NOT ZEROED. A `withdrawal_candidates: 0` beside a run that
+           never looked would be the worst of the three - it reads as 「없다」.
         """
         db = retro_env
         _seed(db, "retro_test_trigger", [
@@ -315,14 +319,30 @@ class TestCountsDoNotLieAboutWhatTheyCounted:
         body = client.get("/admin/retroactive/chain_replay/count"
                           "?rule=retro_mixed").json()
 
-        written, candidates = 4, 2
-        assert body["affected"] == written, "only the cells R1 would actually write"
-        assert body["extra"]["withdrawal_candidates"] == candidates
-        assert body["affected"] != written + candidates, (
-            "the write count and the withdrawal candidates were summed; that "
-            "overstates the writing operation by the size of the one thing R1 "
-            "deliberately refuses to do")
-        assert "R2" in body["extra"]["withdrawal_candidates_label"]
+        assert body["affected"] == 2, "two trigger rows go over; that is the unit now"
+        assert body["affected_label"] == "rows to re-run"
+        for gone in ("withdrawal_candidates", "withdrawal_candidates_label",
+                     "user_protected_cells", "samples"):
+            assert gone not in body["extra"], (
+                "%r is still on the screen with nothing behind it" % gone)
+
+    def test_every_string_this_screen_renders_is_english(self, client, retro_env):
+        """🔴 소유자 2026-08-31 「UI 무조건 영어로」 · 2026-09-23 「UI에 한국어 쓰지 말라고」.
+
+        ⚠️ SCOPED TO THIS OP. The other operations' labels are Korean today and this round's
+           order is explicit that only the small retroactive is in it - so this asserts what
+           it changed and names the rest in the report rather than pretending they pass.
+        """
+        db = retro_env
+        _seed(db, "retro_test_trigger", [{"src_key": "S1", "part_no": "P1", "qty": 3}])
+        body = client.get("/admin/retroactive/chain_replay/count"
+                          "?rule=retro_mixed").json()
+
+        for cell in ("affected_label", "detail"):
+            said = body[cell]
+            assert not any("\uac00" <= ch <= "\ud7a3" for ch in said), (
+                "%s renders Korean in the browser: %r" % (cell, said))
+
 
     def test_a_count_writes_nothing(self, client, retro_env):
         """A GET beside a POST that rewrites tables. The failure is silent."""
@@ -350,7 +370,7 @@ class TestCountsDoNotLieAboutWhatTheyCounted:
         assert body["count_kind"] == retroactive.COUNT_SAMPLE
         assert body["scanned"] == 2 and body["scan_limit"] == 2
         assert body["truncated"] is True
-        assert "표본" in body["detail"]
+        assert "2 row(s)" in body["detail"], body["detail"]
 
     def test_the_scan_budget_is_capped(self, client, retro_env):
         body = client.get(
@@ -788,11 +808,22 @@ class TestTheWithdrawalPreviewMatchesTheOperationItPreviews:
 
 class TestTheTriggerQueuesAndReturns:
 
-    def test_it_publishes_one_outbox_event_and_executes_nothing(self, client,
-                                                                retro_env,
-                                                                admin_token):
-        """A retroactive run walks a whole table; a synchronous handler would hold
-        the request until the browser gave up."""
+    def test_a_chain_owned_op_queues_the_run_and_rings_no_bell(self, client,
+                                                               retro_env,
+                                                               admin_token):
+        """🔴 [소유자 2026-09-23] 「스케줄러 쓰지 말라했는데 스케줄러가 왜 나와?」 - 게이트 ⑩′.
+
+        ⚰️ THIS TEST ASSERTED `len(rows) == 1`. Measured: that row was fetched by
+           `run_auto_update` (which filters by event TYPE and never asks `outbox_owner`),
+           which logged 「op=chain_replay is the chain worker's」, marked it processed and did
+           nothing else. The scheduler's name on the owner's screen came from that one line.
+        🔴 THE WORK WAS NEVER IN THE ROW. It is in the `RetroactiveRun` below, and
+           `ingestion_worker.start_replay_if_queued` sweeps that table every tick precisely so
+           a missed wake-up cannot kill a job. Dropping the row for this op drops a wake-up
+           that woke nobody.
+        변이: put the row back (drop the `outbox_owner` test in `publish`) and the first
+        assertion goes red.
+        """
         db = retro_env
         _seed(db, "retro_test_trigger", [{"src_key": "S1", "part_no": "P1", "qty": 3}])
         _seed(db, "retro_test_target", [{"part_no": "P1", "reserved": 0}])
@@ -803,17 +834,37 @@ class TestTheTriggerQueuesAndReturns:
         assert r.status_code == 200
         assert r.json()["status"] == "queued" and r.json()["run_id"]
 
-        rows = _outbox_rows(db)
-        assert len(rows) == 1
-        payload = json.loads(rows[0].payload) if isinstance(rows[0].payload, str) \
-            else rows[0].payload
-        assert payload["op"] == "chain_replay"
-        assert payload["params"] == {"rule": "retro_mixed"}
-        assert rows[0].processed_chain is False
+        assert _outbox_rows(db) == [], (
+            "the wake-up row is back; the scheduler will fetch it and name itself on a "
+            "screen for a run it does not do")
+
+        run = (db.query(models.RetroactiveRun)
+               .filter(models.RetroactiveRun.run_id == r.json()["run_id"]).first())
+        assert run is not None and run.state == retroactive.RUN_QUEUED, (
+            "no wake-up AND no run row means the request vanished")
 
         db.expire_all()
         assert _layer_rows(db) == [], (
             "the trigger route executed the run inline instead of queueing it")
+
+    def test_a_scheduler_owned_op_still_gets_its_wake_up_row(self, client, retro_env,
+                                                             admin_token):
+        """대조군. The bell is not retired - `withdraw` IS the scheduler's, and
+        `start_retroactive_run` is what the row wakes. Dropping it for everyone would leave
+        those runs queued until the next restart."""
+        db = retro_env
+        _seed(db, "retro_test_target", [{"part_no": "P1", "reserved": 0}])
+
+        r = client.post("/admin/retroactive/withdraw/run",
+                        json={"params": {"table": "retro_test_target",
+                                         "source": "chain_ingestion"}},
+                        headers=admin_token)
+        assert r.status_code == 200, r.text
+        rows = _outbox_rows(db)
+        assert len(rows) == 1, "the scheduler's op lost its wake-up row"
+        payload = json.loads(rows[0].payload) if isinstance(rows[0].payload, str) \
+            else rows[0].payload
+        assert payload["op"] == "withdraw"
 
     def test_a_refused_request_queues_nothing(self, client, retro_env, admin_token):
         r = client.post("/admin/retroactive/withdraw/run",

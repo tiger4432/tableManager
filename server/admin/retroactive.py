@@ -171,48 +171,41 @@ def _count_chain_replay(db, params, scan_limit):
                                  business_keys=params.get("business_keys"),
                                  row_ids=params.get("row_ids"))
     truncated = s["rows_scanned"] >= scan_limit
-    # 🔴 THE PRE-COUNT IS CELLS, AND IT HAS TO BE NON-ZERO WHEN THE RUN DOES ANYTHING.
-    # Measured 2026-09-23, because this is the trap: `cells_proposed` is filled by the page
-    # loop's proposing path (`replay` counts it in three places there), and a rule that wrote
-    # its own rows reached NONE of them - so before this round the screen would have said
-    # 「0 셀을 다시 씁니다」 in front of a backfill that rewrites every target row. A pre-count
-    # that says 「nothing」 about a run that does everything is worse than no pre-count.
-    #
-    # ⚰️ [판정 505 · 총괄 2026-09-23] THE UNIT USED TO BE A BRANCH, on `self_writing_kind`:
-    #   rows for a rule that applied its own, cells for one that proposed. 505's reasoning was
-    #   「a rule that writes for itself proposes nothing, by definition of that fact」 - and
-    #   that fact is what this round removed. Every rule proposes, so every run is counted in
-    #   cells, and the branch had one live arm left.
-    # ⚠️ THE OPERATOR SEES A DIFFERENT SENTENCE FOR THE SAME RUN than before this round -
-    #   「덮어쓸 셀 N」 where a join or an auto-confirm used to say 「다시 계산할 행 N」. Same
-    #   work, counted in the unit it is actually done in.
-    affected = s["cells_proposed"]
+    # 🔴 [소유자 2026-09-23 「ㄷ」 · 미리보기 없이 바로 실행] THE UNIT IS ROWS, BECAUSE ROWS ARE
+    #   WHAT THIS RUN HANDS OVER. It stages the rows as ordinary trigger events and the chain
+    #   worker writes them - so 「how many cells will change」 is not a question this side can
+    #   answer without running the rule twice, once to count and once to mean it.
+    # ⚰️ [판정 505] IT WAS `cells_proposed`, produced by a dry-run of the rule right here.
+    #   505 asked 「which unit does this screen speak in」 and answered 「follow whether
+    #   `cells_proposed` can be non-zero」. It cannot be non-zero any more, by construction:
+    #   the counting copy of the write judgment is gone, which is what the owner chose.
+    #   Safety moved to where the owner put it - the row appears in the queue, and a
+    #   withdrawal takes it back.
+    # ⚠️ WHAT THE OPERATOR NO LONGER SEES BEFORE PRESSING, named rather than quietly dropped:
+    #   how many CELLS would change · how many a human's value protects · which cells the rule
+    #   stopped producing (the R2 candidates). The mechanisms behind the last two are
+    #   untouched - `crud` still refuses to write a blank and still keeps the human's layer on
+    #   top. What is gone is the advance notice.
+    affected = s["rows_scanned"]
     return {
         "affected": affected,
         "absence": (ABSENCE_NOT_EXHAUSTIVE if truncated
                     else ABSENCE_TRULY_NONE if not affected else None),
-        "affected_label": "덮어쓸 셀",
+        # 🔴 ENGLISH, like every string this screen renders (소유자 2026-08-31 · 2026-09-23).
+        "affected_label": "rows to re-run",
         "count_kind": COUNT_SAMPLE,
         "scanned": s["rows_scanned"],
         "scan_limit": scan_limit,
         "truncated": truncated,
         "detail": (
-            f"트리거 테이블 {s['rows_scanned']}행을 표본으로 검사해 "
-            f"{affected}개 셀을 다시 씁니다. "
-            f"사람이 입력한 값이 지키는 셀 {s['user_protected_cells']}개는 화면상 값이 "
-            f"바뀌지 않습니다(레이어만 갱신)."
+            f"{s['rows_scanned']} row(s) of {s['trigger_table']} go to the chain worker as "
+            f"ordinary changes, so rule '{s['rule']}' writes through the same path a live "
+            f"edit does."
         ),
-
         "extra": {
-            # Deliberately NOT added into `affected`: R1 never writes a blank.
-            "withdrawal_candidates": s["skipped_blank_cells"],
-            "withdrawal_candidates_label": "값이 사라진 셀 (쓰지 않음 · R2 후보)",
-            "user_protected_cells": s["user_protected_cells"],
             "trigger_table": s["trigger_table"],
             "target_table": s["target_table"],
             "self_triggering": s["self_triggering"],
-            "samples": s["samples"][:5],
-            "withdrawal_candidate_samples": s["withdrawal_candidates"][:5],
         },
     }
 
@@ -585,9 +578,16 @@ def _run_chain_replay(db, params, log, control=None):
                                  row_ids=params.get("row_ids"),
                                  pace=params.get("pace"))
     _final_progress(control, s.get("rows_scanned"))
-    return {"cells_written": s["cells_written"], "rows_created": s["rows_created"],
-            "rows_updated": s["rows_updated"], "rows_scanned": s["rows_scanned"],
-            "withdrawal_candidates": s["skipped_blank_cells"]}
+    # 🔴 THIS RUN NO LONGER WRITES, SO IT MUST NOT REPORT WRITES. It hands the rows to the
+    #    worker as ordinary trigger events and the worker writes them, later, in its own
+    #    transaction. `cells_written` / `rows_created` / `rows_updated` would all be 0 here
+    #    and a 0 reads as 「아무것도 안 나왔다」 - the one thing this screen exists to tell
+    #    apart from 「안 돌았다」. What is true at this instant is how many rows went over and
+    #    in how many events, so that is what it says.
+    # ⚠️ THE WORKER'S SIDE OF THE NUMBER IS READ WHERE THE WORKER REPORTS IT - the queue and
+    #    the chain log, under the same `chain_<tx>` label every other change uses.
+    return {"rows_staged": s["rows_staged"], "events_staged": s["events_staged"],
+            "rows_scanned": s["rows_scanned"]}
 
 
 def _run_withdraw(db, params, log, control=None):
@@ -1422,13 +1422,27 @@ def publish(db, op: str, params: dict, requested_by: str = None) -> dict:
     payload = {"run_id": run_id, "op": op, "params": params,
                "requested_by": requested_by or None}
 
-    db.add(models.DatabaseOutbox(
-        event_uuid=str(uuid.uuid4()),
-        table_name=RUN_EVENT_TABLE,
-        event_type=RUN_EVENT_TYPE,
-        payload=json.dumps(payload, ensure_ascii=False),
-        processed_chain=False,
-    ))
+    # 🔴 [소유자 2026-09-23] 「스케줄러 쓰지 말라했는데 스케줄러가 왜 나와?」 - AND THIS ROW IS
+    #    WHERE THAT LINE CAME FROM. Measured: for `chain_replay` the row was picked up by
+    #    `run_auto_update` (:858, which filters by TYPE and never asks `outbox_owner`), which
+    #    logged 「op=chain_replay is the chain worker's」, marked it processed and did nothing
+    #    else. The work has never been in this row - it is in the `RetroactiveRun` row below,
+    #    and `ingestion_worker.start_replay_if_queued` SWEEPS that table every 2 s precisely
+    #    so a missed wake-up cannot kill a job (its own docstring: 「초인종에만 기대면 놓친
+    #    초인종이 일을 «죽인다»」). So for this op the row's only effect was to put the
+    #    scheduler's name on a screen the owner was reading.
+    # ⚠️ THE OTHER OPS STILL GET IT. They ARE the scheduler's, and `start_retroactive_run`
+    #    is what the row wakes - dropping it for them would leave those runs queued until the
+    #    next restart. The axis is 「who empties this」, and `outbox_owner` is where it is
+    #    already declared; this asks it rather than spelling a second answer.
+    if event_constants.outbox_owner(RUN_EVENT_TYPE, op) != event_constants.OUTBOX_OWNER_CHAIN:
+        db.add(models.DatabaseOutbox(
+            event_uuid=str(uuid.uuid4()),
+            table_name=RUN_EVENT_TABLE,
+            event_type=RUN_EVENT_TYPE,
+            payload=json.dumps(payload, ensure_ascii=False),
+            processed_chain=False,
+        ))
     # 🔴 THE SAME COMMIT AS THE OUTBOX ROW. A queued event with no run row is a job nobody
     # can see or cancel; a run row with no event is a job that never starts and sits at
     # `queued` forever. Either half alone is worse than neither.

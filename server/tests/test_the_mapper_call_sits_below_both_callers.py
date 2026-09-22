@@ -117,14 +117,16 @@ def test_replay_no_longer_imports_the_worker_for_the_executor():
     `chain.synthesis`, so a light module would relocate the dependency rather than remove it.
     So this asserts what actually changed instead of a clean slate that is not true.
 
-    🔵 [S-279, 판정 420 ㉡-2ⓐ] AND REPLAY NOW REACHES A MAPPER THROUGH NEITHER DOOR. It asks
-    `chain.rule_run` to run the rule, and the seat imports the executor from its own home - so
-    the edge S-214 removed is not merely absent, there is no longer a place for it to be.
+    🔵 [S-279, 판정 420 ㉡-2ⓐ · 소유자 2026-09-23] AND REPLAY NOW REACHES A MAPPER THROUGH NO
+    DOOR AT ALL. It used to ask `chain.rule_run`; it stages ordinary trigger events and the
+    WORKER asks the same seat. ⚰️ The line below was `assert any("rule_run" in n ...)` - the
+    edge S-214 removed is not merely absent now, the caller that needed it is gone.
     """
     replay = io.open(os.path.join(SERVER_DIR, "chain", "replay.py"), encoding="utf-8").read()
 
     assert "from chain.ingestion_worker import execute_custom_mapper" not in replay
-    assert any("rule_run" in n for n in _imports("chain/replay.py"))
+    assert not any("rule_run" in n for n in _imports("chain/replay.py")), (
+        "replay imported the seat again; it hands rows over, it does not run rules")
     # 🔴 THE SEAT STILL LIVES IN ITS OWN HOUSE. `mapper_call` kept the two pieces that are
     #    genuinely about calling a FILE mapper - the signature convention and the stage clock -
     #    so the seat importing it is the neutral-house shape, not a leftover edge.

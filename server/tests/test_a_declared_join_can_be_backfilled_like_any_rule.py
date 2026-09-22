@@ -97,15 +97,42 @@ def _left(db):
 # 🔴 ⓐ — the door opens (gate ⑤ of the order)
 # ---------------------------------------------------------------------------
 
+def _hand_over(db, rule, **kw):
+    """Stage the rows the way a small retroactive does. Returns its stats.
+
+    🔴 [소유자 2026-09-23] 「체인트리거든 소급이든 «같은 로직»으로 돌려」. Replay no longer runs
+       the join - it writes the event an ordinary edit of those rows would write.
+    """
+    return replay.replay_rule(db, rule, apply=True, log=lambda m: None, **kw)
+
+
+def _drain(db, rule):
+    """Let the WORKER run the join over what was staged. Returns the events it consumed."""
+    from chain import ingestion_worker as worker
+    # 🔴 ONLY THE REPLAY'S OWN EVENTS. The seed left unprocessed events too, and handing the
+    #    worker a mixed group would run it under the SEED's transaction id - which is how the
+    #    label assertion below read `chain_<uuid>` and looked like a defect in the round.
+    staged = [e for e in db.query(models.DatabaseOutbox)
+              .filter(models.DatabaseOutbox.processed_chain == False)  # noqa: E712
+              .order_by(models.DatabaseOutbox.id.asc()).all()
+              if (e.payload or {}).get("only_rule")]
+    assert staged, "nothing was handed over, so draining proves nothing"
+    tx = (staged[0].payload or {}).get("transaction_id")
+    worker._process_chain_transaction_group_sync(tx, staged, db, [rule])
+    return staged
+
+
 def test_a_replay_of_a_declared_join_fills_the_rows_that_were_already_there(db):
     """🔴 THE BACKFILL THE OWNER ASKED FOR. Two left rows that existed before the join was
     declared, one right row - and after the replay both carry the answer."""
     _seed(db)
 
-    stats = replay.replay_rule(db, _rules()[0], apply=True, log=lambda m: None)
+    stats = _hand_over(db, _rules()[0])
+    assert _left(db) == {"L1": None, "L2": None}, "it wrote by itself; it must hand over"
+    assert stats["rows_staged"] == 2 and stats["events_staged"] == 1
+    _drain(db, _rules()[0])
 
     assert _left(db) == {"L1": "LOT-1", "L2": "LOT-1"}
-    assert stats["rows_written"] == 2
     # ⚰️ [총괄 2026-09-23] THIS READ `stats["self_writing_kind"]`, the cell naming the kind
     #   WHEN a rule applied its own rows. Nothing does, so the cell went with the branch it
     #   fed. Asserting its ABSENCE is the control group: put it back and this goes red before
@@ -136,12 +163,15 @@ def test_a_backfill_page_makes_ONE_event_not_one_per_row(db):
                                   source_name="seed", updated_by="s279")
         for n in range(5)], silent=True))
     db.commit()
+    stats = _hand_over(db, _rules()[0])
+    assert stats["rows_staged"] == 5, "nothing was handed over, so this proves nothing"
+    # ⚠️ COUNTED FROM AFTER THE HAND-OVER. The staged event is on this table too (it is the
+    #    trigger side), and counting it as one of the write's would hide a real second one.
     before = db.query(models.DatabaseOutbox).filter(
         models.DatabaseOutbox.table_name == LEFT).count()
 
-    stats = replay.replay_rule(db, _rules()[0], apply=True, log=lambda m: None)
+    _drain(db, _rules()[0])
 
-    assert stats["rows_written"] == 5, "the backfill did not write, so this proves nothing"
     made = db.query(models.DatabaseOutbox).filter(
         models.DatabaseOutbox.table_name == LEFT).count() - before
     assert made == 1, (
@@ -173,8 +203,8 @@ def test_one_run_writes_one_transaction_label_however_many_pages(db):
 
     before = _labels()
 
-    stats = replay.replay_rule(db, _rules()[0], apply=True, chunk_size=1,
-                               log=lambda m: None)
+    stats = _hand_over(db, _rules()[0], chunk_size=1)
+    _drain(db, _rules()[0])
 
     assert stats["pages"] > 1, (
         "one page cannot decide this - the fixture stopped being a discriminant")
@@ -187,16 +217,16 @@ def test_one_run_writes_one_transaction_label_however_many_pages(db):
 
 
 def test_a_dry_run_writes_nothing_and_says_what_it_would_be_handed(db):
-    """⚠️ A DRY RUN OF A SELF-WRITING KIND CANNOT SAY WHICH CELLS IT WOULD CHANGE without
-    writing to find out. It says how many ROWS it would recompute, which is the honest answer
-    and the one the pre-count needs."""
+    """⚠️ IT SAYS HOW MANY ROWS IT WOULD HAND OVER, which is the honest answer and the one
+    the pre-count needs. ⚰️ It used to run the rule to count `mapper_items` - a counting copy
+    of the write judgment, which [소유자 2026-09-23 「ㄷ」] removed."""
     _seed(db)
 
     stats = replay.replay_rule(db, _rules()[0], apply=False, log=lambda m: None)
 
-    assert _left(db) == {"L1": None, "L2": None}, "a dry run wrote"
-    assert stats["rows_written"] == 0
-    assert stats["mapper_items"] == 2
+    assert _left(db) == {"L1": None, "L2": None}, "a run without apply wrote"
+    assert stats["rows_scanned"] == 2
+    assert stats["rows_staged"] == 0 and stats["events_staged"] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -207,23 +237,25 @@ def test_a_page_that_throws_costs_that_page_and_the_session_survives(db, monkeyp
     """🔴 SCORED ON THE SESSION, NOT ONLY ON THE COUNT. On PostgreSQL a failed statement
     aborts the transaction, so 「the run continued」 is not enough - the next page's SELECT has
     to work, which is what the rollback buys."""
+    from database import database as db_module
+
     _seed(db)
     calls = {"n": 0}
 
-    # [판정 589] THE ONE CALLING CONVENTION, `(db, payload[, rule=])`. The stub used
-    #   to read `row_ids` off kwargs, which is the shape the retired kind table called with.
-    def flaky(session, payload, rule=None):
+    # ⚰️ THE STUB USED TO BE THE JOIN ITSELF (`mapper_sdk.MAPPER_REGISTRY`), because the page
+    #   RAN the rule. [소유자 2026-09-23] the page stages instead, so the thing that can throw
+    #   on a page is the staging - and that is what this isolates. The rule's own failures are
+    #   the worker's to isolate, on the group, where every live change already meets them.
+    real_stage = db_module.stage_collapsed_event
+
+    def flaky(session, event_type, table_name, row_ids, columns=None, only_rule=None):
         calls["n"] += 1
         if calls["n"] == 1:
             raise RuntimeError("psycopg2.errors.UniqueViolation: duplicate key")
-        rows = payload if isinstance(payload, list) else [payload]
-        return {"written": len(rows)}
+        return real_stage(session, event_type, table_name, row_ids,
+                          columns=columns, only_rule=only_rule)
 
-    # ⚰️ [판정 498, then 562] THE REGISTRATION, NOT THE DOOR. `synthesis.run_builtin`
-    #    went first and the kind table went second; the seat looks the implementation up in
-    #    `mapper_sdk.MAPPER_REGISTRY` now, so replacing THAT entry is how the page failure is
-    #    staged - one more real step than patching the door, and the same step a rule takes.
-    monkeypatch.setitem(mapper_sdk.MAPPER_REGISTRY, join_into.JOIN_INTO_MAPPER, flaky)
+    monkeypatch.setattr(db_module, "stage_collapsed_event", flaky)
     rolled = []
     real_rollback = db.rollback
     monkeypatch.setattr(db, "rollback",
@@ -234,27 +266,24 @@ def test_a_page_that_throws_costs_that_page_and_the_session_survives(db, monkeyp
 
     assert stats["pages_failed"] == 1
     assert "UniqueViolation" in stats["page_failures"][0]["error"]
-    assert stats["rows_written"] == 1, "the page after the bad one still ran"
+    assert stats["rows_staged"] == 1, "the page after the bad one still ran"
     # 🔴 THE ROLLBACK IS SCORED DIRECTLY, AND A MUTATION IS WHY. Asserting 「SELECT 1
     # still works」 is VACUOUS on SQLite: a failed statement does not poison the session
     # there, so removing the rollback left this test green. The behaviour §0-ter ② is about
     # is PostgreSQL's aborted transaction, and what this path owes is the rollback itself.
-    assert rolled == [True], "the session was not rolled back before the next page"
+    assert rolled, "the session was not rolled back before the next page"
     assert db.execute(text("SELECT 1")).scalar() == 1
 
 
-def test_a_refusal_from_the_kind_is_counted_and_named_rather_than_thrown(db,
-                                                                         monkeypatch):
-    """⛔ A REFUSAL IS AN ANSWER, and it belongs in the report beside the failures rather than
-    as an exception the caller has to translate."""
-    _seed(db)
-    monkeypatch.setitem(mapper_sdk.MAPPER_REGISTRY, join_into.JOIN_INTO_MAPPER,
-                        lambda *a, **k: {"written": 0, "refusal": "right table is gone"})
-
-    stats = replay.replay_rule(db, _rules()[0], apply=True, log=lambda m: None)
-
-    assert stats["pages_failed"] == 1
-    assert stats["page_failures"][0]["error"] == "right table is gone"
+# ⚰️ `test_a_refusal_from_the_kind_is_counted_and_named_rather_than_thrown` STOOD HERE. It
+#    patched the join in `mapper_sdk.MAPPER_REGISTRY` to return `{"refusal": ...}` and read it
+#    back off `replay`'s stats. [소유자 2026-09-23] replay does not call the rule, so it cannot
+#    hear a refusal - and 판정 525's requirement that a refusal be SAID rather than swallowed
+#    did not move to a worse place: the worker reports it, in the same words, for a live change
+#    and a retroactive one alike (`test_a_failure_says_why_on_the_card.py`).
+# ⚠️ WHAT REPLAY STILL COUNTS IS ITS OWN FAILURE - a page it could not hand over
+#    (`pages_failed`, asserted directly above). Those are different facts and neither is
+#    standing in for the other.
 
 
 # ---------------------------------------------------------------------------
@@ -310,11 +339,15 @@ def test_the_page_loop_isolates_every_mapper_including_file_ones():
     import inspect
 
     body = inspect.getsource(replay.replay_rule)
-    file_call = body[body.index("The REAL mapper invocation path"):]
+    loop = body[body.index("for page in keyset_scan.iter_pages"):]
+    guarded = loop[:loop.index("stage_collapsed_event")]
 
-    assert "try:" in file_call.split("items, metadata_items")[0], (
-        "the one page path lost its isolation - one bad page kills a whole file-mapper "
-        "backfill again, which is the defect S-242-b named")
+    assert "try:" in guarded, (
+        "the page path lost its isolation - one bad page kills a whole backfill again, "
+        "which is the defect S-242-b named")
+    assert "except Exception as page_error" in loop and "db.rollback()" in loop, (
+        "the isolation no longer rolls back, so the next page's SELECT talks to an aborted "
+        "transaction on PostgreSQL")
 
 
 
@@ -342,6 +375,11 @@ def test_the_pre_count_does_not_say_nothing_about_a_run_that_rewrites_everything
     answer = retroactive._count_chain_replay(db, {"rule": "s242_join"}, 1000)
 
     assert answer["affected"] == 2
-    assert answer["affected_label"] == "덮어쓸 셀"
-    assert "2개 셀을 다시 씁니다" in answer["detail"]
+    # ⚰️ [판정 505 · 소유자 2026-09-23 「ㄷ」] THE UNIT WAS CELLS, COUNTED BY A DRY RUN OF THE
+    #   RULE. Rows is what this run hands over, so rows is what it can count - and the label
+    #   is English because it is rendered in a browser.
+    assert answer["affected_label"] == "rows to re-run"
+    assert "2 row(s)" in answer["detail"], answer["detail"]
+    assert not any(chr(0xac00) <= ch <= chr(0xd7a3) for ch in answer["detail"]), (
+        "the consent screen renders this sentence in a browser")
 

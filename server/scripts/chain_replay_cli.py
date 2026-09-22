@@ -39,27 +39,20 @@ def _report_replay(s):
         f"  {s['trigger_table']} -> {s['target_table']}"
         f"{'   (SELF-TRIGGERING: scan bounded by a start snapshot)' if s['self_triggering'] else ''}",
         f"  source rows scanned   : {s['rows_scanned']} in {s['pages']} page(s)",
-        f"  mapper items          : {s['mapper_items']}",
-        f"  cells proposed        : {s['cells_proposed']}",
     ]
+    # A replay HANDS ROWS OVER; the chain worker writes them. 이 명령이 「몇 칸을 썼다」를
+    # 말하려면 규칙을 여기서 한 번 더 돌려야 하고, 그 두 번째 판단이 이번에 죽은 것이다.
+    # 쓴 것은 워커 로그와 큐에서 `chain_<tx>` 라벨로 읽는다.
     if s["mode"] == "apply":
-        lines += [f"  cells written         : {s['cells_written']}",
-                  f"  rows created/updated  : {s['rows_created']} / {s['rows_updated']}"]
+        lines += [f"  rows handed over      : {s['rows_staged']} in "
+                  f"{s['events_staged']} outbox event(s)",
+                  f"  the worker writes them under one transaction; watch the chain log"]
     else:
-        lines.append(f"  cells a human protects: {s['user_protected_cells']}  "
-                     f"(replay writes its layer; the human's value keeps winning)")
-    if s["skipped_blank_cells"]:
-        lines += [
-            f"  cells with NO value   : {s['skipped_blank_cells']}  (NOT written - absence "
-            f"is not zero)",
-            "  -> the rule no longer produces a value for these. To make the layer",
-            "     underneath visible use R2:  withdraw "
-            f"{s['target_table']} chain_ingestion --columns <col>",
-        ]
-        for c in s["withdrawal_candidates"][:5]:
-            lines.append(f"      {c['business_key_val']}.{c['column']}")
-    for sm in s["samples"][:3]:
-        lines.append(f"      e.g. {sm['business_key_val']}: {sm['updates']}")
+        lines.append("  (no --apply: nothing was handed over)")
+    if s["pages_failed"]:
+        lines.append(f"  pages that failed     : {s['pages_failed']}")
+        for f in s["page_failures"][:5]:
+            lines.append(f"      page {f['page']} ({f['rows']} rows): {f['error']}")
     lines.append("")
     return "\n".join(lines)
 

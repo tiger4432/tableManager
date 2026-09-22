@@ -238,17 +238,34 @@ def test_the_chain_has_no_second_execution_path():
 # retroactive - both doors
 # ---------------------------------------------------------------------------
 
+def _retroactively(db, rule):
+    """Hand the rows over the way a small retroactive does, then let the WORKER write.
+
+    🔴 [소유자 2026-09-23] 「체인트리거든 소급이든 «같은 로직»으로 돌려」. ⚰️ These two cells used
+       to call `replay.replay_rule(apply=True)` and score ITS write - retroactive had a write
+       of its own, which is exactly the disagreement this matrix exists to catch. The
+       hand-over is scored the way it happens: stage, then drain.
+    ⚠️ `before` IS TAKEN AFTER THE STAGING. The staged event is the hand-over, not the write;
+       counting it would make 「exactly one event」 read two and hide a real second one.
+    """
+    replay.replay_rule(db, rule, apply=True, log=lambda m: None)
+    staged = [e for e in _events(db) if not e.processed_chain]
+    assert staged, "the retroactive handed nothing over, so this cell scores nothing"
+    before = set(e.id for e in _events(db))
+    tx = (staged[0].payload or {}).get("transaction_id")
+    worker._process_chain_transaction_group_sync(tx, staged, db, [rule])
+    return before
+
+
 def test_retroactive_through_the_builtin_door(db):
     _seed(db)
-    before = set(e.id for e in _events(db))
-    replay.replay_rule(db, _join_rules()[0], apply=True, log=lambda m: None)
+    before = _retroactively(db, _join_rules()[0])
     _score(db, before, "retroactive/builtin", _written(db, "lot_confirmed"))
 
 
 def test_retroactive_through_the_mapper_door(db, file_mapper):
     _seed(db)
-    before = set(e.id for e in _events(db))
-    replay.replay_rule(db, _mapper_rule(), apply=True, log=lambda m: None)
+    before = _retroactively(db, _mapper_rule())
     _score(db, before, "retroactive/mapper", _written(db, "note"))
 
 
@@ -288,7 +305,11 @@ def test_both_callers_hand_a_mapper_the_same_payload_keys(db, tmp_path, monkeypa
     from_group = list(probe.SEEN)
 
     del probe.SEEN[:]
-    replay.replay_rule(db, rule, apply=True, log=lambda m: None)
+    # 🔴 THE SECOND CALLER IS THE SAME WORKER NOW, reached through a retroactive's hand-over.
+    #    ⚰️ It was `replay.replay_rule(apply=True)`, which built the payload itself - two
+    #    payload builders, which is precisely the defect 판정 426 was about. One builder makes
+    #    the key sets equal by construction; this test is what fails if a second returns.
+    _retroactively(db, rule)
     from_retroactive = list(probe.SEEN)
     sys.modules.pop("s426_recording_mapper", None)
 

@@ -503,46 +503,26 @@ def test_the_report_states_what_it_withheld_rather_than_ending_silently(db):
 
 
 # ---------------------------------------------------------------------------
-# 5. The second funnel — replay runs the same mappers
+# 5. ⚰️ THE SECOND FUNNEL IS GONE
 # ---------------------------------------------------------------------------
-
-def test_replay_cannot_recreate_in_bulk_what_the_live_worker_refuses(db):
-    """KILLS: wiring the gate into the worker only.
-
-    `chain_replay` re-runs the same mappers over a table's whole current contents, so a
-    gate on the live path alone would leave the bulk path able to manufacture exactly the
-    rows the incident is about. Note also that replay's own `SKIP_BLANK` strips a blank
-    key column from `updates`, which is what makes such an item unkeyable here.
-    """
-    stats = {"cells_written": 0, "rows_written": 0, "rows_created": 0, "rows_updated": 0,
-             "unkeyed_rows_refused": 0, "unkeyed_key_columns": {}}
-    replay._apply_replay_batch(
-        db, schemas, crud, CELLS,
-        [_item(updates={"job": "J1", "x": 1, "y": 1, "grade": "A"}),
-         _item(updates={"x": 2, "y": 2, "grade": "B"})],
-        "run1", stats, rule_name="ckgate_rule")
-
-    assert stats["unkeyed_rows_refused"] == 1
-    assert stats["unkeyed_key_columns"] == {"job": 1}
-    assert stats["rows_created"] == 1
-    assert _keyless(db, CELLS) == []
-
-
-def test_replay_does_not_purge_a_map_it_refused_whole(db):
-    """KILLS: removing the `if not kept: return` arm in `_apply_replay_batch`."""
-    seed = {"cells_written": 0, "rows_written": 0, "rows_created": 0, "rows_updated": 0,
-            "unkeyed_rows_refused": 0, "unkeyed_key_columns": {}}
-    replay._apply_replay_batch(
-        db, schemas, crud, CELLS,
-        [_item(updates={"job": "J1", "x": x, "y": 0, "grade": "A"}) for x in range(3)],
-        "run1", seed, rule_name="ckgate_rule")
-    assert len(_rows(db, CELLS)) == 3
-
-    stats = dict(seed, unkeyed_rows_refused=0, unkeyed_key_columns={})
-    replay._apply_replay_batch(
-        db, schemas, crud, CELLS,
-        [_item(updates={"job": "", "x": x, "y": 0}) for x in range(3)],
-        "run2", stats, replace_map=True, scope={"job": "J1"}, rule_name="ckgate_rule")
-
-    assert stats["unkeyed_rows_refused"] == 3
-    assert len(_rows(db, CELLS)) == 3, "a whole-batch refusal must not become a purge"
+#
+# Two tests stood here - `test_replay_cannot_recreate_in_bulk_what_the_live_worker_refuses`
+# and `test_replay_does_not_purge_a_map_it_refused_whole` - and both called
+# `replay._apply_replay_batch`, which no longer exists. [소유자 2026-09-23] 「체인트리거든
+# 소급이든 «같은 로직»으로 돌려」: a retroactive stages ordinary trigger events and the WORKER
+# writes them, so there is one write and one gate.
+#
+# 🔴 THE PROPERTY DID NOT RETIRE, ONLY THE SECOND SPELLING OF IT. What those two measured is
+#    measured above, on the funnel that remains:
+#      an unkeyed row is refused and the healthy ones still land
+#          -> test_the_worker_refuses_the_unkeyed_row_and_writes_the_healthy_ones
+#      a whole-batch refusal must not become a purge
+#          -> test_a_replace_map_whose_every_row_is_refused_does_not_purge_the_map
+#    Both were already green before this round, which is what makes them the control.
+#
+# ⚠️ ONE INPUT IS NO LONGER REACHABLE AND THAT IS WORTH WRITING DOWN. The first test's own
+#    docstring said replay's `SKIP_BLANK` 「strips a blank key column from `updates`, which is
+#    what makes such an item unkeyable here」. `SKIP_BLANK` is retired too, so a blank key
+#    column now reaches the gate as a blank rather than as a missing one - and the gate
+#    refuses both (`test_an_unfilled_key_column_is_named_not_merely_counted` covers the
+#    blank spellings directly).

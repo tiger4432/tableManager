@@ -20,7 +20,10 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 import dt_map_derivation as dmd                                  # noqa: E402
 
 SERVER = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-CONSUMERS = ("chain/ingestion_worker.py", "chain/replay.py")
+#: ⚰️ "chain/replay.py" WAS THE SECOND ENTRY. [소유자 2026-09-23] A retroactive stages ordinary
+#: trigger events, so the worker is the one place a scoped batch is read. A name added back
+#: here is the signal this file exists for - a second reader of one envelope.
+CONSUMERS = ("chain/ingestion_worker.py",)
 RULE = {"name": "r", "allow_replace_map": True, "allow_retraction": True}
 
 
@@ -48,7 +51,15 @@ def test_neither_consumer_states_the_rules_itself():
             assert sentence not in code, "%s spells the envelope rule itself: %r" % (name, sentence)
 
 
-def test_both_consumers_call_the_one_reader():
+def test_every_consumer_calls_the_one_reader():
+    """⚰️ THIS WAS `test_both_consumers_call_the_one_reader`, and the second consumer was
+       `chain/replay.py`. [소유자 2026-09-23] A retroactive stages ordinary trigger events and
+       the worker consumes them, so there is one consumer - which is the state this file was
+       arguing FOR, reached by removing the second reader rather than by keeping it in step.
+    ⚠️ THE LIST IS STILL A LIST. A third consumer is exactly what this test exists to catch,
+       and `CONSUMERS` is where it would be declared.
+    """
+    assert CONSUMERS, "a list of no consumers passes this test vacuously"
     for name in CONSUMERS:
         code = _code(name)
         assert "normalize_scoped_batch(" in code, "%s no longer reads the envelope" % name

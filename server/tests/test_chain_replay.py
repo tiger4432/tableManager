@@ -53,6 +53,14 @@ def _install_mapper_module():
             part = (data.get("part_no") or {}).get("value")
             qty = (data.get("qty") or {}).get("value") or 0
             updates.append({"business_key_val": part,
+                            # 🔴 A REAL MAPPER SAYS WHICH LAYER IT WRITES. `mapper_sdk`'s
+                            #   `df_to_updates` puts `chain_ingestion` on every item, and
+                            #   `GeneralUpdateItem.source_name` DEFAULTS TO "user" - so a
+                            #   mapper that says nothing writes into the human's layer. That
+                            #   was hidden here while `replay` stamped its own source over
+                            #   every item; the worker trusts the mapper, so the fake has to
+                            #   behave like a real one for this file to measure anything.
+                            "source_name": "chain_ingestion",
                             "updates": {"part_no": part, "reserved": float(qty) * 2}})
         return {"updates": updates}
 
@@ -133,6 +141,32 @@ def _seed(db, table, rows, source_name="pipeline_parser", tx_id="seed"):
         updates=items, transaction_id=tx_id, silent=True))
 
 
+def _clear_outbox(db):
+    """The seed's own events are not what these tests measure."""
+    db.query(models.DatabaseOutbox).delete()
+    db.commit()
+
+
+def _staged(db, table):
+    m = models.DatabaseOutbox
+    return (db.query(m).filter(m.table_name == table, m.processed_chain == False)  # noqa: E712
+            .order_by(m.id.asc()).all())
+
+
+def _drain(db, rule, events):
+    """Run the WORKER over what the replay staged, and return the transaction it used.
+
+    🔴 [소유자 2026-09-23] 「체인트리거든 소급이든 «같은 로직»으로 돌려」. A replay no longer
+       writes - it stages ordinary trigger events - so a test that stopped at `replay`'s
+       return value would be measuring a hand-off and calling it a write. This is the second
+       half of the hop, and it is the SAME entry point the live chain uses.
+    """
+    from chain import ingestion_worker as worker
+    tx = (events[0].payload or {}).get("transaction_id")
+    worker._process_chain_transaction_group_sync(tx, events, db, [rule])
+    return tx
+
+
 def _target(db, bk):
     m = models.DYNAMIC_TABLES["crep_test_target"]
     return db.query(m).filter(m.business_key_val == bk).first()
@@ -149,77 +183,178 @@ def _sources(db, table, row_id, col):
 # R1 — rule re-application
 # ---------------------------------------------------------------------------
 
-def test_r1_dry_run_reports_without_writing(rep_env):
-    _seed(rep_env, "crep_test_trigger",
-          [{"src_key": "s1", "part_no": "P1", "qty": 5}])
+def test_a_run_without_apply_hands_nothing_over(rep_env):
+    """The count route's shape: it scans to say HOW MANY rows would go, and stages none.
+
+    ⚰️ THIS WAS `test_r1_dry_run_reports_without_writing`, and 「dry run」 meant running the
+       rule to count the cells it would write. [소유자 2026-09-23 「ㄷ」] 미리보기 없이 바로
+       실행 - a counting copy of the write judgment is a second author for it.
+    """
+    _seed(rep_env, "crep_test_trigger", [{"src_key": "s1", "part_no": "P1", "qty": 5}])
+    _clear_outbox(rep_env)
+
     stats = replay.replay_rule(rep_env, RULE_RESERVE, apply=False, log=lambda *_: None)
-    assert stats["mode"] == "dry-run"
+
     assert stats["rows_scanned"] == 1
-    assert stats["cells_proposed"] == 2      # part_no + reserved
-    assert stats["cells_written"] == 0
-    assert _target(rep_env, "P1") is None, "a dry-run must create nothing"
+    assert stats["rows_staged"] == 0 and stats["events_staged"] == 0
+    assert _staged(rep_env, "crep_test_trigger") == []
+    assert _target(rep_env, "P1") is None
 
 
-def test_r1_apply_writes_through_the_real_layering_path(rep_env):
+def test_r1_hands_the_rows_over_and_the_worker_writes_them(rep_env):
+    """🔴 [소유자 2026-09-23] 「작은 소급은 바로 아웃박스에 트리거와 «같은 형태»로 꽂히게」.
+
+    ⚰️ THIS CALLED `replay_rule(apply=True)` AND ASSERTED THE TARGET ROW. It passed while
+       retroactive ran a SECOND copy of the chain - its own write batch, its own key gate,
+       its own transaction label - and a copy can answer differently from the original: on
+       2026-09-17 it did, `rows_in=4 rows_out=4 written=None`.
+    변이: drop `only_rule` from the staged payload and `test_only_the_named_rule_wakes` goes
+    red - the other rules on the table wake too.
+    """
     _seed(rep_env, "crep_test_trigger",
           [{"src_key": "s1", "part_no": "P1", "qty": 5},
            {"src_key": "s2", "part_no": "P2", "qty": 3}])
+    _clear_outbox(rep_env)
+
     stats = replay.replay_rule(rep_env, RULE_RESERVE, apply=True, log=lambda *_: None)
-    assert stats["rows_created"] == 2
-    assert float(_target(rep_env, "P1").reserved) == 10.0
-    # Provenance is the SAME layer the live worker writes - replay is not a new layer.
+    assert stats["rows_staged"] == 2 and stats["events_staged"] == 1
+    assert _target(rep_env, "P1") is None, "it wrote by itself; it must only hand over"
+
+    events = _staged(rep_env, "crep_test_trigger")
+    assert len(events) == 1
+    payload = events[0].payload
+    assert events[0].event_type == "EDIT", "a new event type would not be a trigger at all"
+    assert payload["only_rule"] == RULE_RESERVE["name"]
+    assert len(payload["row_ids"]) == 2
+    assert "columns" not in payload, (
+        "an empty column set reads as 「nothing changed」 and skips every column-scoped rule")
+
+    _drain(rep_env, RULE_RESERVE, events)
+
     row = _target(rep_env, "P1")
+    assert float(row.reserved) == 10.0
     assert set(_sources(rep_env, "crep_test_target", row.row_id, "reserved")) == \
-        {replay.R1_SOURCE_NAME}
+        {"chain_ingestion"}, "the worker wrote it in the chain's layer, like any live edit"
+
+
+def test_one_replay_is_one_transaction(rep_env):
+    """게이트 ㉡ - one replay = one transaction = one line on the screen.
+
+    🔴 THE TRAP THIS KILLS. `stage_collapsed_event` takes its id from
+       `request_transaction_id.get() or str(uuid.uuid4())`, and the worker thread has that
+       var UNSET - so without the `.set()` in `replay_rule` every PAGE would mint its own,
+       the worker would group each page separately, and the operator's one action would
+       arrive as N runs.
+    변이: remove that `.set()` and the ids below stop matching.
+    """
+    _seed(rep_env, "crep_test_trigger",
+          [{"src_key": f"s{i}", "part_no": f"P{i}", "qty": i} for i in range(6)])
+    _clear_outbox(rep_env)
+
+    stats = replay.replay_rule(rep_env, RULE_RESERVE, apply=True, chunk_size=2,
+                               log=lambda *_: None)
+    assert stats["events_staged"] == 3, "the pages must actually be several, or this is vacuous"
+
+    ids = {e.payload["transaction_id"] for e in _staged(rep_env, "crep_test_trigger")}
+    assert len(ids) == 1, "three pages, three transactions: %r" % (ids,)
+
+
+def test_only_the_named_rule_wakes(rep_env):
+    """게이트 ㉤ - the operator picked one rule, not the table.
+
+    🔴 `only_rule` IS THE ONE THING AN ORDINARY EDIT DOES NOT SAY, and the seat that reads it
+       (`event_constants.only_rule_of`, asked once in `ingestion_worker.fires`) was built with
+       no writer at all. 변이: drop the key and both assertions below flip.
+    """
+    from chain import ingestion_worker as worker
+
+    other = dict(RULE_RESERVE, name="crep_other")
+    _seed(rep_env, "crep_test_trigger", [{"src_key": "s1", "part_no": "P1", "qty": 5}])
+    _clear_outbox(rep_env)
+    replay.replay_rule(rep_env, RULE_RESERVE, apply=True, log=lambda *_: None)
+
+    event = _staged(rep_env, "crep_test_trigger")[0]
+    assert worker.fires(RULE_RESERVE, event) is True
+    assert worker.fires(other, event) is False, (
+        "a rule the operator did not pick woke on this event")
+
+    del event.payload["only_rule"]
+    assert worker.fires(other, event) is True, (
+        "the key is not what decides it - this test proves nothing")
 
 
 def test_r1_is_idempotent(rep_env):
+    """Re-running recomputes the same value. Measured through the worker, which is where
+    the upsert that makes it true now lives."""
     _seed(rep_env, "crep_test_trigger", [{"src_key": "s1", "part_no": "P1", "qty": 5}])
-    replay.replay_rule(rep_env, RULE_RESERVE, apply=True, log=lambda *_: None)
-    second = replay.replay_rule(rep_env, RULE_RESERVE, apply=True, log=lambda *_: None)
-    assert second["rows_created"] == 0
+    _clear_outbox(rep_env)
+
+    for _ in range(2):
+        replay.replay_rule(rep_env, RULE_RESERVE, apply=True, log=lambda *_: None)
+        _drain(rep_env, RULE_RESERVE, _staged(rep_env, "crep_test_trigger"))
+
     assert float(_target(rep_env, "P1").reserved) == 10.0
+    m = models.DYNAMIC_TABLES["crep_test_target"]
+    assert rep_env.query(m).filter(m.business_key_val == "P1").count() == 1, (
+        "the second pass inserted a second row instead of updating")
 
 
 def test_r1_cannot_overwrite_a_human_value(rep_env):
-    """THE safety property. A human sets `reserved`; the replay writes its own
-    layer underneath and the displayed value never moves."""
+    """THE safety property, now proved on the path that actually writes.
+
+    A human sets `reserved`; the replay goes through the worker and the displayed value
+    never moves. ⚠️ The guard is `crud`'s and was never replay's - what changed is that this
+    test used to reach it through a second write door.
+    """
     _seed(rep_env, "crep_test_trigger", [{"src_key": "s1", "part_no": "P1", "qty": 5}])
     _seed(rep_env, "crep_test_target", [{"part_no": "P1", "reserved": 999}],
           source_name="user", tx_id="human")
     assert float(_target(rep_env, "P1").reserved) == 999.0
+    _clear_outbox(rep_env)
 
     replay.replay_rule(rep_env, RULE_RESERVE, apply=True, log=lambda *_: None)
+    _drain(rep_env, RULE_RESERVE, _staged(rep_env, "crep_test_trigger"))
+
     row = _target(rep_env, "P1")
-    assert float(row.reserved) == 999.0, "replay must never outrank a human's value"
-    # Both layers exist; the human's simply wins.
+    assert float(row.reserved) == 999.0, "a replay must never outrank a human's value"
     srcs = _sources(rep_env, "crep_test_target", row.row_id, "reserved")
-    assert set(srcs) == {"user", replay.R1_SOURCE_NAME}
-    assert float(srcs[replay.R1_SOURCE_NAME]) == 10.0
+    assert set(srcs) == {"user", "chain_ingestion"}, srcs
+    assert float(srcs["chain_ingestion"]) == 10.0, "both layers exist; the human's wins"
 
 
-def test_r1_dry_run_counts_user_protected_cells(rep_env):
-    _seed(rep_env, "crep_test_trigger", [{"src_key": "s1", "part_no": "P1", "qty": 5}])
-    _seed(rep_env, "crep_test_target", [{"part_no": "P1", "reserved": 999}],
-          source_name="user", tx_id="human")
-    stats = replay.replay_rule(rep_env, RULE_RESERVE, apply=False, log=lambda *_: None)
-    assert stats["user_protected_cells"] >= 1, \
-        "the dry-run must state the safety property in numbers, not only in prose"
+def test_r1_never_writes_a_blank(rep_env):
+    """ABSENCE IS NOT ZERO - and that judgment now has ONE author.
 
-
-def test_r1_never_writes_a_blank_and_reports_it_as_an_r2_candidate(rep_env):
-    """ABSENCE IS NOT ZERO. 'the rule produces nothing here' is R2's statement."""
+    ⚰️ THIS ALSO ASSERTED AN R2 CANDIDATE LIST. `replay.SKIP_BLANK` built it while deciding,
+       by RULE, not to write a blank; `crud` decides the same thing by SOURCE, beside the
+       write. [소유자 2026-09-23 「ㄷ」] left the one beside the write.
+    🔴🔴 AND THE ANSWER IS NOT THE ONE REPLAY USED TO GIVE. Measured 2026-09-23:
+       `crud.can_mean_emptied` returns True for `chain_ingestion` - 「the chain asserting that
+       a matched right row IS empty」 (판정 f3c04dee). So THE LIVE PATH WRITES THE BLANK, and
+       replay's `SKIP_BLANK` was refusing to do what the live chain does with the same rule
+       over the same rows. The two doors disagreed about a cell's VALUE, not only about a
+       report, and [소유자 2026-09-23] 「체인트리거든 소급이든 «같은 로직»으로 돌려」 settles
+       which one stands.
+    ⚠️ THE CONSEQUENCE, WRITTEN DOWN RATHER THAN DISCOVERED: a replay of a rule that produces
+       no value for a column now CLEARS that column on the rows it covers, where before it
+       left the old value and listed it as an R2 candidate. Getting the old value back is
+       R2 withdraw, and that is what the operator must be told.
+    """
     _seed(rep_env, "crep_test_trigger", [{"src_key": "s1", "part_no": "P1", "qty": 5}])
     _seed(rep_env, "crep_test_target", [{"part_no": "P1", "note": "OLD"}], tx_id="pre")
-    stats = replay.replay_rule(rep_env, RULE_BLANK, apply=True, log=lambda *_: None)
-    assert stats["skipped_blank_cells"] == 1
-    assert stats["withdrawal_candidates"], "a vanished value must be reported, not written"
-    assert stats["withdrawal_candidates"][0]["column"] == "note"
-    assert _target(rep_env, "P1").note == "OLD", "R1 must not blank an existing value"
+    _clear_outbox(rep_env)
+    assert _target(rep_env, "P1").note == "OLD", "the fixture is inert"
+
+    replay.replay_rule(rep_env, RULE_BLANK, apply=True, log=lambda *_: None)
+    _drain(rep_env, RULE_BLANK, _staged(rep_env, "crep_test_trigger"))
+
+    assert not (_target(rep_env, "P1").note or ""), (
+        "the replay left the value where a LIVE edit of the same row would have cleared it - "
+        "the two doors are answering differently about a cell again")
 
 
 # ---------------------------------------------------------------------------
-# R1 — the loop guard, proved by removing it
+# R1 — the scan bound
 # ---------------------------------------------------------------------------
 
 def test_r1_self_triggering_scan_is_bounded_by_the_snapshot(rep_env):
@@ -231,17 +366,14 @@ def test_r1_self_triggering_scan_is_bounded_by_the_snapshot(rep_env):
         "the scan must see only the rows that existed when it started"
 
 
-def test_r1_without_the_snapshot_guard_the_scan_eats_its_own_output(rep_env, monkeypatch):
-    """INJECTED DEFECT: disable the self-write detection. The same replay now
-    walks rows it created itself, which is precisely the runaway the guard
-    prevents. Bounded with `limit` so a failure cannot hang the suite."""
-    _seed(rep_env, "crep_test_self",
-          [{"self_key": f"k{i}", "seq": i} for i in range(1, 4)])
-    monkeypatch.setattr(replay, "is_self_triggering", lambda rule: False)
-    stats = replay.replay_rule(rep_env, RULE_SELF, apply=True, limit=40,
-                                     chunk_size=3, log=lambda *_: None)
-    assert stats["rows_scanned"] > 3, \
-        "without the guard the scan must be observed consuming its own writes"
+# ⚰️ `test_r1_without_the_snapshot_guard_the_scan_eats_its_own_output` STOOD HERE. It removed
+#    the guard and watched the same replay walk rows it had created ITSELF - a runaway this
+#    seat can no longer have, because it writes nothing while it scans. The bound above is
+#    kept and still asserted: it decides WHICH ROWS go over, which is this module's half.
+#    🔴 THE RUNAWAY DID NOT DISAPPEAR, IT MOVED. A self-triggering rule's writes land in the
+#       worker now, and what stops them coming back forever is the hop limit
+#       (`event_constants.max_chain_depth`), measured in `test_a_join_hop_is_counted_by_the
+#       _ceiling.py` - the same ceiling every live edit of that table meets.
 
 
 def test_r1_replay_order_puts_the_producer_first(rep_env):
@@ -659,6 +791,7 @@ def test_a_cancel_stops_between_batches_keeps_what_it_wrote_and_can_be_resumed(r
           [{"src_key": "s1", "part_no": "P1", "qty": 5},
            {"src_key": "s2", "part_no": "P2", "qty": 3},
            {"src_key": "s3", "part_no": "P3", "qty": 7}])
+    _clear_outbox(rep_env)   # the seed's own events are not this run's hand-over
 
     seen = []
 
@@ -672,15 +805,24 @@ def test_a_cancel_stops_between_batches_keeps_what_it_wrote_and_can_be_resumed(r
 
     assert stopped["stopped"] is True
     assert stopped["pages"] == 1, "it stopped at a boundary, not mid-page"
-    # KEEPS: the first page's work is committed and visible.
-    assert _target(rep_env, "P1") is not None
+    # KEEPS: the first page's hand-over is committed - a cancel is not a rollback.
+    # ⚠️ 「what it wrote」 IS NOW 「what it handed over」. The rows it staged are in the queue
+    #    and the worker will write them whether or not this run was stopped, which is the
+    #    same promise in the unit this seat now works in.
+    assert stopped["events_staged"] == 1 and stopped["rows_staged"] == 1
+    assert len(_staged(rep_env, "crep_test_trigger")) == 1
     # ...and the pages it never reached did not happen.
-    assert _target(rep_env, "P2") is None and _target(rep_env, "P3") is None
+    assert _staged(rep_env, "crep_test_trigger")[0].payload["row_count"] == 1
 
-    # RESUMES: the same job again finishes the rest, without redoing the first.
+    # RESUMES: the same job again finishes the rest. It re-covers the first row too - a
+    # resume is a re-run, and the write it leads to is an upsert, so covering a row twice
+    # costs a second event and not a second row.
     finished = replay.replay_rule(rep_env, RULE_RESERVE, apply=True,
-                                        log=lambda *_: None)
+                                  log=lambda *_: None)
     assert finished.get("stopped") is not True
+    assert finished["rows_staged"] == 3
+
+    _drain(rep_env, RULE_RESERVE, _staged(rep_env, "crep_test_trigger"))
     assert _target(rep_env, "P2") is not None and _target(rep_env, "P3") is not None
     assert float(_target(rep_env, "P1").reserved) == 10.0, "the resume did not disturb it"
 
@@ -802,10 +944,9 @@ def test_fast_is_exactly_what_this_did_before_the_handle_existed(rep_env, monkey
         business_keys=[r["src_key"] for r in _paced_rows(offset=PACE_PAGES)])
 
     assert calls == [], "`fast` rested; it must be today's behaviour exactly"
-    measured = ("rows_scanned", "pages", "cells_written", "rows_created", "rows_updated",
-                "cells_proposed", "mapper_items")
+    measured = ("rows_scanned", "pages", "rows_staged", "events_staged")
     assert {k: unset[k] for k in measured} == {k: fast[k] for k in measured}
-    assert unset["rows_scanned"] == PACE_PAGES and unset["cells_written"], (
+    assert unset["rows_scanned"] == PACE_PAGES and unset["rows_staged"], (
         "the halves must actually do work, or 'identical' is two zeros")
 
 

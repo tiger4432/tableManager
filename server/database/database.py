@@ -278,7 +278,8 @@ def _outbox_envelope():
     )
 
 
-def stage_collapsed_event(session, event_type, table_name, row_ids, columns=None):
+def stage_collapsed_event(session, event_type, table_name, row_ids, columns=None,
+                          only_rule=None):
     """[OUTBOX-4] Stage ONE outbox event naming `row_ids` instead of N events.
 
     🔴 THE TRANSACTIONAL-OUTBOX GUARANTEE IS PRESERVED, AND HERE IS WHY IT SURVIVES
@@ -298,13 +299,20 @@ def stage_collapsed_event(session, event_type, table_name, row_ids, columns=None
     `event_type` stays CREATE/EDIT rather than becoming BATCH_*: every consumer
     that only asks "did table T change" keeps working unmodified. The payload's
     `row_ids` key is the discriminator (`event_constants.is_collapsed_payload`).
+
+    `only_rule` narrows the event to ONE rule. 소유자 2026-09-23: 「작은 소급은 바로
+    아웃박스에 트리거와 «같은 형태»로 꽂히게」 - so a click-replay stages rows through THIS
+    door instead of running a second copy of the chain, and the one thing it needs to say
+    that an ordinary edit does not is 「이 규칙만」.
     """
     from .models import DatabaseOutbox
     try:
-        from event_constants import OUTBOX_COLLAPSE_CHUNK_ROWS, CHAIN_DEPTH_KEY
+        from event_constants import (OUTBOX_COLLAPSE_CHUNK_ROWS, CHAIN_DEPTH_KEY,
+                                     ONLY_RULE_KEY)
     except ImportError:  # pragma: no cover
         OUTBOX_COLLAPSE_CHUNK_ROWS = 1000
         CHAIN_DEPTH_KEY = "chain_depth"
+        ONLY_RULE_KEY = "only_rule"
 
     tx_id, user, source, ts, chain_depth = _outbox_envelope()
 
@@ -347,6 +355,18 @@ def stage_collapsed_event(session, event_type, table_name, row_ids, columns=None
         # facts and the reader has to be able to tell them apart.
         if chain_depth is not None:
             chunk_event.payload[CHAIN_DEPTH_KEY] = chain_depth
+        # [ONLY-RULE] Same rule as the depth above, for the same reason: the key is ABSENT
+        # unless a caller named a rule, because the reader defines absence as 「no limit」
+        # (`event_constants.only_rule_of`). Writing `None` would make a limit that reads as
+        # none look like a declaration that there is none.
+        #
+        # 🔴 THE READER SEAT WAS ALREADY BUILT AND HAD NO WRITER. `only_rule_of` is read by
+        # `ingestion_worker.fires` - one seat, deliberately not copied to its eleven callers -
+        # and `outbox_expand` already CARRIES the key through an expansion. What did not
+        # exist was anything that puts it there, so a retroactive had to run its own loop to
+        # keep itself to one rule. This parameter is that missing half, not a new axis.
+        if only_rule:
+            chunk_event.payload[ONLY_RULE_KEY] = only_rule
         session.add(chunk_event)
 
 
