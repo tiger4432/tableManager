@@ -416,11 +416,6 @@ def test_a_rolled_back_birth_leaves_no_row_to_announce(notify_db):
     assert len(after) == 1, "롤백된 트랜잭션이 다음 것을 침묵시키면 안 된다"
 
 
-def main_module():
-    import main
-    return main
-
-
 def test_the_api_and_the_worker_listen_on_the_same_one_constant(notify_db):
     """게이트 ⑤·⑥. 이름이 «상수 하나»이고, 듣는 쪽이 둘인데 기제는 하나다.
 
@@ -449,7 +444,7 @@ def test_the_api_and_the_worker_listen_on_the_same_one_constant(notify_db):
     # api.json 이 안 써지므로, 적으면 터지지도 않고 관찰만 안 되는 값이 된다.
     # ⚠️ 재는 것은 «이 라운드가 실제로 넘기는 값»이다 — 시험이 고른 값이 아니라.
     import inspect
-    built = inspect.getsource(main_module()._outbox_queue_broadcast_loop)
+    built = inspect.getsource(_main._outbox_queue_broadcast_loop)
     assert "lap_name=None" in built, (
         "API 리스너가 lap 이름을 들고 간다 — 그 이름의 파일은 안 써진다(beat 호출 0)")
 
@@ -464,42 +459,38 @@ def test_the_api_and_the_worker_listen_on_the_same_one_constant(notify_db):
         outbox_listener.heartbeat.record_lap = original
 
 
-def test_the_api_broadcast_is_not_gated_on_the_chain_worker_switch():
-    """게이트 ⑥ 의 «드리프트 오라클». 텍스트가 주어인 단언이다(잘라쓰기 아님).
+def test_the_api_broadcast_starts_before_every_mode_specific_exit():
+    """🔴 이 시험은 «착지한 결함»에서 나왔다. 제가 블록을 startup «끝»에 뒀고, 그 위에
+    `if os.getenv("DECOUPLED") == "True": return` 가 있어서 **운영에서 한 번도 안 돌았다.**
+    총괄이 기동해서 쟀다: LISTEN 커넥션 1(워커 것뿐) · NOTIFY 두 번 -> /ws 프레임 «0».
 
-    🔴 제일 그럴듯한 「정리」가 이 줄을 죽인다 — 방송 시작을 체인 워커의 `else:` 가지로
-       옮기는 것. 그러면 단일 프로세스 개발 박스에서는 멀쩡히 돌고 «운영에서만» 화면이
-       조용해진다. 그 배포가 정확히 `ASSY_CHAIN_WORKER=0` 이기 때문이다.
+    ⛔ 제 앞 게이트 여섯은 전부 «코드»를 쟀다 — 좌석·래치·상수·수명·경로. 「이 블록이
+       «도는가»」를 재는 것은 하나도 없었고, 그것이 유일하게 틀린 것이었다.
+       「기제가 있다 ≠ 돈다」가 정확히 이 모양이다.
+
+    ⚠️ 텍스트가 «주어»인 단언이다(잘라쓰기 아님) — 「이 줄이 저 줄보다 위인가」는
+       돌려서는 못 재는 «배치»의 성질이다.
     """
     import inspect
     import re
 
-    import main
-
-    source = inspect.getsource(main.startup_event)
+    source = inspect.getsource(_main.startup_event)
     start = source.index("_outbox_queue_broadcast_loop")
-    # 방송을 켜는 줄이 체인 스위치 «뒤»에 있고, 그 가지 «안»이 아니어야 한다
-    head = source[:start]
-    assert "_chain_switch" in head, "전제: 체인 스위치가 이 함수 안에 있다"
-    tail_of_branch = head.rsplit("_chain_switch", 1)[1]
-    assert re.search(r"\n    try:", tail_of_branch), (
-        "방송 시작이 체인 스위치의 «가지 안»으로 들어갔다 — 워커가 딴 프로세스인 "
-        "배포에서 화면이 조용해진다")
 
-# ---------------------------------------------------------------------------
-# GET /admin/chain/queue — the chain-queue instrument
-# ---------------------------------------------------------------------------
-# 🔴 THE POINT OF THIS ROUTE IS ONE NUMBER: how old the oldest waiting row is. Depth alone
-# cannot tell "busy" from "stuck" - it rises and falls under load either way - so the tests
-# below pin the age's three states (nothing waiting / something waiting / it grows) and the
-# fact that the route writes nothing.
+    # ① DECOUPLED 종료 «전»이어야 한다 — 이것이 못 잡았던 성질이고, 운영이 그 모드다.
+    #    ⚠️ TESTING 종료 «뒤»인 것은 «맞다» — 시험에서 PG 리스너를 띄우지 않는다.
+    #    그래서 「모든 return 앞」이 아니라 «이 return 앞»이라고 적는다.
+    decoupled = source.index('os.getenv("DECOUPLED")')
+    assert start < decoupled, (
+        "방송 시작이 DECOUPLED return «아래»에 있다 — 운영에서 영영 안 켜진다. "
+        "DECOUPLED 는 %d 자, 방송 시작은 %d 자" % (decoupled, start))
+    testing = source.index('os.getenv("TESTING")')
+    assert testing < start, "전제: TESTING 종료는 방송 시작 «앞»이다(시험에선 안 띄운다)"
 
-import datetime as _dt
-import uuid
+    # ② 그리고 체인 스위치의 «가지 안»도 아니어야 한다 (앞 라운드의 성질)
+    assert "_chain_switch" not in source[:start], (
+        "방송 시작이 체인 스위치 «뒤»로 내려갔다 — 스위치 가지에 삼켜지기 쉬운 자리다")
 
-import main as _main
-from database import models as _models
-from sql_budget import record_statements
 
 
 def _queue(client):
@@ -518,6 +509,20 @@ def _stage(db, *, processed_chain, created_at=None, retry_count=0):
     db.add(row)
     db.commit()
     return row
+
+
+# ---------------------------------------------------------------------------
+# GET /admin/chain/queue - the chain-queue instrument
+# ---------------------------------------------------------------------------
+# 🔴 THE POINT OF THIS ROUTE IS ONE NUMBER: how old the oldest waiting row is. Depth alone
+# cannot tell "busy" from "stuck" - it rises and falls under load either way - so the tests
+# below pin the age's three states (nothing waiting / something waiting / it grows) and the
+# fact that the route writes nothing.
+import datetime as _dt
+import uuid
+import main as _main
+from database import models as _models
+from sql_budget import record_statements
 
 
 def test_an_empty_queue_reports_no_age_rather_than_zero(client, db_session):

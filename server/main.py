@@ -498,6 +498,28 @@ async def startup_event():
                          f"Starting anyway - run "
                          f"'python server/scripts/check_schema_drift.py' by hand.")
 
+        # 🔴 [23:0x 실측 결함] 이 블록은 startup «끝»에 있었고, 그래서 DECOUPLED 에서
+        #    «한 번도 안 돌았습니다» — 운영이 정확히 그 모드입니다. 총괄이 기동해서 쟀습니다:
+        #    LISTEN 커넥션 1(워커 것뿐) · NOTIFY 두 번 -> /ws 프레임 «0».
+        #    제 게이트는 전부 «코드»를 쟀고, 「이 블록이 도는가」는 아무도 안 쟀습니다.
+        # ⛔ 여기서 더 내려가지 않습니다. :477 주석이 이 자리를 이미 이름 붙였습니다 —
+        #    「모든 마이그레이션 뒤, 모든 모드별 종료 «앞»」.
+        # [대기열 탄생 방송] 아웃박스 행이 태어나면 화면에 알린다.
+        # ⛔ `ASSY_CHAIN_WORKER` 와 «무관하게» 켠다 — 워커가 딴 프로세스인 배포가 바로
+        #    이게 필요한 배포다(그쪽 ORM 훅은 이 프로세스에 안 닿는다).
+        # ⚠️ PostgreSQL 에서만. LISTEN/NOTIFY 가 없는 sqlite 에서 켜면 1 초마다 재연결을
+        #    시도하며 로그만 더럽힌다 — 좌석(`_notify_outbox_once`)이 거는 것과 «같은 술어».
+        try:
+            if engine.dialect.name == "postgresql":
+                main_loop.create_task(_outbox_queue_broadcast_loop())
+                logger.info("[Outbox Queue] birth-broadcast listener started (channel=%s).",
+                            event_constants.OUTBOX_NOTIFY_CHANNEL)
+            else:
+                logger.info("[Outbox Queue] birth-broadcast listener NOT started: dialect=%s "
+                            "has no LISTEN/NOTIFY.", engine.dialect.name)
+        except Exception as e:
+            logger.error(f"[Outbox Queue] birth-broadcast listener failed to start: {e}")
+
         if os.getenv("DECOUPLED") == "True":
             logger.info("Decoupled mode active. Skipping inline Directory Watcher, Graph DB Sync, and Chained Ingestion workers.")
             return
@@ -616,22 +638,6 @@ async def startup_event():
         #    워처를 지목하고 있어, 체인 쪽 실패가 「워처 탓」으로 보고됐습니다 — 오진을
         #    만드는 문장이었습니다.
         logger.error(f"Startup step failed (watcher/chain worker): {e}")
-
-    # [대기열 탄생 방송] 아웃박스 행이 태어나면 화면에 알린다.
-    # ⛔ `ASSY_CHAIN_WORKER` 와 «무관하게» 켠다 — 워커가 딴 프로세스인 배포가 바로
-    #    이게 필요한 배포다(그쪽 ORM 훅은 이 프로세스에 안 닿는다).
-    # ⚠️ PostgreSQL 에서만. LISTEN/NOTIFY 가 없는 sqlite 에서 켜면 1 초마다 재연결을
-    #    시도하며 로그만 더럽힌다 — 좌석(`_notify_outbox_once`)이 거는 것과 «같은 술어».
-    try:
-        if engine.dialect.name == "postgresql":
-            main_loop.create_task(_outbox_queue_broadcast_loop())
-            logger.info("[Outbox Queue] birth-broadcast listener started (channel=%s).",
-                        event_constants.OUTBOX_NOTIFY_CHANNEL)
-        else:
-            logger.info("[Outbox Queue] birth-broadcast listener NOT started: dialect=%s "
-                        "has no LISTEN/NOTIFY.", engine.dialect.name)
-    except Exception as e:
-        logger.error(f"[Outbox Queue] birth-broadcast listener failed to start: {e}")
 
 @app.on_event("shutdown")
 async def shutdown_event():
