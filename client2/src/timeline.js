@@ -16,7 +16,12 @@ export async function loadHistory() {
   // [2c] The audit table's header and legend are siblings of the `<ul>`, so `innerHTML = ''`
   // on the list leaves them alone. ONE place decides whether they show, here rather than in
   // each of the four tab handlers -- every switch calls this.
-  elements.timelineContainer?.classList.toggle('audit-table', state.activeHistoryTab === 'global');
+  // 🔴 «둘»을 놓는다. `audit-table` 은 겉모양(격자·셀·머리줄·배지)이고 `tab-global` 은
+  //    「Global 탭이다」는 신호다. 대기열 표가 같은 모양을 입어야 해서 갈랐다 (2026-09-22).
+  //    겉모양만 입은 화면에 Global 전용 동작이 따라가면 안 된다.
+  const onGlobal = state.activeHistoryTab === 'global';
+  elements.timelineContainer?.classList.toggle('audit-table', onGlobal);
+  elements.timelineContainer?.classList.toggle('tab-global', onGlobal);
   if (state.activeHistoryTab === 'global') {
     elements.timeline.innerHTML = '<li class="timeline-empty">Loading global history...</li>';
     try {

@@ -7,11 +7,15 @@
 //
 // 🔴 판단을 여기서 «다시 내리지» 않는다. 나이 표기는 chain_queue_panel 의 좌석을 부르고,
 //    상태 낱말은 서버 어휘를 «그대로» 쓰고, 못 읽은 사유는 fetch 실패 좌석이 짓는다.
-//    같은 물음에 두 화면이 다른 답을 낼 자리가 없어야 한다.
 //
-// 🔴 행은 «안 접는다» (판정 2026-09-22). 접기 단위를 행으로 올리면 이 화면이
-//    `/admin/chain/queue` 의 단위로 수렴하고, 두 화면을 가른 근거가 무너진다.
-//    여기서 접는 것은 «규칙 줄»이다.
+// 🔴 행은 «안 접는다» (판정 2026-09-22). 그리고 규칙도 이제 접을 것이 없다 — 소유자가
+//    「거기에 triger되는 규칙들을 컬럼 추가해서 달면 될것 같아」 · 「표 양식 감사 로그랑
+//    정확히 똑같이해」라 하셔서 «한 행이 한 줄»이고 규칙은 «칸»이다.
+//    ⚠️ 폭이 모자란다 — 실측(2026-09-22, 493px 판): 규칙 칸에 쓸 수 있는 글자 폭 124px,
+//       가장 «짧은» 사유 한 줄이 302px. 그래서 칸은 자르고 온 문장은 `title` 이 든다.
+//
+// 🔴 실패 행은 이 표에 «안 온다» — 서버가 모집단에서 뺐다(`2eb1d38d`). 그 사실을 화면에
+//    적지 않는 것은 화면이 «지금 있는 것»만 말하기 때문이다. 모집단 문장이 경계를 말한다.
 import { formatAge } from './chain_queue_panel.js';
 
 const str = (v) => (v == null ? '' : String(v));
@@ -21,15 +25,15 @@ const list = (v) => (Array.isArray(v) ? v : []);
 function ruleLines(row) {
   return list(row.rules).map((rule) => ({
     name: str(rule && rule.name),
-    willFire: (rule && rule.will_fire) === true,
     // ⛔ 사유를 여기서 짓지 않는다 — 서버가 실은 문장이 정본이다.
+    willFire: (rule && rule.will_fire) === true,
     whyNot: str(rule && rule.why_not),
   }));
 }
 
 /**
- * 접은 줄이 드는 «수». 총수가 아니라 «사유별»이다 —
- * 「규칙 5」로 접으면 이 화면의 존재 이유인 「왜 안 도나」가 클릭 뒤로 숨는다.
+ * 규칙 칸이 드는 «수». 총수가 아니라 «사유별»이다 —
+ * 「규칙 5」로 접으면 이 화면의 존재 이유인 「왜 안 도나」가 사라진다.
  * ⛔ 사유를 낱말로 «요약»하지 않는다. 묶는 키가 서버 문장이라 두 사유가 한 낱말로 합쳐질 수 없다.
  */
 function ruleSummary(rules) {
@@ -45,6 +49,16 @@ function ruleSummary(rules) {
     groups[at.get(rule.whyNot)].count += 1;
   }
   return Object.freeze({ firing, notFiring: Object.freeze(groups.map((g) => Object.freeze(g))) });
+}
+
+/** 「2 돎 · 3 <서버 사유>」. 사유가 없으면 «수만» — 없는 사유를 짓지 않는다. */
+export function summaryText(summary) {
+  const parts = [];
+  if (summary.firing) parts.push(`${summary.firing} 돎`);
+  for (const g of summary.notFiring) {
+    parts.push(g.whyNot ? `${g.count} ${g.whyNot}` : `${g.count} 안 돎`);
+  }
+  return parts.join(' · ');
 }
 
 /**
@@ -71,7 +85,7 @@ export function outboxQueueView(payload, opts = {}) {
       read: false,
       // 사유 없는 「모름」은 고칠 자리가 없다. 사유는 부르는 쪽이 준다.
       reason: failed || str(opts.unavailable),
-      generatedAt: '', population: '', capped: false, hasMore: false,
+      generatedAt: '', population: '', hasMore: false, empty: false,
       page: Object.freeze({ count: 0, shared: Object.freeze([]) }),
       rows: Object.freeze([]), rulesKnown: Object.freeze([]),
     });
@@ -91,8 +105,7 @@ export function outboxQueueView(payload, opts = {}) {
       at: str(row.created_at),
       state: str(row.chain_state),
       // 🔴 「아직 안 돌았다」와 「돌다 실패해 재시도 중」은 둘 다 waiting 이다. 사유를 상태
-      //    낱말에 안 섞은 것이 어휘 규율이고, 그 대신 «이 칸»이 말한다. 안 그리면 규율만
-      //    지키고 정보는 잃는다 (판정 2026-09-22).
+      //    낱말에 안 섞은 것이 어휘 규율이고, 그 대신 «이 칸»이 말한다 (판정 2026-09-22).
       stateDetail: str(row.state_detail),
       broadcast: str(row.broadcast_state),
       rules: Object.freeze(rules),
@@ -109,10 +122,9 @@ export function outboxQueueView(payload, opts = {}) {
     generatedAt: str(payload.generated_at),
     // 🔵 이 표가 «무엇을 담는가»를 서버 문장 그대로. 화면이 자기 경계를 스스로 말한다.
     population: str(payload.population),
-    // 🔴 「잘렸다」는 «서버 상한에 닿았다»이다. 「더 있다」는 next_cursor 가 말한다 —
-    //    그 둘을 섞으면 5행짜리 큐도 매 쪽 「잘렸다」고 말한다.
-    capped: listed.capped === true,
     hasMore: listed.next_cursor != null,
+    // 🔴 「비었다」는 «읽고 나서만» 참이다. 못 읽은 것과 같은 픽셀이면 안 된다.
+    empty: rows.length === 0,
     // 🔴 서버는 행 «수»를 일부러 안 싣는다 — 이 표를 비우는 것이 둘이라 합친 수가
     //    「체인이 밀렸다」로 읽힌다(게이트 ⑪). 그래서 이 수는 «이 쪽»의 수이고,
     //    그 사실은 `hasMore` 와 «한 마디»로 나간다 (render 참조).
@@ -129,6 +141,16 @@ export function outboxQueueView(payload, opts = {}) {
   });
 }
 
+/** 머리줄 낱말. 열 «순서»가 여기 한 곳에 산다 — 행과 머리가 갈릴 자리가 없다. */
+const COLUMNS = Object.freeze([
+  Object.freeze({ key: 'owner', label: '주인' }),
+  Object.freeze({ key: 'table', label: '표' }),
+  Object.freeze({ key: 'event', label: '사건' }),
+  Object.freeze({ key: 'age', label: '나이' }),
+  Object.freeze({ key: 'state', label: '상태' }),
+  Object.freeze({ key: 'rules', label: '규칙' }),
+]);
+
 /** 조립식 부품: 자기 div 하나, mount·deps 를 생성자로, 모듈 상태 «없음». */
 export class OutboxQueuePanel {
   constructor(mount, deps = {}) {
@@ -137,9 +159,6 @@ export class OutboxQueuePanel {
     if (!this.doc) throw new Error('OutboxQueuePanel needs a document (deps.doc or mount.ownerDocument)');
     this.root = this.doc.createElement('div');
     this.root.className = 'queue-panel';
-    // 펼친 행. «인스턴스»가 든다 — 같은 화면에 둘을 앉혀도 서로를 안 건드린다.
-    this.expanded = new Set();
-    this._last = null;
     mount.appendChild(this.root);
   }
 
@@ -150,77 +169,91 @@ export class OutboxQueuePanel {
     return el;
   }
 
-  _ruleLine(rule) {
-    const el = this._line('queue-rule', rule.willFire ? rule.name : `${rule.name} · ${rule.whyNot}`);
-    el.setAttribute('data-fires', rule.willFire ? 'true' : 'false');
+  /** 한 «칸». 칸 자체는 flex 라 그 위의 ellipsis 는 안 먹는다. */
+  _cell(cls, text, title) {
+    const el = this._line(`audit-cell queue-cell ${cls}`, text);
+    if (title) el.setAttribute('title', title);
     return el;
   }
 
-  /** 「2 돎 · 3 <서버 사유>」. 사유가 없으면 «수만» 말한다 — 없는 사유를 짓지 않는다. */
-  _summaryText(summary) {
-    const parts = [];
-    if (summary.firing) parts.push(`${summary.firing} 돎`);
-    for (const g of summary.notFiring) {
-      parts.push(g.whyNot ? `${g.count} ${g.whyNot}` : `${g.count} 안 돎`);
-    }
-    return parts.join(' · ');
+  /**
+   * 넘치면 «자르는» 칸. 자르는 것은 «안쪽» 요소여야 한다 — `.audit-cell` 이 flex 라
+   * 칸에 건 `text-overflow` 는 익명 텍스트에 안 걸린다. 감사 표가 `.audit-change .val-old`
+   * 를 두는 이유가 이것이고, 온 문장은 `title` 이 든다.
+   */
+  _clipCell(cls, text) {
+    const el = this._line(`audit-cell queue-cell ${cls}-cell`, '');
+    const inner = this._line(cls, text);
+    if (text) inner.setAttribute('title', text);
+    el.appendChild(inner);
+    return el;
   }
 
   render(payload, opts = {}) {
-    this._last = { payload, opts };
     const view = outboxQueueView(payload, opts);
     this.root.textContent = '';
 
-    const head = this.doc.createElement('div');
-    head.className = 'queue-head';
+    const meta = this.doc.createElement('div');
+    meta.className = 'queue-meta';
     if (view.read) {
       // 설명 문구가 아니라 «값»이다 — 기준 시각과, 이 표가 담는 집합.
-      head.appendChild(this._line('queue-at', view.generatedAt));
-      if (view.population) head.appendChild(this._line('queue-population', view.population));
-      if (view.capped) head.appendChild(this._line('queue-capped', '서버 상한'));
+      meta.appendChild(this._line('queue-at', view.generatedAt));
+      if (view.population) meta.appendChild(this._line('queue-population', view.population));
       // 🔴 수와 「다음 쪽」이 «한 마디»다 (판정 조건). 떼어 놓으면 「50」이 «전부»로 읽힌다.
-      head.appendChild(this._line('queue-page', [
-        `이 쪽 ${view.page.count} 행`,
-        ...view.page.shared,
-        view.hasMore ? '다음 쪽 있음' : '',
-      ].filter(Boolean).join(' · ')));
+      if (!view.empty) {
+        meta.appendChild(this._line('queue-page', [
+          `이 쪽 ${view.page.count} 행`,
+          ...view.page.shared,
+          view.hasMore ? '다음 쪽 있음' : '',
+        ].filter(Boolean).join(' · ')));
+      }
     } else if (view.reason) {
-      head.appendChild(this._line('queue-reason', view.reason));
+      meta.appendChild(this._line('queue-reason', view.reason));
     }
-    this.root.appendChild(head);
+    this.root.appendChild(meta);
     if (!view.read) return view;
 
+    // 🔴 0 행에 «빈 표»를 그리지 않는다 — 그건 「안 읽혔다」와 같은 픽셀이다.
+    if (view.empty) {
+      this.root.appendChild(this._line('queue-empty', '지금 돌 것이 없습니다'));
+      return view;
+    }
+
+    const head = this.doc.createElement('div');
+    head.className = 'audit-head queue-head';
+    // 🔴 머리 칸은 «행 칸의 이름»을 안 쓴다 — `.queue-rules` 가 머리줄 글꼴까지 덮는다.
+    for (const col of COLUMNS) head.appendChild(this._cell(`queue-h-${col.key}`, col.label));
+    this.root.appendChild(head);
+
+    const body = this.doc.createElement('div');
+    body.className = 'queue-rows';
     for (const row of view.rows) {
       const line = this.doc.createElement('div');
       line.className = 'queue-row';
       line.setAttribute('data-state', row.state || 'unknown');
       // 주인이 먼저다.
-      line.appendChild(this._line('queue-owner', row.owner));
-      line.appendChild(this._line('queue-table', row.table));
-      line.appendChild(this._line('queue-event', row.eventType));
-      line.appendChild(this._line('queue-age', row.age));
-      line.appendChild(this._line('queue-state', row.state));
-      if (row.stateDetail) line.appendChild(this._line('queue-state-detail', row.stateDetail));
-      if (row.rules.length) {
-        const open = this.expanded.has(row.id);
-        const toggle = this.doc.createElement('button');
-        toggle.className = 'queue-rules-toggle';
-        toggle.setAttribute('type', 'button');
-        toggle.setAttribute('data-expanded', open ? 'true' : 'false');
-        toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-        toggle.textContent = `${open ? '▾' : '▸'} ${this._summaryText(row.ruleSummary)}`;
-        toggle.addEventListener('click', () => {
-          if (this.expanded.has(row.id)) this.expanded.delete(row.id);
-          else this.expanded.add(row.id);
-          if (this._last) this.render(this._last.payload, this._last.opts);
-        });
-        line.appendChild(toggle);
-        // 펼치면 «이름»을 보러 간다 — 수와 사유는 접힌 줄이 이미 말했다.
-        if (open) for (const rule of row.rules) line.appendChild(this._ruleLine(rule));
+      line.appendChild(this._cell('queue-owner', row.owner));
+      line.appendChild(this._clipCell('queue-table', row.table));
+      line.appendChild(this._cell('queue-event', row.eventType));
+      line.appendChild(this._cell('queue-age', row.age, row.at));
+
+      const state = this._cell('queue-state', '');
+      state.appendChild(this._line('audit-pill', row.state));
+      // 「기다리는 중」과 「재시도 중」을 가르는 것은 이 칸이다 — 상태 낱말은 둘 다 waiting 이다.
+      // 좁아서 잘린다(실측: 배지 뒤 21px). 잘린 글자의 답은 이 화면에서 «하나»다 — title.
+      if (row.stateDetail) {
+        const detail = this._line('queue-state-detail', row.stateDetail);
+        detail.setAttribute('title', row.stateDetail);
+        state.appendChild(detail);
       }
-      if (!row.rules.length && row.note) line.appendChild(this._line('queue-note', row.note));
-      this.root.appendChild(line);
+      line.appendChild(state);
+
+      // 규칙이 없는 행은 «왜 없는지»를 서버 문장이 말한다. 빈 칸으로 두면 「규칙이 없다」로 읽힌다.
+      const text = row.rules.length ? summaryText(row.ruleSummary) : row.note;
+      line.appendChild(this._clipCell(row.rules.length ? 'queue-rules' : 'queue-note', text));
+      body.appendChild(line);
     }
+    this.root.appendChild(body);
     return view;
   }
 }
