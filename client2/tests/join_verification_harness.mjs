@@ -113,5 +113,39 @@ console.log('\n[3] the counts include the declarations that never became rules')
 }
 
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
+
+// ═══ 판정 685·687 — 상태는 «서버가 말합니다». 화면이 유도하지 않습니다 ══════════════════
+console.log('\n[6] the row says its own state, and the screen stops guessing');
+{
+  // 「안 물음」은 오늘 «거절과 글자가 같습니다» — accepted=false 에 사유 문장까지 붙습니다.
+  // 다른 것은 DDL 이 없다는 것뿐이고, 그것으로 가르는 것이 685 가 금한 «대리»입니다.
+  const NOT_ASKED = { ...BAD_ROW, name: 'never_asked', approval_state: 'not_asked',
+                      required_index: null, required_index_ddl: null,
+                      detail: 'key.unique 를 안 적었습니다 — 이 선언은 승인을 묻지 않습니다.' };
+  const v = joinVerificationView({ declarations: [NOT_ASKED], accepted: 0, refused: 1,
+                                   invalid: [] });
+  eq('a join that never asked is NOT refused', v.rows[0].state, 'not_asked');
+  ok('...and its sentence is carried, because that sentence IS the next action',
+    v.rows[0].detail.includes('key.unique'), v.rows[0].detail);
+  eq('...with no DDL, because there is nothing to create', v.rows[0].ddl, '');
+
+  // 같은 행에서 칸만 빼면 오늘의 결함이 그대로 재현됩니다 — 이 대조군이 그것을 박아 둡니다.
+  const { approval_state, ...NO_CELL } = NOT_ASKED;
+  eq('CONTROL: without the cell the same row reads as refused (the defect 685 named)',
+    joinVerificationView({ declarations: [NO_CELL] }).rows[0].state, 'refused');
+
+  // 어휘는 자랍니다. 모르는 값을 옛 읽기로 떨어뜨리면 «새 상태가 거절로» 그려집니다.
+  eq('a value this client does not know is undiagnosed, not refused',
+    joinVerificationView({ declarations: [{ ...NOT_ASKED, approval_state: 'switched_off' }] })
+      .rows[0].state, 'undiagnosed');
+
+  // 서버가 말한 것이 이깁니다 — 옛 칸들과 «어긋나도».
+  eq('the cell wins over the old fields',
+    joinVerificationView({ declarations: [{ ...BAD_ROW, approval_state: 'approved' }] })
+      .rows[0].state, 'accepted');
+  eq('...and an approved row still says approved', joinVerificationView(
+    { declarations: [{ ...OK_ROW, approval_state: 'approved' }] }).rows[0].state, 'accepted');
+}
+
 console.log(`ASSERTIONS ${pass + failures.length} ${failures.length}`);
 process.exit(failures.length === 0 ? 0 : 1);

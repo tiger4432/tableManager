@@ -19,14 +19,28 @@ const str = (value) => (typeof value === 'string' && value ? value : '');
 /**
  * 한 선언의 상태.
  *
- * 🔴 넷입니다: 아직 안 옴 · 통과 · 거절(+«무엇을 바꾸나») · 진단 못 냄.
- *    「거절」과 「진단 못 냄」을 합치면 운영자가 «고칠 자리»를 잃습니다 — 앞은 DDL 한 줄이
- *    답이고, 뒤는 답이 아직 없다는 뜻입니다.
+ * 🔴 [판정 685·687] 종류를 묻는 자리는 «한 좌석»이고 그것은 «서버»입니다 — 행의
+ *    `approval_state`, 닫힌 어휘(server/event_constants.py: APPROVAL_STATES).
+ *    ⛔ accepted·detail·required_index_ddl 에서 «유도하지» 않습니다. 「DDL 이 없으면 안 물음」은
+ *    대리라서, DDL 없는 거절이 생기는 날 조용히 틀립니다.
+ * ⚠️ 화면 낱말은 'accepted' 그대로입니다(서버는 'approved'). 축이 둘이라서가 아니라 그 낱말이
+ *    CSS·하니스의 이름이고, 고르는 자리는 «이 함수 하나»입니다.
+ * ⚠️ 서버의 'not_asked' 는 「key.unique 없음」과 「꺼짐」을 «접습니다»(Q-198). 화면이 그 접힘을
+ *    물려받습니다 — 가르려면 축이 셋이어야 하고, 문장으로 가르는 것은 685 가 금했습니다.
  */
 function declarationState(row) {
+  const said = str(row.approval_state);
+  if (said === 'approved') return 'accepted';
+  if (said === 'refused') return 'refused';
+  if (said === 'not_asked') return 'not_asked';
+  // 🔴 칸이 «있는데 모르는 값»이면 「진단 못 냄」입니다 — 어휘는 자랄 수 있고(총괄 09-22:
+  //    「세 값은 제가 본 것이지 천장이 아니다」), 모르는 값을 아래 옛 읽기로 떨어뜨리면
+  //    «새 상태가 「거절」로» 그려집니다. 모르는 것은 모른다고 그리는 편이 낫습니다.
+  if (said) return 'undiagnosed';
+  // 이 칸이 «없는» 응답(칸보다 오래된 서버)은 셋을 가를 수가 없습니다. 그때의 읽기를 그대로 둡니다 —
+  // 여기서 없음을 메우면 그것이 위에서 금한 «유도»입니다.
   if (row.accepted === true) return 'accepted';
   if (row.accepted === false) {
-    // 서버가 「무엇을 만들어야 하는지」를 실었으면 그것이 «고칠 자리»입니다.
     return str(row.required_index_ddl) || str(row.detail) ? 'refused' : 'undiagnosed';
   }
   // `accepted` 가 없는 행은 「아니다」가 아닙니다.
@@ -55,7 +69,7 @@ export function joinVerificationView(report, opts = {}) {
       folded: list(row.folded_join_key)
         .map((f) => `${str(f && f.left)} · ${list(f && f.rules).join(' ')}`.trim())
         .filter(Boolean),
-      detail: state === 'refused' ? str(row.detail) : '',
+      detail: state === 'refused' || state === 'not_asked' ? str(row.detail) : '',
       ddl: state === 'refused' ? str(row.required_index_ddl) : '',
       index: str(row.unique_index) || str(row.required_index),
     };

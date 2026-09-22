@@ -2264,6 +2264,12 @@ function renderJoinVerification(view) {
       if (row.detail) line.append(cfgEl('span', 'join-verify-detail', row.detail));
       // 🔴 그리고 «무엇을 바꾸나» — 이것이 한 낱말이 못 하던 일입니다.
       if (row.ddl) line.append(cfgEl('code', 'join-verify-ddl', row.ddl));
+    } else if (row.state === 'not_asked') {
+      // 🔴 [판정 687] 「안 물음」은 «거절이 아닙니다» — 이 선언이 승인을 묻지 않았을 뿐입니다.
+      //    거절과 같은 칸에 넣으면 운영자가 «없는 고장»을 고치러 갑니다.
+      line.append(cfgEl('span', 'join-verify-verdict', '안 물음'));
+      // 사유가 곧 «할 일»입니다(`key: {unique: true}` 를 적으라는 서버의 문장). DDL 은 없습니다.
+      if (row.detail) line.append(cfgEl('span', 'join-verify-detail', row.detail));
     } else {
       line.append(cfgEl('span', 'join-verify-verdict', '진단 못 냄'));
     }
