@@ -1,13 +1,18 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **930개** 이력. (거버넌스 규칙 #4)
+> 총 **935개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-09 (September 2026)
 
+- **2026-09-23 08:13** — [A Small Replay Goes Into The Outbox As An Ordinary Trigger And The Worker Runs It](./20260923_081314_a_small_replay_goes_into_the_outbox_as_an_ordinary_trigger_and_the_worker_runs_it.md)
+- **2026-09-23 07:34** — [One Payload Is The Batch Of One So The Shortest Rule Runs](./20260923_073409_one_payload_is_the_batch_of_one_so_the_shortest_rule_runs.md)
+- **2026-09-23 07:10** — [A Row Leaves The Queue By Being Updated So Updates Have To Announce It Too](./20260923_071007_a_row_leaves_the_queue_by_being_updated_so_updates_have_to_announce_it_too.md)
+- **2026-09-23 06:55** — [One Run Is One Transaction Label And The Page Number Goes With It](./20260923_065548_one_run_is_one_transaction_label_and_the_page_number_goes_with_it.md)
+- **2026-09-23 02:22** — [A Mapper Proposes And The Caller Writes So The Flag That Asked In Advance Has Nothing Left](./20260923_022232_a_mapper_proposes_and_the_caller_writes_so_the_flag_that_asked_in_advance_has_nothing_left.md)
 - **2026-09-17 03:10** — [The Read Time Join Is Retired Engine And Declaration Both](./20260917_031000_the_read_time_join_is_retired_engine_and_declaration_both.md)
 - **2026-09-17 00:50** — [The Enumeration Before Step Four Found Two More Doorways And Took Three Of My Own Counts Back](./20260917_005022_the_enumeration_before_step_four_found_two_more_doorways_and_took_three_of_my_own_counts_back.md)
 - **2026-09-17 00:44** — [Two More Gates Read The Index Prefix From The Seat That Owns It And The Count That Led Here Was A Proxy](./20260917_004449_two_more_gates_read_the_index_prefix_from_the_seat_that_owns_it_and_the_count_that_led_here_was_a_proxy.md)
@@ -954,4 +959,4 @@
 - **2026-04-12 22:22** — [Ws Debug Staggered Init](./20260412_222200_ws_debug_staggered_init.md)
 - **2026-04-12 22:10** — [Phase19 Integrity And Stability Fixes](./20260412_221000_phase19_integrity_and_stability_fixes.md)
 
-*Last generated: 2026-09-17 by gen_index.py*
+*Last generated: 2026-09-23 by gen_index.py*

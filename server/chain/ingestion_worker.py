@@ -1749,8 +1749,9 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
     # [OUTBOX-4] One materialization for the whole group, before any rule runs.
     # A collapsed event NAMES rows; the mappers - including every user-owned one in
     # the gitignored `server/mappers/` tree - take the nested payload shape. This is
-    # where the row is read back into that shape, the way `chain_replay._to_payloads`
-    # already does it. Per-row events pass through untouched, so a batch with no
+    # where the row is read back into that shape - the shape `chain_replay._to_payloads`
+    # used to build for itself, and this is the only place that builds it now. Per-row
+    # events pass through untouched, so a batch with no
     # collapsed event in it issues no query here at all.
     with alignment_batch_counts.stage("outbox read"):
         expanded = outbox_expand.expand_events(db, valid_events)

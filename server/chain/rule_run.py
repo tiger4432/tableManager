@@ -158,6 +158,12 @@ def runnable(name):
 
     if not name:
         return None
+    # 🔴 A MISS HERE IS 「not registered」, WHICH AT BOOT MEANT 「not imported YET」.
+    #    This seat is what `load_chain_rules` and the save gate ask, and it runs
+    #    before the warmup that walks the package - so the fill belongs on the miss,
+    #    once, rather than in whichever caller happens to be early today.
+    if name not in mapper_sdk.MAPPER_REGISTRY:
+        mapper_sdk.ensure_discovered()
     # 🔴 [판정 562] ONE TABLE. The second one was the kind table, and the mappers built
     #   from a declaration are registered in THIS one - so a name that used to be found
     #   over there is found here, under the same spelling.

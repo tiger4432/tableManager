@@ -586,13 +586,19 @@ class CellSource(Base):
         # ingested cell updated it, and cell writes are the ingestion path's largest cost
         # (measured: 54.8 % of a 20,000-row file, 94 % of that inside the driver call).
         #
-        # 🔴 WHY PARTIAL, AND WHY THIS PREDICATE. Two readers filter on a FIXED source -
-        # the human layer - and between them they are the interactive path:
-        #     chain_replay._count_user_protected (table_name, row_id IN .., source_name)
+        # 🔴 WHY PARTIAL, AND WHY THIS PREDICATE. A reader filters on a FIXED source -
+        # the human layer - and it is the interactive path:
         #     enrichment_analysis (human claims) (table_name, row_id IN .., column_name IN
         #                                         .., source_name)
-        # Both lead `(table_name, row_id)` and both select exactly (row_id, column_name),
-        # so this shape is COVERING for both. Measured on this box: 121,972 of 33,987,136
+        # It leads `(table_name, row_id)` and selects exactly (row_id, column_name), so
+        # this shape is COVERING for it.
+        # ⚰️ `chain_replay._count_user_protected` WAS THE SECOND READER, with the same
+        #   shape, and it is the reason this comment said 「two」. It counted the cells a
+        #   replay would refuse to overwrite, for a preview screen; the owner ruled there
+        #   is no preview (d62f40730) and replay no longer writes, so nothing asks.
+        # 🔴 ONE READER IS A QUESTION, NOT A CONCLUSION: whether a partial index still
+        #   earns its writes with one interactive caller is a measurement nobody has
+        #   redone since 121,972 of 33,987,136 rows was measured below. Measured on this box: 121,972 of 33,987,136
         # rows carry that source - 0.36 % - so the index is a fraction of a percent of the
         # retired one's size, and a parser's writes do not touch it at all.
         #

@@ -315,6 +315,47 @@ def test_parameters_are_bound_rather_than_formatted(db_session):
 # step ③ - @mapper, so ① and ③ leave the author's file
 # ---------------------------------------------------------------------------
 
+def test_the_workers_call_shape_is_refused_where_the_author_wrote_it():
+    """🔴 MEASURED 2026-09-23: the owner wrote the OUTER shape under this decorator and
+    NOTHING refused it. It imports, it registers, it runs - and `payloads_to_df(payloads)`
+    lands in the `db` slot, so the failure arrives as whatever the body does with a
+    DataFrame it thinks is a session, inside a rule, on a row.
+
+    ⚠️ AT DECORATION, NOT AT CALL. `discover()` refuses per MODULE, so a wrong signature
+    costs that one file and names it - the other mappers come up.
+    """
+    with pytest.raises(mapper_sdk.MapperContractError) as refused:
+        @mapper_sdk.mapper()
+        def build_rows(db, payloads, rule=None):
+            return payloads
+
+    said = str(refused.value)
+    assert "(df, db)" in said, said
+    assert "db, payloads, rule" in said, said
+    assert "build_rows" in said, said
+
+
+def test_one_argument_is_refused_too_because_the_shape_is_exactly_two():
+    """Not 「too many」 - the decorator hands exactly a frame and a session, so a function
+    that cannot take both is as unrunnable as one that expects a third."""
+    with pytest.raises(mapper_sdk.MapperContractError):
+        @mapper_sdk.mapper()
+        def only_a_frame(df):
+            return df
+
+
+def test_a_function_that_takes_anything_is_not_judged():
+    """⚠️ THE BOUNDARY, WRITTEN DOWN. `*args` can take the two it will be handed, so there
+    is nothing to refuse - and refusing it would be the product guessing about a shape it
+    cannot read."""
+    @mapper_sdk.mapper(PLAIN)
+    def flexible(*args):
+        import pandas as _pd
+        return _pd.DataFrame([])
+
+    assert flexible(None, [], rule={"target_table": PLAIN}) == {"updates": []}
+
+
 def test_a_decorated_mapper_takes_payloads_and_returns_the_envelope():
     """The author's function sees a frame and returns a frame; the worker's call shape is
     unchanged, so a decorated mapper drops into `chain_rules.json` where a hand-written

@@ -35,11 +35,13 @@ import mapper_sdk                                                    # noqa: E40
 def _clean_registry():
     """⚠️ The registry is process-wide, like every other singleton here."""
     before = dict(mapper_sdk.MAPPER_REGISTRY), dict(mapper_sdk.MAPPER_PARAMS)
+    looked = mapper_sdk._DISCOVERY_ATTEMPTED
     mapper_sdk.reset_registry()
     yield
     mapper_sdk.reset_registry()
     mapper_sdk.MAPPER_REGISTRY.update(before[0])
     mapper_sdk.MAPPER_PARAMS.update(before[1])
+    mapper_sdk._DISCOVERY_ATTEMPTED = looked
 
 
 def test_a_decorated_mapper_is_registered_under_its_own_name():
@@ -189,3 +191,86 @@ def test_the_reload_clears_the_registry_where_it_drops_the_modules():
     head, _, tail = body.partition('startswith("mappers.")')
     assert tail, "the eviction this follows is gone"
     assert "reset_registry()" in tail, "the reset must come AFTER the eviction"
+
+
+# ---------------------------------------------------------------------------
+# The boot seat - 「not registered」 must not be this process saying 「I have not looked」
+# ---------------------------------------------------------------------------
+
+def test_a_name_is_not_unknown_just_because_nobody_walked_the_package_yet(monkeypatch):
+    """🔴 MEASURED 2026-09-23: `load_chain_rules()` runs BEFORE `warmup_worker`, which is
+    what calls `discover()`. So a declaration whose only mapper cell named one of the
+    owner's functions was refused as unresolvable on the FIRST boot and accepted after a
+    reload. Two answers to one question, and the quieter one is wrong.
+
+    ⚠️ BRINGS ITS OWN MAPPER, like the rest of this file: the real package is the owner's
+    and gitignored, so a test that leaned on a name from it would assert nothing here.
+    """
+    from chain import rule_run
+
+    walked = []
+
+    def _fake_discover(package="mappers"):
+        walked.append(package)
+        mapper_sdk.register("late_arriving_mapper", lambda df, db: df)
+        return tuple(sorted(mapper_sdk.MAPPER_REGISTRY)), {}
+
+    monkeypatch.setattr(mapper_sdk, "discover", _fake_discover)
+    mapper_sdk.reset_registry()          # nobody has looked in this process
+
+    assert "late_arriving_mapper" not in mapper_sdk.MAPPER_REGISTRY, (
+        "canary: the name is registered before the ask, so finding it proves nothing")
+
+    found = rule_run.runnable("late_arriving_mapper")
+
+    assert callable(found), (
+        "the seat answered 「nothing」 about a name the package does register")
+    assert walked == ["mappers"], "it answered without ever looking"
+
+
+def test_the_package_is_walked_once_not_once_per_unknown_name(monkeypatch):
+    """A file full of refusals must not re-import the package per rule. The loader asks
+    this seat once per rule, so a fill on every miss would walk `mappers` N times on a
+    boot whose rules name mappers that genuinely do not exist."""
+    from chain import rule_run
+
+    walked = []
+
+    def _fake_discover(package="mappers"):
+        walked.append(package)
+        return (), {}
+
+    monkeypatch.setattr(mapper_sdk, "discover", _fake_discover)
+    mapper_sdk.reset_registry()
+
+    for name in ("no_such_a", "no_such_b", "no_such_c"):
+        assert rule_run.runnable(name) is None
+
+    assert walked == ["mappers"], (
+        "three unknown names walked the package %d times" % len(walked))
+
+
+def test_a_reload_that_empties_the_registry_can_still_answer_about_a_name(monkeypatch):
+    """The same defect from the other side. `system_reload` drops `mappers.*` and clears
+    the registry, and it re-runs `discover()` itself - but 2026-09-05 it did NOT, and the
+    rule editor's grammar judge refused every one-cell mapper rule from the first reload
+    onward. This is what holds if that call is ever lost again: emptying the registry also
+    forgets that anyone looked, so the next ask refills instead of answering 「unknown」.
+    """
+    from chain import rule_run
+
+    def _fake_discover(package="mappers"):
+        mapper_sdk.register("mapper_after_the_reload", lambda df, db: df)
+        return tuple(sorted(mapper_sdk.MAPPER_REGISTRY)), {}
+
+    monkeypatch.setattr(mapper_sdk, "discover", _fake_discover)
+
+    mapper_sdk.ensure_discovered()                    # boot looked once
+    assert "mapper_after_the_reload" in mapper_sdk.MAPPER_REGISTRY, (
+        "canary: the fill did nothing, so the reload below proves nothing")
+
+    mapper_sdk.reset_registry()                       # the reload empties it
+    assert "mapper_after_the_reload" not in mapper_sdk.MAPPER_REGISTRY
+
+    assert callable(rule_run.runnable("mapper_after_the_reload")), (
+        "after a reload the seat calls a registered name unknown")

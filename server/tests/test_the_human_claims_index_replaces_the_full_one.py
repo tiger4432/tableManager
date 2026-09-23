@@ -61,7 +61,7 @@ def _source_of(module_name, function_name):
     return inspect.getsource(getattr(module, function_name))
 
 
-def test_both_readers_name_the_constant_rather_than_quoting_the_value():
+def test_every_reader_names_the_constant_rather_than_quoting_the_value():
     """🔴 THE SEAM, AND THE TEXT IS ITS SUBJECT.
 
     What has to hold is that the index's predicate and the readers' predicate are ONE
@@ -69,12 +69,18 @@ def test_both_readers_name_the_constant_rather_than_quoting_the_value():
     `"user"` returns exactly the same rows, just slowly - so what is asserted is the thing
     that actually differs: which spelling each file uses.
     """
-    for module_name, function_name in (
-            ("chain.replay", "_count_user_protected"),
+    # ⚰️ `("chain.replay", "_count_user_protected")` STOOD FIRST IN THIS LIST. It
+    #    counted the cells a replay would refuse to overwrite so a preview could show the
+    #    number; the owner ruled there is no preview and replay stopped writing
+    #    (d62f40730), so the reader went with the write path. The index's own comment in
+    #    `models.py` said 「two readers」 and has been corrected to one.
+    readers = (
             # ⚰️ `enrichment.analysis` — enrich is a chain declaration kind, so it
             #    moved into `chain/` with the rest (소유자, 2026-09-17).
             ("chain.enrichment.analysis", "_human_resolved_cells"),
-    ):
+    )
+    assert readers, "no readers left: this case would pass by having nothing to check"
+    for module_name, function_name in readers:
         body = _source_of(module_name, function_name)
         assert "HUMAN_SOURCE_NAME" in body, (module_name, function_name, body[:400])
         # The PREDICATE, not the prose: both functions explain in their docstrings

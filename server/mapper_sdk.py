@@ -274,6 +274,11 @@ MAPPER_REGISTRY: dict[str, object] = {}
 #: the product cannot discover what a mapper reads, so the mapper has to say.
 MAPPER_PARAMS: dict[str, tuple] = {}
 
+#: Has anyone walked the mapper package in THIS process yet. Not "did it succeed" -
+#: a package that cannot be imported will not import on the second ask either, and
+#: retrying per name would walk it once per rule in a file of refusals.
+_DISCOVERY_ATTEMPTED = False
+
 
 class MapperNameClaimedTwice(MapperContractError):
     """⛔ REFUSED BY NAME, NEVER RESOLVED. Two mappers under one name means a rule naming it
@@ -293,6 +298,8 @@ def reset_registry():
     """
     MAPPER_REGISTRY.clear()
     MAPPER_PARAMS.clear()
+    global _DISCOVERY_ATTEMPTED
+    _DISCOVERY_ATTEMPTED = False
 
 
 def _origin(fn):
@@ -338,6 +345,9 @@ def discover(package="mappers"):
     import importlib
     import pkgutil
 
+    global _DISCOVERY_ATTEMPTED
+    _DISCOVERY_ATTEMPTED = True
+
     refusals = {}
     try:
         pkg = importlib.import_module(package)
@@ -363,6 +373,39 @@ def discover(package="mappers"):
     except Exception as exc:                                       # noqa: BLE001
         refusals["chain.dynamic_mappers"] = "%s: %s" % (type(exc).__name__, exc)
     return tuple(sorted(MAPPER_REGISTRY)), refusals
+
+
+def ensure_discovered(package="mappers"):
+    """Walk the mapper package if nobody has yet, so 「that name is not registered」
+    cannot be this process's way of saying 「I have not looked」.
+
+    🔴 BOOT ASKED BEFORE ANYONE LOOKED. `load_chain_rules()` runs first and
+    `warmup_worker` calls `discover()` after it, so a declaration whose only mapper
+    cell named one of the owner's functions was refused as unresolvable on the FIRST
+    boot and accepted after a reload - two answers to one question, and the quieter
+    one is the wrong one. `system_reload` met the same shape from the other side and
+    was fixed by adding a `discover()` call there; this is that fix at the seat, so
+    the next moment that asks early does not need a third copy.
+
+    ⚠️ ADDITIVE. `discover()` does not clear - only `reset_registry()` does - so
+    filling late cannot empty what a caller already installed.
+    """
+    global _DISCOVERY_ATTEMPTED
+    if _DISCOVERY_ATTEMPTED:
+        return
+    # 🔴 RECORDED HERE, NOT LEFT TO `discover`. The promise this function makes is
+    #    「at most one walk」, so it has to be the one that keeps it - a caller that
+    #    replaces `discover` (a test, a stub) would otherwise turn a file of
+    #    unknown names into one package walk per rule.
+    _DISCOVERY_ATTEMPTED = True
+    try:
+        discover(package)
+    except Exception:                                          # noqa: BLE001
+        # A judge that cannot look must still answer. `discover` already turns a
+        # broken module into a refusal message rather than a raise; this catches the
+        # case where the walk itself dies, and the caller then reads an empty
+        # registry exactly as it did before.
+        pass
 
 
 def mapper(target_table=None, *, source_name: str = "chain_ingestion",
@@ -395,6 +438,30 @@ def mapper(target_table=None, *, source_name: str = "chain_ingestion",
     """
     def decorate(fn):
         import functools
+        import inspect
+
+        # 🔴 THE INNER SHAPE IS CHECKED WHERE IT IS DECLARED, NOT WHERE IT RUNS. The author
+        #    writes `(df, db)` and the worker calls `(db, payloads, rule=None)`; writing the
+        #    OUTER shape under this decorator type-checks, imports, registers and runs - the
+        #    DataFrame simply arrives in the `db` slot and the failure surfaces as whatever
+        #    the body does with it, in a rule, on a row, at 3am. Measured 2026-09-23: the
+        #    owner did exactly this and nothing refused it.
+        # ⚠️ SAME AXIS AS `follow_wrapped=False` in `chain/mapper_call.py`: that fix made the
+        #    caller read the WRAPPER's signature instead of the author's. This one makes the
+        #    author's signature a thing the product actually looks at.
+        # ⚠️ `*args` IS NOT JUDGED - a function that takes anything can take these two.
+        _sig = inspect.signature(fn)
+        _positional = [p for p in _sig.parameters.values()
+                       if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
+        _varargs = any(p.kind is p.VAR_POSITIONAL for p in _sig.parameters.values())
+        if not _varargs and len(_positional) != 2:
+            raise MapperContractError(
+                "a function decorated with @mapper is handed (df, db) - a DataFrame of "
+                "the rows and a session. '%s' takes (%s). (db, payloads, rule) is the "
+                "shape the WORKER calls; the decorator builds that for you, so writing it "
+                "yourself puts the DataFrame in the session's place."
+                % (getattr(fn, "__name__", "?"),
+                   ", ".join(p.name for p in _positional) or "no arguments"))
 
         @functools.wraps(fn)
         def run(db, payloads, rule=None):
