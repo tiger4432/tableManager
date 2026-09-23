@@ -57867,3 +57867,108 @@ test_an_install_that_predates_attributes_is_widened_once
 이 라운드 닫습니다   착지 `ff26dd5e9` · PG 레인 3 -> 1 · 평상 실행 그대로
 큐에 이름 다섯       ㄴ(스키마 춤) · 이 빨강 하나 · test_process_supervisor 경합 · 그 밖 둘
 다음 지시 전까지     제 판정을 기다리지 마시고, 큐에 새로 «발견»이 있으면 그것만 올리십시오
+
+---
+
+> 🔴🔴 **[09-23 17:2x 총괄 -> 구현자] 소유자 지시 둘 — 「enrich.json 아예 삭제 라운드 만들어」 · 「통합선언 무조건 돌게해라」**
+
+```
+소유자   「enrich.json 아예 삭제라운드 만들어 삭제를 안해버리니 자꾸 문을 두개두네?」
+        「통합선언 무조건 돌게해라」
+도착지   ① 인리치 선언의 «집이 하나» — chain_rules.json 의 통합 선언뿐
+        ② 통합 선언 하나로 «파생행이 실제로 붙는다» — 행이 남는 것으로 잽니다
+```
+
+이 라운드는 「정리」가 아니라 **문 하나 닫기**입니다. 상설: 「선언은 «한 곳»에 산다 —
+기제가 하나여도 집이 둘이면 문법이 둘이다」.
+
+---
+
+## 총괄이 «잰» 것 — 이 라운드의 계기
+
+```
+① 제품이 읽는 이름   server/config/enrichment_rules.json   <- 이 박스에 «없습니다»
+   옆에 있는 것      enrichment_rules2.json (규칙 넷, 전부 enabled) · _enrichment_rules.json.pre_restore (비었음)
+   부재 처리         enrichment/config.py:856  `if not os.path.exists(rules_path): return []`
+                    -> «아무 말도 안 합니다». 「선언이 없다」와 「이름이 한 글자 다르다」가 같은 그림
+② 통합 선언은 «섭니다»  `enrich_in_chain_probe`(derive.decide) 하나가 두 짝으로 서 있습니다
+   enrichment_dedup:enrich_in_chain_probe      declared:enrich   dt_log -> dt_inventory
+   enrichment_auto_confirm:enrich_in_chain_probe declared:decide  dt_inventory -> dt_inventory
+   그리고 fires() 가 dt_log 의 CREATE·EDIT × user·chain·ingestion «여섯 다 True» 입니다
+   (센 명령: load_chain_rules() 뒤 rules 를 찍고, fires(rule, ev) 를 여섯 조합으로)
+③ 그래서 «서는 것»과 «부는 것»은 됩니다. 증명 안 된 것은 ㉡ 입니다 — 아래
+```
+
+---
+
+## ① 삭제 — `enrichment_rules.json` 을 읽는 자리가 «0» 이 됩니다
+
+```
+호출자 (시험 제외, 총괄이 센 명령: git grep -n "load_enrichment_rules(" -- server | grep -v /tests/)
+   chain/enrich_declarations.py:74
+   chain/enrichment/config.py:922
+이름을 «든» 파일 스무 개 (git grep -ln "enrichment_rules.json\|ENRICHMENT_RULES_PATH" -- server client2/src)
+   server/chain/{enrich_declarations,enrichment/{analysis,backfill,candidates,config},graph,
+                 ingestion_worker,replay,synthesis,dynamic_mappers}.py
+   server/{config_resolve_report,map_alignment,database/models,admin/retroactive}.py
+   server/scripts/backfill_enrichment.py · server/migrations/*.RETIRED.md
+   client2/src/{admin,map_editor2,map2/api,map2/view_model}.js
+```
+```
+🔴 `enrich_declarations.py` 는 «두 문법을 합치려고» 생긴 모듈입니다 — 자기 첫 줄이
+   「declared in two grammars」라고 적고 있습니다. 문법이 하나가 되면 그 모듈의 «주어»가 없어집니다.
+   지우실지 남기실지는 님이 여시고 «세어서» 정하십시오. 남긴다면 「왜 남나」를 그 자리에 적습니다
+⛔ 「호환을 위해 읽기만 남긴다」 금지 — 그것이 소유자가 잡으신 «두 번째 문»입니다
+⛔ 소유자의 라이브 설정 파일(`server/config/*.json`)은 «건드리지 마십시오». 코드만입니다
+   (박스에 있는 enrichment_rules2.json 은 소유자 것입니다. 옮기지도 지우지도 않습니다)
+```
+```
+사양이 있으면 같이 — sample · guide · CODE_MAP 의 해당 절 · RUN.md 의 그 이름
+   상설: 「기제는 지워지고 «말»은 남는다. 남은 말은 그 기제가 아직 있다고 말한다」
+   ⚠️ 작업 트리에 이미 sample 쪽이 반쯤 움직여 있습니다 (`enrichment_rules.json.sample` 삭제 ·
+      `enrichment_rules.json2.sample` 미추적). 이 라운드에서 «한 모양»으로 끝내십시오
+```
+
+---
+
+## ② 통합 선언이 «돈다» — 이것이 이 라운드의 진짜 게이트
+
+```
+소유자   「통합선언 무조건 돌게해라」
+지금 아는 것   선언 하나 -> 두 짝이 «서고» fires() 가 True (총괄 실측, 위 ②)
+모르는 것     그 dedup 짝이 낸 것이 «행으로 남는가». 총괄은 못 쟀습니다 — 행으로 안 재 봤습니다
+```
+```
+🔴 여기가 오늘 하루 내내 친 자리입니다 — 「기제가 있다」 ≠ 「돈다」.
+   ⛔ 술어·시그니처·서는 규칙 수로 닫지 «마십시오». 「돈다」는 «결과가 남는 것»으로만 잽니다
+따라가실 곳   맵퍼는 `updates` 를 «돌려주고» 좌석이 씁니다 (dynamic_mappers._enrich 의 넷째 줄:
+             writes_itself False -> the seat writes them). 그 좌석까지 따라가십시오
+```
+
+---
+
+## 게이트 — 넷, 전부 「돈다」로
+
+```
+㉠ `enrichment_rules.json` 을 읽는 코드가 «0» — 센 명령을 보고에 같이 적으십시오
+   (묘비·시험은 제외 규칙을 «먼저» 적고 세십시오. 안 적으면 그 수는 못 읽습니다)
+㉡ 🔴 통합 `derive.decide` 선언 «하나»로, 트리거 표에 행을 넣으면 파생 표에 «행이 생긴다»
+   전: 파생 표 행 수 N · 후: N+k. 두 수를 보고에 적으십시오
+㉢ 되살리기 시험 — `enrichment_rules.json` 을 «다시 놓아도» 아무 일도 안 일어난다
+   (문이 정말 닫혔는지는 이것으로만 답해집니다. 별도 worktree 에서, 소유자 config 밖에서)
+㉣ 침묵이 «죽었나» — 종전의 「파일 없으면 조용히 빈 목록」이 같이 없어졌는지. 남아 있으면
+   지운 문이 아니라 «조용한 문»만 남긴 것입니다
+```
+
+---
+
+## 규율
+
+```
+한 매듭이면 한 커밋. 나눠 착지시키면 그 사이가 거짓입니다
+git add / git commit 에 «경로»를 붙이십시오 (-a · -A 금지 — 공유 트리)
+보고    task/scoped_redo_report.md 에. 커밋하고 «푸시»해야 닿습니다
+        적을 것: ㉠ 의 수와 «센 명령» · ㉡ 의 전·후 행 수 · 지운 파일 목록 · 안 지운 것과 «왜»
+🔴 발견이 있으면 그것이 제일 중요한 산출입니다 — 「지우려니 이것이 걸린다」가 나오면
+   그 자리에서 «멈추고 올리십시오». 우회로를 짜지 마십시오
+```
