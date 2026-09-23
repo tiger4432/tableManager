@@ -127,7 +127,14 @@ def ledger(pg_engine):
         connection.close()
 
 
+#: 🔴 A REF PER CALL, AND THE CALLER NARROWS BY IT. `DEDUPE_COLUMNS` counts
+#: `md5(source_raw_ref)` and the `ledger` fixture never empties the shared scratch table,
+#: so one spelling made two tests the same claim. Measured on the lane: a UniqueViolation
+#: only the WHOLE lane saw (another file leaves a row with that spelling standing) and
+#: a read-back that returned the other test's row. Returned rather than named twice,
+#: because a second literal anywhere puts the shared spelling back.
 def insert(connection, object_kind, object_payload, predicate="register"):
+    raw_ref = "raw-" + uuid.uuid4().hex
     with connection.cursor() as cursor:
         cursor.execute(
             f"INSERT INTO {schema.LEDGER_TABLE} "
@@ -135,10 +142,11 @@ def insert(connection, object_kind, object_payload, predicate="register"):
             " occurred_at, source_who, source_translator_ver, source_raw_ref,"
             " source_event_id, source_event_state) "
             "VALUES (%s, 'dtjob@1', '{\"dt_job\": \"J1\"}'::jsonb, %s, %s, %s::jsonb,"
-            " %s, 'dt_job', 'v1', 'raw-1', %s, 'source_molecule')",
+            " %s, 'dt_job', 'v1', %s, %s, 'source_molecule')",
             (str(uuid.uuid4()), predicate, object_kind, object_payload,
-             OCCURRED_AT, str(uuid.uuid4())))
+             OCCURRED_AT, raw_ref, str(uuid.uuid4())))
     connection.commit()
+    return raw_ref
 
 
 def refused(connection, object_kind, object_payload, predicate="register"):
@@ -159,10 +167,10 @@ def refused(connection, object_kind, object_payload, predicate="register"):
 def test_a_registration_carrying_its_attributes_is_accepted(ledger):
     """🔴 THE GATE. This is byte for byte the atom `roleframe.compile_role_frame` builds for
     the shipped sample's `dtjob@1.attributes: ["dt_eqp"]`, and the old rule refused it."""
-    insert(ledger, None, '{"qualifiers": {"dt_eqp": "EQP-7"}}')
+    raw_ref = insert(ledger, None, '{"qualifiers": {"dt_eqp": "EQP-7"}}')
     with ledger.cursor() as cursor:
         cursor.execute(f"SELECT object_payload FROM {schema.LEDGER_TABLE} "
-                       "WHERE source_raw_ref = 'raw-1'")
+                       "WHERE source_raw_ref = %s", (raw_ref,))
         assert cursor.fetchone()[0] == {"qualifiers": {"dt_eqp": "EQP-7"}}
 
 
@@ -171,10 +179,10 @@ def test_a_registration_with_nothing_to_say_is_still_a_null_payload(ledger):
     """⚠️ THE OTHER HALF OF 「바이트 동일」. Widening the rule must not turn the empty case
     into `{}` -- `registration_fingerprint` reads the empty string off a NULL payload, and
     that is what keeps "no attributes" and "this axis did not exist" the same atom."""
-    insert(ledger, None, None)
+    raw_ref = insert(ledger, None, None)
     with ledger.cursor() as cursor:
         cursor.execute(f"SELECT object_payload FROM {schema.LEDGER_TABLE} "
-                       "WHERE source_raw_ref = 'raw-1'")
+                       "WHERE source_raw_ref = %s", (raw_ref,))
         assert cursor.fetchone()[0] is None
 
 
