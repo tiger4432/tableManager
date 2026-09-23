@@ -90,7 +90,7 @@ def test_when_there_is_nothing_in_the_way_it_says_it_will_build_it():
     sentence = unique_key.describe(
         "dt_log", ["lot"], {"state": "missing", "invalid": [], "duplicates": []})
 
-    assert sentence.startswith("[VirtualJoinIndex:dt_log] ")
+    assert sentence.startswith("[JoinIndex:dt_log] ")
     assert sentence.endswith(operator_line.restart_to_apply())
 
 

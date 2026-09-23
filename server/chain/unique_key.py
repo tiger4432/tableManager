@@ -21,11 +21,15 @@ from __future__ import annotations
 import logging
 import os
 
-# ⚠️ [S-283] THE LOGGER NAME STAYS, for `INDEX_PREFIX`'s reason. An operator greps their
-# logs for what they saw yesterday, and a log channel that renames itself mid-retirement
-# makes the old lines unfindable and the new ones unexpected. Renaming it is a separate
-# round with a note in RUN.md, not a side effect of moving a file.
-logger = logging.getLogger("VirtualJoin.UniqueKey")
+# 🔴 [S-283, AND THIS IS THAT ROUND] THE LOGGER NAME MOVED. S-283 left it alone and
+# said why: an operator greps their logs for what they saw yesterday, so a channel that
+# renames itself mid-retirement makes the old lines unfindable and the new ones
+# unexpected - "a separate round with a note in RUN.md, not a side effect of moving a
+# file". 소유자 2026-09-23 「로그에 virtual join이라는데 가상 조인 모두 은퇴한거 아니야?」 is that round
+# being opened, and RUN.md carries the note S-283 asked for.
+# ⚠️ THE INDEX PREFIX DID NOT MOVE WITH IT, and that is not an oversight - see
+#    `join_key_index.INDEX_PREFIX`: it is an identifier written into live databases.
+logger = logging.getLogger("Join.UniqueKey")
 
 #: 보고에 싣는 중복 키의 최대 건수. 수만 건이면 목록이 진단이 아니라 소음이 된다.
 MAX_REPORTED_DUPLICATES = 20
@@ -117,12 +121,12 @@ def describe(table: str, columns: list, report: dict) -> str:
         return "유일 인덱스 있음: %s" % report.get("index")
     if state == "missing":
         return operator_line.line(
-            "VirtualJoinIndex", table,
+            "JoinIndex", table,
             "%s 를 덮는 유일 인덱스가 없습니다 — 중복은 «없습니다»" % ", ".join(columns),
             operator_line.restart_to_apply())
     if state == "invalid":
         return operator_line.line(
-            "VirtualJoinIndex", table,
+            "JoinIndex", table,
             "%s 의 유일 인덱스가 «INVALID» 로 남아 있습니다 — 취소된 빌드의 잔해라 제약을 "
             "강제하지 않으면서 이름만 붙잡고 있습니다" % ", ".join(columns),
             operator_line.restart_to_apply(),
@@ -130,7 +134,7 @@ def describe(table: str, columns: list, report: dict) -> str:
     if state == "blank_keys":
         total = sum(entry["rows"] for entry in (report.get("blank_keys") or ()))
         return operator_line.line(
-            "VirtualJoinIndex", table,
+            "JoinIndex", table,
             "%s 행에 그 키(%s)가 «비어 있습니다» — 중복이 아니라 «부재»입니다"
             % (total, ", ".join(columns)),
             operator_line.fill_or_declare_null(table, columns))
@@ -244,18 +248,18 @@ def ensure_once(db, rule_name: str, table: str, columns: list, folds=None) -> di
                   "duplicates": [], "blank_keys": [], "created": None, "dropped": [],
                   "error": str(probe_error).strip().splitlines()[0] if str(probe_error).strip() else "probe failed"}
         _TRIED[rule_name] = report
-        logger.warning("[VirtualJoin:%s] 유일 인덱스 자동 점검 실패(읽기는 계속): %s",
+        logger.warning("[Join:%s] 유일 인덱스 자동 점검 실패(읽기는 계속): %s",
                        rule_name, report["error"])
         return report
     _TRIED[rule_name] = report
     if report.get("created"):
-        logger.warning("[VirtualJoin:%s] 유일 인덱스를 «제품이» 세웠습니다%s: %s",
+        logger.warning("[Join:%s] 유일 인덱스를 «제품이» 세웠습니다%s: %s",
                        rule_name,
                        (" (INVALID 잔해 %s 제거)" % ", ".join(report.get("dropped") or ())
                         if report.get("dropped") else ""),
                        report["created"])
     elif report.get("state") != "ok":
-        logger.warning("[VirtualJoin:%s] %s", rule_name,
+        logger.warning("[Join:%s] %s", rule_name,
                        describe(table, columns, report))
     return report
 
@@ -336,7 +340,7 @@ def retract_unrequired_once(db, required) -> dict:
         report = {"dropped": [], "kept": [],
                   "skipped": str(probe_error).strip().splitlines()[0] or "probe failed"}
         _RETRACTED[key] = report
-        logger.warning("[VirtualJoin] 제품 인덱스 목록을 읽지 못했습니다(로딩은 계속): %s",
+        logger.warning("[Join] 제품 인덱스 목록을 읽지 못했습니다(로딩은 계속): %s",
                        report["skipped"])
         return report
 
@@ -354,12 +358,12 @@ def retract_unrequired_once(db, required) -> dict:
                     isolation_level="AUTOCOMMIT") as connection:
                 connection.execute(text(statement))
         except Exception as drop_error:                                # noqa: BLE001
-            logger.warning("[VirtualJoin] 인덱스 %s 를 걷어내지 못했습니다: %s",
+            logger.warning("[Join] 인덱스 %s 를 걷어내지 못했습니다: %s",
                            index_name, str(drop_error).strip().splitlines()[0])
             continue
         dropped.append(index_name)
         logger.warning(
-            "[VirtualJoin] 인덱스 %s (%s) 를 «제품이» 걷어냈습니다 — 켜진 가상 조인 "
+            "[Join] 인덱스 %s (%s) 를 «제품이» 걷어냈습니다 — 켜진 조인 선언 "
             "어느 것도 이 키를 요구하지 않습니다. 그 표의 쓰기가 이 인덱스에 막히던 것이 "
             "풀립니다. 다음: 없음. 그 조인을 다시 켜면 제품이 다시 세웁니다.",
             index_name, table)

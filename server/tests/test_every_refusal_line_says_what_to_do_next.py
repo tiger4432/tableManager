@@ -125,7 +125,7 @@ def test_the_index_report_says_the_product_will_build_it_after_a_restart():
 
     rendered = unique_key.describe("dt_inventory", ["dt_job"], {"state": "missing"})
 
-    assert rendered.startswith("[VirtualJoinIndex:dt_inventory] ")
+    assert rendered.startswith("[JoinIndex:dt_inventory] ")
     assert "재기동" in rendered.split(NEXT)[1]
 
 

@@ -378,7 +378,9 @@ def test_a_replace_map_push_whose_every_row_is_refused_does_not_empty_the_map(db
         replace_map=True, scope={"unit_key": "U-KEEP"})
     with pytest.raises(ValueError) as caught:
         crud.apply_batch_updates(db, DERIVED, batch)
-    assert "가상 조인" in str(caught.value)
+    # ⚰️ 이 줄은 「가상 조인」을 맞춰 봤다. 읽기 시점 조인은 은퇴했고 운영자가 읽는
+    #    낱말도 2026-09-23 에 옮겼다(소유자: 「로그에 virtual join이라는데」).
+    assert "조인 선언" in str(caught.value)
 
     db.rollback()
     assert [r.business_key_val for r in _rows(db)] == ["U-KEEP"], (
