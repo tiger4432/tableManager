@@ -1511,6 +1511,18 @@ const FLOORS = new Map([
   // /admin must return nothing. Prose stops nothing; that sentence is a gate now, and it
   // was false when it was written -- one call site had been going around it.
   ['refusal_seat_harness.mjs', 28],
+  // New 2026-09-23. Both were queued by name when the gate itself reported them as the only
+  // harnesses with no floor -- they ran green and nothing held that ground. 🔴 THE SEAT IS THE
+  // SUBJECT in both, so a floor is what protects them: an assertion about WHERE something sits
+  // is exactly the kind that disappears quietly when the code around it moves.
+  // `broadcast_hook_seat_harness` holds the hook's POSITION. An observer seated behind someone
+  // else's early return goes silent precisely where that guard bites, which is how a queue that
+  // had a hook still stopped being redrawn.
+  ['broadcast_hook_seat_harness.mjs', 7],
+  // `history_tabs_harness` holds ONE seat for the active-tab mark: five sites used to list their
+  // siblings by hand, and a fourth tab that joined the row but not those lists lit two tabs at
+  // once. Its core assertion adds a tab WITHOUT touching any list.
+  ['history_tabs_harness.mjs', 9],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────
