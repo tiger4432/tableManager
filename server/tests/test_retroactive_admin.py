@@ -646,6 +646,14 @@ class TestTheEnrichmentBackfillRouteIsReachable:
         assert body["extra"]["derived_table"] == "retro_enrich_derived"
         assert body["count_kind"] == retroactive.COUNT_SAMPLE
         assert body["scanned"] == 4
+        # 🔴 A COUNT THE SCREEN CANNOT SEE IS NOT REPORTED. `retroactive_view` renders
+        # only the numbers the server LABELLED, so a cell that quietly stops being sent
+        # looks exactly like a zero - which is the shape of the incident this route was
+        # repaired for. Both skips are named here, and they are never folded: one is
+        # fixed in the source data, the other in the derived table's identity declaration.
+        for cell in ("skipped_no_key", "skipped_blank_identity"):
+            assert cell in body["extra"], f"the route stopped reporting '{cell}'"
+            assert body["extra"][f"{cell}_label"], f"'{cell}' has no label, so it is not drawn"
 
     def test_the_old_failure_shape_is_gone(self, client, retro_enrich_env):
         """Named separately because it is the only assertion that would have been
