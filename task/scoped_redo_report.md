@@ -56928,3 +56928,102 @@ client2/src/admin.js:4336   운영자에게 「server/config/enrichment_rules.js
 ```
 상태   미커밋 0 (이 보고 제외) · 코드 변경 0 · 계기는 전부 scratchpad, 커밋 안 합니다
 ```
+
+---
+
+> 🔴🔴🔴 **[09-23 17:5x 구현자 -> 총괄] 판정 `6becdbf2b` — 막혔습니다, 즉시 올립니다.
+>   님이 지목한 술어 «앞»에 관문이 하나 더 있고, 통합 문법은 그 선언을 «조용히» 버립니다**
+
+님 도착지는 그대로 읽힙니다. 다만 그 한 술어만 고치면 **행이 한 줄도 안 움직입니다.**
+
+### 운영 모양을 그대로 세워 쟀습니다 — 관문이 «둘»입니다
+
+```
+모양   파생 표 business_key = job_id · composite_key_source = «없음»
+      판단키 = [core_lot, dt_wafer_id]      -> 정체성 ∩ 판단키 = «공집합» (님이 적으신 넷째 계약)
+잰 명령  python scratchpad/disjoint.py
+```
+
+| 관문 | 어디 | 답 |
+|---|---|---|
+| ① **로더** `_validate_rule` | `config.py:698-712` | 🔴 **규칙이 «서지 않습니다»** |
+| ② 님이 지목한 술어 `partial_key_identity_supported` | `config.py:1592` | False (님 진단대로) |
+| ③ 통합 문법 `rule_shape.expand_declaration` | — | 🔴 **규칙 0 · `rejections` «비어 있음»** |
+
+①의 거절 문구 (그대로):
+```
+derived table must declare composite_key_source ⊆ decision_key
+or business_key ∈ decision_key (dedup upsert key contract)
+```
+
+```
+=> ② 만 고치면 규칙이 «로드에서» 떨어져서 맵퍼까지 «가지도» 않습니다. 행 변화 0 입니다
+=> 같은 물음 「이 표의 정체성이 판단키와 겹치나」를 «두 자리»가 «각자» 묻고 있습니다.
+   님 판별식 하나로 둘을 다 닫아야 도착지에 닿습니다 (CLAUDE.md 문 가르기 금지와 같은 자리입니다)
+```
+
+### 🔴 그리고 ③ 이 소유자 문장의 답입니다 — 「에러도 안 나고 조용히 실패한다」
+
+```
+소유자   「안된다고 에러도 안나고 조용히 실패한다」 · 「완료 알림이 오는데 안되어있음」
+실측    통합 문법으로 같은 선언을 세우면 규칙 «0» 이 나오고 rejections 리스트가 «빕니다».
+       거절 사유가 어디에도 안 실립니다. 규칙이 없으니 체인 트랜잭션은 «정상 완료»합니다
+=> 완료 알림이 참말인 이유가 이것입니다. 실패한 것이 «없어서» 완료입니다 — 선언이 사라졌으니까요
+```
+
+### 제 앞 보고의 수를 «정정»합니다
+
+```
+제가 적은 것   「이 박스에서 PARTIAL 거절은 0 회」
+잘못된 계기    grep -hc "PARTIAL decision key"  -> 그 문구는 «0 of them» INFO 줄에도 들어 있습니다
+성질로 다시     grep -h "were NOT derived" server/*.log | wc -l                -> 5,734
+              grep -hoE "\([1-9][0-9]* of them on a PARTIAL" server/*.log | wc -l -> 11,477
+              (카나리아: 그 낱말이 든 줄 전체 69,561)
+=> 「0 회」는 «틀렸습니다». 0 인 것은 `enrich_in_chain_probe` 한 규칙의 줄들뿐입니다.
+   또 낱말을 셌습니다 — 오늘 네 번째입니다
+```
+
+### 소유자 로그 — 오늘 실제로 버려진 행 (박스 라이브)
+
+```
+09-17 22:44   1 source row -> 1 unique decision key upserted into 'dt_inventory'   (여러 번, 정상)
+09-23 17:27   25 row(s) skipped: NO decision_key value at all
+09-23 17:28   48 row(s) skipped: NO decision_key value at all
+09-23 17:28   50 source row(s) -> 1 unique decision key(s) upserted   <- 50 중 «1»
+잰 명령  grep -h "\[Enrichment:enrich_in_chain_probe\]" server/chain_worker.log | grep -E "skipped|upserted"
+```
+```
+⚠️ 이 박스 config 에는 님이 적으신 이름이 «없습니다» — dt_inventory 의 business_key 는
+   dt_job 이고 dt_job_id·core_lot·dt_wafer_id 라는 컬럼이 없습니다 (잰 명령: table_config.json 직접 파싱).
+   그러니 위 48 행은 «판단키 한 칸이 통째로 빈» 갈래이고, 님이 적으신 운영 규칙과 «다른 규칙»입니다
+   물음 하나: 소유자가 말씀하신 규칙이 이 박스에 «있습니까», 아니면 다른 설치입니까
+```
+
+### 그래서 제가 하려는 것 — 판별식 «하나»를 두 자리가 부릅니다
+
+```
+술어   「이 표의 정체성 컬럼이 판단키에서 값을 가져오나」 (님 판별식 그대로)
+       정체성 = composite_key_source 가 있으면 그것, 없으면 business_key 한 칸
+허용   정체성 == 판단키            (지금도 허용)
+허용   정체성 ∩ 판단키 = 공집합     <- 새로 서는 갈래. 운영 케이스
+거절   정체성 ⊊ 판단키            (온전한 키 행 위로 조용히 병합)
+거절   정체성이 판단키와 «일부» 겹침 (빈 정체성이 여럿)
+자리   ① _validate_rule 의 키 계약 · ② partial_key_identity_supported — «같은 함수»를 부릅니다
+⛔    crud 는 안 건드립니다 (님 지시) · 관문을 전부 열지 않습니다 · config 재선언 답 아닙니다
+```
+
+### ⚠️ 그리고 이것이 «잠겨 있던 갈래»를 깨웁니다 — 미리 올립니다
+
+```
+mapper.py:339-356   정체성 조립이 세 갈래입니다
+   if comp_src:                 복합으로 조립
+   elif bk_col in key_map:      판단키에서 꺼냄
+   else:                        «방어적 폴백» — 주석이 「도달 불가」라고 적고 있습니다
+겹치지 않는 계약에서는 bk_col 이 key_map 에 «없으므로» 셋째 갈래가 «살아납니다».
+그 갈래는 판단키 값을 이어 붙이고, 주석 자신이 「그래서 compose_business_key 를 안 쓴다」고 적습니다
+=> 그 자리가 이번에 «도달 가능»해지므로 정본 조립(crud.compose_business_key)으로 바꾸고
+   주석의 「도달 불가」를 지웁니다. 안 그러면 정체성 철자가 둘이 됩니다
+```
+```
+막히는 것이 더 나오면 즉시 올립니다. 아직 «한 줄도 안 고쳤습니다»
+```
