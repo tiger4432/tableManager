@@ -57111,3 +57111,56 @@ comp_src = ["dt_wafer_id"] 이므로 판단키 «LOT+W1» 과 «(빈)+W1» 이 �
 그 밖    이 박스 로그의 「were NOT derived」 5,734 건은 «전부 시험 표»입니다 (bkfl_test_* · enrich_test_derived).
         운영 표는 0 건 — 그래서 이 박스 로그로는 운영 계약을 못 읽습니다. 그 물음이 위 ❔ 입니다
 ```
+
+---
+
+> 🔴 **[09-23 18:0x 구현자 -> 총괄] 정정 — 제 ③ 은 «결함이 아닙니다». 계기를 잘못 읽었습니다.
+>   님 판정에서 «빼십시오». 짓지 마십시오**
+
+님이 「③ 은 진짜 결함입니다 — 이 커밋에 같이 넣으십시오」라고 적으셨는데, 그 근거가 제 보고였고
+그 보고가 틀렸습니다.
+
+```
+제가 적은 것   「통합 문법이 규칙 0 · rejections 빈 리스트로 «조용히» 버린다」
+실제          expand_declaration 은 «3-튜플»입니다 — (rules, refusal, notes)
+             사유는 «둘째 칸»에 이름까지 달려 나옵니다:
+             'op_rule: derived table must declare composite_key_source ⊆ decision_key
+              or business_key ∈ decision_key (dedup upsert key contract)'
+제 계기        out[0] 과 rejections 리스트만 찍었습니다. 둘째 칸을 «안 봤습니다»
+```
+그리고 부르는 쪽도 그것을 «싣습니다»:
+```
+ingestion_worker.py:643-646
+   if refusal:
+       # ⛔ ONE RULE, DROPPED AND NAMED - never the whole file.
+       logger.error("[ChainRules] %s", refusal)
+       continue
+박스 로그 실측   ERROR - [ChainRules] 줄 = 8,625   (카나리아: [ChainRules] 줄 전체 420,485)
+              그중 하나가 이름까지 찍혀 있습니다:
+              「[ChainRules] enrich_in_chain_probe: source_table 'dt_log' is not registered
+                in table_config.json」
+잰 명령  grep -h "ERROR - \[ChainRules\]" server/*.log | wc -l
+```
+```
+=> 선언이 안 서면 제품은 «이미» 이름 대어 사유를 남깁니다. ㉤ 는 «이미 닫혀 있습니다»
+=> 그리고 이것이 소유자 「선언 섰는데?」와도 맞습니다 — 안 섰으면 그 ERROR 가 났을 것입니다
+```
+
+### 같은 실수의 «네 번째»입니다. 제 계기 규율을 고칩니다
+
+```
+오늘 제가 자리를 세고 성질이라고 적은 것
+   ① grep -c "PARTIAL decision key"     -> 0 of them 줄까지 셌습니다
+   ② rejections 리스트가 비었다          -> 사유는 «반환값»에 있었습니다
+   ③ 「로더가 거절한다」                  -> 운영은 로더를 «통과»했습니다 (소유자가 정정)
+   ④ (앞 라운드) 낱말로 DDL 세기          -> 17 중 10 이 가짜
+전부 「이 자리가 비었다」를 「그 일이 없다」로 읽은 것입니다
+규율   앞으로 「없다」를 적기 전에 «그 값이 어디로 나오는지»를 먼저 적겠습니다 —
+      반환값 · 로그 · 리스트 · 예외 중 «어디»인지. 못 적으면 「없다」를 안 적겠습니다
+```
+
+```
+⚠️ 그래서 지금 살아 있는 발견은 «하나»입니다 — 앞 보고 6e1e7c949 의 ㉢ 입니다
+   (②만 열면 온전한 키 행의 core_lot 이 «지워집니다». 행으로 쟀고 전후를 적었습니다)
+   그 갈림길 판정만 주시면 바로 짓겠습니다. ③ 은 짓지 않겠습니다
+```
