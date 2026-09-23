@@ -150,6 +150,12 @@ def refused(connection, object_kind, object_payload, predicate="register"):
 
 # ------------------------------------------------------------------ what may now be written
 
+# 🔴 [2026-09-23] `pg` 표시는 이 좌석의 «있는 규약»이다 — tests/conftest.py 의
+#   pytest_collection_modifyitems 가 평상 실행에서 이것들을 빼고,
+#   scripts/run_pg_tests.py 가 `-m pg` 로 부른다. 표시가 없으면 이 증명들이 평상 실행에서
+#   «돌고», 그 첫 항목이 세션 범위 `pg_engine` 을 세워 ASSY_TEST_DATABASE_URL 을 세션 끝까지
+#   선언된 채로 둔다 — 그 뒤 주변을 재는 시험들이 «자기 전제»를 잃는다 (빨강 다섯의 원인).
+@pytest.mark.pg
 def test_a_registration_carrying_its_attributes_is_accepted(ledger):
     """🔴 THE GATE. This is byte for byte the atom `roleframe.compile_role_frame` builds for
     the shipped sample's `dtjob@1.attributes: ["dt_eqp"]`, and the old rule refused it."""
@@ -160,6 +166,7 @@ def test_a_registration_carrying_its_attributes_is_accepted(ledger):
         assert cursor.fetchone()[0] == {"qualifiers": {"dt_eqp": "EQP-7"}}
 
 
+@pytest.mark.pg
 def test_a_registration_with_nothing_to_say_is_still_a_null_payload(ledger):
     """⚠️ THE OTHER HALF OF 「바이트 동일」. Widening the rule must not turn the empty case
     into `{}` -- `registration_fingerprint` reads the empty string off a NULL payload, and
@@ -181,6 +188,7 @@ def test_a_registration_with_nothing_to_say_is_still_a_null_payload(ledger):
     '[]',
     '"qualifiers"',
 ])
+@pytest.mark.pg
 def test_an_objectless_payload_that_is_not_only_qualifiers_is_refused(ledger, payload):
     """⛔ THE RULE DID NOT GO AWAY. An objectless atom carrying anything but `qualifiers` is
     an object with no name on it, and a migration that merely dropped the constraint would
@@ -190,6 +198,7 @@ def test_an_objectless_payload_that_is_not_only_qualifiers_is_refused(ledger, pa
 
 # ------------------------------------------------------------------------- the migration
 
+@pytest.mark.pg
 def test_an_install_that_predates_attributes_is_widened_once(ledger):
     """🔴 THE UPGRADE PATH, DRIVEN BACKWARDS. The scratch table is put back to the narrow
     rule and `ensure_schema`'s migration is asked to fix it -- which is what an existing
@@ -215,6 +224,7 @@ def test_an_install_that_predates_attributes_is_widened_once(ledger):
             "a second pass must ask the catalogue and issue nothing")
 
 
+@pytest.mark.pg
 def test_the_widened_rule_reaches_every_partition(ledger):
     """🔴 THE PARENT IS NOT WHERE THE ROWS ARE. Measured rather than assumed: `ADD
     CONSTRAINT ... NOT VALID` on a partitioned parent recurses, so the constraint has to be

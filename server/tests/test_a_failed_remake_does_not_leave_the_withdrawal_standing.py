@@ -263,6 +263,12 @@ def write(store, atoms, withdraw_refs=None):
         advance_cursor=False, withdraw_refs=withdraw_refs)
 
 
+# 🔴 [2026-09-23] `pg` 표시는 이 좌석의 «있는 규약»이다 — tests/conftest.py 의
+#   pytest_collection_modifyitems 가 평상 실행에서 이것들을 빼고,
+#   scripts/run_pg_tests.py 가 `-m pg` 로 부른다. 표시가 없으면 이 증명들이 평상 실행에서
+#   «돌고», 그 첫 항목이 세션 범위 `pg_engine` 을 세워 ASSY_TEST_DATABASE_URL 을 세션 끝까지
+#   선언된 채로 둔다 — 그 뒤 주변을 재는 시험들이 «자기 전제»를 잃는다 (빨강 다섯의 원인).
+@pytest.mark.pg
 def test_a_failed_write_withdraws_nothing(store):
     """🔴 THE GATE THE RULING ASKED FOR, MEASURED RATHER THAN ARGUED: make the remake fail
     and the atom count is the same before and after.
@@ -280,6 +286,7 @@ def test_a_failed_write_withdraws_nothing(store):
         "the withdrawal committed while the replacement did not -- atoms were lost")
 
 
+@pytest.mark.pg
 def test_the_success_path_replaces_the_generation(store):
     """And when it succeeds the old generation is gone and the new one is there, from one
     commit -- the numbers the caller reports come back with it."""
@@ -299,6 +306,7 @@ def test_the_success_path_replaces_the_generation(store):
         connection.close()
 
 
+@pytest.mark.pg
 def test_a_write_with_nothing_to_withdraw_is_the_write_it_always_was(store):
     """⚠️ THE FORWARD SCAN GOES THROUGH THIS SAME DOOR and passes no refs; it must issue no
     DELETE at all and report `withdrawn: 0`."""

@@ -291,6 +291,12 @@ def real_store(pg_engine):
     return LedgerStore(pg_engine)
 
 
+# 🔴 [2026-09-23] `pg` 표시는 이 좌석의 «있는 규약»이다 — tests/conftest.py 의
+#   pytest_collection_modifyitems 가 평상 실행에서 이것들을 빼고,
+#   scripts/run_pg_tests.py 가 `-m pg` 로 부른다. 표시가 없으면 이 증명들이 평상 실행에서
+#   «돌고», 그 첫 항목이 세션 범위 `pg_engine` 을 세워 ASSY_TEST_DATABASE_URL 을 세션 끝까지
+#   선언된 채로 둔다 — 그 뒤 주변을 재는 시험들이 «자기 전제»를 잃는다 (빨강 다섯의 원인).
+@pytest.mark.pg
 def test_the_index_survives_a_re_translation_by_moving(real_store):
     """A rescope writes the pair again, and the ref may have MOVED -- a corrected
     `order_by` value is exactly what a rescope exists for -- so the newest translation wins
@@ -305,6 +311,7 @@ def test_the_index_survives_a_re_translation_by_moving(real_store):
     assert real_store.row_refs_for(RELATION, ["R1"]) == [("dt_job", "dt_log:new")]
 
 
+@pytest.mark.pg
 def test_two_sources_reading_one_table_each_keep_their_own_line(real_store):
     connection = real_store.connection()
     try:
