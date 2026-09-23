@@ -72,7 +72,7 @@ import { planDryRunView } from './plan_dry_run.js';
 import {
   buildOperationsView, buildCountView, buildRunView, buildConfirmLines, buildActionsView,
   resolveCount, paramEntries, paramsKey, RETRO_CHROME, buildRunsView,
-  buildConfirmActions,
+  buildConfirmActions, groupExtras,
 } from './retroactive_view.js';
 // [원장 선언] 구조 맵을 admin이 호스트한다(브리프 §6-1 + 소유자 판정). 이 파일은 배선만
 // 한다 — 지도의 리더도, 편집기도 자기 모듈이 소유한다.
@@ -2942,6 +2942,9 @@ function renderRunning() {
     //    없으면 아무것도 그리지 않습니다 — 성한 줄은 오늘과 같습니다.
     // 🔴 서버가 만든 문장 그대로. 끝난 실행이 «무엇을 얼마나» 했는지를
     //    서버가 이미 나르고 있었고 화면이 안 보고 있었습니다.
+    // 🔴 이 실행이 «무엇을 안 만들었나» — 수로. 예행 패널과 «같은 함수»가 그립니다.
+    //    0 도 그립니다: 안 그리면 「없음」과 「안 세어 봄」이 같은 그림입니다.
+    retroExtraBoxes(row.extras).forEach((b) => line.appendChild(b));
     if (cfgText(row.summary)) {
       const sum = document.createElement('span');
       sum.className = 'running-elapsed';
@@ -3343,6 +3346,25 @@ function retroCliEl(op) {
   return details;
 }
 
+/** 라벨 붙은 수를 그리는 자리 «하나» — 예행(카운트) 패널과 실행 줄이 같은 함수를 지납니다.
+ *
+ * 가르는 판정은 `retroactive_view.groupExtras` 에 있습니다 — 여기서는 그 자리마다 «상자 하나»를
+ * 그립니다. 묶음 «낱말»은 그리지 않습니다: 그건 서버가 자리를 말하는 배관 값이고, 운영자가
+ * 읽는 것은 라벨입니다.
+ */
+function retroExtraBoxes(extras) {
+  return groupExtras(extras).map((place) => {
+    const box = cfgEl('div', 'retro-extras');
+    place.items.forEach((extra) => {
+      const pairEl = cfgEl('span', 'retro-extra');
+      pairEl.appendChild(cfgEl('span', 'cfg-path', cfgText(extra.label)));
+      pairEl.appendChild(cfgChip(extra.count.text, 'muted'));
+      box.appendChild(pairEl);
+    });
+    return box;
+  });
+}
+
 function retroCountEl(cached, stale) {
   const box = cfgEl('div', 'cfg-dryrun');
   if (!cached.ok) {
@@ -3391,16 +3413,7 @@ function retroCountEl(cached, stale) {
   // 서버가 **라벨을 붙여 준** 두 번째 숫자만 나온다(R1의 회수 후보처럼). `affected`에 더하지
   // 않는 것이 핵심이다 — 더하면 「쓰기 연산」의 수에 「절대 쓰지 않는 것」의 수가 섞인다.
   // 쌍마다 자기 상자를 갖는다: 구분자 없는 한 줄에서는 값이 다음 라벨에 붙어 읽힌다.
-  if (view.extras.length) {
-    const line = cfgEl('div', 'retro-extras');
-    view.extras.forEach((extra) => {
-      const pairEl = cfgEl('span', 'retro-extra');
-      pairEl.appendChild(cfgEl('span', 'cfg-path', cfgText(extra.label)));
-      pairEl.appendChild(cfgChip(extra.count.text, 'muted'));
-      line.appendChild(pairEl);
-    });
-    box.appendChild(line);
-  }
+  retroExtraBoxes(view.extras).forEach((line) => box.appendChild(line));
   return box;
 }
 
