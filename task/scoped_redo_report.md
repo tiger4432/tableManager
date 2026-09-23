@@ -55727,3 +55727,50 @@ pytest 안(고립)에서도 같은 답입니다. 그런데 전체 실행에서�
 🔴 제품 결함은 «0** 입니다. 다섯 중 둘은 박스에 마이그레이션 하나가 안 돌았고,
    셋은 시험끼리 상태를 흘립니다. 판정 주실 때까지 그대로 둡니다
 ```
+
+> 🔴🔴 **[09-23 10:5x 구현자 -> 총괄] 이음새 — 클라 미병합분 `67e9b1c8a` 가 «없는 칸»을 폅니다. 병합 «전»에 올립니다**
+
+```
+그 커밋   feat(queue): the rules cell names every rule and carries the server's reason under it
+상태     origin/design. main 에 «아직 안 왔습니다» -> 지금이면 싸게 고칩니다
+```
+
+### 잰 것 셋
+
+```
+① 그 커밋은 제 대기열 변경 «위에» 지어졌습니다
+   git merge-base --is-ancestor 9c09e5c34 67e9b1c8a  -> 참
+② 서버는 `note` 를 «더는 안 보냅니다»
+   git grep -c '"note"' -- server/main.py  -> 0
+   (제 커밋 9c09e5c34 가 그 칸을 죽였습니다 — 그 문장이 설명하던 행이 목록에서 빠졌기 때문입니다)
+③ 그 커밋의 게이트가 드는 문장이 «바로 그 죽은 문장»입니다
+   「note 잘림 false — DELETE does not wake any rule; only CREATE and EDIT are triggers 전문이 보인다」
+   그런데 DELETE 행은 이제 «목록에 아예 없습니다»
+   (제 게이트: test_a_delete_row_is_not_listed_because_nothing_will_run_for_it)
+```
+
+### 왜 초록인가 — 그쪽 커밋 메시지가 «스스로 적고 있습니다**
+
+```
+「⚠️ 행은 이 박스에서 «못 본다» — 68ms 면 워커가 비운다. 그래서 위 실측의 «행 내용»은
+  내가 지은 것이고」
+=> 픽스처가 `note` 를 들고 있으니 화면이 그것을 폅니다. 서버는 안 보냅니다.
+   그 열은 «운영에서 영원히 빈 칸»이고, 게이트는 자기 픽스처를 재고 있습니다 (공허한 초록)
+```
+
+### 남는 것과 죽는 것 — 제 커밋 기준
+
+```
+죽음   `note`  — 칸 자체가 없습니다. 그 문장 둘이 설명하던 행이 목록에 없기 때문입니다
+      「%s does not wake any rule; only CREATE and EDIT are triggers」
+      「no rule watches this table」
+삽니다  `rules[].name` · `rules[].will_fire` · `rules[].why_not`
+      -> 소유자가 요청하신 「어떤 rule인지 구체적으로 적어 접지말고」는 이 셋으로 «전부» 됩니다
+      -> 한 행이 규칙 A 로는 돌고 B 로는 안 도는 경우가 남아 있어 `why_not` 은 여전히 씁니다
+```
+
+```
+🔵 제안 — 클라 레인에 「`note` 열을 빼고, 픽스처를 «서버 응답 모양»으로 맞춰라」를 걸어 주십시오.
+   제 쪽에서 더 할 일은 없습니다(칸은 이미 없습니다). 다만 제가 그 칸을 죽인 라운드와
+   그쪽 라운드가 «같은 시간»에 돌아서, 제 착지가 그쪽 전제를 깬 것입니다 — 제가 먼저 말합니다
+```
