@@ -878,12 +878,29 @@ class MultiDiscoveryScheduler:
                     # one an operator has to press twice.
                     # 🔴 체인 리플레이는 «이 데몬의 일이 아니다»(2026-09-23). 체인 워커가
                     #    작업 표에서 직접 집는다 — 이 줄은 그것을 «스케줄러 코드를 지나지
-                    #    않게» 만드는 자리다(게이트 ⑩).
-                    # ⛔ 그래도 초인종은 «찍는다». 안 찍으면 `order_by(id.asc())` 가 이 행을
-                    #    영원히 맨 앞에 두어 «뒤의 모든 요청»이 안 닿는다 — 2026-09-04 에
-                    #    운영이 멈춘 그 모양이고, 바로 위 주석이 그 사고를 적어 두고 있다.
-                    # ⚠️ 초인종을 찍어도 일은 «안 사라진다». 일은 작업 표에 살고, 워커는
-                    #    깨어날 때마다 그 표를 훑는다 — 초인종을 놓친 경우까지 거기서 산다.
+                    #    않게» 만드는 자리다(게이트 ⑩,
+                    #    `test_a_chain_replay_doorbell_is_marked_but_not_run_here`).
+                    #
+                    # 🔴 [2026-09-23 재측정] 이 갈래가 «왜 남아 있나» — 옛 사유는 낡았다.
+                    #    옛 사유  「안 찍으면 `order_by(id.asc())` 가 이 행을 영원히 맨 앞에
+                    #            두어 뒤의 모든 요청이 안 닿는다 (2026-09-04 운영 정지)」
+                    #    실측    지우면 이 행은 아래 `start_retroactive_run` 으로 떨어지고,
+                    #            그 함수는 스레드를 띄우고 «True» 를 돌려주므로 행은 «찍힌다».
+                    #            머리 막힘은 안 난다. 남는 위험은 «하나»다 — 스케줄러가
+                    #            리플레이를 «직접 돈다». 소유자가 금하신 바로 그 동작이고
+                    #            게이트 ⑩ 이 그것을 잰다.
+                    #    수      이 박스에서 이 갈래가 받을 수 있는 행:
+                    #            event_type=RETROACTIVE_RUN            27
+                    #            ... AND processed_chain=false          0
+                    #            ... AND payload op=chain_replay       26 (전부 찍힘)
+                    #            -> 새 행은 0. 쓰는 이가 `outbox_owner` 뒤로 갔기 때문이다
+                    #            (`retroactive.publish`, 시험
+                    #             `test_a_chain_owned_op_queues_the_run_and_rings_no_bell`).
+                    # ⚠️ 그래서 이 갈래는 「초인종을 찍기 위해」 서 있는 것이 «아니라»
+                    #    「배포 경계의 옛 행이 스케줄러에서 돌지 않게」 서 있다. 지우려면
+                    #    게이트 ⑩ 을 같이 지우는 판정이 있어야 한다.
+                    # ⚠️ 일은 «안 사라진다». 일은 작업 표에 살고, 워커는 깨어날 때마다 그
+                    #    표를 훑는다 — 초인종을 놓친 경우까지 거기서 산다.
                     if (retro_payload or {}).get("op") == "chain_replay":
                         logger.info(
                             "[Retroactive] run_id=%s op=chain_replay is the chain "
