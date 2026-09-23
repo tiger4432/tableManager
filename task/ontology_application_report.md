@@ -32117,3 +32117,75 @@ server/config/sample/virtual_join_rules.json.sample  `_comment` 에 「DO NOT CO
 안 셌다  virtual_join 을 «살아 있는 것처럼» 가리키는 guide·architecture 자리 —
         오늘 은퇴 목록 밖입니다. 3 단계에서 세겠습니다. 지금 수를 적지 않습니다
 ```
+
+---
+
+## 문서 정비 ② · 스텝 1~3 마침 (09:03)
+
+### 고친 수 — git 에서 읽은 것
+
+```
+센 명령   for c in 4a1764de1 b147a4790 4e284a38c 65faa1754; do
+            git show --numstat --format= $c | awk '{a+=$1;d+=$2;f++} END{print f, a, d}'; done
+```
+
+| 커밋 | 파일 | +/- | 무엇 |
+|---|---|---|---|
+| `4a1764de1` | 2 | +27/−24 | CODE_MAP 의 죽은 심볼 여섯 · SYSTEM_OVERVIEW 둘 |
+| `b147a4790` | 1 | +6/−6 | 모듈 목록 표 — 경로 1 · 줄 수 5 · 죽은 심볼 2 |
+| `4e284a38c` | 1 | +10/−10 | `join_into` 앵커 9 · 개명 1 / `retroactive` 줄 수 1 · 앵커 3 |
+| `65faa1754` | 1 | +1/−1 | R1 행의 드라이런이 «어느 문»인지 |
+
+합계 **문서 3 파일 · 커밋 4 · +44/−41**.
+
+### 「살아 있던 거짓 약속」 — 자리와 문장
+
+| 자리 | 적혀 있던 문장 | 소스 |
+|---|---|---|
+| CODE_MAP:1808 | `writes_itself(rule)` 「자기 행을 «자기가» 쓰나」 | `rule_run` 정의 0 |
+| CODE_MAP:1811 | `self_writing_name(rule)` | 정의 0 |
+| CODE_MAP:2794 | 접근자 «셋» — `label_for`·`writes_itself`·`stamps_origin` | 가운데 것 정의 0 |
+| CODE_MAP:2799–2802 | 네 줄 표, 칸에 `writes_itself` | 칸 «없음» · 항목 셋 |
+| CODE_MAP:2824 | 「그 «네» 사실 … 이름은 `declared:` 넷」 | 사실 셋(+`params`) · 이름 셋 |
+| CODE_MAP:2842 | 「`class UnknownBuiltinKind` :122 는 «살아 있다»」 | 정의 0 — **같은 절 :2823 이 「없어진 것」에 적고 있었다** |
+| CODE_MAP:2848 | `UnknownBuiltinKind` :122 · `BUILTIN_KINDS` :309 · `register_builtin` :359 | 셋 다 0 |
+| CODE_MAP:2620 | 경로 `server/keyset_scan.py` | `server/chain/keyset_scan.py` |
+| CODE_MAP:2626 | `LOCAL_TIMEZONE`(~26, 호출당 조회를 피하는 캐시) | 없음. 시험 둘이 `not hasattr` 로 박아 둠 |
+| CODE_MAP:2626 | 「`graph_sync_worker` 는 «여전히» 자체 `to_local_str`… 통합은 미착지」 | **그 파일이 트리에 없다** |
+| CODE_MAP:1744 | `_write(db, left_table, rows, spec, source_name)` :195 | 개명 — `_update_items` :225 |
+| SYSTEM_OVERVIEW:245 | `TEMPLATE_FACTS(label · stamps_origin · writes_itself)` | 셋째는 `params` |
+| SYSTEM_OVERVIEW:253 | 「아직 아니다」 목록에 「템플릿 셋이 writes_itself: True」 | 그 축이 없어짐 |
+| guide/chain_ingestion:290 | 「Chain replay R1 … dry-run by default」 | CLI 엔 참 · 어드민 op 는 «항상 적용» |
+
+🔴 제일 비싼 것은 «없는 것»이 아니라 **안 적힌 것**입니다 — `params`.
+CODE_MAP 의 사실 목록에 없는데, 없이 등록하면 로더가 「이 맵퍼는 인자를 선언하지 않는다」로 읽어
+진짜 조인을 «전부» `undeclared_param` 으로 거절합니다(그 자리 주석에 실측이 있습니다).
+
+### 열어 보고 «안 고친» 것
+
+```
+guide/config/virtual_join_rules.md · 그 sample   머리에 ⚰️ 「이제 아무도 안 읽습니다」/「DO NOT COPY」 — 참
+CODE_MAP 의 synthesis 인용들                     「아래는 «기록»이다」 배너 아래 — 기록으로 참
+맨 위 델타 표(333 → 341 등)                      «그 패스의 before/after» — 기록으로 참
+chain_replay_cli 의 드라이런                      「Dry-run everywhere by default」 — 살아 있음
+time_format 「표준 라이브러리만 import」            datetime · re · zoneinfo — 참
+PRIMITIVES · guide · spec 의 은퇴 낱말 여섯        전부 0 (카나리아: `chain_rules.json` 18 파일)
+```
+
+### 제 계기가 «두 번» 조용히 죽었습니다
+
+```
+① git grep -c 가 `origin/main:경로:수` 라 `cut -f2` 가 «경로»를 수로 읽었다
+   -> 표에 파일 경로가 「정의 수」로 찍혔다. 카나리아(살아있는 def=1)가 잡았다
+② retroactive 앵커 훑기가 (이름,앵커) 쌍을 «0 개» 뽑고 「전부 일치」로 렌더됐다
+   -> 「뽑은 쌍 수」를 같이 찍는 카나리아가 잡았다. 쌍 0 이면 세상이 아니라 계기다
+```
+
+### 남은 것
+
+```
+스텝 4  히스토리 — 오늘 커밋 다섯(8bd094477 · 3131f38b4 · 7e037e64a · d62f40730 · 1e0a27cb). 아직 안 함
+안 셌다  retroactive 절의 앵커 열셋 중 «넷»만 검증했습니다. 나머지는 취소선·중첩 괄호 안이라
+        추측으로 고치지 않고 «그대로» 뒀습니다
+안 셌다  virtual_join 을 살아 있는 것처럼 가리키는 guide·architecture 자리 — 오늘 목록 밖
+```
