@@ -1142,7 +1142,10 @@ for (const m of MUTANTS) {
     // 씨앗은 «서버 노드 모양»이어야 합니다 — 그렇지 않으면 경계가 묻지 않고 거절하고(그게 옳고),
     // 그러면 요청이 0 이라 이 단언이 «공허»해집니다. 그래서 Z1c 가 같은 호출에 섭니다.
     const SEED = 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0';
-    const SEAT = { direction: 'outgoing', node_limit: 1000, hops: 3, backbone_hops: 2 };
+    // 🔴 좌석이 선언할 수 «있는 것 전부»입니다 — main.js 의 question 이 세우는 다섯 키.
+    //    넷만 실으면 이 단언의 문장(「좌석 «선언»을 안 건네는 것」)이 모집단보다 넓어집니다.
+    const SEAT = { follow: ['inspected'], direction: 'outgoing',
+                   node_limit: 1000, hops: 3, backbone_hops: 2 };
     const examined = [];
     const dropped = [];
     for (const name of [null, ...Object.keys(api.LEGACY_ROUTES)]) {
