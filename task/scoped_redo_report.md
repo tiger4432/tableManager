@@ -57238,3 +57238,75 @@ crud.assemble_composite_business_key   comp_src = ["dt_wafer_id"] 는 «다 차 
    제품은 이미 이름 대어 사유를 남기고 있고, 그것이 소유자 「선언 섰는데?」와도 맞습니다
 상태   착지 «0». 게이트 넷은 서 있고, 판정 주시면 ㉢ 만 닫고 «한 커밋»으로 내립니다
 ```
+
+---
+
+> ✅ **[09-23 18:5x 구현자 -> 총괄] 판정 `aca816e39` + `13e2894f1` 착지했습니다 — `2b37dcbdb`, 푸시 완료.
+>   게이트 넷 전부 «값과 행»으로. 운영에서 «켜지» 않았습니다**
+
+### 게이트 — 전후를 나란히
+
+| 게이트 | 전 | 후 |
+|---|---|---|
+| ㉠ 부분 키 행이 «건너뛰어지지 않는다» | 행 0 · `rows_in=2 rows_out=1` | **행 2** · 부분 키도 나갑니다 |
+| ㉡ 🔴 기존 행의 값이 «안 지워진다» | `core_lot: 'LOT' -> None` | **`'LOT' -> 'LOT'`** |
+| ㉢ 온전한 키 행의 철자 «불변» | `S1_W1_LOT` | **`S1_W1_LOT`** (한 글자도 안 바뀜) |
+| ㉣ comp_src 가 덮는 표에서 부분 키가 «새 행» | 전 0 | **후 2** (`LOT_W1` 옆에 `_W1`) |
+
+```
+잰 명령  python -m pytest tests/test_a_partial_decision_key_still_gets_its_own_derived_row.py \
+        tests/test_backfill_enrichment.py -p no:randomly -q      -> 29 passed
+회귀    위 둘 + enrichment 넷 + retroactive + 쓰기문 넷(190·191·f3c04dee 포함)
+        -> 309 passed, 1 skipped, 0 failed
+```
+
+### 🔴 변이로 증명했습니다 — 초록이 「안 터졌다」가 아니라 「잰다」입니다
+
+| 변이 | 빨개진 시험 |
+|---|---|
+| 빈 성분이 셀을 «덮게» 되돌림 | **2** — `…_narrow_composite_updates_its_one_row_and_erases_no_value` · `test_a_partial_key_is_refused_when_it_would_spell_a_complete_keys_identity` |
+| 정체성 가드를 죽임 | **1** — `test_a_partial_key_is_refused_when_the_blank_column_IS_the_business_key` |
+
+### 지운 자리 — 전수로 셌습니다
+
+| 이름 | 자리 | 파일 | 잰 명령 |
+|---|---|---|---|
+| `partial_key_identity_supported` | 4 -> **0** (묘비 1) | 2 | `git grep -n <이름> -- 'server/**' 'docs/**'` |
+| `skipped_unexpressible_key` | 14 -> **0** (묘비 1) | 6 | 같은 명령 |
+| 맵퍼의 `unexpressible` 갈래·카운터·경고 | 9 -> 0 | 1 | 같은 명령 |
+
+```
+⚠️ 모집단에서 «뺀» 것: client2 의 `unexpressible` 9 자리는 맵 좌표 이야기라 다른 뜻입니다
+   (map2/authoring.js: 「a single unexpressible coordinate is a die written onto nothing」)
+⛔ crud 0 줄 · 맵퍼가 comp_src 밖 이름을 짓던 8 줄 «되돌렸습니다» · 새 선언 칸 0
+```
+
+### 🔴 제가 «더한» 것 하나와, 제가 «뺀» 것 하나 — 둘 다 적습니다
+
+```
+더함   `13e2894f1` 의 가드를 짓다가, 그 앞 판정(aca816e39) 상태에서 실측으로 먼저 만났습니다 —
+      business_key_val 이 None 인 행이 «둘» 섰습니다. 님 판정이 그 뒤에 같은 자리를 지목하셨고,
+      제 것을 님 문장대로 «정체성 컬럼»으로 다시 맞췄습니다 (조립 결과가 아니라 컬럼을 봅니다 —
+      빈 성분 둘이면 조립 결과는 "_" 라 «안 비기» 때문입니다)
+뺌    제가 세운 그 게이트를 이 파일에서 «지웠습니다». 변이로 죽여도 «초록»이었습니다 —
+      체인 쓰기 경로에 키 게이트가 따로 있어서(`ingestion_worker` 의 `unkeyed_refused`)
+      제 단언이 그것을 재고 있었습니다. 공허한 줄은 안 남깁니다.
+      그 가드가 «혼자» 답하는 자리는 소급 스윕이고, 그쪽은 위 표의 변이 1 이 지킵니다
+      (자리에 그 사유를 묘비로 남겼습니다)
+```
+
+### ⚠️ 님 다른 채널과 부딪히는 것 하나 — 클라 레인이 알아야 합니다
+
+```
+DESIGN_ORDERS `b3b6e8d55`  「the run drops the two skip counts before the route」
+그 «둘» 중 하나가 이번에 «없어졌습니다» — skipped_unexpressible_key 는 더 이상 없습니다
+=> /admin 응답에서 그 칸과 라벨을 지웠습니다 (retroactive.py, 10 줄).
+   남는 수는 skipped_no_key 와 partial_key_combinations 둘입니다
+   화면이 셋을 기대하고 있으면 그 지시가 반쪽이 됩니다. 제가 클라 채널에 안 씁니다 — 님 몫입니다
+```
+
+```
+안 켰습니다   운영 표에 안 돌렸습니다 · 재기동 0 · 마이그레이션 0 · 소유자 config 0 줄
+            정체성 철자가 안 바뀌므로 소급 «0» 입니다
+다음        님 판정 기다리지 않습니다. 새 발견이 나오면 그것만 올립니다. 감시 켜 둡니다
+```
