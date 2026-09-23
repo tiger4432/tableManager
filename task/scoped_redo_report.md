@@ -57457,3 +57457,63 @@ server/chain_worker.log 는 337,617 줄인데 그 안에 «시험이 쓴» 줄�
 상태   착지 2b37dcbd 그대로 · 미커밋 0 · 새 코드 로드됨 · 운영 검증 «대기»
 큐     ④ 를 「그 파일의 물리 ALTER 대기 둘」로 넓힘 · 나머지 넷 그대로
 ```
+
+---
+
+> 🔴 **[09-23 18:4x 구현자 -> 총괄] 판정 `e642e5bd7` 착지 — `f468dc90`, 푸시 완료.
+>   님이 맞습니다. 제 착지가 «늘 도는 갈래»에서 터지고 있었습니다**
+
+### ① 터지던 것 — 재현하고 고쳤습니다
+
+```
+재현    python -c "from chain.enrichment import mapper; mapper.map_enrichment_dedup(None, [], None)"
+       -> TypeError: _result() takes 3 positional arguments but 4 were given
+전수    AST 로 _result 호출 넷 — :182 넷 인자 · :186 넷 인자 · :256 셋 · :367 셋
+고침    둘을 셋으로. 그리고 :367 은 새 수를 실어 «넷»이 됐습니다
+확인    빈 배치 · params 없는 규칙 둘 다 이제 «답을 돌려줍니다»
+```
+
+**🔴 제가 이걸 왜 못 봤는지 적습니다 — 변이도 전수 6,783 도 못 잡았습니다.**
+```
+변이는 «제가 바꾼 줄»만 건드렸습니다. 안 바꾼 줄이 낡은 것을 이 방법으로는 못 봅니다
+전수 6,783 은 이 갈래를 «안 지납니다» — 시험 넷 다 «행이 있는» 배치를 넘깁니다
+=> 상설의 「박스가 도달 못 하는 조건」이 아니라 «늘 도는 조건»이었고, 거기 시험이 0 이었습니다
+=> 다음부터 «서명을 바꾸면» 그 함수의 호출자를 AST 로 «전수» 세고 인자 수를 맞춰 보겠습니다.
+   오늘은 이름 전수(6 파일)는 셌는데 «인자 수»는 안 셌습니다
+```
+
+### ② 그리고 님이 짚으신 계기 — 새 가드의 수가 «결과에 안 실렸습니다»
+
+```
+전   정체성 칸이 전부 빈 행을 거르고(맞음) · 로그에 이름 대어 찍고(맞음) · 수는 «어디에도 없음»
+후   `skipped_blank_identity` 로 결과에 실립니다. `skipped_no_key` 와 «절대 안 합칩니다»
+     고치는 자리가 다릅니다 — 하나는 «소스 데이터», 하나는 «표의 정체성 선언»
+닿는 곳  맵퍼 결과 -> backfill stats -> /admin 응답(칸 + 라벨) -> 운영자 문장 -> CLI 요약
+        (라벨이 없으면 화면이 숫자를 «안 그립니다» — retroactive_view 가 라벨 붙은 수만 렌더합니다)
+```
+
+### 변이 — 새 게이트 둘이 «잰다»는 증명
+
+| 변이 | 빨개진 시험 |
+|---|---|
+| `_result` 에서 기본값을 빼 «셋만» 받게 | **2** — 빈 배치 시험 · 두 수 시험 |
+| 새 수를 반환에서 뺌 | **1** — `…_two_skips_reach_the_caller_under_their_own_names` |
+
+```
+⚠️ 처음에 제가 건 변이(호출을 다시 넷으로)는 «안 빨개졌습니다». 지금 서명이 기본값을 가져
+   네 인자 호출도 «유효»하기 때문입니다 — 그 변이는 결함이 아니었습니다. 겨냥을 바꿔 다시 쟀습니다
+```
+
+### 회귀
+
+```
+잰 명령  python -m pytest tests/test_a_partial_decision_key_still_gets_its_own_derived_row.py \
+        tests/test_backfill_enrichment.py tests/test_retroactive_admin.py \
+        tests/test_enrichment.py tests/test_enrichment_candidates.py -p no:randomly -q
+결과    195 passed · 1 skipped · 0 failed
+```
+
+```
+착지   f468dc90  (5 파일 · 시험 둘 추가)
+상태   미커밋 0 · 운영 config 0 줄 · 재기동은 여전히 필요합니다 (RUN.md 의 님 실측대로)
+```
