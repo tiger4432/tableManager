@@ -159,7 +159,7 @@ def as_chain_rule(internal: dict) -> dict:
         # be written and could never run.
         #
         # ⚠️ ONLY WHEN IT WRITES, AND THE OTHER SIDE OF THAT TEST NO LONGER EXISTS. This
-        # said `into.read` 「must keep coming out of `as_join_rule` untouched」, which was
+        # said `into.read` 「must keep coming out of the join translator untouched」 (that
         # true until 판정 440 ① retired the read-time join: `expand_declaration` refuses it by
         # name now, so nothing reaches that path from here. The `into` cell still tells the
         # two apart - that is why the refusal can be aimed at one of them - but it separates
@@ -248,35 +248,18 @@ def with_declared_cells(rule: dict, internal: dict) -> dict:
     return rule
 
 
-def from_join_rule(name: str, raw: dict, origin: str = "declared") -> dict:
-    """오늘의 가상 조인 선언 -> 내부 규칙. 읽기 시점에 앉으므로 `into.read`."""
-    raw = raw if isinstance(raw, dict) else {}
-    return {
-        "name": name,
-        "enabled": raw.get("enabled", True),
-        "enabled_written": "enabled" in raw,
-        "on": ({"table": raw["left_table"]} if "left_table" in raw else {}),
-        "derive": {"kind": "join",
-                   "join": _present(raw, JOIN_MODELLED[1:])},
-        "into": {"read": True},
-        "limits": {},
-        "origin": origin,
-        "grammar": "join",
-        "extra": {key: value for key, value in raw.items()
-                  if key not in JOIN_MODELLED},
-    }
-
-
-def as_join_rule(internal: dict) -> dict:
-    """내부 규칙 -> 오늘의 가상 조인 선언 dict."""
-    out = {}
-    on = internal.get("on") or {}
-    if "table" in on:
-        out["left_table"] = on["table"]
-    out.update((internal.get("derive") or {}).get("join") or {})
-    out.update(internal.get("extra") or {})
-    return out
-
+# ⚰️ [총괄 판정 2026-09-23] `from_join_rule` AND `as_join_rule` STOOD HERE - the pair that
+#   translated the READ-TIME join declaration to the internal shape and back. The
+#   grammar they translated retired with `into: {read: true}` (S-282 · 판정 440), and
+#   the count that ended them was: callers outside this file ZERO, once the four that do
+#   not count are taken out (decorator registration, test-only, a config string, a name on
+#   a command line). What used them was one round-trip case over
+#   `virtual_join_rules.json.sample`, which is a sample of that same retired grammar.
+# 🔴 THE PROPERTY DID NOT GO WITH THEM: 「a declaration comes back byte for byte」 is
+#   still measured, over the pair that IS live - `from_chain_rule`/`as_chain_rule` and
+#   `from_declaration` - by the cases this one sat beside.
+# ⚠️ `config/sample/virtual_join_rules.json.sample` now has ZERO readers. Left in place:
+#   deleting a file an operator may still have beside their own is a separate ruling.
 
 def _rename(source: dict, mapping: dict) -> dict:
     return {mapping[key]: value for key, value in source.items() if key in mapping}
@@ -544,8 +527,11 @@ def expand_declaration(declaration, table_config=None,
     # DECLARATION 「stands in `load_virtual_join_rules` instead, through `as_join_rule`」 - and
     # the adoption path it described was deleted. A correction was added on the NEXT LINE and
     # that is not a fix (판정 453): whoever arrives by `git grep` reads the present-tense
-    # sentence first and has their answer before reaching the line under it. The adapter
-    # itself is still there; what went is the path that used it.
+    # sentence first and has their answer before reaching the line under it.
+    # ⚰️ AND THE ADAPTER WENT TOO, 2026-09-23 - `as_join_rule`/`from_join_rule` are the
+    # tombstone above `_rename`. The names in the quoted sentence now resolve to nothing,
+    # which is the point of quoting it: it is kept as the control group for 판정 453, not
+    # as a description of today.
     #
     # 🔴 AND THE DEAD PARAGRAPH IS WHY THE REFUSAL SAYS ITS OWN NAME. Before S-251 a correct
     # `into.read` came out of here with no mapper cell and the loader reported it as

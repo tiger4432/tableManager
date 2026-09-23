@@ -30,15 +30,16 @@ CHAIN_RULES = [
      "target_table": "u", "mapper": "m"},
 ]
 
-JOIN_RULES = [
-    ("slot_trace", {"left_table": "dt_log", "right_table": "dt_inventory",
-                    "left_columns": ["lot", "slot"], "right_columns": ["lot", "slot"],
-                    "cardinality": "one", "expose": ["grade"]}),
-    ("folded", {"left_table": "a", "right_table": "b",
-                "left_columns": ["k"], "right_columns": ["k"],
-                "right_folds": [["strip", "upper"]], "cardinality": "one",
-                "materialize": True, "rewrite_cap": 10000}),
-]
+# ⚰️ [2026-09-23] `JOIN_RULES` AND THE FIVE SPOTS THAT USED IT STOOD HERE. They were
+#   written in the READ-TIME join grammar and round-tripped through `from_join_rule` /
+#   `as_join_rule`, which went in the same commit (`chain/rule_shape.py`, the tombstone
+#   above `_rename`, carries the count).
+# 🔴 WHAT THEY MEASURED IS MEASURED, and by then it was measuring a declaration the
+#   product REFUSES: `into: {read: true}` is refused by name in the loader, which
+#   `test_a_read_time_join_is_retired_by_name.py` holds. The landing a join has today,
+#   `into: {table: ...}`, is walked by
+#   `test_a_declared_join_writes_what_it_says_into_the_table.py`; 「a declaration comes
+#   back byte for byte」 is the chain cases in this file.
 
 
 def test_every_chain_rule_comes_back_byte_for_byte():
@@ -46,12 +47,6 @@ def test_every_chain_rule_comes_back_byte_for_byte():
     for raw in CHAIN_RULES:
         back = rule_shape.as_chain_rule(rule_shape.from_chain_rule(raw))
         assert back == raw, (raw.get("name"), back, raw)
-
-
-def test_every_join_rule_comes_back_byte_for_byte():
-    for name, raw in JOIN_RULES:
-        back = rule_shape.as_join_rule(rule_shape.from_join_rule(name, raw))
-        assert back == raw, (name, back, raw)
 
 
 def test_an_absent_enabled_does_not_become_a_written_one():
@@ -77,11 +72,8 @@ def test_the_shape_says_what_it_derives_with_and_where_it_lands():
     chain = rule_shape.from_chain_rule(CHAIN_RULES[0])
     assert chain["derive"]["kind"] == "mapper"
     assert chain["into"] == {"table": "dt_inventory"}
-
-    join = rule_shape.from_join_rule(*JOIN_RULES[0])
-    assert join["derive"]["kind"] == "join"
-    assert join["into"] == {"read": True}
-    assert join["derive"]["join"]["right_table"] == "dt_inventory"
+    # ⚰️ A join half stood here and asserted the landing `{"read": True}` - the one the
+    #   loader now refuses. Same axis, live declaration: see the tombstone at the top.
 
 
 def test_the_column_trigger_rides_on_the_on_clause():
@@ -119,17 +111,6 @@ def test_every_shipped_chain_rule_survives_the_round_trip():
         assert back == raw, raw.get("name")
 
 
-def test_every_shipped_join_declaration_survives_the_round_trip():
-    document = _shipped("virtual_join_rules.json.sample")
-    declarations = {name: raw for name, raw in document.items()
-                    if isinstance(raw, dict) and not name.startswith("_")}
-    assert declarations, "출하 조인 선언이 비어 있으면 이 게이트는 공허하다"
-
-    for name, raw in declarations.items():
-        back = rule_shape.as_join_rule(rule_shape.from_join_rule(name, raw))
-        assert back == raw, name
-
-
 # ---------------------------------------------------------------------------
 # 새 문법 — 「옛것 -> 새 문법 -> 옛것」이 같아야 이행이 무손실이다 (S-234 8.3 ④)
 # ---------------------------------------------------------------------------
@@ -143,13 +124,6 @@ def test_a_chain_rule_written_in_the_new_grammar_comes_back_as_itself():
         assert back == raw, (raw.get("name"), written, back)
 
 
-def test_a_join_written_in_the_new_grammar_comes_back_as_itself():
-    for name, raw in JOIN_RULES:
-        written = rule_shape.to_declaration(rule_shape.from_join_rule(name, raw))
-        back = rule_shape.as_join_rule(rule_shape.from_declaration(written))
-        assert back == raw, (name, written, back)
-
-
 def test_every_shipped_declaration_survives_the_new_grammar():
     """출하 선언 전건으로 같은 것을 다시 — 이행이 붙을 대상이 바로 이것들이다."""
     document = _shipped("chain_rules.json.sample")
@@ -161,12 +135,8 @@ def test_every_shipped_declaration_survives_the_new_grammar():
         written = rule_shape.to_declaration(rule_shape.from_chain_rule(raw))
         assert rule_shape.as_chain_rule(rule_shape.from_declaration(written)) == raw, \
             raw.get("name")
-
-    joins = {name: raw for name, raw in _shipped("virtual_join_rules.json.sample").items()
-             if isinstance(raw, dict) and not name.startswith("_")}
-    for name, raw in joins.items():
-        written = rule_shape.to_declaration(rule_shape.from_join_rule(name, raw))
-        assert rule_shape.as_join_rule(rule_shape.from_declaration(written)) == raw, name
+    # ⚰️ The shipped JOIN sample was walked here too. It is a sample of the retired
+    #   read-time grammar - see the tombstone at the top.
 
 
 def test_the_new_grammar_does_not_invent_empty_cells():
