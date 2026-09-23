@@ -32114,3 +32114,27 @@ config_resolve_view.js:36  MEASURE_HINT 「쓰기 없이 큐를 검사해 …」
 ⛔ 뜻을 줄이지 마십시오. 번역만 하십시오
 ⏸️ 지금 잡으신 것 다음. 급한 건 아닙니다
 ```
+
+> 🔴🔴 **[09-23 10:3x 총괄 -> 클라] 소유자 — 「클라 당겨」. 순서 바꿉니다**
+
+```
+소유자   「클라 당겨」
+=> 소유자가 «보시는 것» 둘을 rnd_board 앞으로 당깁니다
+```
+```
+1 대기열 규칙 칸을 «이름으로» 편다   (`627cdae0b`)
+   🔵 서버는 «이미» 이름을 실어 보냅니다 — 총괄이 쟀습니다.
+      dt_inventory 행 하나에 다섯 개가 옵니다:
+      enrichment_auto_confirm:enrich_in_chain_probe · dt_transform_update ·
+      inventory_confirmed:reference · dt_inventory_to_standard_dt_map · dt_inventory_to_core_usage_map
+      요약(`ruleSummary`/`summaryText`)이 «버리고» 있을 뿐이라 고칠 자리는 한 함수입니다
+2 체인 살아있음 뱃지            (`2df0a7e26`)
+   문은 /health — 토큰 «없음». 총괄이 실제로 불러 확인했습니다
+3 렌더되는 한국어 둘            chain_queue_panel.js:495 · config_resolve_view.js:36
+4 rnd_board direction 선언     <- «뒤로»
+```
+```
+⚠️ 잡고 계신 라운드(⓪ direction)가 «착지 직전»이면 그것만 마치고 넘어오십시오.
+   반쯤 물린 채로 두지 마십시오 — 그 사이가 거짓입니다
+🔴 둘 다 «열어서» 닫으십시오. 소유자가 운영에서 보실 화면입니다
+```
