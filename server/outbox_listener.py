@@ -63,6 +63,13 @@ class OutboxListener:
         # reconnecting every minute」 are the two states an operator needs told apart, and
         # a boolean renders them alike.
         self._reconnects = 0
+        #: 🔴 CLOSED ON PURPOSE. The reader sits in `select` on ANOTHER THREAD, so
+        #:   closing the connection under it makes that select raise. Without this
+        #:   the reader cannot tell a shutdown from a dead connection: it logged the
+        #:   shutdown as an ERROR and then REBUILT the connection the shutdown had
+        #:   just closed (소유자 2026-09-23 「서버 종료시 아웃박스 리스너 얼레디
+        #:   클로즈 에러라는데」). One flag, read in the two places that care.
+        self._closed = False
 
     def _ensure_connection(self):
         """LISTEN 커넥션이 없으면(최초/재생성) 생성하고 LISTEN을 1회 등록한다."""
@@ -119,6 +126,11 @@ class OutboxListener:
                 pass
 
     def _wait_blocking(self, timeout):
+        # ⛔ NOT A RECONNECT POINT. Once closed, this listener does not build another
+        #    connection - the caller's loop is on its way out and a fresh LISTEN
+        #    connection at shutdown is exactly the leak `close()` exists to prevent.
+        if self._closed:
+            return False
         try:
             self._ensure_connection()
             connection = self._connection
@@ -139,6 +151,15 @@ class OutboxListener:
                 return True
             return False
         except Exception as e:
+            # 🔴 TWO REASONS, TWO WORDS. `close()` while a wait is in flight is a SHUTDOWN
+            #    and the exception is the shutdown arriving, not a fault; folding it into
+            #    the line below made a normal stop read as an error and, worse, sent this
+            #    listener to build a connection nobody would close.
+            if self._closed:
+                logger.info(
+                    "[Outbox Queue] listener connection closed while a wait was in "
+                    "flight - that is the shutdown, not a fault (%s)", e)
+                return False
             # 커넥션 끊김/예외 시 안전 재생성(다음 wait에서 새 LISTEN 커넥션 확보).
             logger.error(f"PostgreSQL LISTEN/NOTIFY socket wait failed, resetting listener connection: {e}")
             self._reset_connection()
@@ -150,4 +171,7 @@ class OutboxListener:
         return await asyncio.to_thread(self._wait_blocking, timeout)
 
     def close(self):
+        """Close for good. 🔴 SAYS SO FIRST, because the reader is on another thread and
+        finds out by having its `select` raise - see `_closed`."""
+        self._closed = True
         self._reset_connection()

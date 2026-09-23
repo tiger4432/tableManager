@@ -425,7 +425,11 @@ async def startup_event():
     #    시도하며 로그만 더럽힌다 — 좌석(`_notify_outbox_once`)이 거는 것과 «같은 술어».
     try:
         if engine.dialect.name == "postgresql":
-            main_loop.create_task(_outbox_queue_broadcast_loop())
+            # 🔴 THE HANDLE IS KEPT. Shutdown closes this listener's connection, and
+            #    the reader sits in `select` on a worker thread - without a handle
+            #    there is no way to stop the reader BEFORE taking its connection away.
+            global _outbox_task
+            _outbox_task = main_loop.create_task(_outbox_queue_broadcast_loop())
             logger.info("[Outbox Queue] change-broadcast listener started (channel=%s).",
                         event_constants.OUTBOX_NOTIFY_CHANNEL)
         else:
@@ -664,6 +668,32 @@ async def shutdown_event():
 
     # 전용 LISTEN 커넥션은 풀의 것이 아니라 «진짜 닫아야» 한다(S-167: 풀에 돌려주면
     # autocommit 인 채로 다음 세션이 집어 간다). 재기동마다 하나씩 남는 것도 막는다.
+    # 🔴 THE READER STOPS BEFORE ITS CONNECTION DOES. Closing first leaves the wait
+    #    thread inside `select` on a connection that just went away; it surfaced as
+    #    소유자's 「아웃박스 리스너 얼레디 클로즈 에러」 and the listener then rebuilt the
+    #    connection this shutdown had closed.
+    # ⚠️ SHIELDED, WITH A BOUND. `wait()` offloads a blocking `select` to a thread and a
+    #    cancel cannot interrupt that thread, so awaiting it plainly would hold shutdown
+    #    for the whole timeout. Two seconds, then close anyway - the listener knows a
+    #    close is deliberate and says so instead of erroring.
+    if _outbox_task is not None and not _outbox_task.done():
+        # ⚠️ LOCAL, because module scope binds it as `_health_asyncio` and nothing else.
+        #    Written out rather than leaned on: this runs once, at shutdown, and a
+        #    NameError here is a shutdown that stops half way.
+        import asyncio
+
+        logger.info("Stopping outbox change-broadcast listener task...")
+        _outbox_task.cancel()
+        try:
+            await asyncio.wait_for(asyncio.shield(_outbox_task), 2.0)
+        except (asyncio.CancelledError, asyncio.TimeoutError):
+            pass
+        except Exception as task_error:                            # noqa: BLE001
+            # Named, not swallowed: what did NOT stop is the thing the next line is
+            # about to close underneath.
+            logger.warning("[Outbox Queue] listener task ended with %s: %s",
+                           type(task_error).__name__, task_error)
+
     if _outbox_listener is not None:
         logger.info("Closing outbox change-broadcast listener...")
         _outbox_listener.close()
@@ -700,6 +730,9 @@ manager = ConnectionManager()
 
 #: 아웃박스 탄생을 «듣고» 브라우저에 흘리는 태스크. 체인 워커와 «같은 채널»을 듣는다.
 _outbox_listener = None
+#: The broadcast loop's task, so shutdown can stop the reader before closing its
+#: connection. `None` on a deployment where the loop never started (sqlite).
+_outbox_task = None
 
 
 async def _outbox_queue_broadcast_loop():
