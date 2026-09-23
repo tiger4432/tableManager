@@ -274,6 +274,11 @@ MAPPER_REGISTRY: dict[str, object] = {}
 #: the product cannot discover what a mapper reads, so the mapper has to say.
 MAPPER_PARAMS: dict[str, tuple] = {}
 
+#: Has anyone walked the mapper package in THIS process yet. Not "did it succeed" -
+#: a package that cannot be imported will not import on the second ask either, and
+#: retrying per name would walk it once per rule in a file of refusals.
+_DISCOVERY_ATTEMPTED = False
+
 
 class MapperNameClaimedTwice(MapperContractError):
     """⛔ REFUSED BY NAME, NEVER RESOLVED. Two mappers under one name means a rule naming it
@@ -293,6 +298,8 @@ def reset_registry():
     """
     MAPPER_REGISTRY.clear()
     MAPPER_PARAMS.clear()
+    global _DISCOVERY_ATTEMPTED
+    _DISCOVERY_ATTEMPTED = False
 
 
 def _origin(fn):
@@ -338,6 +345,9 @@ def discover(package="mappers"):
     import importlib
     import pkgutil
 
+    global _DISCOVERY_ATTEMPTED
+    _DISCOVERY_ATTEMPTED = True
+
     refusals = {}
     try:
         pkg = importlib.import_module(package)
@@ -363,6 +373,39 @@ def discover(package="mappers"):
     except Exception as exc:                                       # noqa: BLE001
         refusals["chain.dynamic_mappers"] = "%s: %s" % (type(exc).__name__, exc)
     return tuple(sorted(MAPPER_REGISTRY)), refusals
+
+
+def ensure_discovered(package="mappers"):
+    """Walk the mapper package if nobody has yet, so 「that name is not registered」
+    cannot be this process's way of saying 「I have not looked」.
+
+    🔴 BOOT ASKED BEFORE ANYONE LOOKED. `load_chain_rules()` runs first and
+    `warmup_worker` calls `discover()` after it, so a declaration whose only mapper
+    cell named one of the owner's functions was refused as unresolvable on the FIRST
+    boot and accepted after a reload - two answers to one question, and the quieter
+    one is the wrong one. `system_reload` met the same shape from the other side and
+    was fixed by adding a `discover()` call there; this is that fix at the seat, so
+    the next moment that asks early does not need a third copy.
+
+    ⚠️ ADDITIVE. `discover()` does not clear - only `reset_registry()` does - so
+    filling late cannot empty what a caller already installed.
+    """
+    global _DISCOVERY_ATTEMPTED
+    if _DISCOVERY_ATTEMPTED:
+        return
+    # 🔴 RECORDED HERE, NOT LEFT TO `discover`. The promise this function makes is
+    #    「at most one walk」, so it has to be the one that keeps it - a caller that
+    #    replaces `discover` (a test, a stub) would otherwise turn a file of
+    #    unknown names into one package walk per rule.
+    _DISCOVERY_ATTEMPTED = True
+    try:
+        discover(package)
+    except Exception:                                          # noqa: BLE001
+        # A judge that cannot look must still answer. `discover` already turns a
+        # broken module into a refusal message rather than a raise; this catches the
+        # case where the walk itself dies, and the caller then reads an empty
+        # registry exactly as it did before.
+        pass
 
 
 def mapper(target_table=None, *, source_name: str = "chain_ingestion",
