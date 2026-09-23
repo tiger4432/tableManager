@@ -290,6 +290,7 @@ const FLOORS = new Map([
   //    constant written back as a literal, which changes nothing today and is guarding a
   //    future edit rather than a present bug.
   ['chain_queue_panel_harness.mjs', 152],
+  ['outbox_queue_panel_harness.mjs', 54],
   ['company_roundtrip_harness.mjs', 84],
   ['coord_table_paste_harness.mjs', 52],
   ['copy_header_count_harness.mjs', 151],

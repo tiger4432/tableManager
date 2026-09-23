@@ -4,7 +4,7 @@
 //   ⑤ 감사 탭은 그대로 (CSS `:has()` 라 여기선 못 잰다 — 화면을 열어서 잰다)
 // ⚠️ 접기 단언은 이 커밋에서 죽는다. 규칙이 «칸»이 돼서 접을 것이 없다 (소유자: 「컬럼 추가」).
 import { makeDoc, walk } from './lib/board_dom.mjs';
-import { outboxQueueView, OutboxQueuePanel, summaryText } from '../src/outbox_queue_panel.js';
+import { outboxQueueView, OutboxQueuePanel } from '../src/outbox_queue_panel.js';
 import { formatAge } from '../src/chain_queue_panel.js';
 
 let pass = 0; const failures = [];
@@ -169,36 +169,42 @@ console.log('\n[게이트 ③ 한 행 = 한 줄. 칸 여섯, 가로지르는 노
   eq('C6 rows live in their own scroll box', byClass(mount, 'queue-rows').length, 1);
 }
 
-console.log('\n[㉯ 규칙은 «칸»이 됐다 — 사유별 수를 «잃지 않고»]');
+console.log('\n[㉯ 규칙은 «이름»으로 선다 — 접지 않는다 (소유자 2026-09-23)]');
 {
   const mount = mountPanel(REPLY([MANY]));
-  const cell = byClass(mount, 'queue-rules')[0];
-  // 🔴 「규칙 5」였으면 이 화면의 존재 이유인 「왜 안 도나」가 사라진다.
-  ok('R1 the rules cell counts what runs', cell.textContent.includes('2 firing'), cell.textContent);
-  ok('R1b ...and what does not, BY REASON, in the server\'s words',
-    cell.textContent.includes(`3 ${OFF}`), cell.textContent);
-  const two = byClass(mountPanel(REPLY([TWO_REASONS])), 'queue-rules')[0].textContent;
-  ok('R2 two reasons stay two — no word folds them together',
-    two.includes(`1 ${OFF}`) && two.includes(`1 ${CHAIN_ONLY}`), two);
-  // 🔴 칸이 좁아 «잘린다»(실측 124px vs 302px). 온 문장은 title 이 들어야 잃지 않는다.
-  eq('R3 the full sentence rides in title, because the cell truncates it',
-    cell.getAttribute('title'), cell.textContent);
-  ok('R3b ...and that title is the whole reason, not a prefix',
-    cell.getAttribute('title').includes(OFF), cell.getAttribute('title'));
+  const cell = byClass(mount, 'queue-rules-cell')[0];
+  const names = byClass(mount, 'queue-rule-name').map((n) => n.textContent);
+  // 🔴 「3 <사유>」로 세면 «어느» 규칙인지가 사라진다. 소유자가 찾는 것이 그 이름이다.
+  eq('R1 every rule on the row gets its own line', byClass(mount, 'queue-rule').length, 5);
+  eq('R1b ...and each line names the rule', names.join(','), 'a,b,c,d,e');
+  eq('R1c 도는 것은 «도는 것»으로 표시된다', byClass(mount, 'queue-rule-fires').length, 2);
+  // 🔴 사유 칸의 저자는 «서버»다. 이 단언이 곧 변이 게이트다 — why_not 을 한 글자 바꾸면
+  //    화면이 따라 바뀌어야 하고, 안 바뀌면 화면이 자기 문장을 든 것이다.
+  const whys = byClass(mount, 'queue-rule-why').map((n) => n.textContent);
+  eq('R2 a rule that will not fire carries the SERVER\'s sentence, verbatim',
+    whys.join('|'), [OFF, OFF, OFF].join('|'));
+  const mutated = `${OFF}X`;
+  const followed = byClass(mountPanel(REPLY([{ ...MANY, outbox_id: 31,
+    rules: [{ name: 'c', will_fire: false, why_not: mutated }] }])), 'queue-rule-why')[0].textContent;
+  eq('R2b MUTATION: change one character of why_not and the screen follows', followed, mutated);
+  const two = byClass(mountPanel(REPLY([TWO_REASONS])), 'queue-rule-why').map((n) => n.textContent);
+  eq('R3 two reasons stay two — no word folds them together', two.join('|'), `${OFF}|${CHAIN_ONLY}`);
   // 사유 없는 거절은 사유를 «지어내지» 않는다
   const bare = byClass(mountPanel(REPLY([{ ...WAITING, outbox_id: 23,
-    rules: [{ name: 'g', will_fire: false }] }])), 'queue-rules')[0].textContent;
-  ok('R4 a refusal with no reason says the count and invents nothing',
-    bare.includes('1 not firing') && !bare.includes('switched off'), bare);
+    rules: [{ name: 'g', will_fire: false }] }])), 'queue-rule-why')[0].textContent;
+  eq('R4 a refusal with no reason says only that it does not fire', bare, 'not firing');
+  // 🔴 접힘의 잔해가 남았나 — 수로 접던 낱말이 화면에 있으면 접는 자리가 아직 있는 것이다
+  ok('R4b the folded count is gone from the cell', !/\d+\s+firing/.test(cell.textContent),
+    cell.textContent);
   // 조립식의 정의: 같은 화면에 둘을 앉혀도 서로를 안 건드린다
   const a = mountPanel(REPLY([MANY]));
   const b = mountPanel(REPLY([TWO_REASONS]));
   ok('R5 two panels on one page draw their own payloads',
-    byClass(a, 'queue-rules')[0].textContent !== byClass(b, 'queue-rules')[0].textContent,
-    byClass(a, 'queue-rules')[0].textContent);
-  // 좌석 하나 — 화면이 부르는 그 함수가 수를 짓는다
-  eq('R6 the cell text is the shared seat\'s, not a second author',
-    cell.textContent, summaryText(outboxQueueView(REPLY([MANY])).rows[0].ruleSummary));
+    byClass(a, 'queue-rules-cell')[0].textContent !== byClass(b, 'queue-rules-cell')[0].textContent,
+    byClass(a, 'queue-rules-cell')[0].textContent);
+  // 🔴 넘침은 «칸 안»에서 끝난다 — 줄들이 칸의 자식이어야 그 규칙이 걸린다 (C2 가 행을 지킨다)
+  ok('R6 the lines live inside the cell, not across the row',
+    byClass(mount, 'queue-rule').every((n) => n.parentNode === cell), byClass(mount, 'queue-rule').length);
 }
 
 console.log('\n[㉰ 머리글이 «이 쪽»을 말한다 — 수는 이 쪽의 수다]');

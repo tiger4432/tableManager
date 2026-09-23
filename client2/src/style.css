@@ -2822,8 +2822,25 @@ body.resizing-active .history-sidebar {
 /* Two lines, because the key and the column answer different questions and the mockup gives
    each its own line rather than joining them with a separator nobody can scan. */
 .audit-target { flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; }
-.audit-target-key, .queue-rules, .queue-note { font-family: var(--font-mono); font-size: 11px; color: var(--text); }
-.audit-target-key, .queue-table, .queue-rules, .queue-note { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.audit-target-key, .queue-note { font-family: var(--font-mono); font-size: 11px; color: var(--text); }
+.audit-target-key, .queue-table { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 🔴 규칙은 «접지 않는다» (소유자 2026-09-23). 이름이 한 줄씩 서고, 넘치면 «칸 안»에서 흐른다 —
+   표 밖으로 나가면 그게 다음 결함이다.
+   ⚠️ 이 블록은 «반드시» 위 `.audit-cell, .queue-cell` 뒤에 있어야 한다 — 그 규칙이 같은
+      특정도로 `align-items: center` 와 `overflow: hidden` 을 건다. 앞에 두면 여기 셋이 조용히 진다.
+   🔴 세로로는 «행이 자란다». 칸 안에 또 스크롤을 두지 않는다 — 목록이 이미 구르고(`.queue-rows`),
+      스크롤 안의 스크롤은 규칙 몇 개를 «없는 것»으로 만든다. 실측: 판 폭 599px 에서 이 칸은 202px. */
+.queue-rules-cell, .queue-note-cell { flex-direction: column; align-items: stretch;
+                    justify-content: center; gap: 3px; padding-block: 5px; overflow: visible; }
+.queue-note { white-space: normal; overflow-wrap: anywhere; }
+.queue-rule { display: flex; flex-wrap: wrap; gap: 0 6px; align-items: baseline; min-width: 0; }
+.queue-rule-name { font-family: var(--font-mono); font-size: 11px; color: var(--text);
+                   flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.queue-rule-fires { font-size: 10.5px; color: var(--success); }
+/* 사유는 «자기 줄»을 쓴다 (flex-basis 100%). 이름 옆에 붙이면 203px 에서 서너 글자씩 접힌다.
+   자르지 않는다 — 자르면 소유자가 찾는 사유가 반만 보인다. */
+.queue-rule-why { font-size: 10.5px; color: var(--warning); flex: 1 1 100%;
+                  min-width: 0; padding-left: 8px; overflow-wrap: anywhere; }
 .audit-target-col { font-family: var(--font-sans); font-size: 9.5px; font-weight: 600; letter-spacing: .4px; text-transform: uppercase; color: var(--text-muted); }
 
 .audit-change { gap: 6px; font-family: var(--font-mono); font-size: 11px; white-space: nowrap; }

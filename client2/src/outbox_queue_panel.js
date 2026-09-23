@@ -20,36 +20,6 @@ function ruleLines(row) {
 }
 
 /**
- * 규칙 칸이 드는 «수». 총수가 아니라 «사유별»이다 —
- * 「규칙 5」로 접으면 이 화면의 존재 이유인 「왜 안 도나」가 사라진다.
- * ⛔ 사유를 낱말로 «요약»하지 않는다. 묶는 키가 서버 문장이라 두 사유가 한 낱말로 합쳐질 수 없다.
- */
-function ruleSummary(rules) {
-  let firing = 0;
-  const groups = [];
-  const at = new Map();
-  for (const rule of rules) {
-    if (rule.willFire) { firing += 1; continue; }
-    if (!at.has(rule.whyNot)) {
-      at.set(rule.whyNot, groups.length);
-      groups.push({ whyNot: rule.whyNot, count: 0 });
-    }
-    groups[at.get(rule.whyNot)].count += 1;
-  }
-  return Object.freeze({ firing, notFiring: Object.freeze(groups.map((g) => Object.freeze(g))) });
-}
-
-/** 「2 돎 · 3 <서버 사유>」. 사유가 없으면 «수만» — 없는 사유를 짓지 않는다. */
-export function summaryText(summary) {
-  const parts = [];
-  if (summary.firing) parts.push(`${summary.firing} firing`);
-  for (const g of summary.notFiring) {
-    parts.push(g.whyNot ? `${g.count} ${g.whyNot}` : `${g.count} not firing`);
-  }
-  return parts.join(' · ');
-}
-
-/**
  * 이 «쪽»의 행들이 한 값으로 모이는 칸이면 그 값, 섞이면 «빈 문자열».
  * 🔴 절대어는 계기를 같은 문장에 달고만 나간다. 그래서 「섞였다」는 말도 «안 한다» —
  *    말할 수 있을 때만 값을 내고, 아니면 그 칸에 대해 아무 말도 안 한다.
@@ -96,7 +66,6 @@ export function outboxQueueView(payload, opts = {}) {
       stateDetail: str(row.state_detail),
       broadcast: str(row.broadcast_state),
       rules: Object.freeze(rules),
-      ruleSummary: ruleSummary(rules),
       // 🔴 규칙이 빈 것이 「규칙이 없다」인지 «안 봤다»인지는 이 문장이 가른다. DELETE·제어
       //    행은 트리거가 아니라서 빈 것이고, 빈 칸으로 두면 「규칙이 없다」로 읽힌다.
       note: str(row.note),
@@ -170,6 +139,34 @@ export class OutboxQueuePanel {
     return el;
   }
 
+  /** 잘리지 않고 «접히는» 칸. 규칙 칸과 같은 열에 살아서 같은 규율을 쓴다. */
+  _wrapCell(cls, text) {
+    const el = this._line(`audit-cell queue-cell ${cls}-cell`, '');
+    el.appendChild(this._line(cls, text));
+    return el;
+  }
+
+  /**
+   * 규칙 «하나»에 줄 «하나». 이름을 대고, 안 돌면 서버 문장을 그대로 단다.
+   *
+   * 🔴 소유자 2026-09-23: 「어떤 rule 인지 구체적으로 적어 «접지말고»」 — 행이 왜 안 빠지는지를
+   *    이 칸으로 찾고 계신다. 「3 <사유>」로 세면 «어느» 규칙인지가 사라진다.
+   * ⛔ 사유를 짓지도 요약하지도 않는다. 사유 칸의 저자는 «서버»다 — 사유가 없을 때만
+   *    「안 돈다」는 사실을 우리 낱말로 적고, 그건 사유가 아니다.
+   */
+  _rulesCell(rules) {
+    const cell = this._line('audit-cell queue-cell queue-rules-cell', '');
+    for (const rule of rules) {
+      const one = this._line('queue-rule', '');
+      one.setAttribute('data-firing', rule.willFire ? 'yes' : 'no');
+      one.appendChild(this._line('queue-rule-name', rule.name || '—'));
+      if (rule.willFire) one.appendChild(this._line('queue-rule-fires', 'firing'));
+      else one.appendChild(this._line('queue-rule-why', rule.whyNot || 'not firing'));
+      cell.appendChild(one);
+    }
+    return cell;
+  }
+
   render(payload, opts = {}) {
     const view = outboxQueueView(payload, opts);
     this.root.textContent = '';
@@ -227,8 +224,10 @@ export class OutboxQueuePanel {
       line.appendChild(state);
 
       // 규칙이 없는 행은 «왜 없는지»를 서버 문장이 말한다. 빈 칸으로 두면 「규칙이 없다」로 읽힌다.
-      const text = row.rules.length ? summaryText(row.ruleSummary) : row.note;
-      line.appendChild(this._clipCell(row.rules.length ? 'queue-rules' : 'queue-note', text));
+      // 🔴 같은 «열»이라 같은 규율을 쓴다 — 규칙은 다 보이고 사유만 잘리면 한 칸에 답이 둘이다.
+      line.appendChild(row.rules.length
+        ? this._rulesCell(row.rules)
+        : this._wrapCell('queue-note', row.note));
       body.appendChild(line);
     }
     this.root.appendChild(body);
