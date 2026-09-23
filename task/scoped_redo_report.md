@@ -55685,3 +55685,45 @@ gate_refusal    세 문장으로 갈립니다 — alive / NOT alive(=취소가 �
 ```
 남은 넷은 제 축이 아닙니다 — 박스의 DB URL 핀과 등록 속성 건입니다. 판정 주시면 봅니다
 ```
+
+> 📋 **[09-23 10:4x 구현자 -> 총괄] 빨강 다섯 — 이름과 「제품이냐 박스냐」. 지시대로 «안 건드렸습니다»**
+> 결과: **제품 결함 «0** · 박스 조건 2 · 순서 효과 3
+
+| # | 시험 | 혼자 돌리면 | 무엇인가 |
+|---|---|---|---|
+| ① | `test_a_registration_may_carry_its_attributes_into_the_table::test_a_registration_with_nothing_to_say_is_still_a_null_payload` | **빨강** | **박스 조건** — 아래 ⓐ |
+| ② | 같은 파일 `::test_an_install_that_predates_attributes_is_widened_once` | **빨강** | **박스 조건** — 아래 ⓐ |
+| ③ | 같은 파일 `::test_a_registration_carrying_its_attributes_is_accepted` | 초록 | **순서 효과** (①② 가 남긴 상태) |
+| ④ | `test_ddl_never_reaches_production::TestTheDecisionIsAnAllowlist::test_an_undeclared_postgres_url_is_refused_even_when_it_looks_harmless` | 초록 | **순서 효과** — 아래 ⓑ |
+| ⑤ | `test_dev_env_isolation::TestSuiteNeverTouchesProduction::test_engine_url_is_the_pinned_value_not_the_ambient_one` | 초록 | **순서 효과** — 아래 ⓑ |
+
+### ⓐ ①② — 이 박스의 DB 가 «은퇴한 제약»을 아직 들고 있습니다
+
+```
+오류   psycopg2 CheckViolation: "ck_ledger_objectless_has_no_payload"
+      (릴레이션 ledger_events_2026_09)
+저장소  ledger/schema.py:127  RETIRED_OBJECTLESS_CONSTRAINT = "ck_ledger_objectless_has_no_payload"
+      scripts/migrate_ledger_objectless_payload_constraint.py — 그 제약을 «넓히는» 마이그레이션
+=> 제품은 이미 옮겼고, 이 박스의 그 파티션에만 «옛 제약»이 남아 있습니다.
+   고치는 법이 «이미 출하돼 있습니다» — 그 스크립트를 이 박스에 돌리면 됩니다
+⛔ 지시대로 «안 돌렸습니다». 지금 그 자리를 만지면 16 이 사라진 원인을 영영 못 가립니다
+```
+
+### ⓑ ④⑤ — PG 레인이 `ASSY_TEST_DATABASE_URL` 을 «흘립니다»
+
+```
+둘만 따로 돌리면 «초록»입니다 (2 passed)
+깨끗한 프로세스에서 잰 것:
+   db_safety.check_test_database("…/assy_qa", opt_in=None)
+   -> 거절 문장을 돌려줍니다. 카나리아로 운영 URL 도 거절합니다 => «가드는 멀쩡합니다»
+pytest 안(고립)에서도 같은 답입니다. 그런데 전체 실행에서는 [] 를 돌려줍니다
+=> 옆에서 돈 PG 레인이 그 환경변수를 «선언»한 채로 두고 갑니다.
+   ④ 는 「선언 «안 된» URL 이 거절되나」를 재는데, 그 시점엔 바로 그 URL 이 «선언돼» 있습니다
+   ⑤ 도 같은 변수입니다 — conftest:17 이 DATABASE_URL 을 그 변수 «또는» sqlite 로 핀합니다
+=> 제품이 아니라 «하니스»입니다. 고치는 자리는 그 변수를 세우는 쪽의 «되돌리기»입니다
+```
+
+```
+🔴 제품 결함은 «0** 입니다. 다섯 중 둘은 박스에 마이그레이션 하나가 안 돌았고,
+   셋은 시험끼리 상태를 흘립니다. 판정 주실 때까지 그대로 둡니다
+```
