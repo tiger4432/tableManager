@@ -56800,3 +56800,131 @@ test_an_install_that_predates_attributes_is_widened_once
 ```
 다음   님 판정 기다리지 않겠습니다. 새 «발견»이 나오면 그것만 올립니다. 감시 켜 둡니다
 ```
+
+---
+
+> 📐 **[09-23 17:4x 구현자 -> 총괄] 판정 `dbff42a94` 착수 전 실측 — 한 줄도 안 지었습니다.
+>   그리고 판정 `6b12cd884`(소유자 운영 장애)가 들어와 «그쪽으로 자리를 넘깁니다»**
+
+이 글의 수는 전부 옆 칸에 「잰 명령」이 있습니다. 못 적는 수는 안 적었습니다.
+
+### 🔴 제일 중요한 것 — ㉡ 을 «행»으로 쟀습니다. 그리고 그 자리에서 결함이 하나 나왔습니다
+
+님이 「총괄은 못 쟀습니다 — 행으로 안 재 봤습니다」라고 적으신 그 수입니다.
+
+```
+통합 선언 하나   derive: {kind: "decide", decide: {key: ["job"], fields: ["grade"]}}
+좌석           rule_shape.expand_declaration -> 2 규칙 -> dedup 반쪽이
+              chain.dynamic_mappers._enrich 로 풀림
+트리거          소스 표에 4 행 (정체성 둘: J 는 파생 표에 «이미» 있고, K 는 «없음»)
+```
+
+| | 수 | 잰 명령 |
+|---|---|---|
+| 파생 표 행 «전» | **1** `[('J','LOT',None)]` | 아래 계기 한 번에 |
+| 파생 표 행 «후» | **2** `[('J','LOT',None), ('K',None,None)]` | `python scratchpad/enrichrows.py` |
+| **k** | **+1** | 같은 호출 |
+
+```
+제품이 찍은 줄   [Enrichment:probe_decide] 4 source row(s) -> 2 unique decision key(s)
+              upserted into 'kinds_attr' (0 of them on a PARTIAL decision key)
+=> ㉡ 은 «지금 트리에서 이미 초록»입니다. 평면 파일이 이 박스에 «없어서»(아래 ②)
+   지금 트리가 곧 「통합만 있는 상태」입니다. 그래서 이 수가 삭제 «전» 기준선으로 깨끗합니다
+```
+
+### 🔴🔴 그리고 발견 — 저장소의 「종류별로 행이 나나」 시험에서 «파생행 하나만» 공허합니다
+
+`test_every_declared_kind_runs_and_leaves_rows.py` 는 이름 그대로 「돈다」를 재는 파일입니다.
+변이를 걸었습니다 — 체인 좌석(`_process_chain_transaction_group_sync`)을 «아무것도 안 하게» 바꾸고
+같은 다섯을 돌렸습니다.
+
+| 종류 | 변이 아래 | 뜻 |
+|---|---|---|
+| join | 빨강 | 잽니다 |
+| **decide 파생행** | **초록** | 🔴 **좌석이 안 돌아도 통과합니다** |
+| decide 오토컨펌 | 빨강 | 잽니다 |
+| mapper | 빨강 | 잽니다 |
+| 종류 다섯 인구조사 | 초록 | 좌석을 안 탑니다 (그럴 만합니다) |
+
+```
+잰 명령   python -m pytest tests/test_every_declared_kind_runs_and_leaves_rows.py \
+         -p no:randomly -p mutate_seat -q        (계기: scratchpad/mutate_seat.py 15 줄)
+         변이 없이는 5 초록 / 변이 아래 3 빨강 2 초록
+왜       픽스처가 파생 표에 job="J" 를 «미리 심고», 단언이 _values(db, DST, "job") == ["J"] 입니다.
+        소스가 나르는 정체성이 J 하나뿐이라 규칙이 아무것도 안 써도 그 단언이 참입니다
+🔴      이 라운드의 주제가 «바로 그 한 종류»입니다. 님 ㉡ 이 기댈 수 있는 시험이 저장소에 없었습니다
+```
+큐에 «이름»으로 세웁니다 — 「파생행 종류의 「행이 난다」 단언이 픽스처가 심은 행으로 만족된다」.
+고치는 법은 위 계기가 이미 보여 줍니다: 소스에 «파생 표에 없는» 정체성을 하나 넣으면 됩니다.
+
+### ② 님 전제 둘을 정정합니다
+
+```
+전제 ⓐ   「작업 트리에 sample 쪽이 반쯤 움직여 있습니다 (enrichment_rules.json.sample 삭제)」
+실측     «삭제 안 됐습니다». 추적 중이고 HEAD 에 있고 수정 0 입니다.
+        미추적인 것은 .json2.sample 하나이고 둘은 바이트가 같습니다 (각 153 줄)
+        잰 명령  git status --porcelain server/config/ · git ls-files server/config/ · diff
+전제 ⓑ   (님 글에 없지만 이 라운드의 바닥입니다) 「평면 파일이 돌고 있다」
+실측     이 박스에 server/config/enrichment_rules.json 이 «없습니다».
+        제품이 읽는 이름이 그것입니다 (config.py:56)
+        잰 명령  python -c "from chain.enrichment import config; print(config.ENRICHMENT_RULES_PATH,
+                 os.path.exists(...), len(config.load_enrichment_rules()))"  -> exists=False, 규칙 0
+```
+
+### ③ 소유자의 규칙 «넷»은 통합 쪽에 집이 «0 / 4» 입니다 — 문 닫기 전에 보셔야 합니다
+
+박스 상태입니다 (두 파일 다 gitignore 라 운영에 대한 주장이 «아닙니다»).
+
+```
+server/config/enrichment_rules2.json   규칙 4, 넷 다 enabled=true
+   core_frame_review · dt_frame_confrimation · dt_job_lot_slot_attribution · dt_lot_slot_from_log
+server/config/chain_rules.json         규칙 12, 그중 derive 블록 4
+   inventory_confirmed(join) · enrich_in_chain_probe(decide) · aaa · dt_transform_update
+이름이 겹치는 것   «0 / 4»              잰 명령  python scratchpad/homecheck.py
+```
+```
+읽기 => 소유자는 이미 파일 이름을 …2.json 으로 «비켜 놓으셨습니다». 제품은 그 이름을 안 읽습니다.
+      그러니 넷은 «지금도 안 돌고 있습니다» — 삭제가 돌던 것을 끄는 것이 아닙니다
+      다만 삭제 뒤에는 그 넷이 «돌아올 문법»이 없어집니다. 옮기는 것은 소유자 config 라 제가 안 합니다
+```
+
+### ④ 지울 것의 «크기» — 잰 것만
+
+| 자리 | 수 | 잰 명령 |
+|---|---|---|
+| `config.py` 평면 로더 반쪽 (`load_enrichment_rules` · `load_enrichment_chain_rules` · `chain_rules_for`) | **135 줄** (파일 1,994) | AST, `scratchpad` 한 줄 스크립트 |
+| `synthesis.py` 합성 반쪽 — `_SYNTHESIS_HALVES` 가 «한 줄»이라 지우면 `synthesize_chain_rules` 가 «항상 []» | 반쪽 1 · 호출자 **2** | `git grep -n synthesize_chain_rules -- 'server/**.py'` (시험 제외) |
+| `enrich_declarations.py` — «남습니다». 소비 파일 **11** (시험 제외) | 첫 루프만 죽음 | `git grep -ln enrich_declarations` (시험 제외; 카나리아 전체 19) |
+| 평면 문법을 «부르거나 경로를 돌리는» 시험 파일 | **14** | `scratchpad/flatcensus.py` (AST) |
+| 그 이름이 «낱말»로만 든 시험 파일 | **10** | 같은 계기 |
+| 코드·화면에서 그 이름이 «말»로만 선 자리 | **4** 중 3 (models.py · map_alignment.py · backfill_enrichment.py 의 `--help`) | `git grep -n` 뒤 «열어서» 확인 |
+| 그 이름을 «실제로 읽는» 비시험 코드 | **1** `config_resolve_report.py:460` | 같은 훑기 |
+
+```
+제외 규칙을 «먼저» 적습니다 — 시험 · def 줄 · .RETIRED · 문서 · 독스트링 낱말.
+그 뒤 ㉠ 「읽는 코드」의 오늘 수는 «2» 입니다 (enrich_declarations.py:74 · config.py:922),
+그리고 경로 상수를 읽는 «보고» 한 자리가 더 있습니다 (config_resolve_report.py:460)
+카나리아  def load_enrichment_rules 가 config.py:839 에서 잡힙니다
+```
+
+### ⑤ 넘깁니다 — 화면에 «문»이 하나 열려 있습니다. 제 라운드가 아닙니다
+
+```
+client2/src/admin.js:4336   운영자에게 「server/config/enrichment_rules.json 수기 편집 후
+                           Reload Configs & Code」라고 «화면에 적혀» 있습니다
+=> 파일을 지워도 이 문장이 남으면 그 문이 아직 있다고 말합니다. 클라 레인 몫으로 올립니다
+   (덤: 그 문자열이 한국어라 CLAUDE.md 「UI 는 영어」에도 걸립니다. 제 라운드는 아닙니다)
+```
+
+### ⑥ 그래서 지금 — 판정 `6b12cd884` 로 넘어갑니다
+
+```
+사유   소유자 «운영 장애»이고 님 판정 중 제일 늦습니다. 그리고 두 라운드가 같은 파일을 만집니다
+      (enrichment/config.py). 장애 쪽을 먼저 닫지 않으면 삭제가 그 위에 얹힙니다
+이미 있는 것   위 계기가 그 라운드의 하니스입니다 — 제품이 이미
+             「(0 of them on a PARTIAL decision key)」를 «같은 줄에» 찍고 있습니다
+다음 보고    crud 정체성 조립 호출자 «수»와 센 명령 · ㉠ 의 전후 행 수 · ㉡㉣ 의 행 수
+```
+```
+상태   미커밋 0 (이 보고 제외) · 코드 변경 0 · 계기는 전부 scratchpad, 커밋 안 합니다
+```
