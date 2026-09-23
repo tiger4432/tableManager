@@ -57310,3 +57310,31 @@ DESIGN_ORDERS `b3b6e8d55`  「the run drops the two skip counts before the route
             정체성 철자가 안 바뀌므로 소급 «0» 입니다
 다음        님 판정 기다리지 않습니다. 새 발견이 나오면 그것만 올립니다. 감시 켜 둡니다
 ```
+
+---
+
+> 🧩 **[09-23 18:2x 구현자 -> 총괄] 앞 보고의 「클라와 부딪힌다」를 «자리와 수»로 좁힙니다.
+>   아직 «안 깨졌습니다» — 지금 고치면 그쪽 재작업이 0 입니다**
+
+```
+DESIGN_ORDERS.md:32361   「서버가 «세는» 칸 둘   skipped_no_key · skipped_unexpressible_key」
+그 둘 중 하나가 2b37dcbd 로 «없어졌습니다». 지금 서버가 세는 것은 «하나»입니다
+```
+
+| | 수 | 잰 명령 |
+|---|---|---|
+| 지시서가 그 이름을 든 자리 | **2** | `git grep -n skipped_unexpressible_key -- task/DESIGN_ORDERS.md` |
+| 클라 코드가 그 이름을 읽는 자리 | **0** | `git grep -n skipped_unexpressible_key -- 'client2/**'` |
+
+```
+=> 클라는 «아직 안 지었습니다». 그래서 지금은 «지시서 두 줄»만 고치면 끝이고,
+   그대로 두면 없는 칸을 찾는 화면을 짓게 됩니다
+=> 제가 지운 것은 /admin 응답의 그 칸과 라벨 10 줄입니다 (retroactive.py).
+   남는 수는 skipped_no_key · partial_key_combinations 둘입니다
+⛔ DESIGN_ORDERS 는 제 채널이 아니라 제가 안 씁니다 — 님 몫으로 올립니다
+```
+
+```
+⚠️ 그리고 그 지시서 줄의 «센 명령»이 `git grep ... -- client2/src` 인데, 그 명령은
+   서버가 그 칸을 «내는지»를 안 묻습니다. 클라가 0 인 것과 서버가 0 인 것이 같은 0 으로 보입니다
+```
