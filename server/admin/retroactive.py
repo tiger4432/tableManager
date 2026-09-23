@@ -1224,11 +1224,24 @@ def announce_progress(run_id, op, status, processed=None, total=None):
 
 
 def request_cancel(db, run_id: str) -> dict:
-    """Ask a run to stop. Sets a value; kills nothing.
+    """Ask a run to stop - or RELEASE it when there is nobody left to ask.
 
-    Refuses by name on a run that has already finished, rather than reporting success for
-    a request that can have no effect - "cancelled" on a finished run would tell an
-    operator their data was left half-done when it was not.
+    🔴 [소유자 2026-09-23 「캔슬 보냈는데도 계속 뜸」] CANCEL MEANS 「tell the operation to
+       stop」, and the operation stops itself between batches by reading this value. When
+       the process that started it is GONE that value is never read: the row moves
+       `running` -> `cancel_requested`, both of which are `IN_FLIGHT_STATES`, so the gate
+       stays shut forever and every queued replay behind it never starts. The operator's
+       only remaining way out was SQL, which is what 소유자 had to be handed.
+
+    ⚠️ SO THIS IS THE SAME DOOR, NOT A SECOND ONE. What was missing was the answer to
+       「what does 「stop」 mean when nobody is listening」, and `_runner_state` already
+       answers whether anyone is - by the HEARTBEAT, so it asks 「is that process alive」
+       and not 「is this run progressing」. That difference is the whole safety of this:
+       two operations (ledger_rescope, enrichment_confirm) report no progress at all while
+       running perfectly, and a release keyed on progress would kill them.
+
+    ⛔ `unknown` IS NOT RELEASED (총괄 판정 2026-09-23 ②). A row with no runner stamp
+       predates the column, and 「probably a ghost」 is a guess. 「모르면 안 한다」.
     """
     from database import models
 
@@ -1240,10 +1253,38 @@ def request_cancel(db, run_id: str) -> dict:
         raise RetroactiveRefused(
             f"run '{run_id}' already finished ({row.state}); there is nothing running to "
             f"stop. Its work is committed and this cannot undo it.")
+
+    op, runner = row.op, row.runner
+    if _runner_state(runner) == "orphaned":
+        # 🔴 `failed`, NOT `cancelled` (총괄 판정 ①). Nobody stopped it - the process
+        #    died - and its work did not finish and never will. `cancelled` would tell the
+        #    operator they stopped it themselves, which is not true, and it is the word a
+        #    hand-written UPDATE would have to disagree with.
+        # ⚠️ NEVER SILENTLY. The reason rides on the row, because an automatic release
+        #    that leaves no trace is the option this one was chosen INSTEAD of.
+        from datetime import datetime, timezone
+
+        why = ("released as a ghost lock: the runner that started it is not alive "
+               "(runner=%s; judged against the heartbeat at %s). Its work did not "
+               "finish - run it again." % (runner or "?",
+                                           datetime.now(timezone.utc).isoformat()))
+        _mark_run(run_id, state=RUN_FAILED, finished=True, error=why)
+        db.expire_all()
+        logger.warning("[Retroactive] released a ghost lock run_id=%s op=%s runner=%s",
+                       run_id, op, runner)
+        # 🔴 READ BACK, NEVER RESTATED. `_mark_run` writes the state on its own session,
+        #    and a constant here would be a SECOND author of it: the answer would keep
+        #    saying `failed` however that write actually landed. Measured - a mutation
+        #    that wrote `cancelled` left this reply unchanged and no gate noticed.
+        moved = (db.query(models.RetroactiveRun)
+                 .filter(models.RetroactiveRun.run_id == run_id).first())
+        return {"run_id": run_id, "op": op,
+                "state": moved.state if moved else None, "released": True}
+
     row.state = RUN_CANCEL_REQUESTED
     db.commit()
-    logger.info("[Retroactive] cancel requested run_id=%s op=%s", run_id, row.op)
-    return {"run_id": run_id, "op": row.op, "state": row.state}
+    logger.info("[Retroactive] cancel requested run_id=%s op=%s", run_id, op)
+    return {"run_id": run_id, "op": op, "state": row.state, "released": False}
 
 
 def runs(db, limit: int = 50) -> list:
@@ -1495,11 +1536,27 @@ def gate_refusal(db):
     blocking = in_flight(db)
     if not blocking:
         return None
-    return ("run_id=%s op=%s %s for %ss (runner=%s) — clear it with "
-            "POST /admin/retroactive/runs/%s/cancel"
-            % (blocking["run_id"], blocking["op"], blocking["moving"],
-               blocking.get("no_progress_seconds"), blocking.get("runner"),
-               blocking["run_id"]))
+    # 🔴 「취소해라」만으로는 «그 취소가 안전한지»를 못 읽는다 (소유자 2026-09-23
+    #    「qued replay waiting ~~~ 계속 뜨는데 어케함」). runner 가 살아 있으면 취소는 «도는
+    #    일»을 끊는 것이고, 죽었으면 취소가 이 자물쇠를 «푸는» 유일한 길이다 — 판단이
+    #    정반대인데 문장이 같았다. 생사는 `_runner_state` 가 이미 답한다(심박).
+    run_id, op = blocking["run_id"], blocking["op"]
+    owner = _runner_state(blocking.get("runner"))
+    where = "POST /admin/retroactive/runs/%s/cancel" % run_id
+    if owner == "orphaned":
+        return ("run_id=%s op=%s is held by runner=%s, and that process is NOT alive — "
+                "cancelling RELEASES this lock (the run is marked failed, not cancelled: "
+                "its work did not finish). %s"
+                % (run_id, op, blocking.get("runner"), where))
+    if owner == "unknown":
+        return ("run_id=%s op=%s is held by runner=%s, and whether that process is alive "
+                "CANNOT BE JUDGED from here (a row written before runs carried a runner "
+                "stamp). Cancelling asks it to stop; it cannot release the lock. %s"
+                % (run_id, op, blocking.get("runner"), where))
+    return ("run_id=%s op=%s %s for %ss (runner=%s is alive — cancelling stops work that "
+            "is actually running) — %s"
+            % (run_id, op, blocking["moving"], blocking.get("no_progress_seconds"),
+               blocking.get("runner"), where))
 
 
 def next_queued(db, op):

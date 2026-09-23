@@ -1488,3 +1488,113 @@ def test_a_parameter_with_no_closed_set_says_so_instead_of_answering_an_empty_li
     everything = [p for row in retroactive.inventory() for p in row["params"]]
     assert any(p["choices"] is None for p in everything)
     assert any(p["choices"] for p in everything)
+
+
+# ---------------------------------------------------------------------------
+# 유령 자물쇠 — 「취소」가 들을 이 없는 곳에 적히면 게이트가 영원히 닫힌다
+# ---------------------------------------------------------------------------
+
+def _stuck_run(db, *, runner, state=None):
+    """A row that holds the gate, stamped by `runner`."""
+    from datetime import datetime, timezone
+
+    row = models.RetroactiveRun(
+        run_id="ghost-probe", op="chain_replay", params="{}",
+        state=state or retroactive.RUN_RUNNING, runner=runner,
+        started_at=datetime.now(timezone.utc))
+    db.add(row)
+    db.commit()
+    return row
+
+
+def _beats(monkeypatch, name, pid, stale=False):
+    """What `/health` would say about that process."""
+    monkeypatch.setattr("utils.heartbeat.read_all",
+                        lambda *a, **k: {name: {"pid": pid, "stale": stale}})
+
+
+def test_a_cancel_on_a_dead_runner_releases_the_lock_as_failed(retro_env, monkeypatch):
+    """🔴 [소유자 2026-09-23 「캔슬 보냈는데도 계속 뜸」] The value cancel writes is read by
+    the operation itself, between batches. A process that died never reads it, and both
+    `running` and `cancel_requested` hold the gate - so every queued replay behind it never
+    started. 소유자 had to be handed an UPDATE.
+
+    ⚠️ `failed`, NOT `cancelled` (총괄 판정 ①): nobody stopped it, and its work did not
+       finish. That is also the shape the hand-written UPDATE left, so a row released here
+       and a row released by hand read alike.
+    """
+    db = retro_env
+    _stuck_run(db, runner="chain/box/999")
+    _beats(monkeypatch, "chain", pid=111)          # a newer process of the same kind
+
+    assert retroactive.gate_refusal(db), "전제가 안 섰다 — 게이트가 안 닫혀 있다"
+
+    answer = retroactive.request_cancel(db, "ghost-probe")
+
+    assert answer["state"] == retroactive.RUN_FAILED
+    assert answer["released"] is True
+    assert retroactive.gate_refusal(db) is None, "풀었는데 게이트가 아직 닫혀 있다"
+
+
+def test_the_released_row_says_why_it_was_released(retro_env, monkeypatch):
+    """⚠️ 조용히 풀지 않는다. An automatic release that leaves no trace is the option this
+    one was chosen INSTEAD of, so the reason rides on the row."""
+    db = retro_env
+    _stuck_run(db, runner="chain/box/999")
+    _beats(monkeypatch, "chain", pid=111)
+
+    retroactive.request_cancel(db, "ghost-probe")
+
+    row = (db.query(models.RetroactiveRun)
+           .filter(models.RetroactiveRun.run_id == "ghost-probe").first())
+    assert row.state == retroactive.RUN_FAILED
+    assert "chain/box/999" in (row.error or ""), row.error
+    assert "not alive" in (row.error or ""), row.error
+    assert row.finished_at is not None, "끝난 행인데 끝난 시각이 없다"
+
+
+def test_a_live_runner_is_still_only_asked_to_stop(retro_env, monkeypatch):
+    """🔴 대조군, 그리고 이 안의 제일 위험한 칸. 생사는 «진행»이 아니라 «심박»으로 묻는다 —
+    진행을 아예 보고하지 않는 연산 둘(ledger_rescope · enrichment_confirm)이 있고, 진행으로
+    판정하면 그 둘이 돌고 있는데 죽는다."""
+    db = retro_env
+    _stuck_run(db, runner="chain/box/777")
+    _beats(monkeypatch, "chain", pid=777)          # the same process, still beating
+
+    answer = retroactive.request_cancel(db, "ghost-probe")
+
+    assert answer["state"] == retroactive.RUN_CANCEL_REQUESTED
+    assert answer["released"] is False
+    assert retroactive.gate_refusal(db), "살아 있는 실행인데 게이트가 열렸다"
+
+
+def test_a_run_with_no_runner_stamp_is_never_released(retro_env, monkeypatch):
+    """⛔ 총괄 판정 ②. 「모르면 안 한다」. A row written before runs carried a stamp is
+    `unknown`, and unknown is not orphaned - releasing it would be a guess."""
+    db = retro_env
+    _stuck_run(db, runner=None)
+    _beats(monkeypatch, "chain", pid=111)
+
+    answer = retroactive.request_cancel(db, "ghost-probe")
+
+    assert answer["state"] == retroactive.RUN_CANCEL_REQUESTED
+    assert answer["released"] is False
+
+
+def test_the_refusal_line_says_which_kind_of_lock_this_is(retro_env, monkeypatch):
+    """🔴 [소유자 「qued replay waiting ~~~ 계속 뜨는데 어케함」] 「취소해라」만으로는 그
+    취소가 «도는 일을 끊는지» «자물쇠를 푸는지»를 못 읽는다. 판단이 정반대인데 문장이 같았다.
+
+    ⚠️ 저자는 하나다 — 스케줄러와 체인 워커가 이 함수를 «같이» 읽는다. 셋 다 여기서 나온다.
+    """
+    db = retro_env
+    _stuck_run(db, runner="chain/box/999")
+
+    _beats(monkeypatch, "chain", pid=111)
+    dead = retroactive.gate_refusal(db)
+    _beats(monkeypatch, "chain", pid=999)
+    alive = retroactive.gate_refusal(db)
+
+    assert "NOT alive" in dead and "RELEASES" in dead, dead
+    assert "is alive" in alive and "RELEASES" not in alive, alive
+    assert dead != alive, "두 경우가 같은 문장을 낸다"

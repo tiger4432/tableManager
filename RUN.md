@@ -87,6 +87,34 @@
 >       -> 이 목록이 pull 전후로 «같아야» 합니다. 달라지면 되돌리십시오
 > 로그   findstr /C:"[Join" server\chain_worker.log   (옛 줄은 [VirtualJoin 로 남아 있습니다)
 > ```
+>
+> ### 🔴 [10:1x] 「대기열에 계속 떠 있고 캔슬도 안 먹는」 것이 이제 «취소로 풀립니다»
+>
+> ```
+> 무엇이었나  실행 중 프로세스가 죽으면 그 행이 running 으로 «영원히» 남고, 취소는
+>           그 프로세스에게 「멈춰라」를 «적을 뿐»이라 읽을 이가 없었습니다.
+>           그 자물쇠가 닫혀 있는 동안 «대기 중 리플레이가 시작을 못 합니다» —
+>           「리플레이가 대기열에 안 들어온다」가 같은 원인입니다
+> 이제       취소를 누르면, 그 실행을 시작한 프로세스가 «살아 있지 않을 때»
+>           자물쇠를 «풉니다». 그 행은 failed 로 남고 error 칸에 «왜 풀었는지»가 적힙니다
+> ⛔ 살아 있는 실행은 «안 풀립니다» — 전처럼 「멈춰달라」로만 갑니다
+> ⛔ runner 스탬프가 «없는» 옛 행도 안 풀립니다(판정 불가). 그때는 거절 줄이 그렇게 말합니다
+> ```
+> ```
+> 확인   ① 막힌 실행에서 어드민 「취소」 -> 응답의 state 가 `failed` 이고 released 가 true
+>       ② 그 뒤 대기 중 리플레이가 잡혀서 대기열에 «표 이름으로» 행이 뜹니다
+>          (이 확인은 «운영»에서만 됩니다 — 살아 있는 워커가 필요합니다)
+>       ③ 거절 줄이 세 가지 중 하나를 말합니다
+>          「... is alive — cancelling stops work that is actually running」
+>          「... is NOT alive — cancelling RELEASES this lock」
+>          「... CANNOT BE JUDGED ... (a row written before runs carried a runner stamp)」
+> 되돌리기  git revert 후 재기동. 푼 행은 failed 로 남습니다 — 다시 돌리시면 됩니다
+> ```
+> ```
+> 그리고 종료 때 「아웃박스 리스너 얼레디 클로즈」 줄이 안 납니다.
+>    방송 태스크를 «먼저» 끊고 닫습니다. 종료 로그에 이 줄이 보이면 정상입니다 —
+>    「listener connection closed while a wait was in flight - that is the shutdown, not a fault」
+> ```
 ---
 
 > 🔵 **17:48 갱신.** 아래 ⓞ 가 «제일 먼저»입니다. 나머지는 그다음입니다.
