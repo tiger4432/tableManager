@@ -560,7 +560,6 @@ body.resizing-active .history-sidebar {
 .queue-age { font-variant-numeric: tabular-nums; }
 .queue-state { gap: 4px; }
 .queue-state-detail { color: var(--warning); }
-.queue-note { color: var(--text-dim); }
 .queue-cell:last-child { border-right: none; }
 
 .reference-view { flex: 1; min-width: 0; }
@@ -2822,7 +2821,7 @@ body.resizing-active .history-sidebar {
 /* Two lines, because the key and the column answer different questions and the mockup gives
    each its own line rather than joining them with a separator nobody can scan. */
 .audit-target { flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; }
-.audit-target-key, .queue-note { font-family: var(--font-mono); font-size: 11px; color: var(--text); }
+.audit-target-key { font-family: var(--font-mono); font-size: 11px; color: var(--text); }
 .audit-target-key, .queue-table { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 🔴 규칙은 «접지 않는다» (소유자 2026-09-23). 이름이 한 줄씩 서고, 넘치면 «칸 안»에서 흐른다 —
    표 밖으로 나가면 그게 다음 결함이다.
@@ -2830,9 +2829,10 @@ body.resizing-active .history-sidebar {
       특정도로 `align-items: center` 와 `overflow: hidden` 을 건다. 앞에 두면 여기 셋이 조용히 진다.
    🔴 세로로는 «행이 자란다». 칸 안에 또 스크롤을 두지 않는다 — 목록이 이미 구르고(`.queue-rows`),
       스크롤 안의 스크롤은 규칙 몇 개를 «없는 것»으로 만든다. 실측: 판 폭 599px 에서 이 칸은 202px. */
-.queue-rules-cell, .queue-note-cell { flex-direction: column; align-items: stretch;
+.queue-rules-cell { flex-direction: column; align-items: stretch;
                     justify-content: center; gap: 3px; padding-block: 5px; overflow: visible; }
-.queue-note { white-space: normal; overflow-wrap: anywhere; }
+/* 규칙이 «없는» 행(제어 행). 사실만 적는 칸이라 사유 색(경고)을 안 쓴다. */
+.queue-rule-none { font-size: 10.5px; color: var(--text-dim); }
 .queue-rule { display: flex; flex-wrap: wrap; gap: 0 6px; align-items: baseline; min-width: 0; }
 .queue-rule-name { font-family: var(--font-mono); font-size: 11px; color: var(--text);
                    flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }

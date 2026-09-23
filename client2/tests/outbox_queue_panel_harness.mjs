@@ -28,13 +28,15 @@ const textOf = (mount) => walk(mount).map((n) => n.textContent || '').join(' ');
 const WAITING = { outbox_id: 11, event_type: 'EDIT', table_name: 'dt_log',
                   created_at: '2026-09-22 20:00:00', waiting_seconds: 90, owner: 'chain',
                   chain_state: 'waiting', state_detail: '', broadcast_state: 'pending',
-                  rules: [{ name: 'dt_log_to_dt_map', will_fire: true }], note: '' };
+                  rules: [{ name: 'dt_log_to_dt_map', will_fire: true }] };
 const RETRYING = { ...WAITING, outbox_id: 12, chain_state: 'waiting',
                    state_detail: 'retrying' };
-const DELETED = { outbox_id: 13, event_type: 'DELETE', table_name: 'dt_log',
+// 🔴 제어 행 — 규칙이 «없는» 데 목록에 서는 부류다 (서버 9c09e5c34:
+//    「그 행 자체가 일이고 스케줄러가 돌린다」). DELETE 행은 이제 목록에 «안 온다».
+const CONTROL = { outbox_id: 13, event_type: 'CHAIN_RETRY', table_name: null,
                   created_at: '2026-09-22 20:01:00', waiting_seconds: 30, owner: 'scheduler',
                   chain_state: 'waiting', state_detail: '', broadcast_state: 'not_applicable',
-                  rules: [], note: 'DELETE does not wake any rule; only CREATE and EDIT are triggers' };
+                  rules: [] };
 // 🔴 실패가 빠진 «오늘의» 모집단 문장 (서버 2eb1d38d).
 const POP = 'processed_chain=false ∪ (done & undelivered)';
 const REPLY = (rows) => ({ generated_at: '2026-09-22 20:02:00', clock: 'server', rows,
@@ -55,15 +57,19 @@ console.log('\n[게이트 ③] 기다리는 중 vs 재시도 중 — 둘 다 wai
   ok('G3c the two rows do not render identically', rows[0] !== rows[1], rows[0]);
 }
 
-console.log('\n[게이트 ④] DELETE 행은 빈 칸이 아니라 문장을 낸다');
+// ⚠️ 게이트 ④(「DELETE 행이 문장을 낸다」)는 여기서 죽는다 — 그 칸(`note`)을 서버가
+//    더는 안 보낸다. 실측: `git grep -c '"note"' -- server/main.py` -> 0, 카나리아 `"rules"` -> 5.
+//    픽스처가 «서버에 없는» 값을 지어내 단언했으므로 그 초록은 자기 픽스처를 재고 있었다.
+console.log('\n[게이트 ④] 응답에 «없는» 칸을 화면이 안 읽는다');
 {
-  const mount = mountPanel(REPLY([DELETED]));
-  const notes = byClass(mount, 'queue-note').map((n) => n.textContent);
-  eq('G4 a row nothing looked at says so', notes.length, 1);
-  ok('G4b ...in the server\'s words', notes[0].includes('CREATE and EDIT'), notes[0] || '(none)');
-  // 대조군: 규칙이 «있는» 행은 note 칸을 안 만든다
-  eq('G4c CONTROL: a row with rules draws no note',
-    byClass(mountPanel(REPLY([WAITING])), 'queue-note').length, 0);
+  const view = outboxQueueView(REPLY([CONTROL]));
+  ok('G4 the view model carries no field the server stopped sending',
+    !Object.prototype.hasOwnProperty.call(view.rows[0], 'note'), Object.keys(view.rows[0]).join(','));
+  // 규칙이 없는 행은 «사실»만 적는다. 사유를 지어내지 않는다 — 그 문장의 저자는 서버였다.
+  const none = byClass(mountPanel(REPLY([CONTROL])), 'queue-rule-none').map((n) => n.textContent);
+  eq('G4b a row with no rules says it has none', none.join('|'), 'no rules');
+  eq('G4c CONTROL: a row WITH rules draws no such line',
+    byClass(mountPanel(REPLY([WAITING])), 'queue-rule-none').length, 0);
 }
 
 console.log('\n[판단은 한 좌석] 나이·주인·표·사유');
@@ -142,7 +148,7 @@ const TWO_REASONS = { ...WAITING, outbox_id: 22, rules: [
 
 console.log('\n[게이트 ③ 한 행 = 한 줄. 칸 여섯, 가로지르는 노드 0]');
 {
-  const mount = mountPanel(REPLY([MANY, RETRYING, DELETED]));
+  const mount = mountPanel(REPLY([MANY, RETRYING, CONTROL]));
   const rows = byClass(mount, 'queue-row');
   eq('C1 every payload row is one row node', rows.length, 3);
   // 🔴 «규칙 수가 행 높이를 바꾸면» 한 줄이 아니다. 칸 수가 행마다 같아야 한다.

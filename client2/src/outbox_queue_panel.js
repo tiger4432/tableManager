@@ -66,9 +66,6 @@ export function outboxQueueView(payload, opts = {}) {
       stateDetail: str(row.state_detail),
       broadcast: str(row.broadcast_state),
       rules: Object.freeze(rules),
-      // 🔴 규칙이 빈 것이 「규칙이 없다」인지 «안 봤다»인지는 이 문장이 가른다. DELETE·제어
-      //    행은 트리거가 아니라서 빈 것이고, 빈 칸으로 두면 「규칙이 없다」로 읽힌다.
-      note: str(row.note),
     });
   });
   return Object.freeze({
@@ -139,13 +136,6 @@ export class OutboxQueuePanel {
     return el;
   }
 
-  /** 잘리지 않고 «접히는» 칸. 규칙 칸과 같은 열에 살아서 같은 규율을 쓴다. */
-  _wrapCell(cls, text) {
-    const el = this._line(`audit-cell queue-cell ${cls}-cell`, '');
-    el.appendChild(this._line(cls, text));
-    return el;
-  }
-
   /**
    * 규칙 «하나»에 줄 «하나». 이름을 대고, 안 돌면 서버 문장을 그대로 단다.
    *
@@ -156,6 +146,13 @@ export class OutboxQueuePanel {
    */
   _rulesCell(rules) {
     const cell = this._line('audit-cell queue-cell queue-rules-cell', '');
+    // 🔴 규칙이 «없는» 행은 아직 온다 — 제어 행이 그렇다(서버 `9c09e5c34`: 「그 행 자체가 일이고
+    //    스케줄러가 돌린다」). 왜 없는지의 «문장»은 서버가 내던 것인데 그 칸이 같이 없어졌다.
+    //    없는 사유를 화면이 지어내지 않는다. 사실만 적고, 문장은 서버가 다시 보낼 때 그 자리로 온다.
+    if (!rules.length) {
+      cell.appendChild(this._line('queue-rule-none', 'no rules'));
+      return cell;
+    }
     for (const rule of rules) {
       const one = this._line('queue-rule', '');
       one.setAttribute('data-firing', rule.willFire ? 'yes' : 'no');
@@ -223,11 +220,7 @@ export class OutboxQueuePanel {
       }
       line.appendChild(state);
 
-      // 규칙이 없는 행은 «왜 없는지»를 서버 문장이 말한다. 빈 칸으로 두면 「규칙이 없다」로 읽힌다.
-      // 🔴 같은 «열»이라 같은 규율을 쓴다 — 규칙은 다 보이고 사유만 잘리면 한 칸에 답이 둘이다.
-      line.appendChild(row.rules.length
-        ? this._rulesCell(row.rules)
-        : this._wrapCell('queue-note', row.note));
+      line.appendChild(this._rulesCell(row.rules));
       body.appendChild(line);
     }
     this.root.appendChild(body);
