@@ -297,10 +297,43 @@ function buildExtras(extra) {
   // sequence — which is the same principle as its decision about which numbers appear at all.
   // Sorting made `pinned` precede `withdrawal_candidates` for no reason anybody chose.
   return Object.keys(source)
+    // `_group` needs no rule of its own here: it is a string, so `integer` refuses it, and it has
+    // no `_label`, so the filter below drops it. Adding `_group` to this line would only create a
+    // way to lose a real number whose name happens to end that way.
     .filter((key) => !key.endsWith('_label'))
-    .map((key) => ({ key, label: text(source[`${key}_label`]), value: integer(source[key]) }))
+    .map((key) => ({
+      key,
+      label: text(source[`${key}_label`]),
+      value: integer(source[key]),
+      // 🔴 PLUMBING — carried UNTAGGED so nothing that renders server strings can reach it: it
+      //    says where the number sits, and `not_made` is not a word anybody should see. A number
+      //    the server placed nowhere carries null; the key's spelling is never read for one
+      //    (ruling 33 — what a number means is the server's to say, in the payload).
+      group: typeof source[`${key}_group`] === 'string' ? source[`${key}_group`] : null,
+    }))
     .filter((pair) => pair.label && pair.value)
-    .map((pair) => ({ label: pair.label, count: pair.value }));
+    .map((pair) => ({ label: pair.label, count: pair.value, group: pair.group }));
+}
+
+/** The same numbers, cut into the PLACES the server put them in.
+ *
+ * 🔴 WHAT SEPARATES THEM IS THE PLACE, NOT THE WORDING. Two of these numbers are rows the run did
+ * NOT make and one is a subset of the rows it DID; side by side in one line the operator reads all
+ * of them as the same kind of number, which is how a run that created nothing read as a run that
+ * worked. Writing longer labels to tell them apart would be the screen EXPLAINING, and the screen
+ * shows instead.
+ *
+ * ⚠️ No ranking: a place appears where its first number appears, which is the order the server put
+ * the keys in — the same principle as `buildExtras` not sorting them.
+ */
+export function groupExtras(extras) {
+  const places = [];
+  for (const extra of list(extras)) {
+    const open = places[places.length - 1];
+    if (open && open.group === extra.group) open.items.push(extra);
+    else places.push({ group: extra.group, items: [extra] });
+  }
+  return places;
 }
 
 /** `GET /admin/retroactive/{op}/count` — one measurement, and what kind of number it is.
@@ -429,6 +462,10 @@ export function buildRunsView(payload, now, cancellable) {
     const stopped = finished ? Date.parse(run.finished_at || '') : NaN;
     const clock = Number.isFinite(stopped) ? stopped : now;
     const minutes = elapsedMinutes(run.started_at || run.queued_at, clock);
+    // 🔴 이 실행이 «무엇을 안 만들었나». 서버가 라벨을 붙인 수만, 서버가 준 자리대로 나릅니다 —
+    //    카운트(예행) 경로와 «같은 함수»입니다. 둘째를 손으로 그리면 같은 사실이 두 화면에서
+    //    다른 모양이 되고, 그것이 문 가르기입니다.
+    const extras = buildExtras(run.result);
     (finished ? done : rows).push({
       // 🔴 id 는 «열쇠»이지 화면에 나가는 문장이 아닙니다. 태그를 붙이면 취소가 어느 행을
       //    가리키는지 잃습니다 -- 이 파일의 `text()` 는 출처를 «달아» 객체로 만듭니다.
@@ -455,9 +492,13 @@ export function buildRunsView(payload, now, cancellable) {
       //    목록은 «성공»으로 오고 실패한 «줄»이 그 안에 있습니다.
       //    그래서 `body_error.errorText` 를 여기 갖다 대면 아무것도 안 잡힙니다.
       reason: text(run.error),
+      extras,
       // 🔴 서버가 만든 문장을 «그대로» 나릅니다. 여기서 해석하면
       //    연산별 갈래가 화면에 생기고, 그것이 판정 33 이 막는 그것입니다.
-      summary: text(run.result_sentence),
+      // 🔴 그 수들이 «값으로» 서면 문장은 안 섭니다 — 같은 다섯을 두 번 그리면 자리가 둘입니다.
+      //    판별식은 «연산 이름을 안 묻습니다»: 라벨이 있으면 칩, 없으면 문장. 오늘 여섯 연산 중
+      //    라벨을 다는 것은 하나뿐이라 나머지 다섯의 요약은 그대로입니다.
+      summary: extras.length ? null : text(run.result_sentence),
       cancel: !finished && canCancel[run.op] === true,
       // 요청했지만 아직 멈추지 않았다 — 줄은 «남아있습니다».
       stopping: state === 'cancelling' || state === 'cancel_requested',

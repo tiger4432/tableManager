@@ -607,6 +607,81 @@ async function suite(source) {
     ok(sv.rows[0].reason === null,
       'G8: ... the summary is not the failure reason -- two questions, two fields');
 
+    // G9 -- what the run did NOT make, as VALUES, and the place the server put them in.
+    //   The operator's report was 「완료 알림이 오는데 안되어있음」: a run that created nothing
+    //   ended on this screen looking exactly like one that worked. The server counts the rows it
+    //   did not make (`_run_enrichment_backfill`), labels each number, and since `e57fcdee` also
+    //   says WHICH PLACE each belongs in (`<key>_group`). The screen reads both and invents
+    //   neither -- including the case below where a key SPELLED like a skip carries no group.
+    const RUN_RESULT = {
+      created_rows: 0, created_rows_label: 'rows created',
+      updated_rows: 0, updated_rows_label: 'rows updated',
+      rows_scanned: 1240, rows_scanned_label: 'rows scanned',
+      skipped_no_key: 12, skipped_no_key_label: 'not created - no decision key',
+      skipped_no_key_group: 'not_made',
+      skipped_blank_identity: 3,
+      skipped_blank_identity_label: 'not created - identity columns all blank',
+      skipped_blank_identity_group: 'not_made',
+    };
+    const runRow = (result, sentence) => view.buildRunsView({ runs: [{
+      run_id: 'r9', op: 'enrichment_backfill', label: 'backfill', state: 'done',
+      result, result_sentence: sentence,
+    }], ingestions: [] }, NOW, {}).rows[0];
+
+    const made = runRow(RUN_RESULT, 'rows created 0 · not created - no decision key 12');
+    ok(made.extras.length === 5,
+      'G9: every number the server labelled reaches the row (5 of 5)');
+    ok(made.extras[0].count.value === 0 && made.extras[0].count.text === '0',
+      'G9: 🔴 a labelled ZERO is drawn -- otherwise 「none」 and 「never counted」 are one picture');
+    ok(made.extras.map((e) => e.group).join(',') === ',,,not_made,not_made',
+      'G9: the place comes from the server VERBATIM, and a number it did not place carries none');
+    ok(made.summary === null,
+      'G9: the sentence does not also run -- the same five numbers would then have two places');
+    ok(collectTexts(made).every((t) => t.text !== 'not_made'),
+      'G9: 🔴 the group is plumbing -- its word never reaches a string the row emits');
+
+    // 🔴 THE SCREEN DOES NOT READ KEY SPELLING. A key that looks exactly like the two above but
+    //    carries no `_group` is NOT placed with them: which numbers mean what is the server's to
+    //    say in the payload, not the client's to guess from a prefix (ruling 33).
+    const spelled = runRow({
+      ...RUN_RESULT,
+      skipped_looks_like_one: 7,
+      skipped_looks_like_one_label: 'not created - something else',
+      unlabelled_number: 9,
+    });
+    ok(spelled.extras.length === 6 && spelled.extras[5].group === null,
+      'G9: a key SPELLED like a skip but not placed by the server carries no place');
+    ok(spelled.extras.every((e) => e.label.text !== 'not created - something else'
+      || e.group === null), 'G9: ... and no prefix rule quietly places it');
+    ok(collectTexts(spelled).every((t) => t.text !== '9'),
+      'G9: the unlabelled number is still not drawn -- labelling is what admits a number');
+
+    // ㉣ NOT VACUOUS: change ONE value the server sends and this goes red.
+    const { skipped_blank_identity_group: _dropped, ...ungrouped } = RUN_RESULT;
+    ok(runRow(ungrouped).extras[4].group === null,
+      'G9: drop one `_group` from the payload and that number loses its place -- the place is '
+      + 'read, not derived');
+    const { skipped_no_key_label: _unlabelled, ...unlabelledKey } = RUN_RESULT;
+    ok(runRow(unlabelledKey).extras.length === 4,
+      'G9: drop one `_label` and that number is not drawn at all');
+    ok(runRow({ rows: 5 }, 'atoms 1,204').summary !== null,
+      'G9: a result the server did not label keeps its SENTENCE -- five of six ops label nothing');
+
+    // 🔴 TWO PLACES, NOT ONE LINE. Side by side, 「rows it did not make」 and 「rows it made」 read
+    //    as the same kind of number. The cut is the PLACE; no label is lengthened to explain it.
+    const places = view.groupExtras(made.extras);
+    ok(places.length === 2,
+      'G9: 🔴 the five numbers sit in TWO places, not one line');
+    ok(places[0].items.length === 3 && places[1].items.length === 2,
+      'G9: ... and the cut is where the SERVER put it (3 made, 2 not made)');
+    ok(places[0].group === null && places[1].group === 'not_made',
+      'G9: ... each place is named by the server, or by nothing at all');
+    ok(view.groupExtras([]).length === 0 && view.groupExtras(null).length === 0,
+      'G9: no numbers means no place -- an empty box is a thing the operator has to read');
+    ok(view.groupExtras(runRow({ rows_scanned: 5, rows_scanned_label: 'rows scanned' }).extras)
+      .length === 1,
+    'G9: numbers the server placed nowhere stay in ONE place, not one box each');
+
     ok(view.elapsedMinutes(null, NOW) === null,
       'G7: a run with no start time has no elapsed, not zero');
 
@@ -897,6 +972,16 @@ const DEFECTS = [
   ['F4: the confirmation drops the labelled second number',
     swap('    list(countView.extras).forEach((extra) => pair(extra.label, extra.count));',
       '    /* dropped */')],
+  // G9 -- the two ways this screen could start authoring the contract instead of reading it.
+  ['G9: the place is guessed from the key name instead of read from the payload',
+    swap('      group: typeof source[`${key}_group`] === \'string\' ? source[`${key}_group`] : null,',
+      '      group: key.startsWith(\'skipped_\') ? \'not_made\' : null,')],
+  ['G9: the sentence runs alongside the numbers, saying the same five twice',
+    swap('      summary: extras.length ? null : text(run.result_sentence),',
+      '      summary: text(run.result_sentence),')],
+  ['G9: the places collapse into one line, so what was not made reads as what was',
+    swap('    if (open && open.group === extra.group) open.items.push(extra);',
+      '    if (open) open.items.push(extra);')],
   ['F5: the acknowledgement does not say what was queued',
     swap('    params: Object.keys(params).map((key) => ({', '    params: [].map((key) => ({')],
   ['F10: an undeclared parameter is still sent',
