@@ -57395,3 +57395,65 @@ DESIGN_ORDERS.md:32361   「서버가 «세는» 칸 둘   skipped_no_key · ski
    map_key_columns 가 «틀렸을 때» composite_key_source 로 «내려가지 않는» 것이 맞습니까.
    지금은 한 줄의 오타가 인덱스를 통째로 없앱니다. 거절문은 제대로 찍히고 있습니다
 ```
+
+---
+
+> 📊 **[09-23 18:4x 구현자 -> 총괄] 착지 `2b37dcbd` 뒤 «전수» 결과 — 빨강 1, 제 수리 아닙니다.
+>   그리고 「돈다」는 아직 «운영에서 못 쟀습니다»**
+
+### 전수 — 영향권 309 는 앞서 올렸고, 이번은 «나머지 전부»입니다
+
+```
+잰 명령   python -m pytest tests -q --no-header -p no:randomly
+결과     1 failed · 6,783 passed · 141 skipped · 3 xfailed   (11분 12초)
+```
+
+🔴 **먼저 계기 실패 하나를 적습니다 — 하마터면 「무회귀」로 읽을 뻔했습니다.**
+```
+첫 시도에 `--timeout=300` 을 붙였는데 그 플러그인이 «없습니다» -> exit 4, 시험 «0 개 실행»
+그때 FAILED 수는 «0» 이었습니다. 「빨강 0」과 글자가 같습니다
+잡은 법   카나리아 — 「수집 수가 안 찍혔다」. 요약 줄이 없으면 그건 실행이 아닙니다
+```
+
+### 빨강 하나 — 제 수리와 «닿지 않습니다». 셋으로 가렸습니다
+
+```
+test_config_reload_integrity.py::test_inv_9_1_atomic_save_event_applies_physical_alter
+① 단독 3 회   초록 · 초록 · «빨강»      -> 전수 탓이 아니라 «그 자체가 흔들립니다»
+② 그 파일이 enrichment 를 지나는 자리 «0»
+   잰 명령  grep -c "enrich\|partial_key\|decision_key" server/tests/test_config_reload_integrity.py
+③ 죽는 자리  wait_for_idle 은 «성공»하고 그 다음 줄에서 죽습니다
+   assert "qty" in _physical_columns(engine, table_name)
+   -> 「디바운스 리로드는 돌았는데 ALTER 가 아직 안 닿았다」 — 기다림이 한 칸 짧습니다
+```
+```
+=> 큐 ④(test_h3_cross_directory_replace_applies_physical_alter)와 «같은 파일·같은 모양»입니다.
+   그 큐 항목을 「그 파일의 물리 ALTER 대기 둘」로 넓혀 적습니다
+```
+
+### 🔴 「돈다」는 아직 «운영에서» 못 쟀습니다 — 로드는 됐고, 돈 적이 없습니다
+
+```
+새 코드가 올라갔나   ✅  체인 워커가 18:18:01 에 규칙을 다시 실었습니다 (착지 18:15 «뒤»)
+                    잰 명령  grep "\[ChainRules\] set(" server/chain_worker.log | awk '/18:1/'
+운영 규칙이 돌았나    ❌  enrich_in_chain_probe 가 착지 뒤 «한 번도» 안 돌았습니다
+                    (마지막 실행 17:28). 트리거 행이 안 들어왔습니다
+=> 그러니 지금 상태는 「기제가 올라갔다」이지 「돈다」가 «아닙니다». 님 판별식 그대로입니다
+=> 답이 나오는 자리는 RUN.md 의 확인 ㉠㉡ 입니다 — 다음 트리거 때 읽힙니다
+```
+
+### ⚠️ 그리고 그 로그로 운영을 재면 «안 됩니다» — 오늘 저를 두 번 속인 자리입니다
+
+```
+server/chain_worker.log 는 337,617 줄인데 그 안에 «시험이 쓴» 줄이 섞여 있습니다
+   bkfl_test_   5,568      enrich_test_   4,304      probe   3,460
+잰 명령  grep -hc "<이름>" server/chain_worker.log
+왜 중요한가   제가 오늘 「부분 키 거절 5,734 건」을 이 로그에서 셌고, 전부 «시험 표»였습니다.
+            그리고 방금 「새 경고가 운영에 났다」고 읽을 뻔한 줄도 «제 시험»이 쓴 것이었습니다
+   -> 이 로그에서 수를 꺼낼 때는 표 이름으로 «시험 것을 먼저 빼야» 합니다
+```
+
+```
+상태   착지 2b37dcbd 그대로 · 미커밋 0 · 새 코드 로드됨 · 운영 검증 «대기»
+큐     ④ 를 「그 파일의 물리 ALTER 대기 둘」로 넓힘 · 나머지 넷 그대로
+```
