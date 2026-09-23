@@ -152,7 +152,8 @@ def _fold(spec, running, value):
     return min(running, value) if fn == "min" else max(running, value)
 
 
-def _result(updates, skipped_no_key: int, partial_keys: int) -> dict:
+def _result(updates, skipped_no_key: int, partial_keys: int,
+            skipped_blank_identity: int = 0) -> dict:
     """맵퍼의 반환 계약 — **가산적**이다(체인 워커는 `updates`만 읽는다).
 
     스킵 계수가 실려 있는 이유는 회계가 아니라 **철자 하나**다.
@@ -162,12 +163,19 @@ def _result(updates, skipped_no_key: int, partial_keys: int) -> dict:
     버리므로 **쓰기는 그대로이고 dry-run 숫자만 거짓이 된다**(실측 확인). 이제
     판정도 계수도 여기 하나뿐이라 두 경로가 갈릴 자리가 없다.
 
-    ⚰️ [소유자 2026-09-23] 스킵은 한 종류다. 둘째는 `skipped_unexpressible_key` —
-    「부분 키인데 파생 표의 키 선언이 그 정체성을 담지 못한다」 — 였고, 그 거절이 운영
-    장애였다. 「비즈니스키 ⊆ 판단키」가 불변식이라 담지 못하는 부분 키는 문법 안에 없다.
+    스킵은 **두 종류이고 절대 합치지 않는다** — 고치는 자리가 다르다:
+      `skipped_no_key`           — 판단키가 전무. 가리키는 것이 없다. 고칠 곳은 «소스 데이터»
+      `skipped_blank_identity`   — 판단키는 있는데 «정체성을 짓는 칸»이 전부 비었다.
+                                   그 행은 주소가 없어 나중에 갱신도 회수도 안 된다.
+                                   고칠 곳은 «표의 정체성 선언»이거나 그 칸을 채우는 쪽이다
+
+    ⚰️ [소유자 2026-09-23] 셋째가 있었다 — `skipped_unexpressible_key`,
+    「부분 키인데 파생 표의 키 선언이 그 정체성을 담지 못한다」. 그 거절이 운영 장애였고,
+    「비즈니스키 ⊆ 판단키」가 불변식이라 담지 못하는 부분 키는 문법 안에 없다.
     """
     return {"updates": updates, "silent": False,
-            "skipped_no_key": skipped_no_key, "partial_keys": partial_keys}
+            "skipped_no_key": skipped_no_key, "partial_keys": partial_keys,
+            "skipped_blank_identity": skipped_blank_identity}
 
 
 def map_enrichment_dedup(db, payloads, rule=None):
@@ -179,11 +187,11 @@ def map_enrichment_dedup(db, payloads, rule=None):
                  적고 있었고, 다른 기본틀은 전부 `params`를 읽는다 (소유자: 「같은 io」)
     """
     if not payloads:
-        return _result([], 0, 0, 0)
+        return _result([], 0, 0)
     enrich = (rule or {}).get("params")
     if not enrich:
         logger.error("[Enrichment] chain rule carries no declaration in 'params'; skipping batch")
-        return _result([], 0, 0, 0)
+        return _result([], 0, 0)
 
     from database import crud
 
@@ -364,4 +372,4 @@ def map_enrichment_dedup(db, payloads, rule=None):
         f"{len(updates)} unique decision key(s) upserted into '{derived_table}' "
         f"({partial_keys} of them on a PARTIAL decision key)"
     )
-    return _result(updates, skipped, partial_keys)
+    return _result(updates, skipped, partial_keys, unaddressable)

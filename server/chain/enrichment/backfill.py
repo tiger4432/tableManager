@@ -333,11 +333,12 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
         # always there. The rename is deliberate: an un-updated consumer gets a
         # KeyError, not a silently re-pointed number.
         "skipped_no_key": 0,
-        # The OTHER refusal, kept apart because the repairs are different: this
-        # one is a config gap on the DERIVED table (its key contract cannot give
-        # a partial key its own identity, and forcing one would silently merge
-        # rows), not a fact about the data. `map_enrichment_dedup` logs the exact
-        # table_config line to add.
+        # The OTHER skip, kept apart because the repairs are different: this one
+        # is about the DERIVED table's identity declaration (every column that
+        # BUILDS the identity is blank on that key, so the row would carry no
+        # address), not a fact about the source data. `map_enrichment_dedup` names
+        # the contract in its log line.
+        "skipped_blank_identity": 0,
         "distinct_combinations": 0,
         "partial_key_combinations": 0,
         "already_derived": 0,
@@ -391,6 +392,7 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
         result = map_enrichment_dedup(db, payloads, rule=mapper_rule)
         items = result.get("updates") or []
         stats["skipped_no_key"] += result.get("skipped_no_key", 0)
+        stats["skipped_blank_identity"] += result.get("skipped_blank_identity", 0)
 
         # One existence question per chunk instead of one per item. Keys this run
         # already claimed are excluded rather than re-asked: with the preload that

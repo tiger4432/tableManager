@@ -63,6 +63,12 @@ def format_report(stats: dict, limit: int = None) -> str:
             f"(new identities whose decision key is only partly present - these "
             f"used to be dropped)"
         )
+    if stats["skipped_blank_identity"]:
+        lines.append(
+            f"  blank identity SKIPPED: {stats['skipped_blank_identity']} "
+            f"(every column that builds the derived table's identity is blank on "
+            f"these keys, so the row would carry no address - see the log line)"
+        )
     if stats["mode"] == "apply":
         lines.append(f"  new identities created: {stats['created_rows']}")
         if stats["updated_rows"]:

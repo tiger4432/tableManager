@@ -208,3 +208,49 @@ def test_a_narrow_composite_updates_its_one_row_and_erases_no_value(db):
 #: 경로에 키 게이트가 «따로» 있기 때문이다 (`ingestion_worker` 의 `unkeyed_refused`).
 #: 그 가드가 «혼자» 답하는 자리는 소급 스윕이고, 그쪽은 변이로 빨개지는 시험이 이미 있다:
 #: test_backfill_enrichment.py::test_a_partial_key_is_refused_when_the_blank_column_IS_the_business_key
+
+
+def test_the_mapper_answers_an_empty_batch_and_a_ruleless_call(db):
+    """🔴 총괄 실측 2026-09-23: 착지 직후 `map_enrichment_dedup(None, [], None)` 이
+    `TypeError: _result() takes 3 positional arguments but 4 were given` 로 터졌다.
+
+    두 갈래 다 «정상 경로»다 — 빈 배치는 운영에서 늘 오고, `params` 없는 규칙은
+    잘못 선언된 규칙이 지나는 자리다. 그런데 이 파일의 다른 시험 넷은 전부 «행이 있는»
+    배치를 넘기므로 넷 다 초록인 채로 그 갈래가 터져 있었다. 조건이 드물어서가 아니라
+    시험이 «늘 도는 조건»을 안 지나고 있었다.
+    """
+    from chain.enrichment import mapper
+
+    empty = mapper.map_enrichment_dedup(None, [], None)
+    assert empty["updates"] == []
+    assert empty["skipped_no_key"] == 0
+
+    ruleless = mapper.map_enrichment_dedup(None, [{"data": {}}], {})
+    assert ruleless["updates"] == []
+
+
+def test_the_two_skips_reach_the_caller_under_their_own_names(db):
+    """🔴 계기가 조용히 죽는 자리. The identity-blank guard counted and logged, and the
+    count went nowhere - a backfill preview could not show it, which is the same shape as
+    the defect that opened this round. The two skips never fold: one is fixed in the
+    source data, the other in the derived table's identity declaration.
+    """
+    from chain.enrichment import mapper
+
+    shape = mapper.map_enrichment_dedup(None, [], None)
+    assert "skipped_no_key" in shape and "skipped_blank_identity" in shape, (
+        f"a skip count the seat keeps is not in its answer: {sorted(shape)}")
+
+    _seed(db, [{"log_key": "B1", "core_lot": "", "dt_wafer_id": "",
+                "step": "S1", "grade": "A"}])
+    payloads = [{"data": {c: {"value": getattr(r, c)}
+                          for c in ("log_key", "core_lot", "dt_wafer_id", "step", "grade")}}
+                for r in db.query(models.DYNAMIC_TABLES[SRC]).all()]
+
+    out = mapper.map_enrichment_dedup(db, payloads, rule=_dedup_rule(CARRIES))
+
+    assert out["skipped_blank_identity"] == 1, (
+        f"the guard ran but its count did not reach the caller: {out}")
+    assert out["skipped_no_key"] == 0, (
+        "these rows HAVE a decision key (step is present) - do not fold the two facts")
+    assert out["updates"] == []

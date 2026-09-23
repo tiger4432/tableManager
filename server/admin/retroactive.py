@@ -279,6 +279,13 @@ def _count_enrichment_backfill(db, params, scan_limit):
                f"decision key - rows that were not created before the 2026-08-05 "
                f"ruling, so this number rises even when the data has not changed."
                if s["partial_key_combinations"] else "")
+            + (f" {s['skipped_blank_identity']} key(s) were skipped because every "
+               f"column that builds the identity of '{s['derived_table']}' is blank "
+               f"on them - such a row would have no address, so it could not be "
+               f"updated or withdrawn later. Fill those columns in the source, or "
+               f"declare an identity on '{s['derived_table']}' that uses columns "
+               f"which are present."
+               if s["skipped_blank_identity"] else "")
         ),
         "extra": {
             "already_derived": s["already_derived"],
@@ -293,6 +300,8 @@ def _count_enrichment_backfill(db, params, scan_limit):
             # 이름 붙이지 않았다"는 것이었다.
             "skipped_no_key": s["skipped_no_key"],
             "skipped_no_key_label": "no decision key (skipped)",
+            "skipped_blank_identity": s["skipped_blank_identity"],
+            "skipped_blank_identity_label": "identity columns all blank (skipped)",
             "partial_key_combinations": s["partial_key_combinations"],
             "partial_key_combinations_label": "new rows with only part of a decision key",
             "source_table": s["source_table"],
