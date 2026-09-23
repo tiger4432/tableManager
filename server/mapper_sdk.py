@@ -438,6 +438,30 @@ def mapper(target_table=None, *, source_name: str = "chain_ingestion",
     """
     def decorate(fn):
         import functools
+        import inspect
+
+        # 🔴 THE INNER SHAPE IS CHECKED WHERE IT IS DECLARED, NOT WHERE IT RUNS. The author
+        #    writes `(df, db)` and the worker calls `(db, payloads, rule=None)`; writing the
+        #    OUTER shape under this decorator type-checks, imports, registers and runs - the
+        #    DataFrame simply arrives in the `db` slot and the failure surfaces as whatever
+        #    the body does with it, in a rule, on a row, at 3am. Measured 2026-09-23: the
+        #    owner did exactly this and nothing refused it.
+        # ⚠️ SAME AXIS AS `follow_wrapped=False` in `chain/mapper_call.py`: that fix made the
+        #    caller read the WRAPPER's signature instead of the author's. This one makes the
+        #    author's signature a thing the product actually looks at.
+        # ⚠️ `*args` IS NOT JUDGED - a function that takes anything can take these two.
+        _sig = inspect.signature(fn)
+        _positional = [p for p in _sig.parameters.values()
+                       if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
+        _varargs = any(p.kind is p.VAR_POSITIONAL for p in _sig.parameters.values())
+        if not _varargs and len(_positional) != 2:
+            raise MapperContractError(
+                "a function decorated with @mapper is handed (df, db) - a DataFrame of "
+                "the rows and a session. '%s' takes (%s). (db, payloads, rule) is the "
+                "shape the WORKER calls; the decorator builds that for you, so writing it "
+                "yourself puts the DataFrame in the session's place."
+                % (getattr(fn, "__name__", "?"),
+                   ", ".join(p.name for p in _positional) or "no arguments"))
 
         @functools.wraps(fn)
         def run(db, payloads, rule=None):
