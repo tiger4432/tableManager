@@ -655,6 +655,14 @@ class TestTheEnrichmentBackfillRouteIsReachable:
                      "partial_key_combinations"):
             assert cell in body["extra"], f"the route stopped reporting '{cell}'"
             assert body["extra"][f"{cell}_label"], f"'{cell}' has no label, so it is not drawn"
+            assert body["extra"][f"{cell}_group"], (
+                f"'{cell}' does not say where it belongs, so the screen must guess")
+        # 🔴 두 수는 «안 만든 것», 하나는 «만든 것의 부분집합» — 셋을 한 줄에 같은 칩으로
+        # 세우면 운영자가 같은 종류로 읽는다. 가르는 것은 낱말이 아니라 이 값이다.
+        assert (body["extra"]["skipped_no_key_group"]
+                == body["extra"]["skipped_blank_identity_group"]
+                != body["extra"]["partial_key_combinations_group"]), (
+            "the three counts no longer split into 「not made」 and 「part of what was made」")
 
     def test_the_old_failure_shape_is_gone(self, client, retro_enrich_env):
         """Named separately because it is the only assertion that would have been
@@ -1629,6 +1637,40 @@ class TestTheRunSentenceSaysWhatWasNotMade:
 
         assert sentence == "rows created 0 · not created - no decision key 2"
         assert "created_rows" not in sentence and "_label" not in sentence
+
+    def test_a_grouping_cell_places_a_number_and_is_never_read_as_one(self):
+        """㉦ [판정 bd25c6e28] 묶음은 «배관 값»이다 — 그 수를 «어디에 놓나»를 말할 뿐,
+        운영자가 «읽는» 말이 아니다. 읽는 것은 라벨이고 그 일은 이미 라벨이 한다.
+
+        실측으로 찾은 자리다: 건너뛰기가 `_label` 만 알면 문장에
+        「skipped_no_key_group not_made」가 «수처럼» 선다 — raw 키 이름이 운영자에게 간다.
+        """
+        sentence = retroactive.run_result_sentence(
+            {"skipped_no_key": 2,
+             "skipped_no_key_label": "not created - no decision key",
+             "skipped_no_key_group": retroactive.GROUP_NOT_MADE})
+
+        assert sentence == "not created - no decision key 2"
+        assert "group" not in sentence and "not_made" not in sentence, (
+            f"a plumbing value reached the operator's sentence: {sentence}")
+
+    def test_the_run_marks_which_numbers_are_the_ones_not_made(self, retro_enrich_env):
+        """① [판정 ddcf2b685] 가르는 것은 «서버»다. 화면이 `skipped_` 접두로 정하면
+        그것이 판정 33 이 막은 「화면이 result 를 해석」이다 — 저자는 그 수를 만든 연산이다."""
+        db = retro_enrich_env
+        _seed_enrich_source(db, [{"equipment": "", "event_time": "", "chip_id": "C9"}])
+
+        out = retroactive.execute(
+            {"run_id": "grp", "op": "enrichment_backfill",
+             "params": {"rule": "retro_enrich_rule"}}, log=lambda m: None)
+
+        result = out["result"]
+        for cell in ("skipped_no_key", "skipped_blank_identity"):
+            assert result[f"{cell}_group"] == retroactive.GROUP_NOT_MADE, (
+                f"'{cell}' does not say which group it belongs to, so the screen would "
+                f"have to guess from its name")
+        assert "created_rows_group" not in result, (
+            "a row that WAS made must not be marked as one that was not")
 
     def test_nothing_to_say_is_not_an_empty_sentence(self):
         """⚠️ 「수가 없다」와 「빈 문장」은 다르다 — 종전 계약 그대로."""

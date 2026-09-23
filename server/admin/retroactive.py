@@ -300,10 +300,15 @@ def _count_enrichment_backfill(db, params, scan_limit):
             # 이름 붙이지 않았다"는 것이었다.
             "skipped_no_key": s["skipped_no_key"],
             "skipped_no_key_label": "no decision key (skipped)",
+            "skipped_no_key_group": GROUP_NOT_MADE,
             "skipped_blank_identity": s["skipped_blank_identity"],
             "skipped_blank_identity_label": "identity columns all blank (skipped)",
+            "skipped_blank_identity_group": GROUP_NOT_MADE,
             "partial_key_combinations": s["partial_key_combinations"],
             "partial_key_combinations_label": "new rows with only part of a decision key",
+            # 🔴 이 수는 `new_combinations` 의 «부분집합»이다 — 안 만든 수가 아니다.
+            # 낱말이 아니라 «자리»로 갈라야 운영자가 셋을 같은 종류로 안 읽는다.
+            "partial_key_combinations_group": GROUP_PART_OF_MADE,
             "source_table": s["source_table"],
             "derived_table": s["derived_table"],
             "sample_new_keys": s["sample_new_keys"][:5],
@@ -633,9 +638,11 @@ def _run_enrichment_backfill(db, params, log, control=None):
             "rows_scanned_label": "rows scanned",
             "skipped_no_key": s["skipped_no_key"],
             "skipped_no_key_label": "not created - no decision key",
+            "skipped_no_key_group": GROUP_NOT_MADE,
             "skipped_blank_identity": s["skipped_blank_identity"],
             "skipped_blank_identity_label":
-                "not created - identity columns all blank"}
+                "not created - identity columns all blank",
+            "skipped_blank_identity_group": GROUP_NOT_MADE}
 
 
 def _run_enrichment_confirm(db, params, log, control=None):
@@ -1725,6 +1732,24 @@ def runner_identity() -> str:
         return "%s/?/%d" % (name, _os.getpid())
 
 
+#: 수를 «설명하는» 칸들의 꼬리. 이 칸들은 수가 아니므로 문장에 «값으로» 서지 않는다 —
+#: 안 빼면 운영자 문장에 `skipped_no_key_group not_made` 처럼 raw 키 이름이 선다(실측).
+#: 🔴 [판정 ddcf2b685] `_group` 은 «옆에 만든 새 규약»이 아니라 `_label` 과 같은 자리다:
+#: 하나는 「뭐라고 읽나」, 하나는 「어느 묶음인가」. 그래서 건너뛰기도 «한 규칙»이다.
+NUMBER_DESCRIBERS = ("_label", "_group")
+
+#: 묶음 이름 — 🔴 [판정 bd25c6e28] «배관 값»이고 브라우저에 렌더되지 않습니다.
+#: 운영자가 «읽는» 것은 `_label` 이고, 묶음이 하는 일은 그 수를 «어디에 놓나»뿐입니다.
+#: 그래서 문장에서도 빠지고(아래 건너뛰기), 화면도 이 낱말을 그리지 않습니다.
+GROUP_NOT_MADE = "not_made"
+#: 만든 행의 «부분집합». 안 만든 수 옆에 서면 운영자가 같은 종류로 읽으므로 자리가 갈린다.
+GROUP_PART_OF_MADE = "part_of_made"
+
+
+def _describes_a_number(key: str) -> bool:
+    return any(key.endswith(tail) for tail in NUMBER_DESCRIBERS)
+
+
 def run_result_sentence(stored) -> str | None:
     """연산이 돌려준 수들 -> 화면이 «그대로 그릴» 한 문장. 없으면 None.
 
@@ -1750,7 +1775,7 @@ def run_result_sentence(stored) -> str | None:
     labels = {k[:-len("_label")]: v for k, v in values.items()
               if k.endswith("_label")}
     return " · ".join("%s %s" % (labels.get(k, k), v)
-                      for k, v in values.items() if not k.endswith("_label"))
+                      for k, v in values.items() if not _describes_a_number(k))
 
 
 def _mark_run(run_id, *, state, started=False, finished=False, result=None, error=None,
