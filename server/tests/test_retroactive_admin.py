@@ -651,7 +651,8 @@ class TestTheEnrichmentBackfillRouteIsReachable:
         # looks exactly like a zero - which is the shape of the incident this route was
         # repaired for. Both skips are named here, and they are never folded: one is
         # fixed in the source data, the other in the derived table's identity declaration.
-        for cell in ("skipped_no_key", "skipped_blank_identity"):
+        for cell in ("skipped_no_key", "skipped_blank_identity",
+                     "partial_key_combinations"):
             assert cell in body["extra"], f"the route stopped reporting '{cell}'"
             assert body["extra"][f"{cell}_label"], f"'{cell}' has no label, so it is not drawn"
 
