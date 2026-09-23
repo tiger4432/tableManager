@@ -1128,10 +1128,46 @@ for (const m of MUTANTS) {
       none.push(`${f}:${src.slice(0, m.index).split('\n').length}`);
     }
   }
-  // 8 은 이 라운드가 남기는 수입니다: 종전 10, 빼기 `optionsFor('y')` 와 `loadWaferFacts`.
-  record(`Z1 walk calls that declare no direction: ${none.length} (ceiling 8, was 10)`,
-    none.length <= 8, none.join(' '));
-  record('Z2 ... and the ceiling is not vacuous — the sweep is unfinished', none.length > 0);
+  // 🔴 Z1 의 «주어»가 바뀌었습니다 (총괄 판정 09-23). 종전 주어는 「direction 을 안 적은 호출
+  //    «자리» 수 ≤ 8」이었고 그건 «자리»를 셉니다 — 그 자리가 정당한지를 안 가립니다(그 라우트가
+  //    direction 을 «안 받는» 것일 수도, 좌석이 «이미» 선언한 것일 수도 있습니다).
+  //    새 주어는 «성질»입니다: 「/subgraph 로 가는 조립기 중 좌석 «선언»을 안 건네는 것」.
+  //    그것이 화면을 «틀리게» 만드는 모양입니다 — 좌석이 outgoing·1000 을 선언해도 조립기가
+  //    떨어뜨리면 서버 기본값으로 걷고, 그 차이는 절단으로 나타납니다.
+  // 🔴 조립기가 «자기가 이름 댄 키»를 덮는 것은 결함이 «아닙니다» (reach 의 hops:1 은 적힌 의도).
+  //    떨어뜨리는 것은 그 키가 요청에서 «사라지는» 것이고, 그것만 셉니다.
+  // ⚠️ 종전 주어의 쓸기는 아래 Z2·Z3 가 그대로 듭니다 — 그건 「아직 안 잰 자리」의 수입니다.
+  {
+    const { api } = await loadModules();
+    // 씨앗은 «서버 노드 모양»이어야 합니다 — 그렇지 않으면 경계가 묻지 않고 거절하고(그게 옳고),
+    // 그러면 요청이 0 이라 이 단언이 «공허»해집니다. 그래서 Z1c 가 같은 호출에 섭니다.
+    const SEED = 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0';
+    const SEAT = { direction: 'outgoing', node_limit: 1000, hops: 3, backbone_hops: 2 };
+    const examined = [];
+    const dropped = [];
+    for (const name of [null, ...Object.keys(api.LEGACY_ROUTES)]) {
+      let url = null;
+      const fetchImpl = async (u) => {
+        url = u;
+        return { ok: true, status: 200, json: async () => ({}) };
+      };
+      const spec = { ...SEAT, start: { value: SEED, groupby: 'wafer' } };
+      if (name) spec.legacyRoute = name;
+      await api.createWalk({ apiBase: '', fetchImpl })(spec).catch(() => null);
+      // 모집단은 «/subgraph 로 가는» 조립기뿐입니다. 다른 라우트는 이 키들을 아예 안 받습니다.
+      if (!url || !url.startsWith('/api/ledger/subgraph')) continue;
+      const q = new URLSearchParams(url.split('?')[1] || '');
+      const gone = Object.keys(SEAT).filter((k) => !q.has(k));
+      examined.push(name || '(no name)');
+      if (gone.length) dropped.push(`${name || '(no name)'}[${gone.join(',')}]`);
+    }
+    record(`Z1 assemblers to /subgraph that drop what the seat declared: ${dropped.length}`,
+      dropped.length === 0, dropped.join(' '));
+    record(`Z1c ... and that zero is not vacuous — assemblers measured: ${examined.length}`,
+      examined.length > 0, examined.join(' '));
+  }
+  record('Z2 calls that still declare no direction remain — the sweep is unfinished',
+    none.length > 0, String(none.length));
   // 🔴 남은 여덟 중 «하나»는 정당합니다: 걷기 상자는 «사용자»가 방향을 고르는 자리입니다.
   //    나머지 일곱은 아직 «안 잰» 것이지 「괜찮다고 판정한」 것이 아닙니다.
   record('Z3 the walk box is among them, and it is the one that SHOULD not hardcode a direction',
