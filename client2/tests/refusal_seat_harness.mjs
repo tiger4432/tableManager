@@ -271,15 +271,29 @@ function seamSuite(overrides = {}) {
   const spoken = [];
   let seatCalls = 0;
   let reasonLines = 0;
+  const seat = /\b(fetchFailureLine|retroFailureLine)\(/;
   for (const file of files) {
     const rel = path.relative(SRC, file).split(path.sep).join('/');
     const raw = Object.prototype.hasOwnProperty.call(overrides, rel)
       ? overrides[rel] : readFileSync(file, 'utf8');
     const text = live(raw);
-    seatCalls += (text.match(/\b(fetchFailureLine|retroFailureLine)\(/g) || []).length;
+    // 🔴 세는 범위는 S5 가 «보는 범위»와 같아야 한다. 전체 파일에서 세면 main.js 의 호출이
+    //    어드민 화면의 호출을 «대신» 서 준다 — 어드민이 좌석을 다 버려도 이 칸이 안 운다.
     if (rel !== 'admin.js') continue;
+    seatCalls += (text.match(new RegExp(seat.source, 'g')) || []).length;
     for (const one of text.split('\n')) {
-      if (!/unavailable|showToast|failed:/.test(one)) continue;
+      // ㉠ 못 읽은 «이유»를 나르는 칸. 물음은 「이 문장의 «저자»가 누구인가」다 —
+      //    좌석이거나(응답이 못 왔다) 서버이거나(200 본문이 error 를 말했다). 둘 다 아니면
+      //    화면이 자기 문장을 지은 것이고, 그 자리가 둘째 철자다.
+      //    ⚠️ 「서버가 지었다」는 «대리»로 잰다: 상태 코드가 «아닌» 값을 그 줄에 싣고 있나.
+      if (/\bunavailable\s*[:=]/.test(one)) {
+        reasonLines += 1;
+        const byServer = /\$\{(?!res\.status)[A-Za-z_]/.test(one);
+        if (!seat.test(one) && !byServer) spoken.push(one.trim().slice(0, 74));
+        continue;
+      }
+      // ㉡ 토스트·실패 칸이 «상태 코드로» 문장을 짓는 자리.
+      if (!/showToast|failed:/.test(one)) continue;
       reasonLines += 1;
       if (/HTTP \$\{|\$\{res\.status\}/.test(one)) spoken.push(one.trim().slice(0, 74));
     }
@@ -287,8 +301,8 @@ function seamSuite(overrides = {}) {
   ok(spoken.length === 0,
      `S5 어드민 화면이 못 읽은 이유를 «자기 문장»으로 짓는 자리가 없다 (본 수 ${spoken.length})`,
      spoken);
-  ok(reasonLines > 0 && seatCalls >= 10,
-     `S6 그 성질의 모집단이 실재한다 — 이유를 말하는 줄 ${reasonLines} · 좌석 호출 ${seatCalls}`,
+  ok(reasonLines > 0 && seatCalls >= 6,
+     `S6 그 성질의 모집단이 실재한다 — 어드민의 이유 줄 ${reasonLines} · 어드민의 좌석 호출 ${seatCalls}`,
      [reasonLines, seatCalls]);
 }
 
@@ -351,6 +365,12 @@ const SEAM_DEFECTS = [
    () => ({ 'admin.js': readFileSync(path.join(SRC, 'admin.js'), 'utf8')
      .replace("opts.unavailable = fetchFailureLine(failureFactOf(res), 'Rule registry read failed');",
               'opts.unavailable = `Rule registry read failed (HTTP ${res.status}).`;') })],
+  // 🔴 S6 가 «카나리아인지»를 잰다. 좌석을 버리되 «서버가 준 값»을 싣는 모양으로 바꾸면
+  //    S5 는 할 말이 없다 — 그때 우는 자리가 S6 여야 한다. 실측: 이 변이에서 S5 0 · S6 0 호출.
+  //    (이 하니스는 admin.js 를 «텍스트로»만 본다. 그래서 이 변이가 문법을 깨도 상관없다.)
+  ['M14 어드민 화면이 좌석을 «아예 안 부른다» -> S6',
+   () => ({ 'admin.js': readFileSync(path.join(SRC, 'admin.js'), 'utf8')
+     .replace(/\b(fetchFailureLine|retroFailureLine)\([^)]*\)/g, '`${API_BASE}`') })],
 ];
 const CONTROLS = [
   ['전송의 주석 한 낱말', TOKEN, (s) => s.replace('두 번째 전송', '세 번째 전송')],

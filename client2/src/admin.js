@@ -1390,7 +1390,7 @@ async function refreshLedgerSources() {
       }
     }
   } catch (e) {                                              // noqa
-    opts = { unavailable: '\uc18c\uc2a4 \uc0c1\ud0dc \uc870\ud68c\uc5d0 \uc2e4\ud328\ud588\uc2b5\ub2c8\ub2e4 (\ub124\ud2b8\uc6cc\ud06c). \uc218\ub97c \uadf8\ub9ac\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.' };
+    opts = { unavailable: fetchFailureLine(null, 'Source status read failed') };
   }
   const view = ledgerSourcesPanel.render(body, opts, await censusRequest);
   const count = byId('ledger-sources-count');
