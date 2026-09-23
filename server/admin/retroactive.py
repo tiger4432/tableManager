@@ -621,8 +621,21 @@ def _run_enrichment_backfill(db, params, log, control=None):
     s = enrichment.backfill.run_backfill(db, rule, apply=True, log=log,
                                          checkpoint=_checkpoint(control))
     _final_progress(control, s.get("rows_scanned"))
-    return {"created_rows": s["created_rows"], "updated_rows": s["updated_rows"],
-            "rows_scanned": s["rows_scanned"]}
+    # 🔴 [판정 b3b6e8d55] 안 만든 행의 수가 여기서 «버려지고» 있었다 — 실행이 화면에
+    # 닿는 통로는 `result_sentence` 한 문장뿐이라(판정 33), 이 dict 에 없는 수는 운영자가
+    # 볼 길이 «없다». 그래서 다섯을 다 싣고, 0 도 싣는다: 0 이 안 보이면 「없음」과
+    # 「안 세어 봄」이 같은 그림이다.
+    return {"created_rows": s["created_rows"],
+            "created_rows_label": "rows created",
+            "updated_rows": s["updated_rows"],
+            "updated_rows_label": "rows updated",
+            "rows_scanned": s["rows_scanned"],
+            "rows_scanned_label": "rows scanned",
+            "skipped_no_key": s["skipped_no_key"],
+            "skipped_no_key_label": "not created - no decision key",
+            "skipped_blank_identity": s["skipped_blank_identity"],
+            "skipped_blank_identity_label":
+                "not created - identity columns all blank"}
 
 
 def _run_enrichment_confirm(db, params, log, control=None):
@@ -1715,10 +1728,16 @@ def runner_identity() -> str:
 def run_result_sentence(stored) -> str | None:
     """연산이 돌려준 수들 -> 화면이 «그대로 그릴» 한 문장. 없으면 None.
 
-    🔴 낱말을 «지어내지 않습니다» — 연산이 쓴 키를 그대로 씨니다.
+    🔴 낱말을 «지어내지 않습니다» — 연산이 쓴 키를 그대로 씁니다.
     연산별 갈래를 만드는 순간 이 함수가 «등록부가 범용이라는 성질»을 깨고,
     그러면 새 연산이 항목 하나가 아니라 «이 함수의 갈래»가 됩니다.
     ⚠️ 빈 dict 는 None 입니다 — 「수가 없다」와 「빈 문장」은 다릅니다.
+
+    🔴 [판정 c1861f8ec] 연산이 `<키>_label` 을 같이 실으면 그 낱말로 읽습니다. 갈래가
+    아니라 «규칙 한 줄»입니다 — 이 함수는 어느 연산인지 여전히 모르고, 라벨을 안 단
+    연산의 문장은 한 글자도 안 바뀝니다. 같은 물음(「이 수를 운영자가 뭐라고 읽나」)에
+    카운트 경로가 이미 `*_label` 로 답하고 있어서, 실행만 다른 기제로 답하면 한 물음에
+    답이 둘이 됩니다.
     """
     if not stored:
         return None
@@ -1728,7 +1747,10 @@ def run_result_sentence(stored) -> str | None:
         return None
     if not isinstance(values, dict) or not values:
         return None
-    return " · ".join("%s %s" % (k, v) for k, v in values.items())
+    labels = {k[:-len("_label")]: v for k, v in values.items()
+              if k.endswith("_label")}
+    return " · ".join("%s %s" % (labels.get(k, k), v)
+                      for k, v in values.items() if not k.endswith("_label"))
 
 
 def _mark_run(run_id, *, state, started=False, finished=False, result=None, error=None,

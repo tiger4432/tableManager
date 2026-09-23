@@ -1607,3 +1607,58 @@ def test_the_refusal_line_says_which_kind_of_lock_this_is(retro_env, monkeypatch
     assert "NOT alive" in dead and "RELEASES" in dead, dead
     assert "is alive" in alive and "RELEASES" not in alive, alive
     assert dead != alive, "두 경우가 같은 문장을 낸다"
+
+
+class TestTheRunSentenceSaysWhatWasNotMade:
+    """🔴 [판정 b3b6e8d55 · c1861f8ec] 실행이 화면에 닿는 통로는 이 문장 «하나»다
+    (판정 33: 화면은 result 를 해석하지 않는다). 그런데 이 함수를 재는 시험이 «0» 이었다 —
+    운영자가 실행에서 읽는 모든 것이 게이트 없이 서 있었다.
+    """
+
+    def test_an_operation_without_labels_reads_exactly_as_before(self):
+        """㉤ 「갈래를 안 만들었다」를 보이는 줄. 라벨을 안 단 연산의 문장은 한 글자도
+        안 바뀐다 — 이 함수는 어느 연산인지 여전히 모른다."""
+        assert retroactive.run_result_sentence(
+            {"cells_withdrawn": 1, "revealed": 0}) == "cells_withdrawn 1 · revealed 0"
+
+    def test_a_labelled_number_is_read_by_its_label_and_the_label_is_not_drawn(self):
+        """㉢ 문장에 raw 키 이름이 없다. 그리고 라벨 자체가 «수인 척» 문장에 서지 않는다."""
+        sentence = retroactive.run_result_sentence(
+            {"created_rows": 0, "created_rows_label": "rows created",
+             "skipped_no_key": 2, "skipped_no_key_label": "not created - no decision key"})
+
+        assert sentence == "rows created 0 · not created - no decision key 2"
+        assert "created_rows" not in sentence and "_label" not in sentence
+
+    def test_nothing_to_say_is_not_an_empty_sentence(self):
+        """⚠️ 「수가 없다」와 「빈 문장」은 다르다 — 종전 계약 그대로."""
+        assert retroactive.run_result_sentence({}) is None
+        assert retroactive.run_result_sentence(None) is None
+        assert retroactive.run_result_sentence("not json") is None
+
+    def test_a_run_that_made_nothing_still_says_what_it_did_not_make(self, retro_enrich_env):
+        """㉠㉡ 🔴 행으로. 한 행도 안 만든 실행의 «문장»에 안 만든 수 둘이 들어 있고,
+        다섯 수가 «전부» 보인다 — 셋이 0 이어도.
+
+        소유자 「안된다고 에러도 안나고 조용히 실패한다」의 서버 절반이 이 자리였다:
+        backfill 의 stats 에는 그 수가 «있었는데» 실행 응답이 라우트 앞에서 버렸다.
+        """
+        db = retro_enrich_env
+        # 판단키가 전무한 행만 — 파생 행은 0 이고, 버린 이유는 «있다».
+        _seed_enrich_source(db, [{"equipment": "", "event_time": "", "chip_id": "C9"}])
+
+        out = retroactive.execute(
+            {"run_id": "say", "op": "enrichment_backfill",
+             "params": {"rule": "retro_enrich_rule"}}, log=lambda m: None)
+
+        assert out["status"] == "ok", f"the run failed: {out.get('error')}"
+        assert out["result"]["created_rows"] == 0, "the fixture made a row, so ㉠ is inert"
+
+        sentence = retroactive.run_result_sentence(out["result"])
+        assert "not created - no decision key 1" in sentence, (
+            f"the run did not say what it refused to make: {sentence}")
+        for word in ("rows created 0", "rows updated 0", "rows scanned",
+                     "not created - identity columns all blank 0"):
+            assert word in sentence, f"'{word}' is missing - a zero was dropped: {sentence}"
+        assert "_rows" not in sentence and "skipped_" not in sentence, (
+            f"a raw key name reached the operator: {sentence}")
