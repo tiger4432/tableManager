@@ -427,7 +427,7 @@ def approval_report(db, known_tables: dict = None) -> dict:
         required_index_ddl = join_key_index.required_index_ddl(table, columns, folds)
         unique_index = join_key_index.unique_index_covering(
             db, table, columns, folds=folds)
-        detail = None if unique_index else join_refusal.virtual_join_detail(
+        detail = None if unique_index else join_refusal.join_detail(
             join_refusal.CODE_NO_UNIQUE_INDEX,
             {"right_table": table, "join_key": list(columns),
              "required_index_ddl": required_index_ddl})

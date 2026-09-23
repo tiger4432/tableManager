@@ -68,8 +68,8 @@ def _names(seq, sep: str = ", ") -> str:
     return sep.join(str(s) for s in (seq or []))
 
 
-def virtual_join_detail(code: str, facts: dict = None, loader_detail: str = "") -> str:
-    """virtual join 거부 1건의 **운영자가 읽는 최종 문장**. 서버가 짓는다.
+def join_detail(code: str, facts: dict = None, loader_detail: str = "") -> str:
+    """조인 선언 거부 1건의 **운영자가 읽는 최종 문장**. 서버가 짓는다.
 
     보고서와 `GET /admin/chain/join/verify` 가 **같은 함수**를 쓴다. 갈라 두면
     같은 거부가 두 화면에서 다른 문장으로 나오고, 그 순간 「서버가 문장의 정본」이라는

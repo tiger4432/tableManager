@@ -70,6 +70,23 @@
 > 실행 결과   cells_written 대신  rows_staged · events_staged
 > ⚠️ 클라 쪽은 아직 옛 칸 이름을 읽을 수 있습니다 — 총괄이 클라 레인에 걸었습니다
 > ```
+>
+> ### 🔴 로그 «채널 이름»이 바뀝니다 — 어제 그랩하던 낱말이 달라집니다
+>
+> ```
+> 소유자   「로그에 virtual join이라는데 가상 조인 모두 은퇴한거 아니야?」
+> 전   [VirtualJoin] · [VirtualJoin:<규칙>] · [VirtualJoinUnique] · 로거 VirtualJoin.UniqueKey
+> 후   [Join]        · [Join:<규칙>]        · [JoinUnique]        · 로거 Join.UniqueKey
+> 거절 문구의 「가상 조인의 오른쪽 유일성」 -> 「조인 선언의 오른쪽 유일성」
+> ```
+> ```
+> 🔴 인덱스 접두 uq_vjoin_ 는 «안 바뀝니다». 소유자 판정입니다.
+>    그건 «읽는 이름»이 아니라 지금 DB 에 선 인덱스를 «맞춰 보는» 식별자이고,
+>    바꾸면 제품이 이미 선 인덱스를 못 찾아 조인이 «조용히» 꺼집니다
+> 확인   psql:  select indexname from pg_indexes where indexname like 'uq_vjoin_%';
+>       -> 이 목록이 pull 전후로 «같아야» 합니다. 달라지면 되돌리십시오
+> 로그   findstr /C:"[Join" server\chain_worker.log   (옛 줄은 [VirtualJoin 로 남아 있습니다)
+> ```
 ---
 
 > 🔵 **17:48 갱신.** 아래 ⓞ 가 «제일 먼저»입니다. 나머지는 그다음입니다.

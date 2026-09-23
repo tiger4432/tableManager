@@ -60,7 +60,7 @@ from chain import synthesis
 from chain import ingestion_worker as worker
 import mapper_sdk
 from chain import rule_shape
-from chain.join_refusal import virtual_join_detail             # noqa: F401
+from chain.join_refusal import join_detail                     # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -607,7 +607,7 @@ def _resolve_enrichment() -> dict:
 # 조인 키를 덮는 UNIQUE 인덱스가 실재하나」는 `GET /admin/chain/join/verify` 가 답하고,
 # 거기는 세션이 있어 「모양은 유효한데 확인은 못 한다」는 반쪽 답을 낼 필요가 없습니다 —
 # 이 보고서의 「DB 질의 0건」 계약이 바로 그 반쪽을 강제하던 것이었습니다.
-# ⚠️ `virtual_join_detail` 은 «삽니다»(`chain.join_refusal`). 조인 거절의 한국어 문장은
+# ⚠️ `join_detail` 은 «삽니다»(`chain.join_refusal`). 조인 거절의 한국어 문장은
 #    그 조립기 하나가 짓고, 새 라우트가 그것을 씁니다.
 
 
@@ -652,7 +652,7 @@ def notation_preview_detail(preview: dict) -> str:
 
     🔴 문장을 만드는 곳은 여기 하나다 ― 라우트(`/admin/config/notation/preview`)가 이
     함수를 부르므로, 같은 사실이 두 화면에서 다른 문장으로 나올 자리가 없다
-    (`virtual_join_detail`과 같은 규율).
+    (`join_detail`과 같은 규율).
 
     앞에 오는 것은 **병합군**이다. 「무엇이 무엇으로 접히는가」가 아니라 「내 규칙이
     서로 다른 두 값을 합쳐 버리지 않았는가」가 운영자가 실제로 물어야 하는 질문이고,

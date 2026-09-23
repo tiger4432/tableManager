@@ -234,8 +234,12 @@ CHAIN_LOG_TAGS = {
     "LedgerCensus": "the retroactive census",
     "LedgerFollowUp": "the ledger's own lap",
     "Reload": "the config reload",
-    "VirtualJoin": "the legacy join declaration",
-    "VirtualJoin:%s": "the legacy join declaration, named",
+    # ⚰️ THESE READ `VirtualJoin` UNTIL 2026-09-23. The read-time join retired and the
+    #    word stayed in the channel an operator greps - 소유자 caught it in the log. The
+    #    prefix `uq_vjoin_` did NOT move with it: that one is matched against indexes
+    #    that already exist (`join_key_index.INDEX_PREFIX`).
+    "Join": "the join declaration's unique-key seat",
+    "Join:%s": "the same, naming the rule",
     "Warmup": "process start",
 }
 

@@ -137,7 +137,7 @@ def samples_of(items, cap: int = MAX_SAMPLES) -> str:
 def line(where: str, subject: str, what: str, action: str, samples=()) -> str:
     """운영자 한 줄. 「다음:」 절이 «없는» 줄은 이 함수가 만들 수 없습니다.
 
-    `where`   어느 자리가 말하는가 (`VirtualJoinUnique` · `join_into` …)
+    `where`   어느 자리가 말하는가 (`JoinUnique` · `join_into` …)
     `subject` 그 자리가 다루던 «규칙 이름», 없으면 «표 이름» — 운영자가 찾아갈 대상
     `what`    무엇이 일어났나. 수와 키를 담는다
     `action`  다음에 무엇을 하나. 위 어휘 중 하나 — 부르는 자리가 짓지 않는다

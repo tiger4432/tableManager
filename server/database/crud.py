@@ -3955,7 +3955,7 @@ def _virtual_join_right_keys(db: Session, table_name: str):
         # Same posture as the sibling guard below: an unreadable declaration means NO join
         # is in effect, so there is no uniqueness to protect. Failing the write here would
         # turn a config problem into an outage.
-        logger.error(f"[VirtualJoinUnique] could not load declarations for "
+        logger.error(f"[JoinUnique] could not load declarations for "
                      f"'{table_name}', no row is refused: {e}")
         return []
 
@@ -4098,7 +4098,7 @@ def refuse_virtual_join_duplicates(db: Session, table_name: str,
                     "row": mine,
                     "others": [name for name in named if name != mine],
                     "message": (
-                        f"규칙 '{rule_name}' 의 행 {mine} 이(가) 가상 조인의 오른쪽 "
+                        f"규칙 '{rule_name}' 의 행 {mine} 이(가) 조인 선언의 오른쪽 "
                         f"유일성({', '.join(columns)}={', '.join(str(v) for v in key)})을 "
                         f"어겨 건너뜀 — 같은 조인 키의 다른 행: "
                         f"{', '.join(name for name in named if name != mine)}"),
@@ -4110,7 +4110,7 @@ def refuse_virtual_join_duplicates(db: Session, table_name: str,
             import operator_line
 
             logger.warning("%s", operator_line.line(
-                "VirtualJoinUnique", rule_name,
+                "JoinUnique", rule_name,
                 "%s 에 같은 오른쪽 키(%s=%s)를 쓰는 행 %d 개가 «한 배치 안»에 있어 "
                 "«모두» 건너뜁니다 — 어느 쪽이 사실인지 제품이 고를 수 없습니다"
                 % (table_name, ", ".join(columns),
@@ -4138,7 +4138,7 @@ def refuse_virtual_join_duplicates(db: Session, table_name: str,
             # ⚠️ A PROBE THAT CANNOT RUN MUST NOT REFUSE. Failing open leaves today's
             # behaviour exactly as it was; failing closed would drop good rows on a
             # dialect quirk.
-            logger.warning("[VirtualJoinUnique] %s: stored-key probe skipped (%s)",
+            logger.warning("[JoinUnique] %s: stored-key probe skipped (%s)",
                            table_name, probe_error)
             continue
         if not owners:
@@ -4166,7 +4166,7 @@ def refuse_virtual_join_duplicates(db: Session, table_name: str,
                     "row": mine,
                     "others": [str(holder_name)],
                     "message": (
-                        f"규칙 '{rule_name}' 의 행 {mine} 이(가) 가상 조인의 오른쪽 "
+                        f"규칙 '{rule_name}' 의 행 {mine} 이(가) 조인 선언의 오른쪽 "
                         f"유일성({', '.join(columns)}={', '.join(str(v) for v in key)})을 "
                         f"어겨 건너뜀 — 같은 조인 키를 «이미 가진» 행: {holder_name}"),
                 })
@@ -4174,7 +4174,7 @@ def refuse_virtual_join_duplicates(db: Session, table_name: str,
                 import operator_line
 
                 logger.warning("%s", operator_line.line(
-                    "VirtualJoinUnique", rule_name,
+                    "JoinUnique", rule_name,
                     "들어온 행이 %s 에 «이미 있는» 행 %s 과 같은 오른쪽 키(%s=%s)를 "
                     "들고 있어 건너뜁니다 — 나머지 행은 정상으로 써집니다"
                     % (table_name, holder_name, ", ".join(columns),
@@ -4709,7 +4709,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
             # purge and this runs after, so it raises: `transaction_context` unwinds and
             # the map is left exactly as it was.
             raise ValueError(
-                f"'{table_name}' 에 보낸 {len(vjoin_refusals)}개 행이 모두 가상 조인의 "
+                f"'{table_name}' 에 보낸 {len(vjoin_refusals)}개 행이 모두 조인 선언의 "
                 f"오른쪽 유일성을 어겨 쓸 수 있는 행이 없습니다. 맵을 비우지 않기 위해 "
                 f"이 요청 전체를 취소했습니다. "
                 + " / ".join(r.get("message", "") for r in vjoin_refusals[:3]))

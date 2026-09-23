@@ -14,6 +14,9 @@ that prefix — 「접두로 고르는 것이 이 안전장치의 전부」. Ren
 falls outside the product's reach; widen it and an operator's hand-built index falls inside.
 It names a package that is gone, so it LOOKS wrong. Leave it wrong: the value is written
 into live databases, and changing it is a migration and a separate round.
+⚠️ 소유자 2026-09-23 「접두는 그냥 유지하고」 - said while the LOG CHANNEL was being renamed
+   off `VirtualJoin` in the same round. The two look like one tidy-up and are not: a
+   channel name is READ, this one is MATCHED - against indexes that already exist.
 
 🔴 AND THE EXPRESSION COMES WITH THEM, WHICH IS THE POINT. `index_key_expression` is not
 the index's private spelling — the index DDL, `join_onclause` and `crud`'s key comparison

@@ -128,7 +128,10 @@ def test_the_retired_scheduler_sentence_is_gone():
 
     source = inspect.getsource(main.get_outbox_queue_rows)
     code = "\n".join(l for l in source.split("\n") if not l.strip().startswith("#"))
-    assert "note" in code, "계기가 엉뚱한 함수를 읽고 있다"
+    # ⚰️ 이 카나리아는 `note` 였다. 그 칸은 2026-09-23 에 죽었다 — 「아무것도 안 도는
+    #    행」이 목록에서 빠지면서 그 행을 설명하던 문장 둘이 설명할 대상을 잃었다
+    #    (소유자 「빼. 안 돌거는 다빼」). 카나리아는 «지금 있는» 칸이어야 한다.
+    assert "rules_known" in code, "계기가 엉뚱한 함수를 읽고 있다"
     assert "체인 규칙을 지나지 않습니다" in source, (
         "대조군이 사라졌다 — 주석의 은퇴 기록까지 지우면 다음 사람이 그 문장을 다시 만든다")
     assert "체인 규칙을 지나지 않습니다" not in code, (

@@ -344,6 +344,68 @@ class TestCountsDoNotLieAboutWhatTheyCounted:
                 "%s renders Korean in the browser: %r" % (cell, said))
 
 
+    def test_no_string_this_module_hands_the_screen_is_korean(self):
+        """🔴 소유자 2026-08-31 「UI 무조건 영어로」 · 2026-09-23 「UI에 한국어 쓰지 말라고」.
+
+        ⚠️ A TEXT ORACLE, DECLARED AS ONE. The subject here IS the text - 「what words does
+           an operator read」 - so reading the source is measuring the thing, not a proxy for
+           it. The sibling case above calls the route and scores what comes back; that one
+           answers for ONE op, and standing up all six needs six environments.
+
+        🔴 NO EXCEPTION CLAUSE, AND THAT WAS MEASURED: zero Korean literals in this module
+           sit inside a log call, so 「no Korean at all」 is a rule that does not need a
+           carve-out for lines an operator never sees. If a Korean LOG line is ever added
+           here, this case is where the carve-out gets written - deliberately, once.
+        ⚠️ Docstrings are excluded. They are for whoever edits this file, and 소유자's rule
+           is about what renders.
+        """
+        import ast
+        import inspect
+        import re
+
+        from admin import retroactive
+
+        source = inspect.getsource(retroactive)
+        tree = ast.parse(source)
+        hangul = re.compile("[가-힣]")
+
+        docstrings = set()
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef,
+                                 ast.ClassDef)):
+                body = node.body
+                if (body and isinstance(body[0], ast.Expr)
+                        and isinstance(body[0].value, ast.Constant)
+                        and isinstance(body[0].value.value, str)):
+                    docstrings.add(id(body[0].value))
+
+        # f-string pieces are Constants of their own; count the joined text once.
+        in_fstring = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.JoinedStr):
+                for piece in ast.walk(node):
+                    if isinstance(piece, ast.Constant):
+                        in_fstring.add(id(piece))
+
+        said = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.JoinedStr):
+                text = "".join(v.value for v in node.values
+                               if isinstance(v, ast.Constant))
+                if hangul.search(text):
+                    said.append((node.lineno, text))
+            elif (isinstance(node, ast.Constant) and isinstance(node.value, str)
+                  and hangul.search(node.value)
+                  and id(node) not in docstrings and id(node) not in in_fstring):
+                said.append((node.lineno, node.value))
+
+        # canary: the instrument can see this module's strings at all
+        assert "affected_label" in source, "계기가 엉뚱한 모듈을 읽고 있다"
+
+        assert not said, "%d string(s) render Korean: %r" % (
+            len(said), [(ln, t[:60]) for ln, t in sorted(said)[:8]])
+
+
     def test_a_count_writes_nothing(self, client, retro_env):
         """A GET beside a POST that rewrites tables. The failure is silent."""
         db = retro_env
@@ -401,7 +463,10 @@ class TestCountsDoNotLieAboutWhatTheyCounted:
                           "?table=retro_test_target&source=chain_ingestion").json()
         assert body["count_kind"] == retroactive.COUNT_UPPER_BOUND
         assert body["extra"]["why_upper_bound"]
-        assert "최대" in body["affected_label"]
+        # ⚰️ 이 줄은 「최대」를 맞춰 봤다. 그 라벨은 브라우저에 렌더되므로 2026-09-23 에
+        #    영어로 옮겼다(소유자 「UI에 한국어 쓰지 말라고」). 재는 성질은 그대로다 —
+        #    「이 수가 상한임을 라벨이 «말하나»」.
+        assert "at most" in body["affected_label"]
 
     def test_a_typo_in_a_parameter_is_refused_not_ignored(self, client, retro_env):
         """A silently dropped parameter makes "0건" look like an answer."""
