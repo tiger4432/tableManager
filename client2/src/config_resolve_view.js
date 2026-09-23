@@ -37,18 +37,16 @@ export const CHROME = Object.freeze({
   MEASURING: '측정 중…',
   MEASURE_FAILED: '드라이런 요청 실패',
   REFUSED: '보류 사유',
-  FETCH_FAILED: '조회 실패',
+  FETCH_FAILED: 'Read failed',
   // The four failure lines. See `fetchFailureText` below for why these are client-owned:
   // the server did not answer, so it cannot be the one to say why.
   //
-  // 🔴 상태는 «명사», 다음 행동은 «옆에», 가르는 것은 「·」 (상설 2026-09-05). 이 다섯이
-  //    화면에서 «문장»으로 남아 있던 마지막 자리였습니다 — 읽어서 찾았고, 어느 체크리스트에도
-  //    없었습니다. ⚠️ «고칠 자리»는 남깁니다: 사유만 남기고 행동을 지우면 짧아진 것이 아니라
-  //    운영자가 갈 곳을 잃습니다.
-  FETCH_OLD_SERVER: '구버전 서버 · 재시작 필요',
-  FETCH_UNREACHABLE: '서버 연결 불가 · 실행 중인지 확인',
-  FETCH_UNAUTHORIZED: '토큰 거부 · 새로고침 후 재입력',
-  FETCH_INTERCEPTED: '관리자 게이트 아님 · 앞단 프록시 확인',
+  // 🔴 상태는 «명사», 다음 행동은 «옆에», 가르는 것은 「·」 (상설 2026-09-05). ⚠️ 사유만 남기고
+  //    행동을 지우면 짧아진 것이 아니라 운영자가 갈 곳을 잃습니다.
+  FETCH_OLD_SERVER: 'Old server build · restart it',
+  FETCH_UNREACHABLE: 'Server unreachable · check it is running',
+  FETCH_UNAUTHORIZED: 'Token declined · reload, then enter it again',
+  FETCH_INTERCEPTED: 'Not the admin gate · check the proxy in front',
   NO_DOMAINS: '설정 도메인 없음',
   // C-87. 막힌 걸음이 «기다리는 걸음»을 가리키는 부호. 문장이 아니라 부호 하나이고, 번호는
   // 서버의 값입니다 — 「⑤ 가 안 서서 막혔습니다」라고 쓰면 그 문장의 저자가 화면이 됩니다.
@@ -133,11 +131,20 @@ export function fetchFailureEvidence(failure) {
   return server.slice(0, 40);
 }
 
-/** The failure line as rendered: the sentence, plus the evidence when there is any. */
+/** The failure line as rendered: the sentence, then the facts about who answered and with what.
+ *
+ * 🔴 지시 `6b2531fc8`: 「코드(401)는 남기되 그것만 두지 마십시오」. 앞선 라운드(C-122)의 게이트는
+ *    「줄에 숫자가 없다」를 쟀고, 그것은 «대리»였습니다 — 지키던 성질은 「문장이 상수다」이고,
+ *    상태 코드는 문장이 아니라 응답이 «보낸 값»입니다. 그래서 `fetchFailureText` 는 그대로 두고
+ *    괄호 안에만 싣습니다. 여기서 사유를 짓지 않습니다. 응답이 없으면 괄호도 없습니다.
+ */
 export function fetchFailureLine(failure, fallback = CHROME.FETCH_FAILED) {
   const text = fetchFailureText(failure, fallback);
+  const facts = [];
+  if (failure && failure.status) facts.push(`HTTP ${failure.status}`);
   const evidence = fetchFailureEvidence(failure);
-  return evidence ? `${text} (${evidence})` : text;
+  if (evidence) facts.push(evidence);
+  return facts.length ? `${text} (${facts.join(' · ')})` : text;
 }
 
 // 🔴 C-122. 아래 둘은 `admin.js` 에 살았고, 그래서 그리드 페이지가 «자기 문장»을 손으로

@@ -161,7 +161,7 @@ async function transportSuite(mod) {
 
 // ── ② 읽기 ────────────────────────────────────────────────────────────────────────────
 function readerSuite(mod) {
-  const { failureFactOf, retroFailureLine, CHROME } = mod;
+  const { failureFactOf, retroFailureLine, fetchFailureText, fetchFailureLine, CHROME } = mod;
   const line = (a, fallback) => retroFailureLine(a, failureFactOf(a), fallback);
 
   const gate = failureFactOf(answer({ status: 401, challenge: true }));
@@ -175,11 +175,34 @@ function readerSuite(mod) {
     line(answer({ status: 400, body: { detail: '규칙 이름이 없습니다' } }), 'FALLBACK')
       .then((t) => ok(t.includes('규칙 이름이 없습니다'),
                       'R4 400 이면 «서버 문장»이 먼저다 — 뭉개면 운영자를 로그로 보낸다', t)),
+    // 🔴 R5 는 「줄에 404 가 없다」를 쟀다. 그것은 «대리»였고, 지키던 «성질»은 「문장을 숫자로
+    //    짓지 않는다」다. 지시 `6b2531fc8` 이 「코드는 남기되 그것만 두지 마십시오」라 했으므로
+    //    성질로 다시 겨눈다 — 문장은 상수 «그대로»이고, 코드는 그 «옆»(R5b)에 선다.
+    Promise.resolve(fetchFailureText(failureFactOf(answer({ status: 404 })), 'FALLBACK'))
+      .then((t) => ok(t === CHROME.FETCH_OLD_SERVER,
+                      'R5 서버가 자기에 대해 못 말하는 상태면 문장이 «클라 상수 그대로»다', t)),
     line(answer({ status: 404 }), 'FALLBACK')
-      .then((t) => ok(typeof t === 'string' && t.length > 0 && !t.includes('404'),
-                      'R5 서버가 자기에 대해 못 말하는 상태면 «클라 상수»가 답한다 — 숫자를 문장으로 내지 않는다', t)),
+      .then((t) => ok(t.startsWith(CHROME.FETCH_OLD_SERVER) && t.includes('HTTP 404'),
+                      'R5b 코드는 문장 «옆»에 남는다 — 코드만도 아니고 코드 없이도 아니다', t)),
     line(answer({ status: 500, server: 'squid/5.7' }), CHROME.FETCH_FAILED)
       .then((t) => ok(t.includes('squid/5.7'), 'R6 증거가 그 줄에 같이 선다', t)),
+    // ㉠ 사유 + 다음 행동 + 코드. ㉢ 401 이 아닌 실패는 «다른 문장»이다.
+    line(answer({ status: 401, challenge: true }), 'FALLBACK')
+      .then((t) => ok(t.startsWith(CHROME.FETCH_UNAUTHORIZED) && t.includes('HTTP 401')
+                      && CHROME.FETCH_UNAUTHORIZED.includes('·'),
+                      'R7 게이트의 401 은 «사유»와 «다음 행동»과 코드를 한 줄에 낸다', t)),
+    // 응답이 «아예 없는» 갈래는 부르는 쪽이 `fetchFailureLine(null, …)` 로 든다 — 읽을 본문이
+    // 없으므로 `retroFailureLine` 의 길이 아니다 (admin.js 의 catch 가 그 모양이다).
+    Promise.all([line(answer({ status: 401, challenge: true }), 'FALLBACK'),
+                 line(answer({ status: 500 }), 'FALLBACK'),
+                 Promise.resolve(fetchFailureLine(null, 'FALLBACK'))])
+      .then(([gateLine, brokeLine, goneLine]) => {
+        ok(gateLine !== brokeLine && brokeLine !== goneLine && gateLine !== goneLine,
+           'R8 401 · 500 · 무응답이 «서로 다른» 문장이다 — 하나로 뭉치지 않는다',
+           [gateLine, brokeLine, goneLine]);
+        ok(!goneLine.includes('HTTP'),
+           'R9 답한 것이 «없으면» 코드도 없다 — 없는 값을 지어내지 않는다', goneLine);
+      }),
   ]);
 }
 
@@ -196,8 +219,13 @@ const collect = (dir) => {
   }
 };
 collect(SRC);
-const live = (text) => text.replace(/\/\*[\s\S]*?\*\//g, ' ')
-  .split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+// 🔴 주석은 «줄 단위»로 버린다. 종전에는 `/* … */` 를 통째로 지웠고, 문자열 안의 `/*` 하나가
+//    «다음 `*/` 까지»를 먹었다 — S5 를 달자마자 그것이 잡혔다: 변이가 심은 줄이 실재하는데
+//    계기가 0 을 냈다. 실측: 이 필터로 바꾸니 `adminFetch(` 호출이 58 -> 61 로 늘었다(셋이
+//    안 보이고 있었다). 줄 사이에 상태를 안 들고 가면 그 구멍이 «없다».
+const live = (text) => text.split('\n')
+  .filter((l) => { const t = l.trim(); return !(t.startsWith('//') || t.startsWith('*') || t.startsWith('/*')); })
+  .join('\n');
 
 function seamSuite(overrides = {}) {
   let adminFetchCalls = 0;
@@ -234,6 +262,34 @@ function seamSuite(overrides = {}) {
   ok(defs.failureFactOf.length === 1, `S3 \`failureFactOf\` 의 정의가 «하나»다`, defs.failureFactOf);
   ok(defs.retroFailureLine.length === 1, `S4 \`retroFailureLine\` 의 정의가 «하나»다`,
      defs.retroFailureLine);
+
+  // 🔴 ㉡ 「같은 상황에 화면들이 «같은 문장»을 낸다」. 정의가 하나여도 «부르지 않으면» 갈라진다 —
+  //    어드민 화면은 자리 넷에서 404·!ok·네트워크를 «손으로» 적고 있었고, 운영자가 실제로 누르는
+  //    동기화 토스트는 응답을 던져 버려서 아무것도 못 말했다.
+  //    ⚠️ 이 단언의 주어는 «텍스트»이고 범위는 «어드민 화면 한 파일»이다. 세 화면을 «띄워서»
+  //       잰 것이 아니다 — `admin.js` 는 node 가 import 할 수 없다(부팅이 DOM 을 든다).
+  const spoken = [];
+  let seatCalls = 0;
+  let reasonLines = 0;
+  for (const file of files) {
+    const rel = path.relative(SRC, file).split(path.sep).join('/');
+    const raw = Object.prototype.hasOwnProperty.call(overrides, rel)
+      ? overrides[rel] : readFileSync(file, 'utf8');
+    const text = live(raw);
+    seatCalls += (text.match(/\b(fetchFailureLine|retroFailureLine)\(/g) || []).length;
+    if (rel !== 'admin.js') continue;
+    for (const one of text.split('\n')) {
+      if (!/unavailable|showToast|failed:/.test(one)) continue;
+      reasonLines += 1;
+      if (/HTTP \$\{|\$\{res\.status\}/.test(one)) spoken.push(one.trim().slice(0, 74));
+    }
+  }
+  ok(spoken.length === 0,
+     `S5 어드민 화면이 못 읽은 이유를 «자기 문장»으로 짓는 자리가 없다 (본 수 ${spoken.length})`,
+     spoken);
+  ok(reasonLines > 0 && seatCalls >= 10,
+     `S6 그 성질의 모집단이 실재한다 — 이유를 말하는 줄 ${reasonLines} · 좌석 호출 ${seatCalls}`,
+     [reasonLines, seatCalls]);
 }
 
 // ── 채점 ──────────────────────────────────────────────────────────────────────────────
@@ -276,6 +332,12 @@ const VIEW_DEFECTS = [
   ['M8 증거를 안 싣는다 -> R3/R6',
    (s) => s.replace("    server: (res.headers && res.headers.get ? res.headers.get('Server') : '') || '',",
                     "    server: '',")],
+  ['M11 문장을 «상태 코드로» 짓는다 -> R5',
+   (s) => s.replace('  const text = fetchFailureText(failure, fallback);',
+                    '  const text = failure && failure.status\n'
+                    + "    ? 'HTTP ' + failure.status : fetchFailureText(failure, fallback);")],
+  ['M12 코드를 «안» 싣는다 -> R5b/R7',
+   (s) => s.replace('  if (failure && failure.status) facts.push(`HTTP ${failure.status}`);', '')],
 ];
 const SEAM_DEFECTS = [
   ['M9 그리드 페이지가 다시 «맨 fetch» 로 간다 -> S1',
@@ -285,6 +347,10 @@ const SEAM_DEFECTS = [
   ['M10 읽는 쪽이 «둘째 파일»에 다시 정의된다 -> S3',
    () => ({ 'main.js': `function failureFactOf(res) { return res; }\n`
      + readFileSync(path.join(SRC, 'main.js'), 'utf8') })],
+  ['M13 어드민 화면이 «자기 문장»을 다시 짓는다 -> S5',
+   () => ({ 'admin.js': readFileSync(path.join(SRC, 'admin.js'), 'utf8')
+     .replace("opts.unavailable = fetchFailureLine(failureFactOf(res), 'Rule registry read failed');",
+              'opts.unavailable = `Rule registry read failed (HTTP ${res.status}).`;') })],
 ];
 const CONTROLS = [
   ['전송의 주석 한 낱말', TOKEN, (s) => s.replace('두 번째 전송', '세 번째 전송')],

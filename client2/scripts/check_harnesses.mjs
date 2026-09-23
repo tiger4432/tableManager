@@ -1508,7 +1508,7 @@ const FLOORS = new Map([
   // the SEAM: `admin.js:91` has always claimed in prose that a grep for a bare fetch to
   // /admin must return nothing. Prose stops nothing; that sentence is a gate now, and it
   // was false when it was written -- one call site had been going around it.
-  ['refusal_seat_harness.mjs', 22],
+  ['refusal_seat_harness.mjs', 28],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

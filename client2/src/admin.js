@@ -1148,15 +1148,10 @@ async function refreshChainRule(name, extra = {}) {
   try {
     const qs = name ? `?name=${encodeURIComponent(name)}` : '';
     const res = await adminFetch(`${API_BASE}/admin/chain/rules/raw${qs}`);
-    if (res.status === 404) {
-      opts.unavailable = '이 서버 프로세스에 /admin/chain/rules/raw 가 없습니다 (404) — 재기동이 필요합니다.';
-    } else if (!res.ok) {
-      opts.unavailable = `규칙 등록 조회 실패 (HTTP ${res.status}).`;
-    } else {
-      body = await res.json().catch(() => null);
-    }
+    if (res.ok) body = await res.json().catch(() => null);
+    else opts.unavailable = fetchFailureLine(failureFactOf(res), 'Rule registry read failed');
   } catch (e) {                                              // noqa
-    opts.unavailable = '규칙 등록 조회에 실패했습니다 (네트워크).';
+    opts.unavailable = fetchFailureLine(null, 'Rule registry read failed');
   }
   const view = chainRulePanel.render(body, opts);
   const count = byId('chain-rule-editor-count');
@@ -1282,15 +1277,10 @@ async function refreshTableConfig(table, extra = {}) {
   try {
     const qs = table ? `?table=${encodeURIComponent(table)}` : '';
     const res = await adminFetch(`${API_BASE}/admin/tables/config/raw${qs}`);
-    if (res.status === 404) {
-      opts.unavailable = '이 서버 프로세스에 /admin/tables/config/raw 가 없습니다 (404) — 재기동이 필요합니다.';
-    } else if (!res.ok) {
-      opts.unavailable = `표 등록 조회 실패 (HTTP ${res.status}).`;
-    } else {
-      body = await res.json().catch(() => null);
-    }
+    if (res.ok) body = await res.json().catch(() => null);
+    else opts.unavailable = fetchFailureLine(failureFactOf(res), 'Table registry read failed');
   } catch (e) {                                              // noqa
-    opts.unavailable = '표 등록 조회에 실패했습니다 (네트워크).';
+    opts.unavailable = fetchFailureLine(null, 'Table registry read failed');
   }
   // 🔴 「선언은 됐는데 물리 표가 없는 것」을 «같이» 묻습니다 — 새 라우트가 아니라
   //    서버가 이미 내던 칸(`missing_relations`)이고, 읽는 곳이 «0» 이었습니다.
@@ -1376,12 +1366,10 @@ async function refreshLedgerSources() {
   let opts = {};
   try {
     const res = await adminFetch(`${API_BASE}/admin/ledger/sources`);
-    // \ubabb \uc77d\uc740 \uc774\uc720\ub97c \u00ab\uc774\ub984\uc73c\ub85c\u00bb \ub118\uae41\ub2c8\ub2e4. 404 \ub294 \u300c\uc774 \ud504\ub85c\uc138\uc2a4\uc5d0 \ub77c\uc6b0\ud2b8\uac00 \uc5c6\ub2e4\u300d\uc774\uace0,
+    // \ubabb \uc77d\uc740 \uc774\uc720\ub294 \u00ab\uc774\ub984\uc73c\ub85c\u00bb \ub118\uae41\ub2c8\ub2e4 \u2014 404 \ub294 \u300c\uc774 \ud504\ub85c\uc138\uc2a4\uc5d0 \ub77c\uc6b0\ud2b8\uac00 \uc5c6\ub2e4\u300d\uc774\uace0,
     // \uadf8\uac83\uc740 \u300c\uc18c\uc2a4\uac00 \uc5c6\ub2e4\u300d\uc640 \u00ab\uc644\uc804\ud788 \ub2e4\ub978\u00bb \uc0ac\uc2e4\uc785\ub2c8\ub2e4.
-    if (res.status === 404) {
-      opts = { unavailable: '\uc774 \uc11c\ubc84 \ud504\ub85c\uc138\uc2a4\uc5d0 /admin/ledger/sources \uac00 \uc5c6\uc2b5\ub2c8\ub2e4 (404) \u2014 \uc7ac\uae30\ub3d9\uc774 \ud544\uc694\ud569\ub2c8\ub2e4.' };
-    } else if (!res.ok) {
-      opts = { unavailable: `\uc18c\uc2a4 \uc0c1\ud0dc \uc870\ud68c \uc2e4\ud328 (HTTP ${res.status}). \uc218\ub97c \uadf8\ub9ac\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.` };
+    if (!res.ok) {
+      opts = { unavailable: fetchFailureLine(failureFactOf(res), 'Source status read failed') };
     } else {
       body = await res.json().catch(() => null);
       // 🔴 F-10. This route answers 200 with an `error` STRING when it could not read the
@@ -1419,9 +1407,10 @@ async function refreshLedgerSources() {
  *    (기준 ④: 「둘이 있나」가 아니라 「둘이 갈라질 수 있나」).
  */
 async function chainQueueFrom(res) {
-  if (!res) return { body: null, opts: { unavailable: '대기열 조회에 실패했습니다 (네트워크). 수를 그리지 않습니다.' } };
-  if (res.status === 404) return { body: null, opts: { unavailable: '이 서버 프로세스에 /admin/chain/queue 가 없습니다 (404) — 재기동이 필요합니다.' } };
-  if (!res.ok) return { body: null, opts: { unavailable: `대기열 조회 실패 (HTTP ${res.status}). 수를 그리지 않습니다.` } };
+  const refused = (fact) => ({ body: null,
+    opts: { unavailable: fetchFailureLine(fact, 'Queue read failed') } });
+  if (!res) return refused(null);
+  if (!res.ok) return refused(failureFactOf(res));
   return { body: await res.json().catch(() => null), opts: {} };
 }
 
@@ -2844,12 +2833,12 @@ async function requestRunCancel(runId) {
     const res = await adminFetch(`${API_BASE}/admin/retroactive/runs/${encodeURIComponent(runId)}/cancel`,
       { method: 'POST' });
     if (!res.ok) {
-      const body = await res.json().catch(() => null);
-      showToast((body && body.detail) || `cancel refused (${res.status})`, 'error');
+      // 서버가 사유를 말할 수 있으면 «그 문장»이 먼저다 — 그 가름은 좌석이 이미 소유한다.
+      showToast(await retroFailureLine(res, failureFactOf(res), 'Cancel refused'), 'error');
       return;
     }
   } catch (e) {
-    showToast('could not send the cancel request', 'error');
+    showToast(fetchFailureLine(null, 'Cancel refused'), 'error');
     return;
   }
   // 서버가 값을 세웠고, 실제로 멈추는 것은 그다음입니다. 목록을 다시 읽어 «멈추는 중»을 보입니다.
@@ -4500,29 +4489,34 @@ async function retryAllFailed(kind) {
 
 // API Call: Reload system configurations and python modules cache
 async function reloadSystemConfigs() {
+  // 🔴 거절은 «좌석»이 말합니다. 종전에는 `!res.ok` 를 던져서 catch 에 «응답이 없었고», 그래서
+  //    운영자가 실제로 누르는 이 자리가 사유도 다음 행동도 못 말했습니다 (지시 6b2531fc8).
+  //    주어는 여기 것이라 앞에 답니다 — 토스트는 판과 달리 «자기가 누구인지»를 안 보여 줍니다.
+  let res = null;
   try {
-    const res = await adminFetch(`${API_BASE}/admin/reload-configs`, {
-      method: 'POST'
-    });
-    if (!res.ok) throw new Error('Reload configs API returned error status');
-    showToast('🚀 시스템 설정 및 파이썬 코드가 성공적으로 핫-리로드되었습니다.', 'success');
-    enrichmentStatusCache = null; // 규칙이 바뀌었을 수 있음
-    scriptsListCache = null;      // 스크립트 목록도 최신화
-    // [F9] 이 버튼이 **처음으로 무언가를 돌려주는** 자리. 리로드는 선언의 효과가 바뀌는
-    // 유일한 계기이므로 스로틀을 무시하고 다시 읽는다. 자동 펼침 1회 권한도 되살린다 —
-    // 방금 누른 리로드의 결과가 접혀 있으면 의미가 없다. (보고서가 실제로 달라졌을 때만
-    // 다시 그려지고, 그때 낡은 드라이런 측정값도 함께 버려진다.)
-    configResolveAutoOpened = false;
-    refreshConfigResolve(true);
-    // 소급 적용 목록도 규칙 이름(체인·Enrichment)에서 나오므로 리로드가 그 유일한 변경
-    // 계기다. force로 스로틀을 건너뛰되, **버리는 판정은 내용 비교가 한다** — 목록이 실제로
-    // 달라졌을 때만 측정을 버리고 다시 그린다. 눌렀는데 아무것도 안 바뀌었으면 화면도 그대로다.
-    refreshRetroactiveOperations(true);
-    fetchData();
+    res = await adminFetch(`${API_BASE}/admin/reload-configs`, { method: 'POST' });
   } catch (err) {
     console.error('Failed to reload configs', err);
-    showToast('❌ 시스템 핫-리로드 요청 실패', 'error');
   }
+  if (!res || !res.ok) {
+    showToast(`Hot reload — ${fetchFailureLine(res ? failureFactOf(res) : null, 'Refused')}`,
+              'error', { ttl: 12000 });
+    return;
+  }
+  showToast('🚀 시스템 설정 및 파이썬 코드가 성공적으로 핫-리로드되었습니다.', 'success');
+  enrichmentStatusCache = null; // 규칙이 바뀌었을 수 있음
+  scriptsListCache = null;      // 스크립트 목록도 최신화
+  // [F9] 이 버튼이 **처음으로 무언가를 돌려주는** 자리. 리로드는 선언의 효과가 바뀌는
+  // 유일한 계기이므로 스로틀을 무시하고 다시 읽는다. 자동 펼침 1회 권한도 되살린다 —
+  // 방금 누른 리로드의 결과가 접혀 있으면 의미가 없다. (보고서가 실제로 달라졌을 때만
+  // 다시 그려지고, 그때 낡은 드라이런 측정값도 함께 버려진다.)
+  configResolveAutoOpened = false;
+  refreshConfigResolve(true);
+  // 소급 적용 목록도 규칙 이름(체인·Enrichment)에서 나오므로 리로드가 그 유일한 변경
+  // 계기다. force로 스로틀을 건너뛰되, **버리는 판정은 내용 비교가 한다** — 목록이 실제로
+  // 달라졌을 때만 측정을 버리고 다시 그린다. 눌렀는데 아무것도 안 바뀌었으면 화면도 그대로다.
+  refreshRetroactiveOperations(true);
+  fetchData();
 }
 
 // ── Code Editor (공용 뷰 — 딥링크 진입) ─────────────────────
