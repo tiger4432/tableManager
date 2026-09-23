@@ -33,7 +33,7 @@ export const CHROME = Object.freeze({
   DECLARED: '선언값',
   VIEWS: '참조뷰',
   MEASURE: '드라이런',
-  MEASURE_HINT: '쓰기 없이 큐를 검사해 사람 없이 확정 가능한 건수를 셉니다.',
+  MEASURE_HINT: 'Inspects the queue without writing and counts how many can be confirmed without a person.',
   MEASURING: '측정 중…',
   MEASURE_FAILED: '드라이런 요청 실패',
   REFUSED: '보류 사유',

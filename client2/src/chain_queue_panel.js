@@ -462,7 +462,7 @@ export class ChainQueuePanel {
     //    «부품»에서 같이 나옵니다. 문장이 아니라 낱말 하나입니다.
     if (view.running) head.appendChild(this._line('chain-queue-headline-running', view.running));
     // 🔴 C-61. 「최장」이 「걸린 것이 있다」를 말하고, 이 줄들이 «어느 것인지»를 말합니다.
-    //    「주인 없음」 줄과 «같은 모양»입니다 — 이름 · 나이, 그리고 판정은 운영자의 것.
+    //    「No owner」 줄과 «같은 모양»입니다 — 이름 · 나이, 그리고 판정은 운영자의 것.
     for (const item of view.runningOld) {
       head.appendChild(this._line('chain-queue-headline-running-old',
                                   `${item.rule} · ${item.age}`));
@@ -492,7 +492,7 @@ export class ChainQueuePanel {
       // 「도는 중인데 주인이 없음」 — the heartbeat decided it, not this file.
       for (const orphan of view.pickup.orphaned) {
         head.appendChild(this._line('chain-queue-headline-orphan',
-                                    `주인 없음 · ${orphan.op} · ${orphan.age}`));
+                                    `No owner · ${orphan.op} · ${orphan.age}`));
       }
     }
     head.appendChild(this._line('chain-queue-headline-agg', view.headline.aggregate));
