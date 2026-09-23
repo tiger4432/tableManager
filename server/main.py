@@ -4589,8 +4589,12 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
     ⛔ `payload` 는 «응답에 안 나간다». 질의는 싣는다 — `_rule_accepts_event` 가
        `source_name` 을 읽어야 「이 규칙이 도나」를 답할 수 있기 때문이고, 읽고 버린다.
 
-    ⚠️ 모집단은 «둘»의 합집합이다 — 기다리는 행(`processed_chain=false`, RETRYING 포함)과
-       「돌았는데 통지가 안 나간」 행. **실패는 여기 «안 온다», 그리고 그것이 설계다**
+    ⚠️ 모집단은 「기다리는 행(`processed_chain=false`, RETRYING 포함) ∪ 「돌았는데 통지가
+       안 나간」 행」에서 **«아무것도 돌지 않을» 행을 뺀 것**이다 (소유자 2026-09-23
+       「빼. 안 돌거는 다빼」). 「돈다」는 좌석 둘이 답한다 — `_is_trigger_event` 와 `fires`.
+       그래서 쪽이 `limit` 보다 «짧게» 나올 수 있고, 그때도 `next_cursor` 는 마지막으로
+       «읽은» 행을 가리킨다.
+       **실패는 여기 «안 온다», 그리고 그것이 설계다**
        (소유자 2026-09-22: 「대기열에 failed 는 띄우지 마. «앞으로 돌 것만» 띄워」).
        이 화면의 주어가 「앞으로 돌 것」이고 실패는 «돌지 않는다».
 
@@ -4633,9 +4637,30 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
     #    실패를 보는 자리는 이미 있다 — `/admin/outbox/failed`.
     #    ⚠️ RETRYING 은 `processed_chain=false` 라 «그대로» 든다. 다시 돌 것이므로 맞다.
 
+    # 🔴 [소유자 2026-09-23 「빼. 안 돌거는 다빼」] 모집단에서 «돌지 않을 행»이 빠진다.
+    #    판정은 아래 좌석 «둘»이 한다 — `_is_trigger_event`(사건 혼자의 성질)와
+    #    `fires`(규칙·사건 쌍의 성질). 술어를 여기서 다시 적지 않는다.
+    #    ⚠️ 총괄 지시는 「`any(fires)` 하나로 DELETE 까지 빠진다」였는데 «그렇지 않다» —
+    #       `fires` 의 독스트링이 적고 있다: 「event_type 은 여기 «없다». 그것은 이벤트
+    #       혼자의 성질이고(`_is_trigger_event`)」. 두 좌석 다 이 라우트가 이미 부른다.
+    #
+    # 🔴 아래 SQL 좁히기는 «둘째 술어가 아니다» — 「이 행이 실리나」의 답을 바꿀 수 «없다».
+    #    `fires` 가 `rule.trigger_table == event.table_name` 을 요구하므로, 어느 규칙도
+    #    트리거로 삼지 않는 표의 행은 파이썬에서 어차피 거짓이 된다.
+    # ⚠️ 다만 «쪽 구성»은 바꾼다, 그리고 그것이 목적이다: 안 좁히면 「규칙 없는 표가 쏟아내는
+    #    행」이 쪽을 통째로 먹고 실리는 행이 0 인 쪽이 계속 나온다 — 운영에서 바로 그 모양이
+    #    소유자 눈에 띄었다. 그래서 이것은 「성능 최적화」가 아니라 화면이 «쓸모 있게» 되는
+    #    조건이다. (변이로 빼 보면 쪽이 비고, 커서 게이트가 자기 전제부터 못 세운다)
+    #    ⚠️ 제어 행은 «남는다». 그 행에는 규칙이 없지만 «그 행 자체가 일»이고, 스케줄러가
+    #       집어서 돈다. 「안 돌 것」이 아니다.
+    rules = worker.load_chain_rules()
+    watched = {rule.get("trigger_table") for rule in rules if rule.get("trigger_table")}
+    could_run = or_(outbox.table_name.in_(watched),
+                    outbox.event_type.in_(event_constants.CONTROL_EVENT_TYPES))
+
     q = db.query(outbox.id, outbox.event_type, outbox.table_name, outbox.status,
                  outbox.processed_chain, outbox.created_at, outbox.broadcast_at,
-                 outbox.payload).filter(or_(waiting, undelivered))
+                 outbox.payload).filter(and_(or_(waiting, undelivered), could_run))
     if cursor is not None:
         q = q.filter(outbox.id > int(cursor))
     # 🔴 한 행 «더» 읽고 버린다. 그래야 「더 있다」가 «재어서 아는 사실»이 된다 —
@@ -4648,7 +4673,6 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
     # 🔴 응답의 「지금」은 «하나»다 (옆 라우트와 같은 규율). 나이마다 now() 를 부르면
     #    응답이 「지금」을 여러 번 말하고, 그 차이는 캐시가 생기는 날 조용히 틀린다.
     now_utc = datetime.now(timezone.utc)
-    rules = worker.load_chain_rules()
 
     def _age(dt):
         if dt is None:
@@ -4665,8 +4689,12 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
             r.event_type, op=(get_payload_dict(r) or {}).get("op"))
         state, detail = event_constants.chain_state_of(r.processed_chain, r.status)
 
-        # 🔴 빈 `rules[]` 는 「규칙이 없다」와 「안 봤다」가 같은 모양이다. 비면 «문장»을 단다.
-        note, matched = None, []
+        # 🔴 이 행에 대해 «무언가 돈다»가 아니면 싣지 않는다.
+        # ⚰️ 여기 note 둘이 있었다 — 「%s 는 규칙을 깨우지 않습니다」와 「이 표를 보는 규칙이
+        #    없습니다」. 둘 다 그 행이 «화면에 있을 때»만 필요했던 문장이고, 그 행이 이제
+        #    목록에 없으므로 설명할 대상이 없다. 빈 `rules[]` 가 말없이 나가는 문제도
+        #    같이 사라진다 — 빈 목록인 행은 실리지 않는다.
+        runs, matched = True, []
         if r.event_type in event_constants.CONTROL_EVENT_TYPES:
             # ⛔ 문장을 «안 단다». 「주인」 칸이 이미 말하고 있고, 제어 행은 어차피 체인
             #    규칙 목록의 주어가 아니다. 예전엔 여기서 「스케줄러가 비우는 행입니다 —
@@ -4674,8 +4702,7 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
             #    뒤 절반은 리플레이가 체인 워커로 옮겨온 2026-09-23 에 «거짓»이 됐다.
             pass
         elif not worker._is_trigger_event(r):
-            note = "%s does not wake any rule; only CREATE and EDIT are triggers" % (
-                r.event_type,)
+            runs = False
         else:
             for rule in rules:
                 if rule.get("trigger_table") != r.table_name:
@@ -4690,8 +4717,13 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
                                         "chain-produced event; this rule does not declare "
                                         "`allow_chain_trigger`")
                 matched.append(entry)
-            if not matched:
-                note = "no rule watches this table"
+            # ⛔ 「하나라도 돈다」이지 「전부 돈다」가 아니다. 한 행이 규칙 A 로는 돌고
+            #    B 로는 안 도는 경우가 있고, 그 행은 «목록에 남는다» — 아래 `will_fire`/
+            #    `why_not` 이 규칙 칸에서 그 차이를 그대로 말한다.
+            runs = any(entry["will_fire"] for entry in matched)
+
+        if not runs:
+            continue
 
         rows.append({
             "outbox_id": r.id,
@@ -4707,7 +4739,6 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
             "broadcast_state": event_constants.broadcast_state_of(
                 r.processed_chain, r.status, r.broadcast_at),
             "rules": matched,
-            "note": note,
         })
 
     return {
@@ -4724,7 +4755,11 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
             #    가늠하면 인구가 «딱 상한»일 때 빠진 것이 없는데도 「잘렸다」가 된다.
             #    (Q-201 QA: 첫 수리는 거짓 양성의 «경계»만 옮겼고 부류는 같았다)
             "cap": _QUEUE_ROWS_CAP,
-            "next_cursor": rows[-1]["outbox_id"] if has_more else None,
+            # 🔴 «마지막으로 읽은» 행의 id 이지 마지막으로 «실은» 행의 id 가 아니다.
+            #    모집단이 행마다 정해지므로 쪽이 `limit` 보다 «짧게» 나올 수 있고(심지어
+            #    비어서), 실은 행으로 커서를 잡으면 걸러낸 행을 다음 쪽이 다시 읽거나
+            #    — rows 가 비면 — 커서가 아예 없어 목록이 거기서 끝난 것처럼 보인다.
+            "next_cursor": head[-1].id if (has_more and head) else None,
             # ⚰️ [Q-203 QA] 여기 `capped` 가 «있었다». 두 판을 거치며 뜻이 두 번 바뀌었고,
             #    마지막 뜻(「네가 물은 수를 서버가 깎았나」)은 옆 라우트의 같은 이름이 쓰는
             #    뜻(「이 쪽이 상한까지 찼나」)과 «달랐다» — 한 화면에 같은 이름 두 사실이다.
@@ -4733,7 +4768,10 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
             #    (자기가 보낸 limit 과 여기 `cap` 을 견주면 끝이다). 아무도 모르는 사실만
             #    응답에 싣는다.
         },
-        "population": "processed_chain=false ∪ (done & undelivered)",
+        # 🔴 이 문자열이 «화면 머리»에 그대로 나간다. 모집단을 바꾸고 이 줄을 안 고치면
+        #    화면이 안 하는 일을 한다고 말한다 — 말이 기제보다 오래 사는 자리다.
+        "population": "processed_chain=false ∪ (done & undelivered), "
+                      "minus rows no rule will run for",
     }
 
 

@@ -13,6 +13,8 @@ import os
 import sys
 import uuid
 
+import pytest
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import event_constants                                              # noqa: E402
@@ -36,6 +38,24 @@ def row(db, *, event_type="EDIT", table_name="t", status="PENDING",
 def rows_of(client, **params):
     body = client.get(URL, params=params).json()
     return body, {r["outbox_id"]: r for r in body["rows"]}
+
+
+@pytest.fixture(autouse=True)
+def _a_rule_watches_t(monkeypatch, tmp_path):
+    """🔴 소유자 2026-09-23 「빼. 안 돌거는 다빼」 MADE THE TABLE A PRECONDITION. Every case
+    below puts its row on `t`, and a row on a table no rule watches is no longer listed -
+    so without this the whole file would be measuring the exclusion instead of the thing
+    each case is about.
+
+    ⚠️ THROUGH THE REAL LOADER, not by replacing it. A case that wants a different rule set
+    replaces `load_chain_rules` or `RULES_PATH` itself and wins, because it runs after.
+    """
+    path = tmp_path / "chain_rules.json"
+    path.write_text(json.dumps({"rules": [
+        {"name": "watches_t", "enabled": True, "trigger_table": "t",
+         "target_table": "u", "mapper_module": "mappers.x", "mapper_function": "build"},
+    ]}), encoding="utf-8")
+    monkeypatch.setattr(worker, "RULES_PATH", str(path))
 
 
 # ---------------------------------------------------------------------------
@@ -92,16 +112,100 @@ def test_a_switched_off_rule_is_listed_with_why_not(client, db_session, monkeypa
     assert "switched off" in listed["off"]["why_not"]
 
 
-def test_a_delete_row_gets_a_sentence_not_an_empty_list(client, db_session, monkeypatch):
-    """🔴 게이트 ③. 빈 목록은 「규칙이 없다」와 「안 봤다」가 같은 픽셀이다."""
+def test_a_delete_row_is_not_listed_because_nothing_will_run_for_it(
+        client, db_session, monkeypatch):
+    """🔴 게이트 ③, 뒤집힌 채로. 전에는 「빈 목록은 «말 없이» 나가면 안 된다」였고 그 답이
+    문장이었다. 소유자 2026-09-23 「빼. 안 돌거는 다빼」 이후 답은 «행이 없는 것»이다.
+
+    ⚠️ DELETE 는 `fires` 가 «못 거르는» 갈래다 — 그 술어에 event_type 이 없다(독스트링이
+       그렇게 적는다). `_is_trigger_event` 가 그 좌석이고, 총괄 지시의 「`any(fires)` 하나로
+       다 빠진다」는 이 한 칸이 모자랐다. 변이: `_is_trigger_event` 갈래를 빼면 여기가 빨강.
+    """
     monkeypatch.setattr(worker, "load_chain_rules", lambda: [
         {"name": "on", "enabled": True, "trigger_table": "t", "target_table": "u"}])
-    r = row(db_session, event_type="DELETE", table_name="t")
+    kept = row(db_session, event_type="EDIT", table_name="t")
+    deleted = row(db_session, event_type="DELETE", table_name="t")
     _body, by_id = rows_of(client)
 
-    assert by_id[r.id]["rules"] == []
-    assert by_id[r.id]["note"], "빈 목록이 «말 없이» 나갔다"
-    assert "DELETE" in by_id[r.id]["note"]
+    assert kept.id in by_id, "대조군이 빠졌다 — 그러면 아래 부재가 아무 뜻이 없다"
+    assert deleted.id not in by_id
+
+
+def test_a_row_on_a_table_no_rule_watches_is_not_listed(client, db_session, monkeypatch):
+    """소유자가 본 그 모양이다 — 규칙 없는 표가 쏟아낸 행이 대기열을 채웠다."""
+    monkeypatch.setattr(worker, "load_chain_rules", lambda: [
+        {"name": "on", "enabled": True, "trigger_table": "t", "target_table": "u"}])
+    watched = row(db_session, table_name="t")
+    unwatched = row(db_session, table_name="nobody_watches_this")
+    _body, by_id = rows_of(client)
+
+    assert watched.id in by_id, "대조군이 빠졌다"
+    assert unwatched.id not in by_id
+
+
+def test_a_row_whose_only_rule_is_switched_off_is_not_listed(client, db_session,
+                                                             monkeypatch):
+    """꺼진 규칙은 «규칙 칸»에서 여전히 why_not 을 답한다(위 게이트 ②). 다만 그것이
+    «유일한» 규칙이면 그 행에 대해 도는 것이 없으므로 행 자체가 빠진다."""
+    monkeypatch.setattr(worker, "load_chain_rules", lambda: [
+        {"name": "off", "enabled": False, "trigger_table": "t", "target_table": "u"}])
+    r = row(db_session, table_name="t")
+    _body, by_id = rows_of(client)
+    assert r.id not in by_id
+
+
+def test_a_row_that_fires_for_one_rule_and_not_another_stays(client, db_session,
+                                                             monkeypatch):
+    """⛔ 「하나라도 돈다」이지 「전부 돈다」가 아니다. 빠지는 것은 «어느 규칙으로도» 안 도는
+    행뿐이고, 규칙 칸의 will_fire=false 와 why_not 은 그대로 남는다."""
+    monkeypatch.setattr(worker, "load_chain_rules", lambda: [
+        {"name": "on", "enabled": True, "trigger_table": "t", "target_table": "u"},
+        {"name": "off", "enabled": False, "trigger_table": "t", "target_table": "u"}])
+    r = row(db_session, table_name="t")
+    _body, by_id = rows_of(client)
+
+    assert r.id in by_id
+    listed = {x["name"]: x for x in by_id[r.id]["rules"]}
+    assert listed["on"]["will_fire"] is True and listed["off"]["will_fire"] is False
+
+
+def test_a_page_whose_rows_are_all_dropped_still_hands_back_a_cursor(client, db_session,
+                                                                     monkeypatch):
+    """🔴 모집단이 «행마다» 정해지면 쪽이 통째로 빌 수 있다. 커서를 마지막으로 «실은» 행으로
+    잡으면 빈 쪽에서 커서가 «없고», 화면은 「여기서 끝」으로 읽는다 — 그 뒤에 진짜로 기다리는
+    행이 있는데도. 커서는 마지막으로 «읽은» 행이어야 한다.
+
+    첫 쪽(limit=2)은 안 도는 행 둘을 읽고 «아무것도 싣지 않는다». 그래도 뒤가 있다고 말하고,
+    다음 쪽이 그 뒤에서 시작해 도는 행을 찾아야 한다.
+    """
+    monkeypatch.setattr(worker, "load_chain_rules", lambda: [
+        {"name": "on", "enabled": True, "trigger_table": "t", "target_table": "u"}])
+    first = row(db_session, event_type="DELETE", table_name="t")
+    second = row(db_session, event_type="DELETE", table_name="t")
+    behind = row(db_session, event_type="EDIT", table_name="t")
+
+    body, by_id = rows_of(client, limit=2)
+    assert by_id == {}, "전제가 안 섰다 — 첫 쪽이 비어야 이 게이트가 무언가를 잰다"
+    cursor = body["listed"]["next_cursor"]
+    assert cursor is not None, (
+        "빈 쪽이 커서를 안 줬다 — 화면은 여기서 목록이 끝난 줄 안다")
+    assert cursor >= second.id, "커서가 읽은 자리보다 앞이다"
+
+    _body2, by_id2 = rows_of(client, limit=2, cursor=cursor)
+    assert behind.id in by_id2, "뒤에서 기다리던 행에 끝내 못 닿는다"
+    assert first.id not in by_id2 and second.id not in by_id2
+
+
+def test_a_control_row_stays_because_the_row_itself_is_the_work(client, db_session):
+    """🔴 판단을 여기 적어 둔다: 제어 행에는 규칙이 «없지만» 그 행 자체가 일이고 스케줄러가
+    집어서 «돈다». 「안 돌 것」이 아니라서 남긴다.
+    ⚠️ 총괄 지시가 이 축을 말하지 않았다. 이 게이트가 그 판단을 «보이게» 한다 — 뒤집으라면
+       이 줄 하나가 빨개지고, 그게 어디를 고쳐야 하는지 말한다.
+    """
+    control = row(db_session, event_type=event_constants.EVENT_RETROACTIVE_RUN,
+                  table_name=event_constants.RETROACTIVE_RUN_TABLE)
+    _body, by_id = rows_of(client)
+    assert control.id in by_id
 
 
 def test_the_payload_never_reaches_the_response(client, db_session):
@@ -158,6 +262,8 @@ def test_the_header_says_the_population_it_actually_read(client, db_session):
     body = client.get(URL).json()
     assert "failed" not in body["population"], body["population"]
     assert "undelivered" in body["population"]
+    # 🔴 모집단이 좁아진 것도 «그 줄»이 말해야 한다. 안 그러면 화면이 안 하는 일을 한다고 말한다.
+    assert "no rule will run" in body["population"], body["population"]
 
 
 def test_a_status_outside_the_vocabulary_does_not_break_the_screen(client, db_session):
