@@ -655,6 +655,12 @@ def pytest_configure(config):
 
 
 
+#: Why a `pg` proof is not running in the plain run. A CONSTANT because the gate that
+#: pins the collection order reads it - a literal copied into the test would stay green
+#: if the fixture skipped for its OWN reason (no database declared) instead.
+PG_ASKED_OUT_REASON = "pg proof: run server/scripts/run_pg_tests.py (S-256)"
+
+
 def pytest_collection_modifyitems(config, items):
     """A `pg` proof runs only when it was ASKED for (`-m pg`, which the runner passes).
 
@@ -665,9 +671,22 @@ def pytest_collection_modifyitems(config, items):
     seat is `run_pg_tests.py`, on purpose, one command (S-256).
     """
     import pytest as _pytest
+    # 🔴 THE SEAT ASKS THE PROPERTY, NOT THE WORD. `pg` is what an author WRITES; what
+    #   decides is whether the item REQUESTS a fixture only PostgreSQL can serve.
+    #   Measured 2026-09-23: fifteen items requested one and carried no mark, so they ran
+    #   in the PLAIN run, and the first of them left `ASSY_TEST_DATABASE_URL` declared for
+    #   the rest of the session (`pg_engine` is session-scoped and yields inside the
+    #   declaration) - five other tests then lost their own premise.
+    # ⚠️ ORDER: this runs BEFORE pytest's own `-m` deselection, so a mark added here is
+    #   honoured by `-m pg` as well. That is pluggy's registration order, not a promise -
+    #   `test_the_pg_seat_asks_the_property_not_the_word.py` is what cries if it flips.
+    for item in items:
+        if {"pg_engine", "pg_session"} & set(getattr(item, "fixturenames", ())):
+            if item.get_closest_marker("pg") is None:
+                item.add_marker(_pytest.mark.pg)
     if "pg" in (config.getoption("-m") or ""):
         return
-    asked_out = _pytest.mark.skip(reason="pg proof: run server/scripts/run_pg_tests.py (S-256)")
+    asked_out = _pytest.mark.skip(reason=PG_ASKED_OUT_REASON)
     for item in items:
         if item.get_closest_marker("pg") is not None:
             item.add_marker(asked_out)
