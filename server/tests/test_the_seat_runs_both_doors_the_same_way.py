@@ -27,7 +27,6 @@ if SERVER_DIR not in sys.path:
 
 from chain import rule_run, rule_shape                                # noqa: E402
 from chain import ingestion_worker as worker                     # noqa: E402
-from chain import replay                                        # noqa: E402
 from database.database import Base                                    # noqa: E402
 from database import crud, models, schemas                            # noqa: E402
 
@@ -192,9 +191,10 @@ def _events_since(db, before):
 
 
 def test_the_worker_collapses_a_five_row_write_into_one_event(db):
-    """🔴 THE WRITER COLLAPSES, AND THERE ARE TWO WRITERS. The worker asks for it at its
-    batch step; replay asks for it at its page write (판정 421). Either can lose it without
-    the other noticing, which is why both are scored on the same rows."""
+    """🔴 THE WRITER COLLAPSES, AND THERE IS ONE WRITER. The worker asks for it at its
+    batch step (판정 421). Replay was the second and asked at its own page write; it hands
+    the rows to this same batch step now, so this is the only place the collapse can be
+    lost - and `test_chain_replay.py` scores the hand-over on its own rows."""
     before = _five_over_one(db)
     triggers = db.query(models.DatabaseOutbox).filter(
         models.DatabaseOutbox.table_name == LEFT).all()
@@ -211,19 +211,18 @@ def test_the_worker_collapses_a_five_row_write_into_one_event(db):
         "S-249 removed" % made)
 
 
-def test_replay_collapses_the_same_five_row_write_into_one_event(db):
-    """⚠️ SAME FIXTURE AS THE WORKER'S, deliberately. Two writers that agree on their own
-    fixtures can still disagree on one."""
-    before = _five_over_one(db)
-
-    stats = replay.replay_rule(db, _join_rule(), apply=True, log=lambda m: None)
-
-    assert [r.lot_confirmed for r in _rows(db, LEFT)] == ["LOT-5"] * 5, (
-        "replay did not write the proposal, so the event count proves nothing")
-    assert stats["rows_written"] == 5
-    made = _events_since(db, before)
-    assert made == 1, (
-        "replay wrote 5 rows and produced %d outbox events" % made)
+# ⚰️ [d62f40730] `test_replay_collapses_the_same_five_row_write_into_one_event` STOOD
+#   HERE, beside the worker's above and on the SAME fixture, because replay was a second
+#   writer and two writers that agree on their own fixtures can still disagree on one.
+#   Replay does not write now - it stages the event an ordinary edit would have staged and
+#   the worker drains it - so there is no second writer for this fixture to catch.
+# 🔴 THE PROPERTY MOVED, IT DID NOT GO: 「N rows become ONE event」 is
+#   `test_chain_replay.py::test_r1_hands_the_rows_over_and_the_worker_writes_them`, which
+#   asserts `rows_staged == 2 and events_staged == 1` AND then drains it through the worker
+#   - so it measures the collapse and the write, where this measured only the collapse.
+# ⚠️ IT WAS LEFT RED, NOT MIGRATED, when the write path was retired: this file was
+#   outside the caller population that round. The sibling above (the worker's half) still
+#   stands and still passes.
 
 
 

@@ -9,8 +9,10 @@ round): the outbox should carry only the trigger row_id and the table, and the
 derivation should read the main table - THE WAY CHAIN REPLAY ALREADY DOES. This
 is not a new derivation style, it is the one that already exists in three places:
 
-  - `chain_replay._to_payloads` (:185) walks the trigger table's CURRENT contents
-    and synthesizes `{"row_id", "data": {col: {"value": v}}}` for the real mapper;
+  - `chain_replay._to_payloads` walked the trigger table's CURRENT contents and
+    synthesized `{"row_id", "data": {col: {"value": v}}}` for the real mapper. ⚰️ It is
+    retired: replay hands its rows to THIS expansion now, so the second implementation of
+    the shape became a caller of the first;
   - `enrichment_backfill.run_backfill` builds the same shape the same way;
   - `mappers/dt_map_mapper`'s CORRECTION path re-reads ORM rows (`rows.extend(q.all())`)
     while its live trigger path eats the payload.

@@ -30,13 +30,17 @@ through, so it deploys and it cannot be forgotten.
 
 WHERE THE FUNNEL IS
 -------------------
-Two call sites, one gate:
+One call site, one gate:
 
   * ``chain_ingestion_worker.process_chain_transaction_group`` - the ``write_batches``
     loop. Every chain output converges there: per-row mapper returns, batch mapper
     returns, ``map_metadata_updates`` and the ``replace_map`` scoped batches.
-  * ``chain_replay._apply_replay_batch`` - the same mapper contract, replayed. Leaving it
-    out would recreate the three-of-four omission at a coarser grain.
+
+⚰️ ``chain_replay._apply_replay_batch`` WAS THE SECOND, and it was listed here because
+   leaving it out would have recreated the three-of-four omission at a coarser grain.
+   Replay has no write batch now - it stages the event an ordinary edit stages and the loop
+   above drains it - so replayed rows reach this gate through the call site above rather
+   than through a second one that has to remember to ask.
 
 WHY NOT IN ``crud.apply_batch_updates``
 ---------------------------------------
