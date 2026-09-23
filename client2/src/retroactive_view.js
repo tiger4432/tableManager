@@ -12,7 +12,7 @@
 //   so in three separate places rather than hiding it:
 //
 //     `count_kind`      exact | sample | upper_bound     — the machine-readable declaration
-//     `affected_label`  e.g. "회수할 셀 (최대)"           — the qualifier, inside the label itself
+//     `affected_label`  e.g. "cells to withdraw (at most)"  — the qualifier, inside the label itself
 //     `detail`          the whole sentence, with numbers
 //
 //   So the rule here is mechanical: **a number is never emitted without the server's own label
@@ -307,7 +307,7 @@ function buildExtras(extra) {
  *
  * 🔴 THE NUMBER TRAVELS WITH ITS LABEL OR IT DOES NOT TRAVEL. `affected` is emitted only when
  * `affected_label` is present, because the qualifier for four of the five counts lives IN that
- * label ("회수할 셀 (최대)"). Rendering the integer alone would strip the one word that keeps the
+ * label ("cells to withdraw (at most)"). Rendering the integer alone would strip the word that keeps the
  * screen honest, and `detail` — which always carries the number in a sentence — is still there.
  */
 export function buildCountView(payload) {

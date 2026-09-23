@@ -2697,7 +2697,7 @@ async function runAutoConfirmDryRun(rule, btn, host) {
 //
 // 🔴 이 절은 「몇 건인가」의 뜻을 스스로 판정하지 않는다. 다섯 중 넷은 요청 경로에서 정확한
 //    수를 낼 수 없고(그게 곧 드라이런 전수 스캔이다), 서버가 그 사실을 `count_kind`(exact /
-//    sample / upper_bound)와 **라벨 자체**("회수할 셀 (최대)")와 `detail` 문장 셋으로 말한다.
+//    sample / upper_bound)와 **라벨 자체**("cells to withdraw (at most)")와 `detail` 문장 셋으로 말한다.
 //    그래서 렌더 규칙은 기계적이다: **숫자는 서버가 붙인 라벨과 함께가 아니면 그리지 않는다.**
 //    판정과 채점은 `retroactive_view.js` + `client2/tests/retroactive_view_harness.mjs`.
 //

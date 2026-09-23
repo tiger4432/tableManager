@@ -222,7 +222,7 @@ def _count_withdraw(db, params, scan_limit):
         "affected": affected,
         # An upper bound is not exhaustive either: fewer cells may actually change.
         "absence": ABSENCE_NOT_EXHAUSTIVE if affected else ABSENCE_TRULY_NONE,
-        "affected_label": "회수할 셀 (최대)",
+        "affected_label": "cells to withdraw (at most)",
         "count_kind": COUNT_UPPER_BOUND,
         "scanned": None,
         # null, not the requested budget: this count is two aggregates and scans no
@@ -230,19 +230,21 @@ def _count_withdraw(db, params, scan_limit):
         "scan_limit": None,
         "truncated": False,
         "detail": (
-            f"'{source}'가 '{table}'에서 주장하는 셀은 {c['cells_claimed']}개이고, "
-            f"그중 {c['pinned']}개는 사람이 이 소스를 고정(manual_priority_source)해 "
-            f"건드리지 않습니다. 최대 {affected}개가 회수 대상입니다 — 실제로 "
-            f"'보이는 값'이 바뀌는 셀은 이보다 적을 수 있습니다(아래 소스가 같은 값을 "
-            f"가진 경우 표시는 그대로입니다)."
+            f"'{source}' claims {c['cells_claimed']} cell(s) in '{table}', and "
+            f"{c['pinned']} of them are pinned by a person "
+            f"(manual_priority_source) and will not be touched. At most {affected} "
+            f"are in scope for withdrawal - the number of cells whose VISIBLE value "
+            f"actually changes can be smaller (where the source underneath holds the "
+            f"same value, the display stays as it is)."
         ),
         "extra": {
             "cells_claimed": c["cells_claimed"],
             "pinned": c["pinned"],
             "why_upper_bound": (
-                "회수 대상 수는 두 단계에서만 줄어듭니다: ① 행이 이미 삭제됐는데 "
-                "cell_sources만 남은 경우, ② 회수 후 드러나는 값이 지금 값과 같은 경우. "
-                "둘 다 셀 단위 재계산이 필요해 값싼 질의로는 답할 수 없습니다."
+                "The number in scope shrinks in only two ways: (1) the row was "
+                "already deleted and only its cell_sources remain, (2) the value "
+                "revealed after the withdrawal equals the current one. Both need a "
+                "cell-by-cell recomputation, which a cheap query cannot answer."
             ),
         },
     }
@@ -263,24 +265,27 @@ def _count_enrichment_backfill(db, params, scan_limit):
         "affected": s["new_combinations"],
         "absence": (ABSENCE_NOT_EXHAUSTIVE if truncated
                     else ABSENCE_TRULY_NONE if not s["new_combinations"] else None),
-        "affected_label": "새로 만들 파생 행",
+        "affected_label": "derived rows to create",
         "count_kind": COUNT_SAMPLE,
         "scanned": s["rows_scanned"],
         "scan_limit": scan_limit,
         "truncated": truncated,
         "detail": (
-            f"소스 테이블 {s['rows_scanned']}행을 표본으로 검사해 "
-            f"{s['new_combinations']}개의 새 파생 행을 만듭니다. "
-            f"이미 있는 파생 행 {s['already_derived']}개는 건드리지 않습니다."
-            + (f" 그중 {s['partial_key_combinations']}개는 판단키가 **일부만** 있는 "
-               f"행입니다 — 2026-08-05 재정 전에는 만들어지지 않던 행이라, 데이터가 "
-               f"그대로여도 이 수는 올라갑니다."
+            f"Sampled {s['rows_scanned']} source row(s) and will create "
+            f"{s['new_combinations']} new derived row(s). The "
+            f"{s['already_derived']} derived row(s) that already exist are left "
+            f"alone."
+            + (f" Of those, {s['partial_key_combinations']} have only PART of a "
+               f"decision key - rows that were not created before the 2026-08-05 "
+               f"ruling, so this number rises even when the data has not changed."
                if s["partial_key_combinations"] else "")
-            + (f" 판단키가 일부만 있는 행 {s['skipped_unexpressible_key']}건은 "
-               f"거절했습니다 — 파생 테이블 '{s['derived_table']}'의 키 선언이 그 "
-               f"정체성을 담지 못해, 만들면 다른 행 위에 조용히 병합됩니다. "
-               f"table_config.json에 composite_key_source를 판단키 전체로 선언하면 "
-               f"풀립니다(서버 로그에 그 한 줄이 찍힙니다)."
+            + (f" {s['skipped_unexpressible_key']} row(s) with only part of a "
+               f"decision key were refused - the key declaration of the derived "
+               f"table '{s['derived_table']}' cannot carry their identity, so "
+               f"creating them would silently merge them onto another row. "
+               f"Declaring composite_key_source over the whole decision key in "
+               f"table_config.json releases them (the server log carries that one "
+               f"line)."
                if s["skipped_unexpressible_key"] else "")
         ),
         "extra": {
@@ -295,11 +300,11 @@ def _count_enrichment_backfill(db, params, scan_limit):
             # 종전 dry-run이 정확히 그 상태였고, 사고는 "0으로 보고된 이유를 보고서가
             # 이름 붙이지 않았다"는 것이었다.
             "skipped_no_key": s["skipped_no_key"],
-            "skipped_no_key_label": "판단키 없음 (건너뜀)",
+            "skipped_no_key_label": "no decision key (skipped)",
             "partial_key_combinations": s["partial_key_combinations"],
-            "partial_key_combinations_label": "판단키 일부만 있는 새 행",
+            "partial_key_combinations_label": "new rows with only part of a decision key",
             "skipped_unexpressible_key": s["skipped_unexpressible_key"],
-            "skipped_unexpressible_key_label": "부분 판단키 거절 (파생 키 선언)",
+            "skipped_unexpressible_key_label": "partial decision key refused (derived key declaration)",
             "source_table": s["source_table"],
             "derived_table": s["derived_table"],
             "sample_new_keys": s["sample_new_keys"][:5],
@@ -321,17 +326,18 @@ def _count_enrichment_confirm(db, params, scan_limit):
         db, rule, apply=False, limit=scan_limit, ignore_knob=True,
         log=lambda m: logger.debug(m))
     truncated = s.get("queue_size", 0) >= scan_limit
-    detail = (f"큐 {s.get('queue_size', 0)}건을 표본으로 검사해 "
-              f"{s.get('confirmed', 0)}건이 사람 없이 확정 가능합니다"
-              f"({s.get('written_cells', 0)}개 셀).")
+    detail = (f"Sampled {s.get('queue_size', 0)} queued item(s): "
+              f"{s.get('confirmed', 0)} can be confirmed without a person "
+              f"({s.get('written_cells', 0)} cell(s)).")
     if not knob_on:
-        detail += (" ⚠️ 이 규칙은 auto_confirm 노브가 꺼져 있어 실행 버튼은 거부됩니다 — "
-                   "숫자는 '켜면 무슨 일이 일어나는가'입니다.")
+        detail += (" ⚠️ This rule's auto_confirm knob is off, so the run "
+                   "button is refused - the number answers 'what happens if I turn "
+                   "it on'.")
     return {
         "affected": s.get("confirmed", 0),
         "absence": (ABSENCE_NOT_EXHAUSTIVE if truncated
                     else ABSENCE_TRULY_NONE if not s.get("confirmed") else None),
-        "affected_label": "사람 없이 확정 가능한 건",
+        "affected_label": "items confirmable without a person",
         "count_kind": COUNT_SAMPLE,
         "scanned": s.get("queue_size", 0),
         "scan_limit": scan_limit,
@@ -372,14 +378,14 @@ def _count_ledger_backfill(db, params, scan_limit):
     if census.get("refused"):
         return {
             "affected": 0,
-            "affected_label": "아직 번역되지 않은 행",
+            "affected_label": "rows not yet translated",
             "absence": ABSENCE_NOT_APPLICABLE,
             "count_kind": COUNT_EXACT,
             "scanned": 0,
             "scan_limit": None,
             "truncated": False,
-            "detail": (f"'{source}' 는 행 색인을 세울 수 없어 «몇 건이 남았는지 셀 수 "
-                       f"없습니다». 0 이 아니라 «모릅니다» 입니다. "
+            "detail": (f"'{source}' cannot stand a row index, so how many are "
+                       f"left CANNOT BE COUNTED. That is UNKNOWN, not zero. "
                        f"{census['remedy']}"),
             "extra": {"source": source, "refused": census["refused"]},
         }
@@ -387,17 +393,20 @@ def _count_ledger_backfill(db, params, scan_limit):
     rows = census["not_yet"]
     total, indexed = census["relation_rows"], census["indexed_rows"]
     if not rows:
-        detail = (f"'{source}' 에 «아직 번역되지 않은 행»이 없습니다 — 표 {total}행 · "
-                  f"색인 {indexed}행. 지금 돌리면 아무것도 하지 않고 끝납니다.")
+        detail = (f"'{source}' has NO rows left to translate - {total} row(s) in "
+                  f"the table, {indexed} in the index. Running it now does nothing "
+                  f"and ends.")
     else:
-        detail = (f"'{source}' 에 «{rows}건»이 아직 번역되지 않았습니다 — 표 {total}행 · "
-                  f"색인 {indexed}행. 이 수는 «전부»입니다. 도는 중에 멈출 수 있습니다.")
+        detail = (f"'{source}' has {rows} row(s) not yet translated - {total} "
+                  f"row(s) in the table, {indexed} in the index. This number is the "
+                  f"WHOLE set, not a sample. The run can be stopped while it goes.")
     if census.get("index_names_absent_rows"):
-        detail += (f" ⚠ 색인이 표에 «없는» 행 {census['index_names_absent_rows']}건을 "
-                   f"들고 있습니다 — 걷히지 못한 삭제입니다.")
+        detail += (f" ⚠ The index names {census['index_names_absent_rows']} "
+                   f"row(s) that are NOT in the table - deletions that were never "
+                   f"swept.")
     return {
         "affected": rows,
-        "affected_label": "아직 번역되지 않은 행",
+        "affected_label": "rows not yet translated",
         "absence": ABSENCE_TRULY_NONE if not rows else None,
         # \U0001f534 EXACT, ALWAYS, AND THAT IS THE CHANGE. The old answer was `sample`
         # whenever a page came back full, because "at least N" has no word in the shared
@@ -465,20 +474,23 @@ def _count_ledger_rescope(db, params, scan_limit):
     rows = preview["rows_in_scope"]
     withdraw, remake = preview["withdraw"], preview["remake"]
     detail = (
-        f"'{source}'가 {column} 범위({len(values)}개 값)의 행 {rows}건에서 쓴 원자 "
-        f"{withdraw}개를 회수하고, 지금 선언으로 {remake}개를 다시 만듭니다. "
-        f"두 수가 다르면 그 차이가 이번 교정의 결과입니다. "
-        f"이 소스의 읽기 위치(커서)는 움직이지 않습니다.")
+        f"Withdraws {withdraw} atom(s) that '{source}' wrote from {rows} row(s) "
+        f"in the {column} scope ({len(values)} value(s)), and remakes {remake} from "
+        f"today's declaration. If the two numbers differ, that difference is what "
+        f"this correction changes. This source's read position (the cursor) does "
+        f"not move.")
     if remake and not withdraw:
         # Seen for real on 2026-08-31: a run that died between the two commits left the
         # withdrawal done and the remake absent. The operator needs to be told that this
         # is a REPAIR rather than a no-op, because the headline number is 0.
-        detail += (" ⚠️ 회수할 것이 0인데 다시 만들 것이 있습니다 — 이 범위의 원자가 지금 "
-                   "원장에 «없다»는 뜻이고, 실행하면 채워 넣습니다.")
+        detail += (" ⚠️ There is nothing to withdraw but something to remake - "
+                   "this scope's atoms are NOT in the ledger right now, and running "
+                   "it fills them in.")
     if rows and not remake:
         # The refs come from the CURRENT translation, so there is nothing to aim with.
-        detail += (" ⚠️ 범위에 행은 있는데 만들어지는 원자가 «0» 입니다 — 낡은 원자를 "
-                   "가리킬 방법이 없어 회수도 못 합니다. 선언을 먼저 보셔야 합니다.")
+        detail += (" ⚠️ The scope holds rows but remakes 0 atoms - there is no "
+                   "way to aim at the stale atoms, so they cannot be withdrawn "
+                   "either. Look at the declaration first.")
     # 🔴 A SOURCE-LEVEL FACT, KEPT OUT OF THE SCOPE NUMBERS. A row that was deleted cannot
     # be named by a scope - the scope is a predicate over the relation and the relation no
     # longer carries the row - so this cannot be "orphans in this scope" and is not added
@@ -487,13 +499,14 @@ def _count_ledger_rescope(db, params, scan_limit):
     # cannot honestly describe both.
     orphans = backfill.count_orphan_atoms(db.get_bind(), source)
     if orphans["rows_gone"]:
-        detail += (f" \u26a0\ufe0f 이 소스에는 «가리키는 행이 사라진» 원자가 "
-                   f"{orphans['atoms']}건 있습니다 — 이 범위 작업과 «별개»입니다.")
+        detail += (f" \u26a0\ufe0f This source holds {orphans['atoms']} atom(s) "
+                   f"whose row is GONE - SEPARATE from this scope's work.")
     elif orphans["truncated"]:
         # A sampled zero is not an exhaustive zero, and saying "0" without saying which
         # would be read as "none exist".
-        detail += (f" 행이 사라진 원자는 표본 {orphans['refs_scanned']}건에서는 "
-                   f"«0» 입니다(전체 {orphans['refs_total']}건 중 표본).")
+        detail += (f" Atoms whose row is gone are 0 IN THE SAMPLE of "
+                   f"{orphans['refs_scanned']} (out of {orphans['refs_total']} "
+                   f"in all).")
     # 🔴 THIS ONE IS CHOSEN FROM A PAIR, NOT FROM ONE NUMBER, and the entry says so in
     # advance. "Withdrew nothing" alone cannot tell `truly_none` from `already_missing` -
     # the difference is whether there is anything to put BACK, which is the other half of
@@ -502,7 +515,7 @@ def _count_ledger_rescope(db, params, scan_limit):
     # fourteen atoms stayed missing overnight on 2026-08-31.
     return {
         "affected": withdraw,
-        "affected_label": "회수할 원자",
+        "affected_label": "atoms to withdraw",
         "absence": _rescope_absence(withdraw, remake, rows),
         "count_kind": COUNT_EXACT,
         "scanned": rows,
@@ -662,8 +675,8 @@ def _enrichment_rule(name):
 #: screen that offered cancel anyway would show a button that does nothing.
 OPERATIONS = {
     "chain_replay": {
-        "label": "체인 규칙 소급 적용 (R1)",
-        "what_is_missing": "규칙보다 오래된 데이터를 그 규칙이 한 번도 보지 못했다",
+        "label": "Replay chain rules over old data (R1)",
+        "what_is_missing": "data older than the rule has never been seen by that rule",
         "params": [_p("rule", help="chain rule name (GET /admin/chain/rules)"),
                    _p("business_keys", required=False, kind="csv",
                       help="replay only these rows, by business_key_val; omit for the "
@@ -693,8 +706,8 @@ OPERATIONS = {
         "cli_only": ["replay-all (every rule in dependency order)", "--limit", "--chunk-size"],
     },
     "withdraw": {
-        "label": "낡은 소스 회수 (R2)",
-        "what_is_missing": "옛 규칙이 쓴 잘못된 값이 아직 우선순위 스택에서 이기고 있다",
+        "label": "Withdraw a stale source (R2)",
+        "what_is_missing": "a wrong value an old rule wrote still wins the priority stack",
         "params": [_p("table"), _p("source"),
                    _p("columns", required=False, kind="csv",
                       help="comma-separated column allowlist")],
@@ -712,8 +725,8 @@ OPERATIONS = {
         "cli_only": ["--columns is available here too; nothing else exists on this path"],
     },
     "ledger_backfill": {
-        "label": "원장 전진 번역 (커서 뒤 전부)",
-        "what_is_missing": "선언은 이 소스를 읽는데 커서 뒤의 행이 아직 원장에 없다",
+        "label": "Translate the ledger forward (everything after the cursor)",
+        "what_is_missing": "the declaration reads this source, but rows after the cursor are not in the ledger yet",
         "params": [_p("source", help="ledger source id (GET /api/ledger/declaration)"),
                    _pace_param()],
         "count": _count_ledger_backfill,
@@ -732,8 +745,8 @@ OPERATIONS = {
                      "--scope-column/--scope-values (that is `ledger_rescope` here)"],
     },
     "ledger_rescope": {
-        "label": "원장 범위 재번역",
-        "what_is_missing": "고친 입력이 원장에 닿지 못해 그 범위만 낡은 값으로 남아 있다",
+        "label": "Re-translate a ledger scope",
+        "what_is_missing": "corrected input never reached the ledger, so that scope alone holds stale values",
         "params": [_p("source", help="ledger source id (GET /api/ledger/declaration)"),
                    _p("scope_column",
                       help="a column this source's read declares; anything else is "
@@ -758,8 +771,8 @@ OPERATIONS = {
         "cli_only": ["--ontology-root (read a different config root)"],
     },
     "enrichment_backfill": {
-        "label": "Enrichment 파생 행 생성",
-        "what_is_missing": "파생 행이 아예 만들어지지 않았다",
+        "label": "Create enrichment derived rows",
+        "what_is_missing": "the derived rows were never created at all",
         "params": [_p("rule", help="enrichment rule name (enrichment_rules.json)")],
         "count": _count_enrichment_backfill,
         "run": _run_enrichment_backfill,
@@ -773,8 +786,8 @@ OPERATIONS = {
                      "--chunk-size"],
     },
     "enrichment_confirm": {
-        "label": "단일 후보 자동 확정",
-        "what_is_missing": "파생 행은 있는데 대상 셀이 비어 있다",
+        "label": "Auto-confirm single candidates",
+        "what_is_missing": "the derived rows exist but the target cell is empty",
         "params": [_p("rule", help="enrichment rule name (enrichment_rules.json)")],
         "count": _count_enrichment_confirm,
         "run": _run_enrichment_confirm,
@@ -1078,8 +1091,9 @@ def in_flight(db, now=None, stall_after=None):
         "processed_rows": row.processed_rows,
         "total_rows": row.total_rows,
         "cancel_reaches": cancel,
-        "recovery": ("이 실행은 취소로 멈출 수 없습니다. 로그를 먼저 건진 뒤 "
-                     "스케줄러를 재기동하고, at-most-once 라 «다시» 실행해야 합니다."),
+        "recovery": ("This run cannot be stopped with a cancel. Collect the log "
+                     "first, restart the scheduler, and run it AGAIN - the guarantee "
+                     "is at-most-once, so it did not finish."),
     }
 
 
