@@ -279,14 +279,6 @@ def _count_enrichment_backfill(db, params, scan_limit):
                f"decision key - rows that were not created before the 2026-08-05 "
                f"ruling, so this number rises even when the data has not changed."
                if s["partial_key_combinations"] else "")
-            + (f" {s['skipped_unexpressible_key']} row(s) with only part of a "
-               f"decision key were refused - the key declaration of the derived "
-               f"table '{s['derived_table']}' cannot carry their identity, so "
-               f"creating them would silently merge them onto another row. "
-               f"Declaring composite_key_source over the whole decision key in "
-               f"table_config.json releases them (the server log carries that one "
-               f"line)."
-               if s["skipped_unexpressible_key"] else "")
         ),
         "extra": {
             "already_derived": s["already_derived"],
@@ -303,8 +295,6 @@ def _count_enrichment_backfill(db, params, scan_limit):
             "skipped_no_key_label": "no decision key (skipped)",
             "partial_key_combinations": s["partial_key_combinations"],
             "partial_key_combinations_label": "new rows with only part of a decision key",
-            "skipped_unexpressible_key": s["skipped_unexpressible_key"],
-            "skipped_unexpressible_key_label": "partial decision key refused (derived key declaration)",
             "source_table": s["source_table"],
             "derived_table": s["derived_table"],
             "sample_new_keys": s["sample_new_keys"][:5],

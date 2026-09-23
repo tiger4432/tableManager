@@ -570,7 +570,6 @@ def test_a_partial_key_is_refused_when_the_blank_column_IS_the_business_key(bkfl
     ])
 
     stats = bf.run_backfill(db, rule, apply=True, log=lambda *_: None)
-    assert stats["skipped_unexpressible_key"] == 2
     assert stats["skipped_no_key"] == 0, "these rows HAVE a key - do not fold the two facts"
     rows = [r.business_key_val for r in _rows_of(db, "bkfl_test_bkkey")]
     assert rows == ["EQPK"], (
@@ -598,7 +597,6 @@ def test_a_partial_key_is_refused_when_it_would_spell_a_complete_keys_identity(b
     ])
 
     stats = bf.run_backfill(db, rule, apply=True, log=lambda *_: None)
-    assert stats["skipped_unexpressible_key"] == 1
     rows = {r.business_key_val: r for r in _rows_of(db, "bkfl_test_subkey")}
     assert set(rows) == {"T7"}
     assert rows["T7"].equipment == "EQPZ", (
@@ -695,7 +693,7 @@ def test_dry_run_and_apply_agree_on_which_rows_are_eligible(bkfl_env):
     run = bf.run_backfill(db, _rule(), apply=True, log=lambda *_: None)
 
     assert run["created_rows"] == dry["new_combinations"]
-    for k in ("rows_scanned", "skipped_no_key", "skipped_unexpressible_key",
+    for k in ("rows_scanned", "skipped_no_key",
               "distinct_combinations", "partial_key_combinations",
               "already_derived", "new_combinations"):
         assert run[k] == dry[k], f"dry-run and apply disagree on '{k}'"

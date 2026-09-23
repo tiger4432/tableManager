@@ -63,13 +63,6 @@ def format_report(stats: dict, limit: int = None) -> str:
             f"(new identities whose decision key is only partly present - these "
             f"used to be dropped)"
         )
-    if stats["skipped_unexpressible_key"]:
-        lines.append(
-            f"  partial keys REFUSED  : {stats['skipped_unexpressible_key']} "
-            f"(the derived table's key declaration cannot give a partial key its "
-            f"own identity - see the log line for the one config change that "
-            f"fixes it; forcing them would merge rows on top of each other)"
-        )
     if stats["mode"] == "apply":
         lines.append(f"  new identities created: {stats['created_rows']}")
         if stats["updated_rows"]:

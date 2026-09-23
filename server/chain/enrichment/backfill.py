@@ -338,7 +338,6 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
         # a partial key its own identity, and forcing one would silently merge
         # rows), not a fact about the data. `map_enrichment_dedup` logs the exact
         # table_config line to add.
-        "skipped_unexpressible_key": 0,
         "distinct_combinations": 0,
         "partial_key_combinations": 0,
         "already_derived": 0,
@@ -392,7 +391,6 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
         result = map_enrichment_dedup(db, payloads, rule=mapper_rule)
         items = result.get("updates") or []
         stats["skipped_no_key"] += result.get("skipped_no_key", 0)
-        stats["skipped_unexpressible_key"] += result.get("skipped_unexpressible_key", 0)
 
         # One existence question per chunk instead of one per item. Keys this run
         # already claimed are excluded rather than re-asked: with the preload that

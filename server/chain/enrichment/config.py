@@ -1589,45 +1589,12 @@ def key_is_wholly_blank(rule: dict, key_values: dict) -> bool:
     return len(blank_key_columns(rule, key_values)) == len(decision_key)
 
 
-def partial_key_identity_supported(decision_key: list, derived_cfg: dict) -> bool:
-    """Can a derived row whose decision key is only PARTLY present own an identity?
-
-    🔴 THE ENRICHMENT MAPPER DOES NOT DECIDE THIS - `crud` DOES, and it decides it
-    from the DERIVED TABLE's declaration, not from the rule. Measured in
-    `crud.apply_row_update_internal` (§"복합 비즈니스 키 실시간 재계산"), the three
-    key contracts `_validate_rule` accepts behave differently on a blank key part:
-
-      composite_key_source == decision_key  -> SAFE. A blank component makes
-          `all(v != "")` false, and the branch under it falls back to
-          `update_item.business_key_val` on insert - i.e. to the positional
-          identity the mapper supplied. A later refinement never re-derives,
-          because the composite source columns ARE the decision key and therefore
-          never appear in `changed_cols` for an existing row.
-
-      composite_key_source ⊊ decision_key   -> DESTRUCTIVE. The surviving columns
-          are the whole composite source, so `all(v != "")` is TRUE and crud
-          OVERRIDES the mapper with the identity of the COMPLETE key - then finds
-          the complete key's row as a conflict and runs [Silent Merge &
-          Overwrite]: the partial row's values are merged over the complete row's
-          and one row is deleted. No error, no count, whole table.
-
-      business_key ∈ decision_key (no composite) -> DESTRUCTIVE the other way.
-          `_update_row_business_key` copies `updates[business_key]` verbatim, so a
-          partial key whose blank column IS the business key gets the EMPTY
-          identity - and every such row on the table gets the same one.
-
-    So the ruling is honoured where the declaration can carry it and REFUSED BY
-    NAME where it cannot. The refusal is not a policy preference: on those two
-    contracts the write does not mean what it says. The repair is one config line
-    - declare `composite_key_source` = the rule's decision key on the derived
-    table - and the refusal says so.
-
-    (Widening `crud`'s composition to be partial-aware would fix all three, but
-    that is the identity rule for EVERY table and every writer, not an enrichment
-    decision. Named here so the question is answerable rather than rediscovered.)
-    """
-    comp_src = derived_cfg.get("composite_key_source")
-    return bool(comp_src) and set(comp_src) == set(decision_key or [])
+#: ⚰️ [소유자 2026-09-23] `partial_key_identity_supported` 와 그 세 계약 분류표가 여기 있었다 —
+#: 「판단키가 일부 비면 파생 행이 정체성을 못 갖는다」는 거절이고, 그것이 2026-09-23 운영 장애다.
+#: 소유자 판정: 「키는 키고 판단키는 판단키야」 · 「비즈니스키 < 판단키겠지」.
+#: 그 불변식 아래에서는 정체성이 언제나 `composite_key_source` 로 조립되고, 로더가 이미
+#: `comp_src ⊆ decision_key` 를 요구하므로 「조립할 수 없는 부분 키」는 문법 안에 없다.
+#: 빈 성분은 자리를 지킨다 — 실측: compose_business_key(t, ["", "W1"]) -> "_W1".
 
 
 def execute_reference_view(db, view: dict, bind_params: dict = None,

@@ -152,8 +152,7 @@ def _fold(spec, running, value):
     return min(running, value) if fn == "min" else max(running, value)
 
 
-def _result(updates, skipped_no_key: int, partial_keys: int,
-            skipped_unexpressible_key: int = 0) -> dict:
+def _result(updates, skipped_no_key: int, partial_keys: int) -> dict:
     """맵퍼의 반환 계약 — **가산적**이다(체인 워커는 `updates`만 읽는다).
 
     스킵 계수가 실려 있는 이유는 회계가 아니라 **철자 하나**다.
@@ -163,16 +162,12 @@ def _result(updates, skipped_no_key: int, partial_keys: int,
     버리므로 **쓰기는 그대로이고 dry-run 숫자만 거짓이 된다**(실측 확인). 이제
     판정도 계수도 여기 하나뿐이라 두 경로가 갈릴 자리가 없다.
 
-    스킵은 **두 종류이고 절대 합치지 않는다**:
-      `skipped_no_key`             — 판단키가 전무. 가리키는 것이 없다(산술).
-      `skipped_unexpressible_key`  — 부분 키인데 **파생 테이블의 키 선언이 그
-                                     정체성을 담지 못한다**. 데이터가 아니라
-                                     **config** 문제이고 고치는 방법이 있다
-                                     (`enrichment_config.partial_key_identity_supported`).
+    ⚰️ [소유자 2026-09-23] 스킵은 한 종류다. 둘째는 `skipped_unexpressible_key` —
+    「부분 키인데 파생 표의 키 선언이 그 정체성을 담지 못한다」 — 였고, 그 거절이 운영
+    장애였다. 「비즈니스키 ⊆ 판단키」가 불변식이라 담지 못하는 부분 키는 문법 안에 없다.
     """
     return {"updates": updates, "silent": False,
-            "skipped_no_key": skipped_no_key, "partial_keys": partial_keys,
-            "skipped_unexpressible_key": skipped_unexpressible_key}
+            "skipped_no_key": skipped_no_key, "partial_keys": partial_keys}
 
 
 def map_enrichment_dedup(db, payloads, rule=None):
@@ -216,29 +211,23 @@ def map_enrichment_dedup(db, payloads, rule=None):
     # 술어는 `enrichment_config.key_is_wholly_blank` 하나를 쓴다 — 라이브 증분과 소급
     # backfill이 같은 함수를 부르므로 갈릴 수 없다.
     #
-    # 🔴 그리고 거절이 하나 더 있는데, **정책이 아니라 파생 테이블의 키 선언**이다.
-    # 부분 키의 정체성을 최종 결정하는 것은 이 맵퍼가 아니라 `crud`이고, 세 가지 키
-    # 계약 중 둘에서는 부분 키가 **빈 정체성**이 되거나 **온전한 키의 행 위로 조용히
-    # 병합**된다(`enrichment_config.partial_key_identity_supported` 참조 — 실측). 담지
-    # 못하는 계약에서는 부분 키 행을 만들지 않고 **이름 붙여 센다**. 조용한 덮어쓰기
-    # 대신 고칠 수 있는 config 한 줄을 가리키는 쪽을 고른다.
+    # ⚰️ [소유자 2026-09-23, 운영 장애] 여기에 거절이 «하나 더» 있었다 — 파생 표의 키
+    # 선언이 부분 키의 정체성을 「담지 못한다」며 행을 안 만들고 세기만 했다. 그것이
+    # 운영에서 「돌기는 하는데 행추가가 안되는」 자리였다. 소유자 판정: 「키는 키고
+    # 판단키는 판단키야」 · 「비즈니스키 < 판단키겠지」 — 그 불변식 아래서 정체성은
+    # 언제나 comp_src 로 조립되고 로더가 `comp_src ⊆ decision_key` 를 이미 요구하므로
+    # 「담지 못하는 부분 키」는 문법 안에 없다. 빈 성분은 자리를 지킨다.
     from chain import enrichment
-
-    partial_ok = enrichment.config.partial_key_identity_supported(decision_key, derived_cfg)
 
     groups = {}          # clean_key_tuple -> {"reps": {list_col: 값}}
     key_raw_values = {}  # clean_key_tuple -> typed_raw_tuple (count 재계산 바인딩용)
     skipped = 0
-    unexpressible = 0
     for p in payloads:
         data = p.get("data") or {}
         clean_vals = [crud.clean_str_value(_cell_value(data, k)) for k in decision_key]
         key_values = dict(zip(decision_key, clean_vals))
         if enrichment.config.key_is_wholly_blank(enrich, key_values):
             skipped += 1
-            continue
-        if not partial_ok and enrichment.config.blank_key_columns(enrich, key_values):
-            unexpressible += 1
             continue
         # 빈 컬럼의 raw는 None이다 — 타입 캐스트를 태우지 않는다. 재계산 쿼리가 그
         # 컬럼을 동등 비교가 아니라 공백 술어로 묻기 때문이며(`_aggregate_affected_keys`),
@@ -263,20 +252,8 @@ def map_enrichment_dedup(db, payloads, rule=None):
             f"[Enrichment:{enrich.get('name')}] {skipped} row(s) skipped: "
             f"NO decision_key value at all (every key column blank — nothing to match on)"
         )
-    if unexpressible:
-        logger.warning(
-            f"[Enrichment:{enrich.get('name')}] {unexpressible} row(s) with a PARTIAL "
-            f"decision key were NOT derived: table '{derived_table}' cannot give them "
-            f"their own identity. Its key contract is "
-            f"composite_key_source={derived_cfg.get('composite_key_source')!r} / "
-            f"business_key={bk_col!r}, and on that contract crud composes the partial "
-            f"key into an EMPTY identity or into the identity of a COMPLETE key (which "
-            f"is then silently merged over). REPAIR: declare "
-            f"\"composite_key_source\": {list(decision_key)!r} on '{derived_table}' in "
-            f"table_config.json. Until then these rows stay in the source table only."
-        )
     if not groups:
-        return _result([], skipped, 0, unexpressible)
+        return _result([], skipped, 0)
 
     # 2) 집계 — 영향 키 한정 재계산(멱등: 재인제션에도 이중 카운트 없음)
     #    🔴 모집단은 «그 키의 커밋된 소스 행 전체»다 (S-129 ②) — 배치는 「어느 키를」만
@@ -291,15 +268,33 @@ def map_enrichment_dedup(db, payloads, rule=None):
     #    집계/단서만 실질 갱신된다. 신규 키: 행 생성 + target은 미설정(NULL)로 남는다.
     updates = []
     partial_keys = 0
+    unaddressable = 0
     for key, g in groups.items():
         key_map = dict(zip(decision_key, key))
         # 같은 술어 하나 — 아래 정체성 조립과 `partial_keys` 회계가 이것을 공유한다.
         blank_key_cols = enrichment.config.blank_key_columns(enrich, key_map)
         if blank_key_cols:
             partial_keys += 1
+        # 🔴 [판정 13e2894f1] 정체성을 «짓는» 컬럼이 전부 비면 이 행은 가리키는 것이 없다 —
+        # `key_is_wholly_blank` 와 같은 산술이고, 묻는 대상만 판단키가 아니라 정체성이다.
+        # 실측 2026-09-23: 이 갈래가 없으면 business_key_val = None 인 행이 «둘» 섰다.
+        # ⚠️ 판단키의 «어느» 컬럼이 비었나가 아니다. comp_src 가 있으면 comp_src, 없으면
+        #    business_key 한 칸 — 소유자 케이스는 정체성 컬럼이 차 있어 여기 안 걸린다.
+        identity_cols = list(comp_src) if comp_src else ([bk_col] if bk_col else [])
+        if identity_cols and all(crud.is_blank_value(key_map.get(c))
+                                 for c in identity_cols):
+            unaddressable += 1
+            continue
         upd_cols = {}
         for k, v in key_map.items():
             if k in derived_cols and k not in target_fields:
+                # 🔴 [소유자 2026-09-23] 빈 판단키 성분은 «키를 짓는 데»는 쓰고 «셀을 덮는
+                # 데»는 쓰지 않는다. 실측: 부분 키 행이 빈 core_lot 을 실어 와 그 이름의
+                # 기존 행에서 'LOT' 을 지웠다. 이 빈칸의 뜻은 「그 소스 행에 값이 없었다」이지
+                # 「비었다고 말한다」가 아니다 — 후자는 조인의 매칭된 NULL 이고(판정 f3c04dee)
+                # 그쪽은 그대로다. 둘은 `source_name` 이 같아 crud 에서는 못 가른다.
+                if k in blank_key_cols:
+                    continue
                 upd_cols[k] = v
         for col, v in g["reps"].items():
             if col in derived_cols and col not in target_fields:
@@ -355,9 +350,18 @@ def map_enrichment_dedup(db, payloads, rule=None):
             upd_cols[bk_col] = joined
         updates.append(item)
 
+    if unaddressable:
+        logger.warning(
+            f"[Enrichment:{enrich.get('name')}] {unaddressable} decision key(s) were NOT "
+            f"derived: every column that BUILDS the identity of '{derived_table}' is blank "
+            f"on them (composite_key_source={derived_cfg.get('composite_key_source')!r} / "
+            f"business_key={bk_col!r}), so the row would carry no address - it could not be "
+            f"updated or withdrawn later. The key columns that are NOT part of the identity "
+            f"do not change this: the table says its identity is those columns."
+        )
     logger.info(
         f"[Enrichment:{enrich.get('name')}] {len(payloads)} source row(s) -> "
         f"{len(updates)} unique decision key(s) upserted into '{derived_table}' "
         f"({partial_keys} of them on a PARTIAL decision key)"
     )
-    return _result(updates, skipped, partial_keys, unexpressible)
+    return _result(updates, skipped, partial_keys)
