@@ -57338,3 +57338,60 @@ DESIGN_ORDERS.md:32361   「서버가 «세는» 칸 둘   skipped_no_key · ski
 ⚠️ 그리고 그 지시서 줄의 «센 명령»이 `git grep ... -- client2/src` 인데, 그 명령은
    서버가 그 칸을 «내는지»를 안 묻습니다. 클라가 0 인 것과 서버가 0 인 것이 같은 0 으로 보입니다
 ```
+
+---
+
+> 🔴 **[09-23 18:3x 구현자 -> 총괄] 제 수 하나를 정정하고, 그 옆에서 나온 발견 하나를 올립니다**
+
+### 정정 — 「이 박스에 `core_lot` 이 없다」는 «틀렸습니다»
+
+```
+제가 적은 것   「이 박스 config 에는 dt_job_id·core_lot·dt_wafer_id 라는 컬럼이 없습니다」
+실제          dt_log 에 `core_lot` 이 «있습니다». 제가 dt_inventory «한 표»만 열고 적었습니다
+              잰 명령  table_config.json 을 파싱해 표 셋의 column_types 를 직접 확인
+맞는 부분      dt_job_id · dt_wafer_id 는 45 개 표 어디에도 «컬럼으로» 없습니다.
+              dt_inventory 의 business_key 는 `dt_job` 이고 composite 는 없습니다
+=> 「운영 규칙이 이 박스에 없다」는 결론은 그대로입니다. 다만 근거에서 core_lot 은 빼 주십시오
+```
+
+### 🔴 발견 — 소유자 박스에서 `dt_log` 의 «선언키 인덱스»가 매번 거절되고 있습니다
+
+체인 트리거 표입니다. 제품이 스스로 이름을 대고 거절문을 찍습니다.
+
+```
+[Schema] 'dt_log': no declared-key index - 'map_key_columns' names ['dt_job_id']
+         which are not declared columns; refusing a partial index
+박스 로그에 난 횟수   59      잰 명령  grep -h "no declared-key index" server/*.log | wc -l
+```
+```
+무엇이 안 서나   `idx_dt_log_declared_key` — 선언키로 만드는 인덱스입니다
+어디서 정해지나   models.py 의 `declared_key_columns`:
+                map_key_columns -> 없으면 composite_key_source -> 없으면 business_key 한 칸
+왜 «전부» 잃나   dt_log 는 composite_key_source 로 ['dt_job','b_wx','b_wy'] 를 «갖고 있습니다».
+                그런데 map_key_columns 가 «먼저» 읽히고, 그 한 줄이 없는 컬럼을 들어서
+                뒤 후보로 «안 내려갑니다». 인덱스가 통째로 안 섭니다
+```
+
+**모집단 — 전수로 셌습니다**
+
+| | 수 | 잰 명령 |
+|---|---|---|
+| table_config 의 표 | 45 | JSON 파싱 |
+| `map_key_columns` 를 선언한 표 | 10 | 같은 계기 |
+| **없는 컬럼을 드는 표** | **1** — `dt_log` | 같은 계기 |
+
+```
+⚠️ 이것이 이번 장애의 원인이라고 «말하지 않습니다» — 인덱스는 «속도»이지 «행 유무»가 아닙니다.
+   제가 재지 않은 것: 이 인덱스가 없어서 실제로 느려졌는지. 그 수는 안 잰 수입니다
+🔵 다만 두 가지가 겹칩니다
+   ① 그 이름이 `dt_job_id` 입니다 — 님이 운영 규칙의 비즈니스키로 적으신 바로 그 이름입니다.
+      이 박스에는 «컬럼으로» 없고 map_key_columns 에만 있습니다. 이름을 바꾸다 만 자리로 보입니다
+   ② dt_log 는 이번 규칙의 «트리거 표»이고, 체인이 제일 많이 읽는 표입니다
+=> 소유자 config 이므로 제가 «안 고칩니다». 올리기만 합니다
+```
+
+```
+그리고 제품 쪽에 물음 하나 — 이건 제 판단이 아니라 님께 드립니다
+   map_key_columns 가 «틀렸을 때» composite_key_source 로 «내려가지 않는» 것이 맞습니까.
+   지금은 한 줄의 오타가 인덱스를 통째로 없앱니다. 거절문은 제대로 찍히고 있습니다
+```
