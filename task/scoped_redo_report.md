@@ -55788,3 +55788,60 @@ client2/src/outbox_queue_panel.js:71   note: str(row.note)
 바뀌는 것 없음 — 제 쪽 할 일은 여전히 0 이고(칸은 이미 없습니다), 고칠 자리는 그 열을 그리는 쪽입니다.
 달라진 것은 «싸게 고칠 창»이 닫혔다는 것뿐입니다. 제 앞 문장이 낡았으므로 여기서 바로잡습니다
 ```
+
+> ✅ **[09-23 12:3x 구현자 -> 총괄] 지시 2 `as_join_rule` — «다시 셌습니다». 0 이라 지웠습니다 (`39f37ce67`)**
+
+### 다시 센 수 — 네 갈래를 빼고
+
+```
+파일 «밖» 생산 호출자          0
+실제로 쓰던 것                시험 «한 파일»의 다섯 자리 + config/sample/virtual_join_rules.json.sample
+뺀 넷                        데코레이터 등록 · 시험만 쓰는 것 · 설정 문자열 · 명령줄이 드는 이름
+```
+님이 「`rule_shape.py` 만 3 줄」이라 하신 것과 같은 답입니다. 그 3 줄은 정의 둘과 주석 하나였습니다.
+
+### 🔴 지우면서 알게 된 것 — 이 짝은 «제품이 거절하는 문법»을 번역하고 있었습니다
+
+```
+`into: {read: true}` 는 로더가 «이름을 대고» 거절합니다 (S-282 · 판정 440)
+그런데 그 다섯 자리는 그 선언을 왕복시키고 「같으면 초록」이라 하고 있었습니다
+=> 거절당할 선언에 대한 초록이었습니다. 지운 것이 맞습니다
+```
+
+### 안 건드린 것 — 조인의 «살아 있는» 반쪽
+
+```
+쓰기 시각 조인 `derive: {kind: "join"}` + `into: {table: ...}` 는 «그대로»입니다
+   as_chain_rule -> join_into.JOIN_INTO_MAPPER · implied_rules ·
+   refuse_join_trigger_conflict · unknown_join_cells
+그것을 재는 시험 «17 파일»이 초록입니다 (git grep -l '"kind": "join"' -- tests)
+```
+
+### 성질이 다른 데서 재지는지 — «변이»로 확인했습니다
+
+| 변이 | 무엇이 빨개져야 하나 | 실측 |
+|---|---|---|
+| 로더의 읽기시각 거절을 `if False` | `test_a_read_time_join_is_retired_by_name.py` | **1 failed (빨강)** |
+| `as_chain_rule` 이 trigger_columns 를 흘림 | 왕복 시험 파일 | **3 failed (빨강)** |
+
+호출자 모집단(`rule_shape` 를 드는 시험 24 파일) — **313 passed · 2 skipped · 0 failed**.
+
+### 🔴 님께 라우팅을 여쭐 것 — 은퇴한 이름을 «아직 든» 문서 둘
+
+```
+docs/architecture/CODE_MAP.md      6 줄
+docs/process/SERVER_DEFECT_QUEUE.md 1 줄
+```
+제 파일이 아니라 «안 고쳤습니다». 덤으로 하나 더 나왔는데 이건 제 것이 아닙니다 —
+`load_virtual_join_rules` 는 «코드에 정의가 아예 없는» 이름인데 살아 있는 가이드 셋이
+아직 그것을 듭니다 (`chain_ingestion_guide.md` · `config/chain_rules.md` ·
+`config/virtual_join_rules.md`). 오늘 제 변경과 무관하게 «전부터» 그랬습니다.
+
+### `rule_shape.py:527` 은 «안» 고쳤습니다 — 사유
+
+```
+그 문단은 옛 문장을 «현재형 그대로 인용»한 묘비입니다 (판정 453 의 대조군)
+고치면 그 주석이 존재하는 이유가 사라집니다
+다만 그 문단의 «마지막 주장»이 오늘 거짓이 됐습니다 —
+   「어댑터 자체는 아직 있다」 -> 오늘 갔습니다. 그 한 줄만 제자리에서 고쳤습니다
+```
