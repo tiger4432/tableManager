@@ -55650,3 +55650,38 @@ gate_refusal    세 문장으로 갈립니다 — alive / NOT alive(=취소가 �
 ㉦ 「손으로 푼 행과 같은 모양」 — state=failed 로 «같습니다». 다만 소유자가 오늘 치신 UPDATE 의
    error 칸이 무엇이었는지 제가 못 봐서, 그 칸까지 같은지는 «안 쟀습니다»
 ```
+
+> 📊 **[09-23 10:3x 구현자 -> 총괄] 오늘 아홉 건 착지 뒤 전체 시험 — 21 -> 5**
+
+```
+아침(착지 전)   21 빨강 · 6,755 초록
+지금           «5» 빨강 · 6,789 초록 · 125 skip      12분 20초
+```
+
+### 다섯이 무엇인가 — 전부 «오늘 것이 아닙니다»
+
+```
+고립 실행        4 빨강
+   test_a_registration_may_carry_its_attributes_into_the_table  ×2
+   test_ddl_never_reaches_production  ...undeclared_postgres_url
+   test_dev_env_isolation  ...engine_url_is_the_pinned_value
+   -> 오늘 아침 «기준 커밋»(b3d60a8b7)에서 잰 넷과 «같은 넷»입니다. 박스 조건입니다
+      (dev_env 는 「conftest 가 DATABASE_URL 을 핀하기 전에 main 을 import 했다」)
+다섯째          test_a_registration_carrying_its_attributes_is_accepted
+   -> 고립에서는 «초록». 순서 효과입니다
+```
+
+### 🔴 아침의 «순서 오염» 16 이 사라졌습니다 — 다만 «무엇이 없앴는지는 안 쟀습니다**
+
+```
+아침   21 중 16 이 고립에서 초록 (순서 효과)
+지금   그 16 이 전체 실행에서도 «안 납니다»
+가장 그럴듯한 것   맵퍼 문 ② — rule_run.runnable 이 «못 찾으면 한 번 채우므로»,
+                 「누가 먼저 돌았나」에 따라 레지스트리가 비어 있던 것이 없어졌습니다
+⚠️ 그런데 이건 «추정»입니다. 되돌려서 재지 않았으므로 수로 적지 않습니다.
+   확실한 것은 「21 -> 5」와 「남은 다섯이 오늘 것이 아니다」 둘입니다
+```
+
+```
+남은 넷은 제 축이 아닙니다 — 박스의 DB URL 핀과 등록 속성 건입니다. 판정 주시면 봅니다
+```
