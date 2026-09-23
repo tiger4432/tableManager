@@ -289,6 +289,7 @@ const FLOORS = new Map([
   //    absent age promoted to 0 -- plus ONE CONTROL that must escape: the shared minute
   //    constant written back as a literal, which changes nothing today and is guarding a
   //    future edit rather than a present bug.
+  ['chain_badge_harness.mjs', 15],
   ['chain_queue_panel_harness.mjs', 152],
   ['outbox_queue_panel_harness.mjs', 54],
   ['company_roundtrip_harness.mjs', 84],

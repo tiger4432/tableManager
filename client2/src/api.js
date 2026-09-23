@@ -11,6 +11,8 @@ import { renderGrid, updateGridSortState, updateLoadedCount, updatePaginationUI,
 import { setMatchCount } from './match_count.js';
 import { loadHistory } from './timeline.js';
 import { getLocalTimeString, showToast } from './utils.js';
+// 거절·무응답의 문장은 그 좌석이 짓는다. 뜻을 두 번 짓지 않는다.
+import { failureFactOf, fetchFailureLine } from './config_resolve_view.js';
 import { resetSuggestLearning } from './value_suggest.js';
 import { snapshot, commitIfRecorded } from './effort_meter.js';
 import { syncReferenceViewRule } from './enrichment_reference_view.js';
@@ -86,6 +88,59 @@ export async function checkServerHealth() {
     console.error('[health] server health check failed', err);
     setBadge(elements.serverStatus, 'API: OFFLINE', 'status-badge offline');
     setBadge(elements.performanceLog, 'Error connecting to database server');
+  }
+}
+
+/** 체인 워커가 살아 있나 — «판정은 `/health` 가 내린다».
+ *
+ * 🔴 여기서 다시 유도하지 않는다. 서버가 낱말을 «이미» 짓는다(`runtime/health.py`):
+ *    down · unknown · starting · foreign_beat · missing · wedged · stale · stalled · ok · off_roster.
+ *    그 가름의 근거는 두 주인에게 나뉘어 있다(`utils/heartbeat.py`) — 감독자는 «프로세스가 있나»,
+ *    심박은 «고리가 도나». 화면이 나이로 다시 재면 임계값이 두 벌이 되고, 오늘 아침처럼
+ *    「프로세스는 살아 있는데 고리가 멈춘」 경우에 둘이 다른 말을 한다.
+ * ⛔ 그래서 이 함수는 색만 고른다: «ok 면 online, 나머지는 offline». 못 읽었으면 «중립»이다 —
+ *    「못 봤다」를 「이상 없다」로 그리지 않는다(그 계약은 서버 쪽 주석에도 같은 말로 있다).
+ *
+ * @param {object|null} payload `/health` 의 본문 (503 이어도 본문은 온다)
+ * @returns {{text: string, cls: string, title: string}}
+ */
+export function chainBadge(payload) {
+  const chain = ((payload || {}).checks || {}).workers;
+  const row = (chain || {}).chain;
+  if (!row || !row.status) {
+    return { text: 'CHAIN: ?', cls: 'status-badge', title: '' };
+  }
+  const token = String(row.status);
+  return {
+    text: `CHAIN: ${token.toUpperCase()}`,
+    cls: token === 'ok' ? 'status-badge online' : 'status-badge offline',
+    // 문장은 서버 것이다. 없으면 «아무 말도 안 한다» — 사유를 지어내지 않는다.
+    title: typeof row.detail === 'string' ? row.detail : '',
+  };
+}
+
+/** 그 뱃지를 한 번 그린다. 503 이어도 «본문»을 읽는다 — 정작 알려야 할 순간이 그때다. */
+export async function checkChainHealth() {
+  let failure = null;
+  let body = null;
+  try {
+    const res = await fetch(`${API_BASE}/health`);
+    failure = failureFactOf(res);
+    body = await res.json().catch(() => null);
+  } catch (err) {
+    console.error('[health] chain badge could not read /health', err);
+  }
+  // 🔴 그리는 쪽도 «던질 수 있다» — 이 파일 위쪽 `setBadge` 주석이 그 사고를 적어 두었고,
+  //    이 함수는 `await` 없이 불리므로(주기) 여기서 던지면 «미처리 거부»가 된다. 뱃지 하나를
+  //    못 그린 것이 페이지를 내리는 이유가 될 수 없다.
+  try {
+    const view = chainBadge(body);
+    if (setBadge(elements.chainStatus, view.text, view.cls)) {
+      elements.chainStatus.setAttribute('title',
+        view.title || (body ? '' : fetchFailureLine(failure)));
+    }
+  } catch (err) {
+    console.error('[health] chain badge could not be drawn', err);
   }
 }
 

@@ -17,8 +17,12 @@ import {
   switchTable,
   fetchData,
   addRows,
-  deleteSelectedRows
+  deleteSelectedRows,
+  checkChainHealth
 } from './api.js';
+
+/** 체인 뱃지를 다시 묻는 간격. 서버의 stale_after 가 60 초라 그보다 촘촘할 이유가 없다. */
+const CHAIN_BADGE_POLL_MS = 20000;
 import { startup } from './startup.js';
 import { GridSourceLabel } from './grid_source_label.js';
 import { RedoBanner } from './redo_banner.js';
@@ -122,6 +126,17 @@ async function init() {
   // that can throw or hang, and node can import that file to score it. This function only
   // supplies the two things startup cannot know -- what to install, and what to tell the parts
   // once a table is chosen.
+  // 🔴 체인 뱃지의 주기. 이 페이지에 도는 주기가 «없었다» — 실측: `setInterval` 이 client2/src
+  //    전체에 하나뿐이고 그건 admin.js 것이다. 그래서 «하나» 만든다.
+  // ⛔ 브로드캐스트에 얹지 않는다: 멈춘 워커는 아무것도 안 보내므로, 사건으로 깨우는 뱃지는
+  //    «정작 알려야 할 때» 멈춘 채로 남는다.
+  // ⚠️ 자리가 «여기»인 이유: `startup.js` 는 노드가 import 하는 «순서» 모듈이고, 거기에 인터벌을
+  //    두면 그 파일을 재는 하니스가 «끝나지 않는다»(실측: 그 게이트가 120초를 넘겼다).
+  //    주기는 페이지의 가구다. 기준은 서버의 stale_after 60 초이고, 세 번은 봐야 바뀐 것을
+  //    봤다고 말할 수 있어 20 초로 둔다.
+  checkChainHealth();
+  setInterval(checkChainHealth, CHAIN_BADGE_POLL_MS);
+
   await startup({
     prepare() {
       // Load cached settings from localStorage

@@ -4,6 +4,7 @@ export const elements = {
   get searchCols() { return document.getElementById('search-cols'); },
   get serverStatus() { return document.getElementById('server-status'); },
   get wsStatus() { return document.getElementById('ws-status'); },
+  get chainStatus() { return document.getElementById('chain-status'); },
   get exposedRowsCount() { return document.getElementById('exposed-rows'); },
   get totalRowsCount() { return document.getElementById('total-rows'); },
   get performanceLog() { return document.getElementById('performance-log'); },
