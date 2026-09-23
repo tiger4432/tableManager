@@ -818,8 +818,23 @@ def save_chain_rule_raw(name: str, declaration, base: str) -> dict:
     from chain import rule_shape
     from database import crud as _catalogue
 
+    # 🔴 JUDGED AS IF IT WERE ON, AND THAT IS THE WHOLE FIX. A new rule is saved switched
+    #    OFF by design (above), and `expand_declaration` correctly stands NOTHING for a
+    #    switched-off unified declaration - 「turned off」 is not 「wrong」
+    #    (`rule_shape.py`, `is_switched_off`). But `stood` is what the judgement below
+    #    loops over, so an empty list means the loop runs ZERO TIMES: every rule created
+    #    in the window was saved with no grammar check at all, and its refusal arrived at
+    #    the NEXT BOOT, after the operator turned it on. That is the shape 소유자 met -
+    #    「저장은 됐는데 다음 부팅에 그 규칙이 없다」.
+    # ⚠️ THE COPY IS FOR THE JUDGEMENT ONLY. What gets written is `entry`, with the
+    #    operator's switch exactly as they left it - this asks 「what would this stand if
+    #    it were on」 and nothing more.
+    # ⛔ NOT FIXED IN `expand_declaration`. The loader needs that short circuit: an off
+    #    rule must not stand, and calling it refused would report a choice as a mistake.
+    judged = dict(entry)
+    judged["enabled"] = True
     stood, expand_refusal, _notes = rule_shape.expand_declaration(
-        entry, _catalogue.TABLE_CONFIG)
+        judged, _catalogue.TABLE_CONFIG)
     if expand_refusal:
         raise _table_config_refusal("declaration_refused", f"rules.{name}", expand_refusal)
 

@@ -377,3 +377,54 @@ def test_a_reload_leaves_the_registry_populated_rather_than_emptied():
 
     assert order == ["reset", "discover"], (
         "the reload must forget the evicted modules and then find them again, in that order")
+
+
+# ---------------------------------------------------------------------------
+# 🔴 새 규칙은 «꺼진 채로» 저장된다 — 그것이 판정을 건너뛰는 이유가 되면 안 된다
+# ---------------------------------------------------------------------------
+
+def test_a_new_unified_rule_is_judged_even_though_it_is_saved_switched_off(rules_file,
+                                                                           client):
+    """🔴 [소유자 2026-09-23 「저장은 됐는데 다음 부팅에 그 규칙이 없다」] THE TWO RULES ABOVE
+    COMBINE INTO A HOLE. A new rule lands switched OFF (deliberate, and the case above
+    asserts it), and `expand_declaration` stands NOTHING for a switched-off UNIFIED
+    declaration - also deliberate, because 「turned off」 is not 「wrong」. But the save's
+    judgement loops over what STOOD, so it ran zero times: every rule created in this
+    window was written with no grammar check, and the refusal arrived at the next boot.
+
+    ⚠️ UNIFIED, not flat. A flat declaration has no `derive`, comes back from
+       `expand_declaration` unchanged and was always judged - so a flat case here would
+       pass with the hole wide open. The window writes unified (판정 513).
+    """
+    base = client.get(ROUTE).json()["base"]
+    declaration = {
+        "on": {"table": "x"},
+        "derive": {"kind": "mapper",
+                   "mapper": {"mapper": "no_such_mapper_anywhere"}},
+        "into": {"table": "y"},
+    }
+
+    refused = client.post(ROUTE, json={"name": "fresh_unified", "base": base,
+                                       "declaration": declaration})
+
+    assert refused.status_code != 200, (
+        "a rule the boot loader will drop was saved without a word: %s" % refused.text)
+    assert "fresh_unified" not in rules_of(rules_file), (
+        "refused, and written anyway")
+
+
+def test_a_runnable_unified_rule_still_saves_switched_off(rules_file, client):
+    """대조군. Without it the case above would pass for a save that refuses everything."""
+    base = client.get(ROUTE).json()["base"]
+    declaration = {
+        "on": {"table": "x"},
+        "derive": {"kind": "mapper", "mapper": dict(RUNNABLE)},
+        "into": {"table": "y"},
+    }
+
+    saved = client.post(ROUTE, json={"name": "fresh_unified_ok", "base": base,
+                                     "declaration": declaration})
+
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["enabled"] is False, "판정이 스위치를 켜 버렸다"
+    assert rules_of(rules_file)["fresh_unified_ok"]["enabled"] is False
