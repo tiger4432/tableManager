@@ -32410,3 +32410,79 @@ RUN.md 블록            위 정정 항목의 네 가지 모습 — 같은 이�
 CODE_MAP 네 행(`KEY_CELL_SHAPES` · `DECIDE_CELL_SHAPES` · `JOIN_CELL_SHAPES` · `_node_for`/`_LIST_CELLS`) + 낡은 앵커 둘,
 RUN.md 블록(선언창 네 가지 모습의 뜻 · 되돌리는 스위치). 다른 레인 편집이 `ff5505df` 로 착지한 뒤 제 헝크만 실었습니다.
 열린 물음 셋은 그대로입니다 — `key.columns` · `limits.group_by` · 참조뷰 `label` 필수 여부.
+
+---
+
+## `into` 드롭다운에서 은퇴한 `read` 가 빠졌습니다 (09-25 01:18) — `65f3590c2`
+
+지시 `8afe14fce`. 계획 양식으로 올려 승인받고 지었습니다.
+
+### 무엇이 바뀌었나
+
+```
+스켈레톤 · 라우트(in-process, 토큰 없이)의 into 가지   ["table", "read"] -> ["table"]
+원문에 into.read 가 적힌 선언                        여전히 «은퇴했다»로 이름 대어 거절
+INTO_KINDS                                        read 그대로 (로더가 이름을 알아야 거절 문장을 냄)
+```
+
+### 발견 — 지시가 말한 «이미 있는 은퇴 표시»는 목록이 아니었습니다
+
+거절 자리의 하드코딩 `.get("read")` 와 거절 문장 상수뿐이었습니다. 그 리터럴을 `RETIRED_INTO_KINDS` 로 올려
+거절 자리와 스켈레톤이 «같은 상수»를 읽게 했습니다. 둘째 목록은 없습니다.
+
+### 계획에서 달라진 한 가지 — 변이가 잡았습니다
+
+계획엔 「스켈레톤 표의 `read` 가지 모양은 도달 못 하니 뺀다」로 적었습니다. 은퇴 목록을 비우는 변이를 돌리자
+스켈레톤이 `KeyError` 로 터졌습니다 — 나중에 누가 은퇴를 풀면 선언창 라우트가 500 이 되는 모양입니다.
+그래서 그 모양은 «남기고», 내놓을지만 은퇴 목록이 정합니다.
+
+### 게이트
+
+```
+㉠ into 가지 == ["table"]          시험(test_the_skeleton_declares_the_unified_grammar.py) + 라우트 in-process
+㉡ into.read 이름 대어 거절          test_a_read_time_join_is_retired_by_name.py 그대로 초록 ("read" in INTO_KINDS 포함)
+변이                              RETIRED_INTO_KINDS 를 비우면 스켈레톤이 read 를 «다시 내놓고» 거절도 «멈춤» —
+                                 두 자리가 같이 움직임(한 저자). 되돌리면 둘 다 제자리
+pytest                           스켈레톤 둘 · 거절 · 센서스 네 파일 47 passed (커밋 뒤 HEAD 에서)
+㉢ chain_skeleton.json 재생성       클라 하니스 전후 같음 — 초록 137 · 알려진 빨강 2(같은 두 이름) · 종료 코드 0
+                                 스켈레톤을 읽는 넷(chain_rule_form · panel · user_path · skeleton_oneof) 전후 같은 수
+```
+
+### 화면에서 into 칸이 어떻게 되나 — 진짜 모듈(`closed_list.closedListChoice`)로 잰 것
+
+| 경우 | into 칸 |
+|---|---|
+| 새 규칙(into 비어 있음) | 드롭다운 `["", "table"]` — 여전히 고를 수 있습니다 |
+| `into.table` 을 이미 고름 | 값 `table` — 고를 것이 없으니 드롭다운 없음 |
+| (전) 새 규칙 | 드롭다운 `["", "table", "read"]` ← 소유자가 본 것 |
+
+### 클라 하니스 단언 하나를 고쳤습니다 — 모양 단언만
+
+재생성 뒤 `chain_rule_form` 하니스의 「하나 고르기마다 드롭다운 하나 → 둘」 단언이 빨개졌습니다. 가지가 하나 남고 그게 이미
+골라져 있으면 into 는 «값»으로 그려지므로 드롭다운은 하나(`derive`)가 맞습니다. 그 단언만 고쳤고 `client2/src` 는 안 건드렸습니다.
+
+운영자 쪽: API 재기동 뒤 드롭다운에 `table` 만 보입니다. RUN.md 해독표에 같은 커밋으로 한 줄 —
+「into 드롭다운에 table 만 = 새 API · read 가 보이면 옛 API, 재기동 전」.
+
+### 문서 — 가이드 두 행 (`6f4fd8109`)
+
+`docs/guide/config/chain_rules.md` 의 `into` 두 행을 오늘 코드에 맞췄습니다.
+
+```
+on.table · into.table   「폼도 둘 중 하나만 그린다」 -> 폼은 RETIRED_INTO_KINDS 를 뺀 것(오늘 table 하나)을 내놓는다
+into.read               거절 자리 «둘» -> «하나»(expand_declaration)
+                        「virtual_join_rules.json 의 읽기 시점 조인은 그대로 돈다」 -> 끝났다
+```
+뒤의 둘은 이번 일 «전»부터 거짓이었습니다. 둘째 거절 자리로 적힌 함수는 09-17 `306419fd5` 가 모듈째 옮기며 없앴고
+(오늘 정의 0), 레거시 파일의 문법은 09-22 `fd546ccb1`(판정 652)이 지웠습니다 — 서버·클라 소스에서 그 파일 이름은
+주석에만 남았습니다(10개 파일, 주석 아닌 줄 0). 없는 RUN.md 절(§5-bis) 가리킴도 뺐습니다.
+
+### 못 고친 것 둘 — 코드 안의 글이라 계획 없이 안 건드렸습니다
+
+```
+server/chain/rule_shape.py      READ_TIME_RETIRED 위 주석(「ONE SENTENCE, TWO SEATS」로 시작)
+                                영어 문장 중간에 한국어 두 줄이 끼어 문장이 끊겼습니다. 뜻은 「거절 자리 하나」
+server/tests/test_a_read_time_join_is_retired_by_name.py   모듈 docstring 「⚠️ ONE SENTENCE, TWO SEATS」
+                                없는 함수 `virtual_join.config._read_time_joins_from_unified` 를 둘째 자리로 듭니다
+```
+시키시면 계획 양식으로 올리고 고치겠습니다.
