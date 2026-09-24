@@ -32404,3 +32404,9 @@ RUN.md 블록            위 정정 항목의 네 가지 모습 — 같은 이�
 참조뷰 항목의 `label` 을 `required: False` 로 냈습니다. 판독기는 label 이 없거나 빈 뷰를 «버리고» 거절을 기록합니다
 (`_normalize_reference_views` 첫 줄 검사). 그러니 폼이 label 없는 뷰를 «써도 되는 것처럼» 그립니다.
 지시의 물음(목록인가 값인가) 밖이라 안 고쳤습니다 — 고칠지 여쭙니다. `key.columns` · `limits.group_by` 와 같은 줄에 둡니다.
+
+### 위 문서 빚 닫힘 (23:49) — `3baaace72`
+
+CODE_MAP 네 행(`KEY_CELL_SHAPES` · `DECIDE_CELL_SHAPES` · `JOIN_CELL_SHAPES` · `_node_for`/`_LIST_CELLS`) + 낡은 앵커 둘,
+RUN.md 블록(선언창 네 가지 모습의 뜻 · 되돌리는 스위치). 다른 레인 편집이 `ff5505df` 로 착지한 뒤 제 헝크만 실었습니다.
+열린 물음 셋은 그대로입니다 — `key.columns` · `limits.group_by` · 참조뷰 `label` 필수 여부.
