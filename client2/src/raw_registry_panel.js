@@ -166,6 +166,11 @@ export function registryView(payload, opts, spec) {
  * 🔴 도메인 낱말 «0». `lists` 는 등록부가 넘겨 준 «닫힌 목록»이고, 어느 칸이 그것을 쓰는지는
  *    스켈레톤의 `list` 가 말합니다 — 이 파일이 고르지 않습니다.
  */
+/** Two raw texts that hold the same document -- whitespace and indentation aside. */
+function sameDocument(a, b) {
+  try { return JSON.stringify(JSON.parse(a)) === JSON.stringify(JSON.parse(b)); } catch (e) { return false; }
+}
+
 function formContext(skeleton, lists, spec, held, expanded) {
   const defs = (skeleton && skeleton.defs) || {};
   const choiceList = spec.choiceList;
@@ -499,6 +504,8 @@ export class RawRegistryPanel {
     // 🔴 C-101 ①. 문서의 «이름». 초안은 그 이름을 같이 듭니다.
     const key = this.newMode ? NEW_NAME : String(view.name || '');
     if (this._formFoldOf !== key) { this._formFold = { expandedFields: {} }; this._formFoldOf = key; }
+    // 서버가 준 «그 문서». 초안이 이것과 같아지면 초안이 아닙니다 — `_keep` 이 내려놓습니다.
+    this._baseline = this.newMode ? null : { key, raw: view.raw };
     // 🔴 C-95-b. 「무엇을 편집하고 있나」에 답이 있나. 없으면 편집기를 «안 그립니다» — 빈 편집기는
     //    친절이 아니라 «이름 없는 문서 위의 살아 있는 저장 버튼»입니다.
     const picked = this.newMode || Boolean(view.name);
@@ -975,6 +982,15 @@ export class RawRegistryPanel {
 
   /** 저장 안 된 글자를 «부품이» 듭니다. 이름을 같이 드는 이유는 생성자의 `draftOf` 를 보십시오. */
   _keep(key, text) {
+    // 🔴 [총괄 09-24] 「+」 뒤 「−」 로 원문이 «원래와 같아져도» 초안이 남아서, 다음에 열면
+    //    «복원»이라고 떴습니다 — 바뀐 게 없는데 복원이라 말하는 자리입니다. 서버가 준 문서와
+    //    «JSON 으로» 같으면 보관하지 않고 내려놓습니다. 모든 편집(폼 · 클릭 · 원문)이 여기를 지납니다.
+    const base = this._baseline;
+    if (base && base.key === String(key || '') && sameDocument(text, base.raw)) {
+      this.draftOf = base.key;
+      this._forget();
+      return;
+    }
     this.draft = String(text == null ? '' : text);
     this.draftOf = String(key || '');
     // 🔴 C-106 ④. 메모리와 «같은 순간»에 보관합니다 — 나중에 한 번 더 쓰는 자리를 만들면

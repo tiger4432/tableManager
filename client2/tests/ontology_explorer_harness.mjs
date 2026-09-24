@@ -392,6 +392,11 @@ const payload = (token, selected = 'entity|A@1') => ({
   check('O6 an untouched row is the rule\'s to answer',
     open({ depth: 3, childCount: 1, chosen: undefined }) === true);
 
+  // [총괄 09-24] an item of an index list follows its list open -- and a hand still wins.
+  check('O11 an index-list item is born open', open({ depth: 4, childCount: 2, indexMember: true }) === true);
+  check('O12 ...but a hand that shut it stays shut',
+    open({ depth: 4, childCount: 2, indexMember: true, chosen: false }) === false);
+
   // The rules that were already there, now measured in the open.
   check('O7 the outline is always drawn', open({ isRoot: true, chosen: false }) === true);
   check('O8 the top two levels are open', open({ depth: 1, childCount: 9 }) === true);

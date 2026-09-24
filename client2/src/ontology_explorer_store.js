@@ -468,6 +468,10 @@ export function fieldOpensByDefault(facts) {
   // 뿌리는 접히지 않습니다 — 선언의 «윤곽»은 언제나 그려집니다.
   if (f.isRoot) return true;
   if (f.chosen !== undefined) return f.chosen !== false;
+  // 🔴 [총괄 09-24] 순번 목록의 «항목»은 목록을 따라 펴집니다. 이름이 번호뿐이라 따로 접어 둘 것이
+  //    없고, 접어 두면 체인 창에서 짝 하나의 left · right 에 닿는 데 클릭이 «둘» 들었습니다.
+  //    목록 자체가 접혀 있으면 항목은 애초에 안 그려지니, 이 줄이 펴는 것은 «편 목록의 항목»뿐입니다.
+  if (f.indexMember) return true;
   return Boolean(f.depth <= 1 || f.attention || f.emptyDoor || f.childCount === 1);
 }
 

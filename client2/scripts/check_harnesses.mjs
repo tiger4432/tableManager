@@ -1116,7 +1116,7 @@ const FLOORS = new Map([
   // 50 -> 56 (2026-08-19). Section G: an empty config through the whole client path.
   // Four separate places read "there is no selection" as "the selection is wrong" or
   // dereferenced it anyway; every one was found by the owner, not by a test.
-  ['ontology_explorer_harness.mjs', 81],
+  ['ontology_explorer_harness.mjs', 83],
   // New 2026-08-19. The explorer panel committed every state change with
   // `replaceChildren`, which is correct output that destroys the operator's scroll,
   // focus, expand state and half-typed text -- the owner reported it as "refreshed to
@@ -1533,7 +1533,7 @@ const FLOORS = new Map([
   // folded shut and did not open, and `+ pair` did nothing: the renderer draws a fold toggle, `+`,
   // a named `+` and `-` on every map, and only the explorer received them. Scored through the real
   // panel on the shipped skeleton, by the click path, with the writer both screens now share.
-  ['chain_list_edit_harness.mjs', 13],
+  ['chain_list_edit_harness.mjs', 16],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────
