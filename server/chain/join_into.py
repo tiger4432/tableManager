@@ -82,6 +82,19 @@ def _pairs(spec: dict, left_table: str = "") -> list:
 #: learned yet, and refusing it would stop a rule that works.
 JOIN_CELLS = ("right_table", "on", "take")
 
+#: The skeleton node of each join cell that is NOT one value - read by `_pairs` (`on`: a list
+#: of {left, right}) and `_takes` (`take`: a list of names). A cell missing here is a value.
+#: ⚠️ `take` also reads a {from, into} item; the vocabulary has no union, so the item is drawn
+#:    as a name and the record form stays in the raw editor - named, never refused.
+JOIN_CELL_SHAPES = {
+    "on": {"kind": "map", "keyed_by": "index", "member": "pair",
+           "of": {"kind": "record", "fields": [
+               {"key": "left", "required": False, "node": {"kind": "leaf", "hint": "free"}},
+               {"key": "right", "required": False, "node": {"kind": "leaf", "hint": "free"}}]}},
+    "take": {"kind": "map", "keyed_by": "index", "member": "column",
+             "of": {"kind": "leaf", "hint": "free"}},
+}
+
 
 def unknown_cells(spec: dict) -> list:
     return sorted(str(key) for key in (spec or {}) if key not in JOIN_CELLS)

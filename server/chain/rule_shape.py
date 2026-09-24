@@ -88,6 +88,10 @@ def from_chain_rule(raw: dict, origin: str = "declared") -> dict:
 #: spelled its own cell names would be a second author of this list.
 KEY_CELLS = ("columns", "unique")
 
+#: The skeleton node of each `key` cell that is NOT one value (`chain.synthesis` reads
+#: `unique` as a flag). A cell missing here is a value.
+KEY_CELL_SHAPES = {"unique": {"kind": "leaf", "hint": "flag"}}
+
 #: The two things `into` can say, and they are exclusive: a join that WRITES names its
 #: table, a join that answers at READ time says so (S-251). The form draws one or the
 #: other, never both.
@@ -440,6 +444,38 @@ def unknown_join_cells(internal: dict) -> list:
 #: `enabled_written` is, and a cell for it would be a place to write that you wrote something.
 DECIDE_CELLS = ("key", "fields", "list_columns", "aggregations", "reference_views",
                 "auto_confirm", "alignment")
+
+
+def _value(hint="free"):
+    return {"kind": "leaf", "hint": hint}
+
+
+def _listed(member, item):
+    return {"kind": "map", "keyed_by": "index", "member": member, "of": item}
+
+
+def _named(member, item):
+    return {"kind": "map", "keyed_by": "name", "member": member, "of": item}
+
+
+#: The skeleton node of each `decide` cell that is NOT one value. The reader is
+#: `chain.enrichment.config` (`chain_rules_from_cells`, `_normalize_reference_views`,
+#: `_view_reads`); the shapes sit here beside DECIDE_CELLS. A cell missing here is a value.
+#: ⚠️ `aggregations` IS AN OBJECT - the reader refuses a list. Its item is "count" or
+#:    {fn, column}; the vocabulary has no union, so the record form stays in the raw editor.
+DECIDE_CELL_SHAPES = {
+    "key": _listed("column", _value()),
+    "fields": _listed("field", _value()),
+    "list_columns": _listed("column", _value()),
+    "aggregations": _named("column", _value()),
+    "reference_views": _listed("view", {"kind": "record", "fields": [
+        {"key": key, "required": False, "node": node} for key, node in (
+            ("label", _value()), ("query", _value()), ("query_ref", _value()),
+            ("limit", _value("number")), ("reads", _listed("table", _value("ref"))),
+            ("candidate_for", _named("field", _value())))]}),
+    "auto_confirm": _value("flag"),
+    "alignment": _value("flag"),
+}
 
 #: How a `decide` cell is spelled in the enrichment vocabulary the normalizer already reads.
 _DECIDE_TO_ENRICHMENT = {"key": "decision_key", "fields": "target_fields"}

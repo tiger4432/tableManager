@@ -492,6 +492,10 @@ _SKELETON_HINTS = {
     "mapper": "choice",
 }
 
+#: Routing cells whose value is a LIST of names -> (member, item hint). `trigger_columns` is
+#: read as a list by `chain.graph` and `chain.rule_census`; `reads` by `rule_tables` below.
+_LIST_CELLS = {"trigger_columns": ("column", "free"), READS_KEY: ("table", "ref")}
+
 
 def skeleton():
     """The shape of ONE chain rule, generated from the list above.
@@ -511,11 +515,7 @@ def skeleton():
     required = set(RULE_ROUTING_REQUIRED)
     fields = []
     for key in routing_keys():
-        if key == PARAMS_KEY:
-            node = _params_node()
-        else:
-            node = {"kind": "leaf", "hint": _SKELETON_HINTS.get(key, "free")}
-        fields.append({"key": key, "required": key in required, "node": node})
+        fields.append({"key": key, "required": key in required, "node": _node_for(key)})
     return {
         "skeleton_version": SKELETON_VERSION,
         "note": ("The shape of ONE chain rule. Generated from "
@@ -541,6 +541,23 @@ def _record(*fields):
 
 def _leaf(key):
     return {"kind": "leaf", "hint": _SKELETON_HINTS.get(key, "free")}
+
+
+def _node_for(key):
+    """The node one routing cell gets - in BOTH grammars. The flat root and the unified shape
+    carry the same cell under two roots, and two spellings of its node is how the form comes to
+    offer one shape where the loader takes another (the `_params_node` defect)."""
+    if key == PARAMS_KEY:
+        return _params_node()
+    if key == REFERENCE_BLOCK:
+        # Tracked code reads only `reference.table` (`reference_tables`); the rest is the
+        # owner's mapper's. The form writes by path into the raw document, so those survive.
+        return _record(_field(REFERENCE_TABLE_KEY, {"kind": "leaf", "hint": "ref"}))
+    if key in _LIST_CELLS:
+        member, hint = _LIST_CELLS[key]
+        return {"kind": "map", "keyed_by": "index", "member": member,
+                "of": {"kind": "leaf", "hint": hint}}
+    return _leaf(key)
 
 
 def _params_node():
@@ -605,8 +622,11 @@ def _unified_root():
     from chain import join_into, rule_shape
 
     derive_branches = {
-        "join": _record(*[_field(cell, _leaf(cell)) for cell in join_into.JOIN_CELLS]),
-        "decide": _record(*[_field(cell, _leaf(cell))
+        # A list or a flag drawn as a value is a BLANK BOX (09-22 owner report). The shape of
+        # each cell that is not one value lives beside the list the reader consults.
+        "join": _record(*[_field(cell, join_into.JOIN_CELL_SHAPES.get(cell) or _leaf(cell))
+                          for cell in join_into.JOIN_CELLS]),
+        "decide": _record(*[_field(cell, rule_shape.DECIDE_CELL_SHAPES.get(cell) or _leaf(cell))
                             for cell in rule_shape.DECIDE_CELLS]),
         # 🔴 [판정 536 ⑥] A NAME AND ITS ARGUMENTS, because that is what the internal model
         #   already holds: `from_chain_rule` builds `derive.mapper` as
@@ -628,7 +648,7 @@ def _unified_root():
         _field("name", _leaf("name"), required=True),
         _field("enabled", _leaf("enabled")),
         _field("on", _record(_field("table", _leaf("trigger_table"), required=True),
-                             _field("columns", _leaf("trigger_columns")))),
+                             _field("columns", _node_for("trigger_columns")))),
         _field("derive", {"kind": "oneOf", "hint": "choice",
                           "branches": {kind: derive_branches[kind]
                                        for kind in rule_shape.DECLARED_KINDS}},
@@ -637,7 +657,7 @@ def _unified_root():
                         "branches": {kind: into_branches[kind]
                                      for kind in rule_shape.INTO_KINDS}},
                required=True),
-        _field("key", _record(*[_field(cell, _leaf(cell))
+        _field("key", _record(*[_field(cell, rule_shape.KEY_CELL_SHAPES.get(cell) or _leaf(cell))
                                 for cell in rule_shape.KEY_CELLS])),
         _field("limits", _record(*[_field(cell, _leaf(cell))
                                    for cell in rule_shape._LIMIT_KEYS])),
@@ -651,7 +671,7 @@ def _unified_root():
         #   Spelling fourteen names here would be the third author of one list.
         # ⛔ AND THE NAMES ARE THE OPERATOR'S. `RULE_TABLE_KEYS` says it: 「개명하지 않는다 —
         #   운영자가 적는 키이고, 이름을 바꾸는 것은 조작자 표면이다」.
-        *[_field(cell, _leaf(cell)) for cell in rule_shape.axis_keys()],
+        *[_field(cell, _node_for(cell)) for cell in rule_shape.axis_keys()],
     )
 
 
