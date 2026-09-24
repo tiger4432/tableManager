@@ -32387,3 +32387,20 @@ key.unique 가 체크박스     새 API 입니다
 git revert 90b9f4437  -> API 재기동   목록이 다시 «글자»로 보입니다(값은 보이되 폼에서 못 고침)
 ```
 
+
+### 이 착지가 낳은 문서 빚 — 이름만 댑니다, 남의 미커밋이 걷히면 닫습니다 (23:38)
+
+```
+CODE_MAP 세 자리 (지금 그 파일에 다른 레인의 미커밋 9 줄 — 커밋하면 같이 실립니다)
+   §4-ter-c join_into   JOIN_CELLS 행 옆에 JOIN_CELL_SHAPES 가 «없다»
+   §4-ter-b rule_shape  KEY_CELLS · DECIDE_CELLS 행 옆에 KEY_CELL_SHAPES · DECIDE_CELL_SHAPES 가 «없다»
+   chain_bindings 절    skeleton() · _unified_root() 행이 «전부 leaf» 시절 그대로, _node_for 가 «없다»
+   -> 다음 사람이 그 절을 읽으면 «없는 모양»을 전제로 합니다. 어제 제가 고친 바로 그 부류입니다
+RUN.md 블록            위 정정 항목의 네 가지 모습 — 같은 이유로 보류
+```
+
+### 짓지 않고 이름만 — 스켈레톤이 판독기와 다른 말을 하는 자리 하나
+
+참조뷰 항목의 `label` 을 `required: False` 로 냈습니다. 판독기는 label 이 없거나 빈 뷰를 «버리고» 거절을 기록합니다
+(`_normalize_reference_views` 첫 줄 검사). 그러니 폼이 label 없는 뷰를 «써도 되는 것처럼» 그립니다.
+지시의 물음(목록인가 값인가) 밖이라 안 고쳤습니다 — 고칠지 여쭙니다. `key.columns` · `limits.group_by` 와 같은 줄에 둡니다.
