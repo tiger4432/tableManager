@@ -57985,3 +57985,132 @@ CODE_MAP 해당 절 · guide · RUN.md
 ```
 님 물음 답(force_disabled) 기다리는 동안 «나머지»를 짓습니다 — 위 가정(«살린다») 아래서
 ```
+
+
+---
+
+## [09-24 밤] 구현자 — enrich.json 삭제 착지 `ff5505dfa` (판정 dbff42a94)
+
+```
+결론   제품 코드에서 enrichment_rules.json 을 읽는 자리 0 · 파일을 다시 놓아도 아무도 안 읽음
+      통합 derive.decide 하나로 파생 행이 난다 (1 -> 2) · 조용히 비던 자리 둘이 죽었다
+크기   git show --shortstat ff5505dfa -> 61 files changed, 716 insertions(+), 1084 deletions(-)
+      (새 파일 1 포함: server/tests/support/enrich_decl.py)
+재기동  필요 · 마이그레이션 없음 · RUN.md 맨 위 절
+```
+
+### 게이트 — 명령 · 수 · 변이
+
+```
+㉠ 평면 파일을 읽는 제품 코드 0
+   명령  pytest server/tests/test_every_seat_that_asks_for_a_declaration_reads_the_unified_one.py
+          ::test_no_product_code_reads_the_flat_enrich_file
+   세는 것  server/ 의 추적 .py (tests/ 제외) AST 에서 load_enrichment_rules ·
+          load_enrichment_chain_rules · ENRICHMENT_RULES_PATH 의 «호출·읽기». 낱말은 안 셉니다
+          (묘비 주석이 걸리므로). 카나리아: 파일 목록 > 100
+   결과  0. 상시 게이트로 남깁니다
+㉡ 통합 선언 하나로 행이 난다
+   명령  pytest server/tests/test_every_declared_kind_runs_and_leaves_rows.py
+   결과  파생 표 행 ["J"] -> ["J","K"] (N=1 -> N+k=2, k=1). K 는 픽스처가 «안 심은» 정체성
+   변이  좌석을 빈 목록으로 -> 이 파일 4 빨강. 전에는 좌석을 죽여도 초록이던 공허한 단언이었습니다
+㉢ 파일을 다시 놓아도 아무 일 없음
+   명령  같은 파일 ::test_a_revived_flat_file_is_read_by_nobody
+   하는 일  RULES_PATH 옆에 enrichment_rules.json 을 다시 두고 문 셋(체인 로더 · 좌석 · 소급)에 묻습니다
+   카나리아  같은 자리의 통합 선언은 «서야» 합니다 — 아무것도 안 읽는 로더를 통과로 읽지 않게
+   ㉠ 과 ㉢ 은 서로를 대신하지 않습니다: 변이마다 «자기» 게이트만 빨개지는 것을 봤습니다
+㉣ 조용함 둘
+   ① config.py 의 `return []`(파일 없으면 빈 목록) — 로더와 같이 죽었습니다
+   ② 🔴 새로 찾음: chain_rules.json 이 «깨져» 있으면 설정 보고의 Enrichment 칸이
+      「규칙 0건을 읽었습니다」· 상태 ok 라고 말했습니다. 평면 로더가 자기 파일에 대해 넣던
+      파일 거절을 이제 좌석이 넣습니다 (chain/enrich_declarations.declarations 머리)
+      변이  그 줄을 끄면 contracts/.../test_an_unreadable_rules_file_IS_a_rejection 빨강 ('ok' == 'degraded')
+```
+
+### 전수 회귀
+
+```
+명령  cd server && python -m pytest tests -q -p no:randomly   (conda assy_manager, 파이프 없이 파일로)
+착지 전 트리  23 failed, 6777 passed, 139 skipped, 3 xfailed (10분 23초)
+   빨강 23 은 «전부» tests/test_config_resolve_report_contract.py — contracts/ 계약의 재수출입니다.
+   제가 모집단에서 못 센 시험입니다. 하니스를 chain_rules.json 으로 옮기고 다시 돌려 초록
+   늘 흔들리던 셋(process_supervisor · config_reload_integrity · ledger_trace_pg)은 이번엔 빨강 없음
+그 뒤  좌석을 한 번 더 고쳤으므로(위 ㉣ ②), 좌석 · 보고 · 그래프 · 인리치를 부르는 시험 파일 82 개를 다시
+   git grep -l -E "enrich_declarations|resolve_report|chain_graph|enrichment|read_rules_document" -- 'tests/*.py'
+   -> 1440 passed, 5 skipped, 1 xfailed, 0 failed
+```
+
+### 제가 앞서 적은 수 — 틀린 것 셋
+
+```
+「죽는 줄 135」   chain_rules_for 는 삽니다(통합 문법이 부릅니다). 실제: config.py +33 −180
+「경로 상수 읽는 자리 1」  넷이었습니다 — grep 으로 셌던 수입니다
+「시험 14 파일」   server/tests 26 + contracts 1 = 27 파일을 고쳤습니다.
+                  이름 «문자열»로 monkeypatch 하는 자리를 못 셌고, contracts/config_resolve_report
+                  계약(설정 보고)도 빠졌었습니다 — 그 계약은 전수 회귀가 잡았습니다
+```
+
+### 가정 하나 — 님 답을 기다립니다
+
+```
+소급의 --force-disabled 를 «살렸습니다». 좌석에 include_disabled 인자 하나.
+   꺼진 선언을 켜진 것처럼 세워 소급에만 넘깁니다. 다른 호출자는 전부 False — 꺼진 규칙은 여전히 안 섭니다
+   죽이라 하시면 인자 하나와 CLI 플래그 하나를 지웁니다
+```
+
+### 공유 인덱스 사고 한 건
+
+```
+표본 파일 server/config/sample/enrichment_rules.json.sample 의 삭제(153줄)가
+총괄 커밋 39f990b21 (docs(orders): approve the application lane's shape table…) 에 실려 나갔습니다.
+제가 git rm 으로 스테이지해 둔 것을 경로 없는 커밋이 집었습니다. 내용은 맞고 되쓰지 않습니다.
+이 착지 커밋에는 그래서 그 삭제가 없습니다
+```
+
+### 이 박스에서 본 것 — 운영 주장 아님
+
+```
+계약의 라이브 카나리아(test_live_config_is_still_the_state_this_round_measured)가 이제 «잽니다».
+   전에는 이 박스에 평면 파일이 없어 늘 건너뛰었습니다
+   지금 답: 이 박스 chain_rules.json 의 enrich_in_chain_probe 가 candidate_for 를 선언 -> 건너뜀(skip)
+   그 계약 벡터 live_production_state_2026_07_30 은 07-30 측정 기록이라 손대지 않았습니다
+```
+
+### 넘기는 것
+
+```
+클라 레인   화면 문구 둘이 운영자에게 「server/config/enrichment_rules.json 수기 편집」이라고 적습니다 — 이제 거짓
+              git grep -n "enrichment_rules.json" -- client2/src/admin.js client2/admin.html
+           주석 넷 + 하니스 주석 하나: client2/src/map2 · map_editor2.js · client2/tests
+응용 세션   살아 있는 문서 17 개가 아직 그 파일을 가리킵니다 (가이드 12 · CODE_MAP · RUN.md 는 이 매듭에서 옮김)
+              git grep -l "enrichment_rules\.json" -- docs ':!docs/history' ':!docs/_archive'
+              에서 이 커밋이 만진 것을 뺀 수. SERVER_DEFECT_QUEUE 는 님 파일이라 안 건드렸습니다
+           docs/guide/config/enrichment_rules.md 는 머리에 은퇴 표지만 달고 본문 재작성은 넘깁니다
+```
+
+### 짓지 않고 적는 것
+
+```
+① 메모가 사라졌습니다. 평면 로더에는 파일 메모(S-94)가 있었습니다 — 정렬 뷰가 행마다 규칙을 묻기 때문.
+   좌석에는 메모가 없어 그 호출이 이제 매번 chain_rules.json 을 읽고 펼칩니다. 비용은 «안 쟀습니다»
+② 모듈 이름 chain/synthesis.py 가 이제 거짓입니다(합성이 없음 · 남은 것은 선언된 유일 키). 개명은 import 전부가 걸리는 별건
+③ 통합 선언의 최상위에 "alignment": true 를 적으면 «조용히» 꺼집니다 — decide 안에 적어야 섭니다.
+   RUN.md 이관 표에 「나머지 칸은 decide 안에」로 적었습니다
+④ 소유자 박스의 enrichment_rules2.json 규칙 넷은 오늘도, 이 착지 뒤에도 안 돕니다 — 제품이 원래 안 읽던 이름입니다.
+   chain_rules.json 에 집이 있는 것은 넷 중 0
+```
+
+### 여쭐 것
+
+```
+① --force-disabled 살림/죽임 (위 가정)
+② 옛 enrichment_rules.json 이 남은 설치는 재기동하면 그 규칙이 «오류 없이» 멈춥니다 (RUN.md 가 재기동 전 확인을 적음).
+   부팅 때 「그 파일이 있는데 아무도 안 읽는다」 한 줄 경고를 원하십니까?
+   ⚠️ ㉢ 「다시 놓아도 아무 일도 안 일어난다」와 글자로는 부딪칩니다 — 경고 한 줄은 «일»입니다
+```
+
+### 다음
+
+```
+큐 그대로: 임시 스키마 춤을 한 좌석으로 · PG 빨강 test_an_install_that_predates_attributes_is_widened_once ·
+          test_process_supervisor 경쟁
+```
