@@ -32486,3 +32486,30 @@ server/tests/test_a_read_time_join_is_retired_by_name.py   모듈 docstring 「�
                                 없는 함수 `virtual_join.config._read_time_joins_from_unified` 를 둘째 자리로 듭니다
 ```
 시키시면 계획 양식으로 올리고 고치겠습니다.
+
+### 덧붙임 (09-25 01:22) — 위 보고의 빈칸 셋
+
+**① 이미 `into.read` 를 든 규칙을 창에서 열면 — 고칠 수 있습니다 (잰 것)**
+
+거절 문장이 「이 선언의 `into` 를 table 로 바꾸십시오」라고 하므로, 그 길이 창에서 서는지 진짜 모듈
+(`raw_registry_panel` → `ontology_explorer_view`)과 하니스의 DOM 스텁으로 쟀습니다. 카나리아(table 규칙에 derive 드롭다운이 섬) 참.
+
+| | 바꾸기 전 스켈레톤 | 바꾼 뒤 |
+|---|---|---|
+| 열었을 때 into 드롭다운 | `["table", "read"]`, read 칸이 그려짐 | `["", "table"]`, 빈칸 — read 는 폼에 안 그려지고 원문에만 보임 |
+| table 을 고르면 | into = `{"table": ""}`, table 칸 | 같음 — `read` 가 지워지고 table 칸이 그려짐 |
+
+그래서 은퇴한 선언을 고치는 길은 전과 같습니다. 다른 점 하나: 폼만 보면 into 가 «안 고른 것»으로 보입니다. 저장하면 거절 문장이 이유를 말합니다.
+
+**② 계획에서 달라진 것은 «둘»이었습니다 — 위에는 하나로 적었습니다**
+
+승인받은 계획에 「⛔ client2/ 는 안 건드립니다」가 있었는데 `client2/tests/chain_rule_form_harness.mjs` 의 단언 하나를 고쳤습니다
+(`client2/src` 는 그대로). 게이트 ㉢(하니스 초록)이 요구해서였지만, 계획 문장과 다르게 한 것이니 «달라진 것»으로 적어야 했습니다.
+
+**③ `into` 가지를 이름으로 묻는 자리가 하나 더 있습니다 — 못 고친 것에 더합니다**
+
+`server/scripts/preview_unified_declarations.py` 가 `"read"` 를 손으로 적어 「이 선언이 어디로 가나」를 표시합니다
+(into 에 read 가 있으면 "read", 아니면 "table"). 목록은 아니지만 `RETIRED_INTO_KINDS`·`INTO_KINDS` 밖에서 가지 이름을 적는 자리입니다.
+위의 「둘째 목록은 없습니다」는 «목록»에 대한 말이고, 이 자리까지 세면 서버 소스(시험 제외)에서 into 가지를 이름으로 적는 곳은
+파일 셋입니다 — `rule_shape`(두 목록) · `chain_bindings`(모양 표) · 이 스크립트(09-25, `server/*.py` 에서 따옴표 붙은 `read` 를
+`git grep` 하고, 뜻이 다른 둘 — 표의 역할 `TABLE_ROLE_READ` · 원장 소스의 `read` 칸 — 을 뺀 것). 스크립트라 이번 지시 밖이어서 안 고쳤습니다.
