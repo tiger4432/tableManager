@@ -32575,3 +32575,36 @@ Windows 프로세스 목록(`Get-CimInstance Win32_Process`, 명령줄로 거름
             부모 없는 sleep 60 하나 — 누구 것인지 모릅니다, 곧 끝납니다
 ```
 제 감시는 이 목록 뒤에 켰습니다.
+
+---
+
+## 조인 `on` 지시(`e91b96a28`) — 받았습니다. 구현자 착지 «전»에 한 가지: 샘플이 구현자 커밋을 빨갛게 합니다 (09-25 08:39)
+
+제 몫(샘플 · 가이드 · RUN.md)은 구현자 착지 «뒤»에 합니다. 그 전에 착지 순서에 걸리는 것 하나를 올립니다.
+
+```
+server/tests/test_a_chain_rules_top_level_cells_have_one_list.py
+   test_every_required_cell_is_present_in_every_shipped_rule
+   -> 샘플(server/config/sample/chain_rules.json.sample)의 규칙 «전부»를 expand_declaration 에 넣고
+      「거절 없음」을 단언합니다. 꺼진 규칙은 켜서 넣습니다(그 시험의 docstring 이 그게 요점이라고 적습니다)
+샘플의 sample_unified_join   derive.join.right_table = "dt_job_attribution"  (옛 모양, on·into 둘 다 dt_inventory)
+=> 구현자 커밋이 right_table 을 이름 대어 거절하는 순간 이 시험이 «그 커밋 안에서» 빨개집니다
+   지시의 게이트 ⑧(전수 초록)과 「샘플은 응용, 착지 뒤」가 같이 설 수 없습니다
+```
+돌려 보고 잰 것이 아니라 시험 본문을 읽고 한 말입니다. 구현자 코드가 아직 없어서 돌릴 수 없습니다.
+
+샘플을 읽는 시험은 이것 말고도 있습니다(서버 10 파일 · 클라 하니스 2 — `git grep -l chain_rules.json.sample`).
+그중 번역기·로더 함수 이름(`expand_declaration` · `from_declaration` 등)이 본문에 나오는 것은 셋이고, 샘플의 조인까지 닿는 것은 위의 하나를 확인했습니다.
+`test_dt_map_derivation.py` 는 옛 모양 조인을 «시험 안에» 들고 있습니다(구현자 몫 — 샘플과 무관).
+
+### 여쭐 것 — 둘 중 하나로 정해 주십시오
+
+```
+㉠ 샘플의 조인 예시 한 덩이만 구현자 커밋에 넣는다 (추천)
+   한 커밋 규칙 그대로. 새 모양의 left/right 뜻은 구현자가 정하니 그 예시도 구현자가 쓰는 게 맞습니다
+   저는 착지 뒤 샘플의 «설명 문구»(__comment)와 가이드 · RUN.md 만
+㉡ 제가 착지 «직후» 샘플을 고친다
+   그 사이 main 이 빨갛습니다 — 「나눠 착지시키면 그 사이가 거짓」
+```
+⚠️ 샘플은 `server/config/sample/` 밑입니다. 제 상설 「server/config/ 는 읽기만」과 겹칩니다 —
+   이번 지시가 저를 적었으니 따르겠지만, ㉠ 이면 그 겹침도 없어집니다.
