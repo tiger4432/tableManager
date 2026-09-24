@@ -92,6 +92,8 @@
 > ㉡ Chain 탭에서 inventory_confirmed 를 여십시오
 >    on · take 칸에 [{"left":…}] · ["…"] 같은 «글자»가 보이면  고쳐진 것입니다
 >    빈 입력칸이면                                        옛 번들입니다 (㉠ 부터)
+> ㉢ 같은 번들에 09-23 수리도 실려 있습니다 — 끝난 enrichment backfill 줄에
+>    「not created - no decision key N」 같은 칩이 보이면 그 수만큼 «안 만든» 것입니다 (0 도 그대로)
 > ```
 >
 > ### 급할 때 끄는 스위치
