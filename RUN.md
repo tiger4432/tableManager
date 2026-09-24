@@ -158,19 +158,21 @@
 >
 > ```
 > ㉠ 개발자도구 Network 에서 admin-*.js 의 «이름»을 보십시오
->    admin-Cc5ya6Fe.js  새 번들이 떴습니다
+>    admin-Betkez0l.js  새 번들이 떴습니다
 >    다른 이름    옛 번들이 캐시에 남았거나 배포가 안 된 것입니다 — 화면은 안 바뀝니다
 > ㉡ Chain 탭 → inventory_confirmed → on 의 「접힘 · 2」 → 「0」 줄
 >    left · right 칸에 dt_job 이 보이면  고쳐진 것입니다
 >    눌러도 안 펴지면                  옛 번들입니다 (㉠ 부터)
 > ㉢ 같은 번들에 09-23 수리도 실려 있습니다 — 끝난 enrichment backfill 줄에
 >    「not created - no decision key N」 같은 칩이 보이면 그 수만큼 «안 만든» 것입니다 (0 도 그대로)
+> ㉣ 인리치 목록 아래 메모가 「Edit rules in the Chain tab (derive.decide)」 이면 은퇴한 파일 안내가 빠진 번들입니다
+>    「server/config/enrichment_rules.json 수기 편집」 이 보이면 옛 번들 — 그 파일은 이제 아무도 안 읽습니다
 > ```
 >
 > ### 급할 때 끄는 스위치
 >
 > ```
 > 없습니다 — 화면이 «받는» 클릭만 늘었고 토글할 축이 없습니다
-> 되돌리려면  git revert aac2e1bac  하고 다시 배포
+> 되돌리려면  git revert aac2e1bac 2cdb1e74f  하고 다시 배포
 >            (되돌리면 목록이 다시 «안 펴집니다» — 값은 원문 JSON 에서만 보입니다)
 > ```
