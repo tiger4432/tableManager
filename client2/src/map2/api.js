@@ -244,7 +244,7 @@ export function createApiClient(opts) {
      *    screen about nothing in particular.
      *
      * 🔴 AND IT GOES IN `params`, NOT AS `?eqp=&product=`. That spelling hardcodes the
-     *    decision key into the API, and `enrichment_rules.json` owns the unit precisely so it
+     *    decision key into the API, and the enrich declaration (`derive.decide`) owns the unit so it
      *    can change without an API change. The server validates these keys against the rule's
      *    own `decision_key` and 400s on a key the rule does not declare, so a wrong spelling
      *    fails loudly instead of quietly answering about nothing.

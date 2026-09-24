@@ -269,7 +269,7 @@ function start() {
 //    many rules declared `alignment`, and that exactly one is required. A copy in this file
 //    would be a second spelling of one fact, and the copy is the one that goes stale.
 //    A FAILED ROUTE IS NOT AN ABSENT DECLARATION. Those two used to share `정렬 규칙 없음`,
-//    which sent an administrator to `enrichment_rules.json` when the server had not answered.
+//    which sent an administrator to the rule declarations when the server had not answered.
 const WORDS_RULES_UNREACHABLE = '규칙 조회 실패';
 const WORDS_NO_TABLE = '맵 테이블 없음';
 const WORDS_SETUP_FAILED = '초기 설정 실패';
@@ -322,7 +322,7 @@ function adoptRule(app, api, declaration) {
  * name this program knows in advance, and every step degrades to a stated reason rather than a
  * throw.
  *
- * 🔴 A RULE DECLARES ITSELF ALIGNMENT-CAPABLE: `"alignment": true` in `enrichment_rules.json`,
+ * 🔴 A RULE DECLARES ITSELF ALIGNMENT-CAPABLE: `"alignment": true` in its `derive.decide`,
  *    served through `GET /enrichment/rules`. ABSENCE MEANS NOT CAPABLE -- a fact, not a
  *    default: an unmarked rule has never been claimed to align anything. So there is no
  *    fallback to "offer everything" when nothing is marked. An empty offer is the honest

@@ -4346,7 +4346,9 @@ function selectEnrichmentRow(rule, missing) {
         : '대상 필드가 모두 채워져 있습니다.'
   ];
   tracebackViewer.innerHTML = `<div style="color: var(--text-muted); line-height: 1.7; white-space: pre;">${lines.join('\n')}</div>` +
-    `<div style="margin-top: 12px; color: var(--text-dim); line-height: 1.6;">✏️ 규칙 편집(read-only): 서버 <span style="font-family: var(--font-mono); color: var(--text);">server/config/enrichment_rules.json</span> 수기 편집 후 Reload Configs &amp; Code로 반영.<br>규칙 CRUD UI는 온보딩 위저드(대안 단계)로 이관.</div>`;
+    // 🔴 The enrich declaration lives in the chain rule now (`derive.decide`) -- ff5505dfa retired
+    //    enrichment_rules.json, and this line used to send the operator to edit that file.
+    `<div style="margin-top: 12px; color: var(--text-dim); line-height: 1.6;">Edit in the Chain tab: <span style="font-family: var(--font-mono); color: var(--text);">derive.decide</span></div>`;
 
   payloadTitle.textContent = 'Rule Configuration (read-only)';
   payloadViewer.textContent = JSON.stringify(rule, null, 2);

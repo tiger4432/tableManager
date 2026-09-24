@@ -842,9 +842,9 @@ const CATALOG = {
 //
 // 🔴 SILENCE READS AS LOADING. `adoptRule` returns before `refreshWorklist()`, so zero or two
 //    capable rules issue NO worklist request at all -- not a 400, not a 500, no network traffic.
-//    The operator sees an empty list and reports that loading is broken. This box's live
-//    `enrichment_rules.json` and the shipped `.sample` both declare TWO, so the default a fresh
-//    deployment inherits is exactly the silent case.
+//    The operator sees an empty list and reports that loading is broken. The shipped
+//    `chain_rules.json.sample` declares TWO (`sample_unified_decide` · `sample_unified_auto_confirm`),
+//    so the default a fresh deployment inherits is exactly the silent case.
 {
   const frame = { name: 'eqp_product_frame_attribution', alignment: true };
   const other = { name: 'other', alignment: true };
