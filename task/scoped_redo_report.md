@@ -58192,3 +58192,55 @@ RUN.md   09-24 절 ㉢ 에 이 문장의 뜻 한 줄 추가 (「선언 없음이
    소유자 「감시켜」가 마지막 말이라 다시 켰습니다: 데몬 pid 877 (ensure.sh) · 제 루프 하나
    🔴 또 사라지면 되켜서 다투지 않습니다 — 여쭙니다. 끄는 쪽이 07:55 지시를 집행 중이면 한 줄 적어 주십시오
 ```
+
+---
+
+## [09-25 08:5x] 구현자 — 조인 `on` 지시(e91b96a28 · a5985f280) 짓기 «전» 전수 · 셋은 제가 정해 짓고 여기 적습니다
+
+### 전수 — 수와 센 명령
+
+```
+① 지시 명령  git grep -n "right_table\|REFERENCE_SUFFIX\|:reference" -- server | grep -v tests   -> 84 줄 · 23 파일
+   이 기제(체인 조인)의 것   rule_shape 9 · join_into 12 · synthesis 8 · dt_map_derivation 12 · replay 1 ·
+                           rule_census 1 · join_refusal 1 · dynamic_mappers 1 · chain_bindings 1 · chain_skeleton.json 1 ·
+                           chain_rules.json.sample 1
+   다른 기제 — 안 건드림     ledger/* 16 · verified_join_contract 3 · notation_norm 2 · check_one_row_one_fact 5
+                           (원장 관계의 «자기» right_table) · virtual_join_rules.json.sample 6(읽는 쪽 0) · mappers *.sample 3
+   짝을 «모양·이름»으로 가리는 산 코드   1 곳 — synthesis.py 의 base = name.split(REFERENCE_SUFFIX)[0] (승인 행 접기)
+                                      -> 칸(companion_of)으로 바꿉니다
+   replay.py:188 은 «독스트링»입니다 — 판정은 이미 칸을 읽습니다(S-270). 거짓이 되는 것은 거절 «문장»(아래 ②)
+   JOIN_MODELLED(rule_shape:26)는 읽는 쪽 0 — 은퇴한 가상 조인 변환의 잔해라 같이 지웁니다
+② 문장·출력의 right_table   join_refusal.py:85 · synthesis.py:348 — 낱말이 아니라 «표 이름 값»을 찍습니다
+                           synthesis.py:237 — 승인 행의 키(클라가 읽음). 지시 「엔진·승인 그대로」대로 셋 다 둡니다
+                           join_into 의 거절 문장 넷(「right table %r …」)도 엔진 문장이라 둡니다 — 값은 원천 표
+③ client2/src/grid.js:979 · ui.js:55   vc.right_table — 서버가 virtual_columns 를 «항상 []» 로 냅니다(main.py S-283).
+                           먹이는 쪽 0 인 죽은 갈래 — 클라 몫, 안 건드림
+시험    git grep -l "right_table\|REFERENCE_SUFFIX\|:reference" -- server/tests client2/tests  -> 46 파일
+        (원장 시험 · 은퇴한 가상 컬럼 하니스 포함 — 체인 조인 것만 같은 커밋에서 새 모양으로)
+샘플을 읽는 파일   git grep -l "chain_rules.json.sample" -- server client2/tests  -> 15
+```
+
+### 제가 정해 짓는 셋 — 이유와 재는 법
+
+```
+㉮ 원천 규칙의 trigger_columns = 원천 쪽 키 «+ take 의 원천 칸»   (지시 문장 「원천 쪽 키」 에서 한 칸 넓음)
+   이유  모인 이벤트는 쓴 칸 목록(columns)을 싣고, 규칙은 그 목록과 trigger_columns 가 «겹칠 때만» 돕니다
+        (ingestion_worker.rule_watches_changed_columns). 키만 적으면 dt_lot 만 고친 이벤트 = {dt_lot} ∩ {dt_job} = ∅
+        -> 게이트 ③(소유자 흐름)이 안 돕니다. 소유자 문장도 「붙일 값을 고쳐야 트리거」입니다
+   재기  변이 — take 를 빼고 키만 두면 ③ 빨강. 보고에 그 빨강을 싣습니다
+   짝(쓰는 쪽 dt_log)의 trigger_columns = 쓰는 쪽 키 — 오늘 주 규칙과 같습니다(새 행·키가 바뀐 행)
+㉯ 리플레이 거절 «판정»은 그대로, «문장»만 고칩니다
+   판정은 짝 칸을 읽습니다. 짝이 이제 쓰는 쪽(:target)이라 「통째 리플레이 거절」도 그쪽에 섭니다 —
+   선언 «이름»(원천 쪽)으로 통째 리플레이하면 모든 dt_log 행을 다시 셉니다. 짝은 행을 골라서만
+   문장 「replaying the target-side rule … Replay that one instead」가 거짓이 됩니다 -> 선언 이름을 대는 문장으로
+㉰ 변환 문 — 새 갈래를 «함수 하나»로
+   rule_shape 에 옛 조인 -> 새 모양 한 함수(right_table 이 없으면 그대로 돌려줌). 변환 문의 to=unified 끝에서 부르고,
+   「이미 unified」 답은 «바뀐 게 없을 때»로. 새 라우트 없음
+   ⚠️ 이 변환의 드라이런 «다시 돌 것» 칸은 「펼치지 못해 세지 못했습니다」라고 말합니다 — 옛 모양이 거절되니 참입니다
+```
+
+```
+⚠️ 이 박스  착지 뒤 부팅에서 inventory_confirmed 가 거절됩니다(지시대로 «맞는» 것). 라이브 chain_rules.json 을 읽고
+           「거절 0」을 단언하는 시험이 있으면 «이 박스에서만» 빨갛습니다 — 박스 상태로 적고 박스를 안 고칩니다
+⛔ 소유자 config 안 건드림 · 서버 전부 + 스켈레톤 + 하니스 + 샘플 조인 한 덩이 + test_dt_map_derivation — «한 커밋»
+```
