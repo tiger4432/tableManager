@@ -1523,6 +1523,12 @@ const FLOORS = new Map([
   // siblings by hand, and a fourth tab that joined the row but not those lists lit two tabs at
   // once. Its core assertion adds a tab WITHOUT touching any list.
   ['history_tabs_harness.mjs', 9],
+  // New 2026-09-24 (owner: 「당장 고쳐 1순위」). A value the skeleton's node cannot hold -- a list
+  // at a leaf, a string where it says list -- is SHOWN, never drawn as an empty box, and gets no
+  // control whose first keystroke would overwrite it. P3 is the Lead's census run through the
+  // real chain panel on the shipped skeleton: 9 blank cells before, 0 now, and it is written so
+  // it stays true when the skeleton learns lists.
+  ['skeleton_value_fit_harness.mjs', 18],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

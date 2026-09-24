@@ -4,7 +4,7 @@ import { isDraftRevisionEditable, declarationIdFor, fieldOpensByDefault }
 import { commitTree } from './dom_patch.js';
 import { splitBundlePath, getAtPath } from './ontology_path.js';
 import {
-  declarationShape, fieldApplies, memberPath, membersOf, shapeAt,
+  declarationShape, fieldApplies, memberPath, membersOf, shapeAt, valueFits,
 } from './ontology_skeleton.js';
 import { closedListChoice, renderClosedList } from './closed_list.js';
 // 🔴 C-121. 이 화면이 보내는 수 옆에 «그 0 이 무엇인지»를 붙이는 정본. 새 어휘가 아니라서
@@ -1726,6 +1726,13 @@ export function renderSkeletonForm(context, node, path, value, depth = 0, label 
   if (shape.kind === 'oneOf') {
     return renderSkeletonOneOf(context, shape, path, value, depth, label, required);
   }
+  // 🔴 A BRANCH HOLDING THE WRONG SHAPE IS DRAWN AS ITS VALUE, NOT AS AN EMPTY BRANCH.
+  //    `membersOf` answers [] for a string where the skeleton says list, so the map drew
+  //    only its `+` door and the value on file vanished -- the owner's `aaa` holds
+  //    `"on": "lot_event"`. The leaf row shows it (see `renderSkeletonLeaf`).
+  if (!valueFits(shape, value)) {
+    return renderTreeLeaf(context, shape, path, value, depth, label, required);
+  }
   // 🔴 A BRANCH THE PLAN OFFERS CANDIDATES FOR IS PICKED AT THE BRANCH. See `covering`.
   // An index map becomes ONE row carrying the picker -- its members are the picked values,
   // so drawing them again below would be the same list twice with two ways to edit it.
@@ -2006,6 +2013,14 @@ function renderTreeLeaf(context, node, path, value, depth, label, required = und
   return box;
 }
 
+/** A held value as text: a string as itself, anything else as the JSON the file holds.
+ *  `String()` spelled a list `a,b` and a record `[object Object]`. */
+function spelledValue(value) {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number') return String(value);
+  return JSON.stringify(value);
+}
+
 // The control for an UNPLANNED leaf. A leaf the plan speaks for is drawn by the plan row
 // instead (see `renderTreeLeaf`) -- that row is the only thing carrying candidates,
 // refusals and grounds, so the skeleton fills exactly what the plan cannot see.
@@ -2014,8 +2029,17 @@ function renderSkeletonLeaf(context, node, path, value) {
   // folding -- 「읽기에서는 편집 컨트롤 대신 값이 그려질 뿐, 무엇이 있는지 보이는 것은 같다」.
   if (context.readOnly) {
     if (value === undefined || value === null) return h('span', 'oe-value is-none', 'None');
-    if (typeof value === 'boolean') return h('span', 'oe-value', value ? 'true' : 'false');
-    return h('span', 'oe-value', String(value));
+    return h('span', 'oe-value', spelledValue(value));
+  }
+  // 🔴 A VALUE THIS CONTROL CANNOT HOLD IS SHOWN, AND NO CONTROL IS OFFERED FOR IT. The text
+  //    box used to open EMPTY over a list, a record or a boolean (9 cells on the box's own
+  //    rules, 09-24), and typing into it would have written a string over the list. The raw
+  //    editor is where a value the form cannot hold is edited.
+  if (!valueFits(node, value)) {
+    const shown = h('span', 'oe-value', spelledValue(value));
+    shown.dataset.unfit = 'true';
+    shown.title = 'not editable in this form - edit the raw JSON';
+    return shown;
   }
   if (node.hint === 'flag') {
     const box = h('input', 'oe-role-required');

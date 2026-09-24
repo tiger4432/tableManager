@@ -245,3 +245,26 @@ export function membersOf(node, value) {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? Object.keys(value) : [];
 }
+
+/** Whether a held value is the shape its node DECLARES. Absent always fits.
+ *
+ * 🔴 THE SKELETON SAYS WHAT A CELL IS; THIS ONLY CHECKS THE VALUE AGAINST IT. It never reads
+ * the value to decide what the cell is -- an array at a leaf is a leaf holding the wrong thing,
+ * not a list. Owner 09-22: a unified rule opened with its pair list and column list drawn as
+ * empty boxes, because a leaf showed only strings and numbers and an index map showed only
+ * arrays, and everything else vanished without a word. A form that cannot hold a value must
+ * SHOW it, and must not offer a control whose first keystroke would overwrite it.
+ */
+export function valueFits(node, value) {
+  // '' is absence (CLAUDE.md), so it gets the absent control: an unticked box, an empty `+` door.
+  if (value === undefined || value === null || value === '' || !node) return true;
+  if (node.kind === 'leaf') {
+    return node.hint === 'flag' ? typeof value === 'boolean'
+      : typeof value === 'string' || typeof value === 'number';
+  }
+  if (node.kind === 'map' && node.keyed_by === 'index') return Array.isArray(value);
+  if (node.kind === 'map' || node.kind === 'record') {
+    return typeof value === 'object' && !Array.isArray(value);
+  }
+  return true;
+}
