@@ -32587,3 +32587,91 @@ CSS 를 `src/*.css` 에서 찾고 「규칙 없음」이라 적을 뻔했는데,
 ```
 새 지시 전까지 쉬십시오. 발견이 있으면 그것만 올리십시오
 ```
+
+---
+
+> 🔴🔴🔴 **[09-24 23:0x 총괄 -> 클라 · 응용] 1순위. 체인 선언창이 통합 선언을 «빈 칸»으로 그립니다 — 소유자가 3일 전에 말씀하신 것입니다**
+
+```
+소유자   09-22 「선언 불러오면 join 같은 신규 선언 제대로 반영이 안되는듯 · 호환이 안되는듯?」
+        09-23 안 셋 중 「ㄱ 으로해」 — 목록 칸은 «목록으로», 참/거짓 칸은 «체크박스로»
+        09-24 「며칠째 안되는거니? … 당장 고쳐 1순위」 · 「클라랑 응용 시켜」
+🔴 늦은 이유는 총괄입니다 — 09-23 에 이 지시서를 써 놓고 «안 보냈습니다»
+```
+
+### 총괄이 잰 것 — 선언에 값이 «있는데» 창이 빈 칸을 그리는 자리 «9»
+
+```
+센 법   서버 스켈레톤(`server/chain_skeleton.json`) × 선언 파일(`server/config/chain_rules.json`)을
+        맞대어, 스켈레톤이 `leaf` 라 하는데 값이 배열·객체·참거짓인 칸을 셉니다
+inventory_confirmed            derive.join.on (배열) · derive.join.take (배열) · key.unique (참거짓)
+enrich_in_chain_probe          derive.decide 의 key·fields·reference_views (배열) · auto_confirm·alignment (참거짓)
+dt_log_to_primary_core_frame   reference (객체) — 평면 문법
+```
+```
+원인 둘
+   서버   chain_bindings._unified_root() 가 join·decide·key 의 칸을 «전부 leaf» 로 냅니다
+   화면   ontology_explorer_view.js 리프 컨트롤: 값이 글자·숫자가 아니면 «빈 칸»
+          const text = typeof value === 'string' || typeof value === 'number' ? String(value) : '';
+결과     소유자가 창으로 만든 `aaa` — "on": "lot_event", "take": "lot_event"
+        짝 목록·컬럼 목록 자리에 표 이름이 들어갔습니다
+🔵 목록 노드는 «이미 있습니다» — {kind: map, keyed_by: index, member, of}. 원장 선언창이 쓰고
+   공용 렌더러가 항목·「+ 항목」·「−」·인덱스 경로 쓰기를 다 합니다. 새 축이 아닙니다
+```
+
+---
+
+## 응용 — 서버 절반. 스켈레톤이 «목록을 목록이라고» 말하게
+
+```
+자리   chain_bindings._unified_root() 와 그것이 낳는 server/chain_skeleton.json
+모양   목록  on · take · key(decide) · fields · reference_views · list_columns · aggregations
+            -> {kind: map, keyed_by: index, member: …, of: …}
+      참거짓 key.unique · decide.auto_confirm · decide.alignment -> hint: flag
+      `on` 의 항목   {left, right} 레코드 («fold» 는 짓지 않습니다 — 판정 397, 계산되는 값입니다)
+      `take` 의 항목  «문자열 leaf». `_takes` 는 {from, into} 도 읽지만 항목 단위 «합집합» 칸이
+                    어휘에 없고 새 노드 종류는 금지입니다 -> {from,into} 는 원문 편집기 몫. «이름 대되 거절 안 함»
+                    틀렸다고 보시면 «보고»하십시오. 종류를 지어내지 마십시오
+🔴 저자는 «하나» — 어느 칸이 목록이고 항목이 무슨 모양인지는 그 칸을 «읽는 모듈» 옆에 둡니다
+   (JOIN_CELLS 옆 join_into · DECIDE_CELLS·KEY_CELLS 옆 rule_shape). chain_bindings 에 손으로 적지 않습니다
+🔴 9 번째 칸 `reference`(평면 문법) — «명시적으로» 정하십시오. 모양을 선언하든, 센 범위에서 빼든
+   빼면 «왜»를 그 자리에 적습니다. 조용히 넘기지 않습니다
+```
+```
+🔴 스켈레톤을 다시 낳기 «전»에 `node client2/scripts/check_harnesses.mjs` 를 돌리십시오
+   chain_rule_form_harness 가 그 파일을 «읽습니다». 모양 때문에 빨개지는 «단언»은 같은 커밋에 고칩니다 —
+   모양 단언만. 렌더러(client2/src)는 «안 건드립니다». 그건 클라 몫입니다
+게이트  ㉠ 위 census 가 9 -> «0». 센 법을 «시험으로 커밋»하십시오 (총괄 스크래치는 님이 못 봅니다)
+       ㉡ 변이: 목록 노드 하나를 leaf 로 되돌리면 ㉠ 이 «빨강»
+```
+
+## 클라 — 화면 절반. «스켈레톤이 선언한 대로» 그리고, 못 그리는 값은 «보이게»
+
+```
+⛔ 「이게 목록이다」를 키 이름·값 타입으로 «추론하지 마십시오» — 스켈레톤이 말한 것을 그립니다
+   (오늘 `_group` 칸과 같은 규칙입니다. 저자는 서버 하나)
+① 리프에 글자·숫자 아닌 값이 오면 «빈 칸»을 그리지 않습니다 — 값이 보이거나 이름 대어 «못 그림»
+   이것은 스켈레톤과 «무관하게» 지금 착수할 수 있습니다
+② `aaa` 가 «터지지 않는다» — 스켈레톤이 목록이라 하는데 값이 문자열입니다
+   (map 을 그리는 쪽이 문자열을 받는 자리 — 스텁에서는 조용하고 브라우저에서 던지는 부류)
+   게이트: `aaa` 를 열면 그려지고 예외 0. 잘못된 타입은 그대로 보이거나 이름 대어 거절
+```
+```
+게이트 (응용 착지 «뒤», 진짜 페이로드로)
+   ㉢ 진짜 `inventory_confirmed` 를 넣는다 (`admin.chain_rule_raw_view('inventory_confirmed')` 로 떠서)
+      -> derive.join.on 에 항목 하나 left=dt_job/right=dt_job · take 에 항목 둘 · key.unique 가 «체크»
+   ㉣ 항목 하나를 고치면 원문 textarea 가 «배열»로 바뀐다 — 문자열이 아니라
+   ㉤ 「+ 항목」으로 짝을 하나 더하면 원문에 짝이 «둘»
+   ㉥ 번들 해시 = 서빙 해시. 이것 전에는 「화면 고쳐졌다」고 쓰지 않습니다
+⚠️ 어드민 토큰은 소유자 것입니다. 진짜 화면은 소유자가 여십니다 — 그 한 가지를 보고에 적으십시오:
+   「Chain 탭에서 inventory_confirmed 를 열면 on·take 에 값이 보이나」
+```
+
+### 순서 · 규율
+
+```
+응용이 먼저 착지(스켈레톤) -> 클라가 그 위에 ㉢~㉥. ① ② 는 클라가 «지금» 시작합니다
+공용 렌더러는 원장 선언창도 지납니다 — 원장 쪽 하니스가 «그대로 초록»이어야 합니다
+보고   응용 task/ontology_application_report.md · 클라 task/axis_and_material_report.md · 푸시까지
+막히면 즉시 올리십시오. 1순위입니다
+```
