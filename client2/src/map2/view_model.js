@@ -870,7 +870,7 @@ export const RULE_ADOPTION = Object.freeze({
 /**
  * ONE LINE, AND IT NAMES THE ARITHMETIC RATHER THAN THE MOOD. Both refusals carry the same two
  * facts -- how many rules declared `alignment`, and that exactly one is required -- because
- * those are the two numbers an administrator needs to repair `enrichment_rules.json` without
+ * those are the two numbers an administrator needs to repair the enrich declaration without
  * reading any code. The word `alignment` is the CONFIG KEY, left in English on purpose: it is
  * what they will search the file for.
  *

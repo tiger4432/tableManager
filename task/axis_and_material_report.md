@@ -1,3 +1,46 @@
+> ## [09-24 00:01 디자인] 은퇴한 파일을 고치라던 화면 문장을 지웠습니다 — 지시엔 «하나», 세어 보니 «둘»
+>
+> 지시 `0c1f94c7b` 입니다. 커밋 `2cdb1e74f`.
+>
+> ### 화면에 그려지던 것 «둘» → 영어 한 줄로 «자리만» 가리킴
+>
+> ```
+> admin.js  규칙 상세 (지시에 든 자리)
+>    전  「규칙 편집(read-only): 서버 server/config/enrichment_rules.json 수기 편집 후 Reload … 로 반영」
+>        + 「규칙 CRUD UI 는 온보딩 위저드(대안 단계)로 이관」   <- 이것도 이제 사실이 아닙니다
+>    후  Edit in the Chain tab: derive.decide
+> admin.html  인리치 목록 아래 메모 (지시에 «없던» 자리 — 전수로 찾았습니다)
+>    전  같은 두 문장 + 결손 값 입력 안내 (셋 다 한국어)
+>    후  Edit rules in the Chain tab (derive.decide). Fill missing values in the main grid.
+> ```
+>
+> ### 주석 «다섯» — 지시의 넷 + 시험 하나
+>
+> ```
+> map2/api.js · map2/view_model.js · map_editor2.js 두 자리 — 새 집(derive.decide)을 가리키게
+>    map_editor2.js 의 「"alignment": true in enrichment_rules.json」 은 «거짓»이었고 고쳤습니다.
+>    같은 문장의 「GET /enrichment/rules 로 서빙」 은 참이라 남겼습니다 (main.py 에 라우트 선언 있음)
+> tests/map_editor2_question_harness.mjs — 「출하 .sample 이 정렬 규칙 둘」 을 새 샘플로
+>    잰 것  server/config/sample/chain_rules.json.sample 의 alignment:true decide = 2
+>          (sample_unified_decide · sample_unified_auto_confirm). 「이 박스의 라이브 파일」 은 박스 상태라 뺐습니다
+> ```
+>
+> ### 센 명령 · 남긴 것
+>
+> ```
+> git grep -n enrichment_rules -- client2 ':!client2/dist'    전 8 · 후 3
+>    남은 셋  제 「왜 바꿨나」 주석 둘 (화면에 안 그려짐) · chain_graph_harness 의 enrichment_rules: 4
+>    그 마지막은 «파일 이름이 아니라» 서버 응답의 개수 키이고, 서버가 아직 싣습니다 (chain/graph.py) — 안 건드렸습니다
+> 게이트   npm run build (prebuild 가 하니스 전수) exit 0 · 번들 같은 커밋
+> ```
+>
+> ### 안 고친 것
+>
+> ```
+> 같은 인리치 화면의 나머지 한국어 — 표 머리 「결손」, 규칙 상세의 「규칙 · 소스 → 파생 · 결정 키 · 대상 필드」 와
+> 결손 문장들 — 는 그대로입니다. 은퇴한 파일과는 무관한 한국어 UI 라 이번 범위 밖입니다
+> ```
+
 > ## [09-24 23:51 디자인] 체인 창의 목록이 «펴지고» 고쳐집니다 — 받는 쪽 셋을 탐색기와 «같은 함수»로. 여쭐 것 하나
 >
 > 지시 `b0fb44f15` · `a3ad26ba1` 입니다. 커밋 `aac2e1bac`.
