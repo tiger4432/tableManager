@@ -32816,3 +32816,94 @@ read 는                         읽기 시점 조인 — 은퇴 (S-282 · 판�
    감시가 만료·중지돼도 «안 죽고» 남았습니다. 총괄 것 · 레인 것 모두. 쌓인 게 75 개였습니다
    다시 켤 날이 오면 tail 을 뒤로 빼지 말고 «감시와 같이 죽는» 모양으로 짭니다
 ```
+
+---
+
+> 🔴🔴 **[09-25 08:xx 총괄 -> 구현자 · 응용 · 클라] 1순위 — 조인 선언의 `on` 을 «붙일 값이 바뀌는 표»로 (계획 승인됨, 안 ㄴ)**
+
+```
+소유자   「on 이 dt_inventory 여야지 생각해봐」 · 「붙일 값을 고쳐야 트리거 시켜서 그걸 붙이지」
+승인     계획 안 ㄴ — on = 원천 · right_table 삭제 · 옛 모양은 이름 대어 거절 · 기존 변환 문이 한 번에 새 모양으로
+         짝 규칙(늦게 들어온 dt_log 행도 값을 받음) «유지» — 방향만 뒤집어 into 쪽에 섭니다
+⚠️ right_table 삭제는 «총괄 판단»입니다 (on.table 과 같아야 하는 둘째 저자라서). 소유자 문장은 on 의 뜻입니다
+```
+
+### 도착지 — 세 종류가 같은 문장
+
+```
+mapper · decide 는 이미   「on 이 바뀌면 → derive → into 에 쓴다」
+join 만 지금             on = 쓰는 곳(dt_log), 원천은 right_table 에 숨음
+바꾼 뒤                 on     dt_inventory      붙일 값이 바뀌는 표 (원천)
+                       join   on: [{left: dt_job, right: dt_job}] · take: [dt_lot, dt_slot]
+                       into   dt_log            붙는 표
+```
+
+### 총괄이 읽은 것 — 엔진은 «안» 바꿉니다
+
+```
+join_into.propose   쓰는 표 = target_table(= into). 트리거 표 == spec.right_table 이면 원천 쪽 경로
+                    -> 양쪽 방향을 이미 다 합니다
+synthesis · dt_map_derivation · rule_census   전부 join_into.right_key -> join_spec(rule)["right_table"]
+=> 번역기가 on.table 을 내부 right_table 에 «채워 주면» 엔진·승인·유일 인덱스는 한 줄도 안 바뀝니다
+오늘도 on·right_table 을 둘 다 dt_inventory 로 적으면 원천 방향은 «돕니다». 빠지는 것:
+   right_table 반복 · 그리고 companion_rules 가 빈 목록이라 «늦게 들어온 dt_log 행이 값을 못 받음»
+```
+
+---
+
+## 구현자 — 서버 전부 + 스켈레톤 + 하니스 모양 단언. «한 커밋»
+
+```
+rule_shape.py
+   번역기            조인이면 내부 spec 의 right_table = on.table
+   거절              선언에 derive.join.right_table 이 있으면 «이름 대어» 거절. 문장에 고칠 두 칸:
+                    「on.table 을 <그 값> 으로, right_table 은 지우십시오」
+   companion_rules   짝을 into.table 에 세움. on 과 into 가 같으면 안 세움
+   🔴 짝 이름 꼬리    :reference 가 «거짓»이 됩니다 (짝이 이제 쓰는 쪽에 섬). 서는 쪽 낱말로(:target).
+                    대기열·로그·set(N) 줄에 나오는 이름입니다 (「로그도 문이다」)
+   join_trigger_columns · 판정 398   기준을 «원천 쪽 키»로
+join_into.py        JOIN_CELLS 에서 right_table 제거. 엔진 본문 그대로
+chain_bindings.py + chain_skeleton.json 재생성 + client2/tests/chain_rule_form_harness.mjs 모양 단언
+                    «같은 커밋» — _unified_root 가 JOIN_CELLS 를 직접 읽어 나눠 착지하면 트리가 빨갛습니다
+                    조인에서 on.table 은 이제 «필수»입니다
+admin.convert_chain_rule_grammar   옛 조인 -> 새 모양 한 방향을 «같은 문»에. 새 라우트 금지
+```
+```
+🔴 짓기 «전» 전수 — 수와 센 명령을 보고에
+   ① 짝 여부를 COMPANION_CELL(S-270) 대신 «모양으로 추측»하는 자리
+      replay.py:188 은 「trigger == right_table != target」 으로 짝을 가립니다 — 새 문법에선 그 모양이 «주 규칙»
+      명령 예: git grep -n "right_table\|REFERENCE_SUFFIX\|:reference" -- server | grep -v tests
+   ② 문장·출력에 right_table 을 싣는 자리: join_refusal.py:85 · synthesis.py:348
+   ③ client2/src/grid.js:979 · ui.js:55 의 vc.right_table — 은퇴한 가상 조인 화면? 죽었나 확인
+⛔ 소유자 config(server/config/*.json) 안 건드립니다. 박스의 inventory_confirmed 도 착지 뒤 거절되는 게 «맞습니다».
+   변환은 소유자가 하시거나 소유자 말씀 뒤 총괄이 창에서 합니다
+```
+
+### 게이트 — 행과 화면으로
+
+```
+① 옛 모양 조인이 «이름 대어» 거절되고 고칠 두 칸이 문장에 나온다
+② 변환 문 한 번 -> on: dt_inventory · right_table 없음 · into: dt_log
+③ 🔴 소유자 흐름: dt_inventory 한 행의 dt_lot 을 고치면 -> 같은 dt_job 의 dt_log 행 dt_lot 이 그 값 (전·후 값)
+④ 짝 규칙: 확정된 dt_job 의 dt_log «새 행» -> dt_lot 이 붙는다. 짝 이름 :target
+⑤ 엔진·승인 그대로: 유일 인덱스 점검은 여전히 dt_inventory.dt_job
+⑥ 변이: 번역기의 on.table 채우기를 빼면 ③ 빨강 · 짝을 into 에 세우는 줄을 빼면 ④ 빨강
+⑦ 거절된 동안 dt_inventory 를 고친 행이 변환 + 리플레이 뒤 dt_log 에 붙는다 — «안 쟀던» 것, 전·후 값으로
+⑧ 전수 초록
+⛔ 술어·시그니처로 닫지 마십시오
+```
+
+## 응용 — 샘플 · 가이드 · RUN.md 만 (구현자 착지 «뒤»)
+
+```
+chain_rules.json.sample 의 조인 예시 · 가이드의 조인 절 · RUN.md 배포 절
+RUN.md 에 반드시: 「배포 직후 옛 모양 조인은 거절됩니다 — Chain 탭에서 조인마다 변환 한 번」 과 그 거절 문장
+⛔ 서버 코드·스켈레톤은 구현자 몫입니다. 같은 파일에 두 레인이 모이지 않게
+```
+
+## 클라 — 창에서 확인만 (구현자 착지 «뒤»)
+
+```
+옛 모양 조인을 열면 거절 사유가 보이고, 변환 버튼 한 번으로 새 모양 원문이 된다 — 진짜 클릭 경로로
+코드 변경은 필요할 때만. 필요하면 먼저 올리십시오
+```
