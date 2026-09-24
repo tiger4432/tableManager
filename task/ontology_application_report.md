@@ -32286,3 +32286,74 @@ key.columns · limits.group_by    판독 모양 «안 쟀습니다»
 클라        재생성 «전후»로 node client2/scripts/check_harnesses.mjs. 모양 단언만 고칩니다. client2/src 안 건드림
 ```
 ⚠️ 측정 주의: 트리에 다른 레인의 미커밋 `enrichment/*` 편집이 있습니다. 시험은 그것을 import 한 채로 돕니다.
+
+---
+
+## 1순위 · 서버 절반 착지 — 스켈레톤이 목록은 목록, 참거짓은 체크박스라고 말합니다 (23:31)
+
+착지 `90b9f4437`. 파일 다섯: `chain/join_into.py` · `chain/rule_shape.py` · `chain_bindings.py` ·
+`chain_skeleton.json`(재생성) · 새 시험 하나. **client2/ 는 한 줄도 안 건드렸습니다.**
+
+### 무엇이 바뀌었나
+
+| 칸 | 전 | 후 |
+|---|---|---|
+| `derive.join.on` | 값(빈 칸) | 목록 · 항목 `{left, right}` |
+| `derive.join.take` | 값 | 목록 |
+| `derive.decide.key` · `fields` · `list_columns` · `reference_views` | 값 | 목록 (참조뷰 항목은 레코드) |
+| `derive.decide.aggregations` | 값 | 이름 맵 |
+| `decide.auto_confirm` · `decide.alignment` · `key.unique` | 값 | 체크박스 |
+| `on.columns` · 최상위 `reads` (+평면 `trigger_columns`·`reads`) | 값 | 목록 |
+| 평면 `reference` (9번째) | 값 | `{table}` 레코드 |
+
+평면 `trigger_columns`·`reads` 는 통합의 `on.columns`·`reads` 와 «같은 칸»이라 같은 노드를 지나게 했습니다
+(`chain_bindings._node_for` 한 자리). 한쪽만 바꾸면 한 칸이 두 문법에서 두 모양이 됩니다.
+새 노드 종류는 0 입니다 — 전부 판독기가 이미 아는 어휘(`map` index·name, `leaf` flag·ref·number).
+
+### 게이트 — 센 명령과 수
+
+```
+㉠ 센서스   server/tests/test_a_declared_list_is_drawn_as_a_list.py
+           스켈레톤 × 선언을 같이 걸어 「모양과 값이 어긋나는 칸」을 센다
+           커밋된 샘플 0 · 지시가 든 칸 «전부»에 값을 넣은 픽스처 0
+㉡ 변이     지시가 든 노드 15 를 하나씩 값으로 되돌리면 «그 칸»에서 잡힌다 — 15/15
+           제품 쪽도 in-process 로: on · reference_views · reads · key.unique 모양을 빼면 각각 그 칸에서 빨강,
+           reads 는 «두 번» 잡힘 (한 상수가 두 문법을 먹이므로). 되돌리면 초록
+㉢ 한 저자   읽는 모듈 옆 모양(JOIN_CELL_SHAPES · DECIDE_CELL_SHAPES · KEY_CELL_SHAPES)이 skeleton() 에 그대로
+라우트      브라우저가 받는 것 = ledger.admin.chain_rule_raw_view()["skeleton"] — in-process, 토큰 없이. 센서스 0
+```
+```
+pytest (env python)   새 파일 20 · 스켈레톤 기존 둘 19 · 스켈레톤 읽는 다른 둘 33 — 전부 통과
+클라 하니스           재생성 «전후» node client2/scripts/check_harnesses.mjs 종료코드 전 0 · 후 0 — every gated harness is green
+                    이 파일을 읽는 셋의 단언 수가 전후 같음: form 89 · panel 67 · user_path 62 (실패 0)
+                    alignment_verdict 는 전후 모두 [known red] 164/7 — 이번 것 아님
+```
+
+### 이 박스 수 (라이브 규칙 파일 — gitignore, 운영 주장 아님)
+
+```
+총괄이 빈 칸 9 를 센 세 규칙   inventory_confirmed · enrich_in_chain_probe · dt_log_to_primary_core_frame -> 0
+남은 2                       전부 `aaa` — on · take 에 표 이름 문자열
+```
+방향이 뒤집혔습니다: 이제는 스켈레톤이 아니라 «그 선언의 값»이 틀린 자리를 짚습니다 — 망가진 폼이 쓴 값입니다.
+
+### 순서에 대해 — 제 착지만 먼저 나가면 `aaa` 는 어떻게 보이나
+
+공용 렌더러의 `membersOf` 는 목록 칸에 문자열이 오면 `[]` 를 돌려줍니다 — **던지지 않고 빈 목록을 그립니다.**
+창은 안 죽지만 파일에 든 `"lot_event"` 가 «안 보이게» 됩니다. 클라의 `b56f1738`(못 그리는 값은 보이게)이
+그 자리를 덮습니다. 재기동은 총괄 몫이라 순서만 적어 둡니다.
+
+### 소유자께 확인 부탁드릴 한 가지 (픽셀 — 게이트를 대신하지 않는 «추가» 확인)
+
+클라 절반까지 착지·재기동 뒤: **Chain 탭에서 `inventory_confirmed` 를 열면 `on`·`take` 에 값이 보이나.**
+
+### 남은 것
+
+```
+안 쟀다   key.columns · limits.group_by — 판독 모양을 안 쟀고 이번에 안 바꿨습니다(값 그대로)
+보고만    기존 member 가 한국어입니다 — 체인 `인자`(2 자리), 원장 스켈레톤 값 8 종·12 자리
+         (grep -o '"member": *"[^"]*"' server/ledger/ledger_skeleton.json | sort | uniq -c). 화면에 「+ 인자」로 그려집니다(UI 영어 상설 위반)
+안 함     RUN.md — 운영자가 «볼 수 있는» 것은 클라 절반과 재기동 뒤라, 그때 한 줄이 참입니다
+측정 주의  시험은 다른 레인의 미커밋 57 파일이 든 트리에서 돌았습니다. 제 네 파일은 제 헝크만 들었고,
+          skeleton() 은 그 셋(join_into · rule_shape · chain_bindings)에만 기댑니다
+```
