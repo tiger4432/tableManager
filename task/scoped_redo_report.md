@@ -57870,3 +57870,118 @@ heartbeat.beat("watcher"
                       고정한 것은 「통지가 트랜잭션 안에서 난다」까지이고 배달은 DB 몫입니다
 WS 프레임의 «실물»       방송 1회를 코드로 쟀지, 브라우저가 받는 것은 클라 반쪽입니다
 ```
+
+---
+
+> 📐 **[09-24 22:5x 구현자 -> 총괄] 판정 `3b1e82a9d` — enrich.json 삭제를 «이 세션이» 잡습니다. 착수 전 계획입니다. 한 줄도 안 지었습니다**
+
+```
+⚠️ 오늘 22:32 이 레인에 다른 구현자 세션이 착지했습니다 (a7ee04f3d, 아웃박스 탄생 알림).
+   두 세션이 같은 삭제를 짓지 않게, 이 글이 «잡았다»는 표시입니다
+```
+
+### 🔴 머리 — 소급 «실행» 경로가 오늘 이미 평면 파일만 읽습니다
+
+```
+backfill.load_rule (backfill.py:90)   ENRICHMENT_RULES_PATH 를 «직접 열고» 그 안에서만 찾습니다
+부르는 자리 3   retroactive.py:260 · retroactive.py:625 (_run_enrichment_backfill) ·
+              scripts/backfill_enrichment.py:136
+이 박스        그 파일이 «없습니다» -> 실행은 「enrichment rules file not found」로 거절
+그런데 예행     _enrichment_rule() 은 enrich_declarations.declarations() — «두 문법»을 봅니다
+=> 오늘 예행은 통합 규칙을 «보고» 실행은 «못 찾습니다». 문이 이미 둘입니다
+```
+```
+그래서 이것이 삭제의 «일부»입니다 — 우회가 아닙니다
+   load_rule 을 enrich_declarations.find 로. 예행이 이미 지나는 그 문입니다
+   그냥 지우면 소급 버튼이 죽고, 「호환으로 읽기만 남기면」 님이 금지한 둘째 문입니다
+```
+
+### ❔ 님께 물음 하나 — `force_disabled`
+
+```
+무엇     꺼진 규칙(enabled=false)을 «그래도» 소급하는 능력
+누가     제품에선 CLI 하나 (scripts/backfill_enrichment.py:136 의 --force-disabled) · 시험 둘
+         잰 명령  AST 로 force_disabled= 를 넘기는 호출 전수 -> 3
+걸리는 곳  통합 문법은 꺼진 선언을 «규칙 0 + 메모»로 돌려줍니다 (expand_declaration).
+         그래서 find 가 꺼진 규칙을 «못 돌려줍니다» — 문법과 무관한 능력이 여기서 사라집니다
+제 가정   님 답이 늦으면 «살립니다» — find 에 꺼진 것도 찾는 길을 하나 두고 CLI 만 그것을 씁니다.
+         지우라시면 그 플래그와 시험 둘을 같은 커밋에서 지웁니다
+```
+
+### 어제 제 수(`80bcc08a4`)를 정정합니다 — 둘이 틀렸습니다
+
+```
+「config.py 에서 죽는 반쪽 135 줄」   -> 틀림
+   chain_rules_for 는 통합 문법도 부릅니다 — rule_shape.py:465 -> chain_rules_from_cells
+   -> config.py:979. 그래서 chain_rules_for · _validate_rule 은 «남습니다»
+   죽는 것  load_enrichment_rules · load_enrichment_chain_rules · validate_enrichment_rules
+           (마지막은 제품 호출이 load_enrichment_rules 안 :868 «하나»뿐 — 나머지 14 는 시험)
+「그 이름을 실제로 읽는 비시험 코드 1」  -> 틀림. 낱말을 셌습니다
+   성질로 (AST, 경로 상수를 «읽는» 자리)  4
+      config_resolve_report.py:460 · synthesis.written_in :115 · backfill.load_rule :90 ·
+      config.py:846 (load_enrichment_rules 안)
+```
+
+### 모집단 — 잰 것만
+
+| 자리 | 수 | 무엇이 되나 |
+|---|---|---|
+| 평면 로더를 «부르는» 제품 자리 | `load_enrichment_rules` 2 · `load_enrichment_chain_rules` 1 · `synthesize_chain_rules` 2 | 전부 사라지거나 통합 문으로 |
+| 경로 상수를 «읽는» 제품 자리 | 4 (위) | 0 |
+| `declarations(enrichment_path=...)` 호출 | 제품 1 (find 안) · 시험 3 | 인자 은퇴 — 11 소비 파일을 «bind» 로 전수 검사하고 착지 |
+| `synthesize_chain_rules` 의 반쪽 | 1 (`_SYNTHESIS_HALVES` 한 줄) | 반쪽 0 이면 함수가 늘 [] — 함수와 호출 둘 같이 |
+
+### 🔴 문 닫기 «전»에 — 소유자 규칙 넷
+
+```
+박스 enrichment_rules2.json 의 규칙 4 — 통합 쪽 집 «0 / 4» (어제 잰 수)
+제품은 그 이름을 «안 읽으므로» 넷은 오늘도 «안 돕니다». 이 착지가 도는 것을 끄지는 않습니다
+다만 이 착지 뒤로 평면 문법은 «어디에도 문이 없습니다». 넷이 돌아오려면 소유자가
+chain_rules.json 에 derive.decide 로 «다시 적으셔야» 합니다. 소유자 config 라 제가 안 옮깁니다
+```
+
+### 게이트 — 전부 «결과»로
+
+```
+㉠ 평면 파일을 읽는 코드 «0»
+   제외 규칙 먼저: 시험 · .RETIRED · docs · 주석/독스트링 낱말
+   센 명령: AST 로 경로 상수 «읽기» + 평면 로더 «호출» 전수 (총괄 grep 은 .RETIRED 와 산문까지 셉니다)
+㉡ 통합 derive.decide 하나 -> 파생 행이 «난다» (행 전 N · 후 N+k)
+   🔴 그리고 어제 찾은 «공허한 시험»을 같은 매듭에서 고칩니다 —
+      test_every_declared_kind_runs_and_leaves_rows 의 파생행 단언이 픽스처가 심은 행으로 만족됨.
+      좌석을 죽여도 초록이었습니다. 소스에 «심지 않은» 정체성 하나를 넣습니다
+㉢ 부활 시험 — 임시 데이터 루트에 chain_rules.json(derive.decide 하나)과
+   enrichment_rules.json(다른 이름 하나)을 «둘 다» 두고 적재 -> 평면 이름이 규칙 집합에 «없다»
+   (리다이렉트는 test_the_loader_reads_the_unified_grammar 가 쓰는 방식을 «그대로» 씁니다)
+㉣ config.py:856 의 조용한 `return []` — load_enrichment_rules 와 «같이» 죽습니다
+```
+
+### 같은 매듭에서 옮기는 «말»
+
+```
+dynamic_mappers._enrich 독스트링 첫 줄 (「enrichment_rules.json 의 파생행 반쪽」)
+models.py:662 · map_alignment.py:11   규칙을 enrichment_rules.json 안에 있다고 적음 -> 통합 선언으로
+backfill_enrichment.py:110 --help     「rule name as declared in enrichment_rules.json」
+synthesis.written_in                   평면 파일 이름을 돌려줌 -> 합성 반쪽과 같이
+sample                                 추적 중인 .json.sample «git rm» + 바이트 같은 미추적 쌍둥이 .json2.sample
+CODE_MAP 해당 절 · guide · RUN.md
+시험                                   평면 픽스처를 타는 것들(retro_enrich_env · 어젯밤 제 TestTheRunSentence 포함)
+                                      -> ㉢ 와 같은 리다이렉트로 옮깁니다
+```
+```
+⛔ 넘깁니다   client2/src/admin.js:4336 — 운영자에게 「server/config/enrichment_rules.json 수기 편집」이라고
+             «화면에» 적혀 있습니다. 클라 레인 몫입니다. 파일이 죽으면 그 문장이 거짓입니다
+⛔ 소유자 config 0 줄 · PROJECT_STATUS 안 건드림 · 서브에이전트 안 띄움
+```
+
+### 순서와 충돌
+
+```
+한 매듭 = 한 커밋. 착지 «직전» pull — 다른 세션이 ingestion_worker.py 를 만졌으면 :729 가 겹칩니다
+   (오늘 날짜로 server/ 코드 커밋 0 으로 셌습니다. 착지 직전에 다시 봅니다)
+전수 실행은 «푸시 뒤». 그때 빨강이 있으면 이미 큐에 선 것인지 같이 적습니다
+```
+
+```
+님 물음 답(force_disabled) 기다리는 동안 «나머지»를 짓습니다 — 위 가정(«살린다») 아래서
+```
