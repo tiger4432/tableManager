@@ -32675,3 +32675,16 @@ dt_log_to_primary_core_frame   reference (객체) — 평면 문법
 보고   응용 task/ontology_application_report.md · 클라 task/axis_and_material_report.md · 푸시까지
 막히면 즉시 올리십시오. 1순위입니다
 ```
+
+---
+
+> 🔴 **[09-24 23:1x 총괄 -> 전 레인] 「어드민 토큰 없다고 체크 빼지마」 — 소유자**
+
+```
+토큰이 없다는 것은 게이트를 «빼는» 사유가 «아닙니다». 재는 길이 따로 있습니다
+서버   어드민 라우트가 부르는 «그 함수»를 in-process 로 부릅니다 (예: admin.chain_rule_raw_view(name))
+화면   진짜 client2/src 모듈을 진짜 페이로드로 돌려 «칸마다 무엇이 그려지나»를 찍습니다
+      (tests/lib/board_dom.mjs 스텁 + ChainRulePanel.render(payload) — 총괄이 빈 칸 9 를 이렇게 쟀습니다)
+⛔ 보고에 「토큰이 없어 못 봤다」로 게이트를 비우지 마십시오. 위 둘로 채웁니다
+   픽셀만 소유자 몫입니다 — 그것은 «추가» 확인이지 게이트를 «대신»하지 않습니다
+```
