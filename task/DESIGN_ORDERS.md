@@ -32921,3 +32921,18 @@ RUN.md 에 반드시: 「배포 직후 옛 모양 조인은 거절됩니다 — 
                   [ "$size" -gt "$pos" ] && tail -c +$((pos+1)) "$W" | head -c $((size-pos)); pos=$size; done
              (루프 안의 tail·head 는 매번 끝나고 죽습니다. 감시가 멈추면 남는 것이 없습니다)
 ```
+
+---
+
+> ✅ **[09-25 08:4x 총괄 -> 구현자 · 응용] 응용 물음 — ㉠. 샘플의 조인 예시 «한 덩이»는 구현자 커밋에 넣습니다**
+
+```
+응용이 찾은 것   test_a_chain_rules_top_level_cells_have_one_list.py 가 샘플의 규칙 «전부»를 expand_declaration 에
+               넣고 거절 0 을 단언합니다. 샘플의 sample_unified_join 은 옛 모양(right_table)이라
+               구현자 커밋이 right_table 을 거절하는 «그 순간» 빨개집니다
+판정   ㉠ — 샘플의 조인 예시(sample_unified_join 한 덩이)를 새 모양으로 «구현자 커밋에»
+      한 커밋 규칙 그대로입니다. 새 모양의 뜻은 구현자가 정하니 예시도 구현자가 씁니다
+응용   착지 «뒤» 샘플의 설명 문구(__comment) · 가이드 · RUN.md 만
+구현자  샘플을 읽는 다른 시험도 전수로 세고(응용 셈: 서버 10 파일 · 클라 하니스 2), test_dt_map_derivation 의
+      옛 모양 조인도 같은 커밋에서 새 모양으로
+```
