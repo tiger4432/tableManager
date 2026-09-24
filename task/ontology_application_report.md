@@ -32221,3 +32221,68 @@ virtual_join 을 살아 있는 것처럼 가리키는 guide·architecture 자리
    지시가 이름 댄 커밋 다섯입니다 — 그 뒤 것은 «안 봤습니다»
 ⛔ 적대 QA 는 켜지 않았습니다. 이번 지시에 없었습니다
 ```
+
+---
+
+## 1순위 · 스켈레톤이 목록을 목록이라고 — 착수 전 결정표 (23:11)
+
+지시 `980633383` 받았습니다. 짓기 «전»에 지시와 판독기가 어긋나는 자리와 지시가 말하지 않은 자리를
+먼저 올립니다. 같은 라운드에 짓습니다 — 기다리지 않습니다.
+
+### 칸마다 — 판독기가 읽는 모양 → 스켈레톤이 낼 노드
+
+| 칸 | 판독기 (읽는 자리) | 노드 |
+|---|---|---|
+| `derive.join.on` | `{left, right}` 의 목록 (`join_into._pairs`) | 목록 · 항목 `{left, right}` 레코드 |
+| `derive.join.take` | 문자열 목록 (`_takes`) | 목록 · 항목 leaf |
+| `derive.decide.key` · `fields` · `list_columns` | 컬럼 이름 목록 (`enrichment/config`) | 목록 · 항목 leaf |
+| `derive.decide.reference_views` | 레코드 목록 | 목록 · 항목 레코드 (아래) |
+| `derive.decide.aggregations` | **객체** | **이름 맵** (아래 — 지시와 다름) |
+| `decide.auto_confirm` · `decide.alignment` · `key.unique` | 참거짓 | `hint: flag` |
+| 평면 `reference` (9번째) | `reference.table` 만 추적 코드가 읽음 | `{table}` 레코드 (아래) |
+
+### 🔴 지시와 다른 것 하나 — `aggregations` 는 목록이 아닙니다
+
+`enrichment/config.py` 가 `if not isinstance(raw_aggs, dict): 거절` — 모양은
+`{파생컬럼: "count" | {fn, column}}` 입니다. 지시대로 index 목록으로 내면 폼이 `[...]` 를 쓰고
+로더가 «거절»합니다. 그래서 **이름 맵**(`keyed_by: name` — `params` 와 같은 모양, 새 종류 아님)으로 냅니다.
+항목 값의 `{fn, column}` 형은 `take` 의 `{from, into}` 와 같은 처리 — 항목은 leaf, 레코드형은 원문 편집기 몫.
+
+### 지시가 말하지 않은 것 둘
+
+```
+reference_views 의 항목   판독기가 읽는 칸 전수: label · query · query_ref · limit · reads · candidate_for
+                        reads 는 표 이름 목록, candidate_for 는 이름 맵 — 전부 있는 어휘
+                        ⚠️ 두는 자리는 rule_shape (DECIDE_CELLS 옆). 판독기 파일 enrichment/config.py 는
+                        지금 «다른 레인의 미커밋 편집»이 있어 제가 안 만집니다. 그 줄에 판독기 이름을 적습니다
+reference (9번째)        {table: ref} 레코드. 판별식은 「폼이 저장할 때 모르는 칸을 지우나」였고 —
+                        폼은 원문에 «경로로» 써 넣고 통째로 다시 직렬화합니다(setAtPath). 맵퍼가 읽는
+                        다른 칸은 저장해도 살아남습니다. 저자는 이미 있는 상수 REFERENCE_BLOCK · REFERENCE_TABLE_KEY
+```
+
+### 같은 부류인데 지시에 없어 «안 짓는» 것 — 이름만 댑니다
+
+```
+on.columns (= trigger_columns)   판독기가 목록으로 읽음 (graph.py · rule_census.py)
+최상위 reads                      표 이름 목록 (chain_bindings.rule_tables)
+key.columns · limits.group_by    판독 모양 «안 쟀습니다»
+```
+값이 들어 있으면 이것들도 빈 칸으로 그려집니다. 넓힐지 여쭙니다.
+
+### 화면에 그려지는 낱말
+
+`member` 는 「+ member」 버튼으로 «렌더됩니다». 새로 쓰는 것은 전부 영어입니다.
+기존 `인자`(체인)와 원장 스켈레톤의 한국어 member 들은 같은 위반이지만 이번 범위 밖 — 보고만 합니다.
+
+### 게이트
+
+```
+㉠ 센서스   스켈레톤 × 선언, 「leaf 인데 값이 목록·객체·참거짓」을 센다 -> 0
+           대상: 커밋된 샘플(통합 선언 넷) + 시험 안 픽스처(지시가 든 칸 «전부»에 값을 넣어 공허하지 않게)
+㉡ 변이     지시가 든 칸마다 그 노드를 leaf 로 되돌리면 «그 칸»이 센서스에 잡힌다 — 칸 전부
+㉢ 한 저자   읽는 모듈 옆에 둔 모양이 skeleton() 에 «그대로» 나온다
+라우트      브라우저가 받는 것은 ledger/admin.py 가 in-process 로 부르는 chain_bindings.skeleton() —
+           파일이 아니라 «그 함수»로 잽니다 (토큰 없이)
+클라        재생성 «전후»로 node client2/scripts/check_harnesses.mjs. 모양 단언만 고칩니다. client2/src 안 건드림
+```
+⚠️ 측정 주의: 트리에 다른 레인의 미커밋 `enrichment/*` 편집이 있습니다. 시험은 그것을 import 한 채로 돕니다.
