@@ -66,11 +66,14 @@ def test_into_is_a_pick_one_of_writing_or_reading():
     into = _field(_unified(), "into")["node"]
 
     assert into["kind"] == "oneOf"
-    assert sorted(into["branches"]) == sorted(rule_shape.INTO_KINDS)
+    # 🔴 [S-282 · 판정 440] A RETIRED KIND IS RECOGNISED, NEVER OFFERED. The dropdown showed
+    #   `read` and the loader refused whoever picked it (lead, owner's Chrome, 09-25).
+    offered = [k for k in rule_shape.INTO_KINDS if k not in rule_shape.RETIRED_INTO_KINDS]
+    assert sorted(into["branches"]) == sorted(offered) == ["table"]
+    assert "read" in rule_shape.INTO_KINDS, "still recognised, so the loader can name it"
     # [S-241-b, 판정 411] the branch node lives UNDER the key: `into: {"table": "dt_x"}`
-    # is a name, `into: {"read": true}` is a flag - neither is a record wrapping itself.
+    # is a name, not a record wrapping itself.
     assert into["branches"]["table"]["kind"] == "leaf"
-    assert into["branches"]["read"] == {"kind": "leaf", "hint": "flag"}
 
 
 def test_the_key_and_limit_cells_come_from_their_own_lists():
@@ -103,7 +106,6 @@ DECLARED_AT_BRANCH = {
     ("derive", "mapper"): {"mapper_module": "mappers.x", "mapper_function": "y",
                            "params": {"an_argument": 1}},
     ("into", "table"): "dt_x",
-    ("into", "read"): True,
 }
 
 

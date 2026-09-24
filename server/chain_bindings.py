@@ -642,6 +642,8 @@ def _unified_root():
     }
     into_branches = {
         "table": _leaf("target_table"),
+        # Kept although `read` is not offered: it is the shape of a kind the grammar still
+        # recognises, and lifting a retirement must bring the branch back, not raise KeyError.
         "read": {"kind": "leaf", "hint": "flag"},
     }
     return _record(
@@ -653,9 +655,12 @@ def _unified_root():
                           "branches": {kind: derive_branches[kind]
                                        for kind in rule_shape.DECLARED_KINDS}},
                required=True),
+        # A retired kind is still RECOGNISED (the loader refuses it by name) but never OFFERED:
+        # the dropdown held `read` and the loader refused whoever picked it.
         _field("into", {"kind": "oneOf", "hint": "choice",
                         "branches": {kind: into_branches[kind]
-                                     for kind in rule_shape.INTO_KINDS}},
+                                     for kind in rule_shape.INTO_KINDS
+                                     if kind not in rule_shape.RETIRED_INTO_KINDS}},
                required=True),
         _field("key", _record(*[_field(cell, rule_shape.KEY_CELL_SHAPES.get(cell) or _leaf(cell))
                                 for cell in rule_shape.KEY_CELLS])),

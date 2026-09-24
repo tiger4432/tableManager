@@ -550,10 +550,6 @@
             "table": {
               "kind": "leaf",
               "hint": "ref"
-            },
-            "read": {
-              "kind": "leaf",
-              "hint": "flag"
             }
           }
         }

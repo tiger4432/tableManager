@@ -117,6 +117,11 @@ READ_TIME_RETIRED = (
     "→ 다음: 이 선언의 `into` 를 "
     "`{\"table\": \"<대상 표>\"}` 로 바꾸십시오")
 
+#: The `into` kinds the grammar still RECOGNISES (to refuse by name) but no form may OFFER.
+#: One list, two readers: `expand_declaration` refuses them, `chain_bindings._unified_root`
+#: leaves them out of the declaration window's choices.
+RETIRED_INTO_KINDS = ("read",)
+
 #: The three words a declaration's `derive.kind` can say. A LOADED rule has already been
 #: translated to today's flat shape, so the word has to be read back off what it RUNS.
 DECLARED_KINDS = ("join", "decide", "mapper")
@@ -574,7 +579,7 @@ def expand_declaration(declaration, table_config=None,
     # `unresolvable_mapper` - a right declaration called a typo. Retiring the capability
     # brings that exact shape back unless the retirement names itself, so it does.
     if ((internal.get("derive") or {}).get("kind") == "join"
-            and (internal.get("into") or {}).get("read")):
+            and any((internal.get("into") or {}).get(kind) for kind in RETIRED_INTO_KINDS)):
         return ([], "%s: %s" % (name, READ_TIME_RETIRED), [])
 
     # ⚠️ [지시 0cae5199] `rejections`/`caps` 는 «선택»이고 기본은 None 이다 — 이 좌석의

@@ -734,7 +734,10 @@ function suite(M) {
     `U4 ... at the branch KEY, which is where the declaration puts it`);
   const pickers = attrOf(u.host, 'data-action').filter(
     (el) => el.attrs['data-action'] === 'edit-shape-branch');
-  ok(pickers.length === 2, `U5 one picker per 「pick one」, no more [${pickers.length}]`);
+  // `into` offers ONE branch since `read` retired (the skeleton recognises it, never offers
+  // it), and this declaration already chose it - `closedListChoice` draws one held option as
+  // a value, not a picker. So only `derive` has a choice left to make.
+  ok(pickers.length === 1, `U5 one picker per 「pick one」 with a choice left, no more [${pickers.length}]`);
   const options = (el) => walk(el).filter((k) => k.tagName === 'OPTION')
     .map((k) => (k.attrs || {}).value ?? k.textContent);
   ok(options(pickers[0]).join(',') === 'join,decide,mapper',
