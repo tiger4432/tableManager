@@ -58128,3 +58128,27 @@ CODE_MAP 해당 절 · guide · RUN.md
    이라고 말합니다 — 「못 읽었다」가 「선언 없음」으로 읽힙니다. 설정 보고(㉣ ②)에서 막은 것과 같은 모양의 셋째 문입니다
    지시 밖이라 짓지 않았습니다. 크기: 그 거절 문장 앞에 파일 거절을 먼저 읽는 줄 하나 — «안 쟀습니다»(시험 포함 크기)
 ```
+
+---
+
+## [09-25 00:1x] 구현자 — ⑤ 소급의 파일 거절 착지 `90ae604dc` (지시 fc9c22c3b)
+
+```
+한 일    load_rule 이 좌석의 거절 목록에서 scope == "file" 을 «먼저» 읽습니다
+        그 항목은 설정 보고가 읽는 것과 «같은» 것 — 좌석(enrich_declarations.declarations)이 한 번 씁니다.
+        문장도 좌석의 것이고, 소급은 앞에 규칙 이름만 붙입니다
+운영자가 보는 것 (깨진 chain_rules.json)
+   전   rule '<이름>' is not declared in chain_rules.json; available rules: <none>
+   후   rule '<이름>' cannot be looked up: chain_rules.json could not be read (<파서 사유>) - NO enrich rule is in effect
+닿는 자리  load_rule 호출자 셋 — admin/retroactive.py 두 곳(미리보기·실행) · scripts/backfill_enrichment.py(REFUSED: 로 출력)
+          셋 다 예외 문장을 그대로 넘깁니다. 따로 고칠 곳 없음
+```
+```
+게이트   test_backfill_enrichment.py::test_an_unreadable_rules_file_is_not_an_undeclared_rule
+        깨진 파일 -> 「chain_rules.json could not be read」 가 나오고 「not declared」 는 없다
+변이     새 줄을 끄면 빨강 (Regex pattern did not match) · 복원 뒤 초록
+회귀     backfill·load_rule 을 부르는 시험 파일 61 개: 956 passed, 49 skipped, 0 failed
+        git grep -l -E "load_rule|backfill" -- 'server/tests/*.py'
+RUN.md   09-24 절 ㉢ 에 이 문장의 뜻 한 줄 추가 (「선언 없음이 아니라 파일이 깨짐 — 파일부터」)
+재기동   필요 (소급 경로 코드)
+```
