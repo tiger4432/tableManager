@@ -5993,9 +5993,9 @@ def get_enrichment_rules():
     형태 근거는 `enrichment_config.to_public_rule` 참조. 기존 필드는 그대로입니다.
     """
     # 🔴 [소유자 「참조뷰 라우트만 추가하고」] WHICHEVER GRAMMAR DECLARED IT. This read
-    #   `load_enrichment_rules`, which opens ONE file, so a `decide` declaration written in
-    #   the unified grammar carried its reference views and reached nobody. `chain.
-    #   reference_view` is the one place that knows a declaration has two homes, and the
+    #   the flat file's loader, so a `decide` declaration written in the unified grammar
+    #   carried its reference views and reached nobody. `chain.enrich_declarations` is the
+    #   one place that knows where a declaration lives (one home since 2026-09-24), and the
     #   route below walks the SAME list - the index in `/references/{index}` points into it.
     from chain import enrich_declarations
 

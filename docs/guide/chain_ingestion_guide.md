@@ -744,32 +744,35 @@ publish_parser(name, read_body, process_body, file=…, …)      «같은 프�
 
 > 기준 스펙: [ENRICHMENT_QUEUE_SPEC.md](../spec/ENRICHMENT_QUEUE_SPEC.md) · 구현: `server/chain/enrichment/config.py`, `server/chain/enrichment/mapper.py`
 
-**맵퍼 코드를 쓸 필요가 없습니다.** `server/config/enrichment_rules.json`(사용자 영역, gitignored — 형식은 `enrichment_rules.json.sample` 참조)에 규칙을 선언하면, 체인 워커의 `load_chain_rules()`가 규칙마다 dedup 투영 체인 룰(`enrichment_mapper.map_enrichment_dedup`, `is_batch: true`)을 자동 파생하여 기존 체인 파이프라인(HOL 가드·SLO 계측·재시도·warmup)을 그대로 태웁니다. 🆕 **[2026-09-15 S-239] 같은 규칙을 `chain_rules.json` 의 통합 선언 `derive: {kind: "decide"}` 로도 적습니다** — 두 문법은 확장기 «하나»(`enrichment.config.chain_rules_for`)를 지나므로 옛 파일이 만드는 규칙 둘과 셀 단위로 같습니다. 키는 [config/chain_rules §5-B-bis](./config/chain_rules.md). 끄는 손잡이는 «적은 파일»의 `enabled: false`(통합 선언은 규칙이 «안 서고» DB 를 안 만집니다) 와 `ASSY_CHAIN_WORKER=0` 둘뿐입니다 — ⚰️ `ASSY_CHAIN_SYNTHESIZE` 는 은퇴했습니다(S-234 `5c845e67`, 판정 408: 부팅 줄 `[ChainRules] set(N)` 이 어느 파일이 썼든 규칙을 «전부» 대므로 「운영자가 못 보는 규칙」이라는 주어가 없어졌습니다). 🔴 세 파일(`chain_rules.json`·`enrichment_rules.json`·`virtual_join_rules.json`)의 규칙 이름은 «한 집합»입니다(판정 409) — 같은 이름이 두 번이면 «어느 쪽도 돌지 않고» 거절 줄이 파일을 댑니다.
+**맵퍼 코드를 쓸 필요가 없습니다.** `server/config/chain_rules.json` 의 `rules` 목록에 `derive: {kind: "decide"}` 선언 하나를 적으면, 로더(`rule_shape.expand_declaration` -> `enrichment.config.chain_rules_for`)가 규칙 «둘»을 세웁니다 — dedup 투영(`declared:enrich`)과 자동 확정(`declared:decide`). 둘 다 기존 체인 파이프라인(HOL 가드·SLO 계측·재시도·warmup)을 그대로 탑니다. 키는 [config/chain_rules §5-B-bis](./config/chain_rules.md). 끄는 손잡이는 그 선언의 `enabled: false`(규칙이 «안 서고» DB 를 안 만집니다) 와 `ASSY_CHAIN_WORKER=0` 둘뿐입니다. 🔴 규칙 이름은 «한 집합»입니다(판정 409) — decide 선언은 `enrichment_dedup:<이름>` · `enrichment_auto_confirm:<이름>` 로 서므로, 손으로 쓴 규칙이 그 이름을 가져가면 «어느 쪽도 돌지 않고» 거절 줄이 뜹니다.
+
+⚰️ **[2026-09-24] `server/config/enrichment_rules.json` 은 은퇴했습니다**(소유자 「enrich.json 아예 삭제」) — 파일이 둘이면 문이 둘이었습니다. 그 파일을 다시 놓아도 «아무것도» 읽지 않습니다.
 
 ### 4.1 규칙 스키마
 
 ```jsonc
-// server/config/enrichment_rules.json — {규칙명: 규칙}
+// server/config/chain_rules.json — "rules" 목록의 한 항목
 {
-  "bonding_wafer_attribution": {
-    "source_table":  "bonding_log",              // 필수: 대량 원본 테이블
-    "derived_table": "bonding_job_inventory",    // 필수: 파생 영속 테이블 — table_config.json에 등록되어 있어야 함
-    "decision_key":  ["equipment", "event_time"],// 필수: 판단키(사람이 1회 판단하는 단위)
-    "target_fields": ["wafer_id"],               // 필수: 사람이 채울 필드 — 맵퍼는 이 필드를 절대 쓰지 않음
-    "list_columns":  ["chip_count", "lot_hint"], // 선택: 워크리스트 표시 단서(배치 내 대표값)
-    "aggregations":  {                           // 선택(서버 전용): 그 키 그룹의 집계 — 영향 키 한정 재계산(멱등)
+  "name": "bonding_wafer_attribution",
+  "on":   {"table": "bonding_log"},              // 필수: 대량 원본 테이블
+  "into": {"table": "bonding_job_inventory"},    // 필수: 파생 영속 테이블 — table_config.json에 등록되어 있어야 함
+  "enabled": true,
+  "derive": {"kind": "decide", "decide": {
+    "key":    ["equipment", "event_time"],       // 필수: 판단키(사람이 1회 판단하는 단위)
+    "fields": ["wafer_id"],                      // 필수: 사람이 채울 필드 — 맵퍼는 이 필드를 절대 쓰지 않음
+    "list_columns": ["chip_count", "lot_hint"],  // 선택: 워크리스트 표시 단서(배치 내 대표값)
+    "aggregations": {                            // 선택(서버 전용): 그 키 그룹의 집계 — 영향 키 한정 재계산(멱등)
       "chip_count": "count",                     //   행을 센다 (컬럼 없음)
       "bonding_time_min": {"fn": "min",          //   count | min | max (S-129, 2026-09-10)
                            "column": "bonding_time"}   //   min/max 는 «소스» 컬럼을 읽는다
     },
-    "enabled": true,
     "reference_views": [
       { "label": "lot event",
         "query": "SELECT lot_id, event_time FROM lot_events WHERE equipment = :equipment", // 인라인 SQL
         "limit": 200 },
       { "label": "lot-slot 이력", "query_ref": "lot_slot_history" }  // config/enrichment_queries/<ref>.sql
     ]
-  }
+  }}
 }
 ```
 

@@ -26,6 +26,8 @@ import pytest                                                         # noqa: E4
 
 from chain import enrichment                                              # noqa: E402
 from database import crud, models, schemas                            # noqa: E402
+from tests.support.enrich_decl import write_rules  # noqa: E402
+from tests.support.enrich_decl import enrich_chain_rules  # noqa: E402
 
 TABLES = {
     "s129_bond_src": {
@@ -70,9 +72,7 @@ def env(db_session, tmp_path, monkeypatch):
     from database.database import Base
     Base.metadata.create_all(bind=db_session.get_bind())
 
-    path = tmp_path / "enrichment_rules.json"
-    path.write_text(json.dumps(RULE), encoding="utf-8")
-    monkeypatch.setattr(enrichment.config, "ENRICHMENT_RULES_PATH", str(path))
+    path = write_rules(tmp_path, monkeypatch, RULE)
     return db_session
 
 
@@ -88,7 +88,7 @@ def _run_chain(db, tx_id):
     from chain.ingestion_worker import process_chain_transaction_group
     from database.models import DatabaseOutbox
 
-    rules = enrichment.config.load_enrichment_chain_rules(known_tables=crud.TABLE_CONFIG)
+    rules = enrich_chain_rules(known_tables=crud.TABLE_CONFIG)
     events = db.query(DatabaseOutbox).filter(
         DatabaseOutbox.table_name == "s129_bond_src",
         DatabaseOutbox.processed_chain == False,          # noqa: E712
@@ -144,7 +144,7 @@ def test_the_reference_view_may_bind_the_aggregate_and_runs_with_its_value(env):
     ], "tx-view")
     _run_chain(env, "tx-view")
 
-    rules = enrichment.config.load_enrichment_chain_rules(known_tables=crud.TABLE_CONFIG)
+    rules = enrich_chain_rules(known_tables=crud.TABLE_CONFIG)
     # ⚰️ BOTH HALVES CARRY IT UNDER `params` NOW. The dedup half used to embed the
     # declaration under a key of its own (`enrichment`), which was a second copy of
     # `params` written by the same function; it retired when that half became a

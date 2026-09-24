@@ -283,7 +283,7 @@ conda run -n assy_manager python server/scripts/enrichment_insights.py propose  
 
 | 원인 | 나오는 말 | 조치 |
 |---|---|---|
-| ① **`auto_confirm` 노브가 꺼져 있다** (기본값이 **OFF**입니다) | `rule '<룰>' has 'auto_confirm' off (default)` | `enrichment_rules.json`의 그 규칙에 `"auto_confirm": true`. 노브가 **사람의 동의 자리**라 우회로가 없습니다 |
+| ① **`auto_confirm` 노브가 꺼져 있다** (기본값이 **OFF**입니다) | `rule '<룰>' has 'auto_confirm' off (default)` | `chain_rules.json` 그 규칙의 `derive.decide` 에 `"auto_confirm": true`. 노브가 **사람의 동의 자리**라 우회로가 없습니다 |
 | ② `--ignore-knob`과 `--apply`를 **같이** 줬다 | `--ignore-knob is a measurement-only flag and cannot be combined with --apply` | `--ignore-knob`은 **꺼진 규칙의 규모를 재는 용도**입니다(dry-run 전용). 쓰려면 ①을 하십시오 |
 | ③ 어느 참조뷰에도 **`candidate_for` 선언이 없다** | `rule '<룰>' declares no 'candidate_for' on any reference view` | 어느 뷰 컬럼이 어느 타깃의 후보인지 **선언**하십시오. 컬럼 이름으로 유추하지 않습니다 → [config/enrichment_rules §7](./config/enrichment_rules.md) |
 

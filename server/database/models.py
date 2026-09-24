@@ -659,7 +659,7 @@ class CellSource(Base):
 # 사람이 「이 설비·제품의 좌표계는 이것이다」라고 정한 사실의 정본. 계산하지 않는다.
 #
 # [왜 enrichment 위에 얹는가 — 대체가 아니라 보완이다]
-# 확정의 **몸짓**은 `enrichment_rules.json`의 `eqp_product_frame_attribution`이 이미 갖고
+# 확정의 **몸짓**은 인리치 선언(`chain_rules.json` 의 `derive.decide`) `eqp_product_frame_attribution`이 이미 갖고
 # 있고 그것을 그대로 쓴다: 판단 단위가 `decision_key = (dt_eqp, product)`로 이미 이 층의
 # 단위이고, 사람 확인 경로·auto_confirm 스윕·reference_views·후보 제시가 전부 있으며
 # 누가·언제는 cell_overwrites가 이미 나른다. 여기서 그 어느 것도 다시 만들지 않는다.

@@ -17,6 +17,7 @@ import config_resolve_report as crr
 from chain import enrichment
 from chain import enrichment
 from database import crud, models, schemas
+from tests.support.enrich_decl import rewrite_rules  # noqa: E402
 
 RT_TABLES = {
     "f9rt_test_src": {
@@ -77,15 +78,16 @@ def rt_env(db_session, tmp_path, monkeypatch):
     from database.database import Base
     Base.metadata.create_all(bind=db_session.get_bind())
 
-    rules_path = tmp_path / "enrichment_rules.json"
-    monkeypatch.setattr(enrichment.config, "ENRICHMENT_RULES_PATH", str(rules_path))
+    from chain import ingestion_worker as worker
+    rules_path = tmp_path / "chain_rules.json"
+    monkeypatch.setattr(worker, "RULES_PATH", str(rules_path))
     settings_path = tmp_path / "ingestion_settings.json"
     settings_path.write_text("{}", encoding="utf-8")
     monkeypatch.setattr(enrichment.candidates, "INGESTION_SETTINGS_PATH", str(settings_path))
     enrichment.candidates.reset_warnings()
 
     def write(rules):
-        rules_path.write_text(json.dumps(rules), encoding="utf-8")
+        rewrite_rules(rules_path, rules)
 
     yield db_session, write
     crud.TABLE_CONFIG.clear()

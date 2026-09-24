@@ -1,8 +1,8 @@
 """Enrichment Queue generic dedup mapper (docs/spec/ENRICHMENT_QUEUE_SPEC.md §6).
 
 Source 테이블 변경 이벤트(outbox payload 배치)에서 **decision_key 유니크 조합**을 추출해
-derived_table에 키당 1행을 upsert하는 체인 맵퍼다. `enrichment_config.load_enrichment_chain_rules()`
-가 파생한 체인 룰(`mapper_module: "enrichment_mapper"`)을 통해 체인 워커가 호출한다.
+derived_table에 키당 1행을 upsert하는 체인 맵퍼다. `chain_rules.json` 의 `derive.decide`
+선언이 서는 체인 규칙(`declared:enrich`)을 통해 체인 워커가 호출한다.
 
 핵심 불변식:
 - **target_fields는 절대 updates에 포함하지 않는다** (사람이 채운 값 보존 1차 방어).

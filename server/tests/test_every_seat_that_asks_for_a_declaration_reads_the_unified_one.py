@@ -4,11 +4,11 @@
 > 소유자: 「너의 목표는 기존 선언들 «없이도» 파생·자동 확정이 서게 하는 것.
 >          이 박스는 단순 실험체에 불과해」
 
-🔴 THE FIXTURE REMOVES THE FLAT FILE. Every row below runs with
-`ENRICHMENT_RULES_PATH` pointing at an EMPTY document and one `derive.decide` declaration in
-`chain_rules.json`. That is the whole question: before 636 each of these seats opened the
-flat file and only the flat file, so a declaration written in the unified grammar was stood
-by the loader, ran, wrote rows - and was invisible to every screen that asked about it.
+🔴 THE FIXTURE STANDS ONE `derive.decide` DECLARATION IN `chain_rules.json` AND NOTHING ELSE.
+Before 636 each of these seats opened the flat enrich file and only that, so a declaration
+written in the unified grammar was stood by the loader, ran, wrote rows - and was invisible
+to every screen that asked about it. ⚰️ [2026-09-24] The flat file itself is retired now; the
+fixture used to pin it EMPTY, and there is no longer a second file to pin.
 
 ⚠️ THE ROWS ARE THE SEATS, NOT THE SEAT. Asserting `enrich_declarations.find` works would be
 vacuous here: that is its own file's job
@@ -69,20 +69,14 @@ TABLES = {
 @pytest.fixture(name="unified_only")
 def fixture_unified_only(tmp_path, monkeypatch):
     """평면 파일은 «비었고», 통합 선언 하나가 서 있다."""
-    flat = tmp_path / "enrichment_rules.json"
-    flat.write_text(json.dumps({}), encoding="utf-8")
     chain_file = tmp_path / "chain_rules.json"
     chain_file.write_text(json.dumps({"rules": [UNIFIED]}), encoding="utf-8")
 
-    monkeypatch.setattr(enrichment_config, "ENRICHMENT_RULES_PATH", str(flat))
     monkeypatch.setattr(worker, "RULES_PATH", str(chain_file))
-    # 로더 메모는 «경로»로 키가 잡히지만, 같은 tmp 경로가 재사용될 수 있어 비운다
-    enrichment_config._RULES_MEMO.clear()
     crud.TABLE_CONFIG.update(TABLES)
     try:
         yield
     finally:
-        enrichment_config._RULES_MEMO.clear()
         for name in TABLES:
             crud.TABLE_CONFIG.pop(name, None)
 
@@ -106,12 +100,13 @@ def _spy(monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_the_declaration_stands_with_no_flat_file_at_all(unified_only):
-    """🔴 이 행이 빨개지면 아래 전부가 «측정되지 않은 채» 초록이 된다."""
+    """🔴 이 행이 빨개지면 아래 전부가 «측정되지 않은 채» 초록이 된다.
+
+    ⚰️ [2026-09-24] 여기 대조 한 줄이 더 있었다 — 「평면 로더는 «비어» 있다」. 평면 파일과
+    그 로더가 은퇴해 대조할 문이 없다. 남은 물음은 통합 선언이 «서는가» 하나다."""
     stood = enrich_declarations.declarations(known_tables=crud.TABLE_CONFIG)
 
     assert [r["name"] for r in stood] == [NAME]
-    assert enrichment_config.load_enrichment_rules(
-        known_tables=crud.TABLE_CONFIG) == [], "평면 파일은 «비어» 있어야 한다"
 
 
 # ---------------------------------------------------------------------------
@@ -232,26 +227,70 @@ def test_the_resolve_report_counts_it(unified_only):
 # 🔴 ⓓ 대조군 — 새 자리가 «조용히» 평면 파일로 돌아가지 못한다
 # ---------------------------------------------------------------------------
 
-def test_no_seat_outside_the_two_allowed_reads_the_flat_file():
-    """⚰️ 이 라운드 «전»에는 13 자리가 평면 파일을 직접 열었습니다. 남아도 되는 것은 둘뿐:
-    좌석 자신(평면 반쪽을 부른다)과 체인 로더의 합성 반쪽(`load_enrichment_chain_rules`).
-    셋째가 생기면 그것이 「옆에 또 만든」 자리입니다."""
+def test_no_product_code_reads_the_flat_enrich_file():
+    """🔴 게이트 ㉠ (판정 dbff42a94, 소유자 「enrich.json 아예 삭제」) — 평면 인리치 파일을
+    읽는 제품 코드 «0». 상시 게이트로 둔다: 다시 생기면 그것이 둘째 문이다.
+
+    ⚰️ 이 시험은 「허용된 둘만 연다」였다 — 좌석 자신과 체인 로더의 합성 반쪽. 판정 636
+    «전»에는 13 자리가 평면 파일을 직접 열었다. 2026-09-24 에 둘도 사라져 허용 집합이 비었다.
+
+    제외 규칙을 먼저 적는다: 시험(tests/) · 문자열·주석·독스트링의 낱말. 세는 것은 «호출»과
+    경로 상수의 «읽기»다 — 낱말을 세면 묘비가 걸린다.
+    """
     import ast
     import subprocess
 
     files = [p for p in subprocess.check_output(
         ["git", "ls-files", "*.py"], text=True, cwd=SERVER_DIR).split()
         if not p.startswith("tests/") and os.path.exists(os.path.join(SERVER_DIR, p))]
+    assert len(files) > 100, "CANARY: the file list is broken, so 0 below would mean nothing"
 
-    callers = set()
+    readers = set()
     for rel in files:
         tree = ast.parse(io.open(os.path.join(SERVER_DIR, rel), encoding="utf-8").read())
         for node in ast.walk(tree):
-            if (isinstance(node, ast.Call)
-                    and getattr(node.func, "attr", getattr(node.func, "id", None))
-                    == "load_enrichment_rules"):
-                callers.add(rel)
+            name = None
+            if isinstance(node, ast.Call):
+                name = getattr(node.func, "attr", getattr(node.func, "id", None))
+            elif isinstance(node, (ast.Attribute, ast.Name)) and isinstance(node.ctx, ast.Load):
+                name = getattr(node, "attr", getattr(node, "id", None))
+            if name in ("load_enrichment_rules", "load_enrichment_chain_rules",
+                        "ENRICHMENT_RULES_PATH"):
+                readers.add("%s:%d %s" % (rel, node.lineno, name))
 
-    assert callers == {"chain/enrich_declarations.py", "chain/enrichment/config.py"}, (
-        "평면 파일을 직접 여는 자리: %s — 좌석(chain/enrich_declarations)을 지나게 "
-        "하거나, 왜 지날 수 없는지를 그 자리에 적으십시오" % sorted(callers))
+    assert readers == set(), (
+        "평면 인리치 파일을 읽는 자리: %s — 선언의 집은 chain_rules.json 하나입니다. "
+        "chain.enrich_declarations 를 지나게 하십시오" % sorted(readers))
+
+
+def test_a_revived_flat_file_is_read_by_nobody(unified_only, tmp_path):
+    """🔴 게이트 ㉢ (판정 dbff42a94) — 「그 파일을 다시 놓아도 아무 일도 안 일어난다」.
+
+    A flat enrich file is put BACK beside `chain_rules.json`, declaring a rule under a name
+    nothing else uses, and every door that answers 「which enrich rules exist」 is asked:
+    the loader the worker runs, the one seat, and the backfill the operator's button uses.
+    None of them may see it. ㉠ counts the code that would read it; this runs the doors, so a
+    reader hidden behind a name the AST census does not know still turns this red.
+
+    ⚠️ The unified declaration beside it MUST stand, or 「the flat name is absent」 would pass
+    for a loader that read nothing at all.
+    """
+    from chain.enrichment import backfill
+
+    revived = tmp_path / "enrichment_rules.json"
+    revived.write_text(json.dumps({"s636_revived_flat": {
+        "source_table": SRC, "derived_table": DST,
+        "decision_key": ["job"], "target_fields": ["grade"]}}), encoding="utf-8")
+    assert os.path.dirname(str(revived)) == os.path.dirname(worker.RULES_PATH), (
+        "the revived file must sit where the product would have looked - beside the rules file")
+
+    loaded = [r.get("name") for r in worker.load_chain_rules()]
+    seated = [r["name"] for r in enrich_declarations.declarations(known_tables=crud.TABLE_CONFIG)]
+
+    assert "enrichment_dedup:%s" % NAME in loaded, "CANARY: the unified declaration did not stand"
+    assert seated == [NAME], "CANARY: the seat did not stand the unified declaration"
+    assert not [n for n in loaded if "s636_revived_flat" in n], (
+        "the chain loader stood a rule from the retired flat file: %s" % loaded)
+    assert "s636_revived_flat" not in seated
+    with pytest.raises(backfill.BackfillRefused, match="not declared in chain_rules.json"):
+        backfill.load_rule("s636_revived_flat", crud.TABLE_CONFIG)

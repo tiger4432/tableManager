@@ -86,13 +86,6 @@ def fixture_client():
     return TestClient(app)
 
 
-@pytest.fixture(name="no_synthesis", autouse=True)
-def fixture_no_synthesis(monkeypatch):
-    from chain import synthesis
-
-    monkeypatch.setattr(synthesis, "synthesize_chain_rules", lambda **kwargs: [])
-
-
 def _save(client, path, name, declaration):
     base = client.get(ROUTE).json()["base"]
     return client.post(ROUTE, json={"name": name, "base": base,

@@ -27,7 +27,7 @@
 | `ingestion_settings.json` | 수집 경로·파서·용량 정책 | [ingestion_settings](./config/ingestion_settings.md) |
 | `auto_update_control.json` | 수집기 스케줄·활성 상태 | [auto_update_control](./config/auto_update_control.md) |
 | `chain_rules.json` | 테이블 간 파생 체인 | [chain_rules](./config/chain_rules.md) |
-| `enrichment_rules.json` | 결손 보정 규칙·워크리스트 | [enrichment_rules](./config/enrichment_rules.md) |
+| ~~`enrichment_rules.json`~~ | ⚰️ 2026-09-24 은퇴 — 결손 보정 규칙은 `chain_rules.json` 의 `derive.decide` | [chain_rules §5-B-bis](./config/chain_rules.md) |
 | `virtual_join_rules.json` | 조회 시점 가상 조인 | [virtual_join_rules](./config/virtual_join_rules.md) |
 | `notation_rules.json` | 키 표기 정규화 | [notation_rules](./config/notation_rules_config.md) |
 | `map_overlay_config.json` | 맵 역할·오버레이·라우팅 | [map_overlay](./config/map_overlay_config.md) |
@@ -197,9 +197,9 @@ watcher가 모든 파일을 감시한다고 가정하지 않는다. 원자적 �
 [table_config 키 사전](./config/table_config.md). 컬럼 설명 주석은 선언이 아니다;
 `column_types`에 없는 컬럼은 쓰기 경로에서 빠질 수 있다.
 
-### 5.2 `enrichment_rules.json`
+### 5.2 ~~`enrichment_rules.json`~~ — ⚰️ 2026-09-24 은퇴
 
-[enrichment_rules 키 사전](./config/enrichment_rules.md).
+결손 보정 규칙은 `chain_rules.json` 의 `derive: {kind: "decide"}` 입니다 — [chain_rules §5-B-bis](./config/chain_rules.md). 옛 키 사전은 [묘비](./config/enrichment_rules.md).
 
 ### 5.3 `chain_rules.json`
 

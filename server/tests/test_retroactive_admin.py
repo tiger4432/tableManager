@@ -31,6 +31,7 @@ from chain import replay
 import event_constants
 from admin import retroactive
 from database import crud, models, schemas
+from tests.support.enrich_decl import write_rules  # noqa: E402
 
 TOKEN = "correct-horse-battery-staple"
 HEADER = auth.ADMIN_TOKEN_HEADER
@@ -551,9 +552,7 @@ def retro_enrich_env(db_session, tmp_path, monkeypatch):
     from database.database import Base
     Base.metadata.create_all(bind=db_session.get_bind())
 
-    rules_path = tmp_path / "enrichment_rules.json"
-    rules_path.write_text(json.dumps(ENRICH_RULES), encoding="utf-8")
-    monkeypatch.setattr(enrichment.config, "ENRICHMENT_RULES_PATH", str(rules_path))
+    rules_path = write_rules(tmp_path, monkeypatch, ENRICH_RULES)
     monkeypatch.setattr("database.database.SessionLocal",
                         lambda: _NoCloseSession(db_session))
     yield db_session

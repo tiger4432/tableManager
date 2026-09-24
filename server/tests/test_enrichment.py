@@ -15,6 +15,7 @@ import pytest
 
 from chain import enrichment
 from database import crud, models, schemas
+from tests.support.enrich_decl import enrich_chain_rules, validate_rules, write_rules  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # 테스트 픽스처: 파생/원본 테이블 + 규칙 파일
@@ -80,9 +81,7 @@ def enrich_env(db_session, tmp_path, monkeypatch):
     from database.database import Base
     Base.metadata.create_all(bind=db_session.get_bind())
 
-    rules_path = tmp_path / "enrichment_rules.json"
-    rules_path.write_text(json.dumps(RULES_FILE), encoding="utf-8")
-    monkeypatch.setattr(enrichment.config, "ENRICHMENT_RULES_PATH", str(rules_path))
+    rules_path = write_rules(tmp_path, monkeypatch, RULES_FILE)
 
     import main
     main.TABLE_COUNT_CACHE.clear()
@@ -104,7 +103,7 @@ def _run_chain_for_tx(db, tx_id):
     from chain.ingestion_worker import process_chain_transaction_group
     from database.models import DatabaseOutbox
 
-    rules = enrichment.config.load_enrichment_chain_rules(known_tables=crud.TABLE_CONFIG)
+    rules = enrich_chain_rules(known_tables=crud.TABLE_CONFIG)
     assert rules, "enrichment chain rules must be synthesized"
 
     events = db.query(DatabaseOutbox).filter(
@@ -156,7 +155,7 @@ def test_loader_valid_rule_normalized():
         {"label": "v1", "query": "SELECT chip_id FROM enrich_test_src WHERE equipment = :equipment"},
         {"label": "v2", "query": "SELECT chip_id FROM enrich_test_src", "limit": 5000},
     ])}
-    rules = enrichment.config.validate_enrichment_rules(raw, known_tables=KNOWN)
+    rules = validate_rules(raw, known_tables=KNOWN)
     assert len(rules) == 1
     r = rules[0]
     assert r["name"] == "r1"
@@ -186,7 +185,7 @@ def test_the_reference_row_caps_are_declared_not_hardcoded():
     caps = enrichment.config.load_read_caps(
         {enrichment.config.READ_CAPS_SETTINGS_KEY: {
             "reference_rows_default": 7, "reference_rows_max": 4000}})
-    views = enrichment.config.validate_enrichment_rules(
+    views = validate_rules(
         raw, known_tables=KNOWN, caps=caps)[0]["reference_views"]
     assert views[0]["limit"] == 7, "an undeclared view limit follows the declared default"
     assert views[1]["limit"] == 4000, "the declared ceiling is what clamps, not 1000"
@@ -213,22 +212,22 @@ def test_loader_missing_required_fields_skipped():
         "no_key": _base_rule(decision_key=[]),
         "no_target": _base_rule(target_fields=[]),
     }
-    assert enrichment.config.validate_enrichment_rules(raw, known_tables=KNOWN) == []
+    assert validate_rules(raw, known_tables=KNOWN) == []
 
 
 def test_loader_decision_target_overlap_skipped():
     raw = {"r": _base_rule(target_fields=["equipment"])}
-    assert enrichment.config.validate_enrichment_rules(raw, known_tables=KNOWN) == []
+    assert validate_rules(raw, known_tables=KNOWN) == []
 
 
 def test_loader_unknown_tables_or_columns_skipped():
-    assert enrichment.config.validate_enrichment_rules(
+    assert validate_rules(
         {"r": _base_rule(source_table="nope")}, known_tables=KNOWN) == []
-    assert enrichment.config.validate_enrichment_rules(
+    assert validate_rules(
         {"r": _base_rule(derived_table="nope")}, known_tables=KNOWN) == []
-    assert enrichment.config.validate_enrichment_rules(
+    assert validate_rules(
         {"r": _base_rule(decision_key=["equipment", "ghost_col"])}, known_tables=KNOWN) == []
-    assert enrichment.config.validate_enrichment_rules(
+    assert validate_rules(
         {"r": _base_rule(target_fields=["ghost_col"])}, known_tables=KNOWN) == []
 
 
@@ -243,7 +242,7 @@ def test_loader_derived_key_contract_enforced():
             "column_types": ENRICH_TABLES["enrich_test_derived"]["column_types"],
         },
     }
-    assert enrichment.config.validate_enrichment_rules({"r": _base_rule()}, known_tables=bad_known) == []
+    assert validate_rules({"r": _base_rule()}, known_tables=bad_known) == []
 
 
 def test_loader_reference_view_safety():
@@ -254,7 +253,7 @@ def test_loader_reference_view_safety():
         {"label": "bad_ref", "query_ref": "../evil"},
         {"label": "good", "query": "SELECT chip_id FROM enrich_test_src WHERE equipment = :equipment"},
     ]
-    rules = enrichment.config.validate_enrichment_rules(
+    rules = validate_rules(
         {"r": _base_rule(reference_views=views)}, known_tables=KNOWN)
     assert len(rules) == 1
     # 무효 뷰는 로드 시점에 제거되어 /rules 목록과 /references 인덱스가 항상 정합
@@ -262,18 +261,16 @@ def test_loader_reference_view_safety():
     assert labels == ["good"]
 
 
-def test_loader_disabled_rule_and_missing_file(tmp_path):
+def test_loader_disabled_rule_stands_nothing(tmp_path):
     raw = {"r": _base_rule(enabled=False)}
-    assert enrichment.config.validate_enrichment_rules(raw, known_tables=KNOWN) == []
-    # 파일 없음 → 빈 목록 (오류 아님)
-    assert enrichment.config.load_enrichment_rules(path=str(tmp_path / "none.json")) == []
+    assert validate_rules(raw, known_tables=KNOWN) == []
+    # ⚰️ [2026-09-24] 「파일 없음 -> 빈 목록 (오류 아님)」 이 여기 있었다 — 평면 파일이 없을 때
+    #    로더가 «조용히» 비던 그 자리를 붙들던 단언이다. 그 파일과 그 침묵이 같이 은퇴했다.
 
 
-def test_loader_synthesized_chain_rule_shape(tmp_path):
-    rules_path = tmp_path / "enrichment_rules.json"
-    rules_path.write_text(json.dumps(RULES_FILE), encoding="utf-8")
-    chain_rules = enrichment.config.load_enrichment_chain_rules(
-        path=str(rules_path), known_tables=KNOWN)
+def test_loader_synthesized_chain_rule_shape(tmp_path, monkeypatch):
+    write_rules(tmp_path, monkeypatch, RULES_FILE)
+    chain_rules = enrich_chain_rules(known_tables=KNOWN)
     # ONE RULE NOW YIELDS TWO KINDS (S-179 (1), ruling 292): the dedup projection and the
     # auto-confirm follow-up. Picked BY NAME rather than by index - an index silently
     # selects whichever kind the list happens to order first.
@@ -588,8 +585,6 @@ def test_worklist_blank_filter_and_user_fill(client, enrich_env):
     assert filled["data"]["wafer_id"]["value"] == "W777"
 
 
-
-
 # ---------------------------------------------------------------------------
 # 5. The queue predicate - numerator and denominator count ONE population
 #    (N36, user ruling 2026-08-04). Written in English because these assertion
@@ -734,7 +729,7 @@ def _decl(**kw):
 
 
 def _one(raw):
-    rules = enrichment.config.validate_enrichment_rules({"r": raw}, known_tables=KNOWN)
+    rules = validate_rules({"r": raw}, known_tables=KNOWN)
     assert len(rules) == 1, "the fixture rule must be valid apart from the marker"
     return rules[0]
 
@@ -767,7 +762,7 @@ def test_the_marker_is_not_inferred_from_frame_shaped_target_fields():
         {"core_frame": "string", "dt_frame": "string"})
     raw = {"r": _base_rule(target_fields=["core_frame", "dt_frame"],
                            list_columns=[], aggregations={})}
-    rules = enrichment.config.validate_enrichment_rules(raw, known_tables=known)
+    rules = validate_rules(raw, known_tables=known)
     assert len(rules) == 1
     assert rules[0]["alignment"] is False
 
@@ -781,22 +776,28 @@ def test_the_marker_survives_to_the_public_shape():
 
 
 def test_the_live_declaration_is_read_rather_than_backfilled():
-    """`server/config/` is gitignored, so this asks the REAL files what they say instead of
-    asserting a value into them. Whether any rule is marked is the product owner's decision;
+    """`server/config/` is gitignored, so this asks the REAL file what it says instead of
+    asserting a value into it. Whether any rule is marked is the product owner's decision;
     what is pinned here is that the served value equals the declared one, per rule.
 
     🔴 It loads the live table config on purpose. Going through `crud.TABLE_CONFIG` as it
     stands inside the suite returns the TEST tables, every live rule is then rejected for
     unknown columns, and the test skips - proving nothing while looking green.
+
+    ⚰️ [2026-09-24] The real file was `enrichment_rules.json`. It is retired; an enrich
+    declaration's one home is `derive.decide` in `chain_rules.json`, and that is read here.
     """
-    import os
-    if not os.path.exists(enrichment.config.ENRICHMENT_RULES_PATH):
-        pytest.skip("live enrichment_rules.json absent (gitignored; fresh checkout)")
-    with open(enrichment.config.ENRICHMENT_RULES_PATH, encoding="utf-8") as f:
-        declared = json.load(f)
+    from chain import enrich_declarations, ingestion_worker as worker
+
+    read = worker.read_rules_document()
+    declared = {r.get("name"): (r.get("derive") or {}).get("decide") or {}
+                for r in (read.get("rules") or ())
+                if isinstance(r, dict) and (r.get("derive") or {}).get("kind") == "decide"}
+    if not declared:
+        pytest.skip("no derive.decide declaration in the live chain_rules.json")
     live_tables = crud.load_table_config_or_raise()
-    rules = enrichment.config.validate_enrichment_rules(declared, known_tables=live_tables)
-    assert rules, "the live rule file parsed to nothing - the check below would be vacuous"
+    rules = enrich_declarations.declarations(known_tables=live_tables)
+    assert rules, "the live declarations stood nothing - the check below would be vacuous"
     for r in rules:
         want = declared[r["name"]].get("alignment") is True
         assert r["alignment"] is want, r["name"]
@@ -853,79 +854,6 @@ def test_a_display_column_the_derived_table_lacks_is_named_and_the_rule_still_st
 
 
 # ------------------------------------------------- S-94: a file read once, and read again
-
-def test_a_second_load_is_the_same_answer_without_reading_the_file(tmp_path, monkeypatch):
-    """🔴 THIS RAN PER ROW (S-94). `resolve_alignment_view` asks for the declaration on
-    every call and the alignment mapper calls it once per job, so a 1,000-row chain group
-    read this file and re-validated every rule a thousand times - and the cost grows with
-    how many rules a deployment declares, which is a number nobody here knows."""
-    from chain.enrichment import config as ec
-    from database import crud
-
-    # ⚠️ THE MEMO ONLY ANSWERS FOR `crud.TABLE_CONFIG`, ON PURPOSE: what a rule is judged
-    # against is a whole dict, and the only key that can say it changed without hashing it
-    # is the file it came from. A caller handing in its own tables gets no memo and the
-    # validation it asked for - so the fixture becomes the singleton to exercise the path
-    # the alignment mapper actually takes.
-    monkeypatch.setattr(crud, "TABLE_CONFIG", KNOWN)
-    rules_file = tmp_path / "enrichment_rules.json"
-    rules_file.write_text(json.dumps({"r1": _base_rule()}), encoding="utf-8")
-    ec.clear_enrichment_rules_memo()
-
-    first = ec.load_enrichment_rules(str(rules_file), known_tables=crud.TABLE_CONFIG)
-    reads = []
-    real_open = open
-    monkeypatch.setattr("builtins.open",
-                        lambda *a, **k: (reads.append(a[0]), real_open(*a, **k))[1])
-    second = ec.load_enrichment_rules(str(rules_file), known_tables=crud.TABLE_CONFIG)
-
-    assert second == first
-    assert str(rules_file) not in reads, reads
-
-
-def test_editing_the_file_is_visible_on_the_next_call(tmp_path, monkeypatch):
-    """⛔ THE STAMP IS THE FILE'S, NOT A CLOCK. An operator who edits a declaration must
-    see it on the next call - a memo that needed a restart would be a config file that
-    silently lags the screen showing it."""
-    import os
-
-    from chain.enrichment import config as ec
-    from database import crud
-
-    monkeypatch.setattr(crud, "TABLE_CONFIG", KNOWN)
-    rules_file = tmp_path / "enrichment_rules.json"
-    rules_file.write_text(json.dumps({"r1": _base_rule()}), encoding="utf-8")
-    ec.clear_enrichment_rules_memo()
-    assert [r["name"] for r in ec.load_enrichment_rules(
-        str(rules_file), known_tables=crud.TABLE_CONFIG)] == ["r1"]
-
-    rules_file.write_text(json.dumps({"r2": _base_rule()}), encoding="utf-8")
-    os.utime(rules_file, (0, 0))          # a stamp that cannot be confused with the first
-    assert [r["name"] for r in ec.load_enrichment_rules(
-        str(rules_file), known_tables=crud.TABLE_CONFIG)] == ["r2"]
-
-
-def test_a_remembered_load_still_reports_why_a_rule_was_refused(tmp_path):
-    """⛔ REJECTIONS ARE REPLAYED, NOT SKIPPED. A caller collecting them is building the
-    operator's report, and a memo that answered with rules and no reasons would make a
-    declaration that was refused look accepted on the second call."""
-    from chain.enrichment import config as ec
-
-    rules_file = tmp_path / "enrichment_rules.json"
-    rules_file.write_text(json.dumps({
-        "good": _base_rule(),
-        "bad": _base_rule(list_columns=["chip_count", "not_a_column"]),
-    }), encoding="utf-8")
-    ec.clear_enrichment_rules_memo()
-
-    first: list = []
-    ec.load_enrichment_rules(str(rules_file), known_tables=KNOWN, rejections=first)
-    again: list = []
-    ec.load_enrichment_rules(str(rules_file), known_tables=KNOWN, rejections=again)
-    # (this one runs on the un-memoised path too, and must answer the same either way)
-
-    assert first, "the fixture must produce at least one rejection or this proves nothing"
-    assert again == first
 
 
 def test_the_overlay_config_is_read_once_and_handed_out_as_a_copy(tmp_path):

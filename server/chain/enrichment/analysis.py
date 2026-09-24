@@ -720,8 +720,8 @@ def run_auto_confirm_sweep(db, rule: dict, apply: bool = False, limit: int = Non
         raise AnalysisRefused(
             f"rule '{rule['name']}' has '{enrichment.candidates.RULE_KNOB}' off "
             f"(default). Dry-run works regardless; to WRITE, set "
-            f"\"{enrichment.candidates.RULE_KNOB}\": true on the rule in "
-            f"enrichment_rules.json.")
+            f"\"{enrichment.candidates.RULE_KNOB}\": true in the rule's "
+            f"derive.decide block in chain_rules.json.")
     if apply and ignore_knob:
         raise AnalysisRefused(
             "--ignore-knob is a measurement-only flag and cannot be combined with --apply: "

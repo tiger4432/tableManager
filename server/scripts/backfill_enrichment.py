@@ -106,7 +106,7 @@ def parse_args(argv=None):
             "it. Dry-run by default; nothing is written without --apply."
         )
     )
-    parser.add_argument("rule_name", help="rule name as declared in enrichment_rules.json")
+    parser.add_argument("rule_name", help="rule name as declared in chain_rules.json (derive.decide)")
     parser.add_argument("--apply", action="store_true",
                         help="write the new derived rows (default: report only)")
     parser.add_argument("--limit", type=int, default=None,

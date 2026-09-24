@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 """[지시 0cae5199] 통합 문 하나가 평면 문에 없는 «두 가지»를 하고 있었다. 둘 다 여기서 잰다.
 
+⚰️ [2026-09-24, 소유자 「enrich.json 아예 삭제」] 평면 문은 은퇴했다. 아래는 그 문이 있던 때의
+기록이고, 시험은 남은 한 문(통합)만 잰다 — 평면 쪽 대조 둘은 그 문과 같이 갔다.
+
 대응표(`derive.decide` ↔ 평면 인리치)에서 「없음」은 0 이었다 — 칸은 전부 대응된다. 남은 것은
 「대응은 됐는데 «하는 일»이 다르다」였고, 원인은 한 줄이었다:
 
@@ -36,22 +39,13 @@ def _unified(name, views):
                                   "reference_views": list(views)}}}
 
 
-def _flat(name, views):
-    return {name: {"source_table": "rv_src", "derived_table": "rv_derived",
-                   "decision_key": ["k"], "target_fields": ["f"],
-                   "reference_views": list(views)}}
-
-
-def _declare(tmp_path, unified=None, flat=None):
+def _declare(tmp_path, unified=None):
     chain_path = tmp_path / "chain_rules.json"
     chain_path.write_text(json.dumps({"rules": [unified] if unified else []}),
                           encoding="utf-8")
-    enrich_path = tmp_path / "enrichment_rules.json"
-    enrich_path.write_text(json.dumps(flat or {}), encoding="utf-8")
     rejections = []
     rules = enrich_declarations.declarations(
-        chain_rules_path=str(chain_path), enrichment_path=str(enrich_path),
-        rejections=rejections)
+        chain_rules_path=str(chain_path), rejections=rejections)
     return rules, rejections
 
 
@@ -75,16 +69,6 @@ def test_the_unified_door_names_the_view_that_fell(tmp_path):
     assert "dropped" in dropped[0]["detail"]
 
 
-def test_the_flat_door_says_the_same_thing_about_the_same_views(tmp_path):
-    """⚠️ 대조군 — 이 줄이 이 파일의 «주어»를 고정한다. 두 문이 같은 선언에 같은 문장을 내야
-    「문이 하나」가 참이다. 통합만 고치고 평면이 다른 말을 하면 그건 수리가 아니라 세 번째 답이다."""
-    _rules, rejections = _declare(tmp_path, flat=_flat("f", [GOOD, DROPS]))
-
-    dropped = [r for r in rejections if "떨어질 뷰" in str(r.get("subject"))]
-    assert dropped, "평면 문이 뷰 이름을 안 낸다 — 대조군이 무너졌다: %r" % (rejections,)
-    assert dropped[0]["scope"] == "reference_view"
-
-
 # ---------------------------------------------------------------------------
 # ㉡ 설정 파일을 «몇 번» 여나
 # ---------------------------------------------------------------------------
@@ -103,11 +87,10 @@ def _count_settings_reads(monkeypatch):
     return calls
 
 
-def _reads_for(tmp_path, monkeypatch, door, count):
+def _reads_for(tmp_path, monkeypatch, count):
     views = [dict(GOOD, label="뷰%d" % i) for i in range(count)]
     calls = _count_settings_reads(monkeypatch)
-    rules, _rejections = _declare(tmp_path, **{door: (
-        _unified("u", views) if door == "unified" else _flat("f", views))})
+    rules, _rejections = _declare(tmp_path, unified=_unified("u", views))
     assert len(rules[0]["reference_views"]) == count, "뷰가 다 서야 이 수가 뜻이 있다"
     return len(calls)
 
@@ -118,23 +101,15 @@ def test_the_caps_read_does_not_grow_with_the_number_of_views(tmp_path, monkeypa
     «둘씩» 불리므로, 스냅샷이 없으면 뷰 N 개가 파일을 2N 번 연다.
 
     🔴 재는 것은 «수»가 아니라 «기울기»다. 박은 수로 적었다가 빨개졌고, 그게 맞았다 —
-    이 좌석은 두 문을 «둘 다» 걷고 평면 로더도 자기 스냅샷을 하나 뜨므로 상수항이 1 더 있다.
-    그 상수는 이 줄이 말하려는 것이 아니다. 「뷰를 늘려도 안 는다」가 성질이고, 상수는 자리다.
+    (⚰️ 평면 문이 있던 동안은 그 로더도 자기 스냅샷을 하나 떠 상수항이 1 더 있었다.)
+    상수는 이 줄이 말하려는 것이 아니다. 「뷰를 늘려도 안 는다」가 성질이고, 상수는 자리다.
 
     ⚠️ 스냅샷은 «선언 단위»이지 작업 단위가 아니다 — 한 선언의 모든 뷰가 같은 상한을 쓴다는
     것까지가 이 줄이 잰다. 그 금지의 주어가 「두 뷰」이고 뷰는 선언 «안»에 산다."""
-    few = _reads_for(tmp_path, monkeypatch, "unified", 1)
-    many = _reads_for(tmp_path, monkeypatch, "unified", 5)
+    few = _reads_for(tmp_path, monkeypatch, 1)
+    many = _reads_for(tmp_path, monkeypatch, 5)
 
     assert few == many, (
         "뷰 1 개에 %d 번, 5 개에 %d 번 — 뷰마다 설정을 다시 읽고 있다" % (few, many))
 
 
-def test_the_flat_door_does_not_grow_either(tmp_path, monkeypatch):
-    """⚠️ 대조군. 평면은 «파일 하나»에 스냅샷 하나라 처음부터 안 늘었다. 두 문이 이 축에서
-    갈라지지 않는다는 것을 같은 픽스처로 말한다 — 그리고 통합만 고쳐 놓고 평면이 다른 답을
-    내면 그건 수리가 아니라 세 번째 답이라는 것을 여기서 안다."""
-    few = _reads_for(tmp_path, monkeypatch, "flat", 1)
-    many = _reads_for(tmp_path, monkeypatch, "flat", 5)
-
-    assert few == many, "평면 문이 1 개에 %d 번, 5 개에 %d 번" % (few, many)

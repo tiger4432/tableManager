@@ -69,14 +69,10 @@ TABLES = {
 @pytest.fixture(name="declared")
 def fixture_declared(tmp_path, monkeypatch):
     """⚠️ 이 박스의 라이브 설정으로 재지 않는다 — 픽스처가 문서를 «짓는다»."""
-    flat = tmp_path / "enrichment_rules.json"
-    flat.write_text(json.dumps({}), encoding="utf-8")
     chain_file = tmp_path / "chain_rules.json"
     chain_file.write_text(json.dumps({"rules": [DECIDE, OFF, FLAT_OFF]}), encoding="utf-8")
 
-    monkeypatch.setattr(enrichment_config, "ENRICHMENT_RULES_PATH", str(flat))
     monkeypatch.setattr(worker, "RULES_PATH", str(chain_file))
-    enrichment_config._RULES_MEMO.clear()
     crud.TABLE_CONFIG.update(TABLES)
 
     import paths
@@ -87,7 +83,6 @@ def fixture_declared(tmp_path, monkeypatch):
     try:
         yield
     finally:
-        enrichment_config._RULES_MEMO.clear()
         for name in TABLES:
             crud.TABLE_CONFIG.pop(name, None)
 

@@ -4,8 +4,9 @@
 BASIS §4.5 states the rule this round implements: 「체인 write ↦ E ↦ walk ; write — 별도
 «규칙 언어»가 필요 없다 — 오늘 enrichment 규칙은 «이 꼴로 다시 적혀야» 한다」.
 
-Half of it was already true: `load_enrichment_chain_rules` has synthesized the DEDUP half
-as a chain rule since S-178. The auto-confirm half ran as a table-keyed hook on the
+Half of it was already true: the flat file's synthesizer had turned the DEDUP half into a
+chain rule since S-178 (⚰️ file and synthesizer retired 2026-09-24; `chain_rules_for`, which
+did the turning, is what the unified grammar calls). The auto-confirm half ran as a table-keyed hook on the
 follow-up lap — same work, different language — and this round gives it a declaration.
 
 🔴 ONE SYNTHESIZER, TWO KINDS (판정 292: 「두 합성기 금지」). Two would have rebuilt the split
@@ -40,10 +41,10 @@ RULE = {
 
 
 @pytest.fixture()
-def one_rule(monkeypatch):
-    def fake(path=None, known_tables=None, rejections=None, caps=None):
-        return [dict(RULE)]
-    monkeypatch.setattr(ec, "load_enrichment_rules", fake)
+def one_rule():
+    """⚰️ [2026-09-24] This faked the flat file's loader so its synthesizer would see RULE.
+    Both retired; what the synthesizer did per rule was `chain_rules_for`, which the unified
+    grammar still calls, so the tests below score that boundary directly."""
     return RULE
 
 
@@ -52,7 +53,7 @@ def one_rule(monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_one_rule_becomes_two_kinds_from_one_synthesizer(one_rule):
-    out = ec.load_enrichment_chain_rules()
+    out = ec.chain_rules_for(dict(RULE))
     assert [r["name"] for r in out] == [
         "enrichment_dedup:s179_rule", "enrichment_auto_confirm:s179_rule"]
 
@@ -63,12 +64,12 @@ def test_every_normalized_cell_rides_on_both_kinds(one_rule):
     a hand-written list, so a cell added to the enrichment vocabulary tomorrow is covered
     by this test without it being edited — a hand-listed subset goes stale silently and
     the cell it drops is invisible until a declaration stops working."""
-    for rule in ec.load_enrichment_chain_rules():
+    for rule in ec.chain_rules_for(dict(RULE)):
         assert set(rule["params"]) == set(RULE), set(RULE) - set(rule["params"])
 
 
 def test_the_auto_confirm_rule_is_a_self_loop_that_opts_into_chain_triggers(one_rule):
-    confirm = ec.load_enrichment_chain_rules()[1]
+    confirm = ec.chain_rules_for(dict(RULE))[1]
     assert confirm["mapper"] == ec.AUTO_CONFIRM_MAPPER
     assert confirm["trigger_table"] == confirm["target_table"] == "s179_derived"
     # ⚰️ [소유자 정본] THIS ASSERTED `follow_up is True` — 「the paced lap runs it」. There is
@@ -102,7 +103,7 @@ def test_only_the_self_loop_opts_into_chain_triggers(one_rule):
     ⚠️ AND IT IS STILL ONLY THE SELF-LOOP. The dedup half writes to a table it does not watch,
     so it has no reason to opt in and this goes red if it ever does.
     """
-    dedup, confirm = ec.load_enrichment_chain_rules()
+    dedup, confirm = ec.chain_rules_for(dict(RULE))
     assert not dedup.get("allow_chain_trigger"), (
         "the dedup half opted into chain triggers; it is not a self-loop and has no reason to")
     assert confirm["allow_chain_trigger"] is True
@@ -118,7 +119,7 @@ def test_the_self_loop_is_reached_by_the_write_that_feeds_it(one_rule):
 
     from chain import ingestion_worker as worker
 
-    confirm = ec.load_enrichment_chain_rules()[1]
+    confirm = ec.chain_rules_for(dict(RULE))[1]
     for source in ("user", "chain_ingestion"):
         event = types.SimpleNamespace(table_name="s179_derived",
                                       payload={"source_name": source})
@@ -137,16 +138,14 @@ def test_the_self_loop_is_reached_by_the_write_that_feeds_it(one_rule):
 # Gate ⓕ — `enabled` is read, never typed
 # ---------------------------------------------------------------------------
 
-def test_a_disabled_rule_does_not_become_an_enabled_chain_rule(monkeypatch):
+def test_a_disabled_rule_does_not_become_an_enabled_chain_rule():
     """⚰️ IT USED TO READ `"enabled": True`, A LITERAL. That was correct only because
     `_validate_rule` drops disabled rules three functions upstream — move that filter and
     a disabled declaration becomes a running chain rule, which is the class 「가드는 도달
     가능해지는 날 틀린다」. Scored at the synthesizer's own boundary, which is where the
     defect would live: the live loader's filter is not what is being trusted here."""
     disabled = dict(RULE, enabled=False)
-    monkeypatch.setattr(ec, "load_enrichment_rules",
-                        lambda **kw: [disabled])
-    for rule in ec.load_enrichment_chain_rules():
+    for rule in ec.chain_rules_for(disabled):
         assert rule["enabled"] is False
 
 
@@ -230,7 +229,7 @@ def test_every_chain_edge_says_which_file_it_came_from(one_rule):
     so it could tell a written rule from a synthesized one — 「같은 기능 두 경로」. Per-file
     counts come from this cell now, and a second loader is forbidden."""
     written = {"name": "written_rule", "trigger_table": "a", "target_table": "b"}
-    synthesized = ec.load_enrichment_chain_rules()
+    synthesized = ec.chain_rules_for(dict(RULE))
     edges = chain.graph._mapper_edges([written] + synthesized)
     by_origin = {}
     for edge in edges:
@@ -248,7 +247,7 @@ def test_no_rule_is_drawn_twice(one_rule):
     reader exists to prevent."""
     import collections
 
-    synthesized = ec.load_enrichment_chain_rules()
+    synthesized = ec.chain_rules_for(dict(RULE))
     edges = (chain.graph._mapper_edges(synthesized)
              + chain.graph._enrich_edges([dict(RULE)]))
     counted = collections.Counter((e["from"], e["to"], e.get("rule")) for e in edges)

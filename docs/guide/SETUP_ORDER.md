@@ -103,8 +103,8 @@ strip 뒤 길이가 0 이면 — NULL 이고, 키를 «견주는» 자리에서�
 ## ③ 확정 — 무엇을 «판단 단위»로 모으는가
 
 ```
-운영에서는 «인리치 규칙»(enrichment_rules.json)에 `source_table`·`derived_table` 과 `decision_key`,
-그리고 채울 `target_fields` 를 적으면 됩니다. 후보를 보여 줄 질의는 `reference_views` 에 적습니다.
+운영에서는 «인리치 규칙»(`chain_rules.json` 의 `derive.decide`)에 `on.table`·`into.table` 과 `decide.key`,
+그리고 채울 `decide.fields` 를 적으면 됩니다. 후보를 보여 줄 질의는 `reference_views` 에 적습니다.
 ```
 ```
 앞     ① 의 `decision_key`(판단 단위는 «표»의 성질이다) · 파생 표를 체인이 쓴다면 ②

@@ -20,6 +20,9 @@ import pytest
 from chain import enrichment
 from chain import enrichment
 from database import crud, models, schemas
+from tests.support.enrich_decl import rewrite_rules, write_rules  # noqa: E402
+from tests.support.enrich_decl import enrich_chain_rules  # noqa: E402
+from chain import enrich_declarations  # noqa: E402
 
 
 def _caps(**overrides):
@@ -108,9 +111,7 @@ def cand_env(db_session, tmp_path, monkeypatch):
     from database.database import Base
     Base.metadata.create_all(bind=db_session.get_bind())
 
-    rules_path = tmp_path / "enrichment_rules.json"
-    rules_path.write_text(json.dumps({"encand_rule": _rule()}), encoding="utf-8")
-    monkeypatch.setattr(enrichment.config, "ENRICHMENT_RULES_PATH", str(rules_path))
+    rules_path = write_rules(tmp_path, monkeypatch, {"encand_rule": _rule()})
 
     settings_path = tmp_path / "ingestion_settings.json"
     settings_path.write_text(json.dumps({}), encoding="utf-8")
@@ -168,7 +169,7 @@ def _seed_raw(db, table, rows):
 
 
 def _loaded_rule(name="encand_rule"):
-    rules = enrichment.config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
+    rules = enrich_declarations.declarations(known_tables=crud.TABLE_CONFIG)
     return next(r for r in rules if r["name"] == name)
 
 
@@ -181,7 +182,7 @@ def _run_chain_for_tx(db, tx_id, trigger_table="encand_test_src"):
     from chain.ingestion_worker import process_chain_transaction_group
     from database.models import DatabaseOutbox
 
-    rules = enrichment.config.load_enrichment_chain_rules(known_tables=crud.TABLE_CONFIG)
+    rules = enrich_chain_rules(known_tables=crud.TABLE_CONFIG)
     assert rules, "enrichment chain rules must be synthesized"
     events = db.query(DatabaseOutbox).filter(
         DatabaseOutbox.table_name == trigger_table,
@@ -429,10 +430,8 @@ def test_global_kill_switch_disables_every_rule(cand_env, tmp_path, monkeypatch)
 
 
 def test_collector_inert_without_declaration(cand_env, tmp_path, monkeypatch):
-    rules_path = tmp_path / "nodecl.json"
-    rules_path.write_text(json.dumps({"encand_rule": _rule(
-        reference_views=[dict(BROAD_VIEW)])}), encoding="utf-8")
-    monkeypatch.setattr(enrichment.config, "ENRICHMENT_RULES_PATH", str(rules_path))
+    rules_path = write_rules(tmp_path, monkeypatch, {"encand_rule": _rule(
+        reference_views=[dict(BROAD_VIEW)])}, filename="nodecl.json")
     assert enrichment.candidates.AutoConfirmCollector("encand_test_derived").active is False
 
 
@@ -507,10 +506,7 @@ def test_chain_path_leaves_ambiguous_key_in_the_queue(cand_env):
 
 
 def test_knob_off_writes_nothing(cand_env, tmp_path, monkeypatch):
-    rules_path = tmp_path / "off.json"
-    rules_path.write_text(json.dumps({"encand_rule": _rule(auto_confirm=False)}),
-                          encoding="utf-8")
-    monkeypatch.setattr(enrichment.config, "ENRICHMENT_RULES_PATH", str(rules_path))
+    rules_path = write_rules(tmp_path, monkeypatch, {"encand_rule": _rule(auto_confirm=False)}, filename="off.json")
     _seed(cand_env, "encand_test_src",
           [{"log_key": "k4", "lot": "L1", "slot": "S1", "chip_id": "C1"}], tx_id="tx_off")
     _run_chain_for_tx(cand_env, "tx_off")
@@ -1141,11 +1137,9 @@ def test_a_bad_candidate_column_does_not_wedge_the_chain_work_unit(cand_env, pg_
     `_run_chain_for_tx` performs exactly that bookkeeping commit, so a wedged
     session fails this test at the commit.
     """
-    rules_path = tmp_path / "badcol.json"
     bad_view = dict(NARROW_VIEW, candidate_for={"wafer_id": "not_a_column"})
-    rules_path.write_text(json.dumps({"encand_rule": _rule(reference_views=[bad_view])}),
-                          encoding="utf-8")
-    monkeypatch.setattr(enrichment.config, "ENRICHMENT_RULES_PATH", str(rules_path))
+    write_rules(tmp_path, monkeypatch, {"encand_rule": _rule(reference_views=[bad_view])},
+                filename="badcol.json")
 
     _seed(cand_env, "encand_test_src",
           [{"log_key": "kb1", "lot": "L1", "slot": "S1", "chip_id": "C1"}], tx_id="tx_badcol")
@@ -1263,9 +1257,9 @@ def _two_target_rule(cand_env, tmp_path, views):
 
     `server/config/` is never touched - a write there reloads three live processes.
     """
-    path = tmp_path / "enrichment_rules.json"
-    path.write_text(json.dumps({"encand_rule": _rule(
-        target_fields=["wafer_id", "owner"], reference_views=views)}), encoding="utf-8")
+    path = tmp_path / "chain_rules.json"
+    rewrite_rules(path, {"encand_rule": _rule(
+        target_fields=["wafer_id", "owner"], reference_views=views)})
     return _loaded_rule()
 
 

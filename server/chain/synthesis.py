@@ -1,12 +1,10 @@
 # -*- coding: utf-8 -*-
-"""What the PRODUCT contributes to the chain: synthesised rules, and the kinds that run them.
+"""What the PRODUCT contributes to a declared join: its unique keys and their approval.
 
-🔴 ONE SYNTHESIS SEAT (판정 304). `load_chain_rules` calls `synthesize_chain_rules` and
-nothing else, and that function calls each half. 판정 292 forbids two synthesisers; putting
-the join half inside `load_enrichment_chain_rules` would have satisfied the letter of that
-while making a function named `enrichment_…` read the virtual-join file — a name that lies is
-a cost paid by whoever next looks for where a declaration becomes a chain rule. Each half
-keeps an honest name and reads its own file; the SEAT is what is singular.
+⚰️ [2026-09-24] THIS MODULE WAS ALSO THE ONE SYNTHESIS SEAT (판정 304) — it turned the flat
+enrich file into chain rules. That file is retired and nothing is synthesised any more, so
+the name `synthesis` now describes what this module USED to do; renaming it touches every
+importer and is its own round.
 
 🔴 ONE TABLE OF `builtin:` KINDS (판정 305). Measured before building: `builtin:auto_confirm`
 appeared exactly twice, both in `enrichment_config`, and NOTHING read it — S-179 declared the
@@ -21,98 +19,16 @@ temporary nobody records is just a drift with a date on it.
 from __future__ import annotations
 
 import logging
-import os
 
 logger = logging.getLogger("Chain.Builtins")
 
 
-#: (half, what stops running - for the LOG, and for the SCREEN). 🔴 IT IS A TABLE AND NOT
-#: TWO `except` BLOCKS because the two halves must be reported the same way: a half that
-#: fails quietly in a different voice is how 「what is not running」 becomes 「nothing is
-#: declared」.
-#:
-#: 🔴 AND BOTH RENDERINGS LIVE HERE, WHICH IS THE POINT (판정 454 ③). This repository writes
-#: logs in English and screens in Korean, so a screen that composed its own sentence would
-#: make one fact have two authors, free to disagree about WHICH half and WHAT stopped - the
-#: door-splitting this round removes. The seat that knows the halves holds both spellings
-#: and each surface takes its own out of here.
-_SYNTHESIS_HALVES = (
-    ("enrichment", "dedup and auto-confirm rules are NOT running",
-     "중복 제거·자동 확정 규칙이 돌지 않습니다"),
-)
-# ⚰️ [판정 652 3걸음] THE SECOND ROW WAS 「virtual join」. 그 문법이 은퇴하면서 그 반쪽이
-#    짓던 규칙이 «0» 이 됐다 — 실조인은 `chain_rules.json` 에 선언되어 로더가 그대로
-#    실으므로 합성될 것이 없다. 표가 둘이었던 이유는 「반쪽이 가끔 다른 낱말로 보고되는 것」을
-#    막기 위해서였고, 반쪽이 하나면 그 위험이 없다. 모양은 남긴다 — 둘째가 생기면
-#    그때 다시 그 자리로 들어오면 된다.
-
-
-def synthesis_half_says(half: str) -> str:
-    """The Korean sentence for what a failed half takes down. One author, two surfaces."""
-    for name, _log, screen in _SYNTHESIS_HALVES:
-        if name == half:
-            return screen
-    return ""
-
-
-def synthesize_chain_rules(known_tables: dict = None, failures: list = None) -> list:
-    """Every chain rule the product derives from a declaration the operator wrote.
-
-    🔴 THE TWO HALVES FAIL SEPARATELY (판정 452 ②). They used to be one expression, so
-    ANYTHING raising in the virtual-join half took the enrichment half down with it - and
-    the caller's `except` logged one line and carried on with NO synthesised rules at all,
-    dedup and auto-confirm included. That mattered when step 4 removed the `virtual_join`
-    package: the import raised, and a single `except` would have made the failure read as
-    「this box declares no enrichment」 rather than 「the join half is gone」.
-
-    ⚠️ A FAILING HALF IS REPORTED, NEVER GUESSED AT. `failures` collects
-    `(half, what stops running, the error)` the way `rejections` does elsewhere in this
-    codebase; a caller that passes nothing still gets whichever half stood, because the
-    alternative - raising - is what made one half able to kill the other.
-
-    ⚠️ THE ENRICHMENT HALF IS UNCHANGED, BYTE FOR BYTE, and it still runs FIRST. This seat
-    only moved its CALL; a test compares the list before against after, because a move that
-    quietly reorders or drops a rule would be invisible until a chain stopped firing.
-    """
-    def _enrichment():
-        from chain import enrichment
-        return enrichment.config.load_enrichment_chain_rules(known_tables=known_tables)
-
-    rules = []
-    for (half, stops, says), produce in zip(_SYNTHESIS_HALVES, (_enrichment,)):
-        try:
-            rules.extend(produce() or ())
-        except Exception as exc:                                   # noqa: BLE001
-            logger.error("[ChainRules] the %s half of synthesis failed, so %s: %s",
-                         half, stops, exc)
-            if failures is not None:
-                failures.append({"half": half, "stops": stops, "says": says,
-                                 "error": str(exc)})
-    return rules
-
-
-def written_in(rule) -> str:
-    """The file a rule THIS SEAT produced was written in, by basename (S-234 ①).
-
-    🔴 FOR THE LOADER'S ONE-NAMESPACE REFUSAL: a name claimed twice is named with the files
-    to look in. The join half emits `JOIN_MAPPER` and nothing else out of this seat does, so
-    that one cell separates the two files.
-
-    ⚠️ ONLY FOR RULES THAT CAME OUT OF `synthesize_chain_rules`. The loader tags what it read
-    from `chain_rules.json` by position, never through here — a unified `decide` written in
-    that file also carries `origin: synthesized:` and would otherwise be misfiled.
-
-    🪦 `synthesized_kind_counts` sat here for the 「Synthesized N (a dedup · b auto-confirm ·
-    c join)」 boot line. That line folded into the loader's set line, which names every rule
-    with its origin and kind, so a count of kinds had no reader left.
-    """
-    from chain import enrichment
-
-    # ⚰️ [판정 652 3걸음] 이 질문은 반쪽이 «둘»일 때 갈렸다 — `JOIN_MAPPER` 를 달면
-    #    `virtual_join_rules.json`, 아니면 인리치 파일. 그 문법이 은퇴해 합성되는 것이
-    #    한 반쪽뿐이라 답도 하나다. 자리는 남긴다 — 이름 중복 거절이 「어느 파일을
-    #    열어라」를 말하려면 여전히 이 답이 필요하고, 반쪽이 둘로 다시 늘면 여기에 심는다.
-    return os.path.basename(enrichment.config.ENRICHMENT_RULES_PATH)
+# ⚰️ [소유자 2026-09-23 「enrich.json 아예 삭제」 · 2026-09-24 착지] THE SYNTHESIS SEAT STOOD
+#    HERE — `_SYNTHESIS_HALVES` · `synthesis_half_says` · `synthesize_chain_rules` · `written_in`.
+#    It turned `enrichment_rules.json` into chain rules at load. With that file retired, its
+#    one remaining half produced nothing on every call: an always-empty seat is a door that
+#    looks open. An enrich declaration now stands in `chain_rules.json` like any rule, and
+#    the loader carries it with no synthesis step.
 
 
 # ---------------------------------------------------------------------------

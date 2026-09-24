@@ -67,12 +67,15 @@ def _table_config(decision_key, target_fields):
     }
 
 
-def _rule_json(spec):
+def _declaration(name, spec):
     """A contract case declares views by their BINDS; the loader needs real SQL.
 
     `required_binds` is derived from the query text by the loader itself, so writing the
     SQL here (rather than asserting on a hand-written binds list) means the contract is
     scored against the same derivation production uses.
+
+    ⚰️ [2026-09-24] Written as one `derive.decide` declaration for `chain_rules.json`. The
+    flat `enrichment_rules.json` this used to write is retired and read by nothing.
     """
     decision_key = spec["decision_key"]
     views = []
@@ -84,16 +87,15 @@ def _rule_json(spec):
         if v.get("candidate_for"):
             view["candidate_for"] = dict(v["candidate_for"])
         views.append(view)
-    rule = {
-        "source_table": SRC_TABLE,
-        "derived_table": DERIVED_TABLE,
-        "decision_key": list(decision_key),
-        "target_fields": list(spec["target_fields"]),
+    decide = {
+        "key": list(decision_key),
+        "fields": list(spec["target_fields"]),
         "reference_views": views,
     }
     if "auto_confirm" in spec:
-        rule["auto_confirm"] = spec["auto_confirm"]
-    return rule
+        decide["auto_confirm"] = spec["auto_confirm"]
+    return {"name": name, "on": {"table": SRC_TABLE}, "into": {"table": DERIVED_TABLE},
+            "derive": {"kind": "decide", "decide": decide}}
 
 
 @pytest.fixture()
@@ -108,23 +110,17 @@ def report_env(tmp_path, monkeypatch):
         crud.TABLE_CONFIG.clear()
         crud.TABLE_CONFIG.update(cfg)
 
-        rules_path = tmp_path / "enrichment_rules.json"
+        # ⚰️ [2026-09-24] 인리치 선언의 파일은 «하나» — chain_rules.json. 이 칸은 평면 파일과
+        #    빈 통합 문서를 «둘 다» 격리했었다. 이 박스의 설정이 계약의 입력이 안 되게 막는 것은
+        #    그대로다: 경로를 임시 파일로 돌린다.
+        rules_path = tmp_path / "chain_rules.json"
         if rules_file_exists:
             if rules_text is not None:
                 rules_path.write_text(rules_text, encoding="utf-8")
             else:
-                rules_path.write_text(
-                    json.dumps({n: _rule_json(s) for n, s in (rules or {}).items()}),
-                    encoding="utf-8")
-        monkeypatch.setattr(enrichment.config, "ENRICHMENT_RULES_PATH", str(rules_path))
-        # 🔴 [판정 636] 인리치 선언은 «두 파일»에 적힐 수 있고, 보고는 이제 둘 다
-        #    셉니다. 평면 쪽만 격리하면 «이 박스»의 chain_rules.json 이 이 계약의
-        #    둘째 입력이 되어, 여기서 잰 수가 이 상자의 설정에 달리게 됩니다
-        #    (실측: 거절 하나를 기대한 자리에서 둘이 나왔습니다).
-        #    축은 «하나»여야 하므로 통합 쪽도 빈 문서로 고정합니다.
-        chain_rules_path = tmp_path / "chain_rules.json"
-        chain_rules_path.write_text('{"rules": []}', encoding="utf-8")
-        monkeypatch.setattr(chain_worker, "RULES_PATH", str(chain_rules_path))
+                rules_path.write_text(json.dumps({"rules": [
+                    _declaration(n, s) for n, s in (rules or {}).items()]}), encoding="utf-8")
+        monkeypatch.setattr(chain_worker, "RULES_PATH", str(rules_path))
 
         settings_path = tmp_path / "ingestion_settings.json"
         if settings_file_exists:
@@ -272,7 +268,7 @@ def test_entry_refuses_a_word_outside_the_vocabulary():
 def catalog_env(monkeypatch):
     """A catalogue bundle in, the `catalog` domain out. 🔴 ITS OWN BUILDER (S-180 ⓐ-1).
 
-    An enrichment case writes `enrichment_rules.json` and a catalogue case declares tables;
+    An enrichment case writes `chain_rules.json` and a catalogue case declares tables;
     one builder serving both would have to branch on the domain, and the branch nobody takes
     is the one that rots. The domain comes back BY NAME, never by position.
     """
@@ -650,13 +646,16 @@ def test_live_config_is_still_the_state_this_round_measured():
     fails loudly and the `live_production_state_2026_07_30` vector gets revisited
     deliberately instead of quietly describing a state that no longer exists.
     """
-    path = enrichment.config.ENRICHMENT_RULES_PATH
+    from chain import enrich_declarations
+
+    # ⚰️ [2026-09-24] The live premise is read where the declarations live now - the one
+    #    seat over `chain_rules.json`. It read the retired flat file.
+    path = chain_worker.RULES_PATH
     if not os.path.exists(path):
-        pytest.skip(f"no live enrichment_rules.json at {path}")
-    raw = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+        pytest.skip(f"no live chain_rules.json at {path}")
     declared = [
-        (name, v.get("label"))
-        for name, rule in raw.items() if isinstance(rule, dict)
+        (rule["name"], v.get("label"))
+        for rule in enrich_declarations.declarations(known_tables=crud.TABLE_CONFIG)
         for v in (rule.get("reference_views") or []) if isinstance(v, dict)
         if v.get("candidate_for")
     ]

@@ -1,5 +1,9 @@
 # `enrichment_rules.json` 세팅 — 결손 보정 워크리스트 규칙
 
+> ⚰️ **[2026-09-24] 이 «파일»은 은퇴했습니다** (소유자 「enrich.json 아예 삭제라운드 만들어」 — 파일이 둘이면 문이 둘이었습니다). 제품은 `server/config/enrichment_rules.json` 을 더 이상 «어디서도» 읽지 않고, 다시 놓아도 아무 일도 안 일어납니다.
+> **칸들은 그대로 삽니다** — `chain_rules.json` 의 `derive: {kind: "decide", decide: {...}}` 안에서. 이름이 다른 것은 둘뿐입니다: `decision_key` -> `decide.key`, `target_fields` -> `decide.fields`. 원본·파생 표는 `on.table` · `into.table`, `enabled` 는 선언의 최상위. 나머지(`list_columns` · `aggregations` · `reference_views` · `candidate_for` · `auto_confirm` · `alignment`)는 «같은 이름»으로 `decide` 안에 적습니다. 키 표는 [chain_rules §5-B-bis](./chain_rules.md).
+> 아래 본문은 «칸의 뜻»으로 읽으십시오 — `enrichment_rules.json` 이라고 적힌 곳은 «그 규칙의 `derive.decide` 블록»입니다. 이 페이지를 `chain_rules` 쪽으로 옮기는 재작성은 문서 정비 몫으로 넘겼습니다.
+
 > **Status:** 🟢 Living | **Last-verified:** 2026-09-16 «후속» (⚰️ **§6-bis `claim_contract` 에 은퇴 표지 + 후계 표** — 이 문서가 그것을 「선택 계약」으로 «현재형»으로 가르치고 있었고, 그 칸은 S-184·판정 295 로 은퇴해 오늘 «삼켜진다». §6 키 표의 그 행도 같이 고쳤다. §7 `candidate_for`·`auto_confirm` 은 **살아 있고 안 건드렸다**) · 직전 2026-09-16 (§4 반영 확인 — 파생 확인 줄은 `[ChainRules] set(N)` 하나, S-234) · 직전 2026-08-06 (§7.3-bis의 `curl` 포트를 **8000 → 8080**으로 정정 — `:8000`은 `uvicorn`을 직접 쳤을 때의 기본값이라 복사해 붙인 운영자가 「연결 거부」를 자기 선언 문제로 읽습니다. 모집단 목록 옆의 **수를 지웠습니다**. 🔴 **`alignment` 키를 어느 규칙에 붙이는가의 체크리스트는 [CONFIG_GUIDE §3 S9](../CONFIG_GUIDE.md)에 생겼습니다** — 이 저장소의 현재 선언이 어긋나 있다는 실측도 그쪽에 있습니다) | **Owner:** 총괄
 > 
 > ### 이번 라운드 (2026-07-31)
@@ -9,7 +13,9 @@
 > 상위: [폴더 인덱스](./README.md) · 스펙 정본은 [ENRICHMENT_QUEUE_SPEC](../../spec/ENRICHMENT_QUEUE_SPEC.md) · 절차 요약은 [CONFIG_GUIDE §3-S7](../CONFIG_GUIDE.md)
 
 <!-- Loader evidence (2026-07-28):
-  load/validate: server/chain/enrichment/config.py:250 load_enrichment_rules (missing -> []),
+  ⚰️ 2026-09-24: the flat loader below (load_enrichment_rules, missing -> []) and its file are RETIRED.
+  The validator `_validate_rule` survives and is reached through rule_shape -> chain_rules_from_cells.
+  load/validate (as of 2026-07-28): server/chain/enrichment/config.py:250 load_enrichment_rules (missing -> []),
     :231 validate (root must be object), key schema docstring :11-32,
     table registration check :179-182, key contract (composite_key_source subset / business_key in decision_key) :30-32
   decision_key contract (re-measured 2026-07-28):
@@ -24,7 +30,7 @@
   ontology promotion: server/ontology_config.py:218 (RESOLVED_AS)
   web query API per-request: server/main.py:3442
   query_ref dir: enrichment/config.py:43 config/enrichment_queries/<ref>.sql (dir absent by default)
-  worked example source: server/config/sample/enrichment_rules.json.sample (bonding_wafer_attribution)
+  worked example source: server/config/sample/enrichment_rules.json.sample (⚰️ deleted 2026-09-24 with the file)
 -->
 
 ## 1. 언제 이 파일을 만지는가
@@ -83,7 +89,7 @@
 
 1. **스냅샷**: `conda run -n assy_manager python server/scripts/backup_config.py snapshot`
 2. **전제 확인**: `source_table`·`derived_table` 모두 `table_config.json`에 선언돼 있어야 하고, `decision_key`·키 계약은 **§2** 를 만족해야 합니다(위반 시 그 규칙만 조용히 스킵).
-3. 파일이 없으면 `enrichment_rules.json.sample` 복사. 루트는 `{규칙명: 규칙}` 객체. 규칙 추가:
+3. ⚰️ **2026-09-24 부터**: `chain_rules.json` 의 `rules` 목록에 `derive: {kind: "decide"}` 선언 하나로 적습니다 ([chain_rules §5-B-bis](./chain_rules.md)). 샘플 파일은 은퇴와 함께 지웠습니다. 아래 JSON 은 «칸의 뜻»을 보이는 옛 평면 철자입니다 — `decision_key`·`target_fields` 는 `decide.key`·`decide.fields` 로:
 
    ```json
    "core_wafer_attribution": {

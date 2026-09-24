@@ -20,6 +20,7 @@ import pytest
 import map_alignment as ma
 import map_overlay
 from database import crud, models
+from chain import enrich_declarations  # noqa: E402
 
 # Test table names carry a prefix that cannot exist in the operator's gitignored
 # `config/table_config.json`. A collision there makes `init_dynamic_models` win the
@@ -774,7 +775,7 @@ def test_the_undeclared_target_to_column_mapping_is_reported_not_resolved(env):
 
 def _rules_patch(monkeypatch):
     from chain import enrichment
-    monkeypatch.setattr(enrichment.config, "load_enrichment_rules",
+    monkeypatch.setattr(enrich_declarations, "declarations",
                         lambda *a, **k: [dict(RULE)])
 
 

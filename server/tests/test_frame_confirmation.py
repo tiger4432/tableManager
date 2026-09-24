@@ -8,6 +8,7 @@ import pytest
 
 from maps import frame_confirmation as fc
 from database import models
+from chain import enrich_declarations  # noqa: E402
 
 # The unit is whatever the enrichment rule declares. These tests carry a miniature
 # declaration rather than a column name, for the same reason the production code does not
@@ -419,7 +420,7 @@ def declared_rule(monkeypatch):
     Serving the declaration from the fixture keeps these tests about the ROUTE - its
     validation, its refusals, its response - rather than about one site's config file."""
     from chain import enrichment
-    monkeypatch.setattr(enrichment.config, "load_enrichment_rules",
+    monkeypatch.setattr(enrich_declarations, "declarations",
                         lambda **kw: [RULE])
     return RULE
 
@@ -477,7 +478,7 @@ def other_declared_rule(monkeypatch):
     """The rule whose target fields are not the two storage columns - the defect axis, served
     through the route rather than only the module."""
     from chain import enrichment
-    monkeypatch.setattr(enrichment.config, "load_enrichment_rules",
+    monkeypatch.setattr(enrich_declarations, "declarations",
                         lambda **kw: [RULE, OTHER_RULE])
     return OTHER_RULE
 

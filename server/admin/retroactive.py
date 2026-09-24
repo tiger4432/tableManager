@@ -792,7 +792,7 @@ OPERATIONS = {
     "enrichment_backfill": {
         "label": "Create enrichment derived rows",
         "what_is_missing": "the derived rows were never created at all",
-        "params": [_p("rule", help="enrichment rule name (enrichment_rules.json)")],
+        "params": [_p("rule", help="enrichment rule name (chain_rules.json)")],
         "count": _count_enrichment_backfill,
         "run": _run_enrichment_backfill,
         "cli": "server/scripts/backfill_enrichment.py <rule> --apply",
@@ -807,7 +807,7 @@ OPERATIONS = {
     "enrichment_confirm": {
         "label": "Auto-confirm single candidates",
         "what_is_missing": "the derived rows exist but the target cell is empty",
-        "params": [_p("rule", help="enrichment rule name (enrichment_rules.json)")],
+        "params": [_p("rule", help="enrichment rule name (chain_rules.json)")],
         "count": _count_enrichment_confirm,
         "run": _run_enrichment_confirm,
         "cli": "server/scripts/enrichment_insights.py confirm <rule> --apply",

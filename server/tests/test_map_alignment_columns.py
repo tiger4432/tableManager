@@ -19,6 +19,7 @@ import pytest
 import map_alignment as ma
 import map_overlay
 from database import crud, models
+from chain import enrich_declarations  # noqa: E402
 
 SRC = "colsel_test_log"
 MAPT = "colsel_test_map"
@@ -490,7 +491,7 @@ def test_the_worklist_no_longer_calls_the_binding_a_pin(env):
 def _patch(monkeypatch):
     from chain import enrichment
     import main
-    monkeypatch.setattr(enrichment.config, "load_enrichment_rules",
+    monkeypatch.setattr(enrich_declarations, "declarations",
                         lambda *a, **k: [dict(RULE)])
     monkeypatch.setattr(main.map_overlay_module, "load_overlay_config",
                         lambda *a, **k: dict(CFG))

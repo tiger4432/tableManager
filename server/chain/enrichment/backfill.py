@@ -58,8 +58,6 @@ Safety / provenance invariants:
   chain-worker write is tagged source_name="chain_ingestion" and filtered by
   the worker's loop guard.
 """
-import json
-import os
 import uuid
 
 SOURCE_NAME = "enrichment_backfill"
@@ -79,48 +77,43 @@ class BackfillRefused(Exception):
 
 
 def load_rule(rule_name: str, known_tables: dict, force_disabled: bool = False) -> dict:
-    """Load and validate ONE rule via the real loader (enrichment_config).
+    """ONE enrich declaration, from the one seat that stands them - or a refusal WITH ITS REASON.
 
-    Uses `enrichment_config._validate_rule` deliberately: the public
-    `validate_enrichment_rules` swallows rejection reasons into log warnings,
-    while this path must fail loudly WITH the loader's reason.
+    🔴 [소유자 2026-09-23 「enrich.json 아예 삭제」] THIS OPENED `enrichment_rules.json` BY PATH
+    and looked nowhere else, while the dry-run count beside it (`_enrichment_rule`) asked
+    `enrich_declarations`. Measured 2026-09-24 on the owner's box: the flat file was absent,
+    so a unified rule the preview SHOWED was one the run REFUSED as 「file not found」 - two
+    doors for one question. Both now ask the same seat.
+
+    The three refusals stay three, because each tells the operator a different next step:
+    not declared (here is what is), switched off (here is the flag), refused by the loader
+    (here is its reason). 「File not found」 is gone with the file.
     """
-    from chain import enrichment
+    from chain import enrich_declarations
 
-    path = enrichment.config.ENRICHMENT_RULES_PATH
-    if not os.path.exists(path):
-        raise BackfillRefused(f"enrichment rules file not found: {path}")
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            raw_config = json.load(f)
-    except Exception as e:
-        raise BackfillRefused(f"failed to parse {path}: {e}")
-    if not isinstance(raw_config, dict):
-        raise BackfillRefused(f"{path} must be an object {{rule_name: rule}}")
-    if rule_name not in raw_config:
-        available = ", ".join(sorted(raw_config.keys())) or "<none>"
-        raise BackfillRefused(
-            f"rule '{rule_name}' not found in {path}; available rules: {available}"
-        )
+    rejections = []
+    rule = enrich_declarations.find(rule_name, known_tables=known_tables,
+                                    rejections=rejections,
+                                    include_disabled=force_disabled)
+    if rule is not None:
+        return rule
 
-    raw = raw_config[rule_name]
-    disabled = isinstance(raw, dict) and raw.get("enabled", True) is False
-    if disabled and not force_disabled:
+    refused = [r.get("detail") for r in rejections
+               if r.get("scope") == "rule" and r.get("subject") == rule_name]
+    if refused:
+        raise BackfillRefused(f"rule '{rule_name}' rejected by the loader: {refused[0]}")
+    if not force_disabled and enrich_declarations.find(
+            rule_name, known_tables=known_tables, include_disabled=True) is not None:
         raise BackfillRefused(
             f"rule '{rule_name}' is disabled (\"enabled\": false). "
             f"Pass --force-disabled to backfill a disabled rule anyway."
         )
-    if disabled:
-        # The loader silently drops disabled rules ((None, None)); the operator
-        # explicitly forced this run, so validate it as if it were enabled.
-        raw = {**raw, "enabled": True}
-
-    normalized, err = enrichment.config._validate_rule(rule_name, raw, known_tables)
-    if err is not None:
-        raise BackfillRefused(f"rule '{rule_name}' rejected by the loader: {err}")
-    if normalized is None:
-        raise BackfillRefused(f"rule '{rule_name}' was not accepted by the loader")
-    return normalized
+    available = ", ".join(sorted(
+        r["name"] for r in enrich_declarations.declarations(known_tables=known_tables)))         or "<none>"
+    raise BackfillRefused(
+        f"rule '{rule_name}' is not declared in chain_rules.json; "
+        f"available rules: {available}"
+    )
 
 
 def _load_existing_business_keys(db, derived_model) -> set:

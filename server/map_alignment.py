@@ -8,7 +8,7 @@
 같은 설비·제품인데 웨이퍼끼리 선언이 어긋난다(실측: 한 단위 안에서 dt_map 메타가 네 프레임으로
 갈린다). 그래서 맵 하나를 보고 정하면 같은 단위의 다른 맵이 그 결정을 부정한다. 단위 전체의
 셀을 **하나의 바닥에 모아** 채점한다 — 스펙 §0.2 ⑥의 「쌍으로 만들지 말고 공통 공간에 올려라」가
-이 뜻이다. 단위 선언의 정본은 `enrichment_rules.json`의 `eqp_product_frame_attribution`이며
+이 뜻이다. 단위 선언의 정본은 인리치 선언(`chain_rules.json` 의 `derive.decide`) `eqp_product_frame_attribution`이며
 `decision_key`가 곧 이 단위다(여기에 컬럼명을 하드코딩하지 않는다).
 
 [🔴 전제 — 후보마다 메타를 통째로 만든다]

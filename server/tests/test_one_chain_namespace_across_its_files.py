@@ -1,11 +1,14 @@
 # -*- coding: utf-8 -*-
-"""S-234 ①②③ (판정 408 · 409). Three rule files, one namespace, one off switch, one boot line.
+"""S-234 ①②③ (판정 408 · 409). One rule file, one namespace, one off switch, one boot line.
 
-🔴 THE THREE FILES ARE THREE WAYS OF WRITING A CHAIN RULE. `chain_rules.json` (flat and
-unified), `enrichment_rules.json` and `virtual_join_rules.json` all end in the same loaded
-set, so their names are ONE set. A name that appears twice is refused BY NAME, ONCE, at the
-one seat that sees the whole set - not per file. Two per-file checkers were the evidence of
-two namespaces, and they are gone.
+🔴 EVERY CHAIN RULE IS WRITTEN IN `chain_rules.json` - flat or unified, join or decide - and a
+name that appears twice in the loaded set is refused BY NAME, ONCE, at the one seat that sees
+the whole set. A `derive.decide` stands as TWO rules (`enrichment_dedup:` · `enrichment_auto_
+confirm:`), so a hand-written rule can still collide with a decide half inside the one file.
+
+⚰️ [2026-09-24] 「THREE FILES, ONE NAMESPACE」 was this file's first sentence: `enrichment_
+rules.json` and (before 652) `virtual_join_rules.json` were other ways of writing a chain rule.
+Both retired; the namespace was always one, and now the file is too.
 
 🪦 THE PROCESS SWITCH FOR 「THE DERIVED RULES」 IS GONE (판정 408). Its subject - rules the
 product derived, that the operator could not see - no longer exists: the set line names every
@@ -37,6 +40,7 @@ if server_dir not in sys.path:
     sys.path.insert(0, server_dir)
 
 from chain import ingestion_worker as worker                          # noqa: E402
+from tests.support.enrich_decl import as_declaration  # noqa: E402
 
 SRC, DST = "s234_src", "s234_dst"
 TABLE = {"business_key": "lot",
@@ -73,13 +77,14 @@ def load(tmp_path, monkeypatch):
     # ⚰️ [판정 652 3걸음] 셋째 인자 `virtual_join_rules` 와 그 파일이 여기 있었다. 그 문법이
     #    걷혀 이름을 «주장할 수 있는» 파일이 둘이다 — 심판(`_refuse_names_claimed_twice`)은
     #    한 자리 그대로이고, 모집단만 줄었다.
-    def run(chain_rules, enrichment_rules, caplog):
-        for name, body in (("chain_rules.json", {"rules": chain_rules}),
-                           ("enrichment_rules.json", enrichment_rules)):
-            (tmp_path / name).write_text(json.dumps(body), encoding="utf-8")
+    # ⚰️ [2026-09-24, 소유자 「enrich.json 아예 삭제」] 둘째 인자 `enrichment_rules` 와 그
+    #    파일이 여기 있었다. 인리치 선언도 이제 `chain_rules.json` 의 `derive.decide` 이고,
+    #    그 두 반쪽은 로더가 «펼쳐서» 같은 이름으로 세운다 — 이름공간은 처음부터 하나였고,
+    #    이제 파일도 하나다.
+    def run(chain_rules, caplog):
+        (tmp_path / "chain_rules.json").write_text(
+            json.dumps({"rules": chain_rules}), encoding="utf-8")
         monkeypatch.setattr(worker, "RULES_PATH", str(tmp_path / "chain_rules.json"))
-        monkeypatch.setattr(ec, "ENRICHMENT_RULES_PATH",
-                            str(tmp_path / "enrichment_rules.json"))
         caplog.clear()
         with caplog.at_level(logging.DEBUG):
             rules = worker.load_chain_rules()
@@ -99,7 +104,7 @@ def test_a_clean_set_stands_whole_and_prints_one_set_line(load, caplog):
     pass that test and refuse every deployment. And the boot line is ONE line - the old
     「Synthesized N」 tally is folded into the set line, which names every rule with where it
     came from."""
-    names, lines = load([FLAT, UNIFIED], {"s234_enrich": ENRICH}, caplog)
+    names, lines = load([FLAT, UNIFIED, as_declaration("s234_enrich", ENRICH)], caplog)
 
     # ⚰️ [소유자 정본] THE JOIN MOVED TO THE FRONT, and that is the ordering telling
     #   the truth. `rule_order` skipped a producer that carried `follow_up` - 「not on the
@@ -123,13 +128,18 @@ def test_a_clean_set_stands_whole_and_prints_one_set_line(load, caplog):
 # ① one namespace - a name claimed twice is refused by name, once, naming both files
 # ---------------------------------------------------------------------------
 
-def test_a_name_written_in_two_files_is_refused_once_naming_both_files(load, caplog):
+def test_a_written_rule_that_takes_a_decide_halfs_name_is_refused_once(load, caplog):
     """🔴 NEITHER COPY RUNS. Which of the two the operator meant is not a thing this product
-    can know; keeping one would be resolving, and the old checkers' 「drop the synthesised
-    half」 was exactly that. The line is `operator_line`-shaped: what happened, both files,
-    and the next action."""
+    can know; keeping one would be resolving. The line is `operator_line`-shaped: what
+    happened, where, and the next action.
+
+    ⚰️ [2026-09-24] This was 「a name written in TWO FILES」 - a flat enrich rule's synthesised
+    half against a rule in `chain_rules.json`. The flat file is retired, and the same
+    collision now happens inside ONE file: the loader stands a `derive.decide` as two rules
+    named `enrichment_dedup:<name>` / `enrichment_auto_confirm:<name>`, and a hand-written
+    rule can still take one of those names."""
     twin = dict(FLAT, name="enrichment_dedup:s234_enrich")
-    names, lines = load([twin, UNIFIED], {"s234_enrich": ENRICH}, caplog)
+    names, lines = load([twin, UNIFIED, as_declaration("s234_enrich", ENRICH)], caplog)
 
     assert "enrichment_dedup:s234_enrich" not in names
     # ⚰️ [소유자 정본] same reordering as above: the materialised join is a
@@ -139,8 +149,9 @@ def test_a_name_written_in_two_files_is_refused_once_naming_both_files(load, cap
     refusals = [line for line in lines
                 if line.startswith("[ChainRules:enrichment_dedup:s234_enrich]")]
     assert len(refusals) == 1, lines
-    assert "chain_rules.json" in refusals[0] and "enrichment_rules.json" in refusals[0]
-    assert "→ 다음: 두 파일 중 하나에서 이름을 바꾸십시오" in refusals[0]
+    assert "2 번" in refusals[0] and "chain_rules.json" in refusals[0]
+    assert "enrichment_rules.json" not in refusals[0], "the line names a retired file"
+    assert "→ 다음: chain_rules.json 에서 한쪽 선언의 이름을 바꾸십시오" in refusals[0]
     # and the census says it is among what is NOT running, beside what is
     refused = [line for line in lines if line.startswith("[ChainRules] refused(")]
     assert refused == ["[ChainRules] refused(1): enrichment_dedup:s234_enrich(name_claimed_twice)"]
@@ -156,7 +167,7 @@ def test_a_name_written_twice_in_one_file_is_refused_rather_than_halved(load, ca
     """⚠️ THE SILENT CASE. `rule_order` keys its walk by name, so before this seat a second
     copy in `chain_rules.json` was kept-and-dropped without a word - one of the five zeros
     that render identically. Now it is named, and the line points at the one file."""
-    names, lines = load([FLAT, dict(UNIFIED, name="s234_flat")], {}, caplog)
+    names, lines = load([FLAT, dict(UNIFIED, name="s234_flat")], caplog)
 
     assert names == []
     refusals = [line for line in lines if line.startswith("[ChainRules:s234_flat]")]
@@ -179,7 +190,7 @@ def test_a_switched_off_twin_does_not_take_the_live_rule_down_with_it(load, capl
     ⚠️ AND IT IS NOT A SILENT WIN: the off copy is still in the loaded set, reported OFF,
     because 「이 이름은 꺼져 있다」 and 「이 이름은 없다」 are different answers."""
     off_twin = dict(FLAT, name="enrichment_dedup:s234_enrich", enabled=False)
-    names, lines = load([off_twin, UNIFIED], {"s234_enrich": ENRICH}, caplog)
+    names, lines = load([off_twin, UNIFIED, as_declaration("s234_enrich", ENRICH)], caplog)
 
     assert "enrichment_dedup:s234_enrich" in names, (
         "the live rule was dropped by a twin that cannot fire")
@@ -196,7 +207,7 @@ def test_two_switched_off_copies_refuse_nothing_and_run_nothing(load, caplog):
     no question about which was meant, because neither was. Refusing them would put a line in
     front of an operator who has nothing to fix."""
     off = dict(FLAT, enabled=False)
-    names, lines = load([off, dict(UNIFIED, name="s234_flat", enabled=False)], {}, caplog)
+    names, lines = load([off, dict(UNIFIED, name="s234_flat", enabled=False)], caplog)
 
     assert not [line for line in lines if line.startswith("[ChainRules] refused(")], lines
     assert not [line for line in lines if line.startswith("[ChainRules:s234_flat]")], lines

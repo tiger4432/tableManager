@@ -37,7 +37,7 @@ AUTH="X-Admin-Token: $ASSY_ADMIN_TOKEN"
        │
        ├─② map_overlay_config.json   맵 좌표 컬럼 바인딩
        ├─③ chain_rules.json          쓰기 → 쓰기 투영
-       ├─④ enrichment_rules.json     사람이 판정할 워크리스트
+       ├─④ chain_rules.json 의 derive.decide   사람이 판정할 워크리스트 (⚰️ enrichment_rules.json 은퇴 2026-09-24)
        └─⑤ virtual_join_rules.json   저장하지 않는 조인   (⑤는 오른쪽 테이블의 UNIQUE 인덱스가 먼저)
 ```
 
@@ -64,7 +64,7 @@ AUTH="X-Admin-Token: $ASSY_ADMIN_TOKEN"
 |---|---|---|
 | `table_config.json` | ❌ 두지 마십시오 (최상위 항목은 테이블 선언으로 읽힙니다) | ✅ `__comment` (읽히지 않는 키는 무시됩니다) |
 | `chain_rules.json` | ✅ `__comment` (로더는 `rules`만 읽습니다) | ✅ `__comment` |
-| `enrichment_rules.json` | 🔴 **없습니다.** 최상위 `__comment`는 `rule must be an object`로 **거부**됩니다 | ✅ `__comment` |
+| ~~`enrichment_rules.json`~~ | ⚰️ 2026-09-24 은퇴 — 인리치 선언은 `chain_rules.json` 안입니다 | ✅ `__comment` |
 | `virtual_join_rules.json` | ✅ **`_`로 시작하는 이름**은 선언이 아니라 주석으로 건너뜁니다 | ― |
 | `map_overlay_config.json` | ✅ 읽지 않는 키는 무시됩니다 | ✅ `table_bindings` 조회는 테이블 이름으로만 하므로 `__derived_note` 같은 키가 섞여도 무해합니다 |
 
@@ -206,31 +206,51 @@ curl -s -H "$AUTH" "$API/admin/mappers/list"
 
 ---
 
-### ④ `enrichment_rules.json` ― 사람이 판정할 워크리스트
+### ④ `chain_rules.json` 의 `derive.decide` ― 사람이 판정할 워크리스트
 
-**무엇을 선언하나:** 「`source_table`을 `decision_key`로 묶어 `derived_table`에 한 행씩 만들고, 그 행의 `target_fields`가 빌 동안 큐에 둔다」.
+**무엇을 선언하나:** 「`on.table` 을 `decide.key` 로 묶어 `into.table` 에 한 행씩 만들고, 그 행의 `decide.fields` 가 빌 동안 큐에 둔다」.
 
 **최소 선언**
 
 ```json
+// server/config/chain_rules.json 의 "rules" 목록 한 항목 (⚰️ 2026-09-24 전에는 enrichment_rules.json 의 {이름: 규칙})
 {
-  "dt_job_lot_slot_attribution": {
-    "source_table": "dt_log",
-    "derived_table": "dt_job_attribution",
-    "decision_key": ["dt_job"],
-    "target_fields": ["dt_lot_confirmed", "dt_slot_confirmed"],
-    "list_columns": ["cell_count"],
-    "aggregations": { "cell_count": "count" },
-    "enabled": true,
-    "auto_confirm": true,
-    "reference_views": [
-      {
-        "label": "설비 track-in이 말하는 DT 랏",
-        "query": "SELECT DISTINCT le.lot AS dt_lot FROM lot_event le WHERE le.event_type = 'track_in' AND le.equipment = :dt_job",
-        "limit": 50,
-        "candidate_for": { "dt_lot_confirmed": "dt_lot" }
-      }
-    ]
+  "name": "dt_job_lot_slot_attribution",
+  "on": {
+    "table": "dt_log"
+  },
+  "into": {
+    "table": "dt_job_attribution"
+  },
+  "enabled": true,
+  "derive": {
+    "kind": "decide",
+    "decide": {
+      "key": [
+        "dt_job"
+      ],
+      "fields": [
+        "dt_lot_confirmed",
+        "dt_slot_confirmed"
+      ],
+      "list_columns": [
+        "cell_count"
+      ],
+      "aggregations": {
+        "cell_count": "count"
+      },
+      "auto_confirm": true,
+      "reference_views": [
+        {
+          "label": "설비 track-in이 말하는 DT 랏",
+          "query": "SELECT DISTINCT le.lot AS dt_lot FROM lot_event le WHERE le.event_type = 'track_in' AND le.equipment = :dt_job",
+          "limit": 50,
+          "candidate_for": {
+            "dt_lot_confirmed": "dt_lot"
+          }
+        }
+      ]
+    }
   }
 }
 ```
@@ -372,7 +392,7 @@ SELECT column_name FROM information_schema.columns WHERE table_name = '<t>';
 |---|---|
 | `map_overlay_config.json` | 해당 맵이 「해석할 수 없음」으로 명시 실패 |
 | ⚰️ `virtual_join_rules.json` | 🔴 **[652 3걸음] 아무 데도 안 뜹니다 — 이 파일을 «아무도 안 읽습니다».** 전에는 거부라도 났지만 지금은 «조용히 없는 것»이 됩니다. 그래서 이 줄은 위의 `bonding_plan_config.json` 과 «같은 부류»로 내려왔습니다: 사람이 열어 보는 것 말고 방법이 없습니다. 세는 한 줄은 `RUN.md` 머리에 있습니다 |
-| `enrichment_rules.json` · `chain_rules.json` | 규칙이 빠집니다(§4.1의 모양) |
+| `chain_rules.json` (인리치 `derive.decide` 포함) | 규칙이 빠집니다(§4.1의 모양) |
 | 🔴 `bonding_plan_config.json` · `transfer_plan_config.json` | **아무 데도 안 뜹니다.** 이 둘의 테이블 참조를 **검증하는 코드가 없습니다** ― `load_config`가 실패 시 빈 dict를 돌려주고 그것이 「부분 가동, 에러 아님」으로 문서화돼 있습니다. 매달린 참조는 **에러가 아니라 반쯤 작동하는 화면**을 만듭니다 |
 
 **그래서 순서는 「지우기 전에 감사」입니다.** 앞의 셋은 라우트나 로그가 말해 주지만, **마지막 줄은 사람이 열어 보는 것 말고 방법이 없습니다.**

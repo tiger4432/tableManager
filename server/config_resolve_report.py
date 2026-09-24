@@ -56,7 +56,6 @@ import os
 #    ⚠️ 이 모듈을 «모듈 수준»에서 읽는 제품 코드는 없다(실측: `main.py` 셋 다 함수 안). 그래서
 #    이 import 들의 비용은 보고서를 «처음 부르는» 요청에 붙고, 기동 경로에는 붙지 않는다.
 import chain_bindings
-from chain import synthesis
 from chain import ingestion_worker as worker
 import mapper_sdk
 from chain import rule_shape
@@ -209,7 +208,6 @@ DOMAIN_WALK = "walk"
 
 #: 합성 규칙에 붙는 표. 🔴 운영자가 «안 적은» 줄이 목록에 이름 없이 섞이면
 #: 「내가 안 썼는데 왜 있지」가 되고, 그 사람은 고칠 수 없는 것을 고치러 갑니다.
-ORIGIN_SYNTHESIZED = "synthesized"
 ORIGIN_DECLARED = "declared"
 
 
@@ -301,50 +299,9 @@ def _resolve_chain() -> dict:
                 fields={"origin": ORIGIN_DECLARED, "trigger_table": trigger,
                         "warnings": [w.to_mapping() for w in warnings]}))
 
-    # 🔴 합성 규칙은 «같은 목록에» 서되 이름이 붙습니다 — 운영자가 고칠 수 없는 줄이라,
-    # 안 붙이면 「내가 안 적었는데」가 되고 붙이면 「제품이 넣어 준 것」이 됩니다.
-    # 🔴 [판정 454 ③] THE `except` HERE WAS A DEAD BRANCH AND THE SCREEN WENT QUIET.
-    # Since 452 ② a half that fails is caught INSIDE `synthesize_chain_rules`, so this call
-    # does not raise any more - and a report built with the join half dead showed it:
-    # one unrelated rejection, the half named nowhere, and THIRTY-EIGHT tables told
-    # 「이것이 정상입니다」. The repair moved the defect from the worker's log to this screen,
-    # which is 452's own disease wearing the other surface.
-    #
-    # ⚠️ THE OUTER `except` STAYS for what is genuinely outside either half (this seat
-    # importing, the catalogue). It is no longer the only thing standing between a dead
-    # half and a report that reads as healthy.
-    synthesis_failures = []
-    try:
-        synthesized = synthesis.synthesize_chain_rules(
-            failures=synthesis_failures) or ()
-    except Exception as exc:
-        synthesized = ()
-        rejected.append(entry(
-            SCOPE_FILE, "synthesized",
-            "제품이 파생 규칙을 합성하지 못했습니다 (%s: %s)." % (exc.__class__.__name__, exc),
-            reason=REASON_MAPPING_UNAVAILABLE))
-
-    # ⛔ THE SENTENCE IS NOT WRITTEN HERE. `synthesis.synthesis_half_says` is the one author
-    # of 「what stops when this half stops」; the log takes its English out of the same table.
-    # A screen composing its own Korean would be a second author of one fact.
-    for failure in synthesis_failures:
-        rejected.append(entry(
-            SCOPE_FILE, "synthesized:%s" % failure.get("half"),
-            "제품의 합성 중 «%s» 반쪽이 실패했습니다 — %s. (%s)"
-            % (failure.get("half"),
-               synthesis.synthesis_half_says(failure.get("half")),
-               failure.get("error")),
-            reason=REASON_MAPPING_UNAVAILABLE))
-
-    for rule in synthesized:
-        name = str((rule or {}).get("name") or "")
-        trigger = str((rule or {}).get("trigger_table") or "")
-        if trigger:
-            triggered.add(trigger)
-        effective.append(entry(
-            SCOPE_RULE, name,
-            "`%s` 는 제품이 «선언에서 합성»한 규칙입니다 — 파일에 적지 않습니다." % name,
-            fields={"origin": ORIGIN_SYNTHESIZED, "trigger_table": trigger}))
+    # ⚰️ [2026-09-24, 소유자 「enrich.json 아예 삭제」] 제품이 «합성한» 규칙과 합성 반쪽의
+    #    실패를 여기서 따로 그렸다. 평면 인리치 파일이 은퇴해 합성되는 규칙이 없다 — 인리치
+    #    선언도 `chain_rules.json` 에 적혀 위의 «선언된» 규칙으로 선다.
 
     # ⚠️ 표 목록은 «카탈로그»에서 옵니다(① 걸음). 이 걸음이 자기 표 목록을 들면
     # 두 걸음이 「무슨 표가 있나」에 다르게 답하게 됩니다.
@@ -361,12 +318,7 @@ def _resolve_chain() -> dict:
         ineffective.append(entry(
             SCOPE_TABLE, table,
             "`%s` 의 변화는 «아무것도 깨우지 않습니다» — 이 표를 `trigger_table` 로 적은 "
-            "규칙이 없습니다. %s" % (
-                table,
-                ("합성의 반쪽이 실패했으므로 이 판단은 «불완전»입니다 — "
-                 "위의 거절 항목을 먼저 보십시오."
-                 if synthesis_failures
-                 else "파생이 필요 없는 표라면 이것이 정상입니다.")),
+            "규칙이 없습니다. 파생이 필요 없는 표라면 이것이 정상입니다." % table,
             reason=REASON_NOT_DECLARED))
 
     return build_domain(DOMAIN_CHAIN, "파생 (체인 규칙)", sources, [],
@@ -454,10 +406,13 @@ def _resolve_enrichment() -> dict:
     여기 있지 않다 — `GET /admin/enrichment/auto-confirm/dry-run`이 별도로 답한다.
     """
     from chain.enrichment import candidates as ec
-    from chain import enrichment
     from database import crud
 
-    rules_path = enrichment.config.ENRICHMENT_RULES_PATH
+    # 🔴 [2026-09-24] 출처는 선언이 «사는» 파일이다. 이 칸이 평면 인리치 파일을 들던 동안,
+    #    그 파일이 없는 박스에서 이 보고는 「enrichment 규칙이 하나도 없습니다」라고 말했다 —
+    #    바로 아래 목록이 통합 문법의 규칙을 읽고 있는데도. 파일을 여는 것은 한 문이다.
+    read = worker.read_rules_document()
+    rules_path = read["path"]
     rejections = []
     # `/enrichment/rules`와 **같은 인자로** 로드한다 — 보고서와 라우트가 다른 답을 내면
     # 보고서가 답하려던 질문 자체가 무의미해진다(같은 신호원 규율).
@@ -582,7 +537,7 @@ def _resolve_enrichment() -> dict:
         effective.append(entry(SCOPE_RULE, name, detail,
                                warnings=warnings, fields=fields))
 
-    rules_exists = os.path.exists(rules_path)
+    rules_exists = read["exists"]
     file_rejected = any(r["scope"] == SCOPE_FILE for r in rejections)
     sources = [
         source("rules", rules_path,

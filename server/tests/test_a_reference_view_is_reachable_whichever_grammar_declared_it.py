@@ -6,9 +6,10 @@
 consumer looked the rule up with `enrichment.config.load_enrichment_rules`, which opens ONE
 file. So a view declared in the unified grammar was declared, carried, and unreachable.
 
-⚠️ THE CONTROL GROUP IS THE OLD LOOKUP. If `load_enrichment_rules` ever starts finding the
-unified declaration, this file's 「the seat is what added the reach」 claim is hollow and the
-first assertion below would pass for the wrong reason.
+⚰️ [2026-09-24, 소유자 「enrich.json 아예 삭제」] THE CONTROL GROUP WAS THE OLD LOOKUP -
+「`load_enrichment_rules` still cannot see the unified declaration」 - which proved the seat
+was what added the reach. The flat file and its lookup are retired, so there is no second
+door left to compare against; this file's name is the question it asked while there were two.
 """
 import io
 import json
@@ -20,7 +21,6 @@ if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
 from chain import enrich_declarations                                     # noqa: E402
-from chain.enrichment import config as enrichment_config                   # noqa: E402
 
 VIEW = {"label": "이 키의 원본 행",
         "query": "SELECT a FROM t WHERE k = :k ORDER BY a",
@@ -33,54 +33,34 @@ UNIFIED = {"name": "refview_unified",
                       "decide": {"key": ["k"], "fields": ["f"],
                                  "reference_views": [VIEW]}}}
 
-OLD_FILE = {"refview_old": {"source_table": "rv_src", "derived_table": "rv_derived",
-                            "decision_key": ["k"], "target_fields": ["f"],
-                            "reference_views": [VIEW]}}
 
-
-def _paths(tmp_path):
+def _chain_path(tmp_path):
     chain_path = tmp_path / "chain_rules.json"
     chain_path.write_text(json.dumps({"rules": [UNIFIED]}), encoding="utf-8")
-    enrich_path = tmp_path / "enrichment_rules.json"
-    enrich_path.write_text(json.dumps(OLD_FILE), encoding="utf-8")
-    return str(chain_path), str(enrich_path)
+    return str(chain_path)
 
 
-def test_a_view_declared_in_either_grammar_is_reachable(tmp_path):
-    """🔴 BOTH, AND THE SAME SHAPE. The route reads `reference_views` off whatever comes
-    back, so a declaration that arrives without them is a 404 the operator cannot explain."""
-    chain_path, enrich_path = _paths(tmp_path)
+def test_a_view_declared_in_the_unified_grammar_is_reachable(tmp_path):
+    """🔴 THE SAME SHAPE THE ROUTE READS. The route reads `reference_views` off whatever comes
+    back, so a declaration that arrives without them is a 404 the operator cannot explain.
 
+    ⚰️ [2026-09-24] This asserted BOTH grammars reach the same shape; the flat one is retired."""
     found = {r["name"]: r for r in enrich_declarations.declarations(
-        chain_rules_path=chain_path, enrichment_path=enrich_path)}
+        chain_rules_path=_chain_path(tmp_path))}
 
-    assert sorted(found) == ["refview_old", "refview_unified"]
-    for name in found:
-        views = found[name].get("reference_views") or []
-        assert [v["label"] for v in views] == ["이 키의 원본 행"], name
-        assert views[0]["query"].startswith("SELECT a FROM t"), name
-        assert views[0]["candidate_for"] == {"f": "a"}, name
-        assert views[0]["required_binds"] == ["k"], name
-
-
-def test_the_old_lookup_still_cannot_see_the_unified_one(tmp_path):
-    """⚠️ THE CONTROL GROUP. This is the state the round found, kept as a fact rather than a
-    memory: `load_enrichment_rules` reads one file, and that is why the seat above exists.
-    If this ever fails, the reach came from somewhere else and the seat is not the reason."""
-    _chain_path, enrich_path = _paths(tmp_path)
-
-    names = [r["name"] for r in enrichment_config.load_enrichment_rules(path=enrich_path)]
-
-    assert names == ["refview_old"]
-    assert "refview_unified" not in names
+    assert sorted(found) == ["refview_unified"]
+    views = found["refview_unified"].get("reference_views") or []
+    assert [v["label"] for v in views] == ["이 키의 원본 행"]
+    assert views[0]["query"].startswith("SELECT a FROM t")
+    assert views[0]["candidate_for"] == {"f": "a"}
+    assert views[0]["required_binds"] == ["k"]
 
 
 def test_find_and_the_list_walk_the_same_list(tmp_path):
     """🔴 `index` MEANS THE SAME THING AT BOTH ENDS. `/enrichment/rules` names the views and
     `/…/references/{index}` runs the index-th one; two lists would silently run the wrong
     view rather than fail."""
-    chain_path, enrich_path = _paths(tmp_path)
-    kwargs = {"chain_rules_path": chain_path, "enrichment_path": enrich_path}
+    kwargs = {"chain_rules_path": _chain_path(tmp_path)}
 
     listed = enrich_declarations.declarations(**kwargs)
 
@@ -98,10 +78,6 @@ def test_a_switched_off_declaration_offers_no_views(tmp_path):
     chain_path = tmp_path / "chain_rules.json"
     chain_path.write_text(json.dumps(
         {"rules": [dict(UNIFIED, enabled=False)]}), encoding="utf-8")
-    enrich_path = tmp_path / "empty.json"
-    enrich_path.write_text(json.dumps({}), encoding="utf-8")
-
-    found = enrich_declarations.declarations(chain_rules_path=str(chain_path),
-                                        enrichment_path=str(enrich_path))
+    found = enrich_declarations.declarations(chain_rules_path=str(chain_path))
 
     assert [r["name"] for r in found] == []

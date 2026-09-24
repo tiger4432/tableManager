@@ -21,6 +21,7 @@ from maps import frame_confirmation as fc
 import map_alignment as ma
 import map_overlay
 from database import crud, models
+from chain import enrich_declarations  # noqa: E402
 
 # Prefixed so it cannot collide with the operator's gitignored `table_config.json`.
 SRC = "sk1_test_log"
@@ -211,7 +212,7 @@ def test_search_and_sort_hold_on_a_single_key_column(env):
 
 def test_the_route_validates_params_against_a_single_column_key(client, env, monkeypatch):
     from chain import enrichment
-    monkeypatch.setattr(enrichment.config, "load_enrichment_rules",
+    monkeypatch.setattr(enrich_declarations, "declarations",
                         lambda *a, **k: [dict(RULE)])
     _seed_unit(env, "J1", ["M1"])
     _seed_unit(env, "J2", ["M2"])
@@ -228,7 +229,7 @@ def test_the_route_validates_params_against_a_single_column_key(client, env, mon
 
 def test_the_view_route_accepts_a_single_key_param(client, env, monkeypatch):
     from chain import enrichment
-    monkeypatch.setattr(enrichment.config, "load_enrichment_rules",
+    monkeypatch.setattr(enrich_declarations, "declarations",
                         lambda *a, **k: [dict(RULE)])
     _seed_unit(env, "J1", ["M1"])
     r = client.get("/api/maps/alignment/view",
@@ -340,7 +341,7 @@ def test_the_confirm_route_records_the_subject_the_screen_sends(
     NONE of the three. With `frames: {}` the row that came back said who, when, which
     sources, which floor and what ruling, but not WHAT WAS CONFIRMED."""
     from chain import enrichment
-    monkeypatch.setattr(enrichment.config, "load_enrichment_rules",
+    monkeypatch.setattr(enrich_declarations, "declarations",
                         lambda *a, **k: [dict(RULE)])
     _seed_unit(env, "J1", ["M1"])
     r = client.post("/api/maps/alignment/confirm", json={
@@ -369,7 +370,7 @@ def test_the_confirm_route_records_the_subject_the_screen_sends(
 
 def test_the_confirm_route_refuses_a_field_the_rule_did_not_declare(client, env, monkeypatch):
     from chain import enrichment
-    monkeypatch.setattr(enrichment.config, "load_enrichment_rules",
+    monkeypatch.setattr(enrich_declarations, "declarations",
                         lambda *a, **k: [dict(RULE)])
     _seed_unit(env, "J1", ["M1"])
     r = client.post("/api/maps/alignment/confirm", json={
@@ -384,7 +385,7 @@ def test_the_confirm_route_refuses_a_field_the_rule_did_not_declare(client, env,
 def test_the_confirm_route_refuses_a_second_key_column_this_rule_does_not_have(
         client, env, monkeypatch):
     from chain import enrichment
-    monkeypatch.setattr(enrichment.config, "load_enrichment_rules",
+    monkeypatch.setattr(enrich_declarations, "declarations",
                         lambda *a, **k: [dict(RULE)])
     _seed_unit(env, "J1", ["M1"])
     r = client.post("/api/maps/alignment/confirm", json={

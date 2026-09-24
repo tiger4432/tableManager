@@ -109,7 +109,7 @@
 | `maps.json` | 맵 프리셋(격자·물리 규격) |
 | `map_overlay_config.json` | 맵 오버레이 바인딩 |
 | `chain_rules.json` | 한 테이블 쓰기가 다른 테이블로 파생되는 규칙 |
-| `enrichment_rules.json` | 결손 보정 ― 참조뷰·후보 선언·자동확정 노브 |
+| ~~`enrichment_rules.json`~~ | ⚰️ 2026-09-24 은퇴 — 결손 보정은 `chain_rules.json` 의 `derive.decide` |
 | `virtual_join_rules.json` | 조회 시점 조인(저장 안 함). ⚠️ **조인 키에 UNIQUE 인덱스가 없으면 선언을 거부**하고 만들 DDL을 알려준다 |
 | `bonding_plan_config.json` · `transfer_plan_config.json` | 계획 화면의 역할 바인딩. 🔴 **이 두 사본은 현재 해석되지 않는다**(헤더의 「알려진 고장」) · 수용 여부를 묻는 자리는 `GET /admin/transfer-plan/dry-run` |
 | `auto_update_control.json` | 수집기별 on/off. **데이터를 계속 만드는 자리이자 옛 수집기를 끄는 자리** |

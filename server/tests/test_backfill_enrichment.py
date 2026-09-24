@@ -40,6 +40,8 @@ import pytest
 from chain.enrichment import backfill as bf
 from chain import enrichment
 from database import crud, models, schemas
+from tests.support.enrich_decl import write_rules  # noqa: E402
+from tests.support.enrich_decl import enrich_chain_rules  # noqa: E402
 
 BKFL_TABLES = {
     "bkfl_test_src": {
@@ -138,9 +140,7 @@ def bkfl_env(db_session, tmp_path, monkeypatch):
     from database.database import Base
     Base.metadata.create_all(bind=db_session.get_bind())
 
-    rules_path = tmp_path / "enrichment_rules.json"
-    rules_path.write_text(json.dumps(RULES_FILE), encoding="utf-8")
-    monkeypatch.setattr(enrichment.config, "ENRICHMENT_RULES_PATH", str(rules_path))
+    rules_path = write_rules(tmp_path, monkeypatch, RULES_FILE)
     return db_session
 
 
@@ -166,7 +166,7 @@ def _run_chain_for_tx(db, tx_id):
     from chain.ingestion_worker import process_chain_transaction_group
     from database.models import DatabaseOutbox
 
-    rules = enrichment.config.load_enrichment_chain_rules(known_tables=crud.TABLE_CONFIG)
+    rules = enrich_chain_rules(known_tables=crud.TABLE_CONFIG)
     assert rules, "enrichment chain rules must be synthesized"
 
     events = db.query(DatabaseOutbox).filter(
@@ -397,7 +397,7 @@ def test_apply_outbox_events_do_not_retrigger_rule(bkfl_env):
     # its trigger table is the SOURCE table, and these events are on the
     # derived table -> no re-trigger, no cycle.
     from chain.ingestion_worker import process_chain_transaction_group
-    rules = enrichment.config.load_enrichment_chain_rules(known_tables=crud.TABLE_CONFIG)
+    rules = enrich_chain_rules(known_tables=crud.TABLE_CONFIG)
     derived_before = [(r.row_id, r.chip_count) for r in _derived_rows(db)]
 
     async def run():
@@ -768,12 +768,19 @@ def test_loader_rejected_rule_fails_loudly_with_reason(bkfl_env):
         _rule(name="bkfl_broken")
 
 
-def test_unknown_rule_and_missing_file_refused(bkfl_env, tmp_path, monkeypatch):
-    with pytest.raises(bf.BackfillRefused, match="available rules"):
+def test_an_undeclared_rule_is_refused_with_what_is_declared(bkfl_env, tmp_path, monkeypatch):
+    """The refusal names what IS declared, so the operator's next step is in the sentence.
+
+    ⚰️ [2026-09-24] This also asserted 「enrichment rules file not found」 for a missing flat
+    file. That file is retired; with no `chain_rules.json` there is simply nothing declared,
+    and the sentence says so rather than naming a file the product no longer reads.
+    """
+    with pytest.raises(bf.BackfillRefused, match="available rules: .*bkfl_rule"):
         _rule(name="ghost_rule")
-    monkeypatch.setattr(enrichment.config, "ENRICHMENT_RULES_PATH",
-                        str(tmp_path / "nope.json"))
-    with pytest.raises(bf.BackfillRefused, match="not found"):
+    from chain import ingestion_worker as worker
+    monkeypatch.setattr(worker, "RULES_PATH", str(tmp_path / "nope.json"))
+    with pytest.raises(bf.BackfillRefused, match="not declared in chain_rules.json; "
+                                                 "available rules: <none>"):
         _rule()
 
 

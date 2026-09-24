@@ -148,10 +148,23 @@ def test_a_decide_declaration_writes_one_derived_row_per_key(db):
     assert dedup["mapper"] == "declared:enrich"
     assert _door(dedup) == "chain.dynamic_mappers._enrich"
 
+    # 🔴 [2026-09-24, 게이트 ㉡] AN IDENTITY THE FIXTURE DID NOT SEED. The fixture writes
+    #    「J」 into the derived table before anything runs, so asserting 「J」 alone was
+    #    satisfied by the seed - measured: replacing the chain seat with a no-op left this
+    #    test green while its four siblings went red. 「K」 exists only in the source, so it
+    #    can only reach the derived table by the declaration running.
+    crud.apply_batch_updates(db, SRC, schemas.GeneralUpdateBatch(updates=[
+        schemas.GeneralUpdateItem(updates={"log_key": "LK%d" % n, "job": "K"},
+                                  source_name="seed", updated_by="kinds")
+        for n in range(ROWS)]))
+    db.commit()
+    before = sorted(_values(db, DST, "job"))
+
     _run(db, "enrich", [dedup], SRC)
 
-    # ROWS source rows carry one 「job」, so the derived table holds ONE identity.
-    assert _values(db, DST, "job") == ["J"]
+    # ROWS source rows per 「job」, so each job is ONE derived identity - and K is new.
+    assert before == ["J"], "the fixture changed what it seeds, so K no longer means 'ran'"
+    assert sorted(_values(db, DST, "job")) == ["J", "K"]
 
 
 def test_an_auto_confirm_declaration_writes_the_single_candidate(db):

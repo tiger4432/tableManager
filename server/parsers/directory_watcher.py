@@ -338,7 +338,7 @@ def warn_invalid_std_parse_once(source_key: str, value):
 # 임계값 위치 결정 근거: table_config.json에 `_system` 메타 키를 넣는 안은
 # 모든 소비처(init_dynamic_models·_provision_workspaces·/tables·마이그레이션 등)가
 # 키를 테이블로 순회하므로 블라스트 반경이 크다. server/config는 서브시스템별
-# 개별 파일 관례(chain_rules/enrichment_rules/maps/...)이므로 그 관례를 따라
+# 개별 파일 관례(chain_rules/maps/...)이므로 그 관례를 따라
 # 전용 파일 ingestion_settings.json을 신설한다. 파일 부재/손상 시 기본값으로 동작.
 DEFAULT_HEAVY_FILE_MB = 10
 import paths  # single override point (ASSY_DATA_ROOT)

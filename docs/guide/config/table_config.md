@@ -140,7 +140,7 @@ restore는 **일부러 in-place로 써서 watcher를 발화**시킵니다(현재
    - `table_config.json` — **테이블 키** 자체
    - 계획 config 역할 바인딩 — `bonding_plan_config.json`·`transfer_plan_config.json`의 모든 `"table":` 값(`plan_store.registry` 포함)
    - `map_overlay_config.json` — `table_bindings`·`paint_lock` 등 테이블 키
-   - `chain_rules.json` — `trigger_table`·`target_table` / `enrichment_rules.json` — `source_table`·`derived_table`
+   - `chain_rules.json` — `trigger_table`·`target_table` / 같은 파일의 `derive.decide` — `on.table`·`into.table`
    - **`ingestion_workspace/` 폴더명** — 폴더명=테이블명 규약이므로 폴더도 개명(또는 `workspace_name` 별칭 선언). Windows는 대소문자 비구분이라 폴더는 멀쩡해 보여도, 워처의 테이블 매칭은 문자열 비교입니다
 5. **테이블명을 값으로 담는 DATA 두 곳 UPDATE** — config가 아니라 **행 데이터**라 4에서 안 잡힙니다:
    ```sql
@@ -188,7 +188,7 @@ restore는 **일부러 in-place로 써서 watcher를 발화**시킵니다(현재
 | ~~맵 메타 자동 등록(`map_meta_registrar`)~~ | ⚰️ **2026-09-07 은퇴** — 인제션은 `wafer_map_metadata` 행을 만들지 않습니다([INGESTION_GUIDE §1.10](../INGESTION_GUIDE.md)) |
 | **체인 워커** — `chain_rules.json`의 `target_table` | 🔴 **아니오** — 매퍼가 만든 컬럼만 씁니다 |
 | **체인 재적용 R1** — `chain_replay_cli.py replay`(같은 룰 파일) | 🔴 **아니오** — 같은 매퍼 출력이라 결과도 같습니다 |
-| **결손 보정 자동 확정 ①** — `enrichment_rules.json`의 `derived_table` + `auto_confirm` | 🔴 **아니오** — `target_fields`만 씁니다 |
+| **결손 보정 자동 확정 ①** — `derive.decide` 선언의 `into.table` + `auto_confirm` | 🔴 **아니오** — `target_fields`만 씁니다 |
 | 결손 보정 소급 ⓒ — `backfill_enrichment.py` | **안전** — **새 파생 신원만** 만들고 이미 있는 행은 건너뜁니다 |
 
 즉 **버전 게이트를 건 테이블이 동시에 파생 타깃이면, 그 파생 쓰기는 기존 행에 대해 전부 `version_missing`으로 거절됩니다.** 조용하지는 않습니다 — 로그가 이름을 부릅니다(§7.7). 다만 **운영자는 선언한 뒤에야 알게 됩니다.** 화면상 증상은 「체인이 멈춘 것 같다」이지 「버전 때문이다」가 아닙니다.

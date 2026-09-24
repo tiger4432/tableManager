@@ -1,35 +1,27 @@
-"""Enrichment Queue 규칙 로더/검증기 (docs/spec/ENRICHMENT_QUEUE_SPEC.md §5).
+"""Enrichment 선언의 검증·정규화와 참조뷰 엔진 (docs/spec/ENRICHMENT_QUEUE_SPEC.md §5).
 
-`server/config/enrichment_rules.json`(사용자 영역, gitignored)을 읽어 검증·정규화한다.
-- 웹서버(main.py): `/enrichment/rules`, `/enrichment/rules/{rule}/references/{i}` 응답 소스.
-  설정 파일이 작으므로 map-presets 패턴과 동일하게 **요청 시마다 디스크에서 읽는다**
-  (무중단 반영 — 별도 캐시/워처 불필요).
-- 체인 워커(chain_ingestion_worker.load_chain_rules): `load_enrichment_chain_rules()`로
-  dedup 투영 체인 룰을 자동 파생(synthesize)하여 기존 chain_rules에 병합한다.
-  SYSTEM_RELOAD 시 load_chain_rules가 재호출되므로 워커에도 무중단 반영된다.
+선언의 집은 «하나»다 — `chain_rules.json` 의 `derive.decide` 블록. `rule_shape` 가 그것을
+`chain_rules_from_cells` 로 넘기고, 여기의 `_validate_rule` 이 검증·정규화하며
+`chain_rules_for` 가 두 반쪽(dedup · auto-confirm)의 체인 규칙을 짓는다. 화면·라우트·백필은
+`chain.enrich_declarations` 한 좌석에 묻는다.
+⚰️ [2026-09-24] `enrichment_rules.json` 을 읽던 로더는 은퇴했다 (소유자 「enrich.json 아예
+삭제」) — 파일이 둘이면 문이 둘이었다.
 
-파일 스키마 (rule_name -> rule):
-{
-  "bonding_wafer_attribution": {
-    "source_table":  "bonding_log",            // 필수: 대량 원본 테이블
-    "derived_table": "bonding_job_inventory",  // 필수: 파생 영속 테이블(table_config.json 등록 필요)
-    "decision_key":  ["equipment", "event_time"],  // 필수: 판단키(1..N 컬럼)
-    "target_fields": ["wafer_id"],             // 필수: 사람이 채울 필드(파생 테이블 컬럼)
-    "list_columns":  ["chip_count", "lot_hint"],   // 선택: 워크리스트 표시 단서
-    "aggregations":  { "chip_count": "count",                 // 선택(서버 전용): 파생행에 두는 그룹 집계
-                       "bonding_time_min": {"fn": "min",      // count | min | max
-                                            "column": "bonding_time"} },  // min/max 는 소스 컬럼을 읽는다
-                     // 이 이름들은 참조뷰에서 `:이름` 으로 바인드할 수 있다 (판단키와 같이)
-    "enabled": true,                            // 선택(기본 true)
-    "reference_views": [                        // 선택: 참조뷰 — 쿼리는 서버에만, 클라엔 label만 노출
-      { "label": "lot event",
-        "query": "SELECT ... WHERE equipment = :equipment",  // 인라인 SQL (:bind는 decision_key만)
-        "limit": 200,                                         // 선택(기본 200, 최대 1000)
-        "candidate_for": { "wafer_id": "wf_id" } },            // 선택: 후보 선언(target_field -> 뷰 결과 컬럼)
-      { "label": "lot-slot history", "query_ref": "lot_slot_history" }  // config/enrichment_queries/<ref>.sql
-    ]
-  }
-}
+정규화된 선언의 칸 (통합 문법에서 이름이 다른 것은 둘뿐: `key` -> decision_key,
+`fields` -> target_fields. 원본·파생 표는 `on.table` · `into.table`):
+    source_table · derived_table               원본 표 · 파생 영속 표(table_config 등록 필요)
+    decision_key                               판단키 (1..N 컬럼)
+    target_fields                              사람이 채울 필드 (파생 표 컬럼)
+    list_columns                               선택: 워크리스트 표시 단서
+    aggregations                               선택(서버 전용): 파생행에 두는 그룹 집계
+        {"chip_count": "count", "t_min": {"fn": "min", "column": "t"}}   count | min | max
+        이 이름들은 참조뷰에서 `:이름` 으로 바인드할 수 있다 (판단키와 같이)
+    enabled                                    선택 (기본 true)
+    reference_views                            선택: 쿼리는 서버에만, 클라엔 label 만 노출
+        {"label": ..., "query": "SELECT ... WHERE equipment = :equipment",
+         "limit": 200,                         선택 (기본 200, 최대 1000)
+         "candidate_for": {"wafer_id": "wf_id"}}   선택: target_field -> 뷰 결과 컬럼
+        {"label": ..., "query_ref": "lot_slot_history"}   config/enrichment_queries/<ref>.sql
 
 `candidate_for` — ①"후보가 1개면 판단이 아니라 확인"의 **선언**(2026-07-30):
 어떤 참조뷰의 어떤 결과 컬럼이 어떤 target_field의 후보값을 나르는지 **사람이 선언**한다.
@@ -53,7 +45,6 @@ import re
 logger = logging.getLogger("EnrichmentConfig")
 
 from paths import CONFIG_DIR  # single override point (ASSY_DATA_ROOT)
-ENRICHMENT_RULES_PATH = os.path.join(CONFIG_DIR, "enrichment_rules.json")
 QUERY_REF_DIR = os.path.join(CONFIG_DIR, "enrichment_queries")
 
 # ---------------------------------------------------------------------------
@@ -751,127 +742,13 @@ def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = 
     return normalized, None
 
 
-def validate_enrichment_rules(raw_config: dict, known_tables: dict = None,
-                              rejections: list = None, caps: dict = None) -> list:
-    """설정 dict 전체를 검증한다. 유효 규칙의 정규화 리스트를 반환(무효 규칙은 로깅 후 스킵).
-
-    rejections: 선택 수집기 리스트 — 스킵된 선언을 `{scope, subject, detail}`로 누적한다
-    (`_record` 참조). 반환값 형태는 수집기 유무와 무관하게 동일하다.
-    """
-    rules = []
-    # ONE snapshot for the whole file, not one read per view (the D1 discipline:
-    # a work unit that re-reads config mid-walk can normalize two views against
-    # two different ceilings and neither of them is what the file says).
-    caps = caps if caps is not None else load_read_caps()
-    if not isinstance(raw_config, dict):
-        logger.error("enrichment_rules.json must be an object {rule_name: rule}")
-        _record(rejections, "file", None,
-                "enrichment_rules.json must be an object {rule_name: rule} — "
-                "the whole file was ignored")
-        return rules
-    for name, raw in raw_config.items():
-        if not isinstance(name, str) or not name.strip():
-            logger.warning("[Enrichment] rule with empty name skipped")
-            _record(rejections, "rule", name, "rule with an empty name skipped")
-            continue
-        normalized, err = _validate_rule(name, raw, known_tables, rejections=rejections,
-                                         caps=caps)
-        if err is not None:
-            logger.warning(f"[Enrichment:{name}] rule skipped: {err}")
-            _record(rejections, "rule", name, f"rule skipped: {err}")
-            continue
-        if normalized is not None:
-            rules.append(normalized)
-    return rules
-
-
-#: `{rules_path: (stamp, rules, rejections)}` (S-94, 판정 232).
-#:
-#: 🔴 THIS RAN PER ROW. `alignment_view_service.resolve_alignment_view` asks for the
-#: declaration on every call and the alignment mapper calls it once per job, so a
-#: 1,000-row chain group read this file and re-validated EVERY rule a thousand times -
-#: 0.78 ms each here, of which 0.50 ms is the validation. And the cost is proportional to
-#: how many rules a deployment declares, which is a number nobody here knows: a per-row
-#: cost that grows with the declaration is a defect wherever the file is longer than this
-#: box's.
-_RULES_MEMO: dict = {}
-
-
-def _memo_stamp(rules_path: str, known_tables, caps):
-    """What must be unchanged for a remembered validation to still be true, or `None`.
-
-    🔴 TWO FILES, BECAUSE THE ANSWER DEPENDS ON TWO. The rules file is the obvious one;
-    the second is `table_config.json`, since `known_tables` is what decides whether a rule's
-    columns exist - `crud.TABLE_CONFIG` is a process singleton that a reload REPLACES THE
-    CONTENTS OF, so its identity cannot say it changed and its file's stamp can.
-    `None` disables the memo, which is what a caller passing its own `caps` gets: that
-    argument reaches the validator and nobody in the tree passes one, so the honest move is
-    to not remember an answer this module has never actually produced.
-    """
-    if caps is not None:
-        return None
-    rules = _file_stamp(rules_path)
-    if rules is None:
-        return None
-    if known_tables is None:
-        return (rules, None)
-    from database import crud
-    if known_tables is not crud.TABLE_CONFIG:
-        return None
-    return (rules, _file_stamp(crud.CONFIG_PATH))
-
-
-def _file_stamp(path: str):
-    """`(mtime_ns, size)`, or `None` when the file is not there. Both, because a same-second
-    write of the same length is exactly what a coarse mtime cannot see."""
-    try:
-        stat = os.stat(path)
-    except OSError:
-        return None
-    return (stat.st_mtime_ns, stat.st_size)
-
-
-def clear_enrichment_rules_memo():
-    """Forget the remembered validation. For tests that write the file and read it back."""
-    _RULES_MEMO.clear()
-
-
-def load_enrichment_rules(path: str = None, known_tables: dict = None,
-                          rejections: list = None, caps: dict = None) -> list:
-    """enrichment_rules.json을 읽어 검증된 규칙 리스트를 반환한다(파일 없음 → 빈 목록).
-
-    파일 **부재**는 거부가 아니다(선언이 없을 뿐) — 수집기에 남기지 않는다.
-    `/graph/mapping-summary`가 `source.exists`로 같은 구분을 하는 것과 같은 규율이다.
-    """
-    rules_path = path or ENRICHMENT_RULES_PATH
-    stamp = _memo_stamp(rules_path, known_tables, caps)
-    remembered = _RULES_MEMO.get(rules_path)
-    if stamp is not None and remembered is not None and remembered[0] == stamp:
-        # The rejections are replayed, not skipped: a caller collecting them is building
-        # the operator's report, and a memo that answered with rules and no reasons would
-        # make a declaration that was refused look accepted on the second call.
-        for entry in remembered[2]:
-            _record(rejections, entry["scope"], entry["subject"], entry["detail"])
-        return copy.deepcopy(remembered[1])
-    if not os.path.exists(rules_path):
-        return []
-    try:
-        with open(rules_path, "r", encoding="utf-8") as f:
-            raw_config = json.load(f)
-    except Exception as e:
-        logger.error(f"Failed to load enrichment rules from {rules_path}: {e}")
-        _record(rejections, "file", None,
-                f"enrichment_rules.json could not be read ({e.__class__.__name__}) — "
-                f"NO rule is in effect")
-        return []
-    collected: list = []
-    rules = validate_enrichment_rules(raw_config, known_tables=known_tables,
-                                      rejections=collected, caps=caps)
-    for entry in collected:
-        _record(rejections, entry["scope"], entry["subject"], entry["detail"])
-    if stamp is not None:
-        _RULES_MEMO[rules_path] = (stamp, rules, collected)
-    return copy.deepcopy(rules) if stamp is not None else rules
+# ⚰️ [소유자 2026-09-23 「enrich.json 아예 삭제라운드 만들어」 · 2026-09-24 착지]
+#    `enrichment_rules.json` 의 로더가 여기 있었다 — `validate_enrichment_rules` ·
+#    `load_enrichment_rules` (그 파일이 없으면 `return []` 로 «조용히» 비던 자리) ·
+#    그 파일의 메모(`_RULES_MEMO`, S-94) · `load_enrichment_chain_rules`.
+#    인리치 선언의 집은 이제 «하나»다: `chain_rules.json` 의 `derive.decide`, 좌석은
+#    `chain.enrich_declarations`. 남은 `_validate_rule` · `chain_rules_for` 는 그 통합
+#    문법이 부른다 (rule_shape -> `chain_rules_from_cells`).
 
 
 #: The auto-confirm half, as a chain rule KIND (S-179 ①, 판정 292). A name rather than a
@@ -898,30 +775,6 @@ def synthesized_rule_names(rule_name: str) -> tuple:
     return (DEDUP_PREFIX + rule_name, AUTO_CONFIRM_PREFIX + rule_name)
 
 
-def load_enrichment_chain_rules(path: str = None, known_tables: dict = None) -> list:
-    """enrichment 규칙 하나를 체인 규칙 «둘»로 편다 — dedup 투영과 자동 확정.
-
-    🔴 ONE SYNTHESIZER, TWO KINDS (판정 292: 「두 합성기 금지」). The dedup half has been a
-    chain rule since S-178; the auto-confirm half ran as a table-keyed hook on the
-    follow-up lap, which meant enrichment was TWO LANGUAGES for one flow — the thing
-    BASIS §4.5 says must stop (「오늘 enrichment 규칙은 이 꼴로 다시 적혀야 한다」). Two
-    synthesizers would have rebuilt that split one layer down.
-
-    🔴 ALL TWELVE NORMALIZED CELLS RIDE, UNDER THEIR OWN NAMES (판정 292, 「빠지는 칸 0」).
-    `params` is the whole normalized rule, so a cell added to the enrichment vocabulary
-    tomorrow reaches both kinds without this function being edited — a hand-listed subset
-    is a list that goes stale silently, and the cell it drops is invisible until someone
-    asks why a declaration stopped working.
-
-    ⚠️ `enabled` COMES FROM THE RULE, NEVER A LITERAL. It used to read `"enabled": True`,
-    which was correct only because `_validate_rule` drops disabled rules three functions
-    upstream — move that filter and a disabled declaration becomes a running chain rule.
-    The value now flows from the declaration, so the two cannot disagree.
-    """
-    chain_rules = []
-    for rule in load_enrichment_rules(path=path, known_tables=known_tables):
-        chain_rules.extend(chain_rules_for(rule))
-    return chain_rules
 
 
 def chain_rules_from_cells(name: str, enabled_written: bool, enabled: bool,
@@ -941,7 +794,7 @@ def chain_rules_from_cells(name: str, enabled_written: bool, enabled: bool,
     wrote something.
 
     🔴 THE CAPS SNAPSHOT IS PER DECLARATION, NOT PER WORK UNIT — say it plainly, because the
-    repair is easy to read as more than it is. `load_enrichment_rules` takes ONE snapshot for
+    repair is easy to read as more than it is. The retired flat loader took ONE snapshot for
     a whole file; this takes one per declaration. That is enough for the ban the module wrote
     down, and the reason is the ban's SUBJECT: 「two VIEWS normalized against two different
     ceilings」, and views live INSIDE a declaration (`reference_views` is one of its cells).
@@ -966,7 +819,7 @@ def chain_rules_from_cells(name: str, enabled_written: bool, enabled: bool,
     #                 function opens the file on EVERY call with no cache. It is called
     #                 once per reference view, so an N-view declaration read the settings
     #                 file N times. 🔴 THE BAN IS THIS MODULE'S OWN, not a new rule —
-    #                 `load_enrichment_rules` says it above its snapshot: 「a work unit that
+    #                 the retired flat loader said it above its snapshot: 「a work unit that
     #                 re-reads config mid-walk can normalize two views against two different
     #                 ceilings and neither of them is what the file says」. One snapshot here
     #                 is that discipline for this door; a caller that already holds one

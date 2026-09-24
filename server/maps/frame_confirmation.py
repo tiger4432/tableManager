@@ -471,7 +471,7 @@ def record_confirmation(db, rule: dict, decision_key: dict, contributors: list,
                         columns: dict = None, state: str = None):
     """확정 한 판을 남긴다. **이 모듈에서 쓰는 함수는 이것 하나다.**
 
-    `rule`: 인리치먼트 규칙 선언(`enrichment_config.load_enrichment_rules`가 낸 것).
+    `rule`: 인리치먼트 규칙 선언(`chain.enrich_declarations` 가 낸 것).
         단위(`decision_key`)와 확정 대상 필드(`target_fields`)의 정본이 이것이라
         여기에 컬럼명을 하드코딩하지 않는다.
     `decision_key`: {컬럼: 값}. 선언된 결정키를 **전부** 채워야 한다 — 반만 채운 단위의

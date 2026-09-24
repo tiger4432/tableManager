@@ -16,7 +16,7 @@
 
 - **테이블 A의 변경이 테이블 B를 자동 갱신하게 만들 때** (trigger→target→mapper 체인)
 - 기존 룰을 끄거나(`enabled: false`) 배치/단건 모드를 바꿀 때
-- enrichment dedup 투영 룰은 **여기 쓰지 않습니다** — `enrichment_rules.json`에서 자동 파생·병합됩니다
+- 인리치(결손 보정) 규칙도 **여기에** `derive: {kind: "decide"}` 로 씁니다 — §5-B-bis. ⚰️ 2026-09-24 `enrichment_rules.json` 은퇴(소유자 「enrich.json 아예 삭제」)
 
 ## 2. 세팅 절차
 

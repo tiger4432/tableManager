@@ -151,9 +151,9 @@ def resolve_pace(name, paces=None):
 def load_rules() -> list:
     """All chain rules via the REAL loader (`chain_ingestion_worker.load_chain_rules`).
 
-    That loader also synthesises the enrichment dedup rules from
-    enrichment_rules.json, so replay sees exactly the rule set the live worker
-    sees - including enrichment. There is no second rule-loading path.
+    That loader stands the enrichment rules from their `derive.decide`
+    declarations like any other, so replay sees exactly the rule set the live
+    worker sees - including enrichment. There is no second rule-loading path.
     """
     from chain.ingestion_worker import load_chain_rules
     return [r for r in load_chain_rules() if r.get("enabled", True)]

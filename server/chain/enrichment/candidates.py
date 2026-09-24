@@ -149,10 +149,10 @@ SOURCE_NAME = "enrichment_auto_confirm"
 # reconstruction. A decision that cannot be addressed cannot be re-derived.
 SOURCE_NAME_PARTIAL_KEY = "enrichment_auto_confirm_partial_key"
 
-# Per-rule knob in enrichment_rules.json. Per-rule rather than global because
-# candidate reliability is a property of the rule's views, not of the server -
-# and enrichment_rules.json is already re-read per work unit, so hot reload is
-# inherited rather than reinvented.
+# Per-rule knob in the rule's `derive.decide` block. Per-rule rather than global because
+# candidate reliability is a property of the rule's views, not of the server - and the
+# declaration is already re-read per work unit, so hot reload is inherited rather than
+# reinvented.
 RULE_KNOB = "auto_confirm"
 DEFAULT_ENABLED = False
 
@@ -311,7 +311,7 @@ def rule_auto_confirm_enabled(rule: dict, settings: dict = None) -> bool:
         return val
     _warn_once(
         (RULE_KNOB, rule.get("name"), repr(val)),
-        "[Enrichment:%s] Ignoring non-boolean '%s' value %r in enrichment_rules.json - "
+        "[Enrichment:%s] Ignoring non-boolean '%s' value %r in the rule's declaration - "
         "expected JSON boolean true/false. Falling back to default %s.",
         rule.get("name"), RULE_KNOB, val, DEFAULT_ENABLED)
     return DEFAULT_ENABLED

@@ -42,6 +42,7 @@ if server_dir not in sys.path:
 
 import chain.graph                                                   # noqa: E402
 from chain import ingestion_worker as worker                              # noqa: E402
+from chain import enrich_declarations  # noqa: E402
 
 
 TRIGGER = "cg_test_trigger"
@@ -82,7 +83,7 @@ def fixture_graph(monkeypatch):
     # rules from synthesized ones. That split is gone, and the fixture getting SHORTER is
     # the evidence: there is one way in.
     monkeypatch.setattr(worker, "load_chain_rules", lambda: rules)
-    monkeypatch.setattr(enrichment.config, "load_enrichment_rules",
+    monkeypatch.setattr(enrich_declarations, "declarations",
                         lambda **kw: [{"name": "cg_enrich", "derived_table": DERIVED,
                                        "enabled": True,
                                        "decision_key": ["job", "slot"]}])
@@ -342,7 +343,7 @@ def test_a_refused_cycle_is_shown_rather_than_hidden(monkeypatch):
                        allow_chain_trigger=True)]
     monkeypatch.setattr(worker, "load_chain_rules", lambda: loop)
     from chain import enrichment
-    monkeypatch.setattr(enrichment.config, "load_enrichment_rules", lambda **kw: [])
+    monkeypatch.setattr(enrich_declarations, "declarations", lambda **kw: [])
     monkeypatch.setattr("ledger.setup.load_setup",
                         lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("no ledger")))
 

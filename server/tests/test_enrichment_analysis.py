@@ -18,6 +18,8 @@ from chain.enrichment import analysis
 from chain import enrichment
 from chain import enrichment
 from database import crud, models, schemas
+from tests.support.enrich_decl import rewrite_rules, write_rules  # noqa: E402
+from chain import enrich_declarations  # noqa: E402
 
 AN_TABLES = {
     "enan_test_src": {
@@ -104,10 +106,7 @@ def an_env(db_session, tmp_path, monkeypatch):
     from database.database import Base
     Base.metadata.create_all(bind=db_session.get_bind())
 
-    rules_path = tmp_path / "enrichment_rules.json"
-    rules_path.write_text(json.dumps({"enan_rule": _rule(), "enan_single": SINGLE_RULE}),
-                          encoding="utf-8")
-    monkeypatch.setattr(enrichment.config, "ENRICHMENT_RULES_PATH", str(rules_path))
+    rules_path = write_rules(tmp_path, monkeypatch, {"enan_rule": _rule(), "enan_single": SINGLE_RULE})
     settings = tmp_path / "ingestion_settings.json"
     settings.write_text("{}", encoding="utf-8")
     monkeypatch.setattr(enrichment.candidates, "INGESTION_SETTINGS_PATH", str(settings))
@@ -125,7 +124,7 @@ def _seed(db, table, rows, source_name="pipeline_parser", tx_id="seed"):
 
 
 def _loaded(name="enan_rule"):
-    rules = enrichment.config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
+    rules = enrich_declarations.declarations(known_tables=crud.TABLE_CONFIG)
     return next(r for r in rules if r["name"] == name)
 
 
@@ -320,7 +319,7 @@ def test_single_column_decision_key_is_refused_with_a_reason(an_env):
 
 
 def test_proposal_never_writes_config(an_env, tmp_path):
-    before = (tmp_path / "enrichment_rules.json").read_text(encoding="utf-8")
+    before = (tmp_path / "chain_rules.json").read_text(encoding="utf-8")
     _seed(an_env, "enan_test_derived", [
         {"wafer_key": f"L5_S{i}", "lot": "L5", "slot": f"S{i}"} for i in range(1, 4)])
     _resolve_by_hand(an_env, [
@@ -328,7 +327,7 @@ def test_proposal_never_writes_config(an_env, tmp_path):
         for i in range(1, 4)])
     analysis.analyze_promotions(an_env, _loaded(), min_support=3,
                                            log=lambda *_: None)
-    assert (tmp_path / "enrichment_rules.json").read_text(encoding="utf-8") == before
+    assert (tmp_path / "chain_rules.json").read_text(encoding="utf-8") == before
 
 
 def test_proposed_view_is_accepted_by_the_real_loader_and_resolves(an_env):
@@ -458,9 +457,9 @@ def _enable_auto_confirm(tmp_path, views):
     """Rewrite the ISOLATED rules file (tmp_path, monkeypatched in `an_env`) with
     the knob on. `server/config/` is never touched - a write there reloads three
     live processes."""
-    path = tmp_path / "enrichment_rules.json"
-    path.write_text(json.dumps({"enan_rule": _rule(auto_confirm=True, reference_views=views),
-                                "enan_single": SINGLE_RULE}), encoding="utf-8")
+    path = tmp_path / "chain_rules.json"
+    rewrite_rules(path, {"enan_rule": _rule(auto_confirm=True, reference_views=views),
+                                "enan_single": SINGLE_RULE})
 
 
 def _seed_partial_key_fixture(an_env, tmp_path, views):
@@ -703,11 +702,11 @@ def test_classify_names_blank_key_rows_and_totals_the_whole_queue(an_env):
 
 def _two_target_rule(tmp_path, **overrides):
     """Rewrite the ISOLATED rules file with a two-target rule and reload it."""
-    path = tmp_path / "enrichment_rules.json"
-    path.write_text(json.dumps({"enan_rule": _rule(
+    path = tmp_path / "chain_rules.json"
+    rewrite_rules(path, {"enan_rule": _rule(
         target_fields=["wafer_id", "owner"],
         reference_views=[dict(NARROW), dict(OWNER)], **overrides),
-        "enan_single": SINGLE_RULE}), encoding="utf-8")
+        "enan_single": SINGLE_RULE})
     return _loaded()
 
 

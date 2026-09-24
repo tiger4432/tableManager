@@ -4,20 +4,24 @@
 > 소유자 2026-09-17: 「인리치는 참조뷰 기능은 «보존»해야 해. v2 로 «따로» 빼되」
 > 「ㅇㅇ 여기에 참조뷰 «라우트»만 추가하고」
 
-🔴 WHAT WAS MISSING, AND IT WAS MEASURED BEFORE IT WAS BUILT. A reference view can be
-declared in two grammars - `enrichment_rules.json`, and the unified `derive.decide` block
-in `chain_rules.json` - and `rule_shape.expand_declaration` carries the views through for
-both (probed: `params.reference_views` has the declared label). But every consumer of an
-enrich declaration reaches for `enrichment.config.load_enrichment_rules`, which reads ONE
-file, so a view written in the unified grammar was declared, carried, and UNREACHABLE.
-That is not a route that behaved badly; it is a route that did not exist for half the
-declarations, and 「보존」 is not satisfied by a capability that only one grammar can reach.
+🔴 ONE GRAMMAR, ONE HOME (소유자 2026-09-23: 「enrich.json 아예 삭제라운드 만들어 삭제를
+안해버리니 자꾸 문을 두개두네?」 · 「통합선언 무조건 돌게해라」). An enrich declaration lives
+in ONE place - the `derive.decide` block in `chain_rules.json` - and this module is the one
+seat every consumer asks. `rule_shape.expand_declaration` stands it exactly as the chain
+loader does, so what a route sees and what the worker runs cannot be two lists.
+
+⚰️ [2026-09-24] A SECOND GRAMMAR - `enrichment_rules.json` - WAS READ HERE TOO, first, and
+won a name collision. This module was built (2026-09-17) because a view written in the
+unified grammar was declared, carried and UNREACHABLE while every consumer read only the
+flat file; the owner then retired the flat file itself, because keeping it meant keeping
+the second door. Measured the day it went: the backfill RUN path still opened the flat
+file by path while its dry-run went through here, so a rule the preview showed was one
+the run could not find.
 
 🔴 ONE SEAT, NOT A SECOND ENDPOINT. The fix is NOT a `/admin/chain/.../references/` beside
 the one that is already there - that is 「같은 기능 두 경로」 with the operator left to guess
 which grammar they wrote in. The existing pair of routes asks THIS module for the
-declaration, and this module is the one place that knows a declaration can be written in
-more than one file.
+declaration, and this module is the one place that knows where a declaration lives.
 
 ⚠️ THE PAIR IS A PAIR. `/enrichment/rules` names the views and `/…/references/{index}`
 runs the index-th one, so the two must walk the SAME list or the index means different
@@ -50,35 +54,36 @@ is one caller of that.
 """
 
 import logging
+import os
 
 logger = logging.getLogger("Chain.EnrichDeclarations")
 
 
 def declarations(known_tables: dict = None, chain_rules_path: str = None,
-                 enrichment_path: str = None, rejections: list = None) -> list:
-    """Every enrich declaration this product stands, whichever grammar wrote it.
+                 rejections: list = None, include_disabled: bool = False) -> list:
+    """Every enrich declaration this product stands.
 
-    Returns the NORMALIZED declarations (the shape `load_enrichment_rules` returns), so a
-    caller reads `reference_views`, `decision_key` and the rest under the names they
-    already know.
+    Returns the NORMALIZED declaration (`params` of the dedup half), so a caller reads
+    `reference_views`, `decision_key` and the rest under the names it already knows.
 
-    ⚠️ THE ENRICHMENT FILE WINS A NAME COLLISION, and cannot silently do so: the chain
-    loader already refuses a name claimed by two files (`_refuse_names_claimed_twice`), so
-    a name reaching here twice has been reported at load. Skipping the second is what
-    keeps this list the same length as the list the loader stood.
+    `include_disabled` stands a declaration written `enabled: false` AS IF it were on. One
+    caller wants that - an operator who asks the backfill CLI to sweep a rule they switched
+    off (`--force-disabled`) - and it is the same move the flat loader made on its own
+    file before that file was retired. Everyone else leaves it False, so OFF still stands
+    no rule (판정 399).
     """
     from chain import ingestion_worker, rule_shape
-    from chain.enrichment import config as enrichment_config
 
     seen, out = set(), []
-    for rule in enrichment_config.load_enrichment_rules(
-            path=enrichment_path, known_tables=known_tables, rejections=rejections):
-        name = rule.get("name")
-        if name and name not in seen:
-            seen.add(name)
-            out.append(rule)
-
     read = ingestion_worker.read_rules_document(chain_rules_path)
+    # 🔴 [2026-09-24] AN UNREADABLE FILE IS A REFUSAL, NOT 「NO RULES」. The retired flat
+    #    loader put this entry in the collector for ITS file; with it gone, a broken
+    #    chain_rules.json reached the report as 「0 rules read」, status ok. The loader
+    #    already logs the failure - this only carries it to the list the caller brought.
+    if read.get("error") and rejections is not None:
+        rejections.append({"scope": "file", "subject": None,
+                           "detail": "%s could not be read (%s) - NO enrich rule is in effect"
+                                     % (os.path.basename(read["path"]), read["error"])})
     for raw in (read.get("rules") or ()):
         # 🔴 THE DISCRIMINATOR IS `derive`, THE SAME ONE THE LOADER USES (S-234 2단계).
         #    Asking anything else here would be a second answer to 「is this the new
@@ -88,6 +93,8 @@ def declarations(known_tables: dict = None, chain_rules_path: str = None,
         name = raw.get("name")
         if not name or name in seen:
             continue
+        if include_disabled and raw.get("enabled") is False:
+            raw = {**raw, "enabled": True}
         # 🔴 [지시 0cae5199] `rejections` 가 «내려갑니다». 이 좌석이 수집기를 가진 유일한
         #    자리이고, 아래 :refusal 블록은 «규칙 하나가 통째로 안 선» 사실만 실었습니다.
         #    선언이 «서면서» 참조뷰 하나를 떨어뜨리는 것 같은 자리별 사실은 `_validate_rule`
@@ -117,7 +124,7 @@ def declarations(known_tables: dict = None, chain_rules_path: str = None,
 
 
 def find(rule_name: str, known_tables: dict = None, chain_rules_path: str = None,
-         enrichment_path: str = None, rejections: list = None):
+         rejections: list = None, include_disabled: bool = False):
     """The declaration a route was asked about, or None — 「없다」 is a value, not an error.
 
     ⚠️ [판정 636] THE CALLER KEEPS SAYING 「없다」 IN ITS OWN WORDS. Six seats ask this and
@@ -127,8 +134,8 @@ def find(rule_name: str, known_tables: dict = None, chain_rules_path: str = None
     """
     for rule in declarations(known_tables=known_tables,
                              chain_rules_path=chain_rules_path,
-                             enrichment_path=enrichment_path,
-                             rejections=rejections):
+                             rejections=rejections,
+                             include_disabled=include_disabled):
         if rule.get("name") == rule_name:
             return rule
     return None

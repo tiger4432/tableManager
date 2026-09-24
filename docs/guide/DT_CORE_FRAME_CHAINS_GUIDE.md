@@ -43,7 +43,7 @@
   - `server/migrations/add_dt_log_trigger_indexes.sql`의 `CREATE INDEX ... (dt_job)` 두 문 —
     이름을 바꾸면 이 인덱스들은 **더 이상 존재하지 않는 컬럼**을 가리키는 죽은 정의로 남는다
     (재실행하지 않으면 새 이름 위에 인덱스가 없다).
-  - `server/config/enrichment_rules.json`의 SQL 본문 다섯 곳, `WHERE dt_job = :dt_job` —
+  - `server/config/chain_rules.json` 의 `derive.decide` 참조뷰 SQL 다섯 곳 (⚰️ 2026-09-24 전에는 `enrichment_rules.json`), `WHERE dt_job = :dt_job` —
     체인 리졸버(`chain_bindings.py`)가 관여하지 않는 **자유 SQL 문자열**이라 리네임 뒤에도
     옛 컬럼명을 그대로 찾고, 대상 컬럼이 없으니 **매번 조용히 0행**을 반환할 수 있다.
   - 이 둘은 어느 쪽도 아직 자동으로 리네임을 따라가지 않는다 — **컬럼을 바꾼다면 이 두 파일도

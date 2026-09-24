@@ -28,6 +28,7 @@ if SERVER_DIR not in sys.path:
 
 import chain.graph                                                    # noqa: E402
 from chain import ingestion_worker as worker                          # noqa: E402
+from chain import enrich_declarations  # noqa: E402
 
 TRIGGER, TARGET, DERIVED, RIGHT = ("z_trigger", "z_target", "z_derived", "z_reference")
 
@@ -57,7 +58,7 @@ def _graph(monkeypatch, loader):
     monkeypatch.setattr(worker, "read_rules_document",
                         lambda path=None: {"document": {}, "rules": [],
                                            "path": path, "exists": False, "error": None})
-    monkeypatch.setattr(enrichment.config, "load_enrichment_rules", loader)
+    monkeypatch.setattr(enrich_declarations, "declarations", loader)
     # ⚰️ [652 3걸음] 여기서 가상조인 분면의 로더도 «빈 것»으로 고정했다. 그 분면이
     #    그림에서 걷혀 고정할 것이 없다 — 축은 여전히 «하나»만 varied 다.
     monkeypatch.setattr(crud, "TABLE_CONFIG", {TRIGGER: {}, TARGET: {}})

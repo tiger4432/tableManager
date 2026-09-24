@@ -406,7 +406,7 @@ NO_PROXY만  → {'no': '127.0.0.1,localhost'}
 | **본딩 가용량** (M1) | `bonding_plan_config.json` | `bonding_log`, `core_defect_map`, `eds_fail_map`, `wafer_process` |
 | **맵 오버레이** | `map_overlay_config.json` | 겹칠 맵 테이블들 (x/y 컬럼 + 맵 키 컬럼 선언 필요) |
 | **체인 인제션** | `chain_rules.json` | 트리거/타깃 테이블 + `server/mappers/`의 매퍼 모듈 |
-| **결손 보완** | `enrichment_rules.json` | 규칙이 참조하는 테이블 |
+| **결손 보완** | `chain_rules.json` 의 `derive.decide` (⚰️ `enrichment_rules.json` 은 2026-09-24 은퇴) | 규칙이 참조하는 테이블 |
 | ⚰️ ~~**온톨로지 그래프**~~ | `ontology_mapping.json` | **[2026-08-14] 소비자 0** — 읽는 워커도 라우트도 없다(고쳐도 아무 일도 안 일어난다) |
 
 **상태 확인**: 바인딩이 제대로 붙었는지는 API가 알려준다. `missing`이 뜨면 그 테이블이 `table_config.json`에 없거나 컬럼명이 어긋난 것이다.
@@ -514,7 +514,7 @@ ASSY_TEST_DATABASE_URL=postgresql://postgres:...@localhost:5432/assy_qa \
 1. PostgreSQL 준비 → `DATABASE_URL` 설정
 2. `server/config/sample/*.sample` → 상위 `server/config/`에 확장자 떼고 복사 (**기존 환경이면** `install_product_tables.py --apply`로 제품 소유 테이블만 병합 — §1-2)
 3. **`table_config.json`에 우리 현장 테이블 선언** (여기가 대부분의 작업)
-   - 🔴 **DT/Core 프레임 체인의 "잡" 컬럼 이름을 현장 철자(예: `dt_job_id`)로 여기서 바꾼다면**, 그 리네임을 **체인 리졸버가 모르는 파일 둘**과 같은 변경에서 손으로 맞춰라 — 안 맞추면 조용히 안 따라온다(2026-08-11, `5b09d69`): `server/migrations/add_dt_log_trigger_indexes.sql`의 `CREATE INDEX ... (dt_job)` 두 문(재실행하지 않으면 새 컬럼명 위에 인덱스가 없다), `server/config/enrichment_rules.json`의 자유 SQL 다섯 곳(`WHERE dt_job = :dt_job` — 리졸버 밖이라 옛 이름을 계속 찾고 매번 0행). 절차 정본은 [guide/DT_CORE_FRAME_CHAINS_GUIDE §1-bis](./DT_CORE_FRAME_CHAINS_GUIDE.md#1-bis-잡-컬럼-이름-2026-08-11).
+   - 🔴 **DT/Core 프레임 체인의 "잡" 컬럼 이름을 현장 철자(예: `dt_job_id`)로 여기서 바꾼다면**, 그 리네임을 **체인 리졸버가 모르는 파일 둘**과 같은 변경에서 손으로 맞춰라 — 안 맞추면 조용히 안 따라온다(2026-08-11, `5b09d69`): `server/migrations/add_dt_log_trigger_indexes.sql`의 `CREATE INDEX ... (dt_job)` 두 문(재실행하지 않으면 새 컬럼명 위에 인덱스가 없다), `server/config/chain_rules.json` 의 `derive.decide` 참조뷰 자유 SQL 다섯 곳(⚰️ 2026-09-24 전에는 `enrichment_rules.json`)(`WHERE dt_job = :dt_job` — 리졸버 밖이라 옛 이름을 계속 찾고 매번 0행). 절차 정본은 [guide/DT_CORE_FRAME_CHAINS_GUIDE §1-bis](./DT_CORE_FRAME_CHAINS_GUIDE.md#1-bis-잡-컬럼-이름-2026-08-11).
 4. `server/ingestion_workspace/<테이블>/` 디렉터리 생성
 5. 켤 기능의 config에서 `table`/`columns`를 우리 이름으로 맞춤 (§2)
 6. 맵을 쓴다면 `wafer_map_metadata` 등록 (§3)

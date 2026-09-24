@@ -706,43 +706,17 @@ def load_chain_rules():
                      len(rules) - len(kept), len(rules))
     rules = kept
 
-    # 🔴 [S-234 ①②, 판정 408·409] THREE FILES, ONE NAMESPACE, ONE OFF SWITCH.
-    #    `chain_rules.json` (flat and unified), `enrichment_rules.json` and
-    #    (⚰️ 652 3걸음 전에는 `virtual_join_rules.json` 도) are ways of WRITING a chain rule, so their names are
-    #    one set: a name that appears twice is refused by name below, at the one seat that
-    #    sees the whole set, and the off switch for any of them is `enabled: false` in the
-    #    file it was written in. Stopping the chain altogether is `ASSY_CHAIN_WORKER=0`.
+    # 🔴 [S-234 ①②, 판정 408·409] ONE FILE, ONE NAMESPACE, ONE OFF SWITCH. Every chain rule
+    #    - flat or unified, join or decide - is written in `chain_rules.json`, and the off
+    #    switch for one of them is `enabled: false` where it was written. Stopping the chain
+    #    altogether is `ASSY_CHAIN_WORKER=0`.
     #
-    # 🪦 Two per-file checkers (`enrichment_name_collisions` · `join_name_collisions`) and a
-    #    process switch for 「the derived rules」 lived here. Two checkers were the evidence of
-    #    two namespaces; the switch's subject - rules the operator could not see - is gone,
-    #    because the set line below names every rule whichever file wrote it (판정 408).
-    #    Synthesis stays ONE seat (판정 304): `synthesis.synthesize_chain_rules`, nothing else.
-    #    SYSTEM_RELOAD re-runs this function, so the other two files reload without a restart.
+    # ⚰️ [2026-09-24, 소유자 「enrich.json 아예 삭제」] A SYNTHESIS STEP STOOD HERE -
+    #    `synthesis.synthesize_chain_rules` turned `enrichment_rules.json` into rules and
+    #    appended them (and, before 652 3걸음, `virtual_join_rules.json` too). With the flat
+    #    file retired it produced nothing on every call; the names-twice refusal below stays,
+    #    because one file can still declare a name twice.
     written_in = [os.path.basename(RULES_PATH)] * len(rules)
-    _synthesized_names = set()
-    try:
-        from database import crud
-        from chain import synthesis
-
-        synthesized = [r for r in
-                       synthesis.synthesize_chain_rules(known_tables=crud.TABLE_CONFIG)
-                       if r.get("enabled", True)]
-        if synthesized:
-            rules = rules + synthesized
-            written_in += [synthesis.written_in(r) for r in synthesized]
-            _synthesized_names = {r.get("name") for r in synthesized}
-    except Exception as e:
-        # ⚰️ THIS USED TO BE WHERE A WHOLE HALF DIED QUIETLY (판정 452 ②). The two
-        # syntheses were one expression, so anything raising in the virtual-join half took
-        # the enrichment half with it and this line reported 「the enrichment and
-        # virtual-join files」 without saying WHICH, or what had stopped running - the
-        # worker then carried on with no synthesised rules at all, dedup and auto-confirm
-        # included. A half now fails inside `synthesize_chain_rules`, which names itself
-        # and what it takes down; this catch is left for what is genuinely outside either
-        # half, and says only that.
-        logger.error(f"[ChainRules] synthesis could not be attempted, so NO synthesised "
-                     f"rule is running - neither enrichment's nor the joins': {e}")
 
     # 🔴 [S-234 ①, 판정 409] A NAME CLAIMED TWICE IS REFUSED BY NAME, ONCE, HERE - the seat
     #    that knows the whole set. `rule_refusals` judges ONE rule and cannot see a twin, and
@@ -787,8 +761,7 @@ def load_chain_rules():
     # running, and what stopped - are answered by writing the set down each time it is built.
     try:
         from chain import rule_census
-        _rows = rule_census.census(
-            rules, {name: "synthesized" for name in _synthesized_names})
+        _rows = rule_census.census(rules)
         logger.info("[ChainRules] set(%d): %s", len(_rows), " | ".join(
             "%s[%s,%s] %s%s" % (
                 row["name"], row["origin"][:4], row["derive"],
@@ -817,9 +790,8 @@ def load_chain_rules():
         logger.warning("[ChainRules] census unavailable: %s", census_error)
 
     # [500 addendum] THE ROLL CALL, BESIDE THE OTHER BOOT-TIME JUDGES. It runs on the FULL
-    #    set - what the operator wrote plus what the product synthesised - because a
-    #    synthesised rule can lose its path the same way, and it runs LAST so the rules it
-    #    counts are the ones that would actually be handed to the passes.
+    #    set, and it runs LAST so the rules it counts are the ones that would actually be
+    #    handed to the passes.
     # ⚰️ [소유자 정본] `refuse_rules_no_path_picks_up(rules)` STOOD HERE. With one
     #   execution path the count it refused on is always 1, so it refused nothing and
     #   said nothing - see its tombstone above `watches_table`.
@@ -2024,22 +1996,6 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
 #   nothing to cache and nothing to invalidate on reload.
 
 
-def _synthesis_seat():
-    """The seat that SYNTHESIZES chain rules from the declaration files, imported at
-    CALL time (S-278 후반).
-
-    ⚰️ [소유자 정본 「v1 체인 싹 지워」] THIS WAS `_builtins_table` AND ITS DOCSTRING SAID IT
-    returned 「the `builtin:` kind table」. That table was deleted in 판정 562 and the name
-    outlived it - a module called `synthesis` holding synthesis told every reader the retired
-    mechanism was still there.
-
-    ⚠️ NOT AT MODULE LEVEL. `chain.synthesis` imports `enrichment.config` and
-    the chain package's own modules, which import back into this module's neighbourhood;
-    every other seat here reaches it the same way, inside the function that needs it.
-    """
-    from chain import synthesis
-
-    return synthesis
 
 
 

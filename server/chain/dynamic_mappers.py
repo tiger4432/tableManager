@@ -128,7 +128,7 @@ def _auto_confirm(db, payload, rule=None):
 
 
 def _enrich(db, payload, rule=None):
-    """`enrichment_rules.json` 의 «파생행» 반쪽 — the body is `map_enrichment_dedup`.
+    """`derive.decide` 선언의 «파생행» 반쪽 — the body is `map_enrichment_dedup`.
 
     🔴 [소유자 2026-09-17 「@mapper 를 굳이 할 필요는 없고 체인 프로세스에서 «똑같은 인자»로
     들어가서 돌면 됨」] THE ARGUMENTS WERE ALREADY THE SAME, AND THE CELL WAS NOT. This

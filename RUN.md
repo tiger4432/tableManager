@@ -1,5 +1,54 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-24 밤] **`enrichment_rules.json` 은퇴 — 마이그레이션 «없음» · 재기동 «필요» · 🔴 재기동 «전» 확인 하나**
+>
+> 인리치(결손 보정) 선언의 집이 «하나»가 됐습니다 — `server/config/chain_rules.json` 의 `derive: {kind: "decide"}`.
+> 제품은 `server/config/enrichment_rules.json` 을 «어디서도» 읽지 않습니다. 다시 놓아도 아무 일도 안 일어납니다.
+>
+> ```
+> ① 마이그레이션   없습니다
+> ② 재기동        필요합니다 — 로더·소급·설정 보고가 바뀌었습니다 (위 09-23 절의 «먹는 방법» 그대로)
+> ```
+>
+> ### 🔴 재기동 «전»에 — 이 설치에 `server/config/enrichment_rules.json` 이 있습니까
+>
+> ```
+> 없다       할 일 없습니다. 이 박스가 그렇습니다 (소유자 박스엔 그 이름의 파일이 없고,
+>           enrichment_rules2.json 은 제품이 원래 안 읽던 이름입니다)
+> 있다       🔴 재기동하면 그 안의 규칙은 «오류 없이» 멈춥니다. 재기동 «전»에 규칙마다
+>           chain_rules.json 의 "rules" 에 한 항목으로 옮기십시오:
+>              source_table  -> "on":   {"table": ...}
+>              derived_table -> "into": {"table": ...}
+>              decision_key  -> "derive": {"kind": "decide", "decide": {"key": [...],
+>              target_fields ->                                    "fields": [...],
+>              나머지 칸(list_columns · aggregations · reference_views · auto_confirm · alignment)
+>                             -> 같은 이름으로 "decide" 안에
+>              enabled       -> 항목의 최상위
+>           키 표: docs/guide/config/chain_rules.md §5-B-bis
+> ```
+>
+> ### 확인 셋 — 답이 «무엇을 뜻하나»
+>
+> ```
+> ㉠ 체인 워커 부팅 줄 [ChainRules] set(N): ... 에 옮긴 규칙이 «둘씩» 보여야 합니다
+>      enrichment_dedup:<이름>[decl,decide] · enrichment_auto_confirm:<이름>[decl,decide]
+>    없으면   그 선언이 거절된 것입니다 — 같은 로그의 ERROR [ChainRules] <이름>: ... 가 사유입니다
+> ㉡ 어드민 설정 해석 보고의 Enrichment 칸 출처가 chain_rules.json 이어야 합니다
+>    (전에는 enrichment_rules.json 을 들고, 그 파일이 없으면 「규칙이 하나도 없습니다」라고 말했습니다)
+> ㉢ 소급(backfill) 이 규칙을 못 찾으면 이제 이렇게 말합니다:
+>      rule '<이름>' is not declared in chain_rules.json; available rules: ...
+>    뜻   그 이름의 derive.decide 선언이 없습니다. «파일이 없다»는 말은 더 이상 안 나옵니다
+> ```
+>
+> ### 급할 때 끄는 스위치
+>
+> ```
+> 토글이 없습니다 — 두 번째 문을 «지운» 것이라 켜고 끌 축이 없습니다
+> 되돌리려면  이 착지 커밋을 git revert 하고 재기동
+> ```
+
+---
+
 > ## 🔴 [09-23 저녁] **운영 장애 수리 — 마이그레이션 «없음» · config 변경 «없음» · 재기동 «필요»**
 >
 > 「선언은 섰고 체인은 돌았는데 행 추가만 안 되던」 것을 고쳤습니다.

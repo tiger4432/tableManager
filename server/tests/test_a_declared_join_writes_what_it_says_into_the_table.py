@@ -108,7 +108,6 @@ def fixture_load(tmp_path, monkeypatch):
     enrichment and virtual-join declarations."""
     from chain import synthesis
 
-    monkeypatch.setattr(synthesis, "synthesize_chain_rules", lambda **kwargs: [])
 
     def run(declarations):
         path = tmp_path / "chain_rules.json"

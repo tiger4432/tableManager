@@ -2,8 +2,8 @@
 """S-178. One flow, four declarations — drawn from the declarations and nothing else.
 
 Owner: 「chain 이 너무 거미줄 같아」. The web is not in the code; it is in the fact that ONE
-flow is written across FOUR files — `chain_rules.json`, `enrichment_rules.json`,
-`ledger_config.json` — and no screen has ever put them on one
+flow is written across files — `chain_rules.json` and `ledger_config.json` (and, before
+2026-09-24, `enrichment_rules.json`) — and no screen has ever put them on one
 picture. An operator asking 「what happens when this table is written?」 has to hold four
 files in their head and join them by hand.
 
@@ -171,9 +171,9 @@ def _enrich_edges(rules):
                     "rule": rule.get("name"),
                     "enabled": bool(rule.get("enabled", True)),
                     "via_reference_view": view.get("label"),
-                    # These come from enrichment_rules.json itself, not from a synthesized
-                    # chain rule — the reads relation has no chain rule to be synthesized
-                    # from (판정 293-b).
+                    # These come from the declaration's own reference views, not from a
+                    # chain rule — the reads relation has no chain rule behind it
+                    # (판정 293-b).
                     "origin": "file",
                 })
     return edges
