@@ -16,6 +16,8 @@
 // sides is the property being kept here; being right about dotted ids is a separate fix and
 // belongs in the server first.
 
+import { emptyOf, valueFits } from './ontology_skeleton.js';
+
 const PATH_STEP = /([^.[\]]+)|\[(\d+)\]/g;
 
 /** `bundle.a.b[0].c` -> `['a', 'b', 0, 'c']` (the leading `bundle.` is dropped). */
@@ -130,4 +132,36 @@ export function deleteAtPath(document, steps) {
   if (!(leaf in cursor)) return null;
   delete cursor[leaf];
   return next;
+}
+
+/** One new member of the map at `relative` -- the document back with it, plus where it was born.
+ *
+ *  🔴 ONE AUTHOR FOR BOTH SCREENS. The ledger explorer and the chain panel draw the same `+`
+ *  from the same renderer, and only the explorer had anything behind it: on the chain panel the
+ *  button did nothing at all (09-24, found before the list skeleton landed). Both now call this.
+ *  Removing a member is `deleteAtPath` -- it already splices -- so there is nothing to share there.
+ *
+ *  🔴 IT REFUSES TO WRITE OVER A VALUE THAT IS NOT THE MAP'S SHAPE. The explorer's `+` used to
+ *  replace a string held at a list (`"on": "lot_event"`) with `[<empty member>]`, deleting what
+ *  the file said without showing it. The rule is the renderer's own (`valueFits`), so the screen
+ *  and the writer cannot disagree about which value is in the way.
+ *
+ *  Index map: appended, born at `path[n]`. Name map: `name` is required; born at `path.name`.
+ *  Returns null when nothing may be written, the same as the other writers here.
+ */
+export function addMember(document, relative, node, defs, name = '') {
+  if (!node || node.kind !== 'map') return null;
+  const held = getAtPath(document, splitBundlePath(relative));
+  if (!valueFits(node, held)) return null;
+  const seed = emptyOf(node.of, defs);
+  if (node.keyed_by === 'index') {
+    const list = Array.isArray(held) ? held : [];
+    const written = writeShapeAtPath(document, relative, [...list, seed]);
+    return written === null ? null : { document: written, born: `${relative}[${list.length}]`, seed };
+  }
+  const key = String(name || '').trim();
+  if (!key) return null;
+  const born = `${relative}.${key}`;
+  const written = writeShapeAtPath(document, born, seed);
+  return written === null ? null : { document: written, born, seed };
 }

@@ -8,9 +8,9 @@ import {
 } from './ontology_explorer_store.js';
 import { renderOntologyExplorer } from './ontology_explorer_view.js';
 import {
-  splitBundlePath, setAtPath, getAtPath, deleteAtPath, writeShapeAtPath,
+  splitBundlePath, setAtPath, getAtPath, deleteAtPath, writeShapeAtPath, addMember,
 } from './ontology_path.js';
-import { declarationShape, emptyOf, shapeAt } from './ontology_skeleton.js';
+import { declarationShape, shapeAt } from './ontology_skeleton.js';
 import { censusBySource } from './source_backlog.js';
 
 /**
@@ -282,8 +282,8 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     dispatch({ type: 'EDITOR_CHANGED', text: JSON.stringify(next, null, 2) });
   };
 
-  // The skeleton node describing a path inside the open declaration, and the value the
-  // draft currently holds there. Both walk the same path the writer would write.
+  // The skeleton node describing a path inside the open declaration -- the same path the
+  // writer would write.
   const shapeForPath = (relative) => {
     const skeleton = state.authoringSchema?.skeleton;
     const section = (state.authoringSchema?.authorable_kinds || [])
@@ -291,15 +291,6 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     if (!skeleton || !section) return null;
     return shapeAt(declarationShape(skeleton, section), splitBundlePath(relative),
                    skeleton.defs);
-  };
-
-  const draftShapeAt = (relative) => {
-    if (!state.editorText) return undefined;
-    try {
-      return getAtPath(JSON.parse(state.editorText), splitBundlePath(relative));
-    } catch {
-      return undefined;
-    }
   };
 
   const removeShapeAtPath = (relative) => {
@@ -968,21 +959,24 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       } else {
         const node = shapeForPath(path);
         if (!node || node.kind !== 'map') return;
-        const empty = emptyOf(node.of, state.authoringSchema?.skeleton?.defs);
-        let born = null;
-        if (action === 'form-append') {
-          const held = draftShapeAt(path);
-          const at = Array.isArray(held) ? held.length : 0;
-          born = `${path}[${at}]`;
-          editShapeAtPath(path, [...(Array.isArray(held) ? held : []), empty]);
-        } else {
-          const box = root.querySelector(`.oe-form-new-id[data-for="${path}"]`);
-          const name = (box?.value || '').trim();
-          if (!name) return;
-          born = `${path}.${name}`;
-          editShapeAtPath(born, empty);
-          if (box) box.value = '';
+        if (!state.draft || !state.editorText) return;
+        let raw;
+        try {
+          raw = JSON.parse(state.editorText);
+        } catch {
+          return;
         }
+        // 🔴 THE CHAIN PANEL CALLS THE SAME FUNCTION (`addMember`). It also refuses to write over
+        //    a value that is not the list's shape -- this handler used to replace a string held at
+        //    a list with `[<empty member>]`, and the string was gone without ever being shown.
+        const box = action === 'form-name'
+          ? root.querySelector(`.oe-form-new-id[data-for="${path}"]`) : null;
+        const added = addMember(raw, path, node, state.authoringSchema?.skeleton?.defs,
+                                box ? box.value : '');
+        if (!added) return;
+        const { born, seed: empty } = added;
+        dispatch({ type: 'EDITOR_CHANGED', text: JSON.stringify(added.document, null, 2) });
+        if (box) box.value = '';
         // 🔴 WHAT YOU JUST NAMED IS OPEN. Typing a name and then hunting the page for the
         // row it made is the friction this whole round is about: a new member landed
         // 「접힘 · 2」 and the next control the person needed was inside it. So the same
