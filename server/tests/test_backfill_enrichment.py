@@ -784,6 +784,18 @@ def test_an_undeclared_rule_is_refused_with_what_is_declared(bkfl_env, tmp_path,
         _rule()
 
 
+def test_an_unreadable_rules_file_is_not_an_undeclared_rule(bkfl_env, tmp_path, monkeypatch):
+    """[총괄 fc9c22c3b] A broken `chain_rules.json` is 「could not be read」, never 「not declared」
+    - the same file refusal the config report shows, from the same seat."""
+    from chain import ingestion_worker as worker
+    broken = tmp_path / "chain_rules.json"
+    broken.write_text("{ not json", encoding="utf-8")
+    monkeypatch.setattr(worker, "RULES_PATH", str(broken))
+    with pytest.raises(bf.BackfillRefused, match="chain_rules.json could not be read") as refused:
+        _rule()
+    assert "not declared" not in str(refused.value)
+
+
 def test_uninitialized_table_refused(bkfl_env, monkeypatch):
     db = bkfl_env
     rule = _rule()

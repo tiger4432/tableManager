@@ -38,6 +38,8 @@
 > ㉢ 소급(backfill) 이 규칙을 못 찾으면 이제 이렇게 말합니다:
 >      rule '<이름>' is not declared in chain_rules.json; available rules: ...
 >    뜻   그 이름의 derive.decide 선언이 없습니다. «파일이 없다»는 말은 더 이상 안 나옵니다
+>    대신 rule '<이름>' cannot be looked up: chain_rules.json could not be read (...) 가 나오면
+>    뜻   선언이 없는 게 아니라 chain_rules.json 이 «깨져» 있습니다 — 파일부터 고치십시오 (09-25 추가)
 > ```
 >
 > ### 급할 때 끄는 스위치

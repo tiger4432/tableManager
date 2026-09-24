@@ -87,7 +87,8 @@ def load_rule(rule_name: str, known_tables: dict, force_disabled: bool = False) 
 
     The three refusals stay three, because each tells the operator a different next step:
     not declared (here is what is), switched off (here is the flag), refused by the loader
-    (here is its reason). 「File not found」 is gone with the file.
+    (here is its reason). 「File not found」 is gone with the file. And a rules file that
+    could not be READ says so before any of them - it is not 「not declared」.
     """
     from chain import enrich_declarations
 
@@ -98,6 +99,11 @@ def load_rule(rule_name: str, known_tables: dict, force_disabled: bool = False) 
     if rule is not None:
         return rule
 
+    # 🔴 [총괄 fc9c22c3b] The seat puts an unreadable file in this same list - the entry the
+    #    config report reads. Read it first, or a broken file is told as 「not declared」.
+    unread = [r.get("detail") for r in rejections if r.get("scope") == "file"]
+    if unread:
+        raise BackfillRefused(f"rule '{rule_name}' cannot be looked up: {unread[0]}")
     refused = [r.get("detail") for r in rejections
                if r.get("scope") == "rule" and r.get("subject") == rule_name]
     if refused:
