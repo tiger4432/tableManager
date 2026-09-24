@@ -26,7 +26,10 @@
 import { ABSENT, countText } from './absent.js';
 import { renderSkeletonForm } from './ontology_explorer_view.js';
 import { emptyOf, missingRequired, shapeAt } from './ontology_skeleton.js';
-import { writeShapeAtPath, deleteAtPath, splitBundlePath, getAtPath } from './ontology_path.js';
+import {
+  writeShapeAtPath, deleteAtPath, splitBundlePath, getAtPath, addMember,
+} from './ontology_path.js';
+import { reduceFieldFold } from './ontology_explorer_store.js';
 
 /**
  * 고르개가 «새 이름을 짓는 중»일 때 입는 말. 🔴 철자가 «하나»입니다 — 그리는 쪽과 비교하는
@@ -163,7 +166,7 @@ export function registryView(payload, opts, spec) {
  * 🔴 도메인 낱말 «0». `lists` 는 등록부가 넘겨 준 «닫힌 목록»이고, 어느 칸이 그것을 쓰는지는
  *    스켈레톤의 `list` 가 말합니다 — 이 파일이 고르지 않습니다.
  */
-function formContext(skeleton, lists, spec, held) {
+function formContext(skeleton, lists, spec, held, expanded) {
   const defs = (skeleton && skeleton.defs) || {};
   const choiceList = spec.choiceList;
   const refList = spec.refList;
@@ -207,7 +210,7 @@ function formContext(skeleton, lists, spec, held) {
     renderRow: () => null,
     suggest: (row) => row,
     hot: [],
-    expanded: {},
+    expanded: expanded || {},
     absolute: (at) => at,
   };
 }
@@ -290,6 +293,10 @@ export class RawRegistryPanel {
     //    이 둘이 그대로라야 편집 한 번이 화면을 접어 버리지 않습니다.
     this.moreOpen = false;
     this.rawOpen = false;
+    // 폼 안의 접힘도 같습니다 — 기록은 탐색기와 «같은 함수»(`reduceFieldFold`)가 합니다.
+    // 다른 문서를 열면 비웁니다. 한 규칙에서 편 목록이 다음 규칙의 같은 경로를 펴면 안 됩니다.
+    this._formFold = { expandedFields: {} };
+    this._formFoldOf = '';
     // 🔴 C-101 ①. 「무엇이 열려 있나」와 「저장 안 된 글자」는 «부품의» 사실입니다. 페이지는
     //    30초마다 목록을 다시 읽는데 그 읽기는 이름을 «안 댑니다» — 응답에 문서가 «없어서»
     //    그대로 그리면 편집기가 사라집니다(소유자 2026-09-13 「지혼자 새로고침되서 초기화」).
@@ -491,6 +498,7 @@ export class RawRegistryPanel {
       && ((root.fields || []).some((f) => f && f.key === spec.nameKey));
     // 🔴 C-101 ①. 문서의 «이름». 초안은 그 이름을 같이 듭니다.
     const key = this.newMode ? NEW_NAME : String(view.name || '');
+    if (this._formFoldOf !== key) { this._formFold = { expandedFields: {} }; this._formFoldOf = key; }
     // 🔴 C-95-b. 「무엇을 편집하고 있나」에 답이 있나. 없으면 편집기를 «안 그립니다» — 빈 편집기는
     //    친절이 아니라 «이름 없는 문서 위의 살아 있는 저장 버튼»입니다.
     const picked = this.newMode || Boolean(view.name);
@@ -747,7 +755,7 @@ export class RawRegistryPanel {
       const draw = (value) => {
         box.textContent = '';
         const form = renderSkeletonForm(
-          formContext(payload.skeleton, this.lists, spec, value),
+          formContext(payload.skeleton, this.lists, spec, value, this._formFold.expandedFields),
           root, '', value, 0, this.newMode ? NEW_NAME : view.name);
         if (form) {
           this._partition(form, root, value);
@@ -823,6 +831,53 @@ export class RawRegistryPanel {
           draw(updated);
         };
         box.addEventListener('change', write);
+        // 🔴 THE FORM'S OTHER CONTROLS. The renderer draws a fold toggle, `+ item`, a named `+`
+        //    and `−` on every map, and this panel received none of them -- 09-24, the owner's
+        //    Chrome: the chain window's lists folded shut and did not open, and `+ pair` did
+        //    nothing. These are the explorer's writers, not copies: `reduceFieldFold` records a
+        //    fold, `addMember` adds (and refuses to write over a value that is not a list),
+        //    `deleteAtPath` removes.
+        const act = (event) => {
+          const el = event && event.target;
+          const action = el && el.dataset ? el.dataset.action : '';
+          const path = el && el.dataset ? String(el.dataset.value || '') : '';
+          if (!path) return;
+          let held3;
+          if (action === 'toggle-field') {
+            try { held3 = JSON.parse(area.value || '{}'); } catch (e) { return; }
+            this._formFold = reduceFieldFold(this._formFold, {
+              type: 'FIELD_TOGGLED', path, open: el.getAttribute('aria-expanded') !== 'true',
+            });
+            draw(held3);
+            return;
+          }
+          if (action !== 'form-append' && action !== 'form-name'
+              && action !== 'form-remove' && action !== 'form-clear') return;
+          try { held3 = JSON.parse(area.value || '{}'); } catch (e) { return; }
+          let next = null;
+          if (action === 'form-remove' || action === 'form-clear') {
+            next = deleteAtPath(held3, splitBundlePath(path));
+          } else {
+            const node = shapeAt(root, splitBundlePath(path), (payload.skeleton || {}).defs);
+            const named = action === 'form-name'
+              ? [...box.querySelectorAll('.oe-form-new-id')].find((n) => n.dataset.for === path)
+              : null;
+            const added = addMember(held3, path, node, (payload.skeleton || {}).defs,
+                                    named ? named.value : '');
+            if (added) {
+              next = added.document;
+              // What you just added is open -- and so is the list it landed in.
+              this._formFold = reduceFieldFold(this._formFold, {
+                type: 'FIELD_TOGGLED', paths: [path, added.born], open: true,
+              });
+            }
+          }
+          if (next === null) return;
+          area.value = JSON.stringify(next, null, 2);
+          this._keep(key, area.value);
+          draw(next);
+        };
+        box.addEventListener('click', act);
       }
       this.root.appendChild(box);
       this._redraw = draw;

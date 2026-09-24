@@ -1529,6 +1529,11 @@ const FLOORS = new Map([
   // real chain panel on the shipped skeleton: 9 blank cells before, 0 now, and it is written so
   // it stays true when the skeleton learns lists.
   ['skeleton_value_fit_harness.mjs', 18],
+  // New 2026-09-24 with the list skeleton (90b9f443). In the owner's Chrome the chain window's lists
+  // folded shut and did not open, and `+ pair` did nothing: the renderer draws a fold toggle, `+`,
+  // a named `+` and `-` on every map, and only the explorer received them. Scored through the real
+  // panel on the shipped skeleton, by the click path, with the writer both screens now share.
+  ['chain_list_edit_harness.mjs', 13],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────
