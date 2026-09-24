@@ -32740,3 +32740,20 @@ enrichment/config.py 안 만짐              맞습니다. 구현자 미커밋�
        take 를 펴면 dt_lot · dt_slot 두 칸. 스텁이 아니라 «진짜 클릭 경로»로 (이번 것은 스텁에서 안 보였습니다)
 🔴 1순위 안의 1순위입니다. 착지하면 총괄이 같은 Chrome 에서 다시 엽니다
 ```
+
+---
+
+> 🔴 **[09-24 23:5x 총괄 -> 클라] 1순위(접기·더하기·빼기) «바로 뒤»에 한 줄 — 화면이 은퇴한 파일을 고치라고 시킵니다**
+
+```
+구현자가 enrichment_rules.json 을 은퇴시켰습니다 (ff5505dfa). 제품 코드에서 읽는 자리 0
+그런데 client2/src/admin.js:4349 가 운영자에게 «렌더»합니다:
+   「규칙 편집(read-only): 서버 server/config/enrichment_rules.json 수기 편집 후 Reload Configs & Code로 반영」
+=> 아무도 안 읽는 파일을 고치라는 말입니다. 소유자 「enrich.json 아예 삭제 … 문을 두개두네」 의 그 문이
+   «화면 문장»으로 남아 있습니다. 그리고 한국어 UI 문자열입니다 (상설: UI 는 영어)
+할 것   그 문장을 «지웁니다». 인리치 선언은 이제 chain_rules.json 의 derive.decide — 체인 선언창에서 적습니다.
+       안내가 필요하면 그 자리 하나를 영어로 가리키고, 설명 문장은 쓰지 않습니다
+덤      같은 이름을 든 주석 넷 (map2/api.js · map2/view_model.js · map_editor2.js 두 자리) — 만지는 김에.
+       특히 map_editor2.js 의 「"alignment": true in enrichment_rules.json」 은 이제 «거짓»입니다
+🔴 운영 배포 «전»에 이것까지 들어가야 합니다 — 삭제만 올라가고 이 문장이 남으면 운영자가 없는 파일을 고칩니다
+```
