@@ -1793,6 +1793,8 @@ export function renderSkeletonForm(context, node, path, value, depth = 0, label 
     chosen: context.expanded ? context.expanded[path] : undefined,
     depth,
     attention: needsAttention(context.hot, context.absolute(path)),
+    // A member of an index list -- its address ends in `[n]` -- follows its list open.
+    indexMember: typeof splitBundlePath(path).slice(-1)[0] === 'number',
     emptyDoor: !context.readOnly && shape.kind === 'map'
       && membersOf(shape, value).length === 0,
     childCount: children.childElementCount,

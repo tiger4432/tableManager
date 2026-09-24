@@ -49,9 +49,10 @@ const payloadFor = (declaration) => ({
 // The chain registry's own spec, read from the module that ships it.
 const { CHAIN_RULE_REGISTRY } = await import('../src/chain_rule_panel.js');
 
-function mountPanel(M, declaration) {
+function mountPanel(M, declaration, storage = null) {
   const host = makeNode(doc, 'div');
-  new M.RawRegistryPanel(host, { doc }, CHAIN_RULE_REGISTRY).render(payloadFor(declaration));
+  const panel = new M.RawRegistryPanel(host, { doc, storage }, CHAIN_RULE_REGISTRY);
+  panel.render(payloadFor(declaration));
   const find = (pred) => walk(host).find(pred);
   const btn = (action, value) => find((n) => n.attrs && n.attrs['data-action'] === action
     && n.attrs['data-value'] === value);
@@ -62,8 +63,11 @@ function mountPanel(M, declaration) {
     const area = find((n) => n.tagName === 'TEXTAREA');
     try { return JSON.parse(area.value); } catch (e) { return null; }
   };
-  return { host, btn, click, boxAt, inputAt, raw, find };
+  return { host, panel, btn, click, boxAt, inputAt, raw, find };
 }
+
+const memStore = () => ({ m: new Map(), getItem(k) { return this.m.has(k) ? this.m.get(k) : null; },
+  setItem(k, v) { this.m.set(k, String(v)); }, removeItem(k) { this.m.delete(k); } });
 
 const JOIN = { name: 'r_join', on: { table: 't_a' },
   derive: { join: { right_table: 't_b', on: [{ left: 'c1', right: 'c2' }], take: ['c3', 'c4'] } },
@@ -80,10 +84,11 @@ function suite(M) {
   ok(!p.inputAt('derive.join.on[0].left'), 'C0 before: the pair list is folded -- its items are not drawn');
   ok(p.click('toggle-field', 'derive.join.on') && Boolean(p.boxAt('derive.join.on[0]')),
     'C1 its toggle opens it: the item row is drawn');
-  p.click('toggle-field', 'derive.join.on[0]');
+  // [총괄 09-24] ONE click: an index-list item follows its list open, so no second toggle here --
+  //    pressing `on[0]` now would CLOSE it.
   const l0 = p.inputAt('derive.join.on[0].left'); const r0 = p.inputAt('derive.join.on[0].right');
   ok(l0 && r0 && l0.value === 'c1' && r0.value === 'c2',
-    `C2 the pair shows left=c1 right=c2 as inputs [${l0 && l0.value} / ${r0 && r0.value}]`);
+    `C2 ONE click shows the pair's left=c1 right=c2 as inputs [${l0 && l0.value} / ${r0 && r0.value}]`);
   p.click('toggle-field', 'derive.join.take');
   const t0 = p.inputAt('derive.join.take[0]'); const t1 = p.inputAt('derive.join.take[1]');
   ok(t0 && t1 && t0.value === 'c3' && t1.value === 'c4',
@@ -104,6 +109,17 @@ function suite(M) {
     `E3 "-" removes it [${JSON.stringify(on())}]`);
   ok(Boolean(p.inputAt('derive.join.on[0].left')), 'E4 the lists opened by hand stay open through the redraw');
 
+  // F -- + then - brings the document back, and nothing is left to "restore" (총괄 09-24)
+  const store = memStore();
+  const f = mountPanel(M, JOIN, store);
+  const slot = `assy.draft.${CHAIN_RULE_REGISTRY.cls}.${JOIN.name}`;
+  f.click('toggle-field', 'derive.join.on');
+  f.click('form-append', 'derive.join.on');
+  ok(store.getItem(slot) !== null, 'F0 a real change is kept as a draft (canary: the store is wired)');
+  f.click('form-remove', 'derive.join.on[1]');
+  ok(store.getItem(slot) === null && f.panel.draft === null,
+    'F1 + then - brings the document back, and no draft is left to be offered as a restore');
+
   // N -- a named + on a name-keyed map
   const q = mountPanel(M, DECIDE);
   // An EMPTY map opens by itself (its `+` is the only thing in it), so the toggle would close it.
@@ -116,6 +132,10 @@ function suite(M) {
   ok(named && q.click('form-name', 'derive.decide.aggregations')
      && aggs() && Object.prototype.hasOwnProperty.call(aggs(), 'n_rows'),
     `N1 a named "+" adds the member under the name typed [${JSON.stringify(aggs())}]`);
+  // The map was open only because it was EMPTY; once it holds a member that rule stops holding
+  // it open, so the add itself must open it -- and the member, which is named, not numbered.
+  ok(Boolean(q.boxAt('derive.decide.aggregations.n_rows')),
+    'N2 ...and the map it landed in stays open, with the new member drawn');
 
   return { pass: pass - before.pass, fail: fail - before.fail };
 }
@@ -147,6 +167,9 @@ const DEFECTS = [
   [PANEL, suite, 'what "+" added is not opened',
     (s) => s.replace("type: 'FIELD_TOGGLED', paths: [path, added.born], open: true,",
                      "type: 'FIELD_TOGGLED', paths: [], open: true,")],
+  [PANEL, suite, 'a draft equal to the server document is kept, and offered as a restore',
+    (s) => s.replace("    if (base && base.key === String(key || '') && sameDocument(text, base.raw)) {",
+                     '    if (false) {')],
   [PATHS, suitePaths, 'the shared writer writes over a value that is not a list',
     (s) => s.replace('  if (!valueFits(node, held)) return null;\n', '')],
 ];
