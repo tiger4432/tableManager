@@ -58114,3 +58114,17 @@ CODE_MAP 해당 절 · guide · RUN.md
 큐 그대로: 임시 스키마 춤을 한 좌석으로 · PG 빨강 test_an_install_that_predates_attributes_is_widened_once ·
           test_process_supervisor 경쟁
 ```
+
+### [09-25 00:0x] 덧붙임 — 착지 트리 전수 · 적는 것 ⑤
+
+```
+전수 (ff5505dfa 트리)  6799 passed, 140 skipped, 3 xfailed, 0 failed (11분 13초)
+   모은 수 6942 — 착지 전 실행(23+6777+139+3)과 같습니다. 위 「전수 회귀」 절은 착지 «전» 트리의 수였습니다
+```
+```
+⑤ 소급(backfill)은 새 파일 거절을 버립니다. load_rule 이 거절 목록에서 scope == "rule" 만 읽기 때문입니다.
+   그래서 chain_rules.json 이 깨져 있으면 운영자의 소급은
+      rule '<이름>' is not declared in chain_rules.json; available rules: <none>
+   이라고 말합니다 — 「못 읽었다」가 「선언 없음」으로 읽힙니다. 설정 보고(㉣ ②)에서 막은 것과 같은 모양의 셋째 문입니다
+   지시 밖이라 짓지 않았습니다. 크기: 그 거절 문장 앞에 파일 거절을 먼저 읽는 줄 하나 — «안 쟀습니다»(시험 포함 크기)
+```
