@@ -5213,7 +5213,7 @@ export const COMPUTABLE_TOKENS = Object.freeze([DECLARED, ASSUMED, CONFIRMED]);
 > 🔴 **`this.sources = null` 과 `[]` 는 다른 사실이다** — 앞은 「아직/못 읽음」, 뒤는 「읽었는데 소스가 없음」.
 
 - 심볼: `rowFor(sources, relation)`(module-private) · **`class GridSourceLabel`** — `mount()`/`destroy()`/`async load()`/`setRelation(relation)`/`render()`. `emits` 는 **그대로** 쓰고 거르지 않는다(총괄 교차 검사 2026-08-31: emits 에 나오는데 선언에 없는 술어 «0»). 술어가 없는 소스는 빈 괄호가 아니라 `no predicate declared`.
-- **소비자**: `main.js`(`initGridSourceLabel`) · 🆕 `answer()` 의 답은 `state.ledgerAnswer` 를 거쳐 `grid_ledger_column.js` 가 읽는다. **채점자**: `client2/tests/grid_source_label_harness.mjs`(**246줄** 09-25 실측).
+- **소비자**: `main.js`(`initGridSourceLabel`) · 🆕 `answer()` 의 답은 `state.ledgerAnswer` 에 놓이고, `grid.js` 가 그것을 `grid_ledger_column.ledgerColumnDef(answer, table)` 에 넘긴다. **채점자**: `client2/tests/grid_source_label_harness.mjs`(**246줄** 09-25 실측).
 
 ### 🆕⑯ `rescope_handoff.js` (**52줄**, `f5d847c9` 신설) — 그리드 → 어드민 «범위 넘김»
 
