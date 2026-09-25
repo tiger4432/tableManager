@@ -31,19 +31,19 @@ import { localeCountText, isCount } from './absent.js';
 export function fileLogRowHtml(log, { withStatus, timeStr }) {
   const statusBadge = `<span class="badge ${log.status === 'SUCCESS' ? 'badge-success' : 'badge-danger'}">${escapeHtml(log.status || 'FAILED')}</span>`;
   const retryBtnHtml = log.status === 'SUCCESS'
-    ? `<button class="admin-btn btn-primary" style="padding: 4px 10px; font-size: 0.75rem; opacity: 0.5; cursor: not-allowed;" disabled>Retry</button>`
-    : `<button class="admin-btn btn-primary btn-retry-file" data-id="${escapeHtml(log.id)}" style="padding: 4px 10px; font-size: 0.75rem;">Retry</button>`;
+    ? `<button class="admin-btn btn-primary" style="padding: 4px 10px; font-size: var(--fs-button); opacity: 0.5; cursor: not-allowed;" disabled>Retry</button>`
+    : `<button class="admin-btn btn-primary btn-retry-file" data-id="${escapeHtml(log.id)}" style="padding: 4px 10px; font-size: var(--fs-button);">Retry</button>`;
   // 감사 P2: 파일명은 상태와 무관한 중립색(모노) — 상태색은 배지에만
   const retryStyle = log.retry_count > 0
     ? 'color: var(--warning); font-weight: 600;'
     : 'color: var(--text-dim);';
   return `
     <td>${escapeHtml(log.id)}</td>
-    <td style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: 0.85rem; word-break: break-all;">${escapeHtml(log.filename)}</td>
+    <td style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: var(--fs-button); word-break: break-all;">${escapeHtml(log.filename)}</td>
     <td style="font-weight: bold; color: var(--color-primary);">${escapeHtml(log.table_name)}</td>
     ${withStatus ? `<td style="text-align: center;">${statusBadge}</td>` : ''}
     <td style="text-align: center; ${retryStyle}">${escapeHtml(log.retry_count)}</td>
-    <td style="color: var(--text-muted); font-size: 0.85rem; font-family: var(--font-mono);" title="${escapeHtml(log.created_at || '')}">${escapeHtml(timeStr)}</td>
+    <td style="color: var(--text-muted); font-size: var(--fs-button); font-family: var(--font-mono);" title="${escapeHtml(log.created_at || '')}">${escapeHtml(timeStr)}</td>
     <td style="text-align: center;" onclick="event.stopPropagation()">
       ${retryBtnHtml}
     </td>
@@ -64,7 +64,7 @@ export function activeIngestionRowHtml(item, { elapsedText }) {
     : (isCount(item.processed_rows) && Number(item.processed_rows) > 0
       ? localeCountText(item.processed_rows) : '-');
   return `
-      <td style="font-family: var(--font-mono); font-size: 0.85rem; color: var(--text); word-break: break-all;">${escapeHtml(item.filename)}</td>
+      <td style="font-family: var(--font-mono); font-size: var(--fs-button); color: var(--text); word-break: break-all;">${escapeHtml(item.filename)}</td>
       <td style="font-weight: bold; color: var(--color-primary);">${escapeHtml(item.table_name)}</td>
       <td style="text-align: center;">${laneBadge}</td>
       <td>
@@ -72,11 +72,11 @@ export function activeIngestionRowHtml(item, { elapsedText }) {
           <div style="flex: 1; height: 6px; border-radius: 3px; background: var(--bg-inset); border: 1px solid var(--border); overflow: hidden;">
             <div style="width: ${pct}%; height: 100%; background: var(--accent); transition: width 0.4s;"></div>
           </div>
-          <span style="font-family: var(--font-mono); font-size: 0.78rem; color: var(--text-muted); min-width: 46px; text-align: right;">${pct}%${statusNote}</span>
+          <span style="font-family: var(--font-mono); font-size: var(--fs-label); color: var(--text-muted); min-width: 46px; text-align: right;">${pct}%${statusNote}</span>
         </div>
       </td>
-      <td style="text-align: center; font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-muted);">${rowsText}</td>
-      <td style="text-align: center; font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-muted);">${escapeHtml(elapsedText)}</td>
+      <td style="text-align: center; font-family: var(--font-mono); font-size: var(--fs-button); color: var(--text-muted);">${rowsText}</td>
+      <td style="text-align: center; font-family: var(--font-mono); font-size: var(--fs-button); color: var(--text-muted);">${escapeHtml(elapsedText)}</td>
     `;
 }
 
@@ -94,7 +94,7 @@ export function workspaceRowHtml(ws) {
     : `<span class="badge badge-success" style="font-family: var(--font-mono);">0</span>`;
   return `
       <td style="font-weight: bold; color: var(--color-primary);">${escapeHtml(ws.name)}</td>
-      <td style="font-family: var(--font-mono); font-size: 0.85rem; font-weight: 500;">${escapeHtml(ws.table_name)}</td>
+      <td style="font-family: var(--font-mono); font-size: var(--fs-button); font-weight: 500;">${escapeHtml(ws.table_name)}</td>
       <td style="text-align: center;">${configBadge}</td>
       <td style="text-align: center;">${scriptsBadge}</td>
       <td style="text-align: center;">${rawFilesBadge}</td>
@@ -105,11 +105,11 @@ export function workspaceRowHtml(ws) {
 export function mapperRowHtml(mapper) {
   const funcCount = mapper.functions.length;
   return `
-      <td style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: 0.85rem; word-break: break-all;">${escapeHtml(mapper.filename)}</td>
-      <td style="font-family: var(--font-mono); font-size: 0.85rem; color: var(--text-muted);">${escapeHtml(mapper.module_name)}</td>
+      <td style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: var(--fs-button); word-break: break-all;">${escapeHtml(mapper.filename)}</td>
+      <td style="font-family: var(--font-mono); font-size: var(--fs-button); color: var(--text-muted);">${escapeHtml(mapper.module_name)}</td>
       <td style="text-align: center; font-weight: bold; color: var(--color-warning);">${funcCount}</td>
       <td style="text-align: center;" onclick="event.stopPropagation()">
-        <button class="admin-btn btn-primary btn-edit-mapper" style="padding: 4px 10px; font-size: 0.75rem;">🛠️ Edit</button>
+        <button class="admin-btn btn-primary btn-edit-mapper" style="padding: 4px 10px; font-size: var(--fs-button);">🛠️ Edit</button>
       </td>
     `;
 }
@@ -130,10 +130,10 @@ export function autoUpdateRowHtml(col, { isActive, nextRunText, lastRunText }) {
     '<span class="badge badge-muted" style="margin-left: 8px; flex: none;">Inactive</span>';
   return `
       <td style="font-weight: bold; color: var(--color-primary);">${escapeHtml(col.table_name)}</td>
-      <td style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: 0.85rem; word-break: break-all;">${escapeHtml(col.script_name)}${inactiveBadge}</td>
-      <td style="font-family: var(--font-mono); font-size: 0.85rem; text-align: center;">${escapeHtml(col.cron_expression)}</td>
-      <td style="color: var(--text-muted); font-size: 0.85rem; font-family: var(--font-mono);" title="${escapeHtml(col.next_run || '')}">${escapeHtml(nextRunText)}</td>
-      <td style="color: var(--text-muted); font-size: 0.85rem; font-family: var(--font-mono);" title="${escapeHtml(col.last_run || '')}">${escapeHtml(lastRunText)}</td>
+      <td style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: var(--fs-button); word-break: break-all;">${escapeHtml(col.script_name)}${inactiveBadge}</td>
+      <td style="font-family: var(--font-mono); font-size: var(--fs-button); text-align: center;">${escapeHtml(col.cron_expression)}</td>
+      <td style="color: var(--text-muted); font-size: var(--fs-button); font-family: var(--font-mono);" title="${escapeHtml(col.next_run || '')}">${escapeHtml(nextRunText)}</td>
+      <td style="color: var(--text-muted); font-size: var(--fs-button); font-family: var(--font-mono);" title="${escapeHtml(col.last_run || '')}">${escapeHtml(lastRunText)}</td>
       <td style="text-align: center;">${statusBadge}</td>
       <td class="au-live" style="text-align: center;" onclick="event.stopPropagation()">
         <label class="au-switch" title="${isActive ? 'Click → deactivate the collector (schedule stops)' : 'Click → activate the collector (schedule resumes)'}">
@@ -143,7 +143,7 @@ export function autoUpdateRowHtml(col, { isActive, nextRunText, lastRunText }) {
       </td>
       <td class="au-live" style="text-align: center;" onclick="event.stopPropagation()">
         <button class="admin-btn btn-primary btn-run-now" data-table="${escapeHtml(col.table_name)}" data-script="${escapeHtml(col.script_name)}"
-          style="padding: 4px 10px; font-size: 0.75rem;"
+          style="padding: 4px 10px; font-size: var(--fs-button);"
           title="${isActive ? 'Collect once now' : 'An inactive collector can still be run by hand'}">Run Now</button>
       </td>
     `;
