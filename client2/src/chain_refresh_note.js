@@ -29,5 +29,5 @@ export function chainRefreshNote(msg) {
   //    계약이 조용히 넓어집니다 — 그다음 사람은 그 강제를 계약으로 읽습니다.
   if (!Number.isFinite(n)) return '';
   // 형제 갈래들이 쓰는 «그 슬롯»의 모양(기호 + 사실 + 수)을 그대로 따릅니다.
-  return `⚡ 체인 ${n}행`;
+  return `⚡ Chain ${n} rows`;
 }

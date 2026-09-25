@@ -1,5 +1,6 @@
 import { API_BASE, pageLimit } from './config.js';
 import { ABSENT, isCount } from './absent.js';
+import { LOADING } from './ui_words.js';
 import { escapeHtml } from './utils.js';
 import { narrowingTail } from './narrowing.js';
 import { state } from './state.js';
@@ -422,30 +423,30 @@ export function createGlobalTimelineItemDom(group) {
     if (allLedger) {
       // ③ 'no_tid' 는 «이름»이지 빈 칸이 아닙니다 — 백필·소급은 체인 트랜잭션이 «없는» 것입니다.
       const chainless = txId === NO_TRANSACTION_BUCKET;
-      displayTitle = `📒 원장 배치 ${group.total_count} · ${baseLog.table_name}`
-        + `${chainless ? ' · 체인 없이 들어온 배치' : ''}`;
+      displayTitle = `📒 Ledger batch ${group.total_count} · ${baseLog.table_name}`
+        + `${chainless ? ' · batch without a chain' : ''}`;
       colorClass = 'color-ledger';
     } else if (allDeletes) {
-      displayTitle = `🗑️ [${user}] 님 | ${baseLog.table_name} | ${group.total_count}행 삭제`;
+      displayTitle = `🗑️ [${user}] | ${baseLog.table_name} | ${group.total_count} rows deleted`;
       colorClass = 'color-delete';
     } else if (allCreates) {
-      displayTitle = `🆕 [${user}] 님 | ${baseLog.table_name} | ${group.total_count}행 생성`;
+      displayTitle = `🆕 [${user}] | ${baseLog.table_name} | ${group.total_count} rows created`;
       colorClass = 'color-create';
     } else {
-      displayTitle = `📦 [${user}] 님 | ${baseLog.table_name} | ${group.total_count}건 변경`;
+      displayTitle = `📦 [${user}] | ${baseLog.table_name} | ${group.total_count} changes`;
       colorClass = baseLog.is_row_deleted ? 'color-deleted-row' : 'color-summary';
     }
   } else {
     const targetId = baseLog.business_key ? (baseLog.business_key.length > 10 ? baseLog.business_key.slice(0, 10) + '...' : baseLog.business_key) : baseLog.row_id.slice(0, 8);
     const col = baseLog.column_name;
     if (col === 'CREATE') {
-      displayTitle = `🆕 [${user}] 님이 ${baseLog.table_name} (${targetId}) 생성`;
+      displayTitle = `🆕 [${user}] created ${baseLog.table_name} (${targetId})`;
       colorClass = 'color-create';
     } else if (col === 'DELETE') {
-      displayTitle = `🗑️ [${user}] 님이 ${baseLog.table_name} (${targetId}) 삭제`;
+      displayTitle = `🗑️ [${user}] deleted ${baseLog.table_name} (${targetId})`;
       colorClass = 'color-delete';
     } else if (col === 'ROW_UPDATE') {
-      displayTitle = `🤖 [${user}] 님이 ${baseLog.table_name} (${targetId}) 자동 업데이트`;
+      displayTitle = `🤖 [${user}] auto-updated ${baseLog.table_name} (${targetId})`;
       colorClass = baseLog.is_row_deleted ? 'color-deleted-row' : 'color-auto';
     } else if (col === LEDGER_BATCH_COLUMN) {
       // 🔴 C-55 / S-117. 원장 배치는 «표의 셀 하나»가 바뀐 것이 아니라 배치 하나가 돈 것이라,
@@ -453,16 +454,16 @@ export function createGlobalTimelineItemDom(group) {
       // 🔴 ③ 'no_tid' 는 «빈 칸이 아니라 이름»입니다 — 백필·소급은 체인 트랜잭션이 «없는»
       //    것이고, 「자료 없음」과 섞으면 조작자가 없는 트랜잭션을 찾아다닙니다.
       const chainless = txId === NO_TRANSACTION_BUCKET;
-      displayTitle = `📒 원장 배치 · ${baseLog.table_name}${chainless ? ' · 체인 없이 들어온 배치' : ''}`;
+      displayTitle = `📒 Ledger batch · ${baseLog.table_name}${chainless ? ' · batch without a chain' : ''}`;
       colorClass = 'color-ledger';
     } else {
-      displayTitle = `🔄 [${user}] 님이 ${baseLog.table_name} (${targetId}) 의 ${col} 수정`;
+      displayTitle = `🔄 [${user}] edited ${col} of ${baseLog.table_name} (${targetId})`;
       colorClass = baseLog.is_row_deleted ? 'color-deleted-row' : (baseLog.source_name === 'user' ? 'color-user-edit' : 'color-parser-edit');
     }
   }
 
   if (baseLog.is_row_deleted) {
-    displayTitle = `❌ [삭제됨] ` + displayTitle;
+    displayTitle = `❌ [deleted] ` + displayTitle;
   }
 
   // [2c] A ROW, not a card. The class names and the nesting roles are unchanged -- the click,
@@ -514,7 +515,7 @@ export function createGlobalTimelineItemDom(group) {
           ? `<span class="val-new val-receipt">${escapeHtml(receiptLine)}</span>`
           : `<span class="val-new">${escapeHtml(auditVal(baseLog.new_value, false))}</span>`}
       </div>
-      ${txId ? `<div class="audit-cell audit-tx tx-tag" data-tx-id="${txId}"><span class="filter-tx-btn" data-tx-id="${txId}" title="이 트랜잭션만 보기">…${txId.slice(-8)}</span>${isSummary ? '<span class="expand-indicator">▶</span>' : ''}</div>` : '<div class="audit-cell audit-tx"></div>'}
+      ${txId ? `<div class="audit-cell audit-tx tx-tag" data-tx-id="${txId}"><span class="filter-tx-btn" data-tx-id="${txId}" title="Only this transaction">…${txId.slice(-8)}</span>${isSummary ? '<span class="expand-indicator">▶</span>' : ''}</div>` : '<div class="audit-cell audit-tx"></div>'}
     </div>
     ${isSummary ? `<div class="tx-details-container" style="display: none;"></div>` : ''}
   `;
@@ -713,7 +714,7 @@ function createHistoryEmptyDom() {
   const total = state.cellRowHistoryRowTotal;
   // `null` on the row tab (contract) and `0` when the row really has nothing — same answer.
   if (state.activeHistoryTab !== 'cell' || !total || total <= 0) {
-    li.textContent = '기록 없음';
+    li.textContent = 'No history';
     return li;
   }
 
@@ -721,7 +722,7 @@ function createHistoryEmptyDom() {
 
   const note = document.createElement('div');
   note.className = 'timeline-empty-note';
-  note.textContent = '이 셀 기록 없음';
+  note.textContent = 'No history for this cell';
   li.appendChild(note);
 
   const btn = document.createElement('button');
@@ -733,8 +734,8 @@ function createHistoryEmptyDom() {
   // 🔴 `이상` IS NOT DECORATION. The server probes this count with a cap, so a capped answer is a
   //    FLOOR. Printing it bare would state an exact number the server never claimed.
   btn.textContent = state.cellRowHistoryRowTotalIsFloor
-    ? `행 이력 ${total.toLocaleString()}건 이상 보기`
-    : `행 이력 ${total.toLocaleString()}건 보기`;
+    ? `Row history · ${total.toLocaleString()}+`
+    : `Row history · ${total.toLocaleString()}`;
   btn.addEventListener('click', () => {
     // The row tab's own button, not a reimplementation of it. Switching tabs here directly would
     // mean a second copy of the active-class bookkeeping, the reference-view teardown and the
@@ -766,7 +767,7 @@ const HISTORY_PANES = {
   // The cell and row tabs share one pane: they page the same population through the same state,
   // and which of the two is active only changes the URL `historyUrl` builds.
   cellRow: {
-    label: () => `일부만 (${state.cellRowHistoryLoaded}건) · 더 보기`,
+    label: () => `Partial (${state.cellRowHistoryLoaded}) · more`,
     cursor: () => state.cellRowHistoryCursor,
     session: () => state.cellRowHistorySession,
     // A page is only wanted while the list it belongs to is still the list on screen.
@@ -786,7 +787,7 @@ const HISTORY_PANES = {
     redraw: null,
   },
   global: {
-    label: () => `일부만 (${state.globalHistoryLoaded}건) · 더 보기`,
+    label: () => `Partial (${state.globalHistoryLoaded}) · more`,
     cursor: () => state.globalHistoryCursor,
     session: () => state.globalHistorySession,
     live: () => state.activeHistoryTab === 'global',
@@ -861,7 +862,7 @@ function markMoreFailed(btn) {
   delete btn.dataset.mode;
   btn.classList.add('is-error');
   btn.disabled = false;
-  btn.textContent = '조회 실패 · 재시도';
+  btn.textContent = 'Read failed · retry';
 }
 
 // The position itself is unusable (400). Retrying it forever is the trap; a reload from the top
@@ -870,7 +871,7 @@ function markMoreLost(btn) {
   btn.dataset.mode = 'reload';
   btn.classList.add('is-error');
   btn.disabled = false;
-  btn.textContent = '위치 만료 · 새로고침';
+  btn.textContent = 'Position expired · refresh';
 }
 
 // [History paging] Fetch the next page and APPEND it. Never replaces what is on screen.
@@ -885,7 +886,7 @@ export async function loadMoreHistory(btn, pane = HISTORY_PANES.cellRow) {
   btn.disabled = true;
   btn.classList.remove('is-error');
   delete btn.dataset.mode;
-  btn.textContent = '조회 중…';
+  btn.textContent = LOADING;
 
   let page;
   try {
@@ -1011,7 +1012,7 @@ export function renderGlobalTimeline() {
   });
 
   if (!shown.length) {
-    elements.timeline.innerHTML = '<li class="timeline-empty">\uc870\uac74\uc5d0 \ub9de\ub294 \uae30\ub85d\uc774 \uc5c6\uc2b5\ub2c8\ub2e4.</li>';
+    elements.timeline.innerHTML = '<li class="timeline-empty">No history matches</li>';
   } else if (state.globalHistoryTruncated) {
     // 🔴 THE FACT, AND NOW THE CONTROL — BUT ONLY WHEN THERE IS A POSITION TO PAGE FROM.
     //    This read 「FACT ONLY, NO CONTROL … a pager here would be the 「clickable, goes nowhere」
@@ -1034,11 +1035,11 @@ export function renderGlobalTimeline() {
       //    drifts upward on its own and would make this number grow while nothing was fetched.
       //    That is the same reason `cellRowHistoryLoaded` is kept beside its array rather than
       //    read off it.
-      li.textContent = `일부만 (${state.globalHistoryLoaded}건)`;
+      li.textContent = `Partial (${state.globalHistoryLoaded})`;
       elements.timeline.appendChild(li);
     }
   }
-  if (count) count.textContent = `${state.globalHistoryData.length}건 중 ${shown.length}`;
+  if (count) count.textContent = `${shown.length} of ${state.globalHistoryData.length}`;
 }
 
 /** Re-render on a filter change. The selects are static markup, so this installs once. */
@@ -1119,7 +1120,7 @@ export function renderSubDetails(container, logs) {
 // Helper to format values
 export function formatVal(v, isOld = false) {
   if (v === null || v === undefined || v === '') {
-    return isOld ? '비어있음' : '삭제됨';
+    return isOld ? 'Empty' : 'Deleted';
   }
   if (typeof v === 'object') return JSON.stringify(v);
   return String(v);

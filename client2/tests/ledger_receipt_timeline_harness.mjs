@@ -131,10 +131,10 @@ console.log('\n[3] what reaches the screen');
 
   // ③ 'no_tid' is a NAME. Absent chain and 「자료 없음」 are different facts.
   const chainless = html(groupOf('unfollowed_backfill'));
-  ok('a chainless batch is named, not blank', chainless.includes('체인 없이 들어온 배치'), chainless);
+  ok('a chainless batch is named, not blank', chainless.includes('batch without a chain'), chainless);
   // 🔴 THE CONTROL: the same shape WITH a transaction id must not carry that name.
   ok('...and a batch that HAS a chain does not carry that name',
-    !success.includes('체인 없이 들어온 배치'), success);
+    !success.includes('batch without a chain'), success);
 }
 
 console.log('\n[4] the rows that were already there do not move');

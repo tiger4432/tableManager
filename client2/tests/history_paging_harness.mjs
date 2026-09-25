@@ -620,9 +620,9 @@ async function sectionB() {
   //    dereference. Four separate `moreBtn(...)` calls also let the four disagree about which
   //    control they meant, which is the same defect one layer down.
   const more = moreBtn(S.timeline);
-  check('B5 the control says the list is only part of the history', says(more, '일부만'), true);
-  check('B5b ... and how much of it was paged in', says(more, '3건'), true);
-  check('B5c ... and offers the page', says(more, '더 보기'), true);
+  check('B5 the control says the list is only part of the history', says(more, 'Partial'), true);
+  check('B5b ... and how much of it was paged in', says(more, '(3)'), true);
+  check('B5c ... and offers the page', says(more, 'more'), true);
   check('B6 the control is live', enabled(more), true);
   check('B7 the first request carries no cursor', urlAt(S, 0).includes('cursor='), false);
   check('B7b ... and is the ROW endpoint on the row tab',
@@ -685,7 +685,7 @@ async function sectionC() {
     S.requests[1], `${API_BASE}/tables/t1/rows/ROW-A/history?cursor=CUR1`);
   check('C4 the next cursor replaces the spent one', state.cellRowHistoryCursor, 'CUR2');
   check('C5 the paged count grows', state.cellRowHistoryLoaded, 4);
-  check('C5b ... and the label says so', says(btn, '4건'), true);
+  check('C5b ... and the label says so', says(btn, '(4)'), true);
   check('C6 the control is live again', enabled(btn), true);
 
   // The last page: nothing further to page toward, so the control goes and its absence is the
@@ -716,7 +716,7 @@ async function sectionC() {
   const b3 = moreBtn(S3.timeline);
   const inflight = parked(S3, S3.ctx.loadMoreHistory(b3));
   check('C9 the control is disabled while its page is in flight', enabled(b3), false);
-  check('C9b ... and says so', textOf(b3), '조회 중…');
+  check('C9b ... and says so', textOf(b3), 'Loading…');
   await S3.ctx.loadMoreHistory(b3);          // the double click
   check('C9c a second click issues no second request', S3.requests.length, 2);
   // 🔴 C-63. TOTAL, AND IT MUST NOT BE ABLE TO HANG. With the envelope defect there is no
@@ -839,7 +839,7 @@ async function sectionE() {
   check('E1 a failed page keeps every row already on screen', items(S.timeline).length, 2);
   check('E1b ... and the list behind them', state.cellRowHistoryData.length, 2);
   check('E2 the control is NOT left disabled', enabled(btn), true);
-  check('E2b ... it offers the retry', says(btn, '재시도'), true);
+  check('E2b ... it offers the retry', says(btn, 'retry'), true);
   check('E2c ... and shows it failed', hasClass(btn, 'is-error'), true);
   check('E3 the cursor is untouched, so the retry has somewhere to go',
     state.cellRowHistoryCursor, 'CUR1');
@@ -859,7 +859,7 @@ async function sectionE() {
   S.responses.push({ status: 500, body: {} });
   btn = moreBtn(S.timeline);
   await S.ctx.loadMoreHistory(btn);
-  check('E5 a 500 is a retry', says(btn, '재시도'), true);
+  check('E5 a 500 is a retry', says(btn, 'retry'), true);
   check('E5b ... and keeps the position', state.cellRowHistoryCursor, 'CUR1');
 
   // -- 400: the POSITION is gone. Retrying the same token can only fail again. --
@@ -873,9 +873,9 @@ async function sectionE() {
 
   check('E6 a 400 keeps the rows already on screen', items(S.timeline).length, 2);
   check('E6b the control does not offer the same cursor again',
-    says(btn, '재시도'), false);
-  check('E6c it offers a reload', says(btn, '새로고침'), true);
-  check('E6d ... and says the position expired', says(btn, '위치 만료'), true);
+    says(btn, 'retry'), false);
+  check('E6c it offers a reload', says(btn, 'refresh'), true);
+  check('E6d ... and says the position expired', says(btn, 'Position expired'), true);
   check('E6e ... and is still clickable', enabled(btn), true);
 
   // 🔴 CLICKING IT MUST START OVER, NOT RE-ASK. A control that loops on a dead cursor is the
@@ -997,7 +997,7 @@ async function sectionJ() {
   const b1 = moreBtn(S.timeline);
   check('J1 a capped global list carries the pager', mores(S.timeline).length, 1);
   check('J1b ... and it states the fact before it offers the page',
-    b1 ? b1.textContent : null, '일부만 (2건) · 더 보기');
+    b1 ? b1.textContent : null, 'Partial (2) · more');
   check('J1c ... and the position to resume from was kept', state.globalHistoryCursor, 'GCUR1');
   check('J1d ... and the paged count is its own number', state.globalHistoryLoaded, 2);
 
@@ -1010,7 +1010,7 @@ async function sectionJ() {
   await S.ctx.loadHistory();
   check('J2 truncated with no cursor draws no control', mores(S.timeline).length, 0);
   check('J2b ... and says so as a fact instead',
-    S.timeline.children.some(c => textOf(c) === '일부만 (1건)'), true);
+    S.timeline.children.some(c => textOf(c) === 'Partial (1)'), true);
 
   // -- J3: the page is FETCHED with the cursor and APPENDED, and the count follows --
   S = await buildSandbox();
@@ -1027,7 +1027,7 @@ async function sectionJ() {
   check('J3c ... the panel shows both', items(S.timeline).length, 2);
   check('J3d ... the cursor advanced', state.globalHistoryCursor, 'GCUR2');
   check('J3e ... and the control counts what was paged in',
-    (moreBtn(S.timeline) || {}).textContent, '일부만 (2건) · 더 보기');
+    (moreBtn(S.timeline) || {}).textContent, 'Partial (2) · more');
 
   // -- J4: the last page takes the control away, because a complete list carries none --
   S.responses.push({ status: 200, body: recentPage([group('TX-3', [log(3)])]) });
@@ -1047,7 +1047,7 @@ async function sectionJ() {
   const b5 = moreBtn(S.timeline);
   check('J5 a 400 turns the pager into the one move that recovers',
     b5 ? [b5.textContent, b5.disabled, b5.dataset.mode] : null,
-    ['위치 만료 · 새로고침', false, 'reload']);
+    ['Position expired · refresh', false, 'reload']);
   check('J5b ... and the rows already on screen are untouched',
     txIds(state.globalHistoryData), ['TX-1']);
 
@@ -1062,7 +1062,7 @@ async function sectionJ() {
   const b6 = moreBtn(S.timeline);
   check('J6 a failed page offers a retry and stays live',
     b6 ? [b6.textContent, enabled(b6), b6.dataset.mode] : null,
-    ['조회 실패 · 재시도', true, undefined]);
+    ['Read failed · retry', true, undefined]);
   check('J6b ... on the same cursor, which is still good', state.globalHistoryCursor, 'GCUR1');
 
   // -- J7: PAGE 2 OF A LIST THAT IS NO LONGER ON SCREEN. Those rows are real and they belong to
@@ -1112,7 +1112,7 @@ async function sectionH() {
   // still renders" is the claim this whole change has to survive, and it is not a type check.
   check('H3 the panel painted one entry per group', items(S.timeline).length, 2);
   check('H3b ... reading the GROUP, not just its representative log',
-    entryHtml(S.timeline, 0).includes('5건 변경'), true);
+    entryHtml(S.timeline, 0).includes('5 changes'), true);
   check('H3c ... and the single-log group renders its column',
     entryHtml(S.timeline, 1).includes('COL-A'), true);
   check('H3d ... each tagged with its transaction',
@@ -1206,7 +1206,7 @@ async function sectionI() {
   S.responses.push({ status: 200, body: cellPage([], null, 0) });
   await S.ctx.loadHistory();
   let slot = emptySlot(S.timeline);
-  check('I1 no history anywhere reads as 기록 없음', slot.text, '기록 없음');
+  check('I1 no history anywhere reads as 기록 없음', slot.text, 'No history');
   check('I1b ... and offers nowhere to go', slot.action === undefined || slot.action === null, true);
   check('I1c ... and is not a pager', mores(S.timeline).length, 0);
 
@@ -1217,18 +1217,18 @@ async function sectionI() {
   S.responses.push({ status: 200, body: cellPage([], null, 225101) });
   await S.ctx.loadHistory();
   slot = emptySlot(S.timeline);
-  check('I2 the two empty states are NOT the same text', slot.text === '기록 없음', false);
-  check('I2b the cell is what is empty, and it says so', slot.note, '이 셀 기록 없음');
+  check('I2 the two empty states are NOT the same text', slot.text === 'No history', false);
+  check('I2b the cell is what is empty, and it says so', slot.note, 'No history for this cell');
   checkFn('I2c the row-level count reaches the screen',
     textOf(slot.action),
-    t => typeof t === 'string' && t.includes('225') && t.includes('101') && t.includes('건'),
-    'a label carrying the 225101 count (grouped per locale) and 건');
+    t => typeof t === 'string' && t.includes('225') && t.includes('101') && t.includes('Row history'),
+    'a label carrying the 225101 count (grouped per locale) and names the row history');
   // 🔴 C-63. TOTAL, and I2c above is the assertion that NAMES the loss. Two mutants (the reader
   //    dropping the row-history count, and the two empty states collapsing into one) take the
   //    disclosure off the screen entirely; I2c is written to fail on that, but I2d used to
   //    dereference `slot.action` first and throw, so the run ended before the naming assertion
   //    could be believed — the verdict said 「caught」 about a harness that had crashed.
-  check('I2d ... as the ROW history, named', says(slot.action, '행 이력'), true);
+  check('I2d ... as the ROW history, named', says(slot.action, 'Row history'), true);
   check('I2e the count is stored beside the list, not on it',
     [state.cellRowHistoryRowTotal, state.cellRowHistoryData.row_history_total], [225101, undefined]);
 
@@ -1250,7 +1250,7 @@ async function sectionI() {
   S.responses.push({ status: 200, body: cellPage([], null, 1000, true) });
   await S.ctx.loadHistory();
   check('I4 a capped count is not presented as exact',
-    says(emptySlot(S.timeline).action, '이상'), true);
+    says(emptySlot(S.timeline).action, '+'), true);
 
   // -- and is NOT hedged when it is exact. A small count also pins the whole label with no
   //    locale grouping in the way.
@@ -1260,7 +1260,7 @@ async function sectionI() {
   S.responses.push({ status: 200, body: cellPage([], null, 3) });
   await S.ctx.loadHistory();
   check('I5 an exact count states the number plainly',
-    textOf(emptySlot(S.timeline).action), '행 이력 3건 보기');
+    textOf(emptySlot(S.timeline).action), 'Row history · 3');
 
   // -- the ROW tab never shows the disclosure: it IS the destination, and the server sends
   //    `row_history_total: null` there --
@@ -1269,7 +1269,7 @@ async function sectionI() {
   state.activeHistoryTab = 'row';
   S.responses.push({ status: 200, body: page([], null) });
   await S.ctx.loadHistory();
-  check('I6 the row tab does not point at itself', emptySlot(S.timeline).text, '기록 없음');
+  check('I6 the row tab does not point at itself', emptySlot(S.timeline).text, 'No history');
 
   // -- a count must not outlive the cell it described. Same sandbox, second cell: a disclosure
   //    reading "행 이력 12건" under a row that has none is confidently wrong, which is worse
@@ -1279,12 +1279,12 @@ async function sectionI() {
   state.activeHistoryTab = 'cell';
   S.responses.push({ status: 200, body: cellPage([], null, 12) });
   await S.ctx.loadHistory();
-  check('I7 precondition: the first cell discloses', emptySlot(S.timeline).note, '이 셀 기록 없음');
+  check('I7 precondition: the first cell discloses', emptySlot(S.timeline).note, 'No history for this cell');
   state.selectedCell = { rowId: 'ROW-B', colId: 'COL-A', value: '', rowIndex: 1 };
   S.responses.push({ status: 200, body: cellPage([], null, 0) });
   await S.ctx.loadHistory();
   check('I7b a stale count does not follow the operator to the next cell',
-    emptySlot(S.timeline).text, '기록 없음');
+    emptySlot(S.timeline).text, 'No history');
 
   // -- both states stay removable by a live log. `renderTimelineIncremental` finds the empty
   //    slot by `.timeline-empty`; a disclosure that dropped the class would sit above the first
@@ -1338,9 +1338,9 @@ const MUTANTS = [
     repl: '  if (true) {' },
   { name: 'a floor count is presented as an exact one', defect: true,
     find: '  btn.textContent = state.cellRowHistoryRowTotalIsFloor\n'
-        + '    ? `행 이력 ${total.toLocaleString()}건 이상 보기`\n'
-        + '    : `행 이력 ${total.toLocaleString()}건 보기`;',
-    repl: '  btn.textContent = `행 이력 ${total.toLocaleString()}건 보기`;' },
+        + '    ? `Row history · ${total.toLocaleString()}+`\n'
+        + '    : `Row history · ${total.toLocaleString()}`;',
+    repl: '  btn.textContent = `Row history · ${total.toLocaleString()}`;' },
   { name: 'the disclosure states the count but offers no way to the row tab', defect: true,
     find: '    elements.tabRowBtn?.click();',
     repl: '' },
@@ -1367,13 +1367,13 @@ const MUTANTS = [
     find: '      markMoreLost(btn);',
     repl: '      markMoreFailed(btn);' },
   { name: 'a failed page leaves the control disabled', defect: true,
-    find: "  btn.disabled = false;\n  btn.textContent = '조회 실패 · 재시도';",
-    repl: "  btn.disabled = true;\n  btn.textContent = '조회 실패 · 재시도';" },
+    find: "  btn.disabled = false;\n  btn.textContent = 'Read failed · retry';",
+    repl: "  btn.disabled = true;\n  btn.textContent = 'Read failed · retry';" },
   { name: 'the control offers the page without stating the list is capped', defect: true,
     // Re-anchored 2026-09-17: the label is what the PANE declares, not what the function
     // types. Same claim, same words, one line up the file.
-    find: '    label: () => `일부만 (${state.cellRowHistoryLoaded}건) · 더 보기`,',
-    repl: '    label: () => `더 보기`,' },
+    find: '    label: () => `Partial (${state.cellRowHistoryLoaded}) · more`,',
+    repl: '    label: () => `more`,' },
   { name: 'a complete list keeps a pager anyway', defect: true,
     find: '  if (!state.cellRowHistoryTruncated || !state.cellRowHistoryCursor) return;',
     repl: '  if (false) return;' },

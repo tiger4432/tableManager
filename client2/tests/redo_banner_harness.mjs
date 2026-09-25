@@ -203,7 +203,7 @@ console.log('\n── B. THE BUTTONS ──────────────�
   //    같은 바의 옆 버튼 셋이 사유를 다는 동안 이 둘만 아무 말이 없었습니다. 조건은 옳았고
   //    «말»이 없었습니다. 그래서 「꺼짐」과 「왜」를 따로 단언합니다.
   ok('B1b ... and each says WHY, in its own place',
-    buttons(empty.host).every((b) => b.getAttribute('title') === '행을 고르십시오'),
+    buttons(empty.host).every((b) => b.getAttribute('title') === 'Pick rows'),
     buttons(empty.host).map((b) => b.getAttribute('title')));
   const chosen = build([envelope({ lot_id: 'L1', wafer_id: 'W1' })]);
   ok('B2 selecting a row brings both to life',
@@ -251,7 +251,7 @@ console.log('\n── C. THE LEDGER GROUPS, ASSEMBLED HERE ───────
   press(holed.host, 'ledger');
   const hl = groupsShown(holed.host);
   ok('C6 a column with nothing in it is not handed over',
-    hl.filter((l) => l.startsWith('wafer_id')).every((l) => l.includes('값 없음')), hl);
+    hl.filter((l) => l.startsWith('wafer_id')).every((l) => l.includes('no value')), hl);
   byClass(holed.host, 'redo-panel__go')[0].click();
   ok('C7 ... and the payload holds only the column that has values',
     holed.handed().groups.length === 1
@@ -309,7 +309,7 @@ console.log('\n── E. THE ENVELOPE ──────────────
   const plain = build(rows, { readValue: (row, col) => (row ? row[col] : undefined) });
   press(plain.host, 'ledger');
   ok('E1 without the injected reader the enveloped rows read as empty',
-    (note(plain.host) || '').includes('범위 값 없음'), note(plain.host));
+    (note(plain.host) || '').includes('No scope value'), note(plain.host));
   const wired = build(rows);
   press(wired.host, 'ledger');
   ok('E2 with the reader the values are found where the grid keeps them',
@@ -372,7 +372,7 @@ console.log('\n── G. A LINE IS PRESSED AND IT RUNS ────────�
     lines()[0].tagName === 'BUTTON', lines().map((n) => n.tagName));
   // The dropped column has nothing to run, so it is a line and not a control that does nothing.
   ok('G2 a line with nothing to run is not a button',
-    lines()[1].tagName === 'DIV' && lines()[1].textContent.includes('값 없음'),
+    lines()[1].tagName === 'DIV' && lines()[1].textContent.includes('no value'),
     lines().map((n) => n.tagName));
   lines()[0].click();
   ok('G3 pressing it calls the injected runner once, with the declared parameter names',
@@ -435,7 +435,7 @@ console.log('\n── H. NO TOKEN SAYS SO ────────────�
   const with_ = mk(true);
   ok('H1 without a token the panel says so in a sentence',
     (byClass(without, 'redo-panel__nogo')[0] || {}).textContent !== undefined
-    && byClass(without, 'redo-panel__nogo')[0].textContent.includes('토큰'),
+    && byClass(without, 'redo-panel__nogo')[0].textContent.includes('token'),
     byClass(without, 'redo-panel__nogo').length);
   ok('H2 ... and its lines are not controls that would do nothing',
     byClass(without, 'redo-panel__group').every((n) => n.tagName === 'DIV'));
@@ -527,13 +527,13 @@ console.log('\n── I. THE CHAIN RULES: UNREAD IS NOT EMPTY ──────
     !== declaredEmpty.lines.map((n) => n.textContent).join('|'),
     [unread.lines.map((n) => n.textContent), declaredEmpty.lines.map((n) => n.textContent)]);
   ok('I2 unread says it could not be loaded',
-    unread.lines.some((n) => n.textContent.includes('못 읽음')),
+    unread.lines.some((n) => n.textContent.includes('unreadable')),
     unread.lines.map((n) => n.textContent));
   // ⚠️ C-109 에서 문구가 «좁아졌습니다»: 목록이 이제 「이 표를 트리거로 하는」 규칙만이라,
   //    「서버에 규칙이 없다」는 오늘 «거짓»입니다(다른 표에는 있을 수 있습니다).
   //    단언을 지우지 «않고» 문구를 바꿉니다 — 지우면 새 규칙을 재는 것이 아무것도 안 남습니다.
   ok('I3 declared-empty says no rule is triggered by THIS table',
-    declaredEmpty.lines.some((n) => n.textContent.includes('이 표를 트리거로 하는 규칙 없음')),
+    declaredEmpty.lines.some((n) => n.textContent.includes('No rule triggers on this table')),
     declaredEmpty.lines.map((n) => n.textContent));
   ok('I4 neither offers a line to press, because `rule` is required',
     unread.lines.every((n) => n.tagName === 'DIV')
@@ -587,8 +587,8 @@ const DEFECTS = [
   ['M13 no token goes quietly grey instead of saying so',
     swap("      why.className = 'redo-panel__nogo';", "      why.className = 'redo-panel__quiet';")],
   ['M14 the unread rule list paints the same as a declared-empty one',
-    swap("        { text: '규칙 목록 못 읽음 · 어드민에서 선택', params: null },",
-      "        { text: '이 표를 트리거로 하는 규칙 없음', params: null },")],
+    swap("        { text: 'Rules unreadable · pick in admin', params: null },",
+      "        { text: 'No rule triggers on this table', params: null },")],
   ['M16 the line drops the item class when it becomes a button',
     swap("      line.className = 'dropdown-item redo-panel__group';",
       "      line.className = pressable ? 'redo-panel__group'\n"
@@ -806,7 +806,7 @@ async function runMutant({ name, mutate, where }) {
         ['R6 a column with no values says so instead of going out as an empty scope',
           () => byClass(holed.host, 'redo-panel__group')
             .filter((n) => n.textContent.startsWith('wafer_id'))
-            .every((n) => n.textContent.includes('값 없음'))],
+            .every((n) => n.textContent.includes('no value'))],
         ['R7 the chain hand-off invents no rule grouping',
           () => !!handed && handed.groups === undefined],
         ['R8 ...and carries the selected rows verbatim, by row_id',
@@ -837,7 +837,7 @@ async function runMutant({ name, mutate, where }) {
         // 🔴 C-120. 「꺼졌다」와 「왜 꺼졌는지 말한다」는 «다른 사실»입니다. R1 만 있으면
         //    말 없이 끄는 코드가 만점을 받습니다 — 그것이 오늘 고친 결함의 모양이었습니다.
         ['R25 ...and a dead button says why, in its own place',
-          () => buttons(empty.host).every((b) => b.getAttribute('title') === '행을 고르십시오')],
+          () => buttons(empty.host).every((b) => b.getAttribute('title') === 'Pick rows')],
       ];
       // Recorded once, so the 「unexercised」 line below is COMPUTED from the checks that
       // actually ran rather than typed out beside them -- a hand-written list of names drifts
