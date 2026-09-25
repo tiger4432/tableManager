@@ -59458,3 +59458,18 @@ health-strip  소유자 답 대기 — 지금은 그대로 둠
                   RUN.md 에 운영에서 돌릴 그 명령 · 답의 뜻 · 되돌릴 수 없음 여부
 게이트   CLI 백필 하나를 도는 중에 어드민 소급 버튼이 «막힘» · 화면 취소로 CLI 가 페이지 사이에서 멈춤 (전·후)
 ```
+
+---
+
+> 🔴 **[총괄 -> 구현자] 같은 라운드에 하나 더 — 메인 그리드 대기열의 «안 없어지는 줄» 둘째 원인: 실패 줄**
+
+```
+소유자   「옛 줄 생기는 건 이제 안 생기나?」
+박스     processed_chain = true · broadcast_at 없음   EDIT FAILED 81 (09-23) · RETROACTIVE_RUN PENDING 24
+원인     /outbox/queue/rows 의 SQL 이 「미전달」을 processed_chain = true AND broadcast_at IS NULL 로 거름 — 상태를 안 봄
+         event_constants.broadcast_state_of 와 알림 청소(idx_outbox_undelivered)는 status = UNDELIVERED_MARKER_STATUS 인 줄만 미전달
+         -> 실패 줄은 알릴 것이 없어 청소가 영원히 안 집는데, 목록 SQL 은 계속 올림 -> 7일 청소까지 목록에 남음 (PENDING 줄도 같은 길)
+         「미전달」을 답하는 자리가 둘이고 갈라져 있음
+고칠 것  목록 SQL 의 미전달 술어 = broadcast_state_of 와 «같은 한 정의» (상수 · 함수 하나를 둘이 지남). 실패는 실패 요약(ㄴ)에만
+게이트   박스에서 /outbox/queue/rows 에 FAILED 81 · PENDING 24 가 안 뜸 (전·후) · 변이: 술어를 옛 모양으로 -> 빨강
+```
