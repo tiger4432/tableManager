@@ -110,9 +110,17 @@ def test_the_failures_fold_to_one_line_per_table_kind_and_day(db_session):
     assert lines[2]["first_at"] < lines[2]["last_at"]
 
 
-def test_the_day_does_not_move_with_the_postgresql_session_zone():
-    """23:30 UTC is the next morning in a KST session; the day is the UTC day either way,
-    like the `first_at` beside it. sqlite has no session zone, so a scratch schema."""
+@pytest.mark.parametrize("tz", [None, "", "Not/A_Zone"])
+def test_no_readable_zone_cuts_utc_days_and_says_so(db_session, tz):
+    failed_row(db_session, 5, "tx_one")
+    out = main.get_failed_outbox_events(page=1, limit=1, tz=tz, db=db_session)
+    assert out["day_zone"] == "UTC"
+    assert [l["day"] for l in out["summary"]] == ["2026-09-04"]
+
+
+def test_the_day_is_the_viewers_day_not_the_session_zone():
+    """총괄 eca1f36b2 — 08:30 and 09:30 KST are one Seoul day and two UTC days, and the
+    PostgreSQL session's own zone decides neither. sqlite has no zones: a scratch schema."""
     from conftest import _declared_as_test_database, _resolve_pg_test_url
     from tests.support.isolated_pg import scratch_connect_args
 
@@ -138,16 +146,25 @@ def test_the_day_does_not_move_with_the_postgresql_session_zone():
         try:
             models.DatabaseOutbox.__table__.create(engine)
             with Session(engine) as db:
-                db.execute(text("SET TIME ZONE 'Asia/Seoul'"))
-                db.add(models.DatabaseOutbox(
-                    event_uuid=str(uuid.uuid4()), event_type="EDIT", table_name="t",
-                    payload={}, status="FAILED", retry_count=1, processed_chain=True,
-                    created_at=datetime.datetime(2026, 9, 22, 23, 30,
-                                                 tzinfo=datetime.timezone.utc)))
+                db.execute(text("SET TIME ZONE 'America/New_York'"))
+                for hour, minute in ((23, 30), (24, 30)):
+                    db.add(models.DatabaseOutbox(
+                        event_uuid=str(uuid.uuid4()), event_type="EDIT", table_name="t",
+                        payload={}, status="FAILED", retry_count=1, processed_chain=True,
+                        created_at=datetime.datetime(2026, 9, 22, tzinfo=datetime.timezone.utc)
+                        + datetime.timedelta(hours=hour, minutes=minute)))
                 db.flush()
-                line, = main.get_failed_outbox_events(page=1, limit=1, db=db)["summary"]
-                assert (line["day"], line["first_at"]) == ("2026-09-22",
-                                                           "2026-09-22 23:30:00+00:00")
+
+                def cut(tz):
+                    out = main.get_failed_outbox_events(page=1, limit=1, tz=tz, db=db)
+                    return out["day_zone"], [(l["day"], l["count"], l["first_at"])
+                                             for l in out["summary"]]
+
+                assert cut("Asia/Seoul") == ("Asia/Seoul", [
+                    ("2026-09-23", 2, "2026-09-22 23:30:00+00:00")])
+                assert cut("UTC") == ("UTC", [
+                    ("2026-09-23", 1, "2026-09-23 00:30:00+00:00"),
+                    ("2026-09-22", 1, "2026-09-22 23:30:00+00:00")])
         finally:
             with maker.begin() as conn:
                 conn.execute(text('DROP SCHEMA IF EXISTS "%s" CASCADE' % scratch))

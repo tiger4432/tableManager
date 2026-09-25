@@ -1268,10 +1268,10 @@ def _install_temporal_text_construct():
 
     @compiles(_TemporalText, "postgresql")
     def _postgresql(element, compiler, **kw):
-        col = list(element.clauses)[0]
-        # `timezone('UTC', ts)` is the function spelling of `ts AT TIME ZONE 'UTC'`.
+        col, zone = list(element.clauses)
+        # `timezone(zone, ts)` is the function spelling of `ts AT TIME ZONE zone`.
         return compiler.process(
-            _func.to_char(_func.timezone("UTC", col), _PG_TEMPORAL_TEXT_FORMAT), **kw)
+            _func.to_char(_func.timezone(zone, col), _PG_TEMPORAL_TEXT_FORMAT), **kw)
 
     return _TemporalText
 
@@ -1279,7 +1279,7 @@ def _install_temporal_text_construct():
 _TemporalText = _install_temporal_text_construct()
 
 
-def temporal_text_sql(col_expr):
+def temporal_text_sql(col_expr, zone="UTC"):
     """A DATE/TIME column rendered to `TEMPORAL_TEXT_FORMAT`. SQL twin of
     `temporal_text_value`.
 
@@ -1287,8 +1287,11 @@ def temporal_text_sql(col_expr):
     blank rule for a temporal column: a timestamp is never `''`, so - exactly as with
     `numeric_text_sql` - this is deliberately NOT wrapped in `blank_to_null`. Wrapping it
     would put `col = ''` back in front of a non-text column, which is the crash.
+
+    `zone` is the zone the wall clock is spelled in, on PostgreSQL. SQLite has no zone
+    database; its spelling is the stored UTC whatever `zone` says.
     """
-    return _TemporalText(col_expr)
+    return _TemporalText(col_expr, zone)
 
 
 def temporal_text_value(value):

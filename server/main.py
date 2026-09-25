@@ -4901,7 +4901,8 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
 
 
 @app.get("/admin/outbox/failed", dependencies=[Depends(require_admin_token)])
-def get_failed_outbox_events(page: int = 1, limit: int = 10, db: Session = Depends(get_db)):
+def get_failed_outbox_events(page: int = 1, limit: int = 10, tz: str = None,
+                             db: Session = Depends(get_db)):
     """실패(FAILED) 상태로 격리된 Outbox 체인 이벤트 목록을 transaction_id 단위로 묶고 페이지네이션하여 반환합니다."""
     query = db.query(models.DatabaseOutbox).filter(
         models.DatabaseOutbox.status == "FAILED"
@@ -4980,12 +4981,19 @@ def get_failed_outbox_events(page: int = 1, limit: int = 10, db: Session = Depen
     # 🔴 ONE LINE PER (TABLE · KIND · DAY) (소유자 「ㄴ」, 총괄 36dff3b6a) — the Chain tab's list
     #    and the Overview's Chain line both read THIS answer: 81 rows of one burst were 81
     #    lines, and a two-day-old burst read as 「now」. One GROUP BY; no payload is loaded.
-    #    The day is the UTC day, cut from the one session-independent spelling
-    #    (`crud.temporal_text_sql`) - `date(created_at)` cut it in the PG session's TimeZone.
+    #    The day is the VIEWER's day (총괄 eca1f36b2): `tz` is the screen's zone name. A missing
+    #    or unreadable one cuts UTC days, and `day_zone` says which zone cut them.
+    from zoneinfo import ZoneInfo
+
     from sqlalchemy import func
 
+    try:
+        ZoneInfo(tz)
+        day_zone = tz
+    except Exception:                                            # noqa: BLE001
+        day_zone = "UTC"
     outbox = models.DatabaseOutbox
-    day = func.substr(crud.temporal_text_sql(outbox.created_at), 1, 10)
+    day = func.substr(crud.temporal_text_sql(outbox.created_at, day_zone), 1, 10)
     summary = [{
         "table_name": table, "event_type": kind, "day": on_day,
         "count": int(n), "first_at": to_local_str(first), "last_at": to_local_str(last),
@@ -5004,6 +5012,7 @@ def get_failed_outbox_events(page: int = 1, limit: int = 10, db: Session = Depen
         "limit": limit,
         "oldest_failed_at": oldest_failed_at,
         "summary": summary,
+        "day_zone": day_zone,
         # 🔴 이 목록의 상태가 아니라 이 «계열이 쓸 수 있는» 상태 어휘다.
         #    화면의 필터 목록이 여기서 나온다 — 그래서 «로드 때 이미 부르는» 이
         #    응답이 싣는다. 목록 라우트에 실으면 화면이 «첫 요청»을 보낸 뒤에야
