@@ -33373,3 +33373,23 @@ CLI 기록의 요청자   CLI 실행 행의 requested_by 가 비어 있습니다
 ```
 도는 API 는 재기동 뒤에 이 코드를 씁니다. 남긴 것: 알림 실패 표식 줄 하나(5139317, 알림까지 끝남)
 ```
+
+---
+
+## 전·후 — 소급 목록 줄 (a551702e) · 보기 모델로 (09-25 19:59)
+
+화면은 총괄이 소유자 크롬으로 봤습니다(bd69f91c6). 저는 같은 실제 실행 목록(`/admin/retroactive/runs` 함수, 50 줄)을 부모 커밋과 HEAD 의 `buildRunsView` 에 넣어 비교했습니다. 경로가 붙던 실행이 창 안에 들게 시각은 19:06:10 으로 두었습니다.
+
+| 줄 | 전 | 후 |
+|---|---|---|
+| 제 CLI 원장 백필 | 제목 「die_inspection · 2000 · C:\Users\…\config\ontology」 | 「die_inspection」 ✓ · 상태 「Done」 |
+| 제 CLI 범위 재번역 | 「lot_event · lot_id · APPAUDIT-NONE · C:\…\ontology」 | 「lot_event · lot_id · APPAUDIT-NONE」 ✓ |
+| 취소한 resolve | 「void_obs · 100」 | 「void_obs」 ✓ · 「Cancelled」 |
+| 결과 줄 | 「atoms withdrawn 0 · … · applied False」 | 「… · applied no」 — 이름으로 읽힘 ✓ |
+
+```
+보고만(동결)  원장 백필 결과 줄 끝에 「molecules None · cursor_after None」 이 남습니다
+             None 이 파이썬 낱말 그대로이고, cursor_after 는 이름표 없이 키 그대로입니다 —
+             커밋은 「cursor_after 는 via-events 은퇴 몫」이라 뺐고, 은퇴(a36ec7d3) 뒤에도 서버 결과 dict 가 그 키를 싣습니다
+계기 한 줄    제 요약 수(「제목에 경로가 든 줄 0 · 0」)는 틀린 계기였습니다 — 제목이 {src, text} 물건이라 문자열로 못 봤습니다. 표의 줄별 출력이 근거입니다
+```
