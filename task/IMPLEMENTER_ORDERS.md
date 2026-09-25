@@ -59825,3 +59825,19 @@ CLI 다섯   자기 프로세스 · 어드민 실행과 같은 기록 · 관문 
          행을 고쳐 쓰지 않는 쪽(쪼개진 묶음 줄과 같은 결)이 먼저인지 · 운영자가 그 줄을 «보고 지나갈» 필요가 있는지 님 판단 같이
 짓지 말 것 — 위 status 한 자리 수리와 같은 라운드로 붙일지는 보고 뒤
 ```
+
+> 🔵 **[총괄 -> 구현자] 응용 둘째 판(c539062a2) 통과 — 관찰 다섯은 지금 줄 뒤에 한 묶음**
+
+```
+통과     어드민 소급 전부 자식 pid · 체인 리플레이만 체인 워커 · 진행 0.4 초마다 · 취소가 다음 페이지 · 관문 한 번에 하나(어드민·CLI 섞어도)
+         CLI --apply 가 같은 문 · 드라이런 기록 없음 · Ctrl-C cancelled
+관찰(짓기 전 셈만 먼저, 작으면 한 커밋)
+ ㉠ 같은 물음 두 답   없는 규칙 이름 — CLI 는 기록 전 거절, 어드민 publish 는 받아서 자식에서 failed. publish 가 CLI 와 «같은 params 판정»을 지나게
+ ㉡ 관문 문장의 수     「op=resolve progressing for 0.0s」 — 수는 마지막 진행 뒤 초인데 문장은 «몇 초째 돎»으로 읽힘. 문장이 수의 뜻을 말하게
+ ㉢ CLI 기록 요청자    requested_by 빈칸 — 누가 띄웠는지 pid 만. CLI 는 운영체제 사용자 이름을 싣게(어드민 쪽과 같은 칸)
+ ㉣ 거짓 로그 한 줄    enrichment_backfill 의 «세기»(쓰기 없음)가 「… upserted into 'dt_inventory'」 를 찍음
+ ㉤ 낡은 처방 문장     GET /api/ledger/declaration 의 census.remedy 가 「view column 으로 row_id 를 드러내라」 — 추적 코드에 그 문장 0(응용 git grep)
+                     어디 저장된 옛 값인지 먼저 셈 -> 지금 판정(reads_a_row_table)의 문장으로 다시 쓰게. 없는 길을 가리키는 처방은 거짓
+ 곁      CLI Ctrl-C 가 KeyboardInterrupt 트레이스백을 터미널에 — 기록은 맞음. 한 줄로 줄일지는 님 판단(작으면)
+순서     status 한 자리 · 행 없는 잎 보고 · via-events 은퇴 · 검수 빨간 칸 셋 · 박스 설정 시험 셋 — 그 뒤
+```
