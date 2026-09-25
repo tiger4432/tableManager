@@ -1130,6 +1130,12 @@ def measure_and_store(engine, setup, source, store, now=None, *, exact_rows=True
     from .setup_registry import cursor_translator_version
 
     census = measure_row_census(engine, setup, source, now=now, exact_rows=exact_rows)
+    if census.get("refused"):
+        # 🔴 [총괄 7426f76b0 ㉤ ㄱ] A SOURCE THE LOADER REFUSED HAS NO FINGERPRINT - asking
+        #    for one raised, and the census it had before the refusal stood as its answer.
+        #    Its row is updated with the refusal; none is created.
+        store.write_row_census(source, census, translator_ver=None)
+        return census
     store.write_row_census(
         source, census,
         translator_ver=cursor_translator_version(setup.snapshot, source))
@@ -1158,6 +1164,19 @@ def measure_and_store(engine, setup, source, store, now=None, *, exact_rows=True
     return census
 
 
+def census_sources(setup):
+    """-> (the sources a census measures, the retired ones it skips by name).
+
+    🔴 ONE ANSWER FOR BOTH CENSUS LOOPS (총괄 7426f76b0 ㉤) - the worker's lap and the sweep
+    below each asked `plan.runs`, so a source the LOADER refused was never measured again.
+    A refused source is measured - its census is the refusal, taken without a scan. Only a
+    retired one is skipped: the operator stopped it, and nothing arrives for it.
+    """
+    plans = setup.snapshot.source_plans
+    return (sorted(n for n, p in plans.items() if p.status == "active"),
+            sorted(n for n, p in plans.items() if p.status != "active"))
+
+
 def measure_every_source(engine, setup, store=None, now=None):
     """Measure each declared source in turn and store what it found.
 
@@ -1169,17 +1188,12 @@ def measure_every_source(engine, setup, store=None, now=None):
 
     writer = LedgerStore(engine) if store is None else store
     done = []
-    for source in sorted(setup.snapshot.source_plans, key=str):
-        # ⛔ NAMED, NOT SILENT (S-103). A retired source has nothing arriving, so counting
-        # 「rows not yet translated」 for it would publish a remainder that will never move
-        # and read as a backlog. Saying which ones were skipped is what keeps that from
-        # looking like the sweep quietly losing sources.
-        if not setup.snapshot.source_plans[source].runs:
-            logger.info("[Ledger] census skips %s: %s", source,
-                        "refused by the loader"
-                        if not setup.snapshot.source_plans[source].planned
-                        else "retired (content unvalidated)")
-            continue
+    measured, retired = census_sources(setup)
+    # ⛔ NAMED, NOT SILENT (S-103) - a sweep that returns fewer sources than the declaration
+    # has must say which ones it skipped.
+    for source in retired:
+        logger.info("[Ledger] census skips %s: retired (content unvalidated)", source)
+    for source in measured:
         try:
             measure_and_store(engine, setup, source, writer, now=now)
         except Exception as exc:

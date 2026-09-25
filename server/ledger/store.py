@@ -285,7 +285,7 @@ class LedgerStore:
             "refusal_reasons": row[10], "row_census": row[11],
         }
 
-    def write_row_census(self, source: str, census, *, translator_ver: str) -> None:
+    def write_row_census(self, source: str, census, *, translator_ver) -> None:
         """Store one source's 「table rows · indexed rows · remainder」 measurement.
 
         🔴 THIS IS THE ONE PLACE A SOURCE GETS ITS ROW (S-113 ⓑ-1, ruling 221), and it
@@ -314,12 +314,24 @@ class LedgerStore:
         (`observability` reads it as `or {}`), so a JSON null says "this row carries no
         position" rather than a zero that would read as one. Dropping the constraint is a
         migration and is not part of this.
+
+        🔴 `translator_ver=None` UPDATES THE ROW THE SOURCE HAS AND CREATES NONE (총괄
+        7426f76b0 ㉤ ㄱ). A source the loader refused has no fingerprint to write, and a
+        refused source that never ran keeps having no row - which is true.
         """
         import json as _json
 
         connection = self.connection()
         try:
             with connection.cursor() as cursor:
+                if translator_ver is None:
+                    cursor.execute(
+                        f"UPDATE {schema.CURSOR_TABLE} "
+                        f"   SET {schema.ROW_CENSUS_COLUMN} = %s::jsonb, updated_at = now() "
+                        f" WHERE source = %s",
+                        (_json.dumps(census), source))
+                    connection.commit()
+                    return
                 cursor.execute(
                     f"INSERT INTO {schema.CURSOR_TABLE} "
                     f"       (source, translator_ver, cursor_value, "
