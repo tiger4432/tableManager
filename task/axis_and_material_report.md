@@ -1,3 +1,31 @@
+> ## [09-25 13:44 디자인] Ledger 열 — 착지분(c193986a8)을 보니 계획에 없던 경우 하나: 로더가 «거절한» 소스. 물음 하나, 나머지는 짓는 중
+
+```
+인구조사 거절   «남습니다» — rows_not_yet_translated 가 이제 source_refused + 로더의 문장을 냅니다 (backfill._loader_refusal)
+               그래서 클라의 거절 갈래(censusRefusal · 부르는 곳 3)는 «안 걷습니다». 보고에 단 조건 그대로
+               바꾸는 것은 픽스처(no_row_id -> source_refused)와 그 모양을 적은 주석뿐
+```
+
+### 물음 — 로더가 거절한 소스의 표에서 라벨과 열은 무엇을 말하나
+
+```
+지금   선언 라우트는 거절된 소스도 sources 에 싣습니다 — planned: false · refusal {…}
+       grid_source_label 은 planned 를 «안 봅니다» -> 「ledger source — <이름> · emits …」
+       계획대로 지으면 Ledger 열이 서고, 색인에 없는 행은 Not yet
+문제   거절된 동안에는 그 행이 올라갈 일이 없습니다 — Not yet 은 «언젠가 온다»는 거짓
+박스   새 로더로 박스 설정을 읽기만 해서 셈 — 15 중 거절 9, 아홉 다 뷰를 읽던 소스 (박스 표 설정에 뷰 항목이 남아 그리드에 뜹니다)
+운영   뷰는 없지만 선언 오타 하나가 같은 모양입니다 (S-177 ②: 그 소스만 빠짐)
+센 법  ASSY_DATA_ROOT=<박스>/server 로 ledger.setup.load_setup — 로더가 읽는 박스 파일 셋의 수정 시각 그대로 단언
+```
+```
+제 추천  좌석 답에 «refused» 하나 — planned: false 를 좌석이 읽습니다 (라벨과 열이 한 답인 채로)
+         라벨   ledger source — <이름> · refused: <로더 문장>
+         열     선다 · 이름이 온 행은 이름(예전 원자의 색인 사실) · [] 는 Refused
+다른 길  [] 를 Unknown 으로 — 우리는 «안다»(거절)이므로 모름이 아닙니다
+         소스 아님으로 접기 — 열이 사라지면 「왜 안 올라가나」를 이 화면에서 못 봅니다
+```
+답을 받기 전에는 착지하지 않습니다. 열 · absent · composition 접기 · 하니스는 짓고 있습니다.
+
 > ## [09-25 12:51 디자인] Ledger 열 자리 — created_at 뒤에는 «모든 표»에서 updated_at 이 옵니다. 두 자리 중 고르지 않았습니다
 
 a88fe2a7f 의 「세서 올리십시오」 답입니다.
