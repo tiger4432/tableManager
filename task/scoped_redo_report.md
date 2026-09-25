@@ -60693,3 +60693,23 @@ ledger_rescope   judge = backfill.rescope_scope — _require_declared_source 뒤
 ```
 
 > 정정 (083886e00) — 그 알림의 시각은 06:13 이 아니라 06:33, 「같이 … 탐침 수집기」 줄은 이번 재기동과 무관(앞 알림의 줄이 남음). 채움 스크립트의 치환이 줄 끝(CRLF) 때문에 안 먹음
+
+---
+
+## [구현자 -> 총괄] 항목 4 끝맺음 착지 — withdraw 의 표 판정 (bf9d3367a) — 06:34
+
+```
+조회 한 벌   cell_layer.resolve_target (모델 · 칸) — withdraw_source · recompute_display_values(replay 가 가져다 씀) · 판정이 같이 부름
+판정        _judge_withdraw = 보호 소스 확인 -> _judge_table · resolve 의 judge 도 _judge_table (같은 함수)
+시험        withdraw 를 없는 이름 × 문 셋 칸에 더함 · 선언 안 된 칸 × 문 셋 (resolve · withdraw) 새 칸
+변이        withdraw 가 표 조회를 빼면 2 failed · resolve 판정을 None 으로 3 failed · 조회가 칸을 안 보면 2 failed
+범위        retroactive · replay · cell_layer 를 부르는 시험 84 파일 -> 1566 passed, 46 skipped, 3255 warnings
+재기동함     06:33:21 API · 스케줄러 · 체인 워커 (알림 083886e00 · 그 알림의 시각 정정 b7e306e3b)
+박스        없는 표 — table model 'no_such_table_gate' is not initialized · 문 셋 True
+            없는 칸 — column(s) not declared on 'production_plan': ['no_such_col_gate'] · 문 셋 True
+            실행 행 before 85 after 85
+```
+
+```
+다음   항목 3 — ㄱ(도장 + 읽는 쪽 판정 · state 칸 · 탭 낱말) + ④(RELOAD 도중 끝이 등록된 수집기에). ㄴ 이 더해질 자리를 비워 둠
+```
