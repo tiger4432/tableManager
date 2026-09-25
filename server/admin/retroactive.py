@@ -1846,9 +1846,10 @@ def execute(payload: dict, log=logger.info, claimed=False) -> dict:
     return _run_to_the_end(run_id, op, spec, params, log, control)
 
 
-#: The heartbeat a run in its own process beats under, so a killed one is judged
-#: 「nobody's」 60 s later and a screen cancel releases its lock (총괄 45410384c ②).
-RUN_HERE_HEARTBEAT = "cli"
+#: The heartbeat a run in its own process beats under - a CLI's, and the scheduler's child's
+#: (총괄 f453968fe ①) - so a killed one is judged 「nobody's」 60 s later and a screen cancel
+#: releases its lock (총괄 45410384c ②).
+RUN_HERE_HEARTBEAT = "retroactive"
 RUN_HERE_BEAT_SECONDS = 10
 
 
@@ -1891,8 +1892,9 @@ def run_here(op: str, params: dict, log=print) -> dict:
         while not stop.wait(RUN_HERE_BEAT_SECONDS):
             heartbeat.beat(RUN_HERE_HEARTBEAT, force=True)
 
-    threading.Thread(target=beat_until_stopped, name="run-here-heartbeat",
-                     daemon=True).start()
+    beating = threading.Thread(target=beat_until_stopped, name="run-here-heartbeat",
+                               daemon=True)
+    beating.start()
     control = RunControl(run_id, op=op)
     try:
         out = _run_to_the_end(run_id, op, spec, params, log, control, raise_failure=True)
@@ -1906,7 +1908,12 @@ def run_here(op: str, params: dict, log=print) -> dict:
         announce_progress(run_id, op, ec.PROGRESS_STATUS_CANCELLED)
         raise
     finally:
+        # Every ending that reaches here - done, cancelled, failed, Ctrl-C - takes its file
+        # with it (총괄 f453968fe ⓑ). A killed process never gets here, and the file it
+        # leaves is what lets the gate call its run nobody's.
         stop.set()
+        beating.join(RUN_HERE_BEAT_SECONDS)
+        heartbeat.forget(RUN_HERE_HEARTBEAT)
     if out["status"] == "cancelled":
         raise RunCancelled("run_id=%s op=%s was cancelled from the screen; what it "
                            "committed stays: %s" % (run_id, op, out["result"]))

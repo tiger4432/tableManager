@@ -119,6 +119,49 @@ def test_a_failure_is_recorded_and_its_own_exception_reaches_the_terminal(retro_
     assert (_row(retro_env).state, _row(retro_env).error) == (retroactive.RUN_FAILED, "boom")
 
 
+@pytest.mark.parametrize("ending", ["done", "cancelled", "failed", "interrupted"])
+def test_an_ended_run_takes_its_heartbeat_file_with_it(retro_env, monkeypatch, ending):
+    """총괄 f453968fe ⓑ — a file left after a normal end reads as a stale worker forever.
+    Only a killed process leaves one, and that one is what marks its run nobody's."""
+    import os
+
+    from utils import heartbeat
+
+    def on_page(page):
+        if ending == "cancelled":
+            retroactive.request_cancel(retro_env, _row(retro_env).run_id)
+        elif ending == "failed":
+            raise ValueError("boom")
+        elif ending == "interrupted":
+            raise KeyboardInterrupt
+
+    _probe(monkeypatch, on_page)
+    try:
+        retroactive.run_here("probe_op", {"pages": 1}, log=lambda *_: None)
+    except (retroactive.RunCancelled, ValueError, KeyboardInterrupt):
+        pass
+    assert _row(retro_env).state != retroactive.RUN_RUNNING
+    assert not os.path.exists(heartbeat.heartbeat_path(retroactive.RUN_HERE_HEARTBEAT))
+
+
+def test_forget_leaves_a_file_another_process_wrote():
+    import json
+    import os
+
+    from utils import heartbeat
+
+    heartbeat.beat("forget_probe", force=True)
+    path = heartbeat.heartbeat_path("forget_probe")
+    with open(path, encoding="utf-8") as f:
+        mine = json.load(f)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(dict(mine, pid=os.getpid() + 1), f)
+    assert heartbeat.forget("forget_probe") is False and os.path.exists(path)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(mine, f)
+    assert heartbeat.forget("forget_probe") is True and not os.path.exists(path)
+
+
 def test_resolve_is_an_operation_the_admin_counts_and_a_cli_runs(retro_env):
     """총괄 b39604b58 — R3 (recompute shown values) is a retroactive operation: counted
     exactly on a table the budget covers, and run through the same record."""

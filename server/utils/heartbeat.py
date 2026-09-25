@@ -253,6 +253,21 @@ def beat(name, note=None, force=False):
         return False
 
 
+def forget(name):
+    """Remove `name`'s heartbeat file if THIS process wrote it - a process that ended
+    normally leaves nothing to read as a stale worker (총괄 f453968fe ⓑ). A file another pid
+    wrote is a newer process of the same name and stays. Never raises."""
+    path = heartbeat_path(name)
+    try:
+        with open(path, encoding="utf-8") as f:
+            if json.load(f).get("pid") != os.getpid():
+                return False
+        os.remove(path)
+        return True
+    except Exception:
+        return False
+
+
 def _work_snapshot_locked(name):
     """Oldest un-progressed claim for ``name``. Caller holds ``_state_lock``.
 
