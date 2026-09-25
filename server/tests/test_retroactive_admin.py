@@ -1136,7 +1136,7 @@ class TestTheSchedulerRunsItOffTheTickThread:
         started = threading.Event()
         release = threading.Event()
 
-        def slow(payload, log=None):
+        def slow(payload, log=None, claimed=False):
             started.set()
             release.wait(5)
             return {"status": "ok"}

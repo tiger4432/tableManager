@@ -823,9 +823,30 @@ class MultiDiscoveryScheduler:
                 blocking, (payload or {}).get("run_id"))
             return False
 
+        # 🔴 [총괄 f453968fe ⓒ ③] CLAIMED HERE, IN THE TICK, BEFORE ANYTHING STARTS. The check
+        #    above is a reader for the log line; `claim` checks and writes under one lock. A
+        #    claim inside the thread would come after the wake-up row is marked, so a refusal
+        #    there would strand the run `queued` with nobody left to ring for it.
+        run_id = (payload or {}).get("run_id")
+        claimed = False
+        if run_id:
+            try:
+                claimed = retroactive.claim(run_id=run_id) is not None
+            except retroactive.RetroactiveRefused as e:
+                logger.warning("[Retroactive] gate closed: %s. Leaving run_id=%s queued for a "
+                               "later tick.", e, run_id)
+                return False
+            if not claimed:
+                # No longer queued - taken, cancelled or finished. Nothing to start, and the
+                # wake-up row is done: left unmarked it would head the queue forever.
+                logger.info("[Retroactive] run_id=%s is no longer queued; nothing to start.",
+                            run_id)
+                return True
+
         def _worker():
             try:
-                self._retroactive_last = retroactive.execute(payload, log=logger.info)
+                self._retroactive_last = retroactive.execute(payload, log=logger.info,
+                                                             claimed=claimed)
             except Exception as e:
                 # `execute` already swallows; this is the last resort so a thread
                 # death cannot be silent.

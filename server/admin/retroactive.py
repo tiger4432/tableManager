@@ -1707,6 +1707,67 @@ def gate_refusal(db):
                blocking.get("runner"), where))
 
 
+#: The lock every claim takes (총괄 f453968fe ⓒ). Checking the gate and writing the running
+#: row were two steps, so two claimers in two processes could both pass the check.
+GATE_LOCK_NAME = "retroactive_gate"
+
+
+def claim(op=None, params=None, run_id=None, beat_as=None):
+    """Check the gate and take it by writing the row - one transaction, one lock.
+
+    `run_id` given: that queued row becomes running (a daemon's claim). None: a new row is
+    written running (`run_here`). `beat_as` beats that heartbeat AFTER the gate passes and
+    before the stamp - a refused caller must not overwrite the running one's heartbeat.
+    The daemons' own `gate_refusal` calls before this are readers for their log line; the
+    only check followed by a write is here.
+
+    :return: the run_id; `None` when the queued row is no longer queued (taken, cancelled,
+        finished) - nothing to claim. A run_id with no row at all is a hand call and wins.
+    :raises RetroactiveRefused: the gate is closed - its own sentence.
+    """
+    from datetime import datetime, timezone
+
+    from sqlalchemy import text
+
+    from database import models
+    from database.database import SessionLocal
+
+    session = SessionLocal()
+    try:
+        if session.get_bind().dialect.name == "postgresql":
+            session.execute(text("SELECT pg_advisory_xact_lock(hashtext(:name))"),
+                            {"name": GATE_LOCK_NAME})
+        refusal = gate_refusal(session)
+        if refusal:
+            raise RetroactiveRefused(refusal)
+        if beat_as:
+            from utils import heartbeat
+            heartbeat.beat(beat_as, force=True)
+        now = datetime.now(timezone.utc)
+        stamp = {"state": RUN_RUNNING, "started_at": now, "last_progress_at": now,
+                 "runner": runner_identity()}
+        if run_id is None:
+            run_id = uuid.uuid4().hex[:12]
+            session.add(models.RetroactiveRun(
+                run_id=run_id, op=op, params=json.dumps(params or {}, ensure_ascii=False),
+                **stamp))
+        elif not (session.query(models.RetroactiveRun)
+                  .filter(models.RetroactiveRun.run_id == run_id,
+                          models.RetroactiveRun.state == RUN_QUEUED)
+                  .update(stamp, synchronize_session=False)):
+            exists = (session.query(models.RetroactiveRun.run_id)
+                      .filter(models.RetroactiveRun.run_id == run_id).first())
+            session.rollback()
+            return None if exists else run_id
+        session.commit()
+        return run_id
+    except BaseException:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
 def next_queued(db, op):
     """그 op 의 «가장 오래 기다린» queued 실행의 payload, 없으면 `None`. 집지는 «않는다».
 
@@ -1731,8 +1792,9 @@ def next_queued(db, op):
             "params": json.loads(row.params) if row.params else {}}
 
 
-def execute(payload: dict, log=logger.info) -> dict:
-    """Run one queued operation to completion.
+def execute(payload: dict, log=logger.info, claimed=False) -> dict:
+    """Run one queued operation to completion. `claimed=True`: the caller already took the
+    row through `claim` (the scheduler, before it hands the run on), so this does not.
 
     ⚠️ 「스케줄러에서만 불린다」고 적혀 있었고 2026-09-23 에 거짓이 됐다 — 체인 리플레이가
        체인 워커에서 이 문을 지난다. 여는 쪽이 둘이므로 «집기»가 이 함수 안에 있는 것이
@@ -1753,32 +1815,34 @@ def execute(payload: dict, log=logger.info) -> dict:
     try:
         spec = operation(op)
         params = validate(op, (payload or {}).get("params") or {})
+        if not crud.TABLE_CONFIG:
+            raise RetroactiveRefused(
+                "table_config.json is empty or missing - nothing is registered")
     except RetroactiveRefused as e:
         out.update(status="refused", error=str(e))
         log(f"[Retroactive] run_id={run_id} REFUSED: {e}")
-        return out
-
-    if not crud.TABLE_CONFIG:
-        out.update(status="refused",
-                   error="table_config.json is empty or missing - nothing is registered")
-        log(f"[Retroactive] run_id={run_id} REFUSED: {out['error']}")
+        if claimed:
+            # Already running in the table - a refusal here must not leave it there.
+            _mark_run(run_id, state=RUN_FAILED, finished=True, error=str(e))
         return out
     models.init_dynamic_models(crud.TABLE_CONFIG)
 
     control = RunControl(run_id if run_id != "?" else None, op=op)
-    # 🔴 «집기»다. queued 일 때만 running 으로 옮기고, 옮겼는지를 읽는다.
-    #    `run_id == "?"` 는 작업 행이 없는 손 호출(CLI)이라 집을 것이 없다 — 그때는 그냥 돈다.
-    if run_id and run_id != "?":
-        if not _mark_run(run_id, state=RUN_RUNNING, started=True,
-                         expect_state=RUN_QUEUED):
+    # 🔴 «집기»다 — `claim` 하나가 잠금 아래에서 관문을 묻고 queued -> running 을 쓴다.
+    #    `run_id == "?"` 는 작업 행이 없는 손 호출이라 집을 것이 없다 — 그때는 그냥 돈다.
+    if not claimed and run_id and run_id != "?":
+        try:
+            won = claim(run_id=run_id)
+        except RetroactiveRefused as e:
+            won, why = None, str(e)
+        else:
+            why = "run_id=%s was already claimed by another runner" % run_id
+        if won is None:
             # 진 쪽이 «그 사실을 안다». 조용히 계속 돌면 둘이 같은 일을 하고,
             # 매퍼가 멱등이라 결과가 맞아 보여 아무도 못 알아챈다.
-            out.update(status="skipped",
-                       error="run_id=%s was already claimed by another runner" % run_id)
-            log("[Retroactive] run_id=%s op=%s SKIPPED: already claimed" % (run_id, op))
+            out.update(status="skipped", error=why)
+            log("[Retroactive] run_id=%s op=%s SKIPPED: %s" % (run_id, op, why))
             return out
-    else:
-        _mark_run(run_id, state=RUN_RUNNING, started=True)
     return _run_to_the_end(run_id, op, spec, params, log, control)
 
 
@@ -1806,10 +1870,7 @@ def run_here(op: str, params: dict, log=print) -> dict:
     :raises RunCancelled: cancelled from the screen; what committed stays.
     An exception from the operation reaches the caller after the row says `failed`.
     """
-    from datetime import datetime, timezone
-
     from database import crud, models
-    from database.database import SessionLocal
     from utils import heartbeat
 
     spec = operation(op)
@@ -1818,22 +1879,9 @@ def run_here(op: str, params: dict, log=print) -> dict:
         raise RetroactiveRefused(
             "table_config.json is empty or missing - nothing is registered")
     models.init_dynamic_models(crud.TABLE_CONFIG)
-    db = SessionLocal()
-    try:
-        refusal = gate_refusal(db)
-        if refusal:
-            raise RetroactiveRefused(refusal)
-        # Beat BEFORE the stamp: `runner_identity` names the heartbeat this process beats.
-        heartbeat.beat(RUN_HERE_HEARTBEAT, force=True)
-        run_id = uuid.uuid4().hex[:12]
-        now = datetime.now(timezone.utc)
-        db.add(models.RetroactiveRun(
-            run_id=run_id, op=op, params=json.dumps(params, ensure_ascii=False),
-            state=RUN_RUNNING, started_at=now, last_progress_at=now,
-            runner=runner_identity()))
-        db.commit()
-    finally:
-        db.close()
+    # The heartbeat is beaten inside the claim, after the gate passes and before the stamp:
+    # `runner_identity` names it, and a refused CLI must not overwrite a running one's.
+    run_id = claim(op, params, beat_as=RUN_HERE_HEARTBEAT)
 
     import threading
 

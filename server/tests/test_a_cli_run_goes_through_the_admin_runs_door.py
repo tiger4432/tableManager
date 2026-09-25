@@ -158,6 +158,75 @@ def test_resolve_stops_between_its_own_page_commits(retro_env):
     assert (whole["rows_scanned"], whole["stopped"]) == (3, False), "a re-run starts over"
 
 
+def test_two_claims_at_once_leave_one_running(monkeypatch):
+    """총괄 f453968fe ⓒ — the gate check and the write are one transaction under one lock.
+    A holds the lock with its running row not yet committed; B's claim must wait, then see
+    A's row and refuse - not read an empty table and write a second running row."""
+    import threading
+
+    from conftest import _declared_as_test_database, _resolve_pg_test_url
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.exc import OperationalError
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import NullPool
+
+    from tests.support.isolated_pg import scratch_connect_args
+
+    url, reason = _resolve_pg_test_url()
+    if url is None:
+        pytest.skip(reason)
+    scratch = "assy_pytest_gate_lock_f453"
+    with _declared_as_test_database(url):
+        maker = create_engine(url, poolclass=NullPool)
+        try:
+            with maker.begin() as conn:
+                conn.execute(text('DROP SCHEMA IF EXISTS "%s" CASCADE' % scratch))
+                conn.execute(text('CREATE SCHEMA "%s"' % scratch))
+        except OperationalError as exc:
+            pytest.skip("PostgreSQL is not reachable: %s" % str(exc).strip().splitlines()[0])
+        engine = create_engine(url, poolclass=NullPool,
+                               connect_args=scratch_connect_args(scratch))
+        try:
+            models.RetroactiveRun.__table__.create(engine)
+            monkeypatch.setattr("database.database.SessionLocal", sessionmaker(bind=engine))
+            answer, done = {}, threading.Event()
+
+            def b():
+                try:
+                    answer["run_id"] = retroactive.claim("withdraw", {})
+                except retroactive.RetroactiveRefused as exc:
+                    answer["refused"] = str(exc)
+                finally:
+                    done.set()
+
+            a = engine.connect()
+            tx = a.begin()
+            try:
+                a.execute(text("SELECT pg_advisory_xact_lock(hashtext(:n))"),
+                          {"n": retroactive.GATE_LOCK_NAME})
+                a.execute(text("INSERT INTO retroactive_runs (run_id, op, params, state) "
+                               "VALUES ('held', 'withdraw', '{}', 'running')"))
+                threading.Thread(target=b, daemon=True).start()
+                waited = not done.wait(0.5)
+                tx.commit()
+            finally:
+                # A must end before the cleanup drops the schema, or the drop waits on it.
+                if tx.is_active:
+                    tx.rollback()
+                a.close()
+            assert waited, "B did not wait for A's lock: %s" % answer
+            assert done.wait(10)
+            assert "held" in answer.get("refused", ""), answer
+            with engine.connect() as c:
+                assert c.execute(text("SELECT count(*) FROM retroactive_runs "
+                                      "WHERE state = 'running'")).scalar() == 1
+        finally:
+            with maker.begin() as conn:
+                conn.execute(text('DROP SCHEMA IF EXISTS "%s" CASCADE' % scratch))
+            engine.dispose()
+            maker.dispose()
+
+
 def test_a_killed_one_is_nobodys_and_a_cancel_releases_it(retro_env, monkeypatch):
     """The CLI died without its ending: its heartbeat goes stale, and the gate says the
     cancel releases the lock rather than 「cannot be judged」."""
