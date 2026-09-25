@@ -183,8 +183,8 @@ const CONTROLS = [
   //    것이지 게이트가 틀린 것이 아닙니다(그 자리는 «정의된 토큰»을 대야 합니다). 규칙을
   //    하나 «더해서» 잽니다: 그 줄은 T1 말고 아무도 안 봅니다.
   ['대체값이 붙은 참조 (없어도 된다고 «적은» 것)',
-   () => ({ [ADMIN_HTML]: swap(ADMIN_TEXT, '    .cg-optin { fill: var(--text-dim); font-size: 11px; }',
-                               '    .cg-optin { fill: var(--text-dim); font-size: 11px; }\n'
+   () => ({ [ADMIN_HTML]: swap(ADMIN_TEXT, '    .cg-optin { fill: var(--text-dim); font-size: var(--fs-tag); }',
+                               '    .cg-optin { fill: var(--text-dim); font-size: var(--fs-tag); }\n'
                                + '    .cg-spare { color: var(--nowhere, #fff); }') })],
   // 🔴 주석이 옛 이름을 «설명»하는 것. 잡히면 빨강을 푸는 제일 쉬운 길이 「설명 지우기」가 됩니다.
   ['주석 안의 옛 이름',

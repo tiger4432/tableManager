@@ -1483,15 +1483,15 @@ function renderOutboxTable() {
       : 'color: var(--text-dim);';
 
     row.innerHTML = `
-      <td style="font-family: var(--font-mono); font-size: 0.8rem; font-weight: 600; color: var(--color-primary);">
+      <td style="font-family: var(--font-mono); font-size: var(--fs-button); font-weight: 600; color: var(--color-primary);">
         <span class="tx-id-chip" title="${tx.transaction_id}&#10;(click to copy the full ID)">${shortTxId(tx.transaction_id)}</span>
       </td>
       <td style="font-weight: 500;">${tablesJoined}</td>
       <td>${eventTypesJoined}</td>
       <td style="text-align: center; ${retryStyle}">${attempts == null ? ABSENT : attempts}</td>
-      <td style="color: var(--text-muted); font-size: 0.85rem; font-family: var(--font-mono);" title="${tx.failed_at || ''}">${timeStr}</td>
+      <td style="color: var(--text-muted); font-size: var(--fs-button); font-family: var(--font-mono);" title="${tx.failed_at || ''}">${timeStr}</td>
       <td style="text-align: center;" onclick="event.stopPropagation()">
-        <button class="admin-btn btn-primary btn-retry-tx" data-txid="${tx.transaction_id}" style="padding: 4px 10px; font-size: 0.75rem;">Retry</button>
+        <button class="admin-btn btn-primary btn-retry-tx" data-txid="${tx.transaction_id}" style="padding: 4px 10px; font-size: var(--fs-button);">Retry</button>
       </td>
     `;
 
@@ -3512,7 +3512,7 @@ function selectAutoUpdateRow(col) {
     col.last_status === 'FAIL' ? 'badge badge-danger' : 'badge badge-warning';
   tracebackSeverity.style.display = 'inline';
   payloadTitle.innerHTML = `Collector Config & Execution Metadata
-    <button id="inline-edit-collector-btn" class="admin-btn btn-primary" style="padding: 2px 8px; font-size: 0.75rem; margin-left: 10px;">🛠️ Edit Collector Script</button>`;
+    <button id="inline-edit-collector-btn" class="admin-btn btn-primary" style="padding: 2px 8px; font-size: var(--fs-button); margin-left: 10px;">🛠️ Edit Collector Script</button>`;
 
   tracebackViewer.textContent = col.last_error || 'No error traceback log captured (Last execution was successful).';
   payloadViewer.textContent = JSON.stringify(col, null, 2);
@@ -3698,7 +3698,7 @@ function selectFileRow(log, bodyEl = fileListBody) {
   const ws = workspaceData.find(w => w.table_name === log.table_name);
   if (ws && (ws.custom_scripts || []).length > 0) {
     payloadTitle.innerHTML = 'File Metadata / Log Details ' + ws.custom_scripts.map(s =>
-      `<button class="admin-btn btn-primary btn-edit-parser" data-script="${s}" style="padding: 2px 8px; font-size: 0.72rem; margin-left: 8px;">🛠️ ${s}</button>`
+      `<button class="admin-btn btn-primary btn-edit-parser" data-script="${s}" style="padding: 2px 8px; font-size: var(--fs-button); margin-left: 8px;">🛠️ ${s}</button>`
     ).join('');
     payloadTitle.querySelectorAll('.btn-edit-parser').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -3787,7 +3787,7 @@ function selectChainRow(rule) {
   tracebackSeverity.className = chainRuleIsActive(rule) ? 'badge badge-success' : 'badge badge-danger';
   tracebackSeverity.style.display = 'inline';
   payloadTitle.innerHTML = `Raw Chain Ingestion Rule Configuration
-    <button id="inline-edit-mapper-btn" class="admin-btn btn-primary" style="padding: 2px 8px; font-size: 0.75rem; margin-left: 10px;">🛠️ Edit Mapper Code</button>`;
+    <button id="inline-edit-mapper-btn" class="admin-btn btn-primary" style="padding: 2px 8px; font-size: var(--fs-button); margin-left: 10px;">🛠️ Edit Mapper Code</button>`;
 
   tracebackViewer.textContent = chainRuleNarrative(rule) +
     (rule.description ? `\n\n${rule.description}` : '');
@@ -3846,7 +3846,7 @@ function showEventDiagnostics(ev) {
   const rule = chainData.find(r => r.trigger_table === ev.table_name || r.target_table === ev.table_name);
   if (rule && rule.mapper_module) {
     payloadTitle.innerHTML = `Raw Event Payload / Details
-      <button id="tx-edit-mapper-btn" class="admin-btn btn-primary" style="padding: 2px 8px; font-size: 0.72rem; margin-left: 8px;" title="rule: ${rule.name}">🛠️ Edit Mapper</button>`;
+      <button id="tx-edit-mapper-btn" class="admin-btn btn-primary" style="padding: 2px 8px; font-size: var(--fs-button); margin-left: 8px;" title="rule: ${rule.name}">🛠️ Edit Mapper</button>`;
     const btn = byId('tx-edit-mapper-btn');
     if (btn) {
       btn.addEventListener('click', () => {
