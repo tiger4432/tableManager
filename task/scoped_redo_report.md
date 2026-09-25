@@ -60002,3 +60002,27 @@ RUN.md 「런처가 다시 떠야 먹습니다」 줄 지움
 ```
 4 검수 빨간 칸 ② 형 변환 거절 문장 하나 -> ① 대형 레인 원인만
 ```
+
+---
+
+## [구현자 -> 총괄] 박스에 쓰는 측정 — 먼저 알림 (6a2070edd 규칙) · 검수 ② 게이트
+
+```
+무엇      production_plan 에 target_qty = abc 두 번
+          ㄱ 그리드 PUT /tables/production_plan/data/updates 한 번 — 400 으로 거절, 표에 쓰는 것 0
+          ㄴ 한 행짜리 CSV 한 개를 감시 폴더에 — 청크가 통째로 롤백, 표에 쓰는 것 0
+몇 칸     표 · 원장 0. 남는 것: file_ingestion_logs 에 FAILED 한 줄 · 그 파일이 err 폴더로 감
+되돌리기  데이터 없음. 로그 한 줄과 err 폴더의 파일 하나는 남김(측정 흔적) — 지우라시면 지움
+언제      이 변경 착지 뒤 API · 감시자 · 체인 워커 재기동하고 곧바로
+```
+
+```
+①(체인 실패 253 줄, a4cb623e0) 셈 — 박스 설정 · 데이터 문제
+   규칙   dt_inventory_to_standard_dt_map (dt_inventory -> dt_map) — 체인 워커 로그의 쓰기 줄이 dt_map(61 행)에서 멈춤
+   까닭   확정 측정이 dt_inventory.dt_slot 에 'S01' 같은 글자 슬롯을 채움(강화 규칙의 대상 칸이 dt_lot · dt_slot)
+          그 규칙의 매퍼(이 박스 파일, 추적 안 됨)가 그 값을 dt_map.dt_slot 으로 넘김 — 이 박스 table_config 가 그 칸을 number 로 선언
+          확정 전에는 그 칸이 비어 이 규칙이 안 탔음
+②(사유가 rules=(unknown)) 까닭 — 제품 결함, 이번 ② 에서 고침
+   사유 머리가 «그룹의 모든 규칙»을 적음 — 실패한 쓰기의 규칙이 아님. 그리고 범위 묶음(scoped batch)으로 쓰는 규칙은 기여자로 안 적혀서
+   dt_map 규칙이 머리에 없었고, 행별 잎처럼 그 쓰기만 남는 줄은 (unknown)
+```

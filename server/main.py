@@ -4659,10 +4659,9 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
         "generated_at": now_utc.isoformat(),
         "waiting": int(waiting or 0),
         # 🔴 EVERYTHING RUNNING, ONE SHAPE, FOUR SOURCES (총괄 78ebdcfc0 · 5996d7f54) - chain
-        #    rules, the retroactive run, collectors, file loads. `running` below is the chain
-        #    rules alone and goes when the screen reads this one.
+        #    rules, the retroactive run, collectors, file loads.
+        # ⚰️ `running` (the chain rules alone) retired when the screen read this (총괄 c1dc16fdd).
         "now_running": running_seat.running_now(db, now=now_utc, sight=sight, shape=shape),
-        "running": shape["running"],
         "rule_outcomes": shape["rule_outcomes"],
         "loop_in_this_process": activity.registry.attached,
         # The one field a reader asks 「is the loop seen」 (총괄 36dff3b6a), and how old that
