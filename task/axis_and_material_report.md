@@ -1,3 +1,40 @@
+> ## [08:03 디자인] 서랍 둘 착지 (34584806e) — 본문 글자색 · 수집기 서랍이 한 톤 자리를 지남
+
+### 낱말 표 — 수집기 상태가 톤 자리(retryVerdict)에서 읽히던 것 · 이제
+
+| 낱말 | 전 | 후 |
+|---|---|---|
+| SUCCESS | ok | ok |
+| FAIL | warn (모름) | danger |
+| PENDING · RUNNING · SKIPPED · orphaned · unknown | warn | warn |
+
+```
+드러난 것  파일은 FAILED · 수집기는 FAIL — 톤 자리가 FAIL 을 몰라서, 수집기 배지를 이 자리로 옮기면 실패가 노랑이 될 뻔함
+          톤 자리가 두 철자를 같은 뜻으로 읽게 함 · 서버 낱말은 안 바꿈
+```
+
+### 착지 34584806e
+
+```
+한 자리   retry_verdict.drawerMessageView(상태, 문장, 낱말) — 톤 · 제목 · 본문 · 배지 클래스 · 본문 클래스
+         파일 = ingestionMessageView · 수집기 = collectorMessageView (낱말만 다름)
+수집기 서랍  제목  FAIL -> Last run error · 그 밖 -> Last run message
+           빈 본문  SUCCESS -> No message — last run succeeded. · FAIL -> No error message captured. · 그 밖 -> No message captured.
+           배지 · 본문색 도 같은 톤 — 자기 삼항 없어짐
+본문 글자색  실패만 빨강(.traceback-text) · 그 밖은 .traceback-text.is-neutral(var(--text))
+           같은 <pre> 에 쓰는 나머지 서랍 다섯은 먼저 기본 클래스로 되돌림 — 성공 줄의 중립색을 물려받지 않음(그 다섯의 모양은 그대로)
+시험      retry_verdict 51 (바닥 42 -> 51) · 변이 15/15 · 대조 2/2
+          G1~G6 수집기 낱말 일곱 × (톤 · 제목 · 빈 본문 · 색 · 배지) · 서버 문장 그대로
+          D11 본문을 쓰는 함수마다 클래스를 정함 — 하나를 빼 보면 showEventDiagnostics 를 이름 대어 빨강
+          하니스 141 초록(기존 빨강 2) · 빌드 exit 0 · 번들 admin-gI-qp6pR.js
+여실 때    클라만. 소유자 크롬 — File SUCCESS 줄의 본문색 · Auto Update 의 PENDING/SKIPPED/FAIL 수집기(총괄)
+```
+
+```
+보고만   Auto Update 절 머리의 실패 수(admin.js failCount)는 아직 'FAIL' 철자로 직접 셈 — 톤 자리 밖의 둘째 판정
+        이번 지시(서랍)의 범위 밖이라 안 건드림
+```
+
 > ## [07:35 디자인] 파일 서랍 제목 착지 (72788b05b) — 성공 줄의 문장을 «Error» 밑에 두지 않음
 
 ```
