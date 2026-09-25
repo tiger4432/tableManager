@@ -33465,3 +33465,18 @@ CLI 기록의 요청자   CLI 실행 행의 requested_by 가 비어 있습니다
 못 잰 것  rescope · confirm 을 «도는 중에» 멈추는 것 — 박스에서 그 둘을 길게 돌리면 소유자 원장 행을 다시 번역하거나
           소유자 셀 140 개를 확정합니다(건수가 0 이 아님). 그 칸은 구현자 시험(test_every_retroactive_operation_stops_between_pages)의 몫으로 둡니다
 ```
+
+---
+
+## 전·후 — 위 대기열 RUNNING = now_running (84ae8462) · 보기 모델로 (09-25 20:51)
+
+어드민 resolve(void_obs, 옮겨질 칸 0 — 소유자 데이터 안 씀) 하나를 띄우고, 도는 동안과 끝난 뒤의 실제 `/admin/chain/queue` 답(프로세스 안 HEAD)을 부모와 HEAD 의 `queueView` 에 넣었습니다. 화면은 총괄 몫.
+
+| 때 | 전 (부모) | 후 (HEAD) |
+|---|---|---|
+| 소급이 도는 동안 | Running **0** · 줄 0 | Running **1** ✓ · 줄 하나 — 「Recompute shown values from stored layers (R3)」 · 「own_process · pid 28904」 · 진행 800 · × 자리(run_id) |
+| 끝난 뒤 | Running 0 | Running 0 ✓ |
+
+```
+실행은 제가 취소해 cancelled 로 끝났습니다(run_id d9345a449819)
+```
