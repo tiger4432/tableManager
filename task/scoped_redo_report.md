@@ -58419,3 +58419,119 @@ inventory_confirmed   착지 뒤 부팅에서 거절됩니다(지시대로 «맞
 ⚠️ 착지 안 합니다. 워킹 트리의 제 미커밋 변경: ledger(setup_bundle · setup_registry · backfill · followup · source_preparation · store) ·
    chain/graph · admin/retroactive · main · 샘플 둘 · 스크립트 6 삭제(평문 rm, 스테이지 안 함)
 ```
+
+---
+
+## [09-25 13:46] 구현자 — 뷰 소스 걷어내기 착지 `c193986a8` + `9653f3e6b` (지시 f3bc02f6e · da3fa7493 ㉠ · 55fb15d08)
+
+```
+착지   c193986a8  한 커밋 — 38 파일, 848+, 3593-
+       9653f3e6b  제가 빠뜨린 시험 한 줄 (아래 「박스 빨강」) — 1 파일, 8+, 8-
+       git ls-tree --name-only HEAD server/scripts | grep -c create_  ->  0   (카나리아: 같은 자리 파일 94)
+```
+
+### 무엇이 달라졌나
+
+```
+① 원장 소스는 «row_id 가 있는 표»만 읽는다   판정 한 자리 setup_bundle.reads_a_row_table (카탈로그 kind 가 table 이고 row_id 칸이 있다)
+   어기면 로드 때 그 소스 «하나만» 이름으로 거절 (S-177 고정점). 문장:
+   source 'X' reads 'V', which is not a table that has row_id (view); a ledger source must read a table that has row_id
+㉠ config.load 도 같은 고정점(resolve_declarations)을 부른다 — 거절된 소스만 빼고 돌려주고, 이름을 로그에 한 번 적는다
+② 지운 갈래   frame_row_id 없음 갈래 9 (backfill · followup · source_preparation — 앞서 8 이라 적은 것은 _scope_row_ids 의 별칭 갈래 하나를 못 센 수)
+             sources_without_row_index · no_row_index · 뷰 따라가기(base_tables_of · pg_depend · ViewDependencyTooDeep · view_followers_of) ·
+             미번역 수의 「셀 수 없음」 갈래. 거절된 소스는 셀 때·읽을 때 모두 source_refused 한 낱말
+③ 스크립트 create_*_view.py 6 삭제 · 샘플 ledger_config 뷰 소스 9 · table_config 뷰 항목 10 삭제 (ledger_events 남김)
+⑤ GET /tables/{name}/data 의 행마다 ledger_sources (그 행을 번역한 소스 이름, 정렬) — 페이지당 질의 하나
+   색인 줄 없음 = [] · 색인을 못 읽음 = 칸 없음(Unknown). 「이 표가 원장 소스인가」는 여기서 안 묻는다 (/api/ledger/declaration 자리)
+```
+
+### 게이트
+
+```
+① 거절        test_a_view_source_is_refused_by_name_even_when_the_view_carries_row_id — row_id 를 내보내는 뷰도 거절
+             test_the_refused_source_falls_alone_and_the_table_sources_stand — 카나리아 dt_job 이 선다
+             test_the_reading_loader_drops_it_alone_too — config.load 도 그 하나만 뺀다
+② 갈래 0      test_nothing_in_the_ledger_tests_frame_row_id_for_absence — 추적 비시험 모듈 전수 AST (카나리아: 파일 수 > 100)
+③ 화면        클라 레인 몫. 서버는 ⑤ 칸을 냅니다 (아래 재기동 절에 박스 실측)
+⑤ 비용        이 박스 (ledger_source_row_ref 1,212,286 행 · dt_log 467,638 행), dt_log 행 500 개 한 페이지:
+             18.6 · 3.9 · 3.6 · 3.5 · 4.1 ms (첫 번째는 캐시 전). 운영 규격 수가 아니라 이 박스의 수입니다
+⑥ (55fb15d08) server/tests 의 test_*.py 453 을 AST 로 골랐습니다 —
+             바꾼 모듈 10 중 하나를 시험 파일이 «직접» import 150 (거쳐서 닿는 import 는 안 셈) ∪ 샘플을 읽음(문자열 상수가 .json.sample 로 끝나거나 "sample") 38 ∪ 이번에 만진 19 = 171 파일
+             결과  2,754 건: 통과 2,663 · 건너뜀 42 · xfail 1 · 오류 44 · 실패 4
+             오류 44 = 제 계기 고장 (-p no:logging 으로 돌려 caplog 픽스처가 없음). 그 16 파일을 로깅 켜고 다시: 364 통과
+             실패 4 = 탐색기 셋 (아래 「박스 빨강」) + test_config_reload_integrity::test_h3
+                      h3 는 한 번 빨강 · 단독 재실행 세 번 초록(그 플래그 있이 둘 · 없이 하나) · 원인 안 쟀다
+             은퇴한 시험은 안 돌렸습니다 — 명단은 아래
+```
+
+### da3fa7493 게이트 — 줄어든 선언이 파일로 되쓰이는 길 0
+
+```
+config.load 부르는 곳 15 (AST 전수 · 카나리아 파일 277)     읽기만 15 · 되쓰기 0
+   trace_router 10 · trace.py 1 · ledger/admin 2 · ledger/source_contract 1 · chain/enrichment/config 1
+   (앞선 보고의 「trace_router 11」은 grep 수 — AST 로는 10 + source_contract 1, 합 15 는 같음)
+   쓰는 문(save_source 등)은 원문 파일을 json 으로 직접 읽는다 — config.load 를 안 지난다
+시험   test_a_save_after_a_read_keeps_the_refused_source_in_the_file
+       뷰 소스 하나 든 파일 -> config.load (그 소스 없음) -> save_source 로 다른 소스 저장 -> 파일에 뷰 소스 «남음» (전·후 대조)
+변이   저장 문이 config.load 로 읽게 바꾸면 -> 빨강 (아래 M3)
+곁가지 admin.candidate_config 는 시험 말고 부르는 곳이 없습니다 (git grep). 이번에 안 건드렸습니다
+```
+
+### 변이 — 착지 직전 트리에서. 전부 원복 (diff 통계 전·후 같음)
+
+```
+M1 판정이 row_id 만 보고 kind 를 안 물음      -> 빨강 test_a_view_source_is_refused_by_name_even_when_the_view_carries_row_id
+M2 검증기가 거절을 안 함                     -> 빨강 같은 시험
+M3 저장 문이 config.load 로 읽음 (되쓰기)      -> 빨강 test_a_save_after_a_read_keeps_the_refused_source_in_the_file
+M4 색인을 못 읽을 때 [] 를 답함 (Unknown 대신) -> 빨강 test_a_row_says_which_sources_translated_it_and_a_new_row_says_none (PG 로 실제로 돎)
+M5 config.load 를 안 넓힘                    -> 빨강 test_the_reading_loader_drops_it_alone_too · test_a_save_after_a_read_…
+```
+
+### 시험 — 은퇴 24 · 고쳐 씀 20 · 새로 8 (HEAD 대 작업 트리 AST 대조)
+
+```
+은퇴 24   test_a_view_says_which_tables_it_reads.py 파일째 18 (뷰 따라가기)
+          + 뷰·row_id 없는 소스를 재던 6: deleted_row(no_row_index) · untranslated(without_row_id) ·
+            initial_load(without_row_id) · engine_reads_row_id(relation_without_one) · index_recovery 2 (no_row_index · 글자 대조)
+고쳐 씀 20 뷰 소스 대신 표 소스로 — 샘플이 소스 6 (전부 표 · 전부 row_id)이 된 것에 맞춤 (20 째가 9653f3e6b)
+새로 8    게이트 파일 6 + 이름 바꿈 2 (「row_id 없음」 -> 「로더가 거절한 소스」)
+그 밖 5 파일은 test_ 함수의 AST 변화 0 — 바뀐 것은 모듈 수준 픽스처·도우미 (손으로 만든 카탈로그의 표에 row_id)
+```
+
+### 재기동 뒤 박스 (API 36132 -> 10628 · 체인 워커 37020 -> 6864, restarts 3 -> 4)
+
+```
+워커 로드    뷰 소스 9 가 이름으로 「NOT planned」 — 13:36:47 · 13:36:48 두 번, 그 뒤 13:38 까지 없음
+선언         GET /api/ledger/declaration 200 — 소스 15, 거절 9 가 이름으로(planned false), 도는 소스 6
+걷기         GET /api/ledger/subgraph?seed_type=lot@1&seed_limit=3&hops=2 200 — 노드 5 · 엣지 8
+그리드       dt_log 500 행 전부 ledger_sources — ["dt_job"] 356 · [] 144
+             lot_event 200 — ["lot_event"] 84 · [] 116  ·  dt_transfer_log 200 — ["transfer_event"] 200
+```
+
+### 박스 빨강 — 탐색기 시험 셋
+
+```
+박스 트리에서만 빨강. c193986a8 의 깨끗한 워크트리에 샘플을 라이브 설정으로 깔고 돌리면:
+   둘은 바로 초록 · 셋째(test_actual_snapshot_…)는 제 빠뜨림 — lot_slot_move 를 이름으로 든 줄이 남아 있었습니다
+   박스에선 그 위 단언이 먼저 터져 이 줄이 안 돌았습니다 -> 9653f3e6b 로 고침, 워크트리에서 빨강 -> 초록
+박스 원인   라이브 ledger_config 가 뷰 소스 9 든 옛 샘플 -> 9 거절 -> 스냅숏 registries 에는 9 가 있고 탐색기 색인·미리보기에는 없음
+            (S-177 이 거절 소스를 스냅숏에 등록하는데 탐색기는 안 함 — 이 라운드 전부터 있던 틈. 거절 소스가 하나라도 있으면 운영에서도 납니다)
+따로 하나   test_reference_extraction_is_registry_driven_for_transfer_fixture — 샘플을 라이브로 깐 트리에서 빨강
+            부모 커밋 55fb15d08 에서도 똑같이 빨강 (dt_job material_to_cell 자기 엣지). 이 라운드와 무관, 박스 트리는 초록
+```
+
+### 여쭐 것 둘 — 안 짓고 기다립니다
+
+```
+㉮ API 가 /api/ledger/declaration 을 부를 때마다 「NOT planned」 9 줄을 다시 적습니다 (load_setup 이 부를 때마다 적는 S-177 로그)
+   이 박스 실측: 13:37:22 · 13:37:28 선언 요청 두 번 -> 18 줄. config.load 쪽은 제가 (파일, 소스)마다 한 번으로 묶었습니다 — 같은 묶음을 load_setup 에도 걸까요
+㉯ 탐색기 색인·미리보기가 거절된 소스를 스냅숏처럼 등록하게 할까요 (위 S-177 틈) — 시험 셋이 박스에서 빨간 이유입니다
+```
+
+### 넘길 것 — 제 몫 아님
+
+```
+문서   은퇴한 이름이 남은 문서 (파일 수): create_*_view 13 · sources_without_row_index 7 · no_row_index 6 · base_tables_of 5 ·
+       view_followers_of 3 · ViewDependencyTooDeep 3     git grep -l -E "<이름>" -- '*.md' | wc -l
+       RUN.md · guide · CODE_MAP 은 응용 몫(지시대로)
+```
