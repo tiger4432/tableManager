@@ -31,7 +31,7 @@ import {
 import { queueQuery } from './enrichment_queue.js';
 // 「체인 요청이 몇 개 씹히는 것 같다」를 수로 바꾸는 계측기. 뷰 모델이 DOM 없는 자기 모듈에
 // 살아서 하니스가 import 로 채점한다 (`client2/tests/chain_queue_panel_harness.mjs`).
-import { ChainQueuePanel } from './chain_queue_panel.js';
+import { ChainQueuePanel, failedSince } from './chain_queue_panel.js';
 // 🔴 C-74. 아홉 고리의 «값» 표. 판정은 `/health` 가 하고 이 표는 값만 냅니다.
 import { RuntimePanel } from './runtime_panel.js';
 // 🔴 C-75. 네 선언(chain·enrichment·vjoin·ledger)이 «한 그림». 값만 그립니다.
@@ -649,6 +649,9 @@ function setupEventListeners() {
       switchTab('chain');
     });
   }
+  // 시안 A 의 Queue 절 머리 — 절 틀은 화면(admin.html)의 것이라 버튼도 여기서 잇는다.
+  const overviewQueueOpen = byId('overview-queue-open');
+  if (overviewQueueOpen) overviewQueueOpen.addEventListener('click', () => switchTab('chain'));
   if (healthCardAuto) {
     healthCardAuto.addEventListener('click', () => {
       switchTab('autoupdate');
@@ -954,8 +957,8 @@ async function fetchData(options = {}) {
       //    패널이 «자기 거절 사유를 그릴 기회»를 잃고 절이 통째로 비었다.
       // 🔴 실패 수를 «같이» 넘깁니다. 새 라우트가 아니라 «바로 위에서 이미 받은» 값입니다 —
       //    실패한 행은 `processed_chain=true` 라 큐에서 빠지므로, 「대기 0」이 혼자 서면
-      //    「밀린 것 없음」으로 읽힙니다. 못 읽었으면 «안 넘깁니다» (0 으로 넘기지 않습니다).
-      if (ob && typeof ob.total === 'number') queueOpts.failedTotal = ob.total;
+      //    「밀린 것 없음」으로 읽힙니다. 못 읽었으면 null — 패널이 Failed 칸째 뺍니다 (0 이 아닙니다).
+      queueOpts.failed = ob;
       renderChainQueue(queueBody, queueOpts);
       if (queueOpts.unavailable) allRead = false;
       if (ob) { outboxData = ob.data || []; outboxTotal = ob.total || 0; renderOutboxTable(); }
@@ -3653,7 +3656,8 @@ async function fetchOverview(isStale) {
     // Chain 탭과 «같은» 읽기·«같은» 그리기 — 다른 것은 「언제 부르나」뿐이다.
     // ⚠️ 낡음 검사 «뒤»다. 앞에 두면 이미 떠난 탭의 답을 그릴 수 있다.
     const queue = await chainQueueFrom(queueRes);
-    renderChainQueue(queue.body, queue.opts);
+    // Failed 칸은 Chain 탭과 «같은» 응답에서 — 한쪽만 넘기면 두 판이 번갈아 칸을 잃는다.
+    renderChainQueue(queue.body, { ...queue.opts, failed: outbox });
   }
 
   // 전 소스 실패면 탭 에러 경로로 (개별 실패는 카드 단위 표기)
@@ -3807,21 +3811,12 @@ function renderOverview({ failed, ws, outbox, rules, mappers, auto, enrich, acti
 
   // ② Chain 카드 (outbox fail = chain fail)
   {
-    const total = outbox ? (outbox.total || 0) : null;
     // 🔴 「언제부터」. 서버가 «집합 전체»의 MIN 을 최상위 한 칸으로 냅니다
-    //    (`oldest_failed_at`, 구현자 8f0b4858) — 페이지를 넘겨도 답이 같습니다.
-    //    수만 있으면 「방금 하나」와 「나흘째 스물」이 «같아 보입니다».
-    //    ⚠️ 세 상태입니다. 오늘 만든 부품이 그 셋을 가릅니다:
-    //       못 읽음      -> 「모름」        (수를 안 그립니다)
-    //       읽었고 0     -> 「실패 없음」
-    //       읽었고 N>0   -> 그 시각부터
-    const oldestFailed = outbox ? (outbox.oldest_failed_at || null) : null;
-    const failCell = countWithAbsence(outbox
-      ? { value: total, absence: 'No failures' }
-      : { unread: UNKNOWN });
-    const sinceWord = failCell.read
-      ? (total > 0 && oldestFailed ? `since ${formatTimestamp(oldestFailed)}` : failCell.word)
-      : failCell.word;
+    //    (`oldest_failed_at`, 구현자 8f0b4858) — 수만 있으면 「방금 하나」와 「나흘째 스물」이
+    //    «같아 보입니다». 못 읽음 · 0 · N(그 시각부터) 가르기는 대기열 Failed 칸과 «한 함수»입니다.
+    const failCell = failedSince(outbox);
+    const total = failCell.total;
+    const sinceWord = failCell.read && failCell.since ? `since ${failCell.since}` : failCell.word;
     const ruleCount = rules ? (rules.data || []).length : null;
     const mapperCount = mappers ? (mappers.data || []).length : null;
     const status = total == null ? 'loading' : (total > 0 ? 'danger' : 'ok');

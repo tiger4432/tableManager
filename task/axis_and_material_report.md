@@ -1,3 +1,52 @@
+> ## [09-25 16:17 디자인] 대기열 섹션 — 시안 A 전부 착지 (96fe82648) · Overview 와 Chain 탭 같은 모양 · 화면은 총괄께
+
+### 착지 96fe82648 — chain_queue_panel · admin.js · admin.html · 하니스 · dist
+
+```
+숫자 넷     Waiting · Oldest · Running · Failed since <날짜>. 못 읽은 칸은 칸째 빠지고 셋·둘로 섭니다
+   Oldest   빈 큐 「—」 · 방금 들어옴 「0s」 · 나이를 못 읽으면 칸 없음
+   Running  loop_seen_via 하나로 묻습니다(구현자 191c0b54 부터 this_process · chain_worker_heartbeat 가 옴)
+            loop_in_this_process 는 안 읽습니다. 가장 오래 도는 나이는 수 바로 아래 「longest 41m」
+   Failed   0 이면 색 없음 · N 이면 --danger 와 가장 오래된 실패 시각(보는 쪽 zone). 색은 이 칸 하나뿐
+표          Transaction · Waiting · Tables · Rows · Drained by — 인라인 폭·정렬 0, 칸 이름(data-col)을 CSS 가 읽음
+            Tables 가 남는 폭, 나머지는 내용 폭. Drained by 는 서버 이름 배지, 재시도가 0 이 아니면 「retry N」 배지
+            빈 큐는 표 자리에 「Nothing waiting」 한 줄
+메타 줄      retried N · Log · Loop · Mapper · As of(localStamp)
+그 아래      이상할 때만(1 분 넘게 도는 규칙 · 주인 없는 실행 · blocked_by) -> 스케줄러 세 줄 -> 소유자별 줄(둘 이상일 때)
+            stale 은 숫자 넷 위 · 목록 잘림은 표 바로 위
+뺌          설명 두 문장 · Not measured 상자 · Event 칸 · Retries 칸 (6fdd79d4e)
+머리        Overview 는 절 틀 「Queue · chain worker · scheduler · Open Chain tab ›」 을 admin.html 에 두고 맨 위로(고리 표 위)
+            Chain 탭은 지금 절 머리 그대로
+```
+
+### 바뀐 동작 — 화면 말고도
+
+```
+Failed 한 함수   failedSince(outbox) — 대기열 칸과 Overview Chain 카드가 같이 부릅니다
+   전   Overview 인스턴스는 실패 수를 안 받아 칸이 없었고, 두 판이 마지막으로 새로 고친 탭에 따라 칸을 얻고 잃었습니다
+        Chain 카드는 total 이 없는 응답을 0(「실패 없음」)으로 읽었습니다
+   후   두 자리 다 같은 응답을 넘기고, total 이 수가 아니면 «못 읽음»입니다
+```
+
+### 게이트
+
+```
+하니스   chain_queue_panel 165/0 (바닥 152 -> 165) · 변이 13/13 · 빌드(계약 + 하니스 전수) exit 0
+         ⚠️ 「최장」을 찾던 두 줄(C4 · C6)은 영어가 된 뒤로 늘 초록이던 공허한 줄이었습니다 — 「longest」 로 고침
+글자     32(수) · 13(Transaction) 은 토큰이 없어 캐논 값 그대로 — 글자 위계 라운드에서 토큰으로
+화면     제가 못 엽니다(어드민 토큰). 세 폭 × 두 자리(Overview · Chain 탭)를 부탁드립니다 — 대기 줄 있는 상태 포함
+```
+
+### 5 분 쓰면 걸릴 것 — 짓지 않음
+
+```
+Rows 에 천 단위 구분이 없음      수천 행 트랜잭션이 「12400」 으로 읽힘            작음 · countText 한 곳
+Open Chain tab › 가 탭 맨 위로  대기열 절까지 내려가야 함                      작음 · 절 id 로 스크롤
+Oldest 의 「언제부터」 시각이 행 툴팁에만  첫 줄 행에 마우스를 올려야 보임              작음 · 칸 아래 한 줄(Running 과 같은 자리)
+```
+
+다음 — D (STATUS 현황판). problemGroups 열쇠에 영역을 더하는 것(b93cdf327)도 그 커밋입니다.
+
 > ## [09-25 15:58 디자인] 대기열 섹션(시안 A 전부) 짓는 중 — 착지 전 물음 하나 · 정한 것 넷
 
 437a5d25f 대로 F 를 따로 안 내고 A 의 QUEUE 섹션 전부를 한 커밋으로 짓습니다(두 인스턴스 같이). 짓는 동안 여쭙니다.

@@ -290,7 +290,10 @@ const FLOORS = new Map([
   //    constant written back as a literal, which changes nothing today and is guarding a
   //    future edit rather than a present bug.
   ['chain_badge_harness.mjs', 15],
-  ['chain_queue_panel_harness.mjs', 152],
+  // 152 -> 165 on 2026-09-25, mockup A: four numbers whose blind cells drop (Running asks
+  // loop_seen_via alone), Failed from one function shared with the Overview card, five columns
+  // with no inline widths, 「retry N」 badges, the local As of. 13 mutants, 13 caught.
+  ['chain_queue_panel_harness.mjs', 165],
   ['outbox_queue_panel_harness.mjs', 54],
   ['company_roundtrip_harness.mjs', 84],
   ['coord_table_paste_harness.mjs', 52],

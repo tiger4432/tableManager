@@ -7,20 +7,21 @@
 //   ① `null` and `0` must not render the same. Every assertion here compares the two states
 //      against each other rather than against a fixed string, so a copy edit cannot redden it
 //      and a copy edit cannot silently collapse them either.
-//   ② a number the route refused to compute is drawn WITH ITS REASON, because an absent
-//      number reads as zero.
+//   ② a number the screen cannot read has NO CELL — dropped, never drawn as 0. Since mockup A
+//      `not_measured` is not drawn at all: there is no slot for those numbers to read as zero.
 //   ③ the panel invents no threshold — no sample of a single reading is coloured as late.
 //   ④ a list the route CUT says it was cut, because a silently truncated list reads as the
 //      whole queue.
 //
-// 🔴 2026-09-04, the card strip became a table (owner: 「그냥 대기중인 트랜잭션 리스트로
-//    보여줘 kpi 카드 형태 말고」). The two numbers the strip carried — depth and retries —
-//    did NOT leave with it; they are asserted below on the headline line, because a measured
-//    number that stops being drawn is rule ② with the sign flipped.
+// 🔴 2026-09-25, mockup A (owner 「A 로 해」): four numbers · the list · one meta line. Depth and
+//    retries did NOT leave with the old headline — depth is the Waiting number and retries sit
+//    in the meta line, because a measured number that stops being drawn is rule ② with the
+//    sign flipped.
 //
 // Run: node client2/tests/chain_queue_panel_harness.mjs
-import { queueView, formatAge, STATUS, MINUTE_SECONDS, ChainQueuePanel } from '../src/chain_queue_panel.js';
+import { queueView, formatAge, failedSince, MINUTE_SECONDS, ChainQueuePanel } from '../src/chain_queue_panel.js';
 import { ABSENT } from '../src/absent.js';
+import { localShort, localStamp } from '../src/server_time.js';
 
 let pass = 0;
 const failures = [];
@@ -86,6 +87,14 @@ const BACKED_UP = { waiting: 812, oldest_waiting_seconds: 3725.4,
                     not_measured: NOT_MEASURED };
 
 const rowsOf = (host) => byClass(host, 'table-row');
+// One number cell by its key, from the view; and the drawn box that carries the same key.
+const numberOf = (v, key) => v.numbers.find((n) => n.key === key);
+const metaOf = (v, key) => (v.meta.find((m) => m.key === key) || { text: '' }).text;
+const boxOf = (host, key) => walk(host).find((n) => n.getAttribute && n.getAttribute('data-key') === key);
+const valueOf = (host, key) => {
+  const box = boxOf(host, key);
+  return box ? byClass(box, 'chain-queue-number-value').map((n) => n.textContent).join('') : null;
+};
 // Re-read one blocked field through the real view, so the assertion exercises `blockedView`
 // rather than a copy of it.
 const blockedOf = (v, over) => queueView({
@@ -99,31 +108,27 @@ const cellsOf = (row) => row.children;
 // ═══ ① null IS NOT 0 ═══════════════════════════════════════════════════════════════
 console.log('\n[1] an empty queue and a queue that just received something are DIFFERENT');
 {
-  const a = queueView(EMPTY).headline;
-  const b = queueView(JUST_ARRIVED).headline;
+  const a = numberOf(queueView(EMPTY), 'oldest');
+  const b = numberOf(queueView(JUST_ARRIVED), 'oldest');
 
   // 🔴 THE DISCRIMINANT. Compared against each other, not against fixed strings: this is the
   //    one property that cannot be allowed to drift, and pinning wording instead would make a
   //    copy edit look like a defect while a real collapse looked like a rename.
-  ok('the two states do not share a headline', a.main !== b.main, `${a.main} / ${b.main}`);
-  ok('nor an explanation', a.sub !== b.sub);
-  ok('nor a status token', a.status !== b.status, `${a.status} / ${b.status}`);
-
+  ok('the two states do not share an Oldest number', a.value !== b.value, `${a.value} / ${b.value}`);
   // and each says the right thing, so "different" cannot be satisfied by two wrong answers
-  ok('empty says nothing is waiting', /Nothing waiting/.test(a.main), a.main);
-  eq('empty is the only OK state on this line', a.status, STATUS.OK);
-  ok('just-arrived shows a real zero, not an absence', /0/.test(b.main) && !/없/.test(b.main), b.main);
-  ok('and its explanation carries the timestamp it has been waiting since',
-    b.sub.includes('2026-09-03 11:40:00'), b.sub);
+  eq('empty draws the absence mark (lead 6fdd79d4e: 「Oldest —」)', a.value, ABSENT);
+  eq('just-arrived shows a real zero, not an absence', b.value, '0s');
+  // an age that does not read is a BLIND cell — dropped, not drawn as 0s and not as 「—」
+  eq('an unreadable age has no Oldest cell at all',
+    numberOf(queueView({ ...JUST_ARRIVED, oldest_waiting_seconds: 'soon' }), 'oldest'), undefined);
 
   // the same discrimination, drawn
   const doc = makeDoc();
   const h1 = doc.createElement('div'), h2 = doc.createElement('div');
   new ChainQueuePanel(h1, { doc }).render(EMPTY);
   new ChainQueuePanel(h2, { doc }).render(JUST_ARRIVED);
-  const mainOf = (h) => byClass(h, 'chain-queue-headline-main')[0].textContent;
-  ok('and the two render to different pixels', mainOf(h1) !== mainOf(h2),
-    `${mainOf(h1)} / ${mainOf(h2)}`);
+  ok('and the two render to different pixels', valueOf(h1, 'oldest') !== valueOf(h2, 'oldest'),
+    `${valueOf(h1, 'oldest')} / ${valueOf(h2, 'oldest')}`);
 
   // 🔴 the same rule, one layer in: a ROW whose age cannot be read is a dash, never 「0초」.
   const unreadable = queueView({ ...JUST_ARRIVED, waiting_transactions: [
@@ -133,37 +138,59 @@ console.log('\n[1] an empty queue and a queue that just received something are D
 }
 
 // ═══ ② a number that was NOT measured is named, with its reason ═══════════════════
-console.log('\n[2] the two the route refuses to compute are named, not omitted');
+console.log('\n[2] a number the screen cannot read has no cell; not_measured is not drawn');
 {
   const v = queueView(BACKED_UP);
-  eq('both are carried', v.notMeasured.map(x => x.name), ['retried_total', 'processed_recently']);
-  ok('each carries the route\'s own reason, not a shrug',
-    v.notMeasured.every(x => x.why.length > 20 && /인덱스/.test(x.why)),
-    JSON.stringify(v.notMeasured));
-
+  // 🔴 A: the screen has no slot for `retried_total` / `processed_recently`, so nothing reads as
+  //    their zero — the reason stays in the route's response (lead 6fdd79d4e).
+  eq('the view carries no not-measured list', 'notMeasured' in v, false);
   const doc = makeDoc();
   const host = doc.createElement('div');
   new ChainQueuePanel(host, { doc }).render(BACKED_UP);
-  const named = walk(host).filter(n => n.getAttribute && n.getAttribute('data-name'));
-  eq('and both reach the screen', named.map(n => n.getAttribute('data-name')),
-    ['retried_total', 'processed_recently']);
-  ok('with the reason beside the name', named.every(n => /인덱스/.test(n.textContent)));
+  eq('and none of it reaches the screen',
+    walk(host).filter(n => n.getAttribute && n.getAttribute('data-name')).length, 0);
+  ok('nor its reason', !/인덱스/.test(host.textContent));
 
-  // 🔴 NEGATIVE CONTROL. A response that names nothing must draw nothing here -- otherwise
-  //    "both reach the screen" would pass on a panel that printed a hardcoded pair.
-  const bare = { ...BACKED_UP };
-  delete bare.not_measured;
-  const doc2 = makeDoc();
-  const host2 = doc2.createElement('div');
-  new ChainQueuePanel(host2, { doc: doc2 }).render(bare);
-  eq('a response that names none draws none',
-    walk(host2).filter(n => n.getAttribute && n.getAttribute('data-name')).length, 0);
+  // 🔴 THE SIGN-FLIPPED CASE. Depth and retries left the old headline; if they left the screen
+  //    with it, these redden.
+  eq('the depth is the Waiting number', numberOf(v, 'waiting').value, '812');
+  eq('and the retry count is on the meta line', metaOf(v, 'retried'), 'retried 17');
+  ok('and both reach the screen', valueOf(host, 'waiting') === '812' && /retried 17/.test(host.textContent));
 
-  // 🔴 THE SIGN-FLIPPED CASE, added when the card strip was replaced by the table. The strip
-  //    carried depth and retries; if losing the strip lost the numbers, this reddens.
-  ok('the depth the strip carried is still drawn', /812/.test(v.headline.aggregate), v.headline.aggregate);
-  ok('and so is the retry count', /17/.test(v.headline.aggregate), v.headline.aggregate);
-  ok('and both reach the screen', /812/.test(host.textContent) && /17/.test(host.textContent));
+  // ── Running asks `loop_seen_via` ALONE (lead 36dff3b6a) ──
+  const RUN = { waiting: 0, oldest_waiting_seconds: null, running: [{ rule: 'r', running_seconds: 5 }] };
+  eq('a loop nobody saw has no Running cell — not 0',
+    numberOf(queueView({ ...RUN, loop_seen_via: null }), 'running'), undefined);
+  eq('...even when the old field says this process — two fields must not answer one question',
+    numberOf(queueView({ ...RUN, loop_seen_via: null, loop_in_this_process: true }), 'running'), undefined);
+  eq('a loop seen through the worker\'s heartbeat is counted',
+    numberOf(queueView({ ...RUN, loop_seen_via: 'chain_worker_heartbeat' }), 'running').value, '1');
+  eq('and one seen in this process too',
+    numberOf(queueView({ ...RUN, loop_seen_via: 'this_process' }), 'running').value, '1');
+  const blind = makeDoc();
+  const blindHost = blind.createElement('div');
+  new ChainQueuePanel(blindHost, { doc: blind }).render({ ...RUN, loop_seen_via: null });
+  eq('a blind cell is not drawn — the grid stands on the ones that read',
+    byClass(blindHost, 'chain-queue-number').map((n) => n.getAttribute('data-key')), ['waiting', 'oldest']);
+}
+
+// ═══ Failed since — one function for the queue cell and the Overview card ═══════════
+console.log('\n[F] Failed: unread · 0 · N since a time, decided in one place');
+{
+  const AT = '2026-09-24T04:02:11+00:00';
+  eq('F1 no failed body is unread', failedSince(null).read, false);
+  eq('F2 a body without a numeric total is unread, not 0', failedSince({ data: [] }).read, false);
+  eq('F3 a read 0 is 0', [failedSince({ total: 0 }).read, failedSince({ total: 0 }).total], [true, 0]);
+  eq('F4 a 0 has no since, even when a time came', failedSince({ total: 0, oldest_failed_at: AT }).since, '');
+  eq('F5 N failures carry the oldest one, in the viewer\'s zone', failedSince({ total: 81, oldest_failed_at: AT }).since,
+    localShort(AT));
+  const cellFor = (failed) => numberOf(queueView(JUST_ARRIVED, { failed }), 'failed');
+  eq('F6 unread draws no Failed cell', cellFor(null), undefined);
+  eq('F7 N failures: the label says since when, and it is the only coloured cell',
+    [cellFor({ total: 81, oldest_failed_at: AT }).label, cellFor({ total: 81, oldest_failed_at: AT }).value,
+     cellFor({ total: 81, oldest_failed_at: AT }).tone], [`Failed since ${localShort(AT)}`, '81', 'danger']);
+  eq('F8 NEGATIVE CONTROL: 0 failures is not coloured and claims no time',
+    [cellFor({ total: 0 }).label, cellFor({ total: 0 }).value, cellFor({ total: 0 }).tone], ['Failed', '0', '']);
 }
 
 // ═══ ③ no invented threshold, and no invented number ═══════════════════════════════
@@ -173,32 +200,28 @@ console.log('\n[3] the panel judges nothing it was not told, and prints no numbe
   // from "busy", and the route's own docstring says so. If a threshold is ever wanted it is a
   // declaration, not a constant hidden in a view.
   const v = queueView(BACKED_UP);
-  eq('a large age is NOT coloured as danger', v.headline.status, STATUS.NEUTRAL);
-  ok('and the line says how to read it instead', /whether it grows/.test(v.headline.sub));
+  eq('a large age is NOT coloured as danger', numberOf(v, 'oldest').tone, '');
   // the same restraint per row: 3 retries is stated, not judged
   eq('a row with retries states the count', v.rows[0].maxRetry, '3');
   eq('and a row with none leaves the cell empty, not 0', v.rows[1].maxRetry, '');
 
-  // A missing count is a dash. `0` would be a claim.
+  // A missing count is no cell, or a dash. `0` would be a claim.
   const partial = queueView({ oldest_waiting_seconds: null, not_measured: NOT_MEASURED });
-  ok('an absent depth is a dash, not 0', /Waiting — /.test(partial.headline.aggregate),
-    partial.headline.aggregate);
-  ok('an absent retry count is a dash, not 0', /retried —/.test(partial.headline.aggregate),
-    partial.headline.aggregate);
-  ok('a present zero IS a zero', /Waiting 0 /.test(queueView(EMPTY).headline.aggregate),
-    queueView(EMPTY).headline.aggregate);
+  eq('an absent depth has no Waiting cell, not 0', numberOf(partial, 'waiting'), undefined);
+  eq('an absent retry count is a dash, not 0', metaOf(partial, 'retried'), 'retried —');
+  eq('a present zero IS a zero', numberOf(queueView(EMPTY), 'waiting').value, '0');
   eq('and a response with no list at all draws no rows, rather than throwing',
     partial.rows.length, 0);
 
   // Unavailable: nothing at all. A stale or invented figure is worse than an empty panel.
   const gone = queueView(null, { unavailable: '이 서버 프로세스에 /admin/chain/queue 가 없습니다 (404).' });
   eq('unavailable draws no rows', gone.rows.length, 0);
-  eq('and no headline to hang a number on', gone.headline, null);
+  eq('and no number to hang a claim on', gone.numbers.length, 0);
   ok('and says why by name', /404/.test(gone.reason), gone.reason);
   const doc = makeDoc();
   const host = doc.createElement('div');
   new ChainQueuePanel(host, { doc }).render(null, { unavailable: 'HTTP 500' });
-  eq('and nothing numeric reaches the screen', byClass(host, 'chain-queue-headline-main').length, 0);
+  eq('and nothing numeric reaches the screen', byClass(host, 'chain-queue-number').length, 0);
   eq('nor any row', rowsOf(host).length, 0);
   ok('but the reason does', /HTTP 500/.test(host.textContent), host.textContent);
 }
@@ -266,8 +289,18 @@ console.log('\n[5] the list is drawn in the order it arrived, oldest first');
   const host = doc.createElement('div');
   new ChainQueuePanel(host, { doc }).render(BACKED_UP);
   eq('two rows are drawn', rowsOf(host).length, 2);
-  eq('each row has the six columns the header declares', cellsOf(rowsOf(host)[0]).length, 6);
-  eq('the header declares six', byTag(host, 'TH').length, 6);
+  eq('each row has the five columns the header declares', cellsOf(rowsOf(host)[0]).length, 5);
+  eq('the header declares five (A)', byTag(host, 'TH').map((th) => th.textContent),
+    ['Transaction', 'Waiting', 'Tables', 'Rows', 'Drained by']);
+  // A: no px widths, no inline alignment — the stylesheet reads each column by name.
+  eq('no cell carries an inline width or alignment',
+    walk(host).filter((n) => n.style && (n.style.width || n.style.textAlign)).length, 0);
+  eq('every header cell names its column for the stylesheet',
+    byTag(host, 'TH').map((th) => th.getAttribute('data-col')), ['tx', 'age', 'tables', 'rows', 'owners']);
+  // lead 6fdd79d4e: the Retries column is gone, the count is not — a small badge when not 0.
+  const retryOf = (row) => byClass(row, 'chain-queue-retry-badge').map((n) => n.textContent);
+  eq('a row with retries carries 「retry N」', retryOf(rowsOf(host)[0]), ['retry 3']);
+  eq('NEGATIVE CONTROL: a row with none carries no badge', retryOf(rowsOf(host)[1]), []);
   ok('the full id is on the chip for copying, not only the abbreviation',
     walk(host).some(n => n.title === 'bbbbbbbb-1111-2222-3333-444444444444'));
   ok('and the row carries it as data for anything that wants to select on it',
@@ -278,9 +311,9 @@ console.log('\n[5] the list is drawn in the order it arrived, oldest first');
   const host2 = doc2.createElement('div');
   new ChainQueuePanel(host2, { doc: doc2 }).render(EMPTY);
   eq('an empty queue draws no table at all', byTag(host2, 'TABLE').length, 0);
-  ok('and says so in words', /No transactions waiting/.test(host2.textContent));
-  // ...but the headline is still there, because 「대기 없음」 is itself the answer (rule ①)
-  eq('while the headline stays', byClass(host2, 'chain-queue-headline-main').length, 1);
+  ok('and says so in one line', byClass(host2, 'chain-queue-empty').map((n) => n.textContent).join('') === 'Nothing waiting');
+  // ...but the numbers are still there, because 「대기 없음」 is itself the answer (rule ①)
+  eq('while the numbers stay', valueOf(host2, 'waiting'), '0');
 }
 
 // ═══ ⑥ formatAge — total, and the boundaries ═══════════════════════════════════════
@@ -310,7 +343,7 @@ console.log('\n[7] two panels on one page');
   const p2 = new ChainQueuePanel(h2, { doc });
   p1.render(EMPTY);
   p2.render(BACKED_UP);
-  const headOf = (h) => byClass(h, 'chain-queue-headline-main')[0].textContent;
+  const headOf = (h) => valueOf(h, 'waiting');
   ok('the second does not overwrite the first', headOf(h1) !== headOf(h2),
     `${headOf(h1)} / ${headOf(h2)}`);
   eq('the first still reads its own payload', rowsOf(h1).length, 0);
@@ -319,7 +352,7 @@ console.log('\n[7] two panels on one page');
   // refresh ever made, stacked, and the newest would be at the bottom.
   p1.render(BACKED_UP);
   eq('a re-render replaces, it does not append', rowsOf(h1).length, 2);
-  eq('and leaves exactly one headline', byClass(h1, 'chain-queue-headline').length, 1);
+  eq('and leaves exactly one number grid', byClass(h1, 'chain-queue-numbers').length, 1);
 }
 
 // ═══ ⑧ WHO EMPTIES THE ROW — and the fold that must not happen ══════════════════
@@ -370,11 +403,11 @@ console.log('\n[8] the owner split, and unknown is not chain');
   eq('...and draws no bucket', queueView(BACKED_UP).byOwner.length, 0);
 
   // per row
-  eq('a row shows who empties it', v.rows[0].owners, 'chain');
-  eq('a row with two owners shows both', v.rows[1].owners, 'scheduler, unknown');
-  eq('a row the server did not name draws a dash, not chain',
+  eq('a row shows who empties it', v.rows[0].owners, ['chain']);
+  eq('a row with two owners shows both', v.rows[1].owners, ['scheduler', 'unknown']);
+  eq('a row the server did not name carries no owner, not chain',
     queueView({ ...OWNED, waiting_transactions: [
-      { ...BACKED_UP.waiting_transactions[0] }] }).rows[0].owners, '—');
+      { ...BACKED_UP.waiting_transactions[0] }] }).rows[0].owners, []);
 
   // ── blocked_by: the server's words, moved not translated ──
   const bl = v.byOwner[1].blocked;
@@ -423,9 +456,18 @@ console.log('\n[8] the owner split, and unknown is not chain');
     /stalled/.test(host.textContent) && /never/.test(host.textContent));
   ok('the row owners reach the screen',
     walk(host).some(n => n.getAttribute && n.getAttribute('data-owners') === 'scheduler, unknown'));
+  eq('one badge per owner, in the server\'s words',
+    byClass(rowsOf(host)[1], 'chain-queue-owner-badge').map((n) => n.textContent), ['scheduler', 'unknown']);
+  const unnamed = makeDoc();
+  const unnamedHost = unnamed.createElement('div');
+  new ChainQueuePanel(unnamedHost, { doc: unnamed }).render({ ...OWNED, waiting_transactions: [
+    { ...BACKED_UP.waiting_transactions[1] }] });
+  eq('an unnamed row draws a dash in Drained by, and no badge',
+    [byClass(unnamedHost, 'chain-queue-owner-badge').length,
+     cellsOf(rowsOf(unnamedHost)[0])[4].textContent], [0, ABSENT]);
   // the table did not grow a column — the overflow round measured that cost
-  eq('the header still declares six', byTag(host, 'TH').length, 6);
-  eq('and each row still has six cells', cellsOf(rowsOf(host)[0]).length, 6);
+  eq('the header still declares five', byTag(host, 'TH').length, 5);
+  eq('and each row still has five cells', cellsOf(rowsOf(host)[0]).length, 5);
 
   const doc2 = makeDoc();
   const host2 = doc2.createElement('div');
@@ -478,12 +520,13 @@ console.log('\n[8] the owner split, and unknown is not chain');
     byClass(drawn({ record_failures: [] }), 'chain-queue-stale').length, 0);
   eq('and an older server that never sends it says nothing either',
     byClass(drawn({}), 'chain-queue-stale').length, 0);
-  // It has to come BEFORE the pickup headline it invalidates.
+  // It has to come BEFORE the numbers it invalidates — the four, and the pickup line.
   ok('it is drawn above the numbers it invalidates', (() => {
     const host = drawn({ record_failures: [1] });
     const classes = walk(host).map((n) => n.className || '').filter(Boolean);
-    return classes.indexOf('chain-queue-stale')
-      < classes.indexOf('chain-queue-headline-pickup');
+    const stale = classes.indexOf('chain-queue-stale');
+    return stale > -1 && stale < classes.indexOf('chain-queue-numbers')
+      && stale < classes.indexOf('chain-queue-pickup');
   })());
 }
 
@@ -498,7 +541,7 @@ console.log('\n[8] the owner split, and unknown is not chain');
     waiting: 0, running: [], loop_in_this_process: true,
     oldest_waiting_seconds: null, waiting_by_owner: [], retried_among_waiting: 0,
   };
-  const restartOf = (extra) => queueView({ ...base, ...extra }).restart;
+  const restartOf = (extra) => metaOf(queueView({ ...base, ...extra }), 'restart');
 
   // 세 상태 — `logName` 과 같은 규율. 키가 «없으면» 안 그린다(옛 서버).
   eq('R1 an older server that sends neither key draws nothing', restartOf({}), '');
@@ -542,12 +585,13 @@ console.log('\n[8] the owner split, and unknown is not chain');
     oldest_waiting_seconds: 12, waiting_by_owner: [], retried_among_waiting: 0,
   }, over);
   const AT = '2026-09-07T09:30:00+00:00';
-  const genOf = (over) => queueView(BODY(over)).generatedAt;
+  const genOf = (over) => metaOf(queueView(BODY(over)), 'generated');
 
   // 세 상태 — `logName`·`restart` 와 «같은 규율».
   eq('G1 an older server that never sends the key draws nothing', genOf({}), '');
-  ok('G2 the value is drawn once the key arrives, and it is the SERVER instant',
-    genOf({ generated_at: AT }).includes(AT));
+  // A: 「사람이 읽는 로컬 시각」 — the SERVER instant, drawn in the viewer's zone (server_time.js).
+  ok('G2 the value is drawn once the key arrives: the server instant, in local time',
+    genOf({ generated_at: AT }).includes(localStamp(AT)));
   // 🔴 G3 IS THE POINT. A screen that cannot read the stamp must say so; substituting a
   //    client clock here would make every stale panel look freshly measured, which is the
   //    exact failure this row exists to close.
@@ -560,9 +604,9 @@ console.log('\n[8] the owner split, and unknown is not chain');
 
   // 🔴 무회귀, AND IT IS THE WHOLE VIEW, NOT A SPOT CHECK. Adding the stamp must not move
   //    one other thing the panel already drew.
-  const withOut = { ...queueView(BODY({})) };
-  const withIn = { ...queueView(BODY({ generated_at: AT })) };
-  delete withOut.generatedAt; delete withIn.generatedAt;
+  const without = (v) => ({ ...v, meta: v.meta.filter((m) => m.key !== 'generated') });
+  const withOut = without(queueView(BODY({})));
+  const withIn = without(queueView(BODY({ generated_at: AT })));
   eq('G6 nothing else on the view moves when the stamp arrives',
     JSON.stringify(withOut), JSON.stringify(withIn));
 
@@ -575,21 +619,21 @@ console.log('\n[8] the owner split, and unknown is not chain');
     return host;
   };
   eq('G7 the stamp is on the screen, not only on the view model',
-    byClass(drawnAs({ generated_at: AT }), 'chain-queue-headline-generated').length, 1);
+    byClass(drawnAs({ generated_at: AT }), 'chain-queue-meta-generated').length, 1);
   // 🔴 TOTAL ON PURPOSE. Indexing [0] directly THREW when the line was absent, and a
   //    harness that throws stops scoring — G9 and G10 never ran, so two different mutants
   //    (drop the line / collide with the pickup class) looked like the same finding.
   //    A mutant that throws is a hole, not a catch.
   ok('G8 ...carrying the server instant', (() => {
-    const hit = byClass(drawnAs({ generated_at: AT }), 'chain-queue-headline-generated')[0];
-    return !!hit && hit.textContent.includes(AT);
+    const hit = byClass(drawnAs({ generated_at: AT }), 'chain-queue-meta-generated')[0];
+    return !!hit && hit.textContent.includes(localStamp(AT));
   })());
   eq('G9 NEGATIVE CONTROL: an older server draws no such line at all',
-    byClass(drawnAs({}), 'chain-queue-headline-generated').length, 0);
+    byClass(drawnAs({}), 'chain-queue-meta-generated').length, 0);
   // ⚠️ 이름 충돌. 집는 이의 「주기」가 `-basis` 를 이미 쓰고 있어, 한 이름이 두 뜻이 되면
   //    스타일이 둘 중 하나를 «조용히» 잘못 그린다.
   eq('G10 it does not land on the pickup line class',
-    byClass(drawnAs({ generated_at: AT }), 'chain-queue-headline-basis').length, 0);
+    byClass(drawnAs({ generated_at: AT }), 'chain-queue-basis').length, 0);
 }
 
 
@@ -608,9 +652,10 @@ console.log('\n[8] the owner split, and unknown is not chain');
   ];
   const BODY = (over) => ({
     waiting: 0, oldest_waiting_seconds: null, waiting_by_owner: [], retried_among_waiting: 0,
-    loop_in_this_process: true, running: [], ...over,
+    loop_seen_via: 'this_process', running: [], ...over,
   });
   const viewOf = (over) => queueView(BODY(over));
+  const runOf = (over) => numberOf(viewOf(over), 'running');
   const drawn = (over) => {
     const d = makeDoc();
     const host = d.createElement('div');
@@ -620,19 +665,19 @@ console.log('\n[8] the owner split, and unknown is not chain');
 
   // ── the count keeps its meaning, and gains the one fact it could not carry ──
   const three = viewOf({ running: RUNNING_THREE });
-  ok('C1 the count is still there', three.running.includes('3'), three.running);
-  ok('C2 ...and now says how old the oldest is', three.running.includes('41m'), three.running);
+  eq('C1 the count is still there', runOf({ running: RUNNING_THREE }).value, '3');
+  ok('C2 ...and says how old the oldest is, beside it', runOf({ running: RUNNING_THREE }).sub.includes('41m'),
+    runOf({ running: RUNNING_THREE }).sub);
   // 🔴 C3 IS THE DISCRIMINANT. `[0]` and `max` agree on the server's order, so a fixture in
   //    server order cannot tell "took the maximum" from "took the first". Reversed, it can.
-  eq('C3 「최장」 is the MAXIMUM, not whichever came first',
-    viewOf({ running: [...RUNNING_THREE].reverse() }).running, three.running);
+  eq('C3 「longest」 is the MAXIMUM, not whichever came first',
+    runOf({ running: [...RUNNING_THREE].reverse() }), runOf({ running: RUNNING_THREE }));
   // ⚠️ 세 상태. 나이가 하나도 안 읽히면 조각이 «안 붙는다» — 「0초」도 「모름」도 아니다.
-  const ageless = viewOf({ running: [{ rule: 'r' }, { rule: 'r2' }] });
-  ok('C4 an entry with no age adds no 「최장」 at all', !ageless.running.includes('최장'),
-    ageless.running);
-  ok('C5 ...and the count of them is still drawn', ageless.running.includes('2'), ageless.running);
-  ok('C6 NEGATIVE CONTROL: an empty running list draws no 「최장」 either',
-    !viewOf({ running: [] }).running.includes('최장'), viewOf({ running: [] }).running);
+  const ageless = runOf({ running: [{ rule: 'r' }, { rule: 'r2' }] });
+  ok('C4 an entry with no age adds no 「longest」 at all', !ageless.sub.includes('longest'), ageless.sub);
+  eq('C5 ...and the count of them is still drawn', ageless.value, '2');
+  ok('C6 NEGATIVE CONTROL: an empty running list draws no 「longest」 either',
+    !runOf({ running: [] }).sub.includes('longest'), runOf({ running: [] }).sub);
 
   // ── the lines: one per item OLDER THAN A MINUTE, and they carry the subject ──
   eq('C7 only the ones past a minute get a line', 1, three.runningOld.length);
@@ -651,17 +696,17 @@ console.log('\n[8] the owner split, and unknown is not chain');
     viewOf({ running: [{ running_seconds: 900 }] }).runningOld[0].rule);
 
   // ── on the screen, not only in the view model ──
-  const lines = byClass(drawn({ running: RUNNING_THREE }), 'chain-queue-headline-running-old');
+  const lines = byClass(drawn({ running: RUNNING_THREE }), 'chain-queue-running-old');
   eq('C13 the line is painted', 1, lines.length);
   ok('C14 ...carrying both the rule and the age',
     !!lines[0] && lines[0].textContent.includes('stuck_since_lunch')
       && lines[0].textContent.includes('41m'), lines[0] && lines[0].textContent);
   eq('C15 NEGATIVE CONTROL: three fresh chains paint no such line at all', 0,
-    byClass(drawn({ running: RUNNING_THREE.slice(0, 2) }), 'chain-queue-headline-running-old').length);
-  // ⚠️ 이름 충돌 — G10 과 같은 이유. 「도는 체인」 줄 자체를 이 클래스로 잡으면 스타일이
+    byClass(drawn({ running: RUNNING_THREE.slice(0, 2) }), 'chain-queue-running-old').length);
+  // ⚠️ 이름 충돌 — G10 과 같은 이유. 「도는 체인」 수 자체를 이 클래스로 잡으면 스타일이
   //    한 줄을 두 뜻으로 그린다.
-  eq('C16 it does not land on the running-count line class', 1,
-    byClass(drawn({ running: RUNNING_THREE }), 'chain-queue-headline-running').length);
+  eq('C16 the Running number is its own cell, apart from those lines', '3',
+    valueOf(drawn({ running: RUNNING_THREE }), 'running'));
 
   // 🔴 C17/C18 SPLIT THE SEAM. The listing rule (「분 단위를 넘으면」) and `formatAge`'s unit
   //    switch (「초로 안 끝나면」) are the SAME boundary, and they now read one constant. A

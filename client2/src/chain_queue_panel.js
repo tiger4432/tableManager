@@ -11,31 +11,32 @@
 //    pixels. If they rendered the same, this instrument would reproduce the exact ambiguity
 //    it was built to remove.
 //
-// ② A NUMBER THAT WAS NOT MEASURED IS NAMED, NOT OMITTED. The route deliberately does not
-//    compute `retried_total` or `processed_recently` (no index; sequential scan) and says so
-//    in `not_measured`. An absent number reads as zero, so those two are drawn WITH THEIR
-//    REASON rather than left out.
+// ② A NUMBER THAT CANNOT BE READ HAS NO CELL. A blind cell (a count this screen cannot see)
+//    is dropped, not drawn as 0 — the four numbers become three or two. `not_measured`
+//    (`retried_total`, `processed_recently`) is NOT drawn since mockup A: the screen has no
+//    slot for those numbers, so nothing reads as their zero (lead 6fdd79d4e).
 //
 // ③ NO INVENTED THRESHOLD. There is no operational basis in this repository for "60 seconds
 //    is late", and a colour applied on a made-up number is a domain claim this file is not
 //    entitled to make. The route's own docstring says what decides it: 「계속 자라면 실제로
 //    안 나가는 것이고, 0 근처를 오가면 큐는 흐르고 있다」 — that is a comparison ACROSS
-//    refreshes, not a property of one sample. So the age is stated, the way to read it is
-//    stated, and no colour pretends to have judged it.
+//    refreshes, not a property of one sample. So the age is stated and no colour pretends to
+//    have judged it. The one coloured cell is Failed, and only when it is not 0.
 //
 // ④ THE LIST IS CUT, AND THE CUT IS SAID. The route reads at most `listed.cap` rows, so
 //    a short list can mean 「this is all of it」 or 「this is as far as I looked」. Those are
 //    different facts, and a silently truncated list reads as the whole queue — the same
 //    class of misreading as ② one layer out. When `listed.capped`, the screen says so.
 //
-// ═══ SHAPE ═════════════════════════════════════════════════════════════════════════════
-// 🔴 A LIST, NOT A CARD STRIP (owner, 2026-09-04: 「chain 대기열 너무 가로로 길게
-//    배치되어있음. 그냥 대기중인 트랜잭션 리스트로 보여줘 kpi 카드 형태 말고」).
-//    Depth and retry count were cards; they are now COLUMNS of the thing they were
-//    counting, which is what a person came here to see — WHICH transactions are waiting,
-//    oldest first. The one number that cannot become a column stays as a single headline
-//    line: the age of the oldest wait is a property of the QUEUE, not of any one row,
-//    and rule ① lives in it.
+// ═══ SHAPE — mockup A (owner 「A 로 해」, lead 3c3f2b1f2 · 437a5d25f · 6fdd79d4e) ═══════════
+//    stale line (only when the picker's records failed — it must be read BEFORE the numbers)
+//    four numbers   Waiting · Oldest · Running · Failed since <date>
+//    the list       Transaction · Waiting · Tables · Rows · Drained by (+ 「retry N」 when not 0)
+//    meta line      retried · Log · Loop · Mapper · As of
+//    below it       the lines that appear only when something needs a look, the scheduler's
+//                   three pickup lines, and the per-owner lines when there are two or more
+//    The section head (「Queue · … · Open Chain tab ›」) is the PAGE's, not this part's —
+//    inside the Chain tab that link would point at itself.
 //
 // The view model is pure and total (`queueView`), so a harness scores it by importing it.
 // The class owns exactly one div, takes its mount in the constructor, and holds no
@@ -43,14 +44,12 @@
 // The table reuses `admin.html`'s existing `.table-container` / `.table-header` /
 //    `.table-row` styles — a diagnostic panel is not a reason to grow a second table style.
 
-/** The status tokens `admin.html`'s `.health-dot` already understands. */
-import { ABSENT, UNKNOWN, countText } from './absent.js';
+import { ABSENT, UNKNOWN, countText, isCount } from './absent.js';
 import { FAILED, NONE, WAITING, unitText } from './ui_words.js';
 import { countWithAbsence } from './count_with_absence.js';
 import { pickupState } from './pickup_state.js';
 import { retroactiveNote } from './retroactive_note.js';
-
-export const STATUS = Object.freeze({ OK: 'ok', NEUTRAL: 'loading', UNAVAILABLE: 'warn' });
+import { NO_TIME, localShort, localStamp } from './server_time.js';
 
 // 🔴 THE MINUTE IS ONE CONSTANT, READ FROM TWO PLACES. `formatAge` switches off 「초」
 //    here, and C-61 lists a running chain 「나이가 분 단위를 넘으면」 — the SAME question.
@@ -159,12 +158,28 @@ function shortTx(id) {
 }
 
 /**
+ * `/admin/outbox/failed` 응답 -> 실패 수와 «언제부터». 못 읽음 · 0 · N(그 시각부터) 을 가르는
+ * 자리는 여기 «하나» — 대기열의 Failed 칸과 Overview 의 Chain 카드가 같이 부릅니다.
+ * ⚠️ `total` 이 수가 아니면 «못 읽음»입니다. `|| 0` 으로 채우면 없는 수가 「실패 없음」이 됩니다.
+ */
+export function failedSince(outbox) {
+  const total = outbox && isCount(outbox.total) ? Number(outbox.total) : null;
+  const cell = countWithAbsence(total === null ? { unread: UNKNOWN }
+    : { value: total, absence: 'No failures' });
+  const at = total > 0 && outbox.oldest_failed_at ? String(outbox.oldest_failed_at) : '';
+  const shown = at ? localShort(at) : NO_TIME;
+  return Object.freeze({ read: cell.read, total, text: cell.text, word: cell.word,
+    since: !at ? '' : (shown === NO_TIME ? at : shown) });
+}
+
+/**
  * `payload` -> what to draw. Pure and total.
  *
  * @param {object|null} payload  the route's body, or null
- * @param {{unavailable?: string}} [opts]  a reason the body could not be had (HTTP status,
- *        an older server process without this route, a network failure). When present, NO
- *        numbers are drawn: a stale or invented zero here is worse than an empty panel.
+ * @param {{unavailable?: string, failed?: object|null}} [opts]  `unavailable` is a reason the
+ *        body could not be had (HTTP status, an older server process without this route, a
+ *        network failure) — then NO numbers are drawn: a stale or invented zero is worse than an
+ *        empty panel. `failed` is the `/admin/outbox/failed` body the page already read.
  */
 export function queueView(payload, opts = {}) {
   if (opts.unavailable || !payload || typeof payload !== 'object') {
@@ -172,14 +187,13 @@ export function queueView(payload, opts = {}) {
       available: false,
       reason: opts.unavailable
         || 'Response unreadable · no numbers drawn',
-      headline: null,
-      failed: null,
+      numbers: Object.freeze([]),
+      meta: Object.freeze([]),
       depth: '—',
       byOwner: Object.freeze([]),
       splitByOwner: false,
       rows: Object.freeze([]),
       truncated: '',
-      notMeasured: Object.freeze([]),
     });
   }
 
@@ -190,14 +204,11 @@ export function queueView(payload, opts = {}) {
   //   n > 0   something has been waiting n
   // 🔴 「대기 0」은 「밀린 것 없음」이 «아닐 수» 있습니다 — 실패한 행은
   //    `processed_chain=true` 라 «큐에서 빠집니다». 그래서 그 수가 «옆에» 서야 합니다.
-  //    ⛔ 문장을 늘리지 않습니다. 값 하나이고, 없으면 «안 그립니다» (0 으로도 안 그립니다).
-  //  «부품»으로 그립니다 — 「수 + 그 0 이 무엇인지」의 자리는 한 곳입니다.
-  const failedCell = countWithAbsence({ value: opts.failedTotal });
-  const failed = failedCell.read ? `${FAILED} ${failedCell.text}` : null;
+  //    ⛔ 문장을 늘리지 않습니다. 값 하나이고, 못 읽었으면 «칸째» 안 그립니다 (0 으로도 안 그립니다).
+  const failed = failedSince(opts.failed);
   // 🔴 «두 번째 소비자»: 도는 체인 루프. 빈 목록이 「없다」인지 「내가 못 본다」인지는
-  //    `loop_in_this_process` 가 가릅니다 — 루프가 «다른 프로세스»면 이 API 의 목록은
-  //    영원히 비어 있고, 그것을 그냥 그리면 「도는 게 없다」가 됩니다.
-  //    ⚠️ 그 값이 «없으면» 0 도 아니고 「없다」도 아닙니다 — «모름»입니다.
+  //    `loop_seen_via` «하나»가 가릅니다 (총괄 36dff3b6a — `loop_in_this_process` 를 같은 물음에
+  //    같이 쓰면 두 칸이 한 물음에 답해 갈라집니다). 못 봤으면 Running 칸째 뺍니다.
   // 🔴 「그래서 어느 «파일»인가」. 화면이 그 이름을 내는 자리가 «0» 이었고, 줄에 붙은
   //    태그는 «이미 맞는 파일을 연 사람»에게만 보입니다 — 열 파일을 고르는 데는 못 씁니다.
   //    서버가 로거에서 «읽어» 이름으로 냅니다 (경로가 아닙니다 — 디스크 구조는 화면 것이 아닙니다).
@@ -231,15 +242,15 @@ export function queueView(payload, opts = {}) {
   // ⚠️ 세 상태, `logName`·`restart` 와 «같은 규율»: 값 · 못 읽음(모름) · 키 없음(옛 서버 -> 안 그림).
   //    ⛔ 「0」도 「지금」도 지어내지 않습니다 — 옛 서버에서 「방금 잰 수」로 읽히는 것이
   //       이 줄이 막으려는 바로 그것입니다.
+  //    시각은 «보는 쪽 zone» 으로 (`server_time.localStamp`) — 못 읽는 문자열은 그대로 냅니다.
+  const stamp = typeof payload.generated_at === 'string' && payload.generated_at
+    ? localStamp(payload.generated_at) : NO_TIME;
   const generatedAt = !('generated_at' in payload) ? ''
     : (typeof payload.generated_at === 'string' && payload.generated_at
-      ? payload.generated_at : UNKNOWN);
+      ? (stamp === NO_TIME ? payload.generated_at : stamp) : UNKNOWN);
   const running = Array.isArray(payload.running) ? payload.running.length : null;
-  const sees = payload.loop_in_this_process;
-  const runningCell = countWithAbsence(
-    sees === false ? { unread: 'No loop in this process' }
-      : sees === true ? { value: running, absence: 'truly_none' }
-        : { unread: UNKNOWN });
+  const runningCell = payload.loop_seen_via
+    ? countWithAbsence({ value: running, absence: 'truly_none' }) : null;
   // 🔴 C-61 (소유자 09-10: 「가짜 running 3개 남아있음」). A COUNT CANNOT SEPARATE 「걸린 것」
   //    FROM 「가짜」 — both draw the same 「도는 체인 3」. What separates them is AGE, and the
   //    server has carried `running_seconds` on every entry all along (`chain_activity.py`
@@ -268,23 +279,9 @@ export function queueView(payload, opts = {}) {
       rule: r && r.rule ? String(r.rule) : ABSENT,
       age: formatAge(r.running_seconds),
     }));
-  let headline;
-  if (secs === null || secs === undefined) {
-    headline = { main: 'Nothing waiting', sub: 'No rows waiting · not 0s, '
-                                      + 'which means one just arrived', status: STATUS.OK };
-  } else {
-    const text = formatAge(secs);
-    headline = text === null
-      ? { main: '—', sub: `Age unreadable (got ${JSON.stringify(secs)})`,
-          status: STATUS.UNAVAILABLE }
-      : { main: `Oldest waiting ${text}`,
-          // rule ③: say how to read it instead of colouring it.
-          sub: payload.oldest_waiting_at
-            ? `Waiting since ${payload.oldest_waiting_at} · one reading decides nothing — `
-              + 'refresh and see whether it grows'
-            : 'One reading decides nothing — refresh and see whether it grows',
-          status: STATUS.NEUTRAL };
-  }
+  // rule ①, drawn: nothing waiting is 「—」 and one that arrived this second is 「0s」. An age
+  // that does not read is `null` here — a blind cell, dropped (lead 6fdd79d4e: 「Oldest —」).
+  const oldest = secs === null || secs === undefined ? ABSENT : formatAge(secs);
 
   // ── the list. Server order is `id` ascending = longest waiting first; that order IS the
   //    answer, so it is not re-sorted here. ──
@@ -318,7 +315,7 @@ export function queueView(payload, opts = {}) {
     blockedState: String((b && b.blocked_by_state) == null ? '' : b.blocked_by_state),
   }));
   // 🔴 ONE OWNER IS NOT A SPLIT. Drawing a per-owner breakdown of a single owner adds a
-  //    row that says the same thing as the headline, and the reader has to compare two numbers
+  //    row that says the same thing as the Waiting number, and the reader has to compare two numbers
   //    to learn they are the same number.
   const splitByOwner = byOwner.length > 1;
 
@@ -340,10 +337,10 @@ export function queueView(payload, opts = {}) {
     // 🔴 WHO EMPTIES THIS ROW. The server decides it once, from `event_type`; if the screen
     //    re-decided it from the same field there would be TWO copies of that judgement and they
     //    would drift. A row whose owners the server did not name draws a dash, not 「chain」.
-    owners: Array.isArray(t.owners) && t.owners.length ? t.owners.join(', ') : '—',
+    owners: Object.freeze(Array.isArray(t.owners) ? t.owners.map(String) : []),
     at: t.waiting_at || '',
-    // An empty string means zero retries. The column exists to surface the NON-zero ones,
-    // and a column of 「0」 down every row is noise that hides the one row that is not 0.
+    // An empty string means zero retries. The badge exists to surface the NON-zero ones,
+    // and a 「0」 on every row is noise that hides the one row that is not 0.
     maxRetry: Number(t.max_retry) > 0 ? countOf(t.max_retry) : '',
   }));
 
@@ -354,43 +351,48 @@ export function queueView(payload, opts = {}) {
       + 'The list below is not the whole queue.'
     : '';
 
-  // ── rule ②: the two the route refuses to compute, by name and with its reason ──
-  const nm = payload.not_measured;
-  const notMeasured = nm && typeof nm === 'object'
-    ? Object.keys(nm).map(name => ({ name, why: String(nm[name]) }))
-    : [];
+  // ── the four numbers (A). A cell that cannot be read is DROPPED, not drawn as 0 (rule ②) ──
+  const cell = (key, label, value, extra = {}) => Object.freeze({
+    key, label, value, sub: '', tone: '', ...extra });
+  const numbers = [];
+  if (isCount(payload.waiting)) numbers.push(cell('waiting', WAITING, countOf(payload.waiting)));
+  if (oldest !== null) numbers.push(cell('oldest', 'Oldest', oldest));
+  // 🔴 C-61. 「최장」은 수 «옆»에 붙습니다 — 따로 줄을 만들면 운영자가 수를 먼저 읽고
+  //    「3 개 돈다, 정상」으로 판정한 «뒤»에 나이를 봅니다. 나이가 읽히는 것이 하나도
+  //    없으면 이 조각은 «안 붙습니다»(0 으로도, 「모름」으로도 지어내지 않습니다).
+  if (runningCell && runningCell.read) {
+    numbers.push(cell('running', 'Running', String(running),
+      { sub: longestRunning ? `longest ${longestRunning}` : runningCell.word }));
+  }
+  if (failed.read) {
+    numbers.push(cell('failed', failed.since ? `${FAILED} since ${failed.since}` : FAILED,
+      String(failed.total), { tone: failed.total > 0 ? 'danger' : '' }));
+  }
 
-  // 🔴 The card strip carried `waiting` and `retried_among_waiting`. Dropping the strip must
-  //    not drop the numbers — a measured number that stops being drawn is rule ② with the
-  //    sign flipped. They become ONE line beside the age, not two cards.
-  headline.aggregate = `${WAITING} ${countOf(payload.waiting)} · retried `
-                     + `${countOf(payload.retried_among_waiting)}`;
+  // ── the meta line (A): retried · Log · Loop · Mapper · As of ──
+  // 🔴 The card strip carried `retried_among_waiting`; a measured number that stops being drawn
+  //    is rule ② with the sign flipped, so it stays — always, here (lead 6fdd79d4e).
+  // ⚠️ A piece whose key did not come is '' and is dropped HERE; the drawing side does not
+  //    decide again (S-16 · S-20: an older server draws nothing, not a made-up 「0」 or 「now」).
+  const meta = [
+    { key: 'retried', text: `retried ${countOf(payload.retried_among_waiting)}` },
+    { key: 'log', text: logName ? `Log ${logName}` : '' },
+    { key: 'restart', text: restart },
+    { key: 'generated', text: generatedAt ? `As of ${generatedAt}` : '' },
+  ].filter((m) => m.text).map((m) => Object.freeze(m));
 
   return Object.freeze({
     available: true,
     reason: '',
-    headline: Object.freeze(headline),
-    failed,
-    // 🔴 C-61. 「최장」은 수 «옆»에 붙습니다 — 따로 줄을 만들면 운영자가 수를 먼저 읽고
-    //    「3 개 돈다, 정상」으로 판정한 «뒤»에 나이를 봅니다. 나이가 읽히는 것이 하나도
-    //    없으면 이 조각은 «안 붙습니다»(0 으로도, 「모름」으로도 지어내지 않습니다).
-    running: `Running chains ${runningCell.text}`
-      + (longestRunning ? ` · longest ${longestRunning}` : ''),
+    numbers: Object.freeze(numbers),
     runningOld: Object.freeze(oldRunning),
-    logName: logName ? `Log ${logName}` : '',
-    // 🔴 S-20. `logName` 과 «같은 모양»입니다 — 낱말은 여기서 한 번 붙고, 빈 문자열이
-    //    「안 그린다」입니다. 그리는 쪽이 다시 판정하지 않습니다.
-    generatedAt: generatedAt ? `As of ${generatedAt}` : '',
-    // S-16: 「재시작하면 풀리나」. 키가 없으면 빈 문자열 -> 화면이 «안 그립니다».
-    restart,
+    meta: Object.freeze(meta),
     depth: countOf(payload.waiting),
     byOwner: Object.freeze(byOwner),
     splitByOwner,
-    // 🔴 THE FIRST FACT, NOT THE FOURTH. Null when the server sent no picker bucket.
     pickup: pickup ? Object.freeze(pickup) : null,
     rows: Object.freeze(rows),
     truncated,
-    notMeasured: Object.freeze(notMeasured.map(x => Object.freeze(x))),
   });
 }
 
@@ -417,11 +419,11 @@ export class ChainQueuePanel {
   /** @param {string} cls @param {string} text */
   _line(cls, text) { return line(this.doc, cls, text); }
 
-  /** @param {string} text @param {string} [align] */
-  _td(text, align) {
+  /** @param {string} text @param {string} [col]  the column's name — its CSS reads it, no inline style */
+  _td(text, col) {
     const td = this.doc.createElement('td');
     td.textContent = text;
-    if (align) td.style.textAlign = align;
+    if (col) td.setAttribute('data-col', col);
     return td;
   }
 
@@ -437,7 +439,7 @@ export class ChainQueuePanel {
     return box;
   }
 
-  /** @param {object|null} payload  @param {{unavailable?: string}} [opts] */
+  /** @param {object|null} payload  @param {{unavailable?: string, failed?: object|null}} [opts] */
   render(payload, opts = {}) {
     const view = queueView(payload, opts);
     const doc = this.doc;
@@ -448,84 +450,61 @@ export class ChainQueuePanel {
       return view;
     }
 
-    // ── headline: ONE line, not a card. Rule ① lives here. ──
-    const head = doc.createElement('div');
-    head.className = 'chain-queue-headline';
-    head.setAttribute('data-status', view.headline.status);
-    const dot = doc.createElement('span');
-    dot.className = 'health-dot';
-    head.appendChild(dot);
-    head.appendChild(this._line('chain-queue-headline-main', view.headline.main));
-    // 🔴 실패 수는 «대기 옆»에 섭니다. 탭을 옮기지 않고 둘이 같이 읽혀야, 「대기 0」이
-    //    「잘 돌고 있다」로 «안» 읽힙니다. 값을 모르면 아무것도 안 그립니다.
-    if (view.failed) head.appendChild(this._line('chain-queue-headline-fail', view.failed));
-    // 🔴 「도는 것이 보인다」. 빈 목록이 「없다」로 읽히지 않게, 그 0 이 무엇의 0 인지가
-    //    «부품»에서 같이 나옵니다. 문장이 아니라 낱말 하나입니다.
-    if (view.running) head.appendChild(this._line('chain-queue-headline-running', view.running));
-    // 🔴 C-61. 「최장」이 「걸린 것이 있다」를 말하고, 이 줄들이 «어느 것인지»를 말합니다.
-    //    「No owner」 줄과 «같은 모양»입니다 — 이름 · 나이, 그리고 판정은 운영자의 것.
-    for (const item of view.runningOld) {
-      head.appendChild(this._line('chain-queue-headline-running-old',
-                                  `${item.rule} · ${item.age}`));
+    // 🔴 「아래 수가 틀렸을 수 있다」는 그 수들보다 «먼저» 읽혀야 뜻이 있습니다 — 뒤에 붙이면
+    //    운영자가 이미 그 수를 믿은 뒤입니다. 그래서 숫자 넷 «위»입니다.
+    if (view.pickup && view.pickup.stale) {
+      this.root.appendChild(this._line('chain-queue-stale',
+        `Record failures ${view.pickup.recordFailures} · the numbers below may be stale`));
     }
-    // 🔴 「어느 프로세스인가」는 이 패널이 거절할 때 이미 말합니다. 그 «옆 칸»이 이것입니다.
-    if (view.logName) head.appendChild(this._line('chain-queue-headline-log', view.logName));
-    if (view.restart) head.appendChild(this._line('chain-queue-headline-restart', view.restart));
-    // 🔴 「집는 이가 살아 있나」. Biggest of the extra facts because it is the one that
-    //    separates 「곧 돈다」 from 「아무도 안 집는다」 -- the queue length cannot.
-    // ⛔ No verdict word and no predicted start: the age and the declared interval go out
-    //    side by side with their units, and the reading is the operator's. A threshold
-    //    invented here would be a rule nobody declared.
-    if (view.pickup) {
-      // \u{1f534} 이 줄이 «맨 앞»입니다. 「아래 수가 틀렸을 수 있다」는 그 수들보다 «먼저»
-      //    읽혀야 뜻이 있습니다 — 뒤에 붙이면 운영자가 이미 그 수를 믿은 뒤입니다.
-      if (view.pickup.stale) {
-        head.appendChild(this._line('chain-queue-stale',
-          `Record failures ${view.pickup.recordFailures} · the numbers below may be stale`));
-      }
-      head.appendChild(this._line('chain-queue-headline-pickup', view.pickup.pickup));
-      if (view.pickup.basis) {
-        head.appendChild(this._line('chain-queue-headline-basis', view.pickup.basis));
-      }
-      if (view.pickup.waitingText) {
-        head.appendChild(this._line('chain-queue-headline-ahead', view.pickup.waitingText));
-      }
-      // 「도는 중인데 주인이 없음」 — the heartbeat decided it, not this file.
-      for (const orphan of view.pickup.orphaned) {
-        head.appendChild(this._line('chain-queue-headline-orphan',
-                                    `No owner · ${orphan.op} · ${orphan.age}`));
-      }
-    }
-    head.appendChild(this._line('chain-queue-headline-agg', view.headline.aggregate));
-    head.appendChild(this._line('chain-queue-headline-sub', view.headline.sub));
-    // 🔴 S-20. 「기준 시각」은 위의 수 «전부»를 한정하므로 머리글의 «마지막» 줄입니다.
-    //    ⛔ `chain-queue-stale` 처럼 «앞»에 두지 않습니다 — 그 줄은 「아래 수를 믿지 말라」라
-    //       수보다 먼저 읽혀야 뜻이 있고, 이 줄은 그 수들을 «읽는 법»이라 뒤가 맞습니다.
-    //    ⚠️ 클래스가 `-basis` 가 «아닌» 이유: 그 이름은 집는 이의 「주기」가 이미 쓰고 있고,
-    //       한 이름이 두 뜻이 되는 순간 스타일이 둘 중 하나를 «조용히» 잘못 그립니다.
-    if (view.generatedAt) {
-      head.appendChild(this._line('chain-queue-headline-generated', view.generatedAt));
-    }
-    this.root.appendChild(head);
 
-    // ── 누가 비우나 ── 소유자가 «하나»면 그리지 않는다 (위 `splitByOwner` 참조).
-    if (view.splitByOwner) {
-      const strip = doc.createElement('div');
-      strip.className = 'chain-queue-owner-strip';
-      for (const b of view.byOwner) {
-        const line = this._line('chain-queue-owner',
-          `${b.owner} · waiting ${b.waiting} · oldest ${b.age}`);
-        line.setAttribute('data-owner', b.owner);
-        strip.appendChild(line);
+    const grid = doc.createElement('div');
+    grid.className = 'chain-queue-numbers';
+    for (const n of view.numbers) {
+      const box = doc.createElement('div');
+      box.className = 'chain-queue-number';
+      box.setAttribute('data-key', n.key);
+      if (n.tone) box.setAttribute('data-tone', n.tone);
+      box.appendChild(this._line('chain-queue-number-label', n.label));
+      box.appendChild(this._line('chain-queue-number-value', n.value));
+      if (n.sub) box.appendChild(this._line('chain-queue-number-sub', n.sub));
+      grid.appendChild(box);
+    }
+    this.root.appendChild(grid);
+
+    // rule ④: the cut is read before the list it cuts.
+    if (view.truncated) this.root.appendChild(this._line('chain-queue-truncated', view.truncated));
+    this.root.appendChild(view.rows.length
+      ? this._table(view.rows) : this._line('chain-queue-empty', 'Nothing waiting'));
+
+    if (view.meta.length) {
+      const meta = doc.createElement('div');
+      meta.className = 'chain-queue-meta';
+      for (const m of view.meta) {
+        const piece = doc.createElement('span');
+        piece.className = `chain-queue-meta-${m.key}`;
+        piece.textContent = m.text;
+        meta.appendChild(piece);
       }
-      this.root.appendChild(strip);
+      this.root.appendChild(meta);
+    }
+
+    // ── below the meta line: what needs a look first, then the scheduler's and the owners' lines ──
+    // 🔴 C-61. 「최장」이 「걸린 것이 있다」를 말하고, 이 줄들이 «어느 것인지»를 말합니다 —
+    //    이름 · 나이, 그리고 판정은 운영자의 것.
+    for (const item of view.runningOld) {
+      this.root.appendChild(this._line('chain-queue-running-old', `${item.rule} · ${item.age}`));
+    }
+    // 「도는 중인데 주인이 없음」 — the heartbeat decided it, not this file.
+    for (const orphan of (view.pickup ? view.pickup.orphaned : [])) {
+      this.root.appendChild(this._line('chain-queue-orphan',
+                                       `No owner · ${orphan.op} · ${orphan.age}`));
     }
 
     // ── 그 소유자가 «왜» 기다리는가 ──
     // 🔴 `blocked_by` 가 null 이면 «아무것도» 그리지 않는다. 서버가 적어 둔 대로
     //    null 은 「막힌 것이 없다」가 아니라 「이유를 모른다」이고, 「없음」으로 그리면
     //    이 파일이 없애려는 바로 그 0 이 하나 더 생긴다.
-    // 🔴 값은 «서버의 낟말로» 적는다. `moving` 과 `cancel_reaches` 를 번역하면
+    // 🔴 값은 «서버의 낱말로» 적는다. `moving` 과 `cancel_reaches` 를 번역하면
     //    서버가 일부러 갈라 둔 `stalled` 와 `unreported` 가 한 말로 접힌다.
     for (const b of view.byOwner) {
       if (!b.blocked) {
@@ -558,40 +537,58 @@ export class ChainQueuePanel {
       this.root.appendChild(box);
     }
 
-    if (view.truncated) this.root.appendChild(this._line('chain-queue-truncated', view.truncated));
-
-    if (view.rows.length === 0) {
-      this.root.appendChild(this._empty('🎉', 'No transactions waiting'));
-      return view;
+    // 🔴 「집는 이가 살아 있나」 — 「곧 돈다」와 「아무도 안 집는다」를 가르는 것은 큐 길이가 아니라 이것.
+    // ⛔ No verdict word and no predicted start: the age and the declared interval go out
+    //    side by side with their units, and the reading is the operator's.
+    if (view.pickup) {
+      this.root.appendChild(this._line('chain-queue-pickup', view.pickup.pickup));
+      if (view.pickup.basis) this.root.appendChild(this._line('chain-queue-basis', view.pickup.basis));
+      if (view.pickup.waitingText) {
+        this.root.appendChild(this._line('chain-queue-ahead', view.pickup.waitingText));
+      }
     }
 
+    // ── 누가 비우나 ── 소유자가 «하나»면 그리지 않는다 (위 `splitByOwner` 참조).
+    if (view.splitByOwner) {
+      const strip = doc.createElement('div');
+      strip.className = 'chain-queue-owner-strip';
+      for (const b of view.byOwner) {
+        const line = this._line('chain-queue-owner',
+          `${b.owner} · waiting ${b.waiting} · oldest ${b.age}`);
+        line.setAttribute('data-owner', b.owner);
+        strip.appendChild(line);
+      }
+      this.root.appendChild(strip);
+    }
+    return view;
+  }
+
+  /** The list (A): Transaction · Waiting · Tables · Rows · Drained by. No px widths — the Tables
+   *  column takes what is left, the rest take their content (admin.html `.chain-queue-table`). */
+  _table(rows) {
+    const doc = this.doc;
     const table = doc.createElement('table');
-    table.className = 'table-container';
+    table.className = 'table-container chain-queue-table';
     const thead = doc.createElement('thead');
     thead.className = 'table-header';
     const hr = doc.createElement('tr');
-    // Width is set on the header cells so the body columns follow — the same shape the
-    // failed-transaction table beside this one uses.
-    for (const [label, width, align] of [
-      ['Transaction ID', '130px', ''], [WAITING, '100px', ''], ['Tables', '', ''],
-      ['Event', '110px', ''], ['Rows', '60px', 'center'], ['Retries', '70px', 'center'],
-    ]) {
+    for (const [label, col] of [['Transaction', 'tx'], [WAITING, 'age'], ['Tables', 'tables'],
+                                ['Rows', 'rows'], ['Drained by', 'owners']]) {
       const th = doc.createElement('th');
       th.textContent = label;
-      if (width) th.style.width = width;
-      if (align) th.style.textAlign = align;
+      th.setAttribute('data-col', col);
       hr.appendChild(th);
     }
     thead.appendChild(hr);
     table.appendChild(thead);
 
     const tbody = doc.createElement('tbody');
-    for (const r of view.rows) {
+    for (const r of rows) {
       const tr = doc.createElement('tr');
       tr.className = 'table-row';
       tr.setAttribute('data-txid', r.txId);
 
-      const tdId = doc.createElement('td');
+      const tdId = this._td('', 'tx');
       const chip = doc.createElement('span');
       chip.className = 'tx-id-chip';
       chip.title = r.txId;
@@ -599,54 +596,32 @@ export class ChainQueuePanel {
       tdId.appendChild(chip);
       tr.appendChild(tdId);
 
-      const tdAge = this._td(r.age);
-      tdAge.className = 'chain-queue-age';
+      const tdAge = this._td(r.age, 'age');
       if (r.at) tdAge.title = `Waiting since ${r.at}`;
       tr.appendChild(tdAge);
+      tr.appendChild(this._td(r.tables, 'tables'));
+      tr.appendChild(this._td(r.rows, 'rows'));
 
-      tr.appendChild(this._td(r.tables));
-
-      const tdEv = doc.createElement('td');
-      if (r.eventTypes.length) {
-        for (const t of r.eventTypes) {
-          const b = doc.createElement('span');
-          b.className = `badge ${t === 'CREATE' ? 'badge-warning' : 'badge-danger'}`;
-          b.style.marginRight = '4px';
-          b.textContent = t;
-          tdEv.appendChild(b);
-        }
-      } else {
-        tdEv.textContent = '—';
+      // 🔴 누가 빼나 — 서버가 정한 이름 그대로, 한 이름에 배지 하나. 이름이 없으면 대시(「chain」이 아니다).
+      const tdOwners = this._td(r.owners.length ? '' : ABSENT, 'owners');
+      tdOwners.setAttribute('data-owners', r.owners.join(', ') || ABSENT);
+      for (const owner of r.owners) {
+        const badge = doc.createElement('span');
+        badge.className = 'chain-queue-owner-badge';
+        badge.textContent = owner;
+        tdOwners.appendChild(badge);
       }
-      // 🔴 소유자를 «칸을 늘리지 않고» 보입니다. 일곱째 컬럼을 더하면 좀은 패널에서
-      //    표가 다시 넘칩니다 — 바로 앞 라운드에서 0 으로 만든 수입니다.
-      //    event_type 이 그 판정의 재료이므로 같은 칸이 자연스러운 자리입니다.
-      const ow = this._line('chain-queue-row-owners', r.owners);
-      ow.setAttribute('data-owners', r.owners);
-      tdEv.appendChild(ow);
-      tr.appendChild(tdEv);
-
-      tr.appendChild(this._td(r.rows, 'center'));
       // rule ③ applies here too: the retry count is stated, never coloured into a verdict.
-      tr.appendChild(this._td(r.maxRetry, 'center'));
-
+      if (r.maxRetry) {
+        const retry = doc.createElement('span');
+        retry.className = 'chain-queue-retry-badge';
+        retry.textContent = `retry ${r.maxRetry}`;
+        tdOwners.appendChild(retry);
+      }
+      tr.appendChild(tdOwners);
       tbody.appendChild(tr);
     }
     table.appendChild(tbody);
-    this.root.appendChild(table);
-
-    if (view.notMeasured.length > 0) {
-      const box = doc.createElement('div');
-      box.className = 'chain-queue-notmeasured';
-      box.appendChild(this._line('health-card-title',
-        `Not measured here: ${view.notMeasured.length} · unmeasured, not absent`));
-      for (const x of view.notMeasured) {
-        const line = this._line('health-card-sub', `${x.name} — ${x.why}`);
-        line.setAttribute('data-name', x.name);
-        box.appendChild(line);
-      }
-      this.root.appendChild(box);
-    }
-    return view;
+    return table;
   }
 }
