@@ -33286,3 +33286,55 @@ PRIMER    §0~§3 을 lot_slot_wafer 표 소스의 행 하나로 다시 씀
          5139290 은 행이 지워진 행별 줄이라 재시도가 이름 대고 남깁니다(앞 보고) — 규칙을 걷어도 이 줄은 목록에서 나갈 길이 없습니다
          행이 없는 실패 줄을 목록에서 내보낼 제품 문을 못 찾았습니다 — 치울지 말씀 주십시오
 ```
+
+---
+
+## 대기열 검수 둘째 판 — 소급 연산 · CLI · 취소 (09-25 19:07)
+
+지시 `8403f3ff7`. 어드민 실행은 토큰 라우트 함수를 프로세스 안에서 불렀고, CLI 는 그 스크립트를 그대로 띄웠습니다.
+인자는 박스의 남의 데이터에 닿지 않게 골랐습니다: 옮겨질 칸이 0 인 표(void_obs) · 번역할 행이 없는 소스(die_inspection) · 아무 행도 안 드는 범위 · 제 행 하나 · 선언에 없는 규칙.
+건수(count)가 0 이 아니면 띄우지 않았습니다. 끝에 제 표 행 0 · cell_sources 0 · inventory_master 0 을 확인했습니다.
+
+칸: ① 기록 줄 · ② 어드민 대기열에 뜨나 · ③ 누가 빼나 · ④ 끝 상태와 시간 · ⑥ 효과 · ⑦ 억지 실패 · ⑨ 어느 프로세스 · ⑩ 진행이 보이나 · ⑪ 취소
+
+| 연산 (어드민) | ①② | ⑨ 프로세스 | ④ | ⑥ · ⑩ · ⑪ |
+|---|---|---|---|---|
+| ledger_backfill | 실행 행 + 아웃박스 줄 1 · 대기열 스케줄러 칸 waiting 1 | 자식 pid(명령줄 `-m admin.retroactive_run`) · 스케줄러 pid 34120 아님 | done · 대기 2.9초 · 실행 2.7초 | 번역 0 |
+| ledger_rescope | 같음 | 자식 | done · 0.9 / 2.7초 | 범위 행 0 · 화면 × 없음(코드: 등록부 `cancellable` 거짓이면 안 그림) |
+| resolve | 같음 | 자식 | done · 실행 30.5초 | ⑩ 진행 수가 0.4초마다 오름(72번 읽음, 103,858 행) — 총괄 크롬에서도 봄 |
+| resolve + 취소 | 같음 | 자식 | **cancelled** | ⑪ 21,300 행에서 취소 → 다음 페이지 21,500 에서 멈춤 · 심박 파일 지워짐 |
+| withdraw (제 소스) | 같음 | 자식 | done | 제 칸 셋만 걷힘(emptied 3 · 그 소스의 칸은 박스 전체에 제 것 셋뿐이었음) |
+| chain_replay (제 행) | 실행 행만 — 아웃박스 줄 0(주인이 체인이라 초인종 없음, 설계) | **체인 워커 pid**(`run_chain_worker.py`) | done 0.2초 | ⑥ 지운 inventory_master 행을 다시 씀 · stock 20(기대 20) |
+| enrichment_backfill · confirm | — | — | 안 띄움 | 건수 1 · 140 — 소유자 데이터가 바뀜 |
+| ⑦ 없는 규칙 | 같음 | 자식 | **failed** · 「rule … is not declared in chain_rules.json; available rules: …」 | — |
+
+```
+관문     어드민 둘을 연달아       둘째가 queued 로 기다렸다가 첫째가 끝난 뒤 자기 자식에서 돎 ✓
+        CLI 가 도는 동안 어드민   어드민이 queued 로 기다렸다가 CLI 가 끝난 뒤 돎 ✓
+        CLI 가 도는 동안 CLI 둘째  이름 대어 거절 · 종료 코드 2 ✓
+CLI     --apply                기록이 queued 없이 running · runner 가 그 CLI 의 pid ✓ (resolve · ledger backfill · rescope)
+        드라이런                기록 없음 ✓
+        화면 취소               다음 페이지에서 멈춤 · 기록 cancelled · 종료 코드 2 · 「CANCELLED: … what it committed stays」 ✓
+        Ctrl-C                 기록 cancelled · 사유 「interrupted in the terminal that ran it」 ✓
+                               터미널에는 KeyboardInterrupt 트레이스백 · 종료 코드 0xC000013A (윈도의 Ctrl-C 종료)
+        없는 규칙(enrichment 둘) 기록 전에 「REFUSED: …」 · 종료 코드 2
+안 돌림  outbox_triage --replay-cancelled --apply — 취소된 실제 줄을 다시 돌리는 도구라 박스 데이터가 바뀜
+        chain_replay_cli 의 replay · withdraw — resolve 와 같은 문(run_here)이라 한 번만 잼
+```
+
+### 관찰 — 빨강은 아님
+
+```
+같은 물음에 두 답   없는 규칙 이름을 어드민은 받아서 자식에서 failed 로 끝내고(실행 목록에 실패 줄 하나),
+                  CLI 는 기록 전에 거절합니다. 어드민 발행이 규칙 이름을 안 봅니다
+관문 문장의 수      「op=resolve progressing for 0.0s」 — 그 수는 «마지막 진행 뒤 몇 초»인데 문장은 «몇 초째 돎»으로 읽힙니다
+                  (그때 resolve 는 6초째 11,500 행을 지나고 있었습니다)
+CLI 기록의 요청자   CLI 실행 행의 requested_by 가 비어 있습니다 — 누가 띄웠는지는 runner 의 pid 만 말합니다
+심박 파일           끝 상태가 적히고 0.4초 안에는 파일이 아직 있고, 20초 뒤에는 없습니다 — 기록 먼저, 파일 나중(결함 아님)
+건수의 로그 한 줄    enrichment_backfill 의 건수(쓰기 없음)가 「… upserted into 'dt_inventory'」 를 찍습니다 — 같은 창의 아웃박스 줄은 제 것 셋뿐(쓴 것 없음)
+원장 센서스 문장     뷰를 읽어 거절된 소스의 census.remedy 가 「view column 으로 row_id 를 드러내라」고 합니다 —
+                  뷰 소스는 은퇴했고, 판정(setup_bundle `reads_a_row_table`)은 «카탈로그 kind 가 table» 이면서 row_id 칸이라
+                  뷰에 row_id 를 드러내도 거절은 그대로입니다 — 문장이 없는 길을 가리킵니다
+                  그 문장은 추적 코드에 없습니다(git grep 0 · 카나리아 `def reads_a_row_table` 1) — GET /api/ledger/declaration 이
+                  «아무 코드도 안 쓰는» 옛 값을 내고 있습니다. 어디에 저장된 값인지는 세지 않았습니다
+```
