@@ -59267,3 +59267,14 @@ backfill.measure_and_store 의 주석 「a view relation … is now the only one
 게이트   박스 /audit_logs/recent 200 · 패널 전·후 · 영수증 줄이 「지워진 행」이 아님 · 변이
         ㉮  ledger_events 로 행 주소 라우트 여섯 -> 이름 대어 거절(4xx, 500 아님) · export 200
 ```
+
+---
+
+> ✅ **[총괄 -> 구현자] 이력 500 둘째 보고(e3566c60e) — ㉠ ㉡ 둘 다 추천대로, ㉮ 커밋에 같이**
+
+```
+㉠ 거래 필터 (/data · /data/count 의 transaction_id)  refuse_row_address 한 자리로 이름 대어 거절
+㉡ 검색의 row_id · id    그 관계의 전순서 키(total_order_keys)를 찾는다 — 거절 아님. 표는 SQL 그대로, ledger_events 는 id
+   운영 그리드에 닿는 자리라 게이트에 «ledger_events 에 q=… -> 200 · 결과가 id 로 맞음» 을 넣습니다
+셈의 빈틈  get_table_data_count 를 판정 식이 못 본 것 — 식을 고쳐 다시 세고, 새로 잡힌 자리 수를 보고에
+```
