@@ -759,14 +759,15 @@ def _judge_chain_replay(params):
 
 
 def _judge_withdraw(params):
-    from chain import replay
+    from chain import cell_layer
 
     # `withdraw_source` refuses it AGAIN - this is convenience, that one is the safety property.
-    if params.get("source") in replay.PROTECTED_SOURCES:
+    if params.get("source") in cell_layer.PROTECTED_SOURCES:
         raise RetroactiveRefused(
             f"refusing to withdraw source '{params['source']}': it is the layer that means "
             f"'a human typed this'. There is no supported way to remove a human's value "
             f"from here - edit the cell instead.")
+    _judge_table(params)
 
 
 def _judge_enrichment_backfill(params):
@@ -784,12 +785,13 @@ def _judge_enrichment_confirm(params):
     _enrichment_rule(params["rule"])
 
 
-def _judge_resolve(params):
-    from chain import replay
+def _judge_table(params):
+    """The one table-and-columns lookup R2 and R3 run first (총괄 bf9d3367a)."""
+    from chain import cell_layer
 
     try:
-        replay.resolve_target(params["table"], params.get("columns"))
-    except replay.ReplayRefused as e:
+        cell_layer.resolve_target(params["table"], params.get("columns"))
+    except cell_layer.ReplayRefused as e:
         raise RetroactiveRefused(str(e)) from None
 
 
@@ -907,7 +909,7 @@ OPERATIONS = {
                       help="rows per page")],
         "count": _count_resolve,
         "run": _run_resolve,
-        "judge": _judge_resolve,
+        "judge": _judge_table,
         "cli": ("server/scripts/chain_replay_cli.py resolve <table> [--columns a,b] "
                 "[--limit N] [--chunk-size N] --apply"),
         # Only the shown column moves, from layers already stored; no layer is created or

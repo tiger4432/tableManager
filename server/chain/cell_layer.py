@@ -179,6 +179,26 @@ def withdraw_by_origin(db, origin_row_ids, apply: bool = False, log=logger.info)
     return stats
 
 
+def resolve_target(table_name: str, columns: list = None):
+    """-> (the table's model, its declared column types), or `ReplayRefused` by name.
+
+    The one lookup of a table and its columns for R2 (`withdraw_source`) and R3
+    (`replay.recompute_display_values`) - and, before anything is recorded, for the admin's
+    params judgment (총괄 8e54a261b ④ · bf9d3367a), so all of them say one sentence.
+    """
+    from database import crud, models
+
+    model = models.DYNAMIC_TABLES.get(table_name)
+    if model is None:
+        raise ReplayRefused(f"table model '{table_name}' is not initialized")
+    col_types = (crud.TABLE_CONFIG.get(table_name, {}).get("column_types", {}) or {})
+    if columns:
+        unknown = [c for c in columns if c not in col_types]
+        if unknown:
+            raise ReplayRefused(f"column(s) not declared on '{table_name}': {unknown}")
+    return model, col_types
+
+
 def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
                     row_ids: list = None, apply: bool = False,
                     chunk_size: int = DEFAULT_CHUNK_SIZE, log=logger.info,
@@ -204,15 +224,7 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
             f"refusing to withdraw source '{source_name}': it is the layer that means "
             f"'a human typed this'. Withdrawing it would remove a human's value, which "
             f"this tool does not do. Edit the cell instead.")
-    model = models.DYNAMIC_TABLES.get(table_name)
-    if model is None:
-        raise ReplayRefused(f"table model '{table_name}' is not initialized")
-
-    col_types = (crud.TABLE_CONFIG.get(table_name, {}).get("column_types", {}) or {})
-    if columns:
-        unknown = [c for c in columns if c not in col_types]
-        if unknown:
-            raise ReplayRefused(f"column(s) not declared on '{table_name}': {unknown}")
+    model, col_types = resolve_target(table_name, columns)
 
     stats = {"mode": "apply" if apply else "dry-run", "table": table_name,
              "source": source_name, "cells_matched": 0, "cells_withdrawn": 0,

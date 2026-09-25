@@ -88,7 +88,7 @@ import event_constants
 #    그 한 줄이 네 모듈짜리 고리의 마지막 이음매였다. 연산이 둘보다 «아래»로 내려갔다.
 #    ⚠️ 여기서 읽는 이름들은 «재수출»이 아니라 이 모듈이 그것들을 «쓰기» 때문이다 —
 #       `ReplayRefused` 는 스무 자리에서 raise 되고, 헬퍼 셋은 다른 함수들이 부른다.
-from chain.cell_layer import DEFAULT_CHUNK_SIZE, PROTECTED_SOURCES, R1_SOURCE_NAME, R2_AUDIT_SOURCE, ReplayRefused, _claimed_filter, _load_cell_state, _resolve_cell, withdraw_source
+from chain.cell_layer import DEFAULT_CHUNK_SIZE, PROTECTED_SOURCES, R1_SOURCE_NAME, R2_AUDIT_SOURCE, ReplayRefused, _claimed_filter, _load_cell_state, _resolve_cell, resolve_target, withdraw_source
 
 # ⚰️ `WRITE_CHUNK = 1000` stood here - how many proposals this module wrote at once.
 #    It writes none. How many rows travel in one event is `OUTBOX_COLLAPSE_CHUNK_ROWS`,
@@ -692,25 +692,6 @@ def count_withdrawable(db, table_name: str, source_name: str, columns: list = No
 # ---------------------------------------------------------------------------
 # R3 - re-materialise the resolution over cells that already have their layers
 # ---------------------------------------------------------------------------
-
-def resolve_target(table_name: str, columns: list = None):
-    """-> (the table's model, its declared column types), or `ReplayRefused` by name.
-
-    R3's own lookup of the names it is given - asked by the run below and, before anything is
-    recorded, by the admin's params judgment (총괄 8e54a261b ④), so both give one sentence.
-    """
-    from database import crud, models
-
-    model = models.DYNAMIC_TABLES.get(table_name)
-    if model is None:
-        raise ReplayRefused(f"table model '{table_name}' is not initialized")
-    col_types = (crud.TABLE_CONFIG.get(table_name, {}).get("column_types", {}) or {})
-    if columns:
-        unknown = [c for c in columns if c not in col_types]
-        if unknown:
-            raise ReplayRefused(f"column(s) not declared on '{table_name}': {unknown}")
-    return model, col_types
-
 
 def recompute_display_values(db, table_name: str, columns: list = None,
                              row_ids: list = None, apply: bool = False,

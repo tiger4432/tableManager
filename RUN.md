@@ -3,7 +3,7 @@
 > ## 🔴 [09-26 새벽 1] **표·원장 소급도 없는 이름은 기록 «전»에 거절 · 거절된 소스의 rescope 는 이름 있는 거절 — 마이그레이션 «없음» · 재기동 API · 스케줄러 · 체인 워커**
 >
 > ```
-> 확인      어드민 소급에서 resolve · ledger_backfill · ledger_rescope 에 없는 표·소스 이름
+> 확인      어드민 소급에서 resolve · withdraw · ledger_backfill · ledger_rescope 에 없는 표·칸·소스 이름
 > 답의 뜻   400 한 문장(영어), 실행 목록에 줄 없음                                 새 코드
 >           실행 목록에 줄이 생기고 queued -> failed                                API 가 옛 코드
 >           건수 400 이 「이 연산의 건수를 계산할 수 없습니다: …」 로 시작              API 가 옛 코드

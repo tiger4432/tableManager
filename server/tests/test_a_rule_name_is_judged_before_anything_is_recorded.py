@@ -97,6 +97,8 @@ def test_force_disabled_still_reaches_the_judgment(monkeypatch):
 
 NAME_OPS = {
     "resolve": ({"table": "no_such_table"}, {"table": "retro_test_target"}),
+    "withdraw": ({"table": "no_such_table", "source": "retro_src"},
+                 {"table": "retro_test_target", "source": "retro_src"}),
     "ledger_backfill": ({"source": "no_such_source"}, {"source": "dt_job"}),
     "ledger_rescope": ({"source": "no_such_source", "scope_column": "row_id",
                         "scope_values": "a"},
@@ -132,7 +134,7 @@ def test_every_operation_is_judged_before_it_is_recorded():
     """Canary: no operation is left for its run to be the first to judge its names."""
     assert sorted(op for op, spec in retroactive.OPERATIONS.items()
                   if spec["judge"] is None) == []
-    assert set(NAME_OPS) | set(RULE_OPS) | {"withdraw"} == set(retroactive.OPERATIONS)
+    assert set(NAME_OPS) | set(RULE_OPS) == set(retroactive.OPERATIONS)
 
 
 @pytest.mark.parametrize("op", sorted(NAME_OPS))
@@ -150,6 +152,24 @@ def test_an_unknown_table_or_source_gets_one_refusal_at_every_door_and_no_record
     assert len(set(answers)) == 1, answers
     assert "no_such_" in answers[0], answers[0]
     assert _recorded(retro_env) == (0, 0), "a refused name must leave no run and no event"
+
+
+@pytest.mark.parametrize("op", ["resolve", "withdraw"])
+def test_an_undeclared_column_gets_one_refusal_at_every_door_and_no_record(retro_env, op):
+    """총괄 bf9d3367a — R2 and R3 look the table AND its columns up in one place, and the
+    judgment asks that place."""
+    params = dict(NAME_OPS[op][1], columns="no_such_col")
+    answers = []
+    for ask in (lambda: retroactive.publish(retro_env, op, dict(params)),
+                lambda: retroactive.count(retro_env, op, dict(params)),
+                lambda: retroactive.run_here(op, dict(params), log=lambda *_: None)):
+        with pytest.raises(retroactive.RetroactiveRefused) as refused:
+            ask()
+        answers.append(str(refused.value))
+
+    assert len(set(answers)) == 1, answers
+    assert "no_such_col" in answers[0], answers[0]
+    assert _recorded(retro_env) == (0, 0)
 
 
 @pytest.mark.parametrize("op", sorted(NAME_OPS))

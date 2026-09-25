@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from admin import retroactive
-from chain import replay
+from chain import cell_layer, replay
 from chain.enrichment import analysis
 from chain.enrichment import config as enrichment_config
 import chain.enrichment.backfill as enrichment_backfill
@@ -43,7 +43,7 @@ def _rule_r_is_found(monkeypatch):
     monkeypatch.setattr(replay, "find_rule", lambda name, row_scoped=False: {"name": name})
     monkeypatch.setattr(enrichment_backfill, "load_rule", lambda name, *a, **k: {"name": name})
     monkeypatch.setattr(retroactive, "_enrichment_rule", lambda name: {"name": name})
-    monkeypatch.setattr(replay, "resolve_target", lambda *a, **k: (None, {}))
+    monkeypatch.setattr(cell_layer, "resolve_target", lambda *a, **k: (None, {}))
     monkeypatch.setattr(ledger_setup, "load_setup", lambda *a, **k: _FOUND)
     monkeypatch.setattr(ledger_backfill, "rescope_scope", lambda *a, **k: (None, None))
 
