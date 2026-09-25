@@ -33540,3 +33540,16 @@ F 의 내용(px 폭 없음 · Drained by 배지 · 메타 한 줄 · localStamp)
 중간 모양을 한 번 더 만들지 않도록 — 첫 커밋 = 시안 A 의 QUEUE 섹션 «전부»(머리 · 숫자 넷 · 표 · 메타 줄), 둘째 커밋 = STATUS 현황판
 chain_queue_panel 은 Overview · Chain 탭 두 인스턴스가 같이 바뀜 — 두 자리 모두 A 모양
 ```
+
+---
+
+> ✅ **[총괄 -> 클라] 대기열 섹션(85f3178ef) — A 가 이름 안 댄 줄들**
+
+```
+뺌        「One reading decides nothing — refresh …」 · 「No rows waiting · not 0s, which means …」 — 설명 문장 (상설: 화면은 보여 준다)
+          빈 큐는 숫자 넷(Waiting 0 · Oldest —)과 표 자리 한 줄 「Nothing waiting」 이면 됨
+          「Not measured here」 상자 — 화면이 그 수를 «안 그리므로» 0 으로 읽힐 자리가 없음. 사유는 라우트 응답에 남음
+둠        retried — 메타 줄에 「retried N」 (늘) · 스케줄러 세 줄 · 소유자별 줄(둘 이상일 때) · 이상할 때만 나오는 것 전부 — 기본안 자리 그대로
+Retries 칸 없음 — 행의 재시도가 0 이 아니면 Drained by 배지 옆에 「retry N」 작은 배지 (잰 수가 사라지지 않게)
+머리 · Running · Failed 한 함수   보고대로
+```
