@@ -33621,3 +33621,76 @@ CLI 기록의 요청자   CLI 실행 행의 requested_by 가 비어 있습니다
         재현: POST /admin/retroactive/withdraw/run {"table": "없는표", "source": "x"}
         남긴 것: failed 실행 줄 하나(run_id e17404775f7a)
 ```
+
+---
+
+## 5 — 넓게 돌릴 때만 빨간 시험 넷 · 라우트 시험 범위 (8e54a261b) (09-26 06:46)
+
+해석기 conda env assy_manager. 박스 데이터 쓰기 0 — 시험만. 과거 커밋은 깨끗한 작업 트리(`git worktree`, 박스의 gitignore 파일 42개 복사)에서 돌렸고, 끝나고 지웠습니다.
+
+### 5-a · 결론 — 넷 중 셋은 «순서 탓이 아닙니다». 혼자 돌려도 빨갛던 «내용» 탓이고, 이미 고쳐졌습니다
+
+| 대상 | 원인 | 증거 (혼자 돌림) |
+|---|---|---|
+| test_a_rule_says_why_it_did_nothing | 40361b7c3 이 대기열 답의 옛 `running` 칸을 은퇴 — 시험이 `'running' in` 답을 단언 | 고치기 전 cab3d4ff6: 이 둘만 돌려 **2 failed** · 218c31eb4 가 고침 · HEAD 혼자 초록 |
+| test_the_queue_answer_says_when_it_was_taken | (같은 원인) 「있던 칸이 그대로 있나」 시험이 `running` 을 찾음 | (위와 같은 명령) |
+| test_retiring_a_dynamic_model_takes_both_singletons | 이 시험은 시험 파일을 «글로 읽는» 좌석 셈입니다. test_a_declared_framework_column_is_not_built_twice.py 가 `DYNAMIC_TABLES.pop` 로 한 싱글턴만 치워 허용 목록 밖 좌석으로 잡힘 | 고치기 전 3b3b6803f: 혼자 **1 failed** (「Extra items … test_a_declared_framework_column_is_not_built_twice.py」) · 634f31aa4 가 고침 · 거기서 혼자 5 passed · 총괄이 IMPLEMENTER_ORDERS 에 이미 잡은 것 |
+| test_map_alignment_single_key | **안 됨** — 넓게 네 번 돌려 네 번 초록. 짝을 적지 않습니다 | 아래 명령 넷. 단서의 Sk1TestMap 경고는 이 파일 혼자서도 나옵니다(ac876304e, -W 없이: 20 passed + 그 경고) — 앞 시험이 남긴 것이 아니라 이 파일 안에서 나는 경고입니다 |
+
+```
+HEAD 에서 넓게 두 번 — 넷 다 초록 (재현 안 됨)
+   본 트리  06bb8f474 · 05:46–05:58 · python -m pytest tests -q -p no:cacheprovider --tb=short -rf -W ignore (server/ 에서)
+            -> 2 failed, 6971 passed · 넷 없음
+   깨끗한 트리 같은 커밋 · 06:02–06:15 · 같은 명령 -> 15 failed, 6952 passed · 넷 없음
+            (15 = 아래 원장 소스 1 + 트리 «위치» 탓 14 — 매퍼 표본 바이트 비교 3 · 문장 표본 1 · 저장소 루트 1 · 게시 7 · 벤치 2. 본 트리에서는 초록)
+혼자      넷을 한 번에 -> 41 passed
+구현자 커밋 ac876304e (구현자가 넷을 본 넓은 실행의 착지) · 깨끗한 트리 · 대상까지 앞 파일 279 를 수집 순서대로
+   -W ignore 로   06:20–06:28 -> 4 failed, 4120 passed · 대상 초록 (4 = 위치 탓 — 문장 표본 1 · 매퍼 3)
+   -W 없이       06:32–06:41 -> 5 failed, 4119 passed · 대상 초록
+                 (5 = 위치 탓 4 + test_heavy_lane.py::test_sweep_routes_big_files_to_heavy_lane 1 — 이 실행에서만 빨강 · 대상 밖이라 더 안 봄)
+   명령          server/ 에서 python -m pytest -q -p no:cacheprovider --tb=short -rf [-W ignore] <앞 파일 279 — 수집 순서, 대상이 마지막>
+명령 차이  구현자 보고(703f3b418)에 그 넓은 실행의 «명령»이 안 적혀 있어, 같은 명령인지 대조 못 합니다
+          설정·conftest 어디에도 경고를 오류로 올리는 줄은 없습니다(git grep filterwarnings · simplefilter — 0)
+```
+
+### 5-a 밖 — 혼자 돌려도 빨간 시험 하나 (보고만)
+
+```
+시험     test_a_ledger_source_reads_a_table_that_has_row_id.py::test_a_row_says_which_sources_translated_it_and_a_new_row_says_none
+단언     'ledger_sources' not in {'ledger_sources': [], 'row_id': 'R1'}
+원인     시험의 임시 스키마 연결(tests/support/isolated_pg.py scratch_connect_args)이 검색 경로에 public 을 뒤에 둡니다(pg_trgm 때문)
+         시험 DB assy_qa 의 public 에 ledger_source_row_ref 가 있으면, 「그 표가 없으면 칸을 안 붙인다」 갈래 대신 public 의 표를 읽고 [] 를 붙입니다
+         -> 답이 «시험 DB 의 public 에 지금 무엇이 있나»에 달렸습니다. 순서도 코드도 아닙니다
+잰 것    06:01:34  public.ledger_source_row_ref 있음 (public 표 109)
+                  -> 06:02–06:15 깨끗한 트리 넓은 실행 · 그 전 본 트리 넓은 실행 · 혼자 — 빨강
+         06:29:32  없음 (public 표 106)
+                  -> 06:20–06:28 순서 실행 · 06:29 혼자(본 트리 HEAD 와 ac876304e 둘 다) — 초록
+안 셈    누가 public 에 그 표를 만들고 지우는지 — 동결이라 보고만. 이름을 대지 않습니다
+```
+
+### 5-b · 라우트를 건드리면 같이 돌릴 시험 — 픽스처로 고릅니다
+
+```
+명령 (server/ 에서, 한 줄)
+python -c "import sys,pytest;P=type('P',(),{'pytest_collection_modifyitems':lambda s,config,items:items.__setitem__(slice(None),[i for i in items if 'client' in getattr(i,'fixturenames',())])});sys.exit(pytest.main(['tests','-q','-p','no:cacheprovider']+sys.argv[1:],plugins=[P()]))" -W ignore
+
+고르는 술어  시험의 픽스처 닫힘(pytest 가 계산한 item.fixturenames)에 `client` 가 있나
+            client 는 tests/conftest.py 의 픽스처(TestClient(app)) — 직접 받든, 받는 픽스처를 받든 잡힙니다
+            이름 목록이 아니므로 새 시험이 client 를 받으면 저절로 들어옵니다
+수 (b296c15fb · 깨끗한 트리)  75 파일 · 706 시험 · 151 초(pytest) / 162 초(벽시계) — 705 passed, 1 xfailed
+   전체는 7130 시험 · 약 12 분 (06:02–06:15 깨끗한 트리 넓은 실행 760 초)
+```
+
+```
+왜 import 로는 안 되나   75 파일 중 36 은 main 을 import 하지 않습니다 — 라우트에 client 로만 닿습니다
+왜 -k 로는 안 되나      -k 는 시험 «이름»만 봅니다. 픽스처를 못 봅니다
+안 잡는 것              client 대신 파일 안에서 TestClient 를 스스로 짓는 시험 9 파일 (b296c15fb, git grep "TestClient(" 에서 선택된 75 와 conftest 를 뺀 것)
+                       main 을 맨 위 import 2 · 함수 안 import 3 · 라우터 모듈만 import 해 FastAPI() 에 붙임 4
+                       -> 9 다 「건드린 모듈을 import 하는 시험」 규칙에 잡힙니다. 그래서 착지 규칙은 «둘을 같이»:
+                          건드린 모듈을 import 하는 시험 + 이 명령
+화면 한 줄             명령 머리줄의 「N tests collected」는 거르기 «전» 수입니다. 돈 수는 끝줄(passed/failed)입니다
+```
+
+```
+뒷정리   깨끗한 작업 트리 지움 — git worktree list 에서 scratchpad/wt 줄이 사라짐 (남은 줄은 제 것이 아님)
+```
