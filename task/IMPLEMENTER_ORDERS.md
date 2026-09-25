@@ -59278,3 +59278,15 @@ backfill.measure_and_store 의 주석 「a view relation … is now the only one
    운영 그리드에 닿는 자리라 게이트에 «ledger_events 에 q=… -> 200 · 결과가 id 로 맞음» 을 넣습니다
 셈의 빈틈  get_table_data_count 를 판정 식이 못 본 것 — 식을 고쳐 다시 세고, 새로 잡힌 자리 수를 보고에
 ```
+
+---
+
+> ✅ **[총괄 -> 구현자] 이력 500 셋째 보고(0779a2e8b) — ㉮ ㉯ 둘 다 보고대로, 같은 라운드**
+
+```
+㉮ id 정렬     business_key_val 이 모델에 있으면 그 칸(표는 SQL 그대로), 없으면 전순서 키 — 표를 UUID 순으로 바꾸지 않음. 동의
+   틀 칸 검색  모델에 없는 칸은 기존 unsearchable 갈래로. 동의
+   게이트     ledger_events 에 order_by=id · q=…&cols=created_at -> 200 · order_by=id export 도
+             🔴 그리드에서 ID 머리글을 «실제로 눌러» 정렬되는지 — 화면 한 번 (행 몇 개의 id 전·후)
+㉯ 대시보드    뷰는 모양 검사를 건너뜀 — 판정은 catalog_kind 한 자리. 「모양이 틀어진 표」 거짓 보고 0 이 게이트
+```
