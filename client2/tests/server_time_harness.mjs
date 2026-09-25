@@ -85,6 +85,15 @@ function suite(mod) {
   eq('S2 an unreadable one is the server text', localShortOrAsSent('not a date'), 'not a date');
   eq('S3 nothing sent is still no time', [null, undefined, ''].map(localShortOrAsSent).join(','),
     [NO_TIME, NO_TIME, NO_TIME].join(','));
+
+  console.log(`${LF}-- a span of one day names the day once --`);
+  const { localSpan } = mod;
+  // Zone-independent: the same instant twice is one day in any zone; a day apart is two.
+  const DAY_LATER = '2026-09-12T15:00:00+00:00';
+  eq('L1 one day is 「MM-DD HH:MM–HH:MM」', /^\d\d-\d\d \d\d:\d\d–\d\d:\d\d$/.test(localSpan(SERVED, SERVED)), true);
+  eq('L2 two days name both', / – /.test(localSpan(SERVED, DAY_LATER)), true);
+  eq('L3 one unreadable end draws the other', localSpan('x', SERVED), localSpan(SERVED, 'x'));
+  eq('L4 nothing readable is no time', localSpan(null, 'x'), NO_TIME);
 }
 
 const first = await loadWithProbe(SRC, {});

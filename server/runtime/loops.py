@@ -149,6 +149,10 @@ def runtime_loops(db, *, heartbeats=None, now=None):
                 item["alive"] = not entry.get("stale")
                 item["beat_age_seconds"] = entry.get("age_seconds")
                 item.update(_lap_cells(entry, loop))
+                if when == ON_DEMAND:
+                    # running · orphaned and what to do - the SAME function `/health` calls.
+                    from runtime.health import on_demand_state
+                    item.update(on_demand_state(entry))
         if loop == "chain":
             try:
                 item["depth"] = _outbox_depth(db)

@@ -182,6 +182,9 @@ console.log('\n[F] Failed: unread · 0 · N since a time, decided in one place')
   eq('F2 a body without a numeric total is unread, not 0', failedSince({ data: [] }).read, false);
   eq('F3 a read 0 is 0', [failedSince({ total: 0 }).read, failedSince({ total: 0 }).total], [true, 0]);
   eq('F4 a 0 has no since, even when a time came', failedSince({ total: 0, oldest_failed_at: AT }).since, '');
+  // 총괄 e573a6edf — with a summary the count is the rows it folded, not the transaction groups.
+  eq('F4b a summary is counted by its rows', failedSince({ total: 2,
+    summary: [{ count: 33 }, { count: 4 }] }).total, 37);
   eq('F5 N failures carry the oldest one, in the viewer\'s zone', failedSince({ total: 81, oldest_failed_at: AT }).since,
     localShort(AT));
   const cellFor = (failed) => numberOf(queueView(JUST_ARRIVED, { failed }), 'failed');

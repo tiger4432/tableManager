@@ -195,6 +195,29 @@ function suite(mod) {
   // 「못 읽음」 and 「고리 0개」 must not be the same pixel either.
   eq('U4 an answer carrying an empty list is READY, not unread',
     runtimeView({ loops: [] }).state, 'ready');
+
+  // 총괄 13aa739f3 · 2f2a2f570 — an on-demand process: no beat is idle; a beat's word is the server's.
+  console.log(`${LF}-- an on-demand process is idle, running or orphaned --`);
+  const ON = { loops: [
+    { loop: 'retro_idle', process: 'retroactive_run', when: 'on_demand' },
+    { loop: 'retro_run', process: 'retroactive_run', when: 'on_demand', alive: true,
+      status: 'running', detail: 'a run in a process of its own' },
+    { loop: 'retro_orphan', process: 'retroactive_run', when: 'on_demand', alive: false,
+      status: 'orphaned', detail: 'cancel that run on the Retroactive screen' },
+  ] };
+  const onRows = runtimeView(ON).rows;
+  eq('D1 no beat is idle — not the unknown dash', onRows[0].alive, ALIVE.IDLE);
+  eq('D2 ...and it is marked idle for the count', onRows.map((r) => r.idle), [true, false, false]);
+  eq('D3 a beat draws the server\'s word', onRows.slice(1).map((r) => r.alive), ['running', 'orphaned']);
+  const onDoc = makeDoc();
+  const onHost = onDoc.createElement('div');
+  new RuntimePanel(onHost, { doc: onDoc }).render(ON);
+  const aliveCells = walkAll(onHost).filter((e) => e.attrs && e.attrs['data-col'] === 'alive');
+  eq('D4 the colour is the server\'s boolean, whatever the word',
+    aliveCells.map((c) => c.getAttribute('data-tone')), [null, 'ok', 'danger']);
+  eq('D5 an orphaned row says what to do on a line of its own',
+    walkAll(onHost).filter((e) => e.className === 'runtime-note').map((e) => e.textContent),
+    ['retro_orphan: cancel that run on the Retroactive screen']);
 }
 
 // ── C-83: the size this table wears is a TOKEN, and the token carries the canon's value ──
@@ -250,6 +273,12 @@ const MUTANTS = [
     catches: 'C9 ...and it carries no colour at all',
     from: "export const TONE = Object.freeze({ [ALIVE.YES]: 'ok', [ALIVE.NO]: 'danger' });",
     to: "export const TONE = Object.freeze({ [ALIVE.YES]: 'ok', [ALIVE.NO]: 'danger', [ALIVE.UNKNOWN]: 'warn' });" },
+  { id: 'M9', what: 'an idle on-demand process is drawn as unknown', catches: 'D1 no beat is idle',
+    from: '  const idle = onDemand && entry.alive === undefined;',
+    to: '  const idle = false;' },
+  { id: 'M10', what: 'the next action is left to a tooltip', catches: 'D5 an orphaned row says what to do',
+    from: "      if (said && row.cellTone && row.cellTone.alive === 'danger') {",
+    to: '      if (false) {' },
   // 🔴 CONTROL: a comment cannot change an answer.
   { id: 'M6', what: 'CONTROL: a comment line is removed', control: true,
     from: '/** 살았나 — 세 상태입니다. 「모른다」를 ○ 로 그리면 죽은 것으로 읽힙니다. */',

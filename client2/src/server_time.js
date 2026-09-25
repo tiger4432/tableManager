@@ -81,6 +81,34 @@ export function localShort(value) {
 }
 
 /**
+ * 두 순간의 폭 — 같은 날이면 `MM-DD HH:MM–HH:MM`, 아니면 `MM-DD HH:MM – MM-DD HH:MM` (실패 요약 한 줄).
+ * 한쪽을 못 읽으면 읽은 쪽만, 둘 다 못 읽으면 `NO_TIME`. 자르지 않습니다 — 칸마다 `parts` 에서 짓습니다.
+ */
+export function localSpan(first, last) {
+  const a = parseServerInstant(first);
+  const b = parseServerInstant(last);
+  if (!a && !b) return NO_TIME;
+  const short = (at) => { const p = parts(at); return `${p.M}-${p.d} ${p.h}:${p.m}`; };
+  if (!a || !b) return short(a || b);
+  const pa = parts(a); const pb = parts(b);
+  if (pa.y === pb.y && pa.M === pb.M && pa.d === pb.d) return `${short(a)}–${pb.h}:${pb.m}`;
+  return `${short(a)} – ${short(b)}`;
+}
+
+/**
+ * 보는 쪽의 zone 이름(IANA) — 서버에 「날」을 물을 때 싣습니다(총괄 e573a6edf: 실패 요약의 날이 UTC 였음).
+ * 못 얻으면 빈 문자열이고, 그때 서버는 UTC 로 답하며 그 사실을 `day_zone` 으로 돌려줍니다.
+ */
+export function viewerZone() {
+  try {
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return typeof zone === 'string' ? zone : '';
+  } catch (err) {
+    return '';
+  }
+}
+
+/**
  * `localShort`, 다만 서버가 «보낸» 글자를 못 읽으면 그 글자 그대로 — `NO_TIME` 은 «안 보낸» 것에만.
  * 소스 현황의 두 시각(census `measured_at` · Last)이 이 한 함수를 지납니다(총괄 bed890af2).
  */

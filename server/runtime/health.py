@@ -100,6 +100,20 @@ def probe_config_backups(now=None):
     return value
 
 
+def on_demand_state(beat) -> dict:
+    """An on-demand process's state from its heartbeat - `{status, detail}`, one seat.
+
+    `/health` and the loops table both call this (lead 2f2a2f570: one line's state, one author).
+    A fresh beat is a run in its own process; a stale one is a process that stopped without
+    ending its run, which holds the gate until that run is cancelled.
+    """
+    stale = bool((beat or {}).get("stale"))
+    return {"status": "orphaned" if stale else "running",
+            "detail": ("its process stopped without ending its run - cancel that run on "
+                       "the Retroactive screen to release the lock") if stale
+                      else "a run in a process of its own"}
+
+
 def _iso(ts):
     return datetime.fromtimestamp(ts, tz=timezone.utc).astimezone().isoformat()
 
@@ -397,12 +411,8 @@ def compute_health(db_result, heartbeats, supervisor_status, outbox_result,
             #    own process; a stale one is a process that stopped without ending its run,
             #    which holds the gate until that run is cancelled. Not off the roster: the
             #    roster lists what the launcher keeps up, and this is not that.
-            stale = bool(hb.get("stale"))
             workers[hb_name] = {
-                "heartbeat": hb_name, "status": "orphaned" if stale else "running",
-                "detail": ("its process stopped without ending its run - cancel that run on "
-                           "the Retroactive screen to release the lock") if stale
-                          else "a run in a process of its own",
+                "heartbeat": hb_name, **on_demand_state(hb),
                 "age_seconds": hb.get("age_seconds"), "beats": hb.get("beats"),
                 "stale_after_seconds": stale_after}
             continue

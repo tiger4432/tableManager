@@ -16,7 +16,7 @@ import { errorText } from './body_error.js';
 import { absentPath } from './absent_listing.js';
 import { LOADING, unitText } from './ui_words.js';
 import { failedSince } from './chain_queue_panel.js';
-import { runtimeView, ALIVE } from './runtime_panel.js';
+import { runtimeView } from './runtime_panel.js';
 import { sourcesView } from './ledger_sources_panel.js';
 
 export const TONE = Object.freeze({ OK: 'ok', WARN: 'warn', DANGER: 'danger', UNKNOWN: 'unknown' });
@@ -32,11 +32,13 @@ export function workersRow(runtime) {
   if (runtime === undefined) return pending('workers', 'Workers');
   const view = runtimeView(runtime);
   if (view.state !== 'ready') return row('workers', 'Workers', [], TONE.UNKNOWN);
-  const alive = view.rows.filter((r) => r.alive === ALIVE.YES).length;
-  const dead = view.rows.filter((r) => r.alive === ALIVE.NO).length;
-  const tone = !view.rows.length ? TONE.UNKNOWN : dead ? TONE.DANGER
-    : alive < view.rows.length ? TONE.WARN : TONE.OK;
-  return row('workers', 'Workers', [`${alive} of ${view.rows.length} alive`], tone);
+  // 🔴 총괄 13aa739f3 — an idle on-demand process is resting, so it is not in M.
+  const counted = view.rows.filter((r) => !r.idle);
+  const alive = counted.filter((r) => r.cellTone && r.cellTone.alive === 'ok').length;
+  const dead = counted.filter((r) => r.cellTone && r.cellTone.alive === 'danger').length;
+  const tone = !counted.length ? TONE.UNKNOWN : dead ? TONE.DANGER
+    : alive < counted.length ? TONE.WARN : TONE.OK;
+  return row('workers', 'Workers', [`${alive} of ${counted.length} alive`], tone);
 }
 
 /** `/admin/file-ingestion/failed` + `/admin/file-ingestion/active`. */

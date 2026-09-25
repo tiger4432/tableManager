@@ -142,6 +142,25 @@ console.log('\n── D. THE SCREEN GOES THROUGH THIS PLACE, AND OWNS NO LIST �
   ok('D8 a filter preset that does not take is not silent',
     /statusFilterSelect\.value !== opts\.statusFilter/.test(js),
     'the deep-link assignment can still fail silently');
+  // 🔴 총괄 f063c948e — two sites call the outbox retry route; both read its reply.
+  ok('D9 both outbox retry sites read the reply through the judge',
+    (js.match(/outboxRetryMessage\(/g) || []).length === 2, (js.match(/outboxRetryMessage\(/g) || []).length);
+}
+
+console.log('\n── E. THE OUTBOX RETRY REPLY — the server\'s status is the verdict ───────');
+{
+  // The reply as `retry_failed_outbox_events` answers today (8dfd50ab): reset · ended_missing_row · skipped_reexpanded.
+  const refused = X.outboxRetryMessage({ status: 'refused', message: 'No matching failed outbox events found.',
+    reset: 0, ended_missing_row: 0, skipped_reexpanded: 0 });
+  ok('E1 a refused retry is a refusal, never a success', refused.tone === 'error' && refused.refused === true, refused);
+  ok('E2 ...and says the server\'s own sentence', refused.text.includes('No matching failed outbox events found.'), refused.text);
+  const mixed = X.outboxRetryMessage({ status: 'success', message: 'Reset 1 failed event(s) to PENDING. Skipped 2 collapsed chunk(s).',
+    reset: 1, ended_missing_row: 0, skipped_reexpanded: 2 });
+  ok('E3 a reset with skips is not a plain success — both halves', mixed.tone === 'warning' && mixed.text.includes('Skipped 2'), mixed);
+  const clean = X.outboxRetryMessage({ status: 'success', message: 'Reset 3 failed event(s) to PENDING. Ended 1 row event(s).',
+    reset: 3, ended_missing_row: 1, skipped_reexpanded: 0 });
+  ok('E4 a reset that also ended a row is a success with the sentence', clean.tone === 'success' && clean.text.includes('Ended 1'), clean);
+  ok('E5 an unreadable reply is not a success', X.outboxRetryMessage(null).tone !== 'success', X.outboxRetryMessage(null));
 }
 
 // ── mutants ─────────────────────────────────────────────────────────────────────────
@@ -173,6 +192,11 @@ const DEFECTS = [
     swap("      return { tone: 'warning', text: status == null", "      return { tone: 'warning', text: false")],
   ['M7 spelling normalisation is dropped, so a lower-case status becomes unknown',
     swap(".trim().toUpperCase();", ";")],
+  ['M8 a refused retry reads as a success (the defect f063c948e names)',
+    swap("if (reply.status === 'refused') return { tone: 'error', refused: true,",
+      "if (reply.status === 'refused') return { tone: 'success', refused: false,")],
+  ['M9 the skips are ignored, so a partial reset reads as clean',
+    swap('    return skipped > 0', '    return false')],
 ];
 
 const CONTROLS = [
@@ -193,7 +217,9 @@ function verdict(M) {
     || M.retryVerdict(' pending_retry ').state !== 'queued'
     || M.retryMessage('PENDING_RETRY').tone === 'success'
     || !M.retryMessage('PENDING_RETRY', 'Marked 3 logs').text.includes('Marked 3 logs')
-    || /Unknown state/.test(M.retryMessage(null).text);
+    || /Unknown state/.test(M.retryMessage(null).text)
+    || M.outboxRetryMessage({ status: 'refused', message: 'm' }).tone !== 'error'
+    || M.outboxRetryMessage({ status: 'success', message: 'm', reset: 1, skipped_reexpanded: 1 }).tone !== 'warning';
 }
 
 if (verdict(BASELINE)) die('the scorer already fails on the UNMUTATED module — '

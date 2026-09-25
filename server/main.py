@@ -4923,13 +4923,35 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
 
 @app.get("/admin/outbox/failed", dependencies=[Depends(require_admin_token)])
 def get_failed_outbox_events(page: int = 1, limit: int = 10, tz: str = None,
+                             table: str = None, event_type: str = None, day: str = None,
                              db: Session = Depends(get_db)):
     """실패(FAILED) 상태로 격리된 Outbox 체인 이벤트 목록을 transaction_id 단위로 묶고 페이지네이션하여 반환합니다."""
+    from zoneinfo import ZoneInfo
+
+    from sqlalchemy import func
+
+    # The day is the VIEWER's day (총괄 eca1f36b2): `tz` is the screen's zone name. A missing
+    # or unreadable one cuts UTC days, and `day_zone` says which zone cut them.
+    try:
+        ZoneInfo(tz)
+        day_zone = tz
+    except Exception:                                            # noqa: BLE001
+        day_zone = "UTC"
+    outbox = models.DatabaseOutbox
+    day_of = func.substr(crud.temporal_text_sql(outbox.created_at, day_zone), 1, 10)
+
     # A split grouped row is not a failure of its own - its children are (총괄 e573a6edf ①).
-    query = db.query(models.DatabaseOutbox).filter(
-        event_constants.failure_clause(models.DatabaseOutbox)
-    ).order_by(models.DatabaseOutbox.id.desc())
-    
+    query = db.query(outbox).filter(event_constants.failure_clause(outbox))
+    # 🔴 ONE SUMMARY LINE'S ROWS (총괄 2f2a2f570) - through the same failure clause and the
+    #    same day expression the summary groups by, so a line unfolds to exactly what it counted.
+    if not crud.is_blank_value(table):
+        query = query.filter(outbox.table_name == table)
+    if not crud.is_blank_value(event_type):
+        query = query.filter(outbox.event_type == event_type)
+    if not crud.is_blank_value(day):
+        query = query.filter(day_of == day)
+    query = query.order_by(outbox.id.desc())
+
     all_failed = query.all()
     
     from collections import defaultdict
@@ -5013,28 +5035,16 @@ def get_failed_outbox_events(page: int = 1, limit: int = 10, tz: str = None,
     # 🔴 ONE LINE PER (TABLE · KIND · DAY) (소유자 「ㄴ」, 총괄 36dff3b6a) — the Chain tab's list
     #    and the Overview's Chain line both read THIS answer: 81 rows of one burst were 81
     #    lines, and a two-day-old burst read as 「now」. One GROUP BY; no payload is loaded.
-    #    The day is the VIEWER's day (총괄 eca1f36b2): `tz` is the screen's zone name. A missing
-    #    or unreadable one cuts UTC days, and `day_zone` says which zone cut them.
-    from zoneinfo import ZoneInfo
-
-    from sqlalchemy import func
-
-    try:
-        ZoneInfo(tz)
-        day_zone = tz
-    except Exception:                                            # noqa: BLE001
-        day_zone = "UTC"
-    outbox = models.DatabaseOutbox
-    day = func.substr(crud.temporal_text_sql(outbox.created_at, day_zone), 1, 10)
+    #    Unfiltered: the summary is the whole section even when `data` is one line's rows.
     summary = [{
-        "table_name": table, "event_type": kind, "day": on_day,
+        "table_name": name, "event_type": kind, "day": on_day,
         "count": int(n), "first_at": to_local_str(first), "last_at": to_local_str(last),
         "retry_max": int(retry_max or 0),
-    } for table, kind, on_day, n, first, last, retry_max in db.query(
-        outbox.table_name, outbox.event_type, day, func.count(), func.min(outbox.created_at),
+    } for name, kind, on_day, n, first, last, retry_max in db.query(
+        outbox.table_name, outbox.event_type, day_of, func.count(), func.min(outbox.created_at),
         func.max(outbox.created_at), func.max(outbox.retry_count))
         .filter(event_constants.failure_clause(outbox))
-        .group_by(outbox.table_name, outbox.event_type, day)
+        .group_by(outbox.table_name, outbox.event_type, day_of)
         .order_by(func.max(outbox.created_at).desc()).all()]
 
     return {

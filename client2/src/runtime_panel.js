@@ -17,7 +17,7 @@
 import { ABSENT, isCount, countText } from './absent.js';
 
 /** 살았나 — 세 상태입니다. 「모른다」를 ○ 로 그리면 죽은 것으로 읽힙니다. */
-export const ALIVE = Object.freeze({ YES: '●', NO: '○', UNKNOWN: ABSENT });
+export const ALIVE = Object.freeze({ YES: '●', NO: '○', UNKNOWN: ABSENT, IDLE: 'idle' });
 
 /**
  * 점의 «색». 소유자 2026-09-11: 살았나는 낱말이 아니라 「색 점」입니다.
@@ -80,10 +80,19 @@ export function aliveText(value) {
  */
 export function rowOf(item) {
   const entry = item || {};
+  // 🔴 총괄 13aa739f3 · 2f2a2f570 — a process the `when` column declares on_demand lives only while
+  //    it has work. No beat is IDLE, not 「unknown」 (it is resting, and it leaves 「N of M alive」's M).
+  //    With a beat, its word and next action are the server's (`runtime.health.on_demand_state`).
+  const onDemand = entry.when === 'on_demand';
+  const idle = onDemand && entry.alive === undefined;
   return {
     loop: entry.loop ? String(entry.loop) : ABSENT,
     process: entry.process ? String(entry.process) : ABSENT,
-    alive: aliveText(entry.alive),
+    alive: idle ? ALIVE.IDLE : onDemand && entry.status ? String(entry.status) : aliveText(entry.alive),
+    idle,
+    // The colour is the server's boolean, whatever word the cell draws.
+    cellTone: { alive: entry.alive === true ? 'ok' : entry.alive === false ? 'danger' : '' },
+    cellTitle: { alive: onDemand && entry.detail ? String(entry.detail) : '' },
     // 🔴 「몇 초 전」과 「몇 초 걸렸다」는 다른 수입니다. 한 칸에 섞으면 오래 도는 고리와
     //    오래 «안» 돈 고리가 같아 보입니다.
     age: secondsText(entry.last_age_seconds),
@@ -148,14 +157,24 @@ export class RuntimePanel {
         const td = this._cell('td', row[column.key], column.align);
         td.setAttribute('data-col', column.key);
         // 색은 «값»이 정합니다. 색이 없는 값에는 칸도 안 붙습니다 — 빈 속성은 상태 하나입니다.
-        const tone = TONE[row[column.key]];
+        const tone = (row.cellTone && row.cellTone[column.key]) || TONE[row[column.key]];
         if (tone) td.setAttribute('data-tone', tone);
+        const title = row.cellTitle && row.cellTitle[column.key];
+        if (title) td.title = title;
         tr.appendChild(td);
       }
       tbody.appendChild(tr);
     }
     table.appendChild(tbody);
     this.root.appendChild(table);
+    // 🔴 A failing row's next action is one line under the table — the server's sentence
+    //    (「cancel that run on the Retroactive screen」), not a tooltip nobody hovers.
+    for (const row of view.rows) {
+      const said = row.cellTitle && row.cellTitle.alive;
+      if (said && row.cellTone && row.cellTone.alive === 'danger') {
+        this.root.appendChild(this._cell('div', `${row.loop}: ${said}`)).className = 'runtime-note';
+      }
+    }
 
     // 🔴 못 읽었을 때 «빈 표»를 그리면 「고리가 하나도 없다」로 읽힙니다. 한 낱말로 가릅니다 —
     //    문장이 아니라 `absent.js` 의 그 글자입니다.

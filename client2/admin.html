@@ -1765,6 +1765,14 @@
           칸 수는 «격자 선언»이 정합니다: 다섯 칸이고 줄은 언제나 다섯 자식입니다(`run_lines.js`).
           끝난 줄은 흐리지 않습니다 — muted 글자 토큰과 상태 낱말이 말합니다. */
     .run-lines { display: flex; flex-direction: column; gap: var(--space-1); }
+    /* 실패 요약 — 한 줄 = (표 · 종류 · 날). 여는 줄 아래에 그 줄의 행 표가 앉습니다. */
+    .fail-summary { display: flex; flex-direction: column; }
+    .fail-summary__line { display: block; width: 100%; text-align: left; font: inherit;
+      font-size: var(--fs-button); color: var(--text); background: transparent; border: 0;
+      border-bottom: 1px solid var(--border); padding: var(--space-2) var(--space-3); cursor: pointer; }
+    .fail-summary__line:hover { background: color-mix(in srgb, var(--text) 7%, transparent); }
+    .fail-summary__line.is-open { font-weight: 600; }
+    .fail-summary__rows { padding: var(--space-2) 0 var(--space-3) var(--space-3); }
     .run-line { display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(calc(var(--space-6) * 4), calc(var(--space-6) * 6))
                              max-content max-content var(--space-6);
@@ -2105,19 +2113,25 @@
               <span class="section-chevron">▾</span>
             </div>
             <div class="section-body">
+              <!-- 🔴 한 줄 = (표 · 종류 · 날) (총괄 e573a6edf). 줄을 열면 그 줄의 행 표가 그 아래로 옮겨 옵니다. -->
+              <div id="chain-fail-summary-mount"></div>
+              <div id="outbox-rows-holder" hidden>
+              <div id="outbox-rows-box" class="fail-summary__rows">
               <table class="table-container">
                 <thead class="table-header">
                   <tr>
                     <th style="width: 130px;">Transaction ID</th>
                     <th>Triggered Tables</th>
                     <th style="width: 110px;">Event Types</th>
-                    <th style="width: 80px; text-align: center;">Retries</th>
+                    <th style="width: 120px; text-align: center;">Attempts (this round)</th>
                     <th style="width: 160px;">Failed At</th>
                     <th style="width: 100px; text-align: center;">Actions</th>
                   </tr>
                 </thead>
                 <tbody id="outbox-list-body"></tbody>
               </table>
+              </div>
+              </div>
               <div id="outbox-empty" class="empty-state" style="display: none;">
                 <div class="empty-icon">🎉</div>
                 <div class="empty-text">No failed chain transactions. Chain pipeline is healthy!</div>

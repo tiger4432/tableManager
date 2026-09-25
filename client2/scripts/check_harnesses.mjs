@@ -296,7 +296,8 @@ const FLOORS = new Map([
   // loop_seen_via alone), Failed from one function shared with the Overview card, five columns
   // with no inline widths, 「retry N」 badges, the local As of. 13 mutants, 13 caught.
   // 165 -> 166 (a80361a63): seen and 0 is a plain 0 — 「Truly none」 under it is gone.
-  ['chain_queue_panel_harness.mjs', 166],
+  // 166 -> 167 (lead e573a6edf): with a summary, Failed counts the rows it folded.
+  ['chain_queue_panel_harness.mjs', 167],
   ['outbox_queue_panel_harness.mjs', 54],
   ['company_roundtrip_harness.mjs', 84],
   ['coord_table_paste_harness.mjs', 52],
@@ -965,7 +966,8 @@ const FLOORS = new Map([
   // Scores the retry verdict the same way, mutants included. This is the judgement that decides
   // whether a failed row is retried or parked; a floor drop means fewer of its states are
   // separated, and the states that collapse first are the ones that look alike.
-  ['retry_verdict_harness.mjs', 29],
+  // 29 -> 35 (lead f063c948e): the outbox retry reply is judged by its status - five checks, two mutants.
+  ['retry_verdict_harness.mjs', 35],
   //
   // Scores that the fields saying 「this list is a SAMPLE」 have a reader, and that the branch
   // the server relies on to compensate for a capped list is still handled. Verified
@@ -1203,6 +1205,9 @@ const FLOORS = new Map([
   // New with lead a274c90f0: one run is one line of five cells, its result a line under it.
   // Floor is the count it reports on the commit that introduces it.
   ['run_lines_harness.mjs', 19],
+  // New with lead e573a6edf · 2f2a2f570: the failure section folds to one line per (table · kind · day).
+  // Floor is the count it reports on the commit that introduces it.
+  ['failure_summary_harness.mjs', 17],
   // NEW 2026-09-03 at the count it reports on the commit that revives it -- there is no
   // earlier tree to measure it against, because it scored nothing from 2026-07-30 to here.
   // 6 of the 34 are the absence check standing in for the five deleted subjects, and one of
@@ -1486,9 +1491,11 @@ const FLOORS = new Map([
   // spellings of one instant agree and that two different instants disagree, never a literal
   // wall clock -- otherwise the runner's TZ would decide the verdict.
   // 19 -> 24 (lead bed890af2): `localShortOrAsSent`, the one spelling of the sources panel's two clocks.
-  ['server_time_harness.mjs', 24],
+  // 24 -> 28 (lead e573a6edf): `localSpan`, the failure line's one-day span.
+  ['server_time_harness.mjs', 28],
   ['chain_graph_harness.mjs', 91],
-  ['runtime_panel_harness.mjs', 39],
+  // 39 -> 46 (lead 13aa739f3 · 2f2a2f570): idle · the server's on-demand word · its next action.
+  ['runtime_panel_harness.mjs', 46],
   ['reference_view_head_harness.mjs', 69],
   ['replay_rules_harness.mjs', 47],
   ['toast_stack_harness.mjs', 23],
@@ -1562,7 +1569,8 @@ const FLOORS = new Map([
   // New 2026-09-25 (mockup A · lead 5d157581e). The STATUS board: a closed four of words, one
   // judge per row (File · Auto Update stay in health_card_absence), and the board part itself.
   // 48 -> 49 (lead 909ea2052 ①): the Ledger row draws the server's state names.
-  ['overview_board_harness.mjs', 49],
+  // 49 -> 51 (lead 13aa739f3): an idle on-demand process leaves 「N of M」 - one check, one mutant.
+  ['overview_board_harness.mjs', 51],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

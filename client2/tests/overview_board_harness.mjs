@@ -68,6 +68,10 @@ async function suite({ status: S, board: B }) {
   eq('K1 every loop alive is OK, counted', said(r(S.workersRow(loops(true, true)))), 'ok|2 of 2 alive');
   eq('K2 a dead loop is Failing', r(S.workersRow(loops(true, false))).tone, 'danger');
   eq('K3 a loop of unknown life is Warning, not OK', r(S.workersRow(loops(true, null))).tone, 'warn');
+  // 총괄 13aa739f3 — an on-demand process with no beat is idle: resting, and out of M.
+  eq('K4 an idle on-demand process is not in 「N of M」 and does not warn',
+    said(r(S.workersRow({ loops: [{ loop: 'l0', alive: true }, { loop: 'retro', when: 'on_demand' }] }))),
+    'ok|1 of 1 alive');
 
   // ── H Chain ──
   eq('H1 failures carry since when, and fail the row',
@@ -172,7 +176,9 @@ const MUTANTS = [
   { id: 'S2', what: 'a dead loop only warns', catches: ['K2'],
     load: onStatus((s) => s.replace('TONE.UNKNOWN : dead ? TONE.DANGER', 'TONE.UNKNOWN : dead ? TONE.WARN')) },
   { id: 'S3', what: 'a loop of unknown life counts as alive', catches: ['K3'],
-    load: onStatus((s) => s.replace('    : alive < view.rows.length ? TONE.WARN : TONE.OK;', '    : TONE.OK;')) },
+    load: onStatus((s) => s.replace('    : alive < counted.length ? TONE.WARN : TONE.OK;', '    : TONE.OK;')) },
+  { id: 'S3b', what: 'an idle on-demand process is counted in M, so a resting one reads as 1 of 2', catches: ['K4'],
+    load: onStatus((s) => s.replace('const counted = view.rows.filter((r) => !r.idle);', 'const counted = view.rows;')) },
   { id: 'S4', what: 'an unread chain total is OK', catches: ['H3'],
     load: onStatus((s) => s.replace('const tone = !failed.read ? TONE.UNKNOWN : failed.total > 0', 'const tone = !failed.read ? TONE.OK : failed.total > 0')) },
   { id: 'S5', what: 'no enrichment rules is OK', catches: ['N1'],

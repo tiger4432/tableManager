@@ -11,7 +11,7 @@ import { NONE, WAITING, REFUSED, unitText } from './ui_words.js';
 import { errorText } from './body_error.js';
 // 🔴 「원천이 «없다»」와 「있는데 «비었다」의 갈림. 오류와는 «다른 질문»이라 함수를 안 합칩니다.
 import { absentPath } from './absent_listing.js';
-import { retryVerdict, retryMessage } from './retry_verdict.js';
+import { retryVerdict, retryMessage, outboxRetryMessage } from './retry_verdict.js';
 import { initTheme, getTheme, THEME_CHANGE_EVENT } from './theme.js';
 // [전역 토스트] 자체 구현을 폐기하고 공용(utils.js)으로 일원화한다 —
 // 구 admin 구현도 setTimeout 단독 수명이라 백그라운드 탭에서 동일하게 누적됐다.
@@ -43,7 +43,8 @@ import { RuntimePanel } from './runtime_panel.js';
 // 🔴 C-75. 네 선언(chain·enrichment·vjoin·ledger)이 «한 그림». 값만 그립니다.
 import { ChainGraphPanel } from './chain_graph.js';
 // 🔴 C-77. 서버 시각은 offset 단 ISO 다 — 자르지 말고 «순간»으로 읽는다.
-import { localShort, NO_TIME } from './server_time.js';
+import { localShort, NO_TIME, viewerZone } from './server_time.js';
+import { FailureSummary, failureSummaryView } from './failure_summary.js';
 // C-1. 판정은 자기 모듈에 삽니다 — `admin.js` 는 `tokens.css` 를 import 해서 node 가
 // 못 읽고, 그러면 이 판정을 재려고 화면을 통째로 세워야 합니다.
 import { ruleOutcomeView } from './rule_outcome.js';
@@ -196,6 +197,9 @@ let outboxPage = 1;
 let outboxLimit = 10;
 let outboxData = [];
 let outboxTotal = 0;
+// The open failure summary line — `{table, event_type, day, key}`, or null when all are folded.
+let outboxFilter = null;
+let failureSummary = null;
 
 let filePage = 1;
 let fileLimit = 10;
@@ -910,13 +914,24 @@ async function fetchData(options = {}) {
       void refreshChainGraph();
       // ⚠️ 대기열은 «따로» 받는다. 같이 묶어 던지면, 이 라우트가 없는 옛 서버 프로세스에서
       //    Chain 탭 «전체»가 안 뜬다 — 계측기 하나가 자기가 진단하려던 화면을 끄는 것이다.
-      const [obRes, rulesRes, mapRes, queueRes] = await Promise.all([
-        adminFetch(`${API_BASE}/admin/outbox/failed?page=${outboxPage}&limit=${outboxLimit}`),
+      // 🔴 총괄 e573a6edf · 2f2a2f570 — the section's answer is UNFILTERED (summary · the queue's
+      //    Failed cell · the count), and an open line's rows are a SECOND ask by that line's key.
+      //    The viewer's zone rides on both, so a day is the viewer's day.
+      const zone = encodeURIComponent(viewerZone());
+      const lineRows = outboxFilter
+        ? adminFetch(`${API_BASE}/admin/outbox/failed?page=${outboxPage}&limit=${outboxLimit}&tz=${zone}`
+          + `&table=${encodeURIComponent(outboxFilter.table)}&event_type=${encodeURIComponent(outboxFilter.event_type)}`
+          + `&day=${encodeURIComponent(outboxFilter.day)}`).catch(() => null)
+        : Promise.resolve(null);
+      const [obRes, rulesRes, mapRes, queueRes, rowsRes] = await Promise.all([
+        adminFetch(`${API_BASE}/admin/outbox/failed?page=1&limit=1&tz=${zone}`),
         adminFetch(`${API_BASE}/admin/chain/rules`),
         adminFetch(`${API_BASE}/admin/mappers/list`),
-        adminFetch(`${API_BASE}/admin/chain/queue`).catch(() => null)
+        adminFetch(`${API_BASE}/admin/chain/queue`).catch(() => null),
+        lineRows,
       ]);
       const ob = obRes.ok ? await obRes.json().catch(() => null) : null;
+      const rowsOb = rowsRes && rowsRes.ok ? await rowsRes.json().catch(() => null) : null;
       const rules = rulesRes.ok ? await rulesRes.json().catch(() => null) : null;
       const maps = mapRes.ok ? await mapRes.json().catch(() => null) : null;
       // 🔴 못 읽은 이유를 «이름으로» 넘긴다. 404 는 「이 프로세스에 라우트가 없다」이고,
@@ -936,8 +951,12 @@ async function fetchData(options = {}) {
       queueOpts.failed = ob;
       renderChainQueue(queueBody, queueOpts);
       if (queueOpts.unavailable) allRead = false;
-      if (ob) { outboxData = ob.data || []; outboxTotal = ob.total || 0; renderOutboxTable(); }
-      else { markSectionUnread('chain-fail-count'); allRead = false; }
+      if (ob) {
+        outboxData = (rowsOb && rowsOb.data) || [];
+        outboxTotal = (rowsOb && rowsOb.total) || 0;
+        renderFailureSummary(ob);
+        renderOutboxTable();
+      } else { markSectionUnread('chain-fail-count'); allRead = false; }
       // 🔴 200 이어도 본문이 오류를 나를 수 있다 (main.py:4913). `data` 는 그때 «빈 목록»이라
       //    그대로 넘기면 화면이 「선언된 규칙 없음」을 그린다 — 깨진 것과 없는 것이 같아진다.
       const rulesFailure = errorText(rules);
@@ -1413,18 +1432,37 @@ function renderChainQueue(payload, opts) {
   if (count) count.textContent = view.depth;
 }
 
+// 🔴 총괄 e573a6edf — the section folds to the summary's lines. The count is the rows the summary
+//    folded (the same answer the Overview's Chain line reads), and an open line gets the row
+//    table below — the page's own table, moved, not a second one.
+function renderFailureSummary(ob) {
+  const mount = byId('chain-fail-summary-mount');
+  if (!mount) return;
+  if (!failureSummary) {
+    failureSummary = new FailureSummary(mount, { onToggle: (line) => {
+      outboxFilter = line ? { ...line.filter, key: line.key } : null;
+      outboxPage = 1;
+      fetchData();
+    } });
+  }
+  const view = failureSummaryView(ob, viewerZone());
+  // A line the answer no longer has (it was retried away) cannot stay open.
+  if (outboxFilter && !view.lines.some((l) => l.key === outboxFilter.key)) outboxFilter = null;
+  const rowsBox = byId('outbox-rows-box');
+  failureSummary.render(view, { openKey: outboxFilter ? outboxFilter.key : null, rowsBody: rowsBox });
+  if (!outboxFilter && rowsBox) byId('outbox-rows-holder').appendChild(rowsBox);
+  setSectionCount('chain-fail-count', view.rows, view.rows > 0 ? 'danger' : 'ok');
+  outboxEmptyState.style.display = view.read && view.lines.length === 0 ? 'flex' : 'none';
+}
+
 function renderOutboxTable() {
   outboxListBody.innerHTML = '';
-  setSectionCount('chain-fail-count', outboxTotal, outboxTotal > 0 ? 'danger' : 'ok');
 
   if (outboxData.length === 0) {
-    outboxEmptyState.style.display = 'flex';
     if (selectedTxId) clearDiagnostics();
     updatePaginationFooter(0, 1, 1);
     return;
   }
-
-  outboxEmptyState.style.display = 'none';
 
   outboxData.forEach(tx => {
     const row = document.createElement('tr');
@@ -1437,7 +1475,9 @@ function renderOutboxTable() {
       `<span class="badge ${t === 'CREATE' ? 'badge-warning' : 'badge-danger'}" style="margin-right: 4px;">${t}</span>`
     ).join('');
     // 감사 F8: 풀 UUID → head8… 축약 + title 풀값 + 클릭 복사 (행 높이 정상화)
-    const retryStyle = tx.retry_count > 0
+    // 총괄 13aa739f3 — the count is `attempts_this_round`, named for what it counts.
+    const attempts = tx.attempts_this_round;
+    const retryStyle = attempts > 0
       ? 'color: var(--warning); font-weight: 600;'
       : 'color: var(--text-dim);';
 
@@ -1447,7 +1487,7 @@ function renderOutboxTable() {
       </td>
       <td style="font-weight: 500;">${tablesJoined}</td>
       <td>${eventTypesJoined}</td>
-      <td style="text-align: center; ${retryStyle}">${tx.retry_count}</td>
+      <td style="text-align: center; ${retryStyle}">${attempts == null ? ABSENT : attempts}</td>
       <td style="color: var(--text-muted); font-size: 0.85rem; font-family: var(--font-mono);" title="${tx.failed_at || ''}">${timeStr}</td>
       <td style="text-align: center;" onclick="event.stopPropagation()">
         <button class="admin-btn btn-primary btn-retry-tx" data-txid="${tx.transaction_id}" style="padding: 4px 10px; font-size: 0.75rem;">Retry</button>
@@ -3324,7 +3364,7 @@ async function fetchOverview(isStale) {
   void refreshLedgerSources();
   const [failedRes, outboxRes, rulesRes, mappersRes, autoRes, activeRes, queueRes] = await Promise.all([
     adminFetch(`${API_BASE}/admin/file-ingestion/failed?page=1&limit=100`),
-    adminFetch(`${API_BASE}/admin/outbox/failed?page=1&limit=3`),
+    adminFetch(`${API_BASE}/admin/outbox/failed?page=1&limit=3&tz=${encodeURIComponent(viewerZone())}`),
     adminFetch(`${API_BASE}/admin/chain/rules`),
     adminFetch(`${API_BASE}/admin/mappers/list`),
     adminFetch(`${API_BASE}/admin/auto-update/status`),
@@ -3857,8 +3897,11 @@ async function retryTransaction(txId) {
       method: 'POST'
     });
     if (!res.ok) throw new Error('Retry API returned error status');
-
-    showToast(`🔄 Retry sent for transaction [${shortTxId(txId)}] — checking the result shortly`, 'info');
+    // 🔴 총괄 f063c948e: the reply's `status` is the verdict. A refused retry reset nothing, so the
+    //    row cannot leave the list and the re-check below would only add 「still failed」 to it.
+    const said = outboxRetryMessage(await res.json().catch(() => null));
+    showToast(`${said.text} [${shortTxId(txId)}]`, said.tone);
+    if (said.refused) return;
 
     setTimeout(async () => {
       await fetchData({ silent: true });
@@ -3916,9 +3959,8 @@ async function retryAllFailed(kind) {
         method: 'POST'
       });
       if (!res.ok) throw new Error('Retry-all API returned error status');
-      const result = await res.json();
-
-      showToast(`🔄 ${result.message || 'All failed chain transactions reset'}`, 'success');
+      const said = outboxRetryMessage(await res.json().catch(() => null));
+      showToast(said.text, said.tone);
       outboxPage = 1;
     } else {
       const res = await adminFetch(`${API_BASE}/admin/file-ingestion/retry-failed`, {

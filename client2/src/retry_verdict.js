@@ -71,3 +71,24 @@ export function retryMessage(status, serverMessage) {
         : `❔ Unknown state (${status})${tail}` };
   }
 }
+
+/**
+ * `POST /admin/outbox/retry-failed` reply -> one toast. The verdict is the server's `status`
+ * (lead f063c948e): `refused` (nothing reset) is the server's sentence as a refusal, never a
+ * success; a reset with skips is both halves, which the server's sentence already names.
+ * A row-state vocabulary (`retryVerdict`) is a different envelope - this reads the reply.
+ */
+export function outboxRetryMessage(body) {
+  const reply = body && typeof body === 'object' ? body : {};
+  const said = typeof reply.message === 'string' ? reply.message.trim() : '';
+  // What it did NOT do. `ended_missing_row` is done (the row is gone and the event ended), not a skip.
+  const skipped = Number(reply.skipped_reexpanded) || 0;
+  if (reply.status === 'refused') return { tone: 'error', refused: true, text: `⛔ ${said || 'Refused'}` };
+  if (reply.status === 'success') {
+    return skipped > 0
+      ? { tone: 'warning', refused: false, text: `⚠️ ${said}` }
+      : { tone: 'success', refused: false, text: `🔄 ${said}` };
+  }
+  return { tone: 'warning', refused: false,
+    text: `❔ Unknown reply${reply.status ? ` (${reply.status})` : ''}${said ? ` — ${said}` : ''}` };
+}
