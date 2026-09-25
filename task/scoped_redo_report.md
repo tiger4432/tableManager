@@ -58950,3 +58950,66 @@ run_auto_update 의 다섯 — 지시의 「넷」과 다릅니다
    하나로 접을까요 — event_constants 에 SQL 술어 함수 하나를 두고 라우트가 그것을, broadcast_state_of 가 같은 상수를 지나게 (작음)
    다만 게이트 「FAILED 81 · PENDING 24 가 안 뜸 (전·후)」의 «전»이 이미 안 뜸이라, 변이 게이트(옛 모양으로 되돌리면 빨강)만 의미가 있습니다
 ```
+
+---
+
+## [09-25 16:06] 구현자 — 대기열 ② 착지 `191c0b54a` (워커 상태를 heartbeat 로) · 8a1f32f99 ① 짓기 전 전수
+
+```
+착지   191c0b54a  8 파일, 176+, 87-
+응답   loop_seen_via  "this_process" | "chain_worker_heartbeat" | null   · loop_seen_age_seconds
+       running · rule_outcomes · loop_uptime · mapper_reload · purge — 워커의 chain lap 에서 (한 변환 함수 activity.view)
+       log_filename — «루프»가 쓰는 파일. 모르면 키 없음 (API 의 server.log 는 이제 안 냄)
+       lap 이 60 초 넘게 낡았거나 이 칸들이 없는 옛 워커 lap 이면 「못 봄」(null) — 목록은 비어도 «눈멂»이지 0 이 아님
+클라   「봤나」는 loop_seen_via 하나로 (36dff3b6a)
+```
+
+### 박스 (API · 체인 워커 새 코드로 재기동 뒤)
+
+```
+heartbeat 파일   chain.json 633 -> 2,160 바이트 · 그중 rule_outcomes 1,556 바이트 (규칙 15)
+쓰기 빈도        60 초에 31 번 (쉬는 루프의 박동 — 2 초 LISTEN) — 이 변경은 쓰기 수를 안 늘리고 한 번에 쓰는 양만 늚 (약 67 KB/분)
+라우트 답        loop_seen_via chain_worker_heartbeat · 나이 0.8 s · log chain_worker.log
+                loop_uptime 82 s · mapper_reload 82 s 전 · purge 79 s 전 · running 0 · rule_outcomes 15 (재기동 직후라 전부 never_evaluated)
+시험             바뀐 라우트·레지스트리 시험 15 파일 183 통과 — 예전 모양(눈먼 레지스트리 · API 로그 이름)을 박던 8 개를 고쳐 씀
+변이             다섯 다 빨강 (lap 을 안 읽음 · 낡은 lap 을 봄으로 · 옛 lap 을 봄으로 · 눈멀 때 API 로그 이름 · running 나이를 쓸 때 기준)
+```
+
+### ⚠️ 한계 하나 — 긴 한 묶음이 도는 동안의 running
+
+```
+lap 은 루프 한 바퀴가 «끝날 때» 기록되고, 다음 바퀴 머리의 박동이 파일에 씁니다 (지시대로 chain lap)
+그래서 한 바퀴 안에서 오래 도는 한 묶음은 그 바퀴가 끝날 때까지 running 에 안 뜹니다
+그 동안 heartbeat 나이가 자라고, 60 초가 넘으면 loop_seen_via 가 null(못 봄)이 됩니다 — 0 이라고 거짓말하지는 않지만 60 초까지는 「0」
+이게 문제가 되면 여쭙겠습니다 — 방법은 워커의 note 를 지키면서 도는 시작에 한 번 쓰는 것 (heartbeat 모듈을 건드림)
+```
+
+### 8a1f32f99 ① — 소급 연산을 CLI 에서 «바로» 도는 자리 전수 (짓기 전)
+
+```
+센 것   추적 비시험 모듈 276 (admin/retroactive.py 제외) AST — 소급 연산이 부르는 함수
+        (ledger backfill.run · rescope · replay.replay_rule · withdraw_source · enrichment run_backfill · run_auto_confirm_sweep) 를 부르는 곳
+        11 곳, 그중 CLI 모듈 7
+   ledger/backfill.py main                 rescope · run                 (python -m ledger.backfill)
+   scripts/backfill_enrichment.py main     enrichment.backfill.run_backfill
+   scripts/chain_replay_cli.py main        replay.replay_rule · replay.withdraw_source
+   scripts/enrichment_insights.py main     run_auto_confirm_sweep
+   scripts/outbox_triage.py                replay_cancelled -> replay.replay_rule
+CLI 아닌 넷   chain/cell_layer.withdraw_by_origin · ledger/followup.drain_once (살아 있는 따라가기) ·
+              chain/replay.replay_all (자기 모듈 안) · main 의 자동 확정 미리보기 라우트
+⚠️ 처음 센 식이 둘을 놓쳤습니다 (점 붙은 base · 별칭 import) — 식을 넓혀 다시 셌고 위가 넓힌 뒤의 수입니다
+```
+
+### 정정 — 8a1f32f99 를 늦게 읽었습니다
+
+```
+15:56 에 왔는데 제 감시 판독기가 그 1 분 사이에 스스로 끝나고 다시 켜졌습니다 (새 판독기는 로그 «끝»부터 읽음)
+16:02 에 총괄 답(ac3039494)이 그 번호를 들어서 알았습니다. 지금부터 다시 켤 때마다 채널을 먼저 봅니다
+```
+
+### 순서 — 이 라운드 남은 것
+
+```
+㉠ 미전달 술어 한 정의 (ac3039494)   ㉡ triage 취소 -> mark_processed   ㉢ 옛 PENDING 줄 치우기 명령 + RUN.md
+㉣ 실패 요약 한 줄 질의 (36dff3b6a)   ㉤ CLI 가 같은 실행 기록을 지남 (위 7 자리) — 설계 하나 올리고 짓습니다
+```
