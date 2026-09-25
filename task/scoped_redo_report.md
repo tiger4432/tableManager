@@ -59013,3 +59013,75 @@ CLI 아닌 넷   chain/cell_layer.withdraw_by_origin · ledger/followup.drain_on
 ㉠ 미전달 술어 한 정의 (ac3039494)   ㉡ triage 취소 -> mark_processed   ㉢ 옛 PENDING 줄 치우기 명령 + RUN.md
 ㉣ 실패 요약 한 줄 질의 (36dff3b6a)   ㉤ CLI 가 같은 실행 기록을 지남 (위 7 자리) — 설계 하나 올리고 짓습니다
 ```
+
+---
+
+## [09-25 16:21] 구현자 — 대기열 라운드 착지 셋 (`00c0bad6a` · `c6e3f00f6` · `773edf53e`) · CLI 모집단 다시 셈
+
+### `00c0bad6a` — 「처리됨」과 「미전달」을 한 정의로 · triage 취소 · 옛 PENDING 줄 치우기 명령
+
+```
+처리됨    event_constants.processed_columns(status) = status · 플래그 · DB 시각. mark_processed 는 그것을 한 행에 씀
+         triage 취소의 PostgreSQL 갈래는 «한 번에 UPDATE» 로 둡니다 — 코드 주석의 실측 「운영에 약 660,000 줄, ORM 으로 돌리면 그 자체가 장애」
+         그래서 mark_processed 를 줄마다 부르지 않고 «같은 정의»(processed_columns)를 UPDATE 에 폅니다 (시각이 빠져 있던 것을 채움)
+         ⚠️ 지시 문장 「mark_processed 를 지나게」와 다른 모양입니다 — 이유가 위 수라 이렇게 했고, 되돌리라시면 되돌립니다
+         sqlite 갈래(시험)는 mark_processed 를 줄마다
+미전달    event_constants.undelivered_clause — /outbox/queue/rows 가 이것을 씀. broadcast_state_of 는 같은 정의를 파이썬으로 읽음
+옛 줄     python scripts/outbox_triage.py --finish-stranded [--apply]  (드라이런 기본)
+박스      드라이런 「finished but PENDING: 24」 (전부 RETROACTIVE_RUN · 09-22 22:02 ~ 09-23 00:49)
+         --apply -> 24 줄 SUCCESS + 시각 -> 알림 청소가 곧바로 가져감 (다시 잰 때 24/24 전달됨)
+         남은 「처리됨 · 알림 없음」은 실패 81 뿐 (실패는 알릴 것이 없어 청소 대상이 아님 — 실패 요약(ㄴ)의 몫)
+게이트    한 정의 — 추적 비시험 모듈 전부(이제 scripts 포함)에서 processed_chain 을 True 로 쓰는 곳은 processed_columns 하나
+               (읽는 쪽 정의 _undelivered_when 하나는 이름으로 허용)
+         미전달 — SQL 과 파이썬이 모든 조합에서 같은 줄을 고름 (새 시험)
+         PostgreSQL 에서 한 번에 UPDATE 하는 취소가 시각을 씀 — 스크래치 스키마 시험 (진짜 PG 에서 돎)
+변이      넷 다 빨강 — 라우트 술어 옛 모양 · 정의에서 status 뺌 · 취소가 자기 SQL 로 · 치우기가 시각 없이
+```
+
+### `c6e3f00f6` — RUN.md 맨 위 절: 재기동 셋(스케줄러 · 체인 워커 · API) 뒤 치우기 명령 한 번 · 답의 뜻 · 되돌릴 수 없음
+
+### `773edf53e` — replay_sweep 가 고리 표의 한 줄
+
+```
+LOOPS 에 ("replay_sweep", "chain", "3-c") — 워커 틱마다 돌고 따로 손잡이가 없어 KNOBS 는 없음
+전수 시험   트리의 record_lap 고리 이름 전부 = LOOPS 줄 - {web · postgres · scheduler} (셋은 lap 을 안 남기는 줄, 이름으로)
+박스       고리 표 chain 프로세스 줄 여섯 — replay_sweep 3-c 살아 있음 · lap 2.9 s 전 · found=none
+「워커를 멈추면 죽음으로」   못 재현 — 워커를 내리자 감독자가 7 s 안에 새 pid 로 띄움. heartbeat 나이 최고 6 s, 죽음 문턱은 60 s
+변이       replay_sweep 줄을 빼면 전수 시험 빨강
+```
+
+### 곁에 본 것
+
+```
+/runtime 응답   체인 lap 에 대기열용 칸(rule_outcomes · running · 시각들)을 실은 뒤(191c0b54a), 고리 표 응답의 chain 줄에도 그 칸들이 실려 나갑니다
+               (_lap_cells 가 모르는 칸을 이름대로 넘김). 화면은 정해진 칸만 그려서 보이는 변화는 없음 — 응답이 약 1.5 KB 커짐
+BOX down       16:17:40 admin.html 000 -> 16:18:46 다시 200. 제 API 재기동은 16:16 (6 s 뒤 health 200). 같은 때 클라 착지 96fe8264 — 원인은 안 쟀습니다
+```
+
+### ce2f01e39 ② — CLI 모집단 다시 셈 (짓기 전 확정)
+
+```
+센 것   각 CLI 진입 함수 안의 호출을 AST 로 (git grep 과 대조)
+확정    CLI 다섯 · 연산 호출 여덟
+   ledger/backfill.py main               run(ledger_backfill) · rescope(ledger_rescope)
+   scripts/backfill_enrichment.py main   run_backfill(enrichment_backfill)
+   scripts/chain_replay_cli.py main      replay_rule · replay_all(chain_replay) · withdraw_source(withdraw)
+   scripts/outbox_triage.py              replay_cancelled -> replay_rule(chain_replay)
+   scripts/enrichment_insights.py main   run_auto_confirm_sweep(enrichment_confirm) — --apply 면 씀. 총괄 목록에 «없던» 것
+총괄 목록과 다른 점
+   ledger/backfill main 은 withdraw_deleted_rows · index_existing_refs 를 «안» 부릅니다
+   withdraw_deleted_rows 를 부르는 곳은 살아 있는 따라가기(ledger/followup) 하나 · index_existing_refs 는 시험 밖 호출자 0
+   그리고 소급 연산 withdraw 는 체인 셀 층의 withdraw_source 이지 원장의 withdraw_deleted_rows 가 아닙니다 — 짝이 아님
+```
+
+### ㉤ 설계 — CLI 가 «같은 실행 기록»을 지나는 모양 (짓기 전에 한 번 올립니다)
+
+```
+있는 문   retroactive.publish (실행 기록 + 초인종) · retroactive.execute (집기 · RunControl 로 취소 · 끝 기록)
+그대로 못 쓰는 이유   publish 로 넣으면 스케줄러도 그 행을 집으러 옵니다 — 집기는 한쪽만 이기니, CLI 가 지면 그 일은 «뒤에서» 돌고 CLI 는 「skipped」
+제안     retroactive 에 「여기서 도는 실행」 문 하나 — 기록을 «running · 이 프로세스가 집음»으로 바로 넣고(초인종 없음)
+         관문(gate_refusal)이 막으면 CLI 는 그 문장으로 거절 · 같은 spec["run"] 을 RunControl 과 함께 앞에서 돎 (출력 · 종료 코드 그대로)
+         어드민 목록에 보이고 · 도는 동안 어드민 소급 버튼이 관문에 막히고 · 화면 취소가 RunControl 로 페이지 사이에서 먹힘
+남는 물음  CLI 옵션 중 연산 params 에 없는 것 (예: ledger backfill 의 --reset-cursor · --from · --via-events) — 연산 params 를 넓힐지,
+         그 옵션을 쓰면 옛 문으로 돌지. 다섯 CLI 의 옵션을 전수로 대조해서 다음 보고에 표로 올리고 짓습니다
+```
