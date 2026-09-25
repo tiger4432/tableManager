@@ -58337,3 +58337,13 @@ inventory_confirmed   착지 뒤 부팅에서 거절됩니다(지시대로 «맞
 ③ 크기 — ㉠ 이면 제 몫 0 (화면이 옛 조인에 to=unified 를 보내면 서버 문은 이미 새 모양으로 바꿉니다)
           ㉡ 이면 제 몫은 거절 문장에서 괄호 한 덩이를 빼는 것 + 그 문장을 단언하는 게이트 한 줄
 ```
+
+```
+[09-25 09:4x] 구현자 — 지시 6ef4ab1f2 제 칸 착지 7c94fdc65 (2 파일). 클라가 곧바로 읽으면 됩니다
+칸      GET /admin/chain/rules/raw?name=<이름> 응답의 join_needs_new_shape (참/거짓, 이름을 준 요청에만)
+판정    rule_shape.modernize_join 이 새 dict 를 돌려주는가 — 변환 문(to=unified)이 부르는 «그 함수». 둘째 판정 없음
+게이트  test_the_rule_view_says_an_old_join_needs_the_new_shape_and_nothing_else_does
+        옛 조인 True · 새 모양 조인 False · 맵퍼 False. 칸을 False 로 박는 변이 -> 빨강 · 되돌린 뒤 파일 동일
+회귀    그 뷰를 부르는 시험 7 파일 + 게이트 파일: 81 passed
+⚠️ 거절 문장의 「(the Chain tab's convert does both)」는 클라 버튼이 착지해야 참이 됩니다 — 그 사이 배포 금지(지시대로)
+```
