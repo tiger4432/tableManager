@@ -58639,3 +58639,90 @@ check_rows_exist 가 관계마다 setup_bundle.reads_a_row_table(ledger.setup.li
    표는 전순서 키가 곧 row_id 라 SQL 이 지금과 같습니다. ledger_events 는 그리드의 ID 칸 그 값(id)을 찾게 됩니다
    거절이 아닌 이유 — 검색은 행을 «주소로» 부르는 게 아니라 값을 찾는 것이고, 그리드가 이미 뷰의 ID 를 전순서 키로 그립니다
 ```
+
+---
+
+## [09-25 14:52] 구현자 — 이력 500 라운드 둘째 커밋 `8563eb131` (지시 218f907f5 · 4e508835a) — ㉮ ㉠ ㉡
+
+```
+착지   25b674b8a  이력 패널 (앞 보고)
+       8563eb131  3 파일, 146+, 26-
+```
+
+### 무엇이 달라졌나
+
+```
+자리 하나   main.has_row_id(관계) = setup_bundle.reads_a_row_table 을 «이 프로세스가 모델을 지은 그 항목»(crud.TABLE_CONFIG)에 대고 부름
+           (어댑터 _adapt_physical_catalog 를 그 항목 하나에만 — config_resolve_report 가 이미 쓰는 방식)
+           ⚠️ 첫 커밋의 check_rows_exist 도 이 자리로 옮겼습니다. 첫 커밋은 table_config.json 을 다시 읽었는데,
+              편집~재적재 사이에 파일과 모델이 다를 수 있고, 파일에 틀린 항목 하나가 있으면 모든 표의 물음이 터집니다
+거절 422   refuse_row_address — 관계 이름을 대고 「'<관계>' is not a table that has row_id, so a row of it cannot be addressed by row_id」
+           부르는 곳: 행 읽기 · 셀 원천 · 행 이력 · 셀 이력 · target · cells/sources/query ·
+                     거래 필터 셋 (/data · /data/count 가 함께 지나는 narrowed_table_query · export)
+export     그리드의 정렬 resolve_sort 를 그대로 부름 (row_id 를 읽던 사본 삭제). 뷰에 없는 created_at · updated_at 은 빈 칸
+           ⚠️ 표에도 바뀌는 것: export 가 이제 row_id 내림차순과 선언 칸 정렬을 그리드처럼 따릅니다 (전에는 조용히 row_id 오름차순)
+           모르는 정렬 이름은 이제 422 (그리드와 같음)
+검색       row_id · id 는 그 관계의 전순서 키를 찾음. row_id 가 있는 표는 그 칸 그대로(SQL 동일) · 뷰는 선언 키를 CAST 해서
+           ⚠️ 박스에서 처음엔 500 — ledger_events.id 는 선언이 string 인데 DB 는 uuid 라 ILIKE 가 거절됨. 다른 칸처럼 CAST 로 고침
+           sqlite 시험은 이걸 못 봐서, 컴파일된 SQL 에 CAST 가 있는지를 단언에 넣었습니다
+```
+
+### 게이트
+
+```
+박스 (API 재기동 뒤 · ledger_events = 운영 그리드에 뜨는 뷰, 2,248,024 행)
+   행 주소 9 호출 (여섯 라우트 + 거래 필터 셋)   후 422, 문장에 관계 이름
+      «전» 500 은 여섯 라우트를 bonding_core_die 로, /data 거래 필터 둘을 ledger_events 로 잰 것. export 의 거래 필터는 전에 안 불러 봤습니다
+   검색 q=<id 앞 18 자>   200 · 결과 1 행 = 그 id (3.1 s — 2.2M 행에 CAST 한 ILIKE 라 인덱스를 못 탐. 전에는 500)
+   검색 q=ingested        200 (2.8 s)
+   export (q 로 좁힘)      200 · 머리줄 id … created_at, updated_at · 뒤 둘은 빈 칸
+   export (안 좁힘)        413 — 상한 1,000,000 행을 넘어 거절. 500 아님
+   표 dt_log             export 200 · 거래 필터 200 (그대로)
+   /audit_logs/recent     200
+시험   바뀐 라우트를 부르는 시험 12 파일 138 통과
+       (MSYS_NO_PATHCONV=1 git grep -l -e "/export" -e apply_search_filter -e narrowed_table_query -e row_ids/target
+        -e cells/sources -e "/history" -e check_rows_exist -e audit_logs/ -e resolve_sort -e total_order_keys -e get_row_data -- server/tests)
+       ⚠️ 경로 변환을 끄지 않으면 Git Bash 가 "/export" 를 경로로 바꿔 10 파일만 잡혔습니다 — 계기 고장, 잡고 다시 셈
+변이   열 다 빨강 · 원복 확인
+       자리를 안 물음 · 모델에 hasattr · 영수증 조건 뺌 · 거래 상세만 옛 철자 · 거절이 안 거절함 · 그리드 거래 필터가 자리를 건너뜀 ·
+       검색이 row_id 로 돌아감 · 선언 키를 CAST 안 함 · export 가 row_id 로 정렬 · export 가 created_at 을 무조건 고름
+```
+
+### 정정 — 「셈의 빈틈 get_table_data_count」는 제 잘못 읽기였습니다
+
+```
+그 라우트에는 row_id 를 읽는 자리가 없습니다. 로그에서 오류 «위 세 줄»을 모았더니 부르는 쪽 줄(narrowed_table_query 를 부르는 줄)이 같이 잡혔습니다
+census 56 은 narrowed_table_query 와 apply_search_filter 를 이미 셌습니다 (모듈 전체로 이름을 따라간 두 자리). 제가 박스에서 «안 불러 봤을» 뿐입니다
+그래서 식은 안 고쳤습니다. 다만 이 식의 한계는 있습니다 — 모델을 «다른 이름»으로 넘겨받는 함수는 못 봅니다. 「빠진 자리 0」이라고는 말 못 합니다
+```
+
+### 세기만 한 자리 (지시대로 — 안 고침)
+
+```
+census 56 자리 · 35 함수 (인쇄한 32 항목 중 셋이 «모듈 묶음» — crud 3 · main 2 · outbox_expand 1 함수를 풀면 35)
+main 10   이번에 연 자리 9 + get_dashboard_summary (아래 여쭐 것 ㉯)
+main 밖 25
+체인      9 함수 — chain/replay 2 (replay_rule · recompute_display_values) · chain/enrichment/candidates 2 (collect_rows · flush) ·
+          chain/cell_layer.withdraw_source · dt_map_derivation 2 (plan_retraction · apply_retraction) · outbox_expand 2 (load_rows_by_ids · _report_unreadable)
+인제션    crud 3 — _get_or_create_row · _find_business_key_conflict · purge_map_rows
+쓰기      crud 4 — refuse_write_to_view 뒤 (앞 보고)
+그 밖     crud.get_row_cell (시험 밖 호출자 0) · admin/dev_bench.input_for_mapper · scripts 7 함수 (정해진 표만)
+          (9 + 3 + 4 + 1 + 1 + 7 = 25)
+```
+
+### 박스에서 더 본 것 — 여쭐 것 (안 지음)
+
+```
+ledger_events 에서 500 둘 더 — row_id 가 아니라 «틀 칸»(business_key_val · created_at)을 모델에 바로 묻는 자리
+   GET /tables/ledger_events/data?order_by=id        500  _named_sort 의 id 갈래가 business_key_val 을 읽음
+      그리드는 머리글 정렬을 order_by=<칸 id> 로 보냅니다(grid.sortParams). ID 머리글 정렬이 이 길일 것 — 화면에서 눌러 보진 않았습니다
+   GET /tables/ledger_events/data?q=2026&cols=created_at   500  apply_search_filter 의 created_at 갈래
+   export 도 같은 resolve_sort 를 지나므로 order_by=id 인 export 가 같은 500 입니다 (제 export 게이트는 row_id · updated_at 정렬만 잼)
+㉮ 같은 방식으로 닫을까요
+   id 정렬    바로 위 updated_at 갈래와 같은 모양 — 모델에 business_key_val 이 있으면 그 칸 (표는 SQL 그대로, 🔑 칸 정렬 유지),
+              없으면 전순서 키. ⚠️ 「전순서 키로」만 하면 표가 row_id(UUID) 순으로 바뀝니다 — 그렇게 하지 않습니다
+   틀 칸 검색  모델에 그 칸이 없으면 «찾을 수 없는 칸»으로 — 지금도 검색은 없는 칸을 unsearchable 로 이름 대어 거릅니다, 그 갈래를 타게
+㉯ 대시보드 /dashboard/summary 는 200 이지만 uncounted_tables 에 뷰 11 개가 전부 「셀 수 없음」으로 나옵니다
+   (사유 AttributeError … row_id / updated_at). 모양 검사가 모든 관계에 row_id · updated_at · created_at 을 묻는데, 뷰는 원래 그 칸이 없습니다
+   — 「모양이 틀어진 표」라는 거짓 보고. 뷰는 이 검사를 건너뛰게(catalog_kind 자리) 할까요
+```
