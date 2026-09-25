@@ -375,6 +375,36 @@ export function buildConfigResolveView(report) {
   };
 }
 
+/**
+ * The problem lines of the report, the same reason folded into one (총괄 b73255fc5 E).
+ * 「Problem」 is a population `POPULATION_TONE` colours warn or danger — the table the headline
+ * reads, so its red and this list cannot disagree. What is counted is the server's reason
+ * token; the sentence carried is the first line's `detail`, untouched. A line with no reason
+ * token stands alone: two such lines may say different things.
+ */
+export function problemGroups(view) {
+  const groups = [];
+  const byKey = new Map();
+  for (const domain of (view && view.domains) || []) {
+    for (const population of domain.populations || []) {
+      const tone = POPULATION_TONE[population.name] || '';
+      if (tone !== 'warn' && tone !== 'danger') continue;
+      for (const entry of population.entries || []) {
+        const reason = entry.reason ? entry.reason.text : null;
+        const key = reason === null ? null : `${population.name}\u0000${reason}`;
+        let group = key === null ? null : byKey.get(key);
+        if (!group) {
+          group = { population: population.label, tone, reason: entry.reason, detail: entry.detail, lines: [] };
+          if (key !== null) byKey.set(key, group);
+          groups.push(group);
+        }
+        group.lines.push({ domain: domain.name, entry });
+      }
+    }
+  }
+  return groups.map((group) => ({ ...group, count: count(group.lines.length) }));
+}
+
 /** `GET /admin/enrichment/auto-confirm/dry-run` — the same discipline, one sentence long.
  *
  * The server's `detail` already carries every number worth reading ("큐 N건을 검사해 M건이…"),

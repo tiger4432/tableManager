@@ -1538,6 +1538,9 @@ const FLOORS = new Map([
   // label's ONE answer to 「is this table a ledger source」, scored through the real label, the real
   // buildColumnDefs and the write funnels' seat; a refused source and a half-refused table included.
   ['grid_ledger_column_harness.mjs', 36],
+  // New 2026-09-25 (lead b73255fc5 E). The declaration check's problem lines, the same server reason
+  // folded into one — scored on the real view module; which lines are problems is POPULATION_TONE's.
+  ['declaration_problem_groups_harness.mjs', 14],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────
