@@ -1,10 +1,10 @@
 // Pipeline Admin Dashboard client logic
-// 탭 축 = 파이프라인 생애주기: Overview / File Ingestion / Chain / Auto Update / Enrichment
+// 탭 축 = 파이프라인 생애주기: Overview / Tables / File Ingestion / Chain / Auto Update / Retroactive / Ontology Explorer
 // (구 메커니즘 7탭 폐지 — Outbox·Rules·Mappers는 Chain 탭으로, Workspaces는 File 탭으로 수렴.
 //  Code Editor는 독립 탭 대신 각 탭의 편집 딥링크로 진입하는 공용 뷰. #editor URL 호환 유지)
 import './tokens.css';
 // `isCount` 는 인제션 행이 `admin_rows.js` 로 옮겨가며 이 파일에서 «쓰는 곳이 없어졌습니다».
-import { localeCountText, UNKNOWN } from './absent.js';
+import { ABSENT, localeCountText, UNKNOWN } from './absent.js';
 import { NONE, WAITING, REFUSED, unitText } from './ui_words.js';
 // 🔴 「이 본문이 오류를 나르나」의 «유일한» 철자. 봉투가 둘이라 «칸 이름»으로 물으면
 //    한쪽에서 조용히 아무것도 안 잡는다 (총괄 판정 22, 2026-09-07).
@@ -189,7 +189,7 @@ function adminFetch(url, init) {
 }
 
 // ── State Cache ─────────────────────────────────────────────
-let currentTab = 'overview'; // 'overview' | 'file' | 'chain' | 'autoupdate' | 'enrichment' | 'ontology'
+let currentTab = 'overview'; // 'overview' | 'tables' | 'file' | 'chain' | 'autoupdate' | 'retroactive' | 'ontology'
 
 let outboxPage = 1;
 let outboxLimit = 10;
@@ -213,7 +213,6 @@ let mapperData = [];
 let autoUpdateData = [];
 let linkedFailLogs = [];        // Auto Update 탭: 산출물 인제션 실패 (auto 대상 테이블 ∩ 최근 실패 100건)
 let linkedFailTotalHint = false; // 실패 로그가 100건을 넘어 교집합이 하한치일 때 'N+' 표기
-let enrichmentStatusData = null; // { rules, perRule:[{rule, missing}], totalMissing }
 
 let selectedTxId = null;
 let selectedFileId = null;
@@ -221,7 +220,6 @@ let selectedWorkspaceName = null;
 let selectedChainName = null;
 let selectedMapperFile = null;
 let selectedAutoUpdateScript = null;
-let selectedEnrichmentRule = null;
 let activeEventInTx = null;
 
 // Code Editor State (공용 뷰 — 딥링크로 진입)
@@ -247,7 +245,7 @@ const TAB_ALIASES = {
   file: 'file',
   chain: 'chain',
   autoupdate: 'autoupdate',
-  enrichment: 'enrichment',
+  enrichment: 'chain',  // 구 Enrichment 탭 (2026-09-25 은퇴 — 규칙은 Chain 탭 목록, 종류 순)
   ontology: 'ontology',
   retroactive: 'retroactive',
   outbox: 'chain',      // 구 Outbox Failures 탭 (outbox fail = chain fail)
@@ -262,7 +260,6 @@ const tabTablesBtn = byId('tab-tables-btn');
 const tabFileBtn = byId('tab-file-btn');
 const tabChainBtn = byId('tab-chain-btn');
 const tabAutoUpdateBtn = byId('tab-autoupdate-btn');
-const tabEnrichmentBtn = byId('tab-enrichment-btn');
 const tabOntologyBtn = byId('tab-ontology-btn');
 const tabRetroactiveBtn = byId('tab-retroactive-btn');
 
@@ -271,7 +268,6 @@ const tablesTabWrapper = byId('tables-tab-wrapper');
 const fileTabWrapper = byId('file-tab-wrapper');
 const chainTabWrapper = byId('chain-tab-wrapper');
 const autoUpdateTabWrapper = byId('autoupdate-tab-wrapper');
-const enrichmentTabWrapper = byId('enrichment-tab-wrapper');
 const ontologyTabWrapper = byId('ontology-tab-wrapper');
 const retroactiveTabWrapper = byId('retroactive-tab-wrapper');
 const ontologyExplorerRoot = byId('ontology-explorer-root');
@@ -285,7 +281,6 @@ const chainListBody = byId('chain-list-body');
 const mapperListBody = byId('mapper-list-body');
 const autoUpdateListBody = byId('autoupdate-list-body');
 const autoLinkedBody = byId('autoupdate-linked-body');
-const enrichmentListBody = byId('enrichment-list-body');
 
 // [Heavy Lane P1] 진행 중 인제션 섹션
 const activeIngestionSection = byId('sec-active-ingestions');
@@ -299,7 +294,6 @@ const chainEmptyState = byId('chain-empty');
 const mapperEmptyState = byId('mapper-empty');
 const autoUpdateEmptyState = byId('autoupdate-empty');
 const autoLinkedEmptyState = byId('autoupdate-linked-empty');
-const enrichmentEmptyState = byId('enrichment-empty');
 
 const lastRefreshedSpan = byId('last-refreshed');
 const refreshBtn = byId('refresh-btn');
@@ -441,9 +435,6 @@ const SECTION_EMPTY_STATE = {
   'mapper-count': 'mapper-empty',
   'autoupdate-count': 'autoupdate-empty',
   'autoupdate-linked-count': 'autoupdate-linked-empty',
-  // 🔴 여덟째입니다. 이 라우트는 토큰 게이트가 «아니지만»(오늘 200), 「토큰이 필요 없다」는
-  //    「못 읽을 일이 없다」가 아닙니다 — 네트워크·5xx·프로세스 부재가 그대로 남습니다.
-  'enrichment-rule-count': 'enrichment-empty',
 };
 function markSectionUnread(id) {
   setSectionCount(id, UNREAD, null);
@@ -471,7 +462,6 @@ const TAB_ERROR_MSG = {
   file: '❌ File Ingestion status failed to load',
   chain: '❌ Chain pipeline status failed to load',
   autoupdate: '❌ Auto Update status failed to load',
-  enrichment: '❌ Enrichment rules failed to load',
   retroactive: '❌ Retroactive operations failed to load'
 };
 
@@ -625,7 +615,6 @@ function setupEventListeners() {
     { btn: tabFileBtn, tab: 'file', wrapper: fileTabWrapper },
     { btn: tabChainBtn, tab: 'chain', wrapper: chainTabWrapper },
     { btn: tabAutoUpdateBtn, tab: 'autoupdate', wrapper: autoUpdateTabWrapper },
-    { btn: tabEnrichmentBtn, tab: 'enrichment', wrapper: enrichmentTabWrapper },
     { btn: tabRetroactiveBtn, tab: 'retroactive', wrapper: retroactiveTabWrapper },
     { btn: tabOntologyBtn, tab: 'ontology', wrapper: ontologyTabWrapper }
   ];
@@ -706,8 +695,7 @@ function setupEventListeners() {
       overview: '♻️ Pipeline overview refreshed',
       file: '♻️ File Ingestion status refreshed',
       chain: '♻️ Chain pipeline status refreshed',
-      autoupdate: '♻️ Auto Update status refreshed',
-      enrichment: '♻️ Enrichment rules refreshed'
+      autoupdate: '♻️ Auto Update status refreshed'
     };
     showToast(messages[currentTab] || '♻️ List refreshed', 'success');
   });
@@ -754,9 +742,6 @@ function setupEventListeners() {
       payloadToCopy = mapperData.find(m => m.filename === selectedMapperFile);
     } else if (selectedAutoUpdateScript) {
       payloadToCopy = autoUpdateData.find(c => c.script_name === selectedAutoUpdateScript);
-    } else if (selectedEnrichmentRule && enrichmentStatusData) {
-      const pr = enrichmentStatusData.perRule.find(p => p.rule.name === selectedEnrichmentRule);
-      if (pr) payloadToCopy = pr.rule;
     }
 
     if (payloadToCopy) {
@@ -991,20 +976,6 @@ async function fetchData(options = {}) {
         linkedFailTotalHint = (fails.total || 0) > failLogs.length;
         renderLinkedFailTable();
       } else { markSectionUnread('autoupdate-linked-count'); allRead = false; }
-    } else if (tab === 'enrichment') {
-      // 🔴 C-121. 이 탭만 «다른 문»으로 실패하고 있었습니다 — `fetchEnrichmentStatus` 가
-      //    던지면 아래 catch 로 빠져서, 나머지 일곱이 지나는 `markSectionUnread` 를
-      //    «안 지납니다». 그래서 거절 문구 옆에 «지난번 수»가 그대로 남고, 운영자는
-      //    그 수를 「지금」으로 읽습니다. 같은 판단이면 같은 좌석을 지납니다.
-      let status = null;
-      try {
-        status = await fetchEnrichmentStatus();
-      } catch (err) {
-        markSectionUnread('enrichment-rule-count');
-        allRead = false;
-      }
-      if (isStale()) return false;
-      if (status) renderEnrichmentTable(status);
     } else if (tab === 'retroactive') {
       // 소급 «폼»은 자기 탭이다 (시안 A). Overview 폴이 부르는 것과 «같은» 함수다.
       await refreshRetroactiveOperations(true);
@@ -1787,6 +1758,7 @@ function renderChainTable() {
       ? `reads ${rule.source_table}` : 'uses trigger rows';
 
     row.innerHTML = `
+      <td>${escapeHtml(rule.kind || ABSENT)}</td>
       <td><div class="chain-rule-name">${rule.name || '-'}</div><div class="chain-rule-mapper">${mapper || 'built-in mapper'}</div></td>
       <td><div class="chain-flow"><span>${source}</span><span class="chain-flow-arrow">→</span><span>${target}</span></div><div class="chain-flow-note">${sourceNote}</div></td>
       <td><div class="chain-capabilities">${chainRuleCapabilities(rule)}</div></td>
@@ -1938,72 +1910,6 @@ function renderLinkedFailTable() {
     const exists = linkedFailLogs.find(f => f.id === selectedFileId);
     if (exists) {
       selectFileRow(exists, autoLinkedBody);
-    } else {
-      clearDiagnostics();
-    }
-  }
-}
-
-// Enrichment 탭 §현황: 규칙 + 결손 카운트 (편집은 read-only 안내 — CRUD는 대안 이관)
-function renderEnrichmentTable(status) {
-  enrichmentStatusData = status;
-  enrichmentListBody.innerHTML = '';
-  setSectionCount('enrichment-rule-count', status.rules.length, null);
-  const missEl = byId('enrichment-missing-count');
-  if (missEl) {
-    missEl.style.display = status.rules.length ? 'inline' : 'none';
-    // 🔴 `totalMissing` 은 «잰 규칙만» 더합니다 — 큐 조건을 못 만들거나 조회가 실패한
-    //    규칙은 `missing = null` 이고 합계에 «0 을 보태지도 않습니다». 그래서 규칙이 «전부»
-    //    안 재졌으면 합계가 0 이고, 그 0 은 「채울 게 없다」와 «같은 픽셀»이었습니다.
-    //    ⚠️ 일부만 안 재졌으면 그 합계는 «전수가 아닙니다» — 닫힌 목록의 그 낱말입니다.
-    const unmeasured = (status.perRule || []).filter(p => p.missing === null).length;
-    const missCell = countWithAbsence(
-      status.perRule && status.perRule.length && unmeasured === status.perRule.length
-        ? { unread: UNKNOWN }
-        : { value: status.totalMissing,
-            absence: unmeasured ? 'not_exhaustive' : 'truly_none' });
-    missEl.textContent = `Missing ${unmeasured && missCell.read && status.totalMissing > 0
-      ? `${status.totalMissing} · not exhaustive` : missCell.text}`;
-    missEl.dataset.tone = status.totalMissing > 0 ? 'warn' : 'ok';
-  }
-
-  if (status.rules.length === 0) {
-    enrichmentEmptyState.style.display = 'flex';
-    if (selectedEnrichmentRule) clearDiagnostics();
-    return;
-  }
-
-  enrichmentEmptyState.style.display = 'none';
-
-  status.perRule.forEach(({ rule, missing }) => {
-    const row = document.createElement('tr');
-    row.className = `table-row ${selectedEnrichmentRule === rule.name ? 'active' : ''}`;
-    row.dataset.name = rule.name;
-
-    const missingBadge = missing == null
-      ? `<span class="badge badge-warning">Read failed</span>`
-      : missing > 0
-        ? `<span class="badge badge-warning" style="font-family: var(--font-mono);">${missing}</span>`
-        : `<span class="badge badge-success" style="font-family: var(--font-mono);">0</span>`;
-
-    row.innerHTML = `
-      <td style="font-weight: bold; color: var(--color-primary);">${rule.name}</td>
-      <td style="font-family: var(--font-mono); font-size: 0.82rem;">${rule.source_table || '-'} → ${rule.derived_table}</td>
-      <td style="font-family: var(--font-mono); font-size: 0.82rem; color: var(--text-muted);">${(rule.target_fields || []).join(', ') || '-'}</td>
-      <td style="text-align: center;">${missingBadge}</td>
-    `;
-
-    row.addEventListener('click', () => {
-      selectEnrichmentRow(rule, missing);
-    });
-
-    enrichmentListBody.appendChild(row);
-  });
-
-  if (selectedEnrichmentRule && !isInlineEditorActive) {
-    const pr = status.perRule.find(p => p.rule.name === selectedEnrichmentRule);
-    if (pr) {
-      selectEnrichmentRow(pr.rule, pr.missing);
     } else {
       clearDiagnostics();
     }
@@ -3560,7 +3466,8 @@ function overviewBoard() {
       file: () => { filePage = 1; switchTab('file', { statusFilter: 'FAILED' }); },
       chain: () => { outboxPage = 1; switchTab('chain'); },
       auto: () => switchTab('autoupdate'),
-      enrichment: () => switchTab('enrichment'),
+      // Enrichment 탭은 은퇴 — 규칙은 Chain 탭 목록에 종류 순으로 선다 (총괄 7085e2dc6).
+      enrichment: () => switchTab('chain'),
       ledger: () => switchTab('ontology'),
       retroactive: () => switchTab('retroactive'),
     },
@@ -3592,14 +3499,13 @@ function clearSelections() {
   selectedChainName = null;
   selectedMapperFile = null;
   selectedAutoUpdateScript = null;
-  selectedEnrichmentRule = null;
   activeEventInTx = null;
 }
 
 // 한 탭 안에 여러 테이블이 공존하므로 하이라이트는 전 목록에서 걷어낸다
 function clearRowHighlights() {
   [outboxListBody, fileListBody, workspaceListBody, chainListBody, mapperListBody,
-    autoUpdateListBody, autoLinkedBody, enrichmentListBody].forEach(b => {
+    autoUpdateListBody, autoLinkedBody].forEach(b => {
     if (b) b.querySelectorAll('.table-row.active').forEach(r => r.classList.remove('active'));
   });
 }
@@ -3966,56 +3872,6 @@ function selectMapperRow(mapper) {
   }
 
   payloadViewer.textContent = JSON.stringify(mapper, null, 2);
-}
-
-// Select Enrichment Rule Row (Enrichment 탭 §현황 — 편집은 read-only 안내)
-function selectEnrichmentRow(rule, missing) {
-  if (!ensureEditorViewClosed()) return;
-  clearSelections();
-  selectedEnrichmentRule = rule.name;
-
-  clearRowHighlights();
-  enrichmentListBody.querySelectorAll('.table-row').forEach(r => {
-    r.classList.toggle('active', r.dataset.name === rule.name);
-  });
-
-  diagnosticsEmpty.style.display = 'none';
-  diagnosticsContent.style.display = 'flex';
-  txEventsSelectorBlock.style.display = 'none';
-
-  diagnosticsTitle.textContent = '🧩 Enrichment Rule Details';
-  tracebackTitle.textContent = 'Missing values & where to fix';
-  if (missing == null) {
-    tracebackSeverity.textContent = 'Missing count read failed';
-    tracebackSeverity.className = 'badge badge-warning';
-  } else if (missing > 0) {
-    tracebackSeverity.textContent = `Missing ${missing}`;
-    tracebackSeverity.className = 'badge badge-warning';
-  } else {
-    tracebackSeverity.textContent = 'No missing values';
-    tracebackSeverity.className = 'badge badge-success';
-  }
-  tracebackSeverity.style.display = 'inline';
-
-  const lines = [
-    `Rule             : ${rule.name}`,
-    `Source → derived : ${rule.source_table || '-'} → ${rule.derived_table}`,
-    `Decision key     : ${(rule.decision_key || []).join(', ') || '-'}`,
-    `Target fields    : ${(rule.target_fields || []).join(', ') || '-'}`,
-    '',
-    missing == null
-      ? 'Missing count read failed (blank filter on the derived table)'
-      : missing > 0
-        ? `${unitText(missing, 'row')} with empty target fields — fill them in the main grid`
-        : 'All target fields are filled'
-  ];
-  tracebackViewer.innerHTML = `<div style="color: var(--text-muted); line-height: 1.7; white-space: pre;">${lines.join('\n')}</div>` +
-    // 🔴 The enrich declaration lives in the chain rule now (`derive.decide`) -- ff5505dfa retired
-    //    enrichment_rules.json, and this line used to send the operator to edit that file.
-    `<div style="margin-top: 12px; color: var(--text-dim); line-height: 1.6;">Edit in the Chain tab: <span style="font-family: var(--font-mono); color: var(--text);">derive.decide</span></div>`;
-
-  payloadTitle.textContent = 'Rule Configuration (read-only)';
-  payloadViewer.textContent = JSON.stringify(rule, null, 2);
 }
 
 // Render error log traceback and payloads of Outbox Event (+ mapper 편집 딥링크)
@@ -4468,15 +4324,12 @@ function closeInlineEditor() {
   } else if (selectedAutoUpdateScript) {
     const col = autoUpdateData.find(c => c.script_name === selectedAutoUpdateScript);
     if (col) { selectAutoUpdateRow(col); return; }
-  } else if (selectedEnrichmentRule && enrichmentStatusData) {
-    const pr = enrichmentStatusData.perRule.find(p => p.rule.name === selectedEnrichmentRule);
-    if (pr) { selectEnrichmentRow(pr.rule, pr.missing); return; }
   }
   // 복원할 선택이 없으면 빈 상태 표시 (스택 잔존 방지)
   clearDiagnostics();
 }
 
-// ── Enrichment 상태 (규칙 + 결손 카운트) — 스트립·탭·Overview 공용, 15s TTL 캐시 ──
+// ── Enrichment 상태 (규칙 + 결손 카운트) — Overview 의 Enrichment 줄이 쓴다, 15s TTL 캐시 ──
 
 let enrichmentStatusCache = null; // { ts, data }
 

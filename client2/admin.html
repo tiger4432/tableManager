@@ -1853,7 +1853,6 @@
           <button id="tab-file-btn" class="tab-btn">File Ingestion</button>
           <button id="tab-chain-btn" class="tab-btn">Chain</button>
           <button id="tab-autoupdate-btn" class="tab-btn">Auto Update</button>
-          <button id="tab-enrichment-btn" class="tab-btn">Enrichment</button>
           <button id="tab-retroactive-btn" class="tab-btn">Retroactive</button>
           <button id="tab-ontology-btn" class="tab-btn">Ontology Explorer</button>
         </div>
@@ -2040,6 +2039,8 @@
               <table class="table-container">
                 <thead class="table-header">
                   <tr>
+                    <!-- 소유자 「체인 탭에서 리스트를 항목별로 정렬만」 — 종류와 순서는 서버 한 좌석(rule_shape) -->
+                    <th>Kind</th>
                     <th>Rule / Mapper</th>
                     <th style="width: 240px;">Data Flow</th>
                     <th style="width: 135px;">Execution</th>
@@ -2238,42 +2239,6 @@
               <span class="section-chevron">▾</span>
             </div>
             <div class="section-body"><div id="table-config-mount"></div></div>
-          </div>
-        </div>
-
-        <!-- ═══ Enrichment 탭: 현황(Rules + 결손) 조회 전용 / 실행은 메인 그리드, 수정은 read-only 안내 ═══ -->
-        <div id="enrichment-tab-wrapper" style="flex: 1; overflow: auto; display: none;">
-          <div class="stage-section" id="sec-enrichment-rules">
-            <div class="section-header" data-section="sec-enrichment-rules">
-              <span class="stage-chip">Status</span>
-              <span class="section-title">Enrichment Rules</span>
-              <span class="section-count" id="enrichment-rule-count">—</span>
-              <span class="section-count" id="enrichment-missing-count" style="display: none;">Missing 0</span>
-              <span class="section-summary"></span>
-              <span class="section-chevron">▾</span>
-            </div>
-            <div class="section-body">
-              <table class="table-container">
-                <thead class="table-header">
-                  <tr>
-                    <th>Rule Name</th>
-                    <th style="width: 170px;">Source → Derived</th>
-                    <th>Target Fields</th>
-                    <th style="width: 110px; text-align: center;">Missing</th>
-                  </tr>
-                </thead>
-                <tbody id="enrichment-list-body"></tbody>
-              </table>
-              <div id="enrichment-empty" class="empty-state" style="display: none;">
-                <div class="empty-icon">🧩</div>
-                <div class="empty-text">No active enrichment rules</div>
-              </div>
-              <!-- 🔴 The enrich declaration lives in the chain rule (`derive.decide`) since ff5505dfa retired
-                   enrichment_rules.json; this note used to send the operator to edit that file. -->
-              <div class="section-note">
-                Edit rules in the Chain tab (<code>derive.decide</code>). Fill missing values in the main grid.
-              </div>
-            </div>
           </div>
         </div>
 

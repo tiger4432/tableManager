@@ -5974,6 +5974,13 @@ def get_chain_rules():
         # state and no reason.
         listed.append(dict(raw, rule_state=event_constants.RULE_STATE_DECLARED_ONLY,
                            rule_state_detail=refusal or (notes[0] if notes else None)))
+    # 🔴 THE KIND, FROM ITS ONE SEAT, AND THE ORDER BY IT (소유자 「체인 탭에서 리스트를 항목별로
+    #    정렬만」 · 「항목 = 종류」, 총괄 7085e2dc6). The screen draws the word and keeps this order:
+    #    a list of the kind words on the client would be a second place that asks the kind.
+    rank = {kind: i for i, kind in enumerate(rule_shape.DECLARED_KINDS)}
+    for row in listed:
+        row["kind"] = rule_shape.declared_kind(row)
+    listed.sort(key=lambda row: (rank.get(row["kind"], len(rank)), str(row.get("name") or "")))
     return {"status": "success", "data": listed}
 
 
