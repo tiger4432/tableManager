@@ -45,6 +45,8 @@
 //    들고 있었는데 `api.js` 한 줄만 그 문을 안 지났고, 개인 로더 여섯이 같은 줄을 각자 들고
 //    있었습니다. 이제 일곱이 «한 문»(`moduleUrl`)을 지납니다.
 import { declaredKeys } from '../walk/derive.js';
+import { UNPICKED } from '../absent.js';
+import { SERVER_REFUSED } from '../ui_words.js';
 
 export const ROUTES = Object.freeze({
   lotMap: '/api/ledger/lot_map',
@@ -124,7 +126,7 @@ export function projectionModel(body, axis) {
       drawable: false,
       state: 'absent',
       reason: 'axis_not_served',
-      message: `${axis} 축이 응답에 없습니다`,
+      message: `Axis ${axis} missing from the response`,
       cells: [], found: 0, scanned: 0, frame: null,
       coordinateUnit: null, relations: [], ledgerBacked: false, unplaced: null,
       row: (body && body.row) || null,
@@ -241,7 +243,7 @@ export function compositionModel(result) {
       ok: false,
       state: 'refused',
       status,
-      message: status ? `서버가 거절했습니다 (HTTP ${status})` : '응답이 없습니다',
+      message: status ? `${SERVER_REFUSED} (HTTP ${status})` : 'No response',
       subject: null, wafer: null, resolution: null, window: null,
       cardinality: null, provenance: null,
       counts: { components: null, dtCollections: null },
@@ -622,8 +624,8 @@ export function subgraphModel(result) {
       // The client-side gate and a server refusal are DIFFERENT answers and must not share
       // a sentence -- one says 「이 자리는 아직 노드가 아닙니다」, the other 「서버가 거절」.
       message: reason === 'seed_is_not_a_server_node'
-        ? '이 자리는 아직 원장 노드가 아닙니다 — 그릴 수는 있어도 마킹은 안 됩니다'
-        : (status ? `서버가 거절했습니다 (HTTP ${status})` : '응답이 없습니다'),
+        ? 'Not a ledger node yet · drawable, not markable'
+        : (status ? `${SERVER_REFUSED} (HTTP ${status})` : 'No response'),
       contrast: null, complete: null, candidates: [], topSet: [],
       // Refused: nothing was walked, so whether it would have truncated is UNKNOWN.
       truncated: null,
@@ -1006,8 +1008,8 @@ export function reachModel(result) {
     return {
       ok: false, state: 'refused', status, reason,
       message: reason === 'seed_is_not_a_server_node'
-        ? '이 자리는 아직 원장 노드가 아닙니다 -- 걸어 나갈 수 없습니다'
-        : (status ? `서버가 거절했습니다 (HTTP ${status})` : '응답이 없습니다'),
+        ? 'Not a ledger node yet · cannot walk from here'
+        : (status ? `${SERVER_REFUSED} (HTTP ${status})` : 'No response'),
       seedId: null, seedLabel: null, rows: [], nodes: 0, edges: 0, cut: null,
     };
   }
@@ -1149,7 +1151,7 @@ export function mapModel(answer, grid, axis, plan) {
       axis, label: axis, sublabel: '', drawable: false,
       state: answer && answer.state === 'refused' ? 'refused' : 'absent',
       reason: (answer && answer.reason) || 'walk_absent',
-      message: (answer && answer.message) || '걷지 못했습니다',
+      message: (answer && answer.message) || 'Walk failed',
       cells: [], found: 0, scanned: 0, unscanned: null,
       frame: null, coordinateUnit: null,
     };
@@ -1198,7 +1200,7 @@ export function mapModel(answer, grid, axis, plan) {
     //    같은 사실이 `state: 'no_grid'` 와 `message` 로 이미 두 번 있고, `map_panel.js` 는
     //    `message || reason || state` 순으로 그리는데 message 가 «항상» 채워져 있습니다.
     reason: null,
-    message: grid ? null : '이 맵의 격자가 선언돼 있지 않습니다 — 점은 그대로입니다',
+    message: grid ? null : 'No grid declared for this map · points drawn as is',
     cells, found, scanned,
     unscanned: seats === null || cut ? null : Math.max(0, seats - scanned),
     truncated: answer.truncated || null,
@@ -1245,9 +1247,9 @@ export function compositionFromWalk(answer, _axis, plan) {
     counts: { components: null, dtCollections: null },
     coreTypes: [], components: [],
   });
-  if (!answer) return absent('absent', '아직 걷지 않았습니다');
+  if (!answer) return absent('absent', 'Not walked yet');
   if (answer.ok === false) {
-    return absent('refused', answer.message || '서버가 거절했습니다');
+    return absent('refused', answer.message || SERVER_REFUSED);
   }
   const nodes = answer.nodes || [];
   const edges = answer.edges || [];
@@ -1289,8 +1291,8 @@ export function compositionFromWalk(answer, _axis, plan) {
     //    die 주어 400,690 = 4.63% 이므로 「없다」가 대다수이고 그게 오늘의 참입니다. 그리고 walk 이
     //    잘렸으면 「없다」가 아니라 「여기까지 봤다」입니다.
     message: components.length ? ''
-      : (cut ? '이 걷기는 예산에서 끊겼습니다 — 구성이 없다는 뜻이 아닙니다'
-             : '이 다이에는 기록된 구성이 없습니다'),
+      : (cut ? 'Walk cut at its budget · not the same as no composition'
+             : 'No composition recorded for this die'),
     subject: null, wafer: null, resolution: null, window: null,
     cardinality: { components: components.length },
     provenance: null,
@@ -1496,11 +1498,11 @@ export function trendFromWalk(answer, axis, plan) {
     //    없습니다. 0 이 아니라 `null` 입니다: 0 은 「세었고 없었다」이고, 여기서는 안 세었습니다.
     skipped: null, cut: false, ...extra,
   });
-  if (!answer) return empty('awaiting', '아직 안 골랐습니다');
+  if (!answer) return empty('awaiting', UNPICKED);
   // 🔴 거절은 «서버의 낱말»입니다 (판정 341). 코드를 그대로 실어 나릅니다 — 화면이 그것을
   //    값 옆에 그립니다. 우리가 문장을 지으면 그건 「자막 단 실패」입니다.
   if (answer.ok === false) {
-    return empty('refused', answer.message || '서버가 거절했습니다',
+    return empty('refused', answer.message || SERVER_REFUSED,
                  { reason: answer.reason || null });
   }
 
@@ -1517,7 +1519,7 @@ export function trendFromWalk(answer, axis, plan) {
   //    «빈 배열»입니다. 앞쪽을 「셀 것이 없다」로 그리면 안 물어본 것을 답으로 만듭니다.
   const groups = Array.isArray(answer.groups) ? answer.groups : null;
   if (!groups) {
-    return { ...empty('unread', '이 좌석은 아직 무리를 묻지 않았습니다'), kinds };
+    return { ...empty('unread', 'This seat has not asked for groups yet'), kinds };
   }
 
   // 🔴 절단은 «표지»입니다. 이 줄이 `state: 'truncated'` 로 돌아가던 자리이고, 그래서 예산에
@@ -1575,7 +1577,7 @@ export function trendFromWalk(answer, axis, plan) {
     axis: wanted, valueKind: wanted ? 'aggregate' : 'ratio',
     skipped: null,
     cut,
-    message: points.length ? '' : '이 마킹에는 셀 것이 없습니다',
+    message: points.length ? '' : 'Nothing to count in this marking',
   };
 }
 
@@ -1689,8 +1691,8 @@ export function createWalk(deps) {
     // ⏭ This guard is the RENAME's, not the feature's: the round that lets a seat declare a
     //    domain type replaces it with forwarding, and it must be removed in that same commit.
     if (rest.collect !== undefined) {
-      return Promise.reject(new Error('walk: `collect` 는 이제 전선의 낱말입니다 — '
-        + `라우트 이름은 \`legacyRoute\` 로 부르십시오 (받은 값: ${rest.collect})`));
+      return Promise.reject(new Error('walk: `collect` is a wire word now — '
+        + `name the route with \`legacyRoute\` (got: ${rest.collect})`));
     }
     // 🔴 NO NAME IS THE WALK ITSELF (round Z, 2026-08-28). A seat that declares `follow` has
     // stated its question in the LEDGER's words -- which predicates to walk from which marking
@@ -1704,7 +1706,7 @@ export function createWalk(deps) {
     const declared = legacyRoute ? LEGACY_ROUTES[legacyRoute] : WALK;
     // A collect nobody declared is a BUG IN THE SCREEN, not an empty answer: returning `null`
     // here would let a part draw 「없음」 for a question that was never asked.
-    if (!declared) return Promise.reject(new Error(`walk: 선언되지 않은 legacyRoute — ${legacyRoute}`));
+    if (!declared) return Promise.reject(new Error(`walk: undeclared legacyRoute — ${legacyRoute}`));
     const key = JSON.stringify([legacyRoute, start || null, rest]);
     const joined = inflight.get(key);
     if (joined) return joined;
@@ -1866,12 +1868,12 @@ export async function fetchDeclaration(params) {
     const body = await res.json().catch(() => null);
     if (!res.ok || !body) {
       return { ok: false, message: (body && body.detail && body.detail.message)
-        || `선언을 읽지 못했습니다 (${res.status})` };
+        || `Declaration unreadable (${res.status})` };
     }
     return { ok: true, entities: body.entities || [], predicates: body.predicates || [],
              collect: body.collect || [] };
   } catch (err) {
-    return { ok: false, message: `선언에 닿지 못했습니다 — ${err && err.message}` };
+    return { ok: false, message: `Declaration unreachable — ${err && err.message}` };
   }
 }
 
@@ -1883,7 +1885,7 @@ export async function fetchDeclaration(params) {
  *    쓰면 그 둘은 언젠가 갈라지고, 갈라진 것은 오류를 내지 않습니다.
  * ⛔ 새 문구가 아닙니다. 여기 있던 문장 «그대로»이고, 옮긴 것은 자리뿐입니다.
  */
-export const PICK_TYPE_FIRST = '노드 타입을 먼저 고르십시오';
+export const PICK_TYPE_FIRST = 'Pick a node type first';
 
 /**
  * 「이 타입에 어떤 주어가 있나」 — 키 칸을 «외워서» 치지 않게 하는 목록.
@@ -1916,7 +1918,7 @@ export async function fetchKeyValues(params) {
       valuesTruncated: body.values_truncated === true,
     };
   } catch (err) {
-    return { ok: false, message: `주어 목록에 닿지 못했습니다 — ${err && err.message}` };
+    return { ok: false, message: `Subject list unreachable — ${err && err.message}` };
   }
 }
 
@@ -1963,7 +1965,7 @@ function refusalSentence(body, status) {
       .join(' / ');
   }
   if (typeof detail === 'string' && detail) return detail;
-  return `걷지 못했습니다 (${status})`;
+  return `Walk failed (${status})`;
 }
 
 /**
@@ -1989,7 +1991,7 @@ export function createWalkBoxWalk(deps) {
   return async function walkBoxWalk(spec) {
     const { type, keys, follow, collect, direction, hops, node_limit: nodeLimit,
             since, until } = spec || {};
-    if (!type) return { ok: false, message: '노드 타입을 먼저 고르십시오' };
+    if (!type) return { ok: false, message: PICK_TYPE_FIRST };
     // 🔴 C-53. 이 함수는 «요청을 짓지 않습니다». `fetchSubgraph` 가 이 라우트의 «정본
     //    생성기»이고, 여기는 걷기 상자의 spec 을 그 인자 모양으로 «옮기기»만 합니다.
     //    왜: 같은 라우트에 URLSearchParams 가 «둘»이었고, 인자가 하나 늘 때 한쪽에만 실리는
@@ -2085,7 +2087,7 @@ export function createWalkBoxWalk(deps) {
         walk: body.walk || null,
       };
     } catch (err) {
-      return { ok: false, message: `걷기에 닿지 못했습니다 — ${err && err.message}` };
+      return { ok: false, message: `Walk unreachable — ${err && err.message}` };
     }
   };
 }

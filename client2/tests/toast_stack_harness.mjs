@@ -61,7 +61,7 @@ function suite(mod, probe) {
   showToast(SAME, 'error');
   showToast(SAME, 'error');
   say(s, 'T1 the same failure sentence twice is ONE toast', toasts().length === 1, textsOf());
-  say(s, 'T1b ... and it says how many', /·\s*2건/.test(textsOf()[0] || ''), textsOf());
+  say(s, 'T1b ... and it says how many', /·\s*×2/.test(textsOf()[0] || ''), textsOf());
 
   // ══ T2 «다른 문장»은 접히지 않는다 — 판정 「개별 사유가 중요하다」를 지키는 자리 ════
   reset(probe);
@@ -86,7 +86,7 @@ function suite(mod, probe) {
   showToast('파일 4 처리 완료', 'success', { dedupeKey: 'done' });
   say(s, 'T4 a non-failure still folds on its dedupeKey', toasts().length === 1, textsOf());
   say(s, 'T4b ... and shows the latest message with the count',
-    /파일 4 처리 완료 ·\s*2건/.test(textsOf()[0] || ''), textsOf());
+    /파일 4 처리 완료 ·\s*×2/.test(textsOf()[0] || ''), textsOf());
 
   // ══ T5 `dismissToasts(key)` 가 실패에도 여전히 닿는다 ════════════════════════════
   // 🔴 접기 키를 «저장된 dedupeKey 위에» 덮어썼다면 이 줄이 빨개집니다. 그 둘은 다른 일을

@@ -26,17 +26,17 @@ import { isGateRejection } from './admin_token.js';
 
 /** Client-authored strings. Structural labels only — never a verdict, never per-reason. */
 export const CHROME = Object.freeze({
-  HEADLINE: '설정 반영',
-  DETAIL_HINT: '자세히 보기',
-  SOURCES: '설정 파일',
-  SETTINGS: '현재 값',
-  DECLARED: '선언값',
-  VIEWS: '참조뷰',
-  MEASURE: '드라이런',
+  HEADLINE: 'Config resolution',
+  DETAIL_HINT: 'Details',
+  SOURCES: 'Config files',
+  SETTINGS: 'Current value',
+  DECLARED: 'Declared',
+  VIEWS: 'Reference views',
+  MEASURE: 'Dry run',
   MEASURE_HINT: 'Inspects the queue without writing and counts how many can be confirmed without a person.',
-  MEASURING: '측정 중…',
-  MEASURE_FAILED: '드라이런 요청 실패',
-  REFUSED: '보류 사유',
+  MEASURING: 'Measuring…',
+  MEASURE_FAILED: 'Dry run failed',
+  REFUSED: 'Held because',
   FETCH_FAILED: 'Read failed',
   // The four failure lines. See `fetchFailureText` below for why these are client-owned:
   // the server did not answer, so it cannot be the one to say why.
@@ -47,13 +47,13 @@ export const CHROME = Object.freeze({
   FETCH_UNREACHABLE: 'Server unreachable · check it is running',
   FETCH_UNAUTHORIZED: 'Token declined · reload, then enter it again',
   FETCH_INTERCEPTED: 'Not the admin gate · check the proxy in front',
-  NO_DOMAINS: '설정 도메인 없음',
+  NO_DOMAINS: 'No config domains',
   // C-87. 막힌 걸음이 «기다리는 걸음»을 가리키는 부호. 문장이 아니라 부호 하나이고, 번호는
   // 서버의 값입니다 — 「⑤ 가 안 서서 막혔습니다」라고 쓰면 그 문장의 저자가 화면이 됩니다.
   STEP_BLOCKED: '←',
   // 걸음 번호가 «없는» 도메인이 서는 자리의 이름. 없는 것을 0 번으로 그리지 않으려고
   // 이름을 하나 둡니다 — 「안 물어봤다」가 「첫 걸음」이 되면 순서가 거짓이 됩니다.
-  UNSTEPPED: '순서 밖',
+  UNSTEPPED: 'Unordered',
 });
 
 export const CHROME_STRINGS = Object.freeze(Object.values(CHROME));

@@ -45,7 +45,7 @@ function collapseOverflow(container) {
     overflow.className = 'progress-card';
   }
   overflow.innerHTML =
-    `<div class="progress-header"><span class="progress-title">📤 그 외 ${hidden}건 적재 중</span></div>`;
+    `<div class="progress-header"><span class="progress-title">📤 ${hidden} more loading</span></div>`;
   container.appendChild(overflow);
 }
 

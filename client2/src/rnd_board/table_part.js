@@ -37,7 +37,7 @@ export class TablePart extends Panel {
     this.rows = Array.isArray(options.rows) ? options.rows.slice() : [];
     // 행 하나를 마킹 노드로 만드는 열쇠. 선언 안 하면 이 표는 «읽기 전용»입니다.
     this.rowKey = options.rowKey || null;
-    this.emptyText = options.emptyText || '행이 없습니다';
+    this.emptyText = options.emptyText || 'No rows';
     // 행 아래 «펼침». 무엇을 펼치는지는 표가 모릅니다 -- 쓰는 쪽이 요소를 만들어 줍니다.
     this.detailFor = options.detailFor || null;
     // 행을 눌렀을 때 «표가 마킹한 뒤» 부르는 것. 표는 여전히 마킹만 압니다.

@@ -301,7 +301,7 @@ async function score(list, mustCatch, heading) {
   ok('K1 the note names the count it is about', String(note(7)).includes('7'));
   // ⛔ 다음 행동을 떼면 「자막 단 실패」가 됩니다 — 이 줄이 그것을 막습니다.
   ok('K2 ...and keeps the NEXT ACTION, which is what makes it more than a label',
-    String(note(7)).includes('입력'));
+    String(note(7)).includes('type more'));
   ok('K3 a different count gives a different sentence, so the number is not decorative',
     note(7) !== note(8));
 
@@ -319,7 +319,7 @@ async function score(list, mustCatch, heading) {
   ok(`K4 CONTROL: the sweep saw the source tree (${files.length} files)`, files.length > 50);
   const writers = files.filter((f) => {
     const t = strip(readFileSync(f, 'utf8'));
-    return t.includes('더 입력하면');
+    return t.includes('type more to narrow');
   }).map((f) => f.replace(SRC, ''));
   // 오직 이 모듈만이 그 문장을 씁니다.
   ok(`K5 exactly one file writes that sentence (${writers.join(', ')})`,

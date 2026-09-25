@@ -15,9 +15,9 @@
  *
  *     server/ledger_trace_router.py:735~737  `/declaration` carries `attributes` per entity —
  *                                          ABSENT, not empty, when a type declares none
- *     client2/src/walk/derive.js:106      `tableColumns` composes 깊이 + declared keys +
- *                                          qualifier names + declared ATTRIBUTES + 충돌 +
- *                                          라벨 + id
+ *     client2/src/walk/derive.js:106      `tableColumns` composes Depth + declared keys +
+ *                                          qualifier names + declared ATTRIBUTES + Conflicts +
+ *                                          Label + id
  *
  *   The two things that were scorable before the server moved are scorable still:
  *
@@ -162,7 +162,7 @@ console.log('\n[3] the columns are the declared names');
   const bare = [{ type: TYPE, keys: [IDENTITY_KEY], class: null }];
   const nameList = (cols) => cols.map((c) => c.name).join(',');
   eq('C1 a declaration without attributes leaves the table unchanged',
-    `깊이,${IDENTITY_KEY},라벨,id`, nameList(derive.tableColumns(bare, TYPE, [])));
+    `Depth,${IDENTITY_KEY},Label,id`, nameList(derive.tableColumns(bare, TYPE, [])));
 
   const drawn = CASES.map((c) => {
     const cols = derive.tableColumns(declarationFor(c), TYPE, []);

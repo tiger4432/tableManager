@@ -141,7 +141,7 @@ if (typeof document !== 'undefined') {
 if (typeof window !== 'undefined') window.addEventListener('focus', sweepToasts);
 
 function paintToast(item) {
-  const label = item.count > 1 ? `${item.baseMessage} · ${item.count}건` : item.baseMessage;
+  const label = item.count > 1 ? `${item.baseMessage} · ×${item.count}` : item.baseMessage;
   const icon = item.el.querySelector('.toast-icon');
   const body = item.el.querySelector('.toast-body');
   if (icon) icon.textContent = toastIcon(item.type);
@@ -203,7 +203,7 @@ export function showToast(message, type = 'info', opts = {}) {
   const closeEl = document.createElement('button');
   closeEl.className = 'toast-close';
   closeEl.type = 'button';
-  closeEl.setAttribute('aria-label', '닫기');
+  closeEl.setAttribute('aria-label', 'Close');
   closeEl.textContent = '×';
   closeEl.addEventListener('click', () => {
     const it = toastItems.find(x => x.el === el);
@@ -269,7 +269,7 @@ function ingestionKey(tableName, filename) {
  *    들어갑니다. 조립기가 조각을 더 붙이는 날 이 수를 «다시 재야» 합니다. 잘라서 뒤를 버리면
  *    버리는 것이 대개 «수»입니다 (「키 결측으로 N행」이 뒤에 옵니다).
  */
-export const INGESTION_DONE_STATS = '적재 성공 및 정합성 검증 완료';
+export const INGESTION_DONE_STATS = 'Loaded and verified';
 export const MAX_INGESTION_DONE_STATS = 120;
 
 export function ingestionDoneStats(detail) {
@@ -282,13 +282,13 @@ export function ingestionDoneStats(detail) {
 export function showIngestionProgress(tableName, filename, progress, processedRows, totalRows) {
   showProgressCard({
     key: ingestionKey(tableName, filename),
-    title: '\ud83d\udce4 파일 파싱 및 적재 중',
+    title: '\ud83d\udce4 Parsing and loading file',
     subtitle: getCleanFilename(filename),
     progress,
     processed: processedRows,
     total: totalRows,
-    statsSuffix: ' 행 처리됨',
-    doneTitle: '\u2705 파일 적재 완료',
+    statsSuffix: ' rows processed',
+    doneTitle: '\u2705 File loaded',
     // 진행이 시작될 때는 서버가 아직 아무 말도 안 했습니다 — 여기서는 기본 문장이 맞고,
     // 끝날 때 `finishIngestionProgress` 가 할 말이 있으면 «갈아 끼웁니다».
     doneStats: INGESTION_DONE_STATS,
@@ -320,7 +320,7 @@ export function retroactiveKey(runId) {
 export function showRetroactiveProgress(runId, op, progress, processedRows, totalRows) {
   showProgressCard({
     key: retroactiveKey(runId),
-    title: '♻️ 소급 적용 중',
+    title: '♻️ Retroactive apply running',
     // 서버 값 그대로. 안 왔으면 «빈 줄» — 지어내지 않습니다.
     subtitle: op == null ? '' : String(op),
     progress,
@@ -328,8 +328,8 @@ export function showRetroactiveProgress(runId, op, progress, processedRows, tota
     // 🔴 `null` 을 «그대로» 넘깁니다. 0 으로 접으면 「총계를 모른다」가 「할 일이 0」이 되고,
     //    카드는 「0 중 12」라는 «불가능한 말»을 합니다. 서버가 None 을 싣는 이유가 그것입니다.
     total: totalRows,
-    statsSuffix: ' 행 처리됨',
-    doneTitle: '✅ 소급 적용 완료',
+    statsSuffix: ' rows processed',
+    doneTitle: '✅ Retroactive apply done',
     doneStats: '',
   });
 }
@@ -339,10 +339,10 @@ export function finishRetroactiveProgress(runId, status) {
   finishProgressCard({
     key: retroactiveKey(runId),
     ok: status === 'FINISHED',
-    okTitle: '✅ 소급 적용 완료',
+    okTitle: '✅ Retroactive apply done',
     okStats: '',
     // 취소는 «실패가 아닙니다». 다만 끝났고, 끝난 방식이 다릅니다 — 그 낱말이 서버의 것입니다.
-    failTitle: status === 'CANCELLED' ? '⏹️ 소급 적용 취소됨' : '❌ 소급 적용 중단',
+    failTitle: status === 'CANCELLED' ? '⏹️ Retroactive apply cancelled' : '❌ Retroactive apply stopped',
     failStats: '',
   });
 }
@@ -351,10 +351,10 @@ export function finishIngestionProgress(tableName, filename, status, errorMsg = 
   finishProgressCard({
     key: ingestionKey(tableName, filename),
     ok: status === 'SUCCESS',
-    okTitle: '\u2705 파일 적재 완료',
+    okTitle: '\u2705 File loaded',
     okStats: ingestionDoneStats(errorMsg),
-    failTitle: '\u274c 파일 적재 실패',
-    failStats: errorMsg ? errorMsg.slice(0, 50) : '처리 중 예외 발생',
+    failTitle: '\u274c File load failed',
+    failStats: errorMsg ? errorMsg.slice(0, 50) : 'Exception while processing',
   });
 }
 

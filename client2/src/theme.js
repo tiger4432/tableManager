@@ -65,7 +65,7 @@ export function syncAgGridThemeClasses(theme = getTheme()) {
 
 /** 토글 버튼 접근성 라벨 갱신 (아이콘 표시는 tokens.css가 data-theme으로 처리) */
 function updateToggleButtons(theme = getTheme()) {
-  const label = theme === 'dark' ? '라이트 테마로 전환' : '다크 테마로 전환';
+  const label = theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
   document.querySelectorAll('[data-theme-toggle]').forEach((btn) => {
     btn.setAttribute('aria-label', label);
     btn.setAttribute('title', label);

@@ -188,7 +188,7 @@ async function walkPageSuite(boot) {
   await settle();
   const go = walk(host).find((n) => (n.textContent || '') === '날리기');
   ok(Boolean(go) && go.disabled === true, 'K1 타입이 없으면 「날리기」가 꺼진다', go && go.disabled);
-  ok(Boolean(go) && titleOf(go) === '노드 타입을 먼저 고르십시오',
+  ok(Boolean(go) && titleOf(go) === 'Pick a node type first',
      'K2 그리고 «둘 중 어느 것»을 기다리는지 말한다', go && titleOf(go));
   ok(mute(host).length === 0, 'K3 말 없이 꺼진 컨트롤이 하나도 없다',
      mute(host).map((n) => n.className));
