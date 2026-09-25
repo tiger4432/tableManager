@@ -33811,3 +33811,16 @@ python -c "import sys,pytest;P=type('P',(),{'pytest_collection_modifyitems':lamb
 되돌림   production_plan · inventory_master 제 행 삭제 200 -> APPAUDIT 0 · 워크스페이스 제 파일 둘 지움 · 파일 기록 줄 남음
 안 잰 칸  «안 버림» 줄 — 코드가 안 닿는 칸이라 박스에서는 안 잼
 ```
+
+---
+
+## 보고만 — Auto Update 탭의 진단 칸이 파일 서랍(59fa66aaf · 72788b05)과 같은 모양 (09-26 07:37)
+
+```
+자리    client2/src/admin.js — 수집기 진단 칸(tracebackViewer)
+        제목은 늘 'Last Collector Execution Error'
+        last_error 가 비면 늘 'No error traceback log captured (Last execution was successful).'
+어긋남  한 번도 안 돈 PENDING · 꺼진 SKIPPED · 주인이 없는 orphaned 에도 「마지막 실행이 성공」 이라고 씁니다
+        07:37 박스 상태 파일의 수집기 10 개가 전부 이 경우입니다(SKIPPED 7 · PENDING 3 · last_run · last_error 0)
+잰 것   코드와 상태 파일만 읽음 — 화면은 안 열어 봄
+```
