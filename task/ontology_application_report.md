@@ -33448,3 +33448,20 @@ CLI 기록의 요청자   CLI 실행 행의 requested_by 가 비어 있습니다
 ```
 이제 실패 목록은 소유자의 dt_inventory EDIT 33 한 줄뿐입니다. 제 억지 실패 시험의 흔적은 목록에 0
 ```
+
+---
+
+## 전·후 — 모든 소급 연산이 페이지 사이에서 멈춤 (3bf01b96) (09-25 20:44)
+
+| | 전 (둘째 판) | 후 |
+|---|---|---|
+| `ledger_rescope` 의 cancellable | False — 화면 × 없음 | **True** ✓ |
+| `enrichment_confirm` 의 cancellable | False — 화면 × 없음 | **True** ✓ |
+| 나머지 다섯 | True | True |
+| 화면 × | 두 연산에 안 그림 | 일곱 다 그림 — `retroactive_view` 가 등록부 값이 참이면 그림(코드) |
+| 빈 범위 rescope(어드민) | done · 자식 pid | done · 자식 pid · 2.7초 — 새 페이지 길이 빈 범위에서 멀쩡 ✓ |
+
+```
+못 잰 것  rescope · confirm 을 «도는 중에» 멈추는 것 — 박스에서 그 둘을 길게 돌리면 소유자 원장 행을 다시 번역하거나
+          소유자 셀 140 개를 확정합니다(건수가 0 이 아님). 그 칸은 구현자 시험(test_every_retroactive_operation_stops_between_pages)의 몫으로 둡니다
+```
