@@ -33242,3 +33242,26 @@ PRIMER    §0~§3 을 lot_slot_wafer 표 소스의 행 하나로 다시 씀
 ```
 
 > ▶ (09-25 18:56) 둘째 판 ⑩⑪ — 지금 어드민 resolve 를 띄웁니다: table void_obs · chunk_size 100(옮겨지는 칸 0 인 표). 약 45 초 돌고 45 초에 제가 화면 취소 길로 멈춥니다. Retroactive 펼침을 여시려면 지금입니다.
+
+---
+
+## 5139290 재시도 — 그 행은 이미 지워져 있어 SUCCESS 로 갈 수 없었습니다 (09-25 18:58)
+
+지시 `2f97d8e4d`. 매퍼가 data 만 보게 고쳐진 것을 읽고, 새 행 없이 5139290 하나만 재시도했습니다(HEAD 코드, 프로세스 안).
+
+```
+사정     5139290 이 가리키는 metro 행은 앞 판 끝에 제가 지웠습니다(지시의 「치우기 — 행 지우기」) — metro 에 0 행
+답       {"status": "success", "message": "Successfully reset 0 failed events to PENDING. Skipped 1 row event(s)
+         whose row no longer exists (ids [5139290]); there is nothing to retry them with."}
+결과     5139290 FAILED 그대로 · 목록 total 34 그대로 · 요약 metro EDIT 1 그대로 · 5139289(묶음)는 목록 밖 ✓
+```
+
+| 칸 | 판정 |
+|---|---|
+| 행이 없는 행별 줄 — 이름 대고 남김 | ✓ 설계대로 (id 를 문장에 적음) |
+| 🔴 그 답의 status | **"success" 인데 재설정 0** — 구현자가 방금 묶음 줄 쪽에서 고친 것(아무것도 안 했는데 success → 화면이 성공 토스트)과 같은 모양이 «행 없음» 갈래에 남았습니다. 재현: 행을 지운 뒤 그 행의 행별 줄 하나만 재시도 |
+
+```
+여쭐 것  ㉯ 의 SUCCESS 를 보려면 행이 살아 있어야 합니다 — 새 metro 행으로 한 번 더(표식 → 실패 → 표식 지움 → 행별 줄 재시도)
+         해도 될지 말씀 주십시오. 아니면 여기서 끝이고 규칙을 걷으셔도 됩니다
+```
