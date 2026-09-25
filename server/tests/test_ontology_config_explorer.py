@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 import time
+from pathlib import Path
 from types import MappingProxyType
 from types import SimpleNamespace
 
@@ -50,6 +51,34 @@ def transfer_sample_setup():
     return load_transfer_sample_setup()
 
 
+#: A source the loader refuses BY DESIGN - a ledger source reads a table that has row_id
+#: (S-177), and `ledger_events` is a view in the shipped catalogue. So the refusal is a tracked
+#: fact rather than this box's declaration (총괄 0367926b6).
+REFUSED_SOURCE = "reads_a_view"
+SHIPPED = Path(__file__).resolve().parent.parent / "config" / "sample"
+
+
+def shipped_catalog():
+    from ledger.setup_bundle import load_physical_catalog
+
+    return load_physical_catalog(SHIPPED / "table_config.json.sample")
+
+
+@pytest.fixture
+def shipped_root_with_a_refused_source(tmp_path):
+    """The shipped declaration plus one source the loader refuses, under the filename
+    `load_setup` expects. Nothing of this box's gitignored configuration is read."""
+    document = json.loads(
+        (SHIPPED / "ledger_config.json.sample").read_text(encoding="utf-8"))
+    refused = json.loads(json.dumps(document["sources"]["lot_slot_wafer"]))
+    refused["relation"] = "ledger_events"
+    document["sources"][REFUSED_SOURCE] = refused
+    root = tmp_path / "shipped_ontology"
+    root.mkdir()
+    (root / "ledger_config.json").write_text(json.dumps(document), encoding="utf-8")
+    return root
+
+
 def referenced_relations(bundle):
     """The relations a setup REFERENCES: every source's `relation`, plus both sides of
     every declared virtual join.
@@ -72,8 +101,9 @@ def referenced_relations(bundle):
     return relations
 
 
-def test_actual_snapshot_enumerates_every_registry_and_declaration(active_setup):
-    """Was `..._every_registry_and_claim`.
+def test_actual_snapshot_enumerates_every_registry_and_declaration(
+        shipped_root_with_a_refused_source):
+    """Was `..._every_registry_and_claim`. Reads the shipped declaration, not this box's.
 
     `pack` and `claim` NODES stopped being built on 2026-08-21 with the section they read.
     They are not replaced by `predicate` nodes -- those already existed -- so both kinds
@@ -82,6 +112,7 @@ def test_actual_snapshot_enumerates_every_registry_and_declaration(active_setup)
     through `predicate` nodes, which is asserted directly rather than through a second
     node kind saying the same thing.
     """
+    active_setup = load_setup(shipped_root_with_a_refused_source, catalog=shipped_catalog())
     index = build_explorer_index(active_setup)
     bundle = active_setup.bundle.to_mapping()
     by_kind = {
@@ -109,12 +140,14 @@ def test_actual_snapshot_enumerates_every_registry_and_declaration(active_setup)
         f"{source_id}#mapper"
         for source_id in active_setup.snapshot.registries["mappers"]}
     # A source the loader refused has no plan to show and is not a node; it is refused BY
-    # NAME in its plan (총괄 0367926b6 - since S-177 a view source is refused by design, which
-    # this box's declaration has nine of). Refused or not, every declared source is accounted.
+    # NAME in its plan (총괄 0367926b6 - since S-177 a view source is refused by design).
+    # Refused or not, every declared source is accounted.
     plans = active_setup.snapshot.source_plans
     assert by_kind["source_plan"] == {s for s, p in plans.items() if p.planned}
     assert set(active_setup.snapshot.registries["sources"]) == set(plans)
-    assert all(dict(p.refusal or {}).get("message") for p in plans.values() if not p.planned)
+    assert [s for s, p in plans.items() if not p.planned] == [REFUSED_SOURCE]
+    assert plans[REFUSED_SOURCE].refusal["code"] == "relation_not_a_row_table"
+    assert "'ledger_events'" in plans[REFUSED_SOURCE].refusal["message"]
     assert by_kind["verified_join"] == set(active_setup.snapshot.registries["verified_joins"])
     # WAS `== set(bundle["tables"])`. That section no longer exists -- the ledger stopped
     # keeping a copy of the physical schema -- so the subject of this assertion is now the
@@ -725,9 +758,17 @@ def test_review_revision_is_immutable(copied_root, tmp_path):
     assert revised["review_history"][0]["revision"] == 1
 
 
-def test_activation_is_cas_atomic_and_matches_reviewed_preview(copied_root, tmp_path):
+def test_activation_is_cas_atomic_and_matches_reviewed_preview(
+        shipped_root_with_a_refused_source, tmp_path):
+    """The reviewed preview must compile what activation compiles - with a refused source in
+    the root, since the preview passes the active refusals along (a root without one could
+    not tell). Reads the shipped declaration, not this box's (총괄 0367926b6)."""
+    copied_root = shipped_root_with_a_refused_source
+    catalog = shipped_catalog()
     service = OntologyExplorerService(
         config_root=copied_root, draft_root=tmp_path / "drafts",
+        setup_loader=lambda root: load_setup(root, catalog=catalog),
+        catalog_loader=lambda: catalog,
         convergence_probe=lambda expected: {
             "ontology-explorer-api": expected,
             "ledger-persistent-reader": expected,
