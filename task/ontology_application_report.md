@@ -32967,3 +32967,82 @@ PRIMER    §0~§3 을 lot_slot_wafer 표 소스의 행 하나로 다시 씀
          CLI 는 구현자 셈(fd55bf66c): 다섯 · 연산 호출 여덟 — 총괄 목록에 없던 enrichment_insights --apply 를 종류로 더합니다
 ```
 다르게 보시면 이 줄에서 멈추겠습니다.
+
+---
+
+## 대기열 전 종류 검수 — 첫 판: 자리 잡은 종류 (09-25 17:59)
+
+지시 `b9dd4e1c4`. 박스에서 제품 경로로 쓰고 지웠습니다. 제 쓰기는 `X-User: app-lane-audit` · 값 `APPAUDIT-…` 로 표시했고,
+끝에 표 행 0 을 확인했습니다(metro · production_plan · inventory_master). 고치지 않았습니다. 소급 · CLI 는 프로세스 배치가 착지한 뒤 둘째 판입니다.
+
+칸: ① 줄이 생기나 · ② 메인 그리드 대기열에 뜨나 · ③ 주인(코드 판정 `outbox_owner` / 실제로 뺀 쪽) · ④ SUCCESS + 처리 시각 · ⑤ 알림 뒤 사라지나 · ⑥ 체인 규칙 · ⑦ 억지 실패 · ⑧ 취소
+
+| 종류 | ① | ② | ③ | ④ | ⑤ | ⑥ | ⑦ |
+|---|---|---|---|---|---|---|---|
+| 행 추가 ×2 (HTTP, metro) | CREATE 2줄 | 못 봄 · 24ms | 체인 | ✓ | ✓ | 해당 없음 | 해당 없음 — 걸린 규칙 없음 |
+| 셀 편집 | EDIT 1 | 못 봄 · 50ms | 체인 | ✓ | ✓ | — | 해당 없음 |
+| 붙여넣기 ×2 | EDIT **1줄**에 두 행 | 못 봄 · 19ms | 체인 | ✓ | ✓ | — | 해당 없음 |
+| 체인 표 편집 (production_plan) | EDIT 1 | **0.009초에 봄** · 77ms | 체인 | ✓ | ✓ | inventory_master stock 30 (기대 30) ✓ | 못 만듦 — 숫자 칸에 글자는 그리드가 400 |
+| 체인이 쓴 것 (연쇄) | CREATE inventory_master 1 | 못 봄 · 94ms | 체인 | ✓ | ✓ | 그 자체 | — |
+| 행 삭제 · 여러 행 삭제 | DELETE 1 · 1 | 못 봄 · 12 · 6ms | 체인 | ✓ | ✓ | — | — |
+| 업로드 (일반) | 행 1.5초 · CREATE 묶음 줄 | 못 봄 · 89ms | 체인 | ✓ | ✓ | stock 20 (기대 20) ✓ | 🔴 아래 ② |
+| 업로드 (폴더 트리) | 행 2.5초 · 같은 모양 | 못 봄 · 52ms | 체인 | ✓ | ✓ | stock 20 ✓ | — |
+| 업로드 (대형 레인 11,010,119 B) | 행 1.6초 · 같은 모양 | 못 봄 · 32ms | 체인 | ✓ | ✓ | stock 20 ✓ | 🔴 아래 ① |
+| 설정 리로드 (토큰 라우트 함수, 프로세스 안) | SYSTEM_RELOAD 1 (표 `system`) | 못 봄 · 7ms | `unknown`(설계) / 0.2초에 SUCCESS | ✓ | ✓ | — | — |
+| 알림 실패 표식 (프로세스 안) | BROADCAST_RECOVERY 1 | **0.03~7.94초 봄** | 🔴 `unknown` / 체인 워커 청소가 8.2초에 찍음 | 태어날 때 SUCCESS | ✓ | — | — |
+| 지금 수집 | 제가 안 누름 — 17:46 에 다른 세션이 누른 것을 관측: SCHEDULER_RUN_NOW 2016ms SUCCESS · 알림 + 수집기가 쓴 CREATE wafer_process 546ms | | 스케줄러 | ✓ | ✓ | — | — |
+
+⑧ 취소: 위 종류에는 취소 문이 없습니다(소급 · CLI 둘째 판에서).
+② 는 메인 그리드 대기열(/outbox/queue/rows, 토큰 없음)만 쟀습니다 — 어드민 대기열은 토큰 라우트라 안 봤고, 두 라우트가 판단을 공유한다는 것은 라우트 설명의 말입니다.
+② 「못 봄」은 결함이 아니라 관측 창입니다 — 처리가 6~94ms 라 폴링(약 50ms + HTTP)보다 빠릅니다. 오래 기다리는 두 줄(77ms 하나 · 표식)은 떴다가 알림 뒤 사라졌습니다.
+
+### 🔴 빨간 칸 — 재현과 함께. 원인은 가르지 않았습니다
+
+```
+① 대형 레인  11,010,119 B CSV(쓰지 않는 칸 pad 로 부풀림 — 인제션이 「Dropped 1 undeclared column」 로 버림)를
+            production_plan 에 올림 -> 감지 1초 뒤 「Starting pipeline processing」, 「🐘 Routed to heavy lane queue」 줄 «없음»
+            문턱은 기본 10 MB(박스 설정에 heavy_file_mb 없음). 오늘 그 줄 48 개는 전부 시험 표(hvy_test_*)
+            감시 프로세스 run_watcher.py 는 09-24 22:44 에 뜸 (directory_watcher.py 마지막 커밋 09-24 23:46 — 대형 레인과 무관한 커밋)
+            재현  11 MB 넘는 CSV 를 POST /tables/production_plan/upload -> server/watcher.log 에서 그 파일 이름의 줄
+② 인제션 실패  target_qty=abc 인 CSV -> 파일 FAILED (file_ingestion_logs id 22371). 아웃박스 줄 0 — 실패 요약에 안 실림
+            사유 칸이 이름 붙은 문장이 아니라 «날 트레이스백» (crud.py cast_value_by_type 의 int(val))
+            재현  숫자 칸에 글자를 넣은 CSV 한 줄 업로드
+③ 주인 판정  outbox_owner('BROADCAST_RECOVERY') = unknown. 그 표식을 쓰는 함수 설명은 「체인 워커가 이것을 맡는다
+            (sweep_undelivered_broadcasts)」고, 실제로 체인 워커가 8.2초에 찍음 — 판정 자리와 하는 자리가 다름
+```
+
+### 관찰 — 빨강은 아님
+
+```
+그리드 거절 문장이 한국어 — 「컬럼 'target_qty'의 값 'abc'은(는) 올바른 숫자 형식이 아닙니다.」 (서버 문장, 그리드가 그대로 그림)
+조인 거절 문장도 한국어 — join_into 「이 규칙이 볼 행이 넘어오지 않았습니다」
+실패 요약 한 줄에서 day 는 보는 사람의 시간대(2026-09-23), 같은 줄 first_at · last_at 은 UTC(09-22 15:14+00:00) — 화면이 어떻게 그리는지는 안 봄
+붙여넣기 두 행은 EDIT 한 줄, 행 추가 두 행은 CREATE 두 줄
+```
+
+### 안 돌린 것 — 이유
+
+```
+스크립트 저장    박스의 파서·맵퍼 파일을 바꾸는 종류라 안 씀. 만드는 줄(SYSTEM_RELOAD)은 설정 리로드와 같은 문 — 거기서 잼
+실패 재시도      라우트가 줄 하나(event_id)도 받지만, 박스의 실패 줄은 소유자의 dt_inventory EDIT 81 건뿐이라 다시 돌리면 실제 값이 바뀜
+                제 실패 줄을 만들어 그것을 재려 했으나 그리드 입력으로는 실패가 안 생김(400) — ⑦ 과 같이 여쭙니다
+지금 수집        수집기가 원장 소스 표(wafer_process)에 행을 만들어 원자까지 생김 — 다른 세션의 실행을 관측으로 적음
+```
+
+### 박스에 남긴 것
+
+```
+파일   production_plan/raws/ 에 CSV 넷 (archive_processed_files=false 라 처리 뒤에도 그 자리가 정상):
+       user(app-lane-audit)_APPAUDIT-U175301_646a7489.csv · appaudit/tree/APPAUDIT-T175301.csv ·
+       user(app-lane-audit)_APPAUDIT-H175435_a5c4ac25.csv (10.5 MB) · user(app-lane-audit)_APPAUDIT-B175742_7a926b09.csv
+       지우면 무엇이 따라 걷히는지 재지 않아서 안 지웠습니다 — 치울지 말씀 주십시오
+기록   file_ingestion_logs FAILED 1 줄(id 22371) — 파일 인제션 실패 목록에 보입니다
+```
+
+### 여쭐 것
+
+```
+⑦ 억지 실패  대기열(아웃박스) 쪽 실패를 제품 입력으로 만들 길이 박스에 없습니다 — 그리드는 400, 체인 맵퍼는 올바른 값에 안 실패
+            ㉠ 시험용 실패 규칙 하나를 소유자 config 에 잠깐 넣고 빼기(총괄 몫)  ㉡ ⑦ 은 시험(pytest)으로만  ㉢ 빈칸 「못 만듦」으로 둠
+실패 재시도  위 ⑦ 로 제 실패 줄이 생기면 그것 하나를 재시도해 재겠습니다 — 소유자의 81 건은 안 건드립니다
+```
