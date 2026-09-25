@@ -1872,7 +1872,6 @@ def run_here(op: str, params: dict, log=print) -> dict:
     An exception from the operation reaches the caller after the row says `failed`.
     """
     from database import crud, models
-    from utils import heartbeat
 
     spec = operation(op)
     params = validate(op, params)
@@ -1883,8 +1882,100 @@ def run_here(op: str, params: dict, log=print) -> dict:
     # The heartbeat is beaten inside the claim, after the gate passes and before the stamp:
     # `runner_identity` names it, and a refused CLI must not overwrite a running one's.
     run_id = claim(op, params, beat_as=RUN_HERE_HEARTBEAT)
+    return _run_in_this_process(run_id, op, spec, params, log)
 
+
+def run_claimed(run_id: str, log=print) -> dict:
+    """The scheduler's child (총괄 7d2c5845b · f453968fe ③): run a row the scheduler already
+    claimed, in THIS process, the way `run_here` runs a CLI's - one way to run in a process
+    of its own. The row must still be `running`: a screen cancel or a release while the
+    child was starting ends it here instead.
+
+    :raises RetroactiveRefused: the row is gone, not running, or its params are refused.
+    """
+    from database import crud, models
+    from database.database import SessionLocal
+    from utils import heartbeat
+
+    session = SessionLocal()
+    try:
+        row = (session.query(models.RetroactiveRun)
+               .filter(models.RetroactiveRun.run_id == run_id).first())
+        if row is None or row.state != RUN_RUNNING:
+            raise RetroactiveRefused("run_id=%s is %s, not running - nothing to run"
+                                     % (run_id, row.state if row else "unknown"))
+        op, params = row.op, json.loads(row.params) if row.params else {}
+    finally:
+        session.close()
+    try:
+        spec = operation(op)
+        params = validate(op, params)
+        if not crud.TABLE_CONFIG:
+            raise RetroactiveRefused(
+                "table_config.json is empty or missing - nothing is registered")
+    except RetroactiveRefused as e:
+        _mark_run(run_id, state=RUN_FAILED, finished=True, error=str(e))
+        raise
+    models.init_dynamic_models(crud.TABLE_CONFIG)
+    heartbeat.beat(RUN_HERE_HEARTBEAT, force=True)
+    _restamp_runner(run_id, runner_identity())
+    return _run_in_this_process(run_id, op, spec, params, log)
+
+
+#: Anything the child prints - a crash's traceback - lands here, beside its own lines in
+#: `retroactive.log`: the `<name>_stdout.log` every process of this stack has.
+CHILD_STDOUT_LOG = "retroactive_stdout.log"
+
+
+def spawn_claimed(run_id, log=logger.info):
+    """Start the scheduler's child for a row it just claimed (총괄 f453968fe ③) and name the
+    child as the row's runner. Until the child beats, that name has no heartbeat and the gate
+    reads the run as nobody's - the existing mechanism, no new one. A start that fails ends
+    the row `failed` here. :return: the child's pid, or None."""
+    import socket
+    import subprocess
+    import sys
+
+    import paths
+
+    try:
+        with open(paths.log_path(CHILD_STDOUT_LOG), "a", encoding="utf-8") as sink:
+            child = subprocess.Popen(
+                [sys.executable, "-m", "admin.retroactive_run", run_id], cwd=paths.SERVER_DIR,
+                stdout=sink, stderr=subprocess.STDOUT,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except Exception as exc:                                     # noqa: BLE001
+        _mark_run(run_id, state=RUN_FAILED, finished=True,
+                  error="its process could not start: %s" % exc)
+        log("[Retroactive] run_id=%s could not start its process: %s" % (run_id, exc))
+        return None
+    _restamp_runner(run_id, "%s/%s/%d" % (RUN_HERE_HEARTBEAT, socket.gethostname(), child.pid))
+    log("[Retroactive] run_id=%s runs in its own process pid=%d - its log is retroactive.log"
+        % (run_id, child.pid))
+    return child.pid
+
+
+def _restamp_runner(run_id, runner):
+    """Name the process that holds a running row - the child, once it beats. Own session."""
+    from database import models
+    from database.database import SessionLocal
+
+    session = SessionLocal()
+    try:
+        (session.query(models.RetroactiveRun)
+         .filter(models.RetroactiveRun.run_id == run_id)
+         .update({"runner": runner}, synchronize_session=False))
+        session.commit()
+    finally:
+        session.close()
+
+
+def _run_in_this_process(run_id, op, spec, params, log):
+    """A claimed row, run in the process that holds it - a CLI's (`run_here`) or the
+    scheduler's child (`run_claimed`): heartbeat, the one ending, and the file's removal."""
     import threading
+
+    from utils import heartbeat
 
     stop = threading.Event()
 

@@ -1111,16 +1111,15 @@ class TestAdminCannotRemoveAHumansValue:
 
 class TestTheSchedulerRunsItOffTheTickThread:
 
-    def test_a_run_does_not_execute_on_the_tick(self):
+    def test_a_run_does_not_execute_on_the_tick(self, retro_env, monkeypatch):
         """`run()` beats once per tick and `DEFAULT_STALE_AFTER_SEC` is 60 s.
 
         A retroactive run executed inline - the way `run_collector_on_demand`
         executes a collector - would stop the beat for the whole run and make
-        /health report this daemon WEDGED. An operator pressing an offered button
-        would take the monitoring surface down as a direct consequence.
+        /health report this daemon WEDGED. It runs in a child of its own now
+        (총괄 f453968fe ③): the tick claims the row and starts the child, nothing more,
+        and the claimed row closes the gate in the TABLE for the next tick.
         """
-        import threading
-
         import run_auto_update
         from utils import heartbeat
 
@@ -1128,38 +1127,27 @@ class TestTheSchedulerRunsItOffTheTickThread:
             "the staleness budget changed; re-check that an inline run is still "
             "the wrong shape")
 
+        spawned = []
+        monkeypatch.setattr(retroactive, "spawn_claimed",
+                            lambda run_id, log=None: spawned.append(run_id) or 4242)
+        monkeypatch.setattr(retroactive, "execute", lambda *a, **k: pytest.fail(
+            "the run executed in the scheduler"))
+        first = retroactive.publish(retro_env, "withdraw", {"table": "retro_test_target",
+                                                            "source": "s"})
+        second = retroactive.publish(retro_env, "withdraw", {"table": "retro_test_target",
+                                                             "source": "s"})
         sched = run_auto_update.MultiDiscoveryScheduler.__new__(
             run_auto_update.MultiDiscoveryScheduler)
-        sched._retroactive_thread = None
-        sched._retroactive_last = None
 
-        started = threading.Event()
-        release = threading.Event()
-
-        def slow(payload, log=None, claimed=False):
-            started.set()
-            release.wait(5)
-            return {"status": "ok"}
-
-        from admin import retroactive as retro_mod
-        original = retro_mod.execute
-        retro_mod.execute = slow
-        try:
-            assert sched.start_retroactive_run({"run_id": "a", "op": "graph_orphans"})
-            assert started.wait(5), "the run never started"
-            # The tick thread is free while the run is in flight: this call returns
-            # rather than blocking behind it.
-            assert sched.retroactive_busy() is True
-            # ...and a second request is REFUSED, not queued into a concurrent run.
-            assert sched.start_retroactive_run({"run_id": "b", "op": "graph_orphans"}) \
-                is False
-        finally:
-            release.set()
-            if sched._retroactive_thread:
-                sched._retroactive_thread.join(5)
-            retro_mod.execute = original
-
-        assert sched.retroactive_busy() is False
+        assert sched.start_retroactive_run(first) is True
+        assert spawned == [first["run_id"]]
+        assert sched.retroactive_busy() is True
+        # ...and a second request is REFUSED, not started beside it - it waits, queued.
+        assert sched.start_retroactive_run(second) is False
+        assert spawned == [first["run_id"]]
+        states = {r.run_id: r.state for r in retro_env.query(models.RetroactiveRun).all()}
+        assert (states[first["run_id"]], states[second["run_id"]]) == (
+            retroactive.RUN_RUNNING, retroactive.RUN_QUEUED)
 
     def test_the_scheduler_consumes_the_declared_event_type(self):
         """The subject here IS the text: does the scheduler NAME the shared constant, or

@@ -404,9 +404,6 @@ class MultiDiscoveryScheduler:
         # 0.0 = "check on the very first tick", so a scheduler that starts after
         # a week of downtime takes the missed snapshot at boot rather than waiting.
         self._last_backup_check = 0.0
-        # One retroactive run at a time (see start_retroactive_run).
-        self._retroactive_thread = None
-        self._retroactive_last = None
         # 🔴 THE DOOR FOR COLLECTORS, and the reason it had to be created rather than
         # found: until now the door WAS the inline call. A cron collector ran on the tick
         # thread, so the tick could not come round and fire it again - and that same
@@ -736,12 +733,11 @@ class MultiDiscoveryScheduler:
         into two processes with two handles, so the gate would have gone on answering 「open」
         while the case it guards was happening. No error, two sessions, same cells.
 
-        ⚠️ THE TWO READS ARE NOT TWO ANSWERS - NEITHER COVERS THE OTHER'S CASE.
-           the thread   catches a run whose ROW could not be written (2026-09-05:
-                        `runner` deployed before its migration made every UPDATE raise,
-                        so the row says `queued` while the work runs)
-           the table    catches a run in ANOTHER process, which a handle cannot see at all
-           So it is one question asked where each source is the only witness.
+        ⚰️ THE THREAD WITNESS RETIRED (총괄 f453968fe ③). It caught a run whose row could not
+           be written (2026-09-05: `runner` deployed before its migration made every UPDATE
+           raise, so the row said `queued` while the work ran). The row is now written by
+           `claim` BEFORE anything starts - a claim that cannot write starts nothing - and the
+           work runs in a child this process holds no handle to. The table is the witness.
 
         ⚠️ COST, because the previous note here deliberately avoided it: this adds ONE query
            per tick while nothing is in flight. Measured - tick is 5 s (`check_interval`) and
@@ -749,9 +745,6 @@ class MultiDiscoveryScheduler:
            is the price of the gate spanning processes, and it is paid on a scheduler loop
            rather than a request path.
         """
-        t = self._retroactive_thread
-        if t and t.is_alive():
-            return True
         return self.retroactive_moving_state() is not None
 
     def retroactive_moving_state(self):
@@ -777,10 +770,13 @@ class MultiDiscoveryScheduler:
             return None
 
     def start_retroactive_run(self, payload: dict) -> bool:
-        """Run one queued retroactive (backfill) operation OFF the tick thread.
+        """Run one queued retroactive (backfill) operation in a process of its own.
 
-        [Why a thread, and why this is not optional]
-        A retroactive run walks a whole table. ``run()`` emits
+        [Why its own process] 소유자 「대형 작업을 별도 프로세스로」 (총괄 7d2c5845b · 811ff7f06):
+        the same way a CLI runs one - `retroactive.run_claimed` in the child - so a heavy
+        run is not inside this daemon at all. It survives a restart of this daemon alone.
+
+        [Why not on the tick, which a thread already avoided] A retroactive run walks a whole table. ``run()`` emits
         ``heartbeat.beat("scheduler")`` once per tick and
         ``heartbeat.DEFAULT_STALE_AFTER_SEC`` is 60 s, so executing the run inline -
         the way ``run_collector_on_demand`` executes a collector - would stop the
@@ -828,33 +824,23 @@ class MultiDiscoveryScheduler:
         #    claim inside the thread would come after the wake-up row is marked, so a refusal
         #    there would strand the run `queued` with nobody left to ring for it.
         run_id = (payload or {}).get("run_id")
-        claimed = False
-        if run_id:
-            try:
-                claimed = retroactive.claim(run_id=run_id) is not None
-            except retroactive.RetroactiveRefused as e:
-                logger.warning("[Retroactive] gate closed: %s. Leaving run_id=%s queued for a "
-                               "later tick.", e, run_id)
-                return False
-            if not claimed:
-                # No longer queued - taken, cancelled or finished. Nothing to start, and the
-                # wake-up row is done: left unmarked it would head the queue forever.
-                logger.info("[Retroactive] run_id=%s is no longer queued; nothing to start.",
-                            run_id)
-                return True
-
-        def _worker():
-            try:
-                self._retroactive_last = retroactive.execute(payload, log=logger.info,
-                                                             claimed=claimed)
-            except Exception as e:
-                # `execute` already swallows; this is the last resort so a thread
-                # death cannot be silent.
-                logger.error("[Retroactive] runner thread raised: %s", e, exc_info=True)
-
-        self._retroactive_thread = threading.Thread(
-            target=_worker, name="retroactive-run", daemon=True)
-        self._retroactive_thread.start()
+        try:
+            claimed = retroactive.claim(run_id=run_id) if run_id else None
+        except retroactive.RetroactiveRefused as e:
+            logger.warning("[Retroactive] gate closed: %s. Leaving run_id=%s queued for a "
+                           "later tick.", e, run_id)
+            return False
+        if not claimed:
+            # No longer queued - taken, cancelled or finished - or no row to name at all.
+            # Nothing to start, and the wake-up row is done: left unmarked it would head the
+            # queue forever.
+            logger.info("[Retroactive] run_id=%s is not a queued run; nothing to start.",
+                        run_id)
+            return True
+        # 🔴 [총괄 f453968fe ③] The row is running and held before the child exists, so the next
+        #    tick finds the gate closed in the TABLE - not in a count this process keeps, which
+        #    a restart of this daemon would forget.
+        retroactive.spawn_claimed(claimed, log=logger.info)
         return True
 
     def handle_retroactive_trigger(self, db):

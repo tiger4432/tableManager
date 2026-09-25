@@ -525,6 +525,60 @@ def _kill_pids(pids, log=None):
     return killed
 
 
+#: How long an app stop waits for the scheduler's retroactive child to stop at its page
+#: boundary after the screen's cancel, before it kills that process (총괄 f453968fe ②).
+RETROACTIVE_STOP_GRACE_SEC = 15.0
+
+
+def stop_retroactive_child(grace=RETROACTIVE_STOP_GRACE_SEC, log=None):
+    """Stop the scheduler's retroactive child, if one runs: the screen's cancel first
+    (`request_cancel`), then a kill of its heartbeat's pid if it has not stopped in `grace`.
+
+    ⚠️ ONLY THE CHILD. A CLI's run beats the same heartbeat but is an operator's own process
+    in a terminal, not this app's - told apart by the child's command line
+    (`-m admin.retroactive_run`). The child is found by its heartbeat, not as a descendant,
+    because a child started before a scheduler restart is no longer anyone's descendant.
+    Never raises: an app stop must not depend on it. :return: what it did, as a word.
+    """
+    say = log or (lambda *a, **k: None)
+    try:
+        from admin import retroactive
+        from database.database import SessionLocal
+        from utils import heartbeat
+
+        beat = heartbeat.read_all().get(retroactive.RUN_HERE_HEARTBEAT)
+        if not beat or beat.get("stale"):
+            return "none"
+        psutil = _psutil_or_warn(log)
+        if psutil is None:
+            return "no_psutil"
+        proc = psutil.Process(int(beat["pid"]))
+        if "admin.retroactive_run" not in " ".join(proc.cmdline()):
+            say("A retroactive run is in a process this app did not start (a CLI, pid %s); "
+                "left running." % beat["pid"])
+            return "not_ours"
+        session = SessionLocal()
+        try:
+            run = retroactive.in_flight(session)
+            if run and str(run.get("runner") or "").endswith("/%s" % beat["pid"]):
+                retroactive.request_cancel(session, run["run_id"])
+                say("Asked retroactive run_id=%s (pid %s) to stop at its next page."
+                    % (run["run_id"], beat["pid"]))
+        finally:
+            session.close()
+        try:
+            proc.wait(timeout=grace)
+            return "stopped"
+        except psutil.TimeoutExpired:
+            proc.kill()
+            say("Retroactive child pid %s did not stop within %ss; killed." % (
+                beat["pid"], grace), level="WARNING")
+            return "killed"
+    except Exception as exc:                                     # noqa: BLE001
+        say("Could not stop the retroactive child: %s" % exc, level="WARNING")
+        return "error"
+
+
 class ChildSpec:
     """How to start one child, and what to do when it dies.
 
@@ -1052,6 +1106,9 @@ class Supervisor:
         process that will not die.
         """
         self._stopping = True
+        # Before the scheduler's subtree is killed below: its retroactive child is stopped the
+        # way the screen stops a run, so it ends at a page boundary rather than mid-page.
+        stop_retroactive_child(log=self._log)
         for child in reversed(self.children):
             proc = child.proc
             if proc is None or proc.poll() is not None:

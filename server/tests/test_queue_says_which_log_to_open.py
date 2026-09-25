@@ -36,7 +36,10 @@ def loop_here(monkeypatch):
 
 @pytest.fixture
 def beats(tmp_path, monkeypatch):
-    """A heartbeat directory of this test's own, and a writer for the chain worker's file."""
+    """A heartbeat directory of this test's own, and a writer for the chain worker's file.
+    This process runs no loop - set, not assumed: a test elsewhere that attaches the
+    registry and does not detach it turned these red in a wide run (2026-09-25)."""
+    monkeypatch.setattr(activity.registry, "_attached", False)
     monkeypatch.setattr(heartbeat, "heartbeat_dir", lambda: str(tmp_path))
     monkeypatch.setattr(heartbeat, "heartbeat_path",
                         lambda name: os.path.join(str(tmp_path), "%s.json" % name))

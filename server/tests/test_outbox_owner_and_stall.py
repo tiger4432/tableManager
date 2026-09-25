@@ -241,8 +241,8 @@ def test_no_run_in_flight_is_None_rather_than_an_invented_row():
 
 # ------------------------------------------------------------------ the gate itself
 
-@pytest.mark.parametrize("alive", [True, False])
-def test_the_gate_never_opens_and_now_also_sees_other_processes(alive):
+@pytest.mark.parametrize("held", [True, False])
+def test_the_gate_never_opens_and_now_also_sees_other_processes(held):
     """🔴 불변식은 그대로다 — 이 게이트는 «절대 더 열리지 않는다». 시간이 지났다고 여는 것은
     멎은 실행을 「같은 셀을 두 세션이 쓰는」 순서와 바꾸는 일이고, 그건 `start_retroactive_run`
     이 「나중에 아무도 설명 못 한다」고 적어 둔 바로 그것이다.
@@ -252,17 +252,15 @@ def test_the_gate_never_opens_and_now_also_sees_other_processes(alive):
        쓰인 그 쌍이 «프로세스 둘»에 놓인다. 손잡이만 보면 그 경우에 계속 「열림」이라 답한다.
     ⚠️ 그래서 «더 닫히는» 쪽으로만 바뀌었다. 이 시험이 지키는 불변식과 같은 방향이다.
 
-    증인이 «둘»이고 서로를 못 덮는다:
-       손잡이  행을 «못 쓴» 실행을 잡는다 (2026-09-05: `runner` 컬럼 이전 배포로 UPDATE 가
-              전부 터져 행은 queued 인데 일은 돌고 있었다)
-       표     «다른 프로세스»의 실행을 잡는다 — 손잡이로는 아예 안 보인다
+    ⚰️ 손잡이 증인은 은퇴했다 (총괄 f453968fe ③). 그것이 잡던 「행을 못 쓴 실행」은 이제 생길
+       수 없다 — `claim` 이 행을 «먼저» 쓰고, 못 쓰면 아무것도 안 띄운다. 일은 이 프로세스가
+       손잡이를 갖지 않는 자식에서 돈다. 증인은 표 하나다.
     """
     from run_auto_update import MultiDiscoveryScheduler
 
-    thread = types.SimpleNamespace(is_alive=lambda: alive)
-    scheduler = types.SimpleNamespace(_retroactive_thread=thread,
-                                      retroactive_moving_state=lambda: None)
-    assert MultiDiscoveryScheduler.retroactive_busy(scheduler) is alive
+    scheduler = types.SimpleNamespace(
+        retroactive_moving_state=lambda: {"run_id": "r"} if held else None)
+    assert MultiDiscoveryScheduler.retroactive_busy(scheduler) is held
 
 
 def test_a_run_in_another_process_closes_the_gate_here():
@@ -278,13 +276,13 @@ def test_a_run_in_another_process_closes_the_gate_here():
     assert MultiDiscoveryScheduler.retroactive_busy(scheduler) is True
 
 
-def test_the_gate_is_closed_for_a_stalled_run_exactly_as_for_a_moving_one():
-    """Same thread, same answer, whatever the run is doing."""
+@pytest.mark.parametrize("moving", ["progressing", "stalled", "unreported"])
+def test_the_gate_is_closed_for_a_stalled_run_exactly_as_for_a_moving_one(moving):
+    """Same row, same answer, whatever the run is doing."""
     from run_auto_update import MultiDiscoveryScheduler
 
     scheduler = types.SimpleNamespace(
-        _retroactive_thread=types.SimpleNamespace(is_alive=lambda: True),
-        retroactive_moving_state=lambda: None)
+        retroactive_moving_state=lambda: {"run_id": "r", "moving": moving})
     assert MultiDiscoveryScheduler.retroactive_busy(scheduler) is True
 
 
