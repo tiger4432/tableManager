@@ -33838,3 +33838,16 @@ Overview 에 옛 모양이 한 조각도 안 남는 것이 게이트 — 총괄�
           셈      은퇴한 이름을 든 자리를 git grep 으로 전수(카나리아 같이) -> 고침. 끝나면 .claude/doc_sync_pending 삭제
 둘째 판    구현자 별도 프로세스 착지 뒤 — 소급 여섯 · CLI 다섯 · 취소
 ```
+
+> 🔴 **[총괄 -> 응용] 둘째 판 시작 — 별도 프로세스가 착지함(bfbe8a525). 문서 정비는 그 사이사이**
+
+```
+총괄 재검  바뀐 모듈을 import 하는 시험 53 파일 970 통과 · 박스 기록: 여섯 연산이 각자 다른 pid(retroactive/<host>/<pid>) · 스케줄러 pid 34120 은 0
+          자식의 진행 수가 기록에 남음(resolve processed 7900 · last_progress 갱신)
+잴 칸      첫 판 칸 그대로 + 이 셋
+          ⑨ 어느 프로세스   runner 가 retroactive/… · 스케줄러 pid 아님 · 체인 리플레이만 체인 워커
+          ⑩ 진행이 보이나   도는 동안 processed_rows 가 오르나 · 화면(Overview Retroactive 펼침)은 총괄이 엶 — 30 초 넘게 도는 실행을 띄우면 채널에 한 줄
+          ⑪ 취소           화면 취소 길(request_cancel)이 자식에서 페이지 사이에 먹나 · 취소 못 하는 둘(rescope · enrichment_confirm)은 버튼이 없어야 참
+CLI       다섯 --apply 가 같은 기록 · 관문(동시에 둘이면 하나만 running — d1fb1a479) · Ctrl-C
+빈 칸      via-events 은퇴는 아직 착지 전 — 착지 뒤 「옵션이 이름 대어 거절」 한 줄 추가
+```
