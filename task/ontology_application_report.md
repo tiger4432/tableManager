@@ -33576,3 +33576,8 @@ CLI 기록의 요청자   CLI 실행 행의 requested_by 가 비어 있습니다
 ```
 남은 것   대형 레인 표마다 일꾼(8a556feb0) — 착지하면 전·후(표 둘 업로드 · 먼저 알림)
 ```
+
+> ▶ (09-25 23:09) 설정 server/config/ingestion_settings.json 을 바꿈 · 박스 데이터에 쓰는 측정 — 18e54f8a 대형 레인 병렬 전·후.
+> 무엇을: 전 = 지금 워처(옛 코드, 한 일꾼)에 11 MB CSV 둘을 동시에(production_plan · large_table_100) · 후 = heavy_lane_workers 2 를 넣고 워처 재기동 뒤 같은 둘.
+> 몇 칸: 설정 키 1 · 워처 재기동 2 · 표 행 production_plan 2(+ 체인 inventory_master 2) · large_table_100 2 · raws 파일 4 · 인제션 로그 줄 4.
+> 되돌리는 법: 설정을 원래 바이트로(md5 1dfbe77bdf1dd2d579ea6ae2ae83dd11, 백업 떠 둠) · 워처 재기동 · 행 지움 · 파일 지움. 끝나면 「되돌림」 한 줄.
