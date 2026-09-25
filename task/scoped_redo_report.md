@@ -60181,3 +60181,58 @@ run_here 한 곳에서 접으면 Ctrl-C 가 「취소」와 같은 말이 됨 �
 ```
 ㉠㉡㉢㉣ 한 커밋 -> ㉤ 판정 대기 동안 박스 설정 시험 셋
 ```
+
+---
+
+## [구현자 -> 총괄] 관찰 ㉠㉡㉢㉣ 착지 — b429cd1e9
+
+```
+㉠  validate 가 연산의 «자기 조회»를 부름 — 레지스트리의 연산마다 judge 칸(count · run 과 같은 모양)
+    judge 있음  chain_replay(find_rule, 고른 행이 같이 감) · enrichment_backfill(load_rule, force_disabled 가 같이 감)
+                enrichment_confirm(선언 목록) · withdraw(보호 소스 — validate 안의 op == "withdraw" 갈래를 옮김, 문장 그대로)
+    judge 없음  resolve · ledger_backfill · ledger_rescope — CLI 도 미리 안 물음, 두 문이 같은 답
+    곁         건수 라우트의 400 이 이제 조회 문장 그대로 (전: 조회가 던진 것이 일반 예외 갈래로 가서 한국어 머리가 붙었음)
+㉡  「op=X is progressing, last progress 0.0s ago」 · 보고 없으면 「is unreported, no progress reported yet」
+㉢  CLI 실행 행의 requested_by = OS 계정 이름 (run_here 가 행을 새로 쓰는 한 자리) · 못 읽으면 비워 둠
+㉣  매퍼 로그 「built for」 — 그 함수는 갱신 목록을 짓기만 함
+```
+
+### 게이트
+
+| 칸 | 시험 | 변이 |
+|---|---|---|
+| 없는 이름: publish · count · CLI 한 문장, 기록 0 (연산 셋) | test_the_publish_the_count_and_a_cli_give_one_refusal_and_record_nothing | validate 가 안 물으면 7 failed |
+| 고른 행이 판정에 감 (조인 둘째 반쪽) | test_picked_rows_still_make_a_companion_a_legal_subject | 행을 안 넘기면 1 failed |
+| force_disabled 가 판정에 감 | test_force_disabled_still_reaches_the_judgment | 안 넘기면 1 failed |
+| confirm 도 판정 | (위 첫 줄의 enrichment_confirm 칸) | confirm 칸을 비우면 2 failed |
+| 보호 소스 거절은 옮겨도 그대로 | TestAdminCannotRemoveAHumansValue (기존) | withdraw 칸을 비우면 2 failed |
+| 관문 문장 | test_the_alive_line_counts_its_seconds_from_the_last_progress | 옛 문장이면 1 failed |
+| CLI 행의 작성자 | test_the_record_says_which_os_account_ran_it | 안 적으면 1 failed |
+| 매퍼 로그 | 시험 없음 — 로그 낱말. 박스로 봄 | — |
+| 대조: 있는 이름은 그대로 queued | test_a_rule_it_can_find_is_still_queued | — |
+
+```
+범위   만진 시험 + retroactive·매퍼를 부르는 시험 + /admin/retroactive 경로를 부르는 시험 62 파일 -> 첫 판 1019 passed · 7 failed — 한 파일(test_a_cli_option_is_a_parameter_of_its_operation.py)
+       의 칸들이 가짜 이름 'r' 로 validate 를 불러 박스의 규칙 파일을 읽었음. 그 파일이 이미 다른 픽스처에서 막아 둔 조회 셋을 autouse 로 막음
+       -> 그 파일 + CLI 시험 한 파일 + 새 시험 · 고친 시험 재실행 전부 초록
+```
+
+### 박스 (읽기만 — 쓴 것 0)
+
+```
+없는 규칙 이름 no_such_rule_gate
+   validate  chain rule 'no_such_rule_gate' not found or disabled; available: dt_inventory_to_standard_dt_map, dt_transform …
+   count     같은 문장
+   CLI       같은 문장 (dry-run 의 REFUSED 줄)
+   SAME SENTENCE: True · runs rows before 81 after 81
+매퍼 로그   건수(dry-run, 박스 enrich 규칙 하나, 200 행) — [Enrichment:enrich_in_chain_probe] 200 source row(s) -> 4 unique decision key(s) built for 'dt_inventory' (0 of them on a PARTIAL decision key)
+안 잼      ㉡ 관문 문장(도는 실행이 있어야 뜸) · ㉢ CLI 쓰기 실행(박스 쓰기) — 시험으로만
+재기동함    21:36:30 API · 스케줄러 · 체인 워커 (감시자 제외) — 새 pid 는 목록으로 확인, /health 200
+```
+
+### 순서
+
+```
+다음  ㉤ (님 판정 ㄱ · 거름 한 함수) -> main 빨강 하나(c579504eb 「대형 레인 원인 전에」) -> 대형 레인 원인 -> 박스 설정 시험 -> 병렬
+      f06e55680 의 목록은 빨강이 박스 설정 시험 뒤인데, c579504eb 가 「대형 레인 원인 전에」라 그쪽을 따릅니다
+```
