@@ -37,9 +37,7 @@ DECIDE = {"name": "k7085_decide", "on": {"table": SRC}, "into": {"table": DST},
 REFUSED_JOIN = {"name": "k7085_refused_join", "into": {"table": DST},
                 "derive": {"join": {"on": {"job": "job"}}}}
 #: a derive the grammar cannot read — the expander passes it through still carrying it
-#: ⚠️ NOT `{"kind": "banana"}`: measured, that one STANDS as an empty rule that has lost its `derive`
-#:    (no refusal, no mapper), so no seat can see what it said. That is the expander's gap, reported
-#:    to the lead — not pinned here.
+#: (`{"kind": "banana"}` is refused by name now — 26a5ef836, test_an_unknown_derive_kind_is_refused_by_name)
 NONSENSE = {"name": "k7085_nonsense", "on": {"table": SRC}, "into": {"table": DST},
             "derive": "not a mapping"}
 #: a flat rule — a mapper, today and after

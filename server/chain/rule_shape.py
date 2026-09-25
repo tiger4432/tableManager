@@ -152,6 +152,16 @@ DECLARED_KINDS = ("join", "decide", "mapper")
 UNKNOWN_KIND = "unknown"
 
 
+def unknown_derive_kind(said) -> str:
+    """The refusal for a `derive` whose kind the grammar does not know (lead 26a5ef836, owner
+    「ㄱ으로」). It STOOD before as an empty rule - no refusal, no mapper, and no `derive` left
+    for any seat to read. The allowed words are read from DECLARED_KINDS, never listed here."""
+    words = " · ".join(DECLARED_KINDS)
+    if said is None:
+        return "derive names no kind - one of %s" % words
+    return "unknown derive kind %r - one of %s" % (said, words)
+
+
 def declared_kind(rule: dict) -> str:
     """A loaded chain rule -> the word its DECLARATION would use for it.
 
@@ -610,6 +620,12 @@ def expand_declaration(declaration, table_config=None,
     name = declaration.get("name")
     if is_switched_off(internal):
         return ([], None, ["%s: enabled=false \u2014 no rule stands for it." % name])
+    # \ud83d\udd34 One judge for save and load (S-244): refused here, the save gate refuses it at the moment
+    #    of saving, and a line already in the file stands on the list as declared-only with this
+    #    sentence. A declaration that writes no kind but names its `derive` cell is read by
+    #    `from_declaration` and passes.
+    if (internal.get("derive") or {}).get("kind") not in DECLARED_KINDS:
+        return ([], "%s: %s" % (name, unknown_derive_kind(declaration["derive"].get("kind"))), [])
 
     # 🔴 [S-282 · 판정 440] A READ-TIME JOIN IS REFUSED HERE, BY NAME. `into: {read: true}`
     # declares a join that answers when somebody READS; the owner's ruling is that production
