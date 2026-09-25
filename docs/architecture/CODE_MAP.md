@@ -5381,7 +5381,7 @@ Excel 클립보드 왕복의 공용 저층 — export `parseTsv`/`serializeTsv`/
 |---|---|---|
 | `CONFIG_RESOLVE_MIN_INTERVAL_MS = 60_000` | 재조회 하한. 어드민의 30초 리프레시가 이 보고서를 매번 다시 끌어오지 않게 한다 | **~1568** |
 | `configResolveLastAt` · `configResolveTokenGeneration` · `configResolveView` · `configResolveRaw` · `configResolveAutoOpened` · `dryRunByRule` | 조회 시각 / **토큰 세대 스냅샷**(토큰이 바뀌면 하한을 무시하고 다시 묻는다) / 뷰 모델 / **원문 문자열**(같으면 재렌더 자체를 건너뛴다) / 1회 자동 펼침 플래그 / 규칙별 드라이런 캐시 | **~1570–1581** |
-| `initConfigResolveLine()` | Overview 배선. 호출은 초기화 경로 **~306** | **~1598** |
+| ⚰️ ~~`initConfigResolveLine()`~~ | 09-25 `5efa71f75` 에 지워졌다 — Overview 의 설정 반영 접이가 빠졌고, 선언 문제는 현황판 Declarations 줄(`overview_status.declarationsRow`)이 말한다 | — |
 | 🆕 **`failureFactOf(res)`** | **[`1dc761b`] 실패한 응답이 자기 자신에 대해 말하는 사실** → `{status, gate, server}`. 🔴 **`isGateRejection`이 load-bearing이고 재유도하지 않고 재사용한다**(주석 **~1603–1606**) — 401을 게이트 거부로 부르는 판정은 **이 파일에 이미 하나 있고 두 번째를 만들면 갈라진다** | **~1610** |
 | **`refreshConfigResolve(force=false)`** | `GET /admin/config/resolve`(**~1636** 부근) → `buildConfigResolveView(JSON.parse(raw))`. 🔴 **원문이 같으면 재렌더도 캐시 무효화도 하지 않는다**(**~1641**). 실패는 `fetchFailureLine(failure, CHROME.FETCH_FAILED)`로 **한 줄 진단**이 된다 | **~1618** |
 | `renderConfigResolveFailure(text)` / `renderConfigResolve()` / `cfgDomainEl(domain)` | 실패 줄 / 요약 줄 + 도메인 카드 / 도메인 카드 1개 | **~1661 / ~1673 / ~1705** |
@@ -5390,7 +5390,7 @@ Excel 클립보드 왕복의 공용 저층 — export `parseTsv`/`serializeTsv`/
 - 라우팅: `parseRoute`(**~477**) `applyRoute`(**~503**) — `#overview/#tables/#file/#chain/#autoupdate/#retroactive/#ontology` + 구 별칭(`TAB_ALIASES` — 09-25 `#enrichment→#chain`) + `#editor=<path>`. `switchTab(tabName, opts)`(**~552**). `setSectionCount`(**~411**).
 - 탭 데이터: `fetchData(options)`(**~762**, 탭당 병렬 fetch를 한 seq로 묶어 stale 렌더 차단) → 각 `render*Table` + 섹션 카운트 배지, `clearSelections`(**~2139**)/`clearRowHighlights`(**~2151**).
 - [P1] File 탭 진행 중 섹션: `renderActiveIngestions`(**~1070**) `scheduleActiveRefresh`(**~1052**) `formatElapsed`(**~1040**).
-- Overview: `fetchOverview`(**~1868**) `renderOverview`(**~2000**) + **[`ec75d4c`] `renderRecorrection`(**~1457**)** + **[V1 `2a9f6c4`] `renderEffort`(**~1488**)**.
+- Overview: `fetchOverview`(**~3404**) `renderOverview`(**~3492**) `renderRuntime`(**~2582**, `GET /runtime` → Workers 줄) — 🆕 09-25 `5efa71f75` 현황판 열 줄: 줄마다 `overview_status.js` 의 순수 함수 하나(순서 `ROW_ORDER`), 부품은 `overview_board.js` 의 `OverviewBoard`. ⚰️ 옛 카드 넷 · 헬스 스트립 · `renderRecorrection`/`renderEffort`(→ `recorrectionRow`/`effortRow`) 는 없다.
 - 유기 연계: `renderLinkedFailTable`(**~1357**) `showEventDiagnostics`(**~2571**) `selectFileRow`(**~2348**).
 - AutoUpdate 토글: `renderAutoUpdateTable`(**~1276**) `toggleCollectorActive`(**~2244**) `runAutoUpdateNow`(**~2217** — **strict 게이트 라우트라 토큰 미설정 서버에선 503 토스트가 뜬다**).
 - ⚰️ Enrichment 탭은 09-25 `a42f8779a` 에 은퇴했다(`renderEnrichmentTable` · `selectEnrichmentRow` 없음) — 규칙은 Chain 탭 목록(첫 칸 Kind), 결손 수는 Overview Enrichment 줄. 남은 것 `fetchEnrichmentStatus`(**~4343**, 15s TTL 캐시 — 부르는 곳은 `fetchOverview` 하나).

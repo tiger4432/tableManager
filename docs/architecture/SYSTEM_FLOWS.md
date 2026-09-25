@@ -148,6 +148,7 @@ Enrichment Queue · 맵 오버레이 · 전사 계획 · 어드민 5탭 · 실�
 ### ⚠️ 다만 A 가 «닫는 것»과 «안 닫는 것»이 다르다
 ```
 ✅ 닫힘    「화면이 없다」 · 「refreshHealthStrip 호출자 0」 -> 설계다. 더 안 잰다
+          (09-25 `5efa71f75` — 스트립은 마크업과 함수째 지워졌다. Overview 는 현황판 열 줄)
 🔴 열림    「/health 에 «닿지도 않는» 값들」 — 청중이 바깥 모니터여도 그 값들은 여전히 «못 갑니다»
           · heartbeat 의 `note`          (heartbeat.py:290 에서 읽히는데 worker 항목에 «복사 안 됨»)
           · supervisor 의 terminal_verdict (runtime/process_supervisor.py:867 이 쓰는데 health 가 «7키만» 복사)
@@ -394,7 +395,7 @@ Enrichment Queue · 맵 오버레이 · 전사 계획 · 어드민 5탭 · 실�
 | `compute_health` | HTTP 응답 | `GET /health` (`main.py:238`, 게이트 **없음** — 의도) | HTTP JSON + 상태코드 | **실측 페이로드**(`runtime/health.py:432-443`): `{status, checked_at, problems[], checks:{database, workers, outbox, supervisor, config_backup}}`. `workers.<n>` = `heartbeat·supervisor_state·pid·restarts·status·detail·age_seconds·beats·work·stale_after_seconds`(+상황별 `error`·`beat_pid`·`detail_beat`). `status ∈ ok\|degraded\|unhealthy`, unhealthy 만 503(`:444`) | 아래 두 행 | 라우트가 catch-all 아래로 밀리면 `index.html` 을 200 으로 답한다 — `tests/test_health_endpoint.py` 가 그것을 막는다 | ✅ 이어짐 |
 | `GET /health` | **화면** | — | — | — | 🔴 **0** — `client2/src` · `client2/*.html` 전건에서 `/health` 를 부르는 코드가 **없다.** `api.js:38 checkServerHealth()` 는 이름과 달리 **`${API_BASE}/tables` 를 친다**(`api.js:39`) | 🔴 **완전 무음.** 워커 wedged · 감독자 사망 · outbox 백로그 · 미전달 브로드캐스트 — 이 판정 전부가 «운영자 화면에 도달하는 경로가 없다» | 🔴 끊김 |
 | `GET /health` | 데몬 기동 배너 | 데몬 부팅 **1회** — `chain/ingestion_worker.py:1629` · `run_watcher.py:317` 의 `startup_lines(...)` → `internal_event_client.py:241 check_api_reachable` | 로그 | 판별자는 상태코드가 아니라 **BODY**(`own_health_payload`, `:218`): `status` 키 + dict 인 `checks` 가 있으면 WARNING(앱이 살아 있고 스스로 unhealthy), 없으면 ERROR(앞단) | 파일 (`*_stdout.log`) | ⚠️ 조용 — 기동 시 1회뿐이라 «떠 있는 동안» 나빠지는 것은 이쪽으로 안 나온다 | ⚠️ 반쪽 |
-| 어드민 「파이프라인 헬스 스트립」 | 화면 | **없다 — `admin.js:4555 refreshHealthStrip` 의 호출자가 0** (히트는 정의 1줄과 `:538` 주석뿐) | HTTP | 🔴 `/health` 와 **무관**. `admin.js:4650` 주석이 자기 입으로 적었다 — 「기존 API만 조합: `/admin/file-ingestion/failed` · `/admin/outbox/failed` · `/admin/auto-update/status` · `/enrichment/rules`」 | 0 | 실패 경로가 카드를 `'loading'`+`'상태 조회 실패'` 로 두지만, 그 함수가 안 불린다 | ⚰️ 죽은 갈래 |
+| ⚰️ 어드민 「파이프라인 헬스 스트립」 (09-25 `5efa71f75` 에 마크업 · `refreshHealthStrip` 째 지워짐 — 아래 두 줄은 그 전의 기록) | 화면 | **없다 — `admin.js:4555 refreshHealthStrip` 의 호출자가 0** (히트는 정의 1줄과 `:538` 주석뿐) | HTTP | 🔴 `/health` 와 **무관**. `admin.js:4650` 주석이 자기 입으로 적었다 — 「기존 API만 조합: `/admin/file-ingestion/failed` · `/admin/outbox/failed` · `/admin/auto-update/status` · `/enrichment/rules`」 | 0 | 실패 경로가 카드를 `'loading'`+`'상태 조회 실패'` 로 두지만, 그 함수가 안 불린다 | ⚰️ 죽은 갈래 |
 | 같은 스트립 | 픽셀 | — | DOM | — | 0 | `admin.js:539` — `healthStripEl.style.display = 'none';` ⚠️ **결함이 아니라 소유자 판정이다** — `:536-538` 「소유자: 「띄 다 빼」(2026-09-05). 카드 넷이 하던 일 둘 중 «이동»은 탭 바가 이미 하고, «수»는 각 탭의 절이 다시 말합니다. 마크업과 `refreshHealthStrip` 은 남깁니다 — 되돌리는 것이 한 줄이어야 하기 때문입니다」 | ⚰️ 의도된 죽은 갈래 |
 | `heartbeat.work_claim` | `/health` `checks.workers.<n>.work` | 파일 인제션 1건을 `with` 로 감쌈 (`directory_watcher` 2곳) | 하트비트 파일의 `work` 블록 | `{open, what, no_progress_seconds, held_seconds, stalled, stall_after_seconds}` — 나이가 아니라 **절대 타임스탬프**를 publish 해서 독자가 «지금»에서 잰다 | 1 (`runtime/health.py:337-352`) | 시끄럽다 — `stalled` 면 UNHEALTHY + 문장. 「루프는 도는데 일이 안 간다」를 잡는 유일한 축 | ✅ 이어짐 (단 마지막 칸은 위와 같이 화면 0) |
 
