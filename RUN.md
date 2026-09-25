@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-25 밤 7] **없는 규칙 이름은 기록 «전»에 거절 — 어드민 · 건수 · CLI 같은 문장 · 마이그레이션 «없음» · 재기동 API · 스케줄러 · 체인 워커**
+>
+> ```
+> 확인      어드민 소급에서 없는 규칙 이름으로 실행
+> 답의 뜻   400 「chain rule 'X' not found or disabled; available: …」, 실행 목록에 줄 없음   새 코드
+>           실행 목록에 줄이 생기고 queued -> failed                                        API 가 옛 코드
+>           건수 400 이 「이 연산의 건수를 계산할 수 없습니다: …」 로 시작                    API 가 옛 코드
+> 관문 문장  「op=X is progressing, last progress Ns ago」 · 진행 보고가 없으면 「no progress reported yet」
+>           「progressing for Ns」 가 보이면 그 프로세스가 옛 코드
+> CLI 실행  실행 목록의 요청자 칸 = OS 계정 이름 (전: 빈칸)
+> 매퍼 로그  「… decision key(s) built for 'T'」 (전: upserted into — 건수만 셀 때도 그렇게 적었음)
+> 되돌리기  git revert. 쓰는 것 없음
+> ```
+
+---
+
 > ## 🔴 [09-25 밤 6] **숫자 칸에 글자가 오면 «한 문장» — 그리드 · 파일 · 체인 같은 말 · 마이그레이션 «없음» · 재기동 API · 감시자 · 체인 워커**
 >
 > ```
