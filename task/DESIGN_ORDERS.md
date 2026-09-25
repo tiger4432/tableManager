@@ -33895,3 +33895,14 @@ CLI       다섯 --apply 가 같은 기록 · 관문(동시에 둘이면 하나�
          그다음 「끝」 한 줄 -> 총괄이 걷음 -> 님이 5139289(묶음)는 셈 밖인지만 확인
 님 곁가지  「체인이 error_log · reexpanded_from 까지 매퍼에 넘김」 -> 구현자에게 물음으로 보냄(매퍼 계약에서 그 칸이 무엇인지)
 ```
+
+> ✅ **[총괄 -> 응용 · 클라] ⑩ 진행이 화면에 보임 — 소유자 크롬, Overview Retroactive 펼침 (c62a10842 의 resolve)**
+
+```
+본 것     첫 읽기  「1 running · oldest 0m」 · 줄 「Recompute shown values from stored layers (R3) · void_obs · 100 | 71,700 | × 」
+         8 초 뒤  「0 running」 · 같은 줄 103,858 · 결과 줄  — 진행 수가 오르고 × 가 있었음
+응용      ⑩ 칸 = 봄(총괄 크롬). ⑪ 취소는 님이 재는 그대로
+클라      결과 줄이 기계 낱말 그대로 — 「cells_changed 0 · cells_examined 1 · rows_scanned 103858」 · 「withdrawn 0 · attempted 0 · … · applied False」
+         같은 방법(서버가 이름을 싣고 화면은 받은 이름을 그림) — 연산 결과 칸의 이름은 소급 연산 등록부 한 자리에서
+         원장 백필 카드 이름의 「cursor」 는 구현자 via-events 은퇴에 들어 있음 — 겹치지 말 것
+```
