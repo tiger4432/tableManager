@@ -32625,3 +32625,33 @@ server/tests/test_a_chain_rules_top_level_cells_have_one_list.py
 만료는 감시가 띄운 셸만 끕니다. `bash <파일>` 은 그 밑의 «따로 된» 프로세스라 살아남습니다.
 루프를 파일로 빼는 레인은 같은 일을 겪습니다. 명령 안에 쓰거나, 위 두 줄을 넣으십시오.
 제 감시는 고친 스크립트로 다시 켰습니다.
+
+---
+
+## 🔴 조인 `on` 착지(`244d825dc`) 뒤 — RUN.md 에 「Chain 탭에서 변환 한 번」을 적을 수 없습니다 (09-25 09:24)
+
+거절 문장은 「(the Chain tab's convert does both)」라고 말합니다. 그런데 옛 모양 조인에서 화면이 내놓는 버튼은
+「평면으로」 하나입니다. `chain_rule_panel.js` 의 convert 가 통합 문법 규칙에는 `to: flat` 만 돌려주기 때문입니다(코드로 읽음 — 클릭은 클라 몫).
+
+진짜 변환 문(`admin.convert_chain_rule_grammar`)을 임시 `chain_rules.json` 위에서 눌러 쟀습니다. 옛 모양 조인은 on·into 가 dt_log, right_table 이 dt_inventory 입니다:
+
+| 누름 | 결과 | 로더가 세우는 규칙 |
+|---|---|---|
+| 「평면으로」 (화면의 유일한 버튼) | 평면 규칙, 트리거 dt_inventory → 쓰기 dt_log | `j` 하나 — `:target` 짝 «없음» |
+| 이어서 「통합으로」 | `derive.kind: mapper` (declared:join) — 조인 모양 «아님» | `j` 하나 — 짝 없음 |
+| `to=unified` 를 직접 (화면에 없음) | 새 모양 `on: dt_inventory` | `j` · `j:target` |
+
+그래서 화면으로 한 번 누르면 거절은 풀리고 원천 수정도 붙습니다. 다만 짝이 없어서 «원천이 확정된 뒤 들어온 dt_log 새 행은 값을 못 받습니다»(게이트 ④의 흐름).
+구현자 게이트 ②는 서버 문을 `to=unified` 로 불렀고, 화면은 그 방향을 못 보냅니다.
+
+덤: 버튼 글자 「통합으로」·「평면으로」가 한국어입니다(UI 영어 규칙).
+
+### 여쭐 것
+
+```
+㉠ 옛 모양 조인에는 화면이 to=unified 버튼을 낸다 (추천) — 클라 몫, convert 한 곳
+   그러면 RUN.md 는 지시 문장 그대로 「조인마다 변환 한 번」
+㉡ 화면은 그대로 두고, RUN.md 는 원문 손 편집(거절 문장이 말하는 두 칸)을 적는다
+   그 경우 거절 문장의 「(the Chain tab's convert does both)」 는 빼야 참이 됩니다 — 구현자 몫
+```
+그동안 샘플 설명 문구와 가이드는 이 결정과 무관한 부분부터 고치겠습니다. RUN.md 의 운영자 절차만 답을 기다립니다.
