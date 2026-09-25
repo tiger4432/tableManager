@@ -161,3 +161,65 @@ def test_the_on_demand_trigger_uses_the_same_door(scheduler):
     assert collector.finished.wait(3.0)
     time.sleep(0.1)
     assert collector.runs == 1
+
+
+# ---------------------------------------------------------------------------
+# 총괄 8e54a261b ③ · c44a7d2e4 — a stamp on the run, and an ending that lands
+# ---------------------------------------------------------------------------
+
+class _Registered:
+    """What `discover_and_load_collectors` registers - every field the status file writes."""
+    table_name = "probe_table"
+    script_path = "/probe/reloaded.py"
+    cron_expression = None
+    next_run = None
+
+    def __init__(self, on_execute=None):
+        self.last_run, self.last_status, self.last_error, self.runner = None, "PENDING", None, None
+        self.on_execute = on_execute
+
+    def execute(self):
+        if self.on_execute:
+            self.on_execute()
+
+
+def _status_file(tmp_path):
+    import json
+
+    with open(os.path.join(str(tmp_path), "config", "scheduler_status.json"),
+              encoding="utf-8") as fh:
+        return json.load(fh)["collectors"]
+
+
+def test_a_run_is_stamped_with_the_process_that_runs_it(tmp_path):
+    from utils import heartbeat
+
+    s = MultiDiscoveryScheduler(check_interval=5, server_dir=str(tmp_path))
+    seen = {}
+    collector = _Registered(on_execute=lambda: seen.update(_status_file(tmp_path)[0]))
+    s.collectors = [collector]
+
+    s.execute_collector(collector)
+
+    assert seen["last_status"] == "RUNNING"
+    assert seen["runner"] == heartbeat.runner_identity()
+    assert seen["runner"].endswith("/%d" % os.getpid())
+
+
+def test_a_run_that_outlives_a_reload_ends_on_the_collector_registered_now(tmp_path):
+    """④ — a reload mid-run registers a NEW object carrying the restored RUNNING, and the
+    file is written from the registry: the run's ending has to land there."""
+    s = MultiDiscoveryScheduler(check_interval=5, server_dir=str(tmp_path))
+    reloaded = _Registered()
+
+    def reload_mid_run():
+        reloaded.last_status, reloaded.runner = old.last_status, old.runner
+        s.collectors = [reloaded]
+
+    old = _Registered(on_execute=reload_mid_run)
+    s.collectors = [old]
+
+    s.execute_collector(old)
+
+    assert reloaded.last_status == "SUCCESS"
+    assert [row["last_status"] for row in _status_file(tmp_path)] == ["SUCCESS"]

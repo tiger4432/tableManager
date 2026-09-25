@@ -6865,9 +6865,12 @@ async def get_auto_update_status():
         # [핫 반영] active는 항상 제어 파일(auto_update_control.json)을 실시간으로 읽어 계산 —
         # 스케줄러가 다음 사이클에 status 파일을 재기록하기 전에도 toggle 결과가 즉시 일치한다.
         disabled_set = auc.read_disabled_scripts()
+        from runtime import running as running_seat
         for col in collectors:
             key = f"{col.get('table_name')}/{col.get('script_name')}"
             col["active"] = key not in disabled_set
+            # A RUNNING whose scheduler is gone reads as the one judgment says (총괄 c44a7d2e4).
+            col["last_status"] = running_seat.collector_last_status(col)
         return {
             "status": "success",
             "data": collectors,

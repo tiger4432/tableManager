@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-26 새벽 2] **수집기·소급의 «누가 돌리나» — 대기열 항목에 state · Auto Update 탭 낱말 · 재적재 도중 끝난 수집이 RUNNING 으로 안 남음 — 마이그레이션 «없음» · 재기동 API · 스케줄러 · 체인 워커**
+>
+> ```
+> 대기열    /admin/chain/queue 의 now_running 항목마다 "state": running · orphaned · unknown
+>           orphaned = 그 일을 시작한 프로세스의 심박이 없거나 다른 pid 가 뜀 — 시작한 프로세스가 죽음
+>           unknown  = 도장이 없는 옛 줄 (이 코드 전에 시작된 수집 · 소급)
+> 탭        Auto Update 의 상태 낱말 — RUNNING 인데 그 스케줄러가 없으면 orphaned (unknown 은 옛 줄)
+> 수집 도중  설정 재적재(SYSTEM_RELOAD)가 와도 끝나면 SUCCESS · FAIL — 전: 끝나도 RUNNING 으로 남음
+> 확인      상태 파일 server/config/scheduler_status.json 의 줄마다 "runner": scheduler/<host>/<pid>
+>           없으면 스케줄러가 옛 코드
+> 그대로    스케줄러 재기동은 수집기 상태를 PENDING · last_run 없음으로 되돌림 (끊긴 실행이 안 남음) — 소유자께 여쭙는 중
+> 되돌리기  git revert. 쓰는 것은 상태 파일의 runner 칸뿐
+> ```
+
+---
+
 > ## 🔴 [09-26 새벽 1] **표·원장 소급도 없는 이름은 기록 «전»에 거절 · 거절된 소스의 rescope 는 이름 있는 거절 — 마이그레이션 «없음» · 재기동 API · 스케줄러 · 체인 워커**
 >
 > ```

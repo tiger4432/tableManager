@@ -144,7 +144,7 @@ def heartbeat_path(name):
 
 #: The name THIS process beats under, set by the first `beat`. Published because a
 #: component that has to say "who am I" otherwise writes the name down a second time -
-#: and a second spelling is a second thing to get wrong. `retroactive.runner_identity`
+#: and a second spelling is a second thing to get wrong. `runner_identity` (below)
 #: reads it so a run can record which heartbeat owns it.
 _own_name = None
 
@@ -450,3 +450,56 @@ def read_roster():
         return dict(procs) if isinstance(procs, dict) else {}
     except Exception:                                            # noqa: BLE001
         return {}
+
+
+def runner_identity() -> str:
+    """Who is running this, as `host/pid`.
+
+    🔴 READ WHEN THE RUN STARTS, NOT AT IMPORT. A process that forks, or one re-executed
+    in place, would otherwise stamp the identity of whatever imported this module first -
+    and an identity that can be inherited is worse than none, because it looks specific.
+
+    ⚠️ IT RECORDS, IT DOES NOT JUDGE. Nothing reaps a run on the strength of this. Without
+    an identity "it died" and "it is slow" are the same row; with one they still are,
+    until somebody decides what evidence of death looks like. This is the material for
+    that decision, not the decision.
+    """
+    import os as _os
+    import socket as _socket
+    try:
+        name = own_name() or "?"
+    except Exception:                                            # noqa: BLE001
+        name = "?"
+    try:
+        return "%s/%s/%d" % (name, _socket.gethostname(), _os.getpid())
+    except Exception:                                            # noqa: BLE001
+        return "%s/?/%d" % (name, _os.getpid())
+
+
+def runner_state(runner):
+    """`owned` / `orphaned` / `unknown` for a `host/pid` stamp.
+
+    ⚠️ ONLY THIS HOST IS DECIDABLE. A pid on another machine cannot be called dead from
+    here, and calling it dead is how "never finishes" would become "two at once". Rows
+    with no stamp at all predate the column and are unknown, not orphaned.
+    """
+    parts = str(runner or "").split("/")
+    if len(parts) != 3 or parts[0] in ("", "?"):
+        # Rows written before the stamp carried a heartbeat name, or by a process that had
+        # not beaten yet. Unknown, and unknown is not orphaned.
+        return "unknown"
+    name, _host, pid = parts
+    try:
+        entry = read_all().get(name)
+    except Exception:                                            # noqa: BLE001
+        return "unknown"
+    if entry is None or entry.get("stale"):
+        # 🔴 THE HEARTBEAT IS WHY THE HOST STOPPED MATTERING. Asking `host/pid` meant a
+        # run stamped on another machine could never be judged from here, so every such
+        # row was "unknown" forever. The name is answerable from anywhere that can read
+        # the heartbeats, so the unknown disappears rather than being handled.
+        return "orphaned"
+    beating = entry.get("pid")
+    # Fresh beat, different pid: the process that started this run is gone and a newer one
+    # of the same kind is beating. The run it left behind is nobody's.
+    return "owned" if str(beating) == str(pid) else "orphaned"

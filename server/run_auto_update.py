@@ -92,6 +92,8 @@ class BaseCollector(ABC):
         self.last_run = None
         self.last_status = "PENDING"
         self.last_error = None
+        # `<heartbeat name>/<host>/<pid>` of the process running it, set when a run starts.
+        self.runner = None
         self.script_path = None
         
         self.target_dir = os.path.join(paths.WORKSPACE_DIR, table_name, "raws")
@@ -149,6 +151,8 @@ class GenericScriptRunnerCollector:
         self.last_run = None
         self.last_status = "PENDING"
         self.last_error = None
+        # `<heartbeat name>/<host>/<pid>` of the process running it, set when a run starts.
+        self.runner = None
         self.last_mtime = 0
         try:
             self.last_mtime = os.path.getmtime(script_path)
@@ -424,7 +428,8 @@ class MultiDiscoveryScheduler:
                 status_map[key] = {
                     "last_run": col.last_run,
                     "last_status": col.last_status,
-                    "last_error": col.last_error
+                    "last_error": col.last_error,
+                    "runner": col.runner,
                 }
 
             self.collectors = []
@@ -453,6 +458,7 @@ class MultiDiscoveryScheduler:
                     col.last_run = status_map[key]["last_run"]
                     col.last_status = status_map[key]["last_status"]
                     col.last_error = status_map[key]["last_error"]
+                    col.runner = status_map[key]["runner"]
 
             self._write_status_file()
 
@@ -544,6 +550,7 @@ class MultiDiscoveryScheduler:
                         "last_run": col.last_run,
                         "last_status": col.last_status,
                         "last_error": col.last_error,
+                        "runner": col.runner,
                         "active": self._collector_key(col) not in disabled_set
                     })
             
@@ -621,6 +628,9 @@ class MultiDiscoveryScheduler:
         collector.last_run = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         collector.last_status = event_constants.COLLECTOR_STATUS_RUNNING
         collector.last_error = None
+        # Who runs it - a reader can then tell a run whose scheduler died from one that is
+        # still going (총괄 c44a7d2e4), with the one judgment `heartbeat.runner_state`.
+        collector.runner = heartbeat.runner_identity()
         
         if getattr(collector, "cron_expression", None):
             try:
@@ -639,6 +649,16 @@ class MultiDiscoveryScheduler:
             collector.last_error = traceback.format_exc()
             logger.error(f"Collector Execution Failed for table '{collector.table_name}': {err}")
         finally:
+            # 🔴 [총괄 c44a7d2e4 ④] A RELOAD MID-RUN REPLACES THE REGISTERED OBJECT, and the file
+            #    is written from the registry - so this ending went to an object nobody reads and
+            #    the restored RUNNING stood forever. It lands on the one registered now, inside
+            #    this run's claim (`start_collector` still holds the key).
+            key = self._collector_key(collector)
+            with self._lock:
+                for col in self.collectors:
+                    if col is not collector and self._collector_key(col) == key:
+                        col.last_run, col.last_status = collector.last_run, collector.last_status
+                        col.last_error, col.runner = collector.last_error, collector.runner
             self._write_status_file()
 
     def check_and_run_schedules(self, now: datetime = None):

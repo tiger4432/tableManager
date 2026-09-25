@@ -19,6 +19,9 @@ import logging
 import uuid
 
 import event_constants
+# Who runs a job and whether that process is alive - moved to the heartbeats they read,
+# because the collectors ask the same question (총괄 c44a7d2e4). Same names here.
+from utils.heartbeat import runner_identity, runner_state as _runner_state  # noqa: E402,F401
 
 logger = logging.getLogger(__name__)
 
@@ -1189,36 +1192,6 @@ def queue_view(db, now=None):
 PICKER_INTERVAL_SECONDS = 5
 
 
-def _runner_state(runner):
-    """`owned` / `orphaned` / `unknown` for a `host/pid` stamp.
-
-    ⚠️ ONLY THIS HOST IS DECIDABLE. A pid on another machine cannot be called dead from
-    here, and calling it dead is how "never finishes" would become "two at once". Rows
-    with no stamp at all predate the column and are unknown, not orphaned.
-    """
-    parts = str(runner or "").split("/")
-    if len(parts) != 3 or parts[0] in ("", "?"):
-        # Rows written before the stamp carried a heartbeat name, or by a process that had
-        # not beaten yet. Unknown, and unknown is not orphaned.
-        return "unknown"
-    name, _host, pid = parts
-    try:
-        from utils import heartbeat as _hb
-        entry = _hb.read_all().get(name)
-    except Exception:                                            # noqa: BLE001
-        return "unknown"
-    if entry is None or entry.get("stale"):
-        # 🔴 THE HEARTBEAT IS WHY THE HOST STOPPED MATTERING. Asking `host/pid` meant a
-        # run stamped on another machine could never be judged from here, so every such
-        # row was "unknown" forever. The name is answerable from anywhere that can read
-        # the heartbeats, so the unknown disappears rather than being handled.
-        return "orphaned"
-    beating = entry.get("pid")
-    # Fresh beat, different pid: the process that started this run is gone and a newer one
-    # of the same kind is beating. The run it left behind is nobody's.
-    return "owned" if str(beating) == str(pid) else "orphaned"
-
-
 def in_flight_rows(db):
     """The run rows that are running - THE judgement for this source (총괄 5996d7f54). The gate,
     the queue's orphan list and `runtime.running` all ask here."""
@@ -2187,31 +2160,6 @@ def record_failures():
     instead of being left in a log.
     """
     return list(_RECORD_FAILURES)
-
-
-def runner_identity() -> str:
-    """Who is running this, as `host/pid`.
-
-    🔴 READ WHEN THE RUN STARTS, NOT AT IMPORT. A process that forks, or one re-executed
-    in place, would otherwise stamp the identity of whatever imported this module first -
-    and an identity that can be inherited is worse than none, because it looks specific.
-
-    ⚠️ IT RECORDS, IT DOES NOT JUDGE. Nothing reaps a run on the strength of this. Without
-    an identity "it died" and "it is slow" are the same row; with one they still are,
-    until somebody decides what evidence of death looks like. This is the material for
-    that decision, not the decision.
-    """
-    import os as _os
-    import socket as _socket
-    try:
-        from utils import heartbeat as _hb
-        name = _hb.own_name() or "?"
-    except Exception:                                            # noqa: BLE001
-        name = "?"
-    try:
-        return "%s/%s/%d" % (name, _socket.gethostname(), _os.getpid())
-    except Exception:                                            # noqa: BLE001
-        return "%s/?/%d" % (name, _os.getpid())
 
 
 def os_user():

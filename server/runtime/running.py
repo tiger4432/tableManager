@@ -32,9 +32,32 @@ WHERE_WATCHER = "watcher"
 _WHERE_BY_RUNNER = {"chain": WHERE_CHAIN_WORKER, "scheduler": WHERE_SCHEDULER}
 
 
+#: Whether the process that started an item is still on it - `heartbeat.runner_state` in the
+#: queue's words. One judgment for retroactive runs and collectors (총괄 c44a7d2e4).
+STATE_RUNNING = "running"
+
+
+def run_state(runner):
+    """`running` · `orphaned` · `unknown` for a `<heartbeat name>/<host>/<pid>` stamp."""
+    from utils import heartbeat
+
+    state = heartbeat.runner_state(runner)
+    return STATE_RUNNING if state == "owned" else state
+
+
 def collector_is_running(entry) -> bool:
     """A scheduler status-file entry: the scheduler writes this status when a run starts."""
     return (entry or {}).get("last_status") == event_constants.COLLECTOR_STATUS_RUNNING
+
+
+def collector_last_status(entry):
+    """The Auto Update tab's word for a status-file entry: its `last_status` - except a
+    RUNNING whose scheduler is no longer on it, which reads as the judgment says. A dead
+    scheduler cannot write its own ending, so the reader decides."""
+    if not collector_is_running(entry):
+        return (entry or {}).get("last_status")
+    state = run_state((entry or {}).get("runner"))
+    return event_constants.COLLECTOR_STATUS_RUNNING if state == STATE_RUNNING else state
 
 
 def ingestion_is_running(job) -> bool:
@@ -64,12 +87,13 @@ def chain_sight():
     return {"via": None, "age": None, "pid": None, "log": None, "instants": {}}
 
 
-def _item(what, where, pid, started_at, elapsed, processed=None, total=None, cancel=None):
+def _item(what, where, pid, started_at, elapsed, processed=None, total=None, cancel=None,
+          state=STATE_RUNNING):
     return {"what": what, "where": where, "pid": pid, "started_at": started_at,
             "elapsed_seconds": None if elapsed is None else round(max(0.0, elapsed), 1),
             "progress": (None if processed is None and total is None
                          else {"processed": processed, "total": total}),
-            "cancel": cancel}
+            "cancel": cancel, "state": state}
 
 
 def _chain(sight, shape, now):
@@ -101,7 +125,8 @@ def _retroactive(db, now):
                   int(pid) if str(pid).isdigit() else None, started, elapsed,
                   run.get("processed_rows"), run.get("total_rows"),
                   None if run.get("cancel_reaches") == retroactive.CANCEL_NEVER
-                  else {"run_id": run["run_id"]})]
+                  else {"run_id": run["run_id"]},
+                  state=run_state(run.get("runner")))]
 
 
 def _collectors(scheduler_pid):
@@ -124,8 +149,12 @@ def _collectors(scheduler_pid):
                 started, "%Y-%m-%d %H:%M:%S")).total_seconds()
         except (TypeError, ValueError):
             pass
+        # The pid the run was STAMPED with - the scheduler beating now may be a later one.
+        parts = str(entry.get("runner") or "").split("/")
+        pid = int(parts[2]) if len(parts) == 3 and parts[2].isdigit() else scheduler_pid
         out.append(_item("%s/%s" % (entry.get("table_name"), entry.get("script_name")),
-                         WHERE_SCHEDULER, scheduler_pid, started, elapsed))
+                         WHERE_SCHEDULER, pid, started, elapsed,
+                         state=run_state(entry.get("runner"))))
     return out
 
 

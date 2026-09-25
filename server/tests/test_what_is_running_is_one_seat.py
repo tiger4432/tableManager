@@ -57,10 +57,10 @@ def sources(tmp_path, monkeypatch, db_session):
             started_at=datetime.now(timezone.utc)))
         db_session.flush()
 
-    def collector(status):
+    def collector(status, runner=None):
         (tmp_path / "config" / "scheduler_status.json").write_text(json.dumps(
             {"collectors": [{"table_name": "t_probe", "script_name": "pull.py",
-                             "last_status": status,
+                             "last_status": status, "runner": runner,
                              "last_run": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}]}),
             encoding="utf-8")
 
@@ -70,7 +70,8 @@ def sources(tmp_path, monkeypatch, db_session):
     beat("scheduler", 222)
     beat("watcher", 333)
     chain([])
-    yield {"chain": chain, "run": run, "collector": collector, "ingestion": ingestion}
+    yield {"chain": chain, "run": run, "collector": collector, "ingestion": ingestion,
+           "beat": beat}
     ingestions.remove(*FILE)
 
 
@@ -86,7 +87,7 @@ def test_the_four_sources_run_through_one_door_in_one_shape(db_session, sources)
     assert sorted(by_where) == sorted([running.WHERE_CHAIN_WORKER, running.WHERE_OWN_PROCESS,
                                        running.WHERE_SCHEDULER, running.WHERE_WATCHER])
     assert all(set(item) == {"what", "where", "pid", "started_at", "elapsed_seconds",
-                             "progress", "cancel"} for item in items)
+                             "progress", "cancel", "state"} for item in items)
     assert (by_where["chain_worker"]["what"], by_where["chain_worker"]["pid"]) == (
         "rule_probe", 111)
     run = by_where["own_process"]
@@ -118,3 +119,36 @@ def test_the_queue_carries_the_seat(db_session, sources):
     assert sorted(item["where"] for item in out["now_running"]) == sorted(
         [running.WHERE_CHAIN_WORKER, running.WHERE_OWN_PROCESS])
     assert "running" not in out, "the chain-only field retired once the screen read the seat"
+
+
+# ---------------------------------------------------------------------------
+# 총괄 8e54a261b ③ · c44a7d2e4 — whether the process that started it is still on it
+# ---------------------------------------------------------------------------
+
+def test_a_retroactive_run_whose_process_is_gone_reads_orphaned(db_session, sources):
+    """⑤ — the run row says running; nobody beats as `retroactive` with its pid any more."""
+    sources["run"](retroactive.RUN_RUNNING)
+    gone = {i["where"]: i for i in running.running_now(db_session)}[running.WHERE_OWN_PROCESS]
+    sources["beat"]("retroactive", 4321)
+    alive = {i["where"]: i for i in running.running_now(db_session)}[running.WHERE_OWN_PROCESS]
+
+    assert (gone["state"], alive["state"]) == ("orphaned", running.STATE_RUNNING)
+
+
+@pytest.mark.parametrize("runner, state, tab", [
+    ("scheduler/HOST/222", "running", "RUNNING"),      # the scheduler beating now started it
+    ("scheduler/HOST/999999", "orphaned", "orphaned"),  # a scheduler that is gone started it
+    (None, "unknown", "unknown"),                       # written before runs were stamped
+])
+def test_a_running_collector_says_whose_run_it_is(db_session, sources, runner, state, tab):
+    """①③ — the queue item and the Auto Update tab read the stamp through one judgment."""
+    import asyncio
+
+    sources["collector"]("RUNNING", runner=runner)
+
+    items = [i for i in running.running_now(db_session)
+             if i["where"] == running.WHERE_SCHEDULER]
+    rows = asyncio.run(main.get_auto_update_status())["data"]
+
+    assert [i["state"] for i in items] == [state]
+    assert [r["last_status"] for r in rows] == [tab]
