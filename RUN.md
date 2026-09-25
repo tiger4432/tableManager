@@ -1,5 +1,59 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-25] **조인 선언의 `on` 이 «원천»으로 — 배포 직후 옛 모양 조인은 거절됩니다 · Chain 탭에서 조인마다 버튼 한 번**
+>
+> 소유자 「붙일 값을 고쳐야 트리거 시켜서 그걸 붙이지」. 조인도 mapper·decide 와 같은 문장입니다 —
+> `on` = 값이 바뀌는 표(원천), `into` = 붙는 표. `derive.join.right_table` 은 없어졌습니다.
+>
+> ```
+> ① 마이그레이션   없습니다
+> ② config        제품은 안 건드립니다. 다만 derive.join.right_table 이 적힌 조인은 재기동 «직후» 거절됩니다
+>                 (그 규칙 하나만 빠지고 나머지 규칙은 섭니다)
+> ③ 재기동        API 와 체인 워커 둘 다 (API: 선언창 · 변환 문 / 워커: 로더). 어드민은 새로고침 — 새 번들
+> ④ 할 일         재기동 «바로 뒤», 조인마다:
+>                   Chain 탭 → 그 조인 열기 → 「To new join shape」 한 번 → 확인창에서 확인
+>                 재기동과 ④ «사이»에 원천 표를 고쳤다면, 변환 뒤 원천 표 그리드에서 «선언 이름»으로 소급 한 번
+>                   (거절된 동안의 수정은 into 표에 안 붙었습니다 — 소급이 붙입니다)
+> ```
+>
+> ### 거절 문장 — 체인 워커 로그 `ERROR [ChainRules] …`
+>
+> ```
+> <이름>: derive.join.right_table is retired - on names the table whose value changes.
+>   Set on.table to "<원천>" and delete right_table (the Chain tab's convert does both)
+>    뜻   옛 모양입니다 — ④ 의 버튼 한 번이 두 칸을 다 고칩니다
+> <이름>: a join needs on.table - the table whose value changes
+>    뜻   on 이 비었습니다 — 원천 표 이름을 on.table 에
+> ```
+>
+> ### 확인 — 답이 «무엇을 뜻하나»
+>
+> ```
+> ㉠ Chain 탭에서 조인을 열었을 때 변환 버튼의 글자
+>    To new join shape   옛 모양입니다 — 누르십시오
+>    To flat             이미 새 모양입니다. 🔴 누르지 마십시오 — 평면 규칙이 되고 :target 짝이 사라집니다
+>    통합으로 · 평면으로   옛 번들입니다 — 새로고침
+> ㉡ 체인 워커 부팅 줄 [ChainRules] set(N): 에 조인마다 «둘»
+>      <이름>[decl,join] target_table=<붙는 표> trigger_table=<원천>
+>      <이름>:target[decl,join] target_table=<붙는 표> trigger_table=<붙는 표>
+>    하나뿐이면  짝이 없습니다 — on 과 into 가 같은 표면 정상, 아니면 「To flat」 으로 평면이 된 것입니다
+>    없으면     거절된 것입니다 — 같은 로그의 ERROR [ChainRules] <이름>: 줄
+> ㉢ 원천 행 하나의 값을 고치면 붙는 표의 같은 키 행이 그 값이 됩니다
+> ```
+>
+> ### 급할 때 끄는 스위치
+>
+> ```
+> 토글이 없습니다
+> 되돌리려면  git revert 2a9d8e18c 7c94fdc65 f4300aa19 244d825dc  하고 재기동 — «이 순서로» (새것부터)
+>            임시 복제본에서 쟀습니다: 이 넷을 새것부터 충돌 0 · (문서 커밋 뺀) 셋을 옛것부터 충돌 1
+>            🔴 이미 변환한 조인은 옛 코드가 «거절하지 않고» 세웁니다 — 다만 원천을 모르는 채로
+>               (엔진이 읽는 right_table 이 비어 있음 · 돌 때 무엇이 되는지는 안 쟀습니다)
+>               되돌리면 변환한 조인마다 원문을 손으로: on.table <- 붙는 표 · derive.join.right_table <- 원천
+> ```
+
+---
+
 > ## 🔴 [09-24 밤] **`enrichment_rules.json` 은퇴 — 마이그레이션 «없음» · 재기동 «필요» · 🔴 재기동 «전» 확인 하나**
 >
 > 인리치(결손 보정) 선언의 집이 «하나»가 됐습니다 — `server/config/chain_rules.json` 의 `derive: {kind: "decide"}`.
