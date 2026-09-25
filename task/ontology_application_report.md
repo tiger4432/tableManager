@@ -33834,3 +33834,18 @@ python -c "import sys,pytest;P=type('P',(),{'pytest_collection_modifyitems':lamb
         빈 last_error 로 「성공」 문장이 나오는 것은 PENDING · SKIPPED · orphaned (+ RUNNING 도 빈 칸이면 같음)
 안 셈   last_error 가 빈 FAIL 이 다른 길로 생기는지
 ```
+
+---
+
+## 보고만 — 457b34131 의 셈은 수집기(last_status)만 — 파일 목록 배지가 같은 모양으로 남음 (09-26 08:39)
+
+```
+셈      git grep -n "=== 'FAIL\|=== 'SUCCESS'" -- client2/src (retry_verdict 밖) -> 7
+        admin.js 1539 · 1540     statusFilterVal — 사용자가 고른 거르기 값, 판정 아님
+        admin_rows.js 33 · 34    파일 목록 행 — SUCCESS 가 아니면 늘 badge-danger · Retry 버튼 켜짐
+        utils.js 353             파일 적재 끝 카드 ok
+        websocket.js 375 · 376   파일 적재 끝 토스트
+어긋남  admin_rows.js 33 — 같은 파일이 서랍(ingestionMessageView)에서는 PENDING_RETRY 면 노랑, 목록에서는 빨강
+        (상태 -> 톤이 두 벌 — 34584806 · b86d4f16 이 수집기 쪽에서 닫은 것과 같은 모양)
+안 잰 것 목록에 PENDING_RETRY · PROCESSING 행이 실제로 오는지 · 끝 카드 · 토스트가 SUCCESS · FAILED 말고 다른 낱말을 받는지
+```
