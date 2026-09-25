@@ -362,6 +362,21 @@ def test_every_combination_of_the_two_columns_gets_an_answer():
             assert state in event_constants.CHAIN_STATES, (processed, status)
 
 
+def test_the_sql_and_the_python_answer_undelivered_alike(db_session):
+    """총괄 ac3039494 — 「미전달」 is one definition; its SQL and Python readers pick the same
+    rows over every combination, so the list and the sweep cannot part."""
+    made = {}
+    for processed in (False, True):
+        for status in ("PENDING", "RETRYING", "SUCCESS", "FAILED", "WAT"):
+            made[row(db_session, status=status, processed_chain=processed).id] = (processed, status)
+    outbox = models.DatabaseOutbox
+    by_sql = {r.id for r in db_session.query(outbox.id).filter(
+        outbox.id.in_(made), event_constants.undelivered_clause(outbox))}
+    by_python = {i for i, (p, s) in made.items() if event_constants.broadcast_state_of(p, s, None)
+                 == event_constants.BROADCAST_STATE_UNDELIVERED}
+    assert by_sql == by_python and len(by_sql) == 1, (by_sql, by_python)
+
+
 def test_a_population_that_is_exactly_the_page_says_there_is_no_more(client, db_session):
     """🔴 [Q-201 QA] 「더 있나」를 «쪽이 꽉 찼나»로 가늠하면 인구가 정확히 그만큼일 때
     빠진 것이 «없는데도» 「더 있다/잘렸다」가 된다. 첫 수리는 그 거짓 양성의 «경계»만

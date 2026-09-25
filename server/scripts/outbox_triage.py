@@ -104,14 +104,21 @@ def cancel(db, table, since=None, apply=False, reason="collapsed replay (S-172)"
     # them through the ORM to edit a dict would be its own outage. Elsewhere (the suite's
     # SQLite) the same edit is done row by row, so the LOGIC is exercised rather than
     # skipped - a test that cannot reach this branch certifies nothing about it.
+    # 🔴 BOTH BRANCHES WRITE 「processed」 THROUGH ONE DEFINITION (총괄 8a1f32f99) - the flag,
+    #   SUCCESS and the database time; the set-based one used to leave the time out.
+    import event_constants
+    from database.models import DatabaseOutbox
+
     if db.get_bind().dialect.name == "postgresql":
-        db.execute(text(
-            "UPDATE database_outbox SET processed_chain = true, status = 'SUCCESS',"
-            " payload = payload || jsonb_build_object(:mark, :who, :rkey, :reason)"
-            " WHERE " + sql), dict(params, mark=CANCEL_MARK, who=OPERATOR,
-                                   rkey=CANCEL_REASON, reason=reason))
+        from sqlalchemy import func, update
+
+        db.execute(
+            update(DatabaseOutbox).where(text(sql)).values(
+                **event_constants.processed_columns("SUCCESS"),
+                payload=DatabaseOutbox.payload.op("||")(func.jsonb_build_object(
+                    CANCEL_MARK, OPERATOR, CANCEL_REASON, reason)))
+            .execution_options(synchronize_session=False), params)
     else:
-        from database.models import DatabaseOutbox
         from utils.payload_helper import get_payload_dict
         ids = [r[0] for r in db.execute(
             text("SELECT id FROM database_outbox WHERE " + sql), params).fetchall()]
@@ -120,10 +127,40 @@ def cancel(db, table, since=None, apply=False, reason="collapsed replay (S-172)"
             payload[CANCEL_MARK] = OPERATOR
             payload[CANCEL_REASON] = reason
             event.payload = payload
-            event.processed_chain = True
-            event.status = "SUCCESS"
+            event_constants.mark_processed(event, "SUCCESS")
     db.commit()
     print("   skipped %d event(s) - NOT deleted; each payload now says who and why." % n)
+    return n
+
+
+def finish_stranded(db, apply=False):
+    """Rows the scheduler finished without a status before c28ab7ad9 (총괄 8a1f32f99):
+    `processed_chain = true` and `PENDING`. They read 「done · unexpected_status:PENDING」 and
+    the notice sweep, which takes SUCCESS rows, never took them - so they stayed undelivered
+    until the 7-day purge. `--apply` marks them SUCCESS through `mark_processed`.
+
+    ⚠️ The time written is WHEN THIS RAN - when they really finished was never recorded.
+    """
+    import event_constants
+    from sqlalchemy import func
+    from database.models import DatabaseOutbox
+
+    where = (DatabaseOutbox.processed_chain == True,                   # noqa: E712
+             DatabaseOutbox.status == "PENDING")
+    by_type = (db.query(DatabaseOutbox.event_type, func.count(), func.min(DatabaseOutbox.created_at),
+                        func.max(DatabaseOutbox.created_at))
+               .filter(*where).group_by(DatabaseOutbox.event_type).all())
+    n = sum(row[1] for row in by_type)
+    print("finished but PENDING: %d" % n)
+    for event_type, count_, first, last in by_type:
+        print("   %-18s %6d   %s .. %s" % (event_type, count_, first, last))
+    if not apply:
+        print("   dry run - nothing changed. Re-run with --apply to mark them SUCCESS.")
+        return n
+    for event in db.query(DatabaseOutbox).filter(*where).all():
+        event_constants.mark_processed(event, "SUCCESS")
+    db.commit()
+    print("   marked %d row(s) SUCCESS - the notice sweep takes them next." % n)
     return n
 
 
@@ -165,6 +202,8 @@ def main(argv=None):
     p.add_argument("--cancel", action="store_true", help="skip per-row pending events")
     p.add_argument("--replay-cancelled", action="store_true",
                    help="re-fire the cancelled rows as collapsed groups")
+    p.add_argument("--finish-stranded", action="store_true",
+                   help="mark rows left processed-but-PENDING as SUCCESS")
     p.add_argument("--table")
     p.add_argument("--per-row", action="store_true",
                    help="required with --cancel: says the target is the per-row events")
@@ -175,6 +214,9 @@ def main(argv=None):
 
     db = SessionLocal()
     try:
+        if args.finish_stranded:
+            finish_stranded(db, args.apply)
+            return 0
         if args.count or not (args.cancel or args.replay_cancelled):
             count(db, args.table)
             return 0

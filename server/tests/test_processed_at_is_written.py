@@ -71,27 +71,39 @@ def test_nothing_marks_an_event_processed_except_this_function():
     otherwise forget the timestamp.
     """
     # 🔴 EVERY PROCESS THAT DRAINS ROWS, not the worker's file (총괄 3c3f2b1f2): the
-    #   scheduler hand-wrote the flag at five sites this file never looked at.
-    #   ⚠️ `scripts/` is out: operator tools, and the triage cancel writes it in SQL.
+    #   scheduler hand-wrote the flag at five sites this file never looked at, and the
+    #   triage cancel in SQL (8a1f32f99). Both an attribute write and a column mapping
+    #   count; the one allowed is `processed_columns`, which `mark_processed` applies.
     import ast
     import subprocess
 
     server = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     files = [f for f in subprocess.check_output(["git", "ls-files", "*.py"], cwd=server,
                                                 text=True).split()
-             if not f.startswith(("tests/", "scripts/"))
-             and os.path.exists(os.path.join(server, f))]
+             if not f.startswith("tests/") and os.path.exists(os.path.join(server, f))]
     assert len(files) > 100, "CANARY: the file list is broken"
     found = []
     for rel in files:
         tree = ast.parse(open(os.path.join(server, rel), encoding="utf-8").read())
         funcs = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
+
+        def where(node):
+            inside = [f.name for f in funcs if f.lineno <= node.lineno <= f.end_lineno]
+            return rel, inside[-1] if inside else None
+
         for node in ast.walk(tree):
             if (isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant)
                     and node.value.value is True
                     and any(isinstance(t, ast.Attribute) and t.attr == "processed_chain"
                             for t in node.targets)):
-                inside = [f.name for f in funcs if f.lineno <= node.lineno <= f.end_lineno]
-                found.append((rel, inside[-1] if inside else None))
-    assert found == [("event_constants.py", "mark_processed")], found
+                found.append(where(node))
+            if isinstance(node, ast.Dict) and any(
+                    isinstance(k, ast.Constant) and k.value == "processed_chain"
+                    and isinstance(v, ast.Constant) and v.value is True
+                    for k, v in zip(node.keys, node.values)):
+                found.append(where(node))
+    # `_undelivered_when` is the READ side (「미전달」, 총괄 ac3039494) - the one other place
+    # the pair is spelled, and it writes nothing.
+    assert sorted(found) == [("event_constants.py", "_undelivered_when"),
+                             ("event_constants.py", "processed_columns")], found
     assert worker.mark_processed is event_constants.mark_processed

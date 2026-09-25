@@ -73,6 +73,8 @@ def test_cancel_skips_without_deleting_and_says_who(flooded):
     assert len(skipped) == 5, "only the per-row events"
     for e in skipped:
         assert e.processed_chain is True
+        # 총괄 8a1f32f99 — through the one definition: SUCCESS and the time, not the flag alone
+        assert e.status == "SUCCESS" and e.processed_at is not None
         p = get_payload_dict(e)
         assert p[outbox_triage.CANCEL_MARK] == outbox_triage.OPERATOR
         assert p[outbox_triage.CANCEL_REASON], "a skip with no reason is an unexplained gap"
@@ -103,3 +105,81 @@ def test_replay_cancelled_finds_exactly_the_rows_that_were_skipped(flooded):
     found = outbox_triage.replay_cancelled(flooded, "triage_tbl", apply=False)
 
     assert found == 5, "every skipped event's row must be offered back for replay"
+
+
+# ---------------------------------------------------------------------------
+# 총괄 8a1f32f99 ③ — rows the scheduler left processed-but-PENDING
+# ---------------------------------------------------------------------------
+
+@pytest.fixture()
+def stranded(db_session):
+    for uuid_, status, processed in (("str-pending", "PENDING", True),
+                                     ("str-failed", "FAILED", True),
+                                     ("str-waiting", "PENDING", False)):
+        db_session.add(DatabaseOutbox(event_uuid=uuid_, event_type="RETROACTIVE_RUN",
+                                      table_name="__retroactive__", status=status,
+                                      processed_chain=processed, payload={}))
+    db_session.commit()
+    return db_session
+
+
+def _state(db):
+    return {e.event_uuid: (e.status, e.processed_at is not None)
+            for e in db.query(DatabaseOutbox).filter(DatabaseOutbox.event_uuid.like("str-%"))}
+
+
+def test_finishing_the_stranded_rows_is_a_dry_run_by_default(stranded):
+    before = _state(stranded)
+    assert outbox_triage.finish_stranded(stranded, apply=False) == 1
+    assert _state(stranded) == before
+
+
+def test_finishing_marks_only_processed_pending_rows_success_with_the_time(stranded):
+    assert outbox_triage.finish_stranded(stranded, apply=True) == 1
+    assert _state(stranded) == {"str-pending": ("SUCCESS", True),
+                                "str-failed": ("FAILED", False),
+                                "str-waiting": ("PENDING", False)}
+
+
+def test_the_set_based_cancel_writes_the_time_on_postgresql():
+    """The PostgreSQL branch is a set-based UPDATE (production had ~660,000 rows); sqlite
+    runs the other branch, so this one is measured on a scratch schema."""
+    from conftest import _declared_as_test_database, _resolve_pg_test_url
+    from tests.support.isolated_pg import scratch_connect_args
+
+    url, reason = _resolve_pg_test_url()
+    if url is None:
+        pytest.skip(reason)
+    from sqlalchemy import create_engine
+    from sqlalchemy.exc import OperationalError
+    from sqlalchemy.orm import Session
+    from sqlalchemy.pool import NullPool
+
+    scratch = "assy_pytest_triage_8a1f"
+    with _declared_as_test_database(url):
+        maker = create_engine(url, poolclass=NullPool)
+        try:
+            with maker.begin() as conn:
+                conn.execute(text('DROP SCHEMA IF EXISTS "%s" CASCADE' % scratch))
+                conn.execute(text('CREATE SCHEMA "%s"' % scratch))
+        except OperationalError as exc:
+            pytest.skip("PostgreSQL is not reachable: %s" % str(exc).strip().splitlines()[0])
+        engine = create_engine(url, poolclass=NullPool,
+                               connect_args=scratch_connect_args(scratch))
+        try:
+            DatabaseOutbox.__table__.create(engine)
+            with Session(engine) as db:
+                for i in range(3):
+                    _per_row_event(db, "triage_pg", i)
+                db.commit()
+                assert outbox_triage.cancel(db, "triage_pg", apply=True) == 3
+                rows = db.query(DatabaseOutbox).filter(
+                    DatabaseOutbox.table_name == "triage_pg").all()
+                assert [(e.status, e.processed_chain, e.processed_at is not None,
+                         get_payload_dict(e).get(outbox_triage.CANCEL_MARK)) for e in rows] \
+                    == [("SUCCESS", True, True, outbox_triage.OPERATOR)] * 3
+        finally:
+            with maker.begin() as conn:
+                conn.execute(text('DROP SCHEMA IF EXISTS "%s" CASCADE' % scratch))
+            engine.dispose()
+            maker.dispose()

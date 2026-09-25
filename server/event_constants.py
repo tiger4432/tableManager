@@ -202,11 +202,32 @@ def mark_processed(event, status: str):
     of "queued until finished" have to be read from the same clock or the difference is
     a measurement of clock skew.
     """
+    for column, value in processed_columns(status).items():
+        setattr(event, column, value)
+
+
+def processed_columns(status):
+    """What 「this row stopped being work」 writes - ONE definition. `mark_processed` sets it
+    on one object; a set-based UPDATE spreads it where rows are too many for the ORM
+    (`scripts/outbox_triage` cancel: ~660,000 rows in production, 총괄 8a1f32f99)."""
     from sqlalchemy import func
 
-    event.status = status
-    event.processed_chain = True
-    event.processed_at = func.now()
+    return {"status": status, "processed_chain": True, "processed_at": func.now()}
+
+
+def _undelivered_when():
+    """「미전달」 — ONE definition (총괄 ac3039494). `broadcast_state_of` reads it in Python and
+    `undelivered_clause` in SQL; `idx_outbox_undelivered` indexes the same three columns."""
+    return {"processed_chain": True, "status": UNDELIVERED_MARKER_STATUS, "broadcast_at": None}
+
+
+def undelivered_clause(outbox):
+    """The SQL of `_undelivered_when` over the outbox model - what a list of 「미전달」 rows asks."""
+    from sqlalchemy import and_
+
+    return and_(*[getattr(outbox, column).is_(None) if want is None
+                  else getattr(outbox, column) == want
+                  for column, want in _undelivered_when().items()])
 
 
 def broadcast_state_of(processed_chain, status, broadcast_at):
@@ -215,7 +236,8 @@ def broadcast_state_of(processed_chain, status, broadcast_at):
     """
     if broadcast_at is not None:
         return BROADCAST_STATE_DELIVERED
-    if processed_chain and status == UNDELIVERED_MARKER_STATUS:
+    row = {"processed_chain": bool(processed_chain), "status": status, "broadcast_at": None}
+    if all(row[column] == want for column, want in _undelivered_when().items()):
         return BROADCAST_STATE_UNDELIVERED
     return BROADCAST_STATE_NOT_APPLICABLE
 

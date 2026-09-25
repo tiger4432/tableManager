@@ -4754,9 +4754,7 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
     # 부분 인덱스 셋의 술어를 «그대로» 쓴다 — 화면이 말하는 집합과 스윕·워커가 집는
     # 집합이 갈리면 운영자가 「왜 안 없어지나」를 묻게 된다.
     waiting = (outbox.processed_chain == False)                        # noqa: E712
-    undelivered = and_(outbox.processed_chain == True,                 # noqa: E712
-                       outbox.status == event_constants.UNDELIVERED_MARKER_STATUS,
-                       outbox.broadcast_at.is_(None))
+    undelivered = event_constants.undelivered_clause(outbox)
     # ⚰️ [소유자 2026-09-22] 「대기열에 failed 는 띄우지 마. «앞으로 돌 것만» 띄워」
     #    한 시간 전 이 자리에 `failed` 가 «있었다» — 실패가 기본 모집단에서 빠지는 것을
     #    찾고 합집합에 넣었는데, 그건 「무엇이 안 돌았나」의 답이지 이 화면의 물음이 아니다.
