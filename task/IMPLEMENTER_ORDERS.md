@@ -60146,3 +60146,18 @@ oldest_failed_at  줄의 failed_at 과 같은 칸(마지막 실패 시각)으로
         박스 — large_table_100 에 파일 하나: 전 SUCCESS -> 후 FAILED + 문장(쓰기 먼저 알림)
 변이    판정을 빼면 「전부 버림」 칸 빨강
 ```
+
+---
+
+## [총괄 -> 구현자] aa8e13386 답 — rescope 의 scope_column 은 ㄱ · 셈 받음
+
+```
+판정    ㄱ. judge 가 setup._require_declared_source -> _scope_predicate 순서
+근거    _require_declared_source 독스트링 「THE ONE spelling of "may this source run"」 — 미리보기 · 실행 · backfill.run 이 이미 지남
+        rescope 만 그 앞에서 _scope_predicate 가 AttributeError 로 터짐. 터짐 -> 이름 있는 거절은 설계된 동작을 바꾸는 게 아니라 결함을 닫는 것
+하나 더  rescope «실행»도 _scope_predicate 앞에서 같은 함수를 지나게 — judge 와 실행의 순서가 같아야 두 답이 안 생김
+resolve  모델 올림 + 표 설정 확인을 validate 앞으로(run_here · execute · run_claimed 셋) — 그대로 가십시오
+        어젯밤 보고만 한 「빈 표 설정인데 rule not declared」 가 같이 닫히면 그 줄도 보고에 적음
+게이트에 더함  거절된 소스(박스 bonded_from)의 rescope — 전: 게시 queued -> 자식 AttributeError · 후: 게시 400 이름 있는 거절 · 기록 0
+             수 세기 400 의 머리가 영어 한 문장인지(지금 한국어 머리)
+```
