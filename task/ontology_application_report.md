@@ -33046,3 +33046,5 @@ PRIMER    §0~§3 을 lot_slot_wafer 표 소스의 행 하나로 다시 씀
             ㉠ 시험용 실패 규칙 하나를 소유자 config 에 잠깐 넣고 빼기(총괄 몫)  ㉡ ⑦ 은 시험(pytest)으로만  ㉢ 빈칸 「못 만듦」으로 둠
 실패 재시도  위 ⑦ 로 제 실패 줄이 생기면 그것 하나를 재시도해 재겠습니다 — 소유자의 81 건은 안 건드립니다
 ```
+
+> (09-25 18:08) 남긴 CSV 넷 — 지웠습니다(지시 `bed890af2`). 코드로 먼저 봄: `directory_watcher.py` 의 처리기는 on_created · on_moved · on_modified 뿐이고 삭제 처리기가 없음. «사라진 파일» 언급은 전부 처리 도중 건너뛰기(debug). `run_watcher.py` 에도 원천 파일 삭제로 행을 걷는 길 없음. 지운 뒤: APPAUDIT 파일 0 · watcher.log 의 APPAUDIT 줄 가장 늦은 시각 17:57:43(마지막 업로드) — 18:08 삭제 뒤 새 줄 0. file_ingestion_logs 의 FAILED 한 줄(id 22371)은 기록이라 그대로.
