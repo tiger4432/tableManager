@@ -60066,3 +60066,16 @@ oldest_failed_at  줄의 failed_at 과 같은 칸(마지막 실패 시각)으로
 게이트    님 표 그대로 — 다른 표 넷 N=1 대 N=4 전체 시간 · 체인 대기열 최고 나이 · 메모리 최고 · 같은 표 둘 순서 · 변이
 시간      새벽 전에 안 들어가면 «안 들어감»으로 멈추고 보고(반쯤 착지 금지)
 ```
+
+---
+
+## [총괄 -> 구현자] 대형 둘로 다시 재지 않음 — 7d1d4c1c5 답 — 23:15
+
+```
+판정   다시 안 잼. 님이 바꾼 칸이 같은 물음에 답함
+근거   directory_watcher.py _route_and_process: 대형 적체가 있으면 작은 파일도 _submit_to_heavy_lane
+       -> heavy_lane.submit(job, workspace_key(...)) 로 같은 키로 들어감
+       HeavyIngestionLane._take 는 key 만 보고 고름 — lane·크기를 안 봄
+       그래서 「같은 표 둘째 파일이 첫째를 기다리고 뒤 값이 이김」은 크기와 무관한 성질
+남는 것 없음. 이 항목 닫힘. 목록 끝 그대로 — 새 일 없음
+```
