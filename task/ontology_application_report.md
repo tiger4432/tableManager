@@ -32891,3 +32891,40 @@ transfer_event/die-transfer          dt_transfer_log 를 읽음       mat_id <- 
    하나가 틀림  -> 접는 표가 맞는 집. 다만 min|max 대신 «어느 것이 맞는지»를 가르는 칸이 필요합니다
    둘 다 참     -> 접는 표는 참인 사실 하나를 버립니다. ㄱ + job 여러 값(attribute_cardinality) 쪽입니다
 ```
+
+---
+
+## 뷰 소스 걷어내기 — 응용 몫(말) 착지: 문서 `8def5f28e` · RUN.md `9052fce56` (09-25 14:08)
+
+지시 `f3bc02f6e`. 구현자(`c193986a8` · `9653f3e6b`)와 클라(`2fbe12b3f`)가 main 에 들어온 «뒤»에 했습니다.
+
+### 전수 — 지시 범위(가이드 · PRIMER · CODE_MAP · RUN.md)
+
+지워진 이름(기제 · 스크립트 · 은퇴한 뷰 관계 여섯)으로 8줄, 뜻으로 2줄 더 찾았습니다. 고친 곳 넷, 나머지는 남겼습니다.
+```
+고침   CODE_MAP  sources_without_row_index 에 묘비 (오늘 정의 0)
+                 「출하 샘플의 kind: view 열하나」를 실측으로 드는 두 줄에 날짜 주석 — 오늘 샘플은 ledger_events 하나
+       PRIMER    0절이 따라가는 lot_slot_move 는 뷰라 오늘 거절되는 소스 — 머리에 그 사실과 거절 문장
+남김   lot_slot_wafer 줄 셋 (09-01 에 이미 은퇴한 뷰, 이력) · ledger_events 읽기 전용(S-186) 줄 · 참조뷰 탭 줄(c5d4905af)
+```
+구현자가 넘긴 파일 수(「create_*_view 13」 등)는 저장소의 `.md` 전부 — 이력과 작업 채널까지 — 를 센 것입니다. 그것들은 기록이라 손대지 않았습니다.
+범위 밖에서 지워진 기제 이름이 남은 설계 문서: LEDGER_SCHEMA_COMPLETENESS 2 · RUNTIME_MAP 1 · BASIS 1 (기제 이름으로 센 줄 수). 시키시면 고칩니다.
+
+### RUN.md — 맨 위 절
+
+```
+재기동   API 와 워커 · 그리드 새로고침 (새 번들 main-DWdsueZG.js — dist/index.html 이 싣는 이름)
+확인 ㉠  로드 거절 두 줄(「… is NOT planned: … not a table that has row_id (view) …」 · 「… is NOT read: …」)이 0 줄
+         소스가 «전부» 거절되면 원장 전체가 안 섬(every_source_refused) — 그 문장도 같이
+확인 ㉡  열 목록 맨 끝 Ledger 칸의 네 값 — 소스 이름 · Not yet · Refused · Unknown — 과 그 뜻 (글자는 grid_ledger_column.js · absent.js 에서 옮김)
+되돌리기  git revert 8def5f28e 2fbe12b3f 9653f3e6b c193986a8 — 임시 복제본에서 새것부터 · 옛것부터 둘 다 충돌 0
+```
+
+### 여쭐 것 — PRIMER
+
+입문서는 한 행이 원장 원자가 되기까지를 «실물 행 하나»로 따라가고, 그 행이 오늘 거절되는 뷰 소스(`lot_slot_move`)의 것입니다.
+머리에 사실을 적었지만, 입문서가 «오늘 설 수 없는 소스»를 예로 드는 상태는 남습니다.
+```
+㉠ 샘플의 표 소스 하나(예: dt_job — register@1 로 dtjob@1 을 세움)로 0~3절의 실물을 다시 쓴다 — 크기 안 쟀음, 절 넷
+㉡ 지금의 머리 주석으로 둔다
+```
