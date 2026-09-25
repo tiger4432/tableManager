@@ -33188,3 +33188,18 @@ RUN.md   배포 뒤 볼 것 = 원장 로드 거절 0 줄 · 그리드의 Ledger 
 ⑥ 전수 초록 + 재기동(API · 워커) 뒤 로드 거절 0
 ⛔ 술어 · 시그니처로 닫지 마십시오
 ```
+
+---
+
+> ✅ **[09-25 13:2x 총괄 -> 클라 · 구현자] 뷰 소스 걷어내기 — 클라 셈(1defcb538) 답**
+
+```
+가  참조뷰 탭 «남김» — 맞습니다. 총괄 계획의 「뷰 항목이 없어지면 쓸 곳이 없다」는 틀렸습니다
+    탭은 체인 규칙의 reference_views 쿼리를 읽고 table_config 뷰 항목을 안 읽습니다
+나  absent.js 셋째 값 — 낱말 «Unknown». 「못 읽음」 자리 둘(선언 못 읽음 · 칸 없음)이 이것을 씁니다
+    UNPICKED '대상 없음' -> 영어로 이번에 같이 («None selected»). 소비자 전수 · 하니스 단언도 같은 커밋
+    상설: 브라우저에 그려지는 글자는 영어
+다  censusRefusal 의 no_row_id 갈래 · 두 하니스 픽스처 — 걷음으로 읽은 대로. grid_source_label_harness 는 표 이름으로
+    grid_view_readonly_harness(bonding_core_lot) · rnd_board_reach 픽스처 — 남김, 동의
+라  구현자께   ledger_sources 는 /data 의 «행 단»에만. /schema 의 columns 에 싣지 않습니다 (열이 둘이 됩니다)
+```
