@@ -59325,3 +59325,74 @@ CLI      chain_replay_cli resolve --apply 가 문으로 · 드라이런은 문 �
            ② 표 문장대로 — 행 id 를 체인 워커가 받는 길로 넘기고 번역은 체인 워커가 (길을 새로 이어야 함 · 크기 안 쟀음)
 답 오기 전에는 via-events 를 안 짓습니다. 그동안 ⓑ 심박 파일 지우기 · ⓒ 관문 잠금 · ① 이름 retroactive 를 짓습니다
 ```
+
+---
+
+## [09-25 18:36] 구현자 — 어드민 소급이 자기 프로세스로 (`bfbe8a525`) · run_rule 이름 수리 (`2670a096b`) · 물음 둘
+
+### `bfbe8a525` — 스케줄러가 집은 소급은 자식 프로세스에서 (7d2c5845b · 811ff7f06 · f453968fe)
+
+```
+길     스케줄러 틱이 기록을 집음(잠금 아래 queued -> running) -> 자식을 띄움 -> 자식을 runner 로 적음
+       자식 = python -m admin.retroactive_run <run_id> -> CLI 와 같은 함수로 돎 (심박 · 끝맺기 · 파일 정리)
+       띄우기 실패 -> 그 자리에서 failed · 자식이 가 보니 running 이 아니면(시작 중 취소 · 풀림) 안 돎
+       스케줄러의 스레드 증인은 은퇴 — 기록을 먼저 쓰니 「행 못 쓴 실행」이 생길 수 없음. 증인은 표 하나
+로그   retroactive.log (자식의 줄) · retroactive_stdout.log (자식이 찍는 것 — 크래시 traceback)
+       ⚠️ 앞 보고의 「stdout 도 같은 파일」에서 바꿨습니다 — 같은 파일이면 줄마다 두 번 찍힘. 다른 프로세스들과 같은 <이름>_stdout.log 모양
+앱 정지 stop_all 이 맨 먼저 자식을 멈춤 — 화면 취소 길(request_cancel) -> 15 초 안에 안 끝나면 심박 pid 로 강제 종료
+       자식만 — 명령줄(admin.retroactive_run)로 가림. CLI 실행도 같은 심박이지만 운영자의 터미널 일이라 안 건드림
+```
+
+```
+박스 게이트
+  전     오늘 15:49~15:50 ledger_rescope 셋의 runner = scheduler/DESKTOP-OVKV3HK/5200 (스케줄러 안에서 돎)
+  후     어드민 소급 여섯을 라우트 몸통(publish)으로 넣음 — 쓰는 것 없게 고른 값
+         스케줄러 pid 34120 · 여섯 다 다른 자식 pid (37352 · 8000 · 37824 · 2420 · 35568 · 29260)
+         한 번에 하나 — 1 초마다 봐서 둘이 동시에 running 인 순간 0. 다음 자식은 앞 실행이 끝난 4 초 뒤
+         resolve · withdraw · ledger_backfill · ledger_rescope done · enrichment 둘은 없는 규칙이라 자식 안에서 failed (일부러)
+  ② 멈춤 단계   앱을 멈추지 않고 그 함수만 자식에게 직접 불러 봄 (resolve void_obs 도는 중)
+         여유 15 초   다음 페이지에서 멈춤 · 기록 cancelled (7,900 행) · 심박 파일 지워짐 · 관문 열림
+         여유 0 초    강제 종료 · 기록 cancel_requested 로 남음 · 관문 닫힘
+                     60 초 동안은 관문이 「살아 있음」이라 말함(파일이 아직 새것) -> 그 뒤 「주인 없음」
+                     화면 취소 한 번 -> failed (released as a ghost lock) · 관문 열림
+         보고할 것에 답  강제 종료 뒤 기록은 cancelled 가 아니라 cancel_requested -> 60 초 뒤 「주인 없음」 -> 취소로 failed
+시험    자식이 집힌 기록을 돌고 자기를 runner 로 적음 · running 아닌 기록은 안 돎 · 거절된 params -> failed
+       스케줄러가 자식을 띄우고 runner 로 적음 · 못 띄우면 failed · 자식의 종료 코드 · 앱 정지가 묻고 나서 죽임 · CLI 는 안 건드림
+       stop_all 이 자식을 먼저 · 틱 시험은 집고-띄우고, 첫째가 표를 잡은 동안 둘째 거절
+변이   여섯 다 빨강
+```
+
+곁에 본 것
+
+```
+강제 종료된 자식의 심박 파일은 다음 실행이 덮어쓸 때까지 남음 -> 그동안 /health 에 retroactive off_roster 줄 (이 박스의 것은 지웠습니다)
+test_queue_says_which_log_to_open — 넓게 돌리면 빨강 셋. 다른 시험이 「이 프로세스에 루프 있음」을 켜 두고 안 끔
+   그 파일(제 앞 라운드 것)이 가정하던 값을 스스로 세우게 고침. 켠 쪽은 안 찾았습니다
+```
+
+### `2670a096b` — replay_all 의 콜백 인자 run_rule -> run_one (285e30eaa)
+
+```
+그 게이트 파일 5/5 · replay 를 import 하는 시험 17 파일 통과. 앞으로 착지 범위 = 건드린 시험 + 바뀐 모듈을 import 하는 시험 (기억에 적음)
+```
+
+### 여쭐 것 둘
+
+```
+① 앱 전체 정지 게이트   저는 소유자 앱을 멈추지 않는 상설이 있어 박스에서 stop_all 을 안 돌렸습니다 (위는 그 안의 한 단계만)
+                     그리고 이 변경은 런처(run_decoupled_app.py)가 다시 떠야 먹습니다 — 소유자 재기동 때
+                     앱 정지 한 번을 소유자께서 하시거나, 제게 한 번 허락해 주시거나
+② /health 의 retroactive 줄 (①심박 이름 물음의 「먼저 보고」)
+   지금  루프 표(runtime/loops.py)는 (루프 · 프로세스 · 보드) 셋뿐 — 「필요할 때만 사는 줄」을 적을 칸이 없음
+         루프 표는 심박이 없으면 alive 를 «안 싣는다»(중립). /health 는 런처 명부에 없는 심박을 off_roster 라 부름
+   안     루프 표에 retroactive 줄 하나 + 「필요할 때만」 표시 한 칸 -> /health 가 그 표를 읽어
+         심박 없음 = 줄 없음 · 새 심박 = 「도는 중」 · 낡은 심박 = 「주인 없음 — 화면에서 Cancel」 (off_roster 아님)
+         크기 안 쟀습니다 (loops.py 한 줄 · health 한 갈래 · 화면이 그 낱말을 그리는지)
+```
+
+### 다음
+
+```
+대기열 실패 라운드 ①⑤⑥ (한 뿌리 — 묶음 줄과 행별 줄) 먼저 — 클라가 기다림. 그다음 ②④ · ③ 은 보고 먼저
+그다음 via-events 은퇴 (68a194f8c) · 그다음 응용 검수 빨간 칸 셋 (bed890af2)
+```
