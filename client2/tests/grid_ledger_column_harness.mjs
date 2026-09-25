@@ -155,6 +155,13 @@ async function suite(mods) {
   st.ledgerAnswer = source.answer;
   const ids = mods.grid.buildColumnDefs().map((d) => d.colId || d.field || d.headerName);
   eq('G1 the Ledger column is the last one, right after updated_at', ids.slice(-2), ['updated_at', LEDGER_COL_ID]);
+  const lastDef = mods.grid.buildColumnDefs().slice(-1)[0];
+  st.selectedCellsMap = { [`0_${LEDGER_COL_ID}`]: { rowIndex: 0, colId: LEDGER_COL_ID } };
+  st.dragStartCell = null; st.dragEndCell = null;
+  const inRange = (rowIndex) => Boolean(lastDef.cellClassRules
+    && lastDef.cellClassRules['custom-range-selected']({ node: { rowIndex } }));
+  eq('G3 a selected Ledger cell is painted like any other selected cell', [inRange(0), inRange(1)], [true, false]);
+  st.selectedCellsMap = {};
   st.ledgerAnswer = notSource.answer;
   st.currentTable = 'dt_map';
   eq('G2 and on a table that is not a source the grid has no such column',
@@ -191,7 +198,9 @@ const MUTANTS = [
   { id: 'X7', what: 'the unreadable declaration answers [] as Not yet', catches: 'C8',
     mutate: { column: (s) => s.replace('unknown: UNKNOWN };', 'unknown: NOT_YET };') } },
   { id: 'X8', what: 'the grid seats the column first instead of last', catches: 'G1',
-    mutate: { grid: (s) => s.replace('  if (ledger) columnDefs.push(ledger);', '  if (ledger) columnDefs.splice(0, 0, ledger);') } },
+    mutate: { grid: (s) => s.replace('    columnDefs.push(ledger);', '    columnDefs.splice(0, 0, ledger);') } },
+  { id: 'X10', what: 'the Ledger column is left out of the range highlight', catches: 'G3',
+    mutate: { grid: (s) => s.replace("    ledger.cellClassRules = { 'custom-range-selected'", "    ledger.unused = { 'custom-range-selected'") } },
   { id: 'X9', what: 'the write funnels are not told, so a wide paste sends the column', catches: 'W1',
     mutate: { state: (s) => s.replace('  if (colId === LEDGER_COL_ID) return true;\n', '') } },
 ];
