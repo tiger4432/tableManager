@@ -58347,3 +58347,39 @@ inventory_confirmed   착지 뒤 부팅에서 거절됩니다(지시대로 «맞
 회귀    그 뷰를 부르는 시험 7 파일 + 게이트 파일: 81 passed
 ⚠️ 거절 문장의 「(the Chain tab's convert does both)」는 클라 버튼이 착지해야 참이 됩니다 — 그 사이 배포 금지(지시대로)
 ```
+
+---
+
+## [09-25 13:0x] 구현자 — 뷰 소스 걷어내기(f3bc02f6e) 짓기 «전» 보고 · 가 나 다 + 기준 하나
+
+```
+가  소스 «하나»가 거절되면 «그 소스만» 빠집니다 (S-177 ② · ledger/setup.py::_resolve_refused_declarations)
+    원장 설정 전체가 안 서는 것은 «모든» 소스가 거절될 때뿐 — every_source_refused
+    이 박스 라이브(gitignore) 15 소스 = 표 6 + 뷰 9 -> 원장은 섭니다. 뷰 9 가 이름 대어 빠집니다
+       표 6   dt_job(dt_log) · lot_event · transfer_event(dt_transfer_log) · die_inspection(inspection_run)
+              wafer_process_recipe(wafer_process) · lot_slot_wafer
+    센 법  ledger.setup.live_physical_catalog() + table_config 의 kind 로 소스마다 (카나리아: dt_log -> row_id)
+나  ② 갈래 — AST 로 frame_row_id 를 «시험»하는 자리 8: backfill 6 · followup 1 · source_preparation 1
+    이름 — def 3 (sources_without_row_index · base_tables_of · ViewDependencyTooDeep) · 'no_row_index' 문자열 6 자리 ·
+           pg_depend SQL 1 (followup.VIEW_BASE_SQL)
+    🔴 원장 «밖» 소비자 1 — chain/graph.py::_ledger_edges 가 base_tables_of 로 뷰를 기반 표로 따라갑니다(via_view).
+       같은 커밋에서 걷습니다 (소스가 표뿐이면 간선의 출발이 곧 relation)
+    센 명령  git ls-files server/*.py 비시험 283 파일 AST (If/IfExp/While/comprehension-if 의 test 에 frame_row_id)
+    ⑥ 시험  이 기제의 이름을 드는 시험 11 파일
+            git grep -l -E "no_row_index|sources_without_row_index|base_tables_of|ViewDependencyTooDeep|frame_row_id|create_[a-z_]+_view|VIEW_BASE_SQL" -- server/tests
+            «통째 은퇴»와 «고쳐 씀»은 짓는 중에 파일마다 갈라 보고에 명단으로
+    ③ 스크립트 6 · ④ 샘플 table_config 뷰 10(+ledger_events 남김) · 샘플 ledger_config 뷰 소스 9
+다  부딪히지 않습니다 — 사용자 컬럼은 행의 data 안에 있고, 행 단 키는 row_id · table_name · data · created_at · updated_at.
+    ledger_sources 는 그 옆에 섭니다
+```
+
+### 🔴 기준 하나 — `_declared_row_id` 만 물으면 뷰 5 개가 통과합니다
+
+```
+잰 것   row_id 를 «내보이는» 뷰가 박스·샘플에 5 — dt_log_transferable · mechanism_edge_to_quantity ·
+        mechanism_edge_to_finding · process_param_num · process_param_txt. 이 넷+하나는 row_id 가 «있어서» 안 걸립니다
+그래서  지시 문장 「row_id 있는 «표»」대로 kind 도 봅니다 — 판정 좌석은 이미 있는 setup_bundle.catalog_kind 하나
+        원장 카탈로그 어댑터는 이미 그 함수로 뷰를 가르는데(뷰에는 row_id 를 안 심음) 결과 항목에 kind 를 «버립니다».
+        그 한 칸을 실어서 _declared_row_id 자리가 「표이고 row_id 가 있나」를 같이 묻게 합니다
+⛔ kind: "view" 의 (나) ledger_events 그리드 읽기는 안 건드립니다 — 원장 «소스» 판정에서만 거절
+```
