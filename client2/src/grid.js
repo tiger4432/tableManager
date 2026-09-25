@@ -1313,7 +1313,7 @@ export function renderGrid(initialRows) {
       const debugRowId = rowNode.data.row_id;
       if (!['row_id', 'created_at', 'updated_at', '#'].includes(debugColId)) {
         const cellObj = rowNode.data.data?.[debugColId];
-        console.log(`%c[Grid Debug] Clicked Cell Info`, 'color: #00f0ff; font-weight: bold; font-size: 1.1rem;');
+        console.log(`%c[Grid Debug] Clicked Cell Info`, 'color: #00f0ff; font-weight: bold;');
         console.log(`- Row ID: ${debugRowId}`);
         console.log(`- Col ID: ${debugColId}`);
         console.log(`- Priority Source:`, cellObj?.priority_source);

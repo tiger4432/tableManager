@@ -1,3 +1,73 @@
+> ## [21:22 디자인] 글자 ③ 어드민 — 짓기 전 표 · 물음 둘 (나머지는 ② 답대로)
+
+```
+파일     admin.html 67(CSS 51 · 인라인 16) · admin.js 7 · admin_rows.js 17 = 91 곳
+셈 명령   git grep -cE "font-size\s*:\s*\.?[0-9]|\bfont\s*:[^;]*[0-9.]+(px|rem)" -- client2/admin.html client2/src/admin.js client2/src/admin_rows.js
+         카나리아 admin.html 의 font-size 줄 94 (> 0). 착지 게이트 = 이 명령이 0
+화면에 안 닿는 곳 3   일반 h1 규칙(하나뿐인 h1 은 .brand-section h1 이 이김) · .section-note · .toast-message
+                    (뒤의 둘은 어느 마크업·스크립트도 이름을 안 부름 — 죽은 CSS 일 수 있음, 안 지움)
+```
+
+| 역할 -> 단 | 곳 | 지금 값 |
+|---|---|---|
+| button 14 | 45 | 11.2 ~ 14.4 |
+| label 12 | 19 | 12 ~ 13.6 |
+| tag 11 | 11 | 10.9 ~ 12.8 |
+| h6 13 | 7 | 13 · 13.1 · 13.6 · 16 |
+| h4 20 | 3 | 17.6 · 22.4 · 24 |
+| body 15 · h2 32 · h1 42 · h5 16 | 2 · 1 · 1 · 1 | 14.4 · 15.7 / 32 / 48 / 11.5 |
+| 물음 1 | 1 | 23.2 |
+
+```
+1px 넘게 바뀌는 곳 31 (살아 있는 88 곳 중) — 물음 1 의 답과 무관하게 같은 수
+   ② 답으로 이미 정해진 23   버튼 · 표 칸 -> 14 (+1.2 ~ 2.8) — 행 Retry · Edit · Prev/Next · Copy · 헤더 Refresh 들
+   나머지 8                 브랜드 제목 17.6 -> h4 20 (그리드 브랜드와 같은 역할) · 로고 배지 22.4 -> h4 20
+                           payload/traceback pre 13.6 -> label 12 (캐논 code) · 페이지 정보 둘 13.6 -> label 12 (그리드 #page-info 와 같게)
+                           빈 상태 아이콘 48 -> h1 42 · 빈 상태 글 16 -> h6 13 (캐논 .oe-empty · 그리드 빈 상태와 같게)
+                           거래 사건 알약 12.8 -> tag 11
+```
+
+### 여쭐 것
+
+```
+1 소급 예행 수(.retro-count-value, 지금 23.2)
+  ㄱ h2 32 — 위 대기열의 큰 수(Waiting · Oldest · Running · Failed)와 같은 역할  <- 추천  (+8.8)
+  ㄴ h3 25 (+1.8)
+2 실행 줄의 ×(.running-x, 지금 11.5) — × 규칙(h5 16)대로 가면 Overview 결과 줄과 위 대기열 RUNNING 줄의 × 가 +4.5 커짐
+  ㄱ 규칙대로 h5 16  <- 추천    ㄴ 다른 × 와 달리 둠 — 그러면 × 가 두 크기
+```
+
+```
+답이 오면 ③ 한 커밋(표대로 토큰 · 위 명령 0 · 빌드 · 하니스). 그 전엔 짓지 않습니다
+```
+
+> ## [21:19 디자인] 글자 ② 착지 (3260e0f9d) — 그리드의 style.css · index.html 에 크기 숫자 0 · 역할대로 캐논 단
+
+### 착지 3260e0f9d (cab3d4ff6 답대로 · 작업 트리 깨끗)
+
+```
+바꾼 곳   style.css 122(font-size 120 · font: 줄임꼴 1 · --ag-font-size 1) · index.html 인라인 3 -> var(--fs-*)
+         grid.js 개발자 도구 console 글자의 크기만 뺌(화면 글자 아님)
+단       tag 32 · button 31(13 + 작은 컨트롤 18) · label 29 · h6 12 · meta 7 · card-title 4 · h4 3 · body 3 · h5 2 · h3 1 · h1 1
+게이트    git grep -cE "font-size\s*:\s*\.?[0-9]|\bfont\s*:[^;]*[0-9.]+(px|rem)" -- client2/src/style.css client2/index.html client2/src/grid.js -> 0
+         카나리아 style.css 의 font-size 줄 127 그대로
+         client2 전체 리터럴 308 -> 183 (① 때 셈 계기 그대로, 줄어든 수 = 125)
+         하니스 143 중 게이트 141 초록(기존 빨강 2 그대로) · 빌드 exit 0
+번들      main-kXQPFEyk.js map_editor-BaWCp8ff.js style-BF6zle-S.css
+```
+
+```
+여실 때   클라만 — API 재기동 필요 없음. 메인 그리드 · 맵 편집기, 넓은 창 · 1440 전·후
+눈에 띌 것 작은 컨트롤 18 곳이 14 로(+1.2~2.5) — 위 헤더 저장·버리기 · 페이지 버튼 · 줄 안 Action · 필터 칩
+         드롭 아이콘 56 -> 42 · 모달 × 24 -> 16 · 배너 × 19.2 -> 16 · 붙여넣기 모달 제목 21.6 -> 17
+         그리드 칸 11.5 -> 12 · 머리줄 10.5 -> 11
+⚠️ 못 한 것 화면을 제가 못 엽니다 — 전·후 스샷은 총괄 크롬에서
+```
+
+```
+다음   ③ 어드민 — 짓기 전 표(admin.html 67 · admin_rows.js 17 · admin.js 7)부터. ④ 맵 편집기(journey.css · map_editor.*)는 그 뒤
+```
+
 > ## [21:01 디자인] 클라 4 착지 (33f14dada) — 샘플 파일 영어 · 글자 ② 그리드 짓기 전 표 · 물음 넷
 
 ### 4 착지 33f14dada — server/config/sample/chain_rules.json.sample

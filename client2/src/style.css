@@ -44,7 +44,7 @@ body {
   color: var(--text);
   padding: 8px 14px;
   font-family: var(--font-sans);
-  font-size: 0.9rem;
+  font-size: var(--fs-button);
   outline: none;
   /* Text fields must react instantly. `var(--transition-smooth)` (all 0.3s) made every
      focus/click ramp the border+ring over 300ms, which reads as input lag. Scoped to the
@@ -115,7 +115,7 @@ body {
      이 부품에 클릭 핸들러는 «하나도 없습니다»(실측). */
   pointer-events: none;
   font-family: var(--font-mono);
-  font-size: 0.8rem;
+  font-size: var(--fs-label);
   color: var(--accent);
   background: var(--accent-weak);
   border: 1px solid var(--border);
@@ -141,14 +141,14 @@ body {
 }
 
 .logo-area h1 {
-  font-size: 1.3rem;
+  font-size: var(--fs-h4);
   font-weight: 600;
   letter-spacing: 0.5px;
   color: var(--text);
 }
 
 .logo-area .badge {
-  font-size: 0.75rem;
+  font-size: var(--fs-label);
   font-family: var(--font-mono);
   background: var(--accent-weak);
   border: 1px solid var(--border);
@@ -227,7 +227,7 @@ body {
 }
 
 .control-group label {
-  font-size: 0.8rem;
+  font-size: var(--fs-label);
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -248,7 +248,7 @@ body {
 
 .mini-select {
   padding: 8px 6px;
-  font-size: 0.8rem;
+  font-size: var(--fs-button);
   max-width: 120px;
 }
 
@@ -259,7 +259,7 @@ body {
 
 .status-badge {
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: var(--fs-label);
   padding: 4px 10px;
   border-radius: 6px;
   background: var(--bg-inset);
@@ -340,7 +340,7 @@ body.resizing-active .history-sidebar {
   gap: var(--space-3);
   padding: 0 16px;
   font-family: var(--font-mono);
-  font-size: 0.8rem;
+  font-size: var(--fs-label);
   color: var(--text-muted);
   /* The bar states its own height; nothing inside it may push past that unseen. */
   overflow: hidden;
@@ -377,7 +377,7 @@ body.resizing-active .history-sidebar {
   align-items: center;
   justify-content: flex-end;
   gap: 16px;
-  font-size: 0.75rem;
+  font-size: var(--fs-label);
   white-space: nowrap;
 }
 
@@ -388,7 +388,7 @@ body.resizing-active .history-sidebar {
 }
 
 .footer-label {
-  font-size: 0.7rem;
+  font-size: var(--fs-tag);
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -404,7 +404,7 @@ body.resizing-active .history-sidebar {
   color: var(--text);
   padding: 2px 6px;
   font-family: var(--font-sans);
-  font-size: 0.75rem;
+  font-size: var(--fs-button);
   outline: none;
   cursor: pointer;
   transition: var(--transition-smooth);
@@ -444,7 +444,7 @@ body.resizing-active .history-sidebar {
 }
 
 .sidebar-header h2 {
-  font-size: 1.1rem;
+  font-size: var(--fs-title);
   font-weight: 600;
   margin-bottom: 12px;
   color: var(--text);
@@ -466,7 +466,7 @@ body.resizing-active .history-sidebar {
   padding: 6px 12px;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: var(--fs-button);
   font-family: var(--font-sans);
   font-weight: 500;
   transition: var(--transition-smooth);
@@ -500,7 +500,7 @@ body.resizing-active .history-sidebar {
   height: 34px;          /* mockup 2b */
   padding: 0 14px;
   border-radius: 0;
-  font-size: 0.9rem;
+  font-size: var(--fs-button);
   /* The label decides the width. Four labels of different lengths sharing a row equally is
      how one of them gets clipped, and a clipped tab name is a tab nobody clicks. */
   white-space: nowrap;
@@ -526,7 +526,7 @@ body.resizing-active .history-sidebar {
   border: 1px solid var(--border);
   padding: 12px;
   border-radius: 8px;
-  font-size: 0.8rem;
+  font-size: var(--fs-label);
   color: var(--text-muted);
   font-family: var(--font-mono);
   word-break: break-all;
@@ -547,7 +547,7 @@ body.resizing-active .history-sidebar {
 .queue-panel { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .queue-meta { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: baseline;
               padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border);
-              font-size: 11px; color: var(--text-dim); }
+              font-size: var(--fs-tag); color: var(--text-dim); }
 .queue-at, .queue-population, .queue-page { font-family: var(--font-mono); }
 .queue-reason { color: var(--warning); }
 .queue-rows { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; }
@@ -566,7 +566,7 @@ body.resizing-active .history-sidebar {
 .reference-view-tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 10px; }
 /* C-108. 이름과 행 수 «두 칸»이라 탭이 flex 입니다. 줄임표는 이름 쪽으로 내려갔습니다 —
    탭에 그대로 두면 배지까지 같이 잘립니다. 사이 간격은 토큰(`--space-2`). */
-.reference-view-tab { flex: 0 0 auto; max-width: 180px; display: inline-flex; align-items: center; gap: var(--space-2); overflow: hidden; border: 1px solid var(--border); border-radius: 6px; padding: 6px 9px; background: var(--bg-inset); color: var(--text-muted); cursor: pointer; font: inherit; font-size: .76rem; }
+.reference-view-tab { flex: 0 0 auto; max-width: 180px; display: inline-flex; align-items: center; gap: var(--space-2); overflow: hidden; border: 1px solid var(--border); border-radius: 6px; padding: 6px 9px; background: var(--bg-inset); color: var(--text-muted); cursor: pointer; font: inherit; font-size: var(--fs-button); }
 .reference-view-tab.active { color: var(--accent); border-color: var(--accent); background: var(--bg-surface); }
 .reference-view-tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reference-view-tab-count { flex: 0 0 auto; font-family: var(--font-mono); font-size: var(--fs-meta); color: var(--text-dim); }
@@ -575,11 +575,11 @@ body.resizing-active .history-sidebar {
    알 수 없습니다. 캐논의 초점 규칙 그대로(2px 강조 링, offset 2px). */
 .reference-view-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .reference-view-section { margin-bottom: 16px; overflow-x: auto; }
-.reference-view-section h3 { font-size: .85rem; margin: 0 0 8px; color: var(--accent); }
-.reference-view-table { width: 100%; border-collapse: collapse; font-size: .78rem; }
+.reference-view-section h3 { font-size: var(--fs-h6); margin: 0 0 8px; color: var(--accent); }
+.reference-view-table { width: 100%; border-collapse: collapse; font-size: var(--fs-label); }
 .reference-view-table th, .reference-view-table td { padding: 7px; border: 1px solid var(--border); text-align: left; vertical-align: top; word-break: break-word; }
 .reference-view-table th { color: var(--text-muted); background: var(--bg-inset); }
-.reference-view-empty { color: var(--text-dim); font-size: .82rem; }
+.reference-view-empty { color: var(--text-dim); font-size: var(--fs-h6); }
 /* [2b Phase 3.1] The columns a copy from this view will paste, in declared order.
    Accent background rather than a new colour token: this is the same 'this is the
    active thing' the grid already says with --accent. */
@@ -610,7 +610,7 @@ body.resizing-active .history-sidebar {
   color: var(--text-dim);
   background: var(--bg-inset);
   font-family: var(--font-mono);
-  font-size: .76rem;
+  font-size: var(--fs-label);
 }
 
 /* 🔴 REUSES THE GRID'S SELECTION NAME AND ITS TOKENS. The existing rule is scoped
@@ -642,7 +642,7 @@ body.resizing-active .history-sidebar {
 
 .timeline-empty, .queue-empty {
   color: var(--text-dim);
-  font-size: 0.85rem;
+  font-size: var(--fs-h6);
   text-align: center;
   padding: 40px 0;
   list-style-type: none;
@@ -664,7 +664,7 @@ body.resizing-active .history-sidebar {
 
 .timeline-empty-note {
   margin-bottom: 12px;
-  font-size: 0.9rem;
+  font-size: var(--fs-h6);
   font-weight: 600;
   color: var(--text);
 }
@@ -699,7 +699,7 @@ body.resizing-active .history-sidebar {
   border-radius: 8px;
   cursor: pointer;
   font-family: var(--font-sans);
-  font-size: 0.82rem;
+  font-size: var(--fs-button);
   font-weight: 600;
   letter-spacing: 0.01em;
   transition: var(--transition-smooth);
@@ -757,7 +757,7 @@ body.resizing-active .history-sidebar {
 
 .timeline-time {
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: var(--fs-label);
   color: var(--text-dim);
   margin-bottom: 4px;
 }
@@ -776,7 +776,7 @@ body.resizing-active .history-sidebar {
 }
 
 .timeline-user {
-  font-size: 0.8rem;
+  font-size: var(--fs-label);
   font-weight: 600;
   margin-bottom: 6px;
   display: flex;
@@ -789,7 +789,7 @@ body.resizing-active .history-sidebar {
 
 .timeline-user .source-tag {
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: var(--fs-tag);
   background: var(--bg-surface);
   border: 1px solid var(--border);
   padding: 1px 6px;
@@ -798,7 +798,7 @@ body.resizing-active .history-sidebar {
 }
 
 .timeline-changes {
-  font-size: 0.85rem;
+  font-size: var(--fs-h6);
 }
 
 .change-detail {
@@ -810,7 +810,7 @@ body.resizing-active .history-sidebar {
 .change-field {
   font-weight: 500;
   color: var(--text);
-  font-size: 0.75rem;
+  font-size: var(--fs-label);
   text-transform: uppercase;
   margin-bottom: 2px;
 }
@@ -820,7 +820,7 @@ body.resizing-active .history-sidebar {
   align-items: center;
   gap: 8px;
   font-family: var(--font-mono);
-  font-size: 0.8rem;
+  font-size: var(--fs-h6);
 }
 
 .val-old {
@@ -842,7 +842,7 @@ body.resizing-active .history-sidebar {
 
 .tx-tag {
   margin-top: 6px;
-  font-size: 0.7rem;
+  font-size: var(--fs-tag);
   font-family: var(--font-mono);
   color: var(--text-dim);
   text-align: right;
@@ -903,7 +903,7 @@ body.resizing-active .history-sidebar {
   cursor: pointer;
   font-family: var(--font-sans);
   font-weight: 500;
-  font-size: 0.85rem;
+  font-size: var(--fs-button);
   transition: var(--transition-smooth);
   display: inline-flex;
   align-items: center;
@@ -930,7 +930,7 @@ body.resizing-active .history-sidebar {
 }
 
 .checkbox-label {
-  font-size: 0.8rem;
+  font-size: var(--fs-label);
   color: var(--text-muted);
   cursor: pointer;
   user-select: none;
@@ -953,7 +953,7 @@ body.resizing-active .history-sidebar {
 
 .context-menu li {
   padding: 8px 16px;
-  font-size: 0.85rem;
+  font-size: var(--fs-button);
   color: var(--text);
   cursor: pointer;
   transition: var(--transition-smooth);
@@ -996,7 +996,7 @@ body.resizing-active .history-sidebar {
 }
 
 .modal-header h3 {
-  font-size: 1.1rem;
+  font-size: var(--fs-title);
   font-weight: 600;
 }
 
@@ -1004,7 +1004,7 @@ body.resizing-active .history-sidebar {
   background: none;
   border: none;
   color: var(--text-muted);
-  font-size: 1.5rem;
+  font-size: var(--fs-h5);
   cursor: pointer;
   line-height: 1;
   transition: var(--transition-smooth);
@@ -1024,7 +1024,7 @@ body.resizing-active .history-sidebar {
 .sources-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.85rem;
+  font-size: var(--fs-button);
   font-family: var(--font-sans);
 }
 
@@ -1040,13 +1040,13 @@ body.resizing-active .history-sidebar {
   color: var(--text-muted);
   font-weight: 500;
   text-transform: uppercase;
-  font-size: 0.75rem;
+  font-size: var(--fs-label);
   letter-spacing: 0.5px;
 }
 
 .sources-table td {
   font-family: var(--font-mono);
-  font-size: 0.8rem;
+  font-size: var(--fs-button);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1054,7 +1054,7 @@ body.resizing-active .history-sidebar {
   font-family: var(--font-sans);
   font-weight: 500;
   color: var(--text);
-  font-size: 0.85rem;
+  font-size: var(--fs-button);
 }
 
 .action-btn {
@@ -1065,7 +1065,7 @@ body.resizing-active .history-sidebar {
   border-radius: 6px;
   cursor: pointer;
   font-family: var(--font-sans);
-  font-size: 0.75rem;
+  font-size: var(--fs-button);
   transition: var(--transition-smooth);
 }
 
@@ -1133,7 +1133,7 @@ body.resizing-active .history-sidebar {
 }
 
 .drop-icon {
-  font-size: 3.5rem;
+  font-size: var(--fs-h1);
   animation: float 2s ease-in-out infinite;
 }
 
@@ -1150,13 +1150,13 @@ body.resizing-active .history-sidebar {
 }
 
 .drop-zone h2 {
-  font-size: 1.5rem;
+  font-size: var(--fs-h3);
   font-weight: 600;
   color: var(--text);
 }
 
 .drop-zone p {
-  font-size: 0.9rem;
+  font-size: var(--fs-body);
   color: var(--text-muted);
 }
 
@@ -1174,7 +1174,7 @@ body.resizing-active .history-sidebar {
 }
 /* The receipt is VALUES in the value cell -- monospace so the counts line up down the
    column, and it never grows past that cell. */
-.val-receipt { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
+.val-receipt { font-family: var(--font-mono); font-size: var(--fs-tag); color: var(--text-dim); }
 
 .timeline-card.color-summary {
   border-left: 3px solid var(--accent-2) !important;
@@ -1245,7 +1245,7 @@ body.resizing-active .history-sidebar {
 }
 
 .summary-columns-list {
-  font-size: 0.75rem;
+  font-size: var(--fs-label);
   color: var(--text-muted);
   font-family: var(--font-mono);
   margin-top: 4px;
@@ -1256,7 +1256,7 @@ body.resizing-active .history-sidebar {
 }
 
 .change-title-text {
-  font-size: 0.85rem;
+  font-size: var(--fs-h6);
   font-weight: 500;
   color: var(--text);
   line-height: 1.3;
@@ -1264,7 +1264,7 @@ body.resizing-active .history-sidebar {
 
 .tx-tag .expand-indicator {
   margin-left: 6px;
-  font-size: 0.7rem;
+  font-size: var(--fs-tag);
   display: inline-block;
   transition: transform 0.2s ease;
 }
@@ -1279,7 +1279,7 @@ body.resizing-active .history-sidebar {
 
 .loading-subdetails,
 .error-subdetails {
-  font-size: 0.75rem;
+  font-size: var(--fs-label);
   color: var(--text-dim);
   font-style: italic;
   padding: 4px 0;
@@ -1297,7 +1297,7 @@ body.resizing-active .history-sidebar {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.8rem;
+  font-size: var(--fs-h6);
   color: var(--text-muted);
   cursor: pointer;
   padding: 4px 6px;
@@ -1334,7 +1334,7 @@ body.resizing-active .history-sidebar {
   border-radius: 8px;
   box-shadow: var(--shadow-card);
   font-family: var(--font-sans);
-  font-size: 0.85rem;
+  font-size: var(--fs-h6);
 }
 
 /* ── Phase 0: the filter chip bar is a `.tx-filter-banner` VARIANT, not a new component.
@@ -1400,7 +1400,7 @@ body.resizing-active .history-sidebar {
   background: none;
   color: var(--text-dim);
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: var(--fs-tag);
   cursor: pointer;
   white-space: nowrap;
   padding: 0 2px;
@@ -1417,7 +1417,7 @@ body.resizing-active .history-sidebar {
   border-radius: 999px;
   background: var(--bg-surface);
   color: var(--text);
-  font-size: 0.85rem;
+  font-size: var(--fs-tag);
   line-height: 1.4;
 }
 
@@ -1428,13 +1428,13 @@ body.resizing-active .history-sidebar {
   margin-left: auto;
   padding-right: 8px;
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: var(--fs-tag);
   white-space: nowrap;
 }
 
 
 .banner-icon {
-  font-size: 1.1rem;
+  font-size: var(--fs-title);
   margin-right: 8px;
   animation: pulse-purple 2s infinite;
 }
@@ -1468,7 +1468,7 @@ body.resizing-active .history-sidebar {
   border-radius: 4px;
   color: var(--accent-2);
   font-weight: 600;
-  font-size: 0.8rem;
+  font-size: var(--fs-label);
   margin-left: 6px;
 }
 
@@ -1476,7 +1476,7 @@ body.resizing-active .history-sidebar {
   background: none;
   border: none;
   color: var(--text-muted);
-  font-size: 1.2rem;
+  font-size: var(--fs-h5);
   cursor: pointer;
   line-height: 1;
   transition: var(--transition-smooth);
@@ -1504,7 +1504,7 @@ body.resizing-active .history-sidebar {
   min-height: 24px;
   margin-left: 6px;
   cursor: pointer;
-  font-size: 0.75rem;
+  font-size: var(--fs-button);
   transition: var(--transition-smooth);
   display: inline-flex;
   align-items: center;
@@ -1536,7 +1536,7 @@ body.resizing-active .history-sidebar {
   min-height: 24px; /* WCAG 클릭 타깃 (Design_audit.md 개선 #5) */
   cursor: pointer;
   font-family: var(--font-sans);
-  font-size: 0.75rem;
+  font-size: var(--fs-button);
   transition: var(--transition-smooth);
   user-select: none;
 }
@@ -1563,7 +1563,7 @@ body.resizing-active .history-sidebar {
 .table-kind-badge {
   padding: 1.7px 6.8px;
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: var(--fs-tag);
   color: var(--text-muted);
   border: 1px solid var(--border);
   white-space: nowrap;
@@ -1580,7 +1580,7 @@ body.resizing-active .history-sidebar {
 
 #page-info {
   color: var(--text-muted);
-  font-size: 0.75rem;
+  font-size: var(--fs-label);
   font-family: var(--font-sans);
   display: flex;
   align-items: center;
@@ -1595,7 +1595,7 @@ body.resizing-active .history-sidebar {
   border-radius: 4px;
   text-align: center;
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: var(--fs-button);
   padding: 1px 2px;
   min-height: 24px; /* WCAG 클릭 타깃 */
   outline: none;
@@ -1684,21 +1684,21 @@ body.resizing-active .history-sidebar {
 }
 
 .progress-title {
-  font-size: 0.85rem;
+  font-size: var(--fs-h6);
   font-weight: 600;
   color: var(--accent);
   letter-spacing: 0.5px;
 }
 
 .progress-percent {
-  font-size: 0.95rem;
+  font-size: var(--fs-body);
   font-weight: 700;
   font-family: var(--font-mono);
   color: var(--text);
 }
 
 .progress-filename {
-  font-size: 0.85rem;
+  font-size: var(--fs-h6);
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -1723,7 +1723,7 @@ body.resizing-active .history-sidebar {
 }
 
 .progress-stats {
-  font-size: 0.75rem;
+  font-size: var(--fs-label);
   color: var(--text-muted);
   font-family: var(--font-mono);
   text-align: right;
@@ -1783,7 +1783,7 @@ body.resizing-active .history-sidebar {
 }
 
 .col-selector-label {
-  font-size: 0.8rem;
+  font-size: var(--fs-label);
   color: var(--text);
   cursor: pointer;
   flex: 1;
@@ -1806,7 +1806,7 @@ body.resizing-active .history-sidebar {
 .glass-details summary {
   cursor: pointer;
   font-weight: 500;
-  font-size: 0.85rem;
+  font-size: var(--fs-button);
   outline: none;
   user-select: none;
 }
@@ -1820,7 +1820,7 @@ body.resizing-active .history-sidebar {
   border-radius: 999px;
   font-family: var(--font-mono);
   font-weight: 800;
-  font-size: 0.9rem;
+  font-size: var(--fs-button);
   letter-spacing: 0.04em;
   color: #0b1220;
   box-shadow: var(--shadow-card);
@@ -1982,7 +1982,7 @@ body.resizing-active .history-sidebar {
   align-items: center;
   justify-content: center;
   font-family: var(--font-mono);
-  font-size: 0.8rem;
+  font-size: var(--fs-label);
   font-weight: bold;
   color: var(--text);
   cursor: crosshair;
@@ -2020,7 +2020,7 @@ body.resizing-active .history-sidebar {
   color: var(--bg-surface);
   font-family: var(--font-mono);
   font-weight: 800;
-  font-size: 0.75rem;
+  font-size: var(--fs-label);
   box-shadow: 0 0 0 2px var(--bg-surface);
   transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
   pointer-events: none;
@@ -2228,7 +2228,7 @@ body.resizing-active .history-sidebar {
   gap: 10px;
   padding: 8px 12px;
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: var(--fs-button);
   border-radius: 6px;
   transition: all 0.2s ease;
   cursor: pointer;
@@ -2291,14 +2291,14 @@ body.resizing-active .history-sidebar {
 }
 
 .glass-modal-header h3 {
-  font-size: 1.25rem;
+  font-size: var(--fs-h4);
   font-weight: 600;
   color: var(--text);
   margin: 0;
 }
 
 .glass-modal-body {
-  font-size: 0.95rem;
+  font-size: var(--fs-body);
   color: var(--text-muted);
   line-height: 1.5;
 }
@@ -2321,7 +2321,7 @@ body.resizing-active .history-sidebar {
 .glass-modal-footer .glass-btn {
   justify-content: center;
   padding: 10px 16px;
-  font-size: 0.9rem;
+  font-size: var(--fs-button);
 }
 
 @keyframes fadeIn {
@@ -2361,7 +2361,7 @@ body.resizing-active .history-sidebar {
      tabular-nums 라야 편집 중과 확정 후의 글자 폭이 흔들리지 않는다. */
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: 0.8rem;
+  font-size: var(--fs-button);
   padding: 0 6px;
   outline: none;
 }
@@ -2417,7 +2417,7 @@ body.resizing-active .history-sidebar {
   align-items: center;
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: 0.8rem;
+  font-size: var(--fs-label);
   line-height: 1.35;
   color: var(--text);
   cursor: pointer;
@@ -2459,7 +2459,7 @@ body.resizing-active .history-sidebar {
 .value-suggest-more {
   padding: 5px 10px;
   font-family: var(--font-sans);
-  font-size: 0.75rem; /* 12px — 하한 */
+  font-size: var(--fs-label); /* 12px — 하한 */
   color: var(--text-dim);
   border-top: 1px solid var(--border);
   margin-top: 4px;
@@ -2480,14 +2480,14 @@ body.resizing-active .history-sidebar {
    mono in the cells so values line up column-wise, and a small upper-case sans header so a
    column name reads as a label rather than as one more value. */
 #myGrid {
-  --ag-font-size: 11.5px;
+  --ag-font-size: var(--fs-label);
   --ag-font-family: var(--font-mono);
 }
 
 #myGrid .ag-header-cell-text {
   font-family: var(--font-sans);
   font-weight: 600;
-  font-size: 10.5px;
+  font-size: var(--fs-tag);
   letter-spacing: .4px;
   text-transform: uppercase;
 }
@@ -2499,14 +2499,14 @@ body.resizing-active .history-sidebar {
   border-width: 1px;
   border-radius: 3px;
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--fs-tag);
   height: 22px;
   min-height: 22px;
 }
 
 /* The reference grid is the same surface, same rhythm. */
 .reference-view-table th { height: 30px; }
-.reference-view-table td { height: 28px; font-size: 11.5px; }
+.reference-view-table td { height: 28px; font-size: var(--fs-label); }
 
 /* Owner 2026-08-21: a button is as wide as its label. The mockup shows 「전체 해제」
    wrapping to two lines in a fixed-width button; wrapping is the thing to avoid, not to
@@ -2537,7 +2537,7 @@ body.resizing-active .history-sidebar {
   background: var(--bg-inset);
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 9.5px;
+  font-size: var(--fs-meta);
   text-align: center;
 }
 
@@ -2554,7 +2554,7 @@ body.resizing-active .history-sidebar {
   gap: 10px;
   padding: 0 12px;
   border-top: 1px solid var(--border);
-  font-size: 10.5px;
+  font-size: var(--fs-meta);
   color: var(--text-muted);
   white-space: nowrap;
 }
@@ -2592,11 +2592,11 @@ body.resizing-active .history-sidebar {
   padding: 0 12px;
   background: var(--bg-inset);
   border-bottom: 1px solid var(--border);
-  font-size: 11px;
+  font-size: var(--fs-tag);
   font-weight: 600;
   color: var(--text-muted);
 }
-.reference-evidence-count { font-family: var(--font-mono); font-size: 10.5px; font-weight: 400; color: var(--text-dim); }
+.reference-evidence-count { font-family: var(--font-mono); font-size: var(--fs-tag); font-weight: 400; color: var(--text-dim); }
 
 
 
@@ -2629,7 +2629,7 @@ body.resizing-active .history-sidebar {
   background: none;
   color: var(--text-dim);
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: var(--fs-tag);
   cursor: pointer;
   white-space: nowrap;
   padding: 0 2px;
@@ -2647,7 +2647,7 @@ body.resizing-active .history-sidebar {
   background: var(--accent-weak);
   color: var(--accent);
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--fs-tag);
   line-height: 1.6;
   white-space: nowrap;
 }
@@ -2673,7 +2673,7 @@ body.resizing-active .history-sidebar {
   pointer-events: none;
   color: var(--text-dim);
   font-family: var(--font-sans);
-  font-size: 10.5px;
+  font-size: var(--fs-tag);
   white-space: nowrap;
 }
 
@@ -2695,7 +2695,7 @@ body.resizing-active .history-sidebar {
   border-bottom: 1px solid var(--border);
 }
 .timeline-container:not(.tab-global) > .audit-filter { display: none; }
-.audit-filter-label { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+.audit-filter-label { font-size: var(--fs-tag); font-weight: 600; color: var(--text-muted); }
 /* The mockup draws these as pills. A native `select` keeps the keyboard and the screen reader
    working, so it wears the pill instead of a div pretending to be one. */
 .audit-filter-pick {
@@ -2706,11 +2706,11 @@ body.resizing-active .history-sidebar {
   background: var(--bg-surface);
   color: var(--text);
   font-family: var(--font-sans);
-  font-size: 10.5px;
+  font-size: var(--fs-tag);
   cursor: pointer;
   max-width: 130px;
 }
-.audit-filter-count { margin-left: auto; font-family: var(--font-mono); font-size: 10.5px; color: var(--text-dim); }
+.audit-filter-count { margin-left: auto; font-family: var(--font-mono); font-size: var(--fs-tag); color: var(--text-dim); }
 
 .audit-head, .queue-head, .audit-table .timeline-card, .queue-row {
   display: grid;
@@ -2750,7 +2750,7 @@ body.resizing-active .history-sidebar {
   border-bottom: 1px solid var(--border-strong);
   font-family: var(--font-sans);
   font-weight: 600;
-  font-size: 10.5px;
+  font-size: var(--fs-tag);
   letter-spacing: .4px;
   color: var(--text-muted);
 }
@@ -2784,9 +2784,9 @@ body.resizing-active .history-sidebar {
   overflow: hidden;
 }
 .audit-cell.audit-tx { border-right: none; }
-.audit-time, .queue-table, .queue-event, .queue-age { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted); }
-.audit-user, .queue-owner { font-family: var(--font-sans); font-size: 11.5px; font-weight: 500; color: var(--accent); }
-.audit-tx, .queue-state-detail { font-family: var(--font-mono); font-size: 10px; }
+.audit-time, .queue-table, .queue-event, .queue-age { font-family: var(--font-mono); font-size: var(--fs-tag); color: var(--text-muted); }
+.audit-user, .queue-owner { font-family: var(--font-sans); font-size: var(--fs-label); font-weight: 500; color: var(--accent); }
+.audit-tx, .queue-state-detail { font-family: var(--font-mono); font-size: var(--fs-meta); }
 .audit-tx { color: var(--text-dim); gap: 4px; }
 
 /* The kind pill. Six kinds, because six is what the audit rows actually distinguish. */
@@ -2796,7 +2796,7 @@ body.resizing-active .history-sidebar {
   padding: 1px 5px;
   font-family: var(--font-sans);
   font-weight: 600;
-  font-size: 9.5px;
+  font-size: var(--fs-meta);
   letter-spacing: .3px;
   text-transform: uppercase;
   white-space: nowrap;
@@ -2821,7 +2821,7 @@ body.resizing-active .history-sidebar {
 /* Two lines, because the key and the column answer different questions and the mockup gives
    each its own line rather than joining them with a separator nobody can scan. */
 .audit-target { flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; }
-.audit-target-key { font-family: var(--font-mono); font-size: 11px; color: var(--text); }
+.audit-target-key { font-family: var(--font-mono); font-size: var(--fs-tag); color: var(--text); }
 .audit-target-key, .queue-table { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 🔴 규칙은 «접지 않는다» (소유자 2026-09-23). 이름이 한 줄씩 서고, 넘치면 «칸 안»에서 흐른다 —
    표 밖으로 나가면 그게 다음 결함이다.
@@ -2832,18 +2832,18 @@ body.resizing-active .history-sidebar {
 .queue-rules-cell { flex-direction: column; align-items: stretch;
                     justify-content: center; gap: 3px; padding-block: 5px; overflow: visible; }
 /* 규칙이 «없는» 행(제어 행). 사실만 적는 칸이라 사유 색(경고)을 안 쓴다. */
-.queue-rule-none { font-size: 10.5px; color: var(--text-dim); }
+.queue-rule-none { font-size: var(--fs-tag); color: var(--text-dim); }
 .queue-rule { display: flex; flex-wrap: wrap; gap: 0 6px; align-items: baseline; min-width: 0; }
-.queue-rule-name { font-family: var(--font-mono); font-size: 11px; color: var(--text);
+.queue-rule-name { font-family: var(--font-mono); font-size: var(--fs-tag); color: var(--text);
                    flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
-.queue-rule-fires { font-size: 10.5px; color: var(--success); }
+.queue-rule-fires { font-size: var(--fs-tag); color: var(--success); }
 /* 사유는 «자기 줄»을 쓴다 (flex-basis 100%). 이름 옆에 붙이면 203px 에서 서너 글자씩 접힌다.
    자르지 않는다 — 자르면 소유자가 찾는 사유가 반만 보인다. */
-.queue-rule-why { font-size: 10.5px; color: var(--warning); flex: 1 1 100%;
+.queue-rule-why { font-size: var(--fs-tag); color: var(--warning); flex: 1 1 100%;
                   min-width: 0; padding-left: 8px; overflow-wrap: anywhere; }
-.audit-target-col { font-family: var(--font-sans); font-size: 9.5px; font-weight: 600; letter-spacing: .4px; text-transform: uppercase; color: var(--text-muted); }
+.audit-target-col { font-family: var(--font-sans); font-size: var(--fs-meta); font-weight: 600; letter-spacing: .4px; text-transform: uppercase; color: var(--text-muted); }
 
-.audit-change { gap: 6px; font-family: var(--font-mono); font-size: 11px; white-space: nowrap; }
+.audit-change { gap: 6px; font-family: var(--font-mono); font-size: var(--fs-tag); white-space: nowrap; }
 .audit-change .val-old, .audit-change .val-new { overflow: hidden; text-overflow: ellipsis; word-break: normal; }
 .audit-change .val-arrow { color: var(--text-dim); flex: 0 0 auto; }
 
@@ -2857,7 +2857,7 @@ body.resizing-active .history-sidebar {
   border-top: 1px solid var(--border);
   background: var(--bg-header);
   font-family: var(--font-sans);
-  font-size: 10.5px;
+  font-size: var(--fs-tag);
   color: var(--text-muted);
 }
 .audit-legend-dot { color: var(--border-strong); }
@@ -2910,9 +2910,9 @@ body.resizing-active .history-sidebar {
    it are not, and a button whose label is cut is a button you have to guess at. */
 .app-header #performance-log { flex: 0 1 auto; min-width: 0; }
 .app-header .tx-action-group > * + * { border-left: 1px solid var(--warning); }
-.app-header #tx-pending-badge { border-radius: 0; padding: 0 10px; font-family: var(--font-mono); font-size: 11.5px; font-weight: 700; color: var(--warning); }
-.app-header #tx-apply-btn { border-radius: 0; padding: 0 11px; background: var(--success-weak); color: var(--success); font-weight: 700; font-size: 11.5px; }
-.app-header #tx-discard-btn { border-radius: 0; padding: 0 10px; color: var(--text-muted); font-weight: 400; font-size: 11.5px; }
+.app-header #tx-pending-badge { border-radius: 0; padding: 0 10px; font-family: var(--font-mono); font-size: var(--fs-button); font-weight: 700; color: var(--warning); }
+.app-header #tx-apply-btn { border-radius: 0; padding: 0 11px; background: var(--success-weak); color: var(--success); font-weight: 700; font-size: var(--fs-button); }
+.app-header #tx-discard-btn { border-radius: 0; padding: 0 10px; color: var(--text-muted); font-weight: 400; font-size: var(--fs-button); }
 
 
 /* ── Mockup 2b/2c: the industrial pass ───────────────────────────────────────────────
@@ -2935,13 +2935,13 @@ body.resizing-active .history-sidebar {
 .app-header .glass-btn-group {
   height: 32px;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: var(--fs-button);
 }
-.app-header .glass-input { padding: 0 10px; font-family: var(--font-mono); font-size: 12.5px; }
+.app-header .glass-input { padding: 0 10px; font-family: var(--font-mono); font-size: var(--fs-button); }
 .app-header .glass-btn-group { overflow: hidden; padding: 0; }
-.app-header .glass-btn-group > button { height: 30px; border-radius: 0; font-size: 12px; }
+.app-header .glass-btn-group > button { height: 30px; border-radius: 0; font-size: var(--fs-button); }
 .app-header .control-group > label {
-  font: 600 9.5px var(--font-sans);
+  font: 600 var(--fs-meta) var(--font-sans);
   letter-spacing: .6px;
   color: var(--text-dim);
   text-transform: uppercase;
@@ -2958,7 +2958,7 @@ body.resizing-active .history-sidebar {
   background: var(--bg-inset);
   color: var(--text-muted);
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: var(--fs-button);
   font-weight: 500;
   box-shadow: none;
 }
@@ -2991,7 +2991,7 @@ body.resizing-active .history-sidebar {
   border: none;
   background: none;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--fs-button);
   cursor: pointer;
   padding: 0 2px;
   line-height: 1;
@@ -3010,7 +3010,7 @@ body.resizing-active .history-sidebar {
 .app-header .status-indicators > * {
   height: 22px;
   border-radius: 5px;
-  font-size: 10px;
+  font-size: var(--fs-meta);
   padding: 0 7px;
   display: inline-flex;
   align-items: center;
@@ -3033,13 +3033,13 @@ body.resizing-active .history-sidebar {
   border-radius: 5px;
   box-shadow: none;
   gap: 5px;
-  font-size: 11px;
+  font-size: var(--fs-tag);
   max-width: 340px;
 }
 #tx-filter-banner .banner-text { font-weight: 600; letter-spacing: .3px; }
 #tx-filter-banner .banner-tx-id {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--fs-tag);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3107,7 +3107,7 @@ body.resizing-active .history-sidebar {
 /* ── 그리드 머리의 원장 소스 라벨 (2026-08-31) ─────────────────────────────
    부재를 «셋»으로 말하므로 색도 셋입니다 -- 「아님」과 「못 읽음」이 같은 회색이면
    화면은 문장으로 구별해 놓고 눈으로는 다시 합쳐 버립니다. */
-.grid-source-label { font-size: 12px; padding: 4px 8px; min-height: 20px; }
+.grid-source-label { font-size: var(--fs-label); padding: 4px 8px; min-height: 20px; }
 .grid-source-label.is-idle { padding: 0; min-height: 0; }
 .grid-source-label.is-pending { color: var(--text-dim, #888); }
 .grid-source-label.is-source { color: var(--text-muted, #9aa); }
@@ -3129,7 +3129,7 @@ body.resizing-active .history-sidebar {
 /* 폭은 «고정»입니다. 내용에 따라 늘게 두면 토큰이 없을 때만 안내 문장이 판을 밀어
    같은 줄이 두 갈래에서 다른 크기가 됩니다 (실측 2026-09-02: 403px/302px 대 300px/282px).
    토큰 유무로 화면이 갈리면 그것이 결함입니다 — 둘 다 보는 사람은 없습니다. */
-.redo-panel { width: 300px; font-size: 12px; }
+.redo-panel { width: 300px; font-size: var(--fs-label); }
 /* 누를 수 없는 줄도 «같은 자리»에 섭니다. 토큰 유무로 줄이 어긋나면 그건 다른 화면입니다. */
 .redo-panel__note, .redo-panel__nogo {
   padding: 8px 12px; width: 100%; opacity: 0.7;
@@ -3184,7 +3184,7 @@ body.resizing-active .history-sidebar {
    그건 아직 아무도 답하지 않은 물음입니다. */
 .map-open-timing {
   margin-top: 3px;
-  font-size: 0.72rem;
+  font-size: var(--fs-tag);
   line-height: 1.3;
   color: var(--text-dim, #94a3b8);
   font-variant-numeric: tabular-nums;
@@ -3229,7 +3229,7 @@ body.resizing-active .history-sidebar {
 .ctm-overlay.is-open .ctm-card { transform: scale(1); }
 .ctm-title {
   font-family: var(--font-sans);
-  font-size: 1.35rem;
+  font-size: var(--fs-title);
   font-weight: 600;
   color: var(--text);
   margin: 0 0 var(--space-2);
@@ -3272,7 +3272,7 @@ body.resizing-active .history-sidebar {
   align-items: center;
   justify-content: center;
   padding: var(--space-1);
-  font-size: 1.25rem;
+  font-size: var(--fs-h4);
   background: var(--bg-surface);
   border-radius: 6px;
 }
