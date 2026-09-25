@@ -33553,3 +33553,39 @@ chain_queue_panel 은 Overview · Chain 탭 두 인스턴스가 같이 바뀜 �
 Retries 칸 없음 — 행의 재시도가 0 이 아니면 Drained by 배지 옆에 「retry N」 작은 배지 (잰 수가 사라지지 않게)
 머리 · Running · Failed 한 함수   보고대로
 ```
+
+---
+
+> ⏸ **[총괄 -> 클라] ④ 맵 편집기 한국어 — 소유자 「일단 보류」.** Overview(A) 두 커밋 · 그 뒤 글자 크기 계층은 그대로
+
+---
+
+> 🔴 **[총괄 -> 응용] 대기열 전 종류 검수 — 소유자 「백필 · 체인 트리거 · 인제션 등등 종류별, 내가 열거 안 한 것까지 다 돌려 보고 검수해」**
+
+```
+언제     구현자 대기열 라운드(같은 문 · 옛 줄 치우기 · 미전달 한 정의 · 실패 요약 · replay_sweep) 착지 «뒤» — 움직이는 과녁을 재지 않음
+무엇을   모집단은 총괄 기억이 아니라 «코드»에서 — 아래는 출발점, 응용이 AST 로 다시 세서 빠진 종류를 더합니다
+```
+```
+넣는 문   ORM 쓰기 전부 = database.py before_flush 리스너 하나 (CREATE · EDIT · DELETE)
+          묶음 줄 stage_collapsed_event 3 자리 (crud 둘 · chain/replay 하나) · DatabaseOutbox( 직접 생성 10 자리
+          (retroactive publish · SYSTEM_RELOAD 둘 · SCHEDULER_RUN_NOW · BROADCAST_RECOVERY · outbox_expand 둘 · database 셋)
+쓰는 자(종류) — 출발점
+   그리드 셀 편집 · 붙여넣기 · 행 추가 · 행 삭제 · 파일 업로드 라우트
+   파일 인제션 — 일반 · 대형 레인 · 폴더 트리
+   체인 규칙이 쓴 것 — join · decide · mapper · 짝(:target) · 연쇄(cascade)
+   enrichment 확정 · 소급 6 종(chain_replay · withdraw · ledger_backfill · ledger_rescope · enrichment_backfill · enrichment_confirm)
+   CLI 4 (ledger.backfill · backfill_enrichment · chain_replay_cli · outbox_triage) — 같은 문 착지 뒤
+   지금 수집(SCHEDULER_RUN_NOW → 수집기가 표에 씀) · 설정 리로드 · 어드민 스크립트 저장 · 알림 실패 표식 · 실패 재시도 라우트
+   ORM 을 «안» 지나는 쓰기가 있나 — 있으면 그 쓰기는 대기열을 안 탐. 그것도 종류로 셈
+```
+```
+칸 (종류마다 전부 — 빈 칸은 「해당 없음」이라고 적음)
+   ① 줄이 생기나 (종류 · 표)            ② 어드민 대기열 · 메인 그리드 대기열에 뜨나 (기다리는 동안)
+   ③ 누가 빼나 (체인 워커 · 스케줄러)     ④ 뺀 뒤 상태 SUCCESS + 처리 시각
+   ⑤ 알림 표시 뒤 목록에서 사라지나       ⑥ 걸린 체인 규칙이 돌았나 (아래 표 값 전·후)
+   ⑦ 실패시키면 FAILED + 시각 + 실패 요약 한 줄 (종류마다 한 번 이상 억지로)
+   ⑧ 취소 되는 종류는 취소가 먹나 (소급 실행 · CLI 같은 문 뒤)
+박스 쓰기   응용이 박스에 행을 쓰고 지웁니다(제품 경로로). 지운 뒤 남은 행 0 을 확인해 보고
+보고       종류 × 칸 표 · 셈 명령 · 🔴 빨간 칸은 재현 명령과 같이. 고치지 않습니다 — 총괄이 레인에 나눔
+```
