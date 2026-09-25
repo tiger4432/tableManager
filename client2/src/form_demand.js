@@ -16,9 +16,9 @@
 //                       모양을 모르는데 상자를 그리면 아무 말이나 받는 칸이 됩니다
 
 /** 계획이 아직 안 왔습니다. 「빈 선언」이 아닙니다. */
-export const PLAN_UNREAD = '계획 · 모름';
+export const PLAN_UNREAD = 'Plan · unknown';
 /** 모양 자체를 못 읽었습니다. 상자를 그릴 이유가 아니라 고장입니다. */
-export const SHAPE_MISSING = '모양 없음 · 고장';
+export const SHAPE_MISSING = 'No shape · broken';
 
 /**
  * 이 칸을 무엇이 설명하나.
@@ -45,7 +45,7 @@ export function demandState(facts = {}) {
   }
   // 계획이 왔는데 이 자리에 행이 없습니다 — 새 선언의 정상 모습입니다.
   // 그래서 스켈레톤이 «자기가 아는 것»을 말합니다. 「필수인지 모른다」는 「선택」이 아닙니다.
-  if (facts.required === true) return { source: 'skeleton', text: '필수', tone: 'warn' };
-  if (facts.required === false) return { source: 'skeleton', text: '선택', tone: 'muted' };
-  return { source: 'skeleton', text: '요구 · 모름', tone: 'muted' };
+  if (facts.required === true) return { source: 'skeleton', text: 'Required', tone: 'warn' };
+  if (facts.required === false) return { source: 'skeleton', text: 'Optional', tone: 'muted' };
+  return { source: 'skeleton', text: 'Required · unknown', tone: 'muted' };
 }

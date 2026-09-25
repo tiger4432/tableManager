@@ -13,10 +13,10 @@
 //    상태가 «셋 밖»이면 오늘 그리던 낱말을 그대로 둔다 — 모르는 것을 아는 척하지 않는다.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const UNVERIFIED = '● 미검증';
-const CHANGED = '● 미검증 · 선언 변경됨';
+const UNVERIFIED = '● Unverified';
+const CHANGED = '● Unverified · declaration changed';
 /** 「한 번도 안 돌았다」 — 「돌았는데 안 맞는다」와 다음 행동이 다르다. */
-const NEVER_RAN = '● 미검증 · 이 소스로 아직 실행 안 됨';
+const NEVER_RAN = '● Unverified · never run on this source';
 
 /**
  * @param {object} verified 소스별 상태 레코드, 서버가 준 그대로

@@ -22,7 +22,7 @@
 //    (이 파일의 첫 판이 정확히 그렇게 적었고 계약이 잡았습니다.)
 
 /** 안 물어봤거나 못 받았습니다. 「거절」이 아닙니다. */
-export const DRY_RUN_UNREAD = '진단 · 모름';
+export const DRY_RUN_UNREAD = 'Diagnosis · unknown';
 
 const list = (v) => (Array.isArray(v) ? v : []);
 const str = (v) => (typeof v === 'string' && v ? v : '');
@@ -104,7 +104,7 @@ export function planDryRunView(payload, opts = {}) {
     counts,
     configPath: str(payload.config_path),
     text: parts.length ? parts.join(' · ')
-      : `역할 ${total ? total.value : roles.length}`,
+      : `Roles ${total ? total.value : roles.length}`,
     reason: '',
   };
 }

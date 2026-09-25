@@ -36,14 +36,14 @@ export const TONE = Object.freeze({ [ALIVE.YES]: 'ok', [ALIVE.NO]: 'danger' });
  *    «응답이» 들고 옵니다.
  */
 export const COLUMNS = Object.freeze([
-  { key: 'loop', label: '고리' },
-  { key: 'process', label: '프로세스' },
-  { key: 'alive', label: '살았나', align: 'center' },
-  { key: 'age', label: '마지막 바퀴', align: 'right' },
-  { key: 'seconds', label: '소요', align: 'right' },
-  { key: 'depth', label: '깊이', align: 'right' },
-  { key: 'pace', label: '페이스', align: 'right' },
-  { key: 'knob', label: '손잡이' },
+  { key: 'loop', label: 'Loop' },
+  { key: 'process', label: 'Process' },
+  { key: 'alive', label: 'Alive', align: 'center' },
+  { key: 'age', label: 'Last turn', align: 'right' },
+  { key: 'seconds', label: 'Took', align: 'right' },
+  { key: 'depth', label: 'Depth', align: 'right' },
+  { key: 'pace', label: 'Pace', align: 'right' },
+  { key: 'knob', label: 'Knob' },
 ]);
 
 /**

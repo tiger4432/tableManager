@@ -18,13 +18,13 @@
 //    운영자가 «선언이 금지한 데이터»를 찾으러 갑니다.
 
 /** 안 물어봤거나 못 받았습니다. 「격차 없음」이 아닙니다. */
-export const GAPS_UNREAD = '격차 · 모름';
+export const GAPS_UNREAD = 'Gaps · unknown';
 
 /** 「없는 쪽」의 낱말. 서버의 `form` 값 그대로가 키입니다 — 여기서 갈래를 새로 만들지 않습니다. */
 export const SIDE_LABELS = Object.freeze({
-  pair: '한 쌍이 어긋남',
-  subject_side: '주어 쪽 비었음',
-  object_side: '목적어 쪽 비었음',
+  pair: 'Pair mismatch',
+  subject_side: 'Subject side empty',
+  object_side: 'Object side empty',
 });
 
 const list = (value) => (Array.isArray(value) ? value : []);
@@ -68,7 +68,7 @@ export function gapCatalogueView(payload, opts = {}) {
     reason: '',
     // 「무엇의 수인가」를 옆에 답니다. 공허한 것을 총계에 «섞으면» 운영자가 찾으러 갑니다.
     text: vacuous
-      ? `격차 ${rows.length - vacuous} · 공허 ${vacuous}`
-      : `격차 ${rows.length}`,
+      ? `Gaps ${rows.length - vacuous} · vacuous ${vacuous}`
+      : `Gaps ${rows.length}`,
   };
 }

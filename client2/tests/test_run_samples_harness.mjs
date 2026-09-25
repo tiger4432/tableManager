@@ -115,7 +115,7 @@ console.log('\n[1] the samples reach the screen');
   // 🔴 THE COUNT LINE SURVIVES. The table is 「어느 행이」, added BESIDE 「몇 건」 --
   //    replacing the summary would trade one half of the answer for the other.
   ok('the head still says how many, by name',
-    root.textContent.includes('거절 2') && root.textContent.includes('missing_occurred_at 2'),
+    root.textContent.includes('Refused 2') && root.textContent.includes('missing_occurred_at 2'),
     root.textContent.slice(0, 120));
 }
 
@@ -127,7 +127,7 @@ console.log('\n[2] the controls — what makes the box appear, and what makes th
   eq('a run with no samples draws no sample box', 0,
     byClass(noSamples, 'oe-testrun-samples').length);
   ok('...though it still says how many were refused',
-    noSamples.textContent.includes('거절 5'));
+    noSamples.textContent.includes('Refused 5'));
 
   // 🔴 CONTROL ②: the same two samples, `count` the only difference. 「20 이 전부」 and
   //    「20 까지만 봤다」 are different answers and the server sends no flag for it here.
@@ -135,7 +135,7 @@ console.log('\n[2] the controls — what makes the box appear, and what makes th
   const capped = draw({ count: 40, reasons: { missing_occurred_at: 40 }, samples: [SAMPLE] });
   eq('an untruncated run says nothing about a cap', 1,
     byClass(exact, 'oe-testrun-samples')[0].children.length);
-  eq('...and a truncated one says how far it looked, as a value', '1 건까지',
+  eq('...and a truncated one says how far it looked, as a value', 'first 1',
     byClass(capped, 'oe-testrun-samples')[0].children[0].textContent);
   ok('the two are different pixels',
     byClass(exact, 'oe-testrun-samples')[0].children.length

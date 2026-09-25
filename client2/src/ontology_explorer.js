@@ -35,9 +35,9 @@ function chooseDirtyNavigation(root) {
     dialog.setAttribute('aria-labelledby', 'oe-dirty-dialog-title');
     const title = document.createElement('h2');
     title.id = 'oe-dirty-dialog-title';
-    title.textContent = '저장하지 않은 초안이 있습니다';
+    title.textContent = 'Unsaved draft';
     const message = document.createElement('p');
-    message.textContent = '초안을 유지해 다른 선언을 보거나, 폐기하거나, 이동을 취소하세요.';
+    message.textContent = 'Keep the draft and look elsewhere, discard it, or stay';
     const actions = document.createElement('div');
     actions.className = 'oe-dirty-dialog-actions';
     const finish = (choice) => {
@@ -45,7 +45,7 @@ function chooseDirtyNavigation(root) {
       resolve(choice);
     };
     for (const [choice, label] of [
-      ['keep', '초안 유지'], ['discard', '초안 폐기'], ['cancel', '이동 취소'],
+      ['keep', 'Keep draft'], ['discard', 'Discard draft'], ['cancel', 'Stay'],
     ]) {
       const action = document.createElement('button');
       action.type = 'button';
@@ -474,10 +474,10 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       const id = targetKey.split('|')[1] || targetKey;
       // Terse, nouns and symbols -- the owner's rule for every string on this screen.
       const message = casualties.length
-        ? `${id} 삭제
-안 읽히게 됨 · ${casualties.length} : ${casualties.join(', ')}`
-        : `${id} 삭제
-영향 없음`;
+        ? `Delete ${id}
+Stops being read · ${casualties.length} : ${casualties.join(', ')}`
+        : `Delete ${id}
+No effect`;
       if (!window.confirm(message)) return;
       await jsonRequest(
         `/declarations/${encodeURIComponent(targetKey)}`
@@ -485,7 +485,7 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
         { method: 'DELETE' });
       dispatch({ type: 'DRAFT_CLOSED' });
       dispatch({ type: 'AUTHORING_INVALIDATED' });
-      showToast(`${id} 삭제됨`, 'success');
+      showToast(`${id} deleted`, 'success');
       await readMirror({ draft: null, selection: null, viewMode: 'active' });
     } catch (error) { showToast(errorMessage(error), 'error'); }
   };
@@ -625,7 +625,7 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     try { payload = await response.json(); } catch (_) { /* structured fallback below */ }
     if (!response.ok) {
       const detail = payload?.detail || payload || {};
-      const error = new Error(detail.message || `요청 실패 (${response.status})`);
+      const error = new Error(detail.message || `Request failed (${response.status})`);
       error.detail = detail;
       throw error;
     }
@@ -802,7 +802,7 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
 
   const discardDraft = async ({ ask = true } = {}) => {
     if (!state.draft) return true;
-    if (ask && !window.confirm('현재 초안을 폐기할까요?')) return false;
+    if (ask && !window.confirm('Discard the current draft?')) return false;
     try {
       await jsonRequest(
         `/drafts/${state.draft.draft_id}?expected_revision=${state.draft.revision}`,
@@ -1185,7 +1185,7 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
         });
         dispatch({ type: 'DRAFT_CLOSED' });
         dispatch({ type: 'AUTHORING_INVALIDATED' });
-        showToast('저장했습니다.', 'success');
+        showToast('Saved', 'success');
         await readMirror({ draft: null, selection: null, viewMode: 'active' });
         // 🔴 STAY ON WHAT YOU WERE EDITING. 「저장하고 계속 편집하던거 떠있게」 --
         // building a setup up is MANY saves, and losing your place at each one makes that
@@ -1209,7 +1209,7 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
         restoreScroll(place);
       } catch (error) { showToast(errorMessage(error), 'error'); }
     } else if (action === 'review-draft') {
-      if (state.dirty) { showToast('먼저 초안을 저장해 주세요.', 'warning'); return; }
+      if (state.dirty) { showToast('Save the draft first', 'warning'); return; }
       await mutateDraft(`/drafts/${state.draft.draft_id}/review`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ expected_revision: state.draft.revision }),
@@ -1224,8 +1224,8 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       dispatch({ type: 'VIEW_MODE_CHANGED', mode });
       await load({ draft: state.draft, viewMode: mode, allowContextSwitch: true });
     } else if (action === 'activate-draft') {
-      if (state.dirty) { showToast('먼저 초안을 저장해 주세요.', 'warning'); return; }
-      if (!window.confirm('검토 요청한 정확한 revision을 활성 설정으로 교체할까요?')) return;
+      if (state.dirty) { showToast('Save the draft first', 'warning'); return; }
+      if (!window.confirm('Replace the active config with the exact revision under review?')) return;
       try {
         await jsonRequest(`/drafts/${state.draft.draft_id}/activate`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1233,7 +1233,7 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
         });
         dispatch({ type: 'DRAFT_CLOSED' });
         dispatch({ type: 'AUTHORING_INVALIDATED' });
-        showToast('검토한 초안을 활성화했습니다.', 'success');
+        showToast('Reviewed draft activated', 'success');
         // Activation is the write that changes what is DECLARED, so it re-reads through
         // the same door as every other write rather than refreshing in its own way.
         await readMirror({ draft: null });

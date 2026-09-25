@@ -55,19 +55,19 @@ export function retryMessage(status, serverMessage) {
   const tail = serverMessage ? ` — ${serverMessage}` : '';
   switch (retryVerdict(status).state) {
     case 'done':
-      return { tone: 'success', text: `✅ 재시도 완료${tail}` };
+      return { tone: 'success', text: `✅ Retry done${tail}` };
     case 'failed':
-      return { tone: 'warning', text: `⚠️ 재시도가 다시 실패했습니다. 오류 메시지를 확인하세요.${tail}` };
+      return { tone: 'warning', text: `⚠️ Retry failed again · check the error message${tail}` };
     // 🔴 여기가 이 라운드의 전부입니다. 「완료」가 아니라 「대기」이고, 그 일을 «누가» 하는지도
     //    말합니다 — 워처가 서 있으면 이 건은 영원히 이 상태입니다.
     case 'queued':
-      return { tone: 'warning', text: `⏳ 재시도 대기 — 워처가 집어 가야 처리됩니다${tail}` };
+      return { tone: 'warning', text: `⏳ Retry waiting — runs when the watcher picks it up${tail}` };
     // ⚠️ 「목록에 없다」와 「모르는 철자」는 다른 사실입니다. 앞은 필터가 FAILED 일 때
     //    «정상»으로 일어나고(성공한 행은 그 목록을 떠납니다), 뒤는 서버가 새 상태를
     //    만든 경우입니다. 둘을 한 문장으로 접으면 전자가 «고장처럼» 읽힙니다.
     default:
       return { tone: 'warning', text: status == null
-        ? `↔️ 이 목록에서 빠졌습니다 — ALL 필터에서 상태를 확인하십시오${tail}`
-        : `❔ 알 수 없는 상태 (${status})${tail}` };
+        ? `↔️ Left this list — check its state under the ALL filter${tail}`
+        : `❔ Unknown state (${status})${tail}` };
   }
 }

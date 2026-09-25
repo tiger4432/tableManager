@@ -55,8 +55,8 @@ export const RETRO_CHROME = Object.freeze({
   //    「테두리 색」으로만 살았고, 「다시 걸어도 중복 안 된다」는 «한 번도 말해지지» 않았습니다.
   //    상설(2026-09-05)대로 상태는 «명사»로, 접속사 대신 `·`.
   RESTARTABLE: 'restartable',
-  RESTARTABLE_YES: '재실행 안전 · 중복 없음',
-  RESTARTABLE_NO: '재실행 불가',
+  RESTARTABLE_YES: 'Safe to rerun · no duplicates',
+  RESTARTABLE_NO: 'Not rerunnable',
 
   COUNT: 'count',
   COUNTING: 'counting…',

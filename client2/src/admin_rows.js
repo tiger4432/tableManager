@@ -56,7 +56,7 @@ export function activeIngestionRowHtml(item, { elapsedText }) {
     ? `<span class="badge badge-warning" style="font-weight: bold;">HEAVY</span>`
     : `<span class="badge badge-success">normal</span>`;
   const pct = Math.max(0, Math.min(item.progress || 0, 100));
-  const statusNote = item.status === 'QUEUED' ? ' 대기' : '';
+  const statusNote = item.status === 'QUEUED' ? ' waiting' : '';
   // 🔴 `|| 0` USED TO BE HERE and it turned 「안 왔다」 into 「0개 처리했다」 — a
   //    number the server never sent. `localeCountText` keeps the two apart.
   const rowsText = (item.total_rows != null)
@@ -127,7 +127,7 @@ export function autoUpdateRowHtml(col, { isActive, nextRunText, lastRunText }) {
     col.last_status === 'RUNNING' ? 'badge-warning' : 'badge-warning'
   }">${escapeHtml(col.last_status || 'PENDING')}</span>`;
   const inactiveBadge = isActive ? '' :
-    '<span class="badge badge-muted" style="margin-left: 8px; flex: none;">비활성</span>';
+    '<span class="badge badge-muted" style="margin-left: 8px; flex: none;">Inactive</span>';
   return `
       <td style="font-weight: bold; color: var(--color-primary);">${escapeHtml(col.table_name)}</td>
       <td style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: 0.85rem; word-break: break-all;">${escapeHtml(col.script_name)}${inactiveBadge}</td>
@@ -136,15 +136,15 @@ export function autoUpdateRowHtml(col, { isActive, nextRunText, lastRunText }) {
       <td style="color: var(--text-muted); font-size: 0.85rem; font-family: var(--font-mono);" title="${escapeHtml(col.last_run || '')}">${escapeHtml(lastRunText)}</td>
       <td style="text-align: center;">${statusBadge}</td>
       <td class="au-live" style="text-align: center;" onclick="event.stopPropagation()">
-        <label class="au-switch" title="${isActive ? '클릭 → 수집기 비활성화 (스케줄 중단)' : '클릭 → 수집기 활성화 (스케줄 재개)'}">
-          <input type="checkbox" class="au-active-toggle" ${isActive ? 'checked' : ''} aria-label="수집기 스케줄 활성 토글">
+        <label class="au-switch" title="${isActive ? 'Click → deactivate the collector (schedule stops)' : 'Click → activate the collector (schedule resumes)'}">
+          <input type="checkbox" class="au-active-toggle" ${isActive ? 'checked' : ''} aria-label="Collector schedule on/off">
           <span class="au-slider"></span>
         </label>
       </td>
       <td class="au-live" style="text-align: center;" onclick="event.stopPropagation()">
         <button class="admin-btn btn-primary btn-run-now" data-table="${escapeHtml(col.table_name)}" data-script="${escapeHtml(col.script_name)}"
           style="padding: 4px 10px; font-size: 0.75rem;"
-          title="${isActive ? '즉시 1회 수집 실행' : '비활성 수집기도 수동 실행은 가능합니다'}">Run Now</button>
+          title="${isActive ? 'Collect once now' : 'An inactive collector can still be run by hand'}">Run Now</button>
       </td>
     `;
 }

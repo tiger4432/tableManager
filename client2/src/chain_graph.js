@@ -315,7 +315,7 @@ export class ChainGraphPanel {
     if (view.ledgerError) {
       const line = this.doc.createElement('div');
       line.className = 'chain-graph-ledger-error';
-      line.textContent = `원장 절반 못 읽음 · ${view.ledgerError}`;
+      line.textContent = `Ledger half unreadable · ${view.ledgerError}`;
       this.root.appendChild(line);
     }
     // 🔴 머리 줄 «아래» 한 줄. 수는 위에 있고, 여기는 「어느 것인가」입니다.

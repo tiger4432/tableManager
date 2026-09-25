@@ -43,19 +43,19 @@ async function score(mutate) {
   // ══ 세 상태가 «값으로» 갈린다 ═══════════════════════════════════════════════════════
   eq('A1 검증된 소스는 배지가 없다', '', N(VERIFIED));
   eq('A2 한 번도 안 돌았으면 그렇게 말한다',
-     '● 미검증 · 이 소스로 아직 실행 안 됨', N(NEVER));
-  eq('A3 돌았는데 선언이 바뀌었으면 «다른 낱말»', '● 미검증 · 선언 변경됨', N(CHANGED));
+     '● Unverified · never run on this source', N(NEVER));
+  eq('A3 돌았는데 선언이 바뀌었으면 «다른 낱말»', '● Unverified · declaration changed', N(CHANGED));
   ok('A4 그 둘이 «갈린다» — 같은 낱말이면 다음 행동이 사라진다', N(NEVER) !== N(CHANGED));
 
   // 🔴 순서가 이 판정의 전부입니다. `stale` 인 레코드도 `ran_at` 을 «들고» 있으므로,
   //    「ran_at 없음」을 먼저 보면 안 걸리고, 「stale」을 나중에 보면 먹힙니다.
   eq('A5 stale 이 ran_at 보다 «먼저» 읽힌다',
-     '● 미검증 · 선언 변경됨', N({ ...CHANGED, ran_at: null }));
+     '● Unverified · declaration changed', N({ ...CHANGED, ran_at: null }));
 
   // ══ 모르는 모양은 «오늘 그리던 것»을 그대로 ═══════════════════════════════════════
   // ⚠️ 옛 서버는 이 키들을 «안 보낼» 수 있습니다. 그때 「아직 실행 안 됨」을 그리면
   //    «안 물어본 것»을 «답»으로 만듭니다.
-  eq('A6 키가 없는 옛 응답은 종전 낱말 그대로', '● 미검증',
+  eq('A6 키가 없는 옛 응답은 종전 낱말 그대로', '● Unverified',
      N({ target_key: 'source_plan|s', status: 'unverified' }));
   eq('A7 레코드가 없으면 아무것도 안 그린다', '', N(null));
   eq('A8 레코드가 아니어도 같다', '', N('unverified'));

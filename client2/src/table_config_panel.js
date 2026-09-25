@@ -21,10 +21,10 @@ import { registryView, RawRegistryPanel } from './raw_registry_panel.js';
  * ⛔ 문장을 쓰지 않습니다 — 상태는 명사, 이름은 `·` 로 (상설 2026-09-05).
  */
 function missingRelations(payload, opts) {
-  if (opts && opts.relationsUnread) return { value: 'unread', text: '물리 표 · 모름' };
+  if (opts && opts.relationsUnread) return { value: 'unread', text: 'Physical table · unknown' };
   const names = Array.isArray(opts && opts.missingRelations) ? opts.missingRelations : null;
   if (!names || !names.length) return null;
-  return { value: 'missing', text: `물리 표 없음 · ${names.join(' · ')}` };
+  return { value: 'missing', text: `No physical table · ${names.join(' · ')}` };
 }
 
 /** 이 등록부의 낱말. 도메인 이름이 사는 자리는 «여기 하나»입니다. */
@@ -36,7 +36,7 @@ export const TABLE_REGISTRY = Object.freeze({
   // C-86 ①. 템플릿이 자란 것을 이 등록부도 «선언 한 줄»로 받습니다 — 둘째를 손으로 그리지
   // 않는다는 상설 그대로입니다. 서버가 새 이름을 받는지 «재서» 켭니다: `save_table_config_raw`
   // 는 얕은 병합이라 없던 키를 만듭니다(이름이 비었을 때만 `table_name_required` 로 거절).
-  addLabel: '표 추가',
+  addLabel: 'Add table',
   // 이 라우트는 스켈레톤을 «안 싣습니다» — 그래서 폼이 없고 화면은 오늘 그대로입니다.
 });
 

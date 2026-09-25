@@ -1,4 +1,5 @@
 import { redoCostText } from './redo_cost.js';
+import { LOADING, unitText } from './ui_words.js';
 import { isDraftRevisionEditable, declarationIdFor, fieldOpensByDefault }
   from './ontology_explorer_store.js';
 import { commitTree } from './dom_patch.js';
@@ -55,7 +56,7 @@ const button = (text, action, value, cls = '') => {
  *    「Draft preview」 버튼은 «머리»에 있습니다. 탭을 안 열면 사유가 안 보이는 것이 바로
  *    「사유가 다른 패널에 있다」이고, 그것이 이번 부류의 셋째 모양이었습니다. 한 상수로
  *    묶어 두 자리가 «같은 말»을 하게 합니다. */
-const DRAFT_UNVERIFIED = '저장하면 검증합니다.';
+const DRAFT_UNVERIFIED = 'Verified on save';
 
 const appendEmptyLine = (parent, count, unread, text, cls = 'oe-empty') => {
   const cell = countWithAbsence({ value: count, unread: unread || '' });
@@ -82,7 +83,7 @@ function addPopover(target, node) {
   popover.setAttribute('role', 'tooltip');
   popover.append(
     h('strong', '', `${node.kind} · ${node.canonical_id}`),
-    h('span', '', node.description || `${node.kind} 선언`),
+    h('span', '', node.description || `${node.kind} declaration`),
     h('code', '', node.config_path),
   );
   target.append(popover);
@@ -161,7 +162,7 @@ function subjectSection(state, subject) {
 
 function renderTree(state) {
   const nav = h('nav', 'oe-tree');
-  nav.setAttribute('aria-label', '온톨로지 구성 트리');
+  nav.setAttribute('aria-label', 'Ontology tree');
   const subject = subjectOf(state);
   const subjectKey = subject ? (subject.key || `${subject.kind}|${subject.id}`) : null;
   // 🔴 THE DEFAULT LIST IS TOP-LEVEL DECLARATIONS ONLY, AND THE TEST IS THE PATH'S LENGTH.
@@ -205,8 +206,8 @@ function renderTree(state) {
   const listedCell = countWithAbsence({ value: listed.length, unread: state.error || '' });
   nav.append(h('div', 'oe-tree-title',
                 listedCell.read
-                  ? (searching ? `검색 결과 · ${listedCell.text}개` : `선언 · ${listedCell.text}개`)
-                  : (searching ? `검색 결과 · ${listedCell.text}` : `선언 · ${listedCell.text}`)));
+                  ? (searching ? `Results · ${listedCell.text}` : `Declared · ${listedCell.text}`)
+                  : (searching ? `Results · ${listedCell.text}` : `Declared · ${listedCell.text}`)));
   const groups = new Map();
   for (const item of listed) {
     if (!groups.has(item.kind)) groups.set(item.kind, []);
@@ -310,7 +311,7 @@ function renderTree(state) {
   }
   // 🔴 C-121. 「일치하는 것이 없다」는 «찾아봤다»는 뜻입니다. 못 읽었으면 안 찾아본 것입니다.
   if (state.query.trim()) {
-    appendEmptyLine(nav, state.items.length, state.error, '일치하는 정의가 없습니다.');
+    appendEmptyLine(nav, state.items.length, state.error, 'No matching definitions');
   }
   return nav;
 }
@@ -412,14 +413,14 @@ function renderDeclarationMap(state) {
   const area = h('section', 'oe-map-area');
   const subject = mapSubject(state);
   const heading = h('div', 'oe-section-heading');
-  heading.append(h('h2', '', '지도'), h('span', '', subject.label || '—'));
+  heading.append(h('h2', '', 'Map'), h('span', '', subject.label || '—'));
   area.append(heading);
   if (!subject.node || !subject.document || typeof subject.document !== 'object') {
-    area.append(h('div', 'oe-empty', '펼칠 선언이 없습니다.'));
+    area.append(h('div', 'oe-empty', 'No declaration to open'));
     return area;
   }
   const rows = outlineRows(subject.node, subject.defs, '', subject.document, 0,
-                           subject.label || '선언', []);
+                           subject.label || 'Declaration', []);
   // The plan's own predicate for 「남음」, unchanged and not re-derived here -- PLUS the
   // refusals that never found a field.
   //
@@ -450,7 +451,7 @@ function renderDeclarationMap(state) {
     //
     // At 330px an indent alone is a couple of characters of whitespace and the eye cannot
     // count it; every child carries the mark AND stands further in than its parent.
-    if (row.depth) item.append(h('span', 'oe-map-branch', 'ㄴ'));
+    if (row.depth) item.append(h('span', 'oe-map-branch', '└'));
     item.append(h('span', 'oe-map-name', row.label));
     if (row.branch) item.classList.add('is-branch');
     if (needsAttention(hot, absolute)) item.classList.add('is-left');
@@ -464,7 +465,7 @@ function renderDeclarationMap(state) {
 
 function renderBreadcrumb(state) {
   const trail = h('div', 'oe-breadcrumb');
-  trail.setAttribute('aria-label', '탐색 경로');
+  trail.setAttribute('aria-label', 'Path');
   const nodes = nodeMap(state);
   const path = state.currentPath?.node_keys || [state.selection.key];
   path.forEach((key, index) => {
@@ -534,13 +535,13 @@ function renderDefinition(state) {
   const grid = h('div', 'oe-signature');
   const selected = state.selection;
   grid.append(
-    keyValue('종류', selected.kind),
-    keyValue('정본 ID', selected.canonical_id),
+    keyValue('Kind', selected.kind),
+    keyValue('Canonical ID', selected.canonical_id),
     keyValue('Version', selected.version ?? 'None'),
-    keyValue('설정 파일', selected.config_file),
-    keyValue('정확한 위치', selected.json_pointer),
-    keyValue('정의 해시', selected.definition_hash),
-    keyValue('변경 상태', selected.change_status),
+    keyValue('Config file', selected.config_file),
+    keyValue('Exact location', selected.json_pointer),
+    keyValue('Definition hash', selected.definition_hash),
+    keyValue('Change state', selected.change_status),
   );
   const wrap = h('div', 'oe-definition');
   wrap.append(grid);
@@ -572,7 +573,7 @@ function renderUsage(state) {
     addPopover(row, node);
     wrap.append(row);
   }
-  if (!rows.length) wrap.append(h('div', 'oe-empty', '직접 참조가 없습니다.'));
+  if (!rows.length) wrap.append(h('div', 'oe-empty', 'No direct references'));
   return wrap;
 }
 
@@ -683,9 +684,9 @@ function renderRaw(state) {
     // 🔴 THE PER-ROW MARKS STAY. Deleting those would leave no way to tell which box is
     // still owed -- only the COLLECTED list goes.
     const context = h('div', 'oe-editor-context');
-    context.append(keyValue('초안 상태', state.draft.lifecycle_status));
+    context.append(keyValue('Draft state', state.draft.lifecycle_status));
     context.append(keyValue('Revision', state.draft.revision));
-    context.append(keyValue('기준 snapshot', state.draft.base_snapshot_hash));
+    context.append(keyValue('Base snapshot', state.draft.base_snapshot_hash));
     const label = h('label', 'oe-label', 'Working draft JSON');
     const textarea = h('textarea', 'oe-editor-textarea');
     textarea.value = state.editorText;
@@ -698,7 +699,7 @@ function renderRaw(state) {
     const errors = state.draft.validation_errors || [];
     validation.textContent = errors.length
       ? errors.map((e) => `[${e.reference_status || e.code}] ${e.json_pointer || e.path}: ${e.message}`).join('\n')
-      : (state.draft.preview_valid ? '✓ 동일 compiler로 검증된 초안입니다.' : DRAFT_UNVERIFIED);
+      : (state.draft.preview_valid ? '✓ Draft verified by the same compiler' : DRAFT_UNVERIFIED);
     // 🔴 ONE SAVE, AND THE LIFECYCLE BRANCH IS GONE -- IT WAS THE FLICKER.
     //
     //     초안 편집 버튼이 나오다 말다하고 저장검증은 뭐고 검토 요청은 뭔지 모르겠음
@@ -731,7 +732,7 @@ function renderRaw(state) {
       controls.append(h('span', 'oe-editor-blockers',
                         state.draft.activation_blockers.length
                           ? state.draft.activation_blockers.join(' · ')
-                          : '막는 것 없음'));
+                          : 'Nothing blocks'));
     }
     // 🔴 C-96 (S-143). 「이 저장이 무엇을 다시 돌리나」. 저장이 «곧» 설정 파일 반영이라 이 수는
     //    누르기 «전»에 보여야 하고, 그래서 막는 것 옆입니다 — 같은 물음의 두 답입니다
@@ -775,7 +776,7 @@ function renderRaw(state) {
     return editor;
   }
   if (state.draft) {
-    const notice = h('div', 'oe-warning', `초안 대상은 ${state.draft.target_id}로 고정되어 있습니다.`);
+    const notice = h('div', 'oe-warning', `The draft is pinned to ${state.draft.target_id}`);
     const code = h('pre', 'oe-code');
     code.append(h('code', '', JSON.stringify(state.selection.raw, null, 2)));
     const wrap = h('div', 'oe-definition');
@@ -824,7 +825,7 @@ function renderTestRunRefusal(refusal) {
   if (typeof refusal.rows_read === 'number'
       && typeof refusal.rows_missing === 'number' && refusal.column) {
     box.append(h('span', 'oe-testrun-rows',
-                 `${refusal.rows_read}행 중 ${refusal.rows_missing}행 · ${refusal.column}`));
+                 `${refusal.rows_missing} of ${unitText(refusal.rows_read, 'row')} · ${refusal.column}`));
   }
   // 🔴 WHAT EXECUTION WILL DO. Without this the operator reads 「나머지는 들어가겠지」,
   //    which is the promise the server was forbidden to make -- so a screen that omits it
@@ -833,7 +834,7 @@ function renderTestRunRefusal(refusal) {
   //    ⚠️ `true` and «absent» both draw nothing: the first is a promise this build has
   //       never seen the server make, and the second is 「안 물어봤다」.
   if (refusal.partial_apply === false) {
-    box.append(h('span', 'oe-testrun-rows', '좋은 행도 안 들어갑니다'));
+    box.append(h('span', 'oe-testrun-rows', 'Good rows do not go in either'));
   }
   return box;
 }
@@ -843,9 +844,9 @@ function renderTestRun(state) {
   if (!run && !state.testRunning) return null;
   const box = h('section', 'oe-testrun');
   const head = h('div', 'oe-testrun-head');
-  head.append(h('span', 'oe-testrun-title', '시험 실행'));
+  head.append(h('span', 'oe-testrun-title', 'Test run'));
   if (state.testRunning) {
-    head.append(h('span', 'oe-testrun-note', '실행 중'));
+    head.append(h('span', 'oe-testrun-note', 'Running'));
     box.append(head);
     return box;
   }
@@ -855,8 +856,8 @@ function renderTestRun(state) {
   // "행 142, 분자 0" -- knowing the rows arrived and nothing was built from them is a
   // different problem from the table being empty, and the counts are what tell them apart.
   head.append(h('span', 'oe-testrun-count',
-                `행 ${run.rows_read} · 분자 ${run.molecules} · 원자 ${run.atoms}`));
-  if (run.incomplete) head.append(h('span', 'oe-testrun-note', `미완 ${run.incomplete}`));
+                `Rows ${run.rows_read} · molecules ${run.molecules} · atoms ${run.atoms}`));
+  if (run.incomplete) head.append(h('span', 'oe-testrun-note', `Incomplete ${run.incomplete}`));
   // 🔴 C-39. WHY THE ROWS DID NOT BECOME MOLECULES, BESIDE THE COUNTS THAT SAY THEY DID NOT.
   //    The route stopped ending the run on one bad row and now reports the refusals BY NAME
   //    (`refused {count, reasons, samples}`) -- its own comment says 「values, never a
@@ -878,8 +879,8 @@ function renderTestRun(state) {
   //       not render as 「안 막는다」 -- so an absent key draws nothing.
   //    ⚠️ The control this screen has is `Save`, not `Activate`: saving IS the write
   //       (owner, 「저장이 곀 설정 파일 반영」), so the word beside it is 저장.
-  if (run.blocks_activation === false) head.append(h('span', 'oe-testrun-note', '저장 차단 아님'));
-  else if (run.blocks_activation === true) head.append(h('span', 'oe-testrun-note', '저장 차단'));
+  if (run.blocks_activation === false) head.append(h('span', 'oe-testrun-note', 'Does not block saving'));
+  else if (run.blocks_activation === true) head.append(h('span', 'oe-testrun-note', 'Blocks saving'));
   box.append(head);
   if (run.refusal) box.append(renderTestRunRefusal(run.refusal));
   // 🔴 C-49. 「거절 N」 아래에 «어느 행이», 값으로. 수만으로는 「내 선언이 틀렸다」와 「내
@@ -900,7 +901,7 @@ function renderTestRun(state) {
       doc: document,
       columns: readRows.columns,
       rows: readRows.rows,
-      emptyText: '읽은 행이 없습니다',
+      emptyText: 'No rows read',
     }).render();
   }
   const samples = refusalSamples(run.refused);
@@ -920,7 +921,7 @@ function renderTestRun(state) {
     box.append(list);
   }
   if (run.status === 'empty') {
-    box.append(h('div', 'oe-testrun-why', '이 테이블에서 읽은 행이 없습니다.'));
+    box.append(h('div', 'oe-testrun-why', 'No rows read from this table'));
   }
   if (run.sentences?.length) {
     const list = h('div', 'oe-testrun-sentences');
@@ -937,7 +938,7 @@ function renderTestRun(state) {
   // that is IN THE FILE -- on this screen a save is the write to the file, so a saved
   // draft is what runs, and text still sitting in the editor is not.
   box.append(h('small', 'oe-testrun-note',
-               '쓰기 없음 · 커서 이동 없음 · 저장된 선언 기준'));
+               'No writes · no cursor moves · against the saved declaration'));
   return box;
 }
 
@@ -965,14 +966,14 @@ function renderInspector(state) {
     actions.append(h('span', 'oe-status oe-status--active', `● ACTIVE · ${state.selection.compile_status}`));
   }
   if (state.selection.kind === 'source_plan') {
-    const run = button('시험 실행', 'test-run', state.selection.canonical_id,
+    const run = button('Test run', 'test-run', state.selection.canonical_id,
                        'oe-edit-action');
     run.disabled = Boolean(state.testRunning);
     actions.append(run);
   }
   if (state.draft) {
     actions.append(h('span', `oe-status oe-status--${state.draft.lifecycle_status}`, `◇ DRAFT · ${state.draft.lifecycle_status}`));
-    const activeButton = button('Active 보기', 'view-active', '', `oe-mode-action ${mode !== 'draft_preview' ? 'is-current' : ''}`);
+    const activeButton = button('View active', 'view-active', '', `oe-mode-action ${mode !== 'draft_preview' ? 'is-current' : ''}`);
     activeButton.setAttribute('aria-pressed', String(mode !== 'draft_preview'));
     const draftButton = button('Draft preview', 'view-draft', '', `oe-mode-action ${mode === 'draft_preview' ? 'is-current' : ''}`);
     draftButton.setAttribute('aria-pressed', String(mode === 'draft_preview'));
@@ -982,7 +983,7 @@ function renderInspector(state) {
     actions.append(activeButton, draftButton);
   }
   if (!state.draft && state.selection.config_file === 'ledger_config.json') {
-    actions.append(button('초안 편집', 'create-draft', '', 'oe-edit-action'));
+    actions.append(button('Edit draft', 'create-draft', '', 'oe-edit-action'));
   }
   head.append(title, actions);
   article.append(head);
@@ -1029,7 +1030,7 @@ function renderInspector(state) {
   const tabs = h('div', 'oe-tabs');
   tabs.setAttribute('role', 'tablist');
   for (const [id, label] of [
-    ['definition', '정의'], ['authoring', '작성'], ['usage', '사용처'], ['raw', '원본 JSON'],
+    ['definition', 'Definition'], ['authoring', 'Authoring'], ['usage', 'Used by'], ['raw', 'Raw JSON'],
   ]) {
     const tab = button(label, 'tab', id, 'oe-tab');
     tab.setAttribute('role', 'tab');
@@ -1058,7 +1059,7 @@ function renderInspector(state) {
 function renderStepBar(state) {
   const plan = state.authoring;
   const bar = h('nav', 'oe-steps');
-  bar.setAttribute('aria-label', '셋업 걸음');
+  bar.setAttribute('aria-label', 'Setup steps');
   if (!plan) {
     bar.append(h('div', 'oe-empty', state.authoringError || (state.loading ? 'Loading' : 'None')));
     return bar;
@@ -1077,7 +1078,7 @@ function renderStepBar(state) {
   const allDone = plan.steps.length > 0
     && plan.steps.every((step) => step.declared && !step.remaining);
   const head = h('div', 'oe-spine-head');
-  head.append(h('span', 'oe-spine-title', '셋업'));
+  head.append(h('span', 'oe-spine-title', 'Setup'));
   head.append(h('span', 'oe-spine-count',
                 allDone ? `${plan.steps.length} layers · complete`
                         : `${totalRemaining} remaining`));
@@ -1131,7 +1132,7 @@ function renderGround(row) {
   box.append(h('span', 'oe-ground-text', ground.text));
   for (const path of ground.from_paths.slice(0, 2)) box.append(h('code', '', path));
   if (ground.from_paths.length > 2) {
-    box.append(h('small', '', `외 ${ground.from_paths.length - 2}곳`));
+    box.append(h('small', '', `+${ground.from_paths.length - 2} more`));
   }
   return box;
 }
@@ -1210,7 +1211,7 @@ function renderValue(row) {
   if (value === null || value === undefined) return h('span', 'oe-value is-none', 'None');
   if (Array.isArray(value)) {
     const list = h('span', 'oe-value');
-    if (!value.length) list.append(h('i', 'oe-chip is-none', '비움'));
+    if (!value.length) list.append(h('i', 'oe-chip is-none', 'Empty'));
     for (const item of value) {
       list.append(h('i', 'oe-chip', typeof item === 'string' ? item : JSON.stringify(item)));
     }
@@ -1249,7 +1250,7 @@ function foldDecision(row, expanded = {}) {
   // here: the toggle could only ever agree with the screen.
   const chosen = expanded ? expanded[row.path] : undefined;
   if (chosen === true) return { open: true, reason: '', byHand: true };
-  if (chosen === false) return { open: false, reason: '접힘', byHand: true };
+  if (chosen === false) return { open: false, reason: 'Folded', byHand: true };
   if (row.remaining) return { open: true, reason: '' };
   if (row.conflicts || row.refusals?.length) return { open: true, reason: '' };
   // 🔴 A DEFAULT THE AUTHOR MAY CHANGE, WITH SOMETHING TO CHANGE IT TO, IS A CHOICE. The
@@ -1268,11 +1269,11 @@ function foldDecision(row, expanded = {}) {
     // 「비움」 on an empty list chip, 「후보」 across the client. Nothing here was translated
     // into existence; the state column had simply been left in the language the mockup did
     // not rule on, so 「선언됨」 stood beside four English words in one column.
-    return { open: false, reason: row.disposition === 'grammar_requires_it' ? '강제' : '파생됨' };
+    return { open: false, reason: row.disposition === 'grammar_requires_it' ? 'Forced' : 'Derived' };
   }
   // Read live. `candidates` is the list the server sent for THIS render.
   if (Array.isArray(row.candidates) && row.candidates.length === 1) {
-    return { open: false, reason: '단일 후보' };
+    return { open: false, reason: 'Single candidate' };
   }
   // 🔴 A SETTLED DECISION IS NOT A PENDING ONE. A person-decided field that is already
   // filled and carries no problem is done -- keeping it open spends the operator's
@@ -1283,8 +1284,8 @@ function foldDecision(row, expanded = {}) {
   // the short ones -- the tall ones are the filled choices, carrying their whole candidate
   // list. Folding by "is anything still owed here" instead of by tier is what turns a
   // complete config into a short page, which is the state it should read as.
-  if (row.state === 'answered') return { open: false, reason: '선언됨' };
-  if (row.state === 'unanswered') return { open: false, reason: '비움' };
+  if (row.state === 'answered') return { open: false, reason: 'Declared' };
+  if (row.state === 'unanswered') return { open: false, reason: 'Empty' };
   return { open: true, reason: '' };
 }
 
@@ -1313,7 +1314,7 @@ function renderUniqueness(row, stats) {
   const view = orderingVerdicts(failed ? null : stats?.ordering,
                                 { read: !failed && !!stats });
   const box = h('div', 'oe-uniqueness');
-  box.append(h('small', '', view.read ? `선언 키 측정 · ${view.keys.length}` : '선언 키 측정'));
+  box.append(h('small', '', view.read ? `Declared keys measured · ${view.keys.length}` : 'Declared keys measured'));
   if (!view.read) {
     // 「안 물어봤다」 and 「물었는데 못 받았다」 are both 「모름」, and neither is 「아니다」.
     const line = h('div', 'oe-uniqueness-row');
@@ -1333,7 +1334,7 @@ function renderUniqueness(row, stats) {
   }
   const pick = h('div', 'oe-uniqueness-pick');
   pick.dataset.state = view.recommended ? 'recommended' : 'none';
-  pick.append(h('small', '', '추천'));
+  pick.append(h('small', '', 'Suggested'));
   pick.append(h('span', '', view.text));
   box.append(pick);
   return box;
@@ -1387,7 +1388,7 @@ function renderAuthoringRow(row, expanded = [], editable = null, bare = false,
   if (measured) card.append(measured);
   if (row.conflicts) {
     const clash = h('div', 'oe-field-conflict');
-    clash.append(h('b', '', '선언과 불일치'));
+    clash.append(h('b', '', 'Differs from the declaration'));
     clash.append(h('code', '', JSON.stringify(row.declared)));
     card.append(clash);
   }
@@ -1397,16 +1398,16 @@ function renderAuthoringRow(row, expanded = [], editable = null, bare = false,
   if (row.state === 'derived' && row.disposition) {
     const act = h('div', 'oe-field-act');
     if (row.disposition === 'grammar_requires_it') {
-      act.append(h('span', '', '강제 · 이 자리에서 못 바꿈'));
+      act.append(h('span', '', 'Forced · cannot change here'));
     } else if (row.disposition === 'remove_from_file') {
-      act.append(h('span', '', '강제 · 파일에서 뺄 수 있음'));
+      act.append(h('span', '', 'Forced · removable in the file'));
     } else if (row.disposition === 'default_overridable') {
-      act.append(h('span', '', '기본값 · 덮어쓸 수 있음'));
+      act.append(h('span', '', 'Default · can be overridden'));
     } else if (row.disposition === 'unmeasured') {
-      act.append(h('span', '', '거절이 남아 있어 제거 가능 여부 미측정'));
+      act.append(h('span', '', 'Refusals remain · removability not measured'));
     }
     for (const key of row.ground?.from_keys || []) {
-      const jump = button(`근거 · ${key.split('|')[1] || key}`, 'select', key, 'oe-jump');
+      const jump = button(`Basis · ${key.split('|')[1] || key}`, 'select', key, 'oe-jump');
       jump.dataset.direct = 'true';
       act.append(jump);
     }
@@ -1418,7 +1419,7 @@ function renderAuthoringRow(row, expanded = [], editable = null, bare = false,
   if (row.candidates && (row.state !== 'derived' || editable)) {
     const box = h('div', 'oe-candidates');
     let picks = null;
-    const label = row.universe ? `${row.universe} · ${row.universe_note}` : '고를 수 있는 값';
+    const label = row.universe ? `${row.universe} · ${row.universe_note}` : 'Choosable values';
     box.append(h('small', '', `${label} · ${row.candidates.length}`));
     // 🔴 THE SCREEN NEVER ADDS A LOCKED COLUMN -- AND NEVER TAKES ONE OUT EITHER. The chip
     // is inert, so nothing here can put a locked name into the document; what the document
@@ -1507,8 +1508,8 @@ function renderAuthoringRow(row, expanded = [], editable = null, bare = false,
           line.append(box_, drop);
           box.append(line);
         });
-        if (!editable.value.length) box.append(h('div', 'oe-key-none', '비움'));
-        const add = button('+ 직접 입력', 'add-field-item', row.path, 'oe-field-row-add');
+        if (!editable.value.length) box.append(h('div', 'oe-key-none', 'Empty'));
+        const add = button('+ Enter by hand', 'add-field-item', row.path, 'oe-field-row-add');
         add.dataset.list = shown;
         box.append(add);
       } else if (editable.kind !== 'object') {
@@ -1538,7 +1539,7 @@ function renderAuthoringRow(row, expanded = [], editable = null, bare = false,
             held.setAttribute('aria-pressed', 'true');
             held.setAttribute('aria-disabled', 'true');
             held.dataset.locked = 'true';
-            held.title = '어차피 읽는 컬럼 · 끌 수 없음';
+            held.title = 'Read anyway · cannot turn off';
             picks.append(held);
             continue;
           }
@@ -1555,7 +1556,7 @@ function renderAuthoringRow(row, expanded = [], editable = null, bare = false,
         box.append(h('i', 'oe-chip', typeof item === 'string' ? item : JSON.stringify(item)));
       }
       if (row.candidates.length > 24) {
-        box.append(h('small', '', `외 ${row.candidates.length - 24}개 · 접힘`));
+        box.append(h('small', '', `+${row.candidates.length - 24} more · folded`));
       }
     }
     card.append(box);
@@ -1563,10 +1564,10 @@ function renderAuthoringRow(row, expanded = [], editable = null, bare = false,
   }
   if (row.forbidden?.length) {
     const box = h('div', 'oe-candidates is-forbidden');
-    box.append(h('small', '', `쓸 수 없는 이름 · ${row.forbidden.length}`));
+    box.append(h('small', '', `Names not allowed · ${row.forbidden.length}`));
     for (const item of row.forbidden.slice(0, 12)) box.append(h('i', 'oe-chip', item));
     if (row.forbidden.length > 12) {
-      box.append(h('small', '', `외 ${row.forbidden.length - 12}개 · 접힘`));
+      box.append(h('small', '', `+${row.forbidden.length - 12} more · folded`));
     }
     card.append(box);
   }
@@ -1779,7 +1780,7 @@ export function renderSkeletonForm(context, node, path, value, depth = 0, label 
   // mockup drew it, and it was not what was asked about.
   const kind = h('i', 'oe-node-badge',
                  shape.kind !== 'map' ? 'RECORD'
-                   : shape.keyed_by === 'index' ? '항목' : '이름');
+                   : shape.keyed_by === 'index' ? 'Item' : 'Name');
   const children = shape.kind === 'map'
     ? renderSkeletonMap(context, shape, path, value, depth)
     : renderSkeletonRecord(context, shape, path, value, depth, covers);
@@ -1806,7 +1807,7 @@ export function renderSkeletonForm(context, node, path, value, depth = 0, label 
     // apart from an emptiness.
     const hidden = children.childElementCount;
     const toggle = path
-      ? button(open ? '−' : '접힘 · ' + hidden, 'toggle-field', path,
+      ? button(open ? '−' : 'Folded · ' + hidden, 'toggle-field', path,
                open ? 'oe-node-fold' : 'oe-node-folded')
       : null;
     if (toggle) toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
@@ -1846,7 +1847,7 @@ function branchOwnRow(context, path, depth) {
                   fold.open ? own.tier : fold.reason);
   const cls = own.remaining ? 'is-remaining'
     : own.refusals && own.refusals.length ? 'is-refused' : '';
-  return treeRow(depth + 1, '이 자리', [],
+  return treeRow(depth + 1, 'This slot', [],
                  context.renderRow(own, null, true), state, cls);
 }
 
@@ -1875,7 +1876,7 @@ function renderSkeletonOneOf(context, node, path, value, depth, label, required)
   box.dataset.path = path;
   const head = h('div', 'oe-node-head');
   head.appendChild(h('span', 'oe-node-label', label === null ? path : label));
-  if (required) head.appendChild(h('i', 'oe-node-badge', '필수'));
+  if (required) head.appendChild(h('i', 'oe-node-badge', 'Required'));
   head.appendChild(renderClosedList(
     closedListChoice(names, chosen, { loaded: true, name: path }),
     h, { action: 'edit-shape-branch', path, label: label === null ? path : label }));
@@ -1967,14 +1968,14 @@ function renderSkeletonMap(context, node, path, value, depth) {
   if (context.readOnly) return box;
   const naming = h('div', 'oe-form-new');
   if (node.keyed_by === 'index') {
-    naming.append(button('+ ' + (node.member || '항목'), 'form-append', path, 'oe-form-add'));
+    naming.append(button('+ ' + (node.member || 'Item'), 'form-append', path, 'oe-form-add'));
   } else {
     const input = h('input', 'oe-form-new-id');
     input.type = 'text';
-    input.placeholder = node.member || '이름';
+    input.placeholder = node.member || 'Name';
     input.dataset.for = path;
-    input.setAttribute('aria-label', (node.member || path) + ' 새 이름');
-    naming.append(input, button('+ ' + (node.member || '항목'), 'form-name', path,
+    input.setAttribute('aria-label', (node.member || path) + ' new name');
+    naming.append(input, button('+ ' + (node.member || 'Item'), 'form-name', path,
                                 'oe-form-add'));
   }
   box.append(treeRow(depth + 1, '', [], naming, null, 'is-new'));
@@ -2147,7 +2148,7 @@ function renderAuthoring(state) {
   const blocked = plan.force_summary?.grammar_requires_it || 0;
   const note = blocked
     ? h('div', 'oe-note',
-        `자유도 0인데 문법이 요구하는 칸 ${blocked}개 · 화면이 채우고 근거로 보낸다`)
+        `${unitText(blocked, 'cell')} with no freedom that the grammar requires · the screen fills them and links the basis`)
     : null;
   // 🔴 ABSENT AND UNREADABLE ARE NOT THE SAME CASE. Absent gets an OFFER; a file that
   // exists but will not parse gets its error and nothing else, because it is almost
@@ -2288,8 +2289,8 @@ function renderAuthoring(state) {
   // was a second copy of a list the operator already had. What tells you WHICH box is
   // unfilled stays where it belongs: on the row, in the tree.
   const buckets = [
-    ['unanswered', '미답'],
-    ['derived', '파생됨 · 묻지 않음'], ['answered', '답함'],
+    ['unanswered', 'Unanswered'],
+    ['derived', 'Derived · not asked'], ['answered', 'Answered'],
   ];
 
   // ---- the form, generated ------------------------------------------------------
@@ -2496,7 +2497,7 @@ function renderIntegrity(state) {
   head.append(title);
   const body = h('div', 'oe-side-body');
   const checks = h('section', 'oe-side-section');
-  checks.append(h('h3', '', '참조 검사'));
+  checks.append(h('h3', '', 'Reference check'));
   const list = h('div', 'oe-check-list');
   for (const check of state.integrity) {
     const row = h('div', 'oe-check');
@@ -2509,7 +2510,7 @@ function renderIntegrity(state) {
   //    그래서 «첫 로드가 거절된» 화면에서도 이 수와 아래 문장이 나갑니다. 그때 둘 다
   //    초기값이고, 「0」과 「상위 참조가 없습니다」는 세어서 나온 답이 아닙니다.
   const usedByCell = countWithAbsence({ value: state.usedByTotal, unread: state.error || '' });
-  uses.append(h('h3', '', `이 정의를 사용하는 곳 · ${usedByCell.text}`));
+  uses.append(h('h3', '', `Used by · ${usedByCell.text}`));
   const usageList = h('div', 'oe-usage-list');
   const nodes = nodeMap(state);
   for (const edge of state.usedBy) {
@@ -2520,9 +2521,9 @@ function renderIntegrity(state) {
     addPopover(row, node);
     usageList.append(row);
   }
-  if (!state.usedBy.length) appendEmptyLine(usageList, 0, state.error, '상위 참조가 없습니다.');
+  if (!state.usedBy.length) appendEmptyLine(usageList, 0, state.error, 'No references from above');
   else if (state.referencesTruncated) usageList.append(
-    h('div', 'oe-empty', `표시 상한 ${state.usedBy.length}개 · 전체 수는 상단에 표시`));
+    h('div', 'oe-empty', `Showing the first ${state.usedBy.length} · the full count is above`));
   uses.append(usageList);
   const changeSection = h('section', 'oe-side-section');
   if (state.viewContext?.mode === 'draft_preview') {
@@ -2542,7 +2543,7 @@ function renderIntegrity(state) {
       changeList.append(row);
     }
     if (!state.changes.length && !state.edgeChanges.length) {
-      changeList.append(h('div', 'oe-empty', 'active 대비 변경이 없습니다.'));
+      changeList.append(h('div', 'oe-empty', 'No changes against active'));
     }
     changeSection.append(changeList);
   }
@@ -2559,10 +2560,10 @@ export function renderOntologyExplorer(root, state) {
   const history = h('div', 'oe-history-actions');
   const back = button('←', 'back', '', 'oe-icon-action');
   back.disabled = !state.navigation.back.length;
-  back.setAttribute('aria-label', '이전 선택');
+  back.setAttribute('aria-label', 'Previous selection');
   const forward = button('→', 'forward', '', 'oe-icon-action');
   forward.disabled = !state.navigation.forward.length;
-  forward.setAttribute('aria-label', '다음 선택');
+  forward.setAttribute('aria-label', 'Next selection');
   history.append(back, forward);
   top.append(h('div', 'oe-brand', 'Ontology Config Explorer'));
   // 🔴 ABSENCE IS NOT PROGRESS. This read `불러오는 중` whenever there was no hash, so an
@@ -2573,14 +2574,14 @@ export function renderOntologyExplorer(root, state) {
     || (state.loading ? 'Loading' : 'None');
   top.append(h('span', 'oe-snapshot', `● snapshot · ${snap}`));
   const searchLabel = h('label', 'oe-search-wrap');
-  searchLabel.append(h('span', 'sr-only', '정의 검색'));
+  searchLabel.append(h('span', 'sr-only', 'Search definitions'));
   const search = h('input', 'oe-search');
   search.type = 'search';
   // 🔴 THE PLACEHOLDER ADVERTISES A KEY, SO THE KEY IS BOUND. The mockup writes
   // 「이름으로 이동  /」 and a screen that says `/` without listening for it is telling the
   // operator about something that is not there -- the exact fault this round keeps removing.
   // The listener lives in the controller; this line is only the promise.
-  search.placeholder = '이름으로 이동  /';
+  search.placeholder = 'Go to a name  /';
   search.value = state.query;
   search.dataset.action = 'search';
   searchLabel.append(search);
@@ -2601,7 +2602,7 @@ export function renderOntologyExplorer(root, state) {
     windowEl.append(banner);
   }
   if (state.viewContext?.fallback_reason) {
-    windowEl.append(h('div', 'oe-warning', `초안 대신 활성 snapshot 표시: ${state.viewContext.fallback_reason}`));
+    windowEl.append(h('div', 'oe-warning', `Showing the active snapshot instead of the draft: ${state.viewContext.fallback_reason}`));
   }
   const main = h('div', 'oe-main');
   // 🔴 THE LAYERS ARE THE FIRST COLUMN, not a strip above the work. Owner's ruling on the
@@ -2654,7 +2655,7 @@ export function renderOntologyExplorer(root, state) {
     //    거절은 이미 `state.error` 가 이름 대고 있으므로 여기서는 «아무것도 주장하지 않습니다».
     //    ⛔ 문구를 늘리지 않습니다 — 거절을 두 번 말하는 것도 같은 병의 반쪽입니다.
     appendEmptyLine(workspace, 0, state.error,
-                    state.loading ? '불러오는 중…' : '표시할 정의가 없습니다.');
+                    state.loading ? LOADING : 'No definitions to show');
   }
   main.append(workspace);
   // 6b's third column, and what stands in it is now the MAP -- 「일종의 현재 항목의 지도」.

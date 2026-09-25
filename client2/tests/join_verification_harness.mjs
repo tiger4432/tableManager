@@ -95,20 +95,20 @@ console.log('\n[3] the counts include the declarations that never became rules')
     v.invalid[0].subject === 'broken_rule');
   // 🔴 ③ If `invalid` is left out of the count the line reads 「거절 1」 while two things
   //    are broken.
-  eq('the refused count includes them', v.text, '승인 1 · 거절 2');
+  eq('the refused count includes them', v.text, 'Accepted 1 · refused 2');
   eq('a clean report says so', joinVerificationView(
-    { declarations: [OK_ROW], accepted: 1, refused: 0, invalid: [] }).text, '승인 1 · 거절 0');
+    { declarations: [OK_ROW], accepted: 1, refused: 0, invalid: [] }).text, 'Accepted 1 · refused 0');
 
   // A subject the server did not name is still drawn -- silently dropping it would make
   // a broken declaration invisible.
   const unnamed = joinVerificationView(
     { declarations: [], accepted: 0, refused: 0, invalid: [{ detail: 'x' }] });
   eq('an unnamed rejection is not dropped', unnamed.invalid.length, 1);
-  ok('...and says that it has no name', unnamed.invalid[0].subject === '이름 없음');
+  ok('...and says that it has no name', unnamed.invalid[0].subject === 'No name');
 
   // Counts the server did not send are not invented.
   const noCounts = joinVerificationView({ declarations: [OK_ROW, BAD_ROW] });
-  eq('absent totals fall back to what can be counted', noCounts.text, '선언 2');
+  eq('absent totals fall back to what can be counted', noCounts.text, 'Declared 2');
   eq('...and are not filled with zero', noCounts.accepted, null);
 }
 

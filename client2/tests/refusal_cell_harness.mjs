@@ -41,7 +41,7 @@ async function score(mutate) {
   // 🔴 두 봉투의 «모양»이 다릅니다 — 문지기는 `{사유: {count, samples}}`, 시험 실행은
   //    `{사유: count}`. 문장은 «하나»여야 하고, 그것이 이 단언들의 전부입니다.
   eq('B1 시험 실행 모양(사유: 수)도 같은 문장을 낸다',
-     '거절 11 · undeclared_event_type 9 · no_time_column 2',
+     'Refused 11 · undeclared_event_type 9 · no_time_column 2',
      S({ no_time_column: 2, undeclared_event_type: 9 }));
   // ⚰️ C-54. B2 는 「두 화면의 문장이 글자까지 같다」를 쟀습니다. 둘째 화면이 은퇴해서 그
   //    단언의 «주어 한쪽»이 없어졌습니다 — 남겨 두면 자기와 자기를 비교하는 공허한 초록입니다.
@@ -50,14 +50,14 @@ async function score(mutate) {
   //    은퇴한 A-블록(A8)이었고, 그것이 사라지자 그 필터를 지우는 변이(M6)가 «초록으로»
   //    빠져나갔습니다 — 코드는 살아 있는데 재는 눈만 죽은 자리입니다. 살아 있는 함수 위에
   //    다시 답니다. 「이 사유로는 안 걸렸다」는 그릴 것이 아닙니다.
-  eq('B0 0 인 사유는 마디를 만들지 않는다', '거절 3 · undeclared_event_type 3',
+  eq('B0 0 인 사유는 마디를 만들지 않는다', 'Refused 3 · undeclared_event_type 3',
      S({ no_time_column: 0, undeclared_event_type: 3 }));
   eq('B3 셀 것이 없으면 아무 말도 안 한다', '', S({}));
   eq('B4 0 뿐이어도 같다', '', S({ no_time_column: 0 }));
   eq('B5 봉투가 없으면 조용하다', '', S(undefined));
 
   // ══ 제외 — 「키 없음」과 「0」이 다르다 ═════════════════════════════════════════════
-  eq('B6 표지를 선언한 소스의 제외 행 수', '제외 4', X({ rows: 4 }));
+  eq('B6 표지를 선언한 소스의 제외 행 수', 'Excluded 4', X({ rows: 4 }));
   // 🔴 키가 «없으면» 안 잰 것입니다 — 0 을 그리면 「재 봤는데 없다」가 됩니다.
   eq('B7 키가 없으면 «아무것도» 안 그린다', '', X(undefined));
   eq('B8 0 도 그리지 않는다 — 그릴 것이 없다', '', X({ rows: 0 }));
@@ -98,7 +98,7 @@ async function score(mutate) {
   // ── 절단: 「20 이 전부」와 「20 까지만 봤다」는 «다른 답» ──────────────────────────
   const CAPPED = { ...RUN, count: 40 };
   ok('C7 count 가 표본보다 많으면 «잘린» 것이다', P(CAPPED).capped === true);
-  eq('C8 ...그리고 그것을 «값으로» 말한다', '2 건까지', P(CAPPED).note);
+  eq('C8 ...그리고 그것을 «값으로» 말한다', 'first 2', P(CAPPED).note);
   // 🔴 THE DISCRIMINANT: 같은 표본 둘인데 `count` 만 다릅니다. 절단을 표본 «수»로만 재면
   //    두 경우가 같은 픽셀이 되고, 그것이 이 칸이 있는 이유입니다.
   ok('C9 안 잘렸으면 아무 말도 안 한다', P(RUN).capped === false && P(RUN).note === '');

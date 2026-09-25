@@ -38,7 +38,7 @@ const VIEW = path.join(SRC, 'ontology_explorer_view.js');
 const ADMIN_HTML = path.join(HERE, '..', 'admin.html');
 
 // 서버가 실제로 그 화면에 보내는 문장. 이 하니스가 지어낸 낱말이 아닙니다.
-const REFUSAL = '요청 실패 (401)';
+const REFUSAL = 'Request failed (401)';
 
 let pass = 0, fail = 0, quiet = false;
 const failedNames = [];
@@ -97,17 +97,17 @@ function explorerSuite(render) {
   const refused = draw(render, { error: REFUSAL });
   const refusedText = visibleText(refused);
   ok(refusedText.includes(REFUSAL), 'A1 거절을 «이름 댄다» (①)');
-  ok(refusedText.includes('선언 · —'), 'A2 선언 수는 「—」 — 수를 안 그린다 (②)');
-  ok(!refusedText.includes('선언 · 0개'), 'A3 「선언 · 0개」를 안 그린다');
-  ok(!refusedText.includes('표시할 정의가 없습니다'), 'A4 작업 영역이 「없다」고 안 한다 (③)');
-  ok(refusedText.includes('이 정의를 사용하는 곳 · —'), 'A5 사용처 수도 「—」 (②)');
-  ok(!refusedText.includes('이 정의를 사용하는 곳 · 0'), 'A6 사용처를 「0」으로 안 그린다');
-  ok(!refusedText.includes('상위 참조가 없습니다'), 'A7 사용처가 「없다」고 안 한다 (③)');
+  ok(refusedText.includes('Declared · —'), 'A2 선언 수는 「—」 — 수를 안 그린다 (②)');
+  ok(!refusedText.includes('Declared · 0'), 'A3 「선언 · 0개」를 안 그린다');
+  ok(!refusedText.includes('No definitions to show'), 'A4 작업 영역이 「없다」고 안 한다 (③)');
+  ok(refusedText.includes('Used by · —'), 'A5 사용처 수도 「—」 (②)');
+  ok(!refusedText.includes('Used by · 0'), 'A6 사용처를 「0」으로 안 그린다');
+  ok(!refusedText.includes('No references from above'), 'A7 사용처가 「없다」고 안 한다 (③)');
   // 🔴 ③ 을 «성질»로. 문장을 하나씩 세면 일곱째 문장이 생기는 날 그 자리만 빠집니다.
-  ok(!refusedText.includes('없습니다'), 'A8 거절된 화면에 「없습니다」가 «한 번도» 안 나온다');
+  ok(!/\bNo (definitions|references|matching)\b/.test(refusedText), 'A8 거절된 화면에 「없습니다」가 «한 번도» 안 나온다');
 
   const refusedSearch = visibleText(draw(render, { error: REFUSAL, query: 'lot' }));
-  ok(!refusedSearch.includes('일치하는 정의가 없습니다'),
+  ok(!refusedSearch.includes('No matching definitions'),
      'A9 「일치하는 것이 없다」는 «찾아봤다»는 뜻 — 못 읽었으면 안 한다');
 
   const refusedKinds = draw(render, { error: REFUSAL, authoringSchema: KINDS });
@@ -117,13 +117,13 @@ function explorerSuite(render) {
 
   // ── 대조군: «진짜 0». ③ 만 재면 「전부 숨기기」가 만점입니다 ─────────────────────────
   const zero = visibleText(draw(render, {}));
-  ok(zero.includes('선언 · 0개'), 'B1 진짜 0 이면 「선언 · 0개」가 나온다');
-  ok(zero.includes('표시할 정의가 없습니다'), 'B2 진짜 0 이면 작업 영역이 그렇게 말한다');
-  ok(zero.includes('이 정의를 사용하는 곳 · 0'), 'B3 진짜 0 이면 사용처가 「0」이다');
-  ok(zero.includes('상위 참조가 없습니다'), 'B4 진짜 0 이면 사용처가 그렇게 말한다');
+  ok(zero.includes('Declared · 0'), 'B1 진짜 0 이면 「선언 · 0개」가 나온다');
+  ok(zero.includes('No definitions to show'), 'B2 진짜 0 이면 작업 영역이 그렇게 말한다');
+  ok(zero.includes('Used by · 0'), 'B3 진짜 0 이면 사용처가 「0」이다');
+  ok(zero.includes('No references from above'), 'B4 진짜 0 이면 사용처가 그렇게 말한다');
   ok(!zero.includes(REFUSAL), 'B5 안 거절됐으면 거절 문구가 없다');
   const zeroSearch = visibleText(draw(render, { query: 'lot' }));
-  ok(zeroSearch.includes('일치하는 정의가 없습니다'), 'B6 진짜 0 이면 검색이 그렇게 말한다');
+  ok(zeroSearch.includes('No matching definitions'), 'B6 진짜 0 이면 검색이 그렇게 말한다');
   const zeroKinds = draw(render, { authoringSchema: KINDS });
   const zeroNone = walk(zeroKinds).filter((n) => (n._text || '').trim() === 'None defined');
   ok(zeroNone.length === KINDS.authorable_kinds.length,

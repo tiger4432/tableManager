@@ -1982,13 +1982,13 @@
       <div class="logo-badge">⚡</div>
       <div>
         <h1>Pipeline Admin</h1>
-        <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">File Ingestion · Chain · Auto Update · Enrichment 생애 관리</p>
+        <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">File Ingestion · Chain · Auto Update · Enrichment lifecycle</p>
       </div>
     </div>
     <div class="header-actions">
       <button id="reload-configs-btn" class="admin-btn" style="border-color: var(--color-warning); color: var(--color-warning);">⚙️ Reload Configs & Code</button>
       <a href="/" class="admin-btn">🏠 Return to Main</a>
-      <button class="theme-toggle-btn" data-theme-toggle type="button" title="테마 전환" aria-label="테마 전환">
+      <button class="theme-toggle-btn" data-theme-toggle type="button" title="Toggle theme" aria-label="Toggle theme">
         <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
         <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
       </button>
@@ -1997,25 +1997,25 @@
 
   <!-- Pipeline Health Strip: 파이프라인 탭 화면 상시 요약 (Overview 탭에선 본문이 확장판이므로 숨김) -->
   <div id="health-strip" class="health-strip">
-    <button type="button" class="health-card" id="health-card-file" data-status="loading" title="File Ingestion 파이프라인 — 클릭: File Ingestion 탭(실패 필터)로 이동">
+    <button type="button" class="health-card" id="health-card-file" data-status="loading" title="File Ingestion pipeline — click: File Ingestion tab (failed filter)">
       <div class="health-card-top"><span class="health-dot"></span><span class="health-card-title">File Ingestion</span></div>
       <div class="health-card-main" id="health-file-main">—</div>
-      <div class="health-card-sub" id="health-file-sub">불러오는 중…</div>
+      <div class="health-card-sub" id="health-file-sub">Loading…</div>
     </button>
-    <button type="button" class="health-card" id="health-card-chain" data-status="loading" title="Chain(파생 테이블) 파이프라인 — 클릭: Chain 탭으로 이동">
+    <button type="button" class="health-card" id="health-card-chain" data-status="loading" title="Chain (derived tables) pipeline — click: Chain tab">
       <div class="health-card-top"><span class="health-dot"></span><span class="health-card-title">Chain</span></div>
       <div class="health-card-main" id="health-chain-main">—</div>
-      <div class="health-card-sub" id="health-chain-sub">불러오는 중…</div>
+      <div class="health-card-sub" id="health-chain-sub">Loading…</div>
     </button>
-    <button type="button" class="health-card" id="health-card-auto" data-status="loading" title="Auto Update 수집기 — 클릭: Auto Update 탭으로 이동">
+    <button type="button" class="health-card" id="health-card-auto" data-status="loading" title="Auto Update collectors — click: Auto Update tab">
       <div class="health-card-top"><span class="health-dot"></span><span class="health-card-title">Auto Update</span></div>
       <div class="health-card-main" id="health-auto-main">—</div>
-      <div class="health-card-sub" id="health-auto-sub">불러오는 중…</div>
+      <div class="health-card-sub" id="health-auto-sub">Loading…</div>
     </button>
-    <button type="button" class="health-card" id="health-card-enrichment" data-status="loading" title="Enrichment Queue — 클릭: Enrichment 탭으로 이동">
+    <button type="button" class="health-card" id="health-card-enrichment" data-status="loading" title="Enrichment Queue — click: Enrichment tab">
       <div class="health-card-top"><span class="health-dot"></span><span class="health-card-title">Enrichment</span></div>
       <div class="health-card-main" id="health-enrichment-main">—</div>
-      <div class="health-card-sub" id="health-enrichment-sub">불러오는 중…</div>
+      <div class="health-card-sub" id="health-enrichment-sub">Loading…</div>
     </button>
   </div>
 
@@ -2054,18 +2054,18 @@
           </div>
           <!-- 재교정률 한 줄: 사람이 같은 셀을 두 번 이상 고친 비율 (핵심가치 #1 "최소 공수 교정" 계기) -->
           <div id="recorrection-line" class="recorrection-line">
-            <span class="rc-label">재교정률</span>
+            <span class="rc-label">Re-correction rate</span>
             <span class="rc-value" id="recorrection-value">—</span>
-            <span class="rc-sub" id="recorrection-sub">불러오는 중…</span>
+            <span class="rc-sub" id="recorrection-sub">Loading…</span>
           </div>
           <!-- 교정 공수 한 줄: 한 교정을 끝내기까지의 상호작용 점수 + 계측 커버리지.
                커버리지(measured_ratio)를 같이 두는 이유는 이것이 수집 중단 감지기이기
                때문이다 — 화면에 없으면 기준선 창 전체가 조용히 비어도 아무도 모른다. -->
           <div id="effort-line" class="recorrection-line"
-               title="한 교정을 끝내기까지의 상호작용 점수 (키 1 · 클릭 3 · 컨텍스트를 잃는 화면이동 5). 낮을수록 좋다.">
-            <span class="rc-label">교정 공수</span>
+               title="Interaction score to finish one correction (key 1 · click 3 · a move that loses context 5). Lower is better.">
+            <span class="rc-label">Correction effort</span>
             <span class="rc-value" id="effort-value">—</span>
-            <span class="rc-sub" id="effort-sub">불러오는 중…</span>
+            <span class="rc-sub" id="effort-sub">Loading…</span>
           </div>
           <!-- 설정 반영 한 줄 (F9): 「내 config가 먹었는가」.
                `POST /admin/reload-configs`는 아무것도 반환하지 않는 쓰기 전용 버튼이었다 —
@@ -2074,9 +2074,9 @@
                ⚠️ 사유 문장은 전부 서버 소유다 — admin.js는 `detail`을 그대로 렌더한다. -->
           <details id="config-resolve" class="cfg-block">
             <summary class="recorrection-line" id="config-resolve-summary">
-              <span class="rc-label">설정 반영</span>
+              <span class="rc-label">Config resolution</span>
               <span class="rc-value" id="config-resolve-value">—</span>
-              <span class="rc-sub" id="config-resolve-sub">불러오는 중…</span>
+              <span class="rc-sub" id="config-resolve-sub">Loading…</span>
               <span class="cfg-toggle">
                 <!-- 문구는 admin.js가 config_resolve_view.js의 CHROME에서 채운다 —
                      클라가 쓰는 문자열의 정본은 그 표 하나다. -->
@@ -2146,7 +2146,7 @@
           <!-- [Heavy Lane P1] 진행 중 인제션 — 활성 항목이 있을 때만 표시 -->
           <div class="stage-section" id="sec-active-ingestions" style="display: none;">
             <div class="section-header" data-section="sec-active-ingestions">
-              <span class="stage-chip">진행 중</span>
+              <span class="stage-chip">Running</span>
               <span class="section-title">Active Ingestions</span>
               <span class="section-count" id="active-ingestion-count">—</span>
               <span class="section-summary" id="active-ingestion-summary"></span>
@@ -2172,7 +2172,7 @@
 
           <div class="stage-section collapsed" id="sec-workspaces">
             <div class="section-header" data-section="sec-workspaces">
-              <span class="stage-chip">현황</span>
+              <span class="stage-chip">Status</span>
               <span class="section-title">Ingestion Workspaces</span>
               <span class="section-count" id="workspace-count">—</span>
               <span class="section-summary" id="workspace-summary"></span>
@@ -2200,7 +2200,7 @@
 
           <div class="stage-section" id="sec-file-logs">
             <div class="section-header" data-section="sec-file-logs">
-              <span class="stage-chip">오류·실행</span>
+              <span class="stage-chip">Errors · run</span>
               <span class="section-title">File Ingestion Logs</span>
               <span class="section-count" id="file-log-count">—</span>
               <span class="section-summary"></span>
@@ -2224,12 +2224,12 @@
               <table class="table-container">
                 <thead class="table-header">
                   <tr>
-                    <th style="width: 80px;" class="sortable" data-key="id" title="클릭: 현재 페이지 내 정렬">Log ID<span class="sort-ind"></span></th>
-                    <th class="sortable" data-key="filename" title="클릭: 현재 페이지 내 정렬">Filename<span class="sort-ind"></span></th>
-                    <th style="width: 130px;" class="sortable" data-key="table_name" title="클릭: 현재 페이지 내 정렬">Target Table<span class="sort-ind"></span></th>
-                    <th style="width: 100px; text-align: center;" class="sortable" data-key="status" title="클릭: 현재 페이지 내 정렬">Status<span class="sort-ind"></span></th>
-                    <th style="width: 70px; text-align: center;" class="sortable" data-key="retry_count" title="클릭: 현재 페이지 내 정렬">Retries<span class="sort-ind"></span></th>
-                    <th style="width: 140px;" class="sortable" data-key="created_at" title="클릭: 현재 페이지 내 정렬">Processed At<span class="sort-ind"></span></th>
+                    <th style="width: 80px;" class="sortable" data-key="id" title="Click: sort this page">Log ID<span class="sort-ind"></span></th>
+                    <th class="sortable" data-key="filename" title="Click: sort this page">Filename<span class="sort-ind"></span></th>
+                    <th style="width: 130px;" class="sortable" data-key="table_name" title="Click: sort this page">Target Table<span class="sort-ind"></span></th>
+                    <th style="width: 100px; text-align: center;" class="sortable" data-key="status" title="Click: sort this page">Status<span class="sort-ind"></span></th>
+                    <th style="width: 70px; text-align: center;" class="sortable" data-key="retry_count" title="Click: sort this page">Retries<span class="sort-ind"></span></th>
+                    <th style="width: 140px;" class="sortable" data-key="created_at" title="Click: sort this page">Processed At<span class="sort-ind"></span></th>
                     <th style="width: 100px; text-align: center;">Actions</th>
                   </tr>
                 </thead>
@@ -2247,7 +2247,7 @@
         <div id="chain-tab-wrapper" style="flex: 1; overflow: auto; display: none;">
           <div class="stage-section" id="sec-chain-rules">
             <div class="section-header" data-section="sec-chain-rules">
-              <span class="stage-chip">현황</span>
+              <span class="stage-chip">Status</span>
               <span class="section-title">Chain Rules</span>
               <span class="section-count" id="chain-rule-count">—</span>
               <span class="section-summary"></span>
@@ -2280,8 +2280,8 @@
                   그 값이 절 안에 그대로 보입니다. 켜는 것은 원문에서 그 칸을 고치는 것입니다. -->
           <div class="stage-section" id="sec-chain-rule-editor">
             <div class="section-header" data-section="sec-chain-rule-editor">
-              <span class="stage-chip">수정</span>
-              <span class="section-title">규칙 등록 (chain_rules.json)</span>
+              <span class="stage-chip">Edit</span>
+              <span class="section-title">Rules (chain_rules.json)</span>
               <span class="section-count" id="chain-rule-editor-count">—</span>
               <span class="section-summary"></span>
               <span class="section-chevron">▾</span>
@@ -2291,8 +2291,8 @@
 
           <div class="stage-section" id="sec-chain-queue">
             <div class="section-header" data-section="sec-chain-queue">
-              <span class="stage-chip">계측</span>
-              <span class="section-title">Chain 대기열 (읽기 전용)</span>
+              <span class="stage-chip">Measure</span>
+              <span class="section-title">Chain queue (read-only)</span>
               <span class="section-count" id="chain-queue-count">—</span>
               <span class="section-summary"></span>
               <span class="section-chevron">▾</span>
@@ -2304,8 +2304,8 @@
 
           <div class="stage-section" id="sec-chain-fails">
             <div class="section-header" data-section="sec-chain-fails">
-              <span class="stage-chip">오류·실행</span>
-              <span class="section-title">Chain 실패 (Outbox Transactions)</span>
+              <span class="stage-chip">Errors · run</span>
+              <span class="section-title">Chain failures (Outbox Transactions)</span>
               <span class="section-count" id="chain-fail-count">—</span>
               <span class="section-summary"></span>
               <span class="section-actions">
@@ -2336,7 +2336,7 @@
 
           <div class="stage-section" id="sec-mappers">
             <div class="section-header" data-section="sec-mappers">
-              <span class="stage-chip">코드·수정</span>
+              <span class="stage-chip">Code · edit</span>
               <span class="section-title">Mapper Modules</span>
               <span class="section-count" id="mapper-count">—</span>
               <span class="section-summary"></span>
@@ -2366,7 +2366,7 @@
         <div id="autoupdate-tab-wrapper" style="flex: 1; overflow: auto; display: none;">
           <div class="stage-section" id="sec-collectors">
             <div class="section-header" data-section="sec-collectors">
-              <span class="stage-chip">현황·실행</span>
+              <span class="stage-chip">Status · run</span>
               <span class="section-title">Auto Update Collectors</span>
               <span class="section-count" id="autoupdate-count">—</span>
               <span class="section-summary"></span>
@@ -2382,7 +2382,7 @@
                     <th style="width: 140px;">Next Run</th>
                     <th style="width: 140px;">Last Run</th>
                     <th style="width: 100px; text-align: center;">Status</th>
-                    <th style="width: 70px; text-align: center;" title="스케줄 활성/비활성 (비활성이어도 Run Now 수동 실행은 가능)">Active</th>
+                    <th style="width: 70px; text-align: center;" title="Schedule on/off (Run Now works even when off)">Active</th>
                     <th style="width: 120px; text-align: center;">Actions</th>
                   </tr>
                 </thead>
@@ -2397,10 +2397,10 @@
 
           <div class="stage-section" id="sec-auto-linked">
             <div class="section-header" data-section="sec-auto-linked">
-              <span class="stage-chip">오류</span>
-              <span class="section-title">산출물 인제션 실패</span>
+              <span class="stage-chip">Errors</span>
+              <span class="section-title">Output ingestion failures</span>
               <span class="section-count" id="autoupdate-linked-count">—</span>
-              <span class="section-summary" title="이 수집기들이 생성한 파일의 인제션 실패 (auto-update 대상 테이블 ∩ 최근 실패 로그)">수집기가 만든 파일이 파서에서 실패한 건 — "수집기 SUCCESS ≠ 데이터 도착"</span>
+              <span class="section-summary" title="Ingestion failures of files these collectors made (auto-update tables ∩ recent failure logs)">Files a collector made that failed in the parser — "collector SUCCESS ≠ data arrived"</span>
               <span class="section-chevron">▾</span>
             </div>
             <div class="section-body">
@@ -2419,7 +2419,7 @@
               </table>
               <div id="autoupdate-linked-empty" class="empty-state" style="display: none;">
                 <div class="empty-icon">🎉</div>
-                <div class="empty-text">최근 실패 로그에 auto-update 산출물 인제션 실패가 없습니다.</div>
+                <div class="empty-text">No auto-update output ingestion failures in the recent failure logs</div>
               </div>
             </div>
           </div>
@@ -2439,8 +2439,8 @@
                그리고 `undeclared_table` 거절문이 이미 이 파일 이름을 말합니다. -->
           <div class="stage-section" id="sec-table-config">
             <div class="section-header" data-section="sec-table-config">
-              <span class="stage-chip">수정</span>
-              <span class="section-title">표 등록 (table_config.json)</span>
+              <span class="stage-chip">Edit</span>
+              <span class="section-title">Tables (table_config.json)</span>
               <span class="section-count" id="table-config-count">—</span>
               <span class="section-summary"></span>
               <span class="section-chevron">▾</span>
@@ -2453,10 +2453,10 @@
         <div id="enrichment-tab-wrapper" style="flex: 1; overflow: auto; display: none;">
           <div class="stage-section" id="sec-enrichment-rules">
             <div class="section-header" data-section="sec-enrichment-rules">
-              <span class="stage-chip">현황</span>
+              <span class="stage-chip">Status</span>
               <span class="section-title">Enrichment Rules</span>
               <span class="section-count" id="enrichment-rule-count">—</span>
-              <span class="section-count" id="enrichment-missing-count" style="display: none;">결손 0</span>
+              <span class="section-count" id="enrichment-missing-count" style="display: none;">Missing 0</span>
               <span class="section-summary"></span>
               <span class="section-chevron">▾</span>
             </div>
@@ -2467,14 +2467,14 @@
                     <th>Rule Name</th>
                     <th style="width: 170px;">Source → Derived</th>
                     <th>Target Fields</th>
-                    <th style="width: 110px; text-align: center;">결손</th>
+                    <th style="width: 110px; text-align: center;">Missing</th>
                   </tr>
                 </thead>
                 <tbody id="enrichment-list-body"></tbody>
               </table>
               <div id="enrichment-empty" class="empty-state" style="display: none;">
                 <div class="empty-icon">🧩</div>
-                <div class="empty-text">활성 enrichment 규칙이 없습니다.</div>
+                <div class="empty-text">No active enrichment rules</div>
               </div>
               <!-- 🔴 The enrich declaration lives in the chain rule (`derive.decide`) since ff5505dfa retired
                    enrichment_rules.json; this note used to send the operator to edit that file. -->
@@ -2505,8 +2505,8 @@
                그러면 「인제션」이라는 한 낱말이 서로 다른 두 파이프라인을 가리키게 됩니다. -->
           <div class="stage-section" id="sec-ledger-sources">
             <div class="section-header" data-section="sec-ledger-sources">
-              <span class="stage-chip">계측</span>
-              <span class="section-title">소스 상태 (읽기 전용)</span>
+              <span class="stage-chip">Measure</span>
+              <span class="section-title">Source status (read-only)</span>
               <span class="section-count" id="ledger-sources-count">—</span>
               <span class="section-summary"></span>
               <span class="section-chevron">▾</span>
@@ -2520,7 +2520,7 @@
       <!-- Left Panel Footer: Pagination Controls (File 로그 / Chain 실패 목록 전용) -->
       <div class="panel-footer" style="padding: 12px 24px; border-top: 1px solid var(--border-color); display: none; justify-content: space-between; align-items: center; background: var(--bg-header);">
         <div style="display: flex; gap: 12px; align-items: center;">
-          <select id="page-size-select" class="glass-select" title="페이지당 표시 건수">
+          <select id="page-size-select" class="glass-select" title="Rows per page">
             <option value="10" selected>10 / page</option>
             <option value="50">50 / page</option>
             <option value="100">100 / page</option>
@@ -2584,8 +2584,8 @@
           <div class="detail-block" style="flex: 1; max-height: none; display: flex; flex-direction: column; height: 100%;">
             <div class="detail-block-header">
               <div style="display: flex; gap: 10px; align-items: center; min-width: 0; flex: 1;">
-                <select id="editor-file-picker" class="glass-select" style="max-width: 300px;" title="편집할 스크립트 선택 (구 Code Editor 트리 대체)">
-                  <option value="">스크립트 선택…</option>
+                <select id="editor-file-picker" class="glass-select" style="max-width: 300px;" title="Pick a script to edit">
+                  <option value="">Pick a script…</option>
                 </select>
                 <span id="editor-file-path" style="font-family: var(--font-mono); font-weight: bold; color: var(--color-primary); font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Select a script file</span>
               </div>

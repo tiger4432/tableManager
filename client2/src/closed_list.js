@@ -13,9 +13,9 @@
 //    앞은 「모름」이고 뒤는 「없음」이다. 이 저장소가 여러 번 닫은 부류 그대로다.
 
 /** 목록이 아직 안 왔다. 「멤버 0」이 아니다. */
-export const LIST_UNREAD = '목록 · 모름';
+export const LIST_UNREAD = 'List · unknown';
 /** 목록은 왔는데 멤버가 없다. 「모름」이 아니다. */
-export const NO_CHOICE = '선택지 없음';
+export const NO_CHOICE = 'No choices';
 
 /**
  * 한 «멤버». 문자열이면 값과 보일 이름이 같고 묶음이 없습니다.

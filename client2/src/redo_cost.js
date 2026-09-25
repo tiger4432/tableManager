@@ -51,7 +51,7 @@ export function redoCostText(redo) {
   if (!redo || typeof redo !== 'object') return null;
   const parts = [];
   // ⚠️ 배열이 «아니면» 세지 않습니다 — 「소스 0」은 「소스가 없다」이고, 「안 실렸다」가 아닙니다.
-  if (Array.isArray(redo.sources)) parts.push(`소스 ${redo.sources.length}`);
+  if (Array.isArray(redo.sources)) parts.push(`Sources ${redo.sources.length}`);
   const count = redo.count && typeof redo.count === 'object' ? redo.count : {};
   const label = word(count.affected_label);
   const affected = Number.isInteger(count.affected) ? count.affected : null;

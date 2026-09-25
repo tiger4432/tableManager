@@ -45,9 +45,9 @@ console.log('\n[1] declared-impossible is not the same as absent');
   eq('a real gap is not vacuous', v.rows[0].vacuous, false);
   eq('one the declaration forbids says so', v.rows[2].vacuous, true);
   // 🔴 ① THE COUNT. Mixing them sends the operator looking for data that cannot exist.
-  eq('the total separates them', v.text, '격차 2 · 공허 1');
+  eq('the total separates them', v.text, 'Gaps 2 · vacuous 1');
   eq('with nothing vacuous the line stays one number',
-    gapCatalogueView({ gaps: [PAIR, SUBJ] }).text, '격차 2');
+    gapCatalogueView({ gaps: [PAIR, SUBJ] }).text, 'Gaps 2');
   // A missing flag is not a claim that it is possible; it is just not marked vacuous,
   // which is what the detector means by leaving it off.
   const { vacuous, ...noFlag } = OBJ_VACUOUS;
@@ -111,7 +111,7 @@ console.log('\n[4] refused, unasked, and genuinely empty are three');
   // A genuinely empty catalogue IS an answer, and it is not 「모름」.
   const none = gapCatalogueView({ mode: 'names', count: 0, gaps: [] });
   eq('an empty catalogue was read', none.read, true);
-  eq('...and says zero rather than 「모름」', none.text, '격차 0');
+  eq('...and says zero rather than 「모름」', none.text, 'Gaps 0');
   ok('the three are three different texts',
     new Set([gapCatalogueView(null).text, refused.text, none.text]).size === 3);
 }

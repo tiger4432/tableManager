@@ -20,7 +20,7 @@
 //    뒤는 «적재를 먼저 하는» 일입니다.
 
 /** 묻지 않았거나 오는 중. 「없음」이 아닙니다. */
-export const UNIQUENESS_UNREAD = '유니크 · 모름';
+export const UNIQUENESS_UNREAD = 'Unique · unknown';
 
 /**
  * 서버가 잰 한 조합의 판정을 «상태»로.
@@ -38,16 +38,16 @@ export function uniquenessVerdict(measured, opts = {}) {
   }
   if (measured.measurable === false) {
     // 서버의 문장을 그대로 나릅니다 — 여기서 다시 쓰면 사유가 둘이 됩니다.
-    return { state: 'unmeasurable', columns, text: '판정 불가',
+    return { state: 'unmeasurable', columns, text: 'Undecidable',
              detail: typeof measured.reason === 'string' ? measured.reason : '' };
   }
   const rows = Number.isFinite(measured.total_rows) ? measured.total_rows : null;
   if (rows === 0) {
-    return { state: 'empty', columns, text: '행 0 · 판정 불가', detail: '' };
+    return { state: 'empty', columns, text: '0 rows · undecidable', detail: '' };
   }
   if (measured.unique === true) {
-    return { state: 'unique', columns, text: '유니크',
-             detail: rows === null ? '' : `행 ${rows.toLocaleString()}` };
+    return { state: 'unique', columns, text: 'Unique',
+             detail: rows === null ? '' : `Rows ${rows.toLocaleString()}` };
   }
   if (measured.unique === false) {
     // 🔴 「몇 행이 겹치나」와 「겹침에 걸린 행이 몇이나」는 다른 수이고, 서버가 둘 다 냅니다.
@@ -56,13 +56,13 @@ export function uniquenessVerdict(measured, opts = {}) {
     const inDup = Number.isFinite(measured.rows_in_duplicated_groups)
       ? measured.rows_in_duplicated_groups : null;
     const parts = [];
-    if (dup !== null) parts.push(`겹침 ${dup.toLocaleString()}`);
-    if (inDup !== null) parts.push(`걸린 행 ${inDup.toLocaleString()}`);
+    if (dup !== null) parts.push(`Overlaps ${dup.toLocaleString()}`);
+    if (inDup !== null) parts.push(`Rows involved ${inDup.toLocaleString()}`);
     if (Number.isFinite(measured.null_bearing_rows) && measured.null_bearing_rows > 0) {
       // NULL 은 충돌과 «다른 결함»이라 고치는 방법도 다릅니다. 합치지 않습니다.
       parts.push(`NULL ${measured.null_bearing_rows.toLocaleString()}`);
     }
-    return { state: 'duplicated', columns, text: '유니크 아님', detail: parts.join(' · ') };
+    return { state: 'duplicated', columns, text: 'Not unique', detail: parts.join(' · ') };
   }
   // 서버가 그 칸을 안 실었습니다. 「아니다」로 읽지 않습니다.
   return { state: 'unread', columns, text: UNIQUENESS_UNREAD, detail: '' };
@@ -91,6 +91,6 @@ export function orderingVerdicts(ordering, opts = {}) {
     keys,
     recommended,
     text: recommended ? recommended.join(' · ')
-      : (declared.length ? '선언만으로는 못 정함' : '선언된 유니크 키 없음'),
+      : (declared.length ? 'Undecidable from the declaration alone' : 'No unique key declared'),
   };
 }

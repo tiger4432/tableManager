@@ -131,13 +131,13 @@ async function suite(probe) {
 
   // ── B. 「원천 경로가 없다」는 또 «다른» 사실이다 ──────────────────────────────────
   const absent = await draw(run, { failed: OK_FAILED, active: NO_ACTIVE, auto: AUTO_ABSENT });
-  ok('B1 부재면 「상태 파일 없음」이다', absent.auto.main === '상태 파일 없음', absent.auto);
+  ok('B1 부재면 「상태 파일 없음」이다', absent.auto.main === 'No status file', absent.auto);
   ok('B2 ...그리고 «고칠 자리»(경로)를 같이 적는다',
      absent.auto.sub.includes('/box/auto_update.json'), absent.auto.sub);
 
   // ── C. 진짜 0 — 「선언된 것이 없다」. 위 둘과 «같은 픽셀이면 안 된다» ──────────────
   const empty = await draw(run, { failed: OK_FAILED, active: NO_ACTIVE, auto: AUTO_EMPTY });
-  ok('C1 진짜 0 이면 「수집기 없음」이다', empty.auto.main === '수집기 없음', empty.auto);
+  ok('C1 진짜 0 이면 「수집기 없음」이다', empty.auto.main === 'No collectors', empty.auto);
   // 🔴 판별식. 셋이 한 그림이면 운영자는 «고칠 자리»를 못 찾습니다.
   const three = [errored.auto.main, absent.auto.main, empty.auto.main];
   ok('C2 「못 읽음」·「파일 없음」·「진짜 0」이 «서로 다른 그림»이다',
@@ -150,17 +150,17 @@ async function suite(probe) {
   ok('D2 ...그리고 수 대신 「—」', unread.file.main === '—', unread.file.main);
   // 🔴 이것이 이 파일의 이름이 된 결함입니다. 교집합의 «한쪽»이 안 왔는데 0 으로 셌습니다.
   ok('D3 연계를 «미확인»이라 말한다 — 「연계 실패 없음」이 아니다',
-     unread.auto.sub.includes('미확인'), unread.auto.sub);
+     unread.auto.sub.includes('unchecked'), unread.auto.sub);
   ok('D4 ...그리고 카드가 초록을 «주장하지 않는다»', unread.auto.status === 'warn',
      unread.auto.status);
 
   // ── E. 대조군 — 둘 다 읽혔고 아무 문제가 없으면 «초록이어야» 한다 ────────────────
   const good = await draw(run, { failed: OK_FAILED, active: NO_ACTIVE, auto: COLLECTORS });
   ok('E1 전부 읽혔고 실패가 없으면 파일 카드가 초록이다',
-     good.file.status === 'ok' && good.file.main === '실패 0건', good.file);
+     good.file.status === 'ok' && good.file.main === '0 failed', good.file);
   ok('E2 ...그리고 수집기 카드도 초록이다', good.auto.status === 'ok', good.auto);
   ok('E3 ...그리고 「미확인」을 말하지 «않는다» — 안 그러면 전부 경고인 화면이 만점을 받는다',
-     !good.auto.sub.includes('미확인'), good.auto.sub);
+     !good.auto.sub.includes('unchecked'), good.auto.sub);
 
   return { passed: passed - before.passed, failed: failed - before.failed };
 }
@@ -190,7 +190,7 @@ const DEFECTS = [
 ];
 const CONTROLS = [
   ['주석 한 낱말', (s) => s.replace('못 물어봤다', '안 물어봤다')],
-  ['진행 중 건수의 부수 문구', (s) => s.replace('재기동 시 처음부터 재처리', '재기동 시 처음부터 다시')],
+  ['진행 중 건수의 부수 문구', (s) => s.replace('reprocessed from the start on restart', 'reprocessed from the start again')],
 ];
 
 console.log('-- health_card_absence (C-117 ㉱: sliced -> imported) --------------');

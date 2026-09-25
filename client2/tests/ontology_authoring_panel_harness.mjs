@@ -632,9 +632,9 @@ const renderDraft = (plan) => {
     acts.every((list) => list.length === 1),
     acts.map((l) => l.length).join(','));
   check('E4 a forced row says it cannot be changed here',
-    at(acts[0], 0).textContent.includes('강제'));
+    at(acts[0], 0).textContent.includes('Forced'));
   check('E5 a default row says it can be overwritten',
-    at(acts[1], 0).textContent.includes('덮어쓸 수 있음'));
+    at(acts[1], 0).textContent.includes('can be overridden'));
 
   const jumps = byClass(panel, 'oe-jump');
   check('E6 the ground is reachable, so the real lever is one click away',
@@ -645,7 +645,7 @@ const renderDraft = (plan) => {
     jumps.map((n) => n.dataset.value).join(','));
   check('E8 the blocked structural tier is counted on screen, not absorbed',
     byClass(panel, 'oe-note').length === 1
-      && at(byClass(panel, 'oe-note'), 0).textContent.includes('1개'));
+      && at(byClass(panel, 'oe-note'), 0).textContent.includes('1 cell with'));
 }
 
 // ── F. the fold (lead PM ruling, 2026-08-19) ─────────────────────────────────────
@@ -673,7 +673,7 @@ const renderDraft = (plan) => {
     // `Set` became 「선언됨」 by the owner's 6b ruling (answered 접힘 → 「선언됨」 한 마디).
     // The set stays CLOSED -- that is what this checks; only a member was renamed, and it
     // is renamed here in the same commit as the code, not left to fail later as a mystery.
-    whys.every((w) => ['파생됨', '강제', '단일 후보', '선언됨', '비움'].includes(w)), whys.join(','));
+    whys.every((w) => ['Derived', 'Forced', 'Single candidate', 'Declared', 'Empty'].includes(w)), whys.join(','));
 
   // 🔴 `remaining` OUTRANKS THE FOLD. Otherwise the layer header says "3 남음" while one of
   // the three is folded out of sight, and an operator who notices believes neither number.
@@ -723,14 +723,14 @@ const renderDraft = (plan) => {
 
   // ① the test run's own line
   check('G1 a run that does not block says so',
-    noteText(draw({ ...RUN, blocks_activation: false })).includes('저장 차단 아님'));
+    noteText(draw({ ...RUN, blocks_activation: false })).includes('Does not block saving'));
   check('G2 a run that DOES block says the opposite',
-    noteText(draw({ ...RUN, blocks_activation: true })).includes('저장 차단')
-    && !noteText(draw({ ...RUN, blocks_activation: true })).includes('아님'));
+    noteText(draw({ ...RUN, blocks_activation: true })).includes('Blocks saving')
+    && !noteText(draw({ ...RUN, blocks_activation: true })).includes('Does not'));
   // 🔴 THE THIRD STATE. Without this one, a view that read `!run.blocks_activation`
   //    would pass G1 and G2 and still lie to every operator on an older server.
   check('G3 a server that did not say draws NEITHER word',
-    !noteText(draw(RUN)).includes('차단'), noteText(draw(RUN)));
+    !/block/i.test(noteText(draw(RUN))), noteText(draw(RUN)));
   // and the red result itself is still on screen -- this round does not turn red green
   check('G4 the refusal is not hidden by any of that',
     byClass(draw({ ...RUN, status: 'refused', blocks_activation: false,
@@ -740,7 +740,7 @@ const renderDraft = (plan) => {
   const blockerText = (root) =>
     byClass(root, 'oe-editor-blockers').map((n) => n.textContent).join('|');
   check('G5 an empty list says nothing blocks',
-    blockerText(draw(undefined, [])) === '막는 것 없음');
+    blockerText(draw(undefined, [])) === 'Nothing blocks');
   check('G6 a blocker is named as the server named it',
     blockerText(draw(undefined, ['stale_draft'])) === 'stale_draft');
   check('G7 several are joined, still unranslated',
@@ -767,7 +767,7 @@ const renderDraft = (plan) => {
                                    sources: ['dt_job'],
                                    count: { affected: 1234, affected_label: '아직 번역되지 않은 행',
                                             count_kind: 'exact' } }))
-      === '소스 1 · 아직 번역되지 않은 행 1234',
+      === 'Sources 1 · 아직 번역되지 않은 행 1234',
     costText(draw(undefined, [], { sources: ['dt_job'], count: { affected: 1234,
       affected_label: '아직 번역되지 않은 행', count_kind: 'exact' } })));
   // 🔴 A NUMBER THAT IS NOT EXACT SAYS SO, and an exact one does not say 「exact」 -- the first
@@ -776,7 +776,7 @@ const renderDraft = (plan) => {
     costText(draw(undefined, [], { sources: ['a', 'b'],
                                    count: { affected: 50, affected_label: '행',
                                             count_kind: 'sample' } }))
-      === '소스 2 · 행 50 · sample');
+      === 'Sources 2 · 행 50 · sample');
   // 🔴 TWO EMPTIES, AND THEY ARE NOT THE SAME WORD. 「셀 수 있으나 이 자리에서 안 셈」 versus
   //    「정말 없다」 -- an operator does something different about each.
   //
@@ -792,11 +792,11 @@ const renderDraft = (plan) => {
   check('G12 「not counted here」 arrives as a word an operator reads, out of the ONE table',
     costText(draw(undefined, [], { op: null, params: null, sources: ['a', 'b', 'c'],
                                    count: { absence: 'not_counted_here' } }))
-      === `소스 3 · ${ABSENCE_WORDS.not_counted_here}`);
+      === `Sources 3 · ${ABSENCE_WORDS.not_counted_here}`);
   check('G13 ... and 「truly none」 is a different word, not the same empty',
     costText(draw(undefined, [], { op: null, params: null, sources: [],
                                    count: { absence: 'truly_none' } }))
-      === `소스 0 · ${ABSENCE_WORDS.truly_none}`);
+      === `Sources 0 · ${ABSENCE_WORDS.truly_none}`);
   // 🔴 AND A WORD THE TABLE DOES NOT KNOW STILL REACHES THE SCREEN, RAW. Folding an unknown
   //    token into the known ones is exactly how a word the server adds next week disappears
   //    without anyone noticing. This assertion is what keeps translating from becoming
@@ -804,7 +804,7 @@ const renderDraft = (plan) => {
   check('G13b an absence word the table does not know passes through instead of vanishing',
     costText(draw(undefined, [], { op: null, params: null, sources: [],
                                    count: { absence: 'a_word_added_next_week' } }))
-      === '소스 0 · a_word_added_next_week');
+      === 'Sources 0 · a_word_added_next_week');
   // 🔴 THE THIRD STATE, AND THE REASON THIS FUNCTION EXISTS. `redo: null` is 「nobody asked」 --
   //    no session on the request -- and drawing 「다시 돌 것 없음」 there would turn a question
   //    nobody put into an answer. Same shape as G8 one group above.
@@ -836,7 +836,7 @@ const renderDraft = (plan) => {
 
   check('H1 the counts and the column are said together',
     rowsText(drawRefusal({ rows_read: 200, rows_missing: 1, column: 'occurred_at' }))
-      .includes('200행 중 1행 · occurred_at'));
+      .includes('1 of 200 rows · occurred_at'));
   // ⚠️ all three or none -- a count with no column is a number nobody can act on
   check('H2 two of the three draws nothing',
     !rowsText(drawRefusal({ rows_read: 200, rows_missing: 1 })).includes('200'));
@@ -844,13 +844,13 @@ const renderDraft = (plan) => {
     !rowsText(drawRefusal({ column: 'occurred_at' })).includes('occurred_at'));
 
   check('H4 a refusal that will not partially apply SAYS SO',
-    rowsText(drawRefusal({ partial_apply: false })).includes('좋은 행도 안 들어갑니다'));
+    rowsText(drawRefusal({ partial_apply: false })).includes('Good rows do not go in either'));
   // 🔴 THE THIRD STATE. An older server sends no such key, and 「안 물어봤다」 must not
   //    render as a promise about what execution does.
   check('H5 a server that did not say draws nothing',
     rowsText(drawRefusal({})) === '');
   check('H6 and `true` draws nothing either -- this build has never seen that answer',
-    !rowsText(drawRefusal({ partial_apply: true })).includes('안 들어갑니다'));
+    !rowsText(drawRefusal({ partial_apply: true })).includes('do not go in'));
 
   // the server's own sentence and address are still there; this round adds, never replaces
   check('H7 the message and the path survive',
@@ -924,7 +924,7 @@ const renderDraft = (plan) => {
   // Nobody has chosen anything yet -- this is what the screen decides on its own.
   const root = draw(null);
   const labels = byClass(root, 'oe-node-folded').map((n) => n.textContent);
-  check('J1 no fold hides a single child', labels.every((t) => t !== '접힘 · 1'),
+  check('J1 no fold hides a single child', labels.every((t) => t !== 'Folded · 1'),
     labels.join(' | '));
   // 🔴 WITHOUT THIS, J1 IS VACUOUS: a screen that folded nothing at all would pass it.
   check('J2 ...and the screen still folds what holds more than one',
@@ -945,7 +945,7 @@ const renderDraft = (plan) => {
   // 🔴 THE SHUT SCREEN IS ALLOWED TO SAY 「접힘 · 1」 — that is a person's answer, not the
   //    rule's, and a rule that overrode it would be the fold nobody can close.
   check('J5 a hand may shut a one-child row, and then it says so',
-    byClass(shut, 'oe-node-folded').map((n) => n.textContent).includes('접힘 · 1'),
+    byClass(shut, 'oe-node-folded').map((n) => n.textContent).includes('Folded · 1'),
     byClass(shut, 'oe-node-folded').map((n) => n.textContent).join(' | '));
 }
 

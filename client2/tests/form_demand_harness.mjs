@@ -55,11 +55,11 @@ console.log('\n[2] not-yet-arrived is not empty, and empty is normal');
   // 🔴 ② The empty plan is the NEW-declaration case and must not read as an error.
   ok('an empty plan does not say 「모름」',
     shaped({ planned: false, required: true }).text !== PLAN_UNREAD);
-  ok('...it states the demand instead', shaped({ planned: false, required: true }).text === '필수');
-  eq('an optional field says so', shaped({ planned: false, required: false }).text, '선택');
+  ok('...it states the demand instead', shaped({ planned: false, required: true }).text === 'Required');
+  eq('an optional field says so', shaped({ planned: false, required: false }).text, 'Optional');
   // 「required unknown」 is a third thing again: the skeleton did not say.
   eq('a field whose demand the skeleton never stated says THAT',
-    shaped({ planned: false }).text, '요구 · 모름');
+    shaped({ planned: false }).text, 'Required · unknown');
   ok('...and does not wear the colour of a stated demand',
     shaped({ planned: false }).tone !== shaped({ planned: false, required: true }).tone);
   ok('a planned box adds no chip of its own -- the plan already owns that column',
@@ -87,8 +87,8 @@ console.log('\n[3] a broken shape wins over everything else');
 console.log('\n[4] unknown is never read as no');
 {
   eq('a non-boolean required is not read as optional',
-    shaped({ planned: false, required: 'yes' }).text, '요구 · 모름');
-  eq('...nor as required', shaped({ planned: false, required: 1 }).text, '요구 · 모름');
+    shaped({ planned: false, required: 'yes' }).text, 'Required · unknown');
+  eq('...nor as required', shaped({ planned: false, required: 1 }).text, 'Required · unknown');
   eq('a missing planLoaded defaults to arrived, which is what the caller passes',
     demandState({ hasShape: true, planned: false, required: true }).source, 'skeleton');
   eq('a missing hasShape is not read as broken',

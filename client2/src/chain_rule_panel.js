@@ -39,7 +39,7 @@ function enabledState(payload, opts) {
  *    「파일의 함수」가 한 줄에 섞이면 그 물음이 화면에서 «안 풀립니다» — 둘은 서로 다른 사실이고
  *    저장이 받아 주는 방식도 다릅니다(하나는 등록부 조회, 하나는 두 칸).
  */
-export const MAPPER_GROUPS = Object.freeze({ registered: '등록 이름' });
+export const MAPPER_GROUPS = Object.freeze({ registered: 'Registered name' });
 
 //: 선언된 파라미터가 들어가는 칸. 🔴 이름을 «여기» 적는 이유는 이 파일이 이 문법의 낱말을
 //: 아는 유일한 자리이기 때문입니다 — 템플릿은 경로를 «받아» 쓸 뿐입니다.
@@ -174,7 +174,7 @@ export const CHAIN_RULE_REGISTRY = Object.freeze({
   extra: enabledState,
   // C-86 ①. 소유자: 「규칙 등록 영역에 규칙을 추가할 수가 없어」. 서버는 «이미» 새 이름을
   // 받습니다 — 새 규칙은 `enabled: false` 로 «장전»까지만 저장됩니다(위 절 참조).
-  addLabel: '규칙 추가',
+  addLabel: 'Add rule',
   // C-86 ②. 칸 이름·종류는 «서버가 실어 준» 스켈레톤에서 나옵니다(S-204). 이 파일도 칸 이름을
   // 적지 않습니다 — `chain_bindings.routing_keys()` 가 유일한 저자입니다.
   // 🔴 C-111 (S-241). 문법이 «둘»이 됐고(평면 · 통합), 서버가 몸소 둘을 다 실어
@@ -231,13 +231,13 @@ export const CHAIN_RULE_REGISTRY = Object.freeze({
     if (map && typeof map === 'object') {
       let flat = 0;
       for (const key of Object.keys(map)) if (map[key] === 'flat') flat += 1;
-      out.push({ text: `평면 ${flat}`, kind: 'flat' });
+      out.push({ text: `Flat ${flat}`, kind: 'flat' });
       // ⚠️ 지도에 «없는» 이름은 「모르는 것」입니다 — 서버가 「모른다」를 「평면」으로 채우지
       //    않고 «빼기» 때문입니다(판정 540·542). 그것을 평면에 더하면 그 규율이 화면에서
       //    무너지고, 운영자는 이관해야 할 수를 «틀리게» 봅니다.
       const names = Array.isArray(payload.rules) ? payload.rules.map(String) : [];
       const unknown = names.filter((n) => map[n] !== 'flat' && map[n] !== 'unified').length;
-      if (unknown) out.push({ text: `문법 모름 ${unknown}`, kind: 'unknown' });
+      if (unknown) out.push({ text: `Grammar unknown ${unknown}`, kind: 'unknown' });
     }
     // 🔴 [판정 543] 열린 규칙의 문법을 «못 읽으면» 그 사실을 «이름 대어» 말합니다.
     //    폼이 안 그려지는 것(위 `formRoot`)만으로는 «말없이 사라진 폼»이고, 그러면 운영자는
@@ -245,7 +245,7 @@ export const CHAIN_RULE_REGISTRY = Object.freeze({
     // ⛔ 여기서 문법을 «추측»하지 않습니다. 못 읽은 것은 못 읽은 것입니다(판정 509).
     if (payload && payload.name
         && payload.grammar !== 'flat' && payload.grammar !== 'unified') {
-      out.push({ text: `문법 못 읽음 · ${payload.name}`, kind: 'unknown' });
+      out.push({ text: `Grammar unreadable · ${payload.name}`, kind: 'unknown' });
     }
     // ㈎ — 통합 문서가 «한 자리»에 모아 든 모르는 칸입니다(`rule_shape.to_declaration` 의
     //    `extra`: 「제품이 뜻을 모르는 칸은 한 자리에 모아 둔다」).
@@ -258,7 +258,7 @@ export const CHAIN_RULE_REGISTRY = Object.freeze({
       const doc = payload.declaration;
       const held = doc && typeof doc.extra === 'object' && doc.extra ? doc.extra : null;
       const n = held ? Object.keys(held).length : 0;
-      if (n) out.push({ text: `모르는 칸 ${n} · 보존`, kind: 'carried' });
+      if (n) out.push({ text: `Unknown cells ${n} · kept`, kind: 'carried' });
     }
     return out;
   },

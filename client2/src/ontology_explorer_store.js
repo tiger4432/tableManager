@@ -98,7 +98,7 @@ export function assertOneContext(payload) {
   };
   const token = payload?.context_token;
   if (!token || payload?.view_context?.context_token !== token) {
-    mismatch('응답의 snapshot context가 일치하지 않습니다.');
+    mismatch('Response snapshot context does not match');
   }
   // 🔴 AN ABSENT SELECTION IS NOT A MISMATCHED ONE, and the difference is the whole first
   // screen of a fresh config. On an empty config `selection` is `null`, so
@@ -111,19 +111,19 @@ export function assertOneContext(payload) {
   // was fixed in ce81568; this is the second copy, and looking for it only after the
   // owner hit it is the lesson worth keeping.
   if (payload?.selection != null && payload.selection.context_token !== token) {
-    mismatch('선택 항목이 다른 snapshot에서 왔습니다.');
+    mismatch('The selection came from another snapshot');
   }
   for (const field of CONTEXT_COLLECTIONS) {
     for (const item of payload?.[field] || []) {
       if (item.context_token !== token) {
-        mismatch(`${field}에 다른 snapshot 항목이 섞였습니다.`);
+        mismatch(`${field} mixes items from another snapshot`);
       }
     }
   }
   if (payload?.draft) {
-    if (payload.draft.context_token !== token) mismatch('초안 메타데이터가 다른 context입니다.');
+    if (payload.draft.context_token !== token) mismatch('Draft metadata is from another context');
     for (const error of payload.draft.validation_errors || []) {
-      if (error.context_token !== token) mismatch('초안 오류가 다른 context입니다.');
+      if (error.context_token !== token) mismatch('Draft errors are from another context');
     }
   }
   return token;
@@ -164,7 +164,7 @@ export function reduceExplorerState(state = initialExplorerState, action) {
       assertOneContext(action.payload);
       const p = action.payload;
       if (action.expectedSelection && p.selection?.key !== action.expectedSelection) {
-        const error = new Error('요청한 selection과 응답 selection이 일치하지 않습니다.');
+        const error = new Error('Requested selection and response selection differ');
         error.code = 'context_mismatch';
         throw error;
       }

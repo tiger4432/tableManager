@@ -11,7 +11,7 @@
 //    정본이고, 같은 거부가 두 화면에서 다른 문장으로 나오는 순간 그 계약이 깨집니다.
 
 /** 묻지 않았거나 못 받았습니다. 「승인 안 됨」이 아닙니다. */
-export const JOIN_UNREAD = '진단 · 모름';
+export const JOIN_UNREAD = 'Diagnosis · unknown';
 
 const list = (value) => (Array.isArray(value) ? value : []);
 const str = (value) => (typeof value === 'string' && value ? value : '');
@@ -77,7 +77,7 @@ export function joinVerificationView(report, opts = {}) {
   // 모양 단계에서 떨어진 선언 — 규칙이 «되지도» 못한 것들이라 이름도 표도 없습니다.
   // 거절의 다른 «인구»이지 다른 상태가 아닙니다.
   const invalid = list(report.invalid).map((item) => ({
-    subject: str(item && item.subject) || '이름 없음',
+    subject: str(item && item.subject) || 'No name',
     detail: str(item && item.detail),
   }));
   const accepted = Number.isFinite(report.accepted) ? report.accepted : null;
@@ -90,8 +90,8 @@ export function joinVerificationView(report, opts = {}) {
     refused,
     // 「무엇의 수인가」를 옆에 답니다 — 수 하나만 있으면 다른 수로 읽힙니다.
     text: accepted === null || refused === null
-      ? `선언 ${rows.length}`
-      : `승인 ${accepted} · 거절 ${refused + invalid.length}`,
+      ? `Declared ${rows.length}`
+      : `Accepted ${accepted} · refused ${refused + invalid.length}`,
     reason: '',
   };
 }

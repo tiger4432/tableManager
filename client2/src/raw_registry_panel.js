@@ -24,6 +24,7 @@
 // ⛔ 삭제는 없습니다. 얕은 병합이 남의 등록을 지키는 장치이고, 지우는 것은 반경이 다릅니다.
 
 import { ABSENT, countText } from './absent.js';
+import { CHOOSE } from './ui_words.js';
 import { renderSkeletonForm } from './ontology_explorer_view.js';
 import { emptyOf, missingRequired, shapeAt } from './ontology_skeleton.js';
 import {
@@ -35,7 +36,7 @@ import { reduceFieldFold } from './ontology_explorer_store.js';
  * 고르개가 «새 이름을 짓는 중»일 때 입는 말. 🔴 철자가 «하나»입니다 — 그리는 쪽과 비교하는
  * 쪽이 각자 적으면 둘이 갈라지고, 갈라진 날 고르개가 새 규칙을 «기존 이름처럼» 열려 합니다.
  */
-export const NEW_NAME = '(새 규칙)';
+export const NEW_NAME = '(new rule)';
 
 /**
  * 아직 «아무것도 안 골랐을» 때 고르개가 입는 말.
@@ -46,14 +47,14 @@ export const NEW_NAME = '(새 규칙)';
  * ⚠️ 글자는 걷기 화면의 고르개와 «같은 말»입니다 — 같은 사실(아직 안 고름)에 두 낱말을 쓰면
  *    같은 제품이 두 목소리로 말합니다.
  */
-export const PICK_NAME = '— 고르십시오 —';
+export const PICK_NAME = CHOOSE;
 
 /**
  * 저장 안 된 글자가 있는데 «다른 문서»로 가려 할 때 묻는 말. 🔴 짧게, 그리고 «거짓말 없이» —
  * 초안은 이름별로 보관되므로 이동해도 «사라지지 않습니다». 묻는 이유는 잃어서가 아니라
  * 「지금 보던 것이 저장 안 된 상태」라는 사실을 운영자가 모르고 넘어가지 않게 하려는 것입니다.
  */
-export const LEAVE_UNSAVED = '미저장 변경이 있습니다. 이동할까요?';
+export const LEAVE_UNSAVED = 'Unsaved changes · leave anyway?';
 
 /**
  * 한 등록부의 «선언». 도메인 낱말은 «전부» 여기로 들어옵니다.
@@ -129,7 +130,7 @@ export function registryView(payload, opts, spec) {
     name: '', raw: '', base: '', configPath: '', refusal, saved: null, extra: null,
   });
   if (opts.unavailable || !payload || typeof payload !== 'object') {
-    return Object.freeze({ ...empty, reason: opts.unavailable || '응답을 읽지 못했습니다.' });
+    return Object.freeze({ ...empty, reason: opts.unavailable || 'Response unreadable' });
   }
   // 🔴 파일을 못 읽은 것은 「등록이 없다」가 «아닙니다». 서버가 `error` 로 그 둘을 갈라 줍니다.
   if (payload.error) {
@@ -566,7 +567,7 @@ export class RawRegistryPanel {
       const addBtn = doc.createElement('button');
       addBtn.className = `admin-btn ${spec.cls}-add`;
       addBtn.setAttribute('data-action', this.newMode ? `cancel-${spec.cls}` : `add-${spec.cls}`);
-      addBtn.textContent = this.newMode ? '취소' : `+ ${spec.addLabel}`;
+      addBtn.textContent = this.newMode ? 'Cancel' : `+ ${spec.addLabel}`;
       if (addBtn.addEventListener) {
         addBtn.addEventListener('click', () => {
           // 취소는 «보고 있던 것»으로 돌아갑니다. 다시 묻지 않습니다 — 응답이 그대로 있습니다.
@@ -651,7 +652,7 @@ export class RawRegistryPanel {
     //    편집 중인 폼을 안 갈아 끼움)는 «보이지 않았고», 안 보이는 가드는 운영자에게 없는 것과
     //    같습니다. 복원된 초안도 «같은 배지»가 말합니다(값이 다릅니다).
     if (drafted !== null) {
-      const mark = this._line(`${spec.cls}-unsaved`, restored ? '미저장 · 복원' : '미저장');
+      const mark = this._line(`${spec.cls}-unsaved`, restored ? 'Unsaved · restored' : 'Unsaved');
       mark.setAttribute('data-unsaved', restored ? 'restored' : 'edited');
       head.appendChild(mark);
       // 🔴 C-106 ③. 되돌릴 «길»이 있어야 합니다. 오늘까지는 다른 규칙에 들렀다 오는 것이
@@ -659,7 +660,7 @@ export class RawRegistryPanel {
       const undo = doc.createElement('button');
       undo.className = `admin-btn ${spec.cls}-undo`;
       undo.setAttribute('data-action', `undo-${spec.cls}`);
-      undo.textContent = '되돌리기';
+      undo.textContent = 'Revert';
       if (undo.addEventListener) {
         undo.addEventListener('click', () => { this._forget(); this._again(); });
       }
@@ -697,7 +698,7 @@ export class RawRegistryPanel {
     const save = doc.createElement('button');
     save.className = `admin-btn btn-primary ${spec.cls}-save`;
     save.setAttribute('data-action', `save-${spec.cls}`);
-    save.textContent = '저장';
+    save.textContent = 'Save';
     // 🔴 저장은 «한 길»입니다. 새 이름이든 고른 이름이든 같은 함수에 같은 모양으로 갑니다.
     //    이름이 어디서 오는지만 다르고, 폼이 이름을 가지면 «문서가» 그 답을 들고 있습니다.
     //    ⚠️ C-106 ①: 단축키도 «이 함수»를 부릅니다. 두 번째 저장 본문을 만들지 않습니다.
@@ -924,7 +925,7 @@ export class RawRegistryPanel {
       });
     }
     if (root && picked) {
-      this.root.appendChild(this._fold(`${spec.cls}-raw-fold`, '원본', null, this.rawOpen, () => {
+      this.root.appendChild(this._fold(`${spec.cls}-raw-fold`, 'Raw', null, this.rawOpen, () => {
         this.rawOpen = !this.rawOpen;
         this._again();
       }));
@@ -1139,7 +1140,7 @@ export class RawRegistryPanel {
       const at = node && node.dataset ? node.dataset.path : '';
       if (at && !keep.has(at)) later.appendChild(node);
     }
-    children.appendChild(this._fold(`${spec.cls}-more`, '고급', rest.length, this.moreOpen, () => {
+    children.appendChild(this._fold(`${spec.cls}-more`, 'Advanced', rest.length, this.moreOpen, () => {
       this.moreOpen = !this.moreOpen;
       this._again();
     }));

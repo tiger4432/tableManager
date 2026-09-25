@@ -57,7 +57,7 @@ console.log('\n[1] five states, and the server\'s boolean only knows three');
   eq('an EMPTY table is not 「유니크 아님」', uniquenessVerdict(EMPTY).state, 'empty');
   ok('...even though the server sent unique:false for it', EMPTY.unique === false);
   ok('...and its wording does not accuse the columns',
-    !uniquenessVerdict(EMPTY).text.includes('유니크 아님'));
+    !uniquenessVerdict(EMPTY).text.includes('Not unique'));
   ok('the two are not the same pixel',
     uniquenessVerdict(EMPTY).state !== uniquenessVerdict(DUPED).state);
 }
@@ -72,7 +72,7 @@ console.log('\n[2] the numbers travel, and they are not one number');
   ok('NULLs are their own count, because they are a different defect',
     v.detail.includes('12'));
   eq('a clean key carries its row count, not a bare word',
-    uniquenessVerdict(UNIQUE).detail, '행 34,939');
+    uniquenessVerdict(UNIQUE).detail, 'Rows 34,939');
   eq('a key with no NULLs does not mention NULLs',
     /NULL/.test(uniquenessVerdict({ ...DUPED, null_bearing_rows: 0 }).detail), false);
 
@@ -118,10 +118,10 @@ console.log('\n[4] the recommendation is carried, never recomputed');
   // `recommended: null` IS an answer: the declaration alone cannot order this relation.
   const none = orderingVerdicts({ declared_keys: [DUPED], recommended: null });
   eq('no surviving key leaves no recommendation', none.recommended, null);
-  ok('...and says so rather than drawing blank', none.text === '선언만으로는 못 정함');
+  ok('...and says so rather than drawing blank', none.text === 'Undecidable from the declaration alone');
   const bare = orderingVerdicts({ declared_keys: [], recommended: null });
   ok('a relation with no declared key says THAT instead',
-    bare.text === '선언된 유니크 키 없음');
+    bare.text === 'No unique key declared');
   ok('the two absences are not the same sentence', none.text !== bare.text);
 
   eq('nothing fetched yet is not "no keys"', orderingVerdicts(null).read, false);

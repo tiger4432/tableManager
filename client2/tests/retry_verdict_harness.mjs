@@ -78,7 +78,7 @@ console.log('\n── C. THE SENTENCE MATCHES THE VERDICT ───────�
   ok('C2 queued does NOT read as success', X.retryMessage('PENDING_RETRY').tone !== 'success',
     X.retryMessage('PENDING_RETRY'));
   ok('C3 queued names who has to act',
-    /워처/.test(X.retryMessage('PENDING_RETRY').text), X.retryMessage('PENDING_RETRY').text);
+    /watcher/.test(X.retryMessage('PENDING_RETRY').text), X.retryMessage('PENDING_RETRY').text);
   ok('C4 failed does not read as success', X.retryMessage('FAILED').tone !== 'success');
   ok('C5 unknown does not read as success', X.retryMessage('WHAT').tone !== 'success');
   // ⚠️ ABSENT FROM THE PAGE IS NOT A BROKEN STATE. With the FAILED filter on, a row
@@ -86,10 +86,10 @@ console.log('\n── C. THE SENTENCE MATCHES THE VERDICT ───────�
   //    same words as 'the server invented a state' would make routine success read as a
   //    fault. Both stay non-success; they do not share a sentence.
   ok('C8 an absent row is not worded as an unknown state',
-    !/알 수 없는 상태/.test(X.retryMessage(null).text),
+    !/Unknown state/.test(X.retryMessage(null).text),
     X.retryMessage(null).text);
   ok('C8b and the unknown spelling still is',
-    /알 수 없는 상태/.test(X.retryMessage('WHAT').text));
+    /Unknown state/.test(X.retryMessage('WHAT').text));
   ok('C9 and neither claims success',
     X.retryMessage(null).tone !== 'success' && X.retryMessage('WHAT').tone !== 'success');
   // 🔴 THE SERVER'S OWN SENTENCE IS CARRIED, NOT OVERWRITTEN. The route already says 「Marked N
@@ -165,8 +165,8 @@ const DEFECTS = [
     swap("  return { state: 'unknown', tone: 'warn', settled: false };",
       "  return { state: 'done', tone: 'ok', settled: true };")],
   ['M4 the queued sentence reads as a success',
-    swap("return { tone: 'warning', text: `⏳ 재시도 대기 — 워처가 집어 가야 처리됩니다${tail}` };",
-      "return { tone: 'success', text: `✅ 재시도 완료${tail}` };")],
+    swap("return { tone: 'warning', text: `⏳ Retry waiting — runs when the watcher picks it up${tail}` };",
+      "return { tone: 'success', text: `✅ Retry done${tail}` };")],
   ['M5 the server sentence is dropped',
     swap('const tail = serverMessage ? ` — ${serverMessage}` : \'\';', "const tail = '';")],
   ['M6 an absent row is reported as a broken state',
@@ -193,7 +193,7 @@ function verdict(M) {
     || M.retryVerdict(' pending_retry ').state !== 'queued'
     || M.retryMessage('PENDING_RETRY').tone === 'success'
     || !M.retryMessage('PENDING_RETRY', 'Marked 3 logs').text.includes('Marked 3 logs')
-    || /알 수 없는 상태/.test(M.retryMessage(null).text);
+    || /Unknown state/.test(M.retryMessage(null).text);
 }
 
 if (verdict(BASELINE)) die('the scorer already fails on the UNMUTATED module — '

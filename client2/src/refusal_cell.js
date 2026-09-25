@@ -19,10 +19,10 @@
 
 import { isCount } from './absent.js';
 
-const MARK = '거절';
-const SINCE_MARK = '이 프로세스가 뜬 뒤';
+const MARK = 'Refused';
+const SINCE_MARK = 'since this process started';
 /** 준비기가 «자기 표지로» 뺀 행. 거절과 다른 사실이라 다른 낱말이다. */
-const EXCLUDED_MARK = '제외';
+const EXCLUDED_MARK = 'Excluded';
 /** 툴팁 한 칸에 얹히는 표본 수. 자르는 것은 «개수»이고 문장은 «그대로»입니다. */
 const SAMPLES_SHOWN = 3;
 
@@ -63,7 +63,7 @@ export function excludedNote(excluded) {
 }
 
 /** 「N 건까지」 — «자른 것은 개수»라는 사실. 문장이 아니라 값 옆의 낱말입니다. */
-const CAP_MARK = '건까지';
+const CAP_MARK = 'first';
 
 /**
  * C-49. 시험 실행의 «표본»을 표의 행으로. 「몇 건」 옆에 「어느 행이」.
@@ -107,7 +107,7 @@ export function refusalSamples(refused) {
   return Object.freeze({
     rows: Object.freeze(items),
     capped,
-    note: capped ? `${items.length} ${CAP_MARK}` : '',
+    note: capped ? `${CAP_MARK} ${items.length}` : '',
   });
 }
 

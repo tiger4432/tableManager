@@ -484,11 +484,11 @@ async function suite(probe) {
   await refreshChainRule(RULE.name);
   await flush();
   const shown = marksOf();
-  ok(shown.includes('평면 1'),
+  ok(shown.includes('Flat 1'),
      `K the screen counts the rules still written flat, off ONE response [${shown.join(' | ')}]`);
   // 🔴 판정 540·542. The route OMITS a name whose grammar it cannot read. Counting those as flat
   //    would put 「모른다」 back into 「평면」 inside the very screen that reports the migration.
-  ok(shown.includes('문법 모름 1'),
+  ok(shown.includes('Grammar unknown 1'),
      `K ... and an unreadable grammar is counted SEPARATELY, never folded into flat [${shown.join(' | ')}]`);
 
   // ㈎ 「제품이 모르는 칸 N 개 — 그대로 보존됩니다」. The cell exists because
@@ -506,7 +506,7 @@ async function suite(probe) {
   await refreshChainRule(RULE.name);
   await flush();
   const carried = marksOf();
-  ok(carried.includes('모르는 칸 3 · 보존'),
+  ok(carried.includes('Unknown cells 3 · kept'),
      `K a migrated rule says HOW MANY cells the product cannot model, and that they are kept `
      + `[${carried.join(' | ')}]`);
 
@@ -523,7 +523,7 @@ async function suite(probe) {
   // 🔴 판정 543 ㉡. A form that just VANISHES reads as a broken screen. The reason is named,
   //    and it carries the rule's name because that is the place the operator has to go fix.
   const unread = marksOf();
-  ok(unread.includes('문법 못 읽음 · dt_log_to_dt_map'),
+  ok(unread.includes('Grammar unreadable · dt_log_to_dt_map'),
      `L ... and the screen NAMES the rule it could not classify [${unread.join(' | ')}]`);
   // 🔴 판정 548 ④. A rule whose grammar cannot be read offers NO conversion - converting it would
   //    mean GUESSING which grammar it is, which is the same line 543 drew for the form.
@@ -574,7 +574,7 @@ async function suite(probe) {
      `M ... and it carries the base it opened with, which the write requires `
      + `(${grammarPosts.length ? JSON.stringify(grammarPosts[0].body.base) : 'no call'})`);
   // 🔴 판정 549. 「세었고 0」 is not 「안 셌음」. Zero must read as 「없음」, never as a missing count.
-  ok(typeof asked === 'string' && asked.includes('다시 돌 것 없음'),
+  ok(typeof asked === 'string' && asked.includes('Nothing to rerun'),
      `M a counted zero is told as 「없음」, not as a number and not as silence (${JSON.stringify(asked)})`);
 
   // 🔴 판정 549 의 셋째 상태. The cell ABSENT means 「not counted」 - never drawn as 0.
@@ -586,7 +586,7 @@ async function suite(probe) {
   clickConvert();
   await flush();
   await flush();
-  ok(typeof asked === 'string' && asked.includes('안 셌음'),
+  ok(typeof asked === 'string' && asked.includes('not measured'),
      `M an ABSENT count says so, rather than being drawn as 0 (${JSON.stringify(asked)})`);
   // 🔴 WHY IT WAS NOT COUNTED IS THE SERVER'S SENTENCE. 「could not expand it」 and 「the shape
   //    moves」 are different facts, and a screen writing its own line would fold them into one.

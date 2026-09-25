@@ -147,7 +147,7 @@ console.log('\n[4] not asked is not refused');
   //    exists to stop. (This assertion was written the wrong way round first; the code
   //    was right and the expectation was the invented one.)
   eq('...and the line counts roles rather than inventing a verdict tally',
-    planDryRunView({ stages: [{ roles: [OK_ROLE] }] }).text, '역할 1');
+    planDryRunView({ stages: [{ roles: [OK_ROLE] }] }).text, 'Roles 1');
 }
 
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);

@@ -4,7 +4,8 @@
 //  Code Editor는 독립 탭 대신 각 탭의 편집 딥링크로 진입하는 공용 뷰. #editor URL 호환 유지)
 import './tokens.css';
 // `isCount` 는 인제션 행이 `admin_rows.js` 로 옮겨가며 이 파일에서 «쓰는 곳이 없어졌습니다».
-import { localeCountText } from './absent.js';
+import { localeCountText, UNKNOWN } from './absent.js';
+import { NONE, WAITING, REFUSED, unitText } from './ui_words.js';
 // 🔴 「이 본문이 오류를 나르나」의 «유일한» 철자. 봉투가 둘이라 «칸 이름»으로 물으면
 //    한쪽에서 조용히 아무것도 안 잡는다 (총괄 판정 22, 2026-09-07).
 import { errorText } from './body_error.js';
@@ -145,7 +146,7 @@ function askForAdminToken(message) {
             // Cancel. Do NOT clear the stored token - the previous code turned a
             // cancel into storeAdminToken('') and DELETED a working token.
             adminTokenDeclined = true;
-            if (asked) showToast('관리자 토큰 입력을 취소했습니다. 새로고침하면 다시 물어봅니다.', 'warning');
+            if (asked) showToast('Admin token entry cancelled · reload to be asked again', 'warning');
             return;
           }
           value = String(entered).trim();
@@ -403,7 +404,7 @@ function markRefreshed() {
   if (!lastRefreshedSpan) return;
   const now = new Date();
   const p = n => String(n).padStart(2, '0');
-  lastRefreshedSpan.textContent = `갱신 ${p(now.getHours())}:${p(now.getMinutes())}:${p(now.getSeconds())}`;
+  lastRefreshedSpan.textContent = `Updated ${p(now.getHours())}:${p(now.getMinutes())}:${p(now.getSeconds())}`;
 }
 
 // 섹션 헤더 카운트 배지 갱신
@@ -450,7 +451,7 @@ function markSectionUnread(id) {
 //    고칠 자리를 찾게 합니다 — 문구를 늘리지 않습니다.
 // ⚠️ `path` 가 없으면 «아무것도 안 합니다» — 그런 목록은 진짜로 «빈» 것이고
 //    그때는 「0개」가 맞는 답입니다.
-const ABSENT_LABEL = '없음';
+const ABSENT_LABEL = NONE;
 function markSectionAbsent(id, path) {
   if (!path) return;
   setSectionCount(id, ABSENT_LABEL, 'warn');
@@ -460,11 +461,11 @@ function markSectionAbsent(id, path) {
 
 // 탭 로드 실패 문구. 두 자리(부분 실패 · 예외)가 «같은 말»을 하도록 한곳에 둔다.
 const TAB_ERROR_MSG = {
-  overview: '❌ 파이프라인 Overview 로드 실패',
-  file: '❌ File Ingestion 현황 로드 실패',
-  chain: '❌ Chain 파이프라인 현황 로드 실패',
-  autoupdate: '❌ Auto Update 현황 로드 실패',
-  enrichment: '❌ Enrichment 규칙 현황 로드 실패'
+  overview: '❌ Pipeline overview failed to load',
+  file: '❌ File Ingestion status failed to load',
+  chain: '❌ Chain pipeline status failed to load',
+  autoupdate: '❌ Auto Update status failed to load',
+  enrichment: '❌ Enrichment rules failed to load'
 };
 
 // mapper_module ("mappers.foo" / "pkg.mod") → 편집 가능한 파일 경로
@@ -712,26 +713,26 @@ function setupEventListeners() {
     const ok = await fetchData();
     if (!ok) return; // 실패 토스트는 fetchData가 담당
     const messages = {
-      overview: '♻️ 파이프라인 Overview를 새로고침했습니다.',
-      file: '♻️ File Ingestion 현황을 새로고침했습니다.',
-      chain: '♻️ Chain 파이프라인 현황을 새로고침했습니다.',
-      autoupdate: '♻️ Auto Update 현황을 새로고침했습니다.',
-      enrichment: '♻️ Enrichment 규칙 현황을 새로고침했습니다.'
+      overview: '♻️ Pipeline overview refreshed',
+      file: '♻️ File Ingestion status refreshed',
+      chain: '♻️ Chain pipeline status refreshed',
+      autoupdate: '♻️ Auto Update status refreshed',
+      enrichment: '♻️ Enrichment rules refreshed'
     };
-    showToast(messages[currentTab] || '♻️ 목록을 새로고침했습니다.', 'success');
+    showToast(messages[currentTab] || '♻️ List refreshed', 'success');
   });
 
   // 일괄 재시도 — 섹션 헤더로 이동 (Chain 실패 / File 로그)
   if (retryAllOutboxBtn) {
     retryAllOutboxBtn.addEventListener('click', async () => {
-      if (confirm('실패 상태인 모든 체인(아웃박스) 트랜잭션을 재실행하시겠습니까?')) {
+      if (confirm('Rerun every failed chain (outbox) transaction?')) {
         await retryAllFailed('outbox');
       }
     });
   }
   if (retryAllFileBtn) {
     retryAllFileBtn.addEventListener('click', async () => {
-      if (confirm('실패 상태인 모든 파일 인제션 건을 재실행하시겠습니까?')) {
+      if (confirm('Rerun every failed file ingestion?')) {
         await retryAllFailed('file');
       }
     });
@@ -770,10 +771,10 @@ function setupEventListeners() {
 
     if (payloadToCopy) {
       navigator.clipboard.writeText(JSON.stringify(payloadToCopy, null, 2))
-        .then(() => showToast('📋 페이로드가 클립보드에 복사되었습니다.', 'success'))
-        .catch(() => showToast('❌ 복사에 실패했습니다.', 'error'));
+        .then(() => showToast('📋 Payload copied', 'success'))
+        .catch(() => showToast('❌ Copy failed', 'error'));
     } else {
-      showToast('⚠️ 복사할 항목이 선택되지 않았습니다.', 'warning');
+      showToast('⚠️ Nothing selected to copy', 'warning');
     }
   });
 
@@ -805,7 +806,7 @@ function setupEventListeners() {
   });
 
   reloadConfigsBtn.addEventListener('click', async () => {
-    if (confirm('모든 인제션 파서 스크립트, 체인 룰 및 맵퍼 모듈 캐시를 디스크에서 새로고침하시겠습니까?')) {
+    if (confirm('Reload every parser script, chain rule and mapper module from disk?')) {
       await reloadSystemConfigs();
     }
   });
@@ -814,7 +815,7 @@ function setupEventListeners() {
     if (!activeEditorFilePath) return;
     if (!window.monacoEditor) return;
 
-    if (confirm(`'${activeEditorFilePath}' 스크립트의 코드 변경 사항을 저장하시겠습니까?\n저장 후 핫-리로드가 자동으로 전파됩니다.`)) {
+    if (confirm(`Save the changes to '${activeEditorFilePath}'?\nA hot reload follows the save.`)) {
       await saveScriptCode(activeEditorFilePath, window.monacoEditor.getValue());
     }
   });
@@ -1032,7 +1033,7 @@ async function fetchData(options = {}) {
       // 🔵 갈래를 더한 것으로 오늘 것은 닫힙니다. 이 `else` 는 «다음»을 위한 것입니다 —
       //    탭이 여덟째가 되는 날, 그것이 조용히 성공하지 «못하게» 합니다.
       console.error(`fetchData: no branch for tab '${tab}' — refusing to report a refresh`);
-      if (!silent) showToast(TAB_ERROR_MSG[tab] || '❌ 목록 로드 실패', 'error');
+      if (!silent) showToast(TAB_ERROR_MSG[tab] || '❌ List failed to load', 'error');
       return false;
     }
     // 부분 실패도 «말한다». 문구는 예외 경로와 같은 것을 쓴다 — 새로 짓지 않는다.
@@ -1040,14 +1041,14 @@ async function fetchData(options = {}) {
     //    사유가 없으면(네트워크·HTTP) 문구는 «오늘과 같다».
     if (!allRead && !silent) {
       const why = bodyFailures.length ? ` — ${bodyFailures.join(' · ')}` : '';
-      showToast(`${TAB_ERROR_MSG[tab] || '❌ 목록 로드 실패'}${why}`, 'error');
+      showToast(`${TAB_ERROR_MSG[tab] || '❌ List failed to load'}${why}`, 'error');
     }
     markRefreshed();
     return allRead;
   } catch (err) {
     if (isStale()) return false; // 무효화된 요청의 실패는 무음 처리
     console.error('Failed to fetch items', err);
-    if (!silent) showToast(TAB_ERROR_MSG[tab] || '❌ 목록 로드 실패', 'error');
+    if (!silent) showToast(TAB_ERROR_MSG[tab] || '❌ List failed to load', 'error');
     return false;
   }
 }
@@ -1186,7 +1187,7 @@ async function saveChainRule({ name, base, raw }) {
     await refreshChainRule(name, { saved: answer || {} });
   } catch (e) {                                              // noqa
     await refreshChainRule(name, { refusal: {
-      code: '', path: '', message: '저장 요청이 서버에 닿지 못했습니다 (네트워크).' } });
+      code: '', path: '', message: 'Save request did not reach the server (network)' } });
   }
 }
 
@@ -1219,7 +1220,7 @@ async function convertChainRuleGrammar({ name, to, base }) {
   //    「예를 눌렀는데 아무 일도 안 났다」로 보입니다. 안 보내고 «이름 대어» 다음 행동을 말합니다.
   //    ⛔ 지문을 «지어내지» 않습니다. 그 가드가 우는 조건이 바로 이 값입니다.
   if (!base) {
-    await refuse(`${name} · 지문 없음 — 규칙을 다시 열고 눌러 주십시오`);
+    await refuse(`${name} · no fingerprint — reopen the rule and press again`);
     return;
   }
   let dry;
@@ -1228,7 +1229,7 @@ async function convertChainRuleGrammar({ name, to, base }) {
     dry = await res.json().catch(() => null);
     if (!res.ok) { await refreshChainRule(name, { refusal: (dry && dry.detail) || dry || {} }); return; }
   } catch (e) {                                              // noqa
-    await refuse('변환 확인 요청이 서버에 닿지 못했습니다 (네트워크).');
+    await refuse('Conversion check did not reach the server (network)');
     return;
   }
   // 🔴 [판정 549] 「다시 돌 것」은 «상태 셋»이고, 셋째는 «칸이 없는 것»입니다(`rows` 없음).
@@ -1237,25 +1238,25 @@ async function convertChainRuleGrammar({ name, to, base }) {
   //       「세었고 0」과 「안 셌다」가 다시 한 그림이 됩니다.
   const reruns = (dry && dry.reruns) || null;
   const counted = reruns && typeof reruns.rows === 'number' && Number.isFinite(reruns.rows);
-  const rerun = !counted ? '다시 돌 수 안 셌음'
-    : reruns.rows === 0 ? '다시 돌 것 없음' : `다시 도는 행 ${reruns.rows}`;
+  const rerun = !counted ? 'Rerun count not measured'
+    : reruns.rows === 0 ? 'Nothing to rerun' : `Rows to rerun ${reruns.rows}`;
   // 🔴 «사유»는 서버의 낱말 그대로입니다 — 「안 셌음」이 «왜»인지(못 펼쳤나 · 모양이 바뀌나)를
   //    화면이 지어내면 두 경우가 한 문장이 됩니다. 없으면 «안 붙입니다».
   const why = reruns && typeof reruns.why === 'string' && reruns.why ? `\n${reruns.why}` : '';
   // 이미 그 문법이면 서버가 «아무것도 안 하고» 그렇게 말합니다 (판정 548 ③ — 거절이 아니라 사실).
   if (dry && dry.changed === false) {
-    await refuse(String((dry && dry.why) || '이 규칙은 이미 그 문법입니다.'));
+    await refuse(String((dry && dry.why) || 'This rule is already in that grammar'));
     return;
   }
-  const word = to === 'unified' ? '통합' : '평면';
-  if (!window.confirm(`${name} · ${word}으로\n${rerun}${why}`)) return;
+  const word = to === 'unified' ? 'unified' : 'flat';
+  if (!window.confirm(`${name} · to ${word}\n${rerun}${why}`)) return;
   try {
     const res = await post(false);
     const answer = await res.json().catch(() => null);
     if (!res.ok) { await refreshChainRule(name, { refusal: (answer && answer.detail) || answer || {} }); return; }
     await refreshChainRule(name, { saved: answer || {} });
   } catch (e) {                                              // noqa
-    await refuse('변환 요청이 서버에 닿지 못했습니다 (네트워크).');
+    await refuse('Conversion request did not reach the server (network)');
   }
 }
 
@@ -1334,7 +1335,7 @@ async function saveTableConfig({ table, base, raw }) {
     await refreshTableConfig(table, { saved: answer || {} });
   } catch (e) {                                              // noqa
     await refreshTableConfig(table, { refusal: {
-      code: '', path: '', message: '저장 요청이 서버에 닿지 못했습니다 (네트워크).' } });
+      code: '', path: '', message: 'Save request did not reach the server (network)' } });
   }
 }
 
@@ -1385,7 +1386,7 @@ async function refreshLedgerSources() {
       //    이 봉투는 `status` 칸이 없어 `error` 가 참인가로만 갈린다.
       const failure = errorText(body);
       if (failure) {
-        opts = { unavailable: `\uc120\uc5b8\uc744 \uc77d\uc9c0 \ubabb\ud588\uc2b5\ub2c8\ub2e4 \u2014 ${failure}` };
+        opts = { unavailable: `Declaration unreadable \u2014 ${failure}` };
         body = null;
       }
     }
@@ -1464,7 +1465,7 @@ function renderOutboxTable() {
 
     row.innerHTML = `
       <td style="font-family: var(--font-mono); font-size: 0.8rem; font-weight: 600; color: var(--color-primary);">
-        <span class="tx-id-chip" title="${tx.transaction_id}&#10;(클릭하여 전체 ID 복사)">${shortTxId(tx.transaction_id)}</span>
+        <span class="tx-id-chip" title="${tx.transaction_id}&#10;(click to copy the full ID)">${shortTxId(tx.transaction_id)}</span>
       </td>
       <td style="font-weight: 500;">${tablesJoined}</td>
       <td>${eventTypesJoined}</td>
@@ -1483,13 +1484,13 @@ function renderOutboxTable() {
     idChip.addEventListener('click', (e) => {
       e.stopPropagation();
       navigator.clipboard.writeText(tx.transaction_id)
-        .then(() => showToast(`📋 Transaction ID [${shortTxId(tx.transaction_id)}] 전체값이 복사되었습니다.`, 'info'))
-        .catch(() => showToast('❌ 복사에 실패했습니다.', 'error'));
+        .then(() => showToast(`📋 Transaction ID [${shortTxId(tx.transaction_id)}] copied in full`, 'info'))
+        .catch(() => showToast('❌ Copy failed', 'error'));
     });
 
     const retryBtn = row.querySelector('.btn-retry-tx');
     retryBtn.addEventListener('click', async () => {
-      if (confirm(`트랜잭션 [${shortTxId(tx.transaction_id)}] 내의 모든 이벤트를 다시 재시도하시겠습니까?`)) {
+      if (confirm(`Retry every event in transaction [${shortTxId(tx.transaction_id)}]?`)) {
         await retryTransaction(tx.transaction_id);
       }
     });
@@ -1580,7 +1581,7 @@ function buildFileLogRow(log, { withStatus }) {
   const retryBtn = row.querySelector('.btn-retry-file');
   if (retryBtn) {
     retryBtn.addEventListener('click', async () => {
-      if (confirm(`로그 ID #${log.id} 파일 인제션을 다시 재시도하시겠습니까?`)) {
+      if (confirm(`Retry file ingestion for log #${log.id}?`)) {
         await retryFileIngestion(log.id);
       }
     });
@@ -1653,14 +1654,14 @@ function renderActiveIngestions() {
   setSectionCount('active-ingestion-count', items.length, 'warn');
   const heavyCount = items.filter(i => i.lane === 'heavy').length;
   const summaryEl = byId('active-ingestion-summary');
-  if (summaryEl) summaryEl.textContent = heavyCount ? `heavy ${heavyCount}건 포함` : '';
+  if (summaryEl) summaryEl.textContent = heavyCount ? `incl. ${heavyCount} heavy` : '';
 
   // [P1 재기동 경고] 체크포인트(P2) 도입 전 운영 안전장치 — 표시만, 서버측 차단 없음
   const maxProg = Math.max(...items.map(i => i.progress || 0));
   activeIngestionWarning.style.display = '';
   activeIngestionWarning.textContent =
-    `⚠️ 인제션 진행 중 ${items.length}건 — 지금 서버를 재기동하면 진행 중 파일은 처음부터 재처리됩니다` +
-    (items.length === 1 ? ` (${maxProg}% 진행)` : '');
+    `⚠️ Ingesting ${items.length} — a server restart now reprocesses them from the start` +
+    (items.length === 1 ? ` (${maxProg}% done)` : '');
 
   activeIngestionBody.innerHTML = '';
   items.forEach(item => {
@@ -1682,7 +1683,7 @@ function renderWorkspaceTable() {
   const summaryEl = byId('workspace-summary');
   if (summaryEl) {
     summaryEl.textContent = workspaceData.length
-      ? `config 누락 ${noConfig} · 커스텀 파서 ${withScripts}개`
+      ? `Missing config ${noConfig} · custom parsers ${withScripts}`
       : '';
   }
 
@@ -1777,7 +1778,7 @@ function renderChainTable() {
     // 사유와 나이는 «서버가 준 것»만. 없으면 «없는 채로** — 「없음」도 「0초」도 안 지어냅니다.
     // ⚠️ 기준 시각은 «같은 응답»의 `generated_at` 이고, 그 줄은 이 탭의 큐 패널이 이미
     //    그립니다(S-20). 여기서 두 번 그리면 한 사실에 두 자리가 생깁니다.
-    const outcomeBits = [outcome.reason, outcome.age === null ? '' : `${ageText(outcome.age)} 전`]
+    const outcomeBits = [outcome.reason, outcome.age === null ? '' : `${ageText(outcome.age)} ago`]
       .filter(Boolean).map(escapeHtml);
     const outcomeNote = outcomeBits.length
       ? `<span class="chain-state-note">${outcomeBits.join(' · ')}</span>` : '';
@@ -1884,7 +1885,7 @@ function renderAutoUpdateTable() {
 
     const runBtn = row.querySelector('.btn-run-now');
     runBtn.addEventListener('click', async () => {
-      if (confirm(`수집기 스크립트 '${col.script_name}'을 즉시 실행하시겠습니까?`)) {
+      if (confirm(`Run collector script '${col.script_name}' now?`)) {
         await runAutoUpdateNow(col.table_name, col.script_name);
       }
     });
@@ -1960,11 +1961,11 @@ function renderEnrichmentTable(status) {
     const unmeasured = (status.perRule || []).filter(p => p.missing === null).length;
     const missCell = countWithAbsence(
       status.perRule && status.perRule.length && unmeasured === status.perRule.length
-        ? { unread: '모름' }
+        ? { unread: UNKNOWN }
         : { value: status.totalMissing,
             absence: unmeasured ? 'not_exhaustive' : 'truly_none' });
-    missEl.textContent = `결손 ${unmeasured && missCell.read && status.totalMissing > 0
-      ? `${status.totalMissing} · 전수가 아님` : missCell.text}`;
+    missEl.textContent = `Missing ${unmeasured && missCell.read && status.totalMissing > 0
+      ? `${status.totalMissing} · not exhaustive` : missCell.text}`;
     missEl.dataset.tone = status.totalMissing > 0 ? 'warn' : 'ok';
   }
 
@@ -1982,7 +1983,7 @@ function renderEnrichmentTable(status) {
     row.dataset.name = rule.name;
 
     const missingBadge = missing == null
-      ? `<span class="badge badge-warning">조회 실패</span>`
+      ? `<span class="badge badge-warning">Read failed</span>`
       : missing > 0
         ? `<span class="badge badge-warning" style="font-family: var(--font-mono);">${missing}</span>`
         : `<span class="badge badge-success" style="font-family: var(--font-mono);">0</span>`;
@@ -2035,7 +2036,7 @@ function renderRecorrection(stat) {
     valueEl.textContent = '—';
     line.dataset.tone = 'muted';
     // 상설(2026-09-05): 상태는 «명사», 수와 사유는 «옆에», 접속사 대신 `·`.
-    subEl.textContent = '보고 없음 · /dashboard/summary';
+    subEl.textContent = 'No report · /dashboard/summary';
     return;
   }
   if (stat.rate_pct == null) {
@@ -2043,14 +2044,14 @@ function renderRecorrection(stat) {
     line.dataset.tone = 'muted';
     // ⚠️ 창의 «길이»도 모르면 말하지 않습니다 — 오늘의 NULL 규칙과 같은 자리입니다.
     // ⚠️ 창의 «길이»는 «단위»라 남깁니다 — 없으면 다른 수로 읽힙니다. 모르면 «안 붙입니다».
-    const win = stat.window_days == null ? '' : ` · 최근 ${stat.window_days}일`;
+    const win = stat.window_days == null ? '' : ` · last ${stat.window_days} days`;
     if (stat.unavailable_reason) {
-      subEl.textContent = `집계 실패 · ${stat.unavailable_reason}`;
+      subEl.textContent = `Aggregation failed · ${stat.unavailable_reason}`;
     } else if (stat.measured_cells == null) {
       // 🔴 넷째 갈래 — 「센 값이 «안 왔다»」와 「세었더니 «0» 이다」는 다른 사실입니다.
-      subEl.textContent = `미집계${win}`;
+      subEl.textContent = `Not aggregated${win}`;
     } else {
-      subEl.textContent = `교정 셀 없음${win}`;
+      subEl.textContent = `No corrected cells${win}`;
     }
     return;
   }
@@ -2062,8 +2063,8 @@ function renderRecorrection(stat) {
   valueEl.textContent = `${rate.toFixed(1)}%`;
   // 분모는 항상 함께 — 표본이 작으면 읽는 사람이 스스로 알아채야 한다.
   subEl.textContent =
-    `최근 ${days}일 · 사람이 고친 셀 ${localeCountText(cells)}개 중 ${localeCountText(recorr)}개를 두 번 이상 고침`
-    + (cells < 100 ? ' · 표본이 작아 추세로 읽지 말 것' : '');
+    `Last ${days} days · ${localeCountText(recorr)} of ${localeCountText(cells)} human-corrected cells corrected twice or more`
+    + (cells < 100 ? ' · small sample, not a trend' : '');
   line.dataset.tone = cells < 100 ? 'muted' : (rate >= 10 ? 'danger' : (rate >= 5 ? 'warn' : ''));
 }
 
@@ -2082,7 +2083,7 @@ function renderEffort(stat) {
 
   const days = stat && stat.window_days != null ? stat.window_days : 7;
   const ratio = stat ? stat.measured_ratio : null;
-  const covText = ratio == null ? '커버리지 미상' : `커버리지 ${(ratio * 100).toFixed(0)}%`;
+  const covText = ratio == null ? 'coverage unknown' : `coverage ${(ratio * 100).toFixed(0)}%`;
 
   if (!stat || stat.avg_score == null) {
     valueEl.textContent = '—';
@@ -2092,32 +2093,32 @@ function renderEffort(stat) {
       // 응답에 effort 필드 자체가 없다 = 구 서버이거나 계약이 어긋난 것. "교정이 없었다"고
       // 적으면 서버가 말하지 않은 것을 대신 지어내는 것이 된다.
       line.dataset.tone = 'muted';
-      subEl.textContent = '보고 없음 · /dashboard/summary';
+      subEl.textContent = 'No report · /dashboard/summary';
     } else if (stat.unavailable_reason) {
       line.dataset.tone = 'danger';
-      subEl.textContent = `집계 실패 · ${stat.unavailable_reason}`;
+      subEl.textContent = `Aggregation failed · ${stat.unavailable_reason}`;
     } else if (ratio === 0) {
       // 사람이 고친 교정은 있는데 계측된 것이 0건 = 수집 중단. 이 한 줄이 그 감지기다.
       // 🔴 판정을 «낱말로» 내지 않는다. 두 수를 나란히 두면 운영자가 읽습니다 —
       //    「끊겼다」는 이 파일이 지어낼 것이 아니고, 큐 화면에서 같은 이유로 안 썼습니다.
       line.dataset.tone = 'danger';
-      subEl.textContent = `⚠ 계측 0건 · 사람 교정 있음 · 최근 ${days}일`;
+      subEl.textContent = `⚠ 0 measured · human corrections exist · last ${days} days`;
     } else {
       line.dataset.tone = 'muted';
-      subEl.textContent = `교정 없음 · 최근 ${days}일`;
+      subEl.textContent = `No corrections · last ${days} days`;
     }
     return;
   }
 
   const { avg_score: score, tx_count: txs, session_count: sessions } = stat;
-  valueEl.textContent = `${score.toFixed(1)}점`;
+  valueEl.textContent = `${score.toFixed(1)} pts`;
   const lowCoverage = ratio != null && ratio < 0.5;
   subEl.textContent =
     // 🔴 `|| 0` HERE TOO — 「안 왔다」가 「0개」가 되던 자리입니다. 두 줄 위의 던지는 자리와
     //    «같은 함수 안»에 있었고, 그것이 이것을 «부류»로 만듭니다.
-    `최근 ${days}일 · 세션 ${localeCountText(sessions)}개 평균 · 교정 ${localeCountText(txs)}건 계측(${covText})`
-    + (ratio == null ? ' · 커버리지를 알 수 없어 대표값으로 읽지 말 것'
-       : lowCoverage ? ' · 커버리지가 낮아 대표값으로 읽지 말 것' : '');
+    `Last ${days} days · mean of ${localeCountText(sessions)} sessions · ${localeCountText(txs)} corrections measured (${covText})`
+    + (ratio == null ? ' · coverage unknown, not representative'
+       : lowCoverage ? ' · low coverage, not representative' : '');
   line.dataset.tone = (ratio == null || lowCoverage) ? 'warn' : '';
 }
 
@@ -2137,8 +2138,8 @@ async function refreshCoreValueLines(force = false) {
     renderEffort(data.effort || null);
   } catch (e) {
     // 보조 지표다 — 실패해도 Overview 본문 흐름을 방해하지 않는다.
-    renderRecorrection({ rate_pct: null, window_days: 7, unavailable_reason: '조회 실패' });
-    renderEffort({ avg_score: null, window_days: 7, unavailable_reason: '조회 실패' });
+    renderRecorrection({ rate_pct: null, window_days: 7, unavailable_reason: 'read failed' });
+    renderEffort({ avg_score: null, window_days: 7, unavailable_reason: 'read failed' });
   }
 }
 
@@ -2231,7 +2232,7 @@ function renderJoinVerification(view) {
   body.textContent = '';
   const head = document.createElement('div');
   head.className = 'join-verify-head';
-  head.append(cfgEl('span', 'join-verify-label', '조인 승인'));
+  head.append(cfgEl('span', 'join-verify-label', 'Join approval'));
   head.append(cfgEl('span', 'join-verify-total', view.text));
   body.append(head);
   if (!view.read) {
@@ -2246,9 +2247,9 @@ function renderJoinVerification(view) {
     line.append(cfgEl('code', '', row.name));
     line.append(cfgEl('span', 'join-verify-key', row.joinKey.join(' · ')));
     if (row.state === 'accepted') {
-      line.append(cfgEl('span', 'join-verify-verdict', '승인'));
+      line.append(cfgEl('span', 'join-verify-verdict', 'Approved'));
     } else if (row.state === 'refused') {
-      line.append(cfgEl('span', 'join-verify-verdict', '거절'));
+      line.append(cfgEl('span', 'join-verify-verdict', REFUSED));
       // 🔴 서버의 문장 그대로. 여기서 지으면 같은 거부가 두 화면에서 달라집니다.
       if (row.detail) line.append(cfgEl('span', 'join-verify-detail', row.detail));
       // 🔴 그리고 «무엇을 바꾸나» — 이것이 한 낱말이 못 하던 일입니다.
@@ -2256,11 +2257,11 @@ function renderJoinVerification(view) {
     } else if (row.state === 'not_asked') {
       // 🔴 [판정 687] 「안 물음」은 «거절이 아닙니다» — 이 선언이 승인을 묻지 않았을 뿐입니다.
       //    거절과 같은 칸에 넣으면 운영자가 «없는 고장»을 고치러 갑니다.
-      line.append(cfgEl('span', 'join-verify-verdict', '안 물음'));
+      line.append(cfgEl('span', 'join-verify-verdict', 'Not asked'));
       // 사유가 곧 «할 일»입니다(`key: {unique: true}` 를 적으라는 서버의 문장). DDL 은 없습니다.
       if (row.detail) line.append(cfgEl('span', 'join-verify-detail', row.detail));
     } else {
-      line.append(cfgEl('span', 'join-verify-verdict', '진단 못 냄'));
+      line.append(cfgEl('span', 'join-verify-verdict', 'No diagnosis'));
     }
     // 접기는 이 조인만 다른 인덱스를 요구하는 «이유»입니다.
     for (const fold of row.folded) line.append(cfgEl('span', 'join-verify-fold', fold));
@@ -2271,7 +2272,7 @@ function renderJoinVerification(view) {
     line.className = 'join-verify-row';
     line.dataset.state = 'invalid';
     line.append(cfgEl('code', '', bad.subject));
-    line.append(cfgEl('span', 'join-verify-verdict', '선언 거절'));
+    line.append(cfgEl('span', 'join-verify-verdict', 'Declaration refused'));
     if (bad.detail) line.append(cfgEl('span', 'join-verify-detail', bad.detail));
     body.append(line);
   }
@@ -2320,7 +2321,7 @@ function renderGapCatalogue(view) {
   body.textContent = '';
   const head = document.createElement('div');
   head.className = 'join-verify-head';
-  head.append(cfgEl('span', 'join-verify-label', '원장 격차'));
+  head.append(cfgEl('span', 'join-verify-label', 'Ledger gaps'));
   head.append(cfgEl('span', 'join-verify-total', view.text));
   if (view.reason) head.append(cfgEl('span', 'join-verify-reason', view.reason));
   body.append(head);
@@ -2332,7 +2333,7 @@ function renderGapCatalogue(view) {
     line.append(cfgEl('code', '', row.name));
     line.append(cfgEl('span', 'join-verify-key', row.side));
     if (row.type) line.append(cfgEl('span', 'join-verify-key', row.type));
-    line.append(cfgEl('span', 'join-verify-verdict', row.vacuous ? '공허' : '열림'));
+    line.append(cfgEl('span', 'join-verify-verdict', row.vacuous ? 'Vacuous' : 'Open'));
     if (row.action) line.append(cfgEl('span', 'join-verify-detail', row.action));
     body.append(line);
   }
@@ -2367,7 +2368,7 @@ function renderPlanDryRun(view) {
   body.textContent = '';
   const head = document.createElement('div');
   head.className = 'join-verify-head';
-  head.append(cfgEl('span', 'join-verify-label', '계획 선언'));
+  head.append(cfgEl('span', 'join-verify-label', 'Plan declaration'));
   head.append(cfgEl('span', 'join-verify-total', view.text));
   if (view.reason) head.append(cfgEl('span', 'join-verify-reason', view.reason));
   body.append(head);
@@ -2385,19 +2386,19 @@ function renderPlanDryRun(view) {
     //    writes the names down goes quiet on the day a new one is added.
     if (row.reason) line.append(cfgEl('span', 'join-verify-verdict', row.reason));
     else if (row.state !== 'refused') {
-      line.append(cfgEl('span', 'join-verify-verdict', '판정 없음'));
+      line.append(cfgEl('span', 'join-verify-verdict', 'No verdict'));
     }
     if (row.detail) line.append(cfgEl('span', 'join-verify-detail', row.detail));
     // 🔴 「무엇을 바꾸나」 — 틀린 선언을 지우면 무엇이 유도되는지.
     for (const fix of row.removable) {
       line.append(cfgEl('code', 'join-verify-ddl',
-                        `${fix.role} 선언 삭제 → ${fix.wouldDerive} 유도`));
+                        `delete the ${fix.role} declaration → derives ${fix.wouldDerive}`));
     }
     // 해석된 컬럼은 «출처»와 함께. 이름만으로는 지워도 되는 것이 구별되지 않습니다.
     for (const col of row.columns) {
       if (col.exists === false) {
         line.append(cfgEl('span', 'join-verify-key',
-                          `${col.role} · ${col.column} · 표에 없음`));
+                          `${col.role} · ${col.column} · not in the table`));
       }
     }
     body.append(line);
@@ -2790,8 +2791,8 @@ async function refreshRunning() {
     // 🔴 «못 읽은 것»과 «없는 것»을 가릅니다. 실패를 빈 배열로 접으면 화면이
     //    「도는 작업 없음」이라고 «거짓»을 말합니다.
     const failed = [];
-    if (!runs) failed.push('실행 목록');
-    if (!ingest) failed.push('파일 인제션');
+    if (!runs) failed.push('run list');
+    if (!ingest) failed.push('file ingestion');
     const cancellable = {};
     for (const op of (retroactiveView && retroactiveView.operations) || []) {
       if (op && op.op) cancellable[op.op] = op.cancellable === true;
@@ -3714,7 +3715,7 @@ function ovCard({ status, title, metrics, events, emptyText, onOpen, extraButton
 
   const openBtn = document.createElement('button');
   openBtn.className = 'admin-btn admin-btn--sm';
-  openBtn.textContent = '탭 열기 →';
+  openBtn.textContent = 'Open tab →';
   openBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     onOpen();
@@ -3747,7 +3748,7 @@ function ovCard({ status, title, metrics, events, emptyText, onOpen, extraButton
   } else {
     const line = document.createElement('li');
     line.className = 'ov-empty-line';
-    line.textContent = emptyText || '표시할 최근 이벤트 없음';
+    line.textContent = emptyText || 'No recent events';
     list.appendChild(line);
   }
   card.appendChild(list);
@@ -3765,15 +3766,15 @@ function renderOverview({ failed, ws, outbox, rules, mappers, auto, enrich, acti
     const wsCount = ws ? (ws.data || []).length : null;
     const activeItems = active ? (active.data || []) : [];
     const activeCell = countWithAbsence(active
-      ? { value: activeItems.length, absence: '없음' }
-      : { unread: '모름' });
+      ? { value: activeItems.length, absence: NONE }
+      : { unread: UNKNOWN });
     let status = total == null ? 'loading' : (total > 0 ? 'danger' : 'ok');
     if (status === 'ok' && activeItems.length > 0) status = 'warn';
     // 진행 중 항목을 이벤트 라인 상단에 노출 (실패 라인보다 앞) — 재기동 전 확인 유도
     const activeEvents = activeItems.slice(0, 2).map(i => ({
       time: null,
-      text: `${i.filename} → ${i.table_name} (${i.progress || 0}%${i.lane === 'heavy' ? ' · heavy' : ''}) — 재기동 시 처음부터 재처리`,
-      badge: i.status === 'QUEUED' ? '대기' : '진행 중',
+      text: `${i.filename} → ${i.table_name} (${i.progress || 0}%${i.lane === 'heavy' ? ' · heavy' : ''}) — reprocessed from the start on restart`,
+      badge: i.status === 'QUEUED' ? WAITING : 'Running',
       badgeTone: 'warn'
     }));
     const events = activeEvents.concat(
@@ -3788,18 +3789,18 @@ function renderOverview({ failed, ws, outbox, rules, mappers, auto, enrich, acti
       status,
       title: 'File Ingestion',
       metrics: [
-        { value: total == null ? '—' : total, label: '인제션 실패', tone: total > 0 ? 'danger' : (total === 0 ? 'ok' : null) },
+        { value: total == null ? '—' : total, label: 'Ingestion failures', tone: total > 0 ? 'danger' : (total === 0 ? 'ok' : null) },
         // 🔴 못 읽은 것을 «0 으로» 그리던 자리입니다. `active` 가 null 이면
         //    `activeItems` 가 [] 가 되고 그 길이가 0 이라, 「조회 실패」가 「진행 중 없음」과
         //    «같은 픽셀»이었습니다. 부품이 그 둘을 가릅니다.
         { value: activeCell.read ? String(activeItems.length) : activeCell.text,
-          label: activeCell.word ? `진행 중 · ${activeCell.word}` : '진행 중',
+          label: activeCell.word ? `Running · ${activeCell.word}` : 'Running',
           tone: activeItems.length > 0 ? 'warn' : null },
         { value: wsCount == null ? '—' : wsCount, label: 'Workspaces' }
       ],
       events,
       // 위와 «같은 부류»입니다 — 0 이 「안 돌았다」일 수도 있어 건강을 주장하지 않습니다.
-      emptyText: total == null ? '상태 조회 실패' : '최근 실패 없음',
+      emptyText: total == null ? 'Status read failed' : 'No recent failures',
       onOpen: () => switchTab('file', total > 0 ? { statusFilter: 'FAILED' } : {})
     }));
   }
@@ -3816,10 +3817,10 @@ function renderOverview({ failed, ws, outbox, rules, mappers, auto, enrich, acti
     //       읽었고 N>0   -> 그 시각부터
     const oldestFailed = outbox ? (outbox.oldest_failed_at || null) : null;
     const failCell = countWithAbsence(outbox
-      ? { value: total, absence: '실패 없음' }
-      : { unread: '모름' });
+      ? { value: total, absence: 'No failures' }
+      : { unread: UNKNOWN });
     const sinceWord = failCell.read
-      ? (total > 0 && oldestFailed ? `${formatTimestamp(oldestFailed)} 부터` : failCell.word)
+      ? (total > 0 && oldestFailed ? `since ${formatTimestamp(oldestFailed)}` : failCell.word)
       : failCell.word;
     const ruleCount = rules ? (rules.data || []).length : null;
     const mapperCount = mappers ? (mappers.data || []).length : null;
@@ -3827,7 +3828,7 @@ function renderOverview({ failed, ws, outbox, rules, mappers, auto, enrich, acti
     const events = (outbox ? (outbox.data || []).slice(0, 3) : []).map(tx => ({
       time: formatTimestamp(tx.failed_at),
       text: (tx.table_names || []).join(', ') || shortTxId(tx.transaction_id),
-      badge: `재시도 ${tx.retry_count}`,
+      badge: `Retry ${tx.retry_count}`,
       badgeTone: 'danger'
     }));
     overviewGrid.appendChild(ovCard({
@@ -3835,7 +3836,7 @@ function renderOverview({ failed, ws, outbox, rules, mappers, auto, enrich, acti
       title: 'Chain',
       metrics: [
         { value: failCell.read ? String(total) : failCell.text,
-          label: sinceWord ? `실패 트랜잭션 · ${sinceWord}` : '실패 트랜잭션',
+          label: sinceWord ? `Failed transactions · ${sinceWord}` : 'Failed transactions',
           tone: total > 0 ? 'danger' : (total === 0 ? 'ok' : null) },
         { value: ruleCount == null ? '—' : ruleCount, label: 'Rules' },
         { value: mapperCount == null ? '—' : mapperCount, label: 'Mappers' }
@@ -3843,7 +3844,7 @@ function renderOverview({ failed, ws, outbox, rules, mappers, auto, enrich, acti
       events,
       // 🔴 「0 이니 정상」이라고 «주장하지» 않습니다. 규칙이 거절되거나 꺼져 있어
       //    체인이 «아예 안 돌아도» 실패는 0 입니다 — 그 0 으로 건강을 말하면 거짓입니다.
-      emptyText: total == null ? '상태 조회 실패' : '실패 트랜잭션 없음',
+      emptyText: total == null ? 'Status read failed' : 'No failed transactions',
       onOpen: () => switchTab('chain')
     }));
   }
@@ -3881,16 +3882,16 @@ function renderOverview({ failed, ws, outbox, rules, mappers, auto, enrich, acti
       metrics: [
         {
           value: collectors == null ? '—' : `${activeCount}/${collectors.length}`,
-          label: '활성 수집기',
+          label: 'Active collectors',
           tone: collectors && collectors.length > 0 && activeCount === 0 ? 'warn'
             : (collectors && activeCount < collectors.length ? null
               : (collectors ? 'ok' : null))
         },
-        { value: failCount == null ? '—' : failCount, label: '수집기 실패', tone: failCount > 0 ? 'danger' : (failCount === 0 ? 'ok' : null) },
-        { value: linked == null ? '—' : linked, label: '산출물 인제션 실패', tone: linked > 0 ? 'warn' : (linked === 0 ? 'ok' : null) }
+        { value: failCount == null ? '—' : failCount, label: 'Collector failures', tone: failCount > 0 ? 'danger' : (failCount === 0 ? 'ok' : null) },
+        { value: linked == null ? '—' : linked, label: 'Output ingestion failures', tone: linked > 0 ? 'warn' : (linked === 0 ? 'ok' : null) }
       ],
       events,
-      emptyText: collectors == null ? '상태 조회 실패' : '등록된 수집기 없음',
+      emptyText: collectors == null ? 'Status read failed' : 'No collectors registered',
       onOpen: () => switchTab('autoupdate')
     }));
   }
@@ -3901,18 +3902,18 @@ function renderOverview({ failed, ws, outbox, rules, mappers, auto, enrich, acti
     const events = (enrich ? enrich.perRule.slice(0, 3) : []).map(({ rule, missing }) => ({
       time: null,
       text: rule.name,
-      badge: missing == null ? '조회 실패' : `결손 ${missing}`,
+      badge: missing == null ? 'Read failed' : `Missing ${missing}`,
       badgeTone: missing > 0 ? 'warn' : 'ok'
     }));
     overviewGrid.appendChild(ovCard({
       status,
       title: 'Enrichment',
       metrics: [
-        { value: enrich == null ? '—' : enrich.rules.length, label: '규칙' },
-        { value: enrich == null ? '—' : enrich.totalMissing, label: '결손 합계', tone: enrich && enrich.totalMissing > 0 ? 'warn' : (enrich ? 'ok' : null) }
+        { value: enrich == null ? '—' : enrich.rules.length, label: 'Rules' },
+        { value: enrich == null ? '—' : enrich.totalMissing, label: 'Missing total', tone: enrich && enrich.totalMissing > 0 ? 'warn' : (enrich ? 'ok' : null) }
       ],
       events,
-      emptyText: enrich == null ? '상태 조회 실패' : '활성 규칙 없음',
+      emptyText: enrich == null ? 'Status read failed' : 'No active rules',
       onOpen: () => switchTab('enrichment')
     }));
   }
@@ -3947,9 +3948,9 @@ function ensureEditorViewClosed() {
   if (editorContentWrapper.style.display !== 'flex') return true;
   if (isEditorDirty) {
     const ok = confirm(
-      '에디터에 저장하지 않은 코드 변경이 있습니다.\n' +
-      '에디터를 닫고 선택한 항목의 상세를 표시할까요?\n' +
-      '(같은 파일을 다시 열면 변경 내용은 유지됩니다)'
+      'Unsaved code changes in the editor.\n' +
+      'Close the editor and show the selected item?\n' +
+      '(reopening the same file keeps the changes)'
     );
     if (!ok) return false;
   }
@@ -4017,17 +4018,17 @@ async function runAutoUpdateNow(tableName, scriptName) {
     //    빈 목록보다 나쁘다. 운영자는 수집이 도는 줄 알고 기다린다.
     const failure = errorText(await res.json().catch(() => null));
     if (failure) {
-      showToast(`❌ [${tableName}] 강제 수집 실패 — ${failure}`, 'error');
+      showToast(`❌ [${tableName}] forced collection failed — ${failure}`, 'error');
       return;
     }
-    showToast(`🔄 [${tableName}] 강제 수집 지시가 정상적으로 발행되었습니다.`, 'success');
+    showToast(`🔄 [${tableName}] forced collection requested`, 'success');
 
     setTimeout(() => {
       fetchData();
     }, 1500);
   } catch (err) {
     console.error('Failed to trigger run-now', tableName, scriptName, err);
-    showToast('❌ 강제 수집 구동 요청 실패', 'error');
+    showToast('❌ Forced collection request failed', 'error');
   }
 }
 
@@ -4047,7 +4048,7 @@ async function toggleCollectorActive(col, inputEl) {
       })
     });
     if (!res.ok) {
-      let msg = res.status === 404 ? '해당 수집기를 찾을 수 없습니다' : `요청 거부 (HTTP ${res.status})`;
+      let msg = res.status === 404 ? 'Collector not found' : `Request refused (HTTP ${res.status})`;
       try {
         const err = await res.json();
         if (err && err.detail) msg = typeof err.detail === 'string' ? err.detail : msg;
@@ -4066,15 +4067,15 @@ async function toggleCollectorActive(col, inputEl) {
     if (currentTab === 'autoupdate') renderAutoUpdateTable();
 
     showToast(applied
-      ? `▶️ [${col.script_name}] 수집기 스케줄이 활성화되었습니다.`
-      : `⏸️ [${col.script_name}] 수집기 스케줄이 비활성화되었습니다. (Run Now 수동 실행은 계속 가능)`,
+      ? `▶️ [${col.script_name}] collector schedule on`
+      : `⏸️ [${col.script_name}] collector schedule off (Run Now still works)`,
       'success');
   } catch (err) {
     console.error('Failed to toggle collector active', col.table_name, col.script_name, err);
     // 실패 시 원복: 스위치를 이전 상태로 되돌리고 다시 조작 가능하게
     inputEl.checked = !nextActive;
     inputEl.disabled = false;
-    showToast(`❌ 수집기 활성 상태 변경 실패 — ${err.message || '네트워크 오류'}`, 'error');
+    showToast(`❌ Collector on/off change failed — ${err.message || 'network error'}`, 'error');
   }
 }
 
@@ -4320,30 +4321,30 @@ function selectEnrichmentRow(rule, missing) {
   txEventsSelectorBlock.style.display = 'none';
 
   diagnosticsTitle.textContent = '🧩 Enrichment Rule Details';
-  tracebackTitle.textContent = '결손 현황 & 편집 안내';
+  tracebackTitle.textContent = 'Missing values & where to fix';
   if (missing == null) {
-    tracebackSeverity.textContent = '결손 조회 실패';
+    tracebackSeverity.textContent = 'Missing count read failed';
     tracebackSeverity.className = 'badge badge-warning';
   } else if (missing > 0) {
-    tracebackSeverity.textContent = `결손 ${missing}건`;
+    tracebackSeverity.textContent = `Missing ${missing}`;
     tracebackSeverity.className = 'badge badge-warning';
   } else {
-    tracebackSeverity.textContent = '결손 없음';
+    tracebackSeverity.textContent = 'No missing values';
     tracebackSeverity.className = 'badge badge-success';
   }
   tracebackSeverity.style.display = 'inline';
 
   const lines = [
-    `규칙        : ${rule.name}`,
-    `소스 → 파생 : ${rule.source_table || '-'} → ${rule.derived_table}`,
-    `결정 키     : ${(rule.decision_key || []).join(', ') || '-'}`,
-    `대상 필드   : ${(rule.target_fields || []).join(', ') || '-'}`,
+    `Rule             : ${rule.name}`,
+    `Source → derived : ${rule.source_table || '-'} → ${rule.derived_table}`,
+    `Decision key     : ${(rule.decision_key || []).join(', ') || '-'}`,
+    `Target fields    : ${(rule.target_fields || []).join(', ') || '-'}`,
     '',
     missing == null
-      ? '결손 카운트 조회에 실패했습니다 (파생 테이블 blank 필터 조회 오류).'
+      ? 'Missing count read failed (blank filter on the derived table)'
       : missing > 0
-        ? `대상 필드가 비어 있는 행이 ${missing}건 있습니다 — 메인 그리드에서 직접 입력.`
-        : '대상 필드가 모두 채워져 있습니다.'
+        ? `${unitText(missing, 'row')} with empty target fields — fill them in the main grid`
+        : 'All target fields are filled'
   ];
   tracebackViewer.innerHTML = `<div style="color: var(--text-muted); line-height: 1.7; white-space: pre;">${lines.join('\n')}</div>` +
     // 🔴 The enrich declaration lives in the chain rule now (`derive.decide`) -- ff5505dfa retired
@@ -4423,21 +4424,21 @@ async function retryTransaction(txId) {
     });
     if (!res.ok) throw new Error('Retry API returned error status');
 
-    showToast(`🔄 트랜잭션 [${shortTxId(txId)}] 재시도 발행 — 잠시 후 결과를 확인합니다.`, 'info');
+    showToast(`🔄 Retry sent for transaction [${shortTxId(txId)}] — checking the result shortly`, 'info');
 
     setTimeout(async () => {
       await fetchData({ silent: true });
       if (currentTab !== 'chain') return;
       const still = outboxData.find(t => t.transaction_id === txId);
       if (still) {
-        showToast(`⚠️ 트랜잭션 [${shortTxId(txId)}] 이 재시도 후에도 실패 상태로 남아 있습니다. 오류를 확인하세요.`, 'warning');
+        showToast(`⚠️ Transaction [${shortTxId(txId)}] is still failed after the retry · check the error`, 'warning');
       } else {
-        showToast(`✅ 트랜잭션 [${shortTxId(txId)}] 이 실패 목록에서 해제되었습니다.`, 'success');
+        showToast(`✅ Transaction [${shortTxId(txId)}] left the failed list`, 'success');
       }
     }, 3000);
   } catch (err) {
     console.error('Failed to retry transaction', txId, err);
-    showToast('❌ 트랜잭션 재시도 요청 실패', 'error');
+    showToast('❌ Transaction retry request failed', 'error');
   }
 }
 
@@ -4469,7 +4470,7 @@ async function retryFileIngestion(logId) {
     showToast(`${said.text.replace(/^(.)\s*/, '$1 ')} (ID #${logId})`, said.tone);
   } catch (err) {
     console.error('Failed to retry file ingestion', logId, err);
-    showToast('❌ 파일 인제션 재시도 요청 실패', 'error');
+    showToast('❌ File ingestion retry request failed', 'error');
   }
 }
 
@@ -4483,7 +4484,7 @@ async function retryAllFailed(kind) {
       if (!res.ok) throw new Error('Retry-all API returned error status');
       const result = await res.json();
 
-      showToast(`🔄 ${result.message || '모든 실패 체인 트랜잭션이 초기화되었습니다.'}`, 'success');
+      showToast(`🔄 ${result.message || 'All failed chain transactions reset'}`, 'success');
       outboxPage = 1;
     } else {
       const res = await adminFetch(`${API_BASE}/admin/file-ingestion/retry-failed`, {
@@ -4492,13 +4493,13 @@ async function retryAllFailed(kind) {
       if (!res.ok) throw new Error('Retry-all API returned error status');
       const result = await res.json();
 
-      showToast(`🔄 ${result.message || '모든 실패 파일 인제션 건이 재실행되었습니다.'}`, 'success');
+      showToast(`🔄 ${result.message || 'All failed file ingestions rerun'}`, 'success');
       filePage = 1;
     }
     fetchData();
   } catch (err) {
     console.error('Failed to retry all failed items', err);
-    showToast('❌ 일괄 재시도 요청 실패', 'error');
+    showToast('❌ Bulk retry request failed', 'error');
   }
 }
 
@@ -4518,7 +4519,7 @@ async function reloadSystemConfigs() {
               'error', { ttl: 12000 });
     return;
   }
-  showToast('🚀 시스템 설정 및 파이썬 코드가 성공적으로 핫-리로드되었습니다.', 'success');
+  showToast('🚀 Config and Python code hot-reloaded', 'success');
   enrichmentStatusCache = null; // 규칙이 바뀌었을 수 있음
   scriptsListCache = null;      // 스크립트 목록도 최신화
   // [F9] 이 버튼이 **처음으로 무언가를 돌려주는** 자리. 리로드는 선언의 효과가 바뀌는
@@ -4610,7 +4611,7 @@ async function populateEditorPicker(force = false) {
 
 function buildEditorPickerOptions() {
   if (!editorFilePicker) return;
-  editorFilePicker.innerHTML = '<option value="">스크립트 선택…</option>';
+  editorFilePicker.innerHTML = '<option value="">Pick a script…</option>';
   const d = scriptsListCache;
   if (!d) return;
   const groups = [
@@ -4653,7 +4654,7 @@ async function selectEditorFile(path) {
   // B2: 다른 파일로 이동 시 미저장 변경 보호 (무조건 setValue로 유실되던 결함 수리)
   if (isEditorDirty && activeEditorFilePath && activeEditorFilePath !== path) {
     const ok = confirm(
-      `'${activeEditorFilePath}' 에 저장하지 않은 변경이 있습니다.\n버리고 다른 파일을 여시겠습니까?`
+      `Unsaved changes in '${activeEditorFilePath}'.\nDiscard them and open another file?`
     );
     if (!ok) {
       // 피커를 기존 파일로 복원하고 이동 취소
@@ -4692,7 +4693,7 @@ async function selectEditorFile(path) {
   } catch (err) {
     console.error('Failed to load code for file', path, err);
     editorFilePath.textContent = '❌ Failed to load file';
-    showToast('❌ 파일 코드를 불러오지 못했습니다.', 'error');
+    showToast('❌ Could not load the file', 'error');
   }
 }
 
@@ -4712,10 +4713,10 @@ async function saveScriptCode(path, code) {
     if (!res.ok) throw new Error('Save API returned error status');
 
     markEditorClean(); // B2: 저장 성공 → dirty 해제
-    showToast('💾 코드가 정상 저장 및 핫 리로드되었습니다.', 'success');
+    showToast('💾 Code saved and hot-reloaded', 'success');
   } catch (err) {
     console.error('Failed to save code for file', path, err);
-    showToast('❌ 코드 저장 중 오류 발생', 'error');
+    showToast('❌ Code save failed', 'error');
   }
 }
 
@@ -4723,7 +4724,7 @@ async function saveScriptCode(path, code) {
 function openInlineEditor(path = null) {
   if (!isMonacoLoaded) {
     pendingEditorOpen = { path };
-    showToast('ℹ️ 코드 에디터 로딩 중 — 준비되면 자동으로 열립니다.', 'info');
+    showToast('ℹ️ Code editor loading — it opens when ready', 'info');
     return;
   }
 
@@ -4923,18 +4924,18 @@ async function refreshFileAndAutoHealth() {
     }
   } catch (e) { /* 보조 정보 — 무음 */ }
   const activeSub = activeCount > 0
-    ? `⚠️ 인제션 진행 중 ${activeCount}건${activeHeavy ? ` (heavy ${activeHeavy})` : ''} — 재기동 시 처음부터 재처리`
+    ? `⚠️ Ingesting ${activeCount}${activeHeavy ? ` (heavy ${activeHeavy})` : ''} — reprocessed from the start on restart`
     : null;
 
   if (failedTotal === null) {
-    setHealthCard('file', 'unread', '—', activeSub || '상태 조회 실패');
+    setHealthCard('file', 'unread', '—', activeSub || 'Status read failed');
   } else if (failedTotal > 0) {
-    setHealthCard('file', 'danger', `실패 ${failedTotal}건`,
-      activeSub || '클릭 → File 탭 실패 필터로 이동');
+    setHealthCard('file', 'danger', `Failed ${failedTotal}`,
+      activeSub || 'Click → File tab, failed filter');
   } else if (activeCount > 0) {
-    setHealthCard('file', 'warn', `인제션 진행 중 ${activeCount}건`, activeSub);
+    setHealthCard('file', 'warn', `Ingesting ${activeCount}`, activeSub);
   } else {
-    setHealthCard('file', 'ok', '실패 0건', '파일 인제션 정상');
+    setHealthCard('file', 'ok', '0 failed', 'File ingestion healthy');
   }
 
   try {
@@ -4956,12 +4957,12 @@ async function refreshFileAndAutoHealth() {
     if (autoAbsent) {
       // ⚠️ 「한 번도 안 돌았다」 ≠ 「상태 파일이 사라졌다」. Both arrive as an empty
       //    `data`, and the second one is the one an operator has to act on.
-      setHealthCard('auto', 'warn', '상태 파일 없음', autoAbsent);
+      setHealthCard('auto', 'warn', 'No status file', autoAbsent);
       return;
     }
     const collectors = r.data || [];
     if (collectors.length === 0) {
-      setHealthCard('auto', 'loading', '수집기 없음', '등록된 auto-update 설정 없음');
+      setHealthCard('auto', 'loading', 'No collectors', 'No auto-update settings registered');
       return;
     }
 
@@ -4987,18 +4988,18 @@ async function refreshFileAndAutoHealth() {
     else if (activeCount === 0) status = 'warn'; // 전 수집기 비활성 = 자동 수집 전면 중단
 
     const main = failCount > 0
-      ? `수집기 실패 ${failCount}/${collectors.length}`
-      : `수집기 ${collectors.length}개 중 ${activeCount} 활성`;
+      ? `Collector failures ${failCount}/${collectors.length}`
+      : `${activeCount} of ${collectors.length} collectors active`;
     const sub = !linkedRead
-      ? '산출물 인제션 연계 미확인 — 실패 로그를 못 읽었습니다'
+      ? 'Output ingestion link unchecked — failure logs unreadable'
       : (linkedFails > 0
-        ? `산출물 인제션 실패 ${linkedFails}${linkedSuffix}건`
+        ? `Output ingestion failures ${linkedFails}${linkedSuffix}`
         : (activeCount === 0
-          ? '모든 수집기가 비활성 상태입니다'
-          : `최근 실행 ${formatTimestamp(latestLastRun(collectors))}`));
+          ? 'All collectors are inactive'
+          : `Last run ${formatTimestamp(latestLastRun(collectors))}`));
     setHealthCard('auto', status, main, sub);
   } catch (e) {
-    setHealthCard('auto', 'unread', '—', '상태 조회 실패');
+    setHealthCard('auto', 'unread', '—', 'Status read failed');
   }
 }
 
@@ -5014,12 +5015,12 @@ async function refreshChainHealth() {
     const r = await res.json();
     const total = r.total || 0;
     if (total > 0) {
-      setHealthCard('chain', 'danger', `실패 트랜잭션 ${total}건`, '클릭 → Chain 탭 실패 목록으로 이동');
+      setHealthCard('chain', 'danger', `Failed transactions ${total}`, 'Click → Chain tab, failed list');
     } else {
-      setHealthCard('chain', 'ok', '실패 0건', '체인 파이프라인 정상');
+      setHealthCard('chain', 'ok', '0 failed', 'Chain pipeline healthy');
     }
   } catch (e) {
-    setHealthCard('chain', 'unread', '—', '상태 조회 실패');
+    setHealthCard('chain', 'unread', '—', 'Status read failed');
   }
 }
 
@@ -5027,15 +5028,15 @@ async function refreshEnrichmentHealth() {
   try {
     const s = await fetchEnrichmentStatus();
     if (s.rules.length === 0) {
-      setHealthCard('enrichment', 'loading', '규칙 없음', '활성 enrichment 규칙 없음');
+      setHealthCard('enrichment', 'loading', 'No rules', 'No active enrichment rules');
       return;
     }
     if (s.totalMissing > 0) {
-      setHealthCard('enrichment', 'warn', `결손 ${s.totalMissing}건`, `규칙 ${s.rules.length}개 · 클릭 → Enrichment 탭`);
+      setHealthCard('enrichment', 'warn', `Missing ${s.totalMissing}`, `${unitText(s.rules.length, 'rule')} · click → Enrichment tab`);
     } else {
-      setHealthCard('enrichment', 'ok', '결손 0건', `규칙 ${s.rules.length}개 · 모두 충족`);
+      setHealthCard('enrichment', 'ok', '0 missing', `${unitText(s.rules.length, 'rule')} · all filled`);
     }
   } catch (e) {
-    setHealthCard('enrichment', 'unread', '—', '상태 조회 실패');
+    setHealthCard('enrichment', 'unread', '—', 'Status read failed');
   }
 }

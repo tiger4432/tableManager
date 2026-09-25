@@ -122,7 +122,7 @@ export function sourcesView(payload, opts = {}, census = {}) {
     return Object.freeze({
       ...empty,
       censusRows,
-      reason: opts.unavailable || '응답을 읽지 못했습니다.',
+      reason: opts.unavailable || 'Response unreadable',
     });
   }
 
@@ -136,8 +136,8 @@ export function sourcesView(payload, opts = {}, census = {}) {
       censusRows,
       note,
       reason: ing && ing.unavailable
-        ? `번역기 장부를 읽지 못했습니다 — ${String(ing.unavailable)}`
-        : '응답에 ingestion 이 없습니다.',
+        ? `Translator ledger unreadable — ${String(ing.unavailable)}`
+        : 'No ingestion in the response',
     });
   }
 
@@ -342,7 +342,7 @@ export class LedgerSourcesPanel {
     }
 
     if (view.rows.length === 0) {
-      this.root.appendChild(this._empty('⚪', '선언된 소스도 장부의 행도 없습니다.'));
+      this.root.appendChild(this._empty('⚪', 'No declared sources and no ledger rows'));
       return view;
     }
 
@@ -362,7 +362,7 @@ export class LedgerSourcesPanel {
     //    있었습니다). 빈 칸으로 남기면 「안 쟀다」로 읽히므로 칸째 없앱니다.
     for (const [label, width, align] of [
       ['Source', '150px', ''], ['State', '130px', ''],
-      ['거절', '70px', 'center'], ['마지막', '', ''],
+      ['Refused', '70px', 'center'], ['Last', '', ''],
     ]) {
       const th = doc.createElement('th');
       th.textContent = label;
