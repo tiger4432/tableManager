@@ -1,3 +1,65 @@
+> ## [09-25 12:42 디자인] 뷰 소스 걷어내기(f3bc02f6e) 클라 몫 — 짓기 «전» 셈 · 참조뷰 탭은 남김으로 읽었습니다 · 물음 둘
+
+짓지 않았습니다 — 구현자 착지 «뒤»입니다. 지시가 먼저 세라고 한 것과, 세다가 나온 것입니다.
+
+### 가 참조뷰 탭(C-103) — 걷을 근거가 없습니다. 남김으로 읽었습니다
+
+```
+탭이 읽는 것   체인 규칙의 derive.decide.reference_views[].query (SQL 한 줄) — table_config 의 뷰 항목이 «아닙니다»
+              enrichment_reference_view.js::syncReferenceViewRule 이 /enrichment/rules 의 reference_views 로 탭을 켭니다
+그 쿼리        샘플 2 · 박스 1 — 셋 다 FROM dt_log
+              뷰 항목 11 · ledger_events 언급 0 · 양성 대조 dt_log 3/3
+ledger_events 가 그리드에 뜨는 길   이 탭이 아니라 메인 그리드 — /schema 의 kind -> state.tableIsView -> write_guard (C-102 · C-84)
+              지시의 (나) 그대로, 남김
+탭 모양       소유자 09-13 「그냥 다 탭으로 해줘」
+센 명령       scratchpad/refview_census.py <table_config> <chain_rules> — 샘플(추적 파일)과 박스(gitignore) 각각
+```
+뷰 항목이 없어져도 이 탭이 쓸 곳은 그대로입니다. 다르게 보시면 말씀해 주십시오.
+
+### 나 absent.js 에 «모름»이 없습니다 — 물음
+
+```
+내보내는 것 6   ABSENT '—'(셌는데 없다) · UNPICKED '대상 없음'(안 골랐다) · subjectText · isCount · countText · localeCountText
+지시 두 자리    「선언 못 읽음 -> 열 + 모름」 · 「칸이 없음 -> absent.js 의 모름」 — 가리킬 값이 없습니다
+'—' 를 빌리면   「셌는데 없다」가 「못 읽음」 자리에 앉습니다 — 그 파일 주석이 «값 · 0 · 안 물음»을 가르라고 적은 바로 그 병입니다
+제 안          absent.js 에 셋째 값 하나(영어). 낱말은 총괄 몫입니다 — 예 unknown
+같은 파일      UNPICKED 가 한국어입니다. 이번에 영어로 바꿀지 여쭙니다
+```
+
+### 다 클라에 남은 뷰 소스 흔적 = 원장 소스 인구조사의 거절 no_row_id
+
+```
+낱말로 센 것   no_row_index · sources_without_row_index · frame_row_id · create_*_view · base_tables_of → client2 에 0
+              카나리아 buildColumnDefs 정의 1
+서버에서 거절을 내는 곳   ledger/backfill.py::rows_not_yet_translated 의 no_row_id 하나 — 구현자 ② 가 지웁니다
+클라가 받는 자리   좌석 source_backlog.censusRefusal 1
+                 부르는 곳 3 — source_backlog.hasBacklog · ledger_sources_panel · ontology_explorer_view
+                 픽스처 — ledger_sources_panel_harness · source_backlog_harness (둘 다 bonding_die_from_core 의 거절)
+```
+착지 뒤로는 이 갈래를 아무도 안 탑니다. 같은 라운드에서 걷음으로 읽었습니다. 구현자 보고에 인구조사 거절이 «남는» 사유가 있으면 남깁니다.
+
+```
+뷰 표 이름이 든 하니스 줄 (git grep -w)
+   grid_source_label_harness 4   bonding_die_from_core 를 «원장 소스»로 둔 픽스처 — 이제 없는 상태라 표 이름으로 바꿈
+   grid_view_readonly_harness 2  bonding_core_lot — (나) 읽기 전용 길의 시험. 남김
+   fixtures/rnd_board_reach.json 29  녹화된 walk 데이터. 남김
+```
+
+### 라 이음새 — 구현자 「다」와 맞습니다
+
+```
+그리드 셀은 rowData.data[열] 로 읽고, 열 목록은 /tables/{t}/schema 의 columns 에서 옵니다
+ledger_sources 가 /data 의 «행 단»에만 서면 사용자 열과 안 겹치고 LEDGER_SOURCES 열이 따로 안 생깁니다
+/schema 의 columns 에도 실리면 열이 둘이 됩니다 — 구현자께: 행 단에만
+```
+
+### 착지 뒤 제 순서
+
+```
+열 계획(아이디어 셋)을 여기로 먼저 올리고 → 열 · 거절 갈래 걷기 · 픽스처 → 게이트 ③④ 는 서버 호출 + 진짜 client2/src 모듈로
+화면(픽셀)은 소유자 몫으로 덧붙입니다
+```
+
 > ## [09-25 09:37 디자인] 옛 모양 조인에 «To new join shape» 버튼 하나 — 누르면 새 모양이 되고 짝이 섭니다
 >
 > 판정 `6ef4ab1f2` ㉠ 의 클라 몫입니다. 구현자 칸(`7c94fdc65`, `join_needs_new_shape`) 바로 뒤. 커밋 `2a9d8e18c`.
