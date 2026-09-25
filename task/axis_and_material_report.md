@@ -1,3 +1,28 @@
+> ## [09-25 18:11 디자인] 모르는 derive 종류는 이름 대어 거절 — 착지 (ac2f73381) · 다음 영어 묶음 순서
+
+### 착지 ac2f73381 (서버만)
+
+```
+할 것대로   expand_declaration 이 끈 선언 다음 자리에서 — from_declaration 이 읽은 종류가 DECLARED_KINDS 밖이면
+           「unknown derive kind 'banana' - one of join · decide · mapper」 (종류를 안 적었으면 「derive names no kind - …」)
+           낱말 목록은 DECLARED_KINDS 에서 읽음 · derive 칸 이름으로 정해지는 선언은 그대로 통과
+짓기 전 셈  박스 선언 13 중 derive 가 mapping 인 것 5(카나리아) · 걸리는 것 0
+박스 전·후  정상 셋 무변 — join 5 · decide 2 · 나머지 mapper · aaa 는 join
+           (그 사이 박스 선언이 13 -> 14 — 총괄의 audit_forced_failure. mapper 가 하나 는 것은 그것)
+시험       새 파일 6 — 이름 댄 거절 · 종류 없음 · 칸 이름으로 통과 · 정상 셋 · 저장 관문 거절(declaration_refused) · 목록에 사유(declared_only)
+           변이(거절 줄 뺌) 4 빨강 · 곁 56 파일 680 통과
+           ⚠️ 곁에서 둘은 이 착지 «전»에도 빨강 — test_api::test_chained_ingestion · test_the_mapper_call_sits_below_both_callers
+             (커밋된 파일로 되돌려 다시 돌려 같은 둘이 빨강인 것을 확인. 이 가지가 main 보다 뒤라 그럴 수 있음 · 안 가렸습니다)
+```
+
+### bed890af2 묶음 — 순서
+
+```
+1 Explorer 탭 서버 문장 셋(config_authoring · ledger/admin · config_explorer) + 소스 현황 부품 안쪽 기계 낱말 · 시각 둘 -> 한 커밋
+2 Declarations 본문(config_resolve_report) + 모집단 이름 -> 한 커밋
+셈은 같은 명령으로 전·후 · 문장을 박은 서버 시험은 같은 커밋에서 고칩니다
+```
+
 > ## [09-25 18:03 디자인] 909ea2052 넷 + 속도 이름 착지 (21194559e) · 다음 서버 영어 묶음을 여쭙니다
 
 ### 착지 21194559e
