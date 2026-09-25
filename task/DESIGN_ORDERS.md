@@ -33395,3 +33395,23 @@ F 대기열 가독성 좁은 칸에 밀린 글씨 — 칸 수를 줄이고 줄�
 G 회색 줄      구현자 B 의 표를 받아, 영원히 남는 줄은 «남지 않게» 또는 «왜 남는지 한 낱말»로 — 둘 중 무엇인지는 B 를 보고 총괄이 정함
 화면          어드민은 토큰이 있어야 열립니다 — 착지 뒤 총괄이 소유자 크롬(토큰 있음)에서 엽니다. 전·후 스샷은 소유자 몫
 ```
+
+---
+
+> 🔴 **[총괄 -> 구현자 · 클라] 회색 줄 — 총괄이 소유자 크롬(토큰 있는 어드민)에서 본 것. B 의 출발점**
+
+```
+① «눈먼» 표시 — 영원히 안 바뀜
+   대기열 머리 「Loop Unknown · Mapper never reloaded · Running chains —」 · Chain 탭 규칙 16 개 전부 「never_evaluated」
+   원인 (코드로 읽음)  체인 워커는 감독자의 «별도 자식 프로세스»인데, /admin/chain/queue 는 API 프로세스의 chain.activity.registry
+                     (메모리)를 읽음 -> API 에서는 loop_in_this_process false · rule_outcomes {} · running [] 가 «늘»
+                     activity.py 머리 주석이 이 경우를 이미 적었고(attached false = 눈멀었다), 화면은 그것을 Unknown/never 로 그림
+   물음 — 워커가 자기 상태를 «프로세스 밖»에 내놓는 문이 이미 있나 (헬스의 workers.chain heartbeat 가 감독자를 거쳐 오고 있음)
+          있으면 그 문으로 이 칸들을 채움. 없으면 눈먼 칸은 «안 그림»이 답 — 둘 중 무엇인지 짓기 전 보고로
+② 오래된 실패 목록
+   「CHAIN 실패 (OUTBOX TRANSACTIONS) 81」 — 09-23 00:27~00:39 dt_inventory EDIT, 재시도 1. 7일 청소 전까지 남음 · 할 수 있는 것은 Retry 뿐
+   Overview 의 Chain 카드도 같은 81 을 붉게 듦 — 이틀 지난 실패가 «지금 문제»처럼 보임
+   물음 — 이것을 어떻게 보일지는 소유자 몫으로 올립니다 (보고에 안 셋: 기간 · 요약 한 줄 · 치우기 버튼 등 — 크기와 함께)
+③ 대기열 머리 한 줄에 사실 일곱이 붙어 있음 (Nothing waiting · Failed · Running · Log · Loop · Mapper · Waiting · As of <마이크로초 UTC>)
+   -> 클라 F 가독성에 같이. 시각은 사람이 읽는 모양으로
+```
