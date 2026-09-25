@@ -60723,3 +60723,50 @@ ledger_rescope   judge = backfill.rescope_scope — _require_declared_source 뒤
 그다음     후 측정 — 탐침 수집기로 ②④ 한 판, 스케줄러 자식을 한 번 더 죽여 ①③ (e5e123256 에 알린 것). 끝나면 탐침을 지움
 되돌리기   git revert 162e1cc73 뒤 같은 셋 재기동
 ```
+
+---
+
+## [구현자 -> 총괄] 09-26 항목 3 착지 (ㄱ + ④) — 누가 돌리나 한 판정 · 재적재 도중의 끝 (8e54a261b ③ · c44a7d2e4 · 0cc00bdb5) — 162e1cc73
+
+```
+판정 한 자리   retroactive 의 _runner_state · runner_identity -> utils/heartbeat.runner_state · runner_identity (심박을 읽는 함수라서)
+             retroactive 는 같은 이름으로 import — 호출자 · 시험 무변
+도장          수집 시작에 collector.runner = runner_identity() -> 상태 파일 "runner" · 재적재 복원도 도장을 옮김
+state 칸      now_running 항목마다 "state" — runtime.running.run_state(도장) = running · orphaned · unknown
+             소급(도장 있음) · 수집기(도장) 가 판정을 지남. 체인 · 파일 적재는 이 프로세스·그 프로세스의 기록이라 running
+             수집기 항목의 pid 는 «도장의 pid» (지금 뛰는 스케줄러가 아니라 그 실행을 시작한 것)
+탭 낱말       GET /admin/auto-update/status 의 last_status — runtime.running.collector_last_status: RUNNING 인데 도장의 주인이 없으면 판정 낱말
+④            수집 도중 재적재는 등록된 수집기 객체를 새로 만듦 -> 끝을 «그 순간 등록된» 같은 키의 객체에도 적음 (start_collector 의 claim 안)
+ㄴ 자리       기동 때 상태 파일에서 복원하면 붙음 — 도장이 이미 파일에 있어 복원된 옛 RUNNING 은 곧바로 orphaned 로 읽힘 (짓지 않음)
+응답 모양      now_running 항목에 "state" 하나 더 — 화면은 님이 클라에 넘길 몫
+```
+
+### 게이트 — 시험
+
+| 칸 | 시험 | 변이 |
+|---|---|---|
+| ⑤ 소급 고아 실행 -> orphaned (심박 없음) · 뛰면 running | test_a_retroactive_run_whose_process_is_gone_reads_orphaned | 판정이 늘 running 이면 3 failed · 소급 항목을 판정 안 하면 1 failed |
+| ①③ 수집기 도장 셋(지금 스케줄러 · 죽은 pid · 도장 없음) -> 대기열 state · 탭 낱말 | test_a_running_collector_says_whose_run_it_is (3 칸) | 탭이 날 값을 내면 2 failed · 수집기 항목을 판정 안 하면 2 failed |
+| 도장이 실행과 상태 파일에 | test_a_run_is_stamped_with_the_process_that_runs_it | 도장을 안 찍으면 1 failed · 파일이 도장을 빼면 1 failed |
+| ④ 재적재 도중 끝 -> 새 객체와 파일이 SUCCESS | test_a_run_that_outlives_a_reload_ends_on_the_collector_registered_now | 끝을 옛 객체에만 적으면 1 failed |
+| 항목 모양 | test_the_four_sources_run_through_one_door_in_one_shape — 키에 state | — |
+
+```
+범위   전체 시험 -> 6994 passed, 141 skipped, 3 xfailed, 12220 warnings (server/ 에서 python -m pytest -q -p no:cacheprovider tests)
+```
+
+### 박스 — 전(075174b41 · 9e93ae50a) · 후
+
+```
+재기동함  06:52:49 API · 스케줄러 · 체인 워커 (162e1cc73) · 알림 0db661b0d
+② 70 s    전 탭 RUNNING · 대기열 한 줄(state 칸 없음)       후 {'tab_last_status': 'RUNNING', 'queue': [('scheduler', 'running')]}
+④ 끝난 뒤  전 RUNNING (같은 실행)                          후 SUCCESS last_run 2026-09-26 06:54:03 (same run)
+① 죽인 뒤 2 s  (전: 안 잼)                                 후 {'tab_last_status': 'RUNNING', 'queue': [('scheduler', 'running')]}
+③ 되살린 뒤    전 PENDING · last_run null                   후 PENDING runner None · {'tab_last_status': 'PENDING', 'queue': []}
+```
+
+```
+읽는 법  죽은 직후엔 그 pid 의 심박이 아직 신선(60 s) -> 판정은 running. 감독자가 12 s 안에 되살리면 새 스케줄러가
+        PENDING 으로 덮어서 orphaned 가 보일 틈이 없음 — orphaned 는 되살림이 없거나 늦을 때 · 소급 고아 실행에서 보임
+정리     탐침 수집기를 지우고 재적재 한 번 — 스크립트 지움 · 재적재 한 번 · 상태 파일에 그 줄 0
+```
