@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""S-176. What the nine loops of this deployment last did — values, never a verdict.
+"""S-176. What the loops of this deployment last did — values, never a verdict.
 
 🔴 THIS IS NOT `/health`, AND THE SPLIT IS THE POINT (판정 282). `/health` JUDGES: it
 answers ok / degraded / unhealthy and an HTTP status, because a monitor needs one number
@@ -24,7 +24,7 @@ import time
 from utils import heartbeat
 
 
-#: The nine, in the order the board numbers them (①~⑦ with ③ split three ways).
+#: In the order the board numbers them (①~⑦ with ③ split four ways).
 #: `process` is which heartbeat carries it — several loops live in one process, which is
 #: why the loop and the process are two columns rather than one.
 LOOPS = (
@@ -34,6 +34,7 @@ LOOPS = (
     ("chain", "chain", "3"),
     ("outbox_purge", "chain", "3-a"),
     ("listen", "chain", "3-b"),
+    ("replay_sweep", "chain", "3-c"),
     ("ledger_followup", "chain", "4"),
     ("ledger_census", "chain", "5"),
     ("scheduler", "scheduler", "6"),
@@ -112,7 +113,7 @@ def _vacuum_phase(db):
 
 
 def runtime_loops(db, *, heartbeats=None, now=None):
-    """The nine entries. `db` is used for exactly two questions, both already asked
+    """One entry per loop. `db` is used for exactly two questions, both already asked
     elsewhere: the outbox backlog and whether a vacuum is running."""
     beats = heartbeat.read_all() if heartbeats is None else heartbeats
     now = time.time() if now is None else now

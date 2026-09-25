@@ -78,19 +78,19 @@ def clean_laps():
 def test_all_nine_loops_are_answered_for():
     payload = runtime.loops.runtime_loops(_FakeDb(), heartbeats={})
     loops = [item["loop"] for item in payload["loops"]]
-    assert loops == ["web", "watcher", "chain", "outbox_purge", "listen",
+    assert loops == ["web", "watcher", "chain", "outbox_purge", "listen", "replay_sweep",
                      "ledger_followup", "ledger_census", "scheduler", "postgres"]
     assert [item["board"] for item in payload["loops"]] == [
-        "1", "2", "3", "3-a", "3-b", "4", "5", "6", "7"]
+        "1", "2", "3", "3-a", "3-b", "3-c", "4", "5", "6", "7"]
 
 
 def test_the_loop_and_the_process_are_two_columns():
-    """Five loops live in ONE process. Collapsing them would make 「the chain process is
+    """Six loops live in ONE process. Collapsing them would make 「the chain process is
     alive」 read as 「the census loop is turning」, which is the false green this exists to
     prevent."""
     payload = runtime.loops.runtime_loops(_FakeDb(), heartbeats={})
     in_chain = [i["loop"] for i in payload["loops"] if i["process"] == "chain"]
-    assert in_chain == ["chain", "outbox_purge", "listen", "ledger_followup",
+    assert in_chain == ["chain", "outbox_purge", "listen", "replay_sweep", "ledger_followup",
                         "ledger_census"]
 
 
@@ -304,9 +304,9 @@ def test_the_route_answers_200_with_the_nine(client, monkeypatch):
 
     assert res.status_code == 200, res.text
     payload = res.json()
-    assert len(payload["loops"]) == 9
+    assert len(payload["loops"]) == 10
     assert [i["loop"] for i in payload["loops"]] == [
-        "web", "watcher", "chain", "outbox_purge", "listen",
+        "web", "watcher", "chain", "outbox_purge", "listen", "replay_sweep",
         "ledger_followup", "ledger_census", "scheduler", "postgres"]
     for item in payload["loops"]:
         assert item["process"] and item["board"]
@@ -329,3 +329,30 @@ def test_the_route_is_gated():
                 "gate /admin/chain/queue does")
             return
     raise AssertionError("/runtime is not registered")
+
+
+def test_every_loop_that_records_a_lap_is_in_the_table():
+    """총괄 ce2f01e39 — `replay_sweep` recorded its lap and was in no row, so the board could
+    not say whether it was alive. Every `record_lap` loop name in the tree is a LOOPS row,
+    and the rows without one are the three that need none, named."""
+    import ast
+    import subprocess
+
+    server = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    files = [f for f in subprocess.check_output(["git", "ls-files", "*.py"], cwd=server,
+                                                text=True).split()
+             if not f.startswith("tests/") and os.path.exists(os.path.join(server, f))]
+    recorded = set()
+    for rel in files:
+        tree = ast.parse(open(os.path.join(server, rel), encoding="utf-8").read())
+        for node in ast.walk(tree):
+            fn = getattr(node, "func", None)
+            name = getattr(fn, "attr", None) or getattr(fn, "id", None)
+            if (isinstance(node, ast.Call) and name == "record_lap" and len(node.args) > 1
+                    and isinstance(node.args[1], ast.Constant)):
+                recorded.add(node.args[1].value)
+    assert "chain" in recorded and "watcher" in recorded, "CANARY: the census found nothing"
+    rows = {loop for loop, _process, _board in runtime.loops.LOOPS}
+    # web: this route IS the web process · postgres: pg_stat, not a heartbeat · scheduler:
+    # beats, records no lap
+    assert recorded == rows - {"web", "postgres", "scheduler"}, (recorded, rows)
