@@ -10,7 +10,7 @@
          카나리아 style.css 의 font-size 줄 127 그대로
          client2 전체 리터럴 308 -> 183 (① 때 셈 계기 그대로, 줄어든 수 = 125)
          하니스 143 중 게이트 141 초록(기존 빨강 2 그대로) · 빌드 exit 0
-번들      main-kXQPFEyk.js map_editor-BaWCp8ff.js style-BF6zle-S.css style-XEMTi5C6.css 
+번들      main-kXQPFEyk.js map_editor-BaWCp8ff.js style-BF6zle-S.css
 ```
 
 ```
