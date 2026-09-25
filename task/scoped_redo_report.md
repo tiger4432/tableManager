@@ -60339,3 +60339,48 @@ test_a_declared_framework_column_is_not_built_twice.py 가 뷰 모델을 «헬�
 ```
 대형 레인 원인(ㄱ, 짓는 중 — 전 측정 끝: 대형 파일이 대형 레인을 안 탐) -> 대형 레인 병렬
 ```
+
+---
+
+## [구현자 -> 총괄] 대형 레인 원인 착지 — 업로드는 raws/ 옆에 다 쓴 뒤 옮김 (126ea5656 ㄱ) — d18646be8
+
+```
+자리     업로드 라우트의 쓰기 한 곳 — 표 작업공간 폴더(raws/ 의 부모, 같은 볼륨, 감시 안 됨)의 「.upload.<hex>」 에 쓰고 os.replace
+         실패하면 임시 파일을 지움. 감시자는 무변
+```
+
+### 게이트
+
+| 칸 | 시험 | 변이 |
+|---|---|---|
+| raws/ 에 «한 번 옮김»으로, 다 쓴 크기로, 그 전엔 raws/ 에 아무것도 없음 · 임시 파일 안 남음 | test_an_upload_appears_in_raws_only_whole (새 파일 — 업로드 라우트를 부르는 시험이 전에는 0) | 제자리 쓰기로 되돌리면 1 failed · 임시를 raws/ 안에 두면 1 failed |
+| 쓰다 실패할 때 임시를 지움 | 시험 없음 | — |
+
+```
+범위   전체 시험 (main 을 거의 모든 시험이 import) -> 6964 passed, 141 skipped, 3 xfailed, 12109 warnings
+```
+
+### 박스 (알린 대로 — 표 쓰기 0, FAILED 기록 한 줄씩)
+
+```
+줄 수는 watcher.log + watcher_stdout.log 합 (같은 줄이 두 파일에 한 번씩)
+파일     11010064 B (문턱 10485760 B) · 모든 행이 target_qty=abc
+전       user(gatebefore)_heavygate_d737524a.csv — 대형 레인 줄 0 · 그 파일을 적은 감시자 줄 10 (카나리아) · file_ingestion_logs 22376 FAILED · 표 행 10 -> 10
+재기동함  22:09:25 API (새 코드 d18646be8) · /health 200 at 22:09:32
+후       user(gateafter)_heavygate_b234ea2d.csv — 대형 레인 줄 2 · 그 파일을 적은 감시자 줄 12 · file_ingestion_logs 22377 FAILED · 표 행 10 -> 10
+         [Watcher.DirectoryWatcher] [2026-09-25 22:09:34,515] INFO - [production_plan] 🐘 Routed to heavy lane queue (size, 11,010,064B): user(gateafter)_heavygate_b234ea2d.csv
+```
+
+### 곁 — 짓지 않음 (읽은 것, 안 잰 것)
+
+```
+auto_update 가 raws/ «안»에 「<이름>.tmp」 로 복사한 뒤 옮김(run_auto_update.execute) — 감시자는 .tmp 의 생성도 이벤트로 받음
+그 .tmp 가 감시자의 1 s 쉼 뒤에도 남아 있으면(복사가 더 길면) 처리 길로 들어감 — 표준 파서는 .tmp 를 안 다룸(is_std_supported)
+그 뒤 무엇이 되는지는 안 쟀음. 같은 수리(raws/ 밖에 쓰고 옮김)가 그 자리에도 맞음
+```
+
+### 다음
+
+```
+대형 레인 병렬 (3f4ce1cc8) — 짓기 전 잼부터: 대형 파일 하나의 파싱 대 쓰기 (이 박스)
+```
