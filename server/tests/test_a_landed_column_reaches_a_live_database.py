@@ -43,8 +43,8 @@ def test_the_cli_does_not_need_the_daemon_to_have_run_first():
     the daemon would have ensured. Otherwise 「it works on the server」 and 「it works from the
     command line」 become different facts about the same database."""
     # ⚠️ AT `main`, NOT IN `run`. `run` is a LIBRARY function and a caller does not expect
-    # DDL from it; every CLI branch (`rescope`, `--via-events`, the plain load) writes to the
-    # ledger, so one call at the entry point covers what three inside would. And it sits
+    # DDL from it; both CLI branches (`rescope`, the plain load) write to the ledger, so one
+    # call at the entry point covers what two inside would. And it sits
     # AFTER the destructive gate, because a refusal that fires once the store is open is a
     # report rather than a refusal (`test_v2_backfill_refuses_reset_controls_before_store_access`).
     body = inspect.getsource(backfill.main)
