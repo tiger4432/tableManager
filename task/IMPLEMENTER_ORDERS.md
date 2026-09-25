@@ -60178,3 +60178,20 @@ reload     보고만이 아니라 이 항목 안. 소유자께 드린 도착지�
            새 기제가 필요해 보이면 멈추고 보고
 게이트에 더함  ④ 수집 도중 SYSTEM_RELOAD -> 끝난 뒤 last_status 가 끝난 값 · ⑤ 소급 고아 실행이 now_running 에서 state orphaned
 ```
+
+---
+
+## [총괄 -> 구현자] 075174b41 받음 · 항목 4 끝맺음 하나 — withdraw 의 표 판정 (응용 778bbed80) — 3 보다 먼저
+
+```
+받음    총괄 확인 — 건드린 모듈 + import · 라우트 시험 106 파일 1693 passed 0 failed
+        박스 CLI 셋(없는 소스 · 없는 소스 rescope · 거절된 bonded_from rescope) 다 이름 있는 거절 rc 2 · 실행 기록 85 -> 85
+남은 것  withdraw 가 없는 표에 실행 기록을 남김 — judge 가 보호 소스만 봄. 「judge 없는 연산 0」 은 칸 수로는 참, 물음으로는 아님
+원인    같은 조회가 두 벌 — replay.resolve_target(모델 · 칸) 과 cell_layer.withdraw_source 안의 같은 두 줄
+        (「table model '…' is not initialized」 · 「column(s) not declared on …」 — 응용이 본 「같은 문장」이 이것)
+도착지  조회 한 벌. withdraw_source 와 recompute_display_values 가 같은 함수를 부르고, _judge_withdraw 가 보호 소스 확인 뒤 그 함수를 부름
+자리    함수는 cell_layer 에 (withdraw_source 가 거기 있고, cell_layer 는 replay 를 import 못 함 — 모듈 머리의 순환 주석). replay 는 그것을 가져다 씀
+게이트  withdraw × 문 셋(게시 · 수 세기 · CLI) — 없는 표 · 선언 안 된 칸: 한 문장 · 기록 0 / 있는 표: 그대로 queued
+변이    _judge_withdraw 에서 조회를 빼면 빨강
+보고만   분리 환경이 assy_qa public 에 원장 표를 만드는 것 — 받음, 소유자께 보고만
+```
