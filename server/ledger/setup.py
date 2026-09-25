@@ -400,8 +400,12 @@ def setup_from_document(
     config_root: str | Path = DEFAULT_ONTOLOGY_ROOT,
     verified_joins: Sequence[VerifiedJoinDescriptor] = (),
     catalog: Mapping[str, Any] | None = None,
+    refused_sources: Mapping[str, Any] | None = None,
 ) -> LedgerSetup:
     """`load_setup`, but from a document already in hand instead of from the file.
+
+    `refused_sources` are the sources dropped from `document`, registered by name exactly as
+    `load_setup` registers them (총괄 f063c948e) - one snapshot, one answer, whichever loader.
 
     🔴 THE CALLER OWNS THE DOCUMENT, AND NOBODY WRITES IT BACK. The explorer resolves a
     half-written setup by dropping what cannot load from an IN-MEMORY copy and compiling
@@ -414,7 +418,8 @@ def setup_from_document(
         dict(live_physical_catalog()) if catalog is None else dict(catalog))
     bundle = require_ready_bundle(validate_bundle(document, catalog=resolved_catalog))
     snapshot = compile_setup_snapshot(
-        bundle, trusted_implementations(), verified_joins, catalog=resolved_catalog)
+        bundle, trusted_implementations(), verified_joins, catalog=resolved_catalog,
+        refused_sources=refused_sources)
     return LedgerSetup(
         config_root=Path(config_root),
         bundle=bundle,

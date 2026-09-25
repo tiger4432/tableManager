@@ -91,20 +91,29 @@ def test_a_split_leaf_retry_reads_the_row_as_it_is_now(retro_env):
     assert got["error_log"]["resolved_at"]
 
 
-def test_a_leaf_whose_row_is_gone_is_left_and_named(retro_env):
+def test_a_leaf_whose_row_is_gone_is_ended_and_named(retro_env):
+    """총괄 f063c948e ㉯ - nothing is left to run it with, so the retry ends it, says who and
+    why in the payload, and it leaves the failed list."""
     row, leaf = _leaf_of(retro_env, "bad")
+    row_id = row.row_id
     retro_env.delete(row)
     retro_env.flush()
     out = main.retry_failed_outbox_events(event_id=leaf.id, db=retro_env)
-    assert leaf.status == "FAILED" and "no longer exists" in out["message"]
+    retro_env.refresh(leaf)
+    got = get_payload_dict(leaf)
+    assert (leaf.status, leaf.processed_chain) == ("SUCCESS", True)
+    assert got[event_constants.CANCEL_MARK] == "retry"
+    assert row_id in got[event_constants.CANCEL_REASON]
+    assert out["ended_missing_row"] == 1 and "no longer exists" in out["message"]
+    assert main.get_failed_outbox_events(page=1, limit=10, db=retro_env)["total"] == 0
 
 
 @pytest.mark.parametrize("case, status, reset", [
-    ("parents only", "refused", 0), ("row-less leaf only", "refused", 0),
+    ("parents only", "refused", 0), ("row-less leaf only", "success", 0),
     ("mixed", "success", 1), ("nothing matches", "refused", 0)])
 def test_the_status_says_whether_anything_was_reset(retro_env, case, status, reset):
-    """총괄 ec99f75a6 - one place decides: nothing reset is refused, whichever branch left it
-    at zero; a mix says what it did and what it did not."""
+    """총괄 ec99f75a6 · f063c948e - one place decides: nothing reset and nothing ended is
+    refused, whichever branch left it at zero; a mix says what it did and what it did not."""
     parent = _event(retro_env, {"transaction_id": "txp", "row_ids": ["r1", "r2"],
                                 "error_log": {"reason": "boom", "reexpanded_into": 2}})
     row, leaf = _leaf_of(retro_env, "bad")
@@ -120,8 +129,8 @@ def test_the_status_says_whether_anything_was_reset(retro_env, case, status, res
     assert (out["status"], out["reset"]) == (status, reset), out["message"]
     if case == "mixed":
         assert plain.status == "PENDING"
-        assert (out["skipped_reexpanded"], out["skipped_missing_row"]) == (1, 1)
-        assert "Skipped" in out["message"] and "Reset 1" in out["message"]
+        assert (out["skipped_reexpanded"], out["ended_missing_row"]) == (1, 1)
+        assert all(word in out["message"] for word in ("Reset 1", "Skipped 1", "Ended 1"))
 
 
 def test_attempts_are_named_for_the_round_they_count(retro_env):

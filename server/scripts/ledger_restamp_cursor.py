@@ -76,8 +76,8 @@ def main(argv=None):
         catalog = live_physical_catalog()
         resolved = load_resolved_setup(
             root, catalog=catalog,
-            setup_from_document=lambda doc: setup_from_document(
-                doc, config_root=root, catalog=catalog))
+            setup_from_document=lambda doc, **more: setup_from_document(
+                doc, config_root=root, catalog=catalog, **more))
         setup = resolved["setup"]
         dropped = resolved["invalid"]
         print(f"config does not compile whole ({exc}); "

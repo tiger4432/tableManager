@@ -206,6 +206,24 @@ def mark_processed(event, status: str):
         setattr(event, column, value)
 
 
+#: 「Ended without running」 - who ended it and why, in the payload, so the row's history
+#: says it was skipped rather than run. Moved here from `scripts/outbox_triage` when the
+#: failed-list retry became the second writer (총괄 f063c948e: a leaf whose row is gone).
+CANCEL_MARK = "cancelled_by"
+CANCEL_REASON = "cancel_reason"
+
+
+def mark_cancelled(event, by: str, reason: str):
+    """End an event without running it: the mark and the reason, then `mark_processed`."""
+    from utils.payload_helper import get_payload_dict
+
+    payload = dict(get_payload_dict(event) or {})
+    payload[CANCEL_MARK] = by
+    payload[CANCEL_REASON] = reason
+    event.payload = payload
+    mark_processed(event, "SUCCESS")
+
+
 def processed_columns(status):
     """What 「this row stopped being work」 writes - ONE definition. `mark_processed` sets it
     on one object; a set-based UPDATE spreads it where rows are too many for the ORM

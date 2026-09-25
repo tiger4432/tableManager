@@ -1392,7 +1392,10 @@ def load_resolved_setup(config_root, *, catalog: Mapping[str, Any] | None = None
     path = Path(config_root) / setup_bundle.CONFIG_FILENAME
     document = json.loads(path.read_text(encoding="utf-8"))
     report = resolve_declarations(document, catalog=catalog)
-    setup = setup_from_document(report["document"])
+    from .setup import _refused_sources
+
+    setup = setup_from_document(report["document"],
+                                refused_sources=_refused_sources(report["invalid"]))
     return {
         "setup": setup,
         "snapshot_hash": document_hash(document),

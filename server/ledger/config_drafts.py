@@ -246,8 +246,19 @@ def compile_draft_preview(active_setup: Any, node: ExplorerNode, raw: Mapping[st
                 False, None, None,
                 tuple(_decorate_issue(issue.to_mapping()) for issue in compile_issues),
             )
+        # 🔴 THE REFUSED SOURCES RIDE ALONG, AS `load_setup` REGISTERS THEM (총괄 f063c948e ㉠).
+        #    `active_setup.bundle` is what the loader KEPT, so without them this previewed a
+        #    snapshot activation never builds. Rebuilt from the refused plans - status,
+        #    relation and refusal are all a refused plan holds and all the compile reads. A
+        #    source the draft now declares is not refused in its preview.
+        declared = bundle.section("sources")
+        refused = {source_id: {"raw": {"status": plan.status, "relation": plan.relation},
+                               "refusal": dict(plan.refusal or {})}
+                   for source_id, plan in active_setup.snapshot.source_plans.items()
+                   if not plan.planned and source_id not in declared}
         snapshot = compile_setup_snapshot(
-            bundle, trusted_implementations(), verified, catalog=catalog)
+            bundle, trusted_implementations(), verified, catalog=catalog,
+            refused_sources=refused)
         preview_setup = SimpleNamespace(
             config_root=active_setup.config_root,
             bundle=bundle,

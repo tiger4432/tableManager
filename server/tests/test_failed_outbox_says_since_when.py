@@ -26,20 +26,25 @@ import main                                                      # noqa: E402
 from database import models                                      # noqa: E402
 
 
-def failed_row(db, minutes_ago, tx):
-    when = datetime.datetime(2026, 9, 4, 12, 0) - datetime.timedelta(minutes=minutes_ago)
+def failed_row(db, minutes_ago, tx, born_minutes_ago=None):
+    """Failed `minutes_ago` (`processed_at`, as `mark_processed` stamps it); born then too
+    unless `born_minutes_ago` says it was born earlier."""
+    noon = datetime.datetime(2026, 9, 4, 12, 0)
+    when = noon - datetime.timedelta(minutes=minutes_ago)
     row = models.DatabaseOutbox(
         event_uuid=str(uuid.uuid4()), event_type="CREATE", table_name="t",
         payload={"transaction_id": tx}, status="FAILED", retry_count=3,
-        processed_chain=True, created_at=when)
+        processed_chain=True, processed_at=when,
+        created_at=noon - datetime.timedelta(minutes=born_minutes_ago or minutes_ago))
     db.add(row)
     db.flush()
     return row
 
 
 def test_the_oldest_failure_is_reported_over_the_whole_set(db_session):
-    """Three groups, and the answer is the oldest of ALL of them - not of this page."""
-    failed_row(db_session, 5, "tx_recent")
+    """Three groups, and the answer is the oldest of ALL of them - not of this page. And it
+    is the oldest FAILURE (총괄 f063c948e): the row born first failed five minutes ago."""
+    failed_row(db_session, 5, "tx_recent", born_minutes_ago=15000)
     failed_row(db_session, 4000, "tx_ancient")     # the answer
     failed_row(db_session, 60, "tx_middle")
     db_session.flush()
@@ -72,15 +77,16 @@ def test_no_failures_answers_null_rather_than_a_time(db_session):
 
 
 def test_the_field_is_shaped_like_the_others_in_this_response(db_session):
-    """Same format as the sibling timestamps in this same payload. A second time format
-    in one response is a second thing for the screen to get wrong."""
+    """Same column and same format as each group's `failed_at` in this same payload. A
+    second meaning or a second time format in one response is a second thing for the
+    screen to get wrong."""
     failed_row(db_session, 10, "tx_one")
     db_session.flush()
 
     out = main.get_failed_outbox_events(page=1, limit=10, db=db_session)
     group = out["data"][0]
-    assert out["oldest_failed_at"] == group["events"][0]["created_at"], \
-        "the new field is not formatted like the created_at beside it"
+    assert out["oldest_failed_at"] == group["failed_at"], \
+        "the field does not say what the group's failed_at says"
 
 
 def test_the_failures_fold_to_one_line_per_table_kind_and_day(db_session):

@@ -1,13 +1,14 @@
 # 지금 돌리면 되는 것
 
-> ## 🔴 [09-25 밤 3] **실패 재시도가 «아무것도 안 되돌렸으면» refused — 마이그레이션 «없음» · 재기동 API 만**
+> ## 🔴 [09-25 밤 3] **실패 재시도: 행이 지워진 줄은 «끝냄», 한 것이 없으면 refused · 「언제부터 실패」 는 마지막 실패 시각 — 마이그레이션 «없음» · 재기동 API 만**
 >
 > ```
 > 확인     어드민 Chain 탭 실패 목록에서 Retry All
 > 토스트    「Reset N failed event(s) to PENDING. …」 로 시작   -> 새 코드 (N 은 PENDING 으로 되돌린 줄 수)
->          「Successfully reset …」                          -> API 가 옛 코드 (재기동 안 먹음)
->          「Skipped … whose row no longer exists」 만        -> 되돌린 것 0 — 응답은 refused (토스트 색은 아직 화면이 안 가름)
-> 되돌리기  git revert 하고 API 재기동. 지우는 것 · 쓰는 것 없음 — 답의 status 와 문장만 바뀜
+>          「Ended N row event(s) whose row no longer exists」 -> 행이 지워진 줄 N 개를 끝냄 — 실패 목록에서 빠지고 payload 에 cancelled_by=retry · 사유
+>          「Successfully reset …」 · 「Skipped … whose row …」 -> API 가 옛 코드 (재기동 안 먹음)
+> 곁       끝낸 줄은 SUCCESS 라 통지 스윕이 그 표를 한 번 새로고침함 (triage 취소와 같음) — 결함 아님
+> 되돌리기  git revert 하고 API 재기동. 끝낸 줄은 FAILED 로 안 돌아옴 — 행이 없어 다시 돌릴 것도 없음 · 7 일 청소가 지움
 > ```
 
 ---

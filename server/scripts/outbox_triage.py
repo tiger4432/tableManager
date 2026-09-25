@@ -28,8 +28,8 @@ from sqlalchemy import text                                          # noqa: E40
 from admin import retroactive                                        # noqa: E402
 from database.database import SessionLocal                           # noqa: E402
 
-CANCEL_MARK = "cancelled_by"
-CANCEL_REASON = "cancel_reason"
+from event_constants import CANCEL_MARK, CANCEL_REASON              # noqa: E402
+
 OPERATOR = "operator"
 
 
@@ -120,15 +120,10 @@ def cancel(db, table, since=None, apply=False, reason="collapsed replay (S-172)"
                     CANCEL_MARK, OPERATOR, CANCEL_REASON, reason)))
             .execution_options(synchronize_session=False), params)
     else:
-        from utils.payload_helper import get_payload_dict
         ids = [r[0] for r in db.execute(
             text("SELECT id FROM database_outbox WHERE " + sql), params).fetchall()]
         for event in db.query(DatabaseOutbox).filter(DatabaseOutbox.id.in_(ids)).all():
-            payload = dict(get_payload_dict(event) or {})
-            payload[CANCEL_MARK] = OPERATOR
-            payload[CANCEL_REASON] = reason
-            event.payload = payload
-            event_constants.mark_processed(event, "SUCCESS")
+            event_constants.mark_cancelled(event, OPERATOR, reason)
     db.commit()
     print("   skipped %d event(s) - NOT deleted; each payload now says who and why." % n)
     return n

@@ -4301,7 +4301,12 @@ def retry_failed_outbox_events(event_id: int = None, transaction_id: str = None,
             fresh = outbox_expand.refreshed_leaf_payload(db, event.table_name,
                                                          get_payload_dict(event))
             if fresh is None:
+                # Its row is gone, so there is nothing to run it with: the retry ENDS it,
+                # saying who and why, and it leaves the failed list (총괄 f063c948e ㉯).
                 gone.append(event.id)
+                event_constants.mark_cancelled(
+                    event, "retry", "row %s no longer exists in %s"
+                    % (get_payload_dict(event).get("row_id"), event.table_name))
                 continue
             event.payload = fresh
         event.status = "PENDING"
@@ -4325,15 +4330,16 @@ def retry_failed_outbox_events(event_id: int = None, transaction_id: str = None,
                     f"into per-row events; retry those children by their "
                     f"'<transaction_id>#row#' ids.")
     if gone:
-        said.append(f"Skipped {len(gone)} row event(s) whose row no longer exists "
+        said.append(f"Ended {len(gone)} row event(s) whose row no longer exists "
                     f"(ids {gone[:5]}); there is nothing to retry them with.")
-    # 🔴 THE ONE PLACE THE STATUS IS DECIDED (총괄 e573a6edf ② · ec99f75a6): nothing reset is
-    #    not a success, whichever branch left it at zero - a screen reading "success" shows a
-    #    success toast. A mix says what it did and what it did not, and is a success.
-    return {"status": "success" if reset else "refused",
+    # 🔴 THE ONE PLACE THE STATUS IS DECIDED (총괄 e573a6edf ② · ec99f75a6 · f063c948e): a
+    #    retry that neither reset nor ended anything is not a success, whichever branch left
+    #    it at zero - a screen reading "success" shows a success toast. A mix says what it
+    #    did and what it did not, and is a success.
+    return {"status": "success" if reset or gone else "refused",
             "message": " ".join(said) or "No matching failed outbox events found.",
-            "reset": reset, "skipped_reexpanded": len(already_expanded),
-            "skipped_missing_row": len(gone)}
+            "reset": reset, "ended_missing_row": len(gone),
+            "skipped_reexpanded": len(already_expanded)}
 
 # 대기열 목록이 «훑는» 행 수의 상한. 목록은 진단용이고, 이 수를 넘겨 읽어야 답이 갈리는
 # 질문은 이 화면에 없다. 잘렸다는 사실은 응답의 `listed.capped` 로 «말한다».
@@ -4996,7 +5002,9 @@ def get_failed_outbox_events(page: int = 1, limit: int = 10, tz: str = None,
     #
     # 🔴 실패가 «없으면» null 이다. 0 도 «지금»도 아니다 — 화면이 「없다」와 「모른다」를
     # 가를 수 있어야 하고, 그 둘을 한 픽셀로 만드는 것이 오늘 하루 내내 잡던 병이다.
-    stamped = [e.created_at for e in all_failed if e.created_at]
+    # 🔴 THE SAME COLUMN AS EACH GROUP'S `failed_at` - `processed_at`, when it last failed
+    #    (총괄 f063c948e). It was `created_at`, so one response said 「when failed」 two ways.
+    stamped = [e.processed_at for e in all_failed if e.processed_at]
     # 같은 응답의 다른 시각 칸들과 «같은 모양»(isoformat). 여기서 형식을 새로 만들지 않는다.
     oldest_failed_at = min(stamped).isoformat() if stamped else None
 

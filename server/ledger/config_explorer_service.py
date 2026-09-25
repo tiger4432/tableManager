@@ -206,9 +206,9 @@ class OntologyExplorerService:
                 raise
             resolved = load_resolved_setup(
                 self.config_root, catalog=self._catalog_loader(),
-                setup_from_document=lambda doc: setup_from_document(
+                setup_from_document=lambda doc, **more: setup_from_document(
                     doc, config_root=self.config_root,
-                    catalog=self._catalog_loader()))
+                    catalog=self._catalog_loader(), **more))
             setup = resolved["setup"]
             invalid = resolved["invalid"]
             config_level = resolved["config_level"]

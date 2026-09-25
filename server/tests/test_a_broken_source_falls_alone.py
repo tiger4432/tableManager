@@ -207,6 +207,26 @@ def test_a_config_whose_every_source_falls_is_refused_by_name(tmp_path):
         assert source_id in refused.value.message
 
 
+def test_the_fallback_loader_names_the_refused_sources_as_the_loader_does(tmp_path):
+    """총괄 f063c948e ㉠ - when `load_setup` refuses the config, the explorer reads it through
+    `load_resolved_setup`. That snapshot registers the refused sources by name too, or one
+    config has two snapshots depending on which loader read it."""
+    from ledger.config_explorer_service import OntologyExplorerService
+
+    document = two_source_document()
+    for source_id in (HEALTHY, BROKEN):
+        document["sources"][source_id]["read"]["order_by"] = ["no_such_column"]
+    service = OntologyExplorerService(
+        config_root=write_root(tmp_path, document), draft_root=tmp_path / "drafts",
+        catalog_loader=lambda: DEFAULT_CATALOG)
+
+    plans = service.active()[0].snapshot.source_plans
+
+    assert {s: p.planned for s, p in plans.items()} == {HEALTHY: False, BROKEN: False}
+    for source_id, plan in plans.items():
+        assert plan.refusal["path"].startswith("bundle.sources.%s" % source_id)
+
+
 # ---------------------------------------------------------------------------
 # 6. The mutation: put the all-or-nothing back and this goes red
 # ---------------------------------------------------------------------------
