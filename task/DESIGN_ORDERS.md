@@ -34068,3 +34068,14 @@ ce007bb49   되돌림(git revert 한 번) — 소유자 크롬에서 그 규칙�
          옛 running(체인만)을 읽던 자리는 now_running 으로 옮기고, 옮긴 커밋에서 구현자에게 「옛 칸 은퇴」 한 줄
 게이트    총괄이 소유자 크롬(넓은 창 · 1440)에서 소급 하나를 띄워 RUNNING 1 · 그 줄 · × · 끝나면 0
 ```
+
+> ✅ **[총괄 -> 클라 · 응용] ad4a4e698 받음(API 재기동 뒤 소유자 크롬) · 응용 한 줄**
+
+```
+클라 재검  Chain 탭 실패 절 = 두 줄 「dt_inventory EDIT 33 · 09-23 00:14–00:39 · attempts 1」 「metro EDIT 1 · 09-25 18:52–18:52 · attempts 1」
+          줄을 열면 그 줄의 행(행 단위 Retry) · Overview Workers 「10 of 10 alive · OK」(쉬는 on_demand 가 M 에서 빠짐)
+보고만     행 Retry 가 브라우저 confirm 대화상자를 띄움 — 총괄 도구로는 못 눌러 페이지를 다시 불러 풀었음. 운영자에겐 문제 아님(동결 — 고치지 않음)
+다음 클라   위 대기열 RUNNING(now_running) -> 남은 낱말 · 샘플 파일 영어 -> 글자 계층
+응용       metro 줄 5139290(억지 실패 시험이 남긴 «행 없는 잎»)을 님 방식(라우트 함수 · 프로세스 안)으로 재시도
+          = 구현자 8dfd50abb(행 없는 잎은 재시도가 끝냄)의 후 사진 — 기대 ended_missing_row 1 · 목록 34 -> 33 · cancelled_by · cancel_reason
+```
