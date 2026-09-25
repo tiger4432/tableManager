@@ -24,6 +24,8 @@ faked away is which of the three sentences comes back.
 import os
 import sys
 
+import pytest
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from ledger import backfill                                          # noqa: E402
@@ -162,11 +164,28 @@ def test_the_index_is_asked_by_relation_AND_by_source():
     assert params == [("dt_log_transferable", "dt_transfer")]
 
 
-def test_the_cli_prints_the_three_values_rather_than_the_word_None(monkeypatch, caplog):
+#: The two shapes `rows_not_yet_translated` answers - a row source's remainder, and a group
+#: source's refusal to subtract rows from groups (총괄 f453968fe ⓐ: the fake used to be only
+#: the first, so the CLI's KeyError on the second, box source `lot_event`, went unseen).
+CENSUS_SHAPES = {
+    "rows": ({"relation_rows": 478035, "indexed_rows": 478035, "counts": "rows",
+              "not_yet": 0}, "relation rows 478035 | indexed 478035 | not yet translated 0"),
+    "groups": ({"relation_rows": 3633, "indexed_rows": 490, "counts": "rows vs groups",
+                "not_comparable": "this source reads by group (event_group_key), so ..."},
+               "relation rows 3633 | indexed 490 | this source reads by group"),
+}
+
+
+@pytest.mark.parametrize("shape", sorted(CENSUS_SHAPES))
+def test_the_cli_prints_the_three_values_rather_than_the_word_None(monkeypatch, caplog,
+                                                                   shape):
     """🔴 THE GATE ITEM. The CLI used to end with two lines that printed `None` -- keys the
     deleted cursor driver had produced -- and no count at all, so 「nothing was staged」 was
     the whole answer. It is a PRINTER now: the values ride the result, so stubbing the run
-    is enough to score what an operator sees."""
+    is enough to score what an operator sees - for each shape the census answers, and
+    every key the printer reads is one the run carries."""
+    census, line = CENSUS_SHAPES[shape]
+    assert set(census) - {"counts"} <= set(backfill.CENSUS_KEYS_A_RUN_CARRIES)
     import logging
 
     import database.database as database_module
@@ -185,13 +204,13 @@ def test_the_cli_prints_the_three_values_rather_than_the_word_None(monkeypatch, 
     monkeypatch.setattr(retroactive, "run_here", run_without_a_record(database_module.engine))
     monkeypatch.setattr(backfill, "run", lambda engine, **kwargs: {
         "source": "wafer_process", "rows_read": 0, "batches": 0,
-        "relation_rows": 478035, "indexed_rows": 478035, "not_yet": 0})
+        **{k: v for k, v in census.items() if k in backfill.CENSUS_KEYS_A_RUN_CARRIES}})
 
     with caplog.at_level(logging.INFO):
         assert backfill.main(["--source", "wafer_process"]) == 0
 
     printed = "\n".join(record.getMessage() for record in caplog.records)
-    assert "relation rows 478035 | indexed 478035 | not yet translated 0" in printed
+    assert line in printed
     assert "census by predicate" not in printed
     assert not any(record.getMessage().strip() == "None" for record in caplog.records)
 

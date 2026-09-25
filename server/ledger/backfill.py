@@ -98,6 +98,11 @@ logger = logging.getLogger("Ledger.Backfill")
 
 DEFAULT_FETCH_ROWS = 2000
 
+#: What a run carries from `rows_not_yet_translated`. A group source answers `not_comparable`
+#: instead of `not_yet`; dropping it left the CLI indexing a key that is not there.
+CENSUS_KEYS_A_RUN_CARRIES = ("relation_rows", "indexed_rows", "not_yet", "not_comparable",
+                             "index_names_absent_rows")
+
 #: One page for the write-free test run behind the setup screen. Small on purpose: the
 #: screen asks "does this declaration work at all", and that answer arrives in the first
 #: page of a table with ten million rows exactly as it does in the first page of one with
@@ -362,8 +367,7 @@ def _run_via_events(engine, setup, source, page_rows=DEFAULT_FETCH_ROWS,
     # doing work behind it. One read, one place, and every reader of the result gets it.
     report.update({key: value for key, value in
                    rows_not_yet_translated(engine, setup, source).items()
-                   if key in ("relation_rows", "indexed_rows", "not_yet",
-                              "index_names_absent_rows")})
+                   if key in CENSUS_KEYS_A_RUN_CARRIES})
     report["seconds"] = round(time.perf_counter() - started, 3)
     return report
 
@@ -2031,8 +2035,12 @@ def main(argv=None):
         logger.info("[Ledger] not counted (%s): %s",
                     result["refused"], result.get("remedy"))
     elif "relation_rows" in result:
-        logger.info("[Ledger] relation rows %s | indexed %s | not yet translated %s",
-                    result["relation_rows"], result["indexed_rows"], result["not_yet"])
+        # A group source's answer is `not_comparable` - rows against groups is no number
+        # (rows_not_yet_translated) - so the remainder is named only where there is one.
+        logger.info("[Ledger] relation rows %s | indexed %s | %s",
+                    result["relation_rows"], result["indexed_rows"],
+                    result["not_comparable"] if "not_comparable" in result
+                    else "not yet translated %s" % result["not_yet"])
         if result.get("index_names_absent_rows"):
             logger.warning(
                 "[Ledger] the index names %s row(s) the relation no longer holds",
