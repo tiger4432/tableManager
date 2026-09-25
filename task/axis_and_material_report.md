@@ -1,3 +1,68 @@
+> ## [09-25 18:53 디자인] bed890af2 ① 착지 (143aa76df) — Explorer 탭 서버 문장 영어 · 소스 현황 안쪽 줄 서버 이름표 · 시각 하나 · 해시
+
+### 착지 143aa76df (서버 + 클라 한 커밋)
+
+```
+서버 문장   같은 셈 명령 · 전 = HEAD 스냅숏(git archive) · 후 = 이 트리
+           config_explorer 25 -> 0 · ledger/admin 56 -> 0 · config_authoring 120 -> 0
+           서버 전체 비로그 한국어 1482 -> 1281 (차 201)
+           ledger_skeleton.json 70 -> 0 — 탐색기 폼이 이 파일로 지어지는데 제 셈 도구가 .py 만 셌습니다. 같은 탭이라 같이 넣었습니다
+낱말       상태 이름과 같은 방법 — 낱말이 사는 자리 옆에 이름표, 그 낱말을 싣는 응답에 같이
+           census 칸·거절 코드   backfill.CENSUS_NAMES  -> /api/ledger/declaration 의 census_names
+           번역기 거절 사유      gate.REFUSAL_REASON_NAMES (닫힌 어휘 12 전부) -> ingestion.reason_names
+           화면은 이름을 그리고 모르는 키는 키 그대로 · 대시보드 패널과 탐색기 인스펙터가 같은 리더
+시각       measured_at 과 Last 를 server_time.localShort 하나로 (못 읽는 글자는 서버 글자 그대로)
+해시       「지우면 틀리게 읽나」 예 — 소스끼리 다른 선언으로 번역됐다는 것을 이 값만 말합니다
+           머리 8 자 + 전부는 툴팁 · 보조 줄 낱말 translator_ver -> Translator (표 머리줄과 같은 클라 낱말)
+시험       서버 새 파일 6 · 변이(싣는 두 줄 뺌) 2 빨강 · 곁 87 파일 1116 통과
+           클라 source_backlog 40 · 변이 17/17 · ledger_sources_panel 100 · 빌드 0 (게이트 139 초록)
+제 실수    INGESTION_NOTE 를 영어로 바꾼 21194559e 가 test_ledger_sources_ingestion 한 줄을 빨갛게 했고 제가 못 봤습니다 — 이 커밋에서 고침
+```
+
+```
+여실 때    API 재기동 뒤 (서버 .py 가 바뀜 · 스켈레톤 JSON 은 요청마다 읽힘)
+볼 것      Explorer 탭 폼 라벨·노트 영어 · 소스 현황 「Table rows <수> · Indexed <수> · Not yet <수> · Measured MM-DD HH:MM:SS」
+           Last 칸이 같은 모양의 현지 시각 · Translator ledger-v2:xxxxxxxx… (마우스를 올리면 전부)
+⚠️ 박스   거절 넷(bonded_from · bw_dt_seat · lot_slot_move · void_observation)은 키 그대로 「no_row_id」가 보입니다
+           그 코드는 c193986a8(13:38)에서 은퇴했고 지금 코드는 source_refused(이름 있음)를 씁니다.
+           박스 선언 라우트에서 그 넷의 measured_at 은 04:23–04:36 UTC, 나머지 열하나는 09:17–09:23 UTC 였습니다 —
+           그 넷이 왜 다시 안 재어지는지는 안 쟀습니다
+```
+
+### 여쭐 것
+
+```
+1 admin.py 의 detail_ko · label_ko · note_ko · help_ko 칸에 이제 영어가 듭니다 — 이름이 거짓입니다
+  칸 이름을 바꾸는 것은 응답 키·시그니처 변경이라 지시 밖이어서 안 했습니다. 읽는 클라 0 (git grep client2/src)
+  한 칸(예: detail)으로 접을까요
+2 admin.py 에서 시험만 부르는 함수 여섯 — check_source_declaration · check_identifier · parse_raw_declaration ·
+  check_base · save_source · candidate_config. 라우트가 2026-08-27 에 은퇴한 v1 저장의 남은 몸입니다(main.py 주석)
+  셈에 들어가서 번역은 했습니다. 은퇴시킬까요
+3 남은 서버 JSON 한국어 — gap_names.json 40 (Declarations 의 gap 목록) · chain_skeleton.json 2 (Chain 탭 폼)
+  gap_names 를 2 번 묶음(Declarations 본문)에 같이 넣을까요
+4 source_contract.py 의 detail_ko 문장(한국어)은 위 2 의 길로만 닿아서 안 건드렸습니다
+```
+
+### 곁에서 이 착지 «전»부터 빨강 5 (HEAD 파일로 되돌려 같은 5 확인 · 안 가림)
+
+```
+test_ontology_config_explorer 셋 · test_the_catalogue_says_which_types_are_static · test_ledger_source_contract 하나
+박스 셋업·설정을 읽는 시험들입니다
+```
+
+### 다음
+
+```
+2 번 묶음(Declarations 본문 + 모집단 이름) -> e6e5a08ee 실패 요약 한 줄(구현자 313a7d710 착지로 풀림) 순서로 가겠습니다
+```
+
+### UI 제안 (안 지음)
+
+| 항목 | 왜 | 크기 |
+|---|---|---|
+| census 줄의 Measured 를 툴팁으로 | 좁은 펼침에서 census 한 줄이 두 줄로 접힙니다. 시각은 «언제 잰 값인가»라 값 옆 기호 하나면 됩니다 | 작음 · 안 쟀다 |
+| 인스펙터의 census 이름을 code 글꼴에서 본문 글꼴로 | 이제 기계 낱말이 아니라 이름인데 고정폭으로 그려집니다 | 작음 |
+
 > ## [09-25 18:11 디자인] 모르는 derive 종류는 이름 대어 거절 — 착지 (ac2f73381) · 다음 영어 묶음 순서
 
 ### 착지 ac2f73381 (서버만)
