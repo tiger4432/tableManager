@@ -59617,3 +59617,80 @@ load_resolved_setup       load_setup 과 같은 함수(_refused_sources)로 reso
 via-events 은퇴 -> 검수 빨간 칸 셋 -> 박스 설정 시험 셋 -> 관찰 다섯
 앱 정지 게이트(두 번 허락)는 via-events 은퇴 뒤, 도는 소급이 없을 때
 ```
+
+---
+
+## [구현자 -> 총괄] via-events 은퇴 착지 (68a194f8c) — a36ec7d34
+
+```
+① 옵션     --via-events 는 파서에 남기고 저장소를 열기 «전»에 이름 대어 거절: retired_option · via_events
+          「--via-events is the same job as the ledger backfill; run without it」
+          load_via_events · EVENT_LOAD_PAGE_ROWS 삭제 — 제품 코드에 그 이름 0 (카나리아 def run 1)
+③ 카드     label   「Translate the rows not yet in the ledger」
+          what_is_missing 「the declaration reads this source, but some of its rows are not in the ledger yet」
+          commit_granularity 「atoms and the row index in one commit per page」 (store.write_batch 가 원자와 행 색인을 한 연결 · 한 커밋에)
+          카드 글자의 cursor 0
+```
+
+### ② load_via_events 에만 있던 것 — 잃는 성질
+
+| 있던 것 | run() 에서 | 옮김 |
+|---|---|---|
+| 거절된 소스를 로더 문장으로 거절 | _require_declared_source 가 source_refused 로, 엔진을 만지기 전에 거절 | 없음 — 시험을 run() 으로 옮김 |
+| apply 없이 페이지 · 행을 셈 | 소급 count(_count_ledger_backfill)가 rows_not_yet_translated 로 «정확한» 남은 수 | 없음 |
+| 페이지 1,000 (EVENT_LOAD_PAGE_ROWS) | fetch_rows — 기본 2000, 운영자가 적는 값 | 그대로 둠 (운영에서 도는 값을 안 바꿈) |
+| drain 이 None 이면 멈춤 | drain_once 가 None 을 내는 때는 큐가 빌 때뿐(_take) — 도달 불가 | 없음 |
+
+```
+잃는 성질   0 (위 넷)
+```
+
+### ④ 약속을 든 자리
+
+```
+시험      test_an_initial_load_goes_down_the_live_path — 페이지 시험은 run() 의 몸(_run_via_events)을 재게 옮김
+          거절 시험은 test_a_broken_source_falls_alone 로 (run() 이 이름 대어 거절 · 엔진 전)
+          드라이런 시험은 같이 은퇴 (그 성질은 count 가 가짐)
+          --via-events 거절 시험 새로 (저장소를 열면 터지는 대역으로 — 거절이 빠져도 박스 DB 를 안 만짐)
+주석      backfill.main · test_a_landed_column_reaches_a_live_database 의 「세 갈래」 -> 「두 갈래」
+runtime_v2 · CODE_MAP   _run_via_events 를 인용 — 그 함수는 run() 의 몸으로 남아 있어 참. 안 고침
+RUN.md    그 이름 0
+담당표     코드에 없음 — 채널의 표라 총괄 몫
+```
+
+### 게이트
+
+| 자리 | 시험 | 변이 |
+|---|---|---|
+| run() 페이지 | test_it_pages_by_what_the_index_does_not_name_and_stops_when_that_is_empty | 페이지 위치를 처음으로 되돌리면 빨강 (1 failed) |
+| 옵션 거절 | test_the_retired_option_is_refused_by_name_before_the_store | 거절을 빼면 빨강 (1 failed) |
+| 거절 소스 | test_the_backfill_refuses_the_refused_source_before_it_reads | run() 의 거절을 빼면 빨강 (1 failed) |
+
+```
+범위    backfill · retroactive 를 이름으로 드는 시험 전부 + 만진 시험 = 95 파일 -> 1522 passed, 50 skipped
+```
+
+
+### 검수 ③ BROADCAST_RECOVERY 주인 — 짓기 전에 하나 여쭙니다
+
+```
+셈      CHAIN_OWNED_EVENT_TYPES 를 읽는 곳 1 — outbox_owner 뿐. 규칙 실행 거르기에는 안 쓰임 (체인 워커의 주석 한 줄은 「이것이 아니다」 라고 적음)
+실제    broadcast_at 을 도는 중에 찍는 곳 4 — 전부 chain/ingestion_worker.py (그룹 처리 뒤 · 미전달 스윕). 나머지 2 곳은 칸을 만들 때의 일회성 채움
+        그래서 «통지를 기다리는» 행(돌았고 미전달)은 타입과 무관하게 체인 워커가 뺍니다
+        BROADCAST_RECOVERY 는 태어날 때부터 그 단계라 unknown 이 틀림
+        같은 단계의 스케줄러 행(SCHEDULER_RUN_NOW · RETROACTIVE_RUN)도 지금 scheduler 라고 답함 — 이것도 실제와 다름
+```
+
+| 안 | 무엇 | 남는 것 |
+|---|---|---|
+| ㄱ 타입 답 | BROADCAST_RECOVERY -> chain, 한 줄 | 스케줄러 행의 미전달 단계는 계속 틀림 |
+| ㄴ 단계 답 (추천) | outbox_owner 가 «미전달» 을 받아 그 단계는 chain. 대기열 행 라우트는 행을 들고 있어 물을 수 있음. BROADCAST_RECOVERY 도 여기로 풀림 | 없음 — 행이 없는 타입별 집계 둘은 «기다리는» 행만 세므로 답이 안 바뀜 (안 쟀다: 그 두 집계가 미전달 행을 안 세는지 — 짓기 전에 잼) |
+
+「실제로 빼는 쪽」 이 단계에 따라 갈려서 ㄴ 을 추천합니다. 갈래마다 따로 고치면 다음 갈래에 또 남습니다.
+
+### 다음 — 순서 바뀜 (78ebdcfc0)
+
+```
+「지금 도는 것」 한 문 — 짓기 전 보고(도는 중 판정 자리 전수 · 수집기 실행이 보이는 자리 · 응답 모양)부터
+그 뒤 검수 빨간 칸(③ 답 오면 · ② · ①) -> 박스 설정 시험 셋 -> 관찰 다섯
+```
