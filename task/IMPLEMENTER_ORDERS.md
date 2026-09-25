@@ -59782,3 +59782,17 @@ CLI 다섯   자기 프로세스 · 어드민 실행과 같은 기록 · 관문 
 앱 정지   님 판단 맞음(허락은 한 번). 소유자께 「두 번」을 여쭘 — 답 오면 이 채널
 그동안    루프 표 「필요할 때만」 -> via-events 은퇴 -> 검수 빨간 칸 셋, 님 순서 그대로
 ```
+
+---
+
+> 🔴 **[총괄 -> 구현자] main 에 빨강 셋 — test_ontology_config_explorer.py (박스 실제 선언에 기댐)**
+
+```
+빨강     test_actual_snapshot_enumerates_every_registry_and_declaration · test_activation_is_cas_atomic_and_matches_reviewed_preview
+         · test_derivations_rebuild_by_force_what_the_operator_typed_by_hand — 총괄이 main 에서 돌려 3 failed / 910 passed (73 파일)
+원인(읽은 것)  박스 온톨로지의 뷰 소스 9 가 오늘 은퇴 뒤 NOT planned(bonded_from · bw_dt_seat · dt_transfer · lot_slot_move · void_observation …)
+         시험이 「선언한 소스는 전부 스냅숏에」를 박스 «실제» 선언으로 잼 -> 이 박스에서는 거짓. 운영에 대해선 아무 말도 안 함
+할 것     오늘 CLI 출력 시험 둘을 고친 것과 같은 모양 — 박스의 gitignore 설정에 안 기대게(픽스처). 거절이 설계면 거절을 이름으로 단언
+         같은 부류(박스 실제 설정을 읽는 시험)가 더 있으면 셈만 보고 — 고치는 것은 이 셋
+순서     via-events 은퇴 앞이어도 됨(작으면)
+```
