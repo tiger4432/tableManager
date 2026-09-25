@@ -1,3 +1,71 @@
+> ## [20:50 디자인] 클라 2 착지 (84ae84621) — 위 대기열 RUNNING = now_running · 줄마다 RunLines · cancel 이 있으면 ×
+
+### 착지 84ae84621 (main 받은 뒤 병합 · 작업 트리 깨끗)
+
+```
+수        RUNNING = now_running 의 줄 수 · 옆에 가장 오래 도는 것의 경과(elapsed_seconds 최댓값)
+줄        도는 것마다 RunLines 한 줄 — 무엇 · 어디서(where · pid, 서버 낱말 그대로) · 진행 · 경과 · ×
+×         cancel.run_id 가 있을 때만 · 누르면 Overview 목록과 같은 취소 라우트
+Overview  소급 펼침 = 끝난 실행만 (78ebdcfc0)
+은퇴      runningOld · .chain-queue-running-old · 옛 running 을 읽던 클라 자리 1 -> 0
+시험      chain_queue_panel 171 (바닥 167 -> 171) · 손 변이 7/7 이 이름 붙은 단언에 잡힘
+          하니스 143 중 게이트 141 초록(나머지 2 는 기존 빨간 목록) · 빌드 0 · 서버 변경 0 이라 서버 시험 안 돌림
+여실 때    클라만 — API 재기동 필요 없음. 소급 하나를 띄워 RUNNING 1 · 그 줄 · × · 끝나면 0
+```
+
+```
+옛 칸 은퇴 (구현자께 — 커밋 본문에도 같은 줄)
+   클라가 /admin/chain/queue 의 옛 running(체인 규칙만)을 이 커밋부터 읽지 않습니다. 서버 칸을 은퇴시켜도 됩니다
+   loop_seen_via 는 계속 읽습니다(아래)
+```
+
+### 바꾸지 않은 판정 하나 — RUNNING 칸은 loop_seen_via 하나만 묻습니다 (총괄 36dff3b6a)
+
+```
+체인 루프를 못 봤으면 칸째 안 그립니다. 못 본 체인 루프는 now_running 에 아무것도 안 보태서,
+그때 수를 그리면 «나머지 출처만 센 수»가 「전부」로 읽힙니다
+줄은 그대로 그립니다 — 본 것의 사실이라서(옛 화면도 줄에는 문턱이 없었습니다)
+```
+
+### 남은 «도는 중» 판정 — 화면에 6 곳 (5996d7f54 「6 곳 -> 0」)
+
+셈: `git grep -nE "RUN_FINISHED|liveCount|state !== 'queued'|'cancelling'|last_status === 'RUNNING'|=== 'PROCESSING'" -- client2/src`, 주석 줄 뺌.
+카나리아: buildRunsView · queueView 정의 2/2. 단위 = 상태 낱말로 «도는가»를 가르는 식. 구현자의 6 과 같은 목록인지는 대조 안 했습니다.
+
+| 자리 | 가르는 것 |
+|---|---|
+| retroactive_view 끝남 (RUN_FINISHED) | 실행이 끝났나 |
+| retroactive_view stopping | cancelling · cancel_requested |
+| retroactive_view moving (실행) | queued 가 아니면 흐름 |
+| retroactive_view moving (인제션) | PROCESSING 이면 흐름 |
+| liveCount -> Overview 소급 줄 「N running」 | 실행 + 인제션을 화면이 합쳐 셈 |
+| admin_rows Auto Update 배지 | last_status === 'RUNNING' — 두 갈래가 같은 색이라 갈래가 죽어 있음 |
+
+```
+⚠️ 이 착지가 낳은 것   펼침이 끝난 것만 그리므로 둘째 · 셋째 · 넷째는 이제 «계산만 되고 그려지지 않습니다»
+                      (Overview 소급 줄의 수와 폴 박자만 도는 줄을 읽습니다). 물음 1 의 답으로 같이 닫힙니다
+```
+
+### 여쭐 것
+
+```
+1  Overview 소급 줄의 「N running · oldest」 — 위 RUNNING 과 같은 물음에 «둘째로» 답합니다(화면이 실행 + 인제션을 합침)
+   ㄱ 그 줄은 최근 결과만 말함(「N running」 뺌) -> 인제션 호출 · 도는 줄 계산 · liveCount 가 같이 빠짐  ← 추천
+   ㄴ now_running 의 수를 그대로(위와 같은 수)
+   ㄷ 그대로 둠
+   where 로 걸러 소급만 세는 안은 뺐습니다 — 5996d7f54 「화면은 where 로 갈래를 안 틈」에 걸립니다
+2  Auto Update 배지와 «끝난 결과 고르기»(첫째 줄)를 0 으로 하려면 서버 몫이 섞입니다
+   (runs 응답에 끝남을 싣거나, 배지가 now_running 을 읽거나). 지금 할지 · 대기열에 둘지
+3  위 대기열에서 × 를 누르면 Overview 목록은 바로 다시 읽지만, 위 대기열은 자기 폴 박자에 바뀝니다. 보고만(동결)
+```
+
+### 다음 — 동결된 목록 순서
+
+```
+4 남은 낱말 — server/config/sample/chain_rules.json.sample 한국어 -> 영어 (센 명령 · 카나리아 같이)
+5 글자 계층 다음 단계 (못 끝내면 보고)
+```
+
 > ## [09-25 19:58 디자인] 클라 1 착지 (a551702ef) — Retroactive 목록 한 줄 다섯 칸 · 결과는 그 아래 · 흐림 대신 낱말
 
 ### 착지 a551702ef (main 받은 뒤 병합 · 곁 시험 초록 · 작업 트리 깨끗)
