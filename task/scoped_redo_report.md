@@ -58244,3 +58244,86 @@ RUN.md   09-24 절 ㉢ 에 이 문장의 뜻 한 줄 추가 (「선언 없음이
            「거절 0」을 단언하는 시험이 있으면 «이 박스에서만» 빨갛습니다 — 박스 상태로 적고 박스를 안 고칩니다
 ⛔ 소유자 config 안 건드림 · 서버 전부 + 스켈레톤 + 하니스 + 샘플 조인 한 덩이 + test_dt_map_derivation — «한 커밋»
 ```
+
+---
+
+## [09-25 09:xx] 구현자 — 조인 `on` = 원천 착지 `244d825dc` (지시 e91b96a28 · a5985f280)
+
+```
+한 일   번역기가 on.table 을 엔진의 right_table 에 채웁니다 — 엔진·승인·유일 인덱스는 본문 그대로
+       derive.join.right_table 은 이름 대어 거절 · 짝은 into 쪽에 서고 이름은 :target · 변환 문 한 번이 새 모양
+크기   git show --shortstat 244d825dc -> 28 files changed, 545 insertions(+), 232 deletions(-)
+재기동  필요 — API(스켈레톤 · 변환 문)와 체인 워커(로더)
+```
+
+### 게이트 — server/tests/test_a_joins_on_names_the_table_whose_value_changes.py
+
+```
+① 옛 모양이 이름 대어 거절 — 부팅 줄에 규칙 이름 · 'on.table to "<원천>"' · 'delete right_table' 가 같이 나옴
+② 변환 문(admin.convert_chain_rule_grammar, 라우트가 부르는 그 함수를 프로세스 안에서) 한 번
+     -> on: 원천 · right_table 없음 · into: 쓰는 표 · 로더가 [선언, 선언:target] 을 세움 · 두 번째 누름은 changed=False
+③ 소유자 흐름 — 원천 J1 의 dt_lot 을 A -> B 로 고치면 쓰는 표의 J1 행 둘이 A -> B, 다른 job 행은 그대로(None)
+     그리드 라우트와 같은 모임 모드로 썼고, 그 이벤트의 columns 는 [dt_lot] 뿐인 것을 같이 단언
+④ 짝 :target — 원천이 확정된 뒤 들어온 쓰는 표의 새 행 L4 -> dt_lot 이 A 로 붙음
+⑤ 유일 키 요구는 여전히 원천 표의 (dt_job)
+⑥ 변이   번역기의 on.table 채우기를 빼면 ③④⑤⑦ 빨강 · 짝을 안 세우면 ②④ 빨강 (둘 다 되돌린 뒤 파일 동일 확인)
+⑦ 거절된 동안 원천 J1 을 C 로 고침 -> 쓰는 표 그대로 A -> 변환 + 선언 이름으로 리플레이 -> 쓰는 표 J1 행 둘이 C
+⑧ 전수 (착지 트리) 6805 passed, 140 skipped, 3 xfailed, 11683 warnings in 595.98s (0:09:55)
+     모은 수 6948 = 어제 6942 + 새 게이트 6. 클라 하니스 11 개(스켈레톤을 읽거나 right_table·샘플을 드는 것 전부) 빨강 0
+```
+
+### 🔴 정정 하나 — 전수 보고(fd4aacf03)의 ㉮ 는 근거가 틀렸습니다
+
+```
+적었던 것   「키만 적으면 dt_lot 만 고친 수정이 규칙을 안 깨운다 -> 원천 키 + take 로 넓힌다」
+잰 것      키만 두는 변이에도 ③ 이 초록이었습니다. trigger_columns 는 오늘 «실행을 안 거릅니다» —
+          그룹 단계가 규칙을 고르는 fires() 에 컬럼 질문이 없고, rule_watches_changed_columns 는
+          실행 «전 결과 기록»(_rule_outcome_before_running)에만 쓰입니다
+그래서     지시 문장대로 «원천 쪽 키»만 둡니다. 제 판단으로 넓힌 것은 되돌렸습니다
+```
+
+### 짓지 않고 적는 것
+
+```
+① trigger_columns 가 실행을 안 거르는 것은 S-140 의 두 답입니다 — 고르는 술어(fires)와 적는 술어가 컬럼에서 갈립니다.
+   운영자 화면(활동 칸)에 무엇이 찍히는지는 «안 쟀습니다»
+   🔴 그 필터를 실행에 거는 날, 원천 쪽 키만이면 dt_lot 만 고친 수정이 조인을 «안» 깨웁니다 — ③ 이 그날 먼저 웁니다
+   (③ 이 columns=[dt_lot] 을 단언해 두어서, 그 변경이 오면 이 시험이 빨개집니다)
+② 리플레이가 달라 보입니다 — 원천 표(dt_inventory) 그리드에 «선언 이름»이 뜨고 통째 리플레이가 됩니다.
+   쓰는 표(dt_log) 그리드에는 :target 이 «행을 골랐을 때만» 뜹니다. 사전 수 「rows to re-run」은 이제 원천 행 수입니다
+③ 스켈레톤에서 루트의 on 을 필수로 한 번 만들었다가 되돌렸습니다 — on.table 은 이미 필수이고,
+   루트까지 필수로 하면 창이 「on.table」 대신 「on」이라고 짚었습니다(클라 하니스가 잡음). 착지분은 right_table 한 칸 제거뿐
+```
+
+### 넘기는 것 — 응용 (착지 «뒤», 지시대로)
+
+```
+RUN.md 에 넣을 거절 문장 (영어 — 화면에 그려짐):
+   <이름>: derive.join.right_table is retired - on names the table whose value changes.
+   Set on.table to "<값>" and delete right_table (the Chain tab's convert does both)
+   on.table 이 없는 조인:  <이름>: a join needs on.table - the table whose value changes
+샘플 __comment   「오른쪽 표의 칸을 가져와 on.table 의 행에 씁니다. 규칙 «하나»가 섭니다」 — 이제 둘 다 거짓
+가이드          docs/guide/chain_ingestion_guide.md 의 「오른쪽(참조 쪽) 규칙 이름은 거절됩니다」 — 거절되는 쪽은 이제 :target
+CODE_MAP 이름    REFERENCE_SUFFIX -> COMPANION_SUFFIX(":target") · replay.is_reference_side -> is_companion ·
+                새 rule_shape.modernize_join · JOIN_RIGHT_TABLE_RETIRED · JOIN_NEEDS_SOURCE · JOIN_MODELLED 삭제
+```
+```
+클라   코드 변경 없음. grid.js · ui.js 의 vc.right_table 은 서버가 virtual_columns 를 항상 [] 로 내서 먹이는 쪽 0
+```
+
+### 이 박스에서 본 것 — 운영 주장 아님 (server/config/chain_rules.json 은 gitignore)
+
+```
+옛 모양 조인 3 — inventory_confirmed(켜짐) · aaa(꺼짐, on 없음) · test(꺼짐)
+inventory_confirmed   착지 뒤 부팅에서 거절됩니다(지시대로 «맞는» 것). 변환 한 번이면 on=dt_inventory
+🔴 test (꺼짐)        on=dt_inventory · right_table=dt_log · into=dt_log 로 적혀 있습니다.
+                     옛 뜻대로 변환하면 on=dt_log 가 됩니다 — 적은 분이 on 을 «원천»으로 이미 적어 본 것이라면
+                     변환 버튼이 그 뜻을 «뒤집습니다». right_table 만 지우는 것이 그 뜻일 수 있습니다
+```
+
+### 여쭐 것
+
+```
+① test 선언 — 변환 문(옛 뜻: on = right_table)으로 바꿀지, right_table 만 지울지. 소유자 선언이라 제가 안 건드립니다
+② trigger_columns 를 실행에 거는 날 원천 쪽에 take 칸도 넣을지 — 오늘은 효과가 없어 지시대로 키만 두었습니다
+```
