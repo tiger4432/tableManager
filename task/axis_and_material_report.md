@@ -1,3 +1,46 @@
+> ## [09-25 18:03 디자인] 909ea2052 넷 + 속도 이름 착지 (21194559e) · 다음 서버 영어 묶음을 여쭙니다
+
+### 착지 21194559e
+
+```
+① Ledger     서버  SOURCE_STATES 한 자리에서 상태마다 짧은 이름 + 뜻 — 응답 states(뜻) 그대로 + state_names · 뜻 문장과 안내 한 줄 영어
+             클라  소스 현황 부품의 두 번째 인스턴스 = Ledger 줄 펼침. 한 번 읽어 둘에 그리고 Ledger 줄도 그 답으로(Overview 의 따로 읽기 없앰)
+                   이름을 그리고 토큰은 data-state 열쇠 · Open › -> Ontology Explorer 탭의 소스 현황 절로 스크롤
+             ⚠️ 그 읽기는 census 로 /api/ledger/declaration 을 같이 부릅니다 — 이제 Overview 30 초 폴마다 한 번. 무게는 안 쟀습니다
+② Declarations 서버  영역 이름 영어 — DOMAIN_TITLES 한 표(세 영역이 두 자리씩 짓던 것) · 사유 넷의 이름 vocabulary.reason_names
+                   계약 벡터 · 서버 시험(이름과 사유가 한 쌍씩) · 모듈 머리 「UI 문자열이므로 영어」
+             클라  펼침 줄과 본문 칩이 받은 이름을 그림(묶는 열쇠는 토큰 그대로 · 이름이 안 오면 토큰)
+③ Retroactive  3407f5480 에 착지(「0 running」)
+속도 이름     pacing.json 속도 넷의 label · when 영어 — 열쇠(fast · slow · trickle · background) 그대로
+```
+
+### ④ Explorer 탭 — 셈
+
+```
+클라가 쓴 한국어   0 — 그 탭의 모듈 그래프를 AST 로(주석 빼고) · 카나리아: 클라 전체의 그리는 한국어 1,147
+그 탭의 한국어     전부 서버 답 — /admin/ontology-explorer/* · /api/ledger/declaration · /admin/ledger/sources · /admin/ledger/relations
+서버 모듈(라우트에 닿을 수 있는 한국어 문자열, 로그 빼고)
+   ledger/config_authoring.py 120 · ledger/admin.py 56(이번 줄 뒤) · ledger/config_explorer.py 25
+   그 탭이 import 하는 나머지(setup · setup_bundle · config_drafts · column_stats · 서비스 · 라우터)는 셈 목록 25 위 밖이라 하나씩은 안 셌습니다
+```
+
+### 여쭐 것 — 다음 서버 영어 묶음
+
+```
+1 Explorer 탭   위 셋 201 줄을 영어로 옮길지 · 한 커밋인지 파일마다인지
+2 Declarations 본문   「Show all」 아래 문장이 아직 한국어 — config_resolve_report.py 135 줄(②는 영역·사유 «이름»만이었음)
+3 모집단 낱말    effective · ineffective · rejected 가 아직 토큰으로 그려짐(「40 ineffective」). 시안의 「40 no effect」 처럼 사유와 같은 방법(vocabulary 에 이름)으로 할지
+```
+
+### 게이트
+
+```
+서버 시험   곁 7 파일 225 통과 · 계약 서버 반쪽 38 통과 · 클라 반쪽 OK
+하니스     ledger_sources_panel 89/0 (86 -> 89) · declaration_problem_groups 11/0 · 변이 8/8 (17 -> 19) · overview_board 36/0 · 13/13 (48 -> 49)
+빌드       계약 + 하니스 전수 exit 0
+화면       총괄께 — Ledger 펼침 · Open 이 닿는 자리 · Declarations 펼침 글자 · Retroactive 0 running · Retroactive 탭 속도 이름
+```
+
 > ## [09-25 17:46 디자인] Enrichment 탭 은퇴 착지 (a42f8779a) · 규칙 목록 Kind 첫 칸 · 좌석 넓힘 — 발견 하나
 
 ### 착지 a42f8779a — 서버 한 칸 + 화면 + 은퇴 + 시험
