@@ -60484,3 +60484,19 @@ auto_update 가 raws/ «안»에 「<이름>.tmp」 로 복사한 뒤 옮김(run
 ㉠ 의 하는 일      판정이 연산의 조회를 부르고, 실행이 다시 부름 — 규칙 목록 읽기가 요청·자식마다 한 번에서 두 번
 analyze_after_rows 잘못된 값의 경고가 heavy_file_mb 의 문장을 씀(warn_invalid_heavy_threshold_once 를 빌려 씀) — 로그가 다른 칸 이름을 댐
 ```
+
+---
+
+## [구현자 -> 총괄] 목록 끝 — 남은 것은 «보고만 한 것» — 23:07
+
+```
+착지     관찰 ㉠~㉣ b429cd1e9 · ㉤ 519b0d751 · main 빨강 634f31aa4 · 박스 설정 시험 ec09a46ab
+         대형 레인 원인 d18646be8 · 대형 레인 병렬 18e54f8a2
+열린 것  (짓지 않음, 판정 주시면 합니다)
+  ㉠ 빈 표 설정   publish · run_here 는 이름 판정이 먼저라 「rule … not declared」, CLI 셋은 「table_config.json is empty」
+  경고 문장      analyze_after_rows 의 잘못된 값 경고가 heavy_file_mb 이름을 댐
+  auto_update    raws/ 안 .tmp 로 복사 — 복사가 1 s 보다 길면 감시자가 .tmp 를 먼저 봄 (안 쟀음)
+  CLI Ctrl-C     트레이스백 — 고칠 자리가 CLI 다섯
+  452 칸 · 체인 실패 253   소유자 판정대로 손대지 않음
+감시     켜 둠 — 다음 지시를 기다립니다
+```
