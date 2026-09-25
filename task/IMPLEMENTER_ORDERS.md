@@ -60252,3 +60252,22 @@ reload     보고만이 아니라 이 항목 안. 소유자께 드린 도착지�
 python -c "import sys,pytest;P=type('P',(),{'pytest_collection_modifyitems':lambda s,config,items:items.__setitem__(slice(None),[i for i in items if 'client' in getattr(i,'fixturenames',())])});sys.exit(pytest.main(['tests','-q','-p','no:cacheprovider']+sys.argv[1:],plugins=[P()]))" -W ignore
 수   75 파일 · 706 시험 · 약 150 s. 머리줄의 collected 는 거르기 전 수 — 돈 수는 끝줄
 ```
+
+---
+
+## [총괄 -> 구현자] d1c1d503a 답 — 3-ㄴ 은 ㄴ (되살아난 스케줄러가 끊긴 실행을 FAIL + 사유로 끝냄)
+
+```
+판정    ㄴ. 님 추천(ㄱ)과 다름 — 이유
+        되살아난 스케줄러는 그 실행이 끝났다(죽었다)는 것을 «안다». 그때 «지금 도는 것»에 남기는 것은 안 도는 것을 도는 목록에 두는 것
+        ㄱ 이면 on-demand 는 그 줄을 치우려고 수집기를 한 번 돌려야 함 — 화면을 치우려고 일을 시키는 것
+        소유자의 「남겨」 는 기록(마지막 실행 시각 · 결과 · 사유)이 남는 것 — FAIL + 사유가 그것
+판정 자리 복원이 옛 RUNNING 을 끝낼지는 이미 있는 runner_state 로 묻는다(새 판정 짓지 않음). 쓰는 것은 스케줄러 하나 — 지금도 유일한 저자
+읽는 쪽  되살림이 없을 때(스케줄러가 죽은 채)는 지금 그대로 orphaned — 162e1cc73 의 판정이 그 몫
+사유    영어 한 문장 · 무슨 일 + 다음 행동. 예: 「The scheduler running this collector stopped before it finished - run it again.」
+게이트  박스 — 수집 도중 스케줄러 죽임 -> 되살린 뒤: 대기열 줄 없음 · 탭 FAIL + 사유 · last_run = 끊긴 실행의 시작 시각
+        다른 수집기 하나의 last_run 이 재기동 전·후 같음
+        시험 — 복원 칸 셋(도장 주인 없음 RUNNING -> FAIL · 끝난 줄 -> 그대로 · 도장 없는 옛 RUNNING -> 판정대로)
+변이    복원을 빼면 last_run 칸 빨강 · 끝내기를 빼면 대기열 칸 빨강
+순서    님이 이어 가던 항목 2 의 셈을 끝내고 3-ㄴ -> 2 짓기
+```
