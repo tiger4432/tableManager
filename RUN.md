@@ -161,7 +161,7 @@
 >
 > ```
 > ㉠ 개발자도구 Network 에서 admin-*.js 의 «이름»을 보십시오
->    admin-DEc1-oIR.js  새 번들이 떴습니다
+>    admin-WsUDTkwl.js  새 번들이 떴습니다
 >    다른 이름    옛 번들이 캐시에 남았거나 배포가 안 된 것입니다 — 화면은 안 바뀝니다
 > ㉡ Chain 탭 → inventory_confirmed → on 의 「접힘 · 2」 «한 번»
 >    left · right 칸에 dt_job 이 보이면  고쳐진 것입니다

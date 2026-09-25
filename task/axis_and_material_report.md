@@ -1,3 +1,42 @@
+> ## [09-25 09:37 디자인] 옛 모양 조인에 «To new join shape» 버튼 하나 — 누르면 새 모양이 되고 짝이 섭니다
+>
+> 판정 `6ef4ab1f2` ㉠ 의 클라 몫입니다. 구현자 칸(`7c94fdc65`, `join_needs_new_shape`) 바로 뒤. 커밋 `2a9d8e18c`.
+>
+> ### 한 것
+>
+> ```
+> chain_rule_panel.js convert   서버 칸 join_needs_new_shape 가 참이면 to=unified 「To new join shape」
+>                              아니면 전처럼 문법으로 — 「To unified」 · 「To flat」 (셋 다 영어)
+>                              화면이 right_table 같은 칸을 보고 짐작하지 않습니다 — 판정은 서버의 modernize_join
+> 하니스 chain_rule_user_path  옛 글자 단언을 영어로 · 새 경우 N 둘 (버튼 하나 · 누르면 드라이런이 to=unified 로 먼저)
+>                              제 분기를 끄면 N 이 빨강 — 그때 찍히는 것이 바로 그 결함(flat / To flat · to=flat)
+> ```
+>
+> ### 게이트 — 끝까지, 박스 설정의 «사본»에서 (소유자 파일은 두 번 다 그대로임을 단언)
+>
+> | | 한 것 | 결과 |
+> |---|---|---|
+> | 옛 모양 | 사본의 inventory_confirmed 를 옛 모양으로 되돌림 | 로더가 «이름 대어» 거절 · 세운 규칙 0 · 열기 응답 join_needs_new_shape = true |
+> | 진짜 클릭 | 진짜 ChainRulePanel 로 열고 버튼을 누름 | 버튼 «하나» 「To new join shape」 → onConvert {to: unified, base} |
+> | 변환 | 그 요청 그대로 변환 문을 «쓰기»로 (사본에) | on = dt_inventory · right_table 없음 · into = dt_log |
+> | 로더 | load_chain_rules() | **[inventory_confirmed, inventory_confirmed:target]** — 짝이 «생깁니다» |
+> | 다시 열기 | 변환 뒤 열기 응답 | join_needs_new_shape = false · 버튼은 「To flat」 으로 돌아옴 |
+>
+> ```
+> ⚠️ 확인창(드라이런 → 예 → 쓰기)은 admin.js 의 몫이고 chain_rule_user_path 가 이미 잽니다(M 절).
+>    위 표의 「변환」 은 그 «예» 뒤의 쓰기를 사본에 대고 직접 부른 것입니다
+> 전체   npm run build (prebuild 가 하니스 전수) exit 0 · 번들 같은 커밋
+> ```
+>
+> ### 남은 것 — 이번 판정 밖
+>
+> ```
+> 「열면 거절 사유가 보인다」 는 여전히 안 섭니다 — 열기 응답에 로더의 판정이 없습니다(baf8af00f 에서 올림).
+>    지금은 버튼이 «그 규칙이 옛 모양이다»를 말하는 유일한 자리입니다
+> 「저장」 버튼 글자가 한국어입니다 — 이번 셋에 안 넣었습니다
+> 응용  RUN.md 운영자 절차 「조인마다 그 버튼 한 번」 은 이 착지 뒤 응용 몫입니다
+> ```
+
 > ## [09-25 09:25 디자인] 조인 `on` 착지 뒤 창을 열어 봤습니다 — 게이트가 «두 자리»에서 안 섭니다. 코드 전에 올립니다
 >
 > 지시 `e91b96a28` 의 클라 몫(「창에서 확인만 · 코드 변경은 필요할 때만, 먼저 올린다」)입니다. **코드 변경 0.**
