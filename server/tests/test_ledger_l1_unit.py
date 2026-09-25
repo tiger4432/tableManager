@@ -1041,6 +1041,8 @@ def test_a_scoped_redo_re_reads_the_row_so_a_humans_correction_reaches_the_ledge
     monkeypatch.setattr(ledger_backfill, "_preview_frame", _preview)
     monkeypatch.setattr(ledger_backfill, "_scope_predicate",
                         lambda plan, scope: ("core_wafer", ["C1"]))
+    monkeypatch.setattr(ledger_setup_module, "_require_declared_source",
+                        lambda setup, source: source)
     monkeypatch.setattr(ledger_backfill, "_fetch_v2_lineage_rows", _fetch)
     monkeypatch.setattr(ledger_backfill, "_v2_frame", pd.DataFrame)
     monkeypatch.setattr(ledger_backfill, "_v2_registration_subjects",

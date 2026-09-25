@@ -89,3 +89,134 @@ def test_force_disabled_still_reaches_the_judgment(monkeypatch):
     with pytest.raises(retroactive.RetroactiveRefused) as refused:
         retroactive.validate("enrichment_backfill", {"rule": "enr_off"})
     assert "is disabled" in str(refused.value)
+
+
+# ---------------------------------------------------------------------------
+# 총괄 8e54a261b ④ — the table and ledger operations are judged at the same seat
+# ---------------------------------------------------------------------------
+
+NAME_OPS = {
+    "resolve": ({"table": "no_such_table"}, {"table": "retro_test_target"}),
+    "ledger_backfill": ({"source": "no_such_source"}, {"source": "dt_job"}),
+    "ledger_rescope": ({"source": "no_such_source", "scope_column": "row_id",
+                        "scope_values": "a"},
+                       {"source": "dt_job", "scope_column": "row_id", "scope_values": "a"}),
+}
+
+
+@pytest.fixture(name="shipped_ledger")
+def fixture_shipped_ledger(tmp_path, monkeypatch):
+    """The SHIPPED declaration plus one source the loader refuses (it reads a view), loaded
+    wherever the product calls `load_setup` - never this box's gitignored ontology."""
+    import json
+    from pathlib import Path
+
+    from ledger import setup as ledger_setup
+    from ledger.setup_bundle import load_physical_catalog
+
+    sample = Path(__file__).resolve().parent.parent / "config" / "sample"
+    document = json.loads((sample / "ledger_config.json.sample").read_text(encoding="utf-8"))
+    refused = json.loads(json.dumps(document["sources"]["lot_slot_wafer"]))
+    refused["relation"] = "ledger_events"
+    document["sources"]["reads_a_view"] = refused
+    root = tmp_path / "ontology"
+    root.mkdir()
+    (root / "ledger_config.json").write_text(json.dumps(document), encoding="utf-8")
+    catalog = load_physical_catalog(sample / "table_config.json.sample")
+    real = ledger_setup.load_setup
+    monkeypatch.setattr(ledger_setup, "load_setup",
+                        lambda *a, **k: real(root, catalog=catalog))
+
+
+def test_every_operation_is_judged_before_it_is_recorded():
+    """Canary: no operation is left for its run to be the first to judge its names."""
+    assert sorted(op for op, spec in retroactive.OPERATIONS.items()
+                  if spec["judge"] is None) == []
+    assert set(NAME_OPS) | set(RULE_OPS) | {"withdraw"} == set(retroactive.OPERATIONS)
+
+
+@pytest.mark.parametrize("op", sorted(NAME_OPS))
+def test_an_unknown_table_or_source_gets_one_refusal_at_every_door_and_no_record(
+        retro_env, shipped_ledger, op):
+    unknown = NAME_OPS[op][0]
+    answers = []
+    for ask in (lambda: retroactive.publish(retro_env, op, dict(unknown)),
+                lambda: retroactive.count(retro_env, op, dict(unknown)),
+                lambda: retroactive.run_here(op, dict(unknown), log=lambda *_: None)):
+        with pytest.raises(retroactive.RetroactiveRefused) as refused:
+            ask()
+        answers.append(str(refused.value))
+
+    assert len(set(answers)) == 1, answers
+    assert "no_such_" in answers[0], answers[0]
+    assert _recorded(retro_env) == (0, 0), "a refused name must leave no run and no event"
+
+
+@pytest.mark.parametrize("op", sorted(NAME_OPS))
+def test_a_known_table_or_source_is_still_queued(retro_env, shipped_ledger, op):
+    out = retroactive.publish(retro_env, op, dict(NAME_OPS[op][1]))
+
+    assert out["status"] == "queued"
+    assert _recorded(retro_env)[0] == 1
+
+
+def test_a_refused_source_is_a_name_that_exists_and_still_counts_as_before(
+        retro_env, shipped_ledger):
+    """Only the unknown name is the judgment's: a source the loader refused still gets its
+    count's own answer - not applicable, not zero - and is not refused at the door."""
+    out = retroactive.count(retro_env, "ledger_backfill", {"source": "reads_a_view"})
+
+    assert out["absence"] == retroactive.ABSENCE_NOT_APPLICABLE
+    assert out["extra"]["refused"] == "source_refused"
+
+
+def test_a_refused_sources_rescope_is_refused_by_name_before_its_scope_is_read(
+        retro_env, shipped_ledger):
+    """총괄 06bb8f474 — the scope of a source the loader refused was read first and met its
+    plan's missing driver as an AttributeError; the publish queued it and the child crashed.
+    The one declared-source check comes first now, at every door."""
+    params = {"source": "reads_a_view", "scope_column": "row_id", "scope_values": "a"}
+    answers = []
+    for ask in (lambda: retroactive.publish(retro_env, "ledger_rescope", dict(params)),
+                lambda: retroactive.count(retro_env, "ledger_rescope", dict(params)),
+                lambda: retroactive.run_here("ledger_rescope", dict(params),
+                                             log=lambda *_: None)):
+        with pytest.raises(retroactive.RetroactiveRefused) as refused:
+            ask()
+        answers.append(str(refused.value))
+
+    assert len(set(answers)) == 1, answers
+    assert "refused by the loader" in answers[0], answers[0]
+    assert _recorded(retro_env) == (0, 0)
+
+
+def test_an_empty_table_config_is_said_before_any_name_is_judged(monkeypatch):
+    """The judgments look tables up, so 「nothing is registered」 is asked first - in the CLI's
+    door and the daemon's, the sentence the CLIs print themselves."""
+    from database import crud
+
+    monkeypatch.setattr(crud, "TABLE_CONFIG", {})
+    with pytest.raises(retroactive.RetroactiveRefused) as refused:
+        retroactive.run_here("enrichment_backfill", {"rule": "x"}, log=lambda *_: None)
+    out = retroactive.execute({"run_id": "empty-probe", "op": "enrichment_backfill",
+                               "params": {"rule": "x"}}, log=lambda *_: None)
+
+    assert "table_config.json is empty" in str(refused.value)
+    assert out["status"] == "refused" and "table_config.json is empty" in out["error"]
+
+
+def test_a_table_the_process_has_not_built_yet_is_built_before_it_is_judged(
+        retro_env, monkeypatch):
+    """A CLI process builds its models in the door; the judgment that looks the table up
+    comes after that, or every table reads as 「not initialized」 there."""
+    from conftest import retire_dynamic_model
+
+    retire_dynamic_model("retro_test_target")
+    monkeypatch.setattr(retroactive, "claim", lambda *a, **k: "built-probe")
+    monkeypatch.setattr(retroactive, "_run_in_this_process",
+                        lambda run_id, op, spec, params, log: {"ran": params["table"]})
+
+    out = retroactive.run_here("resolve", {"table": "retro_test_target"},
+                               log=lambda *_: None)
+
+    assert out == {"ran": "retro_test_target"}

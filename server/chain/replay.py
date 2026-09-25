@@ -693,6 +693,25 @@ def count_withdrawable(db, table_name: str, source_name: str, columns: list = No
 # R3 - re-materialise the resolution over cells that already have their layers
 # ---------------------------------------------------------------------------
 
+def resolve_target(table_name: str, columns: list = None):
+    """-> (the table's model, its declared column types), or `ReplayRefused` by name.
+
+    R3's own lookup of the names it is given - asked by the run below and, before anything is
+    recorded, by the admin's params judgment (총괄 8e54a261b ④), so both give one sentence.
+    """
+    from database import crud, models
+
+    model = models.DYNAMIC_TABLES.get(table_name)
+    if model is None:
+        raise ReplayRefused(f"table model '{table_name}' is not initialized")
+    col_types = (crud.TABLE_CONFIG.get(table_name, {}).get("column_types", {}) or {})
+    if columns:
+        unknown = [c for c in columns if c not in col_types]
+        if unknown:
+            raise ReplayRefused(f"column(s) not declared on '{table_name}': {unknown}")
+    return model, col_types
+
+
 def recompute_display_values(db, table_name: str, columns: list = None,
                              row_ids: list = None, apply: bool = False,
                              chunk_size: int = DEFAULT_CHUNK_SIZE, limit: int = None,
@@ -737,19 +756,11 @@ def recompute_display_values(db, table_name: str, columns: list = None,
     `max_report`, and `truncated["changes"]` says whether the list ran out of budget.
     The AuditLog rows are the unbounded record.
     """
-    from database import crud, models
+    from database import crud
 
     from chain import keyset_scan
 
-    model = models.DYNAMIC_TABLES.get(table_name)
-    if model is None:
-        raise ReplayRefused(f"table model '{table_name}' is not initialized")
-
-    col_types = (crud.TABLE_CONFIG.get(table_name, {}).get("column_types", {}) or {})
-    if columns:
-        unknown = [c for c in columns if c not in col_types]
-        if unknown:
-            raise ReplayRefused(f"column(s) not declared on '{table_name}': {unknown}")
+    model, col_types = resolve_target(table_name, columns)
     wanted_cols = set(columns) if columns else None
 
     priority_map = crud.resolve_priority_map(table_name)

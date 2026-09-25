@@ -202,6 +202,13 @@ def test_the_cli_prints_the_three_values_rather_than_the_word_None(monkeypatch, 
     from admin import retroactive
     from tests.support.retro_door import run_without_a_record
     monkeypatch.setattr(retroactive, "run_here", run_without_a_record(database_module.engine))
+    # The door's params judgment asks whether the source is declared (총괄 8e54a261b ④) -
+    # answered here, so this box's gitignored ontology is never read.
+    from types import SimpleNamespace
+
+    import ledger.setup as ledger_setup
+    monkeypatch.setattr(ledger_setup, "load_setup", lambda *a, **k: SimpleNamespace(
+        require_source=lambda source: source))
     monkeypatch.setattr(backfill, "run", lambda engine, **kwargs: {
         "source": "wafer_process", "rows_read": 0, "batches": 0,
         **{k: v for k, v in census.items() if k in backfill.CENSUS_KEYS_A_RUN_CARRIES}})

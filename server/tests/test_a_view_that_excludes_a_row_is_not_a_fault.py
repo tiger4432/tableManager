@@ -62,6 +62,7 @@ def test_a_scope_that_selects_nothing_returns_instead_of_refusing(monkeypatch):
     monkeypatch.setattr(backfill, "_fetch_v2_lineage_rows",
                         lambda read, plan, **k: [])
     monkeypatch.setattr(backfill, "_scope_predicate", lambda plan, scope: scope)
+    monkeypatch.setattr(setup_module, "_require_declared_source", lambda setup, source: source)
     monkeypatch.setattr(store_module, "LedgerStore", lambda engine: object())
     called = []
     monkeypatch.setattr(setup_module, "execute_selected_scoped_batch",

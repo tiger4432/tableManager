@@ -2,6 +2,8 @@
 """총괄 3d03bc819 · 45410384c ③ — an option a CLI passes to a retroactive operation is a
 parameter of that operation, so a run record carries it. The admin form does not offer
 it (`form=False`), and an option not given leaves the operation's own default."""
+from types import SimpleNamespace
+
 import pytest
 
 from admin import retroactive
@@ -21,6 +23,9 @@ WIDENED = {
     "enrichment_confirm": {"limit": 5, "probe_scan_rows": 11, "probe_distinct_values": 13},
     "resolve": {"limit": 5, "chunk_size": 7},
 }
+#: What a ledger judgment finds for any source this file names (총괄 8e54a261b ④).
+_FOUND = SimpleNamespace(require_source=lambda source: source)
+
 REQUIRED = {
     "resolve": {"table": "t"},
     "ledger_backfill": {"source": "s"},
@@ -38,6 +43,9 @@ def _rule_r_is_found(monkeypatch):
     monkeypatch.setattr(replay, "find_rule", lambda name, row_scoped=False: {"name": name})
     monkeypatch.setattr(enrichment_backfill, "load_rule", lambda name, *a, **k: {"name": name})
     monkeypatch.setattr(retroactive, "_enrichment_rule", lambda name: {"name": name})
+    monkeypatch.setattr(replay, "resolve_target", lambda *a, **k: (None, {}))
+    monkeypatch.setattr(ledger_setup, "load_setup", lambda *a, **k: _FOUND)
+    monkeypatch.setattr(ledger_backfill, "rescope_scope", lambda *a, **k: (None, None))
 
 
 def test_the_form_does_not_offer_them_and_the_record_accepts_them():
@@ -89,7 +97,7 @@ def calls(monkeypatch):
         "source": "s", "scope_column": "c", "rows_in_scope": 0, "withdrawn": 0,
         "inserted": 0, "attempted": 0, "deduped": 0, "applied": True}))
     monkeypatch.setattr(ledger_setup, "load_setup",
-                        lambda *args: seen.setdefault("load_setup", []).append(args))
+                        lambda *args: seen.setdefault("load_setup", []).append(args) or _FOUND)
     monkeypatch.setattr(replay, "find_rule", lambda name, row_scoped=False: {"name": name})
     monkeypatch.setattr(replay, "replay_rule", record("replay_rule", {
         "rows_staged": 0, "events_staged": 0, "rows_scanned": 0}))
@@ -143,7 +151,8 @@ def test_the_rest_reach_their_seats(calls):
 
     _run("ledger_rescope", {**REQUIRED["ledger_rescope"], **WIDENED["ledger_rescope"]})
     _run("ledger_rescope", REQUIRED["ledger_rescope"])
-    assert calls["load_setup"] == [("/r",), ()]
+    # Each run twice - its params judgment and the run read the SAME root (총괄 06bb8f474).
+    assert calls["load_setup"] == [("/r",), ("/r",), (), ()]
 
     _run("enrichment_confirm", {**REQUIRED["enrichment_confirm"],
                                 **WIDENED["enrichment_confirm"]})

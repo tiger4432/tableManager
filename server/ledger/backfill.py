@@ -431,8 +431,7 @@ def preview_rescope(engine, setup, source, scope_column, scope_values):
     gone" is a different and more expensive question than "atoms outside this scope", and
     reporting the second under the first's name would be a number that lies.
     """
-    plan = setup.snapshot.source_plans[source]
-    scoped = _scope_predicate(plan, (scope_column, scope_values))
+    plan, scoped = rescope_scope(setup, source, scope_column, scope_values)
     read = engine.raw_connection()
     try:
         rows = _fetch_v2_lineage_rows(read, plan, scope=scoped)
@@ -733,8 +732,7 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
         result.update(zeros)
         return result
 
-    plan = setup.snapshot.source_plans[source]
-    scoped = _scope_predicate(plan, (scope_column, scope_values))
+    plan, scoped = rescope_scope(setup, source, scope_column, scope_values)
     store = LedgerStore(engine)
     result = ({"source": source, "scope_column": scoped[0], "scope_values": len(scoped[1]),
                "withdraw": 0, "remake": 0, "indexed_refs": 0} if withdraw
@@ -1750,6 +1748,20 @@ def _fetch_v2_lineage_page(connection, plan, after, limit):
 def _fetch_v2_lineage_group(connection, plan, page_value):
     return _fetch_v2_lineage_rows(
         connection, plan, group_value=page_value, limit=None)
+
+
+def rescope_scope(setup, source, scope_column, scope_values):
+    """-> (plan, scoped): the one declared-source check, THEN the scope (총괄 06bb8f474).
+
+    Both rescope entries and the admin's params judgment call this, so they refuse in one
+    order with one sentence. A refused source's plan has no driver, and reading its scope
+    first met that as an AttributeError.
+    """
+    from .setup import _require_declared_source
+
+    _require_declared_source(setup, source)
+    plan = setup.snapshot.source_plans[source]
+    return plan, _scope_predicate(plan, (scope_column, scope_values))
 
 
 def _scope_predicate(plan, scope):

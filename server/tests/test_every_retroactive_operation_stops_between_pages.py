@@ -69,6 +69,7 @@ def rescope_doors(monkeypatch):
                             forget_row_refs=lambda relation, ids, source=None: 0)
     monkeypatch.setattr(backfill, "_fetch_v2_lineage_rows", _fetch)
     monkeypatch.setattr(backfill, "_scope_predicate", lambda plan, scope: scope)
+    monkeypatch.setattr(setup_module, "_require_declared_source", lambda setup, source: source)
     monkeypatch.setattr(backfill, "_v2_registration_subjects", lambda plan, frame: None)
     monkeypatch.setattr(backfill, "_preview_frame", lambda e, s, src, plan, frame: {
         "withdraw": len(frame), "remake": len(frame), "refs": list(frame["row_id"])})

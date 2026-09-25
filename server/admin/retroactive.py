@@ -609,12 +609,9 @@ def _checkpoint(control):
 
 def _run_ledger_rescope(db, params, log, control=None):
     from ledger import backfill
-    from ledger.setup import load_setup
 
-    setup = (load_setup(params["ontology_root"]) if "ontology_root" in params
-             else load_setup())
     s = backfill.rescope(
-        db.get_bind(), setup, params["source"], params["scope_column"],
+        db.get_bind(), _ledger_setup(params), params["source"], params["scope_column"],
         params.get("scope_values") or [], apply=True,
         page_rows=backfill.RESCOPE_PAGE_ROWS, checkpoint=_checkpoint(control))
     log(f"[rescope] {s['source']} {s['scope_column']}: rows {s['rows_in_scope']}, "
@@ -787,6 +784,46 @@ def _judge_enrichment_confirm(params):
     _enrichment_rule(params["rule"])
 
 
+def _judge_resolve(params):
+    from chain import replay
+
+    try:
+        replay.resolve_target(params["table"], params.get("columns"))
+    except replay.ReplayRefused as e:
+        raise RetroactiveRefused(str(e)) from None
+
+
+def _ledger_setup(params):
+    from ledger.setup import load_setup
+
+    return (load_setup(params["ontology_root"]) if "ontology_root" in params
+            else load_setup())
+
+
+def _judge_ledger_backfill(params):
+    """Is the source declared - the first step of the run's own `_require_declared_source`.
+    Only that step: a refused or retired source is a name that exists, and its count and
+    run answer it as they did (총괄 8e54a261b ④)."""
+    from ledger.setup import LedgerSetupError
+
+    try:
+        _ledger_setup(params).require_source(params["source"])
+    except LedgerSetupError as e:
+        raise RetroactiveRefused(str(e)) from None
+
+
+def _judge_ledger_rescope(params):
+    """The run's own order - the one declared-source check, then the scope (총괄 06bb8f474)."""
+    from ledger import backfill
+    from ledger.setup import LedgerSetupError
+
+    try:
+        backfill.rescope_scope(_ledger_setup(params), params["source"],
+                               params["scope_column"], params.get("scope_values") or [])
+    except LedgerSetupError as e:
+        raise RetroactiveRefused(str(e)) from None
+
+
 # ---------------------------------------------------------------------------
 # The registry
 # ---------------------------------------------------------------------------
@@ -870,7 +907,7 @@ OPERATIONS = {
                       help="rows per page")],
         "count": _count_resolve,
         "run": _run_resolve,
-        "judge": None,
+        "judge": _judge_resolve,
         "cli": ("server/scripts/chain_replay_cli.py resolve <table> [--columns a,b] "
                 "[--limit N] [--chunk-size N] --apply"),
         # Only the shown column moves, from layers already stored; no layer is created or
@@ -898,7 +935,7 @@ OPERATIONS = {
                       help="the Ledger config root to read")],
         "count": _count_ledger_backfill,
         "run": _run_ledger_backfill,
-        "judge": None,
+        "judge": _judge_ledger_backfill,
         "cli": ("server/ledger/backfill.py --source <source> [--pace slow] "
                 "[--fetch-rows N] [--max-batches N] [--ontology-root <dir>]"),
         "deletes": None,
@@ -925,7 +962,7 @@ OPERATIONS = {
                       help="the Ledger config root to read")],
         "count": _count_ledger_rescope,
         "run": _run_ledger_rescope,
-        "judge": None,
+        "judge": _judge_ledger_rescope,
         "cli": ("server/ledger/backfill.py --source <source> --scope-column <column> "
                 "--scope-values <a,b,c> [--ontology-root <dir>] --apply"),
         # It deletes this source's atoms from the NAMED rows and nothing else:
@@ -1881,10 +1918,12 @@ def execute(payload: dict, log=logger.info, claimed=False) -> dict:
     out = {"run_id": run_id, "op": op, "status": "ok", "result": None, "error": None}
     try:
         spec = operation(op)
-        params = validate(op, (payload or {}).get("params") or {})
         if not crud.TABLE_CONFIG:
             raise RetroactiveRefused(
                 "table_config.json is empty or missing - nothing is registered")
+        # Before `validate`: its judgments look tables up (총괄 8e54a261b ④).
+        models.init_dynamic_models(crud.TABLE_CONFIG)
+        params = validate(op, (payload or {}).get("params") or {})
     except RetroactiveRefused as e:
         out.update(status="refused", error=str(e))
         log(f"[Retroactive] run_id={run_id} REFUSED: {e}")
@@ -1892,7 +1931,6 @@ def execute(payload: dict, log=logger.info, claimed=False) -> dict:
             # Already running in the table - a refusal here must not leave it there.
             _mark_run(run_id, state=RUN_FAILED, finished=True, error=str(e))
         return out
-    models.init_dynamic_models(crud.TABLE_CONFIG)
 
     control = RunControl(run_id if run_id != "?" else None, op=op)
     # 🔴 «집기»다 — `claim` 하나가 잠금 아래에서 관문을 묻고 queued -> running 을 쓴다.
@@ -1941,11 +1979,12 @@ def run_here(op: str, params: dict, log=print) -> dict:
     from database import crud, models
 
     spec = operation(op)
-    params = validate(op, params)
     if not crud.TABLE_CONFIG:
         raise RetroactiveRefused(
             "table_config.json is empty or missing - nothing is registered")
+    # Before `validate`: its judgments look tables up (총괄 8e54a261b ④).
     models.init_dynamic_models(crud.TABLE_CONFIG)
+    params = validate(op, params)
     # The heartbeat is beaten inside the claim, after the gate passes and before the stamp:
     # `runner_identity` names it, and a refused CLI must not overwrite a running one's.
     run_id = claim(op, params, beat_as=RUN_HERE_HEARTBEAT)
@@ -1976,14 +2015,15 @@ def run_claimed(run_id: str, log=print) -> dict:
         session.close()
     try:
         spec = operation(op)
-        params = validate(op, params)
         if not crud.TABLE_CONFIG:
             raise RetroactiveRefused(
                 "table_config.json is empty or missing - nothing is registered")
+        # Before `validate`: its judgments look tables up (총괄 8e54a261b ④).
+        models.init_dynamic_models(crud.TABLE_CONFIG)
+        params = validate(op, params)
     except RetroactiveRefused as e:
         _mark_run(run_id, state=RUN_FAILED, finished=True, error=str(e))
         raise
-    models.init_dynamic_models(crud.TABLE_CONFIG)
     heartbeat.beat(RUN_HERE_HEARTBEAT, force=True)
     _restamp_runner(run_id, runner_identity())
     return _run_in_this_process(run_id, op, spec, params, log)
