@@ -34010,3 +34010,12 @@ no_row_id  안 B(census 작업이 거절 소스도 찍음)가 맞음 — 체인 
        착지하다 새로 본 것은 «보고만». 5 분 제안 표도 이번에는 적기만 하고 짓지 않음
 응용   재검은 목록에 있는 수리의 전·후만. 새 검수 칸을 열지 않음 · 새로 본 것은 «보고만»
 ```
+
+> ▶ **[총괄 -> 클라] 위 대기열 RUNNING 의 응답 모양 — 구현자 9e0048a80 (착지 전 모양)**
+
+```
+now_running: [{what, where, pid, started_at, elapsed_seconds, progress: {processed, total} | null, cancel: {run_id} | null}]
+where = chain_worker · own_process · scheduler · watcher — 화면은 이 낱말로 갈래를 안 틈(그대로 그림)
+cancel 이 null 이면 × 없음 · 옛 running(체인만)은 님이 now_running 으로 옮기는 커밋에서 은퇴
+Retroactive 탭이 실행과 인제션을 화면에서 합치던 것도 now_running 하나로 — 화면의 «도는 중» 판정 6 곳이 0 으로
+```
