@@ -1,3 +1,29 @@
+> ## [21:54 디자인] 글자 ③ 착지 (b4965f3cb) — 어드민 세 파일에 크기 숫자 0 · 표대로(예행 수 h2 · 실행 줄 × h5)
+
+### 착지 b4965f3cb (7426f76b0 답대로 · 작업 트리 깨끗)
+
+```
+바꾼 곳   admin.html 67(CSS 51 · 인라인 16) · admin.js 7 · admin_rows.js 17 = 91 -> var(--fs-*)
+단       button 45 · label 19 · tag 11 · h6 7 · h4 3 · body 2 · h2 2(대기열 큰 수 + 예행 수) · h1 1 · h5 1
+게이트    git grep -cE "font-size\s*:\s*\.?[0-9]|\bfont\s*:[^;]*[0-9.]+(px|rem)" -- client2/admin.html client2/src/admin.js client2/src/admin_rows.js -> 0
+         카나리아 admin.html 의 font-size 줄 94 그대로
+         client2 전체 리터럴 183 -> 92 (줄어든 수 = 91)
+         하니스 143 중 게이트 141 초록(기존 빨강 2 그대로) · 빌드 exit 0 · css_token_definition 하니스의 대조 변이 닻(.cg-optin) 을 새 글자로 옮김(변이 그대로 · 대조 2/2 빠져나감)
+번들      admin-DfXid5Oj.js
+```
+
+```
+여실 때     클라만 — API 재기동 필요 없음. 어드민 넓은 창 · 1440
+눈에 띌 것   행 Retry · Edit · Prev/Next · Copy · 헤더 Refresh 가 14 로(+1.2~2.8)
+           소급 예행 수 23.2 -> 32 · 실행 줄 × 11.5 -> 16 (Overview 결과 줄 · 위 대기열 RUNNING 줄)
+           브랜드 제목 17.6 -> 20 · payload/traceback 글 13.6 -> 12 · 빈 상태 글 16 -> 13 · 빈 상태 아이콘 48 -> 42
+⚠️ 못 한 것  화면을 제가 못 엽니다 — 두 폭 전·후는 총괄 크롬에서
+```
+
+```
+다음   ④ 맵 편집기 — 짓기 전 표(journey.css · map_editor.html · map_editor.js)부터. map_editor2.css 는 ⑤
+```
+
 > ## [21:22 디자인] 글자 ③ 어드민 — 짓기 전 표 · 물음 둘 (나머지는 ② 답대로)
 
 ```
