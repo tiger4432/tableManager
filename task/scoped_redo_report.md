@@ -59946,3 +59946,59 @@ confirm   enrich_in_chain_probe · limit 2,200 (페이지 1,000 · 1,000 · 200)
 ```
 3 앱 정지 (내림 · 올림 두 번)
 ```
+
+---
+
+## [구현자 -> 총괄] 앱 정지 게이트 (3f6318ca5 · 두 번) · 박스 데이터에 쓴 측정 — 되돌리는 법 (6a2070edd)
+
+> 재기동함 — 앱 전체 두 번 (런처 Ctrl+C -> run_app.bat --server-only 새 창). 감시자의 BOX down/up 은 이것
+
+### 앱 정지
+
+```
+전     runs in flight: None None · gate: open · chain queue depth: 0 · loops alive: {'web': True, 'watcher': True, 'chain': True, 'outbox_purge': True, 'listen': True, 'replay_sweep': True, 'ledger_followup': True, 'ledger_census': True, 'scheduler': True, 'postgres': True, 'retroactive_run': None} · health: ok {'chain': 'ok', 'graph': 'off_roster', 'ledger': 'off_roster', 'scheduler': 'ok', 'watcher': 'ok'}
+1 번   도는 소급 없이 내림 -> 새 런처(새 코드)로 올림 — 멈춤 Ctrl+C 뒤 앱 프로세스가 모두 내려감 · 새 창에서 health 정상
+2 번   어드민 resolve(dt_inventory) 를 띄우고 자식에서 도는 중에 런처에 Ctrl+C
+       running in child pid 36148 (runner retroactive/DESKTOP-OVKV3HK/36148) �� processed 550 �� heartbeat file True
+       app pids before: [20440, 27172, 29192, 33284, 33812, 36148]
+       1.2s  run=running processed=4450 child_alive=True heartbeat_file=True app_processes=2
+       2.5s  run=cancel_requested processed=4550 child_alive=True heartbeat_file=True app_processes=2
+       6.5s  run=cancelled processed=4550 child_alive=True heartbeat_file=True app_processes=2
+       7.8s  run=cancelled processed=4550 child_alive=False heartbeat_file=False app_processes=0
+       FINAL run 5e431b58e0f8 state=cancelled processed=4550 error=-
+후     runs in flight: None None · gate: open · chain queue depth: 0 · loops alive: {'web': True, 'watcher': True, 'chain': True, 'outbox_purge': True, 'listen': True, 'replay_sweep': True, 'ledger_followup': True, 'ledger_census': True, 'scheduler': True, 'postgres': True, 'retroactive_run': None} · health: ok {'chain': 'ok', 'graph': 'off_roster', 'ledger': 'off_roster', 'scheduler': 'ok', 'watcher': 'ok'}
+```
+
+```
+됨     소급 자식은 감독자의 취소로 «다음 페이지»에서 멈춤 -> 기록 cancelled · 심박 파일 지워짐 · 그다음 자식 끝남
+다름   「그 뒤에 나머지 프로세스가 내려감」 은 아니었음 — API · 감시자 · 스케줄러 · 체인 워커는 Ctrl+C 1.2 초 안에 먼저 내려감
+       런처 콘솔의 Ctrl+C 는 그 콘솔의 «모든» 프로세스에 닿아서 넷이 각자 멈춤. 감독자의 순서는 그 넷에 안 걸림
+       소급 자식은 Ctrl+C 로 안 죽고 감독자의 취소로 멈춤 — 데이터 쪽 성질(취소된 기록 · 온전한 페이지)은 그대로
+       넷이 먼저 내려가도 되는지는 총괄 판정 — 그 넷은 각자 자기 멈춤 길을 탐(기록을 남기는 일 없음)
+RUN.md 「런처가 다시 떠야 먹습니다」 줄 지움
+```
+
+### 박스 데이터에 쓴 측정 (오늘 밤 제 것, 실행 기록에서 셈)
+
+| 실행 | 무엇을 | 쓴 것 |
+|---|---|---|
+| resolve (dt_inventory) 둘 | 표시값 재계산 | 바뀐 칸 0 |
+| chain_replay (lot_event_to_lot_slot_wafer) | 체인 다시 태움 | lot_slot_wafer 에 바뀐 행 0 |
+| 수집기 run-now (generate_dt_log.py) 둘 | 합성 데이터 생성 | dt_log 새 행 0 |
+| ledger_rescope (lot_slot_wafer · lot 30) 둘 | 원자 걷고 다시 씀 | 원자 수 그대로(37,335) — 같은 원자가 새 줄로 |
+| enrichment_confirm 넷 | 후보 확정 | **dt_inventory 에 452 칸** — 첫 실행만, 나머지 셋은 0 |
+
+```
+그 452 칸    cell_sources · table dt_inventory · source_name enrichment_auto_confirm(_partial_key) · ingested_at 20:34:51.984 ~ 20:34:52.007
+                거래 id 하나(enrichment_sweep_…) — 이력 화면에 한 줄로 보임
+되돌리는 법      그 452 줄을 지우고 그 칸의 표시값을 다시 계산(resolve)하면 오늘 전으로 돌아감
+                withdraw 연산은 «그 소스의 칸 전부»를 걷음 — 오늘 전부터 있던 12 칸까지. 오늘 것만 고르는 문은 없음
+                그래서 지금 문으로는 정확히 못 되돌림 — 짓지 않음. 판정은 아침에
+앞으로           박스 데이터에 쓰는 측정은 먼저 채널에 한 줄(무엇을 · 몇 칸 · 되돌리는 법)
+```
+
+### 다음
+
+```
+4 검수 빨간 칸 ② 형 변환 거절 문장 하나 -> ① 대형 레인 원인만
+```
