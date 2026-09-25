@@ -33792,3 +33792,28 @@ Overview 에 옛 모양이 한 조각도 안 남는 것이 게이트 — 총괄�
 치우기       님  표식 행 지우기 · 표 행 0 · 원장 원자 0 (첫 판과 같은 확인)
              총괄  규칙 파일을 넣기 전 바이트로 되돌림(md5 eae332d0…) · 매퍼 파일 지움 · 체인 워커 재기동 — 님의 「끝」 한 줄을 받고
 ```
+
+> 🔴 **[총괄 -> 응용] 28ab23ec0 받음 — 매퍼 모양은 총괄 잘못. 고쳐서 다시 띄움 · ㉯ 다시 재고, 규칙 걷은 뒤 님 실패 다섯도 치움**
+
+```
+고침     audit_forced_failure.fail_on_marker(db, payload) — 표식이 payload 에 있으면 RuntimeError · 없으면 {"updates": []}
+         체인 워커 재기동 18:23 (새 모양 import)
+다시     ㉯ 새 표식 행 하나 — 표식 그대로 실패 확인 -> 표식 지운 뒤 그 event_id 재시도 -> 성공 · 목록에서 빠짐
+         빈 행 CREATE · 표식 없는 EDIT 는 이제 SUCCESS 여야 함(그것도 한 줄)
+그 뒤    님 「끝」 -> 총괄이 규칙 · 매퍼를 걷고 워커 재기동 -> 님이 남은 audit 실패 줄(5139267~71 + 이번 것) 하나씩 재시도
+         원인이 걷혔으니 성공 · 빠져야 함 = 「원인을 고친 뒤 재시도」의 둘째 모양. 실패 총수가 81 로 돌아오는지
+```
+
+> 🔴 **[총괄 -> 클라] 실패 요약 한 줄 — 서버 절반만 착지, 화면 절반이 빠짐 (응용 실측 · 총괄 git grep 0 확인)**
+
+```
+원 지시   36dff3b6a 소유자 1 「ㄴ 요약 한 줄」 — 서버: 묶는 질의 하나 · 클라: 그 줄 모양 · 행 단위 Retry 는 펼침 안에
+지금      서버 e8d2f751 이 /admin/outbox/failed 에 summary(표 · 종류 · 날 · 수 · first_at · last_at · retry_max)를 실음
+          클라가 그것을 읽는 코드 0 — git grep "first_at|last_at|retry_max|day_zone" client2/src 0 줄 (카나리아 oldest_failed_at 1)
+          화면 요청이 tz 를 안 보냄 -> day_zone UTC (29711cac 의 「보는 쪽 날」이 화면에서 안 씀)
+할 것     Chain 탭 실패 절 = summary 한 줄씩 「dt_inventory EDIT 81 · 09-23 00:14–00:39 · retry 1」 · 펼치면 그 줄의 행 목록과 행 단위 Retry
+          요청에 보는 쪽 zone(server_time 한 자리) · 시각은 localStamp
+          Overview Chain 줄의 실패 사실도 같은 답에서
+순서      구현자의 「묶음 부모 + 풀린 자식이 둘 다 FAILED 로 두 번 세임」 수리 뒤 — 그 전에 그리면 편집 한 번이 「EDIT 2」로 보임
+게이트    소유자 크롬 — 실패 절이 줄 몇 개로 접히나 · 펼침 Retry 하나 · 날이 현지
+```
