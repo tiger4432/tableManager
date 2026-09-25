@@ -60090,3 +60090,94 @@ RUN.md 「런처가 다시 떠야 먹습니다」 줄 지움
 ```
 관찰 다섯 -> 박스 설정 시험 -> 대형 레인 병렬
 ```
+
+---
+
+## [구현자 -> 총괄] 관찰 다섯 — 짓기 전 셈 (d34247b3d · 77ad03ea3) — 21:23
+
+결론 먼저: ㉠㉡㉢㉣ 은 작아서 한 커밋으로 짓습니다. ㉤ 은 지시의 전제 하나가 코드에서 성립하지 않아 **멈추고 여쭙니다**.
+
+### ㉠ 없는 규칙 이름 — CLI 는 기록 전 거절, publish 는 자식에서 failed
+
+```
+연산 7 개 중 규칙 이름을 받는 것 3 개 — chain_replay · enrichment_backfill · enrichment_confirm
+CLI 셋이 기록 «전»에 그 연산의 조회를 부름 (replay.find_rule · backfill.load_rule · 선언 목록)
+publish 는 validate 만 부름 — 이름이 있나는 안 물음. 같은 조회를 자식의 실행 함수가 부르다 failed
+원장 두 연산(소스) · withdraw · resolve(표) 는 CLI 도 미리 안 물음 -> 두 문이 같은 답. 이 결함 아님
+짓는 것  validate(publish · count · CLI 의 run_here · 데몬의 claimed 실행이 모두 부르는 한 자리)가
+        그 연산의 «자기 조회»를 부름. 레지스트리에 연산마다 한 칸 — count · run 과 같은 모양
+        withdraw 의 보호 소스 거절(지금 validate 안의 op == "withdraw" 갈래)도 그 칸으로 옮김
+        -> 연산별 판정이 «두 기제»가 되지 않게. 문장은 그대로
+거절 문장 조회가 쓰는 그 문장 그대로 (ReplayRefused · BackfillRefused 를 RetroactiveRefused 로 감쌈 -> 400)
+```
+
+### ㉡ 관문 문장 「progressing for 0.0s」
+
+```
+그 수는 «마지막 진행에서 지난 초»인데 문장이 「그만큼 진행 중」으로 읽힘. 문장 한 곳 (gate_refusal)
+짓는 것  「is progressing, last progress 0.0s ago」 · 진행 보고가 없으면 「no progress reported yet」
+그 문장을 읽는 시험 0 (git grep 「is alive」·「cancelling stops」 tests/ client2/src)
+```
+
+### ㉢ CLI 실행의 requested_by 가 비어 있음
+
+```
+CLI 의 실행은 전부 run_here 를 지남 — 부르는 곳 5 곳 (시험 빼고 git grep)
+행을 새로 쓰는 자리는 claim 의 「run_id 없음」 갈래 하나 — 거기서 OS 사용자 이름을 적음
+OS 사용자 이름을 못 읽으면 지금처럼 비워 둠 (지어낸 작성자 금지 — publish 의 주석과 같은 규칙)
+```
+
+### ㉣ 매퍼 로그 「upserted into」
+
+```
+map_enrichment_dedup 은 갱신 목록을 «짓기만» 함 — 쓰는 것은 부른 쪽 (체인 워커 · 소급의 apply)
+미리 세기(apply 아님)에서도 같은 줄이 「upserted」 -> 「built for」 로. 한 줄
+```
+
+### ㉤ 거절된 소스의 셈이 굳음 — 🔴 멈춤
+
+```
+지시의 전제   「거절 소스는 이미 있는 갈래(_loader_refusal)가 스캔 없이 source_refused 를 찍음」
+코드         셈(measure_row_census)은 그 갈래로 거절 도장을 «만듦» — 여기까지는 맞음
+             그런데 measure_and_store 가 저장 «전»에 지문(cursor_translator_version)을 부르고,
+             거절된 소스는 지문 재료가 없어 LedgerSetupValidationError 로 터짐 (박스에서 재현함)
+             -> 거름만 넓히면 거절 소스마다 매 바퀴 「failed」 경고 한 줄, 굳은 셈은 그대로
+저장 쪽      write_row_census 는 행을 «처음 만들 때» 지문을 같이 적어야 함 (그 독스트링: 지문 없는 셈 =
+             「돈 적 없는데 잰 것처럼 보이는 소스」). 충돌 시엔 지문을 안 건드림
+거름 자리    두 곳 — 체인 워커의 셈 바퀴(run_ledger_row_census) · CLI 의 measure_every_source. 둘 다 plan.runs
+```
+
+박스 (읽기만, 이 박스의 선언):
+
+```
+선언된 소스 15 · 도는 소스 6 · 로더가 거절 9 (지시의 넷보다 많음 — 이 박스 선언 상태)
+거절 소스의 등록 행 9 / 9 — 전부 오늘 한 번 재어진 뒤 굳음
+   그중 no_row_id 도장 4 · 거절 도장 «없이» 옛 수가 남은 것 5
+   -> 뒤의 5 는 운영자 화면에 «남은 행 수»로 보임 — 로더가 거절한 소스인데
+```
+
+여쭐 것 — 저장을 어떻게 할지 (셋 다 크기 작음, 안 쟀음: 시험 수)
+
+| 안 | 무엇 | 좋은 점 | 위험 |
+|---|---|---|---|
+| ㄱ | 거절 셈은 «있는 행만» 갱신, 지문 안 부름. 행이 없으면 안 만듦 | 「돈 적 없는 소스」는 계속 행 없음(참). 지문 규칙 안 건드림 | 저장이 두 문장(삽입+갱신 / 갱신만) |
+| ㄴ | 읽는 쪽(/api/ledger/declaration)이 거절 소스엔 저장된 셈 대신 로더 문장을 보임 | 저장 무변 · 바퀴 무변 | 같은 물음(이 소스의 셈)에 답하는 자리가 둘 |
+| ㄷ | 거름을 넓히고, 지문이 터지는 것을 그 소스의 «거절»로 저장 | 한 바퀴 한 모양 | ㄱ 과 같은 저장 문제를 다시 만남 |
+
+```
+추천  ㄱ — 거절은 «셈의 답»이고, 셈의 답을 저장하는 자리는 하나. 지문은 «처음 만들 때»만 필요
+여쭐 것  ㄱ 로 가도 되나 · 거름 두 곳을 한 함수로 접어도 되나(지금 두 곳이 같은 plan.runs 를 각자 씀)
+```
+
+### 곁 — CLI Ctrl-C 트레이스백
+
+```
+안 짓습니다. 트레이스백은 각 CLI 의 main 에서 나옴 — 고칠 자리가 CLI 수만큼(5) 이라 «한 줄»이 아님
+run_here 한 곳에서 접으면 Ctrl-C 가 「취소」와 같은 말이 됨 — 그건 님 판정 몫
+```
+
+### 다음
+
+```
+㉠㉡㉢㉣ 한 커밋 -> ㉤ 판정 대기 동안 박스 설정 시험 셋
+```
