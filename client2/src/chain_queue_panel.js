@@ -53,9 +53,17 @@ import { NO_TIME, localShort, localStamp } from './server_time.js';
 import { RunLines } from './run_lines.js';
 import { buildProgressCell } from './retroactive_view.js';
 
+// 🔴 총괄 8e331ca17 — each item carries `state` (running · orphaned · unknown), the server's one
+//    judgment (utils/heartbeat.runner_state). The ONE place this file asks it: the count, the
+//    longest and a line's motion all go through `isRunningItem`. An item without the key is an
+//    older server's, whose every item was running — it stays counted.
+const STATE_RUNNING = 'running';
+export const isRunningItem = (item) => !item || !('state' in item) || item.state === STATE_RUNNING;
+
 /**
- * One `now_running` item -> a `RunLines` row. `where` is the server's word, drawn as it comes
- * (5996d7f54: the screen never branches on it); `cancel` null means no ×.
+ * One `now_running` item -> a `RunLines` row. `where` and `state` are the server's words, drawn
+ * as they come (5996d7f54: the screen never branches on `where`); `cancel` null means no ×.
+ * A line whose owner is gone does not move — it must not draw like a running one.
  */
 export function runLineRow(item) {
   const r = item || {};
@@ -70,8 +78,9 @@ export function runLineRow(item) {
     what: { text: r.what ? String(r.what) : ABSENT },
     detail: where ? { text: where } : null,
     progress: { ...cell, elapsed: known ? formatAge(secs) : '' },
+    stateName: r.state ? { text: String(r.state) } : null,
     cancel: Boolean(runId),
-    moving: true,
+    moving: isRunningItem(r),
     finished: false,
     stopping: false,
   });
@@ -284,15 +293,16 @@ export function queueView(payload, opts = {}) {
   //    chain-only `running` is no longer read here. The count still asks `loop_seen_via` ALONE
   //    (lead 36dff3b6a): an unseen chain loop adds nothing to the seat, so its count is blind,
   //    not 0. An older server without the field has no Running cell either.
+  //    Only items whose `state` is running are counted and aged (8e331ca17); the others stay lines.
   const nowRunning = Array.isArray(payload.now_running) ? payload.now_running : null;
-  const running = payload.loop_seen_via && nowRunning ? nowRunning.length : null;
+  const running = payload.loop_seen_via && nowRunning ? nowRunning.filter(isRunningItem).length : null;
   // 🔴 C-61 (소유자 09-10: 「가짜 running 3개 남아있음」). A COUNT CANNOT SEPARATE 「걸린 것」
   //    FROM 「가짜」 — what separates them is AGE, so the longest rides beside the count and
   //    every item's line carries its own elapsed time (`elapsed_seconds`, the seat's).
   // ⚠️ 세 상태 그대로: 나이가 읽히면 값 · 안 읽히면 «안 그림»(0 으로 접지 않습니다 —
   //    「방금 시작함」은 「나이를 모름」의 반대 사실입니다) · 목록이 비면 아무것도 없음.
   const runningItems = nowRunning || [];
-  const runningAges = runningItems
+  const runningAges = runningItems.filter(isRunningItem)
     .map((r) => Number(r && r.elapsed_seconds))
     .filter((v) => Number.isFinite(v) && v >= 0);
   const longestRunning = runningAges.length ? formatAge(Math.max(...runningAges)) : null;

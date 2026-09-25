@@ -724,6 +724,40 @@ console.log('\n[8] the owner split, and unknown is not chain');
     `${MINUTE_SECONDS - 1}s`, formatAge(MINUTE_SECONDS - 1));
 }
 
+// ═══ ST: a run whose owner is gone must not draw like a running one (lead 8e331ca17) ═══════
+// The fixture carries all three server words, so a count, an age or a motion that ignored
+// `state` gives a different answer on EVERY assertion below — the oldest is the orphan.
+{
+  const MIXED = [
+    { what: 'rule_a', where: 'chain_worker', pid: 7, elapsed_seconds: 30, progress: null, cancel: null, state: 'running' },
+    { what: 'Recompute shown values (R3)', where: 'own_process', pid: 42, elapsed_seconds: 3000,
+      progress: { processed: 10, total: 100 }, cancel: { run_id: 'run-1' }, state: 'orphaned' },
+    { what: 'lot_master/collect', where: 'scheduler', pid: 9, elapsed_seconds: 600, progress: null, cancel: null, state: 'unknown' },
+  ];
+  const BODY = (items) => ({ waiting: 0, oldest_waiting_seconds: null, waiting_by_owner: [],
+    retried_among_waiting: 0, loop_seen_via: 'this_process', now_running: items });
+  const v = queueView(BODY(MIXED));
+  const run = numberOf(v, 'running');
+  eq('ST1 only a running item is counted', run.value, '1');
+  ok('ST2 ...and only its age is the longest (not the orphan\'s 50m)', run.sub.includes('30s') && !run.sub.includes('50m'), run.sub);
+  eq('ST3 every item still has its line', v.runningRows.length, 3);
+  eq('ST4 each line carries the server\'s state word as it comes', v.runningRows.map((r) => r.stateName && r.stateName.text),
+    ['running', 'orphaned', 'unknown']);
+  eq('ST5 only the running line moves', v.runningRows.map((r) => r.moving), [true, false, false]);
+  eq('ST6 × is still where the seat names a run, whatever the state', v.runningRows.map((r) => r.cancel), [false, true, false]);
+  const d = makeDoc();
+  const host = d.createElement('div');
+  new ChainQueuePanel(host, { doc: d }).render(BODY(MIXED));
+  eq('ST7 drawn: the two that do not run are painted as not moving',
+    byClass(host, 'run-line').filter((n) => String(n.className).split(/\s+/).includes('is-waiting')).length, 2);
+  ok('ST8 drawn: the words reach the screen', ['running', 'orphaned', 'unknown'].every((w) => host.textContent.includes(w)), host.textContent.slice(0, 200));
+  eq('ST9 all three orphaned: no Running is 0, not blind', numberOf(queueView(BODY(MIXED.map((m) => ({ ...m, state: 'orphaned' })))), 'running').value, '0');
+  const old = queueView(BODY(MIXED.map(({ state, ...m }) => m)));
+  eq('ST10 an older server\'s items (no state key) are all counted, as before', numberOf(old, 'running').value, '3');
+  eq('ST11 ...and all move, with no state word invented', [old.runningRows.map((r) => r.moving), old.runningRows.map((r) => r.stateName)],
+    [[true, true, true], [null, null, null]]);
+}
+
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
 console.log(`ASSERTIONS ${pass + failures.length} ${failures.length}`);
 process.exit(failures.length === 0 ? 0 : 1);
