@@ -60691,3 +60691,5 @@ ledger_rescope   judge = backfill.rescope_scope — _require_declared_source 뒤
 되돌리기   git revert af7dc1731 뒤 같은 셋 재기동
 같이      항목 3 전 재현용 탐침 수집기를 스케줄러가 기동 때 읽게 먼저 둠 (e5e123256 에 알린 것)
 ```
+
+> 정정 (083886e00) — 그 알림의 시각은 06:13 이 아니라 06:33, 「같이 … 탐침 수집기」 줄은 이번 재기동과 무관(앞 알림의 줄이 남음). 채움 스크립트의 치환이 줄 끝(CRLF) 때문에 안 먹음
