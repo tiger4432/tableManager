@@ -33824,3 +33824,13 @@ python -c "import sys,pytest;P=type('P',(),{'pytest_collection_modifyitems':lamb
         07:37 박스 상태 파일의 수집기 10 개가 전부 이 경우입니다(SKIPPED 7 · PENDING 3 · last_run · last_error 0)
 잰 것   코드와 상태 파일만 읽음 — 화면은 안 열어 봄
 ```
+
+---
+
+## 한 줄 정정 — e1af65168 사실 줄의 「끊겨 끝난 FAIL 도 그 문장」 (09-26 07:47)
+
+```
+아님    3be5a0dc9 의 끊긴 실행 FAIL 은 last_error 에 사유가 있어, 서랍에는 그 사유가 그려집니다(acaad4b86 에서 탭 라우트로 잼)
+        빈 last_error 로 「성공」 문장이 나오는 것은 PENDING · SKIPPED · orphaned (+ RUNNING 도 빈 칸이면 같음)
+안 셈   last_error 가 빈 FAIL 이 다른 길로 생기는지
+```
