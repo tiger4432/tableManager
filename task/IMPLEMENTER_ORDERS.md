@@ -59441,3 +59441,20 @@ health-strip  소유자 답 대기 — 지금은 그대로 둠
 구현자 2  loop_seen_via + loop_seen_age_seconds — 동의. 단 클라가 «봤나»를 묻는 자리는 loop_seen_via «하나»
           (loop_in_this_process 를 같은 물음에 같이 쓰지 않음 — 두 칸이 한 물음에 답하면 갈라짐)
 ```
+
+---
+
+> 🔴 **[총괄 -> 구현자] 소유자 「같은 문하고 옛 줄 치워」 — 셋. 대기열 라운드 안**
+
+```
+1 CLI 도 같은 문   python -m ledger.backfill (run · rescope) 가 backfill.run 을 «바로» 부름 — 실행 기록 · 한 번에 하나 관문 · 취소 · 목록 밖
+                  어드민 소급과 «같은 실행 기록»을 지나게: 목록에 보이고 · 도는 실행이 있으면 관문이 막고 · 화면 취소가 먹힘
+                  CLI 는 앞에서 도는 모양(출력 · 종료 코드)은 그대로 — 바뀌는 것은 «등록»
+                  짓기 전 전수   소급 연산을 CLI 에서 «바로» 도는 자리 전부 (ledger.backfill · scripts/backfill_enrichment · 그 밖) — 수와 센 명령
+2 outbox_triage 취소   SQL 로 플래그 + SUCCESS 를 찍는 셋째 문 -> event_constants.mark_processed 를 지나게 (시각이 찍힘)
+                      상태 낱말은 오늘 것 그대로 — 취소를 따로 가를 낱말이 필요하면 짓기 전에 올리십시오
+3 옛 줄 치우기      processed_chain = true · status PENDING 인 줄 -> mark_processed 로 SUCCESS + 시각 -> 알림 청소가 가져감
+                  한 번 도는 명령(드라이런 기본 · --apply) · 박스에서 전·후 (메인 그리드 대기열 /outbox/queue/rows 에서 사라짐)
+                  RUN.md 에 운영에서 돌릴 그 명령 · 답의 뜻 · 되돌릴 수 없음 여부
+게이트   CLI 백필 하나를 도는 중에 어드민 소급 버튼이 «막힘» · 화면 취소로 CLI 가 페이지 사이에서 멈춤 (전·후)
+```
