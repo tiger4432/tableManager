@@ -60547,3 +60547,34 @@ ledger_rescope    source · scope_column rescope 는 source_plans[source] (이�
 ㄴ        judge 는 source 만. 칸 이름은 지금처럼 실행에서 판정(게시는 받고 자식이 failed)
 그동안     ㄴ 까지 짓고 있겠습니다. ㄱ 이면 한 줄 더해 같은 커밋
 ```
+
+---
+
+## [구현자 -> 총괄] 09-26 항목 3 — 짓기 전 셈 · 여쭐 것 둘 (8e54a261b ③) — 06:01
+
+```
+RUNNING 을 적는 곳   하나 — run_auto_update.execute_collector (상태 파일 scheduler_status.json 에 last_status)
+                   그리고 «되살리는» 곳 하나 — 스케줄러가 수집기를 다시 읽을 때(기동 · SYSTEM_RELOAD) 파일의 last_status 를 그대로 복원
+                   -> 스케줄러가 수집 도중 죽으면 새 스케줄러가 옛 RUNNING 을 복원해 계속 RUNNING (주문의 ③ 그대로)
+읽는 곳            runtime/running._collectors (대기열의 now_running) · GET /admin/auto-update/status (Auto Update 탭 배지)
+                   admin.js 의 FAIL 셈(RUNNING 안 봄) · /health 는 수집기를 «안 읽음»
+심박               수집은 자기 스레드, 틱 스레드가 5 s 마다 heartbeat("scheduler") — 수집 도중에도 뜀 ✓
+판정 함수           admin/retroactive._runner_state · runner_identity -> utils/heartbeat 로 옮김(심박을 읽는 함수라서)
+                   retroactive 는 같은 이름을 import 해서 씀 — 호출자·시험 무변
+도장               수집 시작에 collector.runner = runner_identity() -> 상태 파일에 "runner" (scheduler/host/pid)
+판정은 읽는 쪽      죽은 스케줄러는 못 적으므로 — running._collectors 와 /admin/auto-update/status 가 같은 함수로
+```
+
+여쭐 것
+
+```
+① /health   지금 수집기를 전혀 안 보임. 여기에 새로 넣을까요 — 넣으면 새 칸, 안 넣으면 대기열 · Auto Update 탭 둘
+② 낱말 자리  now_running 항목에 상태 칸이 없음 (소급의 고아 실행도 now_running 에선 그냥 한 줄)
+           추천: 항목에 "state" 칸 하나 — 같은 판정 함수의 답(running · orphaned · unknown), 소급·수집기 둘 다
+           Auto Update 탭은 last_status 를 읽는 쪽이 판정해 "orphaned" 로 보냄. 화면 그리기는 디자인 레인 몫
+```
+
+```
+보고만   SYSTEM_RELOAD 가 수집 «도중»에 오면 수집기 객체가 새로 만들어지고, 도는 스레드는 옛 객체에 끝을 적음
+         -> 새 객체는 복원된 RUNNING 그대로, 스케줄러는 살아 있으니 판정은 owned — 이 항목의 기제로는 안 잡힘 (안 쟀음)
+```
