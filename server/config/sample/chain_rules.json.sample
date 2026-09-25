@@ -184,7 +184,7 @@
       "__why_enabled": "SHIPS ENABLED because the shipped ledger declaration READS dt_job_rollup (measured 2026-09-10). The ledger is local and calculation-free so it cannot count a group; S-100 (a) moved that count here. Off, the ledger source has nothing to read."
     },
     {
-      "__comment": "통합 선언 ① 조인 — 오른쪽 표의 칸을 가져와 on.table 의 행에 씁니다. 규칙 «하나»가 섭니다. 오른쪽이 키마다 유일해야 하며 key.unique 가 그것을 선언합니다.",
+      "__comment": "통합 선언 ① 조인 — on.table(원천)의 값이 바뀌면 take 의 칸을 into.table 의 같은 키 행에 씁니다. join.on 의 left 는 into 표의 칸, right 는 원천의 칸입니다. 규칙 «둘»이 섭니다 — 이 이름(원천이 바뀔 때)과 이름:target(into 표에 행이 들어오거나 키가 바뀔 때). 원천이 키마다 유일해야 하며 key.unique 가 그것을 선언합니다.",
       "name": "sample_unified_join",
       "enabled": false,
       "on": {

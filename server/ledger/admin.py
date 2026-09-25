@@ -677,6 +677,13 @@ def chain_rule_raw_view(name: str = None) -> dict:
         out["declaration"] = named.get(name)
         out["raw"] = json.dumps(named.get(name), ensure_ascii=False, indent=2)
         out["enabled"] = bool((named.get(name) or {}).get("enabled", True))
+        # 🔴 [총괄 6ef4ab1f2] AN OLD-SHAPE JOIN IS SAID HERE, so the screen offers the one
+        #   conversion that stands its `:target` half (`to=unified`) instead of guessing from
+        #   the cells. The judgement is `modernize_join`'s, the same the conversion runs.
+        from chain import rule_shape
+
+        declared = named.get(name)
+        out["join_needs_new_shape"] = rule_shape.modernize_join(declared) is not declared
         # 🔴 [S-241] WHICH GRAMMAR THIS RULE IS WRITTEN IN, as a CELL rather than as
         # something the form re-derives. The two shapes ride together in `skeleton`, and a
         # screen guessing which to draw would be guessing at a fact the file states: one

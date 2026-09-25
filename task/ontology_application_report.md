@@ -32655,3 +32655,5 @@ server/tests/test_a_chain_rules_top_level_cells_have_one_list.py
    그 경우 거절 문장의 「(the Chain tab's convert does both)」 는 빼야 참이 됩니다 — 구현자 몫
 ```
 그동안 샘플 설명 문구와 가이드는 이 결정과 무관한 부분부터 고치겠습니다. RUN.md 의 운영자 절차만 답을 기다립니다.
+
+> (09-25 09:27) 조인 `on` — 샘플 설명 문구 · 가이드 다섯 파일 착지 `f4300aa19` (샘플을 읽는 서버 시험 10 파일 158 passed). RUN.md 운영자 절차는 지시 `6ef4ab1f2` 대로 버튼 착지(구현자 칸 + 클라 버튼) «뒤»에 씁니다.

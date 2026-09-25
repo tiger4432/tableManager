@@ -389,7 +389,7 @@ INNER 조인은 ①을 조용히 지우므로 쓰지 않는다.
 | `enabled` | | 기본 `true`. `false`는 오류가 아니라 조용한 제외 |
 | `join_cardinality` | | `"one"`만 지원. 집계 형태는 **구현이 없어** 선언하면 거부된다(§7) |
 
-🔵 **[2026-09-16 S-251] 같은 조인을 `chain_rules.json` 의 통합 문법으로 적을 수 있다** — `on.table` 이 `left_table`, `derive: {kind: "join", join: {right_table, join_key, expose, …}}` 가 나머지, 그리고 **`into: {read: true}`** 한 칸이 「읽기 시점」이다(`into.table` 이면 «쓰는» 조인, [config/chain_rules §5-B-bis](./chain_rules.md)). ⚰️ **[2026-09-17 `306419fd`] 「뜻은 같다 · 옮길 필요 없다 · 이 파일은 그대로 읽힌다」는 «오늘 거짓»이다** — `into: {read: true}` 는 수집기가 «이름 대어 거절»하고(`rule_shape.READ_TIME_RETIRED`) 이 파일의 `materialize: false` 는 검증기가 거절한다. ➡️ **오늘 «옮겨야 하고», 옮기는 곳은 `into: {table: …}` 다** — 그게 소유자 판정(461)이고, 그러면 조인 컬럼이 저장 컬럼이 되어 추출·필터·검색이 «따로 지을 것 없이» 따라온다(§9).
+🔵 **[2026-09-16 S-251] 같은 조인을 `chain_rules.json` 의 통합 문법으로 적을 수 있다** — `on.table` 이 `left_table`, `derive: {kind: "join", join: {right_table, join_key, expose, …}}` 가 나머지(⚠️ 09-25 `244d825dc` 부터는 뒤집혔다 — `on.table` 이 `right_table`(원천), `into.table` 이 `left_table`, `join: {on: [{left, right}], take}` 이고 `join.right_table` 은 이름 대어 거절된다. [config/chain_rules §5-B-bis](./chain_rules.md)), 그리고 **`into: {read: true}`** 한 칸이 「읽기 시점」이다(`into.table` 이면 «쓰는» 조인, [config/chain_rules §5-B-bis](./chain_rules.md)). ⚰️ **[2026-09-17 `306419fd`] 「뜻은 같다 · 옮길 필요 없다 · 이 파일은 그대로 읽힌다」는 «오늘 거짓»이다** — `into: {read: true}` 는 수집기가 «이름 대어 거절»하고(`rule_shape.READ_TIME_RETIRED`) 이 파일의 `materialize: false` 는 검증기가 거절한다. ➡️ **오늘 «옮겨야 하고», 옮기는 곳은 `into: {table: …}` 다** — 그게 소유자 판정(461)이고, 그러면 조인 컬럼이 저장 컬럼이 되어 추출·필터·검색이 «따로 지을 것 없이» 따라온다(§9).
 
 ## 6. 확인하는 법 — 라우트가 둘인 이유
 
