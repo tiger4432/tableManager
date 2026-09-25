@@ -384,10 +384,28 @@ def compute_health(db_result, heartbeats, supervisor_status, outbox_result,
     # heartbeats would trade a false alarm for a blind spot, and the file is still on
     # disk. They are named, with their age, and they do not escalate: nothing declares
     # them, so nothing is promised about them.
+    from runtime.loops import on_demand_processes
+
+    on_demand = on_demand_processes()
     for hb_name in sorted(heartbeats):
         if hb_name in workers:
             continue
         hb = heartbeats.get(hb_name) or {}
+        if hb_name in on_demand:
+            # 🔴 ALIVE ONLY WHILE IT HAS WORK - declared in the loops table's `when` column
+            #    (총괄 748b2472a ②). No beat is no row (idle); a fresh beat is a run in its
+            #    own process; a stale one is a process that stopped without ending its run,
+            #    which holds the gate until that run is cancelled. Not off the roster: the
+            #    roster lists what the launcher keeps up, and this is not that.
+            stale = bool(hb.get("stale"))
+            workers[hb_name] = {
+                "heartbeat": hb_name, "status": "orphaned" if stale else "running",
+                "detail": ("its process stopped without ending its run - cancel that run on "
+                           "the Retroactive screen to release the lock") if stale
+                          else "a run in a process of its own",
+                "age_seconds": hb.get("age_seconds"), "beats": hb.get("beats"),
+                "stale_after_seconds": stale_after}
+            continue
         workers[hb_name] = {"heartbeat": hb_name, "status": "off_roster",
                             "detail": "beating, but no launcher roster declares it",
                             "age_seconds": hb.get("age_seconds"),

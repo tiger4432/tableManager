@@ -79,9 +79,10 @@ def test_all_nine_loops_are_answered_for():
     payload = runtime.loops.runtime_loops(_FakeDb(), heartbeats={})
     loops = [item["loop"] for item in payload["loops"]]
     assert loops == ["web", "watcher", "chain", "outbox_purge", "listen", "replay_sweep",
-                     "ledger_followup", "ledger_census", "scheduler", "postgres"]
+                     "ledger_followup", "ledger_census", "scheduler", "postgres",
+                     "retroactive_run"]
     assert [item["board"] for item in payload["loops"]] == [
-        "1", "2", "3", "3-a", "3-b", "3-c", "4", "5", "6", "7"]
+        "1", "2", "3", "3-a", "3-b", "3-c", "4", "5", "6", "7", "8"]
 
 
 def test_the_loop_and_the_process_are_two_columns():
@@ -304,10 +305,10 @@ def test_the_route_answers_200_with_the_nine(client, monkeypatch):
 
     assert res.status_code == 200, res.text
     payload = res.json()
-    assert len(payload["loops"]) == 10
+    assert len(payload["loops"]) == 11
     assert [i["loop"] for i in payload["loops"]] == [
         "web", "watcher", "chain", "outbox_purge", "listen", "replay_sweep",
-        "ledger_followup", "ledger_census", "scheduler", "postgres"]
+        "ledger_followup", "ledger_census", "scheduler", "postgres", "retroactive_run"]
     for item in payload["loops"]:
         assert item["process"] and item["board"]
     assert res.headers.get("Cache-Control") == "no-store", (
@@ -352,7 +353,20 @@ def test_every_loop_that_records_a_lap_is_in_the_table():
                     and isinstance(node.args[1], ast.Constant)):
                 recorded.add(node.args[1].value)
     assert "chain" in recorded and "watcher" in recorded, "CANARY: the census found nothing"
-    rows = {loop for loop, _process, _board in runtime.loops.LOOPS}
+    rows = {loop for loop, _process, _board, _when in runtime.loops.LOOPS}
     # web: this route IS the web process · postgres: pg_stat, not a heartbeat · scheduler:
-    # beats, records no lap
-    assert recorded == rows - {"web", "postgres", "scheduler"}, (recorded, rows)
+    # beats, records no lap · retroactive_run: its heartbeat is its presence (on demand)
+    assert recorded == rows - {"web", "postgres", "scheduler", "retroactive_run"}, (
+        recorded, rows)
+
+
+def test_the_on_demand_row_is_the_heartbeat_a_run_in_its_own_process_beats():
+    """총괄 748b2472a ② — the loops table names the process a CLI's or the scheduler's child's
+    run beats under, and says it lives only while it has work."""
+    from admin import retroactive
+
+    assert runtime.loops.on_demand_processes() == {retroactive.RUN_HERE_HEARTBEAT}
+    row = [r for r in runtime.loops.runtime_loops(_FakeDb(), heartbeats={})["loops"]
+           if r["loop"] == "retroactive_run"][0]
+    assert row["when"] == runtime.loops.ON_DEMAND and "alive" not in row, (
+        "idle - no heartbeat - is not a verdict")

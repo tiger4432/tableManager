@@ -79,3 +79,19 @@ def test_the_classifier_is_gone():
     """One judgement, one place. The loop above answers this in more detail."""
     assert not hasattr(health, "roster_states"), \
         "a second judge is back beside the loop that already decides this"
+
+
+@pytest.mark.parametrize("beats, want", [
+    ({}, None),
+    ({"retroactive": {"stale": False, "age_seconds": 3, "beats": 4}}, "running"),
+    ({"retroactive": {"stale": True, "age_seconds": 90, "beats": 9}}, "orphaned"),
+])
+def test_a_process_alive_only_while_it_has_work_is_not_off_the_roster(monkeypatch, beats,
+                                                                      want):
+    """총괄 748b2472a ② - the loops table's `when` column: no beat is no row (idle), a fresh
+    beat is a run in its own process, a stale one names the next action."""
+    w = workers_of(monkeypatch, {"chain": None},
+                   dict(beats, chain={"stale": False, "age_seconds": 1}))
+    assert (w.get("retroactive") or {}).get("status") == want
+    if want == "orphaned":
+        assert "cancel that run" in w["retroactive"]["detail"]

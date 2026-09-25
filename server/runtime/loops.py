@@ -27,19 +27,31 @@ from utils import heartbeat
 #: In the order the board numbers them (①~⑦ with ③ split four ways).
 #: `process` is which heartbeat carries it — several loops live in one process, which is
 #: why the loop and the process are two columns rather than one.
+#: `when` - always up, or alive only while it has work. An on-demand process's missing
+#: heartbeat is its idle state, not a fault: /health reads this column
+#: (`on_demand_processes`) rather than calling the heartbeat off the launcher's roster.
+ALWAYS = "always"
+ON_DEMAND = "on_demand"
+
 LOOPS = (
-    # (loop, process, board)
-    ("web", "web", "1"),
-    ("watcher", "watcher", "2"),
-    ("chain", "chain", "3"),
-    ("outbox_purge", "chain", "3-a"),
-    ("listen", "chain", "3-b"),
-    ("replay_sweep", "chain", "3-c"),
-    ("ledger_followup", "chain", "4"),
-    ("ledger_census", "chain", "5"),
-    ("scheduler", "scheduler", "6"),
-    ("postgres", "postgres", "7"),
+    # (loop, process, board, when)
+    ("web", "web", "1", ALWAYS),
+    ("watcher", "watcher", "2", ALWAYS),
+    ("chain", "chain", "3", ALWAYS),
+    ("outbox_purge", "chain", "3-a", ALWAYS),
+    ("listen", "chain", "3-b", ALWAYS),
+    ("replay_sweep", "chain", "3-c", ALWAYS),
+    ("ledger_followup", "chain", "4", ALWAYS),
+    ("ledger_census", "chain", "5", ALWAYS),
+    ("scheduler", "scheduler", "6", ALWAYS),
+    ("postgres", "postgres", "7", ALWAYS),
+    ("retroactive_run", "retroactive", "8", ON_DEMAND),
 )
+
+
+def on_demand_processes():
+    """The heartbeats that live only while their process has work (the `when` column)."""
+    return {process for _loop, process, _board, when in LOOPS if when == ON_DEMAND}
 
 #: The knob an operator turns for each loop, when it has one. A path, not a value: the
 #: value is the deployment's and this route does not read the owner's files.
@@ -119,8 +131,8 @@ def runtime_loops(db, *, heartbeats=None, now=None):
     now = time.time() if now is None else now
 
     out = []
-    for loop, process, board in LOOPS:
-        item = {"loop": loop, "process": process, "board": board}
+    for loop, process, board, when in LOOPS:
+        item = {"loop": loop, "process": process, "board": board, "when": when}
         if loop == "web":
             # ① has no heartbeat and needs none: this route IS the web process answering.
             # A lap would be a number invented for the table's sake.

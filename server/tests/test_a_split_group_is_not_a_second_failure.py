@@ -99,6 +99,17 @@ def test_a_leaf_whose_row_is_gone_is_left_and_named(retro_env):
     assert leaf.status == "FAILED" and "no longer exists" in out["message"]
 
 
+def test_attempts_are_named_for_the_round_they_count(retro_env):
+    """총괄 bb6795759 ③ - the count a retry sets back to 0 is this round's attempts."""
+    first = _event(retro_env, {"transaction_id": "tx5"})
+    first.retry_count = 3
+    retro_env.flush()
+    group, = main.get_failed_outbox_events(page=1, limit=10, db=retro_env)["data"]
+    assert (group["attempts_this_round"], group["events"][0]["attempts_this_round"]) == (3, 3)
+    main.retry_failed_outbox_events(event_id=first.id, db=retro_env)
+    assert first.retry_count == 0, "the retry still gives a fresh round"
+
+
 def test_failed_at_is_when_it_failed_not_when_it_was_born(retro_env):
     at = datetime.datetime(2026, 9, 25, 18, 30)
     _event(retro_env, {"transaction_id": "tx4"}, processed_at=at - datetime.timedelta(hours=1))

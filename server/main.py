@@ -4970,6 +4970,7 @@ def get_failed_outbox_events(page: int = 1, limit: int = 10, tz: str = None,
                 "payload": e.payload,
                 "status": e.status,
                 "retry_count": e.retry_count,
+                "attempts_this_round": e.retry_count,
                 "created_at": e.created_at.isoformat() if e.created_at else None,
                 "processed_at": e.processed_at.isoformat() if e.processed_at else None
             })
@@ -4978,7 +4979,12 @@ def get_failed_outbox_events(page: int = 1, limit: int = 10, tz: str = None,
             "transaction_id": tx_id,
             "table_names": table_names,
             "event_types": event_types,
+            # 🔴 WHAT IT COUNTS (총괄 bb6795759 ③): the worker's attempts in THIS round. A retry
+            #    sets it back to 0 on purpose - that is the fresh budget of automatic attempts -
+            #    so it is not how many times anyone pressed retry. `retry_count` stays until the
+            #    screen reads the new name, then goes.
             "retry_count": max_retry,
+            "attempts_this_round": max_retry,
             "failed_at": failed_at,
             "events": event_details
         })
