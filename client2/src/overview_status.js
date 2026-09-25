@@ -132,8 +132,9 @@ export function declarationsRow(view, reason = '') {
   return row('declarations', 'Declarations', facts, tone);
 }
 
-/** `retroactive_view.buildRunsView(...)` with `failedSources`. 「N running」 only when something runs
- *  (lead 575a844f7); a source that could not be read makes the row grey, not idle. */
+/** `retroactive_view.buildRunsView(...)` with `failedSources`. 「0 running」 too — an empty fact cell
+ *  could not be told from an unread one (lead 909ea2052 ③, reversing 575a844f7). A source that could
+ *  not be read makes the row grey, not idle. */
 export function retroactiveRow(runs) {
   if (runs === undefined) return pending('retroactive', 'Retroactive');
   if (!runs) return row('retroactive', 'Retroactive', [], TONE.UNKNOWN);
@@ -143,8 +144,8 @@ export function retroactiveRow(runs) {
   const minutes = (Array.isArray(runs.rows) ? runs.rows : []).filter((r) => r && !r.finished)
     .map((r) => (r.progress && typeof r.progress.elapsedMinutes === 'number' ? r.progress.elapsedMinutes : null))
     .filter((m) => m !== null);
-  const facts = runs.liveCount > 0
-    ? [`${runs.liveCount} running`, minutes.length ? `oldest ${Math.max(...minutes)}m` : ''] : [];
+  const facts = [`${countText(runs.liveCount)} running`,
+    runs.liveCount > 0 && minutes.length ? `oldest ${Math.max(...minutes)}m` : ''];
   if (unreachable.length) facts.push(`${unreachable.join(', ')} unreachable`);
   return row('retroactive', 'Retroactive', facts, unreachable.length ? TONE.UNKNOWN : TONE.OK);
 }

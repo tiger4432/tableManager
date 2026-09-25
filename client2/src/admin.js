@@ -1009,6 +1009,8 @@ async function fetchData(options = {}) {
       // 소급 «폼»은 자기 탭이다 (시안 A). Overview 폴이 부르는 것과 «같은» 함수다.
       await refreshRetroactiveOperations(true);
       if (isStale()) return false;
+      // 그 함수는 실패를 «삼키고» 거절 문장을 그린다 — 여기서 안 물으면 Refresh 가 성공이라 말한다(F-9 부류).
+      if (!retroactiveView) allRead = false;
     } else if (tab === 'tables') {
       // 🔴 `switchTab` 이 이 탭에 «이미» 이 함수를 부릅니다 (:588). 여기 없었을 뿐입니다 —
       //    그래서 「이 탭의 데이터를 읽는다」에 경로가 «둘» 있었고 둘이 «서로 다른 탭 목록»을
