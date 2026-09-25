@@ -132,15 +132,15 @@ def test_actual_snapshot_enumerates_every_registry_and_declaration(active_setup)
         for profile in profiles
         for mapping in profile["mappings"].values())
     expected = {
-        "predicate|slot_map@1",
+        "predicate|has_wafer@1",
         "entity|lot@1",
-        "profile|lot_slot_move#profile",
-        "mapping|lot_slot_move#profile#mapping:seat-to-seat",
-        "preparer|lot_slot_move#preparation",
-        "mapper|lot_slot_move#mapper",
-        "source_plan|lot_slot_move",
-        "binding|lot_slot_move#profile#mapping:seat-to-seat#binding:subject",
-        "table|lot_slot_move",
+        "profile|lot_slot_wafer#profile",
+        "mapping|lot_slot_wafer#profile#mapping:seat-holds-wafer",
+        "preparer|lot_slot_wafer#preparation",
+        "mapper|lot_slot_wafer#mapper",
+        "source_plan|lot_slot_wafer",
+        "binding|lot_slot_wafer#profile#mapping:seat-holds-wafer#binding:subject",
+        "table|lot_slot_wafer",
     }
     assert expected.issubset(index.nodes)
     # 🔴 DERIVED, not a magic total. This was `== 47`, a literal that went stale the moment
