@@ -1,3 +1,49 @@
+> ## [09-25 17:46 디자인] Enrichment 탭 은퇴 착지 (a42f8779a) · 규칙 목록 Kind 첫 칸 · 좌석 넓힘 — 발견 하나
+
+### 착지 a42f8779a — 서버 한 칸 + 화면 + 은퇴 + 시험
+
+```
+서버   rule_shape.declared_kind 를 넓힘 — 원문 선언은 derive 를 문법이 읽은 낱말로(from_declaration), 못 읽으면 unknown
+       (UNKNOWN_KIND 한 철자 — from_declaration 의 「unknown」 도 이것). 옆에 새 판단 없음
+       GET /admin/chain/rules 줄마다 kind · 순서 join -> decide -> mapper -> 그 밖, 같은 종류 안은 이름순
+화면   Chain Rules 표 첫 칸 Kind(서버 낱말 그대로, 옛 서버면 —) · 받은 순서 그대로(클라가 종류 낱말을 모름)
+은퇴   탭 버튼 · 탭 화면 · renderEnrichmentTable · selectEnrichmentRow · 선택 상태와 그것을 묻는 자리(복사 · 선택 복원 · 강조 해제)
+       · 새로고침 갈래 · 절 빈 상태 좌석 · 오류/성공 문구. 옛 #enrichment 주소는 Chain 탭으로 · Overview Enrichment Open › -> Chain 탭
+       fetchEnrichmentStatus 는 남음(Overview 줄)
+은퇴 셈 탭을 부르는 자리 git grep 0 · 카나리아 fetchEnrichmentStatus 정의 1
+       약속을 든 문서 — docs/qa/FEATURE_CHECKLIST.md 워크리스트 단계를 메인 그리드 결손 필터로 고침
+       ⚠️ docs/architecture/CODE_MAP.md 의 「Enrichment 탭: renderEnrichmentTable」 한 줄은 안 고쳤습니다 — 문서 정비 몫
+```
+
+### 짓기 전 셈 · 박스 전·후
+
+```
+declared_kind 를 부르는 자리   제품 코드 1(replay.replayable_rules_for) + 이번 라우트
+로드된 규칙이 derive 를 드나     박스 15 중 0 -> replay 목록의 답은 안 바뀜 (박스 설정 읽기만 · 로더 파일 수정 시각 그대로)
+/admin/chain/rules 를 읽는 자리  클라 2 — Chain 탭 표(받은 순서로 그림 · 활성 수는 순서 무관) · Overview Chain 줄(개수만) -> 답 같음
+박스 전·후     거절된 join 선언 aaa — 전 「mapper」 -> 후 「join」 (이 워크트리 코드로 박스 설정을 읽어 잼)
+              후 16 줄 = join 5 · decide 2 · mapper 9, 그 순서
+```
+
+### 게이트
+
+```
+서버 시험   새 파일 6 통과 · 변이 둘 — 원문 갈래를 지우면 4 빨강 · 정렬을 지우면 1 빨강 · 곁 시험 7 파일 207 통과
+하니스     absence_on_refusal 36/0 · 변이 11/11 (39 -> 36 — 은퇴한 절 좌석 하나의 좌석당 둘 + 그 좌석을 이름 댄 C2)
+빌드       계약 + 하니스 전수 exit 0
+화면       총괄께 — Chain 탭 첫 칸 Kind · 순서 · Enrichment 버튼 없음 · Overview Enrichment Open -> Chain 탭
+```
+
+### 발견 — 지시 밖이라 안 고쳤습니다
+
+```
+derive.kind 가 문법에 없는 낱말(예 「banana」)인 선언은 거절되지 «않고» 빈 규칙으로 섭니다 — 거절 0 · 맵퍼 없음 · derive 칸도 없음
+그래서 어느 좌석도 그것이 무엇이었는지 못 봅니다(목록에서 「mapper」). 문법(expand_declaration)이 모르는 종류를 이름 대어 거절하는 편이 맞아 보입니다
+박스의 선언 중 그것에 걸리는 것이 있는지는 안 셌습니다. 시험은 이 경우를 «박지 않았습니다»(결함을 초록으로 굳히지 않으려고)
+```
+
+다음 — 909ea2052 넷 + 503b52049(pacing.json 속도 이름). ③ 은 3407f5480 에 착지했습니다.
+
 > ## [09-25 17:21 디자인] 글자 ① 착지 (6798bd2f0) · Enrichment 탭 은퇴 짓기 전 물음 둘 · 909ea2052 넷의 서버 몫
 
 ### ① 착지 6798bd2f0
