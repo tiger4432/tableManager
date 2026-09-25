@@ -33714,3 +33714,49 @@ python -c "import sys,pytest;P=type('P',(),{'pytest_collection_modifyitems':lamb
               파일 기록 줄(file_ingestion_logs) 둘은 남음 — 측정의 기록
 표시   값은 전부 APPAUDIT- 로 시작
 ```
+
+---
+
+## 전 — 3-ㄴ · 2 (박스 162e1cc73 · 알림 a7b896613 · 기대 97301b10d) (09-26 07:14)
+
+탭 = `get_auto_update_status` · 대기열 = `get_chain_queue_depth` 의 now_running, 둘 다 프로세스 안에서 부름(토큰 없이).
+
+### 3-ㄴ · 수집 도중 스케줄러를 죽임 — 되살림 있음
+
+| 때 | appaudit_quick (다른 수집기) | appaudit_slow (끊긴 실행) | 대기열 |
+|---|---|---|---|
+| 도중 07:08:21 | last_run 07:08:01 · SUCCESS | last_run 07:08:01 · RUNNING | running 한 줄 |
+| 죽임 07:08:21 → 2.3 초 뒤 되살림 → +3 초 | last_run **None** · PENDING | last_run **None** · PENDING · 사유 없음 | 없음 |
+| 후 기대 | last_run 07:08:01 그대로 | **FAIL + 영어 사유 · last_run = 끊긴 실행 시작** | 없음 |
+
+### 3-ㄴ · 되살림을 막고 (총괄 「있으면 좋음」 칸)
+
+| 때 | appaudit_slow | 대기열 |
+|---|---|---|
+| 죽임 07:10:22 + 3 초 | RUNNING (죽은 pid 의 심박이 아직 60 초 안) | running |
+| + 70 초 | 탭 **orphaned** · last_run 07:10:00 | **orphaned** 한 줄 ✓ (162e1cc73 판정) |
+| 감독자 재개 07:11:32 → 되살림 → +3 초 | None · PENDING | 없음 |
+
+```
+🔴 대가   감독자(run_decoupled_app.py --server-only)를 70 초 멈춰서 막았는데, 그동안 API 가 HTTP 에 답하지 않았습니다
+         감시 07:11:03 BOX down(admin.html 000) · 07:11:32 declaration 000 · 재개 뒤 07:11:35 health 200 · 07:12:36 BOX up
+         API · 워처 · 체인 워커는 같은 pid — 죽은 것이 아니라 막힌 것. 왜 막혔는지는 안 잼
+         (감독자가 자식 출력을 받아 적는 자리가 있어 그쪽이 의심 — 확인하지 않은 가설)
+         -> «후» 에서는 이 칸을 다시 안 잽니다. 필요하면 말씀 주십시오 — 같은 방법이면 같은 대가입니다
+재기동함  스케줄러 셋 — 07:06:01(탐침 적재용 — 스케줄러는 기동 · 재적재 때만 스크립트를 읽음) · 07:08:21 · 07:10:22
+탐침      «후» 까지 둡니다. 지우면 떠 있는 스케줄러가 없는 파일을 매분 돌려 실패를 적으므로 재기동과 같이 지웁니다
+         그동안 appaudit_slow 는 1 년에 한 번(0 0 1 1 *)으로 바꿔 둠 — 대기열에 안 보이게. 잴 때 2 분으로 되돌림
+         Auto Update 탭에 두 줄(appaudit_quick · appaudit_slow)이 더 보입니다
+```
+
+### 2 · 버린 칸
+
+| 파일 (행 하나) | 파일 기록 | 상태 | error_message | 쓴 행 |
+|---|---|---|---|---|
+| large_table_100 — 표 선언 없음, 칸 셋 다 버림 | 22385 | **SUCCESS** | 빈칸 | 0 |
+| wafer_id_status — 선언 칸 둘 + appaudit_extra | 22386 | SUCCESS | 빈칸 | 1 (칸 appaudit_extra 는 안 생김) |
+| 후 기대 | | 전부 버림 → **FAILED** · 일부 → SUCCESS | 둘 다 버린 칸 이름 문장 | |
+
+```
+되돌림   wafer_id_status 제 행 하나 행 삭제 라우트 200 -> APPAUDIT 행 0 · 워크스페이스의 제 파일 둘 지움 · 파일 기록 줄 둘은 남음
+```
