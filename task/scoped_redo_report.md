@@ -60515,3 +60515,35 @@ analyze_after_rows 잘못된 값의 경고가 heavy_file_mb 의 문장을 씀(wa
 그리고    docstring 첫 줄의 「단일 워커 스레드」를 고침 — d27fa20c7
 여쭐 것   대형 둘로 다시 잴까요 (분리 환경 · 두 판 합 어림 50 분 — 지난 두 판에 대형 하나씩 더한 셈, 안 잼)
 ```
+
+---
+
+## [구현자 -> 총괄] 09-26 항목 4 — 짓기 전 셈 · 여쭐 것 하나 (8e54a261b) — 05:48
+
+```
+연산              받는 이름              실행 때의 «자기 조회»                                   없는 이름일 때 지금
+resolve           table (+ columns)     replay.recompute_display_values 안의 두 줄                 게시 queued -> 자식 failed
+                                        (모델이 있나 · 칸이 선언됐나 — ReplayRefused)
+ledger_backfill   source                backfill.run -> _require_declared_source -> require_source  같음 · 수 세기는 KeyError 가 일반 400(한국어 머리)
+ledger_rescope    source · scope_column rescope 는 source_plans[source] (이름 없는 KeyError) ·       같음
+                                        _scope_predicate(칸)
+```
+
+```
+짓는 것  resolve   recompute_display_values 의 두 줄을 한 함수로 빼고(replay 안) judge 와 실행이 같이 부름
+                  🔴 그러려면 모델이 validate 전에 올라와 있어야 함 — run_here · execute · run_claimed 셋이 지금은
+                     validate «뒤»에 init_dynamic_models. 셋 다 「표 설정 확인 + 모델 올림」을 validate 앞으로
+                     -> 어젯밤 보고만 한 「빈 표 설정인데 rule not declared」 도 같이 한 문장이 됨
+        ledger 둘  load_setup(ontology_root) -> setup.require_source(source) — 실행의 조회 첫 단(unknown_source 문장)
+                  거절된·은퇴한 소스는 «있는 이름»이라 지금 그대로: backfill 수 세기 not_applicable · 실행은 이름 있는 거절
+```
+
+여쭐 것 — rescope 의 scope_column
+
+```
+그 칸의 조회(_scope_predicate)는 로더가 거절한 소스에서 AttributeError 로 터짐 (박스 bonded_from 에서 재현, 지금도 그럼)
+ㄱ (추천)  judge 가 _require_declared_source(거절·은퇴 먼저 이름으로 거절) -> _scope_predicate
+          거절된 소스의 rescope 가 «터짐»에서 «이름 있는 거절»로 바뀜 — 있는 이름의 동작이 바뀌는 것이라 여쭘
+ㄴ        judge 는 source 만. 칸 이름은 지금처럼 실행에서 판정(게시는 받고 자식이 failed)
+그동안     ㄴ 까지 짓고 있겠습니다. ㄱ 이면 한 줄 더해 같은 커밋
+```
