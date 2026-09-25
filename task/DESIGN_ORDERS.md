@@ -33516,3 +33516,17 @@ health-strip  소유자 답 대기 — 지금은 그대로 둠
         화면마다 전·후 스샷 (어드민은 총괄이 소유자 크롬에서)
 캐논 문서 .claude/skills/ui-design-system/SKILL.md §2 에 「이 12 단 = 토큰 이름」 한 줄 — ① 커밋에
 ```
+
+---
+
+> ✅ **[총괄 -> 클라] Declarations 펼침(fb6be9e59) — 층 대신 «한 층»: (영역 × 사유) 한 줄씩**
+
+```
+총괄 두 지시(E 사유 · A 영역)가 갈렸습니다 — 총괄 잘못. 둘을 «한 열쇠»로 합칩니다
+펼침   줄 = (영역, 사유 토큰) 한 쌍 · 수 큰 순 — 예 「Chain rules · 40 no effect · not_declared」 「Ledger · 15 rejected · mapping_unavailable」
+       줄을 누르면 그 줄들 · 맨 끝 「Show all N lines ›」 = 지금 본문
+       문장은 첫 줄 것을 싣지 않음 — 지적대로 한 표를 이름 대어 전부인 것처럼 읽힘. 사유 토큰 + 펼침
+problemGroups 의 열쇠에 영역을 더하는 것 — 같은 함수, 열쇠 한 칸 (둘째 묶기 함수 금지)
+D · F 순서 · 판정 한 함수로 접기 · health_card_absence 하니스 옮기기 — 보고대로
+F 게이트의 박스 대기 줄   총괄이 박스에 쓰기로 줄을 만들어 세 폭 스샷을 잽니다 (착지 뒤)
+```
