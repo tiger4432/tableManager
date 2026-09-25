@@ -1,3 +1,32 @@
+> ## [22:20 디자인] 탭 버튼 끝맺음 (f788fac2f) · 클라 목록 마감
+
+```
+고친 것   .tab-btn 에 font-size: var(--fs-button) — 크기를 안 적어 브라우저 button 기본값(13.3333px)이 그려졌음
+그려진 크기 게이트 (새로 더함 — 적은 것 0 ≠ 그려진 것 0)
+   명령    페이지 콘솔에서 — 그 페이지가 푸는 --fs-* 열둘을 읽고, 글자가 있는 보이는 요소 중 계산 크기가 그 밖인 수
+           scratchpad 의 rendered_steps.js 한 줄(아래) · 카나리아 steps_read 12
+   착지 전  main 이 띄운 어드민(포트 5173) 일곱 탭 모두 7 — 전부 .tab-btn 13.3333px
+           그리드 페이지 0 / 984 (② 가 그려진 화면에서도 단 안 — 그리드 첫 실측)
+   착지 뒤  이 박스에서 제 작업 트리를 못 띄웁니다(미리보기가 main 쪽 서버를 다시 씀). main 에 들어간 뒤 같은 명령 — 기대 0
+⚠️ 범위    그 페이지는 API 없이 떠서 데이터 행은 안 그려졌습니다 — 그려진 것만 셌습니다
+하니스 141 초록(기존 빨강 2) · 빌드 exit 0 · 적은 크기 셈(admin.html) 0 그대로
+```
+
+```
+(() => { const root = getComputedStyle(document.documentElement); const STEPS = new Set(['h1','h2','h3','h4','h5','h6','title','body','button','label','tag','meta'].map((n) => parseFloat(root.getPropertyValue('--fs-' + n))).filter(Number.isFinite)); const drawn = [...document.querySelectorAll('body *')].filter((e) => e.getClientRects().length && [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())); const off = drawn.filter((e) => !STEPS.has(parseFloat(getComputedStyle(e).fontSize))); return { steps_read: STEPS.size, drawn: drawn.length, off: off.length }; })()
+```
+
+### 클라 목록 마감 — 한 줄씩
+
+```
+1 Retroactive 목록 줄   a551702ef          착지
+2 위 대기열 RUNNING     84ae84621          착지 · 총괄 소유자 크롬 확인
+3 실패 요약 묶음         ad4a4e698          착지 · 총괄 소유자 크롬 확인
+4 남은 낱말 · 샘플 영어   33f14dada          착지
+5 글자 계층   ② 3260e0f9d · ③ b4965f3cb · 탭 f788fac2f 착지   ④ 맵 편집기는 목록 밖(4fa1fb988) — 표 750603572 그대로
+아침 보고로   이름 부르는 곳 0 인 선택자 — 그리드 넷 · 어드민 둘(.section-note · .toast-message)
+```
+
 > ## [21:55 디자인] 글자 ④ 맵 편집기 — 짓기 전 표 · 물음 둘 (화면 글자는 ②·③ 답대로)
 
 ```
