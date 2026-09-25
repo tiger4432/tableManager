@@ -140,6 +140,19 @@ def test_nothing_runs_the_refused_source(tmp_path):
     assert refused.value.code == "source_refused"
 
 
+def test_the_backfill_refuses_the_refused_source_before_it_reads(tmp_path):
+    """총괄 68a194f8c ② - the retired via-events loader said this in its own words; `run()`
+    says it in the loader's, and before the engine is touched: a bare `object()` would raise
+    AttributeError the moment anything read."""
+    from ledger import backfill
+
+    with pytest.raises(LedgerSetupError) as refused:
+        backfill.run(object(), BROKEN, ontology_root=write_root(tmp_path, broken_document()),
+                     catalog=DEFAULT_CATALOG)
+    assert refused.value.code == "source_refused"
+    assert refused.value.path == "sources.%s" % BROKEN
+
+
 # ---------------------------------------------------------------------------
 # 3. 🔴 The neighbour's cursor does not move.  This is the point of the round.
 # ---------------------------------------------------------------------------

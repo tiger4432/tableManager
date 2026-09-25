@@ -4829,8 +4829,11 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
         # ⚠️ op 까지 주는 이유 — `RETROACTIVE_RUN` 한 타입이 주인 둘을 덮는다. 여기는
         #    행이 있으므로 물을 수 있고, 그래서 리플레이 행이 화면에서 `chain` 으로 뜬다.
         #    페이로드는 «기존 좌석»으로 읽는다(새 파서를 만들지 않는다).
+        broadcast = event_constants.broadcast_state_of(
+            r.processed_chain, r.status, r.broadcast_at)
         owner = event_constants.outbox_owner(
-            r.event_type, op=(get_payload_dict(r) or {}).get("op"))
+            r.event_type, op=(get_payload_dict(r) or {}).get("op"),
+            undelivered=broadcast == event_constants.BROADCAST_STATE_UNDELIVERED)
         state, detail = event_constants.chain_state_of(r.processed_chain, r.status)
 
         # 🔴 이 행에 대해 «무언가 돈다»가 아니면 싣지 않는다.
@@ -4880,8 +4883,7 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
             "owner": owner,
             "chain_state": state,
             "state_detail": detail,
-            "broadcast_state": event_constants.broadcast_state_of(
-                r.processed_chain, r.status, r.broadcast_at),
+            "broadcast_state": broadcast,
             "rules": matched,
         })
 

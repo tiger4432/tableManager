@@ -232,6 +232,19 @@ def test_done_and_undelivered_are_two_fields_not_one(client, db_session):
     assert by_id[r.id]["broadcast_state"] == event_constants.BROADCAST_STATE_UNDELIVERED
 
 
+def test_an_undelivered_row_is_owned_by_the_one_that_announces_it(client, db_session):
+    """총괄 bed890af2 ③ · 0f2825324 ㄴ - the recovery marker is born waiting for its notice,
+    and so is a scheduler row that ran; the chain worker's sweep empties both."""
+    marker = row(db_session, event_type=event_constants.EVENT_BROADCAST_RECOVERY,
+                 status=event_constants.UNDELIVERED_MARKER_STATUS, processed_chain=True)
+    ran = row(db_session, event_type=event_constants.EVENT_RETROACTIVE_RUN,
+              table_name=event_constants.RETROACTIVE_RUN_TABLE,
+              status=event_constants.UNDELIVERED_MARKER_STATUS, processed_chain=True)
+    _body, by_id = rows_of(client)
+    assert {by_id[marker.id]["owner"], by_id[ran.id]["owner"]} == {
+        event_constants.OUTBOX_OWNER_CHAIN}
+
+
 def test_a_permanent_failure_is_not_in_the_queue(client, db_session):
     """⚰️ 이 줄은 «정반대»를 재고 있었다 — 「실패가 큐에 있나」. 제가 실패가 기본 모집단에서
     빠지는 것을 찾아 합집합에 넣었고, 소유자가 무르셨다:

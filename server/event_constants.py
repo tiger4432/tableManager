@@ -358,7 +358,7 @@ OUTBOX_OWNER_CHAIN = "chain"
 OUTBOX_OWNER_UNKNOWN = "unknown"
 
 
-def outbox_owner(event_type, op=None):
+def outbox_owner(event_type, op=None, undelivered=False):
     """Which daemon empties a waiting row of this type - or that nobody has established it.
 
     🔴 `unknown` IS A REAL ANSWER AND MUST NOT BE FOLDED INTO `chain`. An unlisted type is
@@ -373,7 +373,14 @@ def outbox_owner(event_type, op=None):
           칸»(op)을 들고 다녀서 행마다 답이 난다 — 못 세는 것이 아니라 «묻는 자리가 있다».
        op 를 «안 주면» 타입의 답이 그대로 나온다. 행을 못 가진 호출자
        (`/admin/chain/queue` 의 타입별 집계 둘)가 답을 «바꾸지» 않게 하기 위해서다.
+
+    🔴 `undelivered` 는 «단계»다 (총괄 0f2825324 ㄴ). 돌았고 통지만 남은 행은 타입과 무관하게
+       체인 워커가 뺀다 — `broadcast_at` 을 찍는 곳은 체인 워커뿐이다(그룹 뒤 · 미전달 스윕).
+       `BROADCAST_RECOVERY` 는 태어날 때부터 이 단계다. 타입별 집계 둘은 `processed_chain =
+       false` 만 세서 이 단계를 안 본다 — 그래서 안 넘긴다.
     """
+    if undelivered:
+        return OUTBOX_OWNER_CHAIN
     if event_type == EVENT_RETROACTIVE_RUN and op in CHAIN_OWNED_RETROACTIVE_OPS:
         return OUTBOX_OWNER_CHAIN
     if event_type in SCHEDULER_OWNED_EVENT_TYPES:

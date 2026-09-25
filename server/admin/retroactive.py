@@ -838,8 +838,8 @@ OPERATIONS = {
         "cli_only": ["--list-all (prints every moved cell)"],
     },
     "ledger_backfill": {
-        "label": "Translate the ledger forward (everything after the cursor)",
-        "what_is_missing": "the declaration reads this source, but rows after the cursor are not in the ledger yet",
+        "label": "Translate the rows not yet in the ledger",
+        "what_is_missing": "the declaration reads this source, but some of its rows are not in the ledger yet",
         "params": [_p("source", help="ledger source id (GET /api/ledger/declaration)"),
                    _pace_param(),
                    _p("fetch_rows", required=False, kind="int", form=False,
@@ -854,13 +854,13 @@ OPERATIONS = {
                 "[--fetch-rows N] [--max-batches N] [--ontology-root <dir>]"),
         "deletes": None,
         # 🔴 THIS IS THE ONE THE OWNER NAMED: "백필 돌리다 서버 렉먹는데 백필만 못꺼서
-        # 서버 재기동". It commits per page and resumes from the cursor, so asking it to
-        # stop between pages costs nothing and gives that back - the server stays up and
-        # every other job with it.
+        # 서버 재기동". It commits per page and a rerun asks the row index again for the rows
+        # still missing, so asking it to stop between pages costs nothing and gives that
+        # back - the server stays up and every other job with it.
         "reads_as": "number",
         "cancellable": True,
         "restartable": True,
-        "commit_granularity": "atoms and cursor in one commit per page",
+        "commit_granularity": "atoms and the row index in one commit per page",
         "cli_only": ["--scope-column/--scope-values (that is `ledger_rescope` here)"],
     },
     "ledger_rescope": {

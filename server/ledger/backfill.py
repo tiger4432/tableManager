@@ -787,10 +787,6 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
     return result
 
 
-#: Rows in one staged CREATE event of an initial load. The same 1,000 the collapsed outbox
-#: uses, because a page here becomes exactly one of those events.
-EVENT_LOAD_PAGE_ROWS = 1000
-
 #: How many pages may sit in the follow-up queue before the loader stops reading and drains.
 #:
 #: 🔴 THE QUEUE IS MEMORY (`followup` holds a deque), so an initial load of ten million rows
@@ -1143,64 +1139,6 @@ def measure_every_source(engine, setup, store=None, now=None):
             continue
         done.append(source)
     return done
-
-
-def load_via_events(engine, setup, source, page_rows=EVENT_LOAD_PAGE_ROWS,
-                    queue_limit=EVENT_LOAD_QUEUE_LIMIT, max_pages=None, apply=False):
-    """Translate everything this source has NOT translated, down the live path.
-
-    🔴 THE CURSOR IS NOT TOUCHED, AND THAT IS THE POINT (판정 163). Every repair of the last
-    week -- S-53, S-54, S-65 and its letters, S-66, S-74 -- was the cursor path being told
-    something the outbox already knew. An initial load that stages CREATE events uses the one
-    path that is told, so "did this row sort before or after the watermark" stops being a
-    question anybody can get wrong.
-
-    ⚠️ AND IT IS RESUMABLE WITHOUT A POSITION. The rows it offers are the rows the index does
-    not name, so a run that dies leaves nothing to reconcile: the next run asks the same
-    question and gets the remainder.
-    """
-    from . import followup
-
-    plan = setup.snapshot.source_plans[source]
-    report = {"source": source, "relation": plan.relation, "pages": 0, "rows": 0,
-              "inserted": 0, "deduped": 0, "max_queue_depth": 0, "applied": bool(apply),
-              "page_rows": page_rows, "queue_limit": queue_limit}
-    refused = _loader_refusal(plan)
-    if refused:
-        report.update(refused)
-        return report
-
-    after, started = None, time.perf_counter()
-    while max_pages is None or report["pages"] < max_pages:
-        page = rows_missing_from_the_index(engine, setup, source, page_rows, after)
-        if not page:
-            break
-        after = page[-1]
-        report["pages"] += 1
-        report["rows"] += len(page)
-        if not apply:
-            continue
-        followup.enqueue(plan.relation, page, "CREATE")
-        report["max_queue_depth"] = max(report["max_queue_depth"],
-                                        followup.queue_depth())
-        # Drain down to the limit before reading more: the queue is memory, and this is what
-        # keeps the number of row ids held at once bounded rather than the table's size.
-        while followup.queue_depth() >= queue_limit:
-            done = followup.drain_once(engine, setup)
-            if done is None:
-                break
-            for value in (done.get("sources") or {}).values():
-                report["inserted"] += value.get("inserted", 0) or 0
-                report["deduped"] += value.get("deduped", 0) or 0
-    while apply and followup.queue_depth():
-        done = followup.drain_once(engine, setup)
-        if done is None:
-            break
-        for value in (done.get("sources") or {}).values():
-            report["inserted"] += value.get("inserted", 0) or 0
-            report["deduped"] += value.get("deduped", 0) or 0
-    report["seconds"] = round(time.perf_counter() - started, 3)
-    return report
 
 
 #: How many distinct refs one paced cycle of the index backfill reads.
@@ -1923,9 +1861,9 @@ def main(argv=None):
     # 🔴 S-88 — THE CLI IS A PROCESS TOO, and it must not need the daemon to have run
     # first: a fresh install driven by `--source X` gets the schema the daemon would have
     # ensured. Here rather than in `run()` for two reasons — `run()` is a LIBRARY function
-    # and a caller does not expect DDL from it, and every branch below (`rescope`,
-    # `--via-events`, the plain load) writes to the ledger, so one call at the entry
-    # point covers what three inside would.
+    # and a caller does not expect DDL from it, and both branches below (`rescope`, the
+    # plain load) write to the ledger, so one call at the entry point covers what two
+    # inside would.
     #
     # ⛔ AND IT CANNOT GO BEFORE THE REFUSALS. `test_v2_backfill_refuses_reset_controls
     # _before_store_access` is right: a refusal that fires after the store has been
@@ -1961,8 +1899,7 @@ def main(argv=None):
                         help="comma-separated values of --scope-column")
     parser.add_argument(
         "--via-events", action="store_true",
-        help="load everything the row index does not yet name by staging CREATE events "
-             "(the live path) instead of walking the cursor; the cursor is not touched")
+        help="retired - the same job as the plain load; run without it")
     parser.add_argument("--apply", action="store_true",
                         help="with --scope-column: withdraw and remake for real. Without "
                              "it the scope is a dry-run and writes nothing")
@@ -1977,6 +1914,13 @@ def main(argv=None):
             "destructive_approval_required", path,
             "cursor reset or replay requires a separate destructive approval",
         )
+    if args.via_events:
+        # ⚰️ RETIRED (총괄 68a194f8c): the plain load's own body under a second name - the
+        # same pages of rows the index does not name, the same CREATE events - without its
+        # pace and its cancel. Refused by name, so an old command line is told, not ignored.
+        raise LedgerSetupError(
+            "retired_option", "via_events",
+            "--via-events is the same job as the ledger backfill; run without it")
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)-7s %(name)s | %(message)s")
@@ -2016,16 +1960,6 @@ def main(argv=None):
         logger.info("[Ledger] %s", scoped)
         if not args.apply:
             logger.info("[Ledger] dry-run: nothing was written. Re-run with --apply.")
-        return 0
-
-    if args.via_events:
-        # 🔴 THE LOAD USES THE PATH THAT IS TOLD (판정 163). The cursor path has to work out
-        # what the outbox already knows, which is what every repair of the last week was.
-        setup = load_setup(args.ontology_root)
-        report = load_via_events(engine, setup, args.source, apply=args.apply)
-        logger.info("[Ledger] %s", report)
-        if not args.apply:
-            logger.info("[Ledger] dry-run: nothing was staged. Re-run with --apply.")
         return 0
 
     # `reset_cursor` / `start_from` never reach here - refused above, before any store access.
