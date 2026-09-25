@@ -1,3 +1,50 @@
+> ## [09-25 16:24 디자인] Overview 나머지(5d157581e) 짓기 전 셈 — 줄 열 개를 오늘 «누가» 판정하나 · 물음 넷
+
+### 줄마다 오늘
+
+```
+줄                 수                                  Overview 가 오늘 읽나              오늘 판정하는 자리
+Workers            alive N of M                        /runtime (refreshRunning 폴)       없음 — 고리 표만 그림
+File Ingestion     failed · ingesting                  failed · active                   둘 — 카드 ① · 숨은 띠(active 못 읽음을 0 으로 접음)
+Chain              Failed since · rules · mappers      outbox · rules · mappers           둘 — 카드 ②(failedSince) · 띠(total 없으면 0)
+Auto Update        active a/b · failures · 산출물 실패   auto-update/status · 인제션 실패     둘 — 띠만 errorText · absentPath · 연계 못 읽음을 봄
+Enrichment         rules · missing                     fetchEnrichmentStatus              둘 — 규칙 0 일 때 카드는 OK, 띠는 회색
+Ledger             소스 상태별 수(서버 낱말)             ⛔ 안 읽음 — Tables 탭만 /admin/ledger/sources   없음
+                   라우트는 원장을 안 읽고 소스당 한 행(커서 표)이라 30 초 폴에 얹어도 가볍습니다
+Declarations       rejected · no effect · fine         /admin/config/resolve              한 자리 — config_resolve_view
+Retroactive        runs in progress                    /admin/retroactive/runs            한 자리 — retroactive_view.buildRunsView
+Re-correction      rate · n of m · days                /dashboard/summary (5 분 스로틀)    한 자리 — 단 DOM 에 직접 씀
+Correction effort  pts · coverage · days               같은 응답                          한 자리 — 단 DOM 에 직접 씀
+```
+
+### 짓는 모양
+
+```
+판정     새 모듈 하나(overview_status) — 줄마다 순수 함수 «하나»: 서버 응답 -> 수 · 점 색 · 상태 낱말
+         둘이던 넷(File · Chain · Auto · Enrichment)은 하나로. 기준은 «더 많이 가리던 쪽»(Auto 는 띠 쪽)
+         health_card_absence 하니스(못 읽음 ≠ 0)는 지우지 않고 Auto 줄 함수로 옮깁니다
+그림     현황판 부품 하나(자기 div) — 5 칸 줄, 누르면 제자리 펼침. 펼침 안은 기존 부품을 «옮겨» 앉힘
+옮김     고리 표 -> Workers 펼침 · 설정 반영 접이 -> Declarations 펼침 · 소급 폼 -> Retroactive 탭 · 체인 그래프 -> Chain 탭
+뺌       health-strip 마크업 · refreshHealthStrip 과 판정 넷 · setHealthCard · 카드 클릭 넷 · 옛 카드 넷 · 재교정률/교정 공수 줄
+Declarations 묶기  problemGroups 열쇠에 영역 · 수 큰 순 · 첫 줄 문장 안 실음 (b93cdf327)
+a80361a63   숫자 넷 좁으면 2×2 · Truly none 뺌 · 폰 폭 가로 스크롤 0
+```
+
+### 물음
+
+```
+1 상태 낱말   시안의 낱말을 받지 못했습니다. 제 안: 점 색 넷과 같은 넷 — OK · Watch · Look · Unknown
+2 Running 블록  「도는 것」 목록(줄마다 × 로 하나만 끊기 — 주석에 「소유자 1순위 화면」)은 시안 줄 목록에 없습니다
+              제 안: Retroactive 줄의 펼침에 그 목록 그대로(× 포함) · 소급 «폼»만 Retroactive 탭으로
+3 설정 반영 안의 셋   조인 검증 · 선언 빈칸 목록 · 계획 dry-run — 제 안: Declarations 펼침의 「Show all N lines ›」 아래 지금 순서대로
+4 폰 폭 가로 스크롤   대기열 부품을 픽스처로 480 창에 앉혀 재면 넘침 0(문서 폭 480 = 창 480) — 미는 것은 다른 부품입니다
+              토큰 있는 화면에서만 보여서, 총괄께서 그 창 콘솔에 아래 한 줄을 부탁드립니다 (읽기만 합니다)
+              [...document.querySelectorAll('body *')].filter(e => e.getBoundingClientRect().right > innerWidth + 0.5).slice(0, 8).map(e => e.tagName + '#' + e.id + '.' + e.className)
+              못 받으면 현황판의 부품 전부를 픽스처로 앉혀 제가 재겠습니다
+```
+
+답 전에는 물음과 무관한 것(줄 함수 · 현황판 부품 · 하니스)을 짓고, 착지는 한 커밋입니다.
+
 > ## [09-25 16:17 디자인] 대기열 섹션 — 시안 A 전부 착지 (96fe82648) · Overview 와 Chain 탭 같은 모양 · 화면은 총괄께
 
 ### 착지 96fe82648 — chain_queue_panel · admin.js · admin.html · 하니스 · dist
