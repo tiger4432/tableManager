@@ -33694,3 +33694,23 @@ python -c "import sys,pytest;P=type('P',(),{'pytest_collection_modifyitems':lamb
 ```
 뒷정리   깨끗한 작업 트리 지움 — git worktree list 에서 scratchpad/wt 줄이 사라짐 (남은 줄은 제 것이 아님)
 ```
+
+---
+
+## 알림 — 3-ㄴ · 2 의 «전» 을 지금 박스(162e1cc73)에서 잽니다 (8e331ca17) (09-26 07:04)
+
+구현자 착지 전에 재야 «전»이라, 먼저 잽니다. «후»는 착지·재기동 뒤 같은 방법으로.
+
+```
+3-ㄴ   탐침 수집기 둘을 ingestion_workspace/large_table_100/auto_update/ 에 둠 — 빈 출력이라 표에 쓰는 행 0
+         appaudit_quick.py  매분 · 바로 끝남     (재기동 전·후 last_run 이 같은지 볼 «다른 수집기»)
+         appaudit_slow.py   2 분마다 · 90 초 잠  (이것이 도는 도중 스케줄러를 한 번 죽임 -> 감독자가 되살림)
+       재기동 — 스케줄러 한 번(죽임)
+       되돌림  두 파일 지움 -> 스크립트가 없어진 수집기는 목록에서 빠짐. 상태 파일은 스케줄러가 다시 씀
+2      파일 둘 (업로드 라우트)
+         large_table_100   행 1 · 칸 셋 — 표 선언이 없어 칸 전부 버림 -> 쓴 행 0
+         wafer_id_status   행 1 · 선언 칸 둘 + 선언 없는 칸 하나 -> 행 1 (체인 규칙 · 원장 선언 어디에도 이 표 이름 없음)
+       되돌림  wafer_id_status 의 제 행 하나를 행 삭제 라우트로 지움 · raws 의 제 파일 지움
+              파일 기록 줄(file_ingestion_logs) 둘은 남음 — 측정의 기록
+표시   값은 전부 APPAUDIT- 로 시작
+```
