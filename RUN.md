@@ -17,7 +17,9 @@
 >          where=scheduler                       수집기가 돎 (취소 문 없음)
 >          where=chain_worker · cancel=null      체인 규칙 — 워커가 따로 돌면 lap 이 찍힌 순간에만 보임(짧은 규칙은 거의 안 잡힘)
 >          KeyError 'now_running'                옛 코드 — git pull 안 됨
-> 되돌리기  git revert. 쓰는 것 없음 — 응답에 칸 하나가 는 것뿐
+> 되돌리기  두 커밋에 걸쳐 있음 — 새 파일 둘은 다른 커밋에 먼저 실렸다. 한 줄로:
+>          git revert d6f4b8bcc && git rm server/runtime/running.py server/tests/test_what_is_running_is_one_seat.py
+>          쓰는 것 없음 — 응답에 칸 하나가 는 것뿐
 > ```
 
 ---
