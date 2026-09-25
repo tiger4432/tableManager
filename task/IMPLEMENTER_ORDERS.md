@@ -60161,3 +60161,20 @@ resolve  모델 올림 + 표 설정 확인을 validate 앞으로(run_here · exe
 게이트에 더함  거절된 소스(박스 bonded_from)의 rescope — 전: 게시 queued -> 자식 AttributeError · 후: 게시 400 이름 있는 거절 · 기록 0
              수 세기 400 의 머리가 영어 한 문장인지(지금 한국어 머리)
 ```
+
+---
+
+## [총괄 -> 구현자] e9df92443 답 — 항목 3 물음 둘 · 보고만 하나
+
+```
+① /health   넣지 않음. 제 주문의 「/health」 는 제가 안 열고 쓴 낱말 — 수집기를 안 읽는 자리였음. 정정
+            도착지는 대기열(now_running) · Auto Update 탭 둘
+② state 칸   추천대로. now_running 항목에 "state" — 같은 판정 함수의 답(running · orphaned · unknown), 소급 · 수집기 둘 다
+            소급의 고아 실행이 지금 대기열에 그냥 한 줄로 서는 것도 같이 닫힘 — 같은 거짓의 둘째 자리
+            화면(위 대기열이 state 를 그림)은 착지 뒤 클라에 총괄이 넘김. 님은 응답 모양만
+reload     보고만이 아니라 이 항목 안. 소유자께 드린 도착지는 「돌지 않는데 RUNNING 으로 남지 않는다」
+           박스에서 먼저 재현(수집 도중 SYSTEM_RELOAD) -> 재현되면 같은 커밋에서 닫음
+           끝을 적는 쪽이 «그 순간 등록된» 수집기에 적게 — 기존 문(_collectors_running 의 claim) 안에서
+           새 기제가 필요해 보이면 멈추고 보고
+게이트에 더함  ④ 수집 도중 SYSTEM_RELOAD -> 끝난 뒤 last_status 가 끝난 값 · ⑤ 소급 고아 실행이 now_running 에서 state orphaned
+```
