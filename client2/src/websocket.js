@@ -3,6 +3,7 @@ import {
   WS_HEALTHY_SESSION_MS, WS_WAKE_MIN_GAP_MS, WS_CONNECT_TIMEOUT_MS, WS_CONNECT_STALE_MS
 } from './config.js';
 import { state } from './state.js';
+import { unitText } from './ui_words.js';
 import { elements } from './dom.js';
 import { checkServerHealth, loadTables, fetchData } from './api.js';
 import { showIngestionProgress, finishIngestionProgress, showRetroactiveProgress,
@@ -443,7 +444,7 @@ export function handleWebSocketMessage(msg) {
       state.gridApi.refreshCells({ force: true });
       updateGridSortState();
       updateLoadedCount();
-      elements.performanceLog.textContent = `⚡ Real-time created: ${items.length} rows added`;
+      elements.performanceLog.textContent = `⚡ Real-time created: ${unitText(items.length, 'row')} added`;
     }
   } else if (event === 'batch_row_upsert') {
     const items = msg.items || [];
@@ -525,7 +526,7 @@ export function handleWebSocketMessage(msg) {
       updateGridSortState();
       updateLoadedCount();
 
-      elements.performanceLog.textContent = `⚡ Real-time synchronized: ${updatedRows.length} rows updated`;
+      elements.performanceLog.textContent = `⚡ Real-time synchronized: ${unitText(updatedRows.length, 'row')} updated`;
     }
   } else if (event === 'batch_row_delete') {
     const rowIds = msg.row_ids || [];
@@ -535,7 +536,7 @@ export function handleWebSocketMessage(msg) {
     state.gridApi.applyTransaction({ remove: deleteTx });
 
     updateLoadedCount();
-    elements.performanceLog.textContent = `🗑️ Real-time deleted: ${rowIds.length} rows removed`;
+    elements.performanceLog.textContent = `🗑️ Real-time deleted: ${unitText(rowIds.length, 'row')} removed`;
 
     if (state.selectedCell && rowIds.includes(state.selectedCell.rowId)) {
       state.selectedCell = null;

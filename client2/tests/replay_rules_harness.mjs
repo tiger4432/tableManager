@@ -299,10 +299,10 @@ function bannerSuite(mod) {
     return byClass(host, 'redo-panel__group');
   })();
   s.say('B10 a row with no row_id is NAMED and counted, not dropped',
-    withHole.some((n) => /1 rows without row_id/.test(n.textContent)),
+    withHole.some((n) => /1 row without row_id/.test(n.textContent)),
     withHole.map((n) => n.textContent));
   s.say('B11 ... and that line cannot be pressed, because those rows do not run',
-    withHole.filter((n) => /rows without row_id/.test(n.textContent))
+    withHole.filter((n) => /without row_id/.test(n.textContent))
       .every((n) => n.tagName === 'DIV')
     && withHole.some((n) => n.tagName === 'BUTTON' && /— 1 row/.test(n.textContent)),
     withHole.map((n) => `${n.tagName}:${n.textContent}`));
@@ -364,7 +364,7 @@ function bannerSuite(mod) {
     return host;
   })();
   const holeLine = byClass(holeHost, 'redo-panel__group')
-    .find((n2) => /rows without row_id/.test(n2.textContent));
+    .find((n2) => /without row_id/.test(n2.textContent));
   s.say('R1 with a way to show it, the un-runnable line becomes pressable',
     Boolean(holeLine) && holeLine.tagName === 'BUTTON',
     holeLine ? `${holeLine.tagName}:${holeLine.textContent}` : '(no line)');
@@ -377,7 +377,7 @@ function bannerSuite(mod) {
   // ⚠️ 보여 줄 방법이 없으면 «그냥 줄»입니다 — 누르면 아무 일도 안 나는 버튼은
   //    화면이 하는 거짓입니다(이 파일이 다른 자리에서도 재는 그 규율).
   s.say('R4 without one, it is a line and not a control that does nothing',
-    withHole.filter((n2) => /rows without row_id/.test(n2.textContent))
+    withHole.filter((n2) => /without row_id/.test(n2.textContent))
       .every((n2) => n2.tagName === 'DIV'), withHole.map((n2) => n2.tagName).join(','));
   return { ran: s.names.length, names: s.names, failures: s.failures };
 }

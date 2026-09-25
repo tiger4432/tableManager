@@ -1,5 +1,6 @@
 import { API_BASE } from './config.js';
 import { state, isVirtualColumn, visibleRangeColIds } from './state.js';
+import { unitText } from './ui_words.js';
 import { elements } from './dom.js';
 import { activateHistoryTab, showHistoryPane } from './history_tabs.js';
 // The ONE TSV implementation in this codebase. Pure: no DOM, no module state, no
@@ -341,7 +342,7 @@ function installSelectionKeys() {
  *    주석이 그 둘을 구별한다고 적고 있었는데 코드가 안 그랬습니다(깔끔 ①: 이 줄이 참인가).
  */
 function rowCountText(rowCount) {
-  return isCount(rowCount) ? `${rowCount} rows` : '';
+  return isCount(rowCount) ? unitText(rowCount, 'row') : '';
 }
 
 // ── C-108 ② 표마다 «마지막 탭» ────────────────────────────────────────────────────────

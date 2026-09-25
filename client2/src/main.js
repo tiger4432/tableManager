@@ -11,7 +11,7 @@ import { narrowingTail } from './narrowing.js';
 // 이 파일은 ag-grid 의 CSS 를 import 해서 node 가 못 읽습니다.
 import { sourceRowHtml, sourceRowAllHtml } from './source_rows.js';
 import { state } from './state.js';
-import { NONE } from './ui_words.js';
+import { NONE, unitText } from './ui_words.js';
 import { writeRefusal } from './write_guard.js';
 import { elements } from './dom.js';
 import {
@@ -351,7 +351,7 @@ function setupEventListeners() {
       }
       
       const rowIds = selectedRows.map(r => r.row_id);
-      const confirmSync = confirm(`Sync ${rowIds.length} selected rows to the graph DB?`);
+      const confirmSync = confirm(`Sync ${unitText(rowIds.length, 'selected row')} to the graph DB?`);
       if (!confirmSync) return;
       
       showToast("Requesting graph DB sync…", 'info');
@@ -1164,8 +1164,8 @@ function setupEventListeners() {
         const renderTime = (renderEndTime - renderStartTime).toFixed(0);
         const totalTime = (renderEndTime - startTime).toFixed(0);
 
-        elements.performanceLog.textContent = `✅ Loaded ${accumulatedData.length} rows (Fetch Chunks: ${totalFetchTime}ms, Render: ${renderTime}ms | Total: ${totalTime}ms)`;
-        showToast(`📥 Loaded all ${accumulatedData.length} rows`, 'success');
+        elements.performanceLog.textContent = `✅ Loaded ${unitText(accumulatedData.length, 'row')} (Fetch Chunks: ${totalFetchTime}ms, Render: ${renderTime}ms | Total: ${totalTime}ms)`;
+        showToast(`📥 Loaded all ${unitText(accumulatedData.length, 'row')}`, 'success');
         state.isLoadingMore = false;
       } catch (err) {
         console.error('Failed to load all rows sequentially', err);
@@ -1563,7 +1563,7 @@ async function openSourcesModal() {
     const cols = Array.from(new Set(cells.map(c => c.colId)));
     const rows = Array.from(new Set(cells.map(c => c.rowIndex)));
     elements.modalMetaInfo.innerHTML = `
-      <div><strong>Selected Range:</strong> <span style="color:var(--color-secondary)">${cells.length} cells (${rows.length} rows × ${cols.length} cols)</span></div>
+      <div><strong>Selected Range:</strong> <span style="color:var(--color-secondary)">${unitText(cells.length, 'cell')} (${unitText(rows.length, 'row')} × ${unitText(cols.length, 'col')})</span></div>
       <div><strong>Columns:</strong> <span style="color:var(--color-primary)">${cols.map(c => c.toUpperCase()).join(', ')}</span></div>
     `;
   } else {

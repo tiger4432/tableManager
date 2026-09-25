@@ -19,6 +19,7 @@
 //    an empty string would be a silent behaviour change smuggled into an escaping round. It is
 //    reported, not fixed here.
 import { escapeHtml } from './utils.js';
+import { unitText } from './ui_words.js';
 
 /** One cell's row: this source, the value it holds, and whether it is pinned. */
 export function sourceRowHtml(sourceName, sourceVal, { isPinned, writable }) {
@@ -83,7 +84,7 @@ export function sourceRowAllHtml(sourceName, values, { isPinnedAll, cellCount, w
   //    numerator and inverts the sentence; the ratio cannot be read backwards because both
   //    numbers carry their unit. Reported to the lead as a wording call, not buried.
   if (selected !== null && covered > 0 && covered < selected) {
-    valText = `${valText} · ${covered} of ${selected} cells`;
+    valText = `${valText} · ${covered} of ${unitText(selected, 'cell')}`;
   }
   // C-84. 같은 규칙, 같은 이유 — 선택 여럿짜리 행도 뷰에서는 컨트롤을 안 그린다.
   const actions = writable

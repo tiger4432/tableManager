@@ -45,7 +45,7 @@
 
 /** The status tokens `admin.html`'s `.health-dot` already understands. */
 import { ABSENT, UNKNOWN, countText } from './absent.js';
-import { FAILED, NONE, WAITING } from './ui_words.js';
+import { FAILED, NONE, WAITING, unitText } from './ui_words.js';
 import { countWithAbsence } from './count_with_absence.js';
 import { pickupState } from './pickup_state.js';
 import { retroactiveNote } from './retroactive_note.js';
@@ -350,7 +350,7 @@ export function queueView(payload, opts = {}) {
   // ── rule ④: a cut list says it was cut ──
   const listed = payload.listed && typeof payload.listed === 'object' ? payload.listed : null;
   const truncated = listed && listed.capped
-    ? `Read the first ${countOf(listed.rows_scanned)} rows only (cap ${countOf(listed.cap)}). `
+    ? `Read the first ${unitText(countOf(listed.rows_scanned), 'row')} only (cap ${countOf(listed.cap)}). `
       + 'The list below is not the whole queue.'
     : '';
 

@@ -1,6 +1,6 @@
 import { API_BASE, CURRENT_USER, pageLimit } from './config.js';
 import { state, isVirtualColumn } from './state.js';
-import { notANumber } from './ui_words.js';
+import { notANumber, unitText } from './ui_words.js';
 // C-107. 「쓸 수 있나」를 묻는 자리가 «한 곳»입니다 — 두 줄씩 다섯 번 적혀 있던 것을 접었습니다.
 import { refuseWrite } from './write_guard.js';
 import { elements } from './dom.js';
@@ -76,7 +76,7 @@ function writeRangeReadout(startCell, endCell) {
   const maxCol = Math.max(startColIdx, endColIdx);
   const cols = Object.keys(state.visibleColIndexMap)
     .filter((colId, idx) => idx >= minCol && idx <= maxCol && colId !== '#').length;
-  readout.textContent = (rows > 1 || cols > 1) ? `${rows} rows × ${cols} cols selected` : '';
+  readout.textContent = (rows > 1 || cols > 1) ? `${unitText(rows, 'row')} × ${unitText(cols, 'col')} selected` : '';
 }
 
 export function refreshRange(api, startCell, endCell) {
@@ -623,7 +623,7 @@ export function setupClipboardHandlers() {
           // V1 instrument: reset ONLY when the server confirms it recorded the effort — a
           // paste whose values already match storage returns 200 and records nothing.
           commitIfRecorded(result);
-          elements.performanceLog.textContent = `Pasted successfully: ${batchUpdates.length} rows updated`;
+          elements.performanceLog.textContent = `Pasted successfully: ${unitText(batchUpdates.length, 'row')} updated`;
 
           // Fast-apply local data values by updating latest node data in-place
           batchUpdates.forEach(update => {
@@ -726,7 +726,7 @@ export function setupClipboardHandlers() {
     // `e.clipboardData`, never `navigator.clipboard`: production is plain-HTTP LAN, a
     // non-secure context, where the async Clipboard API is undefined.
     e.clipboardData.setData('text/plain', serializeTsv(lines));
-    elements.performanceLog.textContent = `📋 Copied ${selectedNodes.length} rows to clipboard`;
+    elements.performanceLog.textContent = `📋 Copied ${unitText(selectedNodes.length, 'row')} to clipboard`;
   });
 }
 

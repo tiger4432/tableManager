@@ -1,6 +1,6 @@
 import { API_BASE, pageLimit } from './config.js';
 import { ABSENT, isCount } from './absent.js';
-import { LOADING } from './ui_words.js';
+import { LOADING, unitText } from './ui_words.js';
 import { escapeHtml } from './utils.js';
 import { narrowingTail } from './narrowing.js';
 import { state } from './state.js';
@@ -427,13 +427,13 @@ export function createGlobalTimelineItemDom(group) {
         + `${chainless ? ' · batch without a chain' : ''}`;
       colorClass = 'color-ledger';
     } else if (allDeletes) {
-      displayTitle = `🗑️ [${user}] | ${baseLog.table_name} | ${group.total_count} rows deleted`;
+      displayTitle = `🗑️ [${user}] | ${baseLog.table_name} | ${unitText(group.total_count, 'row')} deleted`;
       colorClass = 'color-delete';
     } else if (allCreates) {
-      displayTitle = `🆕 [${user}] | ${baseLog.table_name} | ${group.total_count} rows created`;
+      displayTitle = `🆕 [${user}] | ${baseLog.table_name} | ${unitText(group.total_count, 'row')} created`;
       colorClass = 'color-create';
     } else {
-      displayTitle = `📦 [${user}] | ${baseLog.table_name} | ${group.total_count} changes`;
+      displayTitle = `📦 [${user}] | ${baseLog.table_name} | ${unitText(group.total_count, 'change')}`;
       colorClass = baseLog.is_row_deleted ? 'color-deleted-row' : 'color-summary';
     }
   } else {

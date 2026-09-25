@@ -1,7 +1,7 @@
 import { API_BASE, WS_URL, CURRENT_USER, pageLimit } from './config.js';
 import { narrowingParams as buildNarrowing } from './narrowing.js';
 import { state } from './state.js';
-import { notANumber } from './ui_words.js';
+import { notANumber, unitText } from './ui_words.js';
 import { refuseWrite, applyWriteGuards } from './write_guard.js';
 import { elements } from './dom.js';
 import { activateHistoryTab } from './history_tabs.js';
@@ -416,7 +416,7 @@ export async function fetchData(resetSkip = true) {
       updatePaginationUI(cached.total);
       // 아직 안 센 쪽이 캐시에 있으면 «다시 묻습니다». 안 그러면 「세는 중」이 영영 남습니다.
       if (!Number.isFinite(cached.total)) fillMatchCount(narrowingParams(), state.currentTable);
-      elements.performanceLog.textContent = `Loaded ${cached.data.length} rows from client cache`;
+      elements.performanceLog.textContent = `Loaded ${unitText(cached.data.length, 'row')} from client cache`;
       return;
     }
   }
@@ -476,7 +476,7 @@ export async function fetchData(resetSkip = true) {
     // Update Pagination UI
     updatePaginationUI(result.total);
 
-    elements.performanceLog.textContent = `Loaded ${result.data.length} rows in ${fetchTime}ms`;
+    elements.performanceLog.textContent = `Loaded ${unitText(result.data.length, 'row')} in ${fetchTime}ms`;
 
     // 행은 그려졌습니다. 이제 개수를 가지러 갑니다 -- «기다리지 않고» 돌려줍니다.
     if (!Number.isFinite(result.total)) fillMatchCount(narrowing, table);
@@ -697,7 +697,7 @@ export async function deleteSelectedRows() {
   const rowIds = selectedNodes.map(node => node.data.row_id).filter(Boolean);
   if (rowIds.length === 0) return;
 
-  if (!confirm(`Are you sure you want to permanently delete the selected ${rowIds.length} rows?`)) return;
+  if (!confirm(`Are you sure you want to permanently delete the selected ${unitText(rowIds.length, 'row')}?`)) return;
 
   elements.performanceLog.textContent = 'Deleting selected rows...';
   try {
@@ -713,7 +713,7 @@ export async function deleteSelectedRows() {
     if (res.ok) {
       state.pageCache.clear();
       const result = await res.json();
-      elements.performanceLog.textContent = `Deleted ${result.deleted_count} rows successfully`;
+      elements.performanceLog.textContent = `Deleted ${unitText(result.deleted_count, 'row')} successfully`;
     } else {
       throw new Error('Batch delete request failed');
     }

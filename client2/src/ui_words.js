@@ -14,6 +14,11 @@ export const NONE = 'None';
 export const NO_VALUE = 'No value';
 export const CHOOSE = '— choose —';
 
+/** A count and its unit — the one place a number meets «row(s)» · «col(s)» · «cell(s)». */
+export function unitText(n, singular, plural = `${singular}s`) {
+  return `${n} ${Number(n) === 1 ? singular : plural}`;
+}
+
 /** The refusal three write paths (edit · paste · fill) give a value that is not a number. */
 export function notANumber(column, value) {
   return `Column '${column}': '${value}' is not a number`;

@@ -1,7 +1,7 @@
 import { createGrid } from 'ag-grid-community';
 import { pageLimit } from './config.js';
 import { state, updateVisibleColIndexMap, joinResolvedColumn, visibleRangeColIds } from './state.js';
-import { notANumber } from './ui_words.js';
+import { notANumber, unitText } from './ui_words.js';
 // C-107. 「쓸 수 있나」는 한 규칙이 답합니다 — 편집 진입도 쓰기의 문입니다.
 import { writeRefusal } from './write_guard.js';
 import { elements } from './dom.js';
@@ -395,7 +395,7 @@ export function updateOffscreenIndicator() {
     // Saying it is the whole point. A column that scrolled out of view with nothing on
     // screen to say so reads as a column that is GONE, and the next question is asked of
     // the table config rather than of the scrollbar.
-    badge.textContent = count > 0 ? `+${count} cols →` : '';
+    badge.textContent = count > 0 ? `+${unitText(count, 'col')} →` : '';
     badge.title = count > 0 ? 'Scroll right to reach them' : '';
     badge.style.display = count > 0 ? '' : 'none';
   }
@@ -582,7 +582,7 @@ export function foldFilterChips() {
   hidden.forEach(chip => { chip.style.display = 'none'; });
   // Said, not swallowed: a filter that is hiding rows with nothing on screen to name it reads
   // as data that is GONE, and the next question gets asked of the table instead of the strip.
-  more.textContent = `+${hidden.length} filters`;
+  more.textContent = `+${unitText(hidden.length, 'filter')}`;
   more.title = 'Click to unfold';
   more.style.display = hidden.length ? '' : 'none';
 }

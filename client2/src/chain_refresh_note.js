@@ -22,6 +22,8 @@
  * 🔴 `0` 은 «값»입니다 — 「스윕 복구」가 그 수로 옵니다(서버가 자기 상수 옆에 그렇게 적어
  *    두었습니다). 「0 행」과 「이 서버는 그 말을 안 한다」는 다른 사실이고, 뒤엣것만 «침묵»입니다.
  */
+import { unitText } from './ui_words.js';
+
 export function chainRefreshNote(msg) {
   if (!msg || typeof msg !== 'object') return '';
   const n = msg.change_count;
@@ -29,5 +31,5 @@ export function chainRefreshNote(msg) {
   //    계약이 조용히 넓어집니다 — 그다음 사람은 그 강제를 계약으로 읽습니다.
   if (!Number.isFinite(n)) return '';
   // 형제 갈래들이 쓰는 «그 슬롯»의 모양(기호 + 사실 + 수)을 그대로 따릅니다.
-  return `⚡ Chain ${n} rows`;
+  return `⚡ Chain ${unitText(n, 'row')}`;
 }

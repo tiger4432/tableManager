@@ -480,8 +480,8 @@ const C108_MUTANTS = [
   // 🔴 THE OLD BEHAVIOUR, PUT BACK: `0` and 「nothing came」 render identically again.
   { id: 'M5', what: 'a measured zero goes blank again',
     catches: 'T2 a measured zero is a number',
-    mutate: (text) => swap(text, '  return isCount(rowCount) ? `${rowCount} rows` : \'\';',
-      '  return rowCount ? `${rowCount} rows` : \'\';') },
+    mutate: (text) => swap(text, '  return isCount(rowCount) ? unitText(rowCount, \'row\') : \'\';',
+      '  return rowCount ? unitText(rowCount, \'row\') : \'\';') },
   { id: 'M6', what: 'the memory holds a POSITION instead of a name',
     catches: 'T8 ...even after the views are reordered',
     mutate: (text) => swap(

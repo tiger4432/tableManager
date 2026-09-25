@@ -35,6 +35,8 @@ import { setDisabledReason } from './disabled_reason.js';
  *
  * ⛔ 설명을 붙이지 않습니다 — 「다음 행동」이 답이고, 그것은 한 동사입니다(상설).
  *    「행이 선택되지 않았습니다」는 «상태»를 다시 말하는 것이라 아무것도 더하지 않습니다. */
+import { unitText } from './ui_words.js';
+
 const NEEDS_A_ROW = 'Pick rows';
 
 /** 고른 행들이 이 컬럼에서 «실제로 들고 있는» 값. 없는 값은 지어내지 않고 «셉니다».
@@ -267,7 +269,7 @@ export class RedoBanner {
     if (picked.length > this.warnAbove) {
       const big = doc.createElement('div');
       big.className = 'redo-panel__warn';
-      big.textContent = `${picked.length} rows selected · keep it at ${this.warnAbove} or fewer`;
+      big.textContent = `${unitText(picked.length, 'row')} selected · keep it at ${this.warnAbove} or fewer`;
       box.appendChild(big);
     }
     // 🔴 토큰이 없으면 «문장으로» 말합니다. 조용히 회색으로 두면 운영자는 자기 선택이
@@ -341,7 +343,7 @@ export class RedoBanner {
       const skipped = g.missing ? ` · ${g.missing} without a value` : '';
       const n = g.values.length;
       return {
-        text: `${g.key} — ${n} group${n === 1 ? '' : 's'} from ${g.rows} row${g.rows === 1 ? '' : 's'}${skipped}`,
+        text: `${g.key} — ${unitText(n, 'group')} from ${unitText(g.rows, 'row')}${skipped}`,
         params: {
           source: sourceRow.source,
           scope_column: g.key,
@@ -380,7 +382,7 @@ export class RedoBanner {
     if (!values.length) return { note: 'No row_id in the selected rows' };
     // 🔴 셈은 «행 수»입니다(판정 407 ②) — row_id 는 중복이 없으므로 값의 수가 곧 행의 수입니다.
     //    종전의 「N keys from M rows」는 둘이 갈라질 수 있을 때의 문구였고, 이제 갈라지지 않습니다.
-    const from = `${values.length} row${values.length === 1 ? '' : 's'}`;
+    const from = unitText(values.length, 'row');
     // 넘기는 모양도 같은 신원입니다 — `adoptRescopeHandoff` 가 `params` 를 그대로 앉힙니다.
     //    여기서만 업무 키를 보내면 «누르는 길»과 «넘기는 길»이 다른 것을 가리키게 됩니다.
     const payload = { op: 'chain_replay', params: { row_ids: values.join(',') } };
@@ -404,7 +406,7 @@ export class RedoBanner {
     // 🔴 판정 407 ②. row_id 가 없는 행은 «조용히 빠지지» 않고 이름을 달고 섭니다 —
     //    그 행들은 다시 돌아가지 «않습니다», 그리고 그것이 화면에 없으면 운영자는 전부 돌았다고 읽습니다.
     const skipped = missing
-      ? [{ text: `${missing} rows without row_id · cannot rerun`, params: null,
+      ? [{ text: `${unitText(missing, 'row')} without row_id · cannot rerun`, params: null,
            // 🔴 C-114. 수만 보여 주면 운영자는 «어느 행인지»를 모릅니다 — 그 처음 행으로
            //    그리드를 보냅니다. 돌리는 줄이 아니므로 `params` 는 그대로 `null` 입니다.
            reveal: firstMissing }] : [];
