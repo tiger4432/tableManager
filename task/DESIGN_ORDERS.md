@@ -33676,3 +33676,32 @@ Overview 에 옛 모양이 한 조각도 안 남는 것이 게이트 — 총괄�
          /admin/chain/rules 를 읽는 자리 전수 — 순서가 바뀌어도 답이 같은지(개수 세는 자리 등)
 그대로   한 선언이 두 줄(join 의 :target · decide 의 두 단계) — 소유자 「일단 둔다」
 ```
+
+---
+
+> 🔴 **[총괄 -> 클라] Overview 화면 판정(5efa71f75) — 고칠 것 넷. 소유자 「넷 보내」**
+
+총괄이 소유자 크롬에서 눌러 본 결과입니다. 순서: 글자 ① -> Enrichment 탭 -> 이 넷.
+
+```
+① Ledger 줄
+   지금    펼쳐지지 않음 · 사실 칸이 서버 낱말 그대로(ran_and_wrote 11 · not_measured 4) · Open › 이 Ontology Explorer 탭 «맨 위»(편집기)로 감
+           소스 현황 절(sec-ledger-sources)은 그 탭 맨 아래라 운영자가 못 찾음
+   고칠 것  제자리 펼침 = LedgerSourcesPanel «두 번째 인스턴스»(새 표를 짓지 않음 — 그 부품은 둘을 놓아도 안 간섭한다고 적혀 있음)
+           Open › -> 소스 현황 절로 바로
+           읽히는 낱말은 «서버»가 — ingestion.states 가 이미 상태마다 뜻을 보냄(SOURCE_STATE_MEANINGS). 짧은 영어 이름을 같은 자리에서
+           화면에 낱말 사본 금지(그 패널의 규칙 ①). 같은 응답의 한국어 문장(INGESTION_NOTE · 뜻)도 영어로
+② Declarations 펼침의 글자
+   지금    영역 이름이 한국어(서버 문장) · 사유가 기계 낱말(not_declared · mapping_unavailable)
+   고칠 것  영역 이름 영어 — 서버 몫
+           사유 넷(REASONS 닫힌 어휘)의 읽히는 이름을 서버가 vocabulary 에 같이 — 화면은 받은 것을 그림(config_resolve_view 는 뜻을 안 든다는 규칙 그대로)
+           계약 벡터(contracts/config_resolve_report)도 같은 커밋 · 모듈 머리의 「UI 문자열이므로 한국어」 줄도 같이 고침(소유자 2026-08-31 영어 규칙)
+③ Retroactive 줄
+   지금    도는 실행이 없으면 사실 칸이 빈칸
+   고칠 것  「0 running」 — 총괄 575a844f7 의 「도는 것이 있을 때만」을 뒤집음(빈칸이 「못 읽음」과 구별 안 됨)
+④ Ontology Explorer 탭
+   지금    화면 글자가 한국어 — 어드민 한국어 걷기에서 빠짐
+   고칠 것  먼저 셈 — 그 탭이 그리는 문자열 전수를 «클라가 쓴 것 / 서버가 보낸 것»으로 가름(명령과 카나리아 같이)
+           클라 몫은 이번에 · 서버 몫은 목록으로 총괄에게(①·② 의 서버 문장과 겹치면 거기서 한 번에)
+게이트   총괄이 소유자 크롬에서 다시 엶 — Ledger 펼침 · Open 이 닿는 자리 · Declarations 펼침 글자 · Retroactive 0 running · 그 탭 한글 0(셈 명령 그대로)
+```
