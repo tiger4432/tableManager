@@ -1724,7 +1724,7 @@
 
 ### ⭐⭐ **「지금 이걸 누가 돌리나」는 «박동 이름»으로 답한다 — 그리고 «기록»과 «판정»을 같은 라운드에 하지 않는다** (2026-09-05 등록 · `retroactive.runner_identity` + `retroactive_runs.runner`)
 - **무엇**: 오래 도는 일의 등록부 행은 **자기 트랜잭션과 따로** 쓰이므로 **프로세스보다 오래 산다.** 도중에 죽으면 `state='running'` 이 영원히 남고 게이트가 다시 안 열리는데, 행에 «누구»가 없으면 **「죽었다」와 「느리다」가 문자 그대로 같은 행**이다. 신원 한 칸이 그 둘을 가른다.
-- **어디**: `server/admin/retroactive.py::runner_identity()` → `박동이름/호스트/pid` 를 `_mark_run(..., started=True)` 이 `retroactive_runs.runner` 에 찍는다 · 판정 `_runner_state()` → `owned`/`orphaned`/`unknown` · 소비는 표시뿐(`GET /admin/chain/queue` 의 `blocked_by.runner` · `queue.orphaned[]`) · 마이그레이션 `server/migrations/add_retroactive_runs_runner.sql` · 이름의 정본은 `utils/heartbeat.own_name()`.
+- **어디** (🆕 09-26 `162e1cc73` — 두 함수가 `server/utils/heartbeat.py` 로 옮겨 `runner_identity` · `runner_state`, 소급은 같은 이름으로 import · 수집기도 도장을 받아 스케줄러 상태 파일 `runner` 에 · 대기열 `now_running` 항목의 `state` 가 이 판정 — `runtime/running.run_state`): `server/admin/retroactive.py::runner_identity()` → `박동이름/호스트/pid` 를 `_mark_run(..., started=True)` 이 `retroactive_runs.runner` 에 찍는다 · 판정 `_runner_state()` → `owned`/`orphaned`/`unknown` · 소비는 표시뿐(`GET /admin/chain/queue` 의 `blocked_by.runner` · `queue.orphaned[]`) · 마이그레이션 `server/migrations/add_retroactive_runs_runner.sql` · 이름의 정본은 `utils/heartbeat.own_name()`.
 - **언제 재사용**: **행이 자기를 쓴 프로세스보다 오래 사는 모든 등록부** — 잡 큐 · 락 · 리스 · 배치 체크포인트. 판별 질문: **「이 행을 보고 «아직 살아 있나»를 물을 수 있나?」**
 - **함정**:
   - 🔴 **신원은 «실행이 시작될 때» 읽어라. import 시점이 아니다.** fork 하거나 제자리 재실행된 프로세스는 **처음 import 한 쪽의 신원**을 찍고, **물려받을 수 있는 신원은 없는 것보다 나쁘다 — 구체적으로 «보이기» 때문이다.**
