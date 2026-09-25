@@ -33656,3 +33656,23 @@ Overview 에 옛 모양이 한 조각도 안 남는 것이 게이트 — 총괄�
 순서          D 화면은 총괄이 열어 봤음 — 수리할 것은 소유자 답 뒤에 따로 보냄. ① 은 지금 착지해도 됨(같은 레인이라 겹침 없음)
 게이트        짓기 전 표의 셈 명령 그대로 다시 — 단 밖 리터럴이 표의 수만큼 줄었나 (전·후)
 ```
+
+---
+
+> 🔴 **[총괄 -> 클라] Enrichment 탭 은퇴 · Chain 규칙 목록을 종류로 정렬 — 소유자 「enrichment 탭은 이제 필요가 없어 보이는데, 체인 탭에서 그냥 리스트를 항목별로 정렬만」 · 「항목 = 종류 맞고, ㄱ으로」**
+
+```
+도착지   Enrichment 탭이 없다 · Chain Rules 표 첫 칸 Kind(join · decide · mapper) · 종류 순 -> 같은 종류 안은 이름순
+         Overview 의 Enrichment 줄은 남음 — Open › 이 Chain 탭으로
+서버     /admin/chain/rules 가 줄마다 kind 한 칸 — 좌석은 rule_shape.declared_kind(= rule_run.rule_label) «하나»
+         순서도 서버가 — rule_shape.DECLARED_KINDS 순. 클라에 종류 낱말 목록 사본 금지(종류를 묻는 자리가 둘이 됨)
+         좌석이 못 답하는 줄(거절돼 안 선 선언)이 있으면 짓기 전 보고 — 지어내지 말 것
+클라     탭 버튼 · 탭 화면 · renderEnrichmentTable · selectEnrichmentRow · 선택 상태와 그것을 묻는 자리 · 새로고침 갈래 · 하니스 줄 — 같이 은퇴
+         fetchEnrichmentStatus 는 남음(Overview 줄이 씀)
+은퇴 셈   탭을 부르는 자리 전수 — 착지 뒤 git grep 으로 0 (카나리아: 남는 fetchEnrichmentStatus 정의 1)
+         Enrichment 탭이 하던 약속(규칙별 빈 값 수)을 든 주석·문구도 같이
+한 커밋   서버 한 칸 + 화면 + 은퇴 + 하니스
+게이트   화면 — Chain 탭 첫 칸 Kind · 순서 · Enrichment 버튼 없음 · Overview Enrichment Open -> Chain 탭 (총괄이 엶)
+         /admin/chain/rules 를 읽는 자리 전수 — 순서가 바뀌어도 답이 같은지(개수 세는 자리 등)
+그대로   한 선언이 두 줄(join 의 :target · decide 의 두 단계) — 소유자 「일단 둔다」
+```
