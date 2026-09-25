@@ -59456,3 +59456,103 @@ test_queue_says_which_log_to_open — 넓게 돌리면 빨강 셋. 다른 시험
 루프 표 「필요할 때만」 한 칸 + /health 가 그 표를 읽음 (748b2472a ②) -> via-events 은퇴 -> 응용 검수 빨간 칸 셋
 사유 한 줄(체인 실패 트레이스백)은 검수 빨간 칸 ②(형 변환 거절 문장 하나)와 한 자리라 그때 같이
 ```
+
+---
+
+## [구현자 -> 총괄] 재시도 status 한 자리 착지 · 행 없는 잎 보고 · 미리보기 해시 한 줄 · 매퍼 계약 답 (ec99f75a6 · c1b1a96f3 · 77ad03ea3 · 0367926b6 · 2f97d8e4d)
+
+### 재시도 status 한 자리 — e5edb5b45
+
+```
+한 자리    모든 갈래를 지난 뒤 «재설정 수» 하나로 정함 — 0 이면 refused, 섞이면 success 에 한 일 · 못 한 일 둘 다
+갈래 넷    묶음 줄만 refused · 행 없는 잎만 refused · 섞임 success(Reset 1 + Skipped 둘) · 맞는 줄 없음 refused
+          ⚠️ 넷째는 전에 success 였습니다 — 「재설정 0 이면 refused」 를 그대로 따랐습니다
+응답 칸    reset · skipped_missing_row 추가 (skipped_reexpanded 옆)
+변이       그 한 자리를 success 로 -> 4 failed, 12 passed
+범위       main 을 import 하는 시험 전부 + test_outbox_collapse -> 1302 passed, 1 skipped
+```
+
+화면은 이 status 를 아직 안 읽습니다 — client2 의 이 라우트 호출 2 곳 중 status 를 읽는 곳 0:
+줄 재시도(retryTransaction)는 본문을 안 읽고, 전부 재시도(retryAllFailed)는 message 를 늘 success 토스트로 띄웁니다.
+「reset 0 인데 success 토스트」 를 화면에서 막는 것은 클라 레인 몫 한 줄입니다.
+
+그리고 목록의 칸 이름(bb6795759 ③): 그룹 · 이벤트 둘 다 `attempts_this_round`. `retry_count` 는 화면이 새 이름으로 바꿀 때까지 둡니다 — 클라 레인에 넘길 한 줄.
+
+### 행 없는 잎 (c1b1a96f3) — 짓기 전 보고
+
+```
+정정     「영원히」 가 아니라 «최대 7일» — 보관 청소가 processed_chain=true 이고 created_at 이 7일 지난 줄을 status 와 무관하게 지움
+        FAILED 도 processed_chain=true 라 지워짐. 그동안 목록 · 요약에 남고 운영자가 할 수 있는 일 0 은 맞음
+박스     FAILED 87 · 실패로 셈 34 · 그중 잎 34 · 행 없는 잎 1 (표 metro — 응용 시험이 만든 줄)
+```
+
+| 안 | 무엇 · 크기 | 위험 |
+|---|---|---|
+| ㉮ 정의를 넓힘 | failure_clause 가 줄마다 «다른 표»의 행 존재를 물어야 함. 표 이름이 데이터라 SQL 한 절로 못 씀 — 동적 표 수만큼 갈래(박스 45), 갈래마다 PK 조회 한 번. counts_as_failure 는 db · 표를 받아야 함(제품 호출자 1 — 재시도) | 실패 여부가 «다른 표의 삭제»로 이 줄에 쓰기 없이 바뀜. 쪼개진 묶음 줄은 «자기 칸 하나»로 정해져 결이 다름 |
+| ㉯ 재시도가 끝냄 | 행 없는 갈래에서 mark_processed(SUCCESS) + payload 에 누가 · 왜. 그 모양은 이미 있음 — scripts/outbox_triage.py 의 cancelled_by · 사유(「돌리지 않고 끝냄」). 그 개념을 넓혀 씀, 새 표시 안 만듦. status 한 자리는 「재설정 또는 끝냄이 있으면 success」. 라우트 한 갈래 + 시험 표 한 칸, 줄 수 안 쟀다 | SUCCESS 는 broadcast_at 이 비어 통지 스윕이 그 표에 새로고침을 한 번 쏨(triage 취소와 같음). 새 status 낱말을 쓰면 대기열이 「done · unexpected_status」 로 읽음 |
+| ㉰ 삭제가 끝냄 | 행 삭제는 이미 그 행 id 로 DELETE 이벤트를 올림 — 체인 워커가 그것을 처리할 때 그 행의 FAILED 잎을 ㉯ 와 같은 표시로 끝냄. 운영자 할 일 0. 크기 안 쟀다 | 체인의 DELETE 처리에 조회 하나(FAILED 부분 인덱스 위 — 안 쟀다). 커밋 경로 인라인은 아님 |
+
+```
+제 판단   ㉯. 행을 고쳐 쓰는 쪽이지만 ㉮ 는 「실패인가」 를 줄 밖의 표에 묻게 돼 묶음 줄과 같은 결이 아닙니다
+운영자가 볼 필요   약하다고 봅니다 — 삭제된 행의 하류는 DELETE 이벤트가 따로 거둡니다
+                  (test_a_deleted_row_takes_back_the_cells_it_fed 가 재는 길). 다만 이건 제 읽기입니다
+여쭐 것   ㉯ 로 갈지 · ㉰ 까지 갈지(운영자 대신 기계가 끝냄) · status 한 자리와 같은 라운드로 붙일지
+```
+
+### 미리보기 해시 (77ad03ea3) — 한 줄
+
+**운영자에게 막히거나 틀리는 것은 잰 범위에서 없습니다. 틀린 것은 해시 하나 — 미리보기가 «활성화가 만들 스냅숏»의 해시가 아닙니다.**
+
+```
+활성화   미리보기 해시를 비교 안 함 — 기준은 파일 해시(document_hash). 그 관문(preview_hash_mismatch)은 은퇴됨
+화면     client2 에 preview_snapshot_hash 를 읽는 곳 0 · 서버에서 읽는 곳은 초안 context_token 한 곳(같은 초안인지 표시)
+빈 초안  박스 복사본에서 노드 87 · 참조 110 전부 unchanged
+어긋남   미리보기 스냅숏에 거절 소스의 이름 등록이 없음 — 계획 6 vs 활성 15(거절 9)
+자리     compile_setup_snapshot 을 부르는 셋 중 refused_sources 를 넘기는 곳은 load_setup(setup.py) 하나
+         안 넘김  compile_draft_preview(config_drafts.py) — 초안 해시의 출처
+                 setup_from_document(setup.py) — load_setup 이 터질 때의 대체 로더
+```
+
+| 안 | 무엇 · 크기 |
+|---|---|
+| ㉠ 미리보기에 넘김 (추천) | 활성 스냅숏의 거절 계획(상태 · 관계 · 거절 사유 — 거절 계획이 든 전부)으로 refused_sources 를 지어 넘김. 인자 하나 + 그 사전, 새 칸 없음. 쟀다: 박스 복사본에서 빈 초안 해시가 활성과 같아짐 (넘기지 않으면 다름) |
+| ㉡ 시험을 고침 | 시험 2 의 마지막 단언을 파일 해시 비교로 — 제품이 이미 그 기준. 시험 한 줄 |
+
+㉠ 을 추천합니다 — 미리보기의 일이 「이걸 활성화하면 무엇이 되나」 이고, 활성화가 만드는 스냅숏에는 거절 소스가 이름으로 있습니다. 짓기 전에 여쭙니다.
+
+### 박스 설정 시험 (0367926b6)
+
+```
+고침     시험 3(유도) — 표본 카탈로그 · 표본 원장으로
+         시험 1(스냅숏 열거) — 단언이 선언 내용과 무관하게 참 (거절 소스는 계획에 거절 문장이 있음)
+         ⚠️ 시험 1 은 아직 박스 설정을 «읽습니다» — 픽스처로 안 옮겼고, 거절을 «이름으로» 단언하지도 않습니다
+            그러려면 거절 소스를 든 픽스처가 필요 -> 대기열의 「박스 설정 시험 셋」 자리에서 하겠습니다
+남김     시험 2(활성화) 빨강 — 위 미리보기 해시가 진짜 결함이라
+같은 부류  라이브 온톨로지 루트를 이름으로 드는 시험 10 파일 37 곳
+         (정규식 DEFAULT_ONTOLOGY_ROOT|load_setup\(\) · 줄 단위 상한 · 동작으로 잰 것 아님)
+```
+
+### 매퍼 계약 (2f97d8e4d) — 셈과 답, 짓지 않음
+
+```
+코드의 계약   SDK 매퍼(@mapper)는 row_id + data 만 받음 — payloads_to_df 가 그 둘만 펼침. error_log · reexpanded_from 은 안 보임
+            SDK 밖(register 로 등록한) 매퍼는 payload 를 통째로 받음
+셈           mappers/ 추적 9 (.py 2 · .sample 7) · 이 박스의 .py 15
+            넓게 읽기(키 · 항목 돌기, 글자로 만들기, dumps) 정규식에 걸린 줄 3 — 전부 이름 댄 키 하나를 읽거나 값 하나를 쪼갬 -> 넓게 읽는 것 0
+            운영의 mappers/ 는 gitignore 라 여기서 못 셉니다
+mapper_call  missing 표지를 None 으로 바꾸려 payload 전체를 돌지만 값만 바꿈 — 두 칸이 답을 안 바꿈
+답           두 칸은 배관이고 SDK 계약에서는 이미 안 보입니다. 떼고 넘기지는 않는 것이 맞다고 봅니다 —
+            reexpanded_from 은 다음 재시도에서 잎 판정(is_split_leaf)이 읽고, error_log.resolved_at 은 재시도가 남기는 이력입니다
+```
+
+### 아직 여쭘
+
+```
+같은 실패 응답의 oldest_failed_at 은 아직 created_at 의 최솟값 — 줄의 failed_at 과 같은 칸으로 바꿀지
+```
+
+### 다음
+
+```
+via-events 은퇴 -> 검수 빨간 칸 셋 -> 박스 설정 시험 셋 -> 관찰 다섯 (㉤ 은 77ad03ea3 모양으로)
+```
