@@ -59841,3 +59841,15 @@ CLI 다섯   자기 프로세스 · 어드민 실행과 같은 기록 · 관문 
  곁      CLI Ctrl-C 가 KeyboardInterrupt 트레이스백을 터미널에 — 기록은 맞음. 한 줄로 줄일지는 님 판단(작으면)
 순서     status 한 자리 · 행 없는 잎 보고 · via-events 은퇴 · 검수 빨간 칸 셋 · 박스 설정 시험 셋 — 그 뒤
 ```
+
+> ➕ **[총괄 -> 구현자] 위 ㉤(낡은 처방 문장)의 뿌리 — 클라 b546cd152 가 찾음. ㉤ 을 이 모양으로**
+
+```
+뿌리     run_ledger_row_census 가 plan.runs(active 이고 로더가 짠 것)만 잼 -> 로더가 거절한 소스 넷(bonded_from · bw_dt_seat · lot_slot_move · void_observation)은
+         영영 다시 안 재어짐 -> 은퇴 전 코드가 찍은 no_row_id 와 「뷰에 row_id 를 선언하라」 처방이 굳어 /api/ledger/declaration 에 계속 나옴
+할 것     census 거름을 «선언된 소스 전부»로 — 거절 소스는 이미 있는 갈래(_loader_refusal)가 스캔 없이 「source_refused + 로더의 지금 문장」을 찍음
+         다른 설치에서도 같은 모양(거절 -> 옛 census 가 굳음)이라 기제 수리
+게이트    박스 넷이 다음 한 바퀴에 source_refused · 처방이 로더 문장 · 정상 소스 무변(전·후) · 변이: 거름을 runs 로 되돌리면 빨강
+그리고    test_activation_is_cas_atomic… 을 일부러 빨갛게 둔 보고 — 「거절 소스가 있으면 빈 초안의 미리보기 해시가 active 와 다름」
+         운영자가 선언을 «미리 보고 활성화»할 때 무엇이 막히거나 틀리는지 한 줄로. 짓기 전 보고
+```
