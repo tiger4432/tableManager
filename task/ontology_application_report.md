@@ -33048,3 +33048,57 @@ PRIMER    §0~§3 을 lot_slot_wafer 표 소스의 행 하나로 다시 씀
 ```
 
 > (09-25 18:08) 남긴 CSV 넷 — 지웠습니다(지시 `bed890af2`). 코드로 먼저 봄: `directory_watcher.py` 의 처리기는 on_created · on_moved · on_modified 뿐이고 삭제 처리기가 없음. «사라진 파일» 언급은 전부 처리 도중 건너뛰기(debug). `run_watcher.py` 에도 원천 파일 삭제로 행을 걷는 길 없음. 지운 뒤: APPAUDIT 파일 0 · watcher.log 의 APPAUDIT 줄 가장 늦은 시각 17:57:43(마지막 업로드) — 18:08 삭제 뒤 새 줄 0. file_ingestion_logs 의 FAILED 한 줄(id 22371)은 기록이라 그대로.
+
+---
+
+## 대기열 검수 ⑦ 억지 실패 · 재시도 — 끝 (09-25 18:21)
+
+지시 `6193b5a42`. 제 metro 행 하나를 HTTP 로 만들고 값 `APPAUDIT-FAIL` 로 편집했습니다. 재시도는 토큰 라우트 함수를 프로세스 안에서 event_id 하나씩 불렀습니다.
+
+**끝 — 규칙을 되돌리셔도 됩니다.** 다만 ㉯ 는 못 쟀습니다. 임시 맵퍼 때문입니다:
+
+```
+임시 맵퍼        fail_on_marker(df, db)
+체인이 부르는 모양 (db, payload[, rule=])  — rule_run.run_rule 의 bound.call(db, one), 그 자리 주석이 판정 498
+결과            첫 인자가 Session 이라 df.astype 에서 AttributeError
+                표식과 «무관하게» metro 의 행마다 실패 — 빈 행 CREATE · 표식 EDIT · 표식 지운 EDIT 모두 같은 사유
+                DELETE 는 SUCCESS
+규칙이 살아 있는 동안 metro 에 쓰는 행은 전부 실패합니다. 규칙이 올라간 뒤 metro 에 쓴 것은 제 것뿐이라 실패 다섯도 전부 제 것
+```
+
+㉯ 를 다시 잴지는 총괄 판단입니다. 맵퍼를 `(db, payload)` 모양으로 고쳐 두시면 ㉯ 만 다시 재고 그때 「끝」을 다시 적겠습니다.
+
+| 칸 | 지시의 기대 | 잰 것 |
+|---|---|---|
+| ⑦ 실패 | FAILED | ✓ 줄마다 FAILED · retry 1 · 첫 처리 15~60ms (첫 처리 시각이 남은 두 줄) |
+| 메인 그리드 대기열 | 확인 | 안 뜸 — 그 대기열 모집단 문장대로. FAILED 는 processed_chain=true |
+| 실패 요약 | 뜸 | ✓ metro EDIT 2 · CREATE 1. 🟡 편집 «한 번»이 EDIT 2 로 셈 — 묶음 부모 줄과 그것이 풀린 행별 줄이 둘 다 FAILED |
+| Chain 탭 실패 목록 (라우트 함수) | 뜸 | ✓ 다섯 줄 따로 — 묶음 부모와 `<tx>#row#<행>` 자식이 각자 한 줄 |
+| 실패 사유 | — | 🔴 error_log.reason 이 «날 트레이스백» 11줄. 인제션 실패와 같은 모양 |
+| ㉮ 표식 그대로 재시도 | 다시 실패 · 재시도 수 +1 | 다시 실패 ✓ (0.5초). 재시도 수는 1 → 0 → 1 — 재시도 라우트가 retry_count 를 0 으로 되돌림(`retry_failed_outbox_events` 의 `event.retry_count = 0`). 그래서 이 수는 누적이 아니라 「마지막 재시도 뒤 몇 번」 |
+| ㉯ 표식 지우고 재시도 | 성공 · 빠짐 | 못 잼 (위 맵퍼). 잰 것: 묶음 부모를 재시도하면 이름 붙은 거절 「already re-expanded … retry those children … Nothing was reset」, 단 status 는 "success". 자식은 리셋 → 같은 사유로 다시 FAILED |
+
+### 실패 시각이 화면에서 로컬로 그려지나 — 코드로 답합니다 (토큰 화면은 안 열었음)
+
+```
+요약(summary)의 first_at · last_at · day · retry_max 를 «읽는» 클라 코드 0
+  명령    git grep -n "first_at\|last_at\|retry_max\|day_zone" -- client2
+  답      2 줄, 둘 다 원장 소스 패널 하니스의 다른 응답(refusal_reasons) — 이 요약이 아님
+  카나리아 같은 응답의 oldest_failed_at 은 client2 의 4 파일(dist 포함)이 읽음
+화면이 그리는 시각 둘 — 둘 다 보는 쪽 시간대
+  실패 목록 줄의 failed_at        formatTimestamp -> localShort   (서버는 +09:00 를 달아 보냄)
+  Failed 칸의 「언제부터」         oldest_failed_at -> localShort
+화면의 요청은 tz 를 안 보냄(/admin/outbox/failed?page=&limit=) — 그래서 응답의 day_zone 은 UTC
+서버 주석(main.py, summary 짓는 자리)은 「the Chain tab's list and the Overview's Chain line both read THIS answer」 — 둘 다 같은 응답을 읽지만 요약 칸은 안 읽음
+🟡 목록 줄의 failed_at 은 실패 시각이 아니라 그 줄이 «생긴» 시각(created_at 최댓값)
+   재시도 뒤 18:12:38 에 다시 실패한 CREATE 가 18:11:53 으로 보임
+```
+
+### 박스에 남긴 것
+
+```
+표 행 0 · APPAUDIT metro 행 0 · 원장 색인 줄 0 (ledger_source_row_ref)
+아웃박스 FAILED 다섯 줄 5139267~5139271 — 실패 요약·목록에 보임 (실패 총수 81 -> 86)
+  행은 지웠습니다. 그 줄을 재시도하면 무엇이 도는지는 재지 않았습니다
+  /admin/outbox 밑 쓰기 라우트는 retry-failed 하나라 치울 제품 문을 못 찾아 두었습니다 — 치울지 말씀 주십시오
+```
