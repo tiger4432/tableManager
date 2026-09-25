@@ -62,6 +62,7 @@ import {
   markCellOverwritten,
   renderGrid,
   registerSelectionListener,
+  applyFillTargetHeaders,
 } from './grid.js';
 import {
   showToast,
@@ -209,6 +210,11 @@ function initGridSourceLabel() {
   const part = new GridSourceLabel(host, {
     doc: document,
     loadDeclaration: loadLedgerDeclaration,
+    // 그리드의 Ledger 열이 라벨과 «같은 답»을 씁니다. 열 정의만 다시 씁니다 — 행은 그대로.
+    onAnswer: (answer) => {
+      state.ledgerAnswer = answer;
+      applyFillTargetHeaders();
+    },
   });
   part.mount();
   return part;

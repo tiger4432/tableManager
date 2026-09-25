@@ -22,11 +22,17 @@
 // NO DOM GLOBALS, NO NETWORK. 맨 node 의 문서 스텁으로 채점됩니다.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/** 라우트가 준 것에서 이 부품이 읽는 것 «전부». 없는 칸은 지어내지 않습니다. */
-function rowFor(sources, relation) {
-  if (!Array.isArray(sources) || !relation) return null;
-  return sources.find((row) => row && row.relation === relation) || null;
+/**
+ * 라우트가 준 것에서 이 부품이 읽는 것 «전부». 없는 칸은 지어내지 않습니다.
+ * 한 표를 소스 «여럿»이 읽을 수 있습니다 — 첫째 하나만 들면 나머지가 화면에서 사라집니다.
+ */
+function rowsFor(sources, relation) {
+  if (!Array.isArray(sources) || !relation) return [];
+  return sources.filter((row) => row && row.relation === relation);
 }
+
+/** 로더가 이 소스를 세우지 «않았다» (선언 라우트의 `planned: false`). */
+const refusedByLoader = (row) => row.planned === false;
 
 export class GridSourceLabel {
   constructor(host, deps) {
@@ -35,6 +41,9 @@ export class GridSourceLabel {
     this.doc = options.doc || (host && host.ownerDocument) || null;
     // 🔴 라우트가 아니라 «함수»를 받습니다. 이 부품은 apiBase 도 fetch 도 모릅니다.
     this.loadDeclaration = options.loadDeclaration || null;
+    // 답이 «바뀔 때» 한 번 부릅니다. 그리드의 Ledger 열이 이 답을 씁니다 — 부품은 그리드를 모릅니다.
+    this.onAnswer = options.onAnswer || null;
+    this.told = null;
     // `null` 은 「아직 안 읽음」입니다. `[]` 는 「읽었는데 소스가 하나도 없음」이고,
     // 그 둘은 다른 사실이라 같은 값으로 두지 않습니다.
     this.sources = null;
@@ -90,7 +99,36 @@ export class GridSourceLabel {
     this.render();
   }
 
+  /**
+   * 「이 표가 원장 소스인가」의 답 «한 자리». 라벨과 그리드의 Ledger 열이 이것을 같이 읽습니다 —
+   * 둘이 따로 물으면 한쪽만 틀리는 날이 옵니다.
+   *   idle · pending · unknown(선언 못 읽음) · not_source · source · refused
+   * 🔴 refused 는 이 표를 읽는 소스가 «전부» 로더에 거절됐을 때만입니다. 하나라도 서 있으면
+   *    source — 그 소스가 행을 올릴 것이므로 (총괄 fb4dda078).
+   */
+  answer() {
+    const relation = this.relation;
+    if (!relation) return { relation, state: 'idle', rows: [] };
+    if (this.loadState === 'loading' || this.loadState === 'idle') {
+      return { relation, state: 'pending', rows: [] };
+    }
+    if (this.loadState === 'refused') return { relation, state: 'unknown', rows: [] };
+    const rows = rowsFor(this.sources, relation);
+    if (!rows.length) return { relation, state: 'not_source', rows };
+    return { relation, state: rows.every(refusedByLoader) ? 'refused' : 'source', rows };
+  }
+
   render() {
+    const answer = this.answer();
+    this.draw(answer);
+    const told = `${answer.relation}\u0000${answer.state}`;
+    if (this.onAnswer && told !== this.told) {
+      this.told = told;
+      this.onAnswer(answer);
+    }
+  }
+
+  draw({ state, rows }) {
     const doc = this.doc;
     if (!doc || !this.host) return;
     this.host.textContent = '';
@@ -98,20 +136,20 @@ export class GridSourceLabel {
     root.className = 'grid-source-label';
 
     // 표를 안 골랐으면 «주장하지 않습니다». 부재 셋 중 어느 것도 아니고, 주어가 없는 것입니다.
-    if (!this.relation) {
+    if (state === 'idle') {
       root.className = 'grid-source-label is-idle';
       this.host.appendChild(root);
       return;
     }
 
-    if (this.loadState === 'loading' || this.loadState === 'idle') {
+    if (state === 'pending') {
       root.className = 'grid-source-label is-pending';
       root.textContent = '…';
       this.host.appendChild(root);
       return;
     }
 
-    if (this.loadState === 'refused') {
+    if (state === 'unknown') {
       // 🔴 셋 중 «셋째». 「아님」과 같은 문장을 쓰면 안 됩니다.
       root.className = 'grid-source-label is-unknown';
       root.textContent = `declaration unreadable — ${this.message || ''}`.trim();
@@ -120,8 +158,7 @@ export class GridSourceLabel {
       return;
     }
 
-    const row = rowFor(this.sources, this.relation);
-    if (!row) {
+    if (state === 'not_source') {
       // 🔴 셋 중 «둘째». 읽었고, 목록에 없습니다 — 그건 «사실»이라 말합니다.
       root.className = 'grid-source-label is-not-source';
       root.textContent = 'not a ledger source';
@@ -130,20 +167,27 @@ export class GridSourceLabel {
       return;
     }
 
-    root.className = 'grid-source-label is-source';
-    root.setAttribute('data-source-state', 'source');
-    const emits = Array.isArray(row.emits) ? row.emits : [];
-    const name = doc.createElement('span');
-    name.className = 'grid-source-label__name';
-    name.textContent = `ledger source — ${row.source}`;
-    root.appendChild(name);
-    const makes = doc.createElement('span');
-    makes.className = 'grid-source-label__emits';
-    // 술어가 «없는» 소스는 오늘 없지만, 있으면 그 사실을 말합니다 — 빈 괄호로 두지 않습니다.
-    makes.textContent = emits.length
-      ? ` · emits ${emits.join(' · ')}`
-      : ' · no predicate declared';
-    root.appendChild(makes);
+    root.className = `grid-source-label is-${state}`;
+    root.setAttribute('data-source-state', state);
+    // 소스마다 한 줄 — 자기 상태를 적습니다. 거절 문장은 «로더의 것 그대로»입니다.
+    for (const row of rows) {
+      const refused = refusedByLoader(row);
+      const line = doc.createElement('div');
+      line.className = refused ? 'grid-source-label__row is-refused' : 'grid-source-label__row';
+      const name = doc.createElement('span');
+      name.className = 'grid-source-label__name';
+      name.textContent = `ledger source — ${row.source}`;
+      line.appendChild(name);
+      const makes = doc.createElement('span');
+      makes.className = 'grid-source-label__emits';
+      const emits = Array.isArray(row.emits) ? row.emits : [];
+      // 술어가 «없는» 소스는 오늘 없지만, 있으면 그 사실을 말합니다 — 빈 괄호로 두지 않습니다.
+      makes.textContent = refused
+        ? ` · refused: ${(row.refusal && row.refusal.message) || ''}`.trimEnd()
+        : emits.length ? ` · emits ${emits.join(' · ')}` : ' · no predicate declared';
+      line.appendChild(makes);
+      root.appendChild(line);
+    }
     this.host.appendChild(root);
   }
 }

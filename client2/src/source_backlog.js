@@ -9,7 +9,7 @@
 //    on 2026-09-09 rather than off the sentence describing it. Per source, `sources[].census`:
 //        counted   {source, relation, measured_at,
 //                   relation_rows: {estimate, exact, method, measured_at}, indexed_rows: …, not_yet: …}
-//        refused   {source, relation, measured_at, refused: "no_row_id", remedy: "<what to declare>"}
+//        refused   {source, relation, measured_at, refused: "source_refused", remedy: "<the loader's sentence>"}
 //        absent    no `census` key at all
 //    Measured on this box: 15 sources, 11 counted, 4 REFUSED. The refusal is a third of the
 //    population and it is not in any description of this shape — a reader who only had the

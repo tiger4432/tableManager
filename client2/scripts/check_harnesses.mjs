@@ -1381,7 +1381,7 @@ const FLOORS = new Map([
   // the banner that offers a re-run, and what it refuses to offer one for
   ['redo_banner_harness.mjs', 53],
   // the board part: composition
-  ['rnd_board_composition_harness.mjs', 40],
+  ['rnd_board_composition_harness.mjs', 42],
   // the board part: control trend
   ['rnd_board_control_trend_harness.mjs', 59],
   // the board shell that seats the parts above
@@ -1534,6 +1534,10 @@ const FLOORS = new Map([
   // a named `+` and `-` on every map, and only the explorer received them. Scored through the real
   // panel on the shipped skeleton, by the click path, with the writer both screens now share.
   ['chain_list_edit_harness.mjs', 16],
+  // New 2026-09-25 (lead f3bc02f6e, owner 「at the end」). The grid's Ledger column takes the source
+  // label's ONE answer to 「is this table a ledger source」, scored through the real label, the real
+  // buildColumnDefs and the write funnels' seat; a refused source and a half-refused table included.
+  ['grid_ledger_column_harness.mjs', 34],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

@@ -28,7 +28,15 @@ export const ABSENT = '—';
  *    나옵니다」·「…찍으면 그립니다」·「…고르십시오」 — 여덟 중 하나가 바뀌면 화면이 여덟 말투로
  *    말하게 됩니다. 다음 행동은 «누를 수 있는 것»이 이미 화면에 있으므로 문장이 필요 없습니다.
  */
-export const UNPICKED = '대상 없음';
+export const UNPICKED = 'None selected';
+
+/**
+ * 「물었는데 답이 안 왔다」의 유일한 글자.
+ *
+ * 🔴 `ABSENT` 와도 `UNPICKED` 와도 «다른 글자»입니다. 「—」로 적으면 못 읽은 것이 «세었다»고
+ *    말하고, 「None selected」로 적으면 «안 물었다»고 말합니다.
+ */
+export const UNKNOWN = 'Unknown';
 
 /**
  * 「이 부품의 주어는 누구인가」를 «값»으로. 마킹 이름 하나이고 문장이 아닙니다.

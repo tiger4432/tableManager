@@ -29,12 +29,12 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.join(HERE, '..', 'src');
 const dataUrl = (src) => `data:text/javascript;base64,${Buffer.from(src, 'utf8').toString('base64')}`;
 
-/** 라이브 `/api/ledger/declaration` 의 다듬은 사본 (2026-08-31, :8080 · sources 15행 중 둘). */
+/** 라이브 `/api/ledger/declaration` 의 다듬은 사본 (2026-08-31, :8080 · sources 15행 중 둘) — 뷰 relation 은 표 이름으로. */
 const DECLARATION = {
   ok: true,
   sources: [
     { source: 'bonded_from',
-      relation: 'bonding_die_from_core',
+      relation: 'bonding_log',
       emits: ['bonded_from@1', 'in_container@1'],
       scope_columns: ['base_id', 'bx', 'by', 'core_wafer', 'cx', 'cy', 'event_time'] },
     { source: 'die_inspection',
@@ -130,11 +130,11 @@ async function suite(mod) {
 
   // ── B. THE WORDS COME FROM THE DECLARATION ───────────────────────────────────
   {
-    const { host } = await build(async () => DECLARATION, 'bonding_die_from_core');
+    const { host } = await build(async () => DECLARATION, 'bonding_log');
     const nameEl = byClass(host, 'grid-source-label__name')[0];
     ok('B1 the source name is the declarations own, read where the name is drawn',
       Boolean(nameEl) && nameEl.textContent.includes('bonded_from')
-      && !nameEl.textContent.includes('bonding_die_from_core'),
+      && !nameEl.textContent.includes('bonding_log'),
       String(nameEl && nameEl.textContent));
     // 🔴 `emits` GOES THROUGH WHOLE. Filtering here would make the screen say LESS than the
     //    declaration, and a predicate added tomorrow would vanish without anyone noticing.
@@ -156,7 +156,7 @@ async function suite(mod) {
     const two = await build(async () => DECLARATION, 'some_table_nobody_declared');
     eq('D1 two instances keep their own answers',
       [stateOf(one.host), stateOf(two.host)], ['source', 'not_source']);
-    one.part.setRelation('bonding_die_from_core');
+    one.part.setRelation('bonding_log');
     // 🔴 THE SECOND MUST REDRAW, OR THIS PROVES NOTHING. Shared state only shows on the next
     //    render; comparing stale DOM lets a module-level variable through -- measured, mutant M5.
     two.part.render();
@@ -183,13 +183,14 @@ const MUTANTS = [
   // 🔴 「아직 안 골랐다」 folded into an absence -- the fourth state this file keeps out.
   { id: 'M3', what: 'no table chosen is drawn as 「not a source」',
     catches: 'C1',
-    mutate: (s) => s.replace('    if (!this.relation) {', '    if (false) {') },
+    mutate: (s) => s.replace("    if (!relation) return { relation, state: 'idle', rows: [] };",
+      "    if (false) return { relation, state: 'idle', rows: [] };") },
   // The screen saying LESS than the declaration.
   { id: 'M4', what: 'emits is filtered, so a predicate the declaration names disappears',
     catches: 'B2',
     mutate: (s) => s.replace(
-      '    const emits = Array.isArray(row.emits) ? row.emits : [];',
-      '    const emits = (Array.isArray(row.emits) ? row.emits : []).slice(0, 1);') },
+      '      const emits = Array.isArray(row.emits) ? row.emits : [];',
+      '      const emits = (Array.isArray(row.emits) ? row.emits : []).slice(0, 1);') },
   // Module-level state is the assembly-style failure: two instances stop being two.
   { id: 'M5', what: 'the chosen relation becomes shared, so two instances collide',
     catches: 'D2',
@@ -197,14 +198,14 @@ const MUTANTS = [
       'export class GridSourceLabel {',
       'let SHARED_RELATION = null;\nexport class GridSourceLabel {')
       .replace('    this.relation = next;', '    SHARED_RELATION = next; this.relation = SHARED_RELATION;')
-      .replace('    const row = rowFor(this.sources, this.relation);',
-        '    const row = rowFor(this.sources, SHARED_RELATION);') },
+      .replace('    const relation = this.relation;',
+        '    const relation = SHARED_RELATION;') },
   // A source whose name is invented rather than served.
   { id: 'M6', what: 'the label prints the relation instead of the declared source name',
     catches: 'B1',
     mutate: (s) => s.replace(
-      '    name.textContent = `ledger source — ${row.source}`;',
-      '    name.textContent = `ledger source — ${this.relation}`;') },
+      '      name.textContent = `ledger source — ${row.source}`;',
+      '      name.textContent = `ledger source — ${row.relation}`;') },
 ];
 
 const result = await suite(await loadModule());

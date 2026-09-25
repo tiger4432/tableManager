@@ -324,9 +324,9 @@ console.log('\n[7] the census: a different route, a different availability');
     relation_rows: box(117742, 'count(*)'),
     indexed_rows: box(117000, 'count(distinct row_id)'),
     not_yet: box(742, 'relation_rows - indexed_rows') };
-  const REMEDY = "expose the base table's row_id column on 'bonding_die_from_core'";
+  const REMEDY = "the loader refused this source (bundle.sources.bonded_from.relation): source 'bonded_from' reads 'bonding_die_from_core', which is not a table that has row_id (view); a ledger source must read a table that has row_id";
   const REFUSED = { source: 'b', relation: 'q', measured_at: AT,
-    refused: 'no_row_id', remedy: REMEDY };
+    refused: 'source_refused', remedy: REMEDY };
   //  a  counted · b  refused · c  NOT in the map at all (nobody counted it yet)
   const CENSUS = { a: COUNTED, b: REFUSED };
   const drawWith = (payload, opts, census) => {
@@ -357,7 +357,7 @@ console.log('\n[7] the census: a different route, a different availability');
 
   // ② 「셀 수 없다」 is not a blank — and the fix rides with it
   eq('a refused census is named on screen', refusedIn(gated.host).length, 1);
-  eq('...by the server\'s own reason word', refusedIn(gated.host)[0].textContent, 'no_row_id');
+  eq('...by the server\'s own reason word', refusedIn(gated.host)[0].textContent, 'source_refused');
   eq('...and the remedy is carried verbatim', refusedIn(gated.host)[0].title, REMEDY);
   ok('...while the counted one is not a refusal', refusedIn(gated.host).length === 1);
 

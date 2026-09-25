@@ -20,6 +20,7 @@ import {
 import { applyValueToSelectedRange, updateSelectedCellUI } from './ui.js';
 import { SuggestCellEditor, handleEditorKey, isSuggestEditorActive } from './value_suggest.js';
 import { refreshReferenceForSelection, fillTargetOrdinals } from './enrichment_reference_view.js';
+import { ledgerColumnDef } from './grid_ledger_column.js';
 import { localStamp, NO_TIME } from './server_time.js';
 
 // ── [0b-c] Keyboard range selection (Shift+Arrow) ───────────────────────────────
@@ -1072,6 +1073,10 @@ export function buildColumnDefs() {
       }
     });
   });
+
+  // 소유자 「맨 끝」(cdf11b222). 답은 라벨의 것이고, 이 표의 답이 아니면 열을 안 세웁니다.
+  const ledger = ledgerColumnDef(state.ledgerAnswer, state.currentTable);
+  if (ledger) columnDefs.push(ledger);
 
   columnDefs.unshift({
     headerName: '#',

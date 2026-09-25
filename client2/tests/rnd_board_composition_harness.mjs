@@ -310,11 +310,27 @@ async function suite(mods) {
     f.destroy();
   }
 
+  // ── P. 주어가 없는 구성 부품 — 「안 골랐다」는 absent.js 의 한 글자 ──────────────────
+  {
+    const hostN = doc.createElement('div');
+    const n = new comp.CompositionPanel(hostN, { doc, markings: new store.MarkingStore(),
+      reads: 'marking:none', writes: null, apiBase: '', fetchImpl: okFetch() });
+    n.mount();
+    await flush();
+    truthy('P1 a composition part with no subject draws the one not-chosen word',
+      n.loadState === 'no-subject' && hostN.textContent.includes(UNPICKED));
+    n.destroy();
+  }
+
   return { ran, failures };
 }
 
 // ── the mutation corpus ────────────────────────────────────────────────────────────
 const MUTANTS = [
+  { id: 'P-M1', what: 'the composition part spells its own not-chosen word instead of UNPICKED',
+    catches: 'P1',
+    mutate: { 'composition_panel.js': (s) => s.replace(
+      "this.loadState === 'no-subject' ? UNPICKED", "this.loadState === 'no-subject' ? '대상 없음'") } },
   // 🔴 고정 씨앗이 «고정이라고 말하지 않으면», 맵이 다른 웨이퍼를 그리는 동안 이 패널의 값이
   //    「같이 따라온 것」으로 읽힙니다 -- 둘 다 사실인 척하는 화면이 제일 나쁩니다.
   { id: 'H-M1', what: 'the head hides that its chip is a fixed seed while the maps follow the marking',

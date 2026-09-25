@@ -19,6 +19,7 @@ import { Panel, markingIntent } from './panel.js';
 import { SIGN } from './marking_store.js';
 import { createWalk } from './api.js';
 import { TablePart } from './table_part.js';
+import { UNPICKED } from '../absent.js';
 
 export class CompositionPanel extends Panel {
   constructor(host, deps) {
@@ -110,7 +111,7 @@ export class CompositionPanel extends Panel {
     }
 
     if (this.loadState === 'no-subject' || this.loadState === 'loading' || !this.model || !this.model.ok) {
-      const state = this.loadState === 'no-subject' ? '대상 없음'
+      const state = this.loadState === 'no-subject' ? UNPICKED
         : this.loadState === 'loading' ? '불러오는 중'
         : '서버 거절';
       const detail = this.loadState === 'refused' && this.model ? this.model.message : (this.finalChipId || '');

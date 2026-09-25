@@ -1,3 +1,5 @@
+import { LEDGER_COL_ID } from './grid_ledger_column.js';
+
 export const state = {
   gridApi: null,
   currentTable: '',
@@ -7,6 +9,8 @@ export const state = {
   // 🔴 세 상태다: 'table' · 'view' · ''(«아직/옛 서버가 안 알려 줬다»). 빈 값은 뷰가 «아니다» —
   //    모르는 것을 뷰로 읽으면 멀쩡한 표가 조용히 읽기 전용이 된다.
   currentTableKind: '',
+  // 「이 표가 원장 소스인가」 — GridSourceLabel.answer() 그대로. 그리드의 Ledger 열이 읽습니다.
+  ledgerAnswer: null,
   currentBusinessKey: '',          // 비즈니스 키 컬럼명 (예: 'pkg_id')
   currentCompositeKeySources: [],  // 조합 소스 컬럼 목록 (예: ['base', 'x', 'y'])
   // [Virtual join] `/schema`'s `virtual_columns`, verbatim. Entries are
@@ -200,6 +204,8 @@ export const state = {
  * whole paste, not just the cell it could not have written anyway.
  */
 export function isVirtualColumn(colId) {
+  // 원장 열도 «저장되지 않는» 그리드 열입니다 — 붙여넣기·지우기·일괄 채움이 이 한 자리로 건너뜁니다.
+  if (colId === LEDGER_COL_ID) return true;
   const list = state.currentVirtualColumns;
   if (!Array.isArray(list) || list.length === 0) return false;
   return list.some(vc => vc && vc.name === colId);

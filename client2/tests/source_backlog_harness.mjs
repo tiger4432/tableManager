@@ -39,12 +39,10 @@ const COUNTED = { source: 'die_inspection', relation: 'inspection_run', measured
   not_yet: box(0, 'relation_rows - indexed_rows') };
 const BEHIND = { ...COUNTED, indexed_rows: box(117000, 'count(distinct row_id)'),
   not_yet: box(742, 'relation_rows - indexed_rows') };
-// `bonded_from`, verbatim in shape — the census could not be taken at all.
+// `bonded_from`, verbatim in shape — the loader refused the source, so the census was not taken.
 const REFUSED = { source: 'bonded_from', relation: 'bonding_die_from_core', measured_at: AT,
-  refused: 'no_row_id',
-  remedy: "expose the base table's row_id column on 'bonding_die_from_core': declare it in "
-    + 'table_config as a view column of type string, and this count can then say which rows '
-    + 'are already translated.' };
+  refused: 'source_refused',
+  remedy: "the loader refused this source (bundle.sources.bonded_from.relation): source 'bonded_from' reads 'bonding_die_from_core', which is not a table that has row_id (view); a ledger source must read a table that has row_id" };
 
 async function score(mutate) {
   pass = 0; failures.length = 0;
@@ -95,7 +93,7 @@ async function score(mutate) {
   //    Drawn as a blank it reads as 「아직 안 셌다」 and nobody fixes the thing the server
   //    already told them how to fix.
   ok('D1 a refused census is named', refusalOf(REFUSED) !== null);
-  eq('D2 ...by the server\'s own reason word', 'no_row_id', refusalFacts(REFUSED).reason);
+  eq('D2 ...by the server\'s own reason word', 'source_refused', refusalFacts(REFUSED).reason);
   ok('D3 ...and carries the gate\'s sentence verbatim',
     refusalFacts(REFUSED).remedy === REFUSED.remedy, String(refusalFacts(REFUSED).remedy).slice(0, 40));
   ok('D4 a counted census is not a refusal', refusalOf(COUNTED) === null);
@@ -118,7 +116,7 @@ async function score(mutate) {
   //    refusal's REASON renderable when the stamp is not there. Scored on that case, and said
   //    plainly: today's server always stamps, so this shape is the guard's own, not the wire's.
   ok('E5 a refusal with no stamp still draws, because its reason is the thing to show',
-    has({ source: 's', refused: 'no_row_id', remedy: 'declare it' }) === true);
+    has({ source: 's', refused: 'source_refused', remedy: 'declare it' }) === true);
 
   // ══ ⑥ 「어떻게 잰 수인가」 — `≈` 가 말하지 «않는» 절반 ══════════════════════════════
   // 🔴 `≈` says the number is an ESTIMATE. It does not say `pg_class.reltuples`, and the
@@ -154,7 +152,7 @@ async function score(mutate) {
   //    a row with four blanks, which reads the same as 「셌더니 아무것도 없다」.
   ok('G3 a source with no census key is not in the map',
     !Object.prototype.hasOwnProperty.call(byName(DECLARATION), 'freshly_declared'));
-  eq('G4 a refused census still reaches the map — it is the actionable one', 'no_row_id',
+  eq('G4 a refused census still reaches the map — it is the actionable one', 'source_refused',
     (byName(DECLARATION).bonded_from || {}).refused);
   eq('G5 a body that could not be read is an EMPTY map, never invented counts', '0,0,0',
     [byName(null), byName({}), byName({ sources: 'nope' })]
