@@ -4285,7 +4285,7 @@ def retry_failed_outbox_events(event_id: int = None, transaction_id: str = None,
     # would have been a no-op at best.
     already_expanded = [
         e for e in failed_events
-        if (get_payload_dict(e).get("error_log") or {}).get("reexpanded_into")
+        if not event_constants.counts_as_failure(get_payload_dict(e))
     ]
     if already_expanded:
         skipped_uuids = {e.event_uuid for e in already_expanded}
@@ -4299,10 +4299,24 @@ def retry_failed_outbox_events(event_id: int = None, transaction_id: str = None,
                 f"were already re-expanded into per-row events; retry those children "
                 f"by their '<transaction_id>#row#' ids instead. Nothing was reset."
             )
-        return {"status": "success", "message": msg,
+        # A refusal is not a success: a screen reading "success" shows a success toast for a
+        # retry that reset nothing (총괄 e573a6edf ②).
+        return {"status": "refused" if already_expanded else "success", "message": msg,
                 "skipped_reexpanded": len(already_expanded)}
 
+    import outbox_expand
+
+    gone = []
     for event in failed_events:
+        # ⑤ A split leaf carries its row as it was when its group failed. A retry reads the
+        #    row now - the operator fixed the data and pressed retry to use the fix.
+        if outbox_expand.is_split_leaf(get_payload_dict(event)):
+            fresh = outbox_expand.refreshed_leaf_payload(db, event.table_name,
+                                                         get_payload_dict(event))
+            if fresh is None:
+                gone.append(event.id)
+                continue
+            event.payload = fresh
         event.status = "PENDING"
         event.retry_count = 0
         event.processed_chain = False
@@ -4315,10 +4329,13 @@ def retry_failed_outbox_events(event_id: int = None, transaction_id: str = None,
             event.payload = payload_copy
             
     db.commit()
-    msg = f"Successfully reset {len(failed_events)} failed events to PENDING."
+    msg = f"Successfully reset {len(failed_events) - len(gone)} failed events to PENDING."
     if already_expanded:
         msg += (f" Skipped {len(already_expanded)} already-re-expanded collapsed "
                 f"chunk(s); their rows are queued individually.")
+    if gone:
+        msg += (f" Skipped {len(gone)} row event(s) whose row no longer exists "
+                f"(ids {gone[:5]}); there is nothing to retry them with.")
     return {"status": "success", "message": msg,
             "skipped_reexpanded": len(already_expanded)}
 
@@ -4904,8 +4921,9 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
 def get_failed_outbox_events(page: int = 1, limit: int = 10, tz: str = None,
                              db: Session = Depends(get_db)):
     """실패(FAILED) 상태로 격리된 Outbox 체인 이벤트 목록을 transaction_id 단위로 묶고 페이지네이션하여 반환합니다."""
+    # A split grouped row is not a failure of its own - its children are (총괄 e573a6edf ①).
     query = db.query(models.DatabaseOutbox).filter(
-        models.DatabaseOutbox.status == "FAILED"
+        event_constants.failure_clause(models.DatabaseOutbox)
     ).order_by(models.DatabaseOutbox.id.desc())
     
     all_failed = query.all()
@@ -4936,9 +4954,11 @@ def get_failed_outbox_events(page: int = 1, limit: int = 10, tz: str = None,
         event_types = list(set(e.event_type for e in events))
         max_retry = max(e.retry_count for e in events)
         
-        # Max created_at or failed_at
-        created_at_list = [e.created_at for e in events if e.created_at]
-        failed_at = max(created_at_list).isoformat() if created_at_list else None
+        # When it last FAILED - `processed_at`, stamped by `mark_processed` at the failure and
+        # again at a failure after a retry. `created_at` was when the row was born, so a retry
+        # that failed again kept the old time under this name (총괄 e573a6edf ④).
+        failed_list = [e.processed_at for e in events if e.processed_at]
+        failed_at = max(failed_list).isoformat() if failed_list else None
         
         event_details = []
         for e in events:
@@ -5001,7 +5021,7 @@ def get_failed_outbox_events(page: int = 1, limit: int = 10, tz: str = None,
     } for table, kind, on_day, n, first, last, retry_max in db.query(
         outbox.table_name, outbox.event_type, day, func.count(), func.min(outbox.created_at),
         func.max(outbox.created_at), func.max(outbox.retry_count))
-        .filter(outbox.status == "FAILED")
+        .filter(event_constants.failure_clause(outbox))
         .group_by(outbox.table_name, outbox.event_type, day)
         .order_by(func.max(outbox.created_at).desc()).all()]
 

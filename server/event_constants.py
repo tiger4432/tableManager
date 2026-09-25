@@ -230,6 +230,27 @@ def undelivered_clause(outbox):
                   for column, want in _undelivered_when().items()])
 
 
+#: 🔴 THE UNIT OF FAILURE IS THE ROW THAT STILL FAILS (총괄 e573a6edf ① ⑥). The worker marks a
+#: grouped row it split FAILED with this key, but that row's rows are back in the queue as its
+#: children, and they are what fail or pass. Counting the parent too counted one edit twice
+#: (box 2026-09-25: 51 of 84 FAILED rows were split parents), and left it FAILED with no way
+#: out - retry and re-split both refuse it, and its children's success never moved it.
+SPLIT_INTO_KEY = "reexpanded_into"
+
+
+def counts_as_failure(payload) -> bool:
+    """A FAILED row that is a failure of its own - not a grouped row split into children."""
+    return ((payload or {}).get("error_log") or {}).get(SPLIT_INTO_KEY) is None
+
+
+def failure_clause(outbox):
+    """SQL twin of `counts_as_failure`, with the status: FAILED and not split. Every reader
+    that counts or lists failures passes here - the failed list, its summary, the retry."""
+    from sqlalchemy import and_
+    return and_(outbox.status == "FAILED",
+                outbox.payload[("error_log", SPLIT_INTO_KEY)].as_string().is_(None))
+
+
 def broadcast_state_of(processed_chain, status, broadcast_at):
     """통지 축. 「미전달」의 술어는 `idx_outbox_undelivered` «그대로»다 — 스윕이 집는 집합과
     화면이 말하는 집합이 갈리면 운영자가 「왜 안 없어지나」를 묻게 된다.

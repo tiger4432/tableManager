@@ -139,6 +139,36 @@ def _synthesize_payload(row, columns, envelope) -> dict:
         envelope)
 
 
+def is_split_leaf(payload) -> bool:
+    """A one-row child of a split group: it carries its row's values, not a row id list."""
+    payload = payload or {}
+    return bool(payload.get("reexpanded_from")) and "row_id" in payload \
+        and "row_ids" not in payload
+
+
+def refreshed_leaf_payload(db, table_name: str, payload):
+    """A split leaf's payload rebuilt from its row as it is NOW (총괄 756c54d68 ⑤).
+
+    The split froze the row's values into the leaf when its group failed, so a retry after
+    the operator fixed the row replayed the old value and failed again - and 「fix the data,
+    retry」 is the operator's way back. Rebuilt the way the split built it (the leaf is its
+    own envelope); `None` when the row is gone. Halves need none of this: they carry row ids
+    and the worker reads those rows when it runs them.
+    """
+    from database.models import DYNAMIC_TABLES
+
+    model = DYNAMIC_TABLES.get(table_name)
+    row = (db.query(model).filter(model.row_id == payload.get("row_id")).first()
+           if model is not None else None)
+    if row is None:
+        return None
+    fresh = _synthesize_payload(row, _data_columns(model), payload)
+    for key in ("reexpanded_from", "error_log"):
+        if key in payload:
+            fresh[key] = payload[key]
+    return fresh
+
+
 def load_rows_by_ids(db, table_name: str, row_ids, chunk_size: int = OUTBOX_COLLAPSE_CHUNK_ROWS):
     """{row_id: ORM row} for the named ids, in `chunk_size` batches.
 
