@@ -123,13 +123,14 @@ def test_the_request_BEHIND_it_runs_on_the_next_tick(scheduler):
 
 
 def test_an_ordinary_request_is_untouched(scheduler):
-    """No regression: a request that starts is marked exactly as before, and its status
-    is NOT turned into FAILED."""
+    """A request that starts is finished as SUCCESS, with the time - not FAILED, and not
+    left PENDING beside the flag (총괄 3c3f2b1f2: it read 「done · unexpected_status」)."""
     good = _Row(1, json.dumps({"op": "withdraw", "run_id": "xyz"}))
     session = _Session([good])
     one_tick(scheduler, session)
     assert good.processed_chain is True
-    assert good.status == "PENDING"
+    assert good.status == "SUCCESS"
+    assert getattr(good, "processed_at", None) is not None
     assert scheduler.started[0]["run_id"] == "xyz"
 
 

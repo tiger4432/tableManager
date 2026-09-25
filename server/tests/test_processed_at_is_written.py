@@ -20,6 +20,7 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from chain import ingestion_worker as worker                          # noqa: E402
+import event_constants                                                # noqa: E402
 
 
 class FakeEvent:
@@ -69,16 +70,28 @@ def test_nothing_marks_an_event_processed_except_this_function():
     hand-writes the flag again fails here, which is exactly when somebody would
     otherwise forget the timestamp.
     """
-    import inspect
-    import re
+    # 🔴 EVERY PROCESS THAT DRAINS ROWS, not the worker's file (총괄 3c3f2b1f2): the
+    #   scheduler hand-wrote the flag at five sites this file never looked at.
+    #   ⚠️ `scripts/` is out: operator tools, and the triage cancel writes it in SQL.
+    import ast
+    import subprocess
 
-    source = inspect.getsource(worker)
-    assignments = [m for m in re.finditer(r"^\s*\w+\.processed_chain\s*=\s*True",
-                                          source, re.MULTILINE)]
-    assert len(assignments) == 1, (
-        f"{len(assignments)} places set processed_chain directly; there must be exactly "
-        f"one (inside mark_processed) or the timestamp will be forgotten by one of them")
-
-    body = inspect.getsource(worker.mark_processed)
-    assert "processed_chain = True" in body, \
-        "the single assignment is no longer the one inside mark_processed"
+    server = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    files = [f for f in subprocess.check_output(["git", "ls-files", "*.py"], cwd=server,
+                                                text=True).split()
+             if not f.startswith(("tests/", "scripts/"))
+             and os.path.exists(os.path.join(server, f))]
+    assert len(files) > 100, "CANARY: the file list is broken"
+    found = []
+    for rel in files:
+        tree = ast.parse(open(os.path.join(server, rel), encoding="utf-8").read())
+        funcs = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant)
+                    and node.value.value is True
+                    and any(isinstance(t, ast.Attribute) and t.attr == "processed_chain"
+                            for t in node.targets)):
+                inside = [f.name for f in funcs if f.lineno <= node.lineno <= f.end_lineno]
+                found.append((rel, inside[-1] if inside else None))
+    assert found == [("event_constants.py", "mark_processed")], found
+    assert worker.mark_processed is event_constants.mark_processed

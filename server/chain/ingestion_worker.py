@@ -1099,29 +1099,9 @@ def log_failure_folded(logger_, rule_name, target_table, reason: str):
                       rule_name, target_table, seen, gist)
     return seen
 
-def mark_processed(event, status: str):
-    """The ONE place an outbox event stops being work. Status, the flag, and the time.
-
-    🔴 IT IS ONE FUNCTION BECAUSE IT WAS FOUR PLACES. "Processed" was hand-written at
-    four sites - the group's success, two failure branches, and the SYSTEM_RELOAD
-    trigger - each setting `status` and `processed_chain` itself. `processed_at` was
-    declared on the model, reported by `/admin/outbox/failed`, and written by NOBODY, so
-    the column answered "unknown" forever; adding a line at each of the four would have
-    made eight hand-written copies of one judgement, and the fifth branch to appear
-    would have been the one that forgot.
-
-    🔴 FAILURE IS STAMPED TOO. The column means "when this stopped being worked on", and
-    a permanently failed event has stopped. Stamping only success would leave every row
-    on the failed-events route - the one route that publishes this column - answering
-    "unknown" about itself.
-
-    ⚠️ `func.now()`, not Python's clock: `created_at` is a server default, so both ends
-    of "queued until finished" have to be read from the same clock or the difference is
-    a measurement of clock skew.
-    """
-    event.status = status
-    event.processed_chain = True
-    event.processed_at = func.now()
+# ⚰️ [총괄 3c3f2b1f2] `mark_processed` lives in `event_constants` now, beside
+#   `chain_state_of` - the scheduler drains rows too and does not import this module.
+from event_constants import mark_processed  # noqa: E402
 
 
 

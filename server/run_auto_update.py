@@ -906,10 +906,10 @@ class MultiDiscoveryScheduler:
                             "[Retroactive] run_id=%s op=chain_replay is the chain "
                             "worker's; marking the wake-up row and leaving the run "
                             "queued for it.", (retro_payload or {}).get("run_id"))
-                        retro_trigger.processed_chain = True
+                        event_constants.mark_processed(retro_trigger, "SUCCESS")
                         db.commit()
                     elif self.start_retroactive_run(retro_payload):
-                        retro_trigger.processed_chain = True
+                        event_constants.mark_processed(retro_trigger, "SUCCESS")
                         db.commit()
                 except Exception as retro_err:
                     # 🔴 A REQUEST THAT THREW IS FINISHED, NOT PENDING, AND
@@ -945,8 +945,7 @@ class MultiDiscoveryScheduler:
                         retro_err)
                     try:
                         db.rollback()
-                        retro_trigger.status = "FAILED"
-                        retro_trigger.processed_chain = True
+                        event_constants.mark_processed(retro_trigger, "FAILED")
                         db.commit()
                     except Exception as mark_err:
                         # If even this fails the row stays and the block
@@ -1039,7 +1038,7 @@ class MultiDiscoveryScheduler:
                             
                             self.run_collector_on_demand(table_name, script_name)
                             
-                            latest_trigger.processed_chain = True
+                            event_constants.mark_processed(latest_trigger, "SUCCESS")
                             db.commit()
                         except Exception as trig_err:
                             # 🔴 A REQUEST THAT THREW IS FINISHED, NOT PENDING. This block
@@ -1073,8 +1072,7 @@ class MultiDiscoveryScheduler:
                                 trig_err)
                             try:
                                 db.rollback()
-                                latest_trigger.status = "FAILED"
-                                latest_trigger.processed_chain = True
+                                event_constants.mark_processed(latest_trigger, "FAILED")
                                 db.commit()
                             except Exception as mark_err:
                                 # If even this fails the row stays and the block remains -

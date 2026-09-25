@@ -187,6 +187,28 @@ def chain_state_of(processed_chain, status):
     return CHAIN_STATE_DONE, "unexpected_status:%s" % (status,)
 
 
+def mark_processed(event, status: str):
+    """The ONE place an outbox event stops being work. Status, the flag, and the time.
+
+    🔴 BESIDE `chain_state_of`, the one reader of the same two columns (총괄 3c3f2b1f2).
+    It lived in the chain worker; the scheduler drains rows too, did not import it, and
+    hand-wrote the flag at five sites - three without a status, none with the time. Those
+    rows read 「done · unexpected_status:PENDING」 on the queue.
+
+    🔴 FAILURE IS STAMPED TOO. The column means "when this stopped being worked on", and
+    a permanently failed event has stopped.
+
+    ⚠️ `func.now()`, not Python's clock: `created_at` is a server default, so both ends
+    of "queued until finished" have to be read from the same clock or the difference is
+    a measurement of clock skew.
+    """
+    from sqlalchemy import func
+
+    event.status = status
+    event.processed_chain = True
+    event.processed_at = func.now()
+
+
 def broadcast_state_of(processed_chain, status, broadcast_at):
     """통지 축. 「미전달」의 술어는 `idx_outbox_undelivered` «그대로»다 — 스윕이 집는 집합과
     화면이 말하는 집합이 갈리면 운영자가 「왜 안 없어지나」를 묻게 된다.

@@ -90,13 +90,12 @@ def take_one(scheduler, db):
                         else latest.payload)
         scheduler.run_collector_on_demand(payload_data.get("table_name"),
                                           payload_data.get("script_name"))
-        latest.processed_chain = True
+        event_constants.mark_processed(latest, "SUCCESS")
         savepoint.commit()
         db.flush()
     except Exception:
         savepoint.rollback()
-        latest.status = "FAILED"
-        latest.processed_chain = True
+        event_constants.mark_processed(latest, "FAILED")
         db.flush()
     return latest
 
@@ -112,8 +111,8 @@ def test_the_handler_marks_a_thrown_request_finished():
 
     body = inspect.getsource(run_auto_update.MultiDiscoveryScheduler.run)
     head = body.split("SCHEDULER_RUN_NOW trigger", 1)[1][:900]
-    assert 'status = "FAILED"' in head, "a thrown request is left pending again"
-    assert "processed_chain = True" in head
+    assert 'mark_processed(latest_trigger, "FAILED")' in head, \
+        "a thrown request is left pending again"
     assert "db.rollback()" in head, "the failed transaction is not rolled back"
 
 
