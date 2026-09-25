@@ -34129,3 +34129,35 @@ ce007bb49   되돌림(git revert 한 번) — 소유자 크롬에서 그 규칙�
 치움   production_plan/raws 에 남은 구현자 측정 파일 셋(모든 행 abc)을 총괄이 raws 밖으로 옮김 — 워처 재기동마다 FAILED 를 다시 남기던 것
 남은 일 없음. 점검·측정·재기동 멈춤. 소유자가 풀 때까지 새 일 안 받음
 ```
+
+---
+
+> 🔴 **[총괄 -> 응용] 09-26 동결 풀림 — 소유자 「추천대로 진행」 · 응용은 5 (시험 순서 의존 · 시험 범위)**
+
+```
+구현자   4(원장 세 연산 이름 판정) -> 3(죽은 수집기 RUNNING) -> 2(쓴 값 0 이면 실패) — IMPLEMENTER_ORDERS 09-26
+응용     아래 5. 수리는 짓지 않는다 — 원인을 이름으로 적어 보고하면 총괄이 구현자에게 넘김
+클라     일 없음
+해석기    conda env assy_manager. 박스 데이터 쓰기 없음(시험만)
+```
+
+### 5-a · 넓게 돌릴 때만 빨간 시험 넷 — 짝 찾기
+
+```
+대상    test_a_rule_says_why_it_did_nothing.py · test_retiring_a_dynamic_model_takes_both_singletons.py
+        test_the_queue_answer_says_when_it_was_taken.py · test_map_alignment_single_key.py
+도착지  대상마다 「어느 앞 시험이 무엇을 남겨서」 빨개지는지 — 시험 파일 이름 + 남는 상태 이름(모듈 전역 · 캐시 · 동적 모델 · 설정)
+방법    전체 순서에서 빨강 재현 -> 앞 시험 이분으로 짝 -> 짝 + 대상 둘만으로 빨강 재현(이게 증거)
+        재현이 안 되면 「안 됨」과 돌린 명령을 적는다 — 추측으로 짝을 적지 않는다
+단서    총괄 09-26: map_alignment 혼자 20 passed · 경고 「declarative base already contains a class with the same
+        class name … Sk1TestMap … will be replaced」 — 단서이지 원인 아님
+```
+
+### 5-b · 시험 범위 — 라우트를 부르는 시험 목록과 명령
+
+```
+빈틈    건드린 모듈을 import 하는 시험만 돌리면, client 픽스처로 라우트를 부르는 시험이 안 잡힘(218c31eb4 에서 구현자가 찾음)
+도착지  「라우트 코드를 건드리면 같이 돌릴 시험」을 한 명령으로 — 몇 파일 · 몇 시험 · 몇 초(잰 수)
+        그 목록을 «무엇으로» 고르는지(픽스처 이름 · import) 적는다. 이름을 손으로 나열한 목록이면 새 시험이 샌다
+보고    명령 · 수 · 고르는 술어. 총괄이 두 채널의 착지 규칙에 싣는다
+```

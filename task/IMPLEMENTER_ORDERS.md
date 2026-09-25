@@ -60079,3 +60079,70 @@ oldest_failed_at  줄의 failed_at 과 같은 칸(마지막 실패 시각)으로
        그래서 「같은 표 둘째 파일이 첫째를 기다리고 뒤 값이 이김」은 크기와 무관한 성질
 남는 것 없음. 이 항목 닫힘. 목록 끝 그대로 — 새 일 없음
 ```
+
+---
+
+## [총괄 -> 구현자] 09-26 동결 풀림 — 소유자 「추천대로 진행」 · 순서 4 -> 3 -> 2
+
+```
+소유자가 고른 것   4 ㄱ · 3 ㄱ · 2 ㄴ · 1 ㄱ(그대로 둠 — 짓지 않음)
+한 항목씩 착지     칸 + 함수 + 지나는 자리 전부가 한 커밋. 착지마다 보고 한 줄 뒤 다음 항목
+박스              데이터 쓰기 · 재기동은 먼저 알림(되돌리는 법 같이). 설정은 백업 + md5
+시험 범위          건드린 모듈 + import 하는 시험 + 라우트를 부르는 시험(client 픽스처) — 응용이 그 목록·명령을 셈 중
+```
+
+### 1 · 소급 재적재의 두 커밋 사이 틈 — 안 지음
+
+```
+판정   backfill.rescope 가 색인 지우기(forget_row_refs)를 일부러 맨 뒤에 둠 — store.forget_row_refs 독스트링
+       「while these are still here the withdrawal can be run again … the next pass reads as nothing to withdraw and clears」
+       원장 값은 안 틀림. 남는 것은 색인 한 줄(다음 실행이 치움). 소유자 「그대로 둠」
+```
+
+### 4 · 원장 세 연산의 이름 판정 — 기록 전 거절
+
+```
+도착지  resolve · ledger_backfill · ledger_rescope 에 없는 이름 -> 기록(실행 행) 0 · 게시 · 수 세기 · CLI 가 같은 한 문장
+자리    b429cd1e9 의 `judge` 칸 — 체인 연산과 같은 자리, 같은 모양. 세 칸이 지금 None
+짓기 전  연산마다 받는 이름이 무엇인지 · 실행 때 그 이름을 찾는 «자기 조회»가 어디인지
+        judge 는 그 조회를 부른다 — 새 조회를 짓지 않는다(문장이 둘이 됨)
+        resolve 가 이름을 안 받으면 None 이 맞는 답 — 그렇게 적고 둠
+게이트  연산 3 × 문 3(게시 · 수 세기 · CLI) — 없는 이름: 거절 문장 · 기록 0 / 있는 이름: 지금과 같음
+변이    judge 를 None 으로 되돌리면 빨강
+```
+
+### 3 · 죽은 수집기가 RUNNING 으로 남음 — 소급과 같은 판정
+
+```
+도착지  수집 도중 스케줄러가 죽으면 대기열(지금 도는 것)과 /health 에 RUNNING 이 아니라 소급 실행과 같은 낱말(orphaned)
+        살아 있는 수집은 오래 걸려도 RUNNING 그대로
+기제    판정 함수는 하나 — admin/retroactive.py `_runner_state`(심박 이름 · pid -> owned / orphaned / unknown)
+        소급과 수집기가 같이 부르는 자리로 옮김. 수집기 상태 항목에 같은 모양의 도장(`scheduler/host/pid`)
+        두 번째 생존 판정을 짓지 않는다
+짓기 전 셀 것
+        RUNNING 을 적는 곳 전수(execute_collector 말고 또 있나) · 읽는 곳 전수(running.collector_is_running · /health · Auto Update 탭 · 그 밖)
+        스케줄러가 켜질 때 상태 파일의 옛 RUNNING 을 다시 읽나
+        수집이 틱 스레드 밖에서 도는 동안 scheduler 심박이 계속 뛰나(start_collector 의 「OFF the tick thread」) — 안 뛰면 멈추고 보고
+게이트  박스 — ① 수집 도중 스케줄러를 죽임 -> 그 줄 판정 전·후
+             ② 60 s(심박 stale 기준)를 넘는 살아 있는 수집 -> RUNNING 그대로 — 박스에 그런 수집이 없으면 강제로 만들어 한 번
+             ③ 스케줄러 재기동 뒤 옛 RUNNING -> orphaned
+변이    도장 판정을 빼면 ①③ 빨강
+```
+
+### 2 · 쓴 값이 하나도 없으면 실패
+
+```
+도착지  파일 하나에서 선언에 없는 칸 때문에 버려진 값 > 0 이고 쓴 값 0 -> FAILED · 사유 한 문장(영어 · 버린 칸 이름 · 다음 행동)
+        일부만 버린 파일 -> SUCCESS 그대로 + 파일 기록에 버린 칸 문장
+판정    watcher._announce_dropped_columns 독스트링 「Dropping is often the CORRECT outcome - a file carrying fields of a
+        superseded scheme should not grow the table」 — 뒤집지 않는다. 뒤집는 것은 「전부 버려져도 성공」 하나(소유자 ㄴ)
+짓기 전 셀 것
+        버림을 세는 자리를 표준 파서 · 커스텀 파서 두 길이 다 지나나(본 경우 large_table_100 = 커스텀 LargeTable100CSVParser) — 판정은 한 함수
+        성공 줄에 문장을 적을 칸이 있나 — error_message 를 쓰면 어드민이 성공 줄을 어떻게 그리나 «열어서»
+        지금의 답을 먼저 적고 바꾸지 않는 것: 행 0 인 파일 · 값이 전부 빈칸인 파일
+        실패 파일이 raws 에 남아 워처 재기동마다 다시 읽히고 FAILED 기록이 하나씩 늘어나는지(09-25 23:14 두 번 봄) —
+        이 항목이 실패 파일을 늘리니 그 동작의 답을 적는다. 고치는 것은 이 항목 밖 — 보고만
+게이트  파일 셋(전부 버림 · 일부 버림 · 안 버림) × 파서 길 둘 -> 상태 · 문장
+        박스 — large_table_100 에 파일 하나: 전 SUCCESS -> 후 FAILED + 문장(쓰기 먼저 알림)
+변이    판정을 빼면 「전부 버림」 칸 빨강
+```
