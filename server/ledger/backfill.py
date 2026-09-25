@@ -874,9 +874,8 @@ def rows_not_yet_translated(engine, setup, source, *, exact_rows=True):
             # few thousand while CLAIMING to be exact is worse than one that says what it
             # is. The exact count is the human CLI's (`python -m ledger census`).
             #
-            # ⚠️ AND A VIEW HAS NO `reltuples`. `pg_class` holds -1 for a relation that was
-            # never analysed and views are not analysed at all, so the scan stays for those
-            # - a view relation was already the expensive case and is now the only one.
+            # ⚠️ `pg_class` holds -1 for a table that was never analysed, so the scan stays
+            # for that one.
             estimated = None
             from_estimate = False
             if exact_rows is False:

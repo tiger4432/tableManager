@@ -1311,6 +1311,16 @@ def resolve_missing_business_keys(db: Session, log_models: list) -> None:
             lm.business_key = bk
 
 
+from ledger.runtime_v2 import RECEIPT_COLUMN  # noqa: E402
+
+
+def _names_a_row(log) -> bool:
+    """Whether an audit line names a row of its relation — the one question the three audit
+    lists ask before 「was this row deleted」. A batch line does not, and neither does the
+    ledger's batch receipt: its `row_id` is the BATCH's id (총괄 218f907f5)."""
+    return log.row_id != "_BATCH_" and log.column_name != RECEIPT_COLUMN
+
+
 def check_rows_exist(db: Session, row_keys: list[tuple[str, str]]) -> set[tuple[str, str]]:
     from collections import defaultdict
     by_table = defaultdict(list)
@@ -1319,9 +1329,18 @@ def check_rows_exist(db: Session, row_keys: list[tuple[str, str]]) -> set[tuple[
             by_table[t_name].append(r_id)
             
     existing_keys = set()
+    if not by_table:
+        return existing_keys
+    # 🔴 A VIEW HAS NO `row_id` TO LOOK UP (총괄 377231278). Its lines are the ledger's batch
+    #   receipts, and asking its model for `row_id` was the history panel's 500. The seat
+    #   answers; a relation it refuses goes the way a relation without a model goes.
+    from ledger.setup import live_physical_catalog
+    from ledger.setup_bundle import reads_a_row_table
+
+    catalog = live_physical_catalog()
     for t_name, r_ids in by_table.items():
         table_model = models.DYNAMIC_TABLES.get(t_name)
-        if table_model and r_ids:
+        if table_model and r_ids and reads_a_row_table(catalog, t_name):
             found = db.query(table_model.row_id).filter(table_model.row_id.in_(r_ids)).all()
             for (f_id,) in found:
                 existing_keys.add((t_name, f_id))
@@ -1415,7 +1434,7 @@ def _shape_recent_groups(db: Session, cache_groups, truncated, next_cursor,
         logs = g.get("logs", [])
         if not logs: continue
         repr_log = logs[0]
-        if repr_log.row_id != "_BATCH_":
+        if _names_a_row(repr_log):
             keys_to_check.append((repr_log.table_name, repr_log.row_id))
 
     existing_keys = check_rows_exist(db, keys_to_check)
@@ -1433,7 +1452,7 @@ def _shape_recent_groups(db: Session, cache_groups, truncated, next_cursor,
                 
         # Populate is_row_deleted flag for representing log
         repr_log = logs[0].model_copy()
-        is_deleted = repr_log.row_id != "_BATCH_" and (repr_log.table_name, repr_log.row_id) not in existing_keys
+        is_deleted = _names_a_row(repr_log) and (repr_log.table_name, repr_log.row_id) not in existing_keys
         repr_log.is_row_deleted = is_deleted
         
         if is_deleted and not repr_log.business_key:
@@ -1471,7 +1490,7 @@ def get_transaction_logs(tx_id: str, db: Session = Depends(get_db), limit: int =
                     # Check existences
                     keys_to_check = []
                     for l in logs[:limit]:
-                        if l.row_id != "_BATCH_":
+                        if _names_a_row(l):
                             keys_to_check.append((l.table_name, l.row_id))
                     existing_keys = check_rows_exist(db, keys_to_check)
                     
@@ -1483,7 +1502,7 @@ def get_transaction_logs(tx_id: str, db: Session = Depends(get_db), limit: int =
                         c = l.column_name
                         if c and c not in cols: cols.append(c)
                         cloned_log = l.model_copy()
-                        is_deleted = cloned_log.row_id != "_BATCH_" and (cloned_log.table_name, cloned_log.row_id) not in existing_keys
+                        is_deleted = _names_a_row(cloned_log) and (cloned_log.table_name, cloned_log.row_id) not in existing_keys
                         cloned_log.is_row_deleted = is_deleted
                         if is_deleted and not cloned_log.business_key:
                             needs_bk.append(cloned_log)
@@ -1511,7 +1530,7 @@ def get_transaction_logs(tx_id: str, db: Session = Depends(get_db), limit: int =
     # Check existences
     keys_to_check = []
     for log_obj in db_logs:
-        if log_obj.row_id != "_BATCH_":
+        if _names_a_row(log_obj):
             keys_to_check.append((log_obj.table_name, log_obj.row_id))
     existing_keys = check_rows_exist(db, keys_to_check)
     
@@ -1523,7 +1542,7 @@ def get_transaction_logs(tx_id: str, db: Session = Depends(get_db), limit: int =
     for log_obj in db_logs:
         log_dict = log_obj.__dict__.copy()
         log_model = schemas.AuditLogResponse.model_validate(log_dict)
-        is_deleted = log_model.row_id != "_BATCH_" and (log_model.table_name, log_model.row_id) not in existing_keys
+        is_deleted = _names_a_row(log_model) and (log_model.table_name, log_model.row_id) not in existing_keys
         log_model.is_row_deleted = is_deleted
         if is_deleted and not log_model.business_key:
             needs_bk.append(log_model)

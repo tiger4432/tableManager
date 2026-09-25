@@ -58535,3 +58535,107 @@ M5 config.load 를 안 넓힘                    -> 빨강 test_the_reading_load
        view_followers_of 3 · ViewDependencyTooDeep 3     git grep -l -E "<이름>" -- '*.md' | wc -l
        RUN.md · guide · CODE_MAP 은 응용 몫(지시대로)
 ```
+
+---
+
+## [09-25 14:21] 구현자 — 이력 패널 500: 짓기 «전» 보고 가 · 나 (지시 377231278 · ceab30b7a)
+
+```
+재현   박스 GET /audit_logs/recent -> 500
+       main.check_rows_exist: AttributeError: type object 'BondingCoreDie' has no attribute 'row_id'
+```
+
+### 가 — 같은 병의 자리
+
+```
+센 것    비시험 추적 모듈 277 파일을 AST 로 — DYNAMIC_TABLES 에서 이름으로 꺼낸 모델(같은 함수에서 그것을 대입받은 이름 포함)에 .row_id 를 읽는 자리
+         56 자리 · 32 함수 (그중 7 함수는 scripts/ — 정해진 표만 씀)
+박스 실측 row_id 칸이 없는 뷰 bonding_core_die 이름으로 읽기 라우트를 불러 봄
+   500   GET  /audit_logs/recent                         check_rows_exist
+         GET  /tables/{t}/export                         export_table_csv
+         GET  /tables/{t}/{row_id}                       get_row_data
+         GET  /tables/{t}/{row_id}/{col}/sources         get_cell_sources
+         GET  /tables/{t}/rows/{row_id}/history          _history_page
+         GET  /tables/{t}/rows/{row_id}/cells/{col}/history   _history_page
+         POST /tables/{t}/row_ids/target                 get_target_row_ids
+         POST /tables/{t}/cells/sources/query            query_cells_sources
+         -> 8 라우트. 그 뒤 API 로그의 row_id AttributeError 13 줄이 전부 이 자리들
+   200   GET /tables/{t}/data (그리드) · GET /dashboard/summary
+쓰기     delete_rows_batch · delete_cell_source_batch · set_cell_manual_priority_batch 는 refuse_write_to_view 가 먼저 막음
+         _apply_batch_updates_once 는 유일한 호출자 apply_batch_updates 가 막음
+안 쟀다  체인 쪽 (replay · enrichment/candidates · cell_layer · dt_map_derivation · outbox_expand) 과
+         인제션 쓰기 (_get_or_create_row · _find_business_key_conflict · purge_map_rows) — 뷰 이름이 거기 닿는 길이 있는지 안 셈
+```
+
+### 나 — 뷰에 대한 이력 줄은 누가 썼나
+
+```
+쓴 것    원장의 배치 영수증 — ledger/runtime_v2._batch_receipt (S-117 · 판정 248). 원장 배치 하나에 한 줄:
+         table_name = 소스가 읽은 관계 · row_id = «배치 id» · column_name = ledger_batch · source_name · updated_by = ledger
+이 박스  뷰 셋에 136 줄 (audit_logs 를 table_name 으로 묶어 셈)
+         dt_log_transferable 130 · 거래 4 · 09-11 ~ 09-23 (소스 dt_transfer)
+         bonding_core_die 4 · 거래 3 · 09-23 (소스 bw_dt_seat)
+         bonding_die_from_core 2 · 거래 2 · 09-23 (소스 bonded_from)
+         뷰 쓰기(S-186)와 무관 — 원장이 뷰 소스를 «읽고» 남긴 영수증입니다
+앞으로   c193986a8 로 뷰 소스가 거절돼 새 줄은 안 생깁니다. 옛 136 줄이 남아 있어 이번 수리가 필요합니다
+곁에 본 것 영수증의 row_id 는 그 관계의 행이 아니라 배치 id 라서, 표 위의 영수증도 check_rows_exist 가 늘 「없음」으로 답해
+         is_row_deleted = true 로 나갑니다 (이 라운드 전부터 — 아래 ㉯)
+```
+
+### 짓는 것 — 지시대로
+
+```
+check_rows_exist 가 관계마다 setup_bundle.reads_a_row_table(ledger.setup.live_physical_catalog(), 관계) 로 묻고,
+   아니면 그 관계를 건너뜁니다 — 모델이 없는 관계가 오늘 가는 갈래와 같습니다 (새 판정 없음)
+   카탈로그 읽기: 이 박스 약 1 ms (59 KB 파일). 요청마다 한 번, 줄이 있을 때만
+   ⚠️ 건너뛴 관계의 줄은 지금 코드대로 is_row_deleted = true — 모델 없는 관계가 오늘 받는 답과 같습니다
++ backfill.measure_and_store 의 낡은 뷰 주석 (ceab30b7a) 같은 커밋
+게이트  박스 /audit_logs/recent 200 · 패널 전 · 후 · 변이(판정을 빼면 빨강)
+```
+
+### 여쭐 것 — 이번 커밋에는 안 넣습니다
+
+```
+㉮ 나머지 7 라우트 (위 500). 라우트마다 맞는 답이 달라서 이 커밋에 얹지 않았습니다
+   행 주소 라우트 (행 읽기 · 셀 원천 · 이력 둘 · target · sources/query) — 「row_id 없는 관계」라고 이름으로 거절 (한 자리에서)
+   export — 뷰도 내보낼 수 있어야 하니 거절이 아니라 뷰의 전순서 키(total_order_key)로
+   ⚠️ 뷰 이름의 행 이력(_history_page)은 이 커밋 뒤에도 500 입니다. 패널이 영수증 줄에서 그 길을 부르는지는 안 쟀습니다
+   따로 한 라운드로 할까요
+㉯ 영수증 줄(column_name = ledger_batch)의 is_row_deleted — 행 존재를 묻지 않게 할까요. 지금은 표 위 영수증도 「지워진 행」으로 나갑니다
+```
+
+---
+
+## [09-25 14:33] 구현자 — 이력 500: 커밋 1 착지 `25b674b8a` · ㉮ 짓는 중 — 여섯 밖에서 같은 병을 더 쟀습니다 (물음 둘)
+
+```
+커밋 1   25b674b8a — check_rows_exist 가 reads_a_row_table 에 묻고 · 영수증 줄은 행 존재를 안 물음
+         (main._names_a_row — runtime_v2.RECEIPT_COLUMN 을 import, 철자를 다시 안 적음) · backfill 낡은 주석
+         영수증 줄의 is_row_deleted 는 false — 패널(timeline.js)은 참거짓만 보고, 응답 모델이 기본값 false 를 늘 실어서 「칸을 빼기」는 안 됩니다
+박스     API 재기동 뒤 /audit_logs/recent 200 (첫 번째 4.1 s 캐시 적재 · 그 뒤 38 ms)
+         100 그룹 = 영수증 51 (뷰 위 5) 전부 is_row_deleted false · 보통 줄 49 중 true 2
+패널     전 「Failed to load global history log」 -> 후 이력이 섬 (LEDGER · BATCH · DELETE · MANUAL · SYSTEM 줄)
+변이     넷 다 빨강 — 자리를 안 물음 · 모델에 hasattr 로 물음 · 영수증 조건 뺌 · 거래 상세 라우트만 옛 철자
+```
+
+### ㉮ 짓는 중 — 지시대로 여섯 + export
+
+### 여섯 밖 — 박스 실측 (뷰 bonding_core_die · ledger_events 로)
+
+```
+500  GET /tables/{뷰}/data?transaction_id=…  ·  /data/count?transaction_id=…     narrowed_table_query · get_table_data_count
+     패널이 이제 뷰 영수증을 보여 주니, 그 거래로 그리드를 거르면 이 500 입니다 (패널 버튼이 이 길을 부르는지는 안 쟀다)
+500  GET /tables/ledger_events/data?q=abc — 검색어만 넣어도
+     ledger_events 는 «id» 라는 선언 칸이 있고, 검색이 칸 이름 id 를 row_id 로 읽습니다 (apply_search_filter). 운영 그리드에도 닿습니다
+500  GET /tables/bonding_core_die/data?q=abc&cols=id — 같은 자리
+셈의 빈틈  get_table_data_count 의 자리는 제 census(56)가 못 셌습니다 — 판정 식이 그 모양을 못 봄
+```
+
+### 물음 — 답을 받기 전에는 넣지 않습니다
+
+```
+㉠ 거래 필터 (그리드 /data · /data/count) — 같은 자리 refuse_row_address 로 거절 (추천. narrowed_table_query 한 곳 + count 한 곳)
+㉡ 검색의 row_id · id — 「그 관계의 전순서 키(total_order_keys)를 찾는다」로 (추천)
+   표는 전순서 키가 곧 row_id 라 SQL 이 지금과 같습니다. ledger_events 는 그리드의 ID 칸 그 값(id)을 찾게 됩니다
+   거절이 아닌 이유 — 검색은 행을 «주소로» 부르는 게 아니라 값을 찾는 것이고, 그리드가 이미 뷰의 ID 를 전순서 키로 그립니다
+```

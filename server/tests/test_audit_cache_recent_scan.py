@@ -419,3 +419,72 @@ def test_j_a_group_straddling_the_boundary_is_named_once(client, db_session, kno
         f"Got {later!r}")
     assert later == ["older-b", "older-a"], \
         f"and the groups below it are all still reachable. Got {later!r}"
+
+
+def test_k_only_a_table_that_has_row_id_is_asked_for_its_rows(monkeypatch):
+    """총괄 377231278 — the panel's 500 was a view model asked for `row_id`.
+
+    A view's lines are the ledger's batch receipts. `reads_a_row_table` decides, so a view
+    that DOES carry `row_id` is not asked either - asking the model instead would let it in.
+    """
+    import main
+    from ledger import setup as ledger_setup
+
+    class _Column:
+        def in_(self, ids):
+            return tuple(ids)
+
+    class _Table:
+        row_id = _Column()
+
+    class _ViewWithout:
+        pass
+
+    class _ViewWith:
+        row_id = _Column()
+
+    asked = []
+
+    class _Db:
+        def query(self, column):
+            owner = next(name for name, model in models.DYNAMIC_TABLES.items()
+                         if getattr(model, "row_id", None) is column)
+            asked.append(owner)
+            return type("Q", (), {"filter": lambda self, ids: type(
+                "R", (), {"all": lambda self: [(i,) for i in ids if i == "R1"]})()})()
+
+    for name, model in (("k_rows", _Table), ("k_view", _ViewWithout),
+                        ("k_view_rid", _ViewWith)):
+        monkeypatch.setitem(models.DYNAMIC_TABLES, name, model)
+    monkeypatch.setattr(ledger_setup, "live_physical_catalog", lambda: {
+        "k_rows": {"kind": "table", "columns": {"row_id": "string"}},
+        "k_view": {"kind": "view", "columns": {"a": "string"}},
+        "k_view_rid": {"kind": "view", "columns": {"row_id": "string"}}})
+
+    found = main.check_rows_exist(_Db(), [("k_rows", "R1"), ("k_rows", "R2"),
+                                          ("k_view", "B1"), ("k_view_rid", "R1")])
+
+    assert found == {("k_rows", "R1")}, "CANARY: the table's row is still found"
+    assert asked == ["k_rows"]
+
+
+def test_l_a_ledger_receipt_is_not_a_deleted_row(client, db_session, knobs):
+    """총괄 218f907f5 — a receipt's `row_id` is its batch's id, so 「deleted row」 was false."""
+    from ledger.runtime_v2 import RECEIPT_COLUMN
+
+    seed(db_session, [("plain-tx", 1)])
+    db_session.add(models.AuditLog(
+        table_name=TABLE, row_id="batch-0001", column_name=RECEIPT_COLUMN, old_value=None,
+        new_value={"rows": 1}, source_name="ledger", updated_by="ledger",
+        transaction_id="receipt-tx", timestamp=BASE + timedelta(minutes=5)))
+    db_session.commit()
+    knobs(recent_max_scan_rows=10_000, recent_scan_chunk_rows=50)
+    audit_cache.audit_cache.__init__()
+
+    body = client.get("/audit_logs/recent?limit_groups=5").json()
+    deleted = {g["transaction_id"]: g["logs"][0]["is_row_deleted"] for g in body["groups"]}
+
+    assert deleted == {"receipt-tx": False, "plain-tx": True}, (
+        "CANARY plain-tx: a line naming a row that is not there still reads as deleted")
+    detail = client.get("/audit_logs/transaction/receipt-tx").json()
+    assert [log["is_row_deleted"] for log in detail["logs"]] == [False]
