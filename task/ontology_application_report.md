@@ -33431,3 +33431,20 @@ CLI 기록의 요청자   CLI 실행 행의 requested_by 가 비어 있습니다
 ```
 목록의 metro EDIT 1 (09-25 18:52) 은 제 5139290 입니다 — 행이 지워진 행별 줄. 두라는 지시대로 뒀습니다
 ```
+
+---
+
+## 후 사진 — 행 없는 행별 줄 5139290 재시도 (8dfd50ab) (09-25 20:29)
+
+지시 `1f08b1d98`. 라우트 함수를 프로세스 안에서(HEAD).
+
+| | 전 | 후 |
+|---|---|---|
+| 재시도 답 | status "success" · 재설정 0 (649cd72cd) | `ended_missing_row` **1** · reset 0 · 「Ended 1 row event(s) whose row no longer exists (ids [5139290]) …」 ✓ |
+| 줄 상태 | FAILED | SUCCESS · `cancelled_by` "retry" · `cancel_reason` 「row 01a0d7fb-… no longer exists in metro」 ✓ |
+| 실패 목록 total | 34 | **33** ✓ · 목록에서 빠짐 · 요약의 metro 줄 사라짐 |
+| 알림 | — | 끝낸 뒤 체인 워커가 알림 시각을 찍음(같은 초) ✓ |
+
+```
+이제 실패 목록은 소유자의 dt_inventory EDIT 33 한 줄뿐입니다. 제 억지 실패 시험의 흔적은 목록에 0
+```
