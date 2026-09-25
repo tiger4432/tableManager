@@ -910,7 +910,7 @@ def get_workspace_serial_lock(workspace_path: str) -> threading.Lock:
 
 
 class HeavyIngestionLane:
-    """[Heavy Lane P1] 대형 파일 전용 처리 레인 — 단일 워커 스레드 + FIFO 큐.
+    """[Heavy Lane P1] 대형 파일 전용 처리 레인 — 워커 N(heavy_lane_workers) + 표마다 FIFO.
 
     목적은 **교차 워크스페이스 격리**: A 테이블의 수 분짜리 대형 파일이 watchdog
     observer 디스패치 스레드/스윕 스레드를 점유해 B 테이블의 소형 파일을 분 단위로
