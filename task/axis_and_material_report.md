@@ -1,3 +1,41 @@
+> ## [09-25 17:03 디자인] 글자 계층 ① 짓기 전 표(43c97d354) — D 판정 뒤에 착지 · 물음 둘
+
+D(5efa71f75) 화면 판정을 기다리는 동안 «읽기만» 했습니다. ① = 토큰 12 단 + 캐논 파일 + 공용 모듈 + SKILL.md §2 한 줄.
+
+### 셈 — client2 추적 파일(dist · tests 밖)이 «적는» font-size
+
+```
+명령      scratchpad/font_census.py — git ls-files client2 · CSS 의 font-size: · JS 의 fontSize =
+         카나리아: 캐논 파일 한 곳에서 112 (0 이면 계기 고장)
+전체      18 파일 · 606 곳 · 리터럴 427 · 단 밖 222 · 서로 다른 리터럴 60
+         (총괄 셈 CSS·HTML 659 와 다릅니다 — 총괄 명령을 몰라 차이의 이유는 안 쟀습니다. JS 파일 안의 합 51 은 같습니다)
+```
+
+### ① 의 자리 — 지금 값 -> 단 (역할로 앉힘)
+
+```
+캐논 파일 ontology_explorer.css   리터럴 112 — 단 위 106 · 단 밖 6
+   11.5px ×3  검색 입력 · 테스트 경로 · 이동 링크(전부 mono)   -> tag 11      −0.5
+   10.5px ×2  편집 맥락 값 · 사유 코드                      -> tag 11      +0.5
+   9px   ×1  흐름 노드 종류                               -> meta 10     +1
+공용      tokens.css .toast 0.85rem(13.6)                 -> body 15     +1.4  ⚠️
+         tokens.css .toast-close 1.05rem(16.8) ×          -> button 14   −2.8  ⚠️
+         utils.js 토스트 아이콘 1.1rem(17.6)                -> card-title 17  −0.6
+         timeline.js 「more」 버튼 0.8rem(12.8)              -> button 14   +1.2  ⚠️
+1px 넘게 달라지는 자리   3 (위 ⚠️)
+```
+
+### 물음
+
+```
+1 --fs-body 는 14 입니다(주석 「본문 · 버튼 · 입력」). 캐논은 body 15 · button 14 로 둘입니다
+  지금 쓰는 곳 6 — 대기열 표 칸(시안 A 가 14 라 적음) · 현황판 줄 · R&D 보드 제목 둘 · 그리드 .ctm-row · 범례 설명 입력
+  제 안: --fs-body = 15 로 캐논에 맞추고 --fs-button = 14 를 새로 — 여섯은 역할대로(표·줄은 A 대로 14 = button, 제목 둘은 card-title, 입력은 button)
+2 토스트 ✕ 16.8 -> button 14 는 −2.8 입니다. 글리프라 작아지면 누르기 어렵습니다 — h5 16 으로 둘지
+```
+
+착지는 D 판정과 그 수리 «뒤»입니다 — 같은 파일(admin.html)을 겹쳐 고치지 않으려고.
+
 > ## [09-25 16:56 디자인] Overview 시안 A 나머지 착지 (5efa71f75) — Status 현황판 · 옛 조각 0 · 화면은 총괄께
 
 ### 착지 5efa71f75 — overview_status(줄 판정) · overview_board(현황판 부품) · admin.js · admin.html · 하니스 · dist
