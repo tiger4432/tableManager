@@ -11,7 +11,7 @@ import { NONE, WAITING, REFUSED, unitText } from './ui_words.js';
 import { errorText } from './body_error.js';
 // 🔴 「원천이 «없다»」와 「있는데 «비었다」의 갈림. 오류와는 «다른 질문»이라 함수를 안 합칩니다.
 import { absentPath } from './absent_listing.js';
-import { retryMessage, outboxRetryMessage, ingestionMessageView } from './retry_verdict.js';
+import { retryMessage, outboxRetryMessage, ingestionMessageView, collectorMessageView, DRAWER_BODY_CLASS } from './retry_verdict.js';
 import { initTheme, getTheme, THEME_CHANGE_EVENT } from './theme.js';
 // [전역 토스트] 자체 구현을 폐기하고 공용(utils.js)으로 일원화한다 —
 // 구 admin 구현도 setTimeout 단독 수명이라 백그라운드 탭에서 동일하게 누적됐다.
@@ -3505,16 +3505,17 @@ function selectAutoUpdateRow(col) {
   txEventsSelectorBlock.style.display = 'none';
 
   diagnosticsTitle.textContent = '🔍 Auto-Update Collector Diagnostics';
-  tracebackTitle.textContent = 'Last Collector Execution Error';
+  // Title, badge, body and its colour from ONE tone, the file drawer's seat (lead e1af65168).
+  const drawer = collectorMessageView(col.last_status, col.last_error);
+  tracebackTitle.textContent = drawer.title;
   tracebackSeverity.textContent = col.last_status || 'PENDING';
-  tracebackSeverity.className =
-    col.last_status === 'SUCCESS' ? 'badge badge-success' :
-    col.last_status === 'FAIL' ? 'badge badge-danger' : 'badge badge-warning';
+  tracebackSeverity.className = drawer.badgeClass;
   tracebackSeverity.style.display = 'inline';
   payloadTitle.innerHTML = `Collector Config & Execution Metadata
     <button id="inline-edit-collector-btn" class="admin-btn btn-primary" style="padding: 2px 8px; font-size: var(--fs-button); margin-left: 10px;">🛠️ Edit Collector Script</button>`;
 
-  tracebackViewer.textContent = col.last_error || 'No error traceback log captured (Last execution was successful).';
+  tracebackViewer.className = drawer.bodyClass;
+  tracebackViewer.textContent = drawer.body;
   payloadViewer.textContent = JSON.stringify(col, null, 2);
 
   const inlineEditBtn = byId('inline-edit-collector-btn');
@@ -3689,11 +3690,10 @@ function selectFileRow(log, bodyEl = fileListBody) {
   // 🔴 「SUCCESS 아니면 danger」였습니다. 그러면 «대기»가 «실패»로 그려집니다 --
   //    운영자는 고칠 것이 있다고 읽고, 실제로는 워처를 기다리는 중입니다.
   tracebackSeverity.textContent = log.status || 'FAILED';
-  const severityTone = drawer.tone;
-  tracebackSeverity.className = 'badge badge-'
-    + (severityTone === 'ok' ? 'success' : (severityTone === 'danger' ? 'danger' : 'warning'));
+  tracebackSeverity.className = drawer.badgeClass;
   tracebackSeverity.style.display = 'inline';
 
+  tracebackViewer.className = drawer.bodyClass;
   tracebackViewer.textContent = drawer.body;
 
   // 관련 파서 스크립트 바로 열기 (수정 단계 딥링크 — 대상 테이블 워크스페이스의 커스텀 파서)
@@ -3744,6 +3744,7 @@ function selectWorkspaceRow(ws) {
   tracebackSeverity.style.display = 'none';
   payloadTitle.textContent = 'config.json Configurations';
 
+  tracebackViewer.className = DRAWER_BODY_CLASS;
   if (ws.custom_scripts && ws.custom_scripts.length > 0) {
     tracebackViewer.innerHTML = '';
     ws.custom_scripts.forEach(s => {
@@ -3791,6 +3792,7 @@ function selectChainRow(rule) {
   payloadTitle.innerHTML = `Raw Chain Ingestion Rule Configuration
     <button id="inline-edit-mapper-btn" class="admin-btn btn-primary" style="padding: 2px 8px; font-size: var(--fs-button); margin-left: 10px;">🛠️ Edit Mapper Code</button>`;
 
+  tracebackViewer.className = DRAWER_BODY_CLASS;
   tracebackViewer.textContent = chainRuleNarrative(rule) +
     (rule.description ? `\n\n${rule.description}` : '');
   payloadViewer.textContent = JSON.stringify(rule, null, 2);
@@ -3823,6 +3825,7 @@ function selectMapperRow(mapper) {
   tracebackSeverity.style.display = 'none';
   payloadTitle.textContent = 'Mapper Module AST Structure';
 
+  tracebackViewer.className = DRAWER_BODY_CLASS;
   if (mapper.functions && mapper.functions.length > 0) {
     tracebackViewer.textContent = mapper.functions.map(f =>
       `⚡ def ${f.name}(${f.arguments.join(', ')}):\n   """${f.summary || 'No docstring summary.'}"""`
@@ -3838,6 +3841,7 @@ function selectMapperRow(mapper) {
 function showEventDiagnostics(ev) {
   const errLog = ev.payload?.error_log || {};
   const reason = errLog.reason || 'No error traceback log captured.';
+  tracebackViewer.className = DRAWER_BODY_CLASS;
   tracebackViewer.textContent = reason;
 
   const cleanPayload = { ...ev.payload };
@@ -3872,6 +3876,7 @@ function clearDiagnostics() {
 
   txEventsSelectorBlock.style.display = 'none';
   txEventsList.innerHTML = '';
+  tracebackViewer.className = DRAWER_BODY_CLASS;
   tracebackViewer.textContent = '';
   payloadViewer.textContent = '';
   payloadTitle.textContent = 'Raw Event Payload / Details';

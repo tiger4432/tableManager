@@ -40,7 +40,8 @@
 export function retryVerdict(status) {
   const spelled = String(status == null ? '' : status).trim().toUpperCase();
   if (spelled === 'SUCCESS') return { state: 'done', tone: 'ok', settled: true };
-  if (spelled === 'FAILED') return { state: 'failed', tone: 'danger', settled: true };
+  // Files spell it FAILED, collectors FAIL (lead e1af65168) — one meaning, the server's words kept.
+  if (spelled === 'FAILED' || spelled === 'FAIL') return { state: 'failed', tone: 'danger', settled: true };
   // 🔴 대기는 «성공도 실패도 아닙니다». 워처가 집어 가야 결정됩니다 — 그때까지 이 건은
   //    「끝났다」고 말할 수 없고, 「실패했다」고 말할 수도 없습니다.
   if (spelled === 'PENDING_RETRY') return { state: 'queued', tone: 'warn', settled: false };
@@ -93,15 +94,32 @@ export function outboxRetryMessage(body) {
     text: `❔ Unknown reply${reply.status ? ` (${reply.status})` : ''}${said ? ` — ${said}` : ''}` };
 }
 
+/** The drawer body's own class (admin.html `.traceback-text`, red). Every drawer that writes the
+ *  body sets its class, so none inherits the neutral one a success file left behind. */
+export const DRAWER_BODY_CLASS = 'traceback-text';
+
 /**
- * The file drawer's title and body follow the badge's tone (lead 59fa66aaf): since item 2 a
- * SUCCESS file can carry a sentence (rows it dropped), and it is not filed under «error»; an
- * empty message on a file that did not succeed does not claim it succeeded.
+ * A diagnostics drawer's title, badge, body and body colour, all from ONE tone - the badge's
+ * (leads 59fa66aaf · 1f87a0baf · e1af65168). A sentence on a success is not filed under «error»,
+ * an empty message on something that did not succeed does not claim it did, and only a failure
+ * is drawn red. The two drawers differ only in their words.
  */
-export function ingestionMessageView(status, message) {
+function drawerMessageView(status, message, words) {
   const tone = retryVerdict(status).tone;
   const said = typeof message === 'string' ? message.trim() : '';
-  const empty = tone === 'ok' ? 'No message — ingested successfully.'
+  const empty = tone === 'ok' ? `No message — ${words.done}.`
     : tone === 'danger' ? 'No error message captured.' : 'No message captured.';
-  return { tone, title: tone === 'danger' ? 'Ingestion error' : 'Ingestion message', body: said || empty };
+  return { tone,
+    title: `${words.subject} ${tone === 'danger' ? 'error' : 'message'}`,
+    body: said || empty,
+    badgeClass: `badge badge-${tone === 'ok' ? 'success' : tone === 'danger' ? 'danger' : 'warning'}`,
+    bodyClass: tone === 'danger' ? DRAWER_BODY_CLASS : `${DRAWER_BODY_CLASS} is-neutral` };
 }
+
+/** File Ingestion drawer (`file_ingestion_logs.status` · `error_message`). */
+export const ingestionMessageView = (status, message) =>
+  drawerMessageView(status, message, { subject: 'Ingestion', done: 'ingested successfully' });
+
+/** Auto Update collector drawer (`last_status` · `last_error`). */
+export const collectorMessageView = (status, message) =>
+  drawerMessageView(status, message, { subject: 'Last run', done: 'last run succeeded' });

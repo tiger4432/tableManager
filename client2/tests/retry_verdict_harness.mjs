@@ -109,8 +109,13 @@ console.log('\n── D. THE SCREEN GOES THROUGH THIS PLACE, AND OWNS NO LIST �
   //    answering correctly until a state it never heard of arrives.
   const js = readFileSync(new URL('../src/admin.js', import.meta.url), 'utf8');
   ok('D1 the retry outcome goes through the verdict', js.includes('retryMessage('));
-  // The badge's tone is the drawer's, and the drawer's is `retryVerdict`'s (F6 scores that).
-  ok('D2 the severity badge goes through it too', js.includes('const severityTone = drawer.tone;'));
+  // The badge's class is the drawer's, whose tone is `retryVerdict`'s (F6 · G2 score that) — in
+  // BOTH drawers, and no drawer keeps a status ternary of its own (lead e1af65168: one mapping).
+  const collectorDrawer = (js.split(/\n(?=(?:async )?function )/).find((fn) => fn.startsWith('function selectAutoUpdateRow')) || '');
+  ok('D2 the severity badge goes through it too — in both drawers, with no ternary of its own',
+    (js.match(/tracebackSeverity\.className = drawer\.badgeClass;/g) || []).length === 2
+    && collectorDrawer.length > 0 && !/last_status ===/.test(collectorDrawer),
+    { badgeReads: (js.match(/tracebackSeverity\.className = drawer\.badgeClass;/g) || []).length, drawerFound: collectorDrawer.length > 0 });
   // 🔴 THE OLD PREDICATE IS GONE. This is the actual defect: 「still FAILED?」 read as
   //    「did it succeed?」. Leaving it anywhere in this file would leave the bug reachable.
   ok('D3 no site decides the outcome by one state\'s absence',
@@ -150,6 +155,19 @@ console.log('\n── D. THE SCREEN GOES THROUGH THIS PLACE, AND OWNS NO LIST �
   ok('D10 the file drawer reads its title and body through the judge',
     /ingestionMessageView\(log\.status, log\.error_message\)/.test(js) && !js.includes('Ingestion Error Message'),
     'the drawer still writes its own title');
+  ok('D10b the collector drawer reads its title and body through the judge',
+    /collectorMessageView\(col\.last_status, col\.last_error\)/.test(js)
+    && !js.includes('Last Collector Execution Error') && !js.includes('Last execution was successful'),
+    'the collector drawer still writes its own title or success sentence');
+  // 🔴 1f87a0baf — the body is ONE <pre> every drawer writes. A drawer that writes it without setting
+  //    its class inherits the neutral colour a success file left, so an error is drawn un-red.
+  //    Text is the subject: each top-level function that writes the body also sets its class.
+  const writers = js.split(/\n(?=(?:async )?function )/)
+    .filter((fn) => /tracebackViewer\.(textContent|innerHTML|appendChild)/.test(fn));
+  const unset = writers.filter((fn) => !/tracebackViewer\.className = /.test(fn))
+    .map((fn) => fn.slice(0, 60).split('\n')[0]);
+  ok('D11 every drawer that writes the body sets its class (writers counted from the file)',
+    writers.length > 0 && unset.length === 0, { writers: writers.length, unset });
 }
 
 console.log('\n── F. THE FILE DRAWER — its title and body follow the badge\'s tone ───────');
@@ -170,6 +188,35 @@ console.log('\n── F. THE FILE DRAWER — its title and body follow the badge
     !/success/i.test(waiting.body) && waiting.title !== failed.title, waiting);
   ok('F6 the drawer\'s tone is the badge\'s tone for every status',
     ['SUCCESS', 'FAILED', 'PENDING_RETRY', 'QUARANTINED'].every((s) => X.ingestionMessageView(s, 'm').tone === X.retryVerdict(s).tone));
+  // 1f87a0baf — only a failure is drawn red; the success and waiting bodies are not.
+  ok('F7 the body is red for a failure only',
+    JSON.stringify(['FAILED', 'SUCCESS', 'PENDING_RETRY'].map((s) => X.ingestionMessageView(s, 'm').bodyClass))
+    === JSON.stringify([X.DRAWER_BODY_CLASS, `${X.DRAWER_BODY_CLASS} is-neutral`, `${X.DRAWER_BODY_CLASS} is-neutral`]),
+    ['FAILED', 'SUCCESS', 'PENDING_RETRY'].map((s) => X.ingestionMessageView(s, 'm').bodyClass));
+}
+
+console.log('\n── G. THE COLLECTOR DRAWER — the same seat, its own words (lead e1af65168) ──');
+{
+  // The collector's seven words as the server writes them — FAIL, not the file's FAILED.
+  const TABLE = [
+    ['PENDING', 'warn'], ['RUNNING', 'warn'], ['SUCCESS', 'ok'], ['FAIL', 'danger'],
+    ['SKIPPED', 'warn'], ['orphaned', 'warn'], ['unknown', 'warn'],
+  ];
+  const views = TABLE.map(([s]) => X.collectorMessageView(s, ''));
+  ok('G1 each word reads the tone the table gives — FAIL is a failure',
+    JSON.stringify(views.map((v) => v.tone)) === JSON.stringify(TABLE.map(([, t]) => t)), views.map((v) => v.tone));
+  ok('G2 ...and that tone is the badge seat\'s own (one mapping)',
+    TABLE.every(([s]) => X.collectorMessageView(s, 'm').tone === X.retryVerdict(s).tone));
+  ok('G3 only FAIL is titled as an error',
+    views.map((v) => v.title).filter((t) => t === 'Last run error').length === 1 && views[3].title === 'Last run error',
+    views.map((v) => v.title));
+  ok('G4 only SUCCESS says the last run succeeded — not one that never ran, is off or lost its owner',
+    views.filter((v) => /succeed/i.test(v.body)).length === 1 && /succeed/i.test(views[2].body), views.map((v) => v.body));
+  ok('G5 only FAIL is drawn red, and only FAIL has the red badge',
+    views.filter((v) => v.bodyClass === X.DRAWER_BODY_CLASS).length === 1 && views[3].badgeClass === 'badge badge-danger'
+    && views[2].badgeClass === 'badge badge-success', views.map((v) => [v.badgeClass, v.bodyClass]));
+  ok('G6 a sentence the server wrote is shown as it is',
+    X.collectorMessageView('FAIL', ' Cut off by a restart. ').body === 'Cut off by a restart.');
 }
 
 console.log('\n── E. THE OUTBOX RETRY REPLY — the server\'s status is the verdict ───────');
@@ -223,11 +270,17 @@ const DEFECTS = [
   ['M9 the skips are ignored, so a partial reset reads as clean',
     swap('    return skipped > 0', '    return false')],
   ['M10 the drawer title is «error» whatever the status (the defect 59fa66aaf names)',
-    swap("title: tone === 'danger' ? 'Ingestion error' : 'Ingestion message'", "title: 'Ingestion error'")],
+    swap("title: `${words.subject} ${tone === 'danger' ? 'error' : 'message'}`", 'title: `${words.subject} error`')],
   ['M11 an empty message always claims the file succeeded',
     swap("const empty = tone === 'ok' ?", 'const empty = true ?')],
   ['M12 the server\'s sentence is dropped from the drawer',
     swap('body: said || empty', 'body: empty')],
+  ['M13 the collector\'s FAIL is not read as a failure (the spelling e1af65168 names)',
+    swap("if (spelled === 'FAILED' || spelled === 'FAIL')", "if (spelled === 'FAILED')")],
+  ['M14 every drawer body is drawn red (the colour 1f87a0baf names)',
+    swap("bodyClass: tone === 'danger' ? DRAWER_BODY_CLASS :", 'bodyClass: true ? DRAWER_BODY_CLASS :')],
+  ['M15 the badge class stops following the tone',
+    swap("badgeClass: `badge badge-${tone === 'ok' ? 'success'", "badgeClass: `badge badge-${true ? 'success'")],
 ];
 
 const CONTROLS = [
@@ -253,7 +306,10 @@ function verdict(M) {
     || M.outboxRetryMessage({ status: 'success', message: 'm', reset: 1, skipped_reexpanded: 1 }).tone !== 'warning'
     || M.ingestionMessageView('SUCCESS', 'm').title === M.ingestionMessageView('FAILED', 'm').title
     || /success/i.test(M.ingestionMessageView('FAILED', '').body)
-    || M.ingestionMessageView('SUCCESS', ' m ').body !== 'm';
+    || M.ingestionMessageView('SUCCESS', ' m ').body !== 'm'
+    || M.collectorMessageView('FAIL', '').tone !== 'danger'
+    || M.ingestionMessageView('SUCCESS', 'm').bodyClass === M.ingestionMessageView('FAILED', 'm').bodyClass
+    || M.collectorMessageView('FAIL', 'm').badgeClass === M.collectorMessageView('SUCCESS', 'm').badgeClass;
 }
 
 if (verdict(BASELINE)) die('the scorer already fails on the UNMUTATED module — '
