@@ -60181,3 +60181,101 @@ run_here 한 곳에서 접으면 Ctrl-C 가 「취소」와 같은 말이 됨 �
 ```
 ㉠㉡㉢㉣ 한 커밋 -> ㉤ 판정 대기 동안 박스 설정 시험 셋
 ```
+
+---
+
+## [구현자 -> 총괄] 관찰 ㉠㉡㉢㉣ 착지 — b429cd1e9
+
+```
+㉠  validate 가 연산의 «자기 조회»를 부름 — 레지스트리의 연산마다 judge 칸(count · run 과 같은 모양)
+    judge 있음  chain_replay(find_rule, 고른 행이 같이 감) · enrichment_backfill(load_rule, force_disabled 가 같이 감)
+                enrichment_confirm(선언 목록) · withdraw(보호 소스 — validate 안의 op == "withdraw" 갈래를 옮김, 문장 그대로)
+    judge 없음  resolve · ledger_backfill · ledger_rescope — CLI 도 미리 안 물음, 두 문이 같은 답
+    곁         건수 라우트의 400 이 이제 조회 문장 그대로 (전: 조회가 던진 것이 일반 예외 갈래로 가서 한국어 머리가 붙었음)
+㉡  「op=X is progressing, last progress 0.0s ago」 · 보고 없으면 「is unreported, no progress reported yet」
+㉢  CLI 실행 행의 requested_by = OS 계정 이름 (run_here 가 행을 새로 쓰는 한 자리) · 못 읽으면 비워 둠
+㉣  매퍼 로그 「built for」 — 그 함수는 갱신 목록을 짓기만 함
+```
+
+### 게이트
+
+| 칸 | 시험 | 변이 |
+|---|---|---|
+| 없는 이름: publish · count · CLI 한 문장, 기록 0 (연산 셋) | test_the_publish_the_count_and_a_cli_give_one_refusal_and_record_nothing | validate 가 안 물으면 7 failed |
+| 고른 행이 판정에 감 (조인 둘째 반쪽) | test_picked_rows_still_make_a_companion_a_legal_subject | 행을 안 넘기면 1 failed |
+| force_disabled 가 판정에 감 | test_force_disabled_still_reaches_the_judgment | 안 넘기면 1 failed |
+| confirm 도 판정 | (위 첫 줄의 enrichment_confirm 칸) | confirm 칸을 비우면 2 failed |
+| 보호 소스 거절은 옮겨도 그대로 | TestAdminCannotRemoveAHumansValue (기존) | withdraw 칸을 비우면 2 failed |
+| 관문 문장 | test_the_alive_line_counts_its_seconds_from_the_last_progress | 옛 문장이면 1 failed |
+| CLI 행의 작성자 | test_the_record_says_which_os_account_ran_it | 안 적으면 1 failed |
+| 매퍼 로그 | 시험 없음 — 로그 낱말. 박스로 봄 | — |
+| 대조: 있는 이름은 그대로 queued | test_a_rule_it_can_find_is_still_queued | — |
+
+```
+범위   만진 시험 + retroactive·매퍼를 부르는 시험 + /admin/retroactive 경로를 부르는 시험 62 파일 -> 첫 판 1019 passed · 7 failed — 한 파일(test_a_cli_option_is_a_parameter_of_its_operation.py)
+       의 칸들이 가짜 이름 'r' 로 validate 를 불러 박스의 규칙 파일을 읽었음. 그 파일이 이미 다른 픽스처에서 막아 둔 조회 셋을 autouse 로 막음
+       -> 그 파일 + CLI 시험 한 파일 + 새 시험 · 고친 시험 재실행 전부 초록
+```
+
+### 박스 (읽기만 — 쓴 것 0)
+
+```
+없는 규칙 이름 no_such_rule_gate
+   validate  chain rule 'no_such_rule_gate' not found or disabled; available: dt_inventory_to_standard_dt_map, dt_transform …
+   count     같은 문장
+   CLI       같은 문장 (dry-run 의 REFUSED 줄)
+   SAME SENTENCE: True · runs rows before 81 after 81
+매퍼 로그   건수(dry-run, 박스 enrich 규칙 하나, 200 행) — [Enrichment:enrich_in_chain_probe] 200 source row(s) -> 4 unique decision key(s) built for 'dt_inventory' (0 of them on a PARTIAL decision key)
+안 잼      ㉡ 관문 문장(도는 실행이 있어야 뜸) · ㉢ CLI 쓰기 실행(박스 쓰기) — 시험으로만
+재기동함    21:36:30 API · 스케줄러 · 체인 워커 (감시자 제외) — 새 pid 는 목록으로 확인, /health 200
+```
+
+### 순서
+
+```
+다음  ㉤ (님 판정 ㄱ · 거름 한 함수) -> main 빨강 하나(c579504eb 「대형 레인 원인 전에」) -> 대형 레인 원인 -> 박스 설정 시험 -> 병렬
+      f06e55680 의 목록은 빨강이 박스 설정 시험 뒤인데, c579504eb 가 「대형 레인 원인 전에」라 그쪽을 따릅니다
+```
+
+---
+
+## [구현자 -> 총괄] ㉤ 박스 쓰기 알림 (6a2070edd) — 착지 뒤 체인 워커 재기동, 그다음 한 바퀴가 쓰는 것 — 21:43
+
+```
+무엇      원장 등록 표의 셈 칸(row_census) — 로더가 거절한 소스 9 행, 행마다 그 칸 하나
+          체인 워커의 셈 바퀴가 늘 쓰는 칸 (정상 소스 6 행은 지금도 바퀴마다 씀)
+얼마      9 칸. 새 행 0 — 있는 행만 갱신 (님 판정 ㄱ)
+되돌리기   전 값을 소스마다 한 줄씩 떠 둠(제 스크래치). 되돌림은 그 값으로 UPDATE — 권하지 않음(옛 값이 틀린 값)
+전(지금)   거절 9 중 no_row_id 도장 4 · 거절 도장 없이 옛 수가 남은 것 5
+          바퀴 줄은 거절 소스를 「retired (content unvalidated)」 로 적음 — 은퇴가 아니라 거절인데
+```
+
+여쭐 것 하나 (짓지 않음)
+
+```
+바퀴가 재는 소스가 6 -> 15 개. 쉼은 소스 하나마다(이 박스 페이스: 소스 1 개 · 쉼 60 s)
+-> 바퀴 길이가 대략 6×60 s 에서 15×60 s 로 — 정상 소스의 셈이 그만큼 드물게 새로 고쳐짐
+거절 소스는 스캔이 없음. 거절 소스엔 쉼을 안 줄지 — 님 판정
+```
+
+---
+
+## [구현자 -> 총괄] 대형 레인 원인 — 짓기 전 안 셋 (검수 ① · dee3411bd 의 원인) — 21:49
+
+원인(재 둔 것): 감시자가 파일이 «생긴 순간» 크기를 한 번 재서 레인을 가름(`_classify_lane`, 관찰자 스레드). 업로드 라우트는 내용을 메모리에 다 받은 뒤 raws/ 에 «제자리»로 씀(`open("wb")` -> `write`) — 파일이 생기는 순간의 크기는 다 쓰기 전 값일 수 있어 normal 로 감. 인라인 길은 그 뒤 1 s 쉬고 다시 읽으므로 내용은 맞게 들어감 — 레인만 틀림.
+
+| 안 | 무엇 | 운영자가 하는 일 | 좋은 점 | 위험 | 크기 |
+|---|---|---|---|---|---|
+| ㄱ (추천) | 업로드 라우트가 raws/ «밖» 같은 볼륨의 임시 이름에 다 쓴 뒤 `os.replace` 로 raws/ 에 넣음 | 없음 | 감시자가 «다 쓴 파일»만 봄 · 고치는 자리 하나(라우트의 쓰기) · 감시자 무변 | 탐색기·네트워크 복사로 raws/ 에 직접 넣는 파일은 그대로(지금처럼 인라인으로 열화, 정합 문제 없음 — `_classify_lane` 독스트링) | 작음 — 쓰기 몇 줄 + 시험 하나 |
+| ㄴ | 감시자가 크기가 멎은 뒤 레인을 가름 (폴더 적재의 「멎을 때까지」 규칙을 파일에) | 없음 | 만드는 쪽이 누구든 맞음 | 관찰자 스레드에서 기다리면 다음 이벤트가 막힘 -> 별도 스레드가 필요 · 작은 파일도 모두 그만큼 늦게 시작 | 중간 — 안 쟀음 |
+| ㄷ | 인라인 길의 1 s 쉼 뒤 크기를 다시 재서 크면 대형 레인으로 넘김 | 없음 | 쉼이 이미 있음 | 레인을 «가르는 자리»가 둘(관찰자 · 인라인) — 문 가르기 | 작음 |
+
+```
+추천    ㄱ — 원인이 «라우트가 덜 쓴 파일을 보인 것»이라 거기서 끊음. ㄴ 은 모든 생산자를 덮지만 값이 큼
+박스 게이트(ㄱ)  대형(문턱 이상) CSV 를 업로드 라우트로 — 모든 행이 형 변환 거절(abc)이라 첫 청크에서 FAILED, 표에 쓰는 것 0
+                감시자 로그 「Routed to heavy lane queue」 · 전(지금 코드) 없음 -> 후 있음 · 표 행 수 전·후 같음
+                file_ingestion_logs 에 FAILED 한 줄 생김 (그 표가 늘 쓰는 기록) — 되돌리기는 그 행 삭제, 권하지 않음
+여쭐 것  ㄱ 로 가도 되나 · 박스 게이트를 위처럼 «거절되는 대형 파일»로 재도 되나
+```
+
+그동안 박스 설정 시험(시험 1 · 시험 2 를 추적 픽스처로)을 합니다.

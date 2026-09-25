@@ -30,7 +30,8 @@ def _probe(monkeypatch, on_page):
         "label": "probe", "what_is_missing": "", "count": None, "run": run,
         "params": [retroactive._p("pages", required=False, kind="int")],
         "cli": "", "cli_only": [], "deletes": None, "reads_as": "number",
-        "cancellable": True, "restartable": True, "commit_granularity": ""})
+        "cancellable": True, "restartable": True, "commit_granularity": "",
+        "judge": None})
 
 
 def _row(db):
@@ -284,3 +285,20 @@ def test_a_killed_one_is_nobodys_and_a_cancel_releases_it(retro_env, monkeypatch
     _probe(monkeypatch, on_page)
     retroactive.run_here("probe_op", {"pages": 1}, log=lambda *_: None)
     assert "NOT alive" in said["gate"] and "RELEASES" in said["gate"]
+
+
+def test_the_record_says_which_os_account_ran_it(retro_env, monkeypatch):
+    """총괄 d34247b3d ㉢ — a CLI run's `requested_by` was empty. It is the OS account that ran
+    it; an account that cannot be read stays absent rather than invented."""
+    import getpass
+
+    _probe(monkeypatch, lambda page: None)
+    monkeypatch.setattr(getpass, "getuser", lambda: "op_kim")
+    retroactive.run_here("probe_op", {"pages": 1}, log=lambda *_: None)
+    assert _row(retro_env).requested_by == "op_kim"
+
+    retro_env.query(models.RetroactiveRun).delete()
+    retro_env.commit()
+    monkeypatch.setattr(getpass, "getuser", lambda: (_ for _ in ()).throw(OSError()))
+    retroactive.run_here("probe_op", {"pages": 1}, log=lambda *_: None)
+    assert _row(retro_env).requested_by is None

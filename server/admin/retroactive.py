@@ -747,6 +747,47 @@ def _enrichment_rule(name):
 
 
 # ---------------------------------------------------------------------------
+# Params judgments - the operation's OWN lookup, asked by `validate` (총괄 d34247b3d ㉠).
+# The CLI asked it before recording and the admin publish did not, so one rule name had two
+# answers: a refusal, or a queued run that failed in the child.
+# ---------------------------------------------------------------------------
+
+def _judge_chain_replay(params):
+    from chain import replay
+
+    try:
+        replay.find_rule(params["rule"], row_scoped=bool(params.get("row_ids")))
+    except replay.ReplayRefused as e:
+        raise RetroactiveRefused(str(e)) from None
+
+
+def _judge_withdraw(params):
+    from chain import replay
+
+    # `withdraw_source` refuses it AGAIN - this is convenience, that one is the safety property.
+    if params.get("source") in replay.PROTECTED_SOURCES:
+        raise RetroactiveRefused(
+            f"refusing to withdraw source '{params['source']}': it is the layer that means "
+            f"'a human typed this'. There is no supported way to remove a human's value "
+            f"from here - edit the cell instead.")
+
+
+def _judge_enrichment_backfill(params):
+    from chain import enrichment
+    from database import crud
+
+    try:
+        enrichment.backfill.load_rule(params["rule"], crud.TABLE_CONFIG,
+                                      **_given(params, "force_disabled"))
+    except enrichment.backfill.BackfillRefused as e:
+        raise RetroactiveRefused(str(e)) from None
+
+
+def _judge_enrichment_confirm(params):
+    _enrichment_rule(params["rule"])
+
+
+# ---------------------------------------------------------------------------
 # The registry
 # ---------------------------------------------------------------------------
 
@@ -757,6 +798,8 @@ def _enrichment_rule(name):
 #: 🔴 Whether this operation can be asked to stop BETWEEN BATCHES. False is not a defect
 #: and not a TODO: it is a fact about where the operation's commits are chunked, and a
 #: screen that offered cancel anyway would show a button that does nothing.
+#: `judge` is the operation's own params judgment, asked by `validate` before anything
+#: is recorded. None: the run is the first to judge them.
 OPERATIONS = {
     "chain_replay": {
         "label": "Replay chain rules over old data (R1)",
@@ -782,6 +825,7 @@ OPERATIONS = {
                       help="rows per write chunk")],
         "count": _count_chain_replay,
         "run": _run_chain_replay,
+        "judge": _judge_chain_replay,
         "cli": ("server/scripts/chain_replay_cli.py replay <rule> "
                 "[--business-keys a,b,c] [--row-ids r1,r2] [--pace slow] "
                 "[--limit N] [--chunk-size N] --apply"),
@@ -802,6 +846,7 @@ OPERATIONS = {
                       help="comma-separated column allowlist")],
         "count": _count_withdraw,
         "run": _run_withdraw,
+        "judge": _judge_withdraw,
         "cli": "server/scripts/chain_replay_cli.py withdraw <table> <source> --apply",
         # It deletes a source's CLAIM, not the cell and not the row: the revealed
         # value is recomputed and written, and every changed cell gets an AuditLog
@@ -825,6 +870,7 @@ OPERATIONS = {
                       help="rows per page")],
         "count": _count_resolve,
         "run": _run_resolve,
+        "judge": None,
         "cli": ("server/scripts/chain_replay_cli.py resolve <table> [--columns a,b] "
                 "[--limit N] [--chunk-size N] --apply"),
         # Only the shown column moves, from layers already stored; no layer is created or
@@ -852,6 +898,7 @@ OPERATIONS = {
                       help="the Ledger config root to read")],
         "count": _count_ledger_backfill,
         "run": _run_ledger_backfill,
+        "judge": None,
         "cli": ("server/ledger/backfill.py --source <source> [--pace slow] "
                 "[--fetch-rows N] [--max-batches N] [--ontology-root <dir>]"),
         "deletes": None,
@@ -878,6 +925,7 @@ OPERATIONS = {
                       help="the Ledger config root to read")],
         "count": _count_ledger_rescope,
         "run": _run_ledger_rescope,
+        "judge": None,
         "cli": ("server/ledger/backfill.py --source <source> --scope-column <column> "
                 "--scope-values <a,b,c> [--ontology-root <dir>] --apply"),
         # It deletes this source's atoms from the NAMED rows and nothing else:
@@ -907,6 +955,7 @@ OPERATIONS = {
                       help="source scan chunk size")],
         "count": _count_enrichment_backfill,
         "run": _run_enrichment_backfill,
+        "judge": _judge_enrichment_backfill,
         "cli": ("server/scripts/backfill_enrichment.py <rule> [--limit N] "
                 "[--force-disabled] [--chunk-size N] --apply"),
         "deletes": None,
@@ -928,6 +977,7 @@ OPERATIONS = {
                       help="max distinct values one probe may see")],
         "count": _count_enrichment_confirm,
         "run": _run_enrichment_confirm,
+        "judge": _judge_enrichment_confirm,
         "cli": ("server/scripts/enrichment_insights.py confirm <rule> [--limit N] "
                 "[--probe-scan-rows N] [--probe-distinct-values N] --apply"),
         "deletes": None,
@@ -1514,8 +1564,6 @@ def inventory() -> list:
 
 def validate(op: str, params: dict) -> dict:
     """-> the normalized parameter dict, or raise `RetroactiveRefused`."""
-    from chain import replay
-
     spec = operation(op)
     params = params or {}
     known = {p["name"] for p in spec["params"]}
@@ -1566,14 +1614,10 @@ def validate(op: str, params: dict) -> dict:
                 f"'{op}' parameter '{p['name']}' must be one of "
                 f"{sorted(legal)}; got {out[p['name']]!r}")
 
-    # R2's first refusal, re-stated here so the operator gets a 400 instead of a
-    # queued job that dies in a worker log. `withdraw_source` refuses it AGAIN -
-    # this check is convenience, that one is the safety property.
-    if op == "withdraw" and out.get("source") in replay.PROTECTED_SOURCES:
-        raise RetroactiveRefused(
-            f"refusing to withdraw source '{out['source']}': it is the layer that means "
-            f"'a human typed this'. There is no supported way to remove a human's value "
-            f"from here - edit the cell instead.")
+    # The operation's own judgment, so the operator gets a 400 instead of a queued job that
+    # dies in a worker log - and the publish, the count and a CLI get one answer.
+    if spec["judge"] is not None:
+        spec["judge"](out)
     return out
 
 
@@ -1721,10 +1765,13 @@ def gate_refusal(db):
                 "CANNOT BE JUDGED from here (a row written before runs carried a runner "
                 "stamp). Cancelling asks it to stop; it cannot release the lock. %s"
                 % (run_id, op, blocking.get("runner"), where))
-    return ("run_id=%s op=%s %s for %ss (runner=%s is alive — cancelling stops work that "
+    # The seconds are SINCE THE LAST PROGRESS - 「progressing for 0.0s」 read as a run that
+    # had just started (총괄 d34247b3d ㉡).
+    last = ("no progress reported yet" if blocking["moving"] == MOVING_UNREPORTED
+            else "last progress %ss ago" % blocking.get("no_progress_seconds"))
+    return ("run_id=%s op=%s is %s, %s (runner=%s is alive — cancelling stops work that "
             "is actually running) — %s"
-            % (run_id, op, blocking["moving"], blocking.get("no_progress_seconds"),
-               blocking.get("runner"), where))
+            % (run_id, op, blocking["moving"], last, blocking.get("runner"), where))
 
 
 #: The lock every claim takes (총괄 f453968fe ⓒ). Checking the gate and writing the running
@@ -1770,7 +1817,7 @@ def claim(op=None, params=None, run_id=None, beat_as=None):
             run_id = uuid.uuid4().hex[:12]
             session.add(models.RetroactiveRun(
                 run_id=run_id, op=op, params=json.dumps(params or {}, ensure_ascii=False),
-                **stamp))
+                requested_by=os_user(), **stamp))
         elif not (session.query(models.RetroactiveRun)
                   .filter(models.RetroactiveRun.run_id == run_id,
                           models.RetroactiveRun.state == RUN_QUEUED)
@@ -2123,6 +2170,16 @@ def runner_identity() -> str:
         return "%s/%s/%d" % (name, _socket.gethostname(), _os.getpid())
     except Exception:                                            # noqa: BLE001
         return "%s/?/%d" % (name, _os.getpid())
+
+
+def os_user():
+    """The OS account a CLI run was started from (총괄 d34247b3d ㉢) - who ran it, not an invented
+    author. Unreadable stays absent, as the publish leaves an unnamed `requested_by`."""
+    import getpass
+    try:
+        return getpass.getuser() or None
+    except Exception:                                            # noqa: BLE001
+        return None
 
 
 #: 수를 «설명하는» 칸들의 꼬리. 이 칸들은 수가 아니므로 문장에 «값으로» 서지 않는다 —

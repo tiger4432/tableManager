@@ -73,7 +73,9 @@ def test_a_view_that_declares_row_id_gets_exactly_one_and_it_is_the_key(catalog)
         assert [c.name for c in table.columns].count("row_id") == 1, name
         assert [c.name for c in table.primary_key] == ["row_id"], name
     finally:
-        models.DYNAMIC_TABLES.pop(name, None)
+        # Both singletons - the class AND its `Table` (S-191); a pop takes only the first.
+        from conftest import retire_dynamic_model
+        retire_dynamic_model(name)
 
 
 def test_a_relation_that_declares_none_is_unchanged(catalog):

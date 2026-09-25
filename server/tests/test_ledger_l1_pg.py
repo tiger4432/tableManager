@@ -1003,6 +1003,31 @@ def test_the_census_tick_creates_the_registry_row_and_never_moves_a_fingerprint(
     assert read_cursor_row(ledger)["translator_ver"] == wanted
 
 
+@pytest.mark.pg
+def test_a_refused_census_updates_the_row_a_source_has_and_creates_none(ledger):
+    """총괄 7426f76b0 ㉤ ㄱ — a source the loader refused has no fingerprint, so its census
+    is written with `translator_ver=None`: the row the source already has takes the refusal
+    and keeps its fingerprint, and a source with no row keeps having none."""
+    from ledger.setup import load_setup
+
+    setup = load_setup(shipped_root(), catalog=shipped_catalog())
+    writer = ledger_store.LedgerStore(ledger)
+    refused = {"source": "dt_job", "refused": "source_refused",
+               "remedy": "the loader refused this source"}
+
+    assert read_cursor_row(ledger) is None, "the fixture must start with no row at all"
+    writer.write_row_census("dt_job", refused, translator_ver=None)
+    assert read_cursor_row(ledger) is None, "a refused source that never ran got a row"
+
+    backfill.measure_and_store(ledger, setup, "dt_job", writer)
+    before = read_cursor_row(ledger)
+    assert before["row_census"].get("refused") is None, before["row_census"]
+    writer.write_row_census("dt_job", refused, translator_ver=None)
+    after = read_cursor_row(ledger)
+    assert after["row_census"]["refused"] == "source_refused"
+    assert after["translator_ver"] == before["translator_ver"]
+
+
 # ------------------------------------------------------- S-113 ⓓ-2 / S-114: the breakdown lands
 
 @pytest.mark.pg

@@ -2831,7 +2831,7 @@ async def run_ledger_row_census(db_session_factory):
     relation was dropped must not silence the fourteen after it.
     """
     import pacing
-    from ledger.backfill import ROW_CENSUS_JOB
+    from ledger.backfill import ROW_CENSUS_JOB, census_sources
 
     while True:
         try:
@@ -2849,11 +2849,9 @@ async def run_ledger_row_census(db_session_factory):
             # arrives for it, so a remainder measured here would publish a backlog that
             # will never move - and after S-177 its relation may not be in the catalogue
             # at all, which would spend a lap failing once per source. The names ride on
-            # the lap line, so the skip is a value rather than a silence.
-            sources = sorted(name for name, plan in setup.snapshot.source_plans.items()
-                             if plan.runs)
-            retired = sorted(name for name, plan in setup.snapshot.source_plans.items()
-                             if not plan.runs)
+            # the lap line, so the skip is a value rather than a silence. A source the
+            # loader REFUSED is measured - its census is the refusal (총괄 7426f76b0 ㉤).
+            sources, retired = census_sources(setup)
         except Exception as exc:
             logger.warning("[LedgerCensus] the declaration could not be read: %s", exc)
             # ✓ [S-284] NOTHING TO REPAIR HERE, AND THE REASON IS WORTH KEEPING. A census
@@ -2865,19 +2863,27 @@ async def run_ledger_row_census(db_session_factory):
             sources = []
             retired = []
         measured_now = 0
+        refused = []
         lap_started = time.monotonic()
         measured_seconds = 0.0
         for source in sources:
             source_started = time.monotonic()
+            census = None
             try:
-                await asyncio.to_thread(_measure_one_source_sync, db_session_factory,
-                                        source, setup)
+                census = await asyncio.to_thread(_measure_one_source_sync, db_session_factory,
+                                                 source, setup)
             except Exception as exc:
                 logger.warning("[LedgerCensus] %s failed: %s", source, exc)
             # ⚠️ THE FAILING SOURCE COSTS THE DATABASE TOO, so it is timed like any
             # other - counting only the successes would report a lap as cheaper than
             # it was, which is the direction a pacing number must never be wrong in.
             measured_seconds += time.monotonic() - source_started
+            # 🔴 [총괄 3b3b6803f] THE REST IS FOR A SCAN. A refused source's census is the
+            #    loader's refusal, taken without touching the database, so it earns none -
+            #    the running sources keep the cadence they had.
+            if census is not None and census.get("refused"):
+                refused.append(source)
+                continue
             measured_now += 1
             if units is not None and measured_now % max(units, 1) == 0:
                 await asyncio.sleep(rest)
@@ -2892,8 +2898,10 @@ async def run_ledger_row_census(db_session_factory):
                         "relation rows are planner estimates - `python -m ledger census` "
                         "counts)%s", len(sources), lap_seconds,
                         measured_seconds, rest,
-                        f" · retired (content unvalidated): {', '.join(retired)}"
-                        if retired else "")
+                        (f" · refused by the loader (no scan): {', '.join(refused)}"
+                         if refused else "")
+                        + (f" · retired (content unvalidated): {', '.join(retired)}"
+                           if retired else ""))
             # S-176. `depth` is the number of sources this lap still had to walk, which is
             # this loop's remaining work in the sense every other entry uses.
             heartbeat.record_lap("chain", "ledger_census", seconds=lap_seconds,

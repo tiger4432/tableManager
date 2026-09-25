@@ -31,6 +31,15 @@ REQUIRED = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _rule_r_is_found(monkeypatch):
+    """`validate` asks each operation's own lookup (총괄 d34247b3d ㉠). This file measures the
+    options, so `r` is found - and the box's own rules file is never read."""
+    monkeypatch.setattr(replay, "find_rule", lambda name, row_scoped=False: {"name": name})
+    monkeypatch.setattr(enrichment_backfill, "load_rule", lambda name, *a, **k: {"name": name})
+    monkeypatch.setattr(retroactive, "_enrichment_rule", lambda name: {"name": name})
+
+
 def test_the_form_does_not_offer_them_and_the_record_accepts_them():
     shown = {row["op"]: {p["name"] for p in row["params"]}
              for row in retroactive.inventory()}

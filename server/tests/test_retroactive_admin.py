@@ -1608,6 +1608,23 @@ def test_the_refusal_line_says_which_kind_of_lock_this_is(retro_env, monkeypatch
     assert dead != alive, "두 경우가 같은 문장을 낸다"
 
 
+def test_the_alive_line_counts_its_seconds_from_the_last_progress(retro_env, monkeypatch):
+    """총괄 d34247b3d ㉡ — 「progressing for 0.0s」 read as a run that had just started; the
+    number is the seconds since its last progress, and a run that reported none says so."""
+    from datetime import timedelta
+
+    db = retro_env
+    row = _stuck_run(db, runner="chain/box/999")
+    _beats(monkeypatch, "chain", pid=999)
+    unreported = retroactive.gate_refusal(db)
+    row.last_progress_at = row.started_at + timedelta(seconds=5)
+    db.commit()
+    reported = retroactive.gate_refusal(db)
+
+    assert "op=chain_replay is unreported, no progress reported yet" in unreported, unreported
+    assert "op=chain_replay is progressing, last progress 0.0s ago" in reported, reported
+
+
 class TestTheRunSentenceSaysWhatWasNotMade:
     """🔴 [판정 b3b6e8d55 · c1861f8ec] 실행이 화면에 닿는 통로는 이 문장 «하나»다
     (판정 33: 화면은 result 를 해석하지 않는다). 그런데 이 함수를 재는 시험이 «0» 이었다 —

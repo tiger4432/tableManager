@@ -369,7 +369,7 @@ def map_enrichment_dedup(db, payloads, rule=None):
         )
     logger.info(
         f"[Enrichment:{enrich.get('name')}] {len(payloads)} source row(s) -> "
-        f"{len(updates)} unique decision key(s) upserted into '{derived_table}' "
+        f"{len(updates)} unique decision key(s) built for '{derived_table}' "
         f"({partial_keys} of them on a PARTIAL decision key)"
     )
     return _result(updates, skipped, partial_keys, unaddressable)

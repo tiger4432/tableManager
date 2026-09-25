@@ -278,3 +278,102 @@ def test_the_sweep_skips_a_retired_source_and_says_which(monkeypatch, caplog):
 
     assert done == ["a", "c"] and store.written == ["a", "c"]
     assert "gone" in chr(10).join(r.getMessage() for r in caplog.records)
+
+
+# ------------------------------------------------ 총괄 7426f76b0 ㉤: a refused source is measured
+
+def _one_of_each():
+    """A running source, one the loader refused, and one the operator retired."""
+    return _setup({"a": _Plan("rel_a", "row_id"),
+                   "r": _Plan("rel_r", "row_id", planned=False,
+                              refusal={"path": "bundle.sources.r.relation",
+                                       "message": "not a table that has row_id"}),
+                   "gone": _Plan("rel_gone", "row_id", status="retired")})
+
+
+def _real_census_for_the_refused(monkeypatch):
+    """`r` goes through the real census (its refusal needs no database); the rest are
+    stubbed, because this file's subject is which sources are measured and how they are
+    stored. The fingerprint raises for `r`, as the real one does for a refused source."""
+    from ledger import setup_registry
+
+    def version(snapshot, source_id):
+        if source_id == "r":
+            raise RuntimeError("source 'r' was refused by the loader and has no material "
+                               "to fingerprint")
+        return f"ledger-v2:{source_id}"
+
+    real = backfill.measure_row_census
+    monkeypatch.setattr(setup_registry, "cursor_translator_version", version)
+    monkeypatch.setattr(
+        backfill, "measure_row_census",
+        lambda engine, setup, source, now=None, *, exact_rows=True:
+        real(engine, setup, source, now=now, exact_rows=exact_rows) if source == "r"
+        else {"source": source, "relation": "rel_" + source, "measured_at": "now"})
+
+
+def test_a_refused_source_is_measured_and_stored_without_a_fingerprint(monkeypatch, caplog):
+    """The census asked `plan.runs`, so a source the LOADER refused was never measured
+    again and the census it had before the refusal stood as its answer. Its census is the
+    refusal now, stored with no fingerprint - the loader planned nothing to take one of.
+    Only the retired source is skipped, by name."""
+    import logging
+
+    class _Store:
+        def __init__(self):
+            self.written = []
+
+        def write_row_census(self, source, census, *, translator_ver):
+            self.written.append((source, census.get("refused"), translator_ver))
+
+    _real_census_for_the_refused(monkeypatch)
+    store = _Store()
+    with caplog.at_level(logging.INFO):
+        done = backfill.measure_every_source(_Engine([]), _one_of_each(), store=store)
+
+    assert done == ["a", "r"]
+    assert store.written == [("a", None, "ledger-v2:a"), ("r", "source_refused", None)]
+    said = chr(10).join(r.getMessage() for r in caplog.records)
+    assert "census skips gone" in said and "census skips r" not in said, said
+
+
+def test_the_worker_lap_measures_what_the_sweep_measures(monkeypatch, caplog):
+    """The two census loops read one answer (`census_sources`), so the lap measures the
+    refused source too (총괄 7426f76b0 ㉤). It rests only after a SCAN - a refused source's
+    census touches no database, so the running sources keep their cadence - and the lap line
+    names it refused, not retired (총괄 3b3b6803f)."""
+    import asyncio
+    import logging
+
+    from chain import ingestion_worker as worker
+
+    class _LapEnded(Exception):
+        pass
+
+    measured, laps, rests = [], [], []
+
+    async def rest_then_end_after_the_lap_line(seconds):
+        if laps:
+            raise _LapEnded()
+        rests.append(seconds)
+
+    setup = _one_of_each()
+    monkeypatch.setattr(pacing, "job_pace", lambda job: (1, 60.0))
+    monkeypatch.setattr(worker, "_load_setup_sync", lambda factory: setup)
+    monkeypatch.setattr(worker, "_measure_one_source_sync",
+                        lambda factory, source, setup=None: measured.append(source) or (
+                            {"refused": "source_refused"} if source == "r" else {}))
+    monkeypatch.setattr(worker.heartbeat, "record_lap", lambda *a, **k: laps.append(k))
+    monkeypatch.setattr(worker.asyncio, "sleep", rest_then_end_after_the_lap_line)
+    with caplog.at_level(logging.INFO):
+        try:
+            asyncio.run(worker.run_ledger_row_census(lambda: None))
+        except _LapEnded:
+            pass
+
+    assert measured == backfill.census_sources(setup)[0] == ["a", "r"]
+    assert rests == [60.0], "one rest, after the one source that scanned"
+    assert laps and laps[0]["depth"] == 2, laps
+    line = [r.getMessage() for r in caplog.records if "lap:" in r.getMessage()][-1]
+    assert "refused by the loader (no scan): r" in line, line
+    assert "retired (content unvalidated): gone" in line, line

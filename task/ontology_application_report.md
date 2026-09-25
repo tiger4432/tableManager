@@ -33499,3 +33499,22 @@ CLI 기록의 요청자   CLI 실행 행의 requested_by 가 비어 있습니다
         인제션 로그 줄 하나(FAILED)는 남습니다(알린 대로)
 못 잰 것  체인 실패의 사유 머리(규칙 · 대상 이름) — 새 체인 실패를 만들려면 실패하는 규칙이 있어야 합니다. 목록의 261 은 옛 코드의 사유입니다
 ```
+
+---
+
+## 전·후 — 둘째 판 관찰 셋 (b429cd1e) (09-25 21:38)
+
+프로세스 안 HEAD 로 발행 · CLI 는 스크립트 그대로. 소유자 데이터는 안 썼습니다(실행 기록만).
+
+| 관찰 (c539062a2) | 전 | 후 |
+|---|---|---|
+| 없는 규칙 이름 — 어드민 | 받아서 자식에서 failed(실행 줄 하나) | **발행에서 거절** · 실행 기록 0 · 아웃박스 0 ✓ (enrichment_backfill · enrichment_confirm · chain_replay 셋 다) |
+| 관문 문장의 수 | 「progressing for 0.0s」 | 「is progressing, **last progress 0.0s ago**」 ✓ |
+| CLI 실행의 요청자 | 빈칸 | `requested_by` = OS 계정(`kk980`) ✓ |
+
+```
+보고만(동결)  없는 «원장 소스» 이름은 아직 두 답입니다 — 어드민 ledger_backfill(source 'APPAUDIT-no-such-source')은
+             실행 줄 + 아웃박스를 쓰고 자식에서 failed(「… is not declared in ontology」), CLI 는 기록 전에 거절.
+             커밋의 판정 자리는 chain_replay · enrichment 둘 · withdraw 보호 소스까지이고 원장 연산 둘은 안 들었습니다
+             남긴 것: 그 failed 실행 줄 하나(run_id 2f3307babdb2)
+```
