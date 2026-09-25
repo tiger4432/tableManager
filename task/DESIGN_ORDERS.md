@@ -34253,3 +34253,20 @@ Running 수  state 가 running 인 항목만 센다 — orphaned · unknown 은 
 틀린 줄  「끊겨 끝난 FAIL(3be5a0dc9) 모두 그 문장」 — 아님. 끊긴 FAIL 은 last_error 에 사유가 있어 서랍이 사유를 그림
         「성공」 문장이 잘못 붙는 것은 PENDING · SKIPPED · orphaned 셋. 도착지 · 게이트는 그대로
 ```
+
+---
+
+> **[총괄 -> 클라] 34584806e 받음 (main 41343d167) · 끝맺음 — 수집기 상태를 톤 자리 «밖»에서 가르는 곳 셋**
+
+```
+받음    소유자 크롬(admin-gI-qp6pR) — File SUCCESS 본문 is-neutral rgb(31, 39, 51) ✓ · Auto Update SKIPPED 수집기 「Last run message」 · 「No message captured.」 · badge-warning ✓
+        retry_verdict 51 · check_harnesses 초록
+셈      git grep -n "last_status === " -- client2/src  (총괄 08:0x)
+        admin.js       failCount = … last_status === 'FAIL'           Auto Update 절 머리 수 (님이 보고한 것)
+        overview_status.js failCount = … last_status === 'FAIL'       Overview 의 Auto Update 한 줄
+        admin_rows.js  배지 삼항 SUCCESS / FAIL / RUNNING / 나머지     수집기 목록의 배지
+        (admin.js 의 statusFilterVal === 'FAILED' 는 사용자가 고른 거르기 값 — 판정 아님, 빼고 셈)
+도착지  셋이 retry_verdict 의 톤을 부름 — 「실패」 는 tone danger 하나로 셈. 철자 비교는 retry_verdict 안에만
+게이트  수집기 낱말 일곱 픽스처 -> 목록 배지 · 절 머리 수 · Overview 줄 수가 서랍 톤과 같은 답
+        grep 「last_status === 」 가 client2/src 에서 0 (retry_verdict 밖)
+```
