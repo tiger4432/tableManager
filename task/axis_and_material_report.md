@@ -1,3 +1,101 @@
+> ## [09-25 12:46 디자인] Ledger 열 — 짓기 «전» 계획 · 안 셋 · 추천 안 1 · 여쭐 것 둘
+
+답(c5d4905af) 받았습니다. 짓는 것은 구현자 착지 뒤이고, 그때까지 이 계획에 대한 컨펌·조언을 기다립니다.
+
+### 도착지
+
+```
+원장 소스 표   행마다 Ledger 칸 — 올린 소스 이름 · 아직이면 Not yet · 칸이 안 왔으면 Unknown
+소스 아닌 표   열 없음
+선언 못 읽음   열 + Unknown
+「소스인가」   grid_source_label 한 자리가 답하고, 라벨과 열이 «같은 답»을 씁니다
+```
+
+### 열린 자리 — 그리드가 좌석의 답을 «어떻게» 받나
+
+지금 그 답은 GridSourceLabel.render 안에서만 나오고 밖으로 안 나갑니다. 그리고 표를 바꿀 때 그리드가 먼저 그려지고(`await switchTable`) 그 «뒤»에 `setRelation` 이 불립니다. 그래서 열 정의를 짓는 순간의 답은 «이전 표»의 것입니다.
+
+**안 1 (추천) — 좌석이 답을 내놓고, 그리드는 기존 재적용 문으로 받는다**
+```
+무엇    GridSourceLabel.answer() 하나 — {relation, state: source · not_source · unknown · pending · idle}
+        render 도 이 함수로 갈래를 탑니다 (라벨과 열이 한 답)
+        deps.onAnswer -> main.js 가 state 에 두고 기존 applyFillTargetHeaders() 로 열 정의를 다시 씁니다
+        buildColumnDefs 는 답의 relation 이 «지금 표»일 때만 읽습니다 — 이전 표의 답은 버림
+        열 정의와 칸 글자는 새 순수 모듈 하나(grid_ledger_column.js) — 하니스가 import
+운영자  없음
+좋은 점  라벨과 열이 갈라질 수 없음 · 재적용 문을 새로 안 지음
+위험    표를 바꾸면 열이 그리드보다 한 박자 늦게 섭니다 (선언은 한 번 읽으니 그 뒤로는 바로)
+        pending 동안은 열이 없습니다
+크기    안 쟀습니다
+```
+**안 2 — 그리드가 선언을 직접 읽는다**
+```
+무엇    grid 가 loadLedgerDeclaration 을 따로 불러 relation 을 찾음
+좋은 점  배선이 없음
+위험    같은 물음을 두 자리가 답합니다 — 지시가 막은 것. 한쪽만 실패하면 라벨 unreadable + 열 있음 같은 어긋남
+크기    안 쟀습니다
+```
+**안 3 — 열을 늘 그리고 소스 아닌 표에서는 칸만 비운다**
+```
+무엇    좌석을 안 묻고 모든 표에 Ledger 열
+위험    지시의 「소스 아님 -> 열 없음」과 어긋남 · 빈 칸이 Not yet 과 헷갈림
+크기    안 쟀습니다
+```
+
+### 칸 글자 — 답 × 값
+
+```
+답 \ ledger_sources   [이름…]            []         칸 없음
+source                이름 · 이름        Not yet    Unknown
+unknown               이름 · 이름        Unknown    Unknown
+not_source · pending · idle   — 열 없음 —
+```
+```
+unknown 줄이 제 해석입니다 — 소스인지 모르니 [] 를 Not yet 이라 하면 «언젠가 올라간다»는 주장이 됩니다
+이름이 왔으면 그건 원장 색인의 사실이라 그대로 그립니다
+열     머리 Ledger · 읽기 전용(시스템 칸 회색) · 맨 끝 · 정렬·필터 꺼짐 (서버가 이 칸으로 거르지 못하니 페이지 안 정렬은 거짓)
+```
+
+### 같은 커밋에 같이
+
+```
+absent.js      UNKNOWN 'Unknown' 신설 · UNPICKED 'None selected'
+               소비자 전수 — src 7파일(rnd_board 패널) · 하니스 4 (상수를 import 해서 단언, 글자를 안 박음)
+               🔴 rnd_board/composition_panel.js 가 상수를 안 거치고 '대상 없음' 을 «직접» 적습니다 — 상수로 접습니다
+                  그 자리를 재는 단언은 지금 0 입니다 — rnd_board_composition_harness 에 하나 (지시의 「하니스 단언도 같은 커밋」)
+걷기           source_backlog.censusRefusal 의 no_row_id 갈래 · 부르는 곳 3 · 두 하니스 픽스처 · 그 줄의 CSS
+               구현자 착지분에 인구조사 거절이 «남지 않는지» 먼저 봅니다
+               grid_source_label_harness 의 bonding_die_from_core -> 표 이름
+```
+
+### 게이트 — 진짜 GridSourceLabel · 진짜 buildColumnDefs 로
+
+```
+①  열 유무 × 답   source · not_source · unknown · pending · idle · 이전 표의 답
+②  칸 × 값       위 표의 칸 전부 (빈 칸도 단언)
+③  박스           서버 함수를 프로세스 안에서 읽기로 — 소스 표의 번역된 행 = 이름 · 색인에 없는 행 = [] · 소스 아닌 표 = 열 없음
+                 「새 행 -> 원장이 따라온 뒤 이름」의 전·후는 행 쓰기가 필요합니다 — 제가 못 합니다. 화면과 함께 소유자 몫
+④  변이           서버가 칸을 안 실음 -> 소스 표 열이 Unknown (Not yet 도 열 없음도 아님) · [] 를 이름으로 -> 빨강
+                 relation 대조를 빼면 -> 이전 표 답에서 빨강 · composition_panel 을 옛 글자로 -> 빨강
+⑥  npm run build (하니스 전수) · 번들 같은 커밋
+```
+
+### UI 제안 — 짓지 않습니다
+
+| 항목 | 왜 | 크기 |
+|---|---|---|
+| Not yet 만 보기 | 적재 뒤 「무엇이 아직 안 올라갔나」를 찾으려면 지금은 페이지를 넘기며 눈으로 봅니다 | 안 쟀다 · 서버 필터 필요 |
+| 머리에 이 페이지의 Not yet 수 | 스크롤 없이 밀린 양을 봅니다 | 안 쟀다 |
+| 소스 이름을 누르면 그 소스의 선언 | 「이 소스가 무엇을 만드나」를 보려고 다른 화면에서 이름을 다시 찾습니다 | 안 쟀다 |
+
+### 여쭐 것
+
+```
+1  안 1 로 가도 되나
+2  unknown 줄 — [] 를 Unknown 으로 (제 해석). 지시의 「열 + 모름」이 «칸 전부 Unknown» 이었으면 말씀해 주십시오
+남은 것  composition_panel 의 「불러오는 중」 · 「서버 거절」 도 한국어입니다 — 이번 범위 밖으로 두었습니다
+```
+
 > ## [09-25 12:42 디자인] 뷰 소스 걷어내기(f3bc02f6e) 클라 몫 — 짓기 «전» 셈 · 참조뷰 탭은 남김으로 읽었습니다 · 물음 둘
 
 짓지 않았습니다 — 구현자 착지 «뒤»입니다. 지시가 먼저 세라고 한 것과, 세다가 나온 것입니다.
