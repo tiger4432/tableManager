@@ -59556,3 +59556,64 @@ mapper_call  missing 표지를 None 으로 바꾸려 payload 전체를 돌지만
 ```
 via-events 은퇴 -> 검수 빨간 칸 셋 -> 박스 설정 시험 셋 -> 관찰 다섯 (㉤ 은 77ad03ea3 모양으로)
 ```
+
+---
+
+## [구현자 -> 총괄] f063c948e 셋 착지 — 행 없는 잎은 재시도가 끝냄 · 미리보기가 거절 소스를 이름으로 · 「언제부터 실패」 는 마지막 실패 시각 — 8dfd50abb
+
+### ㉯ 행 없는 잎
+
+```
+한 일     재시도가 그 갈래에서 event_constants.mark_cancelled(줄, "retry", 「row <id> no longer exists in <표>」)
+         -> SUCCESS · processed_chain=true · payload 에 cancelled_by · cancel_reason. 실패 목록 · 요약에서 빠짐
+개념      cancelled_by · cancel_reason 와 「표시 + mark_processed(SUCCESS)」 를 scripts/outbox_triage.py 에서 event_constants 로 옮김
+         triage 는 그것을 import — 줄 단위 갈래는 mark_cancelled 를 부르고, PostgreSQL 한꺼번 갈래는 같은 두 상수를 씀
+         who 는 triage 가 "operator", 재시도가 "retry" — triage 의 replay_cancelled 는 "operator" 만 다시 쏘므로 재시도가 끝낸 줄은 안 쏨
+status   한 자리 그대로: 되돌림 또는 끝냄이 있으면 success, 둘 다 0 이면 refused
+응답 칸   skipped_missing_row -> ended_missing_row (한 시간 전 e5edb5b45 에서 지은 이름 · client2 읽는 곳 0)
+```
+
+### 「언제부터 실패」 (oldest_failed_at)
+
+```
+한 일     created_at -> processed_at 의 최솟값 — 줄마다의 failed_at 과 같은 칸(마지막으로 실패한 시각)
+시험 픽스처  실패 시각과 태어난 시각을 가를 수 있게 — 태어난 지 열흘, 실패는 5 분 전인 줄을 넣음
+```
+
+같은 응답의 요약 줄(표 · 종류 · 날)은 날 · first_at · last_at 이 아직 created_at 입니다 — 「그 편집이 생긴 날」 입니다.
+「한 응답 안에서 언제 실패가 두 뜻」 에 이것도 드는지 여쭙니다. 들면 요약의 날 자르기가 바뀝니다(재시도 뒤 다시 실패한 묶음이 다른 날로 감).
+
+### ㉠ 미리보기 해시
+
+```
+compile_draft_preview     활성 스냅숏의 거절 계획(상태 · 관계 · 거절 사유)으로 refused_sources 를 지어 넘김
+                          초안이 그 이름의 소스를 «선언»하면 그 미리보기에서는 거절이 아님 — 같은 이름이 둘로 등록되지 않게
+setup_from_document       refused_sources 칸을 받아 넘김
+load_resolved_setup       load_setup 과 같은 함수(_refused_sources)로 resolver 보고에서 지어 넘김 · 이것을 부르는 두 곳(탐색기 서비스 · restamp 스크립트)이 칸을 통과시킴
+넘기지 않을 이유          못 찾았습니다
+결과                     compile_setup_snapshot 을 부르는 셋 모두 거절 소스를 이름으로 등록
+박스 복사본 빈 초안        전 다름 · 후 같음
+```
+
+### 게이트 — 자리마다 시험과 변이
+
+| 자리 | 시험 | 변이 |
+|---|---|---|
+| 재시도가 행 없는 잎을 끝냄 | test_a_leaf_whose_row_is_gone_is_ended_and_named | 끝냄을 빼면 빨강 (1 failed) |
+| status 한 자리 | test_the_status_says_whether_anything_was_reset (행 없는 잎만 = success) | 「끝냄」 을 셈에서 빼면 빨강 (1 failed) |
+| oldest_failed_at | test_the_oldest_failure_is_reported_over_the_whole_set | created_at 으로 되돌리면 빨강 (1 failed) |
+| 초안 미리보기 | test_activation_is_cas_atomic_and_matches_reviewed_preview (시험 2, 초록) | 넘김을 빼면 빨강 (1 failed) |
+| 대체 로더 | test_the_fallback_loader_names_the_refused_sources_as_the_loader_does (새 한 줄, 추적 픽스처) | 넘김을 빼면 빨강 (1 failed) |
+
+```
+범위    바뀐 모듈을 import 하는 시험 전부 + 만진 시험 = 138 파일 -> 2128 passed, 33 skipped, 1 xfailed, 3676 warnings
+⚠️      시험 2 의 이빨은 «이 박스»의 거절 소스 9 에 기댑니다(gitignore 된 설정). 거절 소스가 없는 설치에서는 변이를 못 잡음
+        -> 대기열 「박스 설정 시험 셋」 자리에서 거절 소스를 든 추적 픽스처로 옮기겠습니다
+```
+
+### 다음
+
+```
+via-events 은퇴 -> 검수 빨간 칸 셋 -> 박스 설정 시험 셋 -> 관찰 다섯
+앱 정지 게이트(두 번 허락)는 via-events 은퇴 뒤, 도는 소급이 없을 때
+```
